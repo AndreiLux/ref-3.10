@@ -35,6 +35,10 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_PKSM
+#include <linux/ksm.h>
+#endif
+
 /* How many pages do we try to swap or page in/out together? */
 int page_cluster;
 

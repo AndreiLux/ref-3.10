@@ -1346,6 +1346,11 @@ void free_hot_cold_page(struct page *page, int cold)
 	 */
 #endif
 
+#ifdef CONFIG_PKSM
+	if (PagePKSM(page)) 
+		pksm_del_anon_page(page);
+#endif
+
 	if (!free_pages_prepare(page, 0))
 		return;
 
@@ -6266,6 +6271,9 @@ static const struct trace_print_flags pageflag_names[] = {
 #endif
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	{1UL << PG_compound_lock,	"compound_lock"	},
+#endif
+#ifdef CONFIG_PKSM
+	{1UL << PG_pksm,			"pksm"		},
 #endif
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_DM_CRYPT)
 	{1UL << PG_sensitive_data,	"sensitive_data"},

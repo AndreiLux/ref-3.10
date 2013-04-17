@@ -453,6 +453,15 @@ extern void untrack_pfn(struct vm_area_struct *vma, unsigned long pfn,
 			unsigned long size);
 #endif
 
+#ifdef CONFIG_PKSM
+extern unsigned long pksm_zero_pfn;// __read_mostly;
+
+static inline int is_pksm_zero_pfn(unsigned long pfn)
+{
+	return pfn == pksm_zero_pfn;
+}
+#endif
+
 #ifdef __HAVE_COLOR_ZERO_PAGE
 static inline int is_zero_pfn(unsigned long pfn)
 {
@@ -467,7 +476,11 @@ static inline int is_zero_pfn(unsigned long pfn)
 static inline int is_zero_pfn(unsigned long pfn)
 {
 	extern unsigned long zero_pfn;
-	return pfn == zero_pfn;
+#ifdef CONFIG_PKSM
+	return (pfn == zero_pfn) || (is_pksm_zero_pfn(pfn));
+#else
+	return (pfn == zero_pfn);
+#endif
 }
 
 static inline unsigned long my_zero_pfn(unsigned long addr)
