@@ -12,7 +12,7 @@
  * Detects 64 bits mode
  */
 #if (defined(__x86_64__) || defined(__x86_64) || defined(__amd64__) \
-	|| defined(__ppc64__) || defined(__LP64__)) || defined(__aarch64__)
+	|| defined(__ppc64__) || defined(__LP64__))
 #define LZ4_ARCH64 1
 #else
 #define LZ4_ARCH64 0
