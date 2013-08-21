@@ -295,11 +295,9 @@ void nvhost_sync_pt_signal(struct nvhost_sync_pt *pt)
 	sync_timeline_signal(&obj->obj);
 }
 
-int nvhost_sync_create_fence(struct nvhost_syncpt *sp,
-		struct nvhost_ctrl_sync_fence_info *pts,
-		u32 num_pts, const char *name, int *fence_fd)
+struct sync_fence *nvhost_sync_create_fence(struct nvhost_syncpt *sp,
+		u32 *ids, u32 *vals, u32 num_pts, const char *name)
 {
-	int fd;
 	int err;
 	u32 i;
 	struct sync_fence *fence = NULL;
@@ -308,8 +306,8 @@ int nvhost_sync_create_fence(struct nvhost_syncpt *sp,
 		struct nvhost_sync_timeline *obj;
 		struct sync_pt *pt;
 		struct sync_fence *f, *f2;
-		u32 id = pts[i].id;
-		u32 thresh = pts[i].thresh;
+		u32 id = ids[i];
+		u32 thresh = vals[i];
 
 		BUG_ON(id >= nvhost_syncpt_nb_pts(sp) &&
 				(id != NVSYNCPT_INVALID));
@@ -346,19 +344,11 @@ int nvhost_sync_create_fence(struct nvhost_syncpt *sp,
 		goto err;
 	}
 
-	fd = get_unused_fd();
-	if (fd < 0) {
-		err = fd;
-		goto err;
-	}
-
-	*fence_fd = fd;
-	sync_fence_install(fence, fd);
-	return 0;
+	return fence;
 
 err:
 	if (fence)
 		sync_fence_put(fence);
 
-	return err;
+	return ERR_PTR(err);
 }
