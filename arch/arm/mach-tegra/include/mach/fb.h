@@ -28,9 +28,6 @@ struct tegra_fb_data;
 struct tegra_fb_info;
 struct resource;
 
-int tegra_fb_get_mode(struct tegra_dc *dc);
-int tegra_fb_set_mode(struct tegra_dc *dc, int fps);
-
 #ifdef CONFIG_FB_TEGRA
 struct tegra_fb_info *tegra_fb_register(struct platform_device *ndev,
 					struct tegra_dc *dc,
@@ -42,6 +39,8 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 			      struct fb_monspecs *specs,
 			      bool (*mode_filter)(const struct tegra_dc *dc,
 						  struct fb_videomode *mode));
+int tegra_fb_create_sysfs(struct device *dev);
+void tegra_fb_remove_sysfs(struct device *dev);
 #else
 static inline struct tegra_fb_info *tegra_fb_register(
 	struct platform_device *ndev, struct tegra_dc *dc,
@@ -62,6 +61,15 @@ static inline void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 					    struct fb_monspecs *specs,
 					    bool (*mode_filter)(const struct tegra_dc *dc,
 					                        struct fb_videomode *mode))
+{
+}
+
+static inline int tegra_fb_create_sysfs(struct device *dev)
+{
+	return -ENOENT;
+}
+
+static inline void tegra_fb_remove_sysfs(struct device *dev)
 {
 }
 #endif
