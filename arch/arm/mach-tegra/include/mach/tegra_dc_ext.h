@@ -73,6 +73,11 @@ int tegra_dc_ext_process_hotplug(int output)
 {
 	return 0;
 }
+static inline
+int tegra_dc_ext_process_bandwidth_renegotiate(int output)
+{
+	return 0;
+}
 #endif /* CONFIG_TEGRA_DC_EXTENSIONS */
 
 #endif /* __MACH_TEGRA_DC_EXT_H */
