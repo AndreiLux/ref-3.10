@@ -25,36 +25,9 @@
 #include <linux/sched.h>
 #include <linux/shrinker.h>
 #include <linux/types.h>
-#include <linux/miscdevice.h>
-
-struct ion_device;
-struct ion_client;
-struct ion_handle;
-
-bool ion_handle_validate(struct ion_client *client, struct ion_handle *handle);
-
-void ion_buffer_get(struct ion_buffer *buffer);
 
 struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
 
-struct ion_client *ion_client_get_file(int fd);
-
-void ion_client_get(struct ion_client *client);
-
-int ion_client_put(struct ion_client *client);
-
-void ion_handle_get(struct ion_handle *handle);
-
-int ion_handle_put(struct ion_handle *handle);
-
-struct ion_handle *ion_handle_create(struct ion_client *client,
-				     struct ion_buffer *buffer);
-
-void ion_handle_add(struct ion_client *client, struct ion_handle *handle);
-
-int ion_remap_dma(struct ion_client *client,
-		    struct ion_handle *handle,
-		    unsigned long addr);
 /**
  * struct ion_buffer - metadata for a particular buffer
  * @ref:		refernce count
@@ -72,17 +45,15 @@ int ion_remap_dma(struct ion_client *client,
  * @vaddr:		the kenrel mapping if kmap_cnt is not zero
  * @dmap_cnt:		number of times the buffer is mapped for dma
  * @sg_table:		the sg table for the buffer if dmap_cnt is not zero
- * @dirty:		bitmask representing which pages of this buffer have
- *			been dirtied by the cpu and need cache maintenance
- *			before dma
+ * @pages:		flat array of pages in the buffer -- used by fault
+ *			handler and only valid for buffers that are faulted in
  * @vmas:		list of vma's mapping this buffer
  * @handle_count:	count of handles referencing this buffer
  * @task_comm:		taskcomm of last client to reference this buffer in a
  *			handle, used for debugging
  * @pid:		pid of last client to reference this buffer in a
  *			handle, used for debugging
- * @pages:		list for allocated pages for the buffer
- */
+*/
 struct ion_buffer {
 	struct kref ref;
 	union {
@@ -102,13 +73,12 @@ struct ion_buffer {
 	void *vaddr;
 	int dmap_cnt;
 	struct sg_table *sg_table;
-	unsigned long *dirty;
+	struct page **pages;
 	struct list_head vmas;
 	/* used to track orphaned buffers */
 	int handle_count;
 	char task_comm[TASK_COMM_LEN];
 	pid_t pid;
-	struct page **pages;
 };
 void ion_buffer_destroy(struct ion_buffer *buffer);
 
@@ -123,6 +93,9 @@ void ion_buffer_destroy(struct ion_buffer *buffer);
  * @map_kernel		map memory to the kernel
  * @unmap_kernel	unmap memory to the kernel
  * @map_user		map memory to userspace
+ *
+ * allocate, phys, and map_user return 0 on success, -errno on error.
+ * map_dma and map_kernel return pointer on success, ERR_PTR on error.
  */
 struct ion_heap_ops {
 	int (*allocate) (struct ion_heap *heap,
@@ -242,6 +215,19 @@ int ion_heap_map_user(struct ion_heap *, struct ion_buffer *,
 int ion_heap_buffer_zero(struct ion_buffer *buffer);
 
 /**
+ * ion_heap_alloc_pages - allocate pages from alloc_pages
+ * @buffer:		the buffer to allocate for, used to extract the flags
+ * @gfp_flags:		the gfp_t for the allocation
+ * @order:		the order of the allocatoin
+ *
+ * This funciton allocations from alloc pages and also does any other
+ * necessary operations based on the buffer->flags.  For buffers which
+ * will be faulted in the pages are split using split_page
+ */
+struct page *ion_heap_alloc_pages(struct ion_buffer *buffer, gfp_t gfp_flags,
+				  unsigned int order);
+
+/**
  * ion_heap_init_deferred_free -- initialize deferred free functionality
  * @heap:		the heap
  *
@@ -298,6 +284,9 @@ void ion_carveout_heap_destroy(struct ion_heap *);
 
 struct ion_heap *ion_chunk_heap_create(struct ion_platform_heap *);
 void ion_chunk_heap_destroy(struct ion_heap *);
+struct ion_heap *ion_cma_heap_create(struct ion_platform_heap *);
+void ion_cma_heap_destroy(struct ion_heap *);
+
 /**
  * kernel api to allocate/free from carveout -- used when carveout is
  * used to back an architecture specific custom heap
@@ -306,19 +295,6 @@ ion_phys_addr_t ion_carveout_allocate(struct ion_heap *heap, unsigned long size,
 				      unsigned long align);
 void ion_carveout_free(struct ion_heap *heap, ion_phys_addr_t addr,
 		       unsigned long size);
-
-#ifdef CONFIG_ION_IOMMU
-struct ion_heap *ion_iommu_heap_create(struct ion_platform_heap *);
-void ion_iommu_heap_destroy(struct ion_heap *);
-#else
-static inline struct ion_heap *ion_iommu_heap_create(struct ion_platform_heap *)
-{
-	return NULL;
-}
-static inline void ion_iommu_heap_destroy(struct ion_heap *)
-{
-}
-#endif
 /**
  * The carveout heap returns physical addresses, since 0 may be a valid
  * physical address, this is used to indicate allocation failed

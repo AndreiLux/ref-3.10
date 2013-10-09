@@ -47,6 +47,7 @@
 #include "sleep.h"
 #include "tegra3_emc.h"
 #include "dvfs.h"
+#include "tegra11_soctherm.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvpower.h>
@@ -113,6 +114,8 @@
 
 #define CLK_RST_CONTROLLER_PLLX_MISC_0 \
 	(IO_ADDRESS(TEGRA_CLK_RESET_BASE) + 0xE4)
+
+static struct clk *cclk_lp;
 
 static int cluster_switch_prolog_clock(unsigned int flags)
 {
@@ -247,15 +250,22 @@ void tegra_cluster_switch_prolog(unsigned int flags)
 
 #if defined(CONFIG_ARCH_TEGRA_HAS_SYMMETRIC_CPU_PWR_GATE)
 	reg &= ~FLOW_CTRL_CSR_ENABLE_EXT_MASK;
+
 	if ((flags & TEGRA_POWER_CLUSTER_PART_CRAIL) &&
-	    ((flags & TEGRA_POWER_CLUSTER_PART_NONCPU) == 0) &&
+	    (flags & TEGRA_POWER_CLUSTER_PART_NONCPU))
+		WARN(1, "CRAIL & CxNC flags must not be set together\n");
+
+	if ((flags & TEGRA_POWER_CLUSTER_PART_CRAIL) &&
 	    (current_cluster == TEGRA_POWER_CLUSTER_LP))
 		reg |= FLOW_CTRL_CSR_ENABLE_EXT_NCPU;
-	else if (flags & TEGRA_POWER_CLUSTER_PART_CRAIL)
-		reg |= tegra_crail_can_start_early() ?
-		FLOW_CTRL_CSR_ENABLE_EXT_NCPU : FLOW_CTRL_CSR_ENABLE_EXT_CRAIL;
-
-	if (flags & TEGRA_POWER_CLUSTER_PART_NONCPU)
+	else if (flags & TEGRA_POWER_CLUSTER_PART_CRAIL) {
+		if (tegra_crail_can_start_early()) {
+			reg |= FLOW_CTRL_CSR_ENABLE_EXT_NCPU;
+			tegra_soctherm_adjust_cpu_zone(false);
+		} else {
+			reg |= FLOW_CTRL_CSR_ENABLE_EXT_CRAIL;
+		}
+	} else if (flags & TEGRA_POWER_CLUSTER_PART_NONCPU)
 		reg |= FLOW_CTRL_CSR_ENABLE_EXT_NCPU;
 #endif
 
@@ -365,6 +375,8 @@ void tegra_cluster_switch_epilog(unsigned int flags)
 		cluster_switch_epilog_actlr();
 		cluster_switch_epilog_gic();
 #if defined(CONFIG_ARCH_TEGRA_HAS_SYMMETRIC_CPU_PWR_GATE)
+		if (tegra_crail_can_start_early())
+			tegra_soctherm_adjust_cpu_zone(true);
 	} else  if ((flags & TEGRA_POWER_CLUSTER_PART_CRAIL) &&
 		    tegra_crail_can_start_early()) {
 		tegra_powergate_partition(TEGRA_POWERGATE_CRAIL);
@@ -643,14 +655,19 @@ void tegra_lp0_resume_mc(void)
 	tegra_mc_timing_restore();
 }
 
-void tegra_lp0_cpu_mode(bool enter)
+static int __init get_clock_cclk_lp(void)
 {
-	static struct clk *cclk_lp;
-	static bool entered_on_g = false;
-	unsigned int flags;
-
 	if (!cclk_lp)
 		cclk_lp = tegra_get_clock_by_name("cclk_lp");
+	return 0;
+}
+
+subsys_initcall(get_clock_cclk_lp);
+
+void tegra_lp0_cpu_mode(bool enter)
+{
+	static bool entered_on_g = false;
+	unsigned int flags;
 
 	if (enter)
 		entered_on_g = !is_lp_cluster();
@@ -699,9 +716,7 @@ static struct tegra_io_dpd tegra_list_io_dpd[] = {
 /* we want to cleanup bootloader io dpd setting in kernel */
 static void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
 
-/* FIXME! remove !t12x after t12x added dpd */
-#if defined(CONFIG_PM_SLEEP) && \
-	!defined(CONFIG_ARCH_TEGRA_12x_SOC)
+#if defined CONFIG_PM_SLEEP
 struct tegra_io_dpd *tegra_io_dpd_get(struct device *dev)
 {
 #ifdef CONFIG_TEGRA_IO_DPD

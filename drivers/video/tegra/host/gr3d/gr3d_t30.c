@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host 3D for Tegra3
  *
- * Copyright (c) 2011-2013 NVIDIA Corporation.
+ * Copyright (c) 2011-2013 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -423,10 +423,11 @@ struct nvhost_hwctx_handler *nvhost_gr3d_t30_ctxhandler_init(
 	if (!save_ptr)
 		goto fail_mmap;
 
-	p->save_sgt = nvhost_memmgr_pin(memmgr, p->save_buf, &ch->dev->dev);
+	p->save_sgt = nvhost_memmgr_pin(memmgr, p->save_buf, &ch->dev->dev,
+								mem_flag_none);
 	if (IS_ERR(p->save_sgt))
 		goto fail_pin;
-	p->save_phys = sg_dma_address(p->save_sgt->sgl);
+	p->save_phys = nvhost_memmgr_dma_addr(p->save_sgt);
 
 	setup_save(p, save_ptr);
 
@@ -509,14 +510,15 @@ int nvhost_gr3d_t30_read_reg(
 	}
 	cmdbuf_ptr = mem_ptr + 1;
 
-	mem_sgt = nvhost_memmgr_pin(memmgr, mem, &channel->dev->dev);
+	mem_sgt = nvhost_memmgr_pin(memmgr, mem, &channel->dev->dev,
+							mem_flag_none);
 	if (IS_ERR(mem_sgt)) {
 		err = -ENOMEM;
 		mem_sgt = NULL;
 		goto done;
 	}
 	/* Set address of target memory slot to the stream */
-	opcodes[3] = sg_dma_address(mem_sgt->sgl);
+	opcodes[3] = nvhost_memmgr_dma_addr(mem_sgt);
 
 	read_waiter = nvhost_intr_alloc_waiter();
 	if (!read_waiter) {
@@ -540,7 +542,7 @@ int nvhost_gr3d_t30_read_reg(
 
 	/* Submit job */
 	nvhost_job_add_gather(job, nvhost_memmgr_handle_to_id(mem),
-			ARRAY_SIZE(opcodes), 4);
+			ARRAY_SIZE(opcodes), 4, 0);
 
 	err = nvhost_job_pin(job, &nvhost_get_host(dev)->syncpt);
 	if (err)

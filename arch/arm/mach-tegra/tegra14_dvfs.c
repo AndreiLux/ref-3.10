@@ -126,7 +126,7 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 			{1734000, { 2851134,  -136032,   2434}, { 1106216,    0,    0} },
 			{      0, {      0,      0,   0}, {      0,    0,    0} },
 		},
-		.therm_trips_table = { 20 },
+		.vmin_trips_table = { 20 },
 		.therm_floors_table = { 900 },
 	},
 	{
@@ -167,7 +167,7 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 			{2116500, { 3099135,  -141042,   2434}, { 1248368,    0,    0} },
 			{      0, {      0,      0,   0}, {      0,    0,    0} },
 		},
-		.therm_trips_table = { 20 },
+		.vmin_trips_table = { 20 },
 		.therm_floors_table = { 900 },
 	},
 };
@@ -199,6 +199,20 @@ static const int core_millivolts[MAX_DVFS_FREQS] = {
 		.dvfs_rail	= &tegra14_dvfs_rail_vdd_core,	\
 	}
 
+#define OVRRD_DVFS(_clk_name, _speedo_id, _process_id, _auto, _mult, _freqs...)	\
+	{							\
+		.clk_name	= _clk_name,			\
+		.speedo_id	= _speedo_id,			\
+		.process_id	= _process_id,			\
+		.freqs		= {_freqs},			\
+		.freqs_mult	= _mult,			\
+		.millivolts	= core_millivolts,		\
+		.auto_dvfs	= _auto,			\
+		.can_override	= true,				\
+		.dvfs_rail	= &tegra14_dvfs_rail_vdd_core,	\
+	}
+
+
 static struct dvfs core_dvfs_table[] = {
 #ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 	/* Core voltages (mV):		             800,    850,    900,    950,   1000,   1050,   1100,   1150,   1200,   1230 */
@@ -227,14 +241,18 @@ static struct dvfs core_dvfs_table[] = {
 	CORE_DVFS("msenc",    0,  0, 1, KHZ,       68000, 102000, 136000, 204000, 204000, 204000, 384000, 408000, 408000, 408000),
 	CORE_DVFS("msenc",    0,  1, 1, KHZ,       81600, 136000, 204000, 204000, 204000, 204000, 408000, 408000, 408000, 408000),
 	CORE_DVFS("msenc",    1,  1, 1, KHZ,       81600, 136000, 204000, 204000, 204000, 204000, 408000, 408000, 408000, 408000),
+
 	CORE_DVFS("tsec",     0,  0, 1, KHZ,      136000, 204000, 204000, 408000, 408000, 408000, 408000, 408000, 408000, 408000),
 	CORE_DVFS("tsec",     0,  1, 1, KHZ,      136000, 204000, 384000, 408000, 408000, 408000, 408000, 408000, 408000, 408000),
 	CORE_DVFS("tsec",     1,  1, 1, KHZ,      136000, 204000, 384000, 408000, 408000, 408000, 408000, 408000, 408000, 408000),
+
 	CORE_DVFS("host1x",   0,  0, 1, KHZ,      102000, 102000, 204000, 204000, 204000, 204000, 384000, 408000, 408000, 408000),
 	CORE_DVFS("host1x",   0,  1, 1, KHZ,      136000, 136000, 204000, 204000, 204000, 384000, 384000, 408000, 408000, 408000),
 	CORE_DVFS("host1x",   1,  1, 1, KHZ,      136000, 136000, 204000, 204000, 204000, 384000, 384000, 408000, 408000, 408000),
+
 	CORE_DVFS("vi",      -1, -1, 1, KHZ,      136000, 204000, 204000, 408000, 408000, 408000, 408000, 408000, 408000, 408000),
 	CORE_DVFS("isp",     -1, -1, 1, KHZ,      136000, 204000, 204000, 408000, 408000, 408000, 408000, 408000, 408000, 408000),
+
 	CORE_DVFS("sbus",     0,  0, 1, KHZ,      102000, 102000, 102000, 102000, 204000, 384000, 384000, 408000, 408000, 408000),
 	CORE_DVFS("sbus",     0,  1, 1, KHZ,      136000, 136000, 204000, 204000, 204000, 384000, 384000, 408000, 408000, 408000),
 	CORE_DVFS("sbus",     1,  1, 1, KHZ,      136000, 136000, 204000, 204000, 204000, 384000, 384000, 408000, 408000, 408000),
@@ -277,9 +295,10 @@ static struct dvfs core_dvfs_table[] = {
 	CORE_DVFS("sbc1",   -1, -1, 1, KHZ,        33000,  33000,  33000,  30000,  30000,  50000,  50000,  50000,  50000,  50000),
 	CORE_DVFS("sbc2",   -1, -1, 1, KHZ,        33000,  33000,  33000,  30000,  30000,  50000,  50000,  50000,  50000,  50000),
 	CORE_DVFS("sbc3",   -1, -1, 1, KHZ,        33000,  33000,  33000,  30000,  30000,  50000,  50000,  50000,  50000,  50000),
-	CORE_DVFS("sdmmc1", -1, -1, 1, KHZ,        51000,  51000,  51000,  51000,  51000,  51000, 136000, 136000, 136000, 136000),
-	CORE_DVFS("sdmmc3", -1, -1, 1, KHZ,        51000,  51000,  51000,  51000,  51000,  51000, 136000, 136000, 136000, 136000),
-	CORE_DVFS("sdmmc4", -1, -1, 1, KHZ,       102000, 102000, 102000, 102000, 102000, 102000, 136000, 136000, 136000, 136000),
+
+	OVRRD_DVFS("sdmmc1", -1, -1, 1, KHZ,       51000,  51000,  51000,  51000,  51000,  51000, 136000, 136000, 136000, 204000),
+	OVRRD_DVFS("sdmmc3", -1, -1, 1, KHZ,       51000,  51000,  51000,  51000,  51000,  51000, 136000, 136000, 136000, 204000),
+	OVRRD_DVFS("sdmmc4", -1, -1, 1, KHZ,       51000,  51000,  51000,  51000,  51000,  51000, 136000, 136000, 136000, 192000),
 
 	/*
 	 * The clock rate for the display controllers that determines the
@@ -418,89 +437,6 @@ module_param_cb(disable_core, &tegra_dvfs_disable_core_ops,
 	&tegra_dvfs_core_disabled, 0644);
 module_param_cb(disable_cpu, &tegra_dvfs_disable_cpu_ops,
 	&tegra_dvfs_cpu_disabled, 0644);
-
-/*
- * Validate rail thermal profile, and get its size. Valid profile:
- * - voltage floors are descending with temperature increasing
- * - the lowest limit is above rail minimum voltage in pll and
- *   in dfll mode (if applicable)
- * - the highest limit is below rail nominal voltage
- */
-static int __init get_thermal_profile_size(
-	int *trips_table, int *limits_table,
-	struct dvfs_rail *rail, struct dvfs_dfll_data *d)
-{
-	int i, min_mv;
-
-	for (i = 0; i < MAX_THERMAL_LIMITS - 1; i++) {
-		if (!limits_table[i+1])
-			break;
-
-		if ((trips_table[i] >= trips_table[i+1]) ||
-		    (limits_table[i] < limits_table[i+1])) {
-			pr_warning("%s: not ordered profile\n", rail->reg_id);
-			return -EINVAL;
-		}
-	}
-
-	min_mv = max(rail->min_millivolts, d ? d->min_millivolts : 0);
-	if (limits_table[i] < min_mv) {
-		pr_warning("%s: thermal profile below Vmin\n", rail->reg_id);
-		return -EINVAL;
-	}
-
-	if (limits_table[0] > rail->nominal_millivolts) {
-		pr_warning("%s: thermal profile above Vmax\n", rail->reg_id);
-		return -EINVAL;
-	}
-	return i + 1;
-}
-
-static void __init init_rail_vmax_thermal_profile(
-	int *therm_trips_table, int *therm_caps_table,
-	struct dvfs_rail *rail, struct dvfs_dfll_data *d)
-{
-	int i = get_thermal_profile_size(therm_trips_table,
-					 therm_caps_table, rail, d);
-	if (i <= 0) {
-		rail->vmax_cdev = NULL;
-		WARN(1, "%s: invalid Vmax thermal profile\n", rail->reg_id);
-		return;
-	}
-
-	/* Install validated thermal caps */
-	rail->therm_mv_caps = therm_caps_table;
-	rail->therm_mv_caps_num = i;
-
-	/* Setup trip-points if applicable */
-	if (rail->vmax_cdev) {
-		rail->vmax_cdev->trip_temperatures_num = i;
-		rail->vmax_cdev->trip_temperatures = therm_trips_table;
-	}
-}
-
-static void __init init_rail_vmin_thermal_profile(
-	int *therm_trips_table, int *therm_floors_table,
-	struct dvfs_rail *rail, struct dvfs_dfll_data *d)
-{
-	int i = get_thermal_profile_size(therm_trips_table,
-					 therm_floors_table, rail, d);
-	if (i <= 0) {
-		rail->vmin_cdev = NULL;
-		WARN(1, "%s: invalid Vmin thermal profile\n", rail->reg_id);
-		return;
-	}
-
-	/* Install validated thermal floors */
-	rail->therm_mv_floors = therm_floors_table;
-	rail->therm_mv_floors_num = i;
-
-	/* Setup trip-points if applicable */
-	if (rail->vmin_cdev) {
-		rail->vmin_cdev->trip_temperatures_num = i;
-		rail->vmin_cdev->trip_temperatures = therm_trips_table;
-	}
-}
 
 static bool __init can_update_max_rate(struct clk *c, struct dvfs *d)
 {
@@ -919,13 +855,14 @@ void __init tegra14x_init_dvfs(void)
 	BUG_ON((i == ARRAY_SIZE(cpu_cvb_dvfs_table)) || ret);
 
 	/* Init thermal limits */
-	init_rail_vmax_thermal_profile(
+	tegra_dvfs_rail_init_vmax_thermal_profile(
 		vdd_cpu_vmax_trips_table, vdd_cpu_therm_caps_table,
 		&tegra14_dvfs_rail_vdd_cpu, &cpu_dvfs.dfll_data);
-	init_rail_vmin_thermal_profile(cpu_cvb_dvfs_table[i].therm_trips_table,
+	tegra_dvfs_rail_init_vmin_thermal_profile(
+		cpu_cvb_dvfs_table[i].vmin_trips_table,
 		cpu_cvb_dvfs_table[i].therm_floors_table,
 		&tegra14_dvfs_rail_vdd_cpu, &cpu_dvfs.dfll_data);
-	init_rail_vmin_thermal_profile(vdd_core_vmin_trips_table,
+	tegra_dvfs_rail_init_vmin_thermal_profile(vdd_core_vmin_trips_table,
 		vdd_core_therm_floors_table, &tegra14_dvfs_rail_vdd_core, NULL);
 
 	/* Init rail structures and dependencies */

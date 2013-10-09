@@ -470,22 +470,11 @@ static void loki_usb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 	int modem_id = tegra_get_modem_id();
-	struct board_info bi;
 
-	tegra_get_pmu_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1733:
-		/* Host cable is detected through USB ID */
-		tegra_udc_pdata.id_det_type = TEGRA_USB_ID;
-		tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_ID;
-		break;
-	case BOARD_E1735:
-		/* Host cable is detected through PMU Interrupt */
-		tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_otg_pdata.id_extcon_dev_name = "palmas-extcon";
-	}
+	/* Device cable is detected through PMU Interrupt */
+	tegra_udc_pdata.support_pmu_vbus = true;
+	tegra_ehci1_utmi_pdata.support_pmu_vbus = true;
+	tegra_otg_pdata.vbus_extcon_dev_name = "palmas-extcon";
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
 		tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
@@ -510,16 +499,15 @@ static struct tegra_xusb_board_data xusb_bdata = {
 	.portmap = TEGRA_XUSB_SS_P0 | TEGRA_XUSB_USB2_P0 | TEGRA_XUSB_SS_P1 |
 			TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_USB2_P2,
 	.supply = {
-		.s5p0v = "usb_vbus0",
-		.s5p0v1 = "usb_vbus1",
-		.s5p0v2 = "usb_vbus2",
+		.utmi_vbuses = {
+			NULL, NULL, NULL
+		},
 		.s3p3v = "hvdd_usb",
 		.s1p8v = "avdd_pll_utmip",
 		.vddio_hsic = "vddio_hsic",
 		.s1p05v = "avddio_usb",
 	},
 	.uses_external_pmic = false,
-	.uses_different_vbus_per_port = true,
 };
 
 static void loki_xusb_init(void)
@@ -752,7 +740,7 @@ struct rm_spi_ts_platform_data rm31080ts_loki_data = {
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 0,
+	.rx_clk_tap_delay = 16,
 	.tx_clk_tap_delay = 16,
 };
 
@@ -811,25 +799,21 @@ static void __init tegra_loki_late_init(void)
 	loki_sdhci_init();
 	loki_regulator_init();
 	loki_suspend_init();
-#if 0
 	loki_emc_init();
 	loki_edp_init();
-#endif
 	isomgr_init();
 	loki_touch_init();
 	loki_panel_init();
 	loki_kbc_init();
 	loki_pmon_init();
-	tegra_release_bootloader_fb();
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
 #endif
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
 
 	loki_sensors_init();
-#if 0
+	loki_fan_init();
 	loki_soctherm_init();
-#endif
 	loki_setup_bluedroid_pm();
 	tegra_register_fuse();
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
@@ -872,12 +856,18 @@ static const char * const loki_dt_board_compat[] = {
 	NULL
 };
 
+static void __init tegra_loki_init_early(void)
+{
+	loki_rail_alignment_init();
+	tegra12x_init_early();
+}
+
 DT_MACHINE_START(LOKI, "loki")
 	.atag_offset	= 0x100,
 	.smp		= smp_ops(tegra_smp_ops),
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_loki_reserve,
-	.init_early	= tegra12x_init_early,
+	.init_early	= tegra_loki_init_early,
 	.init_irq	= tegra_dt_init_irq,
 	.init_time	= tegra_init_timer,
 	.init_machine	= tegra_loki_dt_init,

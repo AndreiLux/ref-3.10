@@ -111,7 +111,9 @@ struct tegra_sdhci_platform_data dalmore_tegra_sdhci_platform_data0 = {
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
 	.max_clk_limit = 82000000,
-	.uhs_mask = MMC_UHS_MASK_DDR50,
+/*FIXME: Enable UHS modes for WiFI */
+	.uhs_mask = MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50 |
+		MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_SDR12 | MMC_UHS_MASK_SDR25,
 };
 
 static struct resource sdhci_resource0[] = {
@@ -392,6 +394,7 @@ int __init dalmore_sdhci_init(void)
 {
 	int nominal_core_mv;
 	int min_vcore_override_mv;
+	int boot_vcore_mv;
 	struct board_info board_info;
 
 	nominal_core_mv =
@@ -411,6 +414,13 @@ int __init dalmore_sdhci_init(void)
 			min_vcore_override_mv;
 		tegra_sdhci_platform_data3.min_vcore_override_mv =
 			min_vcore_override_mv;
+	}
+	boot_vcore_mv = tegra_dvfs_rail_get_boot_level(tegra_core_rail);
+	if (boot_vcore_mv) {
+		dalmore_tegra_sdhci_platform_data0.boot_vcore_mv =
+			boot_vcore_mv;
+		tegra_sdhci_platform_data2.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
 	}
 	if ((tegra_sdhci_platform_data3.uhs_mask & MMC_MASK_HS200)
 		&& (!(tegra_sdhci_platform_data3.uhs_mask &

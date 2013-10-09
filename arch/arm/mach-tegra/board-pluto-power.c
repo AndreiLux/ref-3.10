@@ -128,8 +128,7 @@ static struct regulator_consumer_supply palmas_smps9_supply[] = {
 	REGULATOR_SUPPLY("vdd_sim1b_mmc", NULL),
 };
 
-static struct regulator_consumer_supply palmas_smps10_supply[] = {
-	REGULATOR_SUPPLY("unused_smps10", NULL),
+static struct regulator_consumer_supply palmas_smps10_out1_supply[] = {
 	REGULATOR_SUPPLY("usb_vbus", "tegra-ehci.0"),
 	REGULATOR_SUPPLY("usb_vbus", "tegra-otg"),
 	REGULATOR_SUPPLY("avddio_usb", "tegra-xhci"),
@@ -225,6 +224,7 @@ static struct regulator_consumer_supply palmas_ldo9_supply[] = {
 static struct regulator_consumer_supply palmas_ldoln_supply[] = {
 	REGULATOR_SUPPLY("avdd_cam2", NULL),
 	REGULATOR_SUPPLY("vana", "2-0036"),
+	REGULATOR_SUPPLY("vana_imx132", "2-0036"),
 };
 
 static struct regulator_consumer_supply palmas_ldousb_supply[] = {
@@ -261,7 +261,7 @@ PALMAS_REGS_PDATA(smps8, 1800,  1800, NULL, 1, 1, 1, NORMAL,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(smps9, 2800,  2800, NULL, 1, 0, 1, NORMAL,
 		0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(smps10, 5000,  5000, NULL, 0, 0, 0, 0,
+PALMAS_REGS_PDATA(smps10_out1, 5000,  5000, NULL, 0, 0, 0, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo1, 1050,  1050, palmas_rails(smps7), 0, 0, 1, 0,
 		0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
@@ -301,7 +301,8 @@ static struct regulator_init_data *pluto_reg_data[PALMAS_NUM_REGS] = {
 	PALMAS_REG_PDATA(smps7),
 	PALMAS_REG_PDATA(smps8),
 	PALMAS_REG_PDATA(smps9),
-	PALMAS_REG_PDATA(smps10),
+	NULL,
+	PALMAS_REG_PDATA(smps10_out1),
 	PALMAS_REG_PDATA(ldo1),
 	PALMAS_REG_PDATA(ldo2),
 	PALMAS_REG_PDATA(ldo3),
@@ -336,7 +337,8 @@ static struct palmas_reg_init *pluto_reg_init[PALMAS_NUM_REGS] = {
 	PALMAS_REG_INIT_DATA(smps7),
 	PALMAS_REG_INIT_DATA(smps8),
 	PALMAS_REG_INIT_DATA(smps9),
-	PALMAS_REG_INIT_DATA(smps10),
+	NULL,
+	PALMAS_REG_INIT_DATA(smps10_out1),
 	PALMAS_REG_INIT_DATA(ldo1),
 	PALMAS_REG_INIT_DATA(ldo2),
 	PALMAS_REG_INIT_DATA(ldo3),
@@ -589,6 +591,7 @@ static struct tegra_cl_dvfs_platform_data pluto_cl_dvfs_data = {
 	},
 	.vdd_map = pmu_cpu_vdd_map,
 	.vdd_map_size = PMU_CPU_VDD_MAP_SIZE,
+	.pmu_undershoot_gb = 100,
 
 	.cfg_param = &pluto_cl_dvfs_param,
 };
@@ -937,8 +940,6 @@ int __init pluto_soctherm_init(void)
 			&pluto_soctherm_data.therm[THERM_CPU].num_trips,
 			6000);  /* edp temperature margin */
 	tegra_add_tj_trips(pluto_soctherm_data.therm[THERM_CPU].trips,
-			&pluto_soctherm_data.therm[THERM_CPU].num_trips);
-	tegra_add_vc_trips(pluto_soctherm_data.therm[THERM_CPU].trips,
 			&pluto_soctherm_data.therm[THERM_CPU].num_trips);
 
 	return tegra11_soctherm_init(&pluto_soctherm_data);

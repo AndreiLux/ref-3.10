@@ -600,7 +600,7 @@ static void handle_once_dma_done(struct tegra_dma_channel *tdc,
 	list_add_tail(&sgreq->node, &tdc->free_sg_req);
 
 	/* Do not start DMA if it is going to be terminate */
-	if (list_empty(&tdc->pending_sg_req)) {
+	if (list_empty(&tdc->pending_sg_req) && (!to_terminate)) {
 		clk_disable_unprepare(tdc->tdma->dma_clk);
 		pm_runtime_put(tdc->tdma->dev);
 	}
@@ -1238,6 +1238,7 @@ static void tegra_dma_free_chan_resources(struct dma_chan *dc)
 	list_splice_init(&tdc->free_dma_desc, &dma_desc_list);
 	INIT_LIST_HEAD(&tdc->cb_desc);
 	tdc->config_init = false;
+	tdc->isr_handler = NULL;
 	spin_unlock_irqrestore(&tdc->lock, flags);
 
 	while (!list_empty(&dma_desc_list)) {

@@ -62,6 +62,7 @@
 #include <asm/tlbflush.h>
 #include <asm/suspend.h>
 #include <asm/smp_plat.h>
+#include <asm/rodata.h>
 
 #include <mach/irqs.h>
 
@@ -1158,6 +1159,7 @@ static int tegra_suspend_enter(suspend_state_t state)
 		delta = timespec_to_ktime(timespec_sub(ts_exit, ts_entry));
 
 		tegra_dvfs_rail_pause(tegra_cpu_rail, delta, false);
+		tegra_dvfs_rail_pause(tegra_gpu_rail, delta, false);
 		if (current_suspend_mode == TEGRA_SUSPEND_LP0)
 			tegra_dvfs_rail_pause(tegra_core_rail, delta, false);
 		else
@@ -1665,10 +1667,13 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		pdata->min_residency_ncpu_slow = plat->min_residency_ncpu_slow;
 		pdata->min_residency_ncpu_fast = plat->min_residency_ncpu_fast;
 		pdata->min_residency_crail = plat->min_residency_crail;
+		pdata->crail_up_early = plat->crail_up_early;
 #endif
 		pdata->min_residency_mc_clk = plat->min_residency_mc_clk;
 		pdata->usb_vbus_internal_wake = plat->usb_vbus_internal_wake;
 		pdata->usb_id_internal_wake = plat->usb_id_internal_wake;
+		pdata->suspend_dfll_bypass = plat->suspend_dfll_bypass;
+		pdata->resume_dfll_bypass = plat->resume_dfll_bypass;
 	} else {
 		pr_err("PMC board data used in %s\n", __func__);
 		pdata = plat;
@@ -1718,7 +1723,7 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		orig = ioremap(tegra_lp0_vec_start, tegra_lp0_vec_size);
 		WARN_ON(!orig);
 		if (!orig) {
-			pr_err("%s: Failed to map tegra_lp0_vec_start %08lx\n",
+			pr_err("%s: Failed to map tegra_lp0_vec_start %08x\n",
 				__func__, tegra_lp0_vec_start);
 			kfree(reloc_lp0);
 			goto out;
@@ -2018,12 +2023,15 @@ static u32 tsc_suspend_start;
 static u32 tsc_resume_start;
 
 #define pmc_writel(value, reg) \
-		writel(value, (uintptr_t)pmc + (reg))
+		writel(value, pmc + (reg))
 #define pmc_readl(reg) \
-		readl((uintptr_t)pmc + (reg))
+		readl(pmc + (reg))
 
 #define PMC_DPD_ENABLE			0x24
 #define PMC_DPD_ENABLE_TSC_MULT_ENABLE	(1 << 1)
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+#define PMC_DPD_ENABLE_ON		(1 << 0)
+#endif
 
 #define PMC_TSC_MULT			0x2b4
 #define PMC_TSC_MULT_FREQ_STS		(1 << 16)
@@ -2047,6 +2055,14 @@ void tegra_tsc_resume(void)
 		u32 reg = pmc_readl(PMC_DPD_ENABLE);
 		BUG_ON(!(reg & PMC_DPD_ENABLE_TSC_MULT_ENABLE));
 		reg &= ~PMC_DPD_ENABLE_TSC_MULT_ENABLE;
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+		/*
+		 * FIXME: T12x SW WAR -
+		 * Resume ensures DPD_ENABLE is 0 when writing
+		 * TSC_MULT_ENABLE, else PMC wake status gets reset
+		 */
+		reg &= ~PMC_DPD_ENABLE_ON;
+#endif
 		pmc_writel(reg, PMC_DPD_ENABLE);
 		tsc_resume_start = timer_readl(TIMERUS_CNTR_1US);
 	}
@@ -2131,4 +2147,11 @@ static int __init tegra_pm_core_debug_init(void)
 }
 
 late_initcall(tegra_pm_core_debug_init);
+#endif
+
+#ifdef CONFIG_DEBUG_RODATA
+void set_platform_text_rw(void)
+{
+	set_memory_rw((unsigned long)tegra_generic_smc, 1);
+}
 #endif

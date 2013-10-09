@@ -82,6 +82,7 @@
 #define RM_PLATFORM_M010	0x06
 #define RM_PLATFORM_P140	0x07
 #define RM_PLATFORM_A010	0x08
+#define RM_PLATFORM_L005	0x09
 #define RM_PLATFORM_RAYPRJ	0x80
 
 /***************************************************************************
@@ -160,13 +161,13 @@
  *	NOTE: Need to sync with HAL
  ***************************************************************************/
 
-typedef struct {
+struct rm_touch_event {
 	unsigned char ucTouchCount;
 	unsigned char ucID[RM_TS_MAX_POINTS];
 	unsigned short usX[RM_TS_MAX_POINTS];
 	unsigned short usY[RM_TS_MAX_POINTS];
 	unsigned short usZ[RM_TS_MAX_POINTS];
-} rm_touch_event;
+};
 
 struct rm_spi_ts_platform_data {
 	int gpio_reset;

@@ -78,6 +78,7 @@ struct userd_desc {
 
 struct patch_desc {
 	struct mem_desc mem;
+	void *cpu_va;
 	u64 gpu_va;
 	u32 data_count;
 };
@@ -149,7 +150,8 @@ struct mapped_buffer_node {
 	struct mem_handle *handle_ref;
 	struct sg_table *sgt;
 	struct kref ref;
-	bool user_mapped;
+	u32 user_mapped;
+	bool own_mem_ref;
 	u32 pgsz_idx;
 	u32 ctag_offset;
 	u32 ctag_lines;
@@ -177,8 +179,6 @@ struct vm_gk20a {
 	struct nvhost_allocator vma[gmmu_nr_page_sizes];
 	struct rb_root mapped_buffers;
 
-	struct list_head deferred_unmaps;
-
 	u64 (*alloc_va)(struct vm_gk20a *vm, u64 size,
 			enum gmmu_pgsz_gk20a gmmu_pgsz_idx);
 
@@ -192,7 +192,8 @@ struct vm_gk20a {
 		   u32 flags /*NVHOST_MAP_BUFFER_FLAGS_*/,
 		   u32 kind,
 		   struct sg_table **sgt,
-		   bool user_mapped);
+		   bool user_mapped,
+		   int rw_flag);
 
 	/* unmap handle from kernel */
 	void (*unmap)(struct vm_gk20a *vm,

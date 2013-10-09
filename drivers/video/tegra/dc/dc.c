@@ -59,6 +59,7 @@
 #include "dc_priv.h"
 #include "dev.h"
 #include "nvsd.h"
+#include "dp.h"
 
 /* HACK! This needs to come from DT */
 #include "../../../../arch/arm/mach-tegra/iomap.h"
@@ -1418,7 +1419,8 @@ static int tegra_dc_set_out(struct tegra_dc *dc, struct tegra_dc_out *out)
 	if (dc->out_ops && dc->out_ops->init) {
 		err = dc->out_ops->init(dc);
 		if (err < 0) {
-			dc->out = dc->out_ops = NULL;
+			dc->out = NULL;
+			dc->out_ops = NULL;
 			return err;
 		}
 	}
@@ -1505,12 +1507,11 @@ u32 tegra_dc_read_checksum_latched(struct tegra_dc *dc)
 		goto crc_error;
 	}
 
-	if (!tegra_platform_is_linsim()) {
-		INIT_COMPLETION(dc->crc_complete);
-		if (wait_for_completion_interruptible(&dc->crc_complete)) {
-			pr_err("CRC read interrupted.\n");
-			goto crc_error;
-		}
+	INIT_COMPLETION(dc->crc_complete);
+	if (dc->crc_pending &&
+	    wait_for_completion_interruptible(&dc->crc_complete)) {
+		pr_err("CRC read interrupted.\n");
+		goto crc_error;
 	}
 
 	mutex_lock(&dc->lock);
@@ -1819,6 +1820,7 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 
 	if (status & FRAME_END_INT) {
 		/* Mark the frame_end as complete. */
+		dc->crc_pending = false;
 		if (!completion_done(&dc->frame_end_complete))
 			complete(&dc->frame_end_complete);
 		if (!completion_done(&dc->crc_complete))
@@ -2145,6 +2147,8 @@ static int tegra_dc_init(struct tegra_dc *dc)
 			nvhost_syncpt_read_ext(dc->ndev, syncpt);
 	}
 
+	dc->crc_pending = false;
+
 	trace_display_mode(dc, &dc->mode);
 
 	if (dc->mode.pclk) {
@@ -2198,6 +2202,8 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 		tegra_dc_io_end(dc);
 		return false;
 	}
+
+	tegra_dp_aux_pad_on_off(dc, false);
 
 	if (dc->out_ops && dc->out_ops->enable)
 		dc->out_ops->enable(dc);
@@ -2395,8 +2401,8 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 		/* disable windows */
 		w->flags &= ~TEGRA_WIN_FLAG_ENABLED;
 
-		/* flush any pending syncpt waits */
-		while (dc->syncpt[i].min < dc->syncpt[i].max) {
+		/* flush any pending syncpt waits. Add 1 for sync framework. */
+		while (dc->syncpt[i].min < (dc->syncpt[i].max + 1)) {
 			trace_display_syncpt_flush(dc, dc->syncpt[i].id,
 				dc->syncpt[i].min, dc->syncpt[i].max);
 			dc->syncpt[i].min++;
@@ -2892,7 +2898,8 @@ static int tegra_dc_probe(struct platform_device *ndev)
 		dc->connected = true;
 
 	/* Powergate display module when it's unconnected. */
-	if (!tegra_dc_get_connected(dc))
+	/* detect() function, if presetns, responsible for the powergate */
+	if (!tegra_dc_get_connected(dc) && !dc->out_ops->detect)
 		tegra_dc_powergate_locked(dc);
 
 	tegra_dc_create_sysfs(&dc->ndev->dev);

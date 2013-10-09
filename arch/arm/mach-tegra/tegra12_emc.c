@@ -47,6 +47,14 @@ module_param(emc_enable, bool, 0644);
 
 u8 tegra_emc_bw_efficiency = 100;
 
+static struct emc_iso_usage tegra12_emc_iso_usage[] = {
+	{ BIT(EMC_USER_DC1),                     80 },
+	{ BIT(EMC_USER_DC2),                     80 },
+	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2),	50 },
+	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_VI),  50 },
+	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_VI),  50 },
+};
+
 #define PLL_C_DIRECT_FLOOR		333500000
 #define EMC_STATUS_UPDATE_TIMEOUT	100
 #define TEGRA_EMC_TABLE_MAX_SIZE	16
@@ -322,25 +330,25 @@ static void __iomem *clk_base = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
 
 static inline void emc_writel(u32 val, unsigned long addr)
 {
-	writel(val, (u32)emc_base + addr);
+	writel(val, emc_base + addr);
 }
 
 static inline u32 emc_readl(unsigned long addr)
 {
-	return readl((u32)emc_base + addr);
+	return readl(emc_base + addr);
 }
 static inline void mc_writel(u32 val, unsigned long addr)
 {
-	writel(val, (u32)mc_base + addr);
+	writel(val, mc_base + addr);
 }
 static inline u32 mc_readl(unsigned long addr)
 {
-	return readl((u32)mc_base + addr);
+	return readl(mc_base + addr);
 }
 static inline void ccfifo_writel(u32 val, unsigned long addr)
 {
-	writel(val, (u32)emc_base + EMC_CCFIFO_DATA);
-	writel(addr, (u32)emc_base + EMC_CCFIFO_ADDR);
+	writel(val, emc_base + EMC_CCFIFO_DATA);
+	writel(addr, emc_base + EMC_CCFIFO_ADDR);
 }
 
 static int last_round_idx;
@@ -781,9 +789,10 @@ int tegra_emc_set_rate(unsigned long rate)
 	return 0;
 }
 
-long tegra_emc_round_rate(unsigned long rate)
+long tegra_emc_round_rate_updown(unsigned long rate, bool up)
 {
 	int i;
+	unsigned long table_rate;
 
 	if (!tegra_emc_table)
 		return clk_get_rate_locked(emc); /* no table - no rate change */
@@ -801,11 +810,15 @@ long tegra_emc_round_rate(unsigned long rate)
 		if (tegra_emc_clk_sel[i].input == NULL)
 			continue;	/* invalid entry */
 
-		if (tegra_emc_table[i].rate >= rate) {
-			pr_debug("%s: using %lu\n",
-				 __func__, tegra_emc_table[i].rate);
+		table_rate = tegra_emc_table[i].rate;
+		if (table_rate >= rate) {
+			if (!up && i && (table_rate > rate)) {
+				i--;
+				table_rate = tegra_emc_table[i].rate;
+			}
+			pr_debug("%s: using %lu\n", __func__, table_rate);
 			last_round_idx = i;
-			return tegra_emc_table[i].rate * 1000;
+			return table_rate * 1000;
 		}
 	}
 
@@ -1100,6 +1113,7 @@ static int init_emc_table(const struct tegra12_emc_table *table, int table_size)
 	tegra_emc_table_size = min(table_size, TEGRA_EMC_TABLE_MAX_SIZE);
 	switch (table[0].rev) {
 	case 0x14:
+	case 0x15:
 		start_timing.burst_regs_num = table[0].burst_regs_num;
 		break;
 	default:
@@ -1210,7 +1224,19 @@ static struct platform_driver tegra12_emc_driver = {
 
 int __init tegra12_emc_init(void)
 {
-	return platform_driver_register(&tegra12_emc_driver);
+	int ret = platform_driver_register(&tegra12_emc_driver);
+
+	if (!ret) {
+		tegra_emc_iso_usage_table_init(tegra12_emc_iso_usage,
+				ARRAY_SIZE(tegra12_emc_iso_usage));
+		if (emc_enable) {
+			unsigned long rate = tegra_emc_round_rate_updown(
+				emc->boot_rate, false);
+			if (!IS_ERR_VALUE(rate))
+				tegra_clk_preset_emc_monitor(rate);
+		}
+	}
+	return ret;
 }
 
 void tegra_emc_timing_invalidate(void)
@@ -1347,6 +1373,33 @@ static const struct file_operations emc_stats_fops = {
 	.release	= single_release,
 };
 
+static int emc_table_info_show(struct seq_file *s, void *data)
+{
+	int i;
+	for (i = 0; i < tegra_emc_table_size; i++) {
+		if (tegra_emc_clk_sel[i].input == NULL)
+			continue;
+		seq_printf(s, "Table info:\n   Rev: 0x%02x\n"
+		"   Table ID: %s\n", tegra_emc_table[i].rev,
+		tegra_emc_table[i].table_id);
+		seq_printf(s, "    %lu\n", tegra_emc_table[i].rate);
+	}
+
+	return 0;
+}
+
+static int emc_table_info_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, emc_table_info_show, inode->i_private);
+}
+
+static const struct file_operations emc_table_info_fops = {
+	.open		= emc_table_info_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int dram_temperature_get(void *data, u64 *val)
 {
 	*val = tegra_emc_get_dram_temperature();
@@ -1394,6 +1447,14 @@ static int __init tegra_emc_debug_init(void)
 
 	if (!debugfs_create_file("efficiency", S_IRUGO | S_IWUSR,
 				 emc_debugfs_root, NULL, &efficiency_fops))
+		goto err_out;
+
+
+	if (tegra_emc_iso_usage_debugfs_init(emc_debugfs_root))
+		goto err_out;
+
+	if (!debugfs_create_file("table_info", S_IRUGO,
+				 emc_debugfs_root, NULL, &emc_table_info_fops))
 		goto err_out;
 
 	return 0;

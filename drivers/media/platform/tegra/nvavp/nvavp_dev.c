@@ -143,6 +143,7 @@ struct nvavp_info {
 
 	struct nvavp_channel		channel_info[NVAVP_NUM_CHANNELS];
 	bool				pending;
+	bool				stay_on;
 
 	u32				syncpt_id;
 	u32				syncpt_value;
@@ -230,8 +231,13 @@ static void nvavp_set_channel_control_area(struct nvavp_info *nvavp, int channel
 		control->put (0x%08x) control->get (0x%08x)\n",
 		channel_id, (u32) &control->put, (u32) &control->get);
 
-	/* enable avp VDE clock control and disable iram clock gating */
-	writel(0x0, &control->idle_clk_enable);
+	/* Clock gating disabled for video and enabled for audio  */
+	if (IS_VIDEO_CHANNEL_ID(channel_id))
+		writel(0x1, &control->idle_clk_enable);
+	else
+		writel(0x0, &control->idle_clk_enable);
+
+	/* Disable iram clock gating */
 	writel(0x0, &control->iram_clk_gating);
 
 	/* enable avp idle timeout interrupt */
@@ -320,7 +326,7 @@ static void nvavp_clks_enable(struct nvavp_info *nvavp)
 
 static void nvavp_clks_disable(struct nvavp_info *nvavp)
 {
-	if (--nvavp->clk_enabled == 0) {
+	if ((--nvavp->clk_enabled == 0) && !nvavp->stay_on) {
 		clk_disable_unprepare(nvavp->bsev_clk);
 		clk_disable_unprepare(nvavp->vde_clk);
 		clk_set_rate(nvavp->emc_clk, 0);
@@ -385,7 +391,7 @@ static int nvavp_service(struct nvavp_info *nvavp)
 	if (!(inbox & NVAVP_INBOX_VALID))
 		inbox = 0x00000000;
 
-	if (inbox & NVE276_OS_INTERRUPT_VIDEO_IDLE)
+	if ((inbox & NVE276_OS_INTERRUPT_VIDEO_IDLE) && (!nvavp->stay_on))
 		schedule_work(&nvavp->clock_disable_work);
 
 	if (inbox & NVE276_OS_INTERRUPT_SYNCPT_INCR_TRAP) {
@@ -1181,8 +1187,8 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 	struct nvavp_pushbuffer_submit_hdr hdr;
 	u32 *cmdbuf_data;
 	struct dma_buf *cmdbuf_dmabuf;
-	struct dma_buf_attachment *dmabuf_attach;
-	struct sg_table *sgt;
+	struct dma_buf_attachment *cmdbuf_attach;
+	struct sg_table *cmdbuf_sgt;
 	int ret = 0, i;
 	phys_addr_t phys_addr;
 	unsigned long virt_addr;
@@ -1214,20 +1220,20 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		return -EPERM;
 	}
 
-	dmabuf_attach = dma_buf_attach(cmdbuf_dmabuf, &nvavp->nvhost_dev->dev);
-	if (!dmabuf_attach) {
+	cmdbuf_attach = dma_buf_attach(cmdbuf_dmabuf, &nvavp->nvhost_dev->dev);
+	if (!cmdbuf_attach) {
 		dev_err(&nvavp->nvhost_dev->dev, "cannot attach cmdbuf_dmabuf\n");
 		ret = -ENOMEM;
 		goto err_dmabuf_attach;
 	}
 
-	sgt = dma_buf_map_attachment(dmabuf_attach, DMA_BIDIRECTIONAL);
-	if (!sgt) {
+	cmdbuf_sgt = dma_buf_map_attachment(cmdbuf_attach, DMA_BIDIRECTIONAL);
+	if (!cmdbuf_sgt) {
 		dev_err(&nvavp->nvhost_dev->dev, "cannot map cmdbuf_dmabuf\n");
 		goto err_dmabuf_map;
 	}
 
-	phys_addr = sg_dma_address(sgt->sgl);
+	phys_addr = sg_dma_address(cmdbuf_sgt->sgl);
 
 	virt_addr = (unsigned long)dma_buf_vmap(cmdbuf_dmabuf);
 	if (!virt_addr) {
@@ -1237,8 +1243,10 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 	}
 
 	cmdbuf_data = (u32 *)(virt_addr + hdr.cmdbuf.offset);
-
 	for (i = 0; i < hdr.num_relocs; i++) {
+		struct dma_buf *target_dmabuf;
+		struct dma_buf_attachment *target_attach;
+		struct sg_table *target_sgt;
 		u32 *reloc_addr, target_phys_addr;
 
 		if (clientctx->relocs[i].cmdbuf_mem != hdr.cmdbuf.mem) {
@@ -1251,10 +1259,37 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		reloc_addr = cmdbuf_data +
 			     (clientctx->relocs[i].cmdbuf_offset >> 2);
 
-		target_phys_addr = nvmap_handle_address_user_id(
-			clientctx->nvmap, clientctx->relocs[i].target);
+		target_dmabuf = nvmap_dmabuf_export(clientctx->nvmap,
+				clientctx->relocs[i].target);
+		if (IS_ERR(target_dmabuf)) {
+			ret = PTR_ERR(target_dmabuf);
+			goto target_dmabuf_fail;
+		}
+		target_attach = dma_buf_attach(target_dmabuf,
+					       &nvavp->nvhost_dev->dev);
+		if (IS_ERR(target_attach)) {
+			ret = PTR_ERR(target_attach);
+			goto target_attach_fail;
+		}
+		target_sgt = dma_buf_map_attachment(target_attach,
+						    DMA_BIDIRECTIONAL);
+		if (IS_ERR(target_sgt)) {
+			ret = PTR_ERR(target_sgt);
+			goto target_map_fail;
+		}
+
+		target_phys_addr = sg_dma_address(target_sgt->sgl);
 		target_phys_addr += clientctx->relocs[i].target_offset;
 		writel(target_phys_addr, reloc_addr);
+		dma_buf_unmap_attachment(target_attach, target_sgt,
+					 DMA_BIDIRECTIONAL);
+target_map_fail:
+		dma_buf_detach(target_dmabuf, target_attach);
+target_attach_fail:
+		dma_buf_put(target_dmabuf);
+target_dmabuf_fail:
+		if (ret != 0)
+			goto err_reloc_info;
 	}
 
 	if (hdr.syncpt) {
@@ -1278,10 +1313,11 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 	}
 
 err_reloc_info:
-err_dmabuf_vmap:
 	dma_buf_vunmap(cmdbuf_dmabuf, (void *)virt_addr);
+err_dmabuf_vmap:
+	dma_buf_unmap_attachment(cmdbuf_attach, cmdbuf_sgt, DMA_BIDIRECTIONAL);
 err_dmabuf_map:
-	dma_buf_unmap_attachment(dmabuf_attach, sgt, DMA_BIDIRECTIONAL);
+	dma_buf_detach(cmdbuf_dmabuf, cmdbuf_attach);
 err_dmabuf_attach:
 	dma_buf_put(cmdbuf_dmabuf);
 	return ret;
@@ -1316,15 +1352,22 @@ static int nvavp_force_clock_stay_on_ioctl(struct file *filp, unsigned int cmd,
 		return -EINVAL;
 	}
 
-	mutex_lock(&nvavp->open_lock);
 	if (clock.state) {
-		if (clientctx->clk_reqs++ == 0)
+		mutex_lock(&nvavp->open_lock);
+		if (clientctx->clk_reqs++ == 0) {
 			nvavp_clks_enable(nvavp);
+			nvavp->stay_on = true;
+		}
+		mutex_unlock(&nvavp->open_lock);
+		cancel_work_sync(&nvavp->clock_disable_work);
 	} else {
-		if (--clientctx->clk_reqs == 0)
+		mutex_lock(&nvavp->open_lock);
+		if (--clientctx->clk_reqs == 0) {
+			nvavp->stay_on = false;
 			nvavp_clks_disable(nvavp);
+		}
+		mutex_unlock(&nvavp->open_lock);
 	}
-	mutex_unlock(&nvavp->open_lock);
 	return 0;
 }
 

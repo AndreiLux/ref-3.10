@@ -19,7 +19,6 @@ obj-$(CONFIG_WM8350_POWER)	+= wm8350_power.o
 obj-$(CONFIG_TEST_POWER)	+= test_power.o
 
 obj-$(CONFIG_BATTERY_88PM860X)	+= 88pm860x_battery.o
-obj-$(CONFIG_BATTERY_ANDROID)	+= android_battery.o
 obj-$(CONFIG_BATTERY_DS2760)	+= ds2760_battery.o
 obj-$(CONFIG_BATTERY_DS2780)	+= ds2780_battery.o
 obj-$(CONFIG_BATTERY_DS2781)	+= ds2781_battery.o
@@ -33,6 +32,7 @@ obj-$(CONFIG_BATTERY_WM97XX)	+= wm97xx_battery.o
 obj-$(CONFIG_BATTERY_SBS)	+= sbs-battery.o
 obj-$(CONFIG_CHARGER_BQ2419X)   += bq2419x-charger.o
 obj-$(CONFIG_CHARGER_BQ2471X)	+= bq2471x-charger.o
+obj-$(CONFIG_CHARGER_BQ2477X)	+= bq2477x-charger.o
 obj-$(CONFIG_BATTERY_BQ27x00)	+= bq27x00_battery.o
 obj-$(CONFIG_CHARGER_TPS8003X)	+= tps80031-charger.o
 obj-$(CONFIG_CHARGER_PALMAS)	+= palmas-charger.o

@@ -33,6 +33,8 @@
 #include <linux/debugfs.h>
 #include <linux/spinlock.h>
 #include <linux/tegra-powergate.h>
+#include <linux/fb.h>
+#include <linux/suspend.h>
 
 #include <mach/pm_domains.h>
 
@@ -47,6 +49,7 @@
 #include "hw_sim_gk20a.h"
 #include "gk20a_scale.h"
 #include "gr3d/pod_scaling.h"
+#include "dbg_gpu_gk20a.h"
 
 #include "../../../../../arch/arm/mach-tegra/iomap.h"
 
@@ -55,11 +58,6 @@ static inline void set_gk20a(struct platform_device *dev, struct gk20a *gk20a)
 	nvhost_set_private_data(dev, gk20a);
 }
 
-static void nvhost_gk20a_deinit(struct platform_device *dev);
-static struct nvhost_hwctx_handler *
-    nvhost_gk20a_alloc_hwctx_handler(u32 syncpt, u32 base,
-				     struct nvhost_channel *ch);
-
 /* TBD: should be able to put in the list below. */
 static struct resource gk20a_intr = {
 	.start = TEGRA_GK20A_INTR,
@@ -67,81 +65,60 @@ static struct resource gk20a_intr = {
 	.flags = IORESOURCE_IRQ,
 };
 
-struct resource gk20a_resources[] = {
-#define GK20A_BAR0_IORESOURCE_MEM 0
-{
-	.start = TEGRA_GK20A_BAR0_BASE,
-	.end   = TEGRA_GK20A_BAR0_BASE + TEGRA_GK20A_BAR0_SIZE - 1,
-	.flags = IORESOURCE_MEM,
-},
-#define GK20A_BAR1_IORESOURCE_MEM 1
-{
-	.start = TEGRA_GK20A_BAR1_BASE,
-	.end   = TEGRA_GK20A_BAR1_BASE + TEGRA_GK20A_BAR1_SIZE - 1,
-	.flags = IORESOURCE_MEM,
-},
-};
-
 struct resource gk20a_resources_sim[] = {
-#define GK20A_BAR0_IORESOURCE_MEM 0
-{
+	{
 	.start = TEGRA_GK20A_BAR0_BASE,
 	.end   = TEGRA_GK20A_BAR0_BASE + TEGRA_GK20A_BAR0_SIZE - 1,
 	.flags = IORESOURCE_MEM,
-},
-#define GK20A_BAR1_IORESOURCE_MEM 1
-{
+	},
+	{
 	.start = TEGRA_GK20A_BAR1_BASE,
 	.end   = TEGRA_GK20A_BAR1_BASE + TEGRA_GK20A_BAR1_SIZE - 1,
 	.flags = IORESOURCE_MEM,
-},
-#define GK20A_SIM_IORESOURCE_MEM 2
-{
-#define TEGRA_GK20A_SIM_BASE 0x538F0000 /*tbd: get from iomap.h should get this or replacement */
-#define TEGRA_GK20A_SIM_SIZE 0x1000     /*tbd: this is a high-side guess */
+	},
+	{
 	.start = TEGRA_GK20A_SIM_BASE,
 	.end   = TEGRA_GK20A_SIM_BASE + TEGRA_GK20A_SIM_SIZE - 1,
 	.flags = IORESOURCE_MEM,
-},
+	},
 };
 
-
-static const struct file_operations gk20a_ctrl_ops = {
+const struct file_operations tegra_gk20a_ctrl_ops = {
 	.owner = THIS_MODULE,
 	.release = gk20a_ctrl_dev_release,
 	.open = gk20a_ctrl_dev_open,
 	.unlocked_ioctl = gk20a_ctrl_dev_ioctl,
 };
 
-struct nvhost_device_data tegra_gk20a_info = {
-	/* the following are set by the platform (e.g. t124) support
-	.syncpts,
-	.syncpt_base,
-	.waitbases,
-	.modulemutexes,
-	*/
-	.class			= NV_GRAPHICS_GPU_CLASS_ID,
-	.clocks			= {{"PLLG_ref", UINT_MAX},
-				   {"pwr", 204000000},
-				   {"emc", UINT_MAX},
-				   {} },
-	.powergate_ids		= { TEGRA_POWERGATE_GPU, -1 },
-	NVHOST_DEFAULT_CLOCKGATE_DELAY,
-	.powergate_delay	= 1000*60*60*24,
-	.can_powergate		= true,
-	.alloc_hwctx_handler	= nvhost_gk20a_alloc_hwctx_handler,
-	.ctrl_ops		= &gk20a_ctrl_ops,
-	.moduleid		= NVHOST_MODULE_GPU,
+const struct file_operations tegra_gk20a_dbg_gpu_ops = {
+	.owner = THIS_MODULE,
+	.release        = gk20a_dbg_gpu_dev_release,
+	.open           = gk20a_dbg_gpu_dev_open,
+	.unlocked_ioctl = gk20a_dbg_gpu_dev_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = gk20a_dbg_gpu_dev_ioctl,
+#endif
 };
 
-struct platform_device tegra_gk20a_device = {
-	.name		= "gk20a",
-	.resource	= gk20a_resources,
-	.num_resources	= 2, /* this is num ioresource_mem, not the sum */
-	.dev		= {
-		.platform_data = &tegra_gk20a_info,
-	},
+/*
+ * Note: We use a different 'open' to trigger handling of the profiler session.
+ * Most of the code is shared between them...  Though, at some point if the
+ * code does get too tangled trying to handle each in the same path we can
+ * separate them cleanly.
+ */
+const struct file_operations tegra_gk20a_prof_gpu_ops = {
+	.owner = THIS_MODULE,
+	.release        = gk20a_dbg_gpu_dev_release,
+	.open           = gk20a_prof_gpu_dev_open,
+	.unlocked_ioctl = gk20a_dbg_gpu_dev_ioctl,
+	/* .mmap           = gk20a_prof_gpu_dev_mmap,*/
+	/*int (*mmap) (struct file *, struct vm_area_struct *);*/
+	.compat_ioctl = gk20a_dbg_gpu_dev_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = gk20a_dbg_gpu_dev_ioctl,
+#endif
 };
+
 
 static inline void sim_writel(struct gk20a *g, u32 r, u32 v)
 {
@@ -586,13 +563,13 @@ int nvhost_init_gk20a_support(struct platform_device *dev)
 			goto fail;
 	}
 
+	mutex_init(&g->dbg_sessions_lock);
+
 	/* nvhost_as alloc_share can be called before gk20a is powered on.
 	   It requires mm sw states configured so init mm sw early here. */
 	err = gk20a_init_mm_setup_sw(g);
 	if (err)
 		goto fail;
-
-	gk20a_clk_init_cap_freqs(g);
 
 	/* other inits are deferred until gpu is powered up. */
 
@@ -617,7 +594,7 @@ int nvhost_gk20a_init(struct platform_device *dev)
 	return 0;
 }
 
-static void nvhost_gk20a_deinit(struct platform_device *dev)
+void nvhost_gk20a_deinit(struct platform_device *dev)
 {
 	nvhost_dbg_fn("");
 #ifndef CONFIG_PM_RUNTIME
@@ -682,7 +659,7 @@ static void gk20a_save_service_hwctx(struct nvhost_hwctx *ctx)
 	nvhost_dbg_fn("");
 }
 
-static struct nvhost_hwctx_handler *
+struct nvhost_hwctx_handler *
     nvhost_gk20a_alloc_hwctx_handler(u32 syncpt, u32 waitbase,
 				     struct nvhost_channel *ch)
 {
@@ -721,12 +698,8 @@ int nvhost_gk20a_prepare_poweroff(struct platform_device *dev)
 	ret |= gk20a_gr_suspend(g);
 	ret |= gk20a_mm_suspend(g);
 
-	/* Disable GPCPLL.
-	 * TODO: Remove this once gk20a clock driver is moved to
-	 * common clock framework
-	 */
-	ret |= gk20a_clk_disable_gpcpll(g);
-
+	/* Disable GPCPLL */
+	ret |= gk20a_suspend_clk_support(g);
 	g->power_on = false;
 
 	return ret;
@@ -843,6 +816,51 @@ static struct thermal_cooling_device_ops tegra_gpu_cooling_ops = {
 	.set_cur_state = tegra_gpu_set_cur_state,
 };
 
+static void gk20a_set_railgating(struct gk20a *g, int new_status)
+{
+	struct nvhost_device_data *pdata = platform_get_drvdata(g->dev);
+	bool can_powergate = new_status == FB_BLANK_UNBLANK ? 0 : 1;
+
+	mutex_lock(&pdata->lock);
+	if (pdata->can_powergate && !can_powergate) {
+		dev_pm_qos_add_request(dev_from_gk20a(g), &g->no_poweroff_req,
+				DEV_PM_QOS_FLAGS, PM_QOS_FLAG_NO_POWER_OFF);
+		pdata->can_powergate = can_powergate;
+	} else if (!pdata->can_powergate && can_powergate) {
+		dev_pm_qos_remove_request(&g->no_poweroff_req);
+		pdata->can_powergate = can_powergate;
+	}
+	mutex_unlock(&pdata->lock);
+}
+
+static int gk20a_suspend_notifier(struct notifier_block *notifier,
+				  unsigned long pm_event, void *data)
+{
+	struct gk20a *g = container_of(notifier, struct gk20a,
+				       system_suspend_notifier);
+
+	if (pm_event == PM_USERSPACE_FROZEN)
+		return g->power_on ? NOTIFY_BAD : NOTIFY_OK;
+
+	return NOTIFY_DONE;
+}
+
+static int gk20a_fb_notifier(struct notifier_block *notifier,
+				  unsigned long pm_event, void *data)
+{
+	struct gk20a *g = container_of(notifier, struct gk20a,
+				       fb_notifier);
+	struct fb_event *fb_event = data;
+
+	switch (pm_event) {
+	case FB_EVENT_BLANK:
+		gk20a_set_railgating(g, *((int *)fb_event->data));
+		break;
+	}
+
+	return NOTIFY_DONE;
+}
+
 static int gk20a_probe(struct platform_device *dev)
 {
 	struct gk20a *gk20a;
@@ -863,21 +881,12 @@ static int gk20a_probe(struct platform_device *dev)
 	pdata->pdev = dev;
 	mutex_init(&pdata->lock);
 	platform_set_drvdata(dev, pdata);
+
+	err = nvhost_client_device_get_resources(dev);
+	if (err)
+		return err;
+
 	nvhost_module_init(dev);
-
-	pdata->init			= nvhost_gk20a_init;
-	pdata->deinit			= nvhost_gk20a_deinit;
-	pdata->alloc_hwctx_handler	= nvhost_gk20a_alloc_hwctx_handler;
-	pdata->prepare_poweroff		= nvhost_gk20a_prepare_poweroff;
-	pdata->finalize_poweron		= nvhost_gk20a_finalize_poweron;
-
-	if (IS_ENABLED(CONFIG_TEGRA_GK20A_DEVFREQ)) {
-		pdata->busy		= nvhost_gk20a_scale_notify_busy;
-		pdata->idle		= nvhost_gk20a_scale_notify_idle;
-		pdata->scaling_init	= nvhost_gk20a_scale_init;
-		pdata->scaling_deinit	= nvhost_gk20a_scale_deinit;
-		pdata->suspend_ndev	= nvhost_scale3d_suspend;
-	}
 
 	gk20a = kzalloc(sizeof(struct gk20a), GFP_KERNEL);
 	if (!gk20a) {
@@ -889,10 +898,6 @@ static int gk20a_probe(struct platform_device *dev)
 	gk20a->dev = dev;
 	gk20a->host = nvhost_get_host(dev);
 
-	err = nvhost_client_device_get_resources(dev);
-	if (err)
-		return err;
-
 	nvhost_init_gk20a_support(dev);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS
@@ -900,6 +905,14 @@ static int gk20a_probe(struct platform_device *dev)
 
 	err = nvhost_module_add_domain(&pdata->pd, dev);
 #endif
+
+	if (pdata->can_powergate) {
+		gk20a->system_suspend_notifier.notifier_call =
+			gk20a_suspend_notifier;
+		register_pm_notifier(&gk20a->system_suspend_notifier);
+		gk20a->fb_notifier.notifier_call = gk20a_fb_notifier;
+		fb_register_client(&gk20a->fb_notifier);
+	}
 
 	err = nvhost_client_device_init(dev);
 	if (err) {
@@ -931,6 +944,7 @@ static int gk20a_probe(struct platform_device *dev)
 	gk20a->slcg_enabled = true;
 	gk20a->blcg_enabled = true;
 	gk20a->elcg_enabled = true;
+	gk20a->elpg_enabled = true;
 
 	gk20a_create_sysfs(dev);
 
@@ -954,7 +968,6 @@ static int gk20a_probe(struct platform_device *dev)
 					S_IRUGO|S_IWUSR,
 					pdata->debugfs,
 					&gk20a->timeouts_enabled);
-	pmu_gk20a_debugfs_init(dev);
 #endif
 
 	return 0;

@@ -76,8 +76,6 @@ struct tegra_dc_ext {
 	struct cdev			cdev;
 	struct device			*dev;
 
-	struct nvmap_client		*nvmap;
-
 	struct tegra_dc_ext_win		win[DC_N_WINDOWS];
 
 	struct {
@@ -101,10 +99,6 @@ struct tegra_dc_ext_event_list {
 
 	struct list_head		list;
 };
-
-#define TEGRA_DC_EXT_CAPABILITIES \
-	(TEGRA_DC_EXT_CAPABILITIES_CURSOR_MODE |\
-	 TEGRA_DC_EXT_CAPABILITIES_BLOCKLINEAR)
 
 struct tegra_dc_ext_control_user {
 	struct tegra_dc_ext_control	*control;

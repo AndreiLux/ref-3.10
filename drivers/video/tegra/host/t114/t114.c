@@ -24,6 +24,8 @@
 #include <linux/nvhost_ioctl.h>
 #include <linux/tegra-powergate.h>
 
+#include <mach/mc.h>
+
 #include "class_ids.h"
 #include "t20/t20.h"
 #include "t30/t30.h"
@@ -117,7 +119,7 @@ struct nvhost_device_data t11_gr3d_info = {
 	.waitbases	= {NVWAITBASE_3D},
 	.modulemutexes	= {NVMODMUTEX_3D},
 	.class		= NV_GRAPHICS_3D_CLASS_ID,
-	.clocks		= { {"gr3d", UINT_MAX, 8, true},
+	.clocks		= { {"gr3d", UINT_MAX, 8, TEGRA_MC_CLIENT_NV},
 			    {"emc", UINT_MAX, 75} },
 	.powergate_ids	= { TEGRA_POWERGATE_3D, -1 },
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
@@ -135,6 +137,7 @@ struct nvhost_device_data t11_gr3d_info = {
 	.scaling_post_cb = &nvhost_scale3d_callback,
 	.devfreq_governor = "nvhost_podgov",
 	.actmon_enabled	= true,
+	.gpu_edp_device	= true,
 
 	.suspend_ndev	= nvhost_scale3d_suspend,
 	.prepare_poweroff = nvhost_gr3d_t114_prepare_power_off,
@@ -158,7 +161,8 @@ struct nvhost_device_data t11_gr2d_info = {
 	.waitbases	= {NVWAITBASE_2D_0, NVWAITBASE_2D_1},
 	.modulemutexes	= {NVMODMUTEX_2D_FULL, NVMODMUTEX_2D_SIMPLE,
 			  NVMODMUTEX_2D_SB_A, NVMODMUTEX_2D_SB_B},
-	.clocks		= { {"gr2d", 0, 7, true}, {"epp", 0, 10, true},
+	.clocks		= { {"gr2d", 0, 7, TEGRA_MC_CLIENT_G2},
+			    {"epp", 0, 10, TEGRA_MC_CLIENT_EPP},
 			    {"emc", 300000000, 75 } },
 	.powergate_ids	= { TEGRA_POWERGATE_HEG, -1 },
 	.clockgate_delay = 0,
@@ -262,13 +266,16 @@ struct nvhost_device_data t11_msenc_info = {
 	.syncpts	= {NVSYNCPT_MSENC},
 	.waitbases	= {NVWAITBASE_MSENC},
 	.class		= NV_VIDEO_ENCODE_MSENC_CLASS_ID,
-	.clocks	       = { {"msenc", UINT_MAX, 107, true},
+	.clocks	       = { {"msenc", UINT_MAX, 107, TEGRA_MC_CLIENT_MSENC},
 			   {"emc", 300000000, 75} },
 	.powergate_ids = { TEGRA_POWERGATE_MPE, -1 },
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.powergate_delay = 100,
 	.can_powergate = true,
 	.moduleid	= NVHOST_MODULE_MSENC,
+	.init           = nvhost_msenc_init,
+	.deinit         = nvhost_msenc_deinit,
+	.finalize_poweron = nvhost_msenc_finalize_poweron,
 };
 
 static struct platform_device tegra_msenc02_device = {
@@ -297,11 +304,13 @@ struct nvhost_device_data t11_tsec_info = {
 	.waitbases	= {NVWAITBASE_TSEC},
 	.class		= NV_TSEC_CLASS_ID,
 	.exclusive	= false,
-	.clocks        = { {"tsec", UINT_MAX, 108, true},
+	.clocks        = { {"tsec", UINT_MAX, 108, TEGRA_MC_CLIENT_TSEC},
 			   {"emc", 300000000, 75} },
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.moduleid	= NVHOST_MODULE_TSEC,
+	.init          = nvhost_tsec_init,
+	.deinit        = nvhost_tsec_deinit,
 };
 
 static struct platform_device tegra_tsec01_device = {
@@ -342,6 +351,14 @@ struct platform_device *tegra11_register_host1x_devices(void)
 	return &tegra_host1x02_device;
 }
 
+#include "host1x/host1x_channel.c"
+#include "host1x/host1x_cdma.c"
+#include "host1x/host1x_debug.c"
+#include "host1x/host1x_syncpt.c"
+#include "host1x/host1x_intr.c"
+#include "host1x/host1x_actmon_t114.c"
+#include "host1x/host1x_tickctrl.c"
+
 static void t114_free_nvhost_channel(struct nvhost_channel *ch)
 {
 	nvhost_free_channel_internal(ch, &t114_num_alloc_channels);
@@ -351,25 +368,19 @@ static struct nvhost_channel *t114_alloc_nvhost_channel(
 	struct platform_device *dev)
 {
 	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
-	return nvhost_alloc_channel_internal(pdata->index,
+	struct nvhost_channel *ch = nvhost_alloc_channel_internal(pdata->index,
 		nvhost_get_host(dev)->info.nb_channels,
 		&t114_num_alloc_channels);
+	if (ch)
+		ch->ops = host1x_channel_ops;
+	return ch;
 }
-
-#include "host1x/host1x_channel.c"
-#include "host1x/host1x_cdma.c"
-#include "host1x/host1x_debug.c"
-#include "host1x/host1x_syncpt.c"
-#include "host1x/host1x_intr.c"
-#include "host1x/host1x_actmon_t114.c"
-#include "host1x/host1x_tickctrl.c"
 
 int nvhost_init_t114_support(struct nvhost_master *host,
 	struct nvhost_chip_support *op)
 {
 	int err;
 
-	op->channel = host1x_channel_ops;
 	op->cdma = host1x_cdma_ops;
 	op->push_buffer = host1x_pushbuffer_ops;
 	op->debug = host1x_debug_ops;

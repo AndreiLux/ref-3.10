@@ -261,7 +261,7 @@ int tsec_boot(struct platform_device *dev)
 
 	nvhost_device_writel(dev, tsec_dmactl_r(), 0);
 	nvhost_device_writel(dev, tsec_dmatrfbase_r(),
-		(sg_dma_address(m->pa->sgl) + m->os.bin_data_offset) >> 8);
+		(nvhost_memmgr_dma_addr(m->pa) + m->os.bin_data_offset) >> 8);
 
 	for (offset = 0; offset < m->os.data_size; offset += 256)
 		tsec_dma_pa_to_internal_256b(dev,
@@ -412,7 +412,7 @@ int tsec_read_ucode(struct platform_device *dev, const char *fw_name)
 	}
 
 	m->pa = nvhost_memmgr_pin(nvhost_get_host(dev)->memmgr, m->mem_r,
-			&dev->dev);
+			&dev->dev, mem_flag_read_only);
 	if (IS_ERR(m->pa)) {
 		dev_err(&dev->dev, "nvmap pin failed for ucode");
 		err = PTR_ERR(m->pa);
@@ -565,17 +565,14 @@ static int tsec_probe(struct platform_device *dev)
 	}
 
 	pdata->pdev = dev;
-	pdata->init = nvhost_tsec_init;
-	pdata->deinit = nvhost_tsec_deinit;
-
 	mutex_init(&pdata->lock);
-
 	platform_set_drvdata(dev, pdata);
-	nvhost_module_init(dev);
 
 	err = nvhost_client_device_get_resources(dev);
 	if (err)
 		return err;
+
+	nvhost_module_init(dev);
 
 	tsec = dev;
 
@@ -589,9 +586,11 @@ static int tsec_probe(struct platform_device *dev)
 
 	nvhost_module_busy(dev);
 	/* Reset TSEC at boot-up. Otherwise it starts sending interrupts. */
-	tegra_periph_reset_assert(pdata->clk[0]);
-	udelay(10);
-	tegra_periph_reset_deassert(pdata->clk[0]);
+	if (pdata->clocks[0].reset) {
+		tegra_periph_reset_assert(pdata->clk[0]);
+		udelay(10);
+		tegra_periph_reset_deassert(pdata->clk[0]);
+	}
 	nvhost_module_idle(dev);
 
 	return err;

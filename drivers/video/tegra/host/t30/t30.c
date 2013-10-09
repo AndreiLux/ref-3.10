@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Init for T30 Architecture Chips
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation.
+ * Copyright (c) 2011-2013, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -24,6 +24,9 @@
 #include <linux/kernel.h>
 #include <linux/nvhost_ioctl.h>
 #include <linux/tegra-powergate.h>
+
+#include <mach/mc.h>
+
 #include "class_ids.h"
 #include "t20/t20.h"
 #include "t30.h"
@@ -113,7 +116,7 @@ struct nvhost_device_data t30_gr3d_info = {
 	.waitbases	= {NVWAITBASE_3D},
 	.modulemutexes	= {NVMODMUTEX_3D},
 	.class		= NV_GRAPHICS_3D_CLASS_ID,
-	.clocks		= { {"gr3d", UINT_MAX, 8, true},
+	.clocks		= { {"gr3d", UINT_MAX, 8, TEGRA_MC_CLIENT_NV},
 			    {"gr3d2", UINT_MAX, 0, true},
 			    {"emc", UINT_MAX, 75} },
 	.powergate_ids = { TEGRA_POWERGATE_3D,
@@ -153,8 +156,8 @@ struct nvhost_device_data t30_gr2d_info = {
 	.waitbases	= {NVWAITBASE_2D_0, NVWAITBASE_2D_1},
 	.modulemutexes	= {NVMODMUTEX_2D_FULL, NVMODMUTEX_2D_SIMPLE,
 			  NVMODMUTEX_2D_SB_A, NVMODMUTEX_2D_SB_B},
-	.clocks		= { {"gr2d", 0, 7, true},
-			  {"epp", 0, 10, true},
+	.clocks		= { {"gr2d", 0, 7, TEGRA_MC_CLIENT_G2},
+			  {"epp", 0, 10, TEGRA_MC_CLIENT_EPP},
 			  {"emc", 300000000, 75} },
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	.clockgate_delay = 0,
@@ -258,7 +261,7 @@ struct nvhost_device_data t30_mpe_info = {
 	.class		= NV_VIDEO_ENCODE_MPEG_CLASS_ID,
 	.waitbasesync	= true,
 	.keepalive	= true,
-	.clocks		= { {"mpe", UINT_MAX, 29, true},
+	.clocks		= { {"mpe", UINT_MAX, 29, TEGRA_MC_CLIENT_MPE},
 			    {"emc", 400000000, 75} },
 	.powergate_ids	= {TEGRA_POWERGATE_MPE, -1},
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
@@ -307,6 +310,12 @@ struct platform_device *tegra3_register_host1x_devices(void)
 	return &tegra_host1x01_device;
 }
 
+#include "host1x/host1x_channel.c"
+#include "host1x/host1x_cdma.c"
+#include "host1x/host1x_debug.c"
+#include "host1x/host1x_syncpt.c"
+#include "host1x/host1x_intr.c"
+
 static void t30_free_nvhost_channel(struct nvhost_channel *ch)
 {
 	nvhost_free_channel_internal(ch, &t30_num_alloc_channels);
@@ -315,23 +324,19 @@ static void t30_free_nvhost_channel(struct nvhost_channel *ch)
 static struct nvhost_channel *t30_alloc_nvhost_channel(struct platform_device *dev)
 {
 	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
-	return nvhost_alloc_channel_internal(pdata->index,
+	struct nvhost_channel *ch = nvhost_alloc_channel_internal(pdata->index,
 		nvhost_get_host(dev)->info.nb_channels,
 		&t30_num_alloc_channels);
+	if (ch)
+		ch->ops = host1x_channel_ops;
+	return ch;
 }
-
-#include "host1x/host1x_channel.c"
-#include "host1x/host1x_cdma.c"
-#include "host1x/host1x_debug.c"
-#include "host1x/host1x_syncpt.c"
-#include "host1x/host1x_intr.c"
 
 int nvhost_init_t30_support(struct nvhost_master *host,
 	struct nvhost_chip_support *op)
 {
 	int err;
 
-	op->channel = host1x_channel_ops;
 	op->cdma = host1x_cdma_ops;
 	op->push_buffer = host1x_pushbuffer_ops;
 	op->debug = host1x_debug_ops;

@@ -153,7 +153,7 @@ int msenc_boot(struct platform_device *dev)
 
 	nvhost_device_writel(dev, msenc_dmactl_r(), 0);
 	nvhost_device_writel(dev, msenc_dmatrfbase_r(),
-		(sg_dma_address(m->pa->sgl) + m->os.bin_data_offset) >> 8);
+		(m->phys + m->os.bin_data_offset) >> 8);
 
 	for (offset = 0; offset < m->os.data_size; offset += 256)
 		msenc_dma_pa_to_internal_256b(dev,
@@ -268,6 +268,10 @@ int msenc_read_ucode(struct platform_device *dev, const char *fw_name)
 	const struct firmware *ucode_fw;
 	int err;
 
+	m->phys = 0;
+	m->mapped = NULL;
+	init_dma_attrs(&m->attrs);
+
 	ucode_fw  = nvhost_client_request_firmware(dev, fw_name);
 	if (!ucode_fw) {
 		dev_err(&dev->dev, "failed to get msenc firmware\n");
@@ -275,36 +279,22 @@ int msenc_read_ucode(struct platform_device *dev, const char *fw_name)
 		return err;
 	}
 
-	/* allocate pages for ucode */
-	m->mem_r = nvhost_memmgr_alloc(nvhost_get_host(dev)->memmgr,
-				     roundup(ucode_fw->size, PAGE_SIZE),
-				     PAGE_SIZE, mem_mgr_flag_uncacheable, 0);
-	if (IS_ERR(m->mem_r)) {
-		dev_err(&dev->dev, "nvmap alloc failed");
-		err = PTR_ERR(m->mem_r);
-		goto clean_up;
-	}
+	m->size = ucode_fw->size;
+	dma_set_attr(DMA_ATTR_READ_ONLY, &m->attrs);
 
-	m->pa = nvhost_memmgr_pin(nvhost_get_host(dev)->memmgr, m->mem_r,
-			&dev->dev);
-	if (IS_ERR(m->pa)) {
-		dev_err(&dev->dev, "nvmap pin failed for ucode");
-		err = PTR_ERR(m->pa);
-		m->pa = NULL;
-		goto clean_up;
-	}
-
-	m->mapped = nvhost_memmgr_mmap(m->mem_r);
+	m->mapped = dma_alloc_attrs(&dev->dev,
+				m->size, &m->phys,
+				GFP_KERNEL, &m->attrs);
 	if (!m->mapped) {
-		dev_err(&dev->dev, "nvmap mmap failed");
+		dev_err(&dev->dev, "dma memory allocation failed");
 		err = -ENOMEM;
 		goto clean_up;
 	}
 
-	err = msenc_setup_ucode_image(dev, (u32 *)m->mapped, ucode_fw);
+	err = msenc_setup_ucode_image(dev, m->mapped, ucode_fw);
 	if (err) {
 		dev_err(&dev->dev, "failed to parse firmware image\n");
-		return err;
+		goto clean_up;
 	}
 
 	m->valid = true;
@@ -315,17 +305,10 @@ int msenc_read_ucode(struct platform_device *dev, const char *fw_name)
 
 clean_up:
 	if (m->mapped) {
-		nvhost_memmgr_munmap(m->mem_r, (u32 *)m->mapped);
+		dma_free_attrs(&dev->dev,
+			m->size, m->mapped,
+			m->phys, &m->attrs);
 		m->mapped = NULL;
-	}
-	if (m->pa) {
-		nvhost_memmgr_unpin(nvhost_get_host(dev)->memmgr, m->mem_r,
-				&dev->dev, m->pa);
-		m->pa = NULL;
-	}
-	if (m->mem_r) {
-		nvhost_memmgr_put(nvhost_get_host(dev)->memmgr, m->mem_r);
-		m->mem_r = NULL;
 	}
 	release_firmware(ucode_fw);
 	return err;
@@ -388,17 +371,10 @@ void nvhost_msenc_deinit(struct platform_device *dev)
 
 	/* unpin, free ucode memory */
 	if (m->mapped) {
-		nvhost_memmgr_munmap(m->mem_r, m->mapped);
+		dma_free_attrs(&dev->dev,
+			m->size, m->mapped,
+			m->phys, &m->attrs);
 		m->mapped = NULL;
-	}
-	if (m->pa) {
-		nvhost_memmgr_unpin(nvhost_get_host(dev)->memmgr, m->mem_r,
-			&dev->dev, m->pa);
-		m->pa = NULL;
-	}
-	if (m->mem_r) {
-		nvhost_memmgr_put(nvhost_get_host(dev)->memmgr, m->mem_r);
-		m->mem_r = NULL;
 	}
 	m->valid = false;
 	kfree(m);
@@ -447,13 +423,12 @@ static int msenc_probe(struct platform_device *dev)
 	}
 
 	pdata->pdev = dev;
-	pdata->init = nvhost_msenc_init;
-	pdata->deinit = nvhost_msenc_deinit;
-	pdata->finalize_poweron = nvhost_msenc_finalize_poweron;
-
 	mutex_init(&pdata->lock);
-
 	platform_set_drvdata(dev, pdata);
+	err = nvhost_client_device_get_resources(dev);
+	if (err)
+		return err;
+
 	dev->dev.platform_data = NULL;
 
 	/* get the module clocks to sane state */
@@ -466,10 +441,6 @@ static int msenc_probe(struct platform_device *dev)
 	 * as sub-domain of MC domain */
 	err = nvhost_module_add_domain(&pdata->pd, dev);
 #endif
-
-	err = nvhost_client_device_get_resources(dev);
-	if (err)
-		return err;
 
 	err = nvhost_client_device_init(dev);
 

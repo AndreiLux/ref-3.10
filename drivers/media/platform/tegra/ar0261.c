@@ -50,7 +50,7 @@ struct ar0261_info {
 
 static struct ar0261_reg mode_1920x1080[] = {
 	{0x301A, 0x0019},
-	{AR0261_TABLE_WAIT_MS, 100},
+	{AR0261_TABLE_WAIT_MS, 10},
 	{0x301A, 0x0218},
 	{0x31B0, 0x0062},
 	{0x31B2, 0x0046},
@@ -65,7 +65,7 @@ static struct ar0261_reg mode_1920x1080[] = {
 	{0x3EE6, 0x60AD},
 	{0x3EDC, 0xDBFA},
 	{0x301A, 0x0218},
-	{AR0261_TABLE_WAIT_MS, 100},
+	{AR0261_TABLE_WAIT_MS, 10},
 	{0x3D00, 0x0481},
 	{0x3D02, 0xFFFF},
 	{0x3D04, 0xFFFF},
@@ -680,19 +680,32 @@ ar0261_set_group_hold(struct ar0261_info *info, struct ar0261_ae *ae)
 static int ar0261_get_sensor_id(struct ar0261_info *info)
 {
 	int ret = 0;
-	int i;
-	u16 bak = 0;
+	int i = 0;
+	u16 store = 0;
 
+	pr_info("%s\n", __func__);
 	if (info->sensor_data.fuse_id_size)
 		return 0;
 
-	/*
-	 * TBD 1: If the sensor does not have power at this point
-	 * Need to supply the power, e.g. by calling power on function
-	 */
-	/*TODO: add code for reading fuse id.*/
+	ret |= ar0261_write_reg(info->i2c_client, 0x301A, 0x0210);
+	ret |= ar0261_write_reg(info->i2c_client, 0x3054, 0x0500);
+	ret |= ar0261_write_reg(info->i2c_client, 0x3052, 0x0000);
+	ret |= ar0261_write_reg(info->i2c_client, 0x304A, 0x0400);
+	ret |= ar0261_write_reg(info->i2c_client, 0x304C, 0x02FF);
+	ret |= ar0261_write_reg(info->i2c_client, 0x304A, 0x0410);
 
-	return 0;
+	msleep_range(10);
+
+	for (i = 0; i < 16; i += 2) {
+		ret |= ar0261_read_reg(info->i2c_client, 0x3804 + i, &store);
+		info->sensor_data.fuse_id[i] = store;
+		info->sensor_data.fuse_id[i+1] = store >> 8;
+	}
+
+	if (!ret)
+		info->sensor_data.fuse_id_size = i;
+
+	return ret;
 }
 
 static void ar0261_mclk_disable(struct ar0261_info *info)

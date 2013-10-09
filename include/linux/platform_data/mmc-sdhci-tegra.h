@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2009 Palm, Inc.
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  * Author: Yvonne Yip <y@palm.com>
  *
  * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
@@ -28,7 +29,8 @@
  */
 #define MMC_OCR_1V8_MASK    0x00000008
 #define MMC_OCR_2V8_MASK    0x00010000
-#define MMC_OCR_3V2_MASK    0x00200000
+#define MMC_OCR_3V2_MASK    0x00100000
+#define MMC_OCR_3V3_MASK    0x00200000
 
 /* uhs mask can be used to mask any of the UHS modes support */
 #define MMC_UHS_MASK_SDR12	0x1
@@ -37,6 +39,17 @@
 #define MMC_UHS_MASK_DDR50	0x8
 #define MMC_UHS_MASK_SDR104	0x10
 #define MMC_MASK_HS200		0x20
+
+/*
+ * Flags to indicate uhs modes that require different calibration offsets
+ * at 1.8V.
+ */
+#define MMC_1V8_CALIB_OFFSET_SDR12	0x1
+#define MMC_1V8_CALIB_OFFSET_SDR25	0x2
+#define MMC_1V8_CALIB_OFFSET_SDR50	0x4
+#define MMC_1V8_CALIB_OFFSET_DDR50	0x8
+#define MMC_1V8_CALIB_OFFSET_SDR104	0x10
+#define MMC_1V8_CALIB_OFFSET_HS200      0x20
 
 struct tegra_sdhci_platform_data {
 	int cd_gpio;
@@ -47,6 +60,7 @@ struct tegra_sdhci_platform_data {
 	int pm_caps;
 	int nominal_vcore_mv;
 	int min_vcore_override_mv;
+	int boot_vcore_mv;
 	unsigned int max_clk_limit;
 	unsigned int ddr_clk_limit;
 	unsigned int tap_delay;
@@ -59,6 +73,10 @@ struct tegra_sdhci_platform_data {
 	bool edp_support;
 	unsigned int edp_states[SD_EDP_NUM_STATES];
 	bool cd_wakeup_incapable;
+	bool en_nominal_vcore_tuning;
+	unsigned int calib_3v3_offsets;	/* Format to be filled: 0xXXXXPDPU */
+	unsigned int calib_1v8_offsets;	/* Format to be filled: 0xXXXXPDPU */
+	unsigned int calib_1v8_offsets_uhs_modes;
 };
 
 #endif

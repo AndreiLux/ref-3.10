@@ -20,9 +20,7 @@ ifneq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
 obj-y                                   += mipi-cal.o
 endif
 endif
-ifeq ($(CONFIG_CPU_FREQ),y)
-obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_cpu_volt_cap.o
-endif
+
 ifeq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 obj-y                                   += common-t2.o
 obj-y                                   += pm-t2.o
@@ -204,14 +202,6 @@ obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-power.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-sdhci.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-sensors.o
 
-obj-${CONFIG_MACH_CURACAO}              += board-curacao.o
-obj-${CONFIG_MACH_CURACAO}              += board-curacao-panel.o
-obj-${CONFIG_MACH_CURACAO}              += board-curacao-pinmux.o
-obj-${CONFIG_MACH_CURACAO}              += board-curacao-power.o
-obj-${CONFIG_MACH_CURACAO}              += board-curacao-sdhci.o
-obj-${CONFIG_MACH_CURACAO}              += board-curacao-sensors.o
-obj-${CONFIG_MACH_CURACAO}              += board-curacao-memory.o
-
 obj-y                                   += board-touch-raydium_spi.o
 obj-y                                   += board-touch-synaptics-spi.o
 
@@ -278,6 +268,7 @@ obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-powermon.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-1080p-11-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-wqxga-10-1.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-lgd-wxga-7-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
 
@@ -286,7 +277,9 @@ obj-${CONFIG_MACH_LOKI}               	+= board-loki-kbc.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-sensors.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-panel.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-pinmux.o
+obj-${CONFIG_MACH_LOKI}               	+= board-loki-memory.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-power.o
+obj-${CONFIG_MACH_LOKI}               	+= board-loki-fan.o
 obj-${CONFIG_MACH_LOKI}               	+= board-tn8-power.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-powermon.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-sdhci.o
@@ -294,6 +287,8 @@ obj-${CONFIG_MACH_LOKI}               	+= panel-a-1080p-11-6.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-a-edp-1080p-14-0.o
+obj-${CONFIG_MACH_LOKI}               	+= panel-l-720p-5-loki.o
+obj-${CONFIG_MACH_LOKI}               	+= panel-j-1440-810-5-8.o
 
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-kbc.o

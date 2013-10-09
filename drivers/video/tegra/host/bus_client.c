@@ -1,6 +1,4 @@
 /*
- * drivers/video/tegra/host/bus_client.c
- *
  * Tegra Graphics Host Client Module
  *
  * Copyright (c) 2010-2013, NVIDIA Corporation. All rights reserved.
@@ -60,7 +58,11 @@
 static int validate_reg(struct platform_device *ndev, u32 offset, int count)
 {
 	int err = 0;
-	struct resource *r = platform_get_resource(ndev, IORESOURCE_MEM, 0);
+	struct resource *r;
+	struct nvhost_device_data *pdata = platform_get_drvdata(ndev);
+
+	r = platform_get_resource(pdata->master ? pdata->master : ndev,
+			IORESOURCE_MEM, 0);
 	if (!r) {
 		dev_err(&ndev->dev, "failed to get memory resource\n");
 		return -ENODEV;
@@ -73,14 +75,23 @@ static int validate_reg(struct platform_device *ndev, u32 offset, int count)
 	return err;
 }
 
+static __iomem void *get_aperture(struct platform_device *pdev)
+{
+	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
+
+	if (pdata->master)
+		pdata = platform_get_drvdata(pdata->master);
+
+	return pdata->aperture[0];
+}
+
 int nvhost_read_module_regs(struct platform_device *ndev,
 			u32 offset, int count, u32 *values)
 {
-	struct nvhost_device_data *pdata = platform_get_drvdata(ndev);
-	void __iomem *p = pdata->aperture[0] + offset;
+	void __iomem *p = get_aperture(ndev);
 	int err;
 
-	if (!pdata->aperture[0])
+	if (!p)
 		return -ENODEV;
 
 	/* verify offset */
@@ -89,6 +100,7 @@ int nvhost_read_module_regs(struct platform_device *ndev,
 		return err;
 
 	nvhost_module_busy(ndev);
+	p += offset;
 	while (count--) {
 		*(values++) = readl(p);
 		p += 4;
@@ -102,14 +114,11 @@ int nvhost_read_module_regs(struct platform_device *ndev,
 int nvhost_write_module_regs(struct platform_device *ndev,
 			u32 offset, int count, const u32 *values)
 {
-	void __iomem *p;
 	int err;
-	struct nvhost_device_data *pdata = platform_get_drvdata(ndev);
+	void __iomem *p = get_aperture(ndev);
 
-	if (!pdata->aperture[0])
+	if (!p)
 		return -ENODEV;
-
-	p = pdata->aperture[0] + offset;
 
 	/* verify offset */
 	err = validate_reg(ndev, offset, count);
@@ -117,6 +126,7 @@ int nvhost_write_module_regs(struct platform_device *ndev,
 		return err;
 
 	nvhost_module_busy(ndev);
+	p += offset;
 	while (count--) {
 		writel(*(values++), p);
 		p += 4;
@@ -127,16 +137,20 @@ int nvhost_write_module_regs(struct platform_device *ndev,
 	return 0;
 }
 
+bool nvhost_client_can_writel(struct platform_device *pdev)
+{
+	return !!get_aperture(pdev);
+}
+EXPORT_SYMBOL(nvhost_client_can_writel);
+
 void nvhost_client_writel(struct platform_device *pdev, u32 val, u32 reg)
 {
-	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
-	writel(val, pdata->aperture[0] + reg * 4);
+	writel(val, get_aperture(pdev) + reg * 4);
 }
 
 u32 nvhost_client_readl(struct platform_device *pdev, u32 reg)
 {
-	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
-	return readl(pdata->aperture[0] + reg * 4);
+	return readl(get_aperture(pdev) + reg * 4);
 }
 
 struct nvhost_channel_userctx {
@@ -189,7 +203,7 @@ static int nvhost_channelopen(struct inode *inode, struct file *filp)
 	struct nvhost_device_data *pdata;
 
 	ch = container_of(inode->i_cdev, struct nvhost_channel, cdev);
-	ch = nvhost_getchannel(ch);
+	ch = nvhost_getchannel(ch, false);
 	if (!ch)
 		return -ENOMEM;
 	trace_nvhost_channel_open(dev_name(&ch->dev->dev));
@@ -201,7 +215,7 @@ static int nvhost_channelopen(struct inode *inode, struct file *filp)
 	}
 	filp->private_data = priv;
 	priv->ch = ch;
-	if(nvhost_module_add_client(ch->dev, priv))
+	if (nvhost_module_add_client(ch->dev, priv))
 		goto fail;
 
 	if (ch->ctxhandler && ch->ctxhandler->alloc) {
@@ -214,7 +228,7 @@ static int nvhost_channelopen(struct inode *inode, struct file *filp)
 	priv->priority = NVHOST_PRIORITY_MEDIUM;
 	priv->clientid = atomic_add_return(1,
 			&nvhost_get_host(ch->dev)->clientid);
-	pdata = platform_get_drvdata(ch->dev);
+	pdata = dev_get_drvdata(ch->dev->dev.parent);
 	priv->timeout = pdata->nvhost_timeout_default;
 	priv->timeout_debug_dump = true;
 	if (!tegra_platform_is_silicon())
@@ -232,9 +246,9 @@ static int nvhost_ioctl_channel_alloc_obj_ctx(
 {
 	int ret;
 
-	BUG_ON(!channel_op().alloc_obj);
+	BUG_ON(!channel_op(ctx->ch).alloc_obj);
 	nvhost_module_busy(ctx->ch->dev);
-	ret = channel_op().alloc_obj(ctx->hwctx, args);
+	ret = channel_op(ctx->ch).alloc_obj(ctx->hwctx, args);
 	nvhost_module_idle(ctx->ch->dev);
 	return ret;
 }
@@ -245,9 +259,9 @@ static int nvhost_ioctl_channel_free_obj_ctx(
 {
 	int ret;
 
-	BUG_ON(!channel_op().free_obj);
+	BUG_ON(!channel_op(ctx->ch).free_obj);
 	nvhost_module_busy(ctx->ch->dev);
-	ret = channel_op().free_obj(ctx->hwctx, args);
+	ret = channel_op(ctx->ch).free_obj(ctx->hwctx, args);
 	nvhost_module_idle(ctx->ch->dev);
 	return ret;
 }
@@ -258,9 +272,9 @@ static int nvhost_ioctl_channel_alloc_gpfifo(
 {
 	int ret;
 
-	BUG_ON(!channel_op().alloc_gpfifo);
+	BUG_ON(!channel_op(ctx->ch).alloc_gpfifo);
 	nvhost_module_busy(ctx->ch->dev);
-	ret = channel_op().alloc_gpfifo(ctx->hwctx, args);
+	ret = channel_op(ctx->ch).alloc_gpfifo(ctx->hwctx, args);
 	nvhost_module_idle(ctx->ch->dev);
 	return ret;
 }
@@ -288,10 +302,10 @@ static int nvhost_ioctl_channel_submit_gpfifo(
 		goto clean_up;
 	}
 
-	BUG_ON(!channel_op().submit_gpfifo);
+	BUG_ON(!channel_op(ctx->ch).submit_gpfifo);
 
 	nvhost_module_busy(ctx->ch->dev);
-	ret = channel_op().submit_gpfifo(ctx->hwctx, gpfifo,
+	ret = channel_op(ctx->ch).submit_gpfifo(ctx->hwctx, gpfifo,
 			args->num_entries, &args->fence, args->flags);
 	nvhost_module_idle(ctx->ch->dev);
 clean_up:
@@ -305,9 +319,9 @@ static int nvhost_ioctl_channel_wait(
 {
 	int ret;
 
-	BUG_ON(!channel_op().wait);
+	BUG_ON(!channel_op(ctx->ch).wait);
 	nvhost_module_busy(ctx->ch->dev);
-	ret = channel_op().wait(ctx->hwctx, args);
+	ret = channel_op(ctx->ch).wait(ctx->hwctx, args);
 	nvhost_module_idle(ctx->ch->dev);
 	return ret;
 }
@@ -318,9 +332,9 @@ static int nvhost_ioctl_channel_zcull_bind(
 {
 	int ret;
 
-	BUG_ON(!channel_zcull_op().bind);
+	BUG_ON(!channel_zcull_op(ctx->ch).bind);
 	nvhost_module_busy(ctx->ch->dev);
-	ret = channel_zcull_op().bind(ctx->hwctx, args);
+	ret = channel_zcull_op(ctx->ch).bind(ctx->hwctx, args);
 	nvhost_module_idle(ctx->ch->dev);
 	return ret;
 }
@@ -345,9 +359,10 @@ static int nvhost_ioctl_channel_submit(struct nvhost_channel_userctx *ctx,
 		(struct nvhost_syncpt_incr *)(uintptr_t)args->syncpt_incrs;
 	u32 __user *waitbases = (u32 *)(uintptr_t)args->waitbases;
 	u32 __user *fences = (u32 *)(uintptr_t)args->fences;
+	u32 __user *class_ids = (u32 *)(uintptr_t)args->class_ids;
 
 	struct nvhost_master *host = nvhost_get_host(ctx->ch->dev);
-	u32 *local_waitbases = NULL;
+	u32 *local_waitbases = NULL, *local_class_ids = NULL;
 	int err, i, hwctx_syncpt_idx = -1;
 
 	if (num_syncpt_incrs > host->info.nb_pts)
@@ -369,16 +384,36 @@ static int nvhost_ioctl_channel_submit(struct nvhost_channel_userctx *ctx,
 	job->priority = ctx->priority;
 	job->clientid = ctx->clientid;
 
-	while (num_cmdbufs) {
+	/* mass copy class_ids */
+	if (args->class_ids) {
+		local_class_ids = kzalloc(sizeof(u32) * num_cmdbufs,
+			GFP_KERNEL);
+		if (!local_class_ids) {
+			err = -ENOMEM;
+			goto fail;
+		}
+		err = copy_from_user(local_class_ids, class_ids,
+			sizeof(u32) * num_cmdbufs);
+		if (err) {
+			err = -EINVAL;
+			goto fail;
+		}
+	}
+
+	for (i = 0; i < num_cmdbufs; ++i) {
 		struct nvhost_cmdbuf cmdbuf;
-		err = copy_from_user(&cmdbuf, cmdbufs, sizeof(cmdbuf));
+		u32 class_id = class_ids ? local_class_ids[i] : 0;
+
+		err = copy_from_user(&cmdbuf, cmdbufs + i, sizeof(cmdbuf));
 		if (err)
 			goto fail;
-		nvhost_job_add_gather(job,
-				cmdbuf.mem, cmdbuf.words, cmdbuf.offset);
-		num_cmdbufs--;
-		cmdbufs++;
+
+		nvhost_job_add_gather(job, cmdbuf.mem, cmdbuf.words,
+				cmdbuf.offset, class_id);
 	}
+
+	kfree(local_class_ids);
+	local_class_ids = NULL;
 
 	err = copy_from_user(job->relocarray,
 			relocs, sizeof(*relocs) * num_relocs);
@@ -513,6 +548,7 @@ fail_submit:
 	nvhost_job_unpin(job);
 fail:
 	nvhost_job_put(job);
+	kfree(local_class_ids);
 	kfree(local_waitbases);
 	return err;
 }
@@ -645,8 +681,8 @@ static int nvhost_ioctl_channel_cycle_stats(
 	struct nvhost_cycle_stats_args *args)
 {
 	int ret;
-	BUG_ON(!channel_op().cycle_stats);
-	ret = channel_op().cycle_stats(ctx->hwctx, args);
+	BUG_ON(!channel_op(ctx->ch).cycle_stats);
+	ret = channel_op(ctx->ch).cycle_stats(ctx->hwctx, args);
 	return ret;
 }
 #endif
@@ -960,6 +996,9 @@ static const struct file_operations nvhost_channelops = {
 	.owner = THIS_MODULE,
 	.release = nvhost_channelrelease,
 	.open = nvhost_channelopen,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = nvhost_channelctl,
+#endif
 	.unlocked_ioctl = nvhost_channelctl
 };
 
@@ -985,6 +1024,9 @@ static const struct file_operations nvhost_asops = {
 	.owner = THIS_MODULE,
 	.release = nvhost_as_dev_release,
 	.open = nvhost_as_dev_open,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = nvhost_as_dev_ctl,
+#endif
 	.unlocked_ioctl = nvhost_as_dev_ctl,
 };
 
@@ -1086,9 +1128,10 @@ int nvhost_client_user_init(struct platform_device *dev)
 	struct nvhost_channel *ch = pdata->channel;
 
 	BUG_ON(!ch);
-	// reserve 3 minor #s for <dev> and as-<dev> and ctrl-<dev>
+	/* reserve 5 minor #s for <dev> and as-<dev>, ctrl-<dev>,
+	 * dbg-<dev> and prof-<dev> */
 
-	err = alloc_chrdev_region(&devno, 0, 3, IFACE_NAME);
+	err = alloc_chrdev_region(&devno, 0, 5, IFACE_NAME);
 	if (err < 0) {
 		dev_err(&dev->dev, "failed to allocate devno\n");
 		goto fail;
@@ -1104,6 +1147,7 @@ int nvhost_client_user_init(struct platform_device *dev)
 	if (ch->as_node == NULL)
 		goto fail;
 
+	/* module control (npn-channel based, global) interface */
 	if (pdata->ctrl_ops) {
 		++devno;
 		pdata->ctrl_node = nvhost_client_device_create(dev,
@@ -1112,6 +1156,28 @@ int nvhost_client_user_init(struct platform_device *dev)
 		if (pdata->ctrl_node == NULL)
 			goto fail;
 	}
+
+	/* module debugger interface (per channel and global) */
+	if (pdata->dbg_ops) {
+		++devno;
+		pdata->dbg_node = nvhost_client_device_create(dev,
+					&pdata->dbg_cdev, "dbg-",
+					devno, pdata->dbg_ops);
+		if (pdata->dbg_node == NULL)
+			goto fail;
+	}
+
+	/* module profiler interface (per channel and global) */
+	if (pdata->prof_ops) {
+		++devno;
+		pdata->prof_node = nvhost_client_device_create(dev,
+					&pdata->prof_cdev, "prof-",
+					devno, pdata->prof_ops);
+		if (pdata->prof_node == NULL)
+			goto fail;
+	}
+
+
 
 	return 0;
 fail:

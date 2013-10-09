@@ -695,6 +695,7 @@ static struct regulator_init_data *dalmore_e1611_reg_data[PALMAS_NUM_REGS] = {
 	PALMAS_REG_PDATA(smps8),
 	PALMAS_REG_PDATA(smps9),
 	NULL,
+	NULL,
 	PALMAS_REG_PDATA(ldo1),
 	PALMAS_REG_PDATA(ldo2),
 	PALMAS_REG_PDATA(ldo3),
@@ -729,6 +730,7 @@ static struct palmas_reg_init *dalmore_e1611_reg_init[PALMAS_NUM_REGS] = {
 	NULL,
 	PALMAS_REG_INIT_DATA(smps8),
 	PALMAS_REG_INIT_DATA(smps9),
+	NULL,
 	NULL,
 	PALMAS_REG_INIT_DATA(ldo1),
 	PALMAS_REG_INIT_DATA(ldo2),
@@ -819,6 +821,7 @@ static struct regulator_consumer_supply fixed_reg_en_1v8_cam_supply[] = {
 	REGULATOR_SUPPLY("vi2c", "2-0030"),
 	REGULATOR_SUPPLY("vif", "2-0036"),
 	REGULATOR_SUPPLY("dovdd", "2-0010"),
+	REGULATOR_SUPPLY("dvdd", "2-0010"),
 	REGULATOR_SUPPLY("vdd_i2c", "2-000e"),
 };
 
@@ -827,6 +830,7 @@ static struct regulator_consumer_supply fixed_reg_en_1v8_cam_e1611_supply[] = {
 	REGULATOR_SUPPLY("vi2c", "2-0030"),
 	REGULATOR_SUPPLY("vif", "2-0036"),
 	REGULATOR_SUPPLY("dovdd", "2-0010"),
+	REGULATOR_SUPPLY("dvdd", "2-0010"),
 	REGULATOR_SUPPLY("vdd_i2c", "2-000e"),
 };
 
@@ -1035,6 +1039,8 @@ int __init dalmore_palmas_regulator_init(void)
 
 	/* Enable regulator full constraints */
 	regulator_has_full_constraints();
+
+	reg_idata_ldo6.constraints.enable_time = 1000;
 
 	/* Tracking configuration */
 	reg_init_data_ldo8.config_flags =
@@ -1438,8 +1444,6 @@ int __init dalmore_soctherm_init(void)
 			&dalmore_soctherm_data.therm[THERM_CPU].num_trips,
 			6000); /* edp temperature margin */
 	tegra_add_tj_trips(dalmore_soctherm_data.therm[THERM_CPU].trips,
-			&dalmore_soctherm_data.therm[THERM_CPU].num_trips);
-	tegra_add_vc_trips(dalmore_soctherm_data.therm[THERM_CPU].trips,
 			&dalmore_soctherm_data.therm[THERM_CPU].num_trips);
 
 	return tegra11_soctherm_init(&dalmore_soctherm_data);

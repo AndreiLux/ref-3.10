@@ -43,6 +43,7 @@
 #include "gpio-names.h"
 #include "iomap.h"
 #include "devices.h"
+#include "board.h"
 
 #define TEGRA_DMA_REQ_SEL_I2S_1			2
 #define TEGRA_DMA_REQ_SEL_SPD_I			3
@@ -817,27 +818,6 @@ static struct resource spi_resource6[] = {
 };
 #endif
 
-#ifndef CONFIG_ARCH_TEGRA_2x_SOC
-static struct resource dtv_resource[] = {
-	[0] = {
-		.start  = INT_DTV,
-		.end    = INT_DTV,
-		.flags  = IORESOURCE_IRQ,
-	},
-	[1] = {
-		.start  = TEGRA_DTV_BASE,
-		.end    = TEGRA_DTV_BASE + TEGRA_DTV_SIZE - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	[2] = {
-		.start	= TEGRA_DMA_REQ_SEL_DTV,
-		.end	= TEGRA_DMA_REQ_SEL_DTV,
-		.flags	= IORESOURCE_DMA
-	},
-};
-#endif
-
-
 struct platform_device tegra_spi_device1 = {
 	.name		= "spi_tegra",
 	.id		= 0,
@@ -1113,7 +1093,19 @@ struct platform_device tegra_nor_device = {
 	},
 };
 
-#ifndef CONFIG_ARCH_TEGRA_2x_SOC
+static struct resource dtv_resource[] = {
+	[0] = {
+		.start  = TEGRA_DTV_BASE,
+		.end    = TEGRA_DTV_BASE + TEGRA_DTV_SIZE - 1,
+		.flags  = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= TEGRA_DMA_REQ_SEL_DTV,
+		.end	= TEGRA_DMA_REQ_SEL_DTV,
+		.flags	= IORESOURCE_DMA
+	},
+};
+
 struct platform_device tegra_dtv_device = {
 	.name           = "tegra_dtv",
 	.id             = -1,
@@ -1124,7 +1116,6 @@ struct platform_device tegra_dtv_device = {
 		.coherent_dma_mask = 0xffffffff,
 	},
 };
-#endif
 
 static struct resource sdhci_resource1[] = {
 	[0] = {
@@ -1985,7 +1976,7 @@ static u64 tegra_sata_dma_mask = DMA_BIT_MASK(64);
 
 static struct tegra_ahci_platform_data tegra_ahci_platform_data0 = {
 	.gen2_rx_eq = -1,
-	.pexp_gpio = PMU_TCA6416_GPIO(9),
+	.pexp_gpio = -1,
 };
 
 static struct resource tegra_sata_resources[] = {
@@ -2100,27 +2091,28 @@ int tegra_smmu_window_count(void)
 	return ARRAY_SIZE(tegra_smmu);
 }
 
-static struct iommu_linear_map tegra_fb_linear_map[5]; /* Terminated with 0 */
+static struct iommu_linear_map tegra_fb_linear_map[16]; /* Terminated with 0 */
+
+#define LINEAR_MAP_ADD(n) \
+do { \
+	if (n##_start && n##_size) { \
+		map[i].start = n##_start; \
+		map[i++].size = n##_size; \
+	} \
+} while (0)
 
 void tegra_fb_linear_set(struct iommu_linear_map *map)
 {
-	int i;
-	struct iommu_linear_map *p = &tegra_fb_linear_map[0];
-	dma_addr_t prev_end = 0;
+	int i = 0;
 
-	for (i = 0; i < ARRAY_SIZE(tegra_fb_linear_map) - 1; i++) {
-		if (!map[i].size)
-			continue;
+	map = tegra_fb_linear_map;
 
-		p->size += map[i].size;
-		if (prev_end == map[i].start) {
-			prev_end += p->size;
-		} else {
-			p->start = map[i].start;
-			prev_end = p->start + p->size;
-			p++;
-		}
-	}
+	LINEAR_MAP_ADD(tegra_fb);
+	LINEAR_MAP_ADD(tegra_fb2);
+	LINEAR_MAP_ADD(tegra_bootloader_fb);
+	LINEAR_MAP_ADD(tegra_bootloader_fb2);
+	LINEAR_MAP_ADD(tegra_vpr);
+	LINEAR_MAP_ADD(tegra_carveout);
 }
 
 struct swgid_fixup {
@@ -2169,7 +2161,9 @@ struct swgid_fixup tegra_swgid_fixup[] = {
 	{ .name = "tegra30-hda",	.swgids = SWGID(HDA), },
 	{ .name = "tegra30-i2s",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra30-spdif",	.swgids = SWGID(PPCS), },
-	{ .name = "tegradc", .swgids = SWGID(DC) | SWGID(DCB), },
+	{ .name = "tegradc.0", .swgids = SWGID(DC),
+	  .linear_map = tegra_fb_linear_map},
+	{ .name = "tegradc.1", .swgids = SWGID(DCB), },
 	{ .name = "tegra_bb",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra_dma",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra-ehci",	.swgids = SWGID(PPCS), },
@@ -2215,6 +2209,7 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 	  SWGID(PPCS2), },
 	{ .name = "serial-tegra",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
 	  SWGID(PPCS2), },
+	{ .name = "dtv",	.swgids = SWGID(PPCS), },
 	{ .name = "snd-soc-dummy",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
 	  SWGID(PPCS2), },
 	{ .name = "spdif-dit",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
@@ -2234,9 +2229,10 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 	  SWGID(PPCS2), },
 	{ .name = "tegra30-spdif",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
 	  SWGID(PPCS2), },
-	{ .name = "tegradc.0", .swgids = SWGID(DC) | SWGID(DCB) | SWGID(DC12),
+	{ .name = "tegradc.0", .swgids = SWGID(DC) | SWGID(DC12),
 	  .linear_map = tegra_fb_linear_map, },
-	{ .name = "tegradc", .swgids = SWGID(DC) | SWGID(DCB) | SWGID(DC12), },
+	{ .name = "tegradc.1", .swgids = SWGID(DCB),
+	  .linear_map = tegra_fb_linear_map, },
 	{ .name = "tegra_bb",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
 	  SWGID(PPCS2), },
 	{ .name = "tegra_dma",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
@@ -2276,6 +2272,7 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 	{ .name = "gk20a",	.swgids = SWGID(GPU) | SWGID(GPUB), },
 	{ .name = "tegra124-apbdma",	.swgids = SWGID(PPCS) | SWGID(PPCS1) |
 	  SWGID(PPCS2), },
+	{ .name = "tegra-nor",	.swgids = SWGID(PPCS), },
 #ifdef CONFIG_PLATFORM_ENABLE_IOMMU
 	{ .name = dummy_name,	.swgids = SWGID(PPCS) },
 #endif
@@ -2318,6 +2315,8 @@ enum {
 	SYSTEM_DEFAULT,
 	SYSTEM_PROTECTED,
 	SYSTEM_GK20A,
+	SYSTEM_DC,
+	SYSTEM_DCB,
 	NUM_ASIDS,
 };
 
@@ -2332,6 +2331,8 @@ static struct tegra_iommu_mapping smmu_default_map[] = {
 	[SYSTEM_PROTECTED] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
 	/* Non-zero base to account for gk20a driver's assumptions */
 	[SYSTEM_GK20A] = {0x100000, (u32)~0},
+	[SYSTEM_DC] = {0x10000, (u32)~0},
+	[SYSTEM_DCB] = {0x10000, (u32)~0},
 };
 
 static void tegra_smmu_map_init(struct platform_device *pdev)
@@ -2391,6 +2392,18 @@ static int _tegra_smmu_get_asid(u64 swgids)
 
 	if (swgids & SWGID(GPUB))
 		return SYSTEM_GK20A;
+
+#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
+	if (swgids & SWGID(DC) ||
+	    swgids & SWGID(DCB))
+		return SYSTEM_DC;
+#elif defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	if (swgids & SWGID(DC) ||
+	    swgids & SWGID(DC12))
+		return SYSTEM_DC;
+	if (swgids & SWGID(DCB))
+		return SYSTEM_DCB;
+#endif
 
 	return SYSTEM_DEFAULT;
 }

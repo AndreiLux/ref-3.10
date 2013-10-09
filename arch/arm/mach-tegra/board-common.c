@@ -171,6 +171,7 @@ void tegra_add_cdev_trips(struct thermal_trip_info *trips, int *num_trips)
 	tegra_add_trip_points(trips, num_trips, tegra_dvfs_get_cpu_vmin_cdev());
 	tegra_add_trip_points(trips, num_trips,
 			      tegra_dvfs_get_core_vmin_cdev());
+	tegra_add_trip_points(trips, num_trips, tegra_dvfs_get_gpu_vmin_cdev());
 }
 
 void tegra_add_tj_trips(struct thermal_trip_info *trips, int *num_trips)
@@ -179,11 +180,7 @@ void tegra_add_tj_trips(struct thermal_trip_info *trips, int *num_trips)
 	tegra_add_trip_points(trips, num_trips, tegra_core_edp_get_cdev());
 }
 
-#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
-void tegra_add_vc_trips(struct thermal_trip_info *trips, int *num_trips)
+void tegra_add_tgpu_trips(struct thermal_trip_info *trips, int *num_trips)
 {
-#ifdef CONFIG_CPU_FREQ
-	tegra_add_trip_points(trips, num_trips, tegra_vc_get_cdev());
-#endif
+	tegra_add_trip_points(trips, num_trips, tegra_dvfs_get_gpu_vts_cdev());
 }
-#endif

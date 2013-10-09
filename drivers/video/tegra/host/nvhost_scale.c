@@ -60,11 +60,29 @@ static int nvhost_scale_make_freq_table(struct nvhost_device_profile *profile)
 {
 	unsigned long *freqs;
 	int num_freqs, err;
+	unsigned long max_freq =  clk_round_rate(profile->clk, UINT_MAX);
+	unsigned long min_freq =  clk_round_rate(profile->clk, 0);
 
 	err = tegra_dvfs_get_freqs(clk_get_parent(profile->clk),
 				   &freqs, &num_freqs);
 	if (err)
 		return -ENOSYS;
+
+	/* check for duplicate frequencies at higher end */
+	while ((num_freqs >= 2 &&
+		freqs[num_freqs - 2] == freqs[num_freqs - 1]) ||
+	       (num_freqs && max_freq < freqs[num_freqs - 1]))
+		num_freqs--;
+
+	/* check low end */
+	while ((num_freqs >= 2 && freqs[0] == freqs[1]) ||
+	       (num_freqs && freqs[0] < min_freq)) {
+		freqs++;
+		num_freqs--;
+	}
+
+	if (!num_freqs)
+		dev_warn(&profile->pdev->dev, "dvfs table had no applicable frequencies!\n");
 
 	profile->devfreq_profile.freq_table = (unsigned int *)freqs;
 	profile->devfreq_profile.max_state = num_freqs;
@@ -210,12 +228,12 @@ static int nvhost_scale_get_dev_status(struct device *dev,
 		update_load_estimate_actmon(profile);
 
 	/* Copy the contents of the current device status */
+	profile->ext_stat.busy = profile->last_event_type;
 	*stat = profile->dev_stat;
 
 	/* Finally, clear out the local values */
 	profile->dev_stat.total_time = 0;
 	profile->dev_stat.busy_time = 0;
-	profile->last_event_type = DEVICE_UNKNOWN;
 
 	return 0;
 }
@@ -238,7 +256,7 @@ void nvhost_scale_init(struct platform_device *pdev)
 	pdata->power_profile = profile;
 	profile->pdev = pdev;
 	profile->clk = pdata->clk[0];
-	profile->last_event_type = DEVICE_UNKNOWN;
+	profile->last_event_type = DEVICE_IDLE;
 
 	/* Initialize devfreq related structures */
 	profile->dev_stat.private_data = &profile->ext_stat;
@@ -246,7 +264,7 @@ void nvhost_scale_init(struct platform_device *pdev)
 		clk_round_rate(clk_get_parent(profile->clk), 0);
 	profile->ext_stat.max_freq =
 		clk_round_rate(clk_get_parent(profile->clk), UINT_MAX);
-	profile->ext_stat.busy = DEVICE_UNKNOWN;
+	profile->ext_stat.busy = DEVICE_IDLE;
 
 	if (profile->ext_stat.min_freq == profile->ext_stat.max_freq) {
 		dev_warn(&pdev->dev, "max rate = min rate (%lu), disabling scaling\n",

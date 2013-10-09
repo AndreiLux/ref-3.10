@@ -35,6 +35,7 @@
 #include <linux/extcon.h>
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
+#include <linux/usb/hcd.h>
 
 #include <mach/pm_domains.h>
 #include <mach/tegra_usb_pad_ctrl.h>
@@ -333,13 +334,10 @@ static int tegra_otg_start_gadget(struct tegra_otg *tegra, int on)
 {
 	struct usb_otg *otg = tegra->phy.otg;
 
-	if (on) {
+	if (on)
 		usb_gadget_vbus_connect(otg->gadget);
-		tegra_otg_notify_event(tegra, USB_EVENT_VBUS);
-	} else {
+	else
 		usb_gadget_vbus_disconnect(otg->gadget);
-		tegra_otg_notify_event(tegra, USB_EVENT_NONE);
-	}
 
 	return 0;
 }
@@ -425,6 +423,8 @@ static irqreturn_t tegra_otg_irq(int irq, void *data)
 	struct tegra_otg *tegra = data;
 	unsigned long flags;
 	unsigned long val;
+	struct usb_hcd *hcd = bus_to_hcd(tegra->phy.otg->host);
+	enum usb_otg_state state = tegra->phy.state;
 
 	spin_lock_irqsave(&tegra->lock, flags);
 	val = otg_readl(tegra, USB_PHY_WAKEUP);
@@ -438,6 +438,14 @@ static irqreturn_t tegra_otg_irq(int irq, void *data)
 			tegra->int_status |= val & tegra->int_mask;
 			schedule_work(&tegra->work);
 		}
+	}
+
+	/* Re-acquire wakelock to service the device connected */
+	/* Abort the suspend */
+
+	if (state == OTG_STATE_A_HOST) {
+		if (hcd && hcd->state == HC_STATE_SUSPENDED)
+			tegra_otg_notify_event(tegra, USB_EVENT_ID);
 	}
 	spin_unlock_irqrestore(&tegra->lock, flags);
 

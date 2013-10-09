@@ -39,6 +39,7 @@
 #include <linux/gpio.h>
 #include <linux/regulator/tegra-dfll-bypass-regulator.h>
 #include <linux/power/bq2471x-charger.h>
+#include <linux/power/bq2477x-charger.h>
 
 #include <asm/mach-types.h>
 #include <mach/tegra_fuse.h>
@@ -201,9 +202,12 @@ static struct regulator_consumer_supply as3722_sd5_supply[] = {
 	REGULATOR_SUPPLY("vddio_cam", "vi"),
 	REGULATOR_SUPPLY("pwrdet_cam", NULL),
 	REGULATOR_SUPPLY("dvdd", "spi0.0"),
-        REGULATOR_SUPPLY("vlogic", "0-0069"),
-        REGULATOR_SUPPLY("vid", "0-000c"),
-        REGULATOR_SUPPLY("vddio", "0-0077"),
+	REGULATOR_SUPPLY("vlogic", "0-0069"),
+	REGULATOR_SUPPLY("vid", "0-000c"),
+	REGULATOR_SUPPLY("vddio", "0-0077"),
+	REGULATOR_SUPPLY("vdd_sata", "tegra-sata.0"),
+	REGULATOR_SUPPLY("avdd_sata", "tegra-sata.0"),
+	REGULATOR_SUPPLY("avdd_sata_pll", "tegra-sata.0"),
 };
 
 static struct regulator_consumer_supply as3722_sd6_supply[] = {
@@ -216,7 +220,7 @@ AMS_PDATA_INIT(sd1, NULL, 700000, 1400000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(sd2, NULL, 1350000, 1350000, 1, 1, 1, 0);
 AMS_PDATA_INIT(sd4, NULL, 1050000, 1050000, 0, 1, 1, 0);
 AMS_PDATA_INIT(sd5, NULL, 1800000, 1800000, 1, 1, 1, 0);
-AMS_PDATA_INIT(sd6, NULL, 700000, 1400000, 1, 1, 0, 0);
+AMS_PDATA_INIT(sd6, NULL, 700000, 1400000, 0, 1, 0, 0);
 AMS_PDATA_INIT(ldo0, AS3722_SUPPLY(sd2), 1050000, 1250000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(ldo1, NULL, 1800000, 1800000, 0, 1, 1, 0);
 AMS_PDATA_INIT(ldo2, AS3722_SUPPLY(sd5), 1200000, 1200000, 0, 0, 1, 0);
@@ -439,13 +443,15 @@ static struct regulator_consumer_supply palmas_ti913_regen1_supply[] = {
 	REGULATOR_SUPPLY("vddio_pex_ctl", "tegra-pcie"),
 	REGULATOR_SUPPLY("vdd", "0-0069"),
 	REGULATOR_SUPPLY("vdd", "0-0048"),
+	REGULATOR_SUPPLY("vdd", "stm8t143.2"),
 	REGULATOR_SUPPLY("vdd", "0-000c"),
 	REGULATOR_SUPPLY("vdd", "0-0077"),
+	REGULATOR_SUPPLY("hvdd_sata", "tegra-sata.0"),
 };
 
-PALMAS_REGS_PDATA(ti913_smps123, 700, 1400, NULL, 1, 1, 1, NORMAL,
+PALMAS_REGS_PDATA(ti913_smps123, 700, 1400, NULL, 0, 1, 1, NORMAL,
 	0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ti913_smps45, 900, 1400, NULL, 1, 1, 1, NORMAL,
+PALMAS_REGS_PDATA(ti913_smps45, 700, 1400, NULL, 1, 1, 1, NORMAL,
 	0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_smps6, 1800, 1800, NULL, 1, 1, 1, NORMAL,
 	0, 0, 0, 0, 0);
@@ -463,7 +469,7 @@ PALMAS_REGS_PDATA(ti913_ldo4, 1200, 1200, palmas_rails(ti913_smps6),
 PALMAS_REGS_PDATA(ti913_ldo5, 2700, 2700, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo6, 1800, 1800, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo7, 2700, 2700, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ti913_ldo8, 1000, 1000, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
+PALMAS_REGS_PDATA(ti913_ldo8, 800, 800, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo9, 1800, 3300, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldoln, 1050, 1050, palmas_rails(ti913_smps6),
 		0, 0, 1, 0, 0, 0, 0, 0, 0);
@@ -481,6 +487,7 @@ static struct regulator_init_data *ardbeg_1735_reg_data[PALMAS_NUM_REGS] = {
 	PALMAS_REG_PDATA(ti913_smps7),
 	NULL,
 	PALMAS_REG_PDATA(ti913_smps9),
+	NULL,
 	NULL,
 	PALMAS_REG_PDATA(ti913_ldo1),
 	PALMAS_REG_PDATA(ti913_ldo2),
@@ -516,6 +523,7 @@ static struct palmas_reg_init *ardbeg_1735_reg_init[PALMAS_NUM_REGS] = {
 	PALMAS_REG_INIT_DATA(ti913_smps7),
 	NULL,
 	PALMAS_REG_INIT_DATA(ti913_smps9),
+	NULL,
 	NULL,
 	PALMAS_REG_INIT_DATA(ti913_ldo1),
 	PALMAS_REG_INIT_DATA(ti913_ldo2),
@@ -560,7 +568,7 @@ static struct palmas_pinctrl_config palmas_ti913_pincfg[] = {
 	PALMAS_PINMUX("powergood", "powergood", NULL, NULL),
 	PALMAS_PINMUX("vac", "vac", NULL, NULL),
 	PALMAS_PINMUX("gpio0", "id", "pull-up", NULL),
-	PALMAS_PINMUX("gpio1", "vbus-det", NULL, NULL),
+	PALMAS_PINMUX("gpio1", "vbus_det", NULL, NULL),
 	PALMAS_PINMUX("gpio2", "gpio", NULL, NULL),
 	PALMAS_PINMUX("gpio3", "gpio", NULL, NULL),
 	PALMAS_PINMUX("gpio4", "gpio", NULL, NULL),
@@ -619,8 +627,7 @@ int __init ardbeg_tps65913_regulator_init(void)
 
 	/* Tracking configuration */
 	reg_init_data_ti913_ldo8.config_flags =
-		PALMAS_REGULATOR_CONFIG_TRACKING_ENABLE |
-		PALMAS_REGULATOR_CONFIG_SUSPEND_TRACKING_DISABLE;
+		PALMAS_REGULATOR_CONFIG_TRACKING_ENABLE;
 
 	for (i = 0; i < PALMAS_NUM_REGS ; i++) {
 		pmic_ti913_platform.reg_data[i] = ardbeg_1735_reg_data[i];
@@ -668,6 +675,22 @@ static struct i2c_board_info __initdata bq2471x_boardinfo[] = {
 	},
 };
 
+struct bq2477x_platform_data ardbeg_bq2477x_pdata = {
+	.dac_ichg		= 2240,
+	.dac_v			= 9008,
+	.dac_minsv		= 4608,
+	.dac_iin		= 4992,
+	.wdt_refresh_timeout	= 40,
+	.gpio			= TEGRA_GPIO_PK5,
+};
+
+static struct i2c_board_info __initdata bq2477x_boardinfo[] = {
+	{
+		I2C_BOARD_INFO("bq2477x", 0x6A),
+		.platform_data	= &ardbeg_bq2477x_pdata,
+	},
+};
+
 static struct tegra_suspend_platform_data ardbeg_suspend_data = {
 	.cpu_timer      = 500,
 	.cpu_off_timer  = 300,
@@ -704,36 +727,6 @@ int __init ardbeg_suspend_init(void)
 	}
 
 	tegra_init_suspend(&ardbeg_suspend_data);
-	return 0;
-}
-
-int __init ardbeg_regulator_init(void)
-{
-	struct board_info pmu_board_info;
-
-	tegra_get_pmu_board_info(&pmu_board_info);
-
-	if ((pmu_board_info.board_id == BOARD_E1733) ||
-		(pmu_board_info.board_id == BOARD_E1734)) {
-		i2c_register_board_info(0, tca6408_expander,
-				ARRAY_SIZE(tca6408_expander));
-		ardbeg_ams_regulator_init();
-		regulator_has_full_constraints();
-	} else if (pmu_board_info.board_id == BOARD_E1735) {
-		regulator_has_full_constraints();
-		ardbeg_tps65913_regulator_init();
-	} else if (pmu_board_info.board_id == BOARD_E1736) {
-		return tn8_regulator_init();
-	} else {
-		pr_warn("PMU board id 0x%04x is not supported\n",
-			pmu_board_info.board_id);
-	}
-
-	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY)
-		i2c_register_board_info(1, bq2471x_boardinfo,
-			ARRAY_SIZE(bq2471x_boardinfo));
-
-	platform_device_register(&power_supply_extcon_device);
 	return 0;
 }
 
@@ -1122,6 +1115,46 @@ static struct tegra_cl_dvfs_platform_data e1733_cl_dvfs_data = {
 	.cfg_param = &e1733_ardbeg_cl_dvfs_param,
 };
 
+static struct tegra_cl_dvfs_cfg_param e1736_ardbeg_cl_dvfs_param = {
+	.sample_rate = 12500, /* i2c freq */
+
+	.force_mode = TEGRA_CL_DVFS_FORCE_FIXED,
+	.cf = 10,
+	.ci = 0,
+	.cg = 2,
+
+	.droop_cut_value = 0xF,
+	.droop_restore_ramp = 0x0,
+	.scale_out_ramp = 0x0,
+};
+
+/* E1736 volatge map. Fixed 10mv steps from 700mv to 1400mv */
+#define E1736_CPU_VDD_MAP_SIZE ((1400000 - 700000) / 10000 + 1)
+static struct voltage_reg_map e1736_cpu_vdd_map[E1736_CPU_VDD_MAP_SIZE];
+static inline void e1736_fill_reg_map(void)
+{
+	int i;
+	for (i = 0; i < E1736_CPU_VDD_MAP_SIZE; i++) {
+		/* 0.7V corresponds to 0b0011010 = 26 */
+		/* 1.4V corresponds to 0b1100000 = 96 */
+		e1736_cpu_vdd_map[i].reg_value = i + 26;
+		e1736_cpu_vdd_map[i].reg_uV = 700000 + 10000 * i;
+	}
+}
+
+static struct tegra_cl_dvfs_platform_data e1736_cl_dvfs_data = {
+	.dfll_clk_name = "dfll_cpu",
+	.pmu_if = TEGRA_CL_DVFS_PMU_I2C,
+	.u.pmu_i2c = {
+		.fs_rate = 400000,
+		.slave_addr = 0xb0, /* pmu i2c address */
+		.reg = 0x23,        /* vdd_cpu rail reg address */
+	},
+	.vdd_map = e1736_cpu_vdd_map,
+	.vdd_map_size = E1736_CPU_VDD_MAP_SIZE,
+
+	.cfg_param = &e1736_ardbeg_cl_dvfs_param,
+};
 static int __init ardbeg_cl_dvfs_init(u16 pmu_board_id)
 {
 	struct tegra_cl_dvfs_platform_data *data = NULL;
@@ -1146,6 +1179,11 @@ static int __init ardbeg_cl_dvfs_init(u16 pmu_board_id)
 	if (pmu_board_id == BOARD_E1733) {
 		e1733_fill_reg_map();
 		data = &e1733_cl_dvfs_data;
+	}
+
+	if (pmu_board_id == BOARD_E1736) {
+		e1736_fill_reg_map();
+		data = &e1736_cl_dvfs_data;
 	}
 
 	if (data) {
@@ -1174,6 +1212,43 @@ int __init ardbeg_rail_alignment_init(void)
 	return 0;
 }
 
+int __init ardbeg_regulator_init(void)
+{
+	struct board_info pmu_board_info;
+
+	tegra_get_pmu_board_info(&pmu_board_info);
+
+	if ((pmu_board_info.board_id == BOARD_E1733) ||
+		(pmu_board_info.board_id == BOARD_E1734)) {
+		i2c_register_board_info(0, tca6408_expander,
+				ARRAY_SIZE(tca6408_expander));
+		ardbeg_ams_regulator_init();
+		regulator_has_full_constraints();
+	} else if (pmu_board_info.board_id == BOARD_E1735) {
+		regulator_has_full_constraints();
+		ardbeg_tps65913_regulator_init();
+	} else if (pmu_board_info.board_id == BOARD_E1736) {
+		tn8_regulator_init();
+		ardbeg_cl_dvfs_init(pmu_board_info.board_id);
+		return tn8_fixed_regulator_init();
+	} else {
+		pr_warn("PMU board id 0x%04x is not supported\n",
+			pmu_board_info.board_id);
+	}
+
+	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY) {
+		i2c_register_board_info(1, bq2471x_boardinfo,
+			ARRAY_SIZE(bq2471x_boardinfo));
+		i2c_register_board_info(1, bq2477x_boardinfo,
+			ARRAY_SIZE(bq2477x_boardinfo));
+	}
+
+	platform_device_register(&power_supply_extcon_device);
+
+	ardbeg_cl_dvfs_init(pmu_board_info.board_id);
+	return 0;
+}
+
 static int __init ardbeg_fixed_regulator_init(void)
 {
 	struct board_info pmu_board_info;
@@ -1182,7 +1257,6 @@ static int __init ardbeg_fixed_regulator_init(void)
 		return 0;
 
 	tegra_get_pmu_board_info(&pmu_board_info);
-	ardbeg_cl_dvfs_init(pmu_board_info.board_id);
 
 	if (pmu_board_info.board_id == BOARD_E1733)
 		return platform_add_devices(fixed_reg_devs_e1733,
@@ -1228,6 +1302,26 @@ static struct pid_thermal_gov_params soctherm_pid_params = {
 static struct thermal_zone_params soctherm_tzp = {
 	.governor_name = "pid_thermal_gov",
 	.governor_params = &soctherm_pid_params,
+};
+
+static struct tegra_tsensor_pmu_data tpdata_palmas = {
+	.reset_tegra = 1,
+	.pmu_16bit_ops = 0,
+	.controller_type = 0,
+	.pmu_i2c_addr = 0x58,
+	.i2c_controller_id = 4,
+	.poweroff_reg_addr = 0xa0,
+	.poweroff_reg_data = 0x0,
+};
+
+static struct tegra_tsensor_pmu_data tpdata_as3722 = {
+	.reset_tegra = 1,
+	.pmu_16bit_ops = 0,
+	.controller_type = 0,
+	.pmu_i2c_addr = 0x40,
+	.i2c_controller_id = 4,
+	.poweroff_reg_addr = 0x36,
+	.poweroff_reg_data = 0x2,
 };
 
 static struct soctherm_platform_data ardbeg_soctherm_data = {
@@ -1320,10 +1414,13 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 			},
 		},
 	},
+	.tshut_pmu_trip_data = &tpdata_palmas,
 };
 
 int __init ardbeg_soctherm_init(void)
 {
+	struct board_info pmu_board_info;
+
 	/* do this only for supported CP,FT fuses */
 	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
 	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
@@ -1331,8 +1428,19 @@ int __init ardbeg_soctherm_init(void)
 			ardbeg_soctherm_data.therm[THERM_CPU].trips,
 			&ardbeg_soctherm_data.therm[THERM_CPU].num_trips,
 			8000); /* edp temperature margin */
-		return tegra11_soctherm_init(&ardbeg_soctherm_data);
 	}
 
-	return -EINVAL;
+	tegra_get_pmu_board_info(&pmu_board_info);
+
+	if ((pmu_board_info.board_id == BOARD_E1733) ||
+		(pmu_board_info.board_id == BOARD_E1734))
+		ardbeg_soctherm_data.tshut_pmu_trip_data = &tpdata_as3722;
+	else if (pmu_board_info.board_id == BOARD_E1735)
+		;/* tpdata_palmas is default */
+	else if (pmu_board_info.board_id == BOARD_E1736)
+		;/* FIXME: Not supporting tn8 yet - assumes palmas PMIC */
+	else
+		pr_warn("soctherm THERMTRIP is not supported on this PMIC\n");
+
+	return tegra11_soctherm_init(&ardbeg_soctherm_data);
 }

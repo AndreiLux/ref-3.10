@@ -108,10 +108,10 @@ struct host1x_hwctx *nvhost_3dctx_alloc_common(struct host1x_hwctx_handler *p,
 		ctx->restore_virt = NULL;
 
 	ctx->restore_sgt = nvhost_memmgr_pin(memmgr, ctx->restore,
-			&ch->dev->dev);
+			&ch->dev->dev, mem_flag_none);
 	if (IS_ERR(ctx->restore_sgt))
 		goto fail_pin;
-	ctx->restore_phys = sg_dma_address(ctx->restore_sgt->sgl);
+	ctx->restore_phys = nvhost_memmgr_dma_addr(ctx->restore_sgt);
 
 	kref_init(&ctx->hwctx.ref);
 	ctx->hwctx.h = &p->h;
@@ -221,6 +221,11 @@ static int gr3d_probe(struct platform_device *dev)
 	pdata->pdev = dev;
 	mutex_init(&pdata->lock);
 	platform_set_drvdata(dev, pdata);
+
+	err = nvhost_client_device_get_resources(dev);
+	if (err)
+		return err;
+
 	nvhost_module_init(dev);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS

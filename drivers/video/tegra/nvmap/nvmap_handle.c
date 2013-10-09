@@ -42,12 +42,12 @@
 #include <asm/tlbflush.h>
 #include <asm/pgtable.h>
 
-#include <mach/iovmm.h>
 #include <trace/events/nvmap.h>
 
 #include "nvmap_priv.h"
-#include "nvmap_mru.h"
 #include "nvmap_ioctl.h"
+
+u32 nvmap_max_handle_count;
 
 #define NVMAP_SECURE_HEAPS	(NVMAP_HEAP_CARVEOUT_IRAM | NVMAP_HEAP_IOVMM | \
 				 NVMAP_HEAP_CARVEOUT_VPR)
@@ -541,8 +541,6 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 	BUG_ON(h->size & ~PAGE_MASK);
 	BUG_ON(!h->pgalloc.pages);
 
-	nvmap_mru_remove(share, h);
-
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 	if (h->flags < NVMAP_NUM_POOLS)
 		pool = &share->pools[h->flags];
@@ -569,9 +567,6 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 	}
 
 skip_attr_restore:
-	if (h->pgalloc.area)
-		tegra_iovmm_free_vm(h->pgalloc.area);
-
 	for (i = page_index; i < nr_page; i++)
 		__free_page(h->pgalloc.pages[i]);
 
@@ -633,7 +628,6 @@ static int handle_page_alloc(struct nvmap_client *client,
 
 	prot = nvmap_pgprot(h, pgprot_kernel);
 
-	h->pgalloc.area = NULL;
 	if (contiguous) {
 		struct page *page;
 		page = nvmap_alloc_pages_exact(gfp, size);
@@ -681,16 +675,6 @@ static int handle_page_alloc(struct nvmap_client *client,
 			if (!pages[i])
 				goto fail;
 		}
-
-#ifndef CONFIG_NVMAP_RECLAIM_UNPINNED_VM
-		h->pgalloc.area = tegra_iovmm_create_vm(nvmap_share->iovmm,
-					NULL, size, h->align, prot,
-					h->pgalloc.iovm_addr);
-		if (!h->pgalloc.area)
-			goto fail;
-
-		h->pgalloc.dirty = true;
-#endif
 	}
 
 	if (nr_page == page_index)
@@ -716,7 +700,6 @@ skip_attr_change:
 	h->size = size;
 	h->pgalloc.pages = pages;
 	h->pgalloc.contig = contiguous;
-	INIT_LIST_HEAD(&h->pgalloc.mru_list);
 	return 0;
 
 fail:
@@ -759,28 +742,18 @@ static void alloc_handle(struct nvmap_client *client,
 				h->size);
 		}
 	} else if (type & iovmm_mask) {
-		size_t reserved = PAGE_ALIGN(h->size);
-		int commit = 0;
 		int ret;
+		size_t reserved = PAGE_ALIGN(h->size);
 
-		/* increment the committed IOVM space prior to allocation
-		 * to avoid race conditions with other threads simultaneously
-		 * allocating. */
-		commit = atomic_add_return(reserved,
-					    &client->iovm_commit);
-
-		if (commit < client->iovm_limit)
-			ret = handle_page_alloc(client, h, false);
-		else
-			ret = -ENOMEM;
-
-		if (!ret) {
-			h->heap_pgalloc = true;
-			h->alloc = true;
-		} else {
+		atomic_add_return(reserved, &client->iovm_commit);
+		ret = handle_page_alloc(client, h, false);
+		if (ret) {
 			atomic_sub(reserved, &client->iovm_commit);
+			return;
 		}
 
+		h->heap_pgalloc = true;
+		h->alloc = true;
 	}
 }
 
@@ -850,16 +823,6 @@ int nvmap_alloc_handle_id(struct nvmap_client *client,
 		goto out;
 	}
 
-	/*
-	 * This takes out 1 ref on the dambuf. This corresponds to the
-	 * handle_ref that gets automatically made by nvmap_create_handle().
-	 */
-	h->dmabuf = __nvmap_make_dmabuf(client, h);
-	if (!h->dmabuf) {
-		err = -ENOMEM;
-		goto out;
-	}
-
 	alloc_policy = (nr_page == 1) ? heap_policy_small : heap_policy_large;
 
 	while (!h->alloc && *alloc_policy) {
@@ -890,36 +853,6 @@ out:
 	return err;
 }
 
-/*
- * Free handle without slow validation step
- */
-void _nvmap_free(struct nvmap_client *client, struct nvmap_handle_ref *r)
-{
-	int dupes;
-	struct nvmap_handle *h = r->handle;
-
-	if (!r ||
-	    WARN_ON(!virt_addr_valid(client)) ||
-	    WARN_ON(!virt_addr_valid(r)))
-		return;
-
-	nvmap_ref_lock(client);
-retry:
-	dupes = atomic_read(&r->dupes);
-	if (r->handle->owner == client && dupes > 1) {
-		if (atomic_cmpxchg(&r->dupes, dupes, dupes - 1) != dupes)
-			goto retry;
-		nvmap_ref_unlock(client);
-		nvmap_handle_put(h);
-		return;
-	} else {
-		/* slow path */
-		nvmap_ref_unlock(client);
-		nvmap_free(client, r);
-		return;
-	}
-}
-
 void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 {
 	struct nvmap_handle_ref *ref;
@@ -928,7 +861,7 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 
 	nvmap_ref_lock(client);
 
-	ref = _nvmap_validate_id_locked(client, id);
+	ref = __nvmap_validate_id_locked(client, id);
 	if (!ref) {
 		nvmap_ref_unlock(client);
 		return;
@@ -946,9 +879,10 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 	smp_rmb();
 	pins = atomic_read(&ref->pin);
 	rb_erase(&ref->node, &client->handle_refs);
+	client->handle_count--;
 
 	if (h->alloc && h->heap_pgalloc && !h->pgalloc.contig)
-		atomic_sub(h->size, &client->iovm_commit);
+		atomic_sub_return(h->size, &client->iovm_commit);
 
 	if (h->alloc && !h->heap_pgalloc) {
 		mutex_lock(&h->lock);
@@ -964,14 +898,20 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 		nvmap_debug(client, "%s freeing pinned handle %p\n",
 			    current->group_leader->comm, h);
 
-	while (pins--)
-		nvmap_unpin_handles(client, &ref->handle, 1);
+	while (atomic_read(&ref->pin))
+		__nvmap_unpin(ref);
 
 	if (h->owner == client) {
 		h->owner = NULL;
 		h->owner_ref = NULL;
 	}
 
+	if (ref->fd != -1) {
+		if (ref->group_leader == current->group_leader)
+			sys_close(ref->fd);
+		else
+			BUG();
+	}
 	dma_buf_put(ref->handle->dmabuf);
 	kfree(ref);
 
@@ -1007,12 +947,16 @@ static void add_handle_ref(struct nvmap_client *client,
 	}
 	rb_link_node(&ref->node, parent, p);
 	rb_insert_color(&ref->node, &client->handle_refs);
+	client->handle_count++;
+	if (client->handle_count > nvmap_max_handle_count)
+		nvmap_max_handle_count = client->handle_count;
 	nvmap_ref_unlock(client);
 }
 
 struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 					     size_t size)
 {
+	void *err = ERR_PTR(-ENOMEM);
 	struct nvmap_handle *h;
 	struct nvmap_handle_ref *ref = NULL;
 
@@ -1027,10 +971,8 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 		return ERR_PTR(-ENOMEM);
 
 	ref = kzalloc(sizeof(*ref), GFP_KERNEL);
-	if (!ref) {
-		kfree(h);
-		return ERR_PTR(-ENOMEM);
-	}
+	if (!ref)
+		goto ref_alloc_fail;
 
 	atomic_set(&h->ref, 1);
 	atomic_set(&h->pin, 0);
@@ -1042,6 +984,44 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	h->flags = NVMAP_HANDLE_WRITE_COMBINE;
 	mutex_init(&h->lock);
 
+	/*
+	 * This takes out 1 ref on the dambuf. This corresponds to the
+	 * handle_ref that gets automatically made by nvmap_create_handle().
+	 */
+	h->dmabuf = __nvmap_make_dmabuf(client, h);
+	if (IS_ERR(h->dmabuf)) {
+		err = h->dmabuf;
+		goto make_dmabuf_fail;
+	}
+
+	/*
+	 * Pre-attach nvmap to this new dmabuf. This gets unattached during the
+	 * dma_buf_release() operation.
+	 */
+	h->attachment = dma_buf_attach(h->dmabuf, &nvmap_pdev->dev);
+	if (IS_ERR(h->attachment)) {
+		err = h->attachment;
+		goto dma_buf_attach_fail;
+	}
+
+	ref->fd = -1;
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	if (client && !client->kernel_client) {
+		ref->fd = dma_buf_fd(h->dmabuf, O_CLOEXEC);
+		if (ref->fd <= 2) {
+			pr_err("fd=%d <=2 ", ref->fd);
+			BUG();
+		}
+		if (ref->fd < 0)
+			goto fd_fail;
+		/* dma_buf_fd() associates fd with dma_buf->file *.
+		 * fd close drops one ref count on dmabuf->file *.
+		 * to balance ref count, ref count dma_buf.
+		 */
+		get_dma_buf(h->dmabuf);
+		ref->group_leader = current->group_leader;
+	}
+#endif
 	nvmap_handle_add(nvmap_dev, h);
 
 	/*
@@ -1054,6 +1034,18 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	add_handle_ref(client, ref);
 	trace_nvmap_create_handle(client, client->name, h, size, ref);
 	return ref;
+
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+fd_fail:
+	pr_err("Out of file descriptors");
+#endif
+dma_buf_attach_fail:
+	dma_buf_put(h->dmabuf);
+make_dmabuf_fail:
+	kfree(ref);
+ref_alloc_fail:
+	kfree(h);
+	return err;
 }
 
 struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
@@ -1081,7 +1073,7 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	}
 
 	nvmap_ref_lock(client);
-	ref = _nvmap_validate_id_locked(client, (unsigned long)h);
+	ref = __nvmap_validate_id_locked(client, (unsigned long)h);
 
 	if (ref) {
 		/* handle already duplicated in client; just increment
@@ -1092,21 +1084,6 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	}
 
 	nvmap_ref_unlock(client);
-
-	/* verify that adding this handle to the process' access list
-	 * won't exceed the IOVM limit */
-	if (h->heap_pgalloc && !h->pgalloc.contig) {
-		int oc;
-		oc = atomic_add_return(h->size, &client->iovm_commit);
-		if (oc > client->iovm_limit && !client->super) {
-			atomic_sub(h->size, &client->iovm_commit);
-			nvmap_handle_put(h);
-			nvmap_err(client, "duplicating %p in %s over-commits"
-				  " IOVMM space\n", (void *)id,
-				  current->group_leader->comm);
-			return ERR_PTR(-ENOMEM);
-		}
-	}
 
 	ref = kzalloc(sizeof(*ref), GFP_KERNEL);
 	if (!ref) {
@@ -1120,6 +1097,8 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 			nvmap_heap_to_arg(nvmap_block_to_heap(h->carveout)),
 			h->size);
 		mutex_unlock(&h->lock);
+	} else if (!h->pgalloc.contig) {
+		atomic_add(h->size, &client->iovm_commit);
 	}
 
 	atomic_set(&ref->dupes, 1);
@@ -1135,17 +1114,34 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	 */
 	get_dma_buf(h->dmabuf);
 
+	ref->fd = -1;
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	if (client && !client->kernel_client) {
+		ref->fd = dma_buf_fd(h->dmabuf, O_CLOEXEC);
+		if (ref->fd <= 2) {
+			pr_err("fd=%d <=2 ", ref->fd);
+			BUG();
+		}
+		if (ref->fd < 0)
+			goto fd_fail;
+		/* dma_buf_fd() associates fd with dma_buf->file *.
+		 * fd close drops one ref count on dmabuf->file *.
+		 * to balance ref count, ref count dma_buf.
+		 */
+		get_dma_buf(h->dmabuf);
+		ref->group_leader = current->group_leader;
+	}
+#endif
+
 	trace_nvmap_duplicate_handle_id(client, id, ref);
 	return ref;
-}
 
-struct nvmap_handle_ref *nvmap_duplicate_handle_user_id(
-						struct nvmap_client *client,
-						unsigned long user_id)
-{
-	if (!virt_addr_valid(client))
-		return ERR_PTR(-EINVAL);
-	return nvmap_duplicate_handle_id(client, unmarshal_user_id(user_id), 0);
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+fd_fail:
+	pr_err("Out of file descriptors");
+	nvmap_handle_put(h);
+	return ERR_PTR(-ENOMEM);
+#endif
 }
 
 struct nvmap_handle_ref *nvmap_create_handle_from_fd(
@@ -1171,7 +1167,7 @@ unsigned long nvmap_duplicate_handle_id_ex(struct nvmap_client *client,
 	if (IS_ERR(ref))
 		return 0;
 
-	return nvmap_ref_to_id(ref);
+	return __nvmap_ref_to_id(ref);
 }
 EXPORT_SYMBOL(nvmap_duplicate_handle_id_ex);
 
@@ -1244,9 +1240,9 @@ int nvmap_acquire_page_list(struct nvmap_client *client,
 		pages[idx] = h->pgalloc.pages[idx];
 
 	nvmap_ref_lock(client);
-	ref = _nvmap_validate_id_locked(client, id);
+	ref = __nvmap_validate_id_locked(client, id);
 	if (ref)
-		nvmap_pin(client, ref, &dummy);
+		__nvmap_pin(ref, &dummy);
 	nvmap_ref_unlock(client);
 
 	return 0;
@@ -1262,9 +1258,9 @@ int nvmap_release_page_list(struct nvmap_client *client, unsigned long id)
 
 	nvmap_ref_lock(client);
 
-	ref = _nvmap_validate_id_locked(client, id);
+	ref = __nvmap_validate_id_locked(client, id);
 	if (ref)
-		nvmap_unpin(client, ref);
+		__nvmap_unpin(ref);
 
 	nvmap_ref_unlock(client);
 
@@ -1293,7 +1289,7 @@ int __nvmap_get_handle_param(struct nvmap_client *client,
 		*result = h->align;
 		break;
 	case NVMAP_HANDLE_PARAM_BASE:
-		if (!h->alloc || !atomic_add_return(0, &h->pin))
+		if (!h->alloc || !atomic_read(&h->pin))
 			*result = -EINVAL;
 		else if (!h->heap_pgalloc) {
 			mutex_lock(&h->lock);
@@ -1301,8 +1297,9 @@ int __nvmap_get_handle_param(struct nvmap_client *client,
 			mutex_unlock(&h->lock);
 		} else if (h->pgalloc.contig)
 			*result = page_to_phys(h->pgalloc.pages[0]);
-		else if (h->pgalloc.area)
-			*result = h->pgalloc.area->iovm_start;
+		else if (h->attachment->priv)
+			*result = sg_dma_address(
+				((struct sg_table *)h->attachment->priv)->sgl);
 		else
 			*result = -EINVAL;
 		break;

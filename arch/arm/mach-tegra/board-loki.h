@@ -33,13 +33,17 @@ int loki_sensors_init(void);
 int loki_regulator_init(void);
 int loki_suspend_init(void);
 int loki_pmon_init(void);
+int loki_edp_init(void);
+int loki_rail_alignment_init(void);
+int loki_soctherm_init(void);
+int loki_emc_init(void);
 
 /* Invensense MPU Definitions */
 #define MPU_GYRO_NAME		"mpu6050"
 #define MPU_GYRO_IRQ_GPIO	TEGRA_GPIO_PR2
 #define MPU_GYRO_ADDR		0x68
 #define MPU_GYRO_BUS_NUM	0
-#define MPU_GYRO_ORIENTATION	MTMAT_TOP_CCW_0
+#define MPU_GYRO_ORIENTATION	MTMAT_BOT_CCW_90
 
 /* PCA954x I2C bus expander bus addresses */
 #define PCA954x_I2C_BUS_BASE    6
@@ -71,6 +75,9 @@ int loki_pmon_init(void);
 /* Modem related GPIOs */
 #define MDM_RST			TEGRA_GPIO_PS3
 #define MDM_COLDBOOT		TEGRA_GPIO_PO5
+
+/* Hall Effect Sensor GPIO */
+#define TEGRA_GPIO_HALL		TEGRA_GPIO_PS0
 
 /* Baseband IDs */
 enum tegra_bb_type {
@@ -138,5 +145,6 @@ GPIO, also the GPIO is same for T114 interposer and T124*/
 /* TN8 specific */
 
 int tn8_regulator_init(void);
+int loki_fan_init(void);
 
 #endif

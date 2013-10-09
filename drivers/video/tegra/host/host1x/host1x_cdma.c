@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Command DMA
  *
- * Copyright (c) 2010-2013, NVIDIA Corporation.
+ * Copyright (c) 2010-2013, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -92,13 +92,13 @@ static int push_buffer_init(struct push_buffer *pb)
 
 	/* pin pushbuffer and get physical address */
 	pb->sgt = nvhost_memmgr_pin(mgr, pb->mem,
-			&cdma_to_dev(cdma)->dev->dev);
+			&cdma_to_dev(cdma)->dev->dev, mem_flag_none);
 	if (IS_ERR(pb->sgt)) {
 		err = PTR_ERR(pb->sgt);
 		pb->sgt = 0;
 		goto fail;
 	}
-	pb->phys = sg_dma_address(pb->sgt->sgl);
+	pb->phys = nvhost_memmgr_dma_addr(pb->sgt);
 
 	/* memory for storing nvmap client and handles for each opcode pair */
 	pb->client_handle = kzalloc(NVHOST_GATHER_QUEUE_SIZE *
@@ -277,6 +277,9 @@ static void cdma_start(struct nvhost_cdma *cdma)
 	writel(host1x_channel_dmactrl(true, true, true),
 		chan_regs + host1x_channel_dmactrl_r());
 
+	/* prevent using setclass inside gathers */
+	nvhost_channel_init_gather_filter(cdma_to_channel(cdma));
+
 	/* start the command DMA */
 	writel(host1x_channel_dmactrl(false, false, false),
 		chan_regs + host1x_channel_dmactrl_r());
@@ -322,6 +325,9 @@ static void cdma_timeout_restart(struct nvhost_cdma *cdma, u32 getptr)
 	writel(host1x_channel_dmactrl(true, false, false),
 		chan_regs + host1x_channel_dmactrl_r());
 	writel(cdma->last_put, chan_regs + host1x_channel_dmaput_r());
+
+	/* reinitialise gather filter for the channel */
+	nvhost_channel_init_gather_filter(cdma_to_channel(cdma));
 
 	/* start the command DMA */
 	writel(host1x_channel_dmactrl(false, false, false),

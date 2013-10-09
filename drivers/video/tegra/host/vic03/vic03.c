@@ -28,6 +28,7 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/tegra-powergate.h>
+#include <linux/tegra-soc.h>
 
 #include "dev.h"
 #include "class_ids.h"
@@ -43,42 +44,12 @@
 #include "hw_tfbif_vic03.h"
 
 #include "t124/hardware_t124.h" /* for nvhost opcodes*/
+#include "t124/t124.h"
 
 #include <mach/pm_domains.h>
 
 #include "../../../../../arch/arm/mach-tegra/iomap.h"
 
-static struct resource vic03_resources[] = {
-{
-	.name = "base",
-	.start = TEGRA_VIC_BASE,
-	.end = TEGRA_VIC_BASE + TEGRA_VIC_SIZE - 1,
-	.flags = IORESOURCE_MEM,
-},
-};
-
-struct nvhost_device_data vic03_info = {
-	/*.syncpts*/
-	/*.modulemutexes*/
-	.clocks = {{"vic03", UINT_MAX}, {"emc", UINT_MAX}, {} },
-	NVHOST_MODULE_NO_POWERGATE_IDS,
-	NVHOST_DEFAULT_CLOCKGATE_DELAY,
-	.moduleid      = NVHOST_MODULE_VIC,
-	.alloc_hwctx_handler = nvhost_vic03_alloc_hwctx_handler,
-	.can_powergate		= true,
-	.powergate_delay	= 500,
-	.powergate_ids		= { TEGRA_POWERGATE_VIC, -1 },
-	.prepare_poweroff	= nvhost_vic03_prepare_poweroff,
-};
-
-struct platform_device tegra_vic03_device = {
-	.name	       = "vic03",
-	.num_resources = 1,
-	.resource      = vic03_resources,
-	.dev           = {
-		.platform_data = &vic03_info,
-	},
-};
 static inline struct vic03 *get_vic03(struct platform_device *dev)
 {
 	return (struct vic03 *)nvhost_get_private_data(dev);
@@ -86,6 +57,25 @@ static inline struct vic03 *get_vic03(struct platform_device *dev)
 static inline void set_vic03(struct platform_device *dev, struct vic03 *vic03)
 {
 	nvhost_set_private_data(dev, vic03);
+}
+
+/* caller is responsible for freeing */
+static char *vic_get_fw_name(struct platform_device *dev)
+{
+	char *fw_name;
+	u8 maj, min;
+	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
+
+	/* note size here is a little over...*/
+	fw_name = kzalloc(32, GFP_KERNEL);
+	if (!fw_name)
+		return NULL;
+
+	decode_vic_ver(pdata->version, &maj, &min);
+	sprintf(fw_name, "vic%02d_ucode.bin", maj);
+	dev_info(&dev->dev, "fw name:%s\n", fw_name);
+
+	return fw_name;
 }
 
 #define VIC_IDLE_TIMEOUT_DEFAULT	10000	/* 10 milliseconds */
@@ -243,13 +233,13 @@ static int vic03_setup_ucode_image(struct platform_device *dev,
 	return 0;
 }
 
-static int vic03_read_ucode(struct platform_device *dev)
+static int vic03_read_ucode(struct platform_device *dev, const char *fw_name)
 {
 	struct vic03 *v = get_vic03(dev);
 	const struct firmware *ucode_fw;
 	int err;
 
-	ucode_fw = nvhost_client_request_firmware(dev, VIC03_UCODE_FW_NAME);
+	ucode_fw = nvhost_client_request_firmware(dev, fw_name);
 	if (!ucode_fw) {
 		nvhost_dbg_fn("request firmware failed");
 		dev_err(&dev->dev, "failed to get vic03 firmware\n");
@@ -271,14 +261,14 @@ static int vic03_read_ucode(struct platform_device *dev)
 	}
 
 	v->ucode.sgt = nvhost_memmgr_pin(v->host->memmgr, v->ucode.mem_r,
-		&dev->dev);
+		&dev->dev, mem_flag_read_only);
 	if (IS_ERR(v->ucode.sgt)) {
 		nvhost_err(&dev->dev, "nvmap pin failed for ucode, %ld",
 			PTR_ERR(v->ucode.sgt));
 		err = PTR_ERR(v->ucode.sgt);
 		goto clean_up;
 	}
-	v->ucode.pa = sg_dma_address(v->ucode.sgt->sgl);
+	v->ucode.pa = nvhost_memmgr_dma_addr(v->ucode.sgt);
 
 	v->ucode.va = nvhost_memmgr_mmap(v->ucode.mem_r);
 	if (!v->ucode.va) {
@@ -383,15 +373,23 @@ int nvhost_vic03_init(struct platform_device *dev)
 	int err = 0;
 	struct nvhost_device_data *pdata = nvhost_get_devdata(dev);
 	struct vic03 *v = get_vic03(dev);
+	char *fw_name;
 
 	nvhost_dbg_fn("in dev:%p v:%p", dev, v);
+
+	fw_name = vic_get_fw_name(dev);
+	if (!fw_name) {
+		dev_err(&dev->dev, "couldn't determine firmware name");
+		return -EINVAL;
+	}
 
 	if (!v) {
 		nvhost_dbg_fn("allocating vic03 support");
 		v = kzalloc(sizeof(*v), GFP_KERNEL);
 		if (!v) {
 			dev_err(&dev->dev, "couldn't alloc vic03 support");
-			return -ENOMEM;
+			err = -ENOMEM;
+			goto clean_up;
 		}
 		set_vic03(dev, v);
 		v->is_booted = false;
@@ -402,9 +400,12 @@ int nvhost_vic03_init(struct platform_device *dev)
 	v->regs = pdata->aperture[0];
 
 	if (!v->ucode.valid)
-		err = vic03_read_ucode(dev);
+		err = vic03_read_ucode(dev, fw_name);
 	if (err)
 		goto clean_up;
+
+	kfree(fw_name);
+	fw_name = NULL;
 
 	nvhost_module_busy(dev);
 	err = vic03_boot(dev);
@@ -416,6 +417,7 @@ int nvhost_vic03_init(struct platform_device *dev)
 	return 0;
 
  clean_up:
+	kfree(fw_name);
 	nvhost_err(&dev->dev, "failed");
 
 	return err;
@@ -519,10 +521,10 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 	ctx->hwctx.save_slots = 0;
 
 	ctx->restore_sgt = nvhost_memmgr_pin(nvmap,
-			ctx->restore, &ch->dev->dev);
+			ctx->restore, &ch->dev->dev, mem_flag_none);
 	if (IS_ERR(ctx->restore_sgt))
 		goto fail_pin;
-	ctx->restore_phys = sg_dma_address(ctx->restore_sgt->sgl);
+	ctx->restore_phys = nvhost_memmgr_dma_addr(ctx->restore_sgt);
 
 	ctx->restore_size = nvhost_vic03_restore_size;
 	ctx->hwctx.restore_incrs = 1;
@@ -633,7 +635,7 @@ int nvhost_vic03_prepare_poweroff(struct platform_device *dev)
 
 static struct of_device_id tegra_vic_of_match[] = {
 	{ .compatible = "nvidia,tegra124-vic",
-		.data = (struct nvhost_device_data *)&vic03_info },
+		.data = (struct nvhost_device_data *)&t124_vic_info },
 	{ },
 };
 
@@ -653,21 +655,14 @@ static int vic03_probe(struct platform_device *dev)
 
 	nvhost_dbg_fn("dev:%p pdata:%p", dev, pdata);
 
-	pdata->init			= nvhost_vic03_init;
-	pdata->deinit			= nvhost_vic03_deinit;
-	pdata->finalize_poweron		= nvhost_vic03_finalize_poweron;
-	pdata->alloc_hwctx_handler	= nvhost_vic03_alloc_hwctx_handler;
-
-	pdata->scaling_init		= nvhost_scale_init;
-	pdata->scaling_deinit		= nvhost_scale_deinit;
-	pdata->actmon_regs		= HOST1X_CHANNEL_ACTMON2_REG_BASE;
-	pdata->actmon_enabled		= true;
-
 	pdata->pdev = dev;
-
 	mutex_init(&pdata->lock);
-
 	platform_set_drvdata(dev, pdata);
+
+	err = nvhost_client_device_get_resources(dev);
+	if (err)
+		return err;
+
 	dev->dev.platform_data = NULL;
 
 	nvhost_module_init(dev);
@@ -677,10 +672,6 @@ static int vic03_probe(struct platform_device *dev)
 
 	err = nvhost_module_add_domain(&pdata->pd, dev);
 #endif
-
-	err = nvhost_client_device_get_resources(dev);
-	if (err)
-		return err;
 
 	err = nvhost_client_device_init(dev);
 	if (err) {

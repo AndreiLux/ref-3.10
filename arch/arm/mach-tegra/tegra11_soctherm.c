@@ -443,20 +443,6 @@ static void __iomem *reg_soctherm_base = IO_ADDRESS(TEGRA_SOCTHERM_BASE);
 static void __iomem *pmc_base = IO_ADDRESS(TEGRA_PMC_BASE);
 static void __iomem *clk_reset_base = IO_ADDRESS(TEGRA_CLK_RESET_BASE);
 
-#define clk_reset_writel(value, reg) \
-	__raw_writel(value, clk_reset_base + (reg))
-#define clk_reset_readl(reg) __raw_readl(clk_reset_base + (reg))
-
-#define pmc_writel(value, reg) __raw_writel(value, pmc_base + (reg))
-#define pmc_readl(reg) __raw_readl(pmc_base + (reg))
-
-#define soctherm_writel(value, reg)	\
-	(soctherm_suspended ?:		\
-		__raw_writel(value, reg_soctherm_base + (reg)))
-#define soctherm_readl(reg)		\
-	(soctherm_suspended ? 0 :	\
-		__raw_readl(reg_soctherm_base + (reg)))
-
 static DEFINE_MUTEX(soctherm_suspend_resume_lock);
 
 static int soctherm_suspend(void);
@@ -476,6 +462,42 @@ static bool soctherm_high_voltage_range = true;
 
 static struct clk *soctherm_clk;
 static struct clk *tsensor_clk;
+
+static inline void soctherm_writel(u32 value, u32 reg)
+{
+	if (!soctherm_suspended)
+		__raw_writel(value, (void *)
+			(reg_soctherm_base + reg));
+}
+
+static inline u32 soctherm_readl(u32 reg)
+{
+	if (soctherm_suspended)
+		return 0;
+	return __raw_readl(reg_soctherm_base + reg);
+}
+
+static inline void pmc_writel(u32 value, u32 reg)
+{
+	__raw_writel(value, (void *)
+		(pmc_base + reg));
+}
+
+static inline u32 pmc_readl(u32 reg)
+{
+	return __raw_readl(pmc_base + reg);
+}
+
+static inline void clk_reset_writel(u32 value, u32 reg)
+{
+	__raw_writel(value, (void *)
+		(clk_reset_base + reg));
+}
+
+static inline u32 clk_reset_readl(u32 reg)
+{
+	return __raw_readl(clk_reset_base + reg);
+}
 
 static inline long temp_convert(int cap, int a, int b)
 {
@@ -1711,7 +1733,6 @@ static int soctherm_clk_enable(bool enable)
 
 static int soctherm_fuse_read_calib_base(void)
 {
-	u32 value;
 	s32 calib_cp, calib_ft;
 	s32 nominal_calib_cp, nominal_calib_ft;
 
@@ -1778,6 +1799,28 @@ static int t14x_fuse_corr_beta[] = { /* scaled *1000000 */
 	[TSENSE_PLLX] = -14736000,
 };
 
+static int t12x_fuse_corr_alpha[] = { /* scaled *1000000 */
+	[TSENSE_CPU0] = 1148300,
+	[TSENSE_CPU1] = 1126100,
+	[TSENSE_CPU2] = 1155800,
+	[TSENSE_CPU3] = 1134900,
+	[TSENSE_MEM0] = 1062700,
+	[TSENSE_MEM1] = 1084700,
+	[TSENSE_GPU]  = 1084300,
+	[TSENSE_PLLX] = 1134500,
+};
+
+static int t12x_fuse_corr_beta[] = { /* scaled *1000000 */
+	[TSENSE_CPU0] =  -6572300,
+	[TSENSE_CPU1] =  -5794600,
+	[TSENSE_CPU2] =  -7462800,
+	[TSENSE_CPU3] =  -6810800,
+	[TSENSE_MEM0] =  -4463200,
+	[TSENSE_MEM1] =  -5603400,
+	[TSENSE_GPU]  =  -5111900,
+	[TSENSE_PLLX] =  -7410700,
+};
+
 static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 {
 	u32 r, value;
@@ -1832,6 +1875,15 @@ static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 			therm_b = div64_s64_precise(
 				(s64)therm_b * t14x_fuse_corr_alpha[sensor] +
 				t14x_fuse_corr_beta[sensor], (s64)1000000LL);
+		} else if (tegra_chip_id == TEGRA_CHIPID_TEGRA12) {
+			t12x_fuse_corr_alpha[sensor] =
+				t12x_fuse_corr_alpha[sensor] ?: 1000000;
+			therm_a = div64_s64_precise(
+				(s64)therm_a * t12x_fuse_corr_alpha[sensor],
+				(s64)1000000LL);
+			therm_b = div64_s64_precise(
+				(s64)therm_b * t12x_fuse_corr_alpha[sensor] +
+				t12x_fuse_corr_beta[sensor], (s64)1000000LL);
 		}
 		/* TO DO: Add therm_a & therm_b calculation for T124 */
 	}
@@ -2519,7 +2571,7 @@ static int regs_show(struct seq_file *s, void *data)
 				tegra_chip_id == TEGRA_CHIPID_TEGRA12) {
 				state = REG_GET(r,
 					THROT_PSKIP_CTRL_THROT_DEPTH);
-				seq_printf(s, "throt depth: %s  ", state);
+				seq_printf(s, "throt depth: %d  ", state);
 			} else {
 				state = REG_GET(r, THROT_PSKIP_CTRL_DIVIDEND);
 				seq_printf(s, "%8d  ", state);

@@ -207,6 +207,9 @@ void pg_writel(u32 val, u32 bank, u32 reg)
 
 int tegra_pinmux_get_pingroup(int gpio_nr)
 {
+	if (!gpio_to_pingroups_map)
+		return -EINVAL;
+
 	return gpio_to_pingroups_map[gpio_nr];
 }
 EXPORT_SYMBOL_GPL(tegra_pinmux_get_pingroup);
@@ -1079,6 +1082,10 @@ static int tegra_pinmux_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_ARCH_TEGRA_11x_SOC
 	tegra11x_default_pinmux();
+#endif
+
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+	tegra12x_default_pinmux();
 #endif
 
 	return 0;

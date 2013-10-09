@@ -65,10 +65,12 @@ struct dma_map_ops {
 #ifdef ARCH_HAS_DMA_GET_REQUIRED_MASK
 	u64 (*get_required_mask)(struct device *dev);
 #endif
-	dma_addr_t (*iova_alloc)(struct device *dev, size_t size);
+	dma_addr_t (*iova_alloc)(struct device *dev, size_t size,
+				 struct dma_attrs *attrs);
 	dma_addr_t (*iova_alloc_at)(struct device *dev, dma_addr_t *dma_addr,
-				    size_t size);
-	void (*iova_free)(struct device *dev, dma_addr_t addr, size_t size);
+				    size_t size, struct dma_attrs *attrs);
+	void (*iova_free)(struct device *dev, dma_addr_t addr, size_t size,
+			  struct dma_attrs *attrs);
 	size_t (*iova_get_free_total)(struct device *dev);
 	size_t (*iova_get_free_max)(struct device *dev);
 
@@ -172,6 +174,7 @@ static inline int dma_get_cache_alignment(void)
 #define DMA_MEMORY_IO			0x02
 #define DMA_MEMORY_INCLUDES_CHILDREN	0x04
 #define DMA_MEMORY_EXCLUSIVE		0x08
+#define DMA_MEMORY_NOMAP		0x10
 
 #ifndef ARCH_HAS_DMA_DECLARE_COHERENT_MEMORY
 static inline int

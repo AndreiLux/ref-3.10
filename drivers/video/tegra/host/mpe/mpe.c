@@ -475,7 +475,7 @@ static struct nvhost_hwctx *ctxmpe_alloc(struct nvhost_hwctx_handler *h,
 		goto fail_mmap;
 
 	ctx->restore_sgt = nvhost_memmgr_pin(memmgr, ctx->restore,
-			&ch->dev->dev);
+			&ch->dev->dev, mem_flag_none);
 	if (IS_ERR(ctx->restore_sgt))
 		goto fail_pin;
 	ctx->restore_phys = sg_dma_address(ctx->restore_sgt->sgl);
@@ -605,7 +605,8 @@ struct nvhost_hwctx_handler *nvhost_mpe_ctxhandler_init(u32 syncpt,
 	if (!save_ptr)
 		goto fail_mmap;
 
-	p->save_sgt = nvhost_memmgr_pin(memmgr, p->save_buf, &ch->dev->dev);
+	p->save_sgt = nvhost_memmgr_pin(memmgr, p->save_buf, &ch->dev->dev,
+								mem_flag_none);
 	if (IS_ERR(p->save_sgt))
 		goto fail_pin;
 	p->save_phys = sg_dma_address(p->save_sgt->sgl);
@@ -670,11 +671,12 @@ static int mpe_probe(struct platform_device *dev)
 	pdata->pdev = dev;
 	mutex_init(&pdata->lock);
 	platform_set_drvdata(dev, pdata);
-	nvhost_module_init(dev);
 
 	err = nvhost_client_device_get_resources(dev);
 	if (err)
 		return err;
+
+	nvhost_module_init(dev);
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS
 	pdata->pd.name = "mpe";
@@ -808,7 +810,7 @@ int nvhost_mpe_read_reg(struct platform_device *dev,
 
 	/* Submit job */
 	nvhost_job_add_gather(job, nvhost_memmgr_handle_to_id(mem),
-			ARRAY_SIZE(opcodes), 0);
+			ARRAY_SIZE(opcodes), 0, 0);
 
 	err = nvhost_job_pin(job, &nvhost_get_host(dev)->syncpt);
 	if (err)

@@ -44,7 +44,7 @@ enum palmas_usb_cable_id {
 	USB_CABLE_ID_FLOAT,
 };
 
-static const char *const palmas_extcon_cable[] = {
+static char const *palmas_extcon_cable[] = {
 	[0] = "USB",
 	[1] = "USB-Host",
 	[2] = "USB-ID-A",
@@ -99,6 +99,7 @@ static int palmas_usb_id_state_update(struct palmas_usb *palmas_usb)
 	int new_state;
 	int new_cable_index;
 	int retry = 5;
+	unsigned int line_state;
 
 src_again:
 	ret = palmas_read(palmas_usb->palmas, PALMAS_USB_OTG_BASE,
@@ -118,7 +119,7 @@ src_again:
 		return -EAGAIN;
 	}
 
-	/* If two ID states shows sign then allow for debauncing to settled. */
+	/* If two ID states show sign then allow debouncing to settle */
 	if (id_src & (id_src - 1)) {
 		dev_info(palmas_usb->dev,
 			"ID states are not settled, try later\n");
@@ -144,6 +145,27 @@ src_again:
 		dev_info(palmas_usb->dev, "ID_SRC is not valid\n");
 		new_state = PALMAS_USB_STATE_ID_FLOAT;
 		new_cable_index = 0;
+	}
+
+	ret = palmas_read(palmas_usb->palmas, PALMAS_INTERRUPT_BASE,
+			PALMAS_INT3_LINE_STATE, &line_state);
+	if (ret < 0) {
+		dev_err(palmas_usb->dev,
+			"INT3_LINE_STATE read failed: %d\n", ret);
+		return ret;
+	}
+
+	/* Reconfirm the state by Line State */
+	if (line_state & PALMAS_INT3_LINE_STATE_ID) {
+		if (new_state == PALMAS_USB_STATE_ID_FLOAT) {
+			new_state = PALMAS_USB_STATE_ID_GND;
+			new_cable_index = 1;
+		}
+	} else {
+		if (new_state != PALMAS_USB_STATE_ID_FLOAT) {
+			new_state = PALMAS_USB_STATE_ID_FLOAT;
+			new_cable_index = 0;
+		}
 	}
 
 	if (palmas_usb->id_linkstat == new_state) {
@@ -199,7 +221,7 @@ static void palmas_usb_id_st_wq(struct work_struct *work)
 	ret = palmas_usb_id_state_update(palmas_usb);
 	if (ret == -EAGAIN)
 		schedule_delayed_work(&palmas_usb->cable_update_wq,
-			msecs_to_jiffies(palmas_usb->cable_debaunce_time));
+			msecs_to_jiffies(palmas_usb->cable_debounce_time));
 }
 
 
@@ -248,7 +270,7 @@ static irqreturn_t palmas_id_irq_handler(int irq, void *_palmas_usb)
 		PALMAS_USB_ID_INT_LATCH_CLR, set);
 
 	schedule_delayed_work(&palmas_usb->cable_update_wq,
-			msecs_to_jiffies(palmas_usb->cable_debaunce_time));
+			msecs_to_jiffies(palmas_usb->cable_debounce_time));
 	return IRQ_HANDLED;
 }
 
@@ -273,11 +295,11 @@ static void palmas_enable_irq(struct palmas_usb *palmas_usb)
 
 	if (palmas_usb->enable_id_detection) {
 		/* Wait for the comparator to update status */
-		msleep(palmas_usb->cable_debaunce_time);
+		msleep(palmas_usb->cable_debounce_time);
 		ret = palmas_usb_id_state_update(palmas_usb);
 		if (ret == -EAGAIN)
 			schedule_delayed_work(&palmas_usb->cable_update_wq,
-			    msecs_to_jiffies(palmas_usb->cable_debaunce_time));
+			    msecs_to_jiffies(palmas_usb->cable_debounce_time));
 	}
 }
 
@@ -289,6 +311,7 @@ static int palmas_usb_probe(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	struct palmas_usb *palmas_usb;
 	int status;
+	const char *ext_name = NULL;
 
 	palmas_usb = devm_kzalloc(&pdev->dev, sizeof(*palmas_usb), GFP_KERNEL);
 	if (!palmas_usb)
@@ -304,6 +327,9 @@ static int palmas_usb_probe(struct platform_device *pdev)
 						"ti,enable-id-detection");
 		palmas_usb->enable_vbus_detection = of_property_read_bool(node,
 						"ti,enable-vbus-detection");
+		status = of_property_read_string(node, "extcon-name", &ext_name);
+		if (status < 0)
+			ext_name = NULL;
 	} else {
 		palmas_usb->wakeup = true;
 		palmas_usb->enable_id_detection = true;
@@ -317,12 +343,13 @@ static int palmas_usb_probe(struct platform_device *pdev)
 					epdata->enable_vbus_detection;
 			if (palmas_usb->enable_id_detection)
 				palmas_usb->wakeup = true;
+			ext_name = epdata->connection_name;
 		}
 	}
 
 	palmas_usb->palmas = palmas;
 	palmas_usb->dev	 = &pdev->dev;
-	palmas_usb->cable_debaunce_time = 300;
+	palmas_usb->cable_debounce_time = 300;
 
 	palmas_usb->id_otg_irq = palmas_irq_get_virq(palmas, PALMAS_ID_OTG_IRQ);
 	palmas_usb->id_irq = palmas_irq_get_virq(palmas, PALMAS_ID_IRQ);
@@ -336,8 +363,7 @@ static int palmas_usb_probe(struct platform_device *pdev)
 
 	palmas_usb->edev.supported_cable = palmas_extcon_cable;
 	palmas_usb->edev.mutually_exclusive = mutually_exclusive;
-	palmas_usb->edev.name  = (epdata && epdata->connection_name) ?
-					epdata->connection_name : pdev->name;
+	palmas_usb->edev.name  = (ext_name) ? ext_name : dev_name(&pdev->dev);
 
 	status = extcon_dev_register(&palmas_usb->edev, palmas_usb->dev);
 	if (status < 0) {

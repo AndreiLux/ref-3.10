@@ -80,6 +80,10 @@ static int tegra_fb_check_var(struct fb_var_screeninfo *var,
 
 	/* Apply mode filter for HDMI only -LVDS supports only fix mode */
 	if (ops && ops->mode_filter) {
+		/* xoffset and yoffset are not preserved by conversion
+		 * to fb_videomode */
+		__u32 xoffset = var->xoffset;
+		__u32 yoffset = var->yoffset;
 
 		fb_var_to_videomode(&mode, var);
 		if (!ops->mode_filter(dc, &mode))
@@ -87,6 +91,9 @@ static int tegra_fb_check_var(struct fb_var_screeninfo *var,
 
 		/* Mode filter may have modified the mode */
 		fb_videomode_to_var(var, &mode);
+
+		var->xoffset = xoffset;
+		var->yoffset = yoffset;
 	}
 
 	/* Double yres_virtual to allow double buffering through pan_display */
@@ -284,9 +291,11 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 	switch (blank) {
 	case FB_BLANK_UNBLANK:
 		dev_dbg(&tegra_fb->ndev->dev, "unblank\n");
-#if !defined(CONFIG_ANDROID)
+#if defined(CONFIG_ANDROID)
 		/* Not restoring windows to avoid white screen on android */
-		tegra_fb->win->flags = TEGRA_WIN_FLAG_ENABLED;
+		tegra_fb->win->flags &= ~TEGRA_WIN_FLAG_ENABLED;
+#else
+		tegra_fb->win->flags |= TEGRA_WIN_FLAG_ENABLED;
 #endif
 		tegra_dc_enable(tegra_fb->win->dc);
 		tegra_dc_update_windows(&tegra_fb->win, 1);
@@ -388,7 +397,7 @@ static int tegra_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long 
 	struct tegra_fb_modedb modedb;
 	struct fb_modelist *modelist;
 	struct fb_vblank vblank = {};
-	int i;
+	unsigned i;
 
 	switch (cmd) {
 	case FBIO_TEGRA_GET_MODEDB:
@@ -633,13 +642,9 @@ struct tegra_fb_info *tegra_fb_register(struct platform_device *ndev,
 	info->fix.xpanstep	= 1;
 	info->fix.ypanstep	= 1;
 	info->fix.accel		= FB_ACCEL_NONE;
-#ifdef CONFIG_ARM_LPAE
 	/* Note:- Use tegra_fb_info.phys_start instead of
 	 *        fb_info.fix->smem_start when LPAE is enabled. */
-	info->fix.smem_start	= 0;
-#else
-	info->fix.smem_start	= tegra_fb->phys_start;
-#endif
+	info->fix.smem_start	= (u32)tegra_fb->phys_start;
 	info->fix.smem_len	= fb_size;
 	info->fix.line_length = stride;
 	INIT_LIST_HEAD(&info->modelist);

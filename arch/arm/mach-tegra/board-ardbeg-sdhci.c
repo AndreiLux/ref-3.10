@@ -35,7 +35,9 @@
 #include "gpio-names.h"
 #include "board.h"
 #include "board-ardbeg.h"
+#include "dvfs.h"
 #include "iomap.h"
+#include "tegra-board-id.h"
 
 #define ARDBEG_WLAN_RST	TEGRA_GPIO_PCC5
 #define ARDBEG_WLAN_PWR	TEGRA_GPIO_PX7
@@ -71,6 +73,23 @@ static struct platform_device ardbeg_wifi_device = {
 	.num_resources	= 1,
 	.resource	= wifi_resource,
 	.dev		= {
+		.platform_data = &ardbeg_wifi_control,
+	},
+};
+
+static struct resource mrvl_wifi_resource[] = {
+	[0] = {
+		.name   = "mrvl_wlan_irq",
+		.flags  = IORESOURCE_IRQ | IORESOURCE_IRQ_LOWLEVEL | IORESOURCE_IRQ_SHAREABLE,
+	},
+};
+
+static struct platform_device marvell_wifi_device = {
+	.name           = "mrvl_wlan",
+	.id             = 1,
+	.num_resources  = 1,
+	.resource       = mrvl_wifi_resource,
+	.dev            = {
 		.platform_data = &ardbeg_wifi_control,
 	},
 };
@@ -146,8 +165,12 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.tap_delay = 0,
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
-	.uhs_mask = MMC_UHS_MASK_SDR104 |
+/*FIXME: Enable UHS modes for WiFI */
+	.uhs_mask = MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_SDR12 | MMC_UHS_MASK_SDR25 |
 		MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
+	.calib_3v3_offsets = 0x7676,
+	.calib_1v8_offsets = 0x7676,
+	.calib_1v8_offsets_uhs_modes = MMC_1V8_CALIB_OFFSET_DDR50,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
@@ -156,9 +179,13 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
 	.power_gpio = -1,
 	.tap_delay = 0,
 	.trim_delay = 0x3,
-	.uhs_mask = MMC_UHS_MASK_SDR104 |
-		MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
-/*	.max_clk = 12000000, */
+/*FIXME: Enable UHS modes for SD */
+	.uhs_mask = MMC_UHS_MASK_SDR12 | MMC_UHS_MASK_SDR25 |
+		MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_DDR50 |
+		MMC_UHS_MASK_SDR50,
+	.calib_3v3_offsets = 0x7676,
+	.calib_1v8_offsets = 0x7676,
+	.calib_1v8_offsets_uhs_modes = MMC_1V8_CALIB_OFFSET_DDR50,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
@@ -173,10 +200,12 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 		.built_in = 1,
 		.ocr_mask = MMC_OCR_1V8_MASK,
 	},
-	.uhs_mask = MMC_MASK_HS200,
 	.ddr_clk_limit = 51000000,
 	.max_clk_limit = 102000000,
-/*	.max_clk = 12000000, */
+	.calib_3v3_offsets = 0x0202,
+	.calib_1v8_offsets = 0x0202,
+	.calib_1v8_offsets_uhs_modes = MMC_1V8_CALIB_OFFSET_DDR50 |
+		MMC_1V8_CALIB_OFFSET_HS200,
 };
 
 static struct platform_device tegra_sdhci_device0 = {
@@ -276,6 +305,11 @@ static int __init ardbeg_wifi_init(void)
 		gpio_to_irq(ARDBEG_WLAN_WOW);
 
 	platform_device_register(&ardbeg_wifi_device);
+
+	mrvl_wifi_resource[0].start = mrvl_wifi_resource[0].end =
+		gpio_to_irq(ARDBEG_WLAN_WOW);
+	platform_device_register(&marvell_wifi_device);
+
 	return 0;
 }
 
@@ -296,6 +330,43 @@ subsys_initcall_sync(ardbeg_wifi_prepower);
 
 int __init ardbeg_sdhci_init(void)
 {
+	int nominal_core_mv;
+	int min_vcore_override_mv;
+	int boot_vcore_mv;
+	struct board_info board_info;
+
+	nominal_core_mv =
+		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
+	if (nominal_core_mv) {
+		tegra_sdhci_platform_data0.nominal_vcore_mv = nominal_core_mv;
+		tegra_sdhci_platform_data2.nominal_vcore_mv = nominal_core_mv;
+		tegra_sdhci_platform_data3.nominal_vcore_mv = nominal_core_mv;
+	}
+	min_vcore_override_mv =
+		tegra_dvfs_rail_get_override_floor(tegra_core_rail);
+	if (min_vcore_override_mv) {
+		tegra_sdhci_platform_data0.min_vcore_override_mv =
+			min_vcore_override_mv;
+		tegra_sdhci_platform_data2.min_vcore_override_mv =
+			min_vcore_override_mv;
+		tegra_sdhci_platform_data3.min_vcore_override_mv =
+			min_vcore_override_mv;
+	}
+	boot_vcore_mv = tegra_dvfs_rail_get_boot_level(tegra_core_rail);
+	if (boot_vcore_mv) {
+		tegra_sdhci_platform_data0.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data2.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
+	}
+
+	tegra_get_board_info(&board_info);
+	if (board_info.board_id == BOARD_E1780) {
+		tegra_sdhci_platform_data3.max_clk_limit = 200000000;
+		tegra_sdhci_platform_data2.max_clk_limit = 204000000;
+	} else {
+		tegra_sdhci_platform_data3.uhs_mask = MMC_MASK_HS200;
+	}
+
 	platform_device_register(&tegra_sdhci_device3);
 	platform_device_register(&tegra_sdhci_device2);
 	platform_device_register(&tegra_sdhci_device0);

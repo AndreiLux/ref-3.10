@@ -505,6 +505,7 @@ static s32 show_current2(struct device *dev,
 	mutex_unlock(&data->mutex);
 
 	voltage_uV = shuntv_register_to_uv(voltage_uV);
+	voltage_uV = abs(voltage_uV);
 
 	inverse_shunt_resistor = 1000 / data->pdata->resistor;
 	current_mA = voltage_uV * inverse_shunt_resistor / 1000;
@@ -594,6 +595,7 @@ static s32 show_power2(struct device *dev,
 	voltage_mV = busv_register_to_mv(voltage_mV);
 
 	voltage_uV = shuntv_register_to_uv(voltage_uV);
+	voltage_uV = abs(voltage_uV);
 
 	inverse_shunt_resistor = 1000 / data->pdata->resistor;
 	current_mA = voltage_uV * inverse_shunt_resistor / 1000;
@@ -743,19 +745,27 @@ static int ina230_remove(struct i2c_client *client)
 	return 0;
 }
 
-
-static int ina230_suspend(struct i2c_client *client, pm_message_t state)
+#ifdef CONFIG_PM_SLEEP
+static int ina230_suspend(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+
 	return power_down_ina230(client);
 }
 
 
-static int ina230_resume(struct i2c_client *client)
+static int ina230_resume(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
+
 	evaluate_state(client);
 	return 0;
 }
+#endif
 
+static const struct dev_pm_ops ina230_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(ina230_suspend, ina230_resume)
+};
 
 static const struct i2c_device_id ina230_id[] = {
 	{"ina226", 0 },
@@ -771,11 +781,10 @@ static struct i2c_driver ina230_driver = {
 	.class		= I2C_CLASS_HWMON,
 	.driver = {
 		.name	= DRIVER_NAME,
+		.pm	= &ina230_pm_ops,
 	},
 	.probe		= ina230_probe,
 	.remove		= ina230_remove,
-	.suspend	= ina230_suspend,
-	.resume		= ina230_resume,
 	.id_table	= ina230_id,
 };
 

@@ -32,6 +32,8 @@ int nvhost_read_module_regs(struct platform_device *ndev,
 int nvhost_write_module_regs(struct platform_device *ndev,
 			u32 offset, int count, const u32 *values);
 
+bool nvhost_client_can_writel(struct platform_device *pdev);
+
 void nvhost_client_writel(struct platform_device *pdev,
 		u32 val, u32 reg);
 
@@ -52,7 +54,5 @@ nvhost_client_request_firmware(struct platform_device *dev,
 	const char *fw_name);
 
 int nvhost_client_device_get_resources(struct platform_device *dev);
-
-struct nvhost_hwctx *nvhost_channel_get_file_hwctx(int fd);
 
 #endif

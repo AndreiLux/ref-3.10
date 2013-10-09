@@ -53,6 +53,7 @@
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/mfd/palmas.h>
 #include <linux/clk/tegra.h>
+#include <media/tegra_dtv.h>
 
 #include <mach/irqs.h>
 #include <mach/pci.h>
@@ -70,6 +71,7 @@
 #include <mach/tegra_fiq_debugger.h>
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_usb_modem_power.h>
+#include <linux/platform_data/tegra_ahci.h>
 
 #include "board.h"
 #include "board-ardbeg.h"
@@ -254,6 +256,8 @@ static struct tegra_asoc_platform_data ardbeg_audio_pdata_rt5639 = {
 	.gpio_codec1 = -1,
 	.gpio_codec2 = -1,
 	.gpio_codec3 = -1,
+	.edp_support = true,
+	.edp_states = {1530, 765, 0},
 	.i2s_param[HIFI_CODEC]       = {
 		.audio_port_id = 1,
 		.is_i2s_master = 0,
@@ -389,6 +393,11 @@ static struct platform_device tegra_rtc_device = {
 #ifdef CONFIG_SATA_AHCI_TEGRA
 static void bonaire_sata_init(void)
 {
+	struct tegra_ahci_platform_data *pdata;
+
+	pdata = tegra_sata_device.dev.platform_data;
+	pdata->pexp_gpio = PMU_TCA6416_GPIO(9);
+
 	platform_device_register(&tegra_sata_device);
 }
 #else
@@ -490,7 +499,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.xcvr_lsfslew = 0,
 		.xcvr_lsrslew = 3,
 		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 0,
+		.xcvr_use_fuses = 1,
 		.vbus_oc_map = 0x4,
 		.xcvr_hsslew_lsb = 2,
 	},
@@ -654,27 +663,27 @@ static struct tegra_xusb_board_data xusb_bdata = {
 	.portmap = TEGRA_XUSB_SS_P0 | TEGRA_XUSB_USB2_P0 | TEGRA_XUSB_SS_P1 |
 			TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_USB2_P2,
 	.supply = {
-		.s5p0v = "usb_vbus0",
-		.s5p0v1 = "usb_vbus1",
-		.s5p0v2 = "usb_vbus2",
+		.utmi_vbuses = {
+			"usb_vbus0", "usb_vbus1", "usb_vbus2"
+		},
 		.s3p3v = "hvdd_usb",
 		.s1p8v = "avdd_pll_utmip",
 		.vddio_hsic = "vddio_hsic",
 		.s1p05v = "avddio_usb",
 	},
 
-	.hsic = {
+	.hsic[0] = {
 		.rx_strobe_trim = 0x1,
 		.rx_data_trim = 0x1,
 		.tx_rtune_n = 0x8,
-		.tx_rtune_p = 0xc,
+		.tx_rtune_p = 0xa,
 		.tx_slew_n = 0,
 		.tx_slew_p = 0,
 		.auto_term_en = true,
 		.strb_trim_val = 0x22,
+		.pretend_connect = false,
 	},
 	.uses_external_pmic = false,
-	.uses_different_vbus_per_port = true,
 };
 
 static void ardbeg_xusb_init(void)
@@ -799,9 +808,11 @@ static void ardbeg_modem_init(void)
 {
 	int modem_id = tegra_get_modem_id();
 	struct board_info board_info;
+	struct board_info pmu_board_info;
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
 	tegra_get_board_info(&board_info);
+	tegra_get_pmu_board_info(&pmu_board_info);
 	pr_info("%s: modem_id = %d\n", __func__, modem_id);
 
 	switch (modem_id) {
@@ -810,6 +821,8 @@ static void ardbeg_modem_init(void)
 			/* Set specific USB wake source for Ardbeg */
 			if (board_info.board_id == BOARD_E1780)
 				tegra_set_wake_source(42, INT_USB2);
+			if (pmu_board_info.board_id == BOARD_E1736)
+				baseband_pdata.regulator_name = NULL;
 			platform_device_register(&icera_bruce_device);
 		}
 		break;
@@ -821,7 +834,8 @@ static void ardbeg_modem_init(void)
 			if (board_info.board_id == BOARD_E1780)
 				tegra_set_wake_source(42, INT_USB2);
 			platform_device_register(&tegra_ehci2_device);
-		}
+		} else
+			xusb_bdata.hsic[0].pretend_connect = true;
 		break;
 	default:
 		return;
@@ -922,7 +936,7 @@ struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 0,
+	.rx_clk_tap_delay = 16,
 	.tx_clk_tap_delay = 16,
 };
 
@@ -963,6 +977,16 @@ static void __init tegra_ardbeg_early_init(void)
 		tegra_soc_device_init("ardbeg");
 }
 
+static struct tegra_dtv_platform_data ardbeg_dtv_pdata = {
+	.dma_req_selector = 11,
+};
+
+static void __init ardbeg_dtv_init(void)
+{
+	tegra_dtv_device.dev.platform_data = &ardbeg_dtv_pdata;
+	platform_device_register(&tegra_dtv_device);
+}
+
 static void __init tegra_ardbeg_late_init(void)
 {
 	struct board_info board_info;
@@ -995,9 +1019,11 @@ static void __init tegra_ardbeg_late_init(void)
 		laguna_regulator_init();
 	else
 		ardbeg_regulator_init();
+	ardbeg_dtv_init();
 	ardbeg_suspend_init();
 /* TODO: add support for laguna board when dvfs table is ready */
-	if (board_info.board_id == BOARD_E1780)
+	if (board_info.board_id == BOARD_E1780 &&
+			(tegra_get_memory_type() == 0))
 		ardbeg_emc_init();
 
 	ardbeg_edp_init();
@@ -1009,7 +1035,6 @@ static void __init tegra_ardbeg_late_init(void)
 		laguna_pm358_pmon_init();
 	else
 		ardbeg_pmon_init();
-	tegra_release_bootloader_fb();
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363)
@@ -1093,6 +1118,7 @@ DT_MACHINE_START(LAGUNA, "laguna")
 	.init_machine	= tegra_ardbeg_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= laguna_dt_board_compat,
+	.init_late      = tegra_init_late
 MACHINE_END
 
 DT_MACHINE_START(TN8, "tn8")
@@ -1106,6 +1132,7 @@ DT_MACHINE_START(TN8, "tn8")
 	.init_machine	= tegra_ardbeg_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= tn8_dt_board_compat,
+	.init_late      = tegra_init_late
 MACHINE_END
 
 DT_MACHINE_START(ARDBEG, "ardbeg")

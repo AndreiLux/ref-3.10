@@ -881,7 +881,9 @@ static struct tegra_usb_modem_power_platform_data baseband_pdata = {
 	.ops = &baseband_operations,
 	.wake_gpio = -1,
 	.boot_gpio = MDM_COLDBOOT,
-	.boot_irq_flags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+	.boot_irq_flags = IRQF_TRIGGER_RISING |
+				    IRQF_TRIGGER_FALLING |
+				    IRQF_ONESHOT,
 	.autosuspend_delay = 2000,
 	.short_autosuspend_delay = 50,
 	.tegra_ehci_device = &tegra_ehci2_device,
@@ -1110,7 +1112,9 @@ static struct tegra_xusb_board_data xusb_bdata = {
 	.ss_portmap = (TEGRA_XUSB_SS_PORT_MAP_USB2_P0 << 0),
 	.uses_external_pmic = true,
 	.supply = {
-		.s5p0v = "usb_vbus",
+		.utmi_vbuses = {
+			NULL, "usb_vbus", NULL
+		},
 		.s3p3v = "hvdd_usb",
 		.s1p8v = "avdd_usb_pll",
 		.vddio_hsic = "vddio_hsic",
@@ -1351,7 +1355,6 @@ static void __init tegra_pluto_late_init(void)
 #elif defined CONFIG_BLUEDROID_PM
 	pluto_setup_bluedroid_pm();
 #endif
-	tegra_release_bootloader_fb();
 	pluto_modem_init();
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();

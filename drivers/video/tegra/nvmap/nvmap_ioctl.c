@@ -20,6 +20,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#define pr_fmt(fmt)	"nvmap: %s() " fmt, __func__
+
 #include <linux/dma-mapping.h>
 #include <linux/export.h>
 #include <linux/fs.h>
@@ -35,7 +37,6 @@
 #endif
 #include <asm/tlbflush.h>
 
-#include <mach/iovmm.h>
 #include <trace/events/nvmap.h>
 #include <linux/vmalloc.h>
 
@@ -53,8 +54,14 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 #ifdef CONFIG_COMPAT
 ulong unmarshal_user_handle(__u32 handle)
 {
+	__attribute__((unused)) ulong id;
 	ulong h = (handle | PAGE_OFFSET);
 
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	id = nvmap_get_id_from_dmabuf_fd(NULL, (int)handle);
+	if (!IS_ERR_VALUE(id))
+		return id;
+#endif
 	return h;
 }
 
@@ -68,14 +75,43 @@ ulong unmarshal_user_id(u32 id)
 	return unmarshal_user_handle(id);
 }
 
+/*
+ * marshal_id/unmarshal_id are for get_id/handle_from_id.
+ * These are added to support using Fd's for handle.
+ */
+__u32 marshal_id(ulong id)
+{
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return (__u32)id;
+#else
+	return marshal_kernel_handle(id);
+#endif
+}
+
+ulong unmarshal_id(__u32 id)
+{
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return (ulong)(id | PAGE_OFFSET);
+#else
+	return unmarshal_user_id(id);
+#endif
+}
+
 #else
 #define NVMAP_XOR_HASH_MASK 0xFFFFFFFC
 ulong unmarshal_user_handle(struct nvmap_handle *handle)
 {
+	__attribute__((unused)) ulong id;
+
 	if ((ulong)handle == 0)
 		return (ulong)handle;
 
 #ifdef CONFIG_NVMAP_HANDLE_MARSHAL
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	id = nvmap_get_id_from_dmabuf_fd(NULL, (int)handle);
+	if (!IS_ERR_VALUE(id))
+		return id;
+#endif
 	return (ulong)handle ^ NVMAP_XOR_HASH_MASK;
 #else
 	return (ulong)handle;
@@ -99,13 +135,37 @@ ulong unmarshal_user_id(ulong id)
 	return unmarshal_user_handle((struct nvmap_handle *)id);
 }
 
+ulong marshal_id(ulong id)
+{
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return id;
+#else
+	return (ulong)marshal_kernel_handle(id);
+#endif
+}
+
+ulong unmarshal_id(ulong id)
+{
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return id;
+#else
+	return unmarshal_user_id(id);
+#endif
+}
 #endif
 
-ulong nvmap_ref_to_user_id(struct nvmap_handle_ref *ref)
+struct nvmap_handle *marshal_kernel_ref(struct nvmap_handle_ref *ref)
+{
+	if (ref->fd == -1)
+		return marshal_kernel_handle(__nvmap_ref_to_id(ref));
+	return (struct nvmap_handle *)ref->fd;
+}
+
+ulong __nvmap_ref_to_id(struct nvmap_handle_ref *ref)
 {
 	if (!virt_addr_valid(ref))
 		return 0;
-	return (ulong)marshal_kernel_handle(nvmap_ref_to_id(ref));
+	return (unsigned long)ref->handle;
 }
 
 int nvmap_ioctl_pinop(struct file *filp, bool is_pin, void __user *arg)
@@ -185,11 +245,11 @@ int nvmap_ioctl_pinop(struct file *filp, bool is_pin, void __user *arg)
 		unsigned long addr;
 
 		h = (struct nvmap_handle *)refs[i];
-
 		if (h->heap_pgalloc && h->pgalloc.contig)
 			addr = page_to_phys(h->pgalloc.pages[0]);
 		else if (h->heap_pgalloc)
-			addr = h->pgalloc.area->iovm_start;
+			addr = sg_dma_address(
+				((struct sg_table *)h->attachment->priv)->sgl);
 		else
 			addr = h->carveout->base;
 
@@ -225,7 +285,7 @@ int nvmap_ioctl_getid(struct file *filp, void __user *arg)
 	if (!h)
 		return -EPERM;
 
-	op.id = (__u32)marshal_kernel_handle((ulong)h);
+	op.id = marshal_id((ulong)h);
 	if (client == h->owner)
 		h->global = true;
 
@@ -355,7 +415,7 @@ int nvmap_ioctl_create(struct file *filp, unsigned int cmd, void __user *arg)
 		if (!IS_ERR(ref))
 			ref->handle->orig_size = op.size;
 	} else if (cmd == NVMAP_IOC_FROM_ID) {
-		ref = nvmap_duplicate_handle_user_id(client, op.id);
+		ref = nvmap_duplicate_handle_id(client, unmarshal_id(op.id), 0);
 	} else if (cmd == NVMAP_IOC_FROM_FD) {
 		ref = nvmap_create_handle_from_fd(client, op.fd);
 	} else {
@@ -365,10 +425,10 @@ int nvmap_ioctl_create(struct file *filp, unsigned int cmd, void __user *arg)
 	if (IS_ERR(ref))
 		return PTR_ERR(ref);
 
-	op.handle = marshal_kernel_handle(nvmap_ref_to_id(ref));
+	op.handle = marshal_kernel_ref(ref);
 	if (copy_to_user(arg, &op, sizeof(op))) {
 		err = -EFAULT;
-		nvmap_free_handle_id(client, nvmap_ref_to_id(ref));
+		nvmap_free_handle_id(client, __nvmap_ref_to_id(ref));
 	}
 
 	return err;
@@ -507,7 +567,7 @@ int nvmap_ioctl_get_param(struct file *filp, void __user* arg)
 		return -EINVAL;
 
 	nvmap_ref_lock(client);
-	ref = _nvmap_validate_id_locked(client, handle);
+	ref = __nvmap_validate_id_locked(client, handle);
 	if (IS_ERR_OR_NULL(ref)) {
 		err = ref ? PTR_ERR(ref) : -EINVAL;
 		goto ref_fail;
@@ -1091,6 +1151,7 @@ int __nvmap_cache_maint(struct nvmap_client *client,
 			(inner_maint || outer_maint) &&
 			allow_deferred == CACHE_MAINT_ALLOW_DEFERRED &&
 			atomic_read(&h->pin) == 0 &&
+			atomic_read(&h->disable_deferred_cache) == 0 &&
 			!h->nvhost_priv &&
 			deferred_ops->enable_deferred_cache_maintenance) {
 

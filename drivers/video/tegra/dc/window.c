@@ -832,7 +832,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 
 	if (tegra_cpu_is_asim())
 		tegra_dc_writel(dc, FRAME_END_INT | V_BLANK_INT,
-						 DC_CMD_INT_STATUS);
+						DC_CMD_INT_STATUS);
 
 	if (!no_vsync) {
 		set_bit(V_BLANK_FLIP, &dc->vblank_ref_count);
@@ -853,9 +853,11 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 			tegra_dc_mask_interrupt(dc, FRAME_END_INT);
 	}
 
-	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) {
 		schedule_delayed_work(&dc->one_shot_work,
 				msecs_to_jiffies(dc->one_shot_delay_ms));
+	}
+	dc->crc_pending = true;
 
 	/* update EMC clock if calculated bandwidth has changed */
 	tegra_dc_program_bandwidth(dc, false);

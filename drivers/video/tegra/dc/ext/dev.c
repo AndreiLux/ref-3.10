@@ -475,7 +475,7 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 		wins[nr_win++] = win;
 	}
 
-	if (!skip_flip) {
+	if (ext->enabled && !skip_flip) {
 		tegra_dc_update_windows(wins, nr_win);
 		/* TODO: implement swapinterval here */
 		tegra_dc_sync_windows(wins, nr_win);
@@ -502,6 +502,8 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 	for (i = 0; i < nr_unpin; i++) {
 		dma_buf_unmap_attachment(unpin_handles[i]->attach,
 			unpin_handles[i]->sgt, DMA_TO_DEVICE);
+		dma_buf_detach(unpin_handles[i]->buf,
+			       unpin_handles[i]->attach);
 		dma_buf_put(unpin_handles[i]->buf);
 		kfree(unpin_handles[i]);
 	}
@@ -745,6 +747,8 @@ fail_pin:
 
 			dma_buf_unmap_attachment(data->win[i].handle[j]->attach,
 				data->win[i].handle[j]->sgt, DMA_TO_DEVICE);
+			dma_buf_detach(data->win[i].handle[j]->buf,
+				data->win[i].handle[j]->attach);
 			dma_buf_put(data->win[i].handle[j]->buf);
 			kfree(data->win[i].handle[j]);
 		}
@@ -1333,24 +1337,15 @@ struct tegra_dc_ext *tegra_dc_ext_register(struct platform_device *ndev,
 
 	ext->dc = dc;
 
-	ext->nvmap = nvmap_create_client(nvmap_dev, "tegra_dc_ext");
-	if (!ext->nvmap) {
-		ret = -ENOMEM;
-		goto cleanup_device;
-	}
-
 	ret = tegra_dc_ext_setup_windows(ext);
 	if (ret)
-		goto cleanup_nvmap;
+		goto cleanup_device;
 
 	mutex_init(&ext->cursor.lock);
 
 	head_count++;
 
 	return ext;
-
-cleanup_nvmap:
-	nvmap_client_put(ext->nvmap);
 
 cleanup_device:
 	device_del(ext->dev);
@@ -1375,7 +1370,6 @@ void tegra_dc_ext_unregister(struct tegra_dc_ext *ext)
 		destroy_workqueue(win->flip_wq);
 	}
 
-	nvmap_client_put(ext->nvmap);
 	device_del(ext->dev);
 	cdev_del(&ext->cdev);
 

@@ -145,12 +145,12 @@ void nvhost_memmgr_put(struct mem_mgr *mgr, struct mem_handle *handle)
 }
 
 struct sg_table *nvhost_memmgr_pin(struct mem_mgr *mgr,
-		struct mem_handle *handle, struct device *dev)
+		struct mem_handle *handle, struct device *dev, int rw_flag)
 {
 	switch (nvhost_memmgr_type((u32)((uintptr_t)handle))) {
 #ifdef CONFIG_TEGRA_GRHOST_USE_NVMAP
 	case mem_mgr_type_nvmap:
-		return nvhost_nvmap_pin(mgr, handle, dev);
+		return nvhost_nvmap_pin(mgr, handle, dev, rw_flag);
 		break;
 #endif
 #ifdef CONFIG_TEGRA_GRHOST_USE_DMABUF
@@ -327,11 +327,11 @@ int nvhost_memmgr_pin_array_ids(struct mem_mgr *mgr,
 		if (IS_ERR(h))
 			return -EINVAL;
 
-		sgt = nvhost_memmgr_pin(mgr, h, &dev->dev);
+		sgt = nvhost_memmgr_pin(mgr, h, &dev->dev, mem_flag_none);
 		if (IS_ERR(sgt))
 			return PTR_ERR(sgt);
 
-		phys_addr[ids[i].index] = sg_dma_address(sgt->sgl);
+		phys_addr[ids[i].index] = nvhost_memmgr_dma_addr(sgt);
 		unpin_data[pin_count].h = h;
 		unpin_data[pin_count++].mem = sgt;
 
@@ -346,8 +346,8 @@ u32 nvhost_memmgr_handle_to_id(struct mem_handle *handle)
 	switch (nvhost_memmgr_type((u32)handle)) {
 #ifdef CONFIG_TEGRA_GRHOST_USE_NVMAP
 	case mem_mgr_type_nvmap:
-		return (u32)nvmap_ref_to_user_id(
-				(struct nvmap_handle_ref *)handle);
+		return (u32)nvmap_dmabuf_to_user_id(
+				(struct dma_buf *)handle);
 		break;
 #endif
 #ifdef CONFIG_TEGRA_GRHOST_USE_DMABUF
@@ -368,8 +368,7 @@ struct sg_table *nvhost_memmgr_sg_table(struct mem_mgr *mgr,
 	switch (nvhost_memmgr_type((ulong)handle)) {
 #ifdef CONFIG_TEGRA_GRHOST_USE_NVMAP
 	case mem_mgr_type_nvmap:
-		return nvmap_sg_table((struct nvmap_client *)mgr,
-				(struct nvmap_handle_ref *)handle);
+		return nvmap_dmabuf_sg_table((struct dma_buf *)handle);
 		break;
 #endif
 #ifdef CONFIG_TEGRA_GRHOST_USE_DMABUF
@@ -391,8 +390,8 @@ void nvhost_memmgr_free_sg_table(struct mem_mgr *mgr,
 	switch (nvhost_memmgr_type((ulong)handle)) {
 #ifdef CONFIG_TEGRA_GRHOST_USE_NVMAP
 	case mem_mgr_type_nvmap:
-		return nvmap_free_sg_table((struct nvmap_client *)mgr,
-				(struct nvmap_handle_ref *)handle, sgt);
+		return nvmap_dmabuf_free_sg_table(
+					(struct dma_buf *)handle, sgt);
 		break;
 #endif
 #ifdef CONFIG_TEGRA_GRHOST_USE_DMABUF
@@ -405,30 +404,6 @@ void nvhost_memmgr_free_sg_table(struct mem_mgr *mgr,
 	}
 	return;
 }
-
-#ifdef CONFIG_TEGRA_IOMMU_SMMU
-int nvhost_memmgr_smmu_map(struct sg_table *sgt, size_t size,
-			   struct device *dev)
-{
-	int ents;
-	DEFINE_DMA_ATTRS(attrs);
-
-	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
-	ents = dma_map_sg_attrs(dev, sgt->sgl, sgt->nents, 0, &attrs);
-	if (!ents)
-		return -EINVAL;
-	return 0;
-}
-
-void nvhost_memmgr_smmu_unmap(struct sg_table *sgt, size_t size,
-		struct device *dev)
-{
-	DEFINE_DMA_ATTRS(attrs);
-	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
-	/* dma_unmap_sg_attrs will also free the iova */
-	dma_unmap_sg_attrs(dev, sgt->sgl, sgt->nents, 0, &attrs);
-}
-#endif
 
 void nvhost_memmgr_get_comptags(struct mem_handle *mem,
 				struct nvhost_comptags *comptags)

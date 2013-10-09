@@ -35,7 +35,7 @@ static void user_hwctx_save_push(struct nvhost_hwctx *nctx,
 			ctx->save_buf,
 			ctx->save_offset,
 			nvhost_opcode_gather(ctx->save_size),
-			sg_dma_address(ctx->save_sgt->sgl));
+			nvhost_memmgr_dma_addr(ctx->save_sgt));
 }
 
 static void user_hwctx_restore_push(struct nvhost_hwctx *nctx,
@@ -47,7 +47,7 @@ static void user_hwctx_restore_push(struct nvhost_hwctx *nctx,
 			ctx->restore,
 			ctx->restore_offset,
 			nvhost_opcode_gather(ctx->restore_size),
-			sg_dma_address(ctx->restore_sgt->sgl));
+			nvhost_memmgr_dma_addr(ctx->restore_sgt));
 }
 
 static void user_hwctx_free(struct kref *ref)
@@ -121,7 +121,7 @@ int user_hwctx_set_save(struct user_hwctx *ctx,
 		return PTR_ERR(buf);
 
 	sgt = nvhost_memmgr_pin(ctx->hwctx.memmgr, buf,
-			&ctx->hwctx.channel->dev->dev);
+			&ctx->hwctx.channel->dev->dev, mem_flag_none);
 	if (IS_ERR(sgt))
 		return PTR_ERR(sgt);
 
@@ -136,7 +136,7 @@ int user_hwctx_set_save(struct user_hwctx *ctx,
 	if (!page_addr)
 		return -ENOMEM;
 
-	__raw_writel(sg_dma_address(ctx->restore_sgt->sgl) + offset,
+	__raw_writel(nvhost_memmgr_dma_addr(ctx->restore_sgt) + offset,
 			page_addr + (reloc->cmdbuf_offset & ~PAGE_MASK));
 	nvhost_memmgr_kunmap(ctx->save_buf,
 			reloc->cmdbuf_offset >> PAGE_SHIFT,
@@ -157,7 +157,7 @@ int user_hwctx_set_restore(struct user_hwctx *ctx,
 		return PTR_ERR(buf);
 
 	sgt = nvhost_memmgr_pin(ctx->hwctx.memmgr, buf,
-			&ctx->hwctx.channel->dev->dev);
+			&ctx->hwctx.channel->dev->dev, mem_flag_none);
 	if (IS_ERR(sgt))
 		return PTR_ERR(sgt);
 

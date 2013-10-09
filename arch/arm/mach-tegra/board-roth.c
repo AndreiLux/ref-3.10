@@ -592,7 +592,7 @@ struct rm_spi_ts_platform_data rm31080ts_roth_data = {
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 0,
+	.rx_clk_tap_delay = 16,
 	.tx_clk_tap_delay = 16,
 };
 
@@ -611,9 +611,9 @@ struct spi_board_info rm31080a_roth_spi_board[1] = {
 static int __init roth_touch_init(void)
 {
 	struct board_info board_info;
+	int touch_panel_id = tegra_get_touch_panel_id();
 
 	tegra_get_board_info(&board_info);
-	int touch_panel_id = tegra_get_touch_panel_id();
 	if (touch_panel_id == PANEL_TPK ||
 			touch_panel_id == PANEL_WINTEK) {
 		int err;
@@ -679,7 +679,6 @@ static void __init tegra_roth_init(void)
 #elif defined CONFIG_BLUEDROID_PM
 	roth_setup_bluedroid_pm();
 #endif
-	tegra_release_bootloader_fb();
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
 #endif

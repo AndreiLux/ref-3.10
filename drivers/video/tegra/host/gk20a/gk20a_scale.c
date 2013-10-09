@@ -24,6 +24,7 @@
 #include <linux/slab.h>
 #include <linux/clk/tegra.h>
 #include <linux/tegra-soc.h>
+#include <linux/platform_data/tegra_edp.h>
 
 #include <governor.h>
 
@@ -35,6 +36,7 @@
 #include "clk_gk20a.h"
 #include "nvhost_scale.h"
 #include "gk20a_scale.h"
+#include "gr3d/scale3d.h"
 
 static ssize_t nvhost_gk20a_scale_load_show(struct device *dev,
 					    struct device_attribute *attr,
@@ -45,9 +47,13 @@ static ssize_t nvhost_gk20a_scale_load_show(struct device *dev,
 	u32 busy_time;
 	ssize_t res;
 
-	nvhost_module_busy(g->dev);
-	gk20a_pmu_load_norm(g, &busy_time);
-	nvhost_module_idle(g->dev);
+	if (!g->power_on) {
+		busy_time = 0;
+	} else {
+		nvhost_module_busy(g->dev);
+		gk20a_pmu_load_norm(g, &busy_time);
+		nvhost_module_idle(g->dev);
+	}
 
 	res = snprintf(buf, PAGE_SIZE, "%u\n", busy_time);
 
@@ -55,6 +61,30 @@ static ssize_t nvhost_gk20a_scale_load_show(struct device *dev,
 }
 
 static DEVICE_ATTR(load, S_IRUGO, nvhost_gk20a_scale_load_show, NULL);
+
+/*
+ * nvhost_gk20a_scale_callback(profile, freq)
+ *
+ * This function sets emc frequency based on current gpu frequency
+ */
+
+void nvhost_gk20a_scale_callback(struct nvhost_device_profile *profile,
+				 unsigned long freq)
+{
+	struct gk20a *g = get_gk20a(profile->pdev);
+	struct nvhost_device_data *pdata = platform_get_drvdata(profile->pdev);
+	struct nvhost_emc_params *emc_params = profile->private_data;
+	long after = gk20a_clk_get_rate(g);
+	long emc_target = nvhost_scale3d_get_emc_rate(emc_params, after);
+
+	nvhost_module_set_devfreq_rate(profile->pdev, 2, emc_target);
+
+	if (pdata->gpu_edp_device) {
+		u32 avg = 0;
+		gk20a_pmu_load_norm(g, &avg);
+		tegra_edp_notify_gpu_load(avg);
+	}
+}
 
 /*
  * nvhost_scale_make_freq_table(profile)
@@ -66,7 +96,7 @@ static int nvhost_scale_make_freq_table(struct nvhost_device_profile *profile)
 {
 	struct gk20a *g = get_gk20a(profile->pdev);
 	unsigned long *freqs;
-	int num_freqs, err, i;
+	int num_freqs, err;
 
 	/* make sure the clock is available */
 	if (!gk20a_clk_get(g))
@@ -78,20 +108,8 @@ static int nvhost_scale_make_freq_table(struct nvhost_device_profile *profile)
 	if (err)
 		return -ENOSYS;
 
-	/* allocate space for a duplicate table */
-	profile->devfreq_profile.freq_table =
-		kzalloc(num_freqs * sizeof(unsigned int), GFP_KERNEL);
-	if (!profile->devfreq_profile.freq_table)
-		return -ENOMEM;
-
-	/* copy the table */
-	memcpy(profile->devfreq_profile.freq_table, freqs,
-	       num_freqs * sizeof(unsigned int));
+	profile->devfreq_profile.freq_table = (unsigned int *)freqs;
 	profile->devfreq_profile.max_state = num_freqs;
-
-	/* convert gpc2clk to gpcclk */
-	for (i = 0; i < num_freqs; i++)
-		profile->devfreq_profile.freq_table[i] /= 2;
 
 	return 0;
 }
@@ -202,12 +220,12 @@ static int gk20a_scale_get_dev_status(struct device *dev,
 	update_load_estimate_gpmu(to_platform_device(dev));
 
 	/* Copy the contents of the current device status */
+	profile->ext_stat.busy = profile->last_event_type;
 	*stat = profile->dev_stat;
 
 	/* Finally, clear out the local values */
 	profile->dev_stat.total_time = 0;
 	profile->dev_stat.busy_time = 0;
-	profile->last_event_type = DEVICE_UNKNOWN;
 
 	return 0;
 }
@@ -221,27 +239,38 @@ void nvhost_gk20a_scale_init(struct platform_device *pdev)
 	struct gk20a *g = get_gk20a(pdev);
 	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
 	struct nvhost_device_profile *profile;
+	struct nvhost_emc_params *emc_params;
 
 	if (pdata->power_profile)
 		return;
 
 	profile = kzalloc(sizeof(struct nvhost_device_profile), GFP_KERNEL);
-	if (!profile)
+	emc_params = kzalloc(sizeof(*emc_params), GFP_KERNEL);
+	if (!(profile && emc_params)) {
+		kfree(profile);
+		kfree(emc_params);
 		return;
+	}
+
 	profile->pdev = pdev;
-	profile->last_event_type = DEVICE_UNKNOWN;
+	profile->last_event_type = DEVICE_IDLE;
+	profile->private_data = emc_params;
 
 	/* Initialize devfreq related structures */
 	profile->dev_stat.private_data = &profile->ext_stat;
 	profile->ext_stat.min_freq = gk20a_clk_round_rate(g, 0);
 	profile->ext_stat.max_freq = gk20a_clk_round_rate(g, UINT_MAX);
-	profile->ext_stat.busy = DEVICE_UNKNOWN;
+	profile->ext_stat.busy = DEVICE_IDLE;
 
 	if (profile->ext_stat.min_freq == profile->ext_stat.max_freq) {
 		dev_warn(&pdev->dev, "max rate = min rate (%lu), disabling scaling\n",
 			 profile->ext_stat.min_freq);
 		goto err_fetch_clocks;
 	}
+
+	nvhost_scale3d_calibrate_emc(emc_params,
+				     gk20a_clk_get(g), pdata->clk[2],
+				     pdata->linear_emc);
 
 	if (device_create_file(&pdev->dev, &dev_attr_load))
 		goto err_create_sysfs_entry;

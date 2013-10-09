@@ -35,7 +35,7 @@
 
 /* from vbios PLL info table */
 struct pll_parms gpc_pll_params = {
-	204, 1248,	/* freq */
+	144, 1824,	/* freq */
 	1000, 2000,	/* vco */
 	12, 38,		/* u */
 	1, 255,		/* M */
@@ -192,11 +192,85 @@ found_match:
 	return 0;
 }
 
-static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk)
+static void clk_slide_gpc_pll(struct gk20a *g, u32 n)
+{
+	u32 data, coeff;
+	u32 nold;
+
+	/* get old coefficients */
+	coeff = gk20a_readl(g, trim_sys_gpcpll_coeff_r());
+	nold = trim_sys_gpcpll_coeff_ndiv_v(coeff);
+
+	/* do nothing if NDIV is same */
+	if (n == nold)
+		return;
+
+	data = gk20a_readl(g, trim_sys_gpcpll_cfg2_r());
+	data = set_field(data, trim_sys_gpcpll_cfg2_pll_stepa_m(),
+			trim_sys_gpcpll_cfg2_pll_stepa_f(1));
+	gk20a_writel(g, trim_sys_gpcpll_cfg2_r(), data);
+	data = gk20a_readl(g, trim_sys_gpcpll_cfg3_r());
+	data = set_field(data, trim_sys_gpcpll_cfg3_pll_stepb_m(),
+			trim_sys_gpcpll_cfg3_pll_stepb_f(1));
+	gk20a_writel(g, trim_sys_gpcpll_cfg3_r(), data);
+
+	data = gk20a_readl(g, trim_sys_gpcpll_ndiv_slowdown_r());
+	data = set_field(data,
+			trim_sys_gpcpll_ndiv_slowdown_slowdown_using_pll_m(),
+			trim_sys_gpcpll_ndiv_slowdown_slowdown_using_pll_yes_f());
+	gk20a_writel(g, trim_sys_gpcpll_ndiv_slowdown_r(), data);
+
+	coeff = set_field(coeff, trim_sys_gpcpll_coeff_ndiv_m(),
+			trim_sys_gpcpll_coeff_ndiv_f(n));
+	gk20a_writel(g, trim_sys_gpcpll_coeff_r(), coeff);
+
+	data = gk20a_readl(g, trim_sys_gpcpll_ndiv_slowdown_r());
+	data = set_field(data,
+			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_m(),
+			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_yes_f());
+	gk20a_writel(g, trim_sys_gpcpll_ndiv_slowdown_r(), data);
+
+	do {
+		data = gk20a_readl(g, trim_gpc_bcast_gpcpll_ndiv_slowdown_debug_r());
+	} while (!trim_gpc_bcast_gpcpll_ndiv_slowdown_debug_pll_dynramp_done_synced_v(data));
+
+	data = gk20a_readl(g, trim_sys_gpcpll_ndiv_slowdown_r());
+	data = set_field(data,
+			trim_sys_gpcpll_ndiv_slowdown_slowdown_using_pll_m(),
+			trim_sys_gpcpll_ndiv_slowdown_slowdown_using_pll_no_f());
+	data = set_field(data,
+			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_m(),
+			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_no_f());
+	gk20a_writel(g, trim_sys_gpcpll_ndiv_slowdown_r(), data);
+}
+
+static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk,
+			int allow_slide)
 {
 	u32 data, cfg, coeff, timeout;
+	u32 m, n, pl;
+	u32 nlo;
 
 	nvhost_dbg_fn("");
+
+	/* get old coefficients */
+	coeff = gk20a_readl(g, trim_sys_gpcpll_coeff_r());
+	m = trim_sys_gpcpll_coeff_mdiv_v(coeff);
+	n = trim_sys_gpcpll_coeff_ndiv_v(coeff);
+	pl = trim_sys_gpcpll_coeff_pldiv_v(coeff);
+
+	/* do NDIV slide if there is no change in M and PL */
+	cfg = gk20a_readl(g, trim_sys_gpcpll_cfg_r());
+	if (allow_slide && clk->gpc_pll.M == m && clk->gpc_pll.PL == pl
+		&& trim_sys_gpcpll_cfg_enable_v(cfg)) {
+		clk_slide_gpc_pll(g, clk->gpc_pll.N);
+		return 0;
+	}
+
+	/* slide down to NDIV_LO */
+	nlo = DIV_ROUND_UP(m * gpc_pll_params.min_vco, clk->gpc_pll.clk_in);
+	if (trim_sys_gpcpll_cfg_enable_v(cfg))
+		clk_slide_gpc_pll(g, nlo);
 
 	/* put PLL in bypass before programming it */
 	data = gk20a_readl(g, trim_sys_sel_vco_r());
@@ -210,6 +284,7 @@ static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk)
 		cfg = set_field(cfg, trim_sys_gpcpll_cfg_iddq_m(),
 				trim_sys_gpcpll_cfg_iddq_power_on_v());
 		gk20a_writel(g, trim_sys_gpcpll_cfg_r(), cfg);
+		gk20a_readl(g, trim_sys_gpcpll_cfg_r());
 		udelay(2);
 	}
 
@@ -220,8 +295,10 @@ static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk)
 	gk20a_writel(g, trim_sys_gpcpll_cfg_r(), cfg);
 
 	/* change coefficients */
+	nlo = DIV_ROUND_UP(clk->gpc_pll.M * gpc_pll_params.min_vco,
+			clk->gpc_pll.clk_in);
 	coeff = trim_sys_gpcpll_coeff_mdiv_f(clk->gpc_pll.M) |
-		trim_sys_gpcpll_coeff_ndiv_f(clk->gpc_pll.N) |
+		trim_sys_gpcpll_coeff_ndiv_f(nlo) |
 		trim_sys_gpcpll_coeff_pldiv_f(clk->gpc_pll.PL);
 	gk20a_writel(g, trim_sys_gpcpll_coeff_r(), coeff);
 
@@ -240,12 +317,12 @@ static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk)
 	}
 
 	/* wait pll lock */
-	timeout = clk->pll_delay / 100 + 1;
+	timeout = clk->pll_delay / 2 + 1;
 	do {
 		cfg = gk20a_readl(g, trim_sys_gpcpll_cfg_r());
 		if (cfg & trim_sys_gpcpll_cfg_pll_lock_true_f())
 			goto pll_locked;
-		udelay(100);
+		udelay(2);
 	} while (--timeout > 0);
 
 	/* PLL is messed up. What can we do here? */
@@ -258,8 +335,11 @@ pll_locked:
 	data = set_field(data, trim_sys_sel_vco_gpc2clk_out_m(),
 		trim_sys_sel_vco_gpc2clk_out_vco_f());
 	gk20a_writel(g, trim_sys_sel_vco_r(), data);
-
 	clk->gpc_pll.enabled = true;
+
+	/* slide up to target NDIV */
+	clk_slide_gpc_pll(g, clk->gpc_pll.N);
+
 	return 0;
 }
 
@@ -306,6 +386,8 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 	static int initialized;
 	unsigned long *freqs;
 	int err, num_freqs;
+	struct clk *ref;
+	unsigned long ref_rate;
 
 	nvhost_dbg_fn("");
 
@@ -314,23 +396,32 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 		return 0;
 	}
 
+	if (!gk20a_clk_get(g))
+		return -EINVAL;
+
+	ref = clk_get_parent(clk_get_parent(clk->tegra_clk));
+	if (IS_ERR(ref)) {
+		nvhost_err(dev_from_gk20a(g),
+			"failed to get GPCPLL reference clock");
+		return -EINVAL;
+	}
+	ref_rate = clk_get_rate(ref);
+
 	/* TBD: set this according to different environments */
 	clk->pll_delay = 5000000; /* usec */
 
 	clk->gpc_pll.id = GK20A_GPC_PLL;
-	clk->gpc_pll.clk_in = 12; /* MHz */
+	clk->gpc_pll.clk_in = ref_rate / 1000000; /* MHz */
 
 	/* Decide initial frequency */
 	if (!initialized) {
 		initialized = 1;
 		clk->gpc_pll.M = 1;
-		clk->gpc_pll.N = 60; /* 12 x 60 = 720 MHz */
+		clk->gpc_pll.N = DIV_ROUND_UP(gpc_pll_params.min_vco,
+					clk->gpc_pll.clk_in);
 		clk->gpc_pll.PL = 0;
 		clk->gpc_pll.freq = clk->gpc_pll.clk_in * clk->gpc_pll.N;
 	}
-
-	if (!gk20a_clk_get(g))
-		return -EINVAL;
 
 	err = tegra_dvfs_get_freqs(clk_get_parent(clk->tegra_clk),
 				   &freqs, &num_freqs);
@@ -380,10 +471,10 @@ static int gk20a_init_clk_setup_hw(struct gk20a *g)
 			trim_sys_gpc2clk_out_bypdiv_m(),
 			trim_sys_gpc2clk_out_sdiv14_indiv4_mode_f() |
 			trim_sys_gpc2clk_out_vcodiv_by1_f() |
-			trim_sys_gpc2clk_out_bypdiv_by31_f());
+			trim_sys_gpc2clk_out_bypdiv_f(0));
 	gk20a_writel(g, trim_sys_gpc2clk_out_r(), data);
 
-	return clk_program_gpc_pll(g, clk);
+	return 0;
 }
 
 static int set_pll_target(struct gk20a *g, u32 freq, u32 old_freq)
@@ -394,12 +485,6 @@ static int set_pll_target(struct gk20a *g, u32 freq, u32 old_freq)
 		freq = gpc_pll_params.max_freq;
 	else if (freq < gpc_pll_params.min_freq)
 		freq = gpc_pll_params.min_freq;
-
-	if (freq > clk->cap_freq)
-		freq = clk->cap_freq;
-
-	if (freq > clk->cap_freq_thermal)
-		freq = clk->cap_freq_thermal;
 
 	if (freq != old_freq) {
 		/* gpc_pll.freq is changed to new value here */
@@ -424,10 +509,8 @@ static int set_pll_freq(struct gk20a *g, u32 freq, u32 old_freq)
 		return 0;
 
 	/* change frequency only if power is on */
-	/* FIXME: Need a lock to protect power gating state during
-	   clk_program_gpc_pll(g, clk) */
-	if (g->power_on)
-		err = clk_program_gpc_pll(g, clk);
+	if (g->clk.clk_hw_on)
+		err = clk_program_gpc_pll(g, clk, 1);
 
 	/* Just report error but not restore PLL since dvfs could already change
 	    voltage even when it returns error. */
@@ -475,7 +558,7 @@ static void gk20a_clk_export_disable(void *data)
 	struct clk_gk20a *clk = &g->clk;
 
 	mutex_lock(&clk->clk_mutex);
-	if (g->power_on)
+	if (g->clk.clk_hw_on)
 		clk_disable_gpcpll(g);
 	mutex_unlock(&clk->clk_mutex);
 }
@@ -516,10 +599,6 @@ static int gk20a_clk_register_export_ops(struct gk20a *g)
 	ret = tegra_clk_register_export_ops(clk_get_parent(c),
 					    &gk20a_clk_export_ops);
 
-	/* FIXME: this effectively prevents host level clock gating */
-	if (!ret)
-		ret = clk_enable(c);
-
 	return ret;
 }
 
@@ -540,11 +619,27 @@ int gk20a_init_clk_support(struct gk20a *g)
 	if (err)
 		return err;
 
+	mutex_lock(&clk->clk_mutex);
+	clk->clk_hw_on = true;
+
 	err = gk20a_init_clk_setup_hw(g);
+	mutex_unlock(&clk->clk_mutex);
 	if (err)
 		return err;
 
 	err = gk20a_clk_register_export_ops(g);
+	if (err)
+		return err;
+
+	/* FIXME: this effectively prevents host level clock gating */
+	err = clk_enable(g->clk.tegra_clk);
+	if (err)
+		return err;
+
+	/* The prev call may not enable PLL if gbus is unbalanced - force it */
+	mutex_lock(&clk->clk_mutex);
+	err = set_pll_freq(g, clk->gpc_pll.freq, clk->gpc_pll.freq);
+	mutex_unlock(&clk->clk_mutex);
 	if (err)
 		return err;
 
@@ -573,86 +668,21 @@ int gk20a_clk_set_rate(struct gk20a *g, u32 rate)
 	return clk_set_rate(g->clk.tegra_clk, rate);
 }
 
-static u32 gk20a_clk_get_cap(struct gk20a *g)
+int gk20a_suspend_clk_support(struct gk20a *g)
 {
-	struct clk_gk20a *clk = &g->clk;
-	return rate_gpc2clk_to_gpu(clk->cap_freq);
-}
+	int ret;
 
-static int gk20a_clk_set_cap(struct gk20a *g, u32 rate)
-{
-	struct clk_gk20a *clk = &g->clk;
+	clk_disable(g->clk.tegra_clk);
 
-	if (rate > rate_gpc2clk_to_gpu(gpc_pll_params.max_freq))
-		rate = rate_gpc2clk_to_gpu(gpc_pll_params.max_freq);
-	else if (rate < rate_gpc2clk_to_gpu(gpc_pll_params.min_freq))
-		rate = rate_gpc2clk_to_gpu(gpc_pll_params.min_freq);
-
-	clk->cap_freq = rate_gpu_to_gpc2clk(rate);
-	if (gk20a_clk_get_rate(g) <= rate)
-		return 0;
-	return gk20a_clk_set_rate(g, rate);
-}
-
-static u32 gk20a_clk_get_cap_thermal(struct gk20a *g)
-{
-	struct clk_gk20a *clk = &g->clk;
-	return rate_gpc2clk_to_gpu(clk->cap_freq_thermal);
-}
-
-static int gk20a_clk_set_cap_thermal(struct gk20a *g, unsigned long rate)
-{
-	struct clk_gk20a *clk = &g->clk;
-
-	if (rate > rate_gpc2clk_to_gpu(gpc_pll_params.max_freq))
-		rate = rate_gpc2clk_to_gpu(gpc_pll_params.max_freq);
-	else if (rate < rate_gpc2clk_to_gpu(gpc_pll_params.min_freq))
-		rate = rate_gpc2clk_to_gpu(gpc_pll_params.min_freq);
-
-	clk->cap_freq_thermal = rate_gpu_to_gpc2clk(rate);
-	if (gk20a_clk_get_rate(g) <= rate)
-		return 0;
-	return gk20a_clk_set_rate(g, rate);
-}
-
-static unsigned long gk20a_clk_get_max(void)
-{
-	return rate_gpc2clk_to_gpu(gpc_pll_params.max_freq);
-}
-
-static struct gk20a_clk_cap_info gk20a_clk_cap = {
-	.set_cap_thermal = gk20a_clk_set_cap_thermal,
-	.get_max = gk20a_clk_get_max,
-};
-
-int gk20a_clk_init_cap_freqs(struct gk20a *g)
-{
-	struct clk_gk20a *clk = &g->clk;
-
-	/* init cap_freq == max_freq */
-	clk->cap_freq = gpc_pll_params.max_freq;
-	clk->cap_freq_thermal = gpc_pll_params.max_freq;
-
-	gk20a_clk_cap.g = g;
-
-	tegra_throttle_gk20a_clk_cap_register(&gk20a_clk_cap);
-
-	return 0;
-}
-
-int gk20a_clk_disable_gpcpll(struct gk20a *g)
-{
-	return clk_disable_gpcpll(g);
+	/* The prev call may not disable PLL if gbus is unbalanced - force it */
+	mutex_lock(&g->clk.clk_mutex);
+	ret = clk_disable_gpcpll(g);
+	g->clk.clk_hw_on = false;
+	mutex_unlock(&g->clk.clk_mutex);
+	return ret;
 }
 
 #ifdef CONFIG_DEBUG_FS
-
-static int init_set(void *data, u64 val)
-{
-	struct gk20a *g = (struct gk20a *)data;
-	return gk20a_init_clk_support(g);
-}
-DEFINE_SIMPLE_ATTRIBUTE(init_fops, NULL, init_set, "%llu\n");
 
 static int rate_get(void *data, u64 *val)
 {
@@ -667,40 +697,15 @@ static int rate_set(void *data, u64 val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(rate_fops, rate_get, rate_set, "%llu\n");
 
-static int cap_get(void *data, u64 *val)
-{
-	struct gk20a *g = (struct gk20a *)data;
-	*val = (u64)gk20a_clk_get_cap(g);
-	return 0;
-}
-static int cap_set(void *data, u64 val)
-{
-	struct gk20a *g = (struct gk20a *)data;
-	return gk20a_clk_set_cap(g, (u32)val);
-}
-DEFINE_SIMPLE_ATTRIBUTE(cap_fops, cap_get, cap_set, "%llu\n");
-
-static int cap_thermal_get(void *data, u64 *val)
-{
-	struct gk20a *g = (struct gk20a *)data;
-	*val = (u64)gk20a_clk_get_cap_thermal(g);
-	return 0;
-}
-static int cap_thermal_set(void *data, u64 val)
-{
-	struct gk20a *g = (struct gk20a *)data;
-	return gk20a_clk_set_cap_thermal(g, (u32)val);
-}
-DEFINE_SIMPLE_ATTRIBUTE(cap_thermal_fops, cap_thermal_get,
-		cap_thermal_set, "%llu\n");
-
 static int pll_reg_show(struct seq_file *s, void *data)
 {
 	struct gk20a *g = s->private;
 	u32 reg, m, n, pl, f;
 
-	if (!g->power_on) {
+	mutex_lock(&g->clk.clk_mutex);
+	if (!g->clk.clk_hw_on) {
 		seq_printf(s, "gk20a powered down - no access to registers\n");
+		mutex_unlock(&g->clk.clk_mutex);
 		return 0;
 	}
 
@@ -716,6 +721,7 @@ static int pll_reg_show(struct seq_file *s, void *data)
 	f = g->clk.gpc_pll.clk_in * n / (m * pl_to_div[pl]);
 	seq_printf(s, "coef = 0x%x : m = %u : n = %u : pl = %u", reg, m, n, pl);
 	seq_printf(s, " : pll_f(gpu_f) = %u(%u) MHz\n", f, f/2);
+	mutex_unlock(&g->clk.clk_mutex);
 	return 0;
 }
 
@@ -736,25 +742,27 @@ static int monitor_get(void *data, u64 *val)
 	struct gk20a *g = (struct gk20a *)data;
 	struct clk_gk20a *clk = &g->clk;
 
-	u32 NV_PTRIM_GPC_CLK_CNTR_NCGPCCLK_CFG = 0x00134124;
-	u32 NV_PTRIM_GPC_CLK_CNTR_NCGPCCLK_CNT = 0x00134128;
 	u32 ncycle = 100; /* count GPCCLK for ncycle of clkin */
 	u32 clkin = clk->gpc_pll.clk_in;
 	u32 count1, count2;
 
-	gk20a_writel(g, NV_PTRIM_GPC_CLK_CNTR_NCGPCCLK_CFG,
-		(1<<24)); /* reset */
-	gk20a_writel(g, NV_PTRIM_GPC_CLK_CNTR_NCGPCCLK_CFG,
-		(1<<20) | (1<<16) | ncycle); /* start */
+	gk20a_writel(g, trim_gpc_clk_cntr_ncgpcclk_cfg_r(0),
+		     trim_gpc_clk_cntr_ncgpcclk_cfg_reset_asserted_f());
+	gk20a_writel(g, trim_gpc_clk_cntr_ncgpcclk_cfg_r(0),
+		     trim_gpc_clk_cntr_ncgpcclk_cfg_enable_asserted_f() |
+		     trim_gpc_clk_cntr_ncgpcclk_cfg_write_en_asserted_f() |
+		     trim_gpc_clk_cntr_ncgpcclk_cfg_noofipclks_f(ncycle));
+	/* start */
 
 	/* It should take about 8us to finish 100 cycle of 12MHz.
 	   But longer than 100us delay is required here. */
+	gk20a_readl(g, trim_gpc_clk_cntr_ncgpcclk_cfg_r(0));
 	udelay(2000);
 
-	count1 = gk20a_readl(g, NV_PTRIM_GPC_CLK_CNTR_NCGPCCLK_CNT);
+	count1 = gk20a_readl(g, trim_gpc_clk_cntr_ncgpcclk_cnt_r(0));
 	udelay(100);
-	count2 = gk20a_readl(g, NV_PTRIM_GPC_CLK_CNTR_NCGPCCLK_CNT);
-	*val = (u64)(count2 * clkin / ncycle);
+	count2 = gk20a_readl(g, trim_gpc_clk_cntr_ncgpcclk_cnt_r(0));
+	*val = (u64)(trim_gpc_clk_cntr_ncgpcclk_cnt_value_v(count2) * clkin / ncycle);
 
 	if (count1 != count2)
 		return -EBUSY;
@@ -769,23 +777,7 @@ int clk_gk20a_debugfs_init(struct platform_device *dev)
 	struct gk20a *g = get_gk20a(dev);
 
 	d = debugfs_create_file(
-		"init", S_IRUGO|S_IWUSR, pdata->debugfs, g, &init_fops);
-	if (!d)
-		goto err_out;
-
-	d = debugfs_create_file(
 		"rate", S_IRUGO|S_IWUSR, pdata->debugfs, g, &rate_fops);
-	if (!d)
-		goto err_out;
-
-	d = debugfs_create_file(
-		"cap", S_IRUGO|S_IWUSR, pdata->debugfs, g, &cap_fops);
-	if (!d)
-		goto err_out;
-
-	d = debugfs_create_file(
-		"cap_thermal", S_IRUGO|S_IWUSR, pdata->debugfs, g,
-							&cap_thermal_fops);
 	if (!d)
 		goto err_out;
 
