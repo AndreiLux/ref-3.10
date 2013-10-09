@@ -572,11 +572,8 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 struct nvmap_handle_ref *nvmap_alloc_iovm(struct nvmap_client *client,
 	size_t size, size_t align, unsigned int flags, unsigned int iova_start)
 {
-	struct ion_handle *h;
-
-	h = ion_alloc(client, size, align, 0xFF);
-	ion_remap_dma(client, h, iova_start);
-	return h;
+	/* FIXME: */
+	return NULL;
 }
 
 void nvmap_free_iovm(struct nvmap_client *client, struct nvmap_handle_ref *r)
