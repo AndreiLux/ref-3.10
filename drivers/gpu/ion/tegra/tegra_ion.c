@@ -15,8 +15,6 @@
  *
  */
 
-#define pr_fmt(fmt)	"%s():%d: " fmt, __func__, __LINE__
-
 #include <linux/err.h>
 #include <linux/ion.h>
 #include <linux/tegra_ion.h>
@@ -26,9 +24,6 @@
 #include <linux/syscalls.h>
 #include <linux/io.h>
 #include "../ion_priv.h"
-
-#define CLIENT_HEAP_MASK 0xFFFFFFFF
-#define HEAP_FLAGS 0xFF
 
 #if !defined(CONFIG_TEGRA_NVMAP)
 #include "mach/nvmap.h"
@@ -70,12 +65,10 @@ static int tegra_ion_pin(struct ion_client *client,
 
 	mutex_lock(&client->lock);
 	for (i = 0; i < data.count; i++) {
-		/* Ignore NULL pointers during unpin operation. */
-		if (!refs[i] && cmd == TEGRA_ION_UNPIN)
-			continue;
 		valid_handle = ion_handle_validate(client, refs[i]);
 		if (!valid_handle) {
-			WARN(1, "invalid handle passed h=0x%x", (u32)refs[i]);
+			pr_err("invalid handle passed to tegra_ion_pin, h=0x%x",
+				(u32)refs[i]);
 			mutex_unlock(&client->lock);
 			ret = -EINVAL;
 			goto err;
@@ -97,15 +90,14 @@ static int tegra_ion_pin(struct ion_client *client,
 				return ret;
 		}
 	} else if (cmd == TEGRA_ION_UNPIN) {
-		for (i = 0; i < data.count; i++) {
-			if (refs[i])
-				ion_handle_put(refs[i]);
-		}
+		/* FIXME: unpin it. */
+		for (i = 0; i < data.count; i++)
+			ion_handle_put(refs[i]);
 	}
 
 err:
 	if (ret) {
-		pr_err("error, ret=0x%x", ret);
+		pr_err("\n*****%s: error, ret=0x%x", __func__, ret);
 		/* FIXME: undo pinning. */
 	}
 	if (refs != on_stack)
@@ -121,6 +113,7 @@ static int tegra_ion_alloc_from_id(struct ion_client *client,
 	struct ion_buffer *buffer;
 	struct tegra_ion_id_data *user_data = (struct tegra_ion_id_data *)arg;
 
+	pr_debug("%s", __func__);
 	if (copy_from_user(&data, (void __user *)arg, sizeof(data)))
 		return -EFAULT;
 	buffer = (struct ion_buffer *)data.id;
@@ -149,11 +142,13 @@ static int tegra_ion_get_id(struct ion_client *client,
 	mutex_unlock(&client->lock);
 
 	if (!valid_handle) {
-		WARN(1, "invalid handle passed\n");
+		pr_err("%s: invalid handle passed, h=0x%x\n",
+			__func__, (u32)data.handle);
+		WARN("%s: invalid handle passed\n", __func__);
 		return -EINVAL;
 	}
 
-	pr_debug("h=0x%x, b=0x%x, bref=%d",
+	pr_debug("%s: h=0x%x, b=0x%x, bref=%d", __func__,
 		(u32)data.handle, (u32)data.handle->buffer,
 		atomic_read(&data.handle->buffer->ref.refcount));
 	if (put_user((unsigned long)ion_handle_buffer(data.handle),
@@ -191,7 +186,7 @@ static int tegra_ion_rw(struct ion_client *client,
 	mutex_unlock(&client->lock);
 
 	if (!valid_handle) {
-		WARN(1, "%s: invalid handle passed to get id.\n", __func__);
+		WARN("%s: invalid handle passed to get id.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -207,7 +202,7 @@ static int tegra_ion_rw(struct ion_client *client,
 
 	while (data.count--) {
 		if (data.offset + data.elem_size > data.handle->buffer->size) {
-			WARN(1, "read/write outside of handle\n");
+			pr_err("%s: read/write outside of handle\n", __func__);
 			ret = -EFAULT;
 			break;
 		}
@@ -250,7 +245,7 @@ static int tegra_ion_get_param(struct ion_client *client,
 	mutex_unlock(&client->lock);
 
 	if (!valid_handle) {
-		WARN(1, "%s: invalid handle passed to get id.\n", __func__);
+		WARN("%s: invalid handle passed to get id.\n", __func__);
 		return -EINVAL;
 	}
 
@@ -293,7 +288,7 @@ static long tegra_ion_ioctl(struct ion_client *client,
 		ret = tegra_ion_get_param(client, cmd, arg);
 		break;
 	default:
-		WARN(1, "Unknown custom ioctl\n");
+		pr_err("%s: Unknown custom ioctl\n", __func__);
 		return -ENOTTY;
 	}
 	return ret;
@@ -369,13 +364,13 @@ module_exit(ion_exit);
 struct nvmap_client *nvmap_create_client(struct nvmap_device *dev,
 					 const char *name)
 {
-	return ion_client_create(dev, CLIENT_HEAP_MASK, name);
+	return ion_client_create(dev, 0xFFFFFFFF, name);
 }
 
 struct nvmap_handle_ref *nvmap_alloc(struct nvmap_client *client, size_t size,
 				     size_t align, unsigned int flags)
 {
-	return ion_alloc(client, size, align, HEAP_FLAGS);
+	return ion_alloc(client, size, align, 1);
 }
 
 void nvmap_free(struct nvmap_client *client, struct nvmap_handle_ref *r)
@@ -422,19 +417,21 @@ phys_addr_t nvmap_pin(struct nvmap_client *c, struct nvmap_handle_ref *r)
 
 phys_addr_t nvmap_handle_address(struct nvmap_client *c, unsigned long id)
 {
+	struct ion_buffer *buffer = (struct ion_buffer *)id;
 	struct ion_handle *handle;
 	ion_phys_addr_t addr;
 	size_t len;
 
-	handle = nvmap_convert_handle_u2k(id);
+	handle = ion_import(c, buffer);
 	ion_phys(c, handle, &addr, &len);
+	ion_handle_put(handle);
 	return addr;
 }
 
 void nvmap_unpin(struct nvmap_client *client, struct nvmap_handle_ref *r)
 {
-	if (r)
-		ion_handle_put(r);
+	/* FIXME: this should be implemented for iommu heap. */
+	ion_handle_put(r);
 }
 
 static int nvmap_reloc_pin_array(struct ion_client *client,
@@ -535,9 +532,9 @@ struct nvmap_handle *nvmap_get_handle_id(struct nvmap_client *client,
 {
 	struct ion_handle *handle;
 
-	handle = (struct ion_handle *)nvmap_convert_handle_u2k(id);
-	pr_debug("id=0x%x, h=0x%x,c=0x%x",
-		(u32)id, (u32)handle, (u32)client);
+	handle = (struct ion_handle *)*((unsigned int*)id);
+	pr_debug("%s: id=0x%x, h=0x%x,c=0x%x",
+		__func__, (u32)id, (u32)handle, (u32)client);
 	nvmap_handle_get(handle);
 	return handle;
 }
@@ -549,9 +546,9 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	struct ion_handle *handle;
 	struct ion_client *ion_client = client;
 
-	handle = (struct ion_handle *)nvmap_convert_handle_u2k(id);
-	pr_debug("id=0x%x, h=0x%x,c=0x%x",
-		(u32)id, (u32)handle, (u32)client);
+	handle = (struct ion_handle *)*((unsigned int*)id);
+	pr_debug("%s: id=0x%x, h=0x%x,c=0x%x",
+		__func__, (u32)id, (u32)handle, (u32)client);
 	buffer = handle->buffer;
 
 	handle = ion_handle_create(client, buffer);
@@ -560,7 +557,8 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	ion_handle_add(ion_client, handle);
 	mutex_unlock(&ion_client->lock);
 
-	pr_debug("dup id=0x%x, h=0x%x", (u32)id, (u32)handle);
+	pr_debug("%s: dup id=0x%x, h=0x%x", __func__,
+		(u32)id, (u32)handle);
 	return handle;
 }
 
@@ -578,7 +576,7 @@ struct nvmap_handle_ref *nvmap_alloc_iovm(struct nvmap_client *client,
 
 void nvmap_free_iovm(struct nvmap_client *client, struct nvmap_handle_ref *r)
 {
-	ion_free(client, r);
+	/* FIXME: */
 }
 
 struct nvmap_handle *nvmap_handle_get(struct nvmap_handle *h)
