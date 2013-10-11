@@ -2205,6 +2205,7 @@ s32 __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 					break;
 				}
 			}
+#if 0
 			if (p2p_ssid) {
 				if (wl->p2p_supported) {
 					/* p2p scan trigger */
@@ -2258,13 +2259,16 @@ s32 __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 					}
 				}
 			}
+#endif
 		}
 	} else {		/* scan in ibss */
 		/* we don't do iscan in ibss */
 		ssids = this_ssid;
 	}
+#if 0
 	if (request && !p2p_scan(wl))
 		WL_TRACE_HW4(("START SCAN\n"));
+#endif
 	wl->scan_request = request;
 	wl_set_drv_status(wl, SCANNING, ndev);
 	if (iscan_req) {
@@ -2274,6 +2278,7 @@ s32 __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 		else
 			goto scan_out;
 	} else if (escan_req) {
+#if 0
 		if (wl->p2p_supported) {
 			if (p2p_on(wl) && p2p_scan(wl)) {
 
@@ -2289,6 +2294,7 @@ s32 __wl_cfg80211_scan(struct wiphy *wiphy, struct net_device *ndev,
 				}
 			}
 		}
+#endif
 		err = wl_do_escan(wl, wiphy, ndev, request);
 		if (likely(!err))
 			goto scan_success;
@@ -9349,7 +9355,9 @@ s32 wl_cfg80211_attach_post(struct net_device *ndev)
 				}
 #endif /* WL_ENABLE_P2P_IF */
 
+#if 0
 				wl->p2p_supported = true;
+#endif
 			}
 		}
 	wl_set_drv_status(wl, READY, ndev);
