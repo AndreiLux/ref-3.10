@@ -60,7 +60,8 @@ static inline void tegra_fb_pan_display_reset(struct tegra_fb_info *fb_info)
 
 static inline void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 					    struct fb_monspecs *specs,
-					    bool (*mode_filter)(struct fb_videomode *mode))
+					    bool (*mode_filter)(const struct tegra_dc *dc,
+					                        struct fb_videomode *mode))
 {
 }
 #endif
