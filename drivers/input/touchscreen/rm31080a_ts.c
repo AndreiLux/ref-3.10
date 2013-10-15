@@ -1261,12 +1261,16 @@ static int rm_tch_cmd_process(u8 u8_sel_case,
 			"- %d\n", p_cmd_tbl[_SUB_CMD]);*/
 			ret = RETURN_OK;
 			if (p_cmd_tbl[_SUB_CMD] == KRL_SUB_CMD_SENSOR_QU) {
+				mutex_unlock(&lock);
 				flush_workqueue(g_st_ts.rm_workqueue);
 				g_worker_queue_is_flush = true;
+				mutex_lock(&lock);
 			} else if (p_cmd_tbl[_SUB_CMD] ==
 						KRL_SUB_CMD_TIMER_QU) {
+				mutex_unlock(&lock);
 				flush_workqueue(g_st_ts.rm_timer_workqueue);
 				g_timer_queue_is_flush = true;
+				mutex_lock(&lock);
 			} else
 				ret = RETURN_FAIL;
 			break;
