@@ -297,6 +297,12 @@ config MACH_ARDBEG
        help
          Support for NVIDIA ARDBEG Development platform
 
+config MACH_FLOUNDER
+       bool "Flounder board"
+       depends on ARCH_TEGRA_12x_SOC
+       help
+         Support for Flounder
+
 config MACH_LOKI
        bool "Loki board"
        depends on ARCH_TEGRA_12x_SOC

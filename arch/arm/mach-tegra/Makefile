@@ -272,6 +272,8 @@ obj-${CONFIG_MACH_ARDBEG}               += panel-lgd-wxga-7-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
 
+obj-${CONFIG_MACH_FLOUNDER}             += board-flounder.o
+
 obj-${CONFIG_MACH_LOKI}               	+= board-loki.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-kbc.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-sensors.o
