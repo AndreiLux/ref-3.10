@@ -74,7 +74,7 @@
 #include <linux/platform_data/tegra_ahci.h>
 
 #include "board.h"
-#include "board-ardbeg.h"
+#include "board-flounder.h"
 #include "board-common.h"
 #include "board-touch-raydium.h"
 #include "clock.h"
@@ -89,7 +89,7 @@
 
 static struct board_info board_info, display_board_info;
 
-static struct resource ardbeg_bluedroid_pm_resources[] = {
+static struct resource flounder_bluedroid_pm_resources[] = {
 	[0] = {
 		.name   = "shutdown_gpio",
 		.start  = TEGRA_GPIO_PR1,
@@ -120,19 +120,19 @@ static struct resource ardbeg_bluedroid_pm_resources[] = {
 	},
 };
 
-static struct platform_device ardbeg_bluedroid_pm_device = {
+static struct platform_device flounder_bluedroid_pm_device = {
 	.name = "bluedroid_pm",
 	.id             = 0,
-	.num_resources  = ARRAY_SIZE(ardbeg_bluedroid_pm_resources),
-	.resource       = ardbeg_bluedroid_pm_resources,
+	.num_resources  = ARRAY_SIZE(flounder_bluedroid_pm_resources),
+	.resource       = flounder_bluedroid_pm_resources,
 };
 
-static noinline void __init ardbeg_setup_bluedroid_pm(void)
+static noinline void __init flounder_setup_bluedroid_pm(void)
 {
-	ardbeg_bluedroid_pm_resources[1].start =
-		ardbeg_bluedroid_pm_resources[1].end =
+	flounder_bluedroid_pm_resources[1].start =
+		flounder_bluedroid_pm_resources[1].end =
 				gpio_to_irq(TEGRA_GPIO_PU6);
-	platform_device_register(&ardbeg_bluedroid_pm_device);
+	platform_device_register(&flounder_bluedroid_pm_device);
 }
 
 static struct i2c_board_info __initdata rt5639_board_info = {
@@ -142,7 +142,7 @@ static struct i2c_board_info __initdata rt5645_board_info = {
 	I2C_BOARD_INFO("rt5645", 0x1a),
 };
 
-static __initdata struct tegra_clk_init_table ardbeg_clk_init_table[] = {
+static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "pll_m",	NULL,		0,		false},
 	{ "hda",	"pll_p",	108000000,	false},
@@ -199,7 +199,7 @@ static struct i2c_board_info __initdata i2c_touchpad_board_info = {
 	.platform_data  = &i2c_touchpad_pdata,
 };
 
-static void ardbeg_i2c_init(void)
+static void flounder_i2c_init(void)
 {
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
@@ -219,34 +219,34 @@ static void ardbeg_i2c_init(void)
 }
 
 #ifndef CONFIG_USE_OF
-static struct platform_device *ardbeg_uart_devices[] __initdata = {
+static struct platform_device *flounder_uart_devices[] __initdata = {
 	&tegra_uarta_device,
 	&tegra_uartb_device,
 	&tegra_uartc_device,
 };
 
-static struct tegra_serial_platform_data ardbeg_uarta_pdata = {
+static struct tegra_serial_platform_data flounder_uarta_pdata = {
 	.dma_req_selector = 8,
 	.modem_interrupt = false,
 };
 
-static struct tegra_serial_platform_data ardbeg_uartb_pdata = {
+static struct tegra_serial_platform_data flounder_uartb_pdata = {
 	.dma_req_selector = 9,
 	.modem_interrupt = false,
 };
 
-static struct tegra_serial_platform_data ardbeg_uartc_pdata = {
+static struct tegra_serial_platform_data flounder_uartc_pdata = {
 	.dma_req_selector = 10,
 	.modem_interrupt = false,
 };
 #endif
 
-static struct tegra_serial_platform_data ardbeg_uartd_pdata = {
+static struct tegra_serial_platform_data flounder_uartd_pdata = {
 	.dma_req_selector = 19,
 	.modem_interrupt = false,
 };
 
-static struct tegra_asoc_platform_data ardbeg_audio_pdata_rt5639 = {
+static struct tegra_asoc_platform_data flounder_audio_pdata_rt5639 = {
 	.gpio_hp_det = TEGRA_GPIO_HP_DET,
 	.gpio_ldo1_en = TEGRA_GPIO_LDO_EN,
 	.gpio_spkr_en = -1,
@@ -270,7 +270,7 @@ static struct tegra_asoc_platform_data ardbeg_audio_pdata_rt5639 = {
 	},
 };
 
-static struct tegra_asoc_platform_data ardbeg_audio_pdata_rt5645 = {
+static struct tegra_asoc_platform_data flounder_audio_pdata_rt5645 = {
 	.gpio_hp_det = TEGRA_GPIO_HP_DET,
 	.gpio_ldo1_en = TEGRA_GPIO_LDO_EN,
 	.gpio_spkr_en = -1,
@@ -292,7 +292,7 @@ static struct tegra_asoc_platform_data ardbeg_audio_pdata_rt5645 = {
 	},
 };
 
-static void ardbeg_audio_init(void)
+static void flounder_audio_init(void)
 {
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
@@ -300,62 +300,62 @@ static void ardbeg_audio_init(void)
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363) {
 		/*Laguna*/
-		ardbeg_audio_pdata_rt5645.gpio_hp_det =
+		flounder_audio_pdata_rt5645.gpio_hp_det =
 			TEGRA_GPIO_HP_DET;
-		ardbeg_audio_pdata_rt5645.gpio_hp_det_active_high = 1;
+		flounder_audio_pdata_rt5645.gpio_hp_det_active_high = 1;
 		if (board_info.board_id != BOARD_PM363)
-			ardbeg_audio_pdata_rt5645.gpio_ldo1_en = -1;
+			flounder_audio_pdata_rt5645.gpio_ldo1_en = -1;
 	} else {
-		/*Ardbeg*/
-		ardbeg_audio_pdata_rt5645.gpio_hp_det =
+		/*Flounder*/
+		flounder_audio_pdata_rt5645.gpio_hp_det =
 			TEGRA_GPIO_HP_DET;
-		ardbeg_audio_pdata_rt5645.gpio_hp_det_active_high = 0;
-		ardbeg_audio_pdata_rt5645.gpio_ldo1_en =
+		flounder_audio_pdata_rt5645.gpio_hp_det_active_high = 0;
+		flounder_audio_pdata_rt5645.gpio_ldo1_en =
 			TEGRA_GPIO_LDO_EN;
 	}
 
-	ardbeg_audio_pdata_rt5639.gpio_hp_det =
-		ardbeg_audio_pdata_rt5645.gpio_hp_det;
+	flounder_audio_pdata_rt5639.gpio_hp_det =
+		flounder_audio_pdata_rt5645.gpio_hp_det;
 
-	ardbeg_audio_pdata_rt5639.gpio_hp_det_active_high =
-		ardbeg_audio_pdata_rt5645.gpio_hp_det_active_high;
+	flounder_audio_pdata_rt5639.gpio_hp_det_active_high =
+		flounder_audio_pdata_rt5645.gpio_hp_det_active_high;
 
-	ardbeg_audio_pdata_rt5639.gpio_ldo1_en =
-		ardbeg_audio_pdata_rt5645.gpio_ldo1_en;
+	flounder_audio_pdata_rt5639.gpio_ldo1_en =
+		flounder_audio_pdata_rt5645.gpio_ldo1_en;
 
-	ardbeg_audio_pdata_rt5639.codec_name = "rt5639.0-001c";
-	ardbeg_audio_pdata_rt5639.codec_dai_name = "rt5639-aif1";
-	ardbeg_audio_pdata_rt5645.codec_name = "rt5645.0-001a";
-	ardbeg_audio_pdata_rt5645.codec_dai_name = "rt5645-aif1";
+	flounder_audio_pdata_rt5639.codec_name = "rt5639.0-001c";
+	flounder_audio_pdata_rt5639.codec_dai_name = "rt5639-aif1";
+	flounder_audio_pdata_rt5645.codec_name = "rt5645.0-001a";
+	flounder_audio_pdata_rt5645.codec_dai_name = "rt5645-aif1";
 }
 
-static struct platform_device ardbeg_audio_device_rt5645 = {
+static struct platform_device flounder_audio_device_rt5645 = {
 	.name = "tegra-snd-rt5645",
 	.id = 0,
 	.dev = {
-		.platform_data = &ardbeg_audio_pdata_rt5645,
+		.platform_data = &flounder_audio_pdata_rt5645,
 	},
 };
 
-static struct platform_device ardbeg_audio_device_rt5639 = {
+static struct platform_device flounder_audio_device_rt5639 = {
 	.name = "tegra-snd-rt5639",
 	.id = 0,
 	.dev = {
-		.platform_data = &ardbeg_audio_pdata_rt5639,
+		.platform_data = &flounder_audio_pdata_rt5639,
 	},
 };
 
-static void __init ardbeg_uart_init(void)
+static void __init flounder_uart_init(void)
 {
 
 #ifndef CONFIG_USE_OF
-	tegra_uarta_device.dev.platform_data = &ardbeg_uarta_pdata;
-	tegra_uartb_device.dev.platform_data = &ardbeg_uartb_pdata;
-	tegra_uartc_device.dev.platform_data = &ardbeg_uartc_pdata;
-	platform_add_devices(ardbeg_uart_devices,
-			ARRAY_SIZE(ardbeg_uart_devices));
+	tegra_uarta_device.dev.platform_data = &flounder_uarta_pdata;
+	tegra_uartb_device.dev.platform_data = &flounder_uartb_pdata;
+	tegra_uartc_device.dev.platform_data = &flounder_uartc_pdata;
+	platform_add_devices(flounder_uart_devices,
+			ARRAY_SIZE(flounder_uart_devices));
 #endif
-	tegra_uartd_device.dev.platform_data = &ardbeg_uartd_pdata;
+	tegra_uartd_device.dev.platform_data = &flounder_uartd_pdata;
 	if (!is_tegra_debug_uartport_hs()) {
 		int debug_port_id = uart_console_debug_init(3);
 		if (debug_port_id < 0)
@@ -367,7 +367,7 @@ static void __init ardbeg_uart_init(void)
 		platform_device_register(uart_console_debug_device);
 #endif
 	} else {
-		tegra_uartd_device.dev.platform_data = &ardbeg_uartd_pdata;
+		tegra_uartd_device.dev.platform_data = &flounder_uartd_pdata;
 		platform_device_register(&tegra_uartd_device);
 	}
 }
@@ -428,7 +428,7 @@ static void laguna_pcie_init(void)
 	platform_device_register(&tegra_pci_device);
 }
 
-static struct platform_device *ardbeg_devices[] __initdata = {
+static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
 	&tegra_udc_device,
@@ -445,7 +445,7 @@ static struct platform_device *ardbeg_devices[] __initdata = {
 	&tegra_i2s_device1,
 	&tegra_i2s_device3,
 	&tegra_i2s_device4,
-	&ardbeg_audio_device_rt5639,
+	&flounder_audio_device_rt5639,
 	&tegra_spdif_device,
 	&spdif_dit_device,
 	&bluetooth_dit_device,
@@ -598,7 +598,7 @@ static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
 };
 
-static void ardbeg_usb_init(void)
+static void flounder_usb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 	int modem_id = tegra_get_modem_id();
@@ -613,7 +613,7 @@ static void ardbeg_usb_init(void)
 		tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
 		tegra_otg_pdata.id_extcon_dev_name = "as3722-extcon";
 	} else {
-		/* Ardbeg */
+		/* Flounder */
 		tegra_get_pmu_board_info(&bi);
 
 		switch (bi.board_id) {
@@ -688,7 +688,7 @@ static struct tegra_xusb_board_data xusb_bdata = {
 	.uses_external_pmic = false,
 };
 
-static void ardbeg_xusb_init(void)
+static void flounder_xusb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
@@ -715,7 +715,7 @@ static void ardbeg_xusb_init(void)
 
 		/* FIXME Add for UTMIP2 when have odmdata assigend */
 	} else {
-		/* Ardbeg */
+		/* Flounder */
 		xusb_bdata.gpio_controls_muxed_ss_lanes = false;
 
 		if (board_info.board_id == BOARD_E1781) {
@@ -806,7 +806,7 @@ static struct platform_device icera_bruce_device = {
 	},
 };
 
-static void ardbeg_modem_init(void)
+static void flounder_modem_init(void)
 {
 	int modem_id = tegra_get_modem_id();
 	struct board_info board_info;
@@ -820,7 +820,7 @@ static void ardbeg_modem_init(void)
 	switch (modem_id) {
 	case TEGRA_BB_BRUCE:
 		if (!(usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)) {
-			/* Set specific USB wake source for Ardbeg */
+			/* Set specific USB wake source for Flounder */
 			if (board_info.board_id == BOARD_E1780)
 				tegra_set_wake_source(42, INT_USB2);
 			if (pmu_board_info.board_id == BOARD_E1736)
@@ -832,7 +832,7 @@ static void ardbeg_modem_init(void)
 		if (!(usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)) {
 			tegra_ehci2_device.dev.platform_data =
 				&tegra_ehci2_hsic_smsc_hub_pdata;
-			/* Set specific USB wake source for Ardbeg */
+			/* Set specific USB wake source for Flounder */
 			if (board_info.board_id == BOARD_E1780)
 				tegra_set_wake_source(42, INT_USB2);
 			platform_device_register(&tegra_ehci2_device);
@@ -845,38 +845,38 @@ static void ardbeg_modem_init(void)
 }
 
 #ifndef CONFIG_USE_OF
-static struct platform_device *ardbeg_spi_devices[] __initdata = {
+static struct platform_device *flounder_spi_devices[] __initdata = {
 	&tegra11_spi_device1,
 	&tegra11_spi_device4,
 };
 
-static struct tegra_spi_platform_data ardbeg_spi1_pdata = {
+static struct tegra_spi_platform_data flounder_spi1_pdata = {
 	.dma_req_sel		= 15,
 	.spi_max_frequency	= 25000000,
 	.clock_always_on	= false,
 };
 
-static struct tegra_spi_platform_data ardbeg_spi4_pdata = {
+static struct tegra_spi_platform_data flounder_spi4_pdata = {
 	.dma_req_sel		= 18,
 	.spi_max_frequency	= 25000000,
 	.clock_always_on	= false,
 };
 
-static void __init ardbeg_spi_init(void)
+static void __init flounder_spi_init(void)
 {
-	tegra11_spi_device1.dev.platform_data = &ardbeg_spi1_pdata;
-	tegra11_spi_device4.dev.platform_data = &ardbeg_spi4_pdata;
-	platform_add_devices(ardbeg_spi_devices,
-			ARRAY_SIZE(ardbeg_spi_devices));
+	tegra11_spi_device1.dev.platform_data = &flounder_spi1_pdata;
+	tegra11_spi_device4.dev.platform_data = &flounder_spi4_pdata;
+	platform_add_devices(flounder_spi_devices,
+			ARRAY_SIZE(flounder_spi_devices));
 }
 #else
-static void __init ardbeg_spi_init(void)
+static void __init flounder_spi_init(void)
 {
 }
 #endif
 
 #ifdef CONFIG_USE_OF
-static struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
+static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d400, "spi-tegra114.0",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d600, "spi-tegra114.1",
@@ -929,7 +929,7 @@ static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	{ NULL,         NULL,           0,              0},
 };
 
-static struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
+static struct rm_spi_ts_platform_data rm31080ts_flounder_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
 	.platform_id = RM_PLATFORM_A010,
@@ -942,7 +942,7 @@ static struct tegra_spi_device_controller_data dev_cdata = {
 	.tx_clk_tap_delay = 16,
 };
 
-static struct spi_board_info rm31080a_ardbeg_spi_board[1] = {
+static struct spi_board_info rm31080a_flounder_spi_board[1] = {
 	{
 		.modalias = "rm_ts_spidev",
 		.bus_num = TOUCH_SPI_ID,
@@ -950,46 +950,46 @@ static struct spi_board_info rm31080a_ardbeg_spi_board[1] = {
 		.max_speed_hz = 12 * 1000 * 1000,
 		.mode = SPI_MODE_0,
 		.controller_data = &dev_cdata,
-		.platform_data = &rm31080ts_ardbeg_data,
+		.platform_data = &rm31080ts_flounder_data,
 	},
 };
 
-static int __init ardbeg_touch_init(void)
+static int __init flounder_touch_init(void)
 {
 	tegra_clk_init_from_table(touch_clk_init_table);
-	rm31080a_ardbeg_spi_board[0].irq =
+	rm31080a_flounder_spi_board[0].irq =
 		gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
 	touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
 				TOUCH_GPIO_RST_RAYDIUM_SPI,
-				&rm31080ts_ardbeg_data,
-				&rm31080a_ardbeg_spi_board[0],
-				ARRAY_SIZE(rm31080a_ardbeg_spi_board));
+				&rm31080ts_flounder_data,
+				&rm31080a_flounder_spi_board[0],
+				ARRAY_SIZE(rm31080a_flounder_spi_board));
 	return 0;
 }
 
-static void __init tegra_ardbeg_early_init(void)
+static void __init tegra_flounder_early_init(void)
 {
-	tegra_clk_init_from_table(ardbeg_clk_init_table);
+	tegra_clk_init_from_table(flounder_clk_init_table);
 	tegra_clk_verify_parents();
 	if (of_machine_is_compatible("nvidia,laguna"))
 		tegra_soc_device_init("laguna");
 	else if (of_machine_is_compatible("nvidia,tn8"))
 		tegra_soc_device_init("tn8");
 	else
-		tegra_soc_device_init("ardbeg");
+		tegra_soc_device_init("flounder");
 }
 
-static struct tegra_dtv_platform_data ardbeg_dtv_pdata = {
+static struct tegra_dtv_platform_data flounder_dtv_pdata = {
 	.dma_req_selector = 11,
 };
 
-static void __init ardbeg_dtv_init(void)
+static void __init flounder_dtv_init(void)
 {
-	tegra_dtv_device.dev.platform_data = &ardbeg_dtv_pdata;
+	tegra_dtv_device.dev.platform_data = &flounder_dtv_pdata;
 	platform_device_register(&tegra_dtv_device);
 }
 
-static void __init tegra_ardbeg_late_init(void)
+static void __init tegra_flounder_late_init(void)
 {
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
@@ -1003,41 +1003,41 @@ static void __init tegra_ardbeg_late_init(void)
 			board_info.board_id == BOARD_PM363)
 		laguna_pinmux_init();
 	else
-		ardbeg_pinmux_init();
+		flounder_pinmux_init();
 
-	ardbeg_uart_init();
-	ardbeg_usb_init();
-	ardbeg_modem_init();
-	ardbeg_xusb_init();
-	ardbeg_i2c_init();
-	ardbeg_spi_init();
-	ardbeg_audio_init();
-	platform_add_devices(ardbeg_devices, ARRAY_SIZE(ardbeg_devices));
+	flounder_uart_init();
+	flounder_usb_init();
+	flounder_modem_init();
+	flounder_xusb_init();
+	flounder_i2c_init();
+	flounder_spi_init();
+	flounder_audio_init();
+	platform_add_devices(flounder_devices, ARRAY_SIZE(flounder_devices));
 	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
-	ardbeg_sdhci_init();
+	flounder_sdhci_init();
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363)
 		laguna_regulator_init();
 	else
-		ardbeg_regulator_init();
-	ardbeg_dtv_init();
-	ardbeg_suspend_init();
+		flounder_regulator_init();
+	flounder_dtv_init();
+	flounder_suspend_init();
 /* TODO: add support for laguna board when dvfs table is ready */
 	if (board_info.board_id == BOARD_E1780 &&
 			(tegra_get_memory_type() == 0))
-		ardbeg_emc_init();
+		flounder_emc_init();
 
-	ardbeg_edp_init();
+	flounder_edp_init();
 	isomgr_init();
-	ardbeg_touch_init();
-	ardbeg_panel_init();
-	ardbeg_kbc_init();
+	flounder_touch_init();
+	flounder_panel_init();
+	flounder_kbc_init();
 	if (board_info.board_id == BOARD_PM358)
 		laguna_pm358_pmon_init();
 	else
-		ardbeg_pmon_init();
+		flounder_pmon_init();
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363)
@@ -1046,42 +1046,42 @@ static void __init tegra_ardbeg_late_init(void)
 	tegra_wdt_recovery_init();
 #endif
 
-	ardbeg_sensors_init();
+	flounder_sensors_init();
 
-	ardbeg_soctherm_init();
+	flounder_soctherm_init();
 
-	ardbeg_setup_bluedroid_pm();
+	flounder_setup_bluedroid_pm();
 	tegra_register_fuse();
 	bonaire_sata_init();
 }
 
-static void __init ardbeg_ramconsole_reserve(unsigned long size)
+static void __init flounder_ramconsole_reserve(unsigned long size)
 {
 	tegra_ram_console_debug_reserve(SZ_1M);
 }
 
-static void __init tegra_ardbeg_init_early(void)
+static void __init tegra_flounder_init_early(void)
 {
-	ardbeg_rail_alignment_init();
+	flounder_rail_alignment_init();
 	tegra12x_init_early();
 }
 
-static void __init tegra_ardbeg_dt_init(void)
+static void __init tegra_flounder_dt_init(void)
 {
 	tegra_get_board_info(&board_info);
 	tegra_get_display_board_info(&display_board_info);
 
-	tegra_ardbeg_early_init();
+	tegra_flounder_early_init();
 #ifdef CONFIG_USE_OF
 	of_platform_populate(NULL,
-		of_default_bus_match_table, ardbeg_auxdata_lookup,
+		of_default_bus_match_table, flounder_auxdata_lookup,
 		&platform_bus);
 #endif
 
-	tegra_ardbeg_late_init();
+	tegra_flounder_late_init();
 }
 
-static void __init tegra_ardbeg_reserve(void)
+static void __init tegra_flounder_reserve(void)
 {
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM) || \
 		defined(CONFIG_TEGRA_NO_CARVEOUT)
@@ -1090,7 +1090,7 @@ static void __init tegra_ardbeg_reserve(void)
 #else
 	tegra_reserve(SZ_1G, SZ_16M + SZ_2M, SZ_4M);
 #endif
-	ardbeg_ramconsole_reserve(SZ_1M);
+	flounder_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const flounder_dt_board_compat[] = {
@@ -1102,11 +1102,11 @@ DT_MACHINE_START(FLOUNDER, "flounder")
 	.atag_offset	= 0x100,
 	.smp		= smp_ops(tegra_smp_ops),
 	.map_io		= tegra_map_common_io,
-	.reserve	= tegra_ardbeg_reserve,
-	.init_early	= tegra_ardbeg_init_early,
+	.reserve	= tegra_flounder_reserve,
+	.init_early	= tegra_flounder_init_early,
 	.init_irq	= tegra_dt_init_irq,
 	.init_time	= tegra_init_timer,
-	.init_machine	= tegra_ardbeg_dt_init,
+	.init_machine	= tegra_flounder_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= flounder_dt_board_compat,
 	.init_late      = tegra_init_late
