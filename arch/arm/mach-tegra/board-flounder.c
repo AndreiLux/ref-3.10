@@ -112,12 +112,6 @@ static struct resource flounder_bluedroid_pm_resources[] = {
 		.end    = TEGRA_GPIO_PU6,
 		.flags  = IORESOURCE_IO,
 	},
-	[4] = {
-		.name = "reset_gpio",
-		.start  = TEGRA_GPIO_PX1,
-		.end    = TEGRA_GPIO_PX1,
-		.flags  = IORESOURCE_IO,
-	},
 };
 
 static struct platform_device flounder_bluedroid_pm_device = {
