@@ -31,6 +31,7 @@
 #include "dc_reg.h"
 #include "dc_config.h"
 #include "dc_priv.h"
+#include "tegra_adf.h"
 
 static int use_dynamic_emc = 1;
 
@@ -470,6 +471,14 @@ static void calc_disp_params(struct tegra_dc *dc,
 }
 #endif
 
+#ifdef CONFIG_TEGRA_ISOMGR
+static void tegra_dc_process_bandwidth_renegotiate(struct tegra_dc *dc, u32 bw)
+{
+	tegra_adf_process_bandwidth_renegotiate(dc->adf, bw,
+			tegra_isomgr_get_available_iso_bw());
+	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id);
+}
+#endif
 
 /* uses the larger of w->bandwidth or w->new_bandwidth */
 static void tegra_dc_set_latency_allowance(struct tegra_dc *dc,
@@ -646,7 +655,7 @@ void tegra_dc_clear_bandwidth(struct tegra_dc *dc)
 		latency = tegra_isomgr_realize(dc->isomgr_handle);
 		WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
 	} else {
-		tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id);
+		tegra_dc_process_bandwidth_renegotiate(dc, 0);
 	}
 	dc->bw_kbps = 0;
 }
@@ -699,8 +708,7 @@ void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 			latency = tegra_isomgr_realize(dc->isomgr_handle);
 			WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
 		} else {
-			tegra_dc_ext_process_bandwidth_renegotiate(
-				dc->ndev->id);
+			tegra_dc_process_bandwidth_renegotiate(dc, bw);
 		}
 #else /* EMC version */
 		int emc_freq;
@@ -789,7 +797,7 @@ void tegra_dc_bandwidth_renegotiate(void *p, u32 avail_bw)
 
 	if (WARN_ONCE(!dc, "dc is NULL!"))
 		return;
-	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id);
+	tegra_dc_process_bandwidth_renegotiate(dc, dc->bw_kbps);
 
 	/* a bit of a hack, report the change in bandwidth before it
 	 * really happens.

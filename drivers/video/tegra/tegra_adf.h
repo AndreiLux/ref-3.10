@@ -24,6 +24,8 @@ struct tegra_adf_info;
 #ifdef CONFIG_ADF_TEGRA
 void tegra_adf_process_vblank(struct tegra_adf_info *adf_info,
 		ktime_t timestamp);
+int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
+		u32 used_bw_kbps, u32 available_bw_kbps);
 
 struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 		struct tegra_dc *dc, struct tegra_fb_data *fb_data);
@@ -39,6 +41,13 @@ static inline struct tegra_adf_info *tegra_adf_init(
 		struct tegra_fb_data *fb_data)
 {
 	return ERR_PTR(-ENOENT);
+}
+
+static inline int tegra_adf_process_bandwidth_renegotiate(
+		struct tegra_adf_info *adf_info, u32 used_bw_kbps,
+		u32 available_bw_kbps)
+{
+	return -ENOENT;
 }
 
 static inline void tegra_adf_unregister(struct tegra_adf_info *adf_info)
