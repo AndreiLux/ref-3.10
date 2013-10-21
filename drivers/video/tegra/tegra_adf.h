@@ -22,6 +22,9 @@
 struct tegra_adf_info;
 
 #ifdef CONFIG_ADF_TEGRA
+int tegra_adf_process_hotplug_connected(struct tegra_adf_info *adf_info,
+		struct fb_monspecs *specs);
+void tegra_adf_process_hotplug_disconnected(struct tegra_adf_info *adf_info);
 void tegra_adf_process_vblank(struct tegra_adf_info *adf_info,
 		ktime_t timestamp);
 int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
@@ -31,6 +34,17 @@ struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 		struct tegra_dc *dc, struct tegra_fb_data *fb_data);
 void tegra_adf_unregister(struct tegra_adf_info *adf_info);
 #else
+static inline int tegra_adf_process_hotplug_connected(
+		struct tegra_adf_info *adf_info, struct fb_monspecs *specs)
+{
+	return -ENOENT;
+}
+
+static inline void tegra_adf_process_hotplug_disconnected(
+		struct tegra_adf_info *adf_info)
+{
+}
+
 static inline void tegra_adf_process_vblank(struct tegra_adf_info *adf_info,
 		ktime_t timestamp)
 {
