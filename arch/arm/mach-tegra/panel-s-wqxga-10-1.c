@@ -228,7 +228,6 @@ static struct tegra_dsi_out dsi_s_wqxga_10_1_pdata = {
 	.n_init_cmd = ARRAY_SIZE(dsi_s_wqxga_10_1_init_cmd),
 	.dsi_suspend_cmd = dsi_s_wqxga_10_1_suspend_cmd,
 	.n_suspend_cmd = ARRAY_SIZE(dsi_s_wqxga_10_1_suspend_cmd),
-	.bl_name = "pwm-backlight",
 	.lp00_pre_panel_wakeup = true,
 	.ulpm_not_supported = true,
 };
