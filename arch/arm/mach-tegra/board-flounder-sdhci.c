@@ -371,7 +371,7 @@ static int __init flounder_wifi_init(void)
 #ifdef CONFIG_TEGRA_PREPOWER_WIFI
 static int __init flounder_wifi_prepower(void)
 {
-	if (!of_machine_is_compatible("nvidia,flounder") &&
+	if (!of_machine_is_compatible("google,flounder") &&
 		!of_machine_is_compatible("nvidia,laguna") &&
 		!of_machine_is_compatible("nvidia,tn8"))
 		return 0;

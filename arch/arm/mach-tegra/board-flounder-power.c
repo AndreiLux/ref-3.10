@@ -1253,7 +1253,7 @@ static int __init flounder_fixed_regulator_init(void)
 {
 	struct board_info pmu_board_info;
 
-	if (!of_machine_is_compatible("nvidia,flounder"))
+	if (!of_machine_is_compatible("google,flounder"))
 		return 0;
 
 	tegra_get_pmu_board_info(&pmu_board_info);
