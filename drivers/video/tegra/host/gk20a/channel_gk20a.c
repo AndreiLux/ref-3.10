@@ -26,11 +26,12 @@
 #include <linux/scatterlist.h>
 
 
-#include "../dev.h"
-#include "../nvhost_as.h"
+#include "dev.h"
+#include "nvhost_as.h"
 #include "debug.h"
 
 #include "gk20a.h"
+#include "dbg_gpu_gk20a.h"
 
 #include "hw_ram_gk20a.h"
 #include "hw_fifo_gk20a.h"
@@ -466,6 +467,77 @@ int gk20a_channel_cycle_stats(struct channel_gk20a *ch,
 }
 #endif
 
+int gk20a_init_error_notifier(struct nvhost_hwctx *ctx,
+		u32 memhandle, u64 offset) {
+	struct channel_gk20a *ch = ctx->priv;
+	struct platform_device *dev = ch->ch->dev;
+	void *va;
+
+	struct mem_mgr *memmgr;
+	struct mem_handle *handle_ref;
+
+	if (!memhandle) {
+		pr_err("gk20a_init_error_notifier: invalid memory handle\n");
+		return -EINVAL;
+	}
+
+	memmgr = gk20a_channel_mem_mgr(ch);
+	handle_ref = nvhost_memmgr_get(memmgr, memhandle, dev);
+
+	if (ctx->error_notifier_ref)
+		gk20a_free_error_notifiers(ctx);
+
+	if (IS_ERR(handle_ref)) {
+		pr_err("Invalid handle: %d\n", memhandle);
+		return -EINVAL;
+	}
+	/* map handle */
+	va = nvhost_memmgr_mmap(handle_ref);
+	if (!va) {
+		nvhost_memmgr_put(memmgr, handle_ref);
+		pr_err("Cannot map notifier handle\n");
+		return -ENOMEM;
+	}
+
+	/* set hwctx notifiers pointer */
+	ctx->error_notifier_ref = handle_ref;
+	ctx->error_notifier = va + offset;
+	ctx->error_notifier_va = va;
+	return 0;
+}
+
+void gk20a_set_timeout_error(struct nvhost_hwctx *ctx)
+{
+	ctx->has_timedout = true;
+	if (ctx->error_notifier_ref) {
+		struct timespec time_data;
+		u64 nsec;
+		getnstimeofday(&time_data);
+		nsec = ((u64)time_data.tv_sec) * 1000000000u +
+				(u64)time_data.tv_nsec;
+		ctx->error_notifier->time_stamp.nanoseconds[0] =
+				(u32)nsec;
+		ctx->error_notifier->time_stamp.nanoseconds[1] =
+				(u32)(nsec >> 32);
+		ctx->error_notifier->info32 =
+				NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT;
+		ctx->error_notifier->status = 0xffff;
+		pr_err("Timeout notifier is set\n");
+	}
+}
+
+void gk20a_free_error_notifiers(struct nvhost_hwctx *ctx)
+{
+	if (ctx->error_notifier_ref) {
+		struct channel_gk20a *ch = ctx->priv;
+		struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
+		nvhost_memmgr_munmap(ctx->error_notifier_ref,
+				ctx->error_notifier_va);
+		nvhost_memmgr_put(memmgr, ctx->error_notifier_ref);
+		ctx->error_notifier_ref = 0;
+	}
+}
+
 void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 {
 	struct channel_gk20a *ch = ctx->priv;
@@ -475,6 +547,7 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
 	struct vm_gk20a *ch_vm = ch->vm;
 	unsigned long timeout = gk20a_get_gr_idle_timeout(g);
+	struct dbg_session_gk20a *dbg_s;
 
 	nvhost_dbg_fn("");
 
@@ -488,6 +561,8 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 			timeout);
 
 	gk20a_disable_channel(ch, finish, timeout);
+
+	gk20a_free_error_notifiers(ctx);
 
 	/* release channel ctx */
 	gk20a_free_channel_ctx(ch);
@@ -519,6 +594,16 @@ unbind:
 	channel_gk20a_free_inst(g, ch);
 
 	ch->vpr = false;
+
+	/* unlink all debug sessions */
+	mutex_lock(&ch->dbg_s_lock);
+
+	list_for_each_entry(dbg_s, &ch->dbg_s_list, dbg_s_list_node) {
+		dbg_s->ch = NULL;
+		list_del_init(&dbg_s->dbg_s_list_node);
+	}
+
+	mutex_unlock(&ch->dbg_s_lock);
 
 	/* ALWAYS last */
 	release_used_channel(f, ch);
@@ -921,25 +1006,11 @@ int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 
 	/* an address space needs to have been bound at this point.   */
 	if (!gk20a_channel_as_bound(c)) {
-		int err;
-		nvhost_warn(d,
+		nvhost_err(d,
 			    "not bound to an address space at time of gpfifo"
 			    " allocation.  Attempting to create and bind to"
 			    " one...");
-		/*
-		 * Eventually this will be a fatal error. For now attempt to
-		 * create and bind a share here.  This helps until we change
-		 * clients to use the new address space API.  However doing this
-		 * can mask errors in programming access to the address space
-		 * through the front door...
-		 */
-		err = nvhost_as_alloc_and_bind_share(c->ch, c->hwctx);
-		if (err || !gk20a_channel_as_bound(c)) {
-			nvhost_err(d,
-				   "not bound to address space at time"
-				   " of gpfifo allocation");
-			return err;
-		}
+		return -EINVAL;
 	}
 	ch_vm = c->vm;
 
@@ -1308,10 +1379,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	/* We don't know what context is currently running...                */
 	/* Note also: there can be more than one context associated with the */
 	/* address space (vm).   */
-	if (c->vm->tlb_dirty) {
-		c->vm->tlb_inval(c->vm);
-		c->vm->tlb_dirty = false;
-	}
+	c->vm->tlb_inval(c->vm);
 
 	/* Make sure we have enough space for gpfifo entries. If not,
 	 * wait for signals from completed submits */
@@ -1443,10 +1511,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	/* We don't know what context is currently running...                */
 	/* Note also: there can be more than one context associated with the */
 	/* address space (vm).   */
-	if (c->vm->tlb_dirty) {
-		c->vm->tlb_inval(c->vm);
-		c->vm->tlb_dirty = false;
-	}
+	c->vm->tlb_inval(c->vm);
 
 	trace_nvhost_channel_submitted_gpfifo(c->ch->dev->name,
 					   c->hw_chid,
@@ -1495,6 +1560,7 @@ int gk20a_init_channel_support(struct gk20a *g, u32 chid)
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
 	mutex_init(&c->cyclestate.cyclestate_buffer_mutex);
 #endif
+	INIT_LIST_HEAD(&c->dbg_s_list);
 	mutex_init(&c->dbg_s_lock);
 	return 0;
 }
@@ -1544,6 +1610,11 @@ int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout)
 	nvhost_dbg_fn("waiting for channel to finish syncpt:%d val:%d",
 		      ch->last_submit_fence.syncpt_id,
 		      ch->last_submit_fence.syncpt_value);
+
+	/* Do not wait for a timedout channel. Just check if it's done */
+	if (ch->hwctx && ch->hwctx->has_timedout)
+		timeout = 0;
+
 	err = nvhost_syncpt_wait_timeout(sp,
 					 ch->last_submit_fence.syncpt_id,
 					 ch->last_submit_fence.syncpt_value,

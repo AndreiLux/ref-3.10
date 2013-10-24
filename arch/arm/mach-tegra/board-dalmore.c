@@ -49,6 +49,7 @@
 #include <linux/edp.h>
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/clk/tegra.h>
+#include <linux/clocksource.h>
 
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -573,7 +574,9 @@ static struct tegra_usb_modem_power_platform_data baseband_pdata = {
 	.regulator_name = "vdd_modem_3v3",
 	.wake_gpio = -1,
 	.boot_gpio = MDM_COLDBOOT,
-	.boot_irq_flags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
+	.boot_irq_flags = IRQF_TRIGGER_RISING |
+				    IRQF_TRIGGER_FALLING |
+				    IRQF_ONESHOT,
 	.autosuspend_delay = 2000,
 	.short_autosuspend_delay = 50,
 	.tegra_ehci_device = &tegra_ehci2_device,
@@ -818,7 +821,7 @@ static void __init tegra_dalmore_reserve(void)
 	/* 1920*1200*4*2 = 18432000 bytes */
 	tegra_reserve(0, SZ_16M + SZ_2M, SZ_16M);
 #else
-	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_4M);
+	tegra_reserve(SZ_512M, SZ_16M + SZ_2M, SZ_4M);
 #endif
 	dalmore_ramconsole_reserve(SZ_1M);
 }
@@ -835,7 +838,7 @@ MACHINE_START(DALMORE, "dalmore")
 	.reserve	= tegra_dalmore_reserve,
 	.init_early	= tegra11x_init_early,
 	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_dalmore_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= dalmore_dt_board_compat,

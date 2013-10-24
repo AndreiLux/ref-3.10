@@ -419,7 +419,7 @@ static int dvfs_rail_update(struct dvfs_rail *rail)
 		return 0;
 	/* Keep current voltage if regulator must not be disabled at run time */
 	else if (!rail->jmp_to_zero) {
-		WARN(1, "%s cannot be turned off by dvfs\n");
+		WARN(1, "%s cannot be turned off by dvfs\n", rail->reg_id);
 		return 0;
 	}
 	/* else: fall thru if regulator is turned off by side band signaling */
@@ -1778,39 +1778,6 @@ static const struct file_operations rail_stats_fops = {
 	.release	= single_release,
 };
 
-static int gpu_dvfs_show(struct seq_file *s, void *data)
-{
-	int idx;
-	int *millivolts;
-	unsigned long *freqs;
-
-	if (read_gpu_dvfs_table(&millivolts, &freqs)) {
-		seq_printf(s, "Only supported for T124 or higher\n");
-		return 0;
-	}
-
-	seq_printf(s, "millivolts \t \t frequency\n");
-	seq_printf(s, "=====================================\n");
-
-	for (idx = 0; millivolts[idx]; idx++)
-		seq_printf(s, "%d mV \t \t %lu Hz\n", millivolts[idx],
-				freqs[idx]);
-
-	return 0;
-}
-
-static int gpu_dvfs_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, gpu_dvfs_show, NULL);
-}
-
-static const struct file_operations gpu_dvfs_fops = {
-	.open           = gpu_dvfs_open,
-	.read           = seq_read,
-	.llseek         = seq_lseek,
-	.release        = single_release,
-};
-
 static int rail_offs_set(struct dvfs_rail *rail, int offs)
 {
 	if (rail) {
@@ -1953,32 +1920,41 @@ static int dvfs_table_show(struct seq_file *s, void *data)
 	int i;
 	struct dvfs *d;
 	struct dvfs_rail *rail;
+	const int *v_pll, *last_v_pll = NULL;
+	const int *v_dfll, *last_v_dfll = NULL;
 
-	seq_printf(s, "DVFS tables: units mV/MHz\n\n");
+	seq_printf(s, "DVFS tables: units mV/MHz\n");
 
 	mutex_lock(&dvfs_lock);
 
 	list_for_each_entry(rail, &dvfs_rail_list, node) {
-		bool mv_done = false;
 		list_for_each_entry(d, &rail->dvfs, reg_node) {
-			if (!mv_done) {
-				const int *m = tegra_dvfs_get_millivolts_pll(d);
-				mv_done = true;
-				seq_printf(s, "%-16s", rail->reg_id);
-				for (i = 0; i < d->num_freqs; i++) {
-					int mv = m[i];
-					seq_printf(s, "%7d", mv);
-				}
-				seq_printf(s, "\n");
-				if (d->dfll_millivolts) {
-					seq_printf(s, "%-8s (dfll) ",
-						   rail->reg_id);
-					for (i = 0; i < d->num_freqs; i++) {
-						int mv = d->dfll_millivolts[i];
-						seq_printf(s, "%7d", mv);
-					}
+			bool mv_done = false;
+			v_pll = tegra_dvfs_get_millivolts_pll(d);
+			v_dfll = d->dfll_millivolts;
+
+			if (v_pll && (last_v_pll != v_pll)) {
+				if (!mv_done) {
 					seq_printf(s, "\n");
+					mv_done = true;
 				}
+				last_v_pll = v_pll;
+				seq_printf(s, "%-16s", rail->reg_id);
+				for (i = 0; i < d->num_freqs; i++)
+					seq_printf(s, "%7d", v_pll[i]);
+				seq_printf(s, "\n");
+			}
+
+			if (v_dfll && (last_v_dfll != v_dfll)) {
+				if (!mv_done) {
+					seq_printf(s, "\n");
+					mv_done = true;
+				}
+				last_v_dfll = v_dfll;
+				seq_printf(s, "%-8s (dfll) ", rail->reg_id);
+				for (i = 0; i < d->num_freqs; i++)
+					seq_printf(s, "%7d", v_dfll[i]);
+				seq_printf(s, "\n");
 			}
 
 			seq_printf(s, "%-16s", d->clk_name);
@@ -1988,7 +1964,6 @@ static int dvfs_table_show(struct seq_file *s, void *data)
 			}
 			seq_printf(s, "\n");
 		}
-		seq_printf(s, "\n");
 	}
 
 	mutex_unlock(&dvfs_lock);
@@ -2039,11 +2014,6 @@ int __init dvfs_debugfs_init(struct dentry *clk_debugfs_root)
 
 	d = debugfs_create_file("vdd_core_override", S_IRUGO | S_IWUSR,
 		clk_debugfs_root, NULL, &core_override_fops);
-	if (!d)
-		return -ENOMEM;
-
-	d = debugfs_create_file("gpu_dvfs", S_IRUGO | S_IWUSR,
-		clk_debugfs_root, NULL, &gpu_dvfs_fops);
 	if (!d)
 		return -ENOMEM;
 

@@ -354,6 +354,10 @@ static inline u32 pwr_falcon_exterrstat_valid_v(u32 r)
 {
 	return (r >> 31) & 0x1;
 }
+static inline u32 pwr_falcon_exterrstat_valid_m(void)
+{
+	return 0x1 << 31;
+}
 static inline u32 pwr_falcon_exterrstat_valid_true_v(void)
 {
 	return 0x00000001;
@@ -653,6 +657,10 @@ static inline u32 pwr_pmu_bar0_ctl_r(void)
 static inline u32 pwr_pmu_bar0_timeout_r(void)
 {
 	return 0x0010a7a8;
+}
+static inline u32 pwr_pmu_bar0_fecs_error_r(void)
+{
+	return 0x0010a988;
 }
 static inline u32 pwr_pmu_bar0_error_status_r(void)
 {

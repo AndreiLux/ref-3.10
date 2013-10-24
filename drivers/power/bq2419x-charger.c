@@ -38,10 +38,13 @@
 #include <linux/regmap.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
+#include <linux/regulator/of_regulator.h>
 #include <linux/slab.h>
 #include <linux/rtc.h>
 #include <linux/alarmtimer.h>
 #include <linux/power/battery-charger-gauge-comm.h>
+
+#define MAX_STR_PRINT 50
 
 /* input current limit */
 static const unsigned int iinlim[] = {
@@ -91,6 +94,8 @@ struct bq2419x_chip {
 	int				chg_restart_timeout;
 	int				chg_restart_time;
 	int				battery_presense;
+	bool				cable_connected;
+	int				last_charging_current;
 };
 
 static int current_to_reg(const unsigned int *tbl,
@@ -274,11 +279,14 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	if (max_uA == 0 && val != 0)
 		return ret;
 
+	bq_charger->last_charging_current = max_uA;
 	bq_charger->in_current_limit = max_uA/1000;
 	if ((val & BQ2419x_VBUS_STAT) == BQ2419x_VBUS_UNKNOWN) {
+		bq_charger->cable_connected = 0;
 		bq_charger->in_current_limit = 500;
 		bq_charger->chg_status = BATTERY_DISCHARGING;
 	} else {
+		bq_charger->cable_connected = 1;
 		bq_charger->chg_status = BATTERY_CHARGING;
 	}
 	ret = bq2419x_init(bq_charger);
@@ -585,7 +593,14 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 		bq2419x->chg_status = BATTERY_CHARGING_DONE;
 		battery_charging_status_update(bq2419x->bc_dev,
 					bq2419x->chg_status);
+		battery_charging_restart(bq2419x->bc_dev,
+					bq2419x->chg_restart_time);
 	}
+
+	if ((val & BQ2419x_VSYS_STAT_MASK) ==
+				BQ2419x_VSYS_STAT_BATT_LOW)
+		dev_info(bq2419x->dev,
+			"In VSYSMIN regulation, battery is too low\n");
 
 	/*
 	* Update Charging status based on STAT register
@@ -596,6 +611,8 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 			bq2419x->chg_status = BATTERY_DISCHARGING;
 			battery_charging_status_update(bq2419x->bc_dev,
 					bq2419x->chg_status);
+			battery_charging_restart(bq2419x->bc_dev,
+					bq2419x->chg_restart_time);
 		}
 	}
 
@@ -778,6 +795,107 @@ static int bq2419x_wakealarm(struct bq2419x_chip *bq2419x, int time_sec)
 	return 0;
 }
 
+static int fchg_curr_to_reg(int curr)
+{
+	int ret;
+
+	ret = (curr - 500) / 64;
+	ret = ret << 2;
+
+	return ret;
+}
+
+static int fchg_reg_to_curr(int reg_val)
+{
+	int ret;
+
+	ret = (reg_val * 64) + 500;
+
+	return ret;
+}
+
+static ssize_t bq2419x_show_output_charging_current(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct bq2419x_chip *bq2419x = i2c_get_clientdata(client);
+	int reg_val, curr_val, ret;
+
+	ret = regmap_read(bq2419x->regmap, BQ2419X_CHRG_CTRL_REG, &reg_val);
+
+	reg_val &= (~3);
+	reg_val = reg_val >> 2;
+
+	curr_val = fchg_reg_to_curr(reg_val);
+
+	return snprintf(buf, MAX_STR_PRINT, "%d mA\n", curr_val);
+}
+
+static ssize_t bq2419x_set_output_charging_current(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	struct bq2419x_chip *bq2419x = i2c_get_clientdata(client);
+	int curr_val, ret, i;
+
+	if (kstrtouint(buf, 0, &curr_val)) {
+		dev_err(dev, "\nfile: %s, line=%d return %s()",
+					__FILE__, __LINE__, __func__);
+		return -EINVAL;
+	}
+
+	for (i = 0; i <= 63; i++) {
+		if (curr_val == fchg_reg_to_curr(i))
+			break;
+	}
+
+	if (i == 64) {
+		dev_err(dev, "Invalid output current value..\n");
+		return -EINVAL;
+	}
+
+	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_CHRG_CTRL_REG,
+				BQ2419X_CHARGE_CURRENT_MASK,
+				fchg_curr_to_reg(curr_val));
+
+	return count;
+}
+
+static ssize_t bq2419x_show_output_charging_current_values(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	struct i2c_client *client = to_i2c_client(dev);
+	int i, ret = 0;
+
+	for (i = 0; i <= 63; i++) {
+		ret +=
+		snprintf(buf + strlen(buf), MAX_STR_PRINT,
+				"%d mA\n", fchg_reg_to_curr(i));
+	}
+
+	return ret;
+}
+
+static DEVICE_ATTR(output_charging_current, (S_IRUGO | (S_IWUSR | S_IWGRP)),
+		bq2419x_show_output_charging_current,
+		bq2419x_set_output_charging_current);
+
+static DEVICE_ATTR(output_current_allowed_values, S_IRUGO,
+		bq2419x_show_output_charging_current_values, NULL);
+
+static struct attribute *bq2419x_attributes[] = {
+	&dev_attr_output_charging_current.attr,
+	&dev_attr_output_current_allowed_values.attr,
+	NULL
+};
+
+static const struct attribute_group bq2419x_attr_group = {
+	.attrs = bq2419x_attributes,
+};
+
 static int bq2419x_charger_get_status(struct battery_charger_dev *bc_dev)
 {
 	struct bq2419x_chip *bq2419x = battery_charger_get_drvdata(bc_dev);
@@ -785,14 +903,104 @@ static int bq2419x_charger_get_status(struct battery_charger_dev *bc_dev)
 	return bq2419x->chg_status;
 }
 
+static int bq2419x_charging_restart(struct battery_charger_dev *bc_dev)
+{
+        struct bq2419x_chip *bq2419x = battery_charger_get_drvdata(bc_dev);
+        int ret;
+
+        if (!bq2419x->cable_connected)
+                return 0;
+
+        dev_info(bq2419x->dev, "Restarting the charging\n");
+        ret = bq2419x_set_charging_current(bq2419x->chg_rdev,
+                        bq2419x->last_charging_current,
+                        bq2419x->last_charging_current);
+        if (ret < 0) {
+                dev_err(bq2419x->dev, "restarting of charging failed: %d\n", ret);
+                battery_charging_restart(bq2419x->bc_dev,
+                                bq2419x->chg_restart_time);
+        }
+        return ret;
+}
+
+
 static struct battery_charging_ops bq2419x_charger_bci_ops = {
 	.get_charging_status = bq2419x_charger_get_status,
+	.restart_charging = bq2419x_charging_restart,
 };
 
 static struct battery_charger_info bq2419x_charger_bci = {
 	.cell_id = 0,
 	.bc_ops = &bq2419x_charger_bci_ops,
 };
+
+static struct bq2419x_platform_data *
+bq2419x_dt_parse(struct i2c_client *client)
+{
+	struct device_node *np = client->dev.of_node;
+	struct bq2419x_platform_data *pdata;
+	struct device_node *batt_reg_node;
+	struct device_node *vbus_reg_node;
+	int wdt_timeout;
+	int rtc_alarm_time;
+	int num_consumer_supplies;
+	int chg_restart_time;
+	struct regulator_init_data *batt_init_data;
+	struct regulator_init_data *vbus_init_data;
+
+	pdata = devm_kzalloc(&client->dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return PTR_ERR(-ENOMEM);
+
+	pdata->vbus_pdata = devm_kzalloc(&client->dev,
+			sizeof(*(pdata->vbus_pdata)), GFP_KERNEL);
+	if (!pdata->vbus_pdata)
+		return NULL;
+
+	batt_reg_node = of_find_node_by_name(np, "charger");
+	if (!batt_reg_node)
+		return NULL;
+
+	if (batt_reg_node) {
+		of_property_read_u32(batt_reg_node, "watchdog-timeout", &wdt_timeout);
+		of_property_read_u32(batt_reg_node, "rtc-alarm-time", &rtc_alarm_time);
+		of_property_read_u32(batt_reg_node, "auto-recharge-time", &chg_restart_time);
+		pdata->bcharger_pdata = devm_kzalloc(&client->dev,
+				sizeof(*(pdata->bcharger_pdata)), GFP_KERNEL);
+		if (!pdata->bcharger_pdata)
+			return PTR_ERR(-ENOMEM);
+		batt_init_data = of_get_regulator_init_data(&client->dev,
+								batt_reg_node);
+		if (!batt_init_data)
+			return NULL;
+
+		pdata->bcharger_pdata->consumer_supplies =
+					batt_init_data->consumer_supplies;
+		pdata->bcharger_pdata->num_consumer_supplies =
+					batt_init_data->num_consumer_supplies;
+		pdata->bcharger_pdata->max_charge_current_mA =
+						batt_init_data->constraints.max_uA;
+		pdata->bcharger_pdata->wdt_timeout = wdt_timeout;
+		pdata->bcharger_pdata->rtc_alarm_time = rtc_alarm_time;
+		pdata->bcharger_pdata->chg_restart_time = chg_restart_time;
+	}
+
+	vbus_reg_node = of_find_node_by_name(np, "vbus");
+	if (!vbus_reg_node)
+		return NULL;
+
+	vbus_init_data = of_get_regulator_init_data(&client->dev,
+							vbus_reg_node);
+	if (!vbus_init_data)
+		return NULL;
+
+	pdata->vbus_pdata->consumer_supplies =
+				vbus_init_data->consumer_supplies;
+	pdata->vbus_pdata->num_consumer_supplies =
+				vbus_init_data->num_consumer_supplies;
+
+	return pdata;
+}
 
 static int bq2419x_probe(struct i2c_client *client,
 				const struct i2c_device_id *id)
@@ -801,7 +1009,11 @@ static int bq2419x_probe(struct i2c_client *client,
 	struct bq2419x_platform_data *pdata;
 	int ret = 0;
 
-	pdata = client->dev.platform_data;
+	if (client->dev.platform_data)
+		pdata = client->dev.platform_data;
+	else if (client->dev.of_node)
+		pdata = bq2419x_dt_parse(client);
+
 	if (!pdata) {
 		dev_err(&client->dev, "No Platform data");
 		return -EINVAL;
@@ -836,6 +1048,8 @@ static int bq2419x_probe(struct i2c_client *client,
 
 	if (bq2419x->rtc_alarm_time)
 		bq2419x->rtc = alarmtimer_get_rtcdev();
+
+	ret = sysfs_create_group(&client->dev.kobj, &bq2419x_attr_group);
 
 	mutex_init(&bq2419x->mutex);
 	bq2419x->suspended = 0;

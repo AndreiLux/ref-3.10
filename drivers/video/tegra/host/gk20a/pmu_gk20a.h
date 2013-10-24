@@ -675,6 +675,8 @@ struct pmu_gk20a {
 	struct pmu_mutex *mutex;
 	u32 mutex_cnt;
 
+	struct mutex pmu_copy_lock;
+
 	struct nvhost_allocator dmem;
 
 	u32 *ucode_image;
@@ -704,9 +706,25 @@ struct pmu_gk20a {
 	u32 sample_buffer;
 
 	struct mutex isr_mutex;
+	bool zbc_ready;
+};
+
+struct gk20a_pmu_save_state {
+	struct pmu_sequence *seq;
+	u32 next_seq_desc;
+	struct pmu_mutex *mutex;
+	u32 mutex_cnt;
+	struct pmu_ucode_desc *desc;
+	struct pmu_mem_desc ucode;
+	struct pmu_mem_desc seq_buf;
+	struct pmu_mem_desc pg_buf;
+	struct delayed_work elpg_enable;
+	wait_queue_head_t pg_wq;
+	bool sw_ready;
 };
 
 int gk20a_init_pmu_support(struct gk20a *g);
+int gk20a_init_pmu_setup_hw2(struct gk20a *g);
 
 void gk20a_pmu_isr(struct gk20a *g);
 
@@ -727,5 +745,6 @@ int pmu_mutex_acquire(struct pmu_gk20a *pmu, u32 id, u32 *token);
 int pmu_mutex_release(struct pmu_gk20a *pmu, u32 id, u32 *token);
 int gk20a_pmu_destroy(struct gk20a *g);
 int gk20a_pmu_load_norm(struct gk20a *g, u32 *load);
+int gk20a_pmu_debugfs_init(struct platform_device *dev);
 
 #endif /*__PMU_GK20A_H__*/

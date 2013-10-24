@@ -29,6 +29,8 @@
 #include <linux/devfreq.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
+#include <linux/pm_qos.h>
+#include <linux/time.h>
 
 struct nvhost_master;
 struct nvhost_hwctx;
@@ -141,6 +143,16 @@ enum nvhost_power_sysfs_attributes {
 	NVHOST_POWER_SYSFS_ATTRIB_MAX
 };
 
+struct nvhost_notification {
+	struct {			/* 0000- */
+		__u32 nanoseconds[2];	/* nanoseconds since Jan. 1, 1970 */
+	} time_stamp;			/* -0007 */
+	__u32 info32;	/* info returned depends on method 0008-000b */
+#define NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT 8
+	__u16 info16;	/* info returned depends on method 000c-000d */
+	__u16 status;	/* user sets bit 15, NV sets status 000e-000f */
+};
+
 struct nvhost_clock {
 	char *name;
 	unsigned long default_rate;
@@ -223,6 +235,8 @@ struct nvhost_device_data {
 
 	void *private_data;		/* private platform data */
 	struct platform_device *pdev;	/* owner platform_device */
+
+	struct dev_pm_qos_request no_poweroff_req;
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS
 	struct generic_pm_domain pd;	/* power domain representing power partition */

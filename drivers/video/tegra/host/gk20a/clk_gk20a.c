@@ -407,8 +407,7 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 	}
 	ref_rate = clk_get_rate(ref);
 
-	/* TBD: set this according to different environments */
-	clk->pll_delay = 5000000; /* usec */
+	clk->pll_delay = 300; /* usec */
 
 	clk->gpc_pll.id = GK20A_GPC_PLL;
 	clk->gpc_pll.clk_in = ref_rate / 1000000; /* MHz */
@@ -459,7 +458,6 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 
 static int gk20a_init_clk_setup_hw(struct gk20a *g)
 {
-	struct clk_gk20a *clk = &g->clk;
 	u32 data;
 
 	nvhost_dbg_fn("");

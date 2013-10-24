@@ -77,11 +77,13 @@ int ardbeg_soctherm_init(void);
 #define CAM2_PWDN TEGRA_GPIO_PBB6
 #define CAM1_PWDN TEGRA_GPIO_PBB5
 #define CAM_AF_PWDN TEGRA_GPIO_PBB7
+#define CAM_BOARD_E1806
 
 /* Modem related GPIOs */
 #define MODEM_EN		TEGRA_GPIO_PS4
 #define MDM_RST			TEGRA_GPIO_PS3
 #define MDM_COLDBOOT		TEGRA_GPIO_PO5
+#define MDM_SAR0		TEGRA_GPIO_PG2
 
 /* Baseband IDs */
 enum tegra_bb_type {
@@ -99,6 +101,9 @@ enum tegra_bb_type {
 #define TOUCH_GPIO_RST_RAYDIUM_SPI	TEGRA_GPIO_PK4
 #define TOUCH_SPI_ID			0	/*SPI 1 on ardbeg_interposer*/
 #define TOUCH_SPI_CS			0	/*CS  0 on ardbeg_interposer*/
+
+#define TOUCH_GPIO_IRQ_MAXIM_STI_SPI	TEGRA_GPIO_PK2
+#define TOUCH_GPIO_RST_MAXIM_STI_SPI	TEGRA_GPIO_PK4
 
 /* Audio-related GPIOs */
 /*Same GPIO's used for T114(Interposer) and T124*/

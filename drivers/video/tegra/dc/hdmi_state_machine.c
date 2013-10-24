@@ -167,7 +167,7 @@ static void hdmi_disable_l(struct tegra_dc_hdmi_data *hdmi, bool power_gate)
 		tegra_fb_update_monspecs(hdmi->dc->fb, NULL, NULL);
 		tegra_dc_ext_process_hotplug(hdmi->dc->ndev->id);
 	}
-	if (power_gate)
+	if (power_gate && tegra_powergate_is_powered(hdmi->dc->powergate_id))
 		tegra_dc_powergate_locked(hdmi->dc);
 }
 
@@ -368,6 +368,8 @@ static void handle_recheck_edid_l(struct tegra_dc_hdmi_data *hdmi)
 		if (match) {
 			pr_info("No EDID change after HPD bounce, taking no action.\n");
 			tgt_state = HDMI_STATE_DONE_ENABLED;
+			tegra_nvhdcp_set_plug(hdmi->nvhdcp, 0);
+			tegra_nvhdcp_set_plug(hdmi->nvhdcp, 1);
 			timeout = -1;
 		} else {
 			pr_info("EDID change after HPD bounce, resetting\n");

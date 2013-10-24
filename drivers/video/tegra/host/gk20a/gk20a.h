@@ -97,6 +97,7 @@ struct gk20a {
 	struct dentry *debugfs_timeouts_enabled;
 	struct dentry *debugfs_gr_idle_timeout_default;
 #endif
+	struct gk20a_ctxsw_ucode_info ctxsw_ucode_info;
 
 	/* held while manipulating # of debug/profiler sessions present */
 	/* also prevents debug sessions from attaching until released */
@@ -108,6 +109,8 @@ struct gk20a {
 	struct notifier_block system_suspend_notifier;
 	struct notifier_block fb_notifier;
 	struct dev_pm_qos_request no_poweroff_req;
+	u64 pg_ingating_time_us;
+	u64 pg_ungating_time_us;
 };
 
 static inline unsigned long gk20a_get_gr_idle_timeout(struct gk20a *g)

@@ -51,28 +51,6 @@
 #define APBDEV_PMC_IO_DPD2_STATUS_LVDS_OFF		(0 << 25)
 #define APBDEV_PMC_IO_DPD2_STATUS_LVDS_ON		(1 << 25)
 
-
-static inline u32 tegra_sor_readl(struct tegra_dc_sor_data *sor, u32 reg)
-{
-	u32 reg_val = readl(sor->base + reg * 4);
-	return reg_val;
-}
-
-static inline void tegra_sor_writel(struct tegra_dc_sor_data *sor,
-	u32 reg, u32 val)
-{
-	writel(val, sor->base + reg * 4);
-}
-
-static inline void tegra_sor_write_field(struct tegra_dc_sor_data *sor,
-	u32 reg, u32 mask, u32 val)
-{
-	u32 reg_val = tegra_sor_readl(sor, reg);
-	reg_val &= ~mask;
-	reg_val |= val;
-	tegra_sor_writel(sor, reg, reg_val);
-}
-
 static u32 tegra_dc_sor_poll_register(struct tegra_dc_sor_data *sor,
 	u32 reg, u32 mask, u32 exp_val, u32 poll_interval_us, u32 timeout_ms)
 {
@@ -714,7 +692,7 @@ static void tegra_dc_sor_config_panel(struct tegra_dc_sor_data *sor,
 	bool is_lvds)
 {
 	const struct tegra_dc_out_pin	*pins	  = sor->dc->out->out_pins;
-	const struct tegra_dc_mode	*dc_mode  = sor->dc->out->modes;
+	const struct tegra_dc_mode	*dc_mode  = &sor->dc->mode;
 
 	const int	head_num = sor->dc->ndev->id;
 	u32		reg_val	 = NV_SOR_STATE1_ASY_OWNER_HEAD0 << head_num;
@@ -1222,8 +1200,8 @@ void tegra_dc_sor_set_lane_parm(struct tegra_dc_sor_data *sor,
 		cfg->preemphasis);
 	tegra_sor_writel(sor, NV_SOR_POSTCURSOR(sor->portnum),
 		cfg->postcursor);
-	tegra_sor_writel(sor, NV_SOR_LVDS, 0);
 
+	tegra_sor_writel(sor, NV_SOR_LVDS, 0);
 	tegra_dc_sor_set_link_bandwidth(sor, cfg->link_bw);
 	tegra_dc_sor_set_lane_count(sor, cfg->lane_count);
 
@@ -1239,5 +1217,13 @@ void tegra_dc_sor_set_lane_parm(struct tegra_dc_sor_data *sor,
 	usleep_range(10, 100);
 	tegra_sor_write_field(sor, NV_SOR_DP_PADCTL(sor->portnum),
 		0xf0, 0x0);
+}
+
+void tegra_dc_sor_modeset_notifier(struct tegra_dc_sor_data *sor,
+	bool is_lvds)
+{
+	tegra_dc_sor_config_panel(sor, is_lvds);
+	tegra_dc_sor_update(sor);
+	tegra_dc_sor_super_update(sor);
 }
 

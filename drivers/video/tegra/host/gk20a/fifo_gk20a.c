@@ -825,10 +825,20 @@ static void gk20a_fifo_handle_mmu_fault_thread(struct work_struct *work)
 
 }
 
+static void gk20a_fifo_handle_chsw_fault(struct gk20a *g)
+{
+	u32 intr;
+
+	intr = gk20a_readl(g, fifo_intr_chsw_error_r());
+	nvhost_err(dev_from_gk20a(g), "chsw: %08x\n", intr);
+	gk20a_fecs_dump_falcon_stats(g);
+	gk20a_writel(g, fifo_intr_chsw_error_r(), intr);
+}
+
 static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 {
 	bool fake_fault;
-	ulong fault_id;
+	unsigned long fault_id;
 	u32 engine_mmu_id;
 	int i;
 
@@ -855,7 +865,7 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 		mutex_lock(&g->fifo.runlist_info[i].mutex);
 
 	/* go through all faulted engines */
-	for_each_set_bit(engine_mmu_id, &fault_id, BITS_PER_LONG) {
+	for_each_set_bit(engine_mmu_id, &fault_id, 32) {
 		/* bits in fifo_intr_mmu_fault_id_r do not correspond 1:1 to
 		 * engines. Convert engine_mmu_id to engine_id */
 		u32 engine_id = gk20a_mmu_id_to_engine_id(engine_mmu_id);
@@ -940,7 +950,7 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 	}
 
 	/* reset engines */
-	for_each_set_bit(engine_mmu_id, &fault_id, BITS_PER_LONG) {
+	for_each_set_bit(engine_mmu_id, &fault_id, 32) {
 		u32 engine_id = gk20a_mmu_id_to_engine_id(engine_mmu_id);
 		if (engine_id != ~0)
 			gk20a_fifo_reset_engine(g, engine_id);
@@ -962,22 +972,23 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 	schedule_work(&g->fifo.fault_restore_thread);
 }
 
-void gk20a_fifo_recover(struct gk20a *g, ulong engine_ids)
+void gk20a_fifo_recover(struct gk20a *g, u32 _engine_ids)
 {
 	unsigned long end_jiffies = jiffies +
 		msecs_to_jiffies(gk20a_get_gr_idle_timeout(g));
 	unsigned long delay = GR_IDLE_CHECK_DEFAULT;
-	u32 engine_id;
+	unsigned long engine_id;
+	unsigned long engine_ids = _engine_ids;
 	int ret;
 
 	/* store faulted engines in advance */
 	g->fifo.mmu_fault_engines = 0;
-	for_each_set_bit(engine_id, &engine_ids, BITS_PER_LONG)
+	for_each_set_bit(engine_id, &engine_ids, 32)
 		g->fifo.mmu_fault_engines |=
 			BIT(gk20a_engine_id_to_mmu_id(engine_id));
 
 	/* trigger faults for all bad engines */
-	for_each_set_bit(engine_id, &engine_ids, BITS_PER_LONG) {
+	for_each_set_bit(engine_id, &engine_ids, 32) {
 		if (engine_id > g->fifo.max_engines) {
 			WARN_ON(true);
 			break;
@@ -1007,7 +1018,7 @@ void gk20a_fifo_recover(struct gk20a *g, ulong engine_ids)
 		nvhost_err(dev_from_gk20a(g), "mmu fault timeout");
 
 	/* release mmu fault trigger */
-	for_each_set_bit(engine_id, &engine_ids, BITS_PER_LONG)
+	for_each_set_bit(engine_id, &engine_ids, 32)
 		gk20a_writel(g, fifo_trigger_mmu_fault_r(engine_id), 0);
 }
 
@@ -1092,6 +1103,11 @@ static u32 fifo_error_isr(struct gk20a *g, u32 fifo_intr)
 	if (fifo_intr & fifo_intr_0_sched_error_pending_f()) {
 		reset_channel = gk20a_fifo_handle_sched_error(g);
 		handled |= fifo_intr_0_sched_error_pending_f();
+	}
+
+	if (fifo_intr & fifo_intr_0_chsw_error_pending_f()) {
+		gk20a_fifo_handle_chsw_fault(g);
+		handled |= fifo_intr_0_chsw_error_pending_f();
 	}
 
 	if (fifo_intr & fifo_intr_0_mmu_fault_pending_f()) {
@@ -1541,7 +1557,15 @@ static int gk20a_fifo_update_runlist_locked(struct gk20a *g, u32 runlist_id,
 				   "runlist update timeout");
 
 			gk20a_fifo_runlist_reset_engines(g, runlist_id);
+
+			/* engine reset needs the lock. drop it */
+			mutex_unlock(&runlist->mutex);
+			/* wait until the runlist is active again */
 			ret = gk20a_fifo_runlist_wait_pending(g, runlist_id);
+			/* get the lock back. at this point everything should
+			 * should be fine */
+			mutex_lock(&runlist->mutex);
+
 			if (ret)
 				nvhost_err(dev_from_gk20a(g),
 					   "runlist update failed: %d", ret);
@@ -1608,4 +1632,13 @@ int gk20a_fifo_suspend(struct gk20a *g)
 
 	nvhost_dbg_fn("done");
 	return 0;
+}
+
+bool gk20a_fifo_mmu_fault_pending(struct gk20a *g)
+{
+	if (gk20a_readl(g, fifo_intr_0_r()) &
+			fifo_intr_0_mmu_fault_pending_f())
+		return true;
+	else
+		return false;
 }

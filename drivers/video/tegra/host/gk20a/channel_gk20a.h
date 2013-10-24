@@ -131,7 +131,7 @@ struct channel_gk20a {
 	} cyclestate;
 #endif
 	struct mutex dbg_s_lock;
-	struct dbg_session_gk20a *dbg_s;
+	struct list_head dbg_s_list;
 };
 
 static inline bool gk20a_channel_as_bound(struct channel_gk20a *ch)
@@ -174,6 +174,9 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 			struct nvhost_gpfifo *gpfifo, u32 num_entries,
 			struct nvhost_fence *fence, u32 flags);
 void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish);
+int gk20a_init_error_notifier(struct nvhost_hwctx *ctx, u32 memhandle,
+			u64 offset);
+void gk20a_free_error_notifiers(struct nvhost_hwctx *ctx);
 void gk20a_disable_channel(struct channel_gk20a *ch,
 			   bool wait_for_finish,
 			   unsigned long finish_timeout);

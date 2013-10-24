@@ -35,6 +35,8 @@
 #include <linux/tegra-powergate.h>
 #include <linux/fb.h>
 #include <linux/suspend.h>
+#include <linux/sched.h>
+#include <linux/input-cfboost.h>
 
 #include <mach/pm_domains.h>
 
@@ -95,6 +97,7 @@ const struct file_operations tegra_gk20a_dbg_gpu_ops = {
 	.release        = gk20a_dbg_gpu_dev_release,
 	.open           = gk20a_dbg_gpu_dev_open,
 	.unlocked_ioctl = gk20a_dbg_gpu_dev_ioctl,
+	.poll		= gk20a_dbg_gpu_dev_poll,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = gk20a_dbg_gpu_dev_ioctl,
 #endif
@@ -469,7 +472,7 @@ static irqreturn_t gk20a_intr_thread(int irq, void *dev_id)
 	mc_intr_0 = gk20a_readl(g, mc_intr_0_r());
 
 	if (mc_intr_0 & mc_intr_0_pgraph_pending_f())
-		gk20a_gr_isr(g);
+		gr_gk20a_elpg_protected_call(g, gk20a_gr_isr(g));
 	if (mc_intr_0 & mc_intr_0_pfifo_pending_f())
 		gk20a_fifo_isr(g);
 	if (mc_intr_0 & mc_intr_0_pmu_pending_f())
@@ -608,8 +611,10 @@ static void gk20a_free_hwctx(struct kref *ref)
 	nvhost_dbg_fn("");
 
 	nvhost_module_busy(ctx->channel->dev);
+
 	if (ctx->priv)
 		gk20a_free_channel(ctx, true);
+
 	nvhost_module_idle(ctx->channel->dev);
 
 	kfree(ctx);
@@ -708,15 +713,15 @@ int nvhost_gk20a_prepare_poweroff(struct platform_device *dev)
 int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 {
 	struct gk20a *g = get_gk20a(dev);
-	int err;
+	int err, nice_value;
 
 	nvhost_dbg_fn("");
 
 	if (g->power_on)
 		return 0;
 
-	/* FIXME: fix this correctly. this is enabling ARCH timer */
-	writel(0x1, IO_TO_VIRT(0x700f0000));
+	nice_value = task_nice(current);
+	set_user_nice(current, -20);
 
 	g->power_on = true;
 
@@ -742,6 +747,10 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 	if (err)
 		nvhost_err(&dev->dev, "failed to init gk20a mm");
 
+	err = gk20a_init_pmu_support(g);
+	if (err)
+		nvhost_err(&dev->dev, "failed to init gk20a pmu");
+
 	err = gk20a_init_fifo_support(g);
 	if (err)
 		nvhost_err(&dev->dev, "failed to init gk20a fifo");
@@ -750,15 +759,16 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 	if (err)
 		nvhost_err(&dev->dev, "failed to init gk20a gr");
 
-	err = gk20a_init_pmu_support(g);
+	err = gk20a_init_pmu_setup_hw2(g);
 	if (err)
-		nvhost_err(&dev->dev, "failed to init gk20a pmu");
+		nvhost_err(&dev->dev, "failed to init gk20a pmu_hw2");
 
 	err = gk20a_init_therm_support(g);
 	if (err)
 		nvhost_err(&dev->dev, "failed to init gk20a therm");
 
 	gk20a_channel_resume(g);
+	set_user_nice(current, nice_value);
 
 	return err;
 }
@@ -819,17 +829,15 @@ static struct thermal_cooling_device_ops tegra_gpu_cooling_ops = {
 static void gk20a_set_railgating(struct gk20a *g, int new_status)
 {
 	struct nvhost_device_data *pdata = platform_get_drvdata(g->dev);
-	bool can_powergate = new_status == FB_BLANK_UNBLANK ? 0 : 1;
+	enum pm_qos_flags_status stat;
 
 	mutex_lock(&pdata->lock);
-	if (pdata->can_powergate && !can_powergate) {
+	stat = dev_pm_qos_flags(dev_from_gk20a(g), PM_QOS_FLAG_NO_POWER_OFF);
+	if (stat <= PM_QOS_FLAGS_NONE && new_status == FB_BLANK_UNBLANK)
 		dev_pm_qos_add_request(dev_from_gk20a(g), &g->no_poweroff_req,
 				DEV_PM_QOS_FLAGS, PM_QOS_FLAG_NO_POWER_OFF);
-		pdata->can_powergate = can_powergate;
-	} else if (!pdata->can_powergate && can_powergate) {
+	else if (stat > PM_QOS_FLAGS_NONE && new_status != FB_BLANK_UNBLANK)
 		dev_pm_qos_remove_request(&g->no_poweroff_req);
-		pdata->can_powergate = can_powergate;
-	}
 	mutex_unlock(&pdata->lock);
 }
 
@@ -968,6 +976,11 @@ static int gk20a_probe(struct platform_device *dev)
 					S_IRUGO|S_IWUSR,
 					pdata->debugfs,
 					&gk20a->timeouts_enabled);
+	gk20a_pmu_debugfs_init(dev);
+#endif
+
+#ifdef CONFIG_INPUT_CFBOOST
+	cfb_add_device(&dev->dev);
 #endif
 
 	return 0;
@@ -977,6 +990,10 @@ static int __exit gk20a_remove(struct platform_device *dev)
 {
 	struct gk20a *g = get_gk20a(dev);
 	nvhost_dbg_fn("");
+
+#ifdef CONFIG_INPUT_CFBOOST
+	cfb_remove_device(&dev->dev);
+#endif
 
 	if (g && g->remove_support)
 		g->remove_support(dev);

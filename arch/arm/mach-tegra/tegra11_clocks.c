@@ -1488,16 +1488,6 @@ static int tegra11_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		goto abort;
 	}
 
-	/* Disabling old parent scales old mode voltage rail */
-	if (c->refcnt)
-		clk_disable(c->parent);
-	if (p_source_old) {
-		clk_disable(p->parent);
-		clk_disable(p_source_old);
-	}
-
-	clk_reparent(c, p);
-
 	/*
 	 * Lock DFLL now (resume closed loop VDD_CPU control).
 	 * G CPU operations are resumed on DFLL if it was the last G CPU
@@ -1513,6 +1503,16 @@ static int tegra11_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 			tegra_dvfs_dfll_mode_set(p->dvfs, rate);
 		}
 	}
+
+	/* Disabling old parent scales old mode voltage rail */
+	if (c->refcnt)
+		clk_disable(c->parent);
+	if (p_source_old) {
+		clk_disable(p->parent);
+		clk_disable(p_source_old);
+	}
+
+	clk_reparent(c, p);
 
 	tegra_dvfs_rail_mode_updating(tegra_cpu_rail, false);
 	return 0;
@@ -3668,11 +3668,17 @@ static int tegra11_use_dfll_cb(const char *arg, const struct kernel_param *kp)
 	unsigned long c_flags, p_flags;
 	unsigned int old_use_dfll;
 	struct clk *c = tegra_get_clock_by_name("cpu");
+	struct clk *dfll = tegra_get_clock_by_name("dfll_cpu");
 
-	if (!c->parent || !c->parent->dvfs)
+	if (!c->parent || !c->parent->dvfs || !dfll)
 		return -ENOSYS;
 
 	clk_lock_save(c, &c_flags);
+	if (dfll->state == UNINITIALIZED) {
+		pr_err("%s: DFLL is not initialized\n", __func__);
+		clk_unlock_restore(c, &c_flags);
+		return -ENOSYS;
+	}
 	if (c->parent->u.cpu.mode == MODE_LP) {
 		pr_err("%s: DFLL is not used on LP CPU\n", __func__);
 		clk_unlock_restore(c, &c_flags);
@@ -7956,6 +7962,8 @@ static void tegra11_clk_resume(void)
 static struct syscore_ops tegra_clk_syscore_ops = {
 	.suspend = tegra11_clk_suspend,
 	.resume = tegra11_clk_resume,
+	.save = tegra11_clk_suspend,
+	.restore = tegra11_clk_resume,
 };
 #endif
 
