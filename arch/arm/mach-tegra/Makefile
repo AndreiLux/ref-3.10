@@ -11,9 +11,10 @@ obj-y                                   += board-info.o
 obj-y                                   += io.o
 obj-y                                   += irq.o
 obj-y                                   += clock.o
+ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer.o
+endif
 obj-$(CONFIG_HAVE_ARM_TWD)              += cpu_timer_twd.o
-obj-$(CONFIG_ARM_ARCH_TIMER)            += cpu_timer_arch.o
 obj-y                                   += timerinfo.o
 ifneq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 ifneq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
@@ -25,7 +26,9 @@ ifeq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 obj-y                                   += common-t2.o
 obj-y                                   += pm-t2.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= sleep-t20.o
+ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer-t2.o
+endif
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t2.o
 ifeq ($(CONFIG_CPU_IDLE),y)
 obj-$(CONFIG_PM_SLEEP)                  += cpuidle-t2.o
@@ -35,7 +38,9 @@ obj-y                                   += common-t3.o
 obj-y                                   += pm-t3.o
 obj-y                                   += sleep-t30.o
 obj-$(CONFIG_DEBUG_FS)                  += clocks_stats.o
+ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer-t3.o
+endif
 obj-y                                   += tegra_core_volt_cap.o
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t3.o
@@ -104,10 +109,10 @@ obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra_emc_therm.o
 
 obj-y                                   += latency_allowance.o
-obj-y                                   += tegra3_la.o
-obj-y                                   += tegra11x_la.o
-obj-y                                   += tegra14x_la.o
-obj-y                                   += tegra12x_la.o
+obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += tegra3_la.o
+obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11x_la.o
+obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14x_la.o
+obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12x_la.o
 obj-$(CONFIG_TEGRA_EDP_LIMITS)          += edp.o
 obj-$(CONFIG_TEGRA_CORE_EDP_LIMITS)     += edp_core.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_edp.o
@@ -204,6 +209,7 @@ obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-sensors.o
 
 obj-y                                   += board-touch-raydium_spi.o
 obj-y                                   += board-touch-synaptics-spi.o
+obj-y                                   += board-touch-maxim_sti-spi.o
 
 obj-y                                   += board-panel.o
 
@@ -325,6 +331,7 @@ obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-sdhci.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-pinmux.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-power.o
+obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-panel.o
 
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER2}       += baseband-xmm-power2.o

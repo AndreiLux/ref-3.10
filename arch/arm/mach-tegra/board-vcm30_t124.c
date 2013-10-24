@@ -26,6 +26,7 @@
 #include <linux/spi/spi-tegra.h>
 #include <linux/of_platform.h>
 #include <linux/kernel.h>
+#include <linux/clocksource.h>
 
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/pci.h>
@@ -320,7 +321,7 @@ static struct platform_device *vcm30_t124_devices[] __initdata = {
 };
 
 static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
-	.port_otg = true,
+	.port_otg = false,
 	.has_hostpc = true,
 	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
@@ -328,8 +329,9 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 	.u_data.host = {
 		.vbus_gpio = -1,
 		.hot_plug = false,
-		.remote_wakeup_supported = true,
+		.remote_wakeup_supported = false,
 		.power_off_on_suspend = true,
+		.turn_off_vbus_on_lp0 = true,
 	},
 	.u_cfg.utmi = {
 		.hssync_start_delay = 0,
@@ -355,8 +357,9 @@ static struct tegra_usb_platform_data tegra_ehci2_utmi_pdata = {
 		/* FIXME: Set this only for E1855. */
 		.vbus_gpio = TEGRA_GPIO_PN5,
 		.hot_plug = false,
-		.remote_wakeup_supported = true,
+		.remote_wakeup_supported = false,
 		.power_off_on_suspend = true,
+		.turn_off_vbus_on_lp0 = true,
 	},
 	.u_cfg.utmi = {
 		.hssync_start_delay = 0,
@@ -381,8 +384,9 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	.u_data.host = {
 		.vbus_gpio = -1,
 		.hot_plug = false,
-		.remote_wakeup_supported = true,
+		.remote_wakeup_supported = false,
 		.power_off_on_suspend = true,
+		.turn_off_vbus_on_lp0 = true,
 	},
 	.u_cfg.utmi = {
 	.hssync_start_delay = 0,
@@ -457,6 +461,15 @@ struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
 				"serial-tegra.1", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", TEGRA_UARTD_BASE,
 				"serial-tegra.3", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
+		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
+		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-tsec", TEGRA_TSEC_BASE, "tsec", NULL),
 	{}
 };
 #endif
@@ -489,7 +502,7 @@ static void __init tegra_vcm30_t124_late_init(void)
 	tegra_io_dpd_init();
 	vcm30_t124_sdhci_init();
 	vcm30_t124_regulator_init();
-	/* vcm30_t124_suspend_init(); */
+	vcm30_t124_suspend_init();
 #if 0
 	vcm30_t124_emc_init();
 	vcm30_t124_edp_init();
@@ -510,6 +523,7 @@ static void __init tegra_vcm30_t124_late_init(void)
 	vcm30_t124_soctherm_init();
 #endif
 	tegra_register_fuse();
+	vcm30_t124_panel_init();
 }
 
 static void __init vcm30_t124_ramconsole_reserve(unsigned long size)
@@ -555,7 +569,7 @@ DT_MACHINE_START(VCM30_T124, "vcm30_t124")
 	.reserve	= tegra_vcm30_t124_reserve,
 	.init_early	= tegra12x_init_early,
 	.init_irq	= tegra_dt_init_irq,
-        .init_time      = tegra_init_timer,
+        .init_time      = clocksource_of_init,
 	.init_machine	= tegra_vcm30_t124_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= vcm30_t124_dt_board_compat,

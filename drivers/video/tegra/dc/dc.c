@@ -1559,6 +1559,11 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 	if (!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) || !dc->enabled)
 		return ret;
 
+	if (dc->out_ops && dc->out_ops->osidle) {
+		if (dc->out_ops->osidle(dc))
+			return 0;
+	}
+
 	/*
 	 * Logic is as follows
 	 * a) Indicate we need a vblank.
@@ -2401,8 +2406,9 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 		/* disable windows */
 		w->flags &= ~TEGRA_WIN_FLAG_ENABLED;
 
-		/* flush any pending syncpt waits. Add 1 for sync framework. */
-		while (dc->syncpt[i].min < (dc->syncpt[i].max + 1)) {
+		/* flush any pending syncpt waits */
+		dc->syncpt[i].max += 1;
+		while (dc->syncpt[i].min < dc->syncpt[i].max) {
 			trace_display_syncpt_flush(dc, dc->syncpt[i].id,
 				dc->syncpt[i].min, dc->syncpt[i].max);
 			dc->syncpt[i].min++;
@@ -2610,11 +2616,14 @@ static void tegra_dc_add_modes(struct tegra_dc *dc)
 	specs.modedb_len = dc->out->n_modes;
 	specs.modedb = kzalloc(specs.modedb_len *
 		sizeof(struct fb_videomode), GFP_KERNEL);
+	if (specs.modedb == NULL) {
+		dev_err(&dc->ndev->dev, "modedb allocation failed\n");
+		return;
+	}
 	for (i = 0; i < dc->out->n_modes; i++)
 		tegra_dc_to_fb_videomode(&specs.modedb[i],
 			&dc->out->modes[i]);
 	tegra_fb_update_monspecs(dc->fb, &specs, NULL);
-	kfree(specs.modedb);
 }
 
 static int tegra_dc_probe(struct platform_device *ndev)

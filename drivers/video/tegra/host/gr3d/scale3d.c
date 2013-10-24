@@ -106,10 +106,6 @@ void nvhost_scale3d_callback(struct nvhost_device_profile *profile,
 	long hz;
 	long after;
 
-	if (tegra_get_chipid() == TEGRA_CHIPID_TEGRA3)
-		nvhost_module_set_devfreq_rate(profile->pdev,
-					       gr3d_params->clk_3d2, freq);
-
 	/* Set EMC clockrate */
 	after = (long) clk_get_rate(clk(profile, gr3d_params->clk_3d));
 	hz = nvhost_scale3d_get_emc_rate(emc_params, after);
@@ -155,11 +151,10 @@ void nvhost_scale3d_callback(struct nvhost_device_profile *profile,
  *   R'emc(R3d-min) = 0
  *   S = 2 * Sd * (R3d-min - Rm)
  *     = 2 * Sd * (R3d-min - R3d-max) / 2
- *   Sd = S / (R3d-min - R3d-max)
  *
- *   +---------------------------------------------------+
- *   | Sd = -(emc-max - emc-min) / (R3d-min - R3d-max)^2 |
- *   +---------------------------------------------------+
+ *   +------------------------------+
+ *   | Sd = S / (R3d-min - R3d-max) |
+ *   +------------------------------+
  *
  *   dip = Sd * (R3d - Rm)^2 + Od
  *
@@ -212,9 +207,7 @@ void nvhost_scale3d_calibrate_emc(struct nvhost_emc_params *emc_params,
 
 	emc_params->emc_dip_offset = (max_emc - min_emc) / 4;
 	emc_params->emc_dip_slope =
-		-4 * FXDIV(emc_params->emc_dip_offset,
-		(FXMUL(max_rate_3d - min_rate_3d,
-			max_rate_3d - min_rate_3d)));
+		-FXDIV(emc_params->emc_slope, max_rate_3d - min_rate_3d);
 	emc_params->emc_xmid = (max_rate_3d + min_rate_3d) / 2;
 	correction =
 		emc_params->emc_dip_offset +
@@ -247,11 +240,7 @@ void nvhost_scale3d_init(struct platform_device *pdev)
 		goto err_allocate_gr3d_params;
 
 	gr3d_params->clk_3d = 0;
-	if (tegra_get_chipid() == TEGRA_CHIPID_TEGRA3) {
-		gr3d_params->clk_3d2 = 1;
-		gr3d_params->clk_3d_emc = 2;
-	} else
-		gr3d_params->clk_3d_emc = 1;
+	gr3d_params->clk_3d_emc = 1;
 
 	profile->private_data = gr3d_params;
 

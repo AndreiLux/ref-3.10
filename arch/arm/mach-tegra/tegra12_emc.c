@@ -29,6 +29,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/hrtimer.h>
+#include <linux/pasr.h>
 
 #include <asm/cputime.h>
 
@@ -45,6 +46,8 @@ static bool emc_enable;
 #endif
 module_param(emc_enable, bool, 0644);
 
+static int pasr_enable;
+
 u8 tegra_emc_bw_efficiency = 100;
 
 static struct emc_iso_usage tegra12_emc_iso_usage[] = {
@@ -53,11 +56,22 @@ static struct emc_iso_usage tegra12_emc_iso_usage[] = {
 	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2),	50 },
 	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_VI),  50 },
 	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_VI),  50 },
+	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_VI2),  50 },
+	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_VI2),  50 },
+	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_ISP1),  50 },
+	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_ISP1),  50 },
+	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_ISP2),  50 },
+	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_ISP2),  50 },
 };
 
 #define PLL_C_DIRECT_FLOOR		333500000
 #define EMC_STATUS_UPDATE_TIMEOUT	100
 #define TEGRA_EMC_TABLE_MAX_SIZE	16
+
+#define TEGRA_EMC_MODE_REG_17	0x00110000
+#define TEGRA_EMC_MRW_DEV_SHIFT	30
+#define TEGRA_EMC_MRW_DEV1	2
+#define TEGRA_EMC_MRW_DEV2	1
 
 enum {
 	DLL_CHANGE_NONE = 0,
@@ -866,7 +880,7 @@ bool tegra_emc_is_parent_ready(unsigned long rate, struct clk **parent,
 	struct clk *p = NULL;
 	unsigned long p_rate = 0;
 
-	if (!tegra_emc_table || !emc_enable)
+	if (!tegra_emc_table)
 		return true;
 
 	pr_debug("%s: %lu\n", __func__, rate);
@@ -1020,30 +1034,37 @@ static int find_matching_input(const struct tegra12_emc_table *table,
 	return 0;
 }
 
+
+static int emc_core_millivolts[MAX_DVFS_FREQS];
+
 static void adjust_emc_dvfs_table(const struct tegra12_emc_table *table,
 				  int table_size)
 {
-	int i, j;
+	int i, j, mv;
 	unsigned long rate;
 
-	for (i = 0; i < MAX_DVFS_FREQS; i++) {
-		int mv = emc->dvfs->millivolts[i];
-		if (!mv)
-			break;
+	BUG_ON(table_size > MAX_DVFS_FREQS);
 
-		/* For each dvfs voltage find maximum supported rate;
-		   use 1MHz placeholder if not found */
-		for (rate = 1000, j = 0; j < table_size; j++) {
-			if (tegra_emc_clk_sel[j].input == NULL)
-				continue;	/* invalid entry */
+	for (i = 0, j = 0; j < table_size; j++) {
+		if (tegra_emc_clk_sel[j].input == NULL)
+			continue;	/* invalid entry */
 
-			if ((mv >= table[j].emc_min_mv) &&
-			    (rate < table[j].rate))
-				rate = table[j].rate;
+		rate = table[j].rate * 1000;
+		mv = table[j].emc_min_mv;
+
+		if ((i == 0) || (mv > emc_core_millivolts[i-1])) {
+			/* advance: voltage has increased */
+			emc->dvfs->freqs[i] = rate;
+			emc_core_millivolts[i] = mv;
+			i++;
+		} else {
+			/* squash: voltage has not increased */
+			emc->dvfs->freqs[i-1] = rate;
 		}
-		/* Table entries specify rate in kHz */
-		emc->dvfs->freqs[i] = rate * 1000;
 	}
+
+	emc->dvfs->millivolts = emc_core_millivolts;
+	emc->dvfs->num_freqs = i;
 }
 
 #ifdef CONFIG_TEGRA_PLLM_SCALED
@@ -1126,10 +1147,13 @@ static int init_emc_table(const struct tegra12_emc_table *table, int table_size)
 	for (i = 0; i < tegra_emc_table_size; i++) {
 		unsigned long table_rate = table[i].rate;
 
-		/* Skip "no-rate" entry, or entry violating ascending order */
-		if (!table_rate ||
-		    (i && (table_rate <= table[i-1].rate)))
-			continue;
+		/* Stop: "no-rate" entry, or entry violating ascending order */
+		if (!table_rate || (i && ((table_rate <= table[i-1].rate) ||
+			(table[i].emc_min_mv < table[i-1].emc_min_mv)))) {
+			pr_warn("tegra: EMC rate entry %lu is not ascending\n",
+				table_rate);
+			break;
+		}
 
 		BUG_ON(table[i].rev != table[0].rev);
 
@@ -1193,6 +1217,76 @@ static int init_emc_table(const struct tegra12_emc_table *table, int table_size)
 	emc_writel(reg, EMC_CFG_2);
 	return 0;
 }
+
+#ifdef CONFIG_PASR
+static bool tegra12_is_lpddr3(void)
+{
+	return (dram_type == DRAM_TYPE_LPDDR2);
+}
+
+static void tegra12_pasr_apply_mask(u16 *mem_reg, void *cookie)
+{
+	u32 val = 0;
+	int device = (int)cookie;
+
+	val = TEGRA_EMC_MODE_REG_17 | *mem_reg;
+	val |= device << TEGRA_EMC_MRW_DEV_SHIFT;
+
+	emc_writel(val, EMC_MRW);
+
+	pr_debug("%s: cookie = %d mem_reg = 0x%04x val = 0x%08x\n", __func__,
+			(int)cookie, *mem_reg, val);
+}
+
+static int tegra12_pasr_enable(const char *arg, const struct kernel_param *kp)
+{
+	unsigned int old_pasr_enable;
+	void *cookie;
+	u16 mem_reg;
+
+	if (!tegra12_is_lpddr3())
+		return -ENOSYS;
+
+	old_pasr_enable = pasr_enable;
+	param_set_int(arg, kp);
+
+	if (old_pasr_enable == pasr_enable)
+		return 0;
+
+	/* Cookie represents the device number to write to MRW register.
+	 * 0x2 to for only dev0, 0x1 for dev1.
+	 */
+	if (pasr_enable == 0) {
+		mem_reg = 0;
+
+		cookie = (void *)(int)TEGRA_EMC_MRW_DEV1;
+		if (!pasr_register_mask_function(TEGRA_DRAM_BASE,
+							NULL, cookie))
+			tegra12_pasr_apply_mask(&mem_reg, cookie);
+
+		cookie = (void *)(int)TEGRA_EMC_MRW_DEV2;
+		if (!pasr_register_mask_function(TEGRA_DRAM_BASE + SZ_1G,
+							NULL, cookie))
+			tegra12_pasr_apply_mask(&mem_reg, cookie);
+	} else {
+		cookie = (void *)(int)TEGRA_EMC_MRW_DEV1;
+		pasr_register_mask_function(TEGRA_DRAM_BASE,
+					&tegra12_pasr_apply_mask, cookie);
+
+		cookie = (void *)(int)TEGRA_EMC_MRW_DEV2;
+		pasr_register_mask_function(TEGRA_DRAM_BASE + SZ_1G,
+					&tegra12_pasr_apply_mask, cookie);
+	}
+
+	return 0;
+}
+
+static struct kernel_param_ops tegra12_pasr_enable_ops = {
+	.set = tegra12_pasr_enable,
+	.get = param_get_int,
+};
+module_param_cb(pasr_enable, &tegra12_pasr_enable_ops, &pasr_enable, 0644);
+#endif
 
 static int tegra12_emc_probe(struct platform_device *pdev)
 {

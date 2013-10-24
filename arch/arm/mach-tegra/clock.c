@@ -37,6 +37,7 @@
 #include <linux/bug.h>
 #include <linux/tegra-soc.h>
 #include <trace/events/power.h>
+#include <linux/tegra-timer.h>
 
 #include <mach/edp.h>
 
@@ -44,7 +45,6 @@
 #include "clock.h"
 #include "dvfs.h"
 #include "iomap.h"
-#include "timer.h"
 #include "tegra_emc.h"
 
 /* Global data of Tegra CPU CAR ops */
@@ -154,6 +154,11 @@ unsigned long clk_get_max_rate(struct clk *c)
 unsigned long clk_get_min_rate(struct clk *c)
 {
 		return c->min_rate;
+}
+
+bool tegra_is_clk_initialized(struct clk *c)
+{
+	return c->state != UNINITIALIZED;
 }
 
 /* Must be called with clk_lock(c) held */
@@ -267,7 +272,7 @@ static int clk_enable_locked(struct clk *c)
 	}
 
 	if (c->refcnt == 0) {
-		if (c->parent) {
+		if (!(c->flags & BUS_RATE_LIMIT) && c->parent) {
 			ret = tegra_clk_prepare_enable(c->parent);
 			if (ret)
 				return ret;
@@ -302,7 +307,7 @@ static void clk_disable_locked(struct clk *c)
 			trace_clock_disable(c->name, 0, 0);
 			c->ops->disable(c);
 		}
-		if (c->parent)
+		if (!(c->flags & BUS_RATE_LIMIT) && c->parent)
 			tegra_clk_disable_unprepare(c->parent);
 
 		c->state = OFF;

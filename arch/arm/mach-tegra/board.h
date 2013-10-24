@@ -186,8 +186,6 @@ static inline int harmony_pcie_init(void) { return 0; }
 
 void __init tegra_paz00_wifikill_init(void);
 
-extern void tegra_init_timer(void);
-
 enum board_fab {
 	BOARD_FAB_A = 0,
 	BOARD_FAB_B,
@@ -211,6 +209,7 @@ enum panel_type {
 enum touch_type {
 	RAYDIUM_TOUCH  = 0,
 	SYNAPTIC_TOUCH = 1,
+	MAXIM_TOUCH = 2,
 };
 
 enum audio_codec_type {

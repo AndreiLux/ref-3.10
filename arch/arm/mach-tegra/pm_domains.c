@@ -175,11 +175,83 @@ static int tegra_mc_clk_power_on(struct generic_pm_domain *genpd)
 	return 0;
 }
 
+static void suspend_devices_in_domain(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct device *dev;
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		dev = pdd->dev;
+
+		if (dev->pm_domain && dev->pm_domain->ops.suspend)
+			dev->pm_domain->ops.suspend(dev);
+	}
+}
+
+static void resume_devices_in_domain(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct device *dev;
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		dev = pdd->dev;
+
+		if (dev->pm_domain && dev->pm_domain->ops.resume)
+			dev->pm_domain->ops.suspend(dev);
+	}
+}
+
+static int tegra_core_power_on(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct gpd_link *link;
+
+	list_for_each_entry(link, &genpd->master_links, master_node)
+		resume_devices_in_domain(link->slave);
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node)
+		TEGRA_PD_DEV_CALLBACK(resume, pdd->dev);
+
+	return 0;
+}
+
+static int tegra_core_power_off(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct gpd_link *link;
+
+	list_for_each_entry(link, &genpd->master_links, master_node)
+		suspend_devices_in_domain(link->slave);
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node)
+		TEGRA_PD_DEV_CALLBACK(suspend, pdd->dev);
+
+	return 0;
+}
+
 static struct tegra_pm_domain tegra_mc_clk = {
 	.gpd.name = "tegra_mc_clk",
 	.gpd.power_off = tegra_mc_clk_power_off,
 	.gpd.power_on = tegra_mc_clk_power_on,
 };
+
+int tegra_restore_i2c(void)
+{
+	struct generic_pm_domain *genpd = &tegra_mc_clk.gpd;
+	struct pm_domain_data *pdd;
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		if (!strncmp("tegra12-i2c", dev_name(pdd->dev), strlen("tegra12-i2c")))
+			tegra_i2c_restore(pdd->dev);
+	}
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		if (!strncmp("tegra11-i2c", dev_name(pdd->dev), strlen("tegra11-i2c")))
+			tegra_i2c_restore(pdd->dev);
+	}
+
+	return 0;
+}
 
 #ifdef CONFIG_ARCH_TEGRA_14x_SOC
 static struct tegra_pm_domain tegra_mc_chain_a = {
@@ -234,6 +306,7 @@ static struct domain_client client_list[] = {
 	{ .name = "nvavp", .domain = &tegra_mc_clk.gpd },
 	{ .name = "sdhci-tegra", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra11-se", .domain = &tegra_mc_clk.gpd },
+	{ .name = "tegra12-se", .domain = &tegra_mc_clk.gpd },
 	{ .name = "vic03", .domain = &tegra_mc_clk.gpd },
 	{ .name = "ve", .domain = &tegra_mc_clk.gpd },
 	{ .name = "gk20a", .domain = &tegra_mc_clk.gpd },

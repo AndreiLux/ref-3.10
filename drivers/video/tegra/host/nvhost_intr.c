@@ -284,7 +284,7 @@ irqreturn_t nvhost_intr_irq_fn(int irq, void *dev_id)
 	unsigned long intstat = intr->intstatus;
 	int i;
 
-	for_each_set_bit(i, &intstat, BITS_PER_LONG) {
+	for_each_set_bit(i, &intstat, 32) {
 		if (intr->generic_isr_thread[i])
 			intr->generic_isr_thread[i]();
 	}

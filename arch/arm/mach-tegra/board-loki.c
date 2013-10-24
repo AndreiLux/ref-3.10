@@ -53,6 +53,7 @@
 #include <linux/mfd/palmas.h>
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/clk/tegra.h>
+#include <linux/clocksource.h>
 
 #include <mach/irqs.h>
 #include <mach/pci.h>
@@ -78,7 +79,6 @@
 #include "board-loki.h"
 #include "devices.h"
 #include "gpio-names.h"
-#include "fuse.h"
 #include "pm.h"
 #include "pm-irq.h"
 #include "common.h"
@@ -302,6 +302,9 @@ static struct platform_device *loki_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
 	&tegra_udc_device,
+#if defined(CONFIG_TEGRA_WATCHDOG)
+	&tegra_wdt0_device,
+#endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
@@ -696,7 +699,9 @@ struct of_dev_auxdata loki_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
+#ifdef CONFIG_ARCH_TEGRA_VIC
 	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+#endif
 	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
@@ -734,13 +739,13 @@ static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 struct rm_spi_ts_platform_data rm31080ts_loki_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
-	.platform_id = RM_PLATFORM_R005,
+	.platform_id = RM_PLATFORM_L005,
 	.name_of_clock = "clk_out_2",
 	.name_of_clock_con = "extern2",
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 16,
+	.rx_clk_tap_delay = 0,
 	.tx_clk_tap_delay = 16,
 };
 
@@ -758,6 +763,8 @@ struct spi_board_info rm31080a_loki_spi_board[1] = {
 
 static int __init loki_touch_init(void)
 {
+	if (tegra_get_touch_panel_id() == TOUCH_PANEL_THOR_WINTEK)
+		rm31080ts_loki_data.platform_id = RM_PLATFORM_R005;
 	tegra_clk_init_from_table(touch_clk_init_table);
 	rm31080a_loki_spi_board[0].irq =
 		gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
@@ -869,8 +876,9 @@ DT_MACHINE_START(LOKI, "loki")
 	.reserve	= tegra_loki_reserve,
 	.init_early	= tegra_loki_init_early,
 	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_loki_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= loki_dt_board_compat,
+	.init_late	= tegra_init_late
 MACHINE_END

@@ -1213,23 +1213,28 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		return -EFAULT;
 	}
 
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	cmdbuf_dmabuf = dma_buf_get(hdr.cmdbuf.mem);
+#else
 	cmdbuf_dmabuf = nvmap_dmabuf_export(clientctx->nvmap, hdr.cmdbuf.mem);
-	if (!cmdbuf_dmabuf) {
+#endif
+	if (IS_ERR(cmdbuf_dmabuf)) {
 		dev_err(&nvavp->nvhost_dev->dev,
 			"invalid cmd buffer handle %08x\n", hdr.cmdbuf.mem);
-		return -EPERM;
+		return PTR_ERR(cmdbuf_dmabuf);
 	}
 
 	cmdbuf_attach = dma_buf_attach(cmdbuf_dmabuf, &nvavp->nvhost_dev->dev);
-	if (!cmdbuf_attach) {
+	if (IS_ERR(cmdbuf_attach)) {
 		dev_err(&nvavp->nvhost_dev->dev, "cannot attach cmdbuf_dmabuf\n");
-		ret = -ENOMEM;
+		ret = PTR_ERR(cmdbuf_attach);
 		goto err_dmabuf_attach;
 	}
 
 	cmdbuf_sgt = dma_buf_map_attachment(cmdbuf_attach, DMA_BIDIRECTIONAL);
-	if (!cmdbuf_sgt) {
+	if (IS_ERR(cmdbuf_sgt)) {
 		dev_err(&nvavp->nvhost_dev->dev, "cannot map cmdbuf_dmabuf\n");
+		ret = PTR_ERR(cmdbuf_sgt);
 		goto err_dmabuf_map;
 	}
 
@@ -1259,8 +1264,12 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		reloc_addr = cmdbuf_data +
 			     (clientctx->relocs[i].cmdbuf_offset >> 2);
 
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+		target_dmabuf = dma_buf_get(clientctx->relocs[i].target);
+#else
 		target_dmabuf = nvmap_dmabuf_export(clientctx->nvmap,
 				clientctx->relocs[i].target);
+#endif
 		if (IS_ERR(target_dmabuf)) {
 			ret = PTR_ERR(target_dmabuf);
 			goto target_dmabuf_fail;

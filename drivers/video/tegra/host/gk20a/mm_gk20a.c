@@ -28,11 +28,8 @@
 #include <linux/tegra-soc.h>
 #include <asm/cacheflush.h>
 
-#include "../../nvmap/nvmap_priv.h"
-#include "../../nvmap/nvmap_ioctl.h"
-
-#include "../dev.h"
-#include "../nvhost_as.h"
+#include "dev.h"
+#include "nvhost_as.h"
 #include "gk20a.h"
 #include "mm_gk20a.h"
 #include "hw_gmmu_gk20a.h"
@@ -97,19 +94,20 @@ static inline u32 lo32(u64 f)
 	} while (0)
 
 static void gk20a_vm_unmap_locked(struct mapped_buffer_node *mapped_buffer);
-static struct mapped_buffer_node *find_mapped_buffer(struct rb_root *root,
-						     u64 addr);
-static struct mapped_buffer_node *find_mapped_buffer_r(struct rb_root *root,
-						       struct mem_handle *r);
+static struct mapped_buffer_node *find_mapped_buffer_locked(
+					struct rb_root *root, u64 addr);
+static struct mapped_buffer_node *find_mapped_buffer_reverse_locked(
+				struct rb_root *root, struct mem_handle *r);
 static void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm);
 static int gk20a_vm_find_buffer(struct vm_gk20a *vm, u64 gpu_va,
 		struct mem_mgr **memmgr, struct mem_handle **r, u64 *offset);
-static int update_gmmu_ptes(struct vm_gk20a *vm,
-			    enum gmmu_pgsz_gk20a pgsz_idx, struct sg_table *sgt,
-			    u64 first_vaddr, u64 last_vaddr,
-			    u8 kind_v, u32 ctag_offset, bool cacheable,
-			    int rw_flag);
-static void update_gmmu_pde(struct vm_gk20a *vm, u32 i);
+static int update_gmmu_ptes_locked(struct vm_gk20a *vm,
+				   enum gmmu_pgsz_gk20a pgsz_idx,
+				   struct sg_table *sgt,
+				   u64 first_vaddr, u64 last_vaddr,
+				   u8 kind_v, u32 ctag_offset, bool cacheable,
+				   int rw_flag);
+static void update_gmmu_pde_locked(struct vm_gk20a *vm, u32 i);
 
 
 /* note: keep the page sizes sorted lowest to highest here */
@@ -173,6 +171,8 @@ int gk20a_init_mm_setup_sw(struct gk20a *g)
 	}
 
 	mm->g = g;
+	mutex_init(&mm->tlb_lock);
+	mutex_init(&mm->l2_op_lock);
 	mm->big_page_size = gmmu_page_sizes[gmmu_page_size_big];
 	mm->pde_stride    = mm->big_page_size << 10;
 	mm->pde_stride_shift = ilog2(mm->pde_stride);
@@ -511,9 +511,8 @@ static inline void pte_space_page_offset_from_index(u32 i, u32 *pte_page,
  * backing store and if not go ahead allocate it and
  * record it in the appropriate pde
  */
-static int validate_gmmu_page_table_gk20a(struct vm_gk20a *vm,
-			  u32 i,
-			  enum gmmu_pgsz_gk20a gmmu_pgsz_idx)
+static int validate_gmmu_page_table_gk20a_locked(struct vm_gk20a *vm,
+				u32 i, enum gmmu_pgsz_gk20a gmmu_pgsz_idx)
 {
 	int err;
 	struct page_table_gk20a *pte =
@@ -533,7 +532,7 @@ static int validate_gmmu_page_table_gk20a(struct vm_gk20a *vm,
 		return err;
 
 	/* rewrite pde */
-	update_gmmu_pde(vm, i);
+	update_gmmu_pde_locked(vm, i);
 
 	return 0;
 }
@@ -609,7 +608,7 @@ static void gk20a_vm_unmap_user(struct vm_gk20a *vm, u64 offset)
 
 	mutex_lock(&vm->update_gmmu_lock);
 
-	mapped_buffer = find_mapped_buffer(&vm->mapped_buffers, offset);
+	mapped_buffer = find_mapped_buffer_locked(&vm->mapped_buffers, offset);
 	if (!mapped_buffer) {
 		mutex_unlock(&vm->update_gmmu_lock);
 		nvhost_dbg(dbg_err, "invalid addr to unmap 0x%llx", offset);
@@ -740,8 +739,8 @@ static int insert_mapped_buffer(struct rb_root *root,
 	return 0;
 }
 
-static struct mapped_buffer_node *find_mapped_buffer_r(struct rb_root *root,
-						       struct mem_handle *r)
+static struct mapped_buffer_node *find_mapped_buffer_reverse_locked(
+				struct rb_root *root, struct mem_handle *r)
 {
 	struct rb_node *node = rb_first(root);
 	while (node) {
@@ -754,8 +753,8 @@ static struct mapped_buffer_node *find_mapped_buffer_r(struct rb_root *root,
 	return 0;
 }
 
-static struct mapped_buffer_node *find_mapped_buffer(struct rb_root *root,
-						     u64 addr)
+static struct mapped_buffer_node *find_mapped_buffer_locked(
+					struct rb_root *root, u64 addr)
 {
 
 	struct rb_node *node = root->rb_node;
@@ -772,8 +771,8 @@ static struct mapped_buffer_node *find_mapped_buffer(struct rb_root *root,
 	return 0;
 }
 
-static struct mapped_buffer_node *find_mapped_buffer_range(struct rb_root *root,
-							   u64 addr)
+static struct mapped_buffer_node *find_mapped_buffer_range_locked(
+					struct rb_root *root, u64 addr)
 {
 	struct rb_node *node = root->rb_node;
 	while (node) {
@@ -936,7 +935,8 @@ static u64 gk20a_vm_map(struct vm_gk20a *vm,
 
 	mutex_lock(&vm->update_gmmu_lock);
 
-	mapped_buffer = find_mapped_buffer_r(&vm->mapped_buffers, r);
+	mapped_buffer = find_mapped_buffer_reverse_locked(
+						&vm->mapped_buffers, r);
 	if (mapped_buffer) {
 
 		WARN_ON(mapped_buffer->flags != flags);
@@ -1104,7 +1104,8 @@ static u64 gk20a_vm_map(struct vm_gk20a *vm,
 
 	/* mark the addr range valid (but with 0 phys addr, which will fault) */
 	for (i = pde_lo; i <= pde_hi; i++) {
-		err = validate_gmmu_page_table_gk20a(vm, i, bfr.pgsz_idx);
+		err = validate_gmmu_page_table_gk20a_locked(vm, i,
+							    bfr.pgsz_idx);
 		if (err) {
 			nvhost_err(dev_from_vm(vm),
 				   "failed to validate page table %d: %d",
@@ -1175,19 +1176,25 @@ static u64 gk20a_vm_map(struct vm_gk20a *vm,
 
 	nvhost_dbg_info("allocated va @ 0x%llx", map_offset);
 
-	err = update_gmmu_ptes(vm, bfr.pgsz_idx,
-			       bfr.sgt,
-			       map_offset, map_offset + bfr.size - 1,
-			       bfr.kind_v,
-			       bfr.ctag_offset,
-			       flags & NVHOST_MAP_BUFFER_FLAGS_CACHEABLE_TRUE,
-			       rw_flag);
+	err = update_gmmu_ptes_locked(vm, bfr.pgsz_idx,
+				      bfr.sgt,
+				      map_offset, map_offset + bfr.size - 1,
+				      bfr.kind_v,
+				      bfr.ctag_offset,
+				      flags &
+				      NVHOST_MAP_BUFFER_FLAGS_CACHEABLE_TRUE,
+				      rw_flag);
 	if (err) {
 		nvhost_err(d, "failed to update ptes on map");
 		goto clean_up;
 	}
 
 	mutex_unlock(&vm->update_gmmu_lock);
+
+	/* Invalidate kernel mappings immediately */
+	if (vm_aspace_id(vm) == -1)
+		gk20a_mm_tlb_invalidate(vm);
+
 	return map_offset;
 
 clean_up:
@@ -1222,13 +1229,13 @@ u64 gk20a_mm_iova_addr(struct scatterlist *sgl)
 	return result;
 }
 
-static int update_gmmu_ptes(struct vm_gk20a *vm,
-			    enum gmmu_pgsz_gk20a pgsz_idx,
-			    struct sg_table *sgt,
-			    u64 first_vaddr, u64 last_vaddr,
-			    u8 kind_v, u32 ctag_offset,
-			    bool cacheable,
-			    int rw_flag)
+static int update_gmmu_ptes_locked(struct vm_gk20a *vm,
+				   enum gmmu_pgsz_gk20a pgsz_idx,
+				   struct sg_table *sgt,
+				   u64 first_vaddr, u64 last_vaddr,
+				   u8 kind_v, u32 ctag_offset,
+				   bool cacheable,
+				   int rw_flag)
 {
 	int err;
 	u32 pde_lo, pde_hi, pde_i;
@@ -1304,10 +1311,11 @@ static int update_gmmu_ptes(struct vm_gk20a *vm,
 					gmmu_pte_comptagline_f(ctag);
 
 				if (rw_flag == mem_flag_read_only) {
-					pte_w[0] |= gmmu_pte_read_only_true_f()
-					     | gmmu_pte_write_disable_true_f();
+					pte_w[0] |= gmmu_pte_read_only_true_f();
+					pte_w[1] |=
+						gmmu_pte_write_disable_true_f();
 				} else if (rw_flag == mem_flag_write_only) {
-					pte_w[0] |=
+					pte_w[1] |=
 						gmmu_pte_read_disable_true_f();
 				}
 
@@ -1359,7 +1367,7 @@ static int update_gmmu_ptes(struct vm_gk20a *vm,
 			pte->ref = NULL;
 
 			/* rewrite pde */
-			update_gmmu_pde(vm, pde_i);
+			update_gmmu_pde_locked(vm, pde_i);
 		}
 
 	}
@@ -1403,7 +1411,7 @@ static inline u32 small_valid_pde1_bits(u64 pte_addr)
    made.  So, superfluous updates will cause unnecessary
    pde invalidations.
 */
-static void update_gmmu_pde(struct vm_gk20a *vm, u32 i)
+static void update_gmmu_pde_locked(struct vm_gk20a *vm, u32 i)
 {
 	bool small_valid, big_valid;
 	u64 pte_addr[2] = {0, 0};
@@ -1477,13 +1485,14 @@ static void gk20a_vm_unmap_locked(struct mapped_buffer_node *mapped_buffer)
 		   mapped_buffer->own_mem_ref);
 
 	/* unmap here needs to know the page size we assigned at mapping */
-	err = update_gmmu_ptes(vm,
-			       mapped_buffer->pgsz_idx,
-			       0, /* n/a for unmap */
-			       mapped_buffer->addr,
-			       mapped_buffer->addr + mapped_buffer->size - 1,
-			       0, 0, false /* n/a for unmap */,
-			       mem_flag_none);
+	err = update_gmmu_ptes_locked(vm,
+				      mapped_buffer->pgsz_idx,
+				      0, /* n/a for unmap */
+				      mapped_buffer->addr,
+				      mapped_buffer->addr +
+				      mapped_buffer->size - 1,
+				      0, 0, false /* n/a for unmap */,
+				      mem_flag_none);
 
 	/* detect which if any pdes/ptes can now be released */
 
@@ -1527,7 +1536,7 @@ static void gk20a_vm_unmap(struct vm_gk20a *vm, u64 offset)
 	struct mapped_buffer_node *mapped_buffer;
 
 	mutex_lock(&vm->update_gmmu_lock);
-	mapped_buffer = find_mapped_buffer(&vm->mapped_buffers, offset);
+	mapped_buffer = find_mapped_buffer_locked(&vm->mapped_buffers, offset);
 	if (!mapped_buffer) {
 		mutex_unlock(&vm->update_gmmu_lock);
 		nvhost_dbg(dbg_err, "invalid addr to unmap 0x%llx", offset);
@@ -2158,7 +2167,7 @@ clean_up:
  * Note: the name here is a bit of a misnomer.  ELPG uses this
  * internally... but ELPG doesn't have to be on to do it manually.
  */
-static void gk20a_mm_g_elpg_flush(struct gk20a *g)
+static void gk20a_mm_g_elpg_flush_locked(struct gk20a *g)
 {
 	u32 data;
 	s32 retry = 100;
@@ -2190,12 +2199,15 @@ static void gk20a_mm_g_elpg_flush(struct gk20a *g)
 
 void gk20a_mm_fb_flush(struct gk20a *g)
 {
+	struct mm_gk20a *mm = &g->mm;
 	u32 data;
 	s32 retry = 100;
 
 	nvhost_dbg_fn("");
 
-	gk20a_mm_g_elpg_flush(g);
+	mutex_lock(&mm->l2_op_lock);
+
+	gk20a_mm_g_elpg_flush_locked(g);
 
 	/* Make sure all previous writes are committed to the L2. There's no
 	   guarantee that writes are to DRAM. This will be a sysmembar internal
@@ -2220,14 +2232,58 @@ void gk20a_mm_fb_flush(struct gk20a *g)
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
 			"fb_flush too many retries");
+
+	mutex_unlock(&mm->l2_op_lock);
 }
 
-void gk20a_mm_l2_flush(struct gk20a *g, bool invalidate)
+static void gk20a_mm_l2_invalidate_locked(struct gk20a *g)
 {
 	u32 data;
 	s32 retry = 200;
 
+	/* Invalidate any clean lines from the L2 so subsequent reads go to
+	   DRAM. Dirty lines are not affected by this operation. */
+	gk20a_writel(g, flush_l2_system_invalidate_r(),
+		flush_l2_system_invalidate_pending_busy_f());
+
+	do {
+		data = gk20a_readl(g, flush_l2_system_invalidate_r());
+
+		if (flush_l2_system_invalidate_outstanding_v(data) ==
+			flush_l2_system_invalidate_outstanding_true_v() ||
+		    flush_l2_system_invalidate_pending_v(data) ==
+			flush_l2_system_invalidate_pending_busy_v()) {
+				nvhost_dbg_info("l2_system_invalidate 0x%x",
+						data);
+				retry--;
+				usleep_range(20, 40);
+		} else
+			break;
+	} while (retry >= 0);
+
+	if (retry < 0)
+		nvhost_warn(dev_from_gk20a(g),
+			"l2_system_invalidate too many retries");
+}
+
+void gk20a_mm_l2_invalidate(struct gk20a *g)
+{
+	struct mm_gk20a *mm = &g->mm;
+	mutex_lock(&mm->l2_op_lock);
+	gk20a_mm_l2_invalidate_locked(g);
+	mutex_unlock(&mm->l2_op_lock);
+}
+
+void gk20a_mm_l2_flush(struct gk20a *g, bool invalidate)
+{
+	struct mm_gk20a *mm = &g->mm;
+	u32 data;
+	s32 retry = 200;
+
 	nvhost_dbg_fn("");
+
+	mutex_lock(&mm->l2_op_lock);
+
 	/* Flush all dirty lines from the L2 to DRAM. Lines are left in the L2
 	   as clean, so subsequent reads might hit in the L2. */
 	gk20a_writel(g, flush_l2_flush_dirty_r(),
@@ -2251,42 +2307,12 @@ void gk20a_mm_l2_flush(struct gk20a *g, bool invalidate)
 		nvhost_warn(dev_from_gk20a(g),
 			"l2_flush_dirty too many retries");
 
-	if (!invalidate)
-		return;
+	if (invalidate)
+		gk20a_mm_l2_invalidate_locked(g);
 
-	gk20a_mm_l2_invalidate(g);
-
-	return;
+	mutex_unlock(&mm->l2_op_lock);
 }
 
-void gk20a_mm_l2_invalidate(struct gk20a *g)
-{
-	u32 data;
-	s32 retry = 200;
-
-	/* Invalidate any clean lines from the L2 so subsequent reads go to
-	   DRAM. Dirty lines are not affected by this operation. */
-	gk20a_writel(g, flush_l2_system_invalidate_r(),
-		flush_l2_system_invalidate_pending_busy_f());
-
-	do {
-		data = gk20a_readl(g, flush_l2_system_invalidate_r());
-
-		if (flush_l2_system_invalidate_outstanding_v(data) ==
-			flush_l2_system_invalidate_outstanding_true_v() ||
-		    flush_l2_system_invalidate_pending_v(data) ==
-			flush_l2_system_invalidate_pending_busy_v()) {
-				nvhost_dbg_info("l2_system_invalidate 0x%x", data);
-				retry--;
-				usleep_range(20, 40);
-		} else
-			break;
-	} while (retry >= 0);
-
-	if (retry < 0)
-		nvhost_warn(dev_from_gk20a(g),
-			"l2_system_invalidate too many retries");
-}
 
 static int gk20a_vm_find_buffer(struct vm_gk20a *vm, u64 gpu_va,
 		struct mem_mgr **mgr, struct mem_handle **r, u64 *offset)
@@ -2294,33 +2320,54 @@ static int gk20a_vm_find_buffer(struct vm_gk20a *vm, u64 gpu_va,
 	struct mapped_buffer_node *mapped_buffer;
 
 	nvhost_dbg_fn("gpu_va=0x%llx", gpu_va);
-	mapped_buffer = find_mapped_buffer_range(&vm->mapped_buffers, gpu_va);
-	if (!mapped_buffer)
+
+	mutex_lock(&vm->update_gmmu_lock);
+
+	mapped_buffer = find_mapped_buffer_range_locked(&vm->mapped_buffers,
+							gpu_va);
+	if (!mapped_buffer) {
+		mutex_unlock(&vm->update_gmmu_lock);
 		return -EINVAL;
+	}
 
 	*mgr = mapped_buffer->memmgr;
 	*r = mapped_buffer->handle_ref;
 	*offset = gpu_va - mapped_buffer->addr;
+
+	mutex_unlock(&vm->update_gmmu_lock);
+
 	return 0;
 }
 
 static void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm)
 {
+	struct mm_gk20a *mm = vm->mm;
 	struct gk20a *g = gk20a_from_vm(vm);
 	u32 addr_lo = u64_lo32(gk20a_mm_iova_addr(vm->pdes.sgt->sgl) >> 12);
 	u32 data;
 	s32 retry = 200;
+
+	nvhost_dbg_fn("");
 
 	/* pagetables are considered sw states which are preserved after
 	   prepare_poweroff. When gk20a deinit releases those pagetables,
 	   common code in vm unmap path calls tlb invalidate that touches
 	   hw. Use the power_on flag to skip tlb invalidation when gpu
 	   power is turned off */
+
 	if (!g->power_on)
 		return;
 
-	nvhost_dbg_fn("");
+	/* No need to invalidate if tlb is clean */
+	mutex_lock(&vm->update_gmmu_lock);
+	if (!vm->tlb_dirty) {
+		mutex_unlock(&vm->update_gmmu_lock);
+		return;
+	}
+	vm->tlb_dirty = false;
+	mutex_unlock(&vm->update_gmmu_lock);
 
+	mutex_lock(&mm->tlb_lock);
 	do {
 		data = gk20a_readl(g, fb_mmu_ctrl_r());
 		if (fb_mmu_ctrl_pri_fifo_space_v(data) != 0)
@@ -2355,6 +2402,8 @@ static void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm)
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
 			"mmu invalidate too many retries");
+
+	mutex_unlock(&mm->tlb_lock);
 }
 
 #if 0 /* VM DEBUG */
@@ -2453,3 +2502,11 @@ void gk20a_mm_ltc_isr(struct gk20a *g)
 	nvhost_err(dev_from_gk20a(g), "ltc: %08x\n", intr);
 	gk20a_writel(g, ltc_ltc0_ltss_intr_r(), intr);
 }
+
+bool gk20a_mm_mmu_debug_mode_enabled(struct gk20a *g)
+{
+	u32 debug_ctrl = gk20a_readl(g, fb_mmu_debug_ctrl_r());
+	return fb_mmu_debug_ctrl_debug_v(debug_ctrl) ==
+		fb_mmu_debug_ctrl_debug_enabled_v();
+}
+

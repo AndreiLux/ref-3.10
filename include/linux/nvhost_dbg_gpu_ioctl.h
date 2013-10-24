@@ -50,7 +50,7 @@
  *
  */
 struct nvhost_dbg_gpu_bind_channel_args {
-	__u32 channel_fd; /* in*/
+	__u32 channel_fd; /* in */
 	__u32 _pad0[1];
 };
 
@@ -92,16 +92,13 @@ struct nvhost_dbg_gpu_reg_op {
 	__u8    type;
 	__u8    status;
 	__u8    quad;
-	__u8    is_quad;
-	__u8    _pad0[3];
 	__u32   group_mask;
 	__u32   sub_group_mask;
 	__u32   offset;
-	__u32   value_hi;
 	__u32   value_lo;
-	__u32   and_n_mask_hi;
+	__u32   value_hi;
 	__u32   and_n_mask_lo;
-	__u32 _pad1[1];
+	__u32   and_n_mask_hi;
 };
 
 struct nvhost_dbg_gpu_exec_reg_ops_args {
@@ -113,9 +110,23 @@ struct nvhost_dbg_gpu_exec_reg_ops_args {
 #define NVHOST_DBG_GPU_IOCTL_REG_OPS					\
 	_IOWR(NVHOST_DBG_GPU_IOCTL_MAGIC, 2, struct nvhost_dbg_gpu_exec_reg_ops_args)
 
+/* Enable/disable/clear event notifications */
+struct nvhost_dbg_gpu_events_ctrl_args {
+	__u32 cmd; /* in */
+	__u32 _pad0[1];
+};
+
+/* valid event ctrl values */
+#define NVHOST_DBG_GPU_EVENTS_CTRL_CMD_DISABLE                    (0x00000000)
+#define NVHOST_DBG_GPU_EVENTS_CTRL_CMD_ENABLE                     (0x00000001)
+#define NVHOST_DBG_GPU_EVENTS_CTRL_CMD_CLEAR                      (0x00000002)
+
+#define NVHOST_DBG_GPU_IOCTL_EVENTS_CTRL				\
+	_IOWR(NVHOST_DBG_GPU_IOCTL_MAGIC, 3, struct nvhost_dbg_gpu_events_ctrl_args)
+
 
 #define NVHOST_DBG_GPU_IOCTL_LAST		\
-	_IOC_NR(NVHOST_DBG_GPU_IOCTL_REG_OPS)
+	_IOC_NR(NVHOST_DBG_GPU_IOCTL_EVENTS_CTRL)
 #define NVHOST_DBG_GPU_IOCTL_MAX_ARG_SIZE		\
 	sizeof(struct nvhost_dbg_gpu_exec_reg_ops_args)
 

@@ -264,6 +264,9 @@ struct mm_gk20a {
 		struct inst_desc inst_block;
 	} pmu;
 
+	struct mutex tlb_lock;
+	struct mutex l2_op_lock;
+
 	void (*remove_support)(struct mm_gk20a *mm);
 	bool sw_ready;
 #ifdef CONFIG_DEBUG_FS
@@ -319,5 +322,7 @@ int gk20a_mm_suspend(struct gk20a *g);
 u64 gk20a_mm_iova_addr(struct scatterlist *sgl);
 
 void gk20a_mm_ltc_isr(struct gk20a *g);
+
+bool gk20a_mm_mmu_debug_mode_enabled(struct gk20a *g);
 
 #endif /*_MM_GK20A_H_ */

@@ -34,6 +34,8 @@
 #include <mach/irqs.h>
 #include <mach/edp.h>
 #include <mach/tegra_fuse.h>
+#include <mach/pinmux-t12.h>
+
 #include <linux/pid_thermal_gov.h>
 
 #include <asm/mach-types.h>
@@ -698,6 +700,8 @@ static struct tegra_cl_dvfs_platform_data loki_cl_dvfs_data = {
 	.pmu_if = TEGRA_CL_DVFS_PMU_PWM,
 	.u.pmu_pwm = {
 		.pwm_rate = 12750000,
+		.pwm_bus = TEGRA_CL_DVFS_PWM_1WIRE_BUFFER,
+		.pwm_pingroup = TEGRA_PINGROUP_DVFS_PWM,
 		.out_gpio = TEGRA_GPIO_PU6,
 		.out_enable_high = false,
 #ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
@@ -858,21 +862,21 @@ static struct soctherm_platform_data loki_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 98000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 96000,
+					.trip_temp = 99000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 86000,
+					.trip_temp = 89000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -888,14 +892,14 @@ static struct soctherm_platform_data loki_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 100000,
+					.trip_temp = 103000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 88000,
+					.trip_temp = 91000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -903,14 +907,14 @@ static struct soctherm_platform_data loki_soctherm_data = {
 /*
 				{
 					.cdev_type = "gk20a_cdev",
-					.trip_temp = 80000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 98000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -950,9 +954,10 @@ int __init loki_soctherm_init(void)
 			loki_soctherm_data.therm[THERM_CPU].trips,
 			&loki_soctherm_data.therm[THERM_CPU].num_trips,
 			8000); /* edp temperature margin */
+		tegra_add_tgpu_trips(
+			loki_soctherm_data.therm[THERM_GPU].trips,
+			&loki_soctherm_data.therm[THERM_GPU].num_trips);
 	}
 
-	/* Always do soctherm init here.
-	 * Allowing access to raw soctherm regs for debugging purposes */
 	return tegra11_soctherm_init(&loki_soctherm_data);
 }

@@ -53,6 +53,8 @@
 #include <mach/tegra_usb_pad_ctrl.h>
 #include <mach/pm_domains.h>
 #include <mach/io_dpd.h>
+#include <mach/pinmux.h>
+#include <mach/pinmux-t12.h>
 
 #include "board.h"
 #include "iomap.h"
@@ -169,6 +171,11 @@
 #define AFI_PEX_CTRL_RST					(1 << 0)
 #define AFI_PEX_CTRL_CLKREQ_EN					(1 << 1)
 #define AFI_PEX_CTRL_REFCLK_EN					(1 << 3)
+#define AFI_PEX_CTRL_OVERRIDE_EN				(1 << 4)
+
+#define AFI_PLLE_CONTROL					0x160
+#define AFI_PLLE_CONTROL_BYPASS_PADS2PLLE_CONTROL		(1 << 9)
+#define AFI_PLLE_CONTROL_PADS2PLLE_CONTROL_EN			(1 << 1)
 
 #define AFI_PEXBIAS_CTRL_0					0x168
 #define AFI_WR_SCRATCH_0					0x120
@@ -221,7 +228,9 @@
 #define  PADS_PLL_CTL_TXCLKREF_DIV10				(0 << 20)
 #define  PADS_PLL_CTL_TXCLKREF_DIV5				(1 << 20)
 
+#define  PADS_REFCLK_CFG0					0x000000C8
 #define  PADS_REFCLK_CFG1					0x000000CC
+#define  PADS_REFCLK_BIAS					0x000000D0
 
 #define NV_PCIE2_RP_RSR					0x000000A0
 #define NV_PCIE2_RP_RSR_PMESTAT				(1 << 16)
@@ -237,13 +246,15 @@
 #define NV_PCIE2_RP_VEND_XP1					0x00000F04
 #define NV_PCIE2_RP_VEND_XP1_LINK_PVT_CTL_L1_ASPM_SUPPORT_ENABLE	1 << 21
 
-#define NV_PCIE2_RP_DEV_CTRL					0x00000004
-#define PCIE2_RP_DEV_CTRL_IO_SPACE_ENABLED			(1 << 0)
-#define PCIE2_RP_DEV_CTRL_MEMORY_SPACE_ENABLED			(1 << 1)
-#define PCIE2_RP_DEV_CTRL_BUS_MASTER_ENABLED			(1 << 2)
-
 #define NV_PCIE2_RP_VEND_XP_BIST				0x00000F4C
 #define PCIE2_RP_VEND_XP_BIST_GOTO_L1_L2_AFTER_DLLP_DONE	(1 << 28)
+
+#define NV_PCIE2_RP_ECTL_1_R2					0x00000FD8
+#define PCIE2_RP_ECTL_1_R2_TX_DRV_CNTL_1C			(0x3 << 28)
+
+#define BOARD_PM359						0x0167
+#define BOARD_PM358						0x0166
+
 
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 /*
@@ -369,9 +380,7 @@ struct tegra_pcie_bus {
 
 static struct resource pcie_mem_space;
 static struct resource pcie_prefetch_mem_space;
-/* disable read write while noirq operation
- * is performed since pcie is powered off */
-static bool is_pcie_noirq_op = false;
+
 /* enable and init msi once during boot or resume */
 static bool msi_enable;
 /* this flag is used for enumeration by hotplug */
@@ -543,10 +552,6 @@ static int tegra_pcie_read_conf(struct pci_bus *bus, unsigned int devfn,
 	struct tegra_pcie_port *pp = bus_to_port(bus->number);
 	void __iomem *addr;
 
-	/* read reg is disabled without intr to avoid hang in suspend noirq */
-	if (is_pcie_noirq_op)
-		return 0;
-
 	if (pp) {
 		if (devfn != 0) {
 			*val = 0xffffffff;
@@ -585,9 +590,6 @@ static int tegra_pcie_write_conf(struct pci_bus *bus, unsigned int devfn,
 	u32 mask;
 	u32 tmp;
 
-	/* write reg is disabled without intr to avoid hang in resume noirq */
-	if (is_pcie_noirq_op)
-		return 0;
 	/* pcie core is supposed to enable bus mastering and io/mem responses
 	 * if its not setting then enable corresponding bits in pci_command
 	 */
@@ -743,8 +745,8 @@ static struct hw_pci __initdata tegra_pcie_hw = {
 };
 
 #ifdef CONFIG_PM
-static int tegra_pcie_suspend(struct device *dev);
-static int tegra_pcie_resume(struct device *dev);
+static int tegra_pcie_suspend_noirq(struct device *dev);
+static int tegra_pcie_resume_noirq(struct device *dev);
 
 #ifdef HOTPLUG_ON_SYSTEM_BOOT
 /* It enumerates the devices when dock is connected after system boot */
@@ -794,7 +796,7 @@ static int tegra_pcie_attach(void)
 	if (!hotplug_event)
 		return err;
 #ifdef CONFIG_PM
-	err =  tegra_pcie_resume(NULL);
+	err =  tegra_pcie_resume_noirq(NULL);
 #endif
 	hotplug_event = false;
 	return err;
@@ -807,7 +809,7 @@ static int tegra_pcie_detach(void)
 	if (hotplug_event)
 		return err;
 #ifdef CONFIG_PM
-	err =  tegra_pcie_suspend(NULL);
+	err =  tegra_pcie_suspend_noirq(NULL);
 #endif
 	hotplug_event = true;
 	return err;
@@ -1019,10 +1021,23 @@ static int tegra_pcie_enable_controller(void)
 		reg = pex_controller_registers[i];
 		val = afi_readl(reg) | AFI_PEX_CTRL_REFCLK_EN |
 			AFI_PEX_CTRL_CLKREQ_EN;
-
+		/* Since CLKREQ# pinmux pins may float in some platfoms */
+		/* resulting in disappear of refclk specially at higher temp */
+		/* overrided CLKREQ to always drive refclk */
+		if ((tegra_pcie.plat_data->board_id == BOARD_PM358) ||
+			(tegra_pcie.plat_data->board_id == BOARD_PM359)) {
+			val |= AFI_PEX_CTRL_OVERRIDE_EN;
+		}
 		val &= ~AFI_PEX_CTRL_RST;
 		afi_writel(val, reg);
 	}
+
+	/* Enable PLL power down */
+	val = afi_readl(AFI_PLLE_CONTROL);
+	val &= ~AFI_PLLE_CONTROL_BYPASS_PADS2PLLE_CONTROL;
+	val |= AFI_PLLE_CONTROL_PADS2PLLE_CONTROL_EN;
+	afi_writel(val, AFI_PLLE_CONTROL);
+
 	afi_writel(0, AFI_PEXBIAS_CTRL_0);
 
 	lane_owner = 0;
@@ -1042,13 +1057,10 @@ static int tegra_pcie_enable_controller(void)
 		if (lane_owner == PCIE_LANES_X2_X1)
 			val |= AFI_PCIE_CONFIG_SM2TMS0_XBAR_CONFIG_X2_X1;
 		else {
-#define BOARD_PM359	0x0167
 			int err = 0;
-			struct board_info board_info;
 
-			tegra_get_board_info(&board_info);
 			val |= AFI_PCIE_CONFIG_SM2TMS0_XBAR_CONFIG_X4_X1;
-			if ((board_info.board_id == BOARD_PM359) &&
+			if ((tegra_pcie.plat_data->board_id == BOARD_PM359) &&
 					(lane_owner == PCIE_LANES_X4_X1)) {
 				/* X1 works only on ERS-S board
 				   with X4_X1 config */
@@ -1117,7 +1129,7 @@ static int tegra_pcie_enable_controller(void)
 		 * Hack, set the clock voltage to the DEFAULT provided
 		 * by hw folks. This doesn't exist in the documentation
 		 */
-		pads_writel(0xfa5cfa5c, 0xc8);
+		pads_writel(0xfa5cfa5c, PADS_REFCLK_CFG0);
 		pads_writel(0x0000FA5C, PADS_REFCLK_CFG1);
 
 		/* Wait for the PLL to lock */
@@ -1135,6 +1147,9 @@ static int tegra_pcie_enable_controller(void)
 		val = pads_readl(PADS_CTL) & ~PADS_CTL_IDDQ_1L;
 		pads_writel(val, PADS_CTL);
 #else
+		/* WAR for Eye diagram failure on lanes for T124 platforms */
+		pads_writel(0x34ac34ac, PADS_REFCLK_CFG0);
+		pads_writel(0x00000028, PADS_REFCLK_BIAS);
 		/* T124 PCIe pad programming is moved to XUSB_PADCTL space */
 		ret = pcie_phy_pad_enable(lane_owner);
 		if (ret) {
@@ -1180,6 +1195,7 @@ static int tegra_pcie_enable_controller(void)
 	return ret;
 }
 
+#ifdef USE_REGULATORS
 static int tegra_pcie_enable_regulators(void)
 {
 	PR_FUNC_LINE;
@@ -1269,6 +1285,7 @@ static int tegra_pcie_disable_regulators(void)
 err_exit:
 	return err;
 }
+#endif
 
 static int tegra_pcie_power_regate(void)
 {
@@ -1366,6 +1383,11 @@ static void tegra_pcie_pme_turnoff(void)
 	do {
 		data = afi_readl(AFI_PCIE_PME);
 	} while (!(data & AFI_PCIE_PME_ACK));
+
+	/* Required for PLL power down */
+	data = afi_readl(AFI_PLLE_CONTROL);
+	data |= AFI_PLLE_CONTROL_BYPASS_PADS2PLLE_CONTROL;
+	afi_writel(data, AFI_PLLE_CONTROL);
 }
 
 static struct tegra_io_dpd pexbias_io = {
@@ -1400,11 +1422,6 @@ static int tegra_pcie_power_on(void)
 		tegra_io_dpd_disable(&pexbias_io);
 		tegra_io_dpd_disable(&pexclk1_io);
 		tegra_io_dpd_disable(&pexclk2_io);
-		err = tegra_pcie_enable_regulators();
-		if (err) {
-			pr_err("PCIE: Failed to enable regulators\n");
-			goto err_exit;
-		}
 	}
 	err = tegra_pcie_power_regate();
 	if (err) {
@@ -1454,9 +1471,6 @@ static int tegra_pcie_power_off(void)
 		goto err_exit;
 
 	if (!tegra_platform_is_fpga()) {
-		err = tegra_pcie_disable_regulators();
-		if (err)
-			goto err_exit;
 		/* put PEX pads into DPD mode to save additional power */
 		tegra_io_dpd_enable(&pexbias_io);
 		tegra_io_dpd_enable(&pexclk1_io);
@@ -1591,6 +1605,19 @@ retry:
 	return false;
 }
 
+static void tegra_pcie_apply_sw_war(int index)
+{
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+	unsigned int data;
+
+	PR_FUNC_LINE;
+	/* WAR for Eye diagram failure on lanes for T124 platforms */
+	data = rp_readl(NV_PCIE2_RP_ECTL_1_R2, index);
+	data |= PCIE2_RP_ECTL_1_R2_TX_DRV_CNTL_1C;
+	rp_writel(data, NV_PCIE2_RP_ECTL_1_R2, index);
+#endif
+}
+
 /* Enable various features of root port */
 static void tegra_pcie_enable_rp_features(int index)
 {
@@ -1617,6 +1644,8 @@ static void tegra_pcie_enable_rp_features(int index)
 	data = rp_readl(NV_PCIE2_RP_VEND_XP_BIST, index);
 	data |= PCIE2_RP_VEND_XP_BIST_GOTO_L1_L2_AFTER_DLLP_DONE;
 	rp_writel(data, NV_PCIE2_RP_VEND_XP_BIST, index);
+
+	tegra_pcie_apply_sw_war(index);
 }
 
 static void tegra_pcie_add_port(int index, u32 offset, u32 reset_reg)
@@ -1768,6 +1797,53 @@ bool tegra_pcie_link_speed(bool isGen2)
 }
 EXPORT_SYMBOL(tegra_pcie_link_speed);
 
+/* support PLL power down in L1 dynamically based on platform */
+static void tegra_pcie_pll_pdn(void)
+{
+	struct pci_dev *pdev = NULL;
+
+	PR_FUNC_LINE;
+	/* CLKREQ# to PD if device connected to RP doesn't have CLKREQ# */
+	/* capability(no PLL power down in L1 here) and PU if they have */
+	for_each_pci_dev(pdev) {
+		if (pci_pcie_type(pdev) == PCI_EXP_TYPE_ROOT_PORT)
+			continue;
+
+		if ((pci_pcie_type(pdev->bus->self) ==
+			PCI_EXP_TYPE_ROOT_PORT)) {
+			u32 i, val = 0;
+
+			pcie_capability_read_dword(pdev, PCI_EXP_LNKCAP, &val);
+			if (val & PCI_EXP_LNKCAP_CLKPM) {
+				tegra_pinmux_set_pullupdown(
+					TEGRA_PINGROUP_PEX_L0_CLKREQ_N,
+					TEGRA_PUPD_PULL_UP);
+				tegra_pinmux_set_pullupdown(
+					TEGRA_PINGROUP_PEX_L1_CLKREQ_N,
+					TEGRA_PUPD_PULL_UP);
+
+				/* revert WAR applied in enable ctlr to */
+				/* revert device CLKREQ capability override */
+				for (i = 0; i < ARRAY_SIZE(pex_controller_registers);
+							i++) {
+					val = afi_readl(pex_controller_registers[i]);
+					val &= ~AFI_PEX_CTRL_OVERRIDE_EN;
+					afi_writel(val, pex_controller_registers[i]);
+				}
+			} else {
+				tegra_pinmux_set_pullupdown(
+					TEGRA_PINGROUP_PEX_L0_CLKREQ_N,
+					TEGRA_PUPD_PULL_DOWN);
+				tegra_pinmux_set_pullupdown(
+					TEGRA_PINGROUP_PEX_L1_CLKREQ_N,
+					TEGRA_PUPD_PULL_DOWN);
+			}
+			break;
+		}
+	}
+}
+
+/* Enable ASPM support of all devices based on it's capability */
 static void tegra_pcie_enable_aspm_support(void)
 {
 	struct pci_dev *pdev = NULL;
@@ -1789,11 +1865,12 @@ static void tegra_pcie_enable_aspm_support(void)
 static void tegra_pcie_enable_features(void)
 {
 	PR_FUNC_LINE;
+
 	/* configure all links to gen2 speed by default */
 	if (!tegra_pcie_link_speed(true))
 		pr_info("PCIE: Link speed change failed\n");
 
-	/* Enable ASPM support of all devices based on it's capability */
+	tegra_pcie_pll_pdn();
 	tegra_pcie_enable_aspm_support();
 }
 
@@ -1899,8 +1976,7 @@ static int __init tegra_pcie_probe(struct platform_device *pdev)
 	dev_dbg(&pdev->dev, "PCIE.C: %s : _port_status[2] %d\n",
 		__func__, tegra_pcie.plat_data->port_status[2]);
 #endif
-	/* Enable Runtime PM for PCIe */
-	tegra_pd_add_device(tegra_pcie.dev);
+	/* Enable Runtime PM for PCIe, TODO: Need to add PCIe host device */
 	pm_runtime_enable(tegra_pcie.dev);
 
 	ret = tegra_pcie_init();
@@ -1911,30 +1987,18 @@ static int __init tegra_pcie_probe(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-static int tegra_pcie_suspend(struct device *dev)
+static int tegra_pcie_suspend_noirq(struct device *dev)
 {
-	struct pci_dev *pdev = NULL;
-
 	PR_FUNC_LINE;
-	async_synchronize_full();
-
-	for_each_pci_dev(pdev) {
-		pci_stop_and_remove_bus_device(pdev);
-		break;
-	}
-
-	/* disable read/write registers before powering off */
-	is_pcie_noirq_op = true;
 	/* reset number of ports since fresh initialization occurs in resume */
 	tegra_pcie.num_ports = 0;
 
 	return tegra_pcie_power_off();
 }
 
-static int tegra_pcie_resume(struct device *dev)
+static int tegra_pcie_resume_noirq(struct device *dev)
 {
 	int ret = 0;
-	struct pci_bus *bus = NULL;
 	int port, rp_offset = 0;
 	int ctrl_offset = AFI_PEX0_CTRL;
 
@@ -1944,8 +2008,6 @@ static int tegra_pcie_resume(struct device *dev)
 		pr_err("PCIE: Failed to power on: %d\n", ret);
 		return ret;
 	}
-	/* enable read/write registers after powering on */
-	is_pcie_noirq_op = false;
 	tegra_pcie_enable_controller();
 	tegra_pcie_setup_translations();
 
@@ -1962,11 +2024,14 @@ static int tegra_pcie_resume(struct device *dev)
 	}
 	msi_enable = false;
 
-	while ((bus = pci_find_next_bus(bus)) != NULL)
-		pci_rescan_bus(bus);
-	tegra_pcie_enable_features();
-
 exit:
+	return 0;
+}
+
+static int tegra_pcie_resume(struct device *dev)
+{
+	PR_FUNC_LINE;
+	tegra_pcie_enable_features();
 	return 0;
 }
 #endif
@@ -1987,7 +2052,8 @@ static int tegra_pcie_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_PM
 static const struct dev_pm_ops tegra_pcie_pm_ops = {
-	.suspend = tegra_pcie_suspend,
+	.suspend_noirq  = tegra_pcie_suspend_noirq,
+	.resume_noirq = tegra_pcie_resume_noirq,
 	.resume = tegra_pcie_resume,
 	};
 #endif

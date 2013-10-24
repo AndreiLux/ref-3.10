@@ -23,10 +23,12 @@
 #include <linux/firmware.h>
 #include <linux/nvmap.h>
 #include <linux/module.h>
+#include <linux/debugfs.h>
 
 #include "../dev.h"
 #include "../bus_client.h"
 #include "nvhost_memmgr.h"
+#include "nvhost_acm.h"
 
 #include "gk20a.h"
 #include "hw_mc_gk20a.h"
@@ -40,6 +42,8 @@
 	nvhost_dbg(dbg_pmu, fmt, ##arg)
 
 static void pmu_dump_falcon_stats(struct pmu_gk20a *pmu);
+static int gk20a_pmu_get_elpg_residency(struct gk20a *g, u32 *ingating_time,
+						u32 *ungating_time);
 
 static void pmu_copy_from_dmem(struct pmu_gk20a *pmu,
 			u32 src, u8* dst, u32 size, u8 port)
@@ -60,6 +64,8 @@ static void pmu_copy_from_dmem(struct pmu_gk20a *pmu,
 			"src (0x%08x) not 4-byte aligned", src);
 		return;
 	}
+
+	mutex_lock(&pmu->pmu_copy_lock);
 
 	words = size >> 2;
 	bytes = size & 0x3;
@@ -83,7 +89,7 @@ static void pmu_copy_from_dmem(struct pmu_gk20a *pmu,
 					i, dst[(words << 2) + i]);
 		}
 	}
-
+	mutex_unlock(&pmu->pmu_copy_lock);
 	return;
 }
 
@@ -106,6 +112,8 @@ static void pmu_copy_to_dmem(struct pmu_gk20a *pmu,
 			"dst (0x%08x) not 4-byte aligned", dst);
 		return;
 	}
+
+	mutex_lock(&pmu->pmu_copy_lock);
 
 	words = size >> 2;
 	bytes = size & 0x3;
@@ -135,6 +143,7 @@ static void pmu_copy_to_dmem(struct pmu_gk20a *pmu,
 			"copy failed. bytes written %d, expected %d",
 			data - dst, size);
 	}
+	mutex_unlock(&pmu->pmu_copy_lock);
 	return;
 }
 
@@ -160,7 +169,7 @@ static int pmu_idle(struct pmu_gk20a *pmu)
 				idle_stat);
 			return -EBUSY;
 		}
-		usleep_range(1000, 2000);
+		usleep_range(100, 200);
 	} while (1);
 
 	nvhost_dbg_fn("done");
@@ -330,23 +339,8 @@ static int pmu_bootstrap(struct pmu_gk20a *pmu)
 	struct pmu_ucode_desc *desc = pmu->desc;
 	u64 addr_code, addr_data, addr_load;
 	u32 i, blocks, addr_args;
-	void *ucode_ptr;
 
 	nvhost_dbg_fn("");
-
-	ucode_ptr = nvhost_memmgr_mmap(pmu->ucode.mem.ref);
-	if (!ucode_ptr) {
-		nvhost_err(dev_from_gk20a(g),
-			"fail to map pmu ucode memory");
-		return -ENOMEM;
-	}
-
-	for (i = 0; i < (desc->app_start_offset + desc->app_size) >> 2; i++) {
-		/* nvhost_dbg_pmu("loading pmu ucode : 0x%08x", pmu->ucode_image[i]); */
-		mem_wr32(ucode_ptr, i, pmu->ucode_image[i]);
-	}
-
-	nvhost_memmgr_munmap(pmu->ucode.mem.ref, ucode_ptr);
 
 	gk20a_writel(g, pwr_falcon_itfen_r(),
 		gk20a_readl(g, pwr_falcon_itfen_r()) |
@@ -923,35 +917,55 @@ static int pmu_queue_close(struct pmu_gk20a *pmu,
 	return 0;
 }
 
+static void gk20a_save_pmu_sw_state(struct pmu_gk20a *pmu,
+			struct gk20a_pmu_save_state *save)
+{
+	save->seq = pmu->seq;
+	save->next_seq_desc = pmu->next_seq_desc;
+	save->mutex = pmu->mutex;
+	save->mutex_cnt = pmu->mutex_cnt;
+	save->desc = pmu->desc;
+	save->ucode = pmu->ucode;
+	save->elpg_enable = pmu->elpg_enable;
+	save->pg_wq = pmu->pg_wq;
+	save->seq_buf = pmu->seq_buf;
+	save->pg_buf = pmu->pg_buf;
+	save->sw_ready = pmu->sw_ready;
+}
+
+static void gk20a_restore_pmu_sw_state(struct pmu_gk20a *pmu,
+			struct gk20a_pmu_save_state *save)
+{
+	pmu->seq = save->seq;
+	pmu->next_seq_desc = save->next_seq_desc;
+	pmu->mutex = save->mutex;
+	pmu->mutex_cnt = save->mutex_cnt;
+	pmu->desc = save->desc;
+	pmu->ucode = save->ucode;
+	pmu->elpg_enable = save->elpg_enable;
+	pmu->pg_wq = save->pg_wq;
+	pmu->seq_buf = save->seq_buf;
+	pmu->pg_buf = save->pg_buf;
+	pmu->sw_ready = save->sw_ready;
+}
+
 void gk20a_remove_pmu_support(struct pmu_gk20a *pmu)
 {
-	struct gk20a *g = pmu->g;
-	struct mm_gk20a *mm = &g->mm;
-	struct vm_gk20a *vm = &mm->pmu.vm;
-	struct inst_desc *inst_block = &mm->pmu.inst_block;
-	struct mem_mgr *memmgr = mem_mgr_from_g(g);
+	struct gk20a_pmu_save_state save;
 
 	nvhost_dbg_fn("");
 
-	cancel_delayed_work_sync(&pmu->elpg_enable);
-
-	kfree(pmu->mutex);
-	kfree(pmu->seq);
-
-	nvhost_memmgr_free_sg_table(memmgr, inst_block->mem.ref,
-			inst_block->mem.sgt);
-	nvhost_memmgr_put(memmgr, inst_block->mem.ref);
-	vm->remove_support(vm);
-
-	nvhost_memmgr_put(memmgr, pmu->ucode.mem.ref);
-	nvhost_memmgr_put(memmgr, pmu->pg_buf.mem.ref);
-	nvhost_memmgr_put(memmgr, pmu->seq_buf.mem.ref);
-
 	nvhost_allocator_destroy(&pmu->dmem);
+
+	/* Save the stuff you don't want to lose */
+	gk20a_save_pmu_sw_state(pmu, &save);
 
 	/* this function is also called by pmu_destory outside gk20a deinit that
 	   releases gk20a struct so fill up with zeros here. */
 	memset(pmu, 0, sizeof(struct pmu_gk20a));
+
+	/* Restore stuff you want to keep */
+	gk20a_restore_pmu_sw_state(pmu, &save);
 }
 
 int gk20a_init_pmu_reset_enable_hw(struct gk20a *g)
@@ -974,9 +988,9 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	struct vm_gk20a *vm = &mm->pmu.vm;
 	struct device *d = dev_from_gk20a(g);
 	struct mem_mgr *memmgr = mem_mgr_from_mm(mm);
-	u32 size;
 	int i, err = 0;
 	u8 *ptr;
+	void *ucode_ptr;
 
 	nvhost_dbg_fn("");
 
@@ -988,7 +1002,7 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 		pmu_seq_init(pmu);
 
 		nvhost_dbg_fn("skip init");
-		return 0;
+		goto skip_init;
 	}
 
 	/* no infoRom script from vbios? */
@@ -1033,17 +1047,34 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	pmu->ucode_image = (u32 *)((u8 *)pmu->desc +
 			pmu->desc->descriptor_size);
 
+
+	INIT_DELAYED_WORK(&pmu->elpg_enable, pmu_elpg_enable_allow);
+
 	gk20a_init_pmu_vm(mm);
 
 	pmu->ucode.mem.ref = nvhost_memmgr_alloc(memmgr,
-						 GK20A_PMU_UCODE_SIZE_MAX,
-						 DEFAULT_ALLOC_ALIGNMENT,
-						 DEFAULT_ALLOC_FLAGS,
-						 0);
+					 GK20A_PMU_UCODE_SIZE_MAX,
+					 DEFAULT_ALLOC_ALIGNMENT,
+					 DEFAULT_ALLOC_FLAGS,
+					 0);
 	if (IS_ERR(pmu->ucode.mem.ref)) {
 		err = PTR_ERR(pmu->ucode.mem.ref);
 		goto clean_up;
 	}
+
+	pmu->seq_buf.mem.ref = nvhost_memmgr_alloc(memmgr, 4096,
+			DEFAULT_ALLOC_ALIGNMENT,
+			DEFAULT_ALLOC_FLAGS,
+			0);
+	if (IS_ERR(pmu->seq_buf.mem.ref)) {
+		nvhost_err(dev_from_gk20a(g),
+				"fail to allocate zbc buffer");
+		err = PTR_ERR(pmu->seq_buf.mem.ref);
+		goto clean_up;
+	}
+
+
+	init_waitqueue_head(&pmu->pg_wq);
 
 	pmu->ucode.pmu_va = vm->map(vm, memmgr, pmu->ucode.mem.ref,
 			/*offset_align, flags, kind*/
@@ -1051,49 +1082,6 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	if (!pmu->ucode.pmu_va) {
 		nvhost_err(d, "failed to map pmu ucode memory!!");
 		return err;
-	}
-
-	init_waitqueue_head(&pmu->pg_wq);
-
-	size = 0;
-	err = gr_gk20a_fecs_get_reglist_img_size(g, &size);
-	if (err) {
-		nvhost_err(dev_from_gk20a(g),
-			"fail to query fecs pg buffer size");
-		goto clean_up;
-	}
-
-	/* TBD: 256 bytes alignment is sufficient */
-	pmu->pg_buf.mem.ref = nvhost_memmgr_alloc(memmgr, size,
-						  DEFAULT_ALLOC_ALIGNMENT,
-						  DEFAULT_ALLOC_FLAGS,
-						  0);
-	if (IS_ERR(pmu->pg_buf.mem.ref)) {
-		nvhost_err(dev_from_gk20a(g),
-			"fail to allocate fecs pg buffer");
-		err = PTR_ERR(pmu->pg_buf.mem.ref);
-		goto clean_up;
-	}
-	pmu->pg_buf.mem.size = size;
-
-	pmu->pg_buf.pmu_va = vm->map(vm, memmgr, pmu->pg_buf.mem.ref,
-			 /*offset_align, flags, kind*/
-			0, 0, 0, NULL, false, mem_flag_none);
-	if (!pmu->pg_buf.pmu_va) {
-		nvhost_err(d, "failed to map fecs pg buffer");
-		err = -ENOMEM;
-		goto clean_up;
-	}
-
-	pmu->seq_buf.mem.ref = nvhost_memmgr_alloc(memmgr, 4096,
-						   DEFAULT_ALLOC_ALIGNMENT,
-						   DEFAULT_ALLOC_FLAGS,
-						   0);
-	if (IS_ERR(pmu->seq_buf.mem.ref)) {
-		nvhost_err(dev_from_gk20a(g),
-			"fail to allocate zbc buffer");
-		err = PTR_ERR(pmu->seq_buf.mem.ref);
-		goto clean_up;
 	}
 
 	pmu->seq_buf.pmu_va = vm->map(vm, memmgr, pmu->seq_buf.mem.ref,
@@ -1112,7 +1100,7 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	}
 
 	/* TBD: remove this if ZBC save/restore is handled by PMU
-	   send an empty ZBC sequence for now */
+	 * end an empty ZBC sequence for now */
 	ptr[0] = 0x16; /* opcode EXIT */
 	ptr[1] = 0; ptr[2] = 1; ptr[3] = 0;
 	ptr[4] = 0; ptr[5] = 0; ptr[6] = 0; ptr[7] = 0;
@@ -1121,15 +1109,28 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 
 	nvhost_memmgr_munmap(pmu->seq_buf.mem.ref, ptr);
 
-	INIT_DELAYED_WORK(&pmu->elpg_enable, pmu_elpg_enable_allow);
+	ucode_ptr = nvhost_memmgr_mmap(pmu->ucode.mem.ref);
+	if (!ucode_ptr) {
+		nvhost_err(dev_from_gk20a(g),
+			"fail to map pmu ucode memory");
+		return -ENOMEM;
+	}
+
+	for (i = 0; i < (pmu->desc->app_start_offset +
+			pmu->desc->app_size) >> 2; i++)
+		mem_wr32(ucode_ptr, i, pmu->ucode_image[i]);
+
+	nvhost_memmgr_munmap(pmu->ucode.mem.ref, ucode_ptr);
+
+skip_init:
 	mutex_init(&pmu->elpg_mutex);
 	mutex_init(&pmu->isr_mutex);
+	mutex_init(&pmu->pmu_copy_lock);
 
 	pmu->perfmon_counter.index = 3; /* GR & CE2 */
 	pmu->perfmon_counter.group_id = PMU_DOMAIN_GROUP_PSTATE;
 
 	pmu->remove_support = gk20a_remove_pmu_support;
-	pmu->sw_ready = true;
 
 	nvhost_dbg_fn("done");
 	return 0;
@@ -1141,10 +1142,8 @@ clean_up:
 	kfree(pmu->mutex);
 	kfree(pmu->seq);
 	vm->unmap(vm, pmu->ucode.pmu_va);
-	vm->unmap(vm, pmu->pg_buf.pmu_va);
 	vm->unmap(vm, pmu->seq_buf.pmu_va);
 	nvhost_memmgr_put(memmgr, pmu->ucode.mem.ref);
-	nvhost_memmgr_put(memmgr, pmu->pg_buf.mem.ref);
 	nvhost_memmgr_put(memmgr, pmu->seq_buf.mem.ref);
 	return err;
 }
@@ -1174,15 +1173,10 @@ static void pmu_handle_pg_buf_config_msg(struct gk20a *g, struct pmu_msg *msg,
 	wake_up(&pmu->pg_wq);
 }
 
-int gk20a_init_pmu_setup_hw(struct gk20a *g)
+int gk20a_init_pmu_setup_hw1(struct gk20a *g)
 {
 	struct pmu_gk20a *pmu = &g->pmu;
-	struct mm_gk20a *mm = &g->mm;
-	struct pmu_cmd cmd;
-	u32 desc;
-	long remain;
 	int err;
-	bool status;
 
 	nvhost_dbg_fn("");
 
@@ -1204,12 +1198,72 @@ int gk20a_init_pmu_setup_hw(struct gk20a *g)
 		pwr_fbif_transcfg_mem_type_physical_f() |
 		pwr_fbif_transcfg_target_noncoherent_sysmem_f());
 
-	/* TBD: acquire pmu hw mutex */
-
 	/* TBD: load pmu ucode */
 	err = pmu_bootstrap(pmu);
 	if (err)
 		return err;
+
+	return 0;
+
+}
+
+int gk20a_init_pmu_setup_hw2(struct gk20a *g)
+{
+	struct pmu_gk20a *pmu = &g->pmu;
+	struct mm_gk20a *mm = &g->mm;
+	struct vm_gk20a *vm = &mm->pmu.vm;
+	struct device *d = dev_from_gk20a(g);
+	struct mem_mgr *memmgr = mem_mgr_from_mm(mm);
+	struct pmu_cmd cmd;
+	u32 desc;
+	long remain;
+	int err;
+	bool status;
+	u32 size;
+
+	nvhost_dbg_fn("");
+
+	if (!support_gk20a_pmu())
+		return 0;
+
+	size = 0;
+	err = gr_gk20a_fecs_get_reglist_img_size(g, &size);
+	if (err) {
+		nvhost_err(dev_from_gk20a(g),
+			"fail to query fecs pg buffer size");
+		return err;
+	}
+
+	if (!pmu->sw_ready) {
+		pmu->pg_buf.mem.ref = nvhost_memmgr_alloc(memmgr, size,
+						  DEFAULT_ALLOC_ALIGNMENT,
+						  DEFAULT_ALLOC_FLAGS,
+						  0);
+		if (IS_ERR(pmu->pg_buf.mem.ref)) {
+			nvhost_err(dev_from_gk20a(g),
+				"fail to allocate fecs pg buffer");
+			err = PTR_ERR(pmu->pg_buf.mem.ref);
+			goto clean_up;
+		}
+		pmu->pg_buf.mem.size = size;
+
+		pmu->pg_buf.pmu_va = vm->map(vm, memmgr, pmu->pg_buf.mem.ref,
+				 /*offset_align, flags, kind*/
+				0, 0, 0, NULL, false, mem_flag_none);
+		if (!pmu->pg_buf.pmu_va) {
+			nvhost_err(d, "failed to map fecs pg buffer");
+			err = -ENOMEM;
+			goto clean_up;
+		}
+	}
+
+	/*
+	 * This is the actual point at which sw setup is complete, so set the
+	 * sw_ready flag here.
+	 */
+	pmu->sw_ready = true;
+
+	/* TBD: acquire pmu hw mutex */
 
 	/* TBD: post reset again? */
 
@@ -1304,7 +1358,29 @@ int gk20a_init_pmu_setup_hw(struct gk20a *g)
 	 */
 	gk20a_writel(g, 0x10a164, 0x109ff);
 
+	pmu->initialized = true;
+	pmu->zbc_ready = true;
+
+	/* Save zbc table after PMU is initialized. */
+	pmu_save_zbc(g, 0xf);
+
+	/* wait for pmu idle */
+	err = pmu_idle(pmu);
+
+	/*
+	 * We can't guarantee that gr code to enable ELPG will be
+	 * invoked, so we explicitly call disable-enable here
+	 * to enable elpg.
+	 */
+	gk20a_pmu_disable_elpg(g);
+	gk20a_pmu_enable_elpg(g);
+
 	return 0;
+
+clean_up:
+	vm->unmap(vm, pmu->pg_buf.pmu_va);
+	nvhost_memmgr_put(memmgr, pmu->pg_buf.mem.ref);
+	return err;
 }
 
 int gk20a_init_pmu_support(struct gk20a *g)
@@ -1328,17 +1404,9 @@ int gk20a_init_pmu_support(struct gk20a *g)
 		if (err)
 			return err;
 
-		err = gk20a_init_pmu_setup_hw(g);
+		err = gk20a_init_pmu_setup_hw1(g);
 		if (err)
 			return err;
-
-		pmu->initialized = true;
-
-		/* Save zbc table after PMU is initialized. */
-		pmu_save_zbc(g, 0xf);
-
-		/* wait for pmu idle */
-		err = pmu_idle(pmu);
 	}
 
 	return err;
@@ -1762,7 +1830,7 @@ void pmu_save_zbc(struct gk20a *g, u32 entries)
 	struct pmu_cmd cmd;
 	u32 seq;
 
-	if (!pmu->pmu_ready || !entries)
+	if (!pmu->pmu_ready || !entries || !pmu->zbc_ready)
 		return;
 
 	memset(&cmd, 0, sizeof(struct pmu_cmd));
@@ -2078,6 +2146,9 @@ static void pmu_dump_falcon_stats(struct pmu_gk20a *pmu)
 			gk20a_readl(g, pwr_pmu_bar0_ctl_r()));
 	}
 
+	i = gk20a_readl(g, pwr_pmu_bar0_fecs_error_r());
+	nvhost_err(dev_from_gk20a(g), "pwr_pmu_bar0_fecs_error_r : 0x%x", i);
+
 	i = gk20a_readl(g, pwr_falcon_exterrstat_r());
 	nvhost_err(dev_from_gk20a(g), "pwr_falcon_exterrstat_r : 0x%x", i);
 	if (pwr_falcon_exterrstat_valid_v(i) ==
@@ -2138,6 +2209,9 @@ static void pmu_dump_falcon_stats(struct pmu_gk20a *pmu)
 		nvhost_err(dev_from_gk20a(g), "PMU_FALCON_REG_SP : 0x%x",
 			gk20a_readl(g, pwr_pmu_falcon_icd_rdata_r()));
 	}
+
+	/* PMU may crash due to FECS crash. Dump FECS status */
+	gk20a_fecs_dump_falcon_stats(g);
 }
 
 void gk20a_pmu_isr(struct gk20a *g)
@@ -2170,8 +2244,12 @@ void gk20a_pmu_isr(struct gk20a *g)
 	}
 	if (intr & pwr_falcon_irqstat_exterr_true_f()) {
 		nvhost_err(dev_from_gk20a(g),
-			"pmu exterr intr not implemented");
+			"pmu exterr intr not implemented. Clearing interrupt.");
 		pmu_dump_falcon_stats(pmu);
+
+		gk20a_writel(g, pwr_falcon_exterrstat_r(),
+			gk20a_readl(g, pwr_falcon_exterrstat_r()) &
+				~pwr_falcon_exterrstat_valid_m());
 	}
 	if (intr & pwr_falcon_irqstat_swgen0_true_f()) {
 		pmu_process_message(pmu);
@@ -2588,12 +2666,21 @@ int gk20a_pmu_perfmon_enable(struct gk20a *g, bool enable)
 int gk20a_pmu_destroy(struct gk20a *g)
 {
 	struct pmu_gk20a *pmu = &g->pmu;
+	u32 elpg_ingating_time, elpg_ungating_time;
+
 	nvhost_dbg_fn("");
 
 	if (!support_gk20a_pmu())
 		return 0;
 
+	gk20a_pmu_get_elpg_residency(g, &elpg_ingating_time,
+		&elpg_ungating_time);
+
 	gk20a_pmu_disable_elpg_defer_enable(g, false);
+
+	/* update the s/w ELPG residency counters */
+	g->pg_ingating_time_us += (u64)elpg_ingating_time;
+	g->pg_ungating_time_us += (u64)elpg_ungating_time;
 
 	pmu_enable_hw(pmu, false);
 
@@ -2621,3 +2708,89 @@ int gk20a_pmu_load_norm(struct gk20a *g, u32 *load)
 
 	return 0;
 }
+
+static int gk20a_pmu_get_elpg_residency(struct gk20a *g, u32 *ingating_time,
+						u32 *ungating_time)
+{
+	struct pmu_gk20a *pmu = &g->pmu;
+	struct pmu_pg_stats stats;
+
+	if (!pmu->initialized) {
+		*ingating_time = 0;
+		*ungating_time = 0;
+		return 0;
+	}
+
+	nvhost_module_busy(g->dev);
+	pmu_copy_from_dmem(pmu, pmu->stat_dmem_offset,
+		(u8 *)&stats, sizeof(struct pmu_pg_stats), 0);
+	nvhost_module_idle(g->dev);
+
+	*ingating_time = stats.pg_ingating_time_us;
+	*ungating_time = stats.pg_ungating_time_us;
+
+	return 0;
+}
+
+#if CONFIG_DEBUG_FS
+static int elpg_residency_show(struct seq_file *s, void *data)
+{
+	struct gk20a *g = s->private;
+	u32 ingating_time, ungating_time;
+	u64 total_ingating, total_ungating, residency, divisor, dividend;
+
+	gk20a_pmu_get_elpg_residency(g, &ingating_time, &ungating_time);
+	total_ingating = g->pg_ingating_time_us + (u64)ingating_time;
+	total_ungating = g->pg_ungating_time_us + (u64)ungating_time;
+
+	divisor = total_ingating + total_ungating;
+
+	/* We compute the residency on a scale of 1000 */
+	dividend = total_ingating * 1000;
+
+	if (divisor)
+		residency = div64_u64(dividend, divisor);
+	else
+		residency = 0;
+
+	seq_printf(s, "Time in ELPG: %llu us\n"
+			"Time out of ELPG: %llu us\n"
+			"ELPG residency ratio: %llu\n", total_ingating,
+							total_ungating,
+							residency);
+	return 0;
+
+}
+
+static int elpg_residency_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, elpg_residency_show, inode->i_private);
+}
+
+static const struct file_operations elpg_residency_fops = {
+	.open		= elpg_residency_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+int gk20a_pmu_debugfs_init(struct platform_device *dev)
+{
+	struct dentry *d;
+	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
+	struct gk20a *g = get_gk20a(dev);
+
+	d = debugfs_create_file(
+		"elpg_residency", S_IRUGO|S_IWUSR, pdata->debugfs, g,
+						&elpg_residency_fops);
+	if (!d)
+		goto err_out;
+
+	return 0;
+
+err_out:
+	pr_err("%s: Failed to make debugfs node\n", __func__);
+	debugfs_remove_recursive(pdata->debugfs);
+	return -ENOMEM;
+}
+#endif

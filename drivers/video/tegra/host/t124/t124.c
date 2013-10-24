@@ -34,7 +34,6 @@
 
 #include "gk20a/gk20a.h"
 #include "gk20a/gk20a_scale.h"
-#include "t20/t20.h"
 #include "vic03/vic03.h"
 #include "msenc/msenc.h"
 #include "tsec/tsec.h"
@@ -65,6 +64,11 @@ static int t124_num_alloc_channels = 0;
 	BIT64(NVSYNCPT_DSI) | \
 	BIT64(NVSYNCPT_VBLANK0) | BIT64(NVSYNCPT_VBLANK1) | \
 	BIT64(NVSYNCPT_AVP_0))
+
+/* Host1x driver matches module IDs while setting a
+ * particular clock, This ID is used for EMC module.
+ */
+#define TEGRA_HOST1X_EMC_MODULE_ID 75
 
 static struct resource tegra_host1x04_resources[] = {
 	{
@@ -163,16 +167,18 @@ static struct resource isp_resources[] = {
 static struct platform_device tegra_isp01b_device;
 struct nvhost_device_data t124_isp_info = {
 	/* FIXME: control clocks from user space instead of hard-coding here */
-	/* FIXME: Add control for sclk/emc */
 	.syncpts         = NV_ISP_0_SYNCPTS,
 	.moduleid        = NVHOST_MODULE_ISP,
 	.modulemutexes   = {NVMODMUTEX_ISP_0},
 	.exclusive       = true,
+	.keepalive       = true,
 	.powergate_ids   = {TEGRA_POWERGATE_VENC, -1},
-	.can_powergate   = false,
+	.can_powergate   = true,
 	.clockgate_delay = ISP_CLOCKGATE_DELAY,
 	.powergate_delay = ISP_POWERGATE_DELAY,
-	.clocks          = { {"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISP} },
+	.clocks          = {
+		{"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISP},
+		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	.finalize_poweron = nvhost_isp_t124_finalize_poweron,
 };
 static struct platform_device tegra_isp01_device = {
@@ -196,16 +202,18 @@ static struct resource ispb_resources[] = {
 
 struct nvhost_device_data t124_ispb_info = {
 	/* FIXME: control clocks from user space instead of hard-coding here */
-	/* FIXME: Add control for sclk/emc */
 	.syncpts         = NV_ISP_1_SYNCPTS,
 	.moduleid        = (1 << 16) | NVHOST_MODULE_ISP,
 	.modulemutexes   = {NVMODMUTEX_ISP_1},
 	.exclusive       = true,
+	.keepalive       = true,
 	.powergate_ids   = {TEGRA_POWERGATE_VENC, -1},
-	.can_powergate   = false,
+	.can_powergate   = true,
 	.clockgate_delay = ISP_CLOCKGATE_DELAY,
 	.powergate_delay = ISP_POWERGATE_DELAY,
-	.clocks          = { {"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISPB} },
+	.clocks          = {
+		{"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISPB},
+		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	.finalize_poweron = nvhost_isp_t124_finalize_poweron,
 };
 
@@ -232,19 +240,20 @@ static struct platform_device tegra_vi01b_device;
 struct nvhost_device_data t124_vi_info = {
 	/* FIXME: resolve powergating dependency with DIS */
 	/* FIXME: control clocks from user space instead of hard-coding here */
-	/* FIXME: Add control for sclk/emc */
 	.syncpts          = NV_VI_0_SYNCPTS,
 	.moduleid         = NVHOST_MODULE_VI,
 	.modulemutexes    = {NVMODMUTEX_VI_0},
 	.exclusive        = true,
+	.keepalive       = true,
 	.powergate_ids    = {TEGRA_POWERGATE_VENC, -1},
-	.can_powergate    = false,
+	.can_powergate    = true,
 	.clockgate_delay  = VI_CLOCKGATE_DELAY,
 	.powergate_delay  = VI_POWERGATE_DELAY,
 	.clocks           = {
 		{"vi", UINT_MAX, 0},
 		{"csi", 0},
-		{"cilab", 102000000} },
+		{"cilab", 102000000},
+		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	.init             = nvhost_vi_init,
 	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
@@ -267,20 +276,21 @@ static struct platform_device tegra_vi01_device = {
 struct nvhost_device_data t124_vib_info = {
 	/* FIXME: resolve powergating dependency with DIS */
 	/* FIXME: control clocks from user space instead of hard-coding here */
-	/* FIXME: Add control for sclk/emc */
 	.syncpts          = NV_VI_1_SYNCPTS,
 	.moduleid         = (1 << 16 | NVHOST_MODULE_VI),
 	.modulemutexes    = {NVMODMUTEX_VI_1},
 	.exclusive        = true,
+	.keepalive       = true,
 	.powergate_ids    = {TEGRA_POWERGATE_VENC, -1},
-	.can_powergate    = false,
+	.can_powergate    = true,
 	.clockgate_delay  = VI_CLOCKGATE_DELAY,
 	.powergate_delay  = VI_POWERGATE_DELAY,
 	.clocks           = {
 		{"vi", UINT_MAX},
 		{"csi", 0},
 		{"cilcd", 102000000},
-		{"cile", 102000000} },
+		{"cile", 102000000},
+		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	.init             = nvhost_vi_init,
 	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
@@ -404,7 +414,7 @@ struct nvhost_device_data t124_vic_info = {
 	.idle			= nvhost_scale_notify_idle,
 	.suspend_ndev		= nvhost_scale3d_suspend,
 	.scaling_post_cb	= &nvhost_scale3d_callback,
-	.devfreq_governor	= &nvhost_podgov,
+	.devfreq_governor	= "nvhost_podgov",
 	.actmon_regs		= HOST1X_CHANNEL_ACTMON2_REG_BASE,
 	.actmon_enabled		= true,
 	.linear_emc		= true,
@@ -462,7 +472,7 @@ struct nvhost_device_data tegra_gk20a_info = {
 	.scaling_init		= nvhost_gk20a_scale_init,
 	.scaling_deinit		= nvhost_gk20a_scale_deinit,
 	.suspend_ndev		= nvhost_scale3d_suspend,
-	.devfreq_governor	= &nvhost_podgov,
+	.devfreq_governor	= "nvhost_podgov",
 	.scaling_post_cb	= nvhost_gk20a_scale_callback,
 	.gpu_edp_device		= true,
 #endif
@@ -540,6 +550,11 @@ static int t124_channel_alloc_gpfifo(struct nvhost_hwctx *hwctx,
 {
 	nvhost_dbg_fn("");
 	return gk20a_alloc_channel_gpfifo(hwctx->priv, args);
+}
+
+static int t124_channel_set_error_notifier(struct nvhost_hwctx *hwctx,
+		    struct nvhost_set_error_notifier *args) {
+	return gk20a_init_error_notifier(hwctx, args->mem, args->offset);
 }
 
 static int t124_channel_submit_gpfifo(struct nvhost_hwctx *hwctx,
@@ -628,6 +643,8 @@ static struct nvhost_channel *t124_alloc_nvhost_channel(
 			ch->ops.alloc_gpfifo  = t124_channel_alloc_gpfifo;
 			ch->ops.submit_gpfifo = t124_channel_submit_gpfifo;
 			ch->ops.wait          = t124_channel_wait;
+			ch->ops.set_error_notifier =
+					t124_channel_set_error_notifier;
 
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
 			ch->ops.cycle_stats   = t124_channel_cycle_stats;
