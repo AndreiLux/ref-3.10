@@ -34,6 +34,7 @@
 #include <linux/platform_data/tegra_usb.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/rm31080a_ts.h>
+#include <linux/maxim_sti.h>
 #include <linux/memblock.h>
 #include <linux/spi/spi-tegra.h>
 #include <linux/nfc/pn544.h>
@@ -54,6 +55,7 @@
 #include <linux/mfd/palmas.h>
 #include <linux/clk/tegra.h>
 #include <media/tegra_dtv.h>
+#include <linux/clocksource.h>
 
 #include <mach/irqs.h>
 #include <mach/pci.h>
@@ -77,10 +79,10 @@
 #include "board-flounder.h"
 #include "board-common.h"
 #include "board-touch-raydium.h"
+#include "board-touch-maxim_sti.h"
 #include "clock.h"
 #include "common.h"
 #include "devices.h"
-#include "fuse.h"
 #include "gpio-names.h"
 #include "iomap.h"
 #include "pm.h"
@@ -387,17 +389,24 @@ static struct platform_device tegra_rtc_device = {
 };
 
 #ifdef CONFIG_SATA_AHCI_TEGRA
-static void bonaire_sata_init(void)
+static struct tegra_ahci_platform_data tegra_ahci_platform_data0 = {
+	.gen2_rx_eq = -1,
+	.pexp_gpio = PMU_TCA6416_GPIO(9),
+};
+
+static void flounder_sata_init(void)
 {
-	struct tegra_ahci_platform_data *pdata;
+	struct board_info board_info;
 
-	pdata = tegra_sata_device.dev.platform_data;
-	pdata->pexp_gpio = PMU_TCA6416_GPIO(9);
+	tegra_get_board_info(&board_info);
+	if (board_info.board_id == BOARD_PM363)
+		tegra_ahci_platform_data0.pexp_gpio = -1;
 
+	tegra_sata_device.dev.platform_data = &tegra_ahci_platform_data0;
 	platform_device_register(&tegra_sata_device);
 }
 #else
-static void bonaire_sata_init(void) { }
+static void flounder_sata_init(void) { }
 #endif
 
 static struct tegra_pci_platform_data laguna_pcie_platform_data = {
@@ -406,6 +415,7 @@ static struct tegra_pci_platform_data laguna_pcie_platform_data = {
 	.use_dock_detect	= 1,
 	.gpio	= TEGRA_GPIO_PO1,
 	.gpio_x1_slot	= PMU_TCA6416_GPIO(8),
+	.board_id	= BOARD_PM358,
 };
 
 static void laguna_pcie_init(void)
@@ -418,6 +428,7 @@ static void laguna_pcie_init(void)
 		board_info.board_id == BOARD_PM363)
 			laguna_pcie_platform_data.port_status[1] = 0;
 
+	laguna_pcie_platform_data.board_id = board_info.board_id;
 	tegra_pci_device.dev.platform_data = &laguna_pcie_platform_data;
 	platform_device_register(&tegra_pci_device);
 }
@@ -426,6 +437,9 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
 	&tegra_udc_device,
+#if defined(CONFIG_TEGRA_WATCHDOG)
+	&tegra_wdt0_device,
+#endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
@@ -556,6 +570,7 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 static struct gpio modem_gpios[] = { /* Bruce modem */
 	{MODEM_EN, GPIOF_OUT_INIT_HIGH, "MODEM EN"},
 	{MDM_RST, GPIOF_OUT_INIT_LOW, "MODEM RESET"},
+	{MDM_SAR0, GPIOF_OUT_INIT_LOW, "MODEM SAR0"},
 };
 
 static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
@@ -770,6 +785,7 @@ static int baseband_init(void)
 
 	/* export GPIO for user space access through sysfs */
 	gpio_export(MDM_RST, false);
+	gpio_export(MDM_SAR0, false);
 
 	return 0;
 }
@@ -888,7 +904,9 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
+#ifdef CONFIG_ARCH_TEGRA_VIC
 	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+#endif
 	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
@@ -916,6 +934,36 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 };
 #endif
 
+static struct maxim_sti_pdata maxim_sti_pdata = {
+	.touch_fusion         = "/vendor/bin/touch_fusion",
+	.config_file          = "/vendor/firmware/touch_fusion.cfg",
+	.fw_name              = "maxim_fp35.bin",
+	.nl_family            = TF_FAMILY_NAME,
+	.nl_mc_groups         = 5,
+	.chip_access_method   = 2,
+	.default_reset_state  = 0,
+	.tx_buf_size          = 4100,
+	.rx_buf_size          = 4100,
+	.gpio_reset           = TOUCH_GPIO_RST_MAXIM_STI_SPI,
+	.gpio_irq             = TOUCH_GPIO_IRQ_MAXIM_STI_SPI
+};
+
+static struct tegra_spi_device_controller_data maxim_dev_cdata = {
+	.rx_clk_tap_delay = 0,
+	.is_hw_based_cs = true,
+	.tx_clk_tap_delay = 0,
+};
+
+static struct spi_board_info maxim_sti_spi_board = {
+	.modalias = MAXIM_STI_NAME,
+	.bus_num = TOUCH_SPI_ID,
+	.chip_select = TOUCH_SPI_CS,
+	.max_speed_hz = 12 * 1000 * 1000,
+	.mode = SPI_MODE_0,
+	.platform_data = &maxim_sti_pdata,
+	.controller_data = &maxim_dev_cdata,
+};
+
 static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	/* name         parent          rate            enabled */
 	{ "extern2",    "pll_p",        41000000,       false},
@@ -932,7 +980,7 @@ static struct rm_spi_ts_platform_data rm31080ts_flounder_data = {
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 16,
+	.rx_clk_tap_delay = 0,
 	.tx_clk_tap_delay = 16,
 };
 
@@ -950,14 +998,23 @@ static struct spi_board_info rm31080a_flounder_spi_board[1] = {
 
 static int __init flounder_touch_init(void)
 {
-	tegra_clk_init_from_table(touch_clk_init_table);
-	rm31080a_flounder_spi_board[0].irq =
-		gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
-	touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
+	if (tegra_get_touch_vendor_id() == MAXIM_TOUCH) {
+		pr_info("%s init maxim touch\n", __func__);
+#if defined(CONFIG_TOUCHSCREEN_MAXIM_STI) || \
+	defined(CONFIG_TOUCHSCREEN_MAXIM_STI_MODULE)
+		(void)touch_init_maxim_sti(&maxim_sti_spi_board);
+#endif
+	} else if (tegra_get_touch_vendor_id() == RAYDIUM_TOUCH) {
+		pr_info("%s init raydium touch\n", __func__);
+		tegra_clk_init_from_table(touch_clk_init_table);
+		rm31080a_flounder_spi_board[0].irq =
+			gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
+		touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
 				TOUCH_GPIO_RST_RAYDIUM_SPI,
 				&rm31080ts_flounder_data,
 				&rm31080a_flounder_spi_board[0],
 				ARRAY_SIZE(rm31080a_flounder_spi_board));
+	}
 	return 0;
 }
 
@@ -982,6 +1039,22 @@ static void __init flounder_dtv_init(void)
 	tegra_dtv_device.dev.platform_data = &flounder_dtv_pdata;
 	platform_device_register(&tegra_dtv_device);
 }
+
+static struct tegra_io_dpd pexbias_io = {
+	.name			= "PEX_BIAS",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 4,
+};
+static struct tegra_io_dpd pexclk1_io = {
+	.name			= "PEX_CLK1",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 5,
+};
+static struct tegra_io_dpd pexclk2_io = {
+	.name			= "PEX_CLK2",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 6,
+};
 
 static void __init tegra_flounder_late_init(void)
 {
@@ -1036,6 +1109,13 @@ static void __init tegra_flounder_late_init(void)
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363)
 		laguna_pcie_init();
+	else {
+		/* put PEX pads into DPD mode to save additional power */
+		tegra_io_dpd_enable(&pexbias_io);
+		tegra_io_dpd_enable(&pexclk1_io);
+		tegra_io_dpd_enable(&pexclk2_io);
+	}
+
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
 #endif
@@ -1046,7 +1126,7 @@ static void __init tegra_flounder_late_init(void)
 
 	flounder_setup_bluedroid_pm();
 	tegra_register_fuse();
-	bonaire_sata_init();
+	flounder_sata_init();
 }
 
 static void __init flounder_ramconsole_reserve(unsigned long size)
@@ -1099,7 +1179,7 @@ DT_MACHINE_START(FLOUNDER, "flounder")
 	.reserve	= tegra_flounder_reserve,
 	.init_early	= tegra_flounder_init_early,
 	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_flounder_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= flounder_dt_board_compat,

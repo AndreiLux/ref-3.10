@@ -43,6 +43,7 @@
 
 #include <asm/mach-types.h>
 #include <mach/tegra_fuse.h>
+#include <mach/pinmux-t12.h>
 
 #include "pm.h"
 #include "dvfs.h"
@@ -57,6 +58,8 @@
 #include "tegra_cl_dvfs.h"
 #include "tegra11_soctherm.h"
 #include "tegra3_tsensor.h"
+
+#define E1735_EMULATE_E1767_SKU	1001
 
 #define PMC_CTRL                0x0
 #define PMC_CTRL_INTR_LOW       (1 << 17)
@@ -473,7 +476,7 @@ PALMAS_REGS_PDATA(ti913_ldo8, 800, 800, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldo9, 1800, 3300, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_ldoln, 1050, 1050, palmas_rails(ti913_smps6),
 		0, 0, 1, 0, 0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ti913_ldousb, 1800, 1800, NULL, 0, 0, 1, 0, 0, 0, 0, 0, 0);
+PALMAS_REGS_PDATA(ti913_ldousb, 1800, 1800, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_regen1, 2800, 3300, NULL, 1, 1, 1, 0, 0, 0, 0, 0, 0);
 
 #define PALMAS_REG_PDATA(_sname) &reg_idata_##_sname
@@ -640,6 +643,7 @@ int __init flounder_tps65913_regulator_init(void)
 	tegra_get_board_info(&board_info);
 	if (board_info.board_id == BOARD_E1792) {
 		/*Default DDR voltage is 1.35V but lpddr3 supports 1.2V*/
+		reg_idata_ti913_smps7.constraints.min_uV = 1200000;
 		reg_idata_ti913_smps7.constraints.max_uV = 1200000;
 	}
 
@@ -700,6 +704,10 @@ static struct tegra_suspend_platform_data flounder_suspend_data = {
 	.corereq_high   = true,
 	.sysclkreq_high = true,
 	.cpu_lp2_min_residency = 1000,
+	.min_residency_vmin_fmin = 1000,
+	.min_residency_ncpu_fast = 8000,
+	.min_residency_ncpu_slow = 5000,
+	.min_residency_mclk_stop = 5000,
 	.min_residency_crail = 20000,
 };
 
@@ -721,7 +729,8 @@ int __init flounder_suspend_init(void)
 
 	tegra_get_pmu_board_info(&pmu_board_info);
 
-	if (pmu_board_info.board_id == BOARD_E1735) {
+	if ((pmu_board_info.board_id == BOARD_E1735) &&
+	    (pmu_board_info.sku != E1735_EMULATE_E1767_SKU)) {
 		flounder_suspend_data.cpu_timer = 2000;
 		flounder_suspend_data.crail_up_early = true;
 	}
@@ -1054,6 +1063,7 @@ static struct tegra_cl_dvfs_platform_data e1735_cl_dvfs_data = {
 	.pmu_if = TEGRA_CL_DVFS_PMU_PWM,
 	.u.pmu_pwm = {
 		.pwm_rate = 12750000,
+		.pwm_pingroup = TEGRA_PINGROUP_DVFS_PWM,
 		.out_gpio = TEGRA_GPIO_PS5,
 		.out_enable_high = false,
 #ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
@@ -1074,6 +1084,16 @@ static void e1735_suspend_dfll_bypass(void)
 static void e1735_resume_dfll_bypass(void)
 {
 	__gpio_set_value(TEGRA_GPIO_PS5, 0); /* enable PWM buffer operations */
+}
+
+static void e1767_suspend_dfll_bypass(void)
+{
+	tegra_pinmux_set_tristate(TEGRA_PINGROUP_DVFS_PWM, TEGRA_TRI_TRISTATE);
+}
+
+static void e1767_resume_dfll_bypass(void)
+{
+	 tegra_pinmux_set_tristate(TEGRA_PINGROUP_DVFS_PWM, TEGRA_TRI_NORMAL);
 }
 
 static struct tegra_cl_dvfs_cfg_param e1733_flounder_cl_dvfs_param = {
@@ -1155,20 +1175,29 @@ static struct tegra_cl_dvfs_platform_data e1736_cl_dvfs_data = {
 
 	.cfg_param = &e1736_flounder_cl_dvfs_param,
 };
-static int __init flounder_cl_dvfs_init(u16 pmu_board_id)
+static int __init flounder_cl_dvfs_init(struct board_info *pmu_board_info)
 {
+	u16 pmu_board_id = pmu_board_info->board_id;
 	struct tegra_cl_dvfs_platform_data *data = NULL;
 	int v = tegra_dvfs_rail_get_nominal_millivolts(tegra_cpu_rail);
 
 	if (pmu_board_id == BOARD_E1735) {
+		bool e1767 = pmu_board_info->sku == E1735_EMULATE_E1767_SKU;
 		v = e1735_fill_reg_map(v);
 		data = &e1735_cl_dvfs_data;
+
+		data->u.pmu_pwm.pwm_bus = e1767 ?
+			TEGRA_CL_DVFS_PWM_1WIRE_DIRECT :
+			TEGRA_CL_DVFS_PWM_1WIRE_BUFFER;
+
 		if (data->u.pmu_pwm.dfll_bypass_dev) {
 			/* this has to be exact to 1uV level from table */
 			e1735_dfll_bypass_init_data.constraints.init_uV = v;
-			flounder_suspend_data.suspend_dfll_bypass =
+			flounder_suspend_data.suspend_dfll_bypass = e1767 ?
+				e1767_suspend_dfll_bypass :
 				e1735_suspend_dfll_bypass;
-			flounder_suspend_data.resume_dfll_bypass =
+			flounder_suspend_data.resume_dfll_bypass = e1767 ?
+				e1767_resume_dfll_bypass :
 				e1735_resume_dfll_bypass;
 		} else {
 			(void)e1735_dfll_bypass_dev;
@@ -1194,7 +1223,7 @@ static int __init flounder_cl_dvfs_init(u16 pmu_board_id)
 	return 0;
 }
 #else
-static inline int flounder_cl_dvfs_init(u16 pmu_board_id)
+static inline int flounder_cl_dvfs_init(struct board_info *pmu_board_info)
 { return 0; }
 #endif
 
@@ -1229,7 +1258,7 @@ int __init flounder_regulator_init(void)
 		flounder_tps65913_regulator_init();
 	} else if (pmu_board_info.board_id == BOARD_E1736) {
 		tn8_regulator_init();
-		flounder_cl_dvfs_init(pmu_board_info.board_id);
+		flounder_cl_dvfs_init(&pmu_board_info);
 		return tn8_fixed_regulator_init();
 	} else {
 		pr_warn("PMU board id 0x%04x is not supported\n",
@@ -1245,7 +1274,7 @@ int __init flounder_regulator_init(void)
 
 	platform_device_register(&power_supply_extcon_device);
 
-	flounder_cl_dvfs_init(pmu_board_info.board_id);
+	flounder_cl_dvfs_init(&pmu_board_info);
 	return 0;
 }
 
@@ -1334,21 +1363,21 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 98000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 96000,
+					.trip_temp = 99000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 86000,
+					.trip_temp = 89000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -1364,14 +1393,14 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 100000,
+					.trip_temp = 103000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 88000,
+					.trip_temp = 91000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -1379,14 +1408,14 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 /*
 				{
 					.cdev_type = "gk20a_cdev",
-					.trip_temp = 80000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 98000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -1428,6 +1457,9 @@ int __init flounder_soctherm_init(void)
 			flounder_soctherm_data.therm[THERM_CPU].trips,
 			&flounder_soctherm_data.therm[THERM_CPU].num_trips,
 			8000); /* edp temperature margin */
+		tegra_add_tgpu_trips(
+			flounder_soctherm_data.therm[THERM_GPU].trips,
+			&flounder_soctherm_data.therm[THERM_GPU].num_trips);
 	}
 
 	tegra_get_pmu_board_info(&pmu_board_info);
