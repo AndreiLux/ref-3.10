@@ -131,11 +131,11 @@ static noinline void __init flounder_setup_bluedroid_pm(void)
 	platform_device_register(&flounder_bluedroid_pm_device);
 }
 
-static struct i2c_board_info __initdata rt5639_board_info = {
-	I2C_BOARD_INFO("rt5639", 0x1c),
+static struct i2c_board_info __initdata rt5677_board_info = {
+	I2C_BOARD_INFO("rt5677", 0x2d),
 };
-static struct i2c_board_info __initdata rt5645_board_info = {
-	I2C_BOARD_INFO("rt5645", 0x1a),
+static struct i2c_board_info __initdata rt5506_board_info = {
+	I2C_BOARD_INFO("rt5506", 0x52),
 };
 
 static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
@@ -200,8 +200,8 @@ static void flounder_i2c_init(void)
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
 
-	i2c_register_board_info(0, &rt5639_board_info, 1);
-	i2c_register_board_info(0, &rt5645_board_info, 1);
+	i2c_register_board_info(0, &rt5677_board_info, 1);
+	i2c_register_board_info(0, &rt5506_board_info, 1);
 
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
@@ -242,9 +242,10 @@ static struct tegra_serial_platform_data flounder_uartd_pdata = {
 	.modem_interrupt = false,
 };
 
-static struct tegra_asoc_platform_data flounder_audio_pdata_rt5639 = {
-	.gpio_hp_det = TEGRA_GPIO_HP_DET,
-	.gpio_ldo1_en = TEGRA_GPIO_LDO_EN,
+static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
+	.gpio_hp_det = -1,
+	.gpio_ldo1_en = -1,
+	.gpio_reset = TEGRA_GPIO_PH4,
 	.gpio_spkr_en = -1,
 	.gpio_int_mic_en = -1,
 	.gpio_ext_mic_en = -1,
@@ -252,33 +253,9 @@ static struct tegra_asoc_platform_data flounder_audio_pdata_rt5639 = {
 	.gpio_codec1 = -1,
 	.gpio_codec2 = -1,
 	.gpio_codec3 = -1,
-	.edp_support = true,
-	.edp_states = {1530, 765, 0},
 	.i2s_param[HIFI_CODEC]       = {
 		.audio_port_id = 1,
-		.is_i2s_master = 0,
-		.i2s_mode = TEGRA_DAIFMT_I2S,
-	},
-	.i2s_param[BT_SCO] = {
-		.audio_port_id = 3,
 		.is_i2s_master = 1,
-		.i2s_mode = TEGRA_DAIFMT_DSP_A,
-	},
-};
-
-static struct tegra_asoc_platform_data flounder_audio_pdata_rt5645 = {
-	.gpio_hp_det = TEGRA_GPIO_HP_DET,
-	.gpio_ldo1_en = TEGRA_GPIO_LDO_EN,
-	.gpio_spkr_en = -1,
-	.gpio_int_mic_en = -1,
-	.gpio_ext_mic_en = -1,
-	.gpio_hp_mute = -1,
-	.gpio_codec1 = -1,
-	.gpio_codec2 = -1,
-	.gpio_codec3 = -1,
-	.i2s_param[HIFI_CODEC]       = {
-		.audio_port_id = 1,
-		.is_i2s_master = 0,
 		.i2s_mode = TEGRA_DAIFMT_I2S,
 	},
 	.i2s_param[BT_SCO] = {
@@ -292,52 +269,16 @@ static void flounder_audio_init(void)
 {
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363) {
-		/*Laguna*/
-		flounder_audio_pdata_rt5645.gpio_hp_det =
-			TEGRA_GPIO_HP_DET;
-		flounder_audio_pdata_rt5645.gpio_hp_det_active_high = 1;
-		if (board_info.board_id != BOARD_PM363)
-			flounder_audio_pdata_rt5645.gpio_ldo1_en = -1;
-	} else {
-		/*Flounder*/
-		flounder_audio_pdata_rt5645.gpio_hp_det =
-			TEGRA_GPIO_HP_DET;
-		flounder_audio_pdata_rt5645.gpio_hp_det_active_high = 0;
-		flounder_audio_pdata_rt5645.gpio_ldo1_en =
-			TEGRA_GPIO_LDO_EN;
-	}
 
-	flounder_audio_pdata_rt5639.gpio_hp_det =
-		flounder_audio_pdata_rt5645.gpio_hp_det;
-
-	flounder_audio_pdata_rt5639.gpio_hp_det_active_high =
-		flounder_audio_pdata_rt5645.gpio_hp_det_active_high;
-
-	flounder_audio_pdata_rt5639.gpio_ldo1_en =
-		flounder_audio_pdata_rt5645.gpio_ldo1_en;
-
-	flounder_audio_pdata_rt5639.codec_name = "rt5639.0-001c";
-	flounder_audio_pdata_rt5639.codec_dai_name = "rt5639-aif1";
-	flounder_audio_pdata_rt5645.codec_name = "rt5645.0-001a";
-	flounder_audio_pdata_rt5645.codec_dai_name = "rt5645-aif1";
+	flounder_audio_pdata_rt5677.codec_name = "rt5677.0-002d";
+	flounder_audio_pdata_rt5677.codec_dai_name = "rt5677-aif1";
 }
 
-static struct platform_device flounder_audio_device_rt5645 = {
-	.name = "tegra-snd-rt5645",
+static struct platform_device flounder_audio_device_rt5677 = {
+	.name = "tegra-snd-rt5677",
 	.id = 0,
 	.dev = {
-		.platform_data = &flounder_audio_pdata_rt5645,
-	},
-};
-
-static struct platform_device flounder_audio_device_rt5639 = {
-	.name = "tegra-snd-rt5639",
-	.id = 0,
-	.dev = {
-		.platform_data = &flounder_audio_pdata_rt5639,
+		.platform_data = &flounder_audio_pdata_rt5677,
 	},
 };
 
@@ -453,7 +394,7 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_i2s_device1,
 	&tegra_i2s_device3,
 	&tegra_i2s_device4,
-	&flounder_audio_device_rt5639,
+	&flounder_audio_device_rt5677,
 	&tegra_spdif_device,
 	&spdif_dit_device,
 	&bluetooth_dit_device,

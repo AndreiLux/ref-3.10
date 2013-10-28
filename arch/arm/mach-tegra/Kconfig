@@ -300,6 +300,7 @@ config MACH_ARDBEG
 config MACH_FLOUNDER
        bool "Flounder board"
        depends on ARCH_TEGRA_12x_SOC
+       select MACH_HAS_SND_SOC_TEGRA_RT5677 if SND_SOC
        help
          Support for Flounder
 

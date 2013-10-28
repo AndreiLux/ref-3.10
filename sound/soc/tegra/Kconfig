@@ -300,6 +300,27 @@ config SND_SOC_TEGRA_RT5645
 	  boards using the ALC5645 codec. Currently, the supported boards
 	  are Ardbeg.
 
+
+config MACH_HAS_SND_SOC_TEGRA_RT5677
+	bool
+	help
+	  Machines that use the SND_SOC_TEGRA_RT5677 driver should select
+	  this config option, in order to allow the user to enable
+	  SND_SOC_TEGRA_RT5677.
+
+config SND_SOC_TEGRA_RT5677
+	tristate "SoC Audio support for Tegra boards using a ALC5677 codec"
+	depends on SND_SOC_TEGRA && I2C && TEGRA_DC
+	select SND_SOC_TEGRA30_I2S if !ARCH_TEGRA_2x_SOC
+	select SND_SOC_TEGRA30_SPDIF if !ARCH_TEGRA_2x_SOC
+	select SND_SOC_RT5677
+	select SND_SOC_SPDIF
+	select SND_SOC_TEGRA30_DAM if !ARCH_TEGRA_2x_SOC
+	help
+	  Say Y or M here if you want to add support for SoC audio on Tegra
+	  boards using the ALC5677 codec. Currently, the supported board
+	  is Kai and Ardbeg.
+
 config SND_SOC_TEGRA_MAX98095
 	tristate "SoC Audio support for Tegra boards using a MAX98095 codec"
 	depends on SND_SOC_TEGRA && I2C && TEGRA_DC

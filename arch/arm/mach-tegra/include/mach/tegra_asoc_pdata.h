@@ -61,6 +61,7 @@ struct tegra_asoc_platform_data {
 	int gpio_int_mic_en;
 	int gpio_ext_mic_en;
 	int gpio_ldo1_en;
+	int gpio_reset;
 	int gpio_codec1;
 	int gpio_codec2;
 	int gpio_codec3;
