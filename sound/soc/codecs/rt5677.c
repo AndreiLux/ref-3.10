@@ -563,232 +563,6 @@ err:
 	return ret;
 }
 
-/**
- * rt5677_dsp_addr_write - Write value to memory address on DSP mode.
- * @codec: SoC audio codec device.
- * @addr: Address index.
- * @value: Address data.
- *
- *
- * Returns 0 for success or negative error code.
- */
-/* static int rt5677_dsp_addr_write(struct snd_soc_codec *codec,
-		unsigned int addr, unsigned int value)
-{
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	mutex_lock(&rt5677->index_lock);
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_MSB ,
-		(addr & 0xffff0000) >> 16);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set addr msb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_LSB ,
-		addr & 0xffff);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set addr lsb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_DATA_MSB ,
-		(value & 0xffff0000) >> 16);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set data msb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_DATA_LSB ,
-		value & 0xffff);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set data lsb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_OP_CODE , 0x0003);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set op code value: %d\n", ret);
-		goto err;
-	}
-
-	mutex_unlock(&rt5677->index_lock);
-
-	return 0;
-
-err:
-	mutex_unlock(&rt5677->index_lock);
-
-	return ret;
-} */
-
-/**
- * rt5677_dsp_addr_read - Read value from memory address on DSP mode.
- * @codec: SoC audio codec device.
- * @addr: Addr index.
- *
- *
- * Returns Register value or negative error code.
- */
-/* static unsigned int rt5677_dsp_addr_read(
-	struct snd_soc_codec *codec, unsigned int addr)
-{
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret, msb, lsb;
-
-	mutex_lock(&rt5677->index_lock);
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_MSB,
-		(addr & 0xffff0000) >> 16);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set addr msb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_LSB,
-		addr & 0xffff);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set addr lsb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_OP_CODE , 0x0002);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set op code value: %d\n", ret);
-		goto err;
-	}
-
-	regmap_read(rt5677->regmap, RT5677_DSP_I2C_DATA_MSB, &msb);
-	regmap_read(rt5677->regmap, RT5677_DSP_I2C_DATA_LSB, &lsb);
-	ret = (msb << 16) | lsb;
-err:
-	mutex_unlock(&rt5677->index_lock);
-
-	return ret;
-
-} */
-
-/* static unsigned rt5677_pdm1_read(struct snd_soc_codec *codec,
-		unsigned int reg)
-{
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	ret = regmap_write(rt5677->regmap, RT5677_PDM1_DATA_CTRL2, reg << 8);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM_DATA_CTRL1, 0x0200);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	do {
-		regmap_read(rt5677->regmap, RT5677_PDM_DATA_CTRL1, &ret);
-	} while (ret & 0x0100);
-	regmap_read(rt5677->regmap, RT5677_PDM1_DATA_CTRL4, &ret);
-err:
-	return ret;
-}
-
-static int rt5677_pdm1_write(struct snd_soc_codec *codec,
-		unsigned int reg, unsigned int value)
-{
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	ret = regmap_write(rt5677->regmap, RT5677_PDM1_DATA_CTRL3, value);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private addr: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM1_DATA_CTRL2, reg << 8);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM_DATA_CTRL1, 0x0600);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM_DATA_CTRL1, 0x3600);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	do {
-		regmap_read(rt5677->regmap, RT5677_PDM_DATA_CTRL1, &ret);
-	} while (ret & 0x0100);
-	return 0;
-
-err:
-	return ret;
-}
-
-static unsigned rt5677_pdm2_read(struct snd_soc_codec *codec,
-		unsigned int reg)
-{
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	ret = regmap_write(rt5677->regmap, RT5677_PDM2_DATA_CTRL2, reg<<8);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM_DATA_CTRL1, 0x0002);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	do {
-		regmap_read(rt5677->regmap, RT5677_PDM_DATA_CTRL1, &ret);
-	} while (ret & 0x0001);
-	regmap_read(rt5677->regmap, RT5677_PDM2_DATA_CTRL4, &ret);
-err:
-	return ret;
-}
-
-static int rt5677_pdm2_write(struct snd_soc_codec *codec,
-		unsigned int reg, unsigned int value)
-{
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	ret = regmap_write(rt5677->regmap, RT5677_PDM2_DATA_CTRL3, value);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private addr: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM2_DATA_CTRL2, reg<<8);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM_DATA_CTRL1, 0x0006);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	ret = regmap_write(rt5677->regmap, RT5677_PDM_DATA_CTRL1, 0x0036);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set private value: %d\n", ret);
-		goto err;
-	}
-	do {
-		regmap_read(rt5677->regmap, RT5677_PDM_DATA_CTRL1, &ret);
-	} while (ret & 0x0001);
-
-	return 0;
-
-err:
-	return ret;
-} */
-
 static unsigned int rt5677_read_dsp_code_from_file(char *file_path,
 	 u8 **buf)
 {
@@ -4549,8 +4323,6 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 
 	pr_info("Codec driver version %s\n", VERSION);
 
-	codec->dapm.idle_bias_off = 1;
-
 	ret = snd_soc_codec_set_cache_io(codec, 8, 16, SND_SOC_REGMAP);
 	if (ret != 0) {
 		dev_err(codec->dev, "Failed to set cache I/O: %d\n", ret);
@@ -4580,7 +4352,6 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 
 	rt5677_reg_init(codec);
 
-	codec->dapm.bias_level = SND_SOC_BIAS_STANDBY;
 	rt5677->codec = codec;
 
 	mutex_init(&rt5677->index_lock);
@@ -4771,6 +4542,7 @@ static struct snd_soc_codec_driver soc_codec_dev_rt5677 = {
 	.suspend = rt5677_suspend,
 	.resume = rt5677_resume,
 	.set_bias_level = rt5677_set_bias_level,
+	.idle_bias_off = true,
 	.controls = rt5677_snd_controls,
 	.num_controls = ARRAY_SIZE(rt5677_snd_controls),
 	.dapm_widgets = rt5677_dapm_widgets,
