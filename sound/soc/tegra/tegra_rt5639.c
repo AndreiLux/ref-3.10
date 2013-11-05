@@ -29,6 +29,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 #include <linux/edp.h>
+#include <linux/sysedp.h>
 #ifdef CONFIG_SWITCH
 #include <linux/switch.h>
 #endif
@@ -87,7 +88,11 @@ struct tegra_rt5639 {
 	struct regulator *spk_reg;
 	struct regulator *dmic_reg;
 	struct snd_soc_card *pcard;
+	struct sysedp_consumer *sysedpc;
 };
+
+void tegra_asoc_enable_clocks(void);
+void tegra_asoc_disable_clocks(void);
 
 static int tegra_rt5639_startup(struct snd_pcm_substream *substream)
 {
@@ -499,6 +504,7 @@ static void tegra_speaker_edp_set_volume(struct snd_soc_codec *codec,
 					 int l_vol,
 					 int r_vol)
 {
+	tegra_asoc_enable_clocks();
 	snd_soc_update_bits(codec,
 			    RT5639_SPK_VOL,
 			    RT5639_L_VOL_MASK,
@@ -507,6 +513,7 @@ static void tegra_speaker_edp_set_volume(struct snd_soc_codec *codec,
 			    RT5639_SPK_VOL,
 			    RT5639_R_VOL_MASK,
 			    r_vol << RT5639_R_VOL_SFT);
+	tegra_asoc_disable_clocks();
 }
 
 static void tegra_speaker_throttle(unsigned int new_state,  void *priv_data)
@@ -567,6 +574,7 @@ static int tegra_rt5639_event_int_spk(struct snd_soc_dapm_widget *w,
 		ret = edp_update_client_request(machine->spk_edp_client,
 						TEGRA_SPK_EDP_NEG_1,
 						&approved);
+		sysedp_set_state(machine->sysedpc, 1);
 		err = regulator_enable(machine->spk_reg);
 		if (ret || approved != TEGRA_SPK_EDP_NEG_1) {
 			if (approved == TEGRA_SPK_EDP_ZERO)
@@ -580,6 +588,7 @@ static int tegra_rt5639_event_int_spk(struct snd_soc_dapm_widget *w,
 		/* turn off codec volume,-46.5 dB, E1 state */
 		tegra_speaker_edp_set_volume(codec, 0x27, 0x27);
 		regulator_disable(machine->spk_reg);
+		sysedp_set_state(machine->sysedpc, 0);
 		ret = edp_update_client_request(machine->spk_edp_client,
 						TEGRA_SPK_EDP_1,
 						NULL);
@@ -1080,6 +1089,7 @@ static int tegra_rt5639_driver_probe(struct platform_device *pdev)
 		goto err_unregister_card;
 	}
 #endif
+	machine->sysedpc = sysedp_create_consumer("speaker", "speaker");
 
 
 	if (!pdata->edp_support)
@@ -1104,6 +1114,8 @@ static int tegra_rt5639_driver_probe(struct platform_device *pdev)
 	battery_manager = edp_get_manager("battery");
 	if (!battery_manager) {
 		dev_err(&pdev->dev, "unable to get edp manager\n");
+		devm_kfree(&pdev->dev, machine->spk_edp_client);
+		machine->spk_edp_client = NULL;
 	} else {
 		/* register speaker edp client */
 		ret = edp_register_client(battery_manager,
@@ -1187,6 +1199,8 @@ static int tegra_rt5639_driver_remove(struct platform_device *pdev)
 #endif
 	if (np)
 		kfree(machine->pdata);
+
+	sysedp_free_consumer(machine->sysedpc);
 
 	kfree(machine);
 

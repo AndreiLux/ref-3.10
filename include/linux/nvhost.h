@@ -29,12 +29,15 @@
 #include <linux/devfreq.h>
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
+#include <linux/pm_qos.h>
+#include <linux/time.h>
 
 struct nvhost_master;
 struct nvhost_hwctx;
 struct nvhost_device_power_attr;
 struct nvhost_device_profile;
 struct mem_mgr;
+struct nvhost_as_moduleops;
 
 #define NVHOST_MODULE_MAX_CLOCKS		7
 #define NVHOST_MODULE_MAX_POWERGATE_IDS 	2
@@ -141,6 +144,16 @@ enum nvhost_power_sysfs_attributes {
 	NVHOST_POWER_SYSFS_ATTRIB_MAX
 };
 
+struct nvhost_notification {
+	struct {			/* 0000- */
+		__u32 nanoseconds[2];	/* nanoseconds since Jan. 1, 1970 */
+	} time_stamp;			/* -0007 */
+	__u32 info32;	/* info returned depends on method 0008-000b */
+#define NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT 8
+	__u16 info16;	/* info returned depends on method 000c-000d */
+	__u16 status;	/* user sets bit 15, NV sets status 000e-000f */
+};
+
 struct nvhost_clock {
 	char *name;
 	unsigned long default_rate;
@@ -177,6 +190,7 @@ struct nvhost_device_data {
 
 	struct platform_device *master;	/* Master of a slave device */
 	struct platform_device *slave;	/* Slave device to create in probe */
+	int		slave_initialized;
 
 	int		num_clks;	/* Number of clocks opened for dev */
 	struct clk	*clk[NVHOST_MODULE_MAX_CLOCKS];
@@ -189,6 +203,9 @@ struct nvhost_device_data {
 	struct device *ctrl_node;
 	struct cdev ctrl_cdev;
 	const struct file_operations *ctrl_ops;    /* ctrl ops for the module */
+
+	/* address space operations */
+	const struct nvhost_as_moduleops *as_ops;
 
 	/* module debugger */
 	struct device *dbg_node;
@@ -223,6 +240,8 @@ struct nvhost_device_data {
 
 	void *private_data;		/* private platform data */
 	struct platform_device *pdev;	/* owner platform_device */
+
+	struct dev_pm_qos_request no_poweroff_req;
 
 #ifdef CONFIG_PM_GENERIC_DOMAINS
 	struct generic_pm_domain pd;	/* power domain representing power partition */

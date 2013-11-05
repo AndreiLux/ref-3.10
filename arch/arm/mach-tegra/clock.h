@@ -84,6 +84,7 @@ struct clk;
 #define ENABLE_ON_INIT		(1 << 28)
 #define PERIPH_ON_APB		(1 << 29)
 #define PERIPH_ON_CBUS		(1 << 30)
+#define BUS_RATE_LIMIT		(1 << 31)
 
 #define SHARED_BUS_RETENTION	(1 << 0)
 
@@ -369,6 +370,8 @@ void tegra_clk_init_cbus_plls_from_table(struct tegra_clk_init_table *table);
 void clk_set_cansleep(struct clk *c);
 unsigned long clk_get_min_rate(struct clk *c);
 unsigned long clk_get_max_rate(struct clk *c);
+bool tegra_is_clk_initialized(struct clk *c);
+
 int clk_set_rate_locked(struct clk *c, unsigned long rate);
 int clk_rate_change_notify(struct clk *c, unsigned long rate);
 int clk_set_parent_locked(struct clk *c, struct clk *parent);

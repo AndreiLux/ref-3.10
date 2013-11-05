@@ -303,15 +303,21 @@ static const u32 smmu_asid_security_ofs[] = {
 	SMMU_ASID_SECURITY_7,
 };
 
-static size_t tegra_smmu_get_offset_base(int id)
+static size_t tegra_smmu_get_offset(int id)
 {
-	if (!(id & BIT(5)))
-		return SMMU_SWGRP_ASID_BASE;
+	switch (id) {
+	case SWGID_DC14:
+		return 0x490;
+	case SWGID_DC12:
+		return 0xa88;
+	case SWGID_AFI...SWGID_ISP:
+	case SWGID_MPE...SWGID_PPCS1:
+		return (id - SWGID_AFI) * sizeof(u32) + SMMU_AFI_ASID;
+	case SWGID_SDMMC1A...63:
+		return (id - SWGID_SDMMC1A) * sizeof(u32) + 0xa94;
+	};
 
-	if (id & BIT(4))
-		return  0xa88 - SWGID_DC12 * sizeof(u32);
-
-	return 0x490 - SWGID_DC14 * sizeof(u32);
+	BUG();
 }
 
 /*
@@ -480,7 +486,7 @@ static int __smmu_client_set_hwgrp(struct smmu_client *c, u64 map, int on)
 		if (i == SWGID_AFI)
 			continue;
 
-		offs = i * sizeof(u32) + tegra_smmu_get_offset_base(i);
+		offs = tegra_smmu_get_offset(i);
 		val = smmu_read(smmu, offs);
 		val &= ~3; /* always overwrite ASID */
 
@@ -1105,7 +1111,7 @@ static int smmu_iommu_map(struct iommu_domain *domain, unsigned long iova,
 	int (*fn)(struct smmu_as *as, dma_addr_t iova, phys_addr_t pa,
 		  int prot);
 
-	dev_dbg(as->smmu->dev, "[%d] %08lx:%llx\n", as->asid, iova, (u64)pa);
+	dev_dbg(as->smmu->dev, "[%d] %08lx:%pa\n", as->asid, iova, &pa);
 
 	switch (bytes) {
 	case SZ_4K:
@@ -1329,9 +1335,8 @@ static phys_addr_t smmu_iommu_iova_to_phys(struct iommu_domain *domain,
 		pa = pdir[pdn] << SMMU_PDE_SHIFT;
 	}
 
-	dev_dbg(as->smmu->dev,
-		"iova:%08llx pfn:%08llx asid:%d\n", (unsigned long long)iova,
-		 (u64)pa, as->asid);
+	dev_dbg(as->smmu->dev, "iova:%pa pfn:%pa asid:%d\n",
+		&iova, &pa, as->asid);
 
 	spin_unlock_irqrestore(&as->lock, flags);
 	return pa;
@@ -1391,11 +1396,11 @@ static int smmu_iommu_attach_dev(struct iommu_domain *domain,
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 		err = dma_map_linear_attrs(dev, area->start, size, 0, &attrs);
 		if (err == DMA_ERROR_CODE)
-			dev_err(dev, "Failed IOVA linear map %016llx(%x)\n",
-				(u64)area->start, size);
+			dev_err(dev, "Failed IOVA linear map %pa(%x)\n",
+				&area->start, size);
 		else
-			dev_info(dev, "IOVA linear map %016llx(%x)\n",
-				 (u64)area->start, size);
+			dev_info(dev, "IOVA linear map %pa(%x)\n",
+				 &area->start, size);
 
 		area++;
 	}
@@ -1747,6 +1752,11 @@ int tegra_smmu_suspend(struct device *dev)
 }
 EXPORT_SYMBOL(tegra_smmu_suspend);
 
+int tegra_smmu_save(void)
+{
+	return tegra_smmu_suspend(save_smmu_device);
+}
+
 struct device *get_smmu_device(void)
 {
 	return save_smmu_device;
@@ -1765,6 +1775,11 @@ int tegra_smmu_resume(struct device *dev)
 }
 EXPORT_SYMBOL(tegra_smmu_resume);
 
+int tegra_smmu_restore(void)
+{
+	return tegra_smmu_resume(save_smmu_device);
+}
+
 static int tegra_smmu_probe(struct platform_device *pdev)
 {
 	struct smmu_device *smmu;
@@ -1777,6 +1792,8 @@ static int tegra_smmu_probe(struct platform_device *pdev)
 		return -EIO;
 
 	BUILD_BUG_ON(PAGE_SHIFT != SMMU_PAGE_SHIFT);
+
+	save_smmu_device = dev;
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	regs2 = platform_get_resource(pdev, IORESOURCE_MEM, 1);
@@ -1818,10 +1835,10 @@ static int tegra_smmu_probe(struct platform_device *pdev)
 		smmu->swgids = 0x0000000001b659fe;
 	if (IS_ENABLED(CONFIG_ARCH_TEGRA_14x_SOC) &&
 	    (tegra_get_chipid() == TEGRA_CHIPID_TEGRA14))
-		smmu->swgids = 0x00000020018659fe;
+		smmu->swgids = 0x0000000001865bfe;
 	if (IS_ENABLED(CONFIG_ARCH_TEGRA_12x_SOC) &&
 	    (tegra_get_chipid() == TEGRA_CHIPID_TEGRA12)) {
-		smmu->swgids = 0x06f9000001ffc9cf;
+		smmu->swgids = 0x00000001fffecdcf;
 		smmu->num_translation_enable = 4;
 		smmu->num_asid_security = 8;
 		smmu->ptc_cache_size = SZ_32K;
@@ -1918,8 +1935,8 @@ static int tegra_smmu_device_notifier(struct notifier_block *nb,
 			break;
 
 		if (arm_iommu_attach_device(dev, map)) {
-			arm_iommu_release_mapping(map);
 			dev_err(dev, "Failed to attach %s\n", dev_name(dev));
+			arm_iommu_release_mapping(map);
 			break;
 		}
 		dev_dbg(dev, "Attached %s to map %p\n", dev_name(dev), map);

@@ -30,9 +30,9 @@
 #include <linux/moduleparam.h>
 #include <linux/seq_file.h>
 #include <linux/syscore_ops.h>
+#include <linux/irqchip/tegra.h>
 
 #include "iomap.h"
-#include "pm-irq.h"
 
 #define PMC_CTRL		0x0
 #define PMC_CTRL_LATCH_WAKEUPS	(1 << 5)
@@ -487,6 +487,8 @@ skip_usb_any_wake:
 static struct syscore_ops tegra_pm_irq_syscore_ops = {
 	.suspend = tegra_pm_irq_syscore_suspend,
 	.resume = tegra_pm_irq_syscore_resume,
+	.save = tegra_pm_irq_syscore_suspend,
+	.restore = tegra_pm_irq_syscore_resume,
 };
 
 static int tegra_pm_irq_syscore_init(void)

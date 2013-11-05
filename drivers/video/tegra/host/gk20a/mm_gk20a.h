@@ -172,6 +172,8 @@ struct vm_gk20a {
 	bool tlb_dirty;
 	bool mapped;
 
+	struct kref ref;
+
 	struct mutex update_gmmu_lock;
 
 	struct page_directory_gk20a pdes;
@@ -221,6 +223,8 @@ struct vm_gk20a {
 			u64 *offset);
 
 	void (*remove_support)(struct vm_gk20a *vm);
+	void (*get)(struct vm_gk20a *vm);
+	void (*put)(struct vm_gk20a *vm);
 };
 
 struct gk20a;
@@ -263,6 +267,9 @@ struct mm_gk20a {
 		struct vm_gk20a vm;
 		struct inst_desc inst_block;
 	} pmu;
+
+	struct mutex tlb_lock;
+	struct mutex l2_op_lock;
 
 	void (*remove_support)(struct mm_gk20a *mm);
 	bool sw_ready;
@@ -319,5 +326,7 @@ int gk20a_mm_suspend(struct gk20a *g);
 u64 gk20a_mm_iova_addr(struct scatterlist *sgl);
 
 void gk20a_mm_ltc_isr(struct gk20a *g);
+
+bool gk20a_mm_mmu_debug_mode_enabled(struct gk20a *g);
 
 #endif /*_MM_GK20A_H_ */

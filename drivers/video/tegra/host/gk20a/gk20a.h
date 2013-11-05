@@ -97,17 +97,21 @@ struct gk20a {
 	struct dentry *debugfs_timeouts_enabled;
 	struct dentry *debugfs_gr_idle_timeout_default;
 #endif
+	struct gk20a_ctxsw_ucode_info ctxsw_ucode_info;
 
 	/* held while manipulating # of debug/profiler sessions present */
 	/* also prevents debug sessions from attaching until released */
 	struct mutex dbg_sessions_lock;
 	int dbg_sessions; /* number attached */
+	int dbg_powergating_disabled_refcount; /*refcount for pg disable */
 
 	void (*remove_support)(struct platform_device *);
 
 	struct notifier_block system_suspend_notifier;
 	struct notifier_block fb_notifier;
 	struct dev_pm_qos_request no_poweroff_req;
+	u64 pg_ingating_time_us;
+	u64 pg_ungating_time_us;
 };
 
 static inline unsigned long gk20a_get_gr_idle_timeout(struct gk20a *g)
@@ -151,7 +155,7 @@ struct gk20a_cyclestate_buffer_elem {
 	u64 data;
 };
 
-extern const struct nvhost_as_moduleops gk20a_as_moduleops;
+extern const struct nvhost_as_moduleops tegra_gk20a_as_ops;
 
 /* register accessors */
 static inline void gk20a_writel(struct gk20a *g, u32 r, u32 v)
@@ -269,5 +273,8 @@ struct nvhost_hwctx_handler *nvhost_gk20a_alloc_hwctx_handler(u32 syncpt,
 #define GK20A_SIM_IORESOURCE_MEM 2
 #define TEGRA_GK20A_SIM_BASE 0x538F0000 /*tbd: get from iomap.h */
 #define TEGRA_GK20A_SIM_SIZE 0x1000     /*tbd: this is a high-side guess */
+
+void gk20a_busy(struct platform_device *pdev);
+void gk20a_idle(struct platform_device *pdev);
 
 #endif /* _NVHOST_GK20A_H_ */

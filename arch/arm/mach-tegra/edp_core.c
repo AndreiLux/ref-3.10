@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/edp_core.c
  *
- * Copyright (C) 2012 NVIDIA Corporation.
+ * Copyright (C) 2012-2013, NVIDIA Corporation. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -21,12 +21,13 @@
 #include <linux/kobject.h>
 #include <linux/err.h>
 #include <linux/suspend.h>
+#include <linux/tegra-soc.h>
 
 #include <mach/edp.h>
 #include <mach/thermal.h>
 
 #include "clock.h"
-#include "fuse.h"
+#include "common.h"
 
 static DEFINE_MUTEX(core_edp_lock);
 
@@ -168,7 +169,9 @@ void __init tegra_init_core_edp_limits(unsigned int regulator_mA)
 {
 	int i;
 	unsigned long *cap_rates;
+	u32 tegra_chip_id;
 
+	tegra_chip_id = tegra_get_chip_id();
 	switch (tegra_chip_id) {
 	case TEGRA_CHIPID_TEGRA11:
 		if (tegra11x_select_core_edp_table(

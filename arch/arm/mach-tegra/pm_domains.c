@@ -175,49 +175,85 @@ static int tegra_mc_clk_power_on(struct generic_pm_domain *genpd)
 	return 0;
 }
 
+static void suspend_devices_in_domain(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct device *dev;
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		dev = pdd->dev;
+
+		if (dev->pm_domain && dev->pm_domain->ops.suspend)
+			dev->pm_domain->ops.suspend(dev);
+	}
+}
+
+static void resume_devices_in_domain(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct device *dev;
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		dev = pdd->dev;
+
+		if (dev->pm_domain && dev->pm_domain->ops.resume)
+			dev->pm_domain->ops.resume(dev);
+	}
+}
+
+static int tegra_core_power_on(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct gpd_link *link;
+
+	list_for_each_entry(link, &genpd->master_links, master_node)
+		resume_devices_in_domain(link->slave);
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node)
+		TEGRA_PD_DEV_CALLBACK(resume, pdd->dev);
+
+	return 0;
+}
+
+static int tegra_core_power_off(struct generic_pm_domain *genpd)
+{
+	struct pm_domain_data *pdd;
+	struct gpd_link *link;
+
+	list_for_each_entry(link, &genpd->master_links, master_node)
+		suspend_devices_in_domain(link->slave);
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node)
+		TEGRA_PD_DEV_CALLBACK(suspend, pdd->dev);
+
+	return 0;
+}
+
 static struct tegra_pm_domain tegra_mc_clk = {
 	.gpd.name = "tegra_mc_clk",
 	.gpd.power_off = tegra_mc_clk_power_off,
 	.gpd.power_on = tegra_mc_clk_power_on,
 };
 
-#ifdef CONFIG_ARCH_TEGRA_14x_SOC
-static struct tegra_pm_domain tegra_mc_chain_a = {
-	.gpd.name = "tegra_mc_chain_a",
-	.gpd.power_off = tegra_mc_clk_power_off,
-	.gpd.power_on = tegra_mc_clk_power_on,
-};
+int tegra_restore_i2c(void)
+{
+	struct generic_pm_domain *genpd = &tegra_mc_clk.gpd;
+	struct pm_domain_data *pdd;
 
-static struct tegra_pm_domain tegra_mc_chain_b = {
-	.gpd.name = "tegra_mc_chain_b",
-	.gpd.power_off = tegra_mc_clk_power_off,
-	.gpd.power_on = tegra_mc_clk_power_on,
-};
-#endif
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		if (!strncmp("tegra12-i2c", dev_name(pdd->dev), strlen("tegra12-i2c")))
+			tegra_i2c_restore(pdd->dev);
+	}
+
+	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
+		if (!strncmp("tegra11-i2c", dev_name(pdd->dev), strlen("tegra11-i2c")))
+			tegra_i2c_restore(pdd->dev);
+	}
+
+	return 0;
+}
 
 static struct domain_client client_list[] = {
-#ifdef CONFIG_ARCH_TEGRA_14x_SOC
-	{ .name = "tegra_mc_chain_a", .domain = &tegra_mc_clk.gpd },
-	{ .name = "tegra_mc_chain_b", .domain = &tegra_mc_clk.gpd },
-	{ .name = "gr2d", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "gr3d", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "msenc", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "isp", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "tegradc", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "vi", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "tegra30-hda", .domain = &tegra_mc_chain_a.gpd },
-	{ .name = "tegra-apbdma", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "tegra-otg", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "tegra-ehci", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "tegra-xhci", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "host1x", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "tsec", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "nvavp", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "sdhci-tegra", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "tegra11-se", .domain = &tegra_mc_chain_b.gpd },
-	{ .name = "tegra_bb", .domain = &tegra_mc_clk.gpd },
-	{ .name = "tegra-apbdma", .domain = &tegra_mc_clk.gpd },
-#else
 	{ .name = "gr2d", .domain = &tegra_mc_clk.gpd },
 	{ .name = "gr3d", .domain = &tegra_mc_clk.gpd },
 	{ .name = "msenc", .domain = &tegra_mc_clk.gpd },
@@ -234,12 +270,12 @@ static struct domain_client client_list[] = {
 	{ .name = "nvavp", .domain = &tegra_mc_clk.gpd },
 	{ .name = "sdhci-tegra", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra11-se", .domain = &tegra_mc_clk.gpd },
+	{ .name = "tegra12-se", .domain = &tegra_mc_clk.gpd },
 	{ .name = "vic03", .domain = &tegra_mc_clk.gpd },
 	{ .name = "ve", .domain = &tegra_mc_clk.gpd },
 	{ .name = "gk20a", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-apbdma", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-pcie", .domain = &tegra_mc_clk.gpd },
-#endif
 	{},
 };
 
@@ -247,13 +283,6 @@ static int __init tegra_init_pm_domain(void)
 {
 	pm_genpd_init(&tegra_mc_clk.gpd, &simple_qos_governor, false);
 
-#ifdef CONFIG_ARCH_TEGRA_14x_SOC
-	pm_genpd_init(&tegra_mc_chain_a.gpd, &simple_qos_governor, false);
-	tegra_pd_add_sd(&tegra_mc_chain_a.gpd);
-
-	pm_genpd_init(&tegra_mc_chain_b.gpd, &simple_qos_governor, false);
-	tegra_pd_add_sd(&tegra_mc_chain_b.gpd);
-#endif
 	return 0;
 }
 core_initcall(tegra_init_pm_domain);

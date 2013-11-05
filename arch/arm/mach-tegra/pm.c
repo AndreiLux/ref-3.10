@@ -50,6 +50,10 @@
 #include <linux/clk/tegra.h>
 #include <linux/tegra-powergate.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra-timer.h>
+#include <linux/tegra-cpuidle.h>
+#include <linux/irqchip/tegra.h>
+#include <linux/tegra-pm.h>
 
 #include <trace/events/power.h>
 #include <trace/events/nvsecurity.h>
@@ -69,16 +73,12 @@
 #include "board.h"
 #include "clock.h"
 #include "common.h"
-#include "cpuidle.h"
 #include "fuse.h"
-#include "gic.h"
 #include "iomap.h"
 #include "pm.h"
-#include "pm-irq.h"
 #include "reset.h"
 #include "pmc.h"
 #include "sleep.h"
-#include "timer.h"
 #include "dvfs.h"
 #include "cpu-tegra.h"
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
@@ -132,6 +132,8 @@ static u64 resume_entry_time;
 static u64 suspend_time;
 static u64 suspend_entry_time;
 #endif
+
+static RAW_NOTIFIER_HEAD(tegra_pm_chain_head);
 
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
 static void update_pmc_registers(unsigned long rate);
@@ -221,6 +223,7 @@ extern int tegra_smmu_suspend(struct device *dev);
 static struct clk *tegra_dfll;
 #endif
 static struct clk *tegra_pclk;
+static struct clk *tegra_clk_m;
 static struct tegra_suspend_platform_data *pdata;
 static enum tegra_suspend_mode current_suspend_mode = TEGRA_SUSPEND_NONE;
 
@@ -274,6 +277,25 @@ void tegra_cluster_switch_time(unsigned int flags, int id)
 			  stats->avg) >> CLUSTER_SWITCH_TIME_AVG_SHIFT;
 }
 #endif
+
+int tegra_register_pm_notifier(struct notifier_block *nb)
+{
+	return raw_notifier_chain_register(&tegra_pm_chain_head, nb);
+}
+EXPORT_SYMBOL(tegra_register_pm_notifier);
+
+int tegra_unregister_pm_notifier(struct notifier_block *nb)
+{
+	return raw_notifier_chain_unregister(&tegra_pm_chain_head, nb);
+}
+EXPORT_SYMBOL(tegra_unregister_pm_notifier);
+
+static int tegra_pm_notifier_call_chain(unsigned int val)
+{
+	int ret = raw_notifier_call_chain(&tegra_pm_chain_head, val, NULL);
+
+	return notifier_to_errno(ret);
+}
 
 #ifdef CONFIG_PM_SLEEP
 static const char *tegra_suspend_name[TEGRA_MAX_SUSPEND_MODE] = {
@@ -331,9 +353,13 @@ unsigned long tegra_cpu_lp2_min_residency(void)
 	return pdata->cpu_lp2_min_residency;
 }
 
+#define TEGRA_MIN_RESIDENCY_MCLK_STOP	20000
+
 unsigned long tegra_mc_clk_stop_min_residency(void)
 {
-	return 20000;
+	return pdata && pdata->min_residency_mclk_stop
+			? pdata->min_residency_mclk_stop
+			: TEGRA_MIN_RESIDENCY_MCLK_STOP;
 }
 
 #ifdef CONFIG_ARCH_TEGRA_HAS_SYMMETRIC_CPU_PWR_GATE
@@ -396,6 +422,7 @@ static void resume_cpu_dfll_mode(unsigned int flags)
 #ifdef CONFIG_ARCH_TEGRA_HAS_CL_DVFS
 	/* If DFLL is Not used and resume on G restore bypass mode */
 	if (pdata && pdata->resume_dfll_bypass && !is_lp_cluster() &&
+	    tegra_is_clk_initialized(tegra_dfll) &&
 	    !tegra_dvfs_rail_is_dfll_mode(tegra_cpu_rail))
 		pdata->resume_dfll_bypass();
 
@@ -1059,6 +1086,7 @@ static void tegra_pm_set(enum tegra_suspend_mode mode)
 	case TEGRA_SUSPEND_LP1:
 		__raw_writel(virt_to_phys(tegra_resume), pmc + PMC_SCRATCH41);
 		wmb();
+		rate = clk_get_rate(tegra_clk_m);
 		break;
 	case TEGRA_SUSPEND_LP2:
 		rate = clk_get_rate(tegra_pclk);
@@ -1354,7 +1382,7 @@ int tegra_suspend_dram(enum tegra_suspend_mode mode, unsigned int flags)
 	 * restore power mask and disable mem_req interrupt PMC
 	 */
 	if (enter_state) {
-		pr_info("Exited state is LP1/LP1BB\n");
+		pr_debug("Exited state is LP1/LP1BB\n");
 		tegra_disable_lp1bb_interrupt();
 		tegra_smp_restore_power_mask();
 	}
@@ -1563,6 +1591,8 @@ static void tegra_pm_enter_shutdown(void)
 static struct syscore_ops tegra_pm_enter_syscore_ops = {
 	.suspend = tegra_pm_enter_suspend,
 	.resume = tegra_pm_enter_resume,
+	.save = tegra_pm_enter_suspend,
+	.restore = tegra_pm_enter_resume,
 	.shutdown = tegra_pm_enter_shutdown,
 };
 
@@ -1587,6 +1617,8 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 #endif
 	tegra_pclk = clk_get_sys(NULL, "pclk");
 	BUG_ON(IS_ERR(tegra_pclk));
+	tegra_clk_m = clk_get_sys(NULL, "clk_m");
+	BUG_ON(IS_ERR(tegra_clk_m));
 
 	/* create the pdata from DT information */
 	pm_dat = tegra_get_pm_data();
@@ -1669,7 +1701,7 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		pdata->min_residency_crail = plat->min_residency_crail;
 		pdata->crail_up_early = plat->crail_up_early;
 #endif
-		pdata->min_residency_mc_clk = plat->min_residency_mc_clk;
+		pdata->min_residency_mclk_stop = plat->min_residency_mclk_stop;
 		pdata->usb_vbus_internal_wake = plat->usb_vbus_internal_wake;
 		pdata->usb_id_internal_wake = plat->usb_id_internal_wake;
 		pdata->suspend_dfll_bypass = plat->suspend_dfll_bypass;
@@ -1943,6 +1975,8 @@ static void tegra_debug_uart_resume(void)
 static struct syscore_ops tegra_debug_uart_syscore_ops = {
 	.suspend = tegra_debug_uart_suspend,
 	.resume = tegra_debug_uart_resume,
+	.save = tegra_debug_uart_suspend,
+	.restore = tegra_debug_uart_resume,
 };
 
 struct clk *debug_uart_clk = NULL;

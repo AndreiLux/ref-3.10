@@ -17,10 +17,11 @@
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/module.h>
-#include <asm-generic/uaccess.h>
+#include <linux/uaccess.h>
+#include <linux/sched.h>
+#include <linux/mm.h>
 
 #include <linux/tegra_profiler.h>
-#include <linux/mm.h>
 
 #include "backtrace.h"
 
@@ -67,7 +68,7 @@ user_backtrace(unsigned long __user *tail,
 		return NULL;
 
 	if (!check_vma_address(value, stack_vma)) {
-		/* clang's frame */
+		/* gcc thumb/clang frame */
 		value_fp = value;
 
 		if (check_vma_address((unsigned long)(tail + 1), stack_vma))
@@ -77,7 +78,7 @@ user_backtrace(unsigned long __user *tail,
 					      sizeof(unsigned long)))
 			return NULL;
 	} else {
-		/* gcc's frame */
+		/* gcc arm frame */
 		if (__copy_from_user_inatomic(&value_fp, tail - 1,
 					      sizeof(unsigned long)))
 			return NULL;
@@ -112,13 +113,14 @@ quadd_get_user_callchain(struct pt_regs *regs,
 
 	callchain_data->nr = 0;
 
-	if (!regs || !user_mode(regs) || !mm)
+	if (!regs || !mm)
 		return 0;
 
 	if (thumb_mode(regs))
-		return 0;
+		fp = regs->ARM_r7;
+	else
+		fp = regs->ARM_fp;
 
-	fp = regs->ARM_fp;
 	sp = regs->ARM_sp;
 	pc = regs->ARM_pc;
 
@@ -126,15 +128,25 @@ quadd_get_user_callchain(struct pt_regs *regs,
 		return 0;
 
 	vma = find_vma(mm, sp);
+	if (!vma)
+		return 0;
+
 	if (check_vma_address(fp, vma))
 		return 0;
 
-	if (__copy_from_user_inatomic(&reg, (unsigned long __user *)fp,
-				      sizeof(unsigned long)))
+	if (probe_kernel_address(fp, reg)) {
+		pr_warn_once("frame error: sp/fp: %#lx/%#lx, pc/lr: %#lx/%#lx, vma: %#lx-%#lx\n",
+			     sp, fp, regs->ARM_pc, regs->ARM_lr,
+			     vma->vm_start, vma->vm_end);
 		return 0;
+	}
 
-	if (reg > fp &&
-	    !check_vma_address(reg, vma)) {
+	if (thumb_mode(regs)) {
+		if (reg <= fp || check_vma_address(reg, vma))
+			return 0;
+	} else if (reg > fp &&
+		  !check_vma_address(reg, vma)) {
+		/* fp --> fp prev */
 		unsigned long value;
 		int read_lr = 0;
 

@@ -9,11 +9,11 @@ obj-y                                   += common.o
 obj-y                                   += devices.o
 obj-y                                   += board-info.o
 obj-y                                   += io.o
-obj-y                                   += irq.o
 obj-y                                   += clock.o
+ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer.o
+endif
 obj-$(CONFIG_HAVE_ARM_TWD)              += cpu_timer_twd.o
-obj-$(CONFIG_ARM_ARCH_TIMER)            += cpu_timer_arch.o
 obj-y                                   += timerinfo.o
 ifneq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 ifneq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
@@ -21,21 +21,26 @@ obj-y                                   += mipi-cal.o
 endif
 endif
 
+obj-$(CONFIG_PM_SLEEP)                  += tegra-wakeups.o
+
 ifeq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 obj-y                                   += common-t2.o
 obj-y                                   += pm-t2.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= sleep-t20.o
+ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer-t2.o
+endif
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t2.o
 ifeq ($(CONFIG_CPU_IDLE),y)
 obj-$(CONFIG_PM_SLEEP)                  += cpuidle-t2.o
 endif
 else
-obj-y                                   += common-t3.o
 obj-y                                   += pm-t3.o
 obj-y                                   += sleep-t30.o
 obj-$(CONFIG_DEBUG_FS)                  += clocks_stats.o
+ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer-t3.o
+endif
 obj-y                                   += tegra_core_volt_cap.o
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t3.o
@@ -69,7 +74,6 @@ obj-y                                   += delay.o
 obj-y                                   += pm.o
 obj-$(CONFIG_TEGRA_WDT_RECOVERY)        += wdt-recovery.o
 obj-$(CONFIG_PM_SLEEP)                  += pm-irq.o
-obj-y                                   += gic.o
 
 obj-y                                   += sleep.o
 obj-$(CONFIG_TEGRA_USE_NCT)             += nct.o nct_sysfs.o
@@ -93,7 +97,6 @@ obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += powergate-t12x.o
 
 obj-y                                   += apbio.o
 obj-y                                   += mc.o
-obj-$(CONFIG_FIQ)                       += fiq.o
 obj-$(CONFIG_TEGRA_FIQ_DEBUGGER)        += tegra_fiq_debugger.o
 obj-$(CONFIG_TEGRA_ARB_SEMAPHORE)       += arb_sema.o
 obj-$(CONFIG_PM_GENERIC_DOMAINS)        += pm_domains.o
@@ -104,10 +107,10 @@ obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra_emc_therm.o
 
 obj-y                                   += latency_allowance.o
-obj-y                                   += tegra3_la.o
-obj-y                                   += tegra11x_la.o
-obj-y                                   += tegra14x_la.o
-obj-y                                   += tegra12x_la.o
+obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += tegra3_la.o
+obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11x_la.o
+obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14x_la.o
+obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12x_la.o
 obj-$(CONFIG_TEGRA_EDP_LIMITS)          += edp.o
 obj-$(CONFIG_TEGRA_CORE_EDP_LIMITS)     += edp_core.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_edp.o
@@ -125,6 +128,8 @@ obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += tegra3_emc.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_emc.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12_emc.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_emc.o
+obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra_emc_dt_parse.o
+obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra_emc_dt_parse.o
 obj-y					+= tegra_emc.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += pinmux-tegra20-tables.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += pinmux-tegra30-tables.o
@@ -204,6 +209,7 @@ obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-sensors.o
 
 obj-y                                   += board-touch-raydium_spi.o
 obj-y                                   += board-touch-synaptics-spi.o
+obj-y                                   += board-touch-maxim_sti-spi.o
 
 obj-y                                   += board-panel.o
 
@@ -271,6 +277,9 @@ obj-${CONFIG_MACH_ARDBEG}               += panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-lgd-wxga-7-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
+ifeq ($(CONFIG_MACH_ARDBEG),y)
+obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-tn8-sysedp.o
+endif
 
 obj-${CONFIG_MACH_LOKI}               	+= board-loki.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-kbc.o
@@ -308,6 +317,7 @@ obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-sdhci.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-pinmux.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-power.o
+obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-panel.o
 
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER2}       += baseband-xmm-power2.o

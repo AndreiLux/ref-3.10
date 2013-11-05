@@ -33,6 +33,8 @@
 #include <linux/mmc/slot-gpio.h>
 
 #include <linux/edp.h>
+#include <linux/sysedp.h>
+
 #ifdef CONFIG_TEGRA_PRE_SILICON_SUPPORT
 #include <linux/tegra-soc.h>
 #endif
@@ -50,6 +52,18 @@
 #endif
 
 #define MAX_TUNING_LOOP 40
+
+#define SDIO_CLK_GATING_TICK_TMOUT (HZ / 50)
+
+/*
+ * type is MMC_TYPE_SDIO after SDIO enumeration. So the
+ * delayed sdio clock gate implementation will have aggressive
+ * clock gating till card gets enumerated.
+ */
+#define IS_SDIO_DELAYED_CLK_GATE(host) \
+		((host->quirks2 & SDHCI_QUIRK2_SDIO_DELAYED_CLK_GATE) && \
+		(host->mmc->card && host->mmc->card->type == MMC_TYPE_SDIO) && \
+		(host->mmc->caps2 & MMC_CAP2_CLOCK_GATING))
 
 static unsigned int debug_quirks = 0;
 static unsigned int debug_quirks2;
@@ -1683,7 +1697,8 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	 * be shutdown after all the register accesses are done.
 	 */
 	if ((host->quirks2 & SDHCI_QUIRK2_REG_ACCESS_REQ_HOST_CLK) &&
-		(!ios->clock && host->ops->set_clock))
+		(!ios->clock && host->ops->set_clock) &&
+		!host->mmc->skip_host_clkgate)
 		host->ops->set_clock(host, ios->clock);
 	if ((ios->power_mode == MMC_POWER_OFF) && host->ops->platform_power_off)
 		host->ops->platform_power_off(host, ios->power_mode);
@@ -2210,8 +2225,15 @@ int sdhci_enable(struct mmc_host *mmc)
 	int ret;
 	struct platform_device *pdev = to_platform_device(mmc_dev(mmc));
 
-	if (!mmc->card || mmc->card->type == MMC_TYPE_SDIO)
+	if (!mmc->card || !(mmc->caps2 & MMC_CAP2_CLOCK_GATING))
 		return 0;
+
+	if (IS_SDIO_DELAYED_CLK_GATE(host)) {
+		/* cancel sdio clk gate work */
+		cancel_delayed_work_sync(&host->delayed_clk_gate_wrk);
+	}
+
+	sysedp_set_state(host->sysedpc, 1);
 
 	if (mmc->ios.clock) {
 		if (host->ops->set_clock)
@@ -2229,18 +2251,16 @@ int sdhci_enable(struct mmc_host *mmc)
 	return 0;
 }
 
-int sdhci_disable(struct mmc_host *mmc)
+static void mmc_host_clk_gate(struct sdhci_host *host)
 {
-	struct sdhci_host *host = mmc_priv(mmc);
 	int ret;
-	struct platform_device *pdev = to_platform_device(mmc_dev(mmc));
-
-	if (!mmc->card || mmc->card->type == MMC_TYPE_SDIO)
-		return 0;
+	struct platform_device *pdev = to_platform_device(mmc_dev(host->mmc));
 
 	sdhci_set_clock(host, 0);
 	if (host->ops->set_clock)
 		host->ops->set_clock(host, 0);
+
+	sysedp_set_state(host->sysedpc, 0);
 
 	if (host->sd_edp_client) {
 		ret = edp_update_client_request(host->sd_edp_client,
@@ -2248,6 +2268,46 @@ int sdhci_disable(struct mmc_host *mmc)
 		if (ret)
 			dev_err(&pdev->dev, "Unable to set SD_EDP_LOW state\n");
 	}
+	return;
+}
+
+void delayed_clk_gate_cb(struct work_struct *work)
+{
+	struct sdhci_host *host = container_of(work, struct sdhci_host,
+					      delayed_clk_gate_wrk.work);
+	struct platform_device *pdev = to_platform_device(mmc_dev(host->mmc));
+
+	/* power off check */
+	if (host->mmc->ios.power_mode == MMC_POWER_OFF)
+		goto end;
+
+	if (!host->is_clk_on) {
+		/* bypass condition */
+		dev_err(&pdev->dev, "clk already off. skipped clk gate\n");
+		dump_stack();
+		goto end;
+	}
+
+	mmc_host_clk_gate(host);
+end:
+	return;
+}
+EXPORT_SYMBOL_GPL(delayed_clk_gate_cb);
+
+int sdhci_disable(struct mmc_host *mmc)
+{
+	struct sdhci_host *host = mmc_priv(mmc);
+
+	if (!mmc->card || !(mmc->caps2 & MMC_CAP2_CLOCK_GATING))
+		return 0;
+
+	if (IS_SDIO_DELAYED_CLK_GATE(host)) {
+		schedule_delayed_work(&host->delayed_clk_gate_wrk,
+			SDIO_CLK_GATING_TICK_TMOUT);
+		return 0;
+	}
+
+	mmc_host_clk_gate(host);
 
 	return 0;
 }
@@ -3487,6 +3547,9 @@ int sdhci_add_host(struct sdhci_host *host)
 
 	sdhci_init(host, 0);
 
+	host->sysedpc = sysedp_create_consumer(dev_name(mmc_dev(mmc)),
+					       dev_name(mmc_dev(mmc)));
+
 	if (host->edp_support == true) {
 		battery_manager = edp_get_manager("battery");
 		if (!battery_manager)
@@ -3634,6 +3697,9 @@ void sdhci_remove_host(struct sdhci_host *host, int dead)
 
 	host->adma_desc = NULL;
 	host->align_buffer = NULL;
+
+	sysedp_free_consumer(host->sysedpc);
+	host->sysedpc = NULL;
 }
 
 EXPORT_SYMBOL_GPL(sdhci_remove_host);

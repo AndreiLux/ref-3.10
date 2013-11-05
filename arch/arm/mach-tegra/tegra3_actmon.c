@@ -416,12 +416,9 @@ static void actmon_dev_disable(struct actmon_dev *dev)
 	spin_unlock_irqrestore(&dev->lock, flags);
 }
 
-static void actmon_dev_suspend(struct actmon_dev *dev)
+static void actmon_dev_save(struct actmon_dev *dev)
 {
 	u32 val;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dev->lock, flags);
 
 	if ((dev->state == ACTMON_ON) || (dev->state == ACTMON_OFF)){
 		dev->saved_state = dev->state;
@@ -433,19 +430,25 @@ static void actmon_dev_suspend(struct actmon_dev *dev)
 		actmon_writel(0xffffffff, offs(ACTMON_DEV_INTR_STATUS));
 		actmon_wmb();
 	}
+}
+
+static void actmon_dev_suspend(struct actmon_dev *dev)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->lock, flags);
+
+	actmon_dev_save(dev);
+
 	spin_unlock_irqrestore(&dev->lock, flags);
 
 	if (dev->suspend_freq)
 		clk_set_rate(dev->clk, dev->suspend_freq * 1000);
 }
 
-static void actmon_dev_resume(struct actmon_dev *dev)
+static void actmon_dev_restore(struct actmon_dev *dev, ulong freq)
 {
 	u32 val;
-	unsigned long flags;
-	unsigned long freq = clk_get_rate(dev->clk) / 1000;
-
-	spin_lock_irqsave(&dev->lock, flags);
 
 	if (dev->state == ACTMON_SUSPENDED) {
 		actmon_dev_configure(dev, freq);
@@ -457,6 +460,17 @@ static void actmon_dev_resume(struct actmon_dev *dev)
 			actmon_wmb();
 		}
 	}
+}
+
+static void actmon_dev_resume(struct actmon_dev *dev)
+{
+	unsigned long flags;
+	unsigned long freq = clk_get_rate(dev->clk) / 1000;
+
+	spin_lock_irqsave(&dev->lock, flags);
+
+	actmon_dev_restore(dev, freq);
+
 	spin_unlock_irqrestore(&dev->lock, flags);
 }
 
@@ -610,6 +624,8 @@ static struct actmon_dev actmon_dev_cpu_emc = {
 	.avg_window_log2	= ACTMON_DEFAULT_AVG_WINDOW_LOG2,
 #if defined(CONFIG_ARCH_TEGRA_3x_SOC) || defined(CONFIG_ARCH_TEGRA_14x_SOC)
 	.count_weight		= 0x200,
+#elif defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	.count_weight		= 0x400,
 #else
 	.count_weight		= 0x100,
 #endif
@@ -627,6 +643,42 @@ static struct actmon_dev *actmon_devices[] = {
 	&actmon_dev_avp,
 	&actmon_dev_cpu_emc,
 };
+
+int tegra_actmon_save(void)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(actmon_devices); i++)
+		actmon_dev_save(actmon_devices[i]);
+
+	return 0;
+}
+/* Needs to be called from IRQ enabled as clk_get_rate can
+ * sleep for emc.
+ */
+int tegra_actmon_restore(void)
+{
+	int i;
+	unsigned long flags;
+
+	actmon_writel(actmon_sampling_period - 1,
+		      ACTMON_GLB_PERIOD_CTRL);
+
+	for (i = 0; i < ARRAY_SIZE(actmon_devices); i++) {
+		/*
+		 * Using clk_get_rate_all_locked() here, because all other cpus
+		 * except cpu0 are in LP2 state and irqs are disabled.
+		 */
+		struct actmon_dev *dev = actmon_devices[i];
+		unsigned long freq = clk_get_rate_all_locked(dev->clk) / 1000;
+
+		spin_lock_irqsave(&dev->lock, flags);
+		actmon_dev_restore(dev, freq);
+		spin_unlock_irqrestore(&dev->lock, flags);
+	}
+
+	return 0;
+}
 
 /* Activity monitor suspend/resume */
 static int actmon_pm_notify(struct notifier_block *nb,

@@ -68,17 +68,13 @@ struct nvhost_as {
 	struct mutex share_list_lock;
 	struct list_head share_list; /* list of all shares */
 	struct nvhost_channel *ch;
-	const struct nvhost_as_moduleops *ops;
 	int last_share_id; /* dummy allocator for now */
 };
 
 
 int nvhost_as_init_device(struct platform_device *dev);
 int nvhost_as_alloc_share(struct nvhost_channel *ch,
-			  struct nvhost_as_share **as,
-			  bool has_fd);
-int nvhost_as_alloc_and_bind_share(struct nvhost_channel *ch,
-				   struct nvhost_hwctx *hwctx);
+			  struct nvhost_as_share **as);
 int nvhost_as_release_share(struct nvhost_as_share *as_share,
 			    struct nvhost_hwctx *hwctx);
 

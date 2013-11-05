@@ -530,6 +530,7 @@ struct tegra_dc_out {
 
 	unsigned			height; /* mm */
 	unsigned			width; /* mm */
+	unsigned			rotation; /* degrees */
 
 	struct tegra_dc_out_pin		*out_pins;
 	unsigned			n_out_pins;
@@ -741,6 +742,12 @@ struct tegra_dc_platform_data {
 	bool			cmu_enable;
 	struct tegra_dc_cmu	*cmu;
 #endif
+};
+
+struct tegra_dc_bw_data {
+	u32	total_bw;
+	u32	avail_bw;
+	u32	resvd_bw;
 };
 
 #define TEGRA_DC_FLAG_ENABLED		(1 << 0)

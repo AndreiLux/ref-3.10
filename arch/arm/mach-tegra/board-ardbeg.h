@@ -26,7 +26,6 @@
 #include "gpio-names.h"
 
 int ardbeg_pinmux_init(void);
-int ardbeg_edp_init(void);
 int ardbeg_emc_init(void);
 int ardbeg_panel_init(void);
 int ardbeg_kbc_init(void);
@@ -37,6 +36,7 @@ int ardbeg_suspend_init(void);
 int ardbeg_pmon_init(void);
 int ardbeg_rail_alignment_init(void);
 int ardbeg_soctherm_init(void);
+int ardbeg_edp_init(void);
 
 /* Invensense MPU Definitions */
 #define MPU_GYRO_NAME		"mpu9250"
@@ -77,11 +77,13 @@ int ardbeg_soctherm_init(void);
 #define CAM2_PWDN TEGRA_GPIO_PBB6
 #define CAM1_PWDN TEGRA_GPIO_PBB5
 #define CAM_AF_PWDN TEGRA_GPIO_PBB7
+#define CAM_BOARD_E1806
 
 /* Modem related GPIOs */
 #define MODEM_EN		TEGRA_GPIO_PS4
 #define MDM_RST			TEGRA_GPIO_PS3
 #define MDM_COLDBOOT		TEGRA_GPIO_PO5
+#define MDM_SAR0		TEGRA_GPIO_PG2
 
 /* Baseband IDs */
 enum tegra_bb_type {
@@ -99,6 +101,9 @@ enum tegra_bb_type {
 #define TOUCH_GPIO_RST_RAYDIUM_SPI	TEGRA_GPIO_PK4
 #define TOUCH_SPI_ID			0	/*SPI 1 on ardbeg_interposer*/
 #define TOUCH_SPI_CS			0	/*CS  0 on ardbeg_interposer*/
+
+#define TOUCH_GPIO_IRQ_MAXIM_STI_SPI	TEGRA_GPIO_PK2
+#define TOUCH_GPIO_RST_MAXIM_STI_SPI	TEGRA_GPIO_PK4
 
 /* Audio-related GPIOs */
 /*Same GPIO's used for T114(Interposer) and T124*/
@@ -137,6 +142,7 @@ GPIO, also the GPIO is same for T114 interposer and T124*/
 int laguna_pinmux_init(void);
 int laguna_regulator_init(void);
 int laguna_pm358_pmon_init(void);
+int laguna_edp_init(void);
 
 /* AUO Display related GPIO */
 #define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PH3 /* GMI_AD11 */
@@ -156,5 +162,9 @@ int laguna_pm358_pmon_init(void);
 
 int tn8_regulator_init(void);
 int tn8_fixed_regulator_init(void);
+int tn8_edp_init(void);
+void tn8_new_sysedp_init(void);
+void tn8_sysedp_dynamic_capping_init(void);
+void tn8_sysedp_batmon_init(void);
 
 #endif

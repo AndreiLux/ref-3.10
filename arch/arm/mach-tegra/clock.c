@@ -1,12 +1,11 @@
 /*
  *
  * Copyright (C) 2010 Google, Inc.
- * Copyright (c) 2012 NVIDIA CORPORATION.  All rights reserved.
  *
  * Author:
  *	Colin Cross <ccross@google.com>
  *
- * Copyright (c) 2019-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -37,6 +36,7 @@
 #include <linux/bug.h>
 #include <linux/tegra-soc.h>
 #include <trace/events/power.h>
+#include <linux/tegra-timer.h>
 
 #include <mach/edp.h>
 
@@ -44,8 +44,8 @@
 #include "clock.h"
 #include "dvfs.h"
 #include "iomap.h"
-#include "timer.h"
 #include "tegra_emc.h"
+#include "cpu-tegra.h"
 
 /* Global data of Tegra CPU CAR ops */
 struct tegra_cpu_car_ops *tegra_cpu_car_ops;
@@ -154,6 +154,11 @@ unsigned long clk_get_max_rate(struct clk *c)
 unsigned long clk_get_min_rate(struct clk *c)
 {
 		return c->min_rate;
+}
+
+bool tegra_is_clk_initialized(struct clk *c)
+{
+	return c->state != UNINITIALIZED;
 }
 
 /* Must be called with clk_lock(c) held */
@@ -267,7 +272,7 @@ static int clk_enable_locked(struct clk *c)
 	}
 
 	if (c->refcnt == 0) {
-		if (c->parent) {
+		if (!(c->flags & BUS_RATE_LIMIT) && c->parent) {
 			ret = tegra_clk_prepare_enable(c->parent);
 			if (ret)
 				return ret;
@@ -302,7 +307,7 @@ static void clk_disable_locked(struct clk *c)
 			trace_clock_disable(c->name, 0, 0);
 			c->ops->disable(c);
 		}
-		if (c->parent)
+		if (!(c->flags & BUS_RATE_LIMIT) && c->parent)
 			tegra_clk_disable_unprepare(c->parent);
 
 		c->state = OFF;
@@ -1070,7 +1075,7 @@ static int __init tegra_clk_late_init(void)
 		tegra_dfll_cpu_start();
 
 	tegra_sync_cpu_clock();		/* after attempt to get dfll ready */
-	tegra_recalculate_cpu_edp_limits();
+	tegra_update_cpu_edp_limits();
 	return 0;
 }
 late_initcall(tegra_clk_late_init);
@@ -1096,6 +1101,7 @@ out:
 	clk_unlock_restore(c, &flags);
 	return ret;
 }
+EXPORT_SYMBOL(tegra_clk_cfg_ex);
 
 int tegra_register_clk_rate_notifier(struct clk *c, struct notifier_block *nb)
 {

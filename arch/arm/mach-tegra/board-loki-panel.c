@@ -38,6 +38,7 @@
 #include "iomap.h"
 #include "tegra12_host1x_devices.h"
 #include "board-panel.h"
+#include "common.h"
 
 struct platform_device * __init loki_host1x_init(void)
 {
@@ -217,7 +218,7 @@ struct tmds_config loki_tmds_config[] = {
 		.pll0 = 0x01003f10,
 		.pll1 = 0x10300b00,
 		.pe_current = 0x00000000,
-		.drive_current = 0x2e2e2e2e,
+		.drive_current = 0x32323232,
 		.peak_current = 0x05050505,
 	},
 	{ /* 1080p / 148.5MHz modes */
@@ -225,7 +226,7 @@ struct tmds_config loki_tmds_config[] = {
 		.pll0 = 0x01003f10,
 		.pll1 = 0x10300b00,
 		.pe_current = 0x00000000,
-		.drive_current = 0x2e2e2e2e,
+		.drive_current = 0x32323232,
 		.peak_current = 0x05050505,
 	},
 	{ /* 297MHz modes */
@@ -233,7 +234,7 @@ struct tmds_config loki_tmds_config[] = {
 		.pll0 = 0x01003f10,
 		.pll1 = 0x13300b00,
 		.pe_current = 0x00000000,
-		.drive_current = 0x34343434,
+		.drive_current = 0x36363636,
 		.peak_current = 0x07070707,
 	},
 };
@@ -474,6 +475,13 @@ int __init loki_panel_init(int board_id)
 	loki_carveouts[1].size = tegra_carveout_size;
 	loki_carveouts[2].base = tegra_vpr_start;
 	loki_carveouts[2].size = tegra_vpr_size;
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+	loki_carveouts[1].cma_dev = &tegra_generic_cma_dev;
+	loki_carveouts[1].resize = false;
+	loki_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
+	loki_carveouts[2].resize = true;
+	loki_carveouts[2].cma_chunk_size = SZ_32M;
+#endif
 
 	err = platform_device_register(&loki_nvmap_device);
 	if (err) {

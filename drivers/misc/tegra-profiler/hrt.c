@@ -25,6 +25,7 @@
 #include <linux/cpu.h>
 #include <linux/ratelimit.h>
 #include <asm/irq_regs.h>
+#include <linux/ptrace.h>
 
 #include <linux/tegra_profiler.h>
 
@@ -203,7 +204,7 @@ static int get_sample_data(struct event_data *event,
 	sample->event_id = event->event_id;
 
 	sample->ip = instruction_pointer(regs);
-	sample->cpu = quadd_get_processor_id();
+	sample->cpu = quadd_get_processor_id(regs);
 	sample->time = get_sample_time();
 
 	if (prev_val <= val)
@@ -221,14 +222,6 @@ static int get_sample_data(struct event_data *event,
 	return 0;
 }
 
-static char *get_mmap_data(struct pt_regs *regs,
-			   struct quadd_mmap_data *sample,
-			   unsigned int *extra_length)
-{
-	struct quadd_cpu_context *cpu_ctx = this_cpu_ptr(hrt.cpu_ctx);
-	return quadd_get_mmap(cpu_ctx, regs, sample, extra_length);
-}
-
 static void read_source(struct quadd_event_source_interface *source,
 			struct pt_regs *regs, pid_t pid)
 {
@@ -241,6 +234,7 @@ static void read_source(struct quadd_event_source_interface *source,
 	struct quadd_cpu_context *cpu_ctx = this_cpu_ptr(hrt.cpu_ctx);
 	struct quadd_callchain *callchain_data = &cpu_ctx->callchain_data;
 	struct quadd_ctx *quadd_ctx = hrt.quadd_ctx;
+	struct pt_regs *user_regs;
 
 	if (!source)
 		return;
@@ -256,8 +250,14 @@ static void read_source(struct quadd_event_source_interface *source,
 	if (atomic_read(&cpu_ctx->nr_active) == 0)
 		return;
 
-	if (user_mode(regs) && hrt.quadd_ctx->param.backtrace) {
-		callchain_nr = quadd_get_user_callchain(regs, callchain_data);
+	if (user_mode(regs))
+		user_regs = regs;
+	else
+		user_regs = current_pt_regs();
+
+	if (hrt.quadd_ctx->param.backtrace) {
+		callchain_nr =
+			quadd_get_user_callchain(user_regs, callchain_data);
 		if (callchain_nr > 0) {
 			extra_data = (char *)cpu_ctx->callchain_data.callchain;
 			extra_length = callchain_nr * sizeof(u32);
@@ -298,27 +298,13 @@ static void read_source(struct quadd_event_source_interface *source,
 
 static void read_all_sources(struct pt_regs *regs, pid_t pid)
 {
-	struct quadd_record_data record_data;
 	struct quadd_ctx *ctx = hrt.quadd_ctx;
-	unsigned int extra_length;
-	char *extra_data;
+	struct quadd_cpu_context *cpu_ctx = this_cpu_ptr(hrt.cpu_ctx);
 
 	if (!regs)
 		return;
 
-	extra_data = get_mmap_data(regs, &record_data.mmap, &extra_length);
-	if (extra_data && extra_length > 0) {
-		record_data.magic = QUADD_RECORD_MAGIC;
-		record_data.record_type = QUADD_RECORD_TYPE_MMAP;
-		record_data.cpu_mode = QUADD_CPU_MODE_USER;
-
-		record_data.mmap.filename_length = extra_length;
-		record_data.mmap.pid = pid > 0 ? pid : ctx->param.pids[0];
-
-		quadd_put_sample(&record_data, extra_data, extra_length);
-	} else {
-		record_data.mmap.filename_length = 0;
-	}
+	quadd_get_mmap_object(cpu_ctx, regs, pid);
 
 	if (ctx->pmu && ctx->pmu_info.active)
 		read_source(ctx->pmu, regs, pid);
@@ -374,121 +360,74 @@ static int remove_active_thread(struct quadd_cpu_context *cpu_ctx, pid_t pid)
 	return 0;
 }
 
-static int task_sched_in(struct kprobe *kp, struct pt_regs *regs)
+void __quadd_task_sched_in(struct task_struct *prev,
+			   struct task_struct *task)
 {
-	int n, prev_flag, current_flag;
-	struct task_struct *prev, *task;
-	int prev_nr_active, new_nr_active;
+	int current_flag;
 	struct quadd_cpu_context *cpu_ctx = this_cpu_ptr(hrt.cpu_ctx);
 	struct quadd_ctx *ctx = hrt.quadd_ctx;
 	struct event_data events[QUADD_MAX_COUNTERS];
 	/* static DEFINE_RATELIMIT_STATE(ratelimit_state, 5 * HZ, 2); */
 
-	if (hrt.active == 0)
-		return 0;
-
-	prev = (struct task_struct *)regs->ARM_r1;
-	task = current;
+	if (likely(hrt.active == 0))
+		return;
 /*
 	if (__ratelimit(&ratelimit_state))
-		pr_info("cpu: %d, prev: %u (%u) \t--> curr: %u (%u)\n",
-			quadd_get_processor_id(), (unsigned int)prev->pid,
+		pr_info("sch_in, cpu: %d, prev: %u (%u) \t--> curr: %u (%u)\n",
+			smp_processor_id(), (unsigned int)prev->pid,
 			(unsigned int)prev->tgid, (unsigned int)task->pid,
 			(unsigned int)task->tgid);
 */
-	if (!prev || !prev->real_parent || !prev->group_leader ||
-		prev->group_leader->tgid != prev->tgid) {
-		pr_err_once("Warning\n");
-		return 0;
-	}
-
-	prev_flag = is_profile_process(prev->tgid);
 	current_flag = is_profile_process(task->tgid);
 
-	if (prev_flag || current_flag) {
-		prev_nr_active = atomic_read(&cpu_ctx->nr_active);
-		qm_debug_task_sched_in(prev->pid, task->pid, prev_nr_active);
+	if (current_flag) {
+		add_active_thread(cpu_ctx, task->pid, task->tgid);
+		atomic_inc(&cpu_ctx->nr_active);
 
-		if (prev_flag) {
-			n = remove_active_thread(cpu_ctx, prev->pid);
-			atomic_sub(n, &cpu_ctx->nr_active);
-		}
-		if (current_flag) {
-			add_active_thread(cpu_ctx, task->pid, task->tgid);
-			atomic_inc(&cpu_ctx->nr_active);
-		}
+		if (atomic_read(&cpu_ctx->nr_active) == 1) {
+			if (ctx->pmu)
+				ctx->pmu->start();
 
-		new_nr_active = atomic_read(&cpu_ctx->nr_active);
-		if (prev_nr_active != new_nr_active) {
-			if (prev_nr_active == 0) {
-				if (ctx->pmu)
-					ctx->pmu->start();
+			if (ctx->pl310)
+				ctx->pl310->read(events);
 
-				if (ctx->pl310)
-					ctx->pl310->read(events);
-
-				start_hrtimer(cpu_ctx);
-				atomic_inc(&hrt.nr_active_all_core);
-			} else if (new_nr_active == 0) {
-				cancel_hrtimer(cpu_ctx);
-				atomic_dec(&hrt.nr_active_all_core);
-
-				if (ctx->pmu)
-					ctx->pmu->stop();
-			}
+			start_hrtimer(cpu_ctx);
+			atomic_inc(&hrt.nr_active_all_core);
 		}
 	}
-
-	return 0;
 }
 
-static int handler_fault(struct kprobe *kp, struct pt_regs *regs, int trapnr)
+void __quadd_task_sched_out(struct task_struct *prev,
+			    struct task_struct *next)
 {
-	pr_err_once("addr: %p, symbol: %s\n", kp->addr, kp->symbol_name);
-	return 0;
-}
+	int n, prev_flag;
+	struct quadd_cpu_context *cpu_ctx = this_cpu_ptr(hrt.cpu_ctx);
+	struct quadd_ctx *ctx = hrt.quadd_ctx;
+	/* static DEFINE_RATELIMIT_STATE(ratelimit_state, 5 * HZ, 2); */
 
-static int start_instr(void)
-{
-	int err;
+	if (likely(hrt.active == 0))
+		return;
+/*
+	if (__ratelimit(&ratelimit_state))
+		pr_info("sch_out: cpu: %d, prev: %u (%u) \t--> next: %u (%u)\n",
+			smp_processor_id(), (unsigned int)prev->pid,
+			(unsigned int)prev->tgid, (unsigned int)next->pid,
+			(unsigned int)next->tgid);
+*/
+	prev_flag = is_profile_process(prev->tgid);
 
-	memset(&hrt.kp_in, 0, sizeof(struct kprobe));
+	if (prev_flag) {
+		n = remove_active_thread(cpu_ctx, prev->pid);
+		atomic_sub(n, &cpu_ctx->nr_active);
 
-	hrt.kp_in.pre_handler = task_sched_in;
-	hrt.kp_in.fault_handler = handler_fault;
-	hrt.kp_in.addr = 0;
-	hrt.kp_in.symbol_name = QUADD_HRT_SCHED_IN_FUNC;
+		if (atomic_read(&cpu_ctx->nr_active) == 0) {
+			cancel_hrtimer(cpu_ctx);
+			atomic_dec(&hrt.nr_active_all_core);
 
-	err = register_kprobe(&hrt.kp_in);
-	if (err) {
-		pr_err("register_kprobe error, symbol_name: %s\n",
-			hrt.kp_in.symbol_name);
-		return err;
+			if (ctx->pmu)
+				ctx->pmu->stop();
+		}
 	}
-	return 0;
-}
-
-static void stop_instr(void)
-{
-	unregister_kprobe(&hrt.kp_in);
-}
-
-static int init_instr(void)
-{
-	int err;
-
-	err = start_instr();
-	if (err) {
-		pr_err("Init instr failed\n");
-		return err;
-	}
-	stop_instr();
-	return 0;
-}
-
-static int deinit_instr(void)
-{
-	return 0;
 }
 
 static void reset_cpu_ctx(void)
@@ -515,7 +454,10 @@ int quadd_hrt_start(void)
 	int err;
 	u64 period;
 	long freq;
+	unsigned int extra;
 	struct quadd_ctx *ctx = hrt.quadd_ctx;
+	struct quadd_cpu_context *cpu_ctx = this_cpu_ptr(hrt.cpu_ctx);
+	struct quadd_parameters *param = &ctx->param;
 
 	freq = ctx->param.freq;
 	freq = max_t(long, QUADD_HRT_MIN_FREQ, freq);
@@ -531,13 +473,17 @@ int quadd_hrt_start(void)
 
 	reset_cpu_ctx();
 
-	err = start_instr();
-	if (err) {
-		pr_err("error: start_instr is failed\n");
-		return err;
-	}
-
 	put_header();
+
+	extra = param->reserved[QUADD_PARAM_IDX_EXTRA];
+
+	if (extra & QUADD_PARAM_IDX_EXTRA_GET_MMAP) {
+		err = quadd_get_current_mmap(cpu_ctx, param->pids[0]);
+		if (err) {
+			pr_err("error: quadd_get_current_mmap\n");
+			return err;
+		}
+	}
 
 	if (ctx->pl310)
 		ctx->pl310->start();
@@ -563,7 +509,6 @@ void quadd_hrt_stop(void)
 	quadd_ma_stop(&hrt);
 
 	hrt.active = 0;
-	stop_instr();
 
 	atomic64_set(&hrt.counter_samples, 0);
 
@@ -575,7 +520,6 @@ void quadd_hrt_deinit(void)
 	if (hrt.active)
 		quadd_hrt_stop();
 
-	deinit_instr();
 	free_percpu(hrt.cpu_ctx);
 }
 
@@ -621,9 +565,6 @@ struct quadd_hrt_ctx *quadd_hrt_init(struct quadd_ctx *ctx)
 
 		init_hrtimer(cpu_ctx);
 	}
-
-	if (init_instr())
-		return NULL;
 
 	return &hrt;
 }

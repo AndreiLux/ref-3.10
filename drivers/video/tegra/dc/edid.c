@@ -33,6 +33,8 @@ struct tegra_edid_pvt {
 	bool				support_stereo;
 	bool				support_underscan;
 	bool				support_audio;
+	int			        hdmi_vic_len;
+	u8			        hdmi_vic[7];
 	/* Note: dc_edid must remain the last member */
 	struct tegra_dc_edid		dc_edid;
 };
@@ -146,6 +148,8 @@ int tegra_edid_read_block(struct tegra_edid *edid, int block, u8 *data)
 	u8 block_buf[] = {block >> 1};
 	u8 cmd_buf[] = {(block & 0x1) * 128};
 	int status;
+	u8 checksum = 0;
+	u8 i;
 	struct i2c_msg msg[] = {
 		{
 			.addr = 0x30,
@@ -183,6 +187,13 @@ int tegra_edid_read_block(struct tegra_edid *edid, int block, u8 *data)
 
 	if (status != msg_len)
 		return -EIO;
+
+	for (i = 0; i < 128; i++)
+		checksum += data[i];
+	if (checksum != 0) {
+		pr_err("%s: checksum failed\n", __func__);
+		return -EIO;
+	}
 
 	return 0;
 }
@@ -277,6 +288,13 @@ int tegra_edid_parse_ext_block(const u8 *raw, int idx,
 					/* 3D_present? */
 					if (j <= len && (ptr[j] & 0x80))
 						edid->support_stereo = 1;
+					/* HDMI_VIC_LEN */
+					if (++j <= len && (ptr[j] & 0xe0)) {
+						int k = 0;
+						edid->hdmi_vic_len = ptr[j] >> 5;
+						for (k = 0; k < edid->hdmi_vic_len; k++)
+						    edid->hdmi_vic[k] = ptr[j+k+1];
+					}
 				}
 			}
 			if ((len > 5) &&
@@ -459,7 +477,7 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 	for (i = 1; i <= extension_blocks; i++) {
 		ret = tegra_edid_read_block(edid, i, data + i * 128);
 		if (ret < 0)
-			break;
+			goto fail;
 
 		if (data[i * 128] == 0x2) {
 			fb_edid_add_monspecs(data + i * 128, specs);
@@ -478,6 +496,30 @@ int tegra_edid_get_monspecs(struct tegra_edid *edid, struct fb_monspecs *specs)
 						FB_VMODE_STEREO_LEFT_RIGHT;
 #endif
 				}
+			}
+
+			if (new_data->hdmi_vic_len > 0) {
+				int k;
+				int l = specs->modedb_len;
+				struct fb_videomode *m;
+				m = kzalloc((specs->modedb_len + new_data->hdmi_vic_len) *
+				    sizeof(struct fb_videomode), GFP_KERNEL);
+				if (!m)
+				    break;
+				memcpy(m, specs->modedb, specs->modedb_len *
+				        sizeof(struct fb_videomode));
+				for (k = 0; k < new_data->hdmi_vic_len; k++) {
+				    unsigned vic = new_data->hdmi_vic[k];
+				    if (vic >= HDMI_EXT_MODEDB_SIZE) {
+				        pr_warning("Unsupported HDMI VIC %d, ignoring\n", vic);
+				        continue;
+				    }
+				    memcpy(&m[l], &hdmi_ext_modes[vic], sizeof(m[l]));
+				    l++;
+				}
+				kfree(specs->modedb);
+				specs->modedb = m;
+				specs->modedb_len = specs->modedb_len + new_data->hdmi_vic_len;
 			}
 		}
 	}

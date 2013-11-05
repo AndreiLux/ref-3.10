@@ -147,6 +147,7 @@ void nvhost_client_writel(struct platform_device *pdev, u32 val, u32 reg)
 {
 	writel(val, get_aperture(pdev) + reg * 4);
 }
+EXPORT_SYMBOL(nvhost_client_writel);
 
 u32 nvhost_client_readl(struct platform_device *pdev, u32 reg)
 {
@@ -279,6 +280,16 @@ static int nvhost_ioctl_channel_alloc_gpfifo(
 	return ret;
 }
 
+static int nvhost_ioctl_channel_set_error_notifier(
+	struct nvhost_channel_userctx *ctx,
+	struct nvhost_set_error_notifier *args)
+{
+	int ret;
+	BUG_ON(!channel_op(ctx->ch).set_error_notifier);
+	ret = channel_op(ctx->ch).set_error_notifier(ctx->hwctx, args);
+	return ret;
+}
+
 static int nvhost_ioctl_channel_submit_gpfifo(
 	struct nvhost_channel_userctx *ctx,
 	struct nvhost_submit_gpfifo_args *args)
@@ -323,6 +334,19 @@ static int nvhost_ioctl_channel_wait(
 	nvhost_module_busy(ctx->ch->dev);
 	ret = channel_op(ctx->ch).wait(ctx->hwctx, args);
 	nvhost_module_idle(ctx->ch->dev);
+	return ret;
+}
+
+static int nvhost_ioctl_channel_set_priority(
+	struct nvhost_channel_userctx *ctx,
+	struct nvhost_set_priority_args *args)
+{
+	int ret = 0;
+	if (channel_op(ctx->ch).set_priority) {
+		nvhost_module_busy(ctx->ch->dev);
+		ret = channel_op(ctx->ch).set_priority(ctx->hwctx, args);
+		nvhost_module_idle(ctx->ch->dev);
+	}
 	return ret;
 }
 
@@ -796,7 +820,7 @@ static u32 create_mask(u32 *words, int num)
 {
 	int i;
 	u32 word = 0;
-	for (i = 0; i < num && words[i] && words[i] < BITS_PER_LONG; i++)
+	for (i = 0; i < num && words[i] && words[i] < 32; i++)
 		word |= BIT(words[i]);
 
 	return word;
@@ -921,6 +945,10 @@ static long nvhost_channelctl(struct file *filp,
 	case NVHOST_IOCTL_CHANNEL_ZCULL_BIND:
 		err = nvhost_ioctl_channel_zcull_bind(priv, (void *)buf);
 		break;
+	case NVHOST_IOCTL_CHANNEL_SET_ERROR_NOTIFIER:
+		err = nvhost_ioctl_channel_set_error_notifier(priv,
+			(void *)buf);
+		break;
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
 	case NVHOST_IOCTL_CHANNEL_CYCLE_STATS:
 		err = nvhost_ioctl_channel_cycle_stats(priv, (void *)buf);
@@ -958,6 +986,7 @@ static long nvhost_channelctl(struct file *filp,
 				priv->hwctx->has_timedout;
 		break;
 	case NVHOST_IOCTL_CHANNEL_SET_PRIORITY:
+		nvhost_ioctl_channel_set_priority(priv, (void *)buf);
 		priv->priority =
 			(u32)((struct nvhost_set_priority_args *)buf)->priority;
 		break;
@@ -1141,11 +1170,13 @@ int nvhost_client_user_init(struct platform_device *dev)
 				"", devno, &nvhost_channelops);
 	if (ch->node == NULL)
 		goto fail;
-	++devno;
-	ch->as_node = nvhost_client_device_create(dev, &ch->as_cdev,
-				"as-", devno, &nvhost_asops);
-	if (ch->as_node == NULL)
-		goto fail;
+	if (pdata->as_ops) {
+		++devno;
+		ch->as_node = nvhost_client_device_create(dev, &ch->as_cdev,
+					"as-", devno, &nvhost_asops);
+		if (ch->as_node == NULL)
+			goto fail;
+	}
 
 	/* module control (npn-channel based, global) interface */
 	if (pdata->ctrl_ops) {
@@ -1182,6 +1213,43 @@ int nvhost_client_user_init(struct platform_device *dev)
 	return 0;
 fail:
 	return err;
+}
+
+void nvhost_client_user_deinit(struct platform_device *dev)
+{
+	struct nvhost_master *nvhost_master = nvhost_get_host(dev);
+	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
+	struct nvhost_channel *ch = pdata->channel;
+
+	BUG_ON(!ch);
+
+	if (ch->node) {
+		device_destroy(nvhost_master->nvhost_class, ch->cdev.dev);
+		cdev_del(&ch->cdev);
+	}
+
+	if (ch->as_node) {
+		device_destroy(nvhost_master->nvhost_class, ch->as_cdev.dev);
+		cdev_del(&ch->as_cdev);
+	}
+
+	if (pdata->ctrl_node) {
+		device_destroy(nvhost_master->nvhost_class,
+			       pdata->ctrl_cdev.dev);
+		cdev_del(&pdata->ctrl_cdev);
+	}
+
+	if (pdata->dbg_node) {
+		device_destroy(nvhost_master->nvhost_class,
+			       pdata->dbg_cdev.dev);
+		cdev_del(&pdata->dbg_cdev);
+	}
+
+	if (pdata->prof_node) {
+		device_destroy(nvhost_master->nvhost_class,
+			       pdata->prof_cdev.dev);
+		cdev_del(&pdata->prof_cdev);
+	}
 }
 
 int nvhost_client_device_init(struct platform_device *dev)
@@ -1230,9 +1298,10 @@ int nvhost_client_device_init(struct platform_device *dev)
 
 	dev_info(&dev->dev, "initialized\n");
 
-	if (pdata->slave) {
+	if (pdata->slave && !pdata->slave_initialized) {
 		pdata->slave->dev.parent = dev->dev.parent;
 		platform_device_register(pdata->slave);
+		pdata->slave_initialized = 1;
 	}
 
 	return 0;
@@ -1246,7 +1315,6 @@ EXPORT_SYMBOL(nvhost_client_device_init);
 
 int nvhost_client_device_release(struct platform_device *dev)
 {
-	struct nvhost_master *nvhost_master = nvhost_get_host(dev);
 	struct nvhost_channel *ch;
 	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
 
@@ -1259,8 +1327,7 @@ int nvhost_client_device_release(struct platform_device *dev)
 	nvhost_device_list_remove(dev);
 
 	/* Release chardev and device node for user space */
-	device_destroy(nvhost_master->nvhost_class, ch->cdev.dev);
-	cdev_del(&ch->cdev);
+	nvhost_client_user_deinit(dev);
 
 	/* Free nvhost channel */
 	nvhost_free_channel(ch);

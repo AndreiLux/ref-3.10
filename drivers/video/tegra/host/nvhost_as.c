@@ -54,7 +54,7 @@ int nvhost_as_dev_open(struct inode *inode, struct file *filp)
 		return -ENOMEM;
 	}
 
-	err = nvhost_as_alloc_share(ch, &as_share, true /*fd-attached path*/);
+	err = nvhost_as_alloc_share(ch, &as_share);
 	if (err) {
 		nvhost_dbg_fn("failed to alloc share");
 		goto clean_up;
@@ -150,15 +150,10 @@ long nvhost_as_dev_ctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 int nvhost_as_init_device(struct platform_device *dev)
 {
-	struct nvhost_master *host = nvhost_get_host(dev);
-	struct nvhost_chip_support *op = nvhost_get_chip_ops();
 	struct nvhost_device_data *pdata = nvhost_get_devdata(dev);
 	struct nvhost_channel *ch = pdata->channel;
 	struct nvhost_as *as;
 	int err = 0;
-
-	if (!op->as.init)
-		return 0;
 
 	if (!ch) {
 		nvhost_err(&dev->dev, "no channel in nvhost_as_init for %s",
@@ -179,18 +174,6 @@ int nvhost_as_init_device(struct platform_device *dev)
 
 		mutex_init(&as->share_list_lock);
 		INIT_LIST_HEAD(&as->share_list);
-
-		err = op->as.init(host, as); /* this sets the as.ops (or not) */
-		if (err)
-			goto failed;
-		if (!as->ops) {
-			nvhost_dbg_fn("%s doesn't claim as support"
-				      ", removing...", dev->name);
-			/* support not available for this module */
-			/* it isn't an error, just deallocate the as */
-			kfree(as);
-			ch->as = 0;
-		}
 	}
 
 	return 0;
@@ -217,9 +200,9 @@ static void release_as_share_id(struct nvhost_as *as, int id)
 }
 
 int nvhost_as_alloc_share(struct nvhost_channel *ch,
-			  struct nvhost_as_share **_as_share,
-			  bool has_fd)
+			  struct nvhost_as_share **_as_share)
 {
+	struct nvhost_device_data *pdata = nvhost_get_devdata(ch->dev);
 	struct nvhost_as *as = ch->as;
 	struct nvhost_as_share *as_share;
 	int err = 0;
@@ -238,7 +221,7 @@ int nvhost_as_alloc_share(struct nvhost_channel *ch,
 	as_share->id      = generate_as_share_id(as_share->as);
 
 	/* call module to allocate hw resources */
-	err = as->ops->alloc_share(as_share);
+	err = pdata->as_ops->alloc_share(as_share);
 	if (err)
 		goto failed;
 
@@ -248,8 +231,7 @@ int nvhost_as_alloc_share(struct nvhost_channel *ch,
 	 * handle both that case and when we've created and bound a share
 	 * w/o the attached fd.
 	 */
-	if (has_fd)
-		as_share->ref_cnt.counter = 1;
+	as_share->ref_cnt.counter = 1;
 	/* else set at from kzalloc above 0 */
 
 	/* add the share to the set of all shares on the module */
@@ -279,6 +261,8 @@ int nvhost_as_release_share(struct nvhost_as_share *as_share,
 			     struct nvhost_hwctx *hwctx)
 {
 	int err;
+	struct nvhost_device_data *pdata =
+		nvhost_get_devdata(as_share->ch->dev);
 
 	nvhost_dbg_fn("");
 
@@ -293,7 +277,7 @@ int nvhost_as_release_share(struct nvhost_as_share *as_share,
 	if (atomic_dec_return(&as_share->ref_cnt) > 0)
 		return 0;
 
-	err = as_share->as->ops->release_share(as_share);
+	err = pdata->as_ops->release_share(as_share);
 
 	mutex_lock(&as_share->as->share_list_lock);
 	list_del(&as_share->share_list_node);
@@ -311,10 +295,12 @@ static int bind_share(struct nvhost_as_share *as_share,
 		      struct nvhost_hwctx *hwctx)
 {
 	int err = 0;
+	struct nvhost_device_data *pdata =
+		nvhost_get_devdata(as_share->ch->dev);
 	nvhost_dbg_fn("");
 
 	atomic_inc(&as_share->ref_cnt);
-	err = as_share->as->ops->bind_hwctx(as_share, hwctx);
+	err = pdata->as_ops->bind_hwctx(as_share, hwctx);
 	if (err) {
 		atomic_dec(&as_share->ref_cnt);
 		return err;
@@ -324,37 +310,6 @@ static int bind_share(struct nvhost_as_share *as_share,
 	mutex_lock(&as_share->bound_list_lock);
 	list_add_tail(&hwctx->as_share_bound_list_node, &as_share->bound_list);
 	mutex_unlock(&as_share->bound_list_lock);
-
-	return 0;
-}
-
-/* when clients have not set up a share themselves this
- * can be called to set up and bind to a new one.
- * however since they (presumably) have no access to the
- * address space device node for the module they must
- * use the channel map/unmap apis (deprecated) to manipulate
- * the share */
-int nvhost_as_alloc_and_bind_share(struct nvhost_channel *ch,
-				   struct nvhost_hwctx *hwctx)
-{
-	struct nvhost_as *as = ch->as;
-	struct nvhost_as_share *as_share = 0;
-	int err = 0;
-
-	nvhost_dbg_fn("");
-
-	if (!as)
-		return -ENOENT;
-
-	err = nvhost_as_alloc_share(ch, &as_share, false /*no-fd path*/);
-	if (err)
-		return err;
-
-	err = bind_share(as_share, hwctx);
-	if (err) {
-		nvhost_as_release_share(as_share, hwctx);
-		return err;
-	}
 
 	return 0;
 }
@@ -379,24 +334,30 @@ int nvhost_as_ioctl_bind_channel(struct nvhost_as_share *as_share,
 int nvhost_as_ioctl_alloc_space(struct nvhost_as_share *as_share,
 				struct nvhost_as_alloc_space_args *args)
 {
+	struct nvhost_device_data *pdata =
+		nvhost_get_devdata(as_share->ch->dev);
 	nvhost_dbg_fn("");
-	return as_share->as->ops->alloc_space(as_share, args);
+	return pdata->as_ops->alloc_space(as_share, args);
 
 }
 
 int nvhost_as_ioctl_free_space(struct nvhost_as_share *as_share,
 			       struct nvhost_as_free_space_args *args)
 {
+	struct nvhost_device_data *pdata =
+		nvhost_get_devdata(as_share->ch->dev);
 	nvhost_dbg_fn("");
-	return as_share->as->ops->free_space(as_share, args);
+	return pdata->as_ops->free_space(as_share, args);
 }
 
 int nvhost_as_ioctl_map_buffer(struct nvhost_as_share *as_share,
 			       struct nvhost_as_map_buffer_args *args)
 {
+	struct nvhost_device_data *pdata =
+		nvhost_get_devdata(as_share->ch->dev);
 	nvhost_dbg_fn("");
 
-	return as_share->as->ops->map_buffer(as_share,
+	return pdata->as_ops->map_buffer(as_share,
 					     args->nvmap_fd, args->nvmap_handle,
 					     &args->o_a.align, args->flags);
 	/* args->o_a.offset will be set if !err */
@@ -405,7 +366,9 @@ int nvhost_as_ioctl_map_buffer(struct nvhost_as_share *as_share,
 int nvhost_as_ioctl_unmap_buffer(struct nvhost_as_share *as_share,
 				 struct nvhost_as_unmap_buffer_args *args)
 {
+	struct nvhost_device_data *pdata =
+		nvhost_get_devdata(as_share->ch->dev);
 	nvhost_dbg_fn("");
 
-	return as_share->as->ops->unmap_buffer(as_share, args->offset);
+	return pdata->as_ops->unmap_buffer(as_share, args->offset);
 }

@@ -101,6 +101,15 @@ struct tegra_dc_out_ops {
 			struct fb_videomode *mode);
 	/* setup pixel clock and parent clock programming */
 	long (*setup_clk)(struct tegra_dc *dc, struct clk *clk);
+	/*
+	 * return true if display client is suspended during OSidle.
+	 * If true, dc will not wait on any display client event
+	 * during OSidle.
+	 */
+	bool (*osidle)(struct tegra_dc *dc);
+	/* callback after new mode is programmed.
+	 * dc clocks are on at this point */
+	void (*modeset_notifier)(struct tegra_dc *dc);
 };
 
 struct tegra_dc_shift_clk_div {
@@ -209,6 +218,10 @@ struct tegra_dc {
 	atomic_t			frame_end_ref;
 
 	bool				mode_dirty;
+
+	u32				reserved_bw;
+	u32				available_bw;
+	struct tegra_dc_win		tmp_wins[DC_N_WINDOWS];
 };
 
 #endif

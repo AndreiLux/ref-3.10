@@ -37,22 +37,26 @@
 #include <linux/thermal.h>
 #include <linux/platform_data/thermal_sensors.h>
 #include <linux/bug.h>
+#include <linux/tegra-fuse.h>
 
-#include <mach/tegra_fuse.h>
 
 #include "iomap.h"
 #include "tegra3_tsensor.h"
 #include "fuse.h"
 #include "tegra11_soctherm.h"
 #include "gpio-names.h"
+#include "common.h"
 
 /* Min temp granularity specified as X in 2^X.
- * -1: Hi precision option: 2^-1 = 0.5C
+ * -1: Hi precision option: 2^-1 = 0.5C (T12x onwards)
  *  0: Lo precision option: 2^0  = 1.0C
- *  NB: We must use lower precision (0) due to cp_fuse corrections
- *  (see Sec9.2 T35_Thermal_Sensing_IAS.docx)
  */
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+static const int precision = -1; /* Use high precision on T12x */
+#else
 static const int precision; /* default 0 -> low precision */
+#endif
+
 #define LOWER_PRECISION_FOR_CONV(val)	((!precision) ? ((val)*2) : (val))
 #define LOWER_PRECISION_FOR_TEMP(val)	((!precision) ? ((val)/2) : (val))
 #define PRECISION_IS_LOWER()		((!precision))
@@ -852,6 +856,7 @@ static int soctherm_hw_action_get_cur_state(struct thermal_cooling_device *cdev,
 	struct thermal_trip_info *trip_state = cdev->devdata;
 	u32 r, m, n;
 	int i, j;
+	u32 tegra_chip_id;
 
 	if (!trip_state)
 		return 0;
@@ -860,6 +865,7 @@ static int soctherm_hw_action_get_cur_state(struct thermal_cooling_device *cdev,
 	if (trip_state->trip_type != THERMAL_TRIP_HOT)
 		return 0;
 
+	tegra_chip_id = tegra_get_chip_id();
 	for (j = 0; j < THROTTLE_DEV_SIZE; j++) {
 		r = soctherm_readl(CPU_PSKIP_STATUS + (j * 4));
 		if (!REG_GET(r, CPU_PSKIP_STATUS_ENABLED))
@@ -895,6 +901,8 @@ static int soctherm_hw_action_set_cur_state(struct thermal_cooling_device *cdev,
 	return 0; /* hw sets this state */
 }
 
+static struct thermal_cooling_device *soctherm_hw_critical_cdev;
+static struct thermal_cooling_device *soctherm_hw_hot_cdev;
 static struct thermal_cooling_device_ops soctherm_hw_action_ops = {
 	.get_max_state = soctherm_hw_action_get_max_state,
 	.get_cur_state = soctherm_hw_action_get_cur_state,
@@ -1232,7 +1240,10 @@ static int __init soctherm_thermal_sys_init(void)
 		for (j = 0; j < therm->num_trips; j++) {
 			switch (therm->trips[j].trip_type) {
 			case THERMAL_TRIP_CRITICAL:
-				thermal_cooling_device_register(
+				if (soctherm_hw_critical_cdev)
+					break;
+				soctherm_hw_critical_cdev =
+					thermal_cooling_device_register(
 						therm->trips[j].cdev_type,
 						&therm->trips[j],
 						&soctherm_hw_action_ops);
@@ -1274,10 +1285,13 @@ static int __init soctherm_thermal_sys_init(void)
 					     && k == THROTTLE_OC5))
 						continue;
 
-					thermal_cooling_device_register(
-						therm->trips[j].cdev_type,
-						&therm->trips[j],
-						&soctherm_hw_action_ops);
+					if (soctherm_hw_hot_cdev)
+						continue;
+					soctherm_hw_hot_cdev =
+						thermal_cooling_device_register(
+						      therm->trips[j].cdev_type,
+						      &therm->trips[j],
+						      &soctherm_hw_action_ops);
 				}
 				break;
 
@@ -1561,12 +1575,14 @@ static irqreturn_t soctherm_edp_isr(int irq, void *arg)
 static void tegra11_soctherm_throttle_program(enum soctherm_throttle_id throt)
 {
 	u32 r;
+	u32 tegra_chip_id;
 	int i;
 	u8 gk20a_throt;
 	bool throt_enable = false;
 	struct soctherm_throttle_dev *dev;
 	struct soctherm_throttle *data = &plat_data.throttle[throt];
 
+	tegra_chip_id = tegra_get_chip_id();
 	for (i = 0; i < THROTTLE_DEV_SIZE; i++) {
 		dev = &data->devs[i];
 		if (!dev->enable)
@@ -1668,6 +1684,7 @@ static int __init soctherm_clk_init(void)
 {
 	unsigned long default_soctherm_clk_rate;
 	unsigned long default_tsensor_clk_rate;
+	u32 tegra_chip_id;
 
 	soctherm_clk = clk_get_sys("soc_therm", NULL);
 	tsensor_clk = clk_get_sys("tegra-tsensor", NULL);
@@ -1679,6 +1696,7 @@ static int __init soctherm_clk_init(void)
 		return -EINVAL;
 	}
 
+	tegra_chip_id = tegra_get_chip_id();
 	/* initialize default clock rates */
 	if (tegra_chip_id == TEGRA_CHIPID_TEGRA11) {
 		default_soctherm_clk_rate =
@@ -1735,14 +1753,16 @@ static int soctherm_fuse_read_calib_base(void)
 {
 	s32 calib_cp, calib_ft;
 	s32 nominal_calib_cp, nominal_calib_ft;
+	u32 tegra_chip_id;
 
-	if (tegra_fuse_calib_base_get_cp(&fuse_calib_base_cp, &calib_cp) ||
-	    tegra_fuse_calib_base_get_ft(&fuse_calib_base_ft, &calib_ft)) {
+	if (tegra_fuse_calib_base_get_cp(&fuse_calib_base_cp, &calib_cp) < 0 ||
+	    tegra_fuse_calib_base_get_ft(&fuse_calib_base_ft, &calib_ft) < 0) {
 		pr_err("soctherm: ERROR: Improper CP or FT calib fuse.\n");
 		return -EINVAL;
 	}
 
 	nominal_calib_cp = 25;
+	tegra_chip_id = tegra_get_chip_id();
 	if (tegra_chip_id == TEGRA_CHIPID_TEGRA11)
 		nominal_calib_ft = 90;
 	else if (tegra_chip_id == TEGRA_CHIPID_TEGRA14)
@@ -1821,12 +1841,36 @@ static int t12x_fuse_corr_beta[] = { /* scaled *1000000 */
 	[TSENSE_PLLX] =  -7410700,
 };
 
+static int t12x_fuse_corr_alpa2[] = { /* scaled *1000000 */
+	[TSENSE_CPU0] = 1135400,
+	[TSENSE_CPU1] = 1122220,
+	[TSENSE_CPU2] = 1127000,
+	[TSENSE_CPU3] = 1110900,
+	[TSENSE_MEM0] = 1122300,
+	[TSENSE_MEM1] = 1145700,
+	[TSENSE_GPU]  = 1120100,
+	[TSENSE_PLLX] = 1106500,
+};
+
+static int t12x_fuse_corr_beta2[] = { /* scaled *1000000 */
+	[TSENSE_CPU0] =  -6266900,
+	[TSENSE_CPU1] =  -5700700,
+	[TSENSE_CPU2] =  -6768200,
+	[TSENSE_CPU3] =  -6232000,
+	[TSENSE_MEM0] =  -5936400,
+	[TSENSE_MEM1] =  -7124600,
+	[TSENSE_GPU]  =  -6000500,
+	[TSENSE_PLLX] =  -6729300,
+};
+
 static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 {
 	u32 r, value;
 	s32 calib, delta_sens, delta_temp;
 	s16 therm_a, therm_b;
 	s32 div, mult, actual_tsensor_ft, actual_tsensor_cp;
+	u32 tegra_chip_id;
+	int fuse_rev;
 
 	tegra_fuse_get_tsensor_calib(sensor2tsensorcalib[sensor], &value);
 
@@ -1855,6 +1899,7 @@ static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 				     ((s64)actual_tsensor_cp * actual_temp_ft)),
 				    (s64)delta_sens);
 
+	tegra_chip_id = tegra_get_chip_id();
 	/* FUSE corrections for Tegra when precision is set LOW */
 	if (PRECISION_IS_LOWER()) {
 		if (tegra_chip_id == TEGRA_CHIPID_TEGRA11) {
@@ -1875,17 +1920,30 @@ static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 			therm_b = div64_s64_precise(
 				(s64)therm_b * t14x_fuse_corr_alpha[sensor] +
 				t14x_fuse_corr_beta[sensor], (s64)1000000LL);
-		} else if (tegra_chip_id == TEGRA_CHIPID_TEGRA12) {
-			t12x_fuse_corr_alpha[sensor] =
-				t12x_fuse_corr_alpha[sensor] ?: 1000000;
-			therm_a = div64_s64_precise(
-				(s64)therm_a * t12x_fuse_corr_alpha[sensor],
-				(s64)1000000LL);
-			therm_b = div64_s64_precise(
-				(s64)therm_b * t12x_fuse_corr_alpha[sensor] +
-				t12x_fuse_corr_beta[sensor], (s64)1000000LL);
 		}
-		/* TO DO: Add therm_a & therm_b calculation for T124 */
+	} else {
+		if (tegra_chip_id == TEGRA_CHIPID_TEGRA12) {
+			fuse_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
+			if (fuse_rev == 0) { /* new CP1/CP2 */
+				t12x_fuse_corr_alpa2[sensor] =
+					t12x_fuse_corr_alpa2[sensor] ?: 1000000;
+				therm_a = div64_s64_precise(
+				  (s64)therm_a * t12x_fuse_corr_alpa2[sensor],
+				  (s64)1000000LL);
+				therm_b = div64_s64_precise(
+				  (s64)therm_b * t12x_fuse_corr_alpa2[sensor] +
+				  t12x_fuse_corr_beta2[sensor], (s64)1000000LL);
+			} else { /* old CP/FT */
+				t12x_fuse_corr_alpha[sensor] =
+					t12x_fuse_corr_alpha[sensor] ?: 1000000;
+				therm_a = div64_s64_precise(
+				  (s64)therm_a * t12x_fuse_corr_alpha[sensor],
+				  (s64)1000000LL);
+				therm_b = div64_s64_precise(
+				  (s64)therm_b * t12x_fuse_corr_alpha[sensor] +
+				  t12x_fuse_corr_beta[sensor], (s64)1000000LL);
+			}
+		}
 	}
 
 	therm_a = LOWER_PRECISION_FOR_TEMP(therm_a);
@@ -2000,7 +2058,9 @@ static int soctherm_init_platform_data(void)
 	int i, j, k;
 	long rem;
 	u32 r;
+	u32 tegra_chip_id;
 
+	tegra_chip_id = tegra_get_chip_id();
 	if (tegra_chip_id == TEGRA_CHIPID_TEGRA11)
 		sensor_defaults = default_t11x_sensor_params;
 	else if (tegra_chip_id == TEGRA_CHIPID_TEGRA14)
@@ -2009,6 +2069,7 @@ static int soctherm_init_platform_data(void)
 		sensor_defaults = default_t12x_sensor_params;
 	else
 		BUG();
+
 	/* initialize default values for unspecified params */
 	for (i = 0; i < TSENSE_SIZE; i++) {
 		therm = &plat_data.therm[tsensor2therm_map[i]];
@@ -2139,9 +2200,9 @@ static void soctherm_suspend_locked(void)
 		soctherm_writel((u32)-1, OC_INTR_DISABLE);
 		disable_irq(INT_THERMAL);
 		disable_irq(INT_EDP);
-		soctherm_clk_enable(false);
 		soctherm_init_platform_done = false;
 		soctherm_suspended = true;
+		/* soctherm_clk_enable(false);*/
 	}
 }
 
@@ -2156,8 +2217,8 @@ static int soctherm_suspend(void)
 static void soctherm_resume_locked(void)
 {
 	if (soctherm_suspended) {
+		/* soctherm_clk_enable(true);*/
 		soctherm_suspended = false;
-		soctherm_clk_enable(true);
 		soctherm_init_platform_data();
 		soctherm_init_platform_done = true;
 		soctherm_update();
@@ -2315,7 +2376,9 @@ static int tegra11_soctherem_oc_int_init(int irq_base, int num_irqs)
 int __init tegra11_soctherm_init(struct soctherm_platform_data *data)
 {
 	int ret;
+	u32 tegra_chip_id;
 
+	tegra_chip_id = tegra_get_chip_id();
 	if (!(tegra_chip_id == TEGRA_CHIPID_TEGRA11 ||
 	      tegra_chip_id == TEGRA_CHIPID_TEGRA14 ||
 	      tegra_chip_id == TEGRA_CHIPID_TEGRA12)) {
@@ -2376,6 +2439,7 @@ static int regs_show(struct seq_file *s, void *data)
 	u32 state;
 	int tcpu[TSENSE_SIZE];
 	int i, j, level;
+	u32 tegra_chip_id;
 
 	if (soctherm_suspended) {
 		seq_printf(s, "SOC_THERM is SUSPENDED\n");
@@ -2534,6 +2598,7 @@ static int regs_show(struct seq_file *s, void *data)
 	state = REG_GET(r, CPU_PSKIP_STATUS_ENABLED);
 	seq_printf(s, "enabled(%d)\n", state);
 
+	tegra_chip_id = tegra_get_chip_id();
 	r = soctherm_readl(CPU_PSKIP_STATUS + 4);
 	if (tegra_chip_id == TEGRA_CHIPID_TEGRA12) {
 		state = REG_GET(r, CPU_PSKIP_STATUS_ENABLED);

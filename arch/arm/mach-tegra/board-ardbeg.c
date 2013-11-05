@@ -34,6 +34,7 @@
 #include <linux/platform_data/tegra_usb.h>
 #include <linux/spi/spi.h>
 #include <linux/spi/rm31080a_ts.h>
+#include <linux/maxim_sti.h>
 #include <linux/memblock.h>
 #include <linux/spi/spi-tegra.h>
 #include <linux/nfc/pn544.h>
@@ -54,9 +55,12 @@
 #include <linux/mfd/palmas.h>
 #include <linux/clk/tegra.h>
 #include <media/tegra_dtv.h>
+#include <linux/clocksource.h>
+#include <linux/irqchip.h>
+#include <linux/irqchip/tegra.h>
+#include <linux/pci-tegra.h>
 
 #include <mach/irqs.h>
-#include <mach/pci.h>
 #include <mach/tegra_fiq_debugger.h>
 
 #include <mach/pinmux.h>
@@ -72,19 +76,19 @@
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_usb_modem_power.h>
 #include <linux/platform_data/tegra_ahci.h>
+#include <linux/irqchip/tegra.h>
 
 #include "board.h"
 #include "board-ardbeg.h"
 #include "board-common.h"
 #include "board-touch-raydium.h"
+#include "board-touch-maxim_sti.h"
 #include "clock.h"
 #include "common.h"
 #include "devices.h"
-#include "fuse.h"
 #include "gpio-names.h"
 #include "iomap.h"
 #include "pm.h"
-#include "pm-irq.h"
 #include "tegra-board-id.h"
 
 static struct board_info board_info, display_board_info;
@@ -347,7 +351,6 @@ static struct platform_device ardbeg_audio_device_rt5639 = {
 
 static void __init ardbeg_uart_init(void)
 {
-	int debug_port_id;
 
 #ifndef CONFIG_USE_OF
 	tegra_uarta_device.dev.platform_data = &ardbeg_uarta_pdata;
@@ -358,16 +361,19 @@ static void __init ardbeg_uart_init(void)
 #endif
 	tegra_uartd_device.dev.platform_data = &ardbeg_uartd_pdata;
 	if (!is_tegra_debug_uartport_hs()) {
-		debug_port_id = uart_console_debug_init(3);
+		int debug_port_id = uart_console_debug_init(3);
 		if (debug_port_id < 0)
 			return;
 
+#ifdef CONFIG_TEGRA_FIQ_DEBUGGER
+		tegra_serial_debug_init_irq_mode(TEGRA_UARTD_BASE, INT_UARTD, NULL, -1, -1);
+#else
 		platform_device_register(uart_console_debug_device);
+#endif
 	} else {
 		tegra_uartd_device.dev.platform_data = &ardbeg_uartd_pdata;
 		platform_device_register(&tegra_uartd_device);
 	}
-
 }
 
 static struct resource tegra_rtc_resources[] = {
@@ -391,17 +397,24 @@ static struct platform_device tegra_rtc_device = {
 };
 
 #ifdef CONFIG_SATA_AHCI_TEGRA
-static void bonaire_sata_init(void)
+static struct tegra_ahci_platform_data tegra_ahci_platform_data0 = {
+	.gen2_rx_eq = -1,
+	.pexp_gpio = PMU_TCA6416_GPIO(9),
+};
+
+static void ardbeg_sata_init(void)
 {
-	struct tegra_ahci_platform_data *pdata;
+	struct board_info board_info;
 
-	pdata = tegra_sata_device.dev.platform_data;
-	pdata->pexp_gpio = PMU_TCA6416_GPIO(9);
+	tegra_get_board_info(&board_info);
+	if (board_info.board_id == BOARD_PM363)
+		tegra_ahci_platform_data0.pexp_gpio = -1;
 
+	tegra_sata_device.dev.platform_data = &tegra_ahci_platform_data0;
 	platform_device_register(&tegra_sata_device);
 }
 #else
-static void bonaire_sata_init(void) { }
+static void ardbeg_sata_init(void) { }
 #endif
 
 static struct tegra_pci_platform_data laguna_pcie_platform_data = {
@@ -410,6 +423,7 @@ static struct tegra_pci_platform_data laguna_pcie_platform_data = {
 	.use_dock_detect	= 1,
 	.gpio	= TEGRA_GPIO_PO1,
 	.gpio_x1_slot	= PMU_TCA6416_GPIO(8),
+	.board_id	= BOARD_PM358,
 };
 
 static void laguna_pcie_init(void)
@@ -422,6 +436,7 @@ static void laguna_pcie_init(void)
 		board_info.board_id == BOARD_PM363)
 			laguna_pcie_platform_data.port_status[1] = 0;
 
+	laguna_pcie_platform_data.board_id = board_info.board_id;
 	tegra_pci_device.dev.platform_data = &laguna_pcie_platform_data;
 	platform_device_register(&tegra_pci_device);
 }
@@ -430,6 +445,9 @@ static struct platform_device *ardbeg_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
 	&tegra_udc_device,
+#if defined(CONFIG_TEGRA_WATCHDOG)
+	&tegra_wdt0_device,
+#endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
@@ -560,6 +578,7 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 static struct gpio modem_gpios[] = { /* Bruce modem */
 	{MODEM_EN, GPIOF_OUT_INIT_HIGH, "MODEM EN"},
 	{MDM_RST, GPIOF_OUT_INIT_LOW, "MODEM RESET"},
+	{MDM_SAR0, GPIOF_OUT_INIT_LOW, "MODEM SAR0"},
 };
 
 static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
@@ -622,6 +641,7 @@ static void ardbeg_usb_init(void)
 			tegra_otg_pdata.id_extcon_dev_name = "as3722-extcon";
 			break;
 		case BOARD_E1736:
+		case BOARD_E1769:
 		case BOARD_E1735:
 			/* Device cable is detected through PMU Interrupt */
 			tegra_udc_pdata.support_pmu_vbus = true;
@@ -774,6 +794,7 @@ static int baseband_init(void)
 
 	/* export GPIO for user space access through sysfs */
 	gpio_export(MDM_RST, false);
+	gpio_export(MDM_SAR0, false);
 
 	return 0;
 }
@@ -821,7 +842,8 @@ static void ardbeg_modem_init(void)
 			/* Set specific USB wake source for Ardbeg */
 			if (board_info.board_id == BOARD_E1780)
 				tegra_set_wake_source(42, INT_USB2);
-			if (pmu_board_info.board_id == BOARD_E1736)
+			if (pmu_board_info.board_id == BOARD_E1736 ||
+				pmu_board_info.board_id == BOARD_E1769)
 				baseband_pdata.regulator_name = NULL;
 			platform_device_register(&icera_bruce_device);
 		}
@@ -874,7 +896,7 @@ static void __init ardbeg_spi_init(void)
 #endif
 
 #ifdef CONFIG_USE_OF
-struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
+static struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d400, "spi-tegra114.0",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d600, "spi-tegra114.1",
@@ -892,7 +914,9 @@ struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
+#ifdef CONFIG_ARCH_TEGRA_VIC
 	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+#endif
 	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
@@ -920,6 +944,36 @@ struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
 };
 #endif
 
+struct maxim_sti_pdata maxim_sti_pdata = {
+	.touch_fusion         = "/vendor/bin/touch_fusion",
+	.config_file          = "/vendor/firmware/touch_fusion.cfg",
+	.fw_name              = "maxim_fp35.bin",
+	.nl_family            = TF_FAMILY_NAME,
+	.nl_mc_groups         = 5,
+	.chip_access_method   = 2,
+	.default_reset_state  = 0,
+	.tx_buf_size          = 4100,
+	.rx_buf_size          = 4100,
+	.gpio_reset           = TOUCH_GPIO_RST_MAXIM_STI_SPI,
+	.gpio_irq             = TOUCH_GPIO_IRQ_MAXIM_STI_SPI
+};
+
+static struct tegra_spi_device_controller_data maxim_dev_cdata = {
+	.rx_clk_tap_delay = 0,
+	.is_hw_based_cs = true,
+	.tx_clk_tap_delay = 0,
+};
+
+struct spi_board_info maxim_sti_spi_board = {
+	.modalias = MAXIM_STI_NAME,
+	.bus_num = TOUCH_SPI_ID,
+	.chip_select = TOUCH_SPI_CS,
+	.max_speed_hz = 12 * 1000 * 1000,
+	.mode = SPI_MODE_0,
+	.platform_data = &maxim_sti_pdata,
+	.controller_data = &maxim_dev_cdata,
+};
+
 static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	/* name         parent          rate            enabled */
 	{ "extern2",    "pll_p",        41000000,       false},
@@ -927,7 +981,7 @@ static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	{ NULL,         NULL,           0,              0},
 };
 
-struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
+static struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
 	.platform_id = RM_PLATFORM_A010,
@@ -936,11 +990,11 @@ struct rm_spi_ts_platform_data rm31080ts_ardbeg_data = {
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 16,
+	.rx_clk_tap_delay = 0,
 	.tx_clk_tap_delay = 16,
 };
 
-struct spi_board_info rm31080a_ardbeg_spi_board[1] = {
+static struct spi_board_info rm31080a_ardbeg_spi_board[1] = {
 	{
 		.modalias = "rm_ts_spidev",
 		.bus_num = TOUCH_SPI_ID,
@@ -954,19 +1008,112 @@ struct spi_board_info rm31080a_ardbeg_spi_board[1] = {
 
 static int __init ardbeg_touch_init(void)
 {
-	tegra_clk_init_from_table(touch_clk_init_table);
-	rm31080a_ardbeg_spi_board[0].irq =
-		gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
-	touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
+	if (tegra_get_touch_vendor_id() == MAXIM_TOUCH) {
+		pr_info("%s init maxim touch\n", __func__);
+#if defined(CONFIG_TOUCHSCREEN_MAXIM_STI) || \
+	defined(CONFIG_TOUCHSCREEN_MAXIM_STI_MODULE)
+		(void)touch_init_maxim_sti(&maxim_sti_spi_board);
+#endif
+	} else if (tegra_get_touch_vendor_id() == RAYDIUM_TOUCH) {
+		pr_info("%s init raydium touch\n", __func__);
+		tegra_clk_init_from_table(touch_clk_init_table);
+		rm31080a_ardbeg_spi_board[0].irq =
+			gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
+		touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
 				TOUCH_GPIO_RST_RAYDIUM_SPI,
 				&rm31080ts_ardbeg_data,
 				&rm31080a_ardbeg_spi_board[0],
 				ARRAY_SIZE(rm31080a_ardbeg_spi_board));
+	}
 	return 0;
+}
+
+static void __init ardbeg_sysedp_init(void)
+{
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100) {
+			tn8_new_sysedp_init();
+		}
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+	default:
+		break;
+	}
+}
+
+static void __init ardbeg_sysedp_dynamic_capping_init(void)
+{
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100)
+			tn8_sysedp_dynamic_capping_init();
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+	default:
+		break;
+	}
+}
+
+static void __init ardbeg_sysedp_batmon_init(void)
+{
+	struct board_info bi;
+
+	if (!IS_ENABLED(CONFIG_SYSEDP_FRAMEWORK))
+		return;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100)
+			tn8_sysedp_batmon_init();
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+	default:
+		break;
+	}
+}
+
+
+
+static void __init edp_init(void)
+{
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100)
+			tn8_edp_init();
+		else
+			ardbeg_edp_init();
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+			laguna_edp_init();
+			break;
+	default:
+			ardbeg_edp_init();
+			break;
+	}
 }
 
 static void __init tegra_ardbeg_early_init(void)
 {
+	ardbeg_sysedp_init();
 	tegra_clk_init_from_table(ardbeg_clk_init_table);
 	tegra_clk_verify_parents();
 	if (of_machine_is_compatible("nvidia,laguna"))
@@ -987,6 +1134,22 @@ static void __init ardbeg_dtv_init(void)
 	platform_device_register(&tegra_dtv_device);
 }
 
+static struct tegra_io_dpd pexbias_io = {
+	.name			= "PEX_BIAS",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 4,
+};
+static struct tegra_io_dpd pexclk1_io = {
+	.name			= "PEX_CLK1",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 5,
+};
+static struct tegra_io_dpd pexclk2_io = {
+	.name			= "PEX_CLK2",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 6,
+};
+
 static void __init tegra_ardbeg_late_init(void)
 {
 	struct board_info board_info;
@@ -1002,12 +1165,13 @@ static void __init tegra_ardbeg_late_init(void)
 		laguna_pinmux_init();
 	else
 		ardbeg_pinmux_init();
+
+	ardbeg_uart_init();
 	ardbeg_usb_init();
 	ardbeg_modem_init();
 	ardbeg_xusb_init();
 	ardbeg_i2c_init();
 	ardbeg_spi_init();
-	ardbeg_uart_init();
 	ardbeg_audio_init();
 	platform_add_devices(ardbeg_devices, ARRAY_SIZE(ardbeg_devices));
 	//tegra_ram_console_debug_init();
@@ -1022,11 +1186,12 @@ static void __init tegra_ardbeg_late_init(void)
 	ardbeg_dtv_init();
 	ardbeg_suspend_init();
 /* TODO: add support for laguna board when dvfs table is ready */
-	if (board_info.board_id == BOARD_E1780 &&
-			(tegra_get_memory_type() == 0))
+	if ((board_info.board_id == BOARD_E1780 &&
+		(tegra_get_memory_type() == 0)) ||
+		(board_info.board_id == BOARD_E1792))
 		ardbeg_emc_init();
 
-	ardbeg_edp_init();
+	edp_init();
 	isomgr_init();
 	ardbeg_touch_init();
 	ardbeg_panel_init();
@@ -1039,10 +1204,16 @@ static void __init tegra_ardbeg_late_init(void)
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM363)
 		laguna_pcie_init();
+	else {
+		/* put PEX pads into DPD mode to save additional power */
+		tegra_io_dpd_enable(&pexbias_io);
+		tegra_io_dpd_enable(&pexclk1_io);
+		tegra_io_dpd_enable(&pexclk2_io);
+	}
+
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
 #endif
-	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
 
 	ardbeg_sensors_init();
 
@@ -1050,8 +1221,9 @@ static void __init tegra_ardbeg_late_init(void)
 
 	ardbeg_setup_bluedroid_pm();
 	tegra_register_fuse();
-	bonaire_sata_init();
-	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
+
+	ardbeg_sysedp_dynamic_capping_init();
+	ardbeg_sysedp_batmon_init();
 }
 
 static void __init ardbeg_ramconsole_reserve(unsigned long size)
@@ -1113,8 +1285,8 @@ DT_MACHINE_START(LAGUNA, "laguna")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_ardbeg_reserve,
 	.init_early	= tegra_ardbeg_init_early,
-	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_ardbeg_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= laguna_dt_board_compat,
@@ -1127,8 +1299,8 @@ DT_MACHINE_START(TN8, "tn8")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_ardbeg_reserve,
 	.init_early	= tegra_ardbeg_init_early,
-	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_ardbeg_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= tn8_dt_board_compat,
@@ -1141,8 +1313,8 @@ DT_MACHINE_START(ARDBEG, "ardbeg")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_ardbeg_reserve,
 	.init_early	= tegra_ardbeg_init_early,
-	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_ardbeg_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= ardbeg_dt_board_compat,

@@ -419,7 +419,7 @@ static int dvfs_rail_update(struct dvfs_rail *rail)
 		return 0;
 	/* Keep current voltage if regulator must not be disabled at run time */
 	else if (!rail->jmp_to_zero) {
-		WARN(1, "%s cannot be turned off by dvfs\n");
+		WARN(1, "%s cannot be turned off by dvfs\n", rail->reg_id);
 		return 0;
 	}
 	/* else: fall thru if regulator is turned off by side band signaling */
@@ -626,6 +626,13 @@ __tegra_dvfs_set_rate(struct dvfs *d, unsigned long rate)
 				__func__, d->clk_name, mv, detach_mv);
 			return -EINVAL;
 		}
+
+		detach_mv = d->dvfs_rail->override_millivolts;
+		if (detach_mv && (mv > detach_mv)) {
+			pr_warn("%s: %s: voltage %d above override level %d\n",
+				__func__, d->clk_name, mv, detach_mv);
+			return -EINVAL;
+		}
 		d->cur_millivolts = millivolts[i];
 	}
 
@@ -691,6 +698,19 @@ int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate)
 	millivolts = tegra_dvfs_is_dfll_range(c->dvfs, rate) ?
 		c->dvfs->dfll_millivolts :
 		tegra_dvfs_get_millivolts_pll(c->dvfs);
+	return predict_millivolts(c, millivolts, rate);
+}
+
+int tegra_dvfs_predict_peak_millivolts(struct clk *c, unsigned long rate)
+{
+	const int *millivolts;
+
+	if (!rate || !c->dvfs)
+		return 0;
+
+	millivolts = tegra_dvfs_is_dfll_range(c->dvfs, rate) ?
+			c->dvfs->dfll_millivolts : c->dvfs->peak_millivolts ? :
+			tegra_dvfs_get_millivolts_pll(c->dvfs);
 	return predict_millivolts(c, millivolts, rate);
 }
 
@@ -877,7 +897,7 @@ int __init tegra_enable_dvfs_on_clk(struct clk *c, struct dvfs *d)
 	 */
 	if (i && c->ops && !c->ops->shared_bus_update &&
 	    !(c->flags & PERIPH_ON_CBUS) && !d->can_override) {
-		int mv = tegra_dvfs_predict_millivolts(c, d->freqs[i-1]);
+		int mv = tegra_dvfs_predict_peak_millivolts(c, d->freqs[i-1]);
 		if (d->dvfs_rail->min_override_millivolts < mv)
 			d->dvfs_rail->min_override_millivolts = mv;
 	}
@@ -1188,6 +1208,22 @@ bool tegra_dvfs_is_rail_up(struct dvfs_rail *rail)
 	return ret;
 }
 
+int tegra_dvfs_rail_set_mode(struct dvfs_rail *rail, unsigned int mode)
+{
+	int ret = -ENOENT;
+
+	pr_debug("%s: updating %s mode from %u to %u\n", __func__,
+		 rail->reg_id, regulator_get_mode(rail->reg), mode);
+
+	if (rail && rail->reg)
+		ret = regulator_set_mode(rail->reg, mode);
+
+	if (ret)
+		pr_err("Failed to set dvfs regulator %s mode %u\n",
+		       rail->reg_id, mode);
+	return ret;
+}
+
 bool tegra_dvfs_rail_updating(struct clk *clk)
 {
 	return (!clk ? false :
@@ -1282,29 +1318,17 @@ struct tegra_cooling_device *tegra_dvfs_get_gpu_vts_cdev(void)
 	return NULL;
 }
 
-static void make_safe_thermal_dvfs_one(struct dvfs *d,
-				  struct tegra_cooling_device *cdev)
-{
-	int i, j, mv;
-
-	/* Make 1st row (therm_idx = 0) voltages max across thermal ranges */
-	for (i = 0; i < d->num_freqs; i++) {
-		for (j = 1; j <= cdev->trip_temperatures_num; j++) {
-			mv = *(d->millivolts + j * MAX_DVFS_FREQS + i);
-			if (d->millivolts[i] < mv)
-				((int *)d->millivolts)[i] = mv;
-		}
-	}
-}
-
 static void make_safe_thermal_dvfs(struct dvfs_rail *rail)
 {
 	struct dvfs *d;
 
 	mutex_lock(&dvfs_lock);
 	list_for_each_entry(d, &rail->dvfs, reg_node) {
-		if (d->therm_dvfs)
-			make_safe_thermal_dvfs_one(d, rail->vts_cdev);
+		if (d->therm_dvfs) {
+			BUG_ON(!d->peak_millivolts);
+			d->millivolts = d->peak_millivolts;
+			d->therm_dvfs = false;
+		}
 	}
 	mutex_unlock(&dvfs_lock);
 }
@@ -1431,7 +1455,8 @@ static inline void tegra_dvfs_rail_register_vts_cdev(struct dvfs_rail *rail)
  * - voltage limits are descending with temperature increasing
  * - the lowest limit is above rail minimum voltage in pll and
  *   in dfll mode (if applicable)
- * - the highest limit is below rail nominal voltage
+ * - the highest limit is below rail nominal voltage (required only
+ *   for Vmin profile)
  */
 static int __init get_thermal_profile_size(
 	int *trips_table, int *limits_table,
@@ -1456,10 +1481,6 @@ static int __init get_thermal_profile_size(
 		return -EINVAL;
 	}
 
-	if (limits_table[0] > rail->nominal_millivolts) {
-		pr_warn("%s: thermal profile above Vmax\n", rail->reg_id);
-		return -EINVAL;
-	}
 	return i + 1;
 }
 
@@ -1492,7 +1513,8 @@ void __init tegra_dvfs_rail_init_vmin_thermal_profile(
 {
 	int i = get_thermal_profile_size(therm_trips_table,
 					 therm_floors_table, rail, d);
-	if (i <= 0) {
+
+	if (i <= 0 || therm_floors_table[0] > rail->nominal_millivolts) {
 		rail->vmin_cdev = NULL;
 		WARN(1, "%s: invalid Vmin thermal profile\n", rail->reg_id);
 		return;
@@ -1538,8 +1560,8 @@ int __init tegra_dvfs_rail_init_thermal_dvfs_trips(
 	return 0;
 }
 
-int __init tegra_dvfs_init_thermal_dvfs_voltages(
-	int *therm_voltages, int freqs_num, int ranges_num, struct dvfs *d)
+int __init tegra_dvfs_init_thermal_dvfs_voltages(int *therm_voltages,
+	int *peak_voltages, int freqs_num, int ranges_num, struct dvfs *d)
 {
 	int *millivolts;
 	int freq_idx, therm_idx;
@@ -1555,10 +1577,13 @@ int __init tegra_dvfs_init_thermal_dvfs_voltages(
 				     d->clk_name, mv, freq_idx, therm_idx);
 				return -EINVAL;
 			}
+			if (mv > peak_voltages[freq_idx])
+				peak_voltages[freq_idx] = mv;
 		}
 	}
 
 	d->millivolts = therm_voltages;
+	d->peak_millivolts = peak_voltages;
 	d->therm_dvfs = true;
 	return 0;
 }
@@ -1778,39 +1803,6 @@ static const struct file_operations rail_stats_fops = {
 	.release	= single_release,
 };
 
-static int gpu_dvfs_show(struct seq_file *s, void *data)
-{
-	int idx;
-	int *millivolts;
-	unsigned long *freqs;
-
-	if (read_gpu_dvfs_table(&millivolts, &freqs)) {
-		seq_printf(s, "Only supported for T124 or higher\n");
-		return 0;
-	}
-
-	seq_printf(s, "millivolts \t \t frequency\n");
-	seq_printf(s, "=====================================\n");
-
-	for (idx = 0; millivolts[idx]; idx++)
-		seq_printf(s, "%d mV \t \t %lu Hz\n", millivolts[idx],
-				freqs[idx]);
-
-	return 0;
-}
-
-static int gpu_dvfs_open(struct inode *inode, struct file *file)
-{
-	return single_open(file, gpu_dvfs_show, NULL);
-}
-
-static const struct file_operations gpu_dvfs_fops = {
-	.open           = gpu_dvfs_open,
-	.read           = seq_read,
-	.llseek         = seq_lseek,
-	.release        = single_release,
-};
-
 static int rail_offs_set(struct dvfs_rail *rail, int offs)
 {
 	if (rail) {
@@ -1931,6 +1923,12 @@ static int gpu_dvfs_t_show(struct seq_file *s, void *data)
 		seq_printf(s, " mV\n");
 	}
 
+	seq_printf(s, "%3s%-8s\n", "", "------");
+	seq_printf(s, "%3s%-8s", "", "max(T)");
+	for (i = 0; i < d->num_freqs; i++)
+		seq_printf(s, " %7d", d->peak_millivolts[i]);
+	seq_printf(s, " mV\n");
+
 	mutex_unlock(&dvfs_lock);
 
 	return 0;
@@ -1953,32 +1951,41 @@ static int dvfs_table_show(struct seq_file *s, void *data)
 	int i;
 	struct dvfs *d;
 	struct dvfs_rail *rail;
+	const int *v_pll, *last_v_pll = NULL;
+	const int *v_dfll, *last_v_dfll = NULL;
 
-	seq_printf(s, "DVFS tables: units mV/MHz\n\n");
+	seq_printf(s, "DVFS tables: units mV/MHz\n");
 
 	mutex_lock(&dvfs_lock);
 
 	list_for_each_entry(rail, &dvfs_rail_list, node) {
-		bool mv_done = false;
 		list_for_each_entry(d, &rail->dvfs, reg_node) {
-			if (!mv_done) {
-				const int *m = tegra_dvfs_get_millivolts_pll(d);
-				mv_done = true;
-				seq_printf(s, "%-16s", rail->reg_id);
-				for (i = 0; i < d->num_freqs; i++) {
-					int mv = m[i];
-					seq_printf(s, "%7d", mv);
-				}
-				seq_printf(s, "\n");
-				if (d->dfll_millivolts) {
-					seq_printf(s, "%-8s (dfll) ",
-						   rail->reg_id);
-					for (i = 0; i < d->num_freqs; i++) {
-						int mv = d->dfll_millivolts[i];
-						seq_printf(s, "%7d", mv);
-					}
+			bool mv_done = false;
+			v_pll = tegra_dvfs_get_millivolts_pll(d);
+			v_dfll = d->dfll_millivolts;
+
+			if (v_pll && (last_v_pll != v_pll)) {
+				if (!mv_done) {
 					seq_printf(s, "\n");
+					mv_done = true;
 				}
+				last_v_pll = v_pll;
+				seq_printf(s, "%-16s", rail->reg_id);
+				for (i = 0; i < d->num_freqs; i++)
+					seq_printf(s, "%7d", v_pll[i]);
+				seq_printf(s, "\n");
+			}
+
+			if (v_dfll && (last_v_dfll != v_dfll)) {
+				if (!mv_done) {
+					seq_printf(s, "\n");
+					mv_done = true;
+				}
+				last_v_dfll = v_dfll;
+				seq_printf(s, "%-8s (dfll) ", rail->reg_id);
+				for (i = 0; i < d->num_freqs; i++)
+					seq_printf(s, "%7d", v_dfll[i]);
+				seq_printf(s, "\n");
 			}
 
 			seq_printf(s, "%-16s", d->clk_name);
@@ -1988,7 +1995,6 @@ static int dvfs_table_show(struct seq_file *s, void *data)
 			}
 			seq_printf(s, "\n");
 		}
-		seq_printf(s, "\n");
 	}
 
 	mutex_unlock(&dvfs_lock);
@@ -2039,11 +2045,6 @@ int __init dvfs_debugfs_init(struct dentry *clk_debugfs_root)
 
 	d = debugfs_create_file("vdd_core_override", S_IRUGO | S_IWUSR,
 		clk_debugfs_root, NULL, &core_override_fops);
-	if (!d)
-		return -ENOMEM;
-
-	d = debugfs_create_file("gpu_dvfs", S_IRUGO | S_IWUSR,
-		clk_debugfs_root, NULL, &gpu_dvfs_fops);
 	if (!d)
 		return -ENOMEM;
 

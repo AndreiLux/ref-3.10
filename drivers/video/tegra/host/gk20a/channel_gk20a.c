@@ -26,11 +26,12 @@
 #include <linux/scatterlist.h>
 
 
-#include "../dev.h"
-#include "../nvhost_as.h"
+#include "dev.h"
+#include "nvhost_as.h"
 #include "debug.h"
 
 #include "gk20a.h"
+#include "dbg_gpu_gk20a.h"
 
 #include "hw_ram_gk20a.h"
 #include "hw_fifo_gk20a.h"
@@ -163,6 +164,69 @@ static int channel_gk20a_commit_userd(struct channel_gk20a *c)
 
 	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
 
+	gk20a_mm_l2_invalidate(c->g);
+
+	return 0;
+}
+
+static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
+				u32 timeslice_timeout)
+{
+	void *inst_ptr;
+	unsigned long channel_timeout;
+	int shift = 3;
+	int value = timeslice_timeout;
+	int err;
+
+	if (!tegra_platform_is_silicon())
+		channel_timeout = MAX_SCHEDULE_TIMEOUT;
+	else
+		channel_timeout = CONFIG_TEGRA_GRHOST_DEFAULT_TIMEOUT;
+
+	err = gk20a_channel_finish(c, channel_timeout);
+
+	if (err)
+		return err;
+
+	inst_ptr = nvhost_memmgr_mmap(c->inst_block.mem.ref);
+	if (!inst_ptr)
+		return -ENOMEM;
+
+	/* disable channel */
+	gk20a_writel(c->g, ccsr_channel_r(c->hw_chid),
+		gk20a_readl(c->g, ccsr_channel_r(c->hw_chid)) |
+		ccsr_channel_enable_clr_true_f());
+
+	/* preempt the channel */
+	WARN_ON(gk20a_fifo_preempt_channel(c->g, c->hw_chid));
+
+	/* flush GPU cache */
+	gk20a_mm_l2_flush(c->g, true);
+
+	/* value field is 8 bits long */
+	while (value >= 1 << 8) {
+		value >>= 1;
+		shift++;
+	}
+
+	/* time slice register is only 18bits long */
+	if ((value << shift) >= 1<<19) {
+		pr_err("Requested timeslice value is clamped to 18 bits\n");
+		value = 255;
+		shift = 10;
+	}
+
+	/* set new timeslice */
+	mem_wr32(inst_ptr, ram_fc_eng_timeslice_w(),
+		value | (shift << 12) |
+		fifo_eng_timeslice_enable_true_f());
+
+	/* enable channel */
+	gk20a_writel(c->g, ccsr_channel_r(c->hw_chid),
+		gk20a_readl(c->g, ccsr_channel_r(c->hw_chid)) |
+		ccsr_channel_enable_set_true_f());
+
+	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
 	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
@@ -466,6 +530,77 @@ int gk20a_channel_cycle_stats(struct channel_gk20a *ch,
 }
 #endif
 
+int gk20a_init_error_notifier(struct nvhost_hwctx *ctx,
+		u32 memhandle, u64 offset) {
+	struct channel_gk20a *ch = ctx->priv;
+	struct platform_device *dev = ch->ch->dev;
+	void *va;
+
+	struct mem_mgr *memmgr;
+	struct mem_handle *handle_ref;
+
+	if (!memhandle) {
+		pr_err("gk20a_init_error_notifier: invalid memory handle\n");
+		return -EINVAL;
+	}
+
+	memmgr = gk20a_channel_mem_mgr(ch);
+	handle_ref = nvhost_memmgr_get(memmgr, memhandle, dev);
+
+	if (ctx->error_notifier_ref)
+		gk20a_free_error_notifiers(ctx);
+
+	if (IS_ERR(handle_ref)) {
+		pr_err("Invalid handle: %d\n", memhandle);
+		return -EINVAL;
+	}
+	/* map handle */
+	va = nvhost_memmgr_mmap(handle_ref);
+	if (!va) {
+		nvhost_memmgr_put(memmgr, handle_ref);
+		pr_err("Cannot map notifier handle\n");
+		return -ENOMEM;
+	}
+
+	/* set hwctx notifiers pointer */
+	ctx->error_notifier_ref = handle_ref;
+	ctx->error_notifier = va + offset;
+	ctx->error_notifier_va = va;
+	return 0;
+}
+
+void gk20a_set_timeout_error(struct nvhost_hwctx *ctx)
+{
+	ctx->has_timedout = true;
+	if (ctx->error_notifier_ref) {
+		struct timespec time_data;
+		u64 nsec;
+		getnstimeofday(&time_data);
+		nsec = ((u64)time_data.tv_sec) * 1000000000u +
+				(u64)time_data.tv_nsec;
+		ctx->error_notifier->time_stamp.nanoseconds[0] =
+				(u32)nsec;
+		ctx->error_notifier->time_stamp.nanoseconds[1] =
+				(u32)(nsec >> 32);
+		ctx->error_notifier->info32 =
+				NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT;
+		ctx->error_notifier->status = 0xffff;
+		pr_err("Timeout notifier is set\n");
+	}
+}
+
+void gk20a_free_error_notifiers(struct nvhost_hwctx *ctx)
+{
+	if (ctx->error_notifier_ref) {
+		struct channel_gk20a *ch = ctx->priv;
+		struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
+		nvhost_memmgr_munmap(ctx->error_notifier_ref,
+				ctx->error_notifier_va);
+		nvhost_memmgr_put(memmgr, ctx->error_notifier_ref);
+		ctx->error_notifier_ref = 0;
+	}
+}
+
 void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 {
 	struct channel_gk20a *ch = ctx->priv;
@@ -475,6 +610,7 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
 	struct vm_gk20a *ch_vm = ch->vm;
 	unsigned long timeout = gk20a_get_gr_idle_timeout(g);
+	struct dbg_session_gk20a *dbg_s;
 
 	nvhost_dbg_fn("");
 
@@ -488,6 +624,8 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 			timeout);
 
 	gk20a_disable_channel(ch, finish, timeout);
+
+	gk20a_free_error_notifiers(ctx);
 
 	/* release channel ctx */
 	gk20a_free_channel_ctx(ch);
@@ -519,6 +657,16 @@ unbind:
 	channel_gk20a_free_inst(g, ch);
 
 	ch->vpr = false;
+
+	/* unlink all debug sessions */
+	mutex_lock(&ch->dbg_s_lock);
+
+	list_for_each_entry(dbg_s, &ch->dbg_s_list, dbg_s_list_node) {
+		dbg_s->ch = NULL;
+		list_del_init(&dbg_s->dbg_s_list_node);
+	}
+
+	mutex_unlock(&ch->dbg_s_lock);
 
 	/* ALWAYS last */
 	release_used_channel(f, ch);
@@ -921,25 +1069,11 @@ int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 
 	/* an address space needs to have been bound at this point.   */
 	if (!gk20a_channel_as_bound(c)) {
-		int err;
-		nvhost_warn(d,
+		nvhost_err(d,
 			    "not bound to an address space at time of gpfifo"
 			    " allocation.  Attempting to create and bind to"
 			    " one...");
-		/*
-		 * Eventually this will be a fatal error. For now attempt to
-		 * create and bind a share here.  This helps until we change
-		 * clients to use the new address space API.  However doing this
-		 * can mask errors in programming access to the address space
-		 * through the front door...
-		 */
-		err = nvhost_as_alloc_and_bind_share(c->ch, c->hwctx);
-		if (err || !gk20a_channel_as_bound(c)) {
-			nvhost_err(d,
-				   "not bound to address space at time"
-				   " of gpfifo allocation");
-			return err;
-		}
+		return -EINVAL;
 	}
 	ch_vm = c->vm;
 
@@ -1191,13 +1325,19 @@ static int gk20a_channel_add_job(struct channel_gk20a *c,
 	struct mapped_buffer_node **mapped_buffers = NULL;
 	int err = 0, num_mapped_buffers;
 
+	/* job needs reference to this vm */
+	vm->get(vm);
+
 	err = vm->get_buffers(vm, &mapped_buffers, &num_mapped_buffers);
-	if (err)
+	if (err) {
+		vm->put(vm);
 		return err;
+	}
 
 	job = kzalloc(sizeof(*job), GFP_KERNEL);
 	if (!job) {
 		vm->put_buffers(vm, mapped_buffers, num_mapped_buffers);
+		vm->put(vm);
 		return -ENOMEM;
 	}
 
@@ -1228,8 +1368,13 @@ void gk20a_channel_update(struct channel_gk20a *c)
 
 		vm->put_buffers(vm, job->mapped_buffers,
 				job->num_mapped_buffers);
+
+		/* job is done. release its reference to vm */
+		vm->put(vm);
+
 		list_del_init(&job->list);
 		kfree(job);
+		nvhost_module_idle(g->dev);
 	}
 	mutex_unlock(&c->jobs_lock);
 }
@@ -1285,6 +1430,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 
 	nvhost_dbg_info("channel %d", c->hw_chid);
 
+	nvhost_module_busy(g->dev);
 	trace_nvhost_channel_submit_gpfifo(c->ch->dev->name,
 					   c->hw_chid,
 					   num_entries,
@@ -1308,10 +1454,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	/* We don't know what context is currently running...                */
 	/* Note also: there can be more than one context associated with the */
 	/* address space (vm).   */
-	if (c->vm->tlb_dirty) {
-		c->vm->tlb_inval(c->vm);
-		c->vm->tlb_dirty = false;
-	}
+	c->vm->tlb_inval(c->vm);
 
 	/* Make sure we have enough space for gpfifo entries. If not,
 	 * wait for signals from completed submits */
@@ -1443,10 +1586,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	/* We don't know what context is currently running...                */
 	/* Note also: there can be more than one context associated with the */
 	/* address space (vm).   */
-	if (c->vm->tlb_dirty) {
-		c->vm->tlb_inval(c->vm);
-		c->vm->tlb_dirty = false;
-	}
+	c->vm->tlb_inval(c->vm);
 
 	trace_nvhost_channel_submitted_gpfifo(c->ch->dev->name,
 					   c->hw_chid,
@@ -1474,6 +1614,7 @@ clean_up:
 	nvhost_dbg(dbg_fn | dbg_err, "fail");
 	free_priv_cmdbuf(c, wait_cmd);
 	free_priv_cmdbuf(c, incr_cmd);
+	nvhost_module_idle(g->dev);
 	return err;
 }
 
@@ -1495,6 +1636,7 @@ int gk20a_init_channel_support(struct gk20a *g, u32 chid)
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
 	mutex_init(&c->cyclestate.cyclestate_buffer_mutex);
 #endif
+	INIT_LIST_HEAD(&c->dbg_s_list);
 	mutex_init(&c->dbg_s_lock);
 	return 0;
 }
@@ -1544,6 +1686,11 @@ int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout)
 	nvhost_dbg_fn("waiting for channel to finish syncpt:%d val:%d",
 		      ch->last_submit_fence.syncpt_id,
 		      ch->last_submit_fence.syncpt_value);
+
+	/* Do not wait for a timedout channel. Just check if it's done */
+	if (ch->hwctx && ch->hwctx->has_timedout)
+		timeout = 0;
+
 	err = nvhost_syncpt_wait_timeout(sp,
 					 ch->last_submit_fence.syncpt_id,
 					 ch->last_submit_fence.syncpt_value,
@@ -1634,6 +1781,32 @@ notif_clean_up:
 	return 0;
 }
 
+int gk20a_channel_set_priority(struct channel_gk20a *ch,
+		u32 priority)
+{
+	u32 timeslice_timeout;
+	/* set priority of graphics channel */
+	switch (priority) {
+	case NVHOST_PRIORITY_LOW:
+		/* 64 << 3 = 512us */
+		timeslice_timeout = 64;
+		break;
+	case NVHOST_PRIORITY_MEDIUM:
+		/* 128 << 3 = 1024us */
+		timeslice_timeout = 128;
+		break;
+	case NVHOST_PRIORITY_HIGH:
+		/* 255 << 3 = 2048us */
+		timeslice_timeout = 255;
+		break;
+	default:
+		pr_err("Unsupported priority");
+		return -EINVAL;
+	}
+	channel_gk20a_set_schedule_params(ch,
+			timeslice_timeout);
+	return 0;
+}
 
 int gk20a_channel_zcull_bind(struct channel_gk20a *ch,
 			    struct nvhost_zcull_bind_args *args)

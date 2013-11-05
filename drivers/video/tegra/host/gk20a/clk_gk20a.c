@@ -29,6 +29,7 @@
 
 #include "gk20a.h"
 #include "hw_trim_gk20a.h"
+#include "hw_timer_gk20a.h"
 
 #define nvhost_dbg_clk(fmt, arg...) \
 	nvhost_dbg(dbg_clk, fmt, ##arg)
@@ -407,8 +408,7 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 	}
 	ref_rate = clk_get_rate(ref);
 
-	/* TBD: set this according to different environments */
-	clk->pll_delay = 5000000; /* usec */
+	clk->pll_delay = 300; /* usec */
 
 	clk->gpc_pll.id = GK20A_GPC_PLL;
 	clk->gpc_pll.clk_in = ref_rate / 1000000; /* MHz */
@@ -459,7 +459,6 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 
 static int gk20a_init_clk_setup_hw(struct gk20a *g)
 {
-	struct clk_gk20a *clk = &g->clk;
 	u32 data;
 
 	nvhost_dbg_fn("");
@@ -643,7 +642,10 @@ int gk20a_init_clk_support(struct gk20a *g)
 	if (err)
 		return err;
 
-	gk20a_writel(g, 0x9080, 0x00100000);
+	gk20a_writel(g,
+		timer_pri_timeout_r(),
+		timer_pri_timeout_period_f(0x200) ||
+		timer_pri_timeout_en_m());
 
 	return err;
 }

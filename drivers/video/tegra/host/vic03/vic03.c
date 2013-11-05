@@ -238,6 +238,10 @@ static int vic03_read_ucode(struct platform_device *dev, const char *fw_name)
 	struct vic03 *v = get_vic03(dev);
 	const struct firmware *ucode_fw;
 	int err;
+	DEFINE_DMA_ATTRS(attrs);
+
+	v->ucode.dma_addr = 0;
+	v->ucode.mapped = NULL;
 
 	ucode_fw = nvhost_client_request_firmware(dev, fw_name);
 	if (!ucode_fw) {
@@ -247,40 +251,22 @@ static int vic03_read_ucode(struct platform_device *dev, const char *fw_name)
 		return err;
 	}
 
-	/* allocate pages for ucode */
-	v->ucode.mem_r = nvhost_memmgr_alloc(v->host->memmgr,
-					     roundup(ucode_fw->size, PAGE_SIZE),
-					     PAGE_SIZE,
-					     mem_mgr_flag_uncacheable,
-					     0);
-	if (IS_ERR(v->ucode.mem_r)) {
-		nvhost_dbg_fn("nvmap alloc failed");
-		err = PTR_ERR(v->ucode.mem_r);
-		v->ucode.mem_r = NULL;
-		goto clean_up;
-	}
+	v->ucode.size = ucode_fw->size;
+	dma_set_attr(DMA_ATTR_READ_ONLY, &attrs);
 
-	v->ucode.sgt = nvhost_memmgr_pin(v->host->memmgr, v->ucode.mem_r,
-		&dev->dev, mem_flag_read_only);
-	if (IS_ERR(v->ucode.sgt)) {
-		nvhost_err(&dev->dev, "nvmap pin failed for ucode, %ld",
-			PTR_ERR(v->ucode.sgt));
-		err = PTR_ERR(v->ucode.sgt);
-		goto clean_up;
-	}
-	v->ucode.pa = nvhost_memmgr_dma_addr(v->ucode.sgt);
-
-	v->ucode.va = nvhost_memmgr_mmap(v->ucode.mem_r);
-	if (!v->ucode.va) {
-		nvhost_dbg_fn("nvmap mmap failed");
+	v->ucode.mapped = dma_alloc_attrs(&dev->dev,
+				v->ucode.size, &v->ucode.dma_addr,
+				GFP_KERNEL, &attrs);
+	if (!v->ucode.mapped) {
+		dev_err(&dev->dev, "dma memory allocation failed");
 		err = -ENOMEM;
 		goto clean_up;
 	}
 
-	err = vic03_setup_ucode_image(dev, v->ucode.va, ucode_fw);
+	err = vic03_setup_ucode_image(dev, v->ucode.mapped, ucode_fw);
 	if (err) {
 		dev_err(&dev->dev, "failed to parse firmware image\n");
-		return err;
+		goto clean_up;
 	}
 
 	v->ucode.valid = true;
@@ -290,14 +276,12 @@ static int vic03_read_ucode(struct platform_device *dev, const char *fw_name)
 	return 0;
 
  clean_up:
-	if (v->ucode.va)
-		nvhost_memmgr_munmap(v->ucode.mem_r, v->ucode.va);
-	if (v->ucode.pa)
-		nvhost_memmgr_unpin(v->host->memmgr, v->ucode.mem_r,
-			&dev->dev, v->ucode.sgt);
-	if (v->ucode.mem_r) {
-		nvhost_memmgr_put(v->host->memmgr, v->ucode.mem_r);
-		v->ucode.mem_r = NULL;
+	if (v->ucode.mapped) {
+		dma_free_attrs(&dev->dev,
+			v->ucode.size, v->ucode.mapped,
+			v->ucode.dma_addr, &attrs);
+		v->ucode.mapped = NULL;
+		v->ucode.dma_addr = 0;
 	}
 	release_firmware(ucode_fw);
 	return err;
@@ -306,7 +290,7 @@ static int vic03_read_ucode(struct platform_device *dev, const char *fw_name)
 static int vic03_boot(struct platform_device *dev)
 {
 	struct vic03 *v = get_vic03(dev);
-	u32 fifoctrl, timeout;
+	u32 timeout;
 	u32 offset;
 	int err = 0;
 
@@ -319,14 +303,8 @@ static int vic03_boot(struct platform_device *dev)
 
 	vic03_writel(v, flcn_dmactl_r(), 0);
 
-	/* FIXME : disable clock gating, remove when clock gating problem is resolved from MCCIF*/
-	fifoctrl = vic03_readl(v, tfbif_mccif_fifoctrl_r());
-
-	fifoctrl |= tfbif_mccif_fifoctrl_rclk_override_enable_f() |
-		tfbif_mccif_fifoctrl_wclk_override_enable_f();
-	vic03_writel(v, tfbif_mccif_fifoctrl_r(), fifoctrl);
-
-	vic03_writel(v, flcn_dmatrfbase_r(), (v->ucode.pa + v->ucode.os.bin_data_offset) >> 8);
+	vic03_writel(v, flcn_dmatrfbase_r(),
+			(v->ucode.dma_addr + v->ucode.os.bin_data_offset) >> 8);
 
 	for (offset = 0; offset < v->ucode.os.data_size; offset += 256)
 		vic03_flcn_dma_pa_to_internal_256b(dev,
@@ -428,23 +406,22 @@ void nvhost_vic03_deinit(struct platform_device *dev)
 	struct vic03 *v = get_vic03(dev);
 	struct nvhost_device_data *pdata = nvhost_get_devdata(dev);
 
+	DEFINE_DMA_ATTRS(attrs);
+	dma_set_attr(DMA_ATTR_READ_ONLY, &attrs);
+
 	if (!v)
 		return;
 
 	if (pdata->scaling_init)
 		nvhost_scale_hw_deinit(dev);
 
-	/* unpin, free ucode memory */
-	if (v->ucode.va)
-		nvhost_memmgr_munmap(v->ucode.mem_r, v->ucode.va);
-
-	if (v->ucode.pa)
-		nvhost_memmgr_unpin(v->host->memmgr, v->ucode.mem_r,
-				    &dev->dev, v->ucode.sgt);
-
-	if (v->ucode.mem_r)
-		nvhost_memmgr_put(v->host->memmgr, v->ucode.mem_r);
-	v->ucode.mem_r = NULL;
+	if (v->ucode.mapped) {
+		dma_free_attrs(&dev->dev,
+			v->ucode.size, v->ucode.mapped,
+			v->ucode.dma_addr, &attrs);
+		v->ucode.mapped = NULL;
+		v->ucode.dma_addr = 0;
+	}
 
 	if (v->regs)
 		v->regs = NULL;
@@ -460,9 +437,7 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 	struct host1x_hwctx_handler *p = to_host1x_hwctx_handler(h);
 
 	struct vic03 *v = get_vic03(ch->dev);
-	struct mem_mgr *nvmap = nvhost_get_host(ch->dev)->memmgr;
 	struct host1x_hwctx *ctx;
-	bool map_restore = true;
 	u32 *ptr;
 	u32 syncpt = nvhost_get_devdata(ch->dev)->syncpts[0];
 	u32 nvhost_vic03_restore_size = 11; /* number of words written below */
@@ -473,23 +448,18 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 	if (!ctx)
 		return NULL;
 
-	ctx->restore = nvhost_memmgr_alloc(nvmap,
-					   nvhost_vic03_restore_size * 4, 32,
-					   map_restore ?
-						mem_mgr_flag_write_combine
-					      : mem_mgr_flag_uncacheable,
-					   0);
-	if (IS_ERR(ctx->restore))
-		goto fail_alloc;
+	ctx->restore_size = nvhost_vic03_restore_size;
 
-	if (map_restore) {
-		ctx->restore_virt = nvhost_memmgr_mmap(ctx->restore);
-		if (!ctx->restore_virt)
-			goto fail_mmap;
-	} else
-		ctx->restore_virt = NULL;
+	ctx->cpuva = dma_alloc_writecombine(&ch->dev->dev,
+						ctx->restore_size * 4,
+						&ctx->iova,
+						GFP_KERNEL);
+	if (!ctx->cpuva) {
+		dev_err(&ch->dev->dev, "memory allocation failed\n");
+		goto fail;
+	}
 
-	ptr = ctx->restore_virt;
+	ptr = ctx->cpuva;
 
 	/* set class to vic */
 	ptr[0] = nvhost_opcode_setclass(NV_GRAPHICS_VIC_CLASS_ID, 0, 0);
@@ -505,7 +475,7 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 
 	ptr[7] = nvhost_opcode_incr(VIC_UCLASS_METHOD_OFFSET, 2);
 	ptr[8] = NVA0B6_VIDEO_COMPOSITOR_SET_FCE_UCODE_OFFSET >> 2;
-	ptr[9] = (v->ucode.pa + v->ucode.fce.data_offset) >> 8;
+	ptr[9] = (v->ucode.dma_addr + v->ucode.fce.data_offset) >> 8;
 
 	/* syncpt increment to track restore gather. */
 	ptr[10] = nvhost_opcode_imm_incr_syncpt(
@@ -520,23 +490,11 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 	ctx->hwctx.save_thresh = 0;
 	ctx->hwctx.save_slots = 0;
 
-	ctx->restore_sgt = nvhost_memmgr_pin(nvmap,
-			ctx->restore, &ch->dev->dev, mem_flag_none);
-	if (IS_ERR(ctx->restore_sgt))
-		goto fail_pin;
-	ctx->restore_phys = nvhost_memmgr_dma_addr(ctx->restore_sgt);
-
-	ctx->restore_size = nvhost_vic03_restore_size;
 	ctx->hwctx.restore_incrs = 1;
 
 	return &ctx->hwctx;
 
- fail_pin:
-	if (map_restore)
-		nvhost_memmgr_munmap(ctx->restore, ctx->restore_virt);
- fail_mmap:
-	nvhost_memmgr_put(nvmap, ctx->restore);
- fail_alloc:
+ fail:
 	kfree(ctx);
 	return NULL;
 }
@@ -545,18 +503,15 @@ static void vic03_free_hwctx(struct kref *ref)
 {
 	struct nvhost_hwctx *nctx = container_of(ref, struct nvhost_hwctx, ref);
 	struct host1x_hwctx *ctx = to_host1x_hwctx(nctx);
-	struct mem_mgr *nvmap =
-		nvhost_get_host(nctx->channel->dev)->memmgr;
 
-	if (ctx->restore_virt) {
-		nvhost_memmgr_munmap(ctx->restore, ctx->restore_virt);
-		ctx->restore_virt = NULL;
+	if (ctx->cpuva) {
+		dma_free_writecombine(&nctx->channel->dev->dev,
+					ctx->restore_size * 4,
+					ctx->cpuva,
+					ctx->iova);
+		ctx->cpuva = NULL;
+		ctx->iova = 0;
 	}
-	nvhost_memmgr_unpin(nvmap, ctx->restore, &nctx->channel->dev->dev,
-			ctx->restore_sgt);
-	ctx->restore_phys = 0;
-	nvhost_memmgr_put(nvmap, ctx->restore);
-	ctx->restore = NULL;
 	kfree(ctx);
 }
 
@@ -579,12 +534,12 @@ static void ctxvic03_restore_push(struct nvhost_hwctx *nctx,
 		struct nvhost_cdma *cdma)
 {
 	struct host1x_hwctx *ctx = to_host1x_hwctx(nctx);
-	nvhost_cdma_push_gather(cdma,
-		ctx->hwctx.memmgr,
-		ctx->restore,
+	_nvhost_cdma_push_gather(cdma,
+		ctx->cpuva,
+		ctx->iova,
 		0,
 		nvhost_opcode_gather(ctx->restore_size),
-		ctx->restore_phys);
+		ctx->iova);
 }
 
 struct nvhost_hwctx_handler *nvhost_vic03_alloc_hwctx_handler(u32 syncpt,
@@ -609,9 +564,14 @@ struct nvhost_hwctx_handler *nvhost_vic03_alloc_hwctx_handler(u32 syncpt,
 	return &p->h;
 }
 
-int nvhost_vic03_finalize_poweron(struct platform_device *dev)
+int nvhost_vic03_finalize_poweron(struct platform_device *pdev)
 {
-	return vic03_boot(dev);
+	nvhost_client_writel(pdev, 0, flcn_slcg_override_high_a_r());
+	nvhost_client_writel(pdev, flcn_cg_idle_cg_dly_cnt_f(4) |
+			     flcn_cg_idle_cg_en_f(1) |
+			     flcn_cg_wakeup_dly_cnt_f(4),
+			     flcn_cg_r());
+	return vic03_boot(pdev);
 }
 
 int nvhost_vic03_prepare_poweroff(struct platform_device *dev)

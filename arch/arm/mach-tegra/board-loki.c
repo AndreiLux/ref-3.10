@@ -53,9 +53,11 @@
 #include <linux/mfd/palmas.h>
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/clk/tegra.h>
+#include <linux/clocksource.h>
+#include <linux/platform_data/tegra_usb_modem_power.h>
+#include <linux/irqchip.h>
 
 #include <mach/irqs.h>
-#include <mach/pci.h>
 #include <mach/tegra_fiq_debugger.h>
 
 #include <mach/pinmux.h>
@@ -70,6 +72,7 @@
 #include <mach/tegra_fiq_debugger.h>
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_usb_modem_power.h>
+#include <linux/irqchip/tegra.h>
 
 #include "board-touch-raydium.h"
 #include "board.h"
@@ -78,9 +81,7 @@
 #include "board-loki.h"
 #include "devices.h"
 #include "gpio-names.h"
-#include "fuse.h"
 #include "pm.h"
-#include "pm-irq.h"
 #include "common.h"
 #include "tegra-board-id.h"
 #include "iomap.h"
@@ -302,6 +303,9 @@ static struct platform_device *loki_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
 	&tegra_udc_device,
+#if defined(CONFIG_TEGRA_WATCHDOG)
+	&tegra_wdt0_device,
+#endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
@@ -646,6 +650,70 @@ static void loki_modem_init(void)
 	}
 }
 
+#define LOKI_GPS_FORCE_ON	TEGRA_GPIO_PH5
+
+static int mt3332_gps_ext_power_on(int force_on)
+{
+	int ret = 0;
+	gpio_set_value(LOKI_GPS_FORCE_ON, 1);
+	mdelay(10);
+	pr_err("MTK: GPIO set to 1\n");
+	return ret;
+}
+
+static int mt3332_gps_ext_power_off(int force_off)
+{
+	int ret = 0;
+	gpio_set_value(LOKI_GPS_FORCE_ON, 0);
+	mdelay(10);
+	pr_err("MTK: GPIO set to 0\n");
+	return ret;
+}
+
+struct mtk_gps_hardware {
+	int (*ext_power_on)(int);
+	int (*ext_power_off)(int);
+};
+
+struct mtk_gps_hardware mt3332_gps_hw = {
+	.ext_power_on = mt3332_gps_ext_power_on,
+	.ext_power_off = mt3332_gps_ext_power_off,
+};
+
+struct platform_device mt3332_device_gps = {
+	.name	= "mt3332-gps",
+	.id	= -1,
+	.dev	= {
+		.platform_data = &mt3332_gps_hw,
+	},
+};
+
+static void __init mtk_gps_register(void)
+{
+	int ret = 0;
+	ret = gpio_request(LOKI_GPS_FORCE_ON, "gps_en");
+	if (ret) {
+		pr_err("failed to get gps_en\n");
+		return;
+	}
+
+	ret = gpio_direction_output(LOKI_GPS_FORCE_ON, 1);
+	if (ret) {
+		pr_err("failed to direct gps_en to out\n");
+		gpio_free(LOKI_GPS_FORCE_ON);
+		return;
+	}
+
+	ret = platform_device_register(&mt3332_device_gps);
+	if (ret)
+		pr_err("mtk: failed to register gps device: %d\n", ret);
+}
+
+static void __init loki_gps_init(void)
+{
+	mtk_gps_register();
+}
+
 #ifndef CONFIG_USE_OF
 static struct platform_device *loki_spi_devices[] __initdata = {
 	&tegra11_spi_device1,
@@ -696,7 +764,9 @@ struct of_dev_auxdata loki_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
+#ifdef CONFIG_ARCH_TEGRA_VIC
 	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+#endif
 	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
@@ -734,13 +804,13 @@ static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 struct rm_spi_ts_platform_data rm31080ts_loki_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
-	.platform_id = RM_PLATFORM_R005,
+	.platform_id = RM_PLATFORM_L005,
 	.name_of_clock = "clk_out_2",
 	.name_of_clock_con = "extern2",
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 16,
+	.rx_clk_tap_delay = 0,
 	.tx_clk_tap_delay = 16,
 };
 
@@ -758,6 +828,8 @@ struct spi_board_info rm31080a_loki_spi_board[1] = {
 
 static int __init loki_touch_init(void)
 {
+	if (tegra_get_touch_panel_id() == TOUCH_PANEL_THOR_WINTEK)
+		rm31080ts_loki_data.platform_id = RM_PLATFORM_R005;
 	tegra_clk_init_from_table(touch_clk_init_table);
 	rm31080a_loki_spi_board[0].irq =
 		gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
@@ -802,6 +874,7 @@ static void __init tegra_loki_late_init(void)
 	loki_emc_init();
 	loki_edp_init();
 	isomgr_init();
+	loki_gps_init();
 	loki_touch_init();
 	loki_panel_init();
 	loki_kbc_init();
@@ -868,9 +941,10 @@ DT_MACHINE_START(LOKI, "loki")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_loki_reserve,
 	.init_early	= tegra_loki_init_early,
-	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_loki_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= loki_dt_board_compat,
+	.init_late	= tegra_init_late
 MACHINE_END

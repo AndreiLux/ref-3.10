@@ -1202,9 +1202,6 @@ static int tegra14_cpu_clk_set_rate(struct clk *c, unsigned long rate)
 		(c->u.cpu.dynamic->state != UNINITIALIZED);
 	bool is_dfll = c->parent->parent == c->u.cpu.dynamic;
 
-	/* On SILICON allow CPU rate change only if cpu regulator is connected.
-	   Ignore regulator connection on FPGA and SIMULATION platforms. */
-#ifdef CONFIG_TEGRA_SILICON_PLATFORM
 	if (c->dvfs) {
 		if (!c->dvfs->dvfs_rail)
 			return -ENOSYS;
@@ -1215,7 +1212,6 @@ static int tegra14_cpu_clk_set_rate(struct clk *c, unsigned long rate)
 			return -ENOSYS;
 		}
 	}
-#endif
 	if (has_dfll && c->dvfs && c->dvfs->dvfs_rail) {
 		if (tegra_dvfs_is_dfll_range(c->dvfs, rate))
 			return tegra14_cpu_clk_dfll_on(c, rate, old_rate);
@@ -1441,16 +1437,6 @@ static int tegra14_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		goto abort;
 	}
 
-	/* Disabling old parent scales old mode voltage rail */
-	if (c->refcnt)
-		clk_disable(c->parent);
-	if (p_source_old) {
-		clk_disable(p->parent);
-		clk_disable(p_source_old);
-	}
-
-	clk_reparent(c, p);
-
 	/*
 	 * Lock DFLL now (resume closed loop VDD_CPU control).
 	 * G CPU operations are resumed on DFLL if it was the last G CPU
@@ -1466,6 +1452,16 @@ static int tegra14_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 			tegra_dvfs_dfll_mode_set(p->dvfs, rate);
 		}
 	}
+
+	/* Disabling old parent scales old mode voltage rail */
+	if (c->refcnt)
+		clk_disable(c->parent);
+	if (p_source_old) {
+		clk_disable(p->parent);
+		clk_disable(p_source_old);
+	}
+
+	clk_reparent(c, p);
 
 	tegra_dvfs_rail_mode_updating(tegra_cpu_rail, false);
 	return 0;
@@ -1874,7 +1870,6 @@ static struct clk_ops tegra_blink_clk_ops = {
 static int tegra14_pll_clk_wait_for_lock(
 	struct clk *c, u32 lock_reg, u32 lock_bits)
 {
-#ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 #if USE_PLL_LOCK_BITS
 	int i;
 	u32 val = 0;
@@ -1907,7 +1902,6 @@ static int tegra14_pll_clk_wait_for_lock(
 	}
 #endif
 	udelay(c->u.pll.lock_delay);
-#endif
 	return 0;
 }
 
@@ -2504,9 +2498,7 @@ static void tegra14_pllcx_clk_init(struct clk *c)
 	 * and no enabled module clocks should use it as a source during clock
 	 * init.
 	 */
-#ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 	BUG_ON(c->state == ON);
-#endif
 	/*
 	 * Most of PLLCX register fields are shadowed, and can not be read
 	 * directly from PLL h/w. Hence, actual PLLCX boot state is unknown.
@@ -2727,9 +2719,7 @@ static void pllx_set_defaults(struct clk *c, unsigned long input_rate)
 
 	/* Only s/w dyn ramp control is supported */
 	val = clk_readl(PLLX_HW_CTRL_CFG);
-#ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 	BUG_ON(!(val & PLLX_HW_CTRL_CFG_SWCTRL));
-#endif
 
 	pllxc_get_dyn_steps(c, input_rate, &step_a, &step_b);
 	val = step_a << PLLX_MISC2_DYNRAMP_STEPA_SHIFT;
@@ -2748,9 +2738,7 @@ static void pllx_set_defaults(struct clk *c, unsigned long input_rate)
 	/* Check/set IDDQ */
 	val = clk_readl(c->reg + PLL_MISCN(c, 3));
 	if (c->state == ON) {
-#ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 		BUG_ON(val & PLLX_MISC3_IDDQ);
-#endif
 	} else {
 		val |= PLLX_MISC3_IDDQ;
 		clk_writel(val, c->reg + PLL_MISCN(c, 3));
@@ -2781,11 +2769,9 @@ static void pllc_set_defaults(struct clk *c, unsigned long input_rate)
 #endif
 	clk_writel(val, c->reg + PLL_MISC(c));
 
-	if (c->state == ON) {
-#ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
+	if (c->state == ON)
 		BUG_ON(val & PLLC_MISC_IDDQ);
-#endif
-	} else {
+	else {
 		val |= PLLC_MISC_IDDQ;
 		clk_writel(val, c->reg + PLL_MISC(c));
 	}
@@ -3003,10 +2989,8 @@ static void pllm_set_defaults(struct clk *c, unsigned long input_rate)
 
 	if (c->state != ON)
 		val |= PLLM_MISC_IDDQ;
-#ifndef CONFIG_TEGRA_SIMULATION_PLATFORM
 	else
 		BUG_ON(val & PLLM_MISC_IDDQ);
-#endif
 
 	clk_writel(val, c->reg + PLL_MISC(c));
 }
@@ -3282,11 +3266,17 @@ static int tegra14_use_dfll_cb(const char *arg, const struct kernel_param *kp)
 	unsigned long c_flags, p_flags;
 	unsigned int old_use_dfll;
 	struct clk *c = tegra_get_clock_by_name("cpu");
+	struct clk *dfll = tegra_get_clock_by_name("dfll_cpu");
 
-	if (!c->parent || !c->parent->dvfs)
+	if (!c->parent || !c->parent->dvfs || !dfll)
 		return -ENOSYS;
 
 	clk_lock_save(c, &c_flags);
+	if (dfll->state == UNINITIALIZED) {
+		pr_err("%s: DFLL is not initialized\n", __func__);
+		clk_unlock_restore(c, &c_flags);
+		return -ENOSYS;
+	}
 	if (c->parent->u.cpu.mode == MODE_LP) {
 		pr_err("%s: DFLL is not used on LP CPU\n", __func__);
 		clk_unlock_restore(c, &c_flags);
@@ -6319,11 +6309,7 @@ static struct clk tegra_clk_msenc = {
 		.dev_id = "msenc",
 	},
 	.ops       = &tegra_1xbus_clk_ops,
-#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
-	.reg       = 0x170,
-#else
 	.reg       = 0x1f0,
-#endif
 	.inputs    = mux_pllm_pllc_pllp_plla,
 	.flags     = MUX | DIV_U71 | DIV_U71_INT,
 	.max_rate  = 600000000,

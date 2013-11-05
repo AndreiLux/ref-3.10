@@ -30,10 +30,12 @@
 #include <linux/power/bq2419x-charger.h>
 #include <linux/power/bq27441_battery.h>
 #include <linux/power/power_supply_extcon.h>
+#include <linux/tegra-fuse.h>
 
 #include <mach/irqs.h>
 #include <mach/edp.h>
-#include <mach/tegra_fuse.h>
+#include <mach/pinmux-t12.h>
+
 #include <linux/pid_thermal_gov.h>
 
 #include <asm/mach-types.h>
@@ -219,7 +221,7 @@ PALMAS_REGS_PDATA(smps9, 2800,  2800, NULL, 0, 0, 1, NORMAL,
 PALMAS_REGS_PDATA(smps10_out1, 5000,  5000, NULL, 1, 1, 1, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo1, 1050,  1050, NULL, 0, 0, 1, 0,
-		0, 0, 0, 0, 0);
+		0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo2, 2800,  3000, palmas_rails(smps6), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo3, 1200,  1200, palmas_rails(smps8), 0, 0, 1, 0,
@@ -497,6 +499,7 @@ static struct regulator_consumer_supply fixed_reg_en_battery_supply[] = {
 		REGULATOR_SUPPLY("vdd_sys_bl", NULL),
 		REGULATOR_SUPPLY("usb_vbus", "tegra-ehci.1"),
 		REGULATOR_SUPPLY("usb_vbus", "tegra-ehci.2"),
+		REGULATOR_SUPPLY("vddio_pex_sata", "tegra-sata.0"),
 };
 
 static struct regulator_consumer_supply fixed_reg_en_modem_3v3_supply[] = {
@@ -625,38 +628,6 @@ static struct platform_device *fixed_reg_devs_e2545[] = {
 #define LOKI_CPU_VDD_STEP_US		80
 
 #ifdef CONFIG_ARCH_TEGRA_HAS_CL_DVFS
-/* Macro definition of dfll bypass device */
-#define DFLL_BYPASS(_board, _min, _step, _size, _us_sel)		       \
-static struct regulator_init_data _board##_dfll_bypass_init_data = {	       \
-	.num_consumer_supplies = ARRAY_SIZE(_board##_dfll_bypass_consumers),   \
-	.consumer_supplies = _board##_dfll_bypass_consumers,		       \
-	.constraints = {						       \
-		.valid_modes_mask = (REGULATOR_MODE_NORMAL |		       \
-				REGULATOR_MODE_STANDBY),		       \
-		.valid_ops_mask = (REGULATOR_CHANGE_MODE |		       \
-				REGULATOR_CHANGE_STATUS |		       \
-				REGULATOR_CHANGE_VOLTAGE),		       \
-		.min_uV = (_min),					       \
-		.max_uV = ((_size) - 1) * (_step) + (_min),		       \
-		.always_on = 1,						       \
-		.boot_on = 1,						       \
-	},								       \
-};									       \
-static struct tegra_dfll_bypass_platform_data _board##_dfll_bypass_pdata = {   \
-	.reg_init_data = &_board##_dfll_bypass_init_data,		       \
-	.uV_step = (_step),						       \
-	.linear_min_sel = 0,						       \
-	.n_voltages = (_size),						       \
-	.voltage_time_sel = _us_sel,					       \
-};									       \
-static struct platform_device loki_dfll_bypass_dev = {			       \
-	.name = "tegra_dfll_bypass",					       \
-	.id = -1,							       \
-	.dev = {							       \
-		.platform_data = &_board##_dfll_bypass_pdata,		       \
-	},								       \
-}
-
 /* loki board parameters for cpu dfll */
 static struct tegra_cl_dvfs_cfg_param loki_cl_dvfs_param = {
 	.sample_rate = 50000,
@@ -691,13 +662,15 @@ static struct regulator_consumer_supply loki_dfll_bypass_consumers[] = {
 	REGULATOR_SUPPLY("vdd_cpu", NULL),
 };
 DFLL_BYPASS(loki, LOKI_CPU_VDD_MIN_UV, LOKI_CPU_VDD_STEP_UV,
-	    LOKI_CPU_VDD_MAP_SIZE, LOKI_CPU_VDD_STEP_US);
+	    LOKI_CPU_VDD_MAP_SIZE, LOKI_CPU_VDD_STEP_US, -1);
 
 static struct tegra_cl_dvfs_platform_data loki_cl_dvfs_data = {
 	.dfll_clk_name = "dfll_cpu",
 	.pmu_if = TEGRA_CL_DVFS_PMU_PWM,
 	.u.pmu_pwm = {
 		.pwm_rate = 12750000,
+		.pwm_bus = TEGRA_CL_DVFS_PWM_1WIRE_BUFFER,
+		.pwm_pingroup = TEGRA_PINGROUP_DVFS_PWM,
 		.out_gpio = TEGRA_GPIO_PU6,
 		.out_enable_high = false,
 #ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
@@ -794,12 +767,19 @@ int __init loki_regulator_init(void)
 static int __init loki_fixed_regulator_init(void)
 {
 	struct board_info pmu_board_info;
+	struct board_info bi;
+
 
 	if (!of_machine_is_compatible("nvidia,loki"))
 		return 0;
 
+	tegra_get_board_info(&bi);
 	tegra_get_pmu_board_info(&pmu_board_info);
 
+	if (bi.board_id == BOARD_P2530) {
+		fixed_reg_en_vdd_hdmi_5v0_pdata.gpio = TEGRA_GPIO_PFF0;
+		fixed_reg_en_vdd_hdmi_5v0_pdata.enable_high = false;
+	}
 	if (pmu_board_info.board_id == BOARD_E2545)
 		return platform_add_devices(fixed_reg_devs_e2545,
 			ARRAY_SIZE(fixed_reg_devs_e2545));
@@ -858,21 +838,21 @@ static struct soctherm_platform_data loki_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 98000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 96000,
+					.trip_temp = 99000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 86000,
+					.trip_temp = 89000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -888,14 +868,14 @@ static struct soctherm_platform_data loki_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 100000,
+					.trip_temp = 103000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 88000,
+					.trip_temp = 91000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -903,14 +883,14 @@ static struct soctherm_platform_data loki_soctherm_data = {
 /*
 				{
 					.cdev_type = "gk20a_cdev",
-					.trip_temp = 80000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 98000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -950,9 +930,13 @@ int __init loki_soctherm_init(void)
 			loki_soctherm_data.therm[THERM_CPU].trips,
 			&loki_soctherm_data.therm[THERM_CPU].num_trips,
 			8000); /* edp temperature margin */
+		tegra_add_tj_trips(
+			loki_soctherm_data.therm[THERM_CPU].trips,
+			&loki_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_tgpu_trips(
+			loki_soctherm_data.therm[THERM_GPU].trips,
+			&loki_soctherm_data.therm[THERM_GPU].num_trips);
 	}
 
-	/* Always do soctherm init here.
-	 * Allowing access to raw soctherm regs for debugging purposes */
 	return tegra11_soctherm_init(&loki_soctherm_data);
 }

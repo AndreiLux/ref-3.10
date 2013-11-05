@@ -32,6 +32,7 @@
 #include <linux/sched.h>
 #include <linux/tegra-powergate.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra-cpuidle.h>
 
 #include <mach/irqs.h>
 #include <mach/io_dpd.h>
@@ -41,7 +42,6 @@
 #include <asm/cputype.h>
 
 #include "clock.h"
-#include "cpuidle.h"
 #include "iomap.h"
 #include "pm.h"
 #include "sleep.h"
@@ -755,7 +755,8 @@ void tegra_io_dpd_enable(struct tegra_io_dpd *hnd)
 	enable_mask = ((1 << hnd->io_dpd_bit) | (2 << dpd_enable_lsb));
 	writel(enable_mask, pmc + (APBDEV_PMC_IO_DPD_REQ_0 +
 					hnd->io_dpd_reg_index * 8));
-	udelay(1);
+	/* delay pclk * (reset APBDEV_PMC_SEL_DPD_TIM_0 value 127 + 5) */
+	udelay(7);
 	dpd_status = readl(pmc + (APBDEV_PMC_IO_DPD_STATUS_0 +
 					hnd->io_dpd_reg_index * 8));
 	if (!(dpd_status & (1 << hnd->io_dpd_bit))) {

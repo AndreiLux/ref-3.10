@@ -35,10 +35,7 @@
 #include <linux/pm.h>
 #include <linux/syscore_ops.h>
 #include <linux/tegra-soc.h>
-
-#include <mach/legacy_irq.h>
-
-#include "../../arch/arm/mach-tegra/pm-irq.h"
+#include <linux/irqchip/tegra.h>
 
 #define GPIO_BANK(x)		((x) >> 5)
 #define GPIO_PORT(x)		(((x) >> 3) & 0x3)
@@ -472,6 +469,8 @@ fail:
 static struct syscore_ops tegra_gpio_syscore_ops = {
 	.suspend = tegra_gpio_suspend,
 	.resume = tegra_gpio_resume,
+	.save = tegra_gpio_suspend,
+	.restore = tegra_gpio_resume,
 };
 
 static struct irq_chip tegra_gpio_irq_chip = {

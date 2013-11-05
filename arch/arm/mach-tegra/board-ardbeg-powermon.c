@@ -18,7 +18,6 @@
  */
 
 #include <linux/i2c.h>
-#include <linux/ina219.h>
 #include <linux/platform_data/ina230.h>
 #include <linux/i2c/pca954x.h>
 
@@ -32,9 +31,20 @@
 #define VDD_CPU_BUCKCPU_REWORKED	10
 #define VDD_1V35_SD2_REWORKED		10
 
-/* unused rail */
+#define AVG_32_SAMPLES (4 << 9)
+
+/* AVG is specified from platform data */
+#define INA230_CONT_CONFIG	(AVG_32_SAMPLES | INA230_VBUS_CT | \
+				INA230_VSH_CT | INA230_CONT_MODE)
+#define INA230_TRIG_CONFIG	(AVG_32_SAMPLES | INA230_VBUS_CT | \
+				INA230_VSH_CT | INA230_TRIG_MODE)
+
+/* rails on i2c2_0 */
 enum {
-	UNUSED_RAIL,
+	VDD_BAT_0,
+	VDD_SYS_BUCKCPU_0,
+	VDD_SYS_BUCKSOC_0,
+	VDD_SYS_BUCKGPU_0,
 };
 
 /* following rails are present on Ardbeg */
@@ -87,14 +97,39 @@ enum {
 	ARDBEG_A01_VDD_SYS_BL,
 };
 
-static struct ina219_platform_data power_mon_info_0[] = {
-	/* All unused INA219 devices use below data */
-	[UNUSED_RAIL] = {
-		.calibration_data = 0x369c,
-		.power_lsb = 3.051979018 * PRECISION_MULTIPLIER_ARDBEG,
-		.rail_name = "unused_rail",
-		.divisor = 20,
+static struct ina230_platform_data power_mon_info_0[] = {
+	/* E1780-A02 (Shield ERS) */
+	[VDD_BAT_0] = {
+		.calibration_data = 0x1366,
+		.power_lsb = 2.577527185 * PRECISION_MULTIPLIER_ARDBEG,
+		.rail_name = "VDD_BAT",
+		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
+		.resistor = 10,
+	},
+	[VDD_SYS_BUCKCPU_0] = {
+		.calibration_data = 0x1AC5,
+		.power_lsb = 1.867795126 * PRECISION_MULTIPLIER_ARDBEG,
+		.rail_name = "VDD_SYS_BUCKCPU",
+		.divisor = 25,
+		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
+		.resistor = 10,
+	},
+	[VDD_SYS_BUCKSOC_0] = {
+		.calibration_data = 0x2802,
+		.power_lsb = 0.624877954 * PRECISION_MULTIPLIER_ARDBEG,
+		.rail_name = "VDD_SYS_BUCKSOC",
+		.divisor = 25,
+		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
+		.resistor = 20,
+	},
+	[VDD_SYS_BUCKGPU_0] = {
+		.calibration_data = 0x1F38,
+		.power_lsb = 1.601601602 * PRECISION_MULTIPLIER_ARDBEG,
+		.rail_name = "VDD_SYS_BUCKCPU",
+		.divisor = 25,
+		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
+		.resistor = 10,
 	},
 };
 
@@ -104,6 +139,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x1366,
 		.power_lsb = 2.577527185 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BAT",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -112,6 +149,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.078127384 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_RTC_LDO5",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -120,6 +159,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x4759,
 		.power_lsb = 1.401587736 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_3V3A_SMPS1_2",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -128,6 +169,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 3.906369213 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SOC_SMPS1_2",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -136,6 +179,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x1AC5,
 		.power_lsb = 1.867795126 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BUCKCPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -144,6 +189,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x2ECF,
 		.power_lsb = 10.68179922 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_CPU_BUCKCPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -152,6 +199,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x5BA7,
 		.power_lsb = 0.545539786 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V8A_SMPS3",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -160,6 +209,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x50B4,
 		.power_lsb = 0.309777348 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V8B_SMPS9",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -168,6 +219,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x369C,
 		.power_lsb = 9.155937053 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_GPU_BUCKGPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -176,6 +229,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 3.906369213 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V35_SMPS6",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -185,6 +240,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x4759,
 		.power_lsb = 1.401587736 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "unused_rail",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -193,6 +250,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x3269,
 		.power_lsb = 0.198372724 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_3V3B_SMPS9",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -201,6 +260,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.039063692 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_LCD_1V8B_DIS",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -209,6 +270,8 @@ static struct ina230_platform_data power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.130212307 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V05_SMPS8",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -219,6 +282,8 @@ static struct ina230_platform_data power_mon_info_2[] = {
 		.calibration_data  = 0x1A29,
 		.power_lsb = 0.63710119 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BL",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -227,6 +292,8 @@ static struct ina230_platform_data power_mon_info_2[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.390636921 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "AVDD_1V05_LDO2",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 	},
@@ -238,6 +305,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x1366,
 		.power_lsb = 2.577527185 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BAT",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -247,6 +316,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.078127384 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_RTC_LDO3",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 50,
@@ -256,6 +327,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x1AAC,
 		.power_lsb = 0.624877954 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BUCKSOC",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 30,
@@ -265,6 +338,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 3.906369213 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SOC_SD1",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 1,
@@ -274,6 +349,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x1AC5,
 		.power_lsb = 1.867795126 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BUCKCPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -283,6 +360,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x2ECF,
 		.power_lsb = 10.68179922 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_CPU_BUCKCPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 1,
@@ -292,6 +371,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x45F0,
 		.power_lsb = 0.714924039 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V8_SD5",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -301,6 +382,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x3A83,
 		.power_lsb = 0.042726484 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_3V3A_LDO1_6",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 200,
@@ -310,6 +393,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.390636921 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_DIS_3V3_LCD",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -319,6 +404,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 3.906369213 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V35_SD2",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 1,
@@ -328,6 +415,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x1F38,
 		.power_lsb = 1.601601602 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BUCKGPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -337,6 +426,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.039063692 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_LCD_1V8B_DIS",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 100,
@@ -346,6 +437,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_1[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.130212307 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V05_LDO0",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 30,
@@ -357,6 +450,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_2[] = {
 		.calibration_data  = 0x7FFF,
 		.power_lsb = 0.390636921 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V05_SD4",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -366,6 +461,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_2[] = {
 		.calibration_data  = 0x5A04,
 		.power_lsb = 0.277729561 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_1V8A_LDO2_5_7",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 20,
@@ -375,6 +472,8 @@ static struct ina230_platform_data ardbeg_A01_power_mon_info_2[] = {
 		.calibration_data  = 0x2468,
 		.power_lsb = 0.274678112 * PRECISION_MULTIPLIER_ARDBEG,
 		.rail_name = "VDD_SYS_BL",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 50,
@@ -440,28 +539,28 @@ enum {
 };
 
 /* following is the i2c board info for Ardbeg */
-static struct i2c_board_info ardbeg_i2c2_0_ina219_board_info[] = {
+static struct i2c_board_info ardbeg_i2c2_0_ina230_board_info[] = {
 	[INA_I2C_2_0_ADDR_40] = {
-		I2C_BOARD_INFO("ina219", 0x40),
-		.platform_data = &power_mon_info_0[UNUSED_RAIL],
+		I2C_BOARD_INFO("ina230", 0x40),
+		.platform_data = &power_mon_info_0[VDD_BAT_0],
 		.irq = -1,
 	},
 
 	[INA_I2C_2_0_ADDR_41] = {
-		I2C_BOARD_INFO("ina219", 0x41),
-		.platform_data = &power_mon_info_0[UNUSED_RAIL],
+		I2C_BOARD_INFO("ina230", 0x41),
+		.platform_data = &power_mon_info_0[VDD_SYS_BUCKCPU_0],
 		.irq = -1,
 	},
 
 	[INA_I2C_2_0_ADDR_42] = {
-		I2C_BOARD_INFO("ina219", 0x42),
-		.platform_data = &power_mon_info_0[UNUSED_RAIL],
+		I2C_BOARD_INFO("ina230", 0x42),
+		.platform_data = &power_mon_info_0[VDD_SYS_BUCKSOC_0],
 		.irq = -1,
 	},
 
 	[INA_I2C_2_0_ADDR_43] = {
-		I2C_BOARD_INFO("ina219", 0x43),
-		.platform_data = &power_mon_info_0[UNUSED_RAIL],
+		I2C_BOARD_INFO("ina230", 0x43),
+		.platform_data = &power_mon_info_0[VDD_SYS_BUCKGPU_0],
 		.irq = -1,
 	},
 };
@@ -735,6 +834,52 @@ static void modify_reworked_rail_data(void)
 					= VDD_SOC_SD1_REWORKED;
 }
 
+static void modify_tn8_rail_data(void)
+{
+	/* E1780-A02 TN8 w/ E1736-A00 PMU*/
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_SYS_BAT]
+		.calibration_data  = 0x3547;
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_SYS_BAT]
+		.power_lsb = 3.128284087 * PRECISION_MULTIPLIER_ARDBEG;
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_SYS_BAT]
+		.resistor = 3;
+
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_SYS_BUCKSOC]
+		.calibration_data  = 0x2ED7;
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_SYS_BUCKSOC]
+		.power_lsb = 1.067467267 * PRECISION_MULTIPLIER_ARDBEG;
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_SYS_BUCKSOC]
+		.resistor = 10;
+
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_3V3A_LDO1_6]
+		.calibration_data  = 0x7FFF;
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_3V3A_LDO1_6]
+		.power_lsb = 0.390636921 * PRECISION_MULTIPLIER_ARDBEG;
+	ardbeg_A01_power_mon_info_1[ARDBEG_A01_VDD_3V3A_LDO1_6]
+		.resistor = 10;
+
+	ardbeg_A01_power_mon_info_2[ARDBEG_A01_VDD_1V8A_LDO2_5_7]
+		.calibration_data  = 0x7FFF;
+	ardbeg_A01_power_mon_info_2[ARDBEG_A01_VDD_1V8A_LDO2_5_7]
+		.power_lsb = 0.390636921 * PRECISION_MULTIPLIER_ARDBEG;
+	ardbeg_A01_power_mon_info_2[ARDBEG_A01_VDD_1V8A_LDO2_5_7]
+		.resistor = 10;
+
+	power_mon_info_0[VDD_BAT_0]
+		.calibration_data = 0x1FF7;
+	power_mon_info_0[VDD_BAT_0]
+		.power_lsb = 3.128437004 * PRECISION_MULTIPLIER_ARDBEG;
+	power_mon_info_0[VDD_BAT_0]
+		.resistor = 5;
+
+	power_mon_info_0[VDD_SYS_BUCKSOC_0]
+		.calibration_data = 0x2ED7;
+	power_mon_info_0[VDD_SYS_BUCKSOC_0]
+		.power_lsb = 1.067467267 * PRECISION_MULTIPLIER_ARDBEG;
+	power_mon_info_0[VDD_SYS_BUCKSOC_0]
+		.resistor = 10;
+}
+
 int __init ardbeg_pmon_init(void)
 {
 	/*
@@ -751,12 +896,15 @@ int __init ardbeg_pmon_init(void)
 
 	tegra_get_board_info(&bi);
 
+	if (bi.sku == 1100)
+		modify_tn8_rail_data();
+
 	i2c_register_board_info(1, ardbeg_i2c2_board_info,
 		ARRAY_SIZE(ardbeg_i2c2_board_info));
 
 	i2c_register_board_info(PCA954x_I2C_BUS0,
-			ardbeg_i2c2_0_ina219_board_info,
-			ARRAY_SIZE(ardbeg_i2c2_0_ina219_board_info));
+			ardbeg_i2c2_0_ina230_board_info,
+			ARRAY_SIZE(ardbeg_i2c2_0_ina230_board_info));
 
 	if (bi.fab >= BOARD_FAB_A01)
 		register_devices_ardbeg_A01();

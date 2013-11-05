@@ -323,15 +323,16 @@ static int output_enable(struct tegra_cl_dvfs *cld)
 	if (is_i2c(cld)) {
 		val |= CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
 	} else {
-		int pg, gpio = cld->p_data->u.pmu_pwm.out_gpio;
-		if (gpio) {
-			int v = cld->p_data->u.pmu_pwm.out_enable_high ? 1 : 0;
+		struct tegra_cl_dvfs_platform_data *d = cld->p_data;
+		if (d->u.pmu_pwm.pwm_bus == TEGRA_CL_DVFS_PWM_1WIRE_BUFFER) {
+			int gpio = d->u.pmu_pwm.out_gpio;
+			int v = d->u.pmu_pwm.out_enable_high ? 1 : 0;
 			__gpio_set_value(gpio, v);
 			return 0;
 		}
 
-		pg = cld->p_data->u.pmu_pwm.pwm_pingroup;
-		if (pg) {
+		if (d->u.pmu_pwm.pwm_bus == TEGRA_CL_DVFS_PWM_1WIRE_DIRECT) {
+			int pg = d->u.pmu_pwm.pwm_pingroup;
 			tegra_pinmux_set_tristate(pg, TEGRA_TRI_NORMAL);
 			return 0;
 		}
@@ -347,16 +348,17 @@ static int output_enable(struct tegra_cl_dvfs *cld)
 static int output_disable_pwm(struct tegra_cl_dvfs *cld)
 {
 	u32 val;
+	struct tegra_cl_dvfs_platform_data *d = cld->p_data;
 
-	int pg, gpio = cld->p_data->u.pmu_pwm.out_gpio;
-	if (gpio) {
-		int v = cld->p_data->u.pmu_pwm.out_enable_high ? 0 : 1;
+	if (d->u.pmu_pwm.pwm_bus == TEGRA_CL_DVFS_PWM_1WIRE_BUFFER) {
+		int gpio = d->u.pmu_pwm.out_gpio;
+		int v = d->u.pmu_pwm.out_enable_high ? 0 : 1;
 		__gpio_set_value(gpio, v);
 		return 0;
 	}
 
-	pg = cld->p_data->u.pmu_pwm.pwm_pingroup;
-	if (pg) {
+	if (d->u.pmu_pwm.pwm_bus == TEGRA_CL_DVFS_PWM_1WIRE_DIRECT) {
+		int pg = d->u.pmu_pwm.pwm_pingroup;
 		tegra_pinmux_set_tristate(pg, TEGRA_TRI_TRISTATE);
 		return 0;
 	}
@@ -1080,6 +1082,8 @@ static void cl_dvfs_init_pwm_if(struct tegra_cl_dvfs *cld)
 	u32 val, div;
 	struct tegra_cl_dvfs_platform_data *p_data = cld->p_data;
 	bool delta_mode = p_data->u.pmu_pwm.delta_mode;
+	int pg = p_data->u.pmu_pwm.pwm_pingroup;
+	int pcg = p_data->u.pmu_pwm.pwm_clk_pingroup;
 
 	div = GET_DIV(cld->ref_rate, p_data->u.pmu_pwm.pwm_rate, 1);
 
@@ -1090,13 +1094,31 @@ static void cl_dvfs_init_pwm_if(struct tegra_cl_dvfs *cld)
 
 	/*
 	 * Different ways to enable/disable PWM depending on board design:
-	 * a) Use native CL-DVFS output configuration PWM_ENABLE control
-	 * b) Use gpio control of external buffer (out_gpio is populated)
-	 * c) Use tristate PWM pingroup control (pwm_pingroup is populated)
+	 * a) Use native CL-DVFS output PWM_ENABLE control (2WIRE bus)
+	 * b) Use gpio control of external buffer (1WIRE bus with buffer)
+	 * c) Use tristate PWM pingroup control (1WIRE bus with direct connect)
 	 * in cases (b) and (c) keep CL-DVFS native control always enabled
 	 */
-	if (p_data->u.pmu_pwm.out_gpio || p_data->u.pmu_pwm.pwm_pingroup)
+
+	switch (p_data->u.pmu_pwm.pwm_bus) {
+	case TEGRA_CL_DVFS_PWM_1WIRE_BUFFER:
+		tegra_pinmux_set_tristate(pg, TEGRA_TRI_NORMAL);
 		val |= CL_DVFS_OUTPUT_CFG_PWM_ENABLE;
+		break;
+
+	case TEGRA_CL_DVFS_PWM_1WIRE_DIRECT:
+		tegra_pinmux_set_tristate(pg, TEGRA_TRI_TRISTATE);
+		val |= CL_DVFS_OUTPUT_CFG_PWM_ENABLE;
+		break;
+
+	case TEGRA_CL_DVFS_PWM_2WIRE:
+		tegra_pinmux_set_tristate(pg, TEGRA_TRI_NORMAL);
+		tegra_pinmux_set_tristate(pcg, TEGRA_TRI_NORMAL);
+		break;
+
+	default:
+		BUG();
+	}
 
 	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
 	cl_dvfs_wmb(cld);
@@ -1274,7 +1296,7 @@ static void cl_dvfs_disable_clocks(struct tegra_cl_dvfs *cld)
 
 static int cl_dvfs_init(struct tegra_cl_dvfs *cld)
 {
-	int ret;
+	int ret, gpio, flags;
 
 	/* Enable output inerface clock */
 	if (cld->p_data->pmu_if == TEGRA_CL_DVFS_PMU_I2C) {
@@ -1286,8 +1308,14 @@ static int cl_dvfs_init(struct tegra_cl_dvfs *cld)
 		}
 		cld->i2c_rate = clk_get_rate(cld->i2c_clk);
 	} else if (cld->p_data->pmu_if == TEGRA_CL_DVFS_PMU_PWM) {
-		int gpio = cld->p_data->u.pmu_pwm.out_gpio;
-		int flags = cld->p_data->u.pmu_pwm.out_enable_high ?
+		if (cld->p_data->u.pmu_pwm.pwm_bus >
+		    TEGRA_CL_DVFS_PWM_1WIRE_DIRECT) {
+			/* FIXME: PWM 2-wire support */
+			pr_err("%s: not supported PWM 2-wire bus\n", __func__);
+			return -ENOSYS;
+		}
+		gpio = cld->p_data->u.pmu_pwm.out_gpio;
+		flags = cld->p_data->u.pmu_pwm.out_enable_high ?
 			GPIOF_OUT_INIT_LOW : GPIOF_OUT_INIT_HIGH;
 		if (gpio && gpio_request_one(gpio, flags, "cl_dvfs_pwm")) {
 			pr_err("%s: Failed to request pwm gpio %d\n",
@@ -1560,7 +1588,10 @@ static int tegra_cl_dvfs_force_output(void *data, unsigned int out_sel)
 		val |= CL_DVFS_OUTPUT_FORCE_ENABLE;
 		cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_FORCE);
 		cl_dvfs_wmb(cld);
-		output_enable(cld);
+		/* enable output only if bypass h/w is alive */
+		if (!cld->safe_dvfs->dfll_data.is_bypass_down ||
+		    !cld->safe_dvfs->dfll_data.is_bypass_down())
+			output_enable(cld);
 	}
 
 	clk_unlock_restore(cld->dfll_clk, &flags);
@@ -1901,6 +1932,12 @@ unsigned long tegra_cl_dvfs_request_get(struct tegra_cl_dvfs *cld)
 
 #ifdef CONFIG_DEBUG_FS
 
+static inline int get_mv(struct tegra_cl_dvfs *cld, u32 out_val)
+{
+	return is_i2c(cld) ? cld->out_map[out_val]->reg_uV / 1000 :
+		cld->p_data->vdd_map[out_val].reg_uV / 1000;
+}
+
 static int lock_get(void *data, u64 *val)
 {
 	struct tegra_cl_dvfs *cld = ((struct clk *)data)->u.dfll.cl_dvfs;
@@ -1950,8 +1987,7 @@ static int output_get(void *data, u64 *val)
 	clk_lock_save(c, &flags);
 
 	v = cl_dvfs_get_output(cld);
-	*val = is_i2c(cld) ? cld->out_map[v]->reg_uV / 1000 :
-		cld->p_data->vdd_map[v].reg_uV / 1000;
+	*val = get_mv(cld, v);
 
 	clk_unlock_restore(c, &flags);
 	clk_disable(cld->soc_clk);
@@ -1964,8 +2000,7 @@ static int vmax_get(void *data, u64 *val)
 	u32 v;
 	struct tegra_cl_dvfs *cld = ((struct clk *)data)->u.dfll.cl_dvfs;
 	v = cld->lut_max;
-	*val = is_i2c(cld) ? cld->out_map[v]->reg_uV / 1000 :
-		cld->p_data->vdd_map[v].reg_uV / 1000;
+	*val = get_mv(cld, v);
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(vmax_fops, vmax_get, NULL, "%llu\n");
@@ -1975,8 +2010,7 @@ static int vmin_get(void *data, u64 *val)
 	u32 v;
 	struct tegra_cl_dvfs *cld = ((struct clk *)data)->u.dfll.cl_dvfs;
 	v = cld->lut_min;
-	*val = is_i2c(cld) ? cld->out_map[v]->reg_uV / 1000 :
-		cld->p_data->vdd_map[v].reg_uV / 1000;
+	*val = get_mv(cld, v);
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(vmin_fops, vmin_get, NULL, "%llu\n");
@@ -2103,6 +2137,40 @@ static int undershoot_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(undershoot_fops, undershoot_get, undershoot_set,
 			"%llu\n");
 
+static int cl_profiles_show(struct seq_file *s, void *data)
+{
+	int i, *trips;
+	struct clk *c = s->private;
+	struct tegra_cl_dvfs *cld = c->u.dfll.cl_dvfs;
+
+	seq_printf(s, "FLOORS:\n");
+	for (i = 0; i < cld->therm_floors_num; i++) {
+		u8 v = cld->thermal_out_floors[i];
+		trips = cld->safe_dvfs->dvfs_rail->vmin_cdev->trip_temperatures;
+		seq_printf(s, "%3dC %5dmV\n", trips[i], get_mv(cld, v));
+	}
+
+	seq_printf(s, "CAPS:\n");
+	for (i = 0; i < cld->therm_caps_num; i++) {
+		u8 v = cld->thermal_out_caps[i];
+		trips = cld->safe_dvfs->dvfs_rail->vmax_cdev->trip_temperatures;
+		seq_printf(s, "%3dC %5dmV\n", trips[i], get_mv(cld, v));
+	}
+	return 0;
+}
+
+static int cl_profiles_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, cl_profiles_show, inode->i_private);
+}
+
+static const struct file_operations cl_profiles_fops = {
+	.open		= cl_profiles_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 static int cl_register_show(struct seq_file *s, void *data)
 {
 	u32 offs;
@@ -2228,6 +2296,10 @@ int __init tegra_cl_dvfs_debug_init(struct clk *dfll_clk)
 
 	if (!debugfs_create_file("pmu_undershoot_gb", S_IRUGO,
 		cl_dvfs_dentry, dfll_clk, &undershoot_fops))
+		goto err_out;
+
+	if (!debugfs_create_file("profiles", S_IRUGO,
+		cl_dvfs_dentry, dfll_clk, &cl_profiles_fops))
 		goto err_out;
 
 	if (!debugfs_create_file("registers", S_IRUGO | S_IWUSR,

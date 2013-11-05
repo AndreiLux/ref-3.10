@@ -19,6 +19,7 @@
 #include <linux/resource.h>
 #include <linux/platform_device.h>
 #include <linux/wlan_plat.h>
+#include <linux/fs.h>
 #include <linux/delay.h>
 #include <linux/gpio.h>
 #include <linux/clk.h>
@@ -36,6 +37,7 @@
 #include "board.h"
 #include "board-loki.h"
 #include "iomap.h"
+#include "dvfs.h"
 
 #define LOKI_WLAN_RST	TEGRA_GPIO_PR3
 #define LOKI_WLAN_PWR	TEGRA_GPIO_PCC5
@@ -50,11 +52,13 @@ static int loki_wifi_status_register(void (*callback)(int , void *), void *);
 static int loki_wifi_reset(int on);
 static int loki_wifi_power(int on);
 static int loki_wifi_set_carddetect(int val);
+static int loki_wifi_get_mac_addr(unsigned char *buf);
 
 static struct wifi_platform_data loki_wifi_control = {
 	.set_power	= loki_wifi_power,
 	.set_reset	= loki_wifi_reset,
 	.set_carddetect	= loki_wifi_set_carddetect,
+	.get_mac_addr	= loki_wifi_get_mac_addr,
 };
 
 static struct resource wifi_resource[] = {
@@ -146,13 +150,9 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.tap_delay = 0,
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
-	.uhs_mask = MMC_UHS_MASK_SDR104 |
-		/* FIXME: Enable UHS mode */
-		MMC_UHS_MASK_SDR12 | MMC_UHS_MASK_SDR25 |
-		MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
+	.uhs_mask = MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
-	.calib_1v8_offsets_uhs_modes = MMC_1V8_CALIB_OFFSET_DDR50,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
@@ -167,7 +167,6 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
 		MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
-	.calib_1v8_offsets_uhs_modes = MMC_1V8_CALIB_OFFSET_DDR50,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
@@ -177,7 +176,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 	.is_8bit = 1,
 	.tap_delay = 0x4,
 	.trim_delay = 0x4,
-	.ddr_trim_delay = 0x4,
+	.ddr_trim_delay = 0x0,
 	.mmc_data = {
 		.built_in = 1,
 		.ocr_mask = MMC_OCR_1V8_MASK,
@@ -187,9 +186,6 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 	.max_clk_limit = 102000000,
 	.calib_3v3_offsets = 0x0202,
 	.calib_1v8_offsets = 0x0202,
-	.calib_1v8_offsets_uhs_modes = MMC_1V8_CALIB_OFFSET_DDR50 |
-		MMC_1V8_CALIB_OFFSET_HS200,
-
 };
 
 static struct platform_device tegra_sdhci_device0 = {
@@ -355,6 +351,60 @@ static int loki_wifi_reset(int on)
 	return 0;
 }
 
+#define LOKI_WIFI_MAC_ADDR_FILE	"/mnt/factory/wifi/wifi_mac.txt"
+
+static int loki_wifi_get_mac_addr(unsigned char *buf)
+{
+	struct file *fp;
+	int rdlen;
+	char str[32];
+	int mac[6];
+	int ret = 0;
+
+	pr_debug("%s\n", __func__);
+
+	/* open wifi mac address file */
+	fp = filp_open(LOKI_WIFI_MAC_ADDR_FILE, O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+		pr_err("%s: cannot open %s\n",
+			__func__, LOKI_WIFI_MAC_ADDR_FILE);
+		return -ENOENT;
+	}
+
+	/* read wifi mac address file */
+	memset(str, 0, sizeof(str));
+	rdlen = kernel_read(fp, fp->f_pos, str, 17);
+	if (rdlen > 0)
+		fp->f_pos += rdlen;
+	if (rdlen != 17) {
+		pr_err("%s: bad mac address file"
+			" - len %d < 17",
+			__func__, rdlen);
+		ret = -ENOENT;
+	} else if (sscanf(str, "%x:%x:%x:%x:%x:%x",
+		&mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
+		pr_err("%s: bad mac address file"
+			" - must contain xx:xx:xx:xx:xx:xx\n",
+			__func__);
+		ret = -ENOENT;
+	} else {
+		pr_info("%s: using wifi mac %02x:%02x:%02x:%02x:%02x:%02x\n",
+			__func__,
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+		buf[0] = (unsigned char) mac[0];
+		buf[1] = (unsigned char) mac[1];
+		buf[2] = (unsigned char) mac[2];
+		buf[3] = (unsigned char) mac[3];
+		buf[4] = (unsigned char) mac[4];
+		buf[5] = (unsigned char) mac[5];
+	}
+
+	/* close wifi mac address file */
+	filp_close(fp, NULL);
+
+	return ret;
+}
+
 static int __init loki_wifi_init(void)
 {
 	int rc;
@@ -402,6 +452,36 @@ subsys_initcall_sync(loki_wifi_prepower);
 
 int __init loki_sdhci_init(void)
 {
+	int nominal_core_mv;
+	int min_vcore_override_mv;
+	int boot_vcore_mv;
+
+	nominal_core_mv =
+		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
+	if (nominal_core_mv) {
+		tegra_sdhci_platform_data0.nominal_vcore_mv = nominal_core_mv;
+		tegra_sdhci_platform_data2.nominal_vcore_mv = nominal_core_mv;
+		tegra_sdhci_platform_data3.nominal_vcore_mv = nominal_core_mv;
+	}
+	min_vcore_override_mv =
+		tegra_dvfs_rail_get_override_floor(tegra_core_rail);
+	if (min_vcore_override_mv) {
+		tegra_sdhci_platform_data0.min_vcore_override_mv =
+			min_vcore_override_mv;
+		tegra_sdhci_platform_data2.min_vcore_override_mv =
+			min_vcore_override_mv;
+		tegra_sdhci_platform_data3.min_vcore_override_mv =
+			min_vcore_override_mv;
+	}
+	boot_vcore_mv = tegra_dvfs_rail_get_boot_level(tegra_core_rail);
+	if (boot_vcore_mv) {
+		tegra_sdhci_platform_data0.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data2.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
+	}
+
+	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
+
 	platform_device_register(&tegra_sdhci_device3);
 	platform_device_register(&tegra_sdhci_device2);
 	platform_device_register(&tegra_sdhci_device0);

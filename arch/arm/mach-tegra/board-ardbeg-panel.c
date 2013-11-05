@@ -28,6 +28,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/pwm_backlight.h>
 #include <linux/of.h>
+#include <linux/dma-contiguous.h>
 
 #include <mach/irqs.h>
 #include <mach/dc.h>
@@ -304,6 +305,24 @@ struct tegra_hdmi_out ardbeg_hdmi_out = {
 };
 
 
+#ifdef CONFIG_FRAMEBUFFER_CONSOLE
+static struct tegra_dc_mode hdmi_panel_modes[] = {
+	{
+		.pclk =			KHZ2PICOS(25200),
+		.h_ref_to_sync =	1,
+		.v_ref_to_sync =	1,
+		.h_sync_width =		96,	/* hsync_len */
+		.v_sync_width =		2,	/* vsync_len */
+		.h_back_porch =		48,	/* left_margin */
+		.v_back_porch =		33,	/* upper_margin */
+		.h_active =		640,	/* xres */
+		.v_active =		480,	/* yres */
+		.h_front_porch =	16,	/* right_margin */
+		.v_front_porch =	10,	/* lower_margin */
+	},
+};
+#endif /* CONFIG_FRAMEBUFFER_CONSOLE */
+
 static struct tegra_dc_out ardbeg_disp2_out = {
 	.type		= TEGRA_DC_OUT_HDMI,
 	.flags		= TEGRA_DC_OUT_HOTPLUG_HIGH,
@@ -315,6 +334,11 @@ static struct tegra_dc_out ardbeg_disp2_out = {
 
 	/* TODO: update max pclk to POR */
 	.max_pixclock	= KHZ2PICOS(297000),
+#ifdef CONFIG_FRAMEBUFFER_CONSOLE
+	.modes = hdmi_panel_modes,
+	.n_modes = ARRAY_SIZE(hdmi_panel_modes),
+	.depth = 24,
+#endif /* CONFIG_FRAMEBUFFER_CONSOLE */
 
 	.align		= TEGRA_DC_ALIGN_MSB,
 	.order		= TEGRA_DC_ORDER_RED_BLUE,
@@ -560,6 +584,13 @@ int __init ardbeg_panel_init(void)
 	ardbeg_carveouts[1].size = tegra_carveout_size;
 	ardbeg_carveouts[2].base = tegra_vpr_start;
 	ardbeg_carveouts[2].size = tegra_vpr_size;
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+	ardbeg_carveouts[1].cma_dev = &tegra_generic_cma_dev;
+	ardbeg_carveouts[1].resize = false;
+	ardbeg_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
+	ardbeg_carveouts[2].resize = true;
+	ardbeg_carveouts[2].cma_chunk_size = SZ_32M;
+#endif
 
 	err = platform_device_register(&ardbeg_nvmap_device);
 	if (err) {
@@ -580,9 +611,13 @@ int __init ardbeg_panel_init(void)
 	res->end = tegra_fb_start + tegra_fb_size - 1;
 
 	/* Copy the bootloader fb to the fb. */
-	__tegra_move_framebuffer(&ardbeg_nvmap_device,
-		tegra_fb_start, tegra_bootloader_fb_start,
-			min(tegra_fb_size, tegra_bootloader_fb_size));
+	if (tegra_bootloader_fb_size)
+		__tegra_move_framebuffer(&ardbeg_nvmap_device,
+				tegra_fb_start, tegra_bootloader_fb_start,
+				min(tegra_fb_size, tegra_bootloader_fb_size));
+	else
+		__tegra_clear_framebuffer(&ardbeg_nvmap_device,
+					  tegra_fb_start, tegra_fb_size);
 
 	ardbeg_disp1_device.dev.parent = &phost1x->dev;
 	err = platform_device_register(&ardbeg_disp1_device);

@@ -35,6 +35,7 @@
 #include <linux/tegra-powergate.h>
 #include <linux/fb.h>
 #include <linux/suspend.h>
+#include <linux/sched.h>
 
 #include <mach/pm_domains.h>
 
@@ -46,6 +47,8 @@
 #include "gk20a.h"
 #include "ctrl_gk20a.h"
 #include "hw_mc_gk20a.h"
+#include "hw_timer_gk20a.h"
+#include "hw_bus_gk20a.h"
 #include "hw_sim_gk20a.h"
 #include "gk20a_scale.h"
 #include "gr3d/pod_scaling.h"
@@ -95,6 +98,7 @@ const struct file_operations tegra_gk20a_dbg_gpu_ops = {
 	.release        = gk20a_dbg_gpu_dev_release,
 	.open           = gk20a_dbg_gpu_dev_open,
 	.unlocked_ioctl = gk20a_dbg_gpu_dev_ioctl,
+	.poll		= gk20a_dbg_gpu_dev_poll,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = gk20a_dbg_gpu_dev_ioctl,
 #endif
@@ -459,6 +463,34 @@ static irqreturn_t gk20a_intr_isr(int irq, void *dev_id)
 	return IRQ_WAKE_THREAD;
 }
 
+static void gk20a_pbus_isr(struct gk20a *g)
+{
+	u32 val;
+	val = gk20a_readl(g, bus_intr_0_r());
+	if (val & (bus_intr_0_pri_squash_m() |
+			bus_intr_0_pri_fecserr_m() |
+			bus_intr_0_pri_timeout_m())) {
+		nvhost_err(&g->dev->dev,
+			"NV_PTIMER_PRI_TIMEOUT_SAVE_0: 0x%x\n",
+			gk20a_readl(g, timer_pri_timeout_save_0_r()));
+		nvhost_err(&g->dev->dev,
+			"NV_PTIMER_PRI_TIMEOUT_SAVE_1: 0x%x\n",
+			gk20a_readl(g, timer_pri_timeout_save_1_r()));
+		nvhost_err(&g->dev->dev,
+			"NV_PTIMER_PRI_TIMEOUT_FECS_ERRCODE: 0x%x\n",
+			gk20a_readl(g, timer_pri_timeout_fecs_errcode_r()));
+		val &= ~(bus_intr_0_pri_squash_m() |
+			bus_intr_0_pri_fecserr_m() |
+			bus_intr_0_pri_timeout_m());
+	}
+
+	if (val)
+		nvhost_err(&g->dev->dev,
+			"Unhandled pending pbus interrupt\n");
+
+	gk20a_writel(g, bus_intr_0_r(), val);
+}
+
 static irqreturn_t gk20a_intr_thread(int irq, void *dev_id)
 {
 	struct gk20a *g = dev_id;
@@ -469,7 +501,7 @@ static irqreturn_t gk20a_intr_thread(int irq, void *dev_id)
 	mc_intr_0 = gk20a_readl(g, mc_intr_0_r());
 
 	if (mc_intr_0 & mc_intr_0_pgraph_pending_f())
-		gk20a_gr_isr(g);
+		gr_gk20a_elpg_protected_call(g, gk20a_gr_isr(g));
 	if (mc_intr_0 & mc_intr_0_pfifo_pending_f())
 		gk20a_fifo_isr(g);
 	if (mc_intr_0 & mc_intr_0_pmu_pending_f())
@@ -478,6 +510,8 @@ static irqreturn_t gk20a_intr_thread(int irq, void *dev_id)
 		gk20a_priv_ring_isr(g);
 	if (mc_intr_0 & mc_intr_0_ltc_pending_f())
 		gk20a_mm_ltc_isr(g);
+	if (mc_intr_0 & mc_intr_0_pbus_pending_f())
+		gk20a_pbus_isr(g);
 	if (mc_intr_0)
 		nvhost_dbg_info("leaving isr with interrupt pending 0x%08x",
 				mc_intr_0);
@@ -607,10 +641,12 @@ static void gk20a_free_hwctx(struct kref *ref)
 	struct nvhost_hwctx *ctx = container_of(ref, struct nvhost_hwctx, ref);
 	nvhost_dbg_fn("");
 
-	nvhost_module_busy(ctx->channel->dev);
+	gk20a_busy(ctx->channel->dev);
+
 	if (ctx->priv)
 		gk20a_free_channel(ctx, true);
-	nvhost_module_idle(ctx->channel->dev);
+
+	gk20a_idle(ctx->channel->dev);
 
 	kfree(ctx);
 }
@@ -692,11 +728,11 @@ int nvhost_gk20a_prepare_poweroff(struct platform_device *dev)
 
 	ret |= gk20a_channel_suspend(g);
 
-	ret |= gk20a_fifo_suspend(g);
-	/* disable elpg before gr suspend */
+	/* disable elpg before gr or fifo suspend */
 	ret |= gk20a_pmu_destroy(g);
 	ret |= gk20a_gr_suspend(g);
 	ret |= gk20a_mm_suspend(g);
+	ret |= gk20a_fifo_suspend(g);
 
 	/* Disable GPCPLL */
 	ret |= gk20a_suspend_clk_support(g);
@@ -708,15 +744,15 @@ int nvhost_gk20a_prepare_poweroff(struct platform_device *dev)
 int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 {
 	struct gk20a *g = get_gk20a(dev);
-	int err;
+	int err, nice_value;
 
 	nvhost_dbg_fn("");
 
 	if (g->power_on)
 		return 0;
 
-	/* FIXME: fix this correctly. this is enabling ARCH timer */
-	writel(0x1, IO_TO_VIRT(0x700f0000));
+	nice_value = task_nice(current);
+	set_user_nice(current, -20);
 
 	g->power_on = true;
 
@@ -726,6 +762,11 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 	gk20a_writel(g, mc_intr_en_0_r(),
 		mc_intr_en_0_inta_hardware_f());
 
+
+	gk20a_writel(g, bus_intr_en_0_r(),
+			bus_intr_en_0_pri_squash_m() |
+			bus_intr_en_0_pri_fecserr_m() |
+			bus_intr_en_0_pri_timeout_m());
 	gk20a_reset_priv_ring(g);
 
 	/* TBD: move this after graphics init in which blcg/slcg is enabled.
@@ -735,31 +776,57 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 	   simulation and emulation. We should remove SOB after graphics power
 	   saving features (blcg/slcg) are enabled. For now, do it here. */
 	err = gk20a_init_clk_support(g);
-	if (err)
+	if (err) {
 		nvhost_err(&dev->dev, "failed to init gk20a clk");
+		goto done;
+	}
+
+	err = gk20a_init_fifo_reset_enable_hw(g);
+	if (err) {
+		nvhost_err(&dev->dev, "failed to reset gk20a fifo");
+		goto done;
+	}
 
 	err = gk20a_init_mm_support(g);
-	if (err)
+	if (err) {
 		nvhost_err(&dev->dev, "failed to init gk20a mm");
-
-	err = gk20a_init_fifo_support(g);
-	if (err)
-		nvhost_err(&dev->dev, "failed to init gk20a fifo");
-
-	err = gk20a_init_gr_support(g);
-	if (err)
-		nvhost_err(&dev->dev, "failed to init gk20a gr");
+		goto done;
+	}
 
 	err = gk20a_init_pmu_support(g);
-	if (err)
+	if (err) {
 		nvhost_err(&dev->dev, "failed to init gk20a pmu");
+		goto done;
+	}
+
+	err = gk20a_init_fifo_support(g);
+	if (err) {
+		nvhost_err(&dev->dev, "failed to init gk20a fifo");
+		goto done;
+	}
+
+	err = gk20a_init_gr_support(g);
+	if (err) {
+		nvhost_err(&dev->dev, "failed to init gk20a gr");
+		goto done;
+	}
+
+	err = gk20a_init_pmu_setup_hw2(g);
+	if (err) {
+		nvhost_err(&dev->dev, "failed to init gk20a pmu_hw2");
+		goto done;
+	}
 
 	err = gk20a_init_therm_support(g);
-	if (err)
+	if (err) {
 		nvhost_err(&dev->dev, "failed to init gk20a therm");
+		goto done;
+	}
 
 	gk20a_channel_resume(g);
+	set_user_nice(current, nice_value);
 
+done:
 	return err;
 }
 
@@ -819,17 +886,15 @@ static struct thermal_cooling_device_ops tegra_gpu_cooling_ops = {
 static void gk20a_set_railgating(struct gk20a *g, int new_status)
 {
 	struct nvhost_device_data *pdata = platform_get_drvdata(g->dev);
-	bool can_powergate = new_status == FB_BLANK_UNBLANK ? 0 : 1;
+	enum pm_qos_flags_status stat;
 
 	mutex_lock(&pdata->lock);
-	if (pdata->can_powergate && !can_powergate) {
+	stat = dev_pm_qos_flags(dev_from_gk20a(g), PM_QOS_FLAG_NO_POWER_OFF);
+	if (stat <= PM_QOS_FLAGS_NONE && new_status == FB_BLANK_UNBLANK)
 		dev_pm_qos_add_request(dev_from_gk20a(g), &g->no_poweroff_req,
 				DEV_PM_QOS_FLAGS, PM_QOS_FLAG_NO_POWER_OFF);
-		pdata->can_powergate = can_powergate;
-	} else if (!pdata->can_powergate && can_powergate) {
+	else if (stat > PM_QOS_FLAGS_NONE && new_status != FB_BLANK_UNBLANK)
 		dev_pm_qos_remove_request(&g->no_poweroff_req);
-		pdata->can_powergate = can_powergate;
-	}
 	mutex_unlock(&pdata->lock);
 }
 
@@ -968,6 +1033,7 @@ static int gk20a_probe(struct platform_device *dev)
 					S_IRUGO|S_IWUSR,
 					pdata->debugfs,
 					&gk20a->timeouts_enabled);
+	gk20a_pmu_debugfs_init(dev);
 #endif
 
 	return 0;
@@ -1027,6 +1093,28 @@ static int __init gk20a_init(void)
 static void __exit gk20a_exit(void)
 {
 	platform_driver_unregister(&gk20a_driver);
+}
+
+void gk20a_busy(struct platform_device *pdev)
+{
+	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
+	pm_runtime_get_sync(&pdev->dev);
+	if (pdata->busy)
+		pdata->busy(pdev);
+}
+
+void gk20a_idle(struct platform_device *pdev)
+{
+	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
+#ifdef CONFIG_PM_RUNTIME
+	if (pdata->busy && atomic_read(&pdev->dev.power.usage_count) == 1)
+		pdata->idle(pdev);
+	pm_runtime_mark_last_busy(&pdev->dev);
+	pm_runtime_put_sync_autosuspend(&pdev->dev);
+#else
+	if (pdata->idle)
+		pdata->idle(dev);
+#endif
 }
 
 module_init(gk20a_init);

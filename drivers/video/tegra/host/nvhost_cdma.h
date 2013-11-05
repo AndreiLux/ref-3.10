@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Command DMA
  *
- * Copyright (c) 2010-2013, NVIDIA Corporation.
+ * Copyright (c) 2010-2013, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -50,13 +50,12 @@ struct mem_handle;
 struct mem_mgr_handle {
 	struct mem_mgr *client;
 	struct mem_handle *handle;
+	dma_addr_t iova;
 };
 
 struct push_buffer {
-	struct mem_handle *mem;		/* handle to pushbuffer memory */
 	u32 *mapped;			/* mapped pushbuffer memory */
-	struct sg_table *sgt;
-	dma_addr_t phys;		/* physical address of pushbuffer */
+	dma_addr_t dma_addr;		/* dma address of pushbuffer */
 	u32 fence;			/* index we've written */
 	u32 cur;			/* index to write to */
 	struct mem_mgr_handle *client_handle; /* handle for each opcode pair */
@@ -72,6 +71,8 @@ struct buffer_timeout {
 	int clientid;
 	bool timeout_debug_dump;
 	int num_syncpts;
+	int timeout;
+	bool allow_dependency;
 };
 
 enum cdma_event {
@@ -111,6 +112,9 @@ void	nvhost_cdma_push(struct nvhost_cdma *cdma, u32 op1, u32 op2);
 void	nvhost_cdma_push_gather(struct nvhost_cdma *cdma,
 		struct mem_mgr *client,
 		struct mem_handle *handle, u32 offset, u32 op1, u32 op2);
+void	_nvhost_cdma_push_gather(struct nvhost_cdma *cdma,
+		u32 *cpuva, dma_addr_t iova,
+		u32 offset, u32 op1, u32 op2);
 void	nvhost_cdma_end(struct nvhost_cdma *cdma,
 		struct nvhost_job *job);
 void	nvhost_cdma_update(struct nvhost_cdma *cdma);

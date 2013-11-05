@@ -17,6 +17,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <linux/edp.h>
+#include <linux/edpdev.h>
+#include <mach/edp.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/resource.h>
@@ -35,6 +38,7 @@
 #include <mach/irqs.h>
 
 #include <asm/mach-types.h>
+#include <linux/power/sbs-battery.h>
 
 #include "pm.h"
 #include "board.h"
@@ -45,6 +49,7 @@
 #include "devices.h"
 #include "iomap.h"
 #include "tegra-board-id.h"
+#include "battery-ini-model-data.h"
 
 #define PMC_CTRL                0x0
 #define PMC_CTRL_INTR_LOW       (1 << 17)
@@ -73,44 +78,6 @@ static int tn8_batt_temperature_table[] = {
 	2602, 2605, 2607, 2609, 2611, 2614, 2615, 2617,
 	2619, 2621, 2622, 2624, 2625, 2626,
 };
-
-/* BQ2419X VBUS regulator */
-static struct regulator_consumer_supply bq2419x_vbus_supply[] = {
-	REGULATOR_SUPPLY("usb_vbus", "tegra-ehci.0"),
-	REGULATOR_SUPPLY("usb_vbus", "tegra-otg"),
-};
-
-static struct regulator_consumer_supply bq2419x_batt_supply[] = {
-	REGULATOR_SUPPLY("usb_bat_chg", "tegra-udc.0"),
-};
-
-static struct bq2419x_vbus_platform_data bq2419x_vbus_pdata = {
-	.gpio_otg_iusb = TEGRA_GPIO_PI4,
-	.num_consumer_supplies = ARRAY_SIZE(bq2419x_vbus_supply),
-	.consumer_supplies = bq2419x_vbus_supply,
-};
-
-static struct bq2419x_charger_platform_data bq2419x_charger_pdata = {
-	.max_charge_current_mA = 3000,
-	.charging_term_current_mA = 100,
-	.consumer_supplies = bq2419x_batt_supply,
-	.num_consumer_supplies = ARRAY_SIZE(bq2419x_batt_supply),
-	.wdt_timeout    = 40,
-	.rtc_alarm_time = 3600,
-	.chg_restart_time = 1800,
-};
-
-struct bq2419x_platform_data tn8_bq2419x_pdata = {
-	.vbus_pdata = &bq2419x_vbus_pdata,
-};
-
-static struct i2c_board_info __initdata bq2419x_boardinfo[] = {
-	{
-		I2C_BOARD_INFO("bq2419x", 0x6b),
-		.platform_data = &tn8_bq2419x_pdata,
-	},
-};
-
 
 static struct gadc_thermal_platform_data gadc_thermal_battery_pdata = {
 	.iio_channel_name = "battery-temp-channel",
@@ -156,19 +123,6 @@ int __init tn8_regulator_init(void)
 	pmc_ctrl = readl(pmc + PMC_CTRL);
 	writel(pmc_ctrl | PMC_CTRL_INTR_LOW, pmc + PMC_CTRL);
 
-	/* Default PJ0 is connected to charger stat,
-	 * HW rework is needed to connect to charger-int.
-	 * Do not configure the charger int by default.
-	 */
-	/* bq2419x_boardinfo[0].irq = gpio_to_irq(TEGRA_GPIO_PJ0); */
-	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY)
-		tn8_bq2419x_pdata.bcharger_pdata = &bq2419x_charger_pdata;
-	else
-		tn8_bq2419x_pdata.bcharger_pdata = NULL;
-
-	i2c_register_board_info(0, bq2419x_boardinfo,
-		ARRAY_SIZE(bq2419x_boardinfo));
-
 	platform_device_register(&gadc_thermal_battery);
 	platform_device_register(&power_supply_extcon_device);
 	return 0;
@@ -176,5 +130,19 @@ int __init tn8_regulator_init(void)
 
 int __init tn8_fixed_regulator_init(void)
 {
+	return 0;
+}
+
+int __init tn8_edp_init(void)
+{
+	unsigned int regulator_mA;
+
+	regulator_mA = get_maximum_cpu_current_supported();
+	if (!regulator_mA)
+		regulator_mA = 9000;
+
+	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
+	tegra_init_cpu_edp_limits(regulator_mA);
+
 	return 0;
 }

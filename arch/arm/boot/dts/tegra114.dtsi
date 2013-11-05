@@ -132,14 +132,29 @@
 		interrupts = <1 9 0xf04>;
 	};
 
+	lic: interrupt-controller@60004000 {
+		compatible = "nvidia,tegra-gic";
+		interrupt-controller;
+		reg = <0x60004000 0x40>,
+		      <0x60004100 0x40>,
+		      <0x60004200 0x40>,
+		      <0x60004300 0x40>,
+		      <0x60004400 0x40>;
+        };
+
 	timer@60005000 {
-		compatible = "nvidia,tegra114-timer", "nvidia,tegra20-timer";
+		compatible = "nvidia,tegra-nvtimer";
 		reg = <0x60005000 0x400>;
 		interrupts = <0 0 0x04
 			      0 1 0x04
 			      0 41 0x04
 			      0 42 0x04
 			      0 121 0x04
+			      0 151 0x04
+			      0 152 0x04
+			      0 153 0x04
+			      0 154 0x04
+			      0 155 0x04
 			      0 122 0x04>;
 		clocks = <&tegra_car 5>;
 	};
@@ -424,7 +439,7 @@
 	};
 
 	rtc {
-		compatible = "nvidia,tegra114-rtc", "nvidia,tegra20-rtc";
+		compatible = "nvidia,tegra-rtc";
 		reg = <0x7000e000 0x100>;
 		interrupts = <0 2 0x04>;
 		clocks = <&tegra_car 4>;

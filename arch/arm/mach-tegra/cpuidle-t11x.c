@@ -41,6 +41,9 @@
 #include <linux/cpu_pm.h>
 #include <linux/module.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra-timer.h>
+#include <linux/tegra-cpuidle.h>
+#include <linux/irqchip/tegra.h>
 
 #include <asm/cacheflush.h>
 #include <asm/localtimer.h>
@@ -52,16 +55,11 @@
 #include <trace/events/nvpower.h>
 
 #include "clock.h"
-#include "cpuidle.h"
 #include "dvfs.h"
-#include "fuse.h"
-#include "gic.h"
 #include "iomap.h"
 #include "pm.h"
 #include "reset.h"
 #include "sleep.h"
-#include "timer.h"
-#include "fuse.h"
 
 #define CLK_RST_CONTROLLER_CPU_CMPLX_STATUS \
 	(IO_ADDRESS(TEGRA_CLK_RESET_BASE) + 0x470)
@@ -422,7 +420,7 @@ static bool tegra_cpu_core_power_down(struct cpuidle_device *dev,
 	}
 
 #ifdef CONFIG_TEGRA_LP2_CPU_TIMER
-	asm volatile("mrc p15, 0, %0, c14, c0, 0" : "=r" (cntfrq));
+	cntfrq = tegra_clk_measure_input_freq();
 	cntp_tval = (request - state->exit_latency) * (cntfrq / 1000000);
 	asm volatile("mcr p15, 0, %0, c14, c2, 0" : : "r"(cntp_tval));
 #endif

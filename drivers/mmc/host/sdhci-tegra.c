@@ -350,7 +350,6 @@ struct sdhci_tegra {
 	struct notifier_block reboot_notify;
 	bool is_parent_pllc;
 	bool set_1v8_calib_offsets;
-	bool calib_1v8_offsets_done;
 	int nominal_vcore_mv;
 	int min_vcore_override_mv;
 	int boot_vcore_mv;
@@ -537,6 +536,10 @@ static void tegra_sdhci_writew(struct sdhci_host *host, u16 val, int reg)
 }
 
 #ifdef CONFIG_MMC_FREQ_SCALING
+
+static bool disable_scaling __read_mostly;
+module_param(disable_scaling, bool, 0644);
+
 /*
  * Dynamic frequency calculation.
  * The active load for the current period and the average active load
@@ -662,6 +665,9 @@ static unsigned long sdhci_tegra_get_target_freq(struct sdhci_host *sdhci,
 		return freq;
 	}
 
+	if (disable_scaling)
+		return freq;
+
 	/*
 	 * If clock gating is enabled and clock is currently disabled, then
 	 * return freq as 0.
@@ -780,11 +786,9 @@ static int tegra_sdhci_set_uhs_signaling(struct sdhci_host *host,
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_tegra *tegra_host = pltfm_host->priv;
 	const struct tegra_sdhci_platform_data *plat = tegra_host->plat;
-	unsigned int calib_1v8_uhs_modes;
 
 	ctrl_2 = sdhci_readw(host, SDHCI_HOST_CONTROL2);
 
-	calib_1v8_uhs_modes = plat->calib_1v8_offsets_uhs_modes;
 	/* Select Bus Speed Mode for host */
 	/* For HS200 we need to set UHS_MODE_SEL to SDR104.
 	 * It works as SDR 104 in SD 4-bit mode and HS200 in eMMC 8-bit mode.
@@ -793,30 +797,19 @@ static int tegra_sdhci_set_uhs_signaling(struct sdhci_host *host,
 	switch (uhs) {
 	case MMC_TIMING_UHS_SDR12:
 		ctrl_2 |= SDHCI_CTRL_UHS_SDR12;
-		if (calib_1v8_uhs_modes & MMC_1V8_CALIB_OFFSET_SDR12)
-			tegra_host->set_1v8_calib_offsets = true;
 		break;
 	case MMC_TIMING_UHS_SDR25:
 		ctrl_2 |= SDHCI_CTRL_UHS_SDR25;
-		if (calib_1v8_uhs_modes & MMC_1V8_CALIB_OFFSET_SDR25)
-			tegra_host->set_1v8_calib_offsets = true;
 		break;
 	case MMC_TIMING_UHS_SDR50:
 		ctrl_2 |= SDHCI_CTRL_UHS_SDR50;
-		if (calib_1v8_uhs_modes & MMC_1V8_CALIB_OFFSET_SDR50)
-			tegra_host->set_1v8_calib_offsets = true;
 		break;
 	case MMC_TIMING_UHS_SDR104:
 	case MMC_TIMING_MMC_HS200:
 		ctrl_2 |= SDHCI_CTRL_UHS_SDR104;
-		if ((calib_1v8_uhs_modes & MMC_1V8_CALIB_OFFSET_SDR104) ||
-			(calib_1v8_uhs_modes & MMC_1V8_CALIB_OFFSET_HS200))
-			tegra_host->set_1v8_calib_offsets = true;
 		break;
 	case MMC_TIMING_UHS_DDR50:
 		ctrl_2 |= SDHCI_CTRL_UHS_DDR50;
-		if (calib_1v8_uhs_modes & MMC_1V8_CALIB_OFFSET_DDR50)
-			tegra_host->set_1v8_calib_offsets = true;
 		break;
 	}
 
@@ -839,11 +832,6 @@ static int tegra_sdhci_set_uhs_signaling(struct sdhci_host *host,
 		}
 	}
 
-	if (tegra_host->set_1v8_calib_offsets &&
-		!tegra_host->calib_1v8_offsets_done) {
-		tegra_sdhci_do_calibration(host);
-		tegra_host->calib_1v8_offsets_done = true;
-	}
 	return 0;
 }
 
@@ -909,7 +897,6 @@ static irqreturn_t carddetect_irq(int irq, void *data)
 		 */
 		tegra_host->tuning_status = TUNING_STATUS_RETUNE;
 		tegra_host->force_retune = true;
-		tegra_host->calib_1v8_offsets_done = false;
 	}
 
 	tasklet_schedule(&sdhost->card_tasklet);
@@ -1238,6 +1225,7 @@ static void tegra_sdhci_set_clock(struct sdhci_host *sdhci, unsigned int clock)
 		pm_runtime_put_sync(&pdev->dev);
 		tegra_host->clk_enabled = false;
 	}
+	sdhci->is_clk_on = tegra_host->clk_enabled;
 }
 
 static unsigned int get_calibration_offsets(struct sdhci_host *sdhci)
@@ -1249,18 +1237,8 @@ static unsigned int get_calibration_offsets(struct sdhci_host *sdhci)
 
 	if (sdhci->mmc->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_330)
 		offsets = plat->calib_3v3_offsets;
-	else if (sdhci->mmc->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_180) {
+	else if (sdhci->mmc->ios.signal_voltage == MMC_SIGNAL_VOLTAGE_180)
 		offsets = plat->calib_1v8_offsets;
-		/*
-		 * After any mode selection, ios timing would be set. So, if
-		 * ios timing is set but 1.8V calibration offsets requirement
-		 * is not set, it indicates that the current mode doesn't
-		 * require calibration offsets to be programmed.
-		 */
-		if (sdhci->mmc->ios.timing &&
-			!tegra_host->set_1v8_calib_offsets)
-			offsets = 0;
-	}
 
 	return offsets;
 }
@@ -1374,7 +1352,7 @@ static int tegra_sdhci_signal_voltage_switch(struct sdhci_host *sdhci,
 	unsigned int min_uV = tegra_host->vddio_min_uv;
 	unsigned int max_uV = tegra_host->vddio_max_uv;
 	unsigned int rc = 0;
-	u16 clk, ctrl;
+	u16 ctrl;
 
 
 	ctrl = sdhci_readw(sdhci, SDHCI_HOST_CONTROL2);
@@ -1391,11 +1369,6 @@ static int tegra_sdhci_signal_voltage_switch(struct sdhci_host *sdhci,
 	if (min_uV > tegra_host->vddio_max_uv)
 		return 0;
 
-	/* Switch OFF the card clock to prevent glitches on the clock line */
-	clk = sdhci_readw(sdhci, SDHCI_CLOCK_CONTROL);
-	clk &= ~SDHCI_CLOCK_CARD_EN;
-	sdhci_writew(sdhci, clk, SDHCI_CLOCK_CONTROL);
-
 	/* Set/clear the 1.8V signalling */
 	sdhci_writew(sdhci, ctrl, SDHCI_HOST_CONTROL2);
 
@@ -1409,16 +1382,6 @@ static int tegra_sdhci_signal_voltage_switch(struct sdhci_host *sdhci,
 			CONFIG_REG_SET_VOLT, SDHOST_HIGH_VOLT_MIN,
 			SDHOST_HIGH_VOLT_MAX);
 	}
-
-	/* Wait for 10 msec for the voltage to be switched */
-	mdelay(10);
-
-	/* Enable the card clock */
-	clk |= SDHCI_CLOCK_CARD_EN;
-	sdhci_writew(sdhci, clk, SDHCI_CLOCK_CONTROL);
-
-	/* Wait for 1 msec after enabling clock */
-	mdelay(1);
 
 	return rc;
 }
@@ -2919,6 +2882,10 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	}
 
 	host = sdhci_pltfm_init(pdev, soc_data->pdata);
+
+	/* sdio delayed clock gate quirk in sdhci_host used */
+	host->quirks2 |= SDHCI_QUIRK2_SDIO_DELAYED_CLK_GATE;
+
 	if (IS_ERR(host))
 		return PTR_ERR(host);
 
@@ -3132,6 +3099,7 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	}
 	pltfm_host->priv = tegra_host;
 	tegra_host->clk_enabled = true;
+	host->is_clk_on = tegra_host->clk_enabled;
 	tegra_host->max_clk_limit = plat->max_clk_limit;
 	tegra_host->ddr_clk_limit = plat->ddr_clk_limit;
 	tegra_host->instance = pdev->id;
@@ -3180,6 +3148,8 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	if (plat->en_freq_scaling && (plat->max_clk_limit > low_freq))
 		host->mmc->caps2 |= MMC_CAP2_FREQ_SCALING;
 
+	if (!plat->disable_clock_gate)
+		host->mmc->caps2 |= MMC_CAP2_CLOCK_GATING;
 
 	if (plat->nominal_vcore_mv)
 		tegra_host->nominal_vcore_mv = plat->nominal_vcore_mv;
@@ -3207,6 +3177,8 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	rc = sdhci_add_host(host);
 	if (rc)
 		goto err_add_host;
+
+	INIT_DELAYED_WORK(&host->delayed_clk_gate_wrk, delayed_clk_gate_cb);
 
 	if (gpio_is_valid(plat->cd_gpio)) {
 		rc = request_threaded_irq(gpio_to_irq(plat->cd_gpio), NULL,

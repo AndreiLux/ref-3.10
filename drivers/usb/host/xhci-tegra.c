@@ -35,7 +35,8 @@
 #include <linux/usb/otg.h>
 #include <linux/clk/tegra.h>
 #include <linux/tegra-powergate.h>
-
+#include <linux/firmware.h>
+#include <linux/pm_runtime.h>
 #include <mach/tegra_usb_pad_ctrl.h>
 #include <mach/tegra_usb_pmc.h>
 #include <mach/pm_domains.h>
@@ -418,20 +419,32 @@ static struct tegra_usb_pmc_data pmc_hsic_data[XUSB_HSIC_COUNT];
 static void save_ctle_context(struct tegra_xhci_hcd *tegra,
 	u8 port)  __attribute__ ((unused));
 
+static bool use_bootloader_firmware = true;
+module_param(use_bootloader_firmware, bool, S_IRUGO);
+MODULE_PARM_DESC(use_bootloader_firmware, "take bootloader initialized firmware");
+
+#define FIRMWARE_FILE "xusb_sil_rel_fw"
+static char *firmware_file = FIRMWARE_FILE;
+#define FIRMWARE_FILE_HELP	\
+	"used to specify firmware file of Tegra XHCI host controller. "\
+	"This takes effect only if \"use_bootloader_firmware\" is \"N\". " \
+	"Default value is \"" FIRMWARE_FILE "\"."
+
+module_param(firmware_file, charp, S_IRUGO);
+MODULE_PARM_DESC(firmware_file, FIRMWARE_FILE_HELP);
+
 /* functions */
 static inline struct tegra_xhci_hcd *hcd_to_tegra_xhci(struct usb_hcd *hcd)
 {
 	return (struct tegra_xhci_hcd *) dev_get_drvdata(hcd->self.controller);
 }
 
-#if defined(CONFIG_DEBUG_MUTEXES) || defined(CONFIG_SMP)
 static inline void must_have_sync_lock(struct tegra_xhci_hcd *tegra)
 {
+#if defined(CONFIG_DEBUG_MUTEXES) || defined(CONFIG_SMP)
 	WARN_ON(tegra->sync_lock.owner != current);
-}
-#else
-static inline void must_have_sync_lock(struct tegra_xhci_hcd *tegra)
 #endif
+}
 
 #define for_each_enabled_hsic_pad(_pad, _tegra_xhci_hcd)		\
 	for (_pad = find_next_enabled_hsic_pad(_tegra_xhci_hcd, 0);	\
@@ -1829,6 +1842,14 @@ tegra_xusb_request_clk_rate(struct tegra_xhci_hcd *tegra,
 	return ret;
 }
 
+static void tegra_xusb_set_bw(struct tegra_xhci_hcd *tegra, unsigned int bw)
+{
+	unsigned int freq_khz;
+
+	freq_khz = tegra_emc_bw_to_freq_req(bw);
+	clk_set_rate(tegra->emc_clk, freq_khz * 1000);
+}
+
 static void tegra_xhci_save_dfe_context(struct tegra_xhci_hcd *tegra,
 	u8 port)
 {
@@ -2556,6 +2577,9 @@ static int tegra_xhci_ss_elpg_entry(struct tegra_xhci_hcd *tegra)
 
 	must_have_sync_lock(tegra);
 
+	/* update maximum BW requirement to 0 */
+	tegra_xusb_set_bw(tegra, 0);
+
 	/* This is SS partition ELPG entry
 	 * STEP 0: firmware will set WOC WOD bits in PVTPORTSC2 regs.
 	 */
@@ -3088,7 +3112,6 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 	struct tegra_xhci_hcd *tegra = container_of(work, struct tegra_xhci_hcd,
 					mbox_work);
 	struct xhci_hcd *xhci = tegra->xhci;
-	unsigned int freq_khz;
 	int pad, port;
 	unsigned long ports;
 
@@ -3136,19 +3159,14 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 			xhci_err(xhci, "%s: could not set required ss rate.\n",
 				__func__);
 		goto send_sw_response;
+
 	case MBOX_CMD_SET_BW:
 		/* fw sends BW request in MByte/sec */
-		freq_khz = tegra_emc_bw_to_freq_req(tegra->cmd_data << 10);
-		clk_set_rate(tegra->emc_clk, freq_khz * 1000);
-
-		/* clear MBOX_SMI_INT_EN bit */
-		cmd = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
-		cmd &= ~MBOX_SMI_INT_EN;
-		writel(cmd, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
-
-		/* clear mbox owner as ACK will not be sent for this request */
-		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+		mutex_lock(&tegra->sync_lock);
+		tegra_xusb_set_bw(tegra, tegra->cmd_data << 10);
+		mutex_unlock(&tegra->sync_lock);
 		break;
+
 	case MBOX_CMD_SAVE_DFE_CTLE_CTX:
 		tegra_xhci_save_dfe_context(tegra, tegra->cmd_data);
 		tegra_xhci_save_ctle_context(tegra, tegra->cmd_data);
@@ -3193,17 +3211,24 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 		goto send_sw_response;
 
 	case MBOX_CMD_ACK:
-		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
-		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+		xhci_dbg(xhci, "%s firmware responds with ACK\n", __func__);
 		break;
 	case MBOX_CMD_NACK:
-		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
-		writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+		xhci_warn(xhci, "%s firmware responds with NACK\n", __func__);
 		break;
 	default:
 		xhci_err(xhci, "%s: invalid cmdtype %d\n",
 				__func__, tegra->cmd_type);
 	}
+
+	/* clear MBOX_SMI_INT_EN bit */
+	cmd = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+	cmd &= ~MBOX_SMI_INT_EN;
+	writel(cmd, tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
+
+	/* clear mailbox ownership */
+	writel(0, tegra->fpci_base + XUSB_CFG_ARU_MBOX_OWNER);
+
 	mutex_unlock(&tegra->mbox_lock);
 	return;
 
@@ -3319,7 +3344,7 @@ static void tegra_xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 * here that the generic code does not try to make a pci_dev from our
 	 * dev struct in order to setup MSI
 	 */
-	xhci->quirks |= XHCI_BROKEN_MSI;
+	xhci->quirks |= XHCI_PLAT;
 	xhci->quirks &= ~XHCI_SPURIOUS_REBOOT;
 }
 
@@ -3757,14 +3782,78 @@ static void deinit_bootloader_firmware(struct tegra_xhci_hcd *tegra)
 	memset(&tegra->firmware, 0, sizeof(tegra->firmware));
 }
 
+static int init_filesystem_firmware(struct tegra_xhci_hcd *tegra)
+{
+	struct platform_device *pdev = tegra->pdev;
+	const struct firmware *fw;
+	struct cfgtbl *fw_cfgtbl;
+	size_t fw_size;
+	void *fw_data;
+	dma_addr_t fw_dma;
+	int ret;
+
+	ret = request_firmware(&fw, firmware_file, &pdev->dev);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "request_firmware failed %d\n", ret);
+		return ret;
+	}
+
+	fw_cfgtbl = (struct cfgtbl *) fw->data;
+	fw_size = fw_cfgtbl->fwimg_len;
+	dev_info(&pdev->dev, "Firmware File: %s (%d Bytes)\n",
+			firmware_file, fw_size);
+
+	fw_data = dma_alloc_coherent(&pdev->dev, fw_size,
+			&fw_dma, GFP_KERNEL);
+	if (!fw_data) {
+		dev_err(&pdev->dev, "%s: dma_alloc_coherent failed\n",
+				__func__);
+		ret = -ENOMEM;
+		goto error_release_firmware;
+	}
+
+	memcpy(fw_data, fw->data, fw_size);
+	dev_info(&pdev->dev, "Firmware DMA Memory: dma 0x%p mapped 0x%p (%d Bytes)\n",
+			(void *) fw_dma, fw_data, fw_size);
+
+	release_firmware(fw);
+
+	/* all set and ready to go */
+	tegra->firmware.data = fw_data;
+	tegra->firmware.dma = fw_dma;
+	tegra->firmware.size = fw_size;
+	return 0;
+
+error_release_firmware:
+	release_firmware(fw);
+	return ret;
+}
+
+static void deinit_filesystem_firmware(struct tegra_xhci_hcd *tegra)
+{
+	struct platform_device *pdev = tegra->pdev;
+
+	if (tegra->firmware.data) {
+		dma_free_coherent(&pdev->dev, tegra->firmware.size,
+			tegra->firmware.data, tegra->firmware.dma);
+	}
+
+	memset(&tegra->firmware, 0, sizeof(tegra->firmware));
+}
 static int init_firmware(struct tegra_xhci_hcd *tegra)
 {
-	return init_bootloader_firmware(tegra);
+	if (use_bootloader_firmware)
+		return init_bootloader_firmware(tegra);
+	else
+		return init_filesystem_firmware(tegra);
 }
 
 static void deinit_firmware(struct tegra_xhci_hcd *tegra)
 {
-	deinit_bootloader_firmware(tegra);
+	if (use_bootloader_firmware)
+		return deinit_bootloader_firmware(tegra);
+	else
+		return deinit_filesystem_firmware(tegra);
 }
 
 static int tegra_enable_xusb_clk(struct tegra_xhci_hcd *tegra,
@@ -4168,7 +4257,7 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to init firmware\n");
 		ret = -ENODEV;
-		goto err_deinit_usb2_clocks;
+		goto err_deinit_firmware_log;
 	}
 
 	ret = load_firmware(tegra, true /* do reset ARU */);
@@ -4297,6 +4386,7 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	utmi_phy_iddq_override(false);
 
 	tegra_pd_add_device(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 
@@ -4311,6 +4401,8 @@ err_put_usb2_hcd:
 	usb_put_hcd(hcd);
 err_deinit_firmware:
 	deinit_firmware(tegra);
+err_deinit_firmware_log:
+	fw_log_deinit(tegra);
 err_deinit_usb2_clocks:
 	tegra_usb2_clocks_deinit(tegra);
 err_deinit_tegra_xusb_regulator:

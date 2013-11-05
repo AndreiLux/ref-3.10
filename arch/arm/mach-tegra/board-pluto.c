@@ -53,6 +53,8 @@
 #include <linux/mfd/tlv320aic3xxx-core.h>
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/clk/tegra.h>
+#include <linux/clocksource.h>
+#include <linux/irqchip.h>
 
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -80,7 +82,6 @@
 #include "tegra-board-id.h"
 #include "devices.h"
 #include "gpio-names.h"
-#include "fuse.h"
 #include "pm.h"
 #include "common.h"
 #include "iomap.h"
@@ -1405,8 +1406,8 @@ MACHINE_START(TEGRA_PLUTO, "tegra_pluto")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_pluto_reserve,
 	.init_early     = tegra11x_init_early,
-	.init_irq	= tegra_dt_init_irq,
-	.init_time	= tegra_init_timer,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_pluto_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= pluto_dt_board_compat,
