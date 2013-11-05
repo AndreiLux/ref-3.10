@@ -925,7 +925,8 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 		if (ch) {
 			if (ch->hwctx) {
 				nvhost_err(dev_from_gk20a(g), "channel with hwctx has generated an mmu fault");
-				ch->hwctx->has_timedout = true;
+				/* mark channel as faulted */
+				gk20a_set_timeout_error(ch->hwctx);
 			}
 
 			if (ch->in_use) {
@@ -937,9 +938,6 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 				/* remove the channel from runlist */
 				clear_bit(ch->hw_chid,
 					  runlist->active_channels);
-
-				/* mark channel as faulted */
-				ch->hwctx->has_timedout = true;
 			}
 		} else if (f.inst_ptr ==
 				sg_phys(g->mm.bar1.inst_block.mem.sgt->sgl)) {
