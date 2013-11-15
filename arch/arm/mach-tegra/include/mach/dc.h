@@ -576,6 +576,7 @@ struct tegra_dc_out {
 /* Errands use the interrupts */
 #define V_BLANK_FLIP		0
 #define V_BLANK_NVSD		1
+#define V_BLANK_USER		2
 
 #define V_PULSE2_FLIP		0
 #define V_PULSE2_NVSD		1
@@ -748,6 +749,8 @@ struct tegra_dc_platform_data {
 #define TEGRA_DC_FLAG_CMU_DISABLE	(0 << 1)
 #define TEGRA_DC_FLAG_CMU_ENABLE	(1 << 1)
 
+struct drm_mode_modeinfo;
+
 int tegra_dc_get_stride(struct tegra_dc *dc, unsigned win);
 struct tegra_dc *tegra_dc_get_dc(unsigned idx);
 struct tegra_dc_win *tegra_dc_get_window(struct tegra_dc *dc, unsigned win);
@@ -755,7 +758,9 @@ bool tegra_dc_get_connected(struct tegra_dc *);
 bool tegra_dc_hpd(struct tegra_dc *dc);
 
 
-void tegra_dc_get_fbvblank(struct tegra_dc *dc, struct fb_vblank *vblank);
+bool tegra_dc_has_vsync(struct tegra_dc *dc);
+void tegra_dc_vsync_enable(struct tegra_dc *dc);
+void tegra_dc_vsync_disable(struct tegra_dc *dc);
 int tegra_dc_wait_for_vsync(struct tegra_dc *dc);
 void tegra_dc_blank(struct tegra_dc *dc);
 
@@ -767,6 +772,7 @@ int tegra_dc_set_default_videomode(struct tegra_dc *dc);
 u32 tegra_dc_get_syncpt_id(const struct tegra_dc *dc, int i);
 u32 tegra_dc_incr_syncpt_max(struct tegra_dc *dc, int i);
 void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, int i, u32 val);
+struct sync_fence *tegra_dc_create_fence(struct tegra_dc *dc, int i, u32 val);
 
 /* tegra_dc_update_windows and tegra_dc_sync_windows do not support windows
  * with differenct dcs in one call
@@ -781,6 +787,8 @@ int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode);
 struct fb_videomode;
 int tegra_dc_to_fb_videomode(struct fb_videomode *fbmode,
 	const struct tegra_dc_mode *mode);
+int tegra_dc_set_drm_mode(struct tegra_dc *dc,
+	const struct drm_mode_modeinfo *dmode, bool stereo_mode);
 int tegra_dc_set_fb_mode(struct tegra_dc *dc, const struct fb_videomode *fbmode,
 	bool stereo_mode);
 

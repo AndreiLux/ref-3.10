@@ -29,6 +29,7 @@
 #endif
 #include <video/tegrafb.h>
 #include "dc_priv.h"
+#include "tegra_adf.h"
 
 #include "hdmi_state_machine.h"
 
@@ -165,6 +166,7 @@ static void hdmi_disable_l(struct tegra_dc_hdmi_data *hdmi, bool power_gate)
 		hdmi->dc->connected = false;
 		tegra_dc_disable(hdmi->dc);
 		tegra_fb_update_monspecs(hdmi->dc->fb, NULL, NULL);
+		tegra_adf_process_hotplug_disconnected(hdmi->dc->adf);
 		tegra_dc_ext_process_hotplug(hdmi->dc->ndev->id);
 	}
 	if (power_gate && tegra_powergate_is_powered(hdmi->dc->powergate_id))
@@ -264,6 +266,7 @@ static void handle_check_edid_l(struct tegra_dc_hdmi_data *hdmi)
 	pr_info("Display connected, hpd_switch 1\n");
 #endif
 	hdmi->dc->connected = true;
+	tegra_adf_process_hotplug_connected(hdmi->dc->adf, &specs);
 	tegra_dc_ext_process_hotplug(hdmi->dc->ndev->id);
 	hdmi_state_machine_set_state_l(HDMI_STATE_DONE_ENABLED, -1);
 

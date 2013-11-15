@@ -449,7 +449,8 @@ static int tegra_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long 
 		break;
 
 	case FBIOGET_VBLANK:
-		tegra_dc_get_fbvblank(tegra_fb->win->dc, &vblank);
+		if (tegra_dc_has_vsync(tegra_fb->win->dc))
+			vblank.flags = FB_VBLANK_HAVE_VSYNC;
 
 		if (copy_to_user(
 			(void __user *)arg, &vblank, sizeof(vblank)))
@@ -575,6 +576,49 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 	fb_notifier_call_chain(FB_EVENT_NEW_MODELIST, &event);
 #endif
 	mutex_unlock(&fb_info->info->lock);
+}
+
+static ssize_t nvdps_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	int refresh_rate;
+	struct platform_device *ndev = to_platform_device(device);
+	struct tegra_dc *dc = platform_get_drvdata(ndev);
+
+	refresh_rate = tegra_fb_get_mode(dc);
+	return snprintf(buf, PAGE_SIZE, "%d\n", refresh_rate);
+}
+
+
+static ssize_t nvdps_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct platform_device *ndev = to_platform_device(dev);
+	struct tegra_dc *dc = platform_get_drvdata(ndev);
+	int refresh_rate;
+	int e;
+
+	e = kstrtoint(buf, 10, &refresh_rate);
+	if (e)
+		return e;
+	e = tegra_fb_set_mode(dc, refresh_rate);
+	if (e)
+		return e;
+
+	return count;
+}
+
+static DEVICE_ATTR(nvdps, S_IRUGO|S_IWUSR, nvdps_show, nvdps_store);
+
+
+int tegra_fb_create_sysfs(struct device *dev)
+{
+	return device_create_file(dev, &dev_attr_nvdps);
+}
+
+void tegra_fb_remove_sysfs(struct device *dev)
+{
+	device_remove_file(dev, &dev_attr_nvdps);
 }
 
 struct tegra_fb_info *tegra_fb_register(struct platform_device *ndev,

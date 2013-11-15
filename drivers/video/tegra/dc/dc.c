@@ -58,8 +58,10 @@
 #include "dc_config.h"
 #include "dc_priv.h"
 #include "dev.h"
+#include "nvhost_sync.h"
 #include "nvsd.h"
 #include "dp.h"
+#include "tegra_adf.h"
 
 /* HACK! This needs to come from DT */
 #include "../../../../arch/arm/mach-tegra/iomap.h"
@@ -1245,6 +1247,15 @@ void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, int i, u32 val)
 	mutex_unlock(&dc->lock);
 }
 
+struct sync_fence *tegra_dc_create_fence(struct tegra_dc *dc, int i, u32 val)
+{
+	struct nvhost_master *host = nvhost_get_host(dc->ndev);
+	u32 id = tegra_dc_get_syncpt_id(dc, i);
+
+	return nvhost_sync_create_fence(&host->syncpt, &id, &val, 1,
+			dev_name(&dc->ndev->dev));
+}
+
 void
 tegra_dc_config_pwm(struct tegra_dc *dc, struct tegra_dc_pwm_params *cfg)
 {
@@ -1546,10 +1557,9 @@ static inline void enable_dc_irq(const struct tegra_dc *dc)
 		enable_irq(dc->irq);
 }
 
-void tegra_dc_get_fbvblank(struct tegra_dc *dc, struct fb_vblank *vblank)
+bool tegra_dc_has_vsync(struct tegra_dc *dc)
 {
-	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
-		vblank->flags = FB_VBLANK_HAVE_VSYNC;
+	return !!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE);
 }
 
 int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
@@ -1600,6 +1610,23 @@ static void tegra_dc_prism_update_backlight(struct tegra_dc *dc)
 		struct backlight_device *bl = dc->out->sd_settings->bl_device;
 		backlight_update_status(bl);
 	}
+}
+
+void tegra_dc_vsync_enable(struct tegra_dc *dc)
+{
+	mutex_lock(&dc->lock);
+	set_bit(V_BLANK_USER, &dc->vblank_ref_count);
+	tegra_dc_unmask_interrupt(dc, V_BLANK_INT);
+	mutex_unlock(&dc->lock);
+}
+
+void tegra_dc_vsync_disable(struct tegra_dc *dc)
+{
+	mutex_lock(&dc->lock);
+	clear_bit(V_BLANK_USER, &dc->vblank_ref_count);
+	if (!dc->vblank_ref_count)
+		tegra_dc_mask_interrupt(dc, V_BLANK_INT);
+	mutex_unlock(&dc->lock);
 }
 
 static void tegra_dc_vblank(struct work_struct *work)
@@ -1806,13 +1833,16 @@ static void tegra_dc_vpulse2(struct work_struct *work)
 }
 #endif
 
-static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
+static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status,
+		ktime_t timestamp)
 {
 	/* pending user vblank, so wakeup */
-	if ((status & (V_BLANK_INT | MSF_INT)) &&
-	    (dc->out->user_needs_vblank)) {
-		dc->out->user_needs_vblank = false;
-		complete(&dc->out->user_vblank_comp);
+	if (status & (V_BLANK_INT | MSF_INT)) {
+		if (dc->out->user_needs_vblank) {
+			dc->out->user_needs_vblank = false;
+			complete(&dc->out->user_vblank_comp);
+		}
+		tegra_adf_process_vblank(dc->adf, timestamp);
 	}
 
 	if (status & V_BLANK_INT) {
@@ -1838,11 +1868,15 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status)
 #endif
 }
 
-static void tegra_dc_continuous_irq(struct tegra_dc *dc, unsigned long status)
+static void tegra_dc_continuous_irq(struct tegra_dc *dc, unsigned long status,
+		ktime_t timestamp)
 {
 	/* Schedule any additional bottom-half vblank actvities. */
 	if (status & V_BLANK_INT)
 		queue_work(system_freezable_wq, &dc->vblank_work);
+
+	if (status & (V_BLANK_INT | MSF_INT))
+		tegra_adf_process_vblank(dc->adf, timestamp);
 
 	if (status & FRAME_END_INT) {
 		struct timespec tm = CURRENT_TIME;
@@ -1882,6 +1916,7 @@ bool tegra_dc_does_vsync_separate(struct tegra_dc *dc, s64 new_ts, s64 old_ts)
 
 static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 {
+	ktime_t timestamp = ktime_get();
 	struct tegra_dc *dc = ptr;
 	unsigned long status;
 	unsigned long underflow_mask;
@@ -1930,9 +1965,9 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 	}
 
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
-		tegra_dc_one_shot_irq(dc, status);
+		tegra_dc_one_shot_irq(dc, status, timestamp);
 	else
-		tegra_dc_continuous_irq(dc, status);
+		tegra_dc_continuous_irq(dc, status, timestamp);
 
 	/* update video mode if it has changed since the last frame */
 	if (status & (FRAME_END_INT | V_BLANK_INT))
@@ -2592,6 +2627,50 @@ static void tegra_dc_underflow_worker(struct work_struct *work)
 	mutex_unlock(&dc->lock);
 }
 
+static void (*flip_callback)(void);
+static spinlock_t flip_callback_lock;
+static bool init_tegra_dc_flip_callback_called;
+
+static int __init init_tegra_dc_flip_callback(void)
+{
+	spin_lock_init(&flip_callback_lock);
+	init_tegra_dc_flip_callback_called = true;
+	return 0;
+}
+
+pure_initcall(init_tegra_dc_flip_callback);
+
+int tegra_dc_set_flip_callback(void (*callback)(void))
+{
+	WARN_ON(!init_tegra_dc_flip_callback_called);
+
+	spin_lock(&flip_callback_lock);
+	flip_callback = callback;
+	spin_unlock(&flip_callback_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(tegra_dc_set_flip_callback);
+
+int tegra_dc_unset_flip_callback()
+{
+	spin_lock(&flip_callback_lock);
+	flip_callback = NULL;
+	spin_unlock(&flip_callback_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(tegra_dc_unset_flip_callback);
+
+void tegra_dc_call_flip_callback()
+{
+	spin_lock(&flip_callback_lock);
+	if (flip_callback)
+		flip_callback();
+	spin_unlock(&flip_callback_lock);
+}
+EXPORT_SYMBOL(tegra_dc_call_flip_callback);
+
 #ifdef CONFIG_SWITCH
 static ssize_t switch_modeset_print_mode(struct switch_dev *sdev, char *buf)
 {
@@ -2886,12 +2965,19 @@ static int tegra_dc_probe(struct platform_device *ndev)
 		}
 
 		tegra_dc_io_start(dc);
-		dc->fb = tegra_fb_register(ndev, dc, dc->pdata->fb, fb_mem);
+		dc->adf = tegra_adf_init(ndev, dc, dc->pdata->fb);
 		tegra_dc_io_end(dc);
-		if (IS_ERR_OR_NULL(dc->fb)) {
-			dc->fb = NULL;
-			dev_err(&ndev->dev, "failed to register fb\n");
-			goto err_remove_debugfs;
+
+		if (IS_ERR(dc->adf)) {
+			tegra_dc_io_start(dc);
+			dc->fb = tegra_fb_register(ndev, dc, dc->pdata->fb,
+					fb_mem);
+			tegra_dc_io_end(dc);
+			if (IS_ERR_OR_NULL(dc->fb)) {
+				dc->fb = NULL;
+				dev_err(&ndev->dev, "failed to register fb\n");
+				goto err_remove_debugfs;
+			}
 		}
 	}
 
@@ -2962,6 +3048,9 @@ static int tegra_dc_remove(struct platform_device *ndev)
 		if (dc->fb_mem)
 			release_resource(dc->fb_mem);
 	}
+
+	if (dc->adf)
+		tegra_adf_unregister(dc->adf);
 
 	tegra_dc_ext_disable(dc->ext);
 
