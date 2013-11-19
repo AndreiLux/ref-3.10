@@ -42,6 +42,8 @@
 #include <linux/tegra-soc.h>
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/clocksource.h>
+#include <linux/irqchip.h>
+#include <linux/pci-tegra.h>
 
 #include <mach/gpio-tegra.h>
 
@@ -52,7 +54,6 @@
 #include <mach/i2s.h>
 #include <mach/audio.h>
 #include <mach/nand.h>
-#include <mach/pci.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
@@ -62,7 +63,6 @@
 #include "clock.h"
 #include "common.h"
 #include "devices.h"
-#include "fuse.h"
 #include "gpio-names.h"
 #include "iomap.h"
 
@@ -649,7 +649,7 @@ MACHINE_START(BONAIRE, "bonaire")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_bonaire_reserve,
 	.init_early	= tegra12x_init_early,
-	.init_irq	= tegra_dt_init_irq,
+	.init_irq	= irqchip_init,
 	.init_machine	= tegra_bonaire_dt_init,
 	.init_time      = clocksource_of_init,
 	.dt_compat	= bonaire_dt_board_compat,

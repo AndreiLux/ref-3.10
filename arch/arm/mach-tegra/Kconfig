@@ -47,6 +47,8 @@ config ARCH_TEGRA_2x_SOC
 	select PCI_MSI if TEGRA_PCI
 	select PINCTRL
 	select PINCTRL_TEGRA20
+	select POWER_RESET
+	select SYSTEM_PMIC
 	select PL310_ERRATA_769419 if CACHE_L2X0
 	select PM_GENERIC_DOMAINS if PM
 	select SOC_BUS
@@ -88,6 +90,8 @@ config ARCH_TEGRA_3x_SOC
 	select PCI_MSI if TEGRA_PCI
 	select PINCTRL
 	select PINCTRL_TEGRA30
+	select POWER_RESET
+	select SYSTEM_PMIC
 	select PL310_ERRATA_727915
 	select PL310_ERRATA_769419 if CACHE_L2X0
 	select PM_GENERIC_DOMAINS if PM
@@ -125,6 +129,8 @@ config ARCH_TEGRA_11x_SOC
 	select NVMAP_HANDLE_MARSHAL if TEGRA_NVMAP
 	select PINCTRL
 	select PINCTRL_TEGRA114
+	select POWER_RESET
+	select SYSTEM_PMIC
 	select PM_GENERIC_DOMAINS if PM
 	select REPORT_PRESENT_CPUS if TEGRA_AUTO_HOTPLUG
 	select SOC_BUS
@@ -181,11 +187,14 @@ config ARCH_TEGRA_12x_SOC
 	select PM_GENERIC_DOMAINS if PM
 	select PINCTRL
 	select PINCTRL_TEGRA124
+	select POWER_RESET
+	select SYSTEM_PMIC
 	select TEGRA_DC_TEMPORAL_DITHER
 	select TEGRA_VDD_CORE_OVERRIDE if TEGRA_EMC_SCALING_ENABLE
 	select REGULATOR_TEGRA_DFLL_BYPASS
 	select HAVE_ARM_ARCH_TIMER
 	select ARCH_HAS_PASR
+	select POWER_SUPPLY
 	help
 	  Support for NVIDIA Tegra 12x family of SoCs, based upon the
 	  ARM Cortex-A15MP CPU
@@ -202,6 +211,8 @@ config ARCH_TEGRA_14x_SOC
 	select ARM_GIC
 	select ARM_SAVE_DEBUG_CONTEXT if PM_SLEEP
 	select PINCTRL
+	select POWER_RESET
+	select SYSTEM_PMIC
 	select ARM_SAVE_DEBUG_CONTEXT if PM_SLEEP
 	select ARCH_TEGRA_HAS_DUAL_CPU_CLUSTERS
 	select CPA
@@ -294,6 +305,7 @@ config MACH_ARDBEG
        depends on ARCH_TEGRA_12x_SOC || ARCH_TEGRA_11x_SOC
        select MACH_HAS_SND_SOC_TEGRA_RT5639 if SND_SOC
        select MACH_HAS_SND_SOC_TEGRA_RT5645 if SND_SOC
+       select SYSEDP_FRAMEWORK
        help
          Support for NVIDIA ARDBEG Development platform
 
@@ -315,8 +327,6 @@ config MACH_LOKI
 config MACH_VCM30_T124
        bool "VCM30_T124(Automotive) board"
        depends on ARCH_TEGRA_12x_SOC
-       select MACH_HAS_SND_SOC_TEGRA_RT5639 if SND_SOC
-       select MACH_HAS_SND_SOC_TEGRA_RT5645 if SND_SOC
        help
          Support for NVIDIA VCM30_T124 Automotive Development platform
 

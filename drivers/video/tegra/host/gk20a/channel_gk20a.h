@@ -150,6 +150,7 @@ struct nvhost_zcull_bind_args;
 struct nvhost_gpfifo;
 struct nvhost_zbc_set_table_args;
 struct nvhost_cycle_stats_args;
+struct nvhost_set_priority_args;
 
 #if defined(CONFIG_TEGRA_GK20A)
 void gk20a_channel_update(struct channel_gk20a *c);
@@ -182,6 +183,7 @@ void gk20a_disable_channel(struct channel_gk20a *ch,
 			   unsigned long finish_timeout);
 void gk20a_disable_channel_no_update(struct channel_gk20a *ch);
 int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout);
+void gk20a_set_timeout_error(struct nvhost_hwctx *ctx);
 int gk20a_channel_wait(struct channel_gk20a *ch,
 		       struct nvhost_wait_args *args);
 int gk20a_channel_zcull_bind(struct channel_gk20a *ch,
@@ -190,6 +192,8 @@ int gk20a_channel_zbc_set_table(struct channel_gk20a *ch,
 			    struct nvhost_zbc_set_table_args *args);
 int gk20a_channel_zbc_query_table(struct channel_gk20a *ch,
 			    struct nvhost_zbc_query_table_args *args);
+int gk20a_channel_set_priority(struct channel_gk20a *ch,
+		       u32 priority);
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
 int gk20a_channel_cycle_stats(struct channel_gk20a *ch,
 			struct nvhost_cycle_stats_args *args);

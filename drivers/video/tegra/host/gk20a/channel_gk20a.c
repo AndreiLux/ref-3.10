@@ -169,6 +169,69 @@ static int channel_gk20a_commit_userd(struct channel_gk20a *c)
 	return 0;
 }
 
+static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
+				u32 timeslice_timeout)
+{
+	void *inst_ptr;
+	unsigned long channel_timeout;
+	int shift = 3;
+	int value = timeslice_timeout;
+	int err;
+
+	if (!tegra_platform_is_silicon())
+		channel_timeout = MAX_SCHEDULE_TIMEOUT;
+	else
+		channel_timeout = CONFIG_TEGRA_GRHOST_DEFAULT_TIMEOUT;
+
+	err = gk20a_channel_finish(c, channel_timeout);
+
+	if (err)
+		return err;
+
+	inst_ptr = nvhost_memmgr_mmap(c->inst_block.mem.ref);
+	if (!inst_ptr)
+		return -ENOMEM;
+
+	/* disable channel */
+	gk20a_writel(c->g, ccsr_channel_r(c->hw_chid),
+		gk20a_readl(c->g, ccsr_channel_r(c->hw_chid)) |
+		ccsr_channel_enable_clr_true_f());
+
+	/* preempt the channel */
+	WARN_ON(gk20a_fifo_preempt_channel(c->g, c->hw_chid));
+
+	/* flush GPU cache */
+	gk20a_mm_l2_flush(c->g, true);
+
+	/* value field is 8 bits long */
+	while (value >= 1 << 8) {
+		value >>= 1;
+		shift++;
+	}
+
+	/* time slice register is only 18bits long */
+	if ((value << shift) >= 1<<19) {
+		pr_err("Requested timeslice value is clamped to 18 bits\n");
+		value = 255;
+		shift = 10;
+	}
+
+	/* set new timeslice */
+	mem_wr32(inst_ptr, ram_fc_eng_timeslice_w(),
+		value | (shift << 12) |
+		fifo_eng_timeslice_enable_true_f());
+
+	/* enable channel */
+	gk20a_writel(c->g, ccsr_channel_r(c->hw_chid),
+		gk20a_readl(c->g, ccsr_channel_r(c->hw_chid)) |
+		ccsr_channel_enable_set_true_f());
+
+	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
+	gk20a_mm_l2_invalidate(c->g);
+
+	return 0;
+}
+
 static int channel_gk20a_setup_ramfc(struct channel_gk20a *c,
 				u64 gpfifo_base, u32 gpfifo_entries)
 {
@@ -383,6 +446,28 @@ void gk20a_disable_channel_no_update(struct channel_gk20a *ch)
 		     ccsr_channel_enable_clr_true_f());
 }
 
+static int gk20a_wait_channel_idle(struct channel_gk20a *ch)
+{
+	bool channel_idle = false;
+	unsigned long end_jiffies = jiffies +
+		msecs_to_jiffies(gk20a_get_gr_idle_timeout(ch->g));
+
+	do {
+		mutex_lock(&ch->jobs_lock);
+		channel_idle = list_empty(&ch->jobs);
+		mutex_unlock(&ch->jobs_lock);
+		if (channel_idle)
+			break;
+
+		usleep_range(1000, 3000);
+	} while (time_before(jiffies, end_jiffies));
+
+	if (!channel_idle)
+		nvhost_err(dev_from_gk20a(ch->g), "channel jobs not freed");
+
+	return 0;
+}
+
 void gk20a_disable_channel(struct channel_gk20a *ch,
 			   bool finish,
 			   unsigned long finish_timeout)
@@ -394,6 +479,8 @@ void gk20a_disable_channel(struct channel_gk20a *ch,
 
 	/* disable the channel from hw and increment syncpoints */
 	gk20a_disable_channel_no_update(ch);
+
+	gk20a_wait_channel_idle(ch);
 
 	/* preempt the channel */
 	gk20a_fifo_preempt_channel(ch->g, ch->hw_chid);
@@ -1262,13 +1349,19 @@ static int gk20a_channel_add_job(struct channel_gk20a *c,
 	struct mapped_buffer_node **mapped_buffers = NULL;
 	int err = 0, num_mapped_buffers;
 
+	/* job needs reference to this vm */
+	vm->get(vm);
+
 	err = vm->get_buffers(vm, &mapped_buffers, &num_mapped_buffers);
-	if (err)
+	if (err) {
+		vm->put(vm);
 		return err;
+	}
 
 	job = kzalloc(sizeof(*job), GFP_KERNEL);
 	if (!job) {
 		vm->put_buffers(vm, mapped_buffers, num_mapped_buffers);
+		vm->put(vm);
 		return -ENOMEM;
 	}
 
@@ -1299,8 +1392,13 @@ void gk20a_channel_update(struct channel_gk20a *c)
 
 		vm->put_buffers(vm, job->mapped_buffers,
 				job->num_mapped_buffers);
+
+		/* job is done. release its reference to vm */
+		vm->put(vm);
+
 		list_del_init(&job->list);
 		kfree(job);
+		nvhost_module_idle(g->dev);
 	}
 	mutex_unlock(&c->jobs_lock);
 }
@@ -1356,6 +1454,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 
 	nvhost_dbg_info("channel %d", c->hw_chid);
 
+	nvhost_module_busy(g->dev);
 	trace_nvhost_channel_submit_gpfifo(c->ch->dev->name,
 					   c->hw_chid,
 					   num_entries,
@@ -1539,6 +1638,7 @@ clean_up:
 	nvhost_dbg(dbg_fn | dbg_err, "fail");
 	free_priv_cmdbuf(c, wait_cmd);
 	free_priv_cmdbuf(c, incr_cmd);
+	nvhost_module_idle(g->dev);
 	return err;
 }
 
@@ -1705,6 +1805,32 @@ notif_clean_up:
 	return 0;
 }
 
+int gk20a_channel_set_priority(struct channel_gk20a *ch,
+		u32 priority)
+{
+	u32 timeslice_timeout;
+	/* set priority of graphics channel */
+	switch (priority) {
+	case NVHOST_PRIORITY_LOW:
+		/* 64 << 3 = 512us */
+		timeslice_timeout = 64;
+		break;
+	case NVHOST_PRIORITY_MEDIUM:
+		/* 128 << 3 = 1024us */
+		timeslice_timeout = 128;
+		break;
+	case NVHOST_PRIORITY_HIGH:
+		/* 255 << 3 = 2048us */
+		timeslice_timeout = 255;
+		break;
+	default:
+		pr_err("Unsupported priority");
+		return -EINVAL;
+	}
+	channel_gk20a_set_schedule_params(ch,
+			timeslice_timeout);
+	return 0;
+}
 
 int gk20a_channel_zcull_bind(struct channel_gk20a *ch,
 			    struct nvhost_zcull_bind_args *args)

@@ -29,6 +29,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
+#include <linux/sysedp.h>
 #include <media/ov5693.h>
 #include <media/nvc.h>
 
@@ -72,6 +73,10 @@ struct ov5693_info {
 	struct regmap *regmap;
 	struct regulator *ext_vcm_vdd;
 	struct ov5693_cal_data cal;
+	struct edp_client *edpc;
+	unsigned int edp_state;
+	struct sysedp_consumer *sysedpc;
+	char devname[16];
 };
 
 struct ov5693_reg {
@@ -2129,6 +2134,95 @@ static const struct ov5693_reg *mode_table[] = {
 	[OV5693_MODE_1280x720_HDR_60FPS] = ov5693_1280x720_HDR_60fps_i2c,
 };
 
+static void ov5693_edp_lowest(struct ov5693_info *info)
+{
+	if (!info->edpc)
+		return;
+
+	info->edp_state = info->edpc->num_states - 1;
+	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, info->edp_state);
+	if (edp_update_client_request(info->edpc, info->edp_state, NULL)) {
+		dev_err(&info->i2c_client->dev, "THIS IS NOT LIKELY TO HAPPEN!\n");
+		dev_err(&info->i2c_client->dev,
+			"UNABLE TO SET LOWEST EDP STATE!\n");
+	}
+}
+
+static void ov5693_edp_throttle(unsigned int new_state, void *priv_data)
+{
+	struct ov5693_info *info = priv_data;
+
+	if (info->pdata && info->pdata->power_off)
+		info->pdata->power_off(&info->regulators);
+}
+
+static void ov5693_edp_register(struct ov5693_info *info)
+{
+	struct edp_manager *edp_manager;
+	struct edp_client *edpc = &info->pdata->edpc_config;
+	int ret;
+
+	info->edpc = NULL;
+	if (!edpc->num_states) {
+		dev_warn(&info->i2c_client->dev,
+			"%s: No edp states defined.\n", __func__);
+		return;
+	}
+
+	strncpy(edpc->name, "ov5693", EDP_NAME_LEN - 1);
+	edpc->name[EDP_NAME_LEN - 1] = 0;
+	edpc->private_data = info;
+	edpc->throttle = ov5693_edp_throttle;
+
+	dev_dbg(&info->i2c_client->dev, "%s: %s, e0 = %d, p %d\n",
+		__func__, edpc->name, edpc->e0_index, edpc->priority);
+	for (ret = 0; ret < edpc->num_states; ret++)
+		dev_dbg(&info->i2c_client->dev, "e%d = %d mA",
+			ret - edpc->e0_index, edpc->states[ret]);
+
+	edp_manager = edp_get_manager("battery");
+	if (!edp_manager) {
+		dev_err(&info->i2c_client->dev,
+			"unable to get edp manager: battery\n");
+		return;
+	}
+
+	ret = edp_register_client(edp_manager, edpc);
+	if (ret) {
+		dev_err(&info->i2c_client->dev,
+			"unable to register edp client\n");
+		return;
+	}
+
+	info->edpc = edpc;
+	/* set to lowest state at init */
+	ov5693_edp_lowest(info);
+}
+
+static int ov5693_edp_req(struct ov5693_info *info, unsigned new_state)
+{
+	unsigned approved;
+	int ret = 0;
+
+	if (!info->edpc)
+		return 0;
+
+	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, new_state);
+	ret = edp_update_client_request(info->edpc, new_state, &approved);
+	if (ret) {
+		dev_err(&info->i2c_client->dev, "E state transition failed\n");
+		return ret;
+	}
+
+	if (approved > new_state) {
+		dev_err(&info->i2c_client->dev, "EDP no enough current\n");
+		return -ENODEV;
+	}
+
+	info->edp_state = approved;
+	return 0;
+}
+
 static int ov5693_i2c_rd8(struct ov5693_info *info, u16 reg, u8 *val)
 {
 	unsigned int data;
@@ -2636,6 +2730,8 @@ static int ov5693_power_off(struct ov5693_info *info)
 		info->power_on = false;
 		ov5693_gpio_pwrdn(info, 1);
 		ov5693_mclk_disable(info);
+		ov5693_edp_lowest(info);
+		sysedp_set_state(info->sysedpc, 0);
 	} else {
 		dev_err(&info->i2c_client->dev,
 			"%s ERR: has no power_off function\n", __func__);
@@ -2852,6 +2948,15 @@ static int ov5693_set_mode(struct ov5693_info *info,
 			mode_index = OV5693_MODE_1280x720_120FPS;
 	}
 
+	/* request highest edp state */
+	err = ov5693_edp_req(info, 0);
+	if (err) {
+		dev_err(&info->i2c_client->dev,
+			"%s: ERROR cannot set edp state! %d\n", __func__, err);
+		return err;
+	}
+	sysedp_set_state(info->sysedpc, 1);
+
 	if (!info->mode_valid || (info->mode_index != mode_index))
 		err = ov5693_mode_wr_full(info, mode_index);
 	else
@@ -3004,7 +3109,6 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return ret;
 	}
 
-
 	case OV5693_IOCTL_SET_GAIN:
 		return ov5693_set_gain(info, (u32)arg, true);
 
@@ -3134,6 +3238,7 @@ static int ov5693_remove(struct i2c_client *client)
 
 	dev_dbg(&info->i2c_client->dev, "%s\n", __func__);
 	misc_deregister(&info->miscdev);
+	sysedp_free_consumer(info->sysedpc);
 	ov5693_del(info);
 	return 0;
 }
@@ -3272,7 +3377,6 @@ static int ov5693_probe(
 	const struct i2c_device_id *id)
 {
 	struct ov5693_info *info;
-	char dname[16];
 	unsigned long clock_probe_rate;
 	int err;
 	const char *mclk_name;
@@ -3340,6 +3444,9 @@ static int ov5693_probe(
 	if (!info->regulators.avdd || !info->regulators.dovdd)
 		return -EFAULT;
 
+	ov5693_edp_register(info);
+	info->sysedpc = sysedp_create_consumer("ov5693", "ov5693");
+
 	ov5693_sdata_init(info);
 	if (info->pdata->cfg & (NVC_CFG_NODEV | NVC_CFG_BOOT_INIT)) {
 		if (info->pdata->probe_clock) {
@@ -3353,19 +3460,21 @@ static int ov5693_probe(
 			info->pdata->probe_clock(0);
 	}
 	if (info->pdata->dev_name != NULL)
-		strcpy(dname, info->pdata->dev_name);
+		strncpy(info->devname, info->pdata->dev_name,
+			sizeof(info->devname) - 1);
 	else
-		strcpy(dname, "ov5693");
+		strncpy(info->devname, "ov5693", sizeof(info->devname) - 1);
 	if (info->pdata->num)
-		snprintf(dname, sizeof(dname), "%s.%u",
-			 dname, info->pdata->num);
-	info->miscdev.name = dname;
+		snprintf(info->devname, sizeof(info->devname), "%s.%u",
+			 info->devname, info->pdata->num);
+
+	info->miscdev.name = info->devname;
 	info->miscdev.fops = &ov5693_fileops;
 	info->miscdev.minor = MISC_DYNAMIC_MINOR;
 	info->miscdev.parent = &client->dev;
 	if (misc_register(&info->miscdev)) {
 		dev_err(&client->dev, "%s unable to register misc device %s\n",
-			__func__, dname);
+			__func__, info->devname);
 		ov5693_del(info);
 		return -ENODEV;
 	}

@@ -32,6 +32,7 @@ struct quadd_ring_buffer {
 	size_t pos_read;
 	size_t pos_write;
 	size_t fill_count;
+	size_t max_fill_count;
 };
 
 struct quadd_parameters;
@@ -49,6 +50,7 @@ struct quadd_comm_data_interface {
 	void (*put_sample)(struct quadd_record_data *data, char *extra_data,
 			   unsigned int extra_length);
 	void (*reset)(void);
+	int (*is_active)(void);
 };
 
 struct quadd_comm_ctx {
@@ -65,6 +67,8 @@ struct quadd_comm_ctx {
 	int params_ok;
 	pid_t process_pid;
 	uid_t debug_app_uid;
+
+	wait_queue_head_t read_wait;
 
 	struct miscdevice *misc_dev;
 };

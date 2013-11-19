@@ -576,6 +576,12 @@ int nvhost_module_suspend(struct device *dev)
 	if (pm_runtime_barrier(dev))
 		return -EBUSY;
 
+	if (!pdata->can_powergate && pdata->prepare_poweroff) {
+		nvhost_module_enable_clk(dev);
+		pdata->prepare_poweroff(to_platform_device(dev));
+		nvhost_module_disable_clk(dev);
+	}
+
 	if (pdata->suspend_ndev)
 		pdata->suspend_ndev(dev);
 
@@ -770,8 +776,11 @@ int nvhost_module_finalize_poweron(struct device *dev)
 	if (!pdata)
 		return -EINVAL;
 
-	if (pdata->finalize_poweron)
+	if (pdata->finalize_poweron) {
+		nvhost_module_enable_clk(dev);
 		pdata->finalize_poweron(to_platform_device(dev));
+		nvhost_module_disable_clk(dev);
+	}
 
 	return 0;
 }

@@ -141,6 +141,20 @@ static void push_buffer_push_to(struct push_buffer *pb,
 	pb->cur = (cur + 8) & (PUSH_BUFFER_SIZE - 1);
 }
 
+static void _push_buffer_push_to(struct push_buffer *pb,
+				dma_addr_t iova,
+				u32 op1, u32 op2)
+{
+	u32 cur = pb->cur;
+	u32 *p = (u32 *)((uintptr_t)pb->mapped + cur);
+	u32 cur_nvmap = (cur/8) & (NVHOST_GATHER_QUEUE_SIZE - 1);
+	WARN_ON(cur == pb->fence);
+	*(p++) = op1;
+	*(p++) = op2;
+	pb->client_handle[cur_nvmap].iova = iova;
+	pb->cur = (cur + 8) & (PUSH_BUFFER_SIZE - 1);
+}
+
 /**
  * Pop a number of two word slots from the push buffer
  * Caller must ensure push buffer is not empty
@@ -157,6 +171,7 @@ static void push_buffer_pop_from(struct push_buffer *pb,
 		struct mem_mgr_handle *h = &pb->client_handle[cur_fence_nvmap];
 		h->client = NULL;
 		h->handle = NULL;
+		h->iova = 0;
 	}
 	/* Advance the next write position */
 	pb->fence = (pb->fence + slots * 8) & (PUSH_BUFFER_SIZE - 1);
@@ -423,6 +438,28 @@ static void cdma_timeout_teardown_end(struct nvhost_cdma *cdma, u32 getptr)
 	cdma_timeout_restart(cdma, getptr);
 }
 
+static bool cdma_check_dependencies(struct nvhost_cdma *cdma)
+{
+	struct nvhost_channel *ch = cdma_to_channel(cdma);
+	struct nvhost_master *dev = cdma_to_dev(cdma);
+	u32 cbstat = readl(dev->sync_aperture +
+		host1x_sync_cbstat_0_r() + 4 * ch->chid);
+	u32 cbread = readl(dev->sync_aperture +
+		host1x_sync_cbread0_r() + 4 * ch->chid);
+	u32 waiting = cbstat & 0x00010008;
+	u32 syncpt_id = cbread >> 24;
+	int i;
+
+	if (!waiting)
+		return false;
+
+	for (i = 0; i < cdma->timeout.num_syncpts; ++i)
+		if (cdma->timeout.sp[i].id == syncpt_id)
+			return false;
+
+	return true;
+}
+
 /**
  * If this timeout fires, it indicates the current sync_queue entry has
  * exceeded its TTL and the userctx should be timed out and remaining
@@ -455,6 +492,17 @@ static void cdma_timeout_handler(struct work_struct *work)
 	ret = mutex_trylock(&cdma->lock);
 	if (!ret) {
 		schedule_delayed_work(&cdma->timeout.wq, msecs_to_jiffies(10));
+		return;
+	}
+
+	/* is this submit dependent with submits on other channels? */
+	if (cdma->timeout.allow_dependency && cdma_check_dependencies(cdma)) {
+		dev_dbg(&dev->dev->dev,
+			"cdma_timeout: timeout handler rescheduled\n");
+		cdma->timeout.allow_dependency = false;
+		schedule_delayed_work(&cdma->timeout.wq,
+				      msecs_to_jiffies(cdma->timeout.timeout));
+		mutex_unlock(&cdma->lock);
 		return;
 	}
 
@@ -530,6 +578,7 @@ static const struct nvhost_pushbuffer_ops host1x_pushbuffer_ops = {
 	.init = push_buffer_init,
 	.destroy = push_buffer_destroy,
 	.push_to = push_buffer_push_to,
+	._push_to = _push_buffer_push_to,
 	.pop_from = push_buffer_pop_from,
 	.space = push_buffer_space,
 	.putptr = push_buffer_putptr,

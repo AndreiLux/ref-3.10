@@ -1,12 +1,11 @@
 /*
  *
  * Copyright (C) 2010 Google, Inc.
- * Copyright (c) 2012 NVIDIA CORPORATION.  All rights reserved.
  *
  * Author:
  *	Colin Cross <ccross@google.com>
  *
- * Copyright (c) 2019-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -46,6 +45,7 @@
 #include "dvfs.h"
 #include "iomap.h"
 #include "tegra_emc.h"
+#include "cpu-tegra.h"
 
 /* Global data of Tegra CPU CAR ops */
 struct tegra_cpu_car_ops *tegra_cpu_car_ops;
@@ -1075,7 +1075,7 @@ static int __init tegra_clk_late_init(void)
 		tegra_dfll_cpu_start();
 
 	tegra_sync_cpu_clock();		/* after attempt to get dfll ready */
-	tegra_recalculate_cpu_edp_limits();
+	tegra_update_cpu_edp_limits();
 	return 0;
 }
 late_initcall(tegra_clk_late_init);
@@ -1101,6 +1101,7 @@ out:
 	clk_unlock_restore(c, &flags);
 	return ret;
 }
+EXPORT_SYMBOL(tegra_clk_cfg_ex);
 
 int tegra_register_clk_rate_notifier(struct clk *c, struct notifier_block *nb)
 {

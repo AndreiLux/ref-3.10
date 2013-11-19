@@ -17,6 +17,7 @@
 #include <linux/types.h>
 #include <linux/io.h>
 #include <linux/mmc/host.h>
+#include <linux/sysedp.h>
 
 struct sdhci_host {
 	/* Data set by hardware interface driver */
@@ -112,6 +113,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_SUPPORT_64BIT_DMA			(1<<9)
 /* Use 64 BIT addressing */
 #define SDHCI_QUIRK2_USE_64BIT_ADDR			(1<<10)
+/* sdio delayed clock gate */
+#define SDHCI_QUIRK2_SDIO_DELAYED_CLK_GATE		(1<<11)
 
 	int irq;		/* Device IRQ */
 	void __iomem *ioaddr;	/* Mapped address */
@@ -197,7 +200,16 @@ struct sdhci_host {
 	struct edp_client *sd_edp_client;
 	unsigned int edp_states[SD_EDP_NUM_STATES];
 	bool edp_support;
+	struct sysedp_consumer *sysedpc;
+
+	struct delayed_work	delayed_clk_gate_wrk;
+	bool			sdio_clk_gate_init_done;
+	bool			is_clk_on;
 
 	unsigned long private[0] ____cacheline_aligned;
 };
+
+/* callback is registered during init */
+void delayed_clk_gate_cb(struct work_struct *work);
+
 #endif /* LINUX_MMC_SDHCI_H */

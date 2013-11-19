@@ -19,10 +19,16 @@
 
 #include <linux/ioctl.h>
 
-#define QUADD_SAMPLES_VERSION	16
-#define QUADD_IO_VERSION	5
+#define QUADD_SAMPLES_VERSION	17
+#define QUADD_IO_VERSION	9
 
-#define QUADD_IO_VERSION_DYNAMIC_RB	5
+#define QUADD_IO_VERSION_DYNAMIC_RB		5
+#define QUADD_IO_VERSION_RB_MAX_FILL_COUNT	6
+#define QUADD_IO_VERSION_MOD_STATE_STATUS_FIELD	7
+#define QUADD_IO_VERSION_BT_KERNEL_CTX		8
+#define QUADD_IO_VERSION_GET_MMAP		9
+
+#define QUADD_SAMPLE_VERSION_THUMB_MODE_FLAG	17
 
 #define QUADD_MAX_COUNTERS	32
 #define QUADD_MAX_PROCESS	64
@@ -65,7 +71,8 @@
 
 #define QUADD_HRT_SCHED_IN_FUNC		"finish_task_switch"
 
-#define QM_TEGRA_POWER_CLUSTER_LP	(1 << 29) /* LP CPU */
+#define QUADD_CPUMODE_TEGRA_POWER_CLUSTER_LP	(1 << 29)	/* LP CPU */
+#define QUADD_CPUMODE_THUMB			(1 << 30)	/* thumb mode */
 
 enum quadd_events_id {
 	QUADD_EVENT_TYPE_CPU_CYCLES = 0,
@@ -230,8 +237,11 @@ struct quadd_record_data {
 #define QUADD_MAX_PACKAGE_NAME	320
 
 enum {
-	QUADD_PARAM_IDX_SIZE_OF_RB = 0,
+	QUADD_PARAM_IDX_SIZE_OF_RB	= 0,
+	QUADD_PARAM_IDX_EXTRA		= 1,
 };
+
+#define QUADD_PARAM_IDX_EXTRA_GET_MMAP	(1 << 0)
 
 struct quadd_parameters {
 	u32 freq;
@@ -270,6 +280,13 @@ struct quadd_events_cap {
 		l2_icache_misses:1;
 };
 
+enum {
+	QUADD_COMM_CAP_IDX_EXTRA = 0,
+};
+
+#define QUADD_COMM_CAP_EXTRA_BT_KERNEL_CTX	(1 << 0)
+#define QUADD_COMM_CAP_EXTRA_GET_MMAP		(1 << 1)
+
 struct quadd_comm_cap {
 	u32	pmu:1,
 		power_rate:1,
@@ -282,6 +299,14 @@ struct quadd_comm_cap {
 
 	u32 reserved[16];	/* reserved fields for future extensions */
 };
+
+enum {
+	QUADD_MOD_STATE_IDX_RB_MAX_FILL_COUNT = 0,
+	QUADD_MOD_STATE_IDX_STATUS,
+};
+
+#define QUADD_MOD_STATE_STATUS_IS_ACTIVE	(1 << 0)
+#define QUADD_MOD_STATE_STATUS_IS_AUTH_OPEN	(1 << 1)
 
 struct quadd_module_state {
 	u64 nr_all_samples;
@@ -304,5 +329,34 @@ struct quadd_module_version {
 };
 
 #pragma pack(pop)
+
+#ifdef CONFIG_TEGRA_PROFILER
+extern void __quadd_task_sched_in(struct task_struct *prev,
+				  struct task_struct *task);
+extern void __quadd_task_sched_out(struct task_struct *prev,
+				   struct task_struct *next);
+
+static inline void quadd_task_sched_in(struct task_struct *prev,
+				       struct task_struct *task)
+{
+	__quadd_task_sched_in(prev, task);
+}
+
+static inline void quadd_task_sched_out(struct task_struct *prev,
+					struct task_struct *next)
+{
+	__quadd_task_sched_out(prev, next);
+}
+#else
+static inline void quadd_task_sched_in(struct task_struct *prev,
+				       struct task_struct *task)
+{
+}
+
+static inline void quadd_task_sched_out(struct task_struct *prev,
+					struct task_struct *next)
+{
+}
+#endif
 
 #endif  /* __TEGRA_PROFILER_H */

@@ -48,6 +48,7 @@
 #include <linux/usb/tegra_usb_phy.h>
 #include <linux/clk/tegra.h>
 #include <linux/clocksource.h>
+#include <linux/irqchip.h>
 
 #include <asm/system_info.h>
 
@@ -70,7 +71,6 @@
 #include "board-roth.h"
 #include "devices.h"
 #include "gpio-names.h"
-#include "fuse.h"
 #include "iomap.h"
 #include "pm.h"
 #include "common.h"
@@ -744,7 +744,7 @@ MACHINE_START(ROTH, "roth")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_roth_reserve,
 	.init_early	= tegra11x_init_early,
-	.init_irq	= tegra_dt_init_irq,
+	.init_irq	= irqchip_init,
 	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_roth_dt_init,
 	.restart	= tegra_assert_system_reset,

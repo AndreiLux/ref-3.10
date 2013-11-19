@@ -118,7 +118,7 @@ palmas: tps65913 {
 		regulators {
 			smps123 {
 				regulator-name = "vdd-cpu";
-				regulator-min-microvolt = <900000>;
+				regulator-min-microvolt = <700000>;
 				regulator-max-microvolt = <1400000>;
 				regulator-always-on;
 				regulator-boot-on;
@@ -170,7 +170,7 @@ palmas: tps65913 {
 
 			smps7 {
 				regulator-name = "vdd-core";
-				regulator-min-microvolt = <900000>;
+				regulator-min-microvolt = <700000>;
 				regulator-max-microvolt = <1400000>;
 				regulator-always-on;
 				regulator-boot-on;
@@ -347,6 +347,10 @@ palmas: tps65913 {
 						regulator-consumer-supply = "vdd";
 						regulator-consumer-device = "1-004d";
 					};
+					c11 {
+						regulator-consumer-supply = "vdd";
+						regulator-consumer-device = "0-0010";
+					};
 
 				};
 			};
@@ -471,6 +475,10 @@ palmas: tps65913 {
 						regulator-consumer-supply = "vdig";
 						regulator-consumer-device = "2-0036";
 					};
+					c7 {
+						regulator-consumer-supply = "vdig_lv";
+						regulator-consumer-device = "2-0010";
+					};
 
 				};
 			};
@@ -516,10 +524,6 @@ palmas: tps65913 {
 						regulator-consumer-device = "2-0010";
 					};
 					c7 {
-						regulator-consumer-supply = "vana";
-						regulator-consumer-device = "2-0036";
-					};
-					c8 {
 						regulator-consumer-supply = "avdd_ov5693";
 						regulator-consumer-device = "2-0010";
 					};
@@ -613,6 +617,10 @@ palmas: tps65913 {
 						regulator-consumer-device = "2-0030";
 					};
 					c9 {
+						regulator-consumer-supply = "vdd";
+						regulator-consumer-device = "2-004a";
+					};
+					c10 {
 						regulator-consumer-supply = "vif";
 						regulator-consumer-device = "2-0048";
 					};
@@ -640,6 +648,22 @@ palmas: tps65913 {
 						regulator-consumer-device = "2-000c";
 					};
 					c5 {
+						regulator-consumer-supply = "vdd_af1";
+						regulator-consumer-device = "2-0010";
+					};
+					c6 {
+						regulator-consumer-supply = "vin";
+						regulator-consumer-device = "2-0030";
+					};
+					c7 {
+						regulator-consumer-supply = "vin";
+						regulator-consumer-device = "2-004a";
+					};
+					c8 {
+						regulator-consumer-supply = "vana";
+						regulator-consumer-device = "2-0036";
+					};
+					c9 {
 						regulator-consumer-supply = "vana";
 						regulator-consumer-device = "2-0048";
 					};

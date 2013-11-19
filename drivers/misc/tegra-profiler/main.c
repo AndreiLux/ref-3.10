@@ -19,6 +19,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/err.h>
+#include <linux/sched.h>
 
 #include <linux/tegra_profiler.h>
 
@@ -145,6 +146,9 @@ static int set_parameters(struct quadd_parameters *param, uid_t *debug_app_uid)
 	ctx.param.power_rate_freq = param->power_rate_freq;
 	ctx.param.debug_samples = param->debug_samples;
 
+	for (i = 0; i < QM_ARRAY_SIZE(param->reserved); i++)
+		ctx.param.reserved[i] = param->reserved[i];
+
 	/* Currently only one process */
 	if (param->nr_pids != 1)
 		return -EINVAL;
@@ -245,6 +249,7 @@ static int set_parameters(struct quadd_parameters *param, uid_t *debug_app_uid)
 static void get_capabilities(struct quadd_comm_cap *cap)
 {
 	int i, event;
+	unsigned int extra = 0;
 	struct quadd_events_cap *events_cap = &cap->events_cap;
 
 	cap->pmu = ctx.pmu ? 1 : 0;
@@ -355,12 +360,27 @@ static void get_capabilities(struct quadd_comm_cap *cap)
 
 	cap->tegra_lp_cluster = quadd_is_cpu_with_lp_cluster();
 	cap->power_rate = 1;
-	cap->blocked_read = 0;
+	cap->blocked_read = 1;
+
+	extra |= QUADD_COMM_CAP_EXTRA_BT_KERNEL_CTX;
+	extra |= QUADD_COMM_CAP_EXTRA_GET_MMAP;
+
+	cap->reserved[QUADD_COMM_CAP_IDX_EXTRA] = extra;
 }
 
-static void get_state(struct quadd_module_state *state)
+void quadd_get_state(struct quadd_module_state *state)
 {
+	unsigned int status = 0;
+
 	quadd_hrt_get_state(state);
+
+	if (ctx.comm->is_active())
+		status |= QUADD_MOD_STATE_STATUS_IS_ACTIVE;
+
+	if (quadd_auth_is_auth_open())
+		status |= QUADD_MOD_STATE_STATUS_IS_AUTH_OPEN;
+
+	state->reserved[QUADD_MOD_STATE_IDX_STATUS] = status;
 }
 
 static struct quadd_comm_control_interface control = {
@@ -368,7 +388,7 @@ static struct quadd_comm_control_interface control = {
 	.stop			= stop,
 	.set_parameters		= set_parameters,
 	.get_capabilities	= get_capabilities,
-	.get_state		= get_state,
+	.get_state		= quadd_get_state,
 };
 
 static int __init quadd_module_init(void)

@@ -18,49 +18,109 @@
  *
  */
 
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/export.h>
-#include <linux/io.h>
 #include <linux/spinlock.h>
 #include <linux/delay.h>
+#include <linux/debugfs.h>
+#include <linux/tegra-soc.h>
 
 #include <mach/mc.h>
+#include <mach/mcerr.h>
 
 #include "iomap.h"
 
-static DEFINE_SPINLOCK(tegra_mc_lock);
-static void __iomem *mc_base = (void __iomem *)IO_TO_VIRT(TEGRA_MC_BASE);
 #define MC_CLIENT_HOTRESET_CTRL		0x200
 #define MC_CLIENT_HOTRESET_STAT		0x204
 #define MC_CLIENT_HOTRESET_CTRL_1	0x970
 #define MC_CLIENT_HOTRESET_STAT_1	0x974
 
-#if defined(CONFIG_ARCH_TEGRA_2x_SOC)
-
-void tegra_mc_set_priority(unsigned long client, unsigned long prio)
-{
-	unsigned long reg = client >> 8;
-	int field = client & 0xff;
-	unsigned long val;
-	unsigned long flags;
-
-	spin_lock_irqsave(&tegra_mc_lock, flags);
-	val = readl(mc_base + reg);
-	val &= ~(TEGRA_MC_PRIO_MASK << field);
-	val |= prio << field;
-	writel(val, mc_base + reg);
-	spin_unlock_irqrestore(&tegra_mc_lock, flags);
-
-}
-
-int tegra_mc_get_tiled_memory_bandwidth_multiplier(void)
-{
-	return 1;
-}
-
+#define MC_TIMING_REG_NUM1					\
+	((MC_EMEM_ARB_TIMING_W2R - MC_EMEM_ARB_CFG) / 4 + 1)
+#define MC_TIMING_REG_NUM2					\
+	((MC_EMEM_ARB_MISC1 - MC_EMEM_ARB_DA_TURNS) / 4 + 1)
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+#define MC_TIMING_REG_NUM3	T12X_MC_LATENCY_ALLOWANCE_NUM_REGS
 #else
-	/* !!!FIXME!!! IMPLEMENT tegra_mc_set_priority() */
+#define MC_TIMING_REG_NUM3						\
+	((MC_LATENCY_ALLOWANCE_VI_2 - MC_LATENCY_ALLOWANCE_BASE) / 4 + 1)
+#endif
 
-#include "tegra3_emc.h"
+static DEFINE_SPINLOCK(tegra_mc_lock);
+void __iomem *mc = (void __iomem *)IO_ADDRESS(TEGRA_MC_BASE);
+#ifdef MC_DUAL_CHANNEL
+void __iomem *mc1 = (void __iomem *)IO_ADDRESS(TEGRA_MC1_BASE);
+#endif
+
+#ifdef CONFIG_PM_SLEEP
+static u32 mc_boot_timing[MC_TIMING_REG_NUM1 + MC_TIMING_REG_NUM2
+			  + MC_TIMING_REG_NUM3 + 4];
+
+static void tegra_mc_timing_save(void)
+{
+	u32 off;
+	u32 *ctx = mc_boot_timing;
+
+	for (off = MC_EMEM_ARB_CFG; off <= MC_EMEM_ARB_TIMING_W2R; off += 4)
+		*ctx++ = mc_readl(off);
+
+	for (off = MC_EMEM_ARB_DA_TURNS; off <= MC_EMEM_ARB_MISC1; off += 4)
+		*ctx++ = mc_readl(off);
+
+	*ctx++ = mc_readl(MC_EMEM_ARB_RING3_THROTTLE);
+	*ctx++ = mc_readl(MC_EMEM_ARB_OVERRIDE);
+	*ctx++ = mc_readl(MC_RESERVED_RSV);
+
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	tegra12_mc_latency_allowance_save(&ctx);
+#else
+	for (off = MC_LATENCY_ALLOWANCE_BASE; off <= MC_LATENCY_ALLOWANCE_VI_2;
+		off += 4)
+		*ctx++ = mc_readl(off);
+#endif
+
+	*ctx++ = mc_readl(MC_INT_MASK);
+}
+
+void tegra_mc_timing_restore(void)
+{
+	u32 off;
+	u32 *ctx = mc_boot_timing;
+
+	for (off = MC_EMEM_ARB_CFG; off <= MC_EMEM_ARB_TIMING_W2R; off += 4)
+		__mc_raw_writel(0, *ctx++, off);
+
+	for (off = MC_EMEM_ARB_DA_TURNS; off <= MC_EMEM_ARB_MISC1; off += 4)
+		__mc_raw_writel(0, *ctx++, off);
+
+	__mc_raw_writel(0, *ctx++, MC_EMEM_ARB_RING3_THROTTLE);
+	__mc_raw_writel(0, *ctx++, MC_EMEM_ARB_OVERRIDE);
+	__mc_raw_writel(0, *ctx++, MC_RESERVED_RSV);
+
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	tegra12_mc_latency_allowance_restore(&ctx);
+#else
+	for (off = MC_LATENCY_ALLOWANCE_BASE; off <= MC_LATENCY_ALLOWANCE_VI_2;
+		off += 4)
+		__mc_raw_writel(0, *ctx++, off);
+#endif
+
+	mc_writel(*ctx++, MC_INT_MASK);
+	off = mc_readl(MC_INT_MASK);
+
+	mc_writel(0x1, MC_TIMING_CONTROL);
+	off = mc_readl(MC_TIMING_CONTROL);
+#if defined(CONFIG_ARCH_TEGRA_3x_SOC)
+	/* Bug 1059264
+	 * Set extra snap level to avoid VI starving and dropping data.
+	 */
+	mc_writel(1, MC_VE_EXTRA_SNAP_LEVELS);
+#endif
+}
+#else
+#define tegra_mc_timing_save()
+#endif
 
 /*
  * If using T30/DDR3, the 2nd 16 bytes part of DDR3 atom is 2nd line and is
@@ -71,14 +131,12 @@ int tegra_mc_get_tiled_memory_bandwidth_multiplier(void)
 	int type;
 
 	type = tegra_emc_get_dram_type();
-	/*WARN_ONCE(type == -1, "unknown type DRAM because DVFS is disabled\n");*/
 
 	if (type == DRAM_TYPE_DDR3)
 		return 2;
 	else
 		return 1;
 }
-#endif
 
 /* API to get EMC freq to be requested, for Bandwidth.
  * bw_kbps: BandWidth passed is in KBps.
@@ -120,9 +178,9 @@ static bool tegra_stable_hotreset_check(u32 stat_reg, u32 *stat)
 	unsigned long flags;
 
 	spin_lock_irqsave(&tegra_mc_lock, flags);
-	prv_stat = readl(mc_base + stat_reg);
+	prv_stat = mc_readl(stat_reg);
 	for (i = 0; i < HOTRESET_READ_COUNT; i++) {
-		cur_stat = readl(mc_base + stat_reg);
+		cur_stat = mc_readl(stat_reg);
 		if (cur_stat != prv_stat) {
 			spin_unlock_irqrestore(&tegra_mc_lock, flags);
 			return false;
@@ -151,9 +209,9 @@ int tegra_mc_flush(int id)
 
 	spin_lock_irqsave(&tegra_mc_lock, flags);
 
-	rst_ctrl = readl(mc_base + rst_ctrl_reg);
+	rst_ctrl = mc_readl(rst_ctrl_reg);
 	rst_ctrl |= (1 << id);
-	writel(rst_ctrl, mc_base + rst_ctrl_reg);
+	mc_writel(rst_ctrl, rst_ctrl_reg);
 
 	spin_unlock_irqrestore(&tegra_mc_lock, flags);
 
@@ -186,12 +244,50 @@ int tegra_mc_flush_done(int id)
 
 	spin_lock_irqsave(&tegra_mc_lock, flags);
 
-	rst_ctrl = readl(mc_base + rst_ctrl_reg);
+	rst_ctrl = mc_readl(rst_ctrl_reg);
 	rst_ctrl &= ~(1 << id);
-	writel(rst_ctrl, mc_base + rst_ctrl_reg);
+	mc_writel(rst_ctrl, rst_ctrl_reg);
 
 	spin_unlock_irqrestore(&tegra_mc_lock, flags);
 
 	return 0;
 }
 EXPORT_SYMBOL(tegra_mc_flush_done);
+
+/*
+ * MC driver init.
+ */
+static int __init tegra_mc_init(void)
+{
+	u32 reg;
+	struct dentry *mc_debugfs_dir;
+
+	tegra_mc_timing_save();
+
+#if defined(CONFIG_ARCH_TEGRA_3x_SOC)
+	reg = 0x0f7f1010;
+	mc_writel(reg, MC_RESERVED_RSV);
+#endif
+
+#if defined(CONFIG_TEGRA_MC_EARLY_ACK)
+	reg = mc_readl(MC_EMEM_ARB_OVERRIDE);
+	reg |= 3;
+#if defined(CONFIG_TEGRA_ERRATA_1157520)
+	if (tegra_revision == TEGRA_REVISION_A01)
+		reg &= ~2;
+#endif
+	mc_writel(reg, MC_EMEM_ARB_OVERRIDE);
+#endif
+
+	mc_debugfs_dir = debugfs_create_dir("mc", NULL);
+	if (mc_debugfs_dir == NULL) {
+		pr_err("Failed to make debugfs node: %ld\n",
+		       PTR_ERR(mc_debugfs_dir));
+		return PTR_ERR(mc_debugfs_dir);
+	}
+
+	tegra_mcerr_init(mc_debugfs_dir);
+
+	return 0;
+}
+arch_initcall(tegra_mc_init);

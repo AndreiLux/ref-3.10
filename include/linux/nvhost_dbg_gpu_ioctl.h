@@ -125,8 +125,20 @@ struct nvhost_dbg_gpu_events_ctrl_args {
 	_IOWR(NVHOST_DBG_GPU_IOCTL_MAGIC, 3, struct nvhost_dbg_gpu_events_ctrl_args)
 
 
+/* Powergate/Unpowergate control */
+
+#define NVHOST_DBG_GPU_POWERGATE_MODE_ENABLE                                 1
+#define NVHOST_DBG_GPU_POWERGATE_MODE_DISABLE                                2
+
+struct nvhost_dbg_gpu_powergate_args {
+	__u32 mode;
+};
+
+#define NVHOST_DBG_GPU_IOCTL_POWERGATE					\
+	_IOWR(NVHOST_DBG_GPU_IOCTL_MAGIC, 4, struct nvhost_dbg_gpu_powergate_args)
+
 #define NVHOST_DBG_GPU_IOCTL_LAST		\
-	_IOC_NR(NVHOST_DBG_GPU_IOCTL_EVENTS_CTRL)
+	_IOC_NR(NVHOST_DBG_GPU_IOCTL_POWERGATE)
 #define NVHOST_DBG_GPU_IOCTL_MAX_ARG_SIZE		\
 	sizeof(struct nvhost_dbg_gpu_exec_reg_ops_args)
 
