@@ -44,6 +44,11 @@
 #define FLOUNDER_WLAN_RST	TEGRA_GPIO_PCC5
 #define FLOUNDER_WLAN_PWR	TEGRA_GPIO_PX7
 #define FLOUNDER_WLAN_WOW	TEGRA_GPIO_PU5
+#if defined(CONFIG_BCMDHD_EDP_SUPPORT)
+#define ON 1020 /* 1019.16mW */
+#define OFF 0
+static unsigned int wifi_states[] = {ON, OFF};
+#endif
 
 #define FLOUNDER_SD_CD	TEGRA_GPIO_PV2
 
@@ -61,6 +66,16 @@ static struct wifi_platform_data flounder_wifi_control = {
 	.set_reset	= flounder_wifi_reset,
 	.set_carddetect	= flounder_wifi_set_carddetect,
 	.get_mac_addr	= flounder_wifi_get_mac_addr,
+#if defined (CONFIG_BCMDHD_EDP_SUPPORT)
+	/* wifi edp client information */
+	.client_info	= {
+		.name		= "wifi_edp_client",
+		.states		= wifi_states,
+		.num_states	= ARRAY_SIZE(wifi_states),
+		.e0_index	= 0,
+		.priority	= EDP_MAX_PRIO,
+	},
+#endif
 };
 
 static struct resource wifi_resource[] = {
@@ -169,7 +184,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.tap_delay = 0,
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
-	.uhs_mask = MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_DDR50 |
+	.uhs_mask = MMC_UHS_MASK_DDR50 |
 		MMC_UHS_MASK_SDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
@@ -410,6 +425,7 @@ int __init flounder_sdhci_init(void)
 	if (board_info.board_id == BOARD_E1780) {
 		tegra_sdhci_platform_data3.max_clk_limit = 200000000;
 		tegra_sdhci_platform_data2.max_clk_limit = 204000000;
+		tegra_sdhci_platform_data0.max_clk_limit = 204000000;
 	} else {
 		tegra_sdhci_platform_data3.uhs_mask = MMC_MASK_HS200;
 	}

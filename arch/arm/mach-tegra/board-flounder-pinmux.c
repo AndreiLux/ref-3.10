@@ -59,7 +59,8 @@ static void __init flounder_gpio_init_configure(void)
 
 int __init flounder_pinmux_init(void)
 {
-	flounder_gpio_init_configure();
+	if (!of_machine_is_compatible("nvidia,tn8"))
+		flounder_gpio_init_configure();
 
 	tegra_pinmux_config_table(flounder_pinmux_common, ARRAY_SIZE(flounder_pinmux_common));
 	tegra_drive_pinmux_config_table(flounder_drive_pinmux,

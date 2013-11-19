@@ -56,9 +56,11 @@
 #include <linux/clk/tegra.h>
 #include <media/tegra_dtv.h>
 #include <linux/clocksource.h>
+#include <linux/irqchip.h>
+#include <linux/irqchip/tegra.h>
+#include <linux/pci-tegra.h>
 
 #include <mach/irqs.h>
-#include <mach/pci.h>
 #include <mach/tegra_fiq_debugger.h>
 
 #include <mach/pinmux.h>
@@ -74,6 +76,7 @@
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_usb_modem_power.h>
 #include <linux/platform_data/tegra_ahci.h>
+#include <linux/irqchip/tegra.h>
 
 #include "board.h"
 #include "board-flounder.h"
@@ -86,7 +89,6 @@
 #include "gpio-names.h"
 #include "iomap.h"
 #include "pm.h"
-#include "pm-irq.h"
 #include "tegra-board-id.h"
 
 static struct board_info board_info, display_board_info;
@@ -574,6 +576,7 @@ static void flounder_usb_init(void)
 			tegra_otg_pdata.id_extcon_dev_name = "as3722-extcon";
 			break;
 		case BOARD_E1736:
+		case BOARD_E1769:
 		case BOARD_E1735:
 			/* Device cable is detected through PMU Interrupt */
 			tegra_udc_pdata.support_pmu_vbus = true;
@@ -774,7 +777,8 @@ static void flounder_modem_init(void)
 			/* Set specific USB wake source for Flounder */
 			if (board_info.board_id == BOARD_E1780)
 				tegra_set_wake_source(42, INT_USB2);
-			if (pmu_board_info.board_id == BOARD_E1736)
+			if (pmu_board_info.board_id == BOARD_E1736 ||
+				pmu_board_info.board_id == BOARD_E1769)
 				baseband_pdata.regulator_name = NULL;
 			platform_device_register(&icera_bruce_device);
 		}
@@ -959,8 +963,92 @@ static int __init flounder_touch_init(void)
 	return 0;
 }
 
+static void __init flounder_sysedp_init(void)
+{
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100) {
+			tn8_new_sysedp_init();
+		}
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+	default:
+		break;
+	}
+}
+
+static void __init flounder_sysedp_dynamic_capping_init(void)
+{
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100)
+			tn8_sysedp_dynamic_capping_init();
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+	default:
+		break;
+	}
+}
+
+static void __init flounder_sysedp_batmon_init(void)
+{
+	struct board_info bi;
+
+	if (!IS_ENABLED(CONFIG_SYSEDP_FRAMEWORK))
+		return;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100)
+			tn8_sysedp_batmon_init();
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+	default:
+		break;
+	}
+}
+
+
+
+static void __init edp_init(void)
+{
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	switch (bi.board_id) {
+	case BOARD_E1780:
+		if (bi.sku == 1100)
+			tn8_edp_init();
+		else
+			flounder_edp_init();
+		break;
+	case BOARD_PM358:
+	case BOARD_PM359:
+			laguna_edp_init();
+			break;
+	default:
+			flounder_edp_init();
+			break;
+	}
+}
+
 static void __init tegra_flounder_early_init(void)
 {
+	flounder_sysedp_init();
 	tegra_clk_init_from_table(flounder_clk_init_table);
 	tegra_clk_verify_parents();
 	if (of_machine_is_compatible("nvidia,laguna"))
@@ -1033,11 +1121,12 @@ static void __init tegra_flounder_late_init(void)
 	flounder_dtv_init();
 	flounder_suspend_init();
 /* TODO: add support for laguna board when dvfs table is ready */
-	if (board_info.board_id == BOARD_E1780 &&
-			(tegra_get_memory_type() == 0))
+	if ((board_info.board_id == BOARD_E1780 &&
+		(tegra_get_memory_type() == 0)) ||
+		(board_info.board_id == BOARD_E1792))
 		flounder_emc_init();
 
-	flounder_edp_init();
+	edp_init();
 	isomgr_init();
 	flounder_touch_init();
 	flounder_panel_init();
@@ -1067,7 +1156,9 @@ static void __init tegra_flounder_late_init(void)
 
 	flounder_setup_bluedroid_pm();
 	tegra_register_fuse();
-	flounder_sata_init();
+
+	flounder_sysedp_dynamic_capping_init();
+	flounder_sysedp_batmon_init();
 }
 
 static void __init flounder_ramconsole_reserve(unsigned long size)
@@ -1119,7 +1210,7 @@ DT_MACHINE_START(FLOUNDER, "flounder")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_flounder_reserve,
 	.init_early	= tegra_flounder_init_early,
-	.init_irq	= tegra_dt_init_irq,
+	.init_irq	= irqchip_init,
 	.init_time	= clocksource_of_init,
 	.init_machine	= tegra_flounder_dt_init,
 	.restart	= tegra_assert_system_reset,

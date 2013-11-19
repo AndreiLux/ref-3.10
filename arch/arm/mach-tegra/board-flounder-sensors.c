@@ -23,6 +23,13 @@
 #include <linux/err.h>
 #include <linux/nct1008.h>
 #include <linux/pid_thermal_gov.h>
+#include <linux/power/sbs-battery.h>
+#include <linux/tegra-fuse.h>
+#include <mach/edp.h>
+#include <mach/pinmux-t12.h>
+#include <mach/pinmux.h>
+#include <mach/io_dpd.h>
+#include <media/camera.h>
 #include <media/ar0261.h>
 #include <media/imx135.h>
 #include <media/dw9718.h>
@@ -31,13 +38,12 @@
 #include <media/ov7695.h>
 #include <media/mt9m114.h>
 #include <media/ad5823.h>
-#include <linux/pid_thermal_gov.h>
-#include <linux/power/sbs-battery.h>
-#include <mach/edp.h>
-#include <mach/tegra_fuse.h>
-#include <mach/pinmux-t12.h>
-#include <mach/pinmux.h>
-#include <mach/io_dpd.h>
+#include <media/max77387.h>
+
+#include <linux/platform_device.h>
+#include <media/soc_camera.h>
+#include <media/soc_camera_platform.h>
+#include <media/tegra_v4l2_camera.h>
 
 #include "cpu-tegra.h"
 #include "devices.h"
@@ -125,6 +131,78 @@ static void mpuirq_init(void)
 	i2c_register_board_info(gyro_bus_num, inv_mpu9250_i2c0_board_info,
 		ARRAY_SIZE(inv_mpu9250_i2c0_board_info));
 }
+
+/*
+ * Soc Camera platform driver for testing
+ */
+#if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
+static int flounder_soc_camera_add(struct soc_camera_device *icd);
+static void flounder_soc_camera_del(struct soc_camera_device *icd);
+
+static int flounder_soc_camera_set_capture(struct soc_camera_platform_info *info,
+		int enable)
+{
+	/* TODO: probably add clk opertaion here */
+	return 0; /* camera sensor always enabled */
+}
+
+static struct soc_camera_platform_info flounder_soc_camera_info = {
+	.format_name = "RGB4",
+	.format_depth = 32,
+	.format = {
+		.code = V4L2_MBUS_FMT_RGBA8888_4X8_LE,
+		.colorspace = V4L2_COLORSPACE_SRGB,
+		.field = V4L2_FIELD_NONE,
+		.width = 1280,
+		.height = 720,
+	},
+	.set_capture = flounder_soc_camera_set_capture,
+};
+
+static struct tegra_camera_platform_data flounder_camera_platform_data = {
+	.flip_v                 = 0,
+	.flip_h                 = 0,
+	.port                   = TEGRA_CAMERA_PORT_CSI_A,
+	.lanes                  = 4,
+	.continuous_clk         = 0,
+};
+
+static struct soc_camera_link flounder_soc_camera_link = {
+	.bus_id         = 0, /* This must match the .id of tegra_vi01_device */
+	.add_device     = flounder_soc_camera_add,
+	.del_device     = flounder_soc_camera_del,
+	.module_name    = "soc_camera_platform",
+	.priv		= &flounder_camera_platform_data,
+	.dev_priv	= &flounder_soc_camera_info,
+};
+
+static struct platform_device *flounder_pdev;
+
+static void flounder_soc_camera_release(struct device *dev)
+{
+	soc_camera_platform_release(&flounder_pdev);
+}
+
+static int flounder_soc_camera_add(struct soc_camera_device *icd)
+{
+	return soc_camera_platform_add(icd, &flounder_pdev,
+			&flounder_soc_camera_link,
+			flounder_soc_camera_release, 0);
+}
+
+static void flounder_soc_camera_del(struct soc_camera_device *icd)
+{
+	soc_camera_platform_del(icd, flounder_pdev, &flounder_soc_camera_link);
+}
+
+static struct platform_device flounder_soc_camera_device = {
+	.name   = "soc-camera-pdrv",
+	.id     = 0,
+	.dev    = {
+		.platform_data = &flounder_soc_camera_link,
+	},
+};
+#endif
 
 static struct regulator *flounder_vcmvdd;
 
@@ -239,15 +317,21 @@ static int flounder_ar0261_power_off(struct ar0261_power_rail *pw)
 	regulator_disable(pw->iovdd);
 	regulator_disable(pw->dvdd);
 	regulator_disable(pw->avdd);
-
-
 	regulator_disable(flounder_vcmvdd);
 	/* put CSIE IOs into DPD mode to save additional power for flounder */
 	tegra_io_dpd_enable(&csie_io);
 	return 0;
 }
 
+static unsigned ar0261_estates[] = { 302, 0 };
+
 struct ar0261_platform_data flounder_ar0261_data = {
+	.edpc_config = {
+		.states = ar0261_estates,
+		.num_states = ARRAY_SIZE(ar0261_estates),
+		.e0_index = ARRAY_SIZE(ar0261_estates) - 1,
+		.priority = EDP_MAX_PRIO + 1,
+	},
 	.power_on = flounder_ar0261_power_on,
 	.power_off = flounder_ar0261_power_off,
 	.mclk_name = "mclk2",
@@ -361,7 +445,15 @@ static int flounder_imx135_power_off(struct imx135_power_rail *pw)
 	return 0;
 }
 
+static unsigned imx135_estates[] = { 486, 0 };
+
 struct imx135_platform_data flounder_imx135_data = {
+	.edpc_config = {
+		.states = imx135_estates,
+		.num_states = ARRAY_SIZE(imx135_estates),
+		.e0_index = ARRAY_SIZE(imx135_estates) - 1,
+		.priority = EDP_MAX_PRIO + 1,
+	},
 	.flash_cap = {
 		.enable = 1,
 		.edge_trig_en = 1,
@@ -440,6 +532,44 @@ static struct dw9718_platform_data flounder_dw9718_data = {
 	.power_on = flounder_dw9718_power_on,
 	.power_off = flounder_dw9718_power_off,
 	.detect = flounder_dw9718_detect,
+};
+
+/* estate values under 1000/200/0/0mA, 3.5V input */
+static unsigned max77387_estates[] = {3500, 710, 0};
+
+static struct max77387_platform_data flounder_max77387_pdata = {
+	.config		= {
+		.led_mask		= 3,
+		.flash_trigger_mode	= 1,
+		/* use ONE-SHOOT flash mode - flash triggered at the
+		 * raising edge of strobe or strobe signal.
+		*/
+		.flash_mode		= 1,
+		.def_ftimer		= 0x24,
+		.max_total_current_mA	= 1000,
+		.max_peak_current_mA	= 600,
+		.led_config[0]	= {
+			.flash_torch_ratio	= 18100,
+			.granularity		= 1000,
+			.flash_levels		= 0,
+			.lumi_levels	= NULL,
+			},
+		.led_config[1]	= {
+			.flash_torch_ratio	= 18100,
+			.granularity		= 1000,
+			.flash_levels		= 0,
+			.lumi_levels		= NULL,
+			},
+		},
+	.cfg		= 0,
+	.dev_name	= "torch",
+	.gpio_strobe	= CAM_FLASH_STROBE,
+	.edpc_config	= {
+		.states		= max77387_estates,
+		.num_states	= ARRAY_SIZE(max77387_estates),
+		.e0_index	= ARRAY_SIZE(max77387_estates) - 1,
+		.priority	= EDP_MAX_PRIO + 2,
+		},
 };
 
 static struct as364x_platform_data flounder_as3648_data = {
@@ -565,7 +695,15 @@ static int flounder_mt9m114_power_off(struct mt9m114_power_rail *pw)
 	return 1;
 }
 
+static unsigned mt9m114_estates[] = { 150, 0 };
+
 struct mt9m114_platform_data flounder_mt9m114_pdata = {
+	.edpc_config = {
+		.states = mt9m114_estates,
+		.num_states = ARRAY_SIZE(mt9m114_estates),
+		.e0_index = ARRAY_SIZE(mt9m114_estates) - 1,
+		.priority = EDP_MAX_PRIO + 1,
+	},
 	.power_on = flounder_mt9m114_power_on,
 	.power_off = flounder_mt9m114_power_off,
 	.mclk_name = "mclk2",
@@ -638,7 +776,15 @@ static struct nvc_gpio_pdata ov5693_gpio_pdata[] = {
 	{ OV5693_GPIO_TYPE_PWRDN, CAM_RSTN, true, 0, },
 };
 
+static unsigned ov5693_estates[] = { 300, 0 };
+
 static struct ov5693_platform_data flounder_ov5693_pdata = {
+	.edpc_config = {
+		.states = ov5693_estates,
+		.num_states = ARRAY_SIZE(ov5693_estates),
+		.e0_index = ARRAY_SIZE(ov5693_estates) - 1,
+		.priority = EDP_MAX_PRIO + 1,
+	},
 	.gpio_count	= ARRAY_SIZE(ov5693_gpio_pdata),
 	.gpio		= ov5693_gpio_pdata,
 	.power_on	= flounder_ov5693_power_on,
@@ -669,92 +815,119 @@ static struct ad5823_platform_data flounder_ad5823_pdata = {
 	.power_off	= flounder_ad5823_power_off,
 };
 
-static struct i2c_board_info flounder_i2c_board_info_e1823[] = {
-	{
-		I2C_BOARD_INFO("imx135", 0x10),
-		.platform_data = &flounder_imx135_data,
-	},
-	{
-		I2C_BOARD_INFO("ar0261", 0x36),
-		.platform_data = &flounder_ar0261_data,
-	},
-	{
-		I2C_BOARD_INFO("dw9718", 0x0c),
-		.platform_data = &flounder_dw9718_data,
-	},
-	{
-		I2C_BOARD_INFO("as3648", 0x30),
-		.platform_data = &flounder_as3648_data,
-	},
+static struct i2c_board_info	flounder_i2c_board_info_imx135 = {
+	I2C_BOARD_INFO("imx135", 0x10),
+	.platform_data = &flounder_imx135_data,
 };
 
-static struct i2c_board_info flounder_i2c_board_info_e1793[] = {
-	{
-		I2C_BOARD_INFO("ov5693", 0x10),
-		.platform_data = &flounder_ov5693_pdata,
-	},
-	{
-		I2C_BOARD_INFO("ov7695", 0x21),
-		.platform_data = &flounder_ov7695_pdata,
-	},
-	{
-		I2C_BOARD_INFO("ad5823", 0x0c),
-		.platform_data = &flounder_ad5823_pdata,
-	},
-	{
-		I2C_BOARD_INFO("as3648", 0x30),
-		.platform_data = &flounder_as3648_data,
-	},
+static struct i2c_board_info	flounder_i2c_board_info_ar0261 = {
+	I2C_BOARD_INFO("ar0261", 0x36),
+	.platform_data = &flounder_ar0261_data,
 };
 
-static struct i2c_board_info flounder_i2c_board_info_e1806[] = {
-	{
-		I2C_BOARD_INFO("ov5693", 0x10),
-		.platform_data = &flounder_ov5693_pdata,
-	},
-	{
-		I2C_BOARD_INFO("mt9m114", 0x48),
-		.platform_data = &flounder_mt9m114_pdata,
-	},
-	{
-		I2C_BOARD_INFO("ad5823", 0x0c),
-		.platform_data = &flounder_ad5823_pdata,
-	},
-	{
-		I2C_BOARD_INFO("as3648", 0x30),
-		.platform_data = &flounder_as3648_data,
-	},
+static struct i2c_board_info	flounder_i2c_board_info_dw9718 = {
+	I2C_BOARD_INFO("dw9718", 0x0c),
+	.platform_data = &flounder_dw9718_data,
 };
 
+static struct i2c_board_info	flounder_i2c_board_info_ov5693 = {
+	I2C_BOARD_INFO("ov5693", 0x10),
+	.platform_data = &flounder_ov5693_pdata,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_ov7695 = {
+	I2C_BOARD_INFO("ov7695", 0x21),
+	.platform_data = &flounder_ov7695_pdata,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_mt9m114 = {
+	I2C_BOARD_INFO("mt9m114", 0x48),
+	.platform_data = &flounder_mt9m114_pdata,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_ad5823 = {
+	I2C_BOARD_INFO("ad5823", 0x0c),
+	.platform_data = &flounder_ad5823_pdata,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_as3648 = {
+		I2C_BOARD_INFO("as3648", 0x30),
+		.platform_data = &flounder_as3648_data,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_max77387 = {
+	I2C_BOARD_INFO("max77387", 0x4A),
+	.platform_data = &flounder_max77387_pdata,
+};
+
+static struct camera_module flounder_camera_module_info[] = {
+	/* E1823 camera board */
+	{
+		/* rear camera */
+		.sensor = &flounder_i2c_board_info_imx135,
+		.focuser = &flounder_i2c_board_info_dw9718,
+		.flash = &flounder_i2c_board_info_as3648,
+	},
+	{
+		/* front camera */
+		.sensor = &flounder_i2c_board_info_ar0261,
+	},
+	/* E1793 camera board */
+	{
+		/* rear camera */
+		.sensor = &flounder_i2c_board_info_ov5693,
+		.focuser = &flounder_i2c_board_info_ad5823,
+		.flash = &flounder_i2c_board_info_as3648,
+	},
+	{
+		/* front camera */
+		.sensor = &flounder_i2c_board_info_ov7695,
+	},
+	/* E1806 camera board has the same rear camera module as E1793,
+	   but the front camera is different */
+	{
+		/* front camera */
+		.sensor = &flounder_i2c_board_info_mt9m114,
+	},
+
+	{}
+};
+
+static struct camera_platform_data flounder_pcl_pdata = {
+	.cfg = 0xAA55AA55,
+	.modules = flounder_camera_module_info,
+};
+
+static struct platform_device flounder_camera_generic = {
+	.name = "pcl-generic",
+	.id = -1,
+};
 
 static int flounder_camera_init(void)
 {
 	pr_debug("%s: ++\n", __func__);
 
 	if (!of_machine_is_compatible("nvidia,tn8")) {
-		i2c_register_board_info(2, flounder_i2c_board_info_e1823,
-				ARRAY_SIZE(flounder_i2c_board_info_e1823));
-
 		/* put CSIA/B/E IOs into DPD mode to
 		 * save additional power for flounder
 		 */
 		tegra_io_dpd_enable(&csia_io);
 		tegra_io_dpd_enable(&csib_io);
 		tegra_io_dpd_enable(&csie_io);
-	} else {
-
-#ifdef CAM_BOARD_E1793
-		i2c_register_board_info(2, flounder_i2c_board_info_e1793,
-				ARRAY_SIZE(flounder_i2c_board_info_e1793));
-#elif defined CAM_BOARD_E1806
-		i2c_register_board_info(2, flounder_i2c_board_info_e1806,
-				ARRAY_SIZE(flounder_i2c_board_info_e1806));
-#endif
 	}
+
+	platform_device_add_data(&flounder_camera_generic,
+		&flounder_pcl_pdata, sizeof(flounder_pcl_pdata));
+	platform_device_register(&flounder_camera_generic);
+
+#if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
+	platform_device_register(&flounder_soc_camera_device);
+#endif
+
 	return 0;
 }
 
-static struct pid_thermal_gov_params tj_pid_params = {
+static struct pid_thermal_gov_params cpu_pid_params = {
 	.max_err_temp = 4000,
 	.max_err_gain = 1000,
 
@@ -765,93 +938,243 @@ static struct pid_thermal_gov_params tj_pid_params = {
 	.down_compensation = 15,
 };
 
-static struct thermal_zone_params tj_tzp = {
+static struct thermal_zone_params cpu_tzp = {
 	.governor_name = "pid_thermal_gov",
-	.governor_params = &tj_pid_params,
+	.governor_params = &cpu_pid_params,
 };
 
-static struct throttle_table tj_throttle_table[] = {
+static struct throttle_table cpu_throttle_table[] = {
 	/* CPU_THROT_LOW cannot be used by other than CPU */
-	/*      CPU,    GPU,  C3BUS,   SCLK,    EMC   */
-	{ { 2014500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1989000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1963500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1938000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1912500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1887000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1861500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1836000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1810500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1785000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1759500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1734000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1708500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1683000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1657500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1632000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1606500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1581000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1555500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1530000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1504500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1479000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1453500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1428000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1402500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1377000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1351500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1326000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1300500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1275000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1249500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1224000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1198500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1173000, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1147500, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1122000, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1096500, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1071000, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1045500, 720000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1020000, 720000, NO_CAP, NO_CAP, NO_CAP } },
-	{ {  994500, 720000, NO_CAP, NO_CAP, 792000 } },
-	{ {  969000, 720000, NO_CAP, NO_CAP, 792000 } },
-	{ {  943500, 720000, NO_CAP, NO_CAP, 792000 } },
-	{ {  918000, 636000, NO_CAP, NO_CAP, 792000 } },
-	{ {  892500, 636000, NO_CAP, NO_CAP, 792000 } },
-	{ {  867000, 636000, NO_CAP, NO_CAP, 624000 } },
-	{ {  841500, 636000, NO_CAP, NO_CAP, 624000 } },
-	{ {  816000, 636000, NO_CAP, NO_CAP, 624000 } },
-	{ {  790500, 540000, NO_CAP, 163200, 624000 } },
-	{ {  765000, 540000, NO_CAP, 163200, 624000 } },
-	{ {  739500, 540000, NO_CAP, 163200, 624000 } },
-	{ {  714000, 540000, 216000, 163200, 528000 } },
-	{ {  688500, 540000, 216000, 163200, 528000 } },
-	{ {  663000, 540000, 216000, 163200, 528000 } },
-	{ {  637500, 456000, 216000, 163200, 528000 } },
-	{ {  612000, 456000, 216000, 163200, 528000 } },
-	{ {  586500, 456000, 216000, 163200, 408000 } },
-	{ {  561000, 456000, 216000, 163200, 408000 } },
-	{ {  535500, 456000, 168000, 136000, 408000 } },
-	{ {  510000, 456000, 168000, 136000, 408000 } },
-	{ {  484500, 360000, 168000, 136000, 408000 } },
-	{ {  459000, 360000, 168000, 136000, 348000 } },
-	{ {  433500, 360000, 168000, 136000, 348000 } },
-	{ {  408000, 360000, 168000, 102000, 348000 } },
+	/*      CPU,    GPU,  C2BUS,  C3BUS,   SCLK,    EMC   */
+	{ { 2295000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2269500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2244000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2218500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2193000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2167500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2142000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2116500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2091000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2065500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2040000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2014500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1989000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1963500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1938000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1912500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1887000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1861500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1836000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1810500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1785000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1759500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1734000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1708500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1683000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1657500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1632000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1606500, 790000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1581000, 776000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1555500, 762000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1530000, 749000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1504500, 735000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1479000, 721000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1453500, 707000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1428000, 693000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1402500, 679000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1377000, 666000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1351500, 652000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1326000, 638000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1300500, 624000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1275000, 610000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1249500, 596000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1224000, 582000, NO_CAP, NO_CAP, NO_CAP, 792000 } },
+	{ { 1198500, 569000, NO_CAP, NO_CAP, NO_CAP, 792000 } },
+	{ { 1173000, 555000, NO_CAP, NO_CAP, 360000, 792000 } },
+	{ { 1147500, 541000, NO_CAP, NO_CAP, 360000, 792000 } },
+	{ { 1122000, 527000, NO_CAP, 684000, 360000, 792000 } },
+	{ { 1096500, 513000, 444000, 684000, 360000, 792000 } },
+	{ { 1071000, 499000, 444000, 684000, 360000, 792000 } },
+	{ { 1045500, 486000, 444000, 684000, 360000, 792000 } },
+	{ { 1020000, 472000, 444000, 684000, 324000, 792000 } },
+	{ {  994500, 458000, 444000, 684000, 324000, 792000 } },
+	{ {  969000, 444000, 444000, 600000, 324000, 792000 } },
+	{ {  943500, 430000, 444000, 600000, 324000, 792000 } },
+	{ {  918000, 416000, 396000, 600000, 324000, 792000 } },
+	{ {  892500, 402000, 396000, 600000, 324000, 792000 } },
+	{ {  867000, 389000, 396000, 600000, 324000, 792000 } },
+	{ {  841500, 375000, 396000, 600000, 288000, 792000 } },
+	{ {  816000, 361000, 396000, 600000, 288000, 792000 } },
+	{ {  790500, 347000, 396000, 600000, 288000, 792000 } },
+	{ {  765000, 333000, 396000, 504000, 288000, 792000 } },
+	{ {  739500, 319000, 348000, 504000, 288000, 792000 } },
+	{ {  714000, 306000, 348000, 504000, 288000, 624000 } },
+	{ {  688500, 292000, 348000, 504000, 288000, 624000 } },
+	{ {  663000, 278000, 348000, 504000, 288000, 624000 } },
+	{ {  637500, 264000, 348000, 504000, 288000, 624000 } },
+	{ {  612000, 250000, 348000, 504000, 252000, 624000 } },
+	{ {  586500, 236000, 348000, 504000, 252000, 624000 } },
+	{ {  561000, 222000, 348000, 420000, 252000, 624000 } },
+	{ {  535500, 209000, 288000, 420000, 252000, 624000 } },
+	{ {  510000, 195000, 288000, 420000, 252000, 624000 } },
+	{ {  484500, 181000, 288000, 420000, 252000, 624000 } },
+	{ {  459000, 167000, 288000, 420000, 252000, 624000 } },
+	{ {  433500, 153000, 288000, 420000, 252000, 396000 } },
+	{ {  408000, 139000, 288000, 420000, 252000, 396000 } },
+	{ {  382500, 126000, 288000, 420000, 252000, 396000 } },
+	{ {  357000, 112000, 288000, 420000, 252000, 396000 } },
+	{ {  331500,  98000, 288000, 420000, 252000, 396000 } },
+	{ {  306000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  280500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  255000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  229500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  204000,  84000, 288000, 420000, 252000, 396000 } },
 };
 
-static struct balanced_throttle tj_throttle = {
-	.throt_tab_size = ARRAY_SIZE(tj_throttle_table),
-	.throt_tab = tj_throttle_table,
+static struct balanced_throttle cpu_throttle = {
+	.throt_tab_size = ARRAY_SIZE(cpu_throttle_table),
+	.throt_tab = cpu_throttle_table,
+};
+
+static struct throttle_table gpu_throttle_table[] = {
+	/* CPU_THROT_LOW cannot be used by other than CPU */
+	/*      CPU,    GPU,  C2BUS,  C3BUS,   SCLK,    EMC   */
+	{ { 2295000, 782800, 480000, 756000, 384000, 924000 } },
+	{ { 2269500, 772200, 480000, 756000, 384000, 924000 } },
+	{ { 2244000, 761600, 480000, 756000, 384000, 924000 } },
+	{ { 2218500, 751100, 480000, 756000, 384000, 924000 } },
+	{ { 2193000, 740500, 480000, 756000, 384000, 924000 } },
+	{ { 2167500, 729900, 480000, 756000, 384000, 924000 } },
+	{ { 2142000, 719300, 480000, 756000, 384000, 924000 } },
+	{ { 2116500, 708700, 480000, 756000, 384000, 924000 } },
+	{ { 2091000, 698100, 480000, 756000, 384000, 924000 } },
+	{ { 2065500, 687500, 480000, 756000, 384000, 924000 } },
+	{ { 2040000, 676900, 480000, 756000, 384000, 924000 } },
+	{ { 2014500, 666000, 480000, 756000, 384000, 924000 } },
+	{ { 1989000, 656000, 480000, 756000, 384000, 924000 } },
+	{ { 1963500, 645000, 480000, 756000, 384000, 924000 } },
+	{ { 1938000, 635000, 480000, 756000, 384000, 924000 } },
+	{ { 1912500, 624000, 480000, 756000, 384000, 924000 } },
+	{ { 1887000, 613000, 480000, 756000, 384000, 924000 } },
+	{ { 1861500, 603000, 480000, 756000, 384000, 924000 } },
+	{ { 1836000, 592000, 480000, 756000, 384000, 924000 } },
+	{ { 1810500, 582000, 480000, 756000, 384000, 924000 } },
+	{ { 1785000, 571000, 480000, 756000, 384000, 924000 } },
+	{ { 1759500, 560000, 480000, 756000, 384000, 924000 } },
+	{ { 1734000, 550000, 480000, 756000, 384000, 924000 } },
+	{ { 1708500, 539000, 480000, 756000, 384000, 924000 } },
+	{ { 1683000, 529000, 480000, 756000, 384000, 924000 } },
+	{ { 1657500, 518000, 480000, 756000, 384000, 924000 } },
+	{ { 1632000, 508000, 480000, 756000, 384000, 924000 } },
+	{ { 1606500, 497000, 480000, 756000, 384000, 924000 } },
+	{ { 1581000, 486000, 480000, 756000, 384000, 924000 } },
+	{ { 1555500, 476000, 480000, 756000, 384000, 924000 } },
+	{ { 1530000, 465000, 480000, 756000, 384000, 924000 } },
+	{ { 1504500, 455000, 480000, 756000, 384000, 924000 } },
+	{ { 1479000, 444000, 480000, 756000, 384000, 924000 } },
+	{ { 1453500, 433000, 480000, 756000, 384000, 924000 } },
+	{ { 1428000, 423000, 480000, 756000, 384000, 924000 } },
+	{ { 1402500, 412000, 480000, 756000, 384000, 924000 } },
+	{ { 1377000, 402000, 480000, 756000, 384000, 924000 } },
+	{ { 1351500, 391000, 480000, 756000, 384000, 924000 } },
+	{ { 1326000, 380000, 480000, 756000, 384000, 924000 } },
+	{ { 1300500, 370000, 480000, 756000, 384000, 924000 } },
+	{ { 1275000, 359000, 480000, 756000, 384000, 924000 } },
+	{ { 1249500, 349000, 480000, 756000, 384000, 924000 } },
+	{ { 1224000, 338000, 480000, 756000, 384000, 792000 } },
+	{ { 1198500, 328000, 480000, 756000, 384000, 792000 } },
+	{ { 1173000, 317000, 480000, 756000, 360000, 792000 } },
+	{ { 1147500, 306000, 480000, 756000, 360000, 792000 } },
+	{ { 1122000, 296000, 480000, 684000, 360000, 792000 } },
+	{ { 1096500, 285000, 444000, 684000, 360000, 792000 } },
+	{ { 1071000, 275000, 444000, 684000, 360000, 792000 } },
+	{ { 1045500, 264000, 444000, 684000, 360000, 792000 } },
+	{ { 1020000, 253000, 444000, 684000, 324000, 792000 } },
+	{ {  994500, 243000, 444000, 684000, 324000, 792000 } },
+	{ {  969000, 232000, 444000, 600000, 324000, 792000 } },
+	{ {  943500, 222000, 444000, 600000, 324000, 792000 } },
+	{ {  918000, 211000, 396000, 600000, 324000, 792000 } },
+	{ {  892500, 200000, 396000, 600000, 324000, 792000 } },
+	{ {  867000, 190000, 396000, 600000, 324000, 792000 } },
+	{ {  841500, 179000, 396000, 600000, 288000, 792000 } },
+	{ {  816000, 169000, 396000, 600000, 288000, 792000 } },
+	{ {  790500, 158000, 396000, 600000, 288000, 792000 } },
+	{ {  765000, 148000, 396000, 504000, 288000, 792000 } },
+	{ {  739500, 137000, 348000, 504000, 288000, 792000 } },
+	{ {  714000, 126000, 348000, 504000, 288000, 624000 } },
+	{ {  688500, 116000, 348000, 504000, 288000, 624000 } },
+	{ {  663000, 105000, 348000, 504000, 288000, 624000 } },
+	{ {  637500,  95000, 348000, 504000, 288000, 624000 } },
+	{ {  612000,  84000, 348000, 504000, 252000, 624000 } },
+	{ {  586500,  84000, 348000, 504000, 252000, 624000 } },
+	{ {  561000,  84000, 348000, 420000, 252000, 624000 } },
+	{ {  535500,  84000, 288000, 420000, 252000, 624000 } },
+	{ {  510000,  84000, 288000, 420000, 252000, 624000 } },
+	{ {  484500,  84000, 288000, 420000, 252000, 624000 } },
+	{ {  459000,  84000, 288000, 420000, 252000, 624000 } },
+	{ {  433500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  408000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  382500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  357000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  331500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  306000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  280500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  255000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  229500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  204000,  84000, 288000, 420000, 252000, 396000 } },
+};
+
+static struct balanced_throttle gpu_throttle = {
+	.throt_tab_size = ARRAY_SIZE(gpu_throttle_table),
+	.throt_tab = gpu_throttle_table,
 };
 
 static int __init flounder_tj_throttle_init(void)
 {
 	if (of_machine_is_compatible("google,flounder") ||
-	    of_machine_is_compatible("nvidia,tn8"))
-		balanced_throttle_register(&tj_throttle, "tegra-balanced");
+	    of_machine_is_compatible("nvidia,tn8")) {
+		balanced_throttle_register(&cpu_throttle, "cpu-balanced");
+		balanced_throttle_register(&gpu_throttle, "gpu-balanced");
+	}
+
 	return 0;
 }
 module_init(flounder_tj_throttle_init);
+
+#ifdef CONFIG_TEGRA_SKIN_THROTTLE
+static struct thermal_trip_info skin_trips[] = {
+	{
+		.cdev_type = "skin-balanced",
+		.trip_temp = 43000,
+		.trip_type = THERMAL_TRIP_PASSIVE,
+		.upper = THERMAL_NO_LIMIT,
+		.lower = THERMAL_NO_LIMIT,
+		.hysteresis = 0,
+	}
+};
+
+static struct therm_est_subdevice skin_devs[] = {
+	{
+		.dev_data = "Tdiode_tegra",
+		.coeffs = {
+			2, 1, 1, 1,
+			1, 1, 1, 1,
+			1, 1, 1, 0,
+			1, 1, 0, 0,
+			0, 0, -1, -7
+		},
+	},
+	{
+		.dev_data = "Tboard_tegra",
+		.coeffs = {
+			-11, -7, -5, -3,
+			-3, -2, -1, 0,
+			0, 0, 1, 1,
+			1, 2, 2, 3,
+			4, 6, 11, 18
+		},
+	},
+};
 
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
@@ -869,73 +1192,105 @@ static struct thermal_zone_params skin_tzp = {
 	.governor_params = &skin_pid_params,
 };
 
+static struct therm_est_data skin_data = {
+	.num_trips = ARRAY_SIZE(skin_trips),
+	.trips = skin_trips,
+	.toffset = 9793,
+	.polling_period = 1100,
+	.passive_delay = 15000,
+	.tc1 = 10,
+	.tc2 = 1,
+	.ndevs = ARRAY_SIZE(skin_devs),
+	.devs = skin_devs,
+	.tzp = &skin_tzp,
+};
+
 static struct throttle_table skin_throttle_table[] = {
 	/* CPU_THROT_LOW cannot be used by other than CPU */
-	/*      CPU,    GPU,  C3BUS,   SCLK,    EMC   */
-	{ { 2014500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1989000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1963500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1938000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1912500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1887000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1861500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1836000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1810500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1785000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1759500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1734000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1708500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1683000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1657500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1632000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1606500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1581000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1555500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1530000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1504500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1479000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1453500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1428000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1402500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1377000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1351500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1326000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1300500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1275000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1249500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1224000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1198500, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1173000, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1147500, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1122000, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1096500, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1071000, 816000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1045500, 720000, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1020000, 720000, NO_CAP, NO_CAP, NO_CAP } },
-	{ {  994500, 720000, NO_CAP, NO_CAP, 792000 } },
-	{ {  969000, 720000, NO_CAP, NO_CAP, 792000 } },
-	{ {  943500, 720000, NO_CAP, NO_CAP, 792000 } },
-	{ {  918000, 636000, NO_CAP, NO_CAP, 792000 } },
-	{ {  892500, 636000, NO_CAP, NO_CAP, 792000 } },
-	{ {  867000, 636000, NO_CAP, NO_CAP, 624000 } },
-	{ {  841500, 636000, NO_CAP, NO_CAP, 624000 } },
-	{ {  816000, 636000, NO_CAP, NO_CAP, 624000 } },
-	{ {  790500, 540000, NO_CAP, 163200, 624000 } },
-	{ {  765000, 540000, NO_CAP, 163200, 624000 } },
-	{ {  739500, 540000, NO_CAP, 163200, 624000 } },
-	{ {  714000, 540000, 216000, 163200, 528000 } },
-	{ {  688500, 540000, 216000, 163200, 528000 } },
-	{ {  663000, 540000, 216000, 163200, 528000 } },
-	{ {  637500, 456000, 216000, 163200, 528000 } },
-	{ {  612000, 456000, 216000, 163200, 528000 } },
-	{ {  586500, 456000, 216000, 163200, 408000 } },
-	{ {  561000, 456000, 216000, 163200, 408000 } },
-	{ {  535500, 456000, 168000, 136000, 408000 } },
-	{ {  510000, 456000, 168000, 136000, 408000 } },
-	{ {  484500, 360000, 168000, 136000, 408000 } },
-	{ {  459000, 360000, 168000, 136000, 348000 } },
-	{ {  433500, 360000, 168000, 136000, 348000 } },
-	{ {  408000, 360000, 168000, 102000, 348000 } },
+	/*      CPU,    GPU,  C2BUS,  C3BUS,   SCLK,    EMC   */
+	{ { 2295000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2269500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2244000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2218500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2193000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2167500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2142000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2116500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2091000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2065500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2040000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 2014500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1989000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1963500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1938000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1912500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1887000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1861500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1836000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1810500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1785000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1759500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1734000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1708500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1683000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1657500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1632000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1606500, 790000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1581000, 776000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1555500, 762000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1530000, 749000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1504500, 735000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1479000, 721000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1453500, 707000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1428000, 693000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1402500, 679000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1377000, 666000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1351500, 652000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1326000, 638000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1300500, 624000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1275000, 610000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1249500, 596000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
+	{ { 1224000, 582000, NO_CAP, NO_CAP, NO_CAP, 792000 } },
+	{ { 1198500, 569000, NO_CAP, NO_CAP, NO_CAP, 792000 } },
+	{ { 1173000, 555000, NO_CAP, NO_CAP, 360000, 792000 } },
+	{ { 1147500, 541000, NO_CAP, NO_CAP, 360000, 792000 } },
+	{ { 1122000, 527000, NO_CAP, 684000, 360000, 792000 } },
+	{ { 1096500, 513000, 444000, 684000, 360000, 792000 } },
+	{ { 1071000, 499000, 444000, 684000, 360000, 792000 } },
+	{ { 1045500, 486000, 444000, 684000, 360000, 792000 } },
+	{ { 1020000, 472000, 444000, 684000, 324000, 792000 } },
+	{ {  994500, 458000, 444000, 684000, 324000, 792000 } },
+	{ {  969000, 444000, 444000, 600000, 324000, 792000 } },
+	{ {  943500, 430000, 444000, 600000, 324000, 792000 } },
+	{ {  918000, 416000, 396000, 600000, 324000, 792000 } },
+	{ {  892500, 402000, 396000, 600000, 324000, 792000 } },
+	{ {  867000, 389000, 396000, 600000, 324000, 792000 } },
+	{ {  841500, 375000, 396000, 600000, 288000, 792000 } },
+	{ {  816000, 361000, 396000, 600000, 288000, 792000 } },
+	{ {  790500, 347000, 396000, 600000, 288000, 792000 } },
+	{ {  765000, 333000, 396000, 504000, 288000, 792000 } },
+	{ {  739500, 319000, 348000, 504000, 288000, 792000 } },
+	{ {  714000, 306000, 348000, 504000, 288000, 624000 } },
+	{ {  688500, 292000, 348000, 504000, 288000, 624000 } },
+	{ {  663000, 278000, 348000, 504000, 288000, 624000 } },
+	{ {  637500, 264000, 348000, 504000, 288000, 624000 } },
+	{ {  612000, 250000, 348000, 504000, 252000, 624000 } },
+	{ {  586500, 236000, 348000, 504000, 252000, 624000 } },
+	{ {  561000, 222000, 348000, 420000, 252000, 624000 } },
+	{ {  535500, 209000, 288000, 420000, 252000, 624000 } },
+	{ {  510000, 195000, 288000, 420000, 252000, 624000 } },
+	{ {  484500, 181000, 288000, 420000, 252000, 624000 } },
+	{ {  459000, 167000, 288000, 420000, 252000, 624000 } },
+	{ {  433500, 153000, 288000, 420000, 252000, 396000 } },
+	{ {  408000, 139000, 288000, 420000, 252000, 396000 } },
+	{ {  382500, 126000, 288000, 420000, 252000, 396000 } },
+	{ {  357000, 112000, 288000, 420000, 252000, 396000 } },
+	{ {  331500,  98000, 288000, 420000, 252000, 396000 } },
+	{ {  306000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  280500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  255000,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  229500,  84000, 288000, 420000, 252000, 396000 } },
+	{ {  204000,  84000, 288000, 420000, 252000, 396000 } },
 };
 
 static struct balanced_throttle skin_throttle = {
@@ -946,9 +1301,12 @@ static struct balanced_throttle skin_throttle = {
 static int __init flounder_skin_init(void)
 {
 	balanced_throttle_register(&skin_throttle, "skin-balanced");
+	tegra_skin_therm_est_device.dev.platform_data = &skin_data;
+	platform_device_register(&tegra_skin_therm_est_device);
 	return 0;
 }
 late_initcall(flounder_skin_init);
+#endif
 
 static struct nct1008_platform_data flounder_nct72_pdata = {
 	.loc_name = "tegra",
@@ -961,7 +1319,7 @@ static struct nct1008_platform_data flounder_nct72_pdata = {
 	.shutdown_local_limit = 120, /* C */
 
 	.passive_delay = 1000,
-	.tzp = &tj_tzp,
+	.tzp = &cpu_tzp,
 
 	.num_trips = 2,
 	.trips = {
@@ -973,7 +1331,7 @@ static struct nct1008_platform_data flounder_nct72_pdata = {
 			.lower = THERMAL_NO_LIMIT,
 		},
 		{
-			.cdev_type = "tegra-balanced",
+			.cdev_type = "cpu-balanced",
 			.trip_temp = 83000,
 			.trip_type = THERMAL_TRIP_PASSIVE,
 			.upper = THERMAL_NO_LIMIT,
@@ -983,6 +1341,7 @@ static struct nct1008_platform_data flounder_nct72_pdata = {
 	},
 };
 
+#ifdef CONFIG_TEGRA_SKIN_THROTTLE
 static struct nct1008_platform_data flounder_nct72_tskin_pdata = {
 	.loc_name = "skin",
 
@@ -993,7 +1352,7 @@ static struct nct1008_platform_data flounder_nct72_tskin_pdata = {
 	.shutdown_ext_limit = 85, /* C */
 	.shutdown_local_limit = 120, /* C */
 
-	.passive_delay = 5000,
+	.passive_delay = 10000,
 	.polling_delay = 1000,
 	.tzp = &skin_tzp,
 
@@ -1008,6 +1367,7 @@ static struct nct1008_platform_data flounder_nct72_tskin_pdata = {
 		},
 	},
 };
+#endif
 
 static struct i2c_board_info flounder_i2c_nct72_board_info[] = {
 	{
@@ -1015,11 +1375,21 @@ static struct i2c_board_info flounder_i2c_nct72_board_info[] = {
 		.platform_data = &flounder_nct72_pdata,
 		.irq = -1,
 	},
+#ifdef CONFIG_TEGRA_SKIN_THROTTLE
 	{
 		I2C_BOARD_INFO("nct72", 0x4d),
 		.platform_data = &flounder_nct72_tskin_pdata,
 		.irq = -1,
 	}
+#endif
+};
+
+static struct i2c_board_info laguna_i2c_nct72_board_info[] = {
+	{
+		I2C_BOARD_INFO("nct72", 0x4c),
+		.platform_data = &flounder_nct72_pdata,
+		.irq = -1,
+	},
 };
 
 static int flounder_nct72_init(void)
@@ -1028,14 +1398,16 @@ static int flounder_nct72_init(void)
 	int ret = 0;
 	int i;
 	struct thermal_trip_info *trip_state;
+	struct board_info board_info;
 
+	tegra_get_board_info(&board_info);
 	/* raise NCT's thresholds if soctherm CP,FT fuses are ok */
 	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
 	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
 		flounder_nct72_pdata.shutdown_ext_limit += 20;
 		for (i = 0; i < flounder_nct72_pdata.num_trips; i++) {
 			trip_state = &flounder_nct72_pdata.trips[i];
-			if (!strncmp(trip_state->cdev_type, "tegra-balanced",
+			if (!strncmp(trip_state->cdev_type, "cpu-balanced",
 					THERMAL_NAME_LENGTH)) {
 				trip_state->cdev_type = "_none_";
 				break;
@@ -1045,6 +1417,8 @@ static int flounder_nct72_init(void)
 		tegra_platform_edp_init(flounder_nct72_pdata.trips,
 					&flounder_nct72_pdata.num_trips,
 					12000); /* edp temperature margin */
+		tegra_add_tj_trips(flounder_nct72_pdata.trips,
+				&flounder_nct72_pdata.num_trips);
 		tegra_add_tgpu_trips(flounder_nct72_pdata.trips,
 				     &flounder_nct72_pdata.num_trips);
 	}
@@ -1065,7 +1439,13 @@ static int flounder_nct72_init(void)
 	}
 
 	/* flounder has thermal sensor on GEN2-I2C i.e. instance 1 */
-	i2c_register_board_info(1, flounder_i2c_nct72_board_info,
+	if (board_info.board_id == BOARD_PM358 ||
+			board_info.board_id == BOARD_PM359 ||
+			board_info.board_id == BOARD_PM363)
+		i2c_register_board_info(1, laguna_i2c_nct72_board_info,
+		ARRAY_SIZE(laguna_i2c_nct72_board_info));
+	else
+		i2c_register_board_info(1, flounder_i2c_nct72_board_info,
 		ARRAY_SIZE(flounder_i2c_nct72_board_info));
 
 	return ret;

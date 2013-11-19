@@ -40,9 +40,9 @@
 #include <linux/regulator/tegra-dfll-bypass-regulator.h>
 #include <linux/power/bq2471x-charger.h>
 #include <linux/power/bq2477x-charger.h>
+#include <linux/tegra-fuse.h>
 
 #include <asm/mach-types.h>
-#include <mach/tegra_fuse.h>
 #include <mach/pinmux-t12.h>
 
 #include "pm.h"
@@ -54,7 +54,6 @@
 #include "board-pmu-defines.h"
 #include "devices.h"
 #include "iomap.h"
-#include "tegra-board-id.h"
 #include "tegra_cl_dvfs.h"
 #include "tegra11_soctherm.h"
 #include "tegra3_tsensor.h"
@@ -84,7 +83,10 @@ static struct regulator_consumer_supply as3722_ldo1_supply[] = {
 	REGULATOR_SUPPLY("vif", "2-0036"),
 	REGULATOR_SUPPLY("vdd_i2c", "2-000c"),
 	REGULATOR_SUPPLY("vi2c", "2-0030"),
-
+	REGULATOR_SUPPLY("vif2", "2-0021"),
+	REGULATOR_SUPPLY("dovdd", "2-0010"),
+	REGULATOR_SUPPLY("vdd", "2-004a"),
+	REGULATOR_SUPPLY("vif", "2-0048"),
 };
 
 static struct regulator_consumer_supply as3722_ldo2_supply[] = {
@@ -93,7 +95,8 @@ static struct regulator_consumer_supply as3722_ldo2_supply[] = {
 	REGULATOR_SUPPLY("vddio_hsic", "tegra-xhci"),
 	REGULATOR_SUPPLY("avdd_dsi_csi", "tegradc.0"),
 	REGULATOR_SUPPLY("avdd_dsi_csi", "tegradc.1"),
-	REGULATOR_SUPPLY("avdd_dsi_csi", "vi"),
+	REGULATOR_SUPPLY("avdd_dsi_csi", "vi.0"),
+	REGULATOR_SUPPLY("avdd_dsi_csi", "vi.1"),
 	REGULATOR_SUPPLY("pwrdet_mipi", NULL),
 	REGULATOR_SUPPLY("avdd_hsic_com", NULL),
 	REGULATOR_SUPPLY("avdd_hsic_mdm", NULL),
@@ -112,7 +115,7 @@ static struct regulator_consumer_supply as3722_ldo4_supply[] = {
 	REGULATOR_SUPPLY("avdd_cam2_cam", NULL),
 	REGULATOR_SUPPLY("avdd_cam3_cam", NULL),
 	REGULATOR_SUPPLY("vana", "2-0010"),
-	REGULATOR_SUPPLY("vana", "2-0036"),
+	REGULATOR_SUPPLY("avdd_ov5693", "2-0010"),
 };
 
 static struct regulator_consumer_supply as3722_ldo5_supply[] = {
@@ -129,6 +132,8 @@ static struct regulator_consumer_supply as3722_ldo6_supply[] = {
 static struct regulator_consumer_supply as3722_ldo7_supply[] = {
 	REGULATOR_SUPPLY("vdd_cam_1v1_cam", NULL),
 	REGULATOR_SUPPLY("imx135_reg2", NULL),
+	REGULATOR_SUPPLY("vdig_lv", "2-0010"),
+	REGULATOR_SUPPLY("dvdd", "2-0010"),
 };
 
 static struct regulator_consumer_supply as3722_ldo9_supply[] = {
@@ -140,6 +145,11 @@ static struct regulator_consumer_supply as3722_ldo10_supply[] = {
 	REGULATOR_SUPPLY("imx135_reg1", NULL),
 	REGULATOR_SUPPLY("vdd", "2-000c"),
 	REGULATOR_SUPPLY("vin", "2-0030"),
+	REGULATOR_SUPPLY("vana", "2-0036"),
+	REGULATOR_SUPPLY("vana", "2-0021"),
+	REGULATOR_SUPPLY("vdd_af1", "2-0010"),
+	REGULATOR_SUPPLY("vin", "2-004a"),
+	REGULATOR_SUPPLY("vana", "2-0048"),
 };
 
 static struct regulator_consumer_supply as3722_ldo11_supply[] = {
@@ -169,6 +179,7 @@ static struct regulator_consumer_supply as3722_sd4_supply[] = {
 	REGULATOR_SUPPLY("avddio_pex", "tegra-pcie"),
 	REGULATOR_SUPPLY("dvddio_pex", "tegra-pcie"),
 	REGULATOR_SUPPLY("avddio_usb", "tegra-xhci"),
+	REGULATOR_SUPPLY("vddio_pex_sata", "tegra-sata.0"),
 };
 
 static struct regulator_consumer_supply as3722_sd5_supply[] = {
@@ -987,41 +998,10 @@ static struct platform_device *fixed_reg_devs_e1735[] = {
 #define E1735_CPU_VDD_MIN_UV		675000
 #define E1735_CPU_VDD_STEP_UV		18750
 #define E1735_CPU_VDD_STEP_US		80
+#define E1735_CPU_VDD_IDLE_MA		5000
 #define FLOUNDER_DEFAULT_CVB_ALIGNMENT	10000
 
 #ifdef CONFIG_ARCH_TEGRA_HAS_CL_DVFS
-/* Macro definition of dfll bypass device */
-#define DFLL_BYPASS(_board, _min, _step, _size, _us_sel)		       \
-static struct regulator_init_data _board##_dfll_bypass_init_data = {	       \
-	.num_consumer_supplies = ARRAY_SIZE(_board##_dfll_bypass_consumers),   \
-	.consumer_supplies = _board##_dfll_bypass_consumers,		       \
-	.constraints = {						       \
-		.valid_modes_mask = (REGULATOR_MODE_NORMAL |		       \
-				REGULATOR_MODE_STANDBY),		       \
-		.valid_ops_mask = (REGULATOR_CHANGE_MODE |		       \
-				REGULATOR_CHANGE_STATUS |		       \
-				REGULATOR_CHANGE_VOLTAGE),		       \
-		.min_uV = (_min),					       \
-		.max_uV = ((_size) - 1) * (_step) + (_min),		       \
-		.always_on = 1,						       \
-		.boot_on = 1,						       \
-	},								       \
-};									       \
-static struct tegra_dfll_bypass_platform_data _board##_dfll_bypass_pdata = {   \
-	.reg_init_data = &_board##_dfll_bypass_init_data,		       \
-	.uV_step = (_step),						       \
-	.linear_min_sel = 0,						       \
-	.n_voltages = (_size),						       \
-	.voltage_time_sel = _us_sel,					       \
-};									       \
-static struct platform_device e1735_dfll_bypass_dev = {			       \
-	.name = "tegra_dfll_bypass",					       \
-	.id = -1,							       \
-	.dev = {							       \
-		.platform_data = &_board##_dfll_bypass_pdata,		       \
-	},								       \
-}
-
 /* E1735 board parameters for cpu dfll */
 static struct tegra_cl_dvfs_cfg_param e1735_cl_dvfs_param = {
 	.sample_rate = 50000,
@@ -1056,7 +1036,7 @@ static struct regulator_consumer_supply e1735_dfll_bypass_consumers[] = {
 	REGULATOR_SUPPLY("vdd_cpu", NULL),
 };
 DFLL_BYPASS(e1735, E1735_CPU_VDD_MIN_UV, E1735_CPU_VDD_STEP_UV,
-	    E1735_CPU_VDD_MAP_SIZE, E1735_CPU_VDD_STEP_US);
+	    E1735_CPU_VDD_MAP_SIZE, E1735_CPU_VDD_STEP_US, TEGRA_GPIO_PX2);
 
 static struct tegra_cl_dvfs_platform_data e1735_cl_dvfs_data = {
 	.dfll_clk_name = "dfll_cpu",
@@ -1199,6 +1179,8 @@ static int __init flounder_cl_dvfs_init(struct board_info *pmu_board_info)
 			flounder_suspend_data.resume_dfll_bypass = e1767 ?
 				e1767_resume_dfll_bypass :
 				e1735_resume_dfll_bypass;
+			tegra_init_cpu_reg_mode_limits(E1735_CPU_VDD_IDLE_MA,
+						       REGULATOR_MODE_IDLE);
 		} else {
 			(void)e1735_dfll_bypass_dev;
 		}
@@ -1210,7 +1192,8 @@ static int __init flounder_cl_dvfs_init(struct board_info *pmu_board_info)
 		data = &e1733_cl_dvfs_data;
 	}
 
-	if (pmu_board_id == BOARD_E1736) {
+	if (pmu_board_id == BOARD_E1736 ||
+		pmu_board_id == BOARD_E1769) {
 		e1736_fill_reg_map();
 		data = &e1736_cl_dvfs_data;
 	}
@@ -1256,7 +1239,8 @@ int __init flounder_regulator_init(void)
 	} else if (pmu_board_info.board_id == BOARD_E1735) {
 		regulator_has_full_constraints();
 		flounder_tps65913_regulator_init();
-	} else if (pmu_board_info.board_id == BOARD_E1736) {
+	} else if (pmu_board_info.board_id == BOARD_E1736 ||
+		pmu_board_info.board_id == BOARD_E1769) {
 		tn8_regulator_init();
 		flounder_cl_dvfs_init(&pmu_board_info);
 		return tn8_fixed_regulator_init();
@@ -1376,7 +1360,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
-					.cdev_type = "tegra-balanced",
+					.cdev_type = "cpu-balanced",
 					.trip_temp = 89000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
@@ -1399,7 +1383,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
-					.cdev_type = "tegra-balanced",
+					.cdev_type = "gpu-balanced",
 					.trip_temp = 91000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
@@ -1457,6 +1441,9 @@ int __init flounder_soctherm_init(void)
 			flounder_soctherm_data.therm[THERM_CPU].trips,
 			&flounder_soctherm_data.therm[THERM_CPU].num_trips,
 			8000); /* edp temperature margin */
+		tegra_add_tj_trips(
+			flounder_soctherm_data.therm[THERM_CPU].trips,
+			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
 		tegra_add_tgpu_trips(
 			flounder_soctherm_data.therm[THERM_GPU].trips,
 			&flounder_soctherm_data.therm[THERM_GPU].num_trips);
@@ -1469,7 +1456,8 @@ int __init flounder_soctherm_init(void)
 		flounder_soctherm_data.tshut_pmu_trip_data = &tpdata_as3722;
 	else if (pmu_board_info.board_id == BOARD_E1735)
 		;/* tpdata_palmas is default */
-	else if (pmu_board_info.board_id == BOARD_E1736)
+	else if (pmu_board_info.board_id == BOARD_E1736 ||
+		pmu_board_info.board_id == BOARD_E1769)
 		;/* FIXME: Not supporting tn8 yet - assumes palmas PMIC */
 	else
 		pr_warn("soctherm THERMTRIP is not supported on this PMIC\n");
