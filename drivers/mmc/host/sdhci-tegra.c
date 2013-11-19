@@ -1225,6 +1225,7 @@ static void tegra_sdhci_set_clock(struct sdhci_host *sdhci, unsigned int clock)
 		pm_runtime_put_sync(&pdev->dev);
 		tegra_host->clk_enabled = false;
 	}
+	sdhci->is_clk_on = tegra_host->clk_enabled;
 }
 
 static unsigned int get_calibration_offsets(struct sdhci_host *sdhci)
@@ -2881,6 +2882,10 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	}
 
 	host = sdhci_pltfm_init(pdev, soc_data->pdata);
+
+	/* sdio delayed clock gate quirk in sdhci_host used */
+	host->quirks2 |= SDHCI_QUIRK2_SDIO_DELAYED_CLK_GATE;
+
 	if (IS_ERR(host))
 		return PTR_ERR(host);
 
@@ -3094,6 +3099,7 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	}
 	pltfm_host->priv = tegra_host;
 	tegra_host->clk_enabled = true;
+	host->is_clk_on = tegra_host->clk_enabled;
 	tegra_host->max_clk_limit = plat->max_clk_limit;
 	tegra_host->ddr_clk_limit = plat->ddr_clk_limit;
 	tegra_host->instance = pdev->id;
@@ -3142,6 +3148,8 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	if (plat->en_freq_scaling && (plat->max_clk_limit > low_freq))
 		host->mmc->caps2 |= MMC_CAP2_FREQ_SCALING;
 
+	if (!plat->disable_clock_gate)
+		host->mmc->caps2 |= MMC_CAP2_CLOCK_GATING;
 
 	if (plat->nominal_vcore_mv)
 		tegra_host->nominal_vcore_mv = plat->nominal_vcore_mv;
@@ -3169,6 +3177,8 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 	rc = sdhci_add_host(host);
 	if (rc)
 		goto err_add_host;
+
+	INIT_DELAYED_WORK(&host->delayed_clk_gate_wrk, delayed_clk_gate_cb);
 
 	if (gpio_is_valid(plat->cd_gpio)) {
 		rc = request_threaded_irq(gpio_to_irq(plat->cd_gpio), NULL,

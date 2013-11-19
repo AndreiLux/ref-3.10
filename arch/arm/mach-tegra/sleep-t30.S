@@ -1010,7 +1010,7 @@ tegra3_stop_mc_clk:
 	lsr	r0, #11
 	and	r1, r1, r0
 
-	ldr	r2, [r4, #CLK_RESET_PLLM_BASE]
+	ldr	r2, [r5, #CLK_RESET_PLLM_BASE]
 	and	r2, r2, #(1 << 30)
 	lsr	r2, #30
 	bic	r2, r2, r0
@@ -1025,9 +1025,9 @@ tegra3_stop_mc_clk:
 	str	r0, [r4, #PMC_PLLP_WB0_OVERRIDE]
 
 	/* disable PLLM in CAR */
-	ldr	r0, [r4, #CLK_RESET_PLLM_BASE]
+	ldr	r0, [r5, #CLK_RESET_PLLM_BASE]
 	bic	r0, r0, #(1 << 30)
-	str	r0, [r4, #CLK_RESET_PLLM_BASE]
+	str	r0, [r5, #CLK_RESET_PLLM_BASE]
 
 	b	tegra3_enter_sleep
 
@@ -1035,7 +1035,7 @@ tegra3_stop_mc_clk:
  * tegra3_cpu_clk32k
  *
  * In LP0 and LP1 all plls will be turned off.  Switch the system clock
- * to the 32khz clock (clks)
+ * to the 32khz clock (clks) and CPU to clkm.
  * r4 = TEGRA_PMC_BASE
  * r5 = TEGRA_CLK_RESET_BASE
  * r6 = TEGRA_FLOW_CTRL_BASE

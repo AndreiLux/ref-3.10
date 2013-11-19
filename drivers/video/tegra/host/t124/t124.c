@@ -180,6 +180,7 @@ struct nvhost_device_data t124_isp_info = {
 		{"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISP},
 		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	.finalize_poweron = nvhost_isp_t124_finalize_poweron,
+	.ctrl_ops         = &tegra_isp_ctrl_ops,
 };
 static struct platform_device tegra_isp01_device = {
 	.name          = "isp",
@@ -215,6 +216,7 @@ struct nvhost_device_data t124_ispb_info = {
 		{"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISPB},
 		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	.finalize_poweron = nvhost_isp_t124_finalize_poweron,
+	.ctrl_ops         = &tegra_isp_ctrl_ops,
 };
 
 static struct platform_device tegra_isp01b_device = {
@@ -262,7 +264,7 @@ struct nvhost_device_data t124_vi_info = {
 	.reset            = nvhost_vi_reset,
 	.slave         = &tegra_vi01b_device,
 };
-
+EXPORT_SYMBOL(t124_vi_info);
 
 static struct platform_device tegra_vi01_device = {
 	.name		= "vi",
@@ -295,7 +297,9 @@ struct nvhost_device_data t124_vib_info = {
 	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
 	.finalize_poweron = nvhost_vi_finalize_poweron,
+	.ctrl_ops         = &tegra_vi_ctrl_ops,
 	.master           = &tegra_vi01_device,
+	.reset            = nvhost_vi_reset,
 };
 
 static struct platform_device tegra_vi01b_device = {
@@ -455,11 +459,12 @@ struct nvhost_device_data tegra_gk20a_info = {
 	.powergate_ids		= { TEGRA_POWERGATE_GPU, -1 },
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.powergate_delay	= 500,
-	.can_powergate		= true,
+	.can_powergate		= false,
 	.alloc_hwctx_handler	= nvhost_gk20a_alloc_hwctx_handler,
 	.ctrl_ops		= &tegra_gk20a_ctrl_ops,
 	.dbg_ops                = &tegra_gk20a_dbg_gpu_ops,
 	.prof_ops                = &tegra_gk20a_prof_gpu_ops,
+	.as_ops			= &tegra_gk20a_as_ops,
 	.moduleid		= NVHOST_MODULE_GPU,
 	.init			= nvhost_gk20a_init,
 	.deinit			= nvhost_gk20a_deinit,
@@ -602,6 +607,13 @@ static int t124_channel_wait(struct nvhost_hwctx *hwctx,
 	return gk20a_channel_wait(hwctx->priv, args);
 }
 
+static int t124_channel_set_priority(struct nvhost_hwctx *hwctx,
+			    struct nvhost_set_priority_args *args)
+{
+	nvhost_dbg_fn("");
+	return gk20a_channel_set_priority(hwctx->priv, args->priority);
+}
+
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
 static int t124_channel_cycle_stats(struct nvhost_hwctx *hwctx,
 				struct nvhost_cycle_stats_args *args)
@@ -642,6 +654,7 @@ static struct nvhost_channel *t124_alloc_nvhost_channel(
 			ch->ops.free_obj      = t124_channel_free_obj;
 			ch->ops.alloc_gpfifo  = t124_channel_alloc_gpfifo;
 			ch->ops.submit_gpfifo = t124_channel_submit_gpfifo;
+			ch->ops.set_priority  = t124_channel_set_priority;
 			ch->ops.wait          = t124_channel_wait;
 			ch->ops.set_error_notifier =
 					t124_channel_set_error_notifier;
@@ -731,10 +744,6 @@ int nvhost_init_t124_support(struct nvhost_master *host,
 	op->actmon = host1x_actmon_ops;
 
 	err = nvhost_memmgr_init(op);
-	if (err)
-		return err;
-
-	err = nvhost_init_t124_as_support(op);
 	if (err)
 		return err;
 

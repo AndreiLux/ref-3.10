@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Command DMA
  *
- * Copyright (c) 2010-2013, NVIDIA Corporation.
+ * Copyright (c) 2010-2013, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -141,6 +141,8 @@ static void cdma_start_timer_locked(struct nvhost_cdma *cdma,
 	cdma->timeout.num_syncpts = job->num_syncpts;
 	cdma->timeout.start_ktime = ktime_get();
 	cdma->timeout.timeout_debug_dump = job->timeout_debug_dump;
+	cdma->timeout.timeout = job->timeout;
+	cdma->timeout.allow_dependency = true;
 
 	schedule_delayed_work(&cdma->timeout.wq,
 			msecs_to_jiffies(job->timeout));
@@ -453,6 +455,27 @@ static void trace_write_gather(struct nvhost_cdma *cdma,
 	}
 }
 
+static void _trace_write_gather(struct nvhost_cdma *cdma,
+		u32 *cpuva, dma_addr_t iova,
+		u32 offset, u32 words)
+{
+	if (iova) {
+		u32 i;
+		/*
+		 * Write in batches of 128 as there seems to be a limit
+		 * of how much you can output to ftrace at once.
+		 */
+		for (i = 0; i < words; i += TRACE_MAX_LENGTH) {
+			trace_nvhost_cdma_push_gather(
+				cdma_to_channel(cdma)->dev->name,
+				(u32)((uintptr_t)iova),
+				min(words - i, TRACE_MAX_LENGTH),
+				offset + i * sizeof(u32),
+				cpuva);
+		}
+	}
+}
+
 /**
  * Push two words into a push buffer slot
  * Blocks as necessary if the push buffer is full.
@@ -488,6 +511,26 @@ void nvhost_cdma_push_gather(struct nvhost_cdma *cdma,
 	cdma->slots_free = slots_free - 1;
 	cdma->slots_used++;
 	cdma_pb_op().push_to(pb, client, handle, op1, op2);
+}
+
+void _nvhost_cdma_push_gather(struct nvhost_cdma *cdma,
+			u32 *cpuva, dma_addr_t iova,
+			u32 offset, u32 op1, u32 op2)
+{
+	u32 slots_free = cdma->slots_free;
+	struct push_buffer *pb = &cdma->push_buffer;
+
+	if (iova)
+		_trace_write_gather(cdma, cpuva, iova, offset, op1 & 0x1fff);
+
+	if (slots_free == 0) {
+		cdma_op().kick(cdma);
+		slots_free = nvhost_cdma_wait_locked(cdma,
+				CDMA_EVENT_PUSH_BUFFER_SPACE);
+	}
+	cdma->slots_free = slots_free - 1;
+	cdma->slots_used++;
+	cdma_pb_op()._push_to(pb, iova, op1, op2);
 }
 
 /**

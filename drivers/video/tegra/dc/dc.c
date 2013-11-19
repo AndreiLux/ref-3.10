@@ -850,8 +850,9 @@ static int dbg_dc_event_inject_write(struct file *file, const char __user *addr,
 
 	if (event == 0x1) /* TEGRA_DC_EXT_EVENT_HOTPLUG */
 		tegra_dc_ext_process_hotplug(dc->ndev->id);
-	else if (event == 0x2) /* TEGRA_DC_EXT_EVENT_BANDWIDTH */
-		tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id);
+	else if (event == 0x2) /* TEGRA_DC_EXT_EVENT_BANDWIDTH_DEC */
+		tegra_dc_ext_process_bandwidth_renegotiate(
+				dc->ndev->id, NULL);
 	else {
 		dev_err(&dc->ndev->dev, "Unknown event 0x%lx\n", event);
 		return -EINVAL; /* unknown event number */
@@ -2431,7 +2432,7 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 	if (dc->out && dc->out->disable)
 		dc->out->disable();
 
-	for (i = 0; i < dc->n_windows; i++) {
+	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 		struct tegra_dc_win *w = &dc->windows[i];
 
 		/* reset window bandwidth */
@@ -2440,6 +2441,10 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 
 		/* disable windows */
 		w->flags &= ~TEGRA_WIN_FLAG_ENABLED;
+
+		/* refuse to operate on invalid syncpts */
+		if (WARN_ON(dc->syncpt[i].id == NVSYNCPT_INVALID))
+			continue;
 
 		/* flush any pending syncpt waits */
 		dc->syncpt[i].max += 1;
@@ -2765,6 +2770,10 @@ static int tegra_dc_probe(struct platform_device *ndev)
 		ret = -EBUSY;
 		goto err_release_resource_reg;
 	}
+
+	for (i = 0; i < DC_N_WINDOWS; i++)
+		dc->win_syncpt[i] = NVSYNCPT_INVALID;
+
 	if (TEGRA_DISPLAY_BASE == res->start) {
 		dc->vblank_syncpt = NVSYNCPT_VBLANK0;
 		dc->win_syncpt[0] = NVSYNCPT_DISP0_A;
@@ -2851,8 +2860,11 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	dc->n_windows = DC_N_WINDOWS;
 	for (i = 0; i < dc->n_windows; i++) {
 		struct tegra_dc_win *win = &dc->windows[i];
+		struct tegra_dc_win *tmp_win = &dc->tmp_wins[i];
 		win->idx = i;
 		win->dc = dc;
+		tmp_win->idx = i;
+		tmp_win->dc = dc;
 		tegra_dc_init_csc_defaults(&win->csc);
 		tegra_dc_init_lut_defaults(&win->lut);
 	}
@@ -2902,6 +2914,12 @@ static int tegra_dc_probe(struct platform_device *ndev)
 			ret = -ENOENT;
 			goto err_put_clk;
 		}
+		dc->reserved_bw = tegra_dc_calc_min_bandwidth(dc);
+		/*
+		 * Use maximum value so we can try to reserve as much as
+		 * needed until we are told by isomgr to backoff.
+		 */
+		dc->available_bw = UINT_MAX;
 	}
 #else
 	/*
@@ -2987,14 +3005,19 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	if (dc->out && dc->out->hotplug_init)
 		dc->out->hotplug_init(&ndev->dev);
 
-	if (dc->out_ops && dc->out_ops->detect)
-		dc->out_ops->detect(dc);
+	if (dc->out_ops) {
+		if (dc->out_ops->detect)
+			dc->out_ops->detect(dc);
+		else
+			dc->connected = true;
+	}
 	else
-		dc->connected = true;
+		dc->connected = false;
 
 	/* Powergate display module when it's unconnected. */
 	/* detect() function, if presetns, responsible for the powergate */
-	if (!tegra_dc_get_connected(dc) && !dc->out_ops->detect)
+	if (!tegra_dc_get_connected(dc) &&
+			!(dc->out_ops && dc->out_ops->detect))
 		tegra_dc_powergate_locked(dc);
 
 	tegra_dc_create_sysfs(&dc->ndev->dev);
@@ -3165,9 +3188,6 @@ static void tegra_dc_shutdown(struct platform_device *ndev)
 	if (!dc->enabled)
 		return;
 
-	/* Hack: no windows blanking for simulation to save shutdown time */
-	if (!tegra_platform_is_linsim())
-		tegra_dc_blank(dc);
 	tegra_dc_disable(dc);
 }
 

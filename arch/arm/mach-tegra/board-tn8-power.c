@@ -17,6 +17,9 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <linux/edp.h>
+#include <linux/edpdev.h>
+#include <mach/edp.h>
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/resource.h>
@@ -35,6 +38,7 @@
 #include <mach/irqs.h>
 
 #include <asm/mach-types.h>
+#include <linux/power/sbs-battery.h>
 
 #include "pm.h"
 #include "board.h"
@@ -45,6 +49,7 @@
 #include "devices.h"
 #include "iomap.h"
 #include "tegra-board-id.h"
+#include "battery-ini-model-data.h"
 
 #define PMC_CTRL                0x0
 #define PMC_CTRL_INTR_LOW       (1 << 17)
@@ -125,5 +130,19 @@ int __init tn8_regulator_init(void)
 
 int __init tn8_fixed_regulator_init(void)
 {
+	return 0;
+}
+
+int __init tn8_edp_init(void)
+{
+	unsigned int regulator_mA;
+
+	regulator_mA = get_maximum_cpu_current_supported();
+	if (!regulator_mA)
+		regulator_mA = 9000;
+
+	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
+	tegra_init_cpu_edp_limits(regulator_mA);
+
 	return 0;
 }

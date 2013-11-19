@@ -36,6 +36,7 @@
 #include <linux/clk/tegra.h>
 #include <linux/tegra-powergate.h>
 #include <linux/firmware.h>
+#include <linux/pm_runtime.h>
 #include <mach/tegra_usb_pad_ctrl.h>
 #include <mach/tegra_usb_pmc.h>
 #include <mach/pm_domains.h>
@@ -1841,6 +1842,14 @@ tegra_xusb_request_clk_rate(struct tegra_xhci_hcd *tegra,
 	return ret;
 }
 
+static void tegra_xusb_set_bw(struct tegra_xhci_hcd *tegra, unsigned int bw)
+{
+	unsigned int freq_khz;
+
+	freq_khz = tegra_emc_bw_to_freq_req(bw);
+	clk_set_rate(tegra->emc_clk, freq_khz * 1000);
+}
+
 static void tegra_xhci_save_dfe_context(struct tegra_xhci_hcd *tegra,
 	u8 port)
 {
@@ -2568,6 +2577,9 @@ static int tegra_xhci_ss_elpg_entry(struct tegra_xhci_hcd *tegra)
 
 	must_have_sync_lock(tegra);
 
+	/* update maximum BW requirement to 0 */
+	tegra_xusb_set_bw(tegra, 0);
+
 	/* This is SS partition ELPG entry
 	 * STEP 0: firmware will set WOC WOD bits in PVTPORTSC2 regs.
 	 */
@@ -3100,7 +3112,6 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 	struct tegra_xhci_hcd *tegra = container_of(work, struct tegra_xhci_hcd,
 					mbox_work);
 	struct xhci_hcd *xhci = tegra->xhci;
-	unsigned int freq_khz;
 	int pad, port;
 	unsigned long ports;
 
@@ -3151,8 +3162,9 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 
 	case MBOX_CMD_SET_BW:
 		/* fw sends BW request in MByte/sec */
-		freq_khz = tegra_emc_bw_to_freq_req(tegra->cmd_data << 10);
-		clk_set_rate(tegra->emc_clk, freq_khz * 1000);
+		mutex_lock(&tegra->sync_lock);
+		tegra_xusb_set_bw(tegra, tegra->cmd_data << 10);
+		mutex_unlock(&tegra->sync_lock);
 		break;
 
 	case MBOX_CMD_SAVE_DFE_CTLE_CTX:
@@ -3332,7 +3344,7 @@ static void tegra_xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 * here that the generic code does not try to make a pci_dev from our
 	 * dev struct in order to setup MSI
 	 */
-	xhci->quirks |= XHCI_BROKEN_MSI;
+	xhci->quirks |= XHCI_PLAT;
 	xhci->quirks &= ~XHCI_SPURIOUS_REBOOT;
 }
 
@@ -4374,6 +4386,7 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	utmi_phy_iddq_override(false);
 
 	tegra_pd_add_device(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	return 0;
 

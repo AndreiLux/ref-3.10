@@ -37,6 +37,7 @@
 #include "board.h"
 #include "board-loki.h"
 #include "iomap.h"
+#include "dvfs.h"
 
 #define LOKI_WLAN_RST	TEGRA_GPIO_PR3
 #define LOKI_WLAN_PWR	TEGRA_GPIO_PCC5
@@ -149,10 +150,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.tap_delay = 0,
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
-	.uhs_mask = MMC_UHS_MASK_SDR104 |
-		/* FIXME: Enable UHS mode */
-		MMC_UHS_MASK_SDR12 | MMC_UHS_MASK_SDR25 |
-		MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
+	.uhs_mask = MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
 };
@@ -454,6 +452,36 @@ subsys_initcall_sync(loki_wifi_prepower);
 
 int __init loki_sdhci_init(void)
 {
+	int nominal_core_mv;
+	int min_vcore_override_mv;
+	int boot_vcore_mv;
+
+	nominal_core_mv =
+		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
+	if (nominal_core_mv) {
+		tegra_sdhci_platform_data0.nominal_vcore_mv = nominal_core_mv;
+		tegra_sdhci_platform_data2.nominal_vcore_mv = nominal_core_mv;
+		tegra_sdhci_platform_data3.nominal_vcore_mv = nominal_core_mv;
+	}
+	min_vcore_override_mv =
+		tegra_dvfs_rail_get_override_floor(tegra_core_rail);
+	if (min_vcore_override_mv) {
+		tegra_sdhci_platform_data0.min_vcore_override_mv =
+			min_vcore_override_mv;
+		tegra_sdhci_platform_data2.min_vcore_override_mv =
+			min_vcore_override_mv;
+		tegra_sdhci_platform_data3.min_vcore_override_mv =
+			min_vcore_override_mv;
+	}
+	boot_vcore_mv = tegra_dvfs_rail_get_boot_level(tegra_core_rail);
+	if (boot_vcore_mv) {
+		tegra_sdhci_platform_data0.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data2.boot_vcore_mv = boot_vcore_mv;
+		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
+	}
+
+	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
+
 	platform_device_register(&tegra_sdhci_device3);
 	platform_device_register(&tegra_sdhci_device2);
 	platform_device_register(&tegra_sdhci_device0);

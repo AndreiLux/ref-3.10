@@ -27,9 +27,10 @@
 #include <linux/of_platform.h>
 #include <linux/kernel.h>
 #include <linux/clocksource.h>
+#include <linux/irqchip.h>
+#include <linux/pci-tegra.h>
 
 #include <mach/tegra_asoc_pdata.h>
-#include <mach/pci.h>
 #include <mach/io_dpd.h>
 #include <asm/mach/arch.h>
 #include <mach/isomgr.h>
@@ -52,6 +53,7 @@ static __initdata struct tegra_clk_init_table vcm30_t124_clk_init_table[] = {
 	{ "hda",	"pll_p",	108000000,	false},
 	{ "hda2codec_2x", "pll_p",	48000000,	false},
 	{ "pwm",	"pll_p",	3187500,	false},
+	{ "i2s0",	"pll_a_out0",	0,		false},
 	{ "i2s1",	"pll_a_out0",	0,		false},
 	{ "i2s3",	"pll_a_out0",	0,		false},
 	{ "i2s4",	"pll_a_out0",	0,		false},
@@ -168,6 +170,13 @@ static void vcm30_t124_nor_init(void)
 	platform_device_register(&tegra_nor_device);
 }
 
+static struct i2c_board_info __initdata wm8731_board_info = {
+	I2C_BOARD_INFO("wm8731", 0x1a),
+};
+
+static struct i2c_board_info __initdata ad1937_board_info = {
+	I2C_BOARD_INFO("ad1937", 0x07),
+};
 
 static void vcm30_t124_i2c_init(void)
 {
@@ -185,6 +194,9 @@ static void vcm30_t124_i2c_init(void)
 	platform_device_register(&tegra12_i2c_device3);
 	platform_device_register(&tegra12_i2c_device2);
 	platform_device_register(&tegra12_i2c_device1);
+
+	i2c_register_board_info(0, &wm8731_board_info, 1);
+	i2c_register_board_info(0, &ad1937_board_info, 1);
 }
 
 /* Register debug UART in old fashion and use DT for all others */
@@ -296,6 +308,11 @@ static void vcm30_t124_sata_init(void)
 static void vcm30_t124_sata_init(void) { }
 #endif
 
+static struct platform_device tegra_snd_vcm30t124 = {
+	.name = "tegra-snd-vcm30t124",
+	.id = 0,
+};
+
 /* FIXME: Check which devices are needed from the below list */
 static struct platform_device *vcm30_t124_devices[] __initdata = {
 	&tegra_pmu_device,
@@ -307,17 +324,7 @@ static struct platform_device *vcm30_t124_devices[] __initdata = {
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
 	&tegra12_se_device,
 #endif
-	&tegra_ahub_device,
-	&tegra_dam_device0,
-	&tegra_dam_device1,
-	&tegra_dam_device2,
-	&tegra_i2s_device1,
-	&tegra_i2s_device3,
-	&tegra_i2s_device4,
-	&tegra_spdif_device,
-	&spdif_dit_device,
-	&bluetooth_dit_device,
-	&tegra_hda_device,
+	&tegra_snd_vcm30t124,
 };
 
 static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
@@ -470,6 +477,10 @@ struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-tsec", TEGRA_TSEC_BASE, "tsec", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-apbdma", 0x60020000, "tegra-apbdma",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-ahub", 0x70300000,
+				"tegra30-ahub-apbif", NULL),
 	{}
 };
 #endif
@@ -497,6 +508,7 @@ static void __init tegra_vcm30_t124_late_init(void)
 	vcm30_t124_i2c_init();
 	vcm30_t124_spi_init();
 	vcm30_t124_uart_init();
+	vcm30_t124_pca953x_init();
 	platform_add_devices(vcm30_t124_devices,
 			ARRAY_SIZE(vcm30_t124_devices));
 	tegra_io_dpd_init();
@@ -568,7 +580,7 @@ DT_MACHINE_START(VCM30_T124, "vcm30_t124")
 	.map_io		= tegra_map_common_io,
 	.reserve	= tegra_vcm30_t124_reserve,
 	.init_early	= tegra12x_init_early,
-	.init_irq	= tegra_dt_init_irq,
+	.init_irq	= irqchip_init,
         .init_time      = clocksource_of_init,
 	.init_machine	= tegra_vcm30_t124_dt_init,
 	.restart	= tegra_assert_system_reset,

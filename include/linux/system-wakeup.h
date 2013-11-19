@@ -1,9 +1,9 @@
 /*
- * drivers/video/tegra/host/t124/as_t124.c
+ * PMC interface for NVIDIA SoCs Tegra
  *
- * Tegra Graphics Host Address Space Support for T124 Architecture Chips
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Author: Laxman Dewangan <ldewangan@nvidia.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -17,26 +17,17 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include "dev.h"
-#include "nvhost_as.h"
-#include "t124.h"
-#include "gk20a/gk20a.h"
 
+#ifndef __LINUX_SYSTEM_WAKEUP_H__
+#define __LINUX_SYSTEM_WAKEUP_H__
 
-
-static int t124_as_init(struct nvhost_master *host, struct nvhost_as *as)
+#ifdef CONFIG_PM_SLEEP
+extern int get_wakeup_reason_irq(void);
+#else
+static inline int get_wakeup_reason_irq(void)
 {
-#if defined(CONFIG_TEGRA_GK20A)
-	if (is_gk20a_module(as->ch->dev))
-		as->ops = &gk20a_as_moduleops;
+	return -EINVAL;
+}
 #endif
-	return 0;
-}
 
-int nvhost_init_t124_as_support(struct nvhost_chip_support *op)
-{
-	nvhost_dbg_fn("");
-
-	op->as.init = t124_as_init;
-	return 0;
-}
+#endif	/* __LINUX_SYSTEM_WAKEUP_H__ */

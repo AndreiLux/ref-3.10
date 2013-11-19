@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/of.h>
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/platform_device.h>
@@ -30,6 +31,8 @@
 #include <linux/seq_file.h>
 #include <linux/hrtimer.h>
 #include <linux/pasr.h>
+#include <linux/slab.h>
+#include <mach/nct.h>
 
 #include <asm/cputime.h>
 
@@ -38,6 +41,7 @@
 #include "dvfs.h"
 #include "iomap.h"
 #include "tegra12_emc.h"
+#include "tegra_emc_dt_parse.h"
 
 #ifdef CONFIG_TEGRA_EMC_SCALING_ENABLE
 static bool emc_enable = true;
@@ -50,20 +54,42 @@ static int pasr_enable;
 
 u8 tegra_emc_bw_efficiency = 100;
 
-static struct emc_iso_usage tegra12_emc_iso_usage[] = {
-	{ BIT(EMC_USER_DC1),                     80 },
-	{ BIT(EMC_USER_DC2),                     80 },
-	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2),	50 },
-	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_VI),  50 },
-	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_VI),  50 },
-	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_VI2),  50 },
-	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_VI2),  50 },
-	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_ISP1),  50 },
-	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_ISP1),  50 },
-	{ BIT(EMC_USER_DC1) | BIT(EMC_USER_ISP2),  50 },
-	{ BIT(EMC_USER_DC2) | BIT(EMC_USER_ISP2),  50 },
+static u32 bw_calc_freqs[] = {
+	20, 40, 60, 80, 100, 120, 140, 160, 200, 300, 400, 600, 800
 };
 
+static u32 tegra12_emc_usage_shared_os_idle[] = {
+	11, 27, 29, 34, 39, 42, 46, 47, 51, 51, 51, 51, 51, 51
+};
+static u32 tegra12_emc_usage_shared_general[] = {
+	11, 18, 22, 25, 28, 31, 34, 38, 44, 44, 44, 44, 44, 51
+};
+
+static u8 iso_share_calc_t124_os_idle(unsigned long iso_bw);
+static u8 iso_share_calc_t124_general(unsigned long iso_bw);
+
+
+static struct emc_iso_usage tegra12_emc_iso_usage[] = {
+	{
+		BIT(EMC_USER_DC1),
+		80, iso_share_calc_t124_os_idle
+	},
+	{
+		BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2),
+		45, iso_share_calc_t124_general
+	},
+	{
+		BIT(EMC_USER_DC1) | BIT(EMC_USER_VI),
+		45, iso_share_calc_t124_general
+	},
+	{
+		BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2) | BIT(EMC_USER_VI),
+		45, iso_share_calc_t124_general
+	},
+};
+
+#define MHZ 1000000
+#define TEGRA_EMC_ISO_USE_FREQ_MAX_NUM 13
 #define PLL_C_DIRECT_FLOOR		333500000
 #define EMC_STATUS_UPDATE_TIMEOUT	100
 #define TEGRA_EMC_TABLE_MAX_SIZE	16
@@ -110,6 +136,7 @@ enum {
 	DEFINE_REG(TEGRA_EMC_BASE, EMC_EINPUT_DURATION),	\
 	DEFINE_REG(TEGRA_EMC_BASE, EMC_PUTERM_EXTRA),		\
 	DEFINE_REG(TEGRA_EMC_BASE, EMC_PUTERM_WIDTH),		\
+	DEFINE_REG(TEGRA_EMC_BASE, EMC_BGBIAS_CTL0),		\
 	DEFINE_REG(TEGRA_EMC_BASE, EMC_PUTERM_ADJ),		\
 	DEFINE_REG(TEGRA_EMC_BASE, EMC_CDB_CNTL_1),		\
 	DEFINE_REG(TEGRA_EMC_BASE, EMC_CDB_CNTL_2),		\
@@ -365,6 +392,37 @@ static inline void ccfifo_writel(u32 val, unsigned long addr)
 	writel(addr, emc_base + EMC_CCFIFO_ADDR);
 }
 
+static inline u32 disable_power_features(u32 inreg)
+{
+	u32 mod_reg = inreg;
+	mod_reg &= ~(EMC_CFG_DYN_SREF);
+	mod_reg &= ~(EMC_CFG_DRAM_ACPD);
+	mod_reg &= ~(EMC_CFG_DRAM_CLKSTOP_SR);
+	mod_reg &= ~(EMC_CFG_DRAM_CLKSTOP_PD);
+	mod_reg &= ~(EMC_CFG_DSR_VTTGEN_DRV_EN);
+	return mod_reg;
+}
+
+static inline u32 emc_sel_dpd_ctrl_enabled(u32 inreg)
+{
+	if (dram_type == DRAM_TYPE_DDR3)
+		return inreg & (EMC_SEL_DPD_CTRL_DDR3_MASK);
+	else
+		return inreg & (EMC_SEL_DPD_CTRL_MASK);
+}
+
+static inline u32 disable_emc_sel_dpd_ctrl(u32 inreg)
+{
+	u32 mod_reg = inreg;
+	mod_reg &= ~(EMC_SEL_DPD_CTRL_DATA_SEL_DPD);
+	mod_reg &= ~(EMC_SEL_DPD_CTRL_ODT_SEL_DPD);
+	if (dram_type == DRAM_TYPE_DDR3)
+		mod_reg &= ~(EMC_SEL_DPD_CTRL_RESET_SEL_DPD);
+	mod_reg &= ~(EMC_SEL_DPD_CTRL_CA_SEL_DPD);
+	mod_reg &= ~(EMC_SEL_DPD_CTRL_CLK_SEL_DPD);
+	return mod_reg;
+}
+
 static int last_round_idx;
 static inline int get_start_idx(unsigned long rate)
 {
@@ -435,6 +493,27 @@ static inline bool dqs_preset(const struct tegra12_emc_table *next_timing,
 {
 	bool ret = false;
 	int data;
+	data = last_timing->burst_regs[EMC_BGBIAS_CTL0_INDEX];
+#define BGBIAS_SET(reg, bit, program_condition) \
+	do {						\
+		if (((next_timing->burst_regs[EMC_##reg##_INDEX] & \
+		(0x1<<EMC_##reg##_##bit##_SHIFT)) == \
+		(program_condition << EMC_##reg##_##bit##_SHIFT)) && \
+		(((data & (0x1<<EMC_##reg##_##bit##_SHIFT))) !=	 \
+			(program_condition << EMC_##reg##_##bit##_SHIFT))) { \
+				data = (data & \
+					~(0x1<<EMC_##reg##_##bit##_SHIFT)) | \
+					(program_condition << \
+						EMC_##reg##_##bit##_SHIFT); \
+						ret = 1;	\
+			}					\
+	} while (0)
+	BGBIAS_SET(BGBIAS_CTL0, BIAS0_DSC_E_PWRD_IBIAS_RX, 0);
+	BGBIAS_SET(BGBIAS_CTL0, BIAS0_DSC_E_PWRD_IBIAS_VTTGEN, 0);
+	BGBIAS_SET(BGBIAS_CTL0, BIAS0_DSC_E_PWRD, 0);
+	if (ret == 1)
+		emc_writel(data, EMC_BGBIAS_CTL0);
+
 #define DQS_SET(reg, bit)						\
 	do {						\
 		data = emc_readl(EMC_XM2DQSPADCTRL2); \
@@ -450,7 +529,6 @@ static inline bool dqs_preset(const struct tegra12_emc_table *next_timing,
 	} while (0)
 	DQS_SET(XM2DQSPADCTRL2, VREF);
 	DQS_SET(XM2DQSPADCTRL2, RX_FT_REC);
-
 	return ret;
 }
 
@@ -555,12 +633,12 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 {
 #ifndef EMULATE_CLOCK_SWITCH
 	int i, dll_change, pre_wait, ctt_term_changed;
-	bool dyn_sref_enabled, zcal_long;
-
+	bool cfg_pow_features_enabled, zcal_long;
+	u32 assert_var;
 	u32 emc_cfg_reg = emc_readl(EMC_CFG);
+	u32 sel_dpd_ctrl = emc_readl(EMC_SEL_DPD_CTRL);
 	u32 emc_cfg_2_reg = emc_readl(EMC_CFG_2);
-
-	dyn_sref_enabled = emc_cfg_reg & EMC_CFG_DYN_SREF_ENABLE;
+	cfg_pow_features_enabled = (emc_cfg_reg & EMC_CFG_PWR_MASK);
 	dll_change = get_dll_change(next_timing, last_timing);
 	zcal_long = (next_timing->burst_regs[EMC_ZCAL_INTERVAL_INDEX] != 0) &&
 		(last_timing->burst_regs[EMC_ZCAL_INTERVAL_INDEX] == 0);
@@ -568,18 +646,19 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 	/* 1. clear clkchange_complete interrupts */
 	emc_writel(EMC_INTSTATUS_CLKCHANGE_COMPLETE, EMC_INTSTATUS);
 
-
-	/* 1.5 On t124,  prelock the DLL - assuming the DLL is enabled. */
-	/* TODO: implement. */
-
 	/* 2. disable dynamic self-refresh and preset dqs vref, then wait for
 	   possible self-refresh entry/exit and/or dqs vref settled - waiting
 	   before the clock change decreases worst case change stall time */
 	pre_wait = 0;
-	if (dyn_sref_enabled) {
-		emc_cfg_reg &= ~EMC_CFG_DYN_SREF_ENABLE;
+	if (cfg_pow_features_enabled) {
+		emc_cfg_reg = disable_power_features(emc_cfg_reg);
 		emc_writel(emc_cfg_reg, EMC_CFG);
 		pre_wait = 5;		/* 5us+ for self-refresh entry/exit */
+	}
+	/* 2.1 disable sel_dpd_ctrl before starting clock change */
+	if (emc_sel_dpd_ctrl_enabled(sel_dpd_ctrl)) {
+		sel_dpd_ctrl = disable_emc_sel_dpd_ctrl(sel_dpd_ctrl);
+		emc_writel(sel_dpd_ctrl, EMC_SEL_DPD_CTRL);
 	}
 
 	/* 2.5 check dq/dqs vref delay */
@@ -605,7 +684,6 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 		emc_timing_update();
 		udelay(pre_wait);
 	}
-
 	/* 3. disable auto-cal if vref mode is switching - removed */
 
 	/* 4. program burst shadow registers */
@@ -614,10 +692,9 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 			continue;
 		__raw_writel(next_timing->burst_regs[i], burst_reg_addr[i]);
 	}
-
-	emc_cfg_reg &= ~EMC_CFG_UPDATE_MASK;
-	emc_cfg_reg |= next_timing->emc_cfg & EMC_CFG_UPDATE_MASK;
-	emc_writel(emc_cfg_reg, EMC_CFG);
+	emc_cfg_reg = next_timing->emc_cfg;
+	emc_cfg_reg = disable_power_features(emc_cfg_reg);
+	ccfifo_writel(emc_cfg_reg, EMC_CFG);
 	wmb();
 	barrier();
 
@@ -627,7 +704,7 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 		overwrite_mrs_wait_cnt(next_timing, zcal_long);
 
 	/* 5.2 disable auto-refresh to save time after clock change */
-	emc_writel(EMC_REFCTRL_DISABLE_ALL(dram_dev_num), EMC_REFCTRL);
+	/* move to ccfifo in step 6.1 */
 
 	/* 5.3 post cfg_2 write and dis ob clock gate */
 	emc_cfg_2_reg = next_timing->emc_cfg_2;
@@ -635,25 +712,24 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 	if (emc_cfg_2_reg & EMC_CFG_2_DIS_STP_OB_CLK_DURING_NON_WR)
 		emc_cfg_2_reg &= ~EMC_CFG_2_DIS_STP_OB_CLK_DURING_NON_WR;
 	ccfifo_writel(emc_cfg_2_reg, EMC_CFG_2);
-
-	/* 5.4 program sel_dpd */
-	ccfifo_writel(next_timing->emc_sel_dpd_ctrl, EMC_SEL_DPD_CTRL);
-
 	/* 6. turn Off dll and enter self-refresh on DDR3  */
 	if (dram_type == DRAM_TYPE_DDR3) {
 		if (dll_change == DLL_CHANGE_OFF)
 			ccfifo_writel(next_timing->emc_mode_1, EMC_EMRS);
+	}
+	/* 6.1, disable refresh controller using ccfifo  */
+	ccfifo_writel(EMC_REFCTRL_DISABLE_ALL(dram_dev_num), EMC_REFCTRL);
+	if (dram_type == DRAM_TYPE_DDR3) {
 		ccfifo_writel(DRAM_BROADCAST(dram_dev_num) |
 			      EMC_SELF_REF_CMD_ENABLED, EMC_SELF_REF);
 	}
-
 	/* 7. flow control marker 2 */
 	ccfifo_writel(1, EMC_STALL_THEN_EXE_AFTER_CLKCHANGE);
 
 	/* 8. exit self-refresh on DDR3 */
 	if (dram_type == DRAM_TYPE_DDR3)
 		ccfifo_writel(DRAM_BROADCAST(dram_dev_num), EMC_SELF_REF);
-
+	ccfifo_writel(EMC_REFCTRL_ENABLE_ALL(dram_dev_num), EMC_REFCTRL);
 	/* 9. set dram mode registers */
 	set_dram_mode(next_timing, last_timing, dll_change);
 
@@ -666,7 +742,6 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 
 	/* 10.1 dummy write to RO register to remove stall after change */
 	ccfifo_writel(0, EMC_CCFIFO_STATUS);
-
 
 	/* 11.1 DIS_STP_OB_CLK_DURING_NON_WR ->0 */
 	if (next_timing->emc_cfg_2 & EMC_CFG_2_DIS_STP_OB_CLK_DURING_NON_WR) {
@@ -686,9 +761,6 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 	   change EMC clock source register wait for clk change completion */
 	do_clock_change(clk_setting);
 
-	/* 14.1 re-enable auto-refresh */
-	emc_writel(EMC_REFCTRL_ENABLE_ALL(dram_dev_num), EMC_REFCTRL);
-
 	/* 14.2 program burst_up_down registers if emc rate is going up */
 	if (next_timing->rate > last_timing->rate) {
 		for (i = 0; i < next_timing->burst_up_down_regs_num; i++)
@@ -703,8 +775,8 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 			EMC_AUTO_CAL_INTERVAL);
 
 	/* 16. restore dynamic self-refresh */
-	if (next_timing->emc_cfg & EMC_CFG_DYN_SREF_ENABLE) {
-		emc_cfg_reg |= EMC_CFG_DYN_SREF_ENABLE;
+	if (next_timing->emc_cfg & EMC_CFG_PWR_MASK) {
+		emc_cfg_reg = next_timing->emc_cfg;
 		emc_writel(emc_cfg_reg, EMC_CFG);
 	}
 
@@ -712,13 +784,18 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 	emc_writel(next_timing->emc_zcal_cnt_long, EMC_ZCAL_WAIT_CNT);
 
 	/* 18. update restored timing */
-	udelay(2);
+	udelay(4);
+	/* 18.1. program sel_dpd at end so if any enabling needs to happen.*/
+	/* It happens at last,as dpd should off during clock change. */
+	/* bug 1342517 */
+	emc_writel(next_timing->emc_sel_dpd_ctrl, EMC_SEL_DPD_CTRL);
 	emc_timing_update();
 #else
 	/* FIXME: implement */
 	pr_info("tegra12_emc: Configuring EMC rate %lu (setting: 0x%x)\n",
 		next_timing->rate, clk_setting);
 #endif
+
 }
 
 static inline void emc_get_timing(struct tegra12_emc_table *timing)
@@ -1118,7 +1195,7 @@ static int init_emc_table(const struct tegra12_emc_table *table, int table_size)
 	emc_stats.last_update = get_jiffies_64();
 	emc_stats.last_sel = TEGRA_EMC_TABLE_MAX_SIZE;
 
-	if (dram_type != DRAM_TYPE_DDR3) {
+	if ((dram_type != DRAM_TYPE_DDR3) && (dram_type != DRAM_TYPE_LPDDR2)) {
 		pr_err("tegra: not supported DRAM type %u\n", dram_type);
 		return -ENODATA;
 	}
@@ -1133,8 +1210,7 @@ static int init_emc_table(const struct tegra12_emc_table *table, int table_size)
 
 	tegra_emc_table_size = min(table_size, TEGRA_EMC_TABLE_MAX_SIZE);
 	switch (table[0].rev) {
-	case 0x14:
-	case 0x15:
+	case 0x16:
 		start_timing.burst_regs_num = table[0].burst_regs_num;
 		break;
 	default:
@@ -1293,6 +1369,9 @@ static int tegra12_emc_probe(struct platform_device *pdev)
 	struct tegra12_emc_pdata *pdata;
 	struct resource *res;
 
+	if (tegra_emc_table)
+		return -EINVAL;
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!res) {
 		dev_err(&pdev->dev, "missing register base\n");
@@ -1300,6 +1379,11 @@ static int tegra12_emc_probe(struct platform_device *pdev)
 	}
 
 	pdata = pdev->dev.platform_data;
+
+	if (!pdata) {
+		pdata = tegra_emc_dt_parse_pdata(pdev);
+	}
+
 	if (!pdata) {
 		dev_err(&pdev->dev, "missing platform data\n");
 		return -ENODATA;
@@ -1308,10 +1392,16 @@ static int tegra12_emc_probe(struct platform_device *pdev)
 	return init_emc_table(pdata->tables, pdata->num_tables);
 }
 
+static struct of_device_id tegra12_emc_of_match[] = {
+	{ .compatible = "nvidia,tegra12-emc", },
+	{ },
+};
+
 static struct platform_driver tegra12_emc_driver = {
 	.driver         = {
 		.name   = "tegra-emc",
 		.owner  = THIS_MODULE,
+		.of_match_table = tegra12_emc_of_match,
 	},
 	.probe          = tegra12_emc_probe,
 };
@@ -1428,6 +1518,122 @@ int tegra_emc_get_dram_temperature(void)
 		mr4, LPDDR2_MR4_TEMP_MASK, LPDDR2_MR4_TEMP_SHIFT);
 	return mr4;
 }
+
+
+#ifdef CONFIG_TEGRA_USE_NCT
+int tegra12_nct_emc_table_init(struct tegra12_emc_pdata *nct_emc_pdata)
+{
+	union nct_item_type *entry = NULL;
+	struct tegra12_emc_table *mem_table_ptr;
+	u8 *src, *dest;
+	unsigned int i, non_zero_freqs;
+	int ret = 0;
+
+	/* Allocating memory for holding a single NCT entry */
+	entry = kmalloc(sizeof(union nct_item_type), GFP_KERNEL);
+	if (!entry) {
+		pr_err("%s: failed to allocate buffer for single entry. ",
+								__func__);
+		ret = -ENOMEM;
+		goto done;
+	}
+	src = (u8 *)entry;
+
+	/* Counting the actual number of frequencies present in the table */
+	non_zero_freqs = 0;
+	for (i = 0; i < TEGRA_EMC_MAX_FREQS; i++) {
+		if (!tegra_nct_read_item(NCT_ID_MEMTABLE + i, entry)) {
+			if (entry->tegra_emc_table.tegra12_emc_table.rate > 0) {
+				non_zero_freqs++;
+				pr_info("%s: Found NCT item for freq %lu.\n",
+				 __func__,
+				 entry->tegra_emc_table.tegra12_emc_table.rate);
+			} else
+				break;
+		} else {
+			pr_err("%s: NCT: Could not read item for %dth freq.\n",
+								__func__, i);
+			ret = -EIO;
+			goto free_entry;
+		}
+	}
+
+	/* Allocating memory for the DVFS table */
+	mem_table_ptr = kmalloc(sizeof(struct tegra12_emc_table) *
+				non_zero_freqs, GFP_KERNEL);
+	if (!mem_table_ptr) {
+		pr_err("%s: Memory allocation for emc table failed.",
+							    __func__);
+		ret = -ENOMEM;
+		goto free_entry;
+	}
+
+	/* Copy paste the emc table from NCT partition */
+	for (i = 0; i < non_zero_freqs; i++) {
+		/*
+		 * We reset the whole buffer, to emulate the property
+		 * of a static variable being initialized to zero
+		 */
+		memset(entry, 0, sizeof(*entry));
+		ret = tegra_nct_read_item(NCT_ID_MEMTABLE + i, entry);
+		if (!ret) {
+			dest = (u8 *)mem_table_ptr + (i * sizeof(struct
+							tegra12_emc_table));
+			memcpy(dest, src, sizeof(struct tegra12_emc_table));
+		} else {
+			pr_err("%s: Could not copy item for %dth freq.\n",
+								__func__, i);
+			goto free_mem_table_ptr;
+		}
+	}
+
+	/* Setting appropriate pointers */
+	nct_emc_pdata->tables = mem_table_ptr;
+	nct_emc_pdata->num_tables = non_zero_freqs;
+
+	goto free_entry;
+
+free_mem_table_ptr:
+	kfree(mem_table_ptr);
+free_entry:
+	kfree(entry);
+done:
+	return ret;
+}
+#endif
+
+static inline int bw_calc_get_freq_idx(unsigned long bw)
+{
+	int idx = 0;
+
+	if (bw > bw_calc_freqs[TEGRA_EMC_ISO_USE_FREQ_MAX_NUM-1] * MHZ)
+		idx = TEGRA_EMC_ISO_USE_FREQ_MAX_NUM;
+
+	for (; idx < TEGRA_EMC_ISO_USE_FREQ_MAX_NUM; idx++) {
+		u32 freq = bw_calc_freqs[idx] * MHZ;
+		if (bw < freq) {
+			if (idx)
+				idx--;
+			break;
+		} else if (bw == freq)
+			break;
+	}
+
+	return idx;
+}
+
+static u8 iso_share_calc_t124_os_idle(unsigned long iso_bw)
+{
+	int freq_idx = bw_calc_get_freq_idx(iso_bw);
+	return tegra12_emc_usage_shared_os_idle[freq_idx];
+}
+
+static u8 iso_share_calc_t124_general(unsigned long iso_bw)
+{
+	int freq_idx = bw_calc_get_freq_idx(iso_bw);
+	return tegra12_emc_usage_shared_general[freq_idx];
+}
+
 
 #ifdef CONFIG_DEBUG_FS
 

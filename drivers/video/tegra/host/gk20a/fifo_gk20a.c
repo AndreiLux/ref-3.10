@@ -347,7 +347,7 @@ clean_up:
 	return -ENOMEM;
 }
 
-static int gk20a_init_fifo_reset_enable_hw(struct gk20a *g)
+int gk20a_init_fifo_reset_enable_hw(struct gk20a *g)
 {
 	u32 pmc_enable;
 	u32 intr_stall;
@@ -356,7 +356,6 @@ static int gk20a_init_fifo_reset_enable_hw(struct gk20a *g)
 	int i;
 
 	nvhost_dbg_fn("");
-
 	/* enable pmc pfifo */
 	pmc_enable = gk20a_readl(g, mc_enable_r());
 	pmc_enable &= ~mc_enable_pfifo_enabled_f();
@@ -654,10 +653,6 @@ int gk20a_init_fifo_support(struct gk20a *g)
 {
 	u32 err;
 
-	err = gk20a_init_fifo_reset_enable_hw(g);
-	if (err)
-		return err;
-
 	err = gk20a_init_fifo_setup_sw(g);
 	if (err)
 		return err;
@@ -835,6 +830,13 @@ static void gk20a_fifo_handle_chsw_fault(struct gk20a *g)
 	gk20a_writel(g, fifo_intr_chsw_error_r(), intr);
 }
 
+static void gk20a_fifo_handle_dropped_mmu_fault(struct gk20a *g)
+{
+	struct device *dev = dev_from_gk20a(g);
+	u32 fault_id = gk20a_readl(g, fifo_intr_mmu_fault_id_r());
+	nvhost_err(dev, "dropped mmu fault (0x%08x)", fault_id);
+}
+
 static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 {
 	bool fake_fault;
@@ -923,7 +925,8 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 		if (ch) {
 			if (ch->hwctx) {
 				nvhost_err(dev_from_gk20a(g), "channel with hwctx has generated an mmu fault");
-				ch->hwctx->has_timedout = true;
+				/* mark channel as faulted */
+				gk20a_set_timeout_error(ch->hwctx);
 			}
 
 			if (ch->in_use) {
@@ -935,9 +938,6 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 				/* remove the channel from runlist */
 				clear_bit(ch->hw_chid,
 					  runlist->active_channels);
-
-				/* mark channel as faulted */
-				ch->hwctx->has_timedout = true;
 			}
 		} else if (f.inst_ptr ==
 				sg_phys(g->mm.bar1.inst_block.mem.sgt->sgl)) {
@@ -972,20 +972,54 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 	schedule_work(&g->fifo.fault_restore_thread);
 }
 
-void gk20a_fifo_recover(struct gk20a *g, u32 _engine_ids)
+static void gk20a_fifo_get_faulty_channel(struct gk20a *g, int engine_id,
+					  u32 *chid, bool *type_ch)
+{
+	u32 status = gk20a_readl(g, fifo_engine_status_r(engine_id));
+	u32 ctx_status = fifo_engine_status_ctx_status_v(status);
+
+	*type_ch = fifo_pbdma_status_id_type_v(status) ==
+		fifo_pbdma_status_id_type_chid_v();
+	/* use next_id if context load is failing */
+	*chid = (ctx_status ==
+		fifo_engine_status_ctx_status_ctxsw_load_v()) ?
+		fifo_engine_status_next_id_v(status) :
+		fifo_engine_status_id_v(status);
+}
+
+void gk20a_fifo_recover(struct gk20a *g, u32 __engine_ids)
 {
 	unsigned long end_jiffies = jiffies +
 		msecs_to_jiffies(gk20a_get_gr_idle_timeout(g));
 	unsigned long delay = GR_IDLE_CHECK_DEFAULT;
-	unsigned long engine_id;
-	unsigned long engine_ids = _engine_ids;
+	unsigned long engine_id, i;
+	unsigned long _engine_ids = __engine_ids;
+	unsigned long engine_ids = 0;
 	int ret;
 
 	/* store faulted engines in advance */
 	g->fifo.mmu_fault_engines = 0;
-	for_each_set_bit(engine_id, &engine_ids, 32)
-		g->fifo.mmu_fault_engines |=
-			BIT(gk20a_engine_id_to_mmu_id(engine_id));
+	for_each_set_bit(engine_id, &_engine_ids, 32) {
+		bool ref_type_ch;
+		int ref_chid;
+		gk20a_fifo_get_faulty_channel(g, engine_id, &ref_chid,
+					      &ref_type_ch);
+
+		/* Reset *all* engines that use the
+		 * same channel as faulty engine */
+
+		for (i = 0; i < g->fifo.max_engines; i++) {
+			bool type_ch;
+			u32 chid;
+			gk20a_fifo_get_faulty_channel(g, i, &chid, &type_ch);
+			if (ref_type_ch == type_ch && ref_chid == chid) {
+				engine_ids |= BIT(i);
+				g->fifo.mmu_fault_engines |=
+					BIT(gk20a_engine_id_to_mmu_id(i));
+			}
+		}
+
+	}
 
 	/* trigger faults for all bad engines */
 	for_each_set_bit(engine_id, &engine_ids, 32) {
@@ -1115,6 +1149,11 @@ static u32 fifo_error_isr(struct gk20a *g, u32 fifo_intr)
 		reset_channel = true;
 		reset_engine  = true;
 		handled |= fifo_intr_0_mmu_fault_pending_f();
+	}
+
+	if (fifo_intr & fifo_intr_0_dropped_mmu_fault_pending_f()) {
+		gk20a_fifo_handle_dropped_mmu_fault(g);
+		handled |= fifo_intr_0_dropped_mmu_fault_pending_f();
 	}
 
 	reset_channel = reset_channel || fifo_intr;

@@ -219,6 +219,10 @@ struct tegra_dc {
 	atomic_t			frame_end_ref;
 
 	bool				mode_dirty;
+
+	u32				reserved_bw;
+	u32				available_bw;
+	struct tegra_dc_win		tmp_wins[DC_N_WINDOWS];
 };
 
 #endif

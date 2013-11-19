@@ -260,8 +260,12 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 	print_mode(dc, mode, __func__);
 
 	/* use default EMC rate when switching modes */
+#ifdef CONFIG_TEGRA_ISOMGR
+	dc->new_bw_kbps = tegra_dc_calc_min_bandwidth(dc);
+#else
 	dc->new_bw_kbps = tegra_emc_freq_req_to_bw(
 		tegra_dc_get_default_emc_clk_rate(dc) / 1000);
+#endif
 	tegra_dc_program_bandwidth(dc, true);
 
 	tegra_dc_writel(dc, 0x0, DC_DISP_DISP_TIMING_OPTIONS);
@@ -425,8 +429,11 @@ int tegra_dc_to_fb_videomode(struct fb_videomode *fbmode,
 {
 	long mode_pclk;
 
-	if (!fbmode || !mode || !mode->pclk)
+	if (!fbmode || !mode || !mode->pclk) {
+		if (fbmode)
+			memset(fbmode, 0, sizeof(*fbmode));
 		return -EINVAL;
+	}
 	if (mode->rated_pclk >= 1000) /* handle DSI one-shot modes */
 		mode_pclk = mode->rated_pclk;
 	else if (mode->pclk >= 1000) /* normal continous modes */

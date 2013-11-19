@@ -51,7 +51,8 @@
 #define BOARD_PM363   0x016B
 #define BOARD_E2548   0x09F4
 #define BOARD_E2549   0x09F5
-
+#define BOARD_E1782   0x06F6
+#define BOARD_P2530   0x09E2
 
 /* Panel board ID */
 #define    BOARD_E1605    0x0645
@@ -74,6 +75,7 @@
 #define BOARD_E1734    0x6c6
 #define BOARD_E1735    0x6c7
 #define BOARD_E1736    0x6c8
+#define BOARD_E1769    0x6e9
 #define BOARD_E2545    0x9f1
 
 /* Board Fab version */

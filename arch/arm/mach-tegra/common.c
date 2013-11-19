@@ -42,7 +42,6 @@
 #include <linux/export.h>
 #include <linux/bootmem.h>
 #include <linux/tegra-soc.h>
-#include <trace/events/nvsecurity.h>
 #include <linux/dma-contiguous.h>
 
 #ifdef CONFIG_ARM64
@@ -173,6 +172,18 @@ static int tegra_split_mem_set;
 
 struct device tegra_generic_cma_dev;
 struct device tegra_vpr_cma_dev;
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/nvsecurity.h>
+
+u32 notrace tegra_read_cycle(void)
+{
+	u32 cycle_count;
+
+	asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(cycle_count));
+
+	return cycle_count;
+}
 
 /*
  * Storage for debug-macro.S's state.
@@ -458,7 +469,7 @@ static __initdata struct tegra_clk_init_table tegra12x_cbus_init_table[] = {
 #ifdef CONFIG_TEGRA_DUAL_CBUS
 	{ "c2bus",	"pll_c2",	250000000,	false },
 	{ "c3bus",	"pll_c3",	250000000,	false },
-	{ "pll_c",	NULL,		792000000,	false },
+	{ "pll_c",	NULL,		600000000,	false },
 #else
 	{ "cbus",	"pll_c",	200000000,	false },
 #endif
@@ -763,7 +774,7 @@ static void __init tegra_init_ahb_gizmo_settings(void)
 
 	if (tegra_get_chipid() == TEGRA_CHIPID_TEGRA11)
 		val |= WR_WAIT_COMMIT_ON_1K;
-#ifdef CONFIG_ARCH_TEGRA_14x_SOC
+#if defined(CONFIG_ARCH_TEGRA_14x_SOC) || defined(CONFIG_ARCH_TEGRA_12x_SOC)
 	val |= WR_WAIT_COMMIT_ON_1K | EN_USB_WAIT_COMMIT_ON_1K_STALL;
 #endif
 	gizmo_writel(val, AHB_GIZMO_AHB_MEM);
@@ -2377,3 +2388,4 @@ static int __init set_tegra_split_mem(char *options)
 	return 0;
 }
 early_param("tegra_split_mem", set_tegra_split_mem);
+

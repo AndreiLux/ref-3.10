@@ -159,7 +159,7 @@ static struct tegra_dsi_out dsi_s_wqxga_10_1_pdata = {
 	.video_data_type = TEGRA_DSI_VIDEO_TYPE_COMMAND_MODE,
 	.ganged_type = TEGRA_DSI_GANGED_SYMMETRIC_LEFT_RIGHT,
 	.suspend_aggr = DSI_HOST_SUSPEND_LV2,
-	.refresh_rate = 62,
+	.refresh_rate = 61,
 	.rated_refresh_rate = 60,
 	.te_polarity_low = true,
 #else
@@ -179,7 +179,6 @@ static struct tegra_dsi_out dsi_s_wqxga_10_1_pdata = {
 	.n_init_cmd = ARRAY_SIZE(dsi_s_wqxga_10_1_init_cmd),
 	.dsi_suspend_cmd = dsi_s_wqxga_10_1_suspend_cmd,
 	.n_suspend_cmd = ARRAY_SIZE(dsi_s_wqxga_10_1_suspend_cmd),
-	.bl_name = "pwm-backlight",
 	.lp00_pre_panel_wakeup = true,
 	.ulpm_not_supported = true,
 };
@@ -423,10 +422,30 @@ static int dsi_s_wqxga_10_1_postsuspend(void)
 static struct tegra_dc_mode dsi_s_wqxga_10_1_modes[] = {
 	{
 #if DC_CTRL_MODE & TEGRA_DC_OUT_ONE_SHOT_MODE
-		.pclk = 306156000, /* @62Hz */
+		.pclk = 294264000, /* @61Hz */
+		.h_ref_to_sync = 0,
+
+		/* dc constraint, min 1 */
+		.v_ref_to_sync = 1,
+
+		.h_sync_width = 32,
+
+		/* dc constraint, min 1 */
+		.v_sync_width = 1,
+
+		.h_back_porch = 80,
+
+		/* panel constraint, send frame after TE deassert */
+		.v_back_porch = 5,
+
+		.h_active = 2560,
+		.v_active = 1600,
+		.h_front_porch = 328,
+
+		/* dc constraint, min v_ref_to_sync + 1 */
+		.v_front_porch = 2,
 #else
 		.pclk = 268627200, /* @60Hz */
-#endif
 		.h_ref_to_sync = 4,
 		.v_ref_to_sync = 1,
 		.h_sync_width = 32,
@@ -435,12 +454,9 @@ static struct tegra_dc_mode dsi_s_wqxga_10_1_modes[] = {
 		.v_back_porch = 37,
 		.h_active = 2560,
 		.v_active = 1600,
-#if DC_CTRL_MODE & TEGRA_DC_OUT_ONE_SHOT_MODE
-		.h_front_porch = 328,
-#else
 		.h_front_porch = 48,
-#endif
 		.v_front_porch = 3,
+#endif
 	},
 };
 
@@ -660,9 +676,39 @@ static struct platform_device __maybe_unused
 	&dsi_s_wqxga_10_1_bl_device,
 };
 
+static unsigned int dsi_s_shield_edp_states[] = {
+	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
+};
+static unsigned int dsi_s_shield_edp_brightness[] = {
+	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
+};
+static unsigned int dsi_s_tn8_edp_states[] = {
+	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
+};
+static unsigned int dsi_s_tn8_edp_brightness[] = {
+	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
+};
+
 static int __init dsi_s_wqxga_10_1_register_bl_dev(void)
 {
 	int err = 0;
+	struct board_info board_info;
+	tegra_get_board_info(&board_info);
+
+	if (board_info.board_id == BOARD_E1780) {
+		if (board_info.sku == 1000) {
+			dsi_s_wqxga_10_1_bl_data.edp_states =
+				dsi_s_shield_edp_states;
+			dsi_s_wqxga_10_1_bl_data.edp_brightness =
+				dsi_s_shield_edp_brightness;
+		} else if (board_info.sku == 1100) {
+			dsi_s_wqxga_10_1_bl_data.edp_states =
+				dsi_s_tn8_edp_states;
+			dsi_s_wqxga_10_1_bl_data.edp_brightness =
+				dsi_s_tn8_edp_brightness;
+		}
+	}
+
 	err = platform_add_devices(dsi_s_wqxga_10_1_bl_devices,
 				ARRAY_SIZE(dsi_s_wqxga_10_1_bl_devices));
 	if (err) {
