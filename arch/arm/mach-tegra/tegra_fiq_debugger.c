@@ -27,7 +27,7 @@
 #include <linux/stacktrace.h>
 #include <asm/fiq_debugger.h>
 #include <mach/tegra_fiq_debugger.h>
-#include <mach/fiq.h>
+#include <linux/irqchip/tegra.h>
 
 #include <linux/uaccess.h>
 
