@@ -119,10 +119,13 @@ bool is_tegra_debug_uartport_hs(void);
 int get_tegra_uart_debug_port_id(void);
 int __init tegra_register_fuse(void);
 
-#ifdef CONFIG_PSTORE_RAM
+#if defined(CONFIG_PSTORE_RAM) && defined(CONFIG_PSTORE_CONSOLE)
 void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size);
+void __init tegra_ram_console_init(void);
 #else
 static inline void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size)
+{}
+static inline void __init tegra_ram_console_init(void)
 {}
 #endif
 
