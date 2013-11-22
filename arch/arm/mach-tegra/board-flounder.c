@@ -1101,6 +1101,7 @@ static void __init tegra_flounder_late_init(void)
 	else
 		flounder_pinmux_init();
 
+	tegra_ram_console_init();
 	flounder_uart_init();
 	flounder_usb_init();
 	flounder_modem_init();
@@ -1163,7 +1164,7 @@ static void __init tegra_flounder_late_init(void)
 
 static void __init flounder_ramconsole_reserve(unsigned long size)
 {
-	tegra_ram_console_debug_reserve(SZ_1M);
+	tegra_ram_console_debug_reserve(size);
 }
 
 static void __init tegra_flounder_init_early(void)
