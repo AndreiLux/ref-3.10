@@ -236,6 +236,7 @@ static int of_gpio_init(struct gpio_chip *chip)
 		/* Retrieve the gpio-init-* property */
 		propname = kasprintf(GFP_KERNEL, "gpio-init-%d", state);
 		np_config  = of_parse_phandle(np, propname, 0);
+		kfree(propname);
 		if (!np_config)
 			break;
 
@@ -274,7 +275,6 @@ static int of_gpio_init(struct gpio_chip *chip)
 		}
 
 		of_node_put(np_config);
-		kfree(propname);
 	}
 
 	return 0;
