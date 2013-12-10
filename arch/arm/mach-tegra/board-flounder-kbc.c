@@ -38,7 +38,7 @@
 		.desc = #_id,                   \
 		.type = EV_KEY,                 \
 		.wakeup = _iswake,              \
-		.debounce_interval = 10,        \
+		.debounce_interval = 20,        \
 	}
 
 #define PMC_WAKE2_STATUS         0x168
@@ -61,10 +61,8 @@ static int flounder_wakeup_key(void)
 
 static struct gpio_keys_button flounder_int_keys[] = {
 	[0] = GPIO_KEY(KEY_POWER, PQ0, 1),
-	[1] = GPIO_KEY(KEY_VOLUMEUP, PQ6, 0),
-	[2] = GPIO_KEY(KEY_VOLUMEDOWN, PQ7, 0),
-	[3] = GPIO_KEY(KEY_HOME, PI5, 0),
-	[4] = GPIO_KEY(KEY_CAMERA_FOCUS, PQ2, 0),
+	[1] = GPIO_KEY(KEY_VOLUMEUP, PV2, 0),
+	[2] = GPIO_KEY(KEY_VOLUMEDOWN, PQ5, 0),
 };
 
 static struct gpio_keys_platform_data flounder_int_keys_pdata = {
