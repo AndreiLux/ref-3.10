@@ -204,9 +204,8 @@ static struct tegra_serial_platform_data flounder_uartc_pdata = {
 	.modem_interrupt = false,
 };
 #endif
-
-static struct tegra_serial_platform_data flounder_uartd_pdata = {
-	.dma_req_selector = 19,
+static struct tegra_serial_platform_data flounder_uarta_pdata = {
+	.dma_req_selector = 8,
 	.modem_interrupt = false,
 };
 
@@ -257,20 +256,20 @@ static void __init flounder_uart_init(void)
 	platform_add_devices(flounder_uart_devices,
 			ARRAY_SIZE(flounder_uart_devices));
 #endif
-	tegra_uartd_device.dev.platform_data = &flounder_uartd_pdata;
+	tegra_uarta_device.dev.platform_data = &flounder_uarta_pdata;
 	if (!is_tegra_debug_uartport_hs()) {
-		int debug_port_id = uart_console_debug_init(3);
+		int debug_port_id = uart_console_debug_init(0);
 		if (debug_port_id < 0)
 			return;
 
 #ifdef CONFIG_TEGRA_FIQ_DEBUGGER
-		tegra_serial_debug_init_irq_mode(TEGRA_UARTD_BASE, INT_UARTD, NULL, -1, -1);
+		tegra_serial_debug_init_irq_mode(TEGRA_UARTA_BASE, INT_UARTA, NULL, -1, -1);
 #else
 		platform_device_register(uart_console_debug_device);
 #endif
 	} else {
-		tegra_uartd_device.dev.platform_data = &flounder_uartd_pdata;
-		platform_device_register(&tegra_uartd_device);
+		tegra_uarta_device.dev.platform_data = &flounder_uarta_pdata;
+		platform_device_register(&tegra_uarta_device);
 	}
 }
 
