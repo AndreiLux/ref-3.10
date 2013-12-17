@@ -89,6 +89,9 @@
 #include "iomap.h"
 #include "pm.h"
 #include "tegra-board-id.h"
+#include "../../../sound/soc/codecs/rt5506.h"
+#include "../../../sound/soc/codecs/rt5677.h"
+#include "../../../sound/soc/codecs/tfa9895.h"
 
 static struct resource flounder_bluedroid_pm_resources[] = {
 	[0] = {
@@ -130,11 +133,33 @@ static noinline void __init flounder_setup_bluedroid_pm(void)
 	platform_device_register(&flounder_bluedroid_pm_device);
 }
 
+static struct tfa9895_platform_data tfa9895_data = {
+	.tfa9895_power_enable = TEGRA_GPIO_PX5,
+};
+
+struct rt5506_platform_data rt5506_data = {
+	.rt5506_enable = TEGRA_GPIO_PX1,
+	.rt5506_power_enable = -1,
+};
+struct rt5677_priv rt5677_data = {
+	.vad_clock_en = TEGRA_GPIO_PX3,
+};
+
 static struct i2c_board_info __initdata rt5677_board_info = {
 	I2C_BOARD_INFO("rt5677", 0x2d),
+	.platform_data = &rt5677_data,
 };
 static struct i2c_board_info __initdata rt5506_board_info = {
 	I2C_BOARD_INFO("rt5506", 0x52),
+	.platform_data = &rt5506_data,
+};
+
+static struct i2c_board_info __initdata tfa9895_board_info = {
+	I2C_BOARD_INFO("tfa9895", 0x34),
+	.platform_data = &tfa9895_data,
+};
+static struct i2c_board_info __initdata tfa9895l_board_info = {
+	I2C_BOARD_INFO("tfa9895l", 0x35),
 };
 
 static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
@@ -144,6 +169,7 @@ static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 	{ "hda2codec_2x", "pll_p",	48000000,	false},
 	{ "pwm",	"pll_p",	3187500,	false},
 	{ "i2s1",	"pll_a_out0",	0,		false},
+	{ "i2s2",	"pll_a_out0",	0,		false},
 	{ "i2s3",	"pll_a_out0",	0,		false},
 	{ "i2s4",	"pll_a_out0",	0,		false},
 	{ "spdif_out",	"pll_a_out0",	0,		false},
@@ -152,6 +178,7 @@ static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 	{ "dam1",	"clk_m",	12000000,	false},
 	{ "dam2",	"clk_m",	12000000,	false},
 	{ "audio1",	"i2s1_sync",	0,		false},
+	{ "audio2",	"i2s2_sync",	0,		false},
 	{ "audio3",	"i2s3_sync",	0,		false},
 	{ "vi_sensor",	"pll_p",	150000000,	false},
 	{ "vi_sensor2",	"pll_p",	150000000,	false},
@@ -178,8 +205,10 @@ static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 
 static void flounder_i2c_init(void)
 {
-	i2c_register_board_info(0, &rt5677_board_info, 1);
-	i2c_register_board_info(0, &rt5506_board_info, 1);
+	i2c_register_board_info(1, &rt5677_board_info, 1);
+	i2c_register_board_info(1, &rt5506_board_info, 1);
+	i2c_register_board_info(1, &tfa9895_board_info, 1);
+	i2c_register_board_info(1, &tfa9895l_board_info, 1);
 }
 
 #ifndef CONFIG_USE_OF
@@ -211,17 +240,28 @@ static struct tegra_serial_platform_data flounder_uarta_pdata = {
 
 static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
 	.gpio_hp_det = -1,
-	.gpio_ldo1_en = -1,
-	.gpio_reset = TEGRA_GPIO_PH4,
+	.gpio_ldo1_en = TEGRA_GPIO_PK0,
+	.gpio_ldo2_en = TEGRA_GPIO_PQ3,
+	.gpio_reset = TEGRA_GPIO_PX4,
+	.gpio_irq1 = TEGRA_GPIO_PS4,
+	.gpio_wakeup = TEGRA_GPIO_PO0,
 	.gpio_spkr_en = -1,
-	.gpio_int_mic_en = -1,
-	.gpio_ext_mic_en = -1,
+	.gpio_spkr_ldo_en = TEGRA_GPIO_PX5,
+	.gpio_int_mic_en = TEGRA_GPIO_PV3,
+	.gpio_ext_mic_en = TEGRA_GPIO_PS3,
 	.gpio_hp_mute = -1,
+	.gpio_hp_en = TEGRA_GPIO_PX1,
+	.gpio_hp_ldo_en = -1,
 	.gpio_codec1 = -1,
 	.gpio_codec2 = -1,
 	.gpio_codec3 = -1,
 	.i2s_param[HIFI_CODEC]       = {
 		.audio_port_id = 1,
+		.is_i2s_master = 1,
+		.i2s_mode = TEGRA_DAIFMT_I2S,
+	},
+	.i2s_param[SPEAKER]       = {
+		.audio_port_id = 2,
 		.is_i2s_master = 1,
 		.i2s_mode = TEGRA_DAIFMT_I2S,
 	},
@@ -232,10 +272,29 @@ static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
 	},
 };
 
+static struct tegra_spi_device_controller_data dev_cdata_rt5677 = {
+	.rx_clk_tap_delay = 0,
+	.tx_clk_tap_delay = 16,
+};
+
+struct spi_board_info rt5677_flounder_spi_board[1] = {
+	{
+	 .modalias = "rt5677_spidev",
+	 .bus_num = 4,
+	 .chip_select = 0,
+	 .max_speed_hz = 12 * 1000 * 1000,
+	 .mode = SPI_MODE_0,
+	 .controller_data = &dev_cdata_rt5677,
+	 },
+};
+
 static void flounder_audio_init(void)
 {
-	flounder_audio_pdata_rt5677.codec_name = "rt5677.0-002d";
+	flounder_audio_pdata_rt5677.codec_name = "rt5677.1-002d";
 	flounder_audio_pdata_rt5677.codec_dai_name = "rt5677-aif1";
+
+	spi_register_board_info(&rt5677_flounder_spi_board[0],
+	ARRAY_SIZE(rt5677_flounder_spi_board));
 }
 
 static struct platform_device flounder_audio_device_rt5677 = {
@@ -311,6 +370,7 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_dam_device1,
 	&tegra_dam_device2,
 	&tegra_i2s_device1,
+	&tegra_i2s_device2,
 	&tegra_i2s_device3,
 	&tegra_i2s_device4,
 	&flounder_audio_device_rt5677,
