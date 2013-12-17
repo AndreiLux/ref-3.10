@@ -6,17 +6,14 @@
 
 #include <linux/ioctl.h>
 #include <linux/wakelock.h>
-/*#include <mach/rpm-regulator.h>*/
-/*#include <mach/rpm-regulator-smd.h>*/
 #include <linux/regulator/consumer.h>
 
 #define RT5506_I2C_NAME "rt5506"
 #define MAX_REG_DATA 15
 
 struct rt5506_platform_data {
-	uint32_t gpio_rt5506_enable;
-	const char *power_supply;
-	struct rpm_regulator *power_reg;
+	uint32_t rt5506_enable;
+	uint32_t rt5506_power_enable;
 };
 
 struct rt5506_reg_data {
@@ -118,4 +115,7 @@ enum AMP_S4_STATUS {
 #define AMP_WRITE_REG       _IOW(AMP_IOCTL_MAGIC, 0x07,  unsigned)
 #define AMP_QUERY_OM       _IOW(AMP_IOCTL_MAGIC, 0x08,  unsigned)
 
+int query_rt5506(void);
+int set_rt5506_amp(int on, int dsp);
+int rt5506_headset_detect(int on);
 #endif

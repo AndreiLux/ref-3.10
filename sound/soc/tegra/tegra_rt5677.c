@@ -31,7 +31,6 @@
 #include <linux/pm_runtime.h>
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/gpio-tegra.h>
-#include <mach/tegra_rt5640_pdata.h>
 
 #include <sound/core.h>
 #include <sound/jack.h>
@@ -39,17 +38,22 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 #include "../codecs/rt5677.h"
+#include "../codecs/rt5506.h"
+
 
 #include "tegra_pcm.h"
 #include "tegra_asoc_utils.h"
-#include <linux/tfa9887.h>
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
+
+#ifdef HEADSET_SWITCH_TEST
+#include <linux/switch.h>
+#endif
 
 #define DRV_NAME "tegra-snd-rt5677"
 
 #define DAI_LINK_HIFI		0
-#define DAI_LINK_SPDIF		1
+#define DAI_LINK_SPEAKER	1
 #define DAI_LINK_BTSCO		2
 #define NUM_DAI_LINKS		3
 
@@ -60,12 +64,6 @@ const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.3",
 	"tegra30-i2s.4",
 };
-
-#define GPIO_SPKR_EN    BIT(0)
-#define GPIO_HP_MUTE    BIT(1)
-#define GPIO_INT_MIC_EN BIT(2)
-#define GPIO_EXT_MIC_EN BIT(3)
-#define GPIO_HP_DET     BIT(4)
 
 struct tegra_rt5677 {
 	struct tegra_asoc_utils_data util_data;
@@ -88,7 +86,7 @@ static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
 
-	tegra_asoc_utils_tristate_dap(i2s->id, false);
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
 
 	return 0;
 }
@@ -99,7 +97,7 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
 
-	tegra_asoc_utils_tristate_dap(i2s->id, true);
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
 }
 
 static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
@@ -198,14 +196,8 @@ static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 
-	/*for 24 bit audio we support only S24_LE (S24_3LE is not supported)
-	which is rendered on bus in 32 bits packet so consider as 32 bit
-	depth in clock calculations, extra 4 is required by codec,
-	God knows why ?*/
-	if (sample_size == 24)
-		i2sclock = srate * params_channels(params) * 32 * 4;
-	else
-		i2sclock = 0;
+	/* Use 64Fs */
+	i2sclock = srate * params_channels(params) * 32;
 
 	err = snd_soc_dai_set_sysclk(cpu_dai, 0,
 			i2sclock, SND_SOC_CLOCK_OUT);
@@ -234,6 +226,83 @@ static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
 	}
 
 	err = snd_soc_dai_set_fmt(cpu_dai, i2s_daifmt);
+	if (err < 0) {
+		dev_err(card->dev, "cpu_dai fmt not set\n");
+		return err;
+	}
+
+	return 0;
+}
+
+static int tegra_speaker_hw_params(struct snd_pcm_substream *substream,
+					struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int srate, mclk, min_mclk, i2s_daifmt;
+	int err;
+
+	srate = params_rate(params);
+	switch (srate) {
+	case 11025:
+	case 22050:
+	case 44100:
+	case 88200:
+		mclk = 11289600;
+		break;
+	case 8000:
+	case 16000:
+	case 32000:
+	case 48000:
+	case 64000:
+	case 96000:
+		mclk = 12288000;
+		break;
+	default:
+		return -EINVAL;
+	}
+	min_mclk = 64 * srate;
+
+	err = tegra_asoc_utils_set_rate(&machine->util_data, srate, mclk);
+	if (err < 0) {
+		if (!(machine->util_data.set_mclk % min_mclk))
+			mclk = machine->util_data.set_mclk;
+		else {
+			dev_err(card->dev, "Can't configure clocks\n");
+			return err;
+		}
+	}
+
+	tegra_asoc_utils_lock_clk_rate(&machine->util_data, 1);
+
+	i2s_daifmt = SND_SOC_DAIFMT_NB_NF;
+	i2s_daifmt |= pdata->i2s_param[SPEAKER].is_i2s_master ?
+			SND_SOC_DAIFMT_CBS_CFS : SND_SOC_DAIFMT_CBM_CFM;
+
+	switch (pdata->i2s_param[SPEAKER].i2s_mode) {
+	case TEGRA_DAIFMT_I2S:
+		i2s_daifmt |= SND_SOC_DAIFMT_I2S;
+		break;
+	case TEGRA_DAIFMT_DSP_A:
+		i2s_daifmt |= SND_SOC_DAIFMT_DSP_A;
+		break;
+	case TEGRA_DAIFMT_DSP_B:
+		i2s_daifmt |= SND_SOC_DAIFMT_DSP_B;
+		break;
+	case TEGRA_DAIFMT_LEFT_J:
+		i2s_daifmt |= SND_SOC_DAIFMT_LEFT_J;
+		break;
+	case TEGRA_DAIFMT_RIGHT_J:
+		i2s_daifmt |= SND_SOC_DAIFMT_RIGHT_J;
+		break;
+	default:
+		dev_err(card->dev, "Can't configure i2s format\n");
+		return -EINVAL;
+	}
+
+	err = snd_soc_dai_set_fmt(rtd->cpu_dai, i2s_daifmt);
 	if (err < 0) {
 		dev_err(card->dev, "cpu_dai fmt not set\n");
 		return err;
@@ -319,51 +388,6 @@ static int tegra_bt_sco_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int tegra_spdif_hw_params(struct snd_pcm_substream *substream,
-					struct snd_pcm_hw_params *params)
-{
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_card *card = rtd->card;
-	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
-	int srate, mclk, min_mclk;
-	int err;
-
-	srate = params_rate(params);
-	switch (srate) {
-	case 11025:
-	case 22050:
-	case 44100:
-	case 88200:
-		mclk = 11289600;
-		break;
-	case 8000:
-	case 16000:
-	case 32000:
-	case 48000:
-	case 64000:
-	case 96000:
-		mclk = 12288000;
-		break;
-	default:
-		return -EINVAL;
-	}
-	min_mclk = 128 * srate;
-
-	err = tegra_asoc_utils_set_rate(&machine->util_data, srate, mclk);
-	if (err < 0) {
-		if (!(machine->util_data.set_mclk % min_mclk))
-			mclk = machine->util_data.set_mclk;
-		else {
-			dev_err(card->dev, "Can't configure clocks\n");
-			return err;
-		}
-	}
-
-	tegra_asoc_utils_lock_clk_rate(&machine->util_data, 1);
-
-	return 0;
-}
-
 static int tegra_hw_free(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -381,6 +405,13 @@ static struct snd_soc_ops tegra_rt5677_ops = {
 	.shutdown = tegra_rt5677_shutdown,
 };
 
+static struct snd_soc_ops tegra_rt5677_speaker_ops = {
+	.hw_params = tegra_speaker_hw_params,
+	.hw_free = tegra_hw_free,
+	.startup = tegra_rt5677_startup,
+	.shutdown = tegra_rt5677_shutdown,
+};
+
 static struct snd_soc_ops tegra_rt5677_bt_sco_ops = {
 	.hw_params = tegra_bt_sco_hw_params,
 	.hw_free = tegra_hw_free,
@@ -388,10 +419,51 @@ static struct snd_soc_ops tegra_rt5677_bt_sco_ops = {
 	.shutdown = tegra_rt5677_shutdown,
 };
 
-static struct snd_soc_ops tegra_spdif_ops = {
-	.hw_params = tegra_spdif_hw_params,
-	.hw_free = tegra_hw_free,
+#ifdef HEADSET_SWITCH_TEST
+enum headset_state {
+	BIT_NO_HEADSET = 0,
+	BIT_HEADSET = (1 << 0),
+	BIT_HEADSET_NO_MIC = (1 << 1),
 };
+
+static struct switch_dev tegra_rt5677_headset_test_dev = {
+	.name = "h2w",
+};
+
+static const char * const tegra_rt5677_headset_test_mode[] = {
+	"plugout", "plugin"
+};
+
+static const SOC_ENUM_SINGLE_DECL(tegra_rt5677_headset_test_mode_enum, 0, 0,
+	tegra_rt5677_headset_test_mode);
+
+static int tegra_rt5677_headset_test_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	return 0;
+}
+
+static int tegra_rt5677_headset_test_set(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	enum headset_state state = BIT_NO_HEADSET;
+
+	if (ucontrol->value.integer.value[0] == 0) {
+		state = BIT_NO_HEADSET;
+		/*rt5506_headset_detect(0);*/
+	} else {
+		state = BIT_HEADSET;
+		/*rt5506_headset_detect(1);*/
+	}
+
+	/*switch_set_state(&tegra_rt5677_headset_test_dev, state);*/
+
+	pr_info("%s: tegra_rt5677_headset_test_dev set to %d done\n",
+		__func__, state);
+
+	return 0;
+}
+#endif
 
 static int tegra_rt5677_event_headphone_jack(struct snd_soc_dapm_widget *w,
 					struct snd_kcontrol *k, int event)
@@ -401,6 +473,22 @@ static int tegra_rt5677_event_headphone_jack(struct snd_soc_dapm_widget *w,
 
 	dev_dbg(card->dev, "tegra_rt5677_event_headphone_jack (%d)\n",
 		event);
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		dev_dbg(card->dev, "%s: set_rt5506_amp(1,0)\n", __func__);
+		/*msleep(900); depop*/
+		set_rt5506_amp(1, 0);
+	break;
+	case SND_SOC_DAPM_PRE_PMD:
+		dev_dbg(card->dev, "%s: set_rt5506_amp(0,0)\n", __func__);
+		set_rt5506_amp(0, 0);
+	break;
+
+	default:
+	return 0;
+	}
+
 	return 0;
 }
 
@@ -409,20 +497,74 @@ static int tegra_rt5677_event_mic_jack(struct snd_soc_dapm_widget *w,
 {
 	struct snd_soc_dapm_context *dapm = w->dapm;
 	struct snd_soc_card *card = dapm->card;
-
+#ifdef HEADSET_SWITCH_TEST
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int ret = 0;
+#endif
 	dev_dbg(card->dev, "tegra_rt5677_event_mic_jack (%d)\n",
 		event);
+
+#ifdef HEADSET_SWITCH_TEST
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		ret = gpio_direction_output(pdata->gpio_ext_mic_en, 1);
+		if (ret)
+			dev_err(card->dev, "gpio_ext_mic_en=1 fail,%d\n", ret);
+		else
+			dev_dbg(card->dev, "gpio_ext_mic_en=1\n");
+	break;
+
+	case SND_SOC_DAPM_POST_PMD:
+		ret = gpio_direction_output(pdata->gpio_ext_mic_en, 0);
+		if (ret)
+			dev_err(card->dev, "gpio_ext_mic_en=0 fail,%d\n", ret);
+		else
+			dev_dbg(card->dev, "gpio_ext_mic_en=0\n");
+	break;
+
+	default:
+	return 0;
+	}
+#endif
+
 	return 0;
 }
 
 static int tegra_rt5677_event_int_mic(struct snd_soc_dapm_widget *w,
 					struct snd_kcontrol *k, int event)
 {
+
 	struct snd_soc_dapm_context *dapm = w->dapm;
 	struct snd_soc_card *card = dapm->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int ret = 0;
 
 	dev_dbg(card->dev, "tegra_rt5677_event_int_mic (%d)\n",
 		event);
+
+	switch (event) {
+	case SND_SOC_DAPM_PRE_PMU:
+		ret = gpio_direction_output(pdata->gpio_int_mic_en, 1);
+		if (ret)
+			dev_err(card->dev, "gpio_int_mic_en=1 fail,%d\n", ret);
+		else
+			dev_dbg(card->dev, "gpio_int_mic_en=1\n");
+	break;
+
+	case SND_SOC_DAPM_POST_PMD:
+		ret = gpio_direction_output(pdata->gpio_int_mic_en, 0);
+		if (ret)
+			dev_err(card->dev, "gpio_int_mic_en=0 fail,%d\n", ret);
+		else
+			dev_dbg(card->dev, "gpio_int_mic_en=0\n");
+	break;
+
+	default:
+	return 0;
+	}
+
 	return 0;
 }
 
@@ -447,6 +589,12 @@ static const struct snd_kcontrol_new flounder_controls[] = {
 	SOC_DAPM_PIN_SWITCH("Headphone Jack"),
 	SOC_DAPM_PIN_SWITCH("Mic Jack"),
 	SOC_DAPM_PIN_SWITCH("Int Mic"),
+
+#ifdef HEADSET_SWITCH_TEST
+	SOC_ENUM_EXT("Headset Insert Test", tegra_rt5677_headset_test_mode_enum,
+		tegra_rt5677_headset_test_get, tegra_rt5677_headset_test_set),
+#endif
+
 };
 
 static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
@@ -473,7 +621,7 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 	[DAI_LINK_HIFI] = {
 		.name = "rt5677",
 		.stream_name = "rt5677 PCM",
-		.codec_name = "rt5677.0-002d",
+		.codec_name = "rt5677.1-002d",
 		.platform_name = "tegra30-i2s.1",
 		.cpu_dai_name = "tegra30-i2s.1",
 		.codec_dai_name = "rt5677-aif1",
@@ -481,14 +629,14 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.ops = &tegra_rt5677_ops,
 	},
 
-	[DAI_LINK_SPDIF] = {
-		.name = "SPDIF",
-		.stream_name = "SPDIF PCM",
+	[DAI_LINK_SPEAKER] = {
+		.name = "SPEAKER",
+		.stream_name = "SPEAKER PCM",
 		.codec_name = "spdif-dit.0",
-		.platform_name = "tegra30-spdif",
-		.cpu_dai_name = "tegra30-spdif",
+		.platform_name = "tegra30-i2s.2",
+		.cpu_dai_name = "tegra30-i2s.2",
 		.codec_dai_name = "dit-hifi",
-		.ops = &tegra_spdif_ops,
+		.ops = &tegra_rt5677_speaker_ops,
 	},
 
 	[DAI_LINK_BTSCO] = {
@@ -689,79 +837,98 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_free_machine;
 
-	/*
-	*codec_reg - its a GPIO (in the form of a fixed regulator) that enables
-	*the basic(I2C) power for the codec and must be ON always
-	*/
-	if (!gpio_is_valid(pdata->gpio_ldo1_en)) {
-		machine->codec_reg = regulator_get(&pdev->dev, "ldoen");
-		if (IS_ERR(machine->codec_reg))
-			machine->codec_reg = 0;
-		else
-			ret = regulator_enable(machine->codec_reg);
+	if (gpio_is_valid(pdata->gpio_ldo1_en)) {
+		dev_dbg(&pdev->dev, "gpio_ldo1_en %d is valid\n",
+			pdata->gpio_ldo1_en);
+		ret = gpio_request(pdata->gpio_ldo1_en, "rt5677-ldo-enable");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_ldo1_en, %d\n",
+				ret);
+			goto err_free_machine;
+		} else {
+			ret = gpio_direction_output(pdata->gpio_ldo1_en, 1);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"gpio_ldo1_en=1 fail,%d\n", ret);
+				gpio_free(pdata->gpio_ldo1_en);
+				goto err_free_machine;
+			} else
+				dev_dbg(&pdev->dev, "gpio_ldo1_en=1\n");
+
+			/*gpio_free(pdata->gpio_ldo1_en);*/
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_ldo1_en %d is invalid\n",
+			pdata->gpio_ldo1_en);
 	}
 
-	/*
-	*digital_reg - provided the digital power for the codec and must be
-	*ON always
-	*/
-	machine->digital_reg = regulator_get(&pdev->dev, "dbvdd");
-	if (IS_ERR(machine->digital_reg))
-		machine->digital_reg = 0;
-	else
-		ret = regulator_enable(machine->digital_reg);
+	if (gpio_is_valid(pdata->gpio_ldo2_en)) {
+		dev_dbg(&pdev->dev, "gpio_ldo2_en %d is valid\n",
+			pdata->gpio_ldo2_en);
+		ret = gpio_request(pdata->gpio_ldo2_en, "rt5677-ldo2-enable");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_ldo2_en, %d\n",
+				ret);
+			goto err_free_machine;
+		} else {
+			ret = gpio_direction_output(pdata->gpio_ldo2_en, 1);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"gpio_ldo1_en=2 fail,%d\n", ret);
+				gpio_free(pdata->gpio_ldo2_en);
+				goto err_free_machine;
+			} else
+				dev_dbg(&pdev->dev, "gpio_ldo2_en=1\n");
 
-	/*
-	*analog_reg - provided the analog power for the codec and must be
-	*ON always
-	*/
-	machine->analog_reg = regulator_get(&pdev->dev, "avdd");
-	if (IS_ERR(machine->analog_reg))
-		machine->analog_reg = 0;
-	else
-		ret = regulator_enable(machine->analog_reg);
+			/*gpio_free(pdata->gpio_ldo2_en);*/
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_ldo2_en %d is invalid\n",
+			pdata->gpio_ldo2_en);
+	}
 
-	/*
-	*mic_reg - provided the micbias power and jack detection power
-	*for the codec and must be ON always
-	*/
-	machine->mic_reg = regulator_get(&pdev->dev, "micvdd");
-	if (IS_ERR(machine->mic_reg))
-		machine->mic_reg = 0;
-	else
-		ret = regulator_enable(machine->mic_reg);
 
-	/*
-	*spk_reg - provided the speaker power and can be turned ON
-	*on need basis, when required
-	*/
-	machine->spk_reg = regulator_get(&pdev->dev, "spkvdd");
-	if (IS_ERR(machine->spk_reg))
-		machine->spk_reg = 0;
-	else
-		ret = regulator_disable(machine->spk_reg);
+	usleep_range(1000, 2000);
 
-	/*
-	*dmic_reg - provided the DMIC power and can be turned ON
-	*on need basis, when required
-	*/
-	machine->dmic_reg = regulator_get(&pdev->dev, "dmicvdd");
-	if (IS_ERR(machine->dmic_reg))
-		machine->dmic_reg = 0;
-	else
-		ret = regulator_disable(machine->dmic_reg);
-
-	/* deassert rt5677-reset pin */
 	if (gpio_is_valid(pdata->gpio_reset)) {
+		dev_dbg(&pdev->dev, "gpio_reset %d is valid\n",
+			pdata->gpio_reset);
 		ret = gpio_request(pdata->gpio_reset, "rt5677-reset");
-		if (ret)
-			dev_err(&pdev->dev, "Fail gpio_request rt5677-reset\n");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_reset, %d\n",
+				ret);
+			goto err_free_machine;
+		} else {
+			ret = gpio_direction_output(pdata->gpio_reset, 1);
+			if (ret) {
+				dev_err(&pdev->dev,
+					"gpio_reset=1 fail,%d\n", ret);
+				gpio_free(pdata->gpio_reset);
+				goto err_free_machine;
+			} else
+				dev_dbg(&pdev->dev, "gpio_reset=1\n");
 
-		ret = gpio_direction_output(pdata->gpio_reset, 1);
-		if (ret)
-			dev_err(&pdev->dev, "Fail gpio_direction rt5677-reset\n");
+			/*gpio_free(pdata->gpio_reset);*/
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_reset %d is invalid\n",
+		pdata->gpio_reset);
+	}
 
-		msleep(20);
+	usleep_range(500, 1500);
+
+	if (gpio_is_valid(pdata->gpio_int_mic_en)) {
+		dev_dbg(&pdev->dev, "gpio_int_mic_en %d is valid\n",
+			pdata->gpio_int_mic_en);
+		ret = gpio_request(pdata->gpio_int_mic_en, "int-mic-enable");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_int_mic_en, %d\n",
+				ret);
+			goto err_free_machine;
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_int_mic_en %d is invalid\n",
+			pdata->gpio_int_mic_en);
 	}
 
 	card->dev = &pdev->dev;
@@ -773,6 +940,12 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	tegra_rt5677_dai[DAI_LINK_HIFI].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 	tegra_rt5677_dai[DAI_LINK_HIFI].platform_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+
+	codec_id = pdata->i2s_param[SPEAKER].audio_port_id;
+	tegra_rt5677_dai[DAI_LINK_SPEAKER].cpu_dai_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+	tegra_rt5677_dai[DAI_LINK_SPEAKER].platform_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 
 	codec_id = pdata->i2s_param[BT_SCO].audio_port_id;
@@ -807,6 +980,28 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	}
 #endif
 
+#ifdef HEADSET_SWITCH_TEST
+
+	ret = tegra_asoc_switch_register(&tegra_rt5677_headset_test_dev);
+	if (ret < 0)
+		dev_err(&pdev->dev, "tegra_rt5677_headset_test_dev register failed (%d)\n",
+			ret);
+
+	if (gpio_is_valid(pdata->gpio_ext_mic_en)) {
+		dev_dbg(&pdev->dev, "gpio_ext_mic_en %d is valid\n",
+			pdata->gpio_ext_mic_en);
+		ret = gpio_request(pdata->gpio_ext_mic_en, "ext-mic-enable");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_ext_mic_en, %d\n",
+				ret);
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_ext_mic_en %d is invalid\n",
+			pdata->gpio_ext_mic_en);
+	}
+
+#endif
+
 	return 0;
 
 err_unregister_card:
@@ -829,27 +1024,82 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	struct device_node *np = pdev->dev.of_node;
 
-	if (machine->digital_reg)
-		regulator_put(machine->digital_reg);
-	if (machine->analog_reg)
-		regulator_put(machine->analog_reg);
-	if (machine->mic_reg)
-		regulator_put(machine->mic_reg);
-	if (machine->spk_reg)
-		regulator_put(machine->spk_reg);
-	if (machine->dmic_reg)
-		regulator_put(machine->dmic_reg);
-	if (machine->codec_reg)
-		regulator_put(machine->codec_reg);
+	int ret;
+	if (gpio_is_valid(pdata->gpio_reset)) {
+		dev_dbg(&pdev->dev, "gpio_reset %d is valid\n",
+			pdata->gpio_reset);
+		ret = gpio_request(pdata->gpio_reset, "rt5677-reset");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_reset, %d\n",
+				ret);
+		} else {
+			ret = gpio_direction_output(pdata->gpio_reset, 0);
+			if (ret)
+				dev_err(&pdev->dev, "gpio_reset=0 fail,%d\n",
+					ret);
+			else
+				dev_dbg(&pdev->dev, "gpio_reset=0\n");
+
+			gpio_free(pdata->gpio_reset);
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_reset %d is invalid\n",
+		pdata->gpio_reset);
+	}
+
+	usleep_range(1000, 2000);
 
 	if (gpio_is_valid(pdata->gpio_ldo1_en)) {
-		gpio_set_value(pdata->gpio_ldo1_en, 0);
-		gpio_free(pdata->gpio_ldo1_en);
+		dev_dbg(&pdev->dev, "gpio_ldo1_en %d is valid\n",
+			pdata->gpio_ldo1_en);
+		ret = gpio_request(pdata->gpio_ldo1_en, "rt5677-ldo-enable");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_ldo1_en, %d\n",
+				ret);
+		} else {
+			ret = gpio_direction_output(pdata->gpio_ldo1_en, 0);
+			if (ret)
+				dev_err(&pdev->dev,
+					"gpio_ldo1_en=0 fail,%d\n", ret);
+			else
+				dev_dbg(&pdev->dev, "gpio_ldo1_en=0\n");
+
+			gpio_free(pdata->gpio_ldo1_en);
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_ldo1_en %d is invalid\n",
+			pdata->gpio_ldo1_en);
+	}
+
+	if (gpio_is_valid(pdata->gpio_ldo2_en)) {
+		dev_dbg(&pdev->dev, "gpio_ldo2_en %d is valid\n",
+			pdata->gpio_ldo2_en);
+		ret = gpio_request(pdata->gpio_ldo2_en, "rt5677-ldo2-enable");
+		if (ret) {
+			dev_err(&pdev->dev, "Fail gpio_request gpio_ldo2_en, %d\n",
+				ret);
+		} else {
+			ret = gpio_direction_output(pdata->gpio_ldo2_en, 0);
+			if (ret)
+				dev_err(&pdev->dev,
+					"gpio_ldo2_en=0 fail,%d\n", ret);
+			else
+				dev_dbg(&pdev->dev, "gpio_ldo2_en=0\n");
+
+			gpio_free(pdata->gpio_ldo2_en);
+		}
+	} else {
+		dev_err(&pdev->dev, "gpio_ldo2_en %d is invalid\n",
+			pdata->gpio_ldo2_en);
 	}
 
 	snd_soc_unregister_card(card);
 
 	tegra_asoc_utils_fini(&machine->util_data);
+
+#ifdef HEADSET_SWITCH_TEST
+	tegra_asoc_switch_unregister(&tegra_rt5677_headset_test_dev);
+#endif
 
 	if (np)
 		kfree(machine->pdata);

@@ -52,7 +52,8 @@
 #include "tegra_asoc_utils.h"
 
 int g_is_call_mode;
-static atomic_t dap_ref_count[5];
+static atomic_t dap_ref_count[4];
+static atomic_t dap_pd_ref_count[4];
 
 #ifdef CONFIG_SWITCH
 static bool is_switch_registered;
@@ -131,6 +132,68 @@ other pinmux*/
 	return 0;
 }
 EXPORT_SYMBOL_GPL(tegra_asoc_utils_tristate_dap);
+
+
+
+#define TRISTATE_PD_DAP_PORT(n) \
+static void tristate_pd_dap_##n(bool tristate) \
+{ \
+	enum tegra_pingroup fs, sclk, din, dout; \
+	fs = TEGRA_PINGROUP_DAP##n##_FS; \
+	sclk = TEGRA_PINGROUP_DAP##n##_SCLK; \
+	din = TEGRA_PINGROUP_DAP##n##_DIN; \
+	dout = TEGRA_PINGROUP_DAP##n##_DOUT; \
+	if (tristate) { \
+		if (atomic_dec_return(&dap_pd_ref_count[n-1]) == 0) {\
+			tegra_pinmux_set_tristate(fs, TEGRA_TRI_TRISTATE); \
+			tegra_pinmux_set_pullupdown(fs, TEGRA_PUPD_PULL_DOWN); \
+			tegra_pinmux_set_tristate(sclk, TEGRA_TRI_TRISTATE); \
+			tegra_pinmux_set_pullupdown(sclk, TEGRA_PUPD_PULL_DOWN); \
+			tegra_pinmux_set_tristate(din, TEGRA_TRI_TRISTATE); \
+			tegra_pinmux_set_tristate(dout, TEGRA_TRI_TRISTATE); \
+			tegra_pinmux_set_pullupdown(dout, TEGRA_PUPD_PULL_DOWN); \
+		} \
+	} else { \
+		if (atomic_inc_return(&dap_pd_ref_count[n-1]) == 1) {\
+			tegra_pinmux_set_tristate(fs, TEGRA_TRI_NORMAL); \
+			tegra_pinmux_set_pullupdown(fs, TEGRA_PUPD_NORMAL); \
+			tegra_pinmux_set_tristate(sclk, TEGRA_TRI_NORMAL); \
+			tegra_pinmux_set_pullupdown(sclk, TEGRA_PUPD_NORMAL); \
+			tegra_pinmux_set_tristate(din, TEGRA_TRI_NORMAL); \
+			tegra_pinmux_set_tristate(dout, TEGRA_TRI_NORMAL); \
+			tegra_pinmux_set_pullupdown(dout, TEGRA_PUPD_NORMAL); \
+		} \
+	} \
+}
+
+
+TRISTATE_PD_DAP_PORT(1)
+TRISTATE_PD_DAP_PORT(2)
+TRISTATE_PD_DAP_PORT(3)
+TRISTATE_PD_DAP_PORT(4)
+
+int tegra_asoc_utils_tristate_pd_dap(int id, bool tristate)
+{
+	switch (id) {
+	case 0:
+		tristate_pd_dap_1(tristate);
+		break;
+	case 1:
+		tristate_pd_dap_2(tristate);
+		break;
+	case 2:
+		tristate_pd_dap_3(tristate);
+		break;
+	case 3:
+		tristate_pd_dap_4(tristate);
+		break;
+	default:
+		pr_warn("Invalid DAP port\n");
+		break;
+	}
+	return 0;
+}
+EXPORT_SYMBOL_GPL(tegra_asoc_utils_tristate_pd_dap);
 
 bool tegra_is_voice_call_active(void)
 {

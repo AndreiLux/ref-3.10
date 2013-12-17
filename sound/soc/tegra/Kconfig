@@ -309,17 +309,18 @@ config MACH_HAS_SND_SOC_TEGRA_RT5677
 	  SND_SOC_TEGRA_RT5677.
 
 config SND_SOC_TEGRA_RT5677
-	tristate "SoC Audio support for Tegra boards using a ALC5677 codec"
+	tristate "SoC Audio support for Tegra boards using a ALC5677 codec + RT5506 AMP"
 	depends on SND_SOC_TEGRA && I2C && TEGRA_DC
 	select SND_SOC_TEGRA30_I2S if !ARCH_TEGRA_2x_SOC
 	select SND_SOC_TEGRA30_SPDIF if !ARCH_TEGRA_2x_SOC
 	select SND_SOC_RT5677
+	select SND_SOC_RT5506
 	select SND_SOC_SPDIF
 	select SND_SOC_TEGRA30_DAM if !ARCH_TEGRA_2x_SOC
 	help
 	  Say Y or M here if you want to add support for SoC audio on Tegra
-	  boards using the ALC5677 codec. Currently, the supported board
-	  is Kai and Ardbeg.
+	  boards using the ALC5677 codec + Rt5506 AMP. Currently,
+	  the supported boards are Flounder.
 
 config SND_SOC_TEGRA_MAX98095
 	tristate "SoC Audio support for Tegra boards using a MAX98095 codec"

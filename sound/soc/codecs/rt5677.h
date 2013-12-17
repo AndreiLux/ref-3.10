@@ -921,10 +921,10 @@
 #define RT5677_PWR_SLB_BIT			9
 #define RT5677_PWR_DAC3				(0x1 << 7)
 #define RT5677_PWR_DAC3_BIT			7
-#define RT5677_PWR_ADCFED1			(0x1 << 4)
-#define RT5677_PWR_ADCFED1_BIT			4
-#define RT5677_PWR_ADCFED2			(0x1 << 3)
-#define RT5677_PWR_ADCFED2_BIT			3
+#define RT5677_PWR_ADCFED2			(0x1 << 4)
+#define RT5677_PWR_ADCFED2_BIT			4
+#define RT5677_PWR_ADCFED1			(0x1 << 3)
+#define RT5677_PWR_ADCFED1_BIT			3
 #define RT5677_PWR_ADC_L			(0x1 << 2)
 #define RT5677_PWR_ADC_L_BIT			2
 #define RT5677_PWR_ADC_R			(0x1 << 1)
@@ -1425,6 +1425,18 @@ enum {
 	RT5677_AIFS,
 };
 
+enum {
+	RT5677_VAD_OFF,
+	RT5677_VAD_IDLE,
+	RT5677_VAD_SUSPEND,
+};
+
+enum {
+	RT5677_VAD_SRC_DMIC1,
+	RT5677_VAD_SRC_DMIC2,
+	RT5677_VAD_SRC_AMIC,
+};
+
 struct rt5677_pll_code {
 	bool m_bp; /* Indicates bypass m code or not. */
 	bool k_bp; /* Indicates bypass k code or not. */
@@ -1451,6 +1463,8 @@ struct rt5677_priv {
 	int pll_in;
 	int pll_out;
 	int vad_mode;
+	int vad_source;
+	int vad_clock_en;
 };
 
 #endif /* __RT5677_H__ */

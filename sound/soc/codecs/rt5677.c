@@ -10,7 +10,6 @@
  */
 
 #include <linux/fs.h>
-#include <linux/vmalloc.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
@@ -20,6 +19,7 @@
 #include <linux/i2c.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
+#include <linux/of_gpio.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -38,7 +38,7 @@
 #include "rt5677.h"
 #include "rt5677-spi.h"
 
-#define VERSION "0.0.1 alsa 1.0.25"
+#define VERSION "0.0.2 alsa 1.0.25"
 
 struct rt5677_init_reg {
 	u8 reg;
@@ -54,7 +54,11 @@ static struct rt5677_init_reg init_list[] = {
 	{RT5677_PRIV_INDEX		, 0x003d},
 	{RT5677_PRIV_DATA		, 0x364e},
 	{RT5677_PWR_DSP2		, 0x0c00},
-	{RT5677_TDM1_CTRL1		, 0x1000},
+	/* 64Fs in TDM mode */
+	{RT5677_TDM1_CTRL1		, 0x1300},
+
+	/* MX80 bit10 0:MCLK1 1:MCLK2 */
+	{RT5677_GLB_CLK1		, 0x0400},
 
 	/* Playback Start */
 	{RT5677_PRIV_INDEX		, 0x0017},
@@ -570,12 +574,16 @@ static unsigned int rt5677_read_dsp_code_from_file(char *file_path,
 	unsigned int file_size = 0;
 	struct file *fp;
 
+	pr_debug("%s\n", __func__);
+
+
 	fp = filp_open(file_path, O_RDONLY, 0);
 	if (!IS_ERR(fp)) {
 		file_size = vfs_llseek(fp, pos, SEEK_END);
-
-		*buf = vmalloc(file_size);
+		*buf = kzalloc(file_size, GFP_KERNEL);
 		if (*buf == NULL) {
+			pr_err("%s: kzalloc size=0x%x fail\n", __func__,
+				file_size);
 			filp_close(fp, 0);
 			return 0;
 		}
@@ -584,8 +592,9 @@ static unsigned int rt5677_read_dsp_code_from_file(char *file_path,
 		filp_close(fp, 0);
 
 		return file_size;
+	} else {
+		pr_err("%s: filp_open fail\n", __func__);
 	}
-
 	return 0;
 }
 
@@ -624,6 +633,10 @@ static unsigned int rt5677_set_vad(
 	static bool activity;
 	char file_path[64];
 
+#ifdef DEBUG
+	int ret = 0;
+#endif
+
 	if (on && !activity) {
 		pr_debug("rt5677_set_vad on\n");
 		activity = true;
@@ -644,7 +657,10 @@ static unsigned int rt5677_set_vad(
 		regmap_write(rt5677->regmap, RT5677_DIG_MISC, 0x0001);
 		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL1, 0x2777);
 		regmap_write(rt5677->regmap, RT5677_GLB_CLK2, 0x0080);
+
+		/* from MCLK1 */
 		regmap_write(rt5677->regmap, RT5677_GLB_CLK1, 0x0080);
+
 		regmap_write(rt5677->regmap, RT5677_DMIC_CTRL1, 0x9545);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL1, 0x273c);
 		regmap_write(rt5677->regmap, RT5677_IRQ_CTRL2, 0x4000);
@@ -652,19 +668,31 @@ static unsigned int rt5677_set_vad(
 		regmap_write(rt5677->regmap, RT5677_PWR_DIG2, 0x4000);
 		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL2, 0x6000);
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0x0081);
-		regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x071a);
-		regmap_write(rt5677->regmap, RT5677_PWR_DSP1, 0x046b);
+		regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x07ff);
+		regmap_write(rt5677->regmap, RT5677_PWR_DSP1, 0x07ff);
 
+		msleep(100);
 		sprintf(file_path, "/system/etc/rt5677_0x50000000_%s",
 			dsp_vad_suffix);
 		len = rt5677_read_dsp_code_from_file(file_path, &buf);
 		if (len) {
 			pr_debug("load /system/etc/rt5677_0x50000000 ok\n");
 			rt5677_spi_burst_write(0x50000000, buf, len);
-			vfree(buf);
+			kfree(buf);
 		} else {
-			pr_debug("load /system/etc/rt5677_0x50000000 fail\n");
+			pr_err("load /system/etc/rt5677_0x50000000 fail\n");
 		}
+
+#ifdef DEBUG
+		msleep(50);
+		regmap_write(rt5677->regmap, 0x01, 0x0000);
+		regmap_write(rt5677->regmap, 0x02, 0x5000);
+		regmap_write(rt5677->regmap, 0x00, 0x0002);
+		regmap_read(rt5677->regmap, 0x03, &ret);
+		dev_err(codec->dev, "0x50000000 0x03 %x\n", ret);
+		regmap_read(rt5677->regmap, 0x04, &ret);
+		dev_err(codec->dev, "0x50000000 0x04 %x\n", ret);
+#endif
 
 		sprintf(file_path, "/system/etc/rt5677_0x60000000_%s",
 			dsp_vad_suffix);
@@ -672,10 +700,21 @@ static unsigned int rt5677_set_vad(
 		if (len) {
 			pr_debug("load /system/etc/rt5677_0x60000000 ok\n");
 			rt5677_spi_burst_write(0x60000000, buf, len);
-			vfree(buf);
+			kfree(buf);
 		} else {
-			pr_debug("load /system/etc/rt5677_0x60000000 fail\n");
+			pr_err("load /system/etc/rt5677_0x60000000 fail\n");
 		}
+
+#ifdef DEBUG
+		msleep(50);
+		regmap_write(rt5677->regmap, 0x01, 0x0000);
+		regmap_write(rt5677->regmap, 0x02, 0x6000);
+		regmap_write(rt5677->regmap, 0x00, 0x0002);
+		regmap_read(rt5677->regmap, 0x03, &ret);
+		dev_err(codec->dev, "0x60000000 0x03 %x\n", ret);
+		regmap_read(rt5677->regmap, 0x04, &ret);
+		dev_err(codec->dev, "0x60000000 0x04 %x\n", ret);
+#endif
 
 		rt5677_dsp_mode_i2c_update_bits(codec, RT5677_PWR_DSP1,
 			0x1, 0x0);
@@ -1094,12 +1133,27 @@ static const struct snd_kcontrol_new rt5677_snd_controls[] = {
 		RT5677_BST_SFT2, 8, 0, bst_tlv),
 
 	/* ADC Digital Volume Control */
-	SOC_DOUBLE("ADC Capture Switch", RT5677_STO1_ADC_DIG_VOL,
+	SOC_DOUBLE("ADC1 Capture Switch", RT5677_STO1_ADC_DIG_VOL,
+		RT5677_L_MUTE_SFT, RT5677_R_MUTE_SFT, 1, 1),
+	SOC_DOUBLE("ADC2 Capture Switch", RT5677_STO2_ADC_DIG_VOL,
+		RT5677_L_MUTE_SFT, RT5677_R_MUTE_SFT, 1, 1),
+	SOC_DOUBLE("ADC3 Capture Switch", RT5677_STO3_ADC_DIG_VOL,
+		RT5677_L_MUTE_SFT, RT5677_R_MUTE_SFT, 1, 1),
+	SOC_DOUBLE("ADC4 Capture Switch", RT5677_STO4_ADC_DIG_VOL,
 		RT5677_L_MUTE_SFT, RT5677_R_MUTE_SFT, 1, 1),
 	SOC_DOUBLE("Mono ADC Capture Switch", RT5677_MONO_ADC_DIG_VOL,
 		RT5677_L_MUTE_SFT, RT5677_R_MUTE_SFT, 1, 1),
 
-	SOC_DOUBLE_TLV("ADC Capture Volume", RT5677_STO1_ADC_DIG_VOL,
+	SOC_DOUBLE_TLV("ADC1 Capture Volume", RT5677_STO1_ADC_DIG_VOL,
+			RT5677_STO1_ADC_L_VOL_SFT, RT5677_STO1_ADC_R_VOL_SFT,
+			127, 0, adc_vol_tlv),
+	SOC_DOUBLE_TLV("ADC2 Capture Volume", RT5677_STO2_ADC_DIG_VOL,
+			RT5677_STO1_ADC_L_VOL_SFT, RT5677_STO1_ADC_R_VOL_SFT,
+			127, 0, adc_vol_tlv),
+	SOC_DOUBLE_TLV("ADC3 Capture Volume", RT5677_STO3_ADC_DIG_VOL,
+			RT5677_STO1_ADC_L_VOL_SFT, RT5677_STO1_ADC_R_VOL_SFT,
+			127, 0, adc_vol_tlv),
+	SOC_DOUBLE_TLV("ADC4 Capture Volume", RT5677_STO4_ADC_DIG_VOL,
 			RT5677_STO1_ADC_L_VOL_SFT, RT5677_STO1_ADC_R_VOL_SFT,
 			127, 0, adc_vol_tlv),
 	SOC_DOUBLE_TLV("Mono ADC Capture Volume", RT5677_MONO_ADC_DIG_VOL,
@@ -1110,9 +1164,17 @@ static const struct snd_kcontrol_new rt5677_snd_controls[] = {
 	SOC_DOUBLE_TLV("STO1 ADC Boost Gain", RT5677_STO1_2_ADC_BST,
 			RT5677_STO1_ADC_L_BST_SFT, RT5677_STO1_ADC_R_BST_SFT,
 			3, 0, adc_bst_tlv),
-
 	SOC_DOUBLE_TLV("STO2 ADC Boost Gain", RT5677_STO1_2_ADC_BST,
 			RT5677_STO2_ADC_L_BST_SFT, RT5677_STO2_ADC_R_BST_SFT,
+			3, 0, adc_bst_tlv),
+	SOC_DOUBLE_TLV("STO3 ADC Boost Gain", RT5677_STO3_4_ADC_BST,
+			RT5677_STO3_ADC_L_BST_SFT, RT5677_STO3_ADC_R_BST_SFT,
+			3, 0, adc_bst_tlv),
+	SOC_DOUBLE_TLV("STO4 ADC Boost Gain", RT5677_STO3_4_ADC_BST,
+			RT5677_STO4_ADC_L_BST_SFT, RT5677_STO4_ADC_R_BST_SFT,
+			3, 0, adc_bst_tlv),
+	SOC_DOUBLE_TLV("Mono ADC Boost Gain", RT5677_ADC_BST_CTRL2,
+			RT5677_MONO_ADC_L_BST_SFT, RT5677_MONO_ADC_R_BST_SFT,
 			3, 0, adc_bst_tlv),
 
 	SOC_ENUM_EXT("VAD Mode", rt5677_vad_mode_enum, rt5677_vad_get,
@@ -2080,20 +2142,14 @@ static int rt5677_adc_clk_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
 	struct snd_soc_codec *codec = w->codec;
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
-		regmap_update_bits(rt5677->regmap, RT5677_PWR_DIG1,
-			RT5677_PWR_ADCFED1 | RT5677_PWR_ADCFED2,
-			RT5677_PWR_ADCFED1 | RT5677_PWR_ADCFED2);
 		rt5677_index_update_bits(codec,
 			RT5677_CHOP_DAC_ADC, 0x1000, 0x1000);
 		break;
 
 	case SND_SOC_DAPM_POST_PMD:
-		regmap_update_bits(rt5677->regmap, RT5677_PWR_DIG1,
-			RT5677_PWR_ADCFED1 | RT5677_PWR_ADCFED2, 0);
 		rt5677_index_update_bits(codec,
 			RT5677_CHOP_DAC_ADC, 0x1000, 0x0000);
 		break;
@@ -2677,12 +2733,16 @@ static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA("ADC 1_2", SND_SOC_NOPM, 0, 0, NULL, 0),
 
 	SND_SOC_DAPM_SUPPLY("ADC 1 power", RT5677_PWR_DIG1,
-			RT5677_PWR_ADC_L_BIT, 0, NULL, 0),
+		RT5677_PWR_ADC_L_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("ADC 2 power", RT5677_PWR_DIG1,
-			RT5677_PWR_ADC_R_BIT, 0, NULL, 0),
+		RT5677_PWR_ADC_R_BIT, 0, NULL, 0),
 	SND_SOC_DAPM_SUPPLY("ADC clock", SND_SOC_NOPM, 0, 0,
 		rt5677_adc_clk_event, SND_SOC_DAPM_POST_PMD |
 		SND_SOC_DAPM_POST_PMU),
+	SND_SOC_DAPM_SUPPLY("ADC1 clock", RT5677_PWR_DIG1,
+		RT5677_PWR_ADCFED1_BIT, 0, NULL, 0),
+	SND_SOC_DAPM_SUPPLY("ADC2 clock", RT5677_PWR_DIG1,
+		RT5677_PWR_ADCFED2_BIT, 0, NULL, 0),
 
 	/* ADC Mux */
 	SND_SOC_DAPM_MUX("Stereo1 DMIC Mux", SND_SOC_NOPM, 0, 0,
@@ -3110,9 +3170,11 @@ static const struct snd_soc_dapm_route rt5677_dapm_routes[] = {
 	{ "ADC 1", NULL, "BST1" },
 	{ "ADC 1", NULL, "ADC 1 power" },
 	{ "ADC 1", NULL, "ADC clock" },
+	{ "ADC 1", NULL, "ADC1 clock" },
 	{ "ADC 2", NULL, "BST2" },
 	{ "ADC 2", NULL, "ADC 2 power" },
 	{ "ADC 2", NULL, "ADC clock" },
+	{ "ADC 2", NULL, "ADC2 clock" },
 
 	{ "Stereo1 DMIC Mux", "DMIC1", "DMIC1" },
 	{ "Stereo1 DMIC Mux", "DMIC2", "DMIC2" },
@@ -3866,7 +3928,7 @@ static int rt5677_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	unsigned int reg_val = 0;
 
 	if (codec->dapm.bias_level == SND_SOC_BIAS_OFF &&
-		rt5677->vad_mode == 1)
+		rt5677->vad_mode == RT5677_VAD_IDLE)
 		rt5677_set_vad(codec, 0);
 
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
@@ -4280,13 +4342,6 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 			regmap_update_bits(rt5677->regmap, RT5677_DIG_MISC,
 				0x1, 0x1);
 		}
-
-		/* Mic Test */
-		regmap_update_bits(rt5677->regmap, RT5677_PWR_ANLG2,
-			RT5677_PWR_CLK_MB1 | RT5677_PWR_MB1 |
-			RT5677_PWR_PP_MB1 | RT5677_PWR_CLK_MB,
-			RT5677_PWR_CLK_MB1 | RT5677_PWR_MB1 |
-			RT5677_PWR_PP_MB1 | RT5677_PWR_CLK_MB);
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
@@ -4299,7 +4354,7 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG1, 0x0000);
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0x0000);
 
-		if (rt5677->vad_mode == 1)
+		if (rt5677->vad_mode == RT5677_VAD_IDLE)
 			rt5677_set_vad(codec, 1);
 		break;
 
@@ -4394,7 +4449,7 @@ static int rt5677_suspend(struct snd_soc_codec *codec)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
-	if (rt5677->vad_mode == 2)
+	if (rt5677->vad_mode == RT5677_VAD_SUSPEND)
 		rt5677_set_vad(codec, 1);
 
 	return 0;
@@ -4404,10 +4459,10 @@ static int rt5677_resume(struct snd_soc_codec *codec)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
-	if (rt5677->vad_mode == 2)
+	if (rt5677->vad_mode == RT5677_VAD_SUSPEND)
 		rt5677_set_vad(codec, 0);
 
-	if (rt5677->vad_mode == 0) {
+	if (rt5677->vad_mode == RT5677_VAD_OFF) {
 		regcache_mark_dirty(rt5677->regmap);
 		regcache_sync(rt5677->regmap);
 		rt5677_index_sync(codec);
@@ -4595,6 +4650,20 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 	if (ret < 0)
 		kfree(rt5677);
 
+	if (i2c->dev.platform_data)	{
+
+		rt5677->vad_clock_en =
+		((struct rt5677_priv *)i2c->dev.platform_data)->vad_clock_en;
+
+		if (gpio_is_valid(rt5677->vad_clock_en)) {
+			dev_dbg(&i2c->dev, "vad_clock_en: %d\n",
+			rt5677->vad_clock_en);
+		} else {
+			dev_dbg(&i2c->dev, "vad_clock_en is invalid: %d\n",
+			rt5677->vad_clock_en);
+		}
+	}
+
 	return ret;
 }
 
@@ -4638,5 +4707,5 @@ static void __exit rt5677_modexit(void)
 module_exit(rt5677_modexit);
 
 MODULE_DESCRIPTION("ASoC RT5677 driver");
-MODULE_AUTHOR("Bard Liao <bardliao@realtek.com>");
+MODULE_AUTHOR("Oder Chiou <oder_chiou@realtek.com>");
 MODULE_LICENSE("GPL");

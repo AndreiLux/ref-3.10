@@ -15,6 +15,7 @@
  */
 
 #define	HIFI_CODEC		0
+#define	SPEAKER			1
 #define	BASEBAND		1
 #define	BT_SCO			2
 #define	VOICE_CODEC		3
@@ -55,13 +56,19 @@ struct tegra_asoc_platform_data {
 	const char *codec_name;
 	const char *codec_dai_name;
 	int gpio_spkr_en;
+	int gpio_spkr_ldo_en;
 	int gpio_hp_det;
 	int gpio_hp_det_active_high;
 	int gpio_hp_mute;
+	int gpio_hp_en;
+	int gpio_hp_ldo_en;
 	int gpio_int_mic_en;
 	int gpio_ext_mic_en;
 	int gpio_ldo1_en;
+	int gpio_ldo2_en;
 	int gpio_reset;
+	int gpio_irq1;
+	int gpio_wakeup;
 	int gpio_codec1;
 	int gpio_codec2;
 	int gpio_codec3;
