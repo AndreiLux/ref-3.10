@@ -533,7 +533,9 @@ static void __init flounder_uart_init(void)
 			return;
 
 #ifdef CONFIG_TEGRA_FIQ_DEBUGGER
+#ifndef CONFIG_TRUSTY_FIQ
 		tegra_serial_debug_init_irq_mode(TEGRA_UARTA_BASE, INT_UARTA, NULL, -1, -1);
+#endif
 #else
 		platform_device_register(uart_console_debug_device);
 #endif
