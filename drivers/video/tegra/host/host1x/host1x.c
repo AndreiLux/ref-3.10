@@ -483,6 +483,7 @@ static inline int nvhost_set_sysfs_capability_node(
 				struct nvhost_capability_node *node,
 				int (*func)(struct nvhost_syncpt *sp))
 {
+	sysfs_attr_init(&node->attr.attr);
 	node->attr.attr.name = name;
 	node->attr.attr.mode = S_IRUGO;
 	node->attr.show = nvhost_syncpt_capability_show;
