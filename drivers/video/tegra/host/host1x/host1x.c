@@ -193,16 +193,14 @@ static int nvhost_ioctl_ctrl_sync_fence_create(struct nvhost_ctrl_userctx *ctx,
 	struct nvhost_ctrl_sync_fence_create_args *args)
 {
 #ifdef CONFIG_TEGRA_GRHOST_SYNC
-	int err = 0;
+	int err;
 	int i;
-	u32 *ids, *vals;
+	struct nvhost_ctrl_sync_fence_info *pts;
 	char name[32];
 	const char __user *args_name =
 		(const char __user *)(uintptr_t)args->name;
-	const struct nvhost_ctrl_sync_fence_info __user *args_pts =
+	const void __user *args_pts =
 		(const void __user *)(uintptr_t)args->pts;
-	struct sync_fence *fence = NULL;
-	int fd;
 
 	if (args_name) {
 		if (strncpy_from_user(name, args_name, sizeof(name)) < 0)
@@ -212,49 +210,28 @@ static int nvhost_ioctl_ctrl_sync_fence_create(struct nvhost_ctrl_userctx *ctx,
 		name[0] = '\0';
 	}
 
-	ids = kmalloc(sizeof(*ids) * args->num_pts, GFP_KERNEL);
-	vals = kmalloc(sizeof(*vals) * args->num_pts, GFP_KERNEL);
-	if (!ids || !vals) {
-		err = -ENOMEM;
+	pts = kmalloc(sizeof(*pts) * args->num_pts, GFP_KERNEL);
+	if (!pts)
+		return -ENOMEM;
+
+
+	if (copy_from_user(pts, args_pts, sizeof(*pts) * args->num_pts)) {
+		err = -EFAULT;
 		goto out;
 	}
 
 	for (i = 0; i < args->num_pts; i++) {
-		if (get_user(ids[i], &args_pts[i].id) ||
-			get_user(vals[i], &args_pts[i].thresh)) {
-			err = -EFAULT;
-			goto out;
-		}
-
-		if (ids[i] >= nvhost_syncpt_nb_pts(&ctx->dev->syncpt) &&
-		    ids[i] != NVSYNCPT_INVALID) {
+		if (pts[i].id >= nvhost_syncpt_nb_pts(&ctx->dev->syncpt) &&
+		    pts[i].id != NVSYNCPT_INVALID) {
 			err = -EINVAL;
 			goto out;
 		}
 	}
 
-	fence = nvhost_sync_create_fence(&ctx->dev->syncpt, ids, vals,
-			args->num_pts, name);
-	if (IS_ERR(fence)) {
-		err = PTR_ERR(fence);
-		fence = NULL;
-		goto out;
-	}
-
-	fd = get_unused_fd();
-	if (fd < 0) {
-		err = fd;
-		goto out;
-	}
-
-	args->fence_fd = fd;
-	sync_fence_install(fence, fd);
-
+	err = nvhost_sync_create_fence(&ctx->dev->syncpt, pts, args->num_pts,
+				       name, &args->fence_fd);
 out:
-	if (err < 0 && fence)
-		sync_fence_put(fence);
-	kfree(vals);
-	kfree(ids);
+	kfree(pts);
 	return err;
 #else
 	return -EINVAL;
