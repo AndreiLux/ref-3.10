@@ -38,6 +38,10 @@
 #include "../../host/dev.h"
 /* XXX ew 3 */
 #include "tegra_dc_ext_priv.h"
+/* XXX ew 4 */
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+#include "../../../staging/android/sync.h"
+#endif
 
 int tegra_dc_ext_devno;
 struct class *tegra_dc_ext_class;
@@ -54,6 +58,9 @@ struct tegra_dc_ext_flip_win {
 	dma_addr_t				phys_addr_u2;
 	dma_addr_t				phys_addr_v2;
 	u32					syncpt_max;
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+	struct sync_fence			*pre_syncpt_fence;
+#endif
 };
 
 struct tegra_dc_ext_flip_data {
@@ -338,6 +345,12 @@ static int tegra_dc_ext_set_windowattr(struct tegra_dc_ext *ext,
 		dev_err(&ext->dc->ndev->dev,
 				"Window atrributes are invalid.\n");
 
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+	if (flip_win->pre_syncpt_fence) {
+		sync_fence_wait(flip_win->pre_syncpt_fence, 500);
+		sync_fence_put(flip_win->pre_syncpt_fence);
+	} else
+#endif
 	if ((s32)flip_win->attr.pre_syncpt_id >= 0) {
 		nvhost_syncpt_wait_timeout_ext(ext->dc->ndev,
 				flip_win->attr.pre_syncpt_id,
@@ -587,7 +600,8 @@ static int tegra_dc_ext_pin_windows(struct tegra_dc_ext_user *user,
 				struct tegra_dc_ext_flip_windowattr *wins,
 				int win_num,
 				struct tegra_dc_ext_flip_win *flip_wins,
-				bool *has_timestamp)
+				bool *has_timestamp,
+				bool syncpt_fd)
 {
 	int i, ret;
 
@@ -631,6 +645,19 @@ static int tegra_dc_ext_pin_windows(struct tegra_dc_ext_user *user,
 			flip_win->handle[TEGRA_DC_V] = NULL;
 			flip_win->phys_addr_v = 0;
 		}
+
+		if (syncpt_fd) {
+			if (flip_win->attr.pre_syncpt_fd >= 0) {
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+				flip_win->pre_syncpt_fence = sync_fence_fdget(
+					flip_win->attr.pre_syncpt_fd);
+#else
+				BUG();
+#endif
+			} else {
+				flip_win->attr.pre_syncpt_id = NVSYNCPT_INVALID;
+			}
+		}
 	}
 
 	return 0;
@@ -639,12 +666,14 @@ static int tegra_dc_ext_pin_windows(struct tegra_dc_ext_user *user,
 
 static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 			     struct tegra_dc_ext_flip_windowattr *win,
-				 int win_num,
-				 __u32 *syncpt_id, __u32 *syncpt_val)
+			     int win_num,
+			     __u32 *syncpt_id, __u32 *syncpt_val,
+			     int *syncpt_fd)
 {
 	struct tegra_dc_ext *ext = user->ext;
 	struct tegra_dc_ext_flip_data *data;
 	int work_index = -1;
+	__u32 post_sync_val, post_sync_id = NVSYNCPT_INVALID;
 	int i, ret = 0;
 	bool has_timestamp = false;
 
@@ -667,7 +696,8 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 	BUG_ON(win_num > DC_N_WINDOWS);
 
 	if (tegra_dc_ext_pin_windows(user, win, win_num,
-					data->win, &has_timestamp))
+				     data->win, &has_timestamp,
+				     syncpt_fd != NULL))
 		goto fail_pin;
 
 	ret = lock_windows_for_flip(user, win, win_num);
@@ -698,8 +728,9 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 		 * Any of these windows' syncpoints should be equivalent for
 		 * the client, so we just send back an arbitrary one of them
 		 */
-		*syncpt_val = syncpt_max;
-		*syncpt_id = tegra_dc_get_syncpt_id(ext->dc, index);
+		post_sync_val = syncpt_max;
+		post_sync_id = tegra_dc_get_syncpt_id(ext->dc, index);
+
 		work_index = index;
 
 		atomic_inc(&ext->win[work_index].nr_pending_flips);
@@ -708,6 +739,24 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 		ret = -EINVAL;
 		goto unlock;
 	}
+
+	if (syncpt_fd) {
+		if (post_sync_id != NVSYNCPT_INVALID) {
+			ret = nvhost_syncpt_create_fence_single_ext(
+					ext->dc->ndev, post_sync_id,
+					post_sync_val + 1, "flip-fence",
+					syncpt_fd);
+			if (ret) {
+				dev_err(&ext->dc->ndev->dev,
+					"Failed creating fence err:%d\n", ret);
+				goto unlock;
+			}
+		}
+	} else {
+		*syncpt_val = post_sync_val;
+		*syncpt_id = post_sync_id;
+	}
+
 	if (has_timestamp) {
 		mutex_lock(&ext->win[work_index].queue_lock);
 		list_add_tail(&data->timestamp_node, &ext->win[work_index].timestamp_queue);
@@ -1021,7 +1070,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 
 		ret = tegra_dc_ext_flip(user, args.win,
 			TEGRA_DC_EXT_FLIP_N_WINDOWS,
-			&args.post_syncpt_id, &args.post_syncpt_val);
+			&args.post_syncpt_id, &args.post_syncpt_val, NULL);
 
 		if (copy_to_user(user_arg, &args, sizeof(args)))
 			return -EFAULT;
@@ -1048,9 +1097,42 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
-			&args.post_syncpt_id, &args.post_syncpt_val);
+			&args.post_syncpt_id, &args.post_syncpt_val, NULL);
 
 		if (copy_to_user(args.win, win, sizeof(*win) * win_num) ||
+			copy_to_user(user_arg, &args, sizeof(args))) {
+			kfree(win);
+			return -EFAULT;
+		}
+
+		kfree(win);
+		return ret;
+	}
+
+	case TEGRA_DC_EXT_FLIP3:
+	{
+		int ret;
+		int win_num;
+		struct tegra_dc_ext_flip_3 args;
+		struct tegra_dc_ext_flip_windowattr *win;
+
+		if (copy_from_user(&args, user_arg, sizeof(args)))
+			return -EFAULT;
+
+		win_num = args.win_num;
+		win = kzalloc(sizeof(*win) * win_num, GFP_KERNEL);
+
+		if (copy_from_user(win, (void *)(uintptr_t)args.win,
+				   sizeof(*win) * win_num)) {
+			kfree(win);
+			return -EFAULT;
+		}
+
+		ret = tegra_dc_ext_flip(user, win, win_num,
+			NULL, NULL, &args.post_syncpt_fd);
+
+		if (copy_to_user((void *)(uintptr_t)args.win, win,
+				 sizeof(*win) * win_num) ||
 			copy_to_user(user_arg, &args, sizeof(args))) {
 			kfree(win);
 			return -EFAULT;
