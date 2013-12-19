@@ -28,6 +28,7 @@
 #include "../../../staging/android/sync.h"
 
 struct nvhost_syncpt;
+struct nvhost_ctrl_sync_fence_info;
 struct nvhost_sync_timeline;
 struct nvhost_sync_pt;
 
@@ -37,11 +38,12 @@ struct nvhost_sync_timeline *nvhost_sync_timeline_create(
 
 void nvhost_sync_pt_signal(struct nvhost_sync_pt *pt);
 
-struct sync_fence *nvhost_sync_create_fence(
+int nvhost_sync_create_fence(
 		struct nvhost_syncpt *sp,
-		u32 *ids, u32 *vals,
+		struct nvhost_ctrl_sync_fence_info *pts,
 		u32 num_pts,
-		const char *name);
+		const char *name,
+		s32 *fence_fd);
 
 #endif /* __KERNEL __ */
 
