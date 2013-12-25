@@ -388,11 +388,16 @@ palmas: tps65913 {
 			};
 
 			ldo2 {
-				regulator-name = "vdd-aud-1v2";
-				regulator-min-microvolt = <1050000>;
+				regulator-name = "vdd-aud";
+				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <1200000>;
 
 				consumers {
+					c1 {
+						regulator-consumer-supply = "v_ldo2";
+						regulator-consumer-device = "tegra-snd-rt5677.0";
+					};
+
 				};
 			};
 
@@ -400,6 +405,8 @@ palmas: tps65913 {
 				regulator-name = "vdd-sensor-io";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <1800000>;
+				regulator-always-on;
+				regulator-boot-on;
 
 				consumers {
 				};
@@ -409,6 +416,8 @@ palmas: tps65913 {
 				regulator-name = "vdd-sensor-2v85";
 				regulator-min-microvolt = <2850000>;
 				regulator-max-microvolt = <2850000>;
+				regulator-always-on;
+				regulator-boot-on;
 
 				consumers {
 				};
@@ -465,7 +474,7 @@ palmas: tps65913 {
 			ldo6 {
 				regulator-name = "vdd-1v5-ldo6";
 				regulator-min-microvolt = <1500000>;
-				regulator-max-microvolt = <1500000>;
+				regulator-max-microvolt = <1800000>;
 
 				consumers {
 				};
@@ -474,7 +483,7 @@ palmas: tps65913 {
 			ldo7 {
 				regulator-name = "v-slim-1v0";
 				regulator-min-microvolt = <1000000>;
-				regulator-max-microvolt = <1000000>;
+				regulator-max-microvolt = <1100000>;
 
 				consumers {
 				};
@@ -482,7 +491,7 @@ palmas: tps65913 {
 
 			ldo8 {
 				regulator-name = "vdd-rtc";
-				regulator-min-microvolt = <1100000>;
+				regulator-min-microvolt = <900000>;
 				regulator-max-microvolt = <1100000>;
 				regulator-always-on;
 				regulator-boot-on;
