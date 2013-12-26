@@ -441,9 +441,13 @@ static void flounder_panel_select(void)
 {
 	struct tegra_panel *panel = NULL;
 	u8 dsi_instance;
+	struct board_info board;
 
-	panel = &dsi_s_wqxga_10_1;
+	tegra_get_display_board_info(&board);
+	panel = &dsi_j_qxga_8_9;
 	dsi_instance = DSI_INSTANCE_0;
+	if (board.board_id == BOARD_E1813)
+		panel = &dsi_s_wqxga_10_1;
 
 	if (panel) {
 		if (panel->init_sd_settings)

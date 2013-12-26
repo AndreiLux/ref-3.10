@@ -289,6 +289,7 @@ obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-panel.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-memory.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-pinmux.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-power.o
+obj-${CONFIG_MACH_FLOUNDER}             += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_FLOUNDER}             += panel-s-wqxga-10-1.o
 
 obj-${CONFIG_MACH_LOKI}               	+= board-loki.o
