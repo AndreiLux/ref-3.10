@@ -66,6 +66,11 @@
 
 #define AHB_PREFETCH_BUFFER	SZ_128
 
+/* tegra_udc drvier will pull low D+ in USB drive strength test */
+static int USB_drive_strength_test = 0;
+module_param(USB_drive_strength_test, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(USB_drive_strength_test, "USB drive strength test flag");
+
 #define get_ep_by_pipe(udc, pipe)	((pipe == 1) ? &udc->eps[0] : \
 						&udc->eps[pipe])
 #define get_pipe_by_windex(windex)	((windex & USB_ENDPOINT_NUMBER_MASK) \
@@ -424,7 +429,7 @@ static void dr_controller_run(struct tegra_udc *udc)
 	temp |= USB_CMD_ITC_1_MICRO_FRM;
 	if (can_pullup(udc)) {
 		temp |= USB_CMD_RUN_STOP;
-		if (udc->connect_type == CONNECT_TYPE_SDP)
+		if ((udc->connect_type == CONNECT_TYPE_SDP) && !USB_drive_strength_test)
 			schedule_delayed_work(&udc->non_std_charger_work,
 				msecs_to_jiffies(NON_STD_CHARGER_DET_TIME_MS));
 	}
@@ -1613,7 +1618,7 @@ static int tegra_pullup(struct usb_gadget *gadget, int is_on)
 		 * non-standard charger if no setup packet is received after
 		 * enumeration started.
 		 */
-		if (udc->connect_type == CONNECT_TYPE_SDP)
+		if ((udc->connect_type == CONNECT_TYPE_SDP) && !USB_drive_strength_test)
 			schedule_delayed_work(&udc->non_std_charger_work,
 				msecs_to_jiffies(NON_STD_CHARGER_DET_TIME_MS));
 	} else

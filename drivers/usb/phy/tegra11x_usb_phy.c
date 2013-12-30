@@ -974,6 +974,16 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 
 	utmi_phy_pad_enable();
 
+	val = readl(base + UTMIP_SPARE_CFG0);
+
+	/* For USB eye diagram test :
+	 * To maunally adjust the SETUP value
+	 * USB1_UTMIP_SPARE_CFG0_0[4:3] = 00b */
+	if (phy->inst == 0 && !config->xcvr_use_fuses) {
+		val &= ~(0x18);
+	}
+	writel(val, base + UTMIP_SPARE_CFG0);
+
 	val = readl(base + UTMIP_XCVR_CFG0);
 	val &= ~(UTMIP_XCVR_LSBIAS_SEL | UTMIP_FORCE_PD_POWERDOWN |
 		 UTMIP_FORCE_PD2_POWERDOWN | UTMIP_FORCE_PDZI_POWERDOWN |
@@ -984,9 +994,11 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 	val |= UTMIP_XCVR_LSFSLEW(config->xcvr_lsfslew);
 	val |= UTMIP_XCVR_LSRSLEW(config->xcvr_lsrslew);
 	if (!config->xcvr_use_lsb)
-		val |= UTMIP_XCVR_HSSLEW_MSB(0x3);
+		val |= UTMIP_XCVR_HSSLEW_MSB(0x0);
 	if (config->xcvr_hsslew_lsb)
 		val |= UTMIP_XCVR_HSSLEW_LSB(config->xcvr_hsslew_lsb);
+	pr_info("[USB] %s UTMIP_XCVR_CFG0:%lx xcvr_use_fuses:%d utmi_xcvr_setup:%lx\n"
+			, __func__, val, config->xcvr_use_fuses,phy->utmi_xcvr_setup);
 	writel(val, base + UTMIP_XCVR_CFG0);
 
 	val = readl(base + UTMIP_XCVR_CFG1);
@@ -1001,10 +1013,15 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 		val |= UTMIP_BIAS_PDTRK_COUNT(phy->freq->pdtrk_count);
 		writel(val, base + UTMIP_BIAS_CFG1);
 	}
-
 	val = readl(base + UTMIP_SPARE_CFG0);
 	val &= ~FUSE_SETUP_SEL;
 	val |= FUSE_ATERM_SEL;
+	/* For USB eye diagram test :
+	 * Use default drive strength
+	 * USB1_UTMIP_SPARE_CFG0_0[4:3] = 11b */
+	if (phy->inst == 0 && config->xcvr_use_fuses) {
+		val |= 0x18;
+	}
 	writel(val, base + UTMIP_SPARE_CFG0);
 
 	val = readl(base + USB_SUSP_CTRL);
