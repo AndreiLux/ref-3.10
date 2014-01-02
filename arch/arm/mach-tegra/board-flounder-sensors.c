@@ -58,80 +58,6 @@ static struct i2c_board_info flounder_i2c_board_info_cm32181[] = {
 	},
 };
 
-/* MPU board file definition    */
-static struct mpu_platform_data mpu9250_gyro_data = {
-	.int_config     = 0x10,
-	.level_shifter  = 0,
-	/* Located in board_[platformname].h */
-	.orientation    = MPU_GYRO_ORIENTATION,
-	.sec_slave_type = SECONDARY_SLAVE_TYPE_NONE,
-	.key            = {0x4E, 0xCC, 0x7E, 0xEB, 0xF6, 0x1E, 0x35, 0x22,
-			0x00, 0x34, 0x0D, 0x65, 0x32, 0xE9, 0x94, 0x89},
-};
-
-static struct mpu_platform_data mpu_compass_data = {
-	.orientation    = MPU_COMPASS_ORIENTATION,
-	.config         = NVI_CONFIG_BOOT_MPU,
-};
-
-static struct mpu_platform_data mpu_bmp_pdata = {
-	.config         = NVI_CONFIG_BOOT_MPU,
-};
-
-static struct i2c_board_info __initdata inv_mpu9250_i2c0_board_info[] = {
-	{
-		I2C_BOARD_INFO(MPU_GYRO_NAME, MPU_GYRO_ADDR),
-		.platform_data = &mpu9250_gyro_data,
-	},
-	{
-		/* The actual BMP180 address is 0x77 but because this conflicts
-		 * with another device, this address is hacked so Linux will
-		 * call the driver.  The conflict is technically okay since the
-		 * BMP180 is behind the MPU.  Also, the BMP180 driver uses a
-		 * hard-coded address of 0x77 since it can't be changed anyway.
-		 */
-		I2C_BOARD_INFO(MPU_BMP_NAME, MPU_BMP_ADDR),
-		.platform_data = &mpu_bmp_pdata,
-	},
-	{
-		I2C_BOARD_INFO(MPU_COMPASS_NAME, MPU_COMPASS_ADDR),
-		.platform_data = &mpu_compass_data,
-	},
-};
-
-static void mpuirq_init(void)
-{
-	int ret = 0;
-	unsigned gyro_irq_gpio = MPU_GYRO_IRQ_GPIO;
-	unsigned gyro_bus_num = MPU_GYRO_BUS_NUM;
-	char *gyro_name = MPU_GYRO_NAME;
-
-	pr_info("*** MPU START *** mpuirq_init...\n");
-
-	ret = gpio_request(gyro_irq_gpio, gyro_name);
-
-	if (ret < 0) {
-		pr_err("%s: gpio_request failed %d\n", __func__, ret);
-		return;
-	}
-
-	ret = gpio_direction_input(gyro_irq_gpio);
-	if (ret < 0) {
-		pr_err("%s: gpio_direction_input failed %d\n", __func__, ret);
-		gpio_free(gyro_irq_gpio);
-		return;
-	}
-	pr_info("*** MPU END *** mpuirq_init...\n");
-
-	/* TN8 with diferent Compass address from flounder */
-	if (of_machine_is_compatible("nvidia,tn8"))
-		inv_mpu9250_i2c0_board_info[2].addr = MPU_COMPASS_ADDR_TN8;
-
-	inv_mpu9250_i2c0_board_info[0].irq = gpio_to_irq(MPU_GYRO_IRQ_GPIO);
-	i2c_register_board_info(gyro_bus_num, inv_mpu9250_i2c0_board_info,
-		ARRAY_SIZE(inv_mpu9250_i2c0_board_info));
-}
-
 /*
  * Soc Camera platform driver for testing
  */
@@ -534,44 +460,6 @@ static struct dw9718_platform_data flounder_dw9718_data = {
 	.detect = flounder_dw9718_detect,
 };
 
-/* estate values under 1000/200/0/0mA, 3.5V input */
-static unsigned max77387_estates[] = {3500, 710, 0};
-
-static struct max77387_platform_data flounder_max77387_pdata = {
-	.config		= {
-		.led_mask		= 3,
-		.flash_trigger_mode	= 1,
-		/* use ONE-SHOOT flash mode - flash triggered at the
-		 * raising edge of strobe or strobe signal.
-		*/
-		.flash_mode		= 1,
-		.def_ftimer		= 0x24,
-		.max_total_current_mA	= 1000,
-		.max_peak_current_mA	= 600,
-		.led_config[0]	= {
-			.flash_torch_ratio	= 18100,
-			.granularity		= 1000,
-			.flash_levels		= 0,
-			.lumi_levels	= NULL,
-			},
-		.led_config[1]	= {
-			.flash_torch_ratio	= 18100,
-			.granularity		= 1000,
-			.flash_levels		= 0,
-			.lumi_levels		= NULL,
-			},
-		},
-	.cfg		= 0,
-	.dev_name	= "torch",
-	.gpio_strobe	= CAM_FLASH_STROBE,
-	.edpc_config	= {
-		.states		= max77387_estates,
-		.num_states	= ARRAY_SIZE(max77387_estates),
-		.e0_index	= ARRAY_SIZE(max77387_estates) - 1,
-		.priority	= EDP_MAX_PRIO + 2,
-		},
-};
-
 static struct as364x_platform_data flounder_as3648_data = {
 	.config		= {
 		.led_mask	= 3,
@@ -855,11 +743,6 @@ static struct i2c_board_info	flounder_i2c_board_info_as3648 = {
 		.platform_data = &flounder_as3648_data,
 };
 
-static struct i2c_board_info	flounder_i2c_board_info_max77387 = {
-	I2C_BOARD_INFO("max77387", 0x4A),
-	.platform_data = &flounder_max77387_pdata,
-};
-
 static struct camera_module flounder_camera_module_info[] = {
 	/* E1823 camera board */
 	{
@@ -907,14 +790,9 @@ static int flounder_camera_init(void)
 {
 	pr_debug("%s: ++\n", __func__);
 
-	if (!of_machine_is_compatible("nvidia,tn8")) {
-		/* put CSIA/B/E IOs into DPD mode to
-		 * save additional power for flounder
-		 */
-		tegra_io_dpd_enable(&csia_io);
-		tegra_io_dpd_enable(&csib_io);
-		tegra_io_dpd_enable(&csie_io);
-	}
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
+	tegra_io_dpd_enable(&csie_io);
 
 	platform_device_add_data(&flounder_camera_generic,
 		&flounder_pcl_pdata, sizeof(flounder_pcl_pdata));
@@ -1131,8 +1009,7 @@ static struct balanced_throttle gpu_throttle = {
 
 static int __init flounder_tj_throttle_init(void)
 {
-	if (of_machine_is_compatible("google,flounder") ||
-	    of_machine_is_compatible("nvidia,tn8")) {
+	if (of_machine_is_compatible("google,flounder")) {
 		balanced_throttle_register(&cpu_throttle, "cpu-balanced");
 		balanced_throttle_register(&gpu_throttle, "gpu-balanced");
 	}
@@ -1384,23 +1261,13 @@ static struct i2c_board_info flounder_i2c_nct72_board_info[] = {
 #endif
 };
 
-static struct i2c_board_info laguna_i2c_nct72_board_info[] = {
-	{
-		I2C_BOARD_INFO("nct72", 0x4c),
-		.platform_data = &flounder_nct72_pdata,
-		.irq = -1,
-	},
-};
-
 static int flounder_nct72_init(void)
 {
 	int nct72_port = TEGRA_GPIO_PI6;
 	int ret = 0;
 	int i;
 	struct thermal_trip_info *trip_state;
-	struct board_info board_info;
 
-	tegra_get_board_info(&board_info);
 	/* raise NCT's thresholds if soctherm CP,FT fuses are ok */
 	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
 	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
@@ -1438,51 +1305,19 @@ static int flounder_nct72_init(void)
 		gpio_free(nct72_port);
 	}
 
-	/* flounder has thermal sensor on GEN2-I2C i.e. instance 1 */
-	if (board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM363)
-		i2c_register_board_info(1, laguna_i2c_nct72_board_info,
-		ARRAY_SIZE(laguna_i2c_nct72_board_info));
-	else
-		i2c_register_board_info(1, flounder_i2c_nct72_board_info,
-		ARRAY_SIZE(flounder_i2c_nct72_board_info));
+	i2c_register_board_info(1, flounder_i2c_nct72_board_info,
+	ARRAY_SIZE(flounder_i2c_nct72_board_info));
 
 	return ret;
 }
 
-static struct sbs_platform_data sbs_pdata = {
-	.poll_retry_count	= 100,
-	.i2c_retry_count	= 2,
-};
-
-static struct i2c_board_info __initdata bq20z45_pdata[] = {
-	{
-		I2C_BOARD_INFO("sbs-battery", 0x0B),
-		.platform_data = &sbs_pdata,
-	},
-};
-
 int __init flounder_sensors_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-	/* PM363 don't have mpu 9250 mounted */
-	/* TN8 sensors use Device Tree */
-	if (board_info.board_id != BOARD_PM363 &&
-		!of_machine_is_compatible("nvidia,tn8"))
-		mpuirq_init();
 	flounder_camera_init();
 	flounder_nct72_init();
 
-	/* TN8 don't have ALS CM32181 */
-	if (!of_machine_is_compatible("nvidia,tn8"))
-		i2c_register_board_info(0, flounder_i2c_board_info_cm32181,
-			ARRAY_SIZE(flounder_i2c_board_info_cm32181));
-
-	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY)
-		i2c_register_board_info(1, bq20z45_pdata,
-			ARRAY_SIZE(bq20z45_pdata));
+	i2c_register_board_info(0, flounder_i2c_board_info_cm32181,
+		ARRAY_SIZE(flounder_i2c_board_info_cm32181));
 
 	return 0;
 }

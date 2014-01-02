@@ -108,51 +108,6 @@ static struct resource flounder_disp1_resources[] = {
 	},
 };
 
-static struct resource flounder_disp1_edp_resources[] = {
-	{
-		.name	= "irq",
-		.start	= INT_DISPLAY_GENERAL,
-		.end	= INT_DISPLAY_GENERAL,
-		.flags	= IORESOURCE_IRQ,
-	},
-	{
-		.name	= "regs",
-		.start	= TEGRA_DISPLAY_BASE,
-		.end	= TEGRA_DISPLAY_BASE + TEGRA_DISPLAY_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "fbmem",
-		.start	= 0, /* Filled in by flounder_panel_init() */
-		.end	= 0, /* Filled in by flounder_panel_init() */
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name	= "mipi_cal",
-		.start	= TEGRA_MIPI_CAL_BASE,
-		.end	= TEGRA_MIPI_CAL_BASE + TEGRA_MIPI_CAL_SIZE - 1,
-		.flags	= IORESOURCE_MEM,
-	},
-	{
-		.name   = "sor",
-		.start  = TEGRA_SOR_BASE,
-		.end    = TEGRA_SOR_BASE + TEGRA_SOR_SIZE - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	{
-		.name   = "dpaux",
-		.start  = TEGRA_DPAUX_BASE,
-		.end    = TEGRA_DPAUX_BASE + TEGRA_DPAUX_SIZE - 1,
-		.flags  = IORESOURCE_MEM,
-	},
-	{
-		.name	= "irq_dp",
-		.start	= INT_DPAUX,
-		.end	= INT_DPAUX,
-		.flags	= IORESOURCE_IRQ,
-	},
-};
-
 static struct resource flounder_disp2_resources[] = {
 	{
 		.name	= "irq",
@@ -485,49 +440,10 @@ static struct tegra_dc_sd_settings flounder_sd_settings = {
 static void flounder_panel_select(void)
 {
 	struct tegra_panel *panel = NULL;
-	struct board_info board;
 	u8 dsi_instance;
 
-	tegra_get_display_board_info(&board);
-
-	switch (board.board_id) {
-	case BOARD_E1639:
-	case BOARD_E1813:
-		panel = &dsi_s_wqxga_10_1;
-		dsi_instance = DSI_INSTANCE_0;
-		break;
-	case BOARD_PM354:
-		panel = &dsi_a_1080p_14_0;
-		dsi_instance = DSI_INSTANCE_0;
-		break;
-	case BOARD_E1627:
-		panel = &dsi_p_wuxga_10_1;
-		dsi_instance = DSI_INSTANCE_0;
-		break;
-	case BOARD_E1549:
-		panel = &dsi_lgd_wxga_7_0;
-		dsi_instance = DSI_INSTANCE_0;
-		break;
-	case BOARD_PM363:
-	case BOARD_E1824:
-		panel = &edp_a_1080p_14_0;
-		flounder_disp1_out.type = TEGRA_DC_OUT_DP;
-		flounder_disp1_device.resource = flounder_disp1_edp_resources;
-		flounder_disp1_device.num_resources =
-			ARRAY_SIZE(flounder_disp1_edp_resources);
-		break;
-	case BOARD_PM366:
-		panel = &lvds_c_1366_14;
-		flounder_disp1_out.type = TEGRA_DC_OUT_LVDS;
-		flounder_disp1_device.resource = flounder_disp1_edp_resources;
-		flounder_disp1_device.num_resources =
-			ARRAY_SIZE(flounder_disp1_edp_resources);
-		break;
-	default:
-		panel = &dsi_p_wuxga_10_1;
-		dsi_instance = DSI_INSTANCE_0;
-		break;
-	}
+	panel = &dsi_s_wqxga_10_1;
+	dsi_instance = DSI_INSTANCE_0;
 
 	if (panel) {
 		if (panel->init_sd_settings)

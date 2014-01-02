@@ -74,7 +74,6 @@
 #include <mach/gpio-tegra.h>
 #include <mach/tegra_fiq_debugger.h>
 #include <mach/xusb.h>
-#include <linux/platform_data/tegra_usb_modem_power.h>
 #include <linux/platform_data/tegra_ahci.h>
 #include <linux/irqchip/tegra.h>
 
@@ -90,8 +89,6 @@
 #include "iomap.h"
 #include "pm.h"
 #include "tegra-board-id.h"
-
-static struct board_info board_info, display_board_info;
 
 static struct resource flounder_bluedroid_pm_resources[] = {
 	[0] = {
@@ -179,41 +176,10 @@ static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
-static struct i2c_hid_platform_data i2c_keyboard_pdata = {
-	.hid_descriptor_address = 0x0,
-};
-
-static struct i2c_board_info __initdata i2c_keyboard_board_info = {
-	I2C_BOARD_INFO("hid", 0x3B),
-	.platform_data  = &i2c_keyboard_pdata,
-};
-
-static struct i2c_hid_platform_data i2c_touchpad_pdata = {
-	.hid_descriptor_address = 0x20,
-};
-
-static struct i2c_board_info __initdata i2c_touchpad_board_info = {
-	I2C_BOARD_INFO("hid", 0x2C),
-	.platform_data  = &i2c_touchpad_pdata,
-};
-
 static void flounder_i2c_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-
 	i2c_register_board_info(0, &rt5677_board_info, 1);
 	i2c_register_board_info(0, &rt5506_board_info, 1);
-
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363) {
-		i2c_keyboard_board_info.irq = gpio_to_irq(I2C_KB_IRQ);
-		i2c_register_board_info(1, &i2c_keyboard_board_info , 1);
-
-		i2c_touchpad_board_info.irq = gpio_to_irq(I2C_TP_IRQ);
-		i2c_register_board_info(1, &i2c_touchpad_board_info , 1);
-	}
 }
 
 #ifndef CONFIG_USE_OF
@@ -269,9 +235,6 @@ static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
 
 static void flounder_audio_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-
 	flounder_audio_pdata_rt5677.codec_name = "rt5677.0-002d";
 	flounder_audio_pdata_rt5677.codec_dai_name = "rt5677-aif1";
 }
@@ -330,51 +293,6 @@ static struct platform_device tegra_rtc_device = {
 	.resource = tegra_rtc_resources,
 	.num_resources = ARRAY_SIZE(tegra_rtc_resources),
 };
-
-#ifdef CONFIG_SATA_AHCI_TEGRA
-static struct tegra_ahci_platform_data tegra_ahci_platform_data0 = {
-	.gen2_rx_eq = -1,
-	.pexp_gpio = PMU_TCA6416_GPIO(9),
-};
-
-static void flounder_sata_init(void)
-{
-	struct board_info board_info;
-
-	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_PM363)
-		tegra_ahci_platform_data0.pexp_gpio = -1;
-
-	tegra_sata_device.dev.platform_data = &tegra_ahci_platform_data0;
-	platform_device_register(&tegra_sata_device);
-}
-#else
-static void flounder_sata_init(void) { }
-#endif
-
-static struct tegra_pci_platform_data laguna_pcie_platform_data = {
-	.port_status[0]	= 1,
-	.port_status[1]	= 1,
-	.use_dock_detect	= 1,
-	.gpio	= TEGRA_GPIO_PO1,
-	.gpio_x1_slot	= PMU_TCA6416_GPIO(8),
-	.board_id	= BOARD_PM358,
-};
-
-static void laguna_pcie_init(void)
-{
-	struct board_info board_info;
-
-	tegra_get_board_info(&board_info);
-	/* root port 1(x1 slot) is supported only on of ERS-S board */
-	if (board_info.board_id == BOARD_PM358 ||
-		board_info.board_id == BOARD_PM363)
-			laguna_pcie_platform_data.port_status[1] = 0;
-
-	laguna_pcie_platform_data.board_id = board_info.board_id;
-	tegra_pci_device.dev.platform_data = &laguna_pcie_platform_data;
-	platform_device_register(&tegra_pci_device);
-}
 
 static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_pmu_device,
@@ -510,41 +428,6 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	},
 };
 
-static struct gpio modem_gpios[] = { /* Bruce modem */
-	{MODEM_EN, GPIOF_OUT_INIT_HIGH, "MODEM EN"},
-	{MDM_RST, GPIOF_OUT_INIT_LOW, "MODEM RESET"},
-	{MDM_SAR0, GPIOF_OUT_INIT_LOW, "MODEM SAR0"},
-};
-
-static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
-	.port_otg = false,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
-	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
-	.op_mode = TEGRA_USB_OPMODE_HOST,
-	.u_data.host = {
-		.vbus_gpio = -1,
-		.hot_plug = false,
-		.remote_wakeup_supported = true,
-		.power_off_on_suspend = true,
-	},
-};
-
-static struct tegra_usb_platform_data tegra_ehci2_hsic_smsc_hub_pdata = {
-	.port_otg = false,
-	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
-	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
-	.op_mode	= TEGRA_USB_OPMODE_HOST,
-	.u_data.host = {
-		.vbus_gpio = -1,
-		.hot_plug = false,
-		.remote_wakeup_supported = true,
-		.power_off_on_suspend = true,
-	},
-};
-
-
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
@@ -553,41 +436,15 @@ static struct tegra_usb_otg_data tegra_otg_pdata = {
 static void flounder_usb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
-	int modem_id = tegra_get_modem_id();
-	struct board_info bi;
 
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363) {
-		/* Laguna */
-		/* Host cable is detected through AMS PMU Interrupt */
-		tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_otg_pdata.id_extcon_dev_name = "as3722-extcon";
-	} else {
-		/* Flounder */
-		tegra_get_pmu_board_info(&bi);
-
-		switch (bi.board_id) {
-		case BOARD_E1733:
-			/* Host cable is detected through PMU Interrupt */
-			tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_otg_pdata.id_extcon_dev_name = "as3722-extcon";
-			break;
-		case BOARD_E1736:
-		case BOARD_E1769:
-		case BOARD_E1735:
-			/* Device cable is detected through PMU Interrupt */
-			tegra_udc_pdata.support_pmu_vbus = true;
-			tegra_ehci1_utmi_pdata.support_pmu_vbus = true;
-			tegra_otg_pdata.vbus_extcon_dev_name = "palmas-extcon";
-			/* Host cable is detected through PMU Interrupt */
-			tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
-			tegra_otg_pdata.id_extcon_dev_name = "palmas-extcon";
-		}
-	}
+	/* Device cable is detected through PMU Interrupt */
+	tegra_udc_pdata.support_pmu_vbus = true;
+	tegra_ehci1_utmi_pdata.support_pmu_vbus = true;
+	tegra_otg_pdata.vbus_extcon_dev_name = "palmas-extcon";
+	/* Host cable is detected through PMU Interrupt */
+	tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
+	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
+	tegra_otg_pdata.id_extcon_dev_name = "palmas-extcon";
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
 		tegra_otg_pdata.is_xhci = false;
@@ -602,11 +459,9 @@ static void flounder_usb_init(void)
 	tegra_udc_device.dev.platform_data = &tegra_udc_pdata;
 
 	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
-		if (!modem_id) {
-			tegra_ehci2_device.dev.platform_data =
-				&tegra_ehci2_utmi_pdata;
-			platform_device_register(&tegra_ehci2_device);
-		}
+		tegra_ehci2_device.dev.platform_data =
+			&tegra_ehci2_utmi_pdata;
+		platform_device_register(&tegra_ehci2_device);
 	}
 	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
 		tegra_ehci3_device.dev.platform_data = &tegra_ehci3_utmi_pdata;
@@ -647,61 +502,19 @@ static void flounder_xusb_init(void)
 
 	xusb_bdata.lane_owner = (u8) tegra_get_lane_owner_info();
 
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363) {
-		/* Laguna */
-		pr_info("Laguna ERS. 0x%x\n", board_info.board_id);
-		xusb_bdata.gpio_controls_muxed_ss_lanes = true;
-		/* D[0:15] = gpio number and D[16:31] = output value */
-		xusb_bdata.gpio_ss1_sata = PMU_TCA6416_GPIO(9) | (0 << 16);
-		xusb_bdata.ss_portmap = (TEGRA_XUSB_SS_PORT_MAP_USB2_P0 << 0) |
-			(TEGRA_XUSB_SS_PORT_MAP_USB2_P1 << 4);
+	xusb_bdata.gpio_controls_muxed_ss_lanes = false;
 
-		if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-			xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
-				TEGRA_XUSB_SS_P0);
+	xusb_bdata.ss_portmap =
+		(TEGRA_XUSB_SS_PORT_MAP_USB2_P0 << 0) |
+		(TEGRA_XUSB_SS_PORT_MAP_USB2_P2 << 4);
 
-		if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-			xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
-				TEGRA_XUSB_SS_P1 | TEGRA_XUSB_USB2_P2);
+	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
+		xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
+			TEGRA_XUSB_SS_P0);
 
-		/* FIXME Add for UTMIP2 when have odmdata assigend */
-	} else {
-		/* Flounder */
-		xusb_bdata.gpio_controls_muxed_ss_lanes = false;
-
-		if (board_info.board_id == BOARD_E1781) {
-			pr_info("Shield ERS-S. 0x%x\n", board_info.board_id);
-			/* Shield ERS-S */
-			xusb_bdata.ss_portmap =
-				(TEGRA_XUSB_SS_PORT_MAP_USB2_P1 << 0) |
-				(TEGRA_XUSB_SS_PORT_MAP_USB2_P2 << 4);
-
-			if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-				xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P0);
-
-			if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-				xusb_bdata.portmap &= ~(
-					TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_SS_P0 |
-					TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
-		} else {
-			pr_info("Shield ERS 0x%x\n", board_info.board_id);
-			/* Shield ERS */
-			xusb_bdata.ss_portmap =
-				(TEGRA_XUSB_SS_PORT_MAP_USB2_P0 << 0) |
-				(TEGRA_XUSB_SS_PORT_MAP_USB2_P2 << 4);
-
-			if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-				xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
-					TEGRA_XUSB_SS_P0);
-
-			if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-				xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
-					TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
-		}
-		/* FIXME Add for UTMIP2 when have odmdata assigend */
-	}
+	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
+		xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
+			TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
 
 	if (usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)
 		xusb_bdata.portmap |= TEGRA_XUSB_HSIC_P0;
@@ -711,92 +524,6 @@ static void flounder_xusb_init(void)
 
 	if (xusb_bdata.portmap)
 		tegra_xusb_init(&xusb_bdata);
-}
-
-static int baseband_init(void)
-{
-	int ret;
-
-	ret = gpio_request_array(modem_gpios, ARRAY_SIZE(modem_gpios));
-	if (ret) {
-		pr_warn("%s:gpio request failed\n", __func__);
-		return ret;
-	}
-
-	/* enable pull-down for MDM_COLD_BOOT */
-	tegra_pinmux_set_pullupdown(TEGRA_PINGROUP_ULPI_DATA4,
-				    TEGRA_PUPD_PULL_DOWN);
-
-	/* export GPIO for user space access through sysfs */
-	gpio_export(MDM_RST, false);
-	gpio_export(MDM_SAR0, false);
-
-	return 0;
-}
-
-static const struct tegra_modem_operations baseband_operations = {
-	.init = baseband_init,
-};
-
-static struct tegra_usb_modem_power_platform_data baseband_pdata = {
-	.ops = &baseband_operations,
-	.regulator_name = "vdd_wwan_mdm",
-	.wake_gpio = -1,
-	.boot_gpio = MDM_COLDBOOT,
-	.boot_irq_flags = IRQF_TRIGGER_RISING |
-				    IRQF_TRIGGER_FALLING |
-				    IRQF_ONESHOT,
-	.autosuspend_delay = 2000,
-	.short_autosuspend_delay = 50,
-	.tegra_ehci_device = &tegra_ehci2_device,
-	.tegra_ehci_pdata = &tegra_ehci2_hsic_baseband_pdata,
-};
-
-static struct platform_device icera_bruce_device = {
-	.name = "tegra_usb_modem_power",
-	.id = -1,
-	.dev = {
-		.platform_data = &baseband_pdata,
-	},
-};
-
-static void flounder_modem_init(void)
-{
-	int modem_id = tegra_get_modem_id();
-	struct board_info board_info;
-	struct board_info pmu_board_info;
-	int usb_port_owner_info = tegra_get_usb_port_owner_info();
-
-	tegra_get_board_info(&board_info);
-	tegra_get_pmu_board_info(&pmu_board_info);
-	pr_info("%s: modem_id = %d\n", __func__, modem_id);
-
-	switch (modem_id) {
-	case TEGRA_BB_BRUCE:
-		if (!(usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)) {
-			/* Set specific USB wake source for Flounder */
-			if (board_info.board_id == BOARD_E1780)
-				tegra_set_wake_source(42, INT_USB2);
-			if (pmu_board_info.board_id == BOARD_E1736 ||
-				pmu_board_info.board_id == BOARD_E1769)
-				baseband_pdata.regulator_name = NULL;
-			platform_device_register(&icera_bruce_device);
-		}
-		break;
-	case TEGRA_BB_HSIC_HUB: /* HSIC hub */
-		if (!(usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)) {
-			tegra_ehci2_device.dev.platform_data =
-				&tegra_ehci2_hsic_smsc_hub_pdata;
-			/* Set specific USB wake source for Flounder */
-			if (board_info.board_id == BOARD_E1780)
-				tegra_set_wake_source(42, INT_USB2);
-			platform_device_register(&tegra_ehci2_device);
-		} else
-			xusb_bdata.hsic[0].pretend_connect = true;
-		break;
-	default:
-		return;
-	}
 }
 
 #ifndef CONFIG_USE_OF
@@ -879,184 +606,16 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 };
 #endif
 
-static struct maxim_sti_pdata maxim_sti_pdata = {
-	.touch_fusion         = "/vendor/bin/touch_fusion",
-	.config_file          = "/vendor/firmware/touch_fusion.cfg",
-	.fw_name              = "maxim_fp35.bin",
-	.nl_family            = TF_FAMILY_NAME,
-	.nl_mc_groups         = 5,
-	.chip_access_method   = 2,
-	.default_reset_state  = 0,
-	.tx_buf_size          = 4100,
-	.rx_buf_size          = 4100,
-	.gpio_reset           = TOUCH_GPIO_RST_MAXIM_STI_SPI,
-	.gpio_irq             = TOUCH_GPIO_IRQ_MAXIM_STI_SPI
-};
-
-static struct tegra_spi_device_controller_data maxim_dev_cdata = {
-	.rx_clk_tap_delay = 0,
-	.is_hw_based_cs = true,
-	.tx_clk_tap_delay = 0,
-};
-
-static struct spi_board_info maxim_sti_spi_board = {
-	.modalias = MAXIM_STI_NAME,
-	.bus_num = TOUCH_SPI_ID,
-	.chip_select = TOUCH_SPI_CS,
-	.max_speed_hz = 12 * 1000 * 1000,
-	.mode = SPI_MODE_0,
-	.platform_data = &maxim_sti_pdata,
-	.controller_data = &maxim_dev_cdata,
-};
-
-static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
-	/* name         parent          rate            enabled */
-	{ "extern2",    "pll_p",        41000000,       false},
-	{ "clk_out_2",  "extern2",      40800000,       false},
-	{ NULL,         NULL,           0,              0},
-};
-
-static struct rm_spi_ts_platform_data rm31080ts_flounder_data = {
-	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
-	.config = 0,
-	.platform_id = RM_PLATFORM_A010,
-	.name_of_clock = "clk_out_2",
-	.name_of_clock_con = "extern2",
-};
-
-static struct tegra_spi_device_controller_data dev_cdata = {
-	.rx_clk_tap_delay = 0,
-	.tx_clk_tap_delay = 16,
-};
-
-static struct spi_board_info rm31080a_flounder_spi_board[1] = {
-	{
-		.modalias = "rm_ts_spidev",
-		.bus_num = TOUCH_SPI_ID,
-		.chip_select = TOUCH_SPI_CS,
-		.max_speed_hz = 12 * 1000 * 1000,
-		.mode = SPI_MODE_0,
-		.controller_data = &dev_cdata,
-		.platform_data = &rm31080ts_flounder_data,
-	},
-};
-
 static int __init flounder_touch_init(void)
 {
-	if (tegra_get_touch_vendor_id() == MAXIM_TOUCH) {
-		pr_info("%s init maxim touch\n", __func__);
-#if defined(CONFIG_TOUCHSCREEN_MAXIM_STI) || \
-	defined(CONFIG_TOUCHSCREEN_MAXIM_STI_MODULE)
-		(void)touch_init_maxim_sti(&maxim_sti_spi_board);
-#endif
-	} else if (tegra_get_touch_vendor_id() == RAYDIUM_TOUCH) {
-		pr_info("%s init raydium touch\n", __func__);
-		tegra_clk_init_from_table(touch_clk_init_table);
-		rm31080a_flounder_spi_board[0].irq =
-			gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
-		touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
-				TOUCH_GPIO_RST_RAYDIUM_SPI,
-				&rm31080ts_flounder_data,
-				&rm31080a_flounder_spi_board[0],
-				ARRAY_SIZE(rm31080a_flounder_spi_board));
-	}
 	return 0;
-}
-
-static void __init flounder_sysedp_init(void)
-{
-	struct board_info bi;
-
-	tegra_get_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1780:
-		if (bi.sku == 1100) {
-			tn8_new_sysedp_init();
-		}
-		break;
-	case BOARD_PM358:
-	case BOARD_PM359:
-	default:
-		break;
-	}
-}
-
-static void __init flounder_sysedp_dynamic_capping_init(void)
-{
-	struct board_info bi;
-
-	tegra_get_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1780:
-		if (bi.sku == 1100)
-			tn8_sysedp_dynamic_capping_init();
-		break;
-	case BOARD_PM358:
-	case BOARD_PM359:
-	default:
-		break;
-	}
-}
-
-static void __init flounder_sysedp_batmon_init(void)
-{
-	struct board_info bi;
-
-	if (!IS_ENABLED(CONFIG_SYSEDP_FRAMEWORK))
-		return;
-
-	tegra_get_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1780:
-		if (bi.sku == 1100)
-			tn8_sysedp_batmon_init();
-		break;
-	case BOARD_PM358:
-	case BOARD_PM359:
-	default:
-		break;
-	}
-}
-
-
-
-static void __init edp_init(void)
-{
-	struct board_info bi;
-
-	tegra_get_board_info(&bi);
-
-	switch (bi.board_id) {
-	case BOARD_E1780:
-		if (bi.sku == 1100)
-			tn8_edp_init();
-		else
-			flounder_edp_init();
-		break;
-	case BOARD_PM358:
-	case BOARD_PM359:
-			laguna_edp_init();
-			break;
-	default:
-			flounder_edp_init();
-			break;
-	}
 }
 
 static void __init tegra_flounder_early_init(void)
 {
-	flounder_sysedp_init();
 	tegra_clk_init_from_table(flounder_clk_init_table);
 	tegra_clk_verify_parents();
-	if (of_machine_is_compatible("nvidia,laguna"))
-		tegra_soc_device_init("laguna");
-	else if (of_machine_is_compatible("nvidia,tn8"))
-		tegra_soc_device_init("tn8");
-	else
-		tegra_soc_device_init("flounder");
+	tegra_soc_device_init("flounder");
 }
 
 static struct tegra_dtv_platform_data flounder_dtv_pdata = {
@@ -1087,24 +646,12 @@ static struct tegra_io_dpd pexclk2_io = {
 
 static void __init tegra_flounder_late_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-	pr_info("board_info: id:sku:fab:major:minor = 0x%04x:0x%04x:0x%02x:0x%02x:0x%02x\n",
-		board_info.board_id, board_info.sku,
-		board_info.fab, board_info.major_revision,
-		board_info.minor_revision);
 	platform_device_register(&tegra_pinmux_device);
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363)
-		laguna_pinmux_init();
-	else
-		flounder_pinmux_init();
+	flounder_pinmux_init();
 
 	tegra_ram_console_init();
 	flounder_uart_init();
 	flounder_usb_init();
-	flounder_modem_init();
 	flounder_xusb_init();
 	flounder_i2c_init();
 	flounder_spi_init();
@@ -1113,39 +660,21 @@ static void __init tegra_flounder_late_init(void)
 	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	flounder_sdhci_init();
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363)
-		laguna_regulator_init();
-	else
-		flounder_regulator_init();
+	flounder_regulator_init();
 	flounder_dtv_init();
 	flounder_suspend_init();
-/* TODO: add support for laguna board when dvfs table is ready */
-	if ((board_info.board_id == BOARD_E1780 &&
-		(tegra_get_memory_type() == 0)) ||
-		(board_info.board_id == BOARD_E1792))
-		flounder_emc_init();
+	flounder_emc_init();
 
-	edp_init();
+	flounder_edp_init();
 	isomgr_init();
 	flounder_touch_init();
 	flounder_panel_init();
 	flounder_kbc_init();
-	if (board_info.board_id == BOARD_PM358)
-		laguna_pm358_pmon_init();
-	else
-		flounder_pmon_init();
-	if (board_info.board_id == BOARD_PM359 ||
-			board_info.board_id == BOARD_PM358 ||
-			board_info.board_id == BOARD_PM363)
-		laguna_pcie_init();
-	else {
-		/* put PEX pads into DPD mode to save additional power */
-		tegra_io_dpd_enable(&pexbias_io);
-		tegra_io_dpd_enable(&pexclk1_io);
-		tegra_io_dpd_enable(&pexclk2_io);
-	}
+
+	/* put PEX pads into DPD mode to save additional power */
+	tegra_io_dpd_enable(&pexbias_io);
+	tegra_io_dpd_enable(&pexclk1_io);
+	tegra_io_dpd_enable(&pexclk2_io);
 
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
@@ -1157,9 +686,6 @@ static void __init tegra_flounder_late_init(void)
 
 	flounder_setup_bluedroid_pm();
 	tegra_register_fuse();
-
-	flounder_sysedp_dynamic_capping_init();
-	flounder_sysedp_batmon_init();
 }
 
 static void __init flounder_ramconsole_reserve(unsigned long size)
@@ -1175,9 +701,6 @@ static void __init tegra_flounder_init_early(void)
 
 static void __init tegra_flounder_dt_init(void)
 {
-	tegra_get_board_info(&board_info);
-	tegra_get_display_board_info(&display_board_info);
-
 	tegra_flounder_early_init();
 #ifdef CONFIG_USE_OF
 	of_platform_populate(NULL,

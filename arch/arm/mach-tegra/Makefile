@@ -289,14 +289,7 @@ obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-panel.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-memory.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-pinmux.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-power.o
-obj-${CONFIG_MACH_FLOUNDER}             += board-tn8-power.o
-obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-powermon.o
-obj-${CONFIG_MACH_FLOUNDER}             += panel-a-1080p-11-6.o
-obj-${CONFIG_MACH_FLOUNDER}             += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_FLOUNDER}             += panel-s-wqxga-10-1.o
-obj-${CONFIG_MACH_FLOUNDER}             += panel-lgd-wxga-7-0.o
-obj-${CONFIG_MACH_FLOUNDER}             += panel-a-edp-1080p-14-0.o
-obj-${CONFIG_MACH_FLOUNDER}             += panel-c-lvds-1366-14.o
 
 obj-${CONFIG_MACH_LOKI}               	+= board-loki.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-kbc.o

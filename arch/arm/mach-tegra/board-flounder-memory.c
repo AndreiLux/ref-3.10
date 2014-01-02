@@ -5453,7 +5453,6 @@ static struct tegra12_emc_pdata flounder_lpddr3_emc_pdata = {
  */
 int __init flounder_emc_init(void)
 {
-	struct board_info bi;
 	int use_dt_emc_table = 0;
 
 	/*
@@ -5467,28 +5466,8 @@ int __init flounder_emc_init(void)
 		pr_info("Loading EMC table read from NCT partition.\n");
 	} else {
 	#endif
-		tegra_get_board_info(&bi);
-
-		switch (bi.board_id) {
-		case BOARD_E1780:
-		case BOARD_E1782:
-			if (of_machine_is_compatible("nvidia,tn8")) {
-				pr_info("Loading TN8 EMC tables from DeviceTree.\n");
-				use_dt_emc_table = true;
-			} else {
-				pr_info("Loading Flounder EMC tables.\n");
-				tegra_emc_device.dev.platform_data =
-					&flounder_emc_pdata;
-			}
-			break;
-		case BOARD_E1792:
-			pr_info("Loading Flounder EMC tables.\n");
-			tegra_emc_device.dev.platform_data = &flounder_lpddr3_emc_pdata;
-			break;
-		default:
-			WARN(1, "Invalid board ID: %u\n", bi.board_id);
-			return -EINVAL;
-		}
+		pr_info("Loading Flounder EMC tables.\n");
+		tegra_emc_device.dev.platform_data = &flounder_emc_pdata;
 	#ifdef CONFIG_TEGRA_USE_NCT
 	}
 	#endif

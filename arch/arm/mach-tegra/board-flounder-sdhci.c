@@ -393,7 +393,6 @@ int __init flounder_sdhci_init(void)
 	int nominal_core_mv;
 	int min_vcore_override_mv;
 	int boot_vcore_mv;
-	struct board_info board_info;
 
 	nominal_core_mv =
 		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
@@ -419,14 +418,9 @@ int __init flounder_sdhci_init(void)
 		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
 	}
 
-	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_E1780) {
-		tegra_sdhci_platform_data3.max_clk_limit = 200000000;
-		tegra_sdhci_platform_data2.max_clk_limit = 204000000;
-		tegra_sdhci_platform_data0.max_clk_limit = 204000000;
-	} else {
-		tegra_sdhci_platform_data3.uhs_mask = MMC_MASK_HS200;
-	}
+	tegra_sdhci_platform_data3.max_clk_limit = 200000000;
+	tegra_sdhci_platform_data2.max_clk_limit = 204000000;
+	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
 
 	platform_device_register(&tegra_sdhci_device3);
 	platform_device_register(&tegra_sdhci_device2);
