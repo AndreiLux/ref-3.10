@@ -361,5 +361,4 @@
 		};
 	};
 
-/include/ "tegra124-flounder-emc.dtsi"
 };
