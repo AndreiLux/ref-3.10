@@ -124,19 +124,6 @@ static struct resource sdhci_resource0[] = {
 	},
 };
 
-static struct resource sdhci_resource2[] = {
-	[0] = {
-		.start  = INT_SDMMC3,
-		.end    = INT_SDMMC3,
-		.flags  = IORESOURCE_IRQ,
-	},
-	[1] = {
-		.start	= TEGRA_SDMMC3_BASE,
-		.end	= TEGRA_SDMMC3_BASE + TEGRA_SDMMC3_SIZE-1,
-		.flags	= IORESOURCE_MEM,
-	},
-};
-
 static struct resource sdhci_resource3[] = {
 	[0] = {
 		.start  = INT_SDMMC4,
@@ -188,17 +175,6 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.calib_1v8_offsets = 0x7676,
 };
 
-static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
-	.cd_gpio = -1,
-	.wp_gpio = -1,
-	.power_gpio = -1,
-	.tap_delay = 0,
-	.trim_delay = 0x3,
-	.uhs_mask = MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
-	.calib_3v3_offsets = 0x7676,
-	.calib_1v8_offsets = 0x7676,
-};
-
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 	.cd_gpio = -1,
 	.wp_gpio = -1,
@@ -224,16 +200,6 @@ static struct platform_device tegra_sdhci_device0 = {
 	.num_resources	= ARRAY_SIZE(sdhci_resource0),
 	.dev = {
 		.platform_data = &tegra_sdhci_platform_data0,
-	},
-};
-
-static struct platform_device tegra_sdhci_device2 = {
-	.name		= "sdhci-tegra",
-	.id		= 2,
-	.resource	= sdhci_resource2,
-	.num_resources	= ARRAY_SIZE(sdhci_resource2),
-	.dev = {
-		.platform_data = &tegra_sdhci_platform_data2,
 	},
 };
 
@@ -398,7 +364,6 @@ int __init flounder_sdhci_init(void)
 		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
 	if (nominal_core_mv) {
 		tegra_sdhci_platform_data0.nominal_vcore_mv = nominal_core_mv;
-		tegra_sdhci_platform_data2.nominal_vcore_mv = nominal_core_mv;
 		tegra_sdhci_platform_data3.nominal_vcore_mv = nominal_core_mv;
 	}
 	min_vcore_override_mv =
@@ -406,24 +371,19 @@ int __init flounder_sdhci_init(void)
 	if (min_vcore_override_mv) {
 		tegra_sdhci_platform_data0.min_vcore_override_mv =
 			min_vcore_override_mv;
-		tegra_sdhci_platform_data2.min_vcore_override_mv =
-			min_vcore_override_mv;
 		tegra_sdhci_platform_data3.min_vcore_override_mv =
 			min_vcore_override_mv;
 	}
 	boot_vcore_mv = tegra_dvfs_rail_get_boot_level(tegra_core_rail);
 	if (boot_vcore_mv) {
 		tegra_sdhci_platform_data0.boot_vcore_mv = boot_vcore_mv;
-		tegra_sdhci_platform_data2.boot_vcore_mv = boot_vcore_mv;
 		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
 	}
 
 	tegra_sdhci_platform_data3.max_clk_limit = 200000000;
-	tegra_sdhci_platform_data2.max_clk_limit = 204000000;
 	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
 
 	platform_device_register(&tegra_sdhci_device3);
-	platform_device_register(&tegra_sdhci_device2);
 	platform_device_register(&tegra_sdhci_device0);
 	flounder_wifi_init();
 
