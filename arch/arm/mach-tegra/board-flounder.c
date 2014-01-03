@@ -59,6 +59,7 @@
 #include <linux/irqchip.h>
 #include <linux/irqchip/tegra.h>
 #include <linux/pci-tegra.h>
+#include <linux/max1187x.h>
 
 #include <mach/irqs.h>
 #include <mach/tegra_fiq_debugger.h>
@@ -201,6 +202,92 @@ static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 	{ "uartc",	"pll_p",	408000000,	false},
 	{ "uartd",	"pll_p",	408000000,	false},
 	{ NULL,		NULL,		0,		0},
+};
+
+struct max1187x_board_config max1187x_config_data[] = {
+	{
+		.config_id = 0x03E7,
+		.chip_id = 0x75,
+		.major_ver = 1,
+		.minor_ver = 10,
+		.protocol_ver = 8,
+		.config_touch = {
+			0x03E7, 0x141F, 0x0078, 0x001E, 0x0A01, 0x0100, 0x0302, 0x0504,
+			0x0706, 0x0908, 0x0B0A, 0x0D0C, 0x0F0E, 0x1110, 0x1312, 0x1514,
+			0x1716, 0x1918, 0x1B1A, 0x1D1C, 0xFF1E, 0xFFFF, 0xFFFF, 0xFFFF,
+			0xFFFF, 0x0100, 0x0302, 0x0504, 0x0706, 0x0908, 0x0B0A, 0x0D0C,
+			0x0F0E, 0x1110, 0x1312, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+			0xFFFF, 0x0EFF, 0x895F, 0xFF13, 0x0000, 0x1402, 0x04B0, 0x04B0,
+			0x04B0, 0x0514, 0x00B4, 0x1A00, 0x0A08, 0x00B4, 0x0082, 0xFFFF,
+			0xFFFF, 0x03E8, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+			0x5046
+		},
+		.config_cal = {
+			0xFFF5, 0xFFEA, 0xFFDF, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E,
+			0x001E, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E,
+			0x001E, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E, 0x001E,
+			0x001E, 0x001E, 0x001E, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F,
+			0x000F, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F,
+			0x000F, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F, 0x000F,
+			0x000F, 0x000F, 0x000F, 0xFFFF, 0xFF1E, 0x00FF, 0x00FF, 0x00FF,
+			0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x00FF, 0x000A, 0x0001,
+			0x0001, 0x0002, 0x0002, 0x0003, 0x0001, 0x0001, 0x0002, 0x0002,
+			0x0003, 0x0C26
+		},
+		.config_private = {
+			0x0118, 0x0069, 0x0082, 0x0038, 0xF0FF, 0x1428, 0x001E, 0x0190,
+			0x03B6, 0x00AA, 0x00C8, 0x0018, 0x04E2, 0x003C, 0x0000, 0xB232,
+			0xFEFE, 0xFFFF, 0xFFFF, 0xFFFF, 0x00FF, 0xFF64, 0x4E21, 0x1403,
+			0x78C8, 0x524C, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF, 0xFFFF,
+			0xFFFF, 0xF22F
+		},
+		.config_lin_x = {
+			0x002B, 0x3016, 0x644C, 0x8876, 0xAA99, 0xCBBB, 0xF0E0, 0x8437
+		},
+		.config_lin_y = {
+			0x0030, 0x2E17, 0x664B, 0x8F7D, 0xAE9F, 0xCABC, 0xEADA, 0x8844
+		},
+	},
+	{
+		.config_id = 0,
+		.chip_id = 0x75,
+		.major_ver = 0,
+		.minor_ver = 0,
+	},
+};
+
+struct max1187x_pdata max1187x_platdata = {
+	.fw_config = max1187x_config_data,
+	.gpio_tirq = TEGRA_GPIO_PK2,
+	.gpio_reset = TEGRA_GPIO_PX6,
+	.num_fw_mappings = 1,
+	.fw_mapping[0] = {.chip_id = 0x75, .filename = "max11876.bin", .filesize = 0xC000, .file_codesize = 0xC000},
+	.defaults_allow = 1,
+	.default_config_id = 0x5800,
+	.default_chip_id = 0x75,
+	.i2c_words = 128,
+	.coordinate_settings = 0,
+	.panel_min_x = 0,
+	.panel_max_x = 3840,
+	.panel_min_y = 0,
+	.panel_max_y = 2600,
+	.lcd_x = 2560,
+	.lcd_y = 1600,
+	.num_rows = 32,
+	.num_cols = 20,
+	.input_protocol = MAX1187X_PROTOCOL_B,
+	.update_feature = MAX1187X_UPDATE_CONFIG,
+	.tw_mask = 0xF,
+	.button_code0 = KEY_HOME,
+	.button_code1 = KEY_BACK,
+	.button_code2 = KEY_RESERVED,
+	.button_code3 = KEY_RESERVED,
+	.report_mode = MAX1187X_REPORT_MODE_EXTEND,
+};
+
+static struct i2c_board_info __initdata i2c_max_touch_board_info = {
+	I2C_BOARD_INFO(MAX1187X_NAME, 0x48),
+	.platform_data = &max1187x_platdata,
 };
 
 static void flounder_i2c_init(void)
@@ -667,6 +754,31 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 
 static int __init flounder_touch_init(void)
 {
+	int ret ;
+	ret = gpio_request(TEGRA_GPIO_PQ3, "LED_3V3_EN");
+	if (ret < 0){
+		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
+                        __func__, "LED_3V3_EN");
+	}
+
+	ret = gpio_request(TEGRA_GPIO_PK6, "TW_I2C_OE");
+	if (ret < 0){
+		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
+                        __func__, "TW_I2C_OE");
+	}
+
+	ret = gpio_request(TEGRA_GPIO_PU4, "TP_I2C_SEL_CPU");
+	if (ret < 0){
+		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
+                        __func__, "TP_I2C_SEL_CPU");
+	}
+
+	gpio_direction_output(TEGRA_GPIO_PQ3, 1);
+	gpio_direction_output(TEGRA_GPIO_PK6, 0);
+	gpio_direction_output(TEGRA_GPIO_PU4, 0);
+
+	i2c_max_touch_board_info.irq = gpio_to_irq(TEGRA_GPIO_PK2);
+	i2c_register_board_info(1, &i2c_max_touch_board_info, 1);
 	return 0;
 }
 
