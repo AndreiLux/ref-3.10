@@ -106,13 +106,11 @@ palmas: tps65913 {
 
 	pmic {
 		compatible = "ti,tps65913-pmic", "ti,palmas-pmic";
+		ldo1-in-supply = <&palmas_smps9>;
 		ldo2-in-supply = <&palmas_smps8>;
 		ldo5-in-supply = <&palmas_smps8>;
-		ldo6-in-supply = <&palmas_smps9>;
-		ldo7-in-supply = <&palmas_smps9>;
-		ldo9-in-supply = <&palmas_smps9>;
+		ldo7-in-supply = <&palmas_smps8>;
 		ldoln-in-supply = <&palmas_smps10_out2>;
-		smps10-out2-supply = <&palmas_smps10_out2>;
 
 		regulators {
 			smps123 {
@@ -209,10 +207,6 @@ palmas: tps65913 {
 					c12 {
 						regulator-consumer-supply = "pwrdet_sdmmc1";
 					};
-					c13 {
-						regulator-consumer-supply = "vddio_sdmmc";
-						regulator-consumer-device = "sdhci-tegra.3";
-					};
 					c14 {
 						regulator-consumer-supply = "pwrdet_sdmmc4";
 					};
@@ -285,49 +279,19 @@ palmas: tps65913 {
 					c36 {
 						regulator-consumer-supply = "vdd_lcd_1v8_s";
 					};
+					c37 {
+						regulator-consumer-supply = "vddio_sdmmc";
+						regulator-consumer-device = "sdhci-tegra.3";
+					};
 				};
 			};
 
 			palmas_smps9: smps9 {
-				regulator-name = "vdd-snsr";
-				regulator-min-microvolt = <3300000>;
-				regulator-max-microvolt = <3300000>;
+				regulator-name = "vdd-1v2";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <1200000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "vdd_snsr";
-					};
-					c2 {
-						regulator-consumer-supply = "vddio_sd_slot";
-						regulator-consumer-device = "sdhci-tegra.3";
-					};
-					c3 {
-						regulator-consumer-supply = "vddio_sd_slot";
-						regulator-consumer-device = "sdhci-tegra.2";
-					};
-					c4 {
-						regulator-consumer-supply = "vdd_3v3_gps";
-					};
-					c5 {
-						regulator-consumer-supply = "vdd_3v3_nfc";
-					};
-					c8 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "0-0077";
-					};
-					c9 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "1-004c";
-					};
-					c10 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "1-004d";
-					};
-					c11 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "0-0010";
-					};
-
 				};
 			};
 
@@ -424,85 +388,29 @@ palmas: tps65913 {
 			};
 
 			ldo2 {
-				regulator-name = "vdd-cam";
+				regulator-name = "vdd-aud-1v2";
 				regulator-min-microvolt = <1050000>;
 				regulator-max-microvolt = <1200000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "vdd_cam_1v1_cam";
-					};
-					c2 {
-						regulator-consumer-supply = "imx135_reg2";
-					};
-					c3 {
-						regulator-consumer-supply = "vdd_1v2_cam";
-					};
-					c4 {
-						regulator-consumer-supply = "vdig";
-						regulator-consumer-device = "2-0010";
-
-					};
-					c5 {
-						regulator-consumer-supply = "dvdd";
-						regulator-consumer-device = "2-0010";
-					};
-					c6 {
-						regulator-consumer-supply = "vdig";
-						regulator-consumer-device = "2-0036";
-					};
-					c7 {
-						regulator-consumer-supply = "vdig_lv";
-						regulator-consumer-device = "2-0010";
-					};
-
 				};
 			};
 
 			ldo3 {
-				regulator-name = "vdd-touch";
-				regulator-min-microvolt = <3300000>;
-				regulator-max-microvolt = <3300000>;
+				regulator-name = "vdd-sensor-io";
+				regulator-min-microvolt = <1800000>;
+				regulator-max-microvolt = <1800000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "avdd";
-						regulator-consumer-device = "spi0.0";
-					};
-
 				};
 			};
 
 			ldo4 {
-				regulator-name = "avdd-cam";
+				regulator-name = "vdd-sensor-2v85";
 				regulator-min-microvolt = <2850000>;
 				regulator-max-microvolt = <2850000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "vdd_2v7_hv";
-					};
-					c2 {
-						regulator-consumer-supply = "avdd_cam1_cam";
-					};
-					c3 {
-						regulator-consumer-supply = "avdd_cam2_cam";
-					};
-					c4 {
-						regulator-consumer-supply = "avdd_cam3_cam";
-					};
-					c5 {
-						regulator-consumer-supply = "vana";
-						regulator-consumer-device = "2-0010";
-					};
-					c6 {
-						regulator-consumer-supply = "avdd";
-						regulator-consumer-device = "2-0010";
-					};
-					c7 {
-						regulator-consumer-supply = "avdd_ov5693";
-						regulator-consumer-device = "2-0010";
-					};
 				};
 			};
 
@@ -555,101 +463,27 @@ palmas: tps65913 {
 			};
 
 			ldo6 {
-				regulator-name = "vdd-cam-af";
-				regulator-min-microvolt = <1800000>;
-				regulator-max-microvolt = <1800000>;
+				regulator-name = "vdd-1v5-ldo6";
+				regulator-min-microvolt = <1500000>;
+				regulator-max-microvolt = <1500000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "vdd_cam1_1v8_cam";
-					};
-					c2 {
-						regulator-consumer-supply = "vdd_cam2_1v8_cam";
-					};
-					c3 {
-						regulator-consumer-supply = "vif";
-						regulator-consumer-device = "2-0010";
-					};
-					c4 {
-						regulator-consumer-supply = "dovdd";
-						regulator-consumer-device = "2-0010";
-
-					};
-					c5 {
-						regulator-consumer-supply = "vif2";
-						regulator-consumer-device = "2-0021";
-					};
-					c6 {
-						regulator-consumer-supply = "vif";
-						regulator-consumer-device = "2-0036";
-					};
-					c7 {
-						regulator-consumer-supply = "vdd_i2c";
-						regulator-consumer-device = "2-000c";
-
-					};
-					c8 {
-						regulator-consumer-supply = "vi2c";
-						regulator-consumer-device = "2-0030";
-					};
-					c9 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "2-004a";
-					};
-					c10 {
-						regulator-consumer-supply = "vif";
-						regulator-consumer-device = "2-0048";
-					};
 				};
 			};
 
 			ldo7 {
-				regulator-name = "avdd-cam-af";
-				regulator-min-microvolt = <2700000>;
-				regulator-max-microvolt = <2700000>;
+				regulator-name = "v-slim-1v0";
+				regulator-min-microvolt = <1000000>;
+				regulator-max-microvolt = <1000000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "avdd_af1_cam";
-					};
-					c2 {
-						regulator-consumer-supply = "imx135_reg1";
-					};
-					c3 {
-						regulator-consumer-supply = "vana";
-						regulator-consumer-device = "2-0021";
-					};
-					c4 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "2-000c";
-					};
-					c5 {
-						regulator-consumer-supply = "vdd_af1";
-						regulator-consumer-device = "2-0010";
-					};
-					c6 {
-						regulator-consumer-supply = "vin";
-						regulator-consumer-device = "2-0030";
-					};
-					c7 {
-						regulator-consumer-supply = "vin";
-						regulator-consumer-device = "2-004a";
-					};
-					c8 {
-						regulator-consumer-supply = "vana";
-						regulator-consumer-device = "2-0036";
-					};
-					c9 {
-						regulator-consumer-supply = "vana";
-						regulator-consumer-device = "2-0048";
-					};
 				};
 			};
 
 			ldo8 {
 				regulator-name = "vdd-rtc";
-				regulator-min-microvolt = <900000>;
-				regulator-max-microvolt = <900000>;
+				regulator-min-microvolt = <1100000>;
+				regulator-max-microvolt = <1100000>;
 				regulator-always-on;
 				regulator-boot-on;
 
@@ -661,18 +495,11 @@ palmas: tps65913 {
 			};
 
 			ldo9 {
-				regulator-name = "vddio-sdmmc-2";
+				regulator-name = "vdd-3p3-ldo9";
 				regulator-min-microvolt = <1800000>;
 				regulator-max-microvolt = <3300000>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "vddio_sdmmc";
-						regulator-consumer-device = "sdhci-tegra.2";
-					};
-					c2 {
-						regulator-consumer-supply = "pwrdet_sdmmc3";
-					};
 				};
 			};
 
