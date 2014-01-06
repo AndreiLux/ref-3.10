@@ -88,7 +88,6 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	DEFAULT_PINMUX(GPIO_PG5,      SPI4,        NORMAL,    NORMAL,   OUTPUT),
 	DEFAULT_PINMUX(GPIO_PG6,      SPI4,        NORMAL,    NORMAL,   OUTPUT),
 	DEFAULT_PINMUX(GPIO_PG7,      SPI4,        NORMAL,    NORMAL,   INPUT),
-	DEFAULT_PINMUX(GPIO_PI3,      SPI4,        NORMAL,    NORMAL,   OUTPUT),
 
 	/* PWM0 pinmux */
 	DEFAULT_PINMUX(GPIO_PH0,      DTV,        PULL_DOWN,    TRISTATE,   INPUT),
@@ -222,6 +221,7 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	GPIO_PINMUX(KB_COL0, PULL_UP, NORMAL, INPUT, DISABLE),
 	GPIO_PINMUX(SDMMC3_CD_N, PULL_UP, NORMAL, INPUT, DISABLE),
 	GPIO_PINMUX(KB_COL5, PULL_UP, NORMAL, INPUT, DISABLE),
+	GPIO_PINMUX(GPIO_PI3, NORMAL, NORMAL, OUTPUT, DISABLE),
 	/*key end*/
 	GPIO_PINMUX(GPIO_X6_AUD, PULL_UP, NORMAL, INPUT, DISABLE),
 	GPIO_PINMUX(GPIO_X7_AUD, NORMAL, NORMAL, OUTPUT, DISABLE),
@@ -362,6 +362,7 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ0, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ5, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PV2, true, 0),
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PI3, false, 0),
 /* key end */
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ6, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ7, true, 0),

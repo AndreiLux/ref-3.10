@@ -46,6 +46,9 @@
 					TEGRA_GPIO(H, 3)
 					TEGRA_GPIO(H, 5)
 					TEGRA_GPIO(I, 0)
+/*key*/
+					TEGRA_GPIO(I, 3)
+/*key*/
 					TEGRA_GPIO(I, 4)
 					TEGRA_GPIO(K, 0)
 					TEGRA_GPIO(K, 1)
