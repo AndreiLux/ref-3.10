@@ -4658,6 +4658,20 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 		if (gpio_is_valid(rt5677->vad_clock_en)) {
 			dev_dbg(&i2c->dev, "vad_clock_en: %d\n",
 			rt5677->vad_clock_en);
+
+			ret = gpio_request(rt5677->vad_clock_en, "vad_clock_en");
+			if (ret) {
+				dev_err(&i2c->dev, "cannot get vad_clock_en gpio\n");
+			} else {
+				ret = gpio_direction_output(rt5677->vad_clock_en, 0);
+				if (ret) {
+					dev_err(&i2c->dev,
+					"vad_clock_en=0 fail,%d\n", ret);
+
+					gpio_free(rt5677->vad_clock_en);
+				} else
+					dev_dbg(&i2c->dev, "vad_clock_en=0\n");
+			}
 		} else {
 			dev_dbg(&i2c->dev, "vad_clock_en is invalid: %d\n",
 			rt5677->vad_clock_en);
