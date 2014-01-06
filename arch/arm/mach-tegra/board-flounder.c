@@ -77,6 +77,9 @@
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_ahci.h>
 #include <linux/irqchip/tegra.h>
+#include <mach/htc_headset_mgr.h>
+#include <mach/htc_headset_pmic.h>
+#include <mach/htc_headset_one_wire.h>
 
 #include "board.h"
 #include "board-flounder.h"
@@ -740,6 +743,8 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006200, "serial-tegra.2",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006300, "serial-tegra.3",
+				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000c000, "tegra12-i2c.0",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000c400, "tegra12-i2c.1",
@@ -783,6 +788,180 @@ static int __init flounder_touch_init(void)
 
 	i2c_max_touch_board_info.irq = gpio_to_irq(TEGRA_GPIO_PK2);
 	i2c_register_board_info(1, &i2c_max_touch_board_info, 1);
+	return 0;
+}
+
+#define	EARPHONE_DET TEGRA_GPIO_PW3
+#define	HSMIC_2V85_EN TEGRA_GPIO_PS3
+#define AUD_REMO_PRES TEGRA_GPIO_PS2
+#define	AUD_REMO_TX_OE TEGRA_GPIO_PQ4
+#define	AUD_REMO_TX TEGRA_GPIO_PJ7
+#define	AUD_REMO_RX TEGRA_GPIO_PB0
+
+static void headset_init(void)
+{
+	int ret ;
+
+	ret = gpio_request(HSMIC_2V85_EN, "HSMIC_2V85_EN");
+    if (ret < 0){
+		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
+                        __func__, "HSMIC_2V85_EN");
+	}
+
+	ret = gpio_request(AUD_REMO_TX_OE, "AUD_REMO_TX_OE");
+    if (ret < 0){
+		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
+                        __func__, "AUD_REMO_TX_OE");
+	}
+
+	ret = gpio_request(AUD_REMO_TX, "AUD_REMO_TX");
+    if (ret < 0){
+		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
+                        __func__, "AUD_REMO_TX");
+	}
+
+	ret = gpio_request(AUD_REMO_RX, "AUD_REMO_RX");
+    if (ret < 0){
+		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
+                        __func__, "AUD_REMO_RX");
+	}
+
+	gpio_direction_output(HSMIC_2V85_EN, 0);
+	gpio_direction_output(AUD_REMO_TX_OE, 1);
+
+	gpio_direction_output(AUD_REMO_TX, 0);
+	gpio_direction_input(AUD_REMO_RX);
+}
+
+static void headset_power(int enable)
+{
+	pr_info("[HS_BOARD] (%s) Set MIC bias %d\n", __func__, enable);
+
+	if (enable)
+		gpio_set_value(HSMIC_2V85_EN, 1);
+	else {
+		gpio_set_value(HSMIC_2V85_EN, 0);
+	}
+}
+
+/* HTC_HEADSET_PMIC Driver */
+static struct htc_headset_pmic_platform_data htc_headset_pmic_data = {
+	.driver_flag		= DRIVER_HS_PMIC_ADC,
+	.hpin_gpio		= EARPHONE_DET,
+	.hpin_irq		= 0,
+	.key_gpio		= AUD_REMO_PRES,
+	.key_irq		= 0,
+	.key_enable_gpio	= 0,
+	.adc_mic		= 0,
+	.adc_remote 	= {0, 117, 118, 386, 387, 827},
+	.hs_controller		= 0,
+	.hs_switch		= 0,
+	.iio_channel_name = "hs_channel",
+};
+
+static struct platform_device htc_headset_pmic = {
+	.name	= "HTC_HEADSET_PMIC",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &htc_headset_pmic_data,
+	},
+};
+
+static struct htc_headset_1wire_platform_data htc_headset_1wire_data = {
+	.tx_level_shift_en	= AUD_REMO_TX_OE,
+	.uart_sw		= 0,
+	.one_wire_remote	={0x7E, 0x7F, 0x7D, 0x7F, 0x7B, 0x7F},
+	.remote_press		= 0,
+	.onewire_tty_dev	= "/dev/ttyHS3",
+};
+
+static struct platform_device htc_headset_one_wire = {
+	.name	= "HTC_HEADSET_1WIRE",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &htc_headset_1wire_data,
+	},
+};
+
+static void uart_tx_gpo(int mode)
+{
+	int ret;
+	pr_info("[HS_BOARD] (%s) Set uart_tx_gpo mode = %d\n", __func__, mode);
+	switch (mode) {
+		case 0:
+			gpio_free(AUD_REMO_TX);
+			ret = gpio_request(AUD_REMO_TX, "AUD_REMO_RX");
+			if (ret < 0){
+				pr_err("[HS] %s: gpio_request failed for gpio %s\n",
+                        __func__, "AUD_REMO_RX");
+			}
+			gpio_direction_output(AUD_REMO_TX, 0);
+			break;
+		case 1:
+			gpio_free(AUD_REMO_TX);
+			ret = gpio_request(AUD_REMO_TX, "AUD_REMO_RX");
+			if (ret < 0){
+				pr_err("[HS] %s: gpio_request failed for gpio %s\n",
+                        __func__, "AUD_REMO_RX");
+			}
+			gpio_direction_output(AUD_REMO_TX, 1);
+			break;
+		case 2:
+			gpio_free(AUD_REMO_TX);
+			break;
+	}
+}
+
+static void uart_lv_shift_en(int enable)
+{
+	pr_info("[HS_BOARD] (%s) Set uart_lv_shift_en %d\n", __func__, enable);
+	gpio_direction_output(AUD_REMO_TX_OE, enable);
+}
+
+/* HTC_HEADSET_MGR Driver */
+static struct platform_device *headset_devices[] = {
+	&htc_headset_pmic,
+	&htc_headset_one_wire,
+	/* Please put the headset detection driver on the last */
+};
+
+static struct headset_adc_config htc_headset_mgr_config[] = {
+	{
+		.type = HEADSET_MIC,
+		.adc_max = 3791,
+		.adc_min = 621,
+	},
+	{
+		.type = HEADSET_NO_MIC,
+		.adc_max = 620,
+		.adc_min = 0,
+	},
+};
+
+static struct htc_headset_mgr_platform_data htc_headset_mgr_data = {
+	.driver_flag		= DRIVER_HS_MGR_FLOAT_DET,
+	.headset_devices_num	= ARRAY_SIZE(headset_devices),
+	.headset_devices	= headset_devices,
+	.headset_config_num	= ARRAY_SIZE(htc_headset_mgr_config),
+	.headset_config		= htc_headset_mgr_config,
+	.headset_init		= headset_init,
+	.headset_power		= headset_power,
+	.uart_tx_gpo		= uart_tx_gpo,
+	.uart_lv_shift_en	= uart_lv_shift_en,
+};
+
+static struct platform_device htc_headset_mgr = {
+	.name	= "HTC_HEADSET_MGR",
+	.id	= -1,
+	.dev	= {
+		.platform_data	= &htc_headset_mgr_data,
+	},
+};
+
+static int __init flounder_headset_init(void)
+{
+	pr_info("[HS]%s Headset device register enter\n", __func__);
+	platform_device_register(&htc_headset_mgr);
 	return 0;
 }
 
@@ -959,6 +1138,7 @@ static void __init tegra_flounder_late_init(void)
 	flounder_edp_init();
 	isomgr_init();
 	flounder_touch_init();
+	flounder_headset_init();
 	flounder_panel_init();
 	flounder_kbc_init();
 

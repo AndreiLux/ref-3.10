@@ -38,7 +38,11 @@
 					TEGRA_GPIO(Q, 5)
 					TEGRA_GPIO(V, 2)
 /*key*/
+/*headset*/
+					TEGRA_GPIO(S, 2)
 					TEGRA_GPIO(W, 3)
+					TEGRA_GPIO(B, 0)
+/*headset*/
 					TEGRA_GPIO(BB, 6)
 					TEGRA_GPIO(BB, 7)
 					TEGRA_GPIO(CC, 1)
@@ -52,6 +56,10 @@
 					TEGRA_GPIO(I, 3)
 /*key*/
 					TEGRA_GPIO(I, 4)
+/*headset*/
+					TEGRA_GPIO(J, 7)
+					TEGRA_GPIO(S, 3)
+/*headset*/
 					TEGRA_GPIO(K, 0)
 					TEGRA_GPIO(K, 1)
 					TEGRA_GPIO(K, 5)
@@ -83,6 +91,9 @@
 					TEGRA_GPIO(R, 3)
 					TEGRA_GPIO(X, 2)
 					TEGRA_GPIO(Q, 2)
+/*headset*/
+					TEGRA_GPIO(Q, 4)
+/*headset*/
 					TEGRA_GPIO(EE, 5)>;
 		};
 	};
@@ -98,6 +109,11 @@
 	};
 
 	serial@70006200 {
+		compatible = "nvidia,tegra114-hsuart";
+		status = "okay";
+	};
+
+	serial@70006300 {
 		compatible = "nvidia,tegra114-hsuart";
 		status = "okay";
 	};

@@ -84,6 +84,12 @@ palmas: tps65913 {
 				ti,adc-consumer-channel ="battery-temp-channel";
 			};
 
+			ch4 {
+				ti,adc-channel-number = <4>;
+				ti,adc-consumer-device = "HTC_HEADSET_PMIC";
+				ti,adc-consumer-channel ="hs_channel";
+			};
+
 			ch6 {
 				ti,adc-channel-number = <6>;
 				ti,adc-consumer-device = "palmas-battery";
