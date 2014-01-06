@@ -17,7 +17,6 @@
 
 	i2c@7000c000 {
 		status = "okay";
-		clock-frequency = <100000>;
 
 		max17050@36 {
 			compatible = "maxim,max17050";
@@ -58,6 +57,16 @@
 			};
 		};
 
+	};
+	i2c@7000c400 {
+		status = "okay";
+
+		lp5521@32 {
+			compatible = "LP5521-LED";
+			reg = <0x32>;
+			lp5521,lp5521_en = <&gpio 60 0x00>;
+			lp5521,num_leds = <1>;
+		};
 	};
 
 };
