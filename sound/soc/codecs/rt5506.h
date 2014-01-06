@@ -118,4 +118,6 @@ enum AMP_S4_STATUS {
 int query_rt5506(void);
 int set_rt5506_amp(int on, int dsp);
 int rt5506_headset_detect(int on);
+void rt5506_set_gain(u8 data);
+u8 rt5506_get_gain(void);
 #endif

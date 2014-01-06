@@ -182,6 +182,22 @@ int rt5506_headset_detect(int on)
 	return 0;
 }
 
+void rt5506_set_gain(u8 data)
+{
+	pr_info("%s:before addr=%d, val=%d\n", __func__,
+	RT5506_AMP_ON.reg[1].addr, RT5506_AMP_ON.reg[1].val);
+
+	RT5506_AMP_ON.reg[1].val = data;
+
+	pr_info("%s:after addr=%d, val=%d\n", __func__,
+	RT5506_AMP_ON.reg[1].addr, RT5506_AMP_ON.reg[1].val);
+}
+
+u8 rt5506_get_gain(void)
+{
+	return RT5506_AMP_ON.reg[1].val;
+}
+
 static void rt5506_register_hs_notification(void)
 {
 /*
