@@ -16,4 +16,6 @@ int set_tfa9895_spkamp(int en, int dsp_mode);
 int set_tfa9895l_spkamp(int en, int dsp_mode);
 int tfa9895_l_write(char *txdata, int length);
 int tfa9895_l_read(char *rxdata, int length);
+int tfa9895_disable(bool disable);
+int tfa9895l_disable(bool disable);
 #endif

@@ -275,6 +275,26 @@ int set_tfa9895_spkamp(int en, int dsp_mode)
 	return 0;
 }
 
+int tfa9895_disable(bool disable)
+{
+	int rc = 0;
+
+	unsigned char amp_val[1][3] = {
+	{0x09, 0x06, 0x18}
+	};
+
+	if (disable) {
+		pr_info("%s: speaker switch off!\n", __func__);
+		amp_val[0][2]=0x19;
+	} else {
+		pr_info("%s: speaker switch on!\n", __func__);
+	}
+
+	rc = tfa9895_i2c_write(amp_val[0], 3);
+
+	return rc;
+}
+
 static struct miscdevice tfa9895_device = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "tfa9895",
@@ -378,8 +398,7 @@ static void tfa9895_shutdown(struct i2c_client *client)
 	if (pdata == NULL) {
 		ret = -ENOMEM;
 		pr_err("%s: platform data is NULL, could not disable tfa9895-power-enable pin\n", __func__);
-	}
-	else if (gpio_is_valid(pdata->tfa9895_power_enable)) {
+	} else if (gpio_is_valid(pdata->tfa9895_power_enable)) {
 		ret = gpio_request(pdata->tfa9895_power_enable, "tfa9895-power-enable");
 		if (ret)
 			pr_err("%s: Fail gpio_request tfa9895-power-enable\n", __func__);

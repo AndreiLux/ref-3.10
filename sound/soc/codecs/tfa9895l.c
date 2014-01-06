@@ -274,6 +274,26 @@ int set_tfa9895l_spkamp(int en, int dsp_mode)
 	return 0;
 }
 
+int tfa9895l_disable(bool disable)
+{
+	int rc = 0;
+
+	unsigned char ampl_val[1][3] = {
+	{0x09, 0x06, 0x18}
+	};
+
+	if (disable) {
+		pr_info("%s: speaker_l switch off!\n", __func__);
+		ampl_val[0][2]=0x19;
+	} else {
+		pr_info("%s: speaker_l switch on!\n", __func__);
+	}
+
+	rc = tfa9895_i2c_write(ampl_val[0], 3);
+
+	return rc;
+}
+
 static struct miscdevice tfa9895l_device = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "tfa9895l",
