@@ -722,9 +722,9 @@ static int bq2419x_show_chip_version(struct bq2419x_chip *bq2419x)
 	if ((val & BQ24190_IC_VER) == BQ24190_IC_VER)
 		dev_info(bq2419x->dev, "chip type BQ24190 detected\n");
 	else if ((val & BQ24192_IC_VER) == BQ24192_IC_VER)
-		dev_info(bq2419x->dev, "chip type BQ2419X/3 detected\n");
+		dev_info(bq2419x->dev, "chip type BQ24192/3 detected\n");
 	else if ((val & BQ24192i_IC_VER) == BQ24192i_IC_VER)
-		dev_info(bq2419x->dev, "chip type BQ2419Xi detected\n");
+		dev_info(bq2419x->dev, "chip type BQ24192i detected\n");
 	return 0;
 }
 
