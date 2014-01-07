@@ -57,6 +57,36 @@
 			};
 		};
 
+		tps61310@33 {
+			compatible = "ti,tps61310";
+			reg = <0x33>;
+			tps61310,tps61310_strb0 = <&gpio TEGRA_GPIO(Q, 6) 0>;
+			tps61310,tps61310_strb1 = <&gpio TEGRA_GPIO(W, 5) 0>;
+			tps61310,flash_duration_ms = <600>;
+			tps61310,enable_FLT_1500mA = <0>;
+			tps61310,led_count = <1>;
+			tps61310,disable_tx_mask = <1>;
+
+			tps61310_flash0: tps61310_flash_0 {
+				label = "flash";
+				linux,name = "flash_0";
+				linux,default-trigger =
+					"flash0_trigger";
+				id = <0>;
+				default-state = "off";
+				max-current = <750>;
+			};
+
+			tps61310_torch0: tps61310_torch_0 {
+				label = "torch";
+				linux,name = "torch_0";
+				linux,default-trigger =
+					"torch0_trigger";
+				id = <0>;
+				default-state = "off";
+				max-current = <200>;
+			};
+		};
 	};
 	i2c@7000c400 {
 		status = "okay";
