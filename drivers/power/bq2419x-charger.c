@@ -732,7 +732,7 @@ static int fchg_curr_to_reg(int curr)
 {
 	int ret;
 
-	ret = (curr - 500) / 64;
+	ret = (curr - 512) / 64;
 	ret = ret << 2;
 
 	return ret;
@@ -742,7 +742,7 @@ static int fchg_reg_to_curr(int reg_val)
 {
 	int ret;
 
-	ret = (reg_val * 64) + 500;
+	ret = (reg_val * 64) + 512;
 
 	return ret;
 }
