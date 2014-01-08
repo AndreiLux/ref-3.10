@@ -501,6 +501,14 @@ config LEDS_BLINKM
 	  This option enables support for the BlinkM RGB LED connected
 	  through I2C. Say Y to enable support for the BlinkM LED.
 
+config LEDS_TPS61310
+	tristate "TI TPS61310 leds"
+	depends on LEDS_CLASS
+	depends on I2C
+	help
+	  This option enables support for the TI TPS61310 LED driver
+	  through I2C.
+
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"
 

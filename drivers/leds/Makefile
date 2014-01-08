@@ -58,6 +58,7 @@ obj-$(CONFIG_LEDS_MAX77660)		+= leds-max77660.o
 obj-$(CONFIG_LEDS_MAX8997)		+= leds-max8997.o
 obj-$(CONFIG_LEDS_LM355x)		+= leds-lm355x.o
 obj-$(CONFIG_LEDS_BLINKM)		+= leds-blinkm.o
+obj-$(CONFIG_LEDS_TPS61310)		+= leds-tps61310.o
 
 obj-$(CONFIG_LEDS_MAX8831)		+= leds-max8831.o
 
@@ -66,3 +67,4 @@ obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o
 
 # LED Triggers
 obj-$(CONFIG_LEDS_TRIGGERS)		+= trigger/
+
