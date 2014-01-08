@@ -95,21 +95,21 @@ static tegra_dc_bl_output dsi_j_qxga_8_9_bl_output_measured = {
 };
 
 static struct tegra_dsi_cmd dsi_j_qxga_8_9_init_cmd[] = {
-	DSI_CMD_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_EXIT_SLEEP_MODE, 0x0),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_EXIT_SLEEP_MODE, 0x0),
 	DSI_DLY_MS(120),
-	DSI_CMD_SHORT(DSI_DCS_WRITE_1_PARAM, 0x51, 0xFF),
-	DSI_CMD_SHORT(DSI_DCS_WRITE_1_PARAM, 0x53, 0x24),
-	DSI_CMD_SHORT(DSI_DCS_WRITE_1_PARAM, 0x55, 0x00),
-	DSI_CMD_SHORT(DSI_DCS_WRITE_1_PARAM, 0x35, 0x00),
-	DSI_CMD_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_SET_DISPLAY_ON, 0x0),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x51, 0xFF),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x53, 0x24),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x55, 0x00),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x35, 0x00),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_SET_DISPLAY_ON, 0x0),
 };
 
 static struct tegra_dsi_cmd dsi_j_qxga_8_9_suspend_cmd[] = {
-	DSI_CMD_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_SET_DISPLAY_OFF, 0x0),
-	DSI_CMD_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_ENTER_SLEEP_MODE, 0x0),
-	DSI_DLY_MS(60),
-	DSI_CMD_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB0, 0x04),
-	DSI_CMD_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB1, 0x01),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_SET_DISPLAY_OFF, 0x0),
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_ENTER_SLEEP_MODE, 0x0),
+	DSI_SEND_FRAME(3),
+	DSI_CMD_VBLANK_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB0, 0x04),
+	DSI_CMD_VBLANK_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB1, 0x01),
 };
 
 static struct tegra_dsi_out dsi_j_qxga_8_9_pdata = {
@@ -211,13 +211,13 @@ static struct tegra_dc_mode dsi_j_qxga_8_9_modes[] = {
 		.pclk = 192000000, /* @60Hz */
 		.h_ref_to_sync = 1,
 		.v_ref_to_sync = 1,
-		.h_sync_width = 32 * 2,
+		.h_sync_width = 62,
 		.v_sync_width = 4,
-		.h_back_porch = 76 * 2,
+		.h_back_porch = 152,
 		.v_back_porch = 8,
 		.h_active = 768 * 2,
 		.v_active = 2048,
-		.h_front_porch = 160 * 2,
+		.h_front_porch = 322,
 		.v_front_porch = 12,
 #endif
 	},
@@ -504,8 +504,8 @@ static void dsi_j_qxga_8_9_dc_out_init(struct tegra_dc_out *dc)
 	dc->postpoweron = dsi_j_qxga_8_9_postpoweron;
 	dc->disable = dsi_j_qxga_8_9_disable;
 	dc->postsuspend	= dsi_j_qxga_8_9_postsuspend,
-	dc->width = 216;
-	dc->height = 135;
+	dc->width = 135;
+	dc->height = 180;
 	dc->flags = DC_CTRL_MODE;
 }
 
