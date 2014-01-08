@@ -315,7 +315,7 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX1, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX4, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX5, false, 0),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ3, false, 0),
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ3, false, 1),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX3, false, 0),
 	/*audio end*/
 

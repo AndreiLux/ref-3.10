@@ -762,9 +762,42 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 };
 #endif
 
+static struct maxim_sti_pdata maxim_sti_pdata = {
+	.touch_fusion         = "/vendor/bin/touch_fusion",
+	.config_file          = "/vendor/firmware/touch_fusion.cfg",
+	.fw_name              = "maxim_fp35.bin",
+	.nl_family            = TF_FAMILY_NAME,
+	.nl_mc_groups         = 5,
+	.chip_access_method   = 2,
+	.default_reset_state  = 0,
+	.tx_buf_size          = 4100,
+	.rx_buf_size          = 4100,
+	.gpio_reset           = TOUCH_GPIO_RST_MAXIM_STI_SPI,
+	.gpio_irq             = TOUCH_GPIO_IRQ_MAXIM_STI_SPI
+};
+
+static struct tegra_spi_device_controller_data maxim_dev_cdata = {
+	.rx_clk_tap_delay = 0,
+	.is_hw_based_cs = true,
+	.tx_clk_tap_delay = 0,
+};
+
+static struct spi_board_info maxim_sti_spi_board = {
+	.modalias = MAXIM_STI_NAME,
+	.bus_num = TOUCH_SPI_ID,
+	.chip_select = TOUCH_SPI_CS,
+	.max_speed_hz = 12 * 1000 * 1000,
+	.mode = SPI_MODE_0,
+	.platform_data = &maxim_sti_pdata,
+	.controller_data = &maxim_dev_cdata,
+};
+
 static int __init flounder_touch_init(void)
 {
+#ifndef CONFIG_TOUCHSCREEN_MAXIM_STI
 	int ret ;
+	pr_info("%s init maxim i2c touch\n", __func__);
+
 	ret = gpio_request(TEGRA_GPIO_PQ3, "LED_3V3_EN");
 	if (ret < 0){
 		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
@@ -789,6 +822,10 @@ static int __init flounder_touch_init(void)
 
 	i2c_max_touch_board_info.irq = gpio_to_irq(TEGRA_GPIO_PK2);
 	i2c_register_board_info(1, &i2c_max_touch_board_info, 1);
+#else
+	pr_info("%s init maxim spi touch\n", __func__);
+	(void)touch_init_maxim_sti(&maxim_sti_spi_board);
+#endif
 	return 0;
 }
 

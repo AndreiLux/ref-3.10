@@ -56,11 +56,11 @@ int flounder_edp_init(void);
 /* Touchscreen definitions */
 #define TOUCH_GPIO_IRQ_RAYDIUM_SPI	TEGRA_GPIO_PK2
 #define TOUCH_GPIO_RST_RAYDIUM_SPI	TEGRA_GPIO_PK4
-#define TOUCH_SPI_ID			0	/*SPI 1 on flounder_interposer*/
+#define TOUCH_SPI_ID			2	/*SPI 3 on flounder_interposer*/
 #define TOUCH_SPI_CS			0	/*CS  0 on flounder_interposer*/
 
 #define TOUCH_GPIO_IRQ_MAXIM_STI_SPI	TEGRA_GPIO_PK2
-#define TOUCH_GPIO_RST_MAXIM_STI_SPI	TEGRA_GPIO_PK4
+#define TOUCH_GPIO_RST_MAXIM_STI_SPI	TEGRA_GPIO_PX6
 
 /* Audio-related GPIOs */
 #define TEGRA_GPIO_CDC_IRQ	TEGRA_GPIO_PH4
