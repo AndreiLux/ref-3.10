@@ -34,8 +34,7 @@
 #include <linux/jiffies.h>
 #include <linux/of_gpio.h>
 #include <linux/regulator/consumer.h>
-/*#include <mach/htc_acoustic_alsa.h>*/
-/*#include <mach/htc_headset_mgr.h>*/
+#include <mach/htc_headset_mgr.h>
 
 #define AMP_ON_CMD_LEN 7
 #define RETRY_CNT 5
@@ -200,14 +199,10 @@ u8 rt5506_get_gain(void)
 
 static void rt5506_register_hs_notification(void)
 {
-/*
-	TBD:wait for htc_headset_mgr.h is ready
-
 	struct headset_notifier notifier;
 	notifier.id = HEADSET_REG_HS_INSERT;
 	notifier.func = rt5506_headset_detect;
 	headset_notifier_register(&notifier);
-*/
 }
 
 static int rt5506_write_reg(u8 reg, u8 val)
