@@ -94,6 +94,10 @@
 #include "../../../sound/soc/codecs/rt5677.h"
 #include "../../../sound/soc/codecs/tfa9895.h"
 
+#ifdef CONFIG_SLIMPORT_ANX7808
+#include <linux/platform_data/slimport_device.h>
+#endif
+
 static struct resource flounder_bluedroid_pm_resources[] = {
 	[0] = {
 		.name   = "shutdown_gpio",
@@ -815,6 +819,121 @@ static struct tegra_io_dpd pexclk2_io = {
 	.io_dpd_bit		= 6,
 };
 
+#ifdef CONFIG_SLIMPORT_ANX7808
+#define GPIO_SLIMPORT_CBL_DET    TEGRA_GPIO_PBB6
+#define GPIO_SLIMPORT_PWR_DWN    TEGRA_GPIO_PI2
+#define ANX_AVDD33_EN            TEGRA_GPIO_PR3
+#define GPIO_SLIMPORT_RESET_N    TEGRA_GPIO_PEE4
+#define GPIO_SLIMPORT_INT_N      TEGRA_GPIO_PBB7
+
+static int anx7808_dvdd_onoff(bool on)
+{
+	static bool power_state = 0;
+	static struct regulator *anx7808_dvdd_reg = NULL;
+	int rc = 0;
+
+	pr_err("anx7808_dvdd_onoff, on = %d", on);
+
+	if (power_state == on) {
+		pr_info("anx7808 dvdd is already %s \n", power_state ? "on" : "off");
+		goto out;
+	}
+
+	if (!anx7808_dvdd_reg) {
+		anx7808_dvdd_reg= regulator_get(NULL, "slimport_dvdd");
+		if (IS_ERR(anx7808_dvdd_reg)) {
+			rc = PTR_ERR(anx7808_dvdd_reg);
+			pr_err("%s: regulator_get anx7808_dvdd_reg failed. rc=%d\n",
+					__func__, rc);
+			anx7808_dvdd_reg = NULL;
+			goto out;
+		}
+		rc = regulator_set_voltage(anx7808_dvdd_reg, 1100000, 1100000);
+		if (rc ) {
+			pr_err("%s: regulator_set_voltage anx7808_dvdd_reg failed\
+			rc=%d\n", __func__, rc);
+			goto out;
+		}
+	}
+
+	if (on) {
+		rc = regulator_set_optimum_mode(anx7808_dvdd_reg, 100000);
+		if (rc < 0) {
+			pr_err("%s : set optimum mode 100000, anx7808_dvdd_reg failed \
+					(%d)\n", __func__, rc);
+			goto out;
+		}
+		rc = regulator_enable(anx7808_dvdd_reg);
+		if (rc) {
+			pr_err("%s : anx7808_dvdd_reg enable failed (%d)\n",
+					__func__, rc);
+			goto out;
+		}
+	}
+	else {
+		rc = regulator_disable(anx7808_dvdd_reg);
+		if (rc) {
+			pr_err("%s : anx7808_dvdd_reg disable failed (%d)\n",
+				__func__, rc);
+			goto out;
+		}
+		rc = regulator_set_optimum_mode(anx7808_dvdd_reg, 100);
+		if (rc < 0) {
+			pr_err("%s : set optimum mode 100, anx7808_dvdd_reg failed \
+				(%d)\n", __func__, rc);
+			goto out;
+		}
+	}
+	power_state = on;
+
+out:
+	return rc;
+
+}
+
+static int anx7808_avdd_onoff(bool on)
+{
+	static bool init_done = 0;
+	int rc = 0;
+
+	if (!init_done) {
+		rc = gpio_request_one(ANX_AVDD33_EN,
+					GPIOF_OUT_INIT_HIGH, "anx_avdd33_en");
+		if (rc) {
+			pr_err("request anx_avdd33_en failed, rc=%d\n", rc);
+			return rc;
+		}
+		init_done = 1;
+	}
+
+	gpio_set_value(ANX_AVDD33_EN, on);
+	return 0;
+}
+
+static struct anx7808_platform_data anx7808_pdata = {
+	.gpio_p_dwn = GPIO_SLIMPORT_PWR_DWN,
+	.gpio_reset = GPIO_SLIMPORT_RESET_N,
+	.gpio_int = GPIO_SLIMPORT_INT_N,
+	.gpio_cbl_det = GPIO_SLIMPORT_CBL_DET,
+	.dvdd_power = anx7808_dvdd_onoff,
+	.avdd_power = anx7808_avdd_onoff,
+};
+
+struct i2c_board_info i2c_anx7808_info[] = {
+	{
+		I2C_BOARD_INFO("anx7808", 0x72 >> 1),
+		.platform_data = &anx7808_pdata,
+	},
+};
+
+static void __init flounder_slimport_init(void)
+{
+	i2c_register_board_info(0,
+		i2c_anx7808_info,
+		ARRAY_SIZE(i2c_anx7808_info));
+}
+#endif
+
 static void __init tegra_flounder_late_init(void)
 {
 	platform_device_register(&tegra_pinmux_device);
@@ -827,6 +946,7 @@ static void __init tegra_flounder_late_init(void)
 	flounder_i2c_init();
 	flounder_spi_init();
 	flounder_audio_init();
+	flounder_slimport_init();
 	platform_add_devices(flounder_devices, ARRAY_SIZE(flounder_devices));
 	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();

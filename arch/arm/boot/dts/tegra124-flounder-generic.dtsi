@@ -39,6 +39,8 @@
 					TEGRA_GPIO(V, 2)
 /*key*/
 					TEGRA_GPIO(W, 3)
+					TEGRA_GPIO(BB, 6)
+					TEGRA_GPIO(BB, 7)
 					TEGRA_GPIO(CC, 1)
 					TEGRA_GPIO(CC, 2)>;
 			gpio-output-low = <TEGRA_GPIO(G, 0)
@@ -70,8 +72,6 @@
 					TEGRA_GPIO(X, 7)
 					TEGRA_GPIO(BB, 3)
 					TEGRA_GPIO(BB, 5)
-					TEGRA_GPIO(BB, 6)
-					TEGRA_GPIO(BB, 7)
 					TEGRA_GPIO(CC, 5)
 					TEGRA_GPIO(EE, 1)>;
 			gpio-output-high = <TEGRA_GPIO(H, 2)
@@ -346,24 +346,6 @@
 			consumers {
 				c1 {
 					regulator-consumer-supply = "vdd_lcd_bl_en";
-				};
-			};
-		};
-
-		vdd_hdmi: regulator@9 {
-			compatible = "regulator-fixed-sync";
-			reg = <9>;
-			regulator-name = "vdd-hdmi";
-			regulator-min-microvolt = <5000000>;
-			regulator-max-microvolt = <5000000>;
-			enable-active-high;
-			gpio = <&gpio 86 0>; /* TEGRA_PK6 */
-			vin-supply = <&palmas_smps10_out1>;
-
-			consumers {
-				c1 {
-					regulator-consumer-supply = "vdd_hdmi_5v0";
-					regulator-consumer-device = "tegradc.1";
 				};
 			};
 		};

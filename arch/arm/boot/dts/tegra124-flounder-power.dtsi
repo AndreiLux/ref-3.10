@@ -296,9 +296,16 @@ palmas: tps65913 {
 			};
 
 			palmas_smps10_out1: smps10_out1 {
-				regulator-name = "vdd-out1-5v0";
+				regulator-name = "vdd-hdmi";
 				regulator-min-microvolt = <5000000>;
 				regulator-max-microvolt = <5000000>;
+
+				consumers {
+					c1 {
+						regulator-consumer-supply = "vdd_hdmi_5v0";
+						regulator-consumer-device = "tegradc.1";
+					};
+				};
 			};
 
 			palmas_smps10_out2: smps10_out2 {
@@ -486,6 +493,9 @@ palmas: tps65913 {
 				regulator-max-microvolt = <1100000>;
 
 				consumers {
+					c1 {
+						regulator-consumer-supply = "slimport_dvdd";
+					};
 				};
 			};
 
