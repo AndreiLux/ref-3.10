@@ -546,9 +546,9 @@ int __init flounder_panel_init(void)
 		return err;
 	}
 
-	/*err = tegra_init_hdmi(&flounder_disp2_device, phost1x);
+	err = tegra_init_hdmi(&flounder_disp2_device, phost1x);
 	if (err)
-		return err;*/
+		return err;
 
 #ifdef CONFIG_TEGRA_NVAVP
 	nvavp_device.dev.parent = &phost1x->dev;
