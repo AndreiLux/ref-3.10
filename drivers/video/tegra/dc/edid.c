@@ -24,6 +24,7 @@
 #include <linux/module.h>
 #include <linux/seq_file.h>
 #include <linux/vmalloc.h>
+#include <linux/slimport.h>
 
 #include "edid.h"
 
@@ -145,6 +146,9 @@ static void tegra_edid_dump(struct tegra_edid *edid)
 
 int tegra_edid_read_block(struct tegra_edid *edid, int block, u8 *data)
 {
+#ifdef CONFIG_SLIMPORT_ANX7808
+	return slimport_read_edid_block(block, data);
+#else
 	u8 block_buf[] = {block >> 1};
 	u8 cmd_buf[] = {(block & 0x1) * 128};
 	int status;
@@ -196,6 +200,7 @@ int tegra_edid_read_block(struct tegra_edid *edid, int block, u8 *data)
 	}
 
 	return 0;
+#endif
 }
 
 int tegra_edid_parse_ext_block(const u8 *raw, int idx,
