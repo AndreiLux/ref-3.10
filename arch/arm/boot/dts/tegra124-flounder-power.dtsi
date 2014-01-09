@@ -112,7 +112,6 @@ palmas: tps65913 {
 
 	pmic {
 		compatible = "ti,tps65913-pmic", "ti,palmas-pmic";
-		ldo1-in-supply = <&palmas_smps9>;
 		ldo2-in-supply = <&palmas_smps8>;
 		ldo5-in-supply = <&palmas_smps8>;
 		ldo7-in-supply = <&palmas_smps8>;
@@ -404,6 +403,8 @@ palmas: tps65913 {
 				regulator-name = "vdd-aud";
 				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <1200000>;
+				regulator-always-on;
+				regulator-boot-on;
 
 				consumers {
 					c1 {
@@ -440,6 +441,8 @@ palmas: tps65913 {
 				regulator-name = "avdd-dsi-csi";
 				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <1200000>;
+				regulator-always-on;
+				regulator-boot-on;
 
 				consumers {
 					c1 {
