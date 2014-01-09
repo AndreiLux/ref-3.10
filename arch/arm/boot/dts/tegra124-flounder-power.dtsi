@@ -403,8 +403,6 @@ palmas: tps65913 {
 				regulator-name = "vdd-aud";
 				regulator-min-microvolt = <1200000>;
 				regulator-max-microvolt = <1200000>;
-				regulator-always-on;
-				regulator-boot-on;
 
 				consumers {
 					c1 {
