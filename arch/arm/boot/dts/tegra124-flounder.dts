@@ -19,6 +19,11 @@
 		status = "okay";
 		clock-frequency = <100000>;
 
+		max17050@36 {
+			compatible = "maxim,max17050";
+			reg = <0x36>;
+		};
+
 		bq2419x: bq2419x@6b {
 			compatible = "ti,bq2419x";
 			reg = <0x6b>;
