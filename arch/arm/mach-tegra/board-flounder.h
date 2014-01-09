@@ -48,6 +48,14 @@ int flounder_edp_init(void);
 #define CAM_AF_PWDN TEGRA_GPIO_PBB7
 #define CAM_BOARD_E1806
 
+#define CAM_VCM_PWDN TEGRA_GPIO_PBB4
+#define CAM_PWDN TEGRA_GPIO_PO7
+#define CAM_1V2_EN TEGRA_GPIO_PH6
+#define CAM_A2V85_EN TEGRA_GPIO_PH2
+#define CAM_VCM2V85_EN TEGRA_GPIO_PH3
+#define CAM_1V8_EN TEGRA_GPIO_PH7
+#define CAM2_RST TEGRA_GPIO_PBB3
+
 #define UTMI1_PORT_OWNER_XUSB   0x1
 #define UTMI2_PORT_OWNER_XUSB   0x2
 #define HSIC1_PORT_OWNER_XUSB   0x4
@@ -68,7 +76,7 @@ int flounder_edp_init(void);
 #define TEGRA_GPIO_LDO_EN	TEGRA_GPIO_PR2
 
 /*GPIOs used by board panel file */
-#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PH3
+#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PB4
 #define DSI_PANEL_BL_PWM_GPIO   TEGRA_GPIO_PH1
 
 /* HDMI Hotplug detection pin */
@@ -88,7 +96,7 @@ int flounder_edp_init(void);
 #define TEGRA_GPIO_I2C5_SDA	TEGRA_GPIO_PZ7
 
 /* AUO Display related GPIO */
-#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PH3 /* GMI_AD11 */
+#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PB4 /* GMI_AD11 */
 #define LCD_RST_L               TEGRA_GPIO_PH5 /* GMI_AD13 */
 #define LCD_LR                  TEGRA_GPIO_PH6 /* GMI_AD14 */
 #define LCD_TE                  TEGRA_GPIO_PI4 /* GMI_RST_N */

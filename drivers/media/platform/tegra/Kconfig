@@ -211,3 +211,26 @@ config VIDEO_CAMERA
         ---help---
           This is a driver for generic camera devices
           for use with the tegra isp.
+
+config VIDEO_IMX219
+        tristate "IMX219 camera sensor support"
+        depends on I2C && ARCH_TEGRA
+        ---help---
+          This is a driver for the IMX219 camera sensor
+          for use with the tegra isp.  The sensor has a
+          maximum of 8MP (3280x2464) resolution.
+
+config VIDEO_OV9760
+        tristate "OV9760 camera sensor support"
+        depends on I2C && ARCH_TEGRA
+        ---help---
+          This is a driver for the OV9760 camera sensor
+          for use with the tegra isp.  The sensor has a
+          maximum of 1.5MP (1472x1104) resolution.
+
+config VIDEO_DRV201
+        tristate "DRV201 focuser support"
+        depends on I2C && ARCH_TEGRA
+        ---help---
+          This is a driver for the DRV201 focuser
+          for use with the tegra isp.

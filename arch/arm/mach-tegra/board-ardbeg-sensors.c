@@ -32,13 +32,16 @@
 #include <media/camera.h>
 #include <media/ar0261.h>
 #include <media/imx135.h>
+#include <media/imx219.h>
 #include <media/dw9718.h>
 #include <media/as364x.h>
 #include <media/ov5693.h>
+#include <media/ov9760.h>
 #include <media/ov7695.h>
 #include <media/mt9m114.h>
 #include <media/ad5823.h>
 #include <media/max77387.h>
+#include <media/drv201.h>
 
 #include <linux/platform_device.h>
 #include <media/soc_camera.h>
@@ -253,6 +256,177 @@ static struct tegra_io_dpd csie_io = {
 	.name			= "CSIE",
 	.io_dpd_reg_index	= 1,
 	.io_dpd_bit		= 12,
+};
+
+static struct regulator *imx219_ext_reg1;
+static struct regulator *imx219_ext_reg2;
+
+static int ardbeg_imx219_get_extra_regulators()
+{
+	imx219_ext_reg1 = regulator_get(NULL, "imx135_reg1");
+	if (WARN_ON(IS_ERR(imx219_ext_reg1))) {
+		pr_err("%s: can't get regulator imx135_reg1: %ld\n",
+			__func__, PTR_ERR(imx219_ext_reg1));
+		imx219_ext_reg1 = NULL;
+		return -ENODEV;
+	}
+
+	imx219_ext_reg2 = regulator_get(NULL, "imx135_reg2");
+	if (WARN_ON(IS_ERR(imx219_ext_reg2))) {
+		pr_err("%s: can't get regulator imx135_reg2: %ld\n",
+			__func__, PTR_ERR(imx219_ext_reg2));
+		imx219_ext_reg2 = NULL;
+		return -ENODEV;
+	}
+
+	return 0;
+}
+
+static int ardbeg_imx219_power_on(struct imx219_power_rail *pw)
+{
+	int err;
+
+	if (unlikely(WARN_ON(!pw || !pw->iovdd || !pw->avdd)))
+		return -EFAULT;
+
+	/* disable CSIA/B IOs DPD mode to turn on camera for ardbeg */
+	tegra_io_dpd_disable(&csia_io);
+	tegra_io_dpd_disable(&csib_io);
+
+	if (ardbeg_imx219_get_extra_regulators())
+		goto imx219_poweron_fail;
+
+	err = regulator_enable(imx219_ext_reg1);
+	if (unlikely(err))
+		goto imx219_poweron_fail;
+
+	err = regulator_enable(imx219_ext_reg2);
+	if (unlikely(err))
+		goto imx219_ext_reg2_fail;
+
+	gpio_set_value(CAM1_PWDN, 0);
+	gpio_set_value(CAM_RSTN, 0);
+	usleep_range(10, 20);
+
+	err = regulator_enable(pw->avdd);
+	if (err)
+		goto imx219_avdd_fail;
+
+	err = regulator_enable(pw->iovdd);
+	if (err)
+		goto imx219_iovdd_fail;
+
+	usleep_range(1, 2);
+	gpio_set_value(CAM1_PWDN, 1);
+	gpio_set_value(CAM_RSTN, 1);
+
+	usleep_range(300, 310);
+
+	return 1;
+
+
+imx219_iovdd_fail:
+	regulator_disable(pw->avdd);
+
+imx219_avdd_fail:
+	if (imx219_ext_reg2)
+		regulator_disable(imx219_ext_reg2);
+
+imx219_ext_reg2_fail:
+	if (imx219_ext_reg1)
+		regulator_disable(imx219_ext_reg1);
+
+imx219_poweron_fail:
+
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
+	pr_err("%s failed.\n", __func__);
+	return -ENODEV;
+}
+
+static int ardbeg_imx219_power_off(struct imx219_power_rail *pw)
+{
+	if (unlikely(WARN_ON(!pw || !pw->iovdd || !pw->avdd))) {
+		tegra_io_dpd_enable(&csia_io);
+		tegra_io_dpd_enable(&csib_io);
+		return -EFAULT;
+	}
+
+	regulator_disable(pw->iovdd);
+	regulator_disable(pw->avdd);
+
+	regulator_disable(imx219_ext_reg1);
+	regulator_disable(imx219_ext_reg2);
+
+	/* put CSIA/B IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
+	return 0;
+}
+
+struct imx219_platform_data ardbeg_imx219_pdata = {
+	.power_on = ardbeg_imx219_power_on,
+	.power_off = ardbeg_imx219_power_off,
+};
+
+static int ardbeg_ov9760_power_on(struct ov9760_power_rail *pw)
+{
+	int err;
+
+	/* disable CSIE IO DPD mode to turn on camera for ardbeg */
+	tegra_io_dpd_disable(&csie_io);
+
+	if (unlikely(WARN_ON(!pw || !pw->iovdd || !pw->avdd)))
+		return -EFAULT;
+
+	gpio_set_value(CAM_RSTN, 0);
+	gpio_set_value(CAM2_PWDN, 0);
+
+	err = regulator_enable(pw->avdd);
+	if (err)
+		goto ov9760_avdd_fail;
+
+	gpio_set_value(CAM2_PWDN, 1);
+
+	err = regulator_enable(pw->iovdd);
+	if (err)
+		goto ov9760_iovdd_fail;
+
+	usleep_range(1000, 1020);
+	gpio_set_value(CAM_RSTN, 1);
+
+	return 1;
+
+ov9760_iovdd_fail:
+	regulator_disable(pw->avdd);
+
+ov9760_avdd_fail:
+	return -ENODEV;
+}
+static int ardbeg_ov9760_power_off(struct ov9760_power_rail *pw)
+{
+	if (unlikely(WARN_ON(!pw || !pw->iovdd || !pw->avdd))) {
+		tegra_io_dpd_disable(&csie_io);
+		return -EFAULT;
+	}
+
+	gpio_set_value(CAM_RSTN, 0);
+	usleep_range(1000, 1020);
+
+	regulator_disable(pw->iovdd);
+	regulator_disable(pw->avdd);
+
+	gpio_set_value(CAM2_PWDN, 0);
+
+	/* put CSIE IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csie_io);
+
+	return 0;
+}
+struct ov9760_platform_data ardbeg_ov9760_data = {
+	.power_on = ardbeg_ov9760_power_on,
+	.power_off = ardbeg_ov9760_power_off,
+	.mclk_name = "mclk2",
 };
 
 static int ardbeg_ar0261_power_on(struct ar0261_power_rail *pw)
@@ -806,6 +980,67 @@ static struct ov5693_platform_data ardbeg_ov5693_pdata = {
 	.power_off	= ardbeg_ov5693_power_off,
 };
 
+static int ardbeg_drv201_power_on(struct drv201_power_rail *pw)
+{
+	int err;
+	pr_info("%s\n", __func__);
+
+	if (unlikely(!pw || !pw->vdd || !pw->vdd_i2c))
+		return -EFAULT;
+
+	err = regulator_enable(pw->vdd);
+	if (unlikely(err))
+		goto drv201_vdd_fail;
+
+	err = regulator_enable(pw->vdd_i2c);
+	if (unlikely(err))
+		goto drv201_i2c_fail;
+
+	usleep_range(1000, 1020);
+
+	/* return 1 to skip the in-driver power_on sequence */
+	pr_debug("%s --\n", __func__);
+	return 1;
+
+drv201_i2c_fail:
+	regulator_disable(pw->vdd);
+
+drv201_vdd_fail:
+	pr_err("%s FAILED\n", __func__);
+	return -ENODEV;
+}
+
+static int ardbeg_drv201_power_off(struct drv201_power_rail *pw)
+{
+	pr_info("%s\n", __func__);
+
+	if (unlikely(!pw || !pw->vdd || !pw->vdd_i2c))
+		return -EFAULT;
+
+	regulator_disable(pw->vdd);
+	regulator_disable(pw->vdd_i2c);
+
+	return 1;
+}
+
+static struct nvc_focus_cap ardbeg_drv201_cap = {
+	.version = NVC_FOCUS_CAP_VER2,
+	.settle_time = 35,
+	.focus_macro = 810,
+	.focus_infinity = 50,
+	.focus_hyper = 50,
+};
+
+static struct drv201_platform_data ardbeg_drv201_pdata = {
+	.cfg = 0,
+	.num = 0,
+	.sync = 0,
+	.dev_name = "focuser",
+	.cap = &ardbeg_drv201_cap,
+	.power_on	= ardbeg_drv201_power_on,
+	.power_off	= ardbeg_drv201_power_off,
+};
+
 static int ardbeg_ad5823_power_on(struct ad5823_platform_data *pdata)
 {
 	int err = 0;
@@ -850,6 +1085,10 @@ static struct i2c_board_info	ardbeg_i2c_board_info_ov5693 = {
 	.platform_data = &ardbeg_ov5693_pdata,
 };
 
+static struct i2c_board_info	ardbeg_i2c_board_info_imx219 = {
+	I2C_BOARD_INFO("imx219", 0x10),
+	.platform_data = &ardbeg_imx219_pdata,
+};
 static struct i2c_board_info	ardbeg_i2c_board_info_ov7695 = {
 	I2C_BOARD_INFO("ov7695", 0x21),
 	.platform_data = &ardbeg_ov7695_pdata,
@@ -858,6 +1097,11 @@ static struct i2c_board_info	ardbeg_i2c_board_info_ov7695 = {
 static struct i2c_board_info	ardbeg_i2c_board_info_mt9m114 = {
 	I2C_BOARD_INFO("mt9m114", 0x48),
 	.platform_data = &ardbeg_mt9m114_pdata,
+};
+
+static struct i2c_board_info	ardbeg_i2c_board_info_drv201 = {
+	I2C_BOARD_INFO("drv201", 0x0e),
+	.platform_data = &ardbeg_drv201_pdata,
 };
 
 static struct i2c_board_info	ardbeg_i2c_board_info_ad5823 = {
@@ -875,36 +1119,21 @@ static struct i2c_board_info	ardbeg_i2c_board_info_max77387 = {
 	.platform_data = &ardbeg_max77387_pdata,
 };
 
-static struct camera_module ardbeg_camera_module_info[] = {
-	/* E1823 camera board */
-	{
-		/* rear camera */
-		.sensor = &ardbeg_i2c_board_info_imx135,
-		.focuser = &ardbeg_i2c_board_info_dw9718,
-		.flash = &ardbeg_i2c_board_info_as3648,
-	},
-	{
-		/* front camera */
-		.sensor = &ardbeg_i2c_board_info_ar0261,
-	},
-	/* E1793 camera board */
-	{
-		/* rear camera */
-		.sensor = &ardbeg_i2c_board_info_ov5693,
-		.focuser = &ardbeg_i2c_board_info_ad5823,
-		.flash = &ardbeg_i2c_board_info_as3648,
-	},
-	{
-		/* front camera */
-		.sensor = &ardbeg_i2c_board_info_ov7695,
-	},
-	/* E1806 camera board has the same rear camera module as E1793,
-	   but the front camera is different */
-	{
-		/* front camera */
-		.sensor = &ardbeg_i2c_board_info_mt9m114,
-	},
+static struct i2c_board_info	ardbeg_i2c_board_info_ov9760 = {
+	I2C_BOARD_INFO("ov9760", 0x36),
+	.platform_data = &ardbeg_ov9760_data,
+};
 
+static struct camera_module ardbeg_camera_module_info[] = {
+	{
+		/* rear camera */
+		.sensor = &ardbeg_i2c_board_info_imx219,
+		.focuser = &ardbeg_i2c_board_info_drv201,
+	},
+		{
+		/* front camera */
+		.sensor = &ardbeg_i2c_board_info_ov9760,
+	},
 	{}
 };
 

@@ -49,8 +49,11 @@
 					TEGRA_GPIO(CC, 2)>;
 			gpio-output-low = <TEGRA_GPIO(G, 0)
 					TEGRA_GPIO(G, 1)
+					TEGRA_GPIO(H, 2)
 					TEGRA_GPIO(H, 3)
 					TEGRA_GPIO(H, 5)
+					TEGRA_GPIO(H, 6)
+					TEGRA_GPIO(H, 7)
 					TEGRA_GPIO(I, 0)
 /*key*/
 					TEGRA_GPIO(I, 3)
@@ -82,8 +85,7 @@
 					TEGRA_GPIO(BB, 5)
 					TEGRA_GPIO(CC, 5)
 					TEGRA_GPIO(EE, 1)>;
-			gpio-output-high = <TEGRA_GPIO(H, 2)
-					TEGRA_GPIO(B, 4)
+			gpio-output-high = <TEGRA_GPIO(B, 4)
 					TEGRA_GPIO(I, 2)
 					TEGRA_GPIO(K, 4)
 					TEGRA_GPIO(S, 5)
@@ -369,7 +371,7 @@
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			enable-active-high;
-			gpio = <&gpio 58 0>; /* TEGRA_PH2 */
+			gpio = <&gpio 134 0>; /* TEGRA_PQ6 */
 
 			consumers {
 				c1 {

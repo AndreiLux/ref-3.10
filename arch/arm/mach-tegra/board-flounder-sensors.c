@@ -39,6 +39,9 @@
 #include <media/mt9m114.h>
 #include <media/ad5823.h>
 #include <media/max77387.h>
+#include <media/imx219.h>
+#include <media/ov9760.h>
+#include <media/drv201.h>
 
 #include <linux/platform_device.h>
 #include <media/soc_camera.h>
@@ -164,6 +167,82 @@ static struct tegra_io_dpd csie_io = {
 	.name			= "CSIE",
 	.io_dpd_reg_index	= 1,
 	.io_dpd_bit		= 12,
+};
+
+static int flounder_imx219_power_on(struct imx219_power_rail *pw)
+{
+	/* disable CSIA/B IOs DPD mode to turn on camera for flounder */
+	tegra_io_dpd_disable(&csia_io);
+	tegra_io_dpd_disable(&csib_io);
+
+	gpio_set_value(CAM_PWDN, 0);
+
+	gpio_set_value(CAM_VCM2V85_EN, 1);
+	usleep_range(100, 120);
+	gpio_set_value(CAM_1V2_EN, 1);
+	gpio_set_value(CAM_A2V85_EN, 1);
+	gpio_set_value(CAM_1V8_EN, 1);
+
+	usleep_range(1, 2);
+	gpio_set_value(CAM_PWDN, 1);
+
+	usleep_range(300, 310);
+
+	return 1;
+}
+
+static int flounder_imx219_power_off(struct imx219_power_rail *pw)
+{
+	gpio_set_value(CAM_1V2_EN, 0);
+	gpio_set_value(CAM_A2V85_EN, 0);
+	gpio_set_value(CAM_1V8_EN, 0);
+	gpio_set_value(CAM_VCM2V85_EN, 0);
+
+	/* put CSIA/B IOs into DPD mode to save additional power for flounder */
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
+	return 0;
+}
+
+struct imx219_platform_data flounder_imx219_pdata = {
+	.power_on = flounder_imx219_power_on,
+	.power_off = flounder_imx219_power_off,
+};
+
+static int flounder_ov9760_power_on(struct ov9760_power_rail *pw)
+{
+	/* disable CSIE IO DPD mode to turn on camera for flounder */
+	tegra_io_dpd_disable(&csie_io);
+
+	gpio_set_value(CAM2_RST, 0);
+	gpio_set_value(CAM_PWDN, 0);
+
+	gpio_set_value(CAM_VCM2V85_EN, 1);
+	usleep_range(100, 120);
+	gpio_set_value(CAM_1V2_EN, 1);
+	gpio_set_value(CAM_A2V85_EN, 1);
+	gpio_set_value(CAM_1V8_EN, 1);
+
+	usleep_range(100, 120);
+	gpio_set_value(CAM2_RST, 1);
+
+	return 1;
+}
+static int flounder_ov9760_power_off(struct ov9760_power_rail *pw)
+{
+	gpio_set_value(CAM_1V2_EN, 0);
+	gpio_set_value(CAM_A2V85_EN, 0);
+	gpio_set_value(CAM_1V8_EN, 0);
+	gpio_set_value(CAM_VCM2V85_EN, 0);
+	/* put CSIE IOs into DPD mode to save additional power for flounder */
+	tegra_io_dpd_enable(&csie_io);
+
+	return 0;
+}
+struct ov9760_platform_data flounder_ov9760_data = {
+	.power_on = flounder_ov9760_power_on,
+	.power_off = flounder_ov9760_power_off,
+	.mclk_name = "mclk2",
 };
 
 static int flounder_ar0261_power_on(struct ar0261_power_rail *pw)
@@ -679,6 +758,55 @@ static struct ov5693_platform_data flounder_ov5693_pdata = {
 	.power_off	= flounder_ov5693_power_off,
 };
 
+static int flounder_drv201_power_on(struct drv201_power_rail *pw)
+{
+	int err;
+	pr_info("%s\n", __func__);
+
+	gpio_set_value(CAM_VCM2V85_EN, 1);
+	usleep_range(100, 120);
+	gpio_set_value(CAM_A2V85_EN, 1);
+	gpio_set_value(CAM_1V2_EN, 1);
+	gpio_set_value(CAM_1V8_EN, 1);
+
+	gpio_set_value(CAM_VCM_PWDN, 1);
+	usleep_range(100, 120);
+
+	/* return 1 to skip the in-driver power_on sequence */
+	pr_debug("%s --\n", __func__);
+	return 1;
+}
+
+static int flounder_drv201_power_off(struct drv201_power_rail *pw)
+{
+	pr_info("%s\n", __func__);
+
+	gpio_set_value(CAM_1V2_EN, 0);
+	gpio_set_value(CAM_A2V85_EN, 0);
+	gpio_set_value(CAM_1V8_EN, 0);
+	gpio_set_value(CAM_VCM2V85_EN, 0);
+
+	return 1;
+}
+
+static struct nvc_focus_cap flounder_drv201_cap = {
+	.version = NVC_FOCUS_CAP_VER2,
+	.settle_time = 15,
+	.focus_macro = 810,
+	.focus_infinity = 50,
+	.focus_hyper = 50,
+};
+
+static struct drv201_platform_data flounder_drv201_pdata = {
+	.cfg = 0,
+	.num = 0,
+	.sync = 0,
+	.dev_name = "focuser",
+	.cap = &flounder_drv201_cap,
+	.power_on	= flounder_drv201_power_on,
+	.power_off	= flounder_drv201_power_off,
+};
+
 static int flounder_ad5823_power_on(struct ad5823_platform_data *pdata)
 {
 	int err = 0;
@@ -701,6 +829,21 @@ static struct ad5823_platform_data flounder_ad5823_pdata = {
 	.gpio = CAM_AF_PWDN,
 	.power_on	= flounder_ad5823_power_on,
 	.power_off	= flounder_ad5823_power_off,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_imx219 = {
+	I2C_BOARD_INFO("imx219", 0x10),
+	.platform_data = &flounder_imx219_pdata,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_ov9760 = {
+	I2C_BOARD_INFO("ov9760", 0x36),
+	.platform_data = &flounder_ov9760_data,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_drv201 = {
+	I2C_BOARD_INFO("drv201", 0x0e),
+	.platform_data = &flounder_drv201_pdata,
 };
 
 static struct i2c_board_info	flounder_i2c_board_info_imx135 = {
@@ -744,33 +887,14 @@ static struct i2c_board_info	flounder_i2c_board_info_as3648 = {
 };
 
 static struct camera_module flounder_camera_module_info[] = {
-	/* E1823 camera board */
 	{
 		/* rear camera */
-		.sensor = &flounder_i2c_board_info_imx135,
-		.focuser = &flounder_i2c_board_info_dw9718,
-		.flash = &flounder_i2c_board_info_as3648,
+		.sensor = &flounder_i2c_board_info_imx219,
+		.focuser = &flounder_i2c_board_info_drv201,
 	},
-	{
+		{
 		/* front camera */
-		.sensor = &flounder_i2c_board_info_ar0261,
-	},
-	/* E1793 camera board */
-	{
-		/* rear camera */
-		.sensor = &flounder_i2c_board_info_ov5693,
-		.focuser = &flounder_i2c_board_info_ad5823,
-		.flash = &flounder_i2c_board_info_as3648,
-	},
-	{
-		/* front camera */
-		.sensor = &flounder_i2c_board_info_ov7695,
-	},
-	/* E1806 camera board has the same rear camera module as E1793,
-	   but the front camera is different */
-	{
-		/* front camera */
-		.sensor = &flounder_i2c_board_info_mt9m114,
+		.sensor = &flounder_i2c_board_info_ov9760,
 	},
 
 	{}
