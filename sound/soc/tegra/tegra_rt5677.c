@@ -46,11 +46,6 @@
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
 
-/*#define HEADSET_SWITCH_TEST*/
-#ifdef HEADSET_SWITCH_TEST
-#include <linux/switch.h>
-#endif
-
 #define DRV_NAME "tegra-snd-rt5677"
 
 #define DAI_LINK_HIFI		0
@@ -83,7 +78,13 @@ struct tegra_rt5677 {
 
 static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 {
-	pr_debug("RT5677 IRQ is triggered\n");
+	int value;
+	struct tegra_asoc_platform_data *pdata = dev_id;
+
+	value = gpio_get_value(pdata->gpio_irq1);
+
+	pr_debug("RT5677 IRQ is triggered = 0x%x\n", value);
+
 	return IRQ_HANDLED;
 }
 
@@ -359,58 +360,6 @@ static struct snd_soc_ops tegra_rt5677_bt_sco_ops = {
 	.shutdown = tegra_rt5677_shutdown,
 };
 
-#ifdef HEADSET_SWITCH_TEST
-enum headset_state {
-	BIT_NO_HEADSET = 0,
-	BIT_HEADSET = (1 << 0),
-	BIT_HEADSET_NO_MIC = (1 << 1),
-};
-
-static struct switch_dev tegra_rt5677_headset_test_dev = {
-	.name = "h2w",
-};
-
-static const char * const tegra_rt5677_headset_test_mode[] = {
-	"plugout", "plugin"
-};
-
-static int headset_test_mode;
-
-static const SOC_ENUM_SINGLE_DECL(tegra_rt5677_headset_test_mode_enum, 0, 0,
-	tegra_rt5677_headset_test_mode);
-
-static int tegra_rt5677_headset_test_get(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
-{
-	ucontrol->value.integer.value[0] = headset_test_mode;
-	return 0;
-}
-
-static int tegra_rt5677_headset_test_set(struct snd_kcontrol *kcontrol,
-		struct snd_ctl_elem_value *ucontrol)
-{
-	enum headset_state state = BIT_NO_HEADSET;
-
-	if (ucontrol->value.integer.value[0] == 0) {
-		state = BIT_NO_HEADSET;
-		rt5506_headset_detect(0);
-		headset_test_mode = 0;
-	} else {
-		state = BIT_HEADSET;
-		rt5506_headset_detect(1);
-		headset_test_mode = 1;
-	}
-
-	/*switch_set_state(&tegra_rt5677_headset_test_dev, state);*/
-
-	pr_info("%s: tegra_rt5677_headset_test_dev set to %d done\n",
-		__func__, state);
-
-	return 0;
-}
-
-#endif
-
 #define HTC_SOC_ENUM_EXT(xname, xhandler_get, xhandler_put) \
 {	.iface = SNDRV_CTL_ELEM_IFACE_MIXER, .name = xname, \
 	.info = snd_soc_info_volsw_ext, \
@@ -478,6 +427,64 @@ static int tegra_rt5677_speaker_test_set(struct snd_kcontrol *kcontrol,
 	speaker_test_mode = state;
 
 	pr_info("%s: tegra_rt5677_speaker_test_dev set to %d done\n",
+		__func__, state);
+
+	return 0;
+}
+
+/* digital mic bias */
+enum dmic_bias_state {
+	BIT_DMIC_BIAS_DISABLE = 0,
+	BIT_DMIC_BIAS_ENABLE = (1 << 0),
+};
+
+static const char * const tegra_rt5677_dmic_mode[] = {
+	"disable", "enable"
+};
+
+static int dmic_mode;
+
+static const SOC_ENUM_SINGLE_DECL(tegra_rt5677_dmic_mode_enum, 0, 0,
+	tegra_rt5677_dmic_mode);
+
+static int tegra_rt5677_dmic_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = dmic_mode;
+	return 0;
+}
+
+static int tegra_rt5677_dmic_set(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	enum dmic_bias_state state = BIT_DMIC_BIAS_DISABLE;
+
+	struct snd_soc_card *card = snd_kcontrol_chip(kcontrol);
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int ret = 0;
+
+	pr_info("tegra_rt5677_dmic_set, %d\n", pdata->gpio_int_mic_en);
+
+	if (ucontrol->value.integer.value[0] == 0) {
+		state = BIT_DMIC_BIAS_DISABLE;
+		ret = gpio_direction_output(pdata->gpio_int_mic_en, 0);
+		if (ret)
+			pr_err("gpio_int_mic_en=0 fail,%d\n", ret);
+		else
+			pr_info("gpio_int_mic_en=0\n");
+	} else {
+		state = BIT_DMIC_BIAS_ENABLE;
+		ret = gpio_direction_output(pdata->gpio_int_mic_en, 1);
+		if (ret)
+			pr_err("gpio_int_mic_en=1 fail,%d\n", ret);
+		else
+			pr_info("gpio_int_mic_en=1\n");
+	}
+
+	dmic_mode = state;
+
+	pr_info("%s: tegra_rt5677_dmic_set set to %d done\n",
 		__func__, state);
 
 	return 0;
@@ -661,17 +668,15 @@ static const struct snd_kcontrol_new flounder_controls[] = {
 	HTC_SOC_ENUM_EXT("Headset rt5506 Volume",
 		tegra_rt5677_rt5506_gain_get, tegra_rt5677_rt5506_gain_set),
 
-#ifdef HEADSET_SWITCH_TEST
-	SOC_ENUM_EXT("Headset Insert Test", tegra_rt5677_headset_test_mode_enum,
-		tegra_rt5677_headset_test_get, tegra_rt5677_headset_test_set),
-#endif
-
 	SOC_ENUM_EXT("Speaker Channel Switch",
 		tegra_rt5677_speaker_test_mode_enum,
 		tegra_rt5677_speaker_test_get, tegra_rt5677_speaker_test_set),
+
 	SOC_ENUM_EXT("AMIC Test Switch", tegra_rt5677_amic_test_mode_enum,
 		tegra_rt5677_amic_test_get, tegra_rt5677_amic_test_set),
 
+	SOC_ENUM_EXT("DMIC BIAS Switch", tegra_rt5677_dmic_mode_enum,
+		tegra_rt5677_dmic_get, tegra_rt5677_dmic_set),
 };
 
 static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
@@ -1035,7 +1040,8 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 		}
 
 		ret = request_irq(rt5677_irq, detect_rt5677_irq_handler,
-			IRQF_TRIGGER_HIGH, "RT5677_IRQ", NULL);
+			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING ,
+			"RT5677_IRQ", pdev->dev.platform_data);
 		if (ret) {
 			dev_err(&pdev->dev, "request_irq rt5677_irq failed, %d\n",
 				ret);
@@ -1095,15 +1101,6 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 			ret);
 		goto err_unregister_card;
 	}
-#endif
-
-#ifdef HEADSET_SWITCH_TEST
-
-	ret = tegra_asoc_switch_register(&tegra_rt5677_headset_test_dev);
-	if (ret < 0)
-		dev_err(&pdev->dev, "tegra_rt5677_headset_test_dev register failed (%d)\n",
-			ret);
-
 #endif
 
 	return 0;
@@ -1199,10 +1196,6 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 	snd_soc_unregister_card(card);
 
 	tegra_asoc_utils_fini(&machine->util_data);
-
-#ifdef HEADSET_SWITCH_TEST
-	tegra_asoc_switch_unregister(&tegra_rt5677_headset_test_dev);
-#endif
 
 	if (np)
 		kfree(machine->pdata);
