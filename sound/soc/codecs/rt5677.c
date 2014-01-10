@@ -621,31 +621,20 @@ static struct rt5677_init_reg vad_recover_list[] = {
 	{ RT5677_PWR_ANLG2		, 0x0000 },
 	{ RT5677_PWR_DSP2		, 0x0c00 },
 	{ RT5677_PWR_DSP1		, 0x0001 },
+	{ RT5677_IN1			, 0x0040 },
+	{ RT5677_PWR_ANLG1		, 0x0055 },
+	{ RT5677_PWR_DIG1		, 0x0000 },
+	{ RT5677_MONO_ADC_DIG_VOL	, 0x2f2f },
 };
 
-static unsigned int rt5677_set_vad(
-	struct snd_soc_codec *codec, unsigned int on)
+static unsigned int rt5677_set_vad_source(
+	struct snd_soc_codec *codec, unsigned int source)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int i = 0;
-	u8 *buf;
-	unsigned int len, value;
-	static bool activity;
-	char file_path[64];
 
-#ifdef DEBUG
-	int ret = 0;
-#endif
-
-	if (on && !activity) {
-		pr_debug("rt5677_set_vad on\n");
-		activity = true;
-		for (i = 0; i < ARRAY_SIZE(vad_recover_list); i++) {
-			regmap_read(rt5677->regmap, vad_recover_list[i].reg,
-				&value);
-			vad_recover_list[i].val = (u16) value;
-		}
-
+	switch (source) {
+	case RT5677_VAD_IDLE_DMIC1:
+	case RT5677_VAD_SUSPEND_DMIC1:
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0ae5);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x017f);
@@ -653,6 +642,7 @@ static unsigned int rt5677_set_vad(
 		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
 		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL2, 0x7777);
 		regmap_write(rt5677->regmap, RT5677_MONO_ADC_MIXER, 0x54d1);
+		regmap_update_bits(rt5677->regmap, RT5677_MONO_ADC_DIG_VOL, RT5677_L_MUTE, 0);
 		regmap_write(rt5677->regmap, RT5677_DSP_INB_CTRL1, 0x4000);
 		regmap_write(rt5677->regmap, RT5677_DIG_MISC, 0x0001);
 		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL1, 0x2777);
@@ -670,7 +660,99 @@ static unsigned int rt5677_set_vad(
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0x0081);
 		regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x07ff);
 		regmap_write(rt5677->regmap, RT5677_PWR_DSP1, 0x07ff);
+		break;
+	case RT5677_VAD_IDLE_DMIC2:
+	case RT5677_VAD_SUSPEND_DMIC2:
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0ae5);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x017f);
+		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
+		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
+		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL2, 0x7777);
+		regmap_write(rt5677->regmap, RT5677_MONO_ADC_MIXER, 0x55d1);
+		regmap_update_bits(rt5677->regmap, RT5677_MONO_ADC_DIG_VOL, RT5677_L_MUTE, 0);
+		regmap_write(rt5677->regmap, RT5677_DSP_INB_CTRL1, 0x4000);
+		regmap_write(rt5677->regmap, RT5677_DIG_MISC, 0x0001);
+		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL1, 0x2777);
+		regmap_write(rt5677->regmap, RT5677_GLB_CLK2, 0x0080);
 
+		/* from MCLK1 */
+		regmap_write(rt5677->regmap, RT5677_GLB_CLK1, 0x0080);
+
+		regmap_write(rt5677->regmap, RT5677_DMIC_CTRL1, 0x5545);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL1, 0x273c);
+		regmap_write(rt5677->regmap, RT5677_IRQ_CTRL2, 0x4000);
+		rt5677_index_write(codec, 0x14, 0x018a);
+		regmap_write(rt5677->regmap, RT5677_PWR_DIG2, 0x4000);
+		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL2, 0x6000);
+		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0x0081);
+		regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x07ff);
+		regmap_write(rt5677->regmap, RT5677_PWR_DSP1, 0x07ff);
+		break;
+	case RT5677_VAD_IDLE_AMIC:
+	case RT5677_VAD_SUSPEND_AMIC:
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0ae5);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x027f);
+		regmap_write(rt5677->regmap, RT5677_IN1, 0x00c0);
+		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
+		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
+		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL2, 0x7777);
+		regmap_write(rt5677->regmap, RT5677_MONO_ADC_MIXER, 0xd451);
+		regmap_update_bits(rt5677->regmap, RT5677_MONO_ADC_DIG_VOL, RT5677_R_MUTE, 0);
+		regmap_write(rt5677->regmap, RT5677_DSP_INB_CTRL1, 0x4000);
+		regmap_write(rt5677->regmap, RT5677_DIG_MISC, 0x0001);
+		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL1, 0x2777);
+		regmap_write(rt5677->regmap, RT5677_GLB_CLK2, 0x0080);
+
+		/* from MCLK1 */
+		regmap_write(rt5677->regmap, RT5677_GLB_CLK1, 0x0080);
+
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL1, 0x273c);
+		regmap_write(rt5677->regmap, RT5677_IRQ_CTRL2, 0x4000);
+		rt5677_index_write(codec, 0x14, 0x018a);
+		regmap_write(rt5677->regmap, RT5677_PWR_ANLG1, 0xa955);
+		msleep(20);
+		regmap_write(rt5677->regmap, RT5677_PWR_ANLG1, 0xe9d5);
+		regmap_write(rt5677->regmap, RT5677_PWR_DIG1, 0x001e);
+		rt5677_index_write(codec, RT5677_CHOP_DAC_ADC, 0x364e);
+		regmap_write(rt5677->regmap, RT5677_PWR_DIG2, 0x6000);
+		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL2, 0x6000);
+		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0xecf1);
+		regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x07ff);
+		regmap_write(rt5677->regmap, RT5677_PWR_DSP1, 0x07ff);
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
+static unsigned int rt5677_set_vad(
+	struct snd_soc_codec *codec, unsigned int on)
+{
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	int i = 0;
+	u8 *buf;
+	unsigned int len, value;
+	static bool activity;
+	char file_path[64];
+
+#ifdef DEBUG
+	int ret = 0;
+#endif
+
+	if (on && !activity) {
+		pr_debug("rt5677_set_vad on\n");
+		gpio_direction_output(rt5677->vad_clock_en, 1);
+		activity = true;
+		for (i = 0; i < ARRAY_SIZE(vad_recover_list); i++) {
+			regmap_read(rt5677->regmap, vad_recover_list[i].reg,
+				&value);
+			vad_recover_list[i].val = (u16) value;
+		}
+		rt5677_set_vad_source(codec, rt5677->vad_source);
 		msleep(100);
 		sprintf(file_path, "/system/etc/rt5677_0x50000000_%s",
 			dsp_vad_suffix);
@@ -733,6 +815,7 @@ static unsigned int rt5677_set_vad(
 			regmap_write(rt5677->regmap, vad_recover_list[i].reg,
 				vad_recover_list[i].val);
 		rt5677_index_write(codec, 0x14, 0x0f8b);
+		gpio_direction_output(rt5677->vad_clock_en, 0);
 	}
 
 	return 0;
@@ -1018,7 +1101,8 @@ static const char * const rt5677_input_mode[] = {
 };
 
 static const char * const rt5677_vad_mode[] = {
-	"Disable", "Idle", "Suspend"
+	"Disable", "Idle-DMIC1", "Idle-DMIC2", "Idle-AMIC", "Suspend-DMIC1",
+	"Suspend-DMIC2", "Suspend-AMIC"
 };
 
 static const SOC_ENUM_SINGLE_DECL(
@@ -1038,7 +1122,7 @@ static int rt5677_vad_get(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
-	ucontrol->value.integer.value[0] = rt5677->vad_mode;
+	ucontrol->value.integer.value[0] = rt5677->vad_source;
 
 	return 0;
 }
@@ -1049,13 +1133,30 @@ static int rt5677_vad_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
-	rt5677->vad_mode = ucontrol->value.integer.value[0];
+	rt5677->vad_source = ucontrol->value.integer.value[0];
+
+	switch (rt5677->vad_source) {
+	case RT5677_VAD_IDLE_DMIC1:
+	case RT5677_VAD_IDLE_DMIC2:
+	case RT5677_VAD_IDLE_AMIC:
+		rt5677->vad_mode = RT5677_VAD_IDLE;
+		break;
+
+	case RT5677_VAD_SUSPEND_DMIC1:
+	case RT5677_VAD_SUSPEND_DMIC2:
+	case RT5677_VAD_SUSPEND_AMIC:
+		rt5677->vad_mode = RT5677_VAD_SUSPEND;
+		break;
+	default:
+		rt5677->vad_mode = RT5677_VAD_OFF;
+		break;
+	}
 
 	if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
 		pr_debug("codec->dapm.bias_level = SND_SOC_BIAS_OFF\n");
-		if (rt5677->vad_mode == 1)
+		if (rt5677->vad_mode == RT5677_VAD_IDLE)
 			rt5677_set_vad(codec, 1);
-		else if (rt5677->vad_mode == 0)
+		else if (rt5677->vad_mode == RT5677_VAD_OFF)
 			rt5677_set_vad(codec, 0);
 	}
 	return 0;
@@ -4721,5 +4822,5 @@ static void __exit rt5677_modexit(void)
 module_exit(rt5677_modexit);
 
 MODULE_DESCRIPTION("ASoC RT5677 driver");
-MODULE_AUTHOR("Oder Chiou <oder_chiou@realtek.com>");
+MODULE_AUTHOR("Bard Liao <bardliao@realtek.com>");
 MODULE_LICENSE("GPL");

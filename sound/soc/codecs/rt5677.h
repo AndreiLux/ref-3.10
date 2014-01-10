@@ -1432,9 +1432,13 @@ enum {
 };
 
 enum {
-	RT5677_VAD_SRC_DMIC1,
-	RT5677_VAD_SRC_DMIC2,
-	RT5677_VAD_SRC_AMIC,
+	RT5677_VAD_DISABLE,
+	RT5677_VAD_IDLE_DMIC1,
+	RT5677_VAD_IDLE_DMIC2,
+	RT5677_VAD_IDLE_AMIC,
+	RT5677_VAD_SUSPEND_DMIC1,
+	RT5677_VAD_SUSPEND_DMIC2,
+	RT5677_VAD_SUSPEND_AMIC,
 };
 
 struct rt5677_pll_code {
@@ -1464,7 +1468,7 @@ struct rt5677_priv {
 	int pll_out;
 	int vad_mode;
 	int vad_source;
-	int vad_clock_en;
+	unsigned int vad_clock_en;
 };
 
 #endif /* __RT5677_H__ */
