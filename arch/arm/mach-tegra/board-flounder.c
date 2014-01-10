@@ -80,6 +80,7 @@
 #include <mach/htc_headset_mgr.h>
 #include <mach/htc_headset_pmic.h>
 #include <mach/htc_headset_one_wire.h>
+#include <../../../drivers/staging/android/timed_gpio.h>
 
 #ifdef CONFIG_BT
 #include <mach/flounder-bdaddress.h>
@@ -449,6 +450,27 @@ static struct platform_device tegra_rtc_device = {
 	.num_resources = ARRAY_SIZE(tegra_rtc_resources),
 };
 
+static struct timed_gpio flounder_vib_timed_gpios[] = {
+	{
+		.name = "vibrator",
+		.gpio = TEGRA_GPIO_PU3,
+		.max_timeout = 15000,
+	},
+};
+
+static struct timed_gpio_platform_data flounder_vib_pdata = {
+	.num_gpios = ARRAY_SIZE(flounder_vib_timed_gpios),
+	.gpios     = flounder_vib_timed_gpios,
+};
+
+static struct platform_device flounder_vib_device = {
+	.name = TIMED_GPIO_NAME,
+	.id   = -1,
+	.dev  = {
+		.platform_data = &flounder_vib_pdata,
+	},
+};
+
 static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
@@ -475,6 +497,7 @@ static struct platform_device *flounder_devices[] __initdata = {
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_AES)
 	&tegra_aes_device,
 #endif
+	&flounder_vib_device,
 };
 
 static struct tegra_usb_platform_data tegra_udc_pdata = {
