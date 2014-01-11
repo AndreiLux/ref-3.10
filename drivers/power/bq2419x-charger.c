@@ -322,7 +322,7 @@ static int bq2419x_reset_wdt(struct bq2419x_chip *bq2419x, const char *from)
 	int timeout;
 
 	mutex_lock(&bq2419x->mutex);
-	dev_info(bq2419x->dev, "%s() from %s()\n", __func__, from);
+	dev_dbg(bq2419x->dev, "%s() from %s()\n", __func__, from);
 
 	/* Clear EN_HIZ */
 	ret = regmap_update_bits(bq2419x->regmap,
@@ -722,9 +722,9 @@ static int bq2419x_show_chip_version(struct bq2419x_chip *bq2419x)
 	if ((val & BQ24190_IC_VER) == BQ24190_IC_VER)
 		dev_info(bq2419x->dev, "chip type BQ24190 detected\n");
 	else if ((val & BQ24192_IC_VER) == BQ24192_IC_VER)
-		dev_info(bq2419x->dev, "chip type BQ2419X/3 detected\n");
+		dev_info(bq2419x->dev, "chip type BQ24192/3 detected\n");
 	else if ((val & BQ24192i_IC_VER) == BQ24192i_IC_VER)
-		dev_info(bq2419x->dev, "chip type BQ2419Xi detected\n");
+		dev_info(bq2419x->dev, "chip type BQ24192i detected\n");
 	return 0;
 }
 
@@ -732,7 +732,7 @@ static int fchg_curr_to_reg(int curr)
 {
 	int ret;
 
-	ret = (curr - 500) / 64;
+	ret = (curr - 512) / 64;
 	ret = ret << 2;
 
 	return ret;
@@ -742,7 +742,7 @@ static int fchg_reg_to_curr(int reg_val)
 {
 	int ret;
 
-	ret = (reg_val * 64) + 500;
+	ret = (reg_val * 64) + 512;
 
 	return ret;
 }
