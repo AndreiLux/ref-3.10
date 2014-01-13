@@ -28,6 +28,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
+#include <mach/usb_gadget_xport.h>
 
 #include "gadget_chips.h"
 
@@ -100,6 +101,31 @@ struct android_dev {
 	struct work_struct work;
 	char ffs_aliases[256];
 };
+
+#define GSERIAL_NO_PORTS 5
+static unsigned int no_tty_ports;
+static unsigned int no_hsic_sports;
+static unsigned int nr_ports;
+
+static struct port_info {
+	enum transport_type transport;
+	enum fserial_func_type func_type;
+	unsigned        port_num;
+	unsigned        client_port_num;
+} gserial_ports[GSERIAL_NO_PORTS];
+
+static enum fserial_func_type serial_str_to_func_type(const char *name)
+{
+	if (!name)
+		return USB_FSER_FUNC_NONE;
+
+	if (!strcasecmp("MODEM", name))
+		return USB_FSER_FUNC_MODEM;
+	if (!strcasecmp("SERIAL", name))
+		return USB_FSER_FUNC_SERIAL;
+
+	return USB_FSER_FUNC_NONE;
+}
 
 static struct class *android_class;
 static struct android_dev *_android_dev;
@@ -966,9 +992,165 @@ static struct android_usb_function nvusb_function = {
 	.bind_config	= nvusb_function_bind_config,
 };
 
+/* Serial */
+static char serial_transports[64];  /*enabled FSERIAL ports - "tty[,sdio]"*/
+#define MAX_SERIAL_INSTANCES 5
+struct serial_function_config {
+	int instances;
+	int instances_on;
+	struct usb_function *f_serial[MAX_SERIAL_INSTANCES];
+	struct usb_function_instance *f_serial_inst[MAX_SERIAL_INSTANCES];
+};
+
+static int gserial_init_port(int port_num, const char *name, char *serial_type)
+{
+	enum transport_type transport;
+	enum fserial_func_type func_type;
+
+	if (port_num >= GSERIAL_NO_PORTS)
+		return -ENODEV;
+
+	transport = str_to_xport(name);
+	func_type = serial_str_to_func_type(serial_type);
+
+	pr_info("%s, port:%d, transport:%s, type:%d\n", __func__,
+				port_num, xport_to_str(transport), func_type);
+
+	gserial_ports[port_num].transport = transport;
+	gserial_ports[port_num].func_type = func_type;
+	gserial_ports[port_num].port_num = port_num;
+
+	switch (transport) {
+	case USB_GADGET_XPORT_TTY:
+		gserial_ports[port_num].client_port_num = no_tty_ports;
+		no_tty_ports++;
+		break;
+	case USB_GADGET_XPORT_HSIC:
+		/*client port number will be updated in gport_setup*/
+		no_hsic_sports++;
+		break;
+	default:
+		pr_err("%s: Un-supported transport transport: %u\n",
+				__func__, gserial_ports[port_num].transport);
+		return -ENODEV;
+	}
+
+	nr_ports++;
+
+	return 0;
+}
+
+static int
+serial_function_init(struct android_usb_function *f,
+		struct usb_composite_dev *cdev)
+{
+	int i, ports = 0;
+	int ret;
+	struct serial_function_config *config;
+	char *name, *str[2];
+	char buf[80], *b;
+
+	config = kzalloc(sizeof(struct serial_function_config), GFP_KERNEL);
+	if (!config)
+		return -ENOMEM;
+	f->config = config;
+
+	strcpy(serial_transports, "tty,tty,tty:serial");
+	strncpy(buf, serial_transports, sizeof(buf));
+	buf[79] = 0;
+	pr_info("%s: init string: %s\n",__func__, buf);
+
+	b = strim(buf);
+
+	while (b) {
+		str[0] = str[1] = 0;
+		name = strsep(&b, ",");
+		if (name) {
+			str[0] = strsep(&name, ":");
+			if (str[0])
+				str[1] = strsep(&name, ":");
+		}
+		ret = gserial_init_port(ports, str[0], str[1]);
+		if (ret) {
+			pr_err("serial: Cannot open port '%s'\n", str[0]);
+			goto out;
+		}
+		ports++;
+	}
+
+	for (i = 0; i < no_tty_ports; i++) {
+		config->f_serial_inst[i] = usb_get_function_instance("gser");
+		if (IS_ERR(config->f_serial_inst[i])) {
+			ret = PTR_ERR(config->f_serial_inst[i]);
+			goto err_usb_get_function_instance;
+		}
+		config->f_serial[i] = usb_get_function(config->f_serial_inst[i]);
+		if (IS_ERR(config->f_serial[i])) {
+			ret = PTR_ERR(config->f_serial[i]);
+			goto err_usb_get_function;
+		}
+	}
+	return 0;
+err_usb_get_function_instance:
+	while (--i >= 0) {
+		usb_put_function(config->f_serial[i]);
+err_usb_get_function:
+		usb_put_function_instance(config->f_serial_inst[i]);
+	}
+out:
+	kfree(config);
+	f->config = NULL;
+	return ret;
+}
+
+static void serial_function_cleanup(struct android_usb_function *f)
+{
+	int i;
+	struct serial_function_config *config = f->config;
+
+	for (i = 0; i < no_tty_ports; i++) {
+		usb_put_function(config->f_serial[i]);
+		usb_put_function_instance(config->f_serial_inst[i]);
+	}
+	kfree(f->config);
+	f->config = NULL;
+}
+
+static int
+
+serial_function_bind_config(struct android_usb_function *f,
+		struct usb_configuration *c)
+{
+	int i;
+	int ret = 0;
+	struct serial_function_config *config = f->config;
+
+	for (i = 0; i < nr_ports; i++) {
+		if (gserial_ports[i].func_type == USB_FSER_FUNC_SERIAL)
+			ret = usb_add_function(c, config->f_serial[gserial_ports[i].client_port_num]);
+		if (ret) {
+			pr_err("Could not bind serial%u config\n", i);
+			goto err_usb_add_function;
+		}
+	}
+
+	return 0;
+
+err_usb_add_function:
+	while (--i >= 0)
+		usb_remove_function(c, config->f_serial[gserial_ports[i].client_port_num]);
+	return ret;
+}
+
+static struct android_usb_function serial_function = {
+	.name		= "serial",
+	.init		= serial_function_init,
+	.cleanup	= serial_function_cleanup,
+	.bind_config	= serial_function_bind_config,
+};
+
 static struct android_usb_function *supported_functions[] = {
 	&ffs_function,
-	&acm_function,
 	&mtp_function,
 	&ptp_function,
 	&rndis_function,
@@ -976,6 +1158,8 @@ static struct android_usb_function *supported_functions[] = {
 	&accessory_function,
 	&audio_source_function,
 	&nvusb_function,
+	&serial_function,
+	&acm_function,
 	NULL
 };
 
