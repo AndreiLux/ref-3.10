@@ -1284,13 +1284,19 @@ static int flounder_nct72_init(void)
 		tegra_platform_edp_init(flounder_nct72_pdata.trips,
 					&flounder_nct72_pdata.num_trips,
 					12000); /* edp temperature margin */
-		tegra_add_tj_trips(flounder_nct72_pdata.trips,
+		tegra_add_cpu_vmax_trips(flounder_nct72_pdata.trips,
+				&flounder_nct72_pdata.num_trips);
+		tegra_add_core_edp_trips(flounder_nct72_pdata.trips,
 				&flounder_nct72_pdata.num_trips);
 		tegra_add_tgpu_trips(flounder_nct72_pdata.trips,
 				     &flounder_nct72_pdata.num_trips);
+		tegra_add_vc_trips(flounder_nct72_pdata.trips,
+				     &flounder_nct72_pdata.num_trips);
+		tegra_add_core_vmax_trips(flounder_nct72_pdata.trips,
+				     &flounder_nct72_pdata.num_trips);
 	}
 
-	tegra_add_cdev_trips(flounder_nct72_pdata.trips,
+	tegra_add_all_vmin_trips(flounder_nct72_pdata.trips,
 				&flounder_nct72_pdata.num_trips);
 
 	flounder_i2c_nct72_board_info[0].irq = gpio_to_irq(nct72_port);

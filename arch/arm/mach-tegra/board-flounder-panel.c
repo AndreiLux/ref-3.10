@@ -29,9 +29,11 @@
 #include <linux/pwm_backlight.h>
 #include <linux/of.h>
 #include <linux/dma-contiguous.h>
+#include <linux/clk.h>
 
 #include <mach/irqs.h>
 #include <mach/dc.h>
+#include <mach/io_dpd.h>
 
 #include "board.h"
 #include "devices.h"
@@ -41,14 +43,15 @@
 #include "common.h"
 #include "iomap.h"
 #include "tegra12_host1x_devices.h"
-
+#include "dvfs.h"
 
 struct platform_device * __init flounder_host1x_init(void)
 {
 	struct platform_device *pdev = NULL;
 
 #ifdef CONFIG_TEGRA_GRHOST
-	pdev = tegra12_register_host1x_devices();
+	pdev = to_platform_device(bus_find_device_by_name(
+		&platform_bus_type, NULL, "host1x"));
 
 	if (!pdev) {
 		pr_err("host1x devices registration failed\n");
@@ -388,54 +391,39 @@ static struct platform_device flounder_nvmap_device  = {
 	},
 };
 
-static struct tegra_dc_sd_settings flounder_sd_settings = {
-	.enable = 1, /* enabled by default. */
-	.use_auto_pwm = false,
-	.hw_update_delay = 0,
-	.bin_width = -1,
-	.aggressiveness = 5,
-	.use_vid_luma = false,
-	.phase_in_adjustments = 0,
-	.k_limit_enable = true,
-	.k_limit = 200,
-	.sd_window_enable = false,
-	.soft_clipping_enable = true,
-	/* Low soft clipping threshold to compensate for aggressive k_limit */
-	.soft_clipping_threshold = 128,
-	.smooth_k_enable = false,
-	.smooth_k_incr = 64,
-	/* Default video coefficients */
-	.coeff = {5, 9, 2},
-	.fc = {0, 0},
-	/* Immediate backlight changes */
-	.blp = {1024, 255},
-	/* Gammas: R: 2.2 G: 2.2 B: 2.2 */
-	/* Default BL TF */
-	.bltf = {
-			{
-				{57, 65, 73, 82},
-				{92, 103, 114, 125},
-				{138, 150, 164, 178},
-				{193, 208, 224, 241},
-			},
-		},
-	/* Default LUT */
-	.lut = {
-			{
-				{255, 255, 255},
-				{199, 199, 199},
-				{153, 153, 153},
-				{116, 116, 116},
-				{85, 85, 85},
-				{59, 59, 59},
-				{36, 36, 36},
-				{17, 17, 17},
-				{0, 0, 0},
-			},
-		},
-	.sd_brightness = &sd_brightness,
-	.use_vpulse2 = true,
+static struct tegra_io_dpd dsic_io = {
+	.name                   = "DSIC",
+	.io_dpd_reg_index       = 1,
+	.io_dpd_bit             = 8,
 };
+static struct tegra_io_dpd dsid_io = {
+	.name                   = "DSID",
+	.io_dpd_reg_index       = 1,
+	.io_dpd_bit             = 9,
+};
+
+/* can be called multiple times */
+static struct tegra_panel *flounder_panel_configure(struct board_info *board_out,
+	u8 *dsi_instance_out)
+{
+	struct tegra_panel *panel = NULL;
+	u8 dsi_instance = DSI_INSTANCE_0;
+	struct board_info boardtmp;
+
+	if (!board_out)
+		board_out = &boardtmp;
+	tegra_get_display_board_info(board_out);
+
+	panel = &dsi_j_qxga_8_9;
+	dsi_instance = DSI_INSTANCE_0;
+	/*tegra_io_dpd_enable(&dsic_io);
+	tegra_io_dpd_enable(&dsid_io);*/
+	if (board_out->board_id == BOARD_E1813)
+		panel = &dsi_s_wqxga_10_1;
+	if (dsi_instance_out)
+		*dsi_instance_out = dsi_instance;
+	return panel;
+}
 
 static void flounder_panel_select(void)
 {
@@ -443,11 +431,7 @@ static void flounder_panel_select(void)
 	u8 dsi_instance;
 	struct board_info board;
 
-	tegra_get_display_board_info(&board);
-	panel = &dsi_j_qxga_8_9;
-	dsi_instance = DSI_INSTANCE_0;
-	if (board.board_id == BOARD_E1813)
-		panel = &dsi_s_wqxga_10_1;
+	panel = flounder_panel_configure(&board, &dsi_instance);
 
 	if (panel) {
 		if (panel->init_sd_settings)
@@ -489,13 +473,12 @@ static void flounder_panel_select(void)
 	}
 
 }
+
 int __init flounder_panel_init(void)
 {
 	int err = 0;
 	struct resource __maybe_unused *res;
 	struct platform_device *phost1x = NULL;
-
-	sd_settings = flounder_sd_settings;
 
 	flounder_panel_select();
 
@@ -505,8 +488,10 @@ int __init flounder_panel_init(void)
 	flounder_carveouts[2].base = tegra_vpr_start;
 	flounder_carveouts[2].size = tegra_vpr_size;
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+	carveout_linear_set(&tegra_generic_cma_dev);
 	flounder_carveouts[1].cma_dev = &tegra_generic_cma_dev;
 	flounder_carveouts[1].resize = false;
+	carveout_linear_set(&tegra_vpr_cma_dev);
 	flounder_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
 	flounder_carveouts[2].resize = true;
 	flounder_carveouts[2].cma_chunk_size = SZ_32M;
@@ -559,4 +544,54 @@ int __init flounder_panel_init(void)
 	}
 #endif
 	return err;
+}
+
+int __init flounder_display_init(void)
+{
+	struct clk *disp1_clk = clk_get_sys("tegradc.0", NULL);
+	struct clk *disp2_clk = clk_get_sys("tegradc.1", NULL);
+	struct tegra_panel *panel;
+	struct board_info board;
+	long disp1_rate;
+	long disp2_rate;
+
+	if (WARN_ON(IS_ERR(disp1_clk))) {
+		if (disp2_clk && !IS_ERR(disp2_clk))
+			clk_put(disp2_clk);
+		return PTR_ERR(disp1_clk);
+	}
+
+	if (WARN_ON(IS_ERR(disp2_clk))) {
+		clk_put(disp1_clk);
+		return PTR_ERR(disp1_clk);
+	}
+
+	panel = flounder_panel_configure(&board, NULL);
+
+	if (panel && panel->init_dc_out) {
+		panel->init_dc_out(&flounder_disp1_out);
+		if (flounder_disp1_out.n_modes && flounder_disp1_out.modes)
+			disp1_rate = flounder_disp1_out.modes[0].pclk;
+	} else {
+		disp1_rate = 0;
+		if (!panel || !panel->init_dc_out)
+			printk(KERN_ERR "disp1 panel output not specified!\n");
+	}
+
+	printk(KERN_DEBUG "disp1 pclk=%ld\n", disp1_rate);
+	if (disp1_rate)
+		tegra_dvfs_resolve_override(disp1_clk, disp1_rate);
+
+	/* set up disp2 */
+	if (flounder_disp2_out.max_pixclock)
+		disp2_rate = PICOS2KHZ(flounder_disp2_out.max_pixclock) * 1000;
+	else
+		disp2_rate = 297000000; /* HDMI 4K */
+	printk(KERN_DEBUG "disp2 pclk=%ld\n", disp2_rate);
+	if (disp2_rate)
+		tegra_dvfs_resolve_override(disp2_clk, disp2_rate);
+
+	clk_put(disp1_clk);
+	clk_put(disp2_clk);
+	return 0;
 }

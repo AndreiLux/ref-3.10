@@ -357,20 +357,39 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 
 int __init flounder_soctherm_init(void)
 {
+	s32 base_cp, shft_cp;
+	u32 base_ft, shft_ft;
+	struct board_info pmu_board_info;
+
 	/* do this only for supported CP,FT fuses */
-	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
-	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
+	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
+	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
 		tegra_platform_edp_init(
 			flounder_soctherm_data.therm[THERM_CPU].trips,
 			&flounder_soctherm_data.therm[THERM_CPU].num_trips,
-			8000); /* edp temperature margin */
-		tegra_add_tj_trips(
+			7000); /* edp temperature margin */
+		tegra_platform_gpu_edp_init(
+			flounder_soctherm_data.therm[THERM_GPU].trips,
+			&flounder_soctherm_data.therm[THERM_GPU].num_trips,
+			7000);
+		tegra_add_cpu_vmax_trips(
+			flounder_soctherm_data.therm[THERM_CPU].trips,
+			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_core_edp_trips(
 			flounder_soctherm_data.therm[THERM_CPU].trips,
 			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
 		tegra_add_tgpu_trips(
 			flounder_soctherm_data.therm[THERM_GPU].trips,
 			&flounder_soctherm_data.therm[THERM_GPU].num_trips);
+		tegra_add_vc_trips(
+			flounder_soctherm_data.therm[THERM_CPU].trips,
+			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_core_vmax_trips(
+			flounder_soctherm_data.therm[THERM_PLL].trips,
+			&flounder_soctherm_data.therm[THERM_PLL].num_trips);
 	}
+
+	tegra_get_pmu_board_info(&pmu_board_info);
 
 	return tegra11_soctherm_init(&flounder_soctherm_data);
 }

@@ -81,9 +81,5 @@ static struct platform_device flounder_int_keys_device = {
 
 int __init flounder_kbc_init(void)
 {
-	/* GPIO-Keys from DT for TN8 */
-	if (of_machine_is_compatible("nvidia,tn8"))
-		return 0;
-
 	return platform_device_register(&flounder_int_keys_device);
 }

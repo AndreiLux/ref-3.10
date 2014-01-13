@@ -60,9 +60,10 @@
 #include <linux/irqchip/tegra.h>
 #include <linux/pci-tegra.h>
 #include <linux/max1187x.h>
+#include <linux/tegra-soc.h>
 
 #include <mach/irqs.h>
-#include <mach/tegra_fiq_debugger.h>
+#include <linux/tegra_fiq_debugger.h>
 
 #include <mach/pinmux.h>
 #include <mach/pinmux-t12.h>
@@ -73,7 +74,6 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/gpio-tegra.h>
-#include <mach/tegra_fiq_debugger.h>
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_ahci.h>
 #include <linux/irqchip/tegra.h>
@@ -459,9 +459,6 @@ static struct platform_device *flounder_devices[] __initdata = {
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
-#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
-	&tegra12_se_device,
-#endif
 	&tegra_ahub_device,
 	&tegra_dam_device0,
 	&tegra_dam_device1,
@@ -626,61 +623,30 @@ static void flounder_usb_init(void)
 	}
 }
 
-static struct tegra_xusb_board_data xusb_bdata = {
+static struct tegra_xusb_platform_data xusb_pdata = {
 	.portmap = TEGRA_XUSB_SS_P0 | TEGRA_XUSB_USB2_P0 | TEGRA_XUSB_SS_P1 |
 			TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_USB2_P2,
-	.supply = {
-		.utmi_vbuses = {
-			"usb_vbus0", "usb_vbus1", "usb_vbus2"
-		},
-		.s3p3v = "hvdd_usb",
-		.s1p8v = "avdd_pll_utmip",
-		.vddio_hsic = "vddio_hsic",
-		.s1p05v = "avddio_usb",
-	},
-
-	.hsic[0] = {
-		.rx_strobe_trim = 0x1,
-		.rx_data_trim = 0x1,
-		.tx_rtune_n = 0x8,
-		.tx_rtune_p = 0xa,
-		.tx_slew_n = 0,
-		.tx_slew_p = 0,
-		.auto_term_en = true,
-		.strb_trim_val = 0x22,
-		.pretend_connect = false,
-	},
-	.uses_external_pmic = false,
 };
 
 static void flounder_xusb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
-	xusb_bdata.lane_owner = (u8) tegra_get_lane_owner_info();
-
-	xusb_bdata.gpio_controls_muxed_ss_lanes = false;
-
-	xusb_bdata.ss_portmap =
-		(TEGRA_XUSB_SS_PORT_MAP_USB2_P0 << 0) |
-		(TEGRA_XUSB_SS_PORT_MAP_USB2_P2 << 4);
+	xusb_pdata.lane_owner = (u8) tegra_get_lane_owner_info();
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
-		xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
+		xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
 			TEGRA_XUSB_SS_P0);
 
 	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
-		xusb_bdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
+		xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
 			TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
 
 	if (usb_port_owner_info & HSIC1_PORT_OWNER_XUSB)
-		xusb_bdata.portmap |= TEGRA_XUSB_HSIC_P0;
+		xusb_pdata.portmap |= TEGRA_XUSB_HSIC_P0;
 
 	if (usb_port_owner_info & HSIC2_PORT_OWNER_XUSB)
-		xusb_bdata.portmap |= TEGRA_XUSB_HSIC_P1;
-
-	if (xusb_bdata.portmap)
-		tegra_xusb_init(&xusb_bdata);
+		xusb_pdata.portmap |= TEGRA_XUSB_HSIC_P1;
 }
 
 #ifndef CONFIG_USE_OF
@@ -730,16 +696,19 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-apbdma", 0x60020000, "tegra-apbdma",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-se", 0x70012000, "tegra12-se", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
+		OF_DEV_AUXDATA("nvidia,tegra124-gk20a", TEGRA_GK20A_BAR0_BASE,
+			"gk20a.0", NULL),
 #ifdef CONFIG_ARCH_TEGRA_VIC
-	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03.0", NULL),
 #endif
 	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
 		NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi.0", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp.0", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISPB_BASE, "isp.1", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-tsec", TEGRA_TSEC_BASE, "tsec", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006000, "serial-tegra.0",
 				NULL),
@@ -761,6 +730,8 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000d100, "tegra12-i2c.5",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-xhci", 0x70090000, "tegra-xhci",
+				&xusb_pdata),
 	{}
 };
 #endif
@@ -1156,10 +1127,11 @@ static void __init flounder_slimport_init(void)
 
 static void __init tegra_flounder_late_init(void)
 {
-	platform_device_register(&tegra_pinmux_device);
+	platform_device_register(&tegra124_pinctrl_device);
 	flounder_pinmux_init();
 
 	tegra_ram_console_init();
+	flounder_display_init();
 	flounder_uart_init();
 	flounder_usb_init();
 	flounder_xusb_init();
@@ -1174,8 +1146,8 @@ static void __init tegra_flounder_late_init(void)
 	flounder_regulator_init();
 	flounder_dtv_init();
 	flounder_suspend_init();
-	flounder_emc_init();
 
+	flounder_emc_init();
 	flounder_edp_init();
 	isomgr_init();
 	flounder_touch_init();

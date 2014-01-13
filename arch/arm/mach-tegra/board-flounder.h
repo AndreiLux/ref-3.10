@@ -20,13 +20,13 @@
 #ifndef _MACH_TEGRA_BOARD_FLOUNDER_H
 #define _MACH_TEGRA_BOARD_FLOUNDER_H
 
-#include <linux/mfd/as3722-reg.h>
 #include <mach/gpio-tegra.h>
 #include <mach/irqs.h>
 #include "gpio-names.h"
 
 int flounder_pinmux_init(void);
 int flounder_emc_init(void);
+int flounder_display_init(void);
 int flounder_panel_init(void);
 int flounder_kbc_init(void);
 int flounder_sdhci_init(void);

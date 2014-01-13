@@ -98,6 +98,13 @@
 		};
 	};
 
+        host1x {
+                dsi {
+                        nvidia,dsi-controller-vs = <1>;
+                        status = "okay";
+                };
+        };
+
 	serial@70006000 {
 		compatible = "nvidia,tegra114-hsuart";
 		status = "okay";
