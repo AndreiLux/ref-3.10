@@ -903,17 +903,6 @@ struct adf_overlay_engine_ops tegra_adf_eng_ops = {
 	.n_supported_formats = ARRAY_SIZE(tegra_adf_formats),
 };
 
-int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
-		u32 used_bw_kbps, u32 available_bw_kbps)
-{
-	struct tegra_adf_event_bandwidth event;
-	event.base.type = TEGRA_ADF_EVENT_BANDWIDTH_RENEGOTIATE;
-	event.base.length = sizeof(event);
-	event.used_bw_kbps = used_bw_kbps;
-	event.available_bw_kbps = available_bw_kbps;
-	return adf_event_notify(&adf_info->base.base, &event.base);
-}
-
 struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 		struct tegra_dc *dc,
 		struct tegra_fb_data *fb_data)

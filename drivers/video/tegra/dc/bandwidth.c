@@ -31,7 +31,6 @@
 #include "dc_reg.h"
 #include "dc_config.h"
 #include "dc_priv.h"
-#include "tegra_adf.h"
 
 static int use_dynamic_emc = 1;
 
@@ -471,14 +470,6 @@ static void calc_disp_params(struct tegra_dc *dc,
 }
 #endif
 
-#ifdef CONFIG_TEGRA_ISOMGR
-static void tegra_dc_process_bandwidth_renegotiate(struct tegra_dc *dc, u32 bw)
-{
-	tegra_adf_process_bandwidth_renegotiate(dc->adf, bw,
-			tegra_isomgr_get_available_iso_bw());
-	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id);
-}
-#endif
 
 /* uses the larger of w->bandwidth or w->new_bandwidth */
 static void tegra_dc_set_latency_allowance(struct tegra_dc *dc,
@@ -655,7 +646,7 @@ void tegra_dc_clear_bandwidth(struct tegra_dc *dc)
 		WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
 	} else {
 		dev_dbg(&dc->ndev->dev, "Failed to clear bw.\n");
-		tegra_dc_process_bandwidth_renegotiate(
+		tegra_dc_ext_process_bandwidth_renegotiate(
 				dc->ndev->id, NULL);
 	}
 	dc->bw_kbps = 0;
@@ -714,7 +705,7 @@ void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 		} else {
 			dev_dbg(&dc->ndev->dev, "Failed to reserve bw %ld.\n",
 									bw);
-			tegra_dc_process_bandwidth_renegotiate(
+			tegra_dc_ext_process_bandwidth_renegotiate(
 				dc->ndev->id, NULL);
 		}
 #else /* EMC version */
