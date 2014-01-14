@@ -2,6 +2,8 @@
  * Copyright (C) ST-Ericsson SA 2011
  * Author: Maxime Coquelin <maxime.coquelin@stericsson.com> for ST-Ericsson.
  * License terms:  GNU General Public License (GPL), version 2
+ *
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  */
 #ifndef _LINUX_PASR_H
 #define _LINUX_PASR_H
@@ -14,7 +16,7 @@
 #define PASR_MAX_SECTION_NR_PER_DIE	8
 #define PASR_MAX_DIE_NR			4
 
-extern unsigned long section_size;
+extern u64 section_size;
 extern unsigned int section_bit;
 
 /**
@@ -31,7 +33,7 @@ extern unsigned int section_bit;
 struct pasr_section {
 	phys_addr_t start;
 	struct pasr_section *pair;
-	unsigned long free_size;
+	u64 free_size;
 	spinlock_t *lock;
 	struct pasr_die *die;
 };
@@ -40,6 +42,7 @@ struct pasr_section {
  * struct pasr_die - Represent a DDR die
  *
  * @start: Start address of the die.
+ * @end: End address of the die.
  * @idx: Index of the die.
  * @nr_sections: Number of Bank or Segment in the die.
  * @section: Table of the die's segments.
@@ -51,6 +54,7 @@ struct pasr_section {
  */
 struct pasr_die {
 	phys_addr_t start;
+	phys_addr_t end;
 	int idx;
 	int nr_sections;
 	struct pasr_section section[PASR_MAX_SECTION_NR_PER_DIE];
@@ -101,7 +105,7 @@ int pasr_register_mask_function(phys_addr_t die_addr,
  * This function has only to be called for unused memory, otherwise retention
  * cannot be guaranteed.
  */
-void pasr_put(phys_addr_t paddr, unsigned long size);
+void pasr_put(phys_addr_t paddr, u64 size);
 
 /**
  * pasr_get()
@@ -114,7 +118,7 @@ void pasr_put(phys_addr_t paddr, unsigned long size);
  * If pasr_put() is used by the allocator, using this function is mandatory to
  * guarantee retention.
  */
-void pasr_get(phys_addr_t paddr, unsigned long size);
+void pasr_get(phys_addr_t paddr, u64 size);
 
 
 static inline void pasr_kput(struct page *page, int order)

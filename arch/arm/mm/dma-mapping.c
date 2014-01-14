@@ -696,7 +696,8 @@ void *arm_dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
 	void *memory;
 
-	if (dma_alloc_from_coherent(dev, size, handle, &memory))
+	if (dma_alloc_from_coherent_attr(dev, size, handle,
+			&memory, attrs))
 		return memory;
 
 	return __dma_alloc(dev, size, handle, gfp, prot, false,
@@ -709,8 +710,9 @@ static void *arm_coherent_dma_alloc(struct device *dev, size_t size,
 	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
 	void *memory;
 
-	if (dma_alloc_from_coherent(dev, size, handle, &memory))
-		return memory;
+	if (dma_alloc_from_coherent_attr(dev, size, handle,
+			&memory, attrs))
+			return memory;
 
 	return __dma_alloc(dev, size, handle, gfp, prot, true,
 			   __builtin_return_address(0));
@@ -755,7 +757,7 @@ static void __arm_dma_free(struct device *dev, size_t size, void *cpu_addr,
 {
 	struct page *page = pfn_to_page(dma_to_pfn(dev, handle));
 
-	if (dma_release_from_coherent(dev, get_order(size), cpu_addr))
+	if (dma_release_from_coherent_attr(dev, size, cpu_addr, attrs))
 		return;
 
 	size = PAGE_ALIGN(size);
@@ -1033,19 +1035,21 @@ static void seq_print_dma_areas(struct seq_file *s, void *bitmap,
 	size_t pos = find_first_bit(bitmap, bits), end;
 
 	for (; pos < bits; pos = find_next_bit(bitmap, bits, end + 1)) {
+		dma_addr_t start_addr, end_addr;
+
 		end = find_next_zero_bit(bitmap, bits, pos);
-		seq_printf(s, "    0x%08x-0x%08x pages=%d\n",
-			   bit_to_addr(pos, base, order),
-			   bit_to_addr(end, base, order) - 1,
-			   (end - pos) << order);
+		start_addr = bit_to_addr(pos, base, order);
+		end_addr = bit_to_addr(end, base, order);
+		seq_printf(s, "    %pa-%pa pages=%d\n",
+			   &start_addr, &end_addr, (end - pos) << order);
 	}
 }
 
 static void seq_print_mapping(struct seq_file *s,
 			      struct dma_iommu_mapping *mapping)
 {
-	seq_printf(s, "  memory map: base=0x%x size=%d order=%d domain=%p\n",
-		   mapping->base, mapping->end - mapping->base,
+	seq_printf(s, "  memory map: base=%pa size=%lld order=%d domain=%p\n",
+		   &mapping->base, (u64)(mapping->end - mapping->base),
 		   mapping->order, mapping->domain);
 
 	seq_print_dma_areas(s, mapping->bitmap, mapping->base, mapping->bits,
@@ -1430,7 +1434,8 @@ static struct page **__iommu_alloc_buffer(struct device *dev, size_t size,
 	int i = 0;
 
 	if (array_size <= PAGE_SIZE)
-		pages = kzalloc(array_size, gfp);
+		pages = kzalloc(array_size,
+				gfp & ~(__GFP_HIGHMEM | __GFP_DMA32));
 	else
 		pages = vzalloc(array_size);
 	if (!pages)
@@ -1455,9 +1460,12 @@ static struct page **__iommu_alloc_buffer(struct device *dev, size_t size,
 
 	/*
 	 * IOMMU can map any pages, so himem can also be used here
+	 * unless some DMA'able area is explicitly required.
 	 */
-	gfp |= __GFP_NOWARN | __GFP_HIGHMEM;
+	if (!(gfp & GFP_DMA) && !(gfp & GFP_DMA32))
+		gfp |= __GFP_HIGHMEM;
 
+	gfp |= __GFP_NOWARN;
 	while (count) {
 		int j, order = __fls(count);
 
@@ -1655,7 +1663,7 @@ static void *__iommu_alloc_atomic(struct device *dev, size_t size,
 	if (*handle == DMA_ERROR_CODE)
 		goto err_mapping;
 
-	dev_dbg(dev, "%s() %08x(%x)\n", __func__, *handle, size);
+	dev_dbg(dev, "%s() %pa(%x)\n", __func__, handle, size);
 	return addr;
 
 err_mapping:
@@ -1669,7 +1677,7 @@ static void __iommu_free_atomic(struct device *dev, void *cpu_addr,
 {
 	__iommu_remove_mapping(dev, handle, size, attrs);
 	__free_from_pool(cpu_addr, size);
-	dev_dbg(dev, "%s() %08x(%x)\n", __func__, handle, size);
+	dev_dbg(dev, "%s() %pa(%x)\n", __func__, &handle, size);
 }
 
 static void *arm_iommu_alloc_attrs(struct device *dev, size_t size,

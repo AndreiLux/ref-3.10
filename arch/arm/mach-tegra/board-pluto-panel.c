@@ -140,7 +140,7 @@ static int pluto_hdmi_enable(struct device *dev)
 	int ret;
 	if (!pluto_hdmi_reg) {
 		pluto_hdmi_reg = regulator_get(dev, "avdd_hdmi");
-		if (IS_ERR_OR_NULL(pluto_hdmi_reg)) {
+		if (IS_ERR(pluto_hdmi_reg)) {
 			pr_err("hdmi: couldn't get regulator avdd_hdmi\n");
 			pluto_hdmi_reg = NULL;
 			return PTR_ERR(pluto_hdmi_reg);
@@ -153,7 +153,7 @@ static int pluto_hdmi_enable(struct device *dev)
 	}
 	if (!pluto_hdmi_pll) {
 		pluto_hdmi_pll = regulator_get(dev, "avdd_hdmi_pll");
-		if (IS_ERR_OR_NULL(pluto_hdmi_pll)) {
+		if (IS_ERR(pluto_hdmi_pll)) {
 			pr_err("hdmi: couldn't get regulator avdd_hdmi_pll\n");
 			pluto_hdmi_pll = NULL;
 			regulator_put(pluto_hdmi_reg);
@@ -201,7 +201,7 @@ static int pluto_hdmi_hotplug_init(struct device *dev)
 	int ret = 0;
 	if (!pluto_hdmi_vddio) {
 		pluto_hdmi_vddio = regulator_get(dev, "vdd_hdmi_5v0");
-		if (IS_ERR_OR_NULL(pluto_hdmi_vddio)) {
+		if (IS_ERR(pluto_hdmi_vddio)) {
 			ret = PTR_ERR(pluto_hdmi_vddio);
 			pr_err("hdmi: couldn't get regulator vdd_hdmi_5v0\n");
 			pluto_hdmi_vddio = NULL;
@@ -322,55 +322,6 @@ static struct platform_device pluto_nvmap_device = {
 	},
 };
 
-static struct tegra_dc_sd_settings pluto_sd_settings = {
-	.enable = 1, /* enabled by default */
-	.use_auto_pwm = false,
-	.hw_update_delay = 0,
-	.bin_width = -1,
-	.aggressiveness = 5,
-	.use_vid_luma = false,
-	.phase_in_adjustments = 0,
-	.k_limit_enable = true,
-	.k_limit = 180,
-	.sd_window_enable = false,
-	.soft_clipping_enable = true,
-	/* Low soft clipping threshold to compensate for aggressive k_limit */
-	.soft_clipping_threshold = 128,
-	.smooth_k_enable = true,
-	.smooth_k_incr = 4,
-	/* Default video coefficients */
-	.coeff = {5, 9, 2},
-	.fc = {0, 0},
-	/* Immediate backlight changes */
-	.blp = {1024, 255},
-	/* Gammas: R: 2.2 G: 2.2 B: 2.2 */
-	/* Default BL TF */
-	.bltf = {
-			{
-				{57, 65, 73, 82},
-				{92, 103, 114, 125},
-				{138, 150, 164, 178},
-				{193, 208, 224, 241},
-			},
-		},
-	/* Default LUT */
-	.lut = {
-			{
-				{255, 255, 255},
-				{199, 199, 199},
-				{153, 153, 153},
-				{116, 116, 116},
-				{85, 85, 85},
-				{59, 59, 59},
-				{36, 36, 36},
-				{17, 17, 17},
-				{0, 0, 0},
-			},
-		},
-	.sd_brightness = &sd_brightness,
-	.use_vpulse2 = true,
-};
-
 static void pluto_panel_select(void)
 {
 	struct tegra_panel *panel;
@@ -435,8 +386,6 @@ int __init pluto_panel_init(void)
 	int err = 0;
 	struct resource __maybe_unused *res;
 	struct platform_device *phost1x = NULL;
-
-	sd_settings = pluto_sd_settings;
 
 	pluto_panel_select();
 

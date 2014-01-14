@@ -155,7 +155,7 @@ static int init_engine_info(struct fifo_gk20a *f)
 void gk20a_remove_fifo_support(struct fifo_gk20a *f)
 {
 	struct gk20a *g = f->g;
-	struct mem_mgr *memmgr = mem_mgr_from_g(g);
+	struct device *d = dev_from_gk20a(g);
 	struct fifo_engine_info_gk20a *engine_info;
 	struct fifo_runlist_info_gk20a *runlist;
 	u32 runlist_id;
@@ -171,21 +171,35 @@ void gk20a_remove_fifo_support(struct fifo_gk20a *f)
 		}
 		kfree(f->channel);
 	}
+	if (f->userd.gpu_va)
+		gk20a_gmmu_unmap(&g->mm.bar1.vm,
+				f->userd.gpu_va,
+				f->userd.size,
+				mem_flag_none);
 
-	g->mm.bar1.vm.unmap(&g->mm.bar1.vm, f->userd.gpu_va);
+	if (f->userd.sgt)
+		gk20a_free_sgtable(&f->userd.sgt);
 
-	nvhost_memmgr_munmap(f->userd.mem.ref, f->userd.cpu_va);
-	nvhost_memmgr_free_sg_table(memmgr, f->userd.mem.ref, f->userd.mem.sgt);
-	nvhost_memmgr_put(memmgr, f->userd.mem.ref);
+	if (f->userd.cpuva)
+		dma_free_coherent(d,
+				f->userd_total_size,
+				f->userd.cpuva,
+				f->userd.iova);
+	f->userd.cpuva = NULL;
+	f->userd.iova = 0;
 
 	engine_info = f->engine_info + ENGINE_GR_GK20A;
 	runlist_id = engine_info->runlist_id;
 	runlist = &f->runlist_info[runlist_id];
 
 	for (i = 0; i < MAX_RUNLIST_BUFFERS; i++) {
-		nvhost_memmgr_free_sg_table(memmgr, runlist->mem[i].ref,
-				runlist->mem[i].sgt);
-		nvhost_memmgr_put(memmgr, runlist->mem[i].ref);
+		if (runlist->mem[i].cpuva)
+			dma_free_coherent(d,
+				runlist->mem[i].size,
+				runlist->mem[i].cpuva,
+				runlist->mem[i].iova);
+		runlist->mem[i].cpuva = NULL;
+		runlist->mem[i].iova = 0;
 	}
 
 	kfree(runlist->active_channels);
@@ -275,9 +289,9 @@ static void fifo_engine_exception_status(struct gk20a *g,
 
 static int init_runlist(struct gk20a *g, struct fifo_gk20a *f)
 {
-	struct mem_mgr *memmgr = mem_mgr_from_g(g);
 	struct fifo_engine_info_gk20a *engine_info;
 	struct fifo_runlist_info_gk20a *runlist;
+	struct device *d = dev_from_gk20a(g);
 	u32 runlist_id;
 	u32 i;
 	u64 runlist_size;
@@ -302,18 +316,15 @@ static int init_runlist(struct gk20a *g, struct fifo_gk20a *f)
 
 	runlist_size  = ram_rl_entry_size_v() * f->num_channels;
 	for (i = 0; i < MAX_RUNLIST_BUFFERS; i++) {
-		struct sg_table *sgt;
-		runlist->mem[i].ref =
-			nvhost_memmgr_alloc(memmgr, runlist_size,
-					    DEFAULT_ALLOC_ALIGNMENT,
-					    DEFAULT_ALLOC_FLAGS,
-					    0);
-		if (IS_ERR(runlist->mem[i].ref))
+		runlist->mem[i].cpuva =
+			dma_alloc_coherent(d,
+					runlist_size,
+					&runlist->mem[i].iova,
+					GFP_KERNEL);
+		if (!runlist->mem[i].cpuva) {
+			dev_err(d, "memory allocation failed\n");
 			goto clean_up_runlist;
-		sgt = nvhost_memmgr_sg_table(memmgr, runlist->mem[i].ref);
-		if (IS_ERR(sgt))
-			goto clean_up_runlist;
-		runlist->mem[i].sgt = sgt;
+		}
 		runlist->mem[i].size = runlist_size;
 	}
 	mutex_init(&runlist->mutex);
@@ -328,11 +339,13 @@ static int init_runlist(struct gk20a *g, struct fifo_gk20a *f)
 
 clean_up_runlist:
 	for (i = 0; i < MAX_RUNLIST_BUFFERS; i++) {
-		if (runlist->mem[i].sgt)
-			nvhost_memmgr_free_sg_table(memmgr, runlist->mem[i].ref,
-					runlist->mem[i].sgt);
-		if (runlist->mem[i].ref)
-			nvhost_memmgr_put(memmgr, runlist->mem[i].ref);
+		if (runlist->mem[i].cpuva)
+			dma_free_coherent(d,
+				runlist->mem[i].size,
+				runlist->mem[i].cpuva,
+				runlist->mem[i].iova);
+		runlist->mem[i].cpuva = NULL;
+		runlist->mem[i].iova = 0;
 	}
 
 	kfree(runlist->active_channels);
@@ -361,6 +374,8 @@ int gk20a_init_fifo_reset_enable_hw(struct gk20a *g)
 	pmc_enable &= ~mc_enable_pfifo_enabled_f();
 	pmc_enable &= ~mc_enable_ce2_enabled_f();
 	gk20a_writel(g, mc_enable_r(), pmc_enable);
+
+	udelay(20);
 
 	pmc_enable = gk20a_readl(g, mc_enable_r());
 	pmc_enable |= mc_enable_pfifo_enabled_f();
@@ -461,9 +476,9 @@ static void gk20a_init_fifo_pbdma_intr_descs(struct fifo_gk20a *f)
 
 static int gk20a_init_fifo_setup_sw(struct gk20a *g)
 {
-	struct mem_mgr *memmgr = mem_mgr_from_g(g);
 	struct fifo_gk20a *f = &g->fifo;
-	int chid, i, err;
+	struct device *d = dev_from_gk20a(g);
+	int chid, i, err = 0;
 
 	nvhost_dbg_fn("");
 
@@ -486,38 +501,37 @@ static int gk20a_init_fifo_setup_sw(struct gk20a *g)
 	f->userd_entry_size = 1 << ram_userd_base_shift_v();
 	f->userd_total_size = f->userd_entry_size * f->num_channels;
 
-	f->userd.mem.ref = nvhost_memmgr_alloc(memmgr, f->userd_total_size,
-					       4096, /* 4K pages */
-					       DEFAULT_ALLOC_FLAGS,
-					       0);
-	if (IS_ERR(f->userd.mem.ref)) {
-		err = PTR_ERR(f->userd.mem.ref);
+	f->userd.cpuva = dma_alloc_coherent(d,
+					f->userd_total_size,
+					&f->userd.iova,
+					GFP_KERNEL);
+	if (!f->userd.cpuva) {
+		dev_err(d, "memory allocation failed\n");
 		goto clean_up;
 	}
 
-	f->userd.cpu_va = nvhost_memmgr_mmap(f->userd.mem.ref);
-	/* f->userd.cpu_va = g->bar1; */
-	if (!f->userd.cpu_va) {
-		f->userd.cpu_va = NULL;
-		err = -ENOMEM;
+	err = gk20a_get_sgtable(d, &f->userd.sgt,
+				f->userd.cpuva, f->userd.iova,
+				f->userd_total_size);
+	if (err) {
+		dev_err(d, "failed to create sg table\n");
 		goto clean_up;
 	}
 
 	/* bar1 va */
-	f->userd.gpu_va = g->mm.bar1.vm.map(&g->mm.bar1.vm,
-					    memmgr,
-					    f->userd.mem.ref,
-					    /*offset_align, flags, kind*/
-					    4096, 0, 0,
-					    &f->userd.mem.sgt,
-					    false,
-					    mem_flag_none);
-	f->userd.cpu_pa = gk20a_mm_iova_addr(f->userd.mem.sgt->sgl);
-	nvhost_dbg(dbg_map, "userd physical address : 0x%08llx - 0x%08llx",
-			f->userd.cpu_pa, f->userd.cpu_pa + f->userd_total_size);
+	f->userd.gpu_va = gk20a_gmmu_map(&g->mm.bar1.vm,
+					&f->userd.sgt,
+					f->userd_total_size,
+					0, /* flags */
+					mem_flag_none);
+	if (!f->userd.gpu_va) {
+		dev_err(d, "gmmu mapping failed\n");
+		goto clean_up;
+	}
+
 	nvhost_dbg(dbg_map, "userd bar1 va = 0x%llx", f->userd.gpu_va);
 
-	f->userd.mem.size = f->userd_total_size;
+	f->userd.size = f->userd_total_size;
 
 	f->channel = kzalloc(f->num_channels * sizeof(*f->channel),
 				GFP_KERNEL);
@@ -541,9 +555,10 @@ static int gk20a_init_fifo_setup_sw(struct gk20a *g)
 
 	for (chid = 0; chid < f->num_channels; chid++) {
 		f->channel[chid].userd_cpu_va =
-			f->userd.cpu_va + chid * f->userd_entry_size;
-		f->channel[chid].userd_cpu_pa =
-			f->userd.cpu_pa + chid * f->userd_entry_size;
+			f->userd.cpuva + chid * f->userd_entry_size;
+		f->channel[chid].userd_iova =
+			NV_MC_SMMU_VADDR_TRANSLATE(f->userd.iova)
+				+ chid * f->userd_entry_size;
 		f->channel[chid].userd_gpu_va =
 			f->userd.gpu_va + chid * f->userd_entry_size;
 
@@ -552,6 +567,10 @@ static int gk20a_init_fifo_setup_sw(struct gk20a *g)
 	mutex_init(&f->ch_inuse_mutex);
 
 	f->remove_support = gk20a_remove_fifo_support;
+
+	f->deferred_reset_pending = false;
+	mutex_init(&f->deferred_reset_mutex);
+
 	f->sw_ready = true;
 
 	nvhost_dbg_fn("done");
@@ -559,10 +578,21 @@ static int gk20a_init_fifo_setup_sw(struct gk20a *g)
 
 clean_up:
 	nvhost_dbg_fn("fail");
-	nvhost_memmgr_munmap(f->userd.mem.ref, f->userd.cpu_va);
 	if (f->userd.gpu_va)
-		g->mm.bar1.vm.unmap(&g->mm.bar1.vm, f->userd.gpu_va);
-	nvhost_memmgr_put(memmgr, f->userd.mem.ref);
+		gk20a_gmmu_unmap(&g->mm.bar1.vm,
+					f->userd.gpu_va,
+					f->userd.size,
+					mem_flag_none);
+	if (f->userd.sgt)
+		gk20a_free_sgtable(&f->userd.sgt);
+	if (f->userd.cpuva)
+		dma_free_coherent(d,
+				f->userd_total_size,
+				f->userd.cpuva,
+				f->userd.iova);
+	f->userd.cpuva = NULL;
+	f->userd.iova = 0;
+
 	memset(&f->userd, 0, sizeof(struct userd_desc));
 
 	kfree(f->channel);
@@ -604,7 +634,7 @@ static int gk20a_init_fifo_setup_hw(struct gk20a *g)
 		u32 v, v1 = 0x33, v2 = 0x55;
 
 		u32 bar1_vaddr = f->userd.gpu_va;
-		volatile u32 *cpu_vaddr = f->userd.cpu_va;
+		volatile u32 *cpu_vaddr = f->userd.cpuva;
 
 		nvhost_dbg_info("test bar1 @ vaddr 0x%x",
 			   bar1_vaddr);
@@ -672,8 +702,8 @@ channel_from_inst_ptr(struct fifo_gk20a *f, u64 inst_ptr)
 		return NULL;
 	for (ci = 0; ci < f->num_channels; ci++) {
 		struct channel_gk20a *c = f->channel+ci;
-		if (c->inst_block.mem.ref &&
-		    (inst_ptr == (u64)(sg_phys(c->inst_block.mem.sgt->sgl))))
+		if (c->inst_block.cpuva &&
+		    (inst_ptr == c->inst_block.cpu_pa))
 			return f->channel+ci;
 	}
 	return NULL;
@@ -795,7 +825,7 @@ static void gk20a_fifo_reset_engine(struct gk20a *g, u32 engine_id)
 		nvhost_dbg(dbg_intr, "PMC before: %08x reset: %08x\n",
 				pmc_enable, pmc_enable_reset);
 		gk20a_writel(g, mc_enable_r(), pmc_enable_reset);
-		usleep_range(1000, 2000);
+		udelay(20);
 		gk20a_writel(g, mc_enable_r(), pmc_enable);
 		gk20a_readl(g, mc_enable_r());
 	}
@@ -808,7 +838,11 @@ static void gk20a_fifo_handle_mmu_fault_thread(struct work_struct *work)
 	struct gk20a *g = f->g;
 	int i;
 
-	gk20a_init_pmu_support(g);
+	/* Reinitialise FECS and GR */
+	gk20a_init_pmu_setup_hw2(g);
+
+	/* It is safe to enable ELPG again. */
+	gk20a_pmu_enable_elpg(g);
 
 	/* Restore the runlist */
 	for (i = 0; i < g->fifo.max_runlists; i++)
@@ -837,6 +871,54 @@ static void gk20a_fifo_handle_dropped_mmu_fault(struct gk20a *g)
 	nvhost_err(dev, "dropped mmu fault (0x%08x)", fault_id);
 }
 
+static bool gk20a_fifo_should_defer_engine_reset(struct gk20a *g, u32 engine_id,
+		struct fifo_mmu_fault_info_gk20a *f, bool fake_fault)
+{
+	/* channel recovery is only deferred if an sm debugger
+	   is attached and has MMU debug mode is enabled */
+	if (!gk20a_gr_sm_debugger_attached(g) ||
+	    !gk20a_mm_mmu_debug_mode_enabled(g))
+		return false;
+
+	/* if this fault is fake (due to RC recovery), don't defer recovery */
+	if (fake_fault)
+		return false;
+
+	if (engine_id != ENGINE_GR_GK20A ||
+	    f->engine_subid_v != fifo_intr_mmu_fault_info_engine_subid_gpc_v())
+		return false;
+
+	return true;
+}
+
+void fifo_gk20a_finish_mmu_fault_handling(struct gk20a *g,
+		unsigned long fault_id) {
+	u32 engine_mmu_id;
+	int i;
+
+	/* reset engines */
+	for_each_set_bit(engine_mmu_id, &fault_id, 32) {
+		u32 engine_id = gk20a_mmu_id_to_engine_id(engine_mmu_id);
+		if (engine_id != ~0)
+			gk20a_fifo_reset_engine(g, engine_id);
+	}
+
+	/* CLEAR the runlists. Do not wait for runlist to start as
+	 * some engines may not be available right now */
+	for (i = 0; i < g->fifo.max_runlists; i++)
+		gk20a_fifo_update_runlist_locked(g, i, ~0, false, false);
+
+	/* clear interrupt */
+	gk20a_writel(g, fifo_intr_mmu_fault_id_r(), fault_id);
+
+	/* resume scheduler */
+	gk20a_writel(g, fifo_error_sched_disable_r(),
+		     gk20a_readl(g, fifo_error_sched_disable_r()));
+
+	/* Spawn a work to enable PMU and restore runlists */
+	schedule_work(&g->fifo.fault_restore_thread);
+}
+
 static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 {
 	bool fake_fault;
@@ -848,8 +930,10 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 
 	nvhost_debug_dump(g->host);
 
-	/* PMU does not survive GR reset. */
-	gk20a_pmu_destroy(g);
+	g->fifo.deferred_reset_pending = false;
+
+	/* Disable ELPG */
+	gk20a_pmu_disable_elpg(g);
 
 	/* If we have recovery in progress, MMU fault id is invalid */
 	if (g->fifo.mmu_fault_engines) {
@@ -885,7 +969,7 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 					     f.client_desc,
 					     f.fault_type_desc);
 		nvhost_err(dev_from_gk20a(g), "mmu fault on engine %d, "
-			   "engined subid %d (%s), client %d (%s), "
+			   "engine subid %d (%s), client %d (%s), "
 			   "addr 0x%08x:0x%08x, type %d (%s), info 0x%08x,"
 			   "inst_ptr 0x%llx\n",
 			   engine_id,
@@ -939,37 +1023,35 @@ static void gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 				clear_bit(ch->hw_chid,
 					  runlist->active_channels);
 			}
+
+			/* check if engine reset should be deferred */
+			if (gk20a_fifo_should_defer_engine_reset(g, engine_id, &f, fake_fault)) {
+				g->fifo.mmu_fault_engines = fault_id;
+
+				/* handled during channel free */
+				g->fifo.deferred_reset_pending = true;
+			}
 		} else if (f.inst_ptr ==
-				sg_phys(g->mm.bar1.inst_block.mem.sgt->sgl)) {
+				g->mm.bar1.inst_block.cpu_pa) {
 			nvhost_err(dev_from_gk20a(g), "mmu fault from bar1");
 		} else if (f.inst_ptr ==
-				sg_phys(g->mm.pmu.inst_block.mem.sgt->sgl)) {
+				g->mm.pmu.inst_block.cpu_pa) {
 			nvhost_err(dev_from_gk20a(g), "mmu fault from pmu");
 		} else
 			nvhost_err(dev_from_gk20a(g), "couldn't locate channel for mmu fault");
 	}
 
-	/* reset engines */
-	for_each_set_bit(engine_mmu_id, &fault_id, 32) {
-		u32 engine_id = gk20a_mmu_id_to_engine_id(engine_mmu_id);
-		if (engine_id != ~0)
-			gk20a_fifo_reset_engine(g, engine_id);
+	if (g->fifo.deferred_reset_pending) {
+		nvhost_dbg(dbg_intr | dbg_gpu_dbg, "sm debugger attached,"
+			   " deferring channel recovery to channel free");
+		/* clear interrupt */
+		gk20a_writel(g, fifo_intr_mmu_fault_id_r(), fault_id);
+		return;
 	}
 
-	/* CLEAR the runlists. Do not wait for runlist to start as
-	 * some engines may not be available right now */
-	for (i = 0; i < g->fifo.max_runlists; i++)
-		gk20a_fifo_update_runlist_locked(g, i, ~0, false, false);
-
-	/* clear interrupt */
-	gk20a_writel(g, fifo_intr_mmu_fault_id_r(), fault_id);
-
-	/* resume scheduler */
-	gk20a_writel(g, fifo_error_sched_disable_r(),
-		     gk20a_readl(g, fifo_error_sched_disable_r()));
-
-	/* Spawn a work to enable PMU and restore runlists */
-	schedule_work(&g->fifo.fault_restore_thread);
+	/* resetting the engines and clearing the runlists is done in
+	   a separate function to allow deferred reset. */
+	fifo_gk20a_finish_mmu_fault_handling(g, fault_id);
 }
 
 static void gk20a_fifo_get_faulty_channel(struct gk20a *g, int engine_id,
@@ -1156,7 +1238,7 @@ static u32 fifo_error_isr(struct gk20a *g, u32 fifo_intr)
 		handled |= fifo_intr_0_dropped_mmu_fault_pending_f();
 	}
 
-	reset_channel = reset_channel || fifo_intr;
+	reset_channel = !g->fifo.deferred_reset_pending && (reset_channel || fifo_intr);
 
 	if (reset_channel) {
 		int engine_id;
@@ -1474,7 +1556,9 @@ clean_up:
 
 	if (err) {
 		nvhost_dbg_fn("failed");
-		gk20a_fifo_enable_engine_activity(g, eng_info);
+		if (gk20a_fifo_enable_engine_activity(g, eng_info))
+			nvhost_err(dev_from_gk20a(g),
+				"failed to enable gr engine activity\n");
 	} else {
 		nvhost_dbg_fn("done");
 	}
@@ -1514,8 +1598,6 @@ static int gk20a_fifo_runlist_wait_pending(struct gk20a *g, u32 runlist_id)
 
 	if (remain == 0 && pending != 0)
 		return -ETIMEDOUT;
-	else if (remain < 0)
-		return -EINTR;
 
 	return 0;
 }
@@ -1525,6 +1607,7 @@ static int gk20a_fifo_update_runlist_locked(struct gk20a *g, u32 runlist_id,
 					    bool wait_for_finish)
 {
 	u32 ret = 0;
+	struct device *d = dev_from_gk20a(g);
 	struct fifo_gk20a *f = &g->fifo;
 	struct fifo_runlist_info_gk20a *runlist = NULL;
 	u32 *runlist_entry_base = NULL;
@@ -1553,12 +1636,16 @@ static int gk20a_fifo_update_runlist_locked(struct gk20a *g, u32 runlist_id,
 	old_buf = runlist->cur_buffer;
 	new_buf = !runlist->cur_buffer;
 
-	nvhost_dbg_info("runlist_id : %d, switch to new buffer %p",
-		runlist_id, runlist->mem[new_buf].ref);
+	nvhost_dbg_info("runlist_id : %d, switch to new buffer 0x%16llx",
+		runlist_id, runlist->mem[new_buf].iova);
 
-	runlist_pa = sg_phys(runlist->mem[new_buf].sgt->sgl);
+	runlist_pa = gk20a_get_phys_from_iova(d, runlist->mem[new_buf].iova);
+	if (!runlist_pa) {
+		ret = -EINVAL;
+		goto clean_up;
+	}
 
-	runlist_entry_base = nvhost_memmgr_mmap(runlist->mem[new_buf].ref);
+	runlist_entry_base = runlist->mem[new_buf].cpuva;
 	if (!runlist_entry_base) {
 		ret = -ENOMEM;
 		goto clean_up;
@@ -1616,9 +1703,6 @@ static int gk20a_fifo_update_runlist_locked(struct gk20a *g, u32 runlist_id,
 	runlist->cur_buffer = new_buf;
 
 clean_up:
-	nvhost_memmgr_munmap(runlist->mem[new_buf].ref,
-			     runlist_entry_base);
-
 	return ret;
 }
 

@@ -127,7 +127,7 @@ static int tegra_dc_ext_put_window(struct tegra_dc_ext_user *user,
 	struct tegra_dc_ext_win *win;
 	int ret = 0;
 
-	if (n >= DC_N_WINDOWS)
+	if ((n >= DC_N_WINDOWS) || !(ext->dc->valid_windows & BIT(n)))
 		return -EINVAL;
 
 	win = &ext->win[n];
@@ -400,10 +400,12 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 		s64 head_timestamp = 0;
 		int j = 0;
 
-		if (index < 0)
+		if (index < 0 || !test_bit(index, &ext->dc->valid_windows))
 			continue;
 
 		win = tegra_dc_get_window(ext->dc, index);
+		if (!win)
+			continue;
 		ext_win = &ext->win[index];
 
 		if (!(atomic_dec_and_test(&ext_win->nr_pending_flips)) &&
@@ -474,7 +476,8 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 			struct tegra_dc_ext_flip_win *flip_win = &data->win[i];
 			int index = flip_win->attr.index;
 
-			if (index < 0)
+			if (index < 0 ||
+				!test_bit(index, &ext->dc->valid_windows))
 				continue;
 
 			tegra_dc_incr_syncpt_min(ext->dc, index,
@@ -507,7 +510,7 @@ static int lock_windows_for_flip(struct tegra_dc_ext_user *user,
 	for (i = 0; i < win_num; i++) {
 		int index = win[i].index;
 
-		if (index < 0)
+		if (index < 0 || !test_bit(index, &ext->dc->valid_windows))
 			continue;
 
 		idx_mask |= BIT(index);
@@ -552,7 +555,7 @@ static void unlock_windows_for_flip(struct tegra_dc_ext_user *user,
 	for (i = 0; i < win_num; i++) {
 		int index = win[i].index;
 
-		if (index < 0)
+		if (index < 0 || !test_bit(index, &ext->dc->valid_windows))
 			continue;
 
 		idx_mask |= BIT(index);
@@ -571,6 +574,7 @@ static int sanitize_flip_args(struct tegra_dc_ext_user *user,
 				int win_num)
 {
 	int i, used_windows = 0;
+	struct tegra_dc *dc = user->ext->dc;
 
 	if (win_num > DC_N_WINDOWS)
 		return -EINVAL;
@@ -581,7 +585,8 @@ static int sanitize_flip_args(struct tegra_dc_ext_user *user,
 		if (index < 0)
 			continue;
 
-		if (index >= DC_N_WINDOWS)
+		if (index >= DC_N_WINDOWS ||
+			!test_bit(index, &dc->valid_windows))
 			return -EINVAL;
 
 		if (used_windows & BIT(index))
@@ -604,6 +609,7 @@ static int tegra_dc_ext_pin_windows(struct tegra_dc_ext_user *user,
 				bool syncpt_fd)
 {
 	int i, ret;
+	struct tegra_dc *dc = user->ext->dc;
 
 	for (i = 0; i < win_num; i++) {
 		struct tegra_dc_ext_flip_win *flip_win = &flip_wins[i];
@@ -613,7 +619,7 @@ static int tegra_dc_ext_pin_windows(struct tegra_dc_ext_user *user,
 		if (has_timestamp && timespec_to_ns(&flip_win->attr.timestamp))
 			*has_timestamp = true;
 
-		if (index < 0)
+		if (index < 0 || !test_bit(index, &dc->valid_windows))
 			continue;
 
 		ret = tegra_dc_ext_pin_window(user, flip_win->attr.buff_id,
@@ -715,7 +721,7 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 		int index = win[i].index;
 		struct tegra_dc_ext_win *ext_win;
 
-		if (index < 0)
+		if (index < 0 || !test_bit(index, &ext->dc->valid_windows))
 			continue;
 
 		ext_win = &ext->win[index];
@@ -985,6 +991,8 @@ static int tegra_dc_ext_negotiate_bw(struct tegra_dc_ext_user *user,
 		return -1;
 
 	for (i = 0; i < win_num; i++) {
+		int idx = wins[i].index;
+
 		ret = tegra_dc_ext_pin_window(user, wins[i].buff_id,
 					      &handle, &phys_addr);
 		if (ret)
@@ -995,13 +1003,13 @@ static int tegra_dc_ext_negotiate_bw(struct tegra_dc_ext_user *user,
 				handle->sgt, DMA_TO_DEVICE);
 			dma_buf_put(handle->buf);
 			kfree(handle);
-			tegra_dc_ext_set_windowattr_basic(&dc->tmp_wins[i],
+			tegra_dc_ext_set_windowattr_basic(&dc->tmp_wins[idx],
 							  &wins[i]);
 		}
 		else {
 			dc->tmp_wins[i].flags = 0;
 		}
-		dc_wins[i] = &dc->tmp_wins[i];
+		dc_wins[i] = &dc->tmp_wins[idx];
 	}
 
 	ret = tegra_dc_bandwidth_negotiate_bw(dc, dc_wins, win_num);

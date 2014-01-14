@@ -53,12 +53,13 @@
 
 struct tegra_xusb_regulator_name {
 	const char *utmi_vbuses[XUSB_UTMI_COUNT];
-	u8 *s3p3v;
-	u8 *s1p8v;
+	const char *s3p3v;
+	const char *s1p8v;
 	const char *vddio_hsic;
-	u8 *s1p05v;
+	const char *s1p05v;
 };
 
+/* Ensure dt compatiblity when changing order */
 struct tegra_xusb_hsic_config {
 	u8 rx_strobe_trim;
 	u8 rx_data_trim;
@@ -66,9 +67,9 @@ struct tegra_xusb_hsic_config {
 	u8 tx_rtune_p;
 	u8 tx_slew_n;
 	u8 tx_slew_p;
-	bool auto_term_en;
+	u8 auto_term_en;
 	u8 strb_trim_val;
-	bool pretend_connect;
+	u8 pretend_connect;
 };
 
 struct tegra_xusb_board_data {
@@ -88,13 +89,21 @@ struct tegra_xusb_board_data {
 };
 
 struct tegra_xusb_platform_data {
-	struct tegra_xusb_board_data *bdata;
+	u32 portmap;
+	u8 lane_owner;
+	bool pretend_connect_0;
+};
+
+struct tegra_xusb_chip_calib {
 	u32 hs_curr_level_pad0;
 	u32 hs_curr_level_pad1;
 	u32 hs_curr_level_pad2;
 	u32 hs_iref_cap;
 	u32 hs_term_range_adj;
 	u32 hs_squelch_level;
+};
+struct tegra_xusb_soc_config {
+	struct tegra_xusb_board_data *bdata;
 	u32 rx_wander;
 	u32 rx_eq;
 	u32 cdr_cntl;
@@ -117,5 +126,4 @@ struct tegra_xusb_platform_data {
 
 #define TEGRA_XUSB_USE_HS_SRC_CLOCK2 BIT(0)
 
-extern void tegra_xusb_init(struct tegra_xusb_board_data *bdata);
 #endif /* _XUSB_H */

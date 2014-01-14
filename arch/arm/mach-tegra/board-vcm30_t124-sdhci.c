@@ -133,7 +133,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data4 = {
 	.cd_gpio = -1,
 	.wp_gpio = -1,
 	.power_gpio = -1,
-	.is_8bit = 0,
+	.is_8bit = true,
 	.tap_delay = 0x4,
 	.trim_delay = 0x4,
 	.ddr_trim_delay = 0x4,
@@ -219,8 +219,8 @@ int __init vcm30_t124_sdhci_init(void)
 
 /*	platform_device_register(&tegra_sdhci_device1); */
 /*	platform_device_register(&tegra_sdhci_device2); */
+	platform_device_register(&tegra_sdhci_device4);
 	platform_device_register(&tegra_sdhci_device3);
-/*	platform_device_register(&tegra_sdhci_device4); */
 
 	return 0;
 }

@@ -108,6 +108,12 @@ static void dvfs_validate_cdevs(struct dvfs_rail *rail)
 		rail->vts_cdev = NULL;
 		WARN(1, "%s: thermal dvfs is not supported\n", rail->reg_id);
 	}
+
+	if (!rail->simon_vmin_offsets != !rail->simon_vmin_offs_num) {
+		rail->simon_vmin_offs_num = 0;
+		rail->simon_vmin_offsets = NULL;
+		WARN(1, "%s: not matching simon offsets/num\n", rail->reg_id);
+	}
 }
 
 int tegra_dvfs_init_rails(struct dvfs_rail *rails[], int n)
@@ -559,7 +565,7 @@ static int dvfs_rail_connect_to_regulator(struct dvfs_rail *rail)
 
 static inline unsigned long *dvfs_get_freqs(struct dvfs *d)
 {
-	return d->alt_freqs ? : &d->freqs[0];
+	return d->alt_freqs && d->use_alt_freqs ? d->alt_freqs : &d->freqs[0];
 }
 
 static inline const int *dvfs_get_millivolts(struct dvfs *d, unsigned long rate)
@@ -598,14 +604,14 @@ __tegra_dvfs_set_rate(struct dvfs *d, unsigned long rate)
 		while (i < d->num_freqs && rate > freqs[i])
 			i++;
 
-		if ((d->max_millivolts) &&
-		    (millivolts[i] > d->max_millivolts)) {
-			pr_warn("tegra_dvfs: voltage %d too high for dvfs on"
-				" %s\n", millivolts[i], d->clk_name);
+		mv = millivolts[i];
+
+		if ((d->max_millivolts) && (mv > d->max_millivolts)) {
+			pr_warn("tegra_dvfs: voltage %d too high for dvfs on %s\n",
+				mv, d->clk_name);
 			return -EINVAL;
 		}
 
-		mv = millivolts[i];
 		detach_mv = tegra_dvfs_rail_get_boot_level(d->dvfs_rail);
 		if (!d->dvfs_rail->reg && (mv > detach_mv)) {
 			pr_warn("%s: %s: voltage %d above boot limit %d\n",
@@ -633,7 +639,7 @@ __tegra_dvfs_set_rate(struct dvfs *d, unsigned long rate)
 				__func__, d->clk_name, mv, detach_mv);
 			return -EINVAL;
 		}
-		d->cur_millivolts = millivolts[i];
+		d->cur_millivolts = mv;
 	}
 
 	d->cur_rate = rate;
@@ -647,6 +653,61 @@ __tegra_dvfs_set_rate(struct dvfs *d, unsigned long rate)
 	return ret;
 }
 
+/*
+ * Some clocks may have alternative frequency ladder that provides lower minimum
+ * voltage at the same rate (or complimentary: higher maximum rate at the same
+ * voltage). Interfaces below allows dvfs clients to install such ladder, and
+ * switch between primary and alternative frequencies in flight.
+ */
+static int alt_freqs_validate(struct dvfs *d, unsigned long *alt_freqs)
+{
+	int i;
+
+	if (alt_freqs) {
+		for (i = 0; i < d->num_freqs; i++) {
+			if (d->freqs[i] > alt_freqs[i]) {
+				pr_err("%s: Invalid alt freqs for %s\n",
+				       __func__, d->clk_name);
+				return -EINVAL;
+			}
+		}
+	}
+	return 0;
+}
+
+int tegra_dvfs_alt_freqs_install(struct dvfs *d, unsigned long *alt_freqs)
+{
+	int ret = 0;
+
+	mutex_lock(&dvfs_lock);
+
+	ret = alt_freqs_validate(d, alt_freqs);
+	if (!ret)
+		d->alt_freqs = alt_freqs;
+
+	mutex_unlock(&dvfs_lock);
+	return ret;
+}
+
+int tegra_dvfs_use_alt_freqs_on_clk(struct clk *c, bool use_alt_freq)
+{
+	int ret = -ENOENT;
+	struct dvfs *d = c->dvfs;
+
+	mutex_lock(&dvfs_lock);
+
+	if (d && d->alt_freqs) {
+		ret = 0;
+		if (d->use_alt_freqs != use_alt_freq) {
+			d->use_alt_freqs = use_alt_freq;
+			ret = __tegra_dvfs_set_rate(d, d->cur_rate);
+		}
+	}
+
+	mutex_unlock(&dvfs_lock);
+	return ret;
+}
+
 int tegra_dvfs_alt_freqs_set(struct dvfs *d, unsigned long *alt_freqs)
 {
 	int ret = 0;
@@ -654,21 +715,98 @@ int tegra_dvfs_alt_freqs_set(struct dvfs *d, unsigned long *alt_freqs)
 	mutex_lock(&dvfs_lock);
 
 	if (d->alt_freqs != alt_freqs) {
-		d->alt_freqs = alt_freqs;
-		ret = __tegra_dvfs_set_rate(d, d->cur_rate);
+		ret = alt_freqs_validate(d, alt_freqs);
+		if (!ret) {
+			d->use_alt_freqs = !!alt_freqs;
+			d->alt_freqs = alt_freqs;
+			ret = __tegra_dvfs_set_rate(d, d->cur_rate);
+		}
 	}
 
 	mutex_unlock(&dvfs_lock);
 	return ret;
 }
 
-static int predict_millivolts(struct clk *c, const int *millivolts,
-			      unsigned long rate)
+/*
+ * Some clocks may need run-time voltage ladder replacement. Allow it only if
+ * peak voltages across all possible ladders are specified, and new voltages
+ * do not violate peaks.
+ */
+static int new_voltages_validate(struct dvfs *d, const int *new_millivolts,
+				 int freqs_num, int ranges_num)
+{
+	const int *millivolts;
+	int freq_idx, therm_idx;
+
+	for (therm_idx = 0; therm_idx < ranges_num; therm_idx++) {
+		millivolts = new_millivolts + therm_idx * MAX_DVFS_FREQS;
+		for (freq_idx = 0; freq_idx < freqs_num; freq_idx++) {
+			if (millivolts[freq_idx] >
+			    d->peak_millivolts[freq_idx]) {
+				pr_err("%s: Invalid new voltages for %s\n",
+				       __func__, d->clk_name);
+				return -EINVAL;
+			}
+		}
+	}
+	return 0;
+}
+
+int tegra_dvfs_replace_voltage_table(struct dvfs *d, const int *new_millivolts)
+{
+	int ret = 0;
+	int ranges_num = 1;
+
+	mutex_lock(&dvfs_lock);
+
+	if (!d->peak_millivolts) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	if (d->therm_dvfs && d->dvfs_rail->vts_cdev)
+		ranges_num += d->dvfs_rail->vts_cdev->trip_temperatures_num;
+
+	if (new_voltages_validate(d, new_millivolts,
+				  d->num_freqs, ranges_num)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	d->millivolts = new_millivolts;
+	if (__tegra_dvfs_set_rate(d, d->cur_rate))
+		ret = -EAGAIN;
+out:
+	mutex_unlock(&dvfs_lock);
+	return ret;
+}
+
+/*
+ *  Using non alt frequencies always results in peak voltage
+ * (enforced by alt_freqs_validate())
+ */
+static int predict_non_alt_millivolts(struct clk *c, const int *millivolts,
+				      unsigned long rate)
 {
 	int i;
 
 	if (!millivolts)
 		return -ENODEV;
+
+	for (i = 0; i < c->dvfs->num_freqs; i++) {
+		if (rate <= c->dvfs->freqs[i])
+			break;
+	}
+
+	if (i == c->dvfs->num_freqs)
+		i--;
+
+	return millivolts[i];
+}
+
+static int predict_millivolts(struct clk *c, const int *millivolts,
+			      unsigned long rate)
+{
 	/*
 	 * Predicted voltage can not be used across the switch to alternative
 	 * frequency limits. For now, just fail the call for clock that has
@@ -677,15 +815,7 @@ static int predict_millivolts(struct clk *c, const int *millivolts,
 	if (c->dvfs->alt_freqs)
 		return -ENOSYS;
 
-	for (i = 0; i < c->dvfs->num_freqs; i++) {
-		if (rate <= c->dvfs->freqs[i])
-			break;
-	}
-
-	if (i == c->dvfs->num_freqs)
-		return -EINVAL;
-
-	return millivolts[i];
+	return predict_non_alt_millivolts(c, millivolts, rate);
 }
 
 int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate)
@@ -703,6 +833,7 @@ int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate)
 
 int tegra_dvfs_predict_peak_millivolts(struct clk *c, unsigned long rate)
 {
+	int mv;
 	const int *millivolts;
 
 	if (!rate || !c->dvfs)
@@ -711,29 +842,14 @@ int tegra_dvfs_predict_peak_millivolts(struct clk *c, unsigned long rate)
 	millivolts = tegra_dvfs_is_dfll_range(c->dvfs, rate) ?
 			c->dvfs->dfll_millivolts : c->dvfs->peak_millivolts ? :
 			tegra_dvfs_get_millivolts_pll(c->dvfs);
-	return predict_millivolts(c, millivolts, rate);
-}
 
-int tegra_dvfs_predict_millivolts_pll(struct clk *c, unsigned long rate)
-{
-	const int *millivolts;
+	mv = predict_non_alt_millivolts(c, millivolts, rate);
+	if (mv < 0)
+		return mv;
 
-	if (!rate || !c->dvfs)
-		return 0;
-
-	millivolts = tegra_dvfs_get_millivolts_pll(c->dvfs);
-	return predict_millivolts(c, millivolts, rate);
-}
-
-int tegra_dvfs_predict_millivolts_dfll(struct clk *c, unsigned long rate)
-{
-	const int *millivolts;
-
-	if (!rate || !c->dvfs)
-		return 0;
-
-	millivolts = c->dvfs->dfll_millivolts;
-	return predict_millivolts(c, millivolts, rate);
+	if (c->dvfs->dvfs_rail->therm_mv_floors)
+		mv = max(mv, c->dvfs->dvfs_rail->therm_mv_floors[0]);
+	return mv;
 }
 
 const int *tegra_dvfs_get_millivolts_pll(struct dvfs *d)
@@ -775,6 +891,12 @@ int tegra_dvfs_get_freqs(struct clk *c, unsigned long **freqs, int *num_freqs)
 }
 EXPORT_SYMBOL(tegra_dvfs_get_freqs);
 
+static inline int dvfs_rail_get_override_floor(struct dvfs_rail *rail)
+{
+	return rail->override_unresolved ? rail->nominal_millivolts :
+		rail->min_override_millivolts;
+}
+
 #ifdef CONFIG_TEGRA_VDD_CORE_OVERRIDE
 static DEFINE_MUTEX(rail_override_lock);
 
@@ -789,15 +911,16 @@ static int dvfs_override_core_voltage(int override_mv)
 	if (rail->fixed_millivolts)
 		return -ENOSYS;
 
-	floor = rail->min_override_millivolts;
+	mutex_lock(&rail_override_lock);
+
+	floor = dvfs_rail_get_override_floor(rail);
 	ceiling = rail->nominal_millivolts;
 	if (override_mv && ((override_mv < floor) || (override_mv > ceiling))) {
 		pr_err("%s: override level %d outside the range [%d...%d]\n",
 		       __func__, override_mv, floor, ceiling);
+		mutex_unlock(&rail_override_lock);
 		return -EINVAL;
 	}
-
-	mutex_lock(&rail_override_lock);
 
 	if (override_mv == rail->override_millivolts) {
 		ret = 0;
@@ -805,7 +928,7 @@ static int dvfs_override_core_voltage(int override_mv)
 	}
 
 	if (override_mv) {
-		ret = tegra_dvfs_core_cap_level_apply(override_mv);
+		ret = tegra_dvfs_override_core_cap_apply(override_mv);
 		if (ret) {
 			pr_err("%s: failed to set cap for override level %d\n",
 			       __func__, override_mv);
@@ -835,10 +958,51 @@ static int dvfs_override_core_voltage(int override_mv)
 	mutex_unlock(&dvfs_lock);
 
 	if (!override_mv || ret)
-		tegra_dvfs_core_cap_level_apply(0);
+		tegra_dvfs_override_core_cap_apply(0);
 out:
 	mutex_unlock(&rail_override_lock);
 	return ret;
+}
+
+int tegra_dvfs_resolve_override(struct clk *c, unsigned long max_rate)
+{
+	int mv;
+	struct dvfs *d = c->dvfs;
+	struct dvfs_rail *rail;
+
+	if (!d)
+		return 0;
+	rail = d->dvfs_rail;
+
+	mutex_lock(&rail_override_lock);
+	mutex_lock(&dvfs_lock);
+
+	if (d->defer_override && rail->override_unresolved) {
+		d->defer_override = false;
+
+		mv = tegra_dvfs_predict_peak_millivolts(c, max_rate);
+		if (rail->min_override_millivolts < mv)
+			rail->min_override_millivolts = mv;
+
+		rail->override_unresolved--;
+		if (!rail->override_unresolved && rail->resolve_override)
+			rail->resolve_override(rail->min_override_millivolts);
+	}
+	mutex_unlock(&dvfs_lock);
+	mutex_unlock(&rail_override_lock);
+	return 0;
+}
+
+int tegra_dvfs_rail_get_override_floor(struct dvfs_rail *rail)
+{
+	if (rail) {
+		int mv;
+		mutex_lock(&rail_override_lock);
+		mv = dvfs_rail_get_override_floor(rail);
+		mutex_unlock(&rail_override_lock);
+		return mv;
+	}
+	return -ENOENT;
 }
 #else
 static int dvfs_override_core_voltage(int override_mv)
@@ -898,8 +1062,12 @@ int __init tegra_enable_dvfs_on_clk(struct clk *c, struct dvfs *d)
 	if (i && c->ops && !c->ops->shared_bus_update &&
 	    !(c->flags & PERIPH_ON_CBUS) && !d->can_override) {
 		int mv = tegra_dvfs_predict_peak_millivolts(c, d->freqs[i-1]);
-		if (d->dvfs_rail->min_override_millivolts < mv)
-			d->dvfs_rail->min_override_millivolts = mv;
+		struct dvfs_rail *rail = d->dvfs_rail;
+		if (d->defer_override)
+			rail->override_unresolved++;
+		else if (rail->min_override_millivolts < mv)
+			rail->min_override_millivolts =
+				min(mv, rail->nominal_millivolts);
 	}
 
 	mutex_lock(&dvfs_lock);
@@ -1297,6 +1465,13 @@ struct tegra_cooling_device *tegra_dvfs_get_cpu_vmin_cdev(void)
 	return NULL;
 }
 
+struct tegra_cooling_device *tegra_dvfs_get_core_vmax_cdev(void)
+{
+	if (tegra_core_rail)
+		return tegra_core_rail->vmax_cdev;
+	return NULL;
+}
+
 struct tegra_cooling_device *tegra_dvfs_get_core_vmin_cdev(void)
 {
 	if (tegra_core_rail)
@@ -1384,6 +1559,64 @@ static void tegra_dvfs_rail_register_vmin_cdev(struct dvfs_rail *rail)
 		       rail->vmin_cdev->cdev_type);
 }
 
+/*
+ * Cooling device limits frequencies of the clocks in pll mode based on rail
+ * vmax thermal profile. Supported for core rail only, and applied only to
+ * shared buses selected by platform specific code.
+ */
+static int tegra_dvfs_rail_get_vmax_cdev_max_state(
+	struct thermal_cooling_device *cdev, unsigned long *max_state)
+{
+	struct dvfs_rail *rail = (struct dvfs_rail *)cdev->devdata;
+	*max_state = rail->vmax_cdev->trip_temperatures_num;
+	return 0;
+}
+
+static int tegra_dvfs_rail_get_vmax_cdev_cur_state(
+	struct thermal_cooling_device *cdev, unsigned long *cur_state)
+{
+	struct dvfs_rail *rail = (struct dvfs_rail *)cdev->devdata;
+	*cur_state = rail->therm_cap_idx;
+	return 0;
+}
+
+static int tegra_dvfs_rail_set_vmax_cdev_state(
+	struct thermal_cooling_device *cdev, unsigned long cur_state)
+{
+	struct dvfs_rail *rail = (struct dvfs_rail *)cdev->devdata;
+	int cur_cap = cur_state ? rail->therm_mv_caps[cur_state - 1] : 0;
+
+	return tegra_dvfs_therm_vmax_core_cap_apply(&rail->therm_cap_idx,
+						    cur_state, cur_cap);
+}
+
+static struct thermal_cooling_device_ops tegra_dvfs_vmax_cooling_ops = {
+	.get_max_state = tegra_dvfs_rail_get_vmax_cdev_max_state,
+	.get_cur_state = tegra_dvfs_rail_get_vmax_cdev_cur_state,
+	.set_cur_state = tegra_dvfs_rail_set_vmax_cdev_state,
+};
+
+void tegra_dvfs_rail_register_vmax_cdev(struct dvfs_rail *rail)
+{
+	struct thermal_cooling_device *dev;
+
+	if (!rail || !rail->vmax_cdev || (rail != tegra_core_rail))
+		return;
+
+	dev = thermal_cooling_device_register(rail->vmax_cdev->cdev_type,
+		(void *)rail, &tegra_dvfs_vmax_cooling_ops);
+
+	if (IS_ERR_OR_NULL(dev) || list_empty(&dev->thermal_instances)) {
+		/* report error & set the most agressive caps */
+		int cur_state = rail->vmax_cdev->trip_temperatures_num;
+		int cur_cap = rail->therm_mv_caps[cur_state - 1];
+		tegra_dvfs_therm_vmax_core_cap_apply(&rail->therm_cap_idx,
+						     cur_state, cur_cap);
+		pr_err("tegra cooling device %s failed to register\n",
+		       rail->vmax_cdev->cdev_type);
+	}
+}
+
 /* Cooling device to scale voltage with temperature in pll mode */
 static int tegra_dvfs_rail_get_vts_cdev_max_state(
 	struct thermal_cooling_device *cdev, unsigned long *max_state)
@@ -1444,11 +1677,38 @@ static void tegra_dvfs_rail_register_vts_cdev(struct dvfs_rail *rail)
 
 #else
 #define tegra_dvfs_rail_register_vmin_cdev(rail)
+void tegra_dvfs_rail_register_vmax_cdev(struct dvfs_rail *rail)
+{ }
 static inline void tegra_dvfs_rail_register_vts_cdev(struct dvfs_rail *rail)
 {
 	make_safe_thermal_dvfs(rail);
 }
 #endif
+
+/*
+ * Validate rail SiMon Vmin offsets. Valid offsets should be negative,
+ * descending, starting from zero.
+ */
+void __init tegra_dvfs_rail_init_simon_vmin_offsets(
+	int *offsets, int offs_num, struct dvfs_rail *rail)
+{
+	int i;
+
+	if (!offsets || !offs_num || offsets[0]) {
+		WARN(1, "%s: invalid initial SiMon offset\n", rail->reg_id);
+		return;
+	}
+
+	for (i = 0; i < offs_num - 1; i++) {
+		if (offsets[i] < offsets[i+1]) {
+			WARN(1, "%s: SiMon offsets are not ordered\n",
+			     rail->reg_id);
+			return;
+		}
+	}
+	rail->simon_vmin_offsets = offsets;
+	rail->simon_vmin_offs_num = offs_num;
+}
 
 /*
  * Validate rail thermal profile, and get its size. Valid profile:
@@ -1746,10 +2006,14 @@ static int dvfs_tree_show(struct seq_file *s, void *data)
 		seq_printf(s, "   thermal    %-7d mV\n", thermal_mv_floor);
 
 		if (rail == tegra_core_rail) {
-			seq_printf(s, "   override   %-7d mV [%-4d...%-4d]\n",
+			seq_printf(s, "   override   %-7d mV [%-4d...%-4d]",
 				   rail->override_millivolts,
-				   rail->min_override_millivolts,
+				   dvfs_rail_get_override_floor(rail),
 				   rail->nominal_millivolts);
+			if (rail->override_unresolved)
+				seq_printf(s, " unresolved %d",
+					   rail->override_unresolved);
+			seq_putc(s, '\n');
 		}
 
 		list_sort(NULL, &rail->dvfs, dvfs_tree_sort_cmp);
@@ -1883,6 +2147,7 @@ static int gpu_dvfs_t_show(struct seq_file *s, void *data)
 	int *trips = NULL;
 	struct dvfs *d;
 	struct dvfs_rail *rail = tegra_gpu_rail;
+	int max_mv[MAX_DVFS_FREQS] = {};
 
 	if (!tegra_gpu_rail) {
 		seq_printf(s, "Only supported for T124 or higher\n");
@@ -1899,7 +2164,7 @@ static int gpu_dvfs_t_show(struct seq_file *s, void *data)
 
 	seq_printf(s, "%-11s", "T(C)\\F(kHz)");
 	for (i = 0; i < d->num_freqs; i++) {
-		unsigned int f = d->freqs[i]/100;
+		unsigned int f = d->freqs[i]/1000;
 		seq_printf(s, " %7u", f);
 	}
 	seq_printf(s, "\n");
@@ -1919,6 +2184,7 @@ static int gpu_dvfs_t_show(struct seq_file *s, void *data)
 		for (i = 0; i < d->num_freqs; i++) {
 			int mv = *(d->millivolts + j * MAX_DVFS_FREQS + i);
 			seq_printf(s, " %7d", mv);
+			max_mv[i] = max(max_mv[i], mv);
 		}
 		seq_printf(s, " mV\n");
 	}
@@ -1926,7 +2192,7 @@ static int gpu_dvfs_t_show(struct seq_file *s, void *data)
 	seq_printf(s, "%3s%-8s\n", "", "------");
 	seq_printf(s, "%3s%-8s", "", "max(T)");
 	for (i = 0; i < d->num_freqs; i++)
-		seq_printf(s, " %7d", d->peak_millivolts[i]);
+		seq_printf(s, " %7d", max_mv[i]);
 	seq_printf(s, " mV\n");
 
 	mutex_unlock(&dvfs_lock);
@@ -1990,7 +2256,8 @@ static int dvfs_table_show(struct seq_file *s, void *data)
 
 			seq_printf(s, "%-16s", d->clk_name);
 			for (i = 0; i < d->num_freqs; i++) {
-				unsigned int f = d->freqs[i]/100000;
+				unsigned long *freqs = dvfs_get_freqs(d);
+				unsigned int f = freqs[i]/100000;
 				seq_printf(s, " %4u.%u", f/10, f%10);
 			}
 			seq_printf(s, "\n");

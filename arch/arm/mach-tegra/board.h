@@ -117,6 +117,9 @@ static inline void tegra_clear_framebuffer(unsigned long to, unsigned long size)
 }
 bool is_tegra_debug_uartport_hs(void);
 int get_tegra_uart_debug_port_id(void);
+bool is_uart_over_sd_enabled(void);
+int get_sd_uart_port_id(void);
+void set_sd_uart_port_id(int);
 int __init tegra_register_fuse(void);
 
 #if defined(CONFIG_PSTORE_RAM) && defined(CONFIG_PSTORE_CONSOLE)
@@ -163,6 +166,12 @@ extern unsigned long tegra_nck_size;
 void tegra_fb_linear_set(struct iommu_linear_map *map);
 #else
 static inline void tegra_fb_linear_set(struct iommu_linear_map *map) {}
+#endif
+
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+void carveout_linear_set(struct device *cma_dev);
+#else
+static inline void carveout_linear_set(struct device *cma_dev) {}
 #endif
 
 void tegra_init_late(void);
@@ -240,7 +249,6 @@ int tegra_get_touch_panel_id(void);
 int get_core_edp(void);
 enum panel_type get_panel_type(void);
 int tegra_get_usb_port_owner_info(void);
-int tegra_get_lane_owner_info(void);
 int tegra_get_modem_id(void);
 int tegra_get_commchip_id(void);
 u8 get_power_config(void);

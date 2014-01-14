@@ -29,9 +29,17 @@ static unsigned int mt9m114_states[] = { 0, 150 };
 static unsigned int sdhci_states[] = { 0, 966 };
 static unsigned int speaker_states[] = { 0, 1080 };
 static unsigned int wifi_states[] = { 0, 1020 };
-/* 10" panel */
+static unsigned int modem_states[] = { 0, 4100 };
 static unsigned int pwm_backlight_states[] = {
+	0, 125, 250, 375, 500, 625, 750, 875, 1000, 1125, 1250
+};
+
+/* (optional) 10" panel */
+static unsigned int pwm_backlight_10_states[] = {
 	0, 425, 851, 1276, 1702, 2127, 2553, 2978, 3404, 3829, 4255
+};
+static unsigned int as364x_states[] = {
+	0, 350, 700, 1050, 1400, 1750, 2100, 2450, 2800, 3150, 3500
 };
 
 static struct sysedp_consumer_data tn8_sysedp_consumer_data[] = {
@@ -42,6 +50,8 @@ static struct sysedp_consumer_data tn8_sysedp_consumer_data[] = {
 	SYSEDP_CONSUMER_DATA("pwm-backlight", pwm_backlight_states),
 	SYSEDP_CONSUMER_DATA("sdhci-tegra.2", sdhci_states),
 	SYSEDP_CONSUMER_DATA("sdhci-tegra.3", sdhci_states),
+	SYSEDP_CONSUMER_DATA("as364x", as364x_states),
+	SYSEDP_CONSUMER_DATA("modem", modem_states),
 };
 
 static struct sysedp_platform_data tn8_sysedp_platform_data = {
@@ -59,6 +69,14 @@ static struct platform_device tn8_sysedp_device = {
 void __init tn8_new_sysedp_init(void)
 {
 	int r;
+	struct board_info board;
+
+	tegra_get_display_board_info(&board);
+
+	/* Some TN8 boards use non-default display */
+	if (board.board_id != BOARD_E1549)
+		memcpy(pwm_backlight_states, pwm_backlight_10_states,
+		       sizeof(pwm_backlight_states));
 
 	r = platform_device_register(&tn8_sysedp_device);
 	WARN_ON(r);
@@ -72,24 +90,37 @@ static struct sysedp_batmon_ibat_lut tn8_ibat_lut[] = {
 	{ -30,    0 }
 };
 
-static struct sysedp_batmon_rbat_lut tn8_rbat_lut[] = {
-	{ 100,	76000  },
-	{  88,	85000  },
-	{  75,  102000 },
-	{  63,  93000  },
-	{  50,  85000  },
-	{  38,  93000  },
-	{  25,  102000 },
-	{  13,  119000 },
-	{   0,  119000 }
+#if 0
+/* TODO: use this table when battery temp sensing is fixed */
+/*                           60C    40C    25C    0C      -20C      */
+static int rbat_data[] = {  90000, 60000, 70000,  90000, 110000,   /* 100% */
+			    90000, 60000, 70000,  90000, 110000,   /*  13% */
+			   110000, 80000, 90000, 110000, 130000 }; /*   0% */
+static int rbat_temp_axis[] = { 60, 40, 25, 0, -20 };
+static int rbat_capacity_axis[] = { 100, 13, 0 };
+#else
+static int rbat_data[] = {  70000,   /* 100% */
+			    70000,   /*  25% */
+			   110000,   /*  10% */
+			   130000 }; /*   0% */
+static int rbat_temp_axis[] = { 25 };
+static int rbat_capacity_axis[] = { 100, 25, 10, 0 };
+#endif
+struct sysedp_batmon_rbat_lut tn8_rbat_lut = {
+	.temp_axis = rbat_temp_axis,
+	.temp_size = ARRAY_SIZE(rbat_temp_axis),
+	.capacity_axis = rbat_capacity_axis,
+	.capacity_size = ARRAY_SIZE(rbat_capacity_axis),
+	.data = rbat_data,
+	.data_size = ARRAY_SIZE(rbat_data),
 };
 
 static struct sysedp_batmon_calc_platform_data tn8_batmon_pdata = {
 	.power_supply = "battery",
-	.r_const = 38000,
-	.vsys_min = 2900000,
+	.r_const = 60000,
+	.vsys_min = 3000000,
 	.ibat_lut = tn8_ibat_lut,
-	.rbat_lut = tn8_rbat_lut,
+	.rbat_lut = &tn8_rbat_lut,
 };
 
 static struct platform_device tn8_batmon_device = {
@@ -112,34 +143,10 @@ void __init tn8_sysedp_batmon_init(void)
 	WARN_ON(r);
 }
 
-/* --- sysedp capping device data --- */
-static struct tegra_sysedp_corecap tn8_sysedp_corecap[] = {
-	{  4000, {  1000, 180000, 924000 }, { 1000, 180000, 924000 } },
-	{  5000, {  2000, 180000, 924000 }, { 2000, 180000, 924000 } },
-	{  6000, {  3000, 180000, 924000 }, { 2000, 252000, 924000 } },
-	{  7000, {  4000, 180000, 924000 }, { 2000, 324000, 924000 } },
-	{  8000, {  5000, 180000, 924000 }, { 2000, 396000, 924000 } },
-	{  9000, {  6000, 180000, 924000 }, { 2000, 468000, 924000 } },
-	{ 10000, {  6600, 180000, 924000 }, { 2000, 540000, 924000 } },
-	{ 11000, {  7300, 180000, 924000 }, { 2000, 540000, 924000 } },
-	{ 12000, {  8000, 180000, 924000 }, { 2000, 612000, 924000 } },
-	{ 13000, {  8000, 252000, 924000 }, { 2000, 648000, 924000 } },
-	{ 14000, {  8000, 324000, 924000 }, { 2000, 684000, 924000 } },
-	{ 15000, {  9000, 324000, 924000 }, { 2000, 708000, 924000 } },
-	{ 16000, {  9000, 396000, 924000 }, { 2000, 756000, 924000 } },
-	{ 17000, { 10000, 468000, 924000 }, { 3000, 756000, 924000 } },
-	{ 18000, { 11000, 540000, 924000 }, { 4000, 756000, 924000 } },
-	{ 19000, { 12000, 540000, 924000 }, { 5000, 756000, 924000 } },
-	{ 20000, { 13000, 612000, 924000 }, { 5000, 756000, 924000 } },
-	{ 21000, { 14000, 648000, 924000 }, { 6000, 804000, 924000 } },
-	{ 22000, { 15000, 708000, 924000 }, { 6500, 804000, 924000 } },
-	{ 23000, { 16000, 708000, 924000 }, { 7000, 804000, 924000 } },
-};
-
 static struct tegra_sysedp_platform_data tn8_sysedp_dynamic_capping_platdata = {
-	.corecap = tn8_sysedp_corecap,
-	.corecap_size = ARRAY_SIZE(tn8_sysedp_corecap),
-	.core_gain = 130,
+	.corecap = td570d_sysedp_corecap,
+	.corecap_size = td570d_sysedp_corecap_sz,
+	.core_gain = 100,
 	.init_req_watts = 20000,
 };
 

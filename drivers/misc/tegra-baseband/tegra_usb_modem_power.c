@@ -32,6 +32,7 @@
 #include <linux/pm_qos.h>
 #include <linux/regulator/consumer.h>
 #include <linux/edp.h>
+#include <linux/sysedp.h>
 #include <mach/gpio-tegra.h>
 #include <linux/platform_data/tegra_usb_modem_power.h>
 
@@ -87,6 +88,9 @@ struct tegra_usb_modem {
 	unsigned int i_thresh_lte_adjperiod; /* lte i_thresh adj period */
 	struct work_struct edp_work;
 	struct mutex edp_lock;
+	struct sysedp_consumer *sysedpc;
+	unsigned int sysedpc_state_updated;
+	struct work_struct sysedp_work;
 };
 
 
@@ -186,6 +190,19 @@ done:
 	mutex_unlock(&modem->edp_lock);
 }
 
+static void sysedp_work(struct work_struct *ws)
+{
+	struct tegra_usb_modem *modem = container_of(ws, struct tegra_usb_modem,
+						     sysedp_work);
+
+	mutex_lock(&modem->lock);
+
+	sysedp_set_state(modem->sysedpc, 1);
+	modem->sysedpc_state_updated = 1;
+
+	mutex_unlock(&modem->lock);
+}
+
 static irqreturn_t tegra_usb_modem_wake_thread(int irq, void *data)
 {
 	struct tegra_usb_modem *modem = (struct tegra_usb_modem *)data;
@@ -239,6 +256,9 @@ static irqreturn_t tegra_usb_modem_boot_thread(int irq, void *data)
 
 	if (modem->edp_initialized && !v)
 		queue_work(modem->wq, &modem->edp_work);
+
+	if (modem->sysedpc && !modem->sysedpc_state_updated)
+		queue_work(modem->wq, &modem->sysedp_work);
 
 	/* USB disconnect maybe on going... */
 	mutex_lock(&modem->lock);
@@ -395,7 +415,6 @@ static int mdm_pm_notifier(struct notifier_block *notifier,
 		modem->system_suspend = 1;
 #ifdef CONFIG_PM
 		if (modem->capability & TEGRA_MODEM_AUTOSUSPEND &&
-		    modem->wake_irq &&
 		    modem->udev &&
 		    modem->udev->state != USB_STATE_NOTATTACHED) {
 			pm_runtime_set_autosuspend_delay(&modem->udev->dev,
@@ -461,6 +480,16 @@ static void tegra_usb_modem_post_remote_wakeup(void)
 	modem = dev_get_drvdata(dev);
 
 	mutex_lock(&modem->lock);
+#ifdef CONFIG_PM
+	if (modem->capability & TEGRA_MODEM_AUTOSUSPEND &&
+	    modem->udev &&
+	    modem->udev->state != USB_STATE_NOTATTACHED &&
+	    modem->short_autosuspend_enabled) {
+		pm_runtime_set_autosuspend_delay(&modem->udev->dev,
+				modem->pdata->autosuspend_delay);
+		modem->short_autosuspend_enabled = 0;
+	}
+#endif
 	wake_lock_timeout(&modem->wake_lock, WAKELOCK_TIMEOUT_FOR_REMOTE_WAKE);
 	mutex_unlock(&modem->lock);
 
@@ -812,6 +841,11 @@ static int mdm_init(struct tegra_usb_modem *modem, struct platform_device *pdev)
 		modem->edp_initialized = 1;
 	}
 
+	modem->sysedpc = sysedp_create_consumer(modem->pdata->sysedpc_name,
+						modem->pdata->sysedpc_name);
+	if (modem->sysedpc)
+		INIT_WORK(&modem->sysedp_work, sysedp_work);
+
 	/* get modem operations from platform data */
 	modem->ops = (const struct tegra_modem_operations *)pdata->ops;
 
@@ -899,16 +933,15 @@ error:
 	if (modem->sysfs_file_created)
 		device_remove_file(&pdev->dev, &dev_attr_load_host);
 
-	if (modem->wake_irq) {
-		if (modem->wake_irq_wakeable)
-			disable_irq_wake(modem->wake_irq);
+	if (modem->wake_irq)
 		free_irq(modem->wake_irq, modem);
-	}
 
-	if (modem->boot_irq) {
-		if (modem->boot_irq_wakeable)
-			disable_irq_wake(modem->boot_irq);
+	if (modem->boot_irq)
 		free_irq(modem->boot_irq, modem);
+
+	if (modem->sysedpc) {
+		cancel_work_sync(&modem->sysedp_work);
+		sysedp_free_consumer(modem->sysedpc);
 	}
 
 	if (modem->edp_initialized) {
@@ -964,18 +997,19 @@ static int __exit tegra_usb_modem_remove(struct platform_device *pdev)
 	unregister_pm_notifier(&modem->pm_notifier);
 	usb_unregister_notify(&modem->usb_notifier);
 
-	if (modem->wake_irq) {
-		disable_irq_wake(modem->wake_irq);
+	if (modem->wake_irq)
 		free_irq(modem->wake_irq, modem);
-	}
 
-	if (modem->boot_irq) {
-		disable_irq_wake(modem->boot_irq);
+	if (modem->boot_irq)
 		free_irq(modem->boot_irq, modem);
-	}
 
 	if (modem->sysfs_file_created)
 		device_remove_file(&pdev->dev, &dev_attr_load_host);
+
+	if (modem->sysedpc) {
+		cancel_work_sync(&modem->sysedp_work);
+		sysedp_free_consumer(modem->sysedpc);
+	}
 
 	if (modem->edp_initialized) {
 		cancel_work_sync(&modem->edp_work);
@@ -1020,16 +1054,47 @@ static int tegra_usb_modem_suspend(struct platform_device *pdev,
 				   pm_message_t state)
 {
 	struct tegra_usb_modem *modem = platform_get_drvdata(pdev);
+	int ret = 0;
 
 	/* send L3 hint to modem */
 	if (modem->ops && modem->ops->suspend)
 		modem->ops->suspend();
-	return 0;
+
+	if (modem->wake_irq) {
+		ret = enable_irq_wake(modem->wake_irq);
+		if (ret) {
+			pr_info("%s, wake irq=%d, error=%d\n",
+				__func__, modem->wake_irq, ret);
+			goto fail;
+		}
+	}
+
+	if (modem->boot_irq) {
+		ret = enable_irq_wake(modem->boot_irq);
+		if (ret)
+			pr_info("%s, wake irq=%d, error=%d\n",
+				__func__, modem->boot_irq, ret);
+	}
+fail:
+	return ret;
 }
 
 static int tegra_usb_modem_resume(struct platform_device *pdev)
 {
 	struct tegra_usb_modem *modem = platform_get_drvdata(pdev);
+	int ret = 0;
+
+	if (modem->boot_irq) {
+		ret = disable_irq_wake(modem->boot_irq);
+		if (ret)
+			pr_err("Failed to disable modem boot_irq\n");
+	}
+
+	if (modem->wake_irq) {
+		ret = disable_irq_wake(modem->wake_irq);
+		if (ret)
+			pr_err("Failed to disable modem wake_irq\n");
+	}
 
 	/* send L3->L0 hint to modem */
 	if (modem->ops && modem->ops->resume)

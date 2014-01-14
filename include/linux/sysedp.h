@@ -27,12 +27,15 @@
 /*
  * @name: name of consumer
  * @states: EDP state array holding the max peak power for each state.
- * @num_states: length of the above array
+ * @ocpeaks: array holding peak power values for each state when hardware
+ *           OC signal is asserted for the consumer
+ * @num_states: length of the above arrays
  * @state: current power state of sysedp consumer
  */
 struct sysedp_consumer {
 	char name[SYSEDP_NAME_LEN];
 	unsigned int *states;
+	unsigned int *ocpeaks;
 	unsigned int num_states;
 
 	unsigned int state;
@@ -77,14 +80,20 @@ struct sysedp_batmon_ibat_lut {
 	unsigned int ibat;
 };
 
-/*
- * Capacity -> RBAT LUT
- * Should be descending wrt capacity
- * { .capacity = 0, ... } must be the last entry
+/* Battery ESR look-up table (2 dimensional)
+ * temp_axis -> temperature indexes, must be in descending order
+ * temp_size -> size of temp_axis
+ * capacity_axis -> battery capacity indexes, must be in descending order
+ * capacity_size -> size of capacity_axis
+ * data -> battery impedance as function of capacity and temp (flat array)
  */
 struct sysedp_batmon_rbat_lut {
-	unsigned int capacity;
-	unsigned int rbat;
+	int *data;
+	int *temp_axis;
+	int *capacity_axis;
+	int data_size;
+	int temp_size;
+	int capacity_size;
 };
 
 /*
@@ -114,6 +123,7 @@ struct sysedp_batmon_calc_platform_data {
 extern struct dentry *edp_debugfs_dir;
 
 void sysedp_set_state(struct sysedp_consumer *, unsigned int);
+unsigned int sysedp_get_state(struct sysedp_consumer *);
 struct sysedp_consumer *sysedp_create_consumer(const char *, const char *);
 int sysedp_register_consumer(struct sysedp_consumer *);
 void sysedp_unregister_consumer(struct sysedp_consumer *);
@@ -122,6 +132,8 @@ void sysedp_free_consumer(struct sysedp_consumer *);
 #else
 static inline void sysedp_set_state(struct sysedp_consumer *c, unsigned int i)
 { return; }
+static inline unsigned int sysedp_get_state(struct sysedp_consumer *c)
+{ return 0; }
 static inline struct sysedp_consumer *sysedp_create_consumer(const char *c,
 							     const char *s)
 { return NULL; }

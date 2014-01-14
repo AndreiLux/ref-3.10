@@ -31,12 +31,12 @@
 #define VDD_CPU_BUCKCPU_REWORKED	10
 #define VDD_1V35_SD2_REWORKED		10
 
-#define AVG_32_SAMPLES (4 << 9)
+#define AVG_SAMPLES (2 << 9) /* 16 samples */
 
 /* AVG is specified from platform data */
-#define INA230_CONT_CONFIG	(AVG_32_SAMPLES | INA230_VBUS_CT | \
+#define INA230_CONT_CONFIG	(AVG_SAMPLES | INA230_VBUS_CT | \
 				INA230_VSH_CT | INA230_CONT_MODE)
-#define INA230_TRIG_CONFIG	(AVG_32_SAMPLES | INA230_VBUS_CT | \
+#define INA230_TRIG_CONFIG	(AVG_SAMPLES | INA230_VBUS_CT | \
 				INA230_VSH_CT | INA230_TRIG_MODE)
 
 /* rails on i2c2_0 */
@@ -102,7 +102,9 @@ static struct ina230_platform_data power_mon_info_0[] = {
 	[VDD_BAT_0] = {
 		.calibration_data = 0x1366,
 		.power_lsb = 2.577527185 * PRECISION_MULTIPLIER_ARDBEG,
-		.rail_name = "VDD_BAT",
+		.rail_name = "__VDD_BAT",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -110,7 +112,9 @@ static struct ina230_platform_data power_mon_info_0[] = {
 	[VDD_SYS_BUCKCPU_0] = {
 		.calibration_data = 0x1AC5,
 		.power_lsb = 1.867795126 * PRECISION_MULTIPLIER_ARDBEG,
-		.rail_name = "VDD_SYS_BUCKCPU",
+		.rail_name = "__VDD_SYS_BUCKCPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,
@@ -118,7 +122,9 @@ static struct ina230_platform_data power_mon_info_0[] = {
 	[VDD_SYS_BUCKSOC_0] = {
 		.calibration_data = 0x2802,
 		.power_lsb = 0.624877954 * PRECISION_MULTIPLIER_ARDBEG,
-		.rail_name = "VDD_SYS_BUCKSOC",
+		.rail_name = "__VDD_SYS_BUCKSOC",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 20,
@@ -126,7 +132,9 @@ static struct ina230_platform_data power_mon_info_0[] = {
 	[VDD_SYS_BUCKGPU_0] = {
 		.calibration_data = 0x1F38,
 		.power_lsb = 1.601601602 * PRECISION_MULTIPLIER_ARDBEG,
-		.rail_name = "VDD_SYS_BUCKCPU",
+		.rail_name = "__VDD_SYS_BUCKGPU",
+		.trig_conf = INA230_TRIG_CONFIG,
+		.cont_conf = INA230_CONT_CONFIG,
 		.divisor = 25,
 		.precision_multiplier = PRECISION_MULTIPLIER_ARDBEG,
 		.resistor = 10,

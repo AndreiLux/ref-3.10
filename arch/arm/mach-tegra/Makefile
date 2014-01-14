@@ -3,7 +3,6 @@ GCOV_PROFILE := y
 asflags-y				+= -march=armv7-a
 #subdir-ccflags-y := -Werror
 
-obj-y                                   += board-pinmux.o
 obj-y                                   += ahb.o
 obj-y                                   += common.o
 obj-y                                   += devices.o
@@ -23,6 +22,7 @@ endif
 
 obj-$(CONFIG_PM_SLEEP)                  += tegra-wakeups.o
 
+obj-$(CONFIG_TEGRA_CPU_VOLT_CAP)	+= tegra_volt_cap.o
 ifeq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 obj-y                                   += common-t2.o
 obj-y                                   += pm-t2.o
@@ -42,6 +42,7 @@ ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
 obj-y                                   += timer-t3.o
 endif
 obj-y                                   += tegra_core_volt_cap.o
+obj-y                                   += tegra_simon.o
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t3.o
 endif
@@ -69,7 +70,6 @@ endif
 endif
 endif
 
-obj-y                                   += pinmux.o
 obj-y                                   += delay.o
 obj-y                                   += pm.o
 obj-$(CONFIG_TEGRA_WDT_RECOVERY)        += wdt-recovery.o
@@ -81,10 +81,8 @@ obj-$(CONFIG_TEGRA_USE_NCT)             += nct.o nct_sysfs.o
 plus_sec := $(call as-instr,.arch_extension sec,+sec)
 AFLAGS_sleep.o :=-Wa,-march=armv7-a$(plus_sec)
 
-obj-y                                   += tegra_fuse.o
 obj-y                                   += kfuse.o
-obj-y                                   += csi.o
-obj-y                                   += xusb.o
+obj-$(CONFIG_TEGRA_PTM)                 += tegra_ptm.o
 
 obj-y                                   += powergate.o
 obj-y                                   += powergate-ops-txx.o
@@ -97,7 +95,6 @@ obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += powergate-t12x.o
 
 obj-y                                   += apbio.o
 obj-y                                   += mc.o
-obj-$(CONFIG_TEGRA_FIQ_DEBUGGER)        += tegra_fiq_debugger.o
 obj-$(CONFIG_TEGRA_ARB_SEMAPHORE)       += arb_sema.o
 obj-$(CONFIG_PM_GENERIC_DOMAINS)        += pm_domains.o
 obj-y                                   += dvfs.o
@@ -131,11 +128,6 @@ obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_emc.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra_emc_dt_parse.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra_emc_dt_parse.o
 obj-y					+= tegra_emc.o
-obj-$(CONFIG_ARCH_TEGRA_2x_SOC)         += pinmux-tegra20-tables.o
-obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += pinmux-tegra30-tables.o
-obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += pinmux-t11-tables.o
-obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += pinmux-t12-tables.o
-obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += pinmux-t14-tables.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= tegra20_speedo.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)		+= tegra30_speedo.o
 obj-$(CONFIG_HOTPLUG_CPU)               += hotplug.o
@@ -160,7 +152,6 @@ else
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += cpu-tegra3.o
 endif
 endif
-obj-$(CONFIG_TEGRA_PCI)                 += pcie.o
 ifeq ($(CONFIG_TEGRA_SOCTHERM),y)
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_soctherm.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra11_soctherm.o
@@ -212,6 +203,7 @@ obj-y                                   += board-touch-synaptics-spi.o
 obj-y                                   += board-touch-maxim_sti-spi.o
 
 obj-y                                   += board-panel.o
+obj-y                                   += panel-p-wuxga-10-1.o
 
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-memory.o
@@ -262,23 +254,27 @@ obj-${CONFIG_MACH_TEGRA_PLUTO}          += panel-j-720p-4-7.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += panel-s-1080p-5.o
 
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg.o
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-kbc.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sdhci.o
+obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sata.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-sensors.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-panel.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-memory.o
-obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-pinmux.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-power.o
 obj-${CONFIG_MACH_ARDBEG}               += board-tn8-power.o
+obj-${CONFIG_MACH_ARDBEG}               += board-tn8-p1761-pinmux.o
+obj-${CONFIG_MACH_ARDBEG}               += board-norrin-power.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-powermon.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-1080p-11-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-lgd-wxga-7-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-uhdtv-15-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-wqxgap-15-6.o
 ifeq ($(CONFIG_MACH_ARDBEG),y)
 obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-tn8-sysedp.o
+obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-ardbeg-sysedp.o
 endif
 
 obj-${CONFIG_MACH_LOKI}               	+= board-loki.o
@@ -298,10 +294,11 @@ obj-${CONFIG_MACH_LOKI}               	+= panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-a-edp-1080p-14-0.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-l-720p-5-loki.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-j-1440-810-5-8.o
+obj-${CONFIG_MACH_LOKI}               	+= panel-j-720p-5.o
 
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg.o
-obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-kbc.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-sdhci.o
+obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-sata.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-sensors.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-panel.o
 obj-${CONFIG_MACH_LAGUNA}               += board-laguna-pinmux.o

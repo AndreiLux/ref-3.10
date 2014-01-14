@@ -61,23 +61,21 @@ struct platform_device * __init bonaire_host1x_init(void)
 	struct platform_device *pdev = NULL;
 
 #ifdef CONFIG_TEGRA_GRHOST
-	/* FIXME: remove this #if 0 and below line when DT will be enabled for
-	* bonaire */
-#if 0
 	if (!of_have_populated_dt())
 		pdev = tegra12_register_host1x_devices();
 	else
 		pdev = to_platform_device(bus_find_device_by_name(
 			&platform_bus_type, NULL, "host1x"));
-#endif
-	pdev = tegra12_register_host1x_devices();
+
+	if (!pdev) {
+		pr_err("host1x devices registration failed\n");
+		return NULL;
+	}
 #endif
 	return pdev;
 }
 
 static struct regulator *bonaire_dsi_reg;
-
-static atomic_t sd_brightness = ATOMIC_INIT(255);
 
 static int bonaire_backlight_init(struct device *dev)
 {
@@ -418,7 +416,7 @@ static int bonaire_dsi_panel_enable(void)
 
 	if (bonaire_dsi_reg == NULL) {
 		bonaire_dsi_reg = regulator_get(NULL, "avdd_dsi_csi");
-		if (IS_ERR_OR_NULL(bonaire_dsi_reg)) {
+		if (IS_ERR(bonaire_dsi_reg)) {
 		pr_err("dsi: Could not get regulator avdd_dsi_csi\n");
 			bonaire_dsi_reg = NULL;
 			return PTR_ERR(bonaire_dsi_reg);

@@ -301,8 +301,9 @@ irqreturn_t actmon_dev_fn(int irq, void *dev_id)
 	freq += dev->boost_freq;
 
 	if (dev->avg_dependency_threshold &&
-		(dev->avg_count >= dev->avg_dependency_threshold))
-			freq = static_cpu_emc_freq;
+		((dev->avg_count >= dev->avg_dependency_threshold)
+			|| (!static_cpu_emc_freq)))
+		freq = static_cpu_emc_freq;
 
 	dev->target_freq = freq;
 
@@ -919,6 +920,8 @@ static int actmon_debugfs_create_dev(struct actmon_dev *dev)
 
 	d = debugfs_create_file(
 		"state", RW_MODE, dir, dev, &state_fops);
+	if (!d)
+		return -ENOMEM;
 
 	d = debugfs_create_u32(
 		"avg_act_threshold", RW_MODE, dir,

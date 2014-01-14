@@ -165,13 +165,12 @@ struct nvmap_deferred_ops *nvmap_get_deferred_ops_from_dev(
 }
 
 /* allocates a PTE for the caller's use; returns the PTE pointer or
- * a negative errno. may be called from IRQs */
+ * a negative errno. not safe from IRQs */
 pte_t **nvmap_alloc_pte_irq(struct nvmap_device *dev, void **vaddr)
 {
-	unsigned long flags;
 	unsigned long bit;
 
-	spin_lock_irqsave(&dev->ptelock, flags);
+	spin_lock(&dev->ptelock);
 	bit = find_next_zero_bit(dev->ptebits, NVMAP_NUM_PTES, dev->lastpte);
 	if (bit == NVMAP_NUM_PTES) {
 		bit = find_first_zero_bit(dev->ptebits, dev->lastpte);
@@ -180,13 +179,13 @@ pte_t **nvmap_alloc_pte_irq(struct nvmap_device *dev, void **vaddr)
 	}
 
 	if (bit == NVMAP_NUM_PTES) {
-		spin_unlock_irqrestore(&dev->ptelock, flags);
+		spin_unlock(&dev->ptelock);
 		return ERR_PTR(-ENOMEM);
 	}
 
 	dev->lastpte = bit;
 	set_bit(bit, dev->ptebits);
-	spin_unlock_irqrestore(&dev->ptelock, flags);
+	spin_unlock(&dev->ptelock);
 
 	*vaddr = dev->vm_rgn->addr + bit * PAGE_SIZE;
 	return &(dev->ptes[bit]);
@@ -212,7 +211,6 @@ void nvmap_free_pte(struct nvmap_device *dev, pte_t **pte)
 {
 	unsigned long addr;
 	unsigned int bit = pte - dev->ptes;
-	unsigned long flags;
 
 	if (WARN_ON(bit >= NVMAP_NUM_PTES))
 		return;
@@ -220,9 +218,9 @@ void nvmap_free_pte(struct nvmap_device *dev, pte_t **pte)
 	addr = (unsigned long)dev->vm_rgn->addr + bit * PAGE_SIZE;
 	set_pte_at(&init_mm, addr, *pte, 0);
 
-	spin_lock_irqsave(&dev->ptelock, flags);
+	spin_lock(&dev->ptelock);
 	clear_bit(bit, dev->ptebits);
-	spin_unlock_irqrestore(&dev->ptelock, flags);
+	spin_unlock(&dev->ptelock);
 	wake_up(&dev->pte_wait);
 }
 
@@ -265,6 +263,9 @@ struct nvmap_handle_ref *__nvmap_validate_id_locked(struct nvmap_client *c,
 struct nvmap_handle *nvmap_get_handle_id(struct nvmap_client *client,
 					 unsigned long id)
 {
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return nvmap_handle_get((struct nvmap_handle *)id);
+#else
 	struct nvmap_handle_ref *ref;
 	struct nvmap_handle *h = NULL;
 
@@ -276,6 +277,7 @@ struct nvmap_handle *nvmap_get_handle_id(struct nvmap_client *client,
 		h = nvmap_handle_get(h);
 	nvmap_ref_unlock(client);
 	return h;
+#endif
 }
 
 unsigned long nvmap_carveout_usage(struct nvmap_client *c,
@@ -367,10 +369,7 @@ void nvmap_carveout_commit_add(struct nvmap_client *client,
 			       struct nvmap_carveout_node *node,
 			       size_t len)
 {
-	unsigned long flags;
-
-	nvmap_ref_lock(client);
-	spin_lock_irqsave(&node->clients_lock, flags);
+	spin_lock(&node->clients_lock);
 	BUG_ON(list_empty(&client->carveout_commit[node->index].list) &&
 	       client->carveout_commit[node->index].commit != 0);
 
@@ -381,26 +380,23 @@ void nvmap_carveout_commit_add(struct nvmap_client *client,
 		list_add(&client->carveout_commit[node->index].list,
 			 &node->clients);
 	}
-	spin_unlock_irqrestore(&node->clients_lock, flags);
-	nvmap_ref_unlock(client);
+	spin_unlock(&node->clients_lock);
 }
 
 void nvmap_carveout_commit_subtract(struct nvmap_client *client,
 				    struct nvmap_carveout_node *node,
 				    size_t len)
 {
-	unsigned long flags;
-
 	if (!client)
 		return;
 
-	spin_lock_irqsave(&node->clients_lock, flags);
+	spin_lock(&node->clients_lock);
 	BUG_ON(client->carveout_commit[node->index].commit < len);
 	client->carveout_commit[node->index].commit -= len;
 	/* if no more allocation in this carveout for this node, delete it */
 	if (!client->carveout_commit[node->index].commit)
 		list_del_init(&client->carveout_commit[node->index].list);
-	spin_unlock_irqrestore(&node->clients_lock, flags);
+	spin_unlock(&node->clients_lock);
 }
 
 static struct nvmap_client *get_client_from_carveout_commit(
@@ -491,6 +487,9 @@ void nvmap_handle_add(struct nvmap_device *dev, struct nvmap_handle *h)
 struct nvmap_handle *nvmap_validate_get(struct nvmap_client *client,
 					unsigned long id, bool skip_val)
 {
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return nvmap_handle_get((struct nvmap_handle *)id);
+#else
 	struct nvmap_handle *h = NULL;
 	struct rb_node *n;
 
@@ -516,6 +515,7 @@ struct nvmap_handle *nvmap_validate_get(struct nvmap_client *client,
 	}
 	spin_unlock(&nvmap_dev->handle_lock);
 	return NULL;
+#endif
 }
 
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
@@ -575,6 +575,10 @@ static void destroy_client(struct nvmap_client *client)
 	if (!client)
 		return;
 
+	spin_lock(&nvmap_dev->clients_lock);
+	list_del(&client->list);
+	spin_unlock(&nvmap_dev->clients_lock);
+
 	while ((n = rb_first(&client->handle_refs))) {
 		struct nvmap_handle_ref *ref;
 		int pins, dupes;
@@ -608,9 +612,6 @@ static void destroy_client(struct nvmap_client *client)
 	if (client->task)
 		put_task_struct(client->task);
 
-	spin_lock(&nvmap_dev->clients_lock);
-	list_del(&client->list);
-	spin_unlock(&nvmap_dev->clients_lock);
 	kfree(client);
 }
 
@@ -675,18 +676,6 @@ static int nvmap_open(struct inode *inode, struct file *filp)
 	filp->f_mapping->backing_dev_info = &nvmap_bdi;
 
 	filp->private_data = priv;
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	/* increase file id limit to max */
-	if (do_prlimit(current, RLIMIT_NOFILE, NULL, &old_rlim)) {
-		pr_err("RLIMIT_NO_FILE get failed");
-	} else {
-		new_rlim.rlim_cur = old_rlim.rlim_max;
-		new_rlim.rlim_max = old_rlim.rlim_max;
-		if (do_prlimit(current->group_leader,
-			       RLIMIT_NOFILE, &new_rlim, &old_rlim))
-			pr_err("RLIMIT_NOFILE set failed");
-	}
-#endif
 	return 0;
 }
 
@@ -703,10 +692,9 @@ int __nvmap_map(struct nvmap_handle *h, struct vm_area_struct *vma)
 {
 	struct nvmap_vma_priv *priv;
 
-	/* after NVMAP_IOC_MMAP, the handle that is mapped by this VMA
-	 * will be stored in vm_private_data and faulted in. until the
-	 * ioctl is made, the VMA is mapped no-access */
-	vma->vm_private_data = NULL;
+	h = nvmap_handle_get(h);
+	if (!h)
+		return -EINVAL;
 
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -717,11 +705,11 @@ int __nvmap_map(struct nvmap_handle *h, struct vm_area_struct *vma)
 	atomic_set(&priv->count, 1);
 
 	vma->vm_flags |= (VM_SHARED | VM_IO | VM_DONTEXPAND |
-			  VM_MIXEDMAP | VM_DONTDUMP);
+			  VM_MIXEDMAP | VM_DONTDUMP | VM_DONTCOPY);
 	vma->vm_ops = &nvmap_vma_ops;
+	BUG_ON(vma->vm_private_data != NULL);
 	vma->vm_private_data = priv;
 	vma->vm_page_prot = nvmap_pgprot(h, vma->vm_page_prot);
-
 	return 0;
 }
 
@@ -742,8 +730,8 @@ static int nvmap_map(struct file *filp, struct vm_area_struct *vma)
 	priv->handle = NULL;
 	atomic_set(&priv->count, 1);
 
-	vma->vm_flags |= VM_SHARED;
-	vma->vm_flags |= (VM_IO | VM_DONTEXPAND | VM_MIXEDMAP | VM_DONTDUMP);
+	vma->vm_flags |= (VM_SHARED | VM_IO | VM_DONTEXPAND |
+			  VM_MIXEDMAP | VM_DONTDUMP | VM_DONTCOPY);
 	vma->vm_ops = &nvmap_vma_ops;
 	vma->vm_private_data = priv;
 
@@ -903,26 +891,6 @@ static int nvmap_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	return (page) ? 0 : VM_FAULT_SIGBUS;
 }
 
-static ssize_t attr_show_usage(struct device *dev,
-			       struct device_attribute *attr, char *buf)
-{
-	struct nvmap_carveout_node *node = nvmap_heap_device_to_arg(dev);
-
-	return sprintf(buf, "%08x\n", node->heap_bit);
-}
-
-static struct device_attribute heap_attr_show_usage =
-	__ATTR(usage, S_IRUGO, attr_show_usage, NULL);
-
-static struct attribute *heap_extra_attrs[] = {
-	&heap_attr_show_usage.attr,
-	NULL,
-};
-
-static struct attribute_group heap_extra_attr_group = {
-	.attrs = heap_extra_attrs,
-};
-
 #define DEBUGFS_OPEN_FOPS(name) \
 static int nvmap_debug_##name##_open(struct inode *inode, \
 					    struct file *file) \
@@ -983,10 +951,9 @@ static int nvmap_debug_allocations_show(struct seq_file *s, void *unused)
 {
 	struct nvmap_carveout_node *node = s->private;
 	struct nvmap_carveout_commit *commit;
-	unsigned long flags;
 	unsigned int total = 0;
 
-	spin_lock_irqsave(&node->clients_lock, flags);
+	spin_lock(&node->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s\n",
 		"CLIENT", "PROCESS", "PID", "SIZE");
 	seq_printf(s, "%-18s %18s %8s %11s %8s %6s %6s %6s\n",
@@ -1002,7 +969,7 @@ static int nvmap_debug_allocations_show(struct seq_file *s, void *unused)
 		total += commit->commit;
 	}
 	seq_printf(s, "%-18s %-18s %8s %10uK\n", "total", "", "", K(total));
-	spin_unlock_irqrestore(&node->clients_lock, flags);
+	spin_unlock(&node->clients_lock);
 	return 0;
 }
 
@@ -1012,10 +979,9 @@ static int nvmap_debug_clients_show(struct seq_file *s, void *unused)
 {
 	struct nvmap_carveout_node *node = s->private;
 	struct nvmap_carveout_commit *commit;
-	unsigned long flags;
 	unsigned int total = 0;
 
-	spin_lock_irqsave(&node->clients_lock, flags);
+	spin_lock(&node->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s\n",
 		"CLIENT", "PROCESS", "PID", "SIZE");
 	list_for_each_entry(commit, &node->clients, list) {
@@ -1026,7 +992,7 @@ static int nvmap_debug_clients_show(struct seq_file *s, void *unused)
 		total += commit->commit;
 	}
 	seq_printf(s, "%-18s %18s %8s %10uK\n", "total", "", "", K(total));
-	spin_unlock_irqrestore(&node->clients_lock, flags);
+	spin_unlock(&node->clients_lock);
 	return 0;
 }
 
@@ -1036,13 +1002,16 @@ static void nvmap_iovmm_get_total_mss(u64 *pss, u64 *non_pss, u64 *total)
 {
 	int i;
 	struct rb_node *n;
-	unsigned long flags;
 	struct nvmap_device *dev = nvmap_dev;
 
-	*pss = *non_pss = *total = 0;
+	*total = 0;
+	if (pss)
+		*pss = 0;
+	if (non_pss)
+		*non_pss = 0;
 	if (!dev)
 		return;
-	spin_lock_irqsave(&dev->handle_lock, flags);
+	spin_lock(&dev->handle_lock);
 	n = rb_first(&dev->handles);
 	for (; n != NULL; n = rb_next(n)) {
 		struct nvmap_handle *h =
@@ -1050,6 +1019,10 @@ static void nvmap_iovmm_get_total_mss(u64 *pss, u64 *non_pss, u64 *total)
 
 		if (!h || !h->alloc || !h->heap_pgalloc)
 			continue;
+		if (!non_pss) {
+			*total += h->size;
+			continue;
+		}
 
 		for (i = 0; i < h->size >> PAGE_SHIFT; i++) {
 			int mapcount = page_mapcount(h->pgalloc.pages[i]);
@@ -1058,8 +1031,9 @@ static void nvmap_iovmm_get_total_mss(u64 *pss, u64 *non_pss, u64 *total)
 			*total += PAGE_SIZE;
 		}
 	}
-	*pss = *total - *non_pss;
-	spin_unlock_irqrestore(&dev->handle_lock, flags);
+	if (pss && non_pss)
+		*pss = *total - *non_pss;
+	spin_unlock(&dev->handle_lock);
 }
 
 #define PRINT_MEM_STATS_NOTE(x) \
@@ -1072,12 +1046,11 @@ do { \
 
 static int nvmap_debug_iovmm_clients_show(struct seq_file *s, void *unused)
 {
-	u64 dummy, total;
-	unsigned long flags;
+	u64 total;
 	struct nvmap_client *client;
 	struct nvmap_device *dev = s->private;
 
-	spin_lock_irqsave(&dev->clients_lock, flags);
+	spin_lock(&dev->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s\n",
 		"CLIENT", "PROCESS", "PID", "SIZE");
 	list_for_each_entry(client, &dev->clients, list) {
@@ -1085,8 +1058,8 @@ static int nvmap_debug_iovmm_clients_show(struct seq_file *s, void *unused)
 		client_stringify(client, s);
 		seq_printf(s, " %10uK\n", K(iovm_commit));
 	}
-	spin_unlock_irqrestore(&dev->clients_lock, flags);
-	nvmap_iovmm_get_total_mss(&dummy, &dummy, &total);
+	spin_unlock(&dev->clients_lock);
+	nvmap_iovmm_get_total_mss(NULL, NULL, &total);
 	seq_printf(s, "%-18s %18s %8s %10lluK\n", "total", "", "", K(total));
 	PRINT_MEM_STATS_NOTE(SIZE);
 	return 0;
@@ -1096,12 +1069,11 @@ DEBUGFS_OPEN_FOPS(iovmm_clients);
 
 static int nvmap_debug_iovmm_allocations_show(struct seq_file *s, void *unused)
 {
-	u64 dummy, total;
-	unsigned long flags;
+	u64 total;
 	struct nvmap_client *client;
 	struct nvmap_device *dev = s->private;
 
-	spin_lock_irqsave(&dev->clients_lock, flags);
+	spin_lock(&dev->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s\n",
 		"CLIENT", "PROCESS", "PID", "SIZE");
 	seq_printf(s, "%-18s %18s %8s %11s %8s %6s %6s %6s\n",
@@ -1114,8 +1086,8 @@ static int nvmap_debug_iovmm_allocations_show(struct seq_file *s, void *unused)
 		allocations_stringify(client, s, true);
 		seq_printf(s, "\n");
 	}
-	spin_unlock_irqrestore(&dev->clients_lock, flags);
-	nvmap_iovmm_get_total_mss(&dummy, &dummy, &total);
+	spin_unlock(&dev->clients_lock);
+	nvmap_iovmm_get_total_mss(NULL, NULL, &total);
 	seq_printf(s, "%-18s %-18s %8s %10lluK\n", "total", "", "", K(total));
 	PRINT_MEM_STATS_NOTE(SIZE);
 	return 0;
@@ -1153,13 +1125,12 @@ static void nvmap_iovmm_get_client_mss(struct nvmap_client *client, u64 *pss,
 
 static int nvmap_debug_iovmm_procrank_show(struct seq_file *s, void *unused)
 {
-	unsigned long flags;
 	u64 pss, non_pss, total;
 	struct nvmap_client *client;
 	struct nvmap_device *dev = s->private;
 	u64 total_memory, total_pss, total_non_pss;
 
-	spin_lock_irqsave(&dev->clients_lock, flags);
+	spin_lock(&dev->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s %11s %11s\n",
 		"CLIENT", "PROCESS", "PID", "PSS", "NON-PSS", "TOTAL");
 	list_for_each_entry(client, &dev->clients, list) {
@@ -1168,7 +1139,7 @@ static int nvmap_debug_iovmm_procrank_show(struct seq_file *s, void *unused)
 		seq_printf(s, " %10lluK %10lluK %10lluK\n", K(pss),
 			K(non_pss), K(total));
 	}
-	spin_unlock_irqrestore(&dev->clients_lock, flags);
+	spin_unlock(&dev->clients_lock);
 
 	nvmap_iovmm_get_total_mss(&total_pss, &total_non_pss, &total_memory);
 	seq_printf(s, "%-18s %18s %8s %10lluK %10lluK %10lluK\n",
@@ -1182,9 +1153,9 @@ DEBUGFS_OPEN_FOPS(iovmm_procrank);
 
 ulong nvmap_iovmm_get_used_pages(void)
 {
-	u64 dummy, total;
+	u64 total;
 
-	nvmap_iovmm_get_total_mss(&dummy, &dummy, &total);
+	nvmap_iovmm_get_total_mss(NULL, NULL, &total);
 	return total >> PAGE_SHIFT;
 }
 
@@ -1360,11 +1331,10 @@ static int nvmap_probe(struct platform_device *pdev)
 		if (!co->size)
 			continue;
 
-		dev_info(&pdev->dev, "heap (%s) base (0x%x) size (%d)\n",
-			co->name, node->base, node->size);
+		node->carveout = nvmap_heap_create(
+				dev->dev_user.this_device, co,
+				node->base, node->size, node);
 
-		node->carveout = nvmap_heap_create(dev->dev_user.this_device,
-				   co->name, node->base, node->size, node);
 		if (!node->carveout) {
 			e = -ENOMEM;
 			dev_err(&pdev->dev, "couldn't create %s\n", co->name);
@@ -1375,12 +1345,6 @@ static int nvmap_probe(struct platform_device *pdev)
 		spin_lock_init(&node->clients_lock);
 		INIT_LIST_HEAD(&node->clients);
 		node->heap_bit = co->usage_mask;
-		if (nvmap_heap_create_group(node->carveout,
-					    &heap_extra_attr_group))
-			dev_warn(&pdev->dev, "couldn't add extra attributes\n");
-
-		dev_info(&pdev->dev, "created carveout %s (%zuKiB)\n",
-			 co->name, co->size / 1024);
 
 		if (!IS_ERR_OR_NULL(nvmap_debug_root)) {
 			struct dentry *heap_root =
@@ -1389,11 +1353,10 @@ static int nvmap_probe(struct platform_device *pdev)
 				debugfs_create_file("clients", S_IRUGO,
 					heap_root, node, &debug_clients_fops);
 				debugfs_create_file("allocations", S_IRUGO,
-				    heap_root, node, &debug_allocations_fops);
-				debugfs_create_x32("base", S_IRUGO,
-				    heap_root, &node->base);
-				debugfs_create_x32("size", S_IRUGO,
-				    heap_root, &node->size);
+					heap_root, node,
+					&debug_allocations_fops);
+				nvmap_heap_debugfs_init(heap_root,
+					node->carveout);
 			}
 		}
 	}
@@ -1456,7 +1419,6 @@ static int nvmap_probe(struct platform_device *pdev)
 fail_heaps:
 	for (i = 0; i < dev->nr_carveouts; i++) {
 		struct nvmap_carveout_node *node = &dev->heaps[i];
-		nvmap_heap_remove_group(node->carveout, &heap_extra_attr_group);
 		nvmap_heap_destroy(node->carveout);
 	}
 fail:
@@ -1490,7 +1452,6 @@ static int nvmap_remove(struct platform_device *pdev)
 
 	for (i = 0; i < dev->nr_carveouts; i++) {
 		struct nvmap_carveout_node *node = &dev->heaps[i];
-		nvmap_heap_remove_group(node->carveout, &heap_extra_attr_group);
 		nvmap_heap_destroy(node->carveout);
 	}
 	kfree(dev->heaps);

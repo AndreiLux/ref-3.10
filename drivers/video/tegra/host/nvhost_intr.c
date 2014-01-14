@@ -168,14 +168,6 @@ static void action_gpfifo_submit_complete(struct nvhost_waitlist *waiter)
 	/* TODO: add trace function */
 }
 
-static void action_ctxsave(struct nvhost_waitlist *waiter)
-{
-	struct nvhost_hwctx *hwctx = waiter->data;
-
-	if (hwctx->h->save_service)
-		hwctx->h->save_service(hwctx);
-}
-
 static void action_wakeup(struct nvhost_waitlist *waiter)
 {
 	wait_queue_head_t *wq = waiter->data;
@@ -203,7 +195,6 @@ typedef void (*action_handler)(struct nvhost_waitlist *waiter);
 static action_handler action_handlers[NVHOST_INTR_ACTION_COUNT] = {
 	action_submit_complete,
 	action_gpfifo_submit_complete,
-	action_ctxsave,
 	action_signal_sync_pt,
 	action_wakeup,
 	action_wakeup_interruptible,
@@ -274,20 +265,6 @@ irqreturn_t nvhost_syncpt_thresh_fn(void *dev_id)
 
 	(void)process_wait_list(intr, syncpt,
 				nvhost_syncpt_update_min(&dev->syncpt, id));
-
-	return IRQ_HANDLED;
-}
-
-irqreturn_t nvhost_intr_irq_fn(int irq, void *dev_id)
-{
-	struct nvhost_intr *intr = dev_id;
-	unsigned long intstat = intr->intstatus;
-	int i;
-
-	for_each_set_bit(i, &intstat, 32) {
-		if (intr->generic_isr_thread[i])
-			intr->generic_isr_thread[i]();
-	}
 
 	return IRQ_HANDLED;
 }
@@ -473,17 +450,4 @@ void nvhost_intr_stop(struct nvhost_intr *intr)
 	intr_op().free_syncpt_irq(intr);
 
 	mutex_unlock(&intr->mutex);
-}
-
-void nvhost_intr_enable_general_irq(struct nvhost_intr *intr, int irq,
-	void (*generic_isr)(void), void (*generic_isr_thread))
-{
-	intr->generic_isr[irq] = generic_isr;
-	intr->generic_isr_thread[irq] = generic_isr_thread;
-	intr_op().enable_general_irq(intr, irq);
-}
-
-void nvhost_intr_disable_general_irq(struct nvhost_intr *intr, int irq)
-{
-	intr_op().disable_general_irq(intr, irq);
 }

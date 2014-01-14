@@ -53,6 +53,9 @@ static int t124_num_alloc_channels = 0;
 #define VI_POWERGATE_DELAY 500
 #define ISP_CLOCKGATE_DELAY 60
 #define ISP_POWERGATE_DELAY 500
+#define TSEC_POWERGATE_DELAY 500
+
+#define GK20A_DEV_NAME_SIZE 5
 
 #define BIT64(nr) (1ULL << (nr))
 #define NVSYNCPTS_CLIENT_MANAGED_T124 ( \
@@ -141,6 +144,8 @@ struct nvhost_device_data t124_host1x_info = {
 	.clocks		= {{"host1x", 81600000}, {"actmon", UINT_MAX} },
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	.private_data	= &host1x04_info,
+	.finalize_poweron = nvhost_host1x_finalize_poweron,
+	.prepare_poweroff = nvhost_host1x_prepare_poweroff,
 };
 
 
@@ -178,7 +183,8 @@ struct nvhost_device_data t124_isp_info = {
 	.powergate_delay = ISP_POWERGATE_DELAY,
 	.clocks          = {
 		{"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISP},
-		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
+		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID},
+		{"sclk", 80000000} },
 	.finalize_poweron = nvhost_isp_t124_finalize_poweron,
 	.ctrl_ops         = &tegra_isp_ctrl_ops,
 };
@@ -214,7 +220,8 @@ struct nvhost_device_data t124_ispb_info = {
 	.powergate_delay = ISP_POWERGATE_DELAY,
 	.clocks          = {
 		{"isp", UINT_MAX, 0, TEGRA_MC_CLIENT_ISPB},
-		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
+		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID},
+		{"sclk", 80000000} },
 	.finalize_poweron = nvhost_isp_t124_finalize_poweron,
 	.ctrl_ops         = &tegra_isp_ctrl_ops,
 };
@@ -255,7 +262,8 @@ struct nvhost_device_data t124_vi_info = {
 		{"vi", UINT_MAX, 0},
 		{"csi", 0},
 		{"cilab", 102000000},
-		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
+		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID},
+		{"sclk", 80000000} },
 	.init             = nvhost_vi_init,
 	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
@@ -292,7 +300,8 @@ struct nvhost_device_data t124_vib_info = {
 		{"csi", 0},
 		{"cilcd", 102000000},
 		{"cile", 102000000},
-		{"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
+		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID},
+		{"sclk", 80000000} },
 	.init             = nvhost_vi_init,
 	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
@@ -369,9 +378,14 @@ struct nvhost_device_data t124_tsec_info = {
 			 {"emc", HOST_EMC_FLOOR} },
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
+	.can_powergate    = true,
+	.powergate_delay = TSEC_POWERGATE_DELAY,
+	.keepalive       = true,
 	.moduleid      = NVHOST_MODULE_TSEC,
 	.init          = nvhost_tsec_init,
 	.deinit        = nvhost_tsec_deinit,
+	.finalize_poweron = nvhost_tsec_finalize_poweron,
+	.prepare_poweroff = nvhost_tsec_prepare_poweroff,
 };
 
 static struct platform_device tegra_tsec01_device = {
@@ -459,7 +473,7 @@ struct nvhost_device_data tegra_gk20a_info = {
 	.powergate_ids		= { TEGRA_POWERGATE_GPU, -1 },
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.powergate_delay	= 500,
-	.can_powergate		= false,
+	.can_powergate		= true,
 	.alloc_hwctx_handler	= nvhost_gk20a_alloc_hwctx_handler,
 	.ctrl_ops		= &tegra_gk20a_ctrl_ops,
 	.dbg_ops                = &tegra_gk20a_dbg_gpu_ops,
@@ -514,10 +528,6 @@ struct platform_device *tegra12_register_host1x_devices(void)
 	struct platform_device *pdev;
 
 	nvhost_dbg_fn("");
-
-	for (i = NVSYNCPT_GK20A_BASE; i <= NVSYNCPT_GK20A_LAST; i++) {
-		s_syncpt_names[i] = "gk20a";
-	}
 
 	/* register host1x device first */
 	platform_device_register(&tegra_host1x04_device);
@@ -648,7 +658,7 @@ static struct nvhost_channel *t124_alloc_nvhost_channel(
 		&t124_num_alloc_channels);
 	if (ch) {
 #if defined(CONFIG_TEGRA_GK20A)
-		if (dev == &tegra_gk20a_device) {
+		if (strncmp(dev->name, "gk20a", GK20A_DEV_NAME_SIZE) == 0) {
 			ch->ops.init          = host1x_channel_ops.init;
 			ch->ops.alloc_obj     = t124_channel_alloc_obj;
 			ch->ops.free_obj      = t124_channel_free_obj;
@@ -723,8 +733,12 @@ static void t124_remove_support(struct nvhost_chip_support *op)
 int nvhost_init_t124_support(struct nvhost_master *host,
        struct nvhost_chip_support *op)
 {
+	int i = 0;
 	int err;
 	struct t124 *t124 = 0;
+
+	for (i = NVSYNCPT_GK20A_BASE; i <= NVSYNCPT_GK20A_LAST; i++)
+		s_syncpt_names[i] = "gk20a";
 
 	/* don't worry about cleaning up on failure... "remove" does it. */
 	err = nvhost_init_t124_channel_support(host, op);

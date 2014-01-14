@@ -26,9 +26,10 @@
 #include <linux/tegra-soc.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/tegra-fuse.h>
 
-#include "fuse.h"
 #include "iomap.h"
+#include "common.h"
 
 #define TEGRA124_CPU_SPEEDO 2271 /* FIXME: Get Correct Value */
 
@@ -84,23 +85,43 @@ static const u32 gpu_process_speedos[][GPU_PROCESS_CORNERS_NUM] = {
 
 static const u32 core_process_speedos[][CORE_PROCESS_CORNERS_NUM] = {
 /* proc_id  0,	1 */
-	{2071,	UINT_MAX}, /* [0]: threshold_index 0 */
+	{2061,	UINT_MAX}, /* [0]: threshold_index 0 */
 	{0,	UINT_MAX}, /* [1]: threshold_index 1 */
 };
 
 static void rev_sku_to_speedo_ids(int rev, int sku)
 {
+	int can_boost = tegra_spare_fuse(60); /* FIXME: boost board check */
+
 	switch (sku) {
 	case 0x00: /* Engg sku */
 	case 0x0F:
 	case 0x83:
+	case 0x23:
 		cpu_speedo_id = sku == 0x83 ? 2 : 0;
 		soc_speedo_id = 0;
 		gpu_speedo_id = 0;
 		threshold_index = 0;
 		break;
+	case 0x1F:
+	case 0x87:
+	case 0x27:
+		cpu_speedo_id = 2;
+		soc_speedo_id = 0;
+		gpu_speedo_id = 1;
+		threshold_index = 0;
+		break;
 	case 0x07:
+		if (can_boost) {
+			cpu_speedo_id = 3;
+			soc_speedo_id = 1;
+			gpu_speedo_id = 2;
+			threshold_index = 1;
+			break;
+		}
+		/* fall thru */
 	case 0x81:
+	case 0x21:
 		cpu_speedo_id = 1;
 		soc_speedo_id = 1;
 		gpu_speedo_id = 1;

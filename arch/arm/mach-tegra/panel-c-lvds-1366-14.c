@@ -45,6 +45,55 @@ static struct regulator *avdd_lcd;
 static struct regulator *vdd_ds_1v8;
 static struct regulator	*dvdd_lcd_1v8;
 
+static struct tegra_dc_sd_settings lvds_c_1366_14_sd_settings = {
+	.enable = 1, /* enabled by default. */
+	.use_auto_pwm = false,
+	.hw_update_delay = 0,
+	.bin_width = -1,
+	.aggressiveness = 5,
+	.use_vid_luma = false,
+	.phase_in_adjustments = 0,
+	.k_limit_enable = true,
+	.k_limit = 200,
+	.sd_window_enable = false,
+	.soft_clipping_enable = true,
+	/* Low soft clipping threshold to compensate for aggressive k_limit */
+	.soft_clipping_threshold = 128,
+	.smooth_k_enable = false,
+	.smooth_k_incr = 64,
+	/* Default video coefficients */
+	.coeff = {5, 9, 2},
+	.fc = {0, 0},
+	/* Immediate backlight changes */
+	.blp = {1024, 255},
+	/* Gammas: R: 2.2 G: 2.2 B: 2.2 */
+	/* Default BL TF */
+	.bltf = {
+			{
+				{57, 65, 73, 82},
+				{92, 103, 114, 125},
+				{138, 150, 164, 178},
+				{193, 208, 224, 241},
+			},
+		},
+	/* Default LUT */
+	.lut = {
+			{
+				{255, 255, 255},
+				{199, 199, 199},
+				{153, 153, 153},
+				{116, 116, 116},
+				{85, 85, 85},
+				{59, 59, 59},
+				{36, 36, 36},
+				{17, 17, 17},
+				{0, 0, 0},
+			},
+		},
+	.sd_brightness = &sd_brightness,
+	.use_vpulse2 = true,
+};
+
 static tegra_dc_bl_output lvds_c_1366_14_bl_output_measured = {
 	/*  TODO: linear backlight calibration */
 	0,   1,	  2,   3,   4,	 5,   6,   7,
@@ -89,7 +138,7 @@ static int laguna_lvds_regulator_get(struct device *dev)
 		return 0;
 
 	vdd_ds_1v8 = regulator_get(dev, "vdd_ds_1v8");
-	if (IS_ERR_OR_NULL(vdd_ds_1v8)) {
+	if (IS_ERR(vdd_ds_1v8)) {
 		pr_err("vdd_ds_1v8 regulator get failed\n");
 		err = PTR_ERR(vdd_ds_1v8);
 		vdd_ds_1v8 = NULL;
@@ -97,7 +146,7 @@ static int laguna_lvds_regulator_get(struct device *dev)
 	}
 
 	vdd_lcd_bl = regulator_get(dev, "vdd_lcd_bl");
-	if (IS_ERR_OR_NULL(vdd_lcd_bl)) {
+	if (IS_ERR(vdd_lcd_bl)) {
 		pr_err("vdd_lcd_bl regulator get failed\n");
 		err = PTR_ERR(vdd_lcd_bl);
 		vdd_lcd_bl = NULL;
@@ -105,7 +154,7 @@ static int laguna_lvds_regulator_get(struct device *dev)
 	}
 
 	vdd_lcd_bl_en = regulator_get(dev, "vdd_lcd_bl_en");
-	if (IS_ERR_OR_NULL(vdd_lcd_bl_en)) {
+	if (IS_ERR(vdd_lcd_bl_en)) {
 		pr_err("vdd_lcd_bl_en regulator get failed\n");
 		err = PTR_ERR(vdd_lcd_bl_en);
 		vdd_lcd_bl_en = NULL;
@@ -113,7 +162,7 @@ static int laguna_lvds_regulator_get(struct device *dev)
 	}
 
 	avdd_lcd = regulator_get(dev, "avdd_lcd");
-	if (IS_ERR_OR_NULL(avdd_lcd)) {
+	if (IS_ERR(avdd_lcd)) {
 		pr_err("avdd_lcd regulator get failed\n");
 		err = PTR_ERR(avdd_lcd);
 		avdd_lcd = NULL;
@@ -121,7 +170,7 @@ static int laguna_lvds_regulator_get(struct device *dev)
 	}
 
 	dvdd_lcd_1v8 = regulator_get(dev, "dvdd_lcd");
-	if (IS_ERR_OR_NULL(dvdd_lcd_1v8)) {
+	if (IS_ERR(dvdd_lcd_1v8)) {
 		pr_err("dvdd_lcd regulator get failed\n");
 		err = PTR_ERR(dvdd_lcd_1v8);
 		dvdd_lcd_1v8 = NULL;
@@ -374,6 +423,7 @@ static void lvds_c_1366_14_fb_data_init(struct tegra_fb_data *fb)
 static void
 lvds_c_1366_14_sd_settings_init(struct tegra_dc_sd_settings *settings)
 {
+	*settings = lvds_c_1366_14_sd_settings;
 	settings->bl_device_name = "pwm-backlight";
 }
 

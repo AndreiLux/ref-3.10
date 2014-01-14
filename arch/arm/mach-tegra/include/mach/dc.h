@@ -30,9 +30,9 @@
 #define TEGRA_MAX_DC		2
 
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
-#define DC_N_WINDOWS		5
+#define DC_N_WINDOWS		6
 #elif defined(CONFIG_ARCH_TEGRA_12x_SOC)
-#define DC_N_WINDOWS		4
+#define DC_N_WINDOWS		5
 #else
 #define DC_N_WINDOWS		3
 #endif
@@ -40,6 +40,8 @@
 #define DEFAULT_FPGA_FREQ_KHZ	160000
 
 #define TEGRA_DC_EXT_FLIP_MAX_WINDOW 6
+
+extern atomic_t sd_brightness;
 
 /* DSI pixel data format */
 enum {
@@ -339,6 +341,10 @@ struct tegra_dsi_out {
 	bool		ulpm_not_supported;
 };
 
+struct tegra_dp_out {
+	bool tx_pu_disable;
+};
+
 enum {
 	TEGRA_DC_STEREO_MODE_2D,
 	TEGRA_DC_STEREO_MODE_3D
@@ -543,6 +549,7 @@ struct tegra_dc_out {
 
 	struct tegra_dsi_out		*dsi;
 	struct tegra_hdmi_out		*hdmi_out;
+	struct tegra_dp_out		*dp_out;
 	struct tegra_stereo_out		*stereo;
 
 	unsigned			height; /* mm */
@@ -696,6 +703,7 @@ struct tegra_dc_win {
 #define TEGRA_WIN_FLAG_SCAN_COLUMN	(1 << 9)
 #define TEGRA_WIN_FLAG_INTERLACE	(1 << 10)
 #define TEGRA_WIN_FLAG_FB		(1 << 11)
+#define TEGRA_WIN_FLAG_INVALID		(1 << 31) /* window does not exist. */
 
 #define TEGRA_WIN_BLEND_FLAGS_MASK \
 	(TEGRA_WIN_FLAG_BLEND_PREMULT | TEGRA_WIN_FLAG_BLEND_COVERAGE)
@@ -750,16 +758,28 @@ struct tegra_fb_data {
 
 #define TEGRA_FB_FLIP_ON_PROBE		(1 << 0)
 
+struct of_tegra_dc_data {
+	unsigned long		fb_size;
+	unsigned long		fb_start;
+	unsigned long		carveout_size;
+	unsigned long		carveout_start;
+	struct regulator	**of_regulators;
+	int			*of_gpios;
+	int			dc_controller;
+};
+
 struct tegra_dc_platform_data {
 	unsigned long		flags;
 	unsigned long		emc_clk_rate;
 	struct tegra_dc_out	*default_out;
 	struct tegra_fb_data	*fb;
+	unsigned long		low_v_win;
 
 #ifdef CONFIG_TEGRA_DC_CMU
 	bool			cmu_enable;
 	struct tegra_dc_cmu	*cmu;
 #endif
+	struct of_tegra_dc_data of_data;
 };
 
 struct tegra_dc_bw_data {
@@ -860,6 +880,9 @@ int tegra_dc_get_panel_sync_rate(void);
 
 int tegra_dc_get_out(const struct tegra_dc *dc);
 
+struct device_node *tegra_panel_get_dt_node(
+				struct tegra_dc_platform_data *pdata);
+
 /* table of electrical settings, must be in acending order. */
 struct tmds_config {
 	int pclk;
@@ -882,4 +905,5 @@ void tegra_log_suspend_time(void);
 #define tegra_log_resume_time()
 #define tegra_log_suspend_time()
 #endif
+
 #endif

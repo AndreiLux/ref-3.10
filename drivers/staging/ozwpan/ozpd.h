@@ -6,6 +6,7 @@
 #ifndef _OZPD_H_
 #define _OZPD_H_
 
+#include <linux/interrupt.h>
 #include "ozeltbuf.h"
 
 /* PD state
@@ -21,6 +22,7 @@
 #define OZ_TIMER_HEARTBEAT	2
 #define OZ_TIMER_STOP		3
 
+#define ETH_STRING_LEN		17
 /* Data structure that hold information on a frame for transmisson. This is
  * built when the frame is first transmitted and is used to rebuild the frame
  * if a re-transmission is required.
@@ -47,7 +49,7 @@ struct oz_farewell {
 	struct list_head link;
 	u8 ep_num;
 	u8 index;
-	u8 report[1];
+	u8 report[32];
 	u8 len;
 };
 
@@ -68,18 +70,16 @@ struct oz_pd {
 	u8		isoc_sent;
 	u32		last_rx_pkt_num;
 	u32		last_tx_pkt_num;
+	struct timespec	last_rx_timestamp;
 	u32		trigger_pkt_num;
-	unsigned long	pulse_time_j;
-	unsigned long	timeout_time_j;
-	unsigned long	pulse_period_j;
-	unsigned long	presleep_j;
-	unsigned long	keep_alive_j;
-	unsigned long	last_rx_time_j;
+	unsigned long	pulse_time;
+	ktime_t		pulse_period;
+	unsigned long	presleep;
+	unsigned long	keep_alive;
 	struct oz_elt_buf elt_buff;
 	void		*app_ctx[OZ_APPID_MAX];
 	spinlock_t	app_lock[OZ_APPID_MAX];
 	int		max_tx_size;
-	u8		heartbeat_requested;
 	u8		mode;
 	u8		ms_per_isoc;
 	unsigned	isoc_latency;
@@ -95,6 +95,13 @@ struct oz_pd {
 	spinlock_t	stream_lock;
 	struct list_head stream_list;
 	struct net_device *net_dev;
+	struct hrtimer	heartbeat;
+	struct hrtimer	timeout;
+	u8	timeout_type;
+	struct tasklet_struct	heartbeat_tasklet;
+	struct tasklet_struct	timeout_tasklet;
+	struct work_struct workitem;
+	u8	up_audio_buf;
 };
 
 #define OZ_MAX_QUEUED_FRAMES	4

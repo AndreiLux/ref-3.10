@@ -69,7 +69,6 @@ static bool enable;
 static unsigned long up_delay;
 static unsigned long down_delay;
 static unsigned long hotplug_timeout;
-static int mp_overhead = 10;
 static unsigned int idle_top_freq;
 static unsigned int idle_bottom_freq;
 
@@ -245,7 +244,6 @@ static void __update_target_cluster(unsigned int cpu_freq, bool suspend)
 static int update_core_config(unsigned int cpunumber, bool up)
 {
 	int ret = 0;
-	unsigned int nr_cpus = num_online_cpus();
 
 	mutex_lock(tegra_cpu_lock);
 
@@ -260,7 +258,7 @@ static int update_core_config(unsigned int cpunumber, bool up)
 		cpumask_clear_cpu(cpunumber, &cr_offline_requests);
 		if (is_lp_cluster())
 			ret = -EBUSY;
-		else if (tegra_cpu_edp_favor_up(nr_cpus, mp_overhead))
+		else
 			queue_work(cpuquiet_wq, &cpuquiet_work);
 	} else {
 		if (is_lp_cluster()) {
@@ -379,9 +377,13 @@ static void __cpuinit __apply_core_config(void)
 	unsigned int cpu;
 	int nr_cpus;
 	struct cpumask online, offline, cpu_online;
-	int max_cpus = pm_qos_request(PM_QOS_MAX_ONLINE_CPUS) ? :
-				num_present_cpus();
+	int max_cpus = pm_qos_request(PM_QOS_MAX_ONLINE_CPUS);
 	int min_cpus = pm_qos_request(PM_QOS_MIN_ONLINE_CPUS);
+
+	if (min_cpus > num_possible_cpus())
+		min_cpus = 0;
+	if (max_cpus <= 0)
+		max_cpus = num_present_cpus();
 
 	mutex_lock(tegra_cpu_lock);
 
@@ -639,7 +641,6 @@ ssize_t store_no_lp(struct cpuquiet_attribute *attr,
 
 CPQ_BASIC_ATTRIBUTE(idle_top_freq, 0644, uint);
 CPQ_BASIC_ATTRIBUTE(idle_bottom_freq, 0644, uint);
-CPQ_BASIC_ATTRIBUTE(mp_overhead, 0644, int);
 CPQ_ATTRIBUTE_CUSTOM(no_lp, 0644, show_int_attribute, store_no_lp);
 CPQ_ATTRIBUTE(up_delay, 0644, ulong, delay_callback);
 CPQ_ATTRIBUTE(down_delay, 0644, ulong, delay_callback);
@@ -652,7 +653,6 @@ static struct attribute *tegra_auto_attributes[] = {
 	&down_delay_attr.attr,
 	&idle_top_freq_attr.attr,
 	&idle_bottom_freq_attr.attr,
-	&mp_overhead_attr.attr,
 	&enable_attr.attr,
 	&hotplug_timeout_attr.attr,
 	NULL,

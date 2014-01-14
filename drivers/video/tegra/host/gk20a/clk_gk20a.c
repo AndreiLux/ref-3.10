@@ -36,8 +36,8 @@
 
 /* from vbios PLL info table */
 struct pll_parms gpc_pll_params = {
-	144, 1824,	/* freq */
-	1000, 2000,	/* vco */
+	144, 2064,	/* freq */
+	1000, 2064,	/* vco */
 	12, 38,		/* u */
 	1, 255,		/* M */
 	8, 255,		/* N */
@@ -210,11 +210,11 @@ static int clk_slide_gpc_pll(struct gk20a *g, u32 n)
 	/* setup */
 	data = gk20a_readl(g, trim_sys_gpcpll_cfg2_r());
 	data = set_field(data, trim_sys_gpcpll_cfg2_pll_stepa_m(),
-			trim_sys_gpcpll_cfg2_pll_stepa_f(1));
+			trim_sys_gpcpll_cfg2_pll_stepa_f(0x2b));
 	gk20a_writel(g, trim_sys_gpcpll_cfg2_r(), data);
 	data = gk20a_readl(g, trim_sys_gpcpll_cfg3_r());
 	data = set_field(data, trim_sys_gpcpll_cfg3_pll_stepb_m(),
-			trim_sys_gpcpll_cfg3_pll_stepb_f(1));
+			trim_sys_gpcpll_cfg3_pll_stepb_f(0xb));
 	gk20a_writel(g, trim_sys_gpcpll_cfg3_r(), data);
 
 	/* pll slowdown mode */
@@ -223,19 +223,20 @@ static int clk_slide_gpc_pll(struct gk20a *g, u32 n)
 			trim_sys_gpcpll_ndiv_slowdown_slowdown_using_pll_m(),
 			trim_sys_gpcpll_ndiv_slowdown_slowdown_using_pll_yes_f());
 	gk20a_writel(g, trim_sys_gpcpll_ndiv_slowdown_r(), data);
-	udelay(1);
 
 	/* new ndiv ready for ramp */
+	coeff = gk20a_readl(g, trim_sys_gpcpll_coeff_r());
 	coeff = set_field(coeff, trim_sys_gpcpll_coeff_ndiv_m(),
 			trim_sys_gpcpll_coeff_ndiv_f(n));
-	gk20a_writel(g, trim_sys_gpcpll_coeff_r(), coeff);
 	udelay(1);
+	gk20a_writel(g, trim_sys_gpcpll_coeff_r(), coeff);
 
 	/* dynamic ramp to new ndiv */
 	data = gk20a_readl(g, trim_sys_gpcpll_ndiv_slowdown_r());
 	data = set_field(data,
 			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_m(),
 			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_yes_f());
+	udelay(1);
 	gk20a_writel(g, trim_sys_gpcpll_ndiv_slowdown_r(), data);
 
 	do {
@@ -256,6 +257,7 @@ static int clk_slide_gpc_pll(struct gk20a *g, u32 n)
 			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_m(),
 			trim_sys_gpcpll_ndiv_slowdown_en_dynramp_no_f());
 	gk20a_writel(g, trim_sys_gpcpll_ndiv_slowdown_r(), data);
+	gk20a_readl(g, trim_sys_gpcpll_ndiv_slowdown_r());
 
 	if (ramp_timeout <= 0) {
 		nvhost_err(dev_from_gk20a(g), "gpcpll dynamic ramp timeout");
@@ -315,6 +317,7 @@ static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk,
 	cfg = set_field(cfg, trim_sys_gpcpll_cfg_enable_m(),
 			trim_sys_gpcpll_cfg_enable_no_f());
 	gk20a_writel(g, trim_sys_gpcpll_cfg_r(), cfg);
+	gk20a_readl(g, trim_sys_gpcpll_cfg_r());
 
 	/* change coefficients */
 	nlo = DIV_ROUND_UP(clk->gpc_pll.M * gpc_pll_params.min_vco,
@@ -364,15 +367,33 @@ pll_locked:
 	return clk_slide_gpc_pll(g, clk->gpc_pll.N);
 }
 
-static int clk_disable_gpcpll(struct gk20a *g)
+static int clk_disable_gpcpll(struct gk20a *g, int allow_slide)
 {
-	u32 cfg;
+	u32 cfg, coeff, m, nlo;
 	struct clk_gk20a *clk = &g->clk;
 
+	/* slide to VCO min */
+	cfg = gk20a_readl(g, trim_sys_gpcpll_cfg_r());
+	if (allow_slide && trim_sys_gpcpll_cfg_enable_v(cfg)) {
+		coeff = gk20a_readl(g, trim_sys_gpcpll_coeff_r());
+		m = trim_sys_gpcpll_coeff_mdiv_v(coeff);
+		nlo = DIV_ROUND_UP(m * gpc_pll_params.min_vco,
+				   clk->gpc_pll.clk_in);
+		clk_slide_gpc_pll(g, nlo);
+	}
+
+	/* put PLL in bypass before disabling it */
+	cfg = gk20a_readl(g, trim_sys_sel_vco_r());
+	cfg = set_field(cfg, trim_sys_sel_vco_gpc2clk_out_m(),
+			trim_sys_sel_vco_gpc2clk_out_bypass_f());
+	gk20a_writel(g, trim_sys_sel_vco_r(), cfg);
+
+	/* disable PLL */
 	cfg = gk20a_readl(g, trim_sys_gpcpll_cfg_r());
 	cfg = set_field(cfg, trim_sys_gpcpll_cfg_enable_m(),
 			trim_sys_gpcpll_cfg_enable_no_f());
 	gk20a_writel(g, trim_sys_gpcpll_cfg_r(), cfg);
+	gk20a_readl(g, trim_sys_gpcpll_cfg_r());
 
 	clk->gpc_pll.enabled = false;
 	return 0;
@@ -581,7 +602,7 @@ static void gk20a_clk_export_disable(void *data)
 
 	mutex_lock(&clk->clk_mutex);
 	if (g->clk.clk_hw_on)
-		clk_disable_gpcpll(g);
+		clk_disable_gpcpll(g, 1);
 	mutex_unlock(&clk->clk_mutex);
 }
 
@@ -667,7 +688,7 @@ int gk20a_init_clk_support(struct gk20a *g)
 
 	gk20a_writel(g,
 		timer_pri_timeout_r(),
-		timer_pri_timeout_period_f(0x200) ||
+		timer_pri_timeout_period_f(0x200) |
 		timer_pri_timeout_en_m());
 
 	return err;
@@ -701,7 +722,7 @@ int gk20a_suspend_clk_support(struct gk20a *g)
 
 	/* The prev call may not disable PLL if gbus is unbalanced - force it */
 	mutex_lock(&g->clk.clk_mutex);
-	ret = clk_disable_gpcpll(g);
+	ret = clk_disable_gpcpll(g, 1);
 	g->clk.clk_hw_on = false;
 	mutex_unlock(&g->clk.clk_mutex);
 	return ret;

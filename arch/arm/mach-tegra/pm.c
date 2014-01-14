@@ -69,11 +69,12 @@
 #include <asm/rodata.h>
 
 #include <mach/irqs.h>
+#include <mach/tegra_smmu.h>
+#include <mach/pm_domains.h>
 
 #include "board.h"
 #include "clock.h"
 #include "common.h"
-#include "fuse.h"
 #include "iomap.h"
 #include "pm.h"
 #include "reset.h"
@@ -707,12 +708,12 @@ static void tegra_sleep_core(enum tegra_suspend_mode mode,
 	if (mode == TEGRA_SUSPEND_LP0) {
 		trace_smc_sleep_core(NVSEC_SMC_START);
 
-		tegra_generic_smc(0xFFFFFFFC, 0xFFFFFFE3,
+		tegra_generic_smc(0x84000001, ((1 << 16) | (1 << 24) | 1),
 				  virt_to_phys(tegra_resume));
 	} else {
 		trace_smc_sleep_core(NVSEC_SMC_START);
 
-		tegra_generic_smc(0xFFFFFFFC, 0xFFFFFFE6,
+		tegra_generic_smc(0x84000001, ((1 << 16) | 2),
 				  (TEGRA_RESET_HANDLER_BASE +
 				   tegra_cpu_reset_handler_offset));
 	}
@@ -739,7 +740,7 @@ static inline void tegra_stop_mc_clk(unsigned long v2p)
 			  __pa(&tegra_resume_timestamps_end));
 	trace_smc_sleep_core(NVSEC_SMC_START);
 
-	tegra_generic_smc(0xFFFFFFFC, 0xFFFFFFE5,
+	tegra_generic_smc(0x84000001, ((1 << 16) | 3),
 			  (TEGRA_RESET_HANDLER_BASE +
 			   tegra_cpu_reset_handler_offset));
 
@@ -1262,6 +1263,46 @@ static void tegra_suspend_powergate_control(int partid, bool turn_off)
 	else
 		tegra_unpowergate_partition(partid);
 }
+
+#ifdef CONFIG_TEGRA_LP0_IN_IDLE
+int tegra_enter_lp0(unsigned long sleep_time)
+{
+	int err = 0;
+
+	/* This state is managed by power domains, hence no voice call expected if
+	 * we are entering this state */
+
+	tegra_rtc_set_trigger(sleep_time);
+
+	tegra_actmon_save();
+
+	tegra_dma_save();
+
+	tegra_smmu_save();
+
+	err = syscore_save();
+	if (err) {
+		tegra_smmu_restore();
+		tegra_dma_restore();
+		tegra_rtc_set_trigger(0);
+		return err;
+	}
+
+	tegra_suspend_dram(TEGRA_SUSPEND_LP0, 0);
+
+	syscore_restore();
+
+	tegra_smmu_restore();
+
+	tegra_dma_restore();
+
+	tegra_actmon_restore();
+
+	tegra_rtc_set_trigger(0);
+
+	return 0;
+}
+#endif
 
 int tegra_suspend_dram(enum tegra_suspend_mode mode, unsigned int flags)
 {
@@ -2186,6 +2227,8 @@ late_initcall(tegra_pm_core_debug_init);
 #ifdef CONFIG_DEBUG_RODATA
 void set_platform_text_rw(void)
 {
+#ifdef CONFIG_TEGRA_USE_SECURE_KERNEL
 	set_memory_rw((unsigned long)tegra_generic_smc, 1);
+#endif
 }
 #endif

@@ -69,6 +69,16 @@ static struct mpu_platform_data mpu9250_gyro_data = {
 			0x00, 0x34, 0x0D, 0x65, 0x32, 0xE9, 0x94, 0x89},
 };
 
+static struct mpu_platform_data mpu9250_gyro_data_e1762 = {
+	.int_config     = 0x10,
+	.level_shifter  = 0,
+	/* Located in board_[platformname].h */
+	.orientation    = MPU_GYRO_ORIENTATION_E1762,
+	.sec_slave_type = SECONDARY_SLAVE_TYPE_NONE,
+	.key            = {0x4E, 0xCC, 0x7E, 0xEB, 0xF6, 0x1E, 0x35, 0x22,
+			0x00, 0x34, 0x0D, 0x65, 0x32, 0xE9, 0x94, 0x89},
+};
+
 static struct mpu_platform_data mpu_compass_data = {
 	.orientation    = MPU_COMPASS_ORIENTATION,
 	.config         = NVI_CONFIG_BOOT_MPU,
@@ -105,11 +115,13 @@ static void mpuirq_init(void)
 	unsigned gyro_irq_gpio = MPU_GYRO_IRQ_GPIO;
 	unsigned gyro_bus_num = MPU_GYRO_BUS_NUM;
 	char *gyro_name = MPU_GYRO_NAME;
+	struct board_info board_info;
 
 	pr_info("*** MPU START *** mpuirq_init...\n");
 
-	ret = gpio_request(gyro_irq_gpio, gyro_name);
+	tegra_get_board_info(&board_info);
 
+	ret = gpio_request(gyro_irq_gpio, gyro_name);
 	if (ret < 0) {
 		pr_err("%s: gpio_request failed %d\n", __func__, ret);
 		return;
@@ -127,6 +139,9 @@ static void mpuirq_init(void)
 	if (of_machine_is_compatible("nvidia,tn8"))
 		inv_mpu9250_i2c0_board_info[2].addr = MPU_COMPASS_ADDR_TN8;
 
+	if (board_info.board_id == BOARD_E1762)
+		inv_mpu9250_i2c0_board_info[0].platform_data =
+					&mpu9250_gyro_data_e1762;
 	inv_mpu9250_i2c0_board_info[0].irq = gpio_to_irq(MPU_GYRO_IRQ_GPIO);
 	i2c_register_board_info(gyro_bus_num, inv_mpu9250_i2c0_board_info,
 		ARRAY_SIZE(inv_mpu9250_i2c0_board_info));
@@ -1300,9 +1315,12 @@ static struct balanced_throttle skin_throttle = {
 
 static int __init ardbeg_skin_init(void)
 {
-	balanced_throttle_register(&skin_throttle, "skin-balanced");
-	tegra_skin_therm_est_device.dev.platform_data = &skin_data;
-	platform_device_register(&tegra_skin_therm_est_device);
+	if (of_machine_is_compatible("nvidia,ardbeg") ||
+		of_machine_is_compatible("nvidia,tn8")) {
+		balanced_throttle_register(&skin_throttle, "skin-balanced");
+		tegra_skin_therm_est_device.dev.platform_data = &skin_data;
+		platform_device_register(&tegra_skin_therm_est_device);
+	}
 	return 0;
 }
 late_initcall(ardbeg_skin_init);
@@ -1394,6 +1412,8 @@ static struct i2c_board_info laguna_i2c_nct72_board_info[] = {
 
 static int ardbeg_nct72_init(void)
 {
+	s32 base_cp, shft_cp;
+	u32 base_ft, shft_ft;
 	int nct72_port = TEGRA_GPIO_PI6;
 	int ret = 0;
 	int i;
@@ -1402,8 +1422,8 @@ static int ardbeg_nct72_init(void)
 
 	tegra_get_board_info(&board_info);
 	/* raise NCT's thresholds if soctherm CP,FT fuses are ok */
-	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
-	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
+	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
+	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
 		ardbeg_nct72_pdata.shutdown_ext_limit += 20;
 		for (i = 0; i < ardbeg_nct72_pdata.num_trips; i++) {
 			trip_state = &ardbeg_nct72_pdata.trips[i];
@@ -1417,13 +1437,19 @@ static int ardbeg_nct72_init(void)
 		tegra_platform_edp_init(ardbeg_nct72_pdata.trips,
 					&ardbeg_nct72_pdata.num_trips,
 					12000); /* edp temperature margin */
-		tegra_add_tj_trips(ardbeg_nct72_pdata.trips,
+		tegra_add_cpu_vmax_trips(ardbeg_nct72_pdata.trips,
+				&ardbeg_nct72_pdata.num_trips);
+		tegra_add_core_edp_trips(ardbeg_nct72_pdata.trips,
 				&ardbeg_nct72_pdata.num_trips);
 		tegra_add_tgpu_trips(ardbeg_nct72_pdata.trips,
 				     &ardbeg_nct72_pdata.num_trips);
+		tegra_add_vc_trips(ardbeg_nct72_pdata.trips,
+				     &ardbeg_nct72_pdata.num_trips);
+		tegra_add_core_vmax_trips(ardbeg_nct72_pdata.trips,
+				     &ardbeg_nct72_pdata.num_trips);
 	}
 
-	tegra_add_cdev_trips(ardbeg_nct72_pdata.trips,
+	tegra_add_all_vmin_trips(ardbeg_nct72_pdata.trips,
 				&ardbeg_nct72_pdata.num_trips);
 
 	ardbeg_i2c_nct72_board_info[0].irq = gpio_to_irq(nct72_port);
@@ -1441,6 +1467,8 @@ static int ardbeg_nct72_init(void)
 	/* ardbeg has thermal sensor on GEN2-I2C i.e. instance 1 */
 	if (board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM359 ||
+			board_info.board_id == BOARD_PM370 ||
+			board_info.board_id == BOARD_PM374 ||
 			board_info.board_id == BOARD_PM363)
 		i2c_register_board_info(1, laguna_i2c_nct72_board_info,
 		ARRAY_SIZE(laguna_i2c_nct72_board_info));

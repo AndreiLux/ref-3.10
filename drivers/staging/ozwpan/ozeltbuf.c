@@ -6,7 +6,6 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/netdevice.h>
-#include "ozconfig.h"
 #include "ozprotocol.h"
 #include "ozeltbuf.h"
 #include "ozpd.h"
@@ -132,8 +131,6 @@ int oz_elt_stream_create(struct oz_elt_buf *buf, u8 id, int max_buf_count)
 {
 	struct oz_elt_stream *st;
 
-	oz_trace("oz_elt_stream_create(0x%x)\n", id);
-
 	st = kzalloc(sizeof(struct oz_elt_stream), GFP_ATOMIC | __GFP_ZERO);
 	if (st == NULL)
 		return -ENOMEM;
@@ -152,7 +149,7 @@ int oz_elt_stream_delete(struct oz_elt_buf *buf, u8 id)
 {
 	struct list_head *e;
 	struct oz_elt_stream *st = NULL;
-	oz_trace("oz_elt_stream_delete(0x%x)\n", id);
+
 	spin_lock_bh(&buf->lock);
 	e = buf->stream_list.next;
 	while (e != &buf->stream_list) {
@@ -175,9 +172,6 @@ int oz_elt_stream_delete(struct oz_elt_buf *buf, u8 id)
 		list_del_init(&ei->link);
 		list_del_init(&ei->link_order);
 		st->buf_count -= ei->length;
-		oz_trace2(OZ_TRACE_STREAM, "Stream down: %d  %d %d\n",
-			st->buf_count,
-			ei->length, atomic_read(&st->ref_count));
 		oz_elt_stream_put(st);
 		oz_elt_info_free(buf, ei);
 	}
@@ -242,8 +236,6 @@ int oz_queue_elt_info(struct oz_elt_buf *buf, u8 isoc, u8 id,
 		st->buf_count += ei->length;
 		/* Add to list in stream. */
 		list_add_tail(&ei->link, &st->elt_list);
-		oz_trace2(OZ_TRACE_STREAM, "Stream up: %d  %d\n",
-			st->buf_count, ei->length);
 		/* Check if we have too much buffered for this stream. If so
 		 * start dropping elements until we are back in bounds.
 		 */
@@ -283,8 +275,12 @@ int oz_select_elts_for_tx(struct oz_elt_buf *buf, u8 isoc, unsigned *len,
 		ei = container_of(e, struct oz_elt_info, link_order);
 		e = e->next;
 		if ((*len + ei->length) <= max_len) {
-			app_hdr = (struct oz_app_hdr *)
-				&ei->data[sizeof(struct oz_elt)];
+			if (ei->flags & OZ_EI_F_EXT_ELM)
+				app_hdr = (struct oz_app_hdr *)
+					&ei->data[sizeof(struct oz_ext_elt)];
+			else
+				app_hdr = (struct oz_app_hdr *)
+					&ei->data[sizeof(struct oz_elt)];
 			app_hdr->elt_seq_num = buf->tx_seq_num[ei->app_id]++;
 			if (buf->tx_seq_num[ei->app_id] == 0)
 				buf->tx_seq_num[ei->app_id] = 1;
@@ -293,9 +289,6 @@ int oz_select_elts_for_tx(struct oz_elt_buf *buf, u8 isoc, unsigned *len,
 			list_del(&ei->link_order);
 			if (ei->stream) {
 				ei->stream->buf_count -= ei->length;
-				oz_trace2(OZ_TRACE_STREAM,
-					"Stream down: %d  %d\n",
-					ei->stream->buf_count, ei->length);
 				oz_elt_stream_put(ei->stream);
 				ei->stream = NULL;
 			}

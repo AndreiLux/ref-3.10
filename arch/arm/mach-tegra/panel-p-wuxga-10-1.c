@@ -56,6 +56,55 @@ static struct regulator *vdd_ds_1v8;
 #define en_vdd_bl	TEGRA_GPIO_PG0
 #define lvds_en		TEGRA_GPIO_PG3
 
+static struct tegra_dc_sd_settings dsi_p_wuxga_10_1_sd_settings = {
+	.enable = 1, /* enabled by default. */
+	.use_auto_pwm = false,
+	.hw_update_delay = 0,
+	.bin_width = -1,
+	.aggressiveness = 5,
+	.use_vid_luma = false,
+	.phase_in_adjustments = 0,
+	.k_limit_enable = true,
+	.k_limit = 200,
+	.sd_window_enable = false,
+	.soft_clipping_enable = true,
+	/* Low soft clipping threshold to compensate for aggressive k_limit */
+	.soft_clipping_threshold = 128,
+	.smooth_k_enable = true,
+	.smooth_k_incr = 4,
+	/* Default video coefficients */
+	.coeff = {5, 9, 2},
+	.fc = {0, 0},
+	/* Immediate backlight changes */
+	.blp = {1024, 255},
+	/* Gammas: R: 2.2 G: 2.2 B: 2.2 */
+	/* Default BL TF */
+	.bltf = {
+			{
+				{57, 65, 73, 82},
+				{92, 103, 114, 125},
+				{138, 150, 164, 178},
+				{193, 208, 224, 241},
+			},
+		},
+	/* Default LUT */
+	.lut = {
+			{
+				{255, 255, 255},
+				{199, 199, 199},
+				{153, 153, 153},
+				{116, 116, 116},
+				{85, 85, 85},
+				{59, 59, 59},
+				{36, 36, 36},
+				{17, 17, 17},
+				{0, 0, 0},
+			},
+		},
+	.sd_brightness = &sd_brightness,
+	.use_vpulse2 = true,
+};
+
 static tegra_dc_bl_output dsi_p_wuxga_10_1_bl_output_measured = {
 	0, 0, 1, 2, 3, 4, 5, 6,
 	7, 8, 9, 9, 10, 11, 12, 13,
@@ -150,7 +199,7 @@ static int dalmore_dsi_regulator_get(struct device *dev)
 	if (reg_requested)
 		return 0;
 	avdd_lcd_3v3 = regulator_get(dev, "avdd_lcd");
-	if (IS_ERR_OR_NULL(avdd_lcd_3v3)) {
+	if (IS_ERR(avdd_lcd_3v3)) {
 		pr_err("avdd_lcd regulator get failed\n");
 		err = PTR_ERR(avdd_lcd_3v3);
 		avdd_lcd_3v3 = NULL;
@@ -158,7 +207,7 @@ static int dalmore_dsi_regulator_get(struct device *dev)
 	}
 
 	dvdd_lcd_1v8 = regulator_get(dev, "dvdd_lcd");
-	if (IS_ERR_OR_NULL(dvdd_lcd_1v8)) {
+	if (IS_ERR(dvdd_lcd_1v8)) {
 		pr_err("dvdd_lcd_1v8 regulator get failed\n");
 		err = PTR_ERR(dvdd_lcd_1v8);
 		dvdd_lcd_1v8 = NULL;
@@ -166,7 +215,7 @@ static int dalmore_dsi_regulator_get(struct device *dev)
 	}
 
 	vdd_lcd_bl = regulator_get(dev, "vdd_lcd_bl");
-	if (IS_ERR_OR_NULL(vdd_lcd_bl)) {
+	if (IS_ERR(vdd_lcd_bl)) {
 		pr_err("vdd_lcd_bl regulator get failed\n");
 		err = PTR_ERR(vdd_lcd_bl);
 		vdd_lcd_bl = NULL;
@@ -174,7 +223,7 @@ static int dalmore_dsi_regulator_get(struct device *dev)
 	}
 
 	vdd_lcd_bl_en = regulator_get(dev, "vdd_lcd_bl_en");
-	if (IS_ERR_OR_NULL(vdd_lcd_bl_en)) {
+	if (IS_ERR(vdd_lcd_bl_en)) {
 		pr_err("vdd_lcd_bl_en regulator get failed\n");
 		err = PTR_ERR(vdd_lcd_bl_en);
 		vdd_lcd_bl_en = NULL;
@@ -221,7 +270,7 @@ static int macallan_dsi_regulator_get(struct device *dev)
 	if (reg_requested)
 		return 0;
 	avdd_lcd_3v3 = regulator_get(dev, "avdd_lcd");
-	if (IS_ERR_OR_NULL(avdd_lcd_3v3)) {
+	if (IS_ERR(avdd_lcd_3v3)) {
 		pr_err("avdd_lcd regulator get failed\n");
 		err = PTR_ERR(avdd_lcd_3v3);
 		avdd_lcd_3v3 = NULL;
@@ -229,7 +278,7 @@ static int macallan_dsi_regulator_get(struct device *dev)
 	}
 
 	vdd_lcd_bl_en = regulator_get(dev, "vdd_lcd_bl_en");
-	if (IS_ERR_OR_NULL(vdd_lcd_bl_en)) {
+	if (IS_ERR(vdd_lcd_bl_en)) {
 		pr_err("vdd_lcd_bl_en regulator get failed\n");
 		err = PTR_ERR(vdd_lcd_bl_en);
 		vdd_lcd_bl_en = NULL;
@@ -282,13 +331,17 @@ static int dsi_p_wuxga_10_1_enable(struct device *dev)
 		goto fail;
 	}
 
-	if (machine_is_macallan())
-		err = macallan_dsi_gpio_get();
-	else
-		err = dalmore_dsi_gpio_get();
+	err = tegra_panel_gpio_get_dt("p,wuxga-10-1", &panel_of);
 	if (err < 0) {
-		pr_err("dsi gpio request failed\n");
-		goto fail;
+		/* try to request gpios from board file */
+		if (machine_is_macallan())
+			err = macallan_dsi_gpio_get();
+		else
+			err = dalmore_dsi_gpio_get();
+		if (err < 0) {
+			pr_err("dsi gpio request failed\n");
+			goto fail;
+		}
 	}
 
 	if (vdd_ds_1v8) {
@@ -333,12 +386,17 @@ static int dsi_p_wuxga_10_1_enable(struct device *dev)
 
 	msleep(100);
 #if DSI_PANEL_RESET
-	gpio_direction_output(dsi_p_wuxga_10_1_pdata.dsi_panel_rst_gpio, 1);
-	usleep_range(1000, 5000);
-	gpio_set_value(dsi_p_wuxga_10_1_pdata.dsi_panel_rst_gpio, 0);
-	msleep(150);
-	gpio_set_value(dsi_p_wuxga_10_1_pdata.dsi_panel_rst_gpio, 1);
-	msleep(20);
+	err = tegra_panel_reset(&panel_of, 20);
+	if (err < 0) {
+		/* use platform data */
+		gpio_direction_output(
+		dsi_p_wuxga_10_1_pdata.dsi_panel_rst_gpio, 1);
+		usleep_range(1000, 5000);
+		gpio_set_value(dsi_p_wuxga_10_1_pdata.dsi_panel_rst_gpio, 0);
+		msleep(150);
+		gpio_set_value(dsi_p_wuxga_10_1_pdata.dsi_panel_rst_gpio, 1);
+		msleep(20);
+	}
 #endif
 
 	return 0;
@@ -677,6 +735,7 @@ static void dsi_p_wuxga_10_1_fb_data_init(struct tegra_fb_data *fb)
 static void
 dsi_p_wuxga_10_1_sd_settings_init(struct tegra_dc_sd_settings *settings)
 {
+	*settings = dsi_p_wuxga_10_1_sd_settings;
 	settings->bl_device_name = "pwm-backlight";
 }
 
@@ -684,6 +743,12 @@ static void dsi_p_wuxga_10_1_cmu_init(struct tegra_dc_platform_data *pdata)
 {
 	pdata->cmu = &dsi_p_wuxga_10_1_cmu;
 }
+
+struct tegra_panel_ops dsi_p_wuxga_10_1_ops = {
+	.enable = dsi_p_wuxga_10_1_enable,
+	.disable = dsi_p_wuxga_10_1_disable,
+	.postsuspend = dsi_p_wuxga_10_1_postsuspend,
+};
 
 struct tegra_panel __initdata dsi_p_wuxga_10_1 = {
 	.init_sd_settings = dsi_p_wuxga_10_1_sd_settings_init,

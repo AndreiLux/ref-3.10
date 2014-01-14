@@ -31,6 +31,7 @@
 #include <mach/irqs.h>
 #include <mach/dc.h>
 #include <mach/pinmux-t12.h>
+#include <mach/io_dpd.h>
 
 #include "board.h"
 #include "devices.h"
@@ -45,7 +46,11 @@ struct platform_device * __init loki_host1x_init(void)
 	struct platform_device *pdev = NULL;
 
 #ifdef CONFIG_TEGRA_GRHOST
-	pdev = tegra12_register_host1x_devices();
+	if (!of_have_populated_dt())
+		pdev = tegra12_register_host1x_devices();
+	else
+		pdev = to_platform_device(bus_find_device_by_name(
+			&platform_bus_type, NULL, "host1x"));
 
 	if (!pdev) {
 		pr_err("host1x devices registration failed\n");
@@ -139,7 +144,7 @@ static int loki_hdmi_enable(struct device *dev)
 	int ret;
 	if (!loki_hdmi_reg) {
 		loki_hdmi_reg = regulator_get(dev, "avdd_hdmi");
-		if (IS_ERR_OR_NULL(loki_hdmi_reg)) {
+		if (IS_ERR(loki_hdmi_reg)) {
 			pr_err("hdmi: couldn't get regulator avdd_hdmi\n");
 			loki_hdmi_reg = NULL;
 			return PTR_ERR(loki_hdmi_reg);
@@ -152,7 +157,7 @@ static int loki_hdmi_enable(struct device *dev)
 	}
 	if (!loki_hdmi_pll) {
 		loki_hdmi_pll = regulator_get(dev, "avdd_hdmi_pll");
-		if (IS_ERR_OR_NULL(loki_hdmi_pll)) {
+		if (IS_ERR(loki_hdmi_pll)) {
 			pr_err("hdmi: couldn't get regulator avdd_hdmi_pll\n");
 			loki_hdmi_pll = NULL;
 			regulator_put(loki_hdmi_reg);
@@ -366,53 +371,15 @@ static struct platform_device loki_nvmap_device = {
 		.platform_data = &loki_nvmap_data,
 	},
 };
-
-static struct tegra_dc_sd_settings loki_sd_settings = {
-	.enable = 0, /* disabled by default. */
-	.use_auto_pwm = false,
-	.hw_update_delay = 0,
-	.bin_width = -1,
-	.aggressiveness = 1,
-	.use_vid_luma = false,
-	.phase_in_adjustments = 0,
-	.k_limit_enable = true,
-	.k_limit = 180,
-	.sd_window_enable = false,
-	.soft_clipping_enable = true,
-	/* Low soft clipping threshold to compensate for aggressive k_limit */
-	.soft_clipping_threshold = 128,
-	.smooth_k_enable = true,
-	.smooth_k_incr = 128,
-	/* Default video coefficients */
-	.coeff = {5, 9, 2},
-	.fc = {0, 0},
-	/* Immediate backlight changes */
-	.blp = {1024, 255},
-	/* Gammas: R: 2.2 G: 2.2 B: 2.2 */
-	/* Default BL TF */
-	.bltf = {
-			{
-				{57, 65, 73, 82},
-				{92, 103, 114, 125},
-				{138, 150, 164, 178},
-				{193, 208, 224, 241},
-			},
-		},
-	/* Default LUT */
-	.lut = {
-			{
-				{255, 255, 255},
-				{199, 199, 199},
-				{153, 153, 153},
-				{116, 116, 116},
-				{85, 85, 85},
-				{59, 59, 59},
-				{36, 36, 36},
-				{17, 17, 17},
-				{0, 0, 0},
-			},
-		},
-	.sd_brightness = &sd_brightness,
+static struct tegra_io_dpd dsic_io = {
+	.name			= "DSIC",
+	.io_dpd_reg_index	= 1,
+	.io_dpd_bit		= 8,
+};
+static struct tegra_io_dpd dsid_io = {
+	.name			= "DSID",
+	.io_dpd_reg_index	= 1,
+	.io_dpd_bit		= 9,
 };
 
 static void loki_panel_select(void)
@@ -424,12 +391,17 @@ static void loki_panel_select(void)
 	tegra_get_display_board_info(&board);
 
 	switch (board.fab) {
+	case 0x2:
+		panel = &dsi_j_720p_5;
+		break;
 	case 0x1:
 		panel = &dsi_j_1440_810_5_8;
 		break;
 	case 0x0:
 	default:
 		panel = &dsi_l_720p_5_loki;
+		tegra_io_dpd_enable(&dsic_io);
+		tegra_io_dpd_enable(&dsid_io);
 		break;
 	}
 	if (panel) {
@@ -465,8 +437,6 @@ int __init loki_panel_init(int board_id)
 	int err = 0;
 	struct resource __maybe_unused *res;
 	struct platform_device *phost1x = NULL;
-
-	sd_settings = loki_sd_settings;
 
 	loki_panel_select();
 

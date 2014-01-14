@@ -363,7 +363,7 @@ static struct tegra_usb_platform_data tegra_ehci2_utmi_pdata = {
 	.u_data.host = {
 		/* FIXME: Set this only for E1855. */
 		.vbus_gpio = TEGRA_GPIO_PN5,
-		.hot_plug = false,
+		.hot_plug = true,
 		.remote_wakeup_supported = false,
 		.power_off_on_suspend = true,
 		.turn_off_vbus_on_lp0 = true,
@@ -390,7 +390,7 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
 		.vbus_gpio = -1,
-		.hot_plug = false,
+		.hot_plug = true,
 		.remote_wakeup_supported = false,
 		.power_off_on_suspend = true,
 		.turn_off_vbus_on_lp0 = true,
@@ -470,12 +470,13 @@ struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
 				"serial-tegra.3", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", 0x538F0000, "gk20a", NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-gk20a", TEGRA_GK20A_BAR0_BASE, "gk20a.0", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-vic", TEGRA_VIC_BASE, "vic03.0", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-msenc", TEGRA_MSENC_BASE, "msenc",
 		NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi", NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-vi", TEGRA_VI_BASE, "vi.0", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp.0", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISPB_BASE, "isp.1", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-tsec", TEGRA_TSEC_BASE, "tsec", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-apbdma", 0x60020000, "tegra-apbdma",
 				NULL),
@@ -489,7 +490,7 @@ static void __init tegra_vcm30_t124_early_init(void)
 {
 	tegra_clk_init_from_table(vcm30_t124_clk_init_table);
 	tegra_clk_verify_parents();
-	tegra_soc_device_init("vcm30_t124");
+	tegra_soc_device_init("vcm30t124");
 }
 
 static void __init tegra_vcm30_t124_late_init(void)
@@ -500,7 +501,7 @@ static void __init tegra_vcm30_t124_late_init(void)
 		board_info.board_id, board_info.sku,
 		board_info.fab, board_info.major_revision,
 		board_info.minor_revision);
-	platform_device_register(&tegra_pinmux_device);
+	platform_device_register(&tegra124_pinctrl_device);
 	vcm30_t124_pinmux_init();
 	vcm30_t124_usb_init();
 /*	vcm30_t124_xusb_init(); */
@@ -570,11 +571,11 @@ static void __init tegra_vcm30_t124_reserve(void)
 }
 
 static const char * const vcm30_t124_dt_board_compat[] = {
-	"nvidia,vcm30_t124",
+	"nvidia,vcm30t124",
 	NULL
 };
 
-DT_MACHINE_START(VCM30_T124, "vcm30_t124")
+DT_MACHINE_START(VCM30_T124, "vcm30t124")
 	.atag_offset	= 0x100,
 	.smp		= smp_ops(tegra_smp_ops),
 	.map_io		= tegra_map_common_io,

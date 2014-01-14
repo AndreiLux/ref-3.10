@@ -20,16 +20,17 @@
 #ifndef _MACH_TEGRA_BOARD_ARDBEG_H
 #define _MACH_TEGRA_BOARD_ARDBEG_H
 
-#include <linux/mfd/as3722-reg.h>
+#include <linux/mfd/as3722-plat.h>
 #include <mach/gpio-tegra.h>
 #include <mach/irqs.h>
 #include "gpio-names.h"
 
-int ardbeg_pinmux_init(void);
 int ardbeg_emc_init(void);
+int ardbeg_display_init(void);
 int ardbeg_panel_init(void);
-int ardbeg_kbc_init(void);
 int ardbeg_sdhci_init(void);
+int ardbeg_sata_init(void);
+void arbdeg_sata_clk_gate(void);
 int ardbeg_sensors_init(void);
 int ardbeg_regulator_init(void);
 int ardbeg_suspend_init(void);
@@ -37,19 +38,24 @@ int ardbeg_pmon_init(void);
 int ardbeg_rail_alignment_init(void);
 int ardbeg_soctherm_init(void);
 int ardbeg_edp_init(void);
+void shield_new_sysedp_init(void);
+void shield_sysedp_dynamic_capping_init(void);
+void shield_sysedp_batmon_init(void);
+
 
 /* Invensense MPU Definitions */
-#define MPU_GYRO_NAME		"mpu9250"
-#define MPU_GYRO_IRQ_GPIO	TEGRA_GPIO_PS0
-#define MPU_GYRO_ADDR		0x69
-#define MPU_GYRO_BUS_NUM	0
-#define MPU_GYRO_ORIENTATION	MTMAT_TOP_CCW_0
-#define MPU_COMPASS_NAME	"ak8975"
-#define MPU_COMPASS_ADDR	0x0C
-#define MPU_COMPASS_ADDR_TN8	0x0D
-#define MPU_COMPASS_ORIENTATION	MTMAT_BOT_CCW_270
-#define MPU_BMP_NAME		"bmp280"
-#define MPU_BMP_ADDR		0x77
+#define MPU_GYRO_NAME			"mpu9250"
+#define MPU_GYRO_IRQ_GPIO		TEGRA_GPIO_PS0
+#define MPU_GYRO_ADDR			0x69
+#define MPU_GYRO_BUS_NUM		0
+#define MPU_GYRO_ORIENTATION		MTMAT_TOP_CCW_0
+#define MPU_GYRO_ORIENTATION_E1762	MTMAT_TOP_CCW_270
+#define MPU_COMPASS_NAME		"ak8975"
+#define MPU_COMPASS_ADDR		0x0C
+#define MPU_COMPASS_ADDR_TN8		0x0D
+#define MPU_COMPASS_ORIENTATION		MTMAT_BOT_CCW_270
+#define MPU_BMP_NAME			"bmp280"
+#define MPU_BMP_ADDR			0x77
 
 /* PCA954x I2C bus expander bus addresses */
 #define PCA954x_I2C_BUS_BASE    6
@@ -101,6 +107,8 @@ enum tegra_bb_type {
 #define TOUCH_GPIO_RST_RAYDIUM_SPI	TEGRA_GPIO_PK4
 #define TOUCH_SPI_ID			0	/*SPI 1 on ardbeg_interposer*/
 #define TOUCH_SPI_CS			0	/*CS  0 on ardbeg_interposer*/
+#define NORRIN_TOUCH_SPI_ID			2	/*SPI 2 on Norrin*/
+#define NORRIN_TOUCH_SPI_CS			1	/*CS  1 on Norrin*/
 
 #define TOUCH_GPIO_IRQ_MAXIM_STI_SPI	TEGRA_GPIO_PK2
 #define TOUCH_GPIO_RST_MAXIM_STI_SPI	TEGRA_GPIO_PK4
@@ -144,6 +152,9 @@ int laguna_regulator_init(void);
 int laguna_pm358_pmon_init(void);
 int laguna_edp_init(void);
 
+/* Norrin specific */
+int norrin_regulator_init(void);
+
 /* AUO Display related GPIO */
 #define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PH3 /* GMI_AD11 */
 #define LCD_RST_L               TEGRA_GPIO_PH5 /* GMI_AD13 */
@@ -166,5 +177,11 @@ int tn8_edp_init(void);
 void tn8_new_sysedp_init(void);
 void tn8_sysedp_dynamic_capping_init(void);
 void tn8_sysedp_batmon_init(void);
+
+/* SATA Specific */
+
+#define CLK_RST_CNTRL_RST_DEV_W_SET 0x7000E438
+#define CLK_RST_CNTRL_RST_DEV_V_SET 0x7000E430
+#define SET_CEC_RST 0x100
 
 #endif

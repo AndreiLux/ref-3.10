@@ -293,6 +293,7 @@ config NVMAP_FORCE_ZEROED_USER_PAGES
 config NVMAP_USE_FD_FOR_HANDLE
 	bool "Use Fd's to represent NvMap handles"
 	depends on TEGRA_NVMAP
+	default y
 	help
 	  Say Y here to use Fd's for representing NvMap handles
 	  in user space. Enabling this config returns DmaBuf
@@ -308,6 +309,15 @@ config NVMAP_USE_CMA_FOR_CARVEOUT
 	  Say Y here to reserve carveout memory using CMA
 	  API. CMA reserved memory can be used by applications
 	  when it is not in use by the device that reserved it.
+
+config NVMAP_CPA
+	bool "Use CPA API in nvmap"
+	depends on CPA
+	help
+	  Say Y here to have nvmap use CPA. CPA is necessary for
+	  certain chips where page table aliasing can cause undefined
+	  results due to speculative memory loads/stores. If unsure,
+	  say N.
 
 config TEGRA_DSI
 	bool "Enable DSI panel."

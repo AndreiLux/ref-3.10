@@ -23,7 +23,7 @@ config ARCH_TEGRA_2x_SOC
 	depends on !ARCH_TEGRA_12x_SOC
 	depends on !ARCH_TEGRA_14x_SOC
 	select ARCH_NEEDS_CPU_IDLE_COUPLED if SMP
-	select ARCH_SUPPORTS_MSI if TEGRA_PCI
+	select ARCH_SUPPORTS_MSI if PCI_TEGRA
 	select ARCH_TEGRA_HAS_ARM_SCU
 	select ARCH_TEGRA_HAS_PCIE
 	select ARM_CPU_SUSPEND if PM
@@ -44,7 +44,7 @@ config ARCH_TEGRA_2x_SOC
 	select NVMAP_DEFERRED_CACHE_MAINT if TEGRA_NVMAP
 	select NVMAP_HANDLE_MARSHAL if TEGRA_NVMAP
 	select NVMAP_OUTER_CACHE_MAINT_BY_SET_WAYS if TEGRA_NVMAP
-	select PCI_MSI if TEGRA_PCI
+	select PCI_MSI if PCI_TEGRA
 	select PINCTRL
 	select PINCTRL_TEGRA20
 	select POWER_RESET
@@ -64,7 +64,7 @@ config ARCH_TEGRA_3x_SOC
 	depends on !ARCH_TEGRA_11x_SOC
 	depends on !ARCH_TEGRA_12x_SOC
 	depends on !ARCH_TEGRA_14x_SOC
-	select ARCH_SUPPORTS_MSI if TEGRA_PCI
+	select ARCH_SUPPORTS_MSI if PCI_TEGRA
 	select ARCH_TEGRA_HAS_ARM_SCU
 	select ARCH_TEGRA_HAS_PCIE
 	select ARCH_TEGRA_HAS_SATA
@@ -87,7 +87,7 @@ config ARCH_TEGRA_3x_SOC
 	select NVMAP_DEFERRED_CACHE_MAINT if TEGRA_NVMAP
 	select NVMAP_HANDLE_MARSHAL if TEGRA_NVMAP
 	select NVMAP_OUTER_CACHE_MAINT_BY_SET_WAYS if TEGRA_NVMAP
-	select PCI_MSI if TEGRA_PCI
+	select PCI_MSI if PCI_TEGRA
 	select PINCTRL
 	select PINCTRL_TEGRA30
 	select POWER_RESET
@@ -148,6 +148,7 @@ config ARCH_TEGRA_11x_SOC
 	select USB_EHCI_TEGRA if USB_SUPPORT
 	select USB_ULPI if USB_SUPPORT
 	select USB_ULPI_VIEWPORT if USB_SUPPORT
+	select PROC_DEVICETREE
 	help
 	  Support for NVIDIA Tegra 11x family of SoCs, based upon the
 	  ARM Cortex-A15MP CPU
@@ -174,8 +175,8 @@ config ARCH_TEGRA_12x_SOC
 	select USE_OF
 	select REPORT_PRESENT_CPUS if TEGRA_AUTO_HOTPLUG
 	select TEGRA_LP2_CPU_TIMER if !TEGRA_RAIL_OFF_MULTIPLE_CPUS
-	select ARCH_SUPPORTS_MSI if TEGRA_PCI
-	select PCI_MSI if TEGRA_PCI
+	select ARCH_SUPPORTS_MSI if PCI_TEGRA
+	select PCI_MSI if PCI_TEGRA
 	select NVMAP_CACHE_MAINT_BY_SET_WAYS if TEGRA_NVMAP
 	select NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU if TEGRA_NVMAP
 	select NVMAP_DEFERRED_CACHE_MAINT if TEGRA_NVMAP
@@ -195,6 +196,9 @@ config ARCH_TEGRA_12x_SOC
 	select HAVE_ARM_ARCH_TIMER
 	select ARCH_HAS_PASR
 	select POWER_SUPPLY
+	select TEGRA_ISOMGR
+	select TEGRA_ISOMGR_SYSFS
+	select PROC_DEVICETREE
 	help
 	  Support for NVIDIA Tegra 12x family of SoCs, based upon the
 	  ARM Cortex-A15MP CPU
@@ -268,20 +272,6 @@ config ARCH_TEGRA_HAS_SATA
 
 config ARCH_TEGRA_HAS_CL_DVFS
 	bool
-
-config TEGRA_PCI
-	bool "PCIe host controller driver"
-	select PCI
-	select TEGRA_USB_SHARED_PAD
-	depends on ARCH_TEGRA_HAS_PCIE
-	help
-	  Adds PCIe Host controller driver for tegra based systems
-
-config TEGRA_PCIE_SKIP_POWERGATING
-	bool "Skip PCIE powergating"
-	depends on TEGRA_PCI
-	help
-	 Do not powergate PCIE partition on boot up.
 
 config TEGRA_AHB
 	bool "Enable AHB driver for NVIDIA Tegra SoCs"
@@ -426,6 +416,16 @@ config TEGRA_FIQ_DEBUGGER
 	select FIQ_DEBUGGER
 	help
 	  Enables the FIQ serial debugger on Tegra
+
+config TEGRA_PTM
+	bool "Enable PTM debugger on Tegra"
+	default n
+	help
+	  This option enables PTM debugger on Tegra. This driver is used
+	  for tracking each branch instructions executed by processor. It
+	  can save such tracking information to the ETB buffer, which can
+	  be further parsed by a user space program to re-construct the
+	  complete program flows.
 
 config TEGRA_EMC_SCALING_ENABLE
 	bool "Enable scaling the memory frequency"
@@ -589,6 +589,26 @@ config TEGRA_CPU_EDP_FIXED_LIMITS
 	  Enforce CPU EDP frequency limits which are fixed for a given
 	  chip SKU. By default, the max frequency is determined optimally
 	  for each individual chip.
+
+config TEGRA_GPU_EDP
+       bool "enable GPU EDP "
+       depends on THERMAL
+       depends on TEGRA_EDP_LIMITS
+       depends on ARCH_TEGRA_12x_SOC
+       default n
+       help
+         Limit maximum GPU frequency based on temperature
+         to keep GPU rail current within power supply
+         capabilities.
+
+config TEGRA_CPU_VOLT_CAP
+	bool "Allow cpu voltage to be capped based on usage metrics."
+	depends on TEGRA_EDP_LIMITS
+	default n
+	help
+	  Provide userspace with an interface to dynamically adjust
+	  CPU <voltage, temperature> cap. Userspace must respect
+	  datasheet-imposed limits.
 
 config TEGRA_EMC_TO_DDR_CLOCK
 	int "EMC to DDR clocks ratio"
@@ -969,4 +989,16 @@ config TEGRA_SOC_TIMERS
 	help
 	  When enabled, cpu clock events will be using SOC timers instead
 	  of arm private timers.
+
+config TEGRA_LP0_IN_IDLE
+	bool "Enable support LP0-in-idle state"
+	default n
+
+config TEGRA_HDMI_PRIMARY
+	bool "Use HDMI as primary display"
+	depends on TEGRA_DC
+	depends on !FRAMEBUFFER_CONSOLE
+	help
+	  Configure system to support HDMI as the primary display.
+	  When enabled, dispA/fb0 will be configured to use HDMI.
 endif

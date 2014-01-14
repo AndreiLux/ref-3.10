@@ -60,7 +60,10 @@ static inline bool linear_search(u32 offset, const u32 *list, int size)
 static const struct regop_offset_range gk20a_global_whitelist_ranges[] = {
 	{ 0x000004f0,   1 },
 	{ 0x00001a00,   3 },
+	{ 0x0000259c,   1 },
 	{ 0x0000280c,   1 },
+	{ 0x00009400,   1 },
+	{ 0x00009410,   1 },
 	{ 0x00020200,   1 },
 	{ 0x00022430,   7 },
 	{ 0x00022548,   1 },
@@ -73,6 +76,7 @@ static const struct regop_offset_range gk20a_global_whitelist_ranges[] = {
 	{ 0x0010e064,   1 },
 	{ 0x0010e164,   1 },
 	{ 0x0010e490,   1 },
+	{ 0x00110100,   1 },
 	{ 0x00140028,   1 },
 	{ 0x001408dc,   1 },
 	{ 0x00140a5c,   1 },
@@ -388,7 +392,7 @@ int exec_regops_gk20a(struct dbg_session_gk20a *dbg_s,
 	/*struct gr_gk20a *gr = &g->gr;*/
 	u32 data32_lo = 0, data32_hi = 0;
 	u32 ctx_rd_count = 0, ctx_wr_count = 0;
-	bool skip_read_lo = false, skip_read_hi = false;
+	bool skip_read_lo, skip_read_hi;
 	bool ok;
 
 	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
@@ -435,6 +439,7 @@ int exec_regops_gk20a(struct dbg_session_gk20a *dbg_s,
 			/* some of this appears wonky/unnecessary but
 			   we've kept it for compat with existing
 			   debugger code.  just in case... */
+			skip_read_lo = skip_read_hi = false;
 			if (ops[i].and_n_mask_lo == ~(u32)0) {
 				data32_lo = ops[i].value_lo;
 				skip_read_lo = true;

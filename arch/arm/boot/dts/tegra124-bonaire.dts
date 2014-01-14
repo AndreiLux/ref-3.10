@@ -5,6 +5,7 @@
 / {
 	model = "NVIDIA Tegra124 Bonaire";
 	compatible = "nvidia,bonaire", "nvidia,tegra124";
+	nvidia,dtsfilename = __FILE__;
 
 
 	chosen {

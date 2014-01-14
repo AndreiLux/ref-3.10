@@ -165,43 +165,45 @@ static struct ov7695_reg mode_640x480_30fps[] = {
 	{0x550c, 0x04},
 	{0x550d, 0x01},
 	{0x5600, 0x00},
-	{0x5601, 0x2c},
-	{0x5602, 0x5a},
-	{0x5603, 0x06},
-	{0x5604, 0x1c},
-	{0x5605, 0x65},
-	{0x5606, 0x81},
-	{0x5607, 0x9f},
-	{0x5608, 0x8a},
-	{0x5609, 0x15},
+	{0x5601, 0x23},
+	{0x5602, 0x59},
+	{0x5603, 0x04},
+	{0x5604, 0x11},
+	{0x5605, 0x57},
+	{0x5606, 0x68},
+	{0x5607, 0x68},
+	{0x5608, 0x57},
+	{0x5609, 0x11},
 	{0x560a, 0x01},
-	{0x560b, 0x9c},
+	{0x560b, 0x98},
 	{0x5800, 0x02},
-	{0x5803, 0x2e},
-	{0x5804, 0x20},
+	{0x5803, 0x38},
+	{0x5804, 0x34},
+	{0x5908, 0x62},
+	{0x5909, 0x26},
+	{0x590a, 0xe6},
+	{0x590b, 0x6e},
+	{0x590c, 0xea},
+	{0x590d, 0xae},
+	{0x590e, 0xa6},
+	{0x590f, 0x6a},
 	{0x0100, 0x01},
 	{OV7695_TABLE_END, 0x01},
 };
 
 static struct ov7695_reg ov7695_Whitebalance_Auto[] = {
 	{0x5200, 0x00},
-	{0x5204, 0x04},
-	{0x5205, 0x00},
-	{0x5206, 0x04},
-	{0x5207, 0x00},
-	{0x5208, 0x04},
-	{0x5209, 0x00},
 	{OV7695_TABLE_END, 0x0000}
 };
 
 static struct ov7695_reg ov7695_Whitebalance_Daylight[] = {
 	{0x5200, 0x20},
 	{0x5204, 0x05},
-	{0x5205, 0x7b},
+	{0x5205, 0x1e},
 	{0x5206, 0x04},
 	{0x5207, 0x00},
-	{0x5208, 0x05},
-	{0x5209, 0x15},
+	{0x5208, 0x04},
+	{0x5209, 0x7a},
 	{OV7695_TABLE_END, 0x0000}
 };
 
@@ -212,7 +214,7 @@ static struct ov7695_reg ov7695_Whitebalance_Cloudy[] = {
 	{0x5206, 0x04},
 	{0x5207, 0x00},
 	{0x5208, 0x04},
-	{0x5209, 0x80},
+	{0x5209, 0x20},
 	{OV7695_TABLE_END, 0x0000}
 };
 
@@ -220,21 +222,21 @@ static struct ov7695_reg ov7695_Whitebalance_Incandescent[] = {
 	{0x5200, 0x20},
 	{0x5204, 0x04},
 	{0x5205, 0x00},
-	{0x5206, 0x04},
-	{0x5207, 0xdc},
-	{0x5208, 0x0b},
-	{0x5209, 0xb4},
+	{0x5206, 0x05},
+	{0x5207, 0x0a},
+	{0x5208, 0x08},
+	{0x5209, 0xae},
 	{OV7695_TABLE_END, 0x0000}
 };
 
 static struct ov7695_reg ov7695_Whitebalance_Fluorescent[] = {
 	{0x5200, 0x20},
-	{0x5204, 0x05},
-	{0x5205, 0xa0},
+	{0x5204, 0x04},
+	{0x5205, 0x00},
 	{0x5206, 0x04},
 	{0x5207, 0x00},
-	{0x5208, 0x08},
-	{0x5209, 0x4e},
+	{0x5208, 0x09},
+	{0x5209, 0xf5},
 	{OV7695_TABLE_END, 0x0000}
 };
 
@@ -338,7 +340,7 @@ static inline void ov7695_msleep(u32 t)
 
 static inline int ov7695_read_reg(struct ov7695_info *info, u16 addr, u8 *val)
 {
-	return regmap_read(info->regmap, addr, val);
+	return regmap_read(info->regmap, addr, (unsigned int *) val);
 }
 
 static int ov7695_write_reg8(struct ov7695_info *info, u16 addr, u8 val)
@@ -734,7 +736,6 @@ static long ov7695_ioctl(struct file *file,
 			sizeof(whitebalance))) {
 			return -EFAULT;
 		}
-
 		switch (whitebalance) {
 		case OV7695_YUV_Whitebalance_Auto:
 			err = ov7695_write_table(info,
@@ -757,6 +758,7 @@ static long ov7695_ioctl(struct file *file,
 					ov7695_Whitebalance_Fluorescent);
 			break;
 		default:
+			/* unsupported white balance mode*/
 			break;
 		}
 
@@ -774,22 +776,30 @@ static long ov7695_ioctl(struct file *file,
 				(const void __user *)arg,
 				sizeof(short)))
 			return -EFAULT;
-
-		if (ev == -2)
-			err = ov7695_write_table(info, ov7695_EV_minus_2);
-		else if (ev == -1)
-			err = ov7695_write_table(info, ov7695_EV_minus_1);
-		else if (ev == 0)
+		switch (ev) {
+		case 0:
 			err = ov7695_write_table(info, ov7695_EV_zero);
-		else if (ev == 1)
+			break;
+		case 1:
 			err = ov7695_write_table(info, ov7695_EV_plus_1);
-		else if (ev == 2)
+			break;
+		case 2:
 			err = ov7695_write_table(info, ov7695_EV_plus_2);
-		else
-			err = -1;
+			break;
+		case -1:
+			err = ov7695_write_table(info, ov7695_EV_minus_1);
+			break;
+		case -2:
+			err = ov7695_write_table(info, ov7695_EV_minus_2);
+			break;
+		default:
+			/* unsupported EV setting */
+			break;
+		}
 
 		if (err)
 			return err;
+
 		return 0;
 	}
 
@@ -798,7 +808,7 @@ static long ov7695_ioctl(struct file *file,
 		short ev;
 		u8 val;
 
-		err = ov7695_read_reg(info->i2c_client, 0x3a0f, &val);
+		err = ov7695_read_reg(info, 0x3a0f, &val);
 
 		if (err) {
 			dev_err(&info->i2c_client->dev,
@@ -816,6 +826,7 @@ static long ov7695_ioctl(struct file *file,
 			ev = 1;
 		else if (val == 0x58)
 			ev = 2;
+
 		if (copy_to_user((void __user *)arg, &ev, sizeof(short)))
 			return -EFAULT;
 		if (err)

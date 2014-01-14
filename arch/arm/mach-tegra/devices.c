@@ -34,6 +34,11 @@
 #include <linux/usb/tegra_usb_phy.h>
 #include <mach/tegra_smmu.h>
 #include <mach/tegra-swgid.h>
+#include <linux/dma-contiguous.h>
+
+#ifdef CONFIG_TEGRA_WAKEUP_MONITOR
+#include <mach/tegra_wakeup_monitor.h>
+#endif
 
 #ifdef CONFIG_PLATFORM_ENABLE_IOMMU
 #include <asm/dma-iommu.h>
@@ -43,6 +48,7 @@
 #include "iomap.h"
 #include "devices.h"
 #include "board.h"
+#include "tegra_ptm.h"
 
 #define TEGRA_DMA_REQ_SEL_I2S_1			2
 #define TEGRA_DMA_REQ_SEL_SPD_I			3
@@ -122,33 +128,29 @@ struct platform_device tegra_gpio_device = {
 	.num_resources	= ARRAY_SIZE(gpio_resource),
 };
 
-static struct resource pinmux_resource[] = {
-#ifdef CONFIG_ARCH_TEGRA_2x_SOC
+static struct resource tegra124_pinctrl_resource[] = {
 	[0] = {
-		/* Tri-state registers */
-		.start	= TEGRA_APB_MISC_BASE + 0x14,
-		.end	= TEGRA_APB_MISC_BASE + 0x20 + 3,
+		/* Drive registers */
+		.start	= TEGRA_APB_MISC_BASE + 0x868,
+		.end	= TEGRA_APB_MISC_BASE + 0x9c8 + 3,
 		.flags	= IORESOURCE_MEM,
 	},
 	[1] = {
 		/* Mux registers */
-		.start	= TEGRA_APB_MISC_BASE + 0x80,
-		.end	= TEGRA_APB_MISC_BASE + 0x9c + 3,
+		.start	= TEGRA_APB_MISC_BASE + 0x3000,
+		.end	= TEGRA_APB_MISC_BASE + 0x3430 + 3,
 		.flags	= IORESOURCE_MEM,
 	},
-	[2] = {
-		/* Pull-up/down registers */
-		.start	= TEGRA_APB_MISC_BASE + 0xa0,
-		.end	= TEGRA_APB_MISC_BASE + 0xb0 + 3,
-		.flags	= IORESOURCE_MEM,
-	},
-	[3] = {
-		/* Pad control registers */
-		.start	= TEGRA_APB_MISC_BASE + 0x868,
-		.end	= TEGRA_APB_MISC_BASE + 0x90c + 3,
-		.flags	= IORESOURCE_MEM,
-	},
-#else
+};
+
+struct platform_device tegra124_pinctrl_device = {
+	.name		= "tegra124-pinctrl",
+	.id		= -1,
+	.resource	= tegra124_pinctrl_resource,
+	.num_resources	= ARRAY_SIZE(tegra124_pinctrl_resource),
+};
+
+static struct resource tegra114_pinctrl_resource[] = {
 	[0] = {
 		/* Drive registers */
 		.start	= TEGRA_APB_MISC_BASE + 0x868,
@@ -158,33 +160,16 @@ static struct resource pinmux_resource[] = {
 	[1] = {
 		/* Mux registers */
 		.start	= TEGRA_APB_MISC_BASE + 0x3000,
-#ifdef CONFIG_ARCH_TEGRA_11x_SOC
 		.end	= TEGRA_APB_MISC_BASE + 0x3408 + 3,
-#elif defined(CONFIG_ARCH_TEGRA_14x_SOC)
-		.end	= TEGRA_APB_MISC_BASE + 0x3514 + 3,
-#else
-		.end	= TEGRA_APB_MISC_BASE + 0x33e0 + 3,
-#endif
 		.flags	= IORESOURCE_MEM,
 	},
-#endif
 };
 
-struct platform_device tegra_pinmux_device = {
-#ifdef CONFIG_ARCH_TEGRA_3x_SOC
-	.name		= "tegra30-pinmux-ctl",
-#elif defined(CONFIG_ARCH_TEGRA_2x_SOC)
-	.name		= "tegra20-pinmux-ctl",
-#elif defined(CONFIG_ARCH_TEGRA_11x_SOC)
-	.name		= "tegra11x-pinmux-ctl",
-#elif defined(CONFIG_ARCH_TEGRA_12x_SOC)
-	.name		= "tegra12x-pinmux",
-#elif defined(CONFIG_ARCH_TEGRA_14x_SOC)
-	.name		= "tegra14x-pinmux",
-#endif
+struct platform_device tegra114_pinctrl_device = {
+	.name		= "tegra114-pinctrl",
 	.id		= -1,
-	.resource	= pinmux_resource,
-	.num_resources	= ARRAY_SIZE(pinmux_resource),
+	.resource	= tegra114_pinctrl_resource,
+	.num_resources	= ARRAY_SIZE(tegra114_pinctrl_resource),
 };
 
 static struct resource apbdma_resource[] = {
@@ -2104,9 +2089,28 @@ void tegra_fb_linear_set(struct iommu_linear_map *map)
 	LINEAR_MAP_ADD(tegra_fb2);
 	LINEAR_MAP_ADD(tegra_bootloader_fb);
 	LINEAR_MAP_ADD(tegra_bootloader_fb2);
+#ifndef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	LINEAR_MAP_ADD(tegra_vpr);
 	LINEAR_MAP_ADD(tegra_carveout);
+#endif
 }
+
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+void carveout_linear_set(struct device *cma_dev)
+{
+	struct dma_contiguous_stats stats;
+	struct iommu_linear_map *map = &tegra_fb_linear_map[0];
+
+	if (dma_get_contiguous_stats(cma_dev, &stats))
+		return;
+
+	/* get the free slot at end and add carveout entry */
+	while (map && map->size)
+		map++;
+	map->start = stats.base;
+	map->size = stats.size;
+}
+#endif
 
 struct swgid_fixup {
 	const char * const name;
@@ -2824,6 +2828,74 @@ struct platform_device tegra_cl_dvfs_device = {
 struct platform_device tegra_fuse_device = {
 	.name	= "tegra-fuse",
 	.id	= -1,
+};
+
+#if defined(CONFIG_TEGRA_WAKEUP_MONITOR)
+static struct tegra_wakeup_monitor_platform_data
+			tegratab_tegra_wakeup_monitor_pdata = {
+	.wifi_wakeup_source     = 6,
+	.rtc_wakeup_source      = 18,
+};
+
+struct platform_device tegratab_tegra_wakeup_monitor_device = {
+	.name = "tegra_wakeup_monitor",
+	.id   = -1,
+	.dev  = {
+		.platform_data = &tegratab_tegra_wakeup_monitor_pdata,
+	},
+};
+#endif
+
+static struct resource ptm_resources[] = {
+	{
+		.name  = "ptm",
+		.start = PTM0_BASE,
+		.end   = PTM0_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "ptm",
+		.start = PTM1_BASE,
+		.end   = PTM1_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "ptm",
+		.start = PTM2_BASE,
+		.end   = PTM2_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "ptm",
+		.start = PTM3_BASE,
+		.end   = PTM3_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "etb",
+		.start = ETB_BASE,
+		.end   = ETB_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "funnel",
+		.start = FUNNEL_BASE,
+		.end   = FUNNEL_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name  = "tpiu",
+		.start = TPIU_BASE,
+		.end   = TPIU_BASE + SZ_4K - 1,
+		.flags = IORESOURCE_MEM,
+	},
+};
+
+struct platform_device tegra_ptm_device = {
+	.name          = "ptm",
+	.id            = -1,
+	.num_resources = ARRAY_SIZE(ptm_resources),
+	.resource      = ptm_resources,
 };
 
 void __init tegra_init_debug_uart_rate(void)

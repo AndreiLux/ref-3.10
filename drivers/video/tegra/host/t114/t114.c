@@ -48,6 +48,8 @@
 /* HACK! This needs to come from DT */
 #include "../../../../../arch/arm/mach-tegra/iomap.h"
 
+#define TSEC_POWERGATE_DELAY 500
+
 static int t114_num_alloc_channels = 0;
 
 static struct resource tegra_host1x02_resources[] = {
@@ -98,6 +100,8 @@ struct nvhost_device_data t11_host1x_info = {
 	.clocks		= { {"host1x", 136000000} },
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	.private_data	= &host1x02_info,
+	.prepare_poweroff = nvhost_host1x_prepare_poweroff,
+	.finalize_poweron = nvhost_host1x_finalize_poweron,
 };
 
 static struct platform_device tegra_host1x02_device = {
@@ -141,7 +145,6 @@ struct nvhost_device_data t11_gr3d_info = {
 	.prepare_poweroff = nvhost_gr3d_t114_prepare_power_off,
 	.finalize_poweron = nvhost_gr3d_t114_finalize_power_on,
 	.alloc_hwctx_handler = nvhost_gr3d_t114_ctxhandler_init,
-	.read_reg	= nvhost_gr3d_read_reg,
 };
 
 static struct platform_device tegra_gr3d03_device = {
@@ -306,9 +309,14 @@ struct nvhost_device_data t11_tsec_info = {
 			   {"emc", 300000000, 75} },
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
+	.can_powergate    = true,
+	.powergate_delay = TSEC_POWERGATE_DELAY,
+	.keepalive       = true,
 	.moduleid	= NVHOST_MODULE_TSEC,
 	.init          = nvhost_tsec_init,
 	.deinit        = nvhost_tsec_deinit,
+	.finalize_poweron = nvhost_tsec_finalize_poweron,
+	.prepare_poweroff = nvhost_tsec_prepare_poweroff,
 };
 
 static struct platform_device tegra_tsec01_device = {

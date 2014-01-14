@@ -49,6 +49,7 @@ static struct i2c_board_info max9485_info = {
 	I2C_BOARD_INFO("max9485", 0x60),
 };
 
+#define MAX9485_MCLK_FREQ_163840 0x31
 #define MAX9485_MCLK_FREQ_112896 0x22
 #define MAX9485_MCLK_FREQ_122880 0x23
 #define MAX9485_MCLK_FREQ_225792 0x32
@@ -59,6 +60,9 @@ static void set_max9485_clk(struct i2c_client *i2s, int mclk)
 	char clk;
 
 	switch (mclk) {
+	case 16384000:
+		clk =  MAX9485_MCLK_FREQ_163840;
+		break;
 	case 11289600:
 		clk = MAX9485_MCLK_FREQ_112896;
 		break;
@@ -77,7 +81,7 @@ static void set_max9485_clk(struct i2c_client *i2s, int mclk)
 	i2c_master_send(i2s, &clk, 1);
 }
 
-static int tegra_vcm30t124_hw_params(struct snd_pcm_substream *substream,
+static int tegra_vcm30t124_x_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -85,6 +89,78 @@ static int tegra_vcm30t124_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_codec *codec = codec_dai->codec;
 	struct snd_soc_card *card = codec->card;
 	struct tegra_vcm30t124 *machine = snd_soc_card_get_drvdata(card);
+	struct snd_soc_pcm_stream *dai_params =
+		(struct snd_soc_pcm_stream *)card->rtd[10].dai_link->params;
+	int srate, mclk, clk_out_rate;
+	int err;
+
+	srate = params_rate(params);
+	switch (srate) {
+	case 64000:
+	case 88200:
+	case 96000:
+		clk_out_rate = 128 * srate;
+		mclk = clk_out_rate * 2;
+		break;
+	case 8000:
+	case 16000:
+	case 32000:
+	case 48000:
+	default:
+		clk_out_rate = 12288000;
+		/*
+		 * MCLK is pll_a_out, it is a source clock of ahub.
+		 * So it need to be faster than BCLK in slave mode.
+		 */
+		mclk = 12288000 * 2;
+		break;
+	case 44100:
+		clk_out_rate = 11289600;
+		/*
+		 * MCLK is pll_a_out, it is a source clock of ahub.
+		 * So it need to be faster than BCLK in slave mode.
+		 */
+		mclk = 11289600 * 2;
+		break;
+	}
+
+	/* update link_param to update hw_param for DAPM */
+	dai_params->rate_min = srate;
+
+	err = tegra_alt_asoc_utils_set_rate(&machine->audio_clock,
+					srate, mclk, clk_out_rate);
+	if (err < 0) {
+		dev_err(card->dev, "Can't configure clocks\n");
+		return err;
+	}
+
+	err = snd_soc_dai_set_sysclk(card->rtd[10].codec_dai,
+			WM8731_SYSCLK_MCLK, clk_out_rate, SND_SOC_CLOCK_IN);
+	if (err < 0) {
+		dev_err(card->dev, "x codec_dai clock not set\n");
+		return err;
+	}
+
+	err = snd_soc_dai_set_sysclk(card->rtd[10].cpu_dai, 0, srate,
+					SND_SOC_CLOCK_IN);
+	if (err < 0) {
+		dev_err(card->dev, "x cpu_dai clock not set\n");
+		return err;
+	}
+
+	return 0;
+}
+
+static int tegra_vcm30t124_y_hw_params(struct snd_pcm_substream *substream,
+					struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_codec *codec = codec_dai->codec;
+	struct snd_soc_card *card = codec->card;
+	struct tegra_vcm30t124 *machine = snd_soc_card_get_drvdata(card);
+	struct snd_soc_pcm_stream *dai_params =
+		(struct snd_soc_pcm_stream *)card->rtd[12].dai_link->params;
 	unsigned int fmt = card->rtd[12].dai_link->dai_fmt;
 	int srate, mclk, clk_out_rate, val;
 	int err;
@@ -101,37 +177,18 @@ static int tegra_vcm30t124_hw_params(struct snd_pcm_substream *substream,
 		break;
 	}
 
+	/* update link_param to update hw_param for DAPM */
+	dai_params->rate_min = srate;
+
 	mclk = clk_out_rate * 2;
 
 	set_max9485_clk(machine->max9485_client, mclk);
-
-	err = tegra_alt_asoc_utils_set_rate(&machine->audio_clock,
-					srate, mclk, clk_out_rate);
-	if (err < 0) {
-		dev_err(card->dev, "Can't configure clocks\n");
-		return err;
-	}
-
-
-	err = snd_soc_dai_set_sysclk(card->rtd[10].codec_dai,
-			WM8731_SYSCLK_MCLK, clk_out_rate, SND_SOC_CLOCK_IN);
-	if (err < 0) {
-		dev_err(card->dev, "x codec_dai clock not set\n");
-		return err;
-	}
 
 	err = snd_soc_dai_set_sysclk(card->rtd[12].codec_dai,
 			0, mclk,
 			SND_SOC_CLOCK_IN);
 	if (err < 0) {
 		dev_err(card->dev, "y codec_dai clock not set\n");
-		return err;
-	}
-
-	err = snd_soc_dai_set_sysclk(card->rtd[10].cpu_dai, 0, srate,
-					SND_SOC_CLOCK_IN);
-	if (err < 0) {
-		dev_err(card->dev, "x cpu_dai clock not set\n");
 		return err;
 	}
 
@@ -159,20 +216,36 @@ static int tegra_vcm30t124_hw_params(struct snd_pcm_substream *substream,
 	return 0;
 }
 
-static int tegra_vcm30t124_startup(struct snd_pcm_substream *substream)
+static int tegra_vcm30t124_x_startup(struct snd_pcm_substream *substream)
 {
 	return 0;
 }
 
-static void tegra_vcm30t124_shutdown(struct snd_pcm_substream *substream)
+static void tegra_vcm30t124_x_shutdown(struct snd_pcm_substream *substream)
 {
 	return;
 }
 
-static struct snd_soc_ops tegra_vcm30t124_ops = {
-	.hw_params = tegra_vcm30t124_hw_params,
-	.startup = tegra_vcm30t124_startup,
-	.shutdown = tegra_vcm30t124_shutdown,
+static int tegra_vcm30t124_y_startup(struct snd_pcm_substream *substream)
+{
+	return 0;
+}
+
+static void tegra_vcm30t124_y_shutdown(struct snd_pcm_substream *substream)
+{
+	return;
+}
+
+static struct snd_soc_ops tegra_vcm30t124_x_ops = {
+	.hw_params = tegra_vcm30t124_x_hw_params,
+	.startup = tegra_vcm30t124_x_startup,
+	.shutdown = tegra_vcm30t124_x_shutdown,
+};
+
+static struct snd_soc_ops tegra_vcm30t124_y_ops = {
+	.hw_params = tegra_vcm30t124_y_hw_params,
+	.startup = tegra_vcm30t124_y_startup,
+	.shutdown = tegra_vcm30t124_y_shutdown,
 };
 
 static const struct snd_soc_dapm_widget tegra_vcm30t124_dapm_widgets[] = {
@@ -203,24 +276,29 @@ static int tegra_vcm30t124_wm8731_init(struct snd_soc_pcm_runtime *rtd)
 	struct tegra_vcm30t124 *machine = snd_soc_card_get_drvdata(card);
 	struct snd_soc_dai *wm8731_dai = card->rtd[10].codec_dai;
 	struct snd_soc_dai *i2s_dai = card->rtd[10].cpu_dai;
-	unsigned int mclk, srate;
+	struct snd_soc_pcm_stream *dai_params =
+		(struct snd_soc_pcm_stream *)card->rtd[10].dai_link->params;
+	unsigned int clk_out, mclk, srate;
 	int err;
 
 	srate = 48000;
-	mclk = srate * 256;
+	clk_out = srate * 256;
+	mclk = clk_out * 2;
+
+	/* update link_param to update hw_param for DAPM */
+	dai_params->rate_min = srate;
 
 	tegra_alt_asoc_utils_set_parent(&machine->audio_clock, true);
 
 	/* wm8731 needs mclk from tegra */
 	err = tegra_alt_asoc_utils_set_rate(&machine->audio_clock,
-					srate, mclk, mclk);
+					srate, mclk, clk_out);
 	if (err < 0) {
 		dev_err(card->dev, "Can't configure clocks\n");
 		return err;
 	}
 
-
-	err = snd_soc_dai_set_sysclk(wm8731_dai, WM8731_SYSCLK_MCLK, mclk,
+	err = snd_soc_dai_set_sysclk(wm8731_dai, WM8731_SYSCLK_MCLK, clk_out,
 					SND_SOC_CLOCK_IN);
 	if (err < 0) {
 		dev_err(card->dev, "wm8731 clock not set\n");
@@ -244,12 +322,17 @@ static int tegra_vcm30t124_ad1937_init(struct snd_soc_pcm_runtime *rtd)
 	struct tegra_vcm30t124 *machine = snd_soc_card_get_drvdata(card);
 	struct snd_soc_dai *ad1937_dai = card->rtd[12].codec_dai;
 	struct snd_soc_dai *i2s_dai = card->rtd[12].cpu_dai;
+	struct snd_soc_pcm_stream *dai_params =
+		(struct snd_soc_pcm_stream *)card->rtd[12].dai_link->params;
 	unsigned int fmt = card->rtd[12].dai_link->dai_fmt;
 	unsigned int mclk, srate;
 	int err;
 
 	srate = 48000;
 	mclk = srate * 512;
+
+	/* update link_param to update hw_param for DAPM */
+	dai_params->rate_min = srate;
 
 	if ((fmt & SND_SOC_DAIFMT_MASTER_MASK) == SND_SOC_DAIFMT_CBM_CFM) {
 		/* direct MCLK mode in AD1937, mclk needs to be srate * 512 */
@@ -346,9 +429,17 @@ static int tegra_vcm30t124_remove(struct snd_soc_card *card)
 	return 0;
 }
 
-static const struct snd_soc_pcm_stream link_params = {
+static const struct snd_soc_pcm_stream x_link_params = {
 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	.rate_min = 44100,
+	.rate_min = 8000,
+	.rate_max = 48000,
+	.channels_min = 2,
+	.channels_max = 2,
+};
+
+static const struct snd_soc_pcm_stream y_link_params = {
+	.formats = SNDRV_PCM_FMTBIT_S16_LE,
+	.rate_min = 32000,
 	.rate_max = 48000,
 	.channels_min = 2,
 	.channels_max = 2,
@@ -371,7 +462,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF0",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF0",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 1 */
@@ -381,7 +473,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF1",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF1",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 2 */
@@ -391,7 +484,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF2",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF2",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 3 */
@@ -401,7 +495,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF3",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF3",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 4 */
@@ -411,7 +506,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF4",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF4",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_x_ops,
+		.ignore_pmdown_time = 1,
 	},
 
 	{
@@ -422,7 +518,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF5",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF5",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 6 */
@@ -432,7 +529,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF6",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF6",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 7 */
@@ -442,7 +540,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF7",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF7",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 8 */
@@ -452,7 +551,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF8",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF8",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 9 */
@@ -462,7 +562,8 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "APBIF9",
 		/* .codec_of_node = AHUB XBAR */
 		.codec_dai_name = "APBIF9",
-		.ops = &tegra_vcm30t124_ops,
+		.ops = &tegra_vcm30t124_y_ops,
+		.ignore_pmdown_time = 1,
 	},
 	{
 		/* 10 */
@@ -473,7 +574,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		/* .codec_of_node = WM8731 */
 		.codec_dai_name = "wm8731-hifi",
 		.init = tegra_vcm30t124_wm8731_init,
-		.params = &link_params,
+		.params = &x_link_params,
 		.dai_fmt = SND_SOC_DAIFMT_I2S |
 			   SND_SOC_DAIFMT_NB_NF |
 			   SND_SOC_DAIFMT_CBS_CFS,
@@ -486,7 +587,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "I2S0",
 		/* .codec_of_node = I2S0 */
 		.codec_dai_name = "CIF",
-		.params = &link_params,
+		.params = &x_link_params,
 	},
 	{
 		/* 12 */
@@ -500,7 +601,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.params = &tdm_link_params,
 		.dai_fmt = SND_SOC_DAIFMT_DSP_A |
 			   SND_SOC_DAIFMT_NB_NF |
-			   SND_SOC_DAIFMT_CBS_CFS,
+			   SND_SOC_DAIFMT_CBM_CFM,
 	},
 
 	{
@@ -521,7 +622,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "AMX0-0",
 		/* .codec_of_node = AMX0 */
 		.codec_dai_name = "IN0",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 15 */
@@ -531,7 +632,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "AMX0-1",
 		/* .codec_of_node = AMX0 */
 		.codec_dai_name = "IN1",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 16 */
@@ -541,7 +642,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "AMX0-2",
 		/* .codec_of_node = AMX0 */
 		.codec_dai_name = "IN2",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 17 */
@@ -551,7 +652,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.cpu_dai_name = "AMX0-3",
 		/* .codec_of_node = AMX0 */
 		.codec_dai_name = "IN3",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 18 */
@@ -579,7 +680,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.stream_name = "ADX0 OUT",
 		.cpu_dai_name = "OUT0",
 		.codec_dai_name = "ADX0-0",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 21 */
@@ -587,7 +688,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.stream_name = "ADX0 OUT",
 		.cpu_dai_name = "OUT1",
 		.codec_dai_name = "ADX0-1",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 22 */
@@ -595,7 +696,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.stream_name = "ADX0 OUT",
 		.cpu_dai_name = "OUT2",
 		.codec_dai_name = "ADX0-2",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 	{
 		/* 23 */
@@ -603,7 +704,7 @@ static struct snd_soc_dai_link tegra_vcm30t124_links[] = {
 		.stream_name = "ADX0 OUT",
 		.cpu_dai_name = "OUT3",
 		.codec_dai_name = "ADX0-3",
-		.params = &link_params,
+		.params = &y_link_params,
 	},
 };
 

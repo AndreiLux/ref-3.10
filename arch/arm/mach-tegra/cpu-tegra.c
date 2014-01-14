@@ -34,6 +34,7 @@
 #include <linux/debugfs.h>
 #include <linux/cpu.h>
 #include <linux/regulator/consumer.h>
+#include <linux/pm_qos.h>
 
 #include <mach/edp.h>
 
@@ -53,7 +54,8 @@ static DEFINE_MUTEX(tegra_cpu_lock);
 static bool is_suspended;
 static int suspend_index;
 static unsigned int volt_capped_speed;
-
+static struct pm_qos_request cpufreq_max_req;
+static struct pm_qos_request cpufreq_min_req;
 
 static bool force_policy_max;
 
@@ -193,6 +195,7 @@ static bool system_edp_alarm;
 static int edp_thermal_index;
 static cpumask_t edp_cpumask;
 static unsigned int edp_limit;
+static struct pm_qos_request edp_max_cpus;
 
 unsigned int tegra_get_edp_limit(int *get_edp_thermal_index)
 {
@@ -216,14 +219,10 @@ static unsigned int edp_predict_limit(unsigned int cpus)
 	return limit;
 }
 
-/* Must be called while holding cpu_tegra_lock */
-static void edp_update_limit(void)
+static unsigned int get_edp_freq_limit(unsigned int nr_cpus)
 {
-	unsigned int limit = edp_predict_limit(cpumask_weight(&edp_cpumask));
-	BUG_ON(!mutex_is_locked(&tegra_cpu_lock));
-#ifdef CONFIG_TEGRA_EDP_EXACT_FREQ
-	edp_limit = limit;
-#else
+	unsigned int limit = edp_predict_limit(nr_cpus);
+#ifndef CONFIG_TEGRA_EDP_EXACT_FREQ
 	unsigned int i;
 	for (i = 0; freq_table[i].frequency != CPUFREQ_TABLE_END; i++) {
 		if (freq_table[i].frequency > limit) {
@@ -231,8 +230,51 @@ static void edp_update_limit(void)
 		}
 	}
 	BUG_ON(i == 0);	/* min freq above the limit or table empty */
-	edp_limit = freq_table[i-1].frequency;
+	limit = freq_table[i-1].frequency;
 #endif
+	return limit;
+}
+
+/*
+ * Returns the ideal nr of cpus to have online for maximum performance given
+ * edp constraints at the current temperature
+ */
+static int get_edp_max_cpus(void)
+{
+	unsigned int i, limit;
+	unsigned int max_mips = 0;
+	int max_nr_cpus = PM_QOS_DEFAULT_VALUE;
+
+	for (i = 1; i <= num_possible_cpus(); i++) {
+		limit = get_edp_freq_limit(i);
+		if (limit * i >= max_mips) {
+			max_mips = limit * i;
+			max_nr_cpus = i;
+		}
+	}
+	return max_nr_cpus;
+}
+
+/*
+ * Shouldn't be called with tegra_cpu_lock held. Will result in a deadlock
+ * otherwise
+ */
+static void edp_update_max_cpus(void)
+{
+	unsigned int max_cpus = get_edp_max_cpus();
+
+	if (!pm_qos_request_active(&edp_max_cpus))
+		pm_qos_add_request(&edp_max_cpus, PM_QOS_MAX_ONLINE_CPUS,
+				   max_cpus);
+	else
+		pm_qos_update_request(&edp_max_cpus, max_cpus);
+}
+
+/* Must be called while holding cpu_tegra_lock */
+static void edp_update_limit(void)
+{
+	BUG_ON(!mutex_is_locked(&tegra_cpu_lock));
+	edp_limit = get_edp_freq_limit(cpumask_weight(&edp_cpumask));
 }
 
 static unsigned int edp_governor_speed(unsigned int requested_speed)
@@ -273,6 +315,8 @@ int tegra_edp_set_cur_state(struct thermal_cooling_device *cdev,
 	tegra_cpu_dvfs_alter(edp_thermal_index, &edp_cpumask, false, 0);
 	mutex_unlock(&tegra_cpu_lock);
 
+	edp_update_max_cpus();
+
 	return 0;
 }
 
@@ -312,40 +356,6 @@ int tegra_system_edp_alarm(bool alarm)
 	mutex_unlock(&tegra_cpu_lock);
 
 	return ret;
-}
-
-bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead)
-{
-	unsigned int current_limit, next_limit;
-
-	if (n == 0)
-		return true;
-
-	if (n >= ARRAY_SIZE(cpu_edp_limits->freq_limits))
-		return false;
-
-	current_limit = edp_predict_limit(n);
-	next_limit = edp_predict_limit(n + 1);
-
-	return ((next_limit * (n + 1)) >=
-		(current_limit * n * (100 + mp_overhead) / 100));
-}
-
-bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead)
-{
-	unsigned int current_limit, next_limit;
-
-	if (n <= 1)
-		return false;
-
-	if (n > ARRAY_SIZE(cpu_edp_limits->freq_limits))
-		return true;
-
-	current_limit = edp_predict_limit(n);
-	next_limit = edp_predict_limit(n - 1);
-
-	return ((next_limit * (n - 1) * (100 + mp_overhead) / 100)) >
-		(current_limit * n);
 }
 
 static int tegra_cpu_edp_notify(
@@ -818,8 +828,13 @@ _out:
 static int tegra_pm_notify(struct notifier_block *nb, unsigned long event,
 	void *dummy)
 {
-	mutex_lock(&tegra_cpu_lock);
 	if (event == PM_SUSPEND_PREPARE) {
+		pm_qos_update_request(&cpufreq_min_req,
+			freq_table[suspend_index].frequency);
+		pm_qos_update_request(&cpufreq_max_req,
+			freq_table[suspend_index].frequency);
+
+		mutex_lock(&tegra_cpu_lock);
 		is_suspended = true;
 		if (cpu_reg_idle_limits)
 			reg_mode_force_normal = true;
@@ -828,16 +843,24 @@ static int tegra_pm_notify(struct notifier_block *nb, unsigned long event,
 		tegra_update_cpu_speed(freq_table[suspend_index].frequency);
 		tegra_auto_hotplug_governor(
 			freq_table[suspend_index].frequency, true);
+		mutex_unlock(&tegra_cpu_lock);
 	} else if (event == PM_POST_SUSPEND) {
 		unsigned int freq;
+
+		mutex_lock(&tegra_cpu_lock);
 		is_suspended = false;
 		reg_mode_force_normal = false;
 		tegra_cpu_edp_init(true);
 		tegra_cpu_set_speed_cap_locked(&freq);
 		pr_info("Tegra cpufreq resume: restoring frequency to %d kHz\n",
 			freq);
+		mutex_unlock(&tegra_cpu_lock);
+
+		pm_qos_update_request(&cpufreq_max_req,
+			PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE);
+		pm_qos_update_request(&cpufreq_min_req,
+			PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
 	}
-	mutex_unlock(&tegra_cpu_lock);
 
 	return NOTIFY_OK;
 }
@@ -959,6 +982,11 @@ static int __init tegra_cpufreq_init(void)
 	mutex_lock(&tegra_cpu_lock);
 	tegra_cpu_edp_init(false);
 	mutex_unlock(&tegra_cpu_lock);
+
+	pm_qos_add_request(&cpufreq_max_req, PM_QOS_CPU_FREQ_MAX,
+		PM_QOS_CPU_FREQ_MAX_DEFAULT_VALUE);
+	pm_qos_add_request(&cpufreq_min_req, PM_QOS_CPU_FREQ_MIN,
+		PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
 
 	ret = register_pm_notifier(&tegra_cpu_pm_notifier);
 

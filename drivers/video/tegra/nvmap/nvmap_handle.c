@@ -163,7 +163,7 @@ static int nvmap_page_pool_free(struct nvmap_page_pool *pool, int nr_free)
 
 	if (idx) {
 		/* This op should never fail. */
-		err = set_pages_array_wb(pool->shrink_array, idx);
+		err = nvmap_set_pages_array_wb(pool->shrink_array, idx);
 		BUG_ON(err);
 	}
 
@@ -406,10 +406,10 @@ int nvmap_page_pool_init(struct nvmap_page_pool *pool, int flags)
 	int highmem_pages = 0;
 	typedef int (*set_pages_array) (struct page **pages, int addrinarray);
 	set_pages_array s_cpa[] = {
-		set_pages_array_uc,
-		set_pages_array_wc,
-		set_pages_array_iwb,
-		set_pages_array_wb
+		nvmap_set_pages_array_uc,
+		nvmap_set_pages_array_wc,
+		nvmap_set_pages_array_iwb,
+		nvmap_set_pages_array_wb
 	};
 #endif
 
@@ -561,7 +561,7 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 	    h->flags == NVMAP_HANDLE_UNCACHEABLE ||
 	    h->flags == NVMAP_HANDLE_INNER_CACHEABLE) {
 		/* This op should never fail. */
-		err = set_pages_array_wb(&h->pgalloc.pages[page_index],
+		err = nvmap_set_pages_array_wb(&h->pgalloc.pages[page_index],
 				nr_page - page_index);
 		BUG_ON(err);
 	}
@@ -682,13 +682,13 @@ static int handle_page_alloc(struct nvmap_client *client,
 
 	/* Update the pages mapping in kernel page table. */
 	if (h->flags == NVMAP_HANDLE_WRITE_COMBINE)
-		err = set_pages_array_wc(&pages[page_index],
+		err = nvmap_set_pages_array_wc(&pages[page_index],
 					nr_page - page_index);
 	else if (h->flags == NVMAP_HANDLE_UNCACHEABLE)
-		err = set_pages_array_uc(&pages[page_index],
+		err = nvmap_set_pages_array_uc(&pages[page_index],
 					nr_page - page_index);
 	else if (h->flags == NVMAP_HANDLE_INNER_CACHEABLE)
-		err = set_pages_array_iwb(&pages[page_index],
+		err = nvmap_set_pages_array_iwb(&pages[page_index],
 					nr_page - page_index);
 
 	if (err)
@@ -706,7 +706,7 @@ fail:
 	if (h->userflags & NVMAP_HANDLE_ZEROED_PAGES)
 		nvmap_free_pte(nvmap_dev, pte);
 	if (i) {
-		err = set_pages_array_wb(pages, i);
+		err = nvmap_set_pages_array_wb(pages, i);
 		BUG_ON(err);
 	}
 	while (i--)
@@ -736,6 +736,11 @@ static void alloc_handle(struct nvmap_client *client,
 		b = nvmap_carveout_alloc(client, h, type);
 		if (b) {
 			h->heap_pgalloc = false;
+			/* barrier to ensure all handle alloc data
+			 * is visible before alloc is seen by other
+			 * processors.
+			 */
+			mb();
 			h->alloc = true;
 			nvmap_carveout_commit_add(client,
 				nvmap_heap_to_arg(nvmap_block_to_heap(b)),
@@ -751,8 +756,8 @@ static void alloc_handle(struct nvmap_client *client,
 			atomic_sub(reserved, &client->iovm_commit);
 			return;
 		}
-
 		h->heap_pgalloc = true;
+		mb();
 		h->alloc = true;
 	}
 }
@@ -906,12 +911,6 @@ void nvmap_free_handle_id(struct nvmap_client *client, unsigned long id)
 		h->owner_ref = NULL;
 	}
 
-	if (ref->fd != -1) {
-		if (ref->group_leader == current->group_leader)
-			sys_close(ref->fd);
-		else
-			BUG();
-	}
 	dma_buf_put(ref->handle->dmabuf);
 	kfree(ref);
 
@@ -1004,24 +1003,6 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 		goto dma_buf_attach_fail;
 	}
 
-	ref->fd = -1;
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	if (client && !client->kernel_client) {
-		ref->fd = dma_buf_fd(h->dmabuf, O_CLOEXEC);
-		if (ref->fd <= 2) {
-			pr_err("fd=%d <=2 ", ref->fd);
-			BUG();
-		}
-		if (ref->fd < 0)
-			goto fd_fail;
-		/* dma_buf_fd() associates fd with dma_buf->file *.
-		 * fd close drops one ref count on dmabuf->file *.
-		 * to balance ref count, ref count dma_buf.
-		 */
-		get_dma_buf(h->dmabuf);
-		ref->group_leader = current->group_leader;
-	}
-#endif
 	nvmap_handle_add(nvmap_dev, h);
 
 	/*
@@ -1035,10 +1016,6 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	trace_nvmap_create_handle(client, client->name, h, size, ref);
 	return ref;
 
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-fd_fail:
-	pr_err("Out of file descriptors");
-#endif
 dma_buf_attach_fail:
 	dma_buf_put(h->dmabuf);
 make_dmabuf_fail:
@@ -1114,34 +1091,8 @@ struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
 	 */
 	get_dma_buf(h->dmabuf);
 
-	ref->fd = -1;
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	if (client && !client->kernel_client) {
-		ref->fd = dma_buf_fd(h->dmabuf, O_CLOEXEC);
-		if (ref->fd <= 2) {
-			pr_err("fd=%d <=2 ", ref->fd);
-			BUG();
-		}
-		if (ref->fd < 0)
-			goto fd_fail;
-		/* dma_buf_fd() associates fd with dma_buf->file *.
-		 * fd close drops one ref count on dmabuf->file *.
-		 * to balance ref count, ref count dma_buf.
-		 */
-		get_dma_buf(h->dmabuf);
-		ref->group_leader = current->group_leader;
-	}
-#endif
-
 	trace_nvmap_duplicate_handle_id(client, id, ref);
 	return ref;
-
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-fd_fail:
-	pr_err("Out of file descriptors");
-	nvmap_handle_put(h);
-	return ERR_PTR(-ENOMEM);
-#endif
 }
 
 struct nvmap_handle_ref *nvmap_create_handle_from_fd(

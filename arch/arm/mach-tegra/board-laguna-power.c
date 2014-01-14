@@ -27,11 +27,11 @@
 #include <linux/regulator/machine.h>
 #include <linux/regulator/driver.h>
 #include <linux/regulator/fixed.h>
-#include <linux/mfd/as3722-reg.h>
 #include <linux/mfd/as3722-plat.h>
 #include <linux/gpio.h>
 #include <linux/regulator/userspace-consumer.h>
 #include <linux/pid_thermal_gov.h>
+#include <linux/power/bq2471x-charger.h>
 
 #include <asm/mach-types.h>
 
@@ -184,7 +184,7 @@ AMS_PDATA_INIT(sd1, NULL, 700000, 1350000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(sd2, NULL, 1350000, 1350000, 1, 1, 1, 0);
 AMS_PDATA_INIT(sd4, NULL, 1050000, 1050000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(sd5, NULL, 1800000, 1800000, 1, 1, 1, 0);
-AMS_PDATA_INIT(sd6, NULL, 800000, 1200000, 0, 1, 1, 0);
+AMS_PDATA_INIT(sd6, NULL, 650000, 1200000, 0, 1, 1, 0);
 AMS_PDATA_INIT(ldo0, AS3722_SUPPLY(sd2), 1050000, 1250000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(ldo1, NULL, 1800000, 1800000, 0, 1, 1, 0);
 AMS_PDATA_INIT(ldo2, AS3722_SUPPLY(sd5), 1200000, 1200000, 0, 1, 1, 0);
@@ -197,83 +197,15 @@ AMS_PDATA_INIT(ldo9, NULL, 3300000, 3300000, 0, 1, 1, 0);
 AMS_PDATA_INIT(ldo10, NULL, 2700000, 2700000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo11, NULL, 1800000, 1800000, 0, 0, 1, 0);
 
-/* config settings are OTP plus initial state
- * GPIOsignal_out at 20h not configurable through OTP and is initialized to
- * zero. To enable output, the invert bit must be turned on.
- * GPIOxcontrol register format
- * bit(s)  bitname
- * ---------------------
- *  7     gpiox_invert   invert input or output
- * 6:3    gpiox_iosf     0: normal
- * 2:0    gpiox_mode     0: input, 1: output push/pull, 3: ADC input (tristate)
- *
- * Examples:
- * otp  meaning
- * ------------
- * 0x3  gpiox_invert=0(no invert), gpiox_iosf=0(normal), gpiox_mode=3(ADC input)
- * 0x81 gpiox_invert=1(invert), gpiox_iosf=0(normal), gpiox_mode=1(output)
- *
- * Note: output state should be defined for gpiox_mode = output.  Do not change
- * the state of the invert bit for critical devices such as GPIO 7 which enables
- * SDRAM. Driver applies invert mask to output state to configure GPIOsignal_out
- * register correctly.
- * E.g. Invert = 1, (requested) output state = 1 => GPIOsignal_out = 0
- */
-static struct as3722_gpio_config as3722_gpio_cfgs[] = {
-	{
-		/* otp = 0x3 IGPU_PRDGD*/
-		.gpio = AS3722_GPIO0,
-		.mode = AS3722_GPIO_MODE_OUTPUT_VDDL,
-	},
-	{
-		/* otp = 0x1  => REGEN_3 = LP0 gate (1.8V, 5 V)*/
-		.gpio = AS3722_GPIO1,
-		.invert     = AS3722_GPIO_CFG_INVERT, /* don't go into LP0 */
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-	{
-		/* otp = 0x3 PMU_REGEN1*/
-		.gpio = AS3722_GPIO2,
-		.invert     = AS3722_GPIO_CFG_INVERT, /* don't go into LP0 */
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-	{
-		/* otp = 0x03 AP THERMISTOR */
-		.gpio = AS3722_GPIO3,
-		.mode = AS3722_GPIO_MODE_ADC_IN,
-	},
-	{
-		/* otp = 0x81 => on by default
-		 * gates EN_AVDD_LCD
-		 */
-		.gpio       = AS3722_GPIO4,
-		.invert     = AS3722_GPIO_CFG_NO_INVERT,
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-	{
-		/* otp = 0x3  CLK 23KHZ WIFI */
-		.gpio = AS3722_GPIO5,
-		.mode = AS3722_GPIO_MODE_ADC_IN,
-	},
-	{
-		/* otp = 0x3  SKIN TEMP */
-		.gpio = AS3722_GPIO6,
-		.mode = AS3722_GPIO_MODE_ADC_IN,
-	},
-	{
-		/* otp = 0x81  1.6V LP0*/
-		.gpio       = AS3722_GPIO7,
-		.invert     = AS3722_GPIO_CFG_NO_INVERT,
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-};
-
-static struct as3722_rtc_platform_data as3722_rtc_pdata = {
-	.enable_clk32k  = 1,
+static struct as3722_pinctrl_platform_data as3722_pctrl_pdata[] = {
+	AS3722_PIN_CONTROL("gpio0", "gpio", NULL, NULL, NULL, "output-low"),
+	AS3722_PIN_CONTROL("gpio1", "gpio", NULL, NULL, NULL, "output-high"),
+	AS3722_PIN_CONTROL("gpio2", "gpio", NULL, NULL, NULL, "output-high"),
+	AS3722_PIN_CONTROL("gpio3", "gpio", NULL, NULL, "enabled", NULL),
+	AS3722_PIN_CONTROL("gpio4", "gpio", NULL, NULL, NULL, "output-high"),
+	AS3722_PIN_CONTROL("gpio5", "gpio", "pull-down", NULL, "enabled", NULL),
+	AS3722_PIN_CONTROL("gpio6", "gpio", NULL, NULL, "enabled", NULL),
+	AS3722_PIN_CONTROL("gpio7", "gpio", NULL, NULL, NULL, "output-high"),
 };
 
 static struct as3722_adc_extcon_platform_data as3722_adc_extcon_pdata = {
@@ -305,17 +237,14 @@ static struct as3722_platform_data as3722_pdata = {
 	.reg_pdata[AS3722_SD5] = &as3722_sd5_reg_pdata,
 	.reg_pdata[AS3722_SD6] = &as3722_sd6_reg_pdata,
 
-	.core_init_data = NULL,
 	.gpio_base = AS3722_GPIO_BASE,
 	.irq_base = AS3722_IRQ_BASE,
 	.use_internal_int_pullup = 0,
 	.use_internal_i2c_pullup = 0,
-	.num_gpio_cfgs = ARRAY_SIZE(as3722_gpio_cfgs),
-	.gpio_cfgs     = as3722_gpio_cfgs,
-	.rtc_pdata	= &as3722_rtc_pdata,
+	.pinctrl_pdata = as3722_pctrl_pdata,
+	.num_pinctrl = ARRAY_SIZE(as3722_pctrl_pdata),
+	.enable_clk32k_out = true,
 	.use_power_off = true,
-	.enable_ldo3_tracking = true,
-	.disabe_ldo3_tracking_suspend = true,
 	.extcon_pdata = &as3722_adc_extcon_pdata,
 };
 
@@ -334,6 +263,19 @@ static const struct i2c_board_info tca6408_expander[] = {
 	{
 		I2C_BOARD_INFO("tca6408", 0x20),
 		.platform_data = &tca6416_pdata,
+	},
+};
+
+struct bq2471x_platform_data laguna_bq2471x_pdata = {
+	.charge_broadcast_mode = 1,
+	.gpio_active_low = 1,
+	.gpio = TEGRA_GPIO_PK3,
+};
+
+static struct i2c_board_info __initdata bq2471x_boardinfo[] = {
+	{
+		I2C_BOARD_INFO("bq2471x", 0x09),
+		.platform_data  = &laguna_bq2471x_pdata,
 	},
 };
 
@@ -365,17 +307,17 @@ int __init laguna_as3722_regulator_init(void)
 	as3722_sd6_reg_idata.constraints.init_uV = 1000000;
 
 	/* Set overcurrent of rails. */
-	as3722_sd6_reg_pdata.oc_configure_enable = true;
-	as3722_sd6_reg_pdata.oc_trip_thres_perphase = 3500;
-	as3722_sd6_reg_pdata.oc_alarm_thres_perphase = 0;
+	as3722_sd6_reg_idata.constraints.min_uA = 3500000;
+	as3722_sd6_reg_idata.constraints.max_uA = 3500000;
 
-	as3722_sd0_reg_pdata.oc_configure_enable = true;
-	as3722_sd0_reg_pdata.oc_trip_thres_perphase = 3500;
-	as3722_sd0_reg_pdata.oc_alarm_thres_perphase = 0;
+	as3722_sd0_reg_idata.constraints.min_uA = 3500000;
+	as3722_sd0_reg_idata.constraints.max_uA = 3500000;
 
-	as3722_sd1_reg_pdata.oc_configure_enable = true;
-	as3722_sd1_reg_pdata.oc_trip_thres_perphase = 2500;
-	as3722_sd1_reg_pdata.oc_alarm_thres_perphase = 0;
+	as3722_sd1_reg_idata.constraints.min_uA = 2500000;
+	as3722_sd1_reg_idata.constraints.max_uA = 2500000;
+
+	as3722_ldo3_reg_pdata.enable_tracking = true;
+	as3722_ldo3_reg_pdata.disable_tracking_suspend = true;
 
 	printk(KERN_INFO "%s: i2c_register_board_info\n",
 			__func__);
@@ -402,6 +344,8 @@ int __init laguna_as3722_regulator_init(void)
 		i2c_register_board_info(0, tca6408_expander,
 				ARRAY_SIZE(tca6408_expander));
 	else if	(board_info.board_id == BOARD_PM359 ||
+			board_info.board_id == BOARD_PM370 ||
+			board_info.board_id == BOARD_PM374 ||
 			board_info.board_id == BOARD_PM358)
 		i2c_register_board_info(0, tca6416_expander,
 				ARRAY_SIZE(tca6416_expander));
@@ -763,8 +707,8 @@ FIXED_REG(17,    dcdc_1v2, dcdc_1v2,	NULL,	0,      0,
 		PMU_TCA6416_GPIO_BASE,     false,  true,   0,      1200,
 		0);
 
-FIXED_REG(18,	as3722_gpio2,	as3722_gpio2,		NULL,	0,	0,
-		AS3722_GPIO_BASE + AS3722_GPIO2,	false,	false,	0,
+FIXED_REG(18,	as3722_gpio2,	as3722_gpio2,		NULL,	0,	true,
+		AS3722_GPIO_BASE + AS3722_GPIO2,	false,	true,	true,
 		3300,	0);
 
 FIXED_REG(19,	lcd,		lcd,		NULL,	0,	0,
@@ -841,6 +785,17 @@ static struct platform_device *fixed_reg_devs_pm363[] = {
 	LAGUNA_COMMON_FIXED_REG,
 	LAGUNA_PM363_FIXED_REG
 };
+/* Gpio switch regulator platform data for laguna pm370 FFD*/
+static struct platform_device *fixed_reg_devs_pm370[] = {
+	LAGUNA_COMMON_FIXED_REG,
+	LAGUNA_PM358_FIXED_REG
+};
+
+/* Gpio switch regulator platform data for laguna pm374 FFD*/
+static struct platform_device *fixed_reg_devs_pm374[] = {
+	LAGUNA_COMMON_FIXED_REG,
+	LAGUNA_PM358_FIXED_REG
+};
 
 static int __init laguna_fixed_regulator_init(void)
 {
@@ -850,12 +805,18 @@ static int __init laguna_fixed_regulator_init(void)
 		return 0;
 
 	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_PM358)
-		return platform_add_devices(fixed_reg_devs_pm358,
-				ARRAY_SIZE(fixed_reg_devs_pm358));
+	if (board_info.board_id == BOARD_PM374)
+		return platform_add_devices(fixed_reg_devs_pm374,
+				ARRAY_SIZE(fixed_reg_devs_pm374));
 	else if (board_info.board_id == BOARD_PM359)
 		return platform_add_devices(fixed_reg_devs_pm359,
 				ARRAY_SIZE(fixed_reg_devs_pm359));
+	else if (board_info.board_id == BOARD_PM358)
+		return platform_add_devices(fixed_reg_devs_pm358,
+				ARRAY_SIZE(fixed_reg_devs_pm358));
+	else if (board_info.board_id == BOARD_PM370)
+		return platform_add_devices(fixed_reg_devs_pm370,
+				ARRAY_SIZE(fixed_reg_devs_pm370));
 	else if (board_info.board_id == BOARD_PM363)
 		return platform_add_devices(fixed_reg_devs_pm363,
 				ARRAY_SIZE(fixed_reg_devs_pm363));
@@ -873,6 +834,10 @@ int __init laguna_regulator_init(void)
 #endif
 	laguna_as3722_regulator_init();
 
+	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY)
+		i2c_register_board_info(1, bq2471x_boardinfo,
+			ARRAY_SIZE(bq2471x_boardinfo));
+
 	return 0;
 }
 
@@ -884,7 +849,6 @@ int __init laguna_suspend_init(void)
 
 int __init laguna_edp_init(void)
 {
-#ifdef CONFIG_TEGRA_EDP_LIMITS
 	unsigned int regulator_mA;
 
 	regulator_mA = get_maximum_cpu_current_supported();
@@ -894,7 +858,12 @@ int __init laguna_edp_init(void)
 	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
 
 	tegra_init_cpu_edp_limits(regulator_mA);
-#endif
+
+	/* gpu maximum current */
+	regulator_mA = 8000;
+	pr_info("%s: GPU regulator %d mA\n", __func__, regulator_mA);
+
+	tegra_init_gpu_edp_limits(regulator_mA);
 	return 0;
 }
 
@@ -985,8 +954,22 @@ static struct soctherm_platform_data laguna_soctherm_data = {
 			},
 			.tzp = &soctherm_tzp,
 		},
+		[THERM_MEM] = {
+			.zone_enable = true,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 104000, /* = GPU shut */
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+		},
 		[THERM_PLL] = {
 			.zone_enable = true,
+			.tzp = &soctherm_tzp,
 		},
 	},
 	.throttle = {
@@ -1011,10 +994,20 @@ int __init laguna_soctherm_init(void)
 	tegra_platform_edp_init(laguna_soctherm_data.therm[THERM_CPU].trips,
 			&laguna_soctherm_data.therm[THERM_CPU].num_trips,
 			7000); /* edp temperature margin */
-	tegra_add_tj_trips(laguna_soctherm_data.therm[THERM_CPU].trips,
+	tegra_platform_gpu_edp_init(
+			laguna_soctherm_data.therm[THERM_GPU].trips,
+			&laguna_soctherm_data.therm[THERM_GPU].num_trips,
+			7000);
+	tegra_add_cpu_vmax_trips(laguna_soctherm_data.therm[THERM_CPU].trips,
+			&laguna_soctherm_data.therm[THERM_CPU].num_trips);
+	tegra_add_core_edp_trips(laguna_soctherm_data.therm[THERM_CPU].trips,
 			&laguna_soctherm_data.therm[THERM_CPU].num_trips);
 	tegra_add_tgpu_trips(laguna_soctherm_data.therm[THERM_GPU].trips,
 			&laguna_soctherm_data.therm[THERM_GPU].num_trips);
+	tegra_add_vc_trips(laguna_soctherm_data.therm[THERM_CPU].trips,
+			&laguna_soctherm_data.therm[THERM_CPU].num_trips);
+	tegra_add_core_vmax_trips(laguna_soctherm_data.therm[THERM_PLL].trips,
+			&laguna_soctherm_data.therm[THERM_PLL].num_trips);
 
 	return tegra11_soctherm_init(&laguna_soctherm_data);
 }
