@@ -68,9 +68,6 @@
 /* HACK! This needs to come from DT */
 #include "../../../../arch/arm/mach-tegra/iomap.h"
 
-#include "../../../../arch/arm/mach-tegra/board.h"
-#include "../../../../arch/arm/mach-tegra/tegra-board-id.h"
-
 #define TEGRA_CRC_LATCHED_DELAY		34
 
 #define DC_COM_PIN_OUTPUT_POLARITY1_INIT_VAL	0x01000000
@@ -3028,13 +3025,8 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	pm_runtime_enable(&ndev->dev);
 
 	if (dc->pdata->flags & TEGRA_DC_FLAG_ENABLED) {
-		struct board_info board;
 		_tegra_dc_set_default_videomode(dc);
-		tegra_get_display_board_info(&board);
-		/* FIX ME : For current bring up panel, suspend/resume still fail.
-			Skip this function to avoid the following blank funtion. */
-		if (board.board_id != BOARD_E1814)
-			dc->enabled = _tegra_dc_enable(dc);
+		dc->enabled = _tegra_dc_enable(dc);
 	}
 
 	tegra_dc_create_debugfs(dc);
