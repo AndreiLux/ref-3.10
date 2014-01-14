@@ -134,7 +134,7 @@ static unsigned int num_active_external_wins(struct tegra_dc *dc)
 #define T12X_LA_BW_DISRUPTION_TIME_EMCCLKS_FP			1342000
 #define T12X_LA_STATIC_LA_SNAP_ARB_TO_ROW_SRT_EMCCLKS_FP	54000
 #define T12X_LA_CONS_MEM_EFFICIENCY_FP				500
-#define T12X_LA_ROW_SRT_SZ_BYTES	(64UL * (T12X_LA_MC_EMEM_NUM_SLOTS + 1))
+#define T12X_LA_ROW_SRT_SZ_BYTES	(64 * (T12X_LA_MC_EMEM_NUM_SLOTS + 1))
 #define T12X_LA_MC_EMEM_NUM_SLOTS				63
 #define T12X_LA_MAX_DRAIN_TIME_USEC				10
 
@@ -189,10 +189,10 @@ static void calc_disp_params(struct tegra_dc *dc,
 					T12X_LA_BW_DISRUPTION_TIME_EMCCLKS_FP /
 					emc_freq_mhz;
 	unsigned int effective_row_srt_sz_bytes_fp =
-		min((unsigned long)la_params.la_real_to_fp(min(
+		min(la_params.la_real_to_fp(min(
 					T12X_LA_ROW_SRT_SZ_BYTES,
 					16 * min(emc_freq_mhz + 50,
-						400UL))),
+						400))),
 			((T12X_LA_MAX_DRAIN_TIME_USEC *
 			emc_freq_mhz -
 			la_params.la_fp_to_real(
