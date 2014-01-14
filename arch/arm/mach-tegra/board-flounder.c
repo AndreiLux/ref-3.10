@@ -815,25 +815,25 @@ static void headset_init(void)
 	int ret ;
 
 	ret = gpio_request(HSMIC_2V85_EN, "HSMIC_2V85_EN");
-    if (ret < 0){
+	if (ret < 0){
 		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
                         __func__, "HSMIC_2V85_EN");
 	}
 
 	ret = gpio_request(AUD_REMO_TX_OE, "AUD_REMO_TX_OE");
-    if (ret < 0){
+	if (ret < 0){
 		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
                         __func__, "AUD_REMO_TX_OE");
 	}
 
 	ret = gpio_request(AUD_REMO_TX, "AUD_REMO_TX");
-    if (ret < 0){
+	if (ret < 0){
 		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
                         __func__, "AUD_REMO_TX");
 	}
 
 	ret = gpio_request(AUD_REMO_RX, "AUD_REMO_RX");
-    if (ret < 0){
+	if (ret < 0){
 		pr_err("[HS] %s: gpio_request failed for gpio %s\n",
                         __func__, "AUD_REMO_RX");
 	}
@@ -901,25 +901,13 @@ static void uart_tx_gpo(int mode)
 	pr_info("[HS_BOARD] (%s) Set uart_tx_gpo mode = %d\n", __func__, mode);
 	switch (mode) {
 		case 0:
-			gpio_free(AUD_REMO_TX);
-			ret = gpio_request(AUD_REMO_TX, "AUD_REMO_RX");
-			if (ret < 0){
-				pr_err("[HS] %s: gpio_request failed for gpio %s\n",
-                        __func__, "AUD_REMO_RX");
-			}
 			gpio_direction_output(AUD_REMO_TX, 0);
 			break;
 		case 1:
-			gpio_free(AUD_REMO_TX);
-			ret = gpio_request(AUD_REMO_TX, "AUD_REMO_RX");
-			if (ret < 0){
-				pr_err("[HS] %s: gpio_request failed for gpio %s\n",
-                        __func__, "AUD_REMO_RX");
-			}
 			gpio_direction_output(AUD_REMO_TX, 1);
 			break;
 		case 2:
-			gpio_free(AUD_REMO_TX);
+			gpio_direction_input(AUD_REMO_TX);
 			break;
 	}
 }
