@@ -19,6 +19,7 @@
 
 #define pr_fmt(fmt)	"nvmap: %s() " fmt, __func__
 
+#include <linux/fdtable.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
@@ -31,6 +32,8 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/stringify.h>
+
+#include <trace/events/nvmap.h>
 
 #include "nvmap_priv.h"
 #include "nvmap_ioctl.h"
@@ -141,6 +144,8 @@ static int nvmap_dmabuf_attach(struct dma_buf *dmabuf, struct device *dev,
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
+	trace_nvmap_dmabuf_attach(dmabuf, dev);
+
 	dev_dbg(dev, "%s() 0x%p\n", __func__, info->handle);
 	return 0;
 }
@@ -149,6 +154,8 @@ static void nvmap_dmabuf_detach(struct dma_buf *dmabuf,
 				struct dma_buf_attachment *attach)
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
+
+	trace_nvmap_dmabuf_detach(dmabuf, attach->dev);
 
 	dev_dbg(attach->dev, "%s() 0x%p\n", __func__, info->handle);
 }
@@ -341,6 +348,8 @@ static struct sg_table *nvmap_dmabuf_map_dma_buf(
 	struct sg_table *sgt;
 	DEFINE_DMA_ATTRS(attrs);
 
+	trace_nvmap_dmabuf_map_dma_buf(attach->dmabuf, attach->dev);
+
 	mutex_lock(&info->maps_lock);
 	atomic_inc(&info->handle->pin);
 	sgt = __nvmap_dmabuf_get_sgt_locked(attach, dir);
@@ -398,6 +407,8 @@ static void nvmap_dmabuf_unmap_dma_buf(struct dma_buf_attachment *attach,
 {
 	struct nvmap_handle_info *info = attach->dmabuf->priv;
 
+	trace_nvmap_dmabuf_unmap_dma_buf(attach->dmabuf, attach->dev);
+
 	mutex_lock(&info->maps_lock);
 	if (!atomic_add_unless(&info->handle->pin, -1, 0)) {
 		mutex_unlock(&info->maps_lock);
@@ -413,6 +424,11 @@ static void nvmap_dmabuf_release(struct dma_buf *dmabuf)
 	struct nvmap_handle_info *info = dmabuf->priv;
 	struct nvmap_handle_sgt *nvmap_sgt;
 
+	trace_nvmap_dmabuf_release(info->handle->owner ?
+				   info->handle->owner->name : "unknown",
+				   info->handle,
+				   dmabuf);
+
 	mutex_lock(&info->maps_lock);
 	while (!list_empty(&info->maps)) {
 		nvmap_sgt = list_first_entry(&info->maps,
@@ -422,8 +438,6 @@ static void nvmap_dmabuf_release(struct dma_buf *dmabuf)
 		__nvmap_dmabuf_free_sgt_locked(nvmap_sgt);
 	}
 	mutex_unlock(&info->maps_lock);
-
-	pr_debug("%s() 0x%p\n", __func__, info->handle);
 
 	dma_buf_detach(info->handle->dmabuf, info->handle->attachment);
 	info->handle->dmabuf = NULL;
@@ -437,6 +451,7 @@ static int nvmap_dmabuf_begin_cpu_access(struct dma_buf *dmabuf,
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
+	trace_nvmap_dmabuf_begin_cpu_access(dmabuf, start, len);
 	return __nvmap_cache_maint(NULL, info->handle, start, start + len,
 				   NVMAP_CACHE_OP_INV, 1);
 }
@@ -447,6 +462,7 @@ static void nvmap_dmabuf_end_cpu_access(struct dma_buf *dmabuf,
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
+	trace_nvmap_dmabuf_end_cpu_access(dmabuf, start, len);
 	__nvmap_cache_maint(NULL, info->handle, start, start + len,
 				   NVMAP_CACHE_OP_WB_INV, 1);
 
@@ -456,7 +472,7 @@ static void *nvmap_dmabuf_kmap(struct dma_buf *dmabuf, unsigned long page_num)
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
-	pr_debug("%s() 0x%p\n", __func__, info->handle);
+	trace_nvmap_dmabuf_kmap(dmabuf);
 	return __nvmap_kmap(info->handle, page_num);
 }
 
@@ -465,7 +481,7 @@ static void nvmap_dmabuf_kunmap(struct dma_buf *dmabuf,
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
-	pr_debug("%s() 0x%p\n", __func__, info->handle);
+	trace_nvmap_dmabuf_kunmap(dmabuf);
 	__nvmap_kunmap(info->handle, page_num, addr);
 }
 
@@ -480,6 +496,8 @@ static int nvmap_dmabuf_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
+	trace_nvmap_dmabuf_mmap(dmabuf);
+
 	return __nvmap_map(info->handle, vma);
 }
 
@@ -487,7 +505,7 @@ static void *nvmap_dmabuf_vmap(struct dma_buf *dmabuf)
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
-	pr_debug("%s() 0x%p\n", __func__, info->handle);
+	trace_nvmap_dmabuf_vmap(dmabuf);
 	return __nvmap_mmap(info->handle);
 }
 
@@ -495,7 +513,7 @@ static void nvmap_dmabuf_vunmap(struct dma_buf *dmabuf, void *vaddr)
 {
 	struct nvmap_handle_info *info = dmabuf->priv;
 
-	pr_debug("%s() 0x%p\n", __func__, info->handle);
+	trace_nvmap_dmabuf_vunmap(dmabuf);
 	__nvmap_munmap(info->handle, vaddr);
 }
 
@@ -541,13 +559,34 @@ struct dma_buf *__nvmap_make_dmabuf(struct nvmap_client *client,
 		goto err_export;
 	}
 	nvmap_handle_get(handle);
-	pr_debug("%s() 0x%p => 0x%p\n", __func__, info->handle, dmabuf);
+
+	trace_nvmap_make_dmabuf(client->name, handle, dmabuf);
 	return dmabuf;
 
 err_export:
 	kfree(info);
 err_nomem:
 	return ERR_PTR(err);
+}
+
+int __nvmap_dmabuf_fd(struct dma_buf *dmabuf, int flags)
+{
+	int fd;
+
+	if (!dmabuf || !dmabuf->file)
+		return -EINVAL;
+	/* Allocate fd from 1024 onwards to overcome
+	 * __FD_SETSIZE limitation issue for select(),
+	 * pselect() syscalls.
+	 */
+	fd = __alloc_fd(current->files, 1024,
+			sysctl_nr_open, flags);
+	if (fd < 0)
+		return fd;
+
+	fd_install(fd, dmabuf->file);
+
+	return fd;
 }
 
 int nvmap_get_dmabuf_fd(struct nvmap_client *client, ulong id)
@@ -558,7 +597,7 @@ int nvmap_get_dmabuf_fd(struct nvmap_client *client, ulong id)
 	dmabuf = __nvmap_dmabuf_export(client, id);
 	if (IS_ERR(dmabuf))
 		return PTR_ERR(dmabuf);
-	fd = dma_buf_fd(dmabuf, O_CLOEXEC);
+	fd = __nvmap_dmabuf_fd(dmabuf, O_CLOEXEC);
 	if (fd < 0)
 		goto err_out;
 	return fd;
@@ -741,6 +780,7 @@ static int __nvmap_dmabuf_stashes_show(struct seq_file *s, void *data)
 	struct nvmap_handle *handle;
 	struct nvmap_client *client;
 	const char *name;
+	phys_addr_t addr;
 
 	mutex_lock(&nvmap_stashed_maps_lock);
 	list_for_each_entry(nvmap_sgt, &nvmap_stashed_maps, stash_entry) {
@@ -761,8 +801,9 @@ static int __nvmap_dmabuf_stashes_show(struct seq_file *s, void *data)
 
 		seq_printf(s, "  device = %s\n",
 			   dev_name(handle->attachment->dev));
-		seq_printf(s, "  IO addr = 0x%08x + 0x%x\n",
-			   sg_dma_address(nvmap_sgt->sgt->sgl), handle->size);
+		addr = sg_dma_address(nvmap_sgt->sgt->sgl);
+		seq_printf(s, "  IO addr = 0x%pa + 0x%x\n",
+			&addr, handle->size);
 
 		/* Cleanup. */
 		nvmap_client_put(client);

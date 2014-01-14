@@ -33,9 +33,10 @@
 #include <linux/debugfs.h>
 #include <linux/spinlock.h>
 #include <linux/tegra-powergate.h>
-#include <linux/fb.h>
+
 #include <linux/suspend.h>
 #include <linux/sched.h>
+#include <linux/input-cfboost.h>
 
 #include <mach/pm_domains.h>
 
@@ -448,9 +449,13 @@ int gk20a_sim_esc_read(struct gk20a *g, char *path, u32 index, u32 count, u32 *d
 static irqreturn_t gk20a_intr_isr(int irq, void *dev_id)
 {
 	struct gk20a *g = dev_id;
-	u32 mc_intr_0 = gk20a_readl(g, mc_intr_0_r());
+	u32 mc_intr_0;
+
+	if (!g->power_on)
+		return IRQ_NONE;
 
 	/* not from gpu when sharing irq with others */
+	mc_intr_0 = gk20a_readl(g, mc_intr_0_r());
 	if (unlikely(!mc_intr_0))
 		return IRQ_NONE;
 
@@ -680,11 +685,6 @@ static void gk20a_save_push_hwctx(struct nvhost_hwctx *ctx, struct nvhost_cdma *
 	nvhost_dbg_fn("");
 }
 
-static void gk20a_save_service_hwctx(struct nvhost_hwctx *ctx)
-{
-	nvhost_dbg_fn("");
-}
-
 struct nvhost_hwctx_handler *
     nvhost_gk20a_alloc_hwctx_handler(u32 syncpt, u32 waitbase,
 				     struct nvhost_channel *ch)
@@ -701,7 +701,6 @@ struct nvhost_hwctx_handler *
 	h->get   = gk20a_get_hwctx;
 	h->put   = gk20a_put_hwctx;
 	h->save_push = gk20a_save_push_hwctx;
-	h->save_service = gk20a_save_service_hwctx;
 
 	return h;
 }
@@ -895,43 +894,14 @@ static struct thermal_cooling_device_ops tegra_gpu_cooling_ops = {
 	.set_cur_state = tegra_gpu_set_cur_state,
 };
 
-static void gk20a_set_railgating(struct gk20a *g, int new_status)
-{
-	struct nvhost_device_data *pdata = platform_get_drvdata(g->dev);
-	enum pm_qos_flags_status stat;
-
-	stat = dev_pm_qos_flags(dev_from_gk20a(g), PM_QOS_FLAG_NO_POWER_OFF);
-	if (stat <= PM_QOS_FLAGS_NONE && new_status == FB_BLANK_UNBLANK)
-		dev_pm_qos_add_request(dev_from_gk20a(g), &g->no_poweroff_req,
-				DEV_PM_QOS_FLAGS, PM_QOS_FLAG_NO_POWER_OFF);
-	else if (stat > PM_QOS_FLAGS_NONE && new_status != FB_BLANK_UNBLANK)
-		dev_pm_qos_remove_request(&g->no_poweroff_req);
-}
-
 static int gk20a_suspend_notifier(struct notifier_block *notifier,
-				  unsigned long pm_event, void *data)
+				  unsigned long pm_event, void *unused)
 {
 	struct gk20a *g = container_of(notifier, struct gk20a,
 				       system_suspend_notifier);
 
 	if (pm_event == PM_USERSPACE_FROZEN)
 		return g->power_on ? NOTIFY_BAD : NOTIFY_OK;
-
-	return NOTIFY_DONE;
-}
-
-static int gk20a_fb_notifier(struct notifier_block *notifier,
-				  unsigned long pm_event, void *data)
-{
-	struct gk20a *g = container_of(notifier, struct gk20a,
-				       fb_notifier);
-	struct fb_event *fb_event = data;
-
-	switch (pm_event) {
-	case FB_EVENT_BLANK:
-		gk20a_set_railgating(g, *((int *)fb_event->data));
-		break;
-	}
 
 	return NOTIFY_DONE;
 }
@@ -951,6 +921,11 @@ static int gk20a_probe(struct platform_device *dev)
 			pdata = (struct nvhost_device_data *)match->data;
 	} else
 		pdata = (struct nvhost_device_data *)dev->dev.platform_data;
+
+	if (!pdata) {
+		dev_err(&dev->dev, "no platform data\n");
+		return -ENODATA;
+	}
 
 	nvhost_dbg_fn("");
 	pdata->pdev = dev;
@@ -985,8 +960,6 @@ static int gk20a_probe(struct platform_device *dev)
 		gk20a->system_suspend_notifier.notifier_call =
 			gk20a_suspend_notifier;
 		register_pm_notifier(&gk20a->system_suspend_notifier);
-		gk20a->fb_notifier.notifier_call = gk20a_fb_notifier;
-		fb_register_client(&gk20a->fb_notifier);
 	}
 
 	err = nvhost_client_device_init(dev);
@@ -1016,10 +989,12 @@ static int gk20a_probe(struct platform_device *dev)
 	gk20a->timeouts_enabled = true;
 
 	/* Set up initial clock gating settings */
-	gk20a->slcg_enabled = true;
-	gk20a->blcg_enabled = true;
-	gk20a->elcg_enabled = true;
-	gk20a->elpg_enabled = true;
+	if (tegra_platform_is_silicon()) {
+		gk20a->slcg_enabled = true;
+		gk20a->blcg_enabled = true;
+		gk20a->elcg_enabled = true;
+		gk20a->elpg_enabled = true;
+	}
 
 	gk20a_create_sysfs(dev);
 
@@ -1046,6 +1021,10 @@ static int gk20a_probe(struct platform_device *dev)
 	gk20a_pmu_debugfs_init(dev);
 #endif
 
+#ifdef CONFIG_INPUT_CFBOOST
+	cfb_add_device(&dev->dev);
+#endif
+
 	return 0;
 }
 
@@ -1054,7 +1033,11 @@ static int __exit gk20a_remove(struct platform_device *dev)
 	struct gk20a *g = get_gk20a(dev);
 	nvhost_dbg_fn("");
 
-	if (g && g->remove_support)
+#ifdef CONFIG_INPUT_CFBOOST
+	cfb_remove_device(&dev->dev);
+#endif
+
+	if (g->remove_support)
 		g->remove_support(dev);
 
 	set_gk20a(dev, 0);

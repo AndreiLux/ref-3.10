@@ -283,24 +283,27 @@ static void tegra_dc_blend_sequential(struct tegra_dc *dc,
 int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n)
 {
 	int ret;
+	struct tegra_dc *dc = windows[0]->dc;
+
 	if (n < 1 || n > DC_N_WINDOWS)
 		return -EINVAL;
 
-	if (!windows[0]->dc->enabled)
+	if (!dc->enabled)
 		return -EFAULT;
 
-	trace_sync_windows(windows[0]->dc);
+	trace_sync_windows(dc);
 	if (tegra_platform_is_linsim())
 		/* Don't want to timeout on simulator */
-		ret = wait_event_interruptible(windows[0]->dc->wq,
+		ret = wait_event_interruptible(dc->wq,
 			tegra_dc_windows_are_clean(windows, n));
 	else
-		ret = wait_event_interruptible_timeout(windows[0]->dc->wq,
+		ret = wait_event_interruptible_timeout(dc->wq,
 			tegra_dc_windows_are_clean(windows, n),
 			HZ);
 
-	/* tegra_dc_hold_dc_out() called in update_windows */
-	tegra_dc_release_dc_out(windows[0]->dc);
+	if (dc->out_ops && dc->out_ops->release)
+		dc->out_ops->release(dc);
+
 	return ret;
 }
 EXPORT_SYMBOL(tegra_dc_sync_windows);
@@ -451,17 +454,22 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 		 * delayed work. */
 		mutex_lock(&dc->one_shot_lock);
 		cancel_delayed_work_sync(&dc->one_shot_work);
+		tegra_dc_get(dc);
 	}
 	mutex_lock(&dc->lock);
 
 	if (!dc->enabled) {
 		mutex_unlock(&dc->lock);
-		if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) {
+			tegra_dc_put(dc);
 			mutex_unlock(&dc->one_shot_lock);
+		}
 		return -EFAULT;
 	}
 
-	tegra_dc_hold_dc_out(dc);
+	tegra_dc_io_start(dc);
+	if (dc->out_ops && dc->out_ops->hold)
+		dc->out_ops->hold(dc);
 
 	if (no_vsync)
 		tegra_dc_writel(dc, WRITE_MUX_ACTIVE | READ_MUX_ACTIVE,
@@ -470,7 +478,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 		tegra_dc_writel(dc, WRITE_MUX_ASSEMBLY | READ_MUX_ASSEMBLY,
 			DC_CMD_STATE_ACCESS);
 
-	for (i = 0; i < n; i++) {
+	for_each_set_bit(i, &dc->valid_windows, n) {
 		struct tegra_dc_win *win = windows[i];
 		struct tegra_dc_win *dc_win = tegra_dc_get_window(dc, win->idx);
 		bool scan_column = 0;
@@ -819,7 +827,7 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 		if (update_blend_seq)
 			tegra_dc_blend_sequential(dc, &dc->blend);
 
-		for (i = 0; i < DC_N_WINDOWS; i++) {
+		for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 			if (!no_vsync)
 				dc->windows[i].dirty = 1;
 			update_mask |= WIN_A_ACT_REQ << i;
@@ -867,7 +875,11 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n)
 
 	tegra_dc_writel(dc, update_mask, DC_CMD_STATE_CONTROL);
 
-	/* tegra_dc_release_dc_out() is called in tegra_dc_sync_windows() */
+	/*
+	 * tegra_dc_put() called at frame end, for one shot.
+	 * out_ops->release called in tegra_dc_sync_windows.
+	 */
+	tegra_dc_io_end(dc);
 	mutex_unlock(&dc->lock);
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
 		mutex_unlock(&dc->one_shot_lock);
@@ -892,7 +904,7 @@ void tegra_dc_trigger_windows(struct tegra_dc *dc)
 #endif
 
 	val = tegra_dc_readl(dc, DC_CMD_STATE_CONTROL);
-	for (i = 0; i < DC_N_WINDOWS; i++) {
+	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 		if (tegra_platform_is_linsim()) {
 			/* FIXME: this is not needed when
 			   the simulator clears WIN_x_UPDATE

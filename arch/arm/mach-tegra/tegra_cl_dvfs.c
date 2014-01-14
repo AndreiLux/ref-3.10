@@ -40,6 +40,7 @@
 #include "clock.h"
 #include "dvfs.h"
 #include "iomap.h"
+#include "tegra_simon.h"
 
 #define OUT_MASK			0x3f
 
@@ -176,6 +177,7 @@ struct dfll_rate_req {
 
 struct tegra_cl_dvfs {
 	void					*cl_base;
+	void					*cl_i2c_base;
 	struct tegra_cl_dvfs_platform_data	*p_data;
 
 	struct dvfs			*safe_dvfs;
@@ -225,6 +227,8 @@ struct tegra_cl_dvfs {
 	ktime_t				last_calibration;
 	unsigned long			calibration_range_min;
 	unsigned long			calibration_range_max;
+
+	struct notifier_block		simon_grade_nb;
 };
 
 /* Conversion macros (different scales for frequency request, and monitored
@@ -246,12 +250,42 @@ static const char *mode_name[] = {
 	[TEGRA_CL_DVFS_CLOSED_LOOP] = "closed_loop",
 };
 
+/*
+ * In some h/w configurations CL-DVFS module registers have two different
+ * address bases: one for I2C control/status registers, and one for all other
+ * registers. Registers accessors are separated below accordingly just by
+ * comparing register offset with start of I2C section - CL_DVFS_I2C_CFG. One
+ * special case is CL_DVFS_OUTPUT_CFG register: when I2C controls are separated
+ * I2C_ENABLE bit of this register is accessed from I2C base, and all other bits
+ * are accessed from the main base.
+ */
+static inline u32 cl_dvfs_i2c_readl(struct tegra_cl_dvfs *cld, u32 offs)
+{
+	return __raw_readl(cld->cl_i2c_base + offs);
+}
+static inline void cl_dvfs_i2c_writel(struct tegra_cl_dvfs *cld,
+				      u32 val, u32 offs)
+{
+	__raw_writel(val, cld->cl_i2c_base + offs);
+}
+static inline void cl_dvfs_i2c_wmb(struct tegra_cl_dvfs *cld)
+{
+	wmb();
+	cl_dvfs_i2c_readl(cld, CL_DVFS_I2C_CFG);
+}
+
 static inline u32 cl_dvfs_readl(struct tegra_cl_dvfs *cld, u32 offs)
 {
+	if (offs >= CL_DVFS_I2C_CFG)
+		return cl_dvfs_i2c_readl(cld, offs);
 	return __raw_readl((void *)cld->cl_base + offs);
 }
 static inline void cl_dvfs_writel(struct tegra_cl_dvfs *cld, u32 val, u32 offs)
 {
+	if (offs >= CL_DVFS_I2C_CFG) {
+		cl_dvfs_i2c_writel(cld, val, offs);
+		return;
+	}
 	__raw_writel(val, (void *)cld->cl_base + offs);
 }
 static inline void cl_dvfs_wmb(struct tegra_cl_dvfs *cld)
@@ -284,6 +318,41 @@ static inline void disable_forced_output(struct tegra_cl_dvfs *cld)
 	cl_dvfs_wmb(cld);
 }
 
+/*
+ * Reading monitor data concurrently with the update may render intermediate
+ * (neither "old" nor "new") values. Synchronization with the "rising edge"
+ * of DATA_NEW makes it very unlikely, but still possible. Use simple filter:
+ * compare 2 consecutive readings for data consistency within 2 LSb range.
+ * Return error otherwise. On the platform that does not allow to use DATA_NEW
+ * at all check for consistency of consecutive reads is the only protection.
+ */
+static int filter_monitor_data(struct tegra_cl_dvfs *cld, u32 *data)
+{
+	u32 val = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA) &
+		CL_DVFS_MONITOR_DATA_MASK;
+	*data &= CL_DVFS_MONITOR_DATA_MASK;
+	if (abs(*data - val) <= 2)
+		return 0;
+
+	*data = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA) &
+		CL_DVFS_MONITOR_DATA_MASK;
+	if (abs(*data - val) <= 2)
+		return 0;
+
+	return -EINVAL;
+}
+
+static inline void wait_data_new(struct tegra_cl_dvfs *cld, u32 *data)
+{
+	cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA); /* clear data new */
+	if (!(cld->p_data->flags & TEGRA_CL_DVFS_DATA_NEW_NO_USE)) {
+		do {
+			*data = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA);
+		} while (!(*data & CL_DVFS_MONITOR_DATA_NEW) &&
+			 (cld->mode > TEGRA_CL_DVFS_DISABLED));
+	}
+}
+
 static inline u32 get_last_output(struct tegra_cl_dvfs *cld)
 {
 	switch_monitor(cld, CL_DVFS_MONITOR_CTRL_OUT);
@@ -291,13 +360,16 @@ static inline u32 get_last_output(struct tegra_cl_dvfs *cld)
 		CL_DVFS_MONITOR_DATA_MASK;
 }
 
-/* out minitored before forced value applied - return the latter if enabled */
+/* out monitored before forced value applied - return the latter if enabled */
 static inline u32 cl_dvfs_get_output(struct tegra_cl_dvfs *cld)
 {
 	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
 	if (val & CL_DVFS_OUTPUT_FORCE_ENABLE)
 		return val & OUT_MASK;
-	return get_last_output(cld);
+
+	switch_monitor(cld, CL_DVFS_MONITOR_CTRL_OUT);
+	wait_data_new(cld, &val);
+	return filter_monitor_data(cld, &val) ? : val;
 }
 
 static inline bool is_i2c(struct tegra_cl_dvfs *cld)
@@ -316,13 +388,21 @@ static inline u8 get_output_top(struct tegra_cl_dvfs *cld)
 		cld->out_map[cld->num_voltages - 1]->reg_value;
 }
 
+static inline int get_mv(struct tegra_cl_dvfs *cld, u32 out_val)
+{
+	return is_i2c(cld) ? cld->out_map[out_val]->reg_uV / 1000 :
+		cld->p_data->vdd_map[out_val].reg_uV / 1000;
+}
+
 static int output_enable(struct tegra_cl_dvfs *cld)
 {
-	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_CFG);
-
 	if (is_i2c(cld)) {
+		u32 val = cl_dvfs_i2c_readl(cld, CL_DVFS_OUTPUT_CFG);
 		val |= CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
+		cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+		cl_dvfs_i2c_wmb(cld);
 	} else {
+		u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_CFG);
 		struct tegra_cl_dvfs_platform_data *d = cld->p_data;
 		if (d->u.pmu_pwm.pwm_bus == TEGRA_CL_DVFS_PWM_1WIRE_BUFFER) {
 			int gpio = d->u.pmu_pwm.out_gpio;
@@ -338,10 +418,10 @@ static int output_enable(struct tegra_cl_dvfs *cld)
 		}
 
 		val |= CL_DVFS_OUTPUT_CFG_PWM_ENABLE;
+		cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+		cl_dvfs_wmb(cld);
 	}
 
-	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
-	cl_dvfs_wmb(cld);
 	return  0;
 }
 
@@ -374,7 +454,7 @@ static noinline int output_flush_disable(struct tegra_cl_dvfs *cld)
 {
 	int i;
 	u32 sts;
-	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_CFG);
+	u32 val = cl_dvfs_i2c_readl(cld, CL_DVFS_OUTPUT_CFG);
 
 	/* Flush transactions in flight, and then disable */
 	for (i = 0; i < CL_DVFS_OUTPUT_PENDING_TIMEOUT / 2; i++) {
@@ -384,7 +464,7 @@ static noinline int output_flush_disable(struct tegra_cl_dvfs *cld)
 			sts = cl_dvfs_readl(cld, CL_DVFS_I2C_STS);
 			if (!(sts & CL_DVFS_I2C_STS_I2C_REQ_PENDING)) {
 				val &= ~CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
-				cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+				cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
 				wmb();
 				sts = cl_dvfs_readl(cld, CL_DVFS_I2C_STS);
 				if (!(sts & CL_DVFS_I2C_STS_I2C_REQ_PENDING))
@@ -392,7 +472,7 @@ static noinline int output_flush_disable(struct tegra_cl_dvfs *cld)
 
 				/* Re-enable, continue wait */
 				val |= CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
-				cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+				cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
 				wmb();
 			}
 		}
@@ -400,8 +480,8 @@ static noinline int output_flush_disable(struct tegra_cl_dvfs *cld)
 
 	/* I2C request is still pending - disable, anyway, but report error */
 	val &= ~CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
-	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
-	cl_dvfs_wmb(cld);
+	cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+	cl_dvfs_i2c_wmb(cld);
 	return -ETIMEDOUT;
 }
 
@@ -409,12 +489,12 @@ static noinline int output_disable_flush(struct tegra_cl_dvfs *cld)
 {
 	int i;
 	u32 sts;
-	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_CFG);
+	u32 val = cl_dvfs_i2c_readl(cld, CL_DVFS_OUTPUT_CFG);
 
 	/* Disable output interface right away */
 	val &= ~CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
-	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
-	cl_dvfs_wmb(cld);
+	cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+	cl_dvfs_i2c_wmb(cld);
 
 	/* Flush possible transaction in flight */
 	for (i = 0; i < CL_DVFS_OUTPUT_PENDING_TIMEOUT / 2; i++) {
@@ -525,20 +605,20 @@ static inline void _load_lut(struct tegra_cl_dvfs *cld)
 	for (; i < cld->num_voltages; i++)
 		cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_LUT + i * 4);
 
-	cl_dvfs_wmb(cld);
+	cl_dvfs_i2c_wmb(cld);
 }
 
 static void cl_dvfs_load_lut(struct tegra_cl_dvfs *cld)
 {
-	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_CFG);
+	u32 val = cl_dvfs_i2c_readl(cld, CL_DVFS_OUTPUT_CFG);
 	bool disable_out_for_load =
 		!(cld->p_data->flags & TEGRA_CL_DVFS_FLAGS_I2C_WAIT_QUIET) &&
 		(val & CL_DVFS_OUTPUT_CFG_I2C_ENABLE);
 
 	if (disable_out_for_load) {
 		val &= ~CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
-		cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
-		cl_dvfs_wmb(cld);
+		cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+		cl_dvfs_i2c_wmb(cld);
 		udelay(2); /* 2us (big margin) window for disable propafation */
 	}
 
@@ -546,8 +626,8 @@ static void cl_dvfs_load_lut(struct tegra_cl_dvfs *cld)
 
 	if (disable_out_for_load) {
 		val |= CL_DVFS_OUTPUT_CFG_I2C_ENABLE;
-		cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_CFG);
-		cl_dvfs_wmb(cld);
+		cl_dvfs_i2c_writel(cld, val, CL_DVFS_OUTPUT_CFG);
+		cl_dvfs_i2c_wmb(cld);
 	}
 }
 
@@ -693,9 +773,9 @@ static inline void calibration_timer_update(struct tegra_cl_dvfs *cld)
 
 static void cl_dvfs_calibrate(struct tegra_cl_dvfs *cld)
 {
-	u32 val;
+	u32 val, data;
 	ktime_t now;
-	unsigned long data;
+	unsigned long rate;
 	unsigned long step = RATE_STEP(cld);
 	unsigned long rate_min = cld->dvco_rate_min;
 	u8 out_min = get_output_min(cld);
@@ -717,13 +797,21 @@ static void cl_dvfs_calibrate(struct tegra_cl_dvfs *cld)
 
 	/* Synchronize with sample period, and get rate measurements */
 	switch_monitor(cld, CL_DVFS_MONITOR_CTRL_FREQ);
-	data = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA);
-	do {
-		data = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA);
-	} while (!(data & CL_DVFS_MONITOR_DATA_NEW));
-	do {
-		data = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA);
-	} while (!(data & CL_DVFS_MONITOR_DATA_NEW));
+
+	if (cld->p_data->flags & TEGRA_CL_DVFS_DATA_NEW_NO_USE) {
+		/* Cannot use DATA_NEW synch - get data after one full sample
+		   period (with 10us margin) */
+		int delay = 1000000 / cld->p_data->cfg_param->sample_rate + 10;
+		udelay(delay);
+	}
+	wait_data_new(cld, &data);
+	wait_data_new(cld, &data);
+
+	/* Defer calibration if data reading is not consistent */
+	if (filter_monitor_data(cld, &data)) {
+		calibration_timer_update(cld);
+		return;
+	}
 
 	if (is_i2c(cld)) {
 		/* Defer calibration if I2C transaction is pending */
@@ -742,15 +830,20 @@ static void cl_dvfs_calibrate(struct tegra_cl_dvfs *cld)
 		}
 		/* Get last output (there is no such thing as pending PWM) */
 		val = get_last_output(cld);
+
+		/* Defer calibration if data reading is not consistent */
+		if (filter_monitor_data(cld, &val)) {
+			calibration_timer_update(cld);
+			return;
+		}
 	}
 
 	/* Adjust minimum rate */
-	data &= CL_DVFS_MONITOR_DATA_MASK;
-	data = GET_MONITORED_RATE(data, cld->ref_rate);
-	if ((val > out_min) || (data < (rate_min - step)))
+	rate = GET_MONITORED_RATE(data, cld->ref_rate);
+	if ((val > out_min) || (rate < (rate_min - step)))
 		rate_min -= step;
-	else if (data > (cld->dvco_rate_min + step))
-		rate_min += (data - rate_min) / step * step;
+	else if (rate > (cld->dvco_rate_min + step))
+		rate_min += step;
 	else {
 		cld->dvco_rate_floors[cld->therm_floor_idx] = rate_min;
 		return;
@@ -898,17 +991,17 @@ static void cl_dvfs_set_dvco_rate_min(struct tegra_cl_dvfs *cld)
 
 static void cl_dvfs_set_force_out_min(struct tegra_cl_dvfs *cld)
 {
-	u8 force_out_min = 0;
+	u8 force_out_min = get_output_bottom(cld);
 	int force_mv_min = cld->p_data->pmu_undershoot_gb;
 
 	if (!force_mv_min) {
-		cld->force_out_min = 0;
+		cld->force_out_min = force_out_min;
 		return;
 	}
 
 	if (cld->therm_floor_idx < cld->therm_floors_num)
 		force_out_min = cld->thermal_out_floors[cld->therm_floor_idx];
-	force_mv_min += cld->out_map[force_out_min]->reg_uV / 1000;
+	force_mv_min += get_mv(cld, force_out_min);
 	force_out_min = find_mv_out_cap(cld, force_mv_min);
 	if (force_out_min == cld->safe_output)
 		force_out_min++;
@@ -982,6 +1075,10 @@ static void cl_dvfs_init_maps(struct tegra_cl_dvfs *cld)
 			break;
 	}
 	cld->num_voltages = j;
+
+	/* hit Vmax before last freq was mapped: map the rest to max output */
+	for (j = i++; i < n; i++)
+		cld->clk_dvfs_map[i] = cld->clk_dvfs_map[j];
 }
 
 static void cl_dvfs_init_tuning_thresholds(struct tegra_cl_dvfs *cld)
@@ -1036,9 +1133,28 @@ static void cl_dvfs_init_hot_output_cap(struct tegra_cl_dvfs *cld)
 	       cld->minimax_output);
 }
 
-static void cl_dvfs_init_cold_output_floor(struct tegra_cl_dvfs *cld)
+static void cl_dvfs_convert_cold_output_floor(struct tegra_cl_dvfs *cld,
+					      int offset)
 {
 	int i;
+
+	/*
+	 * Convert monotonically decreasing thermal floors at low temperature
+	 * into output LUT indexes; make sure there is a room for regulation
+	 * above maximum thermal floor. The latter is also exempt from offset
+	 * application.
+	 */
+	cld->therm_floors_num = cld->safe_dvfs->dvfs_rail->therm_mv_floors_num;
+	for (i = 0; i < cld->therm_floors_num; i++) {
+		int mv = cld->safe_dvfs->dvfs_rail->therm_mv_floors[i] +
+			(i ? offset : 0);
+		cld->thermal_out_floors[i] = find_mv_out_cap(cld, mv);
+	}
+	BUG_ON(cld->thermal_out_floors[0] + 1 >= get_output_top(cld));
+}
+
+static void cl_dvfs_init_cold_output_floor(struct tegra_cl_dvfs *cld)
+{
 	if (!cld->safe_dvfs->dvfs_rail->therm_mv_floors ||
 	    !cld->safe_dvfs->dvfs_rail->therm_mv_floors_num)
 		return;
@@ -1046,17 +1162,10 @@ static void cl_dvfs_init_cold_output_floor(struct tegra_cl_dvfs *cld)
 	if (!cld->safe_dvfs->dvfs_rail->vmin_cdev)
 		WARN(1, "%s: missing dfll floor cooling device\n",
 		     cld->safe_dvfs->dvfs_rail->reg_id);
-	/*
-	 * Convert monotonically decreasing thermal floors at low temperature
-	 * into output LUT indexes; make sure there is a room for regulation
-	 * above maximum thermal floor.
-	 */
-	cld->therm_floors_num = cld->safe_dvfs->dvfs_rail->therm_mv_floors_num;
-	for (i = 0; i < cld->therm_floors_num; i++) {
-		cld->thermal_out_floors[i] = find_mv_out_cap(
-			cld, cld->safe_dvfs->dvfs_rail->therm_mv_floors[i]);
-	}
-	BUG_ON(cld->thermal_out_floors[0] + 1 >= get_output_top(cld));
+
+	/* Most conservative offset 0 always safe */
+	cl_dvfs_convert_cold_output_floor(cld, 0);
+
 	if (cld->minimax_output <= cld->thermal_out_floors[0])
 		cld->minimax_output = cld->thermal_out_floors[0] + 1;
 }
@@ -1156,7 +1265,7 @@ static void cl_dvfs_init_i2c_if(struct tegra_cl_dvfs *cld)
 	}
 	val |= (div - 1) << CL_DVFS_I2C_CLK_DIVISOR_HS_SHIFT;
 	cl_dvfs_writel(cld, val, CL_DVFS_I2C_CLK_DIVISOR);
-	cl_dvfs_wmb(cld);
+	cl_dvfs_i2c_wmb(cld);
 }
 
 static void cl_dvfs_init_out_if(struct tegra_cl_dvfs *cld)
@@ -1199,6 +1308,7 @@ static void cl_dvfs_init_out_if(struct tegra_cl_dvfs *cld)
 		cld->lut_max = get_output_cap(cld, NULL);
 	}
 
+	cl_dvfs_i2c_writel(cld, 0, CL_DVFS_OUTPUT_CFG);
 	val = (cld->safe_output << CL_DVFS_OUTPUT_CFG_SAFE_SHIFT) |
 		(out_max << CL_DVFS_OUTPUT_CFG_MAX_SHIFT) |
 		(out_min << CL_DVFS_OUTPUT_CFG_MIN_SHIFT);
@@ -1308,19 +1418,20 @@ static int cl_dvfs_init(struct tegra_cl_dvfs *cld)
 		}
 		cld->i2c_rate = clk_get_rate(cld->i2c_clk);
 	} else if (cld->p_data->pmu_if == TEGRA_CL_DVFS_PMU_PWM) {
-		if (cld->p_data->u.pmu_pwm.pwm_bus >
-		    TEGRA_CL_DVFS_PWM_1WIRE_DIRECT) {
+		int pwm_bus = cld->p_data->u.pmu_pwm.pwm_bus;
+		if (pwm_bus > TEGRA_CL_DVFS_PWM_1WIRE_DIRECT) {
 			/* FIXME: PWM 2-wire support */
 			pr_err("%s: not supported PWM 2-wire bus\n", __func__);
 			return -ENOSYS;
-		}
-		gpio = cld->p_data->u.pmu_pwm.out_gpio;
-		flags = cld->p_data->u.pmu_pwm.out_enable_high ?
-			GPIOF_OUT_INIT_LOW : GPIOF_OUT_INIT_HIGH;
-		if (gpio && gpio_request_one(gpio, flags, "cl_dvfs_pwm")) {
-			pr_err("%s: Failed to request pwm gpio %d\n",
-			       __func__, gpio);
-			return -EPERM;
+		} else if (pwm_bus == TEGRA_CL_DVFS_PWM_1WIRE_BUFFER) {
+			gpio = cld->p_data->u.pmu_pwm.out_gpio;
+			flags = cld->p_data->u.pmu_pwm.out_enable_high ?
+				GPIOF_OUT_INIT_LOW : GPIOF_OUT_INIT_HIGH;
+			if (gpio_request_one(gpio, flags, "cl_dvfs_pwm")) {
+				pr_err("%s: Failed to request pwm gpio %d\n",
+				       __func__, gpio);
+				return -EPERM;
+			}
 		}
 	} else {
 		pr_err("%s: unknown PMU interface\n", __func__);
@@ -1598,7 +1709,7 @@ static int tegra_cl_dvfs_force_output(void *data, unsigned int out_sel)
 	return 0;
 }
 
-static unsigned int tegra_cl_dvfs_get_output(void *data)
+static int tegra_cl_dvfs_get_output(void *data)
 {
 	u32 val;
 	unsigned long flags;
@@ -1622,11 +1733,76 @@ static void tegra_cl_dvfs_bypass_dev_register(struct tegra_cl_dvfs *cld,
 	platform_device_register(byp_dev);
 }
 
+/*
+ * The Silicon Monitor (SiMon) notification provides grade information on
+ * the DFLL controlled rail. The resepctive minimum voltage offset is applied
+ * to thermal floors profile. SiMon offsets are negative, the higher the grade
+ * the lower the floor.
+ */
+static int cl_dvfs_simon_grade_notify_cb(struct notifier_block *nb,
+					 unsigned long grade, void *v)
+{
+	unsigned long flags;
+	int i, simon_offset;
+	int curr_domain = (int)v;
+	struct tegra_cl_dvfs *cld = container_of(
+		nb, struct tegra_cl_dvfs, simon_grade_nb);
+	struct dvfs_rail *rail = cld->safe_dvfs->dvfs_rail;
+
+	if (!cld->therm_floors_num || (curr_domain != rail->simon_domain))
+		return NOTIFY_DONE;
+
+	if (grade >= rail->simon_vmin_offs_num)
+		grade = rail->simon_vmin_offs_num - 1;
+	simon_offset = rail->simon_vmin_offsets[grade];
+	BUG_ON(simon_offset > 0);
+
+	clk_lock_save(cld->dfll_clk, &flags);
+
+	/* Convert new floors and invalidate minimum rates */
+	cl_dvfs_convert_cold_output_floor(cld, simon_offset);
+	for (i = 0; i < cld->therm_floors_num; i++)
+		cld->dvco_rate_floors[i] = 0;
+
+	cl_dvfs_set_dvco_rate_min(cld);
+	cl_dvfs_set_force_out_min(cld);
+	if (cld->mode == TEGRA_CL_DVFS_CLOSED_LOOP) {
+		tegra_cl_dvfs_request_rate(cld,
+			tegra_cl_dvfs_request_get(cld));
+	}
+
+	clk_unlock_restore(cld->dfll_clk, &flags);
+
+	pr_info("tegra_dvfs: set %s simon grade %lu\n", rail->reg_id, grade);
+
+	return NOTIFY_OK;
+};
+
+static void tegra_cl_dvfs_register_simon_notifier(struct tegra_cl_dvfs *cld)
+{
+	struct dvfs_rail *rail = cld->safe_dvfs->dvfs_rail;
+
+	/* Stay at default if no simon offsets */
+	if (!rail->simon_vmin_offsets)
+		return;
+
+	cld->simon_grade_nb.notifier_call = cl_dvfs_simon_grade_notify_cb;
+
+	if (tegra_register_simon_notifier(&cld->simon_grade_nb)) {
+		pr_err("tegra_dvfs: failed to register %s simon notifier\n",
+		       rail->reg_id);
+		return;
+	}
+
+	pr_info("tegra_dvfs: registered %s simon notifier\n", rail->reg_id);
+	return;
+}
+
 static int __init tegra_cl_dvfs_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct tegra_cl_dvfs_platform_data *p_data;
-	struct resource *res;
+	struct resource *res, *res_i2c = NULL;
 	struct tegra_cl_dvfs *cld;
 	struct clk *ref_clk, *soc_clk, *i2c_clk, *safe_dvfs_clk, *dfll_clk;
 
@@ -1635,6 +1811,14 @@ static int __init tegra_cl_dvfs_probe(struct platform_device *pdev)
 	if (!res) {
 		dev_err(&pdev->dev, "missing register base\n");
 		return -ENOMEM;
+	}
+
+	if (pdev->num_resources > 1) {
+		res_i2c = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+		if (!res_i2c) {
+			dev_err(&pdev->dev, "missing i2c register base\n");
+			return -ENOMEM;
+		}
 	}
 
 	p_data = pdev->dev.platform_data;
@@ -1673,6 +1857,7 @@ static int __init tegra_cl_dvfs_probe(struct platform_device *pdev)
 	}
 
 	cld->cl_base = IO_ADDRESS(res->start);
+	cld->cl_i2c_base = res_i2c ? IO_ADDRESS(res_i2c->start) : cld->cl_base;
 	cld->p_data = p_data;
 	cld->ref_clk = ref_clk;
 	cld->soc_clk = soc_clk;
@@ -1703,6 +1888,9 @@ static int __init tegra_cl_dvfs_probe(struct platform_device *pdev)
 		tegra_cl_dvfs_bypass_dev_register(
 			cld, p_data->u.pmu_pwm.dfll_bypass_dev);
 	}
+
+	/* Register SiMon notifier */
+	tegra_cl_dvfs_register_simon_notifier(cld);
 
 	/*
 	 * Schedule cooling device registration as a separate work to address
@@ -1932,12 +2120,6 @@ unsigned long tegra_cl_dvfs_request_get(struct tegra_cl_dvfs *cld)
 
 #ifdef CONFIG_DEBUG_FS
 
-static inline int get_mv(struct tegra_cl_dvfs *cld, u32 out_val)
-{
-	return is_i2c(cld) ? cld->out_map[out_val]->reg_uV / 1000 :
-		cld->p_data->vdd_map[out_val].reg_uV / 1000;
-}
-
 static int lock_get(void *data, u64 *val)
 {
 	struct tegra_cl_dvfs *cld = ((struct clk *)data)->u.dfll.cl_dvfs;
@@ -1962,9 +2144,9 @@ static int monitor_get(void *data, u64 *val)
 	clk_lock_save(c, &flags);
 
 	switch_monitor(cld, CL_DVFS_MONITOR_CTRL_FREQ);
+	wait_data_new(cld, &v);
+	filter_monitor_data(cld, &v); /* ignore error, use "some value" */
 
-	v = cl_dvfs_readl(cld, CL_DVFS_MONITOR_DATA) &
-		CL_DVFS_MONITOR_DATA_MASK;
 	v = GET_MONITORED_RATE(v, cld->ref_rate);
 	s = cl_dvfs_readl(cld, CL_DVFS_FREQ_REQ);
 	s = (s & CL_DVFS_FREQ_REQ_SCALE_MASK) >> CL_DVFS_FREQ_REQ_SCALE_SHIFT;
@@ -1987,6 +2169,8 @@ static int output_get(void *data, u64 *val)
 	clk_lock_save(c, &flags);
 
 	v = cl_dvfs_get_output(cld);
+	if (IS_ERR_VALUE(v))
+		v = get_last_output(cld); /* ignore error, use "some value" */
 	*val = get_mv(cld, v);
 
 	clk_unlock_restore(c, &flags);
@@ -2139,23 +2323,38 @@ DEFINE_SIMPLE_ATTRIBUTE(undershoot_fops, undershoot_get, undershoot_set,
 
 static int cl_profiles_show(struct seq_file *s, void *data)
 {
+	u8 v;
 	int i, *trips;
+	unsigned long r;
 	struct clk *c = s->private;
 	struct tegra_cl_dvfs *cld = c->u.dfll.cl_dvfs;
 
-	seq_printf(s, "FLOORS:\n");
-	for (i = 0; i < cld->therm_floors_num; i++) {
-		u8 v = cld->thermal_out_floors[i];
-		trips = cld->safe_dvfs->dvfs_rail->vmin_cdev->trip_temperatures;
-		seq_printf(s, "%3dC %5dmV\n", trips[i], get_mv(cld, v));
+	seq_printf(s, "THERM CAPS:%s\n", cld->therm_caps_num ? "" : " NONE");
+	for (i = 0; i < cld->therm_caps_num; i++) {
+		v = cld->thermal_out_caps[i];
+		trips = cld->safe_dvfs->dvfs_rail->vmax_cdev->trip_temperatures;
+		seq_printf(s, "%3dC.. %5dmV\n", trips[i], get_mv(cld, v));
 	}
 
-	seq_printf(s, "CAPS:\n");
-	for (i = 0; i < cld->therm_caps_num; i++) {
-		u8 v = cld->thermal_out_caps[i];
-		trips = cld->safe_dvfs->dvfs_rail->vmax_cdev->trip_temperatures;
-		seq_printf(s, "%3dC %5dmV\n", trips[i], get_mv(cld, v));
+	seq_puts(s, "TUNE HIGH:\n");
+	seq_printf(s, "start  %5dmV\n", get_mv(cld, cld->tune_high_out_start));
+	seq_printf(s, "min    %5dmV\n", get_mv(cld, cld->tune_high_out_min));
+
+	seq_printf(s, "THERM FLOORS:%s\n", cld->therm_floors_num ? "" : " NONE");
+	for (i = 0; i < cld->therm_floors_num; i++) {
+		v = cld->thermal_out_floors[i];
+		r = cld->dvco_rate_floors[i];
+		trips = cld->safe_dvfs->dvfs_rail->vmin_cdev->trip_temperatures;
+		seq_printf(s, " ..%3dC%5dmV%9lukHz%s\n",
+			   trips[i], get_mv(cld, v),
+			   (r ? : find_dvco_rate_min(cld, v)) / 1000,
+			   r ? " (calibrated)"  : "");
 	}
+	r = cld->dvco_rate_floors[i];
+	seq_printf(s, "  vmin:%5dmV%9lukHz%s\n", cld->out_map[0]->reg_uV / 1000,
+		   (r ? : cld->safe_dvfs->dfll_data.out_rate_min) / 1000,
+		   r ? " (calibrated)"  : "");
+
 	return 0;
 }
 

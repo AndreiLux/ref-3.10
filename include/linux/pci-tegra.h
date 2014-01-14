@@ -22,17 +22,15 @@
 
 #include <linux/pci.h>
 
-#ifndef CONFIG_ARCH_TEGRA_3x_SOC
-	#define MAX_PCIE_SUPPORTED_PORTS 2
-#else
-	#define MAX_PCIE_SUPPORTED_PORTS 3
-#endif
+#define MAX_PCIE_SUPPORTED_PORTS 2
 
 struct tegra_pci_platform_data {
 	int port_status[MAX_PCIE_SUPPORTED_PORTS];
 	bool use_dock_detect;
+	/* used to identify if current platofrm supports CLKREQ# */
+	bool has_clkreq;
 	int gpio;
+	int gpio_wake;
 	int gpio_x1_slot;
-	int board_id;
 };
 #endif

@@ -58,8 +58,11 @@ static inline unsigned long tegra_dc_readl(struct tegra_dc *dc,
 	unsigned long ret;
 
 	BUG_ON(!nvhost_module_powered_ext(dc->ndev));
-	if (!tegra_is_clk_enabled(dc->clk))
-		WARN(1, "DC is clock-gated.\n");
+
+	if (WARN(!tegra_is_clk_enabled(dc->clk), "DC is clock-gated.\n") ||
+		WARN(!tegra_powergate_is_powered(dc->powergate_id),
+			"DC is power-gated.\n"))
+		return 0;
 
 	ret = readl(dc->base + reg * 4);
 	trace_display_readl(dc, ret, dc->base + reg * 4);
@@ -70,8 +73,11 @@ static inline void tegra_dc_writel(struct tegra_dc *dc, unsigned long val,
 				   unsigned long reg)
 {
 	BUG_ON(!nvhost_module_powered_ext(dc->ndev));
-	if (!tegra_is_clk_enabled(dc->clk))
-		WARN(1, "DC is clock-gated.\n");
+
+	if (WARN(!tegra_is_clk_enabled(dc->clk), "DC is clock-gated.\n") ||
+		WARN(!tegra_powergate_is_powered(dc->powergate_id),
+			"DC is power-gated.\n"))
+		return;
 
 	trace_display_writel(dc, val, dc->base + reg * 4);
 	writel(val, dc->base + reg * 4);
@@ -410,5 +416,8 @@ void tegra_dc_set_color_control(struct tegra_dc *dc);
 void tegra_dc_cmu_enable(struct tegra_dc *dc, bool cmu_enable);
 int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu);
 #endif
+
+struct tegra_dc_platform_data
+	*of_dc_parse_platform_data(struct platform_device *ndev);
 
 #endif

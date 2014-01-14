@@ -1225,6 +1225,8 @@ int gpiochip_add(struct gpio_chip *chip)
 	if (status)
 		goto fail;
 
+	of_gpiochip_init(chip);
+
 	status = gpiochip_export(chip);
 	if (status)
 		goto fail;

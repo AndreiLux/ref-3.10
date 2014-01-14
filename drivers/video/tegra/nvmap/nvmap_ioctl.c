@@ -51,17 +51,23 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 			 unsigned long sys_stride, unsigned long elem_size,
 			 unsigned long count);
 
-#ifdef CONFIG_COMPAT
-ulong unmarshal_user_handle(__u32 handle)
+static ulong __attribute__((unused)) fd_to_handle_id(int handle)
 {
-	__attribute__((unused)) ulong id;
-	ulong h = (handle | PAGE_OFFSET);
+	ulong id;
 
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
 	id = nvmap_get_id_from_dmabuf_fd(NULL, (int)handle);
 	if (!IS_ERR_VALUE(id))
 		return id;
 	return 0;
+}
+
+#ifdef CONFIG_COMPAT
+ulong unmarshal_user_handle(__u32 handle)
+{
+	ulong h = (handle | PAGE_OFFSET);
+
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return fd_to_handle_id((int)handle);
 #endif
 	return h;
 }
@@ -92,7 +98,7 @@ __u32 marshal_id(ulong id)
 ulong unmarshal_id(__u32 id)
 {
 #ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	return (ulong)(id | PAGE_OFFSET);
+	return (ulong)id;
 #else
 	return unmarshal_user_id(id);
 #endif
@@ -102,18 +108,13 @@ ulong unmarshal_id(__u32 id)
 #define NVMAP_XOR_HASH_MASK 0xFFFFFFFC
 ulong unmarshal_user_handle(struct nvmap_handle *handle)
 {
-	__attribute__((unused)) ulong id;
-
 	if ((ulong)handle == 0)
 		return (ulong)handle;
 
-#ifdef CONFIG_NVMAP_HANDLE_MARSHAL
 #ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	id = nvmap_get_id_from_dmabuf_fd(NULL, (int)handle);
-	if (!IS_ERR_VALUE(id))
-		return id;
-	return 0;
+	return fd_to_handle_id((int)handle);
 #endif
+#ifdef CONFIG_NVMAP_HANDLE_MARSHAL
 	return (ulong)handle ^ NVMAP_XOR_HASH_MASK;
 #else
 	return (ulong)handle;
@@ -139,29 +140,14 @@ ulong unmarshal_user_id(ulong id)
 
 ulong marshal_id(ulong id)
 {
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
 	return id;
-#else
-	return (ulong)marshal_kernel_handle(id);
-#endif
 }
 
 ulong unmarshal_id(ulong id)
 {
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
 	return id;
-#else
-	return unmarshal_user_id(id);
-#endif
 }
 #endif
-
-struct nvmap_handle *marshal_kernel_ref(struct nvmap_handle_ref *ref)
-{
-	if (ref->fd == -1)
-		return marshal_kernel_handle(__nvmap_ref_to_id(ref));
-	return (struct nvmap_handle *)ref->fd;
-}
 
 ulong __nvmap_ref_to_id(struct nvmap_handle_ref *ref)
 {
@@ -399,6 +385,24 @@ int nvmap_ioctl_alloc_kind(struct file *filp, void __user *arg)
 				     op.flags);
 }
 
+int nvmap_create_fd(struct nvmap_handle *h)
+{
+	int fd;
+
+	fd = __nvmap_dmabuf_fd(h->dmabuf, O_CLOEXEC);
+	BUG_ON(fd == 0);
+	if (fd < 0) {
+		pr_err("Out of file descriptors");
+		return fd;
+	}
+	/* __nvmap_dmabuf_fd() associates fd with dma_buf->file *.
+	 * fd close drops one ref count on dmabuf->file *.
+	 * to balance ref count, ref count dma_buf.
+	 */
+	get_dma_buf(h->dmabuf);
+	return fd;
+}
+
 int nvmap_ioctl_create(struct file *filp, unsigned int cmd, void __user *arg)
 {
 	struct nvmap_create_handle op;
@@ -427,12 +431,23 @@ int nvmap_ioctl_create(struct file *filp, unsigned int cmd, void __user *arg)
 	if (IS_ERR(ref))
 		return PTR_ERR(ref);
 
-	op.handle = marshal_kernel_ref(ref);
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	op.handle = (typeof(op.handle))nvmap_create_fd(ref->handle);
+	if (IS_ERR(op.handle))
+		err = (int)op.handle;
+#else
+	op.handle = marshal_kernel_handle(__nvmap_ref_to_id(ref));
+#endif
+
 	if (copy_to_user(arg, &op, sizeof(op))) {
 		err = -EFAULT;
 		nvmap_free_handle_id(client, __nvmap_ref_to_id(ref));
 	}
 
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	if (err && (int)op.handle > 0)
+		sys_close((int)op.handle);
+#endif
 	return err;
 }
 
@@ -443,7 +458,6 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg)
 	struct nvmap_vma_priv *vpriv;
 	struct vm_area_struct *vma;
 	struct nvmap_handle *h = NULL;
-	unsigned int cache_flags;
 	int err = 0;
 	ulong handle;
 
@@ -513,33 +527,6 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg)
 
 	vpriv->handle = h;
 	vpriv->offs = op.offset;
-
-	cache_flags = op.flags & NVMAP_HANDLE_CACHE_FLAG;
-	if ((cache_flags == NVMAP_HANDLE_INNER_CACHEABLE ||
-	     cache_flags == NVMAP_HANDLE_CACHEABLE) &&
-	    (h->flags == NVMAP_HANDLE_UNCACHEABLE ||
-	     h->flags == NVMAP_HANDLE_WRITE_COMBINE)) {
-		if (h->size & ~PAGE_MASK) {
-			pr_err("\n%s:attempt to convert a buffer from uc/wc to"
-				" wb, whose size is not a multiple of page size."
-				" request ignored.\n", __func__);
-		} else {
-			unsigned int nr_page = h->size >> PAGE_SHIFT;
-			wmb();
-			/* override allocation time cache coherency attributes. */
-			h->flags &= ~NVMAP_HANDLE_CACHE_FLAG;
-			h->flags |= cache_flags;
-
-			/* Update page attributes, if the memory is allocated
-			 *  from system heap pages.
-			 */
-			if (cache_flags == NVMAP_HANDLE_INNER_CACHEABLE &&
-				h->heap_pgalloc)
-				set_pages_array_iwb(h->pgalloc.pages, nr_page);
-			else if (h->heap_pgalloc)
-				set_pages_array_wb(h->pgalloc.pages, nr_page);
-		}
-	}
 	vma->vm_page_prot = nvmap_pgprot(h, vma->vm_page_prot);
 
 out:
@@ -564,6 +551,9 @@ int nvmap_ioctl_get_param(struct file *filp, void __user* arg)
 		return -EFAULT;
 
 	handle = unmarshal_user_handle(op.handle);
+	if (!handle)
+		return -EINVAL;
+
 	h = nvmap_get_handle_id(client, handle);
 	if (!h)
 		return -EINVAL;
@@ -684,6 +674,9 @@ int nvmap_ioctl_free(struct file *filp, unsigned long arg)
 		return 0;
 
 	nvmap_free_handle_user_id(client, arg);
+#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
+	return sys_close(arg);
+#endif
 	return 0;
 }
 

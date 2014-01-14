@@ -56,8 +56,7 @@
 #include "tegra_udc.h"
 
 
-#define	DRIVER_DESC	"Nvidia Tegra High-Speed USB SOC \
-					Device Controller driver"
+#define	DRIVER_DESC	"Nvidia Tegra High-Speed USB Device Controller driver"
 
 #define	DRIVER_AUTHOR	"Venkat Moganty/Rakesh Bodla"
 #define	DRIVER_VERSION	"Apr 30, 2012"
@@ -142,6 +141,9 @@ static char *const tegra_udc_extcon_cable[] = {
 	[CONNECT_TYPE_CDP] = "Charge-downstream",
 	[CONNECT_TYPE_NV_CHARGER] = "Fast-charger",
 	[CONNECT_TYPE_NON_STANDARD_CHARGER] = "Slow-charger",
+	[CONNECT_TYPE_APPLE_500MA]  = "Apple 500mA-charger",
+	[CONNECT_TYPE_APPLE_1000MA] = "Apple 1A-charger",
+	[CONNECT_TYPE_APPLE_2000MA] = "Apple 2A-charger",
 	NULL,
 };
 
@@ -247,11 +249,8 @@ static void done(struct tegra_ep *ep, struct tegra_req *req, int status)
 
 	/* complete() is from gadget layer,
 	 * eg fsg->bulk_in_complete() */
-	if (req->req.complete) {
-		spin_unlock(&ep->udc->lock);
+	if (req->req.complete)
 		req->req.complete(&ep->ep, &req->req);
-		spin_lock(&ep->udc->lock);
-	}
 
 	ep->stopped = stopped;
 }
@@ -996,10 +995,10 @@ tegra_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 
 	dir = ep_is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 
-	spin_unlock_irqrestore(&udc->lock, flags);
-
-	if (!udc->driver || udc->gadget.speed == USB_SPEED_UNKNOWN)
+	if (!udc->driver || udc->gadget.speed == USB_SPEED_UNKNOWN) {
+		spin_unlock_irqrestore(&udc->lock, flags);
 		return -ESHUTDOWN;
+	}
 
 	req->ep = ep;
 
@@ -1013,8 +1012,10 @@ tegra_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 		req->req.dma = dma_map_single_attrs(dev, req->req.buf, ext, dir,
 						    &attrs);
-		if (dma_mapping_error(dev, req->req.dma))
+		if (dma_mapping_error(dev, req->req.dma)) {
+			spin_unlock_irqrestore(&udc->lock, flags);
 			return -EAGAIN;
+		}
 
 		dma_sync_single_for_device(dev, req->req.dma, orig, dir);
 
@@ -1031,11 +1032,11 @@ tegra_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 
 
 	/* build dtds and push them to device queue */
-	status = tegra_req_to_dtd(req, gfp_flags);
-	if (status)
+	status = tegra_req_to_dtd(req, GFP_ATOMIC);
+	if (status) {
+		spin_unlock_irqrestore(&udc->lock, flags);
 		goto err_unmap;
-
-	spin_lock_irqsave(&udc->lock, flags);
+	}
 
 	/* re-check if the ep has not been disabled */
 	if (unlikely(!ep->desc)) {
@@ -1406,7 +1407,7 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 		break;
 	case CONNECT_TYPE_DCP:
 		dev_info(dev, "connected to DCP(wall charger)\n");
-		max_ua = USB_CHARGING_DCP_CURRENT_LIMIT_UA;
+		max_ua = udc->dcp_current_limit;
 		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
 		break;
 	case CONNECT_TYPE_CDP:
@@ -1432,6 +1433,21 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 		max_ua = USB_CHARGING_NON_STANDARD_CHARGER_CURRENT_LIMIT_UA;
 		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
 		break;
+	case CONNECT_TYPE_APPLE_500MA:
+		dev_info(dev, "connected to Apple/Other 0.5A custom charger\n");
+		max_ua = USB_CHARGING_APPLE_CHARGER_500mA_CURRENT_LIMIT_UA;
+		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
+		break;
+	case CONNECT_TYPE_APPLE_1000MA:
+		dev_info(dev, "connected to Apple/Other 1A custom charger\n");
+		max_ua = USB_CHARGING_APPLE_CHARGER_1000mA_CURRENT_LIMIT_UA;
+		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
+		break;
+	case CONNECT_TYPE_APPLE_2000MA:
+		dev_info(dev, "connected to Apple/Other/NV 2A custom charger\n");
+		max_ua = USB_CHARGING_APPLE_CHARGER_2000mA_CURRENT_LIMIT_UA;
+		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
+		break;
 	default:
 		dev_info(dev, "connected to unknown USB port\n");
 		max_ua = 0;
@@ -1442,8 +1458,14 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 	 * we set charging regulator's maximum charging current 1st, then
 	 * notify the charging type.
 	 */
-	if (NULL != udc->vbus_reg)
-		ret = regulator_set_current_limit(udc->vbus_reg, 0, max_ua);
+	if (NULL != udc->vbus_reg && !udc->vbus_in_lp0) {
+		if (udc->connect_type != udc->connect_type_lp0 ||
+					udc->connect_type == CONNECT_TYPE_NONE)
+			ret = regulator_set_current_limit(udc->vbus_reg,
+								 0, max_ua);
+	}
+	if (!udc->vbus_in_lp0)
+		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
 #ifdef CONFIG_EXTCON
 	tegra_udc_set_extcon_state(udc);
 #endif
@@ -1498,6 +1520,14 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 {
 	if (tegra_usb_phy_charger_detected(udc->phy))
 		tegra_detect_charging_type_is_cdp_or_dcp(udc);
+#if !defined(CONFIG_ARCH_TEGRA_11x_SOC) && !defined(CONFIG_ARCH_TEGRA_14x_SOC)
+	else if (tegra_usb_phy_apple_500ma_charger_detected(udc->phy))
+		tegra_udc_set_charger_type(udc, CONNECT_TYPE_APPLE_500MA);
+	else if (tegra_usb_phy_apple_1000ma_charger_detected(udc->phy))
+		tegra_udc_set_charger_type(udc, CONNECT_TYPE_APPLE_1000MA);
+	else if (tegra_usb_phy_apple_2000ma_charger_detected(udc->phy))
+		tegra_udc_set_charger_type(udc, CONNECT_TYPE_APPLE_2000MA);
+#endif
 	else if (tegra_usb_phy_nv_charger_detected(udc->phy))
 		tegra_udc_set_charger_type(udc, CONNECT_TYPE_NV_CHARGER);
 	else
@@ -1838,12 +1868,18 @@ static void udc_test_mode(struct tegra_udc *udc, u32 test_mode)
 
 	switch (test_mode << PORTSCX_PTC_BIT_POS) {
 	case PORTSCX_PTC_JSTATE:
+		udc->current_limit = USB_CHARGING_TEST_MODE_CURRENT_LIMIT_MA;
+		schedule_work(&udc->current_work);
 		VDBG("TEST_J\n");
 		break;
 	case PORTSCX_PTC_KSTATE:
+		udc->current_limit = USB_CHARGING_TEST_MODE_CURRENT_LIMIT_MA;
+		schedule_work(&udc->current_work);
 		VDBG("TEST_K\n");
 		break;
 	case PORTSCX_PTC_SEQNAK:
+		udc->current_limit = USB_CHARGING_TEST_MODE_CURRENT_LIMIT_MA;
+		schedule_work(&udc->current_work);
 		VDBG("TEST_SE0_NAK\n");
 		break;
 	case PORTSCX_PTC_PACKET:
@@ -2820,10 +2856,18 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 			udc->fence_read = false;
 		else
 			udc->fence_read = true;
-	} else
-		dev_err(&pdev->dev, "failed to get platform_data\n");
 
-	pdata = dev_get_platdata(&pdev->dev);
+		if (pdata->u_data.dev.dcp_current_limit_ma)
+			udc->dcp_current_limit =
+				pdata->u_data.dev.dcp_current_limit_ma * 1000;
+		else
+			udc->dcp_current_limit =
+				USB_CHARGING_DCP_CURRENT_LIMIT_UA;
+	} else {
+		dev_err(&pdev->dev, "failed to get platform_data\n");
+		err = -ENODATA;
+		goto err_irq;
+	}
 
 	udc->phy = tegra_usb_phy_open(pdev);
 	if (IS_ERR(udc->phy)) {
@@ -2849,6 +2893,7 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 	udc->pdev = pdev;
 	udc->has_hostpc = pdata->has_hostpc;
 	udc->support_pmu_vbus = pdata->support_pmu_vbus;
+	udc->connect_type_lp0 = CONNECT_TYPE_NONE;
 	platform_set_drvdata(pdev, udc);
 
 	/* Initialize the udc structure including QH members */
@@ -3039,7 +3084,14 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 {
 	struct tegra_udc *udc = platform_get_drvdata(pdev);
 	unsigned long flags;
+	u32 temp;
+
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
+
+	temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
+	if (temp & USB_SYS_VBUS_STATUS)
+		udc->vbus_in_lp0 = true;
+	udc->connect_type_lp0 = udc->connect_type;
 
 	/* If the controller is in otg mode, return */
 	if (udc->transceiver)
@@ -3067,7 +3119,20 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 static int tegra_udc_resume(struct platform_device *pdev)
 {
 	struct tegra_udc *udc = platform_get_drvdata(pdev);
+	u32 temp;
+
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
+
+	udc->vbus_in_lp0 = false;
+
+	/* Set Current limit to 0 if charger is disconnected in LP0 */
+	temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
+	if ((udc->connect_type_lp0 != CONNECT_TYPE_NONE)
+			&& !(temp & USB_SYS_VBUS_STATUS)) {
+		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
+		if (udc->vbus_reg != NULL)
+			regulator_set_current_limit(udc->vbus_reg, 0, 0);
+	}
 
 	if (udc->transceiver)
 		return 0;

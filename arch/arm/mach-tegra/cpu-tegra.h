@@ -48,16 +48,6 @@ static inline void tegra_auto_hotplug_governor(unsigned int cpu_freq,
 { }
 #endif
 
-#ifdef CONFIG_TEGRA_EDP_LIMITS
-bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead);
-bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead);
-#else
-static inline bool tegra_cpu_edp_favor_up(unsigned int n, int mp_overhead)
-{ return true; }
-static inline bool tegra_cpu_edp_favor_down(unsigned int n, int mp_overhead)
-{ return false; }
-#endif
-
 #ifdef CONFIG_CPU_FREQ
 int tegra_suspended_target(unsigned int target_freq);
 #else
@@ -73,6 +63,12 @@ static inline int tegra_update_cpu_edp_limits(void)
 { return 0; }
 static inline int tegra_cpu_reg_mode_force_normal(bool force)
 { return 0; }
+#endif
+#ifdef CONFIG_TEGRA_CPU_VOLT_CAP
+struct tegra_cooling_device *tegra_vc_get_cdev(void);
+#else
+static inline struct tegra_cooling_device *tegra_vc_get_cdev(void)
+{ return NULL; }
 #endif
 
 #endif /* __MACH_TEGRA_CPU_TEGRA_H */

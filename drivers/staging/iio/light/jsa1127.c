@@ -33,6 +33,7 @@
 #include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/iio/light/jsa1127.h>
+#include <linux/random.h>
 
 #define DEV_ERR(err_string) \
 	dev_err(&chip->client->dev, \
@@ -52,6 +53,7 @@ enum als_state {
 #define JSA1127_CMD_START_INTERGATION		0x08
 #define JSA1127_CMD_STOP_INTERGATION		0x30
 #define JSA1127_CMD_STANDBY			0x8C
+#define JSA1127_POWER_ON_DELAY			60 /* msec */
 
 struct jsa1127_chip {
 	struct i2c_client		*client;
@@ -60,6 +62,7 @@ struct jsa1127_chip {
 
 	int				rint;
 	int				integration_time;
+	int				noisy;
 
 	struct workqueue_struct		*wq;
 	struct delayed_work		dw;
@@ -67,6 +70,7 @@ struct jsa1127_chip {
 	bool				use_internal_integration_timing;
 	u8				als_state;
 	u16				als_raw_value;
+	u16				tint_coeff;
 };
 
 #define N_DATA_BYTES				2
@@ -84,6 +88,7 @@ static int jsa1127_try_update_als_reading_locked(struct jsa1127_chip *chip)
 	char buf[N_DATA_BYTES] = {0, 0};
 	int retry_count = RETRY_COUNT;
 	struct iio_dev *indio_dev = iio_priv_to_dev(chip);
+	unsigned char rndnum;
 
 	mutex_lock(&indio_dev->mlock);
 	do {
@@ -95,6 +100,11 @@ static int jsa1127_try_update_als_reading_locked(struct jsa1127_chip *chip)
 			val = (val << 8) | buf[0];
 			if (JSA1127_IS_DATA_VALID(val)) {
 				chip->als_raw_value = JSA1127_CONV_TO_DATA(val);
+				if (chip->noisy) {
+					get_random_bytes(&rndnum, 1);
+					if (rndnum < 128)
+						chip->als_raw_value++;
+				}
 				break;
 			} else {
 				msleep(JSA1127_RETRY_TIME);
@@ -204,8 +214,9 @@ static ssize_t jsa1127_chan_enable(struct iio_dev *indio_dev,
 	if (enable) {
 		chip->als_raw_value = 0;
 		chip->als_state = CHIP_POWER_ON_ALS_ON;
-		queue_delayed_work(chip->wq, &chip->dw, 0);
+		queue_delayed_work(chip->wq, &chip->dw, JSA1127_POWER_ON_DELAY);
 	} else {
+		cancel_delayed_work_sync(&chip->dw);
 		chip->als_state = CHIP_POWER_ON_ALS_OFF;
 	}
 
@@ -251,8 +262,12 @@ static int jsa1127_read_raw(struct iio_dev *indio_dev,
 	case IIO_CHAN_INFO_RAW:
 		if (chip->als_state != CHIP_POWER_ON_ALS_ON)
 			return -EINVAL;
-		*val = chip->als_raw_value;
-		ret = IIO_VAL_INT;
+
+		if (chip->als_raw_value != -EINVAL) {
+			*val = chip->als_raw_value;
+			ret = IIO_VAL_INT;
+		}
+
 		queue_delayed_work(chip->wq, &chip->dw, 0);
 		break;
 	default:
@@ -321,7 +336,7 @@ static ssize_t jsa1127_resolution(struct device *dev,
 		resolution = 210;
 	else
 		DEV_ERR("invalid RINT");
-	return sprintf(buf, "%d\n", resolution);
+	return sprintf(buf, "%d\n", resolution * chip->tint_coeff);
 }
 
 #define JSA1127_POWER_CONSUMED		"1.65" /* mWatt */
@@ -367,19 +382,32 @@ static void jsa1127_work_func(struct work_struct *ws)
 		return;
 
 	if (chip->use_internal_integration_timing) {
-		jsa1127_send_cmd_locked(chip, JSA1127_OPMODE_CONTINUOUS);
+		ret = jsa1127_send_cmd_locked(chip, JSA1127_OPMODE_CONTINUOUS);
+		if (ret)
+			goto fail;
 		msleep(chip->integration_time);
 	} else {
-		jsa1127_send_cmd_locked(chip,
+		ret = jsa1127_send_cmd_locked(chip,
 					JSA1127_ONE_TIME_INTEGRATION_OPMODE);
-		jsa1127_send_cmd_locked(chip, JSA1127_CMD_START_INTERGATION);
+		if (ret)
+			goto fail;
+		ret = jsa1127_send_cmd_locked(chip,
+						JSA1127_CMD_START_INTERGATION);
+		if (ret)
+			goto fail;
 		msleep(chip->integration_time);
-		jsa1127_send_cmd_locked(chip, JSA1127_CMD_STOP_INTERGATION);
+		ret = jsa1127_send_cmd_locked(chip,
+						JSA1127_CMD_STOP_INTERGATION);
+		if (ret)
+			goto fail;
 	}
 	ret = jsa1127_try_update_als_reading_locked(chip);
 	if (ret)
-		DEV_ERR("als reading update failed");
+		goto fail;
 	jsa1127_send_cmd_locked(chip, JSA1127_CMD_STANDBY);
+	return;
+fail:
+	chip->als_raw_value = -EINVAL;
 }
 
 #if 0
@@ -441,6 +469,8 @@ static int jsa1127_probe(struct i2c_client *client,
 	struct jsa1127_platform_data *jsa1127_platform_data;
 	u32 rint = UINT_MAX, use_internal_integration_timing = UINT_MAX;
 	u32 integration_time = UINT_MAX;
+	u32 tint = UINT_MAX;
+	u32 noisy = UINT_MAX;
 
 	if (client->dev.of_node) {
 		of_property_read_u32_array(client->dev.of_node,
@@ -448,17 +478,27 @@ static int jsa1127_probe(struct i2c_client *client,
 		of_property_read_u32_array(client->dev.of_node,
 					"use_internal_integration_timing",
 					&use_internal_integration_timing, 1);
+		of_property_read_u32_array(client->dev.of_node,
+					"tint_coeff",
+					&tint, 1);
+		of_property_read_u32_array(client->dev.of_node,
+					"noisy",
+					&noisy, 1);
 	} else {
 		jsa1127_platform_data = client->dev.platform_data;
 		rint = jsa1127_platform_data->rint;
 		integration_time = jsa1127_platform_data->integration_time;
 		use_internal_integration_timing =
 			jsa1127_platform_data->use_internal_integration_timing;
+		tint =
+			jsa1127_platform_data->tint_coeff;
+		noisy =
+			jsa1127_platform_data->noisy;
 	}
 
 	if ((rint == UINT_MAX) ||
 		(use_internal_integration_timing == UINT_MAX) ||
-		(rint%50 != 0)) {
+		(rint%50 != 0) || (tint == UINT_MAX)) {
 		pr_err("func:%s failed due to invalid platform data", __func__);
 		return -EINVAL;
 	}
@@ -475,6 +515,8 @@ static int jsa1127_probe(struct i2c_client *client,
 	chip->rint = rint;
 	chip->integration_time = integration_time;
 	chip->use_internal_integration_timing = use_internal_integration_timing;
+	chip->tint_coeff = tint;
+	chip->noisy = noisy;
 
 	i2c_set_clientdata(client, indio_dev);
 	chip->client = client;

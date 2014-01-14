@@ -104,7 +104,7 @@ int channel_gk20a_commit_va(struct channel_gk20a *c)
 
 	nvhost_dbg_fn("");
 
-	inst_ptr = nvhost_memmgr_mmap(c->inst_block.mem.ref);
+	inst_ptr = c->inst_block.cpuva;
 	if (!inst_ptr)
 		return -ENOMEM;
 
@@ -129,8 +129,6 @@ int channel_gk20a_commit_va(struct channel_gk20a *c)
 	mem_wr32(inst_ptr, ram_in_adr_limit_hi_w(),
 		ram_in_adr_limit_hi_f(u64_hi32(c->vm->va_limit)));
 
-	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
-
 	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
@@ -144,15 +142,15 @@ static int channel_gk20a_commit_userd(struct channel_gk20a *c)
 
 	nvhost_dbg_fn("");
 
-	inst_ptr = nvhost_memmgr_mmap(c->inst_block.mem.ref);
+	inst_ptr = c->inst_block.cpuva;
 	if (!inst_ptr)
 		return -ENOMEM;
 
-	addr_lo = u64_lo32(c->userd_cpu_pa >> ram_userd_base_shift_v());
-	addr_hi = u64_hi32(c->userd_cpu_pa);
+	addr_lo = u64_lo32(c->userd_iova >> ram_userd_base_shift_v());
+	addr_hi = u64_hi32(c->userd_iova);
 
 	nvhost_dbg_info("channel %d : set ramfc userd 0x%16llx",
-		c->hw_chid, (u64)c->userd_cpu_pa);
+		c->hw_chid, c->userd_iova);
 
 	mem_wr32(inst_ptr, ram_in_ramfc_w() + ram_fc_userd_w(),
 		 pbdma_userd_target_vid_mem_f() |
@@ -161,8 +159,6 @@ static int channel_gk20a_commit_userd(struct channel_gk20a *c)
 	mem_wr32(inst_ptr, ram_in_ramfc_w() + ram_fc_userd_hi_w(),
 		 pbdma_userd_target_vid_mem_f() |
 		 pbdma_userd_hi_addr_f(addr_hi));
-
-	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
 
 	gk20a_mm_l2_invalidate(c->g);
 
@@ -173,22 +169,10 @@ static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
 				u32 timeslice_timeout)
 {
 	void *inst_ptr;
-	unsigned long channel_timeout;
 	int shift = 3;
 	int value = timeslice_timeout;
-	int err;
 
-	if (!tegra_platform_is_silicon())
-		channel_timeout = MAX_SCHEDULE_TIMEOUT;
-	else
-		channel_timeout = CONFIG_TEGRA_GRHOST_DEFAULT_TIMEOUT;
-
-	err = gk20a_channel_finish(c, channel_timeout);
-
-	if (err)
-		return err;
-
-	inst_ptr = nvhost_memmgr_mmap(c->inst_block.mem.ref);
+	inst_ptr = c->inst_block.cpuva;
 	if (!inst_ptr)
 		return -ENOMEM;
 
@@ -226,7 +210,6 @@ static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
 		gk20a_readl(c->g, ccsr_channel_r(c->hw_chid)) |
 		ccsr_channel_enable_set_true_f());
 
-	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
 	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
@@ -239,7 +222,7 @@ static int channel_gk20a_setup_ramfc(struct channel_gk20a *c,
 
 	nvhost_dbg_fn("");
 
-	inst_ptr = nvhost_memmgr_mmap(c->inst_block.mem.ref);
+	inst_ptr = c->inst_block.cpuva;
 	if (!inst_ptr)
 		return -ENOMEM;
 
@@ -299,8 +282,6 @@ static int channel_gk20a_setup_ramfc(struct channel_gk20a *c,
 	mem_wr32(inst_ptr, ram_fc_hce_ctrl_w(),
 		 pbdma_hce_ctrl_hce_priv_mode_yes_f());
 
-	nvhost_memmgr_munmap(c->inst_block.mem.ref, inst_ptr);
-
 	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
@@ -335,7 +316,7 @@ static void channel_gk20a_bind(struct channel_gk20a *ch_gk20a)
 	struct fifo_engine_info_gk20a *engine_info =
 		f->engine_info + ENGINE_GR_GK20A;
 
-	u32 inst_ptr = sg_phys(ch_gk20a->inst_block.mem.sgt->sgl)
+	u32 inst_ptr = ch_gk20a->inst_block.cpu_pa
 		>> ram_in_base_shift_v();
 
 	nvhost_dbg_info("bind channel %d inst ptr 0x%08x",
@@ -376,34 +357,32 @@ static void channel_gk20a_unbind(struct channel_gk20a *ch_gk20a)
 static int channel_gk20a_alloc_inst(struct gk20a *g,
 				struct channel_gk20a *ch)
 {
-	struct mem_mgr *memmgr = mem_mgr_from_g(g);
+	struct device *d = dev_from_gk20a(g);
+	int err = 0;
 
 	nvhost_dbg_fn("");
 
-	ch->inst_block.mem.ref =
-		nvhost_memmgr_alloc(memmgr, ram_in_alloc_size_v(),
-				    DEFAULT_ALLOC_ALIGNMENT,
-				    DEFAULT_ALLOC_FLAGS,
-				    0);
-
-	if (IS_ERR(ch->inst_block.mem.ref)) {
-		ch->inst_block.mem.ref = 0;
+	ch->inst_block.size = ram_in_alloc_size_v();
+	ch->inst_block.cpuva = dma_alloc_coherent(d,
+					ch->inst_block.size,
+					&ch->inst_block.iova,
+					GFP_KERNEL);
+	if (!ch->inst_block.cpuva) {
+		nvhost_err(d, "%s: memory allocation failed\n", __func__);
+		err = -ENOMEM;
 		goto clean_up;
 	}
 
-	ch->inst_block.mem.sgt =
-		nvhost_memmgr_sg_table(memmgr, ch->inst_block.mem.ref);
-
-	/* IS_ERR throws a warning here (expecting void *) */
-	if (IS_ERR(ch->inst_block.mem.sgt)) {
-		ch->inst_block.mem.sgt = NULL;
+	ch->inst_block.cpu_pa = gk20a_get_phys_from_iova(d,
+							ch->inst_block.iova);
+	if (!ch->inst_block.cpu_pa) {
+		nvhost_err(d, "%s: failed to get physical address\n", __func__);
+		err = -ENOMEM;
 		goto clean_up;
 	}
 
 	nvhost_dbg_info("channel %d inst block physical addr: 0x%16llx",
-		ch->hw_chid, (u64)sg_phys(ch->inst_block.mem.sgt->sgl));
-
-	ch->inst_block.mem.size = ram_in_alloc_size_v();
+		ch->hw_chid, ch->inst_block.cpu_pa);
 
 	nvhost_dbg_fn("done");
 	return 0;
@@ -411,17 +390,19 @@ static int channel_gk20a_alloc_inst(struct gk20a *g,
 clean_up:
 	nvhost_dbg(dbg_fn | dbg_err, "fail");
 	channel_gk20a_free_inst(g, ch);
-	return -ENOMEM;
+	return err;
 }
 
 static void channel_gk20a_free_inst(struct gk20a *g,
 				struct channel_gk20a *ch)
 {
-	struct mem_mgr *memmgr = mem_mgr_from_g(g);
+	struct device *d = dev_from_gk20a(g);
 
-	nvhost_memmgr_free_sg_table(memmgr, ch->inst_block.mem.ref,
-			ch->inst_block.mem.sgt);
-	nvhost_memmgr_put(memmgr, ch->inst_block.mem.ref);
+	if (ch->inst_block.cpuva)
+		dma_free_coherent(d, ch->inst_block.size,
+				ch->inst_block.cpuva, ch->inst_block.iova);
+	ch->inst_block.cpuva = NULL;
+	ch->inst_block.iova = 0;
 	memset(&ch->inst_block, 0, sizeof(struct inst_desc));
 }
 
@@ -629,14 +610,24 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 {
 	struct channel_gk20a *ch = ctx->priv;
 	struct gk20a *g = ch->g;
+	struct device *d = dev_from_gk20a(g);
 	struct fifo_gk20a *f = &g->fifo;
 	struct gr_gk20a *gr = &g->gr;
-	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
 	struct vm_gk20a *ch_vm = ch->vm;
 	unsigned long timeout = gk20a_get_gr_idle_timeout(g);
 	struct dbg_session_gk20a *dbg_s;
 
 	nvhost_dbg_fn("");
+
+	/* if engine reset was deferred, perform it now */
+	mutex_lock(&f->deferred_reset_mutex);
+	if (g->fifo.deferred_reset_pending) {
+		nvhost_dbg(dbg_intr | dbg_gpu_dbg, "engine reset was"
+			   " deferred, running now");
+		fifo_gk20a_finish_mmu_fault_handling(g, g->fifo.mmu_fault_engines);
+		g->fifo.deferred_reset_pending = false;
+	}
+	mutex_unlock(&f->deferred_reset_mutex);
 
 	if (!ch->bound)
 		return;
@@ -659,11 +650,17 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 	memset(&ch->ramfc, 0, sizeof(struct mem_desc_sub));
 
 	/* free gpfifo */
-	ch_vm->unmap(ch_vm, ch->gpfifo.gpu_va);
-	nvhost_memmgr_munmap(ch->gpfifo.mem.ref, ch->gpfifo.cpu_va);
+	if (ch->gpfifo.gpu_va)
+		gk20a_gmmu_unmap(ch_vm, ch->gpfifo.gpu_va,
+			ch->gpfifo.size, mem_flag_none);
+	if (ch->gpfifo.cpu_va)
+		dma_free_coherent(d, ch->gpfifo.size,
+			ch->gpfifo.cpu_va, ch->gpfifo.iova);
+	ch->gpfifo.cpu_va = NULL;
+	ch->gpfifo.iova = 0;
+
 	gk20a_mm_l2_invalidate(ch->g);
 
-	nvhost_memmgr_put(memmgr, ch->gpfifo.mem.ref);
 	memset(&ch->gpfifo, 0, sizeof(struct gpfifo_desc));
 
 #if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
@@ -811,11 +808,12 @@ static void dump_gpfifo(struct channel_gk20a *c)
 static int channel_gk20a_alloc_priv_cmdbuf(struct channel_gk20a *c)
 {
 	struct device *d = dev_from_gk20a(c->g);
-	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(c);
 	struct vm_gk20a *ch_vm = c->vm;
 	struct priv_cmd_queue *q = &c->priv_cmd_q;
 	struct priv_cmd_entry *e;
 	u32 i = 0, size;
+	int err = 0;
+	struct sg_table *sgt;
 
 	/* Kernel can insert gpfifos before and after user gpfifos.
 	   Before user gpfifos, kernel inserts fence_wait, which takes
@@ -829,36 +827,35 @@ static int channel_gk20a_alloc_priv_cmdbuf(struct channel_gk20a *c)
 	size = roundup_pow_of_two(
 		c->gpfifo.entry_num * 2 * 10 * sizeof(u32) / 3);
 
-	q->mem.ref = nvhost_memmgr_alloc(memmgr,
-					 size,
-					 DEFAULT_ALLOC_ALIGNMENT,
-					 DEFAULT_ALLOC_FLAGS,
-					 0);
-	if (IS_ERR(q->mem.ref)) {
-		nvhost_err(d, "ch %d : failed to allocate"
-			   " priv cmd buffer(size: %d bytes)",
-			   c->hw_chid, size);
+	q->mem.base_cpuva = dma_alloc_coherent(d, size,
+					&q->mem.base_iova,
+					GFP_KERNEL);
+	if (!q->mem.base_cpuva) {
+		nvhost_err(d, "%s: memory allocation failed\n", __func__);
+		err = -ENOMEM;
 		goto clean_up;
 	}
+
 	q->mem.size = size;
 
-	q->base_ptr = (u32 *)nvhost_memmgr_mmap(q->mem.ref);
-	if (!q->base_ptr) {
-		nvhost_err(d, "ch %d : failed to map cpu va"
-			   "for priv cmd buffer", c->hw_chid);
+	err = gk20a_get_sgtable(d, &sgt,
+			q->mem.base_cpuva, q->mem.base_iova, size);
+	if (err) {
+		nvhost_err(d, "%s: failed to create sg table\n", __func__);
 		goto clean_up;
 	}
 
-	memset(q->base_ptr, 0, size);
+	memset(q->mem.base_cpuva, 0, size);
 
-	q->base_gva = ch_vm->map(ch_vm, memmgr,
-			q->mem.ref,
-			 /*offset_align, flags, kind*/
-			0, 0, 0, NULL, false, mem_flag_none);
-	if (!q->base_gva) {
+	q->base_gpuva = gk20a_gmmu_map(ch_vm, &sgt,
+					size,
+					0, /* flags */
+					mem_flag_none);
+	if (!q->base_gpuva) {
 		nvhost_err(d, "ch %d : failed to map gpu va"
 			   "for priv cmd buffer", c->hw_chid);
-		goto clean_up;
+		err = -ENOMEM;
+		goto clean_up_sgt;
 	}
 
 	q->size = q->mem.size / sizeof (u32);
@@ -872,22 +869,27 @@ static int channel_gk20a_alloc_priv_cmdbuf(struct channel_gk20a *c)
 		if (!e) {
 			nvhost_err(d, "ch %d: fail to pre-alloc cmd entry",
 				c->hw_chid);
-			goto clean_up;
+			err = -ENOMEM;
+			goto clean_up_sgt;
 		}
 		e->pre_alloc = true;
 		list_add(&e->list, &q->free);
 	}
 
+	gk20a_free_sgtable(&sgt);
+
 	return 0;
 
+clean_up_sgt:
+	gk20a_free_sgtable(&sgt);
 clean_up:
 	channel_gk20a_free_priv_cmdbuf(c);
-	return -ENOMEM;
+	return err;
 }
 
 static void channel_gk20a_free_priv_cmdbuf(struct channel_gk20a *c)
 {
-	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(c);
+	struct device *d = dev_from_gk20a(c->g);
 	struct vm_gk20a *ch_vm = c->vm;
 	struct priv_cmd_queue *q = &c->priv_cmd_q;
 	struct priv_cmd_entry *e;
@@ -896,9 +898,14 @@ static void channel_gk20a_free_priv_cmdbuf(struct channel_gk20a *c)
 	if (q->size == 0)
 		return;
 
-	ch_vm->unmap(ch_vm, q->base_gva);
-	nvhost_memmgr_munmap(q->mem.ref, q->base_ptr);
-	nvhost_memmgr_put(memmgr, q->mem.ref);
+	if (q->base_gpuva)
+		gk20a_gmmu_unmap(ch_vm, q->base_gpuva,
+				q->mem.size, mem_flag_none);
+	if (q->mem.base_cpuva)
+		dma_free_coherent(d, q->mem.size,
+			q->mem.base_cpuva, q->mem.base_iova);
+	q->mem.base_cpuva = NULL;
+	q->mem.base_iova = 0;
 
 	/* free used list */
 	head = &q->head;
@@ -979,12 +986,12 @@ TRY_AGAIN:
 	/* if we have increased size to skip free space in the end, set put
 	   to beginning of cmd buffer (0) + size */
 	if (size != orig_size) {
-		e->ptr = q->base_ptr;
-		e->gva = q->base_gva;
+		e->ptr = q->mem.base_cpuva;
+		e->gva = q->base_gpuva;
 		q->put = orig_size;
 	} else {
-		e->ptr = q->base_ptr + q->put;
-		e->gva = q->base_gva + q->put * sizeof(u32);
+		e->ptr = q->mem.base_cpuva + q->put;
+		e->gva = q->base_gpuva + q->put * sizeof(u32);
 		q->put = (q->put + orig_size) & (q->size - 1);
 	}
 
@@ -1059,7 +1066,7 @@ static void recycle_priv_cmdbuf(struct channel_gk20a *c)
 	}
 
 	if (found)
-		q->get = (e->ptr - q->base_ptr) + e->size;
+		q->get = (e->ptr - q->mem.base_cpuva) + e->size;
 	else {
 		nvhost_dbg_info("no free entry recycled");
 		return;
@@ -1076,13 +1083,13 @@ static void recycle_priv_cmdbuf(struct channel_gk20a *c)
 int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 			       struct nvhost_alloc_gpfifo_args *args)
 {
-	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(c);
 	struct gk20a *g = c->g;
 	struct nvhost_device_data *pdata = nvhost_get_devdata(g->dev);
 	struct device *d = dev_from_gk20a(g);
 	struct vm_gk20a *ch_vm;
 	u32 gpfifo_size;
-	u32 ret;
+	int err = 0;
+	struct sg_table *sgt;
 
 	/* Kernel can insert one extra gpfifo entry before user submitted gpfifos
 	   and another one after, for internal usage. Triple the requested size. */
@@ -1110,42 +1117,44 @@ int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 	c->ramfc.offset = 0;
 	c->ramfc.size = ram_in_ramfc_s() / 8;
 
-	if (c->gpfifo.mem.ref) {
+	if (c->gpfifo.cpu_va) {
 		nvhost_err(d, "channel %d :"
 			   "gpfifo already allocated", c->hw_chid);
 		return -EEXIST;
 	}
 
-	c->gpfifo.mem.ref =
-		nvhost_memmgr_alloc(memmgr,
-				    gpfifo_size * sizeof(struct gpfifo),
-				    DEFAULT_ALLOC_ALIGNMENT,
-				    DEFAULT_ALLOC_FLAGS,
-				    0);
-	if (IS_ERR(c->gpfifo.mem.ref)) {
-		nvhost_err(d, "channel %d :"
-			   " failed to allocate gpfifo (size: %d bytes)",
-			   c->hw_chid, gpfifo_size);
-		c->gpfifo.mem.ref = 0;
-		return PTR_ERR(c->gpfifo.mem.ref);
-	}
-	c->gpfifo.entry_num = gpfifo_size;
-
-	c->gpfifo.cpu_va =
-		(struct gpfifo *)nvhost_memmgr_mmap(c->gpfifo.mem.ref);
-	if (!c->gpfifo.cpu_va)
+	c->gpfifo.size = gpfifo_size * sizeof(struct gpfifo);
+	c->gpfifo.cpu_va = (struct gpfifo *)dma_alloc_coherent(d,
+						c->gpfifo.size,
+						&c->gpfifo.iova,
+						GFP_KERNEL);
+	if (!c->gpfifo.cpu_va) {
+		nvhost_err(d, "%s: memory allocation failed\n", __func__);
+		err = -ENOMEM;
 		goto clean_up;
+	}
+
+	c->gpfifo.entry_num = gpfifo_size;
 
 	c->gpfifo.get = c->gpfifo.put = 0;
 
-	c->gpfifo.gpu_va = ch_vm->map(ch_vm, memmgr,
-				c->gpfifo.mem.ref,
-				/*offset_align, flags, kind*/
-				0, 0, 0, NULL, false, mem_flag_none);
+	err = gk20a_get_sgtable(d, &sgt,
+			c->gpfifo.cpu_va, c->gpfifo.iova, c->gpfifo.size);
+	if (err) {
+		nvhost_err(d, "%s: failed to allocate sg table\n", __func__);
+		goto clean_up;
+	}
+
+	c->gpfifo.gpu_va = gk20a_gmmu_map(ch_vm,
+					&sgt,
+					c->gpfifo.size,
+					0, /* flags */
+					mem_flag_none);
 	if (!c->gpfifo.gpu_va) {
 		nvhost_err(d, "channel %d : failed to map"
 			   " gpu_va for gpfifo", c->hw_chid);
-		goto clean_up;
+		err = -ENOMEM;
+		goto clean_up_sgt;
 	}
 
 	nvhost_dbg_info("channel %d : gpfifo_base 0x%016llx, size %d",
@@ -1160,24 +1169,32 @@ int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 
 	/* TBD: setup engine contexts */
 
-	ret = channel_gk20a_alloc_priv_cmdbuf(c);
-	if (ret)
-		goto clean_up;
+	err = channel_gk20a_alloc_priv_cmdbuf(c);
+	if (err)
+		goto clean_up_unmap;
 
-	ret = channel_gk20a_update_runlist(c, true);
-	if (ret)
-		goto clean_up;
+	err = channel_gk20a_update_runlist(c, true);
+	if (err)
+		goto clean_up_unmap;
+
+	gk20a_free_sgtable(&sgt);
 
 	nvhost_dbg_fn("done");
 	return 0;
 
+clean_up_unmap:
+	gk20a_gmmu_unmap(ch_vm, c->gpfifo.gpu_va,
+		c->gpfifo.size, mem_flag_none);
+clean_up_sgt:
+	gk20a_free_sgtable(&sgt);
 clean_up:
-	nvhost_dbg(dbg_fn | dbg_err, "fail");
-	ch_vm->unmap(ch_vm, c->gpfifo.gpu_va);
-	nvhost_memmgr_munmap(c->gpfifo.mem.ref, c->gpfifo.cpu_va);
-	nvhost_memmgr_put(memmgr, c->gpfifo.mem.ref);
+	dma_free_coherent(d, c->gpfifo.size,
+		c->gpfifo.cpu_va, c->gpfifo.iova);
+	c->gpfifo.cpu_va = NULL;
+	c->gpfifo.iova = 0;
 	memset(&c->gpfifo, 0, sizeof(struct gpfifo_desc));
-	return -ENOMEM;
+	nvhost_dbg(dbg_fn | dbg_err, "fail");
+	return err;
 }
 
 static inline int wfi_cmd_size(void)
@@ -1318,7 +1335,8 @@ static void trace_write_pushbuffer(struct channel_gk20a *c, struct gpfifo *g)
 		int err;
 
 		words = pbdma_gp_entry1_length_v(g->entry1);
-		err = c->vm->find_buffer(c->vm, gpu_va, &memmgr, &r, &offset);
+		err = gk20a_vm_find_buffer(c->vm, gpu_va, &memmgr, &r,
+					   &offset);
 		if (!err)
 			mem = nvhost_memmgr_mmap(r);
 	}
@@ -1350,18 +1368,18 @@ static int gk20a_channel_add_job(struct channel_gk20a *c,
 	int err = 0, num_mapped_buffers;
 
 	/* job needs reference to this vm */
-	vm->get(vm);
+	gk20a_vm_get(vm);
 
-	err = vm->get_buffers(vm, &mapped_buffers, &num_mapped_buffers);
+	err = gk20a_vm_get_buffers(vm, &mapped_buffers, &num_mapped_buffers);
 	if (err) {
-		vm->put(vm);
+		gk20a_vm_put(vm);
 		return err;
 	}
 
 	job = kzalloc(sizeof(*job), GFP_KERNEL);
 	if (!job) {
-		vm->put_buffers(vm, mapped_buffers, num_mapped_buffers);
-		vm->put(vm);
+		gk20a_vm_put_buffers(vm, mapped_buffers, num_mapped_buffers);
+		gk20a_vm_put(vm);
 		return -ENOMEM;
 	}
 
@@ -1390,11 +1408,11 @@ void gk20a_channel_update(struct channel_gk20a *c)
 		if (!completed)
 			break;
 
-		vm->put_buffers(vm, job->mapped_buffers,
+		gk20a_vm_put_buffers(vm, job->mapped_buffers,
 				job->num_mapped_buffers);
 
 		/* job is done. release its reference to vm */
-		vm->put(vm);
+		gk20a_vm_put(vm);
 
 		list_del_init(&job->list);
 		kfree(job);
@@ -1478,7 +1496,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	/* We don't know what context is currently running...                */
 	/* Note also: there can be more than one context associated with the */
 	/* address space (vm).   */
-	c->vm->tlb_inval(c->vm);
+	gk20a_mm_tlb_invalidate(c->vm);
 
 	/* Make sure we have enough space for gpfifo entries. If not,
 	 * wait for signals from completed submits */
@@ -1610,7 +1628,7 @@ int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	/* We don't know what context is currently running...                */
 	/* Note also: there can be more than one context associated with the */
 	/* address space (vm).   */
-	c->vm->tlb_inval(c->vm);
+	gk20a_mm_tlb_invalidate(c->vm);
 
 	trace_nvhost_channel_submitted_gpfifo(c->ch->dev->name,
 					   c->hw_chid,
@@ -1662,6 +1680,7 @@ int gk20a_init_channel_support(struct gk20a *g, u32 chid)
 #endif
 	INIT_LIST_HEAD(&c->dbg_s_list);
 	mutex_init(&c->dbg_s_lock);
+
 	return 0;
 }
 
@@ -1726,6 +1745,50 @@ int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout)
 		ch->cmds_pending = false;
 
 	return err;
+}
+
+static int gk20a_channel_wait_semaphore(struct channel_gk20a *ch,
+					ulong id, u32 offset,
+					u32 payload, long timeout)
+{
+	struct platform_device *pdev = ch->ch->dev;
+	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
+	struct mem_handle *handle_ref;
+	void *data;
+	u32 *semaphore;
+	int ret = 0;
+	long remain;
+
+	handle_ref = nvhost_memmgr_get(memmgr, id, pdev);
+	if (IS_ERR(handle_ref)) {
+		nvhost_err(&pdev->dev, "invalid notifier nvmap handle 0x%lx",
+			   id);
+		return -EINVAL;
+	}
+
+	data = nvhost_memmgr_kmap(handle_ref, offset >> PAGE_SHIFT);
+	if (!data) {
+		nvhost_err(&pdev->dev, "failed to map notifier memory");
+		ret = -EINVAL;
+		goto cleanup_put;
+	}
+
+	semaphore = data + (offset & ~PAGE_MASK);
+
+	remain = wait_event_interruptible_timeout(
+			ch->semaphore_wq,
+			*semaphore == payload,
+			timeout);
+
+	if (remain == 0 && *semaphore != payload)
+		ret = -ETIMEDOUT;
+	else if (remain < 0)
+		ret = remain;
+
+	nvhost_memmgr_kunmap(handle_ref, offset >> PAGE_SHIFT, data);
+cleanup_put:
+	nvhost_memmgr_put(memmgr, handle_ref);
+	return ret;
 }
 
 int gk20a_channel_wait(struct channel_gk20a *ch,
@@ -1796,13 +1859,22 @@ int gk20a_channel_wait(struct channel_gk20a *ch,
 notif_clean_up:
 		nvhost_memmgr_munmap(handle_ref, notif);
 		return ret;
+
 	case NVHOST_WAIT_TYPE_SEMAPHORE:
+		ret = gk20a_channel_wait_semaphore(ch,
+				args->condition.semaphore.nvmap_handle,
+				args->condition.semaphore.offset,
+				args->condition.semaphore.payload,
+				timeout);
+
 		break;
+
 	default:
-		return -EINVAL;
+		ret = -EINVAL;
+		break;
 	}
 
-	return 0;
+	return ret;
 }
 
 int gk20a_channel_set_priority(struct channel_gk20a *ch,

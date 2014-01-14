@@ -37,14 +37,19 @@
 
 #define USB_MAX_CTRL_PAYLOAD		64
 
- /* Charger current limit=1800mA, as per the USB charger spec */
-#define USB_CHARGING_DCP_CURRENT_LIMIT_UA 1800000u
+/* Charger current limit=1500mA, as per BC1.2 spec */
+#define USB_CHARGING_DCP_CURRENT_LIMIT_UA 1500000u
 #define USB_CHARGING_CDP_CURRENT_LIMIT_UA 1500000u
 #define USB_CHARGING_SDP_CURRENT_LIMIT_UA 500000u
 #define USB_CHARGING_NV_CHARGER_CURRENT_LIMIT_UA 2000000u
 #define USB_CHARGING_NON_STANDARD_CHARGER_CURRENT_LIMIT_UA 500000u
+#define USB_CHARGING_APPLE_CHARGER_500mA_CURRENT_LIMIT_UA 500000u
+#define USB_CHARGING_APPLE_CHARGER_1000mA_CURRENT_LIMIT_UA 1000000u
+#define USB_CHARGING_APPLE_CHARGER_2000mA_CURRENT_LIMIT_UA 2000000u
 
- /* 1 sec wait time for non-std charger detection after vbus is detected */
+#define USB_CHARGING_TEST_MODE_CURRENT_LIMIT_MA 100u
+
+/* 1 sec wait time for non-std charger detection after vbus is detected */
 #define NON_STD_CHARGER_DET_TIME_MS 1000
 #define BOOST_TRIGGER_SIZE 4096
 
@@ -415,7 +420,10 @@ enum tegra_connect_type {
 	CONNECT_TYPE_DCP,
 	CONNECT_TYPE_CDP,
 	CONNECT_TYPE_NV_CHARGER,
-	CONNECT_TYPE_NON_STANDARD_CHARGER
+	CONNECT_TYPE_NON_STANDARD_CHARGER,
+	CONNECT_TYPE_APPLE_500MA,
+	CONNECT_TYPE_APPLE_1000MA,
+	CONNECT_TYPE_APPLE_2000MA
 };
 
 struct tegra_udc {
@@ -441,6 +449,7 @@ struct tegra_udc {
 	struct work_struct irq_work;
 	enum tegra_connect_type connect_type;
 	enum tegra_connect_type prev_connect_type;
+	enum tegra_connect_type connect_type_lp0;
 	void __iomem *regs;
 	size_t ep_qh_size;		/* size after alignment adjustment*/
 	dma_addr_t ep_qh_dma;		/* dma address of QH */
@@ -453,6 +462,7 @@ struct tegra_udc {
 	u32 ep0_dir;	/* Endpoint zero direction: USB_DIR_IN/USB_DIR_OUT */
 	u8 device_address;	/* Device USB address */
 	u32 current_limit;
+	u32 dcp_current_limit;
 	spinlock_t lock;
 	struct mutex sync_lock;
 	unsigned softconnect:1;
@@ -463,6 +473,7 @@ struct tegra_udc {
 	bool has_hostpc;
 	bool support_pmu_vbus;
 	bool fence_read;
+	bool vbus_in_lp0;
 #ifdef CONFIG_EXTCON
 	struct extcon_dev *edev;
 #endif

@@ -85,24 +85,32 @@ static struct regulator_consumer_supply palmas_smps8_supply[] = {
 	REGULATOR_SUPPLY("vddio_sys", NULL),
 	REGULATOR_SUPPLY("vddio_sys_2", NULL),
 	REGULATOR_SUPPLY("vddio_gmi", NULL),
+	REGULATOR_SUPPLY("pwrdet_nand", NULL),
 	REGULATOR_SUPPLY("vddio_sdmmc", "sdhci-tegra.0"),
+	REGULATOR_SUPPLY("pwrdet_sdmmc1", NULL),
 	REGULATOR_SUPPLY("vddio_sdmmc", "sdhci-tegra.3"),
+	REGULATOR_SUPPLY("pwrdet_sdmmc4", NULL),
 	REGULATOR_SUPPLY("avdd_pll_utmip", "tegra-udc.0"),
 	REGULATOR_SUPPLY("avdd_pll_utmip", "tegra-ehci.0"),
 	REGULATOR_SUPPLY("avdd_pll_utmip", "tegra-ehci.1"),
 	REGULATOR_SUPPLY("avdd_pll_utmip", "tegra-ehci.2"),
 	REGULATOR_SUPPLY("avdd_pll_utmip", "tegra-xhci"),
 	REGULATOR_SUPPLY("vddio_audio", NULL),
+	REGULATOR_SUPPLY("pwrdet_audio", NULL),
 	REGULATOR_SUPPLY("vddio_uart", NULL),
+	REGULATOR_SUPPLY("pwrdet_uart", NULL),
 	REGULATOR_SUPPLY("vddio_bb", NULL),
+	REGULATOR_SUPPLY("pwrdet_bb", NULL),
 	REGULATOR_SUPPLY("vdd_dtv", NULL),
 	REGULATOR_SUPPLY("vdd_1v8_eeprom", NULL),
 	REGULATOR_SUPPLY("vddio_cam", "tegra_camera"),
 	REGULATOR_SUPPLY("vddio_cam", "vi"),
+	REGULATOR_SUPPLY("pwrdet_cam", NULL),
 	REGULATOR_SUPPLY("vlogic", "0-0068"),
 	REGULATOR_SUPPLY("vid", "0-000c"),
 	REGULATOR_SUPPLY("vddio", "0-0077"),
 	REGULATOR_SUPPLY("vif", "2-0048"),
+	REGULATOR_SUPPLY("vif2", "2-0021"),
 };
 
 static struct regulator_consumer_supply palmas_smps9_supply[] = {
@@ -144,6 +152,7 @@ static struct regulator_consumer_supply palmas_ldo3_supply[] = {
 	REGULATOR_SUPPLY("avdd_dsi_csi", "tegradc.1"),
 	REGULATOR_SUPPLY("avdd_dsi_csi", "vi.0"),
 	REGULATOR_SUPPLY("avdd_dsi_csi", "vi.1"),
+	REGULATOR_SUPPLY("pwrdet_mipi", NULL),
 	REGULATOR_SUPPLY("vddio_hsic", "tegra-ehci.1"),
 	REGULATOR_SUPPLY("vddio_hsic", "tegra-ehci.2"),
 	REGULATOR_SUPPLY("vddio_hsic", "tegra-xhci"),
@@ -163,6 +172,7 @@ static struct regulator_consumer_supply palmas_ldo6_supply[] = {
 	REGULATOR_SUPPLY("vdd", "0-0077"),
 	REGULATOR_SUPPLY("vdd", "0-004c"),
 	REGULATOR_SUPPLY("vdd", "0-0068"),
+	REGULATOR_SUPPLY("vana", "2-0021"),
 };
 
 static struct regulator_consumer_supply palmas_ldo8_supply[] = {
@@ -176,7 +186,9 @@ static struct regulator_consumer_supply palmas_ldo9_supply[] = {
 
 static struct regulator_consumer_supply palmas_ldousb_supply[] = {
 	REGULATOR_SUPPLY("vddio_hv", "tegradc.1"),
+	REGULATOR_SUPPLY("pwrdet_hv", NULL),
 	REGULATOR_SUPPLY("vddio_pex_ctl", "tegra-pcie"),
+	REGULATOR_SUPPLY("pwrdet_pex_ctl", NULL),
 	REGULATOR_SUPPLY("avdd_hdmi", "tegradc.1"),
 	REGULATOR_SUPPLY("avdd_usb", "tegra-udc.0"),
 	REGULATOR_SUPPLY("avdd_usb", "tegra-ehci.0"),
@@ -206,7 +218,7 @@ static struct regulator_consumer_supply palmas_regen2_supply[] = {
 	*/
 };
 
-PALMAS_REGS_PDATA(smps123, 700,  1400, NULL, 0, 1, 1, NORMAL,
+PALMAS_REGS_PDATA(smps123, 650,  1400, NULL, 0, 1, 1, NORMAL,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(smps45, 700,  1250, NULL, 0, 0, 0, NORMAL,
 		0, PALMAS_EXT_CONTROL_NSLEEP, 0, 2500, 0);
@@ -230,7 +242,7 @@ PALMAS_REGS_PDATA(ldo4, 1800,  1800, palmas_rails(smps6), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo5, 1200,  1200, palmas_rails(smps8), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ldo6, 2800,  3300, palmas_rails(smps6), 0, 0, 1, 0,
+PALMAS_REGS_PDATA(ldo6, 2800,  2800, palmas_rails(smps6), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo8, 900,  900, NULL, 1, 1, 1, 0,
 		0, 0, 0, 0, 0);
@@ -318,6 +330,29 @@ static struct palmas_reg_init *loki_reg_init[PALMAS_NUM_REGS] = {
 	NULL,
 };
 
+#define PALMAS_GPADC_IIO_MAP(_ch, _dev_name, _name)		\
+	{							\
+		.adc_channel_label = PALMAS_DATASHEET_NAME(_ch),\
+		.consumer_dev_name = _dev_name,			\
+		.consumer_channel = _name,			\
+	}
+
+static struct iio_map palmas_adc_iio_maps[] = {
+	PALMAS_GPADC_IIO_MAP(IN1, "generic-adc-thermal.0", "thermistor"),
+	PALMAS_GPADC_IIO_MAP(IN3, "generic-adc-thermal.1", "tdiode"),
+	PALMAS_GPADC_IIO_MAP(NULL, NULL, NULL),
+};
+
+static struct palmas_gpadc_platform_data palmas_adc_pdata = {
+	/* If ch3_dual_current is true, it will measure ch3 input signal with
+	 * ch3_current and the next current of ch3_current.
+	 * So this system will use 400uA and 800uA for ch3 measurement. */
+	.ch3_current = 400,	/* 0uA, 10uA, 400uA, 800uA */
+	.ch3_dual_current = true,
+	.extended_delay = true,
+	.iio_maps = palmas_adc_iio_maps,
+};
+
 static struct palmas_pinctrl_config palmas_pincfg[] = {
 	PALMAS_PINMUX("powergood", "powergood", NULL, NULL),
 	PALMAS_PINMUX("vac", "vac", NULL, NULL),
@@ -360,6 +395,7 @@ static struct palmas_platform_data palmas_pdata = {
 	.gpio_base = PALMAS_TEGRA_GPIO_BASE,
 	.irq_base = PALMAS_TEGRA_IRQ_BASE,
 	.pmic_pdata = &pmic_platform,
+	.gpadc_pdata = &palmas_adc_pdata,
 	.pinctrl_pdata = &palmas_pinctrl_pdata,
 	.clk32k_init_data =  palmas_clk32k_idata,
 	.clk32k_init_data_size = ARRAY_SIZE(palmas_clk32k_idata),
@@ -375,7 +411,7 @@ static struct i2c_board_info palma_device[] = {
 };
 
 static struct tegra_suspend_platform_data loki_suspend_data = {
-	.cpu_timer      = 2000,
+	.cpu_timer      = 3500,
 	.cpu_off_timer  = 300,
 	.suspend_mode   = TEGRA_SUSPEND_LP0,
 	.core_timer     = 0x157e,
@@ -431,7 +467,11 @@ static struct i2c_board_info __initdata bq2419x_boardinfo[] = {
 };
 
 static struct bq27441_platform_data bq27441_pdata = {
-	.full_capacity_in_mAh = 7350,
+	.full_capacity = 7800,
+	.full_energy = 28314,
+	.taper_rate = 167,
+	.terminate_voltage = 3150,
+	.v_at_chg_term = 4200,
 	.tz_name = "battery-temp",
 };
 
@@ -623,7 +663,7 @@ static struct platform_device *fixed_reg_devs_e2545[] = {
 };
 /************************ LOKI CL-DVFS DATA *********************/
 #define LOKI_CPU_VDD_MAP_SIZE		33
-#define LOKI_CPU_VDD_MIN_UV		704000
+#define LOKI_CPU_VDD_MIN_UV		703000
 #define LOKI_CPU_VDD_STEP_UV		19200
 #define LOKI_CPU_VDD_STEP_US		80
 
@@ -712,12 +752,9 @@ static int __init loki_cl_dvfs_init(void)
 		}
 	}
 
-
-	if (data) {
-		data->flags = TEGRA_CL_DVFS_DYN_OUTPUT_CFG;
-		tegra_cl_dvfs_device.dev.platform_data = data;
-		platform_device_register(&tegra_cl_dvfs_device);
-	}
+	data->flags = TEGRA_CL_DVFS_DYN_OUTPUT_CFG;
+	tegra_cl_dvfs_device.dev.platform_data = data;
+	platform_device_register(&tegra_cl_dvfs_device);
 	return 0;
 }
 #else
@@ -738,6 +775,7 @@ int __init loki_regulator_init(void)
 	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
 	u32 pmc_ctrl;
 	int i;
+	struct board_info bi;
 
 	/* TPS65913: Normal state of INT request line is LOW.
 	 * configure the power management controller to trigger PMU
@@ -751,13 +789,17 @@ int __init loki_regulator_init(void)
 	}
 	/* Set vdd_gpu init uV to 1V */
 	reg_idata_smps123.constraints.init_uV = 1000000;
+	reg_idata_smps9.constraints.enable_time = 250;
 
-	bq2419x_boardinfo[0].irq = gpio_to_irq(TEGRA_GPIO_PJ0);
 	i2c_register_board_info(4, palma_device,
 			ARRAY_SIZE(palma_device));
-	i2c_register_board_info(0, bq2419x_boardinfo, 1);
-	i2c_register_board_info(0, loki_i2c_board_info_bq27441,
-			ARRAY_SIZE(loki_i2c_board_info_bq27441));
+	tegra_get_board_info(&bi);
+	if (!(bi.board_id == BOARD_P2530 && bi.sku == BOARD_SKU_FOSTER)) {
+		bq2419x_boardinfo[0].irq = gpio_to_irq(TEGRA_GPIO_PJ0);
+		i2c_register_board_info(0, bq2419x_boardinfo, 1);
+		i2c_register_board_info(0, loki_i2c_board_info_bq27441,
+				ARRAY_SIZE(loki_i2c_board_info_bq27441));
+	}
 	platform_device_register(&power_supply_extcon_device);
 
 	loki_cl_dvfs_init();
@@ -794,11 +836,16 @@ int __init loki_edp_init(void)
 
 	regulator_mA = get_maximum_cpu_current_supported();
 	if (!regulator_mA)
-		regulator_mA = 16000;
+		regulator_mA = 14000;
 
 	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
 	tegra_init_cpu_edp_limits(regulator_mA);
 
+	/* gpu maximum current */
+	regulator_mA = 14000;
+	pr_info("%s: GPU regulator %d mA\n", __func__, regulator_mA);
+
+	tegra_init_gpu_edp_limits(regulator_mA);
 	return 0;
 }
 
@@ -852,7 +899,7 @@ static struct soctherm_platform_data loki_soctherm_data = {
 				},
 				{
 					.cdev_type = "tegra-balanced",
-					.trip_temp = 89000,
+					.trip_temp = 90000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -864,12 +911,19 @@ static struct soctherm_platform_data loki_soctherm_data = {
 			.zone_enable = true,
 			.passive_delay = 1000,
 			.hotspot_offset = 6000,
-			.num_trips = 2,
+			.num_trips = 3,
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 103000,
+					.trip_temp = 102000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 100000,
+					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
@@ -880,27 +934,25 @@ static struct soctherm_platform_data loki_soctherm_data = {
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
-/*
-				{
-					.cdev_type = "gk20a_cdev",
-					.trip_temp = 101000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-				{
-					.cdev_type = "tegra-heavy",
-					.trip_temp = 101000,
-					.trip_type = THERMAL_TRIP_HOT,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-*/
 			},
 			.tzp = &soctherm_tzp,
 		},
+		[THERM_MEM] = {
+			.zone_enable = true,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 103000, /* = GPU shut */
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+		},
 		[THERM_PLL] = {
 			.zone_enable = true,
+			.tzp = &soctherm_tzp,
 		},
 	},
 	.throttle = {
@@ -912,7 +964,22 @@ static struct soctherm_platform_data loki_soctherm_data = {
 					.depth = 80,
 				},
 				[THROTTLE_DEV_GPU] = {
-					.enable = false,
+					.enable = true,
+					.throttling_depth = "heavy_throttling",
+				},
+			},
+		},
+		[THROTTLE_OC2] = {
+			.throt_mode = BRIEF,
+			.polarity = 1,
+			.intr = false,
+			.devs = {
+				[THROTTLE_DEV_CPU] = {
+					.enable = true,
+					.depth = 30,
+				},
+				[THROTTLE_DEV_GPU] = {
+					.enable = true,
 					.throttling_depth = "heavy_throttling",
 				},
 			},
@@ -923,19 +990,45 @@ static struct soctherm_platform_data loki_soctherm_data = {
 
 int __init loki_soctherm_init(void)
 {
+	s32 base_cp, shft_cp;
+	u32 base_ft, shft_ft;
+
 	/* do this only for supported CP,FT fuses */
-	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
-	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
+	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
+	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
 		tegra_platform_edp_init(
 			loki_soctherm_data.therm[THERM_CPU].trips,
 			&loki_soctherm_data.therm[THERM_CPU].num_trips,
 			8000); /* edp temperature margin */
-		tegra_add_tj_trips(
+		tegra_platform_gpu_edp_init(
+			loki_soctherm_data.therm[THERM_GPU].trips,
+			&loki_soctherm_data.therm[THERM_GPU].num_trips,
+			8000);
+		tegra_add_cpu_vmax_trips(
+			loki_soctherm_data.therm[THERM_CPU].trips,
+			&loki_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_core_edp_trips(
 			loki_soctherm_data.therm[THERM_CPU].trips,
 			&loki_soctherm_data.therm[THERM_CPU].num_trips);
 		tegra_add_tgpu_trips(
 			loki_soctherm_data.therm[THERM_GPU].trips,
 			&loki_soctherm_data.therm[THERM_GPU].num_trips);
+		tegra_add_vc_trips(
+			loki_soctherm_data.therm[THERM_CPU].trips,
+			&loki_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_core_vmax_trips(
+			loki_soctherm_data.therm[THERM_PLL].trips,
+			&loki_soctherm_data.therm[THERM_PLL].num_trips);
+		tegra_add_cpu_vmin_trips(
+			loki_soctherm_data.therm[THERM_CPU].trips,
+			&loki_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_gpu_vmin_trips(
+			loki_soctherm_data.therm[THERM_GPU].trips,
+			&loki_soctherm_data.therm[THERM_GPU].num_trips);
+		/*PLL soctherm is being used for SOC vmin*/
+		tegra_add_core_vmin_trips(
+			loki_soctherm_data.therm[THERM_PLL].trips,
+			&loki_soctherm_data.therm[THERM_PLL].num_trips);
 	}
 
 	return tegra11_soctherm_init(&loki_soctherm_data);

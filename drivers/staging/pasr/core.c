@@ -32,7 +32,7 @@ void pasr_update_mask(struct pasr_section *section, enum pasr_state state)
 	else
 		die->mem_reg |= (1 << bit);
 
-	pr_debug("%s(): %s refresh section 0x%08x. segment %#08x Die%d mem_reg = 0x%02x\n"
+	pr_debug("%s(): %s refresh section 0x%08x. segment %#9llx Die%d mem_reg = 0x%02x\n"
 			, __func__, state == PASR_REFRESH ? "Start" : "Stop"
 			, bit, section->start, die->idx, die->mem_reg);
 
@@ -42,10 +42,10 @@ void pasr_update_mask(struct pasr_section *section, enum pasr_state state)
 	return;
 }
 
-void pasr_put(phys_addr_t paddr, unsigned long size)
+void pasr_put(phys_addr_t paddr, u64 size)
 {
 	struct pasr_section *s;
-	unsigned long cur_sz;
+	u64 cur_sz;
 	unsigned long flags = 0;
 
 	if (!pasr.map) {
@@ -57,8 +57,12 @@ void pasr_put(phys_addr_t paddr, unsigned long size)
 
 	do {
 		s = pasr_addr2section(pasr.map, paddr);
-		if (!s)
+		if (!s) {
+			pasr.map = NULL;
+			WARN_ONCE(1, KERN_INFO"%s(): Segment missing,\
+					PASR disabled\n", __func__);
 			goto out;
+		}
 
 		cur_sz = ((paddr + size - 1) < (s->start + section_size - 1)) ?
 			size : s->start + section_size - paddr;
@@ -92,10 +96,10 @@ out:
 	return;
 }
 
-void pasr_get(phys_addr_t paddr, unsigned long size)
+void pasr_get(phys_addr_t paddr, u64 size)
 {
 	unsigned long flags = 0;
-	unsigned long cur_sz;
+	u64 cur_sz;
 	struct pasr_section *s;
 
 	if (!pasr.map) {
@@ -107,8 +111,12 @@ void pasr_get(phys_addr_t paddr, unsigned long size)
 
 	do {
 		s = pasr_addr2section(pasr.map, paddr);
-		if (!s)
+		if (!s) {
+			pasr.map = NULL;
+			WARN_ONCE(1, KERN_INFO"%s(): Segment missing,\
+					PASR disabled\n", __func__);
 			goto out;
+		}
 
 		cur_sz = ((paddr + size - 1) < (s->start + section_size - 1)) ?
 			size : s->start + section_size - paddr;
@@ -146,14 +154,14 @@ int pasr_register_mask_function(phys_addr_t addr, void *function, void *cookie)
 	struct pasr_die *die = pasr_addr2die(pasr.map, addr);
 
 	if (!die) {
-		pr_err("%s: No DDR die corresponding to address 0x%08x\n",
-				__func__, addr);
+		pr_err("%s: No DDR die corresponding to address 0x%09llx\n",
+				__func__, (u64)addr);
 		return -EINVAL;
 	}
 
 	if (addr != die->start)
-		pr_warning("%s: Addresses mismatch (Die = 0x%08x, addr = 0x%08x\n"
-				, __func__, die->start, addr);
+		pr_warn("%s: Addresses mismatch (Die = 0x%09llx, addr = 0x%09llx\n"
+				, __func__, (u64)die->start, (u64)addr);
 
 	die->cookie = cookie;
 	die->apply_mask = function;

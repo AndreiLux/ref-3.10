@@ -55,6 +55,8 @@
 #include <linux/clk/tegra.h>
 #include <linux/clocksource.h>
 #include <linux/irqchip.h>
+#include <linux/tegra_fiq_debugger.h>
+#include <linux/platform_data/tegra_usb_modem_power.h>
 
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -66,11 +68,10 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/gpio-tegra.h>
-#include <mach/tegra_fiq_debugger.h>
 #include <mach/tegra-bb-power.h>
 #include <mach/tegra_wakeup_monitor.h>
-#include <linux/platform_data/tegra_usb_modem_power.h>
 #include <mach/xusb.h>
+#include <media/tegra_dtv.h>
 
 #include "board.h"
 #include "board-common.h"
@@ -277,6 +278,7 @@ static struct tegra_i2c_platform_data pluto_i2c5_platform_data = {
 	.scl_gpio	= TEGRA_GPIO_I2C5_SCL,
 	.sda_gpio	= TEGRA_GPIO_I2C5_SDA,
 	.needs_cl_dvfs_clock = true,
+	.bit_banging_xfer_after_shutdown = true,
 };
 
 static struct aic3262_gpio_setup aic3262_gpio[] = {
@@ -1107,28 +1109,17 @@ static void pluto_modem_init(void)
 	}
 }
 
-static struct tegra_xusb_board_data xusb_bdata = {
+static struct tegra_xusb_platform_data xusb_pdata = {
 	.portmap = TEGRA_XUSB_SS_P0 | TEGRA_XUSB_USB2_P0,
-	/* ss_portmap[0:3] = SS0 map, ss_portmap[4:7] = SS1 map */
-	.ss_portmap = (TEGRA_XUSB_SS_PORT_MAP_USB2_P0 << 0),
-	.uses_external_pmic = true,
-	.supply = {
-		.utmi_vbuses = {
-			NULL, "usb_vbus", NULL
-		},
-		.s3p3v = "hvdd_usb",
-		.s1p8v = "avdd_usb_pll",
-		.vddio_hsic = "vddio_hsic",
-		.s1p05v = "avddio_usb",
-	},
 };
 
 static void pluto_xusb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
-	if (usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)
-		tegra_xusb_init(&xusb_bdata);
+	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
+		xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0 |
+				TEGRA_XUSB_SS_P0);
 }
 #else
 static void pluto_usb_init(void) { }
@@ -1309,12 +1300,19 @@ struct of_dev_auxdata pluto_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006200, "serial-tegra.2",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-xhci", 0x70090000, "tegra-xhci",
+				&xusb_pdata),
 	{}
 };
 #endif
 
+static struct tegra_dtv_platform_data pluto_dtv_pdata = {
+	.dma_req_selector = 11,
+};
+
 static void __init pluto_dtv_init(void)
 {
+	tegra_dtv_device.dev.platform_data = &pluto_dtv_pdata;
 	platform_device_register(&tegra_dtv_device);
 }
 
@@ -1328,7 +1326,7 @@ static void __init tegra_pluto_early_init(void)
 
 static void __init tegra_pluto_late_init(void)
 {
-	platform_device_register(&tegra_pinmux_device);
+	platform_device_register(&tegra114_pinctrl_device);
 	pluto_pinmux_init();
 	pluto_i2c_init();
 	pluto_spi_init();

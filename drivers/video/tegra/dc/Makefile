@@ -2,6 +2,7 @@ GCOV_PROFILE := y
 EXTRA_CFLAGS += -Idrivers/video/tegra/host -Idrivers/video/tegra -Idrivers/staging/android
 obj-y += dc.o bandwidth.o mode.o clock.o lut.o csc.o window.o
 obj-y += rgb.o
+obj-y += of_dc.o
 obj-y += hdmi.o
 obj-y += hdmi_state_machine.o
 obj-y += dsi2lvds.o

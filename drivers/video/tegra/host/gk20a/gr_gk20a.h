@@ -22,8 +22,8 @@
 
 #include "gr_ctx_gk20a.h"
 
-#define GR_IDLE_CHECK_DEFAULT		100 /* usec */
-#define GR_IDLE_CHECK_MAX		5000 /* usec */
+#define GR_IDLE_CHECK_DEFAULT		10 /* usec */
+#define GR_IDLE_CHECK_MAX		200 /* usec */
 
 #define INVALID_SCREEN_TILE_ROW_OFFSET	0xFFFFFFFF
 #define INVALID_MAX_WAYS		0xFFFFFFFF
@@ -73,6 +73,11 @@ enum {
 	ELCG_RUN,	/* clk always run, i.e. disable elcg */
 	ELCG_STOP,	/* clk is stopped */
 	ELCG_AUTO	/* clk will run when non-idle, standard elcg mode */
+};
+
+enum {
+	BLCG_RUN,	/* clk always run, i.e. disable blcg */
+	BLCG_AUTO	/* clk will run when non-idle, standard blcg mode */
 };
 
 #ifndef GR_GO_IDLE_BUNDLE
@@ -281,9 +286,9 @@ struct gk20a_ctxsw_ucode_inst {
 
 struct gk20a_ctxsw_ucode_info {
 	u64 *p_va;
-	struct mem_desc inst_blk_desc;
-	struct mem_desc surface_desc;
-	u64 ucode_va;
+	struct inst_desc inst_blk_desc;
+	struct surface_mem_desc surface_desc;
+	u64 ucode_gpuva;
 	struct gk20a_ctxsw_ucode_inst fecs;
 	struct gk20a_ctxsw_ucode_inst gpcs;
 };
@@ -333,6 +338,10 @@ int gr_gk20a_fecs_set_reglist_bind_inst(struct gk20a *g, phys_addr_t addr);
 int gr_gk20a_fecs_set_reglist_virual_addr(struct gk20a *g, u64 pmu_va);
 
 void gr_gk20a_init_elcg_mode(struct gk20a *g, u32 mode, u32 engine);
+void gr_gk20a_init_blcg_mode(struct gk20a *g, u32 mode, u32 engine);
+
+/* sm */
+bool gk20a_gr_sm_debugger_attached(struct gk20a *g);
 
 #define gr_gk20a_elpg_protected_call(g, func) \
 	({ \

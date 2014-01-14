@@ -70,6 +70,7 @@
 			reg = <0x54200000 0x00040000>;
 			interrupts = <0 73 0x04>;
 			nvidia,memory-clients = <2>;
+			status = "disabled";
 
 			rgb {
 				status = "disabled";
@@ -81,6 +82,7 @@
 			reg = <0x54240000 0x00040000>;
 			interrupts = <0 74 0x04>;
 			nvidia,memory-clients = <3>;
+			status = "disabled";
 
 			rgb {
 				status = "disabled";
@@ -626,7 +628,21 @@
 
 	mipical {
 		compatible = "nvidia,tegra114-mipical";
-		reg = <0x700e3000 0x00040000>;
+		reg = <0x700e3000 0x00000100>;
+	};
+
+	xusb@70090000 {
+		compatible = "nvidia,tegra114-xhci";
+		reg = <0x70090000 0x8000
+		       0x70098000 0x1000
+		       0x70099000 0x1000
+		       0x7009F000 0x1000>;
+		interrupts = <0 39 0x04
+			      0 40 0x04
+			      0 49 0x04
+			      0 97 0x04
+			      0 21 0x04>;
+		status = "disable";
 	};
 
 	clocks {

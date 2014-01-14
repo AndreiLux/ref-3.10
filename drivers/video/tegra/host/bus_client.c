@@ -1271,7 +1271,7 @@ int nvhost_client_device_init(struct platform_device *dev)
 
 	err = nvhost_channel_init(ch, nvhost_master, pdata->index);
 	if (err)
-		goto fail;
+		goto fail1;
 
 	err = nvhost_client_user_init(dev);
 	if (err)
@@ -1299,6 +1299,9 @@ int nvhost_client_device_init(struct platform_device *dev)
 	dev_info(&dev->dev, "initialized\n");
 
 	if (pdata->slave && !pdata->slave_initialized) {
+		struct nvhost_device_data *slave_pdata =
+					pdata->slave->dev.platform_data;
+		slave_pdata->master = dev;
 		pdata->slave->dev.parent = dev->dev.parent;
 		platform_device_register(pdata->slave);
 		pdata->slave_initialized = 1;
@@ -1308,6 +1311,10 @@ int nvhost_client_device_init(struct platform_device *dev)
 
 fail:
 	/* Add clean-up */
+	dev_err(&dev->dev, "failed to init client device\n");
+	nvhost_client_user_deinit(dev);
+fail1:
+	nvhost_device_debug_deinit(dev);
 	nvhost_free_channel(ch);
 	return err;
 }
@@ -1329,39 +1336,15 @@ int nvhost_client_device_release(struct platform_device *dev)
 	/* Release chardev and device node for user space */
 	nvhost_client_user_deinit(dev);
 
+	/* Remove debugFS */
+	nvhost_device_debug_deinit(dev);
+
 	/* Free nvhost channel */
 	nvhost_free_channel(ch);
 
 	return 0;
 }
 EXPORT_SYMBOL(nvhost_client_device_release);
-
-int nvhost_client_device_suspend(struct device *dev)
-{
-	int ret = 0;
-	struct nvhost_device_data *pdata = dev_get_drvdata(dev);
-
-	ret = nvhost_module_suspend(dev);
-	if (ret)
-		return ret;
-
-	ret = nvhost_channel_suspend(pdata->channel);
-	if (ret)
-		return ret;
-
-	dev_info(dev, "suspend status: %d\n", ret);
-
-	return ret;
-}
-EXPORT_SYMBOL(nvhost_client_device_suspend);
-
-int nvhost_client_device_resume(struct device *dev)
-{
-	nvhost_module_resume(dev);
-	dev_info(dev, "resuming\n");
-	return 0;
-}
-EXPORT_SYMBOL(nvhost_client_device_resume);
 
 int nvhost_client_device_get_resources(struct platform_device *dev)
 {

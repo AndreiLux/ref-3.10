@@ -345,8 +345,7 @@ woal_priv_hostcmd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(data_ptr, (t_u8 *) & ret, sizeof(t_u32));
 
 error:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -404,9 +403,7 @@ woal_priv_customie(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ret = EFAULT;
 	}
 done:
-	if (ioctl_req) {
-		kfree(ioctl_req);
-	}
+	kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -549,8 +546,7 @@ woal_setget_priv_bandcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(mlan_ds_band_cfg);
 
 error:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -648,8 +644,7 @@ woal_setget_priv_httxcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -751,8 +746,7 @@ woal_setget_priv_htcapinfo(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(woal_ht_cap_info);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -858,8 +852,7 @@ woal_setget_priv_addbapara(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(woal_addba);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -956,8 +949,7 @@ woal_priv_delba(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sprintf(respbuf, "OK. BA deleted successfully.\n") + 1;
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -1034,8 +1026,7 @@ woal_priv_rejectaddbareq(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1123,8 +1114,7 @@ woal_setget_priv_aggrpriotbl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1209,8 +1199,7 @@ woal_setget_priv_addbareject(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1259,8 +1248,7 @@ woal_get_priv_datarate(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(mlan_data_rate);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1393,8 +1381,7 @@ woal_setget_priv_txratecfg(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(woal_tx_rate_cfg);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1446,7 +1433,7 @@ woal_get_stats_info(moal_private * priv, t_u8 wait_option,
 #endif
 	}
 done:
-	if (req && (status != MLAN_STATUS_PENDING))
+	if (status != MLAN_STATUS_PENDING)
 		kfree(req);
 	LEAVE();
 	return status;
@@ -1570,8 +1557,7 @@ woal_setget_priv_esuppmode(moal_private * priv, t_u8 * respbuf,
 
 	ret = sizeof(woal_esuppmode_cfg);
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1733,8 +1719,7 @@ woal_setget_priv_passphrase(moal_private * priv, t_u8 * respbuf,
 
 	ret = len;
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1828,8 +1813,7 @@ woal_priv_ap_deauth(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(data_ptr, &ioctl_req->status_code, sizeof(t_u32));
 	ret = sizeof(t_u32);
 done:
-	if (ioctl_req)
-		kfree(ioctl_req);
+	kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -1877,8 +1861,7 @@ woal_priv_get_sta_list(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(sta_list, &info->param.sta_list, sizeof(mlan_ds_sta_list));
 	ret = sizeof(mlan_ds_sta_list);
 done:
-	if (ioctl_req)
-		kfree(ioctl_req);
+	kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -1938,8 +1921,7 @@ woal_priv_bss_config(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 	ret = sizeof(mlan_uap_bss_param);
 done:
-	if (ioctl_req)
-		kfree(ioctl_req);
+	kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -2202,7 +2184,7 @@ woal_priv_getscantable(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 						    scan_start);
 	}
 done:
-	if (req && (status != MLAN_STATUS_PENDING))
+	if (status != MLAN_STATUS_PENDING)
 		kfree(req);
 	LEAVE();
 	return ret;
@@ -2274,8 +2256,7 @@ woal_priv_extcapcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(ie) + ie->len;
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2444,8 +2425,7 @@ woal_priv_setgetipaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2512,8 +2492,7 @@ woal_priv_setwpssession(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 
 	ret = sprintf(respbuf, "OK\n") + 1;
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2575,8 +2554,7 @@ woal_priv_otpuserdata(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2648,8 +2626,7 @@ woal_priv_set_get_countrycode(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -2850,15 +2827,13 @@ woal_priv_getwakeupreason(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		if (MLAN_STATUS_SUCCESS !=
 		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
 			ret = -EFAULT;
-			if (req)
-				kfree(req);
+			kfree(req);
 			goto done;
 		} else {
 			data = pm_cfg->param.wakeup_reason.hs_wakeup_reason;
 			sprintf(respbuf, " %d", data);
 			ret = strlen(respbuf) + 1;
-			if (req)
-				kfree(req);
+			kfree(req);
 		}
 	} else {
 		PRINTM(MERROR, "Not need argument, invalid operation!\n");
@@ -2945,8 +2920,7 @@ woal_priv_set_get_listeninterval(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -3308,8 +3282,7 @@ woal_priv_set_get_scancfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ret = sizeof(mlan_scan_cfg);
 	}
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -3475,8 +3448,7 @@ woal_priv_set_bss_mode(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		goto done;
 	}
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4127,8 +4099,7 @@ woal_priv_txpowercfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ret = sizeof(pcfg->param.power_ext);
 	}
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4294,10 +4265,8 @@ woal_priv_pscfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
-	if (arguments)
-		kfree(arguments);
+	kfree(req);
+	kfree(arguments);
 	LEAVE();
 	return ret;
 }
@@ -4374,8 +4343,7 @@ woal_priv_sleeppd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4445,8 +4413,7 @@ woal_priv_txcontrol(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4535,10 +4502,8 @@ woal_priv_regrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
-	if (arguments)
-		kfree(arguments);
+	kfree(req);
+	kfree(arguments);
 	LEAVE();
 	return ret;
 }
@@ -4603,8 +4568,7 @@ woal_priv_rdeeprom(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4698,10 +4662,8 @@ woal_priv_memrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
-	if (arguments)
-		kfree(arguments);
+	kfree(req);
+	kfree(arguments);
 	LEAVE();
 	return ret;
 }
@@ -4845,8 +4807,7 @@ woal_priv_arpfilter(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		goto done;
 	}
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4914,8 +4875,7 @@ woal_priv_mgmt_frame_passthru_ctrl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 
@@ -5010,8 +4970,7 @@ woal_priv_wmm_addts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	ret = copy_len;
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5090,8 +5049,7 @@ woal_priv_wmm_delts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5152,8 +5110,7 @@ woal_priv_qconfig(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = strlen(CMD_MARVELL) + strlen(PRIV_CMD_QCONFIG) +
 		sizeof(qcfg_ioctl);
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5213,8 +5170,7 @@ woal_priv_wmm_queue_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5272,8 +5228,7 @@ woal_priv_wmm_ts_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(ts_status_ioctl);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5339,8 +5294,7 @@ woal_priv_macctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5454,8 +5408,7 @@ woal_priv_region_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5516,8 +5469,7 @@ woal_priv_fwmacaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	HEXDUMP("FW MAC Addr:", respbuf, ETH_ALEN);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5730,8 +5682,7 @@ woal_priv_get_driver_verext(moal_private * priv, t_u8 * respbuf,
 	       info->param.ver_ext.version_str);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5803,8 +5754,7 @@ woal_priv_wmm_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(wmm->param.wmm_enable);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5877,8 +5827,7 @@ woal_priv_11d_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(pcfg_11d->param.enable_11d);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5928,8 +5877,7 @@ woal_priv_11d_clr_chan_tbl(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5999,8 +5947,7 @@ woal_priv_wws_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(wws->param.wws_cfg);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6116,8 +6063,7 @@ woal_priv_txbuf_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(buf_size);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6250,8 +6196,7 @@ woal_priv_11h_local_pwr_constraint(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6321,8 +6266,7 @@ woal_priv_ht_stream_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6375,8 +6319,7 @@ woal_priv_thermal(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6446,8 +6389,7 @@ woal_priv_beacon_interval(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6712,8 +6654,7 @@ woal_priv_set_get_pmfcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(mlan_ds_misc_pmfcfg);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6798,8 +6739,7 @@ woal_priv_inactivity_timeout_ext(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6860,8 +6800,7 @@ woal_priv_atim_window(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(int);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6927,8 +6866,7 @@ woal_priv_11n_amsdu_aggr_ctrl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6993,8 +6931,7 @@ woal_priv_tx_bf_cap_ioctl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(bf_cap);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7162,8 +7099,7 @@ woal_priv_sdio_mpa_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7273,8 +7209,7 @@ woal_priv_sleep_params_ioctl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -7372,8 +7307,7 @@ woal_priv_dfs_testing(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -7450,8 +7384,7 @@ woal_priv_cfp_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -7521,8 +7454,7 @@ woal_priv_set_get_tx_rx_ant(moal_private * priv, t_u8 * respbuf,
 		memcpy(respbuf, (t_u8 *) data, sizeof(data));
 	}
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7644,8 +7576,7 @@ woal_priv_sysclock(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7790,8 +7721,7 @@ woal_priv_adhoc_aes(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = copy_len;
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -8340,8 +8270,7 @@ woal_priv_cmd53rdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (data)
-		kfree(data);
+	kfree(data);
 	LEAVE();
 	return ret;
 }
@@ -8407,8 +8336,7 @@ woal_priv_port_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	if (req)
-		kfree(req);
+	kfree(req);
 
 	LEAVE();
 	return ret;
@@ -8463,98 +8391,6 @@ woal_priv_bypassed_packet(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 }
 
 #if defined(WIFI_DIRECT_SUPPORT)
-#if defined(UAP_CFG80211)
-#if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
-/**
- * @brief               Set/Get P2P NoA (Notice of Absence) parameters
- * @param priv          Pointer to moal_private structure
- * @param respbuf       Pointer to response buffer
- * @param resplen       Response buffer length
- *
- *  @return             Number of bytes written, negative for failure.
- */
-static int
-woal_priv_noa_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
-{
-	int header_len = 0, user_data_len = 0;
-	int ret = 0, data[7];
-	mlan_ds_wifi_direct_config noa_cfg;
-
-	ENTER();
-
-	header_len = strlen(CMD_MARVELL) + strlen(PRIV_CMD_NOA_CFG);
-	memset(&noa_cfg, 0, sizeof(noa_cfg));
-	if (woal_p2p_config(priv, MLAN_ACT_GET, &noa_cfg) !=
-	    MLAN_STATUS_SUCCESS) {
-		PRINTM(MERROR, "Could not get P2P noa config\n");
-		ret = -EINVAL;
-		goto done;
-	}
-
-	memset(data, 0, sizeof(data));
-	if (strlen(respbuf) == header_len) {
-		/* GET operation */
-		memcpy(respbuf, &noa_cfg, sizeof(noa_cfg));
-		ret = sizeof(noa_cfg);
-	} else {
-		/* SET operation */
-		parse_arguments(respbuf + header_len, data, ARRAY_SIZE(data),
-				&user_data_len);
-		if (user_data_len > 7) {
-			ret = -EINVAL;
-			goto done;
-		}
-		switch (user_data_len) {
-		case 7:
-			noa_cfg.ct_window = (t_u8) data[6];
-		case 6:
-			if (data[5] < 0 || data[5] > 1) {
-				PRINTM(MERROR, "Invalid ps enable\n");
-				ret = -EINVAL;
-				goto done;
-			}
-			noa_cfg.opp_ps_enable = (t_u8) data[5];
-			noa_cfg.flags |= WIFI_DIRECT_OPP_PS;
-		case 5:
-			noa_cfg.noa_interval = (t_u32) data[4];
-		case 4:
-			noa_cfg.noa_duration = (t_u32) data[3];
-		case 3:
-			if (data[2] < 1 || data[2] > 255) {
-				PRINTM(MERROR,
-				       "Invalid number of absence intervals\n");
-				ret = -EINVAL;
-				goto done;
-			}
-			noa_cfg.noa_count = (t_u8) data[2];
-		case 2:
-			if (data[1] < 0 || data[1] > 255) {
-				PRINTM(MERROR, "Invalid Index\n");
-				ret = -EINVAL;
-				goto done;
-			}
-			noa_cfg.index = (t_u16) data[1];
-		case 1:
-			if (data[0] < 0 || data[0] > 1) {
-				PRINTM(MERROR, "Invalid noa enable\n");
-				ret = -EINVAL;
-				goto done;
-			}
-			noa_cfg.noa_enable = (t_u8) data[0];
-			noa_cfg.flags |= WIFI_DIRECT_NOA;
-			break;
-		default:
-			break;
-		}
-		woal_p2p_config(priv, MLAN_ACT_SET, &noa_cfg);
-	}
-done:
-
-	LEAVE();
-	return ret;
-}
-#endif
-#endif
 #endif
 
 /**
@@ -9347,16 +9183,6 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 							priv_cmd.total_len);
 			goto handled;
 #if defined(WIFI_DIRECT_SUPPORT)
-#if defined(UAP_CFG80211)
-#if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
-		} else if (strnicmp
-			   (buf + strlen(CMD_MARVELL), PRIV_CMD_NOA_CFG,
-			    strlen(PRIV_CMD_NOA_CFG)) == 0) {
-			/* Set/Get P2P NoA (Notice of Absence) parameters */
-			len = woal_priv_noa_cfg(priv, buf, priv_cmd.total_len);
-			goto handled;
-#endif
-#endif
 #endif
 		} else {
 			/* Fall through, after stripping off the custom header */
@@ -9480,6 +9306,11 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 		memcpy(country_code, buf + strlen("COUNTRY") + 1,
 		       strlen(buf) - strlen("COUNTRY") - 1);
 		PRINTM(MIOCTL, "Set COUNTRY %s\n", country_code);
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_request_country_power_table(priv, country_code)) {
+			ret = -EFAULT;
+			goto done;
+		}
 #ifdef STA_CFG80211
 		if (IS_STA_CFG80211(cfg80211_wext)) {
 			PRINTM(MIOCTL, "Notify country code=%s\n",
@@ -9733,8 +9564,7 @@ handled:
 	}
 
 done:
-	if (buf)
-		kfree(buf);
+	kfree(buf);
 	LEAVE();
 	return ret;
 }
@@ -9967,6 +9797,9 @@ woal_do_ioctl(struct net_device *dev, struct ifreq *req, int cmd)
 		break;
 	case WOAL_MGMT_FRAME_TX:
 		ret = woal_send_host_packet(dev, req);
+		break;
+	case WOAL_TDLS_CONFIG:
+		ret = woal_tdls_config_ioctl(dev, req);
 		break;
 	case WOAL_ANDROID_PRIV_CMD:
 		ret = woal_android_priv_cmd(dev, req);

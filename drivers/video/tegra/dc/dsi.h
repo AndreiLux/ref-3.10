@@ -436,6 +436,20 @@ unsigned long tegra_dsi_readl(struct tegra_dc_dsi_data *dsi, u32 reg);
 void tegra_dsi_controller_writel(struct tegra_dc_dsi_data *dsi,
 						u32 val, u32 reg, int index);
 void tegra_dsi_writel(struct tegra_dc_dsi_data *dsi, u32 val, u32 reg);
+int tegra_dsi_read_data(struct tegra_dc *dc,
+				struct tegra_dc_dsi_data *dsi,
+				u16 max_ret_payload_size,
+				u8 panel_reg_addr, u8 *read_data);
+int tegra_dsi_panel_sanity_check(struct tegra_dc *dc,
+				struct tegra_dc_dsi_data *dsi);
+bool tegra_dsi_enable_read_debug(struct tegra_dc_dsi_data *dsi);
+bool tegra_dsi_disable_read_debug(struct tegra_dc_dsi_data *dsi);
+int tegra_dsi_start_host_cmd_v_blank_dcs(struct tegra_dc_dsi_data *dsi,
+						struct tegra_dsi_cmd *cmd);
+void tegra_dsi_stop_host_cmd_v_blank_dcs(struct tegra_dc_dsi_data *dsi);
+int tegra_dsi_write_data(struct tegra_dc *dc,
+			struct tegra_dc_dsi_data *dsi,
+			struct tegra_dsi_cmd *cmd, u8 delay_ms);
 
 static inline void *tegra_dsi_get_outdata(struct tegra_dc_dsi_data *dsi)
 {

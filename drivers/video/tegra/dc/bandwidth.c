@@ -31,7 +31,6 @@
 #include "dc_reg.h"
 #include "dc_config.h"
 #include "dc_priv.h"
-#include "tegra_adf.h"
 
 static int use_dynamic_emc = 1;
 
@@ -84,7 +83,7 @@ static unsigned int num_active_internal_wins(struct tegra_dc *dc)
 	unsigned int num_active_internal_wins = 0;
 	int i = 0;
 
-	for (i = 0; i < DC_N_WINDOWS; i++) {
+	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 		struct tegra_dc_win *curr_win = &dc->windows[i];
 		enum tegra_la_id curr_win_la_id =
 				la_id_tab[dc->ndev->id][curr_win->idx];
@@ -104,7 +103,7 @@ static unsigned int num_active_external_wins(struct tegra_dc *dc)
 	unsigned int num_active_external_wins = 0;
 	int i = 0;
 
-	for (i = 0; i < DC_N_WINDOWS; i++) {
+	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 		struct tegra_dc_win *curr_win = &dc->windows[i];
 		enum tegra_la_id curr_win_la_id =
 				la_id_tab[dc->ndev->id][curr_win->idx];
@@ -134,7 +133,7 @@ static unsigned int num_active_external_wins(struct tegra_dc *dc)
 #define T12X_LA_BW_DISRUPTION_TIME_EMCCLKS_FP			1342000
 #define T12X_LA_STATIC_LA_SNAP_ARB_TO_ROW_SRT_EMCCLKS_FP	54000
 #define T12X_LA_CONS_MEM_EFFICIENCY_FP				500
-#define T12X_LA_ROW_SRT_SZ_BYTES	(64UL * (T12X_LA_MC_EMEM_NUM_SLOTS + 1))
+#define T12X_LA_ROW_SRT_SZ_BYTES	(64 * (T12X_LA_MC_EMEM_NUM_SLOTS + 1))
 #define T12X_LA_MC_EMEM_NUM_SLOTS				63
 #define T12X_LA_MAX_DRAIN_TIME_USEC				10
 
@@ -190,9 +189,9 @@ static void calc_disp_params(struct tegra_dc *dc,
 					emc_freq_mhz;
 	unsigned int effective_row_srt_sz_bytes_fp =
 		min((unsigned long)la_params.la_real_to_fp(min(
-					T12X_LA_ROW_SRT_SZ_BYTES,
+					(unsigned long)T12X_LA_ROW_SRT_SZ_BYTES,
 					16 * min(emc_freq_mhz + 50,
-						400UL))),
+						400ul))),
 			((T12X_LA_MAX_DRAIN_TIME_USEC *
 			emc_freq_mhz -
 			la_params.la_fp_to_real(
@@ -364,7 +363,8 @@ static void calc_disp_params(struct tegra_dc *dc,
 
 	if (is_internal_win(la_id)) {
 		int i = 0;
-		for (i = 0; i < DC_N_WINDOWS; i++) {
+
+		for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 			struct tegra_dc_win *curr_win = &dc->windows[i];
 			enum tegra_la_id curr_win_la_id =
 					la_id_tab[dc->ndev->id][curr_win->idx];
@@ -384,7 +384,8 @@ static void calc_disp_params(struct tegra_dc *dc,
 		}
 	} else {
 		int i = 0;
-		for (i = 0; i < DC_N_WINDOWS; i++) {
+
+		for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 			struct tegra_dc_win *curr_win = &dc->windows[i];
 			enum tegra_la_id curr_win_la_id =
 					la_id_tab[dc->ndev->id][curr_win->idx];
@@ -471,14 +472,6 @@ static void calc_disp_params(struct tegra_dc *dc,
 }
 #endif
 
-#ifdef CONFIG_TEGRA_ISOMGR
-static void tegra_dc_process_bandwidth_renegotiate(struct tegra_dc *dc, u32 bw)
-{
-	tegra_adf_process_bandwidth_renegotiate(dc->adf, bw,
-			tegra_isomgr_get_available_iso_bw());
-	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id);
-}
-#endif
 
 /* uses the larger of w->bandwidth or w->new_bandwidth */
 static void tegra_dc_set_latency_allowance(struct tegra_dc *dc,
@@ -655,7 +648,7 @@ void tegra_dc_clear_bandwidth(struct tegra_dc *dc)
 		WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
 	} else {
 		dev_dbg(&dc->ndev->dev, "Failed to clear bw.\n");
-		tegra_dc_process_bandwidth_renegotiate(
+		tegra_dc_ext_process_bandwidth_renegotiate(
 				dc->ndev->id, NULL);
 	}
 	dc->bw_kbps = 0;
@@ -714,7 +707,7 @@ void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 		} else {
 			dev_dbg(&dc->ndev->dev, "Failed to reserve bw %ld.\n",
 									bw);
-			tegra_dc_process_bandwidth_renegotiate(
+			tegra_dc_ext_process_bandwidth_renegotiate(
 				dc->ndev->id, NULL);
 		}
 #else /* EMC version */
@@ -736,7 +729,7 @@ void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 		dc->bw_kbps = dc->new_bw_kbps;
 	}
 
-	for (i = 0; i < DC_N_WINDOWS; i++) {
+	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
 		struct tegra_dc_win *w = &dc->windows[i];
 
 		if ((use_new || w->bandwidth != w->new_bandwidth) &&
@@ -752,24 +745,45 @@ int tegra_dc_set_dynamic_emc(struct tegra_dc *dc)
 	unsigned long new_rate;
 	struct tegra_dc_win *windows[DC_N_WINDOWS];
 	unsigned i;
+	unsigned len;
+	unsigned win_status = 0;
 
 	if (!use_dynamic_emc)
 		return 0;
 
-	for (i = 0; i < DC_N_WINDOWS; i++)
-		windows[i] = &dc->windows[i];
+	for (i = 0, len = 0; i < DC_N_WINDOWS; i++) {
+		struct tegra_dc_win *win = tegra_dc_get_window(dc, i);
+		if (win) {
+			windows[len++] = win;
+			if (win->flags && TEGRA_WIN_FLAG_ENABLED)
+				win_status |= 1 << i;
+		}
+	}
 #ifdef CONFIG_TEGRA_ISOMGR
-	new_rate = tegra_dc_get_bandwidth(windows, DC_N_WINDOWS);
+	new_rate = tegra_dc_get_bandwidth(windows, len);
 #else
 	if (tegra_dc_has_multiple_dc())
 		new_rate = ULONG_MAX;
 	else
-		new_rate = tegra_dc_get_bandwidth(windows, DC_N_WINDOWS);
+		new_rate = tegra_dc_get_bandwidth(windows, len);
 #endif
 
 	dc->new_bw_kbps = new_rate;
 	trace_set_dynamic_emc(dc);
 
+	/* if low_v_win is set, we can lower vdd_core when
+		that windows is the only one active */
+	if (dc->pdata->low_v_win != 0) {
+		if (win_status == dc->pdata->low_v_win &&
+			dc->win_status != dc->pdata->low_v_win) {
+			tegra_dvfs_use_alt_freqs_on_clk(dc->clk, true);
+			dc->win_status = dc->pdata->low_v_win;
+		} else if (win_status != dc->pdata->low_v_win &&
+			dc->win_status == dc->pdata->low_v_win) {
+			tegra_dvfs_use_alt_freqs_on_clk(dc->clk, false);
+			dc->win_status = win_status;
+		}
+	}
 	return 0;
 }
 

@@ -25,150 +25,11 @@
 #ifndef __LINUX_MFD_AS3722_PLAT_H
 #define __LINUX_MFD_AS3722_PLAT_H
 
-#include <linux/mutex.h>
-#include <linux/platform_device.h>
-#include <linux/interrupt.h>
-#include <linux/workqueue.h>
-#include <linux/power_supply.h>
-#include <linux/irq.h>
-#include <linux/irqdomain.h>
-#include <linux/regmap.h>
-#include <linux/regulator/machine.h>
-#include <linux/mfd/as3722-reg.h>
-
-struct as3722_reg_init {
-	u32 reg;
-	u32 val;
-};
-
-extern const struct regmap_config as3722_regmap_config;
-
+#include <linux/types.h>
 
 #define AS3722_EXT_CONTROL_ENABLE1		0x1
 #define AS3722_EXT_CONTROL_ENABLE2		0x2
 #define AS3722_EXT_CONTROL_ENABLE3		0x3
-
-struct as3722_rtc {
-	struct rtc_device *rtc;
-	int alarm_enabled;      /* used for suspend/resume */
-};
-
-struct as3722 {
-	struct device *dev;
-	struct regmap *regmap;
-	struct regmap_irq_chip_data *irq_data;
-	struct regulator_dev *rdevs[AS3722_NUM_REGULATORS];
-	struct as3722_rtc rtc;
-	int chip_irq;
-};
-
-enum {
-	AS3722_GPIO_CFG_NO_INVERT = 0,
-	AS3722_GPIO_CFG_INVERT = 1,
-};
-
-enum {
-	AS3722_GPIO_CFG_OUTPUT_DISABLED = 0,
-	AS3722_GPIO_CFG_OUTPUT_ENABLED = 1, };
-
-struct as3722_gpio_config {
-	int gpio;
-	int mode;
-	int invert;
-	int iosf;
-	int output_state;
-};
-
-struct as3722_rtc_platform_data {
-	bool enable_clk32k;
-};
-
-struct as3722_pinctrl_init_data {
-	int pin_id;
-	int usage;
-	int mode;
-};
-
-/*
- * as3722_regulator_platform_data: Regulator platform data.
- * @ext_control: External control.
- * @oc_configure_enable: Enable overcurrent configuration.
- * @oc_trip_thres_perphase: Overcurrent trip threshold current in mA per pahse.
- *	This should be 2500, 3000, 3500.
- * @oc_alarm_thres_perphase: Overcurrent alarm threshold current in mA per
- *	pahse. This should be 0 (for disable), 1600, 1800, 2000, 2200, 2400,
- *	2600, 2800.
- */
-struct as3722_regulator_platform_data {
-	struct regulator_init_data *reg_init;
-	int ext_control;
-	bool oc_configure_enable;
-	int oc_trip_thres_perphase;
-	int oc_alarm_thres_perphase;
-};
-
-/*
- * as3722_adc_extcon_platform_data: ADC platform data.
- * @connection_name: Extcon connection name.
- */
-struct as3722_adc_extcon_platform_data {
-	const char *connection_name;
-	bool enable_adc1_continuous_mode;
-	bool enable_low_voltage_range;
-	int adc_channel;
-	int hi_threshold;
-	int low_threshold;
-};
-
-struct as3722_platform_data {
-	struct as3722_regulator_platform_data *reg_pdata[AS3722_NUM_REGULATORS];
-
-	/* register initialisation */
-	struct as3722_reg_init *core_init_data;
-	int gpio_base;
-	int irq_base;
-	int irq_type;
-	int use_internal_int_pullup;
-	int use_internal_i2c_pullup;
-	int num_gpio_cfgs;
-	bool use_power_off;
-	struct as3722_gpio_config *gpio_cfgs;
-	struct as3722_rtc_platform_data *rtc_pdata;
-	struct as3722_pinctrl_init_data *pinctrl_pdata;
-	struct as3722_adc_extcon_platform_data *extcon_pdata;
-	int pinctrl_init_data_size;
-
-	bool enable_ldo3_tracking;
-	bool disabe_ldo3_tracking_suspend;
-};
-
-static inline int as3722_reg_read(struct as3722 *as3722, u32 reg, u32 *dest)
-{
-	return regmap_read(as3722->regmap, reg, dest);
-}
-
-static inline int as3722_reg_write(struct as3722 *as3722, u32 reg, u32 value)
-{
-	return regmap_write(as3722->regmap, reg, value);
-}
-
-static inline int as3722_block_read(struct as3722 *as3722, u32 reg,
-		int count, u8 *buf)
-{
-	return regmap_bulk_read(as3722->regmap, reg, buf, count);
-}
-
-static inline int as3722_block_write(struct as3722 *as3722, u32 reg,
-		int count, u8 *data)
-{
-	return regmap_bulk_write(as3722->regmap, reg, data, count);
-}
-
-static inline int as3722_set_bits(struct as3722 *as3722, u32 reg,
-		u32 mask, u8 val)
-{
-	return regmap_update_bits(as3722->regmap, reg, mask, val);
-}
 
 /* ADC */
 enum as3722_adc_source {
@@ -200,14 +61,102 @@ enum as3722_adc_channel {
 	AS3722_ADC1 = 1,
 };
 
-int as3722_adc_read(struct as3722 *as3722,
-			enum as3722_adc_channel channel,
-			enum as3722_adc_source source);
+/* regulator IDs */
+enum as3722_regulators_id_ {
+	AS3722_SD0,
+	AS3722_SD1,
+	AS3722_SD2,
+	AS3722_SD3,
+	AS3722_SD4,
+	AS3722_SD5,
+	AS3722_SD6,
+	AS3722_LDO0,
+	AS3722_LDO1,
+	AS3722_LDO2,
+	AS3722_LDO3,
+	AS3722_LDO4,
+	AS3722_LDO5,
+	AS3722_LDO6,
+	AS3722_LDO7,
+	AS3722_LDO9,
+	AS3722_LDO10,
+	AS3722_LDO11,
+	AS3722_NUM_REGULATORS,
+};
+
+/* GPIO IDs */
+enum as3722_gpio_id {
+	 AS3722_GPIO0,
+	 AS3722_GPIO1,
+	 AS3722_GPIO2,
+	 AS3722_GPIO3,
+	 AS3722_GPIO4,
+	 AS3722_GPIO5,
+	 AS3722_GPIO6,
+	 AS3722_GPIO7,
+	 AS3722_NUM_GPIO,
+};
+
+/*
+ * struct as3722_pinctrl_platform_data: Pincontrol platform data.
+ * @pin: name of pin.
+ * @function: Function option of pin. NULL for default.
+ * @prop_bias_pull: Pull up, pull down and normal option. NULL for default.
+ * @prop_open_drain: Open drain enable/disable. NULL for default.
+ * @prop_high_impedance: High impedance enable/disable. NULL for default.
+ * @prop_gpio_mode: GPIO mode, if pin function is in gpio, gpio mode
+ *			like input, output-high and output-low.
+ */
+struct as3722_pinctrl_platform_data {
+	const char *pin;
+	const char *function;
+	const char *prop_bias_pull;
+	const char *prop_open_drain;
+	const char *prop_high_impedance;
+	const char *prop_gpio_mode;
+};
+
+/*
+ * as3722_regulator_platform_data: Regulator platform data.
+ * @ext_control: External control.
+ */
+struct as3722_regulator_platform_data {
+	struct regulator_init_data *reg_init;
+	int ext_control;
+	bool enable_tracking;
+	bool disable_tracking_suspend;
+};
+
+/*
+ * as3722_adc_extcon_platform_data: ADC platform data.
+ * @connection_name: Extcon connection name.
+ */
+struct as3722_adc_extcon_platform_data {
+	const char *connection_name;
+	bool enable_adc1_continuous_mode;
+	bool enable_low_voltage_range;
+	int adc_channel;
+	int hi_threshold;
+	int low_threshold;
+};
+
+struct as3722_platform_data {
+	struct as3722_regulator_platform_data *reg_pdata[AS3722_NUM_REGULATORS];
+	int gpio_base;
+	int irq_base;
+	int irq_type;
+	int use_internal_int_pullup;
+	int use_internal_i2c_pullup;
+	int num_gpio_cfgs;
+	bool use_power_off;
+	bool use_power_reset;
+	struct as3722_gpio_config *gpio_cfgs;
+	struct as3722_pinctrl_platform_data *pinctrl_pdata;
+	int num_pinctrl;
+	struct as3722_adc_extcon_platform_data *extcon_pdata;
+	int watchdog_timer_initial_period;
+	int watchdog_timer_mode;
+	bool enable_clk32k_out;
+};
 
 #endif
-
-
-
-
-
-

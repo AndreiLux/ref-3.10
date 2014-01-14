@@ -20,7 +20,6 @@
 #ifndef _MACH_TEGRA_BOARD_LOKI_H
 #define _MACH_TEGRA_BOARD_LOKI_H
 
-#include <linux/mfd/as3722-reg.h>
 #include <mach/gpio-tegra.h>
 #include <mach/irqs.h>
 #include "gpio-names.h"
@@ -39,12 +38,16 @@ int loki_soctherm_init(void);
 int loki_emc_init(void);
 
 /* Invensense MPU Definitions */
-#define MPU_GYRO_NAME		"mpu6050"
-#define MPU_GYRO_IRQ_GPIO	TEGRA_GPIO_PR2
-#define MPU_GYRO_ADDR		0x68
-#define MPU_GYRO_BUS_NUM	0
-#define MPU_GYRO_ORIENTATION	MTMAT_BOT_CCW_90
+#define MPU_GYRO_NAME			"mpu6050"
+#define MPU_GYRO_IRQ_GPIO		TEGRA_GPIO_PR2
+#define MPU_GYRO_ADDR			0x68
+#define MPU_GYRO_BUS_NUM		0
+#define MPU_GYRO_ORIENTATION		MTMAT_BOT_CCW_0
+#define MPU_GYRO_ORIENTATION_FAB0	MTMAT_BOT_CCW_90
 #define MPU_GYRO_ORIENTATION_T_1_95	{ 0, 1, 0, 0, 0, 1, 1, 0, 0 }
+#define MPU_COMPASS_NAME		"ak8975"
+#define MPU_COMPASS_ADDR		0x0C
+#define MPU_COMPASS_ORIENTATION		MTMAT_BOT_CCW_180
 
 /* PCA954x I2C bus expander bus addresses */
 #define PCA954x_I2C_BUS_BASE    6
@@ -156,5 +159,11 @@ GPIO, also the GPIO is same for T114 interposer and T124*/
 
 int tn8_regulator_init(void);
 int loki_fan_init(void);
+
+enum {
+	P2530 = 0,
+	E2549 = 1,
+	E2548 = 2,
+};
 
 #endif

@@ -19,6 +19,7 @@
 #include <linux/cpumask.h>
 #include <linux/bitops.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra-fuse.h>
 
 #include <asm/cacheflush.h>
 
@@ -27,7 +28,7 @@
 #include "reset.h"
 #include "sleep.h"
 #include "pm.h"
-#include "fuse.h"
+#include "common.h"
 
 #define TEGRA_IRAM_RESET_BASE (TEGRA_IRAM_BASE + \
 				TEGRA_IRAM_RESET_HANDLER_OFFSET)
@@ -50,7 +51,7 @@ static void tegra_cpu_reset_handler_enable(void)
 		tegra_cpu_reset_handler_size);
 
 #if defined(CONFIG_TEGRA_USE_SECURE_KERNEL)
-	tegra_generic_smc(0xFFFFF200,
+	tegra_generic_smc(0x82000001,
 		TEGRA_RESET_HANDLER_BASE + tegra_cpu_reset_handler_offset, 0);
 #else
 	/* NOTE: This must be the one and only write to the EVP CPU reset

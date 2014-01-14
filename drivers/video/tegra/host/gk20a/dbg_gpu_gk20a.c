@@ -31,6 +31,7 @@
 #include "gk20a_gating_reglist.h"
 #include "dbg_gpu_gk20a.h"
 #include "regops_gk20a.h"
+#include "hw_therm_gk20a.h"
 
 struct dbg_gpu_session_ops dbg_gpu_session_ops_gk20a = {
 	.exec_reg_ops = exec_regops_gk20a,
@@ -101,41 +102,57 @@ int gk20a_dbg_gpu_do_dev_open(struct inode *inode, struct file *filp, bool is_pr
 	return 0;
 }
 
+static void gk20a_dbg_session_mutex_lock(struct dbg_session_gk20a *dbg_s)
+{
+	if (dbg_s->is_profiler)
+		mutex_lock(&dbg_s->g->dbg_sessions_lock);
+	else
+		mutex_lock(&dbg_s->ch->dbg_s_lock);
+}
+
+static void gk20a_dbg_session_mutex_unlock(struct dbg_session_gk20a *dbg_s)
+{
+	if (dbg_s->is_profiler)
+		mutex_unlock(&dbg_s->g->dbg_sessions_lock);
+	else
+		mutex_unlock(&dbg_s->ch->dbg_s_lock);
+}
+
 static void gk20a_dbg_gpu_events_enable(struct dbg_session_gk20a *dbg_s)
 {
 	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
 
-	mutex_lock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_lock(dbg_s);
 
 	dbg_s->dbg_events.events_enabled = true;
 	dbg_s->dbg_events.num_pending_events = 0;
 
-	mutex_unlock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_unlock(dbg_s);
 }
 
 static void gk20a_dbg_gpu_events_disable(struct dbg_session_gk20a *dbg_s)
 {
 	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
 
-	mutex_lock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_lock(dbg_s);
 
 	dbg_s->dbg_events.events_enabled = false;
 	dbg_s->dbg_events.num_pending_events = 0;
 
-	mutex_unlock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_unlock(dbg_s);
 }
 
 static void gk20a_dbg_gpu_events_clear(struct dbg_session_gk20a *dbg_s)
 {
 	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
 
-	mutex_lock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_lock(dbg_s);
 
 	if (dbg_s->dbg_events.events_enabled &&
 			dbg_s->dbg_events.num_pending_events > 0)
 		dbg_s->dbg_events.num_pending_events--;
 
-	mutex_unlock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_unlock(dbg_s);
 }
 
 static int gk20a_dbg_gpu_events_ctrl(struct dbg_session_gk20a *dbg_s,
@@ -184,7 +201,7 @@ unsigned int gk20a_dbg_gpu_dev_poll(struct file *filep, poll_table *wait)
 
 	poll_wait(filep, &dbg_s->dbg_events.wait_queue, wait);
 
-	mutex_lock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_lock(dbg_s);
 
 	if (dbg_s->dbg_events.events_enabled &&
 			dbg_s->dbg_events.num_pending_events > 0) {
@@ -195,7 +212,7 @@ unsigned int gk20a_dbg_gpu_dev_poll(struct file *filep, poll_table *wait)
 		mask = (POLLPRI | POLLIN);
 	}
 
-	mutex_unlock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_unlock(dbg_s);
 
 	return mask;
 }
@@ -473,28 +490,33 @@ static int nvhost_ioctl_channel_reg_ops(struct dbg_session_gk20a *dbg_s,
 
 	if (copy_from_user(ops, (void *)(uintptr_t)args->ops, ops_size)) {
 		dev_err(dev, "copy_from_user failed!");
-		return -EFAULT;
+		err = -EFAULT;
+		goto clean_up;
 	}
 
 	/* mutual exclusion for multiple debug sessions */
-	mutex_lock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_lock(dbg_s);
 
 	err = dbg_s->ops->exec_reg_ops(dbg_s, ops, args->num_ops);
 
-	mutex_unlock(&dbg_s->ch->dbg_s_lock);
+	gk20a_dbg_session_mutex_unlock(dbg_s);
 
 	if (err) {
 		nvhost_err(dev, "dbg regops failed");
-		return err;
+		goto clean_up;
 	}
 
 	nvhost_dbg_fn("Copying result to userspace");
 
 	if (copy_to_user((void *)(uintptr_t)args->ops, ops, ops_size)) {
 		dev_err(dev, "copy_to_user failed!");
-		return -EFAULT;
+		err = -EFAULT;
+		goto clean_up;
 	}
 	return 0;
+ clean_up:
+	kfree(ops);
+	return err;
 }
 
 static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
@@ -530,7 +552,7 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 
 			gr_gk20a_slcg_gr_load_gating_prod(g, false);
 			gr_gk20a_slcg_perf_load_gating_prod(g, false);
-			gr_gk20a_blcg_gr_load_gating_prod(g, false);
+			gr_gk20a_init_blcg_mode(g, BLCG_RUN, ENGINE_GR_GK20A);
 
 			g->elcg_enabled = false;
 			gr_gk20a_init_elcg_mode(g, ELCG_RUN, ENGINE_GR_GK20A);
@@ -557,8 +579,8 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 			g->elcg_enabled = true;
 			gr_gk20a_init_elcg_mode(g, ELCG_AUTO, ENGINE_GR_GK20A);
 			gr_gk20a_init_elcg_mode(g, ELCG_AUTO, ENGINE_CE2_GK20A);
+			gr_gk20a_init_blcg_mode(g, BLCG_AUTO, ENGINE_GR_GK20A);
 
-			gr_gk20a_blcg_gr_load_gating_prod(g, g->blcg_enabled);
 			gr_gk20a_slcg_gr_load_gating_prod(g, g->slcg_enabled);
 			gr_gk20a_slcg_perf_load_gating_prod(g, g->slcg_enabled);
 

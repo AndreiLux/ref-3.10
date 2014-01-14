@@ -30,6 +30,8 @@
 #include <linux/scatterlist.h>
 #include <linux/dma-mapping.h>
 #include <linux/io.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/mutex.h>
 #include <linux/interrupt.h>
 #include <linux/types.h>
@@ -1923,7 +1925,8 @@ struct tegra_se_rsa_slot {
 struct tegra_se_aes_rsa_context {
 	struct tegra_se_dev *se_dev;	/* Security Engine device */
 	struct tegra_se_rsa_slot *slot;	/* Security Engine rsa key slot */
-	u32 keylen;	/* key length in bits */
+	u32 mod_len;
+	u32 exp_len;
 };
 
 static void tegra_se_rsa_free_key_slot(struct tegra_se_rsa_slot *slot)
@@ -2010,13 +2013,14 @@ int tegra_se_rsa_setkey(struct crypto_ahash *tfm, const u8 *key,
 		return -EINVAL;
 
 	/* Allocate rsa key slot */
-	pslot = tegra_se_alloc_rsa_key_slot();
-	if (!pslot) {
-		dev_err(se_dev->dev, "no free key slot\n");
-		return -ENOMEM;
+	if (!ctx->slot) {
+		pslot = tegra_se_alloc_rsa_key_slot();
+		if (!pslot) {
+			dev_err(se_dev->dev, "no free key slot\n");
+			return -ENOMEM;
+		}
+		ctx->slot = pslot;
 	}
-	ctx->slot = pslot;
-	ctx->keylen = keylen;
 
 	module_key_length = (keylen >> 16);
 	exponent_key_length = (keylen & (0xFFFF));
@@ -2024,6 +2028,9 @@ int tegra_se_rsa_setkey(struct crypto_ahash *tfm, const u8 *key,
 	if (!(((module_key_length / 64) >= 1) &&
 			((module_key_length / 64) <= 4)))
 		return -EINVAL;
+
+	ctx->mod_len = module_key_length;
+	ctx->exp_len = exponent_key_length;
 
 	freq = se_dev->chipdata->rsa_freq;
 
@@ -2038,14 +2045,6 @@ int tegra_se_rsa_setkey(struct crypto_ahash *tfm, const u8 *key,
 	/* take access to the hw */
 	mutex_lock(&se_hw_lock);
 	pm_runtime_get_sync(se_dev->dev);
-
-	/* Write key length */
-	se_writel(se_dev, ((module_key_length / 64) - 1),
-		SE_RSA_KEY_SIZE_REG_OFFSET);
-
-	/* Write exponent size in 32 bytes */
-	se_writel(se_dev, (exponent_key_length / 4),
-		SE_RSA_EXP_SIZE_REG_OFFSET);
 
 	if (exponent_key_length) {
 		key_size_words = (exponent_key_length / key_word_size);
@@ -2078,6 +2077,7 @@ int tegra_se_rsa_setkey(struct crypto_ahash *tfm, const u8 *key,
 			se_writel(se_dev, val, SE_RSA_KEYTABLE_ADDR);
 		}
 	}
+
 	pm_runtime_put(se_dev->dev);
 	mutex_unlock(&se_hw_lock);
 	return 0;
@@ -2158,6 +2158,14 @@ int tegra_se_rsa_digest(struct ahash_request *req)
 	mutex_lock(&se_hw_lock);
 	pm_runtime_get_sync(se_dev->dev);
 
+	/* Write key length */
+	se_writel(se_dev, ((rsa_ctx->mod_len / 64) - 1),
+		SE_RSA_KEY_SIZE_REG_OFFSET);
+
+	/* Write exponent size in 32 bytes */
+	se_writel(se_dev, (rsa_ctx->exp_len / 4),
+		SE_RSA_EXP_SIZE_REG_OFFSET);
+
 	val = SE_CONFIG_ENC_ALG(ALG_RSA) |
 		SE_CONFIG_DEC_ALG(ALG_NOP) |
 		SE_CONFIG_DST(DST_RSAREG);
@@ -2195,7 +2203,6 @@ int tegra_se_rsa_cra_init(struct crypto_tfm *tfm)
 void tegra_se_rsa_cra_exit(struct crypto_tfm *tfm)
 {
 	struct tegra_se_aes_rsa_context *ctx = crypto_tfm_ctx(tfm);
-
 	tegra_se_rsa_free_key_slot(ctx->slot);
 	ctx->slot = NULL;
 }
@@ -2550,16 +2557,64 @@ bool isAlgoSupported(struct tegra_se_dev *se_dev, const char *algo)
 	return true;
 }
 
+static struct tegra_se_chipdata tegra_se_chipdata = {
+	.rsa_supported = false,
+	.cprng_supported = true,
+	.drbg_supported = false,
+	.aes_freq = 300000000,
+	.rng_freq = 300000000,
+	.sha1_freq = 300000000,
+	.sha224_freq = 300000000,
+	.sha256_freq = 300000000,
+	.sha384_freq = 300000000,
+	.sha512_freq = 300000000,
+};
+
+static struct tegra_se_chipdata tegra11_se_chipdata = {
+	.rsa_supported = true,
+	.cprng_supported = false,
+	.drbg_supported = true,
+	.aes_freq = 150000000,
+	.rng_freq = 150000000,
+	.sha1_freq = 200000000,
+	.sha224_freq = 250000000,
+	.sha256_freq = 250000000,
+	.sha384_freq = 150000000,
+	.sha512_freq = 150000000,
+	.rsa_freq = 350000000,
+};
+
+static struct of_device_id tegra_se_of_match[] = {
+	{
+		.compatible = "nvidia,tegra124-se",
+		.data = &tegra11_se_chipdata,
+	},
+};
+MODULE_DEVICE_TABLE(of, tegra_se_of_match);
+
 static int tegra_se_probe(struct platform_device *pdev)
 {
 	struct tegra_se_dev *se_dev = NULL;
 	struct resource *res = NULL;
+	const struct of_device_id *match;
 	int err = 0, i = 0, j = 0, k = 0;
 
 	se_dev = kzalloc(sizeof(struct tegra_se_dev), GFP_KERNEL);
 	if (!se_dev) {
 		dev_err(&pdev->dev, "memory allocation failed\n");
 		return -ENOMEM;
+	}
+	if (pdev->dev.of_node) {
+		match = of_match_device(of_match_ptr(tegra_se_of_match),
+				&pdev->dev);
+		if (!match) {
+			dev_err(&pdev->dev, "Error: No device match found\n");
+			return -ENODEV;
+		}
+		se_dev->chipdata = (struct tegra_se_chipdata *)match->data;
+	} else {
+		se_dev->chipdata =
+			(struct tegra_se_chipdata *)pdev->id_entry->driver_data;
 	}
 
 	spin_lock_init(&se_dev->lock);
@@ -2601,9 +2656,6 @@ static int tegra_se_probe(struct platform_device *pdev)
 		dev_err(se_dev->dev, "platform_get_irq failed\n");
 		goto err_irq;
 	}
-
-	se_dev->chipdata =
-		(struct tegra_se_chipdata *)pdev->id_entry->driver_data;
 
 	/* Initialize the clock */
 	se_dev->pclk = clk_get(se_dev->dev, "se");
@@ -2689,11 +2741,11 @@ static int tegra_se_probe(struct platform_device *pdev)
 	if (!se_dev->chipdata->drbg_supported)
 		se_dev->ctx_save_buf = dma_alloc_coherent(se_dev->dev,
 			SE_CONTEXT_BUFER_SIZE, &se_dev->ctx_save_buf_adr,
-			GFP_KERNEL);
+			GFP_KERNEL | GFP_DMA32);
 	else
 		se_dev->ctx_save_buf = dma_alloc_coherent(se_dev->dev,
 			SE_CONTEXT_DRBG_BUFER_SIZE,
-			&se_dev->ctx_save_buf_adr, GFP_KERNEL);
+			&se_dev->ctx_save_buf_adr, GFP_KERNEL | GFP_DMA32);
 
 	if (!se_dev->ctx_save_buf) {
 		dev_err(se_dev->dev, "Context save buffer alloc filed\n");
@@ -3445,42 +3497,14 @@ static const struct dev_pm_ops tegra_se_dev_pm_ops = {
 };
 #endif
 
-static struct tegra_se_chipdata tegra_se_chipdata = {
-	.rsa_supported = false,
-	.cprng_supported = true,
-	.drbg_supported = false,
-	.aes_freq = 300000000,
-	.rng_freq = 300000000,
-	.sha1_freq = 300000000,
-	.sha224_freq = 300000000,
-	.sha256_freq = 300000000,
-	.sha384_freq = 300000000,
-	.sha512_freq = 300000000,
-};
-
-static struct tegra_se_chipdata tegra11_se_chipdata = {
-	.rsa_supported = true,
-	.cprng_supported = false,
-	.drbg_supported = true,
-	.aes_freq = 150000000,
-	.rng_freq = 150000000,
-	.sha1_freq = 200000000,
-	.sha224_freq = 250000000,
-	.sha256_freq = 250000000,
-	.sha384_freq = 150000000,
-	.sha512_freq = 150000000,
-	.rsa_freq = 350000000,
-
-};
-
 static struct platform_device_id tegra_dev_se_devtype[] = {
 	{
 		.name = "tegra-se",
 		.driver_data = (unsigned long)&tegra_se_chipdata,
 	},
 	{
-			.name = "tegra11-se",
-			.driver_data = (unsigned long)&tegra11_se_chipdata,
+		.name = "tegra11-se",
+		.driver_data = (unsigned long)&tegra11_se_chipdata,
 	},
 	{
 		.name = "tegra12-se",
@@ -3497,6 +3521,7 @@ static struct platform_driver tegra_se_driver = {
 		.owner  = THIS_MODULE,
 #if defined(CONFIG_PM_RUNTIME)
 		.pm = &tegra_se_dev_pm_ops,
+		.of_match_table = of_match_ptr(tegra_se_of_match),
 #endif
 	},
 };

@@ -30,6 +30,7 @@
 #include <linux/bitops.h>
 #include <linux/sched.h>
 #include <linux/of.h>
+#include <linux/of_fdt.h>
 #include <linux/pstore_ram.h>
 #include <linux/dma-mapping.h>
 #include <linux/sys_soc.h>
@@ -43,6 +44,7 @@
 #include <linux/bootmem.h>
 #include <linux/tegra-soc.h>
 #include <linux/dma-contiguous.h>
+#include <linux/tegra-fuse.h>
 
 #ifdef CONFIG_ARM64
 #include <linux/irqchip/gic.h>
@@ -60,7 +62,6 @@
 #include "clock.h"
 #include "common.h"
 #include "dvfs.h"
-#include "fuse.h"
 #include "iomap.h"
 #include "pm.h"
 #include "sleep.h"
@@ -270,6 +271,7 @@ static int modem_id;
 static int commchip_id;
 static int sku_override;
 static int debug_uart_port_id;
+static bool uart_over_sd;
 static enum audio_codec_type audio_codec_name;
 static enum image_type board_image_type = system_image;
 static int max_cpu_current;
@@ -445,12 +447,16 @@ static __initdata struct tegra_clk_init_table tegra12x_clk_init_table[] = {
 	{ "sdmmc1",	"pll_p",	48000000,	false},
 	{ "sdmmc3",	"pll_p",	48000000,	false},
 	{ "sdmmc4",	"pll_p",	48000000,	false},
+	{ "sdmmc1_ddr",	"pll_p",	48000000,	false},
+	{ "sdmmc3_ddr",	"pll_p",	48000000,	false},
+	{ "sdmmc4_ddr",	"pll_p",	48000000,	false},
 	{ "sbc1.sclk",	NULL,		40000000,	false},
 	{ "sbc2.sclk",	NULL,		40000000,	false},
 	{ "sbc3.sclk",	NULL,		40000000,	false},
 	{ "sbc4.sclk",	NULL,		40000000,	false},
 	{ "sbc5.sclk",	NULL,		40000000,	false},
 	{ "sbc6.sclk",	NULL,		40000000,	false},
+	{ "cpu.mselect", NULL,		102000000,	true},
 	{ "gpu_ref",	NULL,		0,		true},
 #ifdef CONFIG_TEGRA_PLLM_SCALED
 	{ "vi",		"pll_p",	0,		false},
@@ -598,9 +604,9 @@ static void tegra_cache_smc(bool enable, u32 arg)
 	local_irq_save(flags);
 	l2x0_enabled = readl_relaxed(p + L2X0_CTRL) & 1;
 	if (enable && !l2x0_enabled)
-		tegra_generic_smc(0xFFFFF100, 0x00000001, arg);
+		tegra_generic_smc(0x82000002, 0x00000001, arg);
 	else if (!enable && l2x0_enabled)
-		tegra_generic_smc(0xFFFFF100, 0x00000002, arg);
+		tegra_generic_smc(0x82000002, 0x00000002, arg);
 	local_irq_restore(flags);
 
 	if (need_affinity_switch && can_switch_affinity) {
@@ -727,12 +733,16 @@ static void __init tegra_perf_init(void)
 #if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)
 static void __init tegra_ramrepair_init(void)
 {
+#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
 	if (tegra_spare_fuse(10)  | tegra_spare_fuse(11)) {
+#endif
 		u32 reg;
 		reg = readl(FLOW_CTRL_RAM_REPAIR);
 		reg &= ~FLOW_CTRL_RAM_REPAIR_BYPASS_EN;
 		writel(reg, FLOW_CTRL_RAM_REPAIR);
+#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
 	}
+#endif
 }
 #endif
 
@@ -741,8 +751,7 @@ static void __init tegra_init_power(void)
 #ifdef CONFIG_ARCH_TEGRA_HAS_SATA
 	tegra_powergate_partition_with_clk_off(TEGRA_POWERGATE_SATA);
 #endif
-#if defined(CONFIG_ARCH_TEGRA_HAS_PCIE) && \
-			!defined(CONFIG_TEGRA_PCIE_SKIP_POWERGATING)
+#ifdef CONFIG_ARCH_TEGRA_HAS_PCIE
 	tegra_powergate_partition_with_clk_off(TEGRA_POWERGATE_PCIE);
 #endif
 
@@ -880,6 +889,7 @@ void __init tegra30_init_early(void)
 	u32 speedo;
 	u32 tag_latency, data_latency;
 
+	display_tegra_dt_info();
 #ifndef CONFIG_SMP
 	/* For SMP system, initializing the reset handler here is too
 	   late. For non-SMP systems, the function that calls the reset
@@ -925,6 +935,7 @@ void __init tegra30_init_early(void)
 #ifdef CONFIG_ARCH_TEGRA_11x_SOC
 void __init tegra11x_init_early(void)
 {
+	display_tegra_dt_info();
 #ifndef CONFIG_SMP
 	/* For SMP system, initializing the reset handler here is too
 	   late. For non-SMP systems, the function that calls the reset
@@ -954,6 +965,7 @@ void __init tegra11x_init_early(void)
 #ifdef CONFIG_ARCH_TEGRA_12x_SOC
 void __init tegra12x_init_early(void)
 {
+	display_tegra_dt_info();
 #ifndef CONFIG_SMP
 	/* For SMP system, initializing the reset handler here is too
 	   late. For non-SMP systems, the function that calls the reset
@@ -980,6 +992,7 @@ void __init tegra12x_init_early(void)
 #ifdef CONFIG_ARCH_TEGRA_14x_SOC
 void __init tegra14x_init_early(void)
 {
+	display_tegra_dt_info();
 #ifndef CONFIG_SMP
 	/* For SMP system, initializing the reset handler here is too
 	   late. For non-SMP systems, the function that calls the reset
@@ -1324,6 +1337,8 @@ static int __init tegra_debug_uartport(char *info)
 		} else {
 			port_id = memparse(p + 7, &p);
 			debug_uart_port_id = (int) port_id;
+			if (debug_uart_port_id == 5)
+				uart_over_sd = true;
 		}
 	} else {
 		debug_uart_port_id = -1;
@@ -1335,6 +1350,16 @@ static int __init tegra_debug_uartport(char *info)
 bool is_tegra_debug_uartport_hs(void)
 {
 	return is_tegra_debug_uart_hsport;
+}
+
+bool is_uart_over_sd_enabled(void)
+{
+	return uart_over_sd;
+}
+
+void set_sd_uart_port_id(int port_id)
+{
+	debug_uart_port_id = port_id;
 }
 
 int get_tegra_uart_debug_port_id(void)
@@ -2186,7 +2211,13 @@ late_initcall(tegra_release_bootloader_fb);
 
 static struct platform_device *pinmux_devices[] = {
 	&tegra_gpio_device,
-	&tegra_pinmux_device,
+#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
+	&tegra114_pinctrl_device,
+#elif defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	&tegra124_pinctrl_device,
+#else
+	&tegra124_pinctrl_device,
+#endif
 };
 
 void tegra_enable_pinmux(void)
@@ -2388,3 +2419,165 @@ static int __init set_tegra_split_mem(char *options)
 }
 early_param("tegra_split_mem", set_tegra_split_mem);
 
+#define FUSE_SKU_INFO       0x110
+#define STRAP_OPT 0x008
+#define GMI_AD0 BIT(4)
+#define GMI_AD1 BIT(5)
+#define RAM_ID_MASK (GMI_AD0 | GMI_AD1)
+#define RAM_CODE_SHIFT 4
+
+#ifdef CONFIG_TEGRA_PRE_SILICON_SUPPORT
+static enum tegra_platform tegra_platform;
+static bool cpu_is_asim;
+static bool cpu_is_dsim;
+static const char *tegra_platform_name[TEGRA_PLATFORM_MAX] = {
+	[TEGRA_PLATFORM_SILICON] = "silicon",
+	[TEGRA_PLATFORM_QT]      = "quickturn",
+	[TEGRA_PLATFORM_LINSIM]  = "linsim",
+	[TEGRA_PLATFORM_FPGA]    = "fpga",
+};
+#endif
+
+static u32 tegra_chip_sku_id;
+static u32 tegra_chip_id;
+static u32 tegra_chip_bct_strapping;
+enum tegra_revision tegra_revision;
+
+u32 tegra_read_pmc_reg(int offset)
+{
+	return readl(IO_ADDRESS(TEGRA_PMC_BASE) + offset);
+}
+
+u32 tegra_read_clk_ctrl_reg(int offset)
+{
+	return readl(IO_ADDRESS(TEGRA_CLK_RESET_BASE) + offset);
+}
+
+u32 tegra_read_apb_misc_reg(int offset)
+{
+	return readl(IO_ADDRESS(TEGRA_APB_MISC_BASE) + offset);
+}
+
+u32 tegra_fuse_readl(unsigned long offset)
+{
+	return readl(IO_ADDRESS(TEGRA_FUSE_BASE + offset));
+}
+
+void tegra_fuse_writel(u32 val, unsigned long offset)
+{
+	writel(val, IO_ADDRESS(TEGRA_FUSE_BASE + offset));
+}
+
+u32 tegra_read_chipid(void)
+{
+	return readl_relaxed(IO_ADDRESS(TEGRA_APB_MISC_BASE)
+			+ 0x804);
+}
+
+static void tegra_set_sku_id(void)
+{
+	u32 reg;
+
+	reg = tegra_fuse_readl(FUSE_SKU_INFO);
+	tegra_chip_sku_id = reg & 0xFF;
+}
+
+static void tegra_set_chip_id(void)
+{
+	u32 id;
+
+	id = tegra_read_chipid();
+	tegra_chip_id = (id >> 8) & 0xff;
+}
+
+static void tegra_set_bct_strapping(void)
+{
+	u32 reg;
+
+	reg = readl(IO_ADDRESS(TEGRA_APB_MISC_BASE + STRAP_OPT));
+	tegra_chip_bct_strapping = (reg & RAM_ID_MASK) >> RAM_CODE_SHIFT;
+}
+
+u32 tegra_get_sku_id(void)
+{
+	return tegra_chip_sku_id;
+}
+
+u32 tegra_get_chip_id(void)
+{
+	return tegra_chip_id;
+}
+
+u32 tegra_get_bct_strapping(void)
+{
+	return tegra_chip_bct_strapping;
+}
+
+static void tegra_fuse_cfg_reg_visible(void)
+{
+	/* Make all fuse registers visible */
+	u32 reg = readl(IO_ADDRESS(TEGRA_CLK_RESET_BASE + 0x48));
+	reg |= BIT(28);
+	writel(reg, IO_ADDRESS(TEGRA_CLK_RESET_BASE + 0x48));
+}
+
+void tegra_init_fuse(void)
+{
+	u32 sku_id;
+
+	tegra_fuse_cfg_reg_visible();
+	tegra_set_sku_id();
+	sku_id = tegra_get_sku_id();
+	tegra_set_bct_strapping();
+	tegra_set_chip_id();
+	tegra_revision = tegra_chip_get_revision();
+	tegra_init_speedo_data();
+	pr_info("Tegra Revision: %s SKU: 0x%x CPU Process: %d Core Process: %d\n",
+		tegra_revision_name[tegra_revision],
+		sku_id, tegra_cpu_process_id(),
+		tegra_core_process_id());
+#ifdef CONFIG_TEGRA_PRE_SILICON_SUPPORT
+	if (!tegra_platform_is_silicon()) {
+		pr_info("Tegra Platform: %s%s%s\n",
+			tegra_cpu_is_asim() ? "ASIM+" : "",
+			tegra_cpu_is_dsim() ? "DSIM+" : "",
+			tegra_platform_name[tegra_platform]);
+	}
+#endif
+}
+
+void __init display_tegra_dt_info(void)
+{
+	unsigned long dt_root;
+	const char *dts_fname;
+
+
+	dt_root = of_get_flat_dt_root();
+
+	dts_fname = of_get_flat_dt_prop(dt_root, "nvidia,dtsfilename", NULL);
+	if (dts_fname)
+		pr_info("DTS File Name: %s\n", dts_fname);
+	else
+		pr_info("DTS File Name: <unknown>\n");
+}
+
+static int __init tegra_get_last_reset_reason(void)
+{
+#define PMC_RST_STATUS 0x1b4
+#define RESET_STR(REASON) "last reset is due to "#REASON"\n"
+	char *reset_reason[] = {
+		RESET_STR(power on reset),
+		RESET_STR(watchdog timeout),
+		RESET_STR(sensor),
+		RESET_STR(software reset),
+		RESET_STR(deep sleep reset),
+	};
+
+	u32 val = readl(IO_ADDRESS(TEGRA_PMC_BASE) + PMC_RST_STATUS) & 0x7;
+	if (val >= ARRAY_SIZE(reset_reason))
+		pr_info("last reset value is invalid 0x%x\n", val);
+	else
+		pr_info("%s\n", reset_reason[val]);
+	return 0;
+}
+late_initcall(tegra_get_last_reset_reason);

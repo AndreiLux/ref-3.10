@@ -28,6 +28,7 @@
 #include <linux/platform_data/tegra_usb.h>
 #include <linux/clk/tegra.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra-fuse.h>
 #include <mach/pinmux.h>
 #include <mach/tegra_usb_pmc.h>
 #include <mach/tegra_usb_pad_ctrl.h>
@@ -39,7 +40,6 @@
 #endif
 #include "tegra_usb_phy.h"
 #include "../../../arch/arm/mach-tegra/gpio-names.h"
-#include "../../../arch/arm/mach-tegra/fuse.h"
 
 /* HACK! This needs to come from DT */
 #include "../../../arch/arm/mach-tegra/iomap.h"
@@ -81,8 +81,13 @@
 #define   UHSIC_PHY_ENABLE		(1 << 19)
 
 #define USB_PHY_VBUS_WAKEUP_ID	0x408
+#define   DIV_DET_EN		(1 << 31)
 #define   VDCD_DET_STS		(1 << 26)
 #define   VDCD_DET_CHG_DET	(1 << 25)
+#define   VOP_DIV2P7_DET	(1 << 23)
+#define   VOP_DIV2P0_DET	(1 << 22)
+#define   VON_DIV2P7_DET	(1 << 15)
+#define   VON_DIV2P0_DET	(1 << 14)
 #define   VDAT_DET_INT_EN	(1 << 16)
 #define   VDAT_DET_CHG_DET	(1 << 17)
 #define   VDAT_DET_STS		(1 << 18)
@@ -454,13 +459,12 @@ static bool utmi_phy_remotewake_detected(struct tegra_usb_phy *phy)
 			writel(val, base + UTMIP_PMC_WAKEUP0);
 
 			val = tegra_usb_pmc_reg_read(UTMIP_STATUS);
-			if (phy->port_speed < USB_PHY_PORT_SPEED_UNKNOWN) {
-				pr_info("%s: utmip remote wake detected\n",
-								__func__);
+			if (phy->port_speed < USB_PHY_PORT_SPEED_UNKNOWN)
 				phy->pmc_remote_wakeup = true;
-			} else {
+			else
 				phy->pmc_hotplug_wakeup = true;
-			}
+
+			DBG("%s: utmip PMC interrupt detected\n", __func__);
 			return true;
 		}
 	}
@@ -1148,9 +1152,9 @@ static void utmi_phy_restore_end(struct tegra_usb_phy *phy)
 		pmc->pmc_ops->disable_pmc_bus_ctrl(pmc, 1);
 		phy->pmc_remote_wakeup = false;
 		phy->pmc_hotplug_wakeup = false;
-		PHY_DBG("%s DISABLE_PMC inst = %d\n", __func__, phy->inst);
-
 		local_irq_restore(flags);
+
+		PHY_DBG("%s DISABLE_PMC inst = %d\n", __func__, phy->inst);
 
 		if (usb_phy_reg_status_wait(base + USB_USBCMD, USB_USBCMD_RS,
 							 USB_USBCMD_RS, 2000)) {
@@ -1463,6 +1467,114 @@ static bool utmi_phy_nv_charger_detect(struct tegra_usb_phy *phy)
 	return ret;
 }
 
+static bool utmi_phy_apple_charger_1000ma_detect(struct tegra_usb_phy *phy)
+{
+	unsigned long val;
+	bool ret;
+	void __iomem *base = phy->regs;
+	unsigned long org_flags;
+
+	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
+	ret = false;
+
+	org_flags = utmi_phy_set_dp_dm_pull_up_down(phy,
+				FORCE_PULLUP_DP | FORCE_PULLUP_DM |
+				DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+	usleep_range(20000, 30000);
+	utmi_phy_set_dp_dm_pull_up_down(phy,
+				DISABLE_PULLUP_DP | DISABLE_PULLUP_DM |
+				DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	val |= DIV_DET_EN;
+	writel(val, base + USB_PHY_VBUS_WAKEUP_ID);
+
+	usleep_range(10000, 20000);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	val &= ~DIV_DET_EN;
+	writel(val, base + USB_PHY_VBUS_WAKEUP_ID);
+
+	if ((val & VOP_DIV2P0_DET) && (val & VON_DIV2P7_DET))
+		ret = true;
+
+	utmi_phy_set_dp_dm_pull_up_down(phy, org_flags);
+
+	return ret;
+}
+
+static bool utmi_phy_apple_charger_2000ma_detect(struct tegra_usb_phy *phy)
+{
+	unsigned long val;
+	bool ret;
+	void __iomem *base = phy->regs;
+	unsigned long org_flags;
+
+	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
+	ret = false;
+
+	org_flags = utmi_phy_set_dp_dm_pull_up_down(phy,
+				FORCE_PULLUP_DP | FORCE_PULLUP_DM |
+				DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+	usleep_range(20000, 30000);
+	utmi_phy_set_dp_dm_pull_up_down(phy,
+				DISABLE_PULLUP_DP | DISABLE_PULLUP_DM |
+				DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	val |= DIV_DET_EN;
+	writel(val, base + USB_PHY_VBUS_WAKEUP_ID);
+
+	usleep_range(10000, 20000);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	val &= ~DIV_DET_EN;
+	writel(val, base + USB_PHY_VBUS_WAKEUP_ID);
+
+	if ((val & VOP_DIV2P7_DET) && (val & VON_DIV2P0_DET))
+		ret = true;
+
+	utmi_phy_set_dp_dm_pull_up_down(phy, org_flags);
+
+	return ret;
+}
+
+static bool utmi_phy_apple_charger_500ma_detect(struct tegra_usb_phy *phy)
+{
+	unsigned long val;
+	bool ret;
+	void __iomem *base = phy->regs;
+	unsigned long org_flags;
+
+	DBG("%s(%d) inst:[%d]\n", __func__, __LINE__, phy->inst);
+	ret = false;
+
+	org_flags = utmi_phy_set_dp_dm_pull_up_down(phy,
+				FORCE_PULLUP_DP | FORCE_PULLUP_DM |
+				DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+	usleep_range(20000, 30000);
+	utmi_phy_set_dp_dm_pull_up_down(phy,
+				DISABLE_PULLUP_DP | DISABLE_PULLUP_DM |
+				DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	val |= DIV_DET_EN;
+	writel(val, base + USB_PHY_VBUS_WAKEUP_ID);
+
+	usleep_range(10000, 20000);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	val &= ~DIV_DET_EN;
+	writel(val, base + USB_PHY_VBUS_WAKEUP_ID);
+
+	if ((val & VOP_DIV2P0_DET) && (val & VON_DIV2P0_DET))
+		ret = true;
+
+	utmi_phy_set_dp_dm_pull_up_down(phy, org_flags);
+
+	return ret;
+}
+
 static bool uhsic_phy_remotewake_detected(struct tegra_usb_phy *phy)
 {
 	void __iomem *base = phy->regs;
@@ -1486,7 +1598,7 @@ static bool uhsic_phy_remotewake_detected(struct tegra_usb_phy *phy)
 	val &= ~EVENT_INT_ENB;
 	writel(val, base + UHSIC_PMC_WAKEUP0);
 	phy->pmc_remote_wakeup = true;
-	DBG("%s:PMC remote wakeup detected for HSIC\n", __func__);
+	DBG("%s:PMC interrupt detected for HSIC\n", __func__);
 	return true;
 }
 
@@ -2022,6 +2134,9 @@ static struct tegra_usb_phy_ops utmi_phy_ops = {
 	.resume	= utmi_phy_resume,
 	.charger_detect = utmi_phy_charger_detect,
 	.nv_charger_detect = utmi_phy_nv_charger_detect,
+	.apple_charger_1000ma_detect = utmi_phy_apple_charger_1000ma_detect,
+	.apple_charger_2000ma_detect = utmi_phy_apple_charger_2000ma_detect,
+	.apple_charger_500ma_detect = utmi_phy_apple_charger_500ma_detect,
 	.pmc_disable = utmi_phy_pmc_disable,
 };
 

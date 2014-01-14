@@ -49,11 +49,19 @@
 #define BOARD_PM358   0x0166
 #define BOARD_PM359   0x0167
 #define BOARD_PM363   0x016B
+#define BOARD_PM370   0x0172
+#define BOARD_PM374   0x0176
 #define BOARD_E2548   0x09F4
 #define BOARD_E2549   0x09F5
 #define BOARD_E1782   0x06F6
 #define BOARD_P2530   0x09E2
+#define BOARD_P1761   0x06E1
+#define BOARD_E1762   0x06E2
+#define BOARD_E1791   0x06ff
 
+/* Board SKU */
+#define BOARD_SKU_FOSTER  0x0384
+#define BOARD_SKU_100     0x0064
 /* Panel board ID */
 #define    BOARD_E1605    0x0645
 
@@ -76,6 +84,7 @@
 #define BOARD_E1735    0x6c7
 #define BOARD_E1736    0x6c8
 #define BOARD_E1769    0x6e9
+#define BOARD_E1936    0x790
 #define BOARD_E2545    0x9f1
 
 /* Board Fab version */

@@ -22,6 +22,8 @@
 #define __MM_GK20A_H__
 
 #include <linux/scatterlist.h>
+#include <linux/iommu.h>
+#include <asm/dma-iommu.h>
 #include "../nvhost_allocator.h"
 
 /* This "address bit" in the gmmu ptes (and other gk20a accesses)
@@ -30,6 +32,8 @@
  */
 /* Hack, get this from manuals somehow... */
 #define NV_MC_SMMU_VADDR_TRANSLATION_BIT     34
+#define NV_MC_SMMU_VADDR_TRANSLATE(x) (x | \
+				(1ULL << NV_MC_SMMU_VADDR_TRANSLATION_BIT))
 
 /* For now keep the size relatively small-ish compared to the full
  * 40b va.  32GB for now. It consists of two 16GB spaces. */
@@ -48,7 +52,7 @@ struct mem_desc_sub {
 };
 
 struct gpfifo_desc {
-	struct mem_desc mem;
+	size_t size;
 	u32 entry_num;
 
 	u32 get;
@@ -56,6 +60,7 @@ struct gpfifo_desc {
 
 	bool wrap;
 
+	u64 iova;
 	struct gpfifo *cpu_va;
 	u64 gpu_va;
 };
@@ -66,14 +71,31 @@ struct mmu_desc {
 };
 
 struct inst_desc {
-	struct mem_desc mem;
+	u64 iova;
+	void *cpuva;
+	phys_addr_t cpu_pa;
+	size_t size;
+};
+
+struct surface_mem_desc {
+	u64 iova;
+	void *cpuva;
+	struct sg_table *sgt;
+	size_t size;
 };
 
 struct userd_desc {
-	struct mem_desc mem;
-	void *cpu_va;
-	u64 cpu_pa;
+	struct sg_table *sgt;
+	u64 iova;
+	void *cpuva;
+	size_t size;
 	u64 gpu_va;
+};
+
+struct runlist_mem_desc {
+	u64 iova;
+	void *cpuva;
+	size_t size;
 };
 
 struct patch_desc {
@@ -84,9 +106,16 @@ struct patch_desc {
 };
 
 struct pmu_mem_desc {
-	struct mem_desc mem;
-	phys_addr_t cpu_pa;
+	void *cpuva;
+	u64 iova;
 	u64 pmu_va;
+	size_t size;
+};
+
+struct priv_cmd_queue_mem_desc {
+	u64 base_iova;
+	u32 *base_cpuva;
+	size_t size;
 };
 
 struct zcull_ctx_desc {
@@ -144,6 +173,7 @@ struct mapped_buffer_node {
 	struct vm_gk20a *vm;
 	struct rb_node node;
 	struct list_head unmap_list;
+	struct list_head va_buffers_list;
 	u64 addr;
 	u64 size;
 	struct mem_mgr *memmgr;
@@ -156,6 +186,14 @@ struct mapped_buffer_node {
 	u32 ctag_offset;
 	u32 ctag_lines;
 	u32 flags;
+	bool va_allocated;
+};
+
+struct vm_reserved_va_node {
+	struct list_head reserved_va_list;
+	struct list_head va_buffers_list;
+	u64 vaddr_start;
+	u64 size;
 };
 
 struct vm_gk20a {
@@ -181,50 +219,7 @@ struct vm_gk20a {
 	struct nvhost_allocator vma[gmmu_nr_page_sizes];
 	struct rb_root mapped_buffers;
 
-	u64 (*alloc_va)(struct vm_gk20a *vm, u64 size,
-			enum gmmu_pgsz_gk20a gmmu_pgsz_idx);
-
-	void (*free_va)(struct vm_gk20a *vm, u64 offset, u64 size,
-			enum gmmu_pgsz_gk20a pgsz_idx);
-
-	u64 (*map)(struct vm_gk20a *vm,
-		   struct mem_mgr *memmgr,
-		   struct mem_handle *r,
-		   u64 offset_align,
-		   u32 flags /*NVHOST_MAP_BUFFER_FLAGS_*/,
-		   u32 kind,
-		   struct sg_table **sgt,
-		   bool user_mapped,
-		   int rw_flag);
-
-	/* unmap handle from kernel */
-	void (*unmap)(struct vm_gk20a *vm,
-		u64 offset);
-
-	/* unmap handle from user */
-	void (*unmap_user)(struct vm_gk20a *vm, u64 offset);
-
-	/* get reference to all currently mapped buffers */
-	int (*get_buffers)(struct vm_gk20a *vm,
-		 struct mapped_buffer_node ***mapped_buffers,
-		 int *num_buffers);
-
-	/* put references on the given buffers */
-	void (*put_buffers)(struct vm_gk20a *vm,
-		 struct mapped_buffer_node **mapped_buffers,
-		 int num_buffers);
-
-	/* invalidate tlbs for the vm area */
-	void (*tlb_inval)(struct vm_gk20a *vm);
-
-	/* find buffer corresponding to va */
-	int (*find_buffer)(struct vm_gk20a *vm, u64 gpu_va,
-			struct mem_mgr **memmgr, struct mem_handle **r,
-			u64 *offset);
-
-	void (*remove_support)(struct vm_gk20a *vm);
-	void (*get)(struct vm_gk20a *vm);
-	void (*put)(struct vm_gk20a *vm);
+	struct list_head reserved_va_list;
 };
 
 struct gk20a;
@@ -323,10 +318,64 @@ void gk20a_mm_dump_vm(struct vm_gk20a *vm,
 
 int gk20a_mm_suspend(struct gk20a *g);
 
+phys_addr_t gk20a_get_phys_from_iova(struct device *d,
+				u64 dma_addr);
+
+int gk20a_get_sgtable(struct device *d, struct sg_table **sgt,
+			void *cpuva, u64 iova,
+			size_t size);
+
+void gk20a_free_sgtable(struct sg_table **sgt);
+
 u64 gk20a_mm_iova_addr(struct scatterlist *sgl);
 
 void gk20a_mm_ltc_isr(struct gk20a *g);
 
 bool gk20a_mm_mmu_debug_mode_enabled(struct gk20a *g);
+
+u64 gk20a_gmmu_map(struct vm_gk20a *vm,
+		struct sg_table **sgt,
+		u64 size,
+		u32 flags,
+		int rw_flag);
+
+void gk20a_gmmu_unmap(struct vm_gk20a *vm,
+		u64 vaddr,
+		u64 size,
+		int rw_flag);
+
+u64 gk20a_vm_map(struct vm_gk20a *vm,
+		 struct mem_mgr *memmgr,
+		 struct mem_handle *r,
+		 u64 offset_align,
+		 u32 flags /*NVHOST_MAP_BUFFER_FLAGS_*/,
+		 u32 kind,
+		 struct sg_table **sgt,
+		 bool user_mapped,
+		 int rw_flag);
+
+/* unmap handle from kernel */
+void gk20a_vm_unmap(struct vm_gk20a *vm, u64 offset);
+
+/* get reference to all currently mapped buffers */
+int gk20a_vm_get_buffers(struct vm_gk20a *vm,
+			 struct mapped_buffer_node ***mapped_buffers,
+			 int *num_buffers);
+
+/* put references on the given buffers */
+void gk20a_vm_put_buffers(struct vm_gk20a *vm,
+			  struct mapped_buffer_node **mapped_buffers,
+			  int num_buffers);
+
+/* invalidate tlbs for the vm area */
+void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm);
+
+/* find buffer corresponding to va */
+int gk20a_vm_find_buffer(struct vm_gk20a *vm, u64 gpu_va,
+			 struct mem_mgr **memmgr, struct mem_handle **r,
+			 u64 *offset);
+
+void gk20a_vm_get(struct vm_gk20a *vm);
+void gk20a_vm_put(struct vm_gk20a *vm);
 
 #endif /*_MM_GK20A_H_ */

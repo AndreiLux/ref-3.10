@@ -30,7 +30,6 @@
 #include <linux/pid_thermal_gov.h>
 #include <linux/regulator/fixed.h>
 #include <linux/mfd/palmas.h>
-#include <linux/mfd/as3722-reg.h>
 #include <linux/mfd/as3722-plat.h>
 #include <linux/power/power_supply_extcon.h>
 #include <linux/regulator/tps51632-regulator.h>
@@ -38,6 +37,7 @@
 #include <linux/irq.h>
 #include <linux/gpio.h>
 #include <linux/regulator/tegra-dfll-bypass-regulator.h>
+#include <linux/power/bq2419x-charger.h>
 #include <linux/power/bq2471x-charger.h>
 #include <linux/power/bq2477x-charger.h>
 #include <linux/tegra-fuse.h>
@@ -101,8 +101,6 @@ static struct regulator_consumer_supply as3722_ldo2_supply[] = {
 	REGULATOR_SUPPLY("avdd_hsic_com", NULL),
 	REGULATOR_SUPPLY("avdd_hsic_mdm", NULL),
 	REGULATOR_SUPPLY("vdd_lcd_bl", NULL),
-	REGULATOR_SUPPLY("vdd", "1-004c"),
-	REGULATOR_SUPPLY("vdd", "1-004d"),
 };
 
 static struct regulator_consumer_supply as3722_ldo3_supply[] = {
@@ -172,9 +170,12 @@ static struct regulator_consumer_supply as3722_sd2_supply[] = {
 };
 
 static struct regulator_consumer_supply as3722_sd4_supply[] = {
-	REGULATOR_SUPPLY("avdd_hdmi","tegradc.1"),
+	REGULATOR_SUPPLY("avdd_hdmi", "tegradc.1"),
 	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.1"),
-	REGULATOR_SUPPLY("pwrdet_pex_ctl", NULL),
+#ifdef CONFIG_TEGRA_HDMI_PRIMARY
+	REGULATOR_SUPPLY("avdd_hdmi", "tegradc.0"),
+	REGULATOR_SUPPLY("avdd_hdmi_pll", "tegradc.0"),
+#endif
 	REGULATOR_SUPPLY("avdd_pex_pll", "tegra-pcie"),
 	REGULATOR_SUPPLY("avddio_pex", "tegra-pcie"),
 	REGULATOR_SUPPLY("dvddio_pex", "tegra-pcie"),
@@ -234,7 +235,7 @@ AMS_PDATA_INIT(sd1, NULL, 700000, 1400000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(sd2, NULL, 1350000, 1350000, 1, 1, 1, 0);
 AMS_PDATA_INIT(sd4, NULL, 1050000, 1050000, 0, 1, 1, 0);
 AMS_PDATA_INIT(sd5, NULL, 1800000, 1800000, 1, 1, 1, 0);
-AMS_PDATA_INIT(sd6, NULL, 700000, 1400000, 0, 1, 0, 0);
+AMS_PDATA_INIT(sd6, NULL, 650000, 1400000, 0, 1, 0, 0);
 AMS_PDATA_INIT(ldo0, AS3722_SUPPLY(sd2), 1050000, 1250000, 1, 1, 1, AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(ldo1, NULL, 1800000, 1800000, 0, 1, 1, 0);
 AMS_PDATA_INIT(ldo2, AS3722_SUPPLY(sd5), 1200000, 1200000, 0, 0, 1, 0);
@@ -247,84 +248,15 @@ AMS_PDATA_INIT(ldo9, NULL, 3300000, 3300000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo10, NULL, 2700000, 2700000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo11, NULL, 1800000, 1800000, 0, 0, 1, 0);
 
-/* config settings are OTP plus initial state
- * GPIOsignal_out at 20h not configurable through OTP and is initialized to
- * zero. To enable output, the invert bit must be turned on.
- * GPIOxcontrol register format
- * bit(s)  bitname
- * ---------------------
- *  7     gpiox_invert   invert input or output
- * 6:3    gpiox_iosf     0: normal
- * 2:0    gpiox_mode     0: input, 1: output push/pull, 3: ADC input (tristate)
- *
- * Examples:
- * otp  meaning
- * ------------
- * 0x3  gpiox_invert=0(no invert), gpiox_iosf=0(normal), gpiox_mode=3(ADC input)
- * 0x81 gpiox_invert=1(invert), gpiox_iosf=0(normal), gpiox_mode=1(output)
- *
- * Note: output state should be defined for gpiox_mode = output.  Do not change
- * the state of the invert bit for critical devices such as GPIO 7 which enables
- * SDRAM. Driver applies invert mask to output state to configure GPIOsignal_out
- * register correctly.
- * E.g. Invert = 1, (requested) output state = 1 => GPIOsignal_out = 0
- */
-static struct as3722_gpio_config as3722_gpio_cfgs[] = {
-	{
-		/* otp = 0x3 IGPU_PRDGD*/
-		.gpio = AS3722_GPIO0,
-		.mode = AS3722_GPIO_MODE_OUTPUT_VDDL,
-	},
-	{
-		/* otp = 0x1  => REGEN_3 = LP0 gate (1.8V, 5 V)*/
-		.gpio = AS3722_GPIO1,
-		.invert     = AS3722_GPIO_CFG_NO_INVERT,
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-	{
-		/* otp = 0x3 PMU_REGEN1*/
-		.gpio = AS3722_GPIO2,
-		.invert     = AS3722_GPIO_CFG_NO_INVERT, /* don't go into LP0 */
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-	{
-		/* otp = 0x03 AP THERMISTOR */
-		.gpio = AS3722_GPIO3,
-		.mode = AS3722_GPIO_MODE_ADC_IN,
-	},
-	{
-		/* otp = 0x81 => on by default
-		 * gates EN_AVDD_LCD
-		 */
-		.gpio       = AS3722_GPIO4,
-		.invert     = AS3722_GPIO_CFG_NO_INVERT,
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-	{
-		/* otp = 0x3  CLK 23KHZ WIFI */
-		.gpio = AS3722_GPIO5,
-		.mode = AS3722_GPIO_MODE_OUTPUT_VDDL,
-		.iosf = AS3722_GPIO_IOSF_Q32K_OUT,
-	},
-	{
-		/* otp = 0x3  SKIN TEMP */
-		.gpio = AS3722_GPIO6,
-		.mode = AS3722_GPIO_MODE_ADC_IN,
-	},
-	{
-		/* otp = 0x81  1.6V LP0*/
-		.gpio       = AS3722_GPIO7,
-		.invert     = AS3722_GPIO_CFG_INVERT,
-		.mode       = AS3722_GPIO_MODE_OUTPUT_VDDH,
-		.output_state = AS3722_GPIO_CFG_OUTPUT_ENABLED,
-	},
-};
-
-static struct as3722_rtc_platform_data as3722_rtc_pdata = {
-	.enable_clk32k	= 1,
+static struct as3722_pinctrl_platform_data as3722_pctrl_pdata[] = {
+	AS3722_PIN_CONTROL("gpio0", "gpio", "pull-down", NULL, NULL, "output-low"),
+	AS3722_PIN_CONTROL("gpio1", "gpio", NULL, NULL, NULL, "output-high"),
+	AS3722_PIN_CONTROL("gpio2", "gpio", NULL, NULL, NULL, "output-high"),
+	AS3722_PIN_CONTROL("gpio3", "gpio", NULL, NULL, "enabled", NULL),
+	AS3722_PIN_CONTROL("gpio4", "gpio", NULL, NULL, NULL, "output-high"),
+	AS3722_PIN_CONTROL("gpio5", "clk32k-out", "pull-down", NULL, NULL, NULL),
+	AS3722_PIN_CONTROL("gpio6", "gpio", NULL, NULL, "enabled", NULL),
+	AS3722_PIN_CONTROL("gpio7", "gpio", NULL, NULL, NULL, "output-low"),
 };
 
 static struct as3722_adc_extcon_platform_data as3722_adc_extcon_pdata = {
@@ -354,17 +286,14 @@ static struct as3722_platform_data as3722_pdata = {
 	.reg_pdata[AS3722_LDO9] = &as3722_ldo9_reg_pdata,
 	.reg_pdata[AS3722_LDO10] = &as3722_ldo10_reg_pdata,
 	.reg_pdata[AS3722_LDO11] = &as3722_ldo11_reg_pdata,
-	.core_init_data = NULL,
 	.gpio_base = AS3722_GPIO_BASE,
 	.irq_base = AS3722_IRQ_BASE,
 	.use_internal_int_pullup = 0,
 	.use_internal_i2c_pullup = 0,
-	.num_gpio_cfgs = ARRAY_SIZE(as3722_gpio_cfgs),
-	.gpio_cfgs     = as3722_gpio_cfgs,
-	.rtc_pdata	= &as3722_rtc_pdata,
+	.pinctrl_pdata = as3722_pctrl_pdata,
+	.num_pinctrl = ARRAY_SIZE(as3722_pctrl_pdata),
+	.enable_clk32k_out = true,
 	.use_power_off = true,
-	.enable_ldo3_tracking = true,
-	.disabe_ldo3_tracking_suspend = true,
 	.extcon_pdata = &as3722_adc_extcon_pdata,
 };
 
@@ -393,17 +322,17 @@ int __init ardbeg_as3722_regulator_init(void)
 	/* Set vdd_gpu init uV to 1V */
 	as3722_sd6_reg_idata.constraints.init_uV = 900000;
 
-	as3722_sd6_reg_pdata.oc_configure_enable = true;
-	as3722_sd6_reg_pdata.oc_trip_thres_perphase = 3500;
-	as3722_sd6_reg_pdata.oc_alarm_thres_perphase = 0;
+	as3722_sd6_reg_idata.constraints.min_uA = 3500000;
+	as3722_sd6_reg_idata.constraints.max_uA = 3500000;
 
-	as3722_sd0_reg_pdata.oc_configure_enable = true;
-	as3722_sd0_reg_pdata.oc_trip_thres_perphase = 3500;
-	as3722_sd0_reg_pdata.oc_alarm_thres_perphase = 0;
+	as3722_sd0_reg_idata.constraints.min_uA = 3500000;
+	as3722_sd0_reg_idata.constraints.max_uA = 3500000;
 
-	as3722_sd1_reg_pdata.oc_configure_enable = true;
-	as3722_sd1_reg_pdata.oc_trip_thres_perphase = 2500;
-	as3722_sd1_reg_pdata.oc_alarm_thres_perphase = 0;
+	as3722_sd1_reg_idata.constraints.min_uA = 2500000;
+	as3722_sd1_reg_idata.constraints.max_uA = 2500000;
+
+	as3722_ldo3_reg_pdata.enable_tracking = true;
+	as3722_ldo3_reg_pdata.disable_tracking_suspend = true;
 
 	tegra_get_board_info(&board_info);
 	if (board_info.board_id == BOARD_E1792) {
@@ -444,6 +373,9 @@ int __init ardbeg_ams_regulator_init(void)
 
 static struct regulator_consumer_supply palmas_ti913_regen1_supply[] = {
 	REGULATOR_SUPPLY("micvdd", "tegra-snd-rt5645.0"),
+#ifdef CONFIG_TEGRA_HDMI_PRIMARY
+	REGULATOR_SUPPLY("vddio_hv", "tegradc.0"),
+#endif
 	REGULATOR_SUPPLY("vddio_hv", "tegradc.1"),
 	REGULATOR_SUPPLY("pwrdet_hv", NULL),
 	REGULATOR_SUPPLY("avdd_usb", "tegra-udc.0"),
@@ -455,15 +387,18 @@ static struct regulator_consumer_supply palmas_ti913_regen1_supply[] = {
 	REGULATOR_SUPPLY("hvdd_pex", "tegra-pcie"),
 	REGULATOR_SUPPLY("hvdd_pex_pll_e", "tegra-pcie"),
 	REGULATOR_SUPPLY("vddio_pex_ctl", "tegra-pcie"),
+	REGULATOR_SUPPLY("pwrdet_pex_ctl", NULL),
 	REGULATOR_SUPPLY("vdd", "0-0069"),
 	REGULATOR_SUPPLY("vdd", "0-0048"),
 	REGULATOR_SUPPLY("vdd", "stm8t143.2"),
 	REGULATOR_SUPPLY("vdd", "0-000c"),
 	REGULATOR_SUPPLY("vdd", "0-0077"),
 	REGULATOR_SUPPLY("hvdd_sata", "tegra-sata.0"),
+	REGULATOR_SUPPLY("vdd", "1-004c"),
+	REGULATOR_SUPPLY("vdd", "1-004d"),
 };
 
-PALMAS_REGS_PDATA(ti913_smps123, 700, 1400, NULL, 0, 1, 1, NORMAL,
+PALMAS_REGS_PDATA(ti913_smps123, 650, 1400, NULL, 0, 1, 1, NORMAL,
 	0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ti913_smps45, 700, 1400, NULL, 1, 1, 1, NORMAL,
 	0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
@@ -831,6 +766,9 @@ static struct regulator_consumer_supply fixed_reg_en_lcd_bl_en_supply[] = {
 };
 
 static struct regulator_consumer_supply fixed_reg_en_vdd_hdmi_5v0_supply[] = {
+#ifdef CONFIG_TEGRA_HDMI_PRIMARY
+	REGULATOR_SUPPLY("vdd_hdmi_5v0", "tegradc.0"),
+#endif
 	REGULATOR_SUPPLY("vdd_hdmi_5v0", "tegradc.1"),
 };
 
@@ -859,6 +797,10 @@ static struct regulator_consumer_supply fixed_reg_en_tca6408_p0_supply[] = {
 
 static struct regulator_consumer_supply fixed_reg_en_vdd_cpu_fixed_supply[] = {
 	REGULATOR_SUPPLY("vdd_cpu_fixed", NULL),
+};
+
+static struct regulator_consumer_supply fixed_reg_en_avdd_3v3_dp_supply[] = {
+	REGULATOR_SUPPLY("avdd_3v3_dp", NULL),
 };
 
 #define fixed_reg_en_ti913_gpio2_supply fixed_reg_en_as3722_gpio1_supply
@@ -952,6 +894,10 @@ FIXED_REG(20,	vdd_cpu_fixed,	vdd_cpu_fixed,
 	NULL,	0,	1,	-1,
 	false,	true,	0,	1000,	0);
 
+FIXED_REG(21,	avdd_3v3_dp,	avdd_3v3_dp,
+	NULL,	0,	0,	TEGRA_GPIO_PH3,
+	false,	true,	0,	3300,	0);
+
 /*
  * Creating fixed regulator device tables
  */
@@ -983,6 +929,9 @@ FIXED_REG(20,	vdd_cpu_fixed,	vdd_cpu_fixed,
 	ADD_FIXED_REG(ti913_gpio7),		\
 	ADD_FIXED_REG(vdd_cpu_fixed),
 
+#define ARDBEG_E1824_FIXED_REG			\
+	ADD_FIXED_REG(avdd_3v3_dp),
+
 static struct platform_device *fixed_reg_devs_e1733[] = {
 	ARDBEG_COMMON_FIXED_REG
 	ARDBEG_E1733_FIXED_REG
@@ -991,6 +940,10 @@ static struct platform_device *fixed_reg_devs_e1733[] = {
 static struct platform_device *fixed_reg_devs_e1735[] = {
 	ARDBEG_COMMON_FIXED_REG
 	ARDBEG_E1735_FIXED_REG
+};
+
+static struct platform_device *fixed_reg_devs_e1824[] = {
+	ARDBEG_E1824_FIXED_REG
 };
 
 /************************ ARDBEG CL-DVFS DATA *********************/
@@ -1152,6 +1105,7 @@ static struct tegra_cl_dvfs_platform_data e1736_cl_dvfs_data = {
 	},
 	.vdd_map = e1736_cpu_vdd_map,
 	.vdd_map_size = E1736_CPU_VDD_MAP_SIZE,
+	.pmu_undershoot_gb = 100,
 
 	.cfg_param = &e1736_ardbeg_cl_dvfs_param,
 };
@@ -1193,7 +1147,9 @@ static int __init ardbeg_cl_dvfs_init(struct board_info *pmu_board_info)
 	}
 
 	if (pmu_board_id == BOARD_E1736 ||
-		pmu_board_id == BOARD_E1769) {
+		pmu_board_id == BOARD_E1936 ||
+		pmu_board_id == BOARD_E1769 ||
+		pmu_board_id == BOARD_P1761) {
 		e1736_fill_reg_map();
 		data = &e1736_cl_dvfs_data;
 	}
@@ -1240,7 +1196,9 @@ int __init ardbeg_regulator_init(void)
 		regulator_has_full_constraints();
 		ardbeg_tps65913_regulator_init();
 	} else if (pmu_board_info.board_id == BOARD_E1736 ||
-		pmu_board_info.board_id == BOARD_E1769) {
+		pmu_board_info.board_id == BOARD_E1936 ||
+		pmu_board_info.board_id == BOARD_E1769 ||
+		pmu_board_info.board_id == BOARD_P1761) {
 		tn8_regulator_init();
 		ardbeg_cl_dvfs_init(&pmu_board_info);
 		return tn8_fixed_regulator_init();
@@ -1265,9 +1223,17 @@ int __init ardbeg_regulator_init(void)
 static int __init ardbeg_fixed_regulator_init(void)
 {
 	struct board_info pmu_board_info;
+	struct board_info display_board_info;
 
-	if (!of_machine_is_compatible("nvidia,ardbeg"))
+	if ((!of_machine_is_compatible("nvidia,ardbeg")) &&
+	    (!of_machine_is_compatible("nvidia,ardbeg_sata")))
 		return 0;
+
+	tegra_get_display_board_info(&display_board_info);
+
+	if (display_board_info.board_id == BOARD_E1824)
+		platform_add_devices(fixed_reg_devs_e1824,
+			ARRAY_SIZE(fixed_reg_devs_e1824));
 
 	tegra_get_pmu_board_info(&pmu_board_info);
 
@@ -1277,6 +1243,10 @@ static int __init ardbeg_fixed_regulator_init(void)
 	else if (pmu_board_info.board_id == BOARD_E1735)
 		return platform_add_devices(fixed_reg_devs_e1735,
 			ARRAY_SIZE(fixed_reg_devs_e1735));
+	else if (pmu_board_info.board_id == BOARD_E1736 ||
+		 pmu_board_info.board_id == BOARD_P1761 ||
+		 pmu_board_info.board_id == BOARD_E1936)
+		return 0;
 	else
 		pr_warn("The PMU board id 0x%04x is not supported\n",
 			pmu_board_info.board_id);
@@ -1292,11 +1262,16 @@ int __init ardbeg_edp_init(void)
 
 	regulator_mA = get_maximum_cpu_current_supported();
 	if (!regulator_mA)
-		regulator_mA = 16000;
+		regulator_mA = 14000;
 
 	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
 	tegra_init_cpu_edp_limits(regulator_mA);
 
+	/* gpu maximum current */
+	regulator_mA = 12000;
+	pr_info("%s: GPU regulator %d mA\n", __func__, regulator_mA);
+
+	tegra_init_gpu_edp_limits(regulator_mA);
 	return 0;
 }
 
@@ -1361,7 +1336,7 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 				},
 				{
 					.cdev_type = "cpu-balanced",
-					.trip_temp = 89000,
+					.trip_temp = 90000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -1373,43 +1348,49 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 			.zone_enable = true,
 			.passive_delay = 1000,
 			.hotspot_offset = 6000,
-			.num_trips = 2,
+			.num_trips = 3,
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 103000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
-					.cdev_type = "gpu-balanced",
-					.trip_temp = 91000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-/*
-				{
-					.cdev_type = "gk20a_cdev",
-					.trip_temp = 101000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 101000,
+					.trip_temp = 99000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
-*/
+				{
+					.cdev_type = "gpu-balanced",
+					.trip_temp = 90000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+		[THERM_MEM] = {
+			.zone_enable = true,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 101000, /* = GPU shut */
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
 			},
 			.tzp = &soctherm_tzp,
 		},
 		[THERM_PLL] = {
 			.zone_enable = true,
+			.tzp = &soctherm_tzp,
 		},
 	},
 	.throttle = {
@@ -1421,7 +1402,7 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 					.depth = 80,
 				},
 				[THROTTLE_DEV_GPU] = {
-					.enable = false,
+					.enable = true,
 					.throttling_depth = "heavy_throttling",
 				},
 			},
@@ -1432,21 +1413,36 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 
 int __init ardbeg_soctherm_init(void)
 {
+	s32 base_cp, shft_cp;
+	u32 base_ft, shft_ft;
 	struct board_info pmu_board_info;
 
 	/* do this only for supported CP,FT fuses */
-	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
-	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
+	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
+	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
 		tegra_platform_edp_init(
 			ardbeg_soctherm_data.therm[THERM_CPU].trips,
 			&ardbeg_soctherm_data.therm[THERM_CPU].num_trips,
-			8000); /* edp temperature margin */
-		tegra_add_tj_trips(
+			7000); /* edp temperature margin */
+		tegra_platform_gpu_edp_init(
+			ardbeg_soctherm_data.therm[THERM_GPU].trips,
+			&ardbeg_soctherm_data.therm[THERM_GPU].num_trips,
+			7000);
+		tegra_add_cpu_vmax_trips(
+			ardbeg_soctherm_data.therm[THERM_CPU].trips,
+			&ardbeg_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_core_edp_trips(
 			ardbeg_soctherm_data.therm[THERM_CPU].trips,
 			&ardbeg_soctherm_data.therm[THERM_CPU].num_trips);
 		tegra_add_tgpu_trips(
 			ardbeg_soctherm_data.therm[THERM_GPU].trips,
 			&ardbeg_soctherm_data.therm[THERM_GPU].num_trips);
+		tegra_add_vc_trips(
+			ardbeg_soctherm_data.therm[THERM_CPU].trips,
+			&ardbeg_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_core_vmax_trips(
+			ardbeg_soctherm_data.therm[THERM_PLL].trips,
+			&ardbeg_soctherm_data.therm[THERM_PLL].num_trips);
 	}
 
 	tegra_get_pmu_board_info(&pmu_board_info);
@@ -1454,11 +1450,11 @@ int __init ardbeg_soctherm_init(void)
 	if ((pmu_board_info.board_id == BOARD_E1733) ||
 		(pmu_board_info.board_id == BOARD_E1734))
 		ardbeg_soctherm_data.tshut_pmu_trip_data = &tpdata_as3722;
-	else if (pmu_board_info.board_id == BOARD_E1735)
+	else if (pmu_board_info.board_id == BOARD_E1735 ||
+		 pmu_board_info.board_id == BOARD_E1736 ||
+		 pmu_board_info.board_id == BOARD_E1769 ||
+		 pmu_board_info.board_id == BOARD_E1936)
 		;/* tpdata_palmas is default */
-	else if (pmu_board_info.board_id == BOARD_E1736 ||
-		pmu_board_info.board_id == BOARD_E1769)
-		;/* FIXME: Not supporting tn8 yet - assumes palmas PMIC */
 	else
 		pr_warn("soctherm THERMTRIP is not supported on this PMIC\n");
 

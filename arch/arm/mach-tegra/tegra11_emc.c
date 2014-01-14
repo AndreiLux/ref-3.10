@@ -39,7 +39,6 @@
 #include "board.h"
 #include "iomap.h"
 #include "tegra11_emc.h"
-#include "fuse.h"
 #include "tegra_emc_dt_parse.h"
 
 #ifdef CONFIG_TEGRA_EMC_SCALING_ENABLE
@@ -1254,7 +1253,7 @@ static int init_emc_table(const struct tegra11_emc_table *table, int table_size)
 
 	if (emc->dvfs) {
 		adjust_emc_dvfs_table(tegra_emc_table, tegra_emc_table_size);
-		mv = tegra_dvfs_predict_millivolts(emc, max_rate * 1000);
+		mv = tegra_dvfs_predict_peak_millivolts(emc, max_rate * 1000);
 		if ((mv <= 0) || (mv > emc->dvfs->max_millivolts)) {
 			tegra_emc_table = NULL;
 			pr_err("tegra: invalid EMC DFS table: maximum rate %lu"

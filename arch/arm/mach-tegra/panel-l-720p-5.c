@@ -44,6 +44,55 @@ static bool dsi_l_720p_5_reg_requested;
 static bool dsi_l_720p_5_gpio_requested;
 static bool is_bl_powered;
 
+static struct tegra_dc_sd_settings dsi_l_720p_5_sd_settings = {
+	.enable = 1, /* enabled by default */
+	.use_auto_pwm = false,
+	.hw_update_delay = 0,
+	.bin_width = -1,
+	.aggressiveness = 5,
+	.use_vid_luma = false,
+	.phase_in_adjustments = 0,
+	.k_limit_enable = true,
+	.k_limit = 180,
+	.sd_window_enable = false,
+	.soft_clipping_enable = true,
+	/* Low soft clipping threshold to compensate for aggressive k_limit */
+	.soft_clipping_threshold = 128,
+	.smooth_k_enable = true,
+	.smooth_k_incr = 4,
+	/* Default video coefficients */
+	.coeff = {5, 9, 2},
+	.fc = {0, 0},
+	/* Immediate backlight changes */
+	.blp = {1024, 255},
+	/* Gammas: R: 2.2 G: 2.2 B: 2.2 */
+	/* Default BL TF */
+	.bltf = {
+			{
+				{57, 65, 73, 82},
+				{92, 103, 114, 125},
+				{138, 150, 164, 178},
+				{193, 208, 224, 241},
+			},
+		},
+	/* Default LUT */
+	.lut = {
+			{
+				{255, 255, 255},
+				{199, 199, 199},
+				{153, 153, 153},
+				{116, 116, 116},
+				{85, 85, 85},
+				{59, 59, 59},
+				{36, 36, 36},
+				{17, 17, 17},
+				{0, 0, 0},
+			},
+		},
+	.sd_brightness = &sd_brightness,
+	.use_vpulse2 = true,
+};
+
 #ifdef CONFIG_TEGRA_DC_CMU
 static struct tegra_dc_cmu dsi_l_720p_5_cmu = {
 	/* lut1 maps sRGB to linear space. */
@@ -464,7 +513,7 @@ static int dsi_l_720p_5_reg_get(void)
 
 	avdd_lcd_3v0_2v8 = regulator_get(NULL, "avdd_lcd");
 
-	if (IS_ERR_OR_NULL(avdd_lcd_3v0_2v8)) {
+	if (IS_ERR(avdd_lcd_3v0_2v8)) {
 		pr_err("avdd_lcd regulator get failed\n");
 		err = PTR_ERR(avdd_lcd_3v0_2v8);
 		avdd_lcd_3v0_2v8 = NULL;
@@ -472,7 +521,7 @@ static int dsi_l_720p_5_reg_get(void)
 	}
 
 	vdd_lcd_s_1v8 = regulator_get(NULL, "vdd_lcd_1v8_s");
-	if (IS_ERR_OR_NULL(vdd_lcd_s_1v8)) {
+	if (IS_ERR(vdd_lcd_s_1v8)) {
 		pr_err("vdd_lcd_1v8_s regulator get failed\n");
 		err = PTR_ERR(vdd_lcd_s_1v8);
 		vdd_lcd_s_1v8 = NULL;
@@ -480,7 +529,7 @@ static int dsi_l_720p_5_reg_get(void)
 	}
 
 	vdd_sys_bl_3v7 = regulator_get(NULL, "vdd_sys_bl");
-	if (IS_ERR_OR_NULL(vdd_sys_bl_3v7)) {
+	if (IS_ERR(vdd_sys_bl_3v7)) {
 		pr_err("vdd_sys_bl regulator get failed\n");
 		err = PTR_ERR(vdd_sys_bl_3v7);
 		vdd_sys_bl_3v7 = NULL;
@@ -774,6 +823,8 @@ static void dsi_l_720p_5_sd_settings_init(struct tegra_dc_sd_settings *settings)
 {
 	struct board_info bi;
 	tegra_get_display_board_info(&bi);
+
+	*settings = dsi_l_720p_5_sd_settings;
 
 	if (bi.board_id == BOARD_E1563)
 		settings->bl_device_name = "lm3528_display_bl";

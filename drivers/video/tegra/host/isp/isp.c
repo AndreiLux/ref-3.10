@@ -42,6 +42,7 @@
 
 #define T12_ISP_CG_CTRL		0x1d
 #define T12_CG_2ND_LEVEL_EN	1
+#define T12_ISPB_DEV_ID		1
 
 static struct of_device_id tegra_isp_of_match[] = {
 #ifdef TEGRA_11X_OR_HIGHER_CONFIG
@@ -68,6 +69,9 @@ int nvhost_isp_t124_finalize_poweron(struct platform_device *pdev)
 static int isp_probe(struct platform_device *dev)
 {
 	int err = 0;
+#ifdef TEGRA_12X_OR_HIGHER_CONFIG
+	int dev_id = 0;
+#endif
 	struct nvhost_device_data *pdata = NULL;
 
 	if (dev->dev.of_node) {
@@ -76,6 +80,12 @@ static int isp_probe(struct platform_device *dev)
 		match = of_match_device(tegra_isp_of_match, &dev->dev);
 		if (match)
 			pdata = (struct nvhost_device_data *)match->data;
+#ifdef TEGRA_12X_OR_HIGHER_CONFIG
+		if (sscanf(dev->name, "isp.%1d", &dev_id) != 1)
+			return -EINVAL;
+		if (dev_id == T12_ISPB_DEV_ID)
+			pdata = &t124_ispb_info;
+#endif
 	} else
 		pdata = (struct nvhost_device_data *)dev->dev.platform_data;
 
@@ -121,17 +131,6 @@ static int __exit isp_remove(struct platform_device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static const struct dev_pm_ops isp_pm_ops = {
-	.suspend = nvhost_client_device_suspend,
-	.resume = nvhost_client_device_resume,
-#if defined(CONFIG_PM_RUNTIME) && !defined(CONFIG_PM_GENERIC_DOMAINS)
-	.runtime_suspend = nvhost_module_disable_clk,
-	.runtime_resume = nvhost_module_enable_clk,
-#endif
-};
-#endif
-
 static struct platform_driver isp_driver = {
 	.probe = isp_probe,
 	.remove = __exit_p(isp_remove),
@@ -139,7 +138,7 @@ static struct platform_driver isp_driver = {
 		.owner = THIS_MODULE,
 		.name = "isp",
 #ifdef CONFIG_PM
-		.pm = &isp_pm_ops,
+		.pm = &nvhost_module_pm_ops,
 #endif
 #ifdef CONFIG_OF
 		.of_match_table = tegra_isp_of_match,

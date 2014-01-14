@@ -2,7 +2,7 @@
  * battery-charger-gauge-comm.c -- Communication between battery charger and
  *	battery gauge driver.
  *
- * Copyright (c) 2013, NVIDIA Corporation.
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  *
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
  *
@@ -128,7 +128,7 @@ static void battery_charger_thermal_monitor_wq(struct work_struct *work)
 
 	if (temperature <= JETI_TEMP_COLD || temperature >= JETI_TEMP_HOT) {
 		charger_enable_state = false;
-	} else if (temperature <= JETI_TEMP_COOL &&
+	} else if (temperature <= JETI_TEMP_COOL ||
 				temperature >= JETI_TEMP_WARM) {
 		charger_current_half = true;
 		battery_thersold_voltage = 4100;
@@ -145,6 +145,30 @@ exit:
 			msecs_to_jiffies(bc_dev->polling_time_sec * HZ));
 	return;
 }
+
+int battery_charger_set_current_broadcast(struct battery_charger_dev *bc_dev)
+{
+        struct battery_gauge_dev *bg_dev;
+        int ret = 0;
+
+        if (!bc_dev) {
+                dev_err(bc_dev->parent_dev, "Invalid parameters\n");
+                return -EINVAL;
+        }
+
+        mutex_lock(&charger_gauge_list_mutex);
+
+        list_for_each_entry(bg_dev, &gauge_list, list) {
+                if (bg_dev->cell_id != bc_dev->cell_id)
+                        continue;
+                if (bg_dev->ops && bg_dev->ops->set_current_broadcast)
+                        ret = bg_dev->ops->set_current_broadcast(bg_dev);
+        }
+
+        mutex_unlock(&charger_gauge_list_mutex);
+        return ret;
+}
+EXPORT_SYMBOL_GPL(battery_charger_set_current_broadcast);
 
 int battery_charger_thermal_start_monitoring(
 	struct battery_charger_dev *bc_dev)
@@ -269,6 +293,23 @@ int battery_charging_system_reset_after(struct battery_charger_dev *bc_dev,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(battery_charging_system_reset_after);
+
+int battery_charging_system_power_on_usb_event(
+	struct battery_charger_dev *bc_dev)
+{
+	int ret;
+
+	dev_info(bc_dev->parent_dev,
+		"Setting system on with USB connect/disconnect\n");
+
+	ret = system_pmic_set_power_on_event(SYSTEM_PMIC_USB_VBUS_INSERTION,
+		NULL);
+	if (ret < 0)
+		dev_err(bc_dev->parent_dev,
+			"Setting power on event failed: %d\n", ret);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(battery_charging_system_power_on_usb_event);
 
 struct battery_charger_dev *battery_charger_register(struct device *dev,
 	struct battery_charger_info *bci, void *drv_data)

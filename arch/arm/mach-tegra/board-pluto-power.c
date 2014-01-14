@@ -741,6 +741,9 @@ static struct tegra_io_dpd hv_io = {
 
 static void pluto_board_suspend(int state, enum suspend_stage stage)
 {
+	if (stage == TEGRA_SUSPEND_BEFORE_PERIPHERAL)
+		pluto_pinmux_suspend();
+
 	/* put HV IOs into DPD mode to save additional power */
 	if (state == TEGRA_SUSPEND_LP1 && stage == TEGRA_SUSPEND_BEFORE_CPU) {
 		gpio_direction_input(TEGRA_GPIO_PK6);
@@ -939,7 +942,9 @@ int __init pluto_soctherm_init(void)
 	tegra_platform_edp_init(pluto_soctherm_data.therm[THERM_CPU].trips,
 			&pluto_soctherm_data.therm[THERM_CPU].num_trips,
 			6000);  /* edp temperature margin */
-	tegra_add_tj_trips(pluto_soctherm_data.therm[THERM_CPU].trips,
+	tegra_add_cpu_vmax_trips(pluto_soctherm_data.therm[THERM_CPU].trips,
+			&pluto_soctherm_data.therm[THERM_CPU].num_trips);
+	tegra_add_core_edp_trips(pluto_soctherm_data.therm[THERM_CPU].trips,
 			&pluto_soctherm_data.therm[THERM_CPU].num_trips);
 
 	return tegra11_soctherm_init(&pluto_soctherm_data);

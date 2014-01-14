@@ -35,7 +35,7 @@
 #include <linux/spi/spi.h>
 #include <linux/spi/rm31080a_ts.h>
 #include <linux/memblock.h>
-#include <linux/spi-tegra.h>
+#include <linux/spi/spi-tegra.h>
 #include <linux/nfc/pn544.h>
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
@@ -51,6 +51,7 @@
 #include <linux/clocksource.h>
 #include <linux/irqchip.h>
 #include <linux/irqchip/tegra.h>
+#include <linux/tegra_fiq_debugger.h>
 
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -62,7 +63,6 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/gpio-tegra.h>
-#include <mach/tegra_fiq_debugger.h>
 #include <linux/platform_data/tegra_usb_modem_power.h>
 
 #include "board-touch-raydium.h"
@@ -501,41 +501,15 @@ static struct platform_device *macallan_spi_devices[] __initdata = {
 	&tegra11_spi_device1,
 };
 
-struct spi_clk_parent spi_parent_clk_macallan[] = {
-	[0] = {.name = "pll_p"},
-#ifndef CONFIG_TEGRA_PLLM_RESTRICTED
-	[1] = {.name = "pll_m"},
-	[2] = {.name = "clk_m"},
-#else
-	[1] = {.name = "clk_m"},
-#endif
-};
-
 static struct tegra_spi_platform_data macallan_spi_pdata = {
-	.max_dma_buffer         = 16 * 1024,
-	.is_clkon_always        = false,
-	.max_rate               = 25000000,
+	.spi_max_frequency	= 25000000,
+	.is_clkon_always	= false,
 };
 
 static void __init macallan_spi_init(void)
 {
-	int i;
-	struct clk *c;
-
-	for (i = 0; i < ARRAY_SIZE(spi_parent_clk_macallan); ++i) {
-		c = tegra_get_clock_by_name(spi_parent_clk_macallan[i].name);
-		if (IS_ERR_OR_NULL(c)) {
-			pr_err("Not able to get the clock for %s\n",
-					spi_parent_clk_macallan[i].name);
-			continue;
-		}
-		spi_parent_clk_macallan[i].parent_clk = c;
-		spi_parent_clk_macallan[i].fixed_clk_rate = clk_get_rate(c);
-	}
-	macallan_spi_pdata.parent_clk_list = spi_parent_clk_macallan;
-	macallan_spi_pdata.parent_clk_count = ARRAY_SIZE(spi_parent_clk_macallan);
-	macallan_spi_pdata.is_dma_based = (tegra_revision == TEGRA_REVISION_A01)
-							? false : true ;
+	macallan_spi_pdata.dma_req_sel = (tegra_revision == TEGRA_REVISION_A01)
+							? 0 : 15 ;
 	tegra11_spi_device1.dev.platform_data = &macallan_spi_pdata;
 	platform_add_devices(macallan_spi_devices,
 				ARRAY_SIZE(macallan_spi_devices));
@@ -640,7 +614,7 @@ static void __init tegra_macallan_early_init(void)
 
 static void __init tegra_macallan_late_init(void)
 {
-	platform_device_register(&tegra_pinmux_device);
+	platform_device_register(&tegra114_pinctrl_device);
 	macallan_pinmux_init();
 	macallan_i2c_init();
 	macallan_spi_init();
@@ -703,9 +677,9 @@ static void __init tegra_macallan_reserve(void)
 {
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM)
 	/* 1920*1200*4*2 = 18432000 bytes */
-	tegra_reserve(0, SZ_16M + SZ_2M, SZ_16M);
+	tegra_reserve(0, SZ_16M + SZ_2M, SZ_16M + SZ_2M);
 #else
-	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_4M);
+	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_16M + SZ_2M);
 #endif
 	macallan_ramconsole_reserve(SZ_1M);
 }

@@ -519,7 +519,7 @@ int rt5639_headset_detect(struct snd_soc_codec *codec, int jack_insert)
 		if (SND_SOC_BIAS_OFF == codec->dapm.bias_level) {
 			snd_soc_write(codec, RT5639_PWR_ANLG1, 0xa814);
 			snd_soc_write(codec, RT5639_MICBIAS, 0x3830);
-			snd_soc_write(codec, RT5639_GEN_CTRL1 , 0x3701);
+			snd_soc_write(codec, RT5639_GEN_CTRL1 , 0x3F01);
 		    sclk_src = snd_soc_read(codec, RT5639_GLB_CLK) &
 			    RT5639_SCLK_SRC_MASK;
 		    snd_soc_update_bits(codec, RT5639_GLB_CLK,
@@ -2964,7 +2964,7 @@ static int rt5639_set_bias_level(struct snd_soc_codec *codec,
 			snd_soc_update_bits(codec, RT5639_PWR_ANLG1,
 				RT5639_PWR_FV1 | RT5639_PWR_FV2,
 				RT5639_PWR_FV1 | RT5639_PWR_FV2);
-			snd_soc_write(codec, RT5639_GEN_CTRL1, 0x3701);
+			snd_soc_write(codec, RT5639_GEN_CTRL1, 0x3F01);
 			codec->cache_only = false;
 			codec->cache_sync = 1;
 			snd_soc_cache_sync(codec);
@@ -2975,7 +2975,7 @@ static int rt5639_set_bias_level(struct snd_soc_codec *codec,
 	case SND_SOC_BIAS_OFF:
 		snd_soc_write(codec, RT5639_DEPOP_M1, 0x0004);
 		snd_soc_write(codec, RT5639_DEPOP_M2, 0x1100);
-		snd_soc_write(codec, RT5639_GEN_CTRL1, 0x3700);
+		snd_soc_write(codec, RT5639_GEN_CTRL1, 0x3F00);
 		snd_soc_write(codec, RT5639_PWR_DIG1, 0x0000);
 		snd_soc_write(codec, RT5639_PWR_DIG2, 0x0000);
 		snd_soc_write(codec, RT5639_PWR_VOL, 0x0000);
@@ -2997,6 +2997,11 @@ static int rt5639_probe(struct snd_soc_codec *codec)
 {
 	struct rt5639_priv *rt5639 = snd_soc_codec_get_drvdata(codec);
 	int ret;
+#ifdef RTK_IOCTL
+#if defined(CONFIG_SND_HWDEP) || defined(CONFIG_SND_HWDEP_MODULE)
+	struct rt56xx_ops *ioctl_ops;
+#endif
+#endif
 
 	codec->dapm.idle_bias_off = 1;
 
@@ -3053,6 +3058,18 @@ static int rt5639_probe(struct snd_soc_codec *codec)
 			ARRAY_SIZE(rt5639_dapm_routes));
 
 	rt5639->codec = codec;
+
+#ifdef RTK_IOCTL
+#if defined(CONFIG_SND_HWDEP) || defined(CONFIG_SND_HWDEP_MODULE)
+	ioctl_ops = rt56xx_get_ioctl_ops();
+	ioctl_ops->index_write = rt5639_index_write;
+	ioctl_ops->index_read = rt5639_index_read;
+	ioctl_ops->index_update_bits = rt5639_index_update_bits;
+	ioctl_ops->ioctl_common = rt5639_ioctl_common;
+	realtek_ce_init_hwdep(codec);
+#endif
+#endif
+
 	ret = device_create_file(codec->dev, &dev_attr_index_reg);
 	if (ret != 0) {
 		dev_err(codec->dev,

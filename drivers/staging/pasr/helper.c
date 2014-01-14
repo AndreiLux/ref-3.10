@@ -2,6 +2,8 @@
  * Copyright (C) ST-Ericsson SA 2011
  * Author: Maxime Coquelin <maxime.coquelin@stericsson.com> for ST-Ericsson.
  * License terms:  GNU General Public License (GPL), version 2
+ *
+ * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
  */
 
 #include <linux/pasr.h>
@@ -19,27 +21,25 @@ struct pasr_die *pasr_addr2die(struct pasr_map *map, phys_addr_t addr)
 
 	while (left != right) {
 		struct pasr_die *d;
-		phys_addr_t start;
 
 		mid = (left + right) >> 1;
 
 		d = &map->die[mid];
-		start = addr & ~((section_size * d->nr_sections) - 1);
 
-		if (start == d->start)
+		if ((addr >= d->start) && (addr < d->end))
 			return d;
 
 		if (left == mid || right == mid)
 			break;
 
-		if (start > d->start)
+		if (addr > d->end)
 			left = mid;
 		else
 			right = mid;
 	}
 
-	pr_err("%s: No die found for address %#x",
-			__func__, addr);
+	pr_debug("%s: No die found for address %#9llx",
+			__func__, (u64)addr);
 	return NULL;
 }
 
@@ -79,8 +79,8 @@ struct pasr_section *pasr_addr2section(struct pasr_map *map
 
 err:
 	/* Provided address isn't in any declared section */
-	pr_err("%s: No section found for address %#x",
-			__func__, addr);
+	pr_debug("%s: No section found for address %#9llx",
+			__func__, (u64)addr);
 
 	return NULL;
 }

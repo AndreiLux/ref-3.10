@@ -141,8 +141,6 @@ struct nvmap_handle_ref {
 	struct rb_node	node;
 	atomic_t	dupes;	/* number of times to free on file close */
 	atomic_t	pin;	/* number of times to unpin on free */
-	int		fd;
-	struct task_struct *group_leader;	/* threadgroup leader */
 };
 
 #ifdef CONFIG_NVMAP_PAGE_POOLS
@@ -354,29 +352,20 @@ static inline void nvmap_flush_tlb_kernel_page(unsigned long kaddr)
 #endif
 }
 
-extern void v7_clean_kern_cache_all(void *);
-
+/* MM definitions. */
 extern size_t cache_maint_outer_threshold;
+extern int inner_cache_maint_threshold;
 
-static inline void inner_flush_cache_all(void)
-{
-#ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU
-	v7_flush_kern_cache_all();
-#else
-	on_each_cpu(v7_flush_kern_cache_all, NULL, 1);
-#endif
-}
-
-static inline void inner_clean_cache_all(void)
-{
-#ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU
-	v7_clean_kern_cache_all(NULL);
-#else
-	on_each_cpu(v7_clean_kern_cache_all, NULL, 1);
-#endif
-}
-
+extern void v7_flush_kern_cache_all(void);
+extern void v7_clean_kern_cache_all(void *);
 extern void __flush_dcache_page(struct address_space *, struct page *);
+
+void inner_flush_cache_all(void);
+void inner_clean_cache_all(void);
+int nvmap_set_pages_array_uc(struct page **pages, int addrinarray);
+int nvmap_set_pages_array_wc(struct page **pages, int addrinarray);
+int nvmap_set_pages_array_iwb(struct page **pages, int addrinarray);
+int nvmap_set_pages_array_wb(struct page **pages, int addrinarray);
 
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
@@ -403,6 +392,7 @@ struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref);
 ulong __nvmap_ref_to_id(struct nvmap_handle_ref *ref);
 int __nvmap_pin(struct nvmap_handle_ref *ref, phys_addr_t *phys);
 void __nvmap_unpin(struct nvmap_handle_ref *ref);
+int __nvmap_dmabuf_fd(struct dma_buf *dmabuf, int flags);
 
 void nvmap_dmabuf_debugfs_init(struct dentry *nvmap_root);
 int nvmap_dmabuf_stash_init(void);

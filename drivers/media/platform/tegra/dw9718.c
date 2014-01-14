@@ -257,8 +257,6 @@ int dw9718_set_arc_mode(struct dw9718_info *info)
 		goto set_arc_mode_done;
 	}
 
-	err = dw9718_position_wr(info, 0);
-
 set_arc_mode_done:
 	return err;
 }
@@ -356,8 +354,6 @@ static int dw9718_power_get(struct dw9718_info *info)
 
 static int dw9718_pm_dev_wr(struct dw9718_info *info, int pwr)
 {
-	if (pwr < info->pwr_dev)
-		pwr = info->pwr_dev;
 	return dw9718_pm_wr(info, pwr);
 }
 

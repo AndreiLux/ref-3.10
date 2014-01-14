@@ -173,7 +173,8 @@ struct tegra_dc {
 	u32				vblank_syncpt;
 	u32				win_syncpt[DC_N_WINDOWS];
 
-	unsigned long			valid_windows;
+	unsigned long int		valid_windows;
+	unsigned long int		win_status;
 
 	unsigned long			underflow_mask;
 	struct work_struct		reset_work;
@@ -223,6 +224,9 @@ struct tegra_dc {
 	u32				reserved_bw;
 	u32				available_bw;
 	struct tegra_dc_win		tmp_wins[DC_N_WINDOWS];
+
+	int				win_blank_saved_flag;
+	struct tegra_dc_win		win_blank_saved;
 };
 
 #endif

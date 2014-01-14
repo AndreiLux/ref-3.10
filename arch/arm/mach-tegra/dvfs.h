@@ -72,11 +72,16 @@ struct dvfs_rail {
 	int fixed_millivolts;
 	int override_millivolts;
 	int min_override_millivolts;
+	int override_unresolved;
+	int (*resolve_override)(int mv);
 
 	const int *therm_mv_floors;
 	int therm_mv_floors_num;
 	const int *therm_mv_caps;
 	int therm_mv_caps_num;
+	const int *simon_vmin_offsets;
+	int simon_vmin_offs_num;
+	int simon_domain;
 
 	int step;
 	int step_up;
@@ -103,6 +108,7 @@ struct dvfs_rail {
 	bool dfll_mode;
 	bool dfll_mode_updating;
 	int therm_floor_idx;
+	int therm_cap_idx;
 	int therm_scale_idx;
 	struct tegra_cooling_device *vmin_cdev;
 	struct tegra_cooling_device *vmax_cdev;
@@ -142,13 +148,13 @@ struct dvfs {
 	/* Must be initialized before tegra_dvfs_init */
 	int freqs_mult;
 	unsigned long freqs[MAX_DVFS_FREQS];
-	unsigned long *alt_freqs;
 	const int *millivolts;
 	const int *peak_millivolts;
 	const int *dfll_millivolts;
 	struct dvfs_rail *dvfs_rail;
 	bool auto_dvfs;
 	bool can_override;
+	bool defer_override;
 
 	/* Filled in by tegra_dvfs_init */
 	int max_millivolts;
@@ -158,6 +164,8 @@ struct dvfs {
 
 	int cur_millivolts;
 	unsigned long cur_rate;
+	unsigned long *alt_freqs;
+	bool use_alt_freqs;
 	struct list_head node;
 	struct list_head debug_node;
 	struct list_head reg_node;
@@ -242,22 +250,28 @@ struct dvfs_rail *tegra_dvfs_get_rail_by_name(const char *reg_id);
 
 int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate);
 int tegra_dvfs_predict_peak_millivolts(struct clk *c, unsigned long rate);
-int tegra_dvfs_predict_millivolts_pll(struct clk *c, unsigned long rate);
-int tegra_dvfs_predict_millivolts_dfll(struct clk *c, unsigned long rate);
 const int *tegra_dvfs_get_millivolts_pll(struct dvfs *d);
 
-int tegra_dvfs_core_cap_level_apply(int level);
+int tegra_dvfs_override_core_cap_apply(int level);
+int tegra_dvfs_therm_vmax_core_cap_apply(int *cap_idx, int new_idx, int level);
+
+int tegra_dvfs_alt_freqs_install(struct dvfs *d, unsigned long *alt_freqs);
 int tegra_dvfs_alt_freqs_set(struct dvfs *d, unsigned long *alt_freqs);
 int tegra_cpu_dvfs_alter(int edp_thermal_index, const cpumask_t *cpus,
 			 bool before_clk_update, int cpu_event);
+int tegra_dvfs_replace_voltage_table(struct dvfs *d, const int *new_millivolts);
+
 int tegra_dvfs_dfll_mode_set(struct dvfs *d, unsigned long rate);
 int tegra_dvfs_dfll_mode_clear(struct dvfs *d, unsigned long rate);
 
 struct tegra_cooling_device *tegra_dvfs_get_cpu_vmax_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_cpu_vmin_cdev(void);
+struct tegra_cooling_device *tegra_dvfs_get_core_vmax_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_core_vmin_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_gpu_vmin_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_gpu_vts_cdev(void);
+void tegra_dvfs_rail_init_simon_vmin_offsets(
+	int *offsets, int offs_num, struct dvfs_rail *rail);
 void tegra_dvfs_rail_init_vmin_thermal_profile(
 	int *therm_trips_table, int *therm_floors_table,
 	struct dvfs_rail *rail, struct dvfs_dfll_data *d);
@@ -269,6 +283,17 @@ int tegra_dvfs_rail_init_thermal_dvfs_trips(
 int tegra_dvfs_init_thermal_dvfs_voltages(int *millivolts,
 	int *peak_millivolts, int freqs_num, int ranges_num, struct dvfs *d);
 int tegra_dvfs_rail_dfll_mode_set_cold(struct dvfs_rail *rail);
+void tegra_dvfs_rail_register_vmax_cdev(struct dvfs_rail *rail);
+
+#ifdef CONFIG_TEGRA_VDD_CORE_OVERRIDE
+int tegra_dvfs_resolve_override(struct clk *c, unsigned long max_rate);
+int tegra_dvfs_rail_get_override_floor(struct dvfs_rail *rail);
+#else
+static inline int tegra_dvfs_resolve_override(struct clk *c, unsigned long rate)
+{ return 0; }
+static inline int tegra_dvfs_rail_get_override_floor(struct dvfs_rail *rail)
+{ return 0; }
+#endif
 
 #ifndef CONFIG_ARCH_TEGRA_2x_SOC
 int tegra_dvfs_rail_disable_prepare(struct dvfs_rail *rail);
@@ -350,13 +375,6 @@ static inline int tegra_dvfs_rail_get_thermal_floor(struct dvfs_rail *rail)
 	    (rail->therm_floor_idx < rail->therm_mv_floors_num))
 		return rail->therm_mv_floors[rail->therm_floor_idx];
 	return 0;
-}
-
-static inline int tegra_dvfs_rail_get_override_floor(struct dvfs_rail *rail)
-{
-	if (rail)
-		return rail->min_override_millivolts;
-	return -ENOENT;
 }
 
 static inline bool tegra_dvfs_is_dfll_bypass(void)

@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra_core_volt_cap.c
  *
- * Copyright (c), 2013 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013, NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -21,6 +21,8 @@
 #include <linux/kobject.h>
 #include <linux/err.h>
 #include <linux/pm_qos.h>
+#include <linux/debugfs.h>
+#include <linux/seq_file.h>
 
 #include "clock.h"
 #include "dvfs.h"
@@ -44,7 +46,8 @@ struct core_cap {
 };
 
 static struct core_cap core_buses_cap;
-static struct core_cap kdvfs_core_cap;
+static struct core_cap override_core_cap;
+static struct core_cap vmax_core_cap;
 static struct core_cap user_core_cap;
 
 static struct core_dvfs_cap_table *core_cap_table;
@@ -101,8 +104,10 @@ static int core_cap_update(void)
 		return -ENOENT;
 
 	new_level = core_nominal_mv;
-	if (kdvfs_core_cap.refcnt)
-		new_level = min(new_level, kdvfs_core_cap.level);
+	if (override_core_cap.refcnt)
+		new_level = min(new_level, override_core_cap.level);
+	if (vmax_core_cap.refcnt)
+		new_level = min(new_level, vmax_core_cap.level);
 	if (user_core_cap.refcnt)
 		new_level = min(new_level, user_core_cap.level);
 
@@ -187,30 +192,60 @@ const struct attribute *cap_attributes[] = {
 	NULL,
 };
 
-int tegra_dvfs_core_cap_level_apply(int level)
+int tegra_dvfs_override_core_cap_apply(int level)
 {
 	int ret = 0;
 
 	mutex_lock(&core_cap_lock);
 
 	if (level) {
-		if (kdvfs_core_cap.refcnt) {
+		if (override_core_cap.refcnt) {
 			pr_err("%s: core cap is already set\n", __func__);
 			ret = -EPERM;
 		} else {
-			kdvfs_core_cap.level = level;
-			kdvfs_core_cap.refcnt = 1;
+			override_core_cap.level = level;
+			override_core_cap.refcnt = 1;
 			ret = core_cap_enable(true);
 			if (ret) {
-				kdvfs_core_cap.refcnt = 0;
+				override_core_cap.refcnt = 0;
 				core_cap_enable(false);
 			}
 		}
-	} else if (kdvfs_core_cap.refcnt) {
-		kdvfs_core_cap.refcnt = 0;
+	} else if (override_core_cap.refcnt) {
+		override_core_cap.refcnt = 0;
 		core_cap_enable(false);
 	}
 
+	mutex_unlock(&core_cap_lock);
+	return ret;
+}
+
+int tegra_dvfs_therm_vmax_core_cap_apply(int *cap_idx, int new_idx, int level)
+{
+	int ret = 0;
+
+	mutex_lock(&core_cap_lock);
+	if (*cap_idx == new_idx)
+		goto _out;
+
+	*cap_idx = new_idx;
+
+	if (level) {
+		if (!vmax_core_cap.refcnt) {
+			vmax_core_cap.level = level;
+			vmax_core_cap.refcnt = 1;
+			/* just report error (cannot revert temperature) */
+			ret = core_cap_enable(true);
+		} else if (vmax_core_cap.level != level) {
+			vmax_core_cap.level = level;
+			/* just report error (cannot revert temperature) */
+			ret = core_cap_update();
+		}
+	} else if (vmax_core_cap.refcnt) {
+		vmax_core_cap.refcnt = 0;
+		core_cap_enable(false);
+	}
+_out:
 	mutex_unlock(&core_cap_lock);
 	return ret;
 }
@@ -249,8 +284,8 @@ static int __init init_core_cap_one(struct clk *c, unsigned long *freqs)
 
 		if (rate == 0) {
 			rate = next_rate;
-			pr_info("%s: %s V=%dmV @ min F=%luHz above Vmin=%dmV\n",
-				__func__, c->parent->name, next_v, rate, v);
+			pr_debug("%s: %s V=%dmV @ min F=%luHz above Vmin=%dmV\n",
+				 __func__, c->parent->name, next_v, rate, v);
 		}
 		freqs[i] = rate;
 		next_rate = rate;
@@ -600,7 +635,7 @@ static int get_available_rates(struct clk *c, struct core_bus_rates_table *t)
 	}
 
 	/* shared bus clock must round up, unless top of range reached */
-	while ((rate <= max_rate) && (i <= MAX_DVFS_FREQS)) {
+	while ((rate <= max_rate) && (i < MAX_DVFS_FREQS)) {
 		unsigned long rounded_rate = clk_round_rate(c, rate);
 		if (IS_ERR_VALUE(rounded_rate) || (rounded_rate <= rate))
 			break;
@@ -640,3 +675,65 @@ int __init tegra_init_sysfs_shared_bus_rate(
 		return -ENOMEM;
 	return 0;
 }
+
+#ifdef CONFIG_DEBUG_FS
+
+static int vcore_cap_table_show(struct seq_file *s, void *data)
+{
+	int i, j, n;
+
+	seq_printf(s, "%-20s", "bus/vcore");
+	for (j = 0; j < cap_millivolts_num; j++) {
+		int v = cap_millivolts[j];
+		if (!v)
+			break;
+		seq_printf(s, "%7d", v);
+	}
+	n = j;
+	seq_puts(s, " mV\n");
+
+	for (i = 0; i < core_cap_table_size; i++) {
+		struct core_dvfs_cap_table *table = &core_cap_table[i];
+		seq_printf(s, "%-20s", table->cap_name);
+		for (j = 0; j < n; j++)
+			seq_printf(s, "%7lu", table->freqs[j] / 1000);
+		seq_puts(s, " kHz\n");
+	}
+
+	return 0;
+}
+
+static int vcore_cap_table_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, vcore_cap_table_show, inode->i_private);
+}
+
+static const struct file_operations vcore_cap_table_fops = {
+	.open		= vcore_cap_table_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+int __init tegra_core_cap_debug_init(void)
+{
+	struct dentry *core_cap_debugfs_dir;
+
+	if (!core_cap_table)
+		return 0;
+
+	core_cap_debugfs_dir = debugfs_create_dir("tegra_core_cap", NULL);
+	if (!core_cap_debugfs_dir)
+		return -ENOMEM;
+
+	if (!debugfs_create_file("vcore_cap_table", S_IRUGO,
+		core_cap_debugfs_dir, NULL, &vcore_cap_table_fops))
+		goto err_out;
+
+	return 0;
+
+err_out:
+	debugfs_remove_recursive(core_cap_debugfs_dir);
+	return -ENOMEM;
+}
+#endif

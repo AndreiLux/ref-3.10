@@ -55,14 +55,14 @@
 
 #define SDIO_CLK_GATING_TICK_TMOUT (HZ / 50)
 
-/*
- * type is MMC_TYPE_SDIO after SDIO enumeration. So the
- * delayed sdio clock gate implementation will have aggressive
- * clock gating till card gets enumerated.
- */
-#define IS_SDIO_DELAYED_CLK_GATE(host) \
-		((host->quirks2 & SDHCI_QUIRK2_SDIO_DELAYED_CLK_GATE) && \
-		(host->mmc->card && host->mmc->card->type == MMC_TYPE_SDIO) && \
+#define IS_SDIO_CARD_OR_EMMC(host) \
+		(host->mmc->card && \
+		((host->mmc->card->type == MMC_TYPE_SDIO) || \
+		(host->mmc->card->type == MMC_TYPE_MMC)))
+
+#define IS_DELAYED_CLK_GATE(host) \
+		((host->quirks2 & SDHCI_QUIRK2_DELAYED_CLK_GATE) && \
+		(IS_SDIO_CARD_OR_EMMC(host)) && \
 		(host->mmc->caps2 & MMC_CAP2_CLOCK_GATING))
 
 static unsigned int debug_quirks = 0;
@@ -1500,20 +1500,9 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	int vdd_bit = -1;
 	u8 ctrl;
 
-	/*
-	 * Some controllers requires clock to be enabled for any register
-	 * access. If SDHCI_QUIRK2_REG_ACCESS_REQ_CLOCK is set, set the
-	 * minimum controller clock if there is no clock.
-	 */
-	if (host->ops->set_clock) {
-		if ((host->quirks2 & SDHCI_QUIRK2_REG_ACCESS_REQ_HOST_CLK) &&
-			(!host->clock && !ios->clock)) {
-			host->ops->set_clock(host, host->mmc->f_min);
-			host->clock = host->mmc->f_min;
-		} else if (ios->clock && (ios->clock != host->clock)) {
-			host->ops->set_clock(host, ios->clock);
-		}
-	}
+	/* Do any required preparations prior to setting ios */
+	if (host->ops->platform_ios_config_enter)
+		host->ops->platform_ios_config_enter(host, ios);
 
 	spin_lock_irqsave(&host->lock, flags);
 
@@ -1692,16 +1681,10 @@ static void sdhci_do_set_ios(struct sdhci_host *host, struct mmc_ios *ios)
 	mmiowb();
 	spin_unlock_irqrestore(&host->lock, flags);
 
-	/*
-	 * If SDHCI_QUIRK2_REG_ACCESS_REQ_HOST_CLK is set, controller clock can
-	 * be shutdown after all the register accesses are done.
-	 */
-	if ((host->quirks2 & SDHCI_QUIRK2_REG_ACCESS_REQ_HOST_CLK) &&
-		(!ios->clock && host->ops->set_clock) &&
-		!host->mmc->skip_host_clkgate)
-		host->ops->set_clock(host, ios->clock);
-	if ((ios->power_mode == MMC_POWER_OFF) && host->ops->platform_power_off)
-		host->ops->platform_power_off(host, ios->power_mode);
+	/* Platform specific handling post ios setting */
+	if (host->ops->platform_ios_config_exit)
+		host->ops->platform_ios_config_exit(host, ios);
+
 }
 
 static void sdhci_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
@@ -2228,7 +2211,7 @@ int sdhci_enable(struct mmc_host *mmc)
 	if (!mmc->card || !(mmc->caps2 & MMC_CAP2_CLOCK_GATING))
 		return 0;
 
-	if (IS_SDIO_DELAYED_CLK_GATE(host)) {
+	if (IS_DELAYED_CLK_GATE(host)) {
 		/* cancel sdio clk gate work */
 		cancel_delayed_work_sync(&host->delayed_clk_gate_wrk);
 	}
@@ -2281,13 +2264,6 @@ void delayed_clk_gate_cb(struct work_struct *work)
 	if (host->mmc->ios.power_mode == MMC_POWER_OFF)
 		goto end;
 
-	if (!host->is_clk_on) {
-		/* bypass condition */
-		dev_err(&pdev->dev, "clk already off. skipped clk gate\n");
-		dump_stack();
-		goto end;
-	}
-
 	mmc_host_clk_gate(host);
 end:
 	return;
@@ -2301,9 +2277,10 @@ int sdhci_disable(struct mmc_host *mmc)
 	if (!mmc->card || !(mmc->caps2 & MMC_CAP2_CLOCK_GATING))
 		return 0;
 
-	if (IS_SDIO_DELAYED_CLK_GATE(host)) {
-		schedule_delayed_work(&host->delayed_clk_gate_wrk,
-			SDIO_CLK_GATING_TICK_TMOUT);
+	if (IS_DELAYED_CLK_GATE(host)) {
+		if (host->is_clk_on)
+			schedule_delayed_work(&host->delayed_clk_gate_wrk,
+				SDIO_CLK_GATING_TICK_TMOUT);
 		return 0;
 	}
 
@@ -2874,6 +2851,9 @@ int sdhci_suspend_host(struct sdhci_host *host)
 	if (mmc->pm_flags & MMC_PM_KEEP_POWER)
 		host->card_int_set = sdhci_readl(host, SDHCI_INT_ENABLE) &
 			SDHCI_INT_CARD_INT;
+
+	/* cancel sdio clk gate work */
+	cancel_delayed_work_sync(&host->delayed_clk_gate_wrk);
 
 	if (!device_may_wakeup(mmc_dev(host->mmc))) {
 		sdhci_mask_irqs(host, SDHCI_INT_ALL_MASK);

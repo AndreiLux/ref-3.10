@@ -32,6 +32,7 @@
 #include <linux/time.h>
 #include <linux/timer.h>
 #include <linux/gpio.h>
+#include <linux/of_gpio.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/power/bq2419x-charger.h>
@@ -173,9 +174,19 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 	int ret;
 
 	/* Configure Output Current Control to 2.25A*/
-	ret = regmap_write(bq2419x->regmap, BQ2419X_CHRG_CTRL_REG, 0x6c);
+	ret = regmap_write(bq2419x->regmap, BQ2419X_CHRG_CTRL_REG, 0xFC);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "CHRG_CTRL_REG write failed %d\n", ret);
+		return ret;
+	}
+
+	/*
+	 * Configure Pre-charge current limit to 768mA,
+	 * and Termination current limit to 384mA.
+	*/
+	ret = regmap_write(bq2419x->regmap, BQ2419X_CHRG_TERM_REG, 0x52);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "CHRG_TERM_REG write failed %d\n", ret);
 		return ret;
 	}
 
@@ -183,9 +194,14 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 	 * Configure Input voltage limit reset to OTP value,
 	 * and charging current to 500mA.
 	 */
-	ret = regmap_write(bq2419x->regmap, BQ2419X_INPUT_SRC_REG, 0x32);
+	ret = regmap_write(bq2419x->regmap, BQ2419X_INPUT_SRC_REG, 0x22);
 	if (ret < 0)
 		dev_err(bq2419x->dev, "INPUT_SRC_REG write failed %d\n", ret);
+
+	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_THERM_REG,
+			BQ2419x_TREG, BQ2419x_TREG_100_C);
+	if (ret < 0)
+		dev_err(bq2419x->dev, "THERM_REG write failed: %d\n", ret);
 
 	return ret;
 }
@@ -197,15 +213,9 @@ static int bq2419x_configure_charging_current(struct bq2419x_chip *bq2419x,
 	int ret = 0;
 	int floor = 0;
 
-	/* Configure input voltage to 4.52 in case of NV charger */
-	if (in_current_limit == 2000)
-		val |= BQ2419x_NVCHARGER_INPUT_VOL_SEL;
-	else
-		val |= BQ2419x_DEFAULT_INPUT_VOL_SEL;
-
 	/* Clear EN_HIZ */
 	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_INPUT_SRC_REG,
-			BQ2419X_EN_HIZ | BQ2419x_INPUT_VOLTAGE_MASK, val);
+			BQ2419X_EN_HIZ, 0);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "INPUT_SRC_REG update failed %d\n", ret);
 		return ret;
@@ -929,6 +939,9 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 				vbus_init_data->consumer_supplies;
 		pdata->vbus_pdata->num_consumer_supplies =
 				vbus_init_data->num_consumer_supplies;
+		pdata->vbus_pdata->gpio_otg_iusb =
+				of_get_named_gpio(vbus_reg_node,
+					"otg-iusb-gpio", 0);
 	}
 
 	return pdata;
@@ -1152,6 +1165,8 @@ static void bq2419x_shutdown(struct i2c_client *client)
 				"System reset after %d config failed %d\n",
 				bq2419x->wdt_refresh_timeout, ret);
 	}
+
+	battery_charging_system_power_on_usb_event(bq2419x->bc_dev);
 }
 
 #ifdef CONFIG_PM_SLEEP

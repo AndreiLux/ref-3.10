@@ -52,6 +52,8 @@
 #include <linux/clocksource.h>
 #include <linux/irqchip.h>
 #include <linux/irqchip/tegra.h>
+#include <linux/tegra_fiq_debugger.h>
+#include <linux/platform_data/tegra_usb_modem_power.h>
 
 #include <mach/irqs.h>
 #include <mach/pinmux.h>
@@ -63,8 +65,6 @@
 #include <asm/mach-types.h>
 #include <asm/mach/arch.h>
 #include <mach/gpio-tegra.h>
-#include <mach/tegra_fiq_debugger.h>
-#include <linux/platform_data/tegra_usb_modem_power.h>
 #include <mach/xusb.h>
 
 #include "board-touch-raydium.h"
@@ -490,11 +490,16 @@ static void dalmore_usb_init(void)
 	tegra_set_usb_wake_source();
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
-		tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
-		platform_device_register(&tegra_otg_device);
-		/* Setup the udc platform data */
-		tegra_udc_device.dev.platform_data = &tegra_udc_pdata;
+		tegra_otg_pdata.is_xhci = false;
+		tegra_udc_pdata.u_data.dev.is_xhci = false;
+	} else {
+		tegra_otg_pdata.is_xhci = true;
+		tegra_udc_pdata.u_data.dev.is_xhci = true;
 	}
+	tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
+	platform_device_register(&tegra_otg_device);
+	/* Setup the udc platform data */
+	tegra_udc_device.dev.platform_data = &tegra_udc_pdata;
 
 	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
 		tegra_ehci3_device.dev.platform_data = &tegra_ehci3_utmi_pdata;
@@ -502,28 +507,19 @@ static void dalmore_usb_init(void)
 	}
 }
 
-static struct tegra_xusb_board_data xusb_bdata = {
-	.portmap = TEGRA_XUSB_SS_P0 | TEGRA_XUSB_USB2_P1,
-	/* ss_portmap[0:3] = SS0 map, ss_portmap[4:7] = SS1 map */
-	.ss_portmap = (TEGRA_XUSB_SS_PORT_MAP_USB2_P1 << 0),
-	.uses_external_pmic = false,
-	.supply = {
-		.utmi_vbuses = {
-			NULL, "usb_vbus", NULL
-		},
-		.s3p3v = "hvdd_usb",
-		.s1p8v = "avdd_usb_pll",
-		.vddio_hsic = "vddio_hsic",
-		.s1p05v = "avddio_usb",
-	},
+static struct tegra_xusb_platform_data xusb_pdata = {
+	.portmap = TEGRA_XUSB_SS_P0 | TEGRA_XUSB_USB2_P1 |
+			TEGRA_XUSB_USB2_P0,
 };
 
 static void dalmore_xusb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
-	if (usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)
-		tegra_xusb_init(&xusb_bdata);
+	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
+		xusb_pdata.portmap &= ~TEGRA_XUSB_USB2_P0;
+	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
+		xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_SS_P0);
 }
 
 static struct gpio modem_gpios[] = { /* Nemo modem */
@@ -743,6 +739,8 @@ struct of_dev_auxdata dalmore_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006200, "serial-tegra.2",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-xhci", 0x70090000, "tegra-xhci",
+				&xusb_pdata),
 	{}
 };
 #endif
@@ -756,7 +754,7 @@ static void __init tegra_dalmore_early_init(void)
 
 static void __init tegra_dalmore_late_init(void)
 {
-	platform_device_register(&tegra_pinmux_device);
+	platform_device_register(&tegra114_pinctrl_device);
 	dalmore_pinmux_init();
 	dalmore_i2c_init();
 	dalmore_spi_init();

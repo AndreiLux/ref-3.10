@@ -47,6 +47,10 @@
 #include "hdmi_reg.h"
 #include "hdmi.h"
 #include "hdmi_state_machine.h"
+#include "edid.h"
+#include "nvhdcp.h"
+#include <linux/of.h>
+#include <linux/of_address.h>
 
 /* datasheet claims this will always be 216MHz */
 #define HDMI_AUDIOCLK_FREQ		216000000
@@ -369,6 +373,10 @@ static inline void tegra_hdmi_clrsetbits(struct tegra_dc_hdmi_data *hdmi,
 static int dbg_hdmi_show(struct seq_file *m, void *unused)
 {
 	struct tegra_dc_hdmi_data *hdmi = m->private;
+
+	/* If gated quitely return */
+	if (!tegra_dc_is_powered(hdmi->dc))
+		return 0;
 
 #define DUMP_REG(a) do {						\
 		seq_printf(m, "%-32s\t%03x\t%08lx\n",			\
@@ -757,8 +765,6 @@ bool tegra_dc_hdmi_mode_filter(const struct tegra_dc *dc,
 /* used by tegra_dc_probe() to detect hpd/hdmi status at boot */
 static bool tegra_dc_hdmi_detect(struct tegra_dc *dc)
 {
-	int hdmi_state;
-
 	hdmi_state_machine_set_pending_hpd();
 	/* result isn't used by dc */
 
@@ -854,6 +860,7 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 {
 	struct tegra_dc_hdmi_data *hdmi;
 	struct resource *res;
+	struct resource hdmi_res;
 	struct resource *base_res;
 	int ret;
 	void __iomem *base;
@@ -862,13 +869,28 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	struct clk *disp2_clk = NULL;
 	struct tegra_hdmi_out *hdmi_out = NULL;
 	int err;
-
+	struct device_node *np = dc->ndev->dev.of_node;
+#ifdef CONFIG_USE_OF
+	struct device_node *np_hdmi =
+		of_find_node_by_path("/host1x/hdmi");
+#else
+	struct device_node *np_hdmi = NULL;
+#endif
 	hdmi = kzalloc(sizeof(*hdmi), GFP_KERNEL);
 	if (!hdmi)
 		return -ENOMEM;
-
-	res = platform_get_resource_byname(dc->ndev,
-		IORESOURCE_MEM, "hdmi_regs");
+	if (np) {
+		if (np_hdmi && of_device_is_available(np_hdmi)) {
+			of_address_to_resource(np_hdmi, 0, &hdmi_res);
+			res = &hdmi_res;
+		} else {
+			err = -EINVAL;
+			goto err_free_hdmi;
+		}
+	} else {
+		res = platform_get_resource_byname(dc->ndev,
+			IORESOURCE_MEM, "hdmi_regs");
+	}
 	if (!res) {
 		dev_err(&dc->ndev->dev, "hdmi: no mem resource\n");
 		err = -ENOENT;

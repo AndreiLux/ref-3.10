@@ -38,6 +38,7 @@
 #include "board-loki.h"
 #include "iomap.h"
 #include "dvfs.h"
+#include "tegra-board-id.h"
 
 #define LOKI_WLAN_RST	TEGRA_GPIO_PR3
 #define LOKI_WLAN_PWR	TEGRA_GPIO_PCC5
@@ -161,10 +162,8 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
 	.power_gpio = -1,
 	.tap_delay = 0,
 	.trim_delay = 0x3,
-	.uhs_mask = MMC_UHS_MASK_SDR104 |
-		/* FIXME: Enable UHS mode */
-		MMC_UHS_MASK_SDR12 | MMC_UHS_MASK_SDR25 |
-		MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
+	.uhs_mask = MMC_UHS_MASK_DDR50 | MMC_UHS_MASK_SDR50,
+	.max_clk_limit = 204000000,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
 };
@@ -181,9 +180,8 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 		.built_in = 1,
 		.ocr_mask = MMC_OCR_1V8_MASK,
 	},
-	.uhs_mask = MMC_MASK_HS200,
 	.ddr_clk_limit = 51000000,
-	.max_clk_limit = 102000000,
+	.max_clk_limit = 200000000,
 	.calib_3v3_offsets = 0x0202,
 	.calib_1v8_offsets = 0x0202,
 };
@@ -253,7 +251,7 @@ static int loki_wifi_regulator_enable(void)
 	if (IS_ERR_OR_NULL(loki_vdd_com_3v3)) {
 		loki_vdd_com_3v3 = regulator_get(&loki_wifi_device.dev,
 					LOKI_VDD_WIFI_3V3);
-		if (IS_ERR_OR_NULL(loki_vdd_com_3v3)) {
+		if (IS_ERR(loki_vdd_com_3v3)) {
 			pr_err("Couldn't get regulator "
 				LOKI_VDD_WIFI_3V3 "\n");
 			return PTR_ERR(loki_vdd_com_3v3);
@@ -273,7 +271,7 @@ static int loki_wifi_regulator_enable(void)
 	if (IS_ERR_OR_NULL(loki_vddio_com_1v8)) {
 		loki_vddio_com_1v8 = regulator_get(&loki_wifi_device.dev,
 			LOKI_VDD_WIFI_1V8);
-		if (IS_ERR_OR_NULL(loki_vddio_com_1v8)) {
+		if (IS_ERR(loki_vddio_com_1v8)) {
 			pr_err("Couldn't get regulator "
 				LOKI_VDD_WIFI_1V8 "\n");
 			regulator_disable(loki_vdd_com_3v3);
@@ -455,6 +453,14 @@ int __init loki_sdhci_init(void)
 	int nominal_core_mv;
 	int min_vcore_override_mv;
 	int boot_vcore_mv;
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+
+	if (bi.board_id == BOARD_E2548 && bi.sku == 0x0 && bi.fab == 0x0) {
+		tegra_sdhci_platform_data3.uhs_mask |= MMC_MASK_HS200;
+		tegra_sdhci_platform_data3.max_clk_limit = 102000000;
+	}
 
 	nominal_core_mv =
 		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
@@ -483,7 +489,10 @@ int __init loki_sdhci_init(void)
 	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
 
 	platform_device_register(&tegra_sdhci_device3);
-	platform_device_register(&tegra_sdhci_device2);
+
+	if (!is_uart_over_sd_enabled())
+		platform_device_register(&tegra_sdhci_device2);
+
 	platform_device_register(&tegra_sdhci_device0);
 	loki_wifi_init();
 
