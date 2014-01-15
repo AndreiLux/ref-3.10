@@ -177,7 +177,7 @@ static struct tegra_dsi_out dsi_j_qxga_8_9_pdata = {
 	.ganged_type = TEGRA_DSI_GANGED_SYMMETRIC_LEFT_RIGHT,
 	.video_data_type = TEGRA_DSI_VIDEO_TYPE_VIDEO_MODE,
 	.video_burst_mode = TEGRA_DSI_VIDEO_NONE_BURST_MODE,
-	.refresh_rate = 45,
+	.refresh_rate = 60,
 #endif
 
 	.pixel_format = TEGRA_DSI_PIXEL_FORMAT_24BIT_P,
@@ -192,6 +192,7 @@ static struct tegra_dsi_out dsi_j_qxga_8_9_pdata = {
 	.n_suspend_cmd = ARRAY_SIZE(dsi_j_qxga_8_9_suspend_cmd),
 	.lp00_pre_panel_wakeup = false,
 	.ulpm_not_supported = true,
+	.no_pkt_seq_hbp = false,
 };
 
 static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
@@ -257,7 +258,7 @@ static struct tegra_dc_mode dsi_j_qxga_8_9_modes[] = {
 		/* dc constraint, min v_ref_to_sync + 1 */
 		.v_front_porch = 2,
 #else
-		.pclk = 192000000, /* @60Hz */
+		.pclk = 257000000, /* @60Hz */
 		.h_ref_to_sync = 1,
 		.v_ref_to_sync = 1,
 		.h_sync_width = 62,
