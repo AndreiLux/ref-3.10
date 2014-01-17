@@ -1355,6 +1355,11 @@ static void tegra_dsi_setup_ganged_mode_pkt_length(struct tegra_dc *dc,
 	u32 pix_per_line = 0;
 	u32 val = 0;
 	int i = 0;
+	u32 hsync_hbp_len_pix_orig = dc->mode.h_sync_width + dc->mode.h_back_porch;
+	u32 hsync_hbp_len_pix = 0;
+	u32 hfp_len_pix_orig = dc->mode.h_front_porch;
+	u32 hfp_len_pix = 0;
+	u32 hsync_hbp_len_bytes = 0;
 
 /* hsync + hact + hfp = (4) + (4+2) + (4+2) */
 #define HEADER_OVERHEAD 16
@@ -1371,6 +1376,9 @@ static void tegra_dsi_setup_ganged_mode_pkt_length(struct tegra_dc *dc,
 	case TEGRA_DSI_GANGED_SYMMETRIC_EVEN_ODD: /* fall through */
 		hact_pkt_len_pix = DIV_ROUND_UP(hact_pkt_len_pix_orig, 2);
 		pix_per_line = DIV_ROUND_UP(pix_per_line_orig, 2);
+
+		hsync_hbp_len_pix = DIV_ROUND_UP(hsync_hbp_len_pix_orig, 2);
+		hfp_len_pix = DIV_ROUND_UP(hfp_len_pix_orig, 2);
 		break;
 	default:
 		dev_err(&dc->ndev->dev, "dsi: invalid ganged type\n");
@@ -1379,13 +1387,26 @@ static void tegra_dsi_setup_ganged_mode_pkt_length(struct tegra_dc *dc,
 	for (i = 0; i < dsi->max_instances; i++) {
 		hact_pkt_len_bytes = hact_pkt_len_pix *
 			dsi->pixel_scaler_mul / dsi->pixel_scaler_div;
-		hfp_pkt_len_bytes = pix_per_line *
-			dsi->pixel_scaler_mul / dsi->pixel_scaler_div -
-			hact_pkt_len_bytes - HEADER_OVERHEAD;
+		if (dsi->info.no_pkt_seq_hbp) {
+			hfp_pkt_len_bytes = pix_per_line *
+				dsi->pixel_scaler_mul / dsi->pixel_scaler_div -
+				hact_pkt_len_bytes - HEADER_OVERHEAD;
 
-		val = DSI_PKT_LEN_2_3_LENGTH_2(0x0) |
-			DSI_PKT_LEN_2_3_LENGTH_3(hact_pkt_len_bytes);
-		tegra_dsi_controller_writel(dsi, val, DSI_PKT_LEN_2_3, i);
+			val = DSI_PKT_LEN_2_3_LENGTH_2(0x0) |
+				DSI_PKT_LEN_2_3_LENGTH_3(hact_pkt_len_bytes);
+			tegra_dsi_controller_writel(dsi, val, DSI_PKT_LEN_2_3, i);
+		} else {
+			hsync_hbp_len_bytes = hsync_hbp_len_pix *
+				dsi->pixel_scaler_mul / dsi->pixel_scaler_div;
+			hsync_hbp_len_bytes -= DSI_HBACK_PORCH_PKT_OVERHEAD;
+				hfp_pkt_len_bytes = hfp_len_pix *
+					dsi->pixel_scaler_mul / dsi->pixel_scaler_div;
+			hfp_pkt_len_bytes -= DSI_HFRONT_PORCH_PKT_OVERHEAD;
+
+			val = DSI_PKT_LEN_2_3_LENGTH_2(hsync_hbp_len_bytes) |
+				DSI_PKT_LEN_2_3_LENGTH_3(hact_pkt_len_bytes);
+			tegra_dsi_controller_writel(dsi, val, DSI_PKT_LEN_2_3, i);
+		}
 
 		val = DSI_PKT_LEN_4_5_LENGTH_4(hfp_pkt_len_bytes) |
 			DSI_PKT_LEN_4_5_LENGTH_5(0);
@@ -1394,6 +1415,14 @@ static void tegra_dsi_setup_ganged_mode_pkt_length(struct tegra_dc *dc,
 		hact_pkt_len_pix =
 			hact_pkt_len_pix_orig - hact_pkt_len_pix;
 		pix_per_line = pix_per_line_orig - pix_per_line;
+
+		if (!dsi->info.no_pkt_seq_hbp) {
+			hsync_hbp_len_pix =
+				hsync_hbp_len_pix_orig - hsync_hbp_len_pix;
+
+			hfp_len_pix =
+				hfp_len_pix_orig - hfp_len_pix;
+		}
 	}
 
 	val = DSI_PKT_LEN_6_7_LENGTH_6(0) |
@@ -1547,10 +1576,16 @@ static void tegra_dsi_set_pkt_seq(struct tegra_dc *dc,
 		case TEGRA_DSI_VIDEO_NONE_BURST_MODE:
 		default:
 			if (dsi->info.ganged_type) {
-				pkt_seq_3_5_rgb_lo =
-					DSI_PKT_SEQ_3_LO_PKT_31_ID(rgb_info);
-				pkt_seq =
-				dsi_pkt_seq_video_non_burst_no_eot_no_lp_no_hbp;
+				if (dsi->info.no_pkt_seq_hbp) {
+					pkt_seq_3_5_rgb_lo =
+						DSI_PKT_SEQ_3_LO_PKT_31_ID(rgb_info);
+					pkt_seq =
+					dsi_pkt_seq_video_non_burst_no_eot_no_lp_no_hbp;
+				} else {
+					pkt_seq_3_5_rgb_lo =
+						DSI_PKT_SEQ_3_LO_PKT_32_ID(rgb_info);
+					pkt_seq = dsi_pkt_seq_video_non_burst;
+				}
 			} else {
 				pkt_seq_3_5_rgb_lo =
 					DSI_PKT_SEQ_3_LO_PKT_32_ID(rgb_info);
