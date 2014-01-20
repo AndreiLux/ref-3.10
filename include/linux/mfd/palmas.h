@@ -551,6 +551,7 @@ struct palmas_rtc_platform_data {
 struct palmas_pm_platform_data {
 	bool use_power_off;
 	bool use_power_reset;
+	bool use_boot_up_at_vbus;
 };
 
 struct palmas_pinctrl_config {

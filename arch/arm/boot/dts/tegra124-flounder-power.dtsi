@@ -69,6 +69,7 @@ palmas: tps65913 {
 		compatible = "ti,palmas-pm";
 		system-pmic-power-off;
 		system-pmic-power-reset;
+		boot-up-at-vbus;
 	};
 
 	gpadc {

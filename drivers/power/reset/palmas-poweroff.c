@@ -40,6 +40,7 @@ struct palmas_pm {
 	int int_mask_val[PALMAS_MAX_INTERRUPT_MASK_REG];
 	bool need_rtc_power_on;
 	bool need_usb_event_power_on;
+	bool enable_boot_up_at_vbus;
 };
 
 static void palmas_auto_power_on(struct palmas_pm *palmas_pm)
@@ -96,6 +97,7 @@ static void palmas_power_off(void *drv_data)
 	unsigned int val;
 	int i;
 	int ret;
+	unsigned int vbus_line_state;
 
 	palmas_allow_atomic_xfer(palmas);
 
@@ -119,7 +121,8 @@ static void palmas_power_off(void *drv_data)
 				palmas_pm->int_status_reg_add[i], ret);
 	}
 
-	if (palmas_pm->need_usb_event_power_on) {
+	if (palmas_pm->enable_boot_up_at_vbus ||
+		palmas_pm->need_usb_event_power_on) {
 		ret = palmas_update_bits(palmas, PALMAS_INTERRUPT_BASE,
 			PALMAS_INT3_MASK,
 			PALMAS_INT3_MASK_VBUS | PALMAS_INT3_MASK_VBUS_OTG, 0);
@@ -134,6 +137,51 @@ static void palmas_power_off(void *drv_data)
 
 	dev_info(palmas_pm->dev, "Powering off the device\n");
 
+	palmas_read(palmas, PALMAS_INTERRUPT_BASE,
+		PALMAS_INT3_LINE_STATE, &vbus_line_state);
+
+	if (palmas_pm->enable_boot_up_at_vbus &&
+		(vbus_line_state & PALMAS_INT3_LINE_STATE_VBUS)) {
+		dev_info(palmas_pm->dev, "VBUS found, boot on system by timer interrupt\n");
+		ret = palmas_update_bits(palmas, PALMAS_RTC_BASE,
+			PALMAS_RTC_INTERRUPTS_REG,
+			PALMAS_RTC_INTERRUPTS_REG_IT_TIMER,
+			PALMAS_RTC_INTERRUPTS_REG_IT_TIMER);
+		if (ret < 0) {
+			dev_err(palmas_pm->dev,
+				"RTC_INTERRUPTS update failed: %d\n", ret);
+			goto poweroff_direct;
+		}
+
+		ret = palmas_update_bits(palmas, PALMAS_RTC_BASE,
+			PALMAS_RTC_INTERRUPTS_REG,
+			PALMAS_RTC_INTERRUPTS_REG_EVERY_MASK, 0);
+		if (ret < 0) {
+			dev_err(palmas_pm->dev,
+				"RTC_INTERRUPTS update failed: %d\n", ret);
+			goto poweroff_direct;
+		}
+
+		ret = palmas_update_bits(palmas, PALMAS_RTC_BASE,
+			PALMAS_RTC_CTRL_REG, PALMAS_RTC_CTRL_REG_STOP_RTC,
+			PALMAS_RTC_CTRL_REG_STOP_RTC);
+		if (ret < 0) {
+			dev_err(palmas_pm->dev,
+				"RTC_CTRL_REG update failed: %d\n", ret);
+			goto poweroff_direct;
+		}
+
+		ret = palmas_update_bits(palmas, PALMAS_INTERRUPT_BASE,
+			PALMAS_INT2_MASK,
+			PALMAS_INT2_MASK_RTC_TIMER, 0);
+		if (ret < 0) {
+			dev_err(palmas_pm->dev,
+				"INT2_MASK update failed: %d\n", ret);
+			goto poweroff_direct;
+		}
+	}
+
+poweroff_direct:
 	/* Power off the device */
 	palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
 				PALMAS_DEV_CTRL, 1, 0);
@@ -308,15 +356,21 @@ static int palmas_pm_probe(struct platform_device *pdev)
 	if (pm_pdata) {
 		config.allow_power_off = pm_pdata->use_power_off;
 		config.allow_power_reset = pm_pdata->use_power_reset;
+		palmas_pm->enable_boot_up_at_vbus =
+			pm_pdata->use_boot_up_at_vbus;
 	} else {
 		if (node) {
 			config.allow_power_off = of_property_read_bool(node,
 				"system-pmic-power-off");
 			config.allow_power_reset = of_property_read_bool(node,
 				"system-pmic-power-reset");
+			palmas_pm->enable_boot_up_at_vbus =
+				of_property_read_bool(node,
+				"boot-up-at-vbus");
 		} else {
 			config.allow_power_off = true;
 			config.allow_power_reset = false;
+			palmas_pm->enable_boot_up_at_vbus = false;
 		}
 	}
 
