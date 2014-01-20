@@ -40,12 +40,6 @@
 #define pr_err(fmt, ...) printk(KERN_ERR pr_aud_fmt(fmt), ##__VA_ARGS__)
 /* htc audio -- */
 
-#define TPA9895_IOCTL_MAGIC 'a'
-#define TPA9895_WRITE_CONFIG	_IOW(TPA9895_IOCTL_MAGIC, 0x01, unsigned int)
-#define TPA9895_READ_CONFIG	_IOW(TPA9895_IOCTL_MAGIC, 0x02, unsigned int)
-#define TPA9895_ENABLE_DSP	_IOW(TPA9895_IOCTL_MAGIC, 0x03, unsigned int)
-#define TPA9895_KERNEL_LOCK    _IOW(TPA9895_IOCTL_MAGIC, 0x06, unsigned int)
-
 static struct i2c_client *this_client;
 struct mutex spk_ampl_lock;
 static int last_spkampl_state;
@@ -213,6 +207,16 @@ int tfa9895_l_read(char *rxdata, int length)
 	return tfa9895_i2c_read(rxdata, length);
 }
 
+static int tfa9895l_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static int tfa9895l_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
 int set_tfa9895l_spkamp(int en, int dsp_mode)
 {
 	int i = 0;
@@ -278,25 +282,90 @@ int tfa9895l_disable(bool disable)
 {
 	int rc = 0;
 
-	unsigned char ampl_val[1][3] = {
+	unsigned char ampl_on[1][3] = {
 	{0x09, 0x06, 0x18}
 	};
 
 	if (disable) {
 		pr_info("%s: speaker_l switch off!\n", __func__);
-		ampl_val[0][2]=0x19;
+		rc = tfa9895_i2c_write(ampl_off[0], 3);
 	} else {
 		pr_info("%s: speaker_l switch on!\n", __func__);
+		rc = tfa9895_i2c_write(ampl_on[0], 3);
 	}
-
-	rc = tfa9895_i2c_write(ampl_val[0], 3);
 
 	return rc;
 }
 
+static long tfa9895l_ioctl(struct file *file, unsigned int cmd,
+	   unsigned long arg)
+{
+	int rc = 0;
+	unsigned char *buf;
+	void __user *argp = (void __user *)arg;
+
+	if (_IOC_TYPE(cmd) != TFA9895_IOCTL_MAGIC)
+		return -ENOTTY;
+
+	if (_IOC_SIZE(cmd) > sizeof(struct tfa9895_i2c_buffer))
+		return -EINVAL;
+
+	buf = kzalloc(_IOC_SIZE(cmd), GFP_KERNEL);
+
+	if (buf == NULL) {
+		pr_err("%s %d: allocate kernel buffer failed.\n", __func__, __LINE__);
+		return -EFAULT;
+	}
+
+	if (_IOC_DIR(cmd) & _IOC_WRITE) {
+		rc = copy_from_user(buf, argp, _IOC_SIZE(cmd));
+		if (rc) {
+			kfree(buf);
+			return -EFAULT;
+		}
+	}
+
+	switch (_IOC_NR(cmd)) {
+	case TFA9895_WRITE_CONFIG_NR:
+		pr_debug("%s: TFA9895_WRITE_CONFIG\n", __func__);
+		rc = tfa9895_i2c_write(((struct tfa9895_i2c_buffer *)buf)->buffer, ((struct tfa9895_i2c_buffer *)buf)->size);
+		break;
+	case TFA9895_READ_CONFIG_NR:
+		pr_debug("%s: TFA9895_READ_CONFIG\n", __func__);
+		rc = tfa9895_i2c_read(((struct tfa9895_i2c_buffer *)buf)->buffer, ((struct tfa9895_i2c_buffer *)buf)->size);
+		break;
+	case TFA9895_ENABLE_DSP_NR:
+		pr_info("%s: TFA9895_ENABLE_DSP %d\n", __func__, *(int *)buf);
+		dspl_enabled = *(int *)buf;
+		break;
+	default:
+		kfree(buf);
+		return -ENOTTY;
+	}
+
+	if (_IOC_DIR(cmd) & _IOC_READ) {
+		rc = copy_to_user(argp, buf, _IOC_SIZE(cmd));
+		if (rc) {
+			kfree(buf);
+			return -EFAULT;
+		}
+	}
+	kfree(buf);
+	return rc;
+}
+
+static const struct file_operations tfa9895l_fops = {
+	.owner = THIS_MODULE,
+	.open = tfa9895l_open,
+	.release = tfa9895l_release,
+	.unlocked_ioctl = tfa9895l_ioctl,
+	.compat_ioctl = tfa9895l_ioctl,
+};
+
 static struct miscdevice tfa9895l_device = {
 	.minor = MISC_DYNAMIC_MINOR,
 	.name = "tfa9895l",
+	.fops = &tfa9895l_fops,
 };
 
 int tfa9895l_probe(struct i2c_client *client, const struct i2c_device_id *id)
@@ -306,7 +375,6 @@ int tfa9895l_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	int ret = 0;
 	char temp[6] = {0x4, 0x88};
-
 	this_client = client;
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
@@ -321,13 +389,11 @@ int tfa9895l_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto err_free_gpio_all;
 	}
 	ret = tfa9895_i2c_write(temp, 2);
-
 	ret = tfa9895_i2c_read(temp, 5);
 	if (ret < 0)
 		pr_info("%s:i2c read fail\n", __func__);
 	else
 		pr_info("%s:i2c read successfully\n", __func__);
-
 
 #ifdef CONFIG_DEBUG_FS
 	debugfs_tpa_dent = debugfs_create_dir("tfa9895", 0);
