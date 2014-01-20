@@ -301,6 +301,9 @@ struct tegra_dsi_out {
 	struct tegra_dsi_cmd	*dsi_suspend_cmd;	/* required */
 	u16		n_suspend_cmd;			/* required */
 
+	struct tegra_dsi_cmd	*dsi_backlight_cmd;
+	u16		n_backlight_cmd;
+
 	u8		video_data_type;		/* required */
 	u8		video_clock_mode;
 	u8		video_burst_mode;
@@ -851,6 +854,7 @@ struct tegra_dc_pwm_params {
 	unsigned int clk_div;
 	unsigned int clk_select;
 	unsigned int duty_cycle;
+	int backlight_mode;
 };
 
 void tegra_dc_config_pwm(struct tegra_dc *dc, struct tegra_dc_pwm_params *cfg);
