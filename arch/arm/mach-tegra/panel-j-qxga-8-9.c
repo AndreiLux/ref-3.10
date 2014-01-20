@@ -146,7 +146,6 @@ static tegra_dc_bl_output dsi_j_qxga_8_9_bl_output_measured = {
 static struct tegra_dsi_cmd dsi_j_qxga_8_9_init_cmd[] = {
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_EXIT_SLEEP_MODE, 0x0),
 	DSI_DLY_MS(120),
-	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x51, 0xFF),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x53, 0x24),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x55, 0x00),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x35, 0x00),
@@ -159,6 +158,10 @@ static struct tegra_dsi_cmd dsi_j_qxga_8_9_suspend_cmd[] = {
 	DSI_SEND_FRAME(3),
 	DSI_CMD_VBLANK_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB0, 0x04),
 	DSI_CMD_VBLANK_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB1, 0x01),
+};
+
+static struct tegra_dsi_cmd dsi_j_qxga_8_9_backlight_cmd[] = {
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x51, 0xFF),
 };
 
 static struct tegra_dsi_out dsi_j_qxga_8_9_pdata = {
@@ -189,6 +192,8 @@ static struct tegra_dsi_out dsi_j_qxga_8_9_pdata = {
 	.dsi_init_cmd = dsi_j_qxga_8_9_init_cmd,
 	.n_init_cmd = ARRAY_SIZE(dsi_j_qxga_8_9_init_cmd),
 	.dsi_suspend_cmd = dsi_j_qxga_8_9_suspend_cmd,
+	.dsi_backlight_cmd = dsi_j_qxga_8_9_backlight_cmd,
+	.n_backlight_cmd = ARRAY_SIZE(dsi_j_qxga_8_9_backlight_cmd),
 	.n_suspend_cmd = ARRAY_SIZE(dsi_j_qxga_8_9_suspend_cmd),
 	.lp00_pre_panel_wakeup = false,
 	.ulpm_not_supported = true,
@@ -463,20 +468,21 @@ static int dsi_j_qxga_8_9_check_fb(struct device *dev, struct fb_info *info)
 	return info->device == &disp_device->dev;
 }
 
-static struct platform_pwm_backlight_data dsi_j_qxga_8_9_bl_data = {
-	.pwm_id		= 1,
+static struct platform_tegra_pwm_backlight_data dsi_j_qxga_8_9_bl_data = {
+	.which_pwm		= 1,
 	.max_brightness	= 255,
 	.dft_brightness	= 224,
-	.pwm_period_ns	= 1000000,
-	.pwm_gpio	= TEGRA_GPIO_INVALID,
+	.period			= 1000000,
 	.notify		= dsi_j_qxga_8_9_bl_notify,
 	/* Only toggle backlight on fb blank notifications for disp1 */
 	.check_fb	= dsi_j_qxga_8_9_check_fb,
+	.which_dc = 0,
+	.backlight_mode = MIPI_BACKLIGHT,
 };
 
 static struct platform_device __maybe_unused
 		dsi_j_qxga_8_9_bl_device = {
-	.name	= "pwm-backlight",
+	.name	= "tegra-pwm-bl",
 	.id	= -1,
 	.dev	= {
 		.platform_data = &dsi_j_qxga_8_9_bl_data,
@@ -489,38 +495,11 @@ static struct platform_device __maybe_unused
 	&dsi_j_qxga_8_9_bl_device,
 };
 
-static unsigned int dsi_s_shield_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_s_shield_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
-};
-static unsigned int dsi_s_tn8_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_s_tn8_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
-};
-
 static int __init dsi_j_qxga_8_9_register_bl_dev(void)
 {
 	int err = 0;
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
-
-	if (board_info.board_id == BOARD_E1780) {
-		if (board_info.sku == 1000) {
-			dsi_j_qxga_8_9_bl_data.edp_states =
-				dsi_s_shield_edp_states;
-			dsi_j_qxga_8_9_bl_data.edp_brightness =
-				dsi_s_shield_edp_brightness;
-		} else if (board_info.sku == 1100) {
-			dsi_j_qxga_8_9_bl_data.edp_states =
-				dsi_s_tn8_edp_states;
-			dsi_j_qxga_8_9_bl_data.edp_brightness =
-				dsi_s_tn8_edp_brightness;
-		}
-	}
 
 	err = platform_add_devices(dsi_j_qxga_8_9_bl_devices,
 				ARRAY_SIZE(dsi_j_qxga_8_9_bl_devices));
@@ -569,7 +548,7 @@ static void
 dsi_j_qxga_8_9_sd_settings_init(struct tegra_dc_sd_settings *settings)
 {
 	*settings = dsi_j_qxga_8_9_sd_settings;
-	settings->bl_device_name = "pwm-backlight";
+	settings->bl_device_name = "tegra-pwm-bl";
 }
 
 static void dsi_j_qxga_8_9_cmu_init(struct tegra_dc_platform_data *pdata)
