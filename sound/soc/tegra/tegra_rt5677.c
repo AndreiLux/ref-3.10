@@ -566,6 +566,50 @@ static int tegra_rt5677_amic_test_set(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
+/* rt5506 dump register */
+enum rt5506_dump_state {
+	BIT_RT5506_DUMP_DISABLE = 0,
+	BIT_RT5506_DUMP_ENABLE = (1 << 0),
+};
+
+static const char * const tegra_rt5677_rt5506_dump_mode[] = {
+	"disable", "enable"
+};
+
+static int rt5506_dump_mode;
+
+static const SOC_ENUM_SINGLE_DECL(tegra_rt5677_rt5506_dump_enum, 0, 0,
+	tegra_rt5677_rt5506_dump_mode);
+
+static int tegra_rt5677_rt5506_dump_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = rt5506_dump_mode;
+	return 0;
+}
+
+static int tegra_rt5677_rt5506_dump_set(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	enum rt5506_dump_state state = BIT_RT5506_DUMP_DISABLE;
+
+	int ret = 0;
+
+	if (ucontrol->value.integer.value[0] == 0) {
+		state = BIT_RT5506_DUMP_DISABLE;
+	} else {
+		state = BIT_RT5506_DUMP_ENABLE;
+		pr_info("tegra_rt5677_rt5506_dump_set, rt5506_dump_reg()\n");
+		rt5506_dump_reg();
+	}
+
+	rt5506_dump_mode = state;
+
+	pr_info("%s: tegra_rt5677_rt5506_dump_dev set to %d done\n",
+		__func__, state);
+
+	return ret;
+}
 
 static int tegra_rt5677_event_headphone_jack(struct snd_soc_dapm_widget *w,
 					struct snd_kcontrol *k, int event)
@@ -677,6 +721,9 @@ static const struct snd_kcontrol_new flounder_controls[] = {
 
 	SOC_ENUM_EXT("DMIC BIAS Switch", tegra_rt5677_dmic_mode_enum,
 		tegra_rt5677_dmic_get, tegra_rt5677_dmic_set),
+
+	SOC_ENUM_EXT("RT5506 Dump Register", tegra_rt5677_rt5506_dump_enum,
+		tegra_rt5677_rt5506_dump_get, tegra_rt5677_rt5506_dump_set),
 };
 
 static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)

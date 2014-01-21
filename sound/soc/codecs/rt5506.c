@@ -80,6 +80,10 @@ struct rt5506_config RT5506_AMP_INIT = {11, {{0, 0xc0}, {0x81, 0x30},
 struct rt5506_config RT5506_AMP_MUTE = {1, {{0x1, 0xC7 } } };
 struct rt5506_config RT5506_AMP_OFF = {1, {{0x0, 0x1 } } };
 
+static int rt5506_valid_registers[] = {0x0, 0x1, 0x2, 0x3, 0x4, 0x5,
+0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC0, 0x81, 0x87, 0x90, 0x93, 0x95,
+0xA4, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0x9E};
+
 static int rt5506_write_reg(u8 reg, u8 val);
 static void hs_imp_detec_func(struct work_struct *work);
 static int rt5506_i2c_read_addr(unsigned char *rxdata, unsigned char addr);
@@ -356,6 +360,7 @@ static void hs_imp_detec_func(struct work_struct *work)
 {
 	struct headset_query *hs;
 	unsigned char temp;
+	unsigned char r_channel;
 	int ret;
 	pr_info("%s: read rt5506 hs imp\n", __func__);
 
@@ -406,6 +411,9 @@ static void hs_imp_detec_func(struct work_struct *work)
 		return;
 	}
 
+	/*identify stereo or mono headset*/
+	rt5506_i2c_read_addr(&r_channel, 0x6);
+
 	/* init start*/
 	rt5506_write_reg(0x0, 0x4);
 	mdelay(1);
@@ -434,7 +442,8 @@ static void hs_imp_detec_func(struct work_struct *work)
 		hsmode = (temp & 0x60) >> 5;
 		om = (temp & 0xe) >> 1;
 
-		if (hsmode == 0x02) {
+		if (r_channel == 0) {
+			/*mono headset*/
 			hsom = HEADSET_MONO;
 		} else {
 			switch (om) {
@@ -565,6 +574,44 @@ static void set_amp(int on, struct rt5506_config *i2c_command)
 int query_rt5506(void)
 {
 	return rt5506Connect;
+}
+
+int rt5506_dump_reg(void)
+{
+	int ret = 0, rt5506_already_enabled = 0, i = 0;
+	unsigned char temp[2];
+
+	pr_info("%s:current gpio %d value %d\n", __func__,
+	pdata->rt5506_enable, gpio_get_value(pdata->rt5506_enable));
+
+	if (gpio_get_value(pdata->rt5506_enable) == 1) {
+		rt5506_already_enabled = 1;
+	} else {
+		ret = gpio_direction_output(pdata->rt5506_enable, 1);
+		if (ret) {
+			pr_err("%s: Fail set rt5506-enable to 1, ret=%d\n",
+			__func__, ret);
+			return ret;
+		} else {
+			pr_info("%s: rt5506-enable=1\n", __func__);
+		}
+	}
+
+	mdelay(1);
+	for (i = 0; i < sizeof(rt5506_valid_registers)/
+		sizeof(rt5506_valid_registers[0]); i++) {
+		ret = rt5506_i2c_read_addr(temp, rt5506_valid_registers[i]);
+		if (ret < 0) {
+				pr_err("%s: rt5506_i2c_read_addr(%x) fail\n",
+				__func__, rt5506_valid_registers[i]);
+				break;
+		}
+	}
+
+	if (rt5506_already_enabled == 0)
+		gpio_direction_output(pdata->rt5506_enable, 0);
+
+	return ret;
 }
 
 int set_rt5506_amp(int on, int dsp)
