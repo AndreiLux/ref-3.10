@@ -23,6 +23,8 @@
 #include <linux/gpio.h>
 #include <mach/dc.h>
 
+extern int send_backlight_cmd(struct tegra_dc *dc, int brightness);
+
 struct tegra_pwm_bl_data {
 	struct device *dev;
 	int which_dc;
@@ -60,9 +62,12 @@ static int tegra_pwm_backlight_update_status(struct backlight_device *bl)
 
 	/* Call tegra display controller function to update backlight */
 	dc = tegra_dc_get_dc(tbl->which_dc);
-	if (dc)
-		tegra_dc_config_pwm(dc, &tbl->params);
-	else
+	if (dc) {
+		if (tbl->params.backlight_mode == MIPI_BACKLIGHT)
+			send_backlight_cmd(dc, brightness);
+		else
+			tegra_dc_config_pwm(dc, &tbl->params);
+	} else
 		dev_err(&bl->dev, "tegra display controller not available\n");
 
 	return 0;
@@ -116,6 +121,7 @@ static int tegra_pwm_backlight_probe(struct platform_device *pdev)
 	tbl->params.period = data->period;
 	tbl->params.clk_div = data->clk_div;
 	tbl->params.clk_select = data->clk_select;
+	tbl->params.backlight_mode = data->backlight_mode;
 
 	/* If backlight pin is sfio, request for it */
 	if (gpio_is_valid(tbl->params.gpio_conf_to_sfio)) {

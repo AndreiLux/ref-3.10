@@ -3148,6 +3148,37 @@ static int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
 	return err;
 }
 
+int send_backlight_cmd(struct tegra_dc *dc, int brightness)
+{
+	int err = 0;
+	struct tegra_dc_dsi_data *dsi = tegra_dc_get_outdata(dc);
+	struct tegra_dsi_cmd *cur_cmd;
+
+	if(dsi->info.dsi_backlight_cmd)
+		cur_cmd = dsi->info.dsi_backlight_cmd;
+	else
+		return -EINVAL;
+
+	mutex_lock(&dsi->lock);
+
+	cur_cmd->sp_len_dly.sp.data1 = brightness;
+	err = tegra_dsi_send_panel_cmd(dc, dsi,
+			dsi->info.dsi_backlight_cmd,
+			dsi->info.n_backlight_cmd);
+
+	if (err < 0) {
+		dev_err(&dc->ndev->dev,
+				"dsi: error sending dsi init cmd\n");
+		goto fail;
+	}
+
+fail:
+	mutex_unlock(&dsi->lock);
+
+	return err;
+}
+EXPORT_SYMBOL(send_backlight_cmd);
+
 static u8 tegra_dsi_ecc(u32 header)
 {
 	char ecc_parity[24] = {

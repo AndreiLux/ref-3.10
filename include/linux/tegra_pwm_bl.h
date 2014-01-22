@@ -14,6 +14,9 @@
 
 #include <linux/backlight.h>
 
+#define CPU_BACKLIGHT	0
+#define MIPI_BACKLIGHT	1
+
 struct platform_tegra_pwm_backlight_data {
 	int which_dc;
 	int which_pwm;
@@ -25,6 +28,7 @@ struct platform_tegra_pwm_backlight_data {
 	unsigned int clk_select;
 	int (*notify)(struct device *dev, int brightness);
 	int (*check_fb)(struct device *dev, struct fb_info *info);
+	int backlight_mode;
 };
 
 #endif /* TERGA_PWM_BL_H */
