@@ -132,6 +132,7 @@ extern struct class *tegra_dc_ext_class;
 extern int tegra_dc_ext_pin_window(struct tegra_dc_ext_user *user, u32 id,
 				   struct tegra_dc_dmabuf **handle,
 				   dma_addr_t *phys_addr);
+extern void tegra_dc_ext_unpin_window(struct tegra_dc_dmabuf *handle);
 
 extern int tegra_dc_ext_get_cursor(struct tegra_dc_ext_user *user);
 extern int tegra_dc_ext_put_cursor(struct tegra_dc_ext_user *user);

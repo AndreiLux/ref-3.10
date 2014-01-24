@@ -74,3 +74,11 @@ buf_fail:
 	kfree(dc_dmabuf);
 	return -ENOMEM;
 }
+
+void tegra_dc_ext_unpin_window(struct tegra_dc_dmabuf *handle)
+{
+	dma_buf_unmap_attachment(handle->attach, handle->sgt, DMA_TO_DEVICE);
+	dma_buf_detach(handle->buf, handle->attach);
+	dma_buf_put(handle->buf);
+	kfree(handle);
+}
