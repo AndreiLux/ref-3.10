@@ -486,14 +486,8 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 	}
 
 	/* unpin and deref previous front buffers */
-	for (i = 0; i < nr_unpin; i++) {
-		dma_buf_unmap_attachment(unpin_handles[i]->attach,
-			unpin_handles[i]->sgt, DMA_TO_DEVICE);
-		dma_buf_detach(unpin_handles[i]->buf,
-			       unpin_handles[i]->attach);
-		dma_buf_put(unpin_handles[i]->buf);
-		kfree(unpin_handles[i]);
-	}
+	for (i = 0; i < nr_unpin; i++)
+		tegra_dc_ext_unpin_window(unpin_handles[i]);
 
 	kfree(data);
 }
@@ -788,12 +782,7 @@ fail_pin:
 			if (!data->win[i].handle[j])
 				continue;
 
-			dma_buf_unmap_attachment(data->win[i].handle[j]->attach,
-				data->win[i].handle[j]->sgt, DMA_TO_DEVICE);
-			dma_buf_detach(data->win[i].handle[j]->buf,
-				data->win[i].handle[j]->attach);
-			dma_buf_put(data->win[i].handle[j]->buf);
-			kfree(data->win[i].handle[j]);
+			tegra_dc_ext_unpin_window(data->win[i].handle[j]);
 		}
 	}
 	kfree(data);
@@ -999,10 +988,7 @@ static int tegra_dc_ext_negotiate_bw(struct tegra_dc_ext_user *user,
 			return ret;
 
 		if (handle) {
-			dma_buf_unmap_attachment(handle->attach,
-				handle->sgt, DMA_TO_DEVICE);
-			dma_buf_put(handle->buf);
-			kfree(handle);
+			tegra_dc_ext_unpin_window(handle);
 			tegra_dc_ext_set_windowattr_basic(&dc->tmp_wins[idx],
 							  &wins[i]);
 		}
