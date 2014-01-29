@@ -36,7 +36,7 @@
 #define FLASHLIGHT_NAME "flashlight"
 #define TPS61310_RETRY_COUNT 10
 
-static enum flashlight_mode_flags {
+enum flashlight_mode_flags {
 	FL_MODE_OFF = 0,
 	FL_MODE_TORCH,
 	FL_MODE_FLASH,
