@@ -552,7 +552,7 @@ int __init flounder_display_init(void)
 	struct clk *disp2_clk = clk_get_sys("tegradc.1", NULL);
 	struct tegra_panel *panel;
 	struct board_info board;
-	long disp1_rate;
+	long disp1_rate = 0;
 	long disp2_rate;
 
 	if (WARN_ON(IS_ERR(disp1_clk))) {
@@ -573,7 +573,6 @@ int __init flounder_display_init(void)
 		if (flounder_disp1_out.n_modes && flounder_disp1_out.modes)
 			disp1_rate = flounder_disp1_out.modes[0].pclk;
 	} else {
-		disp1_rate = 0;
 		if (!panel || !panel->init_dc_out)
 			printk(KERN_ERR "disp1 panel output not specified!\n");
 	}
