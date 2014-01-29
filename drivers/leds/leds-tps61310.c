@@ -195,7 +195,7 @@ static ssize_t max_current_show(struct device *dev, struct device_attribute *att
 	else
 		return sprintf(buf, "750\n");
 }
-static DEVICE_ATTR(max_current, S_IRUGO | S_IWUSR, max_current_show, NULL);
+static DEVICE_ATTR(max_current, S_IRUGO, max_current_show, NULL);
 static ssize_t flash_store(
 		struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t size)
@@ -206,7 +206,7 @@ static ssize_t flash_store(
 	tps61310_flashlight_mode(val);
 	return size;
 }
-static DEVICE_ATTR(flash, S_IRUGO | S_IWUSR, NULL, flash_store);
+static DEVICE_ATTR(flash, S_IWUSR, NULL, flash_store);
 
 static int TPS61310_I2C_TxData(char *txData, int length)
 {
