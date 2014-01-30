@@ -920,7 +920,6 @@ static struct platform_device htc_headset_one_wire = {
 
 static void uart_tx_gpo(int mode)
 {
-	int ret;
 	pr_info("[HS_BOARD] (%s) Set uart_tx_gpo mode = %d\n", __func__, mode);
 	switch (mode) {
 		case 0:
