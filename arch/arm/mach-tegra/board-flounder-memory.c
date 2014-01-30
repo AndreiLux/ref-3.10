@@ -251,7 +251,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		57820,      /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -477,7 +476,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		35610,      /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -703,7 +701,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		20850,      /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -929,7 +926,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		10720,      /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -1155,7 +1151,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		6890,       /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -1381,7 +1376,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		3420,       /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -1607,7 +1601,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		2680,       /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -1833,7 +1826,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		2180,       /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -2059,7 +2051,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x000100c3, /* Mode Register 1 */
 		0x00020006, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		1440,       /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -2285,7 +2276,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x000100e3, /* Mode Register 1 */
 		0x00020007, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		1440,       /* expected dvfs latency (ns) */
 	},
 	{
 		0x18,       /* V5.0.12 */
@@ -2511,7 +2501,6 @@ static struct tegra12_emc_table flounder_lpddr3_emc_table[] = {
 		0x00010043, /* Mode Register 1 */
 		0x0002001a, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
-		1200,       /* expected dvfs latency (ns) */
 	},
 };
 
