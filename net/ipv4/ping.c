@@ -468,8 +468,6 @@ void ping_err(struct sk_buff *skb, int offset, u32 info)
 	int err;
 
 	if (skb->protocol == htons(ETH_P_IP)) {
-		struct iphdr *iph = (struct iphdr *)skb->data;
-		offset = iph->ihl << 2;
 		family = AF_INET;
 		type = icmp_hdr(skb)->type;
 		code = icmp_hdr(skb)->code;
@@ -511,7 +509,8 @@ void ping_err(struct sk_buff *skb, int offset, u32 info)
 			break;
 		case ICMP_SOURCE_QUENCH:
 			/* This is not a real error but ping wants to see it.
-			 * Report it with some fake errno. */
+			 * Report it with some fake errno.
+			 */
 			err = EREMOTEIO;
 			break;
 		case ICMP_PARAMETERPROB:
@@ -571,11 +570,6 @@ out:
 	sock_put(sk);
 }
 EXPORT_SYMBOL_GPL(ping_err);
-
-void ping_v4_err(struct sk_buff *skb, u32 info)
-{
-	ping_err(skb, 0, info);
-}
 
 /*
  *	Copy and checksum an ICMP Echo packet from user space into a buffer
@@ -881,10 +875,12 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	/* Copy the address and add cmsg data. */
 	if (family == AF_INET) {
 		sin = (struct sockaddr_in *) msg->msg_name;
-		sin->sin_family = AF_INET;
-		sin->sin_port = 0 /* skb->h.uh->source */;
-		sin->sin_addr.s_addr = ip_hdr(skb)->saddr;
-		memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+		if (sin) {
+			sin->sin_family = AF_INET;
+			sin->sin_port = 0 /* skb->h.uh->source */;
+			sin->sin_addr.s_addr = ip_hdr(skb)->saddr;
+			memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+		}
 
 		if (isk->cmsg_flags)
 			ip_cmsg_recv(msg, skb);
@@ -894,17 +890,18 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		struct ipv6_pinfo *np = inet6_sk(sk);
 		struct ipv6hdr *ip6 = ipv6_hdr(skb);
 		sin6 = (struct sockaddr_in6 *) msg->msg_name;
-		sin6->sin6_family = AF_INET6;
-		sin6->sin6_port = 0;
-		sin6->sin6_addr = ip6->saddr;
 
-		sin6->sin6_flowinfo = 0;
-		if (np->sndflow)
-			sin6->sin6_flowinfo =
-				*(__be32 *)ip6 & IPV6_FLOWINFO_MASK;
-
-		sin6->sin6_scope_id = ipv6_iface_scope_id(&sin6->sin6_addr,
-							  IP6CB(skb)->iif);
+		if (sin6) {
+			sin6->sin6_family = AF_INET6;
+			sin6->sin6_port = 0;
+			sin6->sin6_addr = ip6->saddr;
+			sin6->sin6_flowinfo = 0;
+			if (np->sndflow)
+				sin6->sin6_flowinfo = ip6_flowinfo(ip6);
+			sin6->sin6_scope_id =
+				ipv6_iface_scope_id(&sin6->sin6_addr,
+						    IP6CB(skb)->iif);
+		}
 
 		if (inet6_sk(sk)->rxopt.all)
 			pingv6_ops.ip6_datagram_recv_ctl(sk, msg, skb);
