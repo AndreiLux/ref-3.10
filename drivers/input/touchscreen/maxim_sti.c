@@ -1046,13 +1046,9 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 			input_set_abs_params(dd->input_dev[i],
 					     ABS_MT_POSITION_X, 0,
 					     config_input_msg->x_range, 0, 0);
-			/*
-			 * HACK: hardcode input range to deal with touch screen
-			 * larger than display.
-			 */
 			input_set_abs_params(dd->input_dev[i],
-					     ABS_MT_POSITION_Y, 148,
-					     1900, 0, 0);
+					     ABS_MT_POSITION_Y, 0,
+					     config_input_msg->y_range, 0, 0);
 			input_set_abs_params(dd->input_dev[i],
 					     ABS_MT_PRESSURE, 0, 0xFF, 0, 0);
 			input_set_abs_params(dd->input_dev[i],
