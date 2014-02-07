@@ -1,5 +1,5 @@
 /*
- * drivers/staging/android/ion/ion_cma_heap.c
+ * drivers/gpu/ion/ion_cma_heap.c
  *
  * Copyright (C) Linaro 2012
  * Author: <benjamin.gaignard@linaro.org> for ST-Ericsson.

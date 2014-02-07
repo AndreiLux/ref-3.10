@@ -1,5 +1,5 @@
 /*
- * drivers/staging/android/ion/ion_mem_pool.c
+ * drivers/gpu/ion/ion_mem_pool.c
  *
  * Copyright (C) 2011 Google, Inc.
  *
