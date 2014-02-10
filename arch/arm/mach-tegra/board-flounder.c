@@ -950,7 +950,7 @@ static struct platform_device *headset_devices[] = {
 static struct headset_adc_config htc_headset_mgr_config[] = {
 	{
 		.type = HEADSET_MIC,
-		.adc_max = 3791,
+		.adc_max = 3680,
 		.adc_min = 621,
 	},
 	{
