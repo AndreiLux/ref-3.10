@@ -35,7 +35,7 @@ CHECKFLAGS	+= -D__aarch64__
 head-y		:= arch/arm64/kernel/head.o
 
 # The byte offset of the kernel image in RAM from the start of RAM.
-TEXT_OFFSET := 0x00080000
+TEXT_OFFSET := 0x00a80000
 
 export	TEXT_OFFSET GZFLAGS
 
