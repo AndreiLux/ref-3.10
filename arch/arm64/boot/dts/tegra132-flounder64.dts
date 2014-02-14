@@ -31,12 +31,19 @@
 			compatible = "ti,bq2419x";
 			reg = <0x6b>;
 
+			interrupt-parent = <&gpio>;
+			interrupts = <TEGRA_GPIO(J, 0) 0x0>;
+
 			charger {
 				regulator-name = "batt_regulator";
-				regulator-max-microamp = <3000>;
-				watchdog-timeout = <40>;
-				rtc-alarm-time = <3600>;
-				auto-recharge-time = <1800>;
+				regulator-max-microamp = <3000000>;
+				ti,watchdog-timeout = <0>;
+				ti,auto-recharge-time = <1800>;
+				ti,input-voltage-limit-millivolt = <4440>;
+				ti,pre-charge-current-limit-milliamp = <512>;
+				ti,charge-term-current-limit-milliamp = <128>;
+				ti,charge-voltage-limit-millivolt = <4352>;
+				ti,disable-suspend-during-charging;
 				consumers {
 					c1 {
 						regulator-consumer-supply = "usb_bat_chg";
