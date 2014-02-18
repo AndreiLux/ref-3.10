@@ -105,6 +105,50 @@
 #include <linux/platform_data/slimport_device.h>
 #endif
 
+struct aud_sfio_data {
+	const char *name;
+	int id;
+};
+
+static struct aud_sfio_data audio_sfio_pins[] = {
+	[0] = {
+		.name = "I2S1_LRCK",
+		.id   = TEGRA_GPIO_PA2,
+	},
+	[1] = {
+		.name = "I2S1_SCLK",
+		.id   = TEGRA_GPIO_PA3,
+	},
+	[2] = {
+		.name = "I2S1_SDATA_IN",
+		.id   = TEGRA_GPIO_PA4,
+	},
+	[3] = {
+		.name = "I2S1_SDATA_OUT",
+		.id   = TEGRA_GPIO_PA5,
+	},
+	[4] = {
+		.name = "I2S2_LRCK",
+		.id   = TEGRA_GPIO_PP0,
+	},
+	[5] = {
+		.name = "I2S2_SDATA_IN",
+		.id   = TEGRA_GPIO_PP1,
+	},
+	[6] = {
+		.name = "I2S2_SDATA_OUT",
+		.id   = TEGRA_GPIO_PP2,
+	},
+	[7] = {
+		.name = "I2S2_SCLK",
+		.id   = TEGRA_GPIO_PP3,
+	},
+	[8] = {
+		.name = "extperiph1_clk",
+		.id   = TEGRA_GPIO_PW4,
+	},
+};
+
 static struct resource flounder_bluedroid_pm_resources[] = {
 	[0] = {
 		.name   = "shutdown_gpio",
@@ -388,11 +432,20 @@ struct spi_board_info rt5677_flounder_spi_board[1] = {
 
 static void flounder_audio_init(void)
 {
+	int i;
 	flounder_audio_pdata_rt5677.codec_name = "rt5677.1-002d";
 	flounder_audio_pdata_rt5677.codec_dai_name = "rt5677-aif1";
 
 	spi_register_board_info(&rt5677_flounder_spi_board[0],
 	ARRAY_SIZE(rt5677_flounder_spi_board));
+
+	for (i = 0; i < ARRAY_SIZE(audio_sfio_pins); i++)
+		if (tegra_is_gpio(audio_sfio_pins[i].id)) {
+			gpio_request(audio_sfio_pins[i].id, audio_sfio_pins[i].name);
+			gpio_free(audio_sfio_pins[i].id);
+			pr_info("%s: gpio_free for gpio[%d] %s\n",
+				__func__, audio_sfio_pins[i].id, audio_sfio_pins[i].name);
+		}
 }
 
 static struct platform_device flounder_audio_device_rt5677 = {
