@@ -50,15 +50,15 @@
 #define SZ_DIAG_ERR_MSG (128)
 
 struct htc_reboot_params {
-	unsigned reboot_reason;
-	unsigned radio_flag;
-	unsigned battery_level;
+	u32 reboot_reason;
+	u32 radio_flag;
+	u32 battery_level;
 	char msg[SZ_DIAG_ERR_MSG];
 	char reserved[0];
 };
 static struct htc_reboot_params* reboot_params = NULL;
 
-static void set_restart_reason(unsigned int reason)
+static void set_restart_reason(u32 reason)
 {
 	reboot_params->reboot_reason = reason;
 }
@@ -66,25 +66,23 @@ static void set_restart_reason(unsigned int reason)
 static void set_restart_msg(const char *msg)
 {
 	char* buf;
-	size_t msg_len, buf_len;
+	size_t buf_len;
 	if (unlikely(!msg)) {
 		WARN(1, "%s: argument msg is NULL\n", __func__);
 		msg = "";
 	}
 
 	buf = reboot_params->msg;
-	msg_len = strlen(msg);
 	buf_len = sizeof(reboot_params->msg);
 
-	pr_debug("copy buffer from %p (%s) to %p for %u bytes\n",
-			msg, msg, buf, min(msg_len, buf_len - 1));
-	memset(buf, 0, buf_len);
-	strncpy(buf, msg, min(msg_len, buf_len - 1));
+	pr_debug("copy buffer from %pK (%s) to %pK for %zu bytes\n",
+			msg, msg, buf, min(strlen(msg), buf_len - 1));
+	snprintf(buf, buf_len, "%s", msg);
 }
 
 static struct cmd_reason_map {
 	char* cmd;
-	unsigned long reason;
+	u32 reason;
 } cmd_reason_map[] = {
 	{ .cmd = "",           .reason = RESTART_REASON_REBOOT },
 	{ .cmd = "bootloader", .reason = RESTART_REASON_BOOTLOADER },
