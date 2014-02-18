@@ -30,8 +30,8 @@
 #ifdef HTC_HEADSET_CONFIG_MSM_RPC
 #include <mach/msm_rpcrouter.h>
 #endif
-#include <mach/htc_headset_mgr.h>
-#include <mach/htc_headset_pmic.h>
+#include <linux/htc_headset_mgr.h>
+#include <linux/htc_headset_pmic.h>
 
 #ifdef HTC_HEADSET_CONFIG_PMIC_8XXX_ADC
 #include <linux/mfd/pm8xxx/pm8xxx-adc.h>

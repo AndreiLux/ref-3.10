@@ -647,5 +647,6 @@ source "drivers/misc/vmw_vmci/Kconfig"
 source "drivers/misc/issp/Kconfig"
 source "drivers/misc/tegra-profiler/Kconfig"
 source "drivers/misc/gps/Kconfig"
+source "drivers/misc/headset/Kconfig"
 source "drivers/misc/slimport_anx7808/Kconfig"
 endmenu

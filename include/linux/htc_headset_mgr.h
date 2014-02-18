@@ -30,7 +30,7 @@
 #include <mach/msm_rpcrouter.h>
 #endif
 #include <linux/platform_device.h>
-#include <mach/htc_headset_config.h>
+#include <linux/htc_headset_config.h>
 
 #ifdef HTC_HEADSET_KERNEL_3_0
 #define set_irq_type(irq, type) irq_set_irq_type(irq, type)

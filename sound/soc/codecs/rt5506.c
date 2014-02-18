@@ -34,7 +34,7 @@
 #include <linux/jiffies.h>
 #include <linux/of_gpio.h>
 #include <linux/regulator/consumer.h>
-#include <mach/htc_headset_mgr.h>
+#include <linux/htc_headset_mgr.h>
 
 #define AMP_ON_CMD_LEN 7
 #define RETRY_CNT 5

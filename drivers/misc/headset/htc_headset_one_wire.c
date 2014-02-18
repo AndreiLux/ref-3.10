@@ -27,8 +27,8 @@
 #include <linux/termios.h>
 #include <linux/tty.h>
 
-#include <mach/htc_headset_mgr.h>
-#include <mach/htc_headset_one_wire.h>
+#include <linux/htc_headset_mgr.h>
+#include <linux/htc_headset_one_wire.h>
 
 #define DRIVER_NAME "HS_1WIRE"
 #define hr_msleep(a) msleep(a)

@@ -77,9 +77,9 @@
 #include <mach/xusb.h>
 #include <linux/platform_data/tegra_ahci.h>
 #include <linux/irqchip/tegra.h>
-#include <mach/htc_headset_mgr.h>
-#include <mach/htc_headset_pmic.h>
-#include <mach/htc_headset_one_wire.h>
+#include <linux/htc_headset_mgr.h>
+#include <linux/htc_headset_pmic.h>
+#include <linux/htc_headset_one_wire.h>
 #include <../../../drivers/staging/android/timed_gpio.h>
 
 #ifdef CONFIG_BT

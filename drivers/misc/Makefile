@@ -77,5 +77,7 @@ obj-$(CONFIG_SIM_PALMAS)	+= palmas-sim.o
 obj-y				+= issp/
 obj-$(CONFIG_TEGRA_PROFILER)    += tegra-profiler/
 obj-$(CONFIG_MTK_GPS)		+= gps/
+obj-$(CONFIG_HTC_HEADSET_MGR)	+= headset/
 obj-y		+= tegra-fuse/
 obj-$(CONFIG_SLIMPORT_ANX7808)	+= slimport_anx7808/
+

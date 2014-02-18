@@ -24,7 +24,7 @@
 #include <linux/rtc.h>
 #include <linux/slab.h>
 
-#include <mach/htc_headset_mgr.h>
+#include <linux/htc_headset_mgr.h>
 
 #define DRIVER_NAME "HS_MGR"
 
