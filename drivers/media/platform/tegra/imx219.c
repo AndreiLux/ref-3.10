@@ -744,6 +744,9 @@ static const struct file_operations imx219_fileops = {
 	.owner = THIS_MODULE,
 	.open = imx219_open,
 	.unlocked_ioctl = imx219_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = imx219_ioctl,
+#endif
 	.release = imx219_release,
 };
 

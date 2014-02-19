@@ -1061,6 +1061,7 @@ static struct i2c_board_info	ardbeg_i2c_board_info_imx219 = {
 	I2C_BOARD_INFO("imx219", 0x10),
 	.platform_data = &ardbeg_imx219_pdata,
 };
+
 static struct i2c_board_info	ardbeg_i2c_board_info_ov7695 = {
 	I2C_BOARD_INFO("ov7695", 0x21),
 	.platform_data = &ardbeg_ov7695_pdata,

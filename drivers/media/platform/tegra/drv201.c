@@ -685,6 +685,9 @@ static const struct file_operations drv201_fileops = {
 	.owner = THIS_MODULE,
 	.open = drv201_open,
 	.unlocked_ioctl = drv201_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = drv201_ioctl,
+#endif
 	.release = drv201_release,
 };
 

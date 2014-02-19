@@ -691,6 +691,9 @@ static const struct file_operations ov9760_fileops = {
 	.owner = THIS_MODULE,
 	.open = ov9760_open,
 	.unlocked_ioctl = ov9760_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = ov9760_ioctl,
+#endif
 	.release = ov9760_release,
 };
 
