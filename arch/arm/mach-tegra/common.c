@@ -2151,33 +2151,34 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 	tegra_fb_linear_set(map);
 }
 
-#if defined(CONFIG_PSTORE_RAM) && defined(CONFIG_PSTORE_CONSOLE)
-static struct ramoops_platform_data ramoops_data;
-
-static struct platform_device ramoops_dev = {
+#ifdef CONFIG_PSTORE_RAM
+static struct persistent_ram_descriptor desc = {
 	.name = "ramoops",
-	.dev = {
-		.platform_data = &ramoops_data,
-	},
+};
+
+static struct persistent_ram ram = {
+	.descs = &desc,
+	.num_descs = 1,
 };
 
 void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size)
 {
-	if (memblock_reserve(memblock_end_of_DRAM() - ram_console_size,
-			     ram_console_size)) {
-		pr_err("Failed to reserve memory block for ram console\n");
-		return;
-	}
+	int ret;
 
-	ramoops_data.mem_address = memblock_end_of_DRAM() - ram_console_size;
-	ramoops_data.mem_size = ram_console_size;
-	ramoops_data.console_size = ram_console_size;
-}
+	ram.start = memblock_end_of_DRAM() - ram_console_size;
+	ram.size = ram_console_size;
+	ram.descs->size = ram_console_size;
 
-void __init tegra_ram_console_init()
-{
-	if (ramoops_data.mem_size)
-		platform_device_register(&ramoops_dev);
+	INIT_LIST_HEAD(&ram.node);
+
+	ret = persistent_ram_early_init(&ram);
+	if (ret)
+		goto fail;
+
+	return;
+
+fail:
+	pr_err("Failed to reserve memory block for ram console\n");
 }
 #endif
 

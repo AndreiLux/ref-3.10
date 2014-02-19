@@ -122,13 +122,10 @@ int get_sd_uart_port_id(void);
 void set_sd_uart_port_id(int);
 int __init tegra_register_fuse(void);
 
-#if defined(CONFIG_PSTORE_RAM) && defined(CONFIG_PSTORE_CONSOLE)
+#ifdef CONFIG_PSTORE_RAM
 void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size);
-void __init tegra_ram_console_init(void);
 #else
 static inline void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size)
-{}
-static inline void __init tegra_ram_console_init(void)
 {}
 #endif
 
