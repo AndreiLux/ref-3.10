@@ -156,7 +156,7 @@ config ARCH_TEGRA_11x_SOC
 config ARCH_TEGRA_12x_SOC
 	bool "Tegra 12x family SOC"
 	depends on !ARCH_TEGRA_14x_SOC
-	select ARCH_TEGRA_HAS_DUAL_CPU_CLUSTERS
+	select ARCH_TEGRA_HAS_DUAL_CPU_CLUSTERS if !ARM64
 	select ARCH_TEGRA_HAS_PCIE
 	select CPU_V7
 	select ARM_L1_CACHE_SHIFT_6
@@ -177,9 +177,9 @@ config ARCH_TEGRA_12x_SOC
 	select TEGRA_LP2_CPU_TIMER if !TEGRA_RAIL_OFF_MULTIPLE_CPUS
 	select ARCH_SUPPORTS_MSI if PCI_TEGRA
 	select PCI_MSI if PCI_TEGRA
-	select NVMAP_CACHE_MAINT_BY_SET_WAYS if TEGRA_NVMAP
-	select NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU if TEGRA_NVMAP
-	select NVMAP_DEFERRED_CACHE_MAINT if TEGRA_NVMAP
+	select NVMAP_CACHE_MAINT_BY_SET_WAYS if TEGRA_NVMAP && !ARM64
+	select NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU if TEGRA_NVMAP && !ARM64
+	select NVMAP_DEFERRED_CACHE_MAINT if TEGRA_NVMAP && !ARM64
 	select NVMAP_HANDLE_MARSHAL if TEGRA_NVMAP
 	select ARCH_TEGRA_HAS_CL_DVFS
 	select TEGRA_DUAL_CBUS
@@ -192,13 +192,14 @@ config ARCH_TEGRA_12x_SOC
 	select SYSTEM_PMIC
 	select TEGRA_DC_TEMPORAL_DITHER
 	select TEGRA_VDD_CORE_OVERRIDE if TEGRA_EMC_SCALING_ENABLE
-	select REGULATOR_TEGRA_DFLL_BYPASS
+	select REGULATOR_TEGRA_DFLL_BYPASS if !ARCH_TEGRA_13x_SOC
 	select HAVE_ARM_ARCH_TIMER
 	select ARCH_HAS_PASR
 	select POWER_SUPPLY
-	select TEGRA_ISOMGR
-	select TEGRA_ISOMGR_SYSFS
+	select TEGRA_ISOMGR if !ARCH_TEGRA_13x_SOC
+	select TEGRA_ISOMGR_SYSFS if !ARCH_TEGRA_13x_SOC
 	select PROC_DEVICETREE
+        select TEGRA_USE_SIMON
 	help
 	  Support for NVIDIA Tegra 12x family of SoCs, based upon the
 	  ARM Cortex-A15MP CPU
@@ -221,7 +222,6 @@ config ARCH_TEGRA_14x_SOC
 	select ARCH_TEGRA_HAS_DUAL_CPU_CLUSTERS
 	select CPA
 	select CPU_V7
-	select EDP_FRAMEWORK
 	select GIC_SET_MULTIPLE_CPUS if SMP
 	select NVMAP_CACHE_MAINT_BY_SET_WAYS if TEGRA_NVMAP
 	select NVMAP_DEFERRED_CACHE_MAINT if TEGRA_NVMAP
@@ -295,6 +295,7 @@ config MACH_ARDBEG
        depends on ARCH_TEGRA_12x_SOC || ARCH_TEGRA_11x_SOC
        select MACH_HAS_SND_SOC_TEGRA_RT5639 if SND_SOC
        select MACH_HAS_SND_SOC_TEGRA_RT5645 if SND_SOC
+       select MACH_HAS_SND_SOC_TEGRA_MAX98090 if SND_SOC
        select SYSEDP_FRAMEWORK
        help
          Support for NVIDIA ARDBEG Development platform
@@ -342,7 +343,6 @@ config MACH_MACALLAN
        depends on ARCH_TEGRA_11x_SOC
        select MACH_HAS_SND_SOC_TEGRA_RT5639 if SND_SOC
        select MACH_HAS_SND_SOC_TEGRA_RT5640 if SND_SOC
-       select EDP_FRAMEWORK
        help
          Support for NVIDIA MACALLAN development platform
 
@@ -351,7 +351,6 @@ config MACH_TEGRA_PLUTO
        depends on ARCH_TEGRA_11x_SOC
        select MACH_HAS_SND_SOC_TEGRA_CS42L73 if SND_SOC
        select MACH_HAS_SND_SOC_TEGRA_TLV320AIC326X if SND_SOC
-       select EDP_FRAMEWORK
        help
          Support for NVIDIA PLUTO development platform
 
@@ -446,12 +445,24 @@ config TEGRA_GPU_DVFS
 	depends on ARCH_TEGRA_12x_SOC
 	default y
 
-config TEGRA_GK20A
-	bool "Enable the GK20A graphics engine"
-	depends on ARCH_TEGRA_12x_SOC
+config TEGRA_DVFS_RAIL_CONNECT_ALL
+	bool "Enable voltage scaling only if all rails matched by dvfs (cpu, gpu, core) are connected"
 	default y
 	help
-	  Enable support for the GK20A graphics engine
+	 This option adds an extra check to enable voltage scaling. Set to y
+	 if you want to enable voltage scaling only when all the rails matched
+	 by dvfs connect successfully to the system
+
+config TEGRA_GK20A
+	bool "Enable the GK20A GPU on Tegra"
+	depends on ARCH_TEGRA_12x_SOC
+	depends on TEGRA_GRHOST
+	select GK20A
+	default y
+	help
+	  Enable support for the GK20A graphics engine on Tegra
+	  by adding a Tegra platfrom interface to the GK20A driver.
+	  The Tegra platform interface requires TEGRA_GRHOST (host1x).
 
 config TEGRA_AVP_KERNEL_ON_MMU
 	bool "Use AVP MMU to relocate AVP kernel"
@@ -609,6 +620,14 @@ config TEGRA_CPU_VOLT_CAP
 	  Provide userspace with an interface to dynamically adjust
 	  CPU <voltage, temperature> cap. Userspace must respect
 	  datasheet-imposed limits.
+
+config TEGRA_CORE_CAP
+	bool "Control core capping limits"
+	default y
+	help
+	  Provide userspace control of floor and caps via sysfs and QoS
+	  interface.
+
 
 config TEGRA_EMC_TO_DDR_CLOCK
 	int "EMC to DDR clocks ratio"
@@ -862,6 +881,7 @@ config TEGRA_USE_DFLL_RANGE
 	int "Default CPU DFLL operating range"
 	depends on ARCH_TEGRA_HAS_CL_DVFS
 	range 0 2
+	default "1" if TEGRA_SILICON_PLATFORM && ARCH_TEGRA_13x_SOC
 	default "2" if TEGRA_SILICON_PLATFORM && ARCH_TEGRA_11x_SOC
 	default "1"
 	help
@@ -975,6 +995,7 @@ config TEGRA_VDD_CORE_OVERRIDE
 	bool "Enable core rail override support"
 	depends on TEGRA_SILICON_PLATFORM
 	default n
+	select CONFIG_TEGRA_CORE_CAP
 	help
 	  When enabled, core rail can be fixed and locked at specified voltage
 	  within override range, and core modules clocks are capped at rates
@@ -1001,4 +1022,10 @@ config TEGRA_HDMI_PRIMARY
 	help
 	  Configure system to support HDMI as the primary display.
 	  When enabled, dispA/fb0 will be configured to use HDMI.
+
+config TEGRA_USE_SIMON
+	bool "Use Tegra Silicon Monitor"
+	default n
+	help
+	  Enable Tegra silicon state monitoring, grading, and notification.
 endif

@@ -1,7 +1,5 @@
 /*
- * drivers/video/tegra/host/vi/tegra_vi.c
- *
- * Copyright (c) 2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -16,12 +14,18 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/fs.h>
+#include <linux/file.h>
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/nvhost.h>
 #include <linux/nvhost_vi_ioctl.h>
 #include <linux/platform_device.h>
+#include <linux/regulator/consumer.h>
 
+#include <asm/uaccess.h>
+
+#include <mach/clk.h>
 #include <mach/latency_allowance.h>
 
 #include "bus_client.h"
@@ -31,53 +35,83 @@
 
 static DEFINE_MUTEX(la_lock);
 
-#define T12_VI_CFG_CG_CTRL	0x2e
+#define T12_VI_CFG_CG_CTRL	0xb8
 #define T12_CG_2ND_LEVEL_EN	1
-#define T12_VI_CSI_0_SW_RESET	0x40
-#define T12_VI_CSI_1_SW_RESET	0x80
-#define T12_VI_CSI_SW_RESET_MCCIF_RESET 3
+#define T12_VI_CSI_0_SW_RESET	0x100
+#define T12_CSI_CSI_SW_SENSOR_A_RESET 0x858
+#define T12_CSI_CSICIL_SW_SENSOR_A_RESET 0x94c
+#define T12_VI_CSI_0_CSI_IMAGE_DT 0x120
+
+#define T12_VI_CSI_1_SW_RESET	0x200
+#define T12_CSI_CSI_SW_SENSOR_B_RESET 0x88c
+#define T12_CSI_CSICIL_SW_SENSOR_B_RESET 0x980
+#define T12_VI_CSI_1_CSI_IMAGE_DT 0x220
 
 #ifdef TEGRA_12X_OR_HIGHER_CONFIG
 
-int nvhost_vi_init(struct platform_device *dev) {return 0; }
-
-void nvhost_vi_deinit(struct platform_device *dev) {}
-
-int nvhost_vi_finalize_poweron(struct platform_device *dev)
+int nvhost_vi_init(struct platform_device *dev)
 {
 	int ret = 0;
-	struct vi *tegra_vi;
-	tegra_vi = (struct vi *)nvhost_get_private_data(dev);
+	struct vi *tegra_vi = nvhost_get_private_data(dev);
+
+	if (!tegra_vi)
+		return -ENODEV;
 
 	tegra_vi->reg = regulator_get(&dev->dev, "avdd_dsi_csi");
 	if (IS_ERR(tegra_vi->reg)) {
 		if (tegra_vi->reg == ERR_PTR(-ENODEV)) {
 			ret = -ENODEV;
 			dev_info(&dev->dev,
-				"%s: no regulator device\n",
-				__func__);
+					"%s: no regulator device\n",
+					__func__);
 		} else {
 			dev_err(&dev->dev,
-				"%s: couldn't get regulator\n",
-				__func__);
+					"%s: couldn't get regulator\n",
+					__func__);
 		}
 		tegra_vi->reg = NULL;
-		goto fail;
+		return ret;
 	}
 
-	if (tegra_vi->reg) {
+	return 0;
+}
+
+void nvhost_vi_deinit(struct platform_device *dev)
+{
+	struct vi *tegra_vi = nvhost_get_private_data(dev);
+
+	if (tegra_vi && tegra_vi->reg) {
+		regulator_put(tegra_vi->reg);
+		tegra_vi->reg = NULL;
+	}
+}
+
+int nvhost_vi_finalize_poweron(struct platform_device *dev)
+{
+	int ret = 0, dev_id;
+	struct vi *tegra_vi;
+	const char *devname = dev_name(&dev->dev);
+
+	ret = sscanf(devname, "vi.%1d", &dev_id);
+	if (ret != 1) {
+		dev_err(&dev->dev, "Read dev_id failed!\n");
+		return -ENODEV;
+	}
+
+	tegra_vi = (struct vi *)nvhost_get_private_data(dev);
+	if (tegra_vi && tegra_vi->reg) {
 		ret = regulator_enable(tegra_vi->reg);
 		if (ret) {
 			dev_err(&dev->dev,
-				"%s: enable csi regulator failed.\n",
-				__func__);
+					"%s: enable csi regulator failed.\n",
+					__func__);
 			goto fail;
 		}
 	}
 
-	if (nvhost_client_can_writel(dev))
-		nvhost_client_writel(dev,
-				T12_CG_2ND_LEVEL_EN, T12_VI_CFG_CG_CTRL);
+	/* Only do this for vi.0 not for slave device vi.1 */
+	if (dev_id == 0)
+		host1x_writel(dev, T12_VI_CFG_CG_CTRL, T12_CG_2ND_LEVEL_EN);
 
  fail:
 	return ret;
@@ -89,7 +123,7 @@ int nvhost_vi_prepare_poweroff(struct platform_device *dev)
 	struct vi *tegra_vi;
 	tegra_vi = (struct vi *)nvhost_get_private_data(dev);
 
-	if (tegra_vi->reg) {
+	if (tegra_vi && tegra_vi->reg) {
 		ret = regulator_disable(tegra_vi->reg);
 		if (ret) {
 			dev_err(&dev->dev,
@@ -97,12 +131,60 @@ int nvhost_vi_prepare_poweroff(struct platform_device *dev)
 				__func__);
 			goto fail;
 		}
-		regulator_put(tegra_vi->reg);
-		tegra_vi->reg = NULL;
 	}
  fail:
 	return ret;
 }
+
+#if defined(CONFIG_TEGRA_ISOMGR)
+static int vi_set_isomgr_request(struct vi *tegra_vi, uint vi_bw, uint lt)
+{
+	int ret = 0;
+
+	dev_dbg(&tegra_vi->ndev->dev,
+		"%s++ bw=%u, lt=%u\n", __func__, vi_bw, lt);
+
+	/* return value of tegra_isomgr_reserve is dvfs latency in usec */
+	ret = tegra_isomgr_reserve(tegra_vi->isomgr_handle,
+				vi_bw,	/* KB/sec */
+				lt);	/* usec */
+	if (!ret) {
+		dev_err(&tegra_vi->ndev->dev,
+		"%s: failed to reserve %u KBps\n", __func__, vi_bw);
+		return -ENOMEM;
+	}
+
+	/* return value of tegra_isomgr_realize is dvfs latency in usec */
+	ret = tegra_isomgr_realize(tegra_vi->isomgr_handle);
+	if (ret)
+		dev_dbg(&tegra_vi->ndev->dev,
+		"%s: tegra_vi isomgr latency is %d usec",
+		__func__, ret);
+	else {
+		dev_err(&tegra_vi->ndev->dev,
+		"%s: failed to realize %u KBps\n", __func__, vi_bw);
+			return -ENOMEM;
+	}
+	return ret;
+}
+
+static int vi_isomgr_release(struct vi *tegra_vi)
+{
+	int ret = 0;
+	dev_dbg(&tegra_vi->ndev->dev, "%s++\n", __func__);
+
+	/* deallocate isomgr bw */
+	ret = vi_set_isomgr_request(tegra_vi, 0, 0);
+	if (ret) {
+		dev_err(&tegra_vi->ndev->dev,
+		"%s: failed to deallocate memory in isomgr\n",
+		__func__);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+#endif
 
 static int vi_set_la(struct vi *tegra_vi1, uint vi_bw)
 {
@@ -145,12 +227,11 @@ static int vi_set_la(struct vi *tegra_vi1, uint vi_bw)
 long vi_ioctl(struct file *file,
 		unsigned int cmd, unsigned long arg)
 {
-	struct vi *tegra_vi;
+	struct vi *tegra_vi = file->private_data;
 
 	if (_IOC_TYPE(cmd) != NVHOST_VI_IOCTL_MAGIC)
 		return -EFAULT;
 
-	tegra_vi = file->private_data;
 	switch (cmd) {
 	case NVHOST_VI_IOCTL_ENABLE_TPG: {
 		uint enable;
@@ -165,6 +246,9 @@ long vi_ioctl(struct file *file,
 		}
 
 		clk = clk_get(&tegra_vi->ndev->dev, "pll_d");
+		if (IS_ERR(clk))
+			return -EINVAL;
+
 		if (enable)
 			ret = tegra_clk_cfg_ex(clk,
 				TEGRA_CLK_PLLD_CSI_OUT_ENB, 1);
@@ -184,7 +268,35 @@ long vi_ioctl(struct file *file,
 				"%s: Failed to copy arg from user\n", __func__);
 			return -EFAULT;
 		}
+
 		ret = vi_set_la(tegra_vi, vi_bw);
+		if (ret) {
+			dev_err(&tegra_vi->ndev->dev,
+			"%s: failed to set la for vi_bw %u MBps\n",
+			__func__, vi_bw/1000);
+			return -ENOMEM;
+		}
+
+#if defined(CONFIG_TEGRA_ISOMGR)
+		/*
+		 * Set VI ISO BW requirements.
+		 * There is no way to figure out what latency
+		 * can be tolerated in VI without reading VI
+		 * registers for now. 3 usec is minimum time
+		 * to switch PLL source. Let's put 4 usec as
+		 * latency for now.
+		 */
+		if (tegra_vi->isomgr_handle) {
+			ret = vi_set_isomgr_request(tegra_vi, vi_bw, 4);
+
+			if (!ret) {
+				dev_err(&tegra_vi->ndev->dev,
+				"%s: failed to reserve %u KBps\n",
+				__func__, vi_bw);
+				return -ENOMEM;
+			}
+		}
+#endif
 		return ret;
 	}
 	default:
@@ -202,10 +314,12 @@ static int vi_open(struct inode *inode, struct file *file)
 
 	pdata = container_of(inode->i_cdev,
 		struct nvhost_device_data, ctrl_cdev);
-	BUG_ON(pdata == NULL);
+	if (WARN_ONCE(pdata == NULL, "pdata not found, %s failed\n", __func__))
+		return -ENODEV;
 
 	vi = (struct vi *)pdata->private_data;
-	BUG_ON(vi == NULL);
+	if (WARN_ONCE(vi == NULL, "vi not found, %s failed\n", __func__))
+		return -ENODEV;
 
 	file->private_data = vi;
 	return 0;
@@ -213,6 +327,19 @@ static int vi_open(struct inode *inode, struct file *file)
 
 static int vi_release(struct inode *inode, struct file *file)
 {
+#if defined(CONFIG_TEGRA_ISOMGR)
+	int ret = 0;
+	struct vi *tegra_vi = file->private_data;
+
+	/* nullify isomgr request */
+	ret = vi_isomgr_release(tegra_vi);
+	if (ret) {
+		dev_err(&tegra_vi->ndev->dev,
+		"%s: failed to deallocate memory in isomgr\n",
+		__func__);
+		return -ENOMEM;
+	}
+#endif
 	return 0;
 }
 
@@ -220,24 +347,38 @@ const struct file_operations tegra_vi_ctrl_ops = {
 	.owner = THIS_MODULE,
 	.open = vi_open,
 	.unlocked_ioctl = vi_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = vi_ioctl,
+#endif
 	.release = vi_release,
 };
 #endif
 
 void nvhost_vi_reset(struct platform_device *pdev)
 {
-	u32 reset_reg;
+	u32 reset_reg[4];
 
-	if (pdev->id == 0)
-		reset_reg = T12_VI_CSI_0_SW_RESET;
-	else
-		reset_reg = T12_VI_CSI_1_SW_RESET;
+	if (pdev->id == 0) {
+		reset_reg[0] = T12_VI_CSI_0_SW_RESET;
+		reset_reg[1] = T12_CSI_CSI_SW_SENSOR_A_RESET;
+		reset_reg[2] = T12_CSI_CSICIL_SW_SENSOR_A_RESET;
+		reset_reg[3] = T12_VI_CSI_0_CSI_IMAGE_DT;
+	} else {
+		reset_reg[0] = T12_VI_CSI_1_SW_RESET;
+		reset_reg[1] = T12_CSI_CSI_SW_SENSOR_B_RESET;
+		reset_reg[2] = T12_CSI_CSICIL_SW_SENSOR_B_RESET;
+		reset_reg[3] = T12_VI_CSI_1_CSI_IMAGE_DT;
+	}
 
-	nvhost_client_writel(pdev, T12_VI_CSI_SW_RESET_MCCIF_RESET,
-			reset_reg);
+	host1x_writel(pdev, reset_reg[3], 0);
+	host1x_writel(pdev, reset_reg[2], 0x1);
+	host1x_writel(pdev, reset_reg[1], 0x1);
+	host1x_writel(pdev, reset_reg[0], 0x1f);
 
 	udelay(10);
 
-	nvhost_client_writel(pdev, 0, reset_reg);
+	host1x_writel(pdev, reset_reg[2], 0);
+	host1x_writel(pdev, reset_reg[1], 0);
+	host1x_writel(pdev, reset_reg[0], 0);
 }
 

@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-bonaire.c
  *
- * Copyright (C) 2013 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2013-2014 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,8 +26,6 @@
 #include <linux/clk.h>
 #include <linux/serial_8250.h>
 #include <linux/i2c.h>
-#include <linux/spi/spi.h>
-#include <linux/spi/spi-tegra.h>
 #include <linux/i2c/panjit_ts.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
@@ -160,116 +158,15 @@ static struct i2c_board_info __initdata bonaire_i2c_bus1_board_info[] = {
 	},
 };
 
-static struct tegra_i2c_platform_data bonaire_i2c1_platform_data = {
-	.bus_clk_rate	= 100000,
-};
-
-#if 0	/* !!!FIXME!!! THESE ARE VENTANA SETTINGS */
-static const struct tegra_pingroup_config i2c2_ddc = {
-	.pingroup	= TEGRA_PINGROUP_DDC,
-	.func		= TEGRA_MUX_I2C2,
-};
-
-static const struct tegra_pingroup_config i2c2_gen2 = {
-	.pingroup	= TEGRA_PINGROUP_PTA,
-	.func		= TEGRA_MUX_I2C2,
-};
-#endif
-
-static struct tegra_i2c_platform_data bonaire_i2c2_platform_data = {
-	.bus_clk_rate	= 100000,
-#if 0	/* !!!FIXME!!!! TESE ARE VENTANA SETTINGS */
-	.bus_mux	= { &i2c2_ddc, &i2c2_gen2 },
-	.bus_mux_len	= { 1, 1 },
-#endif
-};
-
-static struct tegra_i2c_platform_data bonaire_i2c3_platform_data = {
-	.bus_clk_rate	= 100000,
-};
-
-static struct tegra_i2c_platform_data bonaire_i2c4_platform_data = {
-	.bus_clk_rate	= 100000,
-};
-
-static struct tegra_i2c_platform_data bonaire_i2c5_platform_data = {
-	.bus_clk_rate	= 100000,
-};
-
-static struct tegra_i2c_platform_data bonaire_i2c6_platform_data = {
-	.bus_clk_rate	= 100000,
-};
-
 static void bonaire_i2c_init(void)
 {
-	tegra12_i2c_device1.dev.platform_data = &bonaire_i2c1_platform_data;
-	tegra12_i2c_device2.dev.platform_data = &bonaire_i2c2_platform_data;
-	tegra12_i2c_device3.dev.platform_data = &bonaire_i2c3_platform_data;
-	tegra12_i2c_device4.dev.platform_data = &bonaire_i2c4_platform_data;
-	tegra12_i2c_device5.dev.platform_data = &bonaire_i2c5_platform_data;
-	tegra12_i2c_device6.dev.platform_data = &bonaire_i2c6_platform_data;
-
 	i2c_register_board_info(0, bonaire_i2c_bus1_board_info, 1);
-
-	platform_device_register(&tegra12_i2c_device6);
-	platform_device_register(&tegra12_i2c_device5);
-	platform_device_register(&tegra12_i2c_device4);
-	platform_device_register(&tegra12_i2c_device3);
-	platform_device_register(&tegra12_i2c_device2);
-	platform_device_register(&tegra12_i2c_device1);
 }
 
 static void bonaire_apbdma_init(void)
 {
 	platform_device_register(&tegra_apbdma);
 }
-
-static struct platform_device *bonaire_spi_devices[] __initdata = {
-	&tegra11_spi_device4,
-};
-
-/* struct spi_clk_parent spi_parent_clk_bonaire[] = { */
-/* 	[0] = {.name = "pll_p"}, */
-/* #ifndef CONFIG_TEGRA_PLLM_RESTRICTED */
-/* 	[1] = {.name = "pll_m"}, */
-/* 	[2] = {.name = "clk_m"}, */
-/* #else */
-/* 	[1] = {.name = "clk_m"}, */
-/* #endif */
-/* }; */
-
-/* static struct tegra_spi_platform_data bonaire_spi_pdata = { */
-/* 	.is_dma_based           = true, */
-/* 	.max_dma_buffer         = 16 * 1024, */
-/* 	.is_clkon_always        = false, */
-/* 	.max_rate               = 25000000, */
-/* }; */
-
-/* static void __init bonaire_spi_init(void) */
-/* { */
-/* 	int i; */
-/* 	struct clk *c; */
-/* 	struct board_info board_info, display_board_info; */
-
-/* 	tegra_get_board_info(&board_info); */
-/* 	tegra_get_display_board_info(&display_board_info); */
-
-/* 	for (i = 0; i < ARRAY_SIZE(spi_parent_clk_bonaire); ++i) { */
-/* 		c = tegra_get_clock_by_name(spi_parent_clk_bonaire[i].name); */
-/* 		if (IS_ERR_OR_NULL(c)) { */
-/* 			pr_err("Not able to get the clock for %s\n", */
-/* 					spi_parent_clk_bonaire[i].name); */
-/* 		continue; */
-/* 		} */
-/* 		spi_parent_clk_bonaire[i].parent_clk = c; */
-/* 		spi_parent_clk_bonaire[i].fixed_clk_rate = clk_get_rate(c); */
-/* 	} */
-/* 	bonaire_spi_pdata.parent_clk_list = spi_parent_clk_bonaire; */
-/* 	bonaire_spi_pdata.parent_clk_count = ARRAY_SIZE(spi_parent_clk_bonaire); */
-/* 	tegra11_spi_device4.dev.platform_data = &bonaire_spi_pdata; */
-/* 	platform_add_devices(bonaire_spi_devices, */
-/* 			ARRAY_SIZE(bonaire_spi_devices)); */
-/* } */
 
 #define GPIO_KEY(_id, _gpio, _iswake)		\
 	{					\
@@ -562,8 +459,7 @@ static void __init bonaire_hs_uart_init(void)
 static struct tegra_pci_platform_data bonaire_pcie_platform_data = {
 	.port_status[0]	= 1,
 	.port_status[1]	= 1,
-	.use_dock_detect	= 1,
-	.gpio			= TEGRA_GPIO_PO1,
+	.gpio_hot_plug	= TEGRA_GPIO_PO1,
 };
 
 static void bonaire_pcie_init(void)
@@ -575,8 +471,6 @@ static void bonaire_pcie_init(void)
 static void __init tegra_bonaire_init(void)
 {
 	tegra_clk_init_from_table(bonaire_clk_init_table);
-	tegra_enable_pinmux();
-	bonaire_pinmux_init();
 	tegra_soc_device_init("bonaire");
 	bonaire_apbdma_init();
 
@@ -592,7 +486,6 @@ static void __init tegra_bonaire_init(void)
 	bonaire_hs_uart_init();
 	bonaire_sdhci_init();
 	bonaire_i2c_init();
-	/* bonaire_spi_init(); */
 	bonaire_regulator_init();
 	bonaire_suspend_init();
 	bonaire_touch_init();
@@ -604,7 +497,7 @@ static void __init tegra_bonaire_init(void)
 	tegra_register_fuse();
 }
 
-#ifdef CONFIG_USE_OF
+#if defined(CONFIG_USE_OF) || defined(CONFIG_ARM64)
 struct of_dev_auxdata tegra_bonaire_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-host1x", TEGRA_HOST1X_BASE, "host1x",
 		NULL),
@@ -617,15 +510,20 @@ struct of_dev_auxdata tegra_bonaire_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISP_BASE, "isp.0", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-isp", TEGRA_ISPB_BASE, "isp.1", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-tsec", TEGRA_TSEC_BASE, "tsec", NULL),
+	T124_I2C_OF_DEV_AUXDATA,
+	OF_DEV_AUXDATA("nvidia,tegra124-nvavp", 0x60001000, "nvavp",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
 
 static void __init tegra_bonaire_dt_init(void)
 {
+#if defined(CONFIG_USE_OF) || defined(CONFIG_ARM64)
 	of_platform_populate(NULL, of_default_bus_match_table,
 		tegra_bonaire_auxdata_lookup, &platform_bus);
-
+#endif
 	tegra_bonaire_init();
 }
 

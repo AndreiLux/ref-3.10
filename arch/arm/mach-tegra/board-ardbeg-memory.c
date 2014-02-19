@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -28,8 +28,8 @@
 
 static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 	{
-		0x18,       /* V5.0.10 */
-		"02_12750_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_12750_02_V5.0.12_V0.9", /* DVFS table version */
 		12750,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
@@ -253,8 +253,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_20400_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_20400_02_V5.0.12_V0.9", /* DVFS table version */
 		20400,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
@@ -478,8 +478,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_40800_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_40800_02_V5.0.12_V0.9", /* DVFS table version */
 		40800,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
@@ -703,8 +703,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_68000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_68000_02_V5.0.12_V0.9", /* DVFS table version */
 		68000,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
@@ -928,8 +928,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_102000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_102000_02_V5.0.12_V0.9", /* DVFS table version */
 		102000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
@@ -1153,8 +1153,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_204000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_204000_03_V5.0.12_V0.9", /* DVFS table version */
 		204000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
@@ -1365,8 +1365,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73240000, /* EMC_CFG */
-		0x000008cd, /* EMC_CFG_2 */
-		0x00040128, /* EMC_SEL_DPD_CTRL */
+		0x0000088d, /* EMC_CFG_2 */
+		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0x002c0068, /* EMC_CFG_DIG_DLL */
 		0x00000008, /* EMC_BGBIAS_CTL0 */
 		0x00000000, /* EMC_AUTO_CAL_CONFIG2 */
@@ -1378,10 +1378,10 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_300000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_300000_03_V5.0.12_V0.9", /* DVFS table version */
 		300000,     /* SDRAM frequency */
-		810,        /* min voltage */
+		820,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllc_out0", /* clock source id */
 		0x20000002, /* CLK_SOURCE_EMC */
@@ -1603,10 +1603,10 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_396000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_396000_04_V5.0.12_V0.9", /* DVFS table version */
 		396000,     /* SDRAM frequency */
-		860,        /* min voltage */
+		850,        /* min voltage */
 		900,        /* gpu min voltage */
 		"pllm_out0", /* clock source id */
 		0x00000002, /* CLK_SOURCE_EMC */
@@ -1642,8 +1642,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000000, /* EMC_QRST */
 			0x0000000f, /* EMC_QSAFE */
-			0x0000000e, /* EMC_RDV */
-			0x00000010, /* EMC_RDV_MASK */
+			0x00000010, /* EMC_RDV */
+			0x00000012, /* EMC_RDV_MASK */
 			0x00000bd1, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000002f4, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -1756,7 +1756,7 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 			0x015b000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x8000188b, /* EMC_DYN_SELF_REF_CONTROL */
 			0x00000009, /* EMC_QPOP */
 			0x0f000005, /* MC_EMEM_ARB_CFG */
@@ -1815,7 +1815,7 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73340000, /* EMC_CFG */
-		0x0000088d, /* EMC_CFG_2 */
+		0x00000895, /* EMC_CFG_2 */
 		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0x002c0068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -1828,10 +1828,10 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_528000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_528000_04_V5.0.12_V0.9", /* DVFS table version */
 		528000,     /* SDRAM frequency */
-		900,        /* min voltage */
+		870,        /* min voltage */
 		900,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
@@ -1852,20 +1852,20 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 			0x00000002, /* EMC_RRD */
 			0x00000002, /* EMC_REXT */
 			0x00000000, /* EMC_WEXT */
-			0x00000004, /* EMC_WDV */
-			0x00000004, /* EMC_WDV_MASK */
-			0x00000007, /* EMC_QUSE */
+			0x00000003, /* EMC_WDV */
+			0x00000003, /* EMC_WDV_MASK */
+			0x00000006, /* EMC_QUSE */
 			0x00000002, /* EMC_QUSE_WIDTH */
 			0x00000000, /* EMC_IBDLY */
-			0x00000002, /* EMC_EINPUT */
+			0x00000001, /* EMC_EINPUT */
 			0x00000009, /* EMC_EINPUT_DURATION */
-			0x00040000, /* EMC_PUTERM_EXTRA */
+			0x00030000, /* EMC_PUTERM_EXTRA */
 			0x00000003, /* EMC_PUTERM_WIDTH */
 			0x00000000, /* EMC_PUTERM_ADJ */
 			0x00000000, /* EMC_CDB_CNTL_1 */
 			0x00000000, /* EMC_CDB_CNTL_2 */
 			0x00000000, /* EMC_CDB_CNTL_3 */
-			0x00000001, /* EMC_QRST */
+			0x00000000, /* EMC_QRST */
 			0x00000010, /* EMC_QSAFE */
 			0x00000012, /* EMC_RDV */
 			0x00000014, /* EMC_RDV_MASK */
@@ -1981,9 +1981,9 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 			0x0139000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x000052a0, /* EMC_CFG_PIPE */
+			0x000042a0, /* EMC_CFG_PIPE */
 			0x80002062, /* EMC_DYN_SELF_REF_CONTROL */
-			0x0000000b, /* EMC_QPOP */
+			0x0000000a, /* EMC_QPOP */
 			0x0f000007, /* MC_EMEM_ARB_CFG */
 			0x80000040, /* MC_EMEM_ARB_OUTSTANDING_REQ */
 			0x00000002, /* MC_EMEM_ARB_TIMING_RCD */
@@ -2040,7 +2040,7 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73300000, /* EMC_CFG */
-		0x00000895, /* EMC_CFG_2 */
+		0x0000089d, /* EMC_CFG_2 */
 		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0xe0120069, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -2053,8 +2053,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_600000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_600000_02_V5.0.12_V0.9", /* DVFS table version */
 		600000,     /* SDRAM frequency */
 		910,        /* min voltage */
 		900,        /* gpu min voltage */
@@ -2278,10 +2278,10 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_792000_05_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_792000_06_V5.0.12_V0.9", /* DVFS table version */
 		792000,     /* SDRAM frequency */
-		1000,       /* min voltage */
+		980,        /* min voltage */
 		1100,       /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
@@ -2317,8 +2317,8 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000001, /* EMC_QRST */
 			0x00000014, /* EMC_QSAFE */
-			0x00000017, /* EMC_RDV */
-			0x00000019, /* EMC_RDV_MASK */
+			0x00000018, /* EMC_RDV */
+			0x0000001a, /* EMC_RDV_MASK */
 			0x000017e2, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000005f8, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -2431,7 +2431,7 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 			0x00f7000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000004, /* EMC_CTT_DURATION */
-			0x000040a0, /* EMC_CFG_PIPE */
+			0x00004080, /* EMC_CFG_PIPE */
 			0x80003012, /* EMC_DYN_SELF_REF_CONTROL */
 			0x0000000f, /* EMC_QPOP */
 			0x0e00000b, /* MC_EMEM_ARB_CFG */
@@ -2496,15 +2496,15 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 		0x00000000, /* EMC_BGBIAS_CTL0 */
 		0x00000000, /* EMC_AUTO_CAL_CONFIG2 */
 		0x00000000, /* EMC_AUTO_CAL_CONFIG3 */
-		0xa1430404, /* EMC_AUTO_CAL_CONFIG */
+		0xa1430000, /* EMC_AUTO_CAL_CONFIG */
 		0x80000d71, /* Mode Register 0 */
 		0x80100002, /* Mode Register 1 */
 		0x80200018, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"02_924000_06_V5.0.10_V0.8", /* DVFS table version */
+		0x18,       /* V5.0.12 */
+		"03_924000_06_V5.0.12_V0.9", /* DVFS table version */
 		924000,     /* SDRAM frequency */
 		1010,       /* min voltage */
 		1100,       /* gpu min voltage */
@@ -2729,16 +2729,471 @@ static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm358[] = {
 	},
 };
 
+static struct tegra12_emc_table ardbeg_ddr3_emc_table_pm359[] = {
+	{
+		0x18,       /* V5.0.12 */
+		"01_102000_01_V5.0.12_V0.9", /* DVFS table version */
+		102000,     /* SDRAM frequency */
+		800,        /* min voltage */
+		800,        /* gpu min voltage */
+		"pllp_out0", /* clock source id */
+		0x40000006, /* CLK_SOURCE_EMC */
+		164,        /* number of burst_regs */
+		31,         /* number of up_down_regs */
+		{
+			0x00000004, /* EMC_RC */
+			0x0000001a, /* EMC_RFC */
+			0x00000000, /* EMC_RFC_SLR */
+			0x00000003, /* EMC_RAS */
+			0x00000001, /* EMC_RP */
+			0x00000004, /* EMC_R2W */
+			0x0000000a, /* EMC_W2R */
+			0x00000003, /* EMC_R2P */
+			0x0000000b, /* EMC_W2P */
+			0x00000001, /* EMC_RD_RCD */
+			0x00000001, /* EMC_WR_RCD */
+			0x00000003, /* EMC_RRD */
+			0x00000003, /* EMC_REXT */
+			0x00000000, /* EMC_WEXT */
+			0x00000006, /* EMC_WDV */
+			0x00000006, /* EMC_WDV_MASK */
+			0x00000006, /* EMC_QUSE */
+			0x00000002, /* EMC_QUSE_WIDTH */
+			0x00000000, /* EMC_IBDLY */
+			0x00000005, /* EMC_EINPUT */
+			0x00000005, /* EMC_EINPUT_DURATION */
+			0x00010000, /* EMC_PUTERM_EXTRA */
+			0x00000003, /* EMC_PUTERM_WIDTH */
+			0x00000000, /* EMC_PUTERM_ADJ */
+			0x00000000, /* EMC_CDB_CNTL_1 */
+			0x00000000, /* EMC_CDB_CNTL_2 */
+			0x00000000, /* EMC_CDB_CNTL_3 */
+			0x00000004, /* EMC_QRST */
+			0x0000000c, /* EMC_QSAFE */
+			0x0000000d, /* EMC_RDV */
+			0x0000000f, /* EMC_RDV_MASK */
+			0x00000304, /* EMC_REFRESH */
+			0x00000000, /* EMC_BURST_REFRESH_NUM */
+			0x000000c1, /* EMC_PRE_REFRESH_REQ_CNT */
+			0x00000002, /* EMC_PDEX2WR */
+			0x00000002, /* EMC_PDEX2RD */
+			0x00000001, /* EMC_PCHG2PDEN */
+			0x00000000, /* EMC_ACT2PDEN */
+			0x00000018, /* EMC_AR2PDEN */
+			0x0000000f, /* EMC_RW2PDEN */
+			0x0000001c, /* EMC_TXSR */
+			0x0000001c, /* EMC_TXSRDLL */
+			0x00000004, /* EMC_TCKE */
+			0x00000005, /* EMC_TCKESR */
+			0x00000004, /* EMC_TPD */
+			0x00000003, /* EMC_TFAW */
+			0x00000000, /* EMC_TRPAB */
+			0x00000005, /* EMC_TCLKSTABLE */
+			0x00000005, /* EMC_TCLKSTOP */
+			0x0000031c, /* EMC_TREFBW */
+			0x00000000, /* EMC_FBIO_CFG6 */
+			0x00000000, /* EMC_ODT_WRITE */
+			0x00000000, /* EMC_ODT_READ */
+			0x106aa298, /* EMC_FBIO_CFG5 */
+			0x002c00a0, /* EMC_CFG_DIG_DLL */
+			0x00008000, /* EMC_CFG_DIG_DLL_PERIOD */
+			0x00064000, /* EMC_DLL_XFORM_DQS0 */
+			0x00064000, /* EMC_DLL_XFORM_DQS1 */
+			0x00064000, /* EMC_DLL_XFORM_DQS2 */
+			0x00064000, /* EMC_DLL_XFORM_DQS3 */
+			0x00064000, /* EMC_DLL_XFORM_DQS4 */
+			0x00064000, /* EMC_DLL_XFORM_DQS5 */
+			0x00064000, /* EMC_DLL_XFORM_DQS6 */
+			0x00064000, /* EMC_DLL_XFORM_DQS7 */
+			0x00064000, /* EMC_DLL_XFORM_DQS8 */
+			0x00064000, /* EMC_DLL_XFORM_DQS9 */
+			0x00064000, /* EMC_DLL_XFORM_DQS10 */
+			0x00064000, /* EMC_DLL_XFORM_DQS11 */
+			0x00064000, /* EMC_DLL_XFORM_DQS12 */
+			0x00064000, /* EMC_DLL_XFORM_DQS13 */
+			0x00064000, /* EMC_DLL_XFORM_DQS14 */
+			0x00064000, /* EMC_DLL_XFORM_DQS15 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE0 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE1 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE2 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE3 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE4 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE5 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE6 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE7 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR0 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR1 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR2 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR3 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR4 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR5 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE8 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE9 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE10 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE11 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE12 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE13 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE14 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE15 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS0 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS1 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS2 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS3 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS4 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS5 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS6 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS7 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS8 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS9 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS10 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS11 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS12 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS13 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS14 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS15 */
+			0x000fc000, /* EMC_DLL_XFORM_DQ0 */
+			0x000fc000, /* EMC_DLL_XFORM_DQ1 */
+			0x000fc000, /* EMC_DLL_XFORM_DQ2 */
+			0x000fc000, /* EMC_DLL_XFORM_DQ3 */
+			0x0000fc00, /* EMC_DLL_XFORM_DQ4 */
+			0x0000fc00, /* EMC_DLL_XFORM_DQ5 */
+			0x0000fc00, /* EMC_DLL_XFORM_DQ6 */
+			0x0000fc00, /* EMC_DLL_XFORM_DQ7 */
+			0x10000280, /* EMC_XM2CMDPADCTRL */
+			0x00000000, /* EMC_XM2CMDPADCTRL4 */
+			0x00111111, /* EMC_XM2CMDPADCTRL5 */
+			0x0130b118, /* EMC_XM2DQSPADCTRL2 */
+			0x00000000, /* EMC_XM2DQPADCTRL2 */
+			0x00000000, /* EMC_XM2DQPADCTRL3 */
+			0x77ffc081, /* EMC_XM2CLKPADCTRL */
+			0x00000e0e, /* EMC_XM2CLKPADCTRL2 */
+			0x81f1f108, /* EMC_XM2COMPPADCTRL */
+			0x07070004, /* EMC_XM2VTTGENPADCTRL */
+			0x0000003f, /* EMC_XM2VTTGENPADCTRL2 */
+			0x016eeeee, /* EMC_XM2VTTGENPADCTRL3 */
+			0x51451400, /* EMC_XM2DQSPADCTRL3 */
+			0x00514514, /* EMC_XM2DQSPADCTRL4 */
+			0x00514514, /* EMC_XM2DQSPADCTRL5 */
+			0x51451400, /* EMC_XM2DQSPADCTRL6 */
+			0x0000003f, /* EMC_DSR_VTTGEN_DRV */
+			0x00000033, /* EMC_TXDSRVTTGEN */
+			0x00000000, /* EMC_FBIO_SPARE */
+			0x00000000, /* EMC_ZCAL_INTERVAL */
+			0x00000042, /* EMC_ZCAL_WAIT_CNT */
+			0x000e000e, /* EMC_MRS_WAIT_CNT */
+			0x000e000e, /* EMC_MRS_WAIT_CNT2 */
+			0x00000000, /* EMC_CTT */
+			0x00000003, /* EMC_CTT_DURATION */
+			0x0000f2f3, /* EMC_CFG_PIPE */
+			0x80000713, /* EMC_DYN_SELF_REF_CONTROL */
+			0x0000000a, /* EMC_QPOP */
+			0x08000001, /* MC_EMEM_ARB_CFG */
+			0x80000026, /* MC_EMEM_ARB_OUTSTANDING_REQ */
+			0x00000001, /* MC_EMEM_ARB_TIMING_RCD */
+			0x00000001, /* MC_EMEM_ARB_TIMING_RP */
+			0x00000003, /* MC_EMEM_ARB_TIMING_RC */
+			0x00000000, /* MC_EMEM_ARB_TIMING_RAS */
+			0x00000002, /* MC_EMEM_ARB_TIMING_FAW */
+			0x00000001, /* MC_EMEM_ARB_TIMING_RRD */
+			0x00000002, /* MC_EMEM_ARB_TIMING_RAP2PRE */
+			0x00000008, /* MC_EMEM_ARB_TIMING_WAP2PRE */
+			0x00000003, /* MC_EMEM_ARB_TIMING_R2R */
+			0x00000002, /* MC_EMEM_ARB_TIMING_W2W */
+			0x00000003, /* MC_EMEM_ARB_TIMING_R2W */
+			0x00000006, /* MC_EMEM_ARB_TIMING_W2R */
+			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
+			0x000a0403, /* MC_EMEM_ARB_DA_COVERS */
+			0x73c30504, /* MC_EMEM_ARB_MISC0 */
+			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
+		},
+		{
+			0x00000001, /* MC_MLL_MPCORER_PTSA_RATE */
+			0x00000031, /* MC_PTSA_GRANT_DECREMENT */
+			0x00ff00da, /* MC_LATENCY_ALLOWANCE_XUSB_0 */
+			0x00ff00da, /* MC_LATENCY_ALLOWANCE_XUSB_1 */
+			0x00ff0075, /* MC_LATENCY_ALLOWANCE_TSEC_0 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_SDMMCA_0 */
+			0x00ff009d, /* MC_LATENCY_ALLOWANCE_SDMMCAA_0 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_SDMMC_0 */
+			0x00ff009d, /* MC_LATENCY_ALLOWANCE_SDMMCAB_0 */
+			0x009b0049, /* MC_LATENCY_ALLOWANCE_PPCS_0 */
+			0x00ff0080, /* MC_LATENCY_ALLOWANCE_PPCS_1 */
+			0x00ff0004, /* MC_LATENCY_ALLOWANCE_MPCORE_0 */
+			0x00ff0004, /* MC_LATENCY_ALLOWANCE_MPCORELP_0 */
+			0x000800ad, /* MC_LATENCY_ALLOWANCE_HC_0 */
+			0x000000ff, /* MC_LATENCY_ALLOWANCE_HC_1 */
+			0x00ff0004, /* MC_LATENCY_ALLOWANCE_AVPC_0 */
+			0x00ff00c6, /* MC_LATENCY_ALLOWANCE_GPU_0 */
+			0x00ff006d, /* MC_LATENCY_ALLOWANCE_MSENC_0 */
+			0x00ff0024, /* MC_LATENCY_ALLOWANCE_HDA_0 */
+			0x00ff00d6, /* MC_LATENCY_ALLOWANCE_VIC_0 */
+			0x000000ff, /* MC_LATENCY_ALLOWANCE_VI2_0 */
+			0x0000009f, /* MC_LATENCY_ALLOWANCE_ISP2_0 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_ISP2_1 */
+			0x0000009f, /* MC_LATENCY_ALLOWANCE_ISP2B_0 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_ISP2B_1 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_VDE_0 */
+			0x009f00a0, /* MC_LATENCY_ALLOWANCE_VDE_1 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_VDE_2 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_VDE_3 */
+			0x00ff00ff, /* MC_LATENCY_ALLOWANCE_SATA_0 */
+			0x00ff00da, /* MC_LATENCY_ALLOWANCE_AFI_0 */
+		},
+		0x00000042, /* EMC_ZCAL_WAIT_CNT after clock change */
+		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
+		0x00000802, /* EMC_CTT_TERM_CTRL */
+		0x73240000, /* EMC_CFG */
+		0x000008c5, /* EMC_CFG_2 */
+		0x00040128, /* EMC_SEL_DPD_CTRL */
+		0x002c0068, /* EMC_CFG_DIG_DLL */
+		0x00000008, /* EMC_BGBIAS_CTL0 */
+		0x00000000, /* EMC_AUTO_CAL_CONFIG2 */
+		0x00000000, /* EMC_AUTO_CAL_CONFIG3 */
+		0xa1430000, /* EMC_AUTO_CAL_CONFIG */
+		0x80001221, /* Mode Register 0 */
+		0x80100003, /* Mode Register 1 */
+		0x80200008, /* Mode Register 2 */
+		0x00000000, /* Mode Register 4 */
+		6890,       /* expected dvfs latency (ns) */
+	},
+	{
+		0x18,       /* V5.0.12 */
+		"01_792000_02_V5.0.12_V0.9", /* DVFS table version */
+		792000,     /* SDRAM frequency */
+		980,        /* min voltage */
+		1100,       /* gpu min voltage */
+		"pllm_ud",  /* clock source id */
+		0x80000000, /* CLK_SOURCE_EMC */
+		164,        /* number of burst_regs */
+		31,         /* number of up_down_regs */
+		{
+			0x00000024, /* EMC_RC */
+			0x000000cd, /* EMC_RFC */
+			0x00000000, /* EMC_RFC_SLR */
+			0x00000019, /* EMC_RAS */
+			0x0000000a, /* EMC_RP */
+			0x00000008, /* EMC_R2W */
+			0x0000000d, /* EMC_W2R */
+			0x00000004, /* EMC_R2P */
+			0x00000013, /* EMC_W2P */
+			0x0000000a, /* EMC_RD_RCD */
+			0x0000000a, /* EMC_WR_RCD */
+			0x00000003, /* EMC_RRD */
+			0x00000002, /* EMC_REXT */
+			0x00000000, /* EMC_WEXT */
+			0x00000006, /* EMC_WDV */
+			0x00000006, /* EMC_WDV_MASK */
+			0x0000000b, /* EMC_QUSE */
+			0x00000002, /* EMC_QUSE_WIDTH */
+			0x00000000, /* EMC_IBDLY */
+			0x00000002, /* EMC_EINPUT */
+			0x0000000d, /* EMC_EINPUT_DURATION */
+			0x00080000, /* EMC_PUTERM_EXTRA */
+			0x00000004, /* EMC_PUTERM_WIDTH */
+			0x00000000, /* EMC_PUTERM_ADJ */
+			0x00000000, /* EMC_CDB_CNTL_1 */
+			0x00000000, /* EMC_CDB_CNTL_2 */
+			0x00000000, /* EMC_CDB_CNTL_3 */
+			0x00000001, /* EMC_QRST */
+			0x00000014, /* EMC_QSAFE */
+			0x00000018, /* EMC_RDV */
+			0x0000001a, /* EMC_RDV_MASK */
+			0x000017e2, /* EMC_REFRESH */
+			0x00000000, /* EMC_BURST_REFRESH_NUM */
+			0x000005f8, /* EMC_PRE_REFRESH_REQ_CNT */
+			0x00000003, /* EMC_PDEX2WR */
+			0x00000011, /* EMC_PDEX2RD */
+			0x00000001, /* EMC_PCHG2PDEN */
+			0x00000000, /* EMC_ACT2PDEN */
+			0x000000c7, /* EMC_AR2PDEN */
+			0x00000018, /* EMC_RW2PDEN */
+			0x000000d7, /* EMC_TXSR */
+			0x00000200, /* EMC_TXSRDLL */
+			0x00000005, /* EMC_TCKE */
+			0x00000006, /* EMC_TCKESR */
+			0x00000005, /* EMC_TPD */
+			0x0000001d, /* EMC_TFAW */
+			0x00000000, /* EMC_TRPAB */
+			0x00000008, /* EMC_TCLKSTABLE */
+			0x00000008, /* EMC_TCLKSTOP */
+			0x00001822, /* EMC_TREFBW */
+			0x00000000, /* EMC_FBIO_CFG6 */
+			0x00000000, /* EMC_ODT_WRITE */
+			0x00000000, /* EMC_ODT_READ */
+			0x104ab098, /* EMC_FBIO_CFG5 */
+			0xe00700b1, /* EMC_CFG_DIG_DLL */
+			0x00008000, /* EMC_CFG_DIG_DLL_PERIOD */
+			0x00000006, /* EMC_DLL_XFORM_DQS0 */
+			0x00000006, /* EMC_DLL_XFORM_DQS1 */
+			0x007f800a, /* EMC_DLL_XFORM_DQS2 */
+			0x00000006, /* EMC_DLL_XFORM_DQS3 */
+			0x00000006, /* EMC_DLL_XFORM_DQS4 */
+			0x00004006, /* EMC_DLL_XFORM_DQS5 */
+			0x00004006, /* EMC_DLL_XFORM_DQS6 */
+			0x00000006, /* EMC_DLL_XFORM_DQS7 */
+			0x00000006, /* EMC_DLL_XFORM_DQS8 */
+			0x00000006, /* EMC_DLL_XFORM_DQS9 */
+			0x007f800a, /* EMC_DLL_XFORM_DQS10 */
+			0x00000006, /* EMC_DLL_XFORM_DQS11 */
+			0x00000006, /* EMC_DLL_XFORM_DQS12 */
+			0x00004006, /* EMC_DLL_XFORM_DQS13 */
+			0x00004006, /* EMC_DLL_XFORM_DQS14 */
+			0x00000006, /* EMC_DLL_XFORM_DQS15 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE0 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE1 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE2 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE3 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE4 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE5 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE6 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE7 */
+			0x00034000, /* EMC_DLL_XFORM_ADDR0 */
+			0x00034000, /* EMC_DLL_XFORM_ADDR1 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR2 */
+			0x00034000, /* EMC_DLL_XFORM_ADDR3 */
+			0x00034000, /* EMC_DLL_XFORM_ADDR4 */
+			0x00000000, /* EMC_DLL_XFORM_ADDR5 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE8 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE9 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE10 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE11 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE12 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE13 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE14 */
+			0x00000000, /* EMC_DLL_XFORM_QUSE15 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS0 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS1 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS2 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS3 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS4 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS5 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS6 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS7 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS8 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS9 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS10 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS11 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS12 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS13 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS14 */
+			0x00000000, /* EMC_DLI_TRIM_TXDQS15 */
+			0x00000008, /* EMC_DLL_XFORM_DQ0 */
+			0x00000008, /* EMC_DLL_XFORM_DQ1 */
+			0x00000002, /* EMC_DLL_XFORM_DQ2 */
+			0x00000008, /* EMC_DLL_XFORM_DQ3 */
+			0x00000008, /* EMC_DLL_XFORM_DQ4 */
+			0x00000008, /* EMC_DLL_XFORM_DQ5 */
+			0x00000008, /* EMC_DLL_XFORM_DQ6 */
+			0x00000008, /* EMC_DLL_XFORM_DQ7 */
+			0x100002a0, /* EMC_XM2CMDPADCTRL */
+			0x00000000, /* EMC_XM2CMDPADCTRL4 */
+			0x00111111, /* EMC_XM2CMDPADCTRL5 */
+			0x0120113d, /* EMC_XM2DQSPADCTRL2 */
+			0x00000000, /* EMC_XM2DQPADCTRL2 */
+			0x00000000, /* EMC_XM2DQPADCTRL3 */
+			0x77ffc085, /* EMC_XM2CLKPADCTRL */
+			0x00000505, /* EMC_XM2CLKPADCTRL2 */
+			0x81f1f108, /* EMC_XM2COMPPADCTRL */
+			0x07070004, /* EMC_XM2VTTGENPADCTRL */
+			0x00000000, /* EMC_XM2VTTGENPADCTRL2 */
+			0x016eeeee, /* EMC_XM2VTTGENPADCTRL3 */
+			0x61861820, /* EMC_XM2DQSPADCTRL3 */
+			0x00514514, /* EMC_XM2DQSPADCTRL4 */
+			0x00514514, /* EMC_XM2DQSPADCTRL5 */
+			0x61861800, /* EMC_XM2DQSPADCTRL6 */
+			0x0606003f, /* EMC_DSR_VTTGEN_DRV */
+			0x00000000, /* EMC_TXDSRVTTGEN */
+			0x00000000, /* EMC_FBIO_SPARE */
+			0x00020000, /* EMC_ZCAL_INTERVAL */
+			0x00000100, /* EMC_ZCAL_WAIT_CNT */
+			0x00f7000e, /* EMC_MRS_WAIT_CNT */
+			0x00f7000e, /* EMC_MRS_WAIT_CNT2 */
+			0x00000000, /* EMC_CTT */
+			0x00000004, /* EMC_CTT_DURATION */
+			0x00004080, /* EMC_CFG_PIPE */
+			0x80003012, /* EMC_DYN_SELF_REF_CONTROL */
+			0x0000000f, /* EMC_QPOP */
+			0x0e00000b, /* MC_EMEM_ARB_CFG */
+			0x80000040, /* MC_EMEM_ARB_OUTSTANDING_REQ */
+			0x00000004, /* MC_EMEM_ARB_TIMING_RCD */
+			0x00000005, /* MC_EMEM_ARB_TIMING_RP */
+			0x00000013, /* MC_EMEM_ARB_TIMING_RC */
+			0x0000000c, /* MC_EMEM_ARB_TIMING_RAS */
+			0x0000000f, /* MC_EMEM_ARB_TIMING_FAW */
+			0x00000002, /* MC_EMEM_ARB_TIMING_RRD */
+			0x00000003, /* MC_EMEM_ARB_TIMING_RAP2PRE */
+			0x0000000c, /* MC_EMEM_ARB_TIMING_WAP2PRE */
+			0x00000002, /* MC_EMEM_ARB_TIMING_R2R */
+			0x00000002, /* MC_EMEM_ARB_TIMING_W2W */
+			0x00000006, /* MC_EMEM_ARB_TIMING_R2W */
+			0x00000008, /* MC_EMEM_ARB_TIMING_W2R */
+			0x08060202, /* MC_EMEM_ARB_DA_TURNS */
+			0x00170e13, /* MC_EMEM_ARB_DA_COVERS */
+			0x736c2414, /* MC_EMEM_ARB_MISC0 */
+			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
+		},
+		{
+			0x00000013, /* MC_MLL_MPCORER_PTSA_RATE */
+			0x0000017c, /* MC_PTSA_GRANT_DECREMENT */
+			0x00810038, /* MC_LATENCY_ALLOWANCE_XUSB_0 */
+			0x00810038, /* MC_LATENCY_ALLOWANCE_XUSB_1 */
+			0x0081003c, /* MC_LATENCY_ALLOWANCE_TSEC_0 */
+			0x00810090, /* MC_LATENCY_ALLOWANCE_SDMMCA_0 */
+			0x00810041, /* MC_LATENCY_ALLOWANCE_SDMMCAA_0 */
+			0x00810090, /* MC_LATENCY_ALLOWANCE_SDMMC_0 */
+			0x00810041, /* MC_LATENCY_ALLOWANCE_SDMMCAB_0 */
+			0x00270049, /* MC_LATENCY_ALLOWANCE_PPCS_0 */
+			0x00810080, /* MC_LATENCY_ALLOWANCE_PPCS_1 */
+			0x00810004, /* MC_LATENCY_ALLOWANCE_MPCORE_0 */
+			0x00810004, /* MC_LATENCY_ALLOWANCE_MPCORELP_0 */
+			0x00080016, /* MC_LATENCY_ALLOWANCE_HC_0 */
+			0x00000081, /* MC_LATENCY_ALLOWANCE_HC_1 */
+			0x00810004, /* MC_LATENCY_ALLOWANCE_AVPC_0 */
+			0x00810019, /* MC_LATENCY_ALLOWANCE_GPU_0 */
+			0x00810018, /* MC_LATENCY_ALLOWANCE_MSENC_0 */
+			0x00810024, /* MC_LATENCY_ALLOWANCE_HDA_0 */
+			0x0081001c, /* MC_LATENCY_ALLOWANCE_VIC_0 */
+			0x00000081, /* MC_LATENCY_ALLOWANCE_VI2_0 */
+			0x00000036, /* MC_LATENCY_ALLOWANCE_ISP2_0 */
+			0x00810081, /* MC_LATENCY_ALLOWANCE_ISP2_1 */
+			0x00000036, /* MC_LATENCY_ALLOWANCE_ISP2B_0 */
+			0x00810081, /* MC_LATENCY_ALLOWANCE_ISP2B_1 */
+			0x00d400ff, /* MC_LATENCY_ALLOWANCE_VDE_0 */
+			0x00510029, /* MC_LATENCY_ALLOWANCE_VDE_1 */
+			0x00810081, /* MC_LATENCY_ALLOWANCE_VDE_2 */
+			0x00810081, /* MC_LATENCY_ALLOWANCE_VDE_3 */
+			0x00810065, /* MC_LATENCY_ALLOWANCE_SATA_0 */
+			0x0081001c, /* MC_LATENCY_ALLOWANCE_AFI_0 */
+		},
+		0x00000042, /* EMC_ZCAL_WAIT_CNT after clock change */
+		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
+		0x00000802, /* EMC_CTT_TERM_CTRL */
+		0x73300000, /* EMC_CFG */
+		0x0000089d, /* EMC_CFG_2 */
+		0x00040000, /* EMC_SEL_DPD_CTRL */
+		0xe0070069, /* EMC_CFG_DIG_DLL */
+		0x00000000, /* EMC_BGBIAS_CTL0 */
+		0x00000000, /* EMC_AUTO_CAL_CONFIG2 */
+		0x00000000, /* EMC_AUTO_CAL_CONFIG3 */
+		0xa1430f0f, /* EMC_AUTO_CAL_CONFIG */
+		0x80000d71, /* Mode Register 0 */
+		0x80100002, /* Mode Register 1 */
+		0x80200018, /* Mode Register 2 */
+		0x00000000, /* Mode Register 4 */
+		1200,       /* expected dvfs latency (ns) */
+	},
+};
+
 static struct tegra12_emc_table ardbeg_emc_table[] = {
 	{
-		0x18,       /* V5.0.10 */
-		"07_12750_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_12750_03_V5.0.14_V1.1", /* DVFS table version */
 		12750,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x4000003e, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000000, /* EMC_RC */
@@ -2904,6 +3359,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x77e30303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -2954,16 +3410,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100003, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		57820,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_20400_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_20400_03_V5.0.14_V1.1", /* DVFS table version */
 		20400,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000026, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000000, /* EMC_RC */
@@ -3129,6 +3586,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x76230303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -3179,16 +3637,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100003, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		35610,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_40800_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_40800_03_V5.0.14_V1.1", /* DVFS table version */
 		40800,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000012, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000001, /* EMC_RC */
@@ -3354,6 +3813,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x74a30303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -3404,16 +3864,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100003, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		20850,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_68000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_68000_03_V5.0.14_V1.1", /* DVFS table version */
 		68000,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x4000000a, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000003, /* EMC_RC */
@@ -3579,6 +4040,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x74230403, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -3629,16 +4091,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100003, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		10720,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_102000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_102000_03_V5.0.14_V1.1", /* DVFS table version */
 		102000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000006, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000004, /* EMC_RC */
@@ -3804,6 +4267,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0403, /* MC_EMEM_ARB_DA_COVERS */
 			0x73c30504, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -3854,16 +4318,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100003, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		6890,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_204000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_204000_04_V5.0.14_V1.1", /* DVFS table version */
 		204000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000009, /* EMC_RC */
@@ -4029,6 +4494,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06040203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0404, /* MC_EMEM_ARB_DA_COVERS */
 			0x73840a05, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -4079,16 +4545,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100003, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		3420,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_300000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_300000_04_V5.0.14_V1.1", /* DVFS table version */
 		300000,     /* SDRAM frequency */
-		810,        /* min voltage */
-		800,        /* gpu min voltage */
+		820,        /* min voltage */
+		820,        /* gpu min voltage */
 		"pllc_out0", /* clock source id */
 		0x20000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000000d, /* EMC_RC */
@@ -4120,8 +4587,8 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000001, /* EMC_QRST */
 			0x0000000e, /* EMC_QSAFE */
-			0x0000000e, /* EMC_RDV */
-			0x00000010, /* EMC_RDV_MASK */
+			0x00000010, /* EMC_RDV */
+			0x00000012, /* EMC_RDV_MASK */
 			0x000008e4, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x00000239, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -4234,7 +4701,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x0173000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x800012d7, /* EMC_DYN_SELF_REF_CONTROL */
 			0x00000009, /* EMC_QPOP */
 			0x08000004, /* MC_EMEM_ARB_CFG */
@@ -4254,6 +4721,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06040202, /* MC_EMEM_ARB_DA_TURNS */
 			0x000b0607, /* MC_EMEM_ARB_DA_COVERS */
 			0x77450e08, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -4293,7 +4761,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73340000, /* EMC_CFG */
-		0x000008cd, /* EMC_CFG_2 */
+		0x000008d5, /* EMC_CFG_2 */
 		0x00040128, /* EMC_SEL_DPD_CTRL */
 		0x002c0068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -4304,16 +4772,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100002, /* Mode Register 1 */
 		0x80200000, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		2680,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_396000_04_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_396000_06_V5.0.14_V1.1", /* DVFS table version */
 		396000,     /* SDRAM frequency */
-		860,        /* min voltage */
-		900,        /* gpu min voltage */
+		850,        /* min voltage */
+		850,        /* gpu min voltage */
 		"pllm_out0", /* clock source id */
 		0x00000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000011, /* EMC_RC */
@@ -4345,8 +4814,8 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000000, /* EMC_QRST */
 			0x0000000f, /* EMC_QSAFE */
-			0x0000000e, /* EMC_RDV */
-			0x00000010, /* EMC_RDV_MASK */
+			0x00000010, /* EMC_RDV */
+			0x00000012, /* EMC_RDV_MASK */
 			0x00000bd1, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000002f4, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -4459,7 +4928,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x015b000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x8000188b, /* EMC_DYN_SELF_REF_CONTROL */
 			0x00000009, /* EMC_QPOP */
 			0x0f000005, /* MC_EMEM_ARB_CFG */
@@ -4479,6 +4948,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06040202, /* MC_EMEM_ARB_DA_TURNS */
 			0x000d0709, /* MC_EMEM_ARB_DA_COVERS */
 			0x7586120a, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -4518,7 +4988,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73340000, /* EMC_CFG */
-		0x0000088d, /* EMC_CFG_2 */
+		0x00000895, /* EMC_CFG_2 */
 		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0x002c0068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -4529,16 +4999,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100002, /* Mode Register 1 */
 		0x80200000, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		2180,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_528000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_528000_05_V5.0.14_V1.1", /* DVFS table version */
 		528000,     /* SDRAM frequency */
-		900,        /* min voltage */
-		900,        /* gpu min voltage */
+		880,        /* min voltage */
+		870,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000018, /* EMC_RC */
@@ -4555,20 +5026,20 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x00000002, /* EMC_RRD */
 			0x00000002, /* EMC_REXT */
 			0x00000000, /* EMC_WEXT */
-			0x00000004, /* EMC_WDV */
-			0x00000004, /* EMC_WDV_MASK */
-			0x00000008, /* EMC_QUSE */
+			0x00000003, /* EMC_WDV */
+			0x00000003, /* EMC_WDV_MASK */
+			0x00000007, /* EMC_QUSE */
 			0x00000002, /* EMC_QUSE_WIDTH */
 			0x00000000, /* EMC_IBDLY */
-			0x00000003, /* EMC_EINPUT */
+			0x00000002, /* EMC_EINPUT */
 			0x00000009, /* EMC_EINPUT_DURATION */
-			0x00050000, /* EMC_PUTERM_EXTRA */
+			0x00040000, /* EMC_PUTERM_EXTRA */
 			0x00000003, /* EMC_PUTERM_WIDTH */
 			0x00000000, /* EMC_PUTERM_ADJ */
 			0x00000000, /* EMC_CDB_CNTL_1 */
 			0x00000000, /* EMC_CDB_CNTL_2 */
 			0x00000000, /* EMC_CDB_CNTL_3 */
-			0x00000002, /* EMC_QRST */
+			0x00000001, /* EMC_QRST */
 			0x00000010, /* EMC_QSAFE */
 			0x00000013, /* EMC_RDV */
 			0x00000015, /* EMC_RDV_MASK */
@@ -4684,9 +5155,9 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x0139000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x000052a0, /* EMC_CFG_PIPE */
+			0x000042a0, /* EMC_CFG_PIPE */
 			0x80002062, /* EMC_DYN_SELF_REF_CONTROL */
-			0x0000000c, /* EMC_QPOP */
+			0x0000000b, /* EMC_QPOP */
 			0x0f000007, /* MC_EMEM_ARB_CFG */
 			0x80000040, /* MC_EMEM_ARB_OUTSTANDING_REQ */
 			0x00000002, /* MC_EMEM_ARB_TIMING_RCD */
@@ -4704,6 +5175,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x06050202, /* MC_EMEM_ARB_DA_TURNS */
 			0x0010090c, /* MC_EMEM_ARB_DA_COVERS */
 			0x7428180d, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -4743,7 +5215,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73300000, /* EMC_CFG */
-		0x00000895, /* EMC_CFG_2 */
+		0x0000089d, /* EMC_CFG_2 */
 		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0xe0120069, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -4754,16 +5226,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100002, /* Mode Register 1 */
 		0x80200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		1440,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_600000_04_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_600000_05_V5.0.14_V1.1", /* DVFS table version */
 		600000,     /* SDRAM frequency */
 		910,        /* min voltage */
-		900,        /* gpu min voltage */
+		910,        /* gpu min voltage */
 		"pllc_ud",  /* clock source id */
 		0xe0000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000001b, /* EMC_RC */
@@ -4929,6 +5402,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x07050202, /* MC_EMEM_ARB_DA_TURNS */
 			0x00130b0e, /* MC_EMEM_ARB_DA_COVERS */
 			0x73a91b0f, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -4979,16 +5453,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100002, /* Mode Register 1 */
 		0x80200010, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		1440,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_792000_05_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_792000_06_V5.0.14_V1.1", /* DVFS table version */
 		792000,     /* SDRAM frequency */
-		1000,       /* min voltage */
-		1100,       /* gpu min voltage */
+		980,        /* min voltage */
+		980,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000024, /* EMC_RC */
@@ -5020,8 +5495,8 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000001, /* EMC_QRST */
 			0x00000014, /* EMC_QSAFE */
-			0x00000017, /* EMC_RDV */
-			0x00000019, /* EMC_RDV_MASK */
+			0x00000018, /* EMC_RDV */
+			0x0000001a, /* EMC_RDV_MASK */
 			0x000017e2, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000005f8, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -5134,7 +5609,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x00f7000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000004, /* EMC_CTT_DURATION */
-			0x000040a0, /* EMC_CFG_PIPE */
+			0x00004080, /* EMC_CFG_PIPE */
 			0x80003012, /* EMC_DYN_SELF_REF_CONTROL */
 			0x0000000f, /* EMC_QPOP */
 			0x0e00000b, /* MC_EMEM_ARB_CFG */
@@ -5154,6 +5629,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x08060202, /* MC_EMEM_ARB_DA_TURNS */
 			0x00170e13, /* MC_EMEM_ARB_DA_COVERS */
 			0x736c2414, /* MC_EMEM_ARB_MISC0 */
+			0x70000f02, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -5204,16 +5680,17 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 		0x80100002, /* Mode Register 1 */
 		0x80200018, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		1200,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_924000_06_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_924000_06_V5.0.14_V1.1", /* DVFS table version */
 		924000,     /* SDRAM frequency */
 		1010,       /* min voltage */
-		1100,       /* gpu min voltage */
+		1010,       /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000002b, /* EMC_RC */
@@ -5379,6 +5856,7 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 			0x09070202, /* MC_EMEM_ARB_DA_TURNS */
 			0x001a1016, /* MC_EMEM_ARB_DA_COVERS */
 			0x734e2a17, /* MC_EMEM_ARB_MISC0 */
+			0x70000f02, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -5434,14 +5912,14 @@ static struct tegra12_emc_table ardbeg_emc_table[] = {
 
 static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 	{
-		0x18,       /* V5.0.10 */
-		"01_12750_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_12750_02_V5.0.14_V1.1", /* DVFS table version */
 		12750,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x4000003e, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000000, /* EMC_RC */
@@ -5607,6 +6085,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x77e30303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -5657,16 +6136,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100003, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		57820,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_20400_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_20400_02_V5.0.14_V1.1", /* DVFS table version */
 		20400,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000026, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000000, /* EMC_RC */
@@ -5832,6 +6312,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x77430303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -5882,16 +6363,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100003, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		35610,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_40800_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_40800_02_V5.0.14_V1.1", /* DVFS table version */
 		40800,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000012, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000001, /* EMC_RC */
@@ -6057,6 +6539,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x75e30303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -6107,16 +6590,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100003, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		20850,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_68000_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_68000_02_V5.0.14_V1.1", /* DVFS table version */
 		68000,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x4000000a, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000003, /* EMC_RC */
@@ -6282,6 +6766,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0402, /* MC_EMEM_ARB_DA_COVERS */
 			0x75430403, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -6332,16 +6817,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100003, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		10720,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_102000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_102000_03_V5.0.14_V1.1", /* DVFS table version */
 		102000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000006, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000004, /* EMC_RC */
@@ -6507,6 +6993,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06030203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0403, /* MC_EMEM_ARB_DA_COVERS */
 			0x74e30504, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -6557,16 +7044,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100003, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		6890,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_204000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_204000_03_V5.0.14_V1.1", /* DVFS table version */
 		204000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000009, /* EMC_RC */
@@ -6732,6 +7220,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06040203, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0404, /* MC_EMEM_ARB_DA_COVERS */
 			0x74a40a05, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -6782,16 +7271,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100003, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		3420,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_300000_02_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_300000_03_V5.0.14_V1.1", /* DVFS table version */
 		300000,     /* SDRAM frequency */
-		810,        /* min voltage */
-		800,        /* gpu min voltage */
+		820,        /* min voltage */
+		820,        /* gpu min voltage */
 		"pllc_out0", /* clock source id */
 		0x20000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000000d, /* EMC_RC */
@@ -6823,8 +7313,8 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000001, /* EMC_QRST */
 			0x0000000e, /* EMC_QSAFE */
-			0x0000000e, /* EMC_RDV */
-			0x00000010, /* EMC_RDV_MASK */
+			0x00000010, /* EMC_RDV */
+			0x00000012, /* EMC_RDV_MASK */
 			0x000008e4, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x00000239, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -6937,7 +7427,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x0117000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x800012d7, /* EMC_DYN_SELF_REF_CONTROL */
 			0x00000009, /* EMC_QPOP */
 			0x08000004, /* MC_EMEM_ARB_CFG */
@@ -6957,6 +7447,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06040202, /* MC_EMEM_ARB_DA_TURNS */
 			0x000b0607, /* MC_EMEM_ARB_DA_COVERS */
 			0x77450e08, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -6996,7 +7487,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73340000, /* EMC_CFG */
-		0x000008cd, /* EMC_CFG_2 */
+		0x000008d5, /* EMC_CFG_2 */
 		0x00040128, /* EMC_SEL_DPD_CTRL */
 		0x002c0068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -7007,16 +7498,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100002, /* Mode Register 1 */
 		0x00200000, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		2680,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_396000_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_396000_03_V5.0.14_V1.1", /* DVFS table version */
 		396000,     /* SDRAM frequency */
-		890,        /* min voltage */
-		900,        /* gpu min voltage */
+		850,        /* min voltage */
+		850,        /* gpu min voltage */
 		"pllm_out0", /* clock source id */
 		0x00000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000011, /* EMC_RC */
@@ -7048,8 +7540,8 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000000, /* EMC_QRST */
 			0x0000000f, /* EMC_QSAFE */
-			0x0000000e, /* EMC_RDV */
-			0x00000010, /* EMC_RDV_MASK */
+			0x00000010, /* EMC_RDV */
+			0x00000012, /* EMC_RDV_MASK */
 			0x00000bd1, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000002f4, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -7162,7 +7654,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x00f5000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x8000188b, /* EMC_DYN_SELF_REF_CONTROL */
 			0x00000009, /* EMC_QPOP */
 			0x0f000005, /* MC_EMEM_ARB_CFG */
@@ -7182,6 +7674,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06040202, /* MC_EMEM_ARB_DA_TURNS */
 			0x000d0709, /* MC_EMEM_ARB_DA_COVERS */
 			0x7586120a, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -7221,7 +7714,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73340000, /* EMC_CFG */
-		0x0000088d, /* EMC_CFG_2 */
+		0x00000895, /* EMC_CFG_2 */
 		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0x002c0068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -7232,16 +7725,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100002, /* Mode Register 1 */
 		0x00200000, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		2180,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_528000_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_528000_03_V5.0.14_V1.1", /* DVFS table version */
 		528000,     /* SDRAM frequency */
-		910,        /* min voltage */
-		900,        /* gpu min voltage */
+		880,        /* min voltage */
+		870,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000018, /* EMC_RC */
@@ -7258,20 +7752,20 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x00000002, /* EMC_RRD */
 			0x00000002, /* EMC_REXT */
 			0x00000000, /* EMC_WEXT */
-			0x00000004, /* EMC_WDV */
-			0x00000004, /* EMC_WDV_MASK */
-			0x00000008, /* EMC_QUSE */
+			0x00000003, /* EMC_WDV */
+			0x00000003, /* EMC_WDV_MASK */
+			0x00000007, /* EMC_QUSE */
 			0x00000002, /* EMC_QUSE_WIDTH */
 			0x00000000, /* EMC_IBDLY */
-			0x00000003, /* EMC_EINPUT */
+			0x00000002, /* EMC_EINPUT */
 			0x00000009, /* EMC_EINPUT_DURATION */
-			0x00050000, /* EMC_PUTERM_EXTRA */
+			0x00040000, /* EMC_PUTERM_EXTRA */
 			0x00000003, /* EMC_PUTERM_WIDTH */
 			0x00000000, /* EMC_PUTERM_ADJ */
 			0x00000000, /* EMC_CDB_CNTL_1 */
 			0x00000000, /* EMC_CDB_CNTL_2 */
 			0x00000000, /* EMC_CDB_CNTL_3 */
-			0x00000002, /* EMC_QRST */
+			0x00000001, /* EMC_QRST */
 			0x00000010, /* EMC_QSAFE */
 			0x00000013, /* EMC_RDV */
 			0x00000015, /* EMC_RDV_MASK */
@@ -7387,9 +7881,9 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x00c8000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000003, /* EMC_CTT_DURATION */
-			0x000052a0, /* EMC_CFG_PIPE */
+			0x000042a0, /* EMC_CFG_PIPE */
 			0x80002062, /* EMC_DYN_SELF_REF_CONTROL */
-			0x0000000c, /* EMC_QPOP */
+			0x0000000b, /* EMC_QPOP */
 			0x0f000007, /* MC_EMEM_ARB_CFG */
 			0x80000040, /* MC_EMEM_ARB_OUTSTANDING_REQ */
 			0x00000002, /* MC_EMEM_ARB_TIMING_RCD */
@@ -7407,6 +7901,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x06050202, /* MC_EMEM_ARB_DA_TURNS */
 			0x0010090c, /* MC_EMEM_ARB_DA_COVERS */
 			0x7488180d, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -7446,7 +7941,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0x73300000, /* EMC_CFG */
-		0x00000895, /* EMC_CFG_2 */
+		0x0000089d, /* EMC_CFG_2 */
 		0x00040008, /* EMC_SEL_DPD_CTRL */
 		0xe0120069, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -7457,16 +7952,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100002, /* Mode Register 1 */
 		0x00200008, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		1440,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_600000_01_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_600000_02_V5.0.14_V1.1", /* DVFS table version */
 		600000,     /* SDRAM frequency */
-		920,        /* min voltage */
-		900,        /* gpu min voltage */
+		910,        /* min voltage */
+		910,        /* gpu min voltage */
 		"pllc_ud",  /* clock source id */
 		0xe0000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000001b, /* EMC_RC */
@@ -7632,6 +8128,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x07050202, /* MC_EMEM_ARB_DA_TURNS */
 			0x00130b0e, /* MC_EMEM_ARB_DA_COVERS */
 			0x74891b0f, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -7682,16 +8179,17 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100002, /* Mode Register 1 */
 		0x00200010, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		1440,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"01_792000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"03_792000_04_V5.0.14_V1.1", /* DVFS table version */
 		792000,     /* SDRAM frequency */
-		1000,       /* min voltage */
-		1100,       /* gpu min voltage */
+		980,        /* min voltage */
+		980,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000024, /* EMC_RC */
@@ -7723,8 +8221,8 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000001, /* EMC_QRST */
 			0x00000014, /* EMC_QSAFE */
-			0x00000017, /* EMC_RDV */
-			0x00000019, /* EMC_RDV_MASK */
+			0x00000018, /* EMC_RDV */
+			0x0000001a, /* EMC_RDV_MASK */
 			0x000017e2, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000005f8, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -7837,7 +8335,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x006f000e, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000004, /* EMC_CTT_DURATION */
-			0x000040a0, /* EMC_CFG_PIPE */
+			0x00004080, /* EMC_CFG_PIPE */
 			0x80003012, /* EMC_DYN_SELF_REF_CONTROL */
 			0x0000000f, /* EMC_QPOP */
 			0x0e00000b, /* MC_EMEM_ARB_CFG */
@@ -7857,6 +8355,7 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 			0x08060202, /* MC_EMEM_ARB_DA_TURNS */
 			0x00170e13, /* MC_EMEM_ARB_DA_COVERS */
 			0x746c2414, /* MC_EMEM_ARB_MISC0 */
+			0x70000f02, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -7907,19 +8406,20 @@ static struct tegra12_emc_table ardbeg_4GB_emc_table[] = {
 		0x00100002, /* Mode Register 1 */
 		0x00200018, /* Mode Register 2 */
 		0x00000000, /* Mode Register 4 */
+		1200,       /* expected dvfs latency (ns) */
 	},
 };
 
 static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 	{
-		0x18,       /* V5.0.10 */
-		"07_12750_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_12750_04_V5.0.14_V1.1", /* DVFS table version */
 		12750,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x4000003e, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000000, /* EMC_RC */
@@ -8085,6 +8585,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05040102, /* MC_EMEM_ARB_DA_TURNS */
 			0x00090402, /* MC_EMEM_ARB_DA_COVERS */
 			0x77c30303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -8135,16 +8636,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		57820,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_20400_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_20400_04_V5.0.14_V1.1", /* DVFS table version */
 		20400,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000026, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000001, /* EMC_RC */
@@ -8310,6 +8812,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05040102, /* MC_EMEM_ARB_DA_TURNS */
 			0x00090402, /* MC_EMEM_ARB_DA_COVERS */
 			0x74e30303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -8360,16 +8863,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		35610,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_40800_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_40800_04_V5.0.14_V1.1", /* DVFS table version */
 		40800,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000012, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000002, /* EMC_RC */
@@ -8535,6 +9039,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05040102, /* MC_EMEM_ARB_DA_TURNS */
 			0x00090402, /* MC_EMEM_ARB_DA_COVERS */
 			0x73030303, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -8585,16 +9090,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		20850,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_68000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_68000_04_V5.0.14_V1.1", /* DVFS table version */
 		68000,      /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x4000000a, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000004, /* EMC_RC */
@@ -8760,6 +9266,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05040102, /* MC_EMEM_ARB_DA_TURNS */
 			0x00090402, /* MC_EMEM_ARB_DA_COVERS */
 			0x72630403, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -8810,16 +9317,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		10720,      /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_102000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_102000_04_V5.0.14_V1.1", /* DVFS table version */
 		102000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000006, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000006, /* EMC_RC */
@@ -8985,6 +9493,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05040102, /* MC_EMEM_ARB_DA_TURNS */
 			0x00090403, /* MC_EMEM_ARB_DA_COVERS */
 			0x72430504, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -9035,16 +9544,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		6890,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_204000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_204000_04_V5.0.14_V1.1", /* DVFS table version */
 		204000,     /* SDRAM frequency */
 		800,        /* min voltage */
 		800,        /* gpu min voltage */
 		"pllp_out0", /* clock source id */
 		0x40000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000000c, /* EMC_RC */
@@ -9210,6 +9720,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05050103, /* MC_EMEM_ARB_DA_TURNS */
 			0x000a0506, /* MC_EMEM_ARB_DA_COVERS */
 			0x71e40a07, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -9260,16 +9771,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		3420,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_300000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_300000_04_V5.0.14_V1.1", /* DVFS table version */
 		300000,     /* SDRAM frequency */
-		810,        /* min voltage */
-		800,        /* gpu min voltage */
+		820,        /* min voltage */
+		820,        /* gpu min voltage */
 		"pllc_out0", /* clock source id */
 		0x20000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000011, /* EMC_RC */
@@ -9301,8 +9813,8 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000002, /* EMC_QRST */
 			0x0000000f, /* EMC_QSAFE */
-			0x00000010, /* EMC_RDV */
-			0x00000012, /* EMC_RDV_MASK */
+			0x00000012, /* EMC_RDV */
+			0x00000014, /* EMC_RDV_MASK */
 			0x0000046e, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x0000011b, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -9415,7 +9927,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x012c0011, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000004, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x800009ed, /* EMC_DYN_SELF_REF_CONTROL */
 			0x0000000b, /* EMC_QPOP */
 			0x08000004, /* MC_EMEM_ARB_CFG */
@@ -9435,6 +9947,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05050103, /* MC_EMEM_ARB_DA_TURNS */
 			0x000c0709, /* MC_EMEM_ARB_DA_COVERS */
 			0x71c50e0a, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -9474,7 +9987,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0xf3300000, /* EMC_CFG */
-		0x000008cf, /* EMC_CFG_2 */
+		0x000008d7, /* EMC_CFG_2 */
 		0x0004013c, /* EMC_SEL_DPD_CTRL */
 		0x00580068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -9485,16 +9998,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		2680,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_396000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_396000_05_V5.0.14_V1.1", /* DVFS table version */
 		396000,     /* SDRAM frequency */
-		860,        /* min voltage */
-		900,        /* gpu min voltage */
+		850,        /* min voltage */
+		850,        /* gpu min voltage */
 		"pllm_out0", /* clock source id */
 		0x00000002, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000017, /* EMC_RC */
@@ -9526,8 +10040,8 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000001, /* EMC_QRST */
 			0x00000010, /* EMC_QSAFE */
-			0x00000010, /* EMC_RDV */
-			0x00000012, /* EMC_RDV_MASK */
+			0x00000012, /* EMC_RDV */
+			0x00000014, /* EMC_RDV_MASK */
 			0x000005d9, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x00000176, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -9640,7 +10154,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x018c0011, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000004, /* EMC_CTT_DURATION */
-			0x0000d3b3, /* EMC_CFG_PIPE */
+			0x000052a3, /* EMC_CFG_PIPE */
 			0x80000cc7, /* EMC_DYN_SELF_REF_CONTROL */
 			0x0000000b, /* EMC_QPOP */
 			0x0f000005, /* MC_EMEM_ARB_CFG */
@@ -9660,6 +10174,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x05050103, /* MC_EMEM_ARB_DA_TURNS */
 			0x000e090c, /* MC_EMEM_ARB_DA_COVERS */
 			0x71c6120d, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -9699,7 +10214,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0xf3300000, /* EMC_CFG */
-		0x0000088f, /* EMC_CFG_2 */
+		0x00000897, /* EMC_CFG_2 */
 		0x0004001c, /* EMC_SEL_DPD_CTRL */
 		0x00580068, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -9710,16 +10225,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x00020004, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		2180,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_528000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_528000_05_V5.0.14_V1.1", /* DVFS table version */
 		528000,     /* SDRAM frequency */
-		900,        /* min voltage */
-		900,        /* gpu min voltage */
+		880,        /* min voltage */
+		870,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000001f, /* EMC_RC */
@@ -9736,20 +10252,20 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x00000005, /* EMC_RRD */
 			0x00000004, /* EMC_REXT */
 			0x00000000, /* EMC_WEXT */
-			0x00000003, /* EMC_WDV */
-			0x00000003, /* EMC_WDV_MASK */
-			0x00000009, /* EMC_QUSE */
+			0x00000002, /* EMC_WDV */
+			0x00000002, /* EMC_WDV_MASK */
+			0x00000008, /* EMC_QUSE */
 			0x00000003, /* EMC_QUSE_WIDTH */
 			0x00000000, /* EMC_IBDLY */
-			0x00000004, /* EMC_EINPUT */
+			0x00000003, /* EMC_EINPUT */
 			0x0000000a, /* EMC_EINPUT_DURATION */
-			0x00060000, /* EMC_PUTERM_EXTRA */
+			0x00050000, /* EMC_PUTERM_EXTRA */
 			0x00000004, /* EMC_PUTERM_WIDTH */
 			0x00000000, /* EMC_PUTERM_ADJ */
 			0x00000000, /* EMC_CDB_CNTL_1 */
 			0x00000000, /* EMC_CDB_CNTL_2 */
 			0x00000000, /* EMC_CDB_CNTL_3 */
-			0x00000003, /* EMC_QRST */
+			0x00000002, /* EMC_QRST */
 			0x00000011, /* EMC_QSAFE */
 			0x00000015, /* EMC_RDV */
 			0x00000017, /* EMC_RDV_MASK */
@@ -9865,9 +10381,9 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x02100013, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000004, /* EMC_CTT_DURATION */
-			0x000052a0, /* EMC_CFG_PIPE */
+			0x000042a0, /* EMC_CFG_PIPE */
 			0x800010b3, /* EMC_DYN_SELF_REF_CONTROL */
-			0x0000000e, /* EMC_QPOP */
+			0x0000000d, /* EMC_QPOP */
 			0x0f000007, /* MC_EMEM_ARB_CFG */
 			0x80000040, /* MC_EMEM_ARB_OUTSTANDING_REQ */
 			0x00000003, /* MC_EMEM_ARB_TIMING_RCD */
@@ -9885,6 +10401,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x06060103, /* MC_EMEM_ARB_DA_TURNS */
 			0x00120b10, /* MC_EMEM_ARB_DA_COVERS */
 			0x71c81811, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -9924,7 +10441,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x001fffff, /* EMC_AUTO_CAL_INTERVAL */
 		0x00000802, /* EMC_CTT_TERM_CTRL */
 		0xf3300000, /* EMC_CFG */
-		0x00000897, /* EMC_CFG_2 */
+		0x0000089f, /* EMC_CFG_2 */
 		0x0004001c, /* EMC_SEL_DPD_CTRL */
 		0xe0120069, /* EMC_CFG_DIG_DLL */
 		0x00000000, /* EMC_BGBIAS_CTL0 */
@@ -9935,16 +10452,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x000100c3, /* Mode Register 1 */
 		0x00020006, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		1440,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_600000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_600000_04_V5.0.14_V1.1", /* DVFS table version */
 		600000,     /* SDRAM frequency */
 		910,        /* min voltage */
-		900,        /* gpu min voltage */
+		910,        /* gpu min voltage */
 		"pllc_ud",  /* clock source id */
 		0xe0000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000023, /* EMC_RC */
@@ -10110,6 +10628,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x07060103, /* MC_EMEM_ARB_DA_TURNS */
 			0x00140d12, /* MC_EMEM_ARB_DA_COVERS */
 			0x71c91b13, /* MC_EMEM_ARB_MISC0 */
+			0x70000f03, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -10160,16 +10679,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x000100e3, /* Mode Register 1 */
 		0x00020007, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		1440,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_792000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_792000_04_V5.0.14_V1.1", /* DVFS table version */
 		792000,     /* SDRAM frequency */
-		1000,       /* min voltage */
-		1100,       /* gpu min voltage */
+		980,        /* min voltage */
+		980,        /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x0000002f, /* EMC_RC */
@@ -10201,8 +10721,8 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x00000000, /* EMC_CDB_CNTL_3 */
 			0x00000004, /* EMC_QRST */
 			0x00000016, /* EMC_QSAFE */
-			0x0000001c, /* EMC_RDV */
-			0x0000001e, /* EMC_RDV_MASK */
+			0x0000001d, /* EMC_RDV */
+			0x0000001f, /* EMC_RDV_MASK */
 			0x00000bd1, /* EMC_REFRESH */
 			0x00000000, /* EMC_BURST_REFRESH_NUM */
 			0x000002f4, /* EMC_PRE_REFRESH_REQ_CNT */
@@ -10315,7 +10835,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x03180017, /* EMC_MRS_WAIT_CNT2 */
 			0x00000000, /* EMC_CTT */
 			0x00000006, /* EMC_CTT_DURATION */
-			0x000040a0, /* EMC_CFG_PIPE */
+			0x00004080, /* EMC_CFG_PIPE */
 			0x8000188b, /* EMC_DYN_SELF_REF_CONTROL */
 			0x00000014, /* EMC_QPOP */
 			0x0e00000b, /* MC_EMEM_ARB_CFG */
@@ -10335,6 +10855,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x08080103, /* MC_EMEM_ARB_DA_TURNS */
 			0x001a1118, /* MC_EMEM_ARB_DA_COVERS */
 			0x71ac2419, /* MC_EMEM_ARB_MISC0 */
+			0x70000f02, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -10385,16 +10906,17 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010043, /* Mode Register 1 */
 		0x0002001a, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		1200,       /* expected dvfs latency (ns) */
 	},
 	{
-		0x18,       /* V5.0.10 */
-		"07_924000_03_V5.0.10_V0.8", /* DVFS table version */
+		0x19,       /* V5.0.14 */
+		"09_924000_03_V5.0.14_V1.1", /* DVFS table version */
 		924000,     /* SDRAM frequency */
 		1010,       /* min voltage */
-		1100,       /* gpu min voltage */
+		1010,       /* gpu min voltage */
 		"pllm_ud",  /* clock source id */
 		0x80000000, /* CLK_SOURCE_EMC */
-		164,        /* number of burst_regs */
+		165,        /* number of burst_regs */
 		31,         /* number of up_down_regs */
 		{
 			0x00000037, /* EMC_RC */
@@ -10560,6 +11082,7 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 			0x09090104, /* MC_EMEM_ARB_DA_TURNS */
 			0x001e141b, /* MC_EMEM_ARB_DA_COVERS */
 			0x71ae2a1c, /* MC_EMEM_ARB_MISC0 */
+			0x70000f02, /* MC_EMEM_ARB_MISC1 */
 			0x001f0000, /* MC_EMEM_ARB_RING1_THROTTLE */
 		},
 		{
@@ -10610,8 +11133,10 @@ static struct tegra12_emc_table ardbeg_lpddr3_emc_table[] = {
 		0x00010083, /* Mode Register 1 */
 		0x0002001c, /* Mode Register 2 */
 		0x800b0000, /* Mode Register 4 */
+		1180,       /* expected dvfs latency (ns) */
 	},
 };
+
 static struct tegra12_emc_table ardbeg_lpddr3_emc_table_E1781[] = {
 	{
 		0x18,       /* V5.0.10 */
@@ -11074,6 +11599,12 @@ static struct tegra12_emc_pdata ardbeg_ddr3_emc_pdata_pm358 = {
 	.num_tables = ARRAY_SIZE(ardbeg_ddr3_emc_table_pm358),
 };
 
+static struct tegra12_emc_pdata ardbeg_ddr3_emc_pdata_pm359 = {
+	.description = "ardbeg_emc_tables",
+	.tables = ardbeg_ddr3_emc_table_pm359,
+	.num_tables = ARRAY_SIZE(ardbeg_ddr3_emc_table_pm359),
+};
+
 static struct tegra12_emc_pdata ardbeg_emc_pdata = {
 	.description = "ardbeg_emc_tables",
 	.tables = ardbeg_emc_table,
@@ -11123,8 +11654,17 @@ int __init ardbeg_emc_init(void)
 		case BOARD_PM358:
 			pr_info("Loading PM358 EMC tables.\n");
 			tegra_emc_device.dev.platform_data = &ardbeg_ddr3_emc_pdata_pm358;
+			break;
+		case BOARD_PM359:
+			pr_info("Loading PM359 EMC tables.\n");
+			tegra_emc_device.dev.platform_data =
+						&ardbeg_ddr3_emc_pdata_pm359;
+			break;
 		case BOARD_P1761:
-			pr_info("Loading TN8-FFD EMC tables from DeviceTree.\n");
+		case BOARD_E1784:
+		case BOARD_E1922:
+			pr_info("Loading TN8 (%d) EMC tables from DeviceTree.\n",
+				bi.board_id);
 			use_dt_emc_table = true;
 			break;
 		case BOARD_E1780:
@@ -11149,6 +11689,7 @@ int __init ardbeg_emc_init(void)
 		case BOARD_E1781:
 			pr_info("Loading Ardbeg (1781) EMC tables\n");
 			tegra_emc_device.dev.platform_data = &ardbeg_lpddr3_emc_pdata_E1781;
+			break;
 		default:
 			pr_info("emc dvfs table not present\n");
 			return -EINVAL;

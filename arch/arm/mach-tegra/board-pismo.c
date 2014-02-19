@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-pismo.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -76,6 +76,7 @@
 #include "common.h"
 #include "tegra-board-id.h"
 #include "iomap.h"
+#include "tegra-of-dev-auxdata.h"
 
 #ifdef CONFIG_BT_BLUESLEEP
 static struct rfkill_gpio_platform_data pismo_bt_rfkill_pdata = {
@@ -211,38 +212,6 @@ static __initdata struct tegra_clk_init_table pismo_clk_init_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
-static struct tegra_i2c_platform_data pismo_i2c1_platform_data = {
-	.bus_clk_rate	= 100000,
-	.scl_gpio	= TEGRA_GPIO_I2C1_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C1_SDA,
-};
-
-static struct tegra_i2c_platform_data pismo_i2c2_platform_data = {
-	.bus_clk_rate	= 100000,
-	.is_clkon_always = true,
-	.scl_gpio	= TEGRA_GPIO_I2C2_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C2_SDA,
-};
-
-static struct tegra_i2c_platform_data pismo_i2c3_platform_data = {
-	.bus_clk_rate	= 100000,
-	.scl_gpio	= TEGRA_GPIO_I2C3_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C3_SDA,
-};
-
-static struct tegra_i2c_platform_data pismo_i2c4_platform_data = {
-	.bus_clk_rate	= 10000,
-	.scl_gpio	= TEGRA_GPIO_I2C4_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C4_SDA,
-};
-
-static struct tegra_i2c_platform_data pismo_i2c5_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C5_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C5_SDA,
-	.needs_cl_dvfs_clock = true,
-};
-
 static struct i2c_board_info __initdata rt5640_board_info = {
 	I2C_BOARD_INFO("rt5640", 0x1c),
 };
@@ -279,20 +248,8 @@ static struct i2c_board_info __initdata i2c_touchpad_board_info = {
 static void pismo_i2c_init(void)
 {
 
-	tegra11_i2c_device1.dev.platform_data = &pismo_i2c1_platform_data;
-	tegra11_i2c_device2.dev.platform_data = &pismo_i2c2_platform_data;
-	tegra11_i2c_device3.dev.platform_data = &pismo_i2c3_platform_data;
-	tegra11_i2c_device4.dev.platform_data = &pismo_i2c4_platform_data;
-	tegra11_i2c_device5.dev.platform_data = &pismo_i2c5_platform_data;
-
 	nfc_board_info.irq = gpio_to_irq(TEGRA_GPIO_PW2);
 	i2c_register_board_info(0, &nfc_board_info, 1);
-
-	platform_device_register(&tegra11_i2c_device5);
-	platform_device_register(&tegra11_i2c_device4);
-	platform_device_register(&tegra11_i2c_device3);
-	platform_device_register(&tegra11_i2c_device2);
-	platform_device_register(&tegra11_i2c_device1);
 
 	i2c_register_board_info(0, &rt5640_board_info, 1);
 
@@ -601,26 +558,6 @@ static void pismo_audio_init(void)
 	pismo_audio_pdata.codec_dai_name = "rt5640-aif1";
 }
 
-
-static struct platform_device *pismo_spi_devices[] __initdata = {
-	&tegra11_spi_device4,
-};
-
-static struct tegra_spi_platform_data pismo_spi_pdata = {
-	.spi_max_frequency	= 25000000,
-	.is_clkon_always	= false,
-};
-
-static void __init pismo_spi_init(void)
-{
-	struct board_info display_board_info;
-
-	tegra_get_display_board_info(&display_board_info);
-
-	tegra11_spi_device4.dev.platform_data = &pismo_spi_pdata;
-	platform_add_devices(pismo_spi_devices, ARRAY_SIZE(pismo_spi_devices));
-}
-
 struct rm_spi_ts_platform_data rm31080ts_pismo_data = {
 	.gpio_reset = 0,
 	.config = 0,
@@ -653,15 +590,11 @@ static void __init tegra_pismo_init(void)
 	tegra_clk_init_from_table(pismo_clk_init_table);
 	tegra_clk_verify_parents();
 	tegra_soc_device_init("pismo");
-	tegra_enable_pinmux();
-	pismo_pinmux_init();
 	pismo_i2c_init();
-	pismo_spi_init();
 	pismo_usb_init();
 	pismo_uart_init();
 	pismo_audio_init();
 	platform_add_devices(pismo_devices, ARRAY_SIZE(pismo_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	pismo_regulator_init();
 	pismo_sdhci_init();
@@ -685,11 +618,6 @@ static void __init tegra_pismo_init(void)
 	pismo_soctherm_init();
 }
 
-static void __init pismo_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
-}
-
 #ifdef CONFIG_USE_OF
 struct of_dev_auxdata pismo_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra114-host1x", TEGRA_HOST1X_BASE, "host1x",
@@ -701,6 +629,11 @@ struct of_dev_auxdata pismo_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra114-vi", TEGRA_VI_BASE, "vi", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-isp", TEGRA_ISP_BASE, "isp", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-tsec", TEGRA_TSEC_BASE, "tsec", NULL),
+	T114_SPI_OF_DEV_AUXDATA,
+	T114_I2C_OF_DEV_AUXDATA,
+	OF_DEV_AUXDATA("nvidia,tegra114-nvavp", 0x60001000, "nvavp",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
@@ -724,7 +657,6 @@ static void __init tegra_pismo_reserve(void)
 #else
 	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_4M);
 #endif
-	pismo_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const pismo_dt_board_compat[] = {

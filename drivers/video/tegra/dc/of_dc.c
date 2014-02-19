@@ -1,7 +1,7 @@
 /*
  * drivers/video/tegra/dc/of_dc.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -68,6 +68,47 @@
 #else
 #define OF_DC_LOG(fmt, args...)
 #endif
+
+#define DC_GEN_NODE		"/host1x/dc@"
+#define DSI_NODE		"/host1x/dsi"
+#define HDMI_NODE		"/host1x/hdmi"
+#define STRING_ADDR(x)		#x
+#define DC0_BASE_ADDR		STRING_ADDR(54200000)
+#define DC1_BASE_ADDR		STRING_ADDR(54240000)
+#define DEFAULT_OUT		"/dc-default-out"
+#define DISP_TIMINGS		"/display-timings"
+#define SMARTDIMMER		"/smartdimmer"
+#define CMU			"/cmu"
+#define FRAMEBUFFER_DATA	"/framebuffer-data"
+#define OUT_TMDS_CFG		"/nvidia,out-tmds-cfg"
+
+#define DC0_DEFAULT_OUT		\
+	(DC_GEN_NODE DC0_BASE_ADDR DEFAULT_OUT)
+#define DC1_DEFAULT_OUT		\
+	(DC_GEN_NODE DC1_BASE_ADDR DEFAULT_OUT)
+
+#define DC0_DISP_TIMINGS	\
+	(DC_GEN_NODE DC0_BASE_ADDR DISP_TIMINGS)
+#define DC1_DISP_TIMINGS	\
+	(DC_GEN_NODE DC1_BASE_ADDR DISP_TIMINGS)
+
+#define DC0_SMARTDIMMER		\
+	(DC_GEN_NODE DC0_BASE_ADDR SMARTDIMMER)
+#define DC1_SMARTDIMMER		\
+	(DC_GEN_NODE DC1_BASE_ADDR SMARTDIMMER)
+
+#define DC0_CMU			\
+	(DC_GEN_NODE DC0_BASE_ADDR CMU)
+#define DC1_CMU			\
+	(DC_GEN_NODE DC1_BASE_ADDR CMU)
+
+#define DC0_FRAMEBUFFER_DATA	\
+	(DC_GEN_NODE DC0_BASE_ADDR FRAMEBUFFER_DATA)
+#define DC1_FRAMEBUFFER_DATA	\
+	(DC_GEN_NODE DC1_BASE_ADDR FRAMEBUFFER_DATA)
+
+#define TMDS_CFG_NODE		\
+	(HDMI_NODE OUT_TMDS_CFG)
 
 static struct regulator *of_hdmi_vddio;
 static struct regulator *of_hdmi_reg;
@@ -201,7 +242,7 @@ static int parse_dc_default_out(struct platform_device *ndev,
 	enum of_gpio_flags flags;
 	struct device_node *ddc;
 	struct device_node *np_hdmi =
-		of_find_node_by_path("/host1x/hdmi");
+		of_find_node_by_path(HDMI_NODE);
 	struct device_node *tmds_np = NULL;
 	struct device_node *entry = NULL;
 	u8 *addr;
@@ -300,8 +341,9 @@ static int parse_dc_default_out(struct platform_device *ndev,
 	} else {
 		goto fail_dc_default_out;
 	}
+	if (default_out->type == TEGRA_DC_OUT_HDMI)
+		tmds_np = of_find_node_by_path(TMDS_CFG_NODE);
 
-	tmds_np = of_find_node_by_name(np, "nvidia,out-tmds-cfg");
 	if (!tmds_np) {
 		pr_info("%s: No nvidia,out-tmds-cfg\n",
 			__func__);
@@ -309,7 +351,7 @@ static int parse_dc_default_out(struct platform_device *ndev,
 		int tmds_set_count =
 			of_get_child_count(tmds_np);
 		if (!tmds_set_count) {
-			pr_warn("warn: tmds node exists but no cfg!\n");
+			pr_info("tmds node exists but no cfg!\n");
 			goto success_dc_default_out;
 		}
 
@@ -781,6 +823,9 @@ struct tegra_dsi_cmd *tegra_dsi_parse_cmd_dt(struct platform_device *ndev,
 		} else if (temp->cmd_type == TEGRA_DSI_DELAY_MS) {
 			temp->sp_len_dly.delay_ms =
 				be32_to_cpu(*prop_val_ptr++);
+		} else if (temp->cmd_type == TEGRA_DSI_SEND_FRAME) {
+			temp->sp_len_dly.frame_cnt =
+				be32_to_cpu(*prop_val_ptr++);
 		}
 	}
 
@@ -851,10 +896,16 @@ int parse_dsi_settings(struct platform_device *ndev,
 	u32 temp;
 	int err = 0;
 	int dsi_te_gpio = 0;
+	int bl_name_len = 0;
 	struct device_node *np_panel;
 	struct tegra_dsi_out *dsi = pdata->default_out->dsi;
 
 	np_panel = tegra_panel_get_dt_node(pdata);
+
+	if (!np_panel) {
+		pr_err("There is no valid panel node\n");
+		return -EINVAL;
+	}
 
 	if (!of_property_read_u32(np_dsi, "nvidia,dsi-controller-vs", &temp)) {
 		dsi->controller_vs = (u8)temp;
@@ -917,6 +968,12 @@ int parse_dsi_settings(struct platform_device *ndev,
 		OF_DC_LOG("dsi refresh rate %d\n", dsi->refresh_rate);
 	}
 	if (!of_property_read_u32(np_panel,
+			"nvidia,dsi-rated-refresh-rate", &temp)) {
+		dsi->rated_refresh_rate = (u8)temp;
+		OF_DC_LOG("dsi rated refresh rate %d\n",
+				dsi->rated_refresh_rate);
+	}
+	if (!of_property_read_u32(np_panel,
 			"nvidia,dsi-virtual-channel", &temp)) {
 		dsi->virtual_channel = (u8)temp;
 		if (temp == TEGRA_DSI_VIRTUAL_CHANNEL_0)
@@ -946,6 +1003,42 @@ int parse_dsi_settings(struct platform_device *ndev,
 	if (!of_property_read_u32(np_panel, "nvidia,dsi-panel-reset", &temp)) {
 		dsi->panel_reset = (u8)temp;
 		OF_DC_LOG("dsi panel reset %d\n", dsi->panel_reset);
+	}
+	if (!of_property_read_u32(np_panel,
+				"nvidia,dsi-te-polarity-low", &temp)) {
+		dsi->te_polarity_low = (u8)temp;
+		OF_DC_LOG("dsi panel te polarity low %d\n",
+			dsi->te_polarity_low);
+	}
+	if (!of_property_read_u32(np_panel,
+				"nvidia,dsi-power-saving-suspend", &temp)) {
+		dsi->power_saving_suspend = (u8)temp;
+		OF_DC_LOG("dsi panel power saving suspend %d\n",
+				dsi->power_saving_suspend);
+	}
+	if (!of_property_read_u32(np_panel,
+				"nvidia,dsi-lp00-pre-panel-wakeup", &temp)) {
+		dsi->lp00_pre_panel_wakeup = (u8)temp;
+		OF_DC_LOG("dsi panel lp00 pre panel wakeup %d\n",
+				dsi->lp00_pre_panel_wakeup);
+	}
+	if (!of_property_read_u32(np_panel,
+				"nvidia,dsi-ulpm-not-supported", &temp)) {
+		dsi->ulpm_not_supported = (u8)temp;
+		OF_DC_LOG("dsi panel ulpm not supported %d\n",
+				dsi->ulpm_not_supported);
+	}
+	if (of_find_property(np_panel, "nvidia,dsi-bl-name", &bl_name_len)) {
+		dsi->bl_name = devm_kzalloc(&ndev->dev,
+				sizeof(u8) * bl_name_len, GFP_KERNEL);
+		if (!of_property_read_string(np_panel,
+				"nvidia,dsi-bl-name",
+				(const char **)&dsi->bl_name))
+			OF_DC_LOG("dsi panel bl name %s\n", dsi->bl_name);
+		else {
+			pr_err("dsi error parsing bl name\n");
+			kfree(dsi->bl_name);
+		}
 	}
 
 	if (!of_property_read_u32(np_panel, "nvidia,dsi-ganged-type", &temp)) {
@@ -1169,7 +1262,7 @@ static int dc_hdmi_out_enable(struct device *dev)
 	int ret;
 
 	struct device_node *np_hdmi =
-		of_find_node_by_path("/host1x/hdmi");
+		of_find_node_by_path(HDMI_NODE);
 
 	if (!np_hdmi || !of_device_is_available(np_hdmi)) {
 		pr_info("%s: no valid hdmi node\n", __func__);
@@ -1229,7 +1322,7 @@ static int dc_hdmi_hotplug_init(struct device *dev)
 	int ret = 0;
 
 	struct device_node *np_hdmi =
-		of_find_node_by_path("/host1x/hdmi");
+		of_find_node_by_path(HDMI_NODE);
 
 	if (!np_hdmi || !of_device_is_available(np_hdmi)) {
 		pr_info("%s: no valid hdmi node\n", __func__);
@@ -1287,7 +1380,6 @@ struct tegra_dc_platform_data
 		*of_dc_parse_platform_data(struct platform_device *ndev)
 {
 	struct tegra_dc_platform_data *pdata;
-	struct tegra_dc_platform_data *temp_pdata = NULL;
 	struct device_node *np = ndev->dev.of_node;
 	struct device_node *np_dsi = NULL;
 	struct device_node *timings_np = NULL;
@@ -1301,7 +1393,6 @@ struct tegra_dc_platform_data
 	const char *temp_str0;
 	int err;
 	u32 temp;
-	struct of_tegra_dc_data *of_pdata = NULL;
 
 	/*
 	 * Memory for pdata, pdata->default_out, pdata->fb
@@ -1335,8 +1426,9 @@ struct tegra_dc_platform_data
 	 */
 	default_out_np = of_find_node_by_name(np, "dc-default-out");
 	if (!default_out_np) {
-		pr_warn("%s: could not find dc-default-out node\n",
+		pr_err("%s: could not find dc-default-out node\n",
 			__func__);
+		goto fail_parse;
 	} else {
 		err = parse_dc_default_out(ndev, default_out_np,
 			pdata->default_out);
@@ -1344,10 +1436,20 @@ struct tegra_dc_platform_data
 			goto fail_parse;
 	}
 
-	timings_np = of_find_node_by_name(np, "display-timings");
+#ifndef CONFIG_TEGRA_HDMI_PRIMARY
+	if (pdata->default_out->type == TEGRA_DC_OUT_DSI)
+		timings_np = of_find_node_by_path(DC0_DISP_TIMINGS);
+	else
+		timings_np = of_find_node_by_path(DC1_DISP_TIMINGS);
+#else
+		timings_np = of_find_node_by_path(DC0_DISP_TIMINGS);
+#endif
 	if (!timings_np) {
-		pr_warn("%s: could not find display-timings node\n",
-			__func__);
+		if (pdata->default_out->type == TEGRA_DC_OUT_DSI) {
+			pr_err("%s: could not find display-timings node\n",
+				__func__);
+			goto fail_parse;
+		}
 	} else if (pdata->default_out->type == TEGRA_DC_OUT_DSI) {
 		/* pdata->default_out->type == TEGRA_DC_OUT_DSI */
 		pdata->default_out->n_modes =
@@ -1389,9 +1491,16 @@ struct tegra_dc_platform_data
 		}
 #endif
 	}
-	sd_np = of_find_node_by_name(np, "smartdimmer");
+#ifndef CONFIG_TEGRA_HDMI_PRIMARY
+	if (pdata->default_out->type == TEGRA_DC_OUT_DSI)
+		sd_np = of_find_node_by_path(DC0_SMARTDIMMER);
+	else
+		sd_np = of_find_node_by_path(DC1_SMARTDIMMER);
+#else
+		sd_np = of_find_node_by_path(DC0_SMARTDIMMER);
+#endif
 	if (!sd_np) {
-		pr_warn("%s: could not find SD settings node\n",
+		pr_info("%s: could not find SD settings node\n",
 			__func__);
 	} else {
 		if (of_device_is_available(sd_np)) {
@@ -1410,9 +1519,16 @@ struct tegra_dc_platform_data
 	}
 
 #ifdef CONFIG_TEGRA_DC_CMU
-	cmu_np = of_find_node_by_name(np, "cmu");
+#ifndef CONFIG_TEGRA_HDMI_PRIMARY
+	if (pdata->default_out->type == TEGRA_DC_OUT_DSI)
+		cmu_np = of_find_node_by_path(DC0_CMU);
+	else
+		cmu_np = of_find_node_by_path(DC1_CMU);
+#else
+		cmu_np = of_find_node_by_path(DC0_CMU);
+#endif
 	if (!cmu_np) {
-		pr_warn("%s: could not find cmu node\n",
+		pr_info("%s: could not find cmu node\n",
 			__func__);
 	} else {
 		if (of_device_is_available(cmu_np)) {
@@ -1429,13 +1545,12 @@ struct tegra_dc_platform_data
 	}
 #endif
 
-	temp_pdata = (struct tegra_dc_platform_data *)ndev->dev.platform_data;
-	of_pdata = &(temp_pdata->of_data);
 	if (pdata->default_out->type == TEGRA_DC_OUT_DSI) {
-		np_dsi = of_find_node_by_path("/host1x/dsi");
+		np_dsi = of_find_node_by_path(DSI_NODE);
 
 		if (!np_dsi) {
-			pr_warn("%s: could not find dsi node\n", __func__);
+			pr_err("%s: could not find dsi node\n", __func__);
+			goto fail_parse;
 		} else if (of_device_is_available(np_dsi)) {
 			pdata->default_out->dsi = devm_kzalloc(&ndev->dev,
 				sizeof(struct tegra_dsi_out), GFP_KERNEL);
@@ -1447,7 +1562,7 @@ struct tegra_dc_platform_data
 	} else if (pdata->default_out->type == TEGRA_DC_OUT_HDMI) {
 		bool hotplug_report = false;
 		struct device_node *np_hdmi =
-			of_find_node_by_path("/host1x/hdmi");
+			of_find_node_by_path(HDMI_NODE);
 
 		if (np_hdmi && of_device_is_available(np_hdmi)) {
 				if (!of_property_read_u32(np_hdmi,
@@ -1503,7 +1618,14 @@ struct tegra_dc_platform_data
 			goto fail_parse;
 	}
 
-	fb_np = of_find_node_by_name(np, "framebuffer-data");
+#ifndef CONFIG_TEGRA_HDMI_PRIMARY
+	if (pdata->default_out->type == TEGRA_DC_OUT_DSI)
+		fb_np = of_find_node_by_path(DC0_FRAMEBUFFER_DATA);
+	else
+		fb_np = of_find_node_by_path(DC1_FRAMEBUFFER_DATA);
+#else
+		fb_np = of_find_node_by_path(DC0_FRAMEBUFFER_DATA);
+#endif
 	if (!fb_np) {
 		pr_err("%s: err, No framebuffer-data\n",
 			__func__);
@@ -1532,6 +1654,10 @@ struct tegra_dc_platform_data
 		pdata->cmu_enable = false;
 	}
 #endif
+	if (!of_property_read_u32(np, "nvidia,low-v-win", &temp)) {
+		pdata->low_v_win = (unsigned long)temp;
+		OF_DC_LOG("low_v_win %lu\n", pdata->low_v_win);
+	}
 	return pdata;
 
 fail_parse:

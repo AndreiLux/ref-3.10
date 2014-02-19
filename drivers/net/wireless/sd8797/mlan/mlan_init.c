@@ -385,10 +385,8 @@ wlan_init_priv(pmlan_private priv)
 	priv->addba_reject[7] = ADDBA_RSP_STATUS_REJECT;
 	priv->max_amsdu = 0;
 
-	if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_STA)
-		priv->port_ctrl_mode = MTRUE;
-	else
-		priv->port_ctrl_mode = MFALSE;
+	priv->port_ctrl_mode = MTRUE;
+
 	priv->port_open = MFALSE;
 
 	ret = wlan_add_bsspriotbl(priv);

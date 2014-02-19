@@ -4,7 +4,7 @@
  * Copyright (C) 2010 Google, Inc.
  * Author: Erik Gilling <konkers@android.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -714,6 +714,8 @@ static bool tegra_dc_hdmi_adjust_pixclock(const struct tegra_dc *dc,
 bool tegra_dc_hdmi_mode_filter(const struct tegra_dc *dc,
 					struct fb_videomode *mode)
 {
+	long total_clocks;
+
 #ifndef CONFIG_ARCH_TEGRA_12x_SOC
 	if (mode->vmode & FB_VMODE_INTERLACED)
 		return false;
@@ -757,8 +759,10 @@ bool tegra_dc_hdmi_mode_filter(const struct tegra_dc *dc,
 		return false;
 
 	mode->flag |= FB_MODE_IS_DETAILED;
-	mode->refresh = (PICOS2KHZ(mode->pixclock) * 1000) /
-				tegra_dc_calc_clock_per_frame(mode);
+	total_clocks = tegra_dc_calc_clock_per_frame(mode);
+	mode->refresh = total_clocks ?
+		(PICOS2KHZ(mode->pixclock) * 1000) / total_clocks : 0;
+
 	return true;
 }
 
@@ -856,6 +860,15 @@ static ssize_t hdmi_audio_show(struct device *dev,
 static DEVICE_ATTR(hdmi_audio, S_IRUGO, hdmi_audio_show, NULL);
 #endif
 
+
+static int tegra_dc_hdmi_i2c_xfer(struct tegra_dc *dc, struct i2c_msg *msgs,
+	int num)
+{
+	struct tegra_dc_hdmi_data *hdmi = tegra_dc_get_outdata(dc);
+
+	return i2c_transfer(hdmi->i2c_info.client->adapter, msgs, num);
+}
+
 static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 {
 	struct tegra_dc_hdmi_data *hdmi;
@@ -868,6 +881,7 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	struct clk *disp1_clk = NULL;
 	struct clk *disp2_clk = NULL;
 	struct tegra_hdmi_out *hdmi_out = NULL;
+	struct i2c_adapter *adapter = NULL;
 	int err;
 	struct device_node *np = dc->ndev->dev.of_node;
 #ifdef CONFIG_USE_OF
@@ -961,10 +975,32 @@ static int tegra_dc_hdmi_init(struct tegra_dc *dc)
 	if (hdmi_out)
 		memcpy(&hdmi->info, hdmi_out, sizeof(hdmi->info));
 
-	hdmi->edid = tegra_edid_create(dc->out->dcc_bus);
+	hdmi->edid = tegra_edid_create(dc, tegra_dc_hdmi_i2c_xfer);
 	if (IS_ERR_OR_NULL(hdmi->edid)) {
 		dev_err(&dc->ndev->dev, "hdmi: can't create edid\n");
 		err = PTR_ERR(hdmi->edid);
+		goto err_put_clock;
+	}
+	tegra_dc_set_edid(dc, hdmi->edid);
+
+	adapter = i2c_get_adapter(dc->out->dcc_bus);
+	if (!adapter) {
+		pr_err("can't get adpater for bus %d\n", dc->out->dcc_bus);
+		err = -EBUSY;
+		goto err_put_clock;
+	}
+
+	hdmi->i2c_info.board.addr = 0x50;
+	hdmi->i2c_info.board.platform_data = hdmi;
+	strlcpy(hdmi->i2c_info.board.type, "tegra_hdmi",
+		sizeof(hdmi->i2c_info.board.type));
+
+	hdmi->i2c_info.client = i2c_new_device(adapter, &hdmi->i2c_info.board);
+	i2c_put_adapter(adapter);
+
+	if (!hdmi->i2c_info.client) {
+		pr_err("can't create new device\n");
+		err = -EBUSY;
 		goto err_put_clock;
 	}
 
@@ -1089,6 +1125,8 @@ static void tegra_dc_hdmi_destroy(struct tegra_dc *dc)
 
 	free_irq(gpio_to_irq(dc->out->hotplug_gpio), dc);
 	hdmi_state_machine_shutdown();
+
+	i2c_release_client(hdmi->i2c_info.client);
 #ifdef CONFIG_SWITCH
 	switch_dev_unregister(&hdmi->hpd_switch);
 	switch_dev_unregister(&hdmi->audio_switch);
@@ -1136,7 +1174,10 @@ static void tegra_dc_hdmi_setup_audio_fs_tables(struct tegra_dc *dc)
 		else
 			delta = 9;
 
-		eight_half = (8 * HDMI_AUDIOCLK_FREQ) / (f * 128);
+		if (!f)
+			eight_half = 0;
+		else
+			eight_half = (8 * HDMI_AUDIOCLK_FREQ) / (f * 128);
 		tegra_hdmi_writel(hdmi, AUDIO_FS_LOW(eight_half - delta) |
 				  AUDIO_FS_HIGH(eight_half + delta),
 				  HDMI_NV_PDISP_AUDIO_FS(i));
@@ -1651,6 +1692,10 @@ static void tegra_dc_hdmi_setup_tmds(struct tegra_dc_hdmi_data *hdmi,
 		HDMI_NV_PDISP_SOR_LANE_DRIVE_CURRENT);
 	val = tegra_hdmi_readl(hdmi, HDMI_NV_PDISP_SOR_PAD_CTLS0);
 	val |= DRIVE_CURRENT_FUSE_OVERRIDE_T11x;
+	if (MAJOR(tc->version) >= 1) {
+		val &= tc->pad_ctls0_mask;
+		val |= tc->pad_ctls0_setting;
+	}
 	tegra_hdmi_writel(hdmi, val, HDMI_NV_PDISP_SOR_PAD_CTLS0);
 
 	tegra_hdmi_writel(hdmi, tc->peak_current,
@@ -1965,6 +2010,11 @@ static long tegra_dc_hdmi_setup_clk(struct tegra_dc *dc, struct clk *clk)
 		rate = dc->mode.pclk * 2;
 		while (rate < 400000000)
 			rate *= 2;
+		/* If the rate exceeds the max controller clock, stick with
+		 * rate * 2. Is there a better way to query max clock,
+		 * clk_get_max_rate() is confined to arch/arm/mach-tegra */
+		if (rate > 600000000)
+			rate /= 2;
 	}
 #else
 	rate = dc->mode.pclk * 2;
@@ -1995,26 +2045,6 @@ struct tegra_dc_out_ops tegra_dc_hdmi_ops = {
 	.mode_filter = tegra_dc_hdmi_mode_filter,
 	.setup_clk = tegra_dc_hdmi_setup_clk,
 };
-
-struct tegra_dc_edid *tegra_dc_get_edid(struct tegra_dc *dc)
-{
-	struct tegra_dc_hdmi_data *hdmi;
-
-	/* TODO: Support EDID on non-HDMI devices */
-	if (dc->out->type != TEGRA_DC_OUT_HDMI)
-		return ERR_PTR(-ENODEV);
-
-	hdmi = tegra_dc_get_outdata(dc);
-
-	return tegra_edid_get_data(hdmi->edid);
-}
-EXPORT_SYMBOL(tegra_dc_get_edid);
-
-void tegra_dc_put_edid(struct tegra_dc_edid *edid)
-{
-	tegra_edid_put_data(edid);
-}
-EXPORT_SYMBOL(tegra_dc_put_edid);
 
 struct tegra_dc *tegra_dc_hdmi_get_dc(struct tegra_dc_hdmi_data *hdmi)
 {

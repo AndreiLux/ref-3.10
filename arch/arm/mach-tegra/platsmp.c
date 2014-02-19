@@ -29,6 +29,7 @@
 #include <asm/cputype.h>
 #include <asm/smp_plat.h>
 #include <asm/smp_scu.h>
+#include <asm/fiq_glue.h>
 
 #include "flowctrl.h"
 #include "reset.h"
@@ -92,11 +93,20 @@ static void __init setup_core_count(void)
 	}
 	cpuid = (read_cpuid_id() >> 4) & 0xFFF;
 
+#ifdef CONFIG_ARM64
+	/* Denver ASIM? */
+	if (cpuid == 0xE0F) {
+		/* 30th bit of MPIDR_EL1: 0 => SMP, 1 => UP */
+		__asm__("mrs %0, mpidr_el1\n" : "=r" (l2ctlr));
+		number_of_cores = (l2ctlr & (1 << 30)) ? 2 : 1;
+	}
+#else
 	/* Cortex-A15? */
 	if (cpuid == 0xC0F) {
 		__asm__("mrc p15, 1, %0, c9, c0, 2\n" : "=r" (l2ctlr));
 		number_of_cores = ((l2ctlr >> 24) & 3) + 1;
 	}
+#endif
 	else {
 #endif
 #ifdef CONFIG_HAVE_ARM_SCU
@@ -157,6 +167,9 @@ static void __cpuinit tegra_secondary_init(unsigned int cpu)
 {
 	cpumask_set_cpu(cpu, to_cpumask(tegra_cpu_init_bits));
 	cpumask_set_cpu(cpu, tegra_cpu_power_mask);
+#ifdef CONFIG_TEGRA_FIQ_DEBUGGER
+	fiq_glue_resume();
+#endif
 	if (!tegra_all_cpus_booted)
 		if (cpumask_equal(tegra_cpu_init_mask, cpu_present_mask))
 			tegra_all_cpus_booted = true;

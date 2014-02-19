@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * Description:
  * High-speed USB device controller driver.
@@ -46,7 +46,6 @@
 
 #include <asm/byteorder.h>
 #include <asm/io.h>
-#include <asm/system.h>
 #include <asm/unaligned.h>
 #include <asm/dma.h>
 
@@ -244,8 +243,11 @@ static void done(struct tegra_ep *ep, struct tegra_req *req, int status)
 
 	/* complete() is from gadget layer,
 	 * eg fsg->bulk_in_complete() */
-	if (req->req.complete)
+	if (req->req.complete) {
+		spin_unlock(&ep->udc->lock);
 		req->req.complete(&ep->ep, &req->req);
+		spin_lock(&ep->udc->lock);
+	}
 
 	ep->stopped = stopped;
 }
@@ -1124,7 +1126,8 @@ static int tegra_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 					queue);
 
 			/* Point the QH to the first TD of next request */
-			writel((u32) next_req->head, &qh->curr_dtd_ptr);
+			writel((u32) (uintptr_t) next_req->head,
+					&qh->curr_dtd_ptr);
 		}
 
 		/* The request hasn't been processed, patch up the TD chain */
@@ -1141,7 +1144,7 @@ static int tegra_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 	/* Enable EP */
 out:
 	/* Touch the registers if cable is connected and phy is on */
-	if (udc->vbus_active) {
+	if (udc->vbus_active && ep->desc) {
 		epctrl = udc_readl(udc, EP_CONTROL_REG_OFFSET + (ep_num * 4));
 		if (ep_is_in(ep))
 			epctrl |= EPCTRL_TX_ENABLE;
@@ -1363,7 +1366,7 @@ static void tegra_udc_set_extcon_state(struct tegra_udc *udc)
 	if (udc->prev_connect_type != CONNECT_TYPE_NONE)
 		extcon_set_cable_state(edev, cables[udc->prev_connect_type],
 					false);
-	if (udc->connect_type != CONNECT_TYPE_NONE)
+	if (udc->connect_type != udc->connect_type_lp0)
 		extcon_set_cable_state(edev, cables[udc->connect_type], true);
 }
 #endif
@@ -1459,11 +1462,12 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 			ret = regulator_set_current_limit(udc->vbus_reg,
 								 0, max_ua);
 	}
-	if (!udc->vbus_in_lp0)
-		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
+	if (!udc->vbus_in_lp0) {
 #ifdef CONFIG_EXTCON
-	tegra_udc_set_extcon_state(udc);
+		tegra_udc_set_extcon_state(udc);
 #endif
+		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
+	}
 	return ret;
 }
 
@@ -2638,8 +2642,9 @@ static int tegra_udc_stop(struct usb_gadget *g,
 	udc->gadget.dev.driver = NULL;
 	udc->driver = NULL;
 
-	printk(KERN_WARNING "unregistered gadget driver '%s'\n",
-	       driver->driver.name);
+	if (driver)
+		DBG("%s(%d) unregistered gadget driver '%s'\n",
+			 __func__, __LINE__, driver->driver.name);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
 
@@ -2837,13 +2842,6 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 		goto err_iounmap;
 	}
 
-	err = enable_irq_wake(udc->irq);
-	if (err < 0) {
-		dev_warn(&pdev->dev,
-			"Couldn't enable USB udc mode wakeup, irq=%d, error=%d\n",
-			udc->irq, err);
-		err = 0;
-	}
 	/*Disable fence read if H/W support is disabled*/
 	pdata = dev_get_platdata(&pdev->dev);
 	if (pdata) {
@@ -2960,6 +2958,10 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 		kfree(udc->edev);
 		udc->edev = NULL;
 	}
+
+	if (udc->support_pmu_vbus && pdata->vbus_extcon_dev_name)
+		udc->vbus_extcon_dev =
+			extcon_get_extcon_dev(pdata->vbus_extcon_dev_name);
 #endif
 
 	/* Create work for controlling clocks to the phy if otg is disabled */
@@ -3081,16 +3083,32 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 	unsigned long flags;
 	u32 temp;
 
+	int err = 0;
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
-	temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
-	if (temp & USB_SYS_VBUS_STATUS)
-		udc->vbus_in_lp0 = true;
+	if (udc->support_pmu_vbus) {
+#ifdef CONFIG_EXTCON
+		if (extcon_get_cable_state(udc->vbus_extcon_dev, "USB"))
+			udc->vbus_in_lp0 = true;
+#endif
+	} else {
+		temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
+		if (temp & USB_SYS_VBUS_STATUS)
+			udc->vbus_in_lp0 = true;
+	}
 	udc->connect_type_lp0 = udc->connect_type;
 
 	/* If the controller is in otg mode, return */
 	if (udc->transceiver)
-			return 0;
+		return 0;
+
+	if (udc->irq) {
+		err = enable_irq_wake(udc->irq);
+		if (err < 0)
+			dev_err(&pdev->dev,
+			"Couldn't enable USB udc mode wakeup,"
+			" irq=%d, error=%d\n", udc->irq, err);
+	}
 
 	if (udc->vbus_active) {
 		spin_lock_irqsave(&udc->lock, flags);
@@ -3102,8 +3120,6 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 	}
 	/* Stop the controller and turn off the clocks */
 	dr_controller_stop(udc);
-	if (udc->transceiver)
-		udc->transceiver->state = OTG_STATE_UNDEFINED;
 
 	tegra_usb_phy_power_off(udc->phy);
 
@@ -3116,21 +3132,43 @@ static int tegra_udc_resume(struct platform_device *pdev)
 	struct tegra_udc *udc = platform_get_drvdata(pdev);
 	u32 temp;
 
+	int err = 0;
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
 	udc->vbus_in_lp0 = false;
 
 	/* Set Current limit to 0 if charger is disconnected in LP0 */
-	temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
-	if ((udc->connect_type_lp0 != CONNECT_TYPE_NONE)
-			&& !(temp & USB_SYS_VBUS_STATUS)) {
-		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
-		if (udc->vbus_reg != NULL)
-			regulator_set_current_limit(udc->vbus_reg, 0, 0);
+	if (udc->vbus_reg != NULL) {
+		if (udc->support_pmu_vbus) {
+#ifdef CONFIG_EXTCON
+			if ((udc->connect_type_lp0 != CONNECT_TYPE_NONE) &&
+			!extcon_get_cable_state(udc->vbus_extcon_dev, "USB")) {
+				udc->connect_type_lp0 = CONNECT_TYPE_NONE;
+				regulator_set_current_limit(udc->vbus_reg,
+									 0, 0);
+			}
+#endif
+		} else {
+			temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
+			if ((udc->connect_type_lp0 != CONNECT_TYPE_NONE) &&
+					!(temp & USB_SYS_VBUS_STATUS)) {
+				udc->connect_type_lp0 = CONNECT_TYPE_NONE;
+				regulator_set_current_limit(udc->vbus_reg,
+									 0, 0);
+			}
+		}
 	}
 
 	if (udc->transceiver)
 		return 0;
+
+	if (udc->irq) {
+		err = disable_irq_wake(udc->irq);
+		if (err < 0)
+			dev_err(&pdev->dev,
+				"Couldn't disable USB udc mode wakeup, "
+				"irq=%d, error=%d\n", udc->irq, err);
+	}
 
 	tegra_usb_phy_power_on(udc->phy);
 	tegra_udc_restart(udc);

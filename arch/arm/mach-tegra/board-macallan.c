@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-macallan.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -45,7 +45,6 @@
 #include <linux/leds.h>
 #include <linux/i2c/at24.h>
 #include <linux/of_platform.h>
-#include <linux/edp.h>
 #include <linux/clk/tegra.h>
 #include <linux/tegra-soc.h>
 #include <linux/clocksource.h>
@@ -76,6 +75,7 @@
 #include "pm.h"
 #include "common.h"
 #include "tegra-board-id.h"
+#include "tegra-of-dev-auxdata.h"
 
 static struct board_info board_info, display_board_info;
 
@@ -160,39 +160,6 @@ static __initdata struct tegra_clk_init_table macallan_clk_init_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
-#ifndef CONFIG_USE_OF
-static struct tegra_i2c_platform_data macallan_i2c1_platform_data = {
-	.bus_clk_rate	= 100000,
-	.scl_gpio	= TEGRA_GPIO_I2C1_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C1_SDA,
-};
-
-static struct tegra_i2c_platform_data macallan_i2c2_platform_data = {
-	.bus_clk_rate	= 100000,
-	.is_clkon_always = true,
-	.scl_gpio	= TEGRA_GPIO_I2C2_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C2_SDA,
-};
-
-static struct tegra_i2c_platform_data macallan_i2c3_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C3_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C3_SDA,
-};
-
-static struct tegra_i2c_platform_data macallan_i2c4_platform_data = {
-	.bus_clk_rate	= 10000,
-	.scl_gpio	= TEGRA_GPIO_I2C4_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C4_SDA,
-};
-
-static struct tegra_i2c_platform_data macallan_i2c5_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C5_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C5_SDA,
-};
-#endif
-
 static struct i2c_board_info __initdata rt5640_board_info = {
 	I2C_BOARD_INFO("rt5640", 0x1c),
 };
@@ -210,20 +177,6 @@ static struct i2c_board_info __initdata nfc_board_info = {
 
 static void macallan_i2c_init(void)
 {
-#ifndef CONFIG_USE_OF
-	tegra11_i2c_device1.dev.platform_data = &macallan_i2c1_platform_data;
-	tegra11_i2c_device2.dev.platform_data = &macallan_i2c2_platform_data;
-	tegra11_i2c_device3.dev.platform_data = &macallan_i2c3_platform_data;
-	tegra11_i2c_device4.dev.platform_data = &macallan_i2c4_platform_data;
-	tegra11_i2c_device5.dev.platform_data = &macallan_i2c5_platform_data;
-
-	platform_device_register(&tegra11_i2c_device5);
-	platform_device_register(&tegra11_i2c_device4);
-	platform_device_register(&tegra11_i2c_device3);
-	platform_device_register(&tegra11_i2c_device2);
-	platform_device_register(&tegra11_i2c_device1);
-#endif
-
 	nfc_board_info.irq = gpio_to_irq(TEGRA_GPIO_PW2);
 	i2c_register_board_info(0, &nfc_board_info, 1);
 	i2c_register_board_info(0, &rt5640_board_info, 1);
@@ -342,6 +295,7 @@ static struct tegra_usb_platform_data tegra_udc_pdata = {
 	.id_det_type = TEGRA_USB_PMU_ID,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_DEVICE,
+	.vbus_extcon_dev_name = "palmas-extcon",
 	.u_data.dev = {
 		.vbus_pmu_irq = 0,
 		.vbus_gpio = -1,
@@ -369,6 +323,8 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 	.unaligned_dma_buf_supported = false,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
+	.vbus_extcon_dev_name = "palmas-extcon",
+	.id_extcon_dev_name = "palmas-extcon",
 	.u_data.host = {
 		.vbus_gpio = -1,
 		.hot_plug = false,
@@ -392,8 +348,6 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
-	.vbus_extcon_dev_name = "palmas-extcon",
-	.id_extcon_dev_name = "palmas-extcon",
 };
 
 static void macallan_usb_init(void)
@@ -497,24 +451,6 @@ static void macallan_audio_init(void)
 }
 
 
-static struct platform_device *macallan_spi_devices[] __initdata = {
-	&tegra11_spi_device1,
-};
-
-static struct tegra_spi_platform_data macallan_spi_pdata = {
-	.spi_max_frequency	= 25000000,
-	.is_clkon_always	= false,
-};
-
-static void __init macallan_spi_init(void)
-{
-	macallan_spi_pdata.dma_req_sel = (tegra_revision == TEGRA_REVISION_A01)
-							? 0 : 15 ;
-	tegra11_spi_device1.dev.platform_data = &macallan_spi_pdata;
-	platform_add_devices(macallan_spi_devices,
-				ARRAY_SIZE(macallan_spi_devices));
-}
-
 static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	/* name         parent          rate            enabled */
 	{ "extern2",    "pll_p",        41000000,       false},
@@ -588,24 +524,17 @@ struct of_dev_auxdata macallan_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-tsec", TEGRA_TSEC_BASE, "tsec",
 				NULL),
-
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c000, "tegra11-i2c.0",
+	T114_I2C_OF_DEV_AUXDATA,
+	T114_SPI_OF_DEV_AUXDATA,
+	OF_DEV_AUXDATA("nvidia,tegra114-nvavp", 0x60001000, "nvavp",
 				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c400, "tegra11-i2c.1",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c500, "tegra11-i2c.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c700, "tegra11-i2c.3",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000d000, "tegra11-i2c.4",
-				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
 
 static void __init tegra_macallan_early_init(void)
 {
-	macallan_sysedp_init();
 	tegra_clk_init_from_table(macallan_clk_init_table);
 	tegra_clk_verify_parents();
 	tegra_soc_device_init("macallan");
@@ -614,15 +543,11 @@ static void __init tegra_macallan_early_init(void)
 
 static void __init tegra_macallan_late_init(void)
 {
-	platform_device_register(&tegra114_pinctrl_device);
-	macallan_pinmux_init();
 	macallan_i2c_init();
-	macallan_spi_init();
 	macallan_usb_init();
 	macallan_uart_init();
 	macallan_audio_init();
 	platform_add_devices(macallan_devices, ARRAY_SIZE(macallan_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	macallan_regulator_init();
 	macallan_sdhci_init();
@@ -646,13 +571,6 @@ static void __init tegra_macallan_late_init(void)
 	macallan_sensors_init();
 	macallan_soctherm_init();
 	tegra_register_fuse();
-	macallan_sysedp_core_init();
-	macallan_sysedp_psydepl_init();
-}
-
-static void __init macallan_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 
 static void __init tegra_macallan_dt_init(void)
@@ -681,7 +599,6 @@ static void __init tegra_macallan_reserve(void)
 #else
 	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_16M + SZ_2M);
 #endif
-	macallan_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const macallan_dt_board_compat[] = {

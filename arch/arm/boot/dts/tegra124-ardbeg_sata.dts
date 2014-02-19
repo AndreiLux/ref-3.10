@@ -1,6 +1,7 @@
 /dts-v1/;
 
 #include "tegra124.dtsi"
+#include "tegra124-platforms/tegra124-e1780-powermon.dtsi"
 #include "tegra124-platforms/tegra124-e1780-gpio-default.dtsi"
 #include "tegra124-platforms/tegra124-e1780-pinmux.dtsi"
 
@@ -26,9 +27,9 @@
 			dap_mclk1_req_pee2 {
 				nvidia,pins = "dap_mclk1_req_pee2";
 				nvidia,function = "sata";
-				nvidia,enable-input = <TEGRA_PIN_OUTPUT>;
-				nvidia,pull = <TEGRA_PIN_PUPD_NORMAL>;
-				nvidia,tristate = <TEGRA_PIN_NORMAL>;
+				nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+				nvidia,pull = <TEGRA_PIN_PULL_NONE>;
+				nvidia,tristate = <TEGRA_PIN_DISABLE>;
 			};
 		};
 
@@ -36,7 +37,7 @@
 		pinmux_suspend: pins_on_suspend {
 			dap_mclk1_req_pee2 {
 				nvidia,pins = "dap_mclk1_req_pee2";
-				nvidia,pull = <TEGRA_PIN_PUPD_PULL_UP>;
+				nvidia,pull = <TEGRA_PIN_PULL_UP>;
 			};
 		};
 	};
@@ -61,35 +62,8 @@
 		reg = <0x80000000 0x80000000>;
 	};
 
-	i2c@7000c000 {
-		status = "okay";
-		clock-frequency = <100000>;
-	};
-
-	i2c@7000c400 {
-		status = "okay";
-		clock-frequency = <100000>;
-	};
-
-	i2c@7000c500 {
-		status = "okay";
-		clock-frequency = <400000>;
-	};
-
-	i2c@7000c700 {
-		status = "okay";
-		clock-frequency = <100000>;
-	};
-
 	i2c@7000d000 {
-		status = "okay";
-		clock-frequency = <400000>;
 		nvidia,bit-banging-xfer-after-shutdown;
-	};
-
-	i2c@7000d100 {
-		status = "okay";
-		clock-frequency = <400000>;
 	};
 
 	spi@7000d400 {

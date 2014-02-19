@@ -1,7 +1,7 @@
 /*
  * drivers/video/tegra/dc/dsi_debug.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2013-2014 NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -147,7 +147,7 @@ static const struct file_operations dbg_fops = {
 static u32 max_ret_payload_size;
 static u32 panel_reg_addr;
 
-static ssize_t read_panel_get(struct seq_file *s, void *unused)
+static int read_panel_get(struct seq_file *s, void *unused)
 {
 	struct tegra_dc_dsi_data *dsi = s->private;
 	struct tegra_dc *dc = dsi->dc;
@@ -267,10 +267,17 @@ static int panel_sanity_check(struct seq_file *s, void *unused)
 {
 	struct tegra_dc_dsi_data *dsi = s->private;
 	struct tegra_dc *dc = dsi->dc;
-	int err;
+	struct sanity_status *san = NULL;
+	int err = 0;
+
+	san = devm_kzalloc(&dc->ndev->dev, sizeof(*san), GFP_KERNEL);
+	if (!san) {
+		dev_info(&dc->ndev->dev, "No memory available\n");
+		return err;
+	}
 
 	tegra_dsi_enable_read_debug(dsi);
-	err = tegra_dsi_panel_sanity_check(dc, dsi);
+	err = tegra_dsi_panel_sanity_check(dc, dsi, san);
 	tegra_dsi_disable_read_debug(dsi);
 
 	if (err < 0)

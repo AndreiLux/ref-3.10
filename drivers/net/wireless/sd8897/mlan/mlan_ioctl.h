@@ -2,7 +2,7 @@
  *
  *  @brief This file declares the IOCTL data structures and APIs.
  *
- *  (C) Copyright 2008-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2008-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -416,6 +416,10 @@ typedef struct _mlan_scan_resp {
 	t_u8 *pscan_table;
 	/* Age in seconds */
 	t_u32 age_in_secs;
+    /** channel statstics */
+	t_u8 *pchan_stats;
+    /** Number of records in the chan_stats */
+	t_u32 num_in_chan_stats;
 } mlan_scan_resp, *pmlan_scan_resp;
 
 /** Type definition of mlan_scan_cfg */
@@ -1536,6 +1540,8 @@ typedef struct _mlan_debug_info {
 	t_u32 mlan_processing;
     /** mlan_rx_processing */
 	t_u32 mlan_rx_processing;
+    /** rx pkts queued */
+	t_u32 rx_pkts_queued;
     /** mlan_adapter pointer */
 	t_void *mlan_adapter;
     /** mlan_adapter_size */
@@ -1970,7 +1976,7 @@ typedef struct _mlan_ds_power_cfg {
 /** Host sleep config conditions: Default */
 #define HOST_SLEEP_DEF_COND     (HOST_SLEEP_COND_BROADCAST_DATA | HOST_SLEEP_COND_UNICAST_DATA | HOST_SLEEP_COND_MAC_EVENT)
 /** Host sleep config GPIO : Default */
-#define HOST_SLEEP_DEF_GPIO     0x10
+#define HOST_SLEEP_DEF_GPIO     0x08
 /** Host sleep config gap : Default */
 #define HOST_SLEEP_DEF_GAP      100
 /** Host sleep config min wake holdoff */
@@ -2701,6 +2707,10 @@ typedef struct _mlan_ds_11ac_vht_cfg {
 	t_u32 vht_tx_mcs;
     /** VHT Rx mcs */
 	t_u32 vht_rx_mcs;
+    /** VHT rx max rate */
+	t_u16 vht_rx_max_rate;
+    /** VHT max tx rate */
+	t_u16 vht_tx_max_rate;
 } mlan_ds_11ac_vht_cfg, *pmlan_ds_11ac_vht_cfg;
 
 /** Type definition of mlan_ds_11ac_cfg for MLAN_IOCTL_11AC_CFG */

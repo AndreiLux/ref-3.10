@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2012, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -159,6 +159,8 @@ struct notifier_block;
 int tegra_dvfs_get_freqs(struct clk *c, unsigned long **freqs, int *num_freqs);
 int tegra_dvfs_set_rate(struct clk *c, unsigned long rate);
 int tegra_dvfs_override_core_voltage(struct clk *c, int override_mv);
+int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate);
+int tegra_dvfs_set_fmax_at_vmin(struct clk *c, unsigned long f_max, int v_min);
 unsigned long clk_get_rate_all_locked(struct clk *c);
 int tegra_dvfs_rail_disable_by_name(const char *reg_id);
 int tegra_register_clk_rate_notifier(struct clk *c, struct notifier_block *nb);
@@ -188,13 +190,22 @@ struct tegra_clk_export_ops {
 int tegra_clk_register_export_ops(struct clk *c,
 				  struct tegra_clk_export_ops *ops);
 
+struct clk *tegra_get_clock_by_name(const char *name);
 
 #ifdef CONFIG_TEGRA_CLOCK_DEBUG_FUNC
 int tegra_clk_set_max(struct clk *c, unsigned long rate);
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+void tegra_gbus_round_pass_thru_enable(bool enable);
+#else
+static inline void tegra_gbus_round_pass_thru_enable(bool enable)
+{}
+#endif
 #else
 static inline int tegra_clk_set_max(struct clk *c, unsigned long rate) {
 	return -ENOSYS;
 }
+static inline void tegra_gbus_round_pass_thru_enable(bool enable)
+{}
 #endif
 
 #endif

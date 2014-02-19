@@ -1,7 +1,7 @@
 /*
  * drivers/video/tegra/dc/dp.h
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -18,6 +18,7 @@
 #define __DRIVER_VIDEO_TEGRA_DC_DP_H__
 
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include "sor.h"
 #include "dc_priv.h"
 #include "dpaux_regs.h"
@@ -233,6 +234,7 @@ struct tegra_dc_dp_data {
 	struct resource			*aux_base_res;
 	void __iomem			*aux_base;
 	struct clk			*clk;	/* dpaux clock */
+	struct clk			*parent_clk; /* pll_dp clock */
 
 	struct work_struct		 lt_work;
 	u8				 revision;
@@ -243,9 +245,13 @@ struct tegra_dc_dp_data {
 	bool				 enabled;
 	bool				 suspended;
 
+	struct tegra_edid		*dp_edid;
 	struct completion		hpd_plug;
+	struct completion		aux_tx;
 
 	struct tegra_dp_out		*pdata;
+
+	struct mutex			dpaux_lock;
 };
 
 static inline u32 tegra_dp_wait_aux_training(struct tegra_dc_dp_data *dp,
@@ -259,6 +265,11 @@ static inline u32 tegra_dp_wait_aux_training(struct tegra_dc_dp_data *dp,
 
 	return dp->link_cfg.aux_rd_interval;
 }
+
+int tegra_dc_dpaux_read(struct tegra_dc_dp_data *dp, u32 cmd, u32 addr,
+	u8 *data, u32 *size, u32 *aux_stat);
+int tegra_dc_dpaux_write(struct tegra_dc_dp_data *dp, u32 cmd, u32 addr,
+	u8 *data, u32 *size, u32 *aux_stat);
 
 /* DPCD definitions */
 #define NV_DPCD_REV					(0x00000000)
@@ -288,6 +299,7 @@ static inline u32 tegra_dp_wait_aux_training(struct tegra_dc_dp_data *dp,
 #define NV_DPCD_EDP_CONFIG_CAP_ASC_RESET_YES		(0x00000001)
 #define NV_DPCD_EDP_CONFIG_CAP_FRAMING_CHANGE_NO	(0x00000000 << 1)
 #define NV_DPCD_EDP_CONFIG_CAP_FRAMING_CHANGE_YES	(0x00000001 << 1)
+#define NV_DPCD_EDP_CONFIG_CAP_DISPLAY_CONTROL_CAP_YES	(0x00000001 << 3)
 #define NV_DPCD_TRAINING_AUX_RD_INTERVAL		(0x0000000E)
 #define NV_DPCD_LINK_BANDWIDTH_SET			(0x00000100)
 #define NV_DPCD_LANE_COUNT_SET				(0x00000101)

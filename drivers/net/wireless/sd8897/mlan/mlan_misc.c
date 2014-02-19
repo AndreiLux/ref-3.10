@@ -3,7 +3,7 @@
  *
  *  @brief This file include Miscellaneous functions for MLAN module
  *
- *  (C) Copyright 2009-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2009-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -608,7 +608,10 @@ wlan_get_info_debug_info(IN pmlan_adapter pmadapter,
 #endif
 		debug_info->mlan_processing = pmadapter->mlan_processing;
 		debug_info->mlan_rx_processing = pmadapter->mlan_rx_processing;
-
+		debug_info->rx_pkts_queued =
+			util_scalar_read(pmadapter->pmoal_handle,
+					 &pmadapter->rx_pkts_queued, MNULL,
+					 MNULL);
 		debug_info->mlan_adapter = pmadapter;
 		debug_info->mlan_adapter_size = sizeof(mlan_adapter);
 		debug_info->mlan_priv_num = pmadapter->priv_num;

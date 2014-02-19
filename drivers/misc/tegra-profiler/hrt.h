@@ -1,7 +1,7 @@
 /*
  * drivers/misc/tegra-profiler/hrt.h
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -26,8 +26,6 @@
 
 #include "backtrace.h"
 
-#define QUADD_USE_CORRECT_SAMPLE_TS	1
-
 struct quadd_thread_data {
 	pid_t pid;
 	pid_t tgid;
@@ -41,11 +39,6 @@ struct quadd_cpu_context {
 
 	struct quadd_thread_data active_thread;
 	atomic_t nr_active;
-
-#ifdef QUADD_USE_CORRECT_SAMPLE_TS
-	u64 prev_time;
-	u64 current_time;
-#endif
 };
 
 struct quadd_hrt_ctx {
@@ -72,6 +65,7 @@ struct quadd_hrt_ctx {
 struct quadd_hrt_ctx;
 struct quadd_record_data;
 struct quadd_module_state;
+struct quadd_iovec;
 
 struct quadd_hrt_ctx *quadd_hrt_init(struct quadd_ctx *ctx);
 void quadd_hrt_deinit(void);
@@ -80,7 +74,7 @@ int quadd_hrt_start(void);
 void quadd_hrt_stop(void);
 
 void quadd_put_sample(struct quadd_record_data *data,
-		      char *extra_data, unsigned int extra_length);
+		      struct quadd_iovec *vec, int vec_count);
 
 void quadd_hrt_get_state(struct quadd_module_state *state);
 u64 quadd_get_time(void);

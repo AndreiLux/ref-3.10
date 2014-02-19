@@ -4,7 +4,7 @@
  * Copyright (C) 2010 Google, Inc.
  * Author: Erik Gilling <konkers@android.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -37,7 +37,6 @@
 #include <mach/isomgr.h>
 
 #include "dc_reg.h"
-
 
 #define NEED_UPDATE_EMC_ON_EVERY_FRAME (windows_idle_detection_time == 0)
 
@@ -110,12 +109,18 @@ struct tegra_dc_out_ops {
 	/* callback after new mode is programmed.
 	 * dc clocks are on at this point */
 	void (*modeset_notifier)(struct tegra_dc *dc);
+	/* enable output before dc is fully enabled in order to get
+	 * info such as panel mode for dc enablement.
+	 */
+	bool (*early_enable)(struct tegra_dc *dc);
 };
 
 struct tegra_dc_shift_clk_div {
 	unsigned long mul; /* numerator */
 	unsigned long div; /* denominator */
 };
+
+struct tegra_dc_nvsr_data;
 
 struct tegra_dc {
 	struct platform_device		*ndev;
@@ -227,6 +232,9 @@ struct tegra_dc {
 
 	int				win_blank_saved_flag;
 	struct tegra_dc_win		win_blank_saved;
+	struct tegra_edid		*edid;
+
+	struct tegra_dc_nvsr_data *nvsr;
 };
 
 #endif

@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-pluto-sensors.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -98,8 +98,6 @@ static struct nvc_torch_lumi_level_v1 pluto_max77665_lumi_tbl[] = {
 	{15, 1375060},
 };
 
-static unsigned max77665_f_estates[] = { 3500, 2375, 560, 456, 0 };
-
 static struct max77665_f_platform_data pluto_max77665_flash_pdata = {
 	.config		= {
 		.led_mask		= 3,
@@ -137,12 +135,6 @@ static struct max77665_f_platform_data pluto_max77665_flash_pdata = {
 		},
 	.dev_name	= "torch",
 	.gpio_strobe	= CAM_FLASH_STROBE,
-	.edpc_config	= {
-		.states = max77665_f_estates,
-		.num_states = ARRAY_SIZE(max77665_f_estates),
-		.e0_index = ARRAY_SIZE(max77665_f_estates) - 1,
-		.priority = EDP_MAX_PRIO + 2,
-		},
 };
 
 static struct max77665_haptic_platform_data max77665_haptic_pdata = {
@@ -159,7 +151,6 @@ static struct max77665_haptic_platform_data max77665_haptic_pdata = {
 	.cont_mode = MAX77665_CONT_MODE,
 	.motor_startup_val = 0,
 	.scf_val = 2,
-	.edp_states = { 360, 0 },
 };
 
 static struct max77665_charger_cable maxim_cable[] = {
@@ -334,27 +325,37 @@ module_init(pluto_throttle_init);
 
 static struct nct1008_platform_data pluto_nct1008_pdata = {
 	.supported_hwrev = true,
-	.ext_range = true,
+	.extended_range = true,
 	.conv_rate = 0x06, /* 4Hz conversion rate */
-	.offset = 0,
-	.shutdown_ext_limit = 105, /* C */
-	.shutdown_local_limit = 120, /* C */
 
-	.num_trips = 1,
-	.trips = {
-		{
-			.cdev_type = "suspend_soctherm",
-			.trip_temp = 50000,
-			.trip_type = THERMAL_TRIP_ACTIVE,
-			.upper = 1,
-			.lower = 1,
-			.hysteresis = 5000,
+	.sensors = {
+		[LOC] = {
+			.shutdown_limit = 120, /* C */
+			.num_trips = 0,
+			.tzp = NULL,
 		},
-	},
-
+		[EXT] = {
+			.shutdown_limit = 105, /* C */
+			.num_trips = 1,
+			.tzp = NULL,
+			.trips = {
+				{
+					.cdev_type = "suspend_soctherm",
+					.trip_temp = 50000,
+					.trip_type = THERMAL_TRIP_ACTIVE,
+					.upper = 1,
+					.lower = 1,
+					.hysteresis = 5000,
+					.mask = 1,
+				},
+			},
 #ifdef CONFIG_TEGRA_LP1_LOW_COREVOLTAGE
-	.suspend_ext_limit_hi = 25000,
-	.suspend_ext_limit_lo = 20000,
+			.suspend_limit_hi = 25000,
+			.suspend_limit_lo = 20000,
+#endif
+		}
+	},
+#ifdef CONFIG_TEGRA_LP1_LOW_COREVOLTAGE
 	.suspend_with_wakeup = tegra_is_lp1_suspend_mode,
 #endif
 };
@@ -576,8 +577,6 @@ static struct nvc_imager_cap imx091_cap = {
 	.cap_version		= NVC_IMAGER_CAPABILITIES_VERSION2,
 };
 
-static unsigned imx091_estates[] = { 876, 656, 220, 0 };
-
 static struct imx091_platform_data imx091_pdata = {
 	.num			= 0,
 	.sync			= 0,
@@ -589,12 +588,6 @@ static struct imx091_platform_data imx091_pdata = {
 		.adjustable_flash_timing = 1,
 	},
 	.cap			= &imx091_cap,
-	.edpc_config	= {
-		.states = imx091_estates,
-		.num_states = ARRAY_SIZE(imx091_estates),
-		.e0_index = ARRAY_SIZE(imx091_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-		},
 	.power_on		= pluto_imx091_power_on,
 	.power_off		= pluto_imx091_power_off,
 };
@@ -808,8 +801,8 @@ static int pluto_nct1008_init(void)
 			board_info.board_id);
 	}
 
-	tegra_add_all_vmin_trips(pluto_nct1008_pdata.trips,
-				&pluto_nct1008_pdata.num_trips);
+	tegra_add_all_vmin_trips(pluto_nct1008_pdata.sensors[EXT].trips,
+				&pluto_nct1008_pdata.sensors[EXT].num_trips);
 
 	pluto_i2c4_nct1008_board_info[0].irq =
 		gpio_to_irq(nct1008_port);

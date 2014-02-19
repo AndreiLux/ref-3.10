@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-ardbeg-sensors.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -23,7 +23,6 @@
 #include <linux/err.h>
 #include <linux/nct1008.h>
 #include <linux/pid_thermal_gov.h>
-#include <linux/power/sbs-battery.h>
 #include <linux/tegra-fuse.h>
 #include <mach/edp.h>
 #include <mach/pinmux-t12.h>
@@ -44,6 +43,7 @@
 #include <media/soc_camera.h>
 #include <media/soc_camera_platform.h>
 #include <media/tegra_v4l2_camera.h>
+#include <linux/generic_adc_thermal.h>
 
 #include "cpu-tegra.h"
 #include "devices.h"
@@ -338,15 +338,7 @@ static int ardbeg_ar0261_power_off(struct ar0261_power_rail *pw)
 	return 0;
 }
 
-static unsigned ar0261_estates[] = { 302, 0 };
-
 struct ar0261_platform_data ardbeg_ar0261_data = {
-	.edpc_config = {
-		.states = ar0261_estates,
-		.num_states = ARRAY_SIZE(ar0261_estates),
-		.e0_index = ARRAY_SIZE(ar0261_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.power_on = ardbeg_ar0261_power_on,
 	.power_off = ardbeg_ar0261_power_off,
 	.mclk_name = "mclk2",
@@ -460,15 +452,7 @@ static int ardbeg_imx135_power_off(struct imx135_power_rail *pw)
 	return 0;
 }
 
-static unsigned imx135_estates[] = { 486, 0 };
-
 struct imx135_platform_data ardbeg_imx135_data = {
-	.edpc_config = {
-		.states = imx135_estates,
-		.num_states = ARRAY_SIZE(imx135_estates),
-		.e0_index = ARRAY_SIZE(imx135_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.flash_cap = {
 		.enable = 1,
 		.edge_trig_en = 1,
@@ -549,44 +533,6 @@ static struct dw9718_platform_data ardbeg_dw9718_data = {
 	.detect = ardbeg_dw9718_detect,
 };
 
-/* estate values under 1000/200/0/0mA, 3.5V input */
-static unsigned max77387_estates[] = {3500, 710, 0};
-
-static struct max77387_platform_data ardbeg_max77387_pdata = {
-	.config		= {
-		.led_mask		= 3,
-		.flash_trigger_mode	= 1,
-		/* use ONE-SHOOT flash mode - flash triggered at the
-		 * raising edge of strobe or strobe signal.
-		*/
-		.flash_mode		= 1,
-		.def_ftimer		= 0x24,
-		.max_total_current_mA	= 1000,
-		.max_peak_current_mA	= 600,
-		.led_config[0]	= {
-			.flash_torch_ratio	= 18100,
-			.granularity		= 1000,
-			.flash_levels		= 0,
-			.lumi_levels	= NULL,
-			},
-		.led_config[1]	= {
-			.flash_torch_ratio	= 18100,
-			.granularity		= 1000,
-			.flash_levels		= 0,
-			.lumi_levels		= NULL,
-			},
-		},
-	.cfg		= 0,
-	.dev_name	= "torch",
-	.gpio_strobe	= CAM_FLASH_STROBE,
-	.edpc_config	= {
-		.states		= max77387_estates,
-		.num_states	= ARRAY_SIZE(max77387_estates),
-		.e0_index	= ARRAY_SIZE(max77387_estates) - 1,
-		.priority	= EDP_MAX_PRIO + 2,
-		},
-};
-
 static struct as364x_platform_data ardbeg_as3648_data = {
 	.config		= {
 		.led_mask	= 3,
@@ -612,6 +558,9 @@ static int ardbeg_ov7695_power_on(struct ov7695_power_rail *pw)
 	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd)))
 		return -EFAULT;
 
+	/* disable CSIE IOs DPD mode to turn on front camera for ardbeg */
+	tegra_io_dpd_disable(&csie_io);
+
 	gpio_set_value(CAM2_PWDN, 0);
 	usleep_range(1000, 1020);
 
@@ -634,15 +583,21 @@ ov7695_iovdd_fail:
 	regulator_disable(pw->avdd);
 
 ov7695_avdd_fail:
-
 	gpio_set_value(CAM_RSTN, 0);
+	/* put CSIE IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csie_io);
 	return -ENODEV;
 }
 
 static int ardbeg_ov7695_power_off(struct ov7695_power_rail *pw)
 {
-	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd)))
+	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd))) {
+		/* put CSIE IOs into DPD mode to
+		 * save additional power for ardbeg
+		 */
+		tegra_io_dpd_enable(&csie_io);
 		return -EFAULT;
+	}
 	usleep_range(100, 120);
 
 	gpio_set_value(CAM2_PWDN, 0);
@@ -652,6 +607,9 @@ static int ardbeg_ov7695_power_off(struct ov7695_power_rail *pw)
 	usleep_range(100, 120);
 
 	regulator_disable(pw->avdd);
+
+	/* put CSIE IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csie_io);
 	return 0;
 }
 
@@ -666,6 +624,9 @@ static int ardbeg_mt9m114_power_on(struct mt9m114_power_rail *pw)
 	int err;
 	if (unlikely(!pw || !pw->avdd || !pw->iovdd))
 		return -EFAULT;
+
+	/* disable CSIE IOs DPD mode to turn on front camera for ardbeg */
+	tegra_io_dpd_disable(&csie_io);
 
 	gpio_set_value(CAM_RSTN, 0);
 	gpio_set_value(CAM2_PWDN, 1);
@@ -692,13 +653,20 @@ mt9m114_avdd_fail:
 
 mt9m114_iovdd_fail:
 	gpio_set_value(CAM_RSTN, 0);
+	/* put CSIE IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csie_io);
 	return -ENODEV;
 }
 
 static int ardbeg_mt9m114_power_off(struct mt9m114_power_rail *pw)
 {
-	if (unlikely(!pw || !pw->avdd || !pw->iovdd))
+	if (unlikely(!pw || !pw->avdd || !pw->iovdd)) {
+		/* put CSIE IOs into DPD mode to
+		 * save additional power for ardbeg
+		 */
+		tegra_io_dpd_enable(&csie_io);
 		return -EFAULT;
+	}
 
 	usleep_range(100, 120);
 	gpio_set_value(CAM_RSTN, 0);
@@ -707,18 +675,12 @@ static int ardbeg_mt9m114_power_off(struct mt9m114_power_rail *pw)
 	usleep_range(100, 120);
 	regulator_disable(pw->iovdd);
 
+	/* put CSIE IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csie_io);
 	return 1;
 }
 
-static unsigned mt9m114_estates[] = { 150, 0 };
-
 struct mt9m114_platform_data ardbeg_mt9m114_pdata = {
-	.edpc_config = {
-		.states = mt9m114_estates,
-		.num_states = ARRAY_SIZE(mt9m114_estates),
-		.e0_index = ARRAY_SIZE(mt9m114_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.power_on = ardbeg_mt9m114_power_on,
 	.power_off = ardbeg_mt9m114_power_off,
 	.mclk_name = "mclk2",
@@ -731,6 +693,10 @@ static int ardbeg_ov5693_power_on(struct ov5693_power_rail *pw)
 
 	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd)))
 		return -EFAULT;
+
+	/* disable CSIA/B IOs DPD mode to turn on camera for ardbeg */
+	tegra_io_dpd_disable(&csia_io);
+	tegra_io_dpd_disable(&csib_io);
 
 	if (ardbeg_get_extra_regulators())
 		goto ov5693_poweron_fail;
@@ -767,14 +733,23 @@ ov5693_avdd_fail:
 	gpio_set_value(CAM1_PWDN, 0);
 
 ov5693_poweron_fail:
+	/* put CSIA/B IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
 	pr_err("%s FAILED\n", __func__);
 	return -ENODEV;
 }
 
 static int ardbeg_ov5693_power_off(struct ov5693_power_rail *pw)
 {
-	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd)))
+	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd))) {
+		/* put CSIA/B IOs into DPD mode to
+		 * save additional power for ardbeg
+		 */
+		tegra_io_dpd_enable(&csia_io);
+		tegra_io_dpd_enable(&csib_io);
 		return -EFAULT;
+	}
 
 	usleep_range(21, 25);
 	gpio_set_value(CAM1_PWDN, 0);
@@ -784,22 +759,17 @@ static int ardbeg_ov5693_power_off(struct ov5693_power_rail *pw)
 	regulator_disable(pw->dovdd);
 	regulator_disable(pw->avdd);
 
+	/* put CSIA/B IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
 	return 0;
 }
 
 static struct nvc_gpio_pdata ov5693_gpio_pdata[] = {
-	{ OV5693_GPIO_TYPE_PWRDN, CAM_RSTN, true, 0, },
+	{ OV5693_GPIO_TYPE_PWRDN, CAM1_PWDN, true, 0, },
 };
 
-static unsigned ov5693_estates[] = { 300, 0 };
-
 static struct ov5693_platform_data ardbeg_ov5693_pdata = {
-	.edpc_config = {
-		.states = ov5693_estates,
-		.num_states = ARRAY_SIZE(ov5693_estates),
-		.e0_index = ARRAY_SIZE(ov5693_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.gpio_count	= ARRAY_SIZE(ov5693_gpio_pdata),
 	.gpio		= ov5693_gpio_pdata,
 	.power_on	= ardbeg_ov5693_power_on,
@@ -812,6 +782,7 @@ static int ardbeg_ad5823_power_on(struct ad5823_platform_data *pdata)
 
 	pr_info("%s\n", __func__);
 	gpio_set_value_cansleep(pdata->gpio, 1);
+	pdata->pwr_dev = AD5823_PWR_DEV_ON;
 
 	return err;
 }
@@ -820,6 +791,7 @@ static int ardbeg_ad5823_power_off(struct ad5823_platform_data *pdata)
 {
 	pr_info("%s\n", __func__);
 	gpio_set_value_cansleep(pdata->gpio, 0);
+	pdata->pwr_dev = AD5823_PWR_DEV_OFF;
 
 	return 0;
 }
@@ -870,11 +842,6 @@ static struct i2c_board_info	ardbeg_i2c_board_info_as3648 = {
 		.platform_data = &ardbeg_as3648_data,
 };
 
-static struct i2c_board_info	ardbeg_i2c_board_info_max77387 = {
-	I2C_BOARD_INFO("max77387", 0x4A),
-	.platform_data = &ardbeg_max77387_pdata,
-};
-
 static struct camera_module ardbeg_camera_module_info[] = {
 	/* E1823 camera board */
 	{
@@ -920,16 +887,23 @@ static struct platform_device ardbeg_camera_generic = {
 
 static int ardbeg_camera_init(void)
 {
-	pr_debug("%s: ++\n", __func__);
+	struct board_info board_info;
 
-	if (!of_machine_is_compatible("nvidia,tn8")) {
-		/* put CSIA/B/E IOs into DPD mode to
-		 * save additional power for ardbeg
-		 */
-		tegra_io_dpd_enable(&csia_io);
-		tegra_io_dpd_enable(&csib_io);
-		tegra_io_dpd_enable(&csie_io);
+	pr_debug("%s: ++\n", __func__);
+	tegra_get_board_info(&board_info);
+
+	/* bug 1443481: TN8 FFD/FFF does not support flash device */
+	if (of_machine_is_compatible("nvidia,tn8") &&
+		(board_info.board_id == BOARD_P1761)) {
+		ardbeg_camera_module_info[2].flash = NULL;
 	}
+
+	/* put CSIA/B/E IOs into DPD mode to
+	 * save additional power for ardbeg
+	 */
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
+	tegra_io_dpd_enable(&csie_io);
 
 	platform_device_add_data(&ardbeg_camera_generic,
 		&ardbeg_pcl_pdata, sizeof(ardbeg_pcl_pdata));
@@ -956,6 +930,10 @@ static struct pid_thermal_gov_params cpu_pid_params = {
 static struct thermal_zone_params cpu_tzp = {
 	.governor_name = "pid_thermal_gov",
 	.governor_params = &cpu_pid_params,
+};
+
+static struct thermal_zone_params therm_est_activ_tzp = {
+	.governor_name = "step_wise"
 };
 
 static struct throttle_table cpu_throttle_table[] = {
@@ -1191,6 +1169,29 @@ static struct therm_est_subdevice skin_devs[] = {
 	},
 };
 
+static struct therm_est_subdevice tn8ffd_skin_devs[] = {
+	{
+		.dev_data = "Tdiode",
+		.coeffs = {
+			3, 0, 0, 0,
+			1, 0, -1, 0,
+			1, 0, 0, 1,
+			1, 0, 0, 0,
+			0, 1, 2, 2
+		},
+	},
+	{
+		.dev_data = "Tboard",
+		.coeffs = {
+			1, 1, 2, 8,
+			6, -8, -13, -9,
+			-9, -8, -17, -18,
+			-18, -16, 2, 17,
+			15, 27, 42, 60
+		},
+	},
+};
+
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
 	.max_err_gain = 1000,
@@ -1210,13 +1211,10 @@ static struct thermal_zone_params skin_tzp = {
 static struct therm_est_data skin_data = {
 	.num_trips = ARRAY_SIZE(skin_trips),
 	.trips = skin_trips,
-	.toffset = 9793,
 	.polling_period = 1100,
 	.passive_delay = 15000,
 	.tc1 = 10,
 	.tc2 = 1,
-	.ndevs = ARRAY_SIZE(skin_devs),
-	.devs = skin_devs,
 	.tzp = &skin_tzp,
 };
 
@@ -1315,8 +1313,26 @@ static struct balanced_throttle skin_throttle = {
 
 static int __init ardbeg_skin_init(void)
 {
+	struct board_info board_info;
+
+	tegra_get_board_info(&board_info);
+
 	if (of_machine_is_compatible("nvidia,ardbeg") ||
 		of_machine_is_compatible("nvidia,tn8")) {
+		if (board_info.board_id == BOARD_P1761 ||
+			board_info.board_id == BOARD_E1784 ||
+			board_info.board_id == BOARD_E1922) {
+			skin_data.ndevs = ARRAY_SIZE(tn8ffd_skin_devs);
+			skin_data.devs = tn8ffd_skin_devs;
+			skin_data.toffset = 4034;
+			skin_data.use_activator = 0;
+		} else {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs);
+			skin_data.devs = skin_devs;
+			skin_data.toffset = 9793;
+			skin_data.use_activator = 1;
+		}
+
 		balanced_throttle_register(&skin_throttle, "skin-balanced");
 		tegra_skin_therm_est_device.dev.platform_data = &skin_data;
 		platform_device_register(&tegra_skin_therm_est_device);
@@ -1328,35 +1344,55 @@ late_initcall(ardbeg_skin_init);
 
 static struct nct1008_platform_data ardbeg_nct72_pdata = {
 	.loc_name = "tegra",
-
 	.supported_hwrev = true,
-	.ext_range = true,
 	.conv_rate = 0x06, /* 4Hz conversion rate */
 	.offset = 0,
-	.shutdown_ext_limit = 95, /* C */
-	.shutdown_local_limit = 120, /* C */
+	.extended_range = true,
 
-	.passive_delay = 1000,
-	.tzp = &cpu_tzp,
-
-	.num_trips = 2,
-	.trips = {
-		{
-			.cdev_type = "shutdown_warning",
-			.trip_temp = 93000,
-			.trip_type = THERMAL_TRIP_PASSIVE,
-			.upper = THERMAL_NO_LIMIT,
-			.lower = THERMAL_NO_LIMIT,
+	.sensors = {
+		[LOC] = {
+			.tzp = &therm_est_activ_tzp,
+			.shutdown_limit = 120, /* C */
+			.passive_delay = 1000,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "therm_est_activ",
+					.trip_temp = 26000,
+					.trip_type = THERMAL_TRIP_ACTIVE,
+					.hysteresis = 1000,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.mask = 1,
+				},
+			},
 		},
-		{
-			.cdev_type = "cpu-balanced",
-			.trip_temp = 83000,
-			.trip_type = THERMAL_TRIP_PASSIVE,
-			.upper = THERMAL_NO_LIMIT,
-			.lower = THERMAL_NO_LIMIT,
-			.hysteresis = 1000,
-		},
-	},
+		[EXT] = {
+			.tzp = &cpu_tzp,
+			.shutdown_limit = 95, /* C */
+			.passive_delay = 1000,
+			.num_trips = 2,
+			.trips = {
+				{
+					.cdev_type = "shutdown_warning",
+					.trip_temp = 93000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.mask = 0,
+				},
+				{
+					.cdev_type = "cpu-balanced",
+					.trip_temp = 83000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.hysteresis = 1000,
+					.mask = 1,
+				},
+			}
+		}
+	}
 };
 
 #ifdef CONFIG_TEGRA_SKIN_THROTTLE
@@ -1364,26 +1400,34 @@ static struct nct1008_platform_data ardbeg_nct72_tskin_pdata = {
 	.loc_name = "skin",
 
 	.supported_hwrev = true,
-	.ext_range = true,
 	.conv_rate = 0x06, /* 4Hz conversion rate */
 	.offset = 0,
-	.shutdown_ext_limit = 85, /* C */
-	.shutdown_local_limit = 120, /* C */
+	.extended_range = true,
 
-	.passive_delay = 10000,
-	.polling_delay = 1000,
-	.tzp = &skin_tzp,
-
-	.num_trips = 1,
-	.trips = {
-		{
-			.cdev_type = "skin-balanced",
-			.trip_temp = 50000,
-			.trip_type = THERMAL_TRIP_PASSIVE,
-			.upper = THERMAL_NO_LIMIT,
-			.lower = THERMAL_NO_LIMIT,
+	.sensors = {
+		[LOC] = {
+			.shutdown_limit = 95, /* C */
+			.num_trips = 0,
+			.tzp = NULL,
 		},
-	},
+		[EXT] = {
+			.shutdown_limit = 85, /* C */
+			.passive_delay = 10000,
+			.polling_delay = 1000,
+			.tzp = &skin_tzp,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "skin-balanced",
+					.trip_temp = 50000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.mask = 1,
+				},
+			},
+		}
+	}
 };
 #endif
 
@@ -1424,9 +1468,10 @@ static int ardbeg_nct72_init(void)
 	/* raise NCT's thresholds if soctherm CP,FT fuses are ok */
 	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
 	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
-		ardbeg_nct72_pdata.shutdown_ext_limit += 20;
-		for (i = 0; i < ardbeg_nct72_pdata.num_trips; i++) {
-			trip_state = &ardbeg_nct72_pdata.trips[i];
+		ardbeg_nct72_pdata.sensors[EXT].shutdown_limit += 20;
+		for (i = 0; i < ardbeg_nct72_pdata.sensors[EXT].num_trips;
+			 i++) {
+			trip_state = &ardbeg_nct72_pdata.sensors[EXT].trips[i];
 			if (!strncmp(trip_state->cdev_type, "cpu-balanced",
 					THERMAL_NAME_LENGTH)) {
 				trip_state->cdev_type = "_none_";
@@ -1434,23 +1479,26 @@ static int ardbeg_nct72_init(void)
 			}
 		}
 	} else {
-		tegra_platform_edp_init(ardbeg_nct72_pdata.trips,
-					&ardbeg_nct72_pdata.num_trips,
+		tegra_platform_edp_init(
+			ardbeg_nct72_pdata.sensors[EXT].trips,
+			&ardbeg_nct72_pdata.sensors[EXT].num_trips,
 					12000); /* edp temperature margin */
-		tegra_add_cpu_vmax_trips(ardbeg_nct72_pdata.trips,
-				&ardbeg_nct72_pdata.num_trips);
-		tegra_add_core_edp_trips(ardbeg_nct72_pdata.trips,
-				&ardbeg_nct72_pdata.num_trips);
-		tegra_add_tgpu_trips(ardbeg_nct72_pdata.trips,
-				     &ardbeg_nct72_pdata.num_trips);
-		tegra_add_vc_trips(ardbeg_nct72_pdata.trips,
-				     &ardbeg_nct72_pdata.num_trips);
-		tegra_add_core_vmax_trips(ardbeg_nct72_pdata.trips,
-				     &ardbeg_nct72_pdata.num_trips);
+		tegra_add_cpu_vmax_trips(
+			ardbeg_nct72_pdata.sensors[EXT].trips,
+			&ardbeg_nct72_pdata.sensors[EXT].num_trips);
+		tegra_add_tgpu_trips(
+			ardbeg_nct72_pdata.sensors[EXT].trips,
+			&ardbeg_nct72_pdata.sensors[EXT].num_trips);
+		tegra_add_vc_trips(
+			ardbeg_nct72_pdata.sensors[EXT].trips,
+			&ardbeg_nct72_pdata.sensors[EXT].num_trips);
+		tegra_add_core_vmax_trips(
+			ardbeg_nct72_pdata.sensors[EXT].trips,
+			&ardbeg_nct72_pdata.sensors[EXT].num_trips);
 	}
 
-	tegra_add_all_vmin_trips(ardbeg_nct72_pdata.trips,
-				&ardbeg_nct72_pdata.num_trips);
+	tegra_add_all_vmin_trips(ardbeg_nct72_pdata.sensors[EXT].trips,
+		&ardbeg_nct72_pdata.sensors[EXT].num_trips);
 
 	ardbeg_i2c_nct72_board_info[0].irq = gpio_to_irq(nct72_port);
 
@@ -1479,38 +1527,175 @@ static int ardbeg_nct72_init(void)
 	return ret;
 }
 
-static struct sbs_platform_data sbs_pdata = {
-	.poll_retry_count	= 100,
-	.i2c_retry_count	= 2,
+struct ntc_thermistor_adc_table {
+	int temp; /* degree C */
+	int adc;
 };
 
-static struct i2c_board_info __initdata bq20z45_pdata[] = {
-	{
-		I2C_BOARD_INFO("sbs-battery", 0x0B),
-		.platform_data = &sbs_pdata,
+static struct ntc_thermistor_adc_table tn8_thermistor_table[] = {
+	{ -40, 2578 }, { -39, 2577 }, { -38, 2576 }, { -37, 2575 },
+	{ -36, 2574 }, { -35, 2573 }, { -34, 2572 }, { -33, 2571 },
+	{ -32, 2569 }, { -31, 2568 }, { -30, 2567 }, { -29, 2565 },
+	{ -28, 2563 }, { -27, 2561 }, { -26, 2559 }, { -25, 2557 },
+	{ -24, 2555 }, { -23, 2553 }, { -22, 2550 }, { -21, 2548 },
+	{ -20, 2545 }, { -19, 2542 }, { -18, 2539 }, { -17, 2536 },
+	{ -16, 2532 }, { -15, 2529 }, { -14, 2525 }, { -13, 2521 },
+	{ -12, 2517 }, { -11, 2512 }, { -10, 2507 }, {  -9, 2502 },
+	{  -8, 2497 }, {  -7, 2492 }, {  -6, 2486 }, {  -5, 2480 },
+	{  -4, 2473 }, {  -3, 2467 }, {  -2, 2460 }, {  -1, 2452 },
+	{   0, 2445 }, {   1, 2437 }, {   2, 2428 }, {   3, 2419 },
+	{   4, 2410 }, {   5, 2401 }, {   6, 2391 }, {   7, 2380 },
+	{   8, 2369 }, {   9, 2358 }, {  10, 2346 }, {  11, 2334 },
+	{  12, 2322 }, {  13, 2308 }, {  14, 2295 }, {  15, 2281 },
+	{  16, 2266 }, {  17, 2251 }, {  18, 2236 }, {  19, 2219 },
+	{  20, 2203 }, {  21, 2186 }, {  22, 2168 }, {  23, 2150 },
+	{  24, 2131 }, {  25, 2112 }, {  26, 2092 }, {  27, 2072 },
+	{  28, 2052 }, {  29, 2030 }, {  30, 2009 }, {  31, 1987 },
+	{  32, 1964 }, {  33, 1941 }, {  34, 1918 }, {  35, 1894 },
+	{  36, 1870 }, {  37, 1845 }, {  38, 1820 }, {  39, 1795 },
+	{  40, 1769 }, {  41, 1743 }, {  42, 1717 }, {  43, 1691 },
+	{  44, 1664 }, {  45, 1637 }, {  46, 1610 }, {  47, 1583 },
+	{  48, 1555 }, {  49, 1528 }, {  50, 1500 }, {  51, 1472 },
+	{  52, 1445 }, {  53, 1417 }, {  54, 1390 }, {  55, 1362 },
+	{  56, 1334 }, {  57, 1307 }, {  58, 1280 }, {  59, 1253 },
+	{  60, 1226 }, {  61, 1199 }, {  62, 1172 }, {  63, 1146 },
+	{  64, 1120 }, {  65, 1094 }, {  66, 1069 }, {  67, 1044 },
+	{  68, 1019 }, {  69,  994 }, {  70,  970 }, {  71,  946 },
+	{  72,  922 }, {  73,  899 }, {  74,  877 }, {  75,  854 },
+	{  76,  832 }, {  77,  811 }, {  78,  789 }, {  79,  769 },
+	{  80,  748 }, {  81,  729 }, {  82,  709 }, {  83,  690 },
+	{  84,  671 }, {  85,  653 }, {  86,  635 }, {  87,  618 },
+	{  88,  601 }, {  89,  584 }, {  90,  568 }, {  91,  552 },
+	{  92,  537 }, {  93,  522 }, {  94,  507 }, {  95,  493 },
+	{  96,  479 }, {  97,  465 }, {  98,  452 }, {  99,  439 },
+	{ 100,  427 }, { 101,  415 }, { 102,  403 }, { 103,  391 },
+	{ 104,  380 }, { 105,  369 }, { 106,  359 }, { 107,  349 },
+	{ 108,  339 }, { 109,  329 }, { 110,  320 }, { 111,  310 },
+	{ 112,  302 }, { 113,  293 }, { 114,  285 }, { 115,  277 },
+	{ 116,  269 }, { 117,  261 }, { 118,  254 }, { 119,  247 },
+	{ 120,  240 }, { 121,  233 }, { 122,  226 }, { 123,  220 },
+	{ 124,  214 }, { 125,  208 },
+};
+
+static struct ntc_thermistor_adc_table *thermistor_table;
+static int thermistor_table_size;
+
+static int gadc_thermal_thermistor_adc_to_temp(
+		struct gadc_thermal_platform_data *pdata, int val, int val2)
+{
+	int temp = 0, adc_hi, adc_lo;
+	int i;
+
+	for (i = 0; i < thermistor_table_size; i++)
+		if (val >= thermistor_table[i].adc)
+			break;
+
+	if (i == 0) {
+		temp = thermistor_table[i].temp * 1000;
+	} else if (i >= (thermistor_table_size - 1)) {
+		temp = thermistor_table[thermistor_table_size - 1].temp * 1000;
+	} else {
+		adc_hi = thermistor_table[i - 1].adc;
+		adc_lo = thermistor_table[i].adc;
+		temp = thermistor_table[i].temp * 1000;
+		temp -= ((val - adc_lo) * 1000 / (adc_hi - adc_lo));
+	}
+
+	return temp;
+};
+
+#define TDIODE_PRECISION_MULTIPLIER	1000000000LL
+#define TDIODE_MIN_TEMP			-25000LL
+#define TDIODE_MAX_TEMP			125000LL
+
+static int gadc_thermal_tdiode_adc_to_temp(
+		struct gadc_thermal_platform_data *pdata, int val, int val2)
+{
+	/*
+	 * Series resistance cancellation using multi-current ADC measurement.
+	 * diode temp = ((adc2 - k * adc1) - (b2 - k * b1)) / (m2 - k * m1)
+	 * - adc1 : ADC raw with current source 400uA
+	 * - m1, b1 : calculated with current source 400uA
+	 * - adc2 : ADC raw with current source 800uA
+	 * - m2, b2 : calculated with current source 800uA
+	 * - k : 2 (= 800uA / 400uA)
+	 */
+	const s64 m1 = -0.00571005 * TDIODE_PRECISION_MULTIPLIER;
+	const s64 b1 = 2524.29891 * TDIODE_PRECISION_MULTIPLIER;
+	const s64 m2 = -0.005519811 * TDIODE_PRECISION_MULTIPLIER;
+	const s64 b2 = 2579.354349 * TDIODE_PRECISION_MULTIPLIER;
+	s64 temp = TDIODE_PRECISION_MULTIPLIER;
+
+	temp *= (s64)((val2) - 2 * (val));
+	temp -= (b2 - 2 * b1);
+	temp = div64_s64(temp, (m2 - 2 * m1));
+	temp = min_t(s64, max_t(s64, temp, TDIODE_MIN_TEMP), TDIODE_MAX_TEMP);
+	return temp;
+};
+
+static struct gadc_thermal_platform_data gadc_thermal_thermistor_pdata = {
+	.iio_channel_name = "thermistor",
+	.tz_name = "Tboard",
+	.temp_offset = 0,
+	.adc_to_temp = gadc_thermal_thermistor_adc_to_temp,
+};
+
+static struct gadc_thermal_platform_data gadc_thermal_tdiode_pdata = {
+	.iio_channel_name = "tdiode",
+	.tz_name = "Tdiode",
+	.temp_offset = 0,
+	.dual_mode = true,
+	.adc_to_temp = gadc_thermal_tdiode_adc_to_temp,
+};
+
+static struct platform_device gadc_thermal_thermistor = {
+	.name   = "generic-adc-thermal",
+	.id     = 1,
+	.dev	= {
+		.platform_data = &gadc_thermal_thermistor_pdata,
 	},
+};
+
+static struct platform_device gadc_thermal_tdiode = {
+	.name   = "generic-adc-thermal",
+	.id     = 2,
+	.dev	= {
+		.platform_data = &gadc_thermal_tdiode_pdata,
+	},
+};
+
+static struct platform_device *gadc_thermal_devices[] = {
+	&gadc_thermal_thermistor,
+	&gadc_thermal_tdiode,
 };
 
 int __init ardbeg_sensors_init(void)
 {
 	struct board_info board_info;
 	tegra_get_board_info(&board_info);
-	/* PM363 don't have mpu 9250 mounted */
+	/* PM363 and PM359 don't have mpu 9250 mounted */
 	/* TN8 sensors use Device Tree */
 	if (board_info.board_id != BOARD_PM363 &&
+		board_info.board_id != BOARD_PM359 &&
 		!of_machine_is_compatible("nvidia,tn8"))
 		mpuirq_init();
 	ardbeg_camera_init();
-	ardbeg_nct72_init();
 
-	/* TN8 don't have ALS CM32181 */
-	if (!of_machine_is_compatible("nvidia,tn8"))
+	if (board_info.board_id == BOARD_P1761 ||
+		board_info.board_id == BOARD_E1784 ||
+		board_info.board_id == BOARD_E1922) {
+		platform_add_devices(gadc_thermal_devices,
+				ARRAY_SIZE(gadc_thermal_devices));
+		thermistor_table = &tn8_thermistor_table[0];
+		thermistor_table_size = ARRAY_SIZE(tn8_thermistor_table);
+	} else
+		ardbeg_nct72_init();
+
+	/* TN8 and PM359 don't have ALS CM32181 */
+	if (!of_machine_is_compatible("nvidia,tn8") &&
+	    board_info.board_id != BOARD_PM359)
 		i2c_register_board_info(0, ardbeg_i2c_board_info_cm32181,
 			ARRAY_SIZE(ardbeg_i2c_board_info_cm32181));
-
-	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY)
-		i2c_register_board_info(1, bq20z45_pdata,
-			ARRAY_SIZE(bq20z45_pdata));
 
 	return 0;
 }

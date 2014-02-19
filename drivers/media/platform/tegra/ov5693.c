@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -47,6 +47,7 @@
 #define OV5693_LENS_VIEW_ANGLE_H	60000	/* _INT2FLOAT_DIVISOR */
 #define OV5693_LENS_VIEW_ANGLE_V	60000	/* _INT2FLOAT_DIVISOR */
 #define OV5693_OTP_BUF_SIZE		16
+#define OV5693_FUSE_ID_SIZE		8
 
 static struct nvc_gpio_init ov5693_gpio[] = {
 	{ OV5693_GPIO_TYPE_PWRDN, GPIOF_OUT_INIT_LOW, "pwrdn", false, true, },
@@ -73,8 +74,6 @@ struct ov5693_info {
 	struct regmap *regmap;
 	struct regulator *ext_vcm_vdd;
 	struct ov5693_cal_data cal;
-	struct edp_client *edpc;
-	unsigned int edp_state;
 	struct sysedp_consumer *sysedpc;
 	char devname[16];
 	struct ov5693_eeprom_data eeprom[OV5693_EEPROM_NUM_BLOCKS];
@@ -2136,95 +2135,6 @@ static const struct ov5693_reg *mode_table[] = {
 	[OV5693_MODE_1280x720_HDR_60FPS] = ov5693_1280x720_HDR_60fps_i2c,
 };
 
-static void ov5693_edp_lowest(struct ov5693_info *info)
-{
-	if (!info->edpc)
-		return;
-
-	info->edp_state = info->edpc->num_states - 1;
-	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, info->edp_state);
-	if (edp_update_client_request(info->edpc, info->edp_state, NULL)) {
-		dev_err(&info->i2c_client->dev, "THIS IS NOT LIKELY TO HAPPEN!\n");
-		dev_err(&info->i2c_client->dev,
-			"UNABLE TO SET LOWEST EDP STATE!\n");
-	}
-}
-
-static void ov5693_edp_throttle(unsigned int new_state, void *priv_data)
-{
-	struct ov5693_info *info = priv_data;
-
-	if (info->pdata && info->pdata->power_off)
-		info->pdata->power_off(&info->regulators);
-}
-
-static void ov5693_edp_register(struct ov5693_info *info)
-{
-	struct edp_manager *edp_manager;
-	struct edp_client *edpc = &info->pdata->edpc_config;
-	int ret;
-
-	info->edpc = NULL;
-	if (!edpc->num_states) {
-		dev_warn(&info->i2c_client->dev,
-			"%s: No edp states defined.\n", __func__);
-		return;
-	}
-
-	strncpy(edpc->name, "ov5693", EDP_NAME_LEN - 1);
-	edpc->name[EDP_NAME_LEN - 1] = 0;
-	edpc->private_data = info;
-	edpc->throttle = ov5693_edp_throttle;
-
-	dev_dbg(&info->i2c_client->dev, "%s: %s, e0 = %d, p %d\n",
-		__func__, edpc->name, edpc->e0_index, edpc->priority);
-	for (ret = 0; ret < edpc->num_states; ret++)
-		dev_dbg(&info->i2c_client->dev, "e%d = %d mA",
-			ret - edpc->e0_index, edpc->states[ret]);
-
-	edp_manager = edp_get_manager("battery");
-	if (!edp_manager) {
-		dev_err(&info->i2c_client->dev,
-			"unable to get edp manager: battery\n");
-		return;
-	}
-
-	ret = edp_register_client(edp_manager, edpc);
-	if (ret) {
-		dev_err(&info->i2c_client->dev,
-			"unable to register edp client\n");
-		return;
-	}
-
-	info->edpc = edpc;
-	/* set to lowest state at init */
-	ov5693_edp_lowest(info);
-}
-
-static int ov5693_edp_req(struct ov5693_info *info, unsigned new_state)
-{
-	unsigned approved;
-	int ret = 0;
-
-	if (!info->edpc)
-		return 0;
-
-	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, new_state);
-	ret = edp_update_client_request(info->edpc, new_state, &approved);
-	if (ret) {
-		dev_err(&info->i2c_client->dev, "E state transition failed\n");
-		return ret;
-	}
-
-	if (approved > new_state) {
-		dev_err(&info->i2c_client->dev, "EDP no enough current\n");
-		return -ENODEV;
-	}
-
-	info->edp_state = approved;
-	return 0;
-}
-
 static int ov5693_i2c_rd8(struct ov5693_info *info, u16 reg, u8 *val)
 {
 	unsigned int data;
@@ -2730,9 +2640,7 @@ static int ov5693_power_off(struct ov5693_info *info)
 		if (0 > err)
 			return err;
 		info->power_on = false;
-		ov5693_gpio_pwrdn(info, 1);
 		ov5693_mclk_disable(info);
-		ov5693_edp_lowest(info);
 		sysedp_set_state(info->sysedpc, 0);
 	} else {
 		dev_err(&info->i2c_client->dev,
@@ -2756,11 +2664,8 @@ static int ov5693_power_on(struct ov5693_info *info, bool standby)
 
 	if (info->pdata && info->pdata->power_on) {
 		err = info->pdata->power_on(pw);
-		if (err >= 0) {
+		if (err >= 0)
 			info->power_on = true;
-			ov5693_gpio_pwrdn(info, standby ? 1 : 0);
-			msleep(100);
-		}
 	} else {
 		dev_err(&info->i2c_client->dev,
 			"%s ERR: has no power_on function\n", __func__);
@@ -2951,12 +2856,6 @@ static int ov5693_set_mode(struct ov5693_info *info,
 	}
 
 	/* request highest edp state */
-	err = ov5693_edp_req(info, 0);
-	if (err) {
-		dev_err(&info->i2c_client->dev,
-			"%s: ERROR cannot set edp state! %d\n", __func__, err);
-		return err;
-	}
 	sysedp_set_state(info->sysedpc, 1);
 
 	if (!info->mode_valid || (info->mode_index != mode_index))
@@ -3007,11 +2906,16 @@ ov5693_mode_wr_err:
 
 static int ov5693_get_fuse_id(struct ov5693_info *info)
 {
-	ov5693_i2c_rd8(info, 0x300A, &info->fuseid.data[0]);
-	ov5693_i2c_rd8(info, 0x300B, &info->fuseid.data[1]);
-	info->fuseid.size = 2;
-	dev_dbg(&info->i2c_client->dev, "ov5693 fuse_id: %x,%x\n",
-		info->fuseid.data[0], info->fuseid.data[1]);
+	int i;
+	regmap_write(info->regmap, 0x3D84, 0xC0);
+	regmap_write(info->regmap, 0x3D81, 0x40);
+	for (i = 0; i < OV5693_FUSE_ID_SIZE; i++) {
+		ov5693_i2c_rd8(info, 0x3D00 + i, &info->fuseid.data[i]);
+		dev_dbg(&info->i2c_client->dev, "ov5693 fuse_id byte %d:\t0x%0x\n",
+				i, info->fuseid.data[i]);
+	}
+	info->fuseid.size = OV5693_FUSE_ID_SIZE;
+
 	return 0;
 }
 
@@ -3117,8 +3021,8 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	struct ov5693_info *info = file->private_data;
 	int err;
 
-	switch (cmd) {
-	case OV5693_IOCTL_SET_MODE:
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(OV5693_IOCTL_SET_MODE):
 	{
 		struct ov5693_mode mode;
 		if (copy_from_user(&mode,
@@ -3131,7 +3035,7 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		return ov5693_set_mode(info, &mode);
 	}
-	case OV5693_IOCTL_GET_STATUS: {
+	case _IOC_NR(OV5693_IOCTL_GET_STATUS): {
 		u8 status = 0;
 		if (copy_to_user((void __user *)arg, &status, sizeof(status))) {
 			dev_err(&info->i2c_client->dev,
@@ -3142,7 +3046,7 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 		}
 
-	case OV5693_IOCTL_SET_GROUP_HOLD: {
+	case _IOC_NR(OV5693_IOCTL_SET_GROUP_HOLD): {
 		struct ov5693_ae ae;
 		if (copy_from_user(&ae, (const void __user *)arg,
 				sizeof(struct ov5693_ae))) {
@@ -3154,14 +3058,14 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return ov5693_set_group_hold(info, &ae);
 		}
 
-	case OV5693_IOCTL_SET_FRAME_LENGTH:
+	case _IOC_NR(OV5693_IOCTL_SET_FRAME_LENGTH):
 		return ov5693_set_frame_length(info, (u32)arg, true);
 
-	case OV5693_IOCTL_SET_COARSE_TIME:
+	case _IOC_NR(OV5693_IOCTL_SET_COARSE_TIME):
 		return ov5693_set_coarse_time(info, (u32)arg,
 					OV5693_INVALID_COARSE_TIME, true);
 
-	case OV5693_IOCTL_SET_HDR_COARSE_TIME:
+	case _IOC_NR(OV5693_IOCTL_SET_HDR_COARSE_TIME):
 	{
 		struct ov5693_hdr *hdrcoarse = (struct ov5693_hdr *)arg;
 		int ret = ov5693_set_coarse_time(info,
@@ -3171,10 +3075,10 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return ret;
 	}
 
-	case OV5693_IOCTL_SET_GAIN:
+	case _IOC_NR(OV5693_IOCTL_SET_GAIN):
 		return ov5693_set_gain(info, (u32)arg, true);
 
-	case OV5693_IOCTL_GET_FUSEID:
+	case _IOC_NR(OV5693_IOCTL_GET_FUSEID):
 	{
 		err = ov5693_get_fuse_id(info);
 
@@ -3193,7 +3097,7 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 
-	case OV5693_IOCTL_READ_OTP_BANK:
+	case _IOC_NR(OV5693_IOCTL_READ_OTP_BANK):
 	{
 		struct ov5693_otp_bank bank;
 		if (copy_from_user(&bank,
@@ -3220,7 +3124,7 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 
-	case OV5693_IOCTL_SET_CAL_DATA:
+	case _IOC_NR(OV5693_IOCTL_SET_CAL_DATA):
 	{
 		if (copy_from_user(&info->cal, (const void __user *)arg,
 					sizeof(info->cal))) {
@@ -3232,7 +3136,7 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return 0;
 	}
 
-	case OV5693_IOCTL_GET_EEPROM_DATA:
+	case _IOC_NR(OV5693_IOCTL_GET_EEPROM_DATA):
 		{
 			ov5693_read_eeprom(info,
 				0,
@@ -3249,7 +3153,7 @@ static long ov5693_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		}
 		return 0;
 
-	case OV5693_IOCTL_SET_EEPROM_DATA:
+	case _IOC_NR(OV5693_IOCTL_SET_EEPROM_DATA):
 		{
 			int i;
 			if (copy_from_user(info->eeprom_buf,
@@ -3321,6 +3225,9 @@ static const struct file_operations ov5693_fileops = {
 	.owner = THIS_MODULE,
 	.open = ov5693_open,
 	.unlocked_ioctl = ov5693_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = ov5693_ioctl,
+#endif
 	.release = ov5693_release,
 };
 
@@ -3361,7 +3268,7 @@ static int ov5693_platform_power_on(struct ov5693_power_rail *pw)
 			goto ov5693_vcm_fail;
 	}
 
-	ov5693_gpio_wr(info, OV5693_GPIO_TYPE_PWRDN, 0);
+	ov5693_gpio_pwrdn(info, 0);
 	usleep_range(10, 20);
 
 	err = regulator_enable(pw->avdd);
@@ -3373,7 +3280,7 @@ static int ov5693_platform_power_on(struct ov5693_power_rail *pw)
 		goto ov5693_iovdd_fail;
 
 	usleep_range(1, 2);
-	ov5693_gpio_wr(info, OV5693_GPIO_TYPE_PWRDN, 1);
+	ov5693_gpio_pwrdn(info, 1);
 
 	usleep_range(300, 310);
 
@@ -3397,7 +3304,7 @@ static int ov5693_platform_power_off(struct ov5693_power_rail *pw)
 						regulators);
 
 	usleep_range(21, 25);
-	ov5693_gpio_wr(info, OV5693_GPIO_TYPE_PWRDN, 0);
+	ov5693_gpio_pwrdn(info, 0);
 	usleep_range(1, 2);
 
 	regulator_disable(pw->dovdd);
@@ -3550,7 +3457,6 @@ static int ov5693_probe(
 	if (!info->regulators.avdd || !info->regulators.dovdd)
 		return -EFAULT;
 
-	ov5693_edp_register(info);
 	info->sysedpc = sysedp_create_consumer("ov5693", "ov5693");
 
 	ov5693_sdata_init(info);

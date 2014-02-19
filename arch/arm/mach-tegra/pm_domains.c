@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/pm_domains.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION. All rights reserved.
  *
  *
  * This software is licensed under the terms of the GNU General Public
@@ -175,60 +175,6 @@ static int tegra_mc_clk_power_on(struct generic_pm_domain *genpd)
 	return 0;
 }
 
-static void suspend_devices_in_domain(struct generic_pm_domain *genpd)
-{
-	struct pm_domain_data *pdd;
-	struct device *dev;
-
-	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
-		dev = pdd->dev;
-
-		if (dev->pm_domain && dev->pm_domain->ops.suspend)
-			dev->pm_domain->ops.suspend(dev);
-	}
-}
-
-static void resume_devices_in_domain(struct generic_pm_domain *genpd)
-{
-	struct pm_domain_data *pdd;
-	struct device *dev;
-
-	list_for_each_entry(pdd, &genpd->dev_list, list_node) {
-		dev = pdd->dev;
-
-		if (dev->pm_domain && dev->pm_domain->ops.resume)
-			dev->pm_domain->ops.resume(dev);
-	}
-}
-
-static int tegra_core_power_on(struct generic_pm_domain *genpd)
-{
-	struct pm_domain_data *pdd;
-	struct gpd_link *link;
-
-	list_for_each_entry(link, &genpd->master_links, master_node)
-		resume_devices_in_domain(link->slave);
-
-	list_for_each_entry(pdd, &genpd->dev_list, list_node)
-		TEGRA_PD_DEV_CALLBACK(resume, pdd->dev);
-
-	return 0;
-}
-
-static int tegra_core_power_off(struct generic_pm_domain *genpd)
-{
-	struct pm_domain_data *pdd;
-	struct gpd_link *link;
-
-	list_for_each_entry(link, &genpd->master_links, master_node)
-		suspend_devices_in_domain(link->slave);
-
-	list_for_each_entry(pdd, &genpd->dev_list, list_node)
-		TEGRA_PD_DEV_CALLBACK(suspend, pdd->dev);
-
-	return 0;
-}
-
 static struct tegra_pm_domain tegra_nvavp = {
 	.gpd.name = "tegra_nvavp",
 };
@@ -240,28 +186,18 @@ static struct tegra_pm_domain tegra_mc_clk = {
 };
 
 static struct domain_client client_list[] = {
-	{ .name = "gr2d", .domain = &tegra_mc_clk.gpd },
-	{ .name = "gr3d", .domain = &tegra_mc_clk.gpd },
-	{ .name = "msenc", .domain = &tegra_mc_clk.gpd },
-	{ .name = "isp", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegradc", .domain = &tegra_mc_clk.gpd },
-	{ .name = "vi", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra30-hda", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-apbdma", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-otg", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-ehci", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-xhci", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-host1x", .domain = &tegra_mc_clk.gpd },
-	{ .name = "tsec", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra_nvavp", .domain = &tegra_mc_clk.gpd },
 	{ .name = "nvavp", .domain = &tegra_nvavp.gpd },
 	{ .name = "sdhci-tegra", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra11-se", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra12-se", .domain = &tegra_mc_clk.gpd },
-	{ .name = "vic03", .domain = &tegra_mc_clk.gpd },
-	{ .name = "ve", .domain = &tegra_mc_clk.gpd },
-	{ .name = "gk20a", .domain = &tegra_mc_clk.gpd },
-	{ .name = "tegra-apbdma", .domain = &tegra_mc_clk.gpd },
 	{ .name = "tegra-pcie", .domain = &tegra_mc_clk.gpd },
 	{},
 };

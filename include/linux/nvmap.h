@@ -3,7 +3,7 @@
  *
  * structure declarations for nvmem and nvmap user-space ioctls
  *
- * Copyright (c) 2009-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2009-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -64,16 +64,6 @@ struct nvmap_device;
 struct dma_buf *nvmap_alloc_dmabuf(size_t size, size_t align,
 				   unsigned int flags,
 				   unsigned int heap_mask);
-
-struct dma_buf *nvmap_dmabuf_export(struct nvmap_client *client, ulong user_id);
-
-ulong nvmap_dmabuf_to_user_id(struct dma_buf *dmabuf);
-
-struct nvmap_client *nvmap_client_get_file(int fd);
-
-struct nvmap_client *nvmap_client_get(struct nvmap_client *client);
-
-void nvmap_client_put(struct nvmap_client *c);
 
 struct sg_table *nvmap_dmabuf_sg_table(struct dma_buf *dmabuf);
 
@@ -215,8 +205,8 @@ struct nvmap_rw_handle {
 
 struct nvmap_pin_handle {
 #ifdef CONFIG_COMPAT
-	__u32 *handles;		/* array of handles to pin/unpin */
-	__u32 *addr;		/*  array of addresses to return */
+	__u32 handles;		/* array of handles to pin/unpin */
+	__u32 addr;		/*  array of addresses to return */
 #else
 	struct nvmap_handle **handles;	/* array of handles to pin/unpin */
 	unsigned long *addr;	/* array of addresses to return */
@@ -256,7 +246,6 @@ struct nvmap_cache_op {
  * handle; on return, the argument is the name of the new handle
  */
 #define NVMAP_IOC_CREATE  _IOWR(NVMAP_IOC_MAGIC, 0, struct nvmap_create_handle)
-#define NVMAP_IOC_CLAIM   _IOWR(NVMAP_IOC_MAGIC, 1, struct nvmap_create_handle)
 #define NVMAP_IOC_FROM_ID _IOWR(NVMAP_IOC_MAGIC, 2, struct nvmap_create_handle)
 
 /* Actually allocates memory for the specified handle */

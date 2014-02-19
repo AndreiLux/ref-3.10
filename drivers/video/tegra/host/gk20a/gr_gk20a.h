@@ -1,7 +1,7 @@
 /*
  * GK20A Graphics Engine
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -27,6 +27,9 @@
 
 #define INVALID_SCREEN_TILE_ROW_OFFSET	0xFFFFFFFF
 #define INVALID_MAX_WAYS		0xFFFFFFFF
+
+#define GK20A_FECS_UCODE_IMAGE	"fecs.bin"
+#define GK20A_GPCCS_UCODE_IMAGE	"gpccs.bin"
 
 enum /* global_ctx_buffer */ {
 	CIRCULAR		= 0,
@@ -300,6 +303,8 @@ struct gk20a_ctxsw_bootloader_desc {
 	u32 bootloader_entry_point;
 };
 
+struct gpu_ops;
+void gk20a_init_gr(struct gpu_ops *gops);
 int gk20a_init_gr_support(struct gk20a *g);
 void gk20a_gr_reset(struct gk20a *g);
 
@@ -317,6 +322,7 @@ int gk20a_free_obj_ctx(struct channel_gk20a *c,
 void gk20a_free_channel_ctx(struct channel_gk20a *c);
 
 int gk20a_gr_isr(struct gk20a *g);
+int gk20a_gr_nonstall_isr(struct gk20a *g);
 
 int gk20a_gr_clear_comptags(struct gk20a *g, u32 min, u32 max);
 /* zcull */
@@ -346,9 +352,11 @@ bool gk20a_gr_sm_debugger_attached(struct gk20a *g);
 #define gr_gk20a_elpg_protected_call(g, func) \
 	({ \
 		int err; \
+		mutex_lock(&g->pmu.pg_init_mutex); \
 		gk20a_pmu_disable_elpg(g); \
 		err = func; \
 		gk20a_pmu_enable_elpg(g); \
+		mutex_unlock(&g->pmu.pg_init_mutex); \
 		err; \
 	})
 
@@ -364,5 +372,9 @@ int gr_gk20a_get_ctx_buffer_offsets(struct gk20a *g,
 				    u32 *offsets, u32 *offset_addrs,
 				    u32 *num_offsets,
 				    bool is_quad, u32 quad);
+
+struct channel_ctx_gk20a;
+int gr_gk20a_ctx_patch_write(struct gk20a *g, struct channel_ctx_gk20a *ch_ctx,
+				    u32 addr, u32 data, bool patch);
 
 #endif /*__GR_GK20A_H__*/

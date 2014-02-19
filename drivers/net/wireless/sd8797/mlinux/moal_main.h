@@ -896,6 +896,8 @@ struct _moal_private {
 	u8 mrvl_rssi_low;
 	/** last event */
 	u32 last_event;
+	/** fake scan flag */
+	u8 fake_scan_complete;
 
 #endif				/* STA_SUPPORT */
 #endif				/* STA_CFG80211 */

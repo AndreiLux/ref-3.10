@@ -1,7 +1,7 @@
 /*
  * imx091.c - imx091 sensor driver
  *
- * Copyright (c) 2012-2013, NVIDIA Corporation. All Rights Reserved.
+ * Copyright (c) 2012-2014, NVIDIA Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -28,7 +28,6 @@
 #include <linux/regulator/consumer.h>
 #include <linux/module.h>
 #include <linux/list.h>
-#include <linux/edp.h>
 #include <media/imx091.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -95,8 +94,6 @@ struct imx091_info {
 	struct clk *mclk;
 	struct nvc_gpio gpio[ARRAY_SIZE(imx091_gpios)];
 	struct nvc_regulator vreg[ARRAY_SIZE(imx091_vregs)];
-	struct edp_client *edpc;
-	unsigned edp_state;
 	int pwr_api;
 	int pwr_dev;
 	u8 s_mode;
@@ -1461,89 +1458,6 @@ static int imx091_i2c_wr_table(struct imx091_info *info,
 	return 0;
 }
 
-static void imx091_edp_lowest(struct imx091_info *info)
-{
-	if (!info->edpc)
-		return;
-
-	info->edp_state = info->edpc->num_states - 1;
-	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, info->edp_state);
-	if (edp_update_client_request(info->edpc, info->edp_state, NULL)) {
-		dev_err(&info->i2c_client->dev, "THIS IS NOT LIKELY HAPPEN!\n");
-		dev_err(&info->i2c_client->dev,
-			"UNABLE TO SET LOWEST EDP STATE!\n");
-	}
-}
-
-static void imx091_edp_throttle(unsigned int new_state, void *priv_data);
-
-static void imx091_edp_register(struct imx091_info *info)
-{
-	struct edp_manager *edp_manager;
-	struct edp_client *edpc = &info->pdata->edpc_config;
-	int ret;
-
-	info->edpc = NULL;
-	if (!edpc->num_states) {
-		dev_notice(&info->i2c_client->dev,
-			"%s: NO edp states defined.\n", __func__);
-		return;
-	}
-
-	strncpy(edpc->name, "imx091", EDP_NAME_LEN - 1);
-	edpc->name[EDP_NAME_LEN - 1] = 0;
-	edpc->private_data = info;
-	edpc->throttle = imx091_edp_throttle;
-
-	dev_dbg(&info->i2c_client->dev, "%s: %s, e0 = %d, p %d\n",
-		__func__, edpc->name, edpc->e0_index, edpc->priority);
-	for (ret = 0; ret < edpc->num_states; ret++)
-		dev_dbg(&info->i2c_client->dev, "e%d = %d mA",
-			ret - edpc->e0_index, edpc->states[ret]);
-
-	edp_manager = edp_get_manager("battery");
-	if (!edp_manager) {
-		dev_err(&info->i2c_client->dev,
-			"unable to get edp manager: battery\n");
-		return;
-	}
-
-	ret = edp_register_client(edp_manager, edpc);
-	if (ret) {
-		dev_err(&info->i2c_client->dev,
-			"unable to register edp client\n");
-		return;
-	}
-
-	info->edpc = edpc;
-	/* set to lowest state at init */
-	imx091_edp_lowest(info);
-}
-
-static int imx091_edp_req(struct imx091_info *info, unsigned new_state)
-{
-	unsigned approved;
-	int ret = 0;
-
-	if (!info->edpc)
-		return 0;
-
-	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, new_state);
-	ret = edp_update_client_request(info->edpc, new_state, &approved);
-	if (ret) {
-		dev_err(&info->i2c_client->dev, "E state transition failed\n");
-		return ret;
-	}
-
-	if (approved > new_state) {
-		dev_err(&info->i2c_client->dev, "EDP no enough current\n");
-		return -ENODEV;
-	}
-
-	info->edp_state = approved;
-	return 0;
-}
-
 static inline void imx091_frame_length_reg(struct imx091_reg *regs,
 					   u32 frame_length)
 {
@@ -2031,7 +1945,6 @@ static int imx091_pm_wr(struct imx091_info *info, int pwr)
 		imx091_gpio_reset(info, 0);
 		info->mode_valid = false;
 		info->bin_en = 0;
-		imx091_edp_lowest(info);
 		break;
 
 	case NVC_PWR_STDBY:
@@ -2234,14 +2147,6 @@ static int imx091_mode_wr_full(struct imx091_info *info, u32 mode_index)
 {
 	int err;
 
-	/* request highest edp state */
-	err = imx091_edp_req(info, 0);
-	if (err) {
-		dev_err(&info->i2c_client->dev,
-			"%s: ERROR cannot set edp state! %d\n",	__func__, err);
-		goto mode_wr_full_end;
-	}
-
 	imx091_pm_dev_wr(info, NVC_PWR_ON);
 	imx091_bin_wr(info, 0);
 	err = imx091_i2c_wr_table(info,
@@ -2253,7 +2158,6 @@ static int imx091_mode_wr_full(struct imx091_info *info, u32 mode_index)
 		info->mode_valid = false;
 	}
 
-mode_wr_full_end:
 	return err;
 }
 
@@ -2767,8 +2671,8 @@ static long imx091_ioctl(struct file *file,
 
 	mode_table_size = sizeof(struct nvc_imager_mode) * imx091_num_modes;
 
-	switch (cmd) {
-	case NVC_IOCTL_FUSE_ID:
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(NVC_IOCTL_FUSE_ID):
 		err = imx091_get_fuse_id(info);
 
 		if (err) {
@@ -2784,15 +2688,15 @@ static long imx091_ioctl(struct file *file,
 		}
 		return 0;
 
-	case NVC_IOCTL_PARAM_WR:
+	case _IOC_NR(NVC_IOCTL_PARAM_WR):
 		err = imx091_param_wr(info, arg);
 		return err;
 
-	case NVC_IOCTL_PARAM_RD:
+	case _IOC_NR(NVC_IOCTL_PARAM_RD):
 		err = imx091_param_rd(info, arg);
 		return err;
 
-	case NVC_IOCTL_DYNAMIC_RD:
+	case _IOC_NR(NVC_IOCTL_DYNAMIC_RD):
 		if (copy_from_user(&dnvc, (const void __user *)arg,
 				   sizeof(struct nvc_imager_dnvc))) {
 			dev_err(&info->i2c_client->dev,
@@ -2831,7 +2735,7 @@ static long imx091_ioctl(struct file *file,
 
 		return 0;
 
-	case NVC_IOCTL_MODE_WR:
+	case _IOC_NR(NVC_IOCTL_MODE_WR):
 		if (copy_from_user(&mode, (const void __user *)arg,
 				   sizeof(struct nvc_imager_bayer))) {
 			dev_err(&info->i2c_client->dev,
@@ -2847,7 +2751,7 @@ static long imx091_ioctl(struct file *file,
 		err = imx091_mode_wr(info, &mode);
 		return err;
 
-	case NVC_IOCTL_MODE_RD:
+	case _IOC_NR(NVC_IOCTL_MODE_RD):
 		/*
 		 * Return a list of modes that sensor bayer supports.
 		 * If called with a NULL ptr to pModes,
@@ -2891,7 +2795,7 @@ static long imx091_ioctl(struct file *file,
 
 		return 0;
 
-	case NVC_IOCTL_PWR_WR:
+	case _IOC_NR(NVC_IOCTL_PWR_WR):
 		/* This is a Guaranteed Level of Service (GLOS) call */
 		pwr = (int)arg * 2;
 		dev_dbg(&info->i2c_client->dev, "%s PWR_WR: %d\n",
@@ -2899,7 +2803,7 @@ static long imx091_ioctl(struct file *file,
 		err = imx091_pm_api_wr(info, pwr);
 		return err;
 
-	case NVC_IOCTL_PWR_RD:
+	case _IOC_NR(NVC_IOCTL_PWR_RD):
 		if (info->s_mode == NVC_SYNC_SLAVE)
 			pwr = info->s_info->pwr_api / 2;
 		else
@@ -2916,7 +2820,7 @@ static long imx091_ioctl(struct file *file,
 
 		return 0;
 
-	case NVC_IOCTL_CAPS_RD:
+	case _IOC_NR(NVC_IOCTL_CAPS_RD):
 		dev_dbg(&info->i2c_client->dev, "%s CAPS_RD n=%d\n",
 			__func__, sizeof(imx091_dflt_cap));
 		data_ptr = info->cap;
@@ -2931,7 +2835,7 @@ static long imx091_ioctl(struct file *file,
 
 		return 0;
 
-	case NVC_IOCTL_STATIC_RD:
+	case _IOC_NR(NVC_IOCTL_STATIC_RD):
 		dev_dbg(&info->i2c_client->dev, "%s STATIC_RD n=%d\n",
 			__func__, sizeof(struct nvc_imager_static_nvc));
 		data_ptr = &info->sdata;
@@ -3089,6 +2993,9 @@ static const struct file_operations imx091_fileops = {
 	.owner = THIS_MODULE,
 	.open = imx091_open,
 	.unlocked_ioctl = imx091_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = imx091_ioctl,
+#endif
 	.release = imx091_release,
 };
 
@@ -3329,27 +3236,6 @@ static struct imx091_platform_data *imx091_parse_dt(struct i2c_client *client)
 	of_property_read_string(np, "nvidia,dev_name",
 				&board_info_pdata->dev_name);
 
-	/* edpc config */
-	of_property_read_u32(np, "nvidia,num_states",
-				&board_info_pdata->edpc_config.num_states);
-	if (board_info_pdata->edpc_config.num_states > 0) {
-		u32 *states = devm_kzalloc(&client->dev,
-			sizeof(u32) * board_info_pdata->edpc_config.num_states,
-			GFP_KERNEL);
-		if (!states) {
-			dev_err(&client->dev, "cannot allocate states\n");
-		} else {
-			board_info_pdata->edpc_config.states = states;
-			of_property_read_u32_array(np, "nvidia,imx091_estates",
-				board_info_pdata->edpc_config.states,
-				board_info_pdata->edpc_config.num_states);
-		}
-	}
-	of_property_read_u32(np, "nvidia,e0_index",
-				&board_info_pdata->edpc_config.e0_index);
-	of_property_read_u32(np, "nvidia,priority",
-				&board_info_pdata->edpc_config.priority);
-
 	/* imx091 gpios */
 	board_info_pdata->gpio_count = 0;
 	board_info_pdata->gpio_count += imx091_parse_dt_gpio(np,
@@ -3387,18 +3273,6 @@ static struct imx091_platform_data *imx091_parse_dt(struct i2c_client *client)
 	board_info_pdata->power_off = imx091_power_off;
 
 	return board_info_pdata;
-}
-
-static void imx091_edp_throttle(unsigned int new_state, void *priv_data)
-{
-	struct imx091_info *info = priv_data;
-
-	imx091_gpio_pwrdn(info, 1);
-	imx091_vreg_dis_all(info);
-	imx091_gpio_able(info, 0);
-	imx091_gpio_reset(info, 0);
-	info->mode_valid = false;
-	info->bin_en = 0;
 }
 
 static int imx091_probe(
@@ -3492,8 +3366,6 @@ static int imx091_probe(
 		if (info->pdata->probe_clock)
 			info->pdata->probe_clock(0);
 	}
-
-	imx091_edp_register(info);
 
 	if (info->pdata->dev_name != 0)
 		strncpy(info->devname, info->pdata->dev_name,

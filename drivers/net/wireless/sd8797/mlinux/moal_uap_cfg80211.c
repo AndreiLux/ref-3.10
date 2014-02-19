@@ -21,6 +21,12 @@
 
 #include "moal_cfg80211.h"
 #include "moal_uap_cfg80211.h"
+/** secondary channel is below */
+#define SECOND_CHANNEL_BELOW    0x30
+/** secondary channel is above */
+#define SECOND_CHANNEL_ABOVE    0x10
+/** no secondary channel */
+#define SECONDARY_CHANNEL_NONE     0x00
 /********************************************************
 				Local Variables
 ********************************************************/
@@ -349,13 +355,7 @@ woal_find_wpa_ies(const t_u8 * ie, int len, mlan_uap_bss_param * sys_config)
 	return ret;
 }
 
-/** secondary channel is below */
-#define SECOND_CHANNEL_BELOW    0x30
-/** secondary channel is above */
-#define SECOND_CHANNEL_ABOVE    0x10
-/** no secondary channel */
-#define SECONDARY_CHANNEL_NONE     0x00
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0) || defined(WIFI_DIRECT_SUPPORT)
 /**
  * @brief Get second channel offset
  *
@@ -394,7 +394,6 @@ woal_get_second_channel_offset(int chan)
 	case 161:
 		chan2Offset = SECOND_CHANNEL_BELOW;
 		break;
-	case 140:
 	case 165:
 		/* Special Case: 20Mhz-only Channel */
 		chan2Offset = SECONDARY_CHANNEL_NONE;
@@ -402,6 +401,7 @@ woal_get_second_channel_offset(int chan)
 	}
 	return chan2Offset;
 }
+#endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)
 /**
@@ -448,10 +448,6 @@ woal_cfg80211_beacon_config(moal_private * priv,
 #endif
 	t_u8 chan2Offset = 0;
 	t_u8 enable_11n = MTRUE;
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
-	enum nl80211_channel_type chan_type;
-#endif
-
 	ENTER();
 
 	if (params == NULL) {
@@ -499,11 +495,33 @@ woal_cfg80211_beacon_config(moal_private * priv,
 		memset(sys_config.rates, 0, sizeof(sys_config.rates));
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)
-		chan_type = cfg80211_get_chandef_type(&params->chandef);
-#else
-		chan_type = params->channel_type;
+		switch (params->chandef.width) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)
+		case NL80211_CHAN_WIDTH_5:
+		case NL80211_CHAN_WIDTH_10:
 #endif
-		switch (chan_type) {
+		case NL80211_CHAN_WIDTH_20_NOHT:
+			enable_11n = MFALSE;
+			break;
+		case NL80211_CHAN_WIDTH_20:
+			break;
+		case NL80211_CHAN_WIDTH_40:
+		case NL80211_CHAN_WIDTH_80:
+		case NL80211_CHAN_WIDTH_80P80:
+		case NL80211_CHAN_WIDTH_160:
+			if (params->chandef.center_freq1 <
+			    params->chandef.chan->center_freq)
+				chan2Offset = SECOND_CHANNEL_BELOW;
+			else
+				chan2Offset = SECOND_CHANNEL_ABOVE;
+			break;
+		default:
+			PRINTM(MWARN, "Unknown channel width: %d\n",
+			       params->chandef.width);
+			break;
+		}
+#else
+		switch (params->channel_type) {
 		case NL80211_CHAN_NO_HT:
 			enable_11n = MFALSE;
 			break;
@@ -516,9 +534,11 @@ woal_cfg80211_beacon_config(moal_private * priv,
 			chan2Offset = SECOND_CHANNEL_BELOW;
 			break;
 		default:
-			PRINTM(MWARN, "Unknown channel type: %d\n", chan_type);
+			PRINTM(MWARN, "Unknown channel type: %d\n",
+			       params->channel_type);
 			break;
 		}
+#endif
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0) */
 		sys_config.channel = priv->channel;
 		if (priv->channel <= MAX_BG_CHANNEL) {
@@ -536,7 +556,16 @@ woal_cfg80211_beacon_config(moal_private * priv,
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
 			chan2Offset =
 				woal_get_second_channel_offset(priv->channel);
+#else
+#ifdef WIFI_DIRECT_SUPPORT
+			/* Force enable 40MHZ on WFD interface */
+			if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT)
+				chan2Offset =
+					woal_get_second_channel_offset(priv->
+								       channel);
 #endif
+#endif
+
 #ifdef WIFI_DIRECT_SUPPORT
 			if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT)
 				memcpy(sys_config.rates, rates_wfd,
@@ -728,8 +757,10 @@ woal_cfg80211_beacon_config(moal_private * priv,
 	/* If the security mode is configured as WEP or WPA-PSK, it will
 	   disable 11n automatically, and if configured as open(off) or
 	   wpa2-psk, it will automatically enable 11n */
-	if (!enable_11n || (sys_config.protocol == PROTOCOL_STATIC_WEP) ||
+	if ((sys_config.protocol == PROTOCOL_STATIC_WEP) ||
 	    (sys_config.protocol == PROTOCOL_WPA))
+		enable_11n = MFALSE;
+	if (!enable_11n)
 		woal_uap_set_11n_status(&sys_config, MLAN_ACT_DISABLE);
 	else
 		woal_uap_set_11n_status(&sys_config, MLAN_ACT_ENABLE);

@@ -23,6 +23,8 @@
 #include "moal_sta_cfg80211.h"
 #include "moal_eth_ioctl.h"
 
+extern int cfg80211_wext;
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)
 static void
 #else
@@ -315,6 +317,20 @@ extern int hw_test;
 /** Region alpha2 string */
 char *reg_alpha2;
 
+#if defined(WIFI_DIRECT_SUPPORT)
+#if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
+extern int p2p_enh;
+#endif
+#endif
+
+#ifdef CONFIG_PM
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
+static const struct wiphy_wowlan_support wowlan_support = {
+	.flags = WIPHY_WOWLAN_ANY,
+};
+#endif
+#endif
+
 /********************************************************
 				Global Variables
 ********************************************************/
@@ -324,39 +340,13 @@ char *reg_alpha2;
 ********************************************************/
 
 /**
- *  @brief This function udate the channel flag based on fw info
- *
- *  @param fw_info      A pointer to mlan_fw_info structure
- *
- *  @return     MTRUE/MFALSE
- */
-void
-woal_update_channel_flags(mlan_fw_info * fw_info)
-{
-	t_u8 i;
-	/* hw support HT40 */
-	if (fw_info->hw_dot_11n_dev_cap & MBIT(17))
-		return;
-	for (i = 0; i < cfg80211_band_2ghz.n_channels; i++)
-		cfg80211_band_2ghz.channels[i].flags |= IEEE80211_CHAN_NO_HT40;
-	if (fw_info->fw_bands & BAND_A) {
-		for (i = 0; i < cfg80211_band_5ghz.n_channels; i++)
-			cfg80211_band_5ghz.channels[i].flags |=
-				IEEE80211_CHAN_NO_HT40;
-	}
-	return;
-}
-
-/**
  *  @brief This function check cfg80211 special region code.
  *
  *  @param region_string         Region string
  *
  *  @return     MTRUE/MFALSE
  */
-t_u8
-is_cfg80211_special_region_code(char *region_string)
-{
+t_u8 is_cfg80211_special_region_code(char *region_string) {
 	t_u8 i;
 	region_code_t cfg80211_special_region_code[] =
 		{ {"00 "}, {"99 "}, {"98 "}, {"97 "} };
@@ -1457,6 +1447,35 @@ woal_cfg80211_assoc(moal_private * priv, void *sme)
 #endif
 		} else
 			woal_send_domain_info_cmd_fw(priv, MOAL_IOCTL_WAIT);
+#ifdef STA_WEXT
+		if (IS_STA_WEXT(cfg80211_wext)) {
+			switch (conn_param->crypto.wpa_versions) {
+			case NL80211_WPA_VERSION_2:
+				priv->wpa_version = IW_AUTH_WPA_VERSION_WPA2;
+				break;
+			case NL80211_WPA_VERSION_1:
+				priv->wpa_version = IW_AUTH_WPA_VERSION_WPA;
+				break;
+			default:
+				priv->wpa_version = 0;
+				break;
+			}
+			if (conn_param->crypto.n_akm_suites) {
+				switch (conn_param->crypto.akm_suites[0]) {
+				case WLAN_AKM_SUITE_PSK:
+					priv->key_mgmt = IW_AUTH_KEY_MGMT_PSK;
+					break;
+				case WLAN_AKM_SUITE_8021X:
+					priv->key_mgmt =
+						IW_AUTH_KEY_MGMT_802_1X;
+					break;
+				default:
+					priv->key_mgmt = 0;
+					break;
+				}
+			}
+		}
+#endif
 	}
 
 	memset(&req_ssid, 0, sizeof(mlan_802_11_ssid));
@@ -1903,6 +1922,7 @@ woal_cfg80211_reg_notifier(struct wiphy *wiphy,
 {
 	moal_private *priv = NULL;
 	moal_handle *handle = (moal_handle *) woal_get_wiphy_priv(wiphy);
+	t_u8 region[COUNTRY_CODE_LEN];
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0)
 	int ret = 0;
 #endif
@@ -1922,7 +1942,10 @@ woal_cfg80211_reg_notifier(struct wiphy *wiphy,
 
 	PRINTM(MIOCTL, "cfg80211 regulatory domain callback "
 	       "%c%c\n", request->alpha2[0], request->alpha2[1]);
-	if (MTRUE == is_cfg80211_special_region_code(request->alpha2)) {
+	memset(region, 0, sizeof(region));
+	memcpy(region, request->alpha2, sizeof(request->alpha2));
+	region[2] = ' ';
+	if (MTRUE == is_cfg80211_special_region_code(region)) {
 		PRINTM(MIOCTL, "Skip configure special region code\n");
 		LEAVE();
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 9, 0)
@@ -2016,13 +2039,13 @@ woal_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 #endif
 
 	if (priv->phandle->scan_pending_on_block == MTRUE) {
-		PRINTM(MINFO, "scan already in processing...\n");
+		PRINTM(MCMND, "scan already in processing...\n");
 		LEAVE();
 		return -EAGAIN;
 	}
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0) || defined(COMPAT_WIRELESS)
 	if (priv->last_event & EVENT_BG_SCAN_REPORT) {
-		PRINTM(MINFO, "block scan while pending BGSCAN result\n");
+		PRINTM(MCMND, "block scan while pending BGSCAN result\n");
 		priv->last_event = 0;
 		LEAVE();
 		return -EAGAIN;
@@ -2031,22 +2054,31 @@ woal_cfg80211_scan(struct wiphy *wiphy, struct net_device *dev,
 #if defined(STA_CFG80211) || defined(UAP_CFG80211)
 #ifdef WIFI_DIRECT_SUPPORT
 	if (priv->phandle->is_go_timer_set) {
-		PRINTM(MINFO, "block scan in go timer....\n");
+		PRINTM(MCMND, "block scan in go timer....\n");
 		LEAVE();
 		return -EAGAIN;
 	}
 #endif
 #endif
+	if (priv->fake_scan_complete) {
+		PRINTM(MEVENT, "Reporting fake scan results\n");
+		woal_inform_bss_from_scan_result(priv, NULL, MOAL_IOCTL_WAIT);
+		cfg80211_scan_done(request, MFALSE);
+		return ret;
+	}
 	memset(&bss_info, 0, sizeof(bss_info));
 	if (MLAN_STATUS_SUCCESS ==
 	    woal_get_bss_info(priv, MOAL_IOCTL_WAIT, &bss_info)) {
 		if (bss_info.scan_block) {
-			PRINTM(MINFO, "block scan in mlan module...\n");
+			PRINTM(MCMND, "block scan in mlan module...\n");
 			LEAVE();
 			return -EAGAIN;
 		}
 	}
 	if (priv->scan_request && priv->scan_request != request) {
+		PRINTM(MCMND,
+		       "different scan_request is coming before previous one is finished on %s...\n",
+		       dev->name);
 		LEAVE();
 		return -EBUSY;
 	}
@@ -3797,6 +3829,7 @@ woal_send_tdls_action_frame(struct wiphy *wiphy, struct net_device *dev,
 	 * According to 802.11z: Setup req/resp are sent in AC_BK, otherwise
 	 * we should default to AC_VI.
 	 */
+	skb_set_queue_mapping(skb, WMM_AC_VI);
 	skb->priority = 5;
 
 	pmbuf->data_offset = MLAN_MIN_DATA_HEADER_LEN;
@@ -3860,7 +3893,6 @@ woal_send_tdls_data_frame(struct wiphy *wiphy, struct net_device *dev,
 	int ret = 0;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
 	t_u32 index = 0;
-	t_u32 tid = 0;
 #endif
 
 	ENTER();
@@ -3915,9 +3947,11 @@ woal_send_tdls_data_frame(struct wiphy *wiphy, struct net_device *dev,
 	switch (action_code) {
 	case WLAN_TDLS_SETUP_REQUEST:
 	case WLAN_TDLS_SETUP_RESPONSE:
+		skb_set_queue_mapping(skb, WMM_AC_BK);
 		skb->priority = 2;
 		break;
 	default:
+		skb_set_queue_mapping(skb, WMM_AC_VI);
 		skb->priority = 5;
 		break;
 	}
@@ -3942,9 +3976,7 @@ woal_send_tdls_data_frame(struct wiphy *wiphy, struct net_device *dev,
 	case MLAN_STATUS_PENDING:
 		atomic_inc(&priv->phandle->tx_pending);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
-		tid = pmbuf->priority;
-		index = mlan_select_wmm_queue(priv->phandle->pmlan_adapter,
-					      priv->bss_index, tid);
+		index = skb_get_queue_mapping(skb);
 		atomic_inc(&priv->wmm_tx_pending[index]);
 #endif
 		queue_work(priv->phandle->workqueue, &priv->phandle->main_work);
@@ -4498,10 +4530,11 @@ woal_cfg80211_init_wiphy(moal_private * priv, t_u8 wait_option)
 				   hw_dev_cap,
 				   cfg_11n->param.supported_mcs_set);
 	/* For 2.4G band only card, this shouldn't be set */
-	if (wiphy->bands[IEEE80211_BAND_5GHZ])
+	if (wiphy->bands[IEEE80211_BAND_5GHZ]) {
 		woal_cfg80211_setup_ht_cap(&wiphy->bands[IEEE80211_BAND_5GHZ]->
 					   ht_cap, hw_dev_cap,
 					   cfg_11n->param.supported_mcs_set);
+	}
 	kfree(req);
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 38) || defined(COMPAT_WIRELESS)
@@ -4595,6 +4628,15 @@ woal_register_cfg80211(moal_private * priv)
 		ret = MLAN_STATUS_FAILURE;
 		goto err_wiphy;
 	}
+#ifdef CONFIG_PM
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)
+	wiphy->wowlan = &wowlan_support;
+#else
+	wiphy->wowlan.flags = WIPHY_WOWLAN_ANY;
+#endif
+#endif
+#endif
 	wiphy->max_scan_ssids = MRVDRV_MAX_SSID_LIST_LENGTH;
 	wiphy->max_scan_ie_len = MAX_IE_SIZE;
 	wiphy->interface_modes = 0;
@@ -4613,7 +4655,6 @@ woal_register_cfg80211(moal_private * priv)
 	wiphy->privid = mrvl_wiphy_privid;
 	woal_request_get_fw_info(priv, MOAL_CMD_WAIT, &fw_info);
 
-	woal_update_channel_flags(&fw_info);
 	/* Supported bands */
 	wiphy->bands[IEEE80211_BAND_2GHZ] = &cfg80211_band_2ghz;
 	if (fw_info.fw_bands & BAND_A) {
@@ -4685,8 +4726,9 @@ woal_register_cfg80211(moal_private * priv)
 	}
 #if defined(WIFI_DIRECT_SUPPORT)
 #if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
-	wiphy->interface_modes &= ~(MBIT(NL80211_IFTYPE_P2P_GO) |
-				    MBIT(NL80211_IFTYPE_P2P_CLIENT));
+	if (!p2p_enh)
+		wiphy->interface_modes &= ~(MBIT(NL80211_IFTYPE_P2P_GO) |
+					    MBIT(NL80211_IFTYPE_P2P_CLIENT));
 #endif
 #endif
 

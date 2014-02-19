@@ -2,7 +2,7 @@
   *
   * @brief This file contains functions for debug proc file.
   *
-  * Copyright (C) 2008-2011, Marvell International Ltd.
+  * Copyright (C) 2008-2013, Marvell International Ltd.
   *
   * This software file (the "File") is distributed by Marvell International
   * Ltd. under the terms of the GNU General Public License Version 2, June 1991
@@ -90,6 +90,8 @@ static struct debug_data items[] = {
 	 item_addr(is_hs_configured)}
 	,
 	{"hs_activated", item_size(hs_activated), item_addr(hs_activated)}
+	,
+	{"rx_pkts_queued", item_size(rx_pkts_queued), item_addr(rx_pkts_queued)}
 	,
 	{"tx_pkts_queued", item_size(tx_pkts_queued), item_addr(tx_pkts_queued)}
 	,
@@ -285,6 +287,8 @@ static struct debug_data uap_items[] = {
 	 item_addr(is_hs_configured)}
 	,
 	{"hs_activated", item_size(hs_activated), item_addr(hs_activated)}
+	,
+	{"rx_pkts_queued", item_size(rx_pkts_queued), item_addr(rx_pkts_queued)}
 	,
 	{"tx_pkts_queued", item_size(tx_pkts_queued), item_addr(tx_pkts_queued)}
 	,

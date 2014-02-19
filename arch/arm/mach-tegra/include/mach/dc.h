@@ -6,7 +6,7 @@
  * Author:
  *	Erik Gilling <konkers@google.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -280,8 +280,6 @@ struct tegra_dsi_out {
 	u16		dsi_panel_rst_gpio;
 	u16		dsi_panel_bl_en_gpio;
 	u16		dsi_panel_bl_pwm_gpio;
-	u8		chip_id;
-	u8		chip_rev;
 	u8		controller_vs;
 
 	bool		panel_has_frame_buffer;	/* required*/
@@ -345,10 +343,6 @@ struct tegra_dsi_out {
 	bool		ulpm_not_supported;
 };
 
-struct tegra_dp_out {
-	bool tx_pu_disable;
-};
-
 enum {
 	TEGRA_DC_STEREO_MODE_2D,
 	TEGRA_DC_STEREO_MODE_3D
@@ -399,6 +393,7 @@ enum {
 	TEGRA_DC_OUT_DSI,
 	TEGRA_DC_OUT_DP,
 	TEGRA_DC_OUT_LVDS,
+	TEGRA_DC_OUT_NVSR_DP,
 };
 
 struct tegra_dc_out_pin {
@@ -762,16 +757,6 @@ struct tegra_fb_data {
 
 #define TEGRA_FB_FLIP_ON_PROBE		(1 << 0)
 
-struct of_tegra_dc_data {
-	unsigned long		fb_size;
-	unsigned long		fb_start;
-	unsigned long		carveout_size;
-	unsigned long		carveout_start;
-	struct regulator	**of_regulators;
-	int			*of_gpios;
-	int			dc_controller;
-};
-
 struct tegra_dc_platform_data {
 	unsigned long		flags;
 	unsigned long		emc_clk_rate;
@@ -783,7 +768,6 @@ struct tegra_dc_platform_data {
 	bool			cmu_enable;
 	struct tegra_dc_cmu	*cmu;
 #endif
-	struct of_tegra_dc_data of_data;
 };
 
 struct tegra_dc_bw_data {
@@ -887,19 +871,42 @@ int tegra_dc_get_out(const struct tegra_dc *dc);
 struct device_node *tegra_panel_get_dt_node(
 				struct tegra_dc_platform_data *pdata);
 
+void find_dc_node(struct device_node **dc1_node,
+				struct device_node **dc2_node);
+
+void tegra_get_fb_resource(struct resource *fb_res);
+void tegra_get_fb2_resource(struct resource *fb2_res);
+
 /* table of electrical settings, must be in acending order. */
 struct tmds_config {
+	u32 version;	/* MAJOR, MINOR */
 	int pclk;
 	u32 pll0;
 	u32 pll1;
 	u32 pe_current; /* pre-emphasis */
 	u32 drive_current;
 	u32 peak_current; /* for TEGRA_11x_SOC */
+	u32 pad_ctls0_mask; /* register AND mask */
+	u32 pad_ctls0_setting; /* register OR mask */
 };
 
 struct tegra_hdmi_out {
 	struct tmds_config *tmds_config;
 	int n_tmds_config;
+};
+
+struct tegra_dc_dp_lt_settings {
+	int drive_current;
+	int lane_preemphasis;
+	int post_cursor;
+	int tx_pu;
+	int load_adj;
+};
+
+struct tegra_dp_out {
+	struct tegra_dc_dp_lt_settings *lt_settings;
+	int n_lt_settings;
+	bool tx_pu_disable;
 };
 
 #ifdef CONFIG_PM_SLEEP

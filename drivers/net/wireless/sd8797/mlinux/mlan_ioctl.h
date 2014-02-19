@@ -1513,6 +1513,8 @@ typedef struct _mlan_debug_info {
 	t_u32 mlan_processing;
     /** mlan_rx_processing */
 	t_u32 mlan_rx_processing;
+    /** rx pkts queued */
+	t_u32 rx_pkts_queued;
     /** mlan_adapter pointer */
 	t_void *mlan_adapter;
     /** mlan_adapter_size */

@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_android.c 432432 2013-10-28 15:52:47Z $
+ * $Id: wl_android.c 438523 2013-11-22 05:32:50Z $
  */
 
 #include <linux/module.h>
@@ -99,6 +99,7 @@
 
 #define CMD_SETMIRACAST 	"SETMIRACAST"
 #define CMD_ASSOCRESPIE 	"ASSOCRESPIE"
+#define CMD_MAXLINKSPEED	"MAXLINKSPEED"
 #define CMD_RXRATESTATS 	"RXRATESTATS"
 
 
@@ -162,7 +163,11 @@ struct io_cfg {
 };
 
 typedef struct android_wifi_priv_cmd {
+#ifdef CONFIG_COMPAT
+	u32 buf;
+#else
 	char *buf;
+#endif
 	int used_len;
 	int total_len;
 } android_wifi_priv_cmd;
@@ -1274,6 +1279,8 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		bytes_written = wldev_miracast_tuning(net, command, priv_cmd.total_len);
 	else if (strnicmp(command, CMD_ASSOCRESPIE, strlen(CMD_ASSOCRESPIE)) == 0)
 		bytes_written = wldev_get_assoc_resp_ie(net, command, priv_cmd.total_len);
+	else if (strnicmp(command, CMD_MAXLINKSPEED, strlen(CMD_MAXLINKSPEED))== 0)
+		bytes_written = wldev_get_max_linkspeed(net, command, priv_cmd.total_len);
 	else if (strnicmp(command, CMD_RXRATESTATS, strlen(CMD_RXRATESTATS)) == 0)
 		bytes_written = wldev_get_rx_rate_stats(net, command, priv_cmd.total_len);
 	else if (strnicmp(command, CMD_SETIBSSBEACONOUIDATA,

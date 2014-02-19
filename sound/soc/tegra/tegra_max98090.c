@@ -3,13 +3,12 @@
  * MAX98090 codec.
  *
  * Author: Kamal Kannan Balagopalan <kbalagopalan@nvidia.com>
- * Copyright (C) 2012 - NVIDIA, Inc.
  *
  * Copyright 2007 Wolfson Microelectronics PLC.
  * Author: Graeme Gregory
  *         graeme.gregory@wolfsonmicro.com or linux@wolfsonmicro.com
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION. All rights reserved.
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
@@ -34,7 +33,6 @@
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
-#include <linux/edp.h>
 #ifdef CONFIG_SWITCH
 #include <linux/switch.h>
 #endif
@@ -58,6 +56,16 @@
 #include "tegra30_dam.h"
 #endif
 #define DRV_NAME "tegra-snd-max98090"
+
+#ifndef __devinit
+#define __devinit
+#endif
+#ifndef __devexit
+#define __devexit
+#endif
+#ifndef __devexit_p
+#define __devexit_p(x)	(x)
+#endif
 
 #define GPIO_SPKR_EN    BIT(0)
 #define GPIO_HP_MUTE    BIT(1)
@@ -90,7 +98,6 @@ struct tegra_max98090 {
 	struct ahub_bbc1_config ahub_bbc1_info;
 	struct regulator *avdd_aud_reg;
 	struct regulator *vdd_sw_1v8_reg;
-	struct edp_client *spk_edp_client;
 	enum snd_soc_bias_level bias_level;
 	struct snd_soc_card *pcard;
 #ifdef CONFIG_SWITCH
@@ -490,7 +497,7 @@ static int tegra_max98090_startup(struct snd_pcm_substream *substream)
 		tegra30_dam_enable_clock(i2s->dam_ifc);
 
 		tegra30_ahub_set_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX1 +
-				(i2s->dam_ifc*2), i2s->txcif);
+				(i2s->dam_ifc*2), i2s->playback_fifo_cif);
 
 		/*
 		*make the dam tx to i2s rx connection if this is the only
@@ -532,7 +539,7 @@ static int tegra_max98090_startup(struct snd_pcm_substream *substream)
 		tegra30_dam_enable_clock(i2s->call_record_dam_ifc);
 
 		/* setup the connections for voice call record */
-		tegra30_ahub_unset_rx_cif_source(i2s->rxcif);
+		tegra30_ahub_unset_rx_cif_source(i2s->capture_fifo_cif);
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
 		/* configure the dam */
 		tegra_max98090_set_dam_cif(i2s->call_record_dam_ifc,
@@ -559,7 +566,7 @@ static int tegra_max98090_startup(struct snd_pcm_substream *substream)
 		tegra30_ahub_set_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX1 +
 			(i2s->call_record_dam_ifc*2),
 			TEGRA30_AHUB_TXCIF_I2S0_TX0 + codec_info->i2s_id);
-		tegra30_ahub_set_rx_cif_source(i2s->rxcif,
+		tegra30_ahub_set_rx_cif_source(i2s->capture_fifo_cif,
 			TEGRA30_AHUB_TXCIF_DAM0_TX0 +
 			i2s->call_record_dam_ifc);
 
@@ -615,7 +622,7 @@ static void tegra_max98090_shutdown(struct snd_pcm_substream *substream)
 			TEGRA30_DAM_DISABLE, TEGRA30_DAM_CHIN0_SRC);
 
 		/* disconnect the ahub connections*/
-		tegra30_ahub_unset_rx_cif_source(i2s->rxcif);
+		tegra30_ahub_unset_rx_cif_source(i2s->capture_fifo_cif);
 		tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
 			(i2s->call_record_dam_ifc*2));
 		tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX1 +
@@ -901,7 +908,8 @@ static int tegra_max98090_jack_notifier(struct notifier_block *self,
 		state = BIT_NO_HEADSET;
 	}
 
-	switch_set_state(&tegra_max98090_headset_switch, state);
+	if (action == jack->status)
+		switch_set_state(&tegra_max98090_headset_switch, state);
 
 	return NOTIFY_OK;
 }
@@ -940,94 +948,8 @@ static int tegra_max98090_event_hp(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static void tegra_speaker_throttle(unsigned int new_state,  void *priv_data)
-{
-	struct tegra_max98090 *machine = priv_data;
-	struct snd_soc_card *card;
-	struct snd_soc_codec *codec;
-
-	if (!machine)
-		return;
-
-	card = machine->pcard;
-	codec = card->rtd[DAI_LINK_HIFI].codec;
-
-	/* set codec volume to reflect the new E-state */
-	switch (new_state) {
-	case TEGRA_SPK_EDP_NEG_1:
-		/* set codec volume to +12.5 dB, E-1 state */
-		snd_soc_write(codec, M98090_REG_32_LVL_SPK_RIGHT, 0x3c);
-		snd_soc_write(codec, M98090_REG_31_LVL_SPK_LEFT, 0x3c);
-		break;
-	case TEGRA_SPK_EDP_ZERO:
-		/* set codec volume to 0 dB, E0 state */
-		snd_soc_write(codec, M98090_REG_32_LVL_SPK_RIGHT, 0x2c);
-		snd_soc_write(codec, M98090_REG_31_LVL_SPK_LEFT, 0x2c);
-		break;
-	case TEGRA_SPK_EDP_1:
-		/* turn off codec volume, -23 dB, E1 state */
-		snd_soc_write(codec, M98090_REG_32_LVL_SPK_RIGHT, 0x1f);
-		snd_soc_write(codec, M98090_REG_31_LVL_SPK_LEFT, 0x1f);
-		break;
-	default:
-		pr_err("%s: New E-state %d don't support!\n",
-			__func__, new_state);
-		break;
-	}
-
-}
-
-static int tegra_max98090_event_int_spk(struct snd_soc_dapm_widget *w,
-					struct snd_kcontrol *k, int event)
-{
-	struct snd_soc_dapm_context *dapm = w->dapm;
-	struct snd_soc_card *card = dapm->card;
-	struct snd_soc_codec *codec = card->rtd[DAI_LINK_HIFI].codec;
-	struct tegra_max98090 *machine = snd_soc_card_get_drvdata(card);
-	unsigned int approved;
-	int ret;
-
-	if (machine->spk_edp_client == NULL)
-		goto err_null_spk_edp_client;
-
-	if (SND_SOC_DAPM_EVENT_ON(event)) {
-		ret = edp_update_client_request(
-				machine->spk_edp_client,
-				TEGRA_SPK_EDP_NEG_1, &approved);
-		if (ret || approved != TEGRA_SPK_EDP_NEG_1) {
-			if (approved == TEGRA_SPK_EDP_ZERO) {
-				/* set codec volume to 0 dB, E0 state */
-				snd_soc_write(codec,
-					M98090_REG_32_LVL_SPK_RIGHT, 0x2c);
-				snd_soc_write(codec,
-					M98090_REG_31_LVL_SPK_LEFT, 0x2c);
-			} else if (approved == TEGRA_SPK_EDP_1) {
-				/* turn off codec volume,-23 dB, E1 state */
-				snd_soc_write(codec,
-					M98090_REG_32_LVL_SPK_RIGHT, 0x1f);
-				snd_soc_write(codec,
-					M98090_REG_31_LVL_SPK_LEFT, 0x1f);
-			}
-		} else {
-			/* set codec voulme to +12.5 dB, E-1 state */
-			snd_soc_write(codec, M98090_REG_32_LVL_SPK_RIGHT, 0x3c);
-			snd_soc_write(codec, M98090_REG_31_LVL_SPK_LEFT, 0x3c);
-		}
-	} else {
-		ret = edp_update_client_request(
-					machine->spk_edp_client,
-					TEGRA_SPK_EDP_1, NULL);
-		if (ret) {
-			dev_err(card->dev,
-				"E+1 state transition failed\n");
-		}
-	}
-err_null_spk_edp_client:
-	return 0;
-}
-
 static const struct snd_soc_dapm_widget tegra_max98090_dapm_widgets[] = {
-	SND_SOC_DAPM_SPK("Int Spk", tegra_max98090_event_int_spk),
+	SND_SOC_DAPM_SPK("Int Spk", NULL),
 	SND_SOC_DAPM_OUTPUT("Earpiece"),
 	SND_SOC_DAPM_HP("Headphone Jack", tegra_max98090_event_hp),
 	SND_SOC_DAPM_MIC("Mic Jack", NULL),
@@ -1100,6 +1022,26 @@ static int tegra_max98090_init(struct snd_soc_pcm_runtime *rtd)
 		gpio_direction_output(pdata->gpio_hp_mute, 0);
 	}
 
+	if (gpio_is_valid(pdata->gpio_hp_det) &&
+		of_machine_is_compatible("nvidia,norrin")) {
+		tegra_max98090_hp_jack_gpio.gpio = pdata->gpio_hp_det;
+		tegra_max98090_hp_jack_gpio.invert =
+			!pdata->gpio_hp_det_active_high;
+		snd_soc_jack_new(codec, "Headphone Jack", SND_JACK_HEADPHONE,
+					&tegra_max98090_hp_jack);
+#ifndef CONFIG_SWITCH
+		snd_soc_jack_add_pins(&tegra_max98090_hp_jack,
+					ARRAY_SIZE(tegra_max98090_hs_jack_pins),
+					tegra_max98090_hs_jack_pins);
+#else
+		snd_soc_jack_notifier_register(&tegra_max98090_hp_jack,
+						&tegra_max98090_jack_detect_nb);
+#endif
+		snd_soc_jack_add_gpios(&tegra_max98090_hp_jack,
+					1, &tegra_max98090_hp_jack_gpio);
+		machine->gpio_requested |= GPIO_HP_DET;
+	}
+
 	/* Add call mode switch control */
 	ret = snd_ctl_add(codec->card->snd_card,
 		snd_ctl_new1(&tegra_max98090_call_mode_control, machine));
@@ -1151,7 +1093,8 @@ static struct snd_soc_dai_link tegra_max98090_dai[] = {
 		.name = "MAX97236",
 		.stream_name = "MAX97236 HIFI",
 		.codec_name = "max97236.5-0040",
-		.codec_dai_name = "HiFi",
+		.platform_name = "tegra-pcm-audio",
+		.codec_dai_name = "max97236-HiFi",
 		.ops = NULL,
 	},
 };
@@ -1193,6 +1136,7 @@ static int tegra_max98090_resume_pre(struct snd_soc_card *card)
 	struct snd_soc_jack_gpio *gpio = &tegra_max98090_hp_jack_gpio;
 	struct tegra_max98090 *machine = snd_soc_card_get_drvdata(card);
 	int i, suspend_allowed = 1;
+	int ret;
 
 	for (i = 0; i < machine->pcard->num_links; i++) {
 		if (machine->pcard->dai_link[i].ignore_suspend) {
@@ -1215,9 +1159,9 @@ static int tegra_max98090_resume_pre(struct snd_soc_card *card)
 		}
 
 		if (machine->avdd_aud_reg)
-			regulator_enable(machine->avdd_aud_reg);
+			ret = regulator_enable(machine->avdd_aud_reg);
 		if (machine->vdd_sw_1v8_reg)
-			regulator_enable(machine->vdd_sw_1v8_reg);
+			ret = regulator_enable(machine->vdd_sw_1v8_reg);
 	}
 
 	return 0;
@@ -1260,10 +1204,17 @@ static int tegra_late_probe(struct snd_soc_card *card)
 				card->rtd[DAI_LINK_HIFI_MAX97236].codec;
 	int ret;
 
+	if (of_machine_is_compatible("nvidia,norrin"))
+		return 0;
+
 	ret = snd_soc_jack_new(codec236,
 			"Headphone Jack",
 			SND_JACK_HEADSET | SND_JACK_LINEOUT | 0x7E00,
 			&tegra_max98090_hp_jack);
+	if (ret) {
+		dev_err(codec236->dev, "snd_soc_jack_new returned %d\n", ret);
+		return ret;
+	}
 
 #ifdef CONFIG_SWITCH
 	snd_soc_jack_notifier_register(&tegra_max98090_hp_jack,
@@ -1275,9 +1226,6 @@ static int tegra_late_probe(struct snd_soc_card *card)
 #endif
 
 	max97236_mic_detect(codec236, &tegra_max98090_hp_jack);
-
-	if (ret < 0)
-		return ret;
 
 	return 0;
 }
@@ -1308,9 +1256,10 @@ static __devinit int tegra_max98090_driver_probe(struct platform_device *pdev)
 	struct snd_soc_card *card = &snd_soc_tegra_max98090;
 	struct tegra_max98090 *machine;
 	struct tegra_asoc_platform_data *pdata;
-	struct snd_soc_codec *codec;
-	struct edp_manager *battery_manager = NULL;
 	int ret, i;
+
+	if (of_machine_is_compatible("nvidia,norrin"))
+		card->num_links = DAI_LINK_BTSCO + 1;
 
 	pdata = pdev->dev.platform_data;
 	if (!pdata) {
@@ -1352,9 +1301,9 @@ static __devinit int tegra_max98090_driver_probe(struct platform_device *pdev)
 	}
 
 	if (machine->vdd_sw_1v8_reg)
-		regulator_enable(machine->vdd_sw_1v8_reg);
+		ret = regulator_enable(machine->vdd_sw_1v8_reg);
 	if (machine->avdd_aud_reg)
-		regulator_enable(machine->avdd_aud_reg);
+		ret = regulator_enable(machine->avdd_aud_reg);
 
 
 #ifdef CONFIG_SWITCH
@@ -1402,11 +1351,17 @@ static __devinit int tegra_max98090_driver_probe(struct platform_device *pdev)
 
 	tegra_max98090_dai[DAI_LINK_HIFI].cpu_dai_name =
 	tegra_max98090_i2s_dai_name[machine->codec_info[HIFI_CODEC].i2s_id];
+	tegra_max98090_dai[DAI_LINK_HIFI].platform_name =
+	tegra_max98090_i2s_dai_name[machine->codec_info[HIFI_CODEC].i2s_id];
 
 	tegra_max98090_dai[DAI_LINK_HIFI_MAX97236].cpu_dai_name =
 	tegra_max98090_i2s_dai_name[machine->codec_info[HIFI_CODEC].i2s_id];
+	tegra_max98090_dai[DAI_LINK_HIFI_MAX97236].platform_name =
+	tegra_max98090_i2s_dai_name[machine->codec_info[HIFI_CODEC].i2s_id];
 
 	tegra_max98090_dai[DAI_LINK_BTSCO].cpu_dai_name =
+	tegra_max98090_i2s_dai_name[machine->codec_info[BT_SCO].i2s_id];
+	tegra_max98090_dai[DAI_LINK_BTSCO].platform_name =
 	tegra_max98090_i2s_dai_name[machine->codec_info[BT_SCO].i2s_id];
 
 	card->dapm.idle_bias_off = 1;
@@ -1429,57 +1384,6 @@ static __devinit int tegra_max98090_driver_probe(struct platform_device *pdev)
 				"tegra_asoc_utils_set_parent failed (%d)\n",
 				ret);
 		goto err_unregister_card;
-	}
-
-	if (!pdata->edp_support)
-		return 0;
-
-	machine->spk_edp_client = devm_kzalloc(&pdev->dev,
-					sizeof(struct edp_client),
-					GFP_KERNEL);
-	if (IS_ERR_OR_NULL(machine->spk_edp_client)) {
-		dev_err(&pdev->dev, "could not allocate edp client\n");
-		return 0;
-	}
-
-	strncpy(machine->spk_edp_client->name, "speaker", EDP_NAME_LEN - 1);
-	machine->spk_edp_client->name[EDP_NAME_LEN - 1] = '\0';
-	machine->spk_edp_client->states = pdata->edp_states;
-	machine->spk_edp_client->num_states = TEGRA_SPK_EDP_NUM_STATES;
-	machine->spk_edp_client->e0_index = TEGRA_SPK_EDP_ZERO;
-	machine->spk_edp_client->priority = EDP_MAX_PRIO + 2;
-	machine->spk_edp_client->throttle = tegra_speaker_throttle;
-	machine->spk_edp_client->private_data = machine;
-
-	battery_manager = edp_get_manager("battery");
-	if (!battery_manager) {
-		devm_kfree(&pdev->dev, machine->spk_edp_client);
-		machine->spk_edp_client = NULL;
-		dev_err(&pdev->dev, "unable to get edp manager\n");
-	} else {
-		/* register speaker edp client */
-		ret = edp_register_client(battery_manager,
-					machine->spk_edp_client);
-		if (ret) {
-			dev_err(&pdev->dev, "unable to register edp client\n");
-			devm_kfree(&pdev->dev, machine->spk_edp_client);
-			machine->spk_edp_client = NULL;
-			return 0;
-		}
-		codec = card->rtd[DAI_LINK_HIFI].codec;
-		/* set codec volume to 0 dB , E0 state*/
-		snd_soc_write(codec, M98090_REG_32_LVL_SPK_RIGHT, 0x2c);
-		snd_soc_write(codec, M98090_REG_31_LVL_SPK_LEFT, 0x2c);
-		/* request E1 */
-		ret = edp_update_client_request(machine->spk_edp_client,
-				TEGRA_SPK_EDP_1, NULL);
-		if (ret) {
-			dev_err(&pdev->dev,
-					"unable to set E1 EDP state\n");
-			edp_unregister_client(machine->spk_edp_client);
-			devm_kfree(&pdev->dev, machine->spk_edp_client);
-			machine->spk_edp_client = NULL;
-		}
 	}
 
 	return 0;

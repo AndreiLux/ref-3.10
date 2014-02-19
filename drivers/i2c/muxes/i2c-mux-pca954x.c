@@ -66,7 +66,7 @@ struct pca954x {
 
 	u8 last_chan;		/* last register value */
 	struct regulator *vcc_reg;
-	struct regulator *i2c_reg;
+	struct regulator *pullup_reg;
 };
 
 struct chip_desc {
@@ -139,13 +139,13 @@ static int pca954x_reg_write(struct i2c_adapter *adap,
 			goto vcc_regulator_failed;
 		}
 	}
-	/* Increase ref count for pca954x vcc_i2c */
-	if (data->i2c_reg) {
-		ret = regulator_enable(data->i2c_reg);
+	/* Increase ref count for pca954x vcc-pullup */
+	if (data->pullup_reg) {
+		ret = regulator_enable(data->pullup_reg);
 		if (ret) {
-			dev_err(&client->dev, "%s: failed to enable vcc_i2c\n",
+			dev_err(&client->dev, "%s: failed to enable vcc-pullup\n",
 				__func__);
-			goto i2c_regulator_failed;
+			goto pullup_regulator_failed;
 		}
 	}
 
@@ -167,11 +167,11 @@ static int pca954x_reg_write(struct i2c_adapter *adap,
 					     val, I2C_SMBUS_BYTE, &data);
 	}
 
-	/* Decrease ref count for pca954x vcc_i2c */
-	if (data->i2c_reg)
-		regulator_disable(data->i2c_reg);
+	/* Decrease ref count for pca954x vcc-pullup */
+	if (data->pullup_reg)
+		regulator_disable(data->pullup_reg);
 
-i2c_regulator_failed:
+pullup_regulator_failed:
 	/* Decrease ref count for pca954x vcc */
 	if (data->vcc_reg)
 		regulator_disable(data->vcc_reg);
@@ -222,59 +222,48 @@ static int pca954x_probe(struct i2c_client *client,
 	struct pca954x_platform_data *pdata = client->dev.platform_data;
 	int num, force, class;
 	struct pca954x *data;
-	int ret = -ENODEV;
+	int ret;
 
 	if (!i2c_check_functionality(adap, I2C_FUNC_SMBUS_BYTE))
-		goto err;
+		return -ENODEV;
 
-	data = kzalloc(sizeof(struct pca954x), GFP_KERNEL);
-	if (!data) {
-		ret = -ENOMEM;
-		goto err;
-	}
+	data = devm_kzalloc(&client->dev, sizeof(struct pca954x), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
 
 	i2c_set_clientdata(client, data);
 
 	/* Get regulator pointer for pca954x vcc */
-	data->vcc_reg = regulator_get(&client->dev, "vcc");
+	data->vcc_reg = devm_regulator_get(&client->dev, "vcc");
 	if (PTR_ERR(data->vcc_reg) == -EPROBE_DEFER)
 		data->vcc_reg = NULL;
 	else if (IS_ERR(data->vcc_reg)) {
-		dev_err(&client->dev, "%s: failed to get vcc\n",
-			__func__);
 		ret = PTR_ERR(data->vcc_reg);
-		goto exit_free;
+		dev_err(&client->dev, "vcc regualtor get failed, %d\n", ret);
+		return ret;
 	}
-	/* Get regulator pointer for pca954x vcc_i2c */
-	data->i2c_reg = regulator_get(&client->dev, "vcc_i2c");
-	if (PTR_ERR(data->i2c_reg) == -EPROBE_DEFER)
-		data->i2c_reg = NULL;
-	else if (IS_ERR(data->i2c_reg)) {
-		dev_err(&client->dev, "%s: failed to get vcc_i2c\n",
-			__func__);
-		ret = PTR_ERR(data->i2c_reg);
-		regulator_put(data->vcc_reg);
-		goto exit_free;
+
+	/* Get regulator pointer for pca954x vcc-pullup */
+	data->pullup_reg = devm_regulator_get(&client->dev, "vcc-pullup");
+	if (IS_ERR(data->pullup_reg)) {
+		dev_info(&client->dev, "vcc-pullup regulator not found\n");
+		data->pullup_reg = NULL;
 	}
 
 	/* Increase ref count for pca954x vcc */
 	if (data->vcc_reg) {
-		pr_info("%s: enable vcc\n", __func__);
 		ret = regulator_enable(data->vcc_reg);
-		if (ret) {
-			dev_err(&client->dev, "%s: failed to enable vcc\n",
-				__func__);
-			goto exit_regulator_put;
+		if (ret < 0) {
+			dev_err(&client->dev, "failed to enable vcc\n");
+			return ret;
 		}
 	}
-	/* Increase ref count for pca954x vcc_i2c */
-	if (data->i2c_reg) {
-		pr_info("%s: enable vcc_i2c\n", __func__);
-		ret = regulator_enable(data->i2c_reg);
-		if (ret) {
-			dev_err(&client->dev, "%s: failed to enable vcc_i2c\n",
-				__func__);
-			goto exit_vcc_regulator_disable;
+	/* Increase ref count for pca954x vcc-pullup */
+	if (data->pullup_reg) {
+		ret = regulator_enable(data->pullup_reg);
+		if (ret < 0) {
+			dev_err(&client->dev, "failed to enable vcc-pullup\n");
+			return ret;
 		}
 	}
 
@@ -288,23 +277,26 @@ static int pca954x_probe(struct i2c_client *client,
 	 * that the mux is in fact present. This also
 	 * initializes the mux to disconnected state.
 	 */
-	if (i2c_smbus_write_byte(client, 0) < 0) {
-		dev_warn(&client->dev, "probe failed\n");
+	ret = i2c_smbus_write_byte(client, 0);
+	if (ret < 0) {
+		dev_err(&client->dev, "Write to  device failed: %d\n", ret);
 		goto exit_regulator_disable;
 	}
 
 	/* Decrease ref count for pca954x vcc */
 	if (data->vcc_reg)
 		regulator_disable(data->vcc_reg);
-	/* Decrease ref count for pca954x vcc_i2c */
-	if (data->i2c_reg)
-		regulator_disable(data->i2c_reg);
+	/* Decrease ref count for pca954x vcc-pullup */
+	if (data->pullup_reg)
+		regulator_disable(data->pullup_reg);
 
 	data->type = id->driver_data;
 	data->last_chan = 0;		   /* force the first selection */
 
 	/* Now create an adapter for each channel */
 	for (num = 0; num < chips[data->type].nchans; num++) {
+		bool deselect_on_exit = false;
+
 		force = 0;			  /* dynamic adap number */
 		class = 0;			  /* no class by default */
 		if (pdata) {
@@ -312,15 +304,19 @@ static int pca954x_probe(struct i2c_client *client,
 				/* force static number */
 				force = pdata->modes[num].adap_id;
 				class = pdata->modes[num].class;
+				deselect_on_exit =
+					pdata->modes[num].deselect_on_exit;
 			} else
 				/* discard unconfigured channels */
 				break;
 		}
+		if (client->dev.of_node)
+			deselect_on_exit = true;
 
 		data->virt_adaps[num] =
 			i2c_add_mux_adapter(adap, &client->dev, client,
 				force, num, class, pca954x_select_chan,
-				(pdata && pdata->modes[num].deselect_on_exit)
+				(deselect_on_exit)
 					? pca954x_deselect_mux : NULL);
 
 		if (data->virt_adaps[num] == NULL) {
@@ -343,17 +339,10 @@ virt_reg_failed:
 	for (num--; num >= 0; num--)
 		i2c_del_mux_adapter(data->virt_adaps[num]);
 exit_regulator_disable:
-	if (data->i2c_reg)
-		regulator_disable(data->i2c_reg);
-exit_vcc_regulator_disable:
+	if (data->pullup_reg)
+		regulator_disable(data->pullup_reg);
 	if (data->vcc_reg)
 		regulator_disable(data->vcc_reg);
-exit_regulator_put:
-	regulator_put(data->i2c_reg);
-	regulator_put(data->vcc_reg);
-exit_free:
-	kfree(data);
-err:
 	return ret;
 }
 
@@ -369,10 +358,6 @@ static int pca954x_remove(struct i2c_client *client)
 			data->virt_adaps[i] = NULL;
 		}
 
-	regulator_put(data->i2c_reg);
-	regulator_put(data->vcc_reg);
-
-	kfree(data);
 	return 0;
 }
 

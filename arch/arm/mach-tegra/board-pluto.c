@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-pluto.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -86,6 +86,7 @@
 #include "pm.h"
 #include "common.h"
 #include "iomap.h"
+#include "tegra-of-dev-auxdata.h"
 
 
 #ifdef CONFIG_BT_BLUESLEEP
@@ -248,39 +249,6 @@ static struct i2c_board_info __initdata pluto_i2c_bus3_board_info[] = {
 	},
 };
 
-static struct tegra_i2c_platform_data pluto_i2c1_platform_data = {
-	.bus_clk_rate	= 100000,
-	.scl_gpio	= TEGRA_GPIO_I2C1_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C1_SDA,
-};
-
-static struct tegra_i2c_platform_data pluto_i2c2_platform_data = {
-	.bus_clk_rate	= 100000,
-	.is_clkon_always = true,
-	.scl_gpio	= TEGRA_GPIO_I2C2_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C2_SDA,
-};
-
-static struct tegra_i2c_platform_data pluto_i2c3_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C3_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C3_SDA,
-};
-
-static struct tegra_i2c_platform_data pluto_i2c4_platform_data = {
-	.bus_clk_rate	= 10000,
-	.scl_gpio	= TEGRA_GPIO_I2C4_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C4_SDA,
-};
-
-static struct tegra_i2c_platform_data pluto_i2c5_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C5_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C5_SDA,
-	.needs_cl_dvfs_clock = true,
-	.bit_banging_xfer_after_shutdown = true,
-};
-
 static struct aic3262_gpio_setup aic3262_gpio[] = {
 	/* GPIO 1*/
 	{
@@ -337,19 +305,6 @@ static struct i2c_board_info __initdata pluto_codec_aic326x_info = {
 
 static void pluto_i2c_init(void)
 {
-	tegra11_i2c_device1.dev.platform_data = &pluto_i2c1_platform_data;
-	tegra11_i2c_device2.dev.platform_data = &pluto_i2c2_platform_data;
-	tegra11_i2c_device3.dev.platform_data = &pluto_i2c3_platform_data;
-	tegra11_i2c_device4.dev.platform_data = &pluto_i2c4_platform_data;
-	tegra11_i2c_device5.dev.platform_data = &pluto_i2c5_platform_data;
-
-	platform_device_register(&tegra11_i2c_device5);
-	platform_device_register(&tegra11_i2c_device4);
-#ifndef CONFIG_OF
-	platform_device_register(&tegra11_i2c_device3);
-#endif
-	platform_device_register(&tegra11_i2c_device2);
-	platform_device_register(&tegra11_i2c_device1);
 	pluto_i2c_bus3_board_info[0].irq = gpio_to_irq(TEGRA_GPIO_PW2);
 	i2c_register_board_info(0, pluto_i2c_bus3_board_info, 1);
 	i2c_register_board_info(0, &pluto_codec_aic326x_info, 1);
@@ -424,8 +379,6 @@ static struct tegra_asoc_platform_data pluto_audio_pdata = {
 	.gpio_int_mic_en	= TEGRA_GPIO_INT_MIC_EN,
 	.gpio_ext_mic_en	= TEGRA_GPIO_EXT_MIC_EN,
 	.gpio_ldo1_en		= TEGRA_GPIO_LDO1_EN,
-	.edp_support		=  true,
-	.edp_states		= {1776, 888, 0},
 	.i2s_param[HIFI_CODEC]	= {
 		.audio_port_id	= 1,
 		.is_i2s_master	= 0,
@@ -467,8 +420,6 @@ static struct tegra_asoc_platform_data pluto_aic3262_pdata = {
 	.gpio_int_mic_en	= TEGRA_GPIO_INT_MIC_EN,
 	.gpio_ext_mic_en	= TEGRA_GPIO_EXT_MIC_EN,
 	.gpio_ldo1_en		= TEGRA_GPIO_LDO1_EN,
-	.edp_support		= true,
-	.edp_states		= {1776, 888, 0},
 	.i2s_param[HIFI_CODEC]	= {
 		.audio_port_id	= 1,
 		.is_i2s_master	= 0,
@@ -677,6 +628,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 	.port_otg = true,
 	.has_hostpc = true,
 	.id_det_type = TEGRA_USB_PMU_ID,
+	.id_extcon_dev_name = "MAX77665_MUIC_ID",
 	.unaligned_dma_buf_supported = false,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
@@ -703,7 +655,6 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
-	.id_extcon_dev_name = "MAX77665_MUIC_ID",
 };
 
 static struct regulator *baseband_reg;
@@ -869,17 +820,6 @@ static const struct tegra_modem_operations baseband_operations = {
 	.init = baseband_init,
 };
 
-#define MODEM_BOOT_EDP_MAX 0
-/* FIXME: get accurate boot current value */
-static unsigned int modem_boot_edp_states[] = { 1900, 0 };
-static struct edp_client modem_boot_edp_client = {
-	.name = "modem_boot",
-	.states = modem_boot_edp_states,
-	.num_states = ARRAY_SIZE(modem_boot_edp_states),
-	.e0_index = MODEM_BOOT_EDP_MAX,
-	.priority = EDP_MAX_PRIO,
-};
-
 static struct tegra_usb_modem_power_platform_data baseband_pdata = {
 	.ops = &baseband_operations,
 	.wake_gpio = -1,
@@ -891,8 +831,6 @@ static struct tegra_usb_modem_power_platform_data baseband_pdata = {
 	.short_autosuspend_delay = 50,
 	.tegra_ehci_device = &tegra_ehci2_device,
 	.tegra_ehci_pdata = &tegra_ehci2_hsic_baseband_pdata,
-	.modem_boot_edp_client = &modem_boot_edp_client,
-	.edp_manager_name = "battery",
 	.i_breach_ppm = 500000,
 	/* FIXME: get useful adjperiods */
 	.i_thresh_3g_adjperiod = 10000,
@@ -1137,34 +1075,6 @@ static void pluto_audio_init(void)
 					ARRAY_SIZE(aic326x_spi_board_info));
 }
 
-#ifndef CONFIG_USE_OF
-static struct platform_device *pluto_spi_devices[] __initdata = {
-        &tegra11_spi_device4,
-};
-
-static struct tegra_spi_platform_data pluto_spi_pdata = {
-	.dma_req_sel            = 0,
-	.spi_max_frequency      = 25000000,
-	.clock_always_on        = false,
-};
-
-static void __init pluto_spi_init(void)
-{
-        struct board_info board_info, display_board_info;
-
-        tegra_get_board_info(&board_info);
-        tegra_get_display_board_info(&display_board_info);
-
-	tegra11_spi_device4.dev.platform_data = &pluto_spi_pdata;
-        platform_add_devices(pluto_spi_devices,
-                                ARRAY_SIZE(pluto_spi_devices));
-}
-#else
-static void __init pluto_spi_init(void)
-{
-}
-#endif
-
 static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	/* name         parent          rate            enabled */
 	{ "extern2",    "pll_p",        41000000,       false},
@@ -1278,20 +1188,8 @@ struct of_dev_auxdata pluto_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-tsec", TEGRA_TSEC_BASE, "tsec",
 				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c500, "tegra11-i2c.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d400, "spi-tegra114.0",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d600, "spi-tegra114.1",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d800, "spi-tegra114.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000da00, "spi-tegra114.3",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000dc00, "spi-tegra114.4",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000de00, "spi-tegra114.5",
-				NULL),
+	T114_I2C_OF_DEV_AUXDATA,
+	T114_SPI_OF_DEV_AUXDATA,
 	OF_DEV_AUXDATA("nvidia,tegra114-kbc", 0x7000e200, "tegra-kbc",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006000, "serial-tegra.0",
@@ -1302,6 +1200,9 @@ struct of_dev_auxdata pluto_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-xhci", 0x70090000, "tegra-xhci",
 				&xusb_pdata),
+	OF_DEV_AUXDATA("nvidia,tegra114-nvavp", 0x60001000, "nvavp",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
@@ -1318,7 +1219,6 @@ static void __init pluto_dtv_init(void)
 
 static void __init tegra_pluto_early_init(void)
 {
-	pluto_sysedp_init();
 	tegra_clk_init_from_table(pluto_clk_init_table);
 	tegra_clk_verify_parents();
 	tegra_soc_device_init("tegra_pluto");
@@ -1326,16 +1226,12 @@ static void __init tegra_pluto_early_init(void)
 
 static void __init tegra_pluto_late_init(void)
 {
-	platform_device_register(&tegra114_pinctrl_device);
-	pluto_pinmux_init();
 	pluto_i2c_init();
-	pluto_spi_init();
 	pluto_usb_init();
 	pluto_xusb_init();
 	pluto_uart_init();
 	pluto_audio_init();
 	platform_add_devices(pluto_devices, ARRAY_SIZE(pluto_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	pluto_sdhci_init();
 	pluto_regulator_init();
@@ -1362,14 +1258,8 @@ static void __init tegra_pluto_late_init(void)
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
 	pluto_soctherm_init();
 	tegra_register_fuse();
-	pluto_sysedp_core_init();
-	pluto_sysedp_psydepl_init();
 }
 
-static void __init pluto_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
-}
 
 static void __init tegra_pluto_dt_init(void)
 {
@@ -1390,7 +1280,6 @@ static void __init tegra_pluto_reserve(void)
 #else
 	tegra_reserve(SZ_128M, SZ_16M, SZ_4M);
 #endif
-	pluto_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const pluto_dt_board_compat[] = {

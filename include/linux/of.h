@@ -559,6 +559,33 @@ static inline int of_property_read_u32(const struct device_node *np,
 	return of_property_read_u32_array(np, propname, out_value, 1);
 }
 
+static inline int of_property_count_u32(const struct device_node *np,
+				       const char *propname)
+{
+	const void *prop_ptr;
+	int prop_len;
+
+	prop_ptr = of_get_property(np, propname, &prop_len);
+	if (!prop_ptr)
+		return -EINVAL;
+
+	return prop_len / sizeof(u32);
+}
+
+static inline int of_property_read_s32(const struct device_node *np,
+					const char *propname,
+					s32 *out_value)
+{
+	u32 val;
+	int ret;
+
+	ret = of_property_read_u32(np, propname, &val);
+	if (ret < 0)
+		return ret;
+	*out_value = (val & 0x80000000U) ? -((val ^ 0xFFFFFFFFU) + 1) : val;
+	return ret;
+}
+
 #if defined(CONFIG_PROC_FS) && defined(CONFIG_PROC_DEVICETREE)
 extern void proc_device_tree_add_node(struct device_node *, struct proc_dir_entry *);
 extern void proc_device_tree_add_prop(struct proc_dir_entry *pde, struct property *prop);

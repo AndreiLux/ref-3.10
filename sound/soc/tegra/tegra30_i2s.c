@@ -5,7 +5,7 @@
  *
  * Based on code copyright/by:
  *
- * Copyright (c) 2009-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2009-2014, NVIDIA CORPORATION. All rights reserved.
  * Scott Peterson <speterson@nvidia.com>
  * Manoj Gangwal <mgangwal@nvidia.com>
  *
@@ -50,6 +50,7 @@
 
 #define RETRY_CNT	10
 
+extern int tegra_i2sloopback_func;
 static struct tegra30_i2s *i2scont[TEGRA30_NR_I2S_IFC];
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
 static struct tegra30_i2s bbc1cont;
@@ -490,6 +491,13 @@ static int tegra30_i2s_hw_params(struct snd_pcm_substream *substream,
 	regmap_update_bits(i2s->regmap, TEGRA30_I2S_CTRL, mask, val);
 
 	regmap_read(i2s->regmap, TEGRA30_I2S_CTRL, &reg_ctrl);
+	/* I2S loopback*/
+	if (tegra_i2sloopback_func)
+		reg_ctrl |= TEGRA30_I2S_CTRL_LPBK_ENABLE;
+	else
+		reg_ctrl &= ~TEGRA30_I2S_CTRL_LPBK_ENABLE;
+	mask = TEGRA30_I2S_CTRL_LPBK_ENABLE;
+	regmap_update_bits(i2s->regmap, TEGRA30_I2S_CTRL, mask, reg_ctrl);
 	/* TDM mode */
 	if ((reg_ctrl & TEGRA30_I2S_CTRL_FRAME_FORMAT_FSYNC) &&
 		(i2s->dsp_config.slot_width > 2))
@@ -898,6 +906,7 @@ static int tegra30_i2s_probe(struct snd_soc_dai *dai)
 	i2s->dsp_config.rx_mask = 1;
 	i2s->dsp_config.rx_data_offset = 1;
 	i2s->dsp_config.tx_data_offset = 1;
+	tegra_i2sloopback_func = 0;
 
 
 	return 0;
@@ -1671,6 +1680,7 @@ int tegra30_make_voice_call_connections(struct codec_config *codec_info,
 		bb_info->i2s_mode, bb_info->channels,
 		bb_info->rate, bb_info->bitsize, bb_info->bit_clk);
 
+
 	if (uses_voice_codec) {
 		tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_APBIF_RX0 +
 			codec_info->i2s_id);
@@ -1698,6 +1708,13 @@ int tegra30_make_voice_call_connections(struct codec_config *codec_info,
 			codec_info->rate, codec_info->bitsize,
 			bb_info->channels, bb_info->rate,
 			bb_info->bitsize);
+
+		tegra30_dam_allocate_channel(codec_i2s->dam_ifc,
+			TEGRA30_DAM_CHIN1);
+		tegra30_dam_set_gain(codec_i2s->dam_ifc, TEGRA30_DAM_CHIN1,
+			0x1000);
+		tegra30_dam_set_acif(codec_i2s->dam_ifc, TEGRA30_DAM_CHIN1,
+			codec_info->channels, codec_info->bitsize, 2, 32);
 
 		/*configure bb dam*/
 		configure_dam(bb_i2s, bb_info->channels,
@@ -1735,6 +1752,8 @@ int tegra30_make_voice_call_connections(struct codec_config *codec_info,
 		/*enable dam and i2s*/
 		tegra30_dam_enable(codec_i2s->dam_ifc, TEGRA30_DAM_ENABLE,
 			TEGRA30_DAM_CHIN0_SRC);
+		tegra30_dam_enable(codec_i2s->dam_ifc, TEGRA30_DAM_ENABLE,
+			TEGRA30_DAM_CHIN1);
 		tegra30_dam_enable(bb_i2s->dam_ifc, TEGRA30_DAM_ENABLE,
 			TEGRA30_DAM_CHIN0_SRC);
 	}
@@ -1823,6 +1842,11 @@ int tegra30_break_voice_call_connections(struct codec_config *codec_info,
 			TEGRA30_DAM_DISABLE, TEGRA30_DAM_CHIN0_SRC);
 		tegra30_dam_free_channel(codec_i2s->dam_ifc,
 			TEGRA30_DAM_CHIN0_SRC);
+		tegra30_dam_enable(codec_i2s->dam_ifc,
+			TEGRA30_DAM_DISABLE, TEGRA30_DAM_CHIN1);
+		tegra30_dam_free_channel(codec_i2s->dam_ifc,
+			TEGRA30_DAM_CHIN1);
+
 		codec_i2s->dam_ch_refcount--;
 		if (!codec_i2s->dam_ch_refcount)
 			tegra30_dam_free_controller(codec_i2s->dam_ifc);

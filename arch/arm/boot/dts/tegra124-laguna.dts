@@ -2,6 +2,10 @@
 
 #include "tegra124.dtsi"
 #include "tegra124-platforms/tegra124-e1780-keys.dtsi"
+#include "tegra124-platforms/tegra124-pm359-gpio-default.dtsi"
+#include "tegra124-platforms/tegra124-pm359-pinmux.dtsi"
+#include "tegra124-platforms/tegra124-pm359-pmic.dtsi"
+#include "tegra124-platforms/tegra124-pm359-fixed.dtsi"
 
 / {
 	model = "NVIDIA Tegra124 Laguna";
@@ -10,10 +14,38 @@
 	#address-cells = <1>;
 	#size-cells = <1>;
 
+	aliases {
+		gpio264 = &tca6416;
+	};
+
 	chosen {
 		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
 		linux,initrd-start = <0x85000000>;
 		linux,initrd-end = <0x851bc400>;
+	};
+
+	pinmux {
+		pinctrl-names = "default", "drive", "unused", "suspend";
+		pinctrl-3 = <&pinmux_suspend>;
+
+		/* Change the pin dap_mclk1_req to required configurations */
+		unused_lowpower {
+			dap_mclk1_req_pee2 {
+			nvidia,pins = "dap_mclk1_req_pee2";
+			nvidia,function = "sata";
+			nvidia,enable-input = <TEGRA_PIN_DISABLE>;
+			nvidia,pull = <TEGRA_PIN_PULL_NONE>;
+			nvidia,tristate = <TEGRA_PIN_DISABLE>;
+			};
+		};
+
+		/* On suspend, make dap_mclk1_req to pull up */
+		pinmux_suspend: pins_on_suspend {
+		dap_mclk1_req_pee2 {
+			nvidia,pins = "dap_mclk1_req_pee2";
+			nvidia,pull = <TEGRA_PIN_PULL_UP>;
+			};
+		};
 	};
 
         serial@70006000 {
@@ -31,35 +63,8 @@
                 status = "okay";
         };
 
-	i2c@7000c000 {
-		status = "okay";
-		clock-frequency = <100000>;
-	};
-
-	i2c@7000c400 {
-		status = "okay";
-		clock-frequency = <100000>;
-	};
-
-	i2c@7000c500 {
-		status = "okay";
-		clock-frequency = <400000>;
-	};
-
-	i2c@7000c700 {
-		status = "okay";
-		clock-frequency = <100000>;
-	};
-
 	i2c@7000d000 {
-		status = "okay";
-		clock-frequency = <400000>;
 		nvidia,bit-banging-xfer-after-shutdown;
-	};
-
-	i2c@7000d100 {
-		status = "okay";
-		clock-frequency = <400000>;
 	};
 
 	memory@0x80000000 {

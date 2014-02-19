@@ -1954,7 +1954,6 @@ wlan_get_second_channel_offset(int chan)
 	case 161:
 		chan2Offset = SEC_CHAN_BELOW;
 		break;
-	case 140:
 	case 165:
 		/* Special Case: 20Mhz-only Channel */
 		chan2Offset = SEC_CHAN_NONE;
@@ -2345,10 +2344,14 @@ wlan_11n_create_txbastream_tbl(mlan_private * priv,
 		PRINTM(MDAT_D, "get_txbastream_tbl TID %d\n", tid);
 		DBG_HEXDUMP(MDAT_D, "RA", ra, MLAN_MAC_ADDR_LENGTH);
 
-		pmadapter->callbacks.moal_malloc(pmadapter->pmoal_handle,
-						 sizeof(TxBAStreamTbl),
-						 MLAN_MEM_DEF,
-						 (t_u8 **) & new_node);
+		if (pmadapter->callbacks.
+		    moal_malloc(pmadapter->pmoal_handle, sizeof(TxBAStreamTbl),
+				MLAN_MEM_DEF, (t_u8 **) & new_node)) {
+			PRINTM(MERROR,
+			       "wlan_11n_create_txbastream_tbl Failed to allocate new_node\n");
+			LEAVE();
+			return;
+		}
 		util_init_list((pmlan_linked_list) new_node);
 
 		new_node->tid = tid;

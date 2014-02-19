@@ -1,7 +1,7 @@
 /*
  * dma_buf exporter for nvmap
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -357,8 +357,11 @@ static struct sg_table *nvmap_dmabuf_map_dma_buf(
 		goto cache_hit;
 
 	sgt = __nvmap_sg_table(NULL, info->handle);
-	if (IS_ERR(sgt))
+	if (IS_ERR(sgt)) {
+		atomic_dec(&info->handle->pin);
+		mutex_unlock(&info->maps_lock);
 		return sgt;
+	}
 
 	if (info->handle->heap_pgalloc && info->handle->alloc) {
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
@@ -634,18 +637,7 @@ struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
 EXPORT_SYMBOL(__nvmap_dmabuf_export);
 
 /*
- * Increments ref count on the dma_buf. You are reponsbile for calling
- * dma_buf_put() on the returned dma_buf object.
- */
-struct dma_buf *nvmap_dmabuf_export(struct nvmap_client *client,
-				 unsigned long user_id)
-{
-	return __nvmap_dmabuf_export(client, unmarshal_user_id(user_id));
-}
-
-/*
- * Similar to nvmap_dmabuf_export() only use a ref to get the buf instead of a
- * user_id. You must dma_buf_put() the dma_buf object when you are done with
+ * You must dma_buf_put() the dma_buf object when you are done with
  * it.
  */
 struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref)
@@ -758,17 +750,6 @@ void *nvmap_get_dmabuf_private(struct dma_buf *dmabuf)
 	info = dmabuf->priv;
 	priv = info->handle->nvhost_priv;
 	return priv;
-}
-
-ulong nvmap_dmabuf_to_user_id(struct dma_buf *dmabuf)
-{
-	struct nvmap_handle_info *info;
-
-	if (!virt_addr_valid(dmabuf))
-		return 0;
-
-	info = dmabuf->priv;
-	return (ulong)marshal_kernel_handle((ulong)info->handle);
 }
 
 /*

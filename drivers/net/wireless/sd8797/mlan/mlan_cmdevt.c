@@ -193,6 +193,10 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	PRINTM(MERROR, "mlan_processing =%d\n", pmadapter->mlan_processing);
 	PRINTM(MERROR, "mlan_rx_processing =%d\n",
 	       pmadapter->mlan_rx_processing);
+	PRINTM(MERROR, "rx_pkts_queued=%d\n",
+	       util_scalar_read(pmadapter->pmoal_handle,
+				&pmadapter->rx_pkts_queued, MNULL, MNULL));
+
 	PRINTM(MERROR, "more_task_flag = %d\n", pmadapter->more_task_flag);
 	PRINTM(MERROR, "num_cmd_timeout = %d\n",
 	       pmadapter->dbg.num_cmd_timeout);

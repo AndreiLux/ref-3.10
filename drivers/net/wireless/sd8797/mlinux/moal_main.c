@@ -123,7 +123,7 @@ int max_vir_bss = DEF_VIRTUAL_BSS;
 /** PM keep power */
 int pm_keep_power = 1;
 /** HS when shutdown */
-int shutdown_hs = 0;
+int shutdown_hs;
 #endif
 
 #if defined(STA_SUPPORT)
@@ -167,6 +167,12 @@ int wq_sched_policy = SCHED_NORMAL;
 int rx_work;
 
 int hw_test;
+
+#if defined(WIFI_DIRECT_SUPPORT)
+#if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
+int p2p_enh;
+#endif
+#endif
 
 /** woal_callbacks */
 static mlan_callbacks woal_callbacks = {
@@ -774,7 +780,7 @@ woal_init_sw(moal_handle * handle)
 	handle->main_state = MOAL_STATE_IDLE;
 
 #ifdef STA_SUPPORT
-	if (MTRUE
+	if ((drv_mode & DRV_MODE_STA)
 #ifdef STA_WEXT
 	    && !IS_STA_WEXT(cfg80211_wext)
 #endif
@@ -788,6 +794,16 @@ woal_init_sw(moal_handle * handle)
 		return MLAN_STATUS_FAILURE;
 	}
 #endif /* STA_SUPPORT */
+
+#if defined(STA_CFG80211) && defined(STA_SUPPORT)
+	if (IS_STA_CFG80211(cfg80211_wext))
+		cfg80211_wext |= STA_CFG80211_MASK | UAP_CFG80211_MASK;
+#endif
+
+#if defined(UAP_CFG80211) && defined(UAP_SUPPORT)
+	if (IS_UAP_CFG80211(cfg80211_wext))
+		cfg80211_wext |= STA_CFG80211_MASK | UAP_CFG80211_MASK;
+#endif
 
 	memcpy(handle->driver_version, driver_version, strlen(driver_version));
 
@@ -1767,12 +1783,14 @@ woal_init_fw(moal_handle * handle)
 	ENTER();
 
 	do_gettimeofday(&handle->req_fw_time);
+
 	ret = woal_request_fw(handle);
 	if (ret < 0) {
 		PRINTM(MFATAL, "woal_request_fw failed\n");
 		ret = MLAN_STATUS_FAILURE;
 		goto done;
 	}
+
 done:
 	LEAVE();
 	return ret;
@@ -2610,11 +2628,13 @@ woal_open(struct net_device *dev)
 #if defined(WIFI_DIRECT_SUPPORT)
 #if defined(STA_CFG80211) && defined(UAP_CFG80211)
 #if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
-	if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT &&
-	    IS_STA_CFG80211(cfg80211_wext)) {
-		priv->phandle->wiphy->interface_modes |=
-			MBIT(NL80211_IFTYPE_P2P_GO) |
-			MBIT(NL80211_IFTYPE_P2P_CLIENT);
+	if (!p2p_enh) {
+		if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT &&
+		    IS_STA_CFG80211(cfg80211_wext)) {
+			priv->phandle->wiphy->interface_modes |=
+				MBIT(NL80211_IFTYPE_P2P_GO) |
+				MBIT(NL80211_IFTYPE_P2P_CLIENT);
+		}
 	}
 #endif
 #endif
@@ -2672,11 +2692,15 @@ woal_close(struct net_device *dev)
 #if defined(WIFI_DIRECT_SUPPORT)
 #if defined(STA_CFG80211) && defined(UAP_CFG80211)
 #if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
-	if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT && !priv->bss_virtual &&
-	    IS_STA_CFG80211(cfg80211_wext) && IS_UAP_CFG80211(cfg80211_wext)) {
-		priv->phandle->wiphy->interface_modes &=
-			~(MBIT(NL80211_IFTYPE_P2P_GO) |
-			  MBIT(NL80211_IFTYPE_P2P_CLIENT));
+	if (!p2p_enh) {
+		if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT &&
+		    !priv->bss_virtual &&
+		    IS_STA_CFG80211(cfg80211_wext) &&
+		    IS_UAP_CFG80211(cfg80211_wext)) {
+			priv->phandle->wiphy->interface_modes &=
+				~(MBIT(NL80211_IFTYPE_P2P_GO) |
+				  MBIT(NL80211_IFTYPE_P2P_CLIENT));
+		}
 	}
 #endif
 #endif
@@ -2835,6 +2859,7 @@ woal_mlan_debug_info(moal_private * priv)
 	PRINTM(MERROR, "------------mlan_debug_info-------------\n");
 	PRINTM(MERROR, "mlan_processing =%d\n", info.mlan_processing);
 	PRINTM(MERROR, "mlan_rx_processing =%d\n", info.mlan_rx_processing);
+	PRINTM(MERROR, "rx_pkts_queued=%d\n", info.rx_pkts_queued);
 
 	PRINTM(MERROR, "num_cmd_timeout = %d\n", info.num_cmd_timeout);
 	PRINTM(MERROR, "Timeout cmd id = 0x%x, act = 0x%x \n",
@@ -3124,13 +3149,13 @@ woal_process_tcp_ack(moal_private * priv, mlan_buffer * pmbuf)
 
 	if (*((t_u8 *) tcph + 13) == 0x10) {
 		/* Only replace ACK */
-		priv->tcp_ack_cnt++;
 		if (ntohs(iph->tot_len) > (iph->ihl + tcph->doff) * 4) {
 			/* Don't drop ACK with payload */
 			/* TODO: should we delete previous TCP session */
 			LEAVE();
 			return ret;
 		}
+		priv->tcp_ack_cnt++;
 		spin_lock_irqsave(&priv->tcp_sess_lock, flags);
 		tcp_session = woal_get_tcp_sess(priv, iph->saddr,
 						tcph->source, iph->daddr,
@@ -3195,7 +3220,6 @@ woal_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct sk_buff *new_skb = NULL;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
 	t_u32 index = 0;
-	t_u32 tid = 0;
 #endif
 
 	ENTER();
@@ -3253,9 +3277,7 @@ woal_hard_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	case MLAN_STATUS_PENDING:
 		atomic_inc(&priv->phandle->tx_pending);
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
-		tid = pmbuf->priority;
-		index = mlan_select_wmm_queue(priv->phandle->pmlan_adapter,
-					      priv->bss_index, tid);
+		index = skb_get_queue_mapping(skb);
 		atomic_inc(&priv->wmm_tx_pending[index]);
 		if (atomic_read(&priv->wmm_tx_pending[index]) >= MAX_TX_PENDING) {
 			struct netdev_queue *txq =
@@ -4540,6 +4562,7 @@ woal_dump_mlan_drv_info(moal_private * priv, t_u8 * buf)
 	ptr += sprintf(ptr, "mlan_processing =%d\n", info.mlan_processing);
 	ptr += sprintf(ptr, "mlan_rx_processing =%d\n",
 		       info.mlan_rx_processing);
+	ptr += sprintf(ptr, "rx_pkts_queued =%d\n", info.rx_pkts_queued);
 	ptr += sprintf(ptr, "num_cmd_timeout = %d\n", info.num_cmd_timeout);
 	ptr += sprintf(ptr, "Timeout cmd id = 0x%x, act = 0x%x \n",
 		       info.timeout_cmd_id, info.timeout_cmd_act);
@@ -5260,8 +5283,9 @@ woal_request_country_power_table(moal_private * priv, char *country)
 	strncpy(strstr(country_name, "XX"), country, strlen(country));
 
 	memset(file_path, 0, sizeof(file_path));
-	if (fw_name) {
-		strncpy(file_path, fw_name, sizeof(file_path));
+	/* file_path should be Null terminated */
+	if (fw_name && (strlen(fw_name) < sizeof(file_path))) {
+		strncpy(file_path, fw_name, strlen(fw_name));
 		last_slash = strrchr(file_path, '/');
 		if (last_slash)
 			memset(last_slash + 1, 0,
@@ -6111,6 +6135,13 @@ MODULE_PARM_DESC(wq_sched_policy,
 module_param(rx_work, int, 0);
 MODULE_PARM_DESC(rx_work,
 		 "0: default; 1: Enable rx_work_queue; 2: Disable rx_work_queue");
+#if defined(WIFI_DIRECT_SUPPORT)
+#if LINUX_VERSION_CODE >= WIFI_DIRECT_KERNEL_VERSION
+module_param(p2p_enh, int, 0);
+MODULE_PARM_DESC(p2p_enh, "1: Enable enhanced P2P; 0: Disable enhanced P2P");
+#endif
+#endif
+
 MODULE_DESCRIPTION("M-WLAN Driver");
 MODULE_AUTHOR("Marvell International Ltd.");
 MODULE_VERSION(MLAN_RELEASE_VERSION);

@@ -4,7 +4,7 @@
  *  structures and declares global function prototypes used
  *  in MLAN module.
  *
- *  (C) Copyright 2008-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2008-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -36,8 +36,12 @@ Change log:
 /** Interface header length */
 #define INTF_HEADER_LEN     4
 
+#ifdef PRAGMA_PACK
+#pragma pack(push, 1)
+#endif
+
 /** Ethernet header */
-typedef struct {
+typedef MLAN_PACK_START struct {
     /** Ethernet header destination address */
 	t_u8 dest_addr[MLAN_MAC_ADDR_LENGTH];
     /** Ethernet header source address */
@@ -45,10 +49,10 @@ typedef struct {
     /** Ethernet header length */
 	t_u16 h803_len;
 
-} Eth803Hdr_t;
+} MLAN_PACK_END Eth803Hdr_t;
 
 /** RFC 1042 header */
-typedef struct {
+typedef MLAN_PACK_START struct {
     /** LLC DSAP */
 	t_u8 llc_dsap;
     /** LLC SSAP */
@@ -60,11 +64,7 @@ typedef struct {
     /** SNAP type */
 	t_u16 snap_type;
 
-} Rfc1042Hdr_t;
-
-#ifdef PRAGMA_PACK
-#pragma pack(push, 1)
-#endif
+} MLAN_PACK_END Rfc1042Hdr_t;
 
 /** Rx packet header */
 typedef MLAN_PACK_START struct {
@@ -875,6 +875,13 @@ typedef enum _WLAN_802_11_WEP_STATUS {
 
 /** TLV type : Action frame */
 #define TLV_TYPE_IEEE_ACTION_FRAME   (PROPRIETARY_TLV_BASE_ID + 0x8c)	/* 0x018c
+									 */
+
+/** TLV type : SCAN channel gap */
+#define TLV_TYPE_SCAN_CHANNEL_GAP    (PROPRIETARY_TLV_BASE_ID + 0xc5)	/* 0x01c5
+									 */
+/** TLV type : Channel statistics */
+#define TLV_TYPE_CHANNEL_STATS       (PROPRIETARY_TLV_BASE_ID + 0xc6)	/* 0x01c6
 									 */
 
 /** Firmware Host Command ID Constants */
@@ -2059,6 +2066,22 @@ typedef MLAN_PACK_START struct _MrvlIEtypes_AuthType_t {
     /** Authentication type */
 	t_u16 auth_type;
 } MLAN_PACK_END MrvlIEtypes_AuthType_t;
+
+/** MrvlIEtypes_ScanChanGap_t */
+typedef MLAN_PACK_START struct _MrvlIEtypes_ScanChanGap_t {
+    /** Header */
+	MrvlIEtypesHeader_t header;
+    /** Time gap in units to TUs to be used between two consecutive channels scan */
+	t_u16 gap;
+} MLAN_PACK_END MrvlIEtypes_ScanChanGap_t;
+
+/** channel statictics tlv */
+typedef MLAN_PACK_START struct _MrvlIEtypes_ChannelStats_t {
+    /** Header */
+	MrvlIEtypesHeader_t header;
+    /** channel statictics */
+	ChanStatistics_t chanStat[0];
+} MLAN_PACK_END MrvlIEtypes_ChannelStats_t;
 
 /** MrvlIETypes_ActionFrame_t */
 typedef MLAN_PACK_START struct {

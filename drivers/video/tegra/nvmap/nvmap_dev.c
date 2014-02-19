@@ -3,7 +3,7 @@
  *
  * User-space interface to nvmap
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,8 +26,6 @@
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
-#include <linux/miscdevice.h>
-#include <linux/mm.h>
 #include <linux/oom.h>
 #include <linux/platform_device.h>
 #include <linux/seq_file.h>
@@ -42,8 +40,6 @@
 #include <linux/stat.h>
 
 #include <asm/cputype.h>
-#include <asm/cacheflush.h>
-#include <asm/tlbflush.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvmap.h>
@@ -51,7 +47,6 @@
 #include "nvmap_priv.h"
 #include "nvmap_ioctl.h"
 
-#define NVMAP_NUM_PTES		64
 #define NVMAP_CARVEOUT_KILLER_RETRY_TIME 100 /* msecs */
 
 #ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS
@@ -69,26 +64,6 @@ struct nvmap_carveout_node {
 	spinlock_t		clients_lock;
 	phys_addr_t			base;
 	size_t			size;
-};
-
-struct nvmap_device {
-	struct vm_struct *vm_rgn;
-	pte_t		*ptes[NVMAP_NUM_PTES];
-	unsigned long	ptebits[NVMAP_NUM_PTES / BITS_PER_LONG];
-	unsigned int	lastpte;
-	spinlock_t	ptelock;
-
-	struct rb_root	handles;
-	spinlock_t	handle_lock;
-	wait_queue_head_t pte_wait;
-	struct miscdevice dev_super;
-	struct miscdevice dev_user;
-	struct nvmap_carveout_node *heaps;
-	int nr_carveouts;
-	struct nvmap_share iovmm_master;
-	struct list_head clients;
-	spinlock_t	clients_lock;
-	struct nvmap_deferred_ops deferred_ops;
 };
 
 struct platform_device *nvmap_pdev;
@@ -121,6 +96,9 @@ static const struct file_operations nvmap_user_fops = {
 	.open		= nvmap_open,
 	.release	= nvmap_release,
 	.unlocked_ioctl	= nvmap_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = nvmap_ioctl,
+#endif
 	.mmap		= nvmap_map,
 };
 
@@ -129,6 +107,9 @@ static const struct file_operations nvmap_super_fops = {
 	.open		= nvmap_open,
 	.release	= nvmap_release,
 	.unlocked_ioctl	= nvmap_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = nvmap_ioctl,
+#endif
 	.mmap		= nvmap_map,
 };
 
@@ -156,12 +137,6 @@ struct device *nvmap_client_to_device(struct nvmap_client *client)
 struct nvmap_share *nvmap_get_share_from_dev(struct nvmap_device *dev)
 {
 	return &dev->iovmm_master;
-}
-
-struct nvmap_deferred_ops *nvmap_get_deferred_ops_from_dev(
-		struct nvmap_device *dev)
-{
-	return &dev->deferred_ops;
 }
 
 /* allocates a PTE for the caller's use; returns the PTE pointer or
@@ -350,9 +325,9 @@ int nvmap_flush_heap_block(struct nvmap_client *client,
 		void *base = (void *)kaddr + (phys & ~PAGE_MASK);
 
 		next = min(next, end);
-		set_pte_at(&init_mm, kaddr, *pte, pfn_pte(pfn, pgprot_kernel));
+		set_pte_at(&init_mm, kaddr, *pte, pfn_pte(pfn, PG_PROT_KERNEL));
 		nvmap_flush_tlb_kernel_page(kaddr);
-		__cpuc_flush_dcache_area(base, next - phys);
+		FLUSH_DCACHE_AREA(base, next - phys);
 		phys = next;
 	}
 
@@ -626,22 +601,6 @@ struct nvmap_client *nvmap_client_get(struct nvmap_client *client)
 	return client;
 }
 
-struct nvmap_client *nvmap_client_get_file(int fd)
-{
-	struct nvmap_client *client = ERR_PTR(-EFAULT);
-	struct file *f = fget(fd);
-	if (!f)
-		return ERR_PTR(-EINVAL);
-
-	if ((f->f_op == &nvmap_user_fops) || (f->f_op == &nvmap_super_fops)) {
-		client = f->private_data;
-		atomic_inc(&client->count);
-	}
-
-	fput(f);
-	return client;
-}
-
 void nvmap_client_put(struct nvmap_client *client)
 {
 	if (!client)
@@ -650,7 +609,6 @@ void nvmap_client_put(struct nvmap_client *client)
 	if (!atomic_dec_return(&client->count))
 		destroy_client(client);
 }
-EXPORT_SYMBOL(nvmap_client_put);
 
 static int nvmap_open(struct inode *inode, struct file *filp)
 {
@@ -704,8 +662,9 @@ int __nvmap_map(struct nvmap_handle *h, struct vm_area_struct *vma)
 	priv->handle = h;
 	atomic_set(&priv->count, 1);
 
-	vma->vm_flags |= (VM_SHARED | VM_IO | VM_DONTEXPAND |
-			  VM_MIXEDMAP | VM_DONTDUMP | VM_DONTCOPY);
+	vma->vm_flags |= VM_SHARED | VM_DONTEXPAND |
+			  VM_DONTDUMP | VM_DONTCOPY |
+			  (h->heap_pgalloc ? 0 : VM_PFNMAP);
 	vma->vm_ops = &nvmap_vma_ops;
 	BUG_ON(vma->vm_private_data != NULL);
 	vma->vm_private_data = priv;
@@ -730,8 +689,8 @@ static int nvmap_map(struct file *filp, struct vm_area_struct *vma)
 	priv->handle = NULL;
 	atomic_set(&priv->count, 1);
 
-	vma->vm_flags |= (VM_SHARED | VM_IO | VM_DONTEXPAND |
-			  VM_MIXEDMAP | VM_DONTDUMP | VM_DONTCOPY);
+	vma->vm_flags |= (VM_SHARED | VM_DONTEXPAND |
+			  VM_DONTDUMP | VM_DONTCOPY);
 	vma->vm_ops = &nvmap_vma_ops;
 	vma->vm_private_data = priv;
 
@@ -758,11 +717,6 @@ static long nvmap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		return -EFAULT;
 
 	switch (cmd) {
-	case NVMAP_IOC_CLAIM:
-		nvmap_warn(filp->private_data, "preserved handles not"
-			   "supported\n");
-		err = -ENODEV;
-		break;
 	case NVMAP_IOC_CREATE:
 	case NVMAP_IOC_FROM_ID:
 	case NVMAP_IOC_FROM_FD:
@@ -1159,23 +1113,6 @@ ulong nvmap_iovmm_get_used_pages(void)
 	return total >> PAGE_SHIFT;
 }
 
-static void nvmap_deferred_ops_init(struct nvmap_deferred_ops *deferred_ops)
-{
-	INIT_LIST_HEAD(&deferred_ops->ops_list);
-	spin_lock_init(&deferred_ops->deferred_ops_lock);
-
-#ifdef CONFIG_NVMAP_DEFERRED_CACHE_MAINT
-	deferred_ops->enable_deferred_cache_maintenance = 1;
-#else
-	deferred_ops->enable_deferred_cache_maintenance = 0;
-#endif /* CONFIG_NVMAP_DEFERRED_CACHE_MAINT */
-
-	deferred_ops->deferred_maint_inner_requested = 0;
-	deferred_ops->deferred_maint_inner_flushed = 0;
-	deferred_ops->deferred_maint_outer_requested = 0;
-	deferred_ops->deferred_maint_outer_flushed = 0;
-}
-
 static int nvmap_probe(struct platform_device *pdev)
 {
 	struct nvmap_platform_data *plat = pdev->dev.platform_data;
@@ -1223,8 +1160,6 @@ static int nvmap_probe(struct platform_device *pdev)
 	init_waitqueue_head(&dev->pte_wait);
 
 	init_waitqueue_head(&dev->iovmm_master.pin_wait);
-
-	nvmap_deferred_ops_init(&dev->deferred_ops);
 
 	mutex_init(&dev->iovmm_master.pin_lock);
 #ifdef CONFIG_NVMAP_PAGE_POOLS
@@ -1299,29 +1234,9 @@ static int nvmap_probe(struct platform_device *pdev)
 	if (IS_ERR_OR_NULL(nvmap_debug_root))
 		dev_err(&pdev->dev, "couldn't create debug files\n");
 
-	debugfs_create_bool("enable_deferred_cache_maintenance",
-		S_IRUGO|S_IWUSR, nvmap_debug_root,
-		(u32 *)&dev->deferred_ops.enable_deferred_cache_maintenance);
-
 	debugfs_create_u32("max_handle_count", S_IRUGO,
 			nvmap_debug_root, &nvmap_max_handle_count);
 
-	debugfs_create_u64("deferred_maint_inner_requested", S_IRUGO|S_IWUSR,
-			nvmap_debug_root,
-			&dev->deferred_ops.deferred_maint_inner_requested);
-
-	debugfs_create_u64("deferred_maint_inner_flushed", S_IRUGO|S_IWUSR,
-			nvmap_debug_root,
-			&dev->deferred_ops.deferred_maint_inner_flushed);
-#ifdef CONFIG_OUTER_CACHE
-	debugfs_create_u64("deferred_maint_outer_requested", S_IRUGO|S_IWUSR,
-			nvmap_debug_root,
-			&dev->deferred_ops.deferred_maint_outer_requested);
-
-	debugfs_create_u64("deferred_maint_outer_flushed", S_IRUGO|S_IWUSR,
-			nvmap_debug_root,
-			&dev->deferred_ops.deferred_maint_outer_flushed);
-#endif /* CONFIG_OUTER_CACHE */
 	for (i = 0; i < plat->nr_carveouts; i++) {
 		struct nvmap_carveout_node *node = &dev->heaps[dev->nr_carveouts];
 		const struct nvmap_platform_carveout *co = &plat->carveouts[i];

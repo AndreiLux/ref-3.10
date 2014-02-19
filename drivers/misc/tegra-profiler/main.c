@@ -1,7 +1,7 @@
 /*
  * drivers/misc/tegra-profiler/main.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -26,7 +26,6 @@
 #include "quadd.h"
 #include "armv7_pmu.h"
 #include "hrt.h"
-#include "pl310.h"
 #include "comm.h"
 #include "mmap.h"
 #include "debug.h"
@@ -35,6 +34,10 @@
 #include "auth.h"
 #include "version.h"
 #include "quadd_proc.h"
+
+#ifdef CONFIG_CACHE_L2X0
+#include "pl310.h"
+#endif
 
 static struct quadd_ctx ctx;
 
@@ -54,16 +57,33 @@ static int get_default_properties(void)
 	return 0;
 }
 
+int tegra_profiler_try_lock(void)
+{
+	return atomic_cmpxchg(&ctx.tegra_profiler_lock, 0, 1);
+}
+EXPORT_SYMBOL_GPL(tegra_profiler_try_lock);
+
+void tegra_profiler_unlock(void)
+{
+	atomic_set(&ctx.tegra_profiler_lock, 0);
+}
+EXPORT_SYMBOL_GPL(tegra_profiler_unlock);
+
 static int start(void)
 {
 	int err;
+
+	if (tegra_profiler_try_lock()) {
+		pr_err("Error: tegra_profiler lock\n");
+		return -EBUSY;
+	}
 
 	if (!atomic_cmpxchg(&ctx.started, 0, 1)) {
 		if (ctx.pmu) {
 			err = ctx.pmu->enable();
 			if (err) {
 				pr_err("error: pmu enable\n");
-				return err;
+				goto errout;
 			}
 		}
 
@@ -71,27 +91,31 @@ static int start(void)
 			err = ctx.pl310->enable();
 			if (err) {
 				pr_err("error: pl310 enable\n");
-				return err;
+				goto errout;
 			}
 		}
 
-		quadd_mmap_reset();
 		ctx.comm->reset();
 
 		err = quadd_power_clk_start();
 		if (err < 0) {
 			pr_err("error: power_clk start\n");
-			return err;
+			goto errout;
 		}
 
 		err = quadd_hrt_start();
 		if (err) {
 			pr_err("error: hrt start\n");
-			return err;
+			goto errout;
 		}
 	}
 
 	return 0;
+
+errout:
+	atomic_set(&ctx.started, 0);
+	tegra_profiler_unlock();
+	return err;
 }
 
 static void stop(void)
@@ -99,7 +123,6 @@ static void stop(void)
 	if (atomic_cmpxchg(&ctx.started, 1, 0)) {
 		quadd_hrt_stop();
 
-		quadd_mmap_reset();
 		ctx.comm->reset();
 
 		quadd_power_clk_stop();
@@ -109,6 +132,8 @@ static void stop(void)
 
 		if (ctx.pl310)
 			ctx.pl310->disable();
+
+		tegra_profiler_unlock();
 	}
 }
 
@@ -303,8 +328,9 @@ static void get_capabilities(struct quadd_comm_cap *cap)
 				break;
 
 			default:
-				BUG();
-				break;
+				pr_err_once("%s: error: invalid event\n",
+					    __func__);
+				return;
 			}
 		}
 	}
@@ -352,8 +378,9 @@ static void get_capabilities(struct quadd_comm_cap *cap)
 				break;
 
 			default:
-				BUG();
-				break;
+				pr_err_once("%s: error: invalid event\n",
+					    __func__);
+				return;
 			}
 		}
 	}
@@ -364,6 +391,7 @@ static void get_capabilities(struct quadd_comm_cap *cap)
 
 	extra |= QUADD_COMM_CAP_EXTRA_BT_KERNEL_CTX;
 	extra |= QUADD_COMM_CAP_EXTRA_GET_MMAP;
+	extra |= QUADD_COMM_CAP_EXTRA_GROUP_SAMPLES;
 
 	cap->reserved[QUADD_COMM_CAP_IDX_EXTRA] = extra;
 }
@@ -404,7 +432,9 @@ static int __init quadd_module_init(void)
 #ifdef QM_DEBUG_SAMPLES_ENABLE
 	pr_info("############## DEBUG VERSION! ##############\n");
 #endif
+
 	atomic_set(&ctx.started, 0);
+	atomic_set(&ctx.tegra_profiler_lock, 0);
 
 	get_default_properties();
 
@@ -417,7 +447,8 @@ static int __init quadd_module_init(void)
 		return -ENODEV;
 	} else {
 		events = ctx.pmu_info.supported_events;
-		nr_events = ctx.pmu->get_supported_events(events);
+		nr_events = ctx.pmu->get_supported_events(events,
+							  QUADD_MAX_COUNTERS);
 		ctx.pmu_info.nr_supported_events = nr_events;
 
 		pr_info("PMU: amount of events: %d\n", nr_events);
@@ -434,7 +465,8 @@ static int __init quadd_module_init(void)
 #endif
 	if (ctx.pl310) {
 		events = ctx.pl310_info.supported_events;
-		nr_events = ctx.pl310->get_supported_events(events);
+		nr_events = ctx.pl310->get_supported_events(events,
+							    QUADD_MAX_COUNTERS);
 		ctx.pl310_info.nr_supported_events = nr_events;
 
 		pr_info("pl310 success, amount of events: %d\n",
@@ -448,15 +480,9 @@ static int __init quadd_module_init(void)
 	}
 
 	ctx.hrt = quadd_hrt_init(&ctx);
-	if (!ctx.hrt) {
+	if (IS_ERR(ctx.hrt)) {
 		pr_err("error: HRT init failed\n");
-		return -ENODEV;
-	}
-
-	ctx.mmap = quadd_mmap_init(&ctx);
-	if (IS_ERR(ctx.mmap)) {
-		pr_err("error: MMAP init failed\n");
-		return PTR_ERR(ctx.mmap);
+		return PTR_ERR(ctx.hrt);
 	}
 
 	err = quadd_power_clk_init(&ctx);
@@ -466,9 +492,9 @@ static int __init quadd_module_init(void)
 	}
 
 	ctx.comm = quadd_comm_events_init(&control);
-	if (!ctx.comm) {
+	if (IS_ERR(ctx.comm)) {
 		pr_err("error: COMM init failed\n");
-		return -ENODEV;
+		return PTR_ERR(ctx.comm);
 	}
 
 	err = quadd_auth_init(&ctx);
@@ -488,11 +514,11 @@ static void __exit quadd_module_exit(void)
 	pr_info("QuadD module exit\n");
 
 	quadd_hrt_deinit();
-	quadd_mmap_deinit();
 	quadd_power_clk_deinit();
 	quadd_comm_events_exit();
 	quadd_auth_deinit();
 	quadd_proc_deinit();
+	quadd_armv7_pmu_deinit();
 }
 
 module_init(quadd_module_init);

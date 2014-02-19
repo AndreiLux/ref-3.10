@@ -3,7 +3,7 @@
  *
  * OTG transceiver driver for Tegra UTMI phy
  *
- * Copyright (C) 2010-2013 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (C) 2010-2014 NVIDIA CORPORATION. All rights reserved.
  * Copyright (C) 2010 Google, Inc.
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -231,13 +231,10 @@ static void tegra_otg_vbus_enable(struct regulator *vbus_reg, int on)
 	if (vbus_reg == NULL)
 		return ;
 
-	if (on && vbus_enable) {
-		regulator_enable(vbus_reg);
+	if (on && vbus_enable && !regulator_enable(vbus_reg))
 		vbus_enable = 0;
-	} else if (!on && !vbus_enable) {
-		regulator_disable(vbus_reg);
+	else if (!on && !vbus_enable && !regulator_disable(vbus_reg))
 		vbus_enable = 1;
-	}
 }
 
 static void tegra_start_host(struct tegra_otg *tegra)
@@ -460,8 +457,8 @@ static int tegra_otg_set_peripheral(struct usb_otg *otg,
 
 	val = enable_interrupt(tegra, true);
 
-	if ((val & USB_ID_STATUS) && (val & USB_VBUS_STATUS)
-			&& !tegra->support_pmu_vbus)
+	if (((val & USB_ID_STATUS) || tegra->support_pmu_id) &&
+		 (val & USB_VBUS_STATUS) && !tegra->support_pmu_vbus)
 		val |= USB_VBUS_INT_STATUS;
 	else if (!(val & USB_ID_STATUS)) {
 		if (tegra->support_usb_id)
@@ -638,16 +635,16 @@ static int tegra_otg_conf(struct platform_device *pdev)
 	tegra->phy.otg->set_peripheral = tegra_otg_set_peripheral;
 
 	if (tegra->support_pmu_vbus) {
-		if (!pdata->vbus_extcon_dev_name) {
+		if (!pdata->ehci_pdata->vbus_extcon_dev_name) {
 			dev_err(&pdev->dev, "Missing vbus_extcon_dev_name!\n");
 			err = -EINVAL;
 			goto err_vbus_extcon;
 		}
-		tegra->vbus_extcon_dev =
-			extcon_get_extcon_dev(pdata->vbus_extcon_dev_name);
+		tegra->vbus_extcon_dev = extcon_get_extcon_dev(pdata->
+					ehci_pdata->vbus_extcon_dev_name);
 		if (!tegra->vbus_extcon_dev) {
 			dev_err(&pdev->dev, "Cannot get the %s extcon dev\n",
-						pdata->vbus_extcon_dev_name);
+				pdata->ehci_pdata->vbus_extcon_dev_name);
 			err = -ENODEV;
 			goto err_vbus_extcon;
 		}
@@ -656,16 +653,16 @@ static int tegra_otg_conf(struct platform_device *pdev)
 	}
 
 	if (tegra->support_pmu_id) {
-		if (!pdata->id_extcon_dev_name) {
+		if (!pdata->ehci_pdata->id_extcon_dev_name) {
 			dev_err(&pdev->dev, "Missing id_extcon_dev_name!\n");
 			err = -EINVAL;
 			goto err_id_extcon;
 		}
-		tegra->id_extcon_dev =
-			extcon_get_extcon_dev(pdata->id_extcon_dev_name);
+		tegra->id_extcon_dev = extcon_get_extcon_dev(pdata->
+					ehci_pdata->id_extcon_dev_name);
 		if (!tegra->id_extcon_dev) {
 			dev_err(&pdev->dev, "Cannot get the %s extcon dev\n",
-						pdata->id_extcon_dev_name);
+					pdata->ehci_pdata->id_extcon_dev_name);
 			err = -ENODEV;
 			goto err_id_extcon;
 		}
@@ -739,14 +736,6 @@ static int tegra_otg_start(struct platform_device *pdev)
 		goto err_irq;
 	}
 
-	err = enable_irq_wake(tegra->irq);
-	if (err < 0) {
-		dev_warn(&pdev->dev,
-			"Couldn't enable USB otg mode wakeup, irq=%d, error=%d\n",
-			tegra->irq, err);
-		err = 0;
-	}
-
 	if (tegra->support_gpio_id && gpio_is_valid(tegra->id_det_gpio)) {
 		err = gpio_request(tegra->id_det_gpio, "id_det_gpio");
 		if (err) {
@@ -763,11 +752,6 @@ static int tegra_otg_start(struct platform_device *pdev)
 			dev_err(&pdev->dev, "request irq error\n");
 			goto err_id_gpio_irq;
 		}
-
-		err = enable_irq_wake(gpio_to_irq(tegra->id_det_gpio));
-		if (err < 0)
-			dev_warn(&pdev->dev,
-				"ID wake-up event failed with error %d\n", err);
 	}
 
 	return 0;
@@ -855,6 +839,7 @@ static int tegra_otg_suspend(struct device *dev)
 	struct tegra_otg *tegra = platform_get_drvdata(pdev);
 	enum usb_otg_state from = tegra->phy.state;
 	unsigned int val;
+	int err = 0;
 
 	mutex_lock(&tegra->irq_work_mutex);
 	DBG("%s(%d) BEGIN state : %s\n", __func__, __LINE__,
@@ -875,11 +860,31 @@ static int tegra_otg_suspend(struct device *dev)
 	if (from == OTG_STATE_A_HOST && tegra->turn_off_vbus_on_lp0)
 		tegra_otg_vbus_enable(tegra->vbus_reg, 0);
 
+	if (tegra->irq) {
+		err = enable_irq_wake(tegra->irq);
+		if (err < 0) {
+			dev_err(&pdev->dev,
+			"Couldn't enable USB otg mode wakeup,"
+			"irq=%d, error=%d\n", tegra->irq, err);
+			goto fail;
+		}
+	}
+
+	if (!(tegra->id_det_gpio == -1)) {
+		err = enable_irq_wake(
+				gpio_to_irq(tegra->id_det_gpio));
+		if (err < 0) {
+			dev_err(&pdev->dev,
+			"Couldn't enable USB otg mode gpio wakeup, irq=%d,"
+			"error=%d\n", gpio_to_irq(tegra->id_det_gpio), err);
+			goto fail;
+		}
+	}
+fail:
 	tegra->suspended = true;
 	DBG("%s(%d) END\n", __func__, __LINE__);
 	mutex_unlock(&tegra->irq_work_mutex);
-
-	return 0;
+	return err;
 }
 
 static void tegra_otg_resume(struct device *dev)
@@ -888,6 +893,7 @@ static void tegra_otg_resume(struct device *dev)
 	struct tegra_otg *tegra = platform_get_drvdata(pdev);
 	int val;
 	unsigned long flags;
+	int err = 0;
 
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
@@ -896,7 +902,21 @@ static void tegra_otg_resume(struct device *dev)
 		mutex_unlock(&tegra->irq_work_mutex);
 		return ;
 	}
+	if (tegra->irq) {
+		err = disable_irq_wake(tegra->irq);
+		if (err < 0)
+			dev_err(&pdev->dev,
+			"Couldn't disable USB otg mode wakeup,"
+			"irq=%d, error=%d\n", tegra->irq, err);
+	}
 
+	if (!(tegra->id_det_gpio == -1)) {
+		err = disable_irq_wake(gpio_to_irq(tegra->id_det_gpio));
+		if (err < 0)
+			dev_err(&pdev->dev,
+			"Couldn't disable USB otg mode gpio wakeup, irq=%d,"
+			"error=%d\n", gpio_to_irq(tegra->id_det_gpio), err);
+	}
 	/* Detect cable status after LP0 for all detection types */
 
 	if (tegra->support_usb_id || !tegra->support_pmu_vbus) {

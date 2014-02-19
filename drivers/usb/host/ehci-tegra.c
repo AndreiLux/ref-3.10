@@ -2,7 +2,7 @@
  * EHCI-compliant USB host controller driver for NVIDIA Tegra SoCs
  *
  * Copyright (c) 2010 Google, Inc.
- * Copyright (c) 2009-2013 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2009-2014 NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -81,6 +81,34 @@ struct dma_align_buffer {
 static struct usb_phy *get_usb_phy(struct tegra_usb_phy *x)
 {
 	return (struct usb_phy *)x;
+}
+
+static int tegra_ehci_port_speed(struct ehci_hcd *ehci)
+{
+	u32 hostpc = ehci_readl(ehci, &ehci->regs->hostpc);
+	enum usb_device_speed port_speed;
+
+	switch ((hostpc >> (ehci->has_hostpc ? 25 : 26)) & 3) {
+	case 0:
+		port_speed = USB_SPEED_LOW;
+		break;
+	case 1:
+		port_speed = USB_SPEED_FULL;
+		break;
+	case 2:
+		port_speed = USB_SPEED_HIGH;
+		break;
+	default:
+		port_speed = USB_SPEED_UNKNOWN;
+	}
+	return port_speed;
+}
+
+static void tegra_ehci_notify_event(struct tegra_ehci_hcd *tegra, int event)
+{
+	tegra->transceiver->last_event = event;
+	atomic_notifier_call_chain(&tegra->transceiver->notifier, event,
+					 tegra->transceiver->otg->gadget);
 }
 
 static void free_align_buffer(struct urb *urb, struct usb_hcd *hcd)
@@ -176,9 +204,9 @@ static void tegra_ehci_boost_cpu_frequency_work(struct work_struct *work)
 		struct tegra_ehci_hcd, boost_cpu_freq_work.work);
 	if (tegra->cpu_boost_in_work) {
 		tegra->boost_requested = true;
-		if (tegra->boost_enable)
-			pm_qos_update_request(
-				&tegra->boost_cpu_freq_req,
+		if (tegra->boost_enable && (tegra_ehci_port_speed(tegra->ehci)
+					== USB_SPEED_HIGH))
+			pm_qos_update_request(&tegra->boost_cpu_freq_req,
 				(s32)CONFIG_TEGRA_EHCI_BOOST_CPU_FREQ * 1000);
 	}
 }
@@ -413,10 +441,10 @@ static int tegra_ehci_bus_resume(struct usb_hcd *hcd)
 #ifdef CONFIG_TEGRA_EHCI_BOOST_CPU_FREQ
 	tegra->boost_requested = true;
 	if (pm_qos_request_active(&tegra->boost_cpu_freq_req)
-	    && tegra->boost_enable)
-		pm_qos_update_request(&tegra->boost_cpu_freq_req,
-			(s32)CONFIG_TEGRA_EHCI_BOOST_CPU_FREQ * 1000);
-	tegra->cpu_boost_in_work = false;
+		&& tegra->boost_enable) {
+		schedule_delayed_work(&tegra->boost_cpu_freq_work, 4000);
+		tegra->cpu_boost_in_work = true;
+	}
 
 #endif
 
@@ -597,6 +625,7 @@ static int tegra_ehci_probe(struct platform_device *pdev)
 	tegra->has_hostpc = pdata->has_hostpc;
 
 	tegra->phy = tegra_usb_phy_open(pdev);
+	hcd->phy = get_usb_phy(tegra->phy);
 	if (IS_ERR(tegra->phy)) {
 		dev_err(&pdev->dev, "failed to open USB phy\n");
 		err = -ENXIO;
@@ -619,15 +648,6 @@ static int tegra_ehci_probe(struct platform_device *pdev)
 	if (err) {
 		dev_err(&pdev->dev, "Failed to add USB HCD, error=%d\n", err);
 		goto fail_phy;
-	}
-
-	err = enable_irq_wake(tegra->irq);
-	if (err < 0) {
-		dev_warn(&pdev->dev,
-				"Couldn't enable USB host mode wakeup, irq=%d, "
-				"error=%d\n", irq, err);
-		err = 0;
-		tegra->irq = 0;
 	}
 
 	tegra->ehci = hcd_to_ehci(hcd);
@@ -669,10 +689,20 @@ fail_sysfs:
 #ifdef CONFIG_PM
 static int tegra_ehci_resume(struct platform_device *pdev)
 {
+	int err = 0;
 	struct tegra_ehci_hcd *tegra = platform_get_drvdata(pdev);
 	struct tegra_usb_platform_data *pdata = dev_get_platdata(&pdev->dev);
-	if (pdata->u_data.host.turn_off_vbus_on_lp0)
+	if (tegra->irq) {
+		err = disable_irq_wake(tegra->irq);
+		if (err < 0)
+			dev_err(&pdev->dev,
+				"Couldn't disable USB host mode wakeup, irq=%d, "
+				"error=%d\n", tegra->irq, err);
+	}
+	if (pdata->u_data.host.turn_off_vbus_on_lp0) {
 		tegra_usb_enable_vbus(tegra->phy, true);
+		tegra_ehci_notify_event(tegra, USB_EVENT_ID);
+	}
 	return tegra_usb_phy_power_on(tegra->phy);
 }
 
@@ -687,9 +717,18 @@ static int tegra_ehci_suspend(struct platform_device *pdev, pm_message_t state)
 		return -EBUSY;
 	else {
 		err = tegra_usb_phy_power_off(tegra->phy);
+		if (err < 0)
+			return err;
 		if (pdata->u_data.host.turn_off_vbus_on_lp0) {
 			tegra_usb_enable_vbus(tegra->phy, false);
 			tegra_usb_phy_pmc_disable(tegra->phy);
+		}
+		if (tegra->irq) {
+			err = enable_irq_wake(tegra->irq);
+			if (err < 0)
+				dev_err(&pdev->dev,
+					"Couldn't enable USB host mode wakeup, irq=%d, "
+					"error=%d\n", tegra->irq, err);
 		}
 		return err;
 	}
@@ -714,9 +753,6 @@ static int tegra_ehci_remove(struct platform_device *pdev)
 
 	if (!IS_ERR_OR_NULL(tegra->transceiver))
 		otg_set_host(tegra->transceiver->otg, NULL);
-
-	if (tegra->irq)
-		disable_irq_wake(tegra->irq);
 
 	/* Make sure phy is powered ON to access USB register */
 	if(!tegra_usb_phy_hw_accessible(tegra->phy))

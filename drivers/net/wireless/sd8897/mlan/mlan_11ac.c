@@ -4,7 +4,7 @@
  *  structures and declares global function prototypes used
  *  in MLAN module.
  *
- *  (C) Copyright 2011-2012 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2011-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -44,7 +44,8 @@
 /********************************************************
 			Local Functions
 ********************************************************/
-
+t_u16 wlan_convert_mcsmap_to_maxrate(mlan_private * priv, t_u8 bands,
+				     t_u16 mcs_map);
 /**
  *  @brief determine the center frquency center index for bandwidth
  *         of 80 MHz and 160 MHz
@@ -350,6 +351,26 @@ wlan_11ac_ioctl_vhtcfg(IN pmlan_adapter pmadapter,
 				cfg->param.vht_cfg.vht_tx_mcs =
 					GET_DEVTXMCSMAP(pmadapter->
 							usr_dot_11ac_mcs_support);
+				cfg->param.vht_cfg.vht_rx_max_rate =
+					wlan_convert_mcsmap_to_maxrate(pmpriv,
+								       cfg->
+								       param.
+								       vht_cfg.
+								       band,
+								       cfg->
+								       param.
+								       vht_cfg.
+								       vht_rx_mcs);
+				cfg->param.vht_cfg.vht_tx_max_rate =
+					wlan_convert_mcsmap_to_maxrate(pmpriv,
+								       cfg->
+								       param.
+								       vht_cfg.
+								       band,
+								       cfg->
+								       param.
+								       vht_cfg.
+								       vht_tx_mcs);
 			}
 			LEAVE();
 			return ret;
@@ -1115,6 +1136,16 @@ wlan_ret_11ac_cfg(IN pmlan_private pmpriv,
 		       &vhtcfg->vht_supp_mcs_set[4], sizeof(t_u32));
 		cfg->param.vht_cfg.vht_tx_mcs =
 			wlan_le32_to_cpu(cfg->param.vht_cfg.vht_tx_mcs);
+		cfg->param.vht_cfg.vht_rx_max_rate =
+			wlan_convert_mcsmap_to_maxrate(pmpriv,
+						       cfg->param.vht_cfg.band,
+						       cfg->param.vht_cfg.
+						       vht_rx_mcs);
+		cfg->param.vht_cfg.vht_tx_max_rate =
+			wlan_convert_mcsmap_to_maxrate(pmpriv,
+						       cfg->param.vht_cfg.band,
+						       cfg->param.vht_cfg.
+						       vht_tx_mcs);
 	}
 	LEAVE();
 	return MLAN_STATUS_SUCCESS;

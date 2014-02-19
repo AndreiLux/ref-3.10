@@ -1,7 +1,7 @@
 /*
  * imx132.c - imx132 sensor driver
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -24,7 +24,6 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/regulator/consumer.h>
-#include <linux/edp.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
@@ -53,8 +52,6 @@ struct imx132_info {
 	struct nvc_fuseid		fuse_id;
 	struct i2c_client		*i2c_client;
 	struct imx132_platform_data	*pdata;
-	struct edp_client		*edpc;
-	unsigned			edp_state;
 	atomic_t			in_use;
 	struct clk			*mclk;
 #ifdef CONFIG_DEBUG_FS
@@ -458,89 +455,6 @@ imx132_write_table(struct i2c_client *client,
 	return 0;
 }
 
-static void imx132_edp_lowest(struct imx132_info *info)
-{
-	if (!info->edpc)
-		return;
-
-	info->edp_state = info->edpc->num_states - 1;
-	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, info->edp_state);
-	if (edp_update_client_request(info->edpc, info->edp_state, NULL)) {
-		dev_err(&info->i2c_client->dev, "THIS IS NOT LIKELY HAPPEN!\n");
-		dev_err(&info->i2c_client->dev,
-			"UNABLE TO SET LOWEST EDP STATE!\n");
-	}
-}
-
-static void imx132_edp_throttle(unsigned int new_state, void *priv_data);
-
-static void imx132_edp_register(struct imx132_info *info)
-{
-	struct edp_manager *edp_manager;
-	struct edp_client *edpc = &info->pdata->edpc_config;
-	int ret;
-
-	info->edpc = NULL;
-	if (!edpc->num_states) {
-		dev_notice(&info->i2c_client->dev,
-			"%s: NO edp states defined.\n", __func__);
-		return;
-	}
-
-	strncpy(edpc->name, "imx132", EDP_NAME_LEN - 1);
-	edpc->name[EDP_NAME_LEN - 1] = 0;
-	edpc->private_data = info;
-	edpc->throttle = imx132_edp_throttle;
-
-	dev_dbg(&info->i2c_client->dev, "%s: %s, e0 = %d, p %d\n",
-		__func__, edpc->name, edpc->e0_index, edpc->priority);
-	for (ret = 0; ret < edpc->num_states; ret++)
-		dev_dbg(&info->i2c_client->dev, "e%d = %d mA",
-			ret - edpc->e0_index, edpc->states[ret]);
-
-	edp_manager = edp_get_manager("battery");
-	if (!edp_manager) {
-		dev_err(&info->i2c_client->dev,
-			"unable to get edp manager: battery\n");
-		return;
-	}
-
-	ret = edp_register_client(edp_manager, edpc);
-	if (ret) {
-		dev_err(&info->i2c_client->dev,
-			"unable to register edp client\n");
-		return;
-	}
-
-	info->edpc = edpc;
-	/* set to lowest state at init */
-	imx132_edp_lowest(info);
-}
-
-static int imx132_edp_req(struct imx132_info *info, unsigned new_state)
-{
-	unsigned approved;
-	int ret = 0;
-
-	if (!info->edpc)
-		return 0;
-
-	dev_dbg(&info->i2c_client->dev, "%s %d\n", __func__, new_state);
-	ret = edp_update_client_request(info->edpc, new_state, &approved);
-	if (ret) {
-		dev_err(&info->i2c_client->dev, "E state transition failed\n");
-		return ret;
-	}
-
-	if (approved > new_state) {
-		dev_err(&info->i2c_client->dev, "EDP no enough current\n");
-		return -ENODEV;
-	}
-
-	info->edp_state = approved;
-	return 0;
-}
-
 static int
 imx132_set_mode(struct imx132_info *info, struct imx132_mode *mode)
 {
@@ -561,14 +475,6 @@ imx132_set_mode(struct imx132_info *info, struct imx132_mode *mode)
 		dev_err(dev, "%s: invalid resolution to set mode %d %d\n",
 			__func__, mode->xres, mode->yres);
 		return -EINVAL;
-	}
-
-	/* request highest edp state */
-	err = imx132_edp_req(info, 0);
-	if (err) {
-		dev_err(&info->i2c_client->dev,
-			"%s: ERROR cannot set edp state! %d\n",	__func__, err);
-		return err;
 	}
 
 	/*
@@ -771,8 +677,8 @@ imx132_ioctl(struct file *file,
 	struct imx132_info *info = file->private_data;
 	struct device *dev = &info->i2c_client->dev;
 
-	switch (cmd) {
-	case IMX132_IOCTL_SET_MODE:
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(IMX132_IOCTL_SET_MODE):
 	{
 		struct imx132_mode mode;
 		if (copy_from_user(&mode,
@@ -784,13 +690,13 @@ imx132_ioctl(struct file *file,
 		}
 		return imx132_set_mode(info, &mode);
 	}
-	case IMX132_IOCTL_SET_FRAME_LENGTH:
+	case _IOC_NR(IMX132_IOCTL_SET_FRAME_LENGTH):
 		return imx132_set_frame_length(info, (u32)arg, true);
-	case IMX132_IOCTL_SET_COARSE_TIME:
+	case _IOC_NR(IMX132_IOCTL_SET_COARSE_TIME):
 		return imx132_set_coarse_time(info, (u32)arg, true);
-	case IMX132_IOCTL_SET_GAIN:
+	case _IOC_NR(IMX132_IOCTL_SET_GAIN):
 		return imx132_set_gain(info, (u16)arg, true);
-	case IMX132_IOCTL_GET_STATUS:
+	case _IOC_NR(IMX132_IOCTL_GET_STATUS):
 	{
 		u8 status;
 
@@ -804,7 +710,7 @@ imx132_ioctl(struct file *file,
 		}
 		return 0;
 	}
-	case IMX132_IOCTL_GET_FUSEID:
+	case _IOC_NR(IMX132_IOCTL_GET_FUSEID):
 	{
 		err = imx132_get_fuse_id(info);
 
@@ -822,7 +728,7 @@ imx132_ioctl(struct file *file,
 		}
 		return 0;
 	}
-	case IMX132_IOCTL_SET_GROUP_HOLD:
+	case _IOC_NR(IMX132_IOCTL_SET_GROUP_HOLD):
 	{
 		struct imx132_ae ae;
 		if (copy_from_user(&ae, (const void __user *)arg,
@@ -975,15 +881,7 @@ static int imx132_power_off(struct imx132_info *info)
 	}
 
 imx132_pwroff_end:
-	imx132_edp_lowest(info);
 	return 0;
-}
-
-static void imx132_edp_throttle(unsigned int new_state, void *priv_data)
-{
-	struct imx132_info *info = priv_data;
-
-	imx132_power_off(info);
 }
 
 static int
@@ -1104,6 +1002,9 @@ static const struct file_operations imx132_fileops = {
 	.owner = THIS_MODULE,
 	.open = imx132_open,
 	.unlocked_ioctl = imx132_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = imx132_ioctl,
+#endif
 	.release = imx132_release,
 };
 
@@ -1189,8 +1090,6 @@ imx132_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, info);
 
 	imx132_power_get(info);
-
-	imx132_edp_register(info);
 
 	memcpy(&info->miscdev_info,
 		&imx132_device,

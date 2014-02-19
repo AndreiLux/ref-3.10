@@ -649,6 +649,8 @@ typedef struct _wmm_desc {
 	t_u32 packets_out[MAX_NUM_TID];
     /** Packets queued */
 	t_u32 pkts_queued[MAX_NUM_TID];
+    /** Packets paused */
+	t_u32 pkts_paused[MAX_NUM_TID];
     /** Spin lock to protect ra_list */
 	t_void *ra_list_spinlock;
 

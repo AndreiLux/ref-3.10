@@ -4,7 +4,7 @@
   * driver. It includes init, exit, open, close and main
   * thread etc..
   *
-  * Copyright (C) 2007-2012, Marvell International Ltd.
+  * Copyright (C) 2007-2013, Marvell International Ltd.
   *
   * This software file (the "File") is distributed by Marvell International
   * Ltd. under the terms of the GNU General Public License Version 2, June 1991
@@ -29,7 +29,7 @@
   *
   * @section copyright_sec Copyright
   *
-  * Copyright (C) 2007-2012, Marvell International Ltd.
+  * Copyright (C) 2007-2013, Marvell International Ltd.
   *
   */
 
@@ -92,6 +92,8 @@ static int psmode = 1;
 static char *init_cfg;
 /** Calibration config file (MAC address, init powe etc.) */
 static char *cal_cfg;
+/** Calibration config file EXT */
+static char *cal_cfg_ext;
 /** Init MAC address */
 static char *bt_mac;
 
@@ -243,7 +245,7 @@ check_evtpkt(bt_private * priv, struct sk_buff *skb)
 	struct hci_event_hdr *hdr = (struct hci_event_hdr *)skb->data;
 	struct hci_ev_cmd_complete *ec;
 	u16 opcode, ocf;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	ENTER();
 	if (!priv->bt_dev.sendcmdflag) {
 		ret = BT_STATUS_FAILURE;
@@ -266,6 +268,7 @@ check_evtpkt(bt_private * priv, struct sk_buff *skb)
 		case BT_CMD_CONFIG_MAC_ADDR:
 		case BT_CMD_CSU_WRITE_REG:
 		case BT_CMD_LOAD_CONFIG_DATA:
+		case BT_CMD_LOAD_CONFIG_DATA_EXT:
 		case BT_CMD_AUTO_SLEEP_MODE:
 		case BT_CMD_HOST_SLEEP_CONFIG:
 		case BT_CMD_SDIO_PULL_CFG_REQ:
@@ -336,7 +339,7 @@ exit:
 int
 bt_process_event(bt_private * priv, struct sk_buff *skb)
 {
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	struct m_dev *m_dev = &(priv->bt_dev.m_dev[BT_SEQ]);
 	BT_EVENT *pevent;
 
@@ -522,7 +525,7 @@ int
 bt_send_reset_command(bt_private * priv)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_HCI_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_HCI_CMD), GFP_ATOMIC);
@@ -576,7 +579,7 @@ int
 bt_send_module_cfg_cmd(bt_private * priv, int subcmd)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
@@ -630,7 +633,7 @@ int
 bt_enable_ps(bt_private * priv)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
@@ -684,7 +687,7 @@ int
 bt_send_hscfg_cmd(bt_private * priv)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
@@ -730,7 +733,7 @@ int
 bt_send_sdio_pull_ctrl_cmd(bt_private * priv)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
@@ -784,7 +787,7 @@ int
 fm_set_intr_mask(bt_private * priv, u32 mask)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 
 	ENTER();
@@ -831,7 +834,7 @@ int
 bt_enable_hs(bt_private * priv)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
@@ -892,7 +895,7 @@ int
 bt_set_ble_deepsleep(bt_private * priv, int mode)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_BLE_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_BLE_CMD), GFP_ATOMIC);
@@ -937,7 +940,7 @@ int
 bt_get_fw_version(bt_private * priv)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_HCI_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_HCI_CMD), GFP_ATOMIC);
@@ -982,7 +985,7 @@ int
 bt_set_mac_address(bt_private * priv, u8 * mac)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_HCI_CMD *pcmd;
 	int i = 0;
 	ENTER();
@@ -1034,7 +1037,7 @@ int
 bt_load_cal_data(bt_private * priv, u8 * config_data, u8 * mac)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CMD *pcmd;
 	int i = 0;
 	/* u8 config_data[28] = {0x37 0x01 0x1c 0x00 0xFF 0xFF 0xFF 0xFF 0x01
@@ -1086,6 +1089,56 @@ exit:
 }
 
 /**
+ *  @brief This function load the calibrate EXT data
+ *
+ *  @param priv    A pointer to bt_private structure
+ *  @param config_data     A pointer to calibrate data
+ *  @param mac     A pointer to mac address
+ *
+ *  @return    BT_STATUS_SUCCESS or BT_STATUS_FAILURE
+ */
+int
+bt_load_cal_data_ext(bt_private * priv, u8 * config_data, u32 cfg_data_len)
+{
+	struct sk_buff *skb = NULL;
+	int ret = BT_STATUS_SUCCESS;
+	BT_CMD *pcmd;
+
+	ENTER();
+	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
+	if (skb == NULL) {
+		PRINTM(WARN, "No free skb\n");
+		ret = BT_STATUS_FAILURE;
+		goto exit;
+	}
+	pcmd = (BT_CMD *) skb->data;
+	pcmd->ocf_ogf = (VENDOR_OGF << 10) | BT_CMD_LOAD_CONFIG_DATA_EXT;
+	pcmd->length = cfg_data_len;
+
+	memcpy(pcmd->data, config_data, cfg_data_len);
+	bt_cb(skb)->pkt_type = MRVL_VENDOR_PKT;
+	skb_put(skb, BT_CMD_HEADER_SIZE + pcmd->length);
+	skb->dev = (void *)(&(priv->bt_dev.m_dev[BT_SEQ]));
+	skb_queue_head(&priv->adapter->tx_queue, skb);
+	priv->bt_dev.sendcmdflag = TRUE;
+	priv->bt_dev.send_cmd_ocf = BT_CMD_LOAD_CONFIG_DATA_EXT;
+	priv->adapter->cmd_complete = FALSE;
+
+	DBG_HEXDUMP(DAT_D, "calirate ext data", pcmd->data, pcmd->length);
+	wake_up_interruptible(&priv->MainThread.waitQ);
+	if (!os_wait_interruptible_timeout
+	    (priv->adapter->cmd_wait_q, priv->adapter->cmd_complete,
+	     WAIT_UNTIL_CMD_RESP)) {
+		ret = BT_STATUS_FAILURE;
+		PRINTM(ERROR, "BT: Load calibrate ext data: timeout:\n");
+		bt_cmd_timeout_func(priv->adapter, BT_CMD_LOAD_CONFIG_DATA_EXT);
+	}
+exit:
+	LEAVE();
+	return ret;
+}
+
+/**
  *  @brief This function writes value to CSU registers
  *
  *  @param priv    A pointer to bt_private structure
@@ -1098,7 +1151,7 @@ int
 bt_write_reg(bt_private * priv, u8 type, u32 offset, u16 value)
 {
 	struct sk_buff *skb = NULL;
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	BT_CSU_CMD *pcmd;
 	ENTER();
 	skb = bt_skb_alloc(sizeof(BT_CSU_CMD), GFP_ATOMIC);
@@ -1173,7 +1226,7 @@ bt_restore_tx_queue(bt_private * priv)
 int
 bt_prepare_command(bt_private * priv)
 {
-	u8 ret = BT_STATUS_SUCCESS;
+	int ret = BT_STATUS_SUCCESS;
 	ENTER();
 	if (priv->bt_dev.hscfgcmd) {
 		priv->bt_dev.hscfgcmd = 0;
@@ -1772,8 +1825,7 @@ sbi_register_conf_dpc(bt_private * priv)
 		}
 	}
 #ifdef SDIO_SUSPEND_RESUME
-
-	priv->bt_dev.gpio_gap = 0x0464;
+	priv->bt_dev.gpio_gap = 0x0864;
 	ret = bt_send_hscfg_cmd(priv);
 	if (ret < 0) {
 		PRINTM(FATAL, "Send HSCFG failed!\n");
@@ -1788,7 +1840,7 @@ sbi_register_conf_dpc(bt_private * priv)
 		priv->bt_dev.m_dev[BT_SEQ].dev_type = BT_AMP_TYPE;
 	}
 	/* block all the packet from bluez */
-	if (init_cfg || cal_cfg || bt_mac)
+	if (init_cfg || cal_cfg || bt_mac || cal_cfg_ext)
 		priv->adapter->tx_lock = TRUE;
 
 	if (mbt_dev) {
@@ -1838,7 +1890,7 @@ sbi_register_conf_dpc(bt_private * priv)
 
 		/** chmod & chown for BT char device */
 		mbtchar_chown(dev_file, AID_SYSTEM, AID_BLUETOOTH);
-		mbtchar_chmod(dev_file, 0666);
+		mbtchar_chmod(dev_file, 0660);
 
 		/** create proc device */
 		snprintf(priv->bt_dev.m_dev[BT_SEQ].name,
@@ -1896,7 +1948,7 @@ sbi_register_conf_dpc(bt_private * priv)
 				  MODULE_NAME, fm_dev->name);
 
 		/** chmod for FM char device */
-		mbtchar_chmod(dev_file, 0666);
+		mbtchar_chmod(dev_file, 0660);
 
 		/** create proc device */
 		snprintf(priv->bt_dev.m_dev[FM_SEQ].name,
@@ -2059,7 +2111,24 @@ sbi_register_conf_dpc(bt_private * priv)
 			goto done;
 		}
 	}
-	if (init_cfg || cal_cfg || bt_mac) {
+	if (cal_cfg_ext) {
+		if (BT_STATUS_SUCCESS != bt_cal_config_ext(priv, cal_cfg_ext)) {
+			PRINTM(FATAL, "BT: Set cal ext data failed\n");
+			if (mbt_dev) {
+				m_dev = &(priv->bt_dev.m_dev[BT_SEQ]);
+				/** unregister m_dev to char_dev */
+				m_dev->close(m_dev);
+				for (i = 0; i < 3; i++)
+					kfree_skb(mbt_dev->reassembly[i]);
+				/**  unregister m_dev to char_dev */
+				chardev_cleanup_one(m_dev, chardev_class);
+				free_m_dev(m_dev);
+			}
+			ret = BT_STATUS_FAILURE;
+			goto done;
+		}
+	}
+	if (init_cfg || cal_cfg || bt_mac || cal_cfg_ext) {
 		priv->adapter->tx_lock = FALSE;
 		bt_restore_tx_queue(priv);
 	}
@@ -2519,6 +2588,8 @@ module_param(init_cfg, charp, 0);
 MODULE_PARM_DESC(init_cfg, "BT init config file name");
 module_param(cal_cfg, charp, 0);
 MODULE_PARM_DESC(cal_cfg, "BT calibrate file name");
+module_param(cal_cfg_ext, charp, 0);
+MODULE_PARM_DESC(cal_cfg_ext, "BT calibrate ext file name");
 module_param(bt_mac, charp, 0);
 MODULE_PARM_DESC(bt_mac, "BT init mac address");
 module_param(minicard_pwrup, int, 0);

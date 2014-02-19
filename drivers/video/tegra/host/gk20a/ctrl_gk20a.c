@@ -1,9 +1,7 @@
 /*
- * drivers/video/tegra/host/gk20a/ctrl_gk20a.c
- *
  * GK20A Ctrl
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -31,24 +29,20 @@
 
 int gk20a_ctrl_dev_open(struct inode *inode, struct file *filp)
 {
-	struct nvhost_device_data *pdata;
-	struct platform_device *dev;
-	struct nvhost_channel *ch;
+	int err;
+	struct gk20a *g;
 
 	nvhost_dbg_fn("");
 
-	pdata = container_of(inode->i_cdev,
-			     struct nvhost_device_data, ctrl_cdev);
-	dev = pdata->pdev;
+	g = container_of(inode->i_cdev,
+			 struct gk20a, ctrl.cdev);
 
-	BUG_ON(dev == NULL);
+	filp->private_data = g->dev;
 
-	filp->private_data = dev;
-
-	ch = nvhost_getchannel(pdata->channel, false);
-	if (!ch) {
+	err = gk20a_get_client(g);
+	if (err) {
 		nvhost_dbg_fn("fail to get channel!");
-		return -ENOMEM;
+		return err;
 	}
 
 	return 0;
@@ -57,12 +51,36 @@ int gk20a_ctrl_dev_open(struct inode *inode, struct file *filp)
 int gk20a_ctrl_dev_release(struct inode *inode, struct file *filp)
 {
 	struct platform_device *dev = filp->private_data;
-	struct nvhost_device_data *pdata = nvhost_get_devdata(dev);
 
 	nvhost_dbg_fn("");
 
-	nvhost_putchannel(pdata->channel);
+	gk20a_put_client(get_gk20a(dev));
 	return 0;
+}
+
+static long
+gk20a_ctrl_ioctl_gpu_characteristics(
+	struct gk20a *g,
+	struct nvhost_gpu_get_characteristics *request)
+{
+	struct nvhost_gpu_characteristics *pgpu = &g->gpu_characteristics;
+	long err = 0;
+
+	if (request->gpu_characteristics_buf_size > 0) {
+		size_t write_size = sizeof(*pgpu);
+
+		if (write_size > request->gpu_characteristics_buf_size)
+			write_size = request->gpu_characteristics_buf_size;
+
+		err = copy_to_user((void __user *)(uintptr_t)
+				   request->gpu_characteristics_buf_addr,
+				   pgpu, write_size);
+	}
+
+	if (err == 0)
+		request->gpu_characteristics_buf_size = sizeof(*pgpu);
+
+	return err;
 }
 
 long gk20a_ctrl_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
@@ -93,6 +111,13 @@ long gk20a_ctrl_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 			return -EFAULT;
 	}
 
+	if (!g->gr.sw_ready) {
+		err = gk20a_busy(g->dev);
+		if (err)
+			return err;
+
+		gk20a_idle(g->dev);
+	}
 
 	switch (cmd) {
 	case NVHOST_GPU_IOCTL_ZCULL_GET_CTX_SIZE:
@@ -111,8 +136,10 @@ long gk20a_ctrl_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 			return -ENOMEM;
 
 		err = gr_gk20a_get_zcull_info(g, &g->gr, zcull_info);
-		if (err)
+		if (err) {
+			kfree(zcull_info);
 			break;
+		}
 
 		get_info_args->width_align_pixels = zcull_info->width_align_pixels;
 		get_info_args->height_align_pixels = zcull_info->height_align_pixels;
@@ -125,8 +152,7 @@ long gk20a_ctrl_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 		get_info_args->subregion_height_align_pixels = zcull_info->subregion_height_align_pixels;
 		get_info_args->subregion_count = zcull_info->subregion_count;
 
-		if (zcull_info)
-			kfree(zcull_info);
+		kfree(zcull_info);
 		break;
 	case NVHOST_GPU_IOCTL_ZBC_SET_TABLE:
 		set_table_args = (struct nvhost_gpu_zbc_set_table_args *)buf;
@@ -199,6 +225,12 @@ long gk20a_ctrl_dev_ioctl(struct file *filp, unsigned int cmd, unsigned long arg
 		if (zbc_tbl)
 			kfree(zbc_tbl);
 		break;
+
+	case NVHOST_GPU_IOCTL_GET_CHARACTERISTICS:
+		err = gk20a_ctrl_ioctl_gpu_characteristics(
+			g, (struct nvhost_gpu_get_characteristics *)buf);
+		break;
+
 	default:
 		nvhost_err(dev_from_gk20a(g), "unrecognized gpu ioctl cmd: 0x%x", cmd);
 		err = -ENOTTY;

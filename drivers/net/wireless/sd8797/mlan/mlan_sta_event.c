@@ -517,8 +517,10 @@ wlan_process_sta_tx_pause_event(pmlan_private priv, pmlan_buffer pevent)
 	MrvlIEtypes_tx_pause_t *tx_pause_tlv;
 	sta_node *sta_ptr = MNULL;
 	tdlsStatus_e status;
+	t_u8 *bssid = MNULL;
 	ENTER();
-
+	if (priv->media_connected)
+		bssid = priv->curr_bss_params.bss_descriptor.mac_address;
 	while (tlv_buf_left >= (int)sizeof(MrvlIEtypesHeader_t)) {
 		tlv_type = wlan_le16_to_cpu(tlv->type);
 		tlv_len = wlan_le16_to_cpu(tlv->len);
@@ -534,24 +536,35 @@ wlan_process_sta_tx_pause_event(pmlan_private priv, pmlan_buffer pevent)
 			       "TDLS TxPause: " MACSTR " pause=%d, pkts=%d\n",
 			       MAC2STR(tx_pause_tlv->peermac),
 			       tx_pause_tlv->tx_pause, tx_pause_tlv->pkt_cnt);
-			status = wlan_get_tdls_link_status(priv,
-							   tx_pause_tlv->
-							   peermac);
-			if (MTRUE == wlan_is_tdls_link_setup(status)) {
-				sta_ptr =
-					wlan_get_station_entry(priv,
-							       tx_pause_tlv->
-							       peermac);
-				if (sta_ptr) {
-					if (sta_ptr->tx_pause !=
-					    tx_pause_tlv->tx_pause) {
-						sta_ptr->tx_pause =
-							tx_pause_tlv->tx_pause;
-						wlan_update_ralist_tx_pause
-							(priv,
-							 tx_pause_tlv->peermac,
-							 tx_pause_tlv->
-							 tx_pause);
+			if (bssid &&
+			    !memcmp(priv->adapter, bssid, tx_pause_tlv->peermac,
+				    MLAN_MAC_ADDR_LENGTH)) {
+				if (tx_pause_tlv->tx_pause)
+					priv->port_open = MFALSE;
+				else
+					priv->port_open = MTRUE;
+			} else {
+				status = wlan_get_tdls_link_status(priv,
+								   tx_pause_tlv->
+								   peermac);
+				if (MTRUE == wlan_is_tdls_link_setup(status)) {
+					sta_ptr =
+						wlan_get_station_entry(priv,
+								       tx_pause_tlv->
+								       peermac);
+					if (sta_ptr) {
+						if (sta_ptr->tx_pause !=
+						    tx_pause_tlv->tx_pause) {
+							sta_ptr->tx_pause =
+								tx_pause_tlv->
+								tx_pause;
+							wlan_update_ralist_tx_pause
+								(priv,
+								 tx_pause_tlv->
+								 peermac,
+								 tx_pause_tlv->
+								 tx_pause);
+						}
 					}
 				}
 			}
@@ -1058,8 +1071,9 @@ wlan_ops_sta_process_event(IN t_void * priv)
 			pcb->moal_mfree(pmadapter->pmoal_handle, evt_buf);
 		}
 		break;
+
 	case EVENT_TX_DATA_PAUSE:
-		PRINTM(MEVENT, "EVENT: TDLS TX_DATA_PAUSE\n");
+		PRINTM(MEVENT, "EVENT: TX_DATA_PAUSE\n");
 		wlan_process_sta_tx_pause_event(priv, pmbuf);
 		break;
 

@@ -1,9 +1,7 @@
 /*
- * drivers/video/tegra/host/nvhost_sync.h
- *
  * Tegra Graphics Host Syncpoint Integration to linux/sync Framework
  *
- * Copyright (c) 2013, NVIDIA Corporation.
+ * Copyright (c) 2013, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -32,6 +30,7 @@ struct nvhost_ctrl_sync_fence_info;
 struct nvhost_sync_timeline;
 struct nvhost_sync_pt;
 
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
 struct nvhost_sync_timeline *nvhost_sync_timeline_create(
 		struct nvhost_syncpt *sp,
 		int id);
@@ -44,6 +43,61 @@ int nvhost_sync_create_fence(
 		u32 num_pts,
 		const char *name,
 		s32 *fence_fd);
+struct sync_fence *nvhost_sync_fdget(int fd);
+int nvhost_sync_num_pts(struct sync_fence *fence);
+struct nvhost_sync_pt *to_nvhost_sync_pt(struct sync_pt *pt);
+u32 nvhost_sync_pt_id(struct nvhost_sync_pt *pt);
+u32 nvhost_sync_pt_thresh(struct nvhost_sync_pt *pt);
+
+#else
+static inline struct nvhost_sync_timeline *nvhost_sync_timeline_create(
+		struct nvhost_syncpt *sp,
+		int id)
+{
+	return NULL;
+}
+
+static inline void nvhost_sync_pt_signal(struct nvhost_sync_pt *pt)
+{
+	return;
+}
+
+static inline int nvhost_sync_create_fence(
+		struct nvhost_syncpt *sp,
+		struct nvhost_ctrl_sync_fence_info *pts,
+		u32 num_pts,
+		const char *name,
+		s32 *fence_fd)
+{
+	return -EINVAL;
+}
+
+static inline struct sync_fence *nvhost_sync_fdget(int fd)
+{
+	return NULL;
+}
+
+static inline int nvhost_sync_num_pts(struct sync_fence *fence)
+{
+	return 0;
+}
+
+static inline struct nvhost_sync_pt *to_nvhost_sync_pt(struct sync_pt *pt)
+{
+	return NULL;
+}
+
+static inline u32 nvhost_sync_pt_id(struct nvhost_sync_pt *pt)
+{
+	return NVSYNCPT_INVALID;
+}
+
+static inline u32 nvhost_sync_pt_thresh(struct nvhost_sync_pt *pt)
+{
+	return 0;
+}
+
+#endif
 
 #endif /* __KERNEL __ */
 

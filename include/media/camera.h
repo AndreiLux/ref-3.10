@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -22,7 +22,7 @@
 #include <linux/miscdevice.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
-#include <linux/edp.h>
+#include <linux/sysedp.h>
 #include <media/nvc.h>
 #endif
 
@@ -77,6 +77,7 @@
 #define	CAMERA_SEQ_INDEX_MASK	0x0000ffff
 #define	CAMERA_SEQ_FLAG_MASK	(~CAMERA_SEQ_INDEX_MASK)
 #define	CAMERA_SEQ_FLAG_EDP	0x80000000
+
 enum {
 	CAMERA_SEQ_EXEC,
 	CAMERA_SEQ_REGISTER_EXEC,
@@ -119,8 +120,6 @@ struct gpio_cfg {
 struct edp_cfg {
 	uint estates[CAMERA_MAX_EDP_ENTRIES];
 	uint num;
-	uint e0_index;
-	int priority;
 };
 
 #define VIRTUAL_DEV_MAX_REGULATORS	8
@@ -129,17 +128,17 @@ struct edp_cfg {
 						CAMERA_MAX_NAME_LENGTH)
 
 struct virtual_device {
-	u8 name[32];
-	u32 bus_type;
+	__u32 power_on;
+	__u32 power_off;
 	struct regmap_cfg regmap_cfg;
-	u32 gpio_num;
-	u32 reg_num;
-	u8 reg_names[VIRTUAL_REGNAME_SIZE];
-	u32 pwr_on_size;
-	struct camera_reg *power_on;
-	u32 pwr_off_size;
-	struct camera_reg *power_off;
-	u32 clk_num;
+	__u32 bus_type;
+	__u32 gpio_num;
+	__u32 reg_num;
+	__u32 pwr_on_size;
+	__u32 pwr_off_size;
+	__u32 clk_num;
+	__u8 name[32];
+	__u8 reg_names[VIRTUAL_REGNAME_SIZE];
 };
 
 enum {
@@ -154,8 +153,8 @@ enum {
 struct cam_update {
 	u32 type;
 	u32 index;
-	u32 arg;
 	u32 size;
+	u32 arg;
 };
 
 enum {
@@ -206,11 +205,10 @@ struct camera_platform_data {
 };
 
 struct camera_edp_cfg {
-	struct edp_client edp_client;
+	struct sysedp_consumer *edp_client;
 	unsigned edp_state;
-	u8 edpc_en;
-	struct camera_reg *s_throttle;
-	int (*shutdown)(struct camera_device *cdev);
+	uint estates[CAMERA_MAX_EDP_ENTRIES];
+	uint num;
 };
 
 struct camera_seq_status {
@@ -228,7 +226,6 @@ struct camera_device {
 	struct camera_info *cam;
 	atomic_t in_use;
 	struct mutex mutex;
-	uint estates[CAMERA_MAX_EDP_ENTRIES];
 	struct camera_edp_cfg edpc;
 	struct clk **clks;
 	u32 num_clk;

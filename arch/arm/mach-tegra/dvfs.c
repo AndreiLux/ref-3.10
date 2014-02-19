@@ -5,7 +5,7 @@
  * Author:
  *	Colin Cross <ccross@google.com>
  *
- * Copyright (C) 2010-2013 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (C) 2010-2014 NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -533,6 +533,8 @@ static int dvfs_rail_connect_to_regulator(struct dvfs_rail *rail)
 				       rail->reg_id);
 				return PTR_ERR(reg);
 			}
+			pr_info("tegra_dvfs: %s rail is fixed in pll mode\n",
+			       rail->reg_id);
 		}
 		rail->reg = reg;
 	}
@@ -560,6 +562,8 @@ static int dvfs_rail_connect_to_regulator(struct dvfs_rail *rail)
 		     rail->reg_id, rail->millivolts, rail->boot_millivolts);
 		rail->boot_millivolts = rail->millivolts;
 	}
+
+	pr_info("tegra_dvfs: %s connected to regulator\n", rail->reg_id);
 	return 0;
 }
 
@@ -830,6 +834,7 @@ int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate)
 		tegra_dvfs_get_millivolts_pll(c->dvfs);
 	return predict_millivolts(c, millivolts, rate);
 }
+EXPORT_SYMBOL(tegra_dvfs_predict_millivolts);
 
 int tegra_dvfs_predict_peak_millivolts(struct clk *c, unsigned long rate)
 {
@@ -1004,8 +1009,70 @@ int tegra_dvfs_rail_get_override_floor(struct dvfs_rail *rail)
 	}
 	return -ENOENT;
 }
+
+static int dvfs_set_fmax_at_vmin(struct clk *c, unsigned long f_max, int v_min)
+{
+	int i, ret = 0;
+	struct dvfs *d = c->dvfs;
+	unsigned long f_min = 1000;	/* 1kHz min rate in DVFS tables */
+
+	mutex_lock(&rail_override_lock);
+	mutex_lock(&dvfs_lock);
+
+	if (v_min > d->dvfs_rail->override_millivolts) {
+		pr_err("%s: new %s vmin %dmV is above override voltage %dmV\n",
+		       __func__, c->name, v_min,
+		       d->dvfs_rail->override_millivolts);
+		ret = -EPERM;
+		goto out;
+	}
+
+	if (v_min >= d->max_millivolts) {
+		pr_err("%s: new %s vmin %dmV is at/above max voltage %dmV\n",
+		       __func__, c->name, v_min, d->max_millivolts);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	/*
+	 * dvfs table update:
+	 * - for voltages below new v_min the respective frequencies are shifted
+	 * below new f_max to the levels already present in the table; if the
+	 * 1st table entry has frequency above new fmax, all entries below v_min
+	 * are filled in with 1kHz (min rate used in DVFS tables).
+	 * - for voltages above new v_min, the respective frequencies are
+	 * increased to at least new f_max
+	 * - if new v_min is already in the table set the respective frequency
+	 * to new f_max
+	 */
+	for (i = 0; i < d->num_freqs; i++) {
+		int mv = d->millivolts[i];
+		unsigned long f = d->freqs[i];
+
+		if (mv < v_min) {
+			if (d->freqs[i] >= f_max)
+				d->freqs[i] = i ? d->freqs[i-1] : f_min;
+		} else if (mv > v_min) {
+			d->freqs[i] = max(f, f_max);
+		} else {
+			d->freqs[i] = f_max;
+		}
+		ret = __tegra_dvfs_set_rate(d, d->cur_rate);
+	}
+out:
+	mutex_unlock(&dvfs_lock);
+	mutex_unlock(&rail_override_lock);
+
+	return ret;
+}
 #else
 static int dvfs_override_core_voltage(int override_mv)
+{
+	pr_err("%s: vdd core override is not supported\n", __func__);
+	return -ENOSYS;
+}
+
+static int dvfs_set_fmax_at_vmin(struct clk *c, unsigned long f_max, int v_min)
 {
 	pr_err("%s: vdd core override is not supported\n", __func__);
 	return -ENOSYS;
@@ -1021,6 +1088,16 @@ int tegra_dvfs_override_core_voltage(struct clk *c, int override_mv)
 	return dvfs_override_core_voltage(override_mv);
 }
 EXPORT_SYMBOL(tegra_dvfs_override_core_voltage);
+
+int tegra_dvfs_set_fmax_at_vmin(struct clk *c, unsigned long f_max, int v_min)
+{
+	if (!c->dvfs || !c->dvfs->can_override) {
+		pr_err("%s: %s cannot set fmax_at_vmin)\n", __func__, c->name);
+		return -EPERM;
+	}
+	return dvfs_set_fmax_at_vmin(c, f_max, v_min);
+}
+EXPORT_SYMBOL(tegra_dvfs_set_fmax_at_vmin);
 
 /* May only be called during clock init, does not take any locks on clock c. */
 int __init tegra_enable_dvfs_on_clk(struct clk *c, struct dvfs *d)
@@ -1379,17 +1456,53 @@ bool tegra_dvfs_is_rail_up(struct dvfs_rail *rail)
 int tegra_dvfs_rail_set_mode(struct dvfs_rail *rail, unsigned int mode)
 {
 	int ret = -ENOENT;
+	unsigned int cur_mode;
 
-	pr_debug("%s: updating %s mode from %u to %u\n", __func__,
-		 rail->reg_id, regulator_get_mode(rail->reg), mode);
+	if (!rail || !rail->reg)
+		return ret;
 
-	if (rail && rail->reg)
+	if (regulator_can_set_mode(rail->reg)) {
+		pr_debug("%s: updating %s mode to %u\n", __func__,
+			 rail->reg_id, mode);
 		ret = regulator_set_mode(rail->reg, mode);
+		if (ret)
+			pr_err("%s: failed to set dvfs regulator %s mode %u\n",
+				__func__, rail->reg_id, mode);
+		return ret;
+	}
 
-	if (ret)
-		pr_err("Failed to set dvfs regulator %s mode %u\n",
-		       rail->reg_id, mode);
-	return ret;
+	/*
+	 * Set mode is not supported - check request against current mode
+	 * (if the latter is unknown, assume NORMAL).
+	 */
+	cur_mode = regulator_get_mode(rail->reg);
+	if (IS_ERR_VALUE(cur_mode))
+		cur_mode = REGULATOR_MODE_NORMAL;
+
+	if (WARN_ONCE(cur_mode != mode,
+		  "%s: dvfs regulator %s cannot change mode from %u\n",
+		  __func__, rail->reg_id, cur_mode))
+		return -EINVAL;
+
+	return 0;
+}
+
+int tegra_dvfs_rail_register_notifier(struct dvfs_rail *rail,
+				      struct notifier_block *nb)
+{
+	if (!rail || !rail->reg)
+		return -ENOENT;
+
+	return regulator_register_notifier(rail->reg, nb);
+}
+
+int tegra_dvfs_rail_unregister_notifier(struct dvfs_rail *rail,
+					struct notifier_block *nb)
+{
+	if (!rail || !rail->reg)
+		return -ENOENT;
+
+	return regulator_unregister_notifier(rail->reg, nb);
 }
 
 bool tegra_dvfs_rail_updating(struct clk *clk)
@@ -1685,6 +1798,7 @@ static inline void tegra_dvfs_rail_register_vts_cdev(struct dvfs_rail *rail)
 }
 #endif
 
+#ifdef CONFIG_TEGRA_USE_SIMON
 /*
  * Validate rail SiMon Vmin offsets. Valid offsets should be negative,
  * descending, starting from zero.
@@ -1709,6 +1823,7 @@ void __init tegra_dvfs_rail_init_simon_vmin_offsets(
 	rail->simon_vmin_offsets = offsets;
 	rail->simon_vmin_offs_num = offs_num;
 }
+#endif
 
 /*
  * Validate rail thermal profile, and get its size. Valid profile:
@@ -1878,7 +1993,12 @@ int tegra_dvfs_rail_dfll_mode_set_cold(struct dvfs_rail *rail)
  * by the regulator api for each one.  Must be called in late init, after
  * all the regulator api's regulators are initialized.
  */
-int __init tegra_dvfs_late_init(void)
+
+#ifdef CONFIG_TEGRA_DVFS_RAIL_CONNECT_ALL
+/*
+ * Enable voltage scaling only if all the rails connect successfully
+ */
+int __init tegra_dvfs_rail_connect_regulators(void)
 {
 	bool connected = true;
 	struct dvfs_rail *rail;
@@ -1889,12 +2009,16 @@ int __init tegra_dvfs_late_init(void)
 		if (dvfs_rail_connect_to_regulator(rail))
 			connected = false;
 
-	list_for_each_entry(rail, &dvfs_rail_list, node)
-		if (connected)
+	list_for_each_entry(rail, &dvfs_rail_list, node) {
+		if (connected) {
 			dvfs_rail_update(rail);
-		else
-			__tegra_dvfs_rail_disable(rail);
-
+			if (!rail->disabled)
+				continue;
+			/* Don't rely on boot level - force disabled voltage */
+			rail->disabled = false;
+		}
+		__tegra_dvfs_rail_disable(rail);
+	}
 	mutex_unlock(&dvfs_lock);
 
 	if (!connected && tegra_platform_is_silicon()) {
@@ -1902,6 +2026,36 @@ int __init tegra_dvfs_late_init(void)
 			"            !!!! voltage scaling is disabled !!!!\n");
 		return -ENODEV;
 	}
+
+	return 0;
+}
+#else
+int __init tegra_dvfs_rail_connect_regulators(void)
+{
+	struct dvfs_rail *rail;
+
+	mutex_lock(&dvfs_lock);
+
+	list_for_each_entry(rail, &dvfs_rail_list, node) {
+		if (!dvfs_rail_connect_to_regulator(rail)) {
+			dvfs_rail_update(rail);
+			if (!rail->disabled)
+				continue;
+			/* Don't rely on boot level - force disabled voltage */
+			rail->disabled = false;
+		}
+		__tegra_dvfs_rail_disable(rail);
+	}
+
+	mutex_unlock(&dvfs_lock);
+
+	return 0;
+}
+#endif
+
+int __init tegra_dvfs_rail_register_notifiers(void)
+{
+	struct dvfs_rail *rail;
 
 	register_pm_notifier(&tegra_dvfs_suspend_nb);
 	register_pm_notifier(&tegra_dvfs_resume_nb);
@@ -1996,6 +2150,8 @@ static int dvfs_tree_show(struct seq_file *s, void *data)
 				rel->from->reg_id, rel->from->millivolts,
 				dvfs_solve_relationship(rel));
 		}
+		seq_printf(s, "   nominal    %-7d mV\n",
+			   rail->nominal_millivolts);
 		seq_printf(s, "   offset     %-7d mV\n", rail->dbg_mv_offs);
 
 		if (rail->therm_mv_floors) {
@@ -2223,6 +2379,13 @@ static int dvfs_table_show(struct seq_file *s, void *data)
 	seq_printf(s, "DVFS tables: units mV/MHz\n");
 
 	mutex_lock(&dvfs_lock);
+
+	list_for_each_entry(rail, &dvfs_rail_list, node) {
+		if (rail->version) {
+			seq_printf(s, "%-9s table version: ", rail->reg_id);
+			seq_printf(s, "%-16s\n", rail->version);
+		}
+	}
 
 	list_for_each_entry(rail, &dvfs_rail_list, node) {
 		list_for_each_entry(d, &rail->dvfs, reg_node) {

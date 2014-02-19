@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-loki.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -85,6 +85,7 @@
 #include "common.h"
 #include "tegra-board-id.h"
 #include "iomap.h"
+#include "tegra-of-dev-auxdata.h"
 
 static struct board_info board_info, display_board_info;
 
@@ -179,10 +180,6 @@ static __initdata struct tegra_clk_init_table loki_clk_init_table[] = {
 
 static void loki_i2c_init(void)
 {
-	struct board_info bi;
-	tegra_get_board_info(&bi);
-	if (bi.board_id == BOARD_P2530 && bi.sku == BOARD_SKU_FOSTER)
-		return;
 	i2c_register_board_info(0, &rt5639_board_info, 1);
 }
 
@@ -238,10 +235,6 @@ static struct tegra_asoc_platform_data loki_audio_pdata_rt5639 = {
 
 static void loki_audio_init(void)
 {
-	struct board_info bi;
-	tegra_get_board_info(&bi);
-	if (bi.board_id == BOARD_P2530 && bi.sku == BOARD_SKU_FOSTER)
-		return;
 	loki_audio_pdata_rt5639.gpio_hp_det =
 			TEGRA_GPIO_HP_DET;
 
@@ -333,6 +326,9 @@ static struct platform_device *loki_devices[] __initdata = {
 	&bluetooth_dit_device,
 	&baseband_dit_device,
 	&tegra_hda_device,
+#if defined(CONFIG_TEGRA_CEC_SUPPORT)
+	&tegra_cec_device,
+#endif
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_AES)
 	&tegra_aes_device,
 #endif
@@ -374,6 +370,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.hot_plug = false,
 		.remote_wakeup_supported = true,
 		.power_off_on_suspend = true,
+		.turn_off_vbus_on_lp0 = true,
 	},
 	.u_cfg.utmi = {
 		.hssync_start_delay = 0,
@@ -487,8 +484,9 @@ static void loki_usb_init(void)
 
 	/* Device cable is detected through PMU Interrupt */
 	tegra_udc_pdata.support_pmu_vbus = true;
+	tegra_udc_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	tegra_ehci1_utmi_pdata.support_pmu_vbus = true;
-	tegra_otg_pdata.vbus_extcon_dev_name = "palmas-extcon";
+	tegra_ehci1_utmi_pdata.vbus_extcon_dev_name = "palmas-extcon";
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
 		tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
@@ -545,6 +543,18 @@ static void loki_xusb_init(void)
 				xusb_pdata.portmap &= ~(
 					TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_SS_P0 |
 					TEGRA_XUSB_USB2_P2 | TEGRA_XUSB_SS_P1);
+		} else if (board_info.board_id == BOARD_P2530 &&
+					board_info.sku == BOARD_SKU_FOSTER) {
+			if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
+				xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0);
+
+			if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
+				xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P1 |
+					TEGRA_XUSB_SS_P0);
+
+			if (!(usb_port_owner_info & UTMI3_PORT_OWNER_XUSB))
+				xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P2 |
+					TEGRA_XUSB_SS_P1);
 		} else {
 			pr_info("Shield ERS 0x%x\n", board_info.board_id);
 			/* Shield ERS */
@@ -633,51 +643,9 @@ static void loki_modem_init(void)
 	}
 }
 
-#ifndef CONFIG_USE_OF
-static struct platform_device *loki_spi_devices[] __initdata = {
-	&tegra11_spi_device1,
-	&tegra11_spi_device4,
-};
-
-static struct tegra_spi_platform_data loki_spi1_pdata = {
-	.dma_req_sel		= 15,
-	.spi_max_frequency	= 25000000,
-	.clock_always_on	= false,
-};
-
-static struct tegra_spi_platform_data loki_spi4_pdata = {
-	.dma_req_sel		= 18,
-	.spi_max_frequency	= 25000000,
-	.clock_always_on	= false,
-};
-
-static void __init loki_spi_init(void)
-{
-	tegra11_spi_device1.dev.platform_data = &loki_spi1_pdata;
-	tegra11_spi_device4.dev.platform_data = &loki_spi4_pdata;
-	platform_add_devices(loki_spi_devices,
-			ARRAY_SIZE(loki_spi_devices));
-}
-#else
-static void __init loki_spi_init(void)
-{
-}
-#endif
-
 #ifdef CONFIG_USE_OF
 struct of_dev_auxdata loki_auxdata_lookup[] __initdata = {
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d400, "spi-tegra114.0",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d600, "spi-tegra114.1",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d800, "spi-tegra114.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000da00, "spi-tegra114.3",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000dc00, "spi-tegra114.4",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000de00, "spi-tegra114.5",
-				NULL),
+	T124_SPI_OF_DEV_AUXDATA,
 	OF_DEV_AUXDATA("nvidia,tegra124-apbdma", 0x60020000, "tegra-apbdma",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-se", 0x70012000, "tegra12-se", NULL),
@@ -700,20 +668,12 @@ struct of_dev_auxdata loki_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006200, "serial-tegra.2",
 				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000c000, "tegra12-i2c.0",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000c400, "tegra12-i2c.1",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000c500, "tegra12-i2c.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000c700, "tegra12-i2c.3",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000d000, "tegra12-i2c.4",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra124-i2c", 0x7000d100, "tegra12-i2c.5",
-				NULL),
+	T124_I2C_OF_DEV_AUXDATA,
 	OF_DEV_AUXDATA("nvidia,tegra124-xhci", 0x70090000, "tegra-xhci",
 				&xusb_pdata),
+	OF_DEV_AUXDATA("nvidia,tegra124-nvavp", 0x60001000, "nvavp",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
@@ -731,6 +691,16 @@ struct rm_spi_ts_platform_data rm31080ts_loki_data = {
 	.platform_id = RM_PLATFORM_L005,
 	.name_of_clock = "clk_out_2",
 	.name_of_clock_con = "extern2",
+};
+
+struct rm_spi_ts_platform_data rm31080ts_loki_data_t_1_95 = {
+	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
+	.config = 0,
+	.platform_id = RM_PLATFORM_L005,
+	.name_of_clock = "clk_out_2",
+	.name_of_clock_con = "extern2",
+	.gpio_sensor_select0 = true,
+	.gpio_sensor_select1 = false,
 };
 
 static struct tegra_spi_device_controller_data dev_cdata = {
@@ -758,8 +728,18 @@ static int __init loki_touch_init(void)
 		return 0;
 
 	if (tegra_get_touch_panel_id() == TOUCH_PANEL_THOR_WINTEK)
-		rm31080ts_loki_data.platform_id = RM_PLATFORM_R005;
-	tegra_clk_init_from_table(touch_clk_init_table);
+		rm31080a_loki_spi_board[0].platform_data =
+					&rm31080ts_loki_data_t_1_95;
+
+	/*
+	** remove touch clock initialization for ffd fab a3, higher
+	** Move clock from tegra clock to external xtal
+	*/
+	if (bi.board_id == BOARD_P2530 && bi.fab >= 0xa3) {
+		rm31080ts_loki_data.name_of_clock = NULL;
+		rm31080ts_loki_data.name_of_clock_con = NULL;
+	} else
+		tegra_clk_init_from_table(touch_clk_init_table);
 	rm31080a_loki_spi_board[0].irq =
 		gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
 	touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
@@ -772,13 +752,23 @@ static int __init loki_touch_init(void)
 
 static void __init loki_revision_init(struct board_info *binf)
 {
-	system_rev = P2530;
+
+	struct board_info disp_board_info;
+
+	system_rev = P2530_LOKI;
+	tegra_get_display_board_info(&disp_board_info);
 	if (!binf)
 		return;
-	if (binf->board_id == BOARD_E2548)
+	if (binf->board_id == BOARD_E2548) {
 		system_rev = E2548;
-	else if (binf->board_id == BOARD_E2549)
+	} else if (binf->board_id == BOARD_E2549) {
 		system_rev = E2549;
+	} else if (binf->board_id == BOARD_P2530) {
+		if (binf->sku == BOARD_SKU_FOSTER)
+			system_rev = P2530_FOSTER;
+		else if (disp_board_info.fab == 0x1)
+			system_rev = P2530_LOKI_PREM;
+	}
 }
 
 static void __init tegra_loki_early_init(void)
@@ -815,18 +805,15 @@ static void __init tegra_loki_late_init(void)
 		board_info.board_id, board_info.sku,
 		board_info.fab, board_info.major_revision,
 		board_info.minor_revision);
-	platform_device_register(&tegra124_pinctrl_device);
 	loki_revision_init(&board_info);
 	loki_pinmux_init();
 	loki_usb_init();
 	loki_modem_init();
 	loki_xusb_init();
 	loki_i2c_init();
-	loki_spi_init();
 	loki_uart_init();
 	loki_audio_init();
 	platform_add_devices(loki_devices, ARRAY_SIZE(loki_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	loki_sdhci_init();
 	loki_regulator_init();
@@ -842,8 +829,8 @@ static void __init tegra_loki_late_init(void)
 	tegra_wdt_recovery_init();
 #endif
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
-
-	loki_sensors_init();
+	if (!is_tegra_diagnostic_mode())
+		loki_sensors_init();
 	loki_fan_init();
 	loki_soctherm_init();
 	loki_setup_bluedroid_pm();
@@ -852,11 +839,6 @@ static void __init tegra_loki_late_init(void)
 #ifdef CONFIG_C2PORT_LOKI
 	tegra_loki_mcu_debugger_init();
 #endif
-}
-
-static void __init loki_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 
 static void __init tegra_loki_dt_init(void)
@@ -883,7 +865,6 @@ static void __init tegra_loki_reserve(void)
 #else
 	tegra_reserve(SZ_1G, SZ_16M + SZ_2M, SZ_4M);
 #endif
-	loki_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const loki_dt_board_compat[] = {

@@ -2,7 +2,7 @@
  *
  *  @brief This file contains functions for 11n handling.
  *
- *  (C) Copyright 2008-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2008-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -2016,42 +2016,8 @@ wlan_validate_chan_offset(IN mlan_private * pmpriv,
 					chan_offset = SEC_CHAN_BELOW;
 				}
 			}
-		} else if (band & BAND_AN) {
-			switch (chan) {
-			case 36:
-			case 44:
-			case 52:
-			case 60:
-			case 100:
-			case 108:
-			case 116:
-			case 124:
-			case 132:
-			case 140:
-			case 149:
-			case 157:
-				chan_offset = SEC_CHAN_ABOVE;
-				break;
-			case 40:
-			case 48:
-			case 56:
-			case 64:
-			case 104:
-			case 112:
-			case 120:
-			case 128:
-			case 136:
-			case 144:
-			case 153:
-			case 161:
-				chan_offset = SEC_CHAN_BELOW;
-				break;
-			case 165:
-				/* Special Case: 20Mhz-only Channel */
-				chan_offset = SEC_CHAN_NONE;
-				break;
-			}
-		}
+		} else if (band & BAND_AN)
+			chan_offset = wlan_get_second_channel_offset(chan);
 	}
 	return chan_offset;
 }
@@ -2461,10 +2427,14 @@ wlan_11n_create_txbastream_tbl(mlan_private * priv,
 		PRINTM(MDAT_D, "get_txbastream_tbl TID %d\n", tid);
 		DBG_HEXDUMP(MDAT_D, "RA", ra, MLAN_MAC_ADDR_LENGTH);
 
-		pmadapter->callbacks.moal_malloc(pmadapter->pmoal_handle,
-						 sizeof(TxBAStreamTbl),
-						 MLAN_MEM_DEF,
-						 (t_u8 **) & new_node);
+		if (pmadapter->callbacks.
+		    moal_malloc(pmadapter->pmoal_handle, sizeof(TxBAStreamTbl),
+				MLAN_MEM_DEF, (t_u8 **) & new_node)) {
+			PRINTM(MERROR,
+			       "wlan_11n_create_txbastream_tbl Failed to allocate new_node\n");
+			LEAVE();
+			return;
+		}
 		util_init_list((pmlan_linked_list) new_node);
 
 		new_node->tid = tid;

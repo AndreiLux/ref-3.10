@@ -18,7 +18,6 @@
  */
 
 #include <linux/i2c.h>
-#include <linux/i2c/pca954x.h>
 #include <linux/i2c/pca953x.h>
 #include <linux/pda_power.h>
 #include <linux/platform_device.h>
@@ -196,7 +195,11 @@ AMS_PDATA_INIT(sd2, NULL, 1350000, 1350000, 1, 1, 1, 0);
 AMS_PDATA_INIT(sd4, NULL, 1050000, 1050000, 1, 1, 1,
 	       AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(sd5, NULL, 1800000, 1800000, 1, 1, 1, 0);
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+AMS_PDATA_INIT(sd6, NULL, 650000, 1200000, 1, 1, 1, 0);
+#else
 AMS_PDATA_INIT(sd6, NULL, 650000, 1200000, 0, 1, 1, 0);
+#endif
 AMS_PDATA_INIT(ldo0, AS3722_SUPPLY(sd2), 1050000, 1250000, 1, 1, 1,
 	       AS3722_EXT_CONTROL_ENABLE1);
 AMS_PDATA_INIT(ldo1, NULL, 1800000, 1800000, 0, 1, 1, 0);
@@ -205,7 +208,7 @@ AMS_PDATA_INIT(ldo3, NULL, 800000, 800000, 1, 1, 1, 0);
 AMS_PDATA_INIT(ldo4, NULL, 2700000, 2700000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo5, AS3722_SUPPLY(sd5), 1200000, 1200000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo6, NULL, 1800000, 3300000, 0, 0, 1, 0);
-AMS_PDATA_INIT(ldo7, AS3722_SUPPLY(sd5), 1050000, 1050000, 0, 0, 1, 0);
+AMS_PDATA_INIT(ldo7, AS3722_SUPPLY(sd5), 1275000, 1275000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo9, NULL, 3300000, 3300000, 0, 1, 1, 0);
 AMS_PDATA_INIT(ldo10, NULL, 2700000, 2700000, 0, 0, 1, 0);
 AMS_PDATA_INIT(ldo11, NULL, 1800000, 1800000, 0, 0, 1, 0);
@@ -216,7 +219,7 @@ static struct as3722_pinctrl_platform_data as3722_pctrl_pdata[] = {
 	AS3722_PIN_CONTROL("gpio2", "gpio", NULL, NULL, NULL, "output-high"),
 	AS3722_PIN_CONTROL("gpio3", "gpio", NULL, NULL, "enabled", NULL),
 	AS3722_PIN_CONTROL("gpio4", "gpio", NULL, NULL, NULL, "output-high"),
-	AS3722_PIN_CONTROL("gpio5", "gpio", "pull-down", NULL, "enabled", NULL),
+	AS3722_PIN_CONTROL("gpio5", "clk32k-out", NULL, NULL, NULL, NULL),
 	AS3722_PIN_CONTROL("gpio6", "gpio", NULL, NULL, "enabled", NULL),
 	AS3722_PIN_CONTROL("gpio7", "gpio", NULL, NULL, NULL, "output-high"),
 };
@@ -259,13 +262,16 @@ static struct as3722_platform_data as3722_pdata = {
 	.enable_clk32k_out = true,
 	.use_power_off = true,
 	.extcon_pdata = &as3722_adc_extcon_pdata,
+	.major_rev = 1,
+	.minor_rev = 1,
 };
 
 static struct pca953x_platform_data tca6416_pdata = {
 	.gpio_base = PMU_TCA6416_GPIO_BASE,
+	.irq_base = PMU_TCA6416_IRQ_BASE,
 };
 
-static const struct i2c_board_info tca6416_expander[] = {
+static struct i2c_board_info tca6416_expander[] = {
 	{
 		I2C_BOARD_INFO("tca6416", 0x20),
 		.platform_data = &tca6416_pdata,
@@ -312,9 +318,13 @@ int __init norrin_as3722_regulator_init(void)
 	as3722_ldo3_reg_pdata.enable_tracking = true;
 	as3722_ldo3_reg_pdata.disable_tracking_suspend = true;
 
+	if ((board_info.board_id == BOARD_PM374) &&
+				(board_info.fab == BOARD_FAB_B))
+		as3722_pdata.minor_rev = 2;
 	pr_info("%s: i2c_register_board_info\n", __func__);
 	i2c_register_board_info(4, as3722_regulators,
 			ARRAY_SIZE(as3722_regulators));
+	tca6416_expander[0].irq = gpio_to_irq(TEGRA_GPIO_PQ5);
 	i2c_register_board_info(0, tca6416_expander,
 			ARRAY_SIZE(tca6416_expander));
 	return 0;
@@ -353,8 +363,16 @@ static struct voltage_reg_map pmu_cpu_vdd_map[PMU_CPU_VDD_MAP_SIZE];
 static inline void fill_reg_map(void)
 {
 	int i;
+	u32 reg_init_value = 0x0a;
+	struct board_info board_info;
+
+	tegra_get_board_info(&board_info);
+	if ((board_info.board_id == BOARD_PM374) &&
+			(board_info.fab == 0x01))
+		reg_init_value = 0x1e;
+
 	for (i = 0; i < PMU_CPU_VDD_MAP_SIZE; i++) {
-		pmu_cpu_vdd_map[i].reg_value = i + 0xa;
+		pmu_cpu_vdd_map[i].reg_value = i + reg_init_value;
 		pmu_cpu_vdd_map[i].reg_uV = 700000 + 10000 * i;
 	}
 }
@@ -863,10 +881,10 @@ int __init norrin_soctherm_init(void)
 			7000);
 	tegra_add_cpu_vmax_trips(norrin_soctherm_data.therm[THERM_CPU].trips,
 			&norrin_soctherm_data.therm[THERM_CPU].num_trips);
-	tegra_add_core_edp_trips(norrin_soctherm_data.therm[THERM_CPU].trips,
-			&norrin_soctherm_data.therm[THERM_CPU].num_trips);
 	tegra_add_tgpu_trips(norrin_soctherm_data.therm[THERM_GPU].trips,
 			&norrin_soctherm_data.therm[THERM_GPU].num_trips);
+	tegra_add_core_vmax_trips(norrin_soctherm_data.therm[THERM_PLL].trips,
+			&norrin_soctherm_data.therm[THERM_PLL].num_trips);
 
 	return tegra11_soctherm_init(&norrin_soctherm_data);
 }

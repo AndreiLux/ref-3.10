@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-panel.h
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -20,6 +20,7 @@
 #define __MACH_TEGRA_BOARD_PANEL_H
 
 #include <linux/platform_device.h>
+#include <mach/dc.h>
 #include "tegra-board-id.h"
 
 struct tegra_panel {
@@ -36,16 +37,16 @@ enum {
 	TEGRA_GPIO_RESET,
 	TEGRA_GPIO_BL_ENABLE,
 	TEGRA_GPIO_PWM,
-	TEGRA_GPIO_TE,
 	TEGRA_N_GPIO_PANEL, /* add new gpio above this entry */
 };
 
 /* tegra_panel_of will replace tegra_panel once we completely move to DT */
 struct tegra_panel_of {
 	int panel_gpio[TEGRA_N_GPIO_PANEL];
+	bool panel_gpio_populated;
 };
 static struct tegra_panel_of __maybe_unused panel_of = {
-	.panel_gpio = {-1, -1, -1, -1},
+	.panel_gpio = {-1, -1, -1},
 };
 
 struct tegra_panel_ops {
@@ -58,6 +59,8 @@ struct tegra_panel_ops {
 	void (*hotplug_report)(bool);
 };
 extern struct tegra_panel_ops dsi_p_wuxga_10_1_ops;
+extern struct tegra_panel_ops dsi_lgd_wxga_7_0_ops;
+extern struct tegra_panel_ops dsi_s_wqxga_10_1_ops;
 
 extern struct tegra_panel dsi_l_720p_5;
 extern struct tegra_panel dsi_j_720p_4_7;
@@ -68,12 +71,15 @@ extern struct tegra_panel dsi_s_wqxga_10_1;
 extern struct tegra_panel dsi_lgd_wxga_7_0;
 extern struct tegra_panel dsi_a_1080p_14_0;
 extern struct tegra_panel edp_a_1080p_14_0;
+extern struct tegra_panel edp_i_1080p_11_6;
 extern struct tegra_panel edp_s_wqxgap_15_6;
 extern struct tegra_panel edp_s_uhdtv_15_6;
 extern struct tegra_panel lvds_c_1366_14;
 extern struct tegra_panel dsi_l_720p_5_loki;
 extern struct tegra_panel dsi_j_1440_810_5_8;
 extern struct tegra_panel dsi_j_720p_5;
+extern struct tegra_panel dsi_a_1200_1920_7_0;
+extern struct tegra_panel dsi_a_1200_800_8_0;
 
 void tegra_dsi_resources_init(u8 dsi_instance,
 			struct resource *resources, int n_resources);
@@ -86,5 +92,5 @@ int tegra_panel_gpio_get_dt(const char *comp_str,
 int tegra_panel_reset(struct tegra_panel_of *panel, unsigned int delay_ms);
 
 int tegra_init_hdmi(struct platform_device *pdev,
-		     struct platform_device *phost1x);
+			struct platform_device *phost1x);
 #endif /* __MACH_TEGRA_BOARD_PANEL_H */

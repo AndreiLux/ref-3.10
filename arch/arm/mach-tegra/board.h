@@ -2,7 +2,7 @@
  * arch/arm/mach-tegra/board.h
  *
  * Copyright (C) 2010 Google, Inc.
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * Author:
  *	Colin Cross <ccross@google.com>
@@ -30,6 +30,13 @@
 #include <linux/memory.h>
 
 #include <mach/tegra_smmu.h>
+
+/*
+ * OF is always used on ARM64
+ */
+#ifdef CONFIG_ARM64
+#define CONFIG_USE_OF "y"
+#endif
 
 #ifdef CONFIG_TEGRA_NVDUMPER
 #define NVDUMPER_RESERVED_SIZE 4096UL
@@ -122,13 +129,6 @@ int get_sd_uart_port_id(void);
 void set_sd_uart_port_id(int);
 int __init tegra_register_fuse(void);
 
-#ifdef CONFIG_PSTORE_RAM
-void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size);
-#else
-static inline void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size)
-{}
-#endif
-
 extern phys_addr_t tegra_bootloader_fb_start;
 extern phys_addr_t tegra_bootloader_fb_size;
 extern phys_addr_t tegra_bootloader_fb2_start;
@@ -214,10 +214,22 @@ enum panel_type {
 	panel_type_dsi,
 };
 
-enum touch_type {
-	RAYDIUM_TOUCH  = 0,
-	SYNAPTIC_TOUCH = 1,
-	MAXIM_TOUCH = 2,
+enum touch_vendor {
+	RAYDIUM_TOUCH = 0,
+	SYNAPTIC_TOUCH,
+	MAXIM_TOUCH,
+	VENDOR_NONE,
+};
+
+enum touch_panel {
+	TOUCHPANEL_RESERVED = 0,
+	TOUCHPANEL_WINTEK,
+	TOUCHPANEL_TPK,
+	TOUCHPANEL_TOUCHTURNS,
+	TOUCHPANEL_THOR_WINTEK,
+	TOUCHPANEL_LOKI_WINTEK_5_66_UNLAMIN,
+	TOUCHPANEL_TN7,
+	TOUCHPANEL_TN8,
 };
 
 enum audio_codec_type {
@@ -256,12 +268,12 @@ int get_maximum_cpu_current_supported(void);
 int get_maximum_core_current_supported(void);
 int get_emc_max_dvfs(void);
 int tegra_get_memory_type(void);
-void tegra_enable_pinmux(void);
 enum image_type get_tegra_image_type(void);
 int tegra_get_cvb_alignment_uV(void);
 int tegra_soc_device_init(const char *machine);
 int get_pwr_i2c_clk_rate(void);
 bool is_pmic_wdt_disabled_at_boot(void);
+bool is_tegra_diagnostic_mode(void);
 
 extern void tegra_set_usb_vbus_internal_wake(bool enable);
 extern void tegra_set_usb_id_internal_wake(bool enable);

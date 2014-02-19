@@ -3,7 +3,7 @@
  *
  * Tegra Host Address Spaces
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -33,6 +33,10 @@
 #include "nvhost_hwctx.h"
 #include "nvhost_as.h"
 
+#ifdef CONFIG_GK20A
+#include "gk20a/gk20a.h"
+#endif
+
 int nvhost_as_dev_open(struct inode *inode, struct file *filp)
 {
 	struct nvhost_as_share *as_share;
@@ -48,7 +52,7 @@ int nvhost_as_dev_open(struct inode *inode, struct file *filp)
 		return -ENOENT;
 	}
 
-	ch = nvhost_getchannel(ch, false);
+	ch = nvhost_getchannel(ch, false, true);
 	if (!ch) {
 		nvhost_dbg_fn("fail to get channel!");
 		return -ENOMEM;
@@ -78,7 +82,7 @@ int nvhost_as_dev_release(struct inode *inode, struct file *filp)
 
 	ret = nvhost_as_release_share(as_share, 0/* no hwctx to release */);
 
-	nvhost_putchannel(ch);
+	nvhost_putchannel(ch, true);
 
 	return ret;
 }
@@ -104,7 +108,9 @@ long nvhost_as_dev_ctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			return -EFAULT;
 	}
 
-	nvhost_module_busy(ch->dev);
+	err = nvhost_module_busy(ch->dev);
+	if (err)
+		return err;
 
 	switch (cmd) {
 	case NVHOST_AS_IOCTL_BIND_CHANNEL:
@@ -113,6 +119,21 @@ long nvhost_as_dev_ctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			       (struct nvhost_as_bind_channel_args *)buf);
 
 		break;
+	case NVHOST32_AS_IOCTL_ALLOC_SPACE:
+	{
+		struct nvhost32_as_alloc_space_args *args32 =
+			(struct nvhost32_as_alloc_space_args *)buf;
+		struct nvhost_as_alloc_space_args args;
+
+		args.pages = args32->pages;
+		args.page_size = args32->page_size;
+		args.flags = args32->flags;
+		args.o_a.offset = args32->o_a.offset;
+		trace_nvhost_as_ioctl_alloc_space(dev_name(&ch->dev->dev));
+		err = nvhost_as_ioctl_alloc_space(as_share, &args);
+		args32->o_a.offset = args.o_a.offset;
+		break;
+	}
 	case NVHOST_AS_IOCTL_ALLOC_SPACE:
 		trace_nvhost_as_ioctl_alloc_space(dev_name(&ch->dev->dev));
 		err = nvhost_as_ioctl_alloc_space(as_share,
@@ -323,6 +344,10 @@ int nvhost_as_ioctl_bind_channel(struct nvhost_as_share *as_share,
 	nvhost_dbg_fn("");
 
 	hwctx = nvhost_channel_get_file_hwctx(args->channel_fd);
+#ifdef CONFIG_GK20A
+	if (!hwctx)
+		hwctx = gk20a_get_hwctx_from_file(args->channel_fd);
+#endif
 	if (!hwctx || hwctx->as_share)
 		return -EINVAL;
 

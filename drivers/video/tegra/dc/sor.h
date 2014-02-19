@@ -2,7 +2,7 @@
 /*
  * drivers/video/tegra/dc/sor.h
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -47,6 +47,8 @@ struct tegra_dc_dp_link_config {
 	u32	bits_per_pixel;
 	bool	alt_scramber_reset_cap; /* true for eDP */
 	bool	only_enhanced_framing;	/* enhanced_frame_en ignored */
+	bool	edp_cap;		/* eDP display control capable */
+	bool	support_fast_lt;	/* Support fast link training */
 
 	/* Actual configuration */
 	u8	link_bw;
@@ -63,10 +65,10 @@ struct tegra_dc_dp_link_config {
 	s32	hblank_sym;
 	s32	vblank_sym;
 
-	/* Training data */
+	/* Training data from full LT */
+	bool	vs_pe_valid;
 	u32	drive_current;
 	u32     preemphasis;
-	bool	vs_pe_valid;
 	u32	postcursor;
 
 	bool	tps3_supported;
@@ -123,6 +125,8 @@ void tegra_dc_sor_set_dp_lanedata(struct tegra_dc_sor_data *sor,
 	u32 lane, u32 pre_emphasis, u32 drive_current, u32 tx_pu);
 void tegra_dc_sor_set_dp_linkctl(struct tegra_dc_sor_data *sor, bool ena,
 	u8 training_pattern, const struct tegra_dc_dp_link_config *cfg);
+void tegra_dc_sor_set_dp_mode(struct tegra_dc_sor_data *sor,
+	const struct tegra_dc_dp_link_config *cfg);
 void tegra_dc_sor_setup_clk(struct tegra_dc_sor_data *sor, struct clk *clk,
 	bool is_lvds);
 void tegra_sor_precharge_lanes(struct tegra_dc_sor_data *sor);
@@ -152,6 +156,26 @@ static inline void tegra_sor_write_field(struct tegra_dc_sor_data *sor,
 	reg_val &= ~mask;
 	reg_val |= val;
 	tegra_sor_writel(sor, reg, reg_val);
+}
+
+static inline int lt_param_idx(int link_bw)
+{
+	int idx;
+	switch (link_bw) {
+	case SOR_LINK_SPEED_G1_62:
+		idx = 0;
+		break;
+	case SOR_LINK_SPEED_G2_7:
+		idx = 1;
+		break;
+	case SOR_LINK_SPEED_G5_4:
+		idx = 2;
+		break;
+	default:
+		/* Error BW */
+		BUG_ON(1);
+	}
+	return idx;
 }
 
 #endif

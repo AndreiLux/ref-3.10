@@ -3,7 +3,7 @@
  *
  * GK20A memory management
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -66,8 +66,9 @@ struct gpfifo_desc {
 };
 
 struct mmu_desc {
-	struct mem_desc mem;
-	phys_addr_t cpu_pa;
+	void *cpuva;
+	u64 iova;
+	size_t size;
 };
 
 struct inst_desc {
@@ -99,7 +100,9 @@ struct runlist_mem_desc {
 };
 
 struct patch_desc {
-	struct mem_desc mem;
+	struct page **pages;
+	u64 iova;
+	size_t size;
 	void *cpu_va;
 	u64 gpu_va;
 	u32 data_count;
@@ -133,14 +136,16 @@ struct pm_ctx_desc {
 };
 
 struct gr_ctx_desc {
-	struct mem_desc mem;
+	struct page **pages;
+	u64 iova;
+	size_t size;
 	u64 gpu_va;
 };
 
 struct compbit_store_desc {
-	struct mem_desc mem;
-	u64 base_pa;
-	u32 alignment;
+	struct pages **pages;
+	size_t size;
+	u64 base_iova;
 };
 
 struct page_table_gk20a {
@@ -150,6 +155,7 @@ struct page_table_gk20a {
 	/* track mapping cnt on this page table */
 	u32 ref_cnt;
 	struct sg_table *sgt;
+	size_t size;
 };
 
 enum gmmu_pgsz_gk20a {
@@ -166,6 +172,7 @@ struct page_directory_gk20a {
 	/* Either a *page or a *mem_handle */
 	void *ref;
 	struct sg_table *sgt;
+	size_t size;
 	struct page_table_gk20a *ptes[gmmu_nr_page_sizes];
 };
 
@@ -174,6 +181,7 @@ struct mapped_buffer_node {
 	struct rb_node node;
 	struct list_head unmap_list;
 	struct list_head va_buffers_list;
+	struct vm_reserved_va_node *va_node;
 	u64 addr;
 	u64 size;
 	struct mem_mgr *memmgr;
@@ -192,8 +200,10 @@ struct mapped_buffer_node {
 struct vm_reserved_va_node {
 	struct list_head reserved_va_list;
 	struct list_head va_buffers_list;
+	u32 pgsz_idx;
 	u64 vaddr_start;
 	u64 size;
+	bool sparse;
 };
 
 struct vm_gk20a {
@@ -220,6 +230,10 @@ struct vm_gk20a {
 	struct rb_root mapped_buffers;
 
 	struct list_head reserved_va_list;
+
+	dma_addr_t zero_page_iova;
+	void *zero_page_cpuva;
+	struct sg_table *zero_page_sgt;
 };
 
 struct gk20a;
@@ -325,6 +339,10 @@ int gk20a_get_sgtable(struct device *d, struct sg_table **sgt,
 			void *cpuva, u64 iova,
 			size_t size);
 
+int gk20a_get_sgtable_from_pages(struct device *d, struct sg_table **sgt,
+			struct page **pages, u64 iova,
+			size_t size);
+
 void gk20a_free_sgtable(struct sg_table **sgt);
 
 u64 gk20a_mm_iova_addr(struct scatterlist *sgl);
@@ -332,6 +350,8 @@ u64 gk20a_mm_iova_addr(struct scatterlist *sgl);
 void gk20a_mm_ltc_isr(struct gk20a *g);
 
 bool gk20a_mm_mmu_debug_mode_enabled(struct gk20a *g);
+
+int gk20a_mm_mmu_vpr_info_fetch(struct gk20a *g);
 
 u64 gk20a_gmmu_map(struct vm_gk20a *vm,
 		struct sg_table **sgt,

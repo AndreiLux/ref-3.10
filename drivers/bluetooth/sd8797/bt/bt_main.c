@@ -92,6 +92,8 @@ static int psmode = 1;
 static char *init_cfg;
 /** Calibration config file (MAC address, init powe etc.) */
 static char *cal_cfg;
+/** Calibration config file EXT */
+static char *cal_cfg_ext;
 /** Init MAC address */
 static char *bt_mac;
 
@@ -266,6 +268,7 @@ check_evtpkt(bt_private * priv, struct sk_buff *skb)
 		case BT_CMD_CONFIG_MAC_ADDR:
 		case BT_CMD_CSU_WRITE_REG:
 		case BT_CMD_LOAD_CONFIG_DATA:
+		case BT_CMD_LOAD_CONFIG_DATA_EXT:
 		case BT_CMD_AUTO_SLEEP_MODE:
 		case BT_CMD_HOST_SLEEP_CONFIG:
 		case BT_CMD_SDIO_PULL_CFG_REQ:
@@ -1086,6 +1089,56 @@ exit:
 }
 
 /**
+ *  @brief This function load the calibrate EXT data
+ *
+ *  @param priv    A pointer to bt_private structure
+ *  @param config_data     A pointer to calibrate data
+ *  @param mac     A pointer to mac address
+ *
+ *  @return    BT_STATUS_SUCCESS or BT_STATUS_FAILURE
+ */
+int
+bt_load_cal_data_ext(bt_private * priv, u8 * config_data, u32 cfg_data_len)
+{
+	struct sk_buff *skb = NULL;
+	u8 ret = BT_STATUS_SUCCESS;
+	BT_CMD *pcmd;
+
+	ENTER();
+	skb = bt_skb_alloc(sizeof(BT_CMD), GFP_ATOMIC);
+	if (skb == NULL) {
+		PRINTM(WARN, "No free skb\n");
+		ret = BT_STATUS_FAILURE;
+		goto exit;
+	}
+	pcmd = (BT_CMD *) skb->data;
+	pcmd->ocf_ogf = (VENDOR_OGF << 10) | BT_CMD_LOAD_CONFIG_DATA_EXT;
+	pcmd->length = cfg_data_len;
+
+	memcpy(pcmd->data, config_data, cfg_data_len);
+	bt_cb(skb)->pkt_type = MRVL_VENDOR_PKT;
+	skb_put(skb, BT_CMD_HEADER_SIZE + pcmd->length);
+	skb->dev = (void *)(&(priv->bt_dev.m_dev[BT_SEQ]));
+	skb_queue_head(&priv->adapter->tx_queue, skb);
+	priv->bt_dev.sendcmdflag = TRUE;
+	priv->bt_dev.send_cmd_ocf = BT_CMD_LOAD_CONFIG_DATA_EXT;
+	priv->adapter->cmd_complete = FALSE;
+
+	DBG_HEXDUMP(DAT_D, "calirate ext data", pcmd->data, pcmd->length);
+	wake_up_interruptible(&priv->MainThread.waitQ);
+	if (!os_wait_interruptible_timeout
+	    (priv->adapter->cmd_wait_q, priv->adapter->cmd_complete,
+	     WAIT_UNTIL_CMD_RESP)) {
+		ret = BT_STATUS_FAILURE;
+		PRINTM(ERROR, "BT: Load calibrate ext data: timeout:\n");
+		bt_cmd_timeout_func(priv->adapter, BT_CMD_LOAD_CONFIG_DATA_EXT);
+	}
+exit:
+	LEAVE();
+	return ret;
+}
+
+/**
  *  @brief This function writes value to CSU registers
  *
  *  @param priv    A pointer to bt_private structure
@@ -1788,7 +1841,7 @@ sbi_register_conf_dpc(bt_private * priv)
 		priv->bt_dev.m_dev[BT_SEQ].dev_type = BT_AMP_TYPE;
 	}
 	/* block all the packet from bluez */
-	if (init_cfg || cal_cfg || bt_mac)
+	if (init_cfg || cal_cfg || bt_mac || cal_cfg_ext)
 		priv->adapter->tx_lock = TRUE;
 
 	if (mbt_dev) {
@@ -2059,7 +2112,24 @@ sbi_register_conf_dpc(bt_private * priv)
 			goto done;
 		}
 	}
-	if (init_cfg || cal_cfg || bt_mac) {
+	if (cal_cfg_ext) {
+		if (BT_STATUS_SUCCESS != bt_cal_config_ext(priv, cal_cfg_ext)) {
+			PRINTM(FATAL, "BT: Set cal ext data failed\n");
+			if (mbt_dev) {
+				m_dev = &(priv->bt_dev.m_dev[BT_SEQ]);
+				/** unregister m_dev to char_dev */
+				m_dev->close(m_dev);
+				for (i = 0; i < 3; i++)
+					kfree_skb(mbt_dev->reassembly[i]);
+				/**  unregister m_dev to char_dev */
+				chardev_cleanup_one(m_dev, chardev_class);
+				free_m_dev(m_dev);
+			}
+			ret = BT_STATUS_FAILURE;
+			goto done;
+		}
+	}
+	if (init_cfg || cal_cfg || bt_mac || cal_cfg_ext) {
 		priv->adapter->tx_lock = FALSE;
 		bt_restore_tx_queue(priv);
 	}
@@ -2519,6 +2589,8 @@ module_param(init_cfg, charp, 0);
 MODULE_PARM_DESC(init_cfg, "BT init config file name");
 module_param(cal_cfg, charp, 0);
 MODULE_PARM_DESC(cal_cfg, "BT calibrate file name");
+module_param(cal_cfg_ext, charp, 0);
+MODULE_PARM_DESC(cal_cfg_ext, "BT calibrate ext file name");
 module_param(bt_mac, charp, 0);
 MODULE_PARM_DESC(bt_mac, "BT init mac address");
 module_param(minicard_pwrup, int, 0);

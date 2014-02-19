@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Channel
  *
- * Copyright (c) 2010-2013, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -34,51 +34,13 @@ struct nvhost_master;
 struct platform_device;
 struct nvhost_channel;
 struct nvhost_hwctx;
-struct nvhost_alloc_obj_ctx_args;
-struct nvhost_free_obj_ctx_args;
-struct nvhost_alloc_gpfifo_args;
-struct nvhost_gpfifo;
-struct nvhost_fence;
-struct nvhost_wait_args;
-struct nvhost_cycle_stats_args;
-struct nvhost_zcull_bind_args;
-struct nvhost_set_error_notifier;
-struct nvhost_set_priority_args;
-
-struct nvhost_zcull_ops {
-	int (*bind)(struct nvhost_hwctx *,
-		    struct nvhost_zcull_bind_args *args);
-};
 
 struct nvhost_channel_ops {
 	const char *soc_name;
 	int (*init)(struct nvhost_channel *,
-		    struct nvhost_master *,
-		    int chid);
+		    struct nvhost_master *);
 	int (*submit)(struct nvhost_job *job);
 	int (*save_context)(struct nvhost_channel *channel);
-	int (*alloc_obj)(struct nvhost_hwctx *,
-			struct nvhost_alloc_obj_ctx_args *args);
-	int (*free_obj)(struct nvhost_hwctx *,
-			struct nvhost_free_obj_ctx_args *args);
-	int (*alloc_gpfifo)(struct nvhost_hwctx *,
-			struct nvhost_alloc_gpfifo_args *args);
-	int (*submit_gpfifo)(struct nvhost_hwctx *,
-			struct nvhost_gpfifo *gpfifo,
-			u32 num_entries,
-			struct nvhost_fence *fence,
-			u32 flags);
-	int (*set_error_notifier)(struct nvhost_hwctx *hwctx,
-			    struct nvhost_set_error_notifier *args);
-	int (*set_priority)(struct nvhost_hwctx *hwctx,
-			    struct nvhost_set_priority_args *args);
-	int (*wait)(struct nvhost_hwctx *,
-		    struct nvhost_wait_args *args);
-#if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
-	int (*cycle_stats)(struct nvhost_hwctx *,
-			struct nvhost_cycle_stats_args *args);
-#endif
-	struct nvhost_zcull_ops zcull;
 	int (*init_gather_filter)(struct nvhost_channel *ch);
 };
 
@@ -91,9 +53,7 @@ struct nvhost_channel {
 	struct mutex submitlock;
 	void __iomem *aperture;
 	struct nvhost_hwctx *cur_ctx;
-	struct device *node;
 	struct platform_device *dev;
-	struct cdev cdev;
 	struct nvhost_hwctx_handler *ctxhandler;
 	struct nvhost_cdma cdma;
 
@@ -106,17 +66,15 @@ struct nvhost_channel {
 };
 
 #define channel_op(ch)		(ch->ops)
-#define channel_zcull_op(ch)	(ch->ops.zcull)
-#define channel_zbc_op(ch)	(ch->zbc)
 
 int nvhost_channel_init(struct nvhost_channel *ch,
-	struct nvhost_master *dev, int index);
+	struct nvhost_master *dev);
 
 int nvhost_channel_submit(struct nvhost_job *job);
 
 struct nvhost_channel *nvhost_getchannel(struct nvhost_channel *ch,
-		bool force);
-void nvhost_putchannel(struct nvhost_channel *ch);
+		bool force, bool init);
+void nvhost_putchannel(struct nvhost_channel *ch, bool deinit);
 int nvhost_channel_suspend(struct nvhost_channel *ch);
 
 int nvhost_channel_read_reg(struct nvhost_channel *channel,
@@ -133,5 +91,8 @@ int nvhost_channel_save_context(struct nvhost_channel *ch);
 void nvhost_channel_init_gather_filter(struct nvhost_channel *ch);
 
 struct nvhost_hwctx *nvhost_channel_get_file_hwctx(int fd);
+
+struct nvhost_hwctx_handler *nvhost_alloc_hwctx_handler(u32 syncpt,
+	u32 waitbase, struct nvhost_channel *ch);
 
 #endif

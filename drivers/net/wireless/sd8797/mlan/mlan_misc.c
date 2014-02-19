@@ -607,7 +607,10 @@ wlan_get_info_debug_info(IN pmlan_adapter pmadapter,
 #endif
 		debug_info->mlan_processing = pmadapter->mlan_processing;
 		debug_info->mlan_rx_processing = pmadapter->mlan_rx_processing;
-
+		debug_info->rx_pkts_queued =
+			util_scalar_read(pmadapter->pmoal_handle,
+					 &pmadapter->rx_pkts_queued, MNULL,
+					 MNULL);
 		debug_info->mlan_adapter = pmadapter;
 		debug_info->mlan_adapter_size = sizeof(mlan_adapter);
 		debug_info->mlan_priv_num = pmadapter->priv_num;

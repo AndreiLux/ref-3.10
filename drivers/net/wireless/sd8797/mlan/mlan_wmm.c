@@ -480,6 +480,7 @@ wlan_wmm_cleanup_queues(pmlan_private priv)
 		wlan_wmm_del_pkts_in_ralist(priv,
 					    &priv->wmm.tid_tbl_ptr[i].ra_list);
 		priv->wmm.pkts_queued[i] = 0;
+		priv->wmm.pkts_paused[i] = 0;
 	}
 	util_scalar_write(priv->adapter->pmoal_handle,
 			  &priv->wmm.tx_pkts_queued, 0, MNULL, MNULL);
@@ -740,7 +741,11 @@ wlan_wmm_get_highest_priolist_ptr(pmlan_adapter pmadapter,
 						next_tid =
 							tos_to_tid[next_prio];
 						if (priv_tmp->wmm.
-						    pkts_queued[next_tid])
+						    pkts_queued[next_tid] &&
+						    (priv_tmp->wmm.
+						     pkts_queued[next_tid] >
+						     priv_tmp->wmm.
+						     pkts_paused[next_tid]))
 							util_scalar_write
 								(pmadapter->
 								 pmoal_handle,
@@ -778,12 +783,24 @@ wlan_wmm_get_highest_priolist_ptr(pmlan_adapter pmadapter,
 				} while (ptr != head);
 			}
 
-			/* No packet at any TID for this priv.  Mark as such to
-			   skip checking TIDs for this priv (until pkt is
-			   added). */
-			util_scalar_write(pmadapter->pmoal_handle,
-					  &priv_tmp->wmm.highest_queued_prio,
-					  NO_PKT_PRIO_TID, MNULL, MNULL);
+			/* If priv still has packets queued, reset to
+			   HIGH_PRIO_TID */
+			if (util_scalar_read(pmadapter->pmoal_handle,
+					     &priv_tmp->wmm.tx_pkts_queued,
+					     MNULL, MNULL))
+				util_scalar_write(pmadapter->pmoal_handle,
+						  &priv_tmp->wmm.
+						  highest_queued_prio,
+						  HIGH_PRIO_TID, MNULL, MNULL);
+			else
+				/* No packet at any TID for this priv.  Mark as
+				   such to skip * checking TIDs for this priv
+				   (until pkt is added). */
+				util_scalar_write(pmadapter->pmoal_handle,
+						  &priv_tmp->wmm.
+						  highest_queued_prio,
+						  NO_PKT_PRIO_TID, MNULL,
+						  MNULL);
 
 			pmadapter->callbacks.moal_spin_unlock(pmadapter->
 							      pmoal_handle,
@@ -1197,9 +1214,14 @@ wlan_update_ralist_tx_pause(pmlan_private priv, t_u8 * mac, t_u8 tx_pause)
 					    priv->wmm.ra_list_spinlock);
 	for (i = 0; i < MAX_NUM_TID; ++i) {
 		ra_list = wlan_wmm_get_ralist_node(priv, i, mac);
-		if (ra_list) {
+		if (ra_list && ra_list->tx_pause != tx_pause) {
 			pkt_cnt += ra_list->total_pkts;
 			ra_list->tx_pause = tx_pause;
+			if (tx_pause)
+				priv->wmm.pkts_paused[i] += ra_list->total_pkts;
+			else
+				priv->wmm.pkts_paused[i] -= ra_list->total_pkts;
+
 		}
 	}
 	if (pkt_cnt) {
@@ -1258,6 +1280,12 @@ wlan_update_non_tdls_ralist(mlan_private * priv, t_u8 * mac, t_u8 tx_pause)
 			     MLAN_MAC_ADDR_LENGTH)) {
 				pkt_cnt += ra_list->total_pkts;
 				ra_list->tx_pause = tx_pause;
+				if (tx_pause)
+					priv->wmm.pkts_paused[i] +=
+						ra_list->total_pkts;
+				else
+					priv->wmm.pkts_paused[i] -=
+						ra_list->total_pkts;
 			}
 			ra_list = ra_list->pnext;
 		}
@@ -1580,6 +1608,7 @@ wlan_wmm_setup_queue_priorities(pmlan_private priv,
 		LEAVE();
 		return;
 	}
+	memset(priv->adapter, tmp, 0, sizeof(tmp));
 
 	HEXDUMP("WMM: setup_queue_priorities: param IE",
 		(t_u8 *) pwmm_ie, sizeof(IEEEtypes_WmmParameter_t));
@@ -1768,6 +1797,7 @@ wlan_wmm_init(pmlan_adapter pmadapter)
 					priv->aggr_prio_tbl[i].ampdu_user =
 					tos_to_tid_inv[i];
 				priv->wmm.pkts_queued[i] = 0;
+				priv->wmm.pkts_paused[i] = 0;
 				priv->wmm.tid_tbl_ptr[i].ra_list_curr = MNULL;
 			}
 			priv->wmm.drv_pkt_delay_max = WMM_DRV_DELAY_MAX;
@@ -1790,12 +1820,16 @@ wlan_wmm_init(pmlan_adapter pmadapter)
 					MLAN_STA_AMPDU_DEF_RXWINSIZE;
 			}
 #endif
-#ifdef UAP_SUPPORT
-			if (priv->bss_type == MLAN_BSS_TYPE_UAP
 #ifdef WIFI_DIRECT_SUPPORT
-			    || priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT
+			if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT) {
+				priv->add_ba_param.tx_win_size =
+					MLAN_WFD_AMPDU_DEF_TXRXWINSIZE;
+				priv->add_ba_param.rx_win_size =
+					MLAN_WFD_AMPDU_DEF_TXRXWINSIZE;
+			}
 #endif
-				) {
+#ifdef UAP_SUPPORT
+			if (priv->bss_type == MLAN_BSS_TYPE_UAP) {
 				priv->add_ba_param.tx_win_size =
 					MLAN_UAP_AMPDU_DEF_TXWINSIZE;
 				priv->add_ba_param.rx_win_size =
@@ -2115,7 +2149,9 @@ wlan_wmm_add_buf_txqueue(pmlan_adapter pmadapter, pmlan_buffer pmbuf)
 	ra_list->packet_count++;
 
 	priv->wmm.pkts_queued[tid_down]++;
-	if (!ra_list->tx_pause) {
+	if (ra_list->tx_pause) {
+		priv->wmm.pkts_paused[tid_down]++;
+	} else {
 		util_scalar_increment(pmadapter->pmoal_handle,
 				      &priv->wmm.tx_pkts_queued, MNULL, MNULL);
 		/* if highest_queued_prio < prio(tid_down), set it to
@@ -2529,7 +2565,9 @@ wlan_del_tx_pkts_in_ralist(pmlan_private priv,
 				priv->wmm.pkts_queued[tid]--;
 				priv->num_drop_pkts++;
 				ra_list->total_pkts--;
-				if (!ra_list->tx_pause)
+				if (ra_list->tx_pause)
+					priv->wmm.pkts_paused[tid]--;
+				else
 					util_scalar_decrement(pmadapter->
 							      pmoal_handle,
 							      &priv->wmm.
@@ -2599,7 +2637,10 @@ wlan_wmm_delete_peer_ralist(pmlan_private priv, t_u8 * mac)
 		ra_list = wlan_wmm_get_ralist_node(priv, i, mac);
 		if (ra_list) {
 			PRINTM(MINFO, "delete sta ralist %p\n", ra_list);
-			if (!ra_list->tx_pause)
+			priv->wmm.pkts_queued[i] -= ra_list->total_pkts;
+			if (ra_list->tx_pause)
+				priv->wmm.pkts_paused[i] -= ra_list->total_pkts;
+			else
 				pkt_cnt += ra_list->total_pkts;
 			wlan_wmm_del_pkts_in_ralist_node(priv, ra_list);
 

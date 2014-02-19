@@ -36,8 +36,12 @@ Change log:
 /** Interface header length */
 #define INTF_HEADER_LEN     4
 
+#ifdef PRAGMA_PACK
+#pragma pack(push, 1)
+#endif
+
 /** Ethernet header */
-typedef struct {
+typedef MLAN_PACK_START struct {
     /** Ethernet header destination address */
 	t_u8 dest_addr[MLAN_MAC_ADDR_LENGTH];
     /** Ethernet header source address */
@@ -45,10 +49,10 @@ typedef struct {
     /** Ethernet header length */
 	t_u16 h803_len;
 
-} Eth803Hdr_t;
+} MLAN_PACK_END Eth803Hdr_t;
 
 /** RFC 1042 header */
-typedef struct {
+typedef MLAN_PACK_START struct {
     /** LLC DSAP */
 	t_u8 llc_dsap;
     /** LLC SSAP */
@@ -60,11 +64,7 @@ typedef struct {
     /** SNAP type */
 	t_u16 snap_type;
 
-} Rfc1042Hdr_t;
-
-#ifdef PRAGMA_PACK
-#pragma pack(push, 1)
-#endif
+} MLAN_PACK_END Rfc1042Hdr_t;
 
 /** Rx packet header */
 typedef MLAN_PACK_START struct {

@@ -1,7 +1,7 @@
 /*
  * tegra-board-id.h: Defines all boardid of Tegra.
  *
- * Copyright (c) 2012-2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -58,6 +58,12 @@
 #define BOARD_P1761   0x06E1
 #define BOARD_E1762   0x06E2
 #define BOARD_E1791   0x06ff
+#define BOARD_E1784   0x06F8
+#define BOARD_E1922   0x0782
+#define BOARD_E1923   0x0783
+#define BOARD_E1971   0x07B3
+#define BOARD_E1973   0x07B5
+#define BOARD_E1991   0x07c7
 
 /* Board SKU */
 #define BOARD_SKU_FOSTER  0x0384
@@ -69,10 +75,14 @@
 #define    BOARD_E1639    0x0667
 #define    BOARD_E1631    0x065f
 #define    BOARD_PM354    0x0162
+#define    BOARD_E1807    0x070F
 #define    BOARD_E1813    0x0715
 #define    BOARD_E1824    0x0720
+#define    BOARD_E1937    0x0791
 #define    BOARD_PM366    0x016e
 #define    BOARD_E1549    0x060D
+#define    BOARD_E1797    0x0705
+#define    BOARD_E1937    0x0791
 
 #define    BOARD_E1563    0x061b
 

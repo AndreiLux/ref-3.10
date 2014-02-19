@@ -32,7 +32,8 @@
 		#address-cells = <1>;
 		#size-cells = <1>;
 
-		ranges = <0x54000000 0x54000000 0x01000000>;
+		ranges = <0x54000000 0x54000000 0x01000000>,
+			 <0x60001000 0x60001000 0x0000e200>;
 
 		vi {
 			compatible = "nvidia,tegra114-vi";
@@ -120,6 +121,12 @@
 			compatible = "nvidia,tegra114-tsec";
 			reg = <0x54500000 0x00040000>;
 			nvidia,memory-clients = <23>;
+		};
+
+		nvavp {
+			compatible = "nvidia,tegra114-nvavp";
+			interrupts = <0 4 0x04>; /* mailbox AVP IRQ */
+			reg = <0x60001000 0x0000e200>;
 		};
 	};
 
@@ -233,11 +240,10 @@
 		nvidia,memory-clients = <17>;
 	};
 
-	pinmux: pinmux {
+	pinmux {
 		compatible = "nvidia,tegra114-pinmux";
 		reg = <0x70000868 0x148		/* Pad control registers */
 		       0x70003000 0x40c>;	/* Mux registers */
-		status = "disable";
 	};
 
 	/*
@@ -288,12 +294,12 @@
 		clocks = <&tegra_car 65>;
 	};
 
-	pwm: pwm {
-		compatible = "nvidia,tegra114-pwm", "nvidia,tegra20-pwm";
+	pwm: pwm@7000a000 {
+		compatible = "nvidia,tegra114-pwm";
 		reg = <0x7000a000 0x100>;
 		#pwm-cells = <2>;
 		clocks = <&tegra_car 17>;
-		status = "disabled";
+		status = "okay";
 	};
 
 	i2c1: i2c@7000c000 {
@@ -306,7 +312,8 @@
 		clock-names = "div-clk";
 		scl-gpio = <&gpio 20 0>; /* gpio PC4 */
 		sda-gpio = <&gpio 21 0>; /* gpio PC5 */
-		status = "disabled";
+		clock-frequency = <100000>;
+		status = "okay";
 	};
 
 	pmc {
@@ -326,7 +333,8 @@
 		clock-names = "div-clk";
 		scl-gpio = <&gpio 157 0>; /* gpio PT5 */
 		sda-gpio = <&gpio 158 0>; /* gpio PT6 */
-		status = "disabled";
+		clock-frequency = <100000>;
+		status = "okay";
 	};
 
 	i2c3: i2c@7000c500 {
@@ -339,7 +347,8 @@
 		clock-names = "div-clk";
 		scl-gpio = <&gpio 217 0>; /* gpio PBB1 */
 		sda-gpio = <&gpio 218 0>; /* gpio PBB2 */
-		status = "disabled";
+		clock-frequency = <100000>;
+		status = "okay";
 	};
 
 	i2c4: i2c@7000c700 {
@@ -352,7 +361,8 @@
 		clock-names = "div-clk";
 		scl-gpio = <&gpio 172 0>; /* gpio PV4 */
 		sda-gpio = <&gpio 173 0>; /* gpio PV5 */
-		status = "disabled";
+		clock-frequency = <100000>;
+		status = "okay";
 	};
 
 	i2c5: i2c@7000d000 {
@@ -363,9 +373,11 @@
 		#size-cells = <0>;
 		clocks = <&tegra_car 47>;
 		clock-names = "div-clk";
+		nvidia,require-cldvfs-clock;
 		scl-gpio = <&gpio 206 0>; /* gpio PZ6 */
 		sda-gpio = <&gpio 207 0>; /* gpio PZ7 */
-		status = "disabled";
+		clock-frequency = <400000>;
+		status = "okay";
 	};
 
 	spi0: spi@7000d400 {

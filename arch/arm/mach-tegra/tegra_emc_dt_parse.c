@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra_emc_dt_parse.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -104,7 +104,9 @@ void *tegra_emc_dt_parse_pdata(struct platform_device *pdev)
 	for_each_child_of_node(tnp, iter) {
 		u32 u;
 		const char *source_name;
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
 		const char *dvfs_ver;
+#endif
 
 		ret = of_property_read_u32(iter, "nvidia,revision", &u);
 		if (ret) {
@@ -252,6 +254,16 @@ void *tegra_emc_dt_parse_pdata(struct platform_device *pdev)
 			continue;
 		}
 		pdata->tables[i].emc_mode_4 = u;
+
+		ret = of_property_read_u32(iter,
+				"nvidia,emc-clock-latency-change", &u);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"malformed emc-clock-latency-change in %s\n",
+				iter->full_name);
+			continue;
+		}
+		pdata->tables[i].clock_change_latency = u;
 #if defined(CONFIG_ARCH_TEGRA_12x_SOC)
 
 		ret = of_property_read_string(iter,
@@ -375,16 +387,6 @@ void *tegra_emc_dt_parse_pdata(struct platform_device *pdev)
 				iter->full_name);
 			continue;
 		}
-
-		ret = of_property_read_u32(iter,
-				"nvidia,emc-clock-latency-change", &u);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"malformed emc-clock-latency-change in %s\n",
-				iter->full_name);
-			continue;
-		}
-		pdata->tables[i].clock_change_latency = u;
 #endif
 		i++;
 	}
