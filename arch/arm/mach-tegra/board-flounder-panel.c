@@ -215,7 +215,7 @@ static int flounder_hdmi_hotplug_init(struct device *dev)
 				__func__, PTR_ERR(flounder_hdmi_vddio));
 				flounder_hdmi_vddio = NULL;
 		} else {
-			regulator_enable(flounder_hdmi_vddio);
+			return regulator_enable(flounder_hdmi_vddio);
 		}
 	}
 
@@ -389,17 +389,6 @@ static struct platform_device flounder_nvmap_device  = {
 	.dev	= {
 		.platform_data = &flounder_nvmap_data,
 	},
-};
-
-static struct tegra_io_dpd dsic_io = {
-	.name                   = "DSIC",
-	.io_dpd_reg_index       = 1,
-	.io_dpd_bit             = 8,
-};
-static struct tegra_io_dpd dsid_io = {
-	.name                   = "DSID",
-	.io_dpd_reg_index       = 1,
-	.io_dpd_bit             = 9,
 };
 
 /* can be called multiple times */

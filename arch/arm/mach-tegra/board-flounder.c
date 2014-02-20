@@ -340,11 +340,6 @@ struct max1187x_pdata max1187x_platdata = {
 	.report_mode = MAX1187X_REPORT_MODE_EXTEND,
 };
 
-static struct i2c_board_info __initdata i2c_max_touch_board_info = {
-	I2C_BOARD_INFO(MAX1187X_NAME, 0x48),
-	.platform_data = &max1187x_platdata,
-};
-
 static void flounder_i2c_init(void)
 {
 	i2c_register_board_info(1, &rt5677_board_info, 1);
@@ -670,11 +665,11 @@ static void flounder_usb_init(void)
 	/* Device cable is detected through PMU Interrupt */
 	tegra_udc_pdata.support_pmu_vbus = true;
 	tegra_ehci1_utmi_pdata.support_pmu_vbus = true;
-	tegra_otg_pdata.vbus_extcon_dev_name = "palmas-extcon";
+	tegra_ehci1_utmi_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	/* Host cable is detected through PMU Interrupt */
 	tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
 	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
-	tegra_otg_pdata.id_extcon_dev_name = "palmas-extcon";
+	tegra_ehci1_utmi_pdata.id_extcon_dev_name = "palmas-extcon";
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
 		tegra_otg_pdata.is_xhci = false;
@@ -844,38 +839,8 @@ static struct spi_board_info maxim_sti_spi_board = {
 
 static int __init flounder_touch_init(void)
 {
-#ifndef CONFIG_TOUCHSCREEN_MAXIM_STI
-	int ret ;
-	pr_info("%s init maxim i2c touch\n", __func__);
-
-	ret = gpio_request(TEGRA_GPIO_PQ3, "LED_3V3_EN");
-	if (ret < 0){
-		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
-                        __func__, "LED_3V3_EN");
-	}
-
-	ret = gpio_request(TEGRA_GPIO_PK6, "TW_I2C_OE");
-	if (ret < 0){
-		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
-                        __func__, "TW_I2C_OE");
-	}
-
-	ret = gpio_request(TEGRA_GPIO_PU4, "TP_I2C_SEL_CPU");
-	if (ret < 0){
-		pr_err("[TP] %s: gpio_request failed for gpio %s\n",
-                        __func__, "TP_I2C_SEL_CPU");
-	}
-
-	gpio_direction_output(TEGRA_GPIO_PQ3, 1);
-	gpio_direction_output(TEGRA_GPIO_PK6, 0);
-	gpio_direction_output(TEGRA_GPIO_PU4, 0);
-
-	i2c_max_touch_board_info.irq = gpio_to_irq(TEGRA_GPIO_PK2);
-	i2c_register_board_info(1, &i2c_max_touch_board_info, 1);
-#else
 	pr_info("%s init maxim spi touch\n", __func__);
 	(void)touch_init_maxim_sti(&maxim_sti_spi_board);
-#endif
 	return 0;
 }
 
@@ -1193,7 +1158,6 @@ static void __init tegra_flounder_late_init(void)
 	platform_device_register(&tegra124_pinctrl_device);
 	flounder_pinmux_init();
 
-	tegra_ram_console_init();
 	flounder_display_init();
 	flounder_uart_init();
 	flounder_usb_init();
@@ -1203,7 +1167,6 @@ static void __init tegra_flounder_late_init(void)
 	flounder_audio_init();
 	flounder_slimport_init();
 	platform_add_devices(flounder_devices, ARRAY_SIZE(flounder_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	flounder_sdhci_init();
 	flounder_regulator_init();
@@ -1233,11 +1196,6 @@ static void __init tegra_flounder_late_init(void)
 
 	flounder_setup_bluedroid_pm();
 	tegra_register_fuse();
-}
-
-static void __init flounder_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(size);
 }
 
 static void __init tegra_flounder_init_early(void)
@@ -1271,7 +1229,6 @@ static void __init tegra_flounder_reserve(void)
 #else
 	tegra_reserve(SZ_1G, SZ_16M + SZ_2M, SZ_4M);
 #endif
-	flounder_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const flounder_dt_board_compat[] = {

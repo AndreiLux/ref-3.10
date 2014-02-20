@@ -23,7 +23,6 @@
 #include <linux/err.h>
 #include <linux/nct1008.h>
 #include <linux/pid_thermal_gov.h>
-#include <linux/power/sbs-battery.h>
 #include <linux/tegra-fuse.h>
 #include <mach/edp.h>
 #include <mach/pinmux-t12.h>
@@ -47,6 +46,7 @@
 #include <media/soc_camera.h>
 #include <media/soc_camera_platform.h>
 #include <media/tegra_v4l2_camera.h>
+#include <linux/generic_adc_thermal.h>
 
 #include "cpu-tegra.h"
 #include "devices.h"
@@ -328,15 +328,7 @@ static int flounder_ar0261_power_off(struct ar0261_power_rail *pw)
 	return 0;
 }
 
-static unsigned ar0261_estates[] = { 302, 0 };
-
 struct ar0261_platform_data flounder_ar0261_data = {
-	.edpc_config = {
-		.states = ar0261_estates,
-		.num_states = ARRAY_SIZE(ar0261_estates),
-		.e0_index = ARRAY_SIZE(ar0261_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.power_on = flounder_ar0261_power_on,
 	.power_off = flounder_ar0261_power_off,
 	.mclk_name = "mclk2",
@@ -450,15 +442,7 @@ static int flounder_imx135_power_off(struct imx135_power_rail *pw)
 	return 0;
 }
 
-static unsigned imx135_estates[] = { 486, 0 };
-
 struct imx135_platform_data flounder_imx135_data = {
-	.edpc_config = {
-		.states = imx135_estates,
-		.num_states = ARRAY_SIZE(imx135_estates),
-		.e0_index = ARRAY_SIZE(imx135_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.flash_cap = {
 		.enable = 1,
 		.edge_trig_en = 1,
@@ -662,15 +646,7 @@ static int flounder_mt9m114_power_off(struct mt9m114_power_rail *pw)
 	return 1;
 }
 
-static unsigned mt9m114_estates[] = { 150, 0 };
-
 struct mt9m114_platform_data flounder_mt9m114_pdata = {
-	.edpc_config = {
-		.states = mt9m114_estates,
-		.num_states = ARRAY_SIZE(mt9m114_estates),
-		.e0_index = ARRAY_SIZE(mt9m114_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.power_on = flounder_mt9m114_power_on,
 	.power_off = flounder_mt9m114_power_off,
 	.mclk_name = "mclk2",
@@ -743,15 +719,7 @@ static struct nvc_gpio_pdata ov5693_gpio_pdata[] = {
 	{ OV5693_GPIO_TYPE_PWRDN, CAM_RSTN, true, 0, },
 };
 
-static unsigned ov5693_estates[] = { 300, 0 };
-
 static struct ov5693_platform_data flounder_ov5693_pdata = {
-	.edpc_config = {
-		.states = ov5693_estates,
-		.num_states = ARRAY_SIZE(ov5693_estates),
-		.e0_index = ARRAY_SIZE(ov5693_estates) - 1,
-		.priority = EDP_MAX_PRIO + 1,
-	},
 	.gpio_count	= ARRAY_SIZE(ov5693_gpio_pdata),
 	.gpio		= ov5693_gpio_pdata,
 	.power_on	= flounder_ov5693_power_on,
@@ -943,6 +911,10 @@ static struct pid_thermal_gov_params cpu_pid_params = {
 static struct thermal_zone_params cpu_tzp = {
 	.governor_name = "pid_thermal_gov",
 	.governor_params = &cpu_pid_params,
+};
+
+static struct thermal_zone_params therm_est_activ_tzp = {
+	.governor_name = "step_wise"
 };
 
 static struct throttle_table cpu_throttle_table[] = {
@@ -1177,6 +1149,29 @@ static struct therm_est_subdevice skin_devs[] = {
 	},
 };
 
+static struct therm_est_subdevice tn8ffd_skin_devs[] = {
+	{
+		.dev_data = "Tdiode",
+		.coeffs = {
+			3, 0, 0, 0,
+			1, 0, -1, 0,
+			1, 0, 0, 1,
+			1, 0, 0, 0,
+			0, 1, 2, 2
+		},
+	},
+	{
+		.dev_data = "Tboard",
+		.coeffs = {
+			1, 1, 2, 8,
+			6, -8, -13, -9,
+			-9, -8, -17, -18,
+			-18, -16, 2, 17,
+			15, 27, 42, 60
+		},
+	},
+};
+
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
 	.max_err_gain = 1000,
@@ -1196,13 +1191,10 @@ static struct thermal_zone_params skin_tzp = {
 static struct therm_est_data skin_data = {
 	.num_trips = ARRAY_SIZE(skin_trips),
 	.trips = skin_trips,
-	.toffset = 9793,
 	.polling_period = 1100,
 	.passive_delay = 15000,
 	.tc1 = 10,
 	.tc2 = 1,
-	.ndevs = ARRAY_SIZE(skin_devs),
-	.devs = skin_devs,
 	.tzp = &skin_tzp,
 };
 
@@ -1311,35 +1303,55 @@ late_initcall(flounder_skin_init);
 
 static struct nct1008_platform_data flounder_nct72_pdata = {
 	.loc_name = "tegra",
-
 	.supported_hwrev = true,
-	.ext_range = true,
 	.conv_rate = 0x06, /* 4Hz conversion rate */
 	.offset = 0,
-	.shutdown_ext_limit = 95, /* C */
-	.shutdown_local_limit = 120, /* C */
+	.extended_range = true,
 
-	.passive_delay = 1000,
-	.tzp = &cpu_tzp,
-
-	.num_trips = 2,
-	.trips = {
-		{
-			.cdev_type = "shutdown_warning",
-			.trip_temp = 93000,
-			.trip_type = THERMAL_TRIP_PASSIVE,
-			.upper = THERMAL_NO_LIMIT,
-			.lower = THERMAL_NO_LIMIT,
+	.sensors = {
+		[LOC] = {
+			.tzp = &therm_est_activ_tzp,
+			.shutdown_limit = 120, /* C */
+			.passive_delay = 1000,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "therm_est_activ",
+					.trip_temp = 26000,
+					.trip_type = THERMAL_TRIP_ACTIVE,
+					.hysteresis = 1000,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.mask = 1,
+				},
+			},
 		},
-		{
-			.cdev_type = "cpu-balanced",
-			.trip_temp = 83000,
-			.trip_type = THERMAL_TRIP_PASSIVE,
-			.upper = THERMAL_NO_LIMIT,
-			.lower = THERMAL_NO_LIMIT,
-			.hysteresis = 1000,
-		},
-	},
+		[EXT] = {
+			.tzp = &cpu_tzp,
+			.shutdown_limit = 95, /* C */
+			.passive_delay = 1000,
+			.num_trips = 2,
+			.trips = {
+				{
+					.cdev_type = "shutdown_warning",
+					.trip_temp = 93000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.mask = 0,
+				},
+				{
+					.cdev_type = "cpu-balanced",
+					.trip_temp = 83000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.hysteresis = 1000,
+					.mask = 1,
+				},
+			}
+		}
+	}
 };
 
 #ifdef CONFIG_TEGRA_SKIN_THROTTLE
@@ -1347,26 +1359,34 @@ static struct nct1008_platform_data flounder_nct72_tskin_pdata = {
 	.loc_name = "skin",
 
 	.supported_hwrev = true,
-	.ext_range = true,
 	.conv_rate = 0x06, /* 4Hz conversion rate */
 	.offset = 0,
-	.shutdown_ext_limit = 85, /* C */
-	.shutdown_local_limit = 120, /* C */
+	.extended_range = true,
 
-	.passive_delay = 10000,
-	.polling_delay = 1000,
-	.tzp = &skin_tzp,
-
-	.num_trips = 1,
-	.trips = {
-		{
-			.cdev_type = "skin-balanced",
-			.trip_temp = 50000,
-			.trip_type = THERMAL_TRIP_PASSIVE,
-			.upper = THERMAL_NO_LIMIT,
-			.lower = THERMAL_NO_LIMIT,
+	.sensors = {
+		[LOC] = {
+			.shutdown_limit = 95, /* C */
+			.num_trips = 0,
+			.tzp = NULL,
 		},
-	},
+		[EXT] = {
+			.shutdown_limit = 85, /* C */
+			.passive_delay = 10000,
+			.polling_delay = 1000,
+			.tzp = &skin_tzp,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "skin-balanced",
+					.trip_temp = 50000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+					.mask = 1,
+				},
+			},
+		}
+	}
 };
 #endif
 
@@ -1387,17 +1407,20 @@ static struct i2c_board_info flounder_i2c_nct72_board_info[] = {
 
 static int flounder_nct72_init(void)
 {
+	s32 base_cp, shft_cp;
+	u32 base_ft, shft_ft;
 	int nct72_port = TEGRA_GPIO_PI6;
 	int ret = 0;
 	int i;
 	struct thermal_trip_info *trip_state;
 
 	/* raise NCT's thresholds if soctherm CP,FT fuses are ok */
-	if (!tegra_fuse_calib_base_get_cp(NULL, NULL) &&
-	    !tegra_fuse_calib_base_get_ft(NULL, NULL)) {
-		flounder_nct72_pdata.shutdown_ext_limit += 20;
-		for (i = 0; i < flounder_nct72_pdata.num_trips; i++) {
-			trip_state = &flounder_nct72_pdata.trips[i];
+	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
+	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
+		flounder_nct72_pdata.sensors[EXT].shutdown_limit += 20;
+		for (i = 0; i < flounder_nct72_pdata.sensors[EXT].num_trips;
+			 i++) {
+			trip_state = &flounder_nct72_pdata.sensors[EXT].trips[i];
 			if (!strncmp(trip_state->cdev_type, "cpu-balanced",
 					THERMAL_NAME_LENGTH)) {
 				trip_state->cdev_type = "_none_";
@@ -1405,23 +1428,26 @@ static int flounder_nct72_init(void)
 			}
 		}
 	} else {
-		tegra_platform_edp_init(flounder_nct72_pdata.trips,
-					&flounder_nct72_pdata.num_trips,
+		tegra_platform_edp_init(
+			flounder_nct72_pdata.sensors[EXT].trips,
+			&flounder_nct72_pdata.sensors[EXT].num_trips,
 					12000); /* edp temperature margin */
-		tegra_add_cpu_vmax_trips(flounder_nct72_pdata.trips,
-				&flounder_nct72_pdata.num_trips);
-		tegra_add_core_edp_trips(flounder_nct72_pdata.trips,
-				&flounder_nct72_pdata.num_trips);
-		tegra_add_tgpu_trips(flounder_nct72_pdata.trips,
-				     &flounder_nct72_pdata.num_trips);
-		tegra_add_vc_trips(flounder_nct72_pdata.trips,
-				     &flounder_nct72_pdata.num_trips);
-		tegra_add_core_vmax_trips(flounder_nct72_pdata.trips,
-				     &flounder_nct72_pdata.num_trips);
+		tegra_add_cpu_vmax_trips(
+			flounder_nct72_pdata.sensors[EXT].trips,
+			&flounder_nct72_pdata.sensors[EXT].num_trips);
+		tegra_add_tgpu_trips(
+			flounder_nct72_pdata.sensors[EXT].trips,
+			&flounder_nct72_pdata.sensors[EXT].num_trips);
+		tegra_add_vc_trips(
+			flounder_nct72_pdata.sensors[EXT].trips,
+			&flounder_nct72_pdata.sensors[EXT].num_trips);
+		tegra_add_core_vmax_trips(
+			flounder_nct72_pdata.sensors[EXT].trips,
+			&flounder_nct72_pdata.sensors[EXT].num_trips);
 	}
 
-	tegra_add_all_vmin_trips(flounder_nct72_pdata.trips,
-				&flounder_nct72_pdata.num_trips);
+	tegra_add_all_vmin_trips(flounder_nct72_pdata.sensors[EXT].trips,
+		&flounder_nct72_pdata.sensors[EXT].num_trips);
 
 	flounder_i2c_nct72_board_info[0].irq = gpio_to_irq(nct72_port);
 

@@ -15,6 +15,10 @@
 		linux,initrd-end = <0x851bc400>;
 	};
 
+	pinmux {
+		status = "disable";
+	};
+
 	i2c@7000c000 {
 		status = "okay";
 
