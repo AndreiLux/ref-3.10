@@ -23,12 +23,10 @@
 #include <linux/gpio.h>
 #include <linux/clk.h>
 #include <linux/err.h>
-#include <linux/if.h>
 #include <linux/mmc/host.h>
 #include <linux/wl12xx.h>
 #include <linux/platform_data/mmc-sdhci-tegra.h>
 #include <linux/mfd/max77660/max77660-core.h>
-#include <linux/random.h>
 
 #include <asm/mach-types.h>
 #include <mach/irqs.h>
@@ -60,13 +58,11 @@ static int ardbeg_wifi_status_register(void (*callback)(int , void *), void *);
 static int ardbeg_wifi_reset(int on);
 static int ardbeg_wifi_power(int on);
 static int ardbeg_wifi_set_carddetect(int val);
-static int ardbeg_wifi_get_mac_addr(unsigned char *buf);
 
 static struct wifi_platform_data ardbeg_wifi_control = {
 	.set_power	= ardbeg_wifi_power,
 	.set_reset	= ardbeg_wifi_reset,
 	.set_carddetect	= ardbeg_wifi_set_carddetect,
-	.get_mac_addr	= ardbeg_wifi_get_mac_addr,
 #if defined (CONFIG_BCMDHD_EDP_SUPPORT)
 	/* wifi edp client information */
 	.client_info	= {
@@ -285,57 +281,6 @@ static int ardbeg_wifi_power(int on)
 static int ardbeg_wifi_reset(int on)
 {
 	pr_debug("%s: do nothing\n", __func__);
-	return 0;
-}
-
-static unsigned char ardbeg_mac_addr[IFHWADDRLEN] = { 0, 0x90, 0x4c, 0, 0, 0 };
-
-static int __init ardbeg_mac_addr_setup(char *str)
-{
-	char macstr[IFHWADDRLEN*3];
-	char *macptr = macstr;
-	char *token;
-	int i = 0;
-
-	if (!str)
-		return 0;
-	pr_debug("wlan MAC = %s\n", str);
-	if (strlen(str) >= sizeof(macstr))
-		return 0;
-	strcpy(macstr, str);
-
-	while ((token = strsep(&macptr, ":")) != NULL) {
-		unsigned long val;
-		int res;
-
-		if (i >= IFHWADDRLEN)
-			break;
-		res = kstrtoul(token, 0x10, &val);
-		if (res < 0)
-			return 0;
-		ardbeg_mac_addr[i++] = (u8)val;
-	}
-
-	return 1;
-}
-
-__setup("androidboot.wifimacaddr=", ardbeg_mac_addr_setup);
-
-static int ardbeg_wifi_get_mac_addr(unsigned char *buf)
-{
-	uint rand_mac;
-
-	if (!buf)
-		return -EFAULT;
-
-	if ((ardbeg_mac_addr[4] == 0) && (ardbeg_mac_addr[5] == 0)) {
-		prandom_seed((uint)jiffies);
-		rand_mac = prandom_u32();
-		ardbeg_mac_addr[3] = (unsigned char)rand_mac;
-		ardbeg_mac_addr[4] = (unsigned char)(rand_mac >> 8);
-		ardbeg_mac_addr[5] = (unsigned char)(rand_mac >> 16);
-	}
-	memcpy(buf, ardbeg_mac_addr, IFHWADDRLEN);
 	return 0;
 }
 
