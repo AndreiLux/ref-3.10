@@ -64,11 +64,9 @@ obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-memory.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-pinmux.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-power.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += flounder-bdaddress.o
 
 obj-y                                   += board-touch-maxim_sti-spi.o
-ifdef CONFIG_BT
-obj-$(CONFIG_MACH_FLOUNDER64) += flounder-bdaddress.o
-endif #CONFIG_BT
 
 ifeq ($(CONFIG_HOTPLUG_CPU),y)
 obj-$(CONFIG_DENVER_CPU)              += hotplug-denver.o
