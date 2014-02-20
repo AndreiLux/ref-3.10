@@ -1,0 +1,107 @@
+/dts-v1/;
+
+#include "tegra132-flounder64-generic.dtsi"
+
+/ {
+	model = "Flounder64";
+	compatible = "google,flounder64", "nvidia,tegra132";
+	nvidia-boardids = "1780:1100:2:B:7","1794:1000:0:A:6";
+	#address-cells = <1>;
+	#size-cells = <1>;
+
+	chosen {
+		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
+		linux,initrd-start = <0x85000000>;
+		linux,initrd-end = <0x851bc400>;
+	};
+
+	pinmux {
+		status = "disable";
+	};
+
+	i2c@7000c000 {
+		status = "okay";
+
+		max17050@36 {
+			compatible = "maxim,max17050";
+			reg = <0x36>;
+		};
+
+		bq2419x: bq2419x@6b {
+			compatible = "ti,bq2419x";
+			reg = <0x6b>;
+
+			charger {
+				regulator-name = "batt_regulator";
+				regulator-max-microamp = <3000>;
+				watchdog-timeout = <40>;
+				rtc-alarm-time = <3600>;
+				auto-recharge-time = <1800>;
+				consumers {
+					c1 {
+						regulator-consumer-supply = "usb_bat_chg";
+						regulator-consumer-device = "tegra-udc.0";
+					};
+				};
+			};
+
+			vbus {
+				regulator-name = "vbus_regulator";
+				consumers {
+					c1 {
+						regulator-consumer-supply = "usb_vbus";
+						regulator-consumer-device = "tegra-ehci.0";
+					};
+
+					c2 {
+						regulator-consumer-supply = "usb_vbus";
+						regulator-consumer-device = "tegra-otg";
+					};
+				};
+			};
+		};
+
+		tps61310@33 {
+			compatible = "ti,tps61310";
+			reg = <0x33>;
+			tps61310,tps61310_strb0 = <&gpio TEGRA_GPIO(Q, 6) 0>;
+			tps61310,tps61310_strb1 = <&gpio TEGRA_GPIO(W, 5) 0>;
+			tps61310,flash_duration_ms = <600>;
+			tps61310,enable_FLT_1500mA = <0>;
+			tps61310,led_count = <1>;
+			tps61310,disable_tx_mask = <1>;
+
+			tps61310_flash0: tps61310_flash_0 {
+				label = "flash";
+				linux,name = "flash_0";
+				linux,default-trigger =
+					"flash0_trigger";
+				id = <0>;
+				default-state = "off";
+				max-current = <750>;
+			};
+
+			tps61310_torch0: tps61310_torch_0 {
+				label = "torch";
+				linux,name = "torch_0";
+				linux,default-trigger =
+					"torch0_trigger";
+				id = <0>;
+				default-state = "off";
+				max-current = <200>;
+			};
+		};
+	};
+	i2c@7000c400 {
+		status = "okay";
+
+		lp5521@32 {
+			compatible = "LP5521-LED";
+			reg = <0x32>;
+			lp5521,lp5521_en = <&gpio 60 0x00>;
+			lp5521,num_leds = <1>;
+		};
+	};
+
+};
+

@@ -44,6 +44,13 @@ config MACH_T132REF
 	help
 	  Support for NVIDIA Exuma FPGA development platform
 
+config MACH_T132_FLOUNDER
+        bool "Flounder board with t132"
+        depends on ARCH_TEGRA_13x_SOC
+        select SYSEDP_FRAMEWORK
+        help
+          Support for flounder development platform
+
 config DENVER_CPU
 	bool "Denver CPU"
 	help

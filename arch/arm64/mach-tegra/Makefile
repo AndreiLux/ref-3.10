@@ -55,6 +55,15 @@ obj-${CONFIG_MACH_T132REF}              += panel-s-edp-wqxgap-15-6.o
 obj-${CONFIG_MACH_T132REF}              += panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_T132REF}              += panel-i-edp-1080p-11-6.o
 
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-kbc.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sdhci.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sensors.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-panel.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-memory.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-pinmux.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-power.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
 
 obj-y                                   += board-touch-maxim_sti-spi.o
 

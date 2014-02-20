@@ -154,7 +154,10 @@ static inline int flounder_cl_dvfs_init(void)
 
 int __init flounder_rail_alignment_init(void)
 {
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+#else
 	tegra12x_vdd_cpu_align(FLOUNDER_DEFAULT_CVB_ALIGNMENT, 0);
+#endif
 	return 0;
 }
 
