@@ -23,6 +23,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/migrate.h>
 #include <linux/perf_event.h>
+#include <linux/tegra_profiler.h>
 #include <asm/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/cacheflush.h>
@@ -135,6 +136,7 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 	pmd_t *pmd;
 	unsigned long next;
 	unsigned long pages = 0;
+	unsigned long nr_huge_updates = 0;
 	bool all_same_node;
 
 	pmd = pmd_offset(pud, addr);
@@ -146,6 +148,7 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 			else if (change_huge_pmd(vma, pmd, addr, newprot,
 						 prot_numa)) {
 				pages += HPAGE_PMD_NR;
+				nr_huge_updates++;
 				continue;
 			}
 			/* fall through */
@@ -164,6 +167,9 @@ static inline unsigned long change_pmd_range(struct vm_area_struct *vma,
 		if (prot_numa && all_same_node)
 			change_pmd_protnuma(vma->vm_mm, addr, pmd);
 	} while (pmd++, addr = next, addr != end);
+
+	if (nr_huge_updates)
+		count_vm_numa_events(NUMA_HUGE_PTE_UPDATES, nr_huge_updates);
 
 	return pages;
 }
@@ -312,6 +318,7 @@ success:
 	vm_stat_account(mm, oldflags, vma->vm_file, -nrpages);
 	vm_stat_account(mm, newflags, vma->vm_file, nrpages);
 	perf_event_mmap(vma);
+	quadd_event_mmap(vma);
 	return 0;
 
 fail:

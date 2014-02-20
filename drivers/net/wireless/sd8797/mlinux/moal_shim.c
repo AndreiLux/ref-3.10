@@ -647,7 +647,6 @@ moal_send_packet_complete(IN t_void * pmoal_handle,
 	moal_handle *handle = (moal_handle *) pmoal_handle;
 	struct sk_buff *skb = NULL;
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
-	t_u32 tid = 0;
 	t_u32 index = 0;
 #endif
 
@@ -671,11 +670,7 @@ moal_send_packet_complete(IN t_void * pmoal_handle,
 					priv->stats.tx_errors++;
 				}
 #if LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 29)
-				tid = pmbuf->priority;
-				index = mlan_select_wmm_queue(priv->phandle->
-							      pmlan_adapter,
-							      priv->bss_index,
-							      tid);
+				index = skb_get_queue_mapping(skb);
 				atomic_dec(&handle->tx_pending);
 				if (atomic_dec_return
 				    (&priv->wmm_tx_pending[index]) <
@@ -1737,6 +1732,9 @@ moal_recv_event(IN t_void * pmoal_handle, IN pmlan_event pmevent)
 							sizeof(pmevent->
 							       event_id) -
 							MLAN_MAC_ADDR_LENGTH,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 12, 0)
+							0,
+#endif
 							GFP_ATOMIC);
 #else
 				cfg80211_rx_mgmt(priv->netdev, freq,

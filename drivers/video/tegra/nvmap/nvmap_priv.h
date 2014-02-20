@@ -3,7 +3,7 @@
  *
  * GPU memory management driver for Tegra
  *
- * Copyright (c) 2009-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2009-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,12 +39,29 @@
 #include <linux/dma-direction.h>
 #include <linux/platform_device.h>
 
-#include <asm/tlbflush.h>
 #include <asm/cacheflush.h>
-
+#include <asm/tlbflush.h>
+#ifndef CONFIG_ARM64
+#include <asm/outercache.h>
+#endif
 #include "nvmap_heap.h"
 
-struct nvmap_device;
+#ifdef CONFIG_NVMAP_HIGHMEM_ONLY
+#define __GFP_NVMAP     __GFP_HIGHMEM
+#else
+#define __GFP_NVMAP     (GFP_KERNEL | __GFP_HIGHMEM)
+#endif
+
+#ifdef CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES
+#define NVMAP_ZEROED_PAGES     __GFP_ZERO
+#else
+#define NVMAP_ZEROED_PAGES     0
+#endif
+
+#define GFP_NVMAP              (__GFP_NVMAP | __GFP_NOWARN | NVMAP_ZEROED_PAGES)
+
+#define NVMAP_NUM_PTES		64
+
 struct nvmap_share;
 struct page;
 
@@ -72,15 +89,20 @@ extern struct platform_device *nvmap_pdev;
 #define CACHE_MAINT_IMMEDIATE		0
 #define CACHE_MAINT_ALLOW_DEFERRED	1
 
-struct nvmap_deferred_ops {
-	struct list_head ops_list;
-	spinlock_t deferred_ops_lock;
-	bool enable_deferred_cache_maintenance;
-	u64 deferred_maint_inner_requested;
-	u64 deferred_maint_inner_flushed;
-	u64 deferred_maint_outer_requested;
-	u64 deferred_maint_outer_flushed;
-};
+#ifdef CONFIG_ARM64
+#define PG_PROT_KERNEL PAGE_KERNEL
+#define FLUSH_TLB_PAGE(addr) flush_tlb_kernel_range(addr, PAGE_SIZE)
+#define FLUSH_DCACHE_AREA __flush_dcache_area
+#define outer_flush_range(s, e)
+#define outer_inv_range(s, e)
+#define outer_clean_range(s, e)
+extern void __flush_dcache_page(struct page *);
+#else
+#define PG_PROT_KERNEL pgprot_kernel
+#define FLUSH_TLB_PAGE(addr) flush_tlb_kernel_page(addr)
+#define FLUSH_DCACHE_AREA __cpuc_flush_dcache_area
+extern void __flush_dcache_page(struct address_space *, struct page *);
+#endif
 
 /* handles allocated using shared system memory (either IOVMM- or high-order
  * page allocations */
@@ -94,7 +116,6 @@ struct nvmap_handle {
 	struct rb_node node;	/* entry on global handle tree */
 	atomic_t ref;		/* reference count (i.e., # of duplications) */
 	atomic_t pin;		/* pin count */
-	atomic_t disable_deferred_cache;
 	unsigned long flags;
 	size_t size;		/* padded (as-allocated) size */
 	size_t orig_size;	/* original (as-requested) size */
@@ -160,6 +181,8 @@ struct nvmap_page_pool {
 };
 
 int nvmap_page_pool_init(struct nvmap_page_pool *pool, int flags);
+struct page *nvmap_page_pool_alloc(struct nvmap_page_pool *pool);
+bool nvmap_page_pool_release(struct nvmap_page_pool *pool, struct page *page);
 #endif
 
 struct nvmap_share {
@@ -204,6 +227,28 @@ struct nvmap_vma_priv {
 	atomic_t	count;	/* number of processes cloning the VMA */
 };
 
+#include <linux/mm.h>
+#include <linux/miscdevice.h>
+
+struct nvmap_device {
+	struct vm_struct *vm_rgn;
+	pte_t		*ptes[NVMAP_NUM_PTES];
+	unsigned long	ptebits[NVMAP_NUM_PTES / BITS_PER_LONG];
+	unsigned int	lastpte;
+	spinlock_t	ptelock;
+
+	struct rb_root	handles;
+	spinlock_t	handle_lock;
+	wait_queue_head_t pte_wait;
+	struct miscdevice dev_super;
+	struct miscdevice dev_user;
+	struct nvmap_carveout_node *heaps;
+	int nr_carveouts;
+	struct nvmap_share iovmm_master;
+	struct list_head clients;
+	spinlock_t	clients_lock;
+};
+
 static inline void nvmap_ref_lock(struct nvmap_client *priv)
 {
 	mutex_lock(&priv->ref_lock);
@@ -236,10 +281,6 @@ static inline pgprot_t nvmap_pgprot(struct nvmap_handle *h, pgprot_t prot)
 		return pgprot_noncached(prot);
 	else if (h->flags == NVMAP_HANDLE_WRITE_COMBINE)
 		return pgprot_writecombine(prot);
-#ifndef CONFIG_ARM_LPAE /* !!!FIXME!!! BUG 892578 */
-	else if (h->flags == NVMAP_HANDLE_INNER_CACHEABLE)
-		return pgprot_inner_writeback(prot);
-#endif
 	return prot;
 }
 
@@ -276,12 +317,6 @@ void nvmap_carveout_commit_subtract(struct nvmap_client *client,
 				    size_t len);
 
 struct nvmap_share *nvmap_get_share_from_dev(struct nvmap_device *dev);
-
-void nvmap_cache_maint_ops_flush(struct nvmap_device *dev,
-		struct nvmap_handle *h);
-
-struct nvmap_deferred_ops *nvmap_get_deferred_ops_from_dev(
-		struct nvmap_device *dev);
 
 int nvmap_find_cache_maint_op(struct nvmap_device *dev,
 		struct nvmap_handle *h);
@@ -333,6 +368,10 @@ ulong nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client, int fd);
 int nvmap_get_handle_param(struct nvmap_client *client,
 		struct nvmap_handle_ref *ref, u32 param, u64 *result);
 
+struct nvmap_client *nvmap_client_get(struct nvmap_client *client);
+
+void nvmap_client_put(struct nvmap_client *c);
+
 #ifdef CONFIG_COMPAT
 ulong unmarshal_user_handle(__u32 handle);
 __u32 marshal_kernel_handle(ulong handle);
@@ -348,7 +387,7 @@ static inline void nvmap_flush_tlb_kernel_page(unsigned long kaddr)
 #ifdef CONFIG_ARM_ERRATA_798181
 	flush_tlb_kernel_page_skip_errata_798181(kaddr);
 #else
-	flush_tlb_kernel_page(kaddr);
+	FLUSH_TLB_PAGE(kaddr);
 #endif
 }
 
@@ -358,7 +397,7 @@ extern int inner_cache_maint_threshold;
 
 extern void v7_flush_kern_cache_all(void);
 extern void v7_clean_kern_cache_all(void *);
-extern void __flush_dcache_page(struct address_space *, struct page *);
+extern void __flush_dcache_all(void *arg);
 
 void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
@@ -366,6 +405,7 @@ int nvmap_set_pages_array_uc(struct page **pages, int addrinarray);
 int nvmap_set_pages_array_wc(struct page **pages, int addrinarray);
 int nvmap_set_pages_array_iwb(struct page **pages, int addrinarray);
 int nvmap_set_pages_array_wb(struct page **pages, int addrinarray);
+void nvmap_flush_cache(struct page **pages, int numpages);
 
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,

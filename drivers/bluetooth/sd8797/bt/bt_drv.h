@@ -602,7 +602,7 @@ typedef struct _BT_CMD {
 	/** Length */
 	u8 length;
 	/** Data */
-	u8 data[32];
+	u8 data[128];
 } __ATTRIB_PACK__ BT_CMD;
 
 typedef struct _BT_EVENT {
@@ -687,6 +687,8 @@ int sd_download_firmware_w_helper(bt_private * priv);
 #define BT_CMD_CSU_WRITE_REG		0x66
 /** Bluetooth command : Load calibrate data */
 #define BT_CMD_LOAD_CONFIG_DATA     0x61
+/** Bluetooth command : Load calibrate ext data */
+#define BT_CMD_LOAD_CONFIG_DATA_EXT     0x60
 
 /** Bluetooth command : BLE deepsleep */
 #define BT_CMD_BLE_DEEP_SLEEP       0x8b
@@ -721,8 +723,12 @@ int bt_write_reg(bt_private * priv, u8 type, u32 offset, u16 value);
 int bt_init_config(bt_private * priv, char *cfg_file);
 /** This function load the calibrate data */
 int bt_load_cal_data(bt_private * priv, u8 * config_data, u8 * mac);
+/** This function load the calibrate ext data */
+int bt_load_cal_data_ext(bt_private * priv, u8 * config_data, u32 cfg_data_len);
 /** BT set user defined calibration data */
 int bt_cal_config(bt_private * priv, char *cfg_file, char *mac);
+/** BT set user defined calibration ext data */
+int bt_cal_config_ext(bt_private * priv, char *cfg_file);
 int bt_init_mac_address(bt_private * priv, char *mac);
 
 typedef struct _BT_HCI_CMD {

@@ -2,7 +2,7 @@
   *
   * @brief This file contains private ioctl functions
   *
-  * Copyright (C) 2012, Marvell International Ltd.
+  * Copyright (C) 2013, Marvell International Ltd.
   *
   * This software file (the "File") is distributed by Marvell International
   * Ltd. under the terms of the GNU General Public License Version 2, June 1991
@@ -208,6 +208,8 @@ done:
 }
 #endif
 
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 /**
  *  @brief Set miracast mode
  *
@@ -233,13 +235,16 @@ woal_set_miracast_mode(moal_private * priv, t_u8 * pdata, size_t len)
 		pos++;
 	switch (*pos) {
 	case '0':
-		/* TODO: disabled */
+		/* disable miracast mode */
+		priv->phandle->miracast_mode = 0;
 		break;
 	case '1':
-		/* TODO: source */
+		/* Source */
+		priv->phandle->miracast_mode = 1;
 		break;
 	case '2':
-		/* TODO: sink */
+		/* Sink */
+		priv->phandle->miracast_mode = 2;
 		break;
 	default:
 		PRINTM(MERROR, "%s: Unknown miracast mode (%c)\n",
@@ -251,6 +256,8 @@ done:
 	LEAVE();
 	return ret;
 }
+#endif
+#endif
 
 /**
  *  @brief Get Driver Version
@@ -313,6 +320,7 @@ woal_priv_hostcmd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	HostCmd_Header cmd_header;
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_misc_cfg *misc_cfg = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -341,8 +349,8 @@ woal_priv_hostcmd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(misc_cfg->param.hostcmd.cmd, data_ptr + sizeof(buf_len),
 	       misc_cfg->param.hostcmd.len);
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto error;
 	}
@@ -353,7 +361,8 @@ woal_priv_hostcmd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(data_ptr, (t_u8 *) & ret, sizeof(t_u32));
 
 error:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -376,6 +385,7 @@ woal_priv_customie(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *ioctl_req = NULL;
 	mlan_ds_misc_cfg *misc = NULL;
 	mlan_ds_misc_custom_ie *custom_ie = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 	data_ptr = respbuf + (strlen(CMD_MARVELL) + strlen(PRIV_CMD_CUSTOMIE));
@@ -398,8 +408,8 @@ woal_priv_customie(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 
 	memcpy(&misc->param.cust_ie, custom_ie, sizeof(mlan_ds_misc_custom_ie));
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -411,7 +421,8 @@ woal_priv_customie(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ret = EFAULT;
 	}
 done:
-	kfree(ioctl_req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -439,6 +450,7 @@ woal_setget_priv_bandcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_radio_cfg *radio_cfg = NULL;
 	mlan_ds_band_cfg *band_cfg = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -551,8 +563,8 @@ woal_setget_priv_bandcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			adhoc_chan_bandwidth;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto error;
 	}
@@ -564,7 +576,8 @@ woal_setget_priv_bandcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(mlan_ds_band_cfg);
 
 error:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -587,6 +600,7 @@ woal_setget_priv_httxcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_11n_cfg *cfg_11n = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -638,8 +652,8 @@ woal_setget_priv_httxcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		/* Update 11n tx parameters in MLAN */
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -649,8 +663,8 @@ woal_setget_priv_httxcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	if (req->action == MLAN_ACT_GET) {
 		cfg_11n->param.tx_cfg.httxcap = 0;
 		cfg_11n->param.tx_cfg.misc_cfg = BAND_SELECT_A;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -662,7 +676,8 @@ woal_setget_priv_httxcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -686,6 +701,7 @@ woal_setget_priv_htcapinfo(moal_private * priv, t_u8 * respbuf,
 	woal_ht_cap_info *ht_cap = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -738,8 +754,8 @@ woal_setget_priv_htcapinfo(moal_private * priv, t_u8 * respbuf,
 		/* Update 11n tx parameters in MLAN */
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -749,8 +765,8 @@ woal_setget_priv_htcapinfo(moal_private * priv, t_u8 * respbuf,
 	if (req->action == MLAN_ACT_GET) {
 		cfg_11n->param.htcap_cfg.htcap = 0;
 		cfg_11n->param.htcap_cfg.misc_cfg = BAND_SELECT_A;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -764,7 +780,8 @@ woal_setget_priv_htcapinfo(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(woal_ht_cap_info);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -788,6 +805,7 @@ woal_setget_priv_addbapara(moal_private * priv, t_u8 * respbuf,
 	woal_addba *addba = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -849,8 +867,8 @@ woal_setget_priv_addbapara(moal_private * priv, t_u8 * respbuf,
 		/* Update add BA parameters in MLAN */
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -870,7 +888,8 @@ woal_setget_priv_addbapara(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(woal_addba);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -967,7 +986,8 @@ woal_priv_delba(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sprintf(respbuf, "OK. BA deleted successfully.\n") + 1;
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -989,6 +1009,7 @@ woal_priv_rejectaddbareq(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_11n_cfg *cfg_11n = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1030,8 +1051,8 @@ woal_priv_rejectaddbareq(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT) !=
-	    MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1044,7 +1065,316 @@ woal_priv_rejectaddbareq(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
+	LEAVE();
+	return ret;
+
+}
+
+/**
+ *  @brief Set/Get the addba reject setting
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param action       Action set or get
+ *  @param addba_reject A pointer to addba_reject array.
+ *
+ *  @return             MLAN_STATUS_SUCCESS/MLAN_STATUS_PENDING -- success, otherwise fail
+ */
+mlan_status
+woal_ioctl_addba_reject(moal_private * priv, t_u32 action, t_u8 * addba_reject)
+{
+	mlan_ioctl_req *req = NULL;
+	mlan_ds_11n_cfg *cfg_11n = NULL;
+	mlan_status ret = MLAN_STATUS_SUCCESS;
+
+	ENTER();
+	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_11n_cfg));
+	if (req == NULL) {
+		ret = -ENOMEM;
+		goto done;
+	}
+
+	cfg_11n = (mlan_ds_11n_cfg *) req->pbuf;
+	cfg_11n->sub_command = MLAN_OID_11N_CFG_ADDBA_REJECT;
+	req->req_id = MLAN_IOCTL_11N_CFG;
+
+	req->action = action;
+	if (action == MLAN_ACT_SET)
+		memcpy(cfg_11n->param.addba_reject, addba_reject,
+		       sizeof(cfg_11n->param.addba_reject));
+	/* Send IOCTL request to MLAN */
+	ret = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (ret != MLAN_STATUS_SUCCESS)
+		goto done;
+	if (action == MLAN_ACT_GET)
+		memcpy(addba_reject, cfg_11n->param.addba_reject,
+		       sizeof(cfg_11n->param.addba_reject));
+done:
+	if (ret != MLAN_STATUS_PENDING)
+		kfree(req);
+	LEAVE();
+	return ret;
+}
+
+/**
+ *  @brief Set/Get addba prio_tbl
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param action       Action set or get
+ *  @param aggr_prio_tbl  A pointer to mlan_ds_11n_aggr_prio_tbl.
+ *
+ *  @return             MLAN_STATUS_SUCCESS/MLAN_STATUS_PENDING -- success, otherwise fail
+ */
+mlan_status
+woal_ioctl_aggr_prio_tbl(moal_private * priv, t_u32 action,
+			 mlan_ds_11n_aggr_prio_tbl * aggr_prio_tbl)
+{
+	mlan_ioctl_req *req = NULL;
+	mlan_ds_11n_cfg *cfg_11n = NULL;
+	mlan_status ret = MLAN_STATUS_SUCCESS;
+
+	ENTER();
+
+	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_11n_cfg));
+	if (req == NULL) {
+		ret = -ENOMEM;
+		goto done;
+	}
+
+	cfg_11n = (mlan_ds_11n_cfg *) req->pbuf;
+	cfg_11n->sub_command = MLAN_OID_11N_CFG_AGGR_PRIO_TBL;
+	req->req_id = MLAN_IOCTL_11N_CFG;
+
+	req->action = action;
+	if (action == MLAN_ACT_SET)
+		memcpy(&cfg_11n->param.aggr_prio_tbl, aggr_prio_tbl,
+		       sizeof(mlan_ds_11n_aggr_prio_tbl));
+	/* Send IOCTL request to MLAN */
+	ret = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (ret != MLAN_STATUS_SUCCESS)
+		goto done;
+	if (action == MLAN_ACT_GET)
+		memcpy(aggr_prio_tbl, &cfg_11n->param.aggr_prio_tbl,
+		       sizeof(mlan_ds_11n_aggr_prio_tbl));
+done:
+	if (ret != MLAN_STATUS_PENDING)
+		kfree(req);
+	LEAVE();
+	return ret;
+
+}
+
+/**
+ *  @brief Set/Get addba_param
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param action       Action set or get
+ *  @param addba_param  A pointer to mlan_ds_11n_addba_param.
+ *
+ *  @return             MLAN_STATUS_SUCCESS/MLAN_STATUS_PENDING -- success, otherwise fail
+ */
+mlan_status
+woal_ioctl_addba_param(moal_private * priv, t_u32 action,
+		       mlan_ds_11n_addba_param * addba_param)
+{
+	mlan_ioctl_req *req = NULL;
+	mlan_ds_11n_cfg *cfg_11n = NULL;
+	mlan_status ret = MLAN_STATUS_SUCCESS;
+
+	ENTER();
+
+	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_11n_cfg));
+	if (req == NULL) {
+		ret = -ENOMEM;
+		goto done;
+	}
+
+	cfg_11n = (mlan_ds_11n_cfg *) req->pbuf;
+	cfg_11n->sub_command = MLAN_OID_11N_CFG_ADDBA_PARAM;
+	req->req_id = MLAN_IOCTL_11N_CFG;
+
+	req->action = action;
+	if (action == MLAN_ACT_SET)
+		memcpy(&cfg_11n->param.addba_param, addba_param,
+		       sizeof(mlan_ds_11n_addba_param));
+	/* Send IOCTL request to MLAN */
+	ret = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (ret != MLAN_STATUS_SUCCESS)
+		goto done;
+	if (action == MLAN_ACT_GET)
+		memcpy(addba_param, &cfg_11n->param.addba_param,
+		       sizeof(mlan_ds_11n_addba_param));
+done:
+	if (ret != MLAN_STATUS_PENDING)
+		kfree(req);
+	LEAVE();
+	return ret;
+
+}
+
+/**
+ *   @brief Configuring rx block-ack window size
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param respbuf      A pointer to response buffer
+ *  @param respbuflen   Available length of response buffer
+ *
+ *  @return             0 --success, otherwise failure
+ */
+int
+woal_set_rx_ba_winsize(moal_private * priv, t_u8 * respbuf, int respbuflen)
+{
+	t_u32 data[2];
+	t_u8 addba_reject[MAX_NUM_TID];
+	mlan_ds_11n_addba_param addba_param;
+	int ret = 0;
+	int user_data_len = 0;
+
+	ENTER();
+
+	memset((char *)data, 0, sizeof(data));
+	parse_arguments(respbuf, data, ARRAY_SIZE(data), &user_data_len);
+
+	if (user_data_len != 2) {
+		PRINTM(MERROR, "Invalid arguments for ba_winsize command\n");
+		ret = -EINVAL;
+		goto done;
+	}
+	if (data[0] > 7 || data[0] < 0) {
+		PRINTM(MERROR, "Invalid tid %d\n", data[0]);
+		ret = -EINVAL;
+		goto done;
+	}
+	if (data[1] < 0) {
+		PRINTM(MERROR, "Invalid winsize %d\n", data[1]);
+		ret = -EINVAL;
+		goto done;
+	}
+	memset(addba_reject, 0, sizeof(addba_reject));
+	if (MLAN_STATUS_SUCCESS !=
+	    woal_ioctl_addba_reject(priv, MLAN_ACT_GET, addba_reject)) {
+		ret = -EFAULT;
+		goto done;
+	}
+	/* disable tx ba */
+	if (data[1] == 0) {
+		addba_reject[data[0]] = MTRUE;
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_ioctl_addba_reject(priv, MLAN_ACT_SET, addba_reject))
+			ret = -EFAULT;
+	} else {
+		if (addba_reject[data[0]] == MTRUE) {
+			addba_reject[data[0]] = MFALSE;
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_ioctl_addba_reject(priv, MLAN_ACT_SET,
+						    addba_reject)) {
+				ret = -EFAULT;
+				goto done;
+			}
+		}
+		memset(&addba_param, 0, sizeof(addba_param));
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_ioctl_addba_param(priv, MLAN_ACT_GET, &addba_param)) {
+			ret = -EFAULT;
+			goto done;
+		}
+		if (data[1] != addba_param.rxwinsize) {
+			addba_param.rxwinsize = data[1];
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_ioctl_addba_param(priv, MLAN_ACT_SET,
+						   &addba_param))
+				ret = -EFAULT;
+		}
+
+	}
+done:
+	LEAVE();
+	return ret;
+
+}
+
+/**
+ *   @brief Configuring trx block-ack window size
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param respbuf      A pointer to response buffer
+ *  @param respbuflen   Available length of response buffer
+ *
+ *  @return             0 --success, otherwise failure
+ */
+int
+woal_set_tx_ba_winsize(moal_private * priv, t_u8 * respbuf, int respbuflen)
+{
+	t_u32 data[2];
+	mlan_ds_11n_aggr_prio_tbl aggr_prio_tbl;
+	mlan_ds_11n_addba_param addba_param;
+	t_u8 tos_to_tid_inv[] =
+		{ 0x02, 0x00, 0x01, 0x03, 0x04, 0x05, 0x06, 0x07 };
+	int ret = 0;
+	int user_data_len = 0;
+
+	ENTER();
+
+	memset((char *)data, 0, sizeof(data));
+	parse_arguments(respbuf, data, ARRAY_SIZE(data), &user_data_len);
+
+	if (user_data_len != 2) {
+		PRINTM(MERROR, "Invalid arguments for ba_winsize command\n");
+		ret = -EINVAL;
+		goto done;
+	}
+	if (data[0] > 7 || data[0] < 0) {
+		PRINTM(MERROR, "Invalid tid %d\n", data[0]);
+		ret = -EINVAL;
+		goto done;
+	}
+	if (data[1] < 0) {
+		PRINTM(MERROR, "Invalid winsize %d\n", data[1]);
+		ret = -EINVAL;
+		goto done;
+	}
+	memset(&aggr_prio_tbl, 0, sizeof(aggr_prio_tbl));
+	if (MLAN_STATUS_SUCCESS !=
+	    woal_ioctl_aggr_prio_tbl(priv, MLAN_ACT_GET, &aggr_prio_tbl)) {
+		ret = -EFAULT;
+		goto done;
+	}
+	/* disable tx ba */
+	if (data[1] == 0) {
+		if (aggr_prio_tbl.ampdu[data[0]] != 0xff) {
+			aggr_prio_tbl.ampdu[data[0]] = 0xff;
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_ioctl_aggr_prio_tbl(priv, MLAN_ACT_SET,
+						     &aggr_prio_tbl))
+				ret = -EFAULT;
+		}
+	} else {
+		if (aggr_prio_tbl.ampdu[data[0]] == 0xff) {
+			aggr_prio_tbl.ampdu[data[0]] = tos_to_tid_inv[data[0]];
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_ioctl_aggr_prio_tbl(priv, MLAN_ACT_SET,
+						     &aggr_prio_tbl)) {
+				ret = -EFAULT;
+				goto done;
+			}
+		}
+		memset(&addba_param, 0, sizeof(addba_param));
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_ioctl_addba_param(priv, MLAN_ACT_GET, &addba_param)) {
+			ret = -EFAULT;
+			goto done;
+		}
+		if (data[1] != addba_param.txwinsize) {
+			addba_param.txwinsize = data[1];
+			if (MLAN_STATUS_SUCCESS !=
+			    woal_ioctl_addba_param(priv, MLAN_ACT_SET,
+						   &addba_param))
+				ret = -EFAULT;
+		}
+
+	}
+done:
 	LEAVE();
 	return ret;
 
@@ -1068,6 +1398,7 @@ woal_setget_priv_aggrpriotbl(moal_private * priv, t_u8 * respbuf,
 	mlan_ds_11n_cfg *cfg_11n = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1118,8 +1449,8 @@ woal_setget_priv_aggrpriotbl(moal_private * priv, t_u8 * respbuf,
 		/* Update aggr priority table in MLAN */
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1132,7 +1463,8 @@ woal_setget_priv_aggrpriotbl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1156,6 +1488,7 @@ woal_setget_priv_addbareject(moal_private * priv, t_u8 * respbuf,
 	mlan_ds_11n_cfg *cfg_11n = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1204,8 +1537,8 @@ woal_setget_priv_addbareject(moal_private * priv, t_u8 * respbuf,
 		/* Update add BA reject configuration in MLAN */
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1217,7 +1550,8 @@ woal_setget_priv_addbareject(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1241,6 +1575,7 @@ woal_setget_priv_vhtcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_11ac_vht_cfg *vhtcfg = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1338,8 +1673,8 @@ woal_setget_priv_vhtcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		/* Update 11AC parameters in MLAN */
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1352,8 +1687,8 @@ woal_setget_priv_vhtcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 
 	if ((req->action == MLAN_ACT_GET) && (data[0] == BAND_SELECT_BOTH)) {
 		cfg_11ac->param.vht_cfg.band = BAND_SELECT_A;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -1366,7 +1701,8 @@ woal_setget_priv_vhtcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1388,6 +1724,7 @@ woal_get_priv_datarate(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_rate *rate = NULL;
 	mlan_data_rate *data_rate = NULL;
 	int ret = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1402,8 +1739,8 @@ woal_get_priv_datarate(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	req->req_id = MLAN_IOCTL_RATE;
 	req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1415,7 +1752,8 @@ woal_get_priv_datarate(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(mlan_data_rate);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1440,6 +1778,7 @@ woal_setget_priv_txratecfg(moal_private * priv, t_u8 * respbuf,
 	woal_tx_rate_cfg *ratecfg = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1532,8 +1871,8 @@ woal_setget_priv_txratecfg(moal_private * priv, t_u8 * respbuf,
 		}
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1553,7 +1892,8 @@ woal_setget_priv_txratecfg(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(woal_tx_rate_cfg);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1668,6 +2008,7 @@ woal_setget_priv_esuppmode(moal_private * priv, t_u8 * respbuf,
 	woal_esuppmode_cfg *esupp_mode = NULL;
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1713,8 +2054,8 @@ woal_setget_priv_esuppmode(moal_private * priv, t_u8 * respbuf,
 		sec->param.esupp_mode.act_groupcipher = (data[2] & 0xFF);
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1729,7 +2070,8 @@ woal_setget_priv_esuppmode(moal_private * priv, t_u8 * respbuf,
 
 	ret = sizeof(woal_esuppmode_cfg);
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1755,6 +2097,7 @@ woal_setget_priv_passphrase(moal_private * priv, t_u8 * respbuf,
 	t_u16 len = 0;
 	t_u8 zero_mac[] = { 0, 0, 0, 0, 0, 0 };
 	t_u8 *mac = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1856,8 +2199,8 @@ woal_setget_priv_passphrase(moal_private * priv, t_u8 * respbuf,
 	if (action == 2)
 		sec->param.passphrase.psk_type = MLAN_PSK_CLEAR;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1891,7 +2234,8 @@ woal_setget_priv_passphrase(moal_private * priv, t_u8 * respbuf,
 
 	ret = len;
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -1953,6 +2297,7 @@ woal_priv_ap_deauth(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_bss *bss = NULL;
 	mlan_deauth_param deauth_param;
 	int ret = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1976,8 +2321,8 @@ woal_priv_ap_deauth(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 
 	memcpy(&bss->param.deauth_param, &deauth_param,
 	       sizeof(mlan_deauth_param));
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -1985,7 +2330,8 @@ woal_priv_ap_deauth(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(data_ptr, &ioctl_req->status_code, sizeof(t_u32));
 	ret = sizeof(t_u32);
 done:
-	kfree(ioctl_req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -2004,6 +2350,7 @@ woal_priv_get_sta_list(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_get_info *info = NULL;
 	mlan_ds_sta_list *sta_list = NULL;
 	mlan_ioctl_req *ioctl_req = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2021,8 +2368,8 @@ woal_priv_get_sta_list(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ioctl_req->req_id = MLAN_IOCTL_GET_INFO;
 	ioctl_req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2033,7 +2380,8 @@ woal_priv_get_sta_list(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy(sta_list, &info->param.sta_list, sizeof(mlan_ds_sta_list));
 	ret = sizeof(mlan_ds_sta_list);
 done:
-	kfree(ioctl_req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -2053,6 +2401,7 @@ woal_priv_bss_config(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *ioctl_req = NULL;
 	t_u32 action = 0;
 	int offset = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2081,8 +2430,8 @@ woal_priv_bss_config(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ioctl_req->action = MLAN_ACT_GET;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2093,7 +2442,8 @@ woal_priv_bss_config(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 	ret = sizeof(mlan_uap_bss_param);
 done:
-	kfree(ioctl_req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(ioctl_req);
 	LEAVE();
 	return ret;
 }
@@ -2378,6 +2728,7 @@ woal_priv_extcapcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_misc_cfg *cfg = NULL;
 	IEEEtypes_Header_t *ie;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2409,12 +2760,12 @@ woal_priv_extcapcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			goto done;
 		}
 		req->action = MLAN_ACT_SET;
-		memset(&cfg->param.ext_cap, 0, sizeof(ExtCap_t) - ie->len);
+		memset(&cfg->param.ext_cap, 0, sizeof(ExtCap_t));
 		memcpy(&cfg->param.ext_cap, ie + 1, ie->len);
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2425,10 +2776,11 @@ woal_priv_extcapcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ie->len = sizeof(ExtCap_t);
 	memcpy(ie + 1, &cfg->param.ext_cap, sizeof(ExtCap_t));
 
-	ret = sizeof(ie) + ie->len;
+	ret = sizeof(IEEEtypes_Header_t) + ie->len;
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2525,6 +2877,7 @@ woal_priv_setgetipaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_misc_cfg *misc = NULL;
 	int ret = 0, op_code = 0, data_length = 0, header = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2578,8 +2931,8 @@ woal_priv_setgetipaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	req->req_id = MLAN_IOCTL_MISC_CFG;
 	misc->sub_command = MLAN_OID_MISC_IP_ADDR;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2597,7 +2950,8 @@ woal_priv_setgetipaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2619,6 +2973,7 @@ woal_priv_setwpssession(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	t_u32 data[1];
 	int ret = 0;
 	int user_data_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2656,15 +3011,16 @@ woal_priv_setwpssession(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	else
 		pwps->param.wps_session = MLAN_WPS_CFG_SESSION_END;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
 
 	ret = sprintf(respbuf, "OK\n") + 1;
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2687,6 +3043,7 @@ woal_priv_otpuserdata(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_misc_cfg *misc = NULL;
 	mlan_ds_misc_otp_user_data *otp = NULL;
 	int ret = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2713,8 +3070,8 @@ woal_priv_otpuserdata(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	misc->sub_command = MLAN_OID_MISC_OTP_USER_DATA;
 	misc->param.otp_user_data.user_data_length = data[0];
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2726,7 +3083,8 @@ woal_priv_otpuserdata(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -2750,6 +3108,7 @@ woal_priv_set_get_countrycode(moal_private * priv, t_u8 * respbuf,
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_misc_cfg *pcfg_misc = NULL;
 	mlan_ds_misc_country_code *country_code = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2785,8 +3144,8 @@ woal_priv_set_get_countrycode(moal_private * priv, t_u8 * respbuf,
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT) !=
-	    MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2798,7 +3157,8 @@ woal_priv_set_get_countrycode(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -2979,6 +3339,7 @@ woal_priv_getwakeupreason(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_pm_cfg *pm_cfg = NULL;
 	t_u32 data;
 	int ret = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2996,10 +3357,11 @@ woal_priv_getwakeupreason(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		req->req_id = MLAN_IOCTL_PM_CFG;
 		req->action = MLAN_ACT_GET;
 
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
-			kfree(req);
+			if (status != MLAN_STATUS_PENDING)
+				kfree(req);
 			goto done;
 		} else {
 			data = pm_cfg->param.wakeup_reason.hs_wakeup_reason;
@@ -3038,6 +3400,7 @@ woal_priv_set_get_listeninterval(moal_private * priv, t_u8 * respbuf,
 	int ret = 0;
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_bss *pcfg_bss = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -3079,8 +3442,8 @@ woal_priv_set_get_listeninterval(moal_private * priv, t_u8 * respbuf,
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT) !=
-	    MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -3092,7 +3455,8 @@ woal_priv_set_get_listeninterval(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -3378,6 +3742,7 @@ woal_priv_set_get_scancfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int data[arg_len];
 	mlan_ds_scan *scan = NULL;
 	mlan_ioctl_req *req = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -3444,8 +3809,8 @@ woal_priv_set_get_scancfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	} else
 		req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -3454,7 +3819,8 @@ woal_priv_set_get_scancfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ret = sizeof(mlan_scan_cfg);
 	}
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -3580,6 +3946,7 @@ woal_priv_set_bss_mode(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	struct mwreq *mwr;
 	t_u8 *data_ptr;
 	t_u32 mode;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -3614,13 +3981,14 @@ woal_priv_set_bss_mode(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 	if (ret)
 		goto done;
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4085,6 +4453,7 @@ woal_priv_warmreset(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 #endif
 #endif
 #endif /* WIFI_DIRECT_SUPPORT && V14_FEATURE */
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4123,10 +4492,11 @@ woal_priv_warmreset(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		misc->sub_command = MLAN_OID_MISC_WARM_RESET;
 		req->req_id = MLAN_IOCTL_MISC_CFG;
 		req->action = MLAN_ACT_SET;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
-			kfree(req);
+			if (status != MLAN_STATUS_PENDING)
+				kfree(req);
 			goto done;
 		}
 		kfree(req);
@@ -4162,6 +4532,7 @@ woal_priv_txpowercfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_power_cfg *pcfg = NULL;
 	mlan_ioctl_req *req = NULL;
 	t_u8 *arguments = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 	ENTER();
 
 	memset(data, 0, sizeof(data));
@@ -4310,8 +4681,8 @@ woal_priv_txpowercfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		if (ret)
 			goto done;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4322,7 +4693,8 @@ woal_priv_txpowercfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		ret = sizeof(pcfg->param.power_ext);
 	}
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4347,6 +4719,7 @@ woal_priv_pscfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int user_data_len = 0, header_len = 0;
 	t_u8 *arguments = NULL, *space_ind = NULL;
 	t_u32 is_negative_1 = MFALSE, is_negative_2 = MFALSE;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4469,8 +4842,8 @@ woal_priv_pscfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	} else
 		req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4484,11 +4857,12 @@ woal_priv_pscfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		pm_cfg->param.ps_mode = 1;
 		req->req_id = MLAN_IOCTL_PM_CFG;
 		req->action = MLAN_ACT_SET;
-		woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	kfree(arguments);
 	LEAVE();
 	return ret;
@@ -4511,6 +4885,7 @@ woal_priv_sleeppd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int data = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4554,8 +4929,8 @@ woal_priv_sleeppd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	} else
 		req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4566,7 +4941,8 @@ woal_priv_sleeppd(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4588,6 +4964,7 @@ woal_priv_txcontrol(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int data = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4624,8 +5001,8 @@ woal_priv_txcontrol(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		req->action = MLAN_ACT_GET;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4636,7 +5013,8 @@ woal_priv_txcontrol(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4660,6 +5038,7 @@ woal_priv_regrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int user_data_len = 0, header_len = 0;
 	t_u8 *arguments = NULL, *space_ind = NULL;
 	t_u32 is_negative_val = MFALSE;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4712,8 +5091,8 @@ woal_priv_regrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	if (user_data_len == 3)
 		reg_mem->param.reg_rw.value = (t_u32) data[2];
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4725,7 +5104,8 @@ woal_priv_regrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	kfree(arguments);
 	LEAVE();
 	return ret;
@@ -4748,6 +5128,7 @@ woal_priv_rdeeprom(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_reg_mem *reg_mem = NULL;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4778,8 +5159,8 @@ woal_priv_rdeeprom(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	reg_mem->param.rd_eeprom.offset = (t_u16) data[0];
 	reg_mem->param.rd_eeprom.byte_count = (t_u16) data[1];
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4791,7 +5172,8 @@ woal_priv_rdeeprom(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -4815,6 +5197,7 @@ woal_priv_memrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int user_data_len = 0, header_len = 0;
 	t_u8 *arguments = NULL, *space_ind = NULL;
 	t_u32 is_negative_1 = MFALSE, is_negative_2 = MFALSE;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -4872,8 +5255,8 @@ woal_priv_memrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	if (user_data_len == 2)
 		reg_mem->param.mem_rw.value = (t_u32) data[1];
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -4885,7 +5268,8 @@ woal_priv_memrdwr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	kfree(arguments);
 	LEAVE();
 	return ret;
@@ -5004,6 +5388,7 @@ woal_priv_arpfilter(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	t_u8 *data_ptr = NULL;
 	t_u32 buf_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5024,13 +5409,14 @@ woal_priv_arpfilter(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	memcpy((void *)(misc->param.gen_ie.ie_data), data_ptr + sizeof(buf_len),
 	       buf_len);
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5054,6 +5440,7 @@ woal_priv_mgmt_frame_passthru_ctrl(moal_private * priv, t_u8 * respbuf,
 	int user_data_len = 0, header_len = 0;
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_misc_cfg *mgmt_cfg = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 	header_len = strlen(CMD_MARVELL) + strlen(PRIV_CMD_MGMT_FRAME_CTRL);
@@ -5087,8 +5474,8 @@ woal_priv_mgmt_frame_passthru_ctrl(moal_private * priv, t_u8 * respbuf,
 		}
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5098,7 +5485,8 @@ woal_priv_mgmt_frame_passthru_ctrl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 
@@ -5148,6 +5536,7 @@ woal_priv_wmm_addts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	wlan_ioctl_wmm_addts_req_t addts_ioctl;
 	int ret = 0, header_len = 0, copy_len = sizeof(addts_ioctl);
 	t_u8 *data_ptr;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5173,8 +5562,8 @@ woal_priv_wmm_addts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	memcpy(cfg->param.addts.ie_data,
 	       addts_ioctl.ie_data, cfg->param.addts.ie_data_len);
 
-	if (MLAN_STATUS_SUCCESS != woal_request_ioctl(priv, req,
-						      MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5193,7 +5582,8 @@ woal_priv_wmm_addts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	ret = copy_len;
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5228,6 +5618,7 @@ woal_priv_wmm_delts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	wlan_ioctl_wmm_delts_req_t delts_ioctl;
 	int ret = 0, header_len = 0, copy_len = 0;
 	t_u8 *data_ptr;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5256,9 +5647,8 @@ woal_priv_wmm_delts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 		memcpy(cfg->param.delts.ie_data,
 		       delts_ioctl.ie_data, cfg->param.delts.ie_data_len);
 
-		if (MLAN_STATUS_SUCCESS != woal_request_ioctl(priv, req,
-							      MOAL_IOCTL_WAIT))
-		{
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -5272,7 +5662,8 @@ woal_priv_wmm_delts_req_ioctl(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5298,6 +5689,7 @@ woal_priv_qconfig(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	wlan_ioctl_wmm_queue_config_t qcfg_ioctl;
 	t_u8 *data_ptr;
 	int ret = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5320,8 +5712,8 @@ woal_priv_qconfig(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	pqcfg->access_category = qcfg_ioctl.access_category;
 	pqcfg->msdu_lifetime_expiry = qcfg_ioctl.msdu_lifetime_expiry;
 
-	if (MLAN_STATUS_SUCCESS != woal_request_ioctl(priv, req,
-						      MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5333,7 +5725,8 @@ woal_priv_qconfig(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = strlen(CMD_MARVELL) + strlen(PRIV_CMD_QCONFIG) +
 		sizeof(qcfg_ioctl);
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5363,6 +5756,7 @@ woal_priv_wmm_queue_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	mlan_ds_wmm_cfg *pwmm = NULL;
 	wlan_ioctl_wmm_queue_status_t qstatus_ioctl;
 	int ret = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5378,8 +5772,8 @@ woal_priv_wmm_queue_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	pwmm->sub_command = MLAN_OID_WMM_CFG_QUEUE_STATUS;
 
 	if (strlen(respbuf) == header_len) {
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -5393,7 +5787,8 @@ woal_priv_wmm_queue_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5416,6 +5811,7 @@ woal_priv_wmm_ts_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	wlan_ioctl_wmm_ts_status_t ts_status_ioctl;
 	int ret = 0, header_len = 0;
 	t_u8 *data_ptr;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5438,8 +5834,8 @@ woal_priv_wmm_ts_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	memset(&pwmm->param.ts_status, 0x00, sizeof(ts_status_ioctl));
 	pwmm->param.ts_status.tid = ts_status_ioctl.tid;
 
-	if (MLAN_STATUS_SUCCESS != woal_request_ioctl(priv, req,
-						      MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5451,7 +5847,8 @@ woal_priv_wmm_ts_status_ioctl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(ts_status_ioctl);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5473,6 +5870,7 @@ woal_priv_macctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_misc_cfg *cfg = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5507,8 +5905,8 @@ woal_priv_macctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		req->action = MLAN_ACT_SET;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5517,7 +5915,8 @@ woal_priv_macctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5587,6 +5986,7 @@ woal_priv_region_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_misc_cfg *cfg = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5621,8 +6021,8 @@ woal_priv_region_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		req->action = MLAN_ACT_SET;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5631,7 +6031,8 @@ woal_priv_region_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5654,6 +6055,7 @@ woal_priv_multi_chan_config(moal_private * priv, t_u8 * respbuf,
 	t_u8 *data_ptr;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5686,8 +6088,8 @@ woal_priv_multi_chan_config(moal_private * priv, t_u8 * respbuf,
 		       sizeof(mlan_ds_multi_chan_cfg));
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5697,7 +6099,8 @@ woal_priv_multi_chan_config(moal_private * priv, t_u8 * respbuf,
 	ret = req->buf_len;
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5715,11 +6118,11 @@ int
 woal_priv_multi_chan_policy(moal_private * priv, t_u8 * respbuf,
 			    t_u32 respbuflen)
 {
-	mlan_ioctl_req *req = NULL;
-	mlan_ds_misc_cfg *cfg = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
 	int data = 0;
+	t_u16 enable;
+	t_u8 action;
 
 	ENTER();
 
@@ -5737,35 +6140,23 @@ woal_priv_multi_chan_policy(moal_private * priv, t_u8 * respbuf,
 		ret = -EINVAL;
 		goto done;
 	}
-	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_misc_cfg));
-	if (req == NULL) {
-		ret = -ENOMEM;
-		goto done;
-	}
-
-	cfg = (mlan_ds_misc_cfg *) req->pbuf;
-	cfg->sub_command = MLAN_OID_MISC_MULTI_CHAN_POLICY;
-	req->req_id = MLAN_IOCTL_MISC_CFG;
 
 	if (user_data_len == 0) {
-		req->action = MLAN_ACT_GET;
+		action = MLAN_ACT_GET;
 	} else {
-		req->action = MLAN_ACT_SET;
-		cfg->param.multi_chan_policy = (t_u16) data;
+		action = MLAN_ACT_SET;
+		enable = (t_u16) data;
 	}
 
 	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	    woal_mc_policy_cfg(priv, &enable, MOAL_IOCTL_WAIT, action)) {
 		ret = -EFAULT;
 		goto done;
 	}
-
-	memcpy(respbuf, (t_u16 *) & cfg->param.multi_chan_policy,
-	       sizeof(t_u16));
+	memcpy(respbuf, &enable, sizeof(t_u16));
 	ret = sizeof(t_u16);
 
 done:
-	kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5787,6 +6178,7 @@ woal_priv_fwmacaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int header_len = 0;
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_bss *bss = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -5815,8 +6207,8 @@ woal_priv_fwmacaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -5826,7 +6218,8 @@ woal_priv_fwmacaddr(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	HEXDUMP("FW MAC Addr:", respbuf, ETH_ALEN);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -5986,6 +6379,7 @@ woal_priv_get_driver_verext(moal_private * priv, t_u8 * respbuf,
 	int ret = 0;
 	int copy_size = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6022,8 +6416,8 @@ woal_priv_get_driver_verext(moal_private * priv, t_u8 * respbuf,
 		goto done;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6039,7 +6433,8 @@ woal_priv_get_driver_verext(moal_private * priv, t_u8 * respbuf,
 	       info->param.ver_ext.version_str);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6061,6 +6456,7 @@ woal_priv_wmm_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6101,8 +6497,8 @@ woal_priv_wmm_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			goto done;
 		}
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6111,7 +6507,8 @@ woal_priv_wmm_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(wmm->param.wmm_enable);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6134,10 +6531,11 @@ woal_priv_11d_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
-	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_get_info));
+	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_11d_cfg));
 	if (req == NULL) {
 		ret = ENOMEM;
 		goto done;
@@ -6173,8 +6571,8 @@ woal_priv_11d_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			goto done;
 		}
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6184,7 +6582,8 @@ woal_priv_11d_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(pcfg_11d->param.enable_11d);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6206,6 +6605,7 @@ woal_priv_11d_clr_chan_tbl(moal_private * priv, t_u8 * respbuf,
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6227,14 +6627,15 @@ woal_priv_11d_clr_chan_tbl(moal_private * priv, t_u8 * respbuf,
 	req->req_id = MLAN_IOCTL_11D_CFG;
 	req->action = MLAN_ACT_SET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6257,6 +6658,7 @@ woal_priv_wws_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6294,8 +6696,8 @@ woal_priv_wws_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			goto done;
 		}
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6304,7 +6706,8 @@ woal_priv_wws_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(wws->param.wws_cfg);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6385,6 +6788,7 @@ woal_priv_txbuf_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int buf_size = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6409,8 +6813,8 @@ woal_priv_txbuf_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		/* Get Tx buffer size from MLAN */
 		req->action = MLAN_ACT_GET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6420,7 +6824,8 @@ woal_priv_txbuf_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(buf_size);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6508,6 +6913,7 @@ woal_priv_11h_local_pwr_constraint(moal_private * priv, t_u8 * respbuf,
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6540,8 +6946,8 @@ woal_priv_11h_local_pwr_constraint(moal_private * priv, t_u8 * respbuf,
 			goto done;
 		}
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6553,7 +6959,8 @@ woal_priv_11h_local_pwr_constraint(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6575,6 +6982,7 @@ woal_priv_ht_stream_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6612,8 +7020,8 @@ woal_priv_ht_stream_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			goto done;
 		}
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6623,7 +7031,8 @@ woal_priv_ht_stream_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6643,6 +7052,7 @@ woal_priv_thermal(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_misc_cfg *cfg = NULL;
 	mlan_ioctl_req *req = NULL;
 	int ret = 0, header_len = 0, data = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6665,8 +7075,8 @@ woal_priv_thermal(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 	req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6676,7 +7086,8 @@ woal_priv_thermal(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6698,6 +7109,7 @@ woal_priv_beacon_interval(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -6735,8 +7147,8 @@ woal_priv_beacon_interval(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			goto done;
 		}
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -6746,7 +7158,8 @@ woal_priv_beacon_interval(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -6963,6 +7376,7 @@ woal_priv_set_get_pmfcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_misc_pmfcfg *pmfcfg;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7000,8 +7414,8 @@ woal_priv_set_get_pmfcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		req->action = MLAN_ACT_SET;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7011,7 +7425,8 @@ woal_priv_set_get_pmfcfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(mlan_ds_misc_pmfcfg);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7035,6 +7450,7 @@ woal_priv_inactivity_timeout_ext(moal_private * priv, t_u8 * respbuf,
 	pmlan_ds_inactivity_to inac_to = NULL;
 	int ret = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7066,8 +7482,8 @@ woal_priv_inactivity_timeout_ext(moal_private * priv, t_u8 * respbuf,
 	req->req_id = MLAN_IOCTL_PM_CFG;
 	req->action = MLAN_ACT_GET;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7080,8 +7496,8 @@ woal_priv_inactivity_timeout_ext(moal_private * priv, t_u8 * respbuf,
 			inac_to->ps_entry_timeout = data[3];
 		req->action = MLAN_ACT_SET;
 
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -7096,7 +7512,8 @@ woal_priv_inactivity_timeout_ext(moal_private * priv, t_u8 * respbuf,
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7116,6 +7533,7 @@ woal_priv_atim_window(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_bss *bss = NULL;
 	int ret = 0, atim = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7147,8 +7565,8 @@ woal_priv_atim_window(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		bss->param.atim_window = atim;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7157,7 +7575,8 @@ woal_priv_atim_window(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(int);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7179,6 +7598,7 @@ woal_priv_11n_amsdu_aggr_ctrl(moal_private * priv, t_u8 * respbuf,
 	mlan_ds_11n_cfg *cfg_11n = NULL;
 	int ret = 0, data[2];
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7210,8 +7630,8 @@ woal_priv_11n_amsdu_aggr_ctrl(moal_private * priv, t_u8 * respbuf,
 		cfg_11n->param.amsdu_aggr_ctrl.enable = data[0];
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7223,7 +7643,8 @@ woal_priv_11n_amsdu_aggr_ctrl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7244,6 +7665,7 @@ woal_priv_tx_bf_cap_ioctl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_11n_cfg *bf_cfg = NULL;
 	int ret = 0, bf_cap = 0;
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7276,8 +7698,8 @@ woal_priv_tx_bf_cap_ioctl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		bf_cfg->param.tx_bf_cap = bf_cap;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7288,7 +7710,8 @@ woal_priv_tx_bf_cap_ioctl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = sizeof(bf_cap);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7368,6 +7791,7 @@ woal_priv_sdio_mpa_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ds_misc_cfg *misc = NULL;
 	int ret = 0, data[6];
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7400,8 +7824,8 @@ woal_priv_sdio_mpa_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	/* Get the values first, then modify these values if user had modified
 	   them */
 
-	ret = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
-	if (ret != MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		PRINTM(MERROR, "woal_request_ioctl returned %d\n", ret);
 		ret = -EFAULT;
 		goto done;
@@ -7449,14 +7873,15 @@ woal_priv_sdio_mpa_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		goto done;
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7486,6 +7911,7 @@ woal_priv_sleep_params_ioctl(moal_private * priv, t_u8 * respbuf,
 	{"clock stabilization time in usec"},
 	{"value of reserved for debug"}
 	};
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7549,8 +7975,8 @@ woal_priv_sleep_params_ioctl(moal_private * priv, t_u8 * respbuf,
 		psleep_params->reserved = data[5];
 	}
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7566,7 +7992,8 @@ woal_priv_sleep_params_ioctl(moal_private * priv, t_u8 * respbuf,
 	ret = sizeof(data);
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -7590,6 +8017,7 @@ woal_priv_dfs_testing(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int ret = 0;
 	int data[4];
 	int user_data_len = 0, header_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7648,8 +8076,8 @@ woal_priv_dfs_testing(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT) !=
-	    MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7664,7 +8092,8 @@ woal_priv_dfs_testing(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -7689,6 +8118,7 @@ woal_priv_cfp_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_misc_cfg *misc_cfg = NULL;
 	mlan_ds_misc_cfp_code *cfp_code = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7727,8 +8157,8 @@ woal_priv_cfp_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT) !=
-	    MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7741,7 +8171,8 @@ woal_priv_cfp_code(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -7765,6 +8196,7 @@ woal_priv_set_get_tx_rx_ant(moal_private * priv, t_u8 * respbuf,
 	mlan_ds_radio_cfg *radio = NULL;
 	mlan_ioctl_req *req = NULL;
 	int data[2] = { 0 };
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7796,8 +8228,8 @@ woal_priv_set_get_tx_rx_ant(moal_private * priv, t_u8 * respbuf,
 			radio->param.ant_cfg.rx_antenna = data[1];
 		req->action = MLAN_ACT_SET;
 	}
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -7811,7 +8243,8 @@ woal_priv_set_get_tx_rx_ant(moal_private * priv, t_u8 * respbuf,
 		memcpy(respbuf, (t_u8 *) data, sizeof(data));
 	}
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7833,6 +8266,7 @@ woal_priv_sysclock(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	int ret = 0, i = 0;
 	int user_data_len = 0, header_len = 0;
 	int data_length = 0, length_index = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7874,8 +8308,8 @@ woal_priv_sysclock(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			cfg->param.sys_clock.sys_clk[i] = (t_u16) data[i];
 		}
 
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -7885,8 +8319,8 @@ woal_priv_sysclock(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 
 		/* Get configurable clocks */
 		cfg->param.sys_clock.sys_clk_type = MLAN_CLK_CONFIGURABLE;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -7907,8 +8341,8 @@ woal_priv_sysclock(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 
 		/* Get supported clocks */
 		cfg->param.sys_clock.sys_clk_type = MLAN_CLK_SUPPORTED;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -7933,7 +8367,8 @@ woal_priv_sysclock(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -7963,6 +8398,7 @@ woal_priv_adhoc_aes(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	t_u8 bcast_addr[] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 	int header_len = 0;
 	int copy_len = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -7994,8 +8430,8 @@ woal_priv_adhoc_aes(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 		sec->sub_command = MLAN_OID_SEC_CFG_ENCRYPT_KEY;
 		sec->param.encrypt_key.key_len = AES_KEY_LEN;
 		sec->param.encrypt_key.key_index = MLAN_KEY_INDEX_UNICAST;
-		if (MLAN_STATUS_SUCCESS !=
-		    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+		status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+		if (status != MLAN_STATUS_SUCCESS) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -8048,8 +8484,8 @@ woal_priv_adhoc_aes(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			memcpy(sec->param.encrypt_key.key_material, key_hex,
 			       sec->param.encrypt_key.key_len);
 
-			if (MLAN_STATUS_SUCCESS !=
-			    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+			status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+			if (status != MLAN_STATUS_SUCCESS) {
 				ret = -EFAULT;
 				goto done;
 			}
@@ -8064,8 +8500,8 @@ woal_priv_adhoc_aes(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 			memset(sec->param.encrypt_key.key_material, 0,
 			       sizeof(sec->param.encrypt_key.key_material));
 
-			if (MLAN_STATUS_SUCCESS !=
-			    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+			status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+			if (status != MLAN_STATUS_SUCCESS) {
 				ret = -EFAULT;
 				goto done;
 			}
@@ -8078,7 +8514,8 @@ woal_priv_adhoc_aes(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	ret = copy_len;
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -8647,6 +9084,7 @@ woal_priv_port_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	mlan_ioctl_req *req = NULL;
 	mlan_ds_sec_cfg *sec = NULL;
 	int ret = 0, data = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 	ENTER();
 
 	/* Allocate an IOCTL request buffer */
@@ -8681,8 +9119,8 @@ woal_priv_port_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT) !=
-	    MLAN_STATUS_SUCCESS) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (status != MLAN_STATUS_SUCCESS) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -8693,7 +9131,8 @@ woal_priv_port_ctrl(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 
 	LEAVE();
 	return ret;
@@ -8750,6 +9189,111 @@ woal_priv_bypassed_packet(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
 #if defined(WIFI_DIRECT_SUPPORT)
 #endif
 
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+/**
+ * @brief               Set/Get MIRACAST configuration parameters
+ *
+ * @param priv          Pointer to moal_private structure
+ * @param respbuf       Pointer to response buffer
+ * @param resplen       Response buffer length
+ *
+ *  @return             Number of bytes written, negative for failure.
+ */
+static int
+woal_priv_miracast_cfg(moal_private * priv, t_u8 * respbuf, t_u32 respbuflen)
+{
+	int ret = 0;
+	int user_data_len = 0, header_len = 0, data[3] = { 0, 0, 0 };
+
+	ENTER();
+
+	if (!priv || !priv->phandle) {
+		PRINTM(MERROR, "priv or handle is null\n");
+		ret = -EFAULT;
+		goto done;
+	}
+
+	header_len = strlen(CMD_MARVELL) + strlen(PRIV_CMD_MIRACAST_CFG);
+
+	if (strlen(respbuf) == header_len) {
+		/* GET operation */
+		data[0] = priv->phandle->miracast_mode;
+		data[1] = priv->phandle->miracast_scan_time;
+		data[2] = priv->phandle->scan_chan_gap;
+
+		memcpy(respbuf, (t_u8 *) data, sizeof(data));
+		ret = sizeof(data);
+	} else {
+		/* SET operation */
+		memset(data, 0, sizeof(data));
+		parse_arguments(respbuf + header_len, data, ARRAY_SIZE(data),
+				&user_data_len);
+
+		if (user_data_len > 3) {
+			PRINTM(MERROR, "Too many arguments\n");
+			ret = -EINVAL;
+			goto done;
+		}
+		if (data[0] < 0 || data[0] > 2 || data[1] < 0 || data[2] < 0) {
+			PRINTM(MERROR, "Invalid argument\n");
+			ret = -EINVAL;
+			goto done;
+		}
+	}
+
+	if (user_data_len >= 1)
+		priv->phandle->miracast_mode = (t_u8) data[0];
+	if (user_data_len >= 2)
+		priv->phandle->miracast_scan_time = (t_u16) data[1];
+	if (user_data_len == 3)
+		priv->phandle->scan_chan_gap = (t_u16) data[2];
+
+done:
+	LEAVE();
+	return ret;
+}
+
+/**
+ *   @brief Configuring scan gap for miracast mode
+ *
+ *  @param priv         A pointer to moal_private structure
+ *  @param respbuf      A pointer to response buffer
+ *  @param respbuflen   Available length of response buffer
+ *
+ *  @return             0 --success, otherwise failure
+ */
+int
+woal_set_scan_chan_gap(moal_private * priv, t_u8 * respbuf, int respbuflen)
+{
+	t_u32 data[2];
+	int ret = 0;
+	int user_data_len = 0;
+
+	ENTER();
+	if (strlen(respbuf) == strlen("SCAN_TIMING")) {
+		user_data_len = 0;
+	} else {
+		memset((char *)data, 0, sizeof(data));
+		parse_arguments(respbuf + strlen("SCAN_TIMING") + 1, data,
+				ARRAY_SIZE(data), &user_data_len);
+	}
+
+	if (user_data_len != 2) {
+		PRINTM(MERROR, "Invalid arguments for scan timing\n");
+		ret = -EINVAL;
+		goto done;
+	}
+	priv->phandle->miracast_scan_time = (t_u16) data[0];
+	priv->phandle->scan_chan_gap = (t_u16) data[1];
+done:
+	LEAVE();
+	return ret;
+
+}
+#endif
+#endif
+
 /**
  *  @brief Set priv command for Android
  *  @param dev          A pointer to net_device structure
@@ -8775,7 +9319,6 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 	t_u8 country_code[COUNTRY_CODE_LEN];
 #endif
 	int len = 0;
-	int buf_len = 0;
 
 	ENTER();
 	if (!priv || !priv->phandle) {
@@ -8789,18 +9332,28 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 		goto done;
 	}
 #define CMD_BUF_LEN   2048
-	buf_len = MAX(CMD_BUF_LEN, priv_cmd.total_len);
-	buf = kzalloc(buf_len, GFP_KERNEL);
+	if (priv_cmd.used_len < 0 || priv_cmd.total_len <= 0 ||
+	    priv_cmd.used_len > priv_cmd.total_len) {
+		PRINTM(MERROR,
+		       "Invalid Android priv cmd len. used_len: %d, total_len: %d\n",
+		       priv_cmd.used_len, priv_cmd.total_len);
+		ret = -EINVAL;
+		goto done;
+	}
+	if (priv_cmd.total_len + 1 > CMD_BUF_LEN)
+		priv_cmd.total_len = CMD_BUF_LEN - 1;
+
+	buf = kzalloc(priv_cmd.total_len + 1, GFP_KERNEL);
 	if (!buf) {
 		PRINTM(MERROR, "%s: failed to allocate memory\n", __FUNCTION__);
 		ret = -ENOMEM;
 		goto done;
 	}
-	if (copy_from_user
-	    (buf, priv_cmd.buf, MIN((CMD_BUF_LEN - 1), priv_cmd.total_len))) {
+	if (copy_from_user(buf, priv_cmd.buf, priv_cmd.total_len)) {
 		ret = -EFAULT;
 		goto done;
 	}
+	buf[priv_cmd.total_len] = '\0';
 
 	PRINTM(MIOCTL, "Android priv cmd: [%s] on [%s]\n", buf, req->ifr_name);
 
@@ -8961,7 +9514,8 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			   (buf + strlen(CMD_MARVELL), PRIV_CMD_BSSROLE,
 			    strlen(PRIV_CMD_BSSROLE)) == 0) {
 			/* BSS Role */
-			len = woal_priv_bssrole(priv, buf, priv_cmd.total_len);
+			len = woal_priv_bssrole(priv, buf,
+						(t_u32) priv_cmd.total_len);
 			goto handled;
 #endif
 #endif
@@ -8985,7 +9539,7 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			    strlen(PRIV_CMD_EXTCAPCFG)) == 0) {
 			/* Extended capabilities configure */
 			len = woal_priv_extcapcfg(priv, buf,
-						  priv_cmd.total_len);
+						  (t_u32) priv_cmd.total_len);
 			goto handled;
 #endif
 		} else if (strnicmp
@@ -9000,7 +9554,8 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			    strlen(PRIV_CMD_IPADDR)) == 0) {
 			/* IP address */
 			len = woal_priv_setgetipaddr(priv, buf,
-						     priv_cmd.total_len);
+						     (t_u32) priv_cmd.
+						     total_len);
 			goto handled;
 		} else if (strnicmp
 			   (buf + strlen(CMD_MARVELL), PRIV_CMD_WPSSESSION,
@@ -9563,6 +10118,17 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			goto handled;
 #if defined(WIFI_DIRECT_SUPPORT)
 #endif
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+		} else if (strnicmp
+			   (buf + strlen(CMD_MARVELL), PRIV_CMD_MIRACAST_CFG,
+			    strlen(PRIV_CMD_MIRACAST_CFG)) == 0) {
+			/* Set/Get MIRACAST configuration parameters */
+			len = woal_priv_miracast_cfg(priv, buf,
+						     priv_cmd.total_len);
+			goto handled;
+#endif
+#endif
 		} else {
 			/* Fall through, after stripping off the custom header */
 			buf += strlen(CMD_MARVELL);
@@ -9674,6 +10240,18 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 		}
 #endif
 		len = sprintf(buf, "OK\n") + 1;
+	} else if (strncmp(buf, "ROAM", strlen("ROAM")) == 0) {
+		pdata = buf + strlen("ROAM") + 1;
+#ifdef STA_CFG80211
+		if (*pdata == '1') {
+			priv->roaming_enabled = MTRUE;
+			PRINTM(MIOCTL, "Roaming enabled\n");
+		} else if (*pdata == '0') {
+			priv->roaming_enabled = MFALSE;
+			PRINTM(MIOCTL, "Roaming disabled\n");
+		}
+#endif
+		len = sprintf(buf, "OK\n") + 1;
 	} else if (strncmp(buf, "COUNTRY", strlen("COUNTRY")) == 0) {
 		if ((strlen(buf) - strlen("COUNTRY") - 1) > COUNTRY_CODE_LEN
 		    || (strlen(buf) - strlen("COUNTRY") - 1) <= 0) {
@@ -9736,13 +10314,13 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 	}
 #ifdef UAP_SUPPORT
 	else if (strncmp(buf, "AP_BSS_START", strlen("AP_BSS_START")) == 0) {
-		if ((ret ==
-		     woal_uap_bss_ctrl(priv, MOAL_IOCTL_WAIT, UAP_BSS_START)))
+		ret = woal_uap_bss_ctrl(priv, MOAL_IOCTL_WAIT, UAP_BSS_START);
+		if (ret)
 			goto done;
 		len = sprintf(buf, "OK\n") + 1;
 	} else if (strncmp(buf, "AP_BSS_STOP", strlen("AP_BSS_STOP")) == 0) {
-		if ((ret ==
-		     woal_uap_bss_ctrl(priv, MOAL_IOCTL_WAIT, UAP_BSS_STOP)))
+		ret = woal_uap_bss_ctrl(priv, MOAL_IOCTL_WAIT, UAP_BSS_STOP);
+		if (ret)
 			goto done;
 		len = sprintf(buf, "OK\n") + 1;
 	} else if (strncmp(buf, "AP_SET_CFG", strlen("AP_SET_CFG")) == 0) {
@@ -9882,18 +10460,20 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 	}
 #endif
 	else if (strncmp(buf, "P2P_DEV_ADDR", strlen("P2P_DEV_ADDR")) == 0) {
-		memset(buf, 0x0, priv_cmd.total_len);
+		memset(buf, 0x0, (size_t) priv_cmd.total_len);
 		memcpy(buf, priv->current_addr, ETH_ALEN);
 		len = ETH_ALEN;
 	} else if (strncmp(buf, ("P2P_GET_NOA"), strlen("P2P_GET_NOA")) == 0) {
 		/* TODO Just return '\0' */
-		memset(buf, 0x0, priv_cmd.total_len);
+		memset(buf, 0x0, (size_t) priv_cmd.total_len);
 		*buf = 0;
 		len = 1;
 	} else if (strnicmp(buf, "MIRACAST", strlen("MIRACAST")) == 0) {
 		pdata = buf + strlen("MIRACAST");
 		/* Android cmd format: "MIRACAST 0" -- disabled "MIRACAST 1" --
 		   operating as source "MIRACAST 2" -- operating as sink */
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
 		if (MLAN_STATUS_SUCCESS !=
 		    woal_set_miracast_mode(priv, (t_u8 *) pdata,
 					   priv_cmd.used_len -
@@ -9901,6 +10481,51 @@ woal_android_priv_cmd(struct net_device *dev, struct ifreq *req)
 			ret = -EFAULT;
 			goto done;
 		}
+#endif
+#endif
+		len = sprintf(buf, "OK\n") + 1;
+	} else if (strnicmp(buf, "SCAN_TIMING", strlen("SCAN_TIMING")) == 0) {
+#ifdef WIFI_DIRECT_SUPPORT
+#if defined(STA_CFG80211) || defined(UAP_CFG80211)
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_set_scan_chan_gap(priv, buf, priv_cmd.total_len)) {
+			ret = -EFAULT;
+			goto done;
+		}
+#endif
+#endif
+		len = sprintf(buf, "OK\n") + 1;
+	} else if (strnicmp(buf, "BA_WSIZE_RX", strlen("BA_WSIZE_RX")) == 0) {
+		pdata = buf + strlen("BA_WSIZE_RX") + 1;
+		len = priv_cmd.total_len - strlen("BA_WSIZE_RX") - 1;
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_set_rx_ba_winsize(priv, pdata, len)) {
+			ret = -EFAULT;
+			goto done;
+		}
+		len = sprintf(buf, "OK\n") + 1;
+	} else if (strnicmp(buf, "BA_WSIZE_TX", strlen("BA_WSIZE_TX")) == 0) {
+		pdata = buf + strlen("BA_WSIZE_TX") + 1;
+		len = priv_cmd.total_len - strlen("BA_WSIZE_TX") - 1;
+		if (MLAN_STATUS_SUCCESS !=
+		    woal_set_tx_ba_winsize(priv, pdata, len)) {
+			ret = -EFAULT;
+			goto done;
+		}
+		len = sprintf(buf, "OK\n") + 1;
+	} else if (strncmp
+		   (buf, "FAKE_SCAN_COMPLETE",
+		    strlen("FAKE_SCAN_COMPLETE")) == 0) {
+		pdata = buf + strlen("FAKE_SCAN_COMPLETE") + 1;
+#ifdef STA_CFG80211
+		if (*pdata == '1') {
+			priv->fake_scan_complete = MTRUE;
+			PRINTM(MIOCTL, "fake scan complete enabled\n");
+		} else if (*pdata == '0') {
+			priv->fake_scan_complete = MFALSE;
+			PRINTM(MIOCTL, "fake scan complete disabled\n");
+		}
+#endif
 		len = sprintf(buf, "OK\n") + 1;
 	} else {
 		PRINTM(MIOCTL, "Unknown PRIVATE command: %s, ignored\n", buf);
@@ -9915,7 +10540,8 @@ handled:
 		priv_cmd.used_len = len;
 		if (priv_cmd.used_len <= priv_cmd.total_len) {
 			memset(priv_cmd.buf + priv_cmd.used_len, 0,
-			       priv_cmd.total_len - priv_cmd.used_len);
+			       (size_t) (priv_cmd.total_len -
+					 priv_cmd.used_len));
 			if (copy_to_user(priv_cmd.buf, buf, priv_cmd.used_len)) {
 				PRINTM(MERROR,
 				       "%s: failed to copy data to user buffer\n",

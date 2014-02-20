@@ -2,7 +2,7 @@
   *
   * @brief This file contains the functions for CFG80211.
   *
-  * Copyright (C) 2011-2012, Marvell International Ltd.
+  * Copyright (C) 2011-2013, Marvell International Ltd.
   *
   * This software file (the "File") is distributed by Marvell International
   * Ltd. under the terms of the GNU General Public License Version 2, June 1991
@@ -93,6 +93,7 @@ static struct ieee80211_channel cfg80211_channels_5ghz[] = {
 	{.center_freq = 5660,.hw_value = 132,.max_power = 20},
 	{.center_freq = 5680,.hw_value = 136,.max_power = 20},
 	{.center_freq = 5700,.hw_value = 140,.max_power = 20},
+	{.center_freq = 5720,.hw_value = 144,.max_power = 20},
 	{.center_freq = 5745,.hw_value = 149,.max_power = 20},
 	{.center_freq = 5765,.hw_value = 153,.max_power = 20},
 	{.center_freq = 5785,.hw_value = 157,.max_power = 20},
@@ -438,11 +439,7 @@ woal_cfg80211_set_key(moal_private * priv, t_u8 is_enable_wep,
 	}
 
 	/* Send IOCTL request to MLAN */
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
-		ret = MLAN_STATUS_FAILURE;
-		goto done;
-	}
+	ret = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
 
 done:
 	if (ret != MLAN_STATUS_PENDING)
@@ -924,6 +921,7 @@ woal_cfg80211_change_virtual_intf(struct wiphy *wiphy,
 #if defined(STA_SUPPORT) && defined(UAP_SUPPORT)
 	t_u8 bss_role;
 #endif
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -1119,14 +1117,15 @@ woal_cfg80211_change_virtual_intf(struct wiphy *wiphy,
 	if (ret)
 		goto done;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (MLAN_STATUS_SUCCESS != status) {
 		ret = -EFAULT;
 		goto done;
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -1513,13 +1512,15 @@ woal_cfg80211_set_bitrate_mask(struct wiphy *wiphy,
 	rate_cfg->bitmap_rates[2] |= mask->control[band].mcs[1] << 8;
 #endif
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (MLAN_STATUS_SUCCESS != status) {
 		ret = -EFAULT;
 		goto done;
 	}
 
 done:
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	LEAVE();
 	return ret;
 }
@@ -1541,6 +1542,7 @@ woal_cfg80211_set_antenna(struct wiphy *wiphy, u32 tx_ant, u32 rx_ant)
 	moal_private *priv = NULL;
 	mlan_ds_radio_cfg *radio = NULL;
 	mlan_ioctl_req *req = NULL;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 	int ret = 0;
 
 	ENTER();
@@ -1568,14 +1570,15 @@ woal_cfg80211_set_antenna(struct wiphy *wiphy, u32 tx_ant, u32 rx_ant)
 	radio->param.ant_cfg.tx_antenna = tx_ant;
 	radio->param.ant_cfg.rx_antenna = rx_ant;
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, req, MOAL_IOCTL_WAIT);
+	if (MLAN_STATUS_SUCCESS != status) {
 		ret = -EFAULT;
 		goto done;
 	}
 
 done:
-	kfree(req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
 	/* Driver must return -EINVAL to cfg80211 */
 	if (ret)
 		ret = -EINVAL;
@@ -1800,8 +1803,8 @@ woal_cfg80211_mgmt_tx(struct wiphy *wiphy,
 
 	if (buf == NULL || len == 0) {
 		PRINTM(MERROR, "woal_cfg80211_mgmt_tx() corrupt data\n");
-		ret = -EFAULT;
-		goto done;
+		LEAVE();
+		return -EFAULT;
 	}
 
 	/* If the packet is probe response, that means we are in listen phase,
@@ -1833,27 +1836,21 @@ woal_cfg80211_mgmt_tx(struct wiphy *wiphy,
 		/* With sd8777 We have difficulty to receive response packet in
 		   500ms */
 #define MGMT_TX_DEFAULT_WAIT_TIME	   1500
-		/** cancel previous remain on channel */
-		if (priv->phandle->remain_on_channel) {
+		if (priv->phandle->remain_on_channel)
 			remain_priv =
 				priv->phandle->priv[priv->phandle->
 						    remain_bss_index];
-			if (!remain_priv) {
-				PRINTM(MERROR,
-				       "mgmt_tx:Wrong remain_bss_index=%d\n",
-				       priv->phandle->remain_bss_index);
-				ret = -EFAULT;
-				goto done;
+		/** cancel previous remain on channel */
+		if (priv->phandle->remain_on_channel && remain_priv) {
+			if ((priv->phandle->chan.center_freq !=
+			     chan->center_freq)
+				) {
+				if (woal_cfg80211_remain_on_channel_cfg
+				    (remain_priv, MOAL_IOCTL_WAIT, MTRUE,
+				     &channel_status, NULL, 0, 0))
+					PRINTM(MERROR,
+					       "mgmt_tx:Fail to cancel remain on channel\n");
 			}
-			if (woal_cfg80211_remain_on_channel_cfg
-			    (remain_priv, MOAL_IOCTL_WAIT, MTRUE,
-			     &channel_status, NULL, 0, 0)) {
-				PRINTM(MERROR,
-				       "mgmt_tx:Fail to cancel remain on channel\n");
-				ret = -EFAULT;
-				goto done;
-			}
-
 			if (priv->phandle->cookie) {
 				cfg80211_remain_on_channel_expired(
 #if LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0)
@@ -2065,6 +2062,7 @@ woal_cfg80211_custom_ie(moal_private * priv,
 	t_u8 *pos = NULL;
 	t_u16 len = 0;
 	int ret = 0;
+	mlan_status status = MLAN_STATUS_SUCCESS;
 
 	ENTER();
 
@@ -2121,8 +2119,8 @@ woal_cfg80211_custom_ie(moal_private * priv,
 
 	memcpy(&misc->param.cust_ie, custom_ie, sizeof(mlan_ds_misc_custom_ie));
 
-	if (MLAN_STATUS_SUCCESS !=
-	    woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT)) {
+	status = woal_request_ioctl(priv, ioctl_req, MOAL_IOCTL_WAIT);
+	if (MLAN_STATUS_SUCCESS != status) {
 		ret = -EFAULT;
 		goto done;
 	}
@@ -2168,7 +2166,8 @@ woal_cfg80211_custom_ie(moal_private * priv,
 		ret = -EFAULT;
 
 done:
-	kfree(ioctl_req);
+	if (status != MLAN_STATUS_PENDING)
+		kfree(ioctl_req);
 	kfree(custom_ie);
 	LEAVE();
 	return ret;
@@ -2765,3 +2764,61 @@ woal_cfg80211_setup_ht_cap(struct ieee80211_sta_ht_cap *ht_info,
 
 	LEAVE();
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
+/**
+ *  @brief Sets up the CFG802.11 specific VHT capability fields
+ *  with default values
+ *
+ * @param priv         A pointer to moal private structure
+ *  @param vht_cap      A pointer to ieee80211_sta_vht_cap structure
+ *
+ *  @return             N/A
+ */
+void
+woal_cfg80211_setup_vht_cap(moal_private * priv,
+			    struct ieee80211_sta_vht_cap *vht_cap)
+{
+	mlan_ioctl_req *req = NULL;
+	mlan_ds_11ac_cfg *cfg_11ac = NULL;
+	mlan_status status;
+
+	req = woal_alloc_mlan_ioctl_req(sizeof(mlan_ds_11ac_cfg));
+	if (req == NULL) {
+		status = MLAN_STATUS_FAILURE;
+		PRINTM(MERROR, "Fail to allocate buf for setup vht_cap\n");
+		goto done;
+	}
+	cfg_11ac = (mlan_ds_11ac_cfg *) req->pbuf;
+	cfg_11ac->sub_command = MLAN_OID_11AC_VHT_CFG;
+	req->req_id = MLAN_IOCTL_11AC_CFG;
+	req->action = MLAN_ACT_GET;
+	cfg_11ac->param.vht_cfg.band = BAND_SELECT_A;
+	cfg_11ac->param.vht_cfg.txrx = MLAN_RADIO_TXRX;
+	status = woal_request_ioctl(priv, req, MOAL_CMD_WAIT);
+	if (MLAN_STATUS_SUCCESS != status) {
+		PRINTM(MERROR, "Fail to get vht_cfg\n");
+		goto done;
+	}
+	vht_cap->vht_supported = true;
+	vht_cap->cap = cfg_11ac->param.vht_cfg.vht_cap_info;
+	vht_cap->vht_mcs.rx_mcs_map =
+		(t_u16) cfg_11ac->param.vht_cfg.vht_rx_mcs;
+	vht_cap->vht_mcs.rx_highest =
+		(t_u16) cfg_11ac->param.vht_cfg.vht_rx_max_rate;
+	vht_cap->vht_mcs.tx_mcs_map =
+		(t_u16) cfg_11ac->param.vht_cfg.vht_tx_mcs;
+	vht_cap->vht_mcs.tx_highest =
+		(t_u16) cfg_11ac->param.vht_cfg.vht_tx_max_rate;
+	PRINTM(MCMND,
+	       "vht_cap=0x%x rx_mcs_map=0x%x rx_max=0x%x tx_mcs_map=0x%x tx_max=0x%x\n",
+	       vht_cap->cap, vht_cap->vht_mcs.rx_mcs_map,
+	       vht_cap->vht_mcs.rx_highest, vht_cap->vht_mcs.tx_mcs_map,
+	       vht_cap->vht_mcs.tx_highest);
+done:
+	if (status != MLAN_STATUS_PENDING)
+		kfree(req);
+	LEAVE();
+	return;
+}
+#endif

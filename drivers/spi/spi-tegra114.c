@@ -1,7 +1,7 @@
 /*
  * SPI driver for NVIDIA's Tegra114 SPI Controller.
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -596,9 +596,9 @@ static int tegra_spi_start_cpu_based_transfer(
 	tspi->dma_control_reg = val;
 
 	tspi->is_curr_dma_xfer = false;
-
-	val |= SPI_DMA_EN;
-	tegra_spi_writel(tspi, val, SPI_DMA_CTL);
+	val = tspi->command1_reg;
+	val |= SPI_PIO;
+	tegra_spi_writel(tspi, val, SPI_COMMAND1);
 	return 0;
 }
 
@@ -714,6 +714,8 @@ static int tegra_spi_start_transfer_one(struct spi_device *spi,
 	tspi->cur_rx_pos = 0;
 	tspi->cur_tx_pos = 0;
 	tspi->curr_xfer = t;
+	tspi->tx_status = 0;
+	tspi->rx_status = 0;
 	total_fifo_words = tegra_spi_calculate_curr_xfer_param(spi, tspi, t);
 
 	if (is_first_of_msg) {
@@ -734,7 +736,6 @@ static int tegra_spi_start_transfer_one(struct spi_device *spi,
 			command1 |= SPI_CONTROL_MODE_3;
 
 		tegra_spi_writel(tspi, command1, SPI_COMMAND1);
-
 
 		/* possibly use the hw based chip select */
 		tspi->is_hw_based_cs = false;
@@ -842,9 +843,54 @@ static int tegra_spi_start_transfer_one(struct spi_device *spi,
 	return ret;
 }
 
+static struct tegra_spi_device_controller_data
+	*tegra_spi_get_cdata_dt(struct spi_device *spi)
+{
+	struct tegra_spi_device_controller_data *cdata;
+	struct device_node *slave_np, *data_np;
+	int ret;
+
+	slave_np = spi->dev.of_node;
+	if (!slave_np) {
+		dev_dbg(&spi->dev, "device node not found\n");
+		return NULL;
+	}
+
+	data_np = of_get_child_by_name(slave_np, "controller-data");
+	if (!data_np) {
+		dev_dbg(&spi->dev, "child node 'controller-data' not found\n");
+		return NULL;
+	}
+
+	cdata = devm_kzalloc(&spi->dev, sizeof(*cdata),
+			GFP_KERNEL);
+	if (!cdata) {
+		dev_err(&spi->dev, "Memory alloc for cdata failed\n");
+		of_node_put(data_np);
+		return NULL;
+	}
+
+	ret = of_property_read_bool(data_np, "nvidia,enable-hw-based-cs");
+	if (ret)
+		cdata->is_hw_based_cs = 1;
+
+	of_property_read_u32(data_np, "nvidia,cs-setup-clk-count",
+			&cdata->cs_setup_clk_count);
+	of_property_read_u32(data_np, "nvidia,cs-hold-clk-count",
+			&cdata->cs_hold_clk_count);
+	of_property_read_u32(data_np, "nvidia,rx-clk-tap-delay",
+			&cdata->rx_clk_tap_delay);
+	of_property_read_u32(data_np, "nvidia,tx-clk-tap-delay",
+			&cdata->tx_clk_tap_delay);
+
+	of_node_put(data_np);
+	return cdata;
+}
+
 static int tegra_spi_setup(struct spi_device *spi)
 {
 	struct tegra_spi_data *tspi = spi_master_get_devdata(spi->master);
+	struct tegra_spi_device_controller_data *cdata = spi->controller_data;
 	unsigned long val;
 	unsigned long flags;
 	int ret;
@@ -863,6 +909,10 @@ static int tegra_spi_setup(struct spi_device *spi)
 
 	BUG_ON(spi->chip_select >= MAX_CHIP_SELECT);
 
+	if (!cdata) {
+		cdata = tegra_spi_get_cdata_dt(spi);
+		spi->controller_data = cdata;
+	}
 
 	/* Set speed to the spi max fequency if spi device has not set */
 	spi->max_speed_hz = spi->max_speed_hz ? : tspi->spi_max_frequency;
@@ -961,6 +1011,12 @@ static int tegra_spi_transfer_one_message(struct spi_master *master,
 		if (WARN_ON(ret == 0)) {
 			dev_err(tspi->dev,
 				"spi transfer timeout, err %d\n", ret);
+			if (tspi->is_curr_dma_xfer &&
+					(tspi->cur_direction & DATA_DIR_TX))
+				dmaengine_terminate_all(tspi->tx_dma_chan);
+			if (tspi->is_curr_dma_xfer &&
+					(tspi->cur_direction & DATA_DIR_RX))
+				dmaengine_terminate_all(tspi->rx_dma_chan);
 			ret = -EIO;
 			goto exit;
 		}
@@ -1124,6 +1180,12 @@ static irqreturn_t tegra_spi_isr(int irq, void *context_data)
 	if (tspi->cur_direction & DATA_DIR_RX)
 		tspi->rx_status = tspi->status_reg &
 					(SPI_RX_FIFO_OVF | SPI_RX_FIFO_UNF);
+
+	if (!(tspi->cur_direction & DATA_DIR_TX) &&
+			!(tspi->cur_direction & DATA_DIR_RX))
+		dev_err(tspi->dev, "spurious interrupt, status_reg = 0x%x\n",
+				tspi->status_reg);
+
 	tegra_spi_clear_status(tspi);
 
 	return IRQ_WAKE_THREAD;
@@ -1291,7 +1353,7 @@ static int tegra_spi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "pm runtime get failed, e = %d\n", ret);
 		goto exit_pm_disable;
 	}
-	tspi->def_command1_reg  = SPI_M_S;
+	tspi->def_command1_reg  = SPI_M_S | SPI_LSBYTE_FE;
 	tegra_spi_writel(tspi, tspi->def_command1_reg, SPI_COMMAND1);
 	tspi->def_command2_reg = tegra_spi_readl(tspi, SPI_COMMAND2);
 	pm_runtime_put(&pdev->dev);

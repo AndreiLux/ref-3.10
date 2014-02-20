@@ -48,6 +48,16 @@ struct nvavp_syncpt {
 	__u32 value;
 };
 
+#ifdef CONFIG_COMPAT
+struct nvavp_pushbuffer_submit_hdr_v32 {
+	struct nvavp_cmdbuf	cmdbuf;
+	__u32 relocs;
+	__u32 num_relocs;
+	__u32 syncpt;
+	__u32 flags;
+};
+#endif
+
 struct nvavp_pushbuffer_submit_hdr {
 	struct nvavp_cmdbuf	cmdbuf;
 	struct nvavp_reloc	*relocs;
@@ -78,6 +88,11 @@ struct nvavp_num_cpus_args {
 	__u32 min_online_cpus;
 };
 
+struct nvavp_map_args {
+	__s32 fd;
+	__u32 addr;
+};
+
 #define NVAVP_IOCTL_MAGIC		'n'
 
 #define NVAVP_IOCTL_SET_NVMAP_FD	_IOW(NVAVP_IOCTL_MAGIC, 0x60, \
@@ -86,6 +101,10 @@ struct nvavp_num_cpus_args {
 					__u32)
 #define NVAVP_IOCTL_PUSH_BUFFER_SUBMIT	_IOWR(NVAVP_IOCTL_MAGIC, 0x63, \
 					struct nvavp_pushbuffer_submit_hdr)
+#ifdef CONFIG_COMPAT
+#define NVAVP_IOCTL_PUSH_BUFFER_SUBMIT32	_IOWR(NVAVP_IOCTL_MAGIC, 0x63, \
+					struct nvavp_pushbuffer_submit_hdr_v32)
+#endif
 #define NVAVP_IOCTL_SET_CLOCK		_IOWR(NVAVP_IOCTL_MAGIC, 0x64, \
 					struct nvavp_clock_args)
 #define NVAVP_IOCTL_GET_CLOCK		_IOR(NVAVP_IOCTL_MAGIC, 0x65, \
@@ -100,8 +119,12 @@ struct nvavp_num_cpus_args {
 					struct nvavp_clock_args)
 #define NVAVP_IOCTL_SET_MIN_ONLINE_CPUS _IOWR(NVAVP_IOCTL_MAGIC, 0x70, \
 					struct nvavp_num_cpus_args)
+#define NVAVP_IOCTL_MAP_IOVA		_IOWR(NVAVP_IOCTL_MAGIC, 0x71, \
+					struct nvavp_map_args)
+#define NVAVP_IOCTL_UNMAP_IOVA		_IOW(NVAVP_IOCTL_MAGIC, 0x72, \
+					struct nvavp_map_args)
 
 #define NVAVP_IOCTL_MIN_NR		_IOC_NR(NVAVP_IOCTL_SET_NVMAP_FD)
-#define NVAVP_IOCTL_MAX_NR		_IOC_NR(NVAVP_IOCTL_SET_MIN_ONLINE_CPUS)
+#define NVAVP_IOCTL_MAX_NR		_IOC_NR(NVAVP_IOCTL_UNMAP_IOVA)
 
 #endif /* __LINUX_TEGRA_NVAVP_H */

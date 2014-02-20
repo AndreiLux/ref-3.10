@@ -3,7 +3,7 @@
  *
  * Some MM related functionality specific to nvmap.
  *
- * Copyright (c) 2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,13 +24,16 @@
 
 void inner_flush_cache_all(void)
 {
-#ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU
+#if defined(CONFIG_ARM64)
+	on_each_cpu(__flush_dcache_all, NULL, 1);
+#elif defined(CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU)
 	v7_flush_kern_cache_all();
 #else
 	on_each_cpu(v7_flush_kern_cache_all, NULL, 1);
 #endif
 }
 
+#ifndef CONFIG_ARM64
 void inner_clean_cache_all(void)
 {
 #ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU
@@ -39,9 +42,9 @@ void inner_clean_cache_all(void)
 	on_each_cpu(v7_clean_kern_cache_all, NULL, 1);
 #endif
 }
+#endif
 
-#ifndef CONFIG_NVMAP_CPA
-static void flush_cache(struct page **pages, int numpages)
+void nvmap_flush_cache(struct page **pages, int numpages)
 {
 	unsigned int i;
 	bool flush_inner = true;
@@ -55,20 +58,23 @@ static void flush_cache(struct page **pages, int numpages)
 #endif
 
 	for (i = 0; i < numpages; i++) {
+#ifdef CONFIG_ARM64 //__flush_dcache_page flushes inner and outer on ARM64
+		__flush_dcache_page(pages[i]);
+#else
 		if (flush_inner)
 			__flush_dcache_page(page_mapping(pages[i]), pages[i]);
 		base = page_to_phys(pages[i]);
 		outer_flush_range(base, base + PAGE_SIZE);
+#endif
 	}
 }
-#endif
 
 int nvmap_set_pages_array_uc(struct page **pages, int addrinarray)
 {
 #ifdef CONFIG_NVMAP_CPA
 	return set_pages_array_uc(pages, addrinarray);
 #else
-	flush_cache(pages, addrinarray);
+	nvmap_flush_cache(pages, addrinarray);
 	return 0;
 #endif
 }
@@ -78,7 +84,7 @@ int nvmap_set_pages_array_wc(struct page **pages, int addrinarray)
 #ifdef CONFIG_NVMAP_CPA
 	return set_pages_array_wc(pages, addrinarray);
 #else
-	flush_cache(pages, addrinarray);
+	nvmap_flush_cache(pages, addrinarray);
 	return 0;
 #endif
 }
@@ -88,7 +94,7 @@ int nvmap_set_pages_array_iwb(struct page **pages, int addrinarray)
 #ifdef CONFIG_NVMAP_CPA
 	return set_pages_array_iwb(pages, addrinarray);
 #else
-	flush_cache(pages, addrinarray);
+	nvmap_flush_cache(pages, addrinarray);
 	return 0;
 #endif
 }

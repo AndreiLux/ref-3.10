@@ -196,25 +196,43 @@ dtb-$(CONFIG_ARCH_TEGRA) += tegra20-harmony.dtb \
 	tegra30-cardhu-a02.dtb \
 	tegra30-cardhu-a04.dtb \
 	tegra114-dalmore.dtb \
+	tegra114-dalmore-e1611-1000-a00-00.dtb \
+	tegra114-dalmore-e1611-1001-a00-00.dtb \
 	tegra114-macallan.dtb \
 	tegra114-roth.dtb \
 	tegra114-pluto.dtb \
+	tegra114-pismo.dtb \
 	tegra124-bonaire_sim.dtb \
 	tegra124-bonaire.dtb \
 	tegra124-ardbeg.dtb \
+	tegra124-ardbeg-battery.dtb \
 	tegra124-ardbeg-a03-00.dtb \
+	tegra124-ardbeg-a03-00-battery.dtb \
+	tegra124-ardbeg-e1735.dtb \
+	tegra124-ardbeg-e1735-a03-00.dtb \
 	tegra124-laguna.dtb \
+	tegra124-laguna-pm358.dtb \
 	tegra124-norrin.dtb \
 	tegra124-loki.dtb \
+	tegra124-loki-02-cell-battery.dtb \
+	tegra124-loki-03-cell-battery.dtb \
+	tegra124-loki-mods.dtb \
+	tegra124-foster.dtb \
+	tegra124-thor195.dtb \
 	tegra124-tn8.dtb \
 	tegra124-tn8-p1761.dtb \
+	tegra124-tn8-p1761-2gb.dtb \
 	tegra124-tn8-p1761-battery.dtb \
+	tegra124-tn8-p1761-2gb-battery.dtb \
+	tegra124-tn8-e1784-2gb.dtb \
 	tegra124-tn8-aio.dtb \
 	tegra124-tn8-battery.dtb \
 	tegra124-tn8-a03-00.dtb \
-	tegra124-tn8-a03-00-battery.dts \
+	tegra124-tn8-a03-00-battery.dtb \
 	tegra124-tn8-a03-01.dtb \
-	tegra124-tn8-a03-01-battery.dts \
+	tegra124-tn8-a03-01-battery.dtb \
+	tegra124-tn8-p1761-a02.dtb \
+	tegra124-tn8-p1761-a02-battery.dtb \
 	tegra124-e1782_sku1100.dtb \
 	tegra124-e1791.dtb \
 	tegra124-e1922.dtb \

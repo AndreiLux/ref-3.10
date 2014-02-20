@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Syncpoint Integration to linux/sync Framework
  *
- * Copyright (c) 2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -55,7 +55,7 @@ struct nvhost_sync_pt_inst {
 	struct nvhost_sync_pt		*shared;
 };
 
-static struct nvhost_sync_pt *to_nvhost_sync_pt(struct sync_pt *pt)
+struct nvhost_sync_pt *to_nvhost_sync_pt(struct sync_pt *pt)
 {
 	struct nvhost_sync_pt_inst *pti =
 			container_of(pt, struct nvhost_sync_pt_inst, pt);
@@ -89,7 +89,11 @@ static int nvhost_sync_pt_set_intr(struct nvhost_sync_pt *pt)
 	/* Get a ref for the interrupt handler, keep host alive. */
 	kref_get(&pt->refcount);
 	pt->has_intr = true;
-	nvhost_module_busy(syncpt_to_dev(pt->obj->sp)->dev);
+	err = nvhost_module_busy(syncpt_to_dev(pt->obj->sp)->dev);
+	if (err) {
+		kref_put(&pt->refcount, nvhost_sync_pt_free_shared);
+		return err;
+	}
 
 	waiter = nvhost_intr_alloc_waiter();
 	err = nvhost_intr_add_action(&(syncpt_to_dev(pt->obj->sp)->intr),
@@ -240,7 +244,7 @@ static int nvhost_sync_fill_driver_data(struct sync_pt *sync_pt,
 	return sizeof(info);
 }
 
-struct sync_timeline_ops nvhost_sync_timeline_ops = {
+static const struct sync_timeline_ops nvhost_sync_timeline_ops = {
 	.driver_name = "nvhost_sync",
 	.dup = nvhost_sync_pt_dup_inst,
 	.has_signaled = nvhost_sync_pt_has_signaled,
@@ -250,6 +254,59 @@ struct sync_timeline_ops nvhost_sync_timeline_ops = {
 	.timeline_value_str = nvhost_sync_timeline_value_str,
 	.pt_value_str = nvhost_sync_pt_value_str,
 };
+
+struct sync_fence *nvhost_sync_fdget(int fd)
+{
+	struct sync_fence *fence = sync_fence_fdget(fd);
+	struct list_head *pos;
+
+	if (!fence)
+		return fence;
+
+	list_for_each(pos, &fence->pt_list_head) {
+		struct sync_pt *pt =
+			container_of(pos, struct sync_pt, pt_list);
+		struct sync_timeline *timeline = pt->parent;
+
+		if (timeline->ops != &nvhost_sync_timeline_ops) {
+			sync_fence_put(fence);
+			return ERR_PTR(-EINVAL);
+		}
+	}
+
+	return fence;
+}
+
+int nvhost_sync_num_pts(struct sync_fence *fence)
+{
+	int num = 0;
+	struct list_head *pos;
+
+	list_for_each(pos, &fence->pt_list_head) {
+		struct sync_pt *_pt =
+			container_of(pos, struct sync_pt, pt_list);
+		struct nvhost_sync_pt *pt = to_nvhost_sync_pt(_pt);
+		struct nvhost_sync_timeline *obj = pt->obj;
+
+		u32 id = nvhost_sync_pt_id(pt);
+		u32 thresh = nvhost_sync_pt_thresh(pt);
+
+		if (!nvhost_syncpt_is_expired(obj->sp, id, thresh))
+			num++;
+	}
+
+	return num;
+}
+
+u32 nvhost_sync_pt_id(struct nvhost_sync_pt *pt)
+{
+	return pt->obj->id;
+}
+
+u32 nvhost_sync_pt_thresh(struct nvhost_sync_pt *pt)
+{
+	return pt->thresh;
+}
 
 /* Public API */
 

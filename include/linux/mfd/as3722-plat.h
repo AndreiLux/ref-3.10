@@ -147,6 +147,7 @@ struct as3722_platform_data {
 	int irq_type;
 	int use_internal_int_pullup;
 	int use_internal_i2c_pullup;
+	bool enable_ac_ok_power_on;
 	int num_gpio_cfgs;
 	bool use_power_off;
 	bool use_power_reset;
@@ -156,6 +157,8 @@ struct as3722_platform_data {
 	struct as3722_adc_extcon_platform_data *extcon_pdata;
 	int watchdog_timer_initial_period;
 	int watchdog_timer_mode;
+	u32 major_rev;
+	u32 minor_rev;
 	bool enable_clk32k_out;
 };
 

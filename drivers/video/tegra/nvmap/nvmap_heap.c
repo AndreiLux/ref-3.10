@@ -3,7 +3,7 @@
  *
  * GPU heap allocator.
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -32,16 +32,14 @@
 #include <linux/bug.h>
 #include <linux/stat.h>
 #include <linux/debugfs.h>
+#include <linux/nvhost.h>
 
 #include <linux/nvmap.h>
-#include "nvmap_priv.h"
-#include "nvmap_heap.h"
-
-#include <asm/tlbflush.h>
-#include <asm/cacheflush.h>
-
 #include <linux/dma-mapping.h>
 #include <linux/dma-contiguous.h>
+
+#include "nvmap_priv.h"
+#include "nvmap_heap.h"
 
 #ifdef CONFIG_TRUSTED_LITTLE_KERNEL
 #include <linux/ote_protocol.h>
@@ -121,10 +119,12 @@ void nvmap_heap_debugfs_init(struct dentry *heap_root, struct nvmap_heap *heap)
 static void nvmap_config_vpr(struct nvmap_heap *h)
 {
 #ifdef CONFIG_TRUSTED_LITTLE_KERNEL
-	if (h->is_vpr)
+	if (h->is_vpr) {
 		/* Config VPR_BOM/_SIZE in MC */
 		te_set_vpr_params((void *)(uintptr_t)h->base, h->len);
-	/* FIXME: trigger GPU to refetch VPR base and size. */
+		/* trigger GPU to refetch VPR base and size. */
+		nvhost_vpr_info_fetch();
+	}
 #endif
 }
 
@@ -512,6 +512,7 @@ static struct device *nvmap_create_dma_devs(const char *name, int num_devs)
 static int nvmap_cma_heap_create(struct nvmap_heap *h,
 	const struct nvmap_platform_carveout *co)
 {
+#ifdef CONFIG_CMA
 	struct dma_contiguous_stats stats;
 
 	h->can_resize = co->resize;
@@ -551,6 +552,9 @@ static int nvmap_cma_heap_create(struct nvmap_heap *h,
 		dev_set_name(&h->dev, "heap-%s", h->name);
 	}
 	return 0;
+#else
+	return -ENOMEM;
+#endif
 }
 
 /* nvmap_heap_create: create a heap object of len bytes, starting from

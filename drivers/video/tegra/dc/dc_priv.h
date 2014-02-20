@@ -4,7 +4,7 @@
  * Copyright (C) 2010 Google, Inc.
  * Author: Erik Gilling <konkers@android.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -313,6 +313,12 @@ static inline bool tegra_dc_is_powered(struct tegra_dc *dc)
 	return tegra_powergate_is_powered(dc->powergate_id);
 }
 
+static inline void tegra_dc_set_edid(struct tegra_dc *dc,
+	struct tegra_edid *edid)
+{
+	dc->edid = edid;
+}
+
 void tegra_dc_powergate_locked(struct tegra_dc *dc);
 void tegra_dc_unpowergate_locked(struct tegra_dc *dc);
 #else
@@ -343,6 +349,9 @@ extern struct tegra_dc_out_ops tegra_dc_dp_ops;
 #endif
 #ifdef CONFIG_TEGRA_LVDS
 extern struct tegra_dc_out_ops tegra_dc_lvds_ops;
+#endif
+#ifdef CONFIG_TEGRA_NVSR
+extern struct tegra_dc_out_ops tegra_dc_nvsr_ops;
 #endif
 
 /* defined in dc_sysfs.c, used by dc.c */

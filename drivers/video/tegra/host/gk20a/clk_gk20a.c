@@ -3,7 +3,7 @@
  *
  * GK20A Clocks
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -119,7 +119,7 @@ static int clk_config_pll(struct clk_gk20a *clk, struct pll *pll,
 	nvhost_dbg_info("low_PL %d(div%d), high_PL %d(div%d)",
 			low_PL, pl_to_div[low_PL], high_PL, pl_to_div[high_PL]);
 
-	for (pl = high_PL; pl >= (int)low_PL; pl--) {
+	for (pl = low_PL; pl <= high_PL; pl++) {
 		target_vco_f = target_clk_f * pl_to_div[pl];
 
 		for (m = pll_params->min_M; m <= pll_params->max_M; m++) {
@@ -275,6 +275,9 @@ static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk,
 
 	nvhost_dbg_fn("");
 
+	if (tegra_platform_is_linsim())
+		return 0;
+
 	/* get old coefficients */
 	coeff = gk20a_readl(g, trim_sys_gpcpll_coeff_r());
 	m = trim_sys_gpcpll_coeff_mdiv_v(coeff);
@@ -296,10 +299,17 @@ static int clk_program_gpc_pll(struct gk20a *g, struct clk_gk20a *clk,
 			return ret;
 	}
 
+	/* split FO-to-bypass jump in halfs by setting out divider 1:2 */
+	data = gk20a_readl(g, trim_sys_gpc2clk_out_r());
+	data = set_field(data, trim_sys_gpc2clk_out_vcodiv_m(),
+		trim_sys_gpc2clk_out_vcodiv_f(2));
+	gk20a_writel(g, trim_sys_gpc2clk_out_r(), data);
+
 	/* put PLL in bypass before programming it */
 	data = gk20a_readl(g, trim_sys_sel_vco_r());
 	data = set_field(data, trim_sys_sel_vco_gpc2clk_out_m(),
 		trim_sys_sel_vco_gpc2clk_out_bypass_f());
+	udelay(2);
 	gk20a_writel(g, trim_sys_sel_vco_r(), data);
 
 	/* get out from IDDQ */
@@ -362,6 +372,13 @@ pll_locked:
 		trim_sys_sel_vco_gpc2clk_out_vco_f());
 	gk20a_writel(g, trim_sys_sel_vco_r(), data);
 	clk->gpc_pll.enabled = true;
+
+	/* restore out divider 1:1 */
+	data = gk20a_readl(g, trim_sys_gpc2clk_out_r());
+	data = set_field(data, trim_sys_gpc2clk_out_vcodiv_m(),
+		trim_sys_gpc2clk_out_vcodiv_by1_f());
+	udelay(2);
+	gk20a_writel(g, trim_sys_gpc2clk_out_r(), data);
 
 	/* slide up to target NDIV */
 	return clk_slide_gpc_pll(g, clk->gpc_pll.N);
@@ -460,8 +477,9 @@ static int gk20a_init_clk_setup_sw(struct gk20a *g)
 		clk->gpc_pll.M = 1;
 		clk->gpc_pll.N = DIV_ROUND_UP(gpc_pll_params.min_vco,
 					clk->gpc_pll.clk_in);
-		clk->gpc_pll.PL = 0;
+		clk->gpc_pll.PL = 1;
 		clk->gpc_pll.freq = clk->gpc_pll.clk_in * clk->gpc_pll.N;
+		clk->gpc_pll.freq /= pl_to_div[clk->gpc_pll.PL];
 	}
 
 	err = tegra_dvfs_get_freqs(clk_get_parent(clk->tegra_clk),
@@ -686,21 +704,22 @@ int gk20a_init_clk_support(struct gk20a *g)
 	if (err)
 		return err;
 
+	/* Set delay to 100ms */
 	gk20a_writel(g,
 		timer_pri_timeout_r(),
-		timer_pri_timeout_period_f(0x200) |
+		timer_pri_timeout_period_f(0x186A0) |
 		timer_pri_timeout_en_m());
 
 	return err;
 }
 
-u32 gk20a_clk_get_rate(struct gk20a *g)
+unsigned long gk20a_clk_get_rate(struct gk20a *g)
 {
 	struct clk_gk20a *clk = &g->clk;
 	return rate_gpc2clk_to_gpu(clk->gpc_pll.freq);
 }
 
-int gk20a_clk_round_rate(struct gk20a *g, u32 rate)
+long gk20a_clk_round_rate(struct gk20a *g, unsigned long rate)
 {
 	/* make sure the clock is available */
 	if (!gk20a_clk_get(g))
@@ -709,7 +728,7 @@ int gk20a_clk_round_rate(struct gk20a *g, u32 rate)
 	return clk_round_rate(clk_get_parent(g->clk.tegra_clk), rate);
 }
 
-int gk20a_clk_set_rate(struct gk20a *g, u32 rate)
+int gk20a_clk_set_rate(struct gk20a *g, unsigned long rate)
 {
 	return clk_set_rate(g->clk.tegra_clk, rate);
 }
@@ -787,10 +806,15 @@ static int monitor_get(void *data, u64 *val)
 {
 	struct gk20a *g = (struct gk20a *)data;
 	struct clk_gk20a *clk = &g->clk;
+	int err;
 
 	u32 ncycle = 100; /* count GPCCLK for ncycle of clkin */
 	u32 clkin = clk->gpc_pll.clk_in;
 	u32 count1, count2;
+
+	err = gk20a_busy(g->dev);
+	if (err)
+		return err;
 
 	gk20a_writel(g, trim_gpc_clk_cntr_ncgpcclk_cfg_r(0),
 		     trim_gpc_clk_cntr_ncgpcclk_cfg_reset_asserted_f());
@@ -809,6 +833,7 @@ static int monitor_get(void *data, u64 *val)
 	udelay(100);
 	count2 = gk20a_readl(g, trim_gpc_clk_cntr_ncgpcclk_cnt_r(0));
 	*val = (u64)(trim_gpc_clk_cntr_ncgpcclk_cnt_value_v(count2) * clkin / ncycle);
+	gk20a_idle(g->dev);
 
 	if (count1 != count2)
 		return -EBUSY;

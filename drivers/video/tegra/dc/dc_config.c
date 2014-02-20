@@ -228,7 +228,7 @@ static struct tegra_dc_feature_entry t124_feature_entries_a[] = {
 	{ 0, TEGRA_DC_FEATURE_BLEND_TYPE, {2,} },
 	{ 0, TEGRA_DC_FEATURE_MAXIMUM_SIZE, {4096, 1, 4096, 1,} },
 	{ 0, TEGRA_DC_FEATURE_MAXIMUM_SCALE, {2, 2, 2, 2,} },
-	{ 0, TEGRA_DC_FEATURE_FILTER_TYPE, {0, 0,} },
+	{ 0, TEGRA_DC_FEATURE_FILTER_TYPE, {1, 1,} },
 	{ 0, TEGRA_DC_FEATURE_LAYOUT_TYPE, {1, 1, 1,} },
 	{ 0, TEGRA_DC_FEATURE_INVERT_TYPE, {1, 1, 0,} },
 	{ 0, TEGRA_DC_FEATURE_FIELD_TYPE, {1,} },
@@ -248,7 +248,7 @@ static struct tegra_dc_feature_entry t124_feature_entries_a[] = {
 	{ 2, TEGRA_DC_FEATURE_BLEND_TYPE, {2,} },
 	{ 2, TEGRA_DC_FEATURE_MAXIMUM_SIZE, {4096, 1, 4096, 1,} },
 	{ 2, TEGRA_DC_FEATURE_MAXIMUM_SCALE, {2, 2, 2, 2,} },
-	{ 2, TEGRA_DC_FEATURE_FILTER_TYPE, {0, 1,} },
+	{ 2, TEGRA_DC_FEATURE_FILTER_TYPE, {1, 1,} },
 	{ 2, TEGRA_DC_FEATURE_LAYOUT_TYPE, {1, 1, 1,} },
 	{ 2, TEGRA_DC_FEATURE_INVERT_TYPE, {1, 1, 0,} },
 	{ 2, TEGRA_DC_FEATURE_FIELD_TYPE, {1,} },
@@ -269,7 +269,7 @@ static struct tegra_dc_feature_entry t124_feature_entries_b[] = {
 	{ 0, TEGRA_DC_FEATURE_BLEND_TYPE, {2,} },
 	{ 0, TEGRA_DC_FEATURE_MAXIMUM_SIZE, {4096, 1, 4096, 1,} },
 	{ 0, TEGRA_DC_FEATURE_MAXIMUM_SCALE, {2, 2, 2, 2,} },
-	{ 0, TEGRA_DC_FEATURE_FILTER_TYPE, {0, 0,} },
+	{ 0, TEGRA_DC_FEATURE_FILTER_TYPE, {1, 1,} },
 	{ 0, TEGRA_DC_FEATURE_LAYOUT_TYPE, {1, 1, 1,} },
 	{ 0, TEGRA_DC_FEATURE_INVERT_TYPE, {1, 1, 0,} },
 	{ 0, TEGRA_DC_FEATURE_FIELD_TYPE, {1,} },
@@ -289,7 +289,7 @@ static struct tegra_dc_feature_entry t124_feature_entries_b[] = {
 	{ 2, TEGRA_DC_FEATURE_BLEND_TYPE, {2,} },
 	{ 2, TEGRA_DC_FEATURE_MAXIMUM_SIZE, {4096, 1, 4096, 1,} },
 	{ 2, TEGRA_DC_FEATURE_MAXIMUM_SCALE, {2, 2, 2, 2,} },
-	{ 2, TEGRA_DC_FEATURE_FILTER_TYPE, {0, 1,} },
+	{ 2, TEGRA_DC_FEATURE_FILTER_TYPE, {1, 1,} },
 	{ 2, TEGRA_DC_FEATURE_LAYOUT_TYPE, {1, 1, 1,} },
 	{ 2, TEGRA_DC_FEATURE_INVERT_TYPE, {1, 1, 0,} },
 	{ 2, TEGRA_DC_FEATURE_FIELD_TYPE, {1,} },
@@ -414,7 +414,7 @@ int tegra_dc_get_feature(struct tegra_dc_feature *feature, int win_idx,
 	return -EINVAL;
 }
 
-long *tegra_dc_parse_feature(struct tegra_dc *dc, int win_idx, int operation)
+u32 *tegra_dc_parse_feature(struct tegra_dc *dc, int win_idx, int operation)
 {
 	int idx;
 	struct tegra_dc_feature_entry *entry;
@@ -464,7 +464,7 @@ long *tegra_dc_parse_feature(struct tegra_dc *dc, int win_idx, int operation)
 int tegra_dc_feature_has_scaling(struct tegra_dc *dc, int win_idx)
 {
 	int i;
-	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_SCALE);
+	u32 *addr = tegra_dc_parse_feature(dc, win_idx, HAS_SCALE);
 
 	if (WARN_ONCE(!addr, "window does not exist"))
 		return 0;
@@ -477,7 +477,7 @@ int tegra_dc_feature_has_scaling(struct tegra_dc *dc, int win_idx)
 
 int tegra_dc_feature_has_tiling(struct tegra_dc *dc, int win_idx)
 {
-	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_TILED);
+	u32 *addr = tegra_dc_parse_feature(dc, win_idx, HAS_TILED);
 
 	if (WARN_ONCE(!addr, "window does not exist"))
 		return 0;
@@ -487,7 +487,7 @@ int tegra_dc_feature_has_tiling(struct tegra_dc *dc, int win_idx)
 
 int tegra_dc_feature_has_blocklinear(struct tegra_dc *dc, int win_idx)
 {
-	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_BLOCKLINEAR);
+	u32 *addr = tegra_dc_parse_feature(dc, win_idx, HAS_BLOCKLINEAR);
 
 	if (WARN_ONCE(!addr, "window does not exist"))
 		return 0;
@@ -497,7 +497,7 @@ int tegra_dc_feature_has_blocklinear(struct tegra_dc *dc, int win_idx)
 
 int tegra_dc_feature_has_interlace(struct tegra_dc *dc, int win_idx)
 {
-	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_INTERLACE);
+	u32 *addr = tegra_dc_parse_feature(dc, win_idx, HAS_INTERLACE);
 
 	if (WARN_ONCE(!addr, "window does not exist"))
 		return 0;
@@ -507,7 +507,7 @@ int tegra_dc_feature_has_interlace(struct tegra_dc *dc, int win_idx)
 
 int tegra_dc_feature_has_filter(struct tegra_dc *dc, int win_idx, int operation)
 {
-	long *addr = tegra_dc_parse_feature(dc, win_idx, operation);
+	u32 *addr = tegra_dc_parse_feature(dc, win_idx, operation);
 
 	if (WARN_ONCE(!addr, "window does not exist"))
 		return 0;
@@ -520,7 +520,7 @@ int tegra_dc_feature_has_filter(struct tegra_dc *dc, int win_idx, int operation)
 
 int tegra_dc_feature_is_gen2_blender(struct tegra_dc *dc, int win_idx)
 {
-	long *addr = tegra_dc_parse_feature(dc, win_idx, HAS_GEN2_BLEND);
+	u32 *addr = tegra_dc_parse_feature(dc, win_idx, HAS_GEN2_BLEND);
 
 	if (WARN_ONCE(!addr, "window does not exist"))
 		return 0;

@@ -2,7 +2,7 @@
  * as3722 definitions
  *
  * Copyright (C) 2013 ams
- * Copyright (c) 2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * Author: Florian Lobmaier <florian.lobmaier@ams.com>
  * Author: Laxman Dewangan <ldewangan@nvidia.com>
@@ -26,6 +26,8 @@
 #ifndef __LINUX_MFD_AS3722_H__
 #define __LINUX_MFD_AS3722_H__
 
+#include <linux/i2c.h>
+#include <linux/mutex.h>
 #include <linux/mfd/as3722-plat.h>
 #include <linux/regmap.h>
 
@@ -319,6 +321,7 @@
 #define AS3722_GPIO_IOSF_ISINK_PWM_IN			AS3722_GPIO_IOSF_VAL(4)
 #define AS3722_GPIO_IOSF_VOLTAGE_STBY			AS3722_GPIO_IOSF_VAL(5)
 #define AS3722_GPIO_IOSF_PWR_GOOD_OUT			AS3722_GPIO_IOSF_VAL(7)
+#define AS3722_GPIO_IOSF_SD0_OUT			AS3722_GPIO_IOSF_VAL(6)
 #define AS3722_GPIO_IOSF_Q32K_OUT			AS3722_GPIO_IOSF_VAL(8)
 #define AS3722_GPIO_IOSF_WATCHDOG_IN			AS3722_GPIO_IOSF_VAL(9)
 #define AS3722_GPIO_IOSF_SOFT_RESET_IN			AS3722_GPIO_IOSF_VAL(11)
@@ -358,6 +361,8 @@
 #define AS3722_ADC1_LOW_VOLTAGE_RANGE_MASK		BIT(5)
 #define AS3722_ADC1_INTEVAL_SCAN_MASK			BIT(6)
 #define AS3722_ADC1_CONVERSION_START_MASK		BIT(7)
+
+#define AS3722_CTRL_SEQ1_AC_OK_PWR_ON			BIT(0)
 
 /* Interrupt IDs */
 enum as3722_irq {
@@ -399,12 +404,18 @@ enum as3722_irq {
 struct as3722 {
 	struct device *dev;
 	struct regmap *regmap;
+	struct i2c_client *client;
 	int chip_irq;
 	unsigned long irq_flags;
 	int irq_base;
 	bool en_intern_int_pullup;
 	bool en_intern_i2c_pullup;
+	bool en_ac_ok_pwr_on;
 	struct regmap_irq_chip_data *irq_data;
+	u32 major_rev;
+	u32 minor_rev;
+	struct mutex mutex_config;
+	bool shutdown;
 };
 
 static inline int as3722_read(struct as3722 *as3722, u32 reg, u32 *dest)
@@ -435,9 +446,24 @@ static inline int as3722_update_bits(struct as3722 *as3722, u32 reg,
 	return regmap_update_bits(as3722->regmap, reg, mask, val);
 }
 
+static inline void as3722_allow_atomic_xfer(struct as3722 *as3722)
+{
+	i2c_shutdown_clear_adapter(as3722->client->adapter);
+}
+
 static inline int as3722_irq_get_virq(struct as3722 *as3722, int irq)
 {
 	return regmap_irq_get_virq(as3722->irq_data, irq);
 }
 
+static inline bool as3722_device_rev(struct as3722 *as3722, u32 major_rev,
+		u32 minor_rev)
+{
+
+	if ((as3722->major_rev == major_rev) &&
+			(as3722->minor_rev == minor_rev))
+		return true;
+	else
+		return false;
+}
 #endif

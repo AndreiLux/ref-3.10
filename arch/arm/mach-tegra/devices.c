@@ -5,7 +5,7 @@
  *	Colin Cross <ccross@android.com>
  *	Erik Gilling <ccross@android.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -2145,7 +2145,10 @@ struct swgid_fixup tegra_swgid_fixup[] = {
 	{ .name = "mpe",	.swgids = SWGID(MPE), },
 	{ .name = "tegra-aes",	.swgids = SWGID(VDE), },
 	{ .name = "nvavp",	.swgids = SWGID(AVPC), },
-	{ .name = "sdhci-tegra",	.swgids = SWGID(PPCS), },
+	{ .name = "sdhci-tegra.0",	.swgids = SWGID(PPCS1) },
+	{ .name = "sdhci-tegra.1",	.swgids = SWGID(PPCS1) },
+	{ .name = "sdhci-tegra.2",	.swgids = SWGID(PPCS1) },
+	{ .name = "sdhci-tegra.3",	.swgids = SWGID(PPCS1) },
 	{ .name = "serial8250",	.swgids = SWGID(PPCS), },
 	{ .name = "serial-tegra",      .swgids = SWGID(PPCS), },
 	{ .name = "snd-soc-dummy",	.swgids = SWGID(PPCS), },
@@ -2200,6 +2203,13 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 	{ .name = "mpe",	.swgids = SWGID(MPE), },
 	{ .name = "tegra-aes",	.swgids = SWGID(VDE), },
 	{ .name = "nvavp",	.swgids = SWGID(AVPC) | SWGID(A9AVP), },
+	{ .name = "sdhci-tegra.0",	.swgids = SWGID(SDMMC1A), },
+	{ .name = "sdhci-tegra.1",	.swgids = SWGID(SDMMC2A), },
+	/*
+	 * FIX ME: Make sdhci-tegra.2 IOMMUable once Bug 1374895 is fixed
+	 * { .name = "sdhci-tegra.2",	.swgids = SWGID(SDMMC3A), },
+	 */
+	{ .name = "sdhci-tegra.3",	.swgids = SWGID(SDMMC4A), },
 	{ .name = "serial8250",	.swgids = SWGID(PPCS), },
 	{ .name = "serial-tegra",	.swgids = SWGID(PPCS), },
 	{ .name = "dtv",	.swgids = SWGID(PPCS), },
@@ -2223,7 +2233,12 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 	{ .name = "tegra-fuse",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra-i2c",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra-nvmap",	.swgids = SWGID(HC) | SWGID(AVPC), },
-	{ .name = "tegra-otg",	.swgids = SWGID(PPCS), },
+	/*
+	 * PPCS1 selection for USB2 needs AHB_ARBC register program
+	 * in warm boot and cold boot paths in BL as it needs
+	 * secure write.
+	 */
+	{ .name = "tegra-otg",	.swgids = SWGID(PPCS1), },
 	{ .name = "tegra-pcm-audio",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra-rtc",	.swgids = SWGID(PPCS), },
 	{ .name = "tegra-sata",	.swgids = SWGID(SATA2), },
@@ -2251,13 +2266,20 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 u64 tegra_smmu_fixup_swgids(struct device *dev, struct iommu_linear_map **map)
 {
 	const char *s;
-	struct swgid_fixup *table = tegra_swgid_fixup;
+	struct swgid_fixup *table;
 
 	if (!dev)
 		return 0;
 
-	if (tegra_get_chipid() == TEGRA_CHIPID_TEGRA12)
+	switch (tegra_get_chipid()) {
+	case TEGRA_CHIPID_TEGRA12:
+	case TEGRA_CHIPID_TEGRA13:
 		table = tegra_swgid_fixup_t124;
+		break;
+	default:
+		table = tegra_swgid_fixup;
+		break;
+	}
 
 	while ((s = table->name) != NULL) {
 		if (!strncmp(s, dev_name(dev), strlen(s))) {
@@ -2274,20 +2296,6 @@ u64 tegra_smmu_fixup_swgids(struct device *dev, struct iommu_linear_map **map)
 
 #ifdef CONFIG_PLATFORM_ENABLE_IOMMU
 
-/*
- * ASID[0] for the system default
- * ASID[1] for PPCS, which has SDMMC
- * ASID[3][4] open for drivers, first come, first served.
- */
-enum {
-	SYSTEM_DEFAULT,
-	SYSTEM_PROTECTED,
-	SYSTEM_GK20A,
-	SYSTEM_DC,
-	SYSTEM_DCB,
-	NUM_ASIDS,
-};
-
 struct tegra_iommu_mapping {
 	dma_addr_t base;
 	size_t size;
@@ -2297,10 +2305,15 @@ struct tegra_iommu_mapping {
 static struct tegra_iommu_mapping smmu_default_map[] = {
 	[SYSTEM_DEFAULT] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
 	[SYSTEM_PROTECTED] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
-	/* Non-zero base to account for gk20a driver's assumptions */
-	[SYSTEM_GK20A] = {0x100000, (u32)~0},
+	[PPCS1_ASID] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
 	[SYSTEM_DC] = {0x10000, (u32)~0},
 	[SYSTEM_DCB] = {0x10000, (u32)~0},
+	/* Non-zero base to account for gk20a driver's assumptions */
+	[SYSTEM_GK20A] = {0x100000, (u32)~0},
+	[SDMMC1A_ASID] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
+	[SDMMC2A_ASID] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
+	[SDMMC3A_ASID] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
+	[SDMMC4A_ASID] = {TEGRA_IOMMU_BASE, TEGRA_IOMMU_SIZE},
 };
 
 static void tegra_smmu_map_init(struct platform_device *pdev)
@@ -2357,6 +2370,14 @@ static int _tegra_smmu_get_asid(u64 swgids)
 {
 	if (swgids & SWGID(PPCS))
 		return SYSTEM_PROTECTED;
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC) || \
+	defined(CONFIG_ARCH_TEGRA_11x_SOC)
+	if (swgids & SWGID(PPCS1))
+		return PPCS1_ASID;
+#else
+	if (swgids & SWGID(PPCS1))
+		return SYSTEM_PROTECTED;
+#endif
 
 	if (swgids & SWGID(GPUB))
 		return SYSTEM_GK20A;
@@ -2371,6 +2392,14 @@ static int _tegra_smmu_get_asid(u64 swgids)
 		return SYSTEM_DC;
 	if (swgids & SWGID(DCB))
 		return SYSTEM_DCB;
+	if (swgids & SWGID(SDMMC1A))
+		return SDMMC1A_ASID;
+	if (swgids & SWGID(SDMMC2A))
+		return SDMMC2A_ASID;
+	if (swgids & SWGID(SDMMC3A))
+		return SDMMC3A_ASID;
+	if (swgids & SWGID(SDMMC4A))
+		return SDMMC4A_ASID;
 #endif
 
 	return SYSTEM_DEFAULT;
@@ -2810,11 +2839,24 @@ struct platform_device tegra_cec_device = {
 
 #ifdef CONFIG_ARCH_TEGRA_HAS_CL_DVFS
 static struct resource cl_dvfs_resource[] = {
+#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	[0] = {
 		.start	= TEGRA_CL_DVFS_BASE,
 		.end	= TEGRA_CL_DVFS_BASE + TEGRA_CL_DVFS_SIZE-1,
 		.flags	= IORESOURCE_MEM,
-	}
+	},
+#else
+	[0] = {
+		.start	= TEGRA_CLK13_RESET_BASE + 0x84,
+		.end	= TEGRA_CLK13_RESET_BASE + 0x84 + TEGRA_CL_DVFS_SIZE-1,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= TEGRA_CL_DVFS_BASE,
+		.end	= TEGRA_CL_DVFS_BASE + TEGRA_CL_DVFS_SIZE-1,
+		.flags	= IORESOURCE_MEM,
+	},
+#endif
 };
 
 struct platform_device tegra_cl_dvfs_device = {

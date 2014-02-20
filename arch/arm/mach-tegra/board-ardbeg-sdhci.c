@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-ardbeg-sdhci.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -27,6 +27,7 @@
 #include <linux/wl12xx.h>
 #include <linux/platform_data/mmc-sdhci-tegra.h>
 #include <linux/mfd/max77660/max77660-core.h>
+#include <linux/tegra-fuse.h>
 
 #include <asm/mach-types.h>
 #include <mach/irqs.h>
@@ -50,6 +51,7 @@ static unsigned int wifi_states[] = {ON, OFF};
 
 #define ARDBEG_SD_CD	TEGRA_GPIO_PV2
 #define ARDBEG_SD_WP	TEGRA_GPIO_PQ4
+#define FUSE_SOC_SPEEDO_0	0x134
 
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
@@ -58,11 +60,13 @@ static int ardbeg_wifi_status_register(void (*callback)(int , void *), void *);
 static int ardbeg_wifi_reset(int on);
 static int ardbeg_wifi_power(int on);
 static int ardbeg_wifi_set_carddetect(int val);
+static int ardbeg_wifi_get_mac_addr(unsigned char *buf);
 
 static struct wifi_platform_data ardbeg_wifi_control = {
 	.set_power	= ardbeg_wifi_power,
 	.set_reset	= ardbeg_wifi_reset,
 	.set_carddetect	= ardbeg_wifi_set_carddetect,
+	.get_mac_addr	= ardbeg_wifi_get_mac_addr,
 #if defined (CONFIG_BCMDHD_EDP_SUPPORT)
 	/* wifi edp client information */
 	.client_info	= {
@@ -185,6 +189,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 		MMC_UHS_MASK_SDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
+	.max_clk_limit = 136000000,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data2 = {
@@ -204,14 +209,14 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 	.power_gpio = -1,
 	.is_8bit = 1,
 	.tap_delay = 0x4,
-	.trim_delay = 0x4,
+	.trim_delay = 0x3,
 	.ddr_trim_delay = 0x0,
 	.mmc_data = {
 		.built_in = 1,
 		.ocr_mask = MMC_OCR_1V8_MASK,
 	},
 	.ddr_clk_limit = 51000000,
-	.max_clk_limit = 102000000,
+	.max_clk_limit = 200000000,
 	.calib_3v3_offsets = 0x0202,
 	.calib_1v8_offsets = 0x0202,
 };
@@ -284,6 +289,60 @@ static int ardbeg_wifi_reset(int on)
 	return 0;
 }
 
+#define ARDBEG_WIFI_MAC_ADDR_FILE	"/mnt/factory/wifi/wifi_mac.txt"
+
+static int ardbeg_wifi_get_mac_addr(unsigned char *buf)
+{
+	struct file *fp;
+	int rdlen;
+	char str[32];
+	int mac[6];
+	int ret = 0;
+
+	pr_debug("%s\n", __func__);
+
+	/* open wifi mac address file */
+	fp = filp_open(ARDBEG_WIFI_MAC_ADDR_FILE, O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+		pr_err("%s: cannot open %s\n",
+			__func__, ARDBEG_WIFI_MAC_ADDR_FILE);
+		return -ENOENT;
+	}
+
+	/* read wifi mac address file */
+	memset(str, 0, sizeof(str));
+	rdlen = kernel_read(fp, fp->f_pos, str, 17);
+	if (rdlen > 0)
+		fp->f_pos += rdlen;
+	if (rdlen != 17) {
+		pr_err("%s: bad mac address file"
+			" - len %d < 17",
+			__func__, rdlen);
+		ret = -ENOENT;
+	} else if (sscanf(str, "%x:%x:%x:%x:%x:%x",
+		&mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]) != 6) {
+		pr_err("%s: bad mac address file"
+			" - must contain xx:xx:xx:xx:xx:xx\n",
+			__func__);
+		ret = -ENOENT;
+	} else {
+		pr_info("%s: using wifi mac %02x:%02x:%02x:%02x:%02x:%02x\n",
+			__func__,
+			mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+		buf[0] = (unsigned char) mac[0];
+		buf[1] = (unsigned char) mac[1];
+		buf[2] = (unsigned char) mac[2];
+		buf[3] = (unsigned char) mac[3];
+		buf[4] = (unsigned char) mac[4];
+		buf[5] = (unsigned char) mac[5];
+	}
+
+	/* close wifi mac address file */
+	filp_close(fp, NULL);
+
+	return ret;
+}
+
 static int __init ardbeg_wifi_init(void)
 {
 	int rc;
@@ -327,7 +386,9 @@ static int __init ardbeg_wifi_prepower(void)
 	if (!of_machine_is_compatible("nvidia,ardbeg") &&
 		!of_machine_is_compatible("nvidia,laguna") &&
 		!of_machine_is_compatible("nvidia,ardbeg_sata") &&
-		!of_machine_is_compatible("nvidia,tn8"))
+		!of_machine_is_compatible("nvidia,tn8") &&
+		!of_machine_is_compatible("nvidia,norrin") &&
+		!of_machine_is_compatible("nvidia,bowmore"))
 		return 0;
 	ardbeg_wifi_power(1);
 
@@ -342,6 +403,7 @@ int __init ardbeg_sdhci_init(void)
 	int nominal_core_mv;
 	int min_vcore_override_mv;
 	int boot_vcore_mv;
+	u32 speedo;
 	struct board_info board_info;
 
 	nominal_core_mv =
@@ -372,12 +434,35 @@ int __init ardbeg_sdhci_init(void)
 		tegra_sdhci_platform_data2.wp_gpio = ARDBEG_SD_WP;
 
 	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_E1780) {
-		tegra_sdhci_platform_data3.max_clk_limit = 200000000;
+	if (board_info.board_id == BOARD_E1780)
 		tegra_sdhci_platform_data2.max_clk_limit = 204000000;
+
+	if (board_info.board_id == BOARD_P1761)
 		tegra_sdhci_platform_data0.max_clk_limit = 204000000;
-	} else {
+
+	if ((board_info.board_id == BOARD_E1781) ||
+		(board_info.board_id == BOARD_PM374) ||
+		(board_info.board_id == BOARD_PM359))
 		tegra_sdhci_platform_data3.uhs_mask = MMC_MASK_HS200;
+
+	if (board_info.board_id == BOARD_PM374 ||
+		board_info.board_id == BOARD_PM358 ||
+		board_info.board_id == BOARD_PM363 ||
+		board_info.board_id == BOARD_PM359)
+			tegra_sdhci_platform_data0.disable_clock_gate = 1;
+
+	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
+	tegra_sdhci_platform_data0.cpu_speedo = speedo;
+	tegra_sdhci_platform_data2.cpu_speedo = speedo;
+	tegra_sdhci_platform_data3.cpu_speedo = speedo;
+
+	if (board_info.board_id == BOARD_E1991 ||
+		board_info.board_id == BOARD_E1971) {
+			tegra_sdhci_platform_data0.uhs_mask =
+				MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_SDR50
+				| MMC_UHS_MASK_DDR50;
+			tegra_sdhci_platform_data2.uhs_mask =
+				MMC_UHS_MASK_SDR104 | MMC_UHS_MASK_SDR50;
 	}
 
 	platform_device_register(&tegra_sdhci_device3);

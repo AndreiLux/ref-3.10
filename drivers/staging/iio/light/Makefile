@@ -3,7 +3,7 @@
 #
 GCOV_PROFILE := y
 
-#ccflags-y := -Werror
+ccflags-y := -Werror
 
 obj-$(CONFIG_SENSORS_CM3218)	+= cm3218.o
 obj-$(CONFIG_SENSORS_ISL29018)	+= isl29018.o
@@ -18,3 +18,6 @@ obj-$(CONFIG_SENSORS_TCS3772)	+= tcs3772.o
 obj-$(CONFIG_SENSORS_TSL2563)	+= tsl2563.o
 obj-$(CONFIG_TSL2583)		+= tsl2583.o
 obj-$(CONFIG_SENSORS_CM3217)	+= cm3217.o
+obj-$(CONFIG_LS_SYSFS)	+= ls_sysfs.o
+obj-$(CONFIG_LS_OF)	+= ls_dt.o
+obj-$(CONFIG_SENSORS_IQS253)	+= iqs253.o

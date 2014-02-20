@@ -704,6 +704,7 @@ wlan_cmd_11n_addba_rspgen(mlan_private * priv,
 	win_size =
 		(padd_ba_rsp->block_ack_param_set & BLOCKACKPARAM_WINSIZE_MASK)
 		>> BLOCKACKPARAM_WINSIZE_POS;
+
 	if (win_size == 0)
 		padd_ba_rsp->status_code =
 			wlan_cpu_to_le16(ADDBA_RSP_STATUS_DECLINED);

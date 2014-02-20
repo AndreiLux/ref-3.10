@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-dalmore.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -78,6 +78,7 @@
 #include "pm.h"
 #include "common.h"
 #include "tegra-board-id.h"
+#include "tegra-of-dev-auxdata.h"
 
 static struct board_info board_info, display_board_info;
 
@@ -225,40 +226,6 @@ static __initdata struct tegra_clk_init_table dalmore_clk_init_table[] = {
 	{ NULL,		NULL,		0,		0},
 };
 
-#ifndef CONFIG_USE_OF
-static struct tegra_i2c_platform_data dalmore_i2c1_platform_data = {
-	.bus_clk_rate	= 100000,
-	.scl_gpio	= TEGRA_GPIO_I2C1_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C1_SDA,
-};
-
-static struct tegra_i2c_platform_data dalmore_i2c2_platform_data = {
-	.bus_clk_rate	= 100000,
-	.is_clkon_always = true,
-	.scl_gpio	= TEGRA_GPIO_I2C2_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C2_SDA,
-};
-
-static struct tegra_i2c_platform_data dalmore_i2c3_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C3_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C3_SDA,
-};
-
-static struct tegra_i2c_platform_data dalmore_i2c4_platform_data = {
-	.bus_clk_rate	= 10000,
-	.scl_gpio	= TEGRA_GPIO_I2C4_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C4_SDA,
-};
-
-static struct tegra_i2c_platform_data dalmore_i2c5_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C5_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C5_SDA,
-	.needs_cl_dvfs_clock = true,
-};
-#endif
-
 static struct i2c_board_info __initdata rt5640_board_info = {
 	I2C_BOARD_INFO("rt5640", 0x1c),
 };
@@ -276,19 +243,6 @@ static struct i2c_board_info __initdata nfc_board_info = {
 
 static void dalmore_i2c_init(void)
 {
-#ifndef CONFIG_USE_OF
-	tegra11_i2c_device1.dev.platform_data = &dalmore_i2c1_platform_data;
-	tegra11_i2c_device2.dev.platform_data = &dalmore_i2c2_platform_data;
-	tegra11_i2c_device3.dev.platform_data = &dalmore_i2c3_platform_data;
-	tegra11_i2c_device4.dev.platform_data = &dalmore_i2c4_platform_data;
-	tegra11_i2c_device5.dev.platform_data = &dalmore_i2c5_platform_data;
-
-	platform_device_register(&tegra11_i2c_device5);
-	platform_device_register(&tegra11_i2c_device4);
-	platform_device_register(&tegra11_i2c_device3);
-	platform_device_register(&tegra11_i2c_device2);
-	platform_device_register(&tegra11_i2c_device1);
-#endif
 	nfc_board_info.irq = gpio_to_irq(TEGRA_GPIO_PW2);
 	i2c_register_board_info(0, &nfc_board_info, 1);
 	i2c_register_board_info(0, &rt5640_board_info, 1);
@@ -612,29 +566,6 @@ static void dalmore_audio_init(void)
 	dalmore_audio_pdata.codec_dai_name = "rt5640-aif1";
 }
 
-#ifndef CONFIG_USE_OF
-static struct platform_device *dalmore_spi_devices[] __initdata = {
-        &tegra11_spi_device4,
-};
-
-static struct tegra_spi_platform_data dalmore_spi_pdata = {
-	.dma_req_sel		= 0,
-	.spi_max_frequency	= 25000000,
-	.clock_always_on	= false,
-};
-
-static void __init dalmore_spi_init(void)
-{
-	tegra11_spi_device4.dev.platform_data = &dalmore_spi_pdata;
-        platform_add_devices(dalmore_spi_devices,
-                                ARRAY_SIZE(dalmore_spi_devices));
-}
-#else
-static void __init dalmore_spi_init(void)
-{
-}
-#endif
-
 static __initdata struct tegra_clk_init_table touch_clk_init_table[] = {
 	/* name         parent          rate            enabled */
 	{ "extern2",    "pll_p",        41000000,       false},
@@ -709,28 +640,8 @@ struct of_dev_auxdata dalmore_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra114-tsec", TEGRA_TSEC_BASE, "tsec",
 				NULL),
 
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c000, "tegra11-i2c.0",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c400, "tegra11-i2c.1",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c500, "tegra11-i2c.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000c700, "tegra11-i2c.3",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-i2c", 0x7000d000, "tegra11-i2c.4",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d400, "spi-tegra114.0",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d600, "spi-tegra114.1",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000d800, "spi-tegra114.2",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000da00, "spi-tegra114.3",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000dc00, "spi-tegra114.4",
-				NULL),
-	OF_DEV_AUXDATA("nvidia,tegra114-spi", 0x7000de00, "spi-tegra114.5",
-				NULL),
+	T114_I2C_OF_DEV_AUXDATA,
+	T114_SPI_OF_DEV_AUXDATA,
 	OF_DEV_AUXDATA("nvidia,tegra114-apbdma", 0x6000a000, "tegra-apbdma",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-hsuart", 0x70006000, "serial-tegra.0",
@@ -741,6 +652,9 @@ struct of_dev_auxdata dalmore_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra114-xhci", 0x70090000, "tegra-xhci",
 				&xusb_pdata),
+	OF_DEV_AUXDATA("nvidia,tegra114-nvavp", 0x60001000, "nvavp",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
@@ -754,16 +668,12 @@ static void __init tegra_dalmore_early_init(void)
 
 static void __init tegra_dalmore_late_init(void)
 {
-	platform_device_register(&tegra114_pinctrl_device);
-	dalmore_pinmux_init();
 	dalmore_i2c_init();
-	dalmore_spi_init();
 	dalmore_usb_init();
 	dalmore_xusb_init();
 	dalmore_uart_init();
 	dalmore_audio_init();
 	platform_add_devices(dalmore_devices, ARRAY_SIZE(dalmore_devices));
-	//tegra_ram_console_debug_init();
 	tegra_io_dpd_init();
 	dalmore_regulator_init();
 	dalmore_sdhci_init();
@@ -794,11 +704,6 @@ static void __init tegra_dalmore_late_init(void)
 	tegra_register_fuse();
 }
 
-static void __init dalmore_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
-}
-
 static void __init tegra_dalmore_dt_init(void)
 {
 	tegra_get_board_info(&board_info);
@@ -821,7 +726,6 @@ static void __init tegra_dalmore_reserve(void)
 #else
 	tegra_reserve(SZ_512M, SZ_16M + SZ_2M, SZ_4M);
 #endif
-	dalmore_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const dalmore_dt_board_compat[] = {

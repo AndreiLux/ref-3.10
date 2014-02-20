@@ -1,7 +1,7 @@
 /*
  * ahci-tegra.c - AHCI SATA support for TEGRA AHCI device
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -372,7 +372,7 @@ struct tegra_ahci_host_priv {
 	struct clk		*clk_sata;
 	struct clk		*clk_sata_oob;
 	struct clk		*clk_pllp;
-	struct clk	*clk_cml1;
+	struct clk		*clk_cml1;
 	enum clk_gate_state	clk_state;
 };
 
@@ -2154,7 +2154,7 @@ static bool tegra_ahci_pad_suspend(struct ata_host *host)
 	tegra_ahci_put_sata_in_iddq();
 
 	val = clk_readl(CLK_RST_SATA_PLL_CFG0_REG);
-	val &= ~(SATA_SEQ_PADPLL_PD_INPUT_VALUE |
+	val |= (SATA_SEQ_PADPLL_PD_INPUT_VALUE |
 		SATA_SEQ_LANE_PD_INPUT_VALUE | SATA_SEQ_RESET_INPUT_VALUE);
 	clk_writel(val, CLK_RST_SATA_PLL_CFG0_REG);
 
@@ -2172,7 +2172,7 @@ static bool tegra_ahci_pad_resume(struct ata_host *host)
 	tegra_hpriv = (struct tegra_ahci_host_priv *)host->private_data;
 
 	val = clk_readl(CLK_RST_SATA_PLL_CFG0_REG);
-	val |= (SATA_SEQ_PADPLL_PD_INPUT_VALUE |
+	val &= ~(SATA_SEQ_PADPLL_PD_INPUT_VALUE |
 		SATA_SEQ_LANE_PD_INPUT_VALUE | SATA_SEQ_RESET_INPUT_VALUE);
 	clk_writel(val, CLK_RST_SATA_PLL_CFG0_REG);
 
@@ -2275,7 +2275,6 @@ static int tegra_ahci_queue_one_qc(struct tegra_ahci_host_priv *tegra_hpriv,
 	}
 	qc_list->qc = qc;
 	list_add_tail(&(qc_list->list), &(tegra_hpriv->qc_list));
-	dev_dbg(tegra_hpriv->dev, "queuing qc=%x\n", (unsigned int)qc);
 	return 0;
 }
 
@@ -2289,7 +2288,6 @@ static void tegra_ahci_dequeue_qcs(struct tegra_ahci_host_priv *tegra_hpriv)
 	list_for_each_safe(list, next, &tegra_hpriv->qc_list) {
 		qc_list = list_entry(list, struct tegra_qc_list, list);
 		qc = qc_list->qc;
-		dev_dbg(tegra_hpriv->dev, "dequeue qc=%x\n", (unsigned int)qc);
 		ahci_ops.qc_issue(qc);
 		list_del(list);
 		kfree(qc_list);
@@ -2709,7 +2707,8 @@ static int __init tegra_ahci_dump_debuginit(void)
 	(void) debugfs_create_file("tegra_ahci", S_IRUGO,
 				   NULL, NULL, &debug_fops);
 #ifdef	CONFIG_TEGRA_SATA_IDLE_POWERGATE
-	(void) debugfs_create_u32("tegra_ahci_idle_ms", S_IRWXUGO,
+	(void) debugfs_create_u32("tegra_ahci_idle_ms", S_IRUGO | S_IXUGO
+					| S_IWUSR | S_IWGRP,
 				   NULL, &tegra_ahci_idle_time);
 #endif
 	return 0;

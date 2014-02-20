@@ -5,7 +5,7 @@
  *  Driver interface functions and type declarations for the 11n module
  *    implemented in mlan_11n.c.
  *
- *  (C) Copyright 2008-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2008-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -109,6 +109,8 @@ void wlan_11n_delete_bastream(mlan_private * priv, t_u8 * del_ba);
 int wlan_get_rxreorder_tbl(mlan_private * priv, rx_reorder_tbl * buf);
 /** get tx ba stream table */
 int wlan_get_txbastream_tbl(mlan_private * priv, tx_ba_stream_tbl * buf);
+/** send delba */
+void wlan_11n_delba(mlan_private * priv, int tid);
 /** Minimum number of AMSDU */
 #define MIN_NUM_AMSDU 2
 /** AMSDU Aggr control cmd resp */

@@ -2,7 +2,7 @@
  * arch/arm/mach-tegra/common.c
  *
  * Copyright (C) 2010 Google, Inc.
- * Copyright (C) 2010-2013 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2010-2014 NVIDIA Corporation. All rights reserved.
  *
  * Author:
  *	Colin Cross <ccross@android.com>
@@ -30,6 +30,7 @@
 #include <linux/bitops.h>
 #include <linux/sched.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_fdt.h>
 #include <linux/pstore_ram.h>
 #include <linux/dma-mapping.h>
@@ -47,7 +48,8 @@
 #include <linux/tegra-fuse.h>
 
 #ifdef CONFIG_ARM64
-#include <linux/irqchip/gic.h>
+#include <linux/irqchip/arm-gic.h>
+#include <asm/system_info.h>
 #else
 #include <asm/system.h>
 #include <asm/hardware/cache-l2x0.h>
@@ -56,6 +58,7 @@
 
 #include <mach/tegra_smmu.h>
 #include <mach/nct.h>
+#include <mach/dc.h>
 
 #include "apbio.h"
 #include "board.h"
@@ -111,8 +114,11 @@
 #define   ADDR_BNDRY(x)	(((x) & 0xf) << 21)
 #define   INACTIVITY_TIMEOUT(x)	(((x) & 0xffff) << 0)
 
-phys_addr_t tegra_avp_kernel_start;
-phys_addr_t tegra_avp_kernel_size;
+#ifdef CONFIG_PSTORE_RAM
+#define RAMOOPS_MEM_SIZE SZ_2M
+#define FTRACE_MEM_SIZE SZ_1M
+#endif
+
 phys_addr_t tegra_bootloader_fb_start;
 phys_addr_t tegra_bootloader_fb_size;
 phys_addr_t tegra_bootloader_fb2_start;
@@ -181,7 +187,11 @@ u32 notrace tegra_read_cycle(void)
 {
 	u32 cycle_count;
 
+#ifdef CONFIG_ARM64
+	asm volatile("mrs %0, pmccntr_el0" : "=r"(cycle_count));
+#else
 	asm volatile("mrc p15, 0, %0, c9, c13, 0" : "=r"(cycle_count));
+#endif
 
 	return cycle_count;
 }
@@ -373,7 +383,7 @@ static __initdata struct tegra_clk_init_table tegra11x_cbus_init_table[] = {
 static __initdata struct tegra_clk_init_table tegra12x_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "clk_m",	NULL,		0,		true },
-	{ "emc",	NULL,		0,		true },
+	{ "mc",		NULL,		0,		true },
 	{ "cpu",	NULL,		0,		true },
 	{ "kfuse",	NULL,		0,		true },
 	{ "fuse",	NULL,		0,		true },
@@ -458,6 +468,7 @@ static __initdata struct tegra_clk_init_table tegra12x_clk_init_table[] = {
 	{ "sbc6.sclk",	NULL,		40000000,	false},
 	{ "cpu.mselect", NULL,		102000000,	true},
 	{ "gpu_ref",	NULL,		0,		true},
+	{ "gk20a.gbus",	NULL,		252000000,	false},
 #ifdef CONFIG_TEGRA_PLLM_SCALED
 	{ "vi",		"pll_p",	0,		false},
 	{ "isp",	"pll_p",	0,		false},
@@ -880,7 +891,6 @@ void __init tegra20_init_early(void)
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 #endif
 #ifdef CONFIG_ARCH_TEGRA_3x_SOC
@@ -927,7 +937,6 @@ void __init tegra30_init_early(void)
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
-	tegra_ram_console_debug_reserve(SZ_1M);
 
 	init_dma_coherent_pool_size(SZ_1M);
 }
@@ -977,13 +986,19 @@ void __init tegra12x_init_early(void)
 	tegra_init_fuse();
 	tegra_ramrepair_init();
 	tegra12x_init_clocks();
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+	tegra13x_init_dvfs();
+#else
 	tegra12x_init_dvfs();
+#endif
 	tegra_common_init_clock();
 	tegra_clk_init_from_table(tegra12x_clk_init_table);
 	tegra_clk_init_cbus_plls_from_table(tegra12x_cbus_init_table);
 	tegra_pmc_init();
 	tegra_powergate_init();
+#ifndef CONFIG_ARM64
 	tegra30_hotplug_init();
+#endif
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
@@ -1023,7 +1038,6 @@ void __init tegra14x_init_early(void)
 	tegra_init_power();
 	tegra_init_ahb_gizmo_settings();
 	tegra_init_debug_uart_rate();
-	tegra_ram_console_debug_reserve(SZ_1M);
 }
 #endif
 static int __init tegra_lp0_vec_arg(char *options)
@@ -1478,24 +1492,11 @@ void tegra_get_board_info(struct board_info *bi)
 			pr_err("failed to read /chosen/board_info/minor_revision\n");
 		else
 			bi->minor_revision = prop_val;
-#ifndef CONFIG_ARM64
 		system_serial_high = (bi->board_id << 16) | bi->sku;
 		system_serial_low = (bi->fab << 24) |
 			(bi->major_revision << 16) | (bi->minor_revision << 8);
-#endif
 	} else {
 #endif
-#ifdef CONFIG_ARM64
-		/* FIXME:
-		 * use dummy values for now as system_serial_high/low
-		 * are gone in arm64.
-		 */
-		bi->board_id = 0xDEAD;
-		bi->sku = 0xDEAD;
-		bi->fab = 0xDD;
-		bi->major_revision = 0xDD;
-		bi->minor_revision = 0xDD;
-#else
 		if (system_serial_high || system_serial_low) {
 			bi->board_id = (system_serial_high >> 16) & 0xFFFF;
 			bi->sku = (system_serial_high) & 0xFFFF;
@@ -1505,11 +1506,25 @@ void tegra_get_board_info(struct board_info *bi)
 		} else {
 			memcpy(bi, &main_board_info, sizeof(struct board_info));
 		}
-#endif
 #ifdef CONFIG_OF
 	}
 #endif
 }
+
+#ifdef CONFIG_OF
+void find_dc_node(struct device_node **dc1_node,
+		struct device_node **dc2_node) {
+	*dc1_node =
+		of_find_node_by_path("/host1x/dc@54200000");
+	*dc2_node =
+		of_find_node_by_path("/host1x/dc@54240000");
+}
+#else
+void find_dc_node(struct device_node *dc1_node,
+		struct device_node *dc2_node) {
+	return;
+}
+#endif
 
 static int __init tegra_main_board_info(char *info)
 {
@@ -1819,32 +1834,43 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 	iounmap(to_io);
 }
 
+#ifdef CONFIG_PSTORE_RAM
+static struct ramoops_platform_data ramoops_data;
+
+static struct platform_device ramoops_dev  = {
+	.name = "ramoops",
+	.dev = {
+		.platform_data = &ramoops_data,
+	},
+};
+
+
+static void __init tegra_reserve_ramoops_memory(unsigned long reserve_size)
+{
+	ramoops_data.mem_size = reserve_size;
+	ramoops_data.mem_address = memblock_end_of_4G() - reserve_size;
+	ramoops_data.console_size = reserve_size - FTRACE_MEM_SIZE;
+	ramoops_data.ftrace_size = FTRACE_MEM_SIZE;
+	ramoops_data.dump_oops = 1;
+	memblock_reserve(ramoops_data.mem_address, ramoops_data.mem_size);
+}
+
+static int __init tegra_register_ramoops_device(void)
+{
+	int ret = platform_device_register(&ramoops_dev);
+	if (ret) {
+		pr_info("Unable to register ramoops platform device\n");
+		return ret;
+	}
+	return ret;
+}
+core_initcall(tegra_register_ramoops_device);
+#endif
+
 void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 	unsigned long fb2_size)
 {
-	const size_t avp_kernel_reserve = SZ_32M;
 	struct iommu_linear_map map[4];
-
-#if !defined(CONFIG_TEGRA_AVP_KERNEL_ON_MMU) /* Tegra2 with AVP MMU */ && \
-	!defined(CONFIG_TEGRA_AVP_KERNEL_ON_SMMU) /* Tegra3 & up with SMMU */
-	/* Reserve hardcoded AVP kernel load area starting at 0xXe000000*/
-	tegra_avp_kernel_size = SECTION_SIZE;
-
-	/*
-	 * Place the AVP kernel below the 4 GB physical address limit because
-	 * AVP is a 32 bit processor.
-	 */
-	BUG_ON(memblock_end_of_4G() == 0);
-	tegra_avp_kernel_start = memblock_end_of_4G() - avp_kernel_reserve;
-
-	if (memblock_remove(tegra_avp_kernel_start, avp_kernel_reserve)) {
-		pr_err("Failed to remove AVP kernel load area %08lx@%08llx "
-				"from memory map\n",
-			(unsigned long)avp_kernel_reserve,
-			(u64)tegra_avp_kernel_start);
-		tegra_avp_kernel_size = 0;
-	}
-#endif
 
 #ifndef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	if (carveout_size) {
@@ -2091,23 +2117,6 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 		(u64)(tegra_tsec_size ?
 			tegra_tsec_start + tegra_tsec_size - 1 : 0));
 
-	if (tegra_avp_kernel_size) {
-		/* Return excessive memory reserved for AVP kernel */
-		if (tegra_avp_kernel_size < avp_kernel_reserve)
-			memblock_add(
-				tegra_avp_kernel_start + tegra_avp_kernel_size,
-				avp_kernel_reserve - tegra_avp_kernel_size);
-		/* The AVP kernel should be loaded below the 4 GB physical
-		   address limit. */
-		BUG_ON((u64)(tegra_avp_kernel_start) +
-			(u64)(tegra_avp_kernel_size) - (u64)(1) >=
-			(u64)(SZ_2G)*(u64)(2));
-		pr_info(
-		"AVP kernel: %08llx - %08llx\n",
-			(u64)tegra_avp_kernel_start,
-			(u64)(tegra_avp_kernel_start +
-				tegra_avp_kernel_size - 1));
-	}
 
 #ifdef CONFIG_TEGRA_NVDUMPER
 	if (nvdumper_reserved) {
@@ -2149,37 +2158,26 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 #endif
 
 	tegra_fb_linear_set(map);
-}
-
-#if defined(CONFIG_PSTORE_RAM) && defined(CONFIG_PSTORE_CONSOLE)
-static struct ramoops_platform_data ramoops_data;
-
-static struct platform_device ramoops_dev = {
-	.name = "ramoops",
-	.dev = {
-		.platform_data = &ramoops_data,
-	},
-};
-
-void __init tegra_ram_console_debug_reserve(unsigned long ram_console_size)
-{
-	if (memblock_reserve(memblock_end_of_DRAM() - ram_console_size,
-			     ram_console_size)) {
-		pr_err("Failed to reserve memory block for ram console\n");
-		return;
-	}
-
-	ramoops_data.mem_address = memblock_end_of_DRAM() - ram_console_size;
-	ramoops_data.mem_size = ram_console_size;
-	ramoops_data.console_size = ram_console_size;
-}
-
-void __init tegra_ram_console_init()
-{
-	if (ramoops_data.mem_size)
-		platform_device_register(&ramoops_dev);
-}
+#ifdef CONFIG_PSTORE_RAM
+	tegra_reserve_ramoops_memory(RAMOOPS_MEM_SIZE);
 #endif
+}
+
+void tegra_get_fb_resource(struct resource *fb_res)
+{
+	fb_res->start = (resource_size_t) tegra_fb_start;
+	fb_res->end = fb_res->start +
+			(resource_size_t) tegra_fb_size - 1;
+}
+
+void tegra_get_fb2_resource(struct resource *fb2_res)
+{
+	fb2_res->start = (resource_size_t) tegra_fb2_start;
+	fb2_res->end = fb2_res->start +
+			(resource_size_t) tegra_fb2_size - 1;
+}
+
+
 
 int __init tegra_register_fuse(void)
 {
@@ -2208,22 +2206,6 @@ int __init tegra_release_bootloader_fb(void)
 	return 0;
 }
 late_initcall(tegra_release_bootloader_fb);
-
-static struct platform_device *pinmux_devices[] = {
-	&tegra_gpio_device,
-#if defined(CONFIG_ARCH_TEGRA_11x_SOC)
-	&tegra114_pinctrl_device,
-#elif defined(CONFIG_ARCH_TEGRA_12x_SOC)
-	&tegra124_pinctrl_device,
-#else
-	&tegra124_pinctrl_device,
-#endif
-};
-
-void tegra_enable_pinmux(void)
-{
-	platform_add_devices(pinmux_devices, ARRAY_SIZE(pinmux_devices));
-}
 
 static const char *tegra_revision_name[TEGRA_REVISION_MAX] = {
 	[TEGRA_REVISION_UNKNOWN] = "unknown",
@@ -2258,6 +2240,9 @@ static const char * __init tegra_get_family(void)
 		break;
 	case TEGRA_CHIPID_TEGRA12:
 		cid = 12;
+		break;
+	case TEGRA_CHIPID_TEGRA13:
+		cid = 13;
 		break;
 	case TEGRA_CHIPID_TEGRA14:
 		cid = 14;
@@ -2399,7 +2384,7 @@ static struct platform_device tegra_smsc911x_device = {
 
 static int __init enet_smsc911x_init(void)
 {
-	if (!tegra_cpu_is_dsim())
+	if (!tegra_cpu_is_dsim() && !tegra_platform_is_qt())
 		platform_device_register(&tegra_smsc911x_device);
 	return 0;
 }

@@ -32,6 +32,7 @@
 #include <sound/pcm.h>
 
 struct snd_compr_ops;
+struct snd_pcm_substream;
 
 /**
  * struct snd_compr_runtime: runtime stream description
@@ -59,6 +60,7 @@ struct snd_compr_runtime {
 	u64 total_bytes_available;
 	u64 total_bytes_transferred;
 	wait_queue_head_t sleep;
+	struct snd_pcm_substream *fe_substream;
 	void *private_data;
 };
 
@@ -168,6 +170,15 @@ int snd_compress_new(struct snd_card *card, int device,
  */
 static inline void snd_compr_fragment_elapsed(struct snd_compr_stream *stream)
 {
+	wake_up(&stream->runtime->sleep);
+}
+
+static inline void snd_compr_drain_notify(struct snd_compr_stream *stream)
+{
+	if (snd_BUG_ON(!stream))
+		return;
+
+	stream->runtime->state = SNDRV_PCM_STATE_SETUP;
 	wake_up(&stream->runtime->sleep);
 }
 

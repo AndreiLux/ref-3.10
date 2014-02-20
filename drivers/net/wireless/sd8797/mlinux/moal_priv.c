@@ -115,7 +115,7 @@ woal_associate_ssid_bssid(moal_private * priv, struct iwreq *wrq)
 		} else {
 			if (mac_idx < ETH_ALEN)
 				ssid_bssid.bssid[mac_idx] =
-					(t_u8) woal_atox((char *)buf + (int)i);
+					(t_u8) woal_atox(buf + i);
 
 			while ((isxdigit(buf[i + 1]) && (i < buflen))) {
 				/* Skip entire hex value */
@@ -3486,7 +3486,7 @@ woal_passphrase(moal_private * priv, struct iwreq *wrq)
 			       sec->param.passphrase.ssid.ssid,
 			       (int)sec->param.passphrase.ssid.ssid_len);
 		} else if (!strnicmp(opt, "bssid", strlen(opt))) {
-			woal_mac2u8((t_u8 *) sec->param.passphrase.bssid, end);
+			woal_mac2u8(sec->param.passphrase.bssid, end);
 		} else if (!strnicmp(opt, "psk", strlen(opt)) &&
 			   req->action == MLAN_ACT_SET) {
 			if (strlen(end) != MLAN_PMK_HEXSTR_LENGTH) {
@@ -3715,7 +3715,7 @@ woal_adhoc_aes_ioctl(moal_private * priv, struct iwreq *wrq)
 				tmp += sprintf((char *)tmp, "%02x", key_hex[i]);
 		} else if (data_length >= 2) {
 			/* Parse the buf to get the cmd_action */
-			action = woal_atox((char *)buf);
+			action = woal_atox(buf);
 			if (action < 1 || action > 2) {
 				PRINTM(MERROR, "Invalid action argument %d\n",
 				       action);

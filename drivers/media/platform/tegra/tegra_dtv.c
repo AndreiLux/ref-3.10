@@ -3,7 +3,7 @@
  *
  * Author: Adam Jiang <chaoj@nvidia.com>
  *
- * Copyright (c) 2011-2013, NVIDIA Corporation. All Rights Reserved.
+ * Copyright (c) 2011-2014, NVIDIA Corporation. All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
@@ -447,12 +447,12 @@ static long tegra_dtv_ioctl(struct file *file, unsigned int cmd,
 	/* process may sleep on this */
 	mutex_lock(&s->mtx);
 
-	switch (cmd) {
-	case TEGRA_DTV_IOCTL_START:
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(TEGRA_DTV_IOCTL_START):
 		pr_debug("%s: run serial ts handling.\n", __func__);
 		s->stopped = false;
 		break;
-	case TEGRA_DTV_IOCTL_STOP:
+	case _IOC_NR(TEGRA_DTV_IOCTL_STOP):
 		pr_debug("%s: stop serial ts handling.\n", __func__);
 		if (s->xferring) {
 			stop_xfer_unsafe(s);
@@ -461,7 +461,7 @@ static long tegra_dtv_ioctl(struct file *file, unsigned int cmd,
 			s->stopped = true;
 		}
 		break;
-	case TEGRA_DTV_IOCTL_SET_HW_CONFIG:
+	case _IOC_NR(TEGRA_DTV_IOCTL_SET_HW_CONFIG):
 	{
 		struct tegra_dtv_hw_config cfg;
 
@@ -481,7 +481,7 @@ static long tegra_dtv_ioctl(struct file *file, unsigned int cmd,
 		_dtv_set_hw_params(dtv_ctx);
 		break;
 	}
-	case TEGRA_DTV_IOCTL_GET_HW_CONFIG:
+	case _IOC_NR(TEGRA_DTV_IOCTL_GET_HW_CONFIG):
 	{
 		struct tegra_dtv_hw_config cfg;
 
@@ -492,14 +492,14 @@ static long tegra_dtv_ioctl(struct file *file, unsigned int cmd,
 			ret = -EFAULT;
 		break;
 	}
-	case TEGRA_DTV_IOCTL_GET_PROFILE:
+	case _IOC_NR(TEGRA_DTV_IOCTL_GET_PROFILE):
 	{
 		if (copy_to_user((void __user *) arg, &dtv_ctx->profile,
 				 sizeof(struct tegra_dtv_profile)))
 			ret = -EFAULT;
 		break;
 	}
-	case TEGRA_DTV_IOCTL_SET_PROFILE:
+	case _IOC_NR(TEGRA_DTV_IOCTL_SET_PROFILE):
 	{
 		struct tegra_dtv_profile profile;
 
@@ -742,7 +742,6 @@ static int tegra_dtv_open(struct inode *inode, struct file *file)
 		dev_err(&pdev->dev, "cannot enable clk for tegra_dtv.\n");
 		return -ENOSYS;
 	}
-	dtv_ctx->clk_enabled = 1;
 
 	if (clk_enable(dtv_ctx->sclk) < 0) {
 		dev_err(&pdev->dev, "cannot enable SBus clock.\n");
@@ -754,6 +753,7 @@ static int tegra_dtv_open(struct inode *inode, struct file *file)
 		clk_disable(dtv_ctx->sclk);
 		return -ENOSYS;
 	}
+	dtv_ctx->clk_enabled = 1;
 
 	dtv_ctx = (struct tegra_dtv_context *) file->private_data;
 
@@ -802,6 +802,8 @@ static int tegra_dtv_release(struct inode *inode, struct file *file)
 
 	clk_disable(dtv_ctx->sclk);
 	clk_disable(dtv_ctx->emc_clk);
+	clk_disable_unprepare(dtv_ctx->clk);
+	dtv_ctx->clk_enabled = 0;
 
 	/* wakeup any pending process */
 	wakeup_suspend(&dtv_ctx->stream);
@@ -817,6 +819,9 @@ static const struct file_operations tegra_dtv_fops = {
 	.open = tegra_dtv_open,
 	.read = tegra_dtv_read,
 	.unlocked_ioctl = tegra_dtv_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = tegra_dtv_ioctl,
+#endif
 	.release = tegra_dtv_release,
 };
 
@@ -824,6 +829,20 @@ static const struct file_operations tegra_dtv_fops = {
 static int dtv_reg_show(struct seq_file *s, void *unused)
 {
 	struct tegra_dtv_context *dtv_ctx = s->private;
+	int ret;
+	bool clk_enabled = false;
+
+	if (!dtv_ctx->clk_enabled) {
+		ret = clk_prepare_enable(dtv_ctx->clk);
+		if (ret < 0) {
+			dev_err(&dtv_ctx->pdev->dev,
+				"cannot enable clk for tegra_dtv.\n");
+			return -ENOSYS;
+		}
+		dtv_ctx->clk_enabled = 1;
+	} else {
+		clk_enabled = true;
+	}
 
 	seq_printf(s, "tegra_dtv register list\n");
 	seq_printf(s, "-------------------------------\n");
@@ -835,6 +854,11 @@ static int dtv_reg_show(struct seq_file *s, void *unused)
 		   tegra_dtv_readl(dtv_ctx, DTV_CTRL));
 	seq_printf(s, "DTV_STATUS:        0x%08x\n",
 		   tegra_dtv_readl(dtv_ctx, DTV_STATUS));
+
+	if (!clk_enabled) {
+		clk_disable_unprepare(dtv_ctx->clk);
+		dtv_ctx->clk_enabled = 0;
+	}
 
 	return 0;
 
@@ -909,7 +933,6 @@ static void tear_down_dma(struct tegra_dtv_context *dtv_ctx)
 	int i;
 	struct dtv_buffer *buf;
 	struct dtv_stream *stream = &dtv_ctx->stream;
-	struct device *dev = &dtv_ctx->pdev->dev;
 
 	pr_debug("%s called\n", __func__);
 
@@ -1230,8 +1253,6 @@ static int tegra_dtv_remove(struct platform_device *pdev)
 	pm_qos_remove_request(&dtv_ctx->min_cpufreq);
 	pm_qos_remove_request(&dtv_ctx->cpudma_lat);
 
-	clk_put(dtv_ctx->clk);
-
 	misc_deregister(&dtv_ctx->miscdev);
 
 	return 0;
@@ -1258,8 +1279,11 @@ static int tegra_dtv_suspend(struct platform_device *pdev, pm_message_t state)
 	wakeup_suspend(&dtv_ctx->stream);
 	mutex_unlock(&dtv_ctx->stream.mtx);
 
-	if (dtv_ctx->clk_enabled)
+	if (dtv_ctx->clk_enabled) {
 		clk_disable_unprepare(dtv_ctx->clk);
+		clk_disable(dtv_ctx->sclk);
+		clk_disable(dtv_ctx->emc_clk);
+	}
 
 	return 0;
 }
@@ -1271,8 +1295,11 @@ static int tegra_dtv_resume(struct platform_device *pdev)
 	pr_info("%s: resume dtv.\n", __func__);
 
 	dtv_ctx = platform_get_drvdata(pdev);
-	if (dtv_ctx->clk_enabled)
+	if (dtv_ctx->clk_enabled) {
 		clk_prepare_enable(dtv_ctx->clk);
+		clk_enable(dtv_ctx->sclk);
+		clk_enable(dtv_ctx->emc_clk);
+	}
 
 	return 0;
 }

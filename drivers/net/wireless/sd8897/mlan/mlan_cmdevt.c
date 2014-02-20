@@ -3,7 +3,7 @@
  *
  *  @brief This file contains the handling of CMD/EVENT in MLAN
  *
- *  (C) Copyright 2009-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2009-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -194,6 +194,10 @@ wlan_dump_info(mlan_adapter * pmadapter, t_u8 reason)
 	PRINTM(MERROR, "mlan_processing =%d\n", pmadapter->mlan_processing);
 	PRINTM(MERROR, "mlan_rx_processing =%d\n",
 	       pmadapter->mlan_rx_processing);
+	PRINTM(MERROR, "rx_pkts_queued=%d\n",
+	       util_scalar_read(pmadapter->pmoal_handle,
+				&pmadapter->rx_pkts_queued, MNULL, MNULL));
+
 	PRINTM(MERROR, "more_task_flag = %d\n", pmadapter->more_task_flag);
 	PRINTM(MERROR, "num_cmd_timeout = %d\n",
 	       pmadapter->dbg.num_cmd_timeout);
@@ -1654,15 +1658,9 @@ wlan_process_cmdresp(mlan_adapter * pmadapter)
 	    (pmadapter->last_init_cmd == cmdresp_no)) {
 		i = pmpriv->bss_index + 1;
 		while (i < pmadapter->priv_num &&
-		       !(pmpriv_next = pmadapter->priv[i]))
+		       (!(pmpriv_next = pmadapter->priv[i])
+			|| pmpriv_next->bss_virtual))
 			i++;
-		if (pmpriv_next && pmpriv_next->bss_virtual) {
-			i = pmpriv_next->bss_index + 1;
-	    /** skip virtual interface */
-			while (i < pmadapter->priv_num &&
-			       !(pmpriv_next = pmadapter->priv[i]))
-				i++;
-		}
 		if (!pmpriv_next || i >= pmadapter->priv_num) {
 #if defined(STA_SUPPORT)
 			if (pmadapter->pwarm_reset_ioctl_req) {

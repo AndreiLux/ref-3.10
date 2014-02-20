@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -55,6 +55,7 @@
 #define BQ27441_TEMPERATURE		0x02
 #define BQ27441_VOLTAGE			0x04
 #define BQ27441_FLAGS			0x06
+#define BQ27441_FLAGS_ITPOR		(1 << 5)
 #define BQ27441_NOMINAL_AVAIL_CAPACITY	0x08
 #define BQ27441_FULL_AVAIL_CAPACITY	0x0a
 #define BQ27441_REMAINING_CAPACITY	0x0c
@@ -126,7 +127,7 @@ static const struct regmap_config bq27441_regmap_config = {
 	.max_register		= BQ27441_MAX_REGS,
 };
 
-static u16 bq27441_read_word(struct i2c_client *client, u8 reg)
+static int bq27441_read_word(struct i2c_client *client, u8 reg)
 {
 	int ret;
 	u16 val;
@@ -150,7 +151,7 @@ static u16 bq27441_read_word(struct i2c_client *client, u8 reg)
 	return val;
 }
 
-static u8 bq27441_read_byte(struct i2c_client *client, u8 reg)
+static int bq27441_read_byte(struct i2c_client *client, u8 reg)
 {
 	int ret;
 	u8 val;
@@ -260,9 +261,16 @@ static int bq27441_initialize(struct bq27441_chip *chip)
 	int old_terminate_voltage_msb;
 	int old_v_chg_term_msb;
 	int old_v_chg_term_lsb;
+	int flags_lsb;
 
 	unsigned long timeout = jiffies + HZ;
 	int ret;
+
+	flags_lsb = bq27441_read_byte(client, BQ27441_FLAGS);
+	if (!(flags_lsb & BQ27441_FLAGS_ITPOR)) {
+		dev_info(&chip->client->dev, "FG is already programmed\n");
+		return 0;
+	}
 
 	ret = bq27441_write_byte(client, BQ27441_CONTROL_1, 0x00);
 	if (ret < 0)
@@ -455,16 +463,17 @@ fail:
 	return -EIO;
 }
 
-static int bq27441_get_temperature(struct bq27441_chip *chip)
+static int bq27441_get_temperature(void)
 {
 	int val;
 
-	val = bq27441_read_word(chip->client, BQ27441_TEMPERATURE);
+	val = bq27441_read_word(bq27441_data->client, BQ27441_TEMPERATURE);
 	if (val < 0) {
-		dev_err(&chip->client->dev, "%s: err %d\n", __func__, val);
+		dev_err(&bq27441_data->client->dev, "%s: err %d\n", __func__,
+				val);
 		return -EINVAL;
 	}
-	return val;
+	return val / 100;
 }
 
 static enum power_supply_property bq27441_battery_props[] = {
@@ -494,6 +503,7 @@ static int bq27441_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
 		val->intval = chip->vcell;
+		battery_gauge_record_voltage_value(chip->bg_dev, chip->vcell);
 		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = chip->soc;
@@ -506,6 +516,7 @@ static int bq27441_get_property(struct power_supply *psy,
 		if (chip->soc == 5)
 			dev_warn(&chip->client->dev,
 			"\nSystem Running low on battery - 5 percent\n");
+		battery_gauge_record_capacity_value(chip->bg_dev, chip->soc);
 		break;
 	case POWER_SUPPLY_PROP_HEALTH:
 		val->intval = chip->health;
@@ -514,8 +525,8 @@ static int bq27441_get_property(struct power_supply *psy,
 		val->intval = chip->capacity_level;
 		break;
 	case POWER_SUPPLY_PROP_TEMP:
-		temperature = bq27441_get_temperature(chip);
-		val->intval = temperature / 10;
+		temperature = bq27441_get_temperature();
+		val->intval = temperature;
 		break;
 	default:
 		return -EINVAL;
@@ -548,12 +559,41 @@ static int bq27441_update_battery_status(struct battery_gauge_dev *bg_dev,
 
 static struct battery_gauge_ops bq27441_bg_ops = {
 	.update_battery_status = bq27441_update_battery_status,
+	.get_battery_temp = bq27441_get_temperature,
 };
 
 static struct battery_gauge_info bq27441_bgi = {
 	.cell_id = 0,
 	.bg_ops = &bq27441_bg_ops,
 };
+
+static void of_bq27441_parse_platform_data(struct i2c_client *client,
+				struct bq27441_platform_data *pdata)
+{
+	u32 tmp;
+	char const *pstr;
+	struct device_node *np = client->dev.of_node;
+
+	if (!of_property_read_u32(np, "ti,design-capacity", &tmp))
+		pdata->full_capacity = (unsigned long)tmp;
+
+	if (!of_property_read_u32(np, "ti,design-energy", &tmp))
+		pdata->full_energy = (unsigned long)tmp;
+
+	if (!of_property_read_u32(np, "ti,taper-rate", &tmp))
+		pdata->taper_rate = (unsigned long)tmp;
+
+	if (!of_property_read_u32(np, "ti,terminate-voltage", &tmp))
+		pdata->terminate_voltage = (unsigned long)tmp;
+
+	if (!of_property_read_u32(np, "ti,v-at-chg-term", &tmp))
+		pdata->v_at_chg_term = (unsigned long)tmp;
+
+	if (!of_property_read_string(np, "ti,tz-name", &pstr))
+		pdata->tz_name = pstr;
+	else
+		dev_err(&client->dev, "Failed to read tz-name\n");
+}
 
 static int bq27441_probe(struct i2c_client *client,
 			  const struct i2c_device_id *id)
@@ -567,7 +607,16 @@ static int bq27441_probe(struct i2c_client *client,
 
 	chip->client = client;
 
-	chip->pdata = client->dev.platform_data;
+	if (client->dev.of_node) {
+		chip->pdata = devm_kzalloc(&client->dev,
+					sizeof(*chip->pdata), GFP_KERNEL);
+		if (!chip->pdata)
+			return -ENOMEM;
+		of_bq27441_parse_platform_data(client, chip->pdata);
+	} else {
+		chip->pdata = client->dev.platform_data;
+	}
+
 	if (!chip->pdata)
 		return -ENODATA;
 
@@ -607,6 +656,13 @@ static int bq27441_probe(struct i2c_client *client,
 		goto error;
 	}
 
+	/* Dummy read to check if the slave is present */
+	ret = bq27441_read_word(chip->client, BQ27441_VOLTAGE);
+	if (ret < 0) {
+		dev_err(&chip->client->dev, "Exiting driver as xfer failed\n");
+		goto error;
+	}
+
 	ret = power_supply_register(&client->dev, &chip->battery);
 	if (ret) {
 		dev_err(&client->dev, "failed: power supply register\n");
@@ -630,6 +686,9 @@ static int bq27441_probe(struct i2c_client *client,
 
 	INIT_DEFERRABLE_WORK(&chip->work, bq27441_work);
 	schedule_delayed_work(&chip->work, 0);
+
+	battery_gauge_record_snapshot_values(chip->bg_dev,
+				jiffies_to_msecs(BQ27441_DELAY/2));
 
 	return 0;
 bg_err:

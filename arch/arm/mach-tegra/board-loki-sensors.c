@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-loki-sensors.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -23,13 +23,14 @@
 #include <linux/err.h>
 #include <linux/nct1008.h>
 #include <linux/tegra-fuse.h>
+#include <media/camera.h>
 #include <media/mt9m114.h>
 #include <media/ov7695.h>
 #include <mach/gpio-tegra.h>
 #include <mach/edp.h>
+#include <mach/io_dpd.h>
 #include <linux/gpio.h>
 #include <linux/therm_est.h>
-#include <linux/iio/light/jsa1127.h>
 #include <linux/platform_device.h>
 #include <linux/regulator/consumer.h>
 #include <linux/generic_adc_thermal.h>
@@ -42,6 +43,8 @@
 #include "cpu-tegra.h"
 
 static struct board_info board_info;
+
+#ifndef CONFIG_USE_OF
 
 /* MPU board file definition    */
 static struct mpu_platform_data mpu6050_gyro_data = {
@@ -131,32 +134,71 @@ static void mpuirq_init(void)
 		ARRAY_SIZE(inv_mpu6050_i2c0_board_info));
 }
 
-struct jsa1127_platform_data jsa1127_platform_data = {
-	.rint = 100,
-	.integration_time = 200,
-	.use_internal_integration_timing = 1,
-	.tint_coeff = 22,
-	.noisy = 1,
-};
+#else
 
-static struct i2c_board_info loki_i2c_jsa1127_board_info[] = {
-	{
-		I2C_BOARD_INFO(JSA1127_NAME, JSA1127_SLAVE_ADDRESS),
-		.platform_data = &jsa1127_platform_data,
-	}
-};
-
-static void loki_jsa1127_init(void)
+static void mpu_dt_update(void)
 {
-	i2c_register_board_info(0, loki_i2c_jsa1127_board_info,
-		ARRAY_SIZE(loki_i2c_jsa1127_board_info));
+	struct device_node *np;
+	struct board_info displayboard_info;
+	static signed char mpu_gyro_orientation_1_95[] = {
+		0,  1,  0,  0,  0,  1,  1,  0,  0
+	};
+	static signed char mpu_gyro_orientation_fab0[] = {
+		0, -1,  0, -1,  0,  0,  0,  0, -1
+	};
+	static struct property orientation = {
+		.name = "invensense,orientation",
+		.value = mpu_gyro_orientation_1_95,
+		.length = sizeof(mpu_gyro_orientation_1_95),
+	};
+
+	np = of_find_compatible_node(NULL, NULL, "invensense,mpu6050");
+	if (np == NULL) {
+		pr_err("%s: Cannot find mpu6050 node\n", __func__);
+		return;
+	}
+
+	if (board_info.board_id == BOARD_E2549) {
+		of_update_property(np, &orientation);
+	} else {
+		tegra_get_display_board_info(&displayboard_info);
+		if (displayboard_info.fab == 0x0) {
+			orientation.value = mpu_gyro_orientation_fab0;
+			of_update_property(np, &orientation);
+		}
+	}
+
+	of_node_put(np);
 }
+
+#endif
+
+static struct tegra_io_dpd csia_io = {
+	.name			= "CSIA",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 0,
+};
+
+static struct tegra_io_dpd csib_io = {
+	.name			= "CSIB",
+	.io_dpd_reg_index	= 0,
+	.io_dpd_bit		= 1,
+};
+
+static struct tegra_io_dpd csie_io = {
+	.name			= "CSIE",
+	.io_dpd_reg_index	= 1,
+	.io_dpd_bit		= 12,
+};
 
 static int loki_mt9m114_power_on(struct mt9m114_power_rail *pw)
 {
 	int err;
 	if (unlikely(!pw || !pw->avdd || !pw->iovdd))
 		return -EFAULT;
+
+	/* disable CSIA IOs DPD mode to turn on front camera for ardbeg */
+	tegra_io_dpd_disable(&csia_io);
 
 	gpio_set_value(CAM_RSTN, 0);
 	gpio_set_value(CAM2_PWDN, 1);
@@ -183,13 +225,20 @@ mt9m114_avdd_fail:
 
 mt9m114_iovdd_fail:
 	gpio_set_value(CAM_RSTN, 0);
+	/* put CSIA IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
 	return -ENODEV;
 }
 
 static int loki_mt9m114_power_off(struct mt9m114_power_rail *pw)
 {
-	if (unlikely(!pw || !pw->avdd || !pw->iovdd))
+	if (unlikely(!pw || !pw->avdd || !pw->iovdd)) {
+		/* put CSIA IOs into DPD mode to
+		 * save additional power for ardbeg
+		 */
+		tegra_io_dpd_enable(&csia_io);
 		return -EFAULT;
+	}
 
 	usleep_range(100, 120);
 	gpio_set_value(CAM_RSTN, 0);
@@ -198,6 +247,8 @@ static int loki_mt9m114_power_off(struct mt9m114_power_rail *pw)
 	usleep_range(100, 120);
 	regulator_disable(pw->iovdd);
 
+	/* put CSIA IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
 	return 1;
 }
 
@@ -212,6 +263,9 @@ static int loki_ov7695_power_on(struct ov7695_power_rail *pw)
 
 	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd)))
 		return -EFAULT;
+
+	/* disable CSIA IOs DPD mode to turn on front camera for ardbeg */
+	tegra_io_dpd_disable(&csia_io);
 
 	gpio_set_value(CAM2_PWDN, 0);
 	usleep_range(1000, 1020);
@@ -235,15 +289,22 @@ ov7695_iovdd_fail:
 	regulator_disable(pw->avdd);
 
 ov7695_avdd_fail:
-
 	gpio_set_value(CAM_RSTN, 0);
+	/* put CSIA IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
 	return -ENODEV;
 }
 
 static int loki_ov7695_power_off(struct ov7695_power_rail *pw)
 {
-	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd)))
+	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd))) {
+		/* put CSIA IOs into DPD mode to
+		 * save additional power for ardbeg
+		 */
+		tegra_io_dpd_enable(&csia_io);
 		return -EFAULT;
+	}
+
 	usleep_range(100, 120);
 
 	regulator_disable(pw->iovdd);
@@ -253,6 +314,9 @@ static int loki_ov7695_power_off(struct ov7695_power_rail *pw)
 	usleep_range(100, 120);
 
 	gpio_set_value(CAM2_PWDN, 0);
+
+	/* put CSIA IOs into DPD mode to save additional power for ardbeg */
+	tegra_io_dpd_enable(&csia_io);
 	return 0;
 }
 
@@ -261,23 +325,44 @@ struct ov7695_platform_data loki_ov7695_pdata = {
 	.power_off = loki_ov7695_power_off,
 };
 
-static struct i2c_board_info loki_i2c_board_info_e2548[] = {
+static struct i2c_board_info loki_i2c_board_info_ov7695 = {
+	I2C_BOARD_INFO("ov7695", 0x21),
+	.platform_data = &loki_ov7695_pdata,
+};
+
+static struct camera_module loki_camera_module_info[] = {
 	{
-		I2C_BOARD_INFO("mt9m114", 0x48),
-		.platform_data = &loki_mt9m114_pdata,
+		/* front camera */
+		.sensor = &loki_i2c_board_info_ov7695,
 	},
-	{
-		I2C_BOARD_INFO("ov7695", 0x21),
-		.platform_data = &loki_ov7695_pdata,
-	},
+
+	{}
+};
+
+static struct camera_platform_data loki_pcl_pdata = {
+	.cfg = 0xAA55AA55,
+	.modules = loki_camera_module_info,
+};
+
+static struct platform_device loki_camera_generic = {
+	.name = "pcl-generic",
+	.id = -1,
 };
 
 static int loki_camera_init(void)
 {
 	pr_debug("%s: ++\n", __func__);
 
-	i2c_register_board_info(2, loki_i2c_board_info_e2548,
-			ARRAY_SIZE(loki_i2c_board_info_e2548));
+	/* put CSIA/B/E IOs into DPD mode to
+	 * save additional power
+	 */
+	tegra_io_dpd_enable(&csia_io);
+	tegra_io_dpd_enable(&csib_io);
+	tegra_io_dpd_enable(&csie_io);
+
+	platform_device_add_data(&loki_camera_generic,
+		&loki_pcl_pdata, sizeof(loki_pcl_pdata));
+	platform_device_register(&loki_camera_generic);
 	return 0;
 }
 
@@ -635,6 +720,7 @@ static struct gadc_thermal_platform_data gadc_thermal_tdiode_pdata = {
 	.iio_channel_name = "tdiode",
 	.tz_name = "Tdiode",
 	.temp_offset = 0,
+	.dual_mode = true,
 	.adc_to_temp = gadc_thermal_tdiode_adc_to_temp,
 };
 
@@ -677,9 +763,14 @@ int __init loki_sensors_init(void)
 	loki_fan_est_init();
 	if (!(board_info.board_id == BOARD_P2530 &&
 		board_info.sku == BOARD_SKU_FOSTER)) {
+#ifndef CONFIG_USE_OF
 		mpuirq_init();
-		loki_camera_init();
-		loki_jsa1127_init();
+#else
+		mpu_dt_update();
+#endif
+
+		if (board_info.board_id != BOARD_E2549)
+			loki_camera_init();
 	}
 	return 0;
 }

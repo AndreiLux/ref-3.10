@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/panel-s-wqxga-10-1.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -371,13 +371,17 @@ static int dsi_s_wqxga_10_1_postpoweron(struct device *dev)
 		goto fail;
 	}
 
-	if (machine_is_macallan())
-		err = macallan_dsi_gpio_get();
-	else
-		err = dalmore_dsi_gpio_get();
+	err = tegra_panel_gpio_get_dt("s,wqxga-10-1", &panel_of);
 	if (err < 0) {
-		pr_err("dsi gpio request failed\n");
-		goto fail;
+		/* try to get gpios from board file */
+		if (machine_is_macallan())
+			err = macallan_dsi_gpio_get();
+		else
+			err = dalmore_dsi_gpio_get();
+		if (err < 0) {
+			pr_err("dsi gpio request failed\n");
+			goto fail;
+		}
 	}
 
 	if (vdd_ds_1v8) {
@@ -425,12 +429,17 @@ static int dsi_s_wqxga_10_1_postpoweron(struct device *dev)
 
 	msleep(20);
 #if DSI_PANEL_RESET
-	gpio_direction_output(dsi_s_wqxga_10_1_pdata.dsi_panel_rst_gpio, 1);
-	usleep_range(1000, 5000);
-	gpio_set_value(dsi_s_wqxga_10_1_pdata.dsi_panel_rst_gpio, 0);
-	usleep_range(1000, 5000);
-	gpio_set_value(dsi_s_wqxga_10_1_pdata.dsi_panel_rst_gpio, 1);
-	msleep(20);
+	err = tegra_panel_reset(&panel_of, 20);
+	if (err < 0) {
+		/* use platform data */
+		gpio_direction_output(
+			dsi_s_wqxga_10_1_pdata.dsi_panel_rst_gpio, 1);
+		usleep_range(1000, 5000);
+		gpio_set_value(dsi_s_wqxga_10_1_pdata.dsi_panel_rst_gpio, 0);
+		usleep_range(1000, 5000);
+		gpio_set_value(dsi_s_wqxga_10_1_pdata.dsi_panel_rst_gpio, 1);
+		msleep(20);
+	}
 #endif
 
 	return 0;
@@ -721,42 +730,12 @@ static struct platform_device __maybe_unused
 
 static struct platform_device __maybe_unused
 			*dsi_s_wqxga_10_1_bl_devices[] __initdata = {
-	&tegra_pwfm_device,
 	&dsi_s_wqxga_10_1_bl_device,
-};
-
-static unsigned int dsi_s_shield_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_s_shield_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
-};
-static unsigned int dsi_s_tn8_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_s_tn8_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
 };
 
 static int __init dsi_s_wqxga_10_1_register_bl_dev(void)
 {
 	int err = 0;
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-
-	if (board_info.board_id == BOARD_E1780) {
-		if (board_info.sku == 1000) {
-			dsi_s_wqxga_10_1_bl_data.edp_states =
-				dsi_s_shield_edp_states;
-			dsi_s_wqxga_10_1_bl_data.edp_brightness =
-				dsi_s_shield_edp_brightness;
-		} else if (board_info.sku == 1100) {
-			dsi_s_wqxga_10_1_bl_data.edp_states =
-				dsi_s_tn8_edp_states;
-			dsi_s_wqxga_10_1_bl_data.edp_brightness =
-				dsi_s_tn8_edp_brightness;
-		}
-	}
 
 	err = platform_add_devices(dsi_s_wqxga_10_1_bl_devices,
 				ARRAY_SIZE(dsi_s_wqxga_10_1_bl_devices));
@@ -805,6 +784,13 @@ static void dsi_s_wqxga_10_1_cmu_init(struct tegra_dc_platform_data *pdata)
 {
 	pdata->cmu = &dsi_s_wqxga_10_1_cmu;
 }
+
+struct tegra_panel_ops dsi_s_wqxga_10_1_ops = {
+	.enable = dsi_s_wqxga_10_1_enable,
+	.disable = dsi_s_wqxga_10_1_disable,
+	.postpoweron = dsi_s_wqxga_10_1_postpoweron,
+	.postsuspend = dsi_s_wqxga_10_1_postsuspend,
+};
 
 struct tegra_panel __initdata dsi_s_wqxga_10_1 = {
 	.init_sd_settings = dsi_s_wqxga_10_1_sd_settings_init,

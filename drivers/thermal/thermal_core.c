@@ -33,6 +33,7 @@
 #include <linux/idr.h>
 #include <linux/thermal.h>
 #include <linux/reboot.h>
+#include <linux/string.h>
 #include <net/netlink.h>
 #include <net/genetlink.h>
 #define CREATE_TRACE_POINTS
@@ -167,7 +168,8 @@ int get_tz_trend(struct thermal_zone_device *tz, int trip)
 {
 	enum thermal_trend trend;
 
-	if (!tz->ops->get_trend || tz->ops->get_trend(tz, trip, &trend)) {
+	if (tz->emul_temperature || !tz->ops->get_trend ||
+	    tz->ops->get_trend(tz, trip, &trend)) {
 		if (tz->temperature > tz->last_temperature)
 			trend = THERMAL_TREND_RAISING;
 		else if (tz->temperature < tz->last_temperature)
@@ -777,12 +779,14 @@ policy_store(struct device *dev, struct device_attribute *attr,
 	struct thermal_governor *gov;
 	char name[THERMAL_NAME_LENGTH];
 
+	snprintf(name, sizeof(name), "%s", buf);
+
 	mutex_lock(&thermal_governor_lock);
 
 	if ((strlen(buf) >= THERMAL_NAME_LENGTH) || !sscanf(buf, "%s\n", name))
 		goto exit;
 
-	gov = __find_governor((const char *)name);
+	gov = __find_governor((const char *)strim(name));
 	if (!gov)
 		goto exit;
 
@@ -1766,7 +1770,7 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 	if (!ops || !ops->get_temp)
 		return ERR_PTR(-EINVAL);
 
-	if (trips > 0 && !ops->get_trip_type)
+	if (trips > 0 && (!ops->get_trip_type || !ops->get_trip_temp))
 		return ERR_PTR(-EINVAL);
 
 	tz = kzalloc(sizeof(struct thermal_zone_device), GFP_KERNEL);

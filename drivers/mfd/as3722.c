@@ -322,6 +322,29 @@ static const struct regmap_range as3722_writable_ranges[] = {
 	regmap_reg_range(AS3722_LOCK_REG, AS3722_LOCK_REG),
 };
 
+static void as3722_regmap_config_lock(void *lock)
+{
+	struct as3722 *as3722 = lock;
+
+	if (as3722->shutdown && (in_atomic() || irqs_disabled())) {
+		dev_info(as3722->dev, "Xfer without lock\n");
+		return;
+	}
+
+	mutex_lock(&as3722->mutex_config);
+}
+
+static void as3722_regmap_config_unlock(void *lock)
+{
+	struct as3722 *as3722 = lock;
+
+	if (as3722->shutdown && (in_atomic() || irqs_disabled()))
+		return;
+
+	mutex_unlock(&as3722->mutex_config);
+}
+
+
 static const struct regmap_access_table as3722_writable_table = {
 	.yes_ranges = as3722_writable_ranges,
 	.n_yes_ranges = ARRAY_SIZE(as3722_writable_ranges),
@@ -337,7 +360,7 @@ static const struct regmap_access_table as3722_volatile_table = {
 	.n_no_ranges = ARRAY_SIZE(as3722_cacheable_ranges),
 };
 
-static const struct regmap_config as3722_regmap_config = {
+static struct regmap_config as3722_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.max_register = AS3722_MAX_REGISTER,
@@ -345,6 +368,8 @@ static const struct regmap_config as3722_regmap_config = {
 	.rd_table = &as3722_readable_table,
 	.wr_table = &as3722_writable_table,
 	.volatile_table = &as3722_volatile_table,
+	.lock = as3722_regmap_config_lock,
+	.unlock = as3722_regmap_config_unlock,
 };
 
 static int as3722_i2c_of_probe(struct i2c_client *i2c,
@@ -368,8 +393,12 @@ static int as3722_i2c_of_probe(struct i2c_client *i2c,
 					"ams,enable-internal-int-pullup");
 	as3722->en_intern_i2c_pullup = of_property_read_bool(np,
 					"ams,enable-internal-i2c-pullup");
+	as3722->en_ac_ok_pwr_on = of_property_read_bool(np,
+					"ams,enable-ac-ok-power-on");
 	as3722->irq_flags = irqd_get_trigger_type(irq_data);
 	as3722->irq_base = -1;
+	of_property_read_u32(np, "ams,major-rev", &as3722->major_rev);
+	of_property_read_u32(np, "ams,minor-rev", &as3722->minor_rev);
 	dev_dbg(&i2c->dev, "IRQ flags are 0x%08lx\n", as3722->irq_flags);
 	return 0;
 }
@@ -386,6 +415,9 @@ static int as3722_i2c_non_of_probe(struct i2c_client *i2c,
 	as3722->irq_base = pdata->irq_base;
 	as3722->en_intern_i2c_pullup = pdata->use_internal_i2c_pullup;
 	as3722->en_intern_int_pullup = pdata->use_internal_int_pullup;
+	as3722->en_ac_ok_pwr_on = pdata->enable_ac_ok_power_on;
+	as3722->major_rev = pdata->major_rev;
+	as3722->minor_rev = pdata->minor_rev;
 	return 0;
 }
 
@@ -395,6 +427,7 @@ static int as3722_i2c_probe(struct i2c_client *i2c,
 	struct as3722 *as3722;
 	unsigned long irq_flags;
 	int ret;
+	u8 val = 0;
 
 	as3722 = devm_kzalloc(&i2c->dev, sizeof(struct as3722), GFP_KERNEL);
 	if (!as3722)
@@ -403,6 +436,7 @@ static int as3722_i2c_probe(struct i2c_client *i2c,
 	as3722->dev = &i2c->dev;
 	as3722->chip_irq = i2c->irq;
 	i2c_set_clientdata(i2c, as3722);
+	as3722->client = i2c;
 
 	ret = as3722_i2c_non_of_probe(i2c, as3722);
 	if (ret < 0) {
@@ -411,7 +445,10 @@ static int as3722_i2c_probe(struct i2c_client *i2c,
 			return ret;
 	}
 
-	as3722->regmap = devm_regmap_init_i2c(i2c, &as3722_regmap_config);
+	mutex_init(&as3722->mutex_config);
+	as3722_regmap_config.lock_arg = as3722;
+	as3722->regmap = devm_regmap_init_i2c(i2c,
+			(const struct regmap_config *)&as3722_regmap_config);
 	if (IS_ERR(as3722->regmap)) {
 		ret = PTR_ERR(as3722->regmap);
 		dev_err(&i2c->dev, "regmap init failed: %d\n", ret);
@@ -434,6 +471,15 @@ static int as3722_i2c_probe(struct i2c_client *i2c,
 	ret = as3722_configure_pullups(as3722);
 	if (ret < 0)
 		goto scrub;
+
+	if (as3722->en_ac_ok_pwr_on)
+		val = AS3722_CTRL_SEQ1_AC_OK_PWR_ON;
+	ret = as3722_update_bits(as3722, AS3722_CTRL_SEQU1_REG,
+			AS3722_CTRL_SEQ1_AC_OK_PWR_ON, val);
+	if (ret < 0) {
+		dev_err(as3722->dev, "CTRL_SEQ1 update failed: %d\n", ret);
+		goto scrub;
+	}
 
 	ret = mfd_add_devices(&i2c->dev, -1, as3722_devs,
 			ARRAY_SIZE(as3722_devs), NULL, 0,
@@ -460,6 +506,13 @@ static int as3722_i2c_remove(struct i2c_client *i2c)
 	return 0;
 }
 
+static void as3722_i2c_shutdown(struct i2c_client *i2c)
+{
+	struct as3722 *as3722 = i2c_get_clientdata(i2c);
+
+	as3722->shutdown = true;
+}
+
 static const struct of_device_id as3722_of_match[] = {
 	{ .compatible = "ams,as3722", },
 	{},
@@ -480,6 +533,7 @@ static struct i2c_driver as3722_i2c_driver = {
 	},
 	.probe = as3722_i2c_probe,
 	.remove = as3722_i2c_remove,
+	.shutdown = as3722_i2c_shutdown,
 	.id_table = as3722_i2c_id,
 };
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -83,9 +83,10 @@ static long ad5823_ioctl(struct file *file,
 {
 	struct ad5823_info *info = file->private_data;
 	struct ad5823_cal_data cal;
+	int err;
 
-	switch (cmd) {
-	case AD5823_IOCTL_GET_CONFIG:
+	switch (_IOC_NR(cmd)) {
+	case _IOC_NR(AD5823_IOCTL_GET_CONFIG):
 	{
 		if (copy_to_user((void __user *) arg,
 				 &info->config,
@@ -97,10 +98,15 @@ static long ad5823_ioctl(struct file *file,
 
 		break;
 	}
-	case AD5823_IOCTL_SET_POSITION:
-		return ad5823_set_position(info, (u32) arg);
+	case _IOC_NR(AD5823_IOCTL_SET_POSITION):
+		if (info->pdata->pwr_dev == AD5823_PWR_DEV_OFF
+				&& info->pdata->power_on) {
+			info->pdata->power_on(info->pdata);
+		}
+		err = ad5823_set_position(info, (u32) arg);
+		return err;
 
-	case AD5823_IOCTL_SET_CAL_DATA:
+	case _IOC_NR(AD5823_IOCTL_SET_CAL_DATA):
 		if (copy_from_user(&cal, (const void __user *)arg,
 					sizeof(struct ad5823_cal_data))) {
 			dev_err(&info->i2c_client->dev,
@@ -112,7 +118,7 @@ static long ad5823_ioctl(struct file *file,
 		info->config.pos_working_high = cal.pos_high;
 		break;
 
-	case AD5823_IOCTL_SET_CONFIG:
+	case _IOC_NR(AD5823_IOCTL_SET_CONFIG):
 	{
 		if (info->config.pos_working_low != 0)
 			cal.pos_low = info->config.pos_working_low;
@@ -180,6 +186,9 @@ static const struct file_operations ad5823_fileops = {
 	.owner = THIS_MODULE,
 	.open = ad5823_open,
 	.unlocked_ioctl = ad5823_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = ad5823_ioctl,
+#endif
 	.release = ad5823_release,
 };
 
@@ -199,10 +208,9 @@ MODULE_DEVICE_TABLE(of, ad5823_of_match);
 static int ad5823_power_on(struct ad5823_platform_data *pdata)
 {
 	int err = 0;
-
 	pr_info("%s\n", __func__);
 	gpio_set_value_cansleep(pdata->gpio, 1);
-
+	pdata->pwr_dev = AD5823_PWR_DEV_ON;
 	return err;
 }
 
@@ -210,6 +218,7 @@ static int ad5823_power_off(struct ad5823_platform_data *pdata)
 {
 	pr_info("%s\n", __func__);
 	gpio_set_value_cansleep(pdata->gpio, 0);
+	pdata->pwr_dev = AD5823_PWR_DEV_OFF;
 	return 0;
 }
 
@@ -283,12 +292,11 @@ static int ad5823_probe(struct i2c_client *client,
 		goto ERROR_RET;
 
 	info->regulator = devm_regulator_get(&client->dev, "vdd");
-	if (IS_ERR_OR_NULL(info->regulator)) {
+	if (IS_ERR_OR_NULL(info->regulator) &&
+				regulator_enable(info->regulator)) {
 		dev_err(&client->dev, "unable to get regulator %s\n",
 			dev_name(&client->dev));
 		info->regulator = NULL;
-	} else {
-		regulator_enable(info->regulator);
 	}
 
 	info->regmap = devm_regmap_init_i2c(client, &ad5823_regmap_config);

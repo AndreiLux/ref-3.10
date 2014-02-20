@@ -3,7 +3,7 @@
  *
  * GK20A graphics channel
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -106,12 +106,16 @@ struct channel_gk20a {
 	u64 userd_gpu_va;
 
 	s32 num_objects;
+	u32 obj_class;	/* we support only one obj per channel */
 
 	struct priv_cmd_queue priv_cmd_q;
 
 	wait_queue_head_t notifier_wq;
 	wait_queue_head_t semaphore_wq;
 	wait_queue_head_t submit_wq;
+
+	u32 timeout_accumulated_ms;
+	u32 timeout_gpfifo_get;
 
 	bool cmds_pending;
 	struct {
@@ -122,7 +126,7 @@ struct channel_gk20a {
 	} last_submit_fence;
 
 	void (*remove_support)(struct channel_gk20a *);
-#if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
+#if defined(CONFIG_GK20A_CYCLE_STATS)
 	struct {
 	void *cyclestate_buffer;
 	u32 cyclestate_buffer_size;
@@ -136,68 +140,24 @@ struct channel_gk20a {
 
 static inline bool gk20a_channel_as_bound(struct channel_gk20a *ch)
 {
-	return !!ch->hwctx->as_share;
+	return !!ch->vm;
 }
 int channel_gk20a_commit_va(struct channel_gk20a *c);
 
-struct nvhost_unmap_buffer_args;
-struct nvhost_zbc_query_table_args;
-struct nvhost_fence;
-struct nvhost_alloc_gpfifo_args;
-struct nvhost_map_buffer_args;
-struct nvhost_wait_args;
-struct nvhost_zcull_bind_args;
-struct nvhost_gpfifo;
-struct nvhost_zbc_set_table_args;
-struct nvhost_cycle_stats_args;
-struct nvhost_set_priority_args;
-
-#if defined(CONFIG_TEGRA_GK20A)
 void gk20a_channel_update(struct channel_gk20a *c);
-#else
-static inline void gk20a_channel_update(struct channel_gk20a *c)
-{
-}
-#endif
-
 int gk20a_init_channel_support(struct gk20a *, u32 chid);
-int gk20a_channel_init(struct nvhost_channel *ch, struct nvhost_master *host,
-		       int index);
-int gk20a_channel_alloc_obj(struct nvhost_channel *channel,
-			u32 class_num, u32 *obj_id, u32 vaspace_share);
-int gk20a_channel_free_obj(struct nvhost_channel *channel,
-			u32 obj_id);
 struct nvhost_hwctx *gk20a_open_channel(struct nvhost_channel *ch,
 			struct nvhost_hwctx *ctx);
-int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
-			struct nvhost_alloc_gpfifo_args *args);
-int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
-			struct nvhost_gpfifo *gpfifo, u32 num_entries,
-			struct nvhost_fence *fence, u32 flags);
 void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish);
-int gk20a_init_error_notifier(struct nvhost_hwctx *ctx, u32 memhandle,
-			u64 offset);
-void gk20a_free_error_notifiers(struct nvhost_hwctx *ctx);
+bool gk20a_channel_update_and_check_timeout(struct channel_gk20a *ch,
+					    u32 timeout_delta_ms);
 void gk20a_disable_channel(struct channel_gk20a *ch,
 			   bool wait_for_finish,
 			   unsigned long finish_timeout);
 void gk20a_disable_channel_no_update(struct channel_gk20a *ch);
 int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout);
-void gk20a_set_timeout_error(struct nvhost_hwctx *ctx);
-int gk20a_channel_wait(struct channel_gk20a *ch,
-		       struct nvhost_wait_args *args);
-int gk20a_channel_zcull_bind(struct channel_gk20a *ch,
-			    struct nvhost_zcull_bind_args *args);
-int gk20a_channel_zbc_set_table(struct channel_gk20a *ch,
-			    struct nvhost_zbc_set_table_args *args);
-int gk20a_channel_zbc_query_table(struct channel_gk20a *ch,
-			    struct nvhost_zbc_query_table_args *args);
-int gk20a_channel_set_priority(struct channel_gk20a *ch,
-		       u32 priority);
-#if defined(CONFIG_TEGRA_GPU_CYCLE_STATS)
-int gk20a_channel_cycle_stats(struct channel_gk20a *ch,
-			struct nvhost_cycle_stats_args *args);
-#endif
+void gk20a_set_error_notifier(struct nvhost_hwctx *ctx, __u32 error);
+void gk20a_channel_semaphore_wakeup(struct gk20a *g);
 
 int gk20a_channel_suspend(struct gk20a *g);
 int gk20a_channel_resume(struct gk20a *g);
@@ -207,6 +167,13 @@ struct mem_mgr *gk20a_channel_mem_mgr(struct channel_gk20a *ch)
 {
 	return ch->hwctx->memmgr;
 }
+/* Channel file operations */
+int gk20a_channel_open(struct inode *inode, struct file *filp);
+long gk20a_channel_ioctl(struct file *filp,
+			 unsigned int cmd,
+			 unsigned long arg);
+int gk20a_channel_release(struct inode *inode, struct file *filp);
+struct nvhost_hwctx *gk20a_get_hwctx_from_file(int fd);
 
 static inline
 struct nvhost_master *host_from_gk20a_channel(struct channel_gk20a *ch)

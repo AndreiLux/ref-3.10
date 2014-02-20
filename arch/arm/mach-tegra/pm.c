@@ -3,7 +3,7 @@
  *
  * CPU complex suspend & resume functions for Tegra SoCs
  *
- * Copyright (c) 2009-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2009-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -60,7 +60,6 @@
 
 #include <asm/cacheflush.h>
 #include <asm/idmap.h>
-#include <asm/localtimer.h>
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
@@ -148,6 +147,8 @@ extern struct device *get_smmu_device(void);
 extern int tegra_smmu_resume(struct device *dev);
 extern int tegra_smmu_suspend(struct device *dev);
 #endif
+
+bool tegra_is_dpd_mode;
 
 #define TEGRA_POWER_PWRREQ_POLARITY	(1 << 8)   /* core power request polarity */
 #define TEGRA_POWER_PWRREQ_OE		(1 << 9)   /* core power request enable */
@@ -290,13 +291,6 @@ int tegra_unregister_pm_notifier(struct notifier_block *nb)
 	return raw_notifier_chain_unregister(&tegra_pm_chain_head, nb);
 }
 EXPORT_SYMBOL(tegra_unregister_pm_notifier);
-
-static int tegra_pm_notifier_call_chain(unsigned int val)
-{
-	int ret = raw_notifier_call_chain(&tegra_pm_chain_head, val, NULL);
-
-	return notifier_to_errno(ret);
-}
 
 #ifdef CONFIG_PM_SLEEP
 static const char *tegra_suspend_name[TEGRA_MAX_SUSPEND_MODE] = {
@@ -449,10 +443,17 @@ static __init int create_suspend_pgtable(void)
 		return -ENOMEM;
 
 	/* Only identity-map size of lowmem (high_memory - PAGE_OFFSET) */
+#ifdef CONFIG_ARM64
+	identity_mapping_add(tegra_pgd,
+			phys_to_virt(PHYS_OFFSET), high_memory);
+	identity_mapping_add(tegra_pgd, IO_IRAM_VIRT,
+			IO_IRAM_VIRT + SECTION_SIZE);
+#else
 	identity_mapping_add(tegra_pgd, phys_to_virt(PHYS_OFFSET),
 		high_memory, 0);
 	identity_mapping_add(tegra_pgd, IO_IRAM_VIRT,
 		IO_IRAM_VIRT + SECTION_SIZE, 0);
+#endif
 
 #if defined(CONFIG_ARM_LPAE)
 	tegra_pgd_phys = (virt_to_phys(tegra_pgd) & PAGE_MASK);
@@ -1065,6 +1066,7 @@ static void tegra_pm_set(enum tegra_suspend_mode mode)
 #if !defined(CONFIG_ARCH_TEGRA_3x_SOC) && !defined(CONFIG_ARCH_TEGRA_2x_SOC)
 #if defined(CONFIG_ARCH_TEGRA_11x_SOC) || defined(CONFIG_ARCH_TEGRA_12x_SOC)
 		writel(0x800fdfff, pmc + PMC_IO_DPD_REQ);
+		tegra_is_dpd_mode = true;
 #else
 		writel(0x800fffff, pmc + PMC_IO_DPD_REQ);
 #endif
@@ -1403,7 +1405,9 @@ int tegra_suspend_dram(enum tegra_suspend_mode mode, unsigned int flags)
 #endif
 
 	flush_cache_all();
+#ifndef CONFIG_ARM64
 	outer_disable();
+#endif
 
 	if (mode == TEGRA_SUSPEND_LP2)
 		tegra_sleep_cpu(PHYS_OFFSET - PAGE_OFFSET);
@@ -1608,19 +1612,19 @@ static struct kobject *suspend_kobj;
 
 static int tegra_pm_enter_suspend(void)
 {
-	pr_info("Entering suspend state %s\n", lp_state[current_suspend_mode]);
 	suspend_cpu_dfll_mode(0);
 	if (current_suspend_mode == TEGRA_SUSPEND_LP0)
 		tegra_lp0_cpu_mode(true);
+	pr_info("Entering suspend state %s\n", lp_state[current_suspend_mode]);
 	return 0;
 }
 
 static void tegra_pm_enter_resume(void)
 {
+	pr_info("Exited suspend state %s\n", lp_state[current_suspend_mode]);
 	if (current_suspend_mode == TEGRA_SUSPEND_LP0)
 		tegra_lp0_cpu_mode(false);
 	resume_cpu_dfll_mode(0);
-	pr_info("Exited suspend state %s\n", lp_state[current_suspend_mode]);
 }
 
 static void tegra_pm_enter_shutdown(void)
@@ -1797,7 +1801,7 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		WARN_ON(!orig);
 		if (!orig) {
 			pr_err("%s: Failed to map tegra_lp0_vec_start %08x\n",
-				__func__, tegra_lp0_vec_start);
+				__func__, (unsigned int) tegra_lp0_vec_start);
 			kfree(reloc_lp0);
 			goto out;
 		}
@@ -1924,6 +1928,16 @@ fail:
 		tegra_pd_in_idle(false);
 
 	current_suspend_mode = plat->suspend_mode;
+}
+
+bool tegra_dvfs_is_dfll_bypass(void)
+{
+#ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
+	return pdata && (pdata->suspend_dfll_bypass ||
+			 pdata->resume_dfll_bypass);
+#else
+	return false;
+#endif
 }
 
 void tegra_lp1bb_suspend_emc_rate(unsigned long emc_min, unsigned long emc_max)

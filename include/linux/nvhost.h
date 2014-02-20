@@ -3,7 +3,7 @@
  *
  * Tegra graphics host driver
  *
- * Copyright (c) 2009-2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2009-2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -149,7 +149,11 @@ struct nvhost_notification {
 		__u32 nanoseconds[2];	/* nanoseconds since Jan. 1, 1970 */
 	} time_stamp;			/* -0007 */
 	__u32 info32;	/* info returned depends on method 0008-000b */
-#define NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT 8
+#define	NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT	8
+#define	NVHOST_CHANNEL_GR_ERROR_SW_NOTIFY	13
+#define	NVHOST_CHANNEL_GR_SEMAPHORE_TIMEOUT	24
+#define	NVHOST_CHANNEL_GR_ILLEGAL_NOTIFY	25
+#define	NVHOST_CHANNEL_FIFO_ERROR_MMU_ERR_FLT	31
 	__u16 info16;	/* info returned depends on method 000c-000d */
 	__u16 status;	/* user sets bit 15, NV sets status 000e-000f */
 };
@@ -199,6 +203,10 @@ struct nvhost_device_data {
 
 	struct nvhost_channel *channel;	/* Channel assigned for the module */
 
+	/* device node for channel operations */
+	struct device *node;
+	struct cdev cdev;
+
 	/* device node for ctrl block */
 	struct device *ctrl_node;
 	struct cdev ctrl_cdev;
@@ -223,6 +231,8 @@ struct nvhost_device_data {
 
 	u32 nvhost_timeout_default;
 
+	/* QoS id that denotes minimum frequency */
+	unsigned int			qos_id;
 	/* Data for devfreq usage */
 	struct devfreq			*power_manager;
 	/* Private device profile data */
@@ -324,12 +334,12 @@ struct nvhost_device_power_attr {
 	struct kobj_attribute power_attr[NVHOST_POWER_SYSFS_ATTRIB_MAX];
 };
 
-void nvhost_device_writel(struct platform_device *dev, u32 r, u32 v);
-u32 nvhost_device_readl(struct platform_device *dev, u32 r);
+void host1x_writel(struct platform_device *dev, u32 r, u32 v);
+u32 host1x_readl(struct platform_device *dev, u32 r);
 
 /* public host1x power management APIs */
 bool nvhost_module_powered_ext(struct platform_device *dev);
-void nvhost_module_busy_ext(struct platform_device *dev);
+int nvhost_module_busy_ext(struct platform_device *dev);
 void nvhost_module_idle_ext(struct platform_device *dev);
 
 /* public host1x sync-point management APIs */
@@ -340,6 +350,15 @@ int nvhost_syncpt_wait_timeout_ext(struct platform_device *dev, u32 id, u32 thre
 	u32 timeout, u32 *value, struct timespec *ts);
 int nvhost_syncpt_create_fence_single_ext(struct platform_device *dev,
 	u32 id, u32 thresh, const char *name, int *fence_fd);
+
+#ifdef CONFIG_TEGRA_GK20A
+int nvhost_vpr_info_fetch(void);
+#else
+static inline int nvhost_vpr_info_fetch(void)
+{
+	return 0;
+}
+#endif
 
 /* Hacky way to get access to struct nvhost_device_data for VI device. */
 extern struct nvhost_device_data t20_vi_info;

@@ -4,7 +4,7 @@
  * IIO Light driver for monitoring ambient light intensity in lux and proximity
  * ir.
  *
- * Copyright (c) 2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013 - 2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -189,14 +189,21 @@ static bool set_main_conf(struct max44005_chip *chip, int mode)
 /* current is in mA */
 static bool set_led_drive_strength(struct max44005_chip *chip, int cur)
 {
+	int ret = 0;
 	if (!chip->supply[LED])
 		goto finish;
 
 	if (cur && !chip->power_utilization[LED])
-		regulator_enable(chip->supply[LED]);
+		ret = regulator_enable(chip->supply[LED]);
 	else if (!cur && chip->power_utilization[LED])
-		regulator_disable(chip->supply[LED]);
+		ret = regulator_disable(chip->supply[LED]);
 
+	if (ret) {
+		dev_err(&chip->client->dev,
+			"%s: regulator %s failed\n", __func__,
+			cur ? "enable" : "disable");
+		return false;
+	}
 finish:
 	chip->power_utilization[LED] = cur ? 1 : 0;
 	return max44005_write(chip, 0xA1, PROX_CONF_REG_ADDR) == 0;
@@ -507,33 +514,38 @@ static int max44005_probe(struct i2c_client *client,
 	indio_dev->dev.parent = &client->dev;
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	err = iio_device_register(indio_dev);
-	if (err | max44005_sysfs_init(client)) {
+	if (err) {
 		dev_err(&client->dev, "iio registration fails\n");
-		device_destroy(sensor_class, 0);
-		class_destroy(sensor_class);
-		mutex_destroy(&chip->lock);
-		iio_device_free(indio_dev);
-		return err;
+		goto free_iio_dev;
 	}
 
-	chip->supply[CHIP] = regulator_get(&client->dev, "vdd");
-
-	if (IS_ERR_OR_NULL(chip->supply[CHIP])) {
-		dev_err(&client->dev, "could not get regulator\n"
-				"assuming power supply is always on\n");
-		kfree(chip->supply);
-		chip->supply[CHIP] = NULL;
-		chip->supply[LED] = NULL;
-	} else {
-		chip->supply[LED] = regulator_get(&client->dev, "vdd_prox");
-
-		if (IS_ERR_OR_NULL(chip->supply[LED])) {
-			dev_err(&client->dev, "als_prox regulator not present\n"
-					"proximity sensor may not work fine\n");
-			chip->supply[LED] = NULL;
-		}
+	err =  max44005_sysfs_init(client);
+	if (err) {
+		dev_err(&client->dev, "max44005 sysfs init fails\n");
+		goto unregister_iio_dev;
 	}
 
+	chip->supply[CHIP] = regulator_get(&client->dev, "vcc");
+
+	if (IS_ERR(chip->supply[CHIP])) {
+		dev_err(&client->dev, "could not get vcc regulator\n");
+		err = PTR_ERR(chip->supply[CHIP]);
+		goto unregister_sysfs;
+	}
+
+	/* MAX44006 ALS does not use vled. */
+	if (of_device_is_compatible(client->dev.of_node, "maxim,max44006"))
+		goto finish;
+
+	chip->supply[LED] = regulator_get(&client->dev, "vled");
+
+	if (IS_ERR(chip->supply[LED])) {
+		dev_err(&client->dev, "could not get vled regulator\n");
+		err = PTR_ERR(chip->supply[LED]);
+		goto release_regulator;
+	}
+
+finish:
 	mutex_lock(&chip->lock);
 	max44005_power(chip, false);
 	mutex_unlock(&chip->lock);
@@ -543,6 +555,19 @@ static int max44005_probe(struct i2c_client *client,
 	chip->shutdown_complete = 0;
 	dev_info(&client->dev, "%s() success\n", __func__);
 	return 0;
+
+release_regulator:
+	regulator_put(chip->supply[CHIP]);
+unregister_sysfs:
+	device_destroy(sensor_class, 0);
+	class_destroy(sensor_class);
+unregister_iio_dev:
+	iio_device_unregister(indio_dev);
+free_iio_dev:
+	iio_device_free(indio_dev);
+	mutex_destroy(&chip->lock);
+	return err;
+
 }
 
 #ifdef CONFIG_PM_SLEEP

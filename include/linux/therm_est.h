@@ -1,7 +1,7 @@
 /*
  * include/linux/therm_est.h
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -28,6 +28,7 @@
 
 struct therm_est_subdevice {
 	void *dev_data;
+	struct thermal_zone_device *sub_thz;
 	long coeffs[HIST_LEN];
 	long hist[HIST_LEN];
 };
@@ -80,6 +81,7 @@ struct therm_est_data {
 	int tc2;
 	int ndevs;
 	struct therm_est_subdevice *devs;
+	int use_activator;
 };
 
 struct therm_fan_est_subdevice {

@@ -70,6 +70,18 @@ static inline u32 gr_intr_semaphore_reset_f(void)
 {
 	return 0x2;
 }
+static inline u32 gr_intr_semaphore_timeout_not_pending_f(void)
+{
+	return 0x0;
+}
+static inline u32 gr_intr_semaphore_timeout_pending_f(void)
+{
+	return 0x4;
+}
+static inline u32 gr_intr_semaphore_timeout_reset_f(void)
+{
+	return 0x4;
+}
 static inline u32 gr_intr_illegal_method_pending_f(void)
 {
 	return 0x10;
@@ -77,6 +89,14 @@ static inline u32 gr_intr_illegal_method_pending_f(void)
 static inline u32 gr_intr_illegal_method_reset_f(void)
 {
 	return 0x10;
+}
+static inline u32 gr_intr_illegal_notify_pending_f(void)
+{
+	return 0x40;
+}
+static inline u32 gr_intr_illegal_notify_reset_f(void)
+{
+	return 0x40;
 }
 static inline u32 gr_intr_illegal_class_pending_f(void)
 {
@@ -101,6 +121,14 @@ static inline u32 gr_intr_exception_pending_f(void)
 static inline u32 gr_intr_exception_reset_f(void)
 {
 	return 0x200000;
+}
+static inline u32 gr_intr_nonstall_r(void)
+{
+	return 0x00400120;
+}
+static inline u32 gr_intr_nonstall_trap_pending_f(void)
+{
+	return 0x2;
 }
 static inline u32 gr_intr_en_r(void)
 {

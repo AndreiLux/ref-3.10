@@ -3,7 +3,7 @@
  * Maxim SmartTouch Imager Touchscreen Driver
  *
  * Copyright (c)2013 Maxim Integrated Products, Inc.
- * Copyright (C) 2013, NVIDIA Corporation.  All Rights Reserved.
+ * Copyright (C) 2013-2014, NVIDIA Corporation.  All Rights Reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -29,10 +29,6 @@
 #include <linux/maxim_sti.h>
 #include <asm/byteorder.h>  /* MUST include this header to get byte order */
 
-#ifdef CONFIG_PM_WAKELOCKS
-#include <linux/pm_wakeup.h>
-#endif
-
 #define CREATE_TRACE_POINTS
 #include <trace/events/touchscreen_maxim.h>
 
@@ -41,8 +37,10 @@
 \****************************************************************************/
 
 #define INPUT_DEVICES               2
-#define INPUT_ENABLE_DISABLE        1
+#define INPUT_ENABLE_DISABLE        0
+#define FB_CALLBACK                 1
 #define SUSPEND_POWER_OFF           1
+#define DOUBLE_TAP                  1
 #define NV_ENABLE_CPU_BOOST         1
 #define NV_STYLUS_FINGER_EXCLUSION  1
 
@@ -51,6 +49,10 @@
 
 #if NV_ENABLE_CPU_BOOST
 #define INPUT_IDLE_PERIOD     (msecs_to_jiffies(50))
+#endif
+
+#if FB_CALLBACK && defined(CONFIG_FB)
+#include <linux/fb.h>
 #endif
 
 /****************************************************************************\
@@ -71,6 +73,7 @@ struct dev_data {
 	u32                          nl_seq;
 	u8                           nl_mc_group_count;
 	bool                         nl_enabled;
+	bool                         start_fusion;
 	bool                         suspend_in_progress;
 	bool                         resume_in_progress;
 	bool                         expect_resume_ack;
@@ -80,7 +83,7 @@ struct dev_data {
 	bool                         last_stylus_active;
 #endif
 	bool                         legacy_acceleration;
-#if INPUT_ENABLE_DISABLE
+#if INPUT_ENABLE_DISABLE || FB_CALLBACK
 	bool                         input_no_deconfig;
 #endif
 	bool                         irq_registered;
@@ -105,8 +108,8 @@ struct dev_data {
 #if NV_ENABLE_CPU_BOOST
 	unsigned long                last_irq_jiffies;
 #endif
-#ifdef CONFIG_PM_WAKELOCKS
-	struct wakeup_source         ws;
+#if FB_CALLBACK
+	struct notifier_block        fb_notifier;
 #endif
 };
 
@@ -116,6 +119,11 @@ static int prev_dvdd_rail_state;
 static struct list_head  dev_list;
 static spinlock_t        dev_lock;
 
+#if DOUBLE_TAP
+static irqreturn_t wake_detect(int irq, void *context);
+#else
+#define wake_detect NULL
+#endif
 static irqreturn_t irq_handler(int irq, void *context);
 static void service_irq(struct dev_data *dd);
 static void service_irq_legacy_acceleration(struct dev_data *dd);
@@ -317,6 +325,7 @@ spi_write_2_page(struct dev_data *dd, u16 address, u8 *buf, u16 len)
 	page[0] = 0xFEDC;
 	page[1] = address << 1;
 	page[2] = len / sizeof(u16);
+	page[3] = 0x0000;
 	memcpy(page + 4, buf, len);
 
 	/* write data with write request header */
@@ -694,6 +703,29 @@ static void start_scan_canned(struct dev_data *dd)
 }
 #endif
 
+#if DOUBLE_TAP
+static void enable_double_tap(struct dev_data *dd)
+{
+	u16 value;
+
+	value = dd->irq_param[20];
+	(void)dd->chip.write(dd, dd->irq_param[19],
+			     (u8 *)&value, sizeof(value));
+
+	value = dd->irq_param[23];
+	(void)dd->chip.write(dd, dd->irq_param[22],
+			     (u8 *)&value, sizeof(value));
+
+	value = dd->irq_param[25];
+	(void)dd->chip.write(dd, dd->irq_param[24],
+			     (u8 *)&value, sizeof(value));
+
+	value = dd->irq_param[14];
+	(void)dd->chip.write(dd, dd->irq_param[12],
+			     (u8 *)&value, sizeof(value));
+}
+#endif
+
 static int regulator_control(struct dev_data *dd, bool on)
 {
 	int ret = 0;
@@ -768,11 +800,9 @@ err_null_regulator:
 \****************************************************************************/
 
 #ifdef CONFIG_PM_SLEEP
-static int suspend(struct device *dev)
+static int early_suspend(struct device *dev)
 {
 	struct dev_data  *dd = spi_get_drvdata(to_spi_device(dev));
-	struct maxim_sti_pdata *pdata = dev->platform_data;
-	int ret;
 
 	INFO("suspending...");
 
@@ -783,19 +813,38 @@ static int suspend(struct device *dev)
 	wake_up_process(dd->thread);
 	wait_for_completion(&dd->suspend_resume);
 
-#if SUSPEND_POWER_OFF
-	/* reset-low and power-down */
-	pdata->reset(pdata, 0);
-	usleep_range(100, 120);
-	ret = regulator_control(dd, false);
-	if (ret < 0)
-		return ret;
-#endif
-
-#ifdef CONFIG_PM_WAKELOCKS
-	__pm_relax(&dd->ws);
-#endif
 	INFO("suspend...done");
+
+	return 0;
+}
+
+static int late_resume(struct device *dev)
+{
+	struct dev_data  *dd = spi_get_drvdata(to_spi_device(dev));
+
+	INFO("resuming...");
+
+	if (!dd->suspend_in_progress)
+		return 0;
+
+	dd->resume_in_progress = true;
+	wake_up_process(dd->thread);
+	wait_for_completion(&dd->suspend_resume);
+
+	INFO("resume...done");
+
+	return 0;
+}
+
+static int suspend(struct device *dev)
+{
+	struct dev_data  *dd = spi_get_drvdata(to_spi_device(dev));
+
+	if (!dd->irq_registered)
+		return 0;
+
+	disable_irq(dd->spi->irq);
+	enable_irq_wake(dd->spi->irq);
 
 	return 0;
 }
@@ -803,33 +852,12 @@ static int suspend(struct device *dev)
 static int resume(struct device *dev)
 {
 	struct dev_data  *dd = spi_get_drvdata(to_spi_device(dev));
-	struct maxim_sti_pdata *pdata = dev->platform_data;
-	int ret;
 
-	INFO("resuming...");
-
-	if (!dd->suspend_in_progress)
+	if (!dd->irq_registered)
 		return 0;
 
-#ifdef CONFIG_PM_WAKELOCKS
-	__pm_stay_awake(&dd->ws);
-#endif
-
-#if SUSPEND_POWER_OFF
-	/* power-up and reset-high */
-	pdata->reset(pdata, 0);
-	ret = regulator_control(dd, true);
-	if (ret < 0)
-		return ret;
-	usleep_range(300, 400);
-	pdata->reset(pdata, 1);
-#endif
-
-	dd->resume_in_progress = true;
-	wake_up_process(dd->thread);
-	wait_for_completion(&dd->suspend_resume);
-
-	INFO("resume...done");
+	disable_irq_wake(dd->spi->irq);
+	enable_irq(dd->spi->irq);
 
 	return 0;
 }
@@ -844,14 +872,33 @@ static int input_disable(struct input_dev *dev)
 {
 	struct dev_data *dd = input_get_drvdata(dev);
 
-	return suspend(&dd->spi->dev);
+	return early_suspend(&dd->spi->dev);
 }
 
 static int input_enable(struct input_dev *dev)
 {
 	struct dev_data *dd = input_get_drvdata(dev);
 
-	return resume(&dd->spi->dev);
+	return late_resume(&dd->spi->dev);
+}
+#endif
+#if FB_CALLBACK && defined(CONFIG_FB)
+static int fb_notifier_callback(struct notifier_block *self,
+				unsigned long event, void *data)
+{
+	struct fb_event  *evdata = data;
+	int              *blank;
+	struct dev_data  *dd = container_of(self,
+					    struct dev_data, fb_notifier);
+
+	if (evdata && evdata->data && event == FB_EVENT_BLANK) {
+		blank = evdata->data;
+		if (*blank == FB_BLANK_UNBLANK)
+			late_resume(&dd->spi->dev);
+		else if (*blank == FB_BLANK_POWERDOWN)
+			early_suspend(&dd->spi->dev);
+	}
+	return 0;
 }
 #endif
 #endif
@@ -901,8 +948,7 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 	int                           ret;
 
 	if (dd->expect_resume_ack && msg_id != DR_DECONFIG &&
-	    msg_id != DR_RESUME_ACK && msg_id != DR_CONFIG_WATCHDOG &&
-		msg_id != DR_ADD_MC_GROUP && msg_id != DR_ECHO_REQUEST)
+	    msg_id != DR_RESUME_ACK)
 		return false;
 
 	switch (msg_id) {
@@ -996,7 +1042,7 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 		if (dd->irq_registered)
 			return false;
 		dd->service_irq = service_irq;
-		ret = request_irq(dd->spi->irq, irq_handler,
+		ret = request_threaded_irq(dd->spi->irq, irq_handler, wake_detect,
 			(config_irq_msg->irq_edge == DR_IRQ_RISING_EDGE) ?
 				IRQF_TRIGGER_RISING : IRQF_TRIGGER_FALLING,
 						pdata->nl_family, dd);
@@ -1042,6 +1088,12 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 				__set_bit(EV_KEY, dd->input_dev[i]->evbit);
 				__set_bit(BTN_TOOL_RUBBER,
 					  dd->input_dev[i]->keybit);
+#if DOUBLE_TAP
+			} else {
+				__set_bit(EV_KEY, dd->input_dev[i]->evbit);
+				__set_bit(KEY_POWER,
+					  dd->input_dev[i]->keybit);
+#endif
 			}
 			input_set_abs_params(dd->input_dev[i],
 					     ABS_MT_POSITION_X, 0,
@@ -1072,11 +1124,14 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 				ERROR("failed to register input device");
 			}
 		}
+#if FB_CALLBACK && defined(CONFIG_FB)
+		dd->fb_notifier.notifier_call = fb_notifier_callback;
+		fb_register_client(&dd->fb_notifier);
+#endif
 		return false;
 	case DR_CONFIG_WATCHDOG:
 		config_watchdog_msg = msg;
 		dd->fusion_process = (pid_t)config_watchdog_msg->pid;
-		dd->expect_resume_ack = false;
 		return false;
 	case DR_DECONFIG:
 		if (dd->irq_registered) {
@@ -1091,6 +1146,9 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 				input_unregister_device(dd->input_dev[i]);
 				dd->input_dev[i] = NULL;
 			}
+#if FB_CALLBACK && defined(CONFIG_FB)
+			fb_unregister_client(&dd->fb_notifier);
+#endif
 		}
 #if (INPUT_DEVICES > 1)
 		dd->last_finger_active = false;
@@ -1212,8 +1270,10 @@ nl_process_driver_msg(struct dev_data *dd, u16 msg_id, void *msg)
 		return false;
 	case DR_RESUME_ACK:
 		dd->expect_resume_ack = false;
+#if !DOUBLE_TAP
 		if (dd->irq_registered)
 			enable_irq(dd->spi->irq);
+#endif
 		return false;
 	case DR_LEGACY_FWDL:
 		ret = fw_request_load(dd);
@@ -1340,6 +1400,25 @@ nl_callback_fusion(struct sk_buff *skb, struct genl_info *info)
 * Interrupt processing                                                       *
 \****************************************************************************/
 
+#if DOUBLE_TAP
+static irqreturn_t wake_detect(int irq, void *context)
+{
+	struct dev_data  *dd = context;
+	u16    status;
+	int    ret = 0;
+
+	ret = dd->chip.read(dd, dd->irq_param[0], (u8 *)&status, sizeof(u16));
+	if (status & dd->irq_param[21] && dd->input_dev[ID_FINGER]) {
+		input_report_key(dd->input_dev[ID_FINGER], KEY_POWER, 1);
+		input_sync(dd->input_dev[ID_FINGER]);
+		input_report_key(dd->input_dev[ID_FINGER], KEY_POWER, 0);
+		input_sync(dd->input_dev[ID_FINGER]);
+	}
+
+	return IRQ_HANDLED;
+}
+#endif
+
 static irqreturn_t irq_handler(int irq, void *context)
 {
 	struct dev_data  *dd = context;
@@ -1350,6 +1429,11 @@ static irqreturn_t irq_handler(int irq, void *context)
 	if (time_after(jiffies, dd->last_irq_jiffies + INPUT_IDLE_PERIOD))
 		input_event(dd->input_dev[0], EV_MSC, MSC_ACTIVITY, 1);
 	dd->last_irq_jiffies = jiffies;
+#endif
+
+#if DOUBLE_TAP
+	if (unlikely(dd->suspend_in_progress))
+		return IRQ_WAKE_THREAD;
 #endif
 
 	wake_up_process(dd->thread);
@@ -1580,7 +1664,11 @@ static int processing_thread(void *arg)
 	struct dev_data         *dd = arg;
 	struct maxim_sti_pdata  *pdata = dd->spi->dev.platform_data;
 	struct sk_buff          *skb;
+	char                    *argv[] = { pdata->touch_fusion, "daemon",
+					    pdata->nl_family,
+					    pdata->config_file, NULL };
 	int                     ret, ret2;
+	bool                    fusion_dead;
 
 	sched_setscheduler(current, SCHED_FIFO, &dd->thread_sched);
 
@@ -1597,12 +1685,23 @@ static int processing_thread(void *arg)
 		/* priority 1: start up fusion process */
 		if (dd->fusion_process != (pid_t)0 && get_pid_task(
 					find_get_pid(dd->fusion_process),
-					PIDTYPE_PID) == NULL) {
+					PIDTYPE_PID) == NULL &&
+					!dd->suspend_in_progress) {
 			stop_scan_canned(dd);
+			dd->start_fusion = true;
 			dd->fusion_process = (pid_t)0;
-#if INPUT_ENABLE_DISABLE
+#if INPUT_ENABLE_DISABLE || FB_CALLBACK
 			dd->input_no_deconfig = true;
 #endif
+		}
+		if (dd->start_fusion) {
+			do {
+				ret = call_usermodehelper(argv[0], argv, NULL,
+							  UMH_WAIT_EXEC);
+				if (ret != 0)
+					msleep(100);
+			} while (ret != 0 && !kthread_should_stop());
+			dd->start_fusion = false;
 		}
 		if (kthread_should_stop())
 			break;
@@ -1622,30 +1721,55 @@ static int processing_thread(void *arg)
 			if (dd->irq_registered)
 				disable_irq(dd->spi->irq);
 			stop_scan_canned(dd);
+#if DOUBLE_TAP
+			enable_double_tap(dd);
+			if (dd->irq_registered)
+				enable_irq(dd->spi->irq);
+#elif SUSPEND_POWER_OFF
+			/* reset-low and power-down */
+			pdata->reset(pdata, 0);
+			usleep_range(100, 120);
+			regulator_control(dd, false);
+#endif
+			dd->expect_resume_ack = true;
 			complete(&dd->suspend_resume);
 
 			INFO("%s: suspended.", __func__);
 
 			dd->expect_resume_ack = true;
-			while (!dd->resume_in_progress &&
-					!kthread_should_stop()) {
+			while (!dd->resume_in_progress) {
 				/* the line below is a MUST */
 				set_current_state(TASK_INTERRUPTIBLE);
 				schedule();
 			}
-			if (kthread_should_stop())
-				break;
 
 			INFO("%s: resuming.", __func__);
 
-#if !SUSPEND_POWER_OFF
+#if DOUBLE_TAP || SUSPEND_POWER_OFF
+			/* power-up and reset-high */
+			pdata->reset(pdata, 0);
+#if SUSPEND_POWER_OFF
+			regulator_control(dd, true);
+#endif
+			usleep_range(300, 400);
+			pdata->reset(pdata, 1);
+			usleep_range(300, 400);
+#else
 			start_scan_canned(dd);
 #endif
 			dd->resume_in_progress = false;
 			dd->suspend_in_progress = false;
 			complete(&dd->suspend_resume);
 
+			fusion_dead = false;
 			do {
+				if (dd->fusion_process != (pid_t)0 &&
+				    get_pid_task(find_get_pid(
+							dd->fusion_process),
+						 PIDTYPE_PID) == NULL) {
+					fusion_dead = true;
+					break;
+				}
 				ret = nl_add_attr(dd->outgoing_skb->data,
 						  FU_RESUME, NULL, 0);
 				if (ret < 0) {
@@ -1671,9 +1795,9 @@ static int processing_thread(void *arg)
 				if (ret2 < 0)
 					ERROR("could not allocate outgoing " \
 					      "skb (%d)", ret2);
-			} while (ret != 0 && !kthread_should_stop());
-			if (kthread_should_stop())
-				break;
+			} while (ret != 0);
+			if (fusion_dead)
+				continue;
 			if (ret == 0)
 				INFO("%s: resumed.", __func__);
 		}
@@ -1821,11 +1945,8 @@ static int probe(struct spi_device *spi)
 	dd->last_irq_jiffies = jiffies;
 #endif
 
-#ifdef CONFIG_PM_WAKELOCKS
-	wakeup_source_init(&dd->ws, "touch_fusion");
-	__pm_stay_awake(&dd->ws);
-#endif
 	/* start up Touch Fusion */
+	dd->start_fusion = true;
 	wake_up_process(dd->thread);
 	INFO("driver loaded; version %s; release date %s", DRIVER_VERSION,
 	     DRIVER_RELEASE);
@@ -1851,12 +1972,6 @@ static int remove(struct spi_device *spi)
 
 	INFO("removing...\n");
 
-	if (dd->irq_registered)
-		disable_irq(dd->spi->irq);
-
-	dd->nl_enabled = false;
-	(void)kthread_stop(dd->thread);
-
 	if (dd->fusion_process != (pid_t)0)
 		(void)kill_pid(find_get_pid(dd->fusion_process), SIGKILL, 1);
 
@@ -1869,6 +1984,8 @@ static int remove(struct spi_device *spi)
 	/* 4) above step (3) insures that all Netlink senders are           */
 	/*    definitely gone and it is safe to free up outgoing skb buffer */
 	/*    and incoming skb queue                                        */
+	dd->nl_enabled = false;
+	(void)kthread_stop(dd->thread);
 	genl_unregister_family(&dd->nl_family);
 	kfree_skb(dd->outgoing_skb);
 	skb_queue_purge(&dd->incoming_skb_queue);
@@ -1876,6 +1993,9 @@ static int remove(struct spi_device *spi)
 	for (i = 0; i < INPUT_DEVICES; i++)
 		if (dd->input_dev[i])
 			input_unregister_device(dd->input_dev[i]);
+#if FB_CALLBACK && defined(CONFIG_FB)
+	fb_unregister_client(&dd->fb_notifier);
+#endif
 
 	if (dd->irq_registered)
 		free_irq(dd->spi->irq, dd);
@@ -1904,17 +2024,6 @@ static void shutdown(struct spi_device *spi)
 
 	INFO("doing shutdown...\n");
 
-	if (dd->irq_registered)
-		disable_irq(dd->spi->irq);
-
-	dd->nl_enabled = false;
-	(void)kthread_stop(dd->thread);
-
-	if (dd->fusion_process != (pid_t)0)
-		(void)kill_pid(find_get_pid(dd->fusion_process), SIGKILL, 1);
-
-	stop_scan_canned(dd);
-
 	pdata->reset(pdata, 0);
 	usleep_range(100, 120);
 	regulator_control(dd, false);
@@ -1939,7 +2048,7 @@ static struct spi_driver driver = {
 	.driver = {
 		.name   = MAXIM_STI_NAME,
 		.owner  = THIS_MODULE,
-#if defined(CONFIG_PM_SLEEP) && !INPUT_ENABLE_DISABLE
+#ifdef CONFIG_PM_SLEEP
 		.pm     = &pm_ops,
 #endif
 	},

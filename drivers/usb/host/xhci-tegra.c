@@ -1,7 +1,7 @@
 /*
  * xhci-tegra.c - Nvidia xHCI host controller driver
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -416,6 +416,7 @@ struct tegra_xhci_hcd {
 	struct tegra_xhci_firmware firmware;
 
 	struct tegra_xhci_firmware_log log;
+	struct device_attribute hsic_power_attr[XUSB_HSIC_COUNT];
 
 	bool init_done;
 };
@@ -430,19 +431,10 @@ static struct tegra_usb_pmc_data pmc_hsic_data[XUSB_HSIC_COUNT];
 static void save_ctle_context(struct tegra_xhci_hcd *tegra,
 	u8 port)  __attribute__ ((unused));
 
-#ifdef CONFIG_TEGRA_XUSB_USB_BOOTLOADER_FIRMWARE
-static bool use_bootloader_firmware = true;
-#else
-static bool use_bootloader_firmware;
-#endif
-module_param(use_bootloader_firmware, bool, S_IRUGO);
-MODULE_PARM_DESC(use_bootloader_firmware, "take bootloader initialized firmware");
-
-#define FIRMWARE_FILE CONFIG_TEGRA_XUSB_FIRMWARE_FILE
+#define FIRMWARE_FILE "tegra_xusb_firmware"
 static char *firmware_file = FIRMWARE_FILE;
 #define FIRMWARE_FILE_HELP	\
 	"used to specify firmware file of Tegra XHCI host controller. "\
-	"This takes effect only if \"use_bootloader_firmware\" is \"N\". " \
 	"Default value is \"" FIRMWARE_FILE "\"."
 
 module_param(firmware_file, charp, S_IRUGO);
@@ -1165,7 +1157,8 @@ static void fw_log_deinit(struct tegra_xhci_hcd *tegra)
 static int hsic_power_rail_enable(struct tegra_xhci_hcd *tegra)
 {
 	struct device *dev = &tegra->pdev->dev;
-	struct tegra_xusb_regulator_name *supply = &tegra->bdata->supply;
+	const struct tegra_xusb_regulator_name *supply =
+				&tegra->soc_config->supply;
 	int ret;
 
 	if (tegra->vddio_hsic_reg)
@@ -1259,6 +1252,14 @@ static int hsic_pad_enable(struct tegra_xhci_hcd *tegra, unsigned pad)
 	else
 		reg &= ~AUTO_TERM_EN;
 	reg &= ~(PD_RX | HSIC_PD_ZI | PD_TRX | PD_TX);
+	writel(reg, base + HSIC_PAD_CTL_1(pad));
+
+	/* Wait for 25 us */
+	usleep_range(25, 50);
+
+	/* Power down tracking circuit */
+	reg = readl(base + HSIC_PAD_CTL_1(pad));
+	reg |= PD_TRX;
 	writel(reg, base + HSIC_PAD_CTL_1(pad));
 
 	reg = readl(base + HSIC_STRB_TRIM_CONTROL);
@@ -1485,7 +1486,8 @@ static void tegra_xhci_cfg(struct tegra_xhci_hcd *tegra)
 static int tegra_xusb_regulator_init(struct tegra_xhci_hcd *tegra,
 		struct platform_device *pdev)
 {
-	struct tegra_xusb_regulator_name *supply = &tegra->bdata->supply;
+	const struct tegra_xusb_regulator_name *supply =
+				&tegra->soc_config->supply;
 	int i;
 	int err = 0;
 
@@ -2446,6 +2448,7 @@ static int load_firmware(struct tegra_xhci_hcd *tegra, bool resetARU)
 	u32 usbsts, count = 0xff;
 	struct xhci_cap_regs __iomem *cap_regs;
 	struct xhci_op_regs __iomem *op_regs;
+	int pad;
 
 	/* enable mbox interrupt */
 	writel(readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD) | MBOX_INT_EN,
@@ -2534,6 +2537,10 @@ static int load_firmware(struct tegra_xhci_hcd *tegra, bool resetARU)
 		fw_tm.tm_min, fw_tm.tm_sec,
 		csb_read(tegra, XUSB_FALC_CPUCTL));
 
+	cfg_tbl->num_hsic_port = 0;
+	for_each_enabled_hsic_pad(pad, tegra)
+		cfg_tbl->num_hsic_port++;
+
 	dev_dbg(&pdev->dev, "num_hsic_port %d\n", cfg_tbl->num_hsic_port);
 
 	/* return fail if firmware status is not good */
@@ -2553,6 +2560,8 @@ static int load_firmware(struct tegra_xhci_hcd *tegra, bool resetARU)
 		dev_err(&pdev->dev, "Controller not ready\n");
 		return -EFAULT;
 	}
+	for_each_enabled_hsic_pad(pad, tegra)
+		hsic_pad_pupd_set(tegra, pad, PUPD_IDLE);
 
 	return 0;
 }
@@ -2691,6 +2700,14 @@ static int tegra_xhci_host_elpg_entry(struct tegra_xhci_hcd *tegra)
 			__func__, ret);
 		/* TODO: error handling? */
 		return ret;
+	}
+	if (tegra_powergate_is_powered(TEGRA_POWERGATE_PCIE)) {
+		ret = tegra_powergate_partition(TEGRA_POWERGATE_PCIE);
+		if (ret) {
+			xhci_err(xhci, "%s: could not powergate pex partition %d\n",
+				__func__, ret);
+			return ret;
+		}
 	}
 	tegra->host_pwr_gated = true;
 	clk_disable(tegra->host_clk);
@@ -3019,6 +3036,15 @@ tegra_xhci_host_partition_elpg_exit(struct tegra_xhci_hcd *tegra)
 			__func__, ret);
 		goto out;
 	}
+	/* unpwrgate PEX(if not done by PCIE driver) due to HW Bug1320346 */
+	if (!tegra_powergate_is_powered(TEGRA_POWERGATE_PCIE)) {
+		ret = tegra_unpowergate_partition(TEGRA_POWERGATE_PCIE);
+		if (ret) {
+			xhci_err(xhci, "%s: could not unpowergate pex partition %d\n",
+				__func__, ret);
+			goto out;
+		}
+	}
 	clk_enable(tegra->host_clk);
 
 	/* Step 4: Deassert reset to host partition clk */
@@ -3127,6 +3153,7 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 	struct xhci_hcd *xhci = tegra->xhci;
 	int pad, port;
 	unsigned long ports;
+	enum MBOX_CMD_TYPE response;
 
 	mutex_lock(&tegra->mbox_lock);
 
@@ -3201,7 +3228,7 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 		if (!ret)
 			sw_resp |= CMD_TYPE(MBOX_CMD_ACK);
 		else
-			sw_resp |= CMD_TYPE(MBOX_CMD_ACK);
+			sw_resp |= CMD_TYPE(MBOX_CMD_NACK);
 
 		goto send_sw_response;
 
@@ -3246,9 +3273,16 @@ tegra_xhci_process_mbox_message(struct work_struct *work)
 	return;
 
 send_sw_response:
-	if (((sw_resp >> CMD_TYPE_SHIFT) & CMD_TYPE_MASK) == MBOX_CMD_NACK)
-		xhci_err(xhci, "%s respond fw message 0x%x with NAK\n",
-				__func__, fw_msg);
+	response = (sw_resp >> CMD_TYPE_SHIFT) & CMD_TYPE_MASK;
+	if (response == MBOX_CMD_NACK)
+		xhci_warn(xhci, "%s respond fw message 0x%x with NACK\n",
+			__func__, fw_msg);
+	else if (response == MBOX_CMD_ACK)
+		xhci_dbg(xhci, "%s respond fw message 0x%x with ACK\n",
+			__func__, fw_msg);
+	else
+		xhci_err(xhci, "%s respond fw message 0x%x with %d\n",
+		__func__, fw_msg, response);
 
 	writel(sw_resp, tegra->fpci_base + XUSB_CFG_ARU_MBOX_DATA_IN);
 	cmd = readl(tegra->fpci_base + XUSB_CFG_ARU_MBOX_CMD);
@@ -3727,90 +3761,6 @@ tegra_xhci_resume(struct platform_device *pdev)
 }
 #endif
 
-
-static int init_bootloader_firmware(struct tegra_xhci_hcd *tegra)
-{
-	struct platform_device *pdev = tegra->pdev;
-	void __iomem *fw_mmio_base;
-	phys_addr_t fw_mem_phy_addr;
-	size_t fw_size;
-	dma_addr_t fw_dma;
-#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
-	int ret;
-	DEFINE_DMA_ATTRS(attrs);
-#endif
-
-	/* bootloader saved firmware memory address in PMC SCRATCH34 register */
-	fw_mem_phy_addr = tegra_usb_pmc_reg_read(PMC_SCRATCH34);
-
-	fw_mmio_base = devm_ioremap_nocache(&pdev->dev,
-			fw_mem_phy_addr, sizeof(struct cfgtbl));
-
-	if (!fw_mmio_base) {
-			dev_err(&pdev->dev, "error mapping fw memory 0x%x\n",
-					(u32)fw_mem_phy_addr);
-			return -ENOMEM;
-	}
-
-	fw_size = ioread32(fw_mmio_base + FW_SIZE_OFFSET);
-	devm_iounmap(&pdev->dev, fw_mmio_base);
-
-	fw_mmio_base = devm_ioremap_nocache(&pdev->dev,
-			fw_mem_phy_addr, fw_size);
-	if (!fw_mmio_base) {
-			dev_err(&pdev->dev, "error mapping fw memory 0x%x\n",
-					(u32)fw_mem_phy_addr);
-			return -ENOMEM;
-	}
-
-	dev_info(&pdev->dev, "Firmware Memory: phy 0x%x mapped 0x%p (%d Bytes)\n",
-			(u32) fw_mem_phy_addr, fw_mmio_base, fw_size);
-
-#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
-	dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
-	fw_dma = dma_map_linear_attrs(&pdev->dev, fw_mem_phy_addr, fw_size,
-			DMA_TO_DEVICE, &attrs);
-
-	if (fw_dma == DMA_ERROR_CODE) {
-		dev_err(&pdev->dev, "%s: dma_map_linear failed\n",
-				__func__);
-		ret = -ENOMEM;
-		goto error_iounmap;
-	}
-#else
-	fw_dma = fw_mem_phy_addr;
-#endif
-	dev_info(&pdev->dev, "Firmware DMA Memory: dma 0x%p (%d Bytes)\n",
-			(void *) fw_dma, fw_size);
-
-	/* all set and ready to go */
-	tegra->firmware.data = fw_mmio_base;
-	tegra->firmware.dma = fw_dma;
-	tegra->firmware.size = fw_size;
-
-	return 0;
-
-#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
-error_iounmap:
-	devm_iounmap(&pdev->dev, fw_mmio_base);
-	return ret;
-#endif
-}
-
-static void deinit_bootloader_firmware(struct tegra_xhci_hcd *tegra)
-{
-	struct platform_device *pdev = tegra->pdev;
-	void __iomem *fw_mmio_base = tegra->firmware.data;
-
-#ifdef CONFIG_PLATFORM_ENABLE_IOMMU
-	dma_unmap_single(&pdev->dev, tegra->firmware.dma,
-			tegra->firmware.size, DMA_TO_DEVICE);
-#endif
-	devm_iounmap(&pdev->dev, fw_mmio_base);
-
-	memset(&tegra->firmware, 0, sizeof(tegra->firmware));
-}
-
 static int init_filesystem_firmware(struct tegra_xhci_hcd *tegra)
 {
 	struct platform_device *pdev = tegra->pdev;
@@ -3898,18 +3848,12 @@ static void deinit_filesystem_firmware(struct tegra_xhci_hcd *tegra)
 }
 static int init_firmware(struct tegra_xhci_hcd *tegra)
 {
-	if (use_bootloader_firmware)
-		return init_bootloader_firmware(tegra);
-	else
-		return init_filesystem_firmware(tegra);
+	return init_filesystem_firmware(tegra);
 }
 
 static void deinit_firmware(struct tegra_xhci_hcd *tegra)
 {
-	if (use_bootloader_firmware)
-		return deinit_bootloader_firmware(tegra);
-	else
-		return deinit_filesystem_firmware(tegra);
+	return deinit_filesystem_firmware(tegra);
 }
 
 static int tegra_enable_xusb_clk(struct tegra_xhci_hcd *tegra,
@@ -4169,20 +4113,6 @@ static void tegra_xusb_read_board_data(struct tegra_xhci_hcd *tegra)
 					(u32 *) &bdata->lane_owner);
 	ret = of_property_read_u32(node, "nvidia,ulpicap",
 					(u32 *) &bdata->ulpicap);
-	ret = of_property_read_string_index(node, "nvidia,supply_utmi_vbuses",
-					0, &bdata->supply.utmi_vbuses[0]);
-	ret = of_property_read_string_index(node, "nvidia,supply_utmi_vbuses",
-					1, &bdata->supply.utmi_vbuses[1]);
-	ret = of_property_read_string_index(node, "nvidia,supply_utmi_vbuses",
-					2, &bdata->supply.utmi_vbuses[2]);
-	ret = of_property_read_string(node, "nvidia,supply_s3p3v",
-					&bdata->supply.s3p3v);
-	ret = of_property_read_string(node, "nvidia,supply_s1p8v",
-					&bdata->supply.s1p8v);
-	ret = of_property_read_string(node, "nvidia,supply_vddio_hsic",
-					&bdata->supply.vddio_hsic);
-	ret = of_property_read_string(node, "nvidia,supply_s1p05v",
-					&bdata->supply.s1p05v);
 	ret = of_property_read_u8_array(node, "nvidia,hsic0",
 					(u8 *) &bdata->hsic[0],
 					sizeof(bdata->hsic[0]));
@@ -4226,8 +4156,15 @@ static const struct tegra_xusb_soc_config tegra114_soc_config = {
 	.hs_slew = (0xE << 6),
 	.ls_rslew_pad0 = (0x3 << 14),
 	.ls_rslew_pad1 = (0x0 << 14),
-	.hs_disc_lvl = (0x5 << 2),
+	.hs_disc_lvl = (0x7 << 2),
 	.spare_in = 0x0,
+	.supply = {
+		.utmi_vbuses = {"usb_vbus0", "usb_vbus1", "usb_vbus2",},
+		.s3p3v = "hvdd_usb",
+		.s1p8v = "avdd_usb_pll",
+		.vddio_hsic = "vddio_hsic",
+		.s1p05v = "avddio_usb",
+	},
 };
 
 static const struct tegra_xusb_soc_config tegra124_soc_config = {
@@ -4242,8 +4179,15 @@ static const struct tegra_xusb_soc_config tegra124_soc_config = {
 	.ls_rslew_pad0 = (0x3 << 14),
 	.ls_rslew_pad1 = (0x0 << 14),
 	.ls_rslew_pad2 = (0x0 << 14),
-	.hs_disc_lvl = (0x5 << 2),
+	.hs_disc_lvl = (0x7 << 2),
 	.spare_in = 0x1,
+	.supply = {
+		.utmi_vbuses = {"usb_vbus0", "usb_vbus1", "usb_vbus2",},
+		.s3p3v = "hvdd_usb",
+		.s1p8v = "avdd_pll_utmip",
+		.vddio_hsic = "vddio_hsic",
+		.s1p05v = "avddio_usb",
+	},
 };
 
 static struct of_device_id tegra_xhci_of_match[] = {
@@ -4251,6 +4195,94 @@ static struct of_device_id tegra_xhci_of_match[] = {
 	{ .compatible = "nvidia,tegra124-xhci", .data = &tegra124_soc_config },
 	{ },
 };
+
+static ssize_t hsic_power_show(struct device *dev,
+			struct kobj_attribute *attr, char *buf)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct tegra_xhci_hcd *tegra = platform_get_drvdata(pdev);
+	int pad;
+
+	for_each_enabled_hsic_pad(pad, tegra) {
+		if (&tegra->hsic_power_attr[pad] == attr)
+			return sprintf(buf, "%d\n", pad);
+	}
+
+	return sprintf(buf, "-1\n");
+}
+
+static ssize_t hsic_power_store(struct device *dev,
+			struct kobj_attribute *attr, const char *buf, size_t n)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct tegra_xhci_hcd *tegra = platform_get_drvdata(pdev);
+	enum MBOX_CMD_TYPE msg;
+	unsigned int on;
+	int pad, port;
+	int ret;
+
+	if (sscanf(buf, "%u", &on) != 1)
+		return -EINVAL;
+
+	if (on)
+		msg = MBOX_CMD_AIRPLANE_MODE_DISABLED;
+	else
+		msg = MBOX_CMD_AIRPLANE_MODE_ENABLED;
+
+	for_each_enabled_hsic_pad(pad, tegra) {
+		port = hsic_pad_to_port(pad);
+
+		if (&tegra->hsic_power_attr[pad] == attr) {
+			hsic_pad_pupd_set(tegra, pad, PUPD_IDLE);
+			ret = fw_message_send(tegra, msg, BIT(port + 1));
+		}
+	}
+
+	return n;
+}
+
+static void hsic_power_remove_file(struct tegra_xhci_hcd *tegra)
+{
+	struct device *dev = &tegra->pdev->dev;
+	int p;
+
+	for_each_enabled_hsic_pad(p, tegra) {
+		if (attr_name(tegra->hsic_power_attr[p])) {
+			device_remove_file(dev, &tegra->hsic_power_attr[p]);
+			kzfree(attr_name(tegra->hsic_power_attr[p]));
+		}
+	}
+
+}
+
+static int hsic_power_create_file(struct tegra_xhci_hcd *tegra)
+{
+	struct device *dev = &tegra->pdev->dev;
+	int p;
+	int err;
+
+	for_each_enabled_hsic_pad(p, tegra) {
+		attr_name(tegra->hsic_power_attr[p]) = kzalloc(16, GFP_KERNEL);
+		if (!attr_name(tegra->hsic_power_attr[p]))
+			return -ENOMEM;
+
+		snprintf(attr_name(tegra->hsic_power_attr[p]), 16,
+			"hsic%d_power", p);
+		tegra->hsic_power_attr[p].show = hsic_power_show;
+		tegra->hsic_power_attr[p].store = hsic_power_store;
+		tegra->hsic_power_attr[p].attr.mode = (S_IRUGO | S_IWUSR);
+		sysfs_attr_init(&tegra->hsic_power_attr[p]);
+
+		err = device_create_file(dev, &tegra->hsic_power_attr[p]);
+		if (err) {
+			kzfree(attr_name(tegra->hsic_power_attr[p]));
+			attr_name(tegra->hsic_power_attr[p]) = 0;
+			return err;
+		}
+	}
+
+	return 0;
+}
 
 /* TODO: we have to refine error handling in tegra_xhci_probe() */
 static int tegra_xhci_probe(struct platform_device *pdev)
@@ -4392,6 +4424,13 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 	if (ret)
 		dev_err(&pdev->dev, "could not unpowergate xusbc partition\n");
 
+	/* unpwrgate PEX(if not done by PCIE driver) due to HW Bug1320346 */
+	if (!tegra_powergate_is_powered(TEGRA_POWERGATE_PCIE)) {
+		ret = tegra_unpowergate_partition(TEGRA_POWERGATE_PCIE);
+		if (ret)
+			dev_err(&pdev->dev, "could not unpowergate pex partition\n");
+	}
+
 	ret = tegra_enable_xusb_clk(tegra, pdev);
 	if (ret)
 		dev_err(&pdev->dev, "could not enable partition clock\n");
@@ -4464,18 +4503,8 @@ static int tegra_xhci_probe(struct platform_device *pdev)
 		goto err_deinit_firmware_log;
 	}
 
-	if (use_bootloader_firmware) {
-		ret = tegra_xhci_probe2(tegra);
-		if (ret < 0) {
-			ret = -ENODEV;
-			goto err_deinit_firmware;
-		}
-	}
-
 	return 0;
 
-err_deinit_firmware:
-	deinit_firmware(tegra);
 err_deinit_firmware_log:
 	fw_log_deinit(tegra);
 err_deinit_usb2_clocks:
@@ -4640,6 +4669,7 @@ static int tegra_xhci_probe2(struct tegra_xhci_hcd *tegra)
 	tegra_pd_add_device(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
+	hsic_power_create_file(tegra);
 	tegra->init_done = true;
 
 	return 0;
@@ -4707,6 +4737,7 @@ static int tegra_xhci_remove(struct platform_device *pdev)
 	tegra_pd_remove_device(&pdev->dev);
 	platform_set_drvdata(pdev, NULL);
 
+	hsic_power_remove_file(tegra);
 	mutex_unlock(&tegra->sync_lock);
 
 	return 0;

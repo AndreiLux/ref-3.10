@@ -3,7 +3,7 @@
  *
  * GK20A Graphics
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -28,32 +28,48 @@ struct channel_gk20a;
 struct gr_gk20a;
 struct sim_gk20a;
 
+#include "dev.h"
+
 #include <linux/tegra-soc.h>
 #include <linux/spinlock.h>
+#include <linux/nvhost_gpu_ioctl.h>
 #include "clk_gk20a.h"
 #include "fifo_gk20a.h"
 #include "gr_gk20a.h"
 #include "sim_gk20a.h"
-#include "intr_gk20a.h"
 #include "pmu_gk20a.h"
 #include "priv_ring_gk20a.h"
 #include "therm_gk20a.h"
+#include "platform_gk20a.h"
 
 #include "../../../../../arch/arm/mach-tegra/iomap.h"
 
 extern struct platform_device tegra_gk20a_device;
-extern struct nvhost_device_data tegra_gk20a_info;
 
-static inline bool is_gk20a_module(struct platform_device *dev)
-{
-	return &tegra_gk20a_info == nvhost_get_devdata(dev);
-}
+bool is_gk20a_module(struct platform_device *dev);
 
 struct cooling_device_gk20a {
 	struct thermal_cooling_device *gk20a_cooling_dev;
 	unsigned int gk20a_freq_state;
 	unsigned int gk20a_freq_table_size;
 	struct gk20a *g;
+};
+
+struct gpu_ops {
+	struct {
+		int (*determine_L2_size_bytes)(struct gk20a *gk20a);
+	} ltc;
+	struct {
+		void (*access_smpc_reg)(struct gk20a *g, u32 quad, u32 offset);
+		void (*bundle_cb_defaults)(struct gk20a *g);
+		void (*cb_size_default)(struct gk20a *g);
+		void (*calc_global_ctx_buffer_size)(struct gk20a *g);
+		void (*commit_global_attrib_cb)(struct gk20a *g,
+						struct channel_ctx_gk20a *ch_ctx,
+						u64 addr, bool patch);
+		void (*init_gpc_mmu)(struct gk20a *g);
+	} gr;
+	const char *name;
 };
 
 struct gk20a {
@@ -106,10 +122,44 @@ struct gk20a {
 
 	void (*remove_support)(struct platform_device *);
 
-	struct notifier_block system_suspend_notifier;
 	u64 pg_ingating_time_us;
 	u64 pg_ungating_time_us;
 	u32 pg_gating_cnt;
+
+	spinlock_t mc_enable_lock;
+
+	struct nvhost_gpu_characteristics gpu_characteristics;
+
+	struct {
+		struct cdev cdev;
+		struct device *node;
+	} channel;
+
+	struct {
+		struct cdev cdev;
+		struct device *node;
+	} ctrl;
+
+	struct {
+		struct cdev cdev;
+		struct device *node;
+	} dbg;
+
+	struct {
+		struct cdev cdev;
+		struct device *node;
+	} prof;
+
+	struct mutex client_lock;
+	int client_refcount; /* open channels and ctrl nodes */
+
+	dev_t cdev_region;
+	struct class *class;
+
+	struct gpu_ops ops;
+
+	int irq_stall;
+	int irq_nonstall;
 };
 
 static inline unsigned long gk20a_get_gr_idle_timeout(struct gk20a *g)
@@ -120,7 +170,7 @@ static inline unsigned long gk20a_get_gr_idle_timeout(struct gk20a *g)
 
 static inline struct gk20a *get_gk20a(struct platform_device *dev)
 {
-	return (struct gk20a *)nvhost_get_private_data(dev);
+	return gk20a_get_platform(dev)->g;
 }
 
 enum BAR0_DEBUG_OPERATION {
@@ -220,13 +270,6 @@ static inline void gk20a_gr_flush_channel_tlb(struct gr_gk20a *gr)
 	spin_unlock(&gr->ch_tlb_lock);
 }
 
-/* This function can be called from two places, whichever comes first.
- * 1. nvhost calls this for gk20a driver init when client opens first gk20a channel.
- * 2. client opens gk20a ctrl node.
- */
-int nvhost_gk20a_init(struct platform_device *dev);
-void nvhost_gk20a_deinit(struct platform_device *dev);
-
 /* classes that the device supports */
 /* TBD: get these from an open-sourced SDK? */
 enum {
@@ -237,7 +280,7 @@ enum {
 	KEPLER_DMA_COPY_A         = 0xA0B5, /*not sure about this one*/
 };
 
-#if defined (CONFIG_TEGRA_GK20A_PMU)
+#if defined(CONFIG_GK20A_PMU)
 static inline int support_gk20a_pmu(void)
 {
 	return 1;
@@ -248,10 +291,6 @@ static inline int support_gk20a_pmu(void){return 0;}
 
 int nvhost_gk20a_finalize_poweron(struct platform_device *dev);
 int nvhost_gk20a_prepare_poweroff(struct platform_device *dev);
-void nvhost_gk20a_scale_notify_idle(struct platform_device *pdev);
-void nvhost_gk20a_scale_notify_busy(struct platform_device *pdev);
-void nvhost_gk20a_scale_init(struct platform_device *pdev);
-void nvhost_gk20a_scale_deinit(struct platform_device *pdev);
 
 void gk20a_create_sysfs(struct platform_device *dev);
 
@@ -259,20 +298,36 @@ void gk20a_create_sysfs(struct platform_device *dev);
 int clk_gk20a_debugfs_init(struct platform_device *dev);
 #endif
 
-extern const struct file_operations tegra_gk20a_ctrl_ops;
-extern const struct file_operations tegra_gk20a_dbg_gpu_ops;
-extern const struct file_operations tegra_gk20a_prof_gpu_ops;
-
-struct nvhost_hwctx_handler *nvhost_gk20a_alloc_hwctx_handler(u32 syncpt,
-		u32 waitbase, struct nvhost_channel *ch);
+struct nvhost_hwctx *gk20a_alloc_hwctx(struct nvhost_channel *ch);
+void gk20a_free_hwctx(struct nvhost_hwctx *ctx);
 
 #define GK20A_BAR0_IORESOURCE_MEM 0
 #define GK20A_BAR1_IORESOURCE_MEM 1
 #define GK20A_SIM_IORESOURCE_MEM 2
-#define TEGRA_GK20A_SIM_BASE 0x538F0000 /*tbd: get from iomap.h */
-#define TEGRA_GK20A_SIM_SIZE 0x1000     /*tbd: this is a high-side guess */
 
-void gk20a_busy(struct platform_device *pdev);
+void gk20a_busy_noresume(struct platform_device *pdev);
+int gk20a_busy(struct platform_device *pdev);
 void gk20a_idle(struct platform_device *pdev);
+int gk20a_channel_busy(struct platform_device *pdev);
+void gk20a_channel_idle(struct platform_device *pdev);
+void gk20a_disable(struct gk20a *g, u32 units);
+void gk20a_enable(struct gk20a *g, u32 units);
+void gk20a_reset(struct gk20a *g, u32 units);
+int gk20a_get_client(struct gk20a *g);
+void gk20a_put_client(struct gk20a *g);
+
+const struct firmware *
+gk20a_request_firmware(struct gk20a *g, const char *fw_name);
+
+#define NVHOST_GPU_ARCHITECTURE_SHIFT 4
+
+/* constructs unique and compact GPUID from nvhost_gpu_characteristics
+ * arch/impl fields */
+#define GK20A_GPUID(arch, impl) ((u32) ((arch) | (impl)))
+
+#define GK20A_GPUID_GK20A \
+	GK20A_GPUID(NVHOST_GPU_ARCH_GK100, NVHOST_GPU_IMPL_GK20A)
+
+int gk20a_init_gpu_characteristics(struct gk20a *g);
 
 #endif /* _NVHOST_GK20A_H_ */

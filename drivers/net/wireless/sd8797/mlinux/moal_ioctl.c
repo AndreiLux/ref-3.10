@@ -1846,6 +1846,12 @@ woal_send_host_packet(struct net_device *dev, struct ifreq *req)
 		goto done;
 	}
 #define PACKET_HEADER_LEN        8
+#define MV_ETH_FRAME_LEN      1514
+	if (packet_len > MV_ETH_FRAME_LEN) {
+		PRINTM(MERROR, "Invalid packet length %d\n", packet_len);
+		ret = -EFAULT;
+		goto done;
+	}
 	pmbuf = woal_alloc_mlan_buffer(priv->phandle,
 				       (int)(MLAN_MIN_DATA_HEADER_LEN +
 					     (int)packet_len +
@@ -4290,6 +4296,13 @@ woal_set_bg_scan(moal_private * priv, char *buf, int length)
 			buf_left -= 2;
 			break;
 		case WEXT_BGSCAN_INTERVAL_SECTION:
+			if (buf_left < 3) {
+				PRINTM(MERROR,
+				       "Invalid scan_interval, buf_left=%d\n",
+				       buf_left);
+				buf_left = 0;
+				break;
+			}
 			priv->scan_cfg.scan_interval =
 				(ptr[2] << 8 | ptr[1]) * 1000;
 			PRINTM(MIOCTL, "BG scan: scan_interval=%d\n",

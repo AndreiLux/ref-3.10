@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra12_emc.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -42,6 +42,7 @@
 #include "iomap.h"
 #include "tegra12_emc.h"
 #include "tegra_emc_dt_parse.h"
+#include "devices.h"
 
 
 #ifdef CONFIG_TEGRA_EMC_SCALING_ENABLE
@@ -51,20 +52,32 @@ static bool emc_enable;
 #endif
 module_param(emc_enable, bool, 0644);
 
+#ifdef CONFIG_PASR
 static int pasr_enable;
+#endif
 
-u8 tegra_emc_bw_efficiency = 100;
+u8 tegra_emc_bw_efficiency = 80;
 
 static u32 bw_calc_freqs[] = {
-	20, 40, 60, 80, 100, 120, 140, 160, 200, 300, 400, 600, 800
+	5, 10, 20, 30, 40, 60, 80, 100, 120, 140, 160, 180
 };
 
-static u32 tegra12_emc_usage_shared_os_idle[] = {
-	11, 27, 29, 34, 39, 42, 46, 47, 51, 51, 51, 51, 51, 51
+/* LPDDR3 table */
+static u32 tegra12_lpddr3_emc_usage_shared_os_idle[] = {
+	18, 29, 43, 48, 51, 61, 62, 66, 71, 74, 70, 60, 50
 };
-static u32 tegra12_emc_usage_shared_general[] = {
-	11, 18, 22, 25, 28, 31, 34, 38, 44, 44, 44, 44, 44, 51
+static u32 tegra12_lpddr3_emc_usage_shared_general[] = {
+	17, 25, 35, 43, 50, 50, 50, 50, 50, 50, 50, 50, 45
 };
+
+/* the following is for DDR3: */
+static u32 tegra12_ddr3_emc_usage_shared_os_idle[] = {
+	21, 30, 43, 48, 51, 61, 62, 66, 71, 74, 70, 60, 60
+};
+static u32 tegra12_ddr3_emc_usage_shared_general[] = {
+	20, 26, 35, 43, 50, 50, 50, 50, 50, 50, 50, 50, 50
+};
+
 
 static u8 iso_share_calc_t124_os_idle(unsigned long iso_bw);
 static u8 iso_share_calc_t124_general(unsigned long iso_bw);
@@ -77,20 +90,20 @@ static struct emc_iso_usage tegra12_emc_iso_usage[] = {
 	},
 	{
 		BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2),
-		45, iso_share_calc_t124_general
+		50, iso_share_calc_t124_general
 	},
 	{
 		BIT(EMC_USER_DC1) | BIT(EMC_USER_VI),
-		45, iso_share_calc_t124_general
+		50, iso_share_calc_t124_general
 	},
 	{
 		BIT(EMC_USER_DC1) | BIT(EMC_USER_DC2) | BIT(EMC_USER_VI),
-		45, iso_share_calc_t124_general
+		50, iso_share_calc_t124_general
 	},
 };
 
 #define MHZ 1000000
-#define TEGRA_EMC_ISO_USE_FREQ_MAX_NUM 13
+#define TEGRA_EMC_ISO_USE_FREQ_MAX_NUM	12
 #define PLL_C_DIRECT_FLOOR		333500000
 #define EMC_STATUS_UPDATE_TIMEOUT	1000
 #define TEGRA_EMC_TABLE_MAX_SIZE	16
@@ -280,6 +293,7 @@ enum {
 	DEFINE_REG(TEGRA_MC_BASE, MC_EMEM_ARB_DA_TURNS),	\
 	DEFINE_REG(TEGRA_MC_BASE, MC_EMEM_ARB_DA_COVERS),	\
 	DEFINE_REG(TEGRA_MC_BASE, MC_EMEM_ARB_MISC0),		\
+	DEFINE_REG(TEGRA_MC_BASE, MC_EMEM_ARB_MISC1),		\
 	DEFINE_REG(TEGRA_MC_BASE, MC_EMEM_ARB_RING1_THROTTLE),
 
 #define BURST_UP_DOWN_REG_LIST \
@@ -661,7 +675,8 @@ static noinline void emc_set_clock(const struct tegra12_emc_table *next_timing,
 				   u32 clk_setting)
 {
 #ifndef EMULATE_CLOCK_SWITCH
-	int i, dll_change, pre_wait, ctt_term_changed;
+	int i, dll_change, pre_wait;
+	int ctt_term_changed = 0;
 	bool cfg_pow_features_enabled, zcal_long;
 	u32 bgbias_ctl, auto_cal_status, auto_cal_config;
 	u32 emc_cfg_reg = emc_readl(EMC_CFG);
@@ -967,6 +982,7 @@ int tegra_emc_set_rate(unsigned long rate)
 	emc_set_clock(&tegra_emc_table[i], last_timing, clk_setting);
 	clkchange_time = ktime_get();
 	emc_timing = &tegra_emc_table[i];
+	tegra_mc_divider_update(emc);
 	spin_unlock_irqrestore(&emc_access_lock, flags);
 
 	emc_last_stats_update(i);
@@ -1309,6 +1325,9 @@ static int init_emc_table(const struct tegra12_emc_table *table, int table_size)
 	case 0x18:
 		start_timing.burst_regs_num = table[0].burst_regs_num;
 		break;
+	case 0x19:
+		start_timing.burst_regs_num = table[0].burst_regs_num;
+		break;
 	default:
 		pr_err("tegra: invalid EMC DFS table: unknown rev 0x%x\n",
 			table[0].rev);
@@ -1497,6 +1516,23 @@ static struct kernel_param_ops tegra12_pasr_enable_ops = {
 module_param_cb(pasr_enable, &tegra12_pasr_enable_ops, &pasr_enable, 0644);
 #endif
 
+void tegra12_mc_holdoff_enable(void)
+{
+	mc_writel(HYST_MSENCSRD | HYST_DISPLAYHCB | HYST_DISPLAYHC |
+		HYST_DISPLAY0CB | HYST_DISPLAY0C | YST_DISPLAY0BB |
+		YST_DISPLAY0B | YST_DISPLAY0AB | YST_DISPLAY0A,
+		MC_EMEM_ARB_HYSTERESIS_0_0);
+	mc_writel(HYST_VDEDBGW | HYST_VDEBSEVW | HYST_MSENCSWR |
+		YST_VDETPER | YST_VDEMCER | YST_VDEMBER | YST_VDEBSEVR,
+		MC_EMEM_ARB_HYSTERESIS_1_0);
+	mc_writel(HYST_DISPLAYT | HYST_GPUSWR | HYST_ISPWBB |
+		HYST_ISPWAB | HYST_ISPRAB | YST_ISPWB | YST_ISPWA |
+		YST_ISPRA | YST_VDETPMW | YST_VDEMBEW,
+		MC_EMEM_ARB_HYSTERESIS_2_0);
+	mc_writel(HYST_DISPLAYD | HYST_VIW | HYST_VICSWR | HYST_VICSRD,
+		MC_EMEM_ARB_HYSTERESIS_3_0);
+}
+
 static int tegra12_emc_probe(struct platform_device *pdev)
 {
 	struct tegra12_emc_pdata *pdata;
@@ -1534,14 +1570,17 @@ static struct platform_driver tegra12_emc_driver = {
 	.driver         = {
 		.name   = "tegra-emc",
 		.owner  = THIS_MODULE,
-		.of_match_table = tegra12_emc_of_match,
 	},
 	.probe          = tegra12_emc_probe,
 };
 
 int __init tegra12_emc_init(void)
 {
-	int ret = platform_driver_register(&tegra12_emc_driver);
+	int ret;
+
+	if (!tegra_emc_device.dev.platform_data)
+		tegra12_emc_driver.driver.of_match_table = tegra12_emc_of_match;
+	ret = platform_driver_register(&tegra12_emc_driver);
 
 	if (!ret) {
 		tegra_emc_iso_usage_table_init(tegra12_emc_iso_usage,
@@ -1553,12 +1592,14 @@ int __init tegra12_emc_init(void)
 				tegra_clk_preset_emc_monitor(rate);
 		}
 	}
+	tegra12_mc_holdoff_enable();
 	return ret;
 }
 
 void tegra_emc_timing_invalidate(void)
 {
 	emc_timing = NULL;
+	tegra_mc_divider_update(emc);
 }
 
 void tegra_emc_dram_type_init(struct clk *c)
@@ -1758,13 +1799,17 @@ static inline int bw_calc_get_freq_idx(unsigned long bw)
 static u8 iso_share_calc_t124_os_idle(unsigned long iso_bw)
 {
 	int freq_idx = bw_calc_get_freq_idx(iso_bw);
-	return tegra12_emc_usage_shared_os_idle[freq_idx];
+	return (dram_type != DRAM_TYPE_DDR3) ?
+		tegra12_lpddr3_emc_usage_shared_os_idle[freq_idx] :
+		tegra12_ddr3_emc_usage_shared_os_idle[freq_idx];
 }
 
 static u8 iso_share_calc_t124_general(unsigned long iso_bw)
 {
 	int freq_idx = bw_calc_get_freq_idx(iso_bw);
-	return tegra12_emc_usage_shared_general[freq_idx];
+	return (dram_type != DRAM_TYPE_DDR3) ?
+		tegra12_lpddr3_emc_usage_shared_general[freq_idx] :
+		tegra12_ddr3_emc_usage_shared_general[freq_idx];
 }
 
 

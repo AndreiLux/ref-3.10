@@ -3,7 +3,7 @@
  *
  * GK20A PMU (aka. gPMU outside gk20a context)
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -44,6 +44,8 @@
 static void pmu_dump_falcon_stats(struct pmu_gk20a *pmu);
 static int gk20a_pmu_get_elpg_residency_gating(struct gk20a *g,
 		u32 *ingating_time, u32 *ungating_time, u32 *gating_cnt);
+static void gk20a_init_pmu_setup_hw2_workqueue(struct work_struct *work);
+
 
 static void pmu_copy_from_dmem(struct pmu_gk20a *pmu,
 			u32 src, u8* dst, u32 size, u8 port)
@@ -185,6 +187,9 @@ static void pmu_enable_irq(struct pmu_gk20a *pmu, bool enable)
 	gk20a_writel(g, mc_intr_mask_0_r(),
 		gk20a_readl(g, mc_intr_mask_0_r()) &
 		~mc_intr_mask_0_pmu_enabled_f());
+	gk20a_writel(g, mc_intr_mask_1_r(),
+		gk20a_readl(g, mc_intr_mask_1_r()) &
+		~mc_intr_mask_1_pmu_enabled_f());
 
 	gk20a_writel(g, pwr_falcon_irqmclr_r(),
 		pwr_falcon_irqmclr_gptmr_f(1)  |
@@ -216,7 +221,7 @@ static void pmu_enable_irq(struct pmu_gk20a *pmu, bool enable)
 			pwr_falcon_irqdest_target_halt_f(0)   |
 			pwr_falcon_irqdest_target_exterr_f(0) |
 			pwr_falcon_irqdest_target_swgen0_f(0) |
-			pwr_falcon_irqdest_target_swgen1_f(1) |
+			pwr_falcon_irqdest_target_swgen1_f(0) |
 			pwr_falcon_irqdest_target_ext_f(0xff));
 
 		/* 0=disable, 1=enable */
@@ -241,20 +246,13 @@ static void pmu_enable_irq(struct pmu_gk20a *pmu, bool enable)
 static void pmu_enable_hw(struct pmu_gk20a *pmu, bool enable)
 {
 	struct gk20a *g = pmu->g;
-	u32 pmc_enable;
 
 	nvhost_dbg_fn("");
 
-	pmc_enable = gk20a_readl(g, mc_enable_r());
-
 	if (enable)
-		gk20a_writel(g, mc_enable_r(),
-			pmc_enable | mc_enable_pwr_enabled_f());
+		gk20a_enable(g, mc_enable_pwr_enabled_f());
 	else
-		gk20a_writel(g, mc_enable_r(),
-			pmc_enable & ~mc_enable_pwr_enabled_f());
-
-	udelay(20);
+		gk20a_disable(g, mc_enable_pwr_enabled_f());
 }
 
 static int pmu_enable(struct pmu_gk20a *pmu, bool enable)
@@ -914,6 +912,7 @@ static void gk20a_save_pmu_sw_state(struct pmu_gk20a *pmu,
 	save->seq_buf = pmu->seq_buf;
 	save->pg_buf = pmu->pg_buf;
 	save->sw_ready = pmu->sw_ready;
+	save->pg_init = pmu->pg_init;
 }
 
 static void gk20a_restore_pmu_sw_state(struct pmu_gk20a *pmu,
@@ -930,6 +929,7 @@ static void gk20a_restore_pmu_sw_state(struct pmu_gk20a *pmu,
 	pmu->seq_buf = save->seq_buf;
 	pmu->pg_buf = save->pg_buf;
 	pmu->sw_ready = save->sw_ready;
+	pmu->pg_init = save->pg_init;
 }
 
 void gk20a_remove_pmu_support(struct pmu_gk20a *pmu)
@@ -976,6 +976,7 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	struct sg_table *sgt_pmu_ucode;
 	struct sg_table *sgt_seq_buf;
 	DEFINE_DMA_ATTRS(attrs);
+	dma_addr_t iova;
 
 	nvhost_dbg_fn("");
 
@@ -1017,8 +1018,7 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	pmu_seq_init(pmu);
 
 	if (!g->pmu_fw) {
-		g->pmu_fw = nvhost_client_request_firmware(g->dev,
-					GK20A_PMU_UCODE_IMAGE);
+		g->pmu_fw = gk20a_request_firmware(g, GK20A_PMU_UCODE_IMAGE);
 		if (!g->pmu_fw) {
 			nvhost_err(d, "failed to load pmu ucode!!");
 			err = -ENOENT;
@@ -1034,12 +1034,13 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 
 
 	INIT_DELAYED_WORK(&pmu->elpg_enable, pmu_elpg_enable_allow);
+	INIT_WORK(&pmu->pg_init, gk20a_init_pmu_setup_hw2_workqueue);
 
 	gk20a_init_pmu_vm(mm);
 
 	dma_set_attr(DMA_ATTR_READ_ONLY, &attrs);
 	pmu->ucode.cpuva = dma_alloc_attrs(d, GK20A_PMU_UCODE_SIZE_MAX,
-					&pmu->ucode.iova,
+					&iova,
 					GFP_KERNEL,
 					&attrs);
 	if (!pmu->ucode.cpuva) {
@@ -1048,8 +1049,9 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 		goto err_release_fw;
 	}
 
+	pmu->ucode.iova = iova;
 	pmu->seq_buf.cpuva = dma_alloc_coherent(d, GK20A_PMU_SEQ_BUF_SIZE,
-					&pmu->seq_buf.iova,
+					&iova,
 					GFP_KERNEL);
 	if (!pmu->seq_buf.cpuva) {
 		nvhost_err(d, "failed to allocate memory\n");
@@ -1057,6 +1059,7 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 		goto err_free_pmu_ucode;
 	}
 
+	pmu->seq_buf.iova = iova;
 	init_waitqueue_head(&pmu->pg_wq);
 
 	err = gk20a_get_sgtable(d, &sgt_pmu_ucode,
@@ -1122,6 +1125,7 @@ skip_init:
 	mutex_init(&pmu->elpg_mutex);
 	mutex_init(&pmu->isr_mutex);
 	mutex_init(&pmu->pmu_copy_lock);
+	mutex_init(&pmu->pg_init_mutex);
 
 	pmu->perfmon_counter.index = 3; /* GR & CE2 */
 	pmu->perfmon_counter.group_id = PMU_DOMAIN_GROUP_PSTATE;
@@ -1221,6 +1225,13 @@ int gk20a_init_pmu_setup_hw1(struct gk20a *g)
 
 }
 
+static void gk20a_init_pmu_setup_hw2_workqueue(struct work_struct *work)
+{
+	struct pmu_gk20a *pmu = container_of(work, struct pmu_gk20a, pg_init);
+	struct gk20a *g = pmu->g;
+	gk20a_init_pmu_setup_hw2(g);
+}
+
 int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 {
 	struct pmu_gk20a *pmu = &g->pmu;
@@ -1234,6 +1245,7 @@ int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 	bool status;
 	u32 size;
 	struct sg_table *sgt_pg_buf;
+	dma_addr_t iova;
 
 	nvhost_dbg_fn("");
 
@@ -1250,7 +1262,7 @@ int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 
 	if (!pmu->sw_ready) {
 		pmu->pg_buf.cpuva = dma_alloc_coherent(d, size,
-						&pmu->pg_buf.iova,
+						&iova,
 						GFP_KERNEL);
 		if (!pmu->pg_buf.cpuva) {
 			nvhost_err(d, "failed to allocate memory\n");
@@ -1258,6 +1270,7 @@ int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 			goto err;
 		}
 
+		pmu->pg_buf.iova = iova;
 		pmu->pg_buf.size = size;
 
 		err = gk20a_get_sgtable(d, &sgt_pg_buf,
@@ -1381,6 +1394,7 @@ int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 	 */
 	gk20a_writel(g, 0x10a164, 0x109ff);
 
+	mutex_lock(&pmu->pg_init_mutex);
 	pmu->initialized = true;
 	pmu->zbc_ready = true;
 
@@ -1393,7 +1407,10 @@ int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 	 * to enable elpg.
 	 */
 	gk20a_pmu_disable_elpg(g);
-	gk20a_pmu_enable_elpg(g);
+
+	if (g->elpg_enabled)
+		gk20a_pmu_enable_elpg(g);
+	mutex_unlock(&pmu->pg_init_mutex);
 
 	return 0;
 
@@ -1597,6 +1614,29 @@ static int pmu_init_perfmon(struct pmu_gk20a *pmu)
 			pwr_pmu_idle_ctrl_value_always_f() |
 			pwr_pmu_idle_ctrl_filter_disabled_f());
 	gk20a_writel(g, pwr_pmu_idle_ctrl_r(6), data);
+
+	/*
+	 * We don't want to disturb counters #3 and #6, which are used by
+	 * perfmon, so we add wiring also to counters #1 and #2 for
+	 * exposing raw counter readings.
+	 */
+	gk20a_writel(g, pwr_pmu_idle_mask_r(1),
+		pwr_pmu_idle_mask_gr_enabled_f() |
+		pwr_pmu_idle_mask_ce_2_enabled_f());
+
+	data = gk20a_readl(g, pwr_pmu_idle_ctrl_r(1));
+	data = set_field(data, pwr_pmu_idle_ctrl_value_m() |
+			pwr_pmu_idle_ctrl_filter_m(),
+			pwr_pmu_idle_ctrl_value_busy_f() |
+			pwr_pmu_idle_ctrl_filter_disabled_f());
+	gk20a_writel(g, pwr_pmu_idle_ctrl_r(1), data);
+
+	data = gk20a_readl(g, pwr_pmu_idle_ctrl_r(2));
+	data = set_field(data, pwr_pmu_idle_ctrl_value_m() |
+			pwr_pmu_idle_ctrl_filter_m(),
+			pwr_pmu_idle_ctrl_value_always_f() |
+			pwr_pmu_idle_ctrl_filter_disabled_f());
+	gk20a_writel(g, pwr_pmu_idle_ctrl_r(2), data);
 
 	pmu->sample_buffer = 0;
 	err = pmu->dmem.alloc(&pmu->dmem, &pmu->sample_buffer, 2 * sizeof(u16));
@@ -1983,7 +2023,7 @@ static int pmu_handle_perfmon_event(struct pmu_gk20a *pmu,
 	}
 
 	/* restart sampling */
-	if (IS_ENABLED(CONFIG_TEGRA_GK20A_PERFMON))
+	if (IS_ENABLED(CONFIG_GK20A_PERFMON))
 		return pmu_perfmon_start_sampling(pmu);
 	return 0;
 }
@@ -2557,7 +2597,7 @@ int gk20a_pmu_enable_elpg(struct gk20a *g)
 
 	nvhost_dbg_fn("");
 
-	if (!pmu->elpg_ready)
+	if (!pmu->elpg_ready || !pmu->initialized)
 		goto exit;
 
 	mutex_lock(&pmu->elpg_mutex);
@@ -2572,10 +2612,6 @@ int gk20a_pmu_enable_elpg(struct gk20a *g)
 			    __func__, pmu->elpg_refcnt);
 		WARN_ON(1);
 	}
-
-	/* do not act if ELPG is disabled. just sustain the refcount */
-	if (!g->elpg_enabled)
-		goto exit_unlock;
 
 	/* do NOT enable elpg until golden ctx is created,
 	   which is related with the ctx that ELPG save and restore. */
@@ -2634,7 +2670,7 @@ static int gk20a_pmu_disable_elpg_defer_enable(struct gk20a *g, bool enable)
 
 	nvhost_dbg_fn("");
 
-	if (!pmu->elpg_ready)
+	if (!pmu->elpg_ready || !pmu->initialized)
 		return 0;
 
 	/* remove the work from queue */
@@ -2748,11 +2784,15 @@ int gk20a_pmu_destroy(struct gk20a *g)
 
 	/* make sure the pending operations are finished before we continue */
 	cancel_delayed_work_sync(&pmu->elpg_enable);
+	cancel_work_sync(&pmu->pg_init);
 
 	gk20a_pmu_get_elpg_residency_gating(g, &elpg_ingating_time,
 		&elpg_ungating_time, &gating_cnt);
 
+	mutex_lock(&pmu->pg_init_mutex);
 	gk20a_pmu_disable_elpg_defer_enable(g, false);
+	pmu->initialized = false;
+	mutex_unlock(&pmu->pg_init_mutex);
 
 	/* update the s/w ELPG residency counters */
 	g->pg_ingating_time_us += (u64)elpg_ingating_time;
@@ -2786,6 +2826,38 @@ int gk20a_pmu_load_norm(struct gk20a *g, u32 *load)
 	return 0;
 }
 
+void gk20a_pmu_get_load_counters(struct gk20a *g, u32 *busy_cycles,
+				 u32 *total_cycles)
+{
+	if (!g->power_on) {
+		*busy_cycles = 0;
+		*total_cycles = 0;
+		return;
+	}
+
+	gk20a_busy(g->dev);
+	*busy_cycles = pwr_pmu_idle_count_value_v(
+		gk20a_readl(g, pwr_pmu_idle_count_r(1)));
+	rmb();
+	*total_cycles = pwr_pmu_idle_count_value_v(
+		gk20a_readl(g, pwr_pmu_idle_count_r(2)));
+	gk20a_idle(g->dev);
+}
+
+void gk20a_pmu_reset_load_counters(struct gk20a *g)
+{
+	u32 reg_val = pwr_pmu_idle_count_reset_f(1);
+
+	if (!g->power_on)
+		return;
+
+	gk20a_busy(g->dev);
+	gk20a_writel(g, pwr_pmu_idle_count_r(2), reg_val);
+	wmb();
+	gk20a_writel(g, pwr_pmu_idle_count_r(1), reg_val);
+	gk20a_idle(g->dev);
+}
+
 static int gk20a_pmu_get_elpg_residency_gating(struct gk20a *g,
 			u32 *ingating_time, u32 *ungating_time, u32 *gating_cnt)
 {
@@ -2813,17 +2885,20 @@ static int gk20a_pmu_get_elpg_residency_gating(struct gk20a *g,
 static int elpg_residency_show(struct seq_file *s, void *data)
 {
 	struct gk20a *g = s->private;
-	u32 ingating_time, ungating_time, gating_cnt, total_gating_cnt;
+	u32 ingating_time = 0;
+	u32 ungating_time = 0;
+	u32 gating_cnt;
 	u64 total_ingating, total_ungating, residency, divisor, dividend;
 
-	gk20a_busy(g->dev);
-	gk20a_pmu_get_elpg_residency_gating(g, &ingating_time, &ungating_time,
-					&gating_cnt);
-	gk20a_idle(g->dev);
+	/* Don't unnecessarily power on the device */
+	if (g->power_on) {
+		gk20a_busy(g->dev);
+		gk20a_pmu_get_elpg_residency_gating(g, &ingating_time,
+			&ungating_time, &gating_cnt);
+		gk20a_idle(g->dev);
+	}
 	total_ingating = g->pg_ingating_time_us + (u64)ingating_time;
 	total_ungating = g->pg_ungating_time_us + (u64)ungating_time;
-	total_gating_cnt = g->pg_gating_cnt + gating_cnt;
-
 	divisor = total_ingating + total_ungating;
 
 	/* We compute the residency on a scale of 1000 */
@@ -2836,10 +2911,8 @@ static int elpg_residency_show(struct seq_file *s, void *data)
 
 	seq_printf(s, "Time in ELPG: %llu us\n"
 			"Time out of ELPG: %llu us\n"
-			"ELPG residency ratio: %llu\n"
-			"ELPG transitions: %u\n",
-			total_ingating, total_ungating, residency,
-			total_gating_cnt);
+			"ELPG residency ratio: %llu\n",
+			total_ingating, total_ungating, residency);
 	return 0;
 
 }
@@ -2856,6 +2929,37 @@ static const struct file_operations elpg_residency_fops = {
 	.release	= single_release,
 };
 
+static int elpg_transitions_show(struct seq_file *s, void *data)
+{
+	struct gk20a *g = s->private;
+	u32 ingating_time, ungating_time, total_gating_cnt;
+	u32 gating_cnt = 0;
+
+	if (g->power_on) {
+		gk20a_busy(g->dev);
+		gk20a_pmu_get_elpg_residency_gating(g, &ingating_time,
+			&ungating_time, &gating_cnt);
+		gk20a_idle(g->dev);
+	}
+	total_gating_cnt = g->pg_gating_cnt + gating_cnt;
+
+	seq_printf(s, "%u\n", total_gating_cnt);
+	return 0;
+
+}
+
+static int elpg_transitions_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, elpg_transitions_show, inode->i_private);
+}
+
+static const struct file_operations elpg_transitions_fops = {
+	.open		= elpg_transitions_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
 int gk20a_pmu_debugfs_init(struct platform_device *dev)
 {
 	struct dentry *d;
@@ -2865,6 +2969,12 @@ int gk20a_pmu_debugfs_init(struct platform_device *dev)
 	d = debugfs_create_file(
 		"elpg_residency", S_IRUGO|S_IWUSR, pdata->debugfs, g,
 						&elpg_residency_fops);
+	if (!d)
+		goto err_out;
+
+	d = debugfs_create_file(
+		"elpg_transitions", S_IRUGO, pdata->debugfs, g,
+						&elpg_transitions_fops);
 	if (!d)
 		goto err_out;
 

@@ -5,7 +5,7 @@
  * Author:
  *	Colin Cross <ccross@google.com>
  *
- * Copyright (c) 2010-2013 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2010-2014 NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -115,6 +115,7 @@ struct dvfs_rail {
 	struct tegra_cooling_device *vts_cdev;
 	struct rail_alignment alignment;
 	struct rail_stats stats;
+	const char *version;
 };
 
 enum dfll_range {
@@ -229,13 +230,16 @@ static inline int of_tegra_dvfs_init(const struct of_device_id *matches)
 
 void tegra11x_init_dvfs(void);
 void tegra12x_init_dvfs(void);
+void tegra13x_init_dvfs(void);
 void tegra14x_init_dvfs(void);
 void tegra12x_vdd_cpu_align(int step_uv, int offset_uv);
 int tegra_enable_dvfs_on_clk(struct clk *c, struct dvfs *d);
 int dvfs_debugfs_init(struct dentry *clk_debugfs_root);
-int tegra_dvfs_late_init(void);
+int tegra_dvfs_rail_connect_regulators(void);
+int tegra_dvfs_rail_register_notifiers(void);
 int tegra_dvfs_init_rails(struct dvfs_rail *dvfs_rails[], int n);
 void tegra_dvfs_add_relationships(struct dvfs_relationship *rels, int n);
+
 void tegra_dvfs_rail_enable(struct dvfs_rail *rail);
 void tegra_dvfs_rail_disable(struct dvfs_rail *rail);
 int tegra_dvfs_rail_power_up(struct dvfs_rail *rail);
@@ -246,9 +250,12 @@ void tegra_dvfs_rail_off(struct dvfs_rail *rail, ktime_t now);
 void tegra_dvfs_rail_on(struct dvfs_rail *rail, ktime_t now);
 void tegra_dvfs_rail_pause(struct dvfs_rail *rail, ktime_t delta, bool on);
 int tegra_dvfs_rail_set_mode(struct dvfs_rail *rail, unsigned int mode);
+int tegra_dvfs_rail_register_notifier(struct dvfs_rail *rail,
+				      struct notifier_block *nb);
+int tegra_dvfs_rail_unregister_notifier(struct dvfs_rail *rail,
+					struct notifier_block *nb);
 struct dvfs_rail *tegra_dvfs_get_rail_by_name(const char *reg_id);
 
-int tegra_dvfs_predict_millivolts(struct clk *c, unsigned long rate);
 int tegra_dvfs_predict_peak_millivolts(struct clk *c, unsigned long rate);
 const int *tegra_dvfs_get_millivolts_pll(struct dvfs *d);
 
@@ -270,8 +277,14 @@ struct tegra_cooling_device *tegra_dvfs_get_core_vmax_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_core_vmin_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_gpu_vmin_cdev(void);
 struct tegra_cooling_device *tegra_dvfs_get_gpu_vts_cdev(void);
+#ifdef CONFIG_TEGRA_USE_SIMON
 void tegra_dvfs_rail_init_simon_vmin_offsets(
 	int *offsets, int offs_num, struct dvfs_rail *rail);
+#else
+static inline void tegra_dvfs_rail_init_simon_vmin_offsets(
+	int *offsets, int offs_num, struct dvfs_rail *rail)
+{ }
+#endif
 void tegra_dvfs_rail_init_vmin_thermal_profile(
 	int *therm_trips_table, int *therm_floors_table,
 	struct dvfs_rail *rail, struct dvfs_dfll_data *d);
@@ -304,6 +317,8 @@ static inline int tegra_dvfs_rail_disable_prepare(struct dvfs_rail *rail)
 static inline int tegra_dvfs_rail_post_enable(struct dvfs_rail *rail)
 { return 0; }
 #endif
+
+bool tegra_dvfs_is_dfll_bypass(void);
 
 static inline bool tegra_dvfs_rail_is_dfll_mode(struct dvfs_rail *rail)
 {
@@ -375,15 +390,6 @@ static inline int tegra_dvfs_rail_get_thermal_floor(struct dvfs_rail *rail)
 	    (rail->therm_floor_idx < rail->therm_mv_floors_num))
 		return rail->therm_mv_floors[rail->therm_floor_idx];
 	return 0;
-}
-
-static inline bool tegra_dvfs_is_dfll_bypass(void)
-{
-#ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
-	return true;
-#else
-	return false;
-#endif
 }
 
 #endif

@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Memory Management Abstraction header
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -36,16 +36,6 @@ struct nvhost_comptags {
 	u32 lines;
 };
 
-struct nvhost_job_unpin {
-	struct mem_handle *h;
-	struct sg_table *mem;
-};
-
-struct nvhost_memmgr_pinid {
-	u32 id;
-	u32 index;
-};
-
 enum mem_mgr_flag {
 	mem_mgr_flag_uncacheable = 0,
 	mem_mgr_flag_write_combine = 1,
@@ -62,13 +52,8 @@ enum mem_mgr_type {
 	mem_mgr_type_dmabuf = 1,
 };
 
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
 #define MEMMGR_TYPE_MASK	0x0
-#else
-#define MEMMGR_TYPE_MASK	0x3
-#endif
 #define MEMMGR_ID_MASK		(~MEMMGR_TYPE_MASK)
-
 
 int nvhost_memmgr_init(struct nvhost_chip_support *chip);
 struct mem_mgr *nvhost_memmgr_alloc_mgr(void);
@@ -99,14 +84,7 @@ void nvhost_memmgr_free_sg_table(struct mem_mgr *mgr,
 		struct mem_handle *handle, struct sg_table *sgt);
 static inline int nvhost_memmgr_type(ulong id) { return id & MEMMGR_TYPE_MASK; }
 static inline int nvhost_memmgr_id(ulong id) { return id & MEMMGR_ID_MASK; }
-u32 nvhost_memmgr_handle_to_id(struct mem_handle *handle);
 
-int nvhost_memmgr_pin_array_ids(struct mem_mgr *mgr,
-		struct platform_device *dev,
-		struct nvhost_memmgr_pinid *ids,
-		dma_addr_t *phys_addr,
-		u32 count,
-		struct nvhost_job_unpin *unpin_data);
 int nvhost_memmgr_get_param(struct mem_mgr *mem_mgr,
 			    struct mem_handle *mem_handle,
 			    u32 param, u64 *result);
@@ -116,6 +94,7 @@ void nvhost_memmgr_get_comptags(struct mem_handle *mem,
 int nvhost_memmgr_alloc_comptags(struct mem_handle *mem,
 				 struct nvhost_allocator *allocator,
 				 int lines);
+size_t nvhost_memmgr_size(struct mem_handle *handle);
 
 #ifdef CONFIG_TEGRA_IOMMU_SMMU
 int nvhost_memmgr_smmu_map(struct sg_table *sgt, size_t size,

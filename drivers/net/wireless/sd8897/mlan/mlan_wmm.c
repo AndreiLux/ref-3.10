@@ -2,7 +2,7 @@
  *
  *  @brief This file contains functions for WMM.
  *
- *  (C) Copyright 2008-2011 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2008-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -1213,7 +1213,7 @@ wlan_update_ralist_tx_pause(pmlan_private priv, t_u8 * mac, t_u8 tx_pause)
 					    priv->wmm.ra_list_spinlock);
 	for (i = 0; i < MAX_NUM_TID; ++i) {
 		ra_list = wlan_wmm_get_ralist_node(priv, i, mac);
-		if (ra_list) {
+		if (ra_list && ra_list->tx_pause != tx_pause) {
 			pkt_cnt += ra_list->total_pkts;
 			ra_list->tx_pause = tx_pause;
 			if (tx_pause)
@@ -1607,6 +1607,7 @@ wlan_wmm_setup_queue_priorities(pmlan_private priv,
 		LEAVE();
 		return;
 	}
+	memset(priv->adapter, tmp, 0, sizeof(tmp));
 
 	HEXDUMP("WMM: setup_queue_priorities: param IE",
 		(t_u8 *) pwmm_ie, sizeof(IEEEtypes_WmmParameter_t));
@@ -1818,12 +1819,16 @@ wlan_wmm_init(pmlan_adapter pmadapter)
 					MLAN_STA_AMPDU_DEF_RXWINSIZE;
 			}
 #endif
-#ifdef UAP_SUPPORT
-			if (priv->bss_type == MLAN_BSS_TYPE_UAP
 #ifdef WIFI_DIRECT_SUPPORT
-			    || priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT
+			if (priv->bss_type == MLAN_BSS_TYPE_WIFIDIRECT) {
+				priv->add_ba_param.tx_win_size =
+					MLAN_WFD_AMPDU_DEF_TXRXWINSIZE;
+				priv->add_ba_param.rx_win_size =
+					MLAN_WFD_AMPDU_DEF_TXRXWINSIZE;
+			}
 #endif
-				) {
+#ifdef UAP_SUPPORT
+			if (priv->bss_type == MLAN_BSS_TYPE_UAP) {
 				priv->add_ba_param.tx_win_size =
 					MLAN_UAP_AMPDU_DEF_TXWINSIZE;
 				priv->add_ba_param.rx_win_size =
@@ -2108,7 +2113,8 @@ wlan_wmm_add_buf_txqueue(pmlan_adapter pmadapter, pmlan_buffer pmbuf)
 		else if (priv->bss_type == MLAN_BSS_TYPE_UAP) {
 			sta_ptr = wlan_get_station_entry(priv, ra);
 			if (sta_ptr) {
-				if (!sta_ptr->is_wmm_enabled) {
+				if (!sta_ptr->is_wmm_enabled
+				    && !priv->is_11ac_enabled) {
 					tid_down =
 						wlan_wmm_downgrade_tid(priv,
 								       0xff);

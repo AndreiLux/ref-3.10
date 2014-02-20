@@ -2,7 +2,7 @@
   *
   * @brief This file contains functions for proc file.
   *
-  * Copyright (C) 2008-2010, Marvell International Ltd.
+  * Copyright (C) 2008-2013, Marvell International Ltd.
   *
   * This software file (the "File") is distributed by Marvell International
   * Ltd. under the terms of the GNU General Public License Version 2, June 1991
@@ -292,7 +292,7 @@ static const struct file_operations info_proc_fops = {
  *  @return         BT_STATUS_SUCCESS
  */
 static int
-parse_cmd52_string(const char __user * buffer, size_t len, int *func, int *reg,
+parse_cmd52_string(const char *buffer, size_t len, int *func, int *reg,
 		   int *val)
 {
 	int ret = MLAN_STATUS_SUCCESS;
@@ -302,6 +302,9 @@ parse_cmd52_string(const char __user * buffer, size_t len, int *func, int *reg,
 	ENTER();
 
 	string = (char *)kmalloc(CMD52_STR_LEN, GFP_KERNEL);
+	if (string == NULL)
+		return -ENOMEM;
+
 	memset(string, 0, CMD52_STR_LEN);
 	memcpy(string, buffer + strlen("sdcmd52rw="),
 	       MIN((CMD52_STR_LEN - 1), (len - strlen("sdcmd52rw="))));
@@ -394,8 +397,8 @@ woal_config_write(struct file *f, const char __user * buf, size_t count,
 	}
 	if (!strncmp(databuf, "sdcmd52rw=", strlen("sdcmd52rw=")) &&
 	    count > strlen("sdcmd52rw=")) {
-		parse_cmd52_string((const char __user *)databuf, (size_t) count,
-				   &func, &reg, &val);
+		parse_cmd52_string((const char *)databuf, (size_t) count, &func,
+				   &reg, &val);
 		woal_sdio_read_write_cmd52(handle, func, reg, val);
 	}
 	if (!strncmp(databuf, "debug_dump", strlen("debug_dump"))) {

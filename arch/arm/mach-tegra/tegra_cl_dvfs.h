@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra_cl_dvfs.h
  *
- * Copyright (C) 2012 NVIDIA Corporation.
+ * Copyright (c) 2012-2014 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -80,10 +80,14 @@ struct tegra_cl_dvfs_platform_data {
 			u8			reg;
 			u16			slave_addr;
 			bool			addr_10;
+			u32			sel_mul;
+			u32			sel_offs;
 		} pmu_i2c;
 		struct {
 			unsigned long		pwm_rate;
 			bool			delta_mode;
+			int			min_uV;
+			int			step_uV;
 
 			enum tegra_cl_dvfs_pwm_bus pwm_bus;
 			int			pwm_pingroup;
@@ -106,6 +110,12 @@ int tegra_init_cl_dvfs(void);
 int tegra_cl_dvfs_debug_init(struct clk *dfll_clk);
 void tegra_cl_dvfs_resume(struct tegra_cl_dvfs *cld);
 
+int tegra_cl_dvfs_vmin_read_begin(struct tegra_cl_dvfs *cld, uint *start);
+int tegra_cl_dvfs_vmin_read_retry(struct tegra_cl_dvfs *cld, uint start);
+int tegra_cl_dvfs_vmax_read_begin(struct tegra_cl_dvfs *cld, uint *start);
+int tegra_cl_dvfs_vmax_read_retry(struct tegra_cl_dvfs *cld, uint start);
+
+/* functions below are called only within DFLL clock interface DFLL lock held */
 void tegra_cl_dvfs_disable(struct tegra_cl_dvfs *cld);
 int tegra_cl_dvfs_enable(struct tegra_cl_dvfs *cld);
 int tegra_cl_dvfs_lock(struct tegra_cl_dvfs *cld);
@@ -119,6 +129,19 @@ static inline int tegra_cl_dvfs_debug_init(struct clk *dfll_clk)
 { return -ENOSYS; }
 static inline void tegra_cl_dvfs_resume(struct tegra_cl_dvfs *cld)
 {}
+
+static inline int tegra_cl_dvfs_vmin_read_begin(struct tegra_cl_dvfs *cld,
+						uint *start)
+{ return -ENOSYS; }
+static inline int tegra_cl_dvfs_vmin_read_retry(struct tegra_cl_dvfs *cld,
+						uint start)
+{ return -ENOSYS; }
+static inline int tegra_cl_dvfs_vmax_read_begin(struct tegra_cl_dvfs *cld,
+						uint *start)
+{ return -ENOSYS; }
+static inline int tegra_cl_dvfs_vmax_read_retry(struct tegra_cl_dvfs *cld,
+						uint start)
+{ return -ENOSYS; }
 
 static inline void tegra_cl_dvfs_disable(struct tegra_cl_dvfs *cld)
 {}

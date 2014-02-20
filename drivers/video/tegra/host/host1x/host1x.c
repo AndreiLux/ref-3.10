@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Driver Entrypoint
  *
- * Copyright (c) 2010-2013, NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -390,12 +390,38 @@ static long nvhost_ctrlctl(struct file *filp,
 	case NVHOST_IOCTL_CTRL_SYNCPT_WAIT:
 		err = nvhost_ioctl_ctrl_syncpt_waitex(priv, (void *)buf);
 		break;
+	case NVHOST32_IOCTL_CTRL_SYNC_FENCE_CREATE:
+	{
+		struct nvhost32_ctrl_sync_fence_create_args *args32 =
+			(struct nvhost32_ctrl_sync_fence_create_args *)buf;
+		struct nvhost_ctrl_sync_fence_create_args args;
+		args.name = args32->name;
+		args.pts = args32->pts;
+		args.num_pts = args32->num_pts;
+		err = nvhost_ioctl_ctrl_sync_fence_create(priv, &args);
+		args32->fence_fd = args.fence_fd;
+		break;
+	}
 	case NVHOST_IOCTL_CTRL_SYNC_FENCE_CREATE:
 		err = nvhost_ioctl_ctrl_sync_fence_create(priv, (void *)buf);
 		break;
 	case NVHOST_IOCTL_CTRL_MODULE_MUTEX:
 		err = nvhost_ioctl_ctrl_module_mutex(priv, (void *)buf);
 		break;
+	case NVHOST32_IOCTL_CTRL_MODULE_REGRDWR:
+	{
+		struct nvhost32_ctrl_module_regrdwr_args *args32 =
+			(struct nvhost32_ctrl_module_regrdwr_args *)buf;
+		struct nvhost_ctrl_module_regrdwr_args args;
+		args.id = args32->id;
+		args.num_offsets = args32->num_offsets;
+		args.block_size = args32->block_size;
+		args.offsets = args32->offsets;
+		args.values = args32->values;
+		args.write = args32->write;
+		err = nvhost_ioctl_ctrl_module_regrdwr(priv, &args);
+		break;
+	}
 	case NVHOST_IOCTL_CTRL_MODULE_REGRDWR:
 		err = nvhost_ioctl_ctrl_module_regrdwr(priv, (void *)buf);
 		break;
@@ -759,11 +785,15 @@ static int nvhost_probe(struct platform_device *dev)
 	nvhost_module_busy(dev);
 
 	nvhost_syncpt_reset(&host->syncpt);
-	nvhost_intr_start(&host->intr, clk_get_rate(pdata->clk[0]));
+	if (tegra_cpu_is_asim())
+		/* for simulation, use a fake clock rate */
+		nvhost_intr_start(&host->intr, 12000000);
+	else
+		nvhost_intr_start(&host->intr, clk_get_rate(pdata->clk[0]));
 
 	nvhost_device_list_init();
-	pdata->nvhost_timeout_default =
-			CONFIG_TEGRA_GRHOST_DEFAULT_TIMEOUT;
+	pdata->nvhost_timeout_default = tegra_platform_is_linsim() ?
+			0 : CONFIG_TEGRA_GRHOST_DEFAULT_TIMEOUT;
 	nvhost_debug_init(host);
 
 	nvhost_module_idle(dev);
@@ -798,18 +828,15 @@ static int __exit nvhost_remove(struct platform_device *dev)
 static int nvhost_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	struct nvhost_master *host = nvhost_get_private_data(pdev);
-	int ret = 0;
 
 	nvhost_module_enable_clk(dev);
 	power_off_host(pdev);
 	clock_off_host(pdev);
 	nvhost_module_disable_clk(dev);
 
-	ret = nvhost_module_suspend(&host->dev->dev);
-	dev_info(dev, "suspend status: %d\n", ret);
+	dev_info(dev, "suspended\n");
 
-	return ret;
+	return 0;
 }
 
 static int nvhost_resume(struct device *dev)

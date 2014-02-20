@@ -503,6 +503,9 @@ static int sbs_get_property(struct power_supply *psy,
 			break;
 
 		ret = sbs_get_battery_capacity(client, ret, psp, val);
+		if (psp == POWER_SUPPLY_PROP_CAPACITY)
+			battery_gauge_record_capacity_value(chip->bg_dev,
+								val->intval);
 		break;
 
 	case POWER_SUPPLY_PROP_SERIAL_NUMBER:
@@ -522,6 +525,9 @@ static int sbs_get_property(struct power_supply *psy,
 			break;
 
 		ret = sbs_get_battery_property(client, ret, psp, val);
+		if (psp == POWER_SUPPLY_PROP_VOLTAGE_NOW)
+			battery_gauge_record_voltage_value(chip->bg_dev,
+								val->intval);
 		break;
 
 	default:
@@ -859,6 +865,9 @@ skip_gpio:
 	INIT_DEFERRABLE_WORK(&chip->work, sbs_delayed_work);
 	schedule_delayed_work(&chip->work, HZ);
 
+	battery_gauge_record_snapshot_values(chip->bg_dev,
+					jiffies_to_msecs(HZ/2));
+
 	chip->enable_detection = true;
 
 	return 0;
@@ -919,7 +928,7 @@ static void sbs_shutdown(struct i2c_client *client)
 	mutex_unlock(&chip->mutex);
 }
 
-#if defined CONFIG_PM_SLEEP
+#ifdef CONFIG_PM_SLEEP
 
 static int sbs_suspend(struct device *dev)
 {
@@ -939,20 +948,18 @@ static int sbs_suspend(struct device *dev)
 	return 0;
 }
 
-static int sbs_resume(struct i2c_client *client)
+static int sbs_resume(struct device *dev)
 {
+	struct i2c_client *client = to_i2c_client(dev);
 	struct sbs_info *chip = i2c_get_clientdata(client);
 
 	schedule_delayed_work(&chip->work, HZ);
 	return 0;
 }
-
-static SIMPLE_DEV_PM_OPS(sbs_pm_ops, sbs_suspend, sbs_resume);
-#define SBS_PM_OPS (&sbs_pm_ops)
-
-#else
-#define SBS_PM_OPS NULL
 #endif
+static const struct dev_pm_ops sbs_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(sbs_suspend, sbs_resume)
+};
 
 static const struct i2c_device_id sbs_id[] = {
 	{ "bq20z75", 0 },
@@ -969,7 +976,7 @@ static struct i2c_driver sbs_battery_driver = {
 	.driver = {
 		.name	= "sbs-battery",
 		.of_match_table = of_match_ptr(sbs_dt_ids),
-		.pm	= SBS_PM_OPS,
+		.pm	= &sbs_pm_ops,
 	},
 };
 module_i2c_driver(sbs_battery_driver);

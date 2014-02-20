@@ -1,7 +1,7 @@
 /*
  * Tegra GK20A GPU Debugger/Profiler Driver
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -64,7 +64,7 @@ static int alloc_session(struct dbg_session_gk20a **_dbg_s)
 int gk20a_dbg_gpu_do_dev_open(struct inode *inode, struct file *filp, bool is_profiler)
 {
 	struct dbg_session_gk20a *dbg_session;
-	struct nvhost_device_data *pdata;
+	struct gk20a *g;
 
 	struct platform_device *pdev;
 	struct device *dev;
@@ -72,12 +72,12 @@ int gk20a_dbg_gpu_do_dev_open(struct inode *inode, struct file *filp, bool is_pr
 	int err;
 
 	if (!is_profiler)
-		pdata = container_of(inode->i_cdev,
-			     struct nvhost_device_data, dbg_cdev);
+		g = container_of(inode->i_cdev,
+				 struct gk20a, dbg.cdev);
 	else
-		pdata = container_of(inode->i_cdev,
-				     struct nvhost_device_data, prof_cdev);
-	pdev = pdata->pdev;
+		g = container_of(inode->i_cdev,
+				 struct gk20a, prof.cdev);
+	pdev = g->dev;
 	dev  = &pdev->dev;
 
 	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "dbg session: %s", dev_name(dev));
@@ -87,10 +87,9 @@ int gk20a_dbg_gpu_do_dev_open(struct inode *inode, struct file *filp, bool is_pr
 		return err;
 
 	filp->private_data = dbg_session;
-	dbg_session->pdata = pdata;
 	dbg_session->pdev  = pdev;
 	dbg_session->dev   = dev;
-	dbg_session->g     = get_gk20a(pdev);
+	dbg_session->g     = g;
 	dbg_session->is_profiler = is_profiler;
 	dbg_session->is_pg_disabled = false;
 
@@ -102,6 +101,9 @@ int gk20a_dbg_gpu_do_dev_open(struct inode *inode, struct file *filp, bool is_pr
 	return 0;
 }
 
+/* used in scenarios where the debugger session can take just the inter-session
+ * lock for performance, but the profiler session must take the per-gpu lock
+ * since it might not have an associated channel. */
 static void gk20a_dbg_session_mutex_lock(struct dbg_session_gk20a *dbg_s)
 {
 	if (dbg_s->is_profiler)
@@ -330,15 +332,9 @@ static int dbg_bind_channel_gk20a(struct dbg_session_gk20a *dbg_s,
 	if (!f)
 		return -ENODEV;
 
-	hwctx = nvhost_channel_get_file_hwctx(args->channel_fd);
+	hwctx = gk20a_get_hwctx_from_file(args->channel_fd);
 	if (!hwctx) {
 		nvhost_dbg_fn("no hwctx found for fd");
-		fput(f);
-		return -EINVAL;
-	}
-	/* be sure this is actually the right type of hwctx */
-	if (hwctx->channel->dev != dbg_s->pdev) {
-		nvhost_dbg_fn("hwctx module type mismatch");
 		fput(f);
 		return -EINVAL;
 	}
@@ -494,12 +490,14 @@ static int nvhost_ioctl_channel_reg_ops(struct dbg_session_gk20a *dbg_s,
 		goto clean_up;
 	}
 
-	/* mutual exclusion for multiple debug sessions */
-	gk20a_dbg_session_mutex_lock(dbg_s);
+	/* since exec_reg_ops sends methods to the ucode, it must take the
+	 * global gpu lock to protect against mixing methods from debug sessions
+	 * on other channels */
+	mutex_lock(&g->dbg_sessions_lock);
 
 	err = dbg_s->ops->exec_reg_ops(dbg_s, ops, args->num_ops);
 
-	gk20a_dbg_session_mutex_unlock(dbg_s);
+	mutex_unlock(&g->dbg_sessions_lock);
 
 	if (err) {
 		nvhost_err(dev, "dbg regops failed");
@@ -548,7 +546,8 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 		    (g->dbg_powergating_disabled_refcount++ == 0)) {
 
 			nvhost_dbg(dbg_gpu_dbg | dbg_fn, "module busy");
-			nvhost_module_busy(dbg_s->pdev);
+			gk20a_busy(g->dev);
+			gk20a_channel_busy(dbg_s->pdev);
 
 			gr_gk20a_slcg_gr_load_gating_prod(g, false);
 			gr_gk20a_slcg_perf_load_gating_prod(g, false);
@@ -587,7 +586,8 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 			gk20a_pmu_enable_elpg(g);
 
 			nvhost_dbg(dbg_gpu_dbg | dbg_fn, "module idle");
-			nvhost_module_idle(dbg_s->pdev);
+			gk20a_channel_idle(dbg_s->pdev);
+			gk20a_idle(g->dev);
 		}
 
 		dbg_s->is_pg_disabled = false;

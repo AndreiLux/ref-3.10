@@ -1,7 +1,7 @@
 /*
  * drivers/media/video/tegra/nvavp/nvavp_dev.c
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This file is licensed under the terms of the GNU General Public License
  * version 2. This program is licensed "as is" without any warranty of any
@@ -10,6 +10,7 @@
 
 #include <linux/uaccess.h>
 #include <linux/clk.h>
+#include <linux/compat.h>
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <linux/dma-buf.h>
@@ -41,19 +42,22 @@
 #include <linux/tegra-powergate.h>
 #include <linux/irqchip/tegra.h>
 #include <linux/sched.h>
+#include <linux/memblock.h>
 
 #include <mach/pm_domains.h>
 
-#include <linux/nvmap.h>
 #include <linux/pm_qos.h>
+
+#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/of_address.h>
+#include <linux/tegra-timer.h>
 
 #if defined(CONFIG_TEGRA_AVP_KERNEL_ON_MMU)
 #include "../avp/headavp.h"
 #endif
 #include "nvavp_os.h"
-
-/* HACK: this has to come from DT */
-#include "../../../../../arch/arm/mach-tegra/iomap.h"
 
 #define TEGRA_NVAVP_NAME			"nvavp"
 
@@ -61,15 +65,16 @@
 
 #define NVAVP_PUSHBUFFER_MIN_UPDATE_SPACE	(sizeof(u32) * 3)
 
-#define TEGRA_NVAVP_RESET_VECTOR_ADDR	\
-		(IO_ADDRESS(TEGRA_EXCEPTION_VECTORS_BASE) + 0x200)
+static void __iomem *nvavp_reg_base;
 
-#define FLOW_CTRL_HALT_COP_EVENTS	IO_ADDRESS(TEGRA_FLOW_CTRL_BASE + 0x4)
+#define TEGRA_NVAVP_RESET_VECTOR_ADDR	(nvavp_reg_base + 0xe200)
+
+#define FLOW_CTRL_HALT_COP_EVENTS	(nvavp_reg_base + 0x6000 + 0x4)
 #define FLOW_MODE_STOP			(0x2 << 29)
 #define FLOW_MODE_NONE			0x0
 
-#define NVAVP_OS_INBOX			IO_ADDRESS(TEGRA_RES_SEMA_BASE + 0x10)
-#define NVAVP_OS_OUTBOX			IO_ADDRESS(TEGRA_RES_SEMA_BASE + 0x20)
+#define NVAVP_OS_INBOX			(nvavp_reg_base + 0x10)
+#define NVAVP_OS_OUTBOX			(nvavp_reg_base + 0x20)
 
 #define NVAVP_INBOX_VALID		(1 << 29)
 
@@ -167,14 +172,14 @@ struct nvavp_info {
 };
 
 struct nvavp_clientctx {
-	struct nvmap_client *nvmap;
 	struct nvavp_pushbuffer_submit_hdr submit_hdr;
 	struct nvavp_reloc relocs[NVAVP_MAX_RELOCATION_COUNT];
-	struct nvmap_handle_ref *gather_mem;
 	int num_relocs;
 	struct nvavp_info *nvavp;
 	int channel_id;
 	u32 clk_reqs;
+	spinlock_t iova_lock;
+	struct rb_root iova_handles;
 };
 
 static int nvavp_runtime_get(struct nvavp_info *nvavp)
@@ -191,6 +196,206 @@ static void nvavp_runtime_put(struct nvavp_info *nvavp)
 {
 	pm_runtime_mark_last_busy(&nvavp->nvhost_dev->dev);
 	pm_runtime_put_autosuspend(&nvavp->nvhost_dev->dev);
+}
+
+static struct device_dma_parameters nvavp_dma_parameters = {
+	.max_segment_size = UINT_MAX,
+};
+
+struct nvavp_iova_info {
+	struct rb_node node;
+	atomic_t ref;
+	dma_addr_t addr;
+	struct dma_buf *dmabuf;
+	struct dma_buf_attachment *attachment;
+	struct sg_table *sgt;
+};
+
+/*
+ * Unmap's dmabuf and removes the iova info from rb tree
+ * Call with client iova_lock held.
+ */
+static void nvavp_remove_iova_info_locked(
+	struct nvavp_clientctx *clientctx,
+	struct nvavp_iova_info *b)
+{
+	struct nvavp_info *nvavp = clientctx->nvavp;
+
+	dev_dbg(&nvavp->nvhost_dev->dev,
+		"remove iova addr (0x%lx))\n", (unsigned long)b->addr);
+	dma_buf_unmap_attachment(b->attachment,
+		b->sgt, DMA_BIDIRECTIONAL);
+	dma_buf_detach(b->dmabuf, b->attachment);
+	dma_buf_put(b->dmabuf);
+	rb_erase(&b->node, &clientctx->iova_handles);
+	kfree(b);
+}
+
+/*
+ * Searches the given addr in rb tree and return valid pointer if present
+ * Call with client iova_lock held.
+ */
+static struct nvavp_iova_info *nvavp_search_iova_info_locked(
+	struct nvavp_clientctx *clientctx, struct dma_buf *dmabuf,
+	struct rb_node **curr_parent)
+{
+	struct rb_node *parent = NULL;
+	struct rb_node **p = &clientctx->iova_handles.rb_node;
+
+	while (*p) {
+		struct nvavp_iova_info *b;
+		parent = *p;
+		b = rb_entry(parent, struct nvavp_iova_info, node);
+		if (b->dmabuf == dmabuf)
+			return b;
+		else if (dmabuf > b->dmabuf)
+			p = &parent->rb_right;
+		else
+			p = &parent->rb_left;
+	}
+	*curr_parent = parent;
+	return NULL;
+}
+
+/*
+ * Adds a newly-created iova info handle to the rb tree
+ * Call with client iova_lock held.
+ */
+static void nvavp_add_iova_info_locked(struct nvavp_clientctx *clientctx,
+	struct nvavp_iova_info *h, struct rb_node *parent)
+{
+	struct nvavp_iova_info *b;
+	struct nvavp_info *nvavp = clientctx->nvavp;
+	struct rb_node **p = &clientctx->iova_handles.rb_node;
+
+	dev_info(&nvavp->nvhost_dev->dev,
+		"add iova addr (0x%lx))\n", (unsigned long)h->addr);
+
+	if (parent) {
+		b = rb_entry(parent, struct nvavp_iova_info, node);
+		if (h->dmabuf > b->dmabuf)
+			p = &parent->rb_right;
+		else
+			p = &parent->rb_left;
+	}
+	rb_link_node(&h->node, parent, p);
+	rb_insert_color(&h->node, &clientctx->iova_handles);
+}
+
+/*
+ * Maps and adds the iova address if already not present in rb tree
+ * if present, update ref count and return iova return iova address
+ */
+static int nvavp_get_iova_addr(struct nvavp_clientctx *clientctx,
+	struct dma_buf *dmabuf, dma_addr_t *addr)
+{
+	struct nvavp_info *nvavp = clientctx->nvavp;
+	struct nvavp_iova_info *h;
+	struct nvavp_iova_info *b = NULL;
+	struct rb_node *curr_parent = NULL;
+	int ret = 0;
+
+	spin_lock(&clientctx->iova_lock);
+	b = nvavp_search_iova_info_locked(clientctx, dmabuf, &curr_parent);
+	if (b) {
+		/* dmabuf already present in rb tree */
+		atomic_inc(&b->ref);
+		*addr = b->addr;
+		dev_dbg(&nvavp->nvhost_dev->dev,
+			"found iova addr (0x%pa) ref count(%d))\n",
+			&(b->addr), atomic_read(&b->ref));
+		goto out;
+	}
+	spin_unlock(&clientctx->iova_lock);
+
+	/* create new iova_info node */
+	h = kzalloc(sizeof(*h), GFP_KERNEL);
+	if (!h)
+		return -ENOMEM;
+
+	h->dmabuf = dmabuf;
+	h->attachment = dma_buf_attach(dmabuf, &nvavp->nvhost_dev->dev);
+	if (IS_ERR(h->attachment)) {
+		dev_err(&nvavp->nvhost_dev->dev, "cannot attach dmabuf\n");
+		ret = PTR_ERR(h->attachment);
+		goto err_put;
+	}
+
+	h->sgt = dma_buf_map_attachment(h->attachment, DMA_BIDIRECTIONAL);
+	if (IS_ERR(h->sgt)) {
+		dev_err(&nvavp->nvhost_dev->dev, "cannot map dmabuf\n");
+		ret = PTR_ERR(h->sgt);
+		goto err_map;
+	}
+
+	h->addr = sg_dma_address(h->sgt->sgl);
+	atomic_set(&h->ref, 1);
+
+	spin_lock(&clientctx->iova_lock);
+	b = nvavp_search_iova_info_locked(clientctx, dmabuf, &curr_parent);
+	if (b) {
+		dev_dbg(&nvavp->nvhost_dev->dev,
+			"found iova addr (0x%pa) ref count(%d))\n",
+			&(b->addr), atomic_read(&b->ref));
+		atomic_inc(&b->ref);
+		*addr = b->addr;
+		spin_unlock(&clientctx->iova_lock);
+		goto err_exist;
+	}
+	nvavp_add_iova_info_locked(clientctx, h, curr_parent);
+	*addr = h->addr;
+
+out:
+	spin_unlock(&clientctx->iova_lock);
+	return 0;
+err_exist:
+	dma_buf_unmap_attachment(h->attachment, h->sgt, DMA_BIDIRECTIONAL);
+err_map:
+	dma_buf_detach(dmabuf, h->attachment);
+err_put:
+	dma_buf_put(dmabuf);
+	kfree(h);
+	return ret;
+}
+
+/*
+ * Release the given iova address if it is last client otherwise dec ref count.
+ */
+static void nvavp_release_iova_addr(struct nvavp_clientctx *clientctx,
+	struct dma_buf *dmabuf, dma_addr_t addr)
+{
+	struct nvavp_info *nvavp = clientctx->nvavp;
+	struct nvavp_iova_info *b = NULL;
+	struct rb_node *curr_parent;
+
+	spin_lock(&clientctx->iova_lock);
+	b = nvavp_search_iova_info_locked(clientctx, dmabuf, &curr_parent);
+	if (!b) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"error iova addr (0x%pa) is not found\n", &addr);
+		goto out;
+	}
+	/* if it is last reference, release iova info */
+	if (atomic_sub_return(1, &b->ref) == 0)
+		nvavp_remove_iova_info_locked(clientctx, b);
+out:
+	spin_unlock(&clientctx->iova_lock);
+}
+
+/*
+ * Release all the iova addresses in rb tree
+ */
+static void nvavp_remove_iova_mapping(struct nvavp_clientctx *clientctx)
+{
+	struct rb_node *p = NULL;
+	struct nvavp_iova_info *b;
+
+	spin_lock(&clientctx->iova_lock);
+	while ((p = rb_first(&clientctx->iova_handles))) {
+		b = rb_entry(p, struct nvavp_iova_info, node);
+		nvavp_remove_iova_info_locked(clientctx, b);
+	}
+	spin_unlock(&clientctx->iova_lock);
 }
 
 #if defined(CONFIG_TEGRA_NVAVP_AUDIO)
@@ -948,7 +1153,7 @@ static int nvavp_os_init(struct nvavp_info *nvavp)
 	pr_debug("video_initialized == audio_initialized (%d)\n",
 		nvavp->video_initialized);
 #if defined(CONFIG_TEGRA_AVP_KERNEL_ON_MMU) /* Tegra2 with AVP MMU */
-	/* paddr is any address returned from nvmap_pin */
+	/* paddr is phys address */
 	/* vaddr is AVP_KERNEL_VIRT_BASE */
 	dev_info(&nvavp->nvhost_dev->dev,
 		"using AVP MMU to relocate AVP os\n");
@@ -967,25 +1172,6 @@ static int nvavp_os_init(struct nvavp_info *nvavp)
 		(unsigned long)nvavp->os_info.phys);
 	nvavp->os_info.reset_addr = nvavp->os_info.phys;
 #else /* nvmem= carveout */
-	/* paddr is found in nvmem= carveout */
-	/* vaddr is same as paddr */
-	/* Find nvmem carveout */
-	if (!pfn_valid(__phys_to_pfn(0x8e000000))) {
-		nvavp->os_info.phys = 0x8e000000;
-	} else if (!pfn_valid(__phys_to_pfn(0xf7e00000))) {
-		nvavp->os_info.phys = 0xf7e00000;
-	} else if (!pfn_valid(__phys_to_pfn(0x9e000000))) {
-		nvavp->os_info.phys = 0x9e000000;
-	} else if (!pfn_valid(__phys_to_pfn(0xbe000000))) {
-		nvavp->os_info.phys = 0xbe000000;
-	} else {
-		dev_err(&nvavp->nvhost_dev->dev,
-			"cannot find nvmem= carveout to load AVP os\n");
-		dev_err(&nvavp->nvhost_dev->dev,
-			"check kernel command line "
-			"to see if nvmem= is defined\n");
-		BUG();
-	}
 	dev_info(&nvavp->nvhost_dev->dev,
 		"using nvmem= carveout at %llx to load AVP os\n",
 		(u64)nvavp->os_info.phys);
@@ -1029,15 +1215,6 @@ static int nvavp_init(struct nvavp_info *nvavp, int channel_id)
 #if defined(CONFIG_TEGRA_NVAVP_AUDIO)
 	audio_initialized = nvavp_get_audio_init_status(nvavp);
 #endif
-	if (!(video_initialized || audio_initialized)) {
-		/* Add PM QoS request but leave it as default value */
-		pm_qos_add_request(&nvavp->min_cpu_freq_req,
-					PM_QOS_CPU_FREQ_MIN,
-					PM_QOS_DEFAULT_VALUE);
-		pm_qos_add_request(&nvavp->min_online_cpus_req,
-					PM_QOS_MIN_ONLINE_CPUS,
-					PM_QOS_DEFAULT_VALUE);
-	}
 
 	if (IS_VIDEO_CHANNEL_ID(channel_id) && (!video_initialized)) {
 		pr_debug("nvavp_init : channel_ID (%d)\n", channel_id);
@@ -1066,7 +1243,6 @@ err_exit:
 	return ret;
 }
 
-#define TIMER_PTV	0
 #define TIMER_EN	(1 << 31)
 #define TIMER_PERIODIC	(1 << 30)
 #define TIMER_PCR	0x4
@@ -1109,38 +1285,27 @@ static void nvavp_uninit(struct nvavp_info *nvavp)
 #endif
 
 	/* Video and Audio both becomes uninitialized */
-	if (video_initialized == audio_initialized) {
-		pr_debug("nvavp_uninit both channels unitialized\n");
+	if (!video_initialized && !audio_initialized) {
+		pr_debug("nvavp_uninit both channels uninitialized\n");
 
 		clk_disable_unprepare(nvavp->sclk);
 		clk_disable_unprepare(nvavp->emc_clk);
 		disable_irq(nvavp->mbox_from_avp_pend_irq);
 		nvavp_pushbuffer_deinit(nvavp);
 		nvavp_halt_avp(nvavp);
-		if (!IS_ERR_OR_NULL(&nvavp->min_cpu_freq_req)) {
-			pm_qos_update_request(&nvavp->min_cpu_freq_req,
-					PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
-			pm_qos_remove_request(&nvavp->min_cpu_freq_req);
-		}
-		if (!IS_ERR_OR_NULL(&nvavp->min_online_cpus_req)) {
-			pm_qos_update_request(&nvavp->min_online_cpus_req,
-					PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
-			pm_qos_remove_request(&nvavp->min_online_cpus_req);
-		}
 	}
 
 	/*
 	 * WAR: turn off TMR2 for fix LP1 wake up by TMR2.
 	 * turn off the periodic interrupt and the timer temporarily
 	 */
-	reg = readl(IO_ADDRESS(TEGRA_TMR2_BASE + TIMER_PTV));
+	reg = timer_readl(TIMER2_OFFSET + TIMER_PTV);
 	reg &= ~(TIMER_EN | TIMER_PERIODIC);
-	writel(reg, IO_ADDRESS(TEGRA_TMR2_BASE + TIMER_PTV));
+	timer_writel(reg, TIMER2_OFFSET + TIMER_PTV);
 
 	/* write a 1 to the intr_clr field to clear the interrupt */
 	reg = TIMER_PCR_INTR;
-	writel(reg, IO_ADDRESS(TEGRA_TMR2_BASE + TIMER_PCR));
-
+	timer_writel(reg, TIMER2_OFFSET + TIMER_PCR);
 	nvavp->init_task = NULL;
 }
 
@@ -1156,6 +1321,79 @@ static int nvcpu_set_clock(struct nvavp_info *nvavp,
 	else
 		pm_qos_update_request(&nvavp->min_cpu_freq_req,
 					PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+
+	return 0;
+}
+
+static int nvavp_map_iova(struct file *filp, unsigned int cmd,
+							unsigned long arg)
+{
+	struct nvavp_clientctx *clientctx = filp->private_data;
+	struct nvavp_info *nvavp = clientctx->nvavp;
+	struct nvavp_map_args map_arg;
+	struct dma_buf *dmabuf;
+	dma_addr_t addr = 0;
+	int ret = 0;
+
+	if (copy_from_user(&map_arg, (void __user *)arg,
+		sizeof(struct nvavp_map_args))) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"failed to copy memory handle\n");
+		return -EFAULT;
+	}
+	if (!map_arg.fd) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"invalid memory handle %08x\n", map_arg.fd);
+		return -EINVAL;
+	}
+
+	dmabuf = dma_buf_get(map_arg.fd);
+	if (IS_ERR(dmabuf)) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"invalid buffer handle %08x\n", map_arg.fd);
+		return PTR_ERR(dmabuf);
+	}
+
+	ret = nvavp_get_iova_addr(clientctx, dmabuf, &addr);
+	if (ret)
+		goto out;
+
+	map_arg.addr = (__u32)addr;
+
+	if (copy_to_user((void __user *)arg, &map_arg,
+		sizeof(struct nvavp_map_args))) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"failed to copy phys addr\n");
+		ret = -EFAULT;
+	}
+
+out:
+	return ret;
+}
+
+static int nvavp_unmap_iova(struct file *filp, unsigned long arg)
+{
+	struct nvavp_clientctx *clientctx = filp->private_data;
+	struct nvavp_info *nvavp = clientctx->nvavp;
+	struct nvavp_map_args map_arg;
+	struct dma_buf *dmabuf;
+
+	if (copy_from_user(&map_arg, (void __user *)arg,
+		sizeof(struct nvavp_map_args))) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"failed to copy memory handle\n");
+		return -EFAULT;
+	}
+
+	dmabuf = dma_buf_get(map_arg.fd);
+	if (IS_ERR(dmabuf)) {
+		dev_err(&nvavp->nvhost_dev->dev,
+			"invalid buffer handle %08x\n", map_arg.fd);
+		return PTR_ERR(dmabuf);
+	}
+
+	nvavp_release_iova_addr(clientctx, dmabuf, (dma_addr_t)map_arg.addr);
+	dma_buf_put(dmabuf);
 
 	return 0;
 }
@@ -1237,28 +1475,6 @@ static int nvavp_get_syncpointid_ioctl(struct file *filp, unsigned int cmd,
 	return -EFAULT;
 }
 
-static int nvavp_set_nvmapfd_ioctl(struct file *filp, unsigned int cmd,
-							unsigned long arg)
-{
-	struct nvavp_clientctx *clientctx = filp->private_data;
-	struct nvavp_set_nvmap_fd_args buf;
-	struct nvmap_client *new_client;
-	int fd;
-
-	if (_IOC_DIR(cmd) & _IOC_WRITE) {
-		if (copy_from_user(&buf, (void __user *)arg, _IOC_SIZE(cmd)))
-			return -EFAULT;
-	}
-
-	fd = buf.fd;
-	new_client = nvmap_client_get_file(fd);
-	if (IS_ERR(new_client))
-		return PTR_ERR(new_client);
-
-	clientctx->nvmap = new_client;
-	return 0;
-}
-
 static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 							unsigned long arg)
 {
@@ -1293,11 +1509,7 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		return -EFAULT;
 	}
 
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
 	cmdbuf_dmabuf = dma_buf_get(hdr.cmdbuf.mem);
-#else
-	cmdbuf_dmabuf = nvmap_dmabuf_export(clientctx->nvmap, hdr.cmdbuf.mem);
-#endif
 	if (IS_ERR(cmdbuf_dmabuf)) {
 		dev_err(&nvavp->nvhost_dev->dev,
 			"invalid cmd buffer handle %08x\n", hdr.cmdbuf.mem);
@@ -1344,12 +1556,7 @@ static int nvavp_pushbuffer_submit_ioctl(struct file *filp, unsigned int cmd,
 		reloc_addr = cmdbuf_data +
 			     (clientctx->relocs[i].cmdbuf_offset >> 2);
 
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
 		target_dmabuf = dma_buf_get(clientctx->relocs[i].target);
-#else
-		target_dmabuf = nvmap_dmabuf_export(clientctx->nvmap,
-				clientctx->relocs[i].target);
-#endif
 		if (IS_ERR(target_dmabuf)) {
 			ret = PTR_ERR(target_dmabuf);
 			goto target_dmabuf_fail;
@@ -1411,6 +1618,57 @@ err_dmabuf_attach:
 	dma_buf_put(cmdbuf_dmabuf);
 	return ret;
 }
+
+#ifdef CONFIG_COMPAT
+static int nvavp_pushbuffer_submit_compat_ioctl(struct file *filp,
+							unsigned int cmd,
+							unsigned long arg)
+{
+	struct nvavp_clientctx *clientctx = filp->private_data;
+	struct nvavp_info *nvavp = clientctx->nvavp;
+	struct nvavp_pushbuffer_submit_hdr_v32 hdr_v32;
+	struct nvavp_pushbuffer_submit_hdr __user *user_hdr;
+	int ret = 0;
+
+	if (_IOC_DIR(cmd) & _IOC_WRITE) {
+		if (copy_from_user(&hdr_v32, (void __user *)arg,
+			sizeof(struct nvavp_pushbuffer_submit_hdr_v32)))
+			return -EFAULT;
+	}
+
+	if (!hdr_v32.cmdbuf.mem)
+		return 0;
+
+	user_hdr = compat_alloc_user_space(sizeof(*user_hdr));
+	if (!access_ok(VERIFY_WRITE, user_hdr, sizeof(*user_hdr)))
+		return -EFAULT;
+
+	if (__put_user(hdr_v32.cmdbuf.mem, &user_hdr->cmdbuf.mem)
+	    || __put_user(hdr_v32.cmdbuf.offset, &user_hdr->cmdbuf.offset)
+	    || __put_user(hdr_v32.cmdbuf.words, &user_hdr->cmdbuf.words)
+	    || __put_user((void __user *)(unsigned long)hdr_v32.relocs,
+			  &user_hdr->relocs)
+	    || __put_user(hdr_v32.num_relocs, &user_hdr->num_relocs)
+	    || __put_user((void __user *)(unsigned long)hdr_v32.syncpt,
+			  &user_hdr->syncpt)
+	    || __put_user(hdr_v32.flags, &user_hdr->flags))
+		return -EFAULT;
+
+	ret = nvavp_pushbuffer_submit_ioctl(filp, cmd, (unsigned long)user_hdr);
+	if (ret)
+		return ret;
+
+	if (__get_user(hdr_v32.syncpt, &user_hdr->syncpt))
+		return -EFAULT;
+
+	if (copy_to_user((void __user *)arg, &hdr_v32,
+			  sizeof(struct nvavp_pushbuffer_submit_hdr_v32))) {
+		ret = -EFAULT;
+	}
+
+	return ret;
+}
+#endif
 
 static int nvavp_wake_avp_ioctl(struct file *filp, unsigned int cmd,
 							unsigned long arg)
@@ -1572,6 +1830,7 @@ static int tegra_nvavp_open(struct inode *inode, struct file *filp, int channel_
 	}
 
 	clientctx->nvavp = nvavp;
+	clientctx->iova_handles = RB_ROOT;
 
 	filp->private_data = clientctx;
 
@@ -1628,8 +1887,8 @@ static int tegra_nvavp_release(struct inode *inode, struct file *filp, int chann
 		nvavp->audio_refcnt--;
 
 out:
-	nvmap_client_put(clientctx->nvmap);
 	mutex_unlock(&nvavp->open_lock);
+	nvavp_remove_iova_mapping(clientctx);
 	kfree(clientctx);
 	return ret;
 }
@@ -1658,7 +1917,6 @@ static long tegra_nvavp_ioctl(struct file *filp, unsigned int cmd,
 
 	switch (cmd) {
 	case NVAVP_IOCTL_SET_NVMAP_FD:
-		ret = nvavp_set_nvmapfd_ioctl(filp, cmd, arg);
 		break;
 	case NVAVP_IOCTL_GET_SYNCPOINT_ID:
 		ret = nvavp_get_syncpointid_ioctl(filp, cmd, arg);
@@ -1687,6 +1945,12 @@ static long tegra_nvavp_ioctl(struct file *filp, unsigned int cmd,
 	case NVAVP_IOCTL_SET_MIN_ONLINE_CPUS:
 		ret = nvavp_set_min_online_cpus_ioctl(filp, cmd, arg);
 		break;
+	case NVAVP_IOCTL_MAP_IOVA:
+		ret = nvavp_map_iova(filp, cmd, arg);
+		break;
+	case NVAVP_IOCTL_UNMAP_IOVA:
+		ret = nvavp_unmap_iova(filp, arg);
+		break;
 	default:
 		ret = -EINVAL;
 		break;
@@ -1694,11 +1958,37 @@ static long tegra_nvavp_ioctl(struct file *filp, unsigned int cmd,
 	return ret;
 }
 
+#ifdef CONFIG_COMPAT
+static long tegra_nvavp_compat_ioctl(struct file *filp, unsigned int cmd,
+			    unsigned long arg)
+{
+	int ret = 0;
+
+	if (_IOC_TYPE(cmd) != NVAVP_IOCTL_MAGIC ||
+	    _IOC_NR(cmd) < NVAVP_IOCTL_MIN_NR ||
+	    _IOC_NR(cmd) > NVAVP_IOCTL_MAX_NR)
+		return -EFAULT;
+
+	switch (cmd) {
+	case NVAVP_IOCTL_PUSH_BUFFER_SUBMIT32:
+		ret = nvavp_pushbuffer_submit_compat_ioctl(filp, cmd, arg);
+		break;
+	default:
+		ret = tegra_nvavp_ioctl(filp, cmd, arg);
+		break;
+	}
+	return ret;
+}
+#endif
+
 static const struct file_operations tegra_video_nvavp_fops = {
 	.owner		= THIS_MODULE,
 	.open		= tegra_nvavp_video_open,
 	.release	= tegra_nvavp_video_release,
 	.unlocked_ioctl	= tegra_nvavp_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= tegra_nvavp_compat_ioctl,
+#endif
 };
 
 #if defined(CONFIG_TEGRA_NVAVP_AUDIO)
@@ -1707,6 +1997,9 @@ static const struct file_operations tegra_audio_nvavp_fops = {
 	.open           = tegra_nvavp_audio_open,
 	.release        = tegra_nvavp_audio_release,
 	.unlocked_ioctl = tegra_nvavp_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl   = tegra_nvavp_compat_ioctl,
+#endif
 };
 #endif
 
@@ -1738,18 +2031,62 @@ static ssize_t boost_sclk_store(struct device *dev,
 
 DEVICE_ATTR(boost_sclk, S_IRUGO | S_IWUSR, boost_sclk_show, boost_sclk_store);
 
+enum nvavp_heap {
+	NVAVP_USE_SMMU = (1 << 0),
+	NVAVP_USE_CARVEOUT = (1 << 1)
+};
+
+static int nvavp_reserve_os_mem(struct nvavp_info *nvavp, dma_addr_t phys)
+{
+	int ret = -ENOMEM;
+	if (!pfn_valid(__phys_to_pfn(phys))) {
+		if (memblock_reserve(phys, SZ_1M)) {
+			dev_err(&nvavp->nvhost_dev->dev,
+				"failed to reserve mem block %lx\n",
+						(unsigned long)phys);
+		} else
+			ret = 0;
+	}
+	return ret;
+}
+
+#ifdef CONFIG_OF
+static struct of_device_id tegra_nvavp_of_match[] = {
+	{ .compatible = "nvidia,tegra30-nvavp", NULL },
+	{ .compatible = "nvidia,tegra114-nvavp", NULL },
+	{ .compatible = "nvidia,tegra124-nvavp", NULL },
+	{ },
+};
+#endif
+
 static int tegra_nvavp_probe(struct platform_device *ndev)
 {
 	struct nvavp_info *nvavp;
 	int irq;
-	unsigned int heap_mask;
+	enum nvavp_heap heap_mask;
 	int ret = 0, channel_id;
+	struct device_node *np;
 
-	irq = platform_get_irq_byname(ndev, "mbox_from_nvavp_pending");
+	np = ndev->dev.of_node;
+	if (np) {
+		irq = platform_get_irq(ndev, 0);
+		nvavp_reg_base = of_iomap(np, 0);
+	} else {
+		irq = platform_get_irq_byname(ndev, "mbox_from_nvavp_pending");
+	}
+
 	if (irq < 0) {
 		dev_err(&ndev->dev, "invalid nvhost data\n");
 		return -EINVAL;
 	}
+
+	if (!nvavp_reg_base) {
+		dev_err(&ndev->dev, "unable to map, memory mapped IO\n");
+		return -EINVAL;
+	}
+
+	/* Set the max segment size supported. */
+	ndev->dev.dma_parms = &nvavp_dma_parameters;
 
 	nvavp = kzalloc(sizeof(struct nvavp_info), GFP_KERNEL);
 	if (!nvavp) {
@@ -1760,14 +2097,14 @@ static int tegra_nvavp_probe(struct platform_device *ndev)
 	memset(nvavp, 0, sizeof(*nvavp));
 
 #if defined(CONFIG_TEGRA_AVP_KERNEL_ON_MMU) /* Tegra2 with AVP MMU */
-	heap_mask = NVMAP_HEAP_CARVEOUT_GENERIC;
+	heap_mask = NVAVP_USE_CARVEOUT;
 #elif defined(CONFIG_TEGRA_AVP_KERNEL_ON_SMMU) /* Tegra3 with SMMU */
-	heap_mask = NVMAP_HEAP_IOVMM;
+	heap_mask = NVAVP_USE_SMMU;
 #else /* nvmem= carveout */
-	heap_mask = NVMAP_HEAP_CARVEOUT_GENERIC;
+	heap_mask = NVAVP_USE_CARVEOUT;
 #endif
 	switch (heap_mask) {
-	case NVMAP_HEAP_IOVMM:
+	case NVAVP_USE_SMMU:
 
 		nvavp->os_info.phys = 0x8ff00000;
 		nvavp->os_info.data = dma_alloc_at_coherent(
@@ -1795,16 +2132,23 @@ static int tegra_nvavp_probe(struct platform_device *ndev)
 			"allocated IOVA at %lx for AVP os\n",
 			(unsigned long)nvavp->os_info.phys);
 		break;
-	case NVMAP_HEAP_CARVEOUT_GENERIC:
-		nvavp->os_info.data = dma_alloc_coherent(
-						&ndev->dev,
-						SZ_1M,
-						&nvavp->os_info.phys,
-						GFP_KERNEL);
+	case NVAVP_USE_CARVEOUT:
+		if (!nvavp_reserve_os_mem(nvavp, 0x8e000000))
+			nvavp->os_info.phys = 0x8e000000;
+		else if (!nvavp_reserve_os_mem(nvavp, 0xf7e00000))
+			nvavp->os_info.phys = 0xf7e00000;
+		else if (!nvavp_reserve_os_mem(nvavp, 0x9e000000))
+			nvavp->os_info.phys = 0x9e000000;
+		else if (!nvavp_reserve_os_mem(nvavp, 0xbe000000))
+			nvavp->os_info.phys = 0xbe000000;
+		else {
+			dev_err(&nvavp->nvhost_dev->dev,
+				"cannot find nvmem= carveout to load AVP os\n");
+			dev_err(&nvavp->nvhost_dev->dev,
+				"check kernel command line "
+				"to see if nvmem= is defined\n");
+			BUG();
 
-		if (!nvavp->os_info.data) {
-			dev_err(&ndev->dev, "cannot allocate dma memory\n");
-			ret = -ENOMEM;
 		}
 
 		dev_info(&ndev->dev,
@@ -1930,6 +2274,14 @@ static int tegra_nvavp_probe(struct platform_device *ndev)
 		goto err_req_irq_pend;
 	}
 
+	/* Add PM QoS request but leave it as default value */
+	pm_qos_add_request(&nvavp->min_cpu_freq_req,
+				PM_QOS_CPU_FREQ_MIN,
+				PM_QOS_DEFAULT_VALUE);
+	pm_qos_add_request(&nvavp->min_online_cpus_req,
+				PM_QOS_MIN_ONLINE_CPUS,
+				PM_QOS_DEFAULT_VALUE);
+
 	return 0;
 
 err_req_irq_pend:
@@ -1992,6 +2344,17 @@ static int tegra_nvavp_remove(struct platform_device *ndev)
 
 	clk_put(nvavp->emc_clk);
 	clk_put(nvavp->sclk);
+
+	if (!IS_ERR_OR_NULL(&nvavp->min_cpu_freq_req)) {
+		pm_qos_update_request(&nvavp->min_cpu_freq_req,
+				PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+		pm_qos_remove_request(&nvavp->min_cpu_freq_req);
+	}
+	if (!IS_ERR_OR_NULL(&nvavp->min_online_cpus_req)) {
+		pm_qos_update_request(&nvavp->min_online_cpus_req,
+				PM_QOS_CPU_FREQ_MIN_DEFAULT_VALUE);
+		pm_qos_remove_request(&nvavp->min_online_cpus_req);
+	}
 
 	kfree(nvavp);
 	return 0;
@@ -2091,6 +2454,7 @@ static struct platform_driver tegra_nvavp_driver = {
 		.name	= TEGRA_NVAVP_NAME,
 		.owner	= THIS_MODULE,
 		.pm	= NVAVP_PM_OPS,
+		.of_match_table = of_match_ptr(tegra_nvavp_of_match),
 	},
 	.probe		= tegra_nvavp_probe,
 	.remove		= tegra_nvavp_remove,

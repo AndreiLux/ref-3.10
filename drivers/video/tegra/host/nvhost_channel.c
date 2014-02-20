@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Channel
  *
- * Copyright (c) 2010-2013, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -22,6 +22,7 @@
 #include "dev.h"
 #include "nvhost_acm.h"
 #include "nvhost_job.h"
+#include "nvhost_hwctx.h"
 #include "chip_support.h"
 
 #include <trace/events/nvhost.h>
@@ -31,16 +32,16 @@
 #define NVHOST_CHANNEL_LOW_PRIO_MAX_WAIT 50
 
 int nvhost_channel_init(struct nvhost_channel *ch,
-		struct nvhost_master *dev, int index)
+		struct nvhost_master *dev)
 {
 	int err;
 	struct nvhost_device_data *pdata = platform_get_drvdata(ch->dev);
 
 	/* Link platform_device to nvhost_channel */
-	err = channel_op(ch).init(ch, dev, index);
+	err = channel_op(ch).init(ch, dev);
 	if (err < 0) {
 		dev_err(&dev->dev->dev, "failed to init channel %d\n",
-				index);
+				ch->chid);
 		return err;
 	}
 	pdata->channel = ch;
@@ -83,14 +84,16 @@ int nvhost_channel_submit(struct nvhost_job *job)
 }
 
 struct nvhost_channel *nvhost_getchannel(struct nvhost_channel *ch,
-		bool force)
+		bool force, bool init)
 {
 	int err = 0;
 	struct nvhost_device_data *pdata = platform_get_drvdata(ch->dev);
 
 	mutex_lock(&ch->reflock);
 	if (ch->refcount == 0) {
-		if (pdata->init)
+		if (!init)
+			err = -EBUSY;
+		else if (pdata->init)
 			err = pdata->init(ch->dev);
 	} else if (pdata->exclusive && !force)
 		err = -EBUSY;
@@ -107,7 +110,7 @@ struct nvhost_channel *nvhost_getchannel(struct nvhost_channel *ch,
 	return err ? NULL : ch;
 }
 
-void nvhost_putchannel(struct nvhost_channel *ch)
+void nvhost_putchannel(struct nvhost_channel *ch, bool deinit)
 {
 	struct nvhost_device_data *pdata = platform_get_drvdata(ch->dev);
 
@@ -116,7 +119,7 @@ void nvhost_putchannel(struct nvhost_channel *ch)
 		nvhost_module_enable_poweroff(ch->dev);
 
 	mutex_lock(&ch->reflock);
-	if (ch->refcount == 1 && pdata->deinit)
+	if (ch->refcount == 1 && deinit && pdata->deinit)
 		pdata->deinit(ch->dev);
 
 	ch->refcount--;
@@ -146,6 +149,7 @@ struct nvhost_channel *nvhost_alloc_channel_internal(int chindex,
 		if (ch == NULL)
 			return NULL;
 		else {
+			ch->chid = *current_channel_count;
 			(*current_channel_count)++;
 			return ch;
 		}
@@ -179,4 +183,57 @@ int nvhost_channel_read_reg(struct nvhost_channel *ch,
 		return -EINVAL;
 
 	return pdata->read_reg(ch->dev, ch, hwctx, offset, value);
+}
+
+static struct nvhost_hwctx *alloc_hwctx(struct nvhost_hwctx_handler *h,
+		struct nvhost_channel *ch)
+{
+	struct nvhost_hwctx *ctx;
+
+	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
+	if (!ctx)
+		return NULL;
+
+	kref_init(&ctx->ref);
+	ctx->h = h;
+	ctx->channel = ch;
+	ctx->valid = true;
+
+	return ctx;
+}
+
+static void free_hwctx(struct kref *ref)
+{
+	struct nvhost_hwctx *ctx = container_of(ref, struct nvhost_hwctx, ref);
+
+	kfree(ctx);
+}
+
+static void get_hwctx(struct nvhost_hwctx *ctx)
+{
+	kref_get(&ctx->ref);
+}
+
+static void put_hwctx(struct nvhost_hwctx *ctx)
+{
+	kref_put(&ctx->ref, free_hwctx);
+}
+
+struct nvhost_hwctx_handler *nvhost_alloc_hwctx_handler(u32 syncpt,
+	u32 waitbase, struct nvhost_channel *ch)
+{
+	struct nvhost_hwctx_handler *p;
+
+	p = kzalloc(sizeof(*p), GFP_KERNEL);
+	if (!p)
+		return NULL;
+
+	p->syncpt = NVSYNCPT_INVALID;
+	p->waitbase = waitbase;
+
+	p->alloc = alloc_hwctx;
+	p->get   = get_hwctx;
+	p->put   = put_hwctx;
+
+	return p;
 }

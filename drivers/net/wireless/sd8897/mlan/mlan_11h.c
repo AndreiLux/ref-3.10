@@ -2,7 +2,7 @@
  *
  *  @brief This file contains functions for 802.11H.
  *
- *  (C) Copyright 2008-2012 Marvell International Ltd. All Rights Reserved
+ *  (C) Copyright 2008-2013 Marvell International Ltd. All Rights Reserved
  *
  *  MARVELL CONFIDENTIAL
  *  The source code contained or described herein and all documents related to
@@ -980,16 +980,16 @@ wlan_11h_is_dfs_master(mlan_private * priv)
 
 	ENTER();
 	/* UAP: all are master */
-	if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_UAP) {
+	if (GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_UAP)
 		ret = MTRUE;
-	}
+
 	/* STA: only ad-hoc creator is master */
 	else if ((GET_BSS_ROLE(priv) == MLAN_BSS_ROLE_STA) &&
 		 (priv->bss_mode == MLAN_BSS_MODE_IBSS) &&
 		 (priv->adhoc_state == ADHOC_STARTED ||
-		  priv->adhoc_state == ADHOC_STARTING)) {
+		  priv->adhoc_state == ADHOC_STARTING))
 		ret = MTRUE;
-	}
+
 	/* all other cases = slave interface */
 	LEAVE();
 	return ret;
@@ -3312,7 +3312,9 @@ wlan_11h_radar_detected_handling(mlan_adapter * pmadapter)
 #ifdef DFS_TESTING_SUPPORT
 		if (pmadapter->dfs_test_params.no_channel_change_on_radar) {
 			PRINTM(MCMD_D,
-			       "dfs_testing - no channel change on radar.\n");
+			       "dfs_testing - no channel change on radar."
+			       "  Overwrite new_chan = curr_chan.\n");
+			pstate_rdh->new_channel = pstate_rdh->curr_channel;
 			pstate_rdh->priv_curr_idx =
 				RDH_STAGE_FIRST_ENTRY_PRIV_IDX;
 			pstate_rdh->stage = RDH_RESTART_INTFS;

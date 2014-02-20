@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Channel
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -26,6 +26,7 @@
 #include "nvhost_hwctx.h"
 #include <trace/events/nvhost.h>
 #include <linux/slab.h>
+#include "nvhost_sync.h"
 
 #include "nvhost_hwctx.h"
 #include "nvhost_intr.h"
@@ -113,6 +114,46 @@ static void submit_ctxsave(struct nvhost_job *job, struct nvhost_hwctx *cur_ctx)
 	trace_nvhost_channel_context_save(ch->dev->name, cur_ctx);
 }
 
+static void add_sync_waits(struct nvhost_channel *ch, int fd)
+{
+	struct sync_fence *fence;
+	struct sync_pt *_pt;
+	struct nvhost_sync_pt *pt;
+	struct list_head *pos;
+
+	if (fd < 0)
+		return;
+
+	fence = nvhost_sync_fdget(fd);
+	if (!fence)
+		return;
+
+	/*
+	 * Force serialization by inserting a host wait for the
+	 * previous job to finish before this one can commence.
+	 *
+	 * NOTE! This cannot be packed because otherwise we might
+	 * overwrite the RESTART opcode at the end of the push
+	 * buffer.
+	 */
+
+	list_for_each(pos, &fence->pt_list_head) {
+		u32 id;
+		u32 thresh;
+
+		_pt = container_of(pos, struct sync_pt, pt_list);
+		pt = to_nvhost_sync_pt(_pt);
+		id = nvhost_sync_pt_id(pt);
+		thresh = nvhost_sync_pt_thresh(pt);
+
+		nvhost_cdma_push(&ch->cdma,
+			nvhost_opcode_setclass(NV_HOST1X_CLASS_ID,
+				host1x_uclass_wait_syncpt_r(), 1),
+			nvhost_class_host_wait_syncpt(id, thresh));
+	}
+	sync_fence_put(fence);
+}
+
 static void submit_ctxrestore(struct nvhost_job *job)
 {
 	struct nvhost_master *host = nvhost_get_host(job->ch->dev);
@@ -192,6 +233,7 @@ static void submit_gathers(struct nvhost_job *job)
 {
 	u32 class_id = 0;
 	int i;
+	void *cpuva;
 
 	/* push user gathers */
 	for (i = 0 ; i < job->num_gathers; i++) {
@@ -206,6 +248,7 @@ static void submit_gathers(struct nvhost_job *job)
 			class_id = g->class_id;
 		}
 
+		add_sync_waits(job->ch, g->pre_fence);
 		/* If register is specified, add a gather with incr/nonincr.
 		 * This allows writing large amounts of data directly from
 		 * memory to a register. */
@@ -217,11 +260,14 @@ static void submit_gathers(struct nvhost_job *job)
 		else
 			op1 = nvhost_opcode_gather(g->words);
 		op2 = job->gathers[i].mem_base + g->offset;
-		nvhost_cdma_push_gather(&job->ch->cdma,
-				job->memmgr,
-				g->ref,
+
+		cpuva = dma_buf_vmap(g->buf);
+		_nvhost_cdma_push_gather(&job->ch->cdma,
+				cpuva,
+				job->gathers[i].mem_base,
 				g->offset,
 				op1, op2);
+		dma_buf_vunmap(g->buf, cpuva);
 	}
 }
 
@@ -368,8 +414,7 @@ static int host1x_save_context(struct nvhost_channel *ch)
 		goto done;
 	}
 
-	job = nvhost_job_alloc(ch, hwctx_to_save, 0, 0, 0, 1,
-			nvhost_get_host(ch->dev)->memmgr);
+	job = nvhost_job_alloc(ch, hwctx_to_save, 0, 0, 0, 1);
 	if (!job) {
 		err = -ENOMEM;
 		mutex_unlock(&ch->submitlock);
@@ -451,13 +496,12 @@ static inline int hwctx_handler_init(struct nvhost_channel *ch)
 }
 
 static int host1x_channel_init(struct nvhost_channel *ch,
-	struct nvhost_master *dev, int index)
+	struct nvhost_master *dev)
 {
-	ch->chid = index;
 	mutex_init(&ch->reflock);
 	mutex_init(&ch->submitlock);
 
-	ch->aperture = host1x_channel_aperture(dev->aperture, index);
+	ch->aperture = host1x_channel_aperture(dev->aperture, ch->chid);
 
 	return hwctx_handler_init(ch);
 }

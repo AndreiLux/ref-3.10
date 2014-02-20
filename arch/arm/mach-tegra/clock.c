@@ -5,7 +5,7 @@
  * Author:
  *	Colin Cross <ccross@google.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -574,6 +574,16 @@ int clk_set_rate_locked(struct clk *c, unsigned long rate)
 out:
 	if (disable)
 		clk_disable_locked(c);
+
+	if (c->fixed_target_rate &&
+			(clk_get_rate_locked(c) != c->fixed_target_rate)) {
+
+		pr_err("Violating expected target rate for clock:%s "
+				"expected rate:%lu, new rate set:%lu\n",
+				c->name, c->fixed_target_rate, clk_get_rate_locked(c));
+		WARN_ON(1);
+	}
+
 	return ret;
 }
 
@@ -716,8 +726,11 @@ static int tegra_clk_init_one_from_table(struct tegra_clk_init_table *table)
 	}
 
 	if (table->rate && c->parent && c->parent->ops &&
-	    c->parent->ops->shared_bus_update)
+	    c->parent->ops->shared_bus_update) {
 			c->u.shared_bus_user.rate = table->rate;
+			if (!table->enabled)
+				return 0;
+	}
 
 	if (table->enabled) {
 		ret = tegra_clk_prepare_enable(c);
@@ -955,8 +968,10 @@ static void __init tegra_clk_verify_rates(void)
 
 void __init tegra_common_init_clock(void)
 {
+#ifndef CONFIG_ARM64
 #if defined(CONFIG_HAVE_ARM_TWD) || defined(CONFIG_ARM_ARCH_TIMER)
 	tegra_cpu_timer_init();
+#endif
 #endif
 	tegra_clk_verify_rates();
 }
@@ -984,26 +999,6 @@ static int __init tegra_keep_boot_clocks_setup(char *__unused)
 	return 1;
 }
 __setup("tegra_keep_boot_clocks", tegra_keep_boot_clocks_setup);
-
-/*
- * Bootloader may not match kernel restrictions on CPU clock sources.
- * Make sure CPU clock is sourced from either main or backup parent.
- */
-static int __init tegra_sync_cpu_clock(void)
-{
-	int ret;
-	unsigned long rate;
-	struct clk *c = tegra_get_clock_by_name("cpu");
-
-	BUG_ON(!c);
-	rate = clk_get_rate(c);
-	ret = clk_set_rate(c, rate);
-	if (ret)
-		pr_err("%s: Failed to sync CPU at rate %lu\n", __func__, rate);
-	else
-		pr_info("CPU rate: %lu MHz\n", clk_get_rate(c) / 1000000);
-	return ret;
-}
 
 /*
  * Iterate through all clocks, disabling any for which the refcount is 0
@@ -1041,40 +1036,53 @@ static int __init tegra_init_disable_boot_clocks(void)
 	return 0;
 }
 
-/* Get ready DFLL clock source (if available) for CPU */
-static int __init tegra_dfll_cpu_start(void)
+/* Get ready DVFS rails and DFLL clock source (if available) for CPU */
+static int __init tegra_dvfs_rail_start_scaling(void)
 {
-	unsigned long flags;
+	int ret;
+	unsigned long flags, rate;
 	struct clk *c = tegra_get_clock_by_name("cpu");
 	struct clk *dfll_cpu = tegra_get_clock_by_name("dfll_cpu");
+	bool init_dfll_first = tegra_dvfs_is_dfll_bypass();
 
 	BUG_ON(!c);
 	clk_lock_save(c, &flags);
-
-	if (dfll_cpu && dfll_cpu->ops && dfll_cpu->ops->init)
-		dfll_cpu->ops->init(dfll_cpu);
-
-	clk_unlock_restore(c, &flags);
-	return 0;
-}
-
-static int __init tegra_clk_late_init(void)
-{
-	bool init_dfll_first = tegra_dvfs_is_dfll_bypass();
-
-	tegra_init_disable_boot_clocks(); /* must before dvfs late init */
 
 	/*
 	 * Initialize dfll first if it provides bypass to regulator for legacy
 	 * dvfs; otherwise legacy dvfs controls cpu voltage independently, and
 	 * initialized before dfll.
 	 */
-	if (init_dfll_first)
-		tegra_dfll_cpu_start();
-	if (!tegra_dvfs_late_init() && !init_dfll_first)
-		tegra_dfll_cpu_start();
+	if (init_dfll_first) {
+		if (dfll_cpu && dfll_cpu->ops && dfll_cpu->ops->init)
+			dfll_cpu->ops->init(dfll_cpu);
+	}
 
-	tegra_sync_cpu_clock();		/* after attempt to get dfll ready */
+	ret = tegra_dvfs_rail_connect_regulators();
+	if (!ret && !init_dfll_first) {
+		if (dfll_cpu && dfll_cpu->ops && dfll_cpu->ops->init)
+			dfll_cpu->ops->init(dfll_cpu);
+	}
+
+	/*
+	 * Bootloader may not match kernel restrictions on CPU clock sources.
+	 * Make sure CPU clock is sourced from either main or backup parent.
+	 */
+	rate = clk_get_rate_locked(c);
+	if (clk_set_rate_locked(c, rate))
+		pr_err("%s: Failed to sync CPU at rate %lu\n", __func__, rate);
+	else
+		pr_info("CPU rate: %lu MHz\n", clk_get_rate_locked(c)/1000000);
+
+	clk_unlock_restore(c, &flags);
+	return ret;
+}
+
+static int __init tegra_clk_late_init(void)
+{
+	tegra_init_disable_boot_clocks();	/* must before dvfs start */
+	if (!tegra_dvfs_rail_start_scaling())		/* CPU lock protected */
+		tegra_dvfs_rail_register_notifiers();	/* not under CPU lock */
 	tegra_update_cpu_edp_limits();
 	return 0;
 }
@@ -1607,14 +1615,22 @@ DEFINE_SIMPLE_ATTRIBUTE(state_fops, state_get, state_set, "%llu\n");
 static int _max_set(struct clk *c, unsigned long val)
 {
 	int i;
-
+	bool found = false;
 	c->max_rate = val;
 
 	if (c->dvfs && c->dvfs->max_millivolts) {
+		/* Walk through dvfs freqs table and set freq of ith item to
+		 * max_rate if found its dvfs voltage equals to max dvfs voltage
+		 * otherwise set freq of last item to max_rate
+		 */
 		for (i = 0; i < c->dvfs->num_freqs; i++) {
-			if (c->dvfs->millivolts[i] == c->dvfs->max_millivolts)
+			if (c->dvfs->millivolts[i] == c->dvfs->max_millivolts) {
 				c->dvfs->freqs[i] = c->max_rate;
+				found = true;
+			}
 		}
+		if (!found)
+			c->dvfs->freqs[i-1] = c->max_rate;
 	}
 	return 0;
 }
@@ -1708,6 +1724,37 @@ static int use_alt_freq_set(void *data, u64 val)
 DEFINE_SIMPLE_ATTRIBUTE(use_alt_freq_fops,
 			use_alt_freq_get, use_alt_freq_set, "%llu\n");
 
+static ssize_t fmax_at_vmin_write(struct file *file,
+	const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	struct clk *c = file->f_path.dentry->d_inode->i_private;
+	unsigned long f_max;
+	int v_min;
+	char buf[32];
+
+	if (sizeof(buf) <= count)
+		return -EINVAL;
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EFAULT;
+
+	/* terminate buffer and trim - white spaces may be appended
+	 *  at the end when invoked from shell command line */
+	buf[count] = '\0';
+	strim(buf);
+
+	if (sscanf(buf, "%lu_at_%d", &f_max, &v_min) != 2)
+		return -EINVAL;
+
+	tegra_dvfs_set_fmax_at_vmin(c, f_max, v_min);
+
+	return count;
+}
+
+static const struct file_operations fmax_at_vmin_fops = {
+	.write		= fmax_at_vmin_write,
+};
+
 static int clk_debugfs_register_one(struct clk *c)
 {
 	struct dentry *d;
@@ -1779,6 +1826,13 @@ static int clk_debugfs_register_one(struct clk *c)
 	if (c->dvfs) {
 		d = debugfs_create_file("use_alt_freq", S_IRUGO | S_IWUSR,
 			c->dent, c, &use_alt_freq_fops);
+		if (!d)
+			goto err_out;
+	}
+
+	if (c->dvfs && c->dvfs->can_override) {
+		d = debugfs_create_file("fmax_at_vmin", S_IWUSR, c->dent,
+			c, &fmax_at_vmin_fops);
 		if (!d)
 			goto err_out;
 	}

@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host Memory Management Abstraction
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -32,7 +32,6 @@
 #ifdef CONFIG_TEGRA_GRHOST_USE_DMABUF
 #include "dmabuf.h"
 #endif
-#include <linux/sort.h>
 #include "chip_support.h"
 
 struct mem_mgr *nvhost_memmgr_alloc_mgr(void)
@@ -286,80 +285,23 @@ void nvhost_memmgr_kunmap(struct mem_handle *handle, unsigned int pagenum,
 	}
 }
 
-static int id_cmp(const void *_id1, const void *_id2)
+size_t nvhost_memmgr_size(struct mem_handle *handle)
 {
-	u32 id1 = ((struct nvhost_memmgr_pinid *)_id1)->id;
-	u32 id2 = ((struct nvhost_memmgr_pinid *)_id2)->id;
-
-	if (id1 < id2)
-		return -1;
-	if (id1 > id2)
-		return 1;
-
-	return 0;
-}
-
-int nvhost_memmgr_pin_array_ids(struct mem_mgr *mgr,
-		struct platform_device *dev,
-		struct nvhost_memmgr_pinid *ids,
-		dma_addr_t *phys_addr,
-		u32 count,
-		struct nvhost_job_unpin *unpin_data)
-{
-	int i, pin_count = 0;
-	struct sg_table *sgt;
-	struct mem_handle *h;
-	u32 prev_id = 0;
-	dma_addr_t prev_addr = 0;
-
-	for (i = 0; i < count; i++)
-		ids[i].index = i;
-
-	sort(ids, count, sizeof(*ids), id_cmp, NULL);
-
-	for (i = 0; i < count; i++) {
-		if (ids[i].id == prev_id) {
-			phys_addr[ids[i].index] = prev_addr;
-			continue;
-		}
-
-		h = nvhost_memmgr_get(mgr, ids[i].id, dev);
-		if (IS_ERR(h))
-			return -EINVAL;
-
-		sgt = nvhost_memmgr_pin(mgr, h, &dev->dev, mem_flag_none);
-		if (IS_ERR(sgt))
-			return PTR_ERR(sgt);
-
-		phys_addr[ids[i].index] = nvhost_memmgr_dma_addr(sgt);
-		unpin_data[pin_count].h = h;
-		unpin_data[pin_count++].mem = sgt;
-
-		prev_id = ids[i].id;
-		prev_addr = phys_addr[ids[i].index];
-	}
-	return pin_count;
-}
-
-u32 nvhost_memmgr_handle_to_id(struct mem_handle *handle)
-{
-	switch (nvhost_memmgr_type((u32)handle)) {
+	switch (nvhost_memmgr_type((u32)((uintptr_t)handle))) {
 #ifdef CONFIG_TEGRA_GRHOST_USE_NVMAP
 	case mem_mgr_type_nvmap:
-		return (u32)nvmap_dmabuf_to_user_id(
-				(struct dma_buf *)handle);
+		return nvhost_nvmap_size(handle);
 		break;
 #endif
 #ifdef CONFIG_TEGRA_GRHOST_USE_DMABUF
 	case mem_mgr_type_dmabuf:
-		WARN_ON(1);
+		return nvhost_dmabuf_size(handle);
 		break;
 #endif
 	default:
-		break;
+		return 0;
 	}
 
-	return 0;
 }
 
 struct sg_table *nvhost_memmgr_sg_table(struct mem_mgr *mgr,

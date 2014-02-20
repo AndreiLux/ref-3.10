@@ -4,7 +4,7 @@
  * Copyright (C) 2010 Google, Inc.
  * Author: Erik Gilling <konkers@android.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -60,9 +60,9 @@
 #include "dc_config.h"
 #include "dc_priv.h"
 #include "dev.h"
-#include "nvhost_sync.h"
 #include "nvsd.h"
 #include "dp.h"
+#include "nvsr.h"
 #include "tegra_adf.h"
 
 /* HACK! This needs to come from DT */
@@ -823,8 +823,8 @@ static int dbg_dc_event_inject_show(struct seq_file *s, void *unused)
 	return 0;
 }
 
-static int dbg_dc_event_inject_write(struct file *file, const char __user *addr,
-	size_t len, loff_t *pos)
+static ssize_t dbg_dc_event_inject_write(struct file *file,
+		const char __user *addr, size_t len, loff_t *pos)
 {
 	struct seq_file *m = file->private_data; /* single_open() initialized */
 	struct tegra_dc *dc = m ? m->private : NULL;
@@ -1227,24 +1227,14 @@ u32 tegra_dc_incr_syncpt_max(struct tegra_dc *dc, int i)
 void tegra_dc_incr_syncpt_min(struct tegra_dc *dc, int i, u32 val)
 {
 	mutex_lock(&dc->lock);
-	if (dc->enabled) {
-		tegra_dc_get(dc);
-		while (dc->syncpt[i].min < val) {
-			dc->syncpt[i].min++;
-			nvhost_syncpt_cpu_incr_ext(dc->ndev, dc->syncpt[i].id);
+
+	tegra_dc_get(dc);
+	while (dc->syncpt[i].min < val) {
+		dc->syncpt[i].min++;
+		nvhost_syncpt_cpu_incr_ext(dc->ndev, dc->syncpt[i].id);
 		}
-		tegra_dc_put(dc);
-	}
+	tegra_dc_put(dc);
 	mutex_unlock(&dc->lock);
-}
-
-struct sync_fence *tegra_dc_create_fence(struct tegra_dc *dc, int i, u32 val)
-{
-	struct nvhost_master *host = nvhost_get_host(dc->ndev);
-	u32 id = tegra_dc_get_syncpt_id(dc, i);
-
-	return nvhost_sync_create_fence(&host->syncpt, &id, &val, 1,
-			dev_name(&dc->ndev->dev));
 }
 
 void
@@ -1406,13 +1396,17 @@ static int tegra_dc_set_out(struct tegra_dc *dc, struct tegra_dc_out *out)
 	case TEGRA_DC_OUT_DP:
 		dc->out_ops = &tegra_dc_dp_ops;
 		break;
+#ifdef CONFIG_TEGRA_NVSR
+	case TEGRA_DC_OUT_NVSR_DP:
+		dc->out_ops = &tegra_dc_nvsr_ops;
+		break;
+#endif
 #endif
 #ifdef CONFIG_TEGRA_LVDS
 	case TEGRA_DC_OUT_LVDS:
 		dc->out_ops = &tegra_dc_lvds_ops;
 		break;
 #endif
-
 	default:
 		dc->out_ops = NULL;
 		break;
@@ -1424,6 +1418,22 @@ static int tegra_dc_set_out(struct tegra_dc *dc, struct tegra_dc_out *out)
 			dc->out = NULL;
 			dc->out_ops = NULL;
 			return err;
+		}
+	}
+	/* If there is no predefined mode, try early_enable()
+	   to check mode from panel directly */
+	if (!mode && !out->n_modes && dc->out_ops &&
+		dc->out_ops->early_enable) {
+		if (dc->out_ops->early_enable(dc))
+			dev_info(&dc->ndev->dev,
+				"Detected mode: %dx%d (on %dx%dmm) pclk=%d\n",
+				dc->mode.h_active, dc->mode.v_active,
+				dc->out->h_size, dc->out->v_size,
+				dc->mode.pclk);
+		else {
+			dev_err(&dc->ndev->dev,
+				"Error: failed to check panel mode\n");
+			err = -EINVAL;
 		}
 	}
 
@@ -1560,10 +1570,9 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 	if (!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) || !dc->enabled)
 		return ret;
 
-	if (dc->out_ops && dc->out_ops->osidle) {
-		if (dc->out_ops->osidle(dc))
-			return 0;
-	}
+	tegra_dc_get(dc);
+	if (dc->out_ops && dc->out_ops->hold)
+		dc->out_ops->hold(dc);
 
 	/*
 	 * Logic is as follows
@@ -1573,15 +1582,17 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 	 */
 
 	mutex_lock(&dc->one_shot_lp_lock);
-	tegra_dc_get(dc);
 	dc->out->user_needs_vblank = true;
 	tegra_dc_unmask_interrupt(dc, MSF_INT);
 
 	ret = wait_for_completion_interruptible(&dc->out->user_vblank_comp);
 	init_completion(&dc->out->user_vblank_comp);
 	tegra_dc_mask_interrupt(dc, MSF_INT);
-	tegra_dc_put(dc);
 	mutex_unlock(&dc->one_shot_lp_lock);
+
+	if (dc->out_ops && dc->out_ops->release)
+		dc->out_ops->release(dc);
+	tegra_dc_put(dc);
 
 	return ret;
 }
@@ -1851,7 +1862,7 @@ static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status,
 		if (!completion_done(&dc->crc_complete))
 			complete(&dc->crc_complete);
 
-		if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE && !dc->nvsr)
 			tegra_dc_put(dc);
 	}
 
@@ -1961,6 +1972,9 @@ static irqreturn_t tegra_dc_irq(int irq, void *ptr)
 		tegra_dc_one_shot_irq(dc, status, timestamp);
 	else
 		tegra_dc_continuous_irq(dc, status, timestamp);
+
+	if (dc->nvsr)
+		tegra_dc_nvsr_irq(dc->nvsr, status);
 
 	/* update video mode if it has changed since the last frame */
 	if (status & (FRAME_END_INT | V_BLANK_INT))
@@ -2123,7 +2137,16 @@ static int tegra_dc_init(struct tegra_dc *dc)
 			DC_CMD_CONT_SYNCPT_VSYNC);
 
 	tegra_dc_writel(dc, 0x00004700, DC_CMD_INT_TYPE);
-	tegra_dc_writel(dc, 0x0001c700, DC_CMD_INT_POLARITY);
+#if defined(CONFIG_ARCH_TEGRA_14x_SOC) || defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	tegra_dc_writel(dc, WIN_A_OF_INT | WIN_B_OF_INT | WIN_C_OF_INT |
+		WIN_T_UF_INT | WIN_D_UF_INT | HC_UF_INT |
+		WIN_A_UF_INT | WIN_B_UF_INT | WIN_C_UF_INT,
+		DC_CMD_INT_POLARITY);
+#else
+	tegra_dc_writel(dc, WIN_A_OF_INT | WIN_B_OF_INT | WIN_C_OF_INT |
+		WIN_A_UF_INT | WIN_B_UF_INT | WIN_C_UF_INT,
+		DC_CMD_INT_POLARITY);
+#endif
 	tegra_dc_writel(dc, 0x00202020, DC_DISP_MEM_HIGH_PRIORITY);
 	tegra_dc_writel(dc, 0x00010101, DC_DISP_MEM_HIGH_PRIORITY_TIMER);
 #ifdef CONFIG_ARCH_TEGRA_3x_SOC
@@ -2429,7 +2452,8 @@ static void _tegra_dc_controller_disable(struct tegra_dc *dc)
 	if (dc->out_ops && dc->out_ops->disable)
 		dc->out_ops->disable(dc);
 
-	tegra_dc_writel(dc, 0, DC_CMD_INT_MASK);
+	if (tegra_powergate_is_powered(dc->powergate_id))
+		tegra_dc_writel(dc, 0, DC_CMD_INT_MASK);
 
 	disable_irq_nosync(dc->irq);
 
@@ -2731,8 +2755,6 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	struct tegra_dc *dc;
 	struct tegra_dc_mode *mode;
 	struct tegra_dc_platform_data *dt_pdata = NULL;
-	struct tegra_dc_platform_data *temp_pdata;
-	struct of_tegra_dc_data *of_pdata = NULL;
 	struct clk *clk;
 #ifndef CONFIG_TEGRA_ISOMGR
 	struct clk *emc_clk;
@@ -2749,7 +2771,7 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	int irq;
 	int i;
 
-	if (!ndev->dev.platform_data) {
+	if (!np && !ndev->dev.platform_data) {
 		dev_err(&ndev->dev, "no platform data\n");
 		return -ENOENT;
 	}
@@ -2860,9 +2882,12 @@ static int tegra_dc_probe(struct platform_device *ndev)
 	}
 
 	if (np) {
-		temp_pdata = (struct tegra_dc_platform_data *)
-			ndev->dev.platform_data;
-		of_pdata = &(temp_pdata->of_data);
+		struct resource of_fb_res;
+		if (ndev->id == 0)
+			tegra_get_fb_resource(&of_fb_res);
+		else /*ndev->id == 1*/
+			tegra_get_fb2_resource(&of_fb_res);
+
 		fb_mem = kzalloc(sizeof(struct resource), GFP_KERNEL);
 		if (fb_mem == NULL) {
 			ret = -ENOMEM;
@@ -2870,9 +2895,8 @@ static int tegra_dc_probe(struct platform_device *ndev)
 		}
 		fb_mem->name = "fbmem";
 		fb_mem->flags = IORESOURCE_MEM;
-		fb_mem->start = (resource_size_t) of_pdata->fb_start;
-		fb_mem->end = fb_mem->start +
-			(resource_size_t)of_pdata->fb_size - 1;
+		fb_mem->start = (resource_size_t)of_fb_res.start;
+		fb_mem->end = (resource_size_t)of_fb_res.end;
 	} else {
 		fb_mem = platform_get_resource_byname(ndev,
 			IORESOURCE_MEM, "fbmem");

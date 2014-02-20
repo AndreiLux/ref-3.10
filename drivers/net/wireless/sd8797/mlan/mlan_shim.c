@@ -813,6 +813,11 @@ process_start:
 		     pmadapter->callbacks.moal_spin_unlock) > HIGH_RX_PENDING) {
 			PRINTM(MEVENT, "Pause\n");
 			pmadapter->delay_task_flag = MTRUE;
+			if (!pmadapter->mlan_rx_processing)
+				wlan_recv_event(wlan_get_priv
+						(pmadapter, MLAN_BSS_ROLE_ANY),
+						MLAN_EVENT_ID_DRV_DEFER_RX_WORK,
+						MNULL);
 			break;
 		}
 		/* Handle pending SDIO interrupts if any */

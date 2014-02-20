@@ -17,6 +17,7 @@
 #ifndef __LINUX_MFD_PALMAS_H
 #define __LINUX_MFD_PALMAS_H
 
+#include <linux/i2c.h>
 #include <linux/usb/otg.h>
 #include <linux/leds.h>
 #include <linux/regmap.h>
@@ -223,12 +224,14 @@ struct palmas_rtc;
 struct palmas_battery_info;
 
 #define palmas_rails(_name) "palmas_"#_name
+#define PALMAS_MAX_FN_REGISTERS		64
 
 struct palmas {
 	struct device *dev;
 
 	struct i2c_client *i2c_clients[PALMAS_NUM_CLIENTS];
 	struct regmap *regmap[PALMAS_NUM_CLIENTS];
+	DECLARE_BITMAP(volatile_smps_registers, PALMAS_MAX_FN_REGISTERS);
 
 	/* Stored chip id */
 	int id;
@@ -258,6 +261,8 @@ struct palmas {
 	int sw_otp_version;
 	int es_minor_version;
 	int es_major_version;
+	struct mutex mutex_config0;
+	bool shutdown;
 };
 
 /*
@@ -812,6 +817,7 @@ enum usb_irq_events {
 /* helper macro to get correct slave number */
 #define PALMAS_BASE_TO_SLAVE(x)		((x >> 8) - 1)
 #define PALMAS_BASE_TO_REG(x, y)	((x & 0xff) + y)
+#define PALMAS_REG_TO_FN_ADDR(x, y)	((y) - ((x) & 0xff))
 #define RTC_SLAVE			0
 
 /* Base addresses of IP blocks in Palmas */
@@ -4052,6 +4058,7 @@ enum {
 	PALMAS_REGULATOR_CONFIG_SUSPEND_FORCE_OFF		= 0x1,
 	PALMAS_REGULATOR_CONFIG_TRACKING_ENABLE			= 0x2,
 	PALMAS_REGULATOR_CONFIG_SUSPEND_TRACKING_DISABLE	= 0x4,
+	PALMAS_REGULATOR_CONFIG_VSEL_VOLATILE			= 0x8,
 };
 
 /*
@@ -4205,6 +4212,11 @@ static inline int palmas_update_bits(struct palmas *palmas, unsigned int base,
 	int slave_id = PALMAS_BASE_TO_SLAVE(base);
 
 	return regmap_update_bits(palmas->regmap[slave_id], addr, mask, val);
+}
+
+static inline void palmas_allow_atomic_xfer(struct palmas *palmas)
+{
+	i2c_shutdown_clear_adapter(palmas->i2c_clients[0]->adapter);
 }
 
 extern int palmas_irq_get_virq(struct palmas *palmas, int irq);

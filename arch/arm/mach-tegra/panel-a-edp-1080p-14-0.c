@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/panel-a-1080p-11-6.c
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -43,6 +43,7 @@ static struct regulator *vdd_lcd_bl;
 static struct regulator *vdd_lcd_bl_en;
 static struct regulator *avdd_lcd;
 static struct regulator *vdd_ds_1v8;
+static struct regulator *avdd_3v3_dp;
 
 static struct tegra_dc_sd_settings edp_a_1080p_14_0_sd_settings = {
 	.enable = 1, /* enabled by default. */
@@ -128,13 +129,6 @@ static tegra_dc_bl_output edp_a_1080p_14_0_bl_output_measured = {
 	247, 248, 249, 250, 251, 252, 253, 255
 };
 
-static unsigned int dsi_a_laguna_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_a_laguna_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
-};
-
 static int laguna_edp_regulator_get(struct device *dev)
 {
 	int err = 0;
@@ -180,6 +174,51 @@ fail:
 	return err;
 }
 
+static int ardbeg_edp_regulator_get(struct device *dev)
+{
+	int err = 0;
+
+	if (reg_requested)
+		return 0;
+
+	vdd_ds_1v8 = regulator_get(dev, "vdd_lcd_1v8_s");
+	if (IS_ERR_OR_NULL(vdd_ds_1v8)) {
+		pr_err("vdd_ds_1v8 regulator get failed\n");
+		err = PTR_ERR(vdd_ds_1v8);
+		vdd_ds_1v8 = NULL;
+		goto fail;
+	}
+
+	vdd_lcd_bl_en = regulator_get(dev, "vdd_lcd_bl_en");
+	if (IS_ERR_OR_NULL(vdd_lcd_bl_en)) {
+		pr_err("vdd_lcd_bl_en regulator get failed\n");
+		err = PTR_ERR(vdd_lcd_bl_en);
+		vdd_lcd_bl_en = NULL;
+		goto fail;
+	}
+
+	avdd_lcd = regulator_get(dev, "avdd_lcd");
+	if (IS_ERR_OR_NULL(avdd_lcd)) {
+		pr_err("avdd_lcd regulator get failed\n");
+		err = PTR_ERR(avdd_lcd);
+		avdd_lcd = NULL;
+		goto fail;
+	}
+
+	avdd_3v3_dp = regulator_get(dev, "avdd_3v3_dp");
+	if (IS_ERR_OR_NULL(avdd_3v3_dp)) {
+		pr_err("avdd_3v3_dp regulator get failed\n");
+		err = PTR_ERR(avdd_3v3_dp);
+		avdd_3v3_dp = NULL;
+		goto fail;
+	}
+
+	reg_requested = true;
+	return 0;
+fail:
+	return err;
+}
+
 static int laguna_edp_gpio_get(void)
 {
 	int err = 0;
@@ -204,7 +243,10 @@ static int edp_a_1080p_14_0_enable(struct device *dev)
 {
 	int err = 0;
 
-	err = laguna_edp_regulator_get(dev);
+	if (of_machine_is_compatible("nvidia,ardbeg"))
+		err = ardbeg_edp_regulator_get(dev);
+	else
+		err = laguna_edp_regulator_get(dev);
 	if (err < 0) {
 		pr_err("edp regulator get failed\n");
 		goto fail;
@@ -220,6 +262,14 @@ static int edp_a_1080p_14_0_enable(struct device *dev)
 		err = regulator_enable(vdd_lcd_bl);
 		if (err < 0) {
 			pr_err("vdd_lcd_bl regulator enable failed\n");
+			goto fail;
+		}
+	}
+
+	if (avdd_3v3_dp) {
+		err = regulator_enable(avdd_3v3_dp);
+		if (err < 0) {
+			pr_err("avdd_3v3_dp regulator enable failed\n");
 			goto fail;
 		}
 	}
@@ -276,6 +326,9 @@ static int edp_a_1080p_14_0_disable(void)
 	if (vdd_lcd_bl)
 		regulator_disable(vdd_lcd_bl);
 
+	if (avdd_3v3_dp)
+		regulator_disable(avdd_3v3_dp);
+
 	msleep(500);
 
 	return 0;
@@ -302,22 +355,6 @@ static struct tegra_dc_out_pin edp_out_pins[] = {
 	{
 		.name   = TEGRA_DC_OUT_PIN_DATA_ENABLE,
 		.pol    = TEGRA_DC_OUT_PIN_POL_HIGH,
-	},
-};
-
-static struct tegra_dc_mode edp_a_1080p_14_0_modes[] = {
-	{
-		.pclk = 137986200,
-		.h_ref_to_sync = 1,
-		.v_ref_to_sync = 1,
-		.h_sync_width = 16,
-		.v_sync_width = 14,
-		.h_back_porch = 152,
-		.v_back_porch = 19,
-		.h_active = 1920,
-		.v_active = 1080,
-		.h_front_porch = 16,
-		.v_front_porch = 3,
 	},
 };
 
@@ -351,8 +388,6 @@ static struct platform_pwm_backlight_data edp_a_1080p_14_0_bl_data = {
 	.notify		= edp_a_1080p_14_0_bl_notify,
 	/* Only toggle backlight on fb blank notifications for disp1 */
 	.check_fb	= edp_a_1080p_14_0_check_fb,
-	.edp_states = dsi_a_laguna_edp_states,
-	.edp_brightness = dsi_a_laguna_edp_brightness,
 };
 
 static struct platform_device __maybe_unused
@@ -366,7 +401,6 @@ static struct platform_device __maybe_unused
 
 static struct platform_device __maybe_unused
 			*edp_a_1080p_14_0_bl_devices[] __initdata = {
-	&tegra_pwfm_device,
 	&edp_a_1080p_14_0_bl_device,
 };
 
@@ -393,8 +427,6 @@ static void edp_a_1080p_14_0_dc_out_init(struct tegra_dc_out *dc)
 	dc->align = TEGRA_DC_ALIGN_MSB,
 	dc->order = TEGRA_DC_ORDER_RED_BLUE,
 	dc->flags = DC_CTRL_MODE;
-	dc->modes = edp_a_1080p_14_0_modes;
-	dc->n_modes = ARRAY_SIZE(edp_a_1080p_14_0_modes);
 	dc->out_pins = edp_out_pins,
 	dc->n_out_pins = ARRAY_SIZE(edp_out_pins),
 	dc->depth = 18,
@@ -402,15 +434,7 @@ static void edp_a_1080p_14_0_dc_out_init(struct tegra_dc_out *dc)
 	dc->enable = edp_a_1080p_14_0_enable;
 	dc->disable = edp_a_1080p_14_0_disable;
 	dc->postsuspend	= edp_a_1080p_14_0_postsuspend,
-	dc->width = 320;
-	dc->height = 205;
 	dc->hotplug_gpio = TEGRA_GPIO_PFF0;
-}
-
-static void edp_a_1080p_14_0_fb_data_init(struct tegra_fb_data *fb)
-{
-	fb->xres = edp_a_1080p_14_0_modes[0].h_active;
-	fb->yres = edp_a_1080p_14_0_modes[0].v_active;
 }
 
 static void
@@ -423,7 +447,6 @@ edp_a_1080p_14_0_sd_settings_init(struct tegra_dc_sd_settings *settings)
 struct tegra_panel __initdata edp_a_1080p_14_0 = {
 	.init_sd_settings = edp_a_1080p_14_0_sd_settings_init,
 	.init_dc_out = edp_a_1080p_14_0_dc_out_init,
-	.init_fb_data = edp_a_1080p_14_0_fb_data_init,
 	.register_bl_dev = edp_a_1080p_14_0_register_bl_dev,
 	.set_disp_device = edp_a_1080p_14_0_set_disp_device,
 };

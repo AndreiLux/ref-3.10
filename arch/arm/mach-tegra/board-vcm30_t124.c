@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-vcm30_t124.c
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -23,7 +23,6 @@
 #include <linux/platform_data/tegra_usb.h>
 #include <linux/platform_data/tegra_nor.h>
 #include <linux/platform_data/tegra_ahci.h>
-#include <linux/spi/spi-tegra.h>
 #include <linux/of_platform.h>
 #include <linux/kernel.h>
 #include <linux/clocksource.h>
@@ -34,6 +33,7 @@
 #include <mach/io_dpd.h>
 #include <asm/mach/arch.h>
 #include <mach/isomgr.h>
+#include <mach/board_id.h>
 
 #include "iomap.h"
 #include "board.h"
@@ -44,80 +44,197 @@
 #include "common.h"
 
 #include <asm/mach-types.h>
+#include "tegra-of-dev-auxdata.h"
 
 static struct board_info board_info, display_board_info;
 
+/*
+ * Set clock values as per automotive POR
+ */
 static __initdata struct tegra_clk_init_table vcm30_t124_clk_init_table[] = {
-	/* name		parent		rate		enabled (always on)*/
-	{ "pll_m",	NULL,		0,		false},
-	{ "hda",	"pll_p",	108000000,	false},
-	{ "hda2codec_2x", "pll_p",	48000000,	false},
-	{ "pwm",	"pll_p",	3187500,	false},
-	{ "i2s0",	"pll_a_out0",	0,		false},
-	{ "i2s1",	"pll_a_out0",	0,		false},
-	{ "i2s3",	"pll_a_out0",	0,		false},
-	{ "i2s4",	"pll_a_out0",	0,		false},
-	{ "spdif_out",	"pll_a_out0",	0,		false},
-	{ "d_audio",	"clk_m",	12000000,	false},
-	{ "dam0",	"clk_m",	12000000,	false},
-	{ "dam1",	"clk_m",	12000000,	false},
-	{ "dam2",	"clk_m",	12000000,	false},
-	{ "audio1",	"i2s1_sync",	0,		false},
-	{ "audio3",	"i2s3_sync",	0,		false},
-	{ "vi_sensor",	"pll_p",	150000000,	false},
-	{ "vi_sensor2",	"pll_p",	150000000,	false},
-	{ "cilab",	"pll_p",	150000000,	false},
-	{ "cilcd",	"pll_p",	150000000,	false},
-	{ "cile",	"pll_p",	150000000,	false},
-	{ "i2c1",	"pll_p",	3200000,	false},
-	{ "i2c2",	"pll_p",	3200000,	false},
-	{ "i2c3",	"pll_p",	3200000,	false},
-	{ "i2c4",	"pll_p",	3200000,	false},
-	{ "i2c5",	"pll_p",	3200000,	false},
-	{ "sbc1",	"pll_p",	25000000,	false},
-	{ "sbc2",	"pll_p",	25000000,	false},
-	{ "sbc3",	"pll_p",	25000000,	false},
-	{ "sbc4",	"pll_p",	25000000,	false},
-	{ "sbc5",	"pll_p",	25000000,	false},
-	{ "sbc6",	"pll_p",	25000000,	false},
-	{ "uarta",	"pll_p",	408000000,	false},
-	{ "uartb",	"pll_p",	408000000,	false},
-	{ "uartc",	"pll_p",	408000000,	false},
-	{ "uartd",	"pll_p",	408000000,	false},
-	{ "nor",	"pll_p",	102000000,	true},
-	{ NULL,		NULL,		0,		0},
+	/* name			parent		rate	enabled (always on)*/
+
+	{ "pll_c",		NULL,		792000000,	true},
+
+	{ "automotive.sclk",	NULL,		316800000,	true},
+	{ "automotive.hclk",	NULL,		316800000,	true},
+	{ "automotive.pclk",	NULL,		158400000,	true},
+
+	{ "mselect",		"pll_p",	408000000,	true},
+	{ "automotive.mselect",	NULL,		408000000,	true},
+
+	{ "se.cbus",		NULL,		432000000,	false},
+	{ "msenc.cbus",		NULL,		432000000,	false},
+	{ "vde.cbus",		NULL,		432000000,	false},
+
+	{ "vic03.cbus",		NULL,		660000000,      false},
+	{ "tsec.cbus",		NULL,		660000000,      false},
+
+	{ "vi.c4bus",		NULL,		600000000,      false},
+	{ "isp.c4bus",		NULL,		600000000,      false},
+
+	{ "pll_d_out0",		"pll_d",	474000000,	true},
+	{ "disp2",		"pll_d_out0",	474000000,	false},
+	{ "disp1",		"pll_d_out0",	474000000,	false},
+
+	{ "pll_d2",		NULL,		297000000,	true},
+	{ "hdmi",		"pll_d2",	297000000,	false},
+
+	{ "pll_a_out0",		NULL,		24600000,	true},
+	{ "i2s0",		"pll_a_out0",	24600000,	false},
+	{ "i2s1",		"pll_a_out0",	24600000,	false},
+	{ "i2s2",		"pll_a_out0",	24600000,	false},
+	{ "i2s3",		"pll_a_out0",	24600000,	false},
+	{ "i2s4",		"pll_a_out0",	24600000,	false},
+
+	{ "dam0",		"pll_p",	19900000,	false},
+	{ "dam1",		"pll_p",	19900000,	false},
+	{ "dam2",		"pll_p",	19900000,	false},
+	{ "adx",		"pll_p",	19900000,	false},
+	{ "adx1",		"pll_p",	19900000,	false},
+	{ "amx",		"pll_p",	19900000,	false},
+	{ "amx1",		"pll_p",	19900000,	false},
+
+	{ "spdif_out",		"pll_a_out0",	24600000,	false},
+	{ "hda",		"pll_p",	48000000,	false},
+	{ "cilab",		"pll_p",	10200000,	false},
+	{ "cilcd",		"pll_p",	10200000,	false},
+	{ "cile",		"pll_p",	10200000,	false},
+
+	{ "nor",		"pll_p",	102000000,	false},
+
+	{ "sbc1",		"pll_p",	25000000,	false},
+	{ "sbc2",		"pll_p",	25000000,	false},
+	{ "sbc3",		"pll_p",	25000000,	false},
+	{ "sbc4",		"pll_p",	25000000,	false},
+	{ "sbc5",		"pll_p",	25000000,	false},
+	{ "sbc6",		"pll_p",	25000000,	false},
+
+	{ "uarta",		"pll_p",	408000000,	false},
+	{ "uartb",		"pll_p",	408000000,	false},
+	{ "uartc",		"pll_p",	408000000,	false},
+	{ "uartd",		"pll_p",	408000000,	false},
+
+	{ "vi_sensor",		"pll_p",	68000000,	false},
+	{ "vi_sensor2",		"pll_p",	68000000,	false},
+
+	{ NULL,			NULL,		0,		0},
 };
 
-static struct tegra_i2c_platform_data vcm30_t124_i2c1_platform_data = {
-	.bus_clk_rate	= 100000,
-	.scl_gpio	= TEGRA_GPIO_I2C1_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C1_SDA,
+#define SET_FIXED_TARGET_RATE(clk_name, fixed_target_rate) \
+	{clk_name,	NULL,	fixed_target_rate,	false}
+
+/*
+ * FIXME: Need to revisit for following clocks:
+ * csi, dsi, dsilp, audio
+ */
+
+/*
+ * Table of fixed target rates for automotive. parent and enable field are
+ * don't care for this table.
+ */
+
+static struct tegra_clk_init_table vcm30t124_fixed_target_clk_table[] = {
+
+	/*			name,		fixed target rate*/
+	SET_FIXED_TARGET_RATE("pll_m",		792000000),
+	SET_FIXED_TARGET_RATE("sbus",		316800000),
+
+#ifdef CONFIG_TEGRA_DUAL_CBUS
+	SET_FIXED_TARGET_RATE("pll_c2",		432000000),
+	SET_FIXED_TARGET_RATE("c2bus",		432000000),
+	SET_FIXED_TARGET_RATE("pll_c3",		660000000),
+	SET_FIXED_TARGET_RATE("c3bus",		660000000),
+#endif
+	SET_FIXED_TARGET_RATE("pll_c",		792000000),
+	SET_FIXED_TARGET_RATE("pll_c4",		600000000),
+	SET_FIXED_TARGET_RATE("c4bus",		600000000),
+	SET_FIXED_TARGET_RATE("pll_c_out1",	316800000),
+	SET_FIXED_TARGET_RATE("pll_p",		408000000),
+	SET_FIXED_TARGET_RATE("pll_x",		150000000),
+	SET_FIXED_TARGET_RATE("pll_d_out0",	474000000),
+	SET_FIXED_TARGET_RATE("gbus",		600000000),
+
+	SET_FIXED_TARGET_RATE("gk20a.gbus",	600000000),
+	SET_FIXED_TARGET_RATE("sclk",		316800000),
+	SET_FIXED_TARGET_RATE("hclk",		316800000),
+	SET_FIXED_TARGET_RATE("ahb.sclk",	316800000),
+	SET_FIXED_TARGET_RATE("pclk",		158400000),
+	SET_FIXED_TARGET_RATE("apb.sclk",	158400000),
+
+	SET_FIXED_TARGET_RATE("cpu_g",		150000000),
+	SET_FIXED_TARGET_RATE("cpu_lp",		109200000),
+
+	SET_FIXED_TARGET_RATE("vde",		432000000),
+	SET_FIXED_TARGET_RATE("se",		432000000),
+	SET_FIXED_TARGET_RATE("msenc",		432000000),
+
+	SET_FIXED_TARGET_RATE("tsec",		660000000),
+	SET_FIXED_TARGET_RATE("vic03",		660000000),
+
+	SET_FIXED_TARGET_RATE("vi",		600000000),
+	SET_FIXED_TARGET_RATE("isp",		600000000),
+
+	SET_FIXED_TARGET_RATE("host1x",		264000000),
+	SET_FIXED_TARGET_RATE("mselect",	408000000),
+
+	SET_FIXED_TARGET_RATE("disp1",		474000000),
+	SET_FIXED_TARGET_RATE("disp2",		474000000),
+	SET_FIXED_TARGET_RATE("hdmi",		297000000),
+
+	SET_FIXED_TARGET_RATE("i2s0",		24576000),
+	SET_FIXED_TARGET_RATE("i2s1",		24576000),
+	SET_FIXED_TARGET_RATE("i2s2",		24576000),
+	SET_FIXED_TARGET_RATE("i2s3",		24576000),
+	SET_FIXED_TARGET_RATE("i2s4",		24576000),
+
+	SET_FIXED_TARGET_RATE("dam0",		40000000),
+	SET_FIXED_TARGET_RATE("dam1",		40000000),
+	SET_FIXED_TARGET_RATE("dam2",		40000000),
+
+	SET_FIXED_TARGET_RATE("adx",		24600000),
+	SET_FIXED_TARGET_RATE("adx1",		24600000),
+	SET_FIXED_TARGET_RATE("amx",		24600000),
+	SET_FIXED_TARGET_RATE("amx1",		24600000),
+
+	SET_FIXED_TARGET_RATE("spdif_out",	24576000),
+	SET_FIXED_TARGET_RATE("hda",		108000000),
+
+	SET_FIXED_TARGET_RATE("cilab",		102000000),
+	SET_FIXED_TARGET_RATE("cilcd",		102000000),
+	SET_FIXED_TARGET_RATE("cile",		102000000),
+
+	SET_FIXED_TARGET_RATE("uarta",		408000000),
+	SET_FIXED_TARGET_RATE("uartb",		408000000),
+	SET_FIXED_TARGET_RATE("uartc",		408000000),
+	SET_FIXED_TARGET_RATE("uartd",		408000000),
 };
 
-static struct tegra_i2c_platform_data vcm30_t124_i2c2_platform_data = {
-	.bus_clk_rate	= 100000,
-	.is_clkon_always = true,
-	.scl_gpio	= TEGRA_GPIO_I2C2_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C2_SDA,
-};
+static int __init tegra_fixed_target_rate_init(void)
+{
+	struct clk *c;
+	unsigned long flags;
+	int i;
 
-static struct tegra_i2c_platform_data vcm30_t124_i2c3_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C3_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C3_SDA,
-};
+	/* Set POR value for all clocks given in the table */
+	for (i = 0; i < ARRAY_SIZE(vcm30t124_fixed_target_clk_table); i++) {
 
-static struct tegra_i2c_platform_data vcm30_t124_i2c4_platform_data = {
-	.bus_clk_rate	= 10000,
-	.scl_gpio	= TEGRA_GPIO_I2C4_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C4_SDA,
-};
+		c = tegra_get_clock_by_name(
+				vcm30t124_fixed_target_clk_table[i].name);
+		if (c) {
+			clk_lock_save(c, &flags);
+			c->fixed_target_rate =
+				vcm30t124_fixed_target_clk_table[i].rate;
+			clk_unlock_restore(c, &flags);
+		} else
+			pr_warn("%s: Clock %s not found\n", __func__,
+					vcm30t124_fixed_target_clk_table[i].name);
+	}
 
-static struct tegra_i2c_platform_data vcm30_t124_i2c5_platform_data = {
-	.bus_clk_rate	= 400000,
-	.scl_gpio	= TEGRA_GPIO_I2C5_SCL,
-	.sda_gpio	= TEGRA_GPIO_I2C5_SDA,
-};
+	return 0;
+}
+late_initcall_sync(tegra_fixed_target_rate_init);
+
 
 static struct tegra_nor_platform_data vcm30_t124_nor_data = {
 	.flash = {
@@ -170,6 +287,10 @@ static void vcm30_t124_nor_init(void)
 	platform_device_register(&tegra_nor_device);
 }
 
+static struct i2c_board_info __initdata ak4618_board_info = {
+	I2C_BOARD_INFO("ak4618", 0x10),
+};
+
 static struct i2c_board_info __initdata wm8731_board_info = {
 	I2C_BOARD_INFO("wm8731", 0x1a),
 };
@@ -181,20 +302,9 @@ static struct i2c_board_info __initdata ad1937_board_info = {
 static void vcm30_t124_i2c_init(void)
 {
 	struct board_info board_info;
+
 	tegra_get_board_info(&board_info);
-	/* T124 does not use device tree as of now */
-	tegra12_i2c_device1.dev.platform_data = &vcm30_t124_i2c1_platform_data;
-	tegra12_i2c_device2.dev.platform_data = &vcm30_t124_i2c2_platform_data;
-	tegra12_i2c_device3.dev.platform_data = &vcm30_t124_i2c3_platform_data;
-	tegra12_i2c_device4.dev.platform_data = &vcm30_t124_i2c4_platform_data;
-	tegra12_i2c_device5.dev.platform_data = &vcm30_t124_i2c5_platform_data;
-
-	platform_device_register(&tegra12_i2c_device5);
-	platform_device_register(&tegra12_i2c_device4);
-	platform_device_register(&tegra12_i2c_device3);
-	platform_device_register(&tegra12_i2c_device2);
-	platform_device_register(&tegra12_i2c_device1);
-
+	i2c_register_board_info(0, &ak4618_board_info, 1);
 	i2c_register_board_info(0, &wm8731_board_info, 1);
 	i2c_register_board_info(0, &ad1937_board_info, 1);
 }
@@ -276,22 +386,15 @@ static struct platform_device tegra_rtc_device = {
 static struct tegra_pci_platform_data vcm30_t124_pcie_platform_data = {
 	.port_status[0]	= 1,
 	.port_status[1]	= 1,
-	.use_dock_detect	= 1,
-	.gpio	= TEGRA_GPIO_PO1,
-	.gpio_x1_slot	= PMU_TCA6416_GPIO(12),
+	.gpio_hot_plug = -1,
+	.gpio_wake = -1,
+	.gpio_x1_slot = -1,
 };
 
 static void vcm30_t124_pcie_init(void)
 {
-/* FIXME: Check this for VCM30_T124 */
-#if 0
-	struct board_info board_info;
-	/* root port 1(x1 slot) is supported only on of ERS-S board */
-	laguna_pcie_platform_data.port_status[1] = 0;
-
-	tegra_pci_device.dev.platform_data = &laguna_pcie_platform_data;
+	tegra_pci_device.dev.platform_data = &vcm30_t124_pcie_platform_data;
 	platform_device_register(&tegra_pci_device);
-#endif
 }
 
 #ifdef CONFIG_SATA_AHCI_TEGRA
@@ -313,20 +416,61 @@ static struct platform_device tegra_snd_vcm30t124 = {
 	.id = 0,
 };
 
+static struct platform_device tegra_snd_vcm30t124_b00 = {
+	.name = "tegra-snd-vcm30t124-b00",
+	.id = 0,
+};
+
+static void __init vcm30_t124_audio_init(void)
+{
+	int is_e1860_b00 = 0;
+
+	is_e1860_b00 = tegra_is_board(NULL, "61860", NULL, "300", NULL);
+
+	if (is_e1860_b00)
+		platform_device_register(&tegra_snd_vcm30t124_b00);
+	else
+		platform_device_register(&tegra_snd_vcm30t124);
+}
+
 /* FIXME: Check which devices are needed from the below list */
 static struct platform_device *vcm30_t124_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
-	&tegra_udc_device,
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
 	&tegra12_se_device,
 #endif
-	&tegra_snd_vcm30t124,
 };
 
+#if defined(CONFIG_USB_G_ANDROID)
+static struct tegra_usb_platform_data tegra_udc_pdata = {
+	.port_otg = false,
+	.has_hostpc = true,
+	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
+	.op_mode = TEGRA_USB_OPMODE_DEVICE,
+	.u_data.dev = {
+		.vbus_pmu_irq = 0,
+		.vbus_gpio = -1,
+		.charging_supported = false,
+		.remote_wakeup_supported = false,
+	},
+	.u_cfg.utmi = {
+		.hssync_start_delay = 0,
+		.idle_wait_delay = 17,
+		.elastic_limit = 16,
+		.term_range_adj = 6,
+		.xcvr_setup = 63,
+		.xcvr_setup_offset = 6,
+		.xcvr_use_fuses = 1,
+		.xcvr_lsfslew = 2,
+		.xcvr_lsrslew = 2,
+		.xcvr_use_lsb = 1,
+	},
+};
+#else
 static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
@@ -353,6 +497,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.vbus_oc_map = 0x4,
 	},
 };
+#endif
 
 static struct tegra_usb_platform_data tegra_ehci2_utmi_pdata = {
 	.port_otg = false,
@@ -409,15 +554,20 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	},
 };
 
-static struct tegra_usb_otg_data tegra_otg_pdata = {
-	.ehci_device = &tegra_ehci1_device,
-	.ehci_pdata = &tegra_ehci1_utmi_pdata,
-};
-
 static void vcm30_t124_usb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
+	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
+		/* Setup the udc platform data */
+#if defined(CONFIG_USB_G_ANDROID)
+		tegra_udc_device.dev.platform_data = &tegra_udc_pdata;
+		platform_device_register(&tegra_udc_device);
+#else
+		tegra_ehci1_device.dev.platform_data = &tegra_ehci1_utmi_pdata;
+		platform_device_register(&tegra_ehci1_device);
+#endif
+	}
 	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
 		tegra_ehci2_device.dev.platform_data = &tegra_ehci2_utmi_pdata;
 		platform_device_register(&tegra_ehci2_device);
@@ -428,37 +578,6 @@ static void vcm30_t124_usb_init(void)
 		platform_device_register(&tegra_ehci3_device);
 	}
 }
-
-#ifndef CONFIG_USE_OF
-static struct platform_device *vcm30_t124_spi_devices[] __initdata = {
-	&tegra11_spi_device1,
-	&tegra11_spi_device4,
-};
-
-static struct tegra_spi_platform_data vcm30_t124_spi1_pdata = {
-	.dma_req_sel		= 15,
-	.spi_max_frequency	= 25000000,
-	.clock_always_on	= false,
-};
-
-static struct tegra_spi_platform_data vcm30_t124_spi4_pdata = {
-	.dma_req_sel		= 18,
-	.spi_max_frequency	= 25000000,
-	.clock_always_on	= false,
-};
-
-static void __init vcm30_t124_spi_init(void)
-{
-	tegra11_spi_device1.dev.platform_data = &vcm30_t124_spi1_pdata;
-	tegra11_spi_device4.dev.platform_data = &vcm30_t124_spi4_pdata;
-	platform_add_devices(vcm30_t124_spi_devices,
-			ARRAY_SIZE(vcm30_t124_spi_devices));
-}
-#else
-static void __init vcm30_t124_spi_init(void)
-{
-}
-#endif
 
 #ifdef CONFIG_USE_OF
 struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
@@ -482,6 +601,11 @@ struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-ahub", 0x70300000,
 				"tegra30-ahub-apbif", NULL),
+	T124_I2C_OF_DEV_AUXDATA,
+	T124_SPI_OF_DEV_AUXDATA,
+	OF_DEV_AUXDATA("nvidia,tegra114-nvavp", 0x60001000, "nvavp",
+				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
 	{}
 };
 #endif
@@ -501,15 +625,13 @@ static void __init tegra_vcm30_t124_late_init(void)
 		board_info.board_id, board_info.sku,
 		board_info.fab, board_info.major_revision,
 		board_info.minor_revision);
-	platform_device_register(&tegra124_pinctrl_device);
-	vcm30_t124_pinmux_init();
 	vcm30_t124_usb_init();
 /*	vcm30_t124_xusb_init(); */
 	vcm30_t124_nor_init();
 	vcm30_t124_i2c_init();
-	vcm30_t124_spi_init();
 	vcm30_t124_uart_init();
 	vcm30_t124_pca953x_init();
+	vcm30_t124_audio_init();
 	platform_add_devices(vcm30_t124_devices,
 			ARRAY_SIZE(vcm30_t124_devices));
 	tegra_io_dpd_init();
@@ -539,11 +661,6 @@ static void __init tegra_vcm30_t124_late_init(void)
 	vcm30_t124_panel_init();
 }
 
-static void __init vcm30_t124_ramconsole_reserve(unsigned long size)
-{
-	tegra_ram_console_debug_reserve(SZ_1M);
-}
-
 static void __init tegra_vcm30_t124_dt_init(void)
 {
 	tegra_get_board_info(&board_info);
@@ -563,11 +680,10 @@ static void __init tegra_vcm30_t124_reserve(void)
 {
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM)
 	/* 1920*1200*4*2 = 18432000 bytes */
-	tegra_reserve(0, SZ_16M + SZ_2M, SZ_16M);
+	tegra_reserve(0, SZ_16M + SZ_2M, SZ_16M + SZ_2M);
 #else
-	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_4M);
+	tegra_reserve(SZ_128M, SZ_16M + SZ_2M, SZ_16M + SZ_2M);
 #endif
-	vcm30_t124_ramconsole_reserve(SZ_1M);
 }
 
 static const char * const vcm30_t124_dt_board_compat[] = {

@@ -1,7 +1,7 @@
 /*
  * drivers/video/tegra/dc/ext/control.c
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * Author: Robert Morell <rmorell@nvidia.com>
  *
@@ -25,6 +25,12 @@
 #include <linux/uaccess.h>
 
 #include "tegra_dc_ext_priv.h"
+
+#ifdef CONFIG_COMPAT
+#define user_ptr(p) ((void __user *)(__u64)(p))
+#else
+#define user_ptr(p) (p)
+#endif
 
 static struct tegra_dc_ext_control g_control;
 
@@ -60,6 +66,7 @@ get_output_properties(struct tegra_dc_ext_control_output_properties *properties)
 		properties->type = TEGRA_DC_EXT_LVDS;
 		break;
 	case TEGRA_DC_OUT_DP:
+	case TEGRA_DC_OUT_NVSR_DP:
 		properties->type = TEGRA_DC_EXT_DP;
 		break;
 	default:
@@ -97,7 +104,8 @@ static int get_output_edid(struct tegra_dc_ext_control_output_edid *edid)
 			goto done;
 		}
 
-		if (copy_to_user(edid->data, dc_edid->buf, edid->size)) {
+		if (copy_to_user(user_ptr(edid->data),
+				dc_edid->buf, edid->size)) {
 			ret = -EFAULT;
 			goto done;
 		}
@@ -267,6 +275,9 @@ static const struct file_operations tegra_dc_ext_event_devops = {
 	.read =			tegra_dc_ext_event_read,
 	.poll =			tegra_dc_ext_event_poll,
 	.unlocked_ioctl =	tegra_dc_ext_control_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl =		tegra_dc_ext_control_ioctl
+#endif
 };
 
 int tegra_dc_ext_control_init(void)

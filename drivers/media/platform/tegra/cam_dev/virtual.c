@@ -1,7 +1,7 @@
 /*
  * virtual.c - Virtual kernel driver
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
 
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -53,26 +53,10 @@ static int virtual_update(
 		case UPDATE_EDP:
 		{
 			struct edp_cfg ec;
-			struct edp_client *pec = &cdev->edpc.edp_client;
-
-			/* update edp throttle seq */
-			if (upd[idx].index == CAMERA_SEQ_FLAG_EDP) {
-				u32 sidx = upd[idx].arg;
-				dev_dbg(cdev->dev, "%s UPDATE_EDP throttle %d\n",
-					__func__, sidx);
-				if (sidx >= NUM_OF_SEQSTACK ||
-					!cdev->seq_stack[sidx]) {
-					dev_err(cdev->dev, "edp index err!\n");
-					err = -ENOENT;
-					break;
-				}
-
-				cdev->edpc.s_throttle = cdev->seq_stack[sidx];
-				break;
-			}
+			struct camera_edp_cfg *pec = &cdev->edpc;
 
 			dev_dbg(cdev->dev, "%s UPDATE_EDP config\n", __func__);
-			if (cdev->edpc.edpc_en) {
+			if (pec->edp_client) {
 				dev_err(cdev->dev, "edp client already set!\n");
 				err = -EEXIST;
 				break;
@@ -84,7 +68,8 @@ static int virtual_update(
 			}
 			memset(&ec, 0, sizeof(ec));
 			if (copy_from_user(&ec,
-				(const void __user *)upd[idx].arg,
+				((const void __user *)
+				(unsigned long)upd[idx].arg),
 				sizeof(ec))) {
 				dev_err(cdev->dev,
 					"%s copy_from_user err line %d\n",
@@ -98,12 +83,9 @@ static int virtual_update(
 				break;
 			}
 
-			memcpy(cdev->estates, ec.estates,
-				ec.num * sizeof(cdev->estates[0]));
-			pec->states = cdev->estates;
-			pec->num_states = ec.num;
-			pec->e0_index = ec.e0_index;
-			pec->priority = ec.priority;
+			memcpy(pec->estates, ec.estates,
+				ec.num * sizeof(pec->estates[0]));
+			pec->num = ec.num;
 			camera_edp_register(cdev);
 			break;
 		}
@@ -127,7 +109,8 @@ static int virtual_update(
 
 			memset(buf, 0, sizeof(buf));
 			if (copy_from_user(buf,
-				(const void __user *)upd[idx].arg,
+				((const void __user *)
+				(unsigned long)upd[idx].arg),
 				sizeof(buf) - 1 < upd[idx].size ?
 				sizeof(buf) - 1 : upd[idx].size)) {
 				dev_err(cdev->dev,
@@ -161,13 +144,13 @@ static int virtual_update(
 			}
 			if (upd[idx].arg >= cdev->pinmux_num) {
 				dev_err(cdev->dev,
-					"pinmux index %d out of range.\n",
+					"pinmux index %u out of range.\n",
 					upd[idx].arg);
 				err = -ENODEV;
 				break;
 			}
 
-			dev_dbg(cdev->dev, "UPDATE_PINMUX: %d %d\n",
+			dev_dbg(cdev->dev, "UPDATE_PINMUX: %d %u\n",
 				upd[idx].index, upd[idx].arg);
 			if (!upd[idx].index)
 				pinmux = &cdev->mclk_enable_idx;
@@ -187,7 +170,7 @@ static int virtual_update(
 				err = -ENODEV;
 				break;
 			}
-			gpio = (void *)upd[idx].arg;
+			gpio = (void *)((unsigned long)upd[idx].arg);
 			if (gpio->gpio >= ARCH_NR_GPIOS) {
 				dev_err(cdev->dev,
 					"gpio index %d out of range.\n",
@@ -196,7 +179,7 @@ static int virtual_update(
 				break;
 			}
 
-			dev_dbg(cdev->dev, "UPDATE_GPIO: %d %d\n",
+			dev_dbg(cdev->dev, "UPDATE_GPIO: %d %u\n",
 				upd[idx].index, upd[idx].arg);
 			gpio->valid = true;
 			cdev->gpios[upd[idx].index] = *gpio;
@@ -256,19 +239,11 @@ static int virtual_power_off(struct camera_device *cdev)
 
 static int virtual_shutdown(struct camera_device *cdev)
 {
-	struct camera_reg *t_seq = cdev->edpc.s_throttle;
 	int err = 0;
 
-	dev_dbg(cdev->dev, "%s %x %p\n",
-		__func__, cdev->is_power_on, t_seq);
+	dev_dbg(cdev->dev, "%s %x\n", __func__, cdev->is_power_on);
 	if (!cdev->is_power_on)
 		return 0;
-
-	if (t_seq) {
-		mutex_lock(&cdev->mutex);
-		err = camera_dev_wr_table(cdev, t_seq, NULL);
-		mutex_unlock(&cdev->mutex);
-	}
 
 	if (!err)
 		err = virtual_power_off(cdev);
@@ -454,7 +429,8 @@ static int virtual_chip_config(
 
 	c_info->seq_power_on = (void *)rptr;
 	if (copy_from_user(
-		c_info->seq_power_on, (const void __user *)dev_info->power_on,
+		c_info->seq_power_on,
+		(const void __user *)(unsigned long)dev_info->power_on,
 		sizeof(struct camera_reg) * dev_info->pwr_on_size)) {
 		dev_err(dev, "%s copy_from_user err line %d\n",
 			__func__, __LINE__);
@@ -464,7 +440,8 @@ static int virtual_chip_config(
 	c_info->seq_power_off = (void *)c_info->seq_power_on +
 		sizeof(struct camera_reg) * dev_info->pwr_on_size;
 	if (copy_from_user(
-		c_info->seq_power_off, (const void __user *)dev_info->power_off,
+		c_info->seq_power_off,
+		(const void __user *)(unsigned long)dev_info->power_off,
 		sizeof(struct camera_reg) * dev_info->pwr_off_size)) {
 		dev_err(dev, "%s copy_from_user err line %d\n",
 			__func__, __LINE__);

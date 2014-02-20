@@ -3,7 +3,7 @@
  *
  * Tegra graphics host driver
  *
- * Copyright (c) 2009-2013, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2009-2014, NVIDIA Corporation.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -51,6 +51,11 @@ struct nvhost_cmdbuf {
 	__u32 words;
 } __packed;
 
+struct nvhost_cmdbuf_ext {
+	__s32 pre_fence;
+	__u32 reserved;
+};
+
 struct nvhost_reloc {
 	__u32 cmdbuf_mem;
 	__u32 cmdbuf_offset;
@@ -88,6 +93,10 @@ struct nvhost_get_param_arg {
 	__u32 value;
 };
 
+struct nvhost_channel_open_args {
+	__s32 channel_fd;
+};
+
 struct nvhost_set_nvmap_fd_args {
 	__u32 fd;
 } __packed;
@@ -121,6 +130,8 @@ struct nvhost_fence {
 #define NVHOST_SUBMIT_GPFIFO_FLAGS_FENCE_GET	BIT(1)
 /* choose between different gpfifo entry format */
 #define NVHOST_SUBMIT_GPFIFO_FLAGS_HW_FORMAT	BIT(2)
+/* create a sync fence fd instead of raw fence */
+#define NVHOST_SUBMIT_GPFIFO_FLAGS_SYNC_FENCE	BIT(3)
 
 struct nvhost_submit_gpfifo_args {
 	__u64 gpfifo;
@@ -177,7 +188,7 @@ struct nvhost_wait_args {
 /* cycle stats support */
 struct nvhost_cycle_stats_args {
 	__u32 nvmap_handle;
-};
+} __packed;
 
 struct nvhost_read_3d_reg_args {
 	__u32 offset;
@@ -233,7 +244,7 @@ struct nvhost_set_error_notifier {
 	__u32 padding;
 };
 
-struct nvhost_ctrl_module_regrdwr_args {
+struct nvhost32_ctrl_module_regrdwr_args {
 	__u32 id;
 	__u32 num_offsets;
 	__u32 block_size;
@@ -242,7 +253,16 @@ struct nvhost_ctrl_module_regrdwr_args {
 	__u32 write;
 };
 
-struct nvhost_submit_args {
+struct nvhost_ctrl_module_regrdwr_args {
+	__u32 id;
+	__u32 num_offsets;
+	__u32 block_size;
+	__u32 write;
+	__u64 offsets;
+	__u64 values;
+};
+
+struct nvhost32_submit_args {
 	__u32 submit_version;
 	__u32 num_syncpt_incrs;
 	__u32 num_cmdbufs;
@@ -258,9 +278,36 @@ struct nvhost_submit_args {
 	__u32 class_ids;
 
 	__u32 pad[2];		/* future expansion */
+
 	__u32 fences;
 	__u32 fence;		/* Return value */
 } __packed;
+
+#define NVHOST_SUBMIT_FLAG_SYNC_FENCE_FD	0
+
+struct nvhost_submit_args {
+	__u32 submit_version;
+	__u32 num_syncpt_incrs;
+	__u32 num_cmdbufs;
+	__u32 num_relocs;
+	__u32 num_waitchks;
+	__u32 timeout;
+	__u32 syncpt_incrs;
+	__u32 fence;		/* Return value */
+	__u64 cmdbuf_exts;
+	__u32 flags;
+
+	__u32 reserved;
+	__u64 pad[2];		/* future expansion */
+
+	__u64 cmdbufs;
+	__u64 relocs;
+	__u64 reloc_shifts;
+	__u64 waitchks;
+	__u64 waitbases;
+	__u64 class_ids;
+	__u64 fences;
+};
 
 struct nvhost_set_ctxswitch_args {
 	__u32 num_cmdbufs_save;
@@ -302,10 +349,10 @@ struct nvhost_set_ctxswitch_args {
 	_IOR(NVHOST_IOCTL_MAGIC, 12, struct nvhost_get_param_args)
 #define NVHOST_IOCTL_CHANNEL_SET_PRIORITY	\
 	_IOW(NVHOST_IOCTL_MAGIC, 13, struct nvhost_set_priority_args)
-#define	NVHOST_IOCTL_CHANNEL_MODULE_REGRDWR	\
-	_IOWR(NVHOST_IOCTL_MAGIC, 14, struct nvhost_ctrl_module_regrdwr_args)
-#define NVHOST_IOCTL_CHANNEL_SUBMIT		\
-	_IOWR(NVHOST_IOCTL_MAGIC, 15, struct nvhost_submit_args)
+#define	NVHOST32_IOCTL_CHANNEL_MODULE_REGRDWR	\
+	_IOWR(NVHOST_IOCTL_MAGIC, 14, struct nvhost32_ctrl_module_regrdwr_args)
+#define NVHOST32_IOCTL_CHANNEL_SUBMIT		\
+	_IOWR(NVHOST_IOCTL_MAGIC, 15, struct nvhost32_submit_args)
 #define NVHOST_IOCTL_CHANNEL_GET_SYNCPOINT	\
 	_IOWR(NVHOST_IOCTL_MAGIC, 16, struct nvhost_get_param_arg)
 #define NVHOST_IOCTL_CHANNEL_GET_WAITBASE	\
@@ -316,6 +363,12 @@ struct nvhost_set_ctxswitch_args {
 	_IOWR(NVHOST_IOCTL_MAGIC, 23, struct nvhost_get_param_arg)
 #define NVHOST_IOCTL_CHANNEL_SET_CTXSWITCH	\
 	_IOWR(NVHOST_IOCTL_MAGIC, 25, struct nvhost_set_ctxswitch_args)
+
+/* ioctls added for 64bit compatibility */
+#define NVHOST_IOCTL_CHANNEL_SUBMIT	\
+	_IOWR(NVHOST_IOCTL_MAGIC, 26, struct nvhost_submit_args)
+#define	NVHOST_IOCTL_CHANNEL_MODULE_REGRDWR	\
+	_IOWR(NVHOST_IOCTL_MAGIC, 27, struct nvhost_ctrl_module_regrdwr_args)
 
 /* START of T124 IOCTLS */
 #define NVHOST_IOCTL_CHANNEL_ALLOC_GPFIFO	\
@@ -334,9 +387,11 @@ struct nvhost_set_ctxswitch_args {
 	_IOWR(NVHOST_IOCTL_MAGIC, 110, struct nvhost_zcull_bind_args)
 #define NVHOST_IOCTL_CHANNEL_SET_ERROR_NOTIFIER  \
 	_IOWR(NVHOST_IOCTL_MAGIC, 111, struct nvhost_set_error_notifier)
+#define NVHOST_IOCTL_CHANNEL_OPEN	\
+	_IOR(NVHOST_IOCTL_MAGIC,  112, struct nvhost_channel_open_args)
 
 #define NVHOST_IOCTL_CHANNEL_LAST	\
-	_IOC_NR(NVHOST_IOCTL_CHANNEL_SET_ERROR_NOTIFIER)
+	_IOC_NR(NVHOST_IOCTL_CHANNEL_OPEN)
 #define NVHOST_IOCTL_CHANNEL_MAX_ARG_SIZE sizeof(struct nvhost_submit_args)
 
 struct nvhost_ctrl_syncpt_read_args {
@@ -377,11 +432,18 @@ struct nvhost_ctrl_sync_fence_info {
 	__u32 thresh;
 };
 
-struct nvhost_ctrl_sync_fence_create_args {
+struct nvhost32_ctrl_sync_fence_create_args {
 	__u32 num_pts;
 	__u64 pts; /* struct nvhost_ctrl_sync_fence_info* */
 	__u64 name; /* const char* */
 	__s32 fence_fd; /* fd of new fence */
+};
+
+struct nvhost_ctrl_sync_fence_create_args {
+	__u32 num_pts;
+	__s32 fence_fd; /* fd of new fence */
+	__u64 pts; /* struct nvhost_ctrl_sync_fence_info* */
+	__u64 name; /* const char* */
 };
 
 struct nvhost_ctrl_module_mutex_args {
@@ -411,8 +473,8 @@ enum nvhost_module_id {
 
 #define NVHOST_IOCTL_CTRL_MODULE_MUTEX		\
 	_IOWR(NVHOST_IOCTL_MAGIC, 4, struct nvhost_ctrl_module_mutex_args)
-#define NVHOST_IOCTL_CTRL_MODULE_REGRDWR	\
-	_IOWR(NVHOST_IOCTL_MAGIC, 5, struct nvhost_ctrl_module_regrdwr_args)
+#define NVHOST32_IOCTL_CTRL_MODULE_REGRDWR	\
+	_IOWR(NVHOST_IOCTL_MAGIC, 5, struct nvhost32_ctrl_module_regrdwr_args)
 
 #define NVHOST_IOCTL_CTRL_SYNCPT_WAITEX		\
 	_IOWR(NVHOST_IOCTL_MAGIC, 6, struct nvhost_ctrl_syncpt_waitex_args)
@@ -426,11 +488,15 @@ enum nvhost_module_id {
 #define NVHOST_IOCTL_CTRL_SYNCPT_WAITMEX	\
 	_IOWR(NVHOST_IOCTL_MAGIC, 9, struct nvhost_ctrl_syncpt_waitmex_args)
 
+#define NVHOST32_IOCTL_CTRL_SYNC_FENCE_CREATE	\
+	_IOWR(NVHOST_IOCTL_MAGIC, 10, struct nvhost32_ctrl_sync_fence_create_args)
 #define NVHOST_IOCTL_CTRL_SYNC_FENCE_CREATE	\
-	_IOWR(NVHOST_IOCTL_MAGIC, 10, struct nvhost_ctrl_sync_fence_create_args)
+	_IOWR(NVHOST_IOCTL_MAGIC, 11, struct nvhost_ctrl_sync_fence_create_args)
+#define NVHOST_IOCTL_CTRL_MODULE_REGRDWR	\
+	_IOWR(NVHOST_IOCTL_MAGIC, 12, struct nvhost_ctrl_module_regrdwr_args)
 
 #define NVHOST_IOCTL_CTRL_LAST			\
-	_IOC_NR(NVHOST_IOCTL_CTRL_SYNC_FENCE_CREATE)
+	_IOC_NR(NVHOST_IOCTL_CTRL_MODULE_REGRDWR)
 #define NVHOST_IOCTL_CTRL_MAX_ARG_SIZE	\
 	sizeof(struct nvhost_ctrl_syncpt_waitmex_args)
 

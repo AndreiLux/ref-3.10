@@ -1,7 +1,7 @@
 GCOV_PROFILE := y
 
 asflags-y				+= -march=armv7-a
-#subdir-ccflags-y := -Werror
+subdir-ccflags-y := -Werror
 
 obj-y                                   += ahb.o
 obj-y                                   += common.o
@@ -9,16 +9,8 @@ obj-y                                   += devices.o
 obj-y                                   += board-info.o
 obj-y                                   += io.o
 obj-y                                   += clock.o
-ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
-obj-y                                   += timer.o
-endif
 obj-$(CONFIG_HAVE_ARM_TWD)              += cpu_timer_twd.o
 obj-y                                   += timerinfo.o
-ifneq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
-ifneq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
-obj-y                                   += mipi-cal.o
-endif
-endif
 
 obj-$(CONFIG_PM_SLEEP)                  += tegra-wakeups.o
 
@@ -27,9 +19,6 @@ ifeq ($(CONFIG_ARCH_TEGRA_2x_SOC),y)
 obj-y                                   += common-t2.o
 obj-y                                   += pm-t2.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= sleep-t20.o
-ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
-obj-y                                   += timer-t2.o
-endif
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t2.o
 ifeq ($(CONFIG_CPU_IDLE),y)
 obj-$(CONFIG_PM_SLEEP)                  += cpuidle-t2.o
@@ -38,11 +27,8 @@ else
 obj-y                                   += pm-t3.o
 obj-y                                   += sleep-t30.o
 obj-$(CONFIG_DEBUG_FS)                  += clocks_stats.o
-ifneq ($(CONFIG_CLK_SRC_TEGRA_TIMER),y)
-obj-y                                   += timer-t3.o
-endif
 obj-y                                   += tegra_core_volt_cap.o
-obj-y                                   += tegra_simon.o
+obj-$(CONFIG_TEGRA_USE_SIMON)           += tegra_simon.o
 ifeq ($(CONFIG_ARCH_TEGRA_3x_SOC),y)
 obj-$(CONFIG_PM_SLEEP)                  += wakeups-t3.o
 endif
@@ -54,10 +40,6 @@ obj-$(CONFIG_PM_SLEEP)                  += wakeups-t11x.o
 endif
 ifeq ($(CONFIG_ARCH_TEGRA_12x_SOC),y)
 obj-$(CONFIG_PM_SLEEP)			+= wakeups-t12x.o
-endif
-
-ifeq ($(CONFIG_PM_SLEEP),y)
-obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += mc-timing-t12x.o
 endif
 
 ifeq ($(CONFIG_CPU_IDLE),y)
@@ -94,12 +76,15 @@ obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += powergate-t14x.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += powergate-t12x.o
 
 obj-y                                   += apbio.o
-obj-y                                   += mc.o
 obj-$(CONFIG_TEGRA_ARB_SEMAPHORE)       += arb_sema.o
 obj-$(CONFIG_PM_GENERIC_DOMAINS)        += pm_domains.o
 obj-y                                   += dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_dvfs.o
+ifeq ($(CONFIG_ARCH_TEGRA_13x_SOC),y)
+obj-y                                   += tegra13_dvfs.o
+else
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12_dvfs.o
+endif
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra_emc_therm.o
 
@@ -115,7 +100,11 @@ obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_edp.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12_edp.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_speedo.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_speedo.o
+ifeq ($(CONFIG_ARCH_TEGRA_13x_SOC),y)
+obj-y                                   += tegra13_speedo.o
+else
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12_speedo.o
+endif
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += tegra3_actmon.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra3_actmon.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra3_actmon.o
@@ -180,20 +169,10 @@ obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= board-paz00.o
 obj-y					+= board-common.o
 obj-$(CONFIG_TEGRA_WAKEUP_MONITOR)      += tegra_wakeup_monitor.o
 
-# MC error reporting.
-ifeq ($(CONFIG_ARCH_TEGRA_2x_SOC),)
-obj-y                                   += mcerr.o
-obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += mcerr-t3.o
-obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += mcerr-t11.o
-obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += mcerr-t12.o
-obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += mcerr-t14.o
-endif
-
 obj-$(CONFIG_TEGRA_USE_SECURE_KERNEL)   += tegra_tzram.o
 
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-panel.o
-obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-pinmux.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-power.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-sdhci.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-sensors.o
@@ -204,10 +183,11 @@ obj-y                                   += board-touch-maxim_sti-spi.o
 
 obj-y                                   += board-panel.o
 obj-y                                   += panel-p-wuxga-10-1.o
+obj-y                                   += panel-lgd-wxga-7-0.o
+obj-y                                   += panel-s-wqxga-10-1.o
 
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-memory.o
-obj-${CONFIG_MACH_DALMORE}              += board-dalmore-pinmux.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-power.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-powermon.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-sdhci.o
@@ -216,12 +196,10 @@ obj-${CONFIG_MACH_DALMORE}              += board-roth-panel.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-kbc.o
 obj-${CONFIG_MACH_DALMORE}              += board-dalmore-sensors.o
 obj-${CONFIG_MACH_DALMORE}              += panel-a-1080p-11-6.o
-obj-${CONFIG_MACH_DALMORE}              += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_DALMORE}              += panel-s-wqxga-10-1.o
 
 obj-${CONFIG_MACH_PISMO}                += board-pismo.o
 obj-${CONFIG_MACH_PISMO}                += board-pismo-memory.o
-obj-${CONFIG_MACH_PISMO}                += board-pismo-pinmux.o
 obj-${CONFIG_MACH_PISMO}                += board-pismo-power.o
 obj-${CONFIG_MACH_PISMO}                += board-pismo-powermon.o
 obj-${CONFIG_MACH_PISMO}                += board-pismo-sdhci.o
@@ -230,19 +208,16 @@ obj-${CONFIG_MACH_PISMO}                += board-pismo-sensors.o
 
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-memory.o
-obj-${CONFIG_MACH_MACALLAN}             += board-macallan-pinmux.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-power.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-powermon.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-sdhci.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-panel.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-kbc.o
 obj-${CONFIG_MACH_MACALLAN}             += board-macallan-sensors.o
-obj-${CONFIG_MACH_MACALLAN}             += panel-p-wuxga-10-1.o
 
 
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto-memory.o
-obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto-pinmux.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto-power.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto-sdhci.o
 obj-${CONFIG_MACH_TEGRA_PLUTO}          += board-pluto-panel.o
@@ -261,17 +236,19 @@ obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-panel.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-memory.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-power.o
 obj-${CONFIG_MACH_ARDBEG}               += board-tn8-power.o
-obj-${CONFIG_MACH_ARDBEG}               += board-tn8-p1761-pinmux.o
 obj-${CONFIG_MACH_ARDBEG}               += board-norrin-power.o
+obj-${CONFIG_MACH_ARDBEG}               += board-norrin-kbc.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-powermon.o
+obj-${CONFIG_MACH_ARDBEG}               += board-tn8-p1761-powermon.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-1080p-11-6.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-wqxga-10-1.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-lgd-wxga-7-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-edp-1080p-14-0.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-i-edp-1080p-11-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-uhdtv-15-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-wqxgap-15-6.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-1920-7-0.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-800-8-0.o
 ifeq ($(CONFIG_MACH_ARDBEG),y)
 obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-tn8-sysedp.o
 obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-ardbeg-sysedp.o
@@ -303,7 +280,6 @@ obj-${CONFIG_MACH_LOKI}               	+= board-tn8-power.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-powermon.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-sdhci.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-a-1080p-11-6.o
-obj-${CONFIG_MACH_LOKI}               	+= panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-a-edp-1080p-14-0.o
 obj-${CONFIG_MACH_LOKI}               	+= panel-l-720p-5-loki.o
@@ -315,18 +291,15 @@ obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-sdhci.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-sata.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-sensors.o
 obj-${CONFIG_MACH_LAGUNA}               += board-ardbeg-panel.o
-obj-${CONFIG_MACH_LAGUNA}               += board-laguna-pinmux.o
 obj-${CONFIG_MACH_LAGUNA}               += board-laguna-power.o
 obj-${CONFIG_MACH_LAGUNA}               += board-laguna-powermon.o
 obj-${CONFIG_MACH_LAGUNA}               += panel-a-1080p-11-6.o
-obj-${CONFIG_MACH_LAGUNA}               += panel-p-wuxga-10-1.o
 obj-${CONFIG_MACH_LAGUNA}               += panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_LAGUNA}               += panel-a-1080p-14-0.o
 obj-${CONFIG_MACH_LAGUNA}               += panel-a-edp-1080p-14-0.o
 
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-sdhci.o
-obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-pinmux.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-power.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-panel.o
 
@@ -343,7 +316,6 @@ obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper.o
 
 obj-${CONFIG_MACH_ROTH}                 += board-roth.o
 obj-${CONFIG_MACH_ROTH}                 += board-roth-memory.o
-obj-${CONFIG_MACH_ROTH}                 += board-roth-pinmux.o
 obj-${CONFIG_MACH_ROTH}                 += board-roth-power.o
 obj-${CONFIG_MACH_ROTH}                 += board-roth-powermon.o
 obj-${CONFIG_MACH_ROTH}                 += board-roth-sdhci.o

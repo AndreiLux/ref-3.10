@@ -91,6 +91,8 @@ static struct debug_data items[] = {
 	,
 	{"hs_activated", item_size(hs_activated), item_addr(hs_activated)}
 	,
+	{"rx_pkts_queued", item_size(rx_pkts_queued), item_addr(rx_pkts_queued)}
+	,
 	{"tx_pkts_queued", item_size(tx_pkts_queued), item_addr(tx_pkts_queued)}
 	,
 	{"pps_uapsd_mode", item_size(pps_uapsd_mode), item_addr(pps_uapsd_mode)}
@@ -285,6 +287,8 @@ static struct debug_data uap_items[] = {
 	 item_addr(is_hs_configured)}
 	,
 	{"hs_activated", item_size(hs_activated), item_addr(hs_activated)}
+	,
+	{"rx_pkts_queued", item_size(rx_pkts_queued), item_addr(rx_pkts_queued)}
 	,
 	{"tx_pkts_queued", item_size(tx_pkts_queued), item_addr(tx_pkts_queued)}
 	,

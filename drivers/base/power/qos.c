@@ -245,7 +245,7 @@ void dev_pm_qos_constraints_destroy(struct device *dev)
 	__dev_pm_qos_hide_flags(dev);
 
 	qos = dev->power.qos;
-	if (!qos)
+	if (IS_ERR_OR_NULL(qos))
 		goto out;
 
 	/* Flush the constraints lists for the device. */
@@ -542,10 +542,14 @@ int dev_pm_qos_remove_notifier(struct device *dev,
 	mutex_lock(&dev_pm_qos_mtx);
 
 	/* Silently return if the constraints object is not present. */
-	if (!IS_ERR_OR_NULL(dev->power.qos))
+	if (!IS_ERR_OR_NULL(dev->power.qos)) {
 		retval = blocking_notifier_chain_unregister(
 				dev->power.qos->latency.notifiers,
 				notifier);
+		retval = blocking_notifier_chain_unregister(
+				dev->power.qos->flags.notifiers,
+				notifier);
+	}
 
 	mutex_unlock(&dev_pm_qos_mtx);
 	return retval;
