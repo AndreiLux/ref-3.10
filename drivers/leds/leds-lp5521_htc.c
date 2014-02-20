@@ -789,7 +789,7 @@ static void multicolor_work_func(struct work_struct *work)
 		lp5521_red_long_blink(client);
 	} else if (ldata->Mode == 5 && ldata->Red && ldata->Green && !ldata->Blue) { /* === set red green blink === */
 		lp5521_dual_color_blink(client);
-	} else if (ldata->Mode == 6 && ldata->Red && ldata->Green && !ldata->Blue) { /* === set red green blink === */
+	} else if (ldata->Mode == 6) { /* === set breathing === */
 		lp5521_breathing(client, ldata->Red, ldata->Green, ldata->Blue);
 	}
 
@@ -874,7 +874,7 @@ static ssize_t lp5521_led_multi_color_store(struct device *dev,
 	struct led_classdev *led_cdev;
 	struct lp5521_led *ldata;
 	uint32_t val;
-	sscanf(buf, "%x", &val);
+	sscanf(buf, "%d", &val);
 
 	if (val < 0 || val > 0xFFFFFFFF)
 		return -EINVAL;
