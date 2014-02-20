@@ -82,9 +82,7 @@
 #include <linux/htc_headset_one_wire.h>
 #include <../../../drivers/staging/android/timed_gpio.h>
 
-#ifdef CONFIG_BT
 #include <mach/flounder-bdaddress.h>
-#endif
 #include "board.h"
 #include "board-flounder.h"
 #include "board-common.h"
@@ -1214,10 +1212,7 @@ static void __init tegra_flounder_dt_init(void)
 #endif
 
 	tegra_flounder_late_init();
-#ifdef CONFIG_BT
         bt_export_bd_address();
-#endif
-
 }
 
 static void __init tegra_flounder_reserve(void)
