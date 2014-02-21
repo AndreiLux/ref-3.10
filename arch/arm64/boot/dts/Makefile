@@ -6,7 +6,7 @@ dtb-$(CONFIG_MACH_T132REF) += tegra132-norrin.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-laguna.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-ers-s.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-ers.dtb
-dtb-$(CONFIG_MACH_FLOUNDER64) += tegra132-flounder64.dtb
+dtb-$(CONFIG_MACH_T132_FLOUNDER) += tegra132-flounder64.dtb
 targets += $(dtb-y)
 
 DTC_FLAGS := -i $(srctree)/arch/arm/boot/dts
