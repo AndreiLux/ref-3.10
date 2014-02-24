@@ -149,7 +149,7 @@ static void tegra_edid_dump(struct tegra_edid *edid)
 
 int tegra_edid_read_block(struct tegra_edid *edid, int block, u8 *data)
 {
-#ifdef CONFIG_SLIMPORT_ANX7808
+#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
 	return slimport_read_edid_block(block, data);
 #else
 	u8 block_buf[] = {block >> 1};

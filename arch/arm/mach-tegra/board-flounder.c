@@ -99,7 +99,7 @@
 #include "../../../sound/soc/codecs/rt5677.h"
 #include "../../../sound/soc/codecs/tfa9895.h"
 
-#ifdef CONFIG_SLIMPORT_ANX7808
+#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
 #include <linux/platform_data/slimport_device.h>
 #endif
 
@@ -1050,7 +1050,7 @@ static struct tegra_io_dpd pexclk2_io = {
 	.io_dpd_bit		= 6,
 };
 
-#ifdef CONFIG_SLIMPORT_ANX7808
+#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
 #define GPIO_SLIMPORT_CBL_DET    TEGRA_GPIO_PBB6
 #define GPIO_SLIMPORT_PWR_DWN    TEGRA_GPIO_PI2
 #define ANX_AVDD33_EN            TEGRA_GPIO_PR3
