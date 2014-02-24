@@ -649,4 +649,5 @@ source "drivers/misc/tegra-profiler/Kconfig"
 source "drivers/misc/gps/Kconfig"
 source "drivers/misc/headset/Kconfig"
 source "drivers/misc/slimport_anx7808/Kconfig"
+source "drivers/misc/slimport_anx7816/Kconfig"
 endmenu
