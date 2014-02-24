@@ -15,7 +15,8 @@
 #ifndef SLIMPORT_DEVICE
 #define SLIMPORT_DEVICE
 
-struct anx7808_platform_data {
+struct slimport_platform_data
+{
 	int gpio_p_dwn;
 	int gpio_reset;
 	int gpio_int;

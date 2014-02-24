@@ -34,7 +34,7 @@ struct i2c_client *anx7808_client;
 int hdcp_en;
 
 struct anx7808_data {
-	struct anx7808_platform_data *pdata;
+	struct slimport_platform_data *pdata;
 	struct delayed_work work;
 	struct workqueue_struct *workqueue;
 	struct mutex lock;
@@ -102,7 +102,7 @@ int sp_write_reg(uint8_t slave_addr, uint8_t offset, uint8_t value)
 
 void sp_tx_hardware_poweron(void)
 {
-	struct anx7808_platform_data *pdata =
+	struct slimport_platform_data *pdata =
 		anx7808_client->dev.platform_data;
 
 	gpio_set_value(pdata->gpio_reset, 0);
@@ -118,7 +118,7 @@ void sp_tx_hardware_poweron(void)
 
 void sp_tx_hardware_powerdown(void)
 {
-	struct anx7808_platform_data *pdata =
+	struct slimport_platform_data *pdata =
 		anx7808_client->dev.platform_data;
 
 	gpio_set_value(pdata->gpio_reset, 0);
@@ -599,7 +599,7 @@ static int anx7808_i2c_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id anx7808_id[] = {
-	{ "anx7808", 0 },
+	{ "slimport", 0 },
 	{ }
 };
 
@@ -607,7 +607,7 @@ MODULE_DEVICE_TABLE(i2c, anx7808_id);
 
 static struct i2c_driver anx7808_driver = {
 	.driver = {
-		.name = "anx7808",
+		.name = "slimport",
 		.owner = THIS_MODULE,
 	},
 	.probe = anx7808_i2c_probe,
