@@ -40,10 +40,22 @@
 				ti,watchdog-timeout = <0>;
 				ti,auto-recharge-time = <1800>;
 				ti,input-voltage-limit-millivolt = <4440>;
+				ti,fast-charge-current-limit-milliamp = <2944>;
 				ti,pre-charge-current-limit-milliamp = <512>;
 				ti,charge-term-current-limit-milliamp = <128>;
 				ti,charge-voltage-limit-millivolt = <4352>;
 				ti,disbale-suspend-during-charging;
+				ti,temp-polling-time-sec = <30>;
+				thermal-overtemp-control-no-thermister;
+				thermal-temperature-hot-deciC = <551>;
+				thermal-temperature-cold-deciC = <(-1)>;
+				thermal-temperature-warm-deciC = <481>;
+				thermal-temperature-cool-deciC = <100>;
+				thermal-temperature-hysteresis-deciC = <30>;
+				thermal-warm-voltage-millivolt = <4096>;
+				thermal-cool-voltage-millivolt = <4352>;
+				thermal-disable-warm-current-half;
+				thermal-overtemp-output-current-milliamp = <1344>;
 				consumers {
 					c1 {
 						regulator-consumer-supply = "usb_bat_chg";

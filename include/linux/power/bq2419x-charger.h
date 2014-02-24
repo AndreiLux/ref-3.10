@@ -124,6 +124,23 @@ struct bq2419x_vbus_platform_data {
 };
 
 /*
+ * struct bq2419x_thermal_prop - bq1481x thermal properties
+ *                               for battery-charger-gauge-comm.
+ */
+struct bq2419x_thermal_prop {
+	int temp_hot_dc;
+	int temp_cold_dc;
+	int temp_warm_dc;
+	int temp_cool_dc;
+	unsigned int temp_hysteresis_dc;
+	unsigned int warm_voltage_mv;
+	unsigned int cool_voltage_mv;
+	bool disable_warm_current_half;
+	bool disable_cool_current_half;
+	unsigned int otp_output_current_ma;
+};
+
+/*
  * struct bq2419x_charger_platform_data - bq2419x charger platform data.
  */
 struct bq2419x_charger_platform_data {
@@ -148,6 +165,8 @@ struct bq2419x_charger_platform_data {
 	int n_temp_profile;
 	u32 *temp_range;
 	u32 *chg_current_limit;
+	bool otp_control_no_thermister; /* TRUE if chip thermister is unused */
+	struct bq2419x_thermal_prop thermal_prop;
 };
 
 /*

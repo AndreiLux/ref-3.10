@@ -28,8 +28,10 @@
 #include <linux/jiffies.h>
 
 #define MAX17050_DELAY		(60*HZ)
+#define MAX17050_DELAY_FAST	(30*HZ)
 #define MAX17050_BATTERY_FULL	(100)
 #define MAX17050_BATTERY_LOW	(15)
+#define MAX17050_UPDATE_TIME_PERIOD_MS	(60 * 1000)
 
 #define MAX17050_I2C_RETRY_TIMES (5)
 #define MAX17050_TEMPERATURE_RE_READ_MS (1400)
@@ -152,6 +154,7 @@ struct max17050_chip {
 	int shutdown_complete;
 	int charge_complete;
 	int present;
+	unsigned long last_update_time_ms;
 	struct mutex mutex;
 };
 static struct max17050_chip *max17050_data;
@@ -439,6 +442,7 @@ static void max17050_get_soc(struct i2c_client *client)
 static void max17050_work(struct work_struct *work)
 {
 	struct max17050_chip *chip;
+	unsigned long time_since_last_update, current_time_ms;
 
 	chip = container_of(work, struct max17050_chip, work.work);
 
@@ -447,7 +451,7 @@ static void max17050_work(struct work_struct *work)
 	max17050_get_temperature(chip->client);
 	max17050_get_soc(chip->client);
 
-	dev_info(&chip->client->dev,
+	dev_dbg(&chip->client->dev,
 		"level=%d,vol=%d,temp=%d,current=%d,status=%d\n",
 		chip->soc,
 		chip->vcell,
@@ -455,13 +459,20 @@ static void max17050_work(struct work_struct *work)
 		chip->batt_curr,
 		chip->status);
 
-	if (chip->soc != chip->lasttime_soc ||
+	current_time_ms = jiffies * MSEC_PER_SEC / HZ;
+	time_since_last_update = current_time_ms - chip->last_update_time_ms;
+	if ((time_since_last_update > MAX17050_UPDATE_TIME_PERIOD_MS
+		&& chip->soc != chip->lasttime_soc) ||
 		chip->status != chip->lasttime_status) {
 		chip->lasttime_soc = chip->soc;
+		chip->last_update_time_ms = current_time_ms;
 		power_supply_changed(&chip->battery);
 	}
 
-	schedule_delayed_work(&chip->work, MAX17050_DELAY);
+	if (chip->status == POWER_SUPPLY_STATUS_DISCHARGING)
+		schedule_delayed_work(&chip->work, MAX17050_DELAY);
+	else
+		schedule_delayed_work(&chip->work, MAX17050_DELAY_FAST);
 }
 
 static enum power_supply_property max17050_battery_props[] = {
@@ -502,6 +513,7 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 		chip->charge_complete = 1;
 		chip->soc = MAX17050_BATTERY_FULL;
 		chip->status = POWER_SUPPLY_STATUS_FULL;
+		chip->last_update_time_ms = jiffies * MSEC_PER_SEC / HZ;
 		power_supply_changed(&chip->battery);
 		return 0;
 	} else {
@@ -509,12 +521,22 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 		chip->charge_complete = 0;
 	}
 	chip->lasttime_status = chip->status;
+	chip->last_update_time_ms = jiffies * MSEC_PER_SEC / HZ;
 	power_supply_changed(&chip->battery);
+	return 0;
+}
+
+static int max17050_get_battery_temp(void)
+{
+	if (max17050_data)
+		return max17050_data->batt_temp;
+
 	return 0;
 }
 
 static struct battery_gauge_ops max17050_bg_ops = {
 	.update_battery_status = max17050_update_battery_status,
+	.get_battery_temp = max17050_get_battery_temp,
 };
 
 static struct battery_gauge_info max17050_bgi = {

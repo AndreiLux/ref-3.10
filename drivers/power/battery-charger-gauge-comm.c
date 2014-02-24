@@ -39,16 +39,23 @@
 #include <linux/power/reset/system-pmic.h>
 #include <linux/wakelock.h>
 
-#define JETI_TEMP_COLD		0
-#define JETI_TEMP_COOL		10
-#define JETI_TEMP_WARM		45
-#define JETI_TEMP_HOT		60
+#define JETI_TEMP_COLD		(0)
+#define JETI_TEMP_COOL		(100)
+#define JETI_TEMP_WARM		(450)
+#define JETI_TEMP_HOT		(600)
 
-#define MAX_STR_PRINT		50
+#define DEFAULT_BATTERY_REGULATION_VOLTAGE	(4250)
+#define DEFAULT_BATTERY_THERMAL_VOLTAGE		(4100)
+
+#define MAX_STR_PRINT		(50)
 
 static DEFINE_MUTEX(charger_gauge_list_mutex);
 static LIST_HEAD(charger_list);
 static LIST_HEAD(gauge_list);
+
+struct battery_info_ops {
+	int (*get_battery_temp)(void);
+};
 
 struct battery_charger_dev {
 	int				cell_id;
@@ -66,6 +73,9 @@ struct battery_charger_dev {
 	bool				locked;
 	struct rtc_device		*rtc;
 	bool				enable_thermal_monitor;
+	struct battery_thermal_prop	thermal_prop;
+	enum charge_thermal_state	thermal_state;
+	struct battery_info_ops		batt_info_ops;
 };
 
 struct battery_gauge_dev {
@@ -106,45 +116,100 @@ static void battery_charger_thermal_monitor_wq(struct work_struct *work)
 	bool charger_enable_state;
 	bool charger_current_half;
 	int battery_thersold_voltage;
+	enum charge_thermal_state thermal_state_new;
 	int ret;
 
 	bc_dev = container_of(work, struct battery_charger_dev,
 					poll_temp_monitor_wq.work);
-	if (!bc_dev->tz_name)
-		return;
-
 	dev = bc_dev->parent_dev;
-	if (!bc_dev->battery_tz) {
-		bc_dev->battery_tz = thermal_zone_device_find_by_name(
+
+	if (bc_dev->tz_name) {
+		if (!bc_dev->battery_tz) {
+			bc_dev->battery_tz = thermal_zone_device_find_by_name(
 					bc_dev->tz_name);
 
-		if (!bc_dev->battery_tz) {
-			dev_info(dev,
-			    "Battery thermal zone %s is not registered yet\n",
-				bc_dev->tz_name);
-			schedule_delayed_work(&bc_dev->poll_temp_monitor_wq,
-			    msecs_to_jiffies(bc_dev->polling_time_sec * HZ));
-			return;
+			if (!bc_dev->battery_tz) {
+				dev_info(dev,
+					"Battery thermal zone %s is not registered yet\n",
+					bc_dev->tz_name);
+				schedule_delayed_work(
+					&bc_dev->poll_temp_monitor_wq,
+					msecs_to_jiffies(
+					bc_dev->polling_time_sec * 1000));
+				return;
+			}
 		}
-	}
 
-	ret = thermal_zone_get_temp(bc_dev->battery_tz, &temperature);
-	if (ret < 0) {
-		dev_err(dev, "Temperature read failed: %d\n ", ret);
-		goto exit;
-	}
-	temperature = temperature / 1000;
+		ret = thermal_zone_get_temp(bc_dev->battery_tz, &temperature);
+		if (ret < 0) {
+			dev_err(dev, "Temperature read failed: %d\n ", ret);
+			goto exit;
+		}
+		temperature = temperature / 100;
+	} else if (bc_dev->batt_info_ops.get_battery_temp)
+		temperature = bc_dev->batt_info_ops.get_battery_temp();
+	else
+		return;
 
-	charger_enable_state = true;
-	charger_current_half = false;
-	battery_thersold_voltage = 4250;
+	if (temperature <= bc_dev->thermal_prop.temp_cold_dc)
+		thermal_state_new = CHARGE_THERMAL_COLD_STOP;
+	else if (temperature <= bc_dev->thermal_prop.temp_cool_dc) {
+		if (bc_dev->thermal_state == CHARGE_THERMAL_COLD_STOP &&
+			temperature < bc_dev->thermal_prop.temp_cold_dc
+				+ bc_dev->thermal_prop.temp_hysteresis_dc)
+			thermal_state_new = CHARGE_THERMAL_COOL_STOP;
+		else
+			thermal_state_new = CHARGE_THERMAL_COOL;
+	} else if (temperature < bc_dev->thermal_prop.temp_warm_dc)
+		thermal_state_new = CHARGE_THERMAL_NORMAL;
+	else if (temperature < bc_dev->thermal_prop.temp_hot_dc) {
+		if (bc_dev->thermal_state == CHARGE_THERMAL_HOT_STOP &&
+			temperature >= bc_dev->thermal_prop.temp_hot_dc
+				- bc_dev->thermal_prop.temp_hysteresis_dc)
+			thermal_state_new = CHARGE_THERMAL_WARM_STOP;
+		else
+			thermal_state_new = CHARGE_THERMAL_WARM;
+	} else
+		thermal_state_new = CHARGE_THERMAL_HOT_STOP;
 
-	if (temperature <= JETI_TEMP_COLD || temperature >= JETI_TEMP_HOT) {
+	if (bc_dev->thermal_state != thermal_state_new)
+		dev_info(bc_dev->parent_dev,
+			"Battery charging state changed (%d -> %d)\n",
+			bc_dev->thermal_state, thermal_state_new);
+
+	bc_dev->thermal_state = thermal_state_new;
+
+	switch (thermal_state_new) {
+	case CHARGE_THERMAL_COLD_STOP:
+	case CHARGE_THERMAL_COOL_STOP:
 		charger_enable_state = false;
-	} else if (temperature <= JETI_TEMP_COOL ||
-				temperature >= JETI_TEMP_WARM) {
-		charger_current_half = true;
-		battery_thersold_voltage = 4100;
+		charger_current_half = false;
+		battery_thersold_voltage = bc_dev->thermal_prop.cool_voltage_mv;
+		break;
+	case CHARGE_THERMAL_COOL:
+		charger_enable_state = true;
+		charger_current_half =
+				!bc_dev->thermal_prop.disable_cool_current_half;
+		battery_thersold_voltage = bc_dev->thermal_prop.cool_voltage_mv;
+		break;
+	case CHARGE_THERMAL_WARM:
+		charger_enable_state = true;
+		charger_current_half =
+				!bc_dev->thermal_prop.disable_warm_current_half;
+		battery_thersold_voltage = bc_dev->thermal_prop.warm_voltage_mv;
+		break;
+	case CHARGE_THERMAL_WARM_STOP:
+	case CHARGE_THERMAL_HOT_STOP:
+		charger_enable_state = false;
+		charger_current_half = false;
+		battery_thersold_voltage = bc_dev->thermal_prop.warm_voltage_mv;
+		break;
+	case CHARGE_THERMAL_NORMAL:
+	default:
+		charger_enable_state = true;
+		charger_current_half = false;
+		battery_thersold_voltage =
+			bc_dev->thermal_prop.regulation_voltage_mv;
 	}
 
 	if (bc_dev->ops->thermal_configure)
@@ -155,7 +220,7 @@ static void battery_charger_thermal_monitor_wq(struct work_struct *work)
 exit:
 	if (bc_dev->start_monitoring)
 		schedule_delayed_work(&bc_dev->poll_temp_monitor_wq,
-			msecs_to_jiffies(bc_dev->polling_time_sec * HZ));
+			msecs_to_jiffies(bc_dev->polling_time_sec * 1000));
 	return;
 }
 
@@ -185,12 +250,14 @@ EXPORT_SYMBOL_GPL(battery_charger_set_current_broadcast);
 int battery_charger_thermal_start_monitoring(
 	struct battery_charger_dev *bc_dev)
 {
-	if (!bc_dev || !bc_dev->polling_time_sec || !bc_dev->tz_name)
+	if (!bc_dev || !bc_dev->polling_time_sec || (!bc_dev->tz_name
+			&& !bc_dev->batt_info_ops.get_battery_temp))
 		return -EINVAL;
 
 	bc_dev->start_monitoring = true;
+	bc_dev->thermal_state = CHARGE_THERMAL_START;
 	schedule_delayed_work(&bc_dev->poll_temp_monitor_wq,
-			msecs_to_jiffies(bc_dev->polling_time_sec * HZ));
+			msecs_to_jiffies(1000));
 	return 0;
 }
 EXPORT_SYMBOL_GPL(battery_charger_thermal_start_monitoring);
@@ -198,7 +265,8 @@ EXPORT_SYMBOL_GPL(battery_charger_thermal_start_monitoring);
 int battery_charger_thermal_stop_monitoring(
 	struct battery_charger_dev *bc_dev)
 {
-	if (!bc_dev || !bc_dev->polling_time_sec || !bc_dev->tz_name)
+	if (!bc_dev || !bc_dev->polling_time_sec || (!bc_dev->tz_name
+		&& !bc_dev->batt_info_ops.get_battery_temp))
 		return -EINVAL;
 
 	bc_dev->start_monitoring = false;
@@ -428,10 +496,54 @@ int battery_charging_system_power_on_usb_event(
 }
 EXPORT_SYMBOL_GPL(battery_charging_system_power_on_usb_event);
 
+static void battery_charger_thermal_prop_init(
+	struct battery_charger_dev *bc_dev,
+	struct battery_thermal_prop thermal_prop)
+{
+	if (!bc_dev)
+		return;
+
+	if (thermal_prop.temp_hot_dc >= thermal_prop.temp_warm_dc
+		&& thermal_prop.temp_warm_dc > thermal_prop.temp_cool_dc
+		&& thermal_prop.temp_cool_dc >= thermal_prop.temp_cold_dc) {
+		bc_dev->thermal_prop.temp_hot_dc = thermal_prop.temp_hot_dc;
+		bc_dev->thermal_prop.temp_cold_dc = thermal_prop.temp_cold_dc;
+		bc_dev->thermal_prop.temp_warm_dc = thermal_prop.temp_warm_dc;
+		bc_dev->thermal_prop.temp_cool_dc = thermal_prop.temp_cool_dc;
+		bc_dev->thermal_prop.temp_hysteresis_dc =
+			thermal_prop.temp_hysteresis_dc;
+	} else {
+		bc_dev->thermal_prop.temp_hot_dc = JETI_TEMP_HOT;
+		bc_dev->thermal_prop.temp_cold_dc = JETI_TEMP_COLD;
+		bc_dev->thermal_prop.temp_warm_dc = JETI_TEMP_WARM;
+		bc_dev->thermal_prop.temp_cool_dc = JETI_TEMP_COOL;
+		bc_dev->thermal_prop.temp_hysteresis_dc = 0;
+	}
+
+	bc_dev->thermal_prop.regulation_voltage_mv =
+		thermal_prop.regulation_voltage_mv ?:
+		DEFAULT_BATTERY_REGULATION_VOLTAGE;
+
+	bc_dev->thermal_prop.warm_voltage_mv =
+		thermal_prop.warm_voltage_mv ?:
+		DEFAULT_BATTERY_THERMAL_VOLTAGE;
+
+	bc_dev->thermal_prop.cool_voltage_mv =
+		thermal_prop.cool_voltage_mv ?:
+		DEFAULT_BATTERY_THERMAL_VOLTAGE;
+
+	bc_dev->thermal_prop.disable_warm_current_half =
+		thermal_prop.disable_warm_current_half;
+
+	bc_dev->thermal_prop.disable_cool_current_half =
+		thermal_prop.disable_cool_current_half;
+}
+
 struct battery_charger_dev *battery_charger_register(struct device *dev,
 	struct battery_charger_info *bci, void *drv_data)
 {
 	struct battery_charger_dev *bc_dev;
+	struct battery_gauge_dev *bg_dev;
 
 	dev_info(dev, "Registering battery charger driver\n");
 
@@ -455,13 +567,27 @@ struct battery_charger_dev *battery_charger_register(struct device *dev,
 	bc_dev->drv_data = drv_data;
 
 	/* Thermal monitoring */
-	if (bci->tz_name) {
+	if (bci->tz_name)
 		bc_dev->tz_name = kstrdup(bci->tz_name, GFP_KERNEL);
+
+	list_for_each_entry(bg_dev, &gauge_list, list) {
+		if (bg_dev->cell_id != bc_dev->cell_id)
+			continue;
+		if (bg_dev->ops && bg_dev->ops->get_battery_temp) {
+			bc_dev->batt_info_ops.get_battery_temp =
+				bg_dev->ops->get_battery_temp;
+			break;
+		}
+	}
+
+	if (bci->tz_name || bci->enable_thermal_monitor) {
 		bc_dev->polling_time_sec = bci->polling_time_sec;
 		bc_dev->enable_thermal_monitor = true;
 		INIT_DELAYED_WORK(&bc_dev->poll_temp_monitor_wq,
 				battery_charger_thermal_monitor_wq);
 	}
+
+	battery_charger_thermal_prop_init(bc_dev, bci->thermal_prop);
 
 	INIT_DELAYED_WORK(&bc_dev->restart_charging_wq,
 			battery_charger_restart_charging_wq);
@@ -496,22 +622,28 @@ int battery_gauge_get_battery_temperature(struct battery_gauge_dev *bg_dev,
 	if (!bg_dev)
 		return -EINVAL;
 
-	if (!bg_dev->battery_tz)
-		bg_dev->battery_tz =
-			thermal_zone_device_find_by_name(bg_dev->tz_name);
+	if (bg_dev->tz_name) {
+		if (!bg_dev->battery_tz)
+			bg_dev->battery_tz =
+				thermal_zone_device_find_by_name(
+					bg_dev->tz_name);
 
-	if (!bg_dev->battery_tz) {
-		dev_info(bg_dev->parent_dev,
-			"Battery thermal zone %s is not registered yet\n",
-			bg_dev->tz_name);
-		return -ENODEV;
+		if (!bg_dev->battery_tz) {
+			dev_info(bg_dev->parent_dev,
+					"Battery thermal zone %s is not registered yet\n",
+					bg_dev->tz_name);
+			return -ENODEV;
+		}
+
+		ret = thermal_zone_get_temp(bg_dev->battery_tz, &temperature);
+		if (ret < 0)
+			return ret;
+
+		*temp = temperature / 1000;
+	} else if (bg_dev->ops->get_battery_temp) {
+		temperature = bg_dev->ops->get_battery_temp();
+		*temp = temperature / 10;
 	}
-
-	ret = thermal_zone_get_temp(bg_dev->battery_tz, &temperature);
-	if (ret < 0)
-		return ret;
-
-	*temp = temperature / 1000;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(battery_gauge_get_battery_temperature);
@@ -520,6 +652,7 @@ struct battery_gauge_dev *battery_gauge_register(struct device *dev,
 	struct battery_gauge_info *bgi, void *drv_data)
 {
 	struct battery_gauge_dev *bg_dev;
+	struct battery_charger_dev *bc_dev;
 	int ret;
 
 	dev_info(dev, "Registering battery gauge driver\n");
@@ -555,6 +688,17 @@ struct battery_gauge_dev *battery_gauge_register(struct device *dev,
 			dev_info(dev,
 			"Battery thermal zone %s is not registered yet\n",
 			bg_dev->tz_name);
+	}
+
+	list_for_each_entry(bc_dev, &charger_list, list) {
+		if (bg_dev->cell_id != bc_dev->cell_id)
+			continue;
+		if (bg_dev->ops && bg_dev->ops->get_battery_temp
+				&& !bc_dev->batt_info_ops.get_battery_temp) {
+			bc_dev->batt_info_ops.get_battery_temp =
+				bg_dev->ops->get_battery_temp;
+			break;
+		}
 	}
 
 	list_add(&bg_dev->list, &gauge_list);

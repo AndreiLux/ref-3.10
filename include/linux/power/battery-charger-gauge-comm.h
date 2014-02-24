@@ -30,6 +30,17 @@ enum battery_charger_status {
 	BATTERY_CHARGING_DONE,
 };
 
+enum charge_thermal_state {
+	CHARGE_THERMAL_START = 0,
+	CHARGE_THERMAL_NORMAL,
+	CHARGE_THERMAL_COLD_STOP,
+	CHARGE_THERMAL_COOL_STOP,
+	CHARGE_THERMAL_COOL,
+	CHARGE_THERMAL_WARM,
+	CHARGE_THERMAL_WARM_STOP,
+	CHARGE_THERMAL_HOT_STOP,
+};
+
 struct battery_gauge_dev;
 struct battery_charger_dev;
 
@@ -48,12 +59,26 @@ struct battery_charging_ops {
 		int battery_voltage);
 };
 
+struct battery_thermal_prop {
+	int temp_hot_dc;
+	int temp_cold_dc;
+	int temp_warm_dc;
+	int temp_cool_dc;
+	unsigned int temp_hysteresis_dc;
+	unsigned int regulation_voltage_mv;
+	unsigned int warm_voltage_mv;
+	unsigned int cool_voltage_mv;
+	bool disable_warm_current_half;
+	bool disable_cool_current_half;
+};
+
 struct battery_charger_info {
 	const char *tz_name;
 	int cell_id;
 	int polling_time_sec;
 	bool enable_thermal_monitor;
 	struct battery_charging_ops *bc_ops;
+	struct battery_thermal_prop thermal_prop;
 };
 
 struct battery_gauge_info {
