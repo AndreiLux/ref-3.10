@@ -43,7 +43,7 @@
 				ti,pre-charge-current-limit-milliamp = <512>;
 				ti,charge-term-current-limit-milliamp = <128>;
 				ti,charge-voltage-limit-millivolt = <4352>;
-				ti,disable-suspend-during-charging;
+				ti,disbale-suspend-during-charging;
 				consumers {
 					c1 {
 						regulator-consumer-supply = "usb_bat_chg";
