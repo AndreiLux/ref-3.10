@@ -391,7 +391,8 @@ static const struct file_operations bcm2079x_dev_fops = {
 	.read = bcm2079x_dev_read,
 	.write = bcm2079x_dev_write,
 	.open = bcm2079x_dev_open,
-	.unlocked_ioctl = bcm2079x_dev_unlocked_ioctl
+	.unlocked_ioctl = bcm2079x_dev_unlocked_ioctl,
+	.compat_ioctl = bcm2079x_dev_unlocked_ioctl // Just primitives in/out
 };
 
 static int bcm2079x_probe(struct i2c_client *client,

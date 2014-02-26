@@ -37,8 +37,8 @@
 #include <linux/maxim_sti.h>
 #include <linux/memblock.h>
 #include <linux/spi/spi-tegra.h>
-#include <linux/nfc/pn544.h>
 #include <linux/rfkill-gpio.h>
+#include <linux/nfc/bcm2079x.h>
 #include <linux/skbuff.h>
 #include <linux/ti_wilink_st.h>
 #include <linux/regulator/consumer.h>
@@ -216,6 +216,17 @@ static struct i2c_board_info __initdata tfa9895l_board_info = {
 	I2C_BOARD_INFO("tfa9895l", 0x35),
 };
 
+static struct bcm2079x_platform_data bcm2079x_pdata = {
+	.irq_gpio = TEGRA_GPIO_PR7,
+	.en_gpio = TEGRA_GPIO_PB1,
+	.wake_gpio= TEGRA_GPIO_PS1,
+};
+
+static struct i2c_board_info __initdata bcm2079x_board_info = {
+	I2C_BOARD_INFO("bcm2079x-i2c", 0x77),
+	.platform_data = &bcm2079x_pdata,
+};
+
 static __initdata struct tegra_clk_init_table flounder_clk_init_table[] = {
 	/* name		parent		rate		enabled */
 	{ "pll_m",	NULL,		0,		false},
@@ -344,6 +355,9 @@ static void flounder_i2c_init(void)
 	i2c_register_board_info(1, &rt5506_board_info, 1);
 	i2c_register_board_info(1, &tfa9895_board_info, 1);
 	i2c_register_board_info(1, &tfa9895l_board_info, 1);
+
+	bcm2079x_board_info.irq = gpio_to_irq(TEGRA_GPIO_PR7),
+	i2c_register_board_info(0, &bcm2079x_board_info, 1);
 }
 
 #ifndef CONFIG_USE_OF

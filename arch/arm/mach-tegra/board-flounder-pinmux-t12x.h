@@ -211,6 +211,12 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	GPIO_PINMUX(GPIO_X3_AUD, NORMAL, NORMAL, OUTPUT, DISABLE),
 	/*audio end*/
 
+	/* NFC start */
+	GPIO_PINMUX(GPIO_PB1, NORMAL, NORMAL, OUTPUT, DISABLE),
+	GPIO_PINMUX(KB_ROW7, NORMAL, NORMAL, INPUT, DISABLE),
+	GPIO_PINMUX(KB_ROW9, NORMAL, NORMAL, OUTPUT, DISABLE),
+	/*NFC end */
+
 	/*key start*/
 	GPIO_PINMUX(KB_COL0, PULL_UP, NORMAL, INPUT, DISABLE),
 	GPIO_PINMUX(SDMMC3_CD_N, PULL_UP, NORMAL, INPUT, DISABLE),
@@ -321,6 +327,12 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX3, false, 0),
 	/*audio end*/
 
+	/* NFC start */
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PB1, false, 0),
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR7, true, 0),
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS1, false, 0),
+	/* NFC end */
+
 	/*headset start*/
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PW3, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS2, true, 0),
@@ -396,7 +408,6 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR3, false, 1),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR4, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR5, false, 0),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR7, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS0, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PEE1, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PEE4, false, 0),
