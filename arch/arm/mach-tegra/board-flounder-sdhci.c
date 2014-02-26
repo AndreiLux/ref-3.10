@@ -41,7 +41,6 @@
 #include "iomap.h"
 #include "tegra-board-id.h"
 
-#define FLOUNDER_WLAN_RST	TEGRA_GPIO_PCC5
 #define FLOUNDER_WLAN_PWR	TEGRA_GPIO_PX7
 #define FLOUNDER_WLAN_WOW	TEGRA_GPIO_PU5
 #if defined(CONFIG_BCMDHD_EDP_SUPPORT)
@@ -242,7 +241,6 @@ static int flounder_wifi_power(int on)
 	pr_err("%s: %d\n", __func__, on);
 
 	gpio_set_value(FLOUNDER_WLAN_PWR, on);
-	gpio_set_value(FLOUNDER_WLAN_RST, on);
 	mdelay(100);
 
 	return 0;
@@ -312,9 +310,6 @@ static int __init flounder_wifi_init(void)
 	rc = gpio_request(FLOUNDER_WLAN_PWR, "wlan_power");
 	if (rc)
 		pr_err("WLAN_PWR gpio request failed:%d\n", rc);
-	rc = gpio_request(FLOUNDER_WLAN_RST, "wlan_rst");
-	if (rc)
-		pr_err("WLAN_RST gpio request failed:%d\n", rc);
 	rc = gpio_request(FLOUNDER_WLAN_WOW, "bcmsdh_sdmmc");
 	if (rc)
 		pr_err("WLAN_WOW gpio request failed:%d\n", rc);
@@ -322,10 +317,6 @@ static int __init flounder_wifi_init(void)
 	rc = gpio_direction_output(FLOUNDER_WLAN_PWR, 0);
 	if (rc)
 		pr_err("WLAN_PWR gpio direction configuration failed:%d\n", rc);
-	rc = gpio_direction_output(FLOUNDER_WLAN_RST, 0);
-	if (rc)
-		pr_err("WLAN_RST gpio direction configuration failed:%d\n", rc);
-
 	rc = gpio_direction_input(FLOUNDER_WLAN_WOW);
 	if (rc)
 		pr_err("WLAN_WOW gpio direction configuration failed:%d\n", rc);
