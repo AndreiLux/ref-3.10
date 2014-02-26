@@ -27,6 +27,7 @@
 #include <linux/io.h>
 #include <linux/irqchip/tegra.h>
 #include <linux/system-wakeup.h>
+#include <linux/wakeup_reason.h>
 
 #include <mach/irqs.h>
 #include <mach/gpio-tegra.h>
@@ -169,6 +170,7 @@ int get_wakeup_reason_irq(void)
 			desc = irq_to_desc(irq);
 			if (!desc || !desc->action || !desc->action->name)
 				continue;
+			log_wakeup_reason(irq);
 			return irq;
 		}
 		mask_ll <<= 1;
