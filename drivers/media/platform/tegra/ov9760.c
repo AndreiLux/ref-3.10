@@ -250,7 +250,7 @@ static inline int ov9760_get_gain_reg(struct ov9760_reg *regs, u16 gain)
 	regs->val = (gain >> 8) & 0xff;
 	(regs + 1)->addr = 0x350b;
 	(regs + 1)->val = (gain) & 0xff;
-	return 1;
+	return 2;
 }
 
 static int ov9760_read_reg(struct i2c_client *client, u16 addr, u8 *val)
