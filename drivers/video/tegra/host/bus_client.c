@@ -737,8 +737,11 @@ static u32 create_mask(u32 *words, int num)
 {
 	int i;
 	u32 word = 0;
-	for (i = 0; i < num && words[i] && words[i] < 32; i++)
+	for (i = 0; i < num; i++) {
+		if (!words[i] || words[i] > 31)
+			continue;
 		word |= BIT(words[i]);
+	}
 
 	return word;
 }
@@ -815,10 +818,20 @@ static long nvhost_channelctl(struct file *filp,
 			platform_get_drvdata(priv->ch->dev);
 		struct nvhost_get_param_arg *arg =
 			(struct nvhost_get_param_arg *)buf;
-		if (arg->param >= NVHOST_MODULE_MAX_SYNCPTS
-				|| !pdata->syncpts[arg->param])
+		if (arg->param >= NVHOST_MODULE_MAX_SYNCPTS)
 			return -EINVAL;
-		arg->value = pdata->syncpts[arg->param];
+		/* if we already have required syncpt then return it ... */
+		if (pdata->syncpts[arg->param]) {
+			arg->value = pdata->syncpts[arg->param];
+			break;
+		}
+		/* ... otherwise get a new syncpt dynamically */
+		arg->value = nvhost_get_syncpt_host_managed(pdata->pdev,
+							    arg->param);
+		if (!arg->value)
+			return -EAGAIN;
+		/* ... and store it for further references */
+		pdata->syncpts[arg->param] = arg->value;
 		break;
 	}
 	case NVHOST_IOCTL_CHANNEL_GET_WAITBASES:
@@ -1138,8 +1151,7 @@ int nvhost_client_user_init(struct platform_device *dev)
 	struct nvhost_channel *ch = pdata->channel;
 
 	BUG_ON(!ch);
-	/* reserve 5 minor #s for <dev> and as-<dev>, ctrl-<dev>,
-	 * dbg-<dev> and prof-<dev> */
+	/* reserve 3 minor #s for <dev> and as-<dev>, and ctrl-<dev> */
 
 	err = alloc_chrdev_region(&devno, 0, 5, IFACE_NAME);
 	if (err < 0) {
@@ -1174,28 +1186,6 @@ int nvhost_client_user_init(struct platform_device *dev)
 			goto fail;
 	}
 
-	/* module debugger interface (per channel and global) */
-	if (pdata->dbg_ops) {
-		++devno;
-		pdata->dbg_node = nvhost_client_device_create(dev,
-					&pdata->dbg_cdev, "dbg-",
-					devno, pdata->dbg_ops);
-		if (pdata->dbg_node == NULL)
-			goto fail;
-	}
-
-	/* module profiler interface (per channel and global) */
-	if (pdata->prof_ops) {
-		++devno;
-		pdata->prof_node = nvhost_client_device_create(dev,
-					&pdata->prof_cdev, "prof-",
-					devno, pdata->prof_ops);
-		if (pdata->prof_node == NULL)
-			goto fail;
-	}
-
-
-
 	return 0;
 fail:
 	return err;
@@ -1223,18 +1213,6 @@ void nvhost_client_user_deinit(struct platform_device *dev)
 		device_destroy(nvhost_master->nvhost_class,
 			       pdata->ctrl_cdev.dev);
 		cdev_del(&pdata->ctrl_cdev);
-	}
-
-	if (pdata->dbg_node) {
-		device_destroy(nvhost_master->nvhost_class,
-			       pdata->dbg_cdev.dev);
-		cdev_del(&pdata->dbg_cdev);
-	}
-
-	if (pdata->prof_node) {
-		device_destroy(nvhost_master->nvhost_class,
-			       pdata->prof_cdev.dev);
-		cdev_del(&pdata->prof_cdev);
 	}
 }
 

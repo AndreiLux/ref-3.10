@@ -23,6 +23,7 @@
 #include <linux/highmem.h>
 #include <linux/log2.h>
 #include <linux/nvhost.h>
+#include <linux/pm_runtime.h>
 #include <linux/scatterlist.h>
 #include <linux/nvmap.h>
 #include <linux/tegra-soc.h>
@@ -30,7 +31,7 @@
 #include <asm/cacheflush.h>
 
 #include "dev.h"
-#include "nvhost_as.h"
+#include "nvhost_memmgr.h"
 #include "gk20a.h"
 #include "mm_gk20a.h"
 #include "hw_gmmu_gk20a.h"
@@ -103,7 +104,8 @@ static void gk20a_vm_unmap_locked(struct mapped_buffer_node *mapped_buffer);
 static struct mapped_buffer_node *find_mapped_buffer_locked(
 					struct rb_root *root, u64 addr);
 static struct mapped_buffer_node *find_mapped_buffer_reverse_locked(
-				struct rb_root *root, struct mem_handle *r);
+				struct rb_root *root, struct mem_handle *r,
+				u32 kind);
 static int update_gmmu_ptes_locked(struct vm_gk20a *vm,
 				   enum gmmu_pgsz_gk20a pgsz_idx,
 				   struct sg_table *sgt,
@@ -167,6 +169,7 @@ int gk20a_init_mm_setup_sw(struct gk20a *g)
 	mutex_init(&mm->tlb_lock);
 	mutex_init(&mm->l2_op_lock);
 	mm->big_page_size = gmmu_page_sizes[gmmu_page_size_big];
+	mm->compression_page_size = gmmu_page_sizes[gmmu_page_size_big];
 	mm->pde_stride    = mm->big_page_size << 10;
 	mm->pde_stride_shift = ilog2(mm->pde_stride);
 	BUG_ON(mm->pde_stride_shift > 31); /* we have assumptions about this */
@@ -757,13 +760,15 @@ static int insert_mapped_buffer(struct rb_root *root,
 }
 
 static struct mapped_buffer_node *find_mapped_buffer_reverse_locked(
-				struct rb_root *root, struct mem_handle *r)
+				struct rb_root *root, struct mem_handle *r,
+				u32 kind)
 {
 	struct rb_node *node = rb_first(root);
 	while (node) {
 		struct mapped_buffer_node *mapped_buffer =
 			container_of(node, struct mapped_buffer_node, node);
-		if (mapped_buffer->handle_ref == r)
+		if (mapped_buffer->handle_ref == r &&
+		    kind == mapped_buffer->kind)
 			return mapped_buffer;
 		node = rb_next(&mapped_buffer->node);
 	}
@@ -1022,15 +1027,23 @@ static u64 gk20a_vm_map_duplicate_locked(struct vm_gk20a *vm,
 					 struct mem_handle *r,
 					 u64 offset_align,
 					 u32 flags,
-					 u32 kind,
+					 int kind,
 					 struct sg_table **sgt,
 					 bool user_mapped,
 					 int rw_flag)
 {
 	struct mapped_buffer_node *mapped_buffer = 0;
 
+	/* fall-back to default kind if no kind is provided */
+	if (kind < 0) {
+		u64 nvmap_param;
+		nvhost_memmgr_get_param(memmgr, r, NVMAP_HANDLE_PARAM_KIND,
+					&nvmap_param);
+		kind = nvmap_param;
+	}
+
 	mapped_buffer = find_mapped_buffer_reverse_locked(
-						&vm->mapped_buffers, r);
+						&vm->mapped_buffers, r, kind);
 	if (!mapped_buffer)
 		return 0;
 
@@ -1091,7 +1104,7 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 			struct mem_handle *r,
 			u64 offset_align,
 			u32 flags /*NVHOST_AS_MAP_BUFFER_FLAGS_*/,
-			u32 kind,
+			int kind,
 			struct sg_table **sgt,
 			bool user_mapped,
 			int rw_flag)
@@ -1106,7 +1119,6 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 	int err = 0;
 	struct buffer_attrs bfr = {0};
 	struct nvhost_comptags comptags;
-	u64 value;
 
 	mutex_lock(&vm->update_gmmu_lock);
 
@@ -1137,15 +1149,20 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 	if (sgt)
 		*sgt = bfr.sgt;
 
-	err = nvhost_memmgr_get_param(memmgr, r, NVMAP_HANDLE_PARAM_KIND,
-				      &value);
-	if (err) {
-		nvhost_err(d, "failed to get nvmap buffer kind (err=%d)",
-			   err);
-		goto clean_up;
+	if (kind < 0) {
+		u64 value;
+		err = nvhost_memmgr_get_param(memmgr, r,
+					      NVMAP_HANDLE_PARAM_KIND,
+					      &value);
+		if (err) {
+			nvhost_err(d, "failed to get nvmap buffer kind (err=%d)",
+				   err);
+			goto clean_up;
+		}
+		kind = value;
 	}
 
-	bfr.kind_v = value;
+	bfr.kind_v = kind;
 	bfr.size = nvhost_memmgr_size(r);
 	bfr.align = 1 << __ffs((u64)sg_dma_address(bfr.sgt->sgl));
 	bfr.pgsz_idx = -1;
@@ -1219,7 +1236,6 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 	}
 
 	/* store the comptag info */
-	WARN_ON(bfr.ctag_lines != comptags.lines);
 	bfr.ctag_offset = comptags.offset;
 
 	/* update gmmu ptes */
@@ -1279,6 +1295,7 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 	mapped_buffer->ctag_lines  = bfr.ctag_lines;
 	mapped_buffer->vm          = vm;
 	mapped_buffer->flags       = flags;
+	mapped_buffer->kind        = kind;
 	mapped_buffer->va_allocated = va_allocated;
 	mapped_buffer->user_mapped = user_mapped ? 1 : 0;
 	mapped_buffer->own_mem_ref = user_mapped;
@@ -1914,11 +1931,11 @@ void gk20a_vm_put(struct vm_gk20a *vm)
 }
 
 /* address space interfaces for the gk20a module */
-static int gk20a_as_alloc_share(struct nvhost_as_share *as_share)
+int gk20a_vm_alloc_share(struct gk20a_as_share *as_share)
 {
-	struct nvhost_as *as = as_share->as;
-	struct gk20a *gk20a = get_gk20a(as->ch->dev);
-	struct mm_gk20a *mm = &gk20a->mm;
+	struct gk20a_as *as = as_share->as;
+	struct gk20a *g = gk20a_from_as(as);
+	struct mm_gk20a *mm = &g->mm;
 	struct vm_gk20a *vm;
 	u64 vma_size;
 	u32 num_pages, low_hole_pages;
@@ -1931,7 +1948,7 @@ static int gk20a_as_alloc_share(struct nvhost_as_share *as_share)
 	if (!vm)
 		return -ENOMEM;
 
-	as_share->priv = (void *)vm;
+	as_share->vm = vm;
 
 	vm->mm = mm;
 	vm->as_share = as_share;
@@ -2021,9 +2038,9 @@ static int gk20a_as_alloc_share(struct nvhost_as_share *as_share)
 }
 
 
-static int gk20a_as_release_share(struct nvhost_as_share *as_share)
+int gk20a_vm_release_share(struct gk20a_as_share *as_share)
 {
-	struct vm_gk20a *vm = (struct vm_gk20a *)as_share->priv;
+	struct vm_gk20a *vm = as_share->vm;
 
 	nvhost_dbg_fn("");
 
@@ -2032,20 +2049,20 @@ static int gk20a_as_release_share(struct nvhost_as_share *as_share)
 	/* put as reference to vm */
 	gk20a_vm_put(vm);
 
-	as_share->priv = NULL;
+	as_share->vm = NULL;
 
 	return 0;
 }
 
 
-static int gk20a_as_alloc_space(struct nvhost_as_share *as_share,
-				struct nvhost_as_alloc_space_args *args)
+int gk20a_vm_alloc_space(struct gk20a_as_share *as_share,
+			 struct nvhost_as_alloc_space_args *args)
 
 {	int err = -ENOMEM;
 	int pgsz_idx;
 	u32 start_page_nr;
 	struct nvhost_allocator *vma;
-	struct vm_gk20a *vm = (struct vm_gk20a *)as_share->priv;
+	struct vm_gk20a *vm = as_share->vm;
 	struct vm_reserved_va_node *va_node;
 	u64 vaddr_start = 0;
 
@@ -2124,14 +2141,14 @@ clean_up:
 	return err;
 }
 
-static int gk20a_as_free_space(struct nvhost_as_share *as_share,
-			       struct nvhost_as_free_space_args *args)
+int gk20a_vm_free_space(struct gk20a_as_share *as_share,
+			struct nvhost_as_free_space_args *args)
 {
 	int err = -ENOMEM;
 	int pgsz_idx;
 	u32 start_page_nr;
 	struct nvhost_allocator *vma;
-	struct vm_gk20a *vm = (struct vm_gk20a *)as_share->priv;
+	struct vm_gk20a *vm = as_share->vm;
 	struct vm_reserved_va_node *va_node;
 
 	nvhost_dbg_fn("pgsz=0x%x nr_pages=0x%x o/a=0x%llx", args->page_size,
@@ -2189,31 +2206,31 @@ clean_up:
 	return err;
 }
 
-static int gk20a_as_bind_hwctx(struct nvhost_as_share *as_share,
-			       struct nvhost_hwctx *hwctx)
+int gk20a_vm_bind_channel(struct gk20a_as_share *as_share,
+			  struct channel_gk20a *ch)
 {
 	int err = 0;
-	struct vm_gk20a *vm = (struct vm_gk20a *)as_share->priv;
-	struct channel_gk20a *c = hwctx->priv;
+	struct vm_gk20a *vm = as_share->vm;
 
 	nvhost_dbg_fn("");
 
-	c->vm = vm;
-	err = channel_gk20a_commit_va(c);
+	ch->vm = vm;
+	err = channel_gk20a_commit_va(ch);
 	if (err)
-		c->vm = 0;
+		ch->vm = 0;
 
 	return err;
 }
 
-static int gk20a_as_map_buffer(struct nvhost_as_share *as_share,
-			       int memmgr_fd,
-			       ulong mem_id,
-			       u64 *offset_align,
-			       u32 flags /*NVHOST_AS_MAP_BUFFER_FLAGS_*/)
+int gk20a_vm_map_buffer(struct gk20a_as_share *as_share,
+			int memmgr_fd,
+			ulong mem_id,
+			u64 *offset_align,
+			u32 flags, /*NVHOST_AS_MAP_BUFFER_FLAGS_*/
+			int kind)
 {
 	int err = 0;
-	struct vm_gk20a *vm = (struct vm_gk20a *)as_share->priv;
+	struct vm_gk20a *vm = as_share->vm;
 	struct gk20a *g = gk20a_from_vm(vm);
 	struct mem_mgr *memmgr;
 	struct mem_handle *r;
@@ -2234,7 +2251,7 @@ static int gk20a_as_map_buffer(struct nvhost_as_share *as_share,
 	}
 
 	ret_va = gk20a_vm_map(vm, memmgr, r, *offset_align,
-			flags, 0/*no kind here, to be removed*/, NULL, true,
+			flags, kind, NULL, true,
 			mem_flag_none);
 	*offset_align = ret_va;
 	if (!ret_va) {
@@ -2246,26 +2263,15 @@ static int gk20a_as_map_buffer(struct nvhost_as_share *as_share,
 	return err;
 }
 
-static int gk20a_as_unmap_buffer(struct nvhost_as_share *as_share, u64 offset)
+int gk20a_vm_unmap_buffer(struct gk20a_as_share *as_share, u64 offset)
 {
-	struct vm_gk20a *vm = (struct vm_gk20a *)as_share->priv;
+	struct vm_gk20a *vm = as_share->vm;
 
 	nvhost_dbg_fn("");
 
 	gk20a_vm_unmap_user(vm, offset);
 	return 0;
 }
-
-
-const struct nvhost_as_moduleops tegra_gk20a_as_ops = {
-	.alloc_share   = gk20a_as_alloc_share,
-	.release_share = gk20a_as_release_share,
-	.alloc_space   = gk20a_as_alloc_space,
-	.free_space    = gk20a_as_free_space,
-	.bind_hwctx    = gk20a_as_bind_hwctx,
-	.map_buffer    = gk20a_as_map_buffer,
-	.unmap_buffer  = gk20a_as_unmap_buffer,
-};
 
 int gk20a_init_bar1_vm(struct mm_gk20a *mm)
 {
@@ -2577,7 +2583,7 @@ static void gk20a_mm_g_elpg_flush_locked(struct gk20a *g)
 			usleep_range(20, 40);
 		} else
 			break;
-	} while (retry >= 0);
+	} while (retry >= 0 || !tegra_platform_is_silicon());
 
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
@@ -2615,7 +2621,7 @@ void gk20a_mm_fb_flush(struct gk20a *g)
 				usleep_range(20, 40);
 		} else
 			break;
-	} while (retry >= 0);
+	} while (retry >= 0 || !tegra_platform_is_silicon());
 
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
@@ -2647,7 +2653,7 @@ static void gk20a_mm_l2_invalidate_locked(struct gk20a *g)
 				usleep_range(20, 40);
 		} else
 			break;
-	} while (retry >= 0);
+	} while (retry >= 0 || !tegra_platform_is_silicon());
 
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
@@ -2689,7 +2695,7 @@ void gk20a_mm_l2_flush(struct gk20a *g, bool invalidate)
 				usleep_range(20, 40);
 		} else
 			break;
-	} while (retry >= 0);
+	} while (retry >= 0 || !tegra_platform_is_silicon());
 
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
@@ -2763,7 +2769,7 @@ void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm)
 			break;
 		usleep_range(20, 40);
 		retry--;
-	} while (retry >= 0);
+	} while (retry >= 0 || !tegra_platform_is_silicon());
 
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
@@ -2786,7 +2792,7 @@ void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm)
 			break;
 		retry--;
 		usleep_range(20, 40);
-	} while (retry >= 0);
+	} while (retry >= 0 || !tegra_platform_is_silicon());
 
 	if (retry < 0)
 		nvhost_warn(dev_from_gk20a(g),
@@ -2913,7 +2919,8 @@ static int gk20a_mm_mmu_vpr_info_fetch_wait(struct gk20a *g,
 		    fb_mmu_vpr_info_fetch_false_v())
 			break;
 
-		if (WARN_ON(time_after(jiffies, timeout)))
+		if (tegra_platform_is_silicon() &&
+				WARN_ON(time_after(jiffies, timeout)))
 			return -ETIME;
 	}
 

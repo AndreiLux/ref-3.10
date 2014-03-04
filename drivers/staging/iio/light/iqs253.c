@@ -30,6 +30,7 @@
 #include <linux/slab.h>
 #include <linux/delay.h>
 #include <linux/irqchip/tegra.h>
+#include <linux/input.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
 #include <linux/iio/light/ls_sysfs.h>
@@ -59,14 +60,18 @@
 
 #define IQS253_PROD_ID		41
 
-#define STYLUS_ONLY		0x04 /* Channel 2 for stylus */
-#define PROXIMITY_ONLY		0x03 /* channel 0 and channel 1 for proximity */
+#define PROX_CH0		0x01
+#define PROX_CH1		0x02
+#define PROX_CH2		0x04
+
+#define STYLUS_ONLY		PROX_CH0
+#define PROXIMITY_ONLY		(PROX_CH1 | PROX_CH2)
 
 #define CH0_COMPENSATION	0x55
 
-#define PROX_TH_CH0		0x01
-#define PROX_TH_CH1		0x02
-#define PROX_TH_CH2		0x04
+#define PROX_TH_CH0		0x04 /* proximity threshold = 0.5 cm */
+#define PROX_TH_CH1		0x01 /* proximity threshold = 2 cm */
+#define PROX_TH_CH2		0x01 /* proximity threshold = 2 cm */
 
 #define DISABLE_DYCAL		0x00
 
@@ -88,11 +93,16 @@ struct iqs253_chip {
 	const struct i2c_device_id	*id;
 	u32			rdy_gpio;
 	u32			wake_gpio;
+	u32			sar_gpio;
 	u32			mode;
 	u32			value;
 	struct regulator	*vddhi;
 	u32			using_regulator;
 	struct lightsensor_spec	*ls_spec;
+	struct workqueue_struct	*wq;
+	struct delayed_work	dw;
+	struct input_dev	*idev;
+	u32			stylus_inserted;
 };
 
 enum mode {
@@ -116,7 +126,7 @@ struct reg_val_pair reg_val_map[NUM_MODE][NUM_REG] = {
 		{ CH0_PTH, PROX_TH_CH0},
 		{ CH1_PTH, PROX_TH_CH1},
 		{ PROX_SETTINGS0, PROX_SETTING_NORMAL},
-		{ ACTIVE_CHAN, PROXIMITY_ONLY},
+		{ ACTIVE_CHAN, PROXIMITY_ONLY | STYLUS_ONLY},
 		{ DYCAL_CHANS, DISABLE_DYCAL},
 		{ EVENT_MODE_MASK, EVENT_PROX_ONLY}
 	},
@@ -142,6 +152,12 @@ static void iqs253_i2c_hand_shake(struct iqs253_chip *iqs253_chip)
 		/* put to tristate */
 		gpio_direction_input(iqs253_chip->rdy_gpio);
 	} while (gpio_get_value(iqs253_chip->rdy_gpio) && retry_count--);
+}
+
+static int iqs253_i2c_read_byte(struct iqs253_chip *chip, int reg)
+{
+	iqs253_i2c_hand_shake(chip);
+	return i2c_smbus_read_byte_data(chip->client, reg);
 }
 
 /* must call holding lock */
@@ -174,8 +190,7 @@ static int iqs253_set(struct iqs253_chip *iqs253_chip, int mode)
 
 	/* wait for ATI to finish */
 	do {
-		iqs253_i2c_hand_shake(iqs253_chip);
-		ret = i2c_smbus_read_byte_data(iqs253_chip->client, SYSFLAGS);
+		ret = iqs253_i2c_read_byte(iqs253_chip, SYSFLAGS);
 		mdelay(10);
 	} while (ret & ATI_IN_PROGRESS);
 
@@ -298,24 +313,30 @@ static int iqs253_read_raw(struct iio_dev *indio_dev,
 	if (chan->type != IIO_PROXIMITY)
 		return -EINVAL;
 
-	iqs253_i2c_hand_shake(chip);
-	ret = i2c_smbus_read_byte_data(chip->client, PROX_STATUS);
+	ret = iqs253_i2c_read_byte(chip, PROX_STATUS);
 	chip->value = -1;
 	if (ret >= 0) {
 		if ((ret >= 0) && (chip->mode == NORMAL_MODE)) {
 			ret = ret & PROXIMITY_ONLY;
 			/*
 			 * if both channel detect proximity => distance = 0;
-			 * if only channel2 detects proximity => distance = 1;
+			 * if one channel detects proximity => distance = 1;
 			 * if no channel detects proximity => distance = 2;
 			 */
-			chip->value = (ret == 0x03) ? 0 : ret ? 1 : 2;
+			chip->value = (ret == (PROX_CH1 | PROX_CH2)) ? 0 :
+								ret ? 1 : 2;
 		}
 	}
 	if (chip->value == -1)
 		return -EINVAL;
 
 	*val = chip->value; /* cm */
+
+	/* provide input to SAR */
+	if (chip->value)
+		gpio_direction_output(chip->sar_gpio, 0);
+	else
+		gpio_direction_output(chip->sar_gpio, 1);
 
 	return IIO_VAL_INT;
 }
@@ -403,13 +424,91 @@ static SIMPLE_DEV_PM_OPS(iqs253_pm_ops, iqs253_suspend, iqs253_resume);
 #define IQS253_PM_OPS NULL
 #endif
 
+static void iqs253_stylus_detect_work(struct work_struct *ws)
+{
+	int ret;
+	struct iqs253_chip *chip;
+
+	chip = container_of(ws, struct iqs253_chip, dw.work);
+
+	if (!chip->using_regulator) {
+		ret = regulator_enable(chip->vddhi);
+		if (ret)
+			goto finish;
+		chip->using_regulator = true;
+	}
+
+	if (chip->mode != NORMAL_MODE) {
+		ret = iqs253_set(chip, NORMAL_MODE);
+		if (ret)
+			goto finish;
+
+		ret = iqs253_i2c_read_byte(chip, PROX_STATUS);
+		chip->stylus_inserted = (ret & STYLUS_ONLY);
+		input_report_switch(chip->idev, SW_TABLET_MODE,
+					!chip->stylus_inserted);
+		input_sync(chip->idev);
+	}
+
+	ret = iqs253_i2c_read_byte(chip, PROX_STATUS);
+	chip->value = -1;
+	if (ret >= 0) {
+		ret &= STYLUS_ONLY;
+		if (ret && !chip->stylus_inserted) {
+			chip->stylus_inserted = true;
+			input_report_switch(chip->idev, SW_TABLET_MODE, false);
+			input_sync(chip->idev);
+		} else if (!ret && chip->stylus_inserted) {
+			chip->stylus_inserted = false;
+			input_report_switch(chip->idev, SW_TABLET_MODE, true);
+			input_sync(chip->idev);
+		}
+	}
+
+finish:
+	queue_delayed_work(chip->wq, &chip->dw, msecs_to_jiffies(2000));
+}
+
+static struct input_dev *iqs253_stylus_input_init(struct iqs253_chip *chip)
+{
+	int ret;
+	struct input_dev *idev = input_allocate_device();
+	if (!idev)
+		return NULL;
+
+	idev->name = "stylus_detect";
+	set_bit(EV_SW, idev->evbit);
+	input_set_capability(idev, EV_SW, SW_TABLET_MODE);
+	ret = input_register_device(idev);
+	if (ret) {
+		input_free_device(idev);
+		return ERR_PTR(ret);
+	}
+
+	chip->wq = create_singlethread_workqueue("iqs253");
+	if (!chip->wq) {
+		dev_err(&chip->client->dev, "unable to create work queue\n");
+		input_unregister_device(idev);
+		input_free_device(idev);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	INIT_DELAYED_WORK(&chip->dw, iqs253_stylus_detect_work);
+
+	queue_delayed_work(chip->wq, &chip->dw, 0);
+
+	return idev;
+}
+
 static int iqs253_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	int ret;
 	struct iqs253_chip *iqs253_chip;
 	struct iio_dev *indio_dev;
-	int rdy_gpio = -1, wake_gpio;
+	struct input_dev *idev;
+	int rdy_gpio = -1, wake_gpio = -1, sar_gpio = -1;
+	struct property *stylus_detect = NULL;
 
 	rdy_gpio = of_get_named_gpio(client->dev.of_node, "rdy-gpio", 0);
 	if (rdy_gpio == -EPROBE_DEFER)
@@ -423,6 +522,14 @@ static int iqs253_probe(struct i2c_client *client,
 		return -EPROBE_DEFER;
 
 	if (!gpio_is_valid(wake_gpio))
+		return -EINVAL;
+
+	sar_gpio = of_get_named_gpio(client->dev.of_node, "sar-gpio", 0);
+	if (sar_gpio == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+
+	ret = gpio_request_one(sar_gpio, GPIOF_OUT_INIT_LOW, NULL);
+	if (ret < 0)
 		return -EINVAL;
 
 	indio_dev = iio_device_alloc(sizeof(*iqs253_chip));
@@ -475,6 +582,7 @@ static int iqs253_probe(struct i2c_client *client,
 	}
 	iqs253_chip->rdy_gpio = rdy_gpio;
 	iqs253_chip->wake_gpio = wake_gpio;
+	iqs253_chip->sar_gpio = sar_gpio;
 
 	ret = regulator_enable(iqs253_chip->vddhi);
 	if (ret) {
@@ -484,8 +592,7 @@ static int iqs253_probe(struct i2c_client *client,
 		goto err_gpio_request;
 	}
 
-	iqs253_i2c_hand_shake(iqs253_chip);
-	ret = i2c_smbus_read_byte_data(iqs253_chip->client, 0);
+	ret = iqs253_i2c_read_byte(iqs253_chip, 0);
 	if (ret != IQS253_PROD_ID) {
 			dev_err(&client->dev,
 			"devname:%s func:%s device not present\n",
@@ -502,7 +609,17 @@ static int iqs253_probe(struct i2c_client *client,
 		goto err_gpio_request;
 	}
 
+	stylus_detect = of_find_property(client->dev.of_node,
+						"stylus-detect", NULL);
+	if (!stylus_detect)
+		goto finish;
 
+	idev = iqs253_stylus_input_init(iqs253_chip);
+	if (IS_ERR_OR_NULL(idev))
+		goto err_gpio_request;
+	iqs253_chip->idev = idev;
+
+finish:
 	dev_info(&client->dev, "devname:%s func:%s line:%d probe success\n",
 			id->name, __func__, __LINE__);
 
@@ -524,6 +641,12 @@ static int iqs253_remove(struct i2c_client *client)
 	struct iio_dev *indio_dev = i2c_get_clientdata(client);
 	struct iqs253_chip *chip = iio_priv(indio_dev);
 	gpio_free(chip->rdy_gpio);
+	if (chip->wq)
+		destroy_workqueue(chip->wq);
+	if (chip->idev) {
+		input_unregister_device(chip->idev);
+		input_free_device(chip->idev);
+	}
 	iio_device_unregister(indio_dev);
 	iio_device_free(indio_dev);
 	return 0;

@@ -1,7 +1,7 @@
 /dts-v1/;
 
 #include "tegra124.dtsi"
-#include "tegra124-platforms/tegra124-e1780-keys.dtsi"
+#include "tegra124-platforms/tegra124-tn8-keys-e1780-1100-a02.dtsi"
 #include "tegra124-platforms/tegra124-pm359-gpio-default.dtsi"
 #include "tegra124-platforms/tegra124-pm359-pinmux.dtsi"
 #include "tegra124-platforms/tegra124-pm359-pmic.dtsi"
@@ -92,5 +92,14 @@
 		nvidia,core-pwr-off-time = <2000>;
 		nvidia,core-power-req-active-high;
 		nvidia,sys-clock-req-active-high;
+	};
+
+	pcie-controller {
+		nvidia,port0_status = <1>;
+		nvidia,port1_status = <1>;
+		nvidia,hot-plug-gpio = <&gpio TEGRA_GPIO(O, 1) 0>;
+		nvidia,wake-gpio = <&gpio TEGRA_GPIO(DD, 3) 0>;
+		nvidia,x1-slot-gpio = <&tca6416 8 0>;
+		status = "okay";
 	};
 };

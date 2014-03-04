@@ -70,47 +70,72 @@
 			};
 		};
 
-		vdd_lcd_1v8_s: regulator@4 {
+		avdd_lcd: regulator@4 {
 			compatible = "regulator-fixed-sync";
 			reg = <4>;
-			regulator-name = "vdd-lcd-1v8";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-boot-on;
+			regulator-name = "avdd-lcd";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&palmas_gpio 3 0>;
+			enable-active-high;
+			vin-supply = <&palmas_smps9>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "avdd_lcd";
+				};
+			};
+		};
+
+		vdd_lcd: regulator@5 {
+			compatible = "regulator-fixed-sync";
+			reg = <5>;
+			regulator-name = "vdd-lcd";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			enable-active-high;
+			gpio = <&palmas_gpio 4 0>;
+			vin-supply = <&palmas_smps8>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "vdd_lcd_1v2_s";
+				};
+			};
+		};
+
+		ldoen: regulator@6 {
+			compatible = "regulator-fixed-sync";
+			reg = <6>;
+			regulator-name = "ldoen";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
 			enable-active-high;
 			gpio = <&palmas_gpio 6 0>;
 			vin-supply = <&palmas_smps8>;
 
 			consumers {
 				c1 {
-					regulator-consumer-supply = "vdd_lcd_1v8_s";
-				};
-				c2 {
-					regulator-consumer-supply = "dvdd_lcd";
+					regulator-consumer-supply = "ldoen";
+					regulator-consumer-device = "tegra-snd-rt5639";
 				};
 			};
 		};
 
-		vpp_fuse: regulator@5 {
+		vpp_fuse: regulator@7 {
 			compatible = "regulator-fixed-sync";
-			reg = <5>;
+			reg = <7>;
 			regulator-name = "vpp-fuse";
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
 			enable-active-high;
 			gpio = <&palmas_gpio 7 0>;
 			vin-supply = <&palmas_smps8>;
-
-			consumers {
-				c1 {
-					regulator-consumer-supply = "vpp_fuse";
-				};
-			};
 		};
 
-		en_lcd_bl: regulator@6 {
+		en_lcd_bl: regulator@8 {
 			compatible = "regulator-fixed-sync";
-			reg = <6>;
+			reg = <8>;
 			regulator-name = "en-lcd-bl";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
@@ -124,9 +149,9 @@
 			};
 		};
 
-		vdd_hdmi: regulator@7 {
+		vdd_hdmi: regulator@9 {
 			compatible = "regulator-fixed-sync";
-			reg = <7>;
+			reg = <9>;
 			regulator-name = "vdd-hdmi";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
@@ -141,57 +166,10 @@
 				};
 			};
 		};
+	};
 
-		vdd_cam_af: regulator@8 {
-			compatible = "regulator-fixed-sync";
-			reg = <8>;
-			regulator-name = "vdd-cam-af";
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			enable-active-high;
-			gpio = <&palmas_gpio 4 0>; /* PMIC GPIO4  */
-			vin-supply = <&palmas_smps8>;
-
-			consumers {
-				c1 {
-					regulator-consumer-supply = "vdd_cam1_1v8_cam";
-				};
-				c2 {
-					regulator-consumer-supply = "vdd_cam2_1v8_cam";
-				};
-				c3 {
-					regulator-consumer-supply = "vif";
-					regulator-consumer-device = "2-0010";
-				};
-				c4 {
-					regulator-consumer-supply = "dovdd";
-					regulator-consumer-device = "2-0010";
-				};
-				c5 {
-					regulator-consumer-supply = "vif2";
-					regulator-consumer-device = "2-0021";
-				};
-				c6 {
-					regulator-consumer-supply = "vif";
-					regulator-consumer-device = "2-0036";
-				};
-				c7 {
-					regulator-consumer-supply = "vdd_i2c";
-					regulator-consumer-device = "2-000c";
-				};
-				c8 {
-					regulator-consumer-supply = "vi2c";
-					regulator-consumer-device = "2-0030";
-				};
-				c9 {
-					regulator-consumer-supply = "vdd";
-					regulator-consumer-device = "2-004a";
-				};
-				c10 {
-					regulator-consumer-supply = "vif";
-					regulator-consumer-device = "2-0048";
-				};
-			};
-		};
+	/* Populate fuse supply */
+	efuse@7000f800 {
+		vpp_fuse-supply = <&vpp_fuse>;
 	};
 };

@@ -27,7 +27,6 @@
 #include <linux/kernel.h>
 #include <linux/clocksource.h>
 #include <linux/irqchip.h>
-#include <linux/pci-tegra.h>
 
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/io_dpd.h>
@@ -117,6 +116,8 @@ static __initdata struct tegra_clk_init_table vcm30_t124_clk_init_table[] = {
 
 	{ "vi_sensor",		"pll_p",	68000000,	false},
 	{ "vi_sensor2",		"pll_p",	68000000,	false},
+
+	{ "automotive.host1x",	NULL,		264000000,	true},
 
 	{ NULL,			NULL,		0,		0},
 };
@@ -383,20 +384,6 @@ static struct platform_device tegra_rtc_device = {
 	.num_resources = ARRAY_SIZE(tegra_rtc_resources),
 };
 
-static struct tegra_pci_platform_data vcm30_t124_pcie_platform_data = {
-	.port_status[0]	= 1,
-	.port_status[1]	= 1,
-	.gpio_hot_plug = -1,
-	.gpio_wake = -1,
-	.gpio_x1_slot = -1,
-};
-
-static void vcm30_t124_pcie_init(void)
-{
-	tegra_pci_device.dev.platform_data = &vcm30_t124_pcie_platform_data;
-	platform_device_register(&tegra_pci_device);
-}
-
 #ifdef CONFIG_SATA_AHCI_TEGRA
 static struct tegra_ahci_platform_data ahci_plat_data = {
         .gen2_rx_eq = 7,
@@ -606,6 +593,8 @@ struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra114-nvavp", 0x60001000, "nvavp",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-efuse", TEGRA_FUSE_BASE, "tegra-fuse",
+				NULL),
 	{}
 };
 #endif
@@ -645,7 +634,6 @@ static void __init tegra_vcm30_t124_late_init(void)
 	isomgr_init();
 	/* vcm30_t124_panel_init(); */
 	/* vcm30_t124_pmon_init(); */
-	vcm30_t124_pcie_init();
 	vcm30_t124_sata_init();
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
@@ -657,7 +645,6 @@ static void __init tegra_vcm30_t124_late_init(void)
 	vcm30_t124_sensors_init();
 	vcm30_t124_soctherm_init();
 #endif
-	tegra_register_fuse();
 	vcm30_t124_panel_init();
 }
 

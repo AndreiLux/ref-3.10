@@ -674,6 +674,8 @@ struct of_dev_auxdata loki_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-nvavp", 0x60001000, "nvavp",
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-efuse", TEGRA_FUSE_BASE, "tegra-fuse",
+				NULL),
 	{}
 };
 #endif
@@ -703,6 +705,16 @@ struct rm_spi_ts_platform_data rm31080ts_loki_data_t_1_95 = {
 	.gpio_sensor_select1 = false,
 };
 
+struct rm_spi_ts_platform_data rm31080ts_loki_data_jdi_5 = {
+	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
+	.config = 0,
+	.platform_id = RM_PLATFORM_L005,
+	.name_of_clock = "clk_out_2",
+	.name_of_clock_con = "extern2",
+	.gpio_sensor_select0 = false,
+	.gpio_sensor_select1 = true,
+};
+
 static struct tegra_spi_device_controller_data dev_cdata = {
 	.rx_clk_tap_delay = 0,
 	.tx_clk_tap_delay = 16,
@@ -727,10 +739,12 @@ static int __init loki_touch_init(void)
 	if (bi.board_id == BOARD_P2530 && bi.sku == BOARD_SKU_FOSTER)
 		return 0;
 
-	if (tegra_get_touch_panel_id() == TOUCH_PANEL_THOR_WINTEK)
+	if (tegra_get_touch_panel_id() == TOUCHPANEL_THOR_WINTEK)
 		rm31080a_loki_spi_board[0].platform_data =
 					&rm31080ts_loki_data_t_1_95;
-
+	else if (tegra_get_touch_panel_id() == TOUCHPANEL_LOKI_JDI5)
+		rm31080a_loki_spi_board[0].platform_data =
+					&rm31080ts_loki_data_jdi_5;
 	/*
 	** remove touch clock initialization for ffd fab a3, higher
 	** Move clock from tegra clock to external xtal
@@ -829,12 +843,11 @@ static void __init tegra_loki_late_init(void)
 	tegra_wdt_recovery_init();
 #endif
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
-	if (!is_tegra_diagnostic_mode())
-		loki_sensors_init();
+	loki_sensors_init();
+
 	loki_fan_init();
 	loki_soctherm_init();
 	loki_setup_bluedroid_pm();
-	tegra_register_fuse();
 	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
 #ifdef CONFIG_C2PORT_LOKI
 	tegra_loki_mcu_debugger_init();

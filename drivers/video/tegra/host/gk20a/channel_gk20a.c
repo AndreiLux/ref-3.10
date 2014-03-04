@@ -24,11 +24,14 @@
 #include <linux/highmem.h> /* need for nvmap.h*/
 #include <trace/events/nvhost.h>
 #include <linux/scatterlist.h>
+#include <linux/file.h>
+#include <linux/anon_inodes.h>
 
 #include "dev.h"
-#include "nvhost_as.h"
 #include "debug.h"
+#include "nvhost_memmgr.h"
 #include "nvhost_sync.h"
+#include "nvhost_syncpt.h"
 
 #include "gk20a.h"
 #include "dbg_gpu_gk20a.h"
@@ -69,7 +72,7 @@ static void channel_gk20a_free_inst(struct gk20a *g,
 
 static int channel_gk20a_update_runlist(struct channel_gk20a *c,
 					bool add);
-static void gk20a_free_error_notifiers(struct nvhost_hwctx *ctx);
+static void gk20a_free_error_notifiers(struct channel_gk20a *ch);
 
 static struct channel_gk20a *acquire_unused_channel(struct fifo_gk20a *f)
 {
@@ -416,12 +419,11 @@ static int channel_gk20a_update_runlist(struct channel_gk20a *c, bool add)
 
 void gk20a_disable_channel_no_update(struct channel_gk20a *ch)
 {
-	struct nvhost_device_data *pdata = nvhost_get_devdata(ch->g->dev);
 	struct nvhost_master *host = host_from_gk20a_channel(ch);
 
 	/* ensure no fences are pending */
 	nvhost_syncpt_set_min_eq_max(&host->syncpt,
-				     ch->hw_chid + pdata->syncpt_base);
+				     ch->syncpt_id);
 
 	/* disable channel */
 	gk20a_writel(ch->g, ccsr_channel_r(ch->hw_chid),
@@ -444,7 +446,8 @@ static int gk20a_wait_channel_idle(struct channel_gk20a *ch)
 			break;
 
 		usleep_range(1000, 3000);
-	} while (time_before(jiffies, end_jiffies));
+	} while (time_before(jiffies, end_jiffies)
+			|| !tegra_platform_is_silicon());
 
 	if (!channel_idle)
 		nvhost_err(dev_from_gk20a(ch->g), "channel jobs not freed");
@@ -538,10 +541,9 @@ static int gk20a_channel_cycle_stats(struct channel_gk20a *ch,
 }
 #endif
 
-static int gk20a_init_error_notifier(struct nvhost_hwctx *ctx,
+static int gk20a_init_error_notifier(struct channel_gk20a *ch,
 		struct nvhost_set_error_notifier *args) {
-	struct channel_gk20a *ch = ctx->priv;
-	struct platform_device *dev = ch->ch->dev;
+	struct platform_device *dev = ch->g->dev;
 	void *va;
 
 	struct mem_mgr *memmgr;
@@ -555,8 +557,8 @@ static int gk20a_init_error_notifier(struct nvhost_hwctx *ctx,
 	memmgr = gk20a_channel_mem_mgr(ch);
 	handle_ref = nvhost_memmgr_get(memmgr, args->mem, dev);
 
-	if (ctx->error_notifier_ref)
-		gk20a_free_error_notifiers(ctx);
+	if (ch->error_notifier_ref)
+		gk20a_free_error_notifiers(ch);
 
 	if (IS_ERR(handle_ref)) {
 		pr_err("Invalid handle: %d\n", args->mem);
@@ -570,48 +572,48 @@ static int gk20a_init_error_notifier(struct nvhost_hwctx *ctx,
 		return -ENOMEM;
 	}
 
-	/* set hwctx notifiers pointer */
-	ctx->error_notifier_ref = handle_ref;
-	ctx->error_notifier = va + args->offset;
-	ctx->error_notifier_va = va;
-	memset(ctx->error_notifier, 0, sizeof(struct nvhost_notification));
+	/* set channel notifiers pointer */
+	ch->error_notifier_ref = handle_ref;
+	ch->error_notifier = va + args->offset;
+	ch->error_notifier_va = va;
+	memset(ch->error_notifier, 0, sizeof(struct nvhost_notification));
 	return 0;
 }
 
-void gk20a_set_error_notifier(struct nvhost_hwctx *ctx, __u32 error)
+void gk20a_set_error_notifier(struct channel_gk20a *ch, __u32 error)
 {
-	if (ctx->error_notifier_ref) {
+	if (ch->error_notifier_ref) {
 		struct timespec time_data;
 		u64 nsec;
 		getnstimeofday(&time_data);
 		nsec = ((u64)time_data.tv_sec) * 1000000000u +
 				(u64)time_data.tv_nsec;
-		ctx->error_notifier->time_stamp.nanoseconds[0] =
+		ch->error_notifier->time_stamp.nanoseconds[0] =
 				(u32)nsec;
-		ctx->error_notifier->time_stamp.nanoseconds[1] =
+		ch->error_notifier->time_stamp.nanoseconds[1] =
 				(u32)(nsec >> 32);
-		ctx->error_notifier->info32 = error;
-		ctx->error_notifier->status = 0xffff;
-		nvhost_err(&ctx->channel->dev->dev,
+		ch->error_notifier->info32 = error;
+		ch->error_notifier->status = 0xffff;
+		nvhost_err(dev_from_gk20a(ch->g),
 				"error notifier set to %d\n", error);
 	}
 }
 
-static void gk20a_free_error_notifiers(struct nvhost_hwctx *ctx)
+static void gk20a_free_error_notifiers(struct channel_gk20a *ch)
 {
-	if (ctx->error_notifier_ref) {
-		struct channel_gk20a *ch = ctx->priv;
+	if (ch->error_notifier_ref) {
 		struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
-		nvhost_memmgr_munmap(ctx->error_notifier_ref,
-				ctx->error_notifier_va);
-		nvhost_memmgr_put(memmgr, ctx->error_notifier_ref);
-		ctx->error_notifier_ref = 0;
+		nvhost_memmgr_munmap(ch->error_notifier_ref,
+				ch->error_notifier_va);
+		nvhost_memmgr_put(memmgr, ch->error_notifier_ref);
+		ch->error_notifier_ref = 0;
+		ch->error_notifier = 0;
+		ch->error_notifier_va = 0;
 	}
 }
 
-void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
+void gk20a_free_channel(struct channel_gk20a *ch, bool finish)
 {
-	struct channel_gk20a *ch = ctx->priv;
 	struct gk20a *g = ch->g;
 	struct device *d = dev_from_gk20a(g);
 	struct fifo_gk20a *f = &g->fifo;
@@ -641,9 +643,9 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 	nvhost_dbg_info("freeing bound channel context, timeout=%ld",
 			timeout);
 
-	gk20a_disable_channel(ch, finish && !ch->hwctx->has_timedout, timeout);
+	gk20a_disable_channel(ch, finish && !ch->has_timedout, timeout);
 
-	gk20a_free_error_notifiers(ctx);
+	gk20a_free_error_notifiers(ch);
 
 	/* release channel ctx */
 	gk20a_free_channel_ctx(ch);
@@ -670,11 +672,10 @@ void gk20a_free_channel(struct nvhost_hwctx *ctx, bool finish)
 	gk20a_free_cycle_stats_buffer(ch);
 #endif
 
-	ctx->priv = NULL;
 	channel_gk20a_free_priv_cmdbuf(ch);
 
-	/* release hwctx binding to the as_share */
-	nvhost_as_release_share(ch_vm->as_share, ctx);
+	/* release channel binding to the as_share */
+	gk20a_as_release_share(ch_vm->as_share);
 
 unbind:
 	channel_gk20a_unbind(ch);
@@ -693,20 +694,26 @@ unbind:
 
 	mutex_unlock(&ch->dbg_s_lock);
 
+	/* free the syncpt used for this channel */
+	nvhost_free_syncpt(ch->syncpt_id);
+	ch->syncpt_id = 0;
+
 	/* ALWAYS last */
 	release_used_channel(f, ch);
 }
 
 int gk20a_channel_release(struct inode *inode, struct file *filp)
 {
-	struct nvhost_hwctx *hwctx = (struct nvhost_hwctx *)filp->private_data;
-	struct channel_gk20a *ch = hwctx->priv;
+	struct channel_gk20a *ch = (struct channel_gk20a *)filp->private_data;
 	struct gk20a *g = ch->g;
-	struct mem_mgr *memmgr = hwctx->memmgr;
+	struct mem_mgr *memmgr = gk20a_channel_mem_mgr(ch);
 
 	trace_nvhost_channel_release(dev_name(&g->dev->dev));
 
-	gk20a_free_hwctx(hwctx);
+	gk20a_channel_busy(ch->g->dev);
+	gk20a_free_channel(ch, true);
+	gk20a_channel_idle(ch->g->dev);
+
 	gk20a_put_client(g);
 	if (memmgr)
 		nvhost_memmgr_put_mgr(memmgr);
@@ -714,61 +721,63 @@ int gk20a_channel_release(struct inode *inode, struct file *filp)
 	return 0;
 }
 
-struct nvhost_hwctx *gk20a_open_channel(struct nvhost_channel *ch,
-					 struct nvhost_hwctx *ctx)
+static struct channel_gk20a *gk20a_open_new_channel(struct gk20a *g)
 {
-	struct gk20a *g = get_gk20a(ch->dev);
 	struct fifo_gk20a *f = &g->fifo;
-	struct channel_gk20a *ch_gk20a;
+	struct channel_gk20a *ch;
+	struct nvhost_device_data *pdata = nvhost_get_devdata(g->dev);
 
-	ch_gk20a = acquire_unused_channel(f);
-	if (ch_gk20a == NULL) {
+	ch = acquire_unused_channel(f);
+	if (ch == NULL) {
 		/* TBD: we want to make this virtualizable */
 		nvhost_err(dev_from_gk20a(g), "out of hw chids");
 		return 0;
 	}
 
-	ctx->priv = ch_gk20a;
-	ch_gk20a->g = g;
-	/* note the ch here is the same for *EVERY* gk20a channel */
-	ch_gk20a->ch = ch;
-	/* but thre's one hwctx per gk20a channel */
-	ch_gk20a->hwctx = ctx;
+	/* get a free syncpt id */
+	ch->syncpt_id = nvhost_get_syncpt_host_managed(pdata->pdev,
+						       ch->hw_chid);
+	if (!ch->syncpt_id) {
+		nvhost_err(dev_from_gk20a(g), "could not get free syncpt");
+		return 0;
+	}
 
-	if (channel_gk20a_alloc_inst(g, ch_gk20a)) {
-		ch_gk20a->in_use = false;
-		ctx->priv = 0;
+	ch->g = g;
+#ifdef CONFIG_TEGRA_GK20A
+	ch->ch = gk20a_get_platform(g->dev)->nvhost.channel;
+#endif
+
+	if (channel_gk20a_alloc_inst(g, ch)) {
+		ch->in_use = false;
 		nvhost_err(dev_from_gk20a(g),
 			   "failed to open gk20a channel, out of inst mem");
 
 		return 0;
 	}
-	channel_gk20a_bind(ch_gk20a);
-	ch_gk20a->pid = current->pid;
+	channel_gk20a_bind(ch);
+	ch->pid = current->pid;
 
 	/* reset timeout counter and update timestamp */
-	ch_gk20a->timeout_accumulated_ms = 0;
-	ch_gk20a->timeout_gpfifo_get = 0;
+	ch->timeout_accumulated_ms = 0;
+	ch->timeout_gpfifo_get = 0;
 	/* set gr host default timeout */
-	ch_gk20a->hwctx->timeout_ms_max = gk20a_get_gr_idle_timeout(g);
+	ch->timeout_ms_max = gk20a_get_gr_idle_timeout(g);
+	ch->timeout_debug_dump = true;
+	ch->has_timedout = false;
 
 	/* The channel is *not* runnable at this point. It still needs to have
 	 * an address space bound and allocate a gpfifo and grctx. */
 
-	init_waitqueue_head(&ch_gk20a->notifier_wq);
-	init_waitqueue_head(&ch_gk20a->semaphore_wq);
-	init_waitqueue_head(&ch_gk20a->submit_wq);
+	init_waitqueue_head(&ch->notifier_wq);
+	init_waitqueue_head(&ch->semaphore_wq);
+	init_waitqueue_head(&ch->submit_wq);
 
-	return ctx;
+	return ch;
 }
 
-int gk20a_channel_open(struct inode *inode, struct file *filp)
+static int __gk20a_channel_open(struct gk20a *g, struct file *filp)
 {
 	int err;
-	struct gk20a *g =
-		container_of(inode->i_cdev, struct gk20a, channel.cdev);
-	struct gk20a_platform *platform = gk20a_get_platform(g->dev);
-	struct nvhost_hwctx *hwctx = NULL;
 	struct channel_gk20a *ch;
 
 	trace_nvhost_channel_open(dev_name(&g->dev->dev));
@@ -786,20 +795,24 @@ int gk20a_channel_open(struct inode *inode, struct file *filp)
 		nvhost_err(dev_from_gk20a(g), "failed to power on, %d", err);
 		return err;
 	}
-#ifdef CONFIG_TEGRA_GK20A
-	hwctx = gk20a_alloc_hwctx(platform->nvhost.channel);
-#endif
+	ch = gk20a_open_new_channel(g);
 	gk20a_channel_idle(g->dev);
-	if (!hwctx) {
+	if (!ch) {
 		gk20a_put_client(g);
 		nvhost_err(dev_from_gk20a(g),
-			"failed to alloc hwctx");
+			"failed to get f");
 		return -ENOMEM;
 	}
-	ch = hwctx->priv;
 
-	filp->private_data = hwctx;
+	filp->private_data = ch;
 	return 0;
+}
+
+int gk20a_channel_open(struct inode *inode, struct file *filp)
+{
+	struct gk20a *g = container_of(inode->i_cdev,
+			struct gk20a, channel.cdev);
+	return __gk20a_channel_open(g, filp);
 }
 
 #if 0
@@ -1152,7 +1165,6 @@ static int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 				      struct nvhost_alloc_gpfifo_args *args)
 {
 	struct gk20a *g = c->g;
-	struct nvhost_device_data *pdata = nvhost_get_devdata(g->dev);
 	struct device *d = dev_from_gk20a(g);
 	struct vm_gk20a *ch_vm;
 	u32 gpfifo_size;
@@ -1181,7 +1193,7 @@ static int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 
 	c->last_submit_fence.valid        = false;
 	c->last_submit_fence.syncpt_value = 0;
-	c->last_submit_fence.syncpt_id    = c->hw_chid + pdata->syncpt_base;
+	c->last_submit_fence.syncpt_id    = c->syncpt_id;
 
 	c->ramfc.offset = 0;
 	c->ramfc.size = ram_in_ramfc_s() / 8;
@@ -1330,7 +1342,7 @@ bool gk20a_channel_update_and_check_timeout(struct channel_gk20a *ch,
 	ch->timeout_gpfifo_get = gpfifo_get;
 
 	return ch->g->timeouts_enabled &&
-		ch->timeout_accumulated_ms > ch->hwctx->timeout_ms_max;
+		ch->timeout_accumulated_ms > ch->timeout_ms_max;
 }
 
 
@@ -1348,7 +1360,7 @@ int gk20a_channel_submit_wfi_fence(struct gk20a *g,
 	u32 free_count;
 	int err;
 
-	if (c->hwctx->has_timedout)
+	if (c->has_timedout)
 		return -ETIMEDOUT;
 
 	cmd_size =  4 + wfi_cmd_size();
@@ -1552,7 +1564,6 @@ static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 				u32 flags)
 {
 	struct gk20a *g = c->g;
-	struct nvhost_device_data *pdata = nvhost_get_devdata(g->dev);
 	struct device *d = dev_from_gk20a(g);
 	struct nvhost_syncpt *sp = syncpt_from_gk20a(g);
 	u32 i, incr_id = ~0, wait_id = ~0, wait_value = 0;
@@ -1567,7 +1578,7 @@ static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	 * wait and one for syncpoint increment */
 	const int extra_entries = 2;
 
-	if (c->hwctx->has_timedout)
+	if (c->has_timedout)
 		return -ETIMEDOUT;
 
 	if ((flags & (NVHOST_SUBMIT_GPFIFO_FLAGS_FENCE_WAIT |
@@ -1589,7 +1600,7 @@ static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 					   num_entries,
 					   flags,
 					   fence->syncpt_id, fence->value,
-					   c->hw_chid + pdata->syncpt_base);
+					   c->syncpt_id);
 	check_gp_put(g, c);
 	update_gp_get(g, c);
 
@@ -1615,10 +1626,10 @@ static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 	if (gp_free_count(c) < num_entries + extra_entries) {
 		err = wait_event_interruptible(c->submit_wq,
 			get_gp_free_count(c) >= num_entries + extra_entries ||
-			c->hwctx->has_timedout);
+			c->has_timedout);
 	}
 
-	if (c->hwctx->has_timedout) {
+	if (c->has_timedout) {
 		err = -ETIMEDOUT;
 		goto clean_up;
 	}
@@ -1733,7 +1744,7 @@ static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 
 	if (incr_cmd) {
 		int j = 0;
-		incr_id = c->hw_chid + pdata->syncpt_base;
+		incr_id = c->syncpt_id;
 		fence->syncpt_id = incr_id;
 		fence->value     = nvhost_syncpt_incr_max(sp, incr_id, 1);
 
@@ -1856,7 +1867,6 @@ int gk20a_init_channel_support(struct gk20a *g, u32 chid)
 int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout)
 {
 	struct nvhost_syncpt *sp = syncpt_from_gk20a(ch->g);
-	struct nvhost_device_data *pdata = nvhost_get_devdata(ch->g->dev);
 	struct nvhost_fence fence;
 	int err = 0;
 
@@ -1864,12 +1874,12 @@ int gk20a_channel_finish(struct channel_gk20a *ch, unsigned long timeout)
 		return 0;
 
 	/* Do not wait for a timedout channel */
-	if (ch->hwctx && ch->hwctx->has_timedout)
+	if (ch->has_timedout)
 		return -ETIMEDOUT;
 
 	if (!(ch->last_submit_fence.valid && ch->last_submit_fence.wfi)) {
 		nvhost_dbg_fn("issuing wfi, incr to finish the channel");
-		fence.syncpt_id = ch->hw_chid + pdata->syncpt_base;
+		fence.syncpt_id = ch->syncpt_id;
 		err = gk20a_channel_submit_wfi_fence(ch->g, ch,
 						     sp, &fence);
 	}
@@ -1908,7 +1918,7 @@ static int gk20a_channel_wait_semaphore(struct channel_gk20a *ch,
 	long remain;
 
 	/* do not wait if channel has timed out */
-	if (ch->hwctx->has_timedout)
+	if (ch->has_timedout)
 		return -ETIMEDOUT;
 
 	handle_ref = nvhost_memmgr_get(memmgr, id, pdev);
@@ -1929,7 +1939,7 @@ static int gk20a_channel_wait_semaphore(struct channel_gk20a *ch,
 
 	remain = wait_event_interruptible_timeout(
 			ch->semaphore_wq,
-			*semaphore == payload || ch->hwctx->has_timedout,
+			*semaphore == payload || ch->has_timedout,
 			timeout);
 
 	if (remain == 0 && *semaphore != payload)
@@ -1960,7 +1970,7 @@ static int gk20a_channel_wait(struct channel_gk20a *ch,
 
 	nvhost_dbg_fn("");
 
-	if (ch->hwctx->has_timedout)
+	if (ch->has_timedout)
 		return -ETIMEDOUT;
 
 	if (args->timeout == NVHOST_NO_TIMEOUT)
@@ -1992,7 +2002,7 @@ static int gk20a_channel_wait(struct channel_gk20a *ch,
 		 * calling this ioctl */
 		remain = wait_event_interruptible_timeout(
 				ch->notifier_wq,
-				notif->status == 0 || ch->hwctx->has_timedout,
+				notif->status == 0 || ch->has_timedout,
 				timeout);
 
 		if (remain == 0 && notif->status != 0) {
@@ -2081,7 +2091,6 @@ int gk20a_channel_suspend(struct gk20a *g)
 	struct nvhost_fence fence;
 	struct nvhost_syncpt *sp = syncpt_from_gk20a(g);
 	struct device *d = dev_from_gk20a(g);
-	struct nvhost_device_data *pdata = nvhost_get_devdata(g->dev);
 	int err;
 
 	nvhost_dbg_fn("");
@@ -2090,7 +2099,7 @@ int gk20a_channel_suspend(struct gk20a *g)
 	for (chid = 0; chid < f->num_channels; chid++) {
 		struct channel_gk20a *c = &f->channel[chid];
 		if (c->in_use && c->obj_class != KEPLER_C) {
-			fence.syncpt_id = chid + pdata->syncpt_base;
+			fence.syncpt_id = c->syncpt_id;
 			err = gk20a_channel_submit_wfi_fence(g,
 					c, sp, &fence);
 			if (err) {
@@ -2176,18 +2185,17 @@ void gk20a_channel_semaphore_wakeup(struct gk20a *g)
 }
 
 static int gk20a_ioctl_channel_submit_gpfifo(
-	struct nvhost_hwctx *hwctx,
+	struct channel_gk20a *ch,
 	struct nvhost_submit_gpfifo_args *args)
 {
 	void *gpfifo;
 	u32 size;
 	int ret = 0, err;
 	void *completed_waiter = NULL;
-	struct channel_gk20a *ch = hwctx->priv;
 
 	nvhost_dbg_fn("");
 
-	if (hwctx->has_timedout || !ch)
+	if (ch->has_timedout)
 		return -ETIMEDOUT;
 
 	size = args->num_entries * sizeof(struct nvhost_gpfifo);
@@ -2237,8 +2245,8 @@ clean_up:
 long gk20a_channel_ioctl(struct file *filp,
 	unsigned int cmd, unsigned long arg)
 {
-	struct nvhost_hwctx *hwctx = filp->private_data;
-	struct platform_device *dev = hwctx->channel->dev;
+	struct channel_gk20a *ch = filp->private_data;
+	struct platform_device *dev = ch->g->dev;
 	u8 buf[NVHOST_IOCTL_CHANNEL_MAX_ARG_SIZE];
 	int err = 0;
 
@@ -2254,6 +2262,44 @@ long gk20a_channel_ioctl(struct file *filp,
 	}
 
 	switch (cmd) {
+	case NVHOST_IOCTL_CHANNEL_OPEN:
+	{
+		int fd;
+		struct file *file;
+		char *name;
+
+		err = get_unused_fd_flags(O_RDWR);
+		if (err < 0)
+			break;
+		fd = err;
+
+		name = kasprintf(GFP_KERNEL, "nvhost-%s-fd%d",
+				dev_name(&dev->dev), fd);
+		if (!name) {
+			err = -ENOMEM;
+			put_unused_fd(fd);
+			break;
+		}
+
+		file = anon_inode_getfile(name, filp->f_op, NULL, O_RDWR);
+		kfree(name);
+		if (IS_ERR(file)) {
+			err = PTR_ERR(file);
+			put_unused_fd(fd);
+			break;
+		}
+		fd_install(fd, file);
+
+		err = __gk20a_channel_open(ch->g, file);
+		if (err) {
+			put_unused_fd(fd);
+			fput(file);
+			break;
+		}
+
+		((struct nvhost_channel_open_args *)buf)->channel_fd = fd;
+		break;
+	}
 	case NVHOST_IOCTL_CHANNEL_SET_NVMAP_FD:
 	{
 		int fd = (int)((struct nvhost_set_nvmap_fd_args *)buf)->fd;
@@ -2263,66 +2309,88 @@ long gk20a_channel_ioctl(struct file *filp,
 			err = PTR_ERR(new_client);
 			break;
 		}
-		if (hwctx->memmgr)
-			nvhost_memmgr_put_mgr(hwctx->memmgr);
-		hwctx->memmgr = new_client;
+		if (ch->memmgr)
+			nvhost_memmgr_put_mgr(ch->memmgr);
+		ch->memmgr = new_client;
 		break;
 	}
 	case NVHOST_IOCTL_CHANNEL_ALLOC_OBJ_CTX:
 		gk20a_channel_busy(dev);
-		err = gk20a_alloc_obj_ctx(hwctx->priv,
+		err = gk20a_alloc_obj_ctx(ch,
 				(struct nvhost_alloc_obj_ctx_args *)buf);
 		gk20a_channel_idle(dev);
 		break;
 	case NVHOST_IOCTL_CHANNEL_FREE_OBJ_CTX:
 		gk20a_channel_busy(dev);
-		err = gk20a_free_obj_ctx(hwctx->priv,
+		err = gk20a_free_obj_ctx(ch,
 				(struct nvhost_free_obj_ctx_args *)buf);
 		gk20a_channel_idle(dev);
 		break;
 	case NVHOST_IOCTL_CHANNEL_ALLOC_GPFIFO:
 		gk20a_channel_busy(dev);
-		err = gk20a_alloc_channel_gpfifo(hwctx->priv,
+		err = gk20a_alloc_channel_gpfifo(ch,
 				(struct nvhost_alloc_gpfifo_args *)buf);
 		gk20a_channel_idle(dev);
 		break;
 	case NVHOST_IOCTL_CHANNEL_SUBMIT_GPFIFO:
-		err = gk20a_ioctl_channel_submit_gpfifo(hwctx,
+		err = gk20a_ioctl_channel_submit_gpfifo(ch,
 				(struct nvhost_submit_gpfifo_args *)buf);
 		break;
 	case NVHOST_IOCTL_CHANNEL_WAIT:
 		gk20a_channel_busy(dev);
-		err = gk20a_channel_wait(hwctx->priv,
+		err = gk20a_channel_wait(ch,
 				(struct nvhost_wait_args *)buf);
 		gk20a_channel_idle(dev);
 		break;
 	case NVHOST_IOCTL_CHANNEL_ZCULL_BIND:
 		gk20a_channel_busy(dev);
-		err = gk20a_channel_zcull_bind(hwctx->priv,
+		err = gk20a_channel_zcull_bind(ch,
 				(struct nvhost_zcull_bind_args *)buf);
 		gk20a_channel_idle(dev);
 		break;
 	case NVHOST_IOCTL_CHANNEL_SET_ERROR_NOTIFIER:
 		gk20a_channel_busy(dev);
-		err = gk20a_init_error_notifier(hwctx,
+		err = gk20a_init_error_notifier(ch,
 				(struct nvhost_set_error_notifier *)buf);
 		gk20a_channel_idle(dev);
 		break;
 #ifdef CONFIG_GK20A_CYCLE_STATS
 	case NVHOST_IOCTL_CHANNEL_CYCLE_STATS:
 		gk20a_channel_busy(dev);
-		err = gk20a_channel_cycle_stats(hwctx->priv,
+		err = gk20a_channel_cycle_stats(ch,
 				(struct nvhost_cycle_stats_args *)buf);
 		gk20a_channel_idle(dev);
 		break;
 #endif
+	case NVHOST_IOCTL_CHANNEL_SET_TIMEOUT:
+	{
+		u32 timeout =
+			(u32)((struct nvhost_set_timeout_args *)buf)->timeout;
+		nvhost_dbg(dbg_gpu_dbg, "setting timeout (%d ms) for chid %d",
+			   timeout, ch->hw_chid);
+		ch->timeout_ms_max = timeout;
+		break;
+	}
+	case NVHOST_IOCTL_CHANNEL_SET_TIMEOUT_EX:
+	{
+		u32 timeout =
+			(u32)((struct nvhost_set_timeout_args *)buf)->timeout;
+		bool timeout_debug_dump = !((u32)
+			((struct nvhost_set_timeout_ex_args *)buf)->flags &
+			(1 << NVHOST_TIMEOUT_FLAG_DISABLE_DUMP));
+		nvhost_dbg(dbg_gpu_dbg, "setting timeout (%d ms) for chid %d",
+			   timeout, ch->hw_chid);
+		ch->timeout_ms_max = timeout;
+		ch->timeout_debug_dump = timeout_debug_dump;
+		break;
+	}
 	case NVHOST_IOCTL_CHANNEL_GET_TIMEDOUT:
 		((struct nvhost_get_param_args *)buf)->value =
-			hwctx->has_timedout;
+			ch->has_timedout;
 		break;
 	case NVHOST_IOCTL_CHANNEL_SET_PRIORITY:
 		gk20a_channel_busy(dev);
-		gk20a_channel_set_priority(hwctx->priv,
+		gk20a_channel_set_priority(ch,
 			((struct nvhost_set_priority_args *)buf)->priority);
 		gk20a_channel_idle(dev);
 		break;

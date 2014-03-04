@@ -282,6 +282,27 @@ static int vic03_read_ucode(struct platform_device *dev, const char *fw_name)
 	return err;
 }
 
+static int vic03_wait_mem_scrubbing(struct platform_device *dev)
+{
+	int retries = VIC_IDLE_TIMEOUT_DEFAULT / VIC_IDLE_CHECK_PERIOD;
+	nvhost_dbg_fn("");
+
+	do {
+		u32 w = host1x_readl(dev, flcn_dmactl_r()) &
+			(flcn_dmactl_dmem_scrubbing_m() |
+			 flcn_dmactl_imem_scrubbing_m());
+
+		if (!w) {
+			nvhost_dbg_fn("done");
+			return 0;
+		}
+		udelay(VIC_IDLE_CHECK_PERIOD);
+	} while (--retries || !tegra_platform_is_silicon());
+
+	nvhost_err(&dev->dev, "Falcon mem scrubbing timeout");
+	return -ETIMEDOUT;
+}
+
 static int vic03_boot(struct platform_device *pdev)
 {
 	struct vic03 *v = get_vic03(pdev);
@@ -295,6 +316,10 @@ static int vic03_boot(struct platform_device *pdev)
 
 	if (v->is_booted)
 		return 0;
+
+	err = vic03_wait_mem_scrubbing(pdev);
+	if (err)
+		return err;
 
 	host1x_writel(pdev, flcn_dmactl_r(), 0);
 
@@ -426,11 +451,12 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 		struct nvhost_channel *ch)
 {
 	struct host1x_hwctx_handler *p = to_host1x_hwctx_handler(h);
+	struct nvhost_device_data *pdata = nvhost_get_devdata(ch->dev);
 
 	struct vic03 *v = get_vic03(ch->dev);
 	struct host1x_hwctx *ctx;
 	u32 *ptr;
-	u32 syncpt = nvhost_get_devdata(ch->dev)->syncpts[0];
+	u32 syncpt;
 	u32 nvhost_vic03_restore_size = 10; /* number of words written below */
 
 	nvhost_dbg_fn("");
@@ -438,6 +464,13 @@ static struct nvhost_hwctx *vic03_alloc_hwctx(struct nvhost_hwctx_handler *h,
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return NULL;
+
+	syncpt = pdata->syncpts[0];
+	if (!syncpt) {
+		syncpt = nvhost_get_syncpt_host_managed(ch->dev, 0);
+		pdata->syncpts[0] = syncpt;
+	}
+	h->syncpt = syncpt;
 
 	ctx->restore_size = nvhost_vic03_restore_size;
 
@@ -524,7 +557,7 @@ static void ctxvic03_restore_push(struct nvhost_hwctx *nctx,
 	nvhost_cdma_push(cdma,
 		nvhost_opcode_setclass(NV_GRAPHICS_VIC_CLASS_ID, 0, 0),
 		NVHOST_OPCODE_NOOP);
-	_nvhost_cdma_push_gather(cdma,
+	nvhost_cdma_push_gather(cdma,
 		ctx->cpuva,
 		ctx->iova,
 		0,
@@ -541,7 +574,6 @@ struct nvhost_hwctx_handler *nvhost_vic03_alloc_hwctx_handler(u32 syncpt,
 	if (!p)
 		return NULL;
 
-	p->h.syncpt = syncpt;
 	p->h.waitbase = waitbase;
 
 	p->h.alloc = vic03_alloc_hwctx;
