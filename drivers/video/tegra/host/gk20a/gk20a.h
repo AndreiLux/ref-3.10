@@ -33,6 +33,7 @@ struct sim_gk20a;
 #include <linux/tegra-soc.h>
 #include <linux/spinlock.h>
 #include <linux/nvhost_gpu_ioctl.h>
+#include "as_gk20a.h"
 #include "clk_gk20a.h"
 #include "fifo_gk20a.h"
 #include "gr_gk20a.h"
@@ -63,7 +64,7 @@ struct gpu_ops {
 		void (*access_smpc_reg)(struct gk20a *g, u32 quad, u32 offset);
 		void (*bundle_cb_defaults)(struct gk20a *g);
 		void (*cb_size_default)(struct gk20a *g);
-		void (*calc_global_ctx_buffer_size)(struct gk20a *g);
+		int (*calc_global_ctx_buffer_size)(struct gk20a *g);
 		void (*commit_global_attrib_cb)(struct gk20a *g,
 						struct channel_ctx_gk20a *ch_ctx,
 						u64 addr, bool patch);
@@ -135,6 +136,8 @@ struct gk20a {
 		struct device *node;
 	} channel;
 
+	struct gk20a_as as;
+
 	struct {
 		struct cdev cdev;
 		struct device *node;
@@ -203,8 +206,6 @@ struct gk20a_cyclestate_buffer_elem {
 	u64 data;
 };
 
-extern const struct nvhost_as_moduleops tegra_gk20a_as_ops;
-
 /* register accessors */
 static inline void gk20a_writel(struct gk20a *g, u32 r, u32 v)
 {
@@ -244,7 +245,10 @@ static inline struct mem_mgr *mem_mgr_from_g(struct gk20a* g)
 {
 	return nvhost_get_host(g->dev)->memmgr;
 }
-
+static inline struct gk20a *gk20a_from_as(struct gk20a_as *as)
+{
+	return container_of(as, struct gk20a, as);
+}
 static inline u32 u64_hi32(u64 n)
 {
 	return (u32)((n >> 32) & ~(u32)0);
@@ -297,9 +301,6 @@ void gk20a_create_sysfs(struct platform_device *dev);
 #ifdef CONFIG_DEBUG_FS
 int clk_gk20a_debugfs_init(struct platform_device *dev);
 #endif
-
-struct nvhost_hwctx *gk20a_alloc_hwctx(struct nvhost_channel *ch);
-void gk20a_free_hwctx(struct nvhost_hwctx *ctx);
 
 #define GK20A_BAR0_IORESOURCE_MEM 0
 #define GK20A_BAR1_IORESOURCE_MEM 1

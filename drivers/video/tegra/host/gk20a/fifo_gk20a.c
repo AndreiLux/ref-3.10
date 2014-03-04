@@ -24,7 +24,7 @@
 #include <trace/events/nvhost.h>
 
 #include "../dev.h"
-#include "../nvhost_as.h"
+#include "nvhost_memmgr.h"
 
 #include "gk20a.h"
 #include "hw_fifo_gk20a.h"
@@ -416,9 +416,11 @@ int gk20a_init_fifo_reset_enable_hw(struct gk20a *g)
 			fifo_fb_timeout_period_max_f());
 	gk20a_writel(g, fifo_fb_timeout_r(), timeout);
 
-	timeout = gk20a_readl(g, fifo_pb_timeout_r());
-	timeout &= ~fifo_pb_timeout_detection_enabled_f();
-	gk20a_writel(g, fifo_pb_timeout_r(), timeout);
+	if (tegra_platform_is_silicon()) {
+		timeout = gk20a_readl(g, fifo_pb_timeout_r());
+		timeout &= ~fifo_pb_timeout_detection_enabled_f();
+		gk20a_writel(g, fifo_pb_timeout_r(), timeout);
+	}
 
 	timeout = GRFIFO_TIMEOUT_CHECK_PERIOD_US |
 			fifo_eng_timeout_detection_enabled_f();
@@ -913,29 +915,29 @@ void fifo_gk20a_finish_mmu_fault_handling(struct gk20a *g,
 static bool gk20a_fifo_set_ctx_mmu_error(struct gk20a *g,
 		struct channel_gk20a *ch) {
 	bool verbose = true;
-	if (!ch || !ch->hwctx)
+	if (!ch)
 		return verbose;
 
 	nvhost_err(dev_from_gk20a(g),
-		"channel %d with hwctx generated a mmu fault",
+		"channel %d generated a mmu fault",
 		ch->hw_chid);
-	if (ch->hwctx->error_notifier) {
-		u32 err = ch->hwctx->error_notifier->info32;
-		if (ch->hwctx->error_notifier->status == 0xffff) {
+	if (ch->error_notifier) {
+		u32 err = ch->error_notifier->info32;
+		if (ch->error_notifier->status == 0xffff) {
 			/* If error code is already set, this mmu fault
 			 * was triggered as part of recovery from other
 			 * error condition.
 			 * Don't overwrite error flag. */
 			/* Fifo timeout debug spew is controlled by user */
 			if (err == NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT)
-				verbose = ch->hwctx->timeout_debug_dump;
+				verbose = ch->timeout_debug_dump;
 		} else {
-			gk20a_set_error_notifier(ch->hwctx,
+			gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_FIFO_ERROR_MMU_ERR_FLT);
 		}
 	}
 	/* mark channel as faulted */
-	ch->hwctx->has_timedout = true;
+	ch->has_timedout = true;
 	wmb();
 	/* unblock pending waits */
 	wake_up(&ch->semaphore_wq);
@@ -1150,7 +1152,7 @@ void gk20a_fifo_recover(struct gk20a *g, u32 __engine_ids,
 
 		usleep_range(delay, delay * 2);
 		delay = min_t(u32, delay << 1, GR_IDLE_CHECK_MAX);
-	} while (time_before(jiffies, end_jiffies) |
+	} while (time_before(jiffies, end_jiffies) ||
 			!tegra_platform_is_silicon());
 
 	if (ret)
@@ -1210,7 +1212,6 @@ static bool gk20a_fifo_handle_sched_error(struct gk20a *g)
 			fifo_intr_sched_error_code_ctxsw_timeout_v()) {
 		struct fifo_gk20a *f = &g->fifo;
 		struct channel_gk20a *ch = &f->channel[id];
-		struct nvhost_hwctx *hwctx = ch->hwctx;
 
 		if (non_chid) {
 			gk20a_fifo_recover(g, BIT(engine_id), true);
@@ -1219,13 +1220,13 @@ static bool gk20a_fifo_handle_sched_error(struct gk20a *g)
 
 		if (gk20a_channel_update_and_check_timeout(ch,
 			GRFIFO_TIMEOUT_CHECK_PERIOD_US / 1000)) {
-			gk20a_set_error_notifier(hwctx,
+			gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT);
 			nvhost_err(dev_from_gk20a(g),
 				"fifo sched ctxsw timeout error:"
 				"engine = %u, ch = %d", engine_id, id);
 			gk20a_fifo_recover(g, BIT(engine_id),
-				hwctx ? hwctx->timeout_debug_dump : true);
+				ch->timeout_debug_dump);
 		} else {
 			nvhost_warn(dev_from_gk20a(g),
 				"fifo is waiting for ctx switch for %d ms,"
@@ -1233,7 +1234,7 @@ static bool gk20a_fifo_handle_sched_error(struct gk20a *g)
 				ch->timeout_accumulated_ms,
 				id);
 		}
-		return hwctx->timeout_debug_dump;
+		return ch->timeout_debug_dump;
 	}
 err:
 	nvhost_err(dev_from_gk20a(g), "fifo sched error : 0x%08x, engine=%u, %s=%d",
@@ -1480,7 +1481,7 @@ int gk20a_fifo_preempt_channel(struct gk20a *g, u32 hw_chid)
 
 		usleep_range(delay, delay * 2);
 		delay = min_t(u32, delay << 1, GR_IDLE_CHECK_MAX);
-	} while (time_before(jiffies, end_jiffies) |
+	} while (time_before(jiffies, end_jiffies) ||
 			!tegra_platform_is_silicon());
 
 	if (ret) {
@@ -1509,7 +1510,7 @@ int gk20a_fifo_preempt_channel(struct gk20a *g, u32 hw_chid)
 			if (type_ch && busy && id == hw_chid)
 				engines |= BIT(i);
 		}
-		gk20a_set_error_notifier(ch->hwctx,
+		gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT);
 		gk20a_fifo_recover(g, engines, true);
 	}

@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host 3d hardware context
  *
- * Copyright (c) 2011-2013 NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2011-2014 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -172,7 +172,7 @@ static void save_push_v1(struct nvhost_hwctx *nctx, struct nvhost_cdma *cdma)
 		nvhost_opcode_nonincr(AR3D_DW_MEMORY_OUTPUT_ADDRESS, 1),
 		ctx->iova);
 	/* gather the save buffer */
-	_nvhost_cdma_push_gather(cdma,
+	nvhost_cdma_push_gather(cdma,
 			p->cpuva,
 			p->iova,
 			0,
@@ -421,7 +421,6 @@ struct nvhost_hwctx_handler *nvhost_gr3d_t114_ctxhandler_init(
 	if (!p)
 		return NULL;
 
-	p->h.syncpt = syncpt;
 	p->h.waitbase = waitbase;
 
 	setup_save(p, NULL);

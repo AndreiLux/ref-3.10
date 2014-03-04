@@ -1,7 +1,7 @@
 /*
  * bq2471x-charger.c -- BQ24715 Charger driver
  *
- * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * Author: Andy Park <andyp@nvidia.com>
  * Author: Syed Rafiuddin <srafiuddin@nvidia.com>
@@ -239,7 +239,7 @@ static void bq2471x_work_thread(struct kthread_work *work)
 			return;
 		}
 		ret = bq2471x_update_bits(bq2471x, BQ2471X_CHARGE_OPTION,
-					BQ2471X_WATCHDOG_TIMER, 0x3);
+					BQ2471X_WATCHDOG_TIMER, 0x6000);
 		if (ret < 0) {
 			dev_err(bq2471x->dev,
 				"CHARGE_OPTION write failed %d\n", ret);
@@ -352,13 +352,6 @@ static int bq2471x_probe(struct i2c_client *client,
 	gpio_set_value(pdata->gpio, 1);
 
 	msleep(20);
-
-	bq2471x = devm_kzalloc(&client->dev, sizeof(*bq2471x), GFP_KERNEL);
-	if (!bq2471x) {
-		dev_err(&client->dev, "Memory allocation failed\n");
-		ret = -ENOMEM;
-		goto gpio_err;
-	}
 
 	bq2471x->dac_ichg = pdata->dac_ichg;
 	bq2471x->dac_v = pdata->dac_v;

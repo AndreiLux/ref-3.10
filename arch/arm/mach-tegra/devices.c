@@ -2095,7 +2095,7 @@ void tegra_fb_linear_set(struct iommu_linear_map *map)
 #endif
 }
 
-#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+#ifdef CONFIG_CMA
 void carveout_linear_set(struct device *cma_dev)
 {
 	struct dma_contiguous_stats stats;
@@ -2203,7 +2203,6 @@ struct swgid_fixup tegra_swgid_fixup_t124[] = {
 	{ .name = "mpe",	.swgids = SWGID(MPE), },
 	{ .name = "tegra-aes",	.swgids = SWGID(VDE), },
 	{ .name = "nvavp",	.swgids = SWGID(AVPC) | SWGID(A9AVP), },
-	{ .name = "sdhci-tegra.0",	.swgids = SWGID(SDMMC1A), },
 	{ .name = "sdhci-tegra.1",	.swgids = SWGID(SDMMC2A), },
 	/*
 	 * FIX ME: Make sdhci-tegra.2 IOMMUable once Bug 1374895 is fixed
@@ -2520,19 +2519,6 @@ struct platform_device tegra_wdt0_device = {
 };
 
 #endif
-
-static struct resource tegra_pwfm_resource = {
-	.start	= TEGRA_PWFM_BASE,
-	.end	= TEGRA_PWFM_BASE + TEGRA_PWFM_SIZE - 1,
-	.flags	= IORESOURCE_MEM,
-};
-
-struct platform_device tegra_pwfm_device = {
-	.name		= "tegra-pwm",
-	.id		= -1,
-	.num_resources	= 1,
-	.resource	= &tegra_pwfm_resource,
-};
 
 static struct tegra_avp_platform_data tegra_avp_pdata = {
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
@@ -2956,3 +2942,30 @@ void __init tegra_init_debug_uart_rate(void)
 	debug_uarte_platform_data[0].uartclk = uartclk;
 #endif
 }
+
+#if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)
+static struct resource tegra_hier_ictlr_resource[] = {
+	[0] = {
+		.start	= TEGRA_HIER2_ICTLR1_BASE,
+		.end	= TEGRA_HIER2_ICTLR1_BASE + TEGRA_HIER2_ICTLR1_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	[1] = {
+		.start	= TEGRA_MSELECT_BASE,
+		.end	= TEGRA_MSELECT_BASE + TEGRA_MSELECT_SIZE - 1,
+		.flags	= IORESOURCE_MEM,
+	},
+	[2] = {
+		.start	= INT_HIER_GROUP1_CPU,
+		.end	= INT_HIER_GROUP1_CPU,
+		.flags	= IORESOURCE_IRQ,
+	},
+};
+
+struct platform_device tegra_hier_ictlr_device = {
+	.name		= "tegra-hier-ictlr",
+	.id		= -1,
+	.resource	= tegra_hier_ictlr_resource,
+	.num_resources	= ARRAY_SIZE(tegra_hier_ictlr_resource),
+};
+#endif

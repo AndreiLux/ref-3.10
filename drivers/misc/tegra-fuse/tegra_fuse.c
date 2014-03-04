@@ -26,6 +26,7 @@
 #include <linux/init.h>
 #include <linux/string.h>
 #include <linux/module.h>
+#include <linux/of_device.h>
 #include <linux/moduleparam.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
@@ -327,6 +328,8 @@ static struct chip_revision tegra_chip_revisions[] = {
 	CHIP_REVISION(TEGRA3,  1, 3, 0,   A03),
 	CHIP_REVISION(TEGRA11, 1, 1, 0,   A01),
 	CHIP_REVISION(TEGRA11, 1, 2, 0,   A02),
+	CHIP_REVISION(TEGRA13, 1, 1, 0,   A01),
+	CHIP_REVISION(TEGRA13, 1, 2, 0,   A02),
 	CHIP_REVISION(TEGRA14, 1, 1, 0,   A01),
 	CHIP_REVISION(TEGRA14, 1, 2, 0,   A02),
 };
@@ -953,7 +956,7 @@ int tegra_fuse_program(struct fuse_data *pgm_data, u32 flags)
 	}
 
 #ifndef CONFIG_TEGRA_PRE_SILICON_SUPPORT
-	if (IS_ERR_OR_NULL(fuse_regulator)) {
+	if (IS_ERR(fuse_regulator)) {
 		pr_err("fuse regulator is NULL");
 		return -ENODEV;
 	}
@@ -1200,11 +1203,18 @@ ssize_t tegra_fuse_show(struct device *dev, struct device_attribute *attr,
 	return strlen(buf);
 }
 
+static struct of_device_id tegra_fuse_of_match[] = {
+	{ .compatible = "nvidia, tegra114-efuse", },
+	{ .compatible = "nvidia, tegra124-efuse", },
+	{}
+};
+MODULE_DEVICE_TABLE(of, tegra_fuse_of_match);
+
 static int tegra_fuse_probe(struct platform_device *pdev)
 {
 #ifndef CONFIG_TEGRA_PRE_SILICON_SUPPORT
 	/* get fuse_regulator regulator */
-	fuse_regulator = regulator_get(&pdev->dev, TEGRA_FUSE_SUPPLY);
+	fuse_regulator = devm_regulator_get(&pdev->dev, TEGRA_FUSE_SUPPLY);
 	if (IS_ERR(fuse_regulator))
 		pr_err("%s: no fuse_regulator. fuse write disabled\n",
 				__func__);
@@ -1213,12 +1223,6 @@ static int tegra_fuse_probe(struct platform_device *pdev)
 	clk_fuse = clk_get_sys("fuse-tegra", "fuse_burn");
 	if (IS_ERR(clk_fuse)) {
 		pr_err("%s: no clk_fuse. fuse read/write disabled\n", __func__);
-#ifndef CONFIG_TEGRA_PRE_SILICON_SUPPORT
-		if (!IS_ERR_OR_NULL(fuse_regulator)) {
-			regulator_put(fuse_regulator);
-			fuse_regulator = NULL;
-		}
-#endif
 		return -ENODEV;
 	}
 
@@ -1255,6 +1259,9 @@ static int tegra_fuse_probe(struct platform_device *pdev)
 	CHK_ERR(sysfs_create_file(&pdev->dev.kobj,
 					&dev_attr_odm_reserved.attr));
 	tegra_fuse_add_sysfs_variables(pdev, fuse_odm_prod_mode());
+
+	dev_info(&pdev->dev,
+			"Fuse driver initialized succesfully\n");
 	return 0;
 }
 
@@ -1262,10 +1269,6 @@ static int tegra_fuse_remove(struct platform_device *pdev)
 {
 	fuse_power_disable();
 
-#ifndef CONFIG_TEGRA_PRE_SILICON_SUPPORT
-	if (!IS_ERR_OR_NULL(fuse_regulator))
-		regulator_put(fuse_regulator);
-#endif
 	if (!IS_ERR_OR_NULL(clk_fuse))
 		clk_put(clk_fuse);
 
@@ -1283,24 +1286,13 @@ static int tegra_fuse_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static int tegra_fuse_suspend(struct platform_device *pdev, pm_message_t state)
-{
-	return 0;
-}
-
-static int tegra_fuse_resume(struct platform_device *pdev)
-{
-	return 0;
-}
-
 static struct platform_driver fuse_driver = {
 	.probe = tegra_fuse_probe,
 	.remove = tegra_fuse_remove,
-	.suspend = tegra_fuse_suspend,
-	.resume = tegra_fuse_resume,
 	.driver = {
 			.name = "tegra-fuse",
 			.owner = THIS_MODULE,
+			.of_match_table = tegra_fuse_of_match,
 		},
 };
 

@@ -1,15 +1,15 @@
 /dts-v1/;
 
 #include "tegra132.dtsi"
-#include "tegra124-platforms/tegra124-e1780-keys.dtsi"
-#include "tegra124-platforms/tegra124-tn8-e1936-pmic.dtsi"
-#include "tegra124-platforms/tegra124-tn8-e1936-fixed.dtsi"
-#include "tegra124-platforms/tegra124-e1780-gpio-default.dtsi"
-#include "tegra124-platforms/tegra124-e1780-pinmux.dtsi"
+#include "tegra124-platforms/tegra124-tn8-keys-e1780-1100-a02.dtsi"
+#include "tegra124-platforms/tegra124-tn8-pmic-e1936-1000-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-fixed-e1936-1000-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-gpio-e1780-1100-a02.dtsi"
+#include "tegra124-platforms/tegra124-tn8-pinmux-e1780-1100-a02.dtsi"
 
 / {
 	model = "bowmore";
-	compatible = "nvidia,tn8", "nvidia,tegra132";
+	compatible = "nvidia,bowmore", "nvidia,tegra132";
 	#address-cells = <1>;
 	#size-cells = <1>;
 
@@ -38,9 +38,10 @@
 		status = "okay";
 		clock-frequency = <100000>;
 
-		cm32181@48 {
-			compatible = "capella,cm32181";
-			reg = <0x48>;
+		max44006@44 {
+			compatible = "maxim,max44006";
+			reg = <0x44>;
+			vcc-supply = <&palmas_smps8>;
 		};
 	};
 

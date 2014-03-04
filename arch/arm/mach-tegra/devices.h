@@ -1,5 +1,6 @@
 /*
- * Copyright (C) 2010,2011 Google, Inc.
+ * Copyright (C) 2010,2014 Google, Inc.
+ * Copyright (C) 2014, NVIDIA Corporation. All rights reserved.
  *
  * Author:
  *	Colin Cross <ccross@android.com>
@@ -131,7 +132,6 @@ extern struct platform_device tegra_wdt_device;
 #else
 extern struct platform_device tegra_wdt0_device;
 #endif
-extern struct platform_device tegra_pwfm_device;
 extern struct platform_device tegra_otg_device;
 extern struct platform_device tegra_uarta_device;
 extern struct platform_device tegra_uartb_device;
@@ -194,6 +194,10 @@ extern struct platform_device tegra12_i2c_device3;
 extern struct platform_device tegra12_i2c_device4;
 extern struct platform_device tegra12_i2c_device5;
 extern struct platform_device tegra12_i2c_device6;
+#endif
+
+#if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)
+extern struct platform_device tegra_hier_ictlr_device;
 #endif
 
 void __init tegra_init_debug_uart_rate(void);

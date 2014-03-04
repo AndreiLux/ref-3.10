@@ -29,6 +29,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/pm_runtime.h>
 #include <linux/thermal.h>
 #include <asm/cacheflush.h>
 #include <linux/debugfs.h>
@@ -43,7 +44,7 @@
 #include "dev.h"
 #include "class_ids.h"
 #include "bus_client.h"
-#include "nvhost_as.h"
+#include "nvhost_acm.h"
 
 #include "gk20a.h"
 #include "ctrl_gk20a.h"
@@ -66,7 +67,7 @@
 /* TODO: Change to e.g. "nvidia-gpu%s" once we have symlinks in place. */
 #define INTERFACE_NAME "nvhost%s-gpu"
 
-#define GK20A_NUM_CDEVS 4
+#define GK20A_NUM_CDEVS 5
 
 static inline void set_gk20a(struct platform_device *dev, struct gk20a *gk20a)
 {
@@ -102,6 +103,16 @@ static const struct file_operations gk20a_dbg_ops = {
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = gk20a_dbg_gpu_dev_ioctl,
 #endif
+};
+
+static const struct file_operations gk20a_as_ops = {
+	.owner = THIS_MODULE,
+	.release = gk20a_as_dev_release,
+	.open = gk20a_as_dev_open,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl = gk20a_as_dev_ioctl,
+#endif
+	.unlocked_ioctl = gk20a_as_dev_ioctl,
 };
 
 /*
@@ -666,7 +677,7 @@ static int gk20a_init_support(struct platform_device *dev)
 	mutex_init(&g->dbg_sessions_lock);
 	mutex_init(&g->client_lock);
 
-	/* nvhost_as alloc_share can be called before gk20a is powered on.
+	/* gk20a_as alloc_share can be called before gk20a is powered on.
 	   It requires mm sw states configured so init mm sw early here. */
 	err = gk20a_init_mm_setup_sw(g);
 	if (err)
@@ -724,40 +735,6 @@ void gk20a_put_client(struct gk20a *g)
 	g->client_refcount--;
 	mutex_unlock(&g->client_lock);
 	WARN_ON(g->client_refcount < 0);
-}
-
-void gk20a_free_hwctx(struct nvhost_hwctx *ctx)
-{
-	nvhost_dbg_fn("");
-
-	gk20a_busy(ctx->channel->dev);
-
-	if (ctx->priv)
-		gk20a_free_channel(ctx, true);
-
-	gk20a_idle(ctx->channel->dev);
-
-	kfree(ctx);
-}
-
-struct nvhost_hwctx *gk20a_alloc_hwctx(struct nvhost_channel *ch)
-{
-	struct nvhost_hwctx *ctx;
-	nvhost_dbg_fn("");
-
-	/* it seems odd to be allocating a channel here but the
-	 * t20/t30 notion of a channel is mapped on top of gk20a's
-	 * channel.  this works because there is only one module
-	 * under gk20a's host (gr).
-	 */
-	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
-	if (!ctx)
-		return NULL;
-
-	kref_init(&ctx->ref);
-	ctx->channel = ch;
-
-	return gk20a_open_channel(ch, ctx);
 }
 
 int nvhost_gk20a_prepare_poweroff(struct platform_device *dev)
@@ -894,6 +871,19 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 		goto done;
 	}
 
+	/* enable pri timeout only on silicon */
+	if (tegra_platform_is_silicon()) {
+		gk20a_writel(g,
+			timer_pri_timeout_r(),
+			timer_pri_timeout_period_f(0x186A0) |
+			timer_pri_timeout_en_en_enabled_f());
+	} else {
+		gk20a_writel(g,
+			timer_pri_timeout_r(),
+			timer_pri_timeout_period_f(0x186A0) |
+			timer_pri_timeout_en_en_disabled_f());
+	}
+
 	err = gk20a_init_fifo_reset_enable_hw(g);
 	if (err) {
 		nvhost_err(&dev->dev, "failed to reset gk20a fifo");
@@ -924,6 +914,12 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 		goto done;
 	}
 
+	err = gk20a_init_pmu_setup_hw2(g);
+	if (err) {
+		nvhost_err(&dev->dev, "failed to init gk20a pmu_hw2");
+		goto done;
+	}
+
 	err = gk20a_init_therm_support(g);
 	if (err) {
 		nvhost_err(&dev->dev, "failed to init gk20a therm");
@@ -938,9 +934,6 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 
 	gk20a_channel_resume(g);
 	set_user_nice(current, nice_value);
-
-	if (support_gk20a_pmu())
-		schedule_work(&(g->pmu.pg_init));
 
 done:
 	return err;
@@ -1050,6 +1043,11 @@ static void gk20a_user_deinit(struct platform_device *dev)
 		cdev_del(&g->channel.cdev);
 	}
 
+	if (g->as.node) {
+		device_destroy(g->class, g->as.cdev.dev);
+		cdev_del(&g->as.cdev);
+	}
+
 	if (g->ctrl.node) {
 		device_destroy(g->class, g->ctrl.cdev.dev);
 		cdev_del(&g->ctrl.cdev);
@@ -1100,6 +1098,12 @@ static int gk20a_user_init(struct platform_device *dev)
 	if (err)
 		goto fail;
 
+	err = gk20a_create_device(dev, devno++, "-as",
+				  &g->as.cdev, &g->as.node,
+				  &gk20a_as_ops);
+	if (err)
+		goto fail;
+
 	err = gk20a_create_device(dev, devno++, "-ctrl",
 				  &g->ctrl.cdev, &g->ctrl.node,
 				  &gk20a_ctrl_ops);
@@ -1124,9 +1128,9 @@ fail:
 	return err;
 }
 
-struct nvhost_hwctx *gk20a_get_hwctx_from_file(int fd)
+struct channel_gk20a *gk20a_get_channel_from_file(int fd)
 {
-	struct nvhost_hwctx *ch;
+	struct channel_gk20a *ch;
 	struct file *f = fget(fd);
 	if (!f)
 		return 0;
@@ -1136,7 +1140,7 @@ struct nvhost_hwctx *gk20a_get_hwctx_from_file(int fd)
 		return 0;
 	}
 
-	ch = (struct nvhost_hwctx *)f->private_data;
+	ch = (struct channel_gk20a *)f->private_data;
 	fput(f);
 	return ch;
 }
@@ -1190,13 +1194,6 @@ static int gk20a_probe(struct platform_device *dev)
 	err = platform->probe(dev);
 	if (err) {
 		dev_err(&dev->dev, "platform probe failed");
-		return err;
-	}
-
-	err = nvhost_as_init_device(dev);
-	if (err) {
-		nvhost_dbg_fn("failed to init client address space"
-			      " device for %s", dev->name);
 		return err;
 	}
 
@@ -1411,6 +1408,9 @@ int gk20a_init_gpu_characteristics(struct gk20a *g)
 	gpu->num_tpc_per_gpc = g->gr.max_tpc_per_gpc_count;
 
 	gpu->bus_type = NVHOST_GPU_BUS_TYPE_AXI; /* always AXI for now */
+
+	gpu->big_page_size = g->mm.big_page_size;
+	gpu->compression_page_size = g->mm.compression_page_size;
 
 	return 0;
 }

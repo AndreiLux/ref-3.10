@@ -165,7 +165,7 @@ void tegra_fb_linear_set(struct iommu_linear_map *map);
 static inline void tegra_fb_linear_set(struct iommu_linear_map *map) {}
 #endif
 
-#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+#ifdef CONFIG_CMA
 void carveout_linear_set(struct device *cma_dev);
 #else
 static inline void carveout_linear_set(struct device *cma_dev) {}
@@ -230,6 +230,7 @@ enum touch_panel {
 	TOUCHPANEL_LOKI_WINTEK_5_66_UNLAMIN,
 	TOUCHPANEL_TN7,
 	TOUCHPANEL_TN8,
+	TOUCHPANEL_LOKI_JDI5,
 };
 
 enum audio_codec_type {

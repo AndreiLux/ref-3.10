@@ -215,6 +215,7 @@ struct tegra_cl_dvfs {
 	u8				minimax_output;
 	u8				thermal_out_caps[MAX_THERMAL_LIMITS];
 	u8				thermal_out_floors[MAX_THERMAL_LIMITS];
+	int				thermal_mv_floors[MAX_THERMAL_LIMITS];
 	int				therm_caps_num;
 	int				therm_floors_num;
 	unsigned long			dvco_rate_floors[MAX_THERMAL_LIMITS+1];
@@ -703,6 +704,9 @@ static void set_output_limits(struct tegra_cl_dvfs *cld, u8 out_min, u8 out_max)
 			write_seqcount_end(vmin_seqcnt);
 		if (vmax_seqcnt)
 			write_seqcount_end(vmax_seqcnt);
+
+		pr_debug("cl_dvfs limits_mV [%d : %d]\n",
+			 cld->v_limits.vmin, cld->v_limits.vmax);
 	}
 }
 
@@ -733,6 +737,7 @@ static void set_cl_config(struct tegra_cl_dvfs *cld, struct dfll_rate_req *req)
 {
 	u32 out_max, out_min;
 	u32 out_cap = get_output_cap(cld, req);
+	struct dvfs_rail *rail = cld->safe_dvfs->dvfs_rail;
 
 	switch (cld->tune_state) {
 	case TEGRA_CL_DVFS_TUNE_LOW:
@@ -755,6 +760,22 @@ static void set_cl_config(struct tegra_cl_dvfs *cld, struct dfll_rate_req *req)
 		BUG();
 	}
 
+	/*
+	 * Criteria to select new request and output boundaries. Listed in
+	 * the order of priorities to resolve conflicts (if any).
+	 *
+	 * 1) out_min is at/above minimum voltage level for current temperature
+	 *    and tuning ranges
+	 * 2) out_max is at/above PMIC guard-band forced minimum
+	 * 3) new request has at least on step room for regulation: request +/-1
+	 *    within [out_min, out_max] interval
+	 * 4) - if no other rail depends on DFLL rail, out_max is at/above
+	 *    minimax level to provide better convergence accuracy for rates
+	 *    close to tuning range boundaries
+	 *    - if some other rail depends on DFLL rail, out_max should match
+	 *    voltage from safe dvfs table used by s/w DVFS on other rails to
+	 *    resolve dependencies
+	 */
 	out_min = get_output_min(cld);
 	if (out_cap > (out_min + 1))
 		req->output = out_cap - 1;
@@ -762,7 +783,11 @@ static void set_cl_config(struct tegra_cl_dvfs *cld, struct dfll_rate_req *req)
 		req->output = out_min + 1;
 	if (req->output == cld->safe_output)
 		req->output++;
-	out_max = max((u8)(req->output + 1), cld->minimax_output);
+
+	if (list_empty(&rail->relationships_to))
+		out_max = max((u8)(req->output + 1), cld->minimax_output);
+	else
+		out_max = req->output + 1;
 	out_max = max((u8)(out_max), cld->force_out_min);
 
 	set_output_limits(cld, out_min, out_max);
@@ -1032,6 +1057,10 @@ static void cl_dvfs_set_force_out_min(struct tegra_cl_dvfs *cld)
 		return;
 	}
 
+	WARN_ONCE(!list_empty(&cld->safe_dvfs->dvfs_rail->relationships_to),
+		  "%s: PMIC undershoot must fit DFLL rail dependency-to slack",
+		  __func__);
+
 	force_out_min = get_output_min(cld);
 	force_mv_min += get_mv(cld, force_out_min);
 	force_out_min = find_mv_out_cap(cld, force_mv_min);
@@ -1169,6 +1198,7 @@ static void cl_dvfs_convert_cold_output_floor(struct tegra_cl_dvfs *cld,
 					      int offset)
 {
 	int i;
+	struct dvfs_rail *rail = cld->safe_dvfs->dvfs_rail;
 
 	/*
 	 * Convert monotonically decreasing thermal floors at low temperature
@@ -1176,13 +1206,17 @@ static void cl_dvfs_convert_cold_output_floor(struct tegra_cl_dvfs *cld,
 	 * above maximum thermal floor. The latter is also exempt from offset
 	 * application.
 	 */
-	cld->therm_floors_num = cld->safe_dvfs->dvfs_rail->therm_mv_floors_num;
+	cld->therm_floors_num = rail->therm_mv_floors_num;
 	for (i = 0; i < cld->therm_floors_num; i++) {
-		int mv = cld->safe_dvfs->dvfs_rail->therm_mv_floors[i] +
-			(i ? offset : 0);
-		cld->thermal_out_floors[i] = find_mv_out_cap(cld, mv);
+		int mv = rail->therm_mv_floors[i] + (i ? offset : 0);
+		u8 out = cld->thermal_out_floors[i] = find_mv_out_cap(cld, mv);
+		cld->thermal_mv_floors[i] = get_mv(cld, out);
 	}
 	BUG_ON(cld->thermal_out_floors[0] + 1 >= get_output_top(cld));
+	if (!rail->therm_mv_dfll_floors) {
+		wmb();
+		rail->therm_mv_dfll_floors = cld->thermal_mv_floors;
+	}
 }
 
 static void cl_dvfs_init_cold_output_floor(struct tegra_cl_dvfs *cld)
@@ -2228,6 +2262,8 @@ static int __init tegra_cl_dvfs_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "missing register base\n");
 		return -ENOMEM;
 	}
+	dev_dbg(&pdev->dev, "DFLL MMIO [0x%lx ... 0x%lx]\n",
+		(unsigned long)res->start, (unsigned long)res->end);
 
 	if (pdev->num_resources > 1) {
 		res_i2c = platform_get_resource(pdev, IORESOURCE_MEM, 1);
@@ -2235,6 +2271,9 @@ static int __init tegra_cl_dvfs_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "missing i2c register base\n");
 			return -ENOMEM;
 		}
+		dev_dbg(&pdev->dev, "DFLL I2C MMIO [0x%lx ... 0x%lx]\n",
+			(unsigned long)res_i2c->start,
+			(unsigned long)res_i2c->end);
 	}
 
 	p_data = pdev->dev.platform_data;
@@ -2374,6 +2413,7 @@ err_out:
 static struct of_device_id tegra_cl_dvfs_of_match[] = {
 	{ .compatible = "nvidia,tegra114-dfll", },
 	{ .compatible = "nvidia,tegra124-dfll", },
+	{ .compatible = "nvidia,tegra132-dfll", },
 	{ .compatible = "nvidia,tegra148-dfll", },
 	{ },
 };

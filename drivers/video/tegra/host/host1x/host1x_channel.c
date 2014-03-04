@@ -262,7 +262,7 @@ static void submit_gathers(struct nvhost_job *job)
 		op2 = job->gathers[i].mem_base + g->offset;
 
 		cpuva = dma_buf_vmap(g->buf);
-		_nvhost_cdma_push_gather(&job->ch->cdma,
+		nvhost_cdma_push_gather(&job->ch->cdma,
 				cpuva,
 				job->gathers[i].mem_base,
 				g->offset,
@@ -482,7 +482,7 @@ static inline int hwctx_handler_init(struct nvhost_channel *ch)
 	int err = 0;
 
 	struct nvhost_device_data *pdata = platform_get_drvdata(ch->dev);
-	u32 syncpt = pdata->syncpts[0];
+	u32 syncpt = NVSYNCPT_INVALID;
 	u32 waitbase = pdata->waitbases[0];
 
 	if (pdata->alloc_hwctx_handler) {

@@ -929,6 +929,7 @@ struct pmu_gk20a {
 	u32 mutex_cnt;
 
 	struct mutex pmu_copy_lock;
+	struct mutex pmu_seq_lock;
 
 	struct nvhost_allocator dmem;
 
@@ -995,7 +996,7 @@ int gk20a_pmu_cmd_post(struct gk20a *g, struct pmu_cmd *cmd, struct pmu_msg *msg
 int gk20a_pmu_enable_elpg(struct gk20a *g);
 int gk20a_pmu_disable_elpg(struct gk20a *g);
 
-void pmu_save_zbc(struct gk20a *g, u32 entries);
+void gk20a_pmu_save_zbc(struct gk20a *g, u32 entries);
 
 int gk20a_pmu_perfmon_enable(struct gk20a *g, bool enable);
 

@@ -279,7 +279,7 @@ struct gk20a_ctxsw_ucode_segment {
 	u32 size;
 };
 
-struct gk20a_ctxsw_ucode_inst {
+struct gk20a_ctxsw_ucode_segments {
 	u32 boot_entry;
 	u32 boot_imem_offset;
 	struct gk20a_ctxsw_ucode_segment boot;
@@ -292,15 +292,15 @@ struct gk20a_ctxsw_ucode_info {
 	struct inst_desc inst_blk_desc;
 	struct surface_mem_desc surface_desc;
 	u64 ucode_gpuva;
-	struct gk20a_ctxsw_ucode_inst fecs;
-	struct gk20a_ctxsw_ucode_inst gpcs;
+	struct gk20a_ctxsw_ucode_segments fecs;
+	struct gk20a_ctxsw_ucode_segments gpccs;
 };
 
 struct gk20a_ctxsw_bootloader_desc {
-	u32 bootloader_start_offset;
-	u32 bootloader_size;
-	u32 bootloader_imem_offset;
-	u32 bootloader_entry_point;
+	u32 start_offset;
+	u32 size;
+	u32 imem_offset;
+	u32 entry_point;
 };
 
 struct gpu_ops;
@@ -352,11 +352,15 @@ bool gk20a_gr_sm_debugger_attached(struct gk20a *g);
 #define gr_gk20a_elpg_protected_call(g, func) \
 	({ \
 		int err; \
-		mutex_lock(&g->pmu.pg_init_mutex); \
-		gk20a_pmu_disable_elpg(g); \
+		if (support_gk20a_pmu()) { \
+			mutex_lock(&g->pmu.pg_init_mutex); \
+			gk20a_pmu_disable_elpg(g); \
+		} \
 		err = func; \
-		gk20a_pmu_enable_elpg(g); \
-		mutex_unlock(&g->pmu.pg_init_mutex); \
+		if (support_gk20a_pmu()) { \
+			gk20a_pmu_enable_elpg(g); \
+			mutex_unlock(&g->pmu.pg_init_mutex); \
+		} \
 		err; \
 	})
 

@@ -1,22 +1,22 @@
 /dts-v1/;
 
-#include "tegra124.dtsi"
-#include "tegra124-platforms/tegra124-tn8-io.dtsi"
+#include "tegra124-tn8.dtsi"
 #include "tegra124-platforms/tegra124-tn8-dfll.dtsi"
-#include "tegra124-platforms/tegra124-e1922-emc.dtsi"
-#include "tegra124-platforms/tegra124-e1780-powermon.dtsi"
-#include "tegra124-platforms/tegra124-tn8-e1936-pmic.dtsi"
-#include "tegra124-platforms/tegra124-tn8-e1936-fixed.dtsi"
-#include "tegra124-platforms/tegra124-tn8-sensors.dtsi"
-#include "tegra124-platforms/tegra124-p1761-pinmux.dtsi"
-#include "tegra124-platforms/tegra124-p1761-gpio-default.dtsi"
-#include "tegra124-platforms/tegra124-e1780-keys.dtsi"
+#include "tegra124-platforms/tegra124-tn8-emc-e1922-1100-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-powermon-e1780-1100-a02.dtsi"
+#include "tegra124-platforms/tegra124-tn8-pmic-e1936-1000-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-fixed-e1936-1000-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-sensor-p1761-1470-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-sensors-iqs253-stylus-detect.dtsi"
+#include "tegra124-platforms/tegra124-tn8-pinmux-p1761-1470-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-gpio-p1761-1470-a00.dtsi"
+#include "tegra124-platforms/tegra124-tn8-keys-e1780-1100-a02.dtsi"
 
 / {
 	model = "NVIDIA Tegra124 TN8 ERS POP";
 	compatible = "nvidia,tn8", "nvidia,tegra124";
 	nvidia,dtsfilename = __FILE__;
-	nvidia,boardids = "1922:1000:0:C:3";
+	nvidia,boardids = "1922:1100:0";
 	#address-cells = <1>;
 	#size-cells = <1>;
 
@@ -29,19 +29,6 @@
 	i2c@7000c400 {
 		pca9546@71 {
 			vcc-supply = <&palmas_smps9>;
-		};
-	};
-
-	i2c@7000d000 {
-		palmas: tps65913 {
-			pmic {
-				regulators {
-					palmas_smps6: smps6 {
-						regulator-min-microvolt = <1200000>;
-						regulator-max-microvolt = <1200000>;
-					};
-				};
-			};
 		};
 	};
 

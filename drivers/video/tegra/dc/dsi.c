@@ -728,7 +728,7 @@ static void tegra_dsi_init_sw(struct tegra_dc *dc,
 					dsi->target_hs_clk_khz);
 
 #if DSI_USE_SYNC_POINTS
-	dsi->syncpt_id = NVSYNCPT_DSI;
+	dsi->syncpt_id = nvhost_get_syncpt_client_managed("dsi");
 #endif
 
 	/*
@@ -2155,6 +2155,13 @@ static void tegra_dsi_mipi_calibration_12x(struct tegra_dc_dsi_data *dsi)
 	val |= PAD_DRIV_UP_REF(0x3);
 	tegra_mipi_cal_write(dsi->mipi_cal, val,
 			MIPI_CAL_MIPI_BIAS_PAD_CFG1_0);
+	/*Bug 1445912: override tap delay for panel-a-1200-800-8-0 */
+	if (dsi->info.boardinfo.platform_boardid == BOARD_P1761 &&
+		dsi->info.boardinfo.display_boardversion == 0) {
+		val = (DSI_PAD_OUTADJ3(0x3) | DSI_PAD_OUTADJ2(0x3) |
+		   DSI_PAD_OUTADJ1(0x3) | DSI_PAD_OUTADJ0(0x3));
+		tegra_dsi_writel(dsi, val, DSI_PAD_CONTROL_1_VS1);
+	}
 
 	val = (DSI_PAD_SLEWUPADJ(0x7) | DSI_PAD_SLEWDNADJ(0x7) |
 		DSI_PAD_LPUPADJ(0x1) | DSI_PAD_LPDNADJ(0x1) |
@@ -2162,7 +2169,7 @@ static void tegra_dsi_mipi_calibration_12x(struct tegra_dc_dsi_data *dsi)
 	tegra_dsi_writel(dsi, val, DSI_PAD_CONTROL_2_VS1);
 
 	val = tegra_dsi_readl(dsi, DSI_PAD_CONTROL_3_VS1);
-	val |= (DSI_PAD_PREEMP_PU_CLK(0x3) |
+	val |= (DSI_PAD_PREEMP_PD_CLK(0x3) | DSI_PAD_PREEMP_PU_CLK(0x3) |
 		   DSI_PAD_PREEMP_PD(0x3) | DSI_PAD_PREEMP_PU(0x3));
 	tegra_dsi_writel(dsi, val, DSI_PAD_CONTROL_3_VS1);
 
