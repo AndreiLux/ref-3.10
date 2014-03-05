@@ -59,8 +59,24 @@ struct cooling_device_gk20a {
 struct gpu_ops {
 	struct {
 		int (*determine_L2_size_bytes)(struct gk20a *gk20a);
+		void (*set_max_ways_evict_last)(struct gk20a *g, u32 max_ways);
+		int (*init_comptags)(struct gk20a *g, struct gr_gk20a *gr);
+		int (*clear_comptags)(struct gk20a *g, u32 min, u32 max);
+		void (*set_zbc_color_entry)(struct gk20a *g,
+					    struct zbc_entry *color_val,
+					    u32 index);
+		void (*set_zbc_depth_entry)(struct gk20a *g,
+					    struct zbc_entry *depth_val,
+					    u32 index);
+		void (*clear_zbc_color_entry)(struct gk20a *g, u32 index);
+		void (*clear_zbc_depth_entry)(struct gk20a *g, u32 index);
+		int  (*init_zbc)(struct gk20a *g, struct gr_gk20a *gr);
+		void (*init_cbc)(struct gk20a *g, struct gr_gk20a *gr);
+		void (*sync_debugfs)(struct gk20a *g);
+		void (*elpg_flush)(struct gk20a *g);
 	} ltc;
 	struct {
+		int (*init_fs_state)(struct gk20a *g);
 		void (*access_smpc_reg)(struct gk20a *g, u32 quad, u32 offset);
 		void (*bundle_cb_defaults)(struct gk20a *g);
 		void (*cb_size_default)(struct gk20a *g);
@@ -68,7 +84,34 @@ struct gpu_ops {
 		void (*commit_global_attrib_cb)(struct gk20a *g,
 						struct channel_ctx_gk20a *ch_ctx,
 						u64 addr, bool patch);
+		void (*commit_global_bundle_cb)(struct gk20a *g,
+						struct channel_ctx_gk20a *ch_ctx,
+						u64 addr, u64 size, bool patch);
+		int (*commit_global_cb_manager)(struct gk20a *g,
+						struct channel_gk20a *ch,
+						bool patch);
+		void (*commit_global_pagepool)(struct gk20a *g,
+					       struct channel_ctx_gk20a *ch_ctx,
+					       u64 addr, u32 size, bool patch);
 		void (*init_gpc_mmu)(struct gk20a *g);
+		int (*handle_sw_method)(struct gk20a *g, u32 addr,
+					 u32 class_num, u32 offset, u32 data);
+		void (*set_alpha_circular_buffer_size)(struct gk20a *g,
+					               u32 data);
+		void (*set_circular_buffer_size)(struct gk20a *g, u32 data);
+		void (*enable_hww_exceptions)(struct gk20a *g);
+		bool (*is_valid_class)(struct gk20a *g, u32 class_num);
+		void (*get_sm_dsm_perf_regs)(struct gk20a *g,
+						  u32 *num_sm_dsm_perf_regs,
+						  u32 **sm_dsm_perf_regs,
+						  u32 *perf_register_stride);
+		void (*get_sm_dsm_perf_ctrl_regs)(struct gk20a *g,
+						  u32 *num_sm_dsm_perf_regs,
+						  u32 **sm_dsm_perf_regs,
+						  u32 *perf_register_stride);
+		void (*set_hww_esr_report_mask)(struct gk20a *g);
+		int (*setup_alpha_beta_tables)(struct gk20a *g,
+					      struct gr_gk20a *gr);
 	} gr;
 	const char *name;
 };
@@ -240,10 +283,6 @@ static inline struct device *dev_from_gk20a(struct gk20a *g)
 static inline struct nvhost_syncpt *syncpt_from_gk20a(struct gk20a* g)
 {
 	return &(nvhost_get_host(g->dev)->syncpt);
-}
-static inline struct mem_mgr *mem_mgr_from_g(struct gk20a* g)
-{
-	return nvhost_get_host(g->dev)->memmgr;
 }
 static inline struct gk20a *gk20a_from_as(struct gk20a_as *as)
 {

@@ -22,6 +22,7 @@
 #define __MM_GK20A_H__
 
 #include <linux/scatterlist.h>
+#include <linux/dma-attrs.h>
 #include <linux/iommu.h>
 #include <asm/dma-iommu.h>
 #include "../nvhost_allocator.h"
@@ -41,7 +42,7 @@
 #define NV_GMMU_VA_IS_UPPER(x)	((x) >= ((u64)0x1 << (NV_GMMU_VA_RANGE-1)))
 
 struct mem_desc {
-	struct mem_handle *ref;
+	struct dma_buf *ref;
 	struct sg_table *sgt;
 	u32 size;
 };
@@ -135,6 +136,17 @@ struct pm_ctx_desc {
 	u32 ctx_sw_mode;
 };
 
+struct gr_ctx_buffer_desc;
+struct gr_ctx_buffer_desc {
+	void (*destroy)(struct platform_device *, struct gr_ctx_buffer_desc *);
+	struct sg_table *sgt;
+	struct page **pages;
+	size_t size;
+	u64 iova;
+	struct dma_attrs attrs;
+	void *priv;
+};
+
 struct gr_ctx_desc {
 	struct page **pages;
 	u64 iova;
@@ -158,6 +170,14 @@ struct page_table_gk20a {
 	size_t size;
 };
 
+#ifndef _NVHOST_MEM_MGR_H
+enum gk20a_mem_rw_flag {
+	gk20a_mem_flag_none = 0,
+	gk20a_mem_flag_read_only = 1,
+	gk20a_mem_flag_write_only = 2,
+};
+#endif
+
 enum gmmu_pgsz_gk20a {
 	gmmu_page_size_small = 0,
 	gmmu_page_size_big   = 1,
@@ -176,6 +196,28 @@ struct page_directory_gk20a {
 	struct page_table_gk20a *ptes[gmmu_nr_page_sizes];
 };
 
+struct priv_cmd_queue {
+	struct priv_cmd_queue_mem_desc mem;
+	u64 base_gpuva;	/* gpu_va base */
+	u16 size;	/* num of entries in words */
+	u16 put;	/* put for priv cmd queue */
+	u16 get;	/* get for priv cmd queue */
+	struct list_head free;	/* list of pre-allocated free entries */
+	struct list_head head;	/* list of used entries */
+};
+
+struct priv_cmd_entry {
+	u32 *ptr;
+	u64 gva;
+	u16 get;	/* start of entry in queue */
+	u16 size;	/* in words */
+	u32 gp_get;	/* gp_get when submitting last priv cmd */
+	u32 gp_put;	/* gp_put when submitting last priv cmd */
+	u32 gp_wrap;	/* wrap when submitting last priv cmd */
+	bool pre_alloc;	/* prealloc entry, free to free list */
+	struct list_head list;	/* node for lists */
+};
+
 struct mapped_buffer_node {
 	struct vm_gk20a *vm;
 	struct rb_node node;
@@ -184,8 +226,7 @@ struct mapped_buffer_node {
 	struct vm_reserved_va_node *va_node;
 	u64 addr;
 	u64 size;
-	struct mem_mgr *memmgr;
-	struct mem_handle *handle_ref;
+	struct dma_buf *dmabuf;
 	struct sg_table *sgt;
 	struct kref ref;
 	u32 user_mapped;
@@ -295,11 +336,8 @@ int gk20a_mm_init(struct mm_gk20a *mm);
 #define gk20a_from_mm(mm) ((mm)->g)
 #define gk20a_from_vm(vm) ((vm)->mm->g)
 
-#define mem_mgr_from_mm(mm) (gk20a_from_mm(mm)->host->memmgr)
-#define mem_mgr_from_vm(vm) (gk20a_from_vm(vm)->host->memmgr)
 #define dev_from_vm(vm) dev_from_gk20a(vm->mm->g)
 
-#define DEFAULT_ALLOC_FLAGS (mem_mgr_flag_uncacheable)
 #define DEFAULT_ALLOC_ALIGNMENT (4*1024)
 
 static inline int bar1_aperture_size_mb_gk20a(void)
@@ -366,15 +404,18 @@ void gk20a_gmmu_unmap(struct vm_gk20a *vm,
 		u64 size,
 		int rw_flag);
 
+struct sg_table *gk20a_mm_pin(struct device *dev, struct dma_buf *dmabuf);
+void gk20a_mm_unpin(struct device *dev, struct dma_buf *dmabuf,
+		    struct sg_table *sgt);
+
 u64 gk20a_vm_map(struct vm_gk20a *vm,
-		 struct mem_mgr *memmgr,
-		 struct mem_handle *r,
-		 u64 offset_align,
-		 u32 flags /*NVHOST_MAP_BUFFER_FLAGS_*/,
-		 int kind,
-		 struct sg_table **sgt,
-		 bool user_mapped,
-		 int rw_flag);
+		struct dma_buf *dmabuf,
+		u64 offset_align,
+		u32 flags /*NVHOST_AS_MAP_BUFFER_FLAGS_*/,
+		int kind,
+		struct sg_table **sgt,
+		bool user_mapped,
+		int rw_flag);
 
 /* unmap handle from kernel */
 void gk20a_vm_unmap(struct vm_gk20a *vm, u64 offset);
@@ -394,7 +435,7 @@ void gk20a_mm_tlb_invalidate(struct vm_gk20a *vm);
 
 /* find buffer corresponding to va */
 int gk20a_vm_find_buffer(struct vm_gk20a *vm, u64 gpu_va,
-			 struct mem_mgr **memmgr, struct mem_handle **r,
+			 struct dma_buf **dmabuf,
 			 u64 *offset);
 
 void gk20a_vm_get(struct vm_gk20a *vm);
@@ -412,10 +453,9 @@ int gk20a_vm_free_space(struct gk20a_as_share *as_share,
 int gk20a_vm_bind_channel(struct gk20a_as_share *as_share,
 			  struct channel_gk20a *ch);
 int gk20a_vm_map_buffer(struct gk20a_as_share *as_share,
-			int memmgr_fd,
-			ulong mem_id,
+			int dmabuf_fd,
 			u64 *offset_align,
-			u32 flags /*NVHOST_AS_MAP_BUFFER_FLAGS_*/,
+			u32 flags, /*NVHOST_AS_MAP_BUFFER_FLAGS_*/
 			int kind);
 int gk20a_vm_unmap_buffer(struct gk20a_as_share *, u64 offset);
 

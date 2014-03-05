@@ -1081,7 +1081,7 @@ static int tegra12_super_clk_enable(struct clk *c)
 
 static void tegra12_super_clk_disable(struct clk *c)
 {
-	/* since tegra 3 has 2 CPU super clocks - low power lp-mode clock and
+	/* since tegra12 has 2 CPU super clocks - low power lp-mode clock and
 	   geared up g-mode super clock - mode switch may request to disable
 	   either of them; accept request with no affect on h/w */
 }
@@ -1152,6 +1152,7 @@ static int tegra12_super_clk_set_rate(struct clk *c, unsigned long rate)
 }
 
 #ifdef CONFIG_PM_SLEEP
+#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 static void tegra12_super_clk_resume(struct clk *c, struct clk *backup,
 				     u32 setting)
 {
@@ -1193,6 +1194,7 @@ static void tegra12_super_clk_resume(struct clk *c, struct clk *backup,
 	BUG();
 }
 #endif
+#endif
 
 static struct clk_ops tegra_super_ops = {
 	.init			= tegra12_super_clk_init,
@@ -1203,7 +1205,7 @@ static struct clk_ops tegra_super_ops = {
 };
 
 #ifdef CONFIG_ARCH_TEGRA_13x_SOC
-static void tegra13_cpu_clk_init(struct clk *c)
+static void tegra13_super_cclk_init(struct clk *c)
 {
 	u32 val;
 	int source;
@@ -1239,19 +1241,18 @@ static void tegra13_cpu_clk_init(struct clk *c)
 		clk13_writel(0, c->reg + SUPER_CLK_DIVIDER);
 }
 
-static int tegra13_cpu_clk_enable(struct clk *c)
+static int tegra13_super_cclk_enable(struct clk *c)
 {
 	return 0;
 }
 
-static void tegra13_cpu_clk_disable(struct clk *c)
+static void tegra13_super_cclk_disable(struct clk *c)
 {
-	/* since tegra 3 has 2 CPU super clocks - low power lp-mode clock and
-	   geared up g-mode super clock - mode switch may request to disable
-	   either of them; accept request with no affect on h/w */
+	/* since tegra13 has 1 CPU super clocks that is never disabled
+	   by clock framework accept request with no affect on h/w */
 }
 
-static int tegra13_cpu_clk_set_parent(struct clk *c, struct clk *p)
+static int tegra13_super_cclk_set_parent(struct clk *c, struct clk *p)
 {
 	u32 val;
 	const struct clk_mux_sel *sel;
@@ -1265,9 +1266,9 @@ static int tegra13_cpu_clk_set_parent(struct clk *c, struct clk *p)
 			val |= (sel->value & CLK13_SOURCE_MASK) << shift;
 
 			if (c->flags & DIV_U71) {
-				/* Make sure 7.1 divider is 1:1 */
+				/* Make sure 7.1 divider is 1:1
 				u32 div = clk13_readl(c->reg + SUPER_CLK_DIVIDER);
-				/* BUG_ON(div & SUPER_CLOCK_DIV_U71_MASK); */
+				BUG_ON(div & SUPER_CLOCK_DIV_U71_MASK); */
 			}
 
 			if (c->refcnt)
@@ -1292,9 +1293,9 @@ static int tegra13_cpu_clk_set_parent(struct clk *c, struct clk *p)
  * other children, otherwise the rate will change underneath the other
  * children.
  */
-static int tegra13_cpu_clk_set_rate(struct clk *c, unsigned long rate)
+static int tegra13_super_cclk_set_rate(struct clk *c, unsigned long rate)
 {
-	/* In tegra12_cpu_clk_set_plls() and  tegra12_sbus_cmplx_set_rate()
+	/* In tegra12_cpu_clk_set_plls() op (shared with tegra13 as well)
 	 * this call is skipped by directly setting rate of source plls. If we
 	 * ever use 7.1 divider at other than 1:1 setting, or exercise s/w
 	 * skipper control, not only this function, but cpu and sbus set_rate
@@ -1303,25 +1304,12 @@ static int tegra13_cpu_clk_set_rate(struct clk *c, unsigned long rate)
 	return clk_set_rate(c->parent, rate);
 }
 
-#ifdef CONFIG_PM_SLEEP
-static void tegra13_cpu_clk_resume(struct clk *c, struct clk *backup,
-				u32 setting)
-{
-	/* For sclk and cclk_g super clock just restore saved value */
-	if (!(c->flags & DIV_2)) {
-		clk13_writel_delay(setting, c->reg);
-		return;
-	}
-	BUG();
-}
-#endif
-
-static struct clk_ops tegra13_cpu_ops = {
-	.init			= tegra13_cpu_clk_init,
-	.enable			= tegra13_cpu_clk_enable,
-	.disable		= tegra13_cpu_clk_disable,
-	.set_parent		= tegra13_cpu_clk_set_parent,
-	.set_rate		= tegra13_cpu_clk_set_rate,
+static struct clk_ops tegra13_super_cclk_ops = {
+	.init			= tegra13_super_cclk_init,
+	.enable			= tegra13_super_cclk_enable,
+	.disable		= tegra13_super_cclk_disable,
+	.set_parent		= tegra13_super_cclk_set_parent,
+	.set_rate		= tegra13_super_cclk_set_rate,
 };
 #endif
 
@@ -1344,9 +1332,13 @@ static int tegra12_cpu_clk_enable(struct clk *c)
 
 static void tegra12_cpu_clk_disable(struct clk *c)
 {
-	/* since tegra 3 has 2 virtual CPU clocks - low power lp-mode clock
-	   and geared up g-mode clock - mode switch may request to disable
-	   either of them; accept request with no affect on h/w */
+	/*
+	 * tegra12 has 2 virtual CPU clocks - low power lp-mode clock
+	 * and geared up g-mode clock - mode switch may request to disable
+	 * either of them; tegra13 that shares CPU ops with tegra12 has
+	 * only one virtual CPU that is never disabled; in any case accept
+	 * request with no affect on h/w/
+	 */
 }
 
 static int tegra12_cpu_clk_set_plls(struct clk *c, unsigned long rate,
@@ -4332,7 +4324,7 @@ static void __init tegra12_dfll_cpu_late_init(struct clk *c)
 #endif
 }
 
-static void tegra12_dfll_clk_init(struct clk *c)
+static void __init tegra12_dfll_clk_init(struct clk *c)
 {
 	c->ops->init = tegra12_dfll_cpu_late_init;
 }
@@ -7430,8 +7422,7 @@ static struct clk tegra_clk_cclk_g = {
 	.flags  = DIV_U71 | DIV_U71_INT | MUX,
 	.inputs	= mux_cclk_g,
 	.reg	= 0x20,
-	/*.ops	= &tegra_super_ops,*/
-	.ops	= &tegra13_cpu_ops,
+	.ops	= &tegra13_super_cclk_ops,
 	.max_rate = 3000000000UL,
 };
 
@@ -8965,8 +8956,10 @@ static bool tegra12_is_dyn_ramp(
 
 static void tegra12_pllp_init_dependencies(unsigned long pllp_rate)
 {
+#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	u32 div;
 	unsigned long backup_rate;
+#endif
 
 	switch (pllp_rate) {
 	case 216000000:

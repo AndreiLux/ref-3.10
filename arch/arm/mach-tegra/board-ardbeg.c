@@ -169,7 +169,7 @@ static __initdata struct tegra_clk_init_table ardbeg_clk_init_table[] = {
 	{ "pll_m",	NULL,		0,		false},
 	{ "hda",	"pll_p",	108000000,	false},
 	{ "hda2codec_2x", "pll_p",	48000000,	false},
-	{ "pwm",	"pll_p",	3187500,	false},
+	{ "pwm",	"pll_p",	48000000,	false},
 	{ "i2s1",	"pll_a_out0",	0,		false},
 	{ "i2s3",	"pll_a_out0",	0,		false},
 	{ "i2s4",	"pll_a_out0",	0,		false},
@@ -655,6 +655,9 @@ static void ardbeg_usb_init(void)
 			tegra_udc_pdata.u_data.dev.qc2_current_limit_ma = 3000;
 		}
 
+		if (board_info.board_id == BOARD_P1761)
+			tegra_udc_pdata.u_data.dev.dcp_current_limit_ma = 2000;
+
 		switch (bi.board_id) {
 		case BOARD_E1733:
 			/* Host cable is detected through PMU Interrupt */
@@ -907,6 +910,8 @@ static struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
 				NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-dfll", 0x70110000, "tegra_cl_dvfs",
+		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra132-dfll", 0x70040084, "tegra_cl_dvfs",
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-efuse", TEGRA_FUSE_BASE, "tegra-fuse",
 		NULL),
@@ -1246,21 +1251,7 @@ static void __init tegra_ardbeg_late_init(void)
 	isomgr_init();
 	ardbeg_touch_init();
 	ardbeg_panel_init();
-	switch (board_info.board_id) {
-	case BOARD_PM358:
-		laguna_pm358_pmon_init();
-		break;
-	case BOARD_PM359:
-		; /* powermon is not present in Laguna ERS-S */
-		break;
-	case BOARD_E1784:
-	case BOARD_P1761:
-		tn8_p1761_pmon_init();
-		break;
-	default:
-		ardbeg_pmon_init();
-		break;
-	}
+
 	/* put PEX pads into DPD mode to save additional power */
 	tegra_io_dpd_enable(&pexbias_io);
 	tegra_io_dpd_enable(&pexclk1_io);

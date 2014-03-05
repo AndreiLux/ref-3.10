@@ -85,3 +85,4 @@ obj-y		+= tegra-fuse/
 obj-$(CONFIG_DENVER_CPU)	+= force_idle_t132.o
 obj-$(CONFIG_SLIMPORT_ANX7808)	+= slimport_anx7808/
 obj-$(CONFIG_SLIMPORT_ANX7816)  += slimport_anx7816/
+obj-$(CONFIG_ARCH_TEGRA)        +=tegra_timerinfo.o

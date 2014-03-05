@@ -7,8 +7,8 @@
 / {
 	model = "norrin";
 	compatible = "nvidia,norrin", "nvidia,tegra132";
-	#address-cells = <1>;
-	#size-cells = <1>;
+	#address-cells = <2>;
+	#size-cells = <2>;
 
 	chosen {
 		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
@@ -69,7 +69,7 @@
 
 	memory@0x80000000 {
 		device_type = "memory";
-		reg = <0x80000000 0x80000000>;
+		reg = <0x0 0x80000000 0x0 0x80000000>;
 	};
 
 	spi@7000d400 {
@@ -97,6 +97,31 @@
 		nvidia,core-pwr-off-time = <2000>;
 		nvidia,core-power-req-active-high;
 		nvidia,sys-clock-req-active-high;
+	};
+
+	dfll@70040084 {
+		board-params = <&{/cpu_dfll_board_params}>;
+		i2c-pmic-integration = <&{/cpu_dfll_pmic_integration}>;
+		monitor-data-new-workaround;
+		status = "okay";
+	};
+
+	cpu_dfll_board_params {
+		sample-rate = <12500>;
+		fixed-output-forcing;
+		cf = <10>;
+		ci = <0>;
+		cg = <2>;
+		droop-cut-value = <0xf>;
+		droop-restore-ramp = <0x0>;
+		scale-out-ramp = <0x0>;
+	};
+
+	cpu_dfll_pmic_integration {
+		pmic-i2c-address = <0x80>;
+		pmic-i2c-voltage-register = <0x00>;
+		i2c-fs-rate = <400000>;
+		sel-conversion-slope = <1>;
 	};
 
     xusb@70090000 {
