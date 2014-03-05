@@ -41,6 +41,7 @@
 #include <media/imx219.h>
 #include <media/ov9760.h>
 #include <media/drv201.h>
+#include <media/tps61310.h>
 
 #include <linux/platform_device.h>
 #include <media/soc_camera.h>
@@ -805,6 +806,16 @@ static struct ad5823_platform_data flounder_ad5823_pdata = {
 	.power_off	= flounder_ad5823_power_off,
 };
 
+static struct nvc_torch_pin_state flounder_tps61310_pinstate = {
+	.mask		= 1 << (CAM_FLASH_STROBE - TEGRA_GPIO_PBB0), /* VGP4 */
+	.values		= 1 << (CAM_FLASH_STROBE - TEGRA_GPIO_PBB0),
+};
+
+static struct tps61310_platform_data flounder_tps61310_pdata = {
+	.dev_name	= "torch",
+	.pinstate	= &flounder_tps61310_pinstate,
+};
+
 static struct i2c_board_info	flounder_i2c_board_info_imx219 = {
 	I2C_BOARD_INFO("imx219", 0x10),
 	.platform_data = &flounder_imx219_pdata,
@@ -818,6 +829,11 @@ static struct i2c_board_info	flounder_i2c_board_info_ov9760 = {
 static struct i2c_board_info	flounder_i2c_board_info_drv201 = {
 	I2C_BOARD_INFO("drv201", 0x0e),
 	.platform_data = &flounder_drv201_pdata,
+};
+
+static struct i2c_board_info	flounder_i2c_board_info_tps61310 = {
+	I2C_BOARD_INFO("tps61310", 0x33),
+	.platform_data = &flounder_tps61310_pdata,
 };
 
 static struct i2c_board_info	flounder_i2c_board_info_imx135 = {
@@ -865,6 +881,7 @@ static struct camera_module flounder_camera_module_info[] = {
 		/* rear camera */
 		.sensor = &flounder_i2c_board_info_imx219,
 		.focuser = &flounder_i2c_board_info_drv201,
+		.flash = &flounder_i2c_board_info_tps61310
 	},
 		{
 		/* front camera */
@@ -893,6 +910,7 @@ static int flounder_camera_init(void)
 	tegra_io_dpd_enable(&csie_io);
 	tegra_gpio_disable(TEGRA_GPIO_PBB0);
 	tegra_gpio_disable(TEGRA_GPIO_PCC0);
+	tegra_gpio_disable(TEGRA_GPIO_PBB4);
 
 	platform_device_add_data(&flounder_camera_generic,
 		&flounder_pcl_pdata, sizeof(flounder_pcl_pdata));
@@ -901,7 +919,6 @@ static int flounder_camera_init(void)
 #if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
 	platform_device_register(&flounder_soc_camera_device);
 #endif
-
 	return 0;
 }
 

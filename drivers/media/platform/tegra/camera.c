@@ -666,6 +666,7 @@ static int camera_add_drivers(struct camera_info *cam, unsigned long arg)
 			if (cm->flash && strlen(cm->flash->type)) {
 				dev_dbg(cam->dev, "installing %s\n",
 					cm->flash->type);
+				adap = i2c_get_adapter(0);
 				client = i2c_new_device(adap, cm->flash);
 				if (!client) {
 					dev_err(cam->dev,
