@@ -3,7 +3,7 @@
  *
  * Tegra Graphics Host VI
  *
- * Copyright (c) 2012-2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2012-2014, NVIDIA CORPORATION. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -37,8 +37,10 @@
 #include "t148/t148.h"
 #include "t124/t124.h"
 #include "vi.h"
+#include "vi_irq.h"
 
 #define MAX_DEVID_LENGTH	16
+#define TEGRA_VI_NAME		"tegra_vi"
 
 /*
  * MAX_BW = max(VI clock) * 2BPP, in KBps.
@@ -98,6 +100,70 @@ static int vi_isomgr_unregister(struct vi *tegra_vi)
 }
 #endif
 
+static int vi_out_show(struct seq_file *s, void *unused)
+{
+	struct vi *vi = s->private;
+
+	seq_printf(s, "vi[%d] overflow: %u\n", vi->ndev->id,
+		atomic_read(&(vi->vi_out.overflow)));
+
+	return 0;
+}
+
+static int vi_out_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, vi_out_show, inode->i_private);
+}
+
+static const struct file_operations vi_out_fops = {
+	.open		= vi_out_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static void vi_remove_debugfs(struct vi *vi)
+{
+	debugfs_remove_recursive(vi->debugdir);
+	vi->debugdir = NULL;
+}
+
+static void vi_create_debugfs(struct vi *vi)
+{
+	struct dentry *ret;
+	char tegra_vi_name[20];
+	char debugfs_file_name[20];
+
+
+	snprintf(tegra_vi_name, sizeof(tegra_vi_name),
+			"%s_%u", TEGRA_VI_NAME, vi->ndev->id);
+
+	vi->debugdir = debugfs_create_dir(tegra_vi_name, NULL);
+	if (!vi->debugdir) {
+		dev_err(&vi->ndev->dev,
+			"%s: failed to create %s directory",
+			__func__, tegra_vi_name);
+		goto create_debugfs_fail;
+	}
+
+	snprintf(debugfs_file_name, sizeof(debugfs_file_name),
+			"%s_%u", "vi_out", vi->ndev->id);
+
+	ret = debugfs_create_file(debugfs_file_name, S_IRUGO,
+			vi->debugdir, vi, &vi_out_fops);
+	if (!ret) {
+		dev_err(&vi->ndev->dev,
+		"%s: failed to create %s", __func__, debugfs_file_name);
+		goto create_debugfs_fail;
+	}
+
+	return;
+
+create_debugfs_fail:
+	dev_err(&vi->ndev->dev, "%s: could not create debugfs", __func__);
+	vi_remove_debugfs(vi);
+}
+
 static int vi_probe(struct platform_device *dev)
 {
 	int err = 0;
@@ -109,6 +175,11 @@ static int vi_probe(struct platform_device *dev)
 		match = of_match_device(tegra_vi_of_match, &dev->dev);
 		if (match)
 			pdata = (struct nvhost_device_data *)match->data;
+
+		/* DT initializes it to -1, use below WAR to set correct value.
+		 * TODO: Once proper fix for dev-id goes in, remove it.
+		 */
+		dev->id = dev->dev.id;
 	} else
 		pdata = (struct nvhost_device_data *)dev->dev.platform_data;
 
@@ -141,6 +212,15 @@ static int vi_probe(struct platform_device *dev)
 	if (err)
 		goto vi_probe_fail;
 #endif
+
+	/* call vi_intr_init and stats_work */
+	INIT_WORK(&tegra_vi->stats_work, vi_stats_worker);
+
+	err = vi_intr_init(tegra_vi);
+	if (err)
+		goto intr_init_fail;
+
+	vi_create_debugfs(tegra_vi);
 
 	i2c_ctrl = pdata->private_data;
 	pdata->private_data = tegra_vi;
@@ -182,6 +262,7 @@ camera_i2c_unregister:
 	if (i2c_ctrl && i2c_ctrl->remove_devices)
 		i2c_ctrl->remove_devices(dev);
 	pdata->private_data = i2c_ctrl;
+intr_init_fail:
 #if defined(CONFIG_TEGRA_ISOMGR)
 	if (tegra_vi->isomgr_handle)
 		vi_isomgr_unregister(tegra_vi);
@@ -197,9 +278,7 @@ static int __exit vi_remove(struct platform_device *dev)
 	int err = 0;
 #endif
 	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
-#if defined(CONFIG_TEGRA_ISOMGR)
 	struct vi *tegra_vi = (struct vi *)pdata->private_data;
-#endif
 
 	dev_info(&dev->dev, "%s: ++\n", __func__);
 
@@ -207,6 +286,10 @@ static int __exit vi_remove(struct platform_device *dev)
 	if (tegra_vi->isomgr_handle)
 		vi_isomgr_unregister(tegra_vi);
 #endif
+
+	vi_remove_debugfs(tegra_vi);
+
+	vi_intr_free(tegra_vi);
 
 	nvhost_client_device_release(dev);
 	pdata->aperture[0] = NULL;
@@ -230,57 +313,6 @@ static int __exit vi_remove(struct platform_device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int vi_suspend(struct device *dev)
-{
-#ifdef CONFIG_TEGRA_CAMERA
-	struct platform_device *pdev = to_platform_device(dev);
-	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
-	struct vi *tegra_vi = (struct vi *)pdata->private_data;
-	int ret;
-#endif
-
-	dev_info(dev, "%s: ++\n", __func__);
-
-#ifdef CONFIG_TEGRA_CAMERA
-	ret = tegra_camera_suspend(tegra_vi->camera);
-	if (ret) {
-		dev_info(dev, "%s: tegra_camera_suspend error=%d\n",
-		__func__, ret);
-		return ret;
-	}
-#endif
-
-	return 0;
-}
-
-static int vi_resume(struct device *dev)
-{
-#ifdef CONFIG_TEGRA_CAMERA
-	struct platform_device *pdev = to_platform_device(dev);
-	struct nvhost_device_data *pdata = platform_get_drvdata(pdev);
-	struct vi *tegra_vi = (struct vi *)pdata->private_data;
-#endif
-
-	dev_info(dev, "%s: ++\n", __func__);
-
-#ifdef CONFIG_TEGRA_CAMERA
-	tegra_camera_resume(tegra_vi->camera);
-#endif
-
-	return 0;
-}
-
-static const struct dev_pm_ops vi_pm_ops = {
-	.suspend = vi_suspend,
-	.resume = vi_resume,
-#if defined(CONFIG_PM_RUNTIME) && !defined(CONFIG_PM_GENERIC_DOMAINS)
-	.runtime_suspend = nvhost_module_disable_clk,
-	.runtime_resume = nvhost_module_enable_clk,
-#endif
-};
-#endif
-
 static struct platform_driver vi_driver = {
 	.probe = vi_probe,
 	.remove = __exit_p(vi_remove),
@@ -288,7 +320,7 @@ static struct platform_driver vi_driver = {
 		.owner = THIS_MODULE,
 		.name = "vi",
 #ifdef CONFIG_PM
-		.pm = &vi_pm_ops,
+		.pm = &nvhost_module_pm_ops,
 #endif
 #ifdef CONFIG_OF
 		.of_match_table = tegra_vi_of_match,

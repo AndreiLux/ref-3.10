@@ -28,14 +28,11 @@
 #include <linux/nvhost_ioctl.h>
 struct gk20a;
 struct gr_gk20a;
-struct mem_mgr;
-struct mem_handle;
 struct dbg_session_gk20a;
 
 #include "nvhost_channel.h"
 #include "channel_gk20a.h"
 
-#include "cdma_gk20a.h"
 #include "mm_gk20a.h"
 #include "gr_gk20a.h"
 
@@ -85,9 +82,6 @@ struct channel_gk20a {
 	bool vpr;
 	pid_t pid;
 
-	u32 syncpt_id;
-
-	struct mem_mgr *memmgr;
 	struct nvhost_channel *ch;
 
 	struct list_head jobs;
@@ -131,7 +125,7 @@ struct channel_gk20a {
 	struct {
 	void *cyclestate_buffer;
 	u32 cyclestate_buffer_size;
-	struct mem_handle *cyclestate_buffer_handler;
+	struct dma_buf *cyclestate_buffer_handler;
 	struct mutex cyclestate_buffer_mutex;
 	} cyclestate;
 #endif
@@ -142,7 +136,7 @@ struct channel_gk20a {
 	u32 timeout_ms_max;
 	bool timeout_debug_dump;
 
-	struct mem_handle *error_notifier_ref;
+	struct dma_buf *error_notifier_ref;
 	struct nvhost_notification *error_notifier;
 	void *error_notifier_va;
 };
@@ -169,11 +163,6 @@ void gk20a_channel_semaphore_wakeup(struct gk20a *g);
 int gk20a_channel_suspend(struct gk20a *g);
 int gk20a_channel_resume(struct gk20a *g);
 
-static inline
-struct mem_mgr *gk20a_channel_mem_mgr(struct channel_gk20a *ch)
-{
-	return ch->memmgr;
-}
 /* Channel file operations */
 int gk20a_channel_open(struct inode *inode, struct file *filp);
 long gk20a_channel_ioctl(struct file *filp,

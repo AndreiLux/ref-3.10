@@ -737,11 +737,8 @@ static u32 create_mask(u32 *words, int num)
 {
 	int i;
 	u32 word = 0;
-	for (i = 0; i < num; i++) {
-		if (!words[i] || words[i] > 31)
-			continue;
+	for (i = 0; i < num && words[i] && words[i] < 32; i++)
 		word |= BIT(words[i]);
-	}
 
 	return word;
 }
@@ -818,20 +815,10 @@ static long nvhost_channelctl(struct file *filp,
 			platform_get_drvdata(priv->ch->dev);
 		struct nvhost_get_param_arg *arg =
 			(struct nvhost_get_param_arg *)buf;
-		if (arg->param >= NVHOST_MODULE_MAX_SYNCPTS)
+		if (arg->param >= NVHOST_MODULE_MAX_SYNCPTS
+				|| !pdata->syncpts[arg->param])
 			return -EINVAL;
-		/* if we already have required syncpt then return it ... */
-		if (pdata->syncpts[arg->param]) {
-			arg->value = pdata->syncpts[arg->param];
-			break;
-		}
-		/* ... otherwise get a new syncpt dynamically */
-		arg->value = nvhost_get_syncpt_host_managed(pdata->pdev,
-							    arg->param);
-		if (!arg->value)
-			return -EAGAIN;
-		/* ... and store it for further references */
-		pdata->syncpts[arg->param] = arg->value;
+		arg->value = pdata->syncpts[arg->param];
 		break;
 	}
 	case NVHOST_IOCTL_CHANNEL_GET_WAITBASES:
@@ -1148,9 +1135,7 @@ int nvhost_client_user_init(struct platform_device *dev)
 {
 	int err, devno;
 	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
-	struct nvhost_channel *ch = pdata->channel;
 
-	BUG_ON(!ch);
 	/* reserve 3 minor #s for <dev> and as-<dev>, and ctrl-<dev> */
 
 	err = alloc_chrdev_region(&devno, 0, 5, IFACE_NAME);
@@ -1169,10 +1154,10 @@ int nvhost_client_user_init(struct platform_device *dev)
 
 	if (pdata->as_ops) {
 		++devno;
-		ch->as_node = nvhost_client_device_create(dev,
-					&ch->as_cdev,
-					"as-", devno, &nvhost_asops);
-		if (ch->as_node == NULL)
+		pdata->as_node = nvhost_client_device_create(dev,
+						&pdata->as_cdev, "as-",
+						devno, &nvhost_asops);
+		if (pdata->as_node == NULL)
 			goto fail;
 	}
 
@@ -1195,18 +1180,15 @@ void nvhost_client_user_deinit(struct platform_device *dev)
 {
 	struct nvhost_master *nvhost_master = nvhost_get_host(dev);
 	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
-	struct nvhost_channel *ch = pdata->channel;
-
-	BUG_ON(!ch);
 
 	if (pdata->node) {
 		device_destroy(nvhost_master->nvhost_class, pdata->cdev.dev);
 		cdev_del(&pdata->cdev);
 	}
 
-	if (ch->as_node) {
-		device_destroy(nvhost_master->nvhost_class, ch->as_cdev.dev);
-		cdev_del(&ch->as_cdev);
+	if (pdata->as_node) {
+		device_destroy(nvhost_master->nvhost_class, pdata->as_cdev.dev);
+		cdev_del(&pdata->as_cdev);
 	}
 
 	if (pdata->ctrl_node) {
@@ -1240,9 +1222,6 @@ int nvhost_client_device_init(struct platform_device *dev)
 	err = nvhost_client_user_init(dev);
 	if (err)
 		goto fail;
-
-	if (tickctrl_op().init_channel)
-		tickctrl_op().init_channel(dev);
 
 	err = nvhost_device_list_add(dev);
 	if (err)

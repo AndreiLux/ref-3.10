@@ -44,8 +44,6 @@ struct nvhost_nvmap_as_data {
 struct nvhost_nvmap_data {
 	struct mutex lock;
 	struct nvhost_nvmap_as_data *as[TEGRA_IOMMU_NUM_ASIDS];
-	struct nvhost_comptags comptags;
-	struct nvhost_allocator *comptag_allocator;
 };
 
 struct mem_mgr *nvhost_nvmap_alloc_mgr(void)
@@ -67,13 +65,6 @@ struct mem_mgr *nvhost_nvmap_get_mgr_file(int fd)
 	return (struct mem_mgr *)0x1;
 }
 
-struct mem_handle *nvhost_nvmap_alloc(struct mem_mgr *mgr,
-		size_t size, size_t align, int flags, unsigned int heap_mask)
-{
-	return (struct mem_handle *)nvmap_alloc_dmabuf(
-			size, align, flags, heap_mask);
-}
-
 void nvhost_nvmap_put(struct mem_mgr *mgr, struct mem_handle *handle)
 {
 	if (!handle)
@@ -93,19 +84,7 @@ void delete_priv(void *_priv)
 			nvmap_dmabuf_free_sg_table(NULL, as->sgt);
 		kfree(as);
 	}
-	if (priv->comptags.lines) {
-		BUG_ON(!priv->comptag_allocator);
-		priv->comptag_allocator->free(priv->comptag_allocator,
-					      priv->comptags.offset,
-					      priv->comptags.lines);
-	}
 	kfree(priv);
-}
-
-size_t nvhost_nvmap_size(struct mem_handle *handle)
-{
-	struct dma_buf *dmabuf = (struct dma_buf *)handle;
-	return dmabuf->size;
 }
 
 struct sg_table *nvhost_nvmap_pin(struct mem_mgr *mgr,
@@ -121,10 +100,10 @@ struct sg_table *nvhost_nvmap_pin(struct mem_mgr *mgr,
 	static DEFINE_MUTEX(priv_lock);
 
 	/* create the nvhost priv if needed */
-	priv = nvmap_get_dmabuf_private(dmabuf);
+	priv = dma_buf_get_drvdata(dmabuf, dev);
 	if (!priv) {
 		mutex_lock(&priv_lock);
-		priv = nvmap_get_dmabuf_private(dmabuf);
+		priv = dma_buf_get_drvdata(dmabuf, dev);
 		if (priv)
 			goto priv_exist_or_err;
 		priv = kzalloc(sizeof(*priv), GFP_KERNEL);
@@ -133,7 +112,7 @@ struct sg_table *nvhost_nvmap_pin(struct mem_mgr *mgr,
 			goto priv_exist_or_err;
 		}
 		mutex_init(&priv->lock);
-		nvmap_set_dmabuf_private(dmabuf, priv, delete_priv);
+		dma_buf_set_drvdata(dmabuf, dev, priv, delete_priv);
 priv_exist_or_err:
 		mutex_unlock(&priv_lock);
 	}
@@ -210,7 +189,8 @@ void nvhost_nvmap_unpin(struct mem_mgr *mgr, struct mem_handle *handle,
 		struct device *dev, struct sg_table *sgt)
 {
 	struct dma_buf *dmabuf = (struct dma_buf *)handle;
-	struct nvhost_nvmap_data *priv = nvmap_get_dmabuf_private(dmabuf);
+	struct nvhost_nvmap_data *priv =
+		dma_buf_get_drvdata(dmabuf, dev);
 	struct nvhost_nvmap_as_data *as_priv;
 	dma_addr_t dma_addr;
 
@@ -263,47 +243,4 @@ struct mem_handle *nvhost_nvmap_get(struct mem_mgr *mgr,
 		ulong id, struct platform_device *dev)
 {
 	return (struct mem_handle *)dma_buf_get(id);
-}
-
-int nvhost_nvmap_get_param(struct mem_mgr *mgr, struct mem_handle *handle,
-		u32 param, u64 *result)
-{
-	return nvmap_get_dmabuf_param(
-			(struct dma_buf *)handle,
-			param, result);
-}
-
-void nvhost_nvmap_get_comptags(struct mem_handle *mem,
-			       struct nvhost_comptags *comptags)
-{
-	struct nvhost_nvmap_data *priv;
-
-	priv = nvmap_get_dmabuf_private((struct dma_buf *)mem);
-
-	BUG_ON(!priv || !comptags);
-
-	*comptags = priv->comptags;
-}
-
-int nvhost_nvmap_alloc_comptags(struct mem_handle *mem,
-				struct nvhost_allocator *allocator,
-				int lines)
-{
-	int err;
-	u32 offset = 0;
-	struct nvhost_nvmap_data *priv;
-
-	priv = nvmap_get_dmabuf_private((struct dma_buf *)mem);
-
-	BUG_ON(!priv);
-	BUG_ON(!lines);
-
-	/* store the allocator so we can use it when we free the ctags */
-	priv->comptag_allocator = allocator;
-	err = allocator->alloc(allocator, &offset, lines);
-	if (!err) {
-		priv->comptags.lines = lines;
-		priv->comptags.offset = offset;
-	}
-	return err;
 }

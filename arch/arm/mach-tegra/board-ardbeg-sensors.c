@@ -932,8 +932,8 @@ static struct thermal_zone_params cpu_tzp = {
 	.governor_params = &cpu_pid_params,
 };
 
-static struct thermal_zone_params therm_est_activ_tzp = {
-	.governor_name = "step_wise"
+static struct thermal_zone_params board_tzp = {
+	.governor_name = "pid_thermal_gov"
 };
 
 static struct throttle_table cpu_throttle_table[] = {
@@ -1124,15 +1124,22 @@ static struct balanced_throttle gpu_throttle = {
 
 static int __init ardbeg_tj_throttle_init(void)
 {
+	void *r1, *r2;
+
 	if (of_machine_is_compatible("nvidia,ardbeg") ||
+	    of_machine_is_compatible("nvidia,norrin") ||
+	    of_machine_is_compatible("nvidia,bowmore") ||
 	    of_machine_is_compatible("nvidia,tn8")) {
-		balanced_throttle_register(&cpu_throttle, "cpu-balanced");
-		balanced_throttle_register(&gpu_throttle, "gpu-balanced");
+		r1 = balanced_throttle_register(&cpu_throttle, "cpu-balanced");
+		r2 = balanced_throttle_register(&gpu_throttle, "gpu-balanced");
+		if (!r1 || !r2)
+			pr_err("%s: balanced_throttle_register FAILED.\n",
+				__func__);
 	}
 
 	return 0;
 }
-module_init(ardbeg_tj_throttle_init);
+late_initcall(ardbeg_tj_throttle_init);
 
 #ifdef CONFIG_TEGRA_SKIN_THROTTLE
 static struct thermal_trip_info skin_trips[] = {
@@ -1216,6 +1223,7 @@ static struct therm_est_data skin_data = {
 	.tc1 = 10,
 	.tc2 = 1,
 	.tzp = &skin_tzp,
+	.use_activator = 1,
 };
 
 static struct throttle_table skin_throttle_table[] = {
@@ -1325,12 +1333,10 @@ static int __init ardbeg_skin_init(void)
 			skin_data.ndevs = ARRAY_SIZE(tn8ffd_skin_devs);
 			skin_data.devs = tn8ffd_skin_devs;
 			skin_data.toffset = 4034;
-			skin_data.use_activator = 0;
 		} else {
 			skin_data.ndevs = ARRAY_SIZE(skin_devs);
 			skin_data.devs = skin_devs;
 			skin_data.toffset = 9793;
-			skin_data.use_activator = 1;
 		}
 
 		balanced_throttle_register(&skin_throttle, "skin-balanced");
@@ -1351,14 +1357,14 @@ static struct nct1008_platform_data ardbeg_nct72_pdata = {
 
 	.sensors = {
 		[LOC] = {
-			.tzp = &therm_est_activ_tzp,
+			.tzp = &board_tzp,
 			.shutdown_limit = 120, /* C */
 			.passive_delay = 1000,
 			.num_trips = 1,
 			.trips = {
 				{
 					.cdev_type = "therm_est_activ",
-					.trip_temp = 26000,
+					.trip_temp = 40000,
 					.trip_type = THERMAL_TRIP_ACTIVE,
 					.hysteresis = 1000,
 					.upper = THERMAL_NO_LIMIT,
@@ -1512,17 +1518,26 @@ static int ardbeg_nct72_init(void)
 		gpio_free(nct72_port);
 	}
 
+	/* norrin has thermal sensor on GEN1-I2C i.e. instance 0 */
+	if (board_info.board_id == BOARD_PM374)
+		i2c_register_board_info(0, ardbeg_i2c_nct72_board_info,
+					1); /* only register device[0] */
 	/* ardbeg has thermal sensor on GEN2-I2C i.e. instance 1 */
-	if (board_info.board_id == BOARD_PM358 ||
+	else if (board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM370 ||
 			board_info.board_id == BOARD_PM374 ||
 			board_info.board_id == BOARD_PM363)
 		i2c_register_board_info(1, laguna_i2c_nct72_board_info,
-		ARRAY_SIZE(laguna_i2c_nct72_board_info));
+			ARRAY_SIZE(laguna_i2c_nct72_board_info));
+	else if (board_info.board_id == BOARD_E1971 ||
+		 board_info.board_id == BOARD_E1991)
+		/* bowmore has thermal sensor on GEN1-I2C i.e. instance 0 */
+		i2c_register_board_info(0, ardbeg_i2c_nct72_board_info,
+					1); /* only register device[0] */
 	else
 		i2c_register_board_info(1, ardbeg_i2c_nct72_board_info,
-		ARRAY_SIZE(ardbeg_i2c_nct72_board_info));
+			ARRAY_SIZE(ardbeg_i2c_nct72_board_info));
 
 	return ret;
 }
@@ -1638,6 +1653,21 @@ static struct gadc_thermal_platform_data gadc_thermal_thermistor_pdata = {
 	.tz_name = "Tboard",
 	.temp_offset = 0,
 	.adc_to_temp = gadc_thermal_thermistor_adc_to_temp,
+
+	.polling_delay = 15000,
+	.num_trips = 1,
+	.trips = {
+		{
+			.cdev_type = "therm_est_activ",
+			.trip_temp = 40000,
+			.trip_type = THERMAL_TRIP_ACTIVE,
+			.hysteresis = 1000,
+			.upper = THERMAL_NO_LIMIT,
+			.lower = THERMAL_NO_LIMIT,
+			.mask = 1,
+		},
+	},
+	.tzp = &board_tzp,
 };
 
 static struct gadc_thermal_platform_data gadc_thermal_tdiode_pdata = {

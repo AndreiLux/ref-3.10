@@ -3,7 +3,7 @@
 #include "tegra124-tn8.dtsi"
 #include "tegra124-platforms/tegra124-tn8-dfll.dtsi"
 #include "tegra124-platforms/tegra124-tn8-emc-e1922-1100-a00.dtsi"
-#include "tegra124-platforms/tegra124-tn8-powermon-e1780-1100-a02.dtsi"
+#include "tegra124-platforms/tegra124-ardbeg-powermon-e1780-1000-a01.dtsi"
 #include "tegra124-platforms/tegra124-tn8-pmic-e1936-1000-a00.dtsi"
 #include "tegra124-platforms/tegra124-tn8-fixed-e1936-1000-a00.dtsi"
 #include "tegra124-platforms/tegra124-tn8-sensor-p1761-1470-a00.dtsi"
@@ -17,8 +17,8 @@
 	compatible = "nvidia,tn8", "nvidia,tegra124";
 	nvidia,dtsfilename = __FILE__;
 	nvidia,boardids = "1922:1100:0";
-	#address-cells = <1>;
-	#size-cells = <1>;
+	#address-cells = <2>;
+	#size-cells = <2>;
 
 	chosen {
 		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
