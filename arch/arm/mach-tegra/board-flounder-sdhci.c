@@ -333,21 +333,6 @@ static int __init flounder_wifi_init(void)
 	return 0;
 }
 
-#ifdef CONFIG_TEGRA_PREPOWER_WIFI
-static int __init flounder_wifi_prepower(void)
-{
-	if (!of_machine_is_compatible("google,flounder") &&
-		!of_machine_is_compatible("nvidia,laguna") &&
-		!of_machine_is_compatible("nvidia,tn8"))
-		return 0;
-	flounder_wifi_power(1);
-
-	return 0;
-}
-
-subsys_initcall_sync(flounder_wifi_prepower);
-#endif
-
 int __init flounder_sdhci_init(void)
 {
 	int nominal_core_mv;
