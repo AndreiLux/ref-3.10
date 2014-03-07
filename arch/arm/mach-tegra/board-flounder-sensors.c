@@ -1113,14 +1113,15 @@ static struct balanced_throttle gpu_throttle = {
 
 static int __init flounder_tj_throttle_init(void)
 {
-	if (of_machine_is_compatible("google,flounder")) {
+	if (of_machine_is_compatible("google,flounder") ||
+	    of_machine_is_compatible("google,flounder64")) {
 		balanced_throttle_register(&cpu_throttle, "cpu-balanced");
 		balanced_throttle_register(&gpu_throttle, "gpu-balanced");
 	}
 
 	return 0;
 }
-module_init(flounder_tj_throttle_init);
+late_initcall(flounder_tj_throttle_init);
 
 #ifdef CONFIG_TEGRA_SKIN_THROTTLE
 static struct thermal_trip_info skin_trips[] = {
@@ -1469,7 +1470,7 @@ static int flounder_nct72_init(void)
 		gpio_free(nct72_port);
 	}
 
-	i2c_register_board_info(1, flounder_i2c_nct72_board_info,
+	i2c_register_board_info(0, flounder_i2c_nct72_board_info,
 	ARRAY_SIZE(flounder_i2c_nct72_board_info));
 
 	return ret;

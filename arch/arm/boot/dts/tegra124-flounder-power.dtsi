@@ -556,6 +556,10 @@ palmas: tps65913 {
 						regulator-consumer-supply = "vddio_pex_ctl";
 						regulator-consumer-device = "tegra-pcie";
 					};
+					c5 {
+						regulator-consumer-supply = "vdd";
+						regulator-consumer-device = "0-004c";
+					};
 				};
 			};
 
