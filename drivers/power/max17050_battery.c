@@ -26,12 +26,19 @@
 #include <linux/power/battery-charger-gauge-comm.h>
 #include <linux/pm.h>
 #include <linux/jiffies.h>
+#include <linux/wakelock.h>
 
-#define MAX17050_DELAY		(60*HZ)
-#define MAX17050_DELAY_FAST	(30*HZ)
-#define MAX17050_BATTERY_FULL	(100)
-#define MAX17050_BATTERY_LOW	(15)
-#define MAX17050_UPDATE_TIME_PERIOD_MS	(60 * 1000)
+#define MAX17050_DELAY_S		(60)
+#define MAX17050_CHARGING_DELAY_S	(30)
+#define MAX17050_DELAY			(MAX17050_DELAY_S*HZ)
+#define MAX17050_DELAY_FAST		(MAX17050_CHARGING_DELAY_S*HZ)
+#define MAX17050_BATTERY_FULL		(100)
+#define MAX17050_BATTERY_LOW		(15)
+#define MAX17050_CHECK_TOLERANCE_MS	(MSEC_PER_SEC)
+#define MAX17050_SOC_UPDATE_MS	\
+	(MAX17050_DELAY_S*MSEC_PER_SEC - MAX17050_CHECK_TOLERANCE_MS)
+#define MAX17050_SOC_UPDATE_LONG_MS	\
+	(3600*MSEC_PER_SEC - MAX17050_CHECK_TOLERANCE_MS)
 
 #define MAX17050_I2C_RETRY_TIMES (5)
 #define MAX17050_TEMPERATURE_RE_READ_MS (1400)
@@ -138,6 +145,8 @@ struct max17050_chip {
 	int vcell;
 	/* battery capacity */
 	int soc;
+	/* battery capacity unadjusted */
+	int soc_raw;
 	/* State Of Charge */
 	int status;
 	/* battery health */
@@ -152,9 +161,15 @@ struct max17050_chip {
 	int lasttime_soc;
 	int lasttime_status;
 	int shutdown_complete;
+	int charger_status;
 	int charge_complete;
 	int present;
-	unsigned long last_update_time_ms;
+	unsigned long last_gauge_check_jiffies;
+	unsigned long gauge_suspend_ms;
+	unsigned long total_time_since_last_work_ms;
+	unsigned long total_time_since_last_soc_update_ms;
+	bool first_update_done;
+	struct wake_lock update_wake_lock;
 	struct mutex mutex;
 };
 static struct max17050_chip *max17050_data;
@@ -410,69 +425,174 @@ error:
 			, __func__, ret);
 }
 
+static bool max17050_soc_adjust(struct max17050_chip *chip,
+			unsigned long time_since_last_update)
+{
+	int soc_decrease;
+	int soc;
+
+	if (!chip->first_update_done) {
+		if (chip->soc_raw >= MAX17050_BATTERY_FULL) {
+			chip->soc = MAX17050_BATTERY_FULL - 1;
+			chip->lasttime_soc = MAX17050_BATTERY_FULL - 1;
+		} else {
+			chip->soc = chip->soc_raw;
+			chip->lasttime_soc = chip->soc_raw;
+		}
+		chip->first_update_done = true;
+	}
+
+	if (chip->charge_complete == 1)
+		soc = MAX17050_BATTERY_FULL;
+	else if (chip->soc_raw >= MAX17050_BATTERY_FULL
+		&& chip->lasttime_soc < MAX17050_BATTERY_FULL
+		&& chip->charge_complete == 0)
+		soc = MAX17050_BATTERY_FULL - 1;
+	else
+		soc = chip->soc_raw;
+
+	if (soc > MAX17050_BATTERY_FULL)
+		soc = MAX17050_BATTERY_FULL;
+	else if (soc < 0)
+		soc = 0;
+
+	if (chip->charger_status == BATTERY_DISCHARGING) {
+		soc_decrease = chip->lasttime_soc - soc;
+		if (time_since_last_update >=
+				MAX17050_SOC_UPDATE_LONG_MS) {
+			if (soc_decrease < 0)
+				soc = chip->lasttime_soc;
+			goto done;
+		} else if (time_since_last_update <
+				MAX17050_SOC_UPDATE_MS) {
+			goto no_update;
+		}
+
+		if (soc_decrease < 0)
+			soc_decrease = 0;
+		else if (soc_decrease > 2)
+			soc_decrease = 2;
+
+		soc = chip->lasttime_soc - soc_decrease;
+	} else if (soc >= MAX17050_BATTERY_FULL
+			&& chip->lasttime_soc < MAX17050_BATTERY_FULL - 1)
+		soc = chip->lasttime_soc + 1;
+done:
+	chip->soc = soc;
+	return true;
+
+no_update:
+	return false;
+}
+
+static void max17050_battery_status_check(struct max17050_chip *chip)
+{
+	if (chip->charger_status == BATTERY_DISCHARGING)
+		chip->status = POWER_SUPPLY_STATUS_DISCHARGING;
+	else {
+		if (chip->soc >= MAX17050_BATTERY_FULL
+			&& chip->charge_complete == 1)
+			chip->status = POWER_SUPPLY_STATUS_FULL;
+		else
+			chip->status = POWER_SUPPLY_STATUS_CHARGING;
+	}
+}
+
+static void max17050_battery_health_check(struct max17050_chip *chip)
+{
+	if (chip->soc >= MAX17050_BATTERY_FULL) {
+		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_FULL;
+		chip->health = POWER_SUPPLY_HEALTH_GOOD;
+	} else if (chip->soc < MAX17050_BATTERY_LOW) {
+		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL;
+		chip->health = POWER_SUPPLY_HEALTH_DEAD;
+	} else {
+		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
+		chip->health = POWER_SUPPLY_HEALTH_GOOD;
+	}
+}
+
 static void max17050_get_soc(struct i2c_client *client)
 {
 	struct max17050_chip *chip = i2c_get_clientdata(client);
-	int soc;
+	int soc, soc_adjust;
 
 	soc = max17050_read_word(client, MAX17050_FG_RepSOC);
 	if (soc < 0)
 		dev_err(&client->dev, "%s: err %d\n", __func__, soc);
-	else
-		chip->soc = (uint16_t)soc >> 8;
-
-	if (chip->soc >= MAX17050_BATTERY_FULL && chip->charge_complete != 1)
-		chip->soc = MAX17050_BATTERY_FULL-1;
-
-	if (chip->status == POWER_SUPPLY_STATUS_FULL && chip->charge_complete) {
-		chip->soc = MAX17050_BATTERY_FULL;
-		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_FULL;
-		chip->health = POWER_SUPPLY_HEALTH_GOOD;
-	} else if (chip->soc < MAX17050_BATTERY_LOW) {
-		chip->status = chip->lasttime_status;
-		chip->health = POWER_SUPPLY_HEALTH_DEAD;
-		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_CRITICAL;
-	} else {
-		chip->status = chip->lasttime_status;
-		chip->health = POWER_SUPPLY_HEALTH_GOOD;
-		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
+	else {
+		soc_adjust = (uint16_t)soc >> 8;
+		if (!!(soc & 0xFF))
+			soc_adjust += 1;
+		chip->soc_raw = soc_adjust;
 	}
 }
 
 static void max17050_work(struct work_struct *work)
 {
 	struct max17050_chip *chip;
-	unsigned long time_since_last_update, current_time_ms;
+	unsigned long cur_jiffies;
+	bool do_battery_update = false;
+	bool soc_updated;
 
 	chip = container_of(work, struct max17050_chip, work.work);
+
+	wake_lock(&chip->update_wake_lock);
 
 	max17050_get_vcell(chip->client);
 	max17050_get_current(chip->client);
 	max17050_get_temperature(chip->client);
 	max17050_get_soc(chip->client);
 
+	battery_gauge_record_voltage_value(chip->bg_dev, chip->vcell);
+	battery_gauge_record_current_value(chip->bg_dev, chip->batt_curr);
+	battery_gauge_record_capacity_value(chip->bg_dev, chip->soc_raw);
+	battery_gauge_update_record_to_charger(chip->bg_dev);
+
+	cur_jiffies = jiffies;
+	chip->total_time_since_last_work_ms = 0;
+	chip->total_time_since_last_soc_update_ms +=
+		((cur_jiffies - chip->last_gauge_check_jiffies) *
+							MSEC_PER_SEC / HZ);
+	chip->last_gauge_check_jiffies = cur_jiffies;
+
+	soc_updated = max17050_soc_adjust(chip,
+				chip->total_time_since_last_soc_update_ms);
+	if (soc_updated)
+		chip->total_time_since_last_soc_update_ms = 0;
+
 	dev_dbg(&chip->client->dev,
-		"level=%d,vol=%d,temp=%d,current=%d,status=%d\n",
+		"level=%d,level_raw=%d,vol=%d,temp=%d,current=%d,status=%d\n",
 		chip->soc,
+		chip->soc_raw,
 		chip->vcell,
 		chip->batt_temp,
 		chip->batt_curr,
 		chip->status);
 
-	current_time_ms = jiffies * MSEC_PER_SEC / HZ;
-	time_since_last_update = current_time_ms - chip->last_update_time_ms;
-	if ((time_since_last_update > MAX17050_UPDATE_TIME_PERIOD_MS
-		&& chip->soc != chip->lasttime_soc) ||
-		chip->status != chip->lasttime_status) {
+	if (chip->soc != chip->lasttime_soc) {
 		chip->lasttime_soc = chip->soc;
-		chip->last_update_time_ms = current_time_ms;
-		power_supply_changed(&chip->battery);
+		if (chip->soc >= MAX17050_BATTERY_FULL || chip->soc <= 0)
+			do_battery_update = true;
 	}
+
+	max17050_battery_status_check(chip);
+	max17050_battery_health_check(chip);
+
+	if (chip->status != chip->lasttime_status) {
+		chip->lasttime_status = chip->status;
+		do_battery_update = true;
+	}
+
+	if (do_battery_update)
+		power_supply_changed(&chip->battery);
 
 	if (chip->status == POWER_SUPPLY_STATUS_DISCHARGING)
 		schedule_delayed_work(&chip->work, MAX17050_DELAY);
 	else
 		schedule_delayed_work(&chip->work, MAX17050_DELAY_FAST);
+
+	wake_unlock(&chip->update_wake_lock);
 }
 
 static enum power_supply_property max17050_battery_props[] = {
@@ -508,21 +628,22 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 	struct max17050_chip *chip = battery_gauge_get_drvdata(bg_dev);
 
 	if (status == BATTERY_CHARGING)
-		chip->status = POWER_SUPPLY_STATUS_CHARGING;
+		chip->charger_status = BATTERY_CHARGING;
 	else if (status == BATTERY_CHARGING_DONE) {
+		chip->charger_status = BATTERY_CHARGING_DONE;
 		chip->charge_complete = 1;
-		chip->soc = MAX17050_BATTERY_FULL;
-		chip->status = POWER_SUPPLY_STATUS_FULL;
-		chip->last_update_time_ms = jiffies * MSEC_PER_SEC / HZ;
-		power_supply_changed(&chip->battery);
-		return 0;
 	} else {
-		chip->status = POWER_SUPPLY_STATUS_DISCHARGING;
+		chip->charger_status = BATTERY_DISCHARGING;
 		chip->charge_complete = 0;
 	}
-	chip->lasttime_status = chip->status;
-	chip->last_update_time_ms = jiffies * MSEC_PER_SEC / HZ;
-	power_supply_changed(&chip->battery);
+
+	max17050_battery_status_check(chip);
+
+	if (chip->status != chip->lasttime_status) {
+		chip->lasttime_status = chip->status;
+		power_supply_changed(&chip->battery);
+	}
+
 	return 0;
 }
 
@@ -579,6 +700,12 @@ static int max17050_probe(struct i2c_client *client,
 	chip->status			= POWER_SUPPLY_STATUS_DISCHARGING;
 	chip->lasttime_status		= POWER_SUPPLY_STATUS_DISCHARGING;
 	chip->charge_complete		= 0;
+	chip->last_gauge_check_jiffies	= jiffies;
+	chip->total_time_since_last_work_ms		= 0;
+	chip->total_time_since_last_soc_update_ms	= 0;
+
+	wake_lock_init(&chip->update_wake_lock, WAKE_LOCK_SUSPEND,
+			"max17050_update");
 
 	ret = power_supply_register(&client->dev, &chip->battery);
 	if (ret) {
@@ -594,6 +721,7 @@ static int max17050_probe(struct i2c_client *client,
 		goto bg_err;
 	}
 
+	chip->first_update_done = false;
 	chip->present = 1;
 	INIT_DEFERRABLE_WORK(&chip->work, max17050_work);
 	schedule_delayed_work(&chip->work, 0);
@@ -632,6 +760,85 @@ static void max17050_shutdown(struct i2c_client *client)
 }
 
 #ifdef CONFIG_PM_SLEEP
+static int max17050_prepare(struct device *dev)
+{
+	struct timespec xtime;
+	unsigned long check_time = 0;
+	unsigned long cur_jiffies;
+	unsigned long time_since_last_system_ms;
+	struct max17050_chip *chip = dev_get_drvdata(dev);
+
+	xtime = CURRENT_TIME;
+	chip->gauge_suspend_ms = xtime.tv_sec * MSEC_PER_SEC +
+					xtime.tv_nsec / NSEC_PER_MSEC;
+	cur_jiffies = jiffies;
+	time_since_last_system_ms =
+		((cur_jiffies - chip->last_gauge_check_jiffies) *
+					MSEC_PER_SEC / HZ);
+	chip->total_time_since_last_work_ms += time_since_last_system_ms;
+	chip->total_time_since_last_soc_update_ms += time_since_last_system_ms;
+	chip->last_gauge_check_jiffies = cur_jiffies;
+
+	if (chip->status == POWER_SUPPLY_STATUS_CHARGING)
+		check_time = MAX17050_CHARGING_DELAY_S * MSEC_PER_SEC;
+	else
+		check_time = MAX17050_DELAY_S * MSEC_PER_SEC;
+
+	/* check if update is over time or in 1 second near future */
+	if (check_time <= MAX17050_CHECK_TOLERANCE_MS ||
+			chip->total_time_since_last_work_ms >=
+			check_time - MAX17050_CHECK_TOLERANCE_MS) {
+		dev_info(dev,
+			"%s: passing time:%lu ms, max17050_update immediately.",
+			__func__, chip->total_time_since_last_work_ms);
+		cancel_delayed_work(&chip->work);
+		schedule_delayed_work(&chip->work, 0);
+		return -EBUSY;
+	}
+
+	dev_info(dev, "%s: passing time:%lu ms.",
+			__func__, chip->total_time_since_last_work_ms);
+
+	return 0;
+}
+
+static void max17050_complete(struct device *dev)
+{
+	unsigned long resume_ms;
+	unsigned long sr_time_period_ms;
+	unsigned long check_time;
+	struct timespec xtime;
+	struct max17050_chip *chip = dev_get_drvdata(dev);
+
+	xtime = CURRENT_TIME;
+	resume_ms = xtime.tv_sec * MSEC_PER_SEC +
+					xtime.tv_nsec / NSEC_PER_MSEC;
+	sr_time_period_ms = resume_ms - chip->gauge_suspend_ms;
+	chip->total_time_since_last_work_ms += sr_time_period_ms;
+	chip->total_time_since_last_soc_update_ms += sr_time_period_ms;
+	chip->last_gauge_check_jiffies = jiffies;
+	dev_info(dev, "%s: sr_time_period=%lu ms; total passing time=%lu ms.",
+			__func__, sr_time_period_ms,
+			chip->total_time_since_last_work_ms);
+
+	if (chip->status == POWER_SUPPLY_STATUS_CHARGING)
+		check_time = MAX17050_CHARGING_DELAY_S * MSEC_PER_SEC;
+	else
+		check_time = MAX17050_DELAY_S * MSEC_PER_SEC;
+
+	/*
+	 * When kernel resumes, gauge driver should check last work time
+	 * to decide if do gauge work or just ignore.
+	 */
+	if (check_time <= MAX17050_CHECK_TOLERANCE_MS ||
+			chip->total_time_since_last_work_ms >=
+			check_time - MAX17050_CHECK_TOLERANCE_MS) {
+		dev_info(dev, "trigger max17050_work while resume.");
+		cancel_delayed_work_sync(&chip->work);
+		schedule_delayed_work(&chip->work, 0);
+	}
+}
+
 static int max17050_suspend(struct device *dev)
 {
 	struct max17050_chip *chip = dev_get_drvdata(dev);
@@ -643,15 +850,26 @@ static int max17050_suspend(struct device *dev)
 
 static int max17050_resume(struct device *dev)
 {
+	unsigned long schedule_time;
 	struct max17050_chip *chip = dev_get_drvdata(dev);
 
-	schedule_delayed_work(&chip->work, MAX17050_DELAY);
+	if (chip->status == POWER_SUPPLY_STATUS_CHARGING)
+		schedule_time = MAX17050_DELAY_FAST;
+	else
+		schedule_time = MAX17050_DELAY;
+
+	schedule_delayed_work(&chip->work, schedule_time);
 
 	return 0;
 }
 #endif /* CONFIG_PM */
 
-static SIMPLE_DEV_PM_OPS(max17050_pm_ops, max17050_suspend, max17050_resume);
+static const struct dev_pm_ops max17050_pm_ops = {
+	.prepare = max17050_prepare,
+	.complete = max17050_complete,
+	.suspend = max17050_suspend,
+	.resume = max17050_resume,
+};
 
 #ifdef CONFIG_OF
 static const struct of_device_id max17050_dt_match[] = {

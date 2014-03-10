@@ -59,6 +59,8 @@ struct battery_charging_ops {
 	int (*thermal_configure)(struct battery_charger_dev *bct_dev,
 		int temp, bool enable_charger, bool enable_charg_half_current,
 		int battery_voltage);
+	int (*charging_full_configure)(struct battery_charger_dev *bc_dev,
+		bool charge_full_done, bool charge_full_stop);
 };
 
 struct battery_thermal_prop {
@@ -74,13 +76,22 @@ struct battery_thermal_prop {
 	bool disable_cool_current_half;
 };
 
+struct charge_full_threshold {
+	int chg_done_voltage_min_mv;
+	int chg_done_current_min_ma;
+	int chg_done_low_current_min_ma;
+	int recharge_voltage_min_mv;
+};
+
 struct battery_charger_info {
 	const char *tz_name;
 	int cell_id;
 	int polling_time_sec;
 	bool enable_thermal_monitor;
+	bool enable_batt_status_monitor;
 	struct battery_charging_ops *bc_ops;
 	struct battery_thermal_prop thermal_prop;
+	struct charge_full_threshold full_thr;
 };
 
 struct battery_gauge_info {
@@ -99,6 +110,11 @@ void battery_charging_restart_cancel(struct battery_charger_dev *bc_dev);
 int battery_charger_thermal_start_monitoring(
 		struct battery_charger_dev *bc_dev);
 int battery_charger_thermal_stop_monitoring(
+		struct battery_charger_dev *bc_dev);
+int battery_charger_batt_status_start_monitoring(
+		struct battery_charger_dev *bc_dev,
+		int in_current_limit);
+int battery_charger_batt_status_stop_monitoring(
 		struct battery_charger_dev *bc_dev);
 int battery_charger_acquire_wake_lock(struct battery_charger_dev *bc_dev);
 int battery_charger_release_wake_lock(struct battery_charger_dev *bc_dev);
@@ -122,10 +138,13 @@ void *battery_gauge_get_drvdata(struct battery_gauge_dev *bg_dev);
 void battery_gauge_set_drvdata(struct battery_gauge_dev *bg_dev, void *data);
 int battery_gauge_record_voltage_value(struct battery_gauge_dev *bg_dev,
 								int voltage);
+int battery_gauge_record_current_value(struct battery_gauge_dev *bg_dev,
+							int batt_current);
 int battery_gauge_record_capacity_value(struct battery_gauge_dev *bg_dev,
 								int capacity);
 int battery_gauge_record_snapshot_values(struct battery_gauge_dev *bg_dev,
 								int interval);
+int battery_gauge_update_record_to_charger(struct battery_gauge_dev *bg_dev);
 int battery_gauge_get_scaled_soc(struct battery_gauge_dev *bg_dev,
 		int actual_soc_semi, int thresod_soc);
 int battery_gauge_get_adjusted_soc(struct battery_gauge_dev *bg_dev,

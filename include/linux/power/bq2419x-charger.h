@@ -67,6 +67,8 @@
 #define BQ2419X_REG0			0x0
 #define BQ2419X_EN_HIZ			BIT(7)
 
+#define BQ2419X_EN_TERM			BIT(7)
+
 #define BQ2419X_WD			0x5
 #define BQ2419X_WD_MASK			0x30
 #define BQ2419X_EN_SFT_TIMER_MASK	BIT(3)
@@ -140,6 +142,13 @@ struct bq2419x_thermal_prop {
 	unsigned int otp_output_current_ma;
 };
 
+struct bq2419x_charge_full_threshold {
+	int chg_done_voltage_min_mv;
+	int chg_done_current_min_ma;
+	int chg_done_low_current_min_ma;
+	int recharge_voltage_min_mv;
+};
+
 /*
  * struct bq2419x_charger_platform_data - bq2419x charger platform data.
  */
@@ -161,6 +170,7 @@ struct bq2419x_charger_platform_data {
 	const char *tz_name; /* Thermal zone name */
 	bool disable_suspend_during_charging;
 	bool enable_thermal_monitor; /* TRUE if FuelGauge provides temp */
+	int charge_suspend_polling_time_sec;
 	int temp_polling_time_sec;
 	int n_temp_profile;
 	u32 *temp_range;
@@ -168,6 +178,8 @@ struct bq2419x_charger_platform_data {
 	u32 *chg_thermal_voltage_limit;
 	bool otp_control_no_thermister; /* TRUE if chip thermister is unused */
 	struct bq2419x_thermal_prop thermal_prop;
+	bool charge_full_by_monitor_full_thr;
+	struct bq2419x_charge_full_threshold full_thr;
 };
 
 /*
