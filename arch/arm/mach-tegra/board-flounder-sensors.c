@@ -193,6 +193,8 @@ static int flounder_imx219_power_on(struct imx219_power_rail *pw)
 
 static int flounder_imx219_power_off(struct imx219_power_rail *pw)
 {
+	gpio_set_value(CAM_PWDN, 0);
+	usleep_range(100, 120);
 	gpio_set_value(CAM_1V2_EN, 0);
 	gpio_set_value(CAM_A2V85_EN, 0);
 	gpio_set_value(CAM_1V8_EN, 0);
@@ -230,6 +232,8 @@ static int flounder_ov9760_power_on(struct ov9760_power_rail *pw)
 }
 static int flounder_ov9760_power_off(struct ov9760_power_rail *pw)
 {
+	gpio_set_value(CAM2_RST, 0);
+	usleep_range(100, 120);
 	gpio_set_value(CAM_1V2_EN, 0);
 	gpio_set_value(CAM_A2V85_EN, 0);
 	gpio_set_value(CAM_1V8_EN, 0);
@@ -749,6 +753,8 @@ static int flounder_drv201_power_off(struct drv201_power_rail *pw)
 {
 	pr_info("%s\n", __func__);
 
+	gpio_set_value(CAM_VCM_PWDN, 0);
+	usleep_range(100, 120);
 	gpio_set_value(CAM_1V2_EN, 0);
 	gpio_set_value(CAM_A2V85_EN, 0);
 	gpio_set_value(CAM_1V8_EN, 0);
@@ -885,6 +891,8 @@ static int flounder_camera_init(void)
 	tegra_io_dpd_enable(&csia_io);
 	tegra_io_dpd_enable(&csib_io);
 	tegra_io_dpd_enable(&csie_io);
+	tegra_gpio_disable(TEGRA_GPIO_PBB0);
+	tegra_gpio_disable(TEGRA_GPIO_PCC0);
 
 	platform_device_add_data(&flounder_camera_generic,
 		&flounder_pcl_pdata, sizeof(flounder_pcl_pdata));

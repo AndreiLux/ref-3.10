@@ -136,10 +136,11 @@ int tegra_is_gpio(int gpio)
 EXPORT_SYMBOL(tegra_is_gpio);
 
 
-static void tegra_gpio_disable(int gpio)
+void tegra_gpio_disable(int gpio)
 {
 	tegra_gpio_mask_write(GPIO_MSK_CNF(gpio), gpio, 0);
 }
+EXPORT_SYMBOL(tegra_gpio_disable);
 
 void tegra_gpio_init_configure(unsigned gpio, bool is_input, int value)
 {
