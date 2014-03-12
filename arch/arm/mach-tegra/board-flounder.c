@@ -145,6 +145,22 @@ static struct aud_sfio_data audio_sfio_pins[] = {
 		.name = "extperiph1_clk",
 		.id   = TEGRA_GPIO_PW4,
 	},
+	[9] = {
+		.name = "SPI_MOSI",
+		.id   = TEGRA_GPIO_PY0,
+	},
+	[10] = {
+		.name = "SPI_MISO",
+		.id   = TEGRA_GPIO_PY1,
+	},
+	[11] = {
+		.name = "SPI_SCLK",
+		.id   = TEGRA_GPIO_PY2,
+	},
+	[12] = {
+		.name = "SPI_CS",
+		.id   = TEGRA_GPIO_PY3,
+	},
 };
 
 static struct resource flounder_bluedroid_pm_resources[] = {
