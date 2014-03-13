@@ -298,7 +298,7 @@ static int tegra_dc_dpaux_write_chunk_locked(struct tegra_dc_dp_data *dp,
 
 		if ((*aux_stat & DPAUX_DP_AUXSTAT_REPLYTYPE_MASK) ==
 			DPAUX_DP_AUXSTAT_REPLYTYPE_ACK) {
-			*size = ((*aux_stat) & DPAUX_DP_AUXSTAT_REPLY_M_MASK);
+			(*size)++;
 			return 0;
 		} else {
 			dev_err(&dp->dc->ndev->dev,
@@ -310,19 +310,27 @@ static int tegra_dc_dpaux_write_chunk_locked(struct tegra_dc_dp_data *dp,
 	return -EFAULT;
 }
 
-int __maybe_unused
-tegra_dc_dpaux_write(struct tegra_dc_dp_data *dp, u32 cmd, u32 addr,
+int tegra_dc_dpaux_write(struct tegra_dc_dp_data *dp, u32 cmd, u32 addr,
 	u8 *data, u32 *size, u32 *aux_stat)
 {
 	u32	cur_size = 0;
 	u32	finished = 0;
 	int	ret	 = 0;
 
+	if (*size == 0) {
+		dev_err(&dp->dc->ndev->dev,
+			"dp: aux write size can't be 0\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&dp->dpaux_lock);
 	do {
 		cur_size = *size - finished;
 		if (cur_size >= DP_AUX_MAX_BYTES)
 			cur_size = DP_AUX_MAX_BYTES - 1;
+		else
+			cur_size -= 1;
+
 		ret = tegra_dc_dpaux_write_chunk_locked(dp, cmd, addr,
 			data, &cur_size, aux_stat);
 
@@ -332,7 +340,7 @@ tegra_dc_dpaux_write(struct tegra_dc_dp_data *dp, u32 cmd, u32 addr,
 
 		if (ret)
 			break;
-	} while (*size >= finished);
+	} while (*size > finished);
 	mutex_unlock(&dp->dpaux_lock);
 
 	*size = finished;
@@ -1859,6 +1867,10 @@ fail:
 static void tegra_dp_dpcd_init(struct tegra_dc_dp_data *dp)
 {
 	struct tegra_dc_dp_link_config *cfg = &dp->link_cfg;
+	u32 size_ieee_oui = 3, auxstat;
+	u8 data_ieee_oui_be[3] = {(NV_IEEE_OUI >> 16) & 0xff,
+		(NV_IEEE_OUI >> 8) & 0xff,
+		NV_IEEE_OUI & 0xff};
 
 	if (cfg->is_valid)
 		return;
@@ -1871,6 +1883,10 @@ static void tegra_dp_dpcd_init(struct tegra_dc_dp_data *dp)
 	if (tegra_dp_init_max_link_cfg(dp, cfg))
 		dev_err(&dp->dc->ndev->dev,
 			"dp: failed to init link configuration\n");
+
+	tegra_dc_dpaux_write(dp, DPAUX_DP_AUXCTL_CMD_AUXWR,
+		NV_DPCD_SOURCE_IEEE_OUI, data_ieee_oui_be, &size_ieee_oui,
+		&auxstat);
 }
 
 static void tegra_dp_tpg(struct tegra_dc_dp_data *dp, u32 tp, u32 n_lanes)
@@ -2109,24 +2125,6 @@ static bool tegra_dc_dp_early_enable(struct tegra_dc *dc)
 	return true;
 }
 
-static void tegra_dc_dp_suspend(struct tegra_dc *dc)
-{
-	struct tegra_dc_dp_data *dp = tegra_dc_get_outdata(dc);
-
-	tegra_dc_dp_disable(dc);
-	dp->suspended = true;
-}
-
-
-static void tegra_dc_dp_resume(struct tegra_dc *dc)
-{
-	struct tegra_dc_dp_data *dp = tegra_dc_get_outdata(dc);
-
-	if (!dp->suspended)
-		return;
-	tegra_dc_dp_enable(dc);
-}
-
 static void tegra_dc_dp_modeset_notifier(struct tegra_dc *dc)
 {
 	struct tegra_dc_dp_data *dp = tegra_dc_get_outdata(dc);
@@ -2138,8 +2136,6 @@ struct tegra_dc_out_ops tegra_dc_dp_ops = {
 	.destroy   = tegra_dc_dp_destroy,
 	.enable	   = tegra_dc_dp_enable,
 	.disable   = tegra_dc_dp_disable,
-	.suspend   = tegra_dc_dp_suspend,
-	.resume	   = tegra_dc_dp_resume,
 	.setup_clk = tegra_dc_dp_setup_clk,
 	.modeset_notifier = tegra_dc_dp_modeset_notifier,
 	.early_enable     = tegra_dc_dp_early_enable,

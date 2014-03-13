@@ -1,0 +1,33 @@
+/*
+ * gk20a GPU driver
+ *
+ * Copyright (c) 2014, NVIDIA Corporation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef __GK20A_H
+#define __GK20A_H
+
+struct channel_gk20a;
+struct platform_device;
+
+#ifdef CONFIG_GK20A
+void gk20a_channel_update(struct channel_gk20a *c, int nr_completed);
+void gk20a_debug_dump_device(struct platform_device *pdev);
+#else
+static inline void gk20a_channel_update(struct channel_gk20a *c,
+					int nr_completed) {}
+static inline void gk20a_debug_dump_device(struct platform_device *pdev) {}
+#endif
+#endif

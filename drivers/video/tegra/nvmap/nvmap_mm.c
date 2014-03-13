@@ -20,6 +20,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+#include <trace/events/nvmap.h>
+
 #include "nvmap_priv.h"
 
 void inner_flush_cache_all(void)
@@ -52,18 +54,27 @@ void nvmap_flush_cache(struct page **pages, int numpages)
 {
 	unsigned int i;
 	bool flush_inner = true;
-	unsigned long base;
+	__attribute__((unused)) unsigned long base;
 
+	nvmap_stats_inc(NS_CFLUSH_RQ, numpages << PAGE_SHIFT);
 #if defined(CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS)
 	if (numpages >= (cache_maint_inner_threshold >> PAGE_SHIFT)) {
+		nvmap_stats_inc(NS_CFLUSH_DONE, cache_maint_inner_threshold);
 		inner_flush_cache_all();
 		flush_inner = false;
 	}
 #endif
+	if (flush_inner)
+		nvmap_stats_inc(NS_CFLUSH_DONE, numpages << PAGE_SHIFT);
+	trace_nvmap_cache_flush(numpages << PAGE_SHIFT,
+		nvmap_stats_read(NS_ALLOC),
+		nvmap_stats_read(NS_CFLUSH_RQ),
+		nvmap_stats_read(NS_CFLUSH_DONE));
 
 	for (i = 0; i < numpages; i++) {
 #ifdef CONFIG_ARM64 //__flush_dcache_page flushes inner and outer on ARM64
-		__flush_dcache_page(pages[i]);
+		if (flush_inner)
+			__flush_dcache_page(pages[i]);
 #else
 		if (flush_inner)
 			__flush_dcache_page(page_mapping(pages[i]), pages[i]);
@@ -71,43 +82,4 @@ void nvmap_flush_cache(struct page **pages, int numpages)
 		outer_flush_range(base, base + PAGE_SIZE);
 #endif
 	}
-}
-
-int nvmap_set_pages_array_uc(struct page **pages, int addrinarray)
-{
-#ifdef CONFIG_NVMAP_CPA
-	return set_pages_array_uc(pages, addrinarray);
-#else
-	nvmap_flush_cache(pages, addrinarray);
-	return 0;
-#endif
-}
-
-int nvmap_set_pages_array_wc(struct page **pages, int addrinarray)
-{
-#ifdef CONFIG_NVMAP_CPA
-	return set_pages_array_wc(pages, addrinarray);
-#else
-	nvmap_flush_cache(pages, addrinarray);
-	return 0;
-#endif
-}
-
-int nvmap_set_pages_array_iwb(struct page **pages, int addrinarray)
-{
-#ifdef CONFIG_NVMAP_CPA
-	return set_pages_array_iwb(pages, addrinarray);
-#else
-	nvmap_flush_cache(pages, addrinarray);
-	return 0;
-#endif
-}
-
-int nvmap_set_pages_array_wb(struct page **pages, int addrinarray)
-{
-#ifdef CONFIG_NVMAP_CPA
-	return set_pages_array_wb(pages, addrinarray);
-#else
-	return 0;
-#endif
 }

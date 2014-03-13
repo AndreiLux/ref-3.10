@@ -38,6 +38,7 @@
 #include <linux/resource.h>
 #include <linux/security.h>
 #include <linux/stat.h>
+#include <linux/kthread.h>
 
 #include <asm/cputype.h>
 
@@ -218,43 +219,23 @@ pte_t **nvmap_vaddr_to_pte(struct nvmap_device *dev, unsigned long vaddr)
  *
  * Note: to call this function make sure you own the client ref lock.
  */
-struct nvmap_handle_ref *__nvmap_validate_id_locked(struct nvmap_client *c,
-						    unsigned long id)
+struct nvmap_handle_ref *__nvmap_validate_locked(struct nvmap_client *c,
+						 struct nvmap_handle *h)
 {
 	struct rb_node *n = c->handle_refs.rb_node;
 
 	while (n) {
 		struct nvmap_handle_ref *ref;
 		ref = rb_entry(n, struct nvmap_handle_ref, node);
-		if ((unsigned long)ref->handle == id)
+		if (ref->handle == h)
 			return ref;
-		else if (id > (unsigned long)ref->handle)
+		else if ((uintptr_t)h > (uintptr_t)ref->handle)
 			n = n->rb_right;
 		else
 			n = n->rb_left;
 	}
 
 	return NULL;
-}
-
-struct nvmap_handle *nvmap_get_handle_id(struct nvmap_client *client,
-					 unsigned long id)
-{
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	return nvmap_handle_get((struct nvmap_handle *)id);
-#else
-	struct nvmap_handle_ref *ref;
-	struct nvmap_handle *h = NULL;
-
-	nvmap_ref_lock(client);
-	ref = __nvmap_validate_id_locked(client, id);
-	if (ref)
-		h = ref->handle;
-	if (h)
-		h = nvmap_handle_get(h);
-	nvmap_ref_unlock(client);
-	return h;
-#endif
 }
 
 unsigned long nvmap_carveout_usage(struct nvmap_client *c,
@@ -457,42 +438,6 @@ void nvmap_handle_add(struct nvmap_device *dev, struct nvmap_handle *h)
 	rb_link_node(&h->node, parent, p);
 	rb_insert_color(&h->node, &dev->handles);
 	spin_unlock(&dev->handle_lock);
-}
-
-/* validates that a handle is in the device master tree, and that the
- * client has permission to access it */
-struct nvmap_handle *nvmap_validate_get(struct nvmap_client *client,
-					unsigned long id, bool skip_val)
-{
-#ifdef CONFIG_NVMAP_USE_FD_FOR_HANDLE
-	return nvmap_handle_get((struct nvmap_handle *)id);
-#else
-	struct nvmap_handle *h = NULL;
-	struct rb_node *n;
-
-	spin_lock(&nvmap_dev->handle_lock);
-
-	n = nvmap_dev->handles.rb_node;
-
-	while (n) {
-		h = rb_entry(n, struct nvmap_handle, node);
-		if ((unsigned long)h == id) {
-			if (client->super || h->global ||
-			    (h->owner == client) || skip_val)
-				h = nvmap_handle_get(h);
-			else
-				h = nvmap_get_handle_id(client, id);
-			spin_unlock(&nvmap_dev->handle_lock);
-			return h;
-		}
-		if (id > (unsigned long)h)
-			n = n->rb_right;
-		else
-			n = n->rb_left;
-	}
-	spin_unlock(&nvmap_dev->handle_lock);
-	return NULL;
-#endif
 }
 
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
@@ -733,13 +678,28 @@ static long nvmap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		err = nvmap_ioctl_getfd(filp, uarg);
 		break;
 
-	case NVMAP_IOC_PARAM:
-		err = nvmap_ioctl_get_param(filp, uarg);
+#ifdef CONFIG_COMPAT
+	case NVMAP_IOC_PARAM_32:
+		err = nvmap_ioctl_get_param(filp, uarg, true);
 		break;
+#endif
+
+	case NVMAP_IOC_PARAM:
+		err = nvmap_ioctl_get_param(filp, uarg, false);
+		break;
+
+#ifdef CONFIG_COMPAT
+	case NVMAP_IOC_UNPIN_MULT_32:
+	case NVMAP_IOC_PIN_MULT_32:
+		err = nvmap_ioctl_pinop(filp, cmd == NVMAP_IOC_PIN_MULT_32,
+			uarg, true);
+		break;
+#endif
 
 	case NVMAP_IOC_UNPIN_MULT:
 	case NVMAP_IOC_PIN_MULT:
-		err = nvmap_ioctl_pinop(filp, cmd == NVMAP_IOC_PIN_MULT, uarg);
+		err = nvmap_ioctl_pinop(filp, cmd == NVMAP_IOC_PIN_MULT,
+			uarg, false);
 		break;
 
 	case NVMAP_IOC_ALLOC:
@@ -754,17 +714,38 @@ static long nvmap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		err = nvmap_ioctl_free(filp, arg);
 		break;
 
-	case NVMAP_IOC_MMAP:
-		err = nvmap_map_into_caller_ptr(filp, uarg);
+#ifdef CONFIG_COMPAT
+	case NVMAP_IOC_MMAP_32:
+		err = nvmap_map_into_caller_ptr(filp, uarg, true);
 		break;
+#endif
+
+	case NVMAP_IOC_MMAP:
+		err = nvmap_map_into_caller_ptr(filp, uarg, false);
+		break;
+
+#ifdef CONFIG_COMPAT
+	case NVMAP_IOC_WRITE_32:
+	case NVMAP_IOC_READ_32:
+		err = nvmap_ioctl_rw_handle(filp, cmd == NVMAP_IOC_READ_32,
+			uarg, true);
+		break;
+#endif
 
 	case NVMAP_IOC_WRITE:
 	case NVMAP_IOC_READ:
-		err = nvmap_ioctl_rw_handle(filp, cmd == NVMAP_IOC_READ, uarg);
+		err = nvmap_ioctl_rw_handle(filp, cmd == NVMAP_IOC_READ, uarg,
+			false);
 		break;
 
+#ifdef CONFIG_COMPAT
+	case NVMAP_IOC_CACHE_32:
+		err = nvmap_ioctl_cache_maint(filp, uarg, true);
+		break;
+#endif
+
 	case NVMAP_IOC_CACHE:
-		err = nvmap_ioctl_cache_maint(filp, uarg);
+		err = nvmap_ioctl_cache_maint(filp, uarg, false);
 		break;
 
 	case NVMAP_IOC_SHARE:
@@ -1248,8 +1229,9 @@ static int nvmap_probe(struct platform_device *pdev)
 
 	mutex_init(&dev->iovmm_master.pin_lock);
 #ifdef CONFIG_NVMAP_PAGE_POOLS
-	for (i = 0; i < NVMAP_NUM_POOLS; i++)
-		nvmap_page_pool_init(&dev->iovmm_master.pools[i], i);
+	e = nvmap_page_pool_init(dev);
+	if (e)
+		goto fail;
 #endif
 
 	dev->vm_rgn = alloc_vm_area(NVMAP_NUM_PTES * PAGE_SIZE, NULL);
@@ -1371,16 +1353,9 @@ static int nvmap_probe(struct platform_device *pdev)
 			debugfs_create_file("procrank", S_IRUGO, iovmm_root,
 				dev, &debug_iovmm_procrank_fops);
 #ifdef CONFIG_NVMAP_PAGE_POOLS
-			for (i = 0; i < NVMAP_NUM_POOLS; i++) {
-				char name[40];
-				char *memtype_string[] = {"uc", "wc",
-							  "iwb", "wb"};
-				sprintf(name, "%s_page_pool_available_pages",
-					memtype_string[i]);
-				debugfs_create_u32(name, S_IRUGO,
-					iovmm_root,
-					&dev->iovmm_master.pools[i].npages);
-			}
+			debugfs_create_u32("page_pool_available_pages",
+					   S_IRUGO, iovmm_root,
+					   &dev->iovmm_master.pool.npages);
 #endif
 		}
 #ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS
@@ -1392,7 +1367,7 @@ static int nvmap_probe(struct platform_device *pdev)
 		/* cortex-a9 */
 		if ((read_cpuid_id() >> 4 & 0xfff) == 0xc09)
 			cache_maint_inner_threshold = SZ_32K;
-		pr_info("nvmap:inner cache maint threshold=%d",
+		pr_info("nvmap:inner cache maint threshold=%zd",
 			cache_maint_inner_threshold);
 #endif
 #ifdef CONFIG_NVMAP_OUTER_CACHE_MAINT_BY_SET_WAYS
@@ -1400,7 +1375,7 @@ static int nvmap_probe(struct platform_device *pdev)
 				      S_IRUSR | S_IWUSR,
 				      nvmap_debug_root,
 				      &cache_maint_outer_threshold);
-		pr_info("nvmap:outer cache maint threshold=%d",
+		pr_info("nvmap:outer cache maint threshold=%zd",
 			cache_maint_outer_threshold);
 #endif
 	}

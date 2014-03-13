@@ -837,6 +837,8 @@ static void cl_dvfs_calibrate(struct tegra_cl_dvfs *cld)
 	unsigned long rate_min = cld->dvco_rate_min;
 	u8 out_min = get_output_min(cld);
 
+	if (!cld->calibration_delay)
+		return;
 	/*
 	 *  Enter calibration procedure only if
 	 *  - closed loop operations
@@ -903,7 +905,8 @@ static void cl_dvfs_calibrate(struct tegra_cl_dvfs *cld)
 	else if (rate > (cld->dvco_rate_min + step))
 		rate_min += step;
 	else {
-		cld->dvco_rate_floors[cld->therm_floor_idx] = rate_min;
+		if (cld->thermal_out_floors[cld->therm_floor_idx] == out_min)
+			cld->dvco_rate_floors[cld->therm_floor_idx] = rate_min;
 		return;
 	}
 
@@ -2605,19 +2608,11 @@ int tegra_cl_dvfs_request_rate(struct tegra_cl_dvfs *cld, unsigned long rate)
 	rate = GET_REQUEST_RATE(val, cld->ref_rate);
 
 	/* Find safe voltage for requested rate */
-#ifdef CONFIG_ARCH_TEGRA_13x_SOC
-	if (find_safe_output(cld, rate/2, &req.output)) {
-		pr_err("%s: Failed to find safe output for rate %lu\n",
-		       __func__, rate);
-		return -EINVAL;
-	}
-#else
 	if (find_safe_output(cld, rate, &req.output)) {
 		pr_err("%s: Failed to find safe output for rate %lu\n",
 		       __func__, rate);
 		return -EINVAL;
 	}
-#endif
 	req.cap = req.output;
 
 	/*

@@ -25,7 +25,7 @@
 #include <linux/dma-attrs.h>
 #include <linux/iommu.h>
 #include <asm/dma-iommu.h>
-#include "../nvhost_allocator.h"
+#include "gk20a_allocator.h"
 
 /* This "address bit" in the gmmu ptes (and other gk20a accesses)
  * signals the address as presented should be translated by the SMMU.
@@ -268,7 +268,7 @@ struct vm_gk20a {
 
 	struct page_directory_gk20a pdes;
 
-	struct nvhost_allocator vma[gmmu_nr_page_sizes];
+	struct gk20a_allocator vma[gmmu_nr_page_sizes];
 	struct rb_root mapped_buffers;
 
 	struct list_head reserved_va_list;
@@ -459,4 +459,5 @@ int gk20a_vm_map_buffer(struct gk20a_as_share *as_share,
 			int kind);
 int gk20a_vm_unmap_buffer(struct gk20a_as_share *, u64 offset);
 
+int gk20a_dmabuf_alloc_drvdata(struct dma_buf *dmabuf, struct device *dev);
 #endif /*_MM_GK20A_H_ */

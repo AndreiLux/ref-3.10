@@ -2,6 +2,7 @@
  * drivers/gpu/ion/ion_priv.h
  *
  * Copyright (C) 2011 Google, Inc.
+ * Copyright (c) 2014 NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -26,10 +27,25 @@
 #include <linux/sched.h>
 #include <linux/shrinker.h>
 #include <linux/types.h>
+#include <linux/scatterlist.h>
 
 #include "ion.h"
 
 struct ion_buffer *ion_handle_buffer(struct ion_handle *handle);
+
+struct ion_mapping {
+	struct device *dev; /* to get a map and dma_ops */
+	struct sg_table sgt;
+	struct kref kref;
+};
+#define NUM_ION_MAPPING 5 /* FIXME: dynamically allocate more than this */
+
+struct ion_importer {
+	struct device *dev;
+	void *priv;
+	void (*delete)(void *);
+};
+#define NUM_ION_IMPORTER 5 /* FIXME: dynamically allocate more than this */
 
 /**
  * struct ion_buffer - metadata for a particular buffer
@@ -84,6 +100,9 @@ struct ion_buffer {
 	int handle_count;
 	char task_comm[TASK_COMM_LEN];
 	pid_t pid;
+
+	struct ion_importer importer[NUM_ION_IMPORTER];
+	struct ion_mapping mapping[NUM_ION_MAPPING];
 };
 void ion_buffer_destroy(struct ion_buffer *buffer);
 

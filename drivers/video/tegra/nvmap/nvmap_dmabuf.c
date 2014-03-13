@@ -207,6 +207,7 @@ static void __nvmap_dmabuf_free_sgt_locked(struct nvmap_handle_sgt *nvmap_sgt)
 	list_del(&nvmap_sgt->maps_entry);
 
 	if (info->handle->heap_pgalloc) {
+		dma_set_attr(DMA_ATTR_SKIP_IOVA_GAP, &attrs);
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 		dma_unmap_sg_attrs(nvmap_sgt->dev,
 				   nvmap_sgt->sgt->sgl, nvmap_sgt->sgt->nents,
@@ -365,6 +366,7 @@ static struct sg_table *nvmap_dmabuf_map_dma_buf(
 	}
 
 	if (info->handle->heap_pgalloc && info->handle->alloc) {
+		dma_set_attr(DMA_ATTR_SKIP_IOVA_GAP, &attrs);
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 		ents = dma_map_sg_attrs(attach->dev, sgt->sgl,
 					sgt->nents, dir, &attrs);
@@ -526,12 +528,6 @@ static int nvmap_dmabuf_set_private(struct dma_buf *dmabuf,
 {
 	struct nvmap_handle_info *info;
 
-	if (WARN_ON(dmabuf->ops != &nvmap_dma_buf_ops))
-		return -EINVAL;
-
-	if (WARN_ON(!virt_addr_valid(dmabuf)))
-		return -EINVAL;
-
 	info = dmabuf->priv;
 	info->handle->nvhost_priv = priv;
 	info->handle->nvhost_priv_delete = delete;
@@ -544,12 +540,6 @@ static void *nvmap_dmabuf_get_private(struct dma_buf *dmabuf,
 {
 	void *priv;
 	struct nvmap_handle_info *info;
-
-	if (WARN_ON(dmabuf->ops != &nvmap_dma_buf_ops))
-		return ERR_PTR(-EINVAL);
-
-	if (WARN_ON(!virt_addr_valid(dmabuf)))
-		return ERR_PTR(-EINVAL);
 
 	info = dmabuf->priv;
 	priv = info->handle->nvhost_priv;
@@ -630,12 +620,12 @@ int __nvmap_dmabuf_fd(struct dma_buf *dmabuf, int flags)
 	return fd;
 }
 
-int nvmap_get_dmabuf_fd(struct nvmap_client *client, ulong id)
+int nvmap_get_dmabuf_fd(struct nvmap_client *client, struct nvmap_handle *h)
 {
 	int fd;
 	struct dma_buf *dmabuf;
 
-	dmabuf = __nvmap_dmabuf_export(client, id);
+	dmabuf = __nvmap_dmabuf_export(client, h);
 	if (IS_ERR(dmabuf))
 		return PTR_ERR(dmabuf);
 	fd = __nvmap_dmabuf_fd(dmabuf, O_CLOEXEC);
@@ -649,12 +639,11 @@ err_out:
 }
 
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
-				 unsigned long id)
+				 struct nvmap_handle *handle)
 {
-	struct nvmap_handle *handle;
 	struct dma_buf *buf;
 
-	handle = nvmap_get_handle_id(client, id);
+	handle = nvmap_handle_get(handle);
 	if (!handle)
 		return ERR_PTR(-EINVAL);
 	buf = handle->dmabuf;
@@ -691,28 +680,29 @@ struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref)
  * Returns the nvmap handle ID associated with the passed dma_buf's fd. This
  * does not affect the ref count of the dma_buf.
  */
-ulong nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client, int fd)
+struct nvmap_handle *nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client,
+						 int fd)
 {
-	ulong id = -EINVAL;
+	struct nvmap_handle *handle = ERR_PTR(-EINVAL);
 	struct dma_buf *dmabuf;
 	struct nvmap_handle_info *info;
 
 	dmabuf = dma_buf_get(fd);
 	if (IS_ERR(dmabuf))
-		return PTR_ERR(dmabuf);
+		return ERR_CAST(dmabuf);
 	if (dmabuf->ops == &nvmap_dma_buf_ops) {
 		info = dmabuf->priv;
-		id = (ulong) info->handle;
+		handle = info->handle;
 	}
 	dma_buf_put(dmabuf);
-	return id;
+	return handle;
 }
 
 int nvmap_ioctl_share_dmabuf(struct file *filp, void __user *arg)
 {
 	struct nvmap_create_handle op;
 	struct nvmap_client *client = filp->private_data;
-	ulong handle;
+	struct nvmap_handle *handle;
 
 	BUG_ON(!client);
 
@@ -737,6 +727,9 @@ int nvmap_ioctl_share_dmabuf(struct file *filp, void __user *arg)
 int nvmap_get_dmabuf_param(struct dma_buf *dmabuf, u32 param, u64 *result)
 {
 	struct nvmap_handle_info *info;
+
+	if (dmabuf->ops != &nvmap_dma_buf_ops)
+		return -EINVAL;
 
 	if (WARN_ON(!virt_addr_valid(dmabuf)))
 		return -EINVAL;
@@ -795,7 +788,7 @@ static int __nvmap_dmabuf_stashes_show(struct seq_file *s, void *data)
 		seq_printf(s, "  device = %s\n",
 			   dev_name(handle->attachment->dev));
 		addr = sg_dma_address(nvmap_sgt->sgt->sgl);
-		seq_printf(s, "  IO addr = 0x%pa + 0x%x\n",
+		seq_printf(s, "  IO addr = 0x%pa + 0x%zx\n",
 			&addr, handle->size);
 
 		/* Cleanup. */

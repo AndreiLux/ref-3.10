@@ -87,98 +87,111 @@ TRACE_EVENT(nvmap_create_handle,
 		__entry->h, __entry->size, __entry->ref)
 );
 
-TRACE_EVENT(nvmap_alloc_handle_id,
+TRACE_EVENT(nvmap_alloc_handle,
 	TP_PROTO(struct nvmap_client *client,
-		 unsigned long handle_id,
+		 struct nvmap_handle *handle,
+		 size_t size,
 		 u32 heap_mask,
 		 u32 align,
-		 u32 flags
+		 u32 flags,
+		 u64 total,
+		 u64 alloc
 	),
 
-	TP_ARGS(client, handle_id, heap_mask, align, flags),
+	TP_ARGS(client, handle, size, heap_mask, align, flags, total, alloc),
 
 	TP_STRUCT__entry(
 		__field(struct nvmap_client *, client)
-		__field(unsigned long, handle_id)
+		__field(struct nvmap_handle *, handle)
+		__field(size_t, size)
 		__field(u32, heap_mask)
 		__field(u32, align)
 		__field(u32, flags)
+		__field(u64, total)
+		__field(u64, alloc)
 	),
 
 	TP_fast_assign(
 		__entry->client = client;
-		__entry->handle_id = handle_id;
+		__entry->handle = handle;
+		__entry->size = size;
 		__entry->heap_mask = heap_mask;
 		__entry->align = align;
 		__entry->flags = flags;
+		__entry->total = total;
+		__entry->alloc = alloc;
 	),
 
-	TP_printk("client=%p, id=0x%lx, heap_mask=0x%x, align=%d, flags=0x%x",
-		__entry->client, __entry->handle_id, __entry->heap_mask,
-		__entry->align, __entry->flags)
+	TP_printk("client=%p, id=0x%p, size=%zu, heap_mask=0x%x, align=%d, flags=0x%x, total=%llu, alloc=%llu",
+		__entry->client, __entry->handle, __entry->size,
+		__entry->heap_mask, __entry->align, __entry->flags,
+		(unsigned long long)__entry->total,
+		(unsigned long long)__entry->alloc)
 );
 
-TRACE_EVENT(nvmap_free_handle_id,
+TRACE_EVENT(nvmap_free_handle,
 	TP_PROTO(struct nvmap_client *client,
-		 unsigned long handle_id
+		 struct nvmap_handle *handle
 	),
 
-	TP_ARGS(client, handle_id),
+	TP_ARGS(client, handle),
 
 	TP_STRUCT__entry(
 		__field(struct nvmap_client *, client)
-		__field(unsigned long, handle_id)
+		__field(struct nvmap_handle *, handle)
 	),
 
 	TP_fast_assign(
 		__entry->client = client;
-		__entry->handle_id = handle_id;
+		__entry->handle = handle;
 	),
 
-	TP_printk("client=%p, id=0x%lx",
-		__entry->client, __entry->handle_id)
+	TP_printk("client=%p, handle=%p",
+		__entry->client, __entry->handle)
 );
 
-TRACE_EVENT(nvmap_duplicate_handle_id,
+TRACE_EVENT(nvmap_duplicate_handle,
 	TP_PROTO(struct nvmap_client *client,
-		 unsigned long handle_id,
+		 struct nvmap_handle *handle,
 		 struct nvmap_handle_ref *ref
 	),
 
-	TP_ARGS(client, handle_id, ref),
+	TP_ARGS(client, handle, ref),
 
 	TP_STRUCT__entry(
 		__field(struct nvmap_client *, client)
-		__field(unsigned long, handle_id)
+		__field(struct nvmap_handle *, handle)
 		__field(struct nvmap_handle_ref *, ref)
 	),
 
 	TP_fast_assign(
 		__entry->client = client;
-		__entry->handle_id = handle_id;
+		__entry->handle = handle;
 		__entry->ref = ref;
 	),
 
-	TP_printk("client=%p, id=0x%lx, ref=%p",
-		__entry->client, __entry->handle_id, __entry->ref)
+	TP_printk("client=%p, id=%p, ref=%p",
+		__entry->client, __entry->handle, __entry->ref)
 );
 
-TRACE_EVENT(cache_maint,
+TRACE_EVENT(nvmap_cache_maint,
 	TP_PROTO(struct nvmap_client *client,
 		 struct nvmap_handle *h,
-		 unsigned long start,
-		 unsigned long end,
-		 u32 op
+		 ulong start,
+		 ulong end,
+		 u32 op,
+		 size_t size
 	),
 
-	TP_ARGS(client, h, start, end, op),
+	TP_ARGS(client, h, start, end, op, size),
 
 	TP_STRUCT__entry(
 		__field(struct nvmap_client *, client)
 		__field(struct nvmap_handle *, h)
-		__field(unsigned long, start)
-		__field(unsigned long, end)
+		__field(ulong, start)
+		__field(ulong, end)
 		__field(u32, op)
+		__field(size_t, size)
 	),
 
 	TP_fast_assign(
@@ -187,11 +200,42 @@ TRACE_EVENT(cache_maint,
 		__entry->start = start;
 		__entry->end = end;
 		__entry->op = op;
+		__entry->size = size;
 	),
 
-	TP_printk("client=%p, h=%p, start=0x%lx, end=0x%lx, op=%d",
+	TP_printk("client=%p, h=%p, start=0x%lx, end=0x%lx, op=%d, size=%zu",
 		__entry->client, __entry->h, __entry->start,
-		__entry->end, __entry->op)
+		__entry->end, __entry->op, __entry->size)
+);
+
+TRACE_EVENT(nvmap_cache_flush,
+	TP_PROTO(size_t size,
+		 u64 alloc_rq,
+		 u64 total_rq,
+		 u64 total_done
+	),
+
+	TP_ARGS(size, alloc_rq, total_rq, total_done),
+
+	TP_STRUCT__entry(
+		__field(size_t, size)
+		__field(u64, alloc_rq)
+		__field(u64, total_rq)
+		__field(u64, total_done)
+	),
+
+	TP_fast_assign(
+		__entry->size = size;
+		__entry->alloc_rq = alloc_rq;
+		__entry->total_rq = total_rq;
+		__entry->total_done = total_done;
+	),
+
+	TP_printk("size=%zu, alloc_rq=%llu, total_rq=%llu, total_done=%llu",
+		__entry->size,
+		(unsigned long long)__entry->alloc_rq,
+		(unsigned long long)__entry->total_rq,
+		(unsigned long long)__entry->total_done)
 );
 
 TRACE_EVENT(nvmap_map_into_caller_ptr,
@@ -275,7 +319,7 @@ TRACE_EVENT(nvmap_ioctl_pinop,
 	TP_PROTO(struct nvmap_client *client,
 		 u32 is_pin,
 		 u32 count,
-		 unsigned long *ids
+		 struct nvmap_handle **ids
 	),
 
 	TP_ARGS(client, is_pin, count, ids),
@@ -284,8 +328,8 @@ TRACE_EVENT(nvmap_ioctl_pinop,
 		__field(struct nvmap_client *, client)
 		__field(u32, is_pin)
 		__field(u32, count)
-		__field(unsigned long *, ids)
-		__dynamic_array(unsigned long, ids, count)
+		__field(struct nvmap_handle **, ids)
+		__dynamic_array(struct nvmap_handle *, ids, count)
 	),
 
 	TP_fast_assign(
@@ -294,13 +338,13 @@ TRACE_EVENT(nvmap_ioctl_pinop,
 		__entry->count = count;
 		__entry->ids = ids;
 		memcpy(__get_dynamic_array(ids), ids,
-		    sizeof(unsigned long) * count);
+		    sizeof(struct nvmap_handle *) * count);
 	),
 
 	TP_printk("client=%p, is_pin=%d, count=%d, ids=[%s]",
 		__entry->client, __entry->is_pin, __entry->count,
 		__print_hex(__get_dynamic_array(ids), __entry->ids ?
-			    sizeof(unsigned long) * __entry->count : 0))
+			    sizeof(struct nvmap_handle *) * __entry->count : 0))
 );
 
 DECLARE_EVENT_CLASS(pin_unpin,
@@ -370,16 +414,16 @@ DECLARE_EVENT_CLASS(nvmap_dmabuf_2,
 
 	TP_STRUCT__entry(
 		__field(struct dma_buf *, dbuf)
-		__field(struct device *, dev)
+		__string(name, dev_name(dev))
 	),
 
 	TP_fast_assign(
 		__entry->dbuf = dbuf;
-		__entry->dev = dev;
+		__assign_str(name, dev_name(dev));
 	),
 
 	TP_printk("dmabuf=%p, device=%s",
-		__entry->dbuf, dev_name(__entry->dev)
+		__entry->dbuf, __get_str(name)
 	)
 );
 
@@ -473,22 +517,22 @@ DECLARE_EVENT_CLASS(nvmap_dmabuf_cpu_access,
 		__entry->len = len;
 	),
 
-	TP_printk("dmabuf=%p, start=%d len=%d",
+	TP_printk("dmabuf=%p, start=%zd len=%zd",
 		  __entry->dbuf, __entry->start, __entry->len
 	)
 );
 
 DEFINE_EVENT(nvmap_dmabuf_cpu_access, nvmap_dmabuf_begin_cpu_access,
 	TP_PROTO(struct dma_buf *dbuf,
-		 u32 start,
-		 u32 len),
+		 size_t start,
+		 size_t len),
 	TP_ARGS(dbuf, start, len)
 );
 
 DEFINE_EVENT(nvmap_dmabuf_cpu_access, nvmap_dmabuf_end_cpu_access,
 	TP_PROTO(struct dma_buf *dbuf,
-		 u32 start,
-		 u32 len),
+		 size_t start,
+		 size_t len),
 	TP_ARGS(dbuf, start, len)
 );
 

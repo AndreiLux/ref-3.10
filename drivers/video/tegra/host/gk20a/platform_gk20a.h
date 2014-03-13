@@ -19,29 +19,39 @@
 #define _GK20A_PLATFORM_H_
 
 #include <linux/platform_device.h>
-#ifdef CONFIG_TEGRA_GK20A
-#include <linux/nvhost.h>
-#endif
+#include <linux/pm_domain.h>
 
 struct gk20a;
 struct channel_gk20a;
 struct gr_ctx_buffer_desc;
+struct gk20a_scale_profile;
 
 struct gk20a_platform {
 #ifdef CONFIG_TEGRA_GK20A
-	/* We need to have nvhost_device_data at the beginning, because
-	 * nvhost assumes that it owns the platform_data. We can store
-	 * gk20a platform info after that though. */
-	struct nvhost_device_data nvhost;
+	u32 syncpt_base;
 #endif
 	/* Populated by the gk20a driver before probing the platform. */
 	struct gk20a *g;
 
 	/* Should be populated at probe. */
-	bool can_powergate;
+	bool can_railgate;
+
+	/* Should be populated at probe. */
+	bool has_syncpoints;
 
 	/* Should be populated by probe. */
 	struct dentry *debugfs;
+
+	/* Clock configuration is stored here. Platform probe is responsible
+	 * for filling this data. */
+	struct clk *clk[3];
+	int num_clks;
+
+	/* Delay before rail gated */
+	int railgate_delay;
+
+	/* Delay before clock gated */
+	int clockgate_delay;
 
 	/* Initialize the platform interface of the gk20a driver.
 	 *
@@ -50,8 +60,16 @@ struct gk20a_platform {
 	 *     state, and
 	 *   - populate the gk20a_platform structure (a pointer to the
 	 *     structure can be obtained by calling gk20a_get_platform).
+	 *
+	 * After this function is finished, the driver will initialise
+	 * pm runtime and genpd based on the platform configuration.
 	 */
 	int (*probe)(struct platform_device *dev);
+
+	/* Second stage initialisation - called once all power management
+	 * initialisations are done.
+	 */
+	int (*late_probe)(struct platform_device *dev);
 
 	/* Called before submitting work to the gpu. The platform may use this
 	 * hook to ensure that any other hw modules that the gpu depends on are
@@ -71,6 +89,38 @@ struct gk20a_platform {
 	int (*secure_alloc)(struct platform_device *dev,
 			    struct gr_ctx_buffer_desc *desc,
 			    size_t size);
+
+	/* Device is going to be suspended */
+	int (*suspend)(struct device *);
+
+	/* Called to turn off the device */
+	int (*railgate)(struct platform_device *dev);
+
+	/* Called to turn on the device */
+	int (*unrailgate)(struct platform_device *dev);
+
+	/* Postscale callback is called after frequency change */
+	void (*postscale)(struct platform_device *pdev,
+			  unsigned long freq);
+
+	/* Pre callback is called before frequency change */
+	void (*prescale)(struct platform_device *pdev);
+
+	/* Devfreq governor name. If scaling is enabled, we request
+	 * this governor to be used in scaling */
+	const char *devfreq_governor;
+
+	/* Quality of service id. If this is set, the scaling routines
+	 * will register a callback to id. Each time we receive a new value,
+	 * the postscale callback gets called.  */
+	int qos_id;
+
+	/* Called as part of debug dump. If the gpu gets hung, this function
+	 * is responsible for delivering all necessary debug data of other
+	 * hw units which may interact with the gpu without direct supervision
+	 * of the CPU.
+	 */
+	void (*dump_platform_dependencies)(struct platform_device *dev);
 };
 
 static inline struct gk20a_platform *gk20a_get_platform(
@@ -99,6 +149,12 @@ static inline void gk20a_platform_channel_idle(struct platform_device *dev)
 	struct gk20a_platform *p = gk20a_get_platform(dev);
 	if (p->channel_idle)
 		p->channel_idle(dev);
+}
+
+static inline bool gk20a_platform_has_syncpoints(struct platform_device *dev)
+{
+	struct gk20a_platform *p = gk20a_get_platform(dev);
+	return p->has_syncpoints;
 }
 
 #endif

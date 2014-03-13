@@ -17,12 +17,14 @@
 
 #include "hal_gk20a.h"
 #include "ltc_gk20a.h"
+#include "fb_gk20a.h"
 #include "gk20a.h"
 
 int gk20a_init_hal(struct gpu_ops *gops)
 {
 	gk20a_init_ltc(gops);
 	gk20a_init_gr(gops);
+	gk20a_init_fb(gops);
 	gops->name = "gk20a";
 
 	return 0;

@@ -15,25 +15,6 @@ config TEGRA_GRHOST_VI
 	  To compile this driver as a module, choose M here:
 	  the  module will be called nvhost-vi.
 
-config TEGRA_GRHOST_USE_NVMAP
-	bool "Use nvmap as graphics memory manager"
-	default y if TEGRA_NVMAP
-	help
-	  Use nvmap as the graphics memory manager.
-
-config TEGRA_GRHOST_FORCE_NVMAP
-	bool "Use nvmap as graphics memory manager"
-	default n
-	help
-	  Force using nvmap instead of dma mapping API
-
-config TEGRA_GRHOST_USE_DMABUF
-	bool "Support dmabuf buffers"
-	default y
-	select DMA_SHARED_BUFFER
-	help
-	  Support dmabuf buffers.
-
 config TEGRA_GRHOST_DEFAULT_TIMEOUT
 	depends on TEGRA_GRHOST
 	int "Default timeout for submits"
@@ -281,18 +262,6 @@ config NVMAP_FORCE_ZEROED_USER_PAGES
 	  avoids leaking kernel secure data to user space. This can add
 	  significant overhead to allocation operations depending on the
 	  allocation size requested.
-
-config NVMAP_USE_FD_FOR_HANDLE
-	bool "Use Fd's to represent NvMap handles"
-	depends on TEGRA_NVMAP
-	default y
-	help
-	  Say Y here to use Fd's for representing NvMap handles
-	  in user space. Enabling this config returns DmaBuf
-	  compatible Fd's to user space during handle creation
-	  requests. The kernel component that receives these Fd's
-	  can use either NvMap interface or DmaBuf interface in order
-	  to access NvMap handle memory.
 
 config NVMAP_USE_CMA_FOR_CARVEOUT
 	bool "Use CMA memory for carveouts"

@@ -118,7 +118,7 @@ struct nvmap_handle {
 	struct rb_node node;	/* entry on global handle tree */
 	atomic_t ref;		/* reference count (i.e., # of duplications) */
 	atomic_t pin;		/* pin count */
-	unsigned long flags;
+	unsigned long flags;    /* caching flags */
 	size_t size;		/* padded (as-allocated) size */
 	size_t orig_size;	/* original (as-requested) size */
 	size_t align;
@@ -175,14 +175,12 @@ struct nvmap_handle_ref {
 
 struct nvmap_page_pool {
 	struct mutex lock;
-	int npages;
-	struct page **page_array;
-	struct page **shrink_array;
+	int npages;                       /* Number of zeroed pages. */
+	struct page **page_array;         /* For zeroed pages. */
 	int max_pages;
-	int flags;
 };
 
-int nvmap_page_pool_init(struct nvmap_page_pool *pool, int flags);
+int nvmap_page_pool_init(struct nvmap_device *dev);
 struct page *nvmap_page_pool_alloc(struct nvmap_page_pool *pool);
 bool nvmap_page_pool_release(struct nvmap_page_pool *pool, struct page *page);
 #endif
@@ -192,15 +190,7 @@ struct nvmap_share {
 	wait_queue_head_t pin_wait;
 	struct mutex pin_lock;
 #ifdef CONFIG_NVMAP_PAGE_POOLS
-	union {
-		struct nvmap_page_pool pools[NVMAP_NUM_POOLS];
-		struct {
-			struct nvmap_page_pool uc_pool;
-			struct nvmap_page_pool wc_pool;
-			struct nvmap_page_pool iwb_pool;
-			struct nvmap_page_pool wb_pool;
-		};
-	};
+	struct nvmap_page_pool pool;
 #endif
 };
 
@@ -351,40 +341,34 @@ struct nvmap_share *nvmap_get_share_from_dev(struct nvmap_device *dev);
 int nvmap_find_cache_maint_op(struct nvmap_device *dev,
 		struct nvmap_handle *h);
 
-struct nvmap_handle *nvmap_validate_get(struct nvmap_client *client,
-					unsigned long handle, bool skip_val);
-
-struct nvmap_handle *nvmap_get_handle_id(struct nvmap_client *client,
-					 unsigned long id);
-
 void nvmap_handle_put(struct nvmap_handle *h);
 
-struct nvmap_handle_ref *__nvmap_validate_id_locked(struct nvmap_client *priv,
-						   unsigned long id);
+struct nvmap_handle_ref *__nvmap_validate_locked(struct nvmap_client *priv,
+						 struct nvmap_handle *h);
 
 struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 					     size_t size);
 
-struct nvmap_handle_ref *nvmap_duplicate_handle_id(struct nvmap_client *client,
-					unsigned long id, bool skip_val);
+struct nvmap_handle_ref *nvmap_duplicate_handle(struct nvmap_client *client,
+					struct nvmap_handle *h, bool skip_val);
 
 struct nvmap_handle_ref *nvmap_create_handle_from_fd(
 			struct nvmap_client *client, int fd);
 
-int nvmap_alloc_handle_id(struct nvmap_client *client,
-			  unsigned long id, unsigned int heap_mask,
-			  size_t align, u8 kind,
-			  unsigned int flags);
+int nvmap_alloc_handle(struct nvmap_client *client,
+		       struct nvmap_handle *h, unsigned int heap_mask,
+		       size_t align, u8 kind,
+		       unsigned int flags);
 
-void nvmap_free_handle_id(struct nvmap_client *c, unsigned long id);
+void nvmap_free_handle(struct nvmap_client *c, struct nvmap_handle *h);
 
 void nvmap_free_handle_user_id(struct nvmap_client *c, unsigned long user_id);
 
 int nvmap_pin_ids(struct nvmap_client *client,
-		  unsigned int nr, const unsigned long *ids);
+		  unsigned int nr, struct nvmap_handle * const *ids);
 
 void nvmap_unpin_ids(struct nvmap_client *priv,
-		     unsigned int nr, const unsigned long *ids);
+		     unsigned int nr, struct nvmap_handle * const *ids);
 
 int nvmap_handle_remove(struct nvmap_device *dev, struct nvmap_handle *h);
 
@@ -392,8 +376,9 @@ void nvmap_handle_add(struct nvmap_device *dev, struct nvmap_handle *h);
 
 int is_nvmap_vma(struct vm_area_struct *vma);
 
-int nvmap_get_dmabuf_fd(struct nvmap_client *client, ulong id);
-ulong nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client, int fd);
+int nvmap_get_dmabuf_fd(struct nvmap_client *client, struct nvmap_handle *h);
+struct nvmap_handle *nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client,
+						 int fd);
 
 int nvmap_get_handle_param(struct nvmap_client *client,
 		struct nvmap_handle_ref *ref, u32 param, u64 *result);
@@ -402,15 +387,7 @@ struct nvmap_client *nvmap_client_get(struct nvmap_client *client);
 
 void nvmap_client_put(struct nvmap_client *c);
 
-#ifdef CONFIG_COMPAT
-ulong unmarshal_user_handle(__u32 handle);
-__u32 marshal_kernel_handle(ulong handle);
-ulong unmarshal_user_id(u32 id);
-#else
-ulong unmarshal_user_handle(struct nvmap_handle *handle);
-struct nvmap_handle *marshal_kernel_handle(ulong handle);
-ulong unmarshal_user_id(ulong id);
-#endif
+struct nvmap_handle *unmarshal_user_id(u32 id);
 
 static inline void nvmap_flush_tlb_kernel_page(unsigned long kaddr)
 {
@@ -431,15 +408,11 @@ extern void __flush_dcache_all(void *arg);
 
 void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
-int nvmap_set_pages_array_uc(struct page **pages, int addrinarray);
-int nvmap_set_pages_array_wc(struct page **pages, int addrinarray);
-int nvmap_set_pages_array_iwb(struct page **pages, int addrinarray);
-int nvmap_set_pages_array_wb(struct page **pages, int addrinarray);
 void nvmap_flush_cache(struct page **pages, int numpages);
 
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
-				 unsigned long id);
+				 struct nvmap_handle *handle);
 struct dma_buf *__nvmap_make_dmabuf(struct nvmap_client *client,
 				    struct nvmap_handle *handle);
 struct sg_table *__nvmap_sg_table(struct nvmap_client *client,
@@ -459,7 +432,7 @@ int __nvmap_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 					   const char *name);
 struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref);
-ulong __nvmap_ref_to_id(struct nvmap_handle_ref *ref);
+struct nvmap_handle *__nvmap_ref_to_id(struct nvmap_handle_ref *ref);
 int __nvmap_pin(struct nvmap_handle_ref *ref, phys_addr_t *phys);
 void __nvmap_unpin(struct nvmap_handle_ref *ref);
 int __nvmap_dmabuf_fd(struct dma_buf *dmabuf, int flags);

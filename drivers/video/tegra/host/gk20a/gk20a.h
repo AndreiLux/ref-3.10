@@ -114,6 +114,12 @@ struct gpu_ops {
 					      struct gr_gk20a *gr);
 	} gr;
 	const char *name;
+	struct {
+		void (*init_fs_state)(struct gk20a *g);
+		void (*reset)(struct gk20a *g);
+		void (*init_uncompressed_kind_map)(struct gk20a *g);
+		void (*init_kind_attr)(struct gk20a *g);
+	} fb;
 };
 
 struct gk20a {
@@ -149,6 +155,7 @@ struct gk20a {
 	bool blcg_enabled;
 	bool elcg_enabled;
 	bool elpg_enabled;
+	bool aelpg_enabled;
 
 #ifdef CONFIG_DEBUG_FS
 	spinlock_t debugfs_lock;
@@ -206,6 +213,14 @@ struct gk20a {
 
 	int irq_stall;
 	int irq_nonstall;
+
+	struct generic_pm_domain pd;
+
+	struct devfreq *devfreq;
+
+	struct gk20a_scale_profile *scale_profile;
+
+	struct device_dma_parameters dma_parms;
 };
 
 static inline unsigned long gk20a_get_gr_idle_timeout(struct gk20a *g)
@@ -248,6 +263,114 @@ struct gk20a_cyclestate_buffer_elem {
 /* keep 64 bits to be consistent */
 	u64 data;
 };
+
+/* debug accessories */
+
+#ifdef CONFIG_DEBUG_FS
+    /* debug info, default is compiled-in but effectively disabled (0 mask) */
+    #define GK20A_DEBUG
+    /*e.g: echo 1 > /d/tegra_host/dbg_mask */
+    #define GK20A_DEFAULT_DBG_MASK 0
+#else
+    /* manually enable and turn it on the mask */
+    /*#define NVHOST_DEBUG*/
+    #define GK20A_DEFAULT_DBG_MASK (dbg_info)
+#endif
+
+enum gk20a_dbg_categories {
+	gpu_dbg_info    = BIT(0),  /* lightly verbose info */
+	gpu_dbg_fn      = BIT(2),  /* fn name tracing */
+	gpu_dbg_reg     = BIT(3),  /* register accesses, very verbose */
+	gpu_dbg_pte     = BIT(4),  /* gmmu ptes */
+	gpu_dbg_intr    = BIT(5),  /* interrupts */
+	gpu_dbg_pmu     = BIT(6),  /* gk20a pmu */
+	gpu_dbg_clk     = BIT(7),  /* gk20a clk */
+	gpu_dbg_map     = BIT(8),  /* mem mappings */
+	gpu_dbg_gpu_dbg = BIT(9),  /* gpu debugger/profiler */
+	gpu_dbg_mem     = BIT(31), /* memory accesses, very verbose */
+};
+
+#if defined(GK20A_DEBUG)
+extern u32 gk20a_dbg_mask;
+extern u32 gk20a_dbg_ftrace;
+#define gk20a_dbg(dbg_mask, format, arg...)				\
+do {									\
+	if (unlikely((dbg_mask) & gk20a_dbg_mask)) {		\
+		if (nvhost_dbg_ftrace)					\
+			trace_printk(format "\n", ##arg);		\
+		else							\
+			pr_info("gk20a %s: " format "\n",		\
+					__func__, ##arg);		\
+	}								\
+} while (0)
+
+#else /* GK20A_DEBUG */
+#define gk20a_dbg(dbg_mask, format, arg...)				\
+do {									\
+	if (0)								\
+		pr_info("gk20a %s: " format "\n", __func__, ##arg);\
+} while (0)
+
+#endif
+
+#define gk20a_err(d, fmt, arg...) \
+	dev_err(d, "%s: " fmt "\n", __func__, ##arg)
+
+#define gk20a_warn(d, fmt, arg...) \
+	dev_warn(d, "%s: " fmt "\n", __func__, ##arg)
+
+#define gk20a_dbg_fn(fmt, arg...) \
+	gk20a_dbg(gpu_dbg_fn, fmt, ##arg)
+
+#define gk20a_dbg_info(fmt, arg...) \
+	gk20a_dbg(gpu_dbg_info, fmt, ##arg)
+
+/* mem access with dbg_mem logging */
+static inline u8 gk20a_mem_rd08(void *ptr, int b)
+{
+	u8 _b = ((const u8 *)ptr)[b];
+#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
+	gk20a_dbg(gpu_dbg_mem, " %p = 0x%x", ptr+sizeof(u8)*b, _b);
+#endif
+	return _b;
+}
+static inline u16 gk20a_mem_rd16(void *ptr, int s)
+{
+	u16 _s = ((const u16 *)ptr)[s];
+#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
+	gk20a_dbg(gpu_dbg_mem, " %p = 0x%x", ptr+sizeof(u16)*s, _s);
+#endif
+	return _s;
+}
+static inline u32 gk20a_mem_rd32(void *ptr, int w)
+{
+	u32 _w = ((const u32 *)ptr)[w];
+#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
+	gk20a_dbg(gpu_dbg_mem, " %p = 0x%x", ptr + sizeof(u32)*w, _w);
+#endif
+	return _w;
+}
+static inline void gk20a_mem_wr08(void *ptr, int b, u8 data)
+{
+#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
+	gk20a_dbg(gpu_dbg_mem, " %p = 0x%x", ptr+sizeof(u8)*b, data);
+#endif
+	((u8 *)ptr)[b] = data;
+}
+static inline void gk20a_mem_wr16(void *ptr, int s, u16 data)
+{
+#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
+	gk20a_dbg(gpu_dbg_mem, " %p = 0x%x", ptr+sizeof(u16)*s, data);
+#endif
+	((u16 *)ptr)[s] = data;
+}
+static inline void gk20a_mem_wr32(void *ptr, int w, u32 data)
+{
+#ifdef CONFIG_TEGRA_SIMULATION_PLATFORM
+	gk20a_dbg(gpu_dbg_mem, " %p = 0x%x", ptr+sizeof(u32)*w, data);
+#endif
+	((u32 *)ptr)[w] = data;
+}
 
 /* register accessors */
 static inline void gk20a_writel(struct gk20a *g, u32 r, u32 v)
@@ -331,9 +454,6 @@ static inline int support_gk20a_pmu(void)
 #else
 static inline int support_gk20a_pmu(void){return 0;}
 #endif
-
-int nvhost_gk20a_finalize_poweron(struct platform_device *dev);
-int nvhost_gk20a_prepare_poweroff(struct platform_device *dev);
 
 void gk20a_create_sysfs(struct platform_device *dev);
 
