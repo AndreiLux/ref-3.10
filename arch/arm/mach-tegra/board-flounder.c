@@ -1098,6 +1098,58 @@ static int __init flounder_headset_init(void)
 	return 0;
 }
 
+static struct device *gps_dev;
+static struct class *gps_class;
+
+extern int tegra_get_hw_rev(void);
+
+
+#define PRJ_F	302
+static int __init flounder_gps_init(void)
+{
+
+	int ret;
+	int gps_onoff;
+	int product_id;
+
+	pr_info("[GPS]%s init gps onoff\n", __func__);
+	of_property_read_u32(
+		of_find_node_by_path("/chosen/board_info"),
+		"pid",
+		&product_id);
+
+	if (product_id == PRJ_F && flounder_get_hw_revision() <= FLOUNDER_REV_EVT1_1  ){
+		gps_onoff = TEGRA_GPIO_PH5; // XB
+	} else {
+		gps_onoff = TEGRA_GPIO_PB4; // XC
+	}
+
+	gps_class = class_create(THIS_MODULE, "gps");
+	if (IS_ERR(gps_class)){
+		pr_err("[GPS] %s: gps class create fail \n", __func__);
+		return PTR_ERR(gps_class);
+	}
+
+	gps_dev = device_create(gps_class, NULL, 0, NULL, "bcm47521");
+	if (IS_ERR(gps_dev)){
+		pr_err("[GPS] %s: gps device create fail \n", __func__);
+		return PTR_ERR(gps_dev);
+	}
+
+	ret = gpio_request(gps_onoff, "gps_onoff");
+	if (ret < 0){
+		pr_err("[GPS] %s: gpio_request failed for gpio %s\n",
+			__func__, "gps_onoff");
+	}
+
+	gpio_direction_output(gps_onoff, 0);
+	gpio_export (gps_onoff, 1);
+	gpio_export_link(gps_dev,"gps_onoff", gps_onoff);
+
+	return 0;
+}
+#undef PRJ_F
+
 static void __init tegra_flounder_early_init(void)
 {
 	tegra_clk_init_from_table(flounder_clk_init_table);
@@ -1273,6 +1325,7 @@ static void __init tegra_flounder_late_init(void)
 	flounder_headset_init();
 	flounder_panel_init();
 	flounder_kbc_init();
+	flounder_gps_init();
 
 	/* put PEX pads into DPD mode to save additional power */
 	tegra_io_dpd_enable(&pexbias_io);
