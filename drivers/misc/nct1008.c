@@ -220,12 +220,16 @@ static int nct1008_get_temp_common(int sensor,
 {
 	struct i2c_client *client = data->client;
 	struct nct1008_platform_data *pdata = client->dev.platform_data;
+	struct nct1008_sensor_data *sensorp;
 	s16 temp_hi;
 	s16 temp_lo;
 	long temp_milli = 0;
 	int i, off = 0;
 	u8 value;
 	int ret;
+
+	if (!((sensor == EXT) || (sensor == LOC)))
+		return -1;
 
 	/* Read External Temp */
 	if (sensor == EXT) {
@@ -244,16 +248,13 @@ static int nct1008_get_temp_common(int sensor,
 			value = ret;
 
 		temp_hi = value_to_temperature(pdata->extended_range, value);
+		temp_milli = CELSIUS_TO_MILLICELSIUS(temp_hi) + temp_lo * 250;
 
-		temp_milli = CELSIUS_TO_MILLICELSIUS(temp_hi) +
-			 temp_lo * 250;
-
-		for (i = 0; i < ARRAY_SIZE(data->sensors[sensor].offset_table);
-			i++) {
-			if (temp_milli < (data->sensors[sensor].
-				offset_table[i].temp * 1000)) {
-				off = data->sensors[sensor].offset_table[i].
-				offset * 1000;
+		sensorp = &data->sensors[sensor];
+		for (i = 0; i < ARRAY_SIZE(sensorp->offset_table); i++) {
+			if (temp_milli <
+				(sensorp->offset_table[i].temp * 1000)) {
+				off = sensorp->offset_table[i].offset * 1000;
 				break;
 			}
 		}
@@ -267,6 +268,9 @@ static int nct1008_get_temp_common(int sensor,
 		temp_hi = value_to_temperature(pdata->extended_range, value);
 		temp_milli = CELSIUS_TO_MILLICELSIUS(temp_hi);
 	}
+
+	if (temp_milli > NCT1008_MAX_TEMP_MILLI)
+		return -1;
 
 	*temp = temp_milli;
 	data->sensors[sensor].temp = temp_milli;
@@ -1156,6 +1160,7 @@ static irqreturn_t nct1008_irq(int irq, void *dev_id)
 static void nct1008_power_control(struct nct1008_data *data, bool is_enable)
 {
 	int ret;
+
 	mutex_lock(&data->mutex);
 	if (!data->nct_reg) {
 		data->nct_reg = regulator_get(&data->client->dev, "vdd");
@@ -1562,12 +1567,15 @@ static int nct1008_remove(struct i2c_client *client)
 	mutex_lock(&data->mutex);
 	data->stop_workqueue = 1;
 	mutex_unlock(&data->mutex);
+
 	cancel_work_sync(&data->work);
 	free_irq(data->client->irq, data);
 	sysfs_remove_group(&client->dev.kobj, &nct1008_attr_group);
 	nct1008_power_control(data, false);
+
 	if (data->nct_reg)
 		regulator_put(data->nct_reg);
+
 	mutex_destroy(&data->mutex);
 	kfree(data);
 
@@ -1581,7 +1589,18 @@ static void nct1008_shutdown(struct i2c_client *client)
 	mutex_lock(&data->mutex);
 	data->stop_workqueue = 1;
 	mutex_unlock(&data->mutex);
+
+	if (data->sensors[LOC].thz) {
+		thermal_zone_device_unregister(data->sensors[LOC].thz);
+		data->sensors[LOC].thz = NULL;
+	}
+	if (data->sensors[EXT].thz) {
+		thermal_zone_device_unregister(data->sensors[EXT].thz);
+		data->sensors[EXT].thz = NULL;
+	}
+
 	cancel_work_sync(&data->work);
+
 	if (client->irq)
 		disable_irq(client->irq);
 

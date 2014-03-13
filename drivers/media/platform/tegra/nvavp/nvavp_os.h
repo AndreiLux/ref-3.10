@@ -1,7 +1,7 @@
 /*
  * drivers/media/video/tegra/nvavp/nvavp_os.h
  *
- * Copyright (c) 2011-2013, NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (c) 2011-2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This file is licensed under the terms of the GNU General Public License
  * version 2. This program is licensed "as is" without any warranty of any
@@ -64,6 +64,10 @@ struct nv_e276_control {
 #define NVE276_SET_MICROCODE_A			(0x00000085)
 #define NVE276_SET_MICROCODE_B			(0x00000086)
 #define NVE276_SET_MICROCODE_C			(0x00000087)
+#define NVE276_EXECUTE				(0x00000088)
+
+/* AVP Application methods */
+#define NVE276_PARAMETER_METHOD(i)		(0x000000C0+(i))
 
 /* Interrupt codes through inbox/outbox data codes (cpu->avp or avp->cpu) */
 #define NVE276_OS_INTERRUPT_NOP			(0x00000000) /* wake up avp */
@@ -100,5 +104,14 @@ struct nvavp_ucode_info {
 	dma_addr_t		phys;
 	void			*ucode_bin;
 };
+typedef void *nvavp_clientctx_t;
+
+int tegra_nvavp_audio_client_open(nvavp_clientctx_t *clientctx);
+int tegra_nvavp_audio_client_release(nvavp_clientctx_t clientctx);
+int nvavp_enable_audio_clocks(nvavp_clientctx_t client, u32 clk_id);
+int nvavp_disable_audio_clocks(nvavp_clientctx_t client, u32 clk_id);
+int nvavp_pushbuffer_submit_audio(nvavp_clientctx_t client, int cmd_buf_phys,
+				  int cmd_buf_words);
+void nvavp_register_audio_cb(nvavp_clientctx_t client, void (*cb)(void));
 
 #endif /* __MEDIA_VIDEO_TEGRA_NVAVP_OS_H */

@@ -36,7 +36,6 @@ nvhost-objs = \
 	debug.o \
 	bus_client.o \
 	chip_support.o \
-	nvhost_memmgr.o \
 	nvhost_scale.o \
 	user_hwctx.o
 
@@ -52,8 +51,5 @@ obj-$(CONFIG_TEGRA_GRHOST) += isp/
 obj-$(CONFIG_TEGRA_GRHOST) += vi/
 obj-$(t12x_or_higher_config) += t124/
 obj-$(t12x_or_higher_config) += vic03/
-obj-$(t12x_or_higher_config) += nvhost_allocator.o
-obj-$(CONFIG_TEGRA_GRHOST_USE_NVMAP) += nvmap.o
-obj-$(CONFIG_TEGRA_GRHOST_USE_DMABUF) += dmabuf.o
 
 obj-$(CONFIG_TEGRA_GRHOST_SYNC) += nvhost_sync.o

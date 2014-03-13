@@ -20,6 +20,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/uaccess.h>
+#include <linux/gk20a.h>
 
 #include <linux/io.h>
 
@@ -255,6 +256,7 @@ void nvhost_debug_dump_locked(struct nvhost_master *master, int locked_id)
 		.fn = write_to_printk
 	};
 	show_all_no_fifo(master, &o, locked_id);
+	gk20a_debug_dump_device(NULL);
 }
 
 void nvhost_debug_dump(struct nvhost_master *master)
@@ -263,5 +265,20 @@ void nvhost_debug_dump(struct nvhost_master *master)
 		.fn = write_to_printk
 	};
 	show_all_no_fifo(master, &o, -1);
+	gk20a_debug_dump_device(NULL);
 }
+
+void nvhost_debug_dump_device(struct platform_device *pdev)
+{
+	struct nvhost_master *master = nvhost_get_host(pdev);
+	struct output o = {
+		.fn = write_to_printk
+	};
+
+	if (!master)
+		return;
+
+	show_all_no_fifo(master, &o, -1);
+}
+EXPORT_SYMBOL(nvhost_debug_dump_device);
 #endif

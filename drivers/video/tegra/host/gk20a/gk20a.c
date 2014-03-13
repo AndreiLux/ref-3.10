@@ -18,7 +18,12 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/gk20a.h>
+
+#include <linux/dma-mapping.h>
 #include <linux/highmem.h>
+#include <linux/string.h>
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/firmware.h>
@@ -47,6 +52,7 @@
 #include "nvhost_acm.h"
 
 #include "gk20a.h"
+#include "debug_gk20a.h"
 #include "ctrl_gk20a.h"
 #include "hw_mc_gk20a.h"
 #include "hw_timer_gk20a.h"
@@ -55,7 +61,6 @@
 #include "hw_top_gk20a.h"
 #include "hw_ltc_gk20a.h"
 #include "gk20a_scale.h"
-#include "gr3d/pod_scaling.h"
 #include "dbg_gpu_gk20a.h"
 #include "hal.h"
 
@@ -68,6 +73,14 @@
 #define INTERFACE_NAME "nvhost%s-gpu"
 
 #define GK20A_NUM_CDEVS 5
+
+#if defined(GK20A_DEBUG)
+u32 gk20a_dbg_mask = GK20A_DEFAULT_DBG_MASK;
+u32 gk20a_dbg_ftrace;
+#endif
+
+static int gk20a_pm_finalize_poweron(struct device *dev);
+static int gk20a_pm_prepare_poweroff(struct device *dev);
 
 static inline void set_gk20a(struct platform_device *dev, struct gk20a *gk20a)
 {
@@ -677,14 +690,6 @@ static int gk20a_init_support(struct platform_device *dev)
 	mutex_init(&g->dbg_sessions_lock);
 	mutex_init(&g->client_lock);
 
-	/* gk20a_as alloc_share can be called before gk20a is powered on.
-	   It requires mm sw states configured so init mm sw early here. */
-	err = gk20a_init_mm_setup_sw(g);
-	if (err)
-		goto fail;
-
-	/* other inits are deferred until gpu is powered up. */
-
 	g->remove_support = gk20a_remove_support;
 	return 0;
 
@@ -695,14 +700,21 @@ static int gk20a_init_support(struct platform_device *dev)
 
 static int gk20a_init_client(struct platform_device *dev)
 {
+	struct gk20a *g = get_gk20a(dev);
+	int err;
+
 	nvhost_dbg_fn("");
 
 #ifndef CONFIG_PM_RUNTIME
-	nvhost_gk20a_finalize_poweron(dev);
+	gk20a_pm_finalize_poweron(&dev->dev);
 #endif
 
+	err = gk20a_init_mm_setup_sw(g);
+	if (err)
+		return err;
+
 	if (IS_ENABLED(CONFIG_GK20A_DEVFREQ))
-		nvhost_gk20a_scale_hw_init(dev);
+		gk20a_scale_hw_init(dev);
 	return 0;
 }
 
@@ -710,7 +722,7 @@ static void gk20a_deinit_client(struct platform_device *dev)
 {
 	nvhost_dbg_fn("");
 #ifndef CONFIG_PM_RUNTIME
-	nvhost_gk20a_prepare_poweroff(dev);
+	gk20a_pm_prepare_poweroff(&dev->dev);
 #endif
 }
 
@@ -737,8 +749,9 @@ void gk20a_put_client(struct gk20a *g)
 	WARN_ON(g->client_refcount < 0);
 }
 
-int nvhost_gk20a_prepare_poweroff(struct platform_device *dev)
+static int gk20a_pm_prepare_poweroff(struct device *_dev)
 {
+	struct platform_device *dev = to_platform_device(_dev);
 	struct gk20a *g = get_gk20a(dev);
 	int ret = 0;
 
@@ -790,8 +803,9 @@ static void gk20a_detect_chip(struct gk20a *g)
 			g->gpu_characteristics.rev);
 }
 
-int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
+static int gk20a_pm_finalize_poweron(struct device *_dev)
 {
+	struct platform_device *dev = to_platform_device(_dev);
 	struct gk20a *g = get_gk20a(dev);
 	int err, nice_value;
 
@@ -838,14 +852,13 @@ int nvhost_gk20a_finalize_poweron(struct platform_device *dev)
 	gk20a_writel(g, mc_intr_mask_0_r(),
 			mc_intr_0_pgraph_pending_f()
 			| mc_intr_0_pfifo_pending_f()
-			| mc_intr_0_pmu_pending_f()
 			| mc_intr_0_priv_ring_pending_f()
 			| mc_intr_0_ltc_pending_f()
 			| mc_intr_0_pbus_pending_f());
 	gk20a_writel(g, mc_intr_en_0_r(),
 		mc_intr_en_0_inta_hardware_f());
 
-	if (tegra_platform_is_linsim())
+	if (!tegra_platform_is_silicon())
 		gk20a_writel(g, bus_intr_en_0_r(), 0x0);
 	else
 		gk20a_writel(g, bus_intr_en_0_r(),
@@ -1145,6 +1158,167 @@ struct channel_gk20a *gk20a_get_channel_from_file(int fd)
 	return ch;
 }
 
+static int gk20a_pm_enable_clk(struct device *dev)
+{
+	int index = 0;
+	struct gk20a_platform *platform;
+
+	platform = dev_get_drvdata(dev);
+	if (!platform)
+		return -EINVAL;
+
+	for (index = 0; index < platform->num_clks; index++) {
+		int err = clk_prepare_enable(platform->clk[index]);
+		if (err)
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int gk20a_pm_disable_clk(struct device *dev)
+{
+	int index = 0;
+	struct gk20a_platform *platform;
+
+	platform = dev_get_drvdata(dev);
+	if (!platform)
+		return -EINVAL;
+
+	for (index = 0; index < platform->num_clks; index++)
+		clk_disable_unprepare(platform->clk[index]);
+
+	return 0;
+}
+
+#ifdef CONFIG_PM
+const struct dev_pm_ops gk20a_pm_ops = {
+#if defined(CONFIG_PM_RUNTIME) && !defined(CONFIG_PM_GENERIC_DOMAINS)
+	.runtime_resume = gk20a_pm_enable_clk,
+	.runtime_suspend = gk20a_pm_disable_clk,
+#endif
+};
+#endif
+
+static int gk20a_pm_railgate(struct generic_pm_domain *domain)
+{
+	struct gk20a *g = container_of(domain, struct gk20a, pd);
+	struct gk20a_platform *platform = platform_get_drvdata(g->dev);
+	int ret = 0;
+
+	if (platform->railgate)
+		ret = platform->railgate(platform->g->dev);
+
+	return ret;
+}
+
+static int gk20a_pm_unrailgate(struct generic_pm_domain *domain)
+{
+	struct gk20a *g = container_of(domain, struct gk20a, pd);
+	struct gk20a_platform *platform = platform_get_drvdata(g->dev);
+	int ret = 0;
+
+	if (platform->unrailgate)
+		ret = platform->unrailgate(platform->g->dev);
+
+	return ret;
+}
+
+static int gk20a_pm_suspend(struct device *dev)
+{
+	struct gk20a_platform *platform = dev_get_drvdata(dev);
+	int ret = 0;
+
+	if (atomic_read(&dev->power.usage_count) > 1)
+		return -EBUSY;
+
+	ret = gk20a_pm_prepare_poweroff(dev);
+	if (ret)
+		return ret;
+
+	gk20a_scale_suspend(to_platform_device(dev));
+
+	if (platform->suspend)
+		platform->suspend(dev);
+
+	return 0;
+}
+
+static int gk20a_pm_resume(struct device *dev)
+{
+	int ret = 0;
+
+	ret = gk20a_pm_finalize_poweron(dev);
+	if (ret)
+		return ret;
+
+	gk20a_scale_resume(to_platform_device(dev));
+
+	return 0;
+}
+
+static int gk20a_pm_initialise_domain(struct platform_device *pdev)
+{
+	struct gk20a_platform *platform = platform_get_drvdata(pdev);
+	struct dev_power_governor *pm_domain_gov = NULL;
+	struct generic_pm_domain *domain = &platform->g->pd;
+	int ret = 0;
+
+	domain->name = kstrdup(pdev->name, GFP_KERNEL);
+
+	if (!platform->can_railgate)
+		pm_domain_gov = &pm_domain_always_on_gov;
+
+	pm_genpd_init(domain, pm_domain_gov, true);
+
+	domain->power_off = gk20a_pm_railgate;
+	domain->power_on = gk20a_pm_unrailgate;
+	domain->dev_ops.start = gk20a_pm_enable_clk;
+	domain->dev_ops.stop = gk20a_pm_disable_clk;
+	domain->dev_ops.save_state = gk20a_pm_prepare_poweroff;
+	domain->dev_ops.restore_state = gk20a_pm_finalize_poweron;
+	domain->dev_ops.suspend = gk20a_pm_suspend;
+	domain->dev_ops.resume = gk20a_pm_resume;
+
+	device_set_wakeup_capable(&pdev->dev, 0);
+	ret = pm_genpd_add_device(domain, &pdev->dev);
+
+	if (platform->railgate_delay)
+		pm_genpd_set_poweroff_delay(domain, platform->railgate_delay);
+
+	return ret;
+}
+
+static int gk20a_pm_init(struct platform_device *dev)
+{
+	struct gk20a_platform *platform = platform_get_drvdata(dev);
+	int err = 0;
+
+	/* Initialise pm runtime */
+	if (platform->clockgate_delay) {
+		pm_runtime_set_autosuspend_delay(&dev->dev,
+						 platform->clockgate_delay);
+		pm_runtime_use_autosuspend(&dev->dev);
+	}
+
+	pm_runtime_enable(&dev->dev);
+	if (!pm_runtime_enabled(&dev->dev))
+		gk20a_pm_enable_clk(&dev->dev);
+
+	/* Enable runtime railgating if possible. If not,
+	 * turn on the rail now. */
+	if (platform->can_railgate && IS_ENABLED(CONFIG_PM_GENERIC_DOMAINS))
+		platform->railgate(dev);
+	else
+		platform->unrailgate(dev);
+
+	/* genpd will take care of runtime power management if it is enabled */
+	if (IS_ENABLED(CONFIG_PM_GENERIC_DOMAINS))
+		err = gk20a_pm_initialise_domain(dev);
+
+	return err;
+}
+
 static int gk20a_probe(struct platform_device *dev)
 {
 	struct gk20a *gk20a;
@@ -1197,6 +1371,30 @@ static int gk20a_probe(struct platform_device *dev)
 		return err;
 	}
 
+	err = gk20a_pm_init(dev);
+	if (err) {
+		dev_err(&dev->dev, "pm init failed");
+		return err;
+	}
+
+	/* Initialise scaling */
+	if (IS_ENABLED(CONFIG_GK20A_DEVFREQ))
+		gk20a_scale_init(dev);
+
+	if (platform->late_probe) {
+		err = platform->late_probe(dev);
+		if (err) {
+			dev_err(&dev->dev, "late probe failed");
+			return err;
+		}
+	}
+
+	gk20a_debug_init(dev);
+
+	/* Set DMA parameters to allow larger sgt lists */
+	dev->dev.dma_parms = &gk20a->dma_parms;
+	dma_set_max_seg_size(&dev->dev, UINT_MAX);
+
 	gpu_cdev = &gk20a->gk20a_cdev;
 	gpu_cdev->gk20a_freq_table_size = tegra_gpufreq_table_size_get();
 	gpu_cdev->gk20a_freq_state = 0;
@@ -1214,6 +1412,7 @@ static int gk20a_probe(struct platform_device *dev)
 		gk20a->blcg_enabled = true;
 		gk20a->elcg_enabled = true;
 		gk20a->elpg_enabled = true;
+		gk20a->aelpg_enabled = true;
 	}
 
 	gk20a_create_sysfs(dev);
@@ -1291,7 +1490,7 @@ static struct platform_driver gk20a_driver = {
 		.of_match_table = tegra_gk20a_of_match,
 #endif
 #ifdef CONFIG_PM
-		.pm = &nvhost_module_pm_ops,
+		.pm = &gk20a_pm_ops,
 #endif
 	}
 };

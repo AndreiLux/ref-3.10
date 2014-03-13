@@ -21,19 +21,15 @@
 
 #include <linux/delay.h>	/* for mdelay */
 #include <linux/firmware.h>
-#include <linux/nvmap.h>
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/debugfs.h>
-
-#include "../dev.h"
-#include "../bus_client.h"
-#include "nvhost_acm.h"
+#include <linux/dma-mapping.h>
 
 #include "gk20a.h"
 #include "hw_mc_gk20a.h"
 #include "hw_pwr_gk20a.h"
 #include "hw_top_gk20a.h"
-#include "chip_support.h"
 
 #define GK20A_PMU_UCODE_IMAGE	"gpmu_ucode.bin"
 
@@ -45,6 +41,11 @@ static int gk20a_pmu_get_elpg_residency_gating(struct gk20a *g,
 		u32 *ingating_time, u32 *ungating_time, u32 *gating_cnt);
 static void gk20a_init_pmu_setup_hw2_workqueue(struct work_struct *work);
 static void pmu_save_zbc(struct gk20a *g, u32 entries);
+static void ap_callback_init_and_enable_ctrl(
+		struct gk20a *g, struct pmu_msg *msg,
+		void *param, u32 seq_desc, u32 status);
+static int gk20a_pmu_ap_send_command(struct gk20a *g,
+			union pmu_ap_cmd *p_ap_cmd, bool b_block);
 
 static void pmu_copy_from_dmem(struct pmu_gk20a *pmu,
 			u32 src, u8* dst, u32 size, u8 port)
@@ -336,7 +337,7 @@ static int pmu_reset(struct pmu_gk20a *pmu)
 static int pmu_bootstrap(struct pmu_gk20a *pmu)
 {
 	struct gk20a *g = pmu->g;
-	struct nvhost_device_data *pdata = platform_get_drvdata(g->dev);
+	struct gk20a_platform *platform = platform_get_drvdata(g->dev);
 	struct mm_gk20a *mm = &g->mm;
 	struct pmu_ucode_desc *desc = pmu->desc;
 	u64 addr_code, addr_data, addr_load;
@@ -355,7 +356,7 @@ static int pmu_bootstrap(struct pmu_gk20a *pmu)
 
 	/* TBD: load all other surfaces */
 
-	pmu->args.cpu_freq_HZ = clk_get_rate(pdata->clk[1]);
+	pmu->args.cpu_freq_HZ = clk_get_rate(platform->clk[1]);
 
 	addr_args = (pwr_falcon_hwcfg_dmem_size_v(
 		gk20a_readl(g, pwr_falcon_hwcfg_r()))
@@ -962,7 +963,7 @@ void gk20a_remove_pmu_support(struct pmu_gk20a *pmu)
 
 	nvhost_dbg_fn("");
 
-	nvhost_allocator_destroy(&pmu->dmem);
+	gk20a_allocator_destroy(&pmu->dmem);
 
 	/* Save the stuff you don't want to lose */
 	gk20a_save_pmu_sw_state(pmu, &save);
@@ -1250,6 +1251,10 @@ int gk20a_init_pmu_setup_hw1(struct gk20a *g)
 
 }
 
+static int gk20a_aelpg_init(struct gk20a *g);
+static int gk20a_aelpg_init_and_enable(struct gk20a *g, u8 ctrl_id);
+
+
 static void gk20a_init_pmu_setup_hw2_workqueue(struct work_struct *work)
 {
 	struct pmu_gk20a *pmu = container_of(work, struct pmu_gk20a, pg_init);
@@ -1436,6 +1441,14 @@ int gk20a_init_pmu_setup_hw2(struct gk20a *g)
 	if (g->elpg_enabled)
 		gk20a_pmu_enable_elpg(g);
 	mutex_unlock(&pmu->pg_init_mutex);
+
+	udelay(50);
+
+	/* Enable AELPG */
+	if (g->aelpg_enabled) {
+		gk20a_aelpg_init(g);
+		gk20a_aelpg_init_and_enable(g, PMU_AP_CTRL_ID_GRAPHICS);
+	}
 
 	return 0;
 
@@ -1762,7 +1775,7 @@ static int pmu_process_init_msg(struct pmu_gk20a *pmu,
 	for (i = 0; i < PMU_QUEUE_COUNT; i++)
 		pmu_queue_init(&pmu->queue[i], i, init);
 
-	nvhost_allocator_init(&pmu->dmem, "gk20a_pmu_dmem",
+	gk20a_allocator_init(&pmu->dmem, "gk20a_pmu_dmem",
 			msg->msg.init.pmu_init.sw_managed_area_offset,
 			msg->msg.init.pmu_init.sw_managed_area_size,
 			PMU_DMEM_ALLOC_ALIGNMENT);
@@ -2833,7 +2846,7 @@ int gk20a_pmu_destroy(struct gk20a *g)
 	g->pg_ungating_time_us += (u64)elpg_ungating_time;
 	g->pg_gating_cnt += gating_cnt;
 
-	pmu_enable_hw(pmu, false);
+	pmu_enable(pmu, false);
 
 	if (pmu->remove_support) {
 		pmu->remove_support(pmu);
@@ -2913,6 +2926,150 @@ static int gk20a_pmu_get_elpg_residency_gating(struct gk20a *g,
 	*gating_cnt = stats.pg_gating_cnt;
 
 	return 0;
+}
+
+/* Send an Adaptive Power (AP) related command to PMU */
+static int gk20a_pmu_ap_send_command(struct gk20a *g,
+			union pmu_ap_cmd *p_ap_cmd, bool b_block)
+{
+	struct pmu_gk20a *pmu = &g->pmu;
+	/* FIXME: where is the PG structure defined?? */
+	u32 status = 0;
+	struct pmu_cmd cmd;
+	u32 seq;
+	pmu_callback p_callback = NULL;
+
+	memset(&cmd, 0, sizeof(struct pmu_cmd));
+
+	/* Copy common members */
+	cmd.hdr.unit_id = PMU_UNIT_PG;
+	cmd.hdr.size = PMU_CMD_HDR_SIZE + sizeof(union pmu_ap_cmd);
+
+	cmd.cmd.pg.ap_cmd.cmn.cmd_type = PMU_PG_CMD_ID_AP;
+	cmd.cmd.pg.ap_cmd.cmn.cmd_id = p_ap_cmd->cmn.cmd_id;
+
+	/* Copy other members of command */
+	switch (p_ap_cmd->cmn.cmd_id) {
+	case PMU_AP_CMD_ID_INIT:
+		cmd.cmd.pg.ap_cmd.init.pg_sampling_period_us =
+			p_ap_cmd->init.pg_sampling_period_us;
+		p_callback = ap_callback_init_and_enable_ctrl;
+		break;
+
+	case PMU_AP_CMD_ID_INIT_AND_ENABLE_CTRL:
+		cmd.cmd.pg.ap_cmd.init_and_enable_ctrl.ctrl_id =
+		p_ap_cmd->init_and_enable_ctrl.ctrl_id;
+		memcpy(
+		(void *)&(cmd.cmd.pg.ap_cmd.init_and_enable_ctrl.params),
+			(void *)&(p_ap_cmd->init_and_enable_ctrl.params),
+			sizeof(struct pmu_ap_ctrl_init_params));
+
+		p_callback = ap_callback_init_and_enable_ctrl;
+		break;
+
+	case PMU_AP_CMD_ID_ENABLE_CTRL:
+		cmd.cmd.pg.ap_cmd.enable_ctrl.ctrl_id =
+			p_ap_cmd->enable_ctrl.ctrl_id;
+		break;
+
+	case PMU_AP_CMD_ID_DISABLE_CTRL:
+		cmd.cmd.pg.ap_cmd.disable_ctrl.ctrl_id =
+			p_ap_cmd->disable_ctrl.ctrl_id;
+		break;
+
+	case PMU_AP_CMD_ID_KICK_CTRL:
+		cmd.cmd.pg.ap_cmd.kick_ctrl.ctrl_id =
+			p_ap_cmd->kick_ctrl.ctrl_id;
+		cmd.cmd.pg.ap_cmd.kick_ctrl.skip_count =
+			p_ap_cmd->kick_ctrl.skip_count;
+		break;
+
+	default:
+		nvhost_dbg_pmu("%s: Invalid Adaptive Power command %d\n",
+			__func__, p_ap_cmd->cmn.cmd_id);
+		return 0x2f;
+	}
+
+	status = gk20a_pmu_cmd_post(g, &cmd, NULL, NULL, PMU_COMMAND_QUEUE_HPQ,
+			p_callback, pmu, &seq, ~0);
+
+	if (!status) {
+		nvhost_dbg_pmu(
+			"%s: Unable to submit Adaptive Power Command %d\n",
+			__func__, p_ap_cmd->cmn.cmd_id);
+		goto err_return;
+	}
+
+	/* TODO: Implement blocking calls (b_block) */
+
+err_return:
+	return status;
+}
+
+static void ap_callback_init_and_enable_ctrl(
+		struct gk20a *g, struct pmu_msg *msg,
+		void *param, u32 seq_desc, u32 status)
+{
+	/* Define p_ap (i.e pointer to pmu_ap structure) */
+	WARN_ON(!msg);
+
+	if (!status) {
+		switch (msg->msg.pg.ap_msg.cmn.msg_id) {
+		case PMU_AP_MSG_ID_INIT_ACK:
+			break;
+
+		default:
+			nvhost_dbg_pmu(
+			"%s: Invalid Adaptive Power Message: %x\n",
+			__func__, msg->msg.pg.ap_msg.cmn.msg_id);
+			break;
+		}
+	}
+}
+
+static int gk20a_aelpg_init(struct gk20a *g)
+{
+	int status = 0;
+
+	/* Remove reliance on app_ctrl field. */
+	union pmu_ap_cmd ap_cmd;
+
+	/* TODO: Check for elpg being ready? */
+	ap_cmd.init.cmd_id = PMU_AP_CMD_ID_INIT;
+	ap_cmd.init.pg_sampling_period_us =
+		APCTRL_SAMPLING_PERIOD_PG_DEFAULT_US;
+
+	status = gk20a_pmu_ap_send_command(g, &ap_cmd, false);
+	return status;
+}
+
+static int gk20a_aelpg_init_and_enable(struct gk20a *g, u8 ctrl_id)
+{
+	int status = 0;
+	union pmu_ap_cmd ap_cmd;
+
+	/* TODO: Probably check if ELPG is ready? */
+
+	ap_cmd.init_and_enable_ctrl.cmd_id = PMU_AP_CMD_ID_INIT_AND_ENABLE_CTRL;
+	ap_cmd.init_and_enable_ctrl.ctrl_id = ctrl_id;
+	ap_cmd.init_and_enable_ctrl.params.min_idle_filter_us =
+		APCTRL_MINIMUM_IDLE_FILTER_DEFAULT_US;
+	ap_cmd.init_and_enable_ctrl.params.min_target_saving_us =
+		APCTRL_MINIMUM_TARGET_SAVING_DEFAULT_US;
+	ap_cmd.init_and_enable_ctrl.params.power_break_even_us =
+		APCTRL_POWER_BREAKEVEN_DEFAULT_US;
+	ap_cmd.init_and_enable_ctrl.params.cycles_per_sample_max =
+		APCTRL_CYCLES_PER_SAMPLE_MAX_DEFAULT;
+
+	switch (ctrl_id) {
+	case PMU_AP_CTRL_ID_GRAPHICS:
+		break;
+	default:
+		break;
+	}
+
+	status = gk20a_pmu_ap_send_command(g, &ap_cmd, true);
+	return status;
 }
 
 #if CONFIG_DEBUG_FS
@@ -2997,17 +3154,17 @@ static const struct file_operations elpg_transitions_fops = {
 int gk20a_pmu_debugfs_init(struct platform_device *dev)
 {
 	struct dentry *d;
-	struct nvhost_device_data *pdata = platform_get_drvdata(dev);
+	struct gk20a_platform *platform = platform_get_drvdata(dev);
 	struct gk20a *g = get_gk20a(dev);
 
 	d = debugfs_create_file(
-		"elpg_residency", S_IRUGO|S_IWUSR, pdata->debugfs, g,
+		"elpg_residency", S_IRUGO|S_IWUSR, platform->debugfs, g,
 						&elpg_residency_fops);
 	if (!d)
 		goto err_out;
 
 	d = debugfs_create_file(
-		"elpg_transitions", S_IRUGO, pdata->debugfs, g,
+		"elpg_transitions", S_IRUGO, platform->debugfs, g,
 						&elpg_transitions_fops);
 	if (!d)
 		goto err_out;
@@ -3016,7 +3173,7 @@ int gk20a_pmu_debugfs_init(struct platform_device *dev)
 
 err_out:
 	pr_err("%s: Failed to make debugfs node\n", __func__);
-	debugfs_remove_recursive(pdata->debugfs);
+	debugfs_remove_recursive(platform->debugfs);
 	return -ENOMEM;
 }
 #endif

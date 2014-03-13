@@ -21,11 +21,12 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/scatterlist.h>
-#include <trace/events/nvhost.h>
+#include <trace/events/gk20a.h>
 #include <linux/dma-mapping.h>
 
 #include "../dev.h"
 
+#include "debug_gk20a.h"
 #include "gk20a.h"
 #include "hw_fifo_gk20a.h"
 #include "hw_pbdma_gk20a.h"
@@ -969,7 +970,7 @@ static bool gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 	} else {
 		fault_id = gk20a_readl(g, fifo_intr_mmu_fault_id_r());
 		fake_fault = false;
-		nvhost_debug_dump(g->host);
+		gk20a_debug_dump(g->dev);
 	}
 
 	/* lock all runlists. Note that locks are are released in
@@ -987,14 +988,14 @@ static bool gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 		struct channel_gk20a *ch = NULL;
 
 		get_exception_mmu_fault_info(g, engine_mmu_id, &f);
-		trace_nvhost_gk20a_mmu_fault(f.fault_hi_v,
-					     f.fault_lo_v,
-					     f.fault_info_v,
-					     f.inst_ptr,
-					     engine_id,
-					     f.engine_subid_desc,
-					     f.client_desc,
-					     f.fault_type_desc);
+		trace_gk20a_mmu_fault(f.fault_hi_v,
+				      f.fault_lo_v,
+				      f.fault_info_v,
+				      f.inst_ptr,
+				      engine_id,
+				      f.engine_subid_desc,
+				      f.client_desc,
+				      f.fault_type_desc);
 		nvhost_err(dev_from_gk20a(g), "mmu fault on engine %d, "
 			   "engine subid %d (%s), client %d (%s), "
 			   "addr 0x%08x:0x%08x, type %d (%s), info 0x%08x,"
@@ -1034,7 +1035,6 @@ static bool gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 		}
 
 		if (ch) {
-			verbose = gk20a_fifo_set_ctx_mmu_error(g, ch);
 			if (ch->in_use) {
 				/* disable the channel from hw and increment
 				 * syncpoints */
@@ -1051,7 +1051,9 @@ static bool gk20a_fifo_handle_mmu_fault(struct gk20a *g)
 
 				/* handled during channel free */
 				g->fifo.deferred_reset_pending = true;
-			}
+			} else
+				verbose = gk20a_fifo_set_ctx_mmu_error(g, ch);
+
 		} else if (f.inst_ptr ==
 				g->mm.bar1.inst_block.cpu_pa) {
 			nvhost_err(dev_from_gk20a(g), "mmu fault from bar1");
@@ -1103,7 +1105,7 @@ void gk20a_fifo_recover(struct gk20a *g, u32 __engine_ids,
 	int ret;
 
 	if (verbose)
-		nvhost_debug_dump(g->host);
+		gk20a_debug_dump(g->dev);
 
 	/* store faulted engines in advance */
 	g->fifo.mmu_fault_engines = 0;

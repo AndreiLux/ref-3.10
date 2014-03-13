@@ -1,9 +1,5 @@
 /*
- * drivers/video/tegra/host/gr3d/pod_scaling.h
- *
- * Tegra Graphics Host Power-On-Demand Scaling
- *
- * Copyright (c) 2012-2013, NVIDIA Corporation.  All rights reserved.
+ * Copyright (c) 2014 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -18,13 +14,14 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef POD_SCALING_H
-#define POD_SCALING_H
+#ifndef _MACH_TEGRA_PM64_H_
+#define _MACH_TEGRA_PM64_H_
 
-struct platform_device;
-struct dentry;
+/* Powergate and Suspend finishers */
+extern void (*tegra_tear_down_cpu)(void);
+extern int (*tegra_sleep_core_finish)(unsigned long v2p);
 
-#define GET_TARGET_FREQ_DONTSCALE	1
-/* Suspend is called when powering down module */
-void nvhost_scale3d_suspend(struct device *);
-#endif
+/* Implemented by SOC-specific suspend driver */
+void tegra_soc_suspend_init(void);
+
+#endif /* _MACH_TEGRA_PM64_H_ */

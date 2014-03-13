@@ -30,6 +30,7 @@
 #include <linux/syscore_ops.h>
 #include <linux/platform_device.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra-fuse.h>
 
 #include <asm/clkdev.h>
 
@@ -1234,7 +1235,7 @@ static void tegra13_super_cclk_init(struct clk *c)
 		 */
 		val = clk13_readl(c->reg + SUPER_CLK_DIVIDER);
 		BUG_ON(val & SUPER_CLOCK_DIV_U71_MASK);
-		val = 0x00020000;
+		val = 0;
 		clk13_writel(val, c->reg + SUPER_CLK_DIVIDER);
 	}
 	else
@@ -1266,9 +1267,9 @@ static int tegra13_super_cclk_set_parent(struct clk *c, struct clk *p)
 			val |= (sel->value & CLK13_SOURCE_MASK) << shift;
 
 			if (c->flags & DIV_U71) {
-				/* Make sure 7.1 divider is 1:1
+				/* Make sure 7.1 divider is 1:1 */
 				u32 div = clk13_readl(c->reg + SUPER_CLK_DIVIDER);
-				BUG_ON(div & SUPER_CLOCK_DIV_U71_MASK); */
+				BUG_ON(div & SUPER_CLOCK_DIV_U71_MASK);
 			}
 
 			if (c->refcnt)
@@ -4315,8 +4316,13 @@ static void __init tegra12_dfll_cpu_late_init(struct clk *c)
 	ret = tegra_init_cl_dvfs();
 	if (!ret) {
 		c->state = OFF;
-		if (tegra_platform_is_silicon())
+		if (tegra_platform_is_silicon()) {
 			use_dfll = CONFIG_TEGRA_USE_DFLL_RANGE;
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+			if (tegra_cpu_speedo_id() == 0)
+				use_dfll = 0;
+#endif
+		}
 		tegra_dvfs_set_dfll_range(cpu->dvfs, use_dfll);
 		tegra_cl_dvfs_debug_init(c);
 		pr_info("Tegra CPU DFLL is initialized with use_dfll = %d\n", use_dfll);
@@ -4341,17 +4347,10 @@ static void tegra12_dfll_clk_disable(struct clk *c)
 
 static int tegra12_dfll_clk_set_rate(struct clk *c, unsigned long rate)
 {
-#ifdef CONFIG_ARCH_TEGRA_13x_SOC
-	int ret = tegra_cl_dvfs_request_rate(c->u.dfll.cl_dvfs, rate*2);
-
-	if (!ret)
-		c->rate = tegra_cl_dvfs_request_get(c->u.dfll.cl_dvfs)/2;
-#else
 	int ret = tegra_cl_dvfs_request_rate(c->u.dfll.cl_dvfs, rate);
 
 	if (!ret)
 		c->rate = tegra_cl_dvfs_request_get(c->u.dfll.cl_dvfs);
-#endif
 
 	return ret;
 }
@@ -7389,9 +7388,9 @@ static struct clk_mux_sel mux_cclk_g[] = {
         { .input = &tegra_clk_sclk,	.value = 6},
         { .input = &tegra_clk_m,        .value = 7},
         { .input = &tegra_pll_x,        .value = 8},
-        { .input = &tegra_dfll_cpu,	.value = 9}, /*  - High jitter DFLL */
+        /* { .input = ,        		.value = 9},  - High jitter DFLL */
         /* { .input = ,        		.value = 14}, - High jitter PLLX */
-        /* { .input = &tegra_dfll_cpu,     .value = 15}, */
+        { .input = &tegra_dfll_cpu,     .value = 15},
         { 0, 0},
 };
 
@@ -8431,8 +8430,10 @@ struct clk tegra_list_clks[] = {
 	SHARED_SCLK("sbc6.sclk", "tegra12-spi.5",	"sclk", &tegra_clk_apb,        NULL, 0, 0),
 
 	SHARED_EMC_CLK("avp.emc",	"tegra-avp",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
-	SHARED_EMC_CLK("mon_cpu.emc", "tegra_mon", "cpu_emc",
-						&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("mon_cpu.emc",	"tegra_mon", "cpu_emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+	SHARED_EMC_CLK("cpu.emc",	"tegra-cpu", "cpu_emc",	&tegra_clk_emc, NULL, 0, 0, 0),
+#endif
 	SHARED_EMC_CLK("disp1.emc",	"tegradc.0",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, BIT(EMC_USER_DC1)),
 	SHARED_EMC_CLK("disp2.emc",	"tegradc.1",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, BIT(EMC_USER_DC2)),
 	SHARED_EMC_CLK("hdmi.emc",	"hdmi",		"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
@@ -9276,6 +9277,7 @@ struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
 	return &freq_table_data;
 }
 
+/* EMC/CPU frequency ratio for power/performance optimization */
 unsigned long tegra_emc_to_cpu_ratio(unsigned long cpu_rate)
 {
 	static unsigned long emc_max_rate;
@@ -9299,6 +9301,29 @@ unsigned long tegra_emc_to_cpu_ratio(unsigned long cpu_rate)
 	else
 		return 0;		/* emc min */
 }
+
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+/* EMC/CPU frequency operational requirement limit */
+unsigned long tegra_emc_cpu_limit(unsigned long cpu_rate)
+{
+	static unsigned long last_emc_rate;
+	unsigned long emc_rate;
+
+	/* Vote on memory bus frequency based on cpu frequency;
+	   cpu rate is in kHz, emc rate is in Hz */
+	if (cpu_rate > 1122000)
+		emc_rate = 600000000;	/* cpu > 1.1GHz, emc 600MHz */
+	else
+		emc_rate = 300000000;	/* 300MHz floor always */
+
+	/* When going down, allow some time for CPU DFLL to settle */
+	if (emc_rate < last_emc_rate)
+		udelay(200);		/* FIXME: to be characterized */
+
+	last_emc_rate = emc_rate;
+	return emc_rate;
+}
+#endif
 
 int tegra_update_mselect_rate(unsigned long cpu_rate)
 {
@@ -9744,6 +9769,9 @@ void __init tegra12x_init_clocks(void)
 
 	tegra12_cpu_car_ops_init();
 
+	/* Tegra12 allows to change dividers of disabled clocks */
+	tegra_clk_set_disabled_div_all();
+
 #ifdef CONFIG_PM_SLEEP
 	register_syscore_ops(&tegra_clk_syscore_ops);
 #endif
@@ -9752,6 +9780,7 @@ void __init tegra12x_init_clocks(void)
 
 static int __init tegra12x_clk_late_init(void)
 {
+	clk_disable(&tegra_pll_d);
 	clk_disable(&tegra_pll_re_vco);
 	return 0;
 }

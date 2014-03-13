@@ -3,6 +3,7 @@
  * drivers/gpu/ion/ion.c
  *
  * Copyright (C) 2011 Google, Inc.
+ * Copyright (c) 2014 NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -871,17 +872,109 @@ static void ion_buffer_sync_for_device(struct ion_buffer *buffer,
 static struct sg_table *ion_map_dma_buf(struct dma_buf_attachment *attachment,
 					enum dma_data_direction direction)
 {
+	int err, i, empty = -1;
+	struct dma_iommu_mapping *iommu_map;
 	struct dma_buf *dmabuf = attachment->dmabuf;
 	struct ion_buffer *buffer = dmabuf->priv;
+	unsigned int nents = buffer->sg_table->nents;
+	struct ion_mapping *map_ptr;
+	struct scatterlist *sg;
 
-	ion_buffer_sync_for_device(buffer, attachment->dev, direction);
-	return buffer->sg_table;
+	iommu_map = to_dma_iommu_mapping(attachment->dev);
+	if (!iommu_map) {
+		ion_buffer_sync_for_device(buffer, attachment->dev, direction);
+		return buffer->sg_table;
+	}
+
+	mutex_lock(&buffer->lock);
+	for (i = 0; i < ARRAY_SIZE(buffer->mapping); i++) {
+		map_ptr = &buffer->mapping[i];
+		if (!map_ptr->dev) {
+			empty = i;
+			continue;
+		}
+
+		if (to_dma_iommu_mapping(map_ptr->dev) == iommu_map) {
+			kref_get(&map_ptr->kref);
+			mutex_unlock(&buffer->lock);
+			return &map_ptr->sgt;
+		}
+	}
+
+	if (!empty) {
+		err = -ENOMEM;
+		goto err_no_space;
+	}
+
+	map_ptr = &buffer->mapping[empty];
+	err = sg_alloc_table(&map_ptr->sgt, nents, GFP_KERNEL);
+	if (err)
+		goto err_sg_alloc_table;
+
+	for_each_sg(buffer->sg_table->sgl, sg, nents, i)
+		memcpy(map_ptr->sgt.sgl + i, sg, sizeof(*sg));
+
+	nents = dma_map_sg(attachment->dev, map_ptr->sgt.sgl, nents, direction);
+	if (!nents) {
+		err = -EINVAL;
+		goto err_dma_map_sg;
+	}
+
+	kref_init(&map_ptr->kref);
+	map_ptr->dev = attachment->dev;
+	mutex_unlock(&buffer->lock);
+	return &map_ptr->sgt;
+
+err_dma_map_sg:
+	sg_free_table(&map_ptr->sgt);
+err_sg_alloc_table:
+err_no_space:
+	mutex_unlock(&buffer->lock);
+	return ERR_PTR(err);
+}
+
+static void __ion_unmap_dma_buf(struct kref *kref)
+{
+	struct ion_mapping *map_ptr;
+
+	map_ptr = container_of(kref, struct ion_mapping, kref);
+	dma_unmap_sg(map_ptr->dev, map_ptr->sgt.sgl, map_ptr->sgt.nents,
+		     DMA_BIDIRECTIONAL);
+	sg_free_table(&map_ptr->sgt);
+	memset(map_ptr, 0, sizeof(*map_ptr));
 }
 
 static void ion_unmap_dma_buf(struct dma_buf_attachment *attachment,
 			      struct sg_table *table,
 			      enum dma_data_direction direction)
 {
+	int i;
+	struct dma_iommu_mapping *iommu_map;
+	struct dma_buf *dmabuf = attachment->dmabuf;
+	struct ion_buffer *buffer = dmabuf->priv;
+	struct ion_mapping *map_ptr;
+
+	iommu_map = to_dma_iommu_mapping(attachment->dev);
+	if (!iommu_map)
+		return;
+
+	mutex_lock(&buffer->lock);
+	for (i = 0; i < ARRAY_SIZE(buffer->mapping); i++) {
+		map_ptr = &buffer->mapping[i];
+		if (!map_ptr->dev)
+			continue;
+
+		if (to_dma_iommu_mapping(map_ptr->dev) == iommu_map) {
+			kref_put(&map_ptr->kref, __ion_unmap_dma_buf);
+			mutex_unlock(&buffer->lock);
+			return;
+		}
+	}
+
+	dev_warn(attachment->dev, "Not found a map(%p)\n",
+		 to_dma_iommu_mapping(attachment->dev));
+
+	mutex_unlock(&buffer->lock);
 }
 
 void ion_pages_sync_for_device(struct device *dev, struct page *page,
@@ -1033,7 +1126,17 @@ static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 
 static void ion_dma_buf_release(struct dma_buf *dmabuf)
 {
+	int i;
 	struct ion_buffer *buffer = dmabuf->priv;
+
+	for (i = 0; i < ARRAY_SIZE(buffer->importer); i++) {
+		struct ion_importer *imp;
+
+		imp = &buffer->importer[i];
+		if (imp->dev && imp->delete)
+			imp->delete(imp->priv);
+	}
+
 	ion_buffer_put(buffer);
 }
 
@@ -1081,6 +1184,80 @@ static void ion_dma_buf_end_cpu_access(struct dma_buf *dmabuf, size_t start,
 	mutex_unlock(&buffer->lock);
 }
 
+static int ion_dma_buf_set_private(struct dma_buf *dmabuf, struct device *dev,
+				   void *priv, void (*delete)(void *))
+{
+	int i, empty = -1, err = 0;
+	struct ion_buffer *buffer = dmabuf->priv;
+	struct ion_importer *imp;
+
+	mutex_lock(&buffer->lock);
+	for (i = 0; i < ARRAY_SIZE(buffer->importer); i++) {
+		imp = &buffer->importer[i];
+		if ((empty == -1) && !imp->dev)
+			empty = i;
+
+		if (dev == imp->dev)
+			break;
+	}
+
+	if (i == ARRAY_SIZE(buffer->importer)) {
+		if (empty == -1) {
+			pr_err("ION: Needs more importer space\n");
+			err = -ENOMEM;
+			goto out;
+		}
+		imp = &buffer->importer[empty];
+		i = empty;
+	}
+
+	imp->dev = dev;
+	imp->priv = priv;
+	imp->delete = delete;
+out:
+	mutex_unlock(&buffer->lock);
+	dev_dbg(dev, "%s() dmabuf=%p err=%d i=%d priv=%p\n",
+		__func__, dmabuf, err, i, priv);
+	return err;
+}
+
+static void *ion_dma_buf_get_private(struct dma_buf *dmabuf,
+				     struct device *dev)
+{
+	int i;
+	void *priv = NULL;
+	struct ion_buffer *buffer = dmabuf->priv;
+
+	mutex_lock(&buffer->lock);
+	for (i = 0; i < ARRAY_SIZE(buffer->importer); i++) {
+		struct ion_importer *imp;
+
+		imp = &buffer->importer[i];
+		if (dev == imp->dev) {
+			priv = imp->priv;
+			break;
+		}
+	}
+	mutex_unlock(&buffer->lock);
+	dev_dbg(dev, "%s() dmabuf=%p i=%d priv=%p\n",
+		__func__, dmabuf, i, priv);
+	return priv;
+}
+
+static void *ion_dma_buf_vmap(struct dma_buf *dmabuf)
+{
+	void *addr = ion_dma_buf_kmap(dmabuf, 0);
+
+	pr_info("%s() %p\n", __func__, addr);
+	return addr;
+}
+
+static void ion_dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
+{
+	pr_info("%s() %p\n", __func__, vaddr);
+	ion_dma_buf_kunmap(dmabuf, 0, vaddr);
+}
+
 static struct dma_buf_ops dma_buf_ops = {
 	.map_dma_buf = ion_map_dma_buf,
 	.unmap_dma_buf = ion_unmap_dma_buf,
@@ -1092,6 +1269,10 @@ static struct dma_buf_ops dma_buf_ops = {
 	.kunmap_atomic = ion_dma_buf_kunmap,
 	.kmap = ion_dma_buf_kmap,
 	.kunmap = ion_dma_buf_kunmap,
+	.vmap = ion_dma_buf_vmap,
+	.vunmap = ion_dma_buf_vunmap,
+	.set_drvdata = ion_dma_buf_set_private,
+	.get_drvdata = ion_dma_buf_get_private,
 };
 
 struct dma_buf *ion_share_dma_buf(struct ion_client *client,
