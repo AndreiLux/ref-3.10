@@ -319,7 +319,7 @@ static struct tegra_dc_platform_data flounder_disp1_pdata = {
 	.fb		= &flounder_disp1_fb_data,
 	.emc_clk_rate	= 204000000,
 #ifdef CONFIG_TEGRA_DC_CMU
-	.cmu_enable	= 1,
+	.cmu_enable	= 0,
 #endif
 };
 
