@@ -20,6 +20,7 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/of_gpio.h>
+#include <linux/elf.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -576,7 +577,6 @@ static unsigned int rt5677_read_dsp_code_from_file(char *file_path,
 
 	pr_debug("%s\n", __func__);
 
-
 	fp = filp_open(file_path, O_RDONLY, 0);
 	if (!IS_ERR(fp)) {
 		file_size = vfs_llseek(fp, pos, SEEK_END);
@@ -593,7 +593,7 @@ static unsigned int rt5677_read_dsp_code_from_file(char *file_path,
 
 		return file_size;
 	} else {
-		pr_err("%s: filp_open fail\n", __func__);
+		pr_err("%s: filp_open fail: %s\n", __func__, file_path);
 	}
 	return 0;
 }
@@ -729,19 +729,111 @@ static unsigned int rt5677_set_vad_source(
 	return 0;
 }
 
+static int rt5677_parse_and_load_dsp(u8 *buf, unsigned int len)
+{
+	Elf32_Ehdr *elf_hdr;
+	Elf32_Phdr *pr_hdr;
+	Elf32_Half i;
+
+	if (!buf || (len < sizeof(Elf32_Ehdr)))
+		return -ENOMEM;
+
+	elf_hdr = (Elf32_Ehdr *)buf;
+#ifdef DEBUG
+#ifndef EM_XTENSA
+#define EM_XTENSA	94
+#endif
+	if (strncmp(elf_hdr->e_ident, ELFMAG, sizeof(ELFMAG) - 1) != 0)
+		pr_err("Wrong ELF header prefix\n");
+	if (elf_hdr->e_ehsize != sizeof(Elf32_Ehdr))
+		pr_err("Wrong Elf header size\n");
+	if (elf_hdr->e_machine != EM_XTENSA)
+		pr_err("Wrong DSP code file\n");
+#endif
+	if (len < elf_hdr->e_phoff)
+		return -ENOMEM;
+	pr_hdr = (Elf32_Phdr *)(buf + elf_hdr->e_phoff);
+	for (i=0; i < elf_hdr->e_phnum; i++) {
+		/* TODO: handle p_memsz != p_filesz */
+		if (pr_hdr->p_paddr && pr_hdr->p_filesz) {
+			pr_debug("Load [0x%x] -> 0x%x\n", pr_hdr->p_filesz,
+			       pr_hdr->p_paddr);
+			rt5677_spi_burst_write(pr_hdr->p_paddr,
+					       buf + pr_hdr->p_offset,
+					       pr_hdr->p_filesz);
+		}
+		pr_hdr++;
+	}
+	return 0;
+}
+
+static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
+{
+#ifdef DEBUG
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	int ret = 0;
+#endif
+	u8 *buf;
+	unsigned int len;
+	char file_path[64];
+
+	sprintf(file_path, "/system/etc/rt5677_elf_%s",
+		dsp_vad_suffix);
+	len = rt5677_read_dsp_code_from_file(file_path, &buf);
+	if (len) {
+		pr_debug("load %s ok\n", file_path);
+		rt5677_parse_and_load_dsp(buf, len);
+	} else {
+		sprintf(file_path, "/system/etc/rt5677_0x50000000_%s",
+			dsp_vad_suffix);
+		len = rt5677_read_dsp_code_from_file(file_path, &buf);
+		if (len) {
+			pr_debug("load %s ok\n", file_path);
+			rt5677_spi_burst_write(0x50000000, buf, len);
+			kfree(buf);
+		} else {
+			pr_err("load %s fail\n", file_path);
+		}
+
+		sprintf(file_path, "/system/etc/rt5677_0x60000000_%s",
+			dsp_vad_suffix);
+		len = rt5677_read_dsp_code_from_file(file_path, &buf);
+		if (len) {
+			pr_debug("load %s ok\n", file_path);
+			rt5677_spi_burst_write(0x60000000, buf, len);
+			kfree(buf);
+		} else {
+			pr_err("load %s fail\n", file_path);
+		}
+	}
+#ifdef DEBUG
+	msleep(50);
+	regmap_write(rt5677->regmap, 0x01, 0x0000);
+	regmap_write(rt5677->regmap, 0x02, 0x5000);
+	regmap_write(rt5677->regmap, 0x00, 0x0002);
+	regmap_read(rt5677->regmap, 0x03, &ret);
+	dev_err(codec->dev, "0x50000000 0x03 %x\n", ret);
+	regmap_read(rt5677->regmap, 0x04, &ret);
+	dev_err(codec->dev, "0x50000000 0x04 %x\n", ret);
+
+	regmap_write(rt5677->regmap, 0x01, 0x0000);
+	regmap_write(rt5677->regmap, 0x02, 0x6000);
+	regmap_write(rt5677->regmap, 0x00, 0x0002);
+	regmap_read(rt5677->regmap, 0x03, &ret);
+	dev_err(codec->dev, "0x60000000 0x03 %x\n", ret);
+	regmap_read(rt5677->regmap, 0x04, &ret);
+	dev_err(codec->dev, "0x60000000 0x04 %x\n", ret);
+#endif
+	return 0;
+}
+
 static unsigned int rt5677_set_vad(
 	struct snd_soc_codec *codec, unsigned int on)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 	int i = 0;
-	u8 *buf;
-	unsigned int len, value;
+	unsigned int value;
 	static bool activity;
-	char file_path[64];
-
-#ifdef DEBUG
-	int ret = 0;
-#endif
 
 	if (on && !activity) {
 		pr_debug("rt5677_set_vad on\n");
@@ -754,49 +846,8 @@ static unsigned int rt5677_set_vad(
 		}
 		rt5677_set_vad_source(codec, rt5677->vad_source);
 		msleep(100);
-		sprintf(file_path, "/system/etc/rt5677_0x50000000_%s",
-			dsp_vad_suffix);
-		len = rt5677_read_dsp_code_from_file(file_path, &buf);
-		if (len) {
-			pr_debug("load /system/etc/rt5677_0x50000000 ok\n");
-			rt5677_spi_burst_write(0x50000000, buf, len);
-			kfree(buf);
-		} else {
-			pr_err("load /system/etc/rt5677_0x50000000 fail\n");
-		}
 
-#ifdef DEBUG
-		msleep(50);
-		regmap_write(rt5677->regmap, 0x01, 0x0000);
-		regmap_write(rt5677->regmap, 0x02, 0x5000);
-		regmap_write(rt5677->regmap, 0x00, 0x0002);
-		regmap_read(rt5677->regmap, 0x03, &ret);
-		dev_err(codec->dev, "0x50000000 0x03 %x\n", ret);
-		regmap_read(rt5677->regmap, 0x04, &ret);
-		dev_err(codec->dev, "0x50000000 0x04 %x\n", ret);
-#endif
-
-		sprintf(file_path, "/system/etc/rt5677_0x60000000_%s",
-			dsp_vad_suffix);
-		len = rt5677_read_dsp_code_from_file(file_path, &buf);
-		if (len) {
-			pr_debug("load /system/etc/rt5677_0x60000000 ok\n");
-			rt5677_spi_burst_write(0x60000000, buf, len);
-			kfree(buf);
-		} else {
-			pr_err("load /system/etc/rt5677_0x60000000 fail\n");
-		}
-
-#ifdef DEBUG
-		msleep(50);
-		regmap_write(rt5677->regmap, 0x01, 0x0000);
-		regmap_write(rt5677->regmap, 0x02, 0x6000);
-		regmap_write(rt5677->regmap, 0x00, 0x0002);
-		regmap_read(rt5677->regmap, 0x03, &ret);
-		dev_err(codec->dev, "0x60000000 0x03 %x\n", ret);
-		regmap_read(rt5677->regmap, 0x04, &ret);
-		dev_err(codec->dev, "0x60000000 0x04 %x\n", ret);
-#endif
+		rt5677_load_dsp_from_file(codec);
 
 		rt5677_dsp_mode_i2c_update_bits(codec, RT5677_PWR_DSP1,
 			0x1, 0x0);
@@ -4380,7 +4431,7 @@ static ssize_t rt5677_codec_store(struct device *dev,
 	unsigned int val = 0, addr = 0;
 	int i;
 
-	pr_info("register \"%s\" count = %d\n", buf, count);
+	pr_info("register \"%s\" count = %zu\n", buf, count);
 	for (i = 0; i < count; i++) {
 		if (*(buf + i) <= '9' && *(buf + i) >= '0')
 			addr = (addr << 4) | (*(buf + i) - '0');
