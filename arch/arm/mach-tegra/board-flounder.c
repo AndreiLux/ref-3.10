@@ -684,6 +684,7 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
+	.id_det_gpio = TEGRA_GPIO_PA7,
 };
 
 static void flounder_usb_init(void)
@@ -694,9 +695,9 @@ static void flounder_usb_init(void)
 	tegra_udc_pdata.support_pmu_vbus = true;
 	tegra_ehci1_utmi_pdata.support_pmu_vbus = true;
 	tegra_ehci1_utmi_pdata.vbus_extcon_dev_name = "palmas-extcon";
-	/* Host cable is detected through PMU Interrupt */
-	tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
-	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
+	/* Host cable is detected through GPIO Interrupt */
+	tegra_udc_pdata.id_det_type = TEGRA_USB_GPIO_ID;
+	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_GPIO_ID;
 	tegra_ehci1_utmi_pdata.id_extcon_dev_name = "palmas-extcon";
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {

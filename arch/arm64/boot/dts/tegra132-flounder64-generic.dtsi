@@ -11,6 +11,7 @@
 
 		gpio_default: default {
 			gpio-input = <  TEGRA_GPIO(C, 7)
+					TEGRA_GPIO(A, 7)
 					TEGRA_GPIO(G, 2)
 					TEGRA_GPIO(G, 3)
 					TEGRA_GPIO(H, 4)
@@ -91,6 +92,7 @@
 					TEGRA_GPIO(EE, 1)>;
 			gpio-output-high = <TEGRA_GPIO(B, 4)
 					TEGRA_GPIO(I, 2)
+					TEGRA_GPIO(I, 7)
 					TEGRA_GPIO(K, 4)
 					TEGRA_GPIO(S, 5)
 					TEGRA_GPIO(R, 0)

@@ -113,7 +113,6 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 
 	/* SPI3 pinmux */
 	DEFAULT_PINMUX(SDMMC3_CLK,    SPI3,      NORMAL,    NORMAL,   INPUT),
-	DEFAULT_PINMUX(SDMMC3_CMD,    SPI3,      NORMAL,   NORMAL,   INPUT),
 	DEFAULT_PINMUX(SDMMC3_DAT0,   SPI3,      NORMAL,   NORMAL,   INPUT),
 	DEFAULT_PINMUX(SDMMC3_DAT1,   SPI3,      NORMAL,   NORMAL,   INPUT),
 	DEFAULT_PINMUX(SDMMC3_DAT2,   SPI3,      NORMAL,   NORMAL,   INPUT),
@@ -194,7 +193,7 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	USB_PINMUX(USB_VBUS_EN2, USB, PULL_UP, NORMAL, INPUT, DISABLE, DISABLE),
 
 	/* DTV pinmux */
-	DEFAULT_PINMUX(GPIO_PI7,      DTV,         PULL_DOWN, TRISTATE, INPUT),
+	DEFAULT_PINMUX(GPIO_PI7,      DTV,         PULL_UP, NORMAL, OUTPUT),
 
 	/* GPIO pinmux */
 
@@ -216,6 +215,10 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	GPIO_PINMUX(KB_ROW7, PULL_DOWN, NORMAL, INPUT, DISABLE),
 	GPIO_PINMUX(KB_ROW9, NORMAL, NORMAL, OUTPUT, DISABLE),
 	/*NFC end */
+
+	/*USB start*/
+	GPIO_PINMUX(SDMMC3_CMD, NORMAL, NORMAL, INPUT, DISABLE),
+	/*USB end*/
 
 	/*key start*/
 	GPIO_PINMUX(KB_COL0, PULL_UP, NORMAL, INPUT, DISABLE),
@@ -331,6 +334,10 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR7, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS1, false, 0),
 	/* NFC end */
+
+	/*USB start*/
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PA7, true, 0),
+	/*USB end*/
 
 	/*headset start*/
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PW3, true, 0),
