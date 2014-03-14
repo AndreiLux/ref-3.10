@@ -29,6 +29,12 @@
 #include <linux/clk.h>
 #include "rt5677-spi.h"
 
+#define SPI_BURST_LEN		240
+#define SPI_HEADER		5
+#define RT5677_SPI_WRITE_BURST	0x5
+#define RT5677_SPI_WRITE_32	0x3
+#define RT5677_SPI_WRITE_16	0x1
+
 static struct spi_device *g_spi;
 
 int rt5677_spi_write(u8 *txbuf, size_t len)
@@ -50,20 +56,34 @@ int rt5677_spi_write(u8 *txbuf, size_t len)
 
 int rt5677_spi_burst_write(u32 addr, u8 *txbuf, size_t len)
 {
-	u8 spi_cmd = 0x05;
-	u8 *write_buf;
 	unsigned int i, end, offset = 0;
-
-	write_buf = kmalloc(8 * 30 + 6, GFP_KERNEL);
-
-	if (write_buf == NULL)
-		return -ENOMEM;
+	int status = 0;
+	u8 write_buf[SPI_BURST_LEN + SPI_HEADER + 1];
+	u8 spi_cmd;
 
 	while (offset < len) {
-		if (offset + 240 <= len)
-			end = 240;
-		else
-			end = len % 240;
+		switch ((addr + offset) & 0x7) {
+		case 4:
+			spi_cmd = RT5677_SPI_WRITE_32;
+			end = 4;
+			break;
+		case 2:
+			spi_cmd = RT5677_SPI_WRITE_16;
+			end = 2;
+			break;
+		case 0:
+			spi_cmd = RT5677_SPI_WRITE_BURST;
+			if (offset + SPI_BURST_LEN <= len)
+				end = SPI_BURST_LEN;
+			else {
+				end = len % SPI_BURST_LEN;
+				end = (((end - 1) >> 3) + 1) << 3;
+			}
+			break;
+		default:
+			pr_err("Bad section alignment\n");
+			return -EACCES;
+		}
 
 		write_buf[0] = spi_cmd;
 		write_buf[1] = ((addr + offset) & 0xff000000) >> 24;
@@ -71,28 +91,33 @@ int rt5677_spi_burst_write(u32 addr, u8 *txbuf, size_t len)
 		write_buf[3] = ((addr + offset) & 0x0000ff00) >> 8;
 		write_buf[4] = ((addr + offset) & 0x000000ff) >> 0;
 
-		for (i = 0; i < end; i += 8) {
-			write_buf[i + 12] = txbuf[offset + i + 0];
-			write_buf[i + 11] = txbuf[offset + i + 1];
-			write_buf[i + 10] = txbuf[offset + i + 2];
-			write_buf[i +  9] = txbuf[offset + i + 3];
-			write_buf[i +  8] = txbuf[offset + i + 4];
-			write_buf[i +  7] = txbuf[offset + i + 5];
-			write_buf[i +  6] = txbuf[offset + i + 6];
-			write_buf[i +  5] = txbuf[offset + i + 7];
+		if (spi_cmd == RT5677_SPI_WRITE_BURST) {
+			for (i = 0; i < end; i += 8) {
+				write_buf[i + 12] = txbuf[offset + i + 0];
+				write_buf[i + 11] = txbuf[offset + i + 1];
+				write_buf[i + 10] = txbuf[offset + i + 2];
+				write_buf[i +  9] = txbuf[offset + i + 3];
+				write_buf[i +  8] = txbuf[offset + i + 4];
+				write_buf[i +  7] = txbuf[offset + i + 5];
+				write_buf[i +  6] = txbuf[offset + i + 6];
+				write_buf[i +  5] = txbuf[offset + i + 7];
+			}
+		} else {
+			unsigned int j = end + (SPI_HEADER - 1);
+			for (i = 0; i < end; i++, j--) {
+				if (offset + i < len)
+					write_buf[j] = txbuf[offset + i];
+				else
+					write_buf[j] = 0;
+			}
 		}
+		write_buf[end + SPI_HEADER] = spi_cmd;
 
-		write_buf[end + 5] = spi_cmd;
-
-		rt5677_spi_write(write_buf, end + 6);
-
-		offset += 240;
+		status |= rt5677_spi_write(write_buf, end + SPI_HEADER + 1);
+		offset += end;
 	}
 
-
-	kfree(write_buf);
-
-	return 0;
+	return status;
 }
 
 static int rt5677_spi_probe(struct spi_device *spi)
