@@ -28,6 +28,7 @@
 #include <linux/wl12xx.h>
 #include <linux/platform_data/mmc-sdhci-tegra.h>
 #include <linux/mfd/max77660/max77660-core.h>
+#include <linux/tegra-fuse.h>
 #include <linux/random.h>
 
 #include <asm/mach-types.h>
@@ -49,6 +50,7 @@
 static unsigned int wifi_states[] = {ON, OFF};
 #endif
 
+#define FUSE_SOC_SPEEDO_0	0x134
 static void (*wifi_status_cb)(int card_present, void *dev_id);
 static void *wifi_status_cb_devid;
 static int flounder_wifi_status_register(void (*callback)(int , void *), void *);
@@ -168,8 +170,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.tap_delay = 0,
 	.trim_delay = 0x2,
 	.ddr_clk_limit = 41000000,
-	.uhs_mask = MMC_UHS_MASK_DDR50 |
-		MMC_UHS_MASK_SDR50,
+	.uhs_mask = MMC_UHS_MASK_DDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
 };
@@ -180,14 +181,14 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
 	.power_gpio = -1,
 	.is_8bit = 1,
 	.tap_delay = 0x4,
-	.trim_delay = 0x4,
+	.trim_delay = 0x3,
 	.ddr_trim_delay = 0x0,
 	.mmc_data = {
 		.built_in = 1,
 		.ocr_mask = MMC_OCR_1V8_MASK,
 	},
 	.ddr_clk_limit = 51000000,
-	.max_clk_limit = 102000000,
+	.max_clk_limit = 200000000,
 	.calib_3v3_offsets = 0x0202,
 	.calib_1v8_offsets = 0x0202,
 };
@@ -335,6 +336,7 @@ int __init flounder_sdhci_init(void)
 	int nominal_core_mv;
 	int min_vcore_override_mv;
 	int boot_vcore_mv;
+	u32 speedo;
 
 	nominal_core_mv =
 		tegra_dvfs_rail_get_nominal_millivolts(tegra_core_rail);
@@ -356,8 +358,14 @@ int __init flounder_sdhci_init(void)
 		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
 	}
 
+	tegra_sdhci_platform_data0.max_clk_limit = 136000000;
+	tegra_sdhci_platform_data0.disable_clock_gate = 1;
+
+	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
+	tegra_sdhci_platform_data0.cpu_speedo = speedo;
+	tegra_sdhci_platform_data3.cpu_speedo = speedo;
+
 	tegra_sdhci_platform_data3.max_clk_limit = 200000000;
-	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
 
 	platform_device_register(&tegra_sdhci_device3);
 	platform_device_register(&tegra_sdhci_device0);
