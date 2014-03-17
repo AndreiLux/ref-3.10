@@ -722,24 +722,11 @@ static long rt5506_ioctl(struct file *file, unsigned int cmd,
 		break;
 	case AMP_SET_PARAM:
 		mutex_lock(&hp_amp_lock);
-		if (copy_from_user(&rt5506_cfg_data.mode_num,
-			argp, sizeof(unsigned int))) {
-			pr_err("%s: copy from user failed.\n", __func__);
-			mutex_unlock(&hp_amp_lock);
-			return -EFAULT;
-		}
-
-		if (rt5506_cfg_data.mode_num <= 0) {
-			pr_err("%s: invalid mode number %d\n",
-					__func__, rt5506_cfg_data.mode_num);
-			mutex_unlock(&hp_amp_lock);
-			return -EINVAL;
-		}
+		rt5506_cfg_data.mode_num = PLAYBACK_MAX_MODE;
 		if (rt5506_cfg_data.cmd_data == NULL)
 			rt5506_cfg_data.cmd_data = kzalloc(
-			sizeof(struct rt5506_comm_data)
-			*rt5506_cfg_data.mode_num, GFP_KERNEL);
-
+				sizeof(struct rt5506_comm_data) * rt5506_cfg_data.mode_num,
+				GFP_KERNEL);
 		if (!rt5506_cfg_data.cmd_data) {
 			pr_err("%s: out of memory\n", __func__);
 			mutex_unlock(&hp_amp_lock);
@@ -747,9 +734,8 @@ static long rt5506_ioctl(struct file *file, unsigned int cmd,
 		}
 
 		if (copy_from_user(rt5506_cfg_data.cmd_data,
-			((struct rt5506_config_data *)argp)->cmd_data,
-			sizeof(struct rt5506_comm_data)
-			* rt5506_cfg_data.mode_num)) {
+			((struct rt5506_config_data *)argp),
+			sizeof(struct rt5506_comm_data) * rt5506_cfg_data.mode_num)) {
 			pr_err("%s: copy data from user failed.\n", __func__);
 			kfree(rt5506_cfg_data.cmd_data);
 			rt5506_cfg_data.cmd_data = NULL;
@@ -838,6 +824,7 @@ static const struct file_operations rt5506_fops = {
 	.open = rt5506_open,
 	.release = rt5506_release,
 	.unlocked_ioctl = rt5506_ioctl,
+	.compat_ioctl = rt5506_ioctl,
 };
 
 static struct miscdevice rt5506_device = {
