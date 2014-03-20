@@ -721,8 +721,8 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 	/* Write single Byte because firmware can't write multi bytes now */
 	u8 gs_datax = 0, gs_datay = 0, gs_dataz = 0;
 	u8 gy_datax = 0, gy_datay = 0, gy_dataz = 0;
-	u8 als_goldh = 0x17;
-	u8 als_goldl = 0x4D;
+	u8 als_goldh = 0x0A;
+	u8 als_goldl = 0x38;
 	u8 als_datal = 0, als_datah = 0;
 	u8 bs_dataa = 0, bs_datab = 0, bs_datac = 0, bs_datad = 0;
 	u8 firmware_version[6] = {0};
