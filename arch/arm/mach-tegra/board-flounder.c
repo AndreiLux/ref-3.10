@@ -103,6 +103,29 @@
 #include <linux/platform_data/slimport_device.h>
 #endif
 
+static unsigned int flounder_hw_rev;
+
+static int __init flounder_hw_revision(char *id)
+{
+	int ret;
+
+	ret = kstrtouint(id, 10, &flounder_hw_rev);
+	if (ret < 0) {
+		pr_err("Failed to parse flounder hw_revision=%s\n", id);
+		return ret;
+	}
+
+	pr_info("Flounder hardware revision = %d\n", flounder_hw_rev);
+
+	return 0;
+}
+early_param("hw_revision", flounder_hw_revision);
+
+int flounder_get_hw_revision(void)
+{
+	return flounder_hw_rev;
+}
+
 struct aud_sfio_data {
 	const char *name;
 	int id;

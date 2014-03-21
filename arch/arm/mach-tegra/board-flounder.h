@@ -109,4 +109,7 @@ int flounder_edp_init(void);
 #define I2C_KB_IRQ	TEGRA_GPIO_PC7
 #define I2C_TP_IRQ	TEGRA_GPIO_PW3
 
+#define FLOUNDER_REV_EVT1 1
+int flounder_get_hw_revision(void);
+
 #endif
