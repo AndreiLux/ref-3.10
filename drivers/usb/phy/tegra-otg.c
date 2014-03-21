@@ -786,8 +786,8 @@ static int tegra_otg_start(struct platform_device *pdev)
 		gpio_direction_input(tegra->id_det_gpio);
 
 		err = request_threaded_irq(gpio_to_irq(tegra->id_det_gpio), NULL
-			, tegra_otg_id_detect_gpio_thr, IRQF_TRIGGER_FALLING |
-			IRQF_TRIGGER_RISING, "tegra-otg", tegra);
+			, tegra_otg_id_detect_gpio_thr, IRQF_TRIGGER_FALLING | IRQF_ONESHOT | IRQF_TRIGGER_RISING
+			, "tegra-otg", tegra);
 		if (err) {
 			dev_err(&pdev->dev, "request irq error\n");
 			goto err_id_gpio_irq;
