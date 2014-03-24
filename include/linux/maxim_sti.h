@@ -191,7 +191,7 @@ struct __attribute__ ((__packed__)) dr_chip_access_method {
 	__u8  method;
 };
 
-#define MAX_IRQ_PARAMS  26
+#define MAX_IRQ_PARAMS  20
 struct __attribute__ ((__packed__)) dr_config_irq {
 	__u16  irq_param[MAX_IRQ_PARAMS];
 	__u8   irq_params;
