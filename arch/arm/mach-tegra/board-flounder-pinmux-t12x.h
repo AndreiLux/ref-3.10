@@ -344,7 +344,6 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS2, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS3, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ4, false, 1),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PB0, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PJ7, false, 0),
 	/*headset end*/
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX7, false, 0),

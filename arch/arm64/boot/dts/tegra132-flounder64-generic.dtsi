@@ -46,7 +46,6 @@
 /*headset*/
 					TEGRA_GPIO(S, 2)
 					TEGRA_GPIO(W, 3)
-					TEGRA_GPIO(B, 0)
 /*headset*/
 					TEGRA_GPIO(BB, 6)
 					TEGRA_GPIO(BB, 7)

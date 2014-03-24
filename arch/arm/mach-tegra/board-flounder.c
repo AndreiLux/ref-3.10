@@ -404,6 +404,7 @@ static struct platform_device *flounder_uart_devices[] __initdata = {
 	&tegra_uarta_device,
 	&tegra_uartb_device,
 	&tegra_uartc_device,
+	&tegra_uartd_device,
 };
 
 static struct tegra_serial_platform_data flounder_uarta_pdata = {
@@ -418,6 +419,11 @@ static struct tegra_serial_platform_data flounder_uartb_pdata = {
 
 static struct tegra_serial_platform_data flounder_uartc_pdata = {
 	.dma_req_selector = 10,
+	.modem_interrupt = false,
+};
+
+static struct tegra_serial_platform_data flounder_uartd_pdata = {
+	.dma_req_selsctor = 19,
 	.modem_interrupt = false,
 };
 #endif
@@ -509,6 +515,7 @@ static void __init flounder_uart_init(void)
 	tegra_uarta_device.dev.platform_data = &flounder_uarta_pdata;
 	tegra_uartb_device.dev.platform_data = &flounder_uartb_pdata;
 	tegra_uartc_device.dev.platform_data = &flounder_uartc_pdata;
+	tegra_uartd_device.dev.platform_data = &flounder_uartd_pdata;
 	platform_add_devices(flounder_uart_devices,
 			ARRAY_SIZE(flounder_uart_devices));
 #endif
@@ -934,8 +941,6 @@ static void headset_init(void)
 	gpio_direction_output(HSMIC_2V85_EN, 0);
 	gpio_direction_output(AUD_REMO_TX_OE, 1);
 
-	gpio_direction_output(AUD_REMO_TX, 0);
-	gpio_direction_input(AUD_REMO_RX);
 }
 
 static void headset_power(int enable)
@@ -977,7 +982,7 @@ static struct htc_headset_1wire_platform_data htc_headset_1wire_data = {
 	.uart_sw		= 0,
 	.one_wire_remote	={0x7E, 0x7F, 0x7D, 0x7F, 0x7B, 0x7F},
 	.remote_press		= 0,
-	.onewire_tty_dev	= "/dev/ttyHS3",
+	.onewire_tty_dev	= "/dev/ttyTHS3",
 };
 
 static struct platform_device htc_headset_one_wire = {
@@ -999,7 +1004,7 @@ static void uart_tx_gpo(int mode)
 			gpio_direction_output(AUD_REMO_TX, 1);
 			break;
 		case 2:
-			gpio_direction_input(AUD_REMO_TX);
+			tegra_gpio_disable(AUD_REMO_TX);
 			break;
 	}
 }
