@@ -64,6 +64,7 @@
 					TEGRA_GPIO(I, 3)
 /*key*/
 					TEGRA_GPIO(I, 4)
+					TEGRA_GPIO(I, 7)
 /*headset*/
 					TEGRA_GPIO(J, 7)
 					TEGRA_GPIO(S, 3)
@@ -92,7 +93,6 @@
 					TEGRA_GPIO(EE, 1)>;
 			gpio-output-high = <TEGRA_GPIO(B, 4)
 					TEGRA_GPIO(I, 2)
-					TEGRA_GPIO(I, 7)
 					TEGRA_GPIO(K, 4)
 					TEGRA_GPIO(S, 5)
 					TEGRA_GPIO(R, 0)

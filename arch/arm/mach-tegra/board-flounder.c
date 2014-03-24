@@ -707,7 +707,7 @@ static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_device = &tegra_ehci1_device,
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
-	.id_det_gpio = TEGRA_GPIO_PA7,
+	.id_det_gpio = TEGRA_GPIO_PW2,
 };
 
 static void flounder_usb_init(void)
