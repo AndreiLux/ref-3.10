@@ -523,6 +523,9 @@ compare_gpts(gpt_header *pgpt, gpt_header *agpt, u64 lastlba)
 	return;
 }
 
+/* Skip searcking GPT from lastlba */
+#define SKIP_GPT_LASTLBA 1
+
 /**
  * find_valid_gpt() - Search disk for valid GPT headers and PTEs
  * @state
@@ -570,8 +573,10 @@ static int find_valid_gpt(struct parsed_partitions *state, gpt_header **gpt,
 		good_agpt = is_gpt_valid(state,
 					 le64_to_cpu(pgpt->alternate_lba),
 					 &agpt, &aptes);
+#if !SKIP_GPT_LASTLBA
         if (!good_agpt && force_gpt)
                 good_agpt = is_gpt_valid(state, lastlba, &agpt, &aptes);
+#endif
 
 	if (!good_agpt && force_gpt && force_gpt_sector)
 		good_agpt = is_gpt_valid(state, force_gpt_sector, &agpt, &aptes);
