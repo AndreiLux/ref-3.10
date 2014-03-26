@@ -29,6 +29,8 @@
 #include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/mfd/palmas.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
@@ -72,6 +74,8 @@ static int palmas_wdt_start(struct watchdog_device *wdt_dev)
 		dev_err(wdt->dev, "WATCHDOG update failed: %d\n", ret);
 		return ret;
 	}
+
+	dev_info(wdt->dev, "WDT Started\n");
 	return 0;
 }
 
@@ -92,6 +96,7 @@ static int palmas_wdt_stop(struct watchdog_device *wdt_dev)
 		dev_err(wdt->dev, "WATCHDOG update failed: %d\n", ret);
 		return ret;
 	}
+	dev_info(wdt->dev, "WDT Stopped\n");
 	return 0;
 }
 
@@ -117,6 +122,7 @@ static int palmas_wdt_set_timeout(struct watchdog_device *wdt_dev,
 		return ret;
 	}
 	wdt->timeout = timeout;
+	dev_info(wdt->dev, "WDT Timeout %d\n", timeout);
 	return 0;
 }
 
@@ -138,6 +144,8 @@ static int palmas_wdt_probe(struct platform_device *pdev)
 	struct palmas_wdt *wdt;
 	struct watchdog_device *wdt_dev;
 	unsigned int regval;
+	u32 pval;
+	int wdt_timer_period = 0;
 	int ret;
 
 	wdt = devm_kzalloc(&pdev->dev, sizeof(*wdt), GFP_KERNEL);
@@ -145,6 +153,14 @@ static int palmas_wdt_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	pdata = dev_get_platdata(pdev->dev.parent);
+	if (pdata)
+		wdt_timer_period = pdata->watchdog_timer_initial_period;
+	if (!wdt_timer_period && pdev->dev.of_node) {
+		ret = of_property_read_u32(pdev->dev.of_node,
+				"ti,system-watchdog-timer-period", &pval);
+		if (!ret)
+			wdt_timer_period = pval;
+	}
 
 	wdt->dev = &pdev->dev;
 	wdt->palmas = dev_get_drvdata(pdev->dev.parent);
@@ -205,9 +221,8 @@ static int palmas_wdt_probe(struct platform_device *pdev)
 		goto scrub;
 	}
 
-	if (pdata && (pdata->watchdog_timer_initial_period > 0)) {
-		ret = palmas_wdt_set_timeout(wdt_dev,
-					pdata->watchdog_timer_initial_period);
+	if (wdt_timer_period) {
+		ret = palmas_wdt_set_timeout(wdt_dev, wdt_timer_period);
 		if (ret < 0) {
 			dev_err(wdt->dev, "wdt set timeout failed: %d\n", ret);
 			goto scrub;
@@ -276,11 +291,18 @@ static const struct dev_pm_ops palmas_wdt_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(palmas_wdt_suspend, palmas_wdt_resume)
 };
 
+static struct of_device_id of_palmas_wdt_match_tbl[] = {
+	{ .compatible = "ti,palmas-watchdog", },
+	{},
+};
+MODULE_DEVICE_TABLE(of, of_palmas_wdt_match_tbl);
+
 static struct platform_driver palmas_wdt_driver = {
 	.driver	= {
 		.name	= "palmas-wdt",
 		.owner	= THIS_MODULE,
 		.pm = &palmas_wdt_pm_ops,
+		.of_match_table = of_palmas_wdt_match_tbl,
 	},
 	.probe	= palmas_wdt_probe,
 	.remove	= palmas_wdt_remove,
