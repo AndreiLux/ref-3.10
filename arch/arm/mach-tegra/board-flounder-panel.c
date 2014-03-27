@@ -431,8 +431,13 @@ static void flounder_panel_select(void)
 			if (flounder_disp1_out.type == TEGRA_DC_OUT_DSI) {
 				flounder_disp1_out.dsi->dsi_instance =
 					dsi_instance;
-				flounder_disp1_out.dsi->dsi_panel_rst_gpio =
-					DSI_PANEL_RST_GPIO;
+				if (flounder_get_hw_revision() <= FLOUNDER_REV_EVT1_1)
+					flounder_disp1_out.dsi->dsi_panel_rst_gpio =
+							DSI_PANEL_RST_GPIO_EVT_1_1;
+				else
+					flounder_disp1_out.dsi->dsi_panel_rst_gpio =
+							DSI_PANEL_RST_GPIO;
+
 				flounder_disp1_out.dsi->dsi_panel_bl_pwm_gpio =
 					DSI_PANEL_BL_PWM_GPIO;
 				flounder_disp1_out.dsi->te_gpio = TEGRA_GPIO_PR6;

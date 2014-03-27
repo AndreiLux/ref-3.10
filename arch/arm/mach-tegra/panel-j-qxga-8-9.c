@@ -45,18 +45,17 @@
 #define DC_CTRL_MODE	TEGRA_DC_OUT_CONTINUOUS_MODE
 #endif
 
+static bool gpio_requested;
 static struct platform_device *disp_device;
 
 #define iovdd_1v8	TEGRA_GPIO_PQ2
 #define avdd_4v 	TEGRA_GPIO_PR0
 #define dcdc_en 	TEGRA_GPIO_PEE5
-#define lcm_rst 	TEGRA_GPIO_PB4
 
 static struct gpio panel_init_gpios[] = {
 	{iovdd_1v8,     GPIOF_OUT_INIT_HIGH,    "lcmio_1v8"},
 	{avdd_4v,       GPIOF_OUT_INIT_HIGH,    "avdd_4v"},
 	{dcdc_en,       GPIOF_OUT_INIT_HIGH,    "dcdc_en"},
-	{lcm_rst,       GPIOF_OUT_INIT_HIGH,    "panel rst"},
 };
 
 static struct tegra_dc_sd_settings dsi_j_qxga_8_9_sd_settings = {
@@ -165,13 +164,44 @@ static struct tegra_dsi_out dsi_j_qxga_8_9_pdata = {
 	.no_pkt_seq_hbp = false,
 };
 
+static int dsi_j_qxga_8_9_gpio_get(void)
+{
+	int err;
+
+	if (gpio_requested)
+		return 0;
+
+	err = gpio_request_array(panel_init_gpios, ARRAY_SIZE(panel_init_gpios));
+	if(err) {
+		pr_err("gpio array request failed\n");
+		return err;
+	}
+
+	err = gpio_request_one(dsi_j_qxga_8_9_pdata.dsi_panel_rst_gpio,
+			GPIOF_OUT_INIT_HIGH, "panel rst");
+	if (err) {
+		pr_err("panel reset gpio request failed\n");
+		return err;
+	}
+
+	gpio_requested = true;
+
+	return 0;
+}
+
 static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 {
-	int err = 0;
+	int err;
+
+	err = dsi_j_qxga_8_9_gpio_get();
+	if (err) {
+		pr_err("failed to get panel gpios\n");
+		return err;
+	}
 
 	gpio_set_value(dcdc_en, 1);
 	msleep(15);
-	gpio_set_value(lcm_rst, 1);
+	gpio_set_value(dsi_j_qxga_8_9_pdata.dsi_panel_rst_gpio, 1);
 	msleep(15);
 
 	return err;
@@ -187,7 +217,7 @@ static int dsi_j_qxga_8_9_enable(struct device *dev)
 static int dsi_j_qxga_8_9_disable(void)
 {
 
-	gpio_set_value(lcm_rst, 0);
+	gpio_set_value(dsi_j_qxga_8_9_pdata.dsi_panel_rst_gpio, 0);
 	msleep(1);
 	gpio_set_value(dcdc_en, 0);
 	msleep(15);
@@ -503,11 +533,6 @@ static void dsi_j_qxga_8_9_set_disp_device(
 static void dsi_j_qxga_8_9_dc_out_init(struct tegra_dc_out *dc)
 {
 	int err;
-
-	err = gpio_request_array(panel_init_gpios, ARRAY_SIZE(panel_init_gpios));
-	if(err) {
-		pr_err("gpio request failed\n");
-	}
 
 	dc->dsi = &dsi_j_qxga_8_9_pdata;
 	dc->parent_clk = "pll_d_out0";

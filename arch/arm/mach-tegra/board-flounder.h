@@ -76,7 +76,8 @@ int flounder_edp_init(void);
 #define TEGRA_GPIO_LDO_EN	TEGRA_GPIO_PR2
 
 /*GPIOs used by board panel file */
-#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PB4
+#define DSI_PANEL_RST_GPIO_EVT_1_1 TEGRA_GPIO_PB4
+#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PH5
 #define DSI_PANEL_BL_PWM_GPIO   TEGRA_GPIO_PH1
 
 /* HDMI Hotplug detection pin */
@@ -96,11 +97,6 @@ int flounder_edp_init(void);
 #define TEGRA_GPIO_I2C5_SDA	TEGRA_GPIO_PZ7
 
 /* AUO Display related GPIO */
-#define DSI_PANEL_RST_GPIO      TEGRA_GPIO_PB4 /* GMI_AD11 */
-#define LCD_RST_L               TEGRA_GPIO_PH5 /* GMI_AD13 */
-#define LCD_LR                  TEGRA_GPIO_PH6 /* GMI_AD14 */
-#define LCD_TE                  TEGRA_GPIO_PI4 /* GMI_RST_N */
-#define DSI_PANEL_BL_PWM        TEGRA_GPIO_PH1 /*GMI_AD9 */
 #define en_vdd_bl       TEGRA_GPIO_PP2 /* DAP3_DOUT */
 #define lvds_en         TEGRA_GPIO_PI0 /* GMI_WR_N */
 #define refclk_en       TEGRA_GPIO_PG4 /* GMI_AD4 */
@@ -109,7 +105,8 @@ int flounder_edp_init(void);
 #define I2C_KB_IRQ	TEGRA_GPIO_PC7
 #define I2C_TP_IRQ	TEGRA_GPIO_PW3
 
-#define FLOUNDER_REV_EVT1 1
+#define FLOUNDER_REV_EVT1_1 1
+#define FLOUNDER_REV_EVT1_2 2
 int flounder_get_hw_revision(void);
 
 #endif
