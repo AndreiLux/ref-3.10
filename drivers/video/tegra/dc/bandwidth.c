@@ -20,6 +20,7 @@
 #include <linux/kernel.h>
 #include <linux/clk.h>
 #include <linux/clk/tegra.h>
+#include <linux/math64.h>
 
 #include <mach/dc.h>
 #include <mach/fb.h>
@@ -609,7 +610,7 @@ static inline int tegra_dc_is_yuv420(int fmt)
 static unsigned long tegra_dc_calc_win_bandwidth(struct tegra_dc *dc,
 	struct tegra_dc_win *w)
 {
-	unsigned long ret;
+	u64 ret;
 	int tiled_windows_bw_multiplier;
 	unsigned long bpp;
 	unsigned in_w;
@@ -639,18 +640,18 @@ static unsigned long tegra_dc_calc_win_bandwidth(struct tegra_dc *dc,
 		bpp = 16;
 #endif
 
-	ret = dc->mode.pclk / 1000UL * bpp / 8 *
+	ret = (dc->mode.pclk / 1000UL * bpp / 8);
 #if defined(CONFIG_ARCH_TEGRA_2x_SOC) || defined(CONFIG_ARCH_TEGRA_3x_SOC)
-		(win_use_v_filter(dc, w) ? 2 : 1) *
+	ret *= (win_use_v_filter(dc, w) ? 2 : 1);
 #endif
-		in_w / w->out_w * (WIN_IS_TILED(w) ?
-		tiled_windows_bw_multiplier : 1);
+	ret *=	div_u64(in_w, w->out_w * (WIN_IS_TILED(w) ?
+			tiled_windows_bw_multiplier : 1));
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 	/*
 	 * Assuming 60% efficiency: i.e. if we calculate we need 70MBps, we
 	 * will request 117MBps from EMC.
 	 */
-	ret = ret + (17 * ret / 25);
+	ret = ret + (17 * div_u64(ret, 25));
 #endif
 	return ret;
 }
@@ -731,6 +732,9 @@ static inline unsigned long tegra_dc_kbps_to_emc(unsigned long bw)
 void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 {
 	unsigned i;
+
+	if (!dc->enabled)
+		return;
 
 	if (!tegra_platform_is_silicon())
 		return;
@@ -885,12 +889,19 @@ int tegra_dc_bandwidth_negotiate_bw(struct tegra_dc *dc,
 		return -1;
 	}
 
-	dc->reserved_bw = bw;
-	latency = tegra_isomgr_realize(dc->isomgr_handle);
-	if (!latency) {
-		WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
-		mutex_unlock(&dc->lock);
-		return -1;
+	/*
+	 * Only realize if bw required > reserved bw
+	 * If realized, update dc->bw_kbps
+	 */
+	if (dc->reserved_bw < bw) {
+		dc->reserved_bw = bw;
+		latency = tegra_isomgr_realize(dc->isomgr_handle);
+		if (!latency) {
+			WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
+			mutex_unlock(&dc->lock);
+			return -1;
+		}
+		dc->bw_kbps = bw;
 	}
 
 	mutex_unlock(&dc->lock);

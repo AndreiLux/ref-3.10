@@ -2173,6 +2173,10 @@ static int dvfs_tree_sort_cmp(void *p, struct list_head *a, struct list_head *b)
 	return strcmp(da->clk_name, db->clk_name);
 }
 
+/* To emulate and show rail relations with 0 mV on dependent rail-to */
+static struct dvfs_rail show_to;
+static struct dvfs_relationship show_rel;
+
 static int dvfs_tree_show(struct seq_file *s, void *data)
 {
 	struct dvfs *d;
@@ -2192,8 +2196,13 @@ static int dvfs_tree_show(struct seq_file *s, void *data)
 			   rail->dfll_mode ? " dfll mode" :
 				rail->disabled ? " disabled" : "");
 		list_for_each_entry(rel, &rail->relationships_from, from_node) {
-			seq_printf(s, "   %-10s %-7d mV %-4d mV\n",
+			show_rel = *rel;
+			show_rel.to = &show_to;
+			show_to = *rel->to;
+			show_to.millivolts = show_to.new_millivolts = 0;
+			seq_printf(s, "   %-10s %-7d mV %-4d mV .. %-4d mV\n",
 				rel->from->reg_id, rel->from->millivolts,
+				dvfs_solve_relationship(&show_rel),
 				dvfs_solve_relationship(rel));
 		}
 		seq_printf(s, "   nominal    %-7d mV\n",
@@ -2337,6 +2346,18 @@ static int core_override_set(void *data, u64 val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(core_override_fops,
 			core_override_get, core_override_set, "%llu\n");
+
+static int rail_mv_get(void *data, u64 *val)
+{
+	struct dvfs_rail *rail = data;
+	if (rail) {
+		*val = rail->stats.off ? 0 : rail->millivolts;
+		return 0;
+	}
+	*val = 0;
+	return -ENOENT;
+}
+DEFINE_SIMPLE_ATTRIBUTE(rail_mv_fops, rail_mv_get, NULL, "%llu\n");
 
 static int gpu_dvfs_t_show(struct seq_file *s, void *data)
 {
@@ -2517,6 +2538,21 @@ int __init dvfs_debugfs_init(struct dentry *clk_debugfs_root)
 
 	d = debugfs_create_file("vdd_core_override", S_IRUGO | S_IWUSR,
 		clk_debugfs_root, NULL, &core_override_fops);
+	if (!d)
+		return -ENOMEM;
+
+	d = debugfs_create_file("vdd_cpu_mv", S_IRUGO, clk_debugfs_root,
+				tegra_cpu_rail, &rail_mv_fops);
+	if (!d)
+		return -ENOMEM;
+
+	d = debugfs_create_file("vdd_gpu_mv", S_IRUGO, clk_debugfs_root,
+				tegra_gpu_rail, &rail_mv_fops);
+	if (!d)
+		return -ENOMEM;
+
+	d = debugfs_create_file("vdd_core_mv", S_IRUGO, clk_debugfs_root,
+				tegra_core_rail, &rail_mv_fops);
 	if (!d)
 		return -ENOMEM;
 

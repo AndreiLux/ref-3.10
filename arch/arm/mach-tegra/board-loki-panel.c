@@ -482,8 +482,10 @@ int __init loki_panel_init(int board_id)
 	loki_carveouts[2].base = tegra_vpr_start;
 	loki_carveouts[2].size = tegra_vpr_size;
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+	carveout_linear_set(&tegra_generic_cma_dev);
 	loki_carveouts[1].cma_dev = &tegra_generic_cma_dev;
 	loki_carveouts[1].resize = false;
+	carveout_linear_set(&tegra_vpr_cma_dev);
 	loki_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
 	loki_carveouts[2].resize = true;
 	loki_carveouts[2].cma_chunk_size = SZ_32M;
@@ -548,16 +550,6 @@ int __init loki_panel_init(int board_id)
 		return err;
 	}
 
-#ifndef CONFIG_ARCH_TEGRA_13x_SOC
-#ifdef CONFIG_TEGRA_NVAVP
-	nvavp_device.dev.parent = &phost1x->dev;
-	err = platform_device_register(&nvavp_device);
-	if (err) {
-		pr_err("nvavp device registration failed\n");
-		return err;
-	}
-#endif
-#endif
 	return err;
 }
 #else

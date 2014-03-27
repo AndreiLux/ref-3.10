@@ -51,7 +51,6 @@
 #include "hw_therm_gk20a.h"
 #include "hw_pbdma_gk20a.h"
 #include "chip_support.h"
-#include "gk20a_gating_reglist.h"
 #include "gr_pri_gk20a.h"
 #include "regops_gk20a.h"
 #include "dbg_gpu_gk20a.h"
@@ -87,81 +86,81 @@ void gk20a_fecs_dump_falcon_stats(struct gk20a *g)
 {
 	int i;
 
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_os_r : %d",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_os_r : %d",
 		gk20a_readl(g, gr_fecs_os_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_cpuctl_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_cpuctl_r : 0x%x",
 		gk20a_readl(g, gr_fecs_cpuctl_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_idlestate_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_idlestate_r : 0x%x",
 		gk20a_readl(g, gr_fecs_idlestate_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_mailbox0_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_mailbox0_r : 0x%x",
 		gk20a_readl(g, gr_fecs_mailbox0_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_mailbox1_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_mailbox1_r : 0x%x",
 		gk20a_readl(g, gr_fecs_mailbox1_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_irqstat_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_irqstat_r : 0x%x",
 		gk20a_readl(g, gr_fecs_irqstat_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_irqmode_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_irqmode_r : 0x%x",
 		gk20a_readl(g, gr_fecs_irqmode_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_irqmask_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_irqmask_r : 0x%x",
 		gk20a_readl(g, gr_fecs_irqmask_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_irqdest_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_irqdest_r : 0x%x",
 		gk20a_readl(g, gr_fecs_irqdest_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_debug1_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_debug1_r : 0x%x",
 		gk20a_readl(g, gr_fecs_debug1_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_debuginfo_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_debuginfo_r : 0x%x",
 		gk20a_readl(g, gr_fecs_debuginfo_r()));
 
 	for (i = 0; i < gr_fecs_ctxsw_mailbox__size_1_v(); i++)
-		nvhost_err(dev_from_gk20a(g), "gr_fecs_ctxsw_mailbox_r(%d) : 0x%x",
+		gk20a_err(dev_from_gk20a(g), "gr_fecs_ctxsw_mailbox_r(%d) : 0x%x",
 			i, gk20a_readl(g, gr_fecs_ctxsw_mailbox_r(i)));
 
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_engctl_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_engctl_r : 0x%x",
 		gk20a_readl(g, gr_fecs_engctl_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_curctx_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_curctx_r : 0x%x",
 		gk20a_readl(g, gr_fecs_curctx_r()));
-	nvhost_err(dev_from_gk20a(g), "gr_fecs_nxtctx_r : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "gr_fecs_nxtctx_r : 0x%x",
 		gk20a_readl(g, gr_fecs_nxtctx_r()));
 
 	gk20a_writel(g, gr_fecs_icd_cmd_r(),
 		gr_fecs_icd_cmd_opc_rreg_f() |
 		gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_IMB));
-	nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_IMB : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_IMB : 0x%x",
 		gk20a_readl(g, gr_fecs_icd_rdata_r()));
 
 	gk20a_writel(g, gr_fecs_icd_cmd_r(),
 		gr_fecs_icd_cmd_opc_rreg_f() |
 		gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_DMB));
-	nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_DMB : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_DMB : 0x%x",
 		gk20a_readl(g, gr_fecs_icd_rdata_r()));
 
 	gk20a_writel(g, gr_fecs_icd_cmd_r(),
 		gr_fecs_icd_cmd_opc_rreg_f() |
 		gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_CSW));
-	nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_CSW : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_CSW : 0x%x",
 		gk20a_readl(g, gr_fecs_icd_rdata_r()));
 
 	gk20a_writel(g, gr_fecs_icd_cmd_r(),
 		gr_fecs_icd_cmd_opc_rreg_f() |
 		gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_CTX));
-	nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_CTX : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_CTX : 0x%x",
 		gk20a_readl(g, gr_fecs_icd_rdata_r()));
 
 	gk20a_writel(g, gr_fecs_icd_cmd_r(),
 		gr_fecs_icd_cmd_opc_rreg_f() |
 		gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_EXCI));
-	nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_EXCI : 0x%x",
+	gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_EXCI : 0x%x",
 		gk20a_readl(g, gr_fecs_icd_rdata_r()));
 
 	for (i = 0; i < 4; i++) {
 		gk20a_writel(g, gr_fecs_icd_cmd_r(),
 			gr_fecs_icd_cmd_opc_rreg_f() |
 			gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_PC));
-		nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_PC : 0x%x",
+		gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_PC : 0x%x",
 			gk20a_readl(g, gr_fecs_icd_rdata_r()));
 
 		gk20a_writel(g, gr_fecs_icd_cmd_r(),
 			gr_fecs_icd_cmd_opc_rreg_f() |
 			gr_fecs_icd_cmd_idx_f(PMU_FALCON_REG_SP));
-		nvhost_err(dev_from_gk20a(g), "FECS_FALCON_REG_SP : 0x%x",
+		gk20a_err(dev_from_gk20a(g), "FECS_FALCON_REG_SP : 0x%x",
 			gk20a_readl(g, gr_fecs_icd_rdata_r()));
 	}
 }
@@ -172,7 +171,7 @@ static void gr_gk20a_load_falcon_dmem(struct gk20a *g)
 	const u32 *ucode_u32_data;
 	u32 checksum;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gk20a_writel(g, gr_gpccs_dmemc_r(0), (gr_gpccs_dmemc_offs_f(0) |
 					      gr_gpccs_dmemc_blk_f(0)  |
@@ -197,7 +196,7 @@ static void gr_gk20a_load_falcon_dmem(struct gk20a *g)
 		gk20a_writel(g, gr_fecs_dmemd_r(0), ucode_u32_data[i]);
 		checksum += ucode_u32_data[i];
 	}
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 }
 
 static void gr_gk20a_load_falcon_imem(struct gk20a *g)
@@ -207,7 +206,7 @@ static void gr_gk20a_load_falcon_imem(struct gk20a *g)
 	u32 tag, i, pad_start, pad_end;
 	u32 checksum;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	cfg = gk20a_readl(g, gr_fecs_cfg_r());
 	fecs_imem_size = gr_fecs_cfg_imem_sz_v(cfg);
@@ -291,7 +290,7 @@ static int gr_gk20a_wait_idle(struct gk20a *g, unsigned long end_jiffies,
 	bool ctxsw_active;
 	bool gr_busy;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	do {
 		/* fmodel: host gets fifo_engine_status(gr) from gr
@@ -309,7 +308,7 @@ static int gr_gk20a_wait_idle(struct gk20a *g, unsigned long end_jiffies,
 			gr_engine_status_value_busy_f();
 
 		if (!gr_enabled || (!gr_busy && !ctxsw_active)) {
-			nvhost_dbg_fn("done");
+			gk20a_dbg_fn("done");
 			return 0;
 		}
 
@@ -319,7 +318,7 @@ static int gr_gk20a_wait_idle(struct gk20a *g, unsigned long end_jiffies,
 	} while (time_before(jiffies, end_jiffies)
 			|| !tegra_platform_is_silicon());
 
-	nvhost_err(dev_from_gk20a(g),
+	gk20a_err(dev_from_gk20a(g),
 		"timeout, ctxsw busy : %d, gr busy : %d",
 		ctxsw_active, gr_busy);
 
@@ -333,7 +332,7 @@ static int gr_gk20a_ctx_reset(struct gk20a *g, u32 rst_mask)
 		msecs_to_jiffies(gk20a_get_gr_idle_timeout(g));
 	u32 reg;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (!tegra_platform_is_linsim()) {
 		/* Force clocks on */
@@ -355,7 +354,7 @@ static int gr_gk20a_ctx_reset(struct gk20a *g, u32 rst_mask)
 		} while (time_before(jiffies, end_jiffies));
 
 		if (!time_before(jiffies, end_jiffies)) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				   "failed to force the clocks on\n");
 			WARN_ON(1);
 		}
@@ -418,7 +417,7 @@ static int gr_gk20a_ctx_reset(struct gk20a *g, u32 rst_mask)
 		} while (time_before(jiffies, end_jiffies));
 
 		if (!time_before(jiffies, end_jiffies))
-			nvhost_warn(dev_from_gk20a(g),
+			gk20a_warn(dev_from_gk20a(g),
 				   "failed to set power mode to auto\n");
 	}
 
@@ -436,7 +435,7 @@ static int gr_gk20a_ctx_wait_ucode(struct gk20a *g, u32 mailbox_id,
 	u32 check = WAIT_UCODE_LOOP;
 	u32 reg;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	while (check == WAIT_UCODE_LOOP) {
 		if (!time_before(jiffies, end_jiffies) &&
@@ -473,7 +472,7 @@ static int gr_gk20a_ctx_wait_ucode(struct gk20a *g, u32 mailbox_id,
 			/* do no success check */
 			break;
 		default:
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				   "invalid success opcode 0x%x", opc_success);
 
 			check = WAIT_UCODE_ERROR;
@@ -505,7 +504,7 @@ static int gr_gk20a_ctx_wait_ucode(struct gk20a *g, u32 mailbox_id,
 			/* do no check on fail*/
 			break;
 		default:
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				   "invalid fail opcode 0x%x", opc_fail);
 			check = WAIT_UCODE_ERROR;
 			break;
@@ -516,19 +515,19 @@ static int gr_gk20a_ctx_wait_ucode(struct gk20a *g, u32 mailbox_id,
 	}
 
 	if (check == WAIT_UCODE_TIMEOUT) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "timeout waiting on ucode response");
 		gk20a_fecs_dump_falcon_stats(g);
 		return -1;
 	} else if (check == WAIT_UCODE_ERROR) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "ucode method failed on mailbox=%d value=0x%08x",
 			   mailbox_id, reg);
 		gk20a_fecs_dump_falcon_stats(g);
 		return -1;
 	}
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return 0;
 }
 
@@ -608,14 +607,14 @@ int gr_gk20a_ctrl_ctxsw(struct gk20a *g, u32 fecs_method, u32 *ret)
  * are sent to the ucode in sequence, it can get into an undefined state. */
 int gr_gk20a_disable_ctxsw(struct gk20a *g)
 {
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "");
 	return gr_gk20a_ctrl_ctxsw(g, gr_fecs_method_push_adr_stop_ctxsw_v(), 0);
 }
 
 /* Start processing (continue) context switches at FECS */
 int gr_gk20a_enable_ctxsw(struct gk20a *g)
 {
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "");
 	return gr_gk20a_ctrl_ctxsw(g, gr_fecs_method_push_adr_start_ctxsw_v(), 0);
 }
 
@@ -626,7 +625,7 @@ static int gr_gk20a_commit_inst(struct channel_gk20a *c, u64 gpu_va)
 	u32 addr_hi;
 	void *inst_ptr = NULL;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	/* flush gpu_va before commit */
 	gk20a_mm_fb_flush(c->g);
@@ -639,11 +638,11 @@ static int gr_gk20a_commit_inst(struct channel_gk20a *c, u64 gpu_va)
 	addr_lo = u64_lo32(gpu_va) >> 12;
 	addr_hi = u64_hi32(gpu_va);
 
-	mem_wr32(inst_ptr, ram_in_gr_wfi_target_w(),
+	gk20a_mem_wr32(inst_ptr, ram_in_gr_wfi_target_w(),
 		 ram_in_gr_cs_wfi_f() | ram_in_gr_wfi_mode_virtual_f() |
 		 ram_in_gr_wfi_ptr_lo_f(addr_lo));
 
-	mem_wr32(inst_ptr, ram_in_gr_wfi_ptr_hi_w(),
+	gk20a_mem_wr32(inst_ptr, ram_in_gr_wfi_ptr_hi_w(),
 		 ram_in_gr_wfi_ptr_hi_f(addr_hi));
 
 	gk20a_mm_l2_invalidate(c->g);
@@ -665,7 +664,7 @@ int gr_gk20a_ctx_patch_write_begin(struct gk20a *g,
 {
 	/* being defensive still... */
 	if (ch_ctx->patch_ctx.cpu_va) {
-		nvhost_err(dev_from_gk20a(g), "nested ctx patch begin?");
+		gk20a_err(dev_from_gk20a(g), "nested ctx patch begin?");
 		return -EBUSY;
 	}
 
@@ -684,7 +683,7 @@ int gr_gk20a_ctx_patch_write_end(struct gk20a *g,
 {
 	/* being defensive still... */
 	if (!ch_ctx->patch_ctx.cpu_va) {
-		nvhost_err(dev_from_gk20a(g), "dangling ctx patch end?");
+		gk20a_err(dev_from_gk20a(g), "dangling ctx patch end?");
 		return -EINVAL;
 	}
 
@@ -713,7 +712,7 @@ int gr_gk20a_ctx_patch_write(struct gk20a *g,
 		 * but be defensive still... */
 		if (!ch_ctx->patch_ctx.cpu_va) {
 			int err;
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				   "per-write ctx patch begin?");
 			/* yes, gr_gk20a_ctx_patch_smpc causes this one */
 			err = gr_gk20a_ctx_patch_write_begin(g, ch_ctx);
@@ -726,8 +725,8 @@ int gr_gk20a_ctx_patch_write(struct gk20a *g,
 		patch_ptr = ch_ctx->patch_ctx.cpu_va;
 		patch_slot = ch_ctx->patch_ctx.data_count * 2;
 
-		mem_wr32(patch_ptr, patch_slot++, addr);
-		mem_wr32(patch_ptr, patch_slot++, data);
+		gk20a_mem_wr32(patch_ptr, patch_slot++, addr);
+		gk20a_mem_wr32(patch_ptr, patch_slot++, data);
 
 		ch_ctx->patch_ctx.data_count++;
 
@@ -747,7 +746,7 @@ static int gr_gk20a_fecs_ctx_bind_channel(struct gk20a *g,
 				     >> ram_in_base_shift_v());
 	u32 ret;
 
-	nvhost_dbg_info("bind channel %d inst ptr 0x%08x",
+	gk20a_dbg_info("bind channel %d inst ptr 0x%08x",
 		   c->hw_chid, inst_base_ptr);
 
 	ret = gr_gk20a_submit_fecs_method_op(g,
@@ -764,7 +763,7 @@ static int gr_gk20a_fecs_ctx_bind_channel(struct gk20a *g,
 		     .cond.ok = GR_IS_UCODE_OP_AND,
 		     .cond.fail = GR_IS_UCODE_OP_AND});
 	if (ret)
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"bind channel instance failed");
 
 	return ret;
@@ -780,7 +779,7 @@ static int gr_gk20a_ctx_zcull_setup(struct gk20a *g, struct channel_gk20a *c,
 	int ret = 0;
 	void *ctx_ptr = NULL;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	ctx_ptr = vmap(ch_ctx->gr_ctx.pages,
 			PAGE_ALIGN(ch_ctx->gr_ctx.size) >> PAGE_SHIFT,
@@ -802,7 +801,7 @@ static int gr_gk20a_ctx_zcull_setup(struct gk20a *g, struct channel_gk20a *c,
 	if (disable_fifo) {
 		ret = gk20a_fifo_disable_engine_activity(g, gr_info, true);
 		if (ret) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"failed to disable gr engine activity\n");
 			goto clean_up;
 		}
@@ -813,15 +812,15 @@ static int gr_gk20a_ctx_zcull_setup(struct gk20a *g, struct channel_gk20a *c,
 	gk20a_mm_fb_flush(g);
 	gk20a_mm_l2_flush(g, true);
 
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_zcull_o(), 0,
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_zcull_o(), 0,
 		 ch_ctx->zcull_ctx.ctx_sw_mode);
 
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_zcull_ptr_o(), 0, va);
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_zcull_ptr_o(), 0, va);
 
 	if (disable_fifo) {
 		ret = gk20a_fifo_enable_engine_activity(g, gr_info);
 		if (ret) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"failed to enable gr engine activity\n");
 			goto clean_up;
 		}
@@ -846,7 +845,7 @@ static int gr_gk20a_commit_global_cb_manager(struct gk20a *g,
 	u32 temp;
 	u32 cbm_cfg_size1, cbm_cfg_size2;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (patch) {
 		int err;
@@ -916,7 +915,7 @@ static int gr_gk20a_commit_global_ctx_buffers(struct gk20a *g,
 	u64 addr;
 	u32 size;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	if (patch) {
 		int err;
 		err = gr_gk20a_ctx_patch_write_begin(g, ch_ctx);
@@ -936,7 +935,7 @@ static int gr_gk20a_commit_global_ctx_buffers(struct gk20a *g,
 	if (size == gr_scc_pagepool_total_pages_hwmax_value_v())
 		size = gr_scc_pagepool_total_pages_hwmax_v();
 
-	nvhost_dbg_info("pagepool buffer addr : 0x%016llx, size : %d",
+	gk20a_dbg_info("pagepool buffer addr : 0x%016llx, size : %d",
 		addr, size);
 
 	g->ops.gr.commit_global_pagepool(g, ch_ctx, addr, size, patch);
@@ -949,7 +948,7 @@ static int gr_gk20a_commit_global_ctx_buffers(struct gk20a *g,
 
 	size = gr->bundle_cb_default_size;
 
-	nvhost_dbg_info("bundle cb addr : 0x%016llx, size : %d",
+	gk20a_dbg_info("bundle cb addr : 0x%016llx, size : %d",
 		addr, size);
 
 	g->ops.gr.commit_global_bundle_cb(g, ch_ctx, addr, size, patch);
@@ -960,7 +959,7 @@ static int gr_gk20a_commit_global_ctx_buffers(struct gk20a *g,
 		(u64_hi32(ch_ctx->global_ctx_buffer_va[ATTRIBUTE_VA]) <<
 		 (32 - gr_gpcs_setup_attrib_cb_base_addr_39_12_align_bits_v()));
 
-	nvhost_dbg_info("attrib cb addr : 0x%016llx", addr);
+	gk20a_dbg_info("attrib cb addr : 0x%016llx", addr);
 	g->ops.gr.commit_global_attrib_cb(g, ch_ctx, addr, patch);
 
 	if (patch)
@@ -1009,7 +1008,7 @@ static void gr_gk20a_commit_global_bundle_cb(struct gk20a *g,
 
 	data = min_t(u32, data, g->gr.min_gpm_fifo_depth);
 
-	nvhost_dbg_info("bundle cb token limit : %d, state limit : %d",
+	gk20a_dbg_info("bundle cb token limit : %d, state limit : %d",
 		   g->gr.bundle_cb_token_limit, data);
 
 	gr_gk20a_ctx_patch_write(g, ch_ctx, gr_pd_ab_dist_cfg2_r(),
@@ -1029,7 +1028,7 @@ static int gr_gk20a_commit_global_timeslice(struct gk20a *g, struct channel_gk20
 	u32 pe_vaf;
 	u32 pe_vsc_vpc;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gpm_pd_cfg = gk20a_readl(g, gr_gpcs_gpm_pd_cfg_r());
 	pd_ab_dist_cfg0 = gk20a_readl(g, gr_pd_ab_dist_cfg0_r());
@@ -1088,7 +1087,7 @@ int gr_gk20a_setup_rop_mapping(struct gk20a *g, struct gr_gk20a *gr)
 	if (!gr->map_tiles)
 		return -1;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gk20a_writel(g, gr_crstr_map_table_cfg_r(),
 		     gr_crstr_map_table_cfg_row_offset_f(gr->map_row_offset) |
@@ -1261,7 +1260,7 @@ static int gr_gk20a_setup_alpha_beta_tables(struct gk20a *g,
 	u32 map_beta[gr_pd_alpha_ratio_table__size_1_v()];
 	u32 map_reg_used[gr_pd_alpha_ratio_table__size_1_v()];
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	memset(map_alpha, 0, gr_pd_alpha_ratio_table__size_1_v() * sizeof(u32));
 	memset(map_beta, 0, gr_pd_alpha_ratio_table__size_1_v() * sizeof(u32));
@@ -1345,7 +1344,7 @@ static int gr_gk20a_ctx_state_floorsweep(struct gk20a *g)
 	u32 max_ways_evict = INVALID_MAX_WAYS;
 	u32 l1c_dbg_reg_val;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	for (tpc_index = 0; tpc_index < gr->max_tpc_per_gpc_count; tpc_index++) {
 		for (gpc_index = 0; gpc_index < gr->gpc_count; gpc_index++) {
@@ -1443,7 +1442,7 @@ static int gr_gk20a_fecs_ctx_image_save(struct channel_gk20a *c, u32 save_type)
 		>> ram_in_base_shift_v());
 
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	ret = gr_gk20a_submit_fecs_method_op(g,
 		(struct fecs_method_op_gk20a) {
@@ -1459,7 +1458,7 @@ static int gr_gk20a_fecs_ctx_image_save(struct channel_gk20a *c, u32 save_type)
 		 });
 
 	if (ret)
-		nvhost_err(dev_from_gk20a(g), "save context image failed");
+		gk20a_err(dev_from_gk20a(g), "save context image failed");
 
 	return ret;
 }
@@ -1517,7 +1516,7 @@ static int gr_gk20a_init_golden_ctx_image(struct gk20a *g,
 	void *gold_ptr = NULL;
 	u32 err = 0;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	/* golden ctx is global to all channels. Although only the first
 	   channel initializes golden image, driver needs to prevent multiple
@@ -1561,14 +1560,14 @@ static int gr_gk20a_init_golden_ctx_image(struct gk20a *g,
 	gk20a_mm_l2_flush(g, false);
 
 	for (i = 0; i < ctx_header_words; i++) {
-		data = mem_rd32(ctx_ptr, i);
-		mem_wr32(gold_ptr, i, data);
+		data = gk20a_mem_rd32(ctx_ptr, i);
+		gk20a_mem_wr32(gold_ptr, i, data);
 	}
 
-	mem_wr32(gold_ptr + ctxsw_prog_main_image_zcull_o(), 0,
+	gk20a_mem_wr32(gold_ptr + ctxsw_prog_main_image_zcull_o(), 0,
 		 ctxsw_prog_main_image_zcull_mode_no_ctxsw_v());
 
-	mem_wr32(gold_ptr + ctxsw_prog_main_image_zcull_ptr_o(), 0, 0);
+	gk20a_mem_wr32(gold_ptr + ctxsw_prog_main_image_zcull_ptr_o(), 0, 0);
 
 	gr_gk20a_commit_inst(c, ch_ctx->global_ctx_buffer_va[GOLDEN_CTX_VA]);
 
@@ -1586,7 +1585,7 @@ static int gr_gk20a_init_golden_ctx_image(struct gk20a *g,
 
 		for (i = 0; i < gr->ctx_vars.golden_image_size / 4; i++)
 			gr->ctx_vars.local_golden_image[i] =
-				mem_rd32(gold_ptr, i);
+				gk20a_mem_rd32(gold_ptr, i);
 	}
 
 	gr_gk20a_commit_inst(c, ch_ctx->gr_ctx.gpu_va);
@@ -1600,9 +1599,9 @@ static int gr_gk20a_init_golden_ctx_image(struct gk20a *g,
 
 clean_up:
 	if (err)
-		nvhost_err(dev_from_gk20a(g), "fail");
+		gk20a_err(dev_from_gk20a(g), "fail");
 	else
-		nvhost_dbg_fn("done");
+		gk20a_dbg_fn("done");
 
 	if (gold_ptr)
 		vunmap(gold_ptr);
@@ -1613,6 +1612,42 @@ clean_up:
 	return err;
 }
 
+int gr_gk20a_update_smpc_ctxsw_mode(struct gk20a *g,
+				    struct channel_gk20a *c,
+				    bool enable_smpc_ctxsw)
+{
+	struct channel_ctx_gk20a *ch_ctx = &c->ch_ctx;
+	void *ctx_ptr = NULL;
+	u32 data;
+
+	/*XXX caller responsible for making sure the channel is quiesced? */
+
+	/* Channel gr_ctx buffer is gpu cacheable.
+	   Flush and invalidate before cpu update. */
+	gk20a_mm_fb_flush(g);
+	gk20a_mm_l2_flush(g, true);
+
+	ctx_ptr = vmap(ch_ctx->gr_ctx.pages,
+			PAGE_ALIGN(ch_ctx->gr_ctx.size) >> PAGE_SHIFT,
+			0, pgprot_dmacoherent(PAGE_KERNEL));
+	if (!ctx_ptr)
+		return -ENOMEM;
+
+	data = gk20a_mem_rd32(ctx_ptr + ctxsw_prog_main_image_pm_o(), 0);
+	data = data & ~ctxsw_prog_main_image_pm_smpc_mode_m();
+	data |= enable_smpc_ctxsw ?
+		ctxsw_prog_main_image_pm_smpc_mode_ctxsw_f() :
+		ctxsw_prog_main_image_pm_smpc_mode_no_ctxsw_f();
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_pm_o(), 0,
+		 data);
+
+	vunmap(ctx_ptr);
+
+	gk20a_mm_l2_invalidate(g);
+
+	return 0;
+}
+
 /* load saved fresh copy of gloden image into channel gr_ctx */
 static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 					struct channel_gk20a *c)
@@ -1621,11 +1656,11 @@ static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 	struct channel_ctx_gk20a *ch_ctx = &c->ch_ctx;
 	u32 virt_addr_lo;
 	u32 virt_addr_hi;
-	u32 i;
+	u32 i, v, data;
 	int ret = 0;
 	void *ctx_ptr = NULL;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (gr->ctx_vars.local_golden_image == NULL)
 		return -1;
@@ -1642,28 +1677,50 @@ static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 		return -ENOMEM;
 
 	for (i = 0; i < gr->ctx_vars.golden_image_size / 4; i++)
-		mem_wr32(ctx_ptr, i, gr->ctx_vars.local_golden_image[i]);
+		gk20a_mem_wr32(ctx_ptr, i, gr->ctx_vars.local_golden_image[i]);
 
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_num_save_ops_o(), 0, 0);
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_num_restore_ops_o(), 0, 0);
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_num_save_ops_o(), 0, 0);
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_num_restore_ops_o(), 0, 0);
 
 	virt_addr_lo = u64_lo32(ch_ctx->patch_ctx.gpu_va);
 	virt_addr_hi = u64_hi32(ch_ctx->patch_ctx.gpu_va);
 
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_patch_count_o(), 0,
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_patch_count_o(), 0,
 		 ch_ctx->patch_ctx.data_count);
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_patch_adr_lo_o(), 0,
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_patch_adr_lo_o(), 0,
 		 virt_addr_lo);
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_patch_adr_hi_o(), 0,
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_patch_adr_hi_o(), 0,
 		 virt_addr_hi);
 
 	/* no user for client managed performance counter ctx */
 	ch_ctx->pm_ctx.ctx_sw_mode =
-		ctxsw_prog_main_image_pm_mode_no_ctxsw_v();
+		ctxsw_prog_main_image_pm_mode_no_ctxsw_f();
+	data = gk20a_mem_rd32(ctx_ptr + ctxsw_prog_main_image_pm_o(), 0);
+	data = data & ~ctxsw_prog_main_image_pm_mode_m();
+	data |= ch_ctx->pm_ctx.ctx_sw_mode;
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_pm_o(), 0,
+		 data);
 
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_pm_o(), 0,
-		ch_ctx->pm_ctx.ctx_sw_mode);
-	mem_wr32(ctx_ptr + ctxsw_prog_main_image_pm_ptr_o(), 0, 0);
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_pm_ptr_o(), 0, 0);
+
+	/* set priv access map */
+	virt_addr_lo =
+		 u64_lo32(ch_ctx->global_ctx_buffer_va[PRIV_ACCESS_MAP_VA]);
+	virt_addr_hi =
+		 u64_hi32(ch_ctx->global_ctx_buffer_va[PRIV_ACCESS_MAP_VA]);
+
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_priv_access_map_config_o(), 0,
+		 ctxsw_prog_main_image_priv_access_map_config_mode_use_map_f());
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_priv_access_map_addr_lo_o(), 0,
+		 virt_addr_lo);
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_priv_access_map_addr_hi_o(), 0,
+		 virt_addr_hi);
+	/* disable verif features */
+	v = gk20a_mem_rd32(ctx_ptr + ctxsw_prog_main_image_misc_options_o(), 0);
+	v = v & ~(ctxsw_prog_main_image_misc_options_verif_features_m());
+	v = v | ctxsw_prog_main_image_misc_options_verif_features_disabled_f();
+	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_misc_options_o(), 0, v);
+
 
 	vunmap(ctx_ptr);
 
@@ -1691,7 +1748,7 @@ static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 				  .cond.fail = GR_IS_UCODE_OP_SKIP});
 
 		if (ret)
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				   "restore context image failed");
 	}
 
@@ -1700,7 +1757,7 @@ static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 
 static void gr_gk20a_start_falcon_ucode(struct gk20a *g)
 {
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gk20a_writel(g, gr_fecs_ctxsw_mailbox_clear_r(0),
 		     gr_fecs_ctxsw_mailbox_clear_value_f(~0));
@@ -1711,7 +1768,7 @@ static void gr_gk20a_start_falcon_ucode(struct gk20a *g)
 	gk20a_writel(g, gr_gpccs_cpuctl_r(), gr_gpccs_cpuctl_startcpu_f(1));
 	gk20a_writel(g, gr_fecs_cpuctl_r(), gr_fecs_cpuctl_startcpu_f(1));
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 }
 
 static int gr_gk20a_init_ctxsw_ucode_vaspace(struct gk20a *g)
@@ -1733,7 +1790,7 @@ static int gr_gk20a_init_ctxsw_ucode_vaspace(struct gk20a *g)
 					&iova,
 					GFP_KERNEL);
 	if (!ucode_info->inst_blk_desc.cpuva) {
-		nvhost_err(d, "failed to allocate memory\n");
+		gk20a_err(d, "failed to allocate memory\n");
 		return -ENOMEM;
 	}
 
@@ -1744,19 +1801,19 @@ static int gr_gk20a_init_ctxsw_ucode_vaspace(struct gk20a *g)
 	inst_ptr = ucode_info->inst_blk_desc.cpuva;
 
 	/* Set inst block */
-	mem_wr32(inst_ptr, ram_in_adr_limit_lo_w(),
+	gk20a_mem_wr32(inst_ptr, ram_in_adr_limit_lo_w(),
 		 u64_lo32(vm->va_limit) | 0xFFF);
-	mem_wr32(inst_ptr, ram_in_adr_limit_hi_w(),
+	gk20a_mem_wr32(inst_ptr, ram_in_adr_limit_hi_w(),
 		ram_in_adr_limit_hi_f(u64_hi32(vm->va_limit)));
 
 	pde_addr = gk20a_mm_iova_addr(vm->pdes.sgt->sgl);
 	pde_addr_lo = u64_lo32(pde_addr >> 12);
 	pde_addr_hi = u64_hi32(pde_addr);
-	mem_wr32(inst_ptr, ram_in_page_dir_base_lo_w(),
+	gk20a_mem_wr32(inst_ptr, ram_in_page_dir_base_lo_w(),
 		ram_in_page_dir_base_target_vid_mem_f() |
 		ram_in_page_dir_base_vol_true_f() |
 		ram_in_page_dir_base_lo_f(pde_addr_lo));
-	mem_wr32(inst_ptr, ram_in_page_dir_base_hi_w(),
+	gk20a_mem_wr32(inst_ptr, ram_in_page_dir_base_hi_w(),
 		ram_in_page_dir_base_hi_f(pde_addr_hi));
 
 	/* Map ucode surface to GMMU */
@@ -1766,7 +1823,7 @@ static int gr_gk20a_init_ctxsw_ucode_vaspace(struct gk20a *g)
 					0, /* flags */
 					gk20a_mem_flag_read_only);
 	if (!ucode_info->ucode_gpuva) {
-		nvhost_err(d, "failed to update gmmu ptes\n");
+		gk20a_err(d, "failed to update gmmu ptes\n");
 		return -ENOMEM;
 	}
 
@@ -1826,7 +1883,7 @@ static int gr_gk20a_init_ctxsw_ucode(struct gk20a *g)
 
 	fecs_fw = gk20a_request_firmware(g, GK20A_FECS_UCODE_IMAGE);
 	if (!fecs_fw) {
-		nvhost_err(d, "failed to load fecs ucode!!");
+		gk20a_err(d, "failed to load fecs ucode!!");
 		return -ENOENT;
 	}
 
@@ -1837,7 +1894,7 @@ static int gr_gk20a_init_ctxsw_ucode(struct gk20a *g)
 	gpccs_fw = gk20a_request_firmware(g, GK20A_GPCCS_UCODE_IMAGE);
 	if (!gpccs_fw) {
 		release_firmware(fecs_fw);
-		nvhost_err(d, "failed to load gpccs ucode!!");
+		gk20a_err(d, "failed to load gpccs ucode!!");
 		return -ENOENT;
 	}
 
@@ -1863,7 +1920,7 @@ static int gr_gk20a_init_ctxsw_ucode(struct gk20a *g)
 					GFP_KERNEL,
 					&attrs);
 	if (!ucode_info->surface_desc.cpuva) {
-		nvhost_err(d, "memory allocation failed\n");
+		gk20a_err(d, "memory allocation failed\n");
 		err = -ENOMEM;
 		goto clean_up;
 	}
@@ -1874,7 +1931,7 @@ static int gr_gk20a_init_ctxsw_ucode(struct gk20a *g)
 				ucode_info->surface_desc.iova,
 				ucode_info->surface_desc.size);
 	if (err) {
-		nvhost_err(d, "failed to create sg table\n");
+		gk20a_err(d, "failed to create sg table\n");
 		goto clean_up;
 	}
 
@@ -1882,7 +1939,7 @@ static int gr_gk20a_init_ctxsw_ucode(struct gk20a *g)
 	if (!buf) {
 		release_firmware(fecs_fw);
 		release_firmware(gpccs_fw);
-		nvhost_err(d, "failed to map surface desc buffer");
+		gk20a_err(d, "failed to map surface desc buffer");
 		return -ENOMEM;
 	}
 
@@ -1934,7 +1991,7 @@ static void gr_gk20a_load_falcon_bind_instblk(struct gk20a *g)
 		retries--;
 	}
 	if (!retries)
-		nvhost_err(dev_from_gk20a(g), "arbiter idle timeout");
+		gk20a_err(dev_from_gk20a(g), "arbiter idle timeout");
 
 	gk20a_writel(g, gr_fecs_arb_ctx_adr_r(), 0x0);
 
@@ -1959,7 +2016,7 @@ static void gr_gk20a_load_falcon_bind_instblk(struct gk20a *g)
 		val = gk20a_readl(g, gr_fecs_arb_ctx_cmd_r());
 	}
 	if (!retries)
-		nvhost_err(dev_from_gk20a(g), "arbiter complete timeout");
+		gk20a_err(dev_from_gk20a(g), "arbiter complete timeout");
 
 	gk20a_writel(g, gr_fecs_current_ctx_r(),
 			gr_fecs_current_ctx_ptr_f(inst_ptr >> 12) |
@@ -1976,7 +2033,7 @@ static void gr_gk20a_load_falcon_bind_instblk(struct gk20a *g)
 		val = gk20a_readl(g, gr_fecs_arb_ctx_cmd_r());
 	}
 	if (!retries)
-		nvhost_err(dev_from_gk20a(g), "arbiter complete timeout");
+		gk20a_err(dev_from_gk20a(g), "arbiter complete timeout");
 }
 
 static int gr_gk20a_load_ctxsw_ucode_segments(struct gk20a *g, u64 addr_base,
@@ -2079,7 +2136,7 @@ static int gr_gk20a_load_ctxsw_ucode(struct gk20a *g, struct gr_gk20a *gr)
 {
 	u32 ret;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (tegra_platform_is_linsim()) {
 		gk20a_writel(g, gr_fecs_ctxsw_mailbox_r(7),
@@ -2108,7 +2165,7 @@ static int gr_gk20a_load_ctxsw_ucode(struct gk20a *g, struct gr_gk20a *gr)
 				      eUcodeHandshakeInitComplete,
 				      GR_IS_UCODE_OP_SKIP, 0);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g), "falcon ucode init timeout");
+		gk20a_err(dev_from_gk20a(g), "falcon ucode init timeout");
 		return ret;
 	}
 
@@ -2121,7 +2178,7 @@ static int gr_gk20a_load_ctxsw_ucode(struct gk20a *g, struct gr_gk20a *gr)
 	gk20a_writel(g, gr_fecs_method_push_r(),
 		     gr_fecs_method_push_adr_set_watchdog_timeout_f());
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return 0;
 }
 
@@ -2139,12 +2196,12 @@ static int gr_gk20a_init_ctx_state(struct gk20a *g, struct gr_gk20a *gr)
 		.cond.fail = GR_IS_UCODE_OP_SKIP,
 		};
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	op.method.addr = gr_fecs_method_push_adr_discover_image_size_v();
 	op.mailbox.ret = &golden_ctx_image_size;
 	ret = gr_gk20a_submit_fecs_method_op(g, op);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "query golden image size failed");
 		return ret;
 	}
@@ -2152,7 +2209,7 @@ static int gr_gk20a_init_ctx_state(struct gk20a *g, struct gr_gk20a *gr)
 	op.mailbox.ret = &zcull_ctx_image_size;
 	ret = gr_gk20a_submit_fecs_method_op(g, op);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "query zcull ctx image size failed");
 		return ret;
 	}
@@ -2160,7 +2217,7 @@ static int gr_gk20a_init_ctx_state(struct gk20a *g, struct gr_gk20a *gr)
 	op.mailbox.ret = &pm_ctx_image_size;
 	ret = gr_gk20a_submit_fecs_method_op(g, op);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "query pm ctx image size failed");
 		return ret;
 	}
@@ -2175,7 +2232,9 @@ static int gr_gk20a_init_ctx_state(struct gk20a *g, struct gr_gk20a *gr)
 		BUG_ON(g->gr.ctx_vars.zcull_ctxsw_image_size != zcull_ctx_image_size);
 	}
 
-	nvhost_dbg_fn("done");
+	g->gr.ctx_vars.priv_access_map_size = 512 * 1024;
+
+	gk20a_dbg_fn("done");
 	return 0;
 }
 
@@ -2232,11 +2291,11 @@ static int gr_gk20a_alloc_global_ctx_buffers(struct gk20a *g)
 	u32 pagepool_buffer_size = gr_scc_pagepool_total_pages_hwmax_value_v() *
 		gr_scc_pagepool_total_pages_byte_granularity_v();
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	attr_buffer_size = g->ops.gr.calc_global_ctx_buffer_size(g);
 
-	nvhost_dbg_info("cb_buffer_size : %d", cb_buffer_size);
+	gk20a_dbg_info("cb_buffer_size : %d", cb_buffer_size);
 
 	err = gk20a_gr_alloc_ctx_buffer(pdev, &gr->global_ctx_buffer[CIRCULAR],
 					cb_buffer_size);
@@ -2248,7 +2307,7 @@ static int gr_gk20a_alloc_global_ctx_buffers(struct gk20a *g)
 				       &gr->global_ctx_buffer[CIRCULAR_VPR],
 				       cb_buffer_size);
 
-	nvhost_dbg_info("pagepool_buffer_size : %d", pagepool_buffer_size);
+	gk20a_dbg_info("pagepool_buffer_size : %d", pagepool_buffer_size);
 
 	err = gk20a_gr_alloc_ctx_buffer(pdev, &gr->global_ctx_buffer[PAGEPOOL],
 					pagepool_buffer_size);
@@ -2260,7 +2319,7 @@ static int gr_gk20a_alloc_global_ctx_buffers(struct gk20a *g)
 				       &gr->global_ctx_buffer[PAGEPOOL_VPR],
 				       pagepool_buffer_size);
 
-	nvhost_dbg_info("attr_buffer_size : %d", attr_buffer_size);
+	gk20a_dbg_info("attr_buffer_size : %d", attr_buffer_size);
 
 	err = gk20a_gr_alloc_ctx_buffer(pdev, &gr->global_ctx_buffer[ATTRIBUTE],
 					attr_buffer_size);
@@ -2272,7 +2331,7 @@ static int gr_gk20a_alloc_global_ctx_buffers(struct gk20a *g)
 				       &gr->global_ctx_buffer[ATTRIBUTE_VPR],
 				       attr_buffer_size);
 
-	nvhost_dbg_info("golden_image_size : %d",
+	gk20a_dbg_info("golden_image_size : %d",
 		   gr->ctx_vars.golden_image_size);
 
 	err = gk20a_gr_alloc_ctx_buffer(pdev,
@@ -2281,11 +2340,21 @@ static int gr_gk20a_alloc_global_ctx_buffers(struct gk20a *g)
 	if (err)
 		goto clean_up;
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_info("priv_access_map_size : %d",
+		   gr->ctx_vars.priv_access_map_size);
+
+	err = gk20a_gr_alloc_ctx_buffer(pdev,
+					&gr->global_ctx_buffer[PRIV_ACCESS_MAP],
+					gr->ctx_vars.priv_access_map_size);
+
+	if (err)
+		goto clean_up;
+
+	gk20a_dbg_fn("done");
 	return 0;
 
  clean_up:
-	nvhost_err(dev_from_gk20a(g), "fail");
+	gk20a_err(dev_from_gk20a(g), "fail");
 	for (i = 0; i < NR_GLOBAL_CTX_BUF; i++) {
 		if (gr->global_ctx_buffer[i].destroy) {
 			gr->global_ctx_buffer[i].destroy(pdev,
@@ -2309,7 +2378,7 @@ static void gr_gk20a_free_global_ctx_buffers(struct gk20a *g)
 				&gr->global_ctx_buffer[i]);
 	}
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 }
 
 static int gr_gk20a_map_global_ctx_buffers(struct gk20a *g,
@@ -2322,7 +2391,7 @@ static int gr_gk20a_map_global_ctx_buffers(struct gk20a *g,
 	u64 size;
 	u64 gpu_va;
 	u32 i;
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	/* Circular Buffer */
 	if (!c->vpr || (gr->global_ctx_buffer[CIRCULAR_VPR].sgt == NULL)) {
@@ -2381,6 +2450,15 @@ static int gr_gk20a_map_global_ctx_buffers(struct gk20a *g,
 		goto clean_up;
 	g_bfr_va[GOLDEN_CTX_VA] = gpu_va;
 
+	/* Priv register Access Map */
+	sgt = gr->global_ctx_buffer[PRIV_ACCESS_MAP].sgt;
+	size = gr->global_ctx_buffer[PRIV_ACCESS_MAP].size;
+	gpu_va = gk20a_gmmu_map(ch_vm, &sgt, size, 0,
+				gk20a_mem_flag_none);
+	if (!gpu_va)
+		goto clean_up;
+	g_bfr_va[PRIV_ACCESS_MAP_VA] = gpu_va;
+
 	c->ch_ctx.global_ctx_buffer_mapped = true;
 	return 0;
 
@@ -2403,7 +2481,7 @@ static void gr_gk20a_unmap_global_ctx_buffers(struct channel_gk20a *c)
 	u64 *g_bfr_va = c->ch_ctx.global_ctx_buffer_va;
 	u32 i;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	for (i = 0; i < NR_GLOBAL_CTX_BUF_VA; i++) {
 		if (g_bfr_va[i]) {
@@ -2428,7 +2506,7 @@ static int gr_gk20a_alloc_channel_gr_ctx(struct gk20a *g,
 	int err = 0;
 	dma_addr_t iova;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (gr->ctx_vars.buffer_size == 0)
 		return 0;
@@ -2479,7 +2557,7 @@ static void gr_gk20a_free_channel_gr_ctx(struct channel_gk20a *c)
 	struct device *d = dev_from_gk20a(g);
 	DEFINE_DMA_ATTRS(attrs);
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gk20a_gmmu_unmap(ch_vm, ch_ctx->gr_ctx.gpu_va,
 			ch_ctx->gr_ctx.size, gk20a_mem_flag_none);
@@ -2501,7 +2579,7 @@ static int gr_gk20a_alloc_channel_patch_ctx(struct gk20a *g,
 	int err = 0;
 	dma_addr_t iova;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	patch_ctx->size = 128 * sizeof(u32);
 	dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &attrs);
@@ -2524,7 +2602,7 @@ static int gr_gk20a_alloc_channel_patch_ctx(struct gk20a *g,
 
 	gk20a_free_sgtable(&sgt);
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return 0;
 
  err_free_sgtable:
@@ -2534,7 +2612,7 @@ static int gr_gk20a_alloc_channel_patch_ctx(struct gk20a *g,
 		patch_ctx->pages, patch_ctx->iova, &attrs);
 	patch_ctx->pages = NULL;
 	patch_ctx->iova = 0;
-	nvhost_err(dev_from_gk20a(g), "fail");
+	gk20a_err(dev_from_gk20a(g), "fail");
 	return err;
 }
 
@@ -2543,7 +2621,7 @@ static void gr_gk20a_unmap_channel_patch_ctx(struct channel_gk20a *c)
 	struct patch_desc *patch_ctx = &c->ch_ctx.patch_ctx;
 	struct vm_gk20a *ch_vm = c->vm;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (patch_ctx->gpu_va)
 		gk20a_gmmu_unmap(ch_vm, patch_ctx->gpu_va,
@@ -2559,7 +2637,7 @@ static void gr_gk20a_free_channel_patch_ctx(struct channel_gk20a *c)
 	struct device *d = dev_from_gk20a(g);
 	DEFINE_DMA_ATTRS(attrs);
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gr_gk20a_unmap_channel_patch_ctx(c);
 
@@ -2612,18 +2690,18 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	struct channel_ctx_gk20a *ch_ctx = &c->ch_ctx;
 	int err = 0;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	/* an address space needs to have been bound at this point.*/
 	if (!gk20a_channel_as_bound(c)) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "not bound to address space at time"
 			   " of grctx allocation");
 		return -EINVAL;
 	}
 
 	if (!g->ops.gr.is_valid_class(g, args->class_num)) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "invalid obj class 0x%x", args->class_num);
 		err = -EINVAL;
 		goto out;
@@ -2633,7 +2711,7 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	if (ch_ctx->gr_ctx.pages == NULL) {
 		err = gr_gk20a_alloc_channel_gr_ctx(g, c);
 		if (err) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"fail to allocate gr ctx buffer");
 			goto out;
 		}
@@ -2641,7 +2719,7 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	} else {
 		/*TBD: needs to be more subtle about which is being allocated
 		* as some are allowed to be allocated along same channel */
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"too many classes alloc'd on same channel");
 		err = -EINVAL;
 		goto out;
@@ -2650,7 +2728,7 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	/* commit gr ctx buffer */
 	err = gr_gk20a_commit_inst(c, ch_ctx->gr_ctx.gpu_va);
 	if (err) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"fail to commit gr ctx buffer");
 		goto out;
 	}
@@ -2659,7 +2737,7 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	if (ch_ctx->patch_ctx.pages == NULL) {
 		err = gr_gk20a_alloc_channel_patch_ctx(g, c);
 		if (err) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"fail to allocate patch buffer");
 			goto out;
 		}
@@ -2669,7 +2747,7 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	if (!ch_ctx->global_ctx_buffer_mapped) {
 		err = gr_gk20a_map_global_ctx_buffers(g, c);
 		if (err) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"fail to map global ctx buffer");
 			goto out;
 		}
@@ -2680,7 +2758,7 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 	/* init golden image, ELPG enabled after this is done */
 	err = gr_gk20a_init_golden_ctx_image(g, c);
 	if (err) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"fail to init golden ctx image");
 		goto out;
 	}
@@ -2690,23 +2768,24 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 		err = gr_gk20a_elpg_protected_call(g,
 			gr_gk20a_load_golden_ctx_image(g, c));
 		if (err) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"fail to load golden ctx image");
 			goto out;
 		}
 		c->first_init = true;
 	}
 	gk20a_mm_l2_invalidate(g);
+
 	c->num_objects++;
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return 0;
 out:
 	/* 1. gr_ctx, patch_ctx and global ctx buffer mapping
 	   can be reused so no need to release them.
 	   2. golden image init and load is a one time thing so if
 	   they pass, no need to undo. */
-	nvhost_err(dev_from_gk20a(g), "fail");
+	gk20a_err(dev_from_gk20a(g), "fail");
 	return err;
 }
 
@@ -2715,7 +2794,7 @@ int gk20a_free_obj_ctx(struct channel_gk20a  *c,
 {
 	unsigned long timeout = gk20a_get_gr_idle_timeout(c->g);
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (c->num_objects == 0)
 		return 0;
@@ -2739,7 +2818,7 @@ static void gk20a_remove_gr_support(struct gr_gk20a *gr)
 	struct device *d = dev_from_gk20a(g);
 	DEFINE_DMA_ATTRS(attrs);
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gr_gk20a_free_global_ctx_buffers(g);
 
@@ -2847,7 +2926,7 @@ static int gr_gk20a_init_gr_config(struct gk20a *g, struct gr_gk20a *gr)
 	gr->max_zcull_per_gpc_count = proj_scal_litter_num_zcull_banks_v();
 
 	if (!gr->gpc_count) {
-		nvhost_err(dev_from_gk20a(g), "gpc_count==0!");
+		gk20a_err(dev_from_gk20a(g), "gpc_count==0!");
 		goto clean_up;
 	}
 
@@ -2922,35 +3001,35 @@ static int gr_gk20a_init_gr_config(struct gk20a *g, struct gr_gk20a *gr)
 		gr->gpc_skip_mask[gpc_index] = gpc_new_skip_mask;
 	}
 
-	nvhost_dbg_info("fbps: %d", gr->num_fbps);
-	nvhost_dbg_info("max_gpc_count: %d", gr->max_gpc_count);
-	nvhost_dbg_info("max_fbps_count: %d", gr->max_fbps_count);
-	nvhost_dbg_info("max_tpc_per_gpc_count: %d", gr->max_tpc_per_gpc_count);
-	nvhost_dbg_info("max_zcull_per_gpc_count: %d", gr->max_zcull_per_gpc_count);
-	nvhost_dbg_info("max_tpc_count: %d", gr->max_tpc_count);
-	nvhost_dbg_info("sys_count: %d", gr->sys_count);
-	nvhost_dbg_info("gpc_count: %d", gr->gpc_count);
-	nvhost_dbg_info("pe_count_per_gpc: %d", gr->pe_count_per_gpc);
-	nvhost_dbg_info("tpc_count: %d", gr->tpc_count);
-	nvhost_dbg_info("ppc_count: %d", gr->ppc_count);
+	gk20a_dbg_info("fbps: %d", gr->num_fbps);
+	gk20a_dbg_info("max_gpc_count: %d", gr->max_gpc_count);
+	gk20a_dbg_info("max_fbps_count: %d", gr->max_fbps_count);
+	gk20a_dbg_info("max_tpc_per_gpc_count: %d", gr->max_tpc_per_gpc_count);
+	gk20a_dbg_info("max_zcull_per_gpc_count: %d", gr->max_zcull_per_gpc_count);
+	gk20a_dbg_info("max_tpc_count: %d", gr->max_tpc_count);
+	gk20a_dbg_info("sys_count: %d", gr->sys_count);
+	gk20a_dbg_info("gpc_count: %d", gr->gpc_count);
+	gk20a_dbg_info("pe_count_per_gpc: %d", gr->pe_count_per_gpc);
+	gk20a_dbg_info("tpc_count: %d", gr->tpc_count);
+	gk20a_dbg_info("ppc_count: %d", gr->ppc_count);
 
 	for (gpc_index = 0; gpc_index < gr->gpc_count; gpc_index++)
-		nvhost_dbg_info("gpc_tpc_count[%d] : %d",
+		gk20a_dbg_info("gpc_tpc_count[%d] : %d",
 			   gpc_index, gr->gpc_tpc_count[gpc_index]);
 	for (gpc_index = 0; gpc_index < gr->gpc_count; gpc_index++)
-		nvhost_dbg_info("gpc_zcb_count[%d] : %d",
+		gk20a_dbg_info("gpc_zcb_count[%d] : %d",
 			   gpc_index, gr->gpc_zcb_count[gpc_index]);
 	for (gpc_index = 0; gpc_index < gr->gpc_count; gpc_index++)
-		nvhost_dbg_info("gpc_ppc_count[%d] : %d",
+		gk20a_dbg_info("gpc_ppc_count[%d] : %d",
 			   gpc_index, gr->gpc_ppc_count[gpc_index]);
 	for (gpc_index = 0; gpc_index < gr->gpc_count; gpc_index++)
-		nvhost_dbg_info("gpc_skip_mask[%d] : %d",
+		gk20a_dbg_info("gpc_skip_mask[%d] : %d",
 			   gpc_index, gr->gpc_skip_mask[gpc_index]);
 	for (gpc_index = 0; gpc_index < gr->gpc_count; gpc_index++)
 		for (pes_index = 0;
 		     pes_index < gr->pe_count_per_gpc;
 		     pes_index++)
-			nvhost_dbg_info("pes_tpc_count[%d][%d] : %d",
+			gk20a_dbg_info("pes_tpc_count[%d][%d] : %d",
 				   pes_index, gpc_index,
 				   gr->pes_tpc_count[pes_index][gpc_index]);
 
@@ -2958,7 +3037,7 @@ static int gr_gk20a_init_gr_config(struct gk20a *g, struct gr_gk20a *gr)
 		for (pes_index = 0;
 		     pes_index < gr->pe_count_per_gpc;
 		     pes_index++)
-			nvhost_dbg_info("pes_tpc_mask[%d][%d] : %d",
+			gk20a_dbg_info("pes_tpc_mask[%d][%d] : %d",
 				   pes_index, gpc_index,
 				   gr->pes_tpc_mask[pes_index][gpc_index]);
 
@@ -2967,16 +3046,16 @@ static int gr_gk20a_init_gr_config(struct gk20a *g, struct gr_gk20a *gr)
 	g->ops.gr.calc_global_ctx_buffer_size(g);
 	gr->timeslice_mode = gr_gpcs_ppcs_cbm_cfg_timeslice_mode_enable_v();
 
-	nvhost_dbg_info("bundle_cb_default_size: %d",
+	gk20a_dbg_info("bundle_cb_default_size: %d",
 		   gr->bundle_cb_default_size);
-	nvhost_dbg_info("min_gpm_fifo_depth: %d", gr->min_gpm_fifo_depth);
-	nvhost_dbg_info("bundle_cb_token_limit: %d", gr->bundle_cb_token_limit);
-	nvhost_dbg_info("attrib_cb_default_size: %d",
+	gk20a_dbg_info("min_gpm_fifo_depth: %d", gr->min_gpm_fifo_depth);
+	gk20a_dbg_info("bundle_cb_token_limit: %d", gr->bundle_cb_token_limit);
+	gk20a_dbg_info("attrib_cb_default_size: %d",
 		   gr->attrib_cb_default_size);
-	nvhost_dbg_info("attrib_cb_size: %d", gr->attrib_cb_size);
-	nvhost_dbg_info("alpha_cb_default_size: %d", gr->alpha_cb_default_size);
-	nvhost_dbg_info("alpha_cb_size: %d", gr->alpha_cb_size);
-	nvhost_dbg_info("timeslice_mode: %d", gr->timeslice_mode);
+	gk20a_dbg_info("attrib_cb_size: %d", gr->attrib_cb_size);
+	gk20a_dbg_info("alpha_cb_default_size: %d", gr->alpha_cb_default_size);
+	gk20a_dbg_info("alpha_cb_size: %d", gr->alpha_cb_size);
+	gk20a_dbg_info("timeslice_mode: %d", gr->timeslice_mode);
 
 	return 0;
 
@@ -3189,9 +3268,9 @@ clean_up:
 	kfree(sorted_to_unsorted_gpc_map);
 
 	if (ret)
-		nvhost_err(dev_from_gk20a(g), "fail");
+		gk20a_err(dev_from_gk20a(g), "fail");
 	else
-		nvhost_dbg_fn("done");
+		gk20a_dbg_fn("done");
 
 	return ret;
 }
@@ -3281,14 +3360,14 @@ static int gr_gk20a_add_zbc_color(struct gk20a *g, struct gr_gk20a *gr,
 
 	ret = gk20a_fifo_disable_engine_activity(g, gr_info, true);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to disable gr engine activity\n");
 		return ret;
 	}
 
 	ret = gr_gk20a_wait_idle(g, end_jiffies, GR_IDLE_CHECK_DEFAULT);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to idle graphics\n");
 		goto clean_up;
 	}
@@ -3329,7 +3408,7 @@ static int gr_gk20a_add_zbc_color(struct gk20a *g, struct gr_gk20a *gr,
 clean_up:
 	ret = gk20a_fifo_enable_engine_activity(g, gr_info);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to enable gr engine activity\n");
 	}
 
@@ -3347,14 +3426,14 @@ static int gr_gk20a_add_zbc_depth(struct gk20a *g, struct gr_gk20a *gr,
 
 	ret = gk20a_fifo_disable_engine_activity(g, gr_info, true);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to disable gr engine activity\n");
 		return ret;
 	}
 
 	ret = gr_gk20a_wait_idle(g, end_jiffies, GR_IDLE_CHECK_DEFAULT);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to idle graphics\n");
 		goto clean_up;
 	}
@@ -3386,7 +3465,7 @@ static int gr_gk20a_add_zbc_depth(struct gk20a *g, struct gr_gk20a *gr,
 clean_up:
 	ret = gk20a_fifo_enable_engine_activity(g, gr_info);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to enable gr engine activity\n");
 	}
 
@@ -3417,7 +3496,7 @@ int gr_gk20a_add_zbc(struct gk20a *g, struct gr_gk20a *gr,
 
 				if (memcmp(c_tbl->color_l2, zbc_val->color_l2,
 				    sizeof(zbc_val->color_l2))) {
-					nvhost_err(dev_from_gk20a(g),
+					gk20a_err(dev_from_gk20a(g),
 						"zbc l2 and ds color don't match with existing entries");
 					return -EINVAL;
 				}
@@ -3473,7 +3552,7 @@ int gr_gk20a_add_zbc(struct gk20a *g, struct gr_gk20a *gr,
 		}
 		break;
 	default:
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"invalid zbc table type %d", zbc_val->type);
 		return -EINVAL;
 	}
@@ -3499,14 +3578,14 @@ int gr_gk20a_clear_zbc_table(struct gk20a *g, struct gr_gk20a *gr)
 
 	ret = gk20a_fifo_disable_engine_activity(g, gr_info, true);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to disable gr engine activity\n");
 		return ret;
 	}
 
 	ret = gr_gk20a_wait_idle(g, end_jiffies, GR_IDLE_CHECK_DEFAULT);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to idle graphics\n");
 		goto clean_up;
 	}
@@ -3562,7 +3641,7 @@ int gr_gk20a_clear_zbc_table(struct gk20a *g, struct gr_gk20a *gr)
 clean_up:
 	ret = gk20a_fifo_enable_engine_activity(g, gr_info);
 	if (ret) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to enable gr engine activity\n");
 	}
 
@@ -3585,7 +3664,7 @@ int gr_gk20a_query_zbc(struct gk20a *g, struct gr_gk20a *gr,
 		break;
 	case GK20A_ZBC_TYPE_COLOR:
 		if (index >= GK20A_ZBC_TABLE_SIZE) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"invalid zbc color table index\n");
 			return -EINVAL;
 		}
@@ -3600,7 +3679,7 @@ int gr_gk20a_query_zbc(struct gk20a *g, struct gr_gk20a *gr,
 		break;
 	case GK20A_ZBC_TYPE_DEPTH:
 		if (index >= GK20A_ZBC_TABLE_SIZE) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"invalid zbc depth table index\n");
 			return -EINVAL;
 		}
@@ -3609,7 +3688,7 @@ int gr_gk20a_query_zbc(struct gk20a *g, struct gr_gk20a *gr,
 		query_params->ref_cnt = gr->zbc_dep_tbl[index].ref_cnt;
 		break;
 	default:
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 				"invalid zbc table type\n");
 		return -EINVAL;
 	}
@@ -3656,7 +3735,7 @@ int gr_gk20a_load_zbc_default_table(struct gk20a *g, struct gr_gk20a *gr)
 	if (!err)
 		gr->max_default_color_index = 4;
 	else {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "fail to load default zbc color table\n");
 		return err;
 	}
@@ -3675,7 +3754,7 @@ int gr_gk20a_load_zbc_default_table(struct gk20a *g, struct gr_gk20a *gr)
 	if (!err)
 		gr->max_default_depth_index = 2;
 	else {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "fail to load default zbc depth table\n");
 		return err;
 	}
@@ -3686,7 +3765,7 @@ int gr_gk20a_load_zbc_default_table(struct gk20a *g, struct gr_gk20a *gr)
 int gk20a_gr_zbc_set_table(struct gk20a *g, struct gr_gk20a *gr,
 			struct zbc_entry *zbc_val)
 {
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	return gr_gk20a_elpg_protected_call(g,
 		gr_gk20a_add_zbc(g, gr, zbc_val));
@@ -3710,7 +3789,7 @@ void gr_gk20a_init_blcg_mode(struct gk20a *g, u32 mode, u32 engine)
 				therm_gate_ctrl_blk_clk_auto_f());
 		break;
 	default:
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"invalid blcg mode %d", mode);
 		return;
 	}
@@ -3745,7 +3824,7 @@ void gr_gk20a_init_elcg_mode(struct gk20a *g, u32 mode, u32 engine)
 				therm_gate_ctrl_eng_clk_auto_f());
 		break;
 	default:
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"invalid elcg mode %d", mode);
 	}
 
@@ -3789,7 +3868,7 @@ static int gr_gk20a_zcull_init_hw(struct gk20a *g, struct gr_gk20a *gr)
 	zcull_map_tiles = kzalloc(proj_scal_max_gpcs_v() *
 			proj_scal_max_tpc_per_gpc_v() * sizeof(u32), GFP_KERNEL);
 	if (!zcull_map_tiles) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to allocate zcull temp buffers");
 		return -ENOMEM;
 	}
@@ -3797,7 +3876,7 @@ static int gr_gk20a_zcull_init_hw(struct gk20a *g, struct gr_gk20a *gr)
 			proj_scal_max_tpc_per_gpc_v() * sizeof(u32), GFP_KERNEL);
 
 	if (!zcull_bank_counters) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			"failed to allocate zcull temp buffers");
 		kfree(zcull_map_tiles);
 		return -ENOMEM;
@@ -3858,7 +3937,7 @@ static int gr_gk20a_zcull_init_hw(struct gk20a *g, struct gr_gk20a *gr)
 
 		if (gpc_zcull_count != gr->max_zcull_per_gpc_count &&
 		    gpc_zcull_count < gpc_tpc_count) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"zcull_banks (%d) less than tpcs (%d) for gpc (%d)",
 				gpc_zcull_count, gpc_tpc_count, gpc_index);
 			return -EINVAL;
@@ -4011,11 +4090,11 @@ static int gk20a_init_gr_setup_hw(struct gk20a *g)
 	u32 last_method_data = 0;
 	u32 i, err;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	/* slcg prod values */
-	gr_gk20a_slcg_gr_load_gating_prod(g, g->slcg_enabled);
-	gr_gk20a_slcg_perf_load_gating_prod(g, g->slcg_enabled);
+	g->ops.clock_gating.slcg_gr_load_gating_prod(g, g->slcg_enabled);
+	g->ops.clock_gating.slcg_perf_load_gating_prod(g, g->slcg_enabled);
 
 	/* init mmu debug buffer */
 	addr = NV_MC_SMMU_VADDR_TRANSLATE(gr->mmu_wr_mem.iova);
@@ -4048,8 +4127,8 @@ static int gk20a_init_gr_setup_hw(struct gk20a *g)
 
 	gr_gk20a_zcull_init_hw(g, gr);
 
-	gr_gk20a_blcg_gr_load_gating_prod(g, g->blcg_enabled);
-	gr_gk20a_pg_gr_load_gating_prod(g, true);
+	g->ops.clock_gating.blcg_gr_load_gating_prod(g, g->blcg_enabled);
+	g->ops.clock_gating.pg_gr_load_gating_prod(g, true);
 
 	if (g->elcg_enabled) {
 		gr_gk20a_init_elcg_mode(g, ELCG_AUTO, ENGINE_GR_GK20A);
@@ -4169,7 +4248,7 @@ restore_fe_go_idle:
 		goto out;
 
 out:
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return 0;
 }
 
@@ -4199,7 +4278,7 @@ static int gk20a_init_gr_prepare(struct gk20a *g)
 	if (!g->gr.ctx_vars.valid) {
 		err = gr_gk20a_init_ctx_vars(g, &g->gr);
 		if (err)
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				"fail to load gr init ctx");
 	}
 	return err;
@@ -4211,7 +4290,7 @@ static int gr_gk20a_wait_mem_scrubbing(struct gk20a *g)
 	bool fecs_scrubbing;
 	bool gpccs_scrubbing;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	do {
 		fecs_scrubbing = gk20a_readl(g, gr_fecs_dmactl_r()) &
@@ -4223,14 +4302,14 @@ static int gr_gk20a_wait_mem_scrubbing(struct gk20a *g)
 			 gr_gpccs_dmactl_imem_scrubbing_m());
 
 		if (!fecs_scrubbing && !gpccs_scrubbing) {
-			nvhost_dbg_fn("done");
+			gk20a_dbg_fn("done");
 			return 0;
 		}
 
 		udelay(GR_IDLE_CHECK_DEFAULT);
 	} while (--retries || !tegra_platform_is_silicon());
 
-	nvhost_err(dev_from_gk20a(g), "Falcon mem scrubbing timeout");
+	gk20a_err(dev_from_gk20a(g), "Falcon mem scrubbing timeout");
 	return -ETIMEDOUT;
 }
 
@@ -4242,7 +4321,7 @@ static int gk20a_init_gr_reset_enable_hw(struct gk20a *g)
 		msecs_to_jiffies(gk20a_get_gr_idle_timeout(g));
 	u32 i, err = 0;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	/* enable interrupts */
 	gk20a_writel(g, gr_intr_r(), ~0);
@@ -4280,10 +4359,61 @@ static int gk20a_init_gr_reset_enable_hw(struct gk20a *g)
 
 out:
 	if (err)
-		nvhost_err(dev_from_gk20a(g), "fail");
+		gk20a_err(dev_from_gk20a(g), "fail");
 	else
-		nvhost_dbg_fn("done");
+		gk20a_dbg_fn("done");
 
+	return 0;
+}
+
+/*
+ * XXX Merge this list with the debugger/profiler
+ * session regops whitelists?
+ */
+static u32 wl_addr_gk20a[] = {
+	/* this list must be sorted (low to high) */
+	0x404468, /* gr_pri_mme_max_instructions       */
+	0x418800, /* gr_pri_gpcs_setup_debug           */
+	0x419a04, /* gr_pri_gpcs_tpcs_tex_lod_dbg      */
+	0x419a08, /* gr_pri_gpcs_tpcs_tex_samp_dbg     */
+	0x419e10, /* gr_pri_gpcs_tpcs_sm_dbgr_control0 */
+	0x419f78, /* gr_pri_gpcs_tpcs_sm_disp_ctrl     */
+};
+
+static int gr_gk20a_init_access_map(struct gk20a *g)
+{
+	struct gr_gk20a *gr = &g->gr;
+	void *data;
+	int err = 0;
+	u32 w, nr_pages =
+		DIV_ROUND_UP(gr->ctx_vars.priv_access_map_size,
+			     PAGE_SIZE);
+
+	data = vmap(gr->global_ctx_buffer[PRIV_ACCESS_MAP].pages,
+		    PAGE_ALIGN(gr->global_ctx_buffer[PRIV_ACCESS_MAP].size) >>
+		    PAGE_SHIFT, 0, pgprot_dmacoherent(PAGE_KERNEL));
+	if (!data) {
+		gk20a_err(dev_from_gk20a(g),
+			  "failed to map priv access map memory");
+		err = -ENOMEM;
+		goto clean_up;
+	}
+
+	memset(data, 0x0, PAGE_SIZE * nr_pages);
+
+	for (w = 0; w < ARRAY_SIZE(wl_addr_gk20a); w++) {
+		u32 map_bit, map_byte, map_shift;
+		map_bit = wl_addr_gk20a[w] >> 2;
+		map_byte = map_bit >> 3;
+		map_shift = map_bit & 0x7; /* i.e. 0-7 */
+		gk20a_dbg_info("access map addr:0x%x byte:0x%x bit:%d",
+		  wl_addr_gk20a[w], map_byte, map_shift);
+		((u8 *)data)[map_byte] |= 1 << map_shift;
+	}
+
+clean_up:
+	if (data)
+		vunmap(data);
 	return 0;
 }
 
@@ -4292,10 +4422,10 @@ static int gk20a_init_gr_setup_sw(struct gk20a *g)
 	struct gr_gk20a *gr = &g->gr;
 	int err;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (gr->sw_ready) {
-		nvhost_dbg_fn("skip init");
+		gk20a_dbg_fn("skip init");
 		return 0;
 	}
 
@@ -4316,7 +4446,7 @@ static int gk20a_init_gr_setup_sw(struct gk20a *g)
 	if (tegra_cpu_is_asim())
 		gr->max_comptag_mem = 1; /* MBs worth of comptag coverage */
 	else {
-		nvhost_dbg_info("total ram pages : %lu", totalram_pages);
+		gk20a_dbg_info("total ram pages : %lu", totalram_pages);
 		gr->max_comptag_mem = totalram_pages
 					 >> (10 - (PAGE_SHIFT - 10));
 	}
@@ -4332,17 +4462,21 @@ static int gk20a_init_gr_setup_sw(struct gk20a *g)
 	if (err)
 		goto clean_up;
 
+	err = gr_gk20a_init_access_map(g);
+	if (err)
+		goto clean_up;
+
 	mutex_init(&gr->ctx_mutex);
 	spin_lock_init(&gr->ch_tlb_lock);
 
 	gr->remove_support = gk20a_remove_gr_support;
 	gr->sw_ready = true;
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return 0;
 
 clean_up:
-	nvhost_err(dev_from_gk20a(g), "fail");
+	gk20a_err(dev_from_gk20a(g), "fail");
 	gk20a_remove_gr_support(gr);
 	return err;
 }
@@ -4351,7 +4485,7 @@ int gk20a_init_gr_support(struct gk20a *g)
 {
 	u32 err;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	err = gk20a_init_gr_prepare(g);
 	if (err)
@@ -4395,7 +4529,7 @@ struct gr_isr_data {
 
 void gk20a_gr_set_shader_exceptions(struct gk20a *g, u32 data)
 {
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (data == NVA297_SET_SHADER_EXCEPTIONS_ENABLE_FALSE) {
 		gk20a_writel(g,
@@ -4444,7 +4578,7 @@ static void gk20a_gr_set_circular_buffer_size(struct gk20a *g, u32 data)
 	u32 gpc_index, ppc_index, stride, val, offset;
 	u32 cb_size = data * 4;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (cb_size > gr->attrib_cb_size)
 		cb_size = gr->attrib_cb_size;
@@ -4496,7 +4630,7 @@ static void gk20a_gr_set_alpha_circular_buffer_size(struct gk20a *g, u32 data)
 	u32 pd_ab_max_output;
 	u32 alpha_cb_size = data * 4;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	/* if (NO_ALPHA_BETA_TIMESLICE_SUPPORT_DEF)
 		return; */
 
@@ -4550,7 +4684,7 @@ void gk20a_gr_reset(struct gk20a *g)
 static int gr_gk20a_handle_sw_method(struct gk20a *g, u32 addr,
 					  u32 class_num, u32 offset, u32 data)
 {
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	if (class_num == KEPLER_COMPUTE_A) {
 		switch (offset << 2) {
@@ -4588,10 +4722,10 @@ static int gk20a_gr_handle_semaphore_timeout_pending(struct gk20a *g,
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct channel_gk20a *ch = &f->channel[isr_data->chid];
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_GR_SEMAPHORE_TIMEOUT);
-	nvhost_err(dev_from_gk20a(g),
+	gk20a_err(dev_from_gk20a(g),
 		   "gr semaphore timeout\n");
 	return -EINVAL;
 }
@@ -4601,11 +4735,11 @@ static int gk20a_gr_intr_illegal_notify_pending(struct gk20a *g,
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct channel_gk20a *ch = &f->channel[isr_data->chid];
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_GR_ILLEGAL_NOTIFY);
 	/* This is an unrecoverable error, reset is needed */
-	nvhost_err(dev_from_gk20a(g),
+	gk20a_err(dev_from_gk20a(g),
 		   "gr semaphore timeout\n");
 	return -EINVAL;
 }
@@ -4617,7 +4751,7 @@ static int gk20a_gr_handle_illegal_method(struct gk20a *g,
 			isr_data->class_num, isr_data->offset,
 			isr_data->data_lo);
 	if (ret)
-		nvhost_err(dev_from_gk20a(g), "invalid method class 0x%08x"
+		gk20a_err(dev_from_gk20a(g), "invalid method class 0x%08x"
 			", offset 0x%08x address 0x%08x\n",
 			isr_data->class_num, isr_data->offset, isr_data->addr);
 
@@ -4629,10 +4763,10 @@ static int gk20a_gr_handle_illegal_class(struct gk20a *g,
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct channel_gk20a *ch = &f->channel[isr_data->chid];
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_GR_ERROR_SW_NOTIFY);
-	nvhost_err(dev_from_gk20a(g),
+	gk20a_err(dev_from_gk20a(g),
 		   "invalid class 0x%08x, offset 0x%08x",
 		   isr_data->class_num, isr_data->offset);
 	return -EINVAL;
@@ -4643,11 +4777,11 @@ static int gk20a_gr_handle_class_error(struct gk20a *g,
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct channel_gk20a *ch = &f->channel[isr_data->chid];
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	gk20a_set_error_notifier(ch,
 			NVHOST_CHANNEL_GR_ERROR_SW_NOTIFY);
-	nvhost_err(dev_from_gk20a(g),
+	gk20a_err(dev_from_gk20a(g),
 		   "class error 0x%08x, offset 0x%08x",
 		   isr_data->class_num, isr_data->offset);
 	return -EINVAL;
@@ -4738,7 +4872,7 @@ static int gk20a_gr_handle_notify_pending(struct gk20a *g,
 			valid = is_valid_cyclestats_bar0_offset_gk20a(g,
 							op_elem->offset_bar0);
 			if (!valid) {
-				nvhost_err(dev_from_gk20a(g),
+				gk20a_err(dev_from_gk20a(g),
 					   "invalid cycletstats op offset: 0x%x\n",
 					   op_elem->offset_bar0);
 
@@ -4797,7 +4931,7 @@ static int gk20a_gr_handle_notify_pending(struct gk20a *g,
 	}
 	mutex_unlock(&ch->cyclestate.cyclestate_buffer_mutex);
 #endif
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 	wake_up(&ch->notifier_wq);
 	return 0;
 }
@@ -4866,7 +5000,7 @@ static int gk20a_gr_lock_down_sm(struct gk20a *g, u32 global_esr_mask)
 	bool mmu_debug_mode_enabled = gk20a_mm_mmu_debug_mode_enabled(g);
 	u32 dbgr_control0;
 
-	nvhost_dbg(dbg_intr | dbg_gpu_dbg, "locking down SM");
+	gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "locking down SM");
 
 	/* assert stop trigger */
 	dbgr_control0 = gk20a_readl(g, gr_gpc0_tpc0_sm_dbgr_control0_r());
@@ -4887,7 +5021,7 @@ static int gk20a_gr_lock_down_sm(struct gk20a *g, u32 global_esr_mask)
 			((global_esr & ~global_esr_mask) != 0);
 
 		if (locked_down || !error_pending) {
-			nvhost_dbg(dbg_intr | dbg_gpu_dbg, "locked down SM");
+			gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "locked down SM");
 
 			/* de-assert stop trigger */
 			dbgr_control0 &= ~gr_gpc0_tpc0_sm_dbgr_control0_stop_trigger_enable_f();
@@ -4899,7 +5033,7 @@ static int gk20a_gr_lock_down_sm(struct gk20a *g, u32 global_esr_mask)
 		/* if an mmu fault is pending and mmu debug mode is not
 		 * enabled, the sm will never lock down. */
 		if (!mmu_debug_mode_enabled && gk20a_fifo_mmu_fault_pending(g)) {
-			nvhost_err(dev_from_gk20a(g), "mmu fault pending, sm will"
+			gk20a_err(dev_from_gk20a(g), "mmu fault pending, sm will"
 				   " never lock down!");
 			return -EFAULT;
 		}
@@ -4910,7 +5044,7 @@ static int gk20a_gr_lock_down_sm(struct gk20a *g, u32 global_esr_mask)
 	} while (time_before(jiffies, end_jiffies)
 			|| !tegra_platform_is_silicon());
 
-	nvhost_err(dev_from_gk20a(g), "timed out while trying to lock down SM");
+	gk20a_err(dev_from_gk20a(g), "timed out while trying to lock down SM");
 
 	return -EAGAIN;
 }
@@ -4959,7 +5093,7 @@ static int gk20a_gr_handle_sm_exception(struct gk20a *g,
 	bool sm_debugger_attached = gk20a_gr_sm_debugger_attached(g);
 	struct channel_gk20a *fault_ch;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "");
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "");
 
 	global_esr = gk20a_readl(g, gr_gpc0_tpc0_sm_hww_global_esr_r());
 	warp_esr = gk20a_readl(g, gr_gpc0_tpc0_sm_hww_warp_esr_r());
@@ -4970,19 +5104,19 @@ static int gk20a_gr_handle_sm_exception(struct gk20a *g,
 		u32 tpc_exception_en = gk20a_readl(g, gr_gpc0_tpc0_tpccs_tpc_exception_en_r());
 		tpc_exception_en &= ~gr_gpc0_tpc0_tpccs_tpc_exception_en_sm_enabled_f();
 		gk20a_writel(g, gr_gpc0_tpc0_tpccs_tpc_exception_en_r(), tpc_exception_en);
-		nvhost_dbg(dbg_intr | dbg_gpu_dbg, "SM debugger attached");
+		gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "SM debugger attached");
 	}
 
 	/* if a debugger is present and an error has occurred, do a warp sync */
 	if (sm_debugger_attached && ((warp_esr != 0) || ((global_esr & ~global_mask) != 0))) {
-		nvhost_dbg(dbg_intr, "warp sync needed");
+		gk20a_dbg(gpu_dbg_intr, "warp sync needed");
 		do_warp_sync = true;
 	}
 
 	if (do_warp_sync) {
 		ret = gk20a_gr_lock_down_sm(g, global_mask);
 		if (ret) {
-			nvhost_err(dev_from_gk20a(g), "sm did not lock down!\n");
+			gk20a_err(dev_from_gk20a(g), "sm did not lock down!\n");
 			return ret;
 		}
 	}
@@ -5001,12 +5135,12 @@ static int gk20a_gr_handle_tpc_exception(struct gk20a *g,
 	int ret = 0;
 	u32 tpc_exception = gk20a_readl(g, gr_gpcs_tpcs_tpccs_tpc_exception_r());
 
-	nvhost_dbg(dbg_intr | dbg_gpu_dbg, "");
+	gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "");
 
 	/* check if an sm exeption is pending  */
 	if (gr_gpcs_tpcs_tpccs_tpc_exception_sm_v(tpc_exception) ==
 			gr_gpcs_tpcs_tpccs_tpc_exception_sm_pending_v()) {
-		nvhost_dbg(dbg_intr | dbg_gpu_dbg, "SM exception pending");
+		gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "SM exception pending");
 		ret = gk20a_gr_handle_sm_exception(g, isr_data);
 	}
 
@@ -5019,12 +5153,12 @@ static int gk20a_gr_handle_gpc_exception(struct gk20a *g,
 	int ret = 0;
 	u32 gpc_exception = gk20a_readl(g, gr_gpcs_gpccs_gpc_exception_r());
 
-	nvhost_dbg(dbg_intr | dbg_gpu_dbg, "");
+	gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "");
 
 	/* check if tpc 0 has an exception */
 	if (gr_gpcs_gpccs_gpc_exception_tpc_v(gpc_exception) ==
 			gr_gpcs_gpccs_gpc_exception_tpc_0_pending_v()) {
-		nvhost_dbg(dbg_intr | dbg_gpu_dbg, "TPC exception pending");
+		gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "TPC exception pending");
 		ret = gk20a_gr_handle_tpc_exception(g, isr_data);
 	}
 
@@ -5039,8 +5173,8 @@ int gk20a_gr_isr(struct gk20a *g)
 	int need_reset = 0;
 	u32 gr_intr = gk20a_readl(g, gr_intr_r());
 
-	nvhost_dbg_fn("");
-	nvhost_dbg(dbg_intr, "pgraph intr %08x", gr_intr);
+	gk20a_dbg_fn("");
+	gk20a_dbg(gpu_dbg_intr, "pgraph intr %08x", gr_intr);
 
 	if (!gr_intr)
 		return 0;
@@ -5066,12 +5200,12 @@ int gk20a_gr_isr(struct gk20a *g)
 	isr_data.chid =
 		gk20a_gr_get_chid_from_ctx(g, isr_data.curr_ctx);
 	if (isr_data.chid == -1) {
-		nvhost_err(dev_from_gk20a(g), "invalid channel ctx 0x%08x",
+		gk20a_err(dev_from_gk20a(g), "invalid channel ctx 0x%08x",
 			   isr_data.curr_ctx);
 		goto clean_up;
 	}
 
-	nvhost_dbg(dbg_intr | dbg_gpu_dbg,
+	gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg,
 		"channel %d: addr 0x%08x, "
 		"data 0x%08x 0x%08x,"
 		"ctx 0x%08x, offset 0x%08x, "
@@ -5132,16 +5266,26 @@ int gk20a_gr_isr(struct gk20a *g)
 		gr_intr &= ~gr_intr_class_error_pending_f();
 	}
 
+	/* this one happens if someone tries to hit a non-whitelisted
+	 * register using set_falcon[4] */
+	if (gr_intr & gr_intr_firmware_method_pending_f()) {
+		need_reset |= true;
+		gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "firmware method intr pending\n");
+		gk20a_writel(g, gr_intr_r(),
+			gr_intr_firmware_method_reset_f());
+		gr_intr &= ~gr_intr_firmware_method_pending_f();
+	}
+
 	if (gr_intr & gr_intr_exception_pending_f()) {
 		u32 exception = gk20a_readl(g, gr_exception_r());
 		struct fifo_gk20a *f = &g->fifo;
 		struct channel_gk20a *ch = &f->channel[isr_data.chid];
 
-		nvhost_dbg(dbg_intr | dbg_gpu_dbg, "exception %08x\n", exception);
+		gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "exception %08x\n", exception);
 
 		if (exception & gr_exception_fe_m()) {
 			u32 fe = gk20a_readl(g, gr_fe_hww_esr_r());
-			nvhost_dbg(dbg_intr, "fe warning %08x\n", fe);
+			gk20a_dbg(gpu_dbg_intr, "fe warning %08x\n", fe);
 			gk20a_writel(g, gr_fe_hww_esr_r(), fe);
 		}
 
@@ -5150,11 +5294,11 @@ int gk20a_gr_isr(struct gk20a *g)
 			u32 exception1 = gk20a_readl(g, gr_exception1_r());
 			u32 global_esr = gk20a_readl(g, gr_gpc0_tpc0_sm_hww_global_esr_r());
 
-			nvhost_dbg(dbg_intr | dbg_gpu_dbg, "GPC exception pending");
+			gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg, "GPC exception pending");
 
 			/* if no sm debugger is present, clean up the channel */
 			if (!gk20a_gr_sm_debugger_attached(g)) {
-				nvhost_dbg(dbg_intr | dbg_gpu_dbg,
+				gk20a_dbg(gpu_dbg_intr | gpu_dbg_gpu_dbg,
 					   "SM debugger not attached, clearing interrupt");
 				need_reset |= -EFAULT;
 			} else {
@@ -5184,7 +5328,7 @@ clean_up:
 		gr_gpfifo_ctl_semaphore_access_f(1));
 
 	if (gr_intr)
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "unhandled gr interrupt 0x%08x", gr_intr);
 
 	return 0;
@@ -5195,7 +5339,7 @@ int gk20a_gr_nonstall_isr(struct gk20a *g)
 	u32 gr_intr = gk20a_readl(g, gr_intr_nonstall_r());
 	u32 clear_intr = 0;
 
-	nvhost_dbg(dbg_intr, "pgraph nonstall intr %08x", gr_intr);
+	gk20a_dbg(gpu_dbg_intr, "pgraph nonstall intr %08x", gr_intr);
 
 	if (gr_intr & gr_intr_nonstall_trap_pending_f()) {
 		gk20a_channel_semaphore_wakeup(g);
@@ -5264,7 +5408,7 @@ int gk20a_gr_suspend(struct gk20a *g)
 		msecs_to_jiffies(gk20a_get_gr_idle_timeout(g));
 	u32 ret = 0;
 
-	nvhost_dbg_fn("");
+	gk20a_dbg_fn("");
 
 	ret = gr_gk20a_wait_idle(g, end_jiffies, GR_IDLE_CHECK_DEFAULT);
 	if (ret)
@@ -5287,7 +5431,7 @@ int gk20a_gr_suspend(struct gk20a *g)
 
 	gk20a_gr_flush_channel_tlb(&g->gr);
 
-	nvhost_dbg_fn("done");
+	gk20a_dbg_fn("done");
 	return ret;
 }
 
@@ -5308,7 +5452,7 @@ int gr_gk20a_decode_priv_addr(struct gk20a *g, u32 addr,
 	u32 ppc_address;
 	u32 ppc_broadcast_addr;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "addr=0x%x", addr);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "addr=0x%x", addr);
 
 	/* setup defaults */
 	ppc_address = 0;
@@ -5362,7 +5506,7 @@ static int gr_gk20a_split_ppc_broadcast_addr(struct gk20a *g, u32 addr,
 {
     u32 ppc_num;
 
-    nvhost_dbg(dbg_fn | dbg_gpu_dbg, "addr=0x%x", addr);
+    gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "addr=0x%x", addr);
 
     for (ppc_num = 0; ppc_num < g->gr.pe_count_per_gpc; ppc_num++)
 	    priv_addr_table[(*t)++] = pri_ppc_addr(pri_ppccs_addr_mask(addr),
@@ -5392,12 +5536,12 @@ static int gr_gk20a_create_priv_addr_table(struct gk20a *g,
 	t = 0;
 	*num_registers = 0;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "addr=0x%x", addr);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "addr=0x%x", addr);
 
 	err = gr_gk20a_decode_priv_addr(g, addr, &addr_type,
 					&gpc_num, &tpc_num, &ppc_num, &be_num,
 					&broadcast_flags);
-	nvhost_dbg(dbg_gpu_dbg, "addr_type = %d", addr_type);
+	gk20a_dbg(gpu_dbg_gpu_dbg, "addr_type = %d", addr_type);
 	if (err)
 		return err;
 
@@ -5474,7 +5618,7 @@ int gr_gk20a_get_ctx_buffer_offsets(struct gk20a *g,
 	u32 potential_offsets = proj_scal_litter_num_gpcs_v() *
 		proj_scal_litter_num_tpc_per_gpc_v();
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "addr=0x%x", addr);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "addr=0x%x", addr);
 
 	/* implementation is crossed-up if either of these happen */
 	if (max_offsets > potential_offsets)
@@ -5485,7 +5629,7 @@ int gr_gk20a_get_ctx_buffer_offsets(struct gk20a *g,
 
 	priv_registers = kzalloc(sizeof(u32) * potential_offsets, GFP_KERNEL);
 	if (IS_ERR_OR_NULL(priv_registers)) {
-		nvhost_dbg_fn("failed alloc for potential_offsets=%d", potential_offsets);
+		gk20a_dbg_fn("failed alloc for potential_offsets=%d", potential_offsets);
 		err = PTR_ERR(priv_registers);
 		goto cleanup;
 	}
@@ -5504,7 +5648,7 @@ int gr_gk20a_get_ctx_buffer_offsets(struct gk20a *g,
 		num_registers = 1;
 
 	if (!g->gr.ctx_vars.local_golden_image) {
-		nvhost_dbg_fn("no context switch header info to work with");
+		gk20a_dbg_fn("no context switch header info to work with");
 		err = -EINVAL;
 		goto cleanup;
 	}
@@ -5517,7 +5661,7 @@ int gr_gk20a_get_ctx_buffer_offsets(struct gk20a *g,
 						  g->gr.ctx_vars.golden_image_size,
 						  &priv_offset);
 		if (err) {
-			nvhost_dbg_fn("Could not determine priv_offset for addr:0x%x",
+			gk20a_dbg_fn("Could not determine priv_offset for addr:0x%x",
 				      addr); /*, grPriRegStr(addr)));*/
 			goto cleanup;
 		}
@@ -5609,7 +5753,7 @@ int gr_gk20a_ctx_patch_smpc(struct gk20a *g,
 
 	init_sm_dsm_reg_info();
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "addr=0x%x", addr);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "addr=0x%x", addr);
 
 	for (reg = 0; reg < _num_ovr_perf_regs; reg++) {
 		for (gpc = 0; gpc < num_gpc; gpc++)  {
@@ -5623,7 +5767,7 @@ int gr_gk20a_ctx_patch_smpc(struct gk20a *g,
 				/* reset the patch count from previous
 				   runs,if ucode has already processed
 				   it */
-				tmp = mem_rd32(context +
+				tmp = gk20a_mem_rd32(context +
 				       ctxsw_prog_main_image_patch_count_o(), 0);
 
 				if (!tmp)
@@ -5635,13 +5779,13 @@ int gr_gk20a_ctx_patch_smpc(struct gk20a *g,
 				vaddr_lo = u64_lo32(ch_ctx->patch_ctx.gpu_va);
 				vaddr_hi = u64_hi32(ch_ctx->patch_ctx.gpu_va);
 
-				mem_wr32(context +
+				gk20a_mem_wr32(context +
 					 ctxsw_prog_main_image_patch_count_o(),
 					 0, ch_ctx->patch_ctx.data_count);
-				mem_wr32(context +
+				gk20a_mem_wr32(context +
 					 ctxsw_prog_main_image_patch_adr_lo_o(),
 					 0, vaddr_lo);
-				mem_wr32(context +
+				gk20a_mem_wr32(context +
 					 ctxsw_prog_main_image_patch_adr_hi_o(),
 					 0, vaddr_hi);
 
@@ -5668,7 +5812,7 @@ static void gr_gk20a_access_smpc_reg(struct gk20a *g, u32 quad, u32 offset)
 	u32 gpc_tpc_addr;
 	u32 gpc_tpc_stride;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "offset=0x%x", offset);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "offset=0x%x", offset);
 
 	gpc = pri_get_gpc_num(offset);
 	gpc_tpc_addr = pri_gpccs_addr_mask(offset);
@@ -5700,16 +5844,16 @@ static void gr_gk20a_access_smpc_reg(struct gk20a *g, u32 quad, u32 offset)
 
 static inline bool check_main_image_header_magic(void *context)
 {
-	u32 magic = mem_rd32(context +
+	u32 magic = gk20a_mem_rd32(context +
 			     ctxsw_prog_main_image_magic_value_o(), 0);
-	nvhost_dbg(dbg_gpu_dbg, "main image magic=0x%x", magic);
+	gk20a_dbg(gpu_dbg_gpu_dbg, "main image magic=0x%x", magic);
 	return magic == ctxsw_prog_main_image_magic_value_v_value_v();
 }
 static inline bool check_local_header_magic(void *context)
 {
-	u32 magic = mem_rd32(context +
+	u32 magic = gk20a_mem_rd32(context +
 			     ctxsw_prog_local_magic_value_o(), 0);
-	nvhost_dbg(dbg_gpu_dbg, "local magic=0x%x",  magic);
+	gk20a_dbg(gpu_dbg_gpu_dbg, "local magic=0x%x",  magic);
 	return magic == ctxsw_prog_local_magic_value_v_value_v();
 
 }
@@ -5780,7 +5924,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 		else
 			return -EINVAL;
 
-		nvhost_dbg_info(" gpc = %d tpc = %d",
+		gk20a_dbg_info(" gpc = %d tpc = %d",
 				gpc_num, tpc_num);
 	} else
 		return -EINVAL;
@@ -5792,22 +5936,22 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 	context = context_buffer;
 	/* sanity check main header */
 	if (!check_main_image_header_magic(context)) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "Invalid main header: magic value");
 		return -EINVAL;
 	}
-	num_gpcs = mem_rd32(context + ctxsw_prog_main_image_num_gpcs_o(), 0);
+	num_gpcs = gk20a_mem_rd32(context + ctxsw_prog_main_image_num_gpcs_o(), 0);
 	if (gpc_num >= num_gpcs) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 		   "GPC 0x%08x is greater than total count 0x%08x!\n",
 			   gpc_num, num_gpcs);
 		return -EINVAL;
 	}
 
-	data32 = mem_rd32(context + ctxsw_prog_main_extended_buffer_ctl_o(), 0);
+	data32 = gk20a_mem_rd32(context + ctxsw_prog_main_extended_buffer_ctl_o(), 0);
 	ext_priv_size   = ctxsw_prog_main_extended_buffer_ctl_size_v(data32);
 	if (0 == ext_priv_size) {
-		nvhost_dbg_info(" No extended memory in context buffer");
+		gk20a_dbg_info(" No extended memory in context buffer");
 		return -EINVAL;
 	}
 	ext_priv_offset = ctxsw_prog_main_extended_buffer_ctl_offset_v(data32);
@@ -5819,7 +5963,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 	/* check local header magic */
 	context += ctxsw_prog_ucode_header_size_in_bytes();
 	if (!check_local_header_magic(context)) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "Invalid local header: magic value\n");
 		return -EINVAL;
 	}
@@ -5841,7 +5985,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 		if ((addr & tpc_gpc_mask) == (sm_dsm_perf_regs[i] & tpc_gpc_mask)) {
 			sm_dsm_perf_reg_id = i;
 
-			nvhost_dbg_info("register match: 0x%08x",
+			gk20a_dbg_info("register match: 0x%08x",
 					sm_dsm_perf_regs[i]);
 
 			chk_addr = (proj_gpc_base_v() +
@@ -5851,7 +5995,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 				   (sm_dsm_perf_regs[sm_dsm_perf_reg_id] & tpc_gpc_mask));
 
 			if (chk_addr != addr) {
-				nvhost_err(dev_from_gk20a(g),
+				gk20a_err(dev_from_gk20a(g),
 				   "Oops addr miss-match! : 0x%08x != 0x%08x\n",
 					   addr, chk_addr);
 				return -EINVAL;
@@ -5872,7 +6016,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 			    (sm_dsm_perf_ctrl_regs[i] & tpc_gpc_mask)) {
 				sm_dsm_perf_ctrl_reg_id = i;
 
-				nvhost_dbg_info("register match: 0x%08x",
+				gk20a_dbg_info("register match: 0x%08x",
 						sm_dsm_perf_ctrl_regs[i]);
 
 				chk_addr = (proj_gpc_base_v() +
@@ -5883,7 +6027,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 					    tpc_gpc_mask));
 
 				if (chk_addr != addr) {
-					nvhost_err(dev_from_gk20a(g),
+					gk20a_err(dev_from_gk20a(g),
 						   "Oops addr miss-match! : 0x%08x != 0x%08x\n",
 						   addr, chk_addr);
 					return -EINVAL;
@@ -5952,7 +6096,7 @@ static int gr_gk20a_find_priv_offset_in_ext_buffer(struct gk20a *g,
 	/* last sanity check: did we somehow compute an offset outside the
 	 * extended buffer? */
 	if (offset_to_segment > offset_to_segment_end) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "Overflow ctxsw buffer! 0x%08x > 0x%08x\n",
 			   offset_to_segment, offset_to_segment_end);
 		return -EINVAL;
@@ -5978,7 +6122,7 @@ gr_gk20a_process_context_buffer_priv_segment(struct gk20a *g,
 	u32 ppc_num, tpc_num, tpc_addr, gpc_addr, ppc_addr;
 	struct aiv_gk20a *reg;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "pri_addr=0x%x", pri_addr);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "pri_addr=0x%x", pri_addr);
 
 	if (!g->gr.ctx_vars.valid)
 		return -EINVAL;
@@ -6095,7 +6239,7 @@ static int gr_gk20a_determine_ppc_configuration(struct gk20a *g,
 	     (litter_num_pes_per_gpc > 1)))
 		return -EINVAL;
 
-	data32 = mem_rd32(context + ctxsw_prog_local_image_ppc_info_o(), 0);
+	data32 = gk20a_mem_rd32(context + ctxsw_prog_local_image_ppc_info_o(), 0);
 
 	*num_ppcs = ctxsw_prog_local_image_ppc_info_num_ppcs_v(data32);
 	*ppc_mask = ctxsw_prog_local_image_ppc_info_ppc_mask_v(data32);
@@ -6131,7 +6275,7 @@ static int gr_gk20a_find_priv_offset_in_buffer(struct gk20a *g,
 	void *context;
 	u32 offset_to_segment;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "addr=0x%x", addr);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "addr=0x%x", addr);
 
 	err = gr_gk20a_decode_priv_addr(g, addr, &addr_type,
 					&gpc_num, &tpc_num, &ppc_num, &be_num,
@@ -6141,20 +6285,20 @@ static int gr_gk20a_find_priv_offset_in_buffer(struct gk20a *g,
 
 	context = context_buffer;
 	if (!check_main_image_header_magic(context)) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "Invalid main header: magic value");
 		return -EINVAL;
 	}
-	num_gpcs = mem_rd32(context + ctxsw_prog_main_image_num_gpcs_o(), 0);
+	num_gpcs = gk20a_mem_rd32(context + ctxsw_prog_main_image_num_gpcs_o(), 0);
 
 	/* Parse the FECS local header. */
 	context += ctxsw_prog_ucode_header_size_in_bytes();
 	if (!check_local_header_magic(context)) {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "Invalid FECS local header: magic value\n");
 		return -EINVAL;
 	}
-	data32 = mem_rd32(context + ctxsw_prog_local_priv_register_ctl_o(), 0);
+	data32 = gk20a_mem_rd32(context + ctxsw_prog_local_priv_register_ctl_o(), 0);
 	sys_priv_offset = ctxsw_prog_local_priv_register_ctl_offset_v(data32);
 
 	/* If found in Ext buffer, ok.
@@ -6185,7 +6329,7 @@ static int gr_gk20a_find_priv_offset_in_buffer(struct gk20a *g,
 	}
 
 	if ((gpc_num + 1) > num_gpcs)  {
-		nvhost_err(dev_from_gk20a(g),
+		gk20a_err(dev_from_gk20a(g),
 			   "GPC %d not in this context buffer.\n",
 			   gpc_num);
 		return -EINVAL;
@@ -6195,12 +6339,12 @@ static int gr_gk20a_find_priv_offset_in_buffer(struct gk20a *g,
 	for (i = 0; i < num_gpcs; i++) {
 		context += ctxsw_prog_ucode_header_size_in_bytes();
 		if (!check_local_header_magic(context)) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 				   "Invalid GPCCS local header: magic value\n");
 			return -EINVAL;
 
 		}
-		data32 = mem_rd32(context + ctxsw_prog_local_priv_register_ctl_o(), 0);
+		data32 = gk20a_mem_rd32(context + ctxsw_prog_local_priv_register_ctl_o(), 0);
 		gpc_priv_offset = ctxsw_prog_local_priv_register_ctl_offset_v(data32);
 
 		err = gr_gk20a_determine_ppc_configuration(g, context,
@@ -6209,10 +6353,10 @@ static int gr_gk20a_find_priv_offset_in_buffer(struct gk20a *g,
 		if (err)
 			return err;
 
-		num_tpcs = mem_rd32(context + ctxsw_prog_local_image_num_tpcs_o(), 0);
+		num_tpcs = gk20a_mem_rd32(context + ctxsw_prog_local_image_num_tpcs_o(), 0);
 
 		if ((i == gpc_num) && ((tpc_num + 1) > num_tpcs)) {
-			nvhost_err(dev_from_gk20a(g),
+			gk20a_err(dev_from_gk20a(g),
 			   "GPC %d TPC %d not in this context buffer.\n",
 				   gpc_num, tpc_num);
 			return -EINVAL;
@@ -6248,7 +6392,7 @@ static int gr_gk20a_find_priv_offset_in_buffer(struct gk20a *g,
 						  num_tpcs) << 2);
 				}
 			} else {
-				nvhost_err(dev_from_gk20a(g),
+				gk20a_err(dev_from_gk20a(g),
 					   " Unknown address type.\n");
 				return -EINVAL;
 			}
@@ -6286,7 +6430,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 	u32 ctx_op_nr, num_ctx_ops[2] = {num_ctx_wr_ops, num_ctx_rd_ops};
 	int err, pass;
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "wr_ops=%d rd_ops=%d",
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "wr_ops=%d rd_ops=%d",
 		   num_ctx_wr_ops, num_ctx_rd_ops);
 
 	/* disable channel switching.
@@ -6295,7 +6439,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 	 */
 	err = gr_gk20a_disable_ctxsw(g);
 	if (err) {
-		nvhost_err(dev_from_gk20a(g), "unable to stop gr ctxsw");
+		gk20a_err(dev_from_gk20a(g), "unable to stop gr ctxsw");
 		/* this should probably be ctx-fatal... */
 		goto cleanup;
 	}
@@ -6306,7 +6450,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 	curr_gr_chid = gk20a_gr_get_chid_from_ctx(g, curr_gr_ctx);
 	ch_is_curr_ctx = (curr_gr_chid != -1) && (ch->hw_chid == curr_gr_chid);
 
-	nvhost_dbg(dbg_fn | dbg_gpu_dbg, "is curr ctx=%d", ch_is_curr_ctx);
+	gk20a_dbg(gpu_dbg_fn | gpu_dbg_gpu_dbg, "is curr ctx=%d", ch_is_curr_ctx);
 	if (ch_is_curr_ctx) {
 		for (pass = 0; pass < 2; pass++) {
 			ctx_op_nr = 0;
@@ -6331,7 +6475,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 					v |= ctx_ops[i].value_lo;
 					gk20a_writel(g, offset, v);
 
-					nvhost_dbg(dbg_gpu_dbg,
+					gk20a_dbg(gpu_dbg_gpu_dbg,
 						   "direct wr: offset=0x%x v=0x%x",
 						   offset, v);
 
@@ -6341,7 +6485,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 						v |= ctx_ops[i].value_hi;
 						gk20a_writel(g, offset + 4, v);
 
-						nvhost_dbg(dbg_gpu_dbg,
+						gk20a_dbg(gpu_dbg_gpu_dbg,
 							   "direct wr: offset=0x%x v=0x%x",
 							   offset + 4, v);
 					}
@@ -6350,7 +6494,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 					ctx_ops[i].value_lo =
 						gk20a_readl(g, offset);
 
-					nvhost_dbg(dbg_gpu_dbg,
+					gk20a_dbg(gpu_dbg_gpu_dbg,
 						   "direct rd: offset=0x%x v=0x%x",
 						   offset, ctx_ops[i].value_lo);
 
@@ -6358,7 +6502,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 						ctx_ops[i].value_hi =
 							gk20a_readl(g, offset + 4);
 
-						nvhost_dbg(dbg_gpu_dbg,
+						gk20a_dbg(gpu_dbg_gpu_dbg,
 							   "direct rd: offset=0x%x v=0x%x",
 							   offset, ctx_ops[i].value_lo);
 					} else
@@ -6416,7 +6560,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 						ctx_ops[i].type == REGOP(TYPE_GR_CTX_QUAD),
 						ctx_ops[i].quad);
 			if (err) {
-				nvhost_dbg(dbg_gpu_dbg,
+				gk20a_dbg(gpu_dbg_gpu_dbg,
 					   "ctx op invalid offset: offset=0x%x",
 					   ctx_ops[i].offset);
 				ctx_ops[i].status =
@@ -6435,22 +6579,22 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 				if (offsets[j] >= g->gr.ctx_vars.golden_image_size)
 					continue;
 				if (pass == 0) { /* write pass */
-					v = mem_rd32(ctx_ptr + offsets[j], 0);
+					v = gk20a_mem_rd32(ctx_ptr + offsets[j], 0);
 					v &= ~ctx_ops[i].and_n_mask_lo;
 					v |= ctx_ops[i].value_lo;
-					mem_wr32(ctx_ptr + offsets[j], 0, v);
+					gk20a_mem_wr32(ctx_ptr + offsets[j], 0, v);
 
-					nvhost_dbg(dbg_gpu_dbg,
+					gk20a_dbg(gpu_dbg_gpu_dbg,
 						   "context wr: offset=0x%x v=0x%x",
 						   offsets[j], v);
 
 					if (ctx_ops[i].op == REGOP(WRITE_64)) {
-						v = mem_rd32(ctx_ptr + offsets[j] + 4, 0);
+						v = gk20a_mem_rd32(ctx_ptr + offsets[j] + 4, 0);
 						v &= ~ctx_ops[i].and_n_mask_hi;
 						v |= ctx_ops[i].value_hi;
-						mem_wr32(ctx_ptr + offsets[j] + 4, 0, v);
+						gk20a_mem_wr32(ctx_ptr + offsets[j] + 4, 0, v);
 
-						nvhost_dbg(dbg_gpu_dbg,
+						gk20a_dbg(gpu_dbg_gpu_dbg,
 							   "context wr: offset=0x%x v=0x%x",
 							   offsets[j] + 4, v);
 					}
@@ -6462,16 +6606,16 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 
 				} else { /* read pass */
 					ctx_ops[i].value_lo =
-						mem_rd32(ctx_ptr + offsets[0], 0);
+						gk20a_mem_rd32(ctx_ptr + offsets[0], 0);
 
-					nvhost_dbg(dbg_gpu_dbg, "context rd: offset=0x%x v=0x%x",
+					gk20a_dbg(gpu_dbg_gpu_dbg, "context rd: offset=0x%x v=0x%x",
 						   offsets[0], ctx_ops[i].value_lo);
 
 					if (ctx_ops[i].op == REGOP(READ_64)) {
 						ctx_ops[i].value_hi =
-							mem_rd32(ctx_ptr + offsets[0] + 4, 0);
+							gk20a_mem_rd32(ctx_ptr + offsets[0] + 4, 0);
 
-						nvhost_dbg(dbg_gpu_dbg,
+						gk20a_dbg(gpu_dbg_gpu_dbg,
 							   "context rd: offset=0x%x v=0x%x",
 							   offsets[0] + 4, ctx_ops[i].value_hi);
 					} else
@@ -6500,7 +6644,7 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 	if (restart_gr_ctxsw) {
 		int tmp_err = gr_gk20a_enable_ctxsw(g);
 		if (tmp_err) {
-			nvhost_err(dev_from_gk20a(g), "unable to restart ctxsw!\n");
+			gk20a_err(dev_from_gk20a(g), "unable to restart ctxsw!\n");
 			err = tmp_err;
 		}
 	}
