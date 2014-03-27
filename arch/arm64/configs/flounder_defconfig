@@ -46,6 +46,7 @@ CONFIG_MACH_T132_FLOUNDER=y
 CONFIG_SMP=y
 CONFIG_NR_CPUS=2
 CONFIG_PREEMPT=y
+CONFIG_ARMV7_COMPAT=y
 # CONFIG_KSM is not set
 CONFIG_CMDLINE="no_console_suspend=1 tegra_wdt.enable_on_probe=1 tegra_wdt.heartbeat=120"
 CONFIG_CMDLINE_EXTEND=y
