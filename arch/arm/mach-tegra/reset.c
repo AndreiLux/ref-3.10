@@ -52,7 +52,7 @@ static void tegra_cpu_reset_handler_enable(void)
 
 #if defined(CONFIG_TEGRA_USE_SECURE_KERNEL)
 #ifndef CONFIG_ARM64
-	tegra_generic_smc(0xFFFFF200,
+	tegra_generic_smc(0x82000001,
 		TEGRA_RESET_HANDLER_BASE + tegra_cpu_reset_handler_offset, 0);
 #endif
 #else
