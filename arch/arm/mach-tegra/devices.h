@@ -6,7 +6,7 @@
  *	Colin Cross <ccross@android.com>
  *	Erik Gilling <ccross@android.com>
  *
- * Copyright (C) 2010-2013 NVIDIA CORPORATION.  All rights reserved.
+ * Copyright (C) 2010-2014 NVIDIA CORPORATION.  All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -34,23 +34,9 @@ extern struct platform_device tegra_sdhci_device1;
 extern struct platform_device tegra_sdhci_device2;
 extern struct platform_device tegra_sdhci_device3;
 extern struct platform_device tegra_sdhci_device4;
-extern struct platform_device tegra_i2c_device1;
-extern struct platform_device tegra_i2c_device2;
-extern struct platform_device tegra_i2c_device3;
-extern struct platform_device tegra_i2c_device4;
 extern struct platform_device tegra_kbc_device;
 extern struct platform_device tegra_pci_device;
 extern struct platform_device tegra_apbdma;
-#ifndef CONFIG_ARCH_TEGRA_2x_SOC
-extern struct platform_device tegra_i2c_device5;
-#endif
-extern struct platform_device tegra11_i2c_device1;
-extern struct platform_device tegra11_i2c_device2;
-extern struct platform_device tegra11_i2c_device3;
-extern struct platform_device tegra11_i2c_device4;
-#ifndef CONFIG_ARCH_TEGRA_2x_SOC
-extern struct platform_device tegra11_i2c_device5;
-#endif
 extern struct platform_device tegra_spi_device1;
 extern struct platform_device tegra_spi_device2;
 extern struct platform_device tegra_spi_device3;
@@ -96,6 +82,8 @@ extern struct platform_device bluetooth_dit_device;
 extern struct platform_device baseband_dit_device;
 extern struct platform_device tegra_pcm_device;
 extern struct platform_device tegra_tdm_pcm_device;
+extern struct platform_device tegra_offload_device;
+extern struct platform_device tegra30_avp_audio_device;
 extern struct platform_device tegra_w1_device;
 extern struct platform_device tegra_udc_device;
 extern struct platform_device tegra_ehci1_device;
@@ -178,22 +166,7 @@ extern struct platform_device tegratab_tegra_wakeup_monitor_device;
 extern struct platform_device tegra_ptm_device;
 
 #ifdef CONFIG_ARCH_TEGRA_14x_SOC
-extern struct platform_device tegra14_i2c_device1;
-extern struct platform_device tegra14_i2c_device2;
-extern struct platform_device tegra14_i2c_device3;
-extern struct platform_device tegra14_i2c_device4;
-extern struct platform_device tegra14_i2c_device5;
-extern struct platform_device tegra14_i2c_device6;
 extern struct platform_device tegra_mipi_bif_device;
-#endif
-
-#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
-extern struct platform_device tegra12_i2c_device1;
-extern struct platform_device tegra12_i2c_device2;
-extern struct platform_device tegra12_i2c_device3;
-extern struct platform_device tegra12_i2c_device4;
-extern struct platform_device tegra12_i2c_device5;
-extern struct platform_device tegra12_i2c_device6;
 #endif
 
 #if !defined(CONFIG_ARCH_TEGRA_2x_SOC) && !defined(CONFIG_ARCH_TEGRA_3x_SOC)

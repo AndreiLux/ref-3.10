@@ -120,6 +120,13 @@ struct gpu_ops {
 		void (*init_uncompressed_kind_map)(struct gk20a *g);
 		void (*init_kind_attr)(struct gk20a *g);
 	} fb;
+	struct {
+		void (*slcg_gr_load_gating_prod)(struct gk20a *g, bool prod);
+		void (*slcg_perf_load_gating_prod)(struct gk20a *g, bool prod);
+		void (*blcg_gr_load_gating_prod)(struct gk20a *g, bool prod);
+		void (*pg_gr_load_gating_prod)(struct gk20a *g, bool prod);
+		void (*slcg_therm_load_gating_prod)(struct gk20a *g, bool prod);
+	} clock_gating;
 };
 
 struct gk20a {
@@ -375,26 +382,26 @@ static inline void gk20a_mem_wr32(void *ptr, int w, u32 data)
 /* register accessors */
 static inline void gk20a_writel(struct gk20a *g, u32 r, u32 v)
 {
-	nvhost_dbg(dbg_reg, " r=0x%x v=0x%x", r, v);
+	gk20a_dbg(gpu_dbg_reg, " r=0x%x v=0x%x", r, v);
 	writel(v, g->regs + r);
 }
 static inline u32 gk20a_readl(struct gk20a *g, u32 r)
 {
 	u32 v = readl(g->regs + r);
-	nvhost_dbg(dbg_reg, " r=0x%x v=0x%x", r, v);
+	gk20a_dbg(gpu_dbg_reg, " r=0x%x v=0x%x", r, v);
 	return v;
 }
 
 static inline void gk20a_bar1_writel(struct gk20a *g, u32 b, u32 v)
 {
-	nvhost_dbg(dbg_reg, " b=0x%x v=0x%x", b, v);
+	gk20a_dbg(gpu_dbg_reg, " b=0x%x v=0x%x", b, v);
 	writel(v, g->bar1 + b);
 }
 
 static inline u32 gk20a_bar1_readl(struct gk20a *g, u32 b)
 {
 	u32 v = readl(g->bar1 + b);
-	nvhost_dbg(dbg_reg, " b=0x%x v=0x%x", b, v);
+	gk20a_dbg(gpu_dbg_reg, " b=0x%x v=0x%x", b, v);
 	return v;
 }
 

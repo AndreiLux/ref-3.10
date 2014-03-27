@@ -71,8 +71,6 @@ struct platform_device *nvmap_pdev;
 EXPORT_SYMBOL(nvmap_pdev);
 struct nvmap_device *nvmap_dev;
 EXPORT_SYMBOL(nvmap_dev);
-struct nvmap_share *nvmap_share;
-EXPORT_SYMBOL(nvmap_share);
 struct nvmap_stats nvmap_stats;
 EXPORT_SYMBOL(nvmap_stats);
 
@@ -105,17 +103,6 @@ static const struct file_operations nvmap_user_fops = {
 	.mmap		= nvmap_map,
 };
 
-static const struct file_operations nvmap_super_fops = {
-	.owner		= THIS_MODULE,
-	.open		= nvmap_open,
-	.release	= nvmap_release,
-	.unlocked_ioctl	= nvmap_ioctl,
-#ifdef CONFIG_COMPAT
-	.compat_ioctl = nvmap_ioctl,
-#endif
-	.mmap		= nvmap_map,
-};
-
 static struct vm_operations_struct nvmap_vma_ops = {
 	.open		= nvmap_vma_open,
 	.close		= nvmap_vma_close,
@@ -131,15 +118,7 @@ struct device *nvmap_client_to_device(struct nvmap_client *client)
 {
 	if (!client)
 		return 0;
-	if (client->super)
-		return nvmap_dev->dev_super.this_device;
-	else
-		return nvmap_dev->dev_user.this_device;
-}
-
-struct nvmap_share *nvmap_get_share_from_dev(struct nvmap_device *dev)
-{
-	return &dev->iovmm_master;
+	return nvmap_dev->dev_user.this_device;
 }
 
 /* allocates a PTE for the caller's use; returns the PTE pointer or
@@ -456,7 +435,6 @@ struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 		return NULL;
 
 	client->name = name;
-	client->super = true;
 	client->kernel_client = true;
 	client->handle_refs = RB_ROOT;
 
@@ -513,10 +491,8 @@ static void destroy_client(struct nvmap_client *client)
 		while (pins--)
 			__nvmap_unpin(ref);
 
-		if (ref->handle->owner == client) {
+		if (ref->handle->owner == client)
 			ref->handle->owner = NULL;
-			ref->handle->owner_ref = NULL;
-		}
 
 		dma_buf_put(ref->handle->dmabuf);
 		rb_erase(&ref->node, &client->handle_refs);
@@ -576,7 +552,6 @@ static int nvmap_open(struct inode *inode, struct file *filp)
 	trace_nvmap_open(priv, priv->name);
 
 	priv->kernel_client = false;
-	priv->super = (filp->f_op == &nvmap_super_fops);
 
 	filp->f_mapping->backing_dev_info = &nvmap_bdi;
 
@@ -1216,18 +1191,10 @@ static int nvmap_probe(struct platform_device *pdev)
 	dev->dev_user.fops = &nvmap_user_fops;
 	dev->dev_user.parent = &pdev->dev;
 
-	dev->dev_super.minor = MISC_DYNAMIC_MINOR;
-	dev->dev_super.name = "knvmap";
-	dev->dev_super.fops = &nvmap_super_fops;
-	dev->dev_super.parent = &pdev->dev;
-
 	dev->handles = RB_ROOT;
 
 	init_waitqueue_head(&dev->pte_wait);
 
-	init_waitqueue_head(&dev->iovmm_master.pin_wait);
-
-	mutex_init(&dev->iovmm_master.pin_lock);
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 	e = nvmap_page_pool_init(dev);
 	if (e)
@@ -1278,13 +1245,6 @@ static int nvmap_probe(struct platform_device *pdev)
 	if (e) {
 		dev_err(&pdev->dev, "unable to register miscdevice %s\n",
 			dev->dev_user.name);
-		goto fail;
-	}
-
-	e = misc_register(&dev->dev_super);
-	if (e) {
-		dev_err(&pdev->dev, "unable to register miscdevice %s\n",
-			dev->dev_super.name);
 		goto fail;
 	}
 
@@ -1355,7 +1315,27 @@ static int nvmap_probe(struct platform_device *pdev)
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 			debugfs_create_u32("page_pool_available_pages",
 					   S_IRUGO, iovmm_root,
-					   &dev->iovmm_master.pool.npages);
+					   &dev->pool.count);
+#ifdef CONFIG_NVMAP_PAGE_POOL_DEBUG
+			debugfs_create_u32("page_pool_alloc_ind",
+					   S_IRUGO, iovmm_root,
+					   &dev->pool.alloc);
+			debugfs_create_u32("page_pool_fill_ind",
+					   S_IRUGO, iovmm_root,
+					   &dev->pool.fill);
+			debugfs_create_u64("page_pool_allocs",
+					   S_IRUGO, iovmm_root,
+					   &dev->pool.allocs);
+			debugfs_create_u64("page_pool_fills",
+					   S_IRUGO, iovmm_root,
+					   &dev->pool.fills);
+			debugfs_create_u64("page_pool_hits",
+					   S_IRUGO, iovmm_root,
+					   &dev->pool.hits);
+			debugfs_create_u64("page_pool_misses",
+					   S_IRUGO, iovmm_root,
+					   &dev->pool.misses);
+#endif
 #endif
 		}
 #ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS
@@ -1384,7 +1364,6 @@ static int nvmap_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dev);
 	nvmap_pdev = pdev;
 	nvmap_dev = dev;
-	nvmap_share = &dev->iovmm_master;
 
 	nvmap_dmabuf_debugfs_init(nvmap_debug_root);
 	e = nvmap_dmabuf_stash_init();
@@ -1399,8 +1378,6 @@ fail_heaps:
 	}
 fail:
 	kfree(dev->heaps);
-	if (dev->dev_super.minor != MISC_DYNAMIC_MINOR)
-		misc_deregister(&dev->dev_super);
 	if (dev->dev_user.minor != MISC_DYNAMIC_MINOR)
 		misc_deregister(&dev->dev_user);
 	if (dev->vm_rgn)
@@ -1417,7 +1394,6 @@ static int nvmap_remove(struct platform_device *pdev)
 	struct nvmap_handle *h;
 	int i;
 
-	misc_deregister(&dev->dev_super);
 	misc_deregister(&dev->dev_user);
 
 	while ((n = rb_first(&dev->handles))) {

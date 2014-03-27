@@ -39,12 +39,12 @@
 #include <linux/tegra-timer.h>
 
 #include <mach/edp.h>
+#include <mach/tegra_emc.h>
 
 #include "board.h"
 #include "clock.h"
 #include "dvfs.h"
 #include "iomap.h"
-#include "tegra_emc.h"
 #include "cpu-tegra.h"
 
 /* Global data of Tegra CPU CAR ops */
@@ -628,6 +628,7 @@ unsigned long clk_get_rate_all_locked(struct clk *c)
 
 	rate = c->rate;
 	rate *= mul;
+	rate += div - 1; /* round up */
 	do_div(rate, div);
 
 	return rate;

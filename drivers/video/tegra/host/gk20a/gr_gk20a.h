@@ -39,7 +39,8 @@ enum /* global_ctx_buffer */ {
 	PAGEPOOL_VPR		= 4,
 	ATTRIBUTE_VPR		= 5,
 	GOLDEN_CTX		= 6,
-	NR_GLOBAL_CTX_BUF	= 7
+	PRIV_ACCESS_MAP		= 7,
+	NR_GLOBAL_CTX_BUF	= 8
 };
 
 /* either ATTRIBUTE or ATTRIBUTE_VPR maps to ATTRIBUTE_VA */
@@ -48,7 +49,8 @@ enum  /*global_ctx_buffer_va */ {
 	PAGEPOOL_VA		= 1,
 	ATTRIBUTE_VA		= 2,
 	GOLDEN_CTX_VA		= 3,
-	NR_GLOBAL_CTX_BUF_VA	= 4
+	PRIV_ACCESS_MAP_VA	= 4,
+	NR_GLOBAL_CTX_BUF_VA	= 5
 };
 
 enum {
@@ -172,6 +174,8 @@ struct gr_gk20a {
 		u32 zcull_ctxsw_image_size;
 
 		u32 buffer_header_size;
+
+		u32 priv_access_map_size;
 
 		struct gr_ucode_gk20a ucode;
 
@@ -378,6 +382,9 @@ int gr_gk20a_get_ctx_buffer_offsets(struct gk20a *g,
 				    u32 *offsets, u32 *offset_addrs,
 				    u32 *num_offsets,
 				    bool is_quad, u32 quad);
+int gr_gk20a_update_smpc_ctxsw_mode(struct gk20a *g,
+				 struct channel_gk20a *c,
+				    bool enable_smpc_ctxsw);
 
 struct channel_ctx_gk20a;
 int gr_gk20a_ctx_patch_write(struct gk20a *g, struct channel_ctx_gk20a *ch_ctx,
@@ -400,5 +407,4 @@ void gr_gk20a_get_sm_dsm_perf_ctrl_regs(struct gk20a *g,
 					u32 **sm_dsm_perf_regs,
 					u32 *perf_register_stride);
 int gr_gk20a_setup_rop_mapping(struct gk20a *g, struct gr_gk20a *gr);
-
 #endif /*__GR_GK20A_H__*/

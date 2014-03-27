@@ -259,6 +259,13 @@ int tegra_dc_ext_check_windowattr(struct tegra_dc_ext *ext,
 		/* TODO: also check current window blocklinear support */
 	}
 
+	if ((win->flags & TEGRA_DC_EXT_FLIP_FLAG_SCAN_COLUMN) &&
+		!tegra_dc_feature_has_scan_column(dc, win->idx)) {
+		dev_err(&dc->ndev->dev,
+			"rotation not supported for window %d.\n", win->idx);
+		goto fail;
+	}
+
 	return 0;
 fail:
 	return -EINVAL;
@@ -501,6 +508,7 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 		tegra_dc_update_windows(wins, nr_win);
 		/* TODO: implement swapinterval here */
 		tegra_dc_sync_windows(wins, nr_win);
+		tegra_dc_program_bandwidth(ext->dc, true);
 		if (!tegra_dc_has_multiple_dc())
 			tegra_dc_call_flip_callback();
 	}

@@ -269,7 +269,7 @@ PALMAS_REGS_PDATA(ldo1, 1050,  1050, palmas_rails(smps8), 0, 0, 1, 0,
 		0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo1_a01, 1050,  1050, palmas_rails(smps8), 1, 1, 1, 0,
 		0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
-PALMAS_REGS_PDATA(ldo2, 2800,  3000, palmas_rails(smps6), 0, 0, 1, 0,
+PALMAS_REGS_PDATA(ldo2, 2800,  3100, palmas_rails(smps6), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo3, 1200,  1200, palmas_rails(smps8), 1, 1, 1, 0,
 		0, 0, 0, 0, 0);
@@ -277,7 +277,7 @@ PALMAS_REGS_PDATA(ldo4, 1800,  1800, palmas_rails(smps6), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo5, 1200,  1200, palmas_rails(smps8), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
-PALMAS_REGS_PDATA(ldo5_a01, 1200,  1200, palmas_rails(smps8), 1, 1, 1, 0,
+PALMAS_REGS_PDATA(ldo5_a01, 1100,  1100, palmas_rails(smps8), 1, 1, 1, 0,
 		0, PALMAS_EXT_CONTROL_NSLEEP, 0, 0, 0);
 PALMAS_REGS_PDATA(ldo6, 2800,  2800, palmas_rails(smps6), 0, 0, 1, 0,
 		0, 0, 0, 0, 0);
@@ -368,34 +368,9 @@ static struct palmas_reg_init *loki_reg_init[PALMAS_NUM_REGS] = {
 };
 
 static struct iio_map palmas_adc_iio_maps[] = {
-	PALMAS_GPADC_IIO_MAP(NULL, NULL, NULL),
-};
-
-static struct iio_map palmas_adc_iio_maps_p2530_loki[] = {
-	PALMAS_GPADC_IIO_MAP(IN1, "generic-adc-thermal.0", "thermistor"),
-	PALMAS_GPADC_IIO_MAP(IN3, "generic-adc-thermal.1", "tdiode"),
-	PALMAS_GPADC_IIO_MAP(IN4, "generic-adc-thermal.2", "tbat"),
-	PALMAS_GPADC_IIO_MAP(NULL, NULL, NULL),
-};
-
-static struct iio_map palmas_adc_iio_maps_p2530_foster[] = {
 	PALMAS_GPADC_IIO_MAP(IN1, "generic-adc-thermal.0", "thermistor"),
 	PALMAS_GPADC_IIO_MAP(IN3, "generic-adc-thermal.1", "tdiode"),
 	PALMAS_GPADC_IIO_MAP(NULL, NULL, NULL),
-};
-
-struct palmas_adc_auto_conv_property palmas_adc_auto_conv0_data = {
-	.adc_channel_number = PALMAS_ADC_CH_IN3, /* Tdiode */
-	/* Shutdown if ADC auto conversion is below 1487(>100C). */
-	.adc_low_threshold = 1487, /* 100C */
-	.adc_shutdown = true,
-};
-
-struct palmas_adc_auto_conv_property palmas_adc_auto_conv1_data = {
-	.adc_channel_number = PALMAS_ADC_CH_IN4, /* Tbat */
-	/* Shutdown if ADC auto conversion is below 748(>70C). */
-	.adc_low_threshold = 748, /* 70C */
-	.adc_shutdown = true,
 };
 
 static struct palmas_gpadc_platform_data palmas_adc_pdata = {
@@ -723,16 +698,24 @@ static struct tegra_cl_dvfs_platform_data loki_cl_dvfs_data = {
 
 static void loki_suspend_dfll_bypass(void)
 {
-	__gpio_set_value(TEGRA_GPIO_PU6, 1); /* tristate external PWM buffer */
+	/* tristate external PWM buffer */
+	__gpio_set_value(loki_cl_dvfs_data.u.pmu_pwm.out_gpio, 1);
 }
 
 static void loki_resume_dfll_bypass(void)
 {
-	__gpio_set_value(TEGRA_GPIO_PU6, 0); /* enable PWM buffer operations */
+	/* enable PWM buffer operations */
+	__gpio_set_value(loki_cl_dvfs_data.u.pmu_pwm.out_gpio, 0);
 }
 static int __init loki_cl_dvfs_init(void)
 {
 	struct tegra_cl_dvfs_platform_data *data = NULL;
+	struct board_info bi;
+
+	tegra_get_board_info(&bi);
+	if (bi.board_id == BOARD_P2530 && bi.fab >= 0xc0) {
+		loki_cl_dvfs_data.u.pmu_pwm.out_gpio = TEGRA_GPIO_PU1;
+	}
 
 	{
 		data = &loki_cl_dvfs_data;
@@ -792,32 +775,9 @@ int __init loki_regulator_init(void)
 	reg_idata_smps123.constraints.init_uV = 1000000;
 	reg_idata_smps9.constraints.enable_time = 250;
 
-	tegra_get_board_info(&bi);
-
-	if (bi.board_id == BOARD_P2530 && bi.fab >= 0xa1) {
-
-		palmas_adc_pdata.auto_conversion_period_ms = 1000;
-		palmas_adc_pdata.adc_auto_conv0_data =
-					&palmas_adc_auto_conv0_data;
-
-		if (bi.sku == BOARD_SKU_FOSTER) {
-			pr_info("thermal: registering for foster\n");
-			palmas_adc_pdata.iio_maps =
-				palmas_adc_iio_maps_p2530_foster;
-		} else if (bi.sku == BOARD_SKU_100 || bi.sku == BOARD_SKU_0) {
-			pr_info("thermal: registering for loki\n");
-			palmas_adc_pdata.iio_maps =
-				palmas_adc_iio_maps_p2530_loki;
-			palmas_adc_pdata.adc_auto_conv1_data =
-					&palmas_adc_auto_conv1_data;
-		} else {
-			pr_err("palmas: Not a known SKU!\n");
-		}
-	}
-
-
 	i2c_register_board_info(4, palma_device,
 			ARRAY_SIZE(palma_device));
+	tegra_get_board_info(&bi);
 	if (bi.board_id == BOARD_P2530 && bi.fab >= 0xa1) {
 		pmic_platform.reg_data[PALMAS_REG_SMPS7] =
 			PALMAS_REG_PDATA(smps7_a01);
@@ -832,7 +792,6 @@ int __init loki_regulator_init(void)
 		pmic_platform.reg_init[PALMAS_REG_LDO5] =
 			PALMAS_REG_INIT_DATA(ldo5_a01);
 	}
-
 	platform_device_register(&power_supply_extcon_device);
 
 	loki_cl_dvfs_init();
@@ -845,7 +804,8 @@ static int __init loki_fixed_regulator_init(void)
 	struct board_info bi;
 
 
-	if (!of_machine_is_compatible("nvidia,loki"))
+	if ((!of_machine_is_compatible("nvidia,loki")) &&
+		(!of_machine_is_compatible("nvidia,t132loki")))
 		return 0;
 
 	tegra_get_board_info(&bi);

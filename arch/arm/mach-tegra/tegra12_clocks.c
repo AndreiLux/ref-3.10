@@ -1,4 +1,4 @@
-	/*
+/*
  * arch/arm/mach-tegra/tegra12_clocks.c
  *
  * Copyright (C) 2011-2014 NVIDIA Corporation. All rights reserved.
@@ -864,6 +864,31 @@ static int clk_div16_get_divider(unsigned long parent_rate, unsigned long rate)
 		return -EINVAL;
 
 	return divider_u16 - 1;
+}
+
+static long fixed_src_bus_round_updown(struct clk *c, struct clk *src,
+				       u32 flags, unsigned long rate, bool up)
+{
+	int divider;
+	unsigned long source_rate, round_rate;
+
+	source_rate = clk_get_rate(src);
+
+	divider = clk_div71_get_divider(source_rate, rate + (up ? -1 : 1),
+		flags, up ? ROUND_DIVIDER_DOWN : ROUND_DIVIDER_UP);
+	if (divider < 0)
+		return c->min_rate;
+
+	round_rate = source_rate * 2 / (divider + 2);
+
+	if (round_rate > c->max_rate) {
+		divider += flags & DIV_U71_INT ? 2 : 1;
+#if !DIVIDER_1_5_ALLOWED
+		divider = max(2, divider);
+#endif
+		round_rate = source_rate * 2 / (divider + 2);
+	}
+	return round_rate;
 }
 
 static inline bool bus_user_is_slower(struct clk *a, struct clk *b)
@@ -1756,6 +1781,7 @@ static int tegra12_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		 * set DFLL rate ready (DFLL is still disabled)
 		 * (set target p_source as dfll, G source is already selected)
 		 */
+		int mv;
 		p_source = dfll;
 		ret = clk_set_rate(dfll,
 			tegra_dvfs_rail_is_dfll_mode(tegra_cpu_rail) ? rate :
@@ -1763,9 +1789,14 @@ static int tegra12_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		if (ret)
 			goto abort;
 
-		ret = tegra_dvfs_rail_dfll_mode_set_cold(tegra_cpu_rail);
-		if (ret)
-			goto abort;
+		mv = tegra_cl_dvfs_vmin_read_begin(
+			tegra_dfll_get_cl_dvfs_data(dfll), NULL);
+		if (mv < tegra_dvfs_rail_get_thermal_floor(tegra_cpu_rail)) {
+			ret = tegra_dvfs_rail_dfll_mode_set_cold(
+				tegra_cpu_rail);
+			if (ret)
+				goto abort;
+		}
 	} else
 		/* DFLL is not selected on either side of the switch:
 		 * set target p_source equal to current clock source
@@ -1980,32 +2011,16 @@ static void tegra12_sbus_cmplx_init(struct clk *c)
 static long tegra12_sbus_cmplx_round_updown(struct clk *c, unsigned long rate,
 					    bool up)
 {
-	int divider;
-	unsigned long source_rate, round_rate;
+	unsigned long round_rate;
 	struct clk *new_parent;
 
 	rate = max(rate, c->min_rate);
 
 	new_parent = (rate <= c->u.system.threshold) ?
 		c->u.system.sclk_low : c->u.system.sclk_high;
-	source_rate = clk_get_rate(new_parent->parent);
 
-	divider = clk_div71_get_divider(source_rate, rate,
-		new_parent->flags, up ? ROUND_DIVIDER_DOWN : ROUND_DIVIDER_UP);
-	if (divider < 0)
-		return c->min_rate;
-
-	if (divider == 1)
-		divider = 0;
-
-	round_rate = source_rate * 2 / (divider + 2);
-	if (round_rate > c->max_rate) {
-		divider += new_parent->flags & DIV_U71_INT ? 2 : 1;
-#if !DIVIDER_1_5_ALLOWED
-		divider = max(2, divider);
-#endif
-		round_rate = source_rate * 2 / (divider + 2);
-	}
+	round_rate = fixed_src_bus_round_updown(
+		c, new_parent->parent, new_parent->flags, rate, up);
 
 	if (new_parent == c->u.system.sclk_high) {
 		/* Prevent oscillation across threshold */
@@ -3102,7 +3117,7 @@ static void tegra12_pllcx_clk_resume_enable(struct clk *c)
 	c->state = OFF;
 	pllcx_set_defaults(c, rate, c->mul);
 
-	rate = clk_get_rate_all_locked(c) + 1;
+	rate = clk_get_rate_all_locked(c);
 	tegra12_pllcx_clk_set_rate(c, rate);
 	tegra12_pllcx_clk_enable(c);
 	c->state = state;
@@ -3443,7 +3458,7 @@ static void tegra12_pllxc_clk_resume_enable(struct clk *c)
 	else
 		pllc_set_defaults(c, rate);
 
-	rate = clk_get_rate_all_locked(c) + 1;
+	rate = clk_get_rate_all_locked(c);
 	tegra12_pllxc_clk_set_rate(c, rate);
 	tegra12_pllxc_clk_enable(c);
 	c->state = state;
@@ -3845,7 +3860,7 @@ static void tegra12_pllss_clk_resume_enable(struct clk *c)
 	c->state = OFF;
 	pllss_set_defaults(c, rate);
 
-	rate = clk_get_rate_all_locked(c) + 1;
+	rate = clk_get_rate_all_locked(c);
 	tegra12_pllss_clk_set_rate(c, rate);
 	tegra12_pllss_clk_enable(c);
 	c->state = state;
@@ -4081,7 +4096,7 @@ static void tegra12_pllre_clk_resume_enable(struct clk *c)
 	pllre_set_defaults(c->parent, rate);
 
 	/* restore PLLRE VCO feedback loop (m, n) */
-	rate = clk_get_rate_all_locked(c->parent) + 1;
+	rate = clk_get_rate_all_locked(c->parent);
 	tegra12_pllre_clk_set_rate(c->parent, rate);
 
 	/* restore PLLRE post-divider */
@@ -4940,27 +4955,7 @@ static struct clk_ops tegra_periph_clk_ops = {
 static long _1x_round_updown(struct clk *c, struct clk *src,
 			     unsigned long rate, bool up)
 {
-	int divider;
-	unsigned long source_rate, round_rate;
-
-	source_rate = clk_get_rate(src);
-
-	divider = clk_div71_get_divider(source_rate, rate + (up ? -1 : 1),
-		c->flags, up ? ROUND_DIVIDER_DOWN : ROUND_DIVIDER_UP);
-
-	if (divider < 0)
-		return c->min_rate;
-
-	round_rate = source_rate * 2 / (divider + 2);
-
-	if (round_rate > c->max_rate) {
-		divider += c->flags & DIV_U71_INT ? 2 : 1;
-#if !DIVIDER_1_5_ALLOWED
-		divider = max(2, divider);
-#endif
-		round_rate = source_rate * 2 / (divider + 2);
-	}
-	return round_rate;
+	return fixed_src_bus_round_updown(c, src, c->flags, rate, up);
 }
 
 static long tegra12_1xbus_round_updown(struct clk *c, unsigned long rate,
@@ -9311,8 +9306,8 @@ unsigned long tegra_emc_cpu_limit(unsigned long cpu_rate)
 
 	/* Vote on memory bus frequency based on cpu frequency;
 	   cpu rate is in kHz, emc rate is in Hz */
-	if (cpu_rate > 1122000)
-		emc_rate = 600000000;	/* cpu > 1.1GHz, emc 600MHz */
+	if (cpu_rate > 1020000)
+		emc_rate = 600000000;	/* cpu > 1.02GHz, emc 600MHz */
 	else
 		emc_rate = 300000000;	/* 300MHz floor always */
 
@@ -9348,7 +9343,7 @@ int tegra_update_mselect_rate(unsigned long cpu_rate)
 
 #ifdef CONFIG_PM_SLEEP
 static u32 clk_rst_suspend[RST_DEVICES_NUM + CLK_OUT_ENB_NUM +
-			   PERIPH_CLK_SOURCE_NUM + 26];
+			   PERIPH_CLK_SOURCE_NUM + 25];
 
 static int tegra12_clk_suspend(void)
 {
@@ -9362,13 +9357,12 @@ static int tegra12_clk_suspend(void)
 
 	*ctx++ = clk_readl(tegra_pll_p_out1.reg);
 	*ctx++ = clk_readl(tegra_pll_p_out3.reg);
+	*ctx++ = clk_readl(tegra_pll_p_out5.reg);
 
 	*ctx++ = clk_readl(tegra_pll_a.reg + PLL_BASE);
 	*ctx++ = clk_readl(tegra_pll_a.reg + PLL_MISC(&tegra_pll_a));
 	*ctx++ = clk_readl(tegra_pll_d.reg + PLL_BASE);
 	*ctx++ = clk_readl(tegra_pll_d.reg + PLL_MISC(&tegra_pll_d));
-	*ctx++ = clk_readl(tegra_pll_d2.reg + PLL_BASE);
-	*ctx++ = clk_readl(tegra_pll_d2.reg + PLL_MISC(&tegra_pll_d2));
 
 	*ctx++ = clk_readl(tegra_pll_m_out1.reg);
 	*ctx++ = clk_readl(tegra_pll_a_out0.reg);
@@ -9422,6 +9416,10 @@ static int tegra12_clk_suspend(void)
 	*ctx++ = clk_readl(CLK_MASK_ARM);
 
 	*ctx++ = clk_get_rate_all_locked(&tegra_clk_emc);
+
+	pr_debug("%s: suspend entries: %d, suspend array: %d\n", __func__,
+		(ctx - clk_rst_suspend), ARRAY_SIZE(clk_rst_suspend));
+	BUG_ON((ctx - clk_rst_suspend) > ARRAY_SIZE(clk_rst_suspend));
 	return 0;
 }
 
@@ -9432,7 +9430,6 @@ static void tegra12_clk_resume(void)
 	u32 val;
 	u32 plla_base;
 	u32 plld_base;
-	u32 plld2_base;
 	u32 pll_p_out12, pll_p_out34;
 	u32 pll_a_out0, pll_m_out1, pll_c_out1;
 	struct clk *p;
@@ -9457,6 +9454,9 @@ static void tegra12_clk_resume(void)
 	pll_p_out34 = *ctx++;
 	clk_writel(pll_p_out34 | val, tegra_pll_p_out3.reg);
 
+	/* Restore as is, GPU is rail-gated, anyway */
+	clk_writel(*ctx++, tegra_pll_p_out5.reg);
+
 	tegra12_pllss_clk_resume_enable(&tegra_pll_c4);
 	tegra12_pllss_clk_resume_enable(&tegra_pll_d2);
 	tegra12_pllss_clk_resume_enable(&tegra_pll_dp);
@@ -9473,10 +9473,6 @@ static void tegra12_clk_resume(void)
 	plld_base = *ctx++;
 	clk_writel(*ctx++, tegra_pll_d.reg + PLL_MISC(&tegra_pll_d));
 	clk_writel(plld_base | PLL_BASE_ENABLE, tegra_pll_d.reg + PLL_BASE);
-
-	plld2_base = *ctx++;
-	clk_writel(*ctx++, tegra_pll_d2.reg + PLL_MISC(&tegra_pll_d2));
-	clk_writel(plld2_base | PLL_BASE_ENABLE, tegra_pll_d2.reg + PLL_BASE);
 
 	udelay(1000);
 
@@ -9590,7 +9586,6 @@ static void tegra12_clk_resume(void)
 
 	clk_writel(plla_base, tegra_pll_a.reg + PLL_BASE);
 	clk_writel(plld_base, tegra_pll_d.reg + PLL_BASE);
-	clk_writel(plld2_base, tegra_pll_d2.reg + PLL_BASE);
 
 	clk_writel(pll_m_out1, tegra_pll_m_out1.reg);
 	clk_writel(pll_a_out0, tegra_pll_a_out0.reg);

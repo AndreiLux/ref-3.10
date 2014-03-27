@@ -168,7 +168,7 @@ obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= board-paz00.o
 obj-y					+= board-common.o
 obj-$(CONFIG_TEGRA_WAKEUP_MONITOR)      += tegra_wakeup_monitor.o
 
-obj-$(CONFIG_TEGRA_USE_SECURE_KERNEL)   += tegra_tzram.o
+obj-$(CONFIG_TRUSTED_LITTLE_KERNEL)     += tegra_tzram.o
 
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire.o
 obj-${CONFIG_MACH_BONAIRE}              += board-bonaire-panel.o
@@ -242,7 +242,7 @@ obj-${CONFIG_MACH_ARDBEG}               += panel-i-edp-1080p-11-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-uhdtv-15-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-c-lvds-1366-14.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-s-edp-wqxgap-15-6.o
-obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-1920-7-0.o
+obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-1920-8-0.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-800-8-0.o
 ifeq ($(CONFIG_MACH_ARDBEG),y)
 obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-tn8-sysedp.o

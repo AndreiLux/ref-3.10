@@ -62,12 +62,14 @@
 
 #define NVMAP_NUM_PTES		64
 
-struct nvmap_share;
+#ifdef CONFIG_64BIT
+#define NVMAP_LAZY_VFREE
+#endif
+
 struct page;
 
 extern const struct file_operations nvmap_fd_fops;
 void _nvmap_handle_free(struct nvmap_handle *h);
-extern struct nvmap_share *nvmap_share;
 /* holds max number of handles allocted per process at any time */
 extern u32 nvmap_max_handle_count;
 extern size_t cache_maint_inner_threshold;
@@ -75,18 +77,6 @@ extern size_t cache_maint_inner_threshold;
 extern struct platform_device *nvmap_pdev;
 
 #if defined(CONFIG_TEGRA_NVMAP)
-#define nvmap_err(_client, _fmt, ...)				\
-	dev_err(nvmap_client_to_device(_client),		\
-		"%s: "_fmt, __func__, ##__VA_ARGS__)
-
-#define nvmap_warn(_client, _fmt, ...)				\
-	dev_warn(nvmap_client_to_device(_client),		\
-		 "%s: "_fmt, __func__, ##__VA_ARGS__)
-
-#define nvmap_debug(_client, _fmt, ...)				\
-	dev_dbg(nvmap_client_to_device(_client),		\
-		"%s: "_fmt, __func__, ##__VA_ARGS__)
-
 #define CACHE_MAINT_IMMEDIATE		0
 #define CACHE_MAINT_ALLOW_DEFERRED	1
 
@@ -123,15 +113,7 @@ struct nvmap_handle {
 	size_t orig_size;	/* original (as-requested) size */
 	size_t align;
 	u8 kind;                /* memory kind (0=pitch, !0 -> blocklinear) */
-	void *map_resources;    /* mapping resources associated with the
-				   buffer */
 	struct nvmap_client *owner;
-	struct nvmap_handle_ref *owner_ref; /* use this ref to avoid spending
-			time on validation in some cases.
-			if handle was duplicated by other client and
-			original client destroy ref, this field
-			has to be set to zero. In this case ref should be
-			obtained through validation */
 
 	/*
 	 * dma_buf necessities. An attachment is made on dma_buf allocation to
@@ -140,16 +122,15 @@ struct nvmap_handle {
 	struct dma_buf *dmabuf;
 	struct dma_buf_attachment *attachment;
 
-	struct nvmap_device *dev;
 	union {
 		struct nvmap_pgalloc pgalloc;
 		struct nvmap_heap_block *carveout;
 	};
 	bool global;		/* handle may be duplicated by other clients */
-	bool secure;		/* zap IOVMM area on unpin */
 	bool heap_pgalloc;	/* handle is page allocated (sysmem / iovmm) */
 	bool alloc;		/* handle has memory allocated */
 	unsigned int userflags;	/* flags passed from userspace */
+	void *vaddr;		/* mapping used inside kernel */
 	struct mutex lock;
 	void *nvhost_priv;	/* nvhost private data */
 	void (*nvhost_priv_delete)(void *priv);
@@ -175,24 +156,42 @@ struct nvmap_handle_ref {
 
 struct nvmap_page_pool {
 	struct mutex lock;
-	int npages;                       /* Number of zeroed pages. */
-	struct page **page_array;         /* For zeroed pages. */
-	int max_pages;
+	u32 alloc;  /* Alloc index. */
+	u32 fill;   /* Fill index. */
+	u32 count;  /* Number of pages in the table. */
+	u32 length; /* Length of the pages array. */
+	struct page **page_array;
+
+#ifdef CONFIG_NVMAP_PAGE_POOL_DEBUG
+	u64 allocs;
+	u64 fills;
+	u64 hits;
+	u64 misses;
+#endif
 };
+
+#define pp_empty(pp)				\
+	((pp)->fill == (pp)->alloc && !(pp)->page_array[(pp)->alloc])
+#define pp_full(pp)				\
+	((pp)->fill == (pp)->alloc && (pp)->page_array[(pp)->alloc])
+
+#define nvmap_pp_alloc_inc(pp) nvmap_pp_inc_index((pp), &(pp)->alloc)
+#define nvmap_pp_fill_inc(pp)  nvmap_pp_inc_index((pp), &(pp)->fill)
+
+/* Handle wrap around. */
+static inline void nvmap_pp_inc_index(struct nvmap_page_pool *pp, u32 *ind)
+{
+	*ind += 1;
+
+	/* Wrap condition. */
+	if (*ind >= pp->length)
+		*ind = 0;
+}
 
 int nvmap_page_pool_init(struct nvmap_device *dev);
 struct page *nvmap_page_pool_alloc(struct nvmap_page_pool *pool);
-bool nvmap_page_pool_release(struct nvmap_page_pool *pool, struct page *page);
+bool nvmap_page_pool_fill(struct nvmap_page_pool *pool, struct page *page);
 #endif
-
-struct nvmap_share {
-	struct tegra_iovmm_client *iovmm;
-	wait_queue_head_t pin_wait;
-	struct mutex pin_lock;
-#ifdef CONFIG_NVMAP_PAGE_POOLS
-	struct nvmap_page_pool pool;
-#endif
-};
 
 struct nvmap_carveout_commit {
 	size_t commit;
@@ -204,7 +203,6 @@ struct nvmap_client {
 	struct rb_root			handle_refs;
 	atomic_t			iovm_commit;
 	struct mutex			ref_lock;
-	bool				super;
 	bool				kernel_client;
 	atomic_t			count;
 	struct task_struct		*task;
@@ -232,11 +230,12 @@ struct nvmap_device {
 	struct rb_root	handles;
 	spinlock_t	handle_lock;
 	wait_queue_head_t pte_wait;
-	struct miscdevice dev_super;
 	struct miscdevice dev_user;
 	struct nvmap_carveout_node *heaps;
 	int nr_carveouts;
-	struct nvmap_share iovmm_master;
+#ifdef CONFIG_NVMAP_PAGE_POOLS
+	struct nvmap_page_pool pool;
+#endif
 	struct list_head clients;
 	spinlock_t	clients_lock;
 };
@@ -336,8 +335,6 @@ void nvmap_carveout_commit_subtract(struct nvmap_client *client,
 				    struct nvmap_carveout_node *node,
 				    size_t len);
 
-struct nvmap_share *nvmap_get_share_from_dev(struct nvmap_device *dev);
-
 int nvmap_find_cache_maint_op(struct nvmap_device *dev,
 		struct nvmap_handle *h);
 
@@ -410,6 +407,8 @@ void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
 void nvmap_flush_cache(struct page **pages, int numpages);
 
+int nvmap_flush_cache_list(struct nvmap_handle **handles, int nr);
+
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
 				 struct nvmap_handle *handle);
@@ -426,9 +425,9 @@ void __nvmap_munmap(struct nvmap_handle *h, void *addr);
 int __nvmap_map(struct nvmap_handle *h, struct vm_area_struct *vma);
 int __nvmap_get_handle_param(struct nvmap_client *client,
 			     struct nvmap_handle *h, u32 param, u64 *result);
-int __nvmap_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
-			unsigned long start, unsigned long end,
-			unsigned int op, unsigned int allow_deferred);
+int __nvmap_do_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
+			   unsigned long start, unsigned long end,
+			   unsigned int op, unsigned int allow_deferred);
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 					   const char *name);
 struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref);
