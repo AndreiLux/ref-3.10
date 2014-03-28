@@ -491,6 +491,11 @@ static void flounder_audio_init(void)
 	spi_register_board_info(&rt5677_flounder_spi_board[0],
 	ARRAY_SIZE(rt5677_flounder_spi_board));
 
+	if (flounder_get_hw_revision() > FLOUNDER_REV_EVT1_1) {
+		flounder_audio_pdata_rt5677.gpio_int_mic_en = -1;
+		gpio_request_one(TEGRA_GPIO_PV3, GPIOF_OUT_INIT_HIGH,
+				 "aud_1v8_en");
+	}
 	for (i = 0; i < ARRAY_SIZE(audio_sfio_pins); i++)
 		if (tegra_is_gpio(audio_sfio_pins[i].id)) {
 			gpio_request(audio_sfio_pins[i].id, audio_sfio_pins[i].name);
