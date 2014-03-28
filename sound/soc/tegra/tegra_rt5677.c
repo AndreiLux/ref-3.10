@@ -48,10 +48,11 @@
 
 #define DRV_NAME "tegra-snd-rt5677"
 
-#define DAI_LINK_HIFI		0
-#define DAI_LINK_SPEAKER	1
-#define DAI_LINK_BTSCO		2
-#define NUM_DAI_LINKS		3
+#define DAI_LINK_HIFI			0
+#define DAI_LINK_SPEAKER		1
+#define DAI_LINK_BTSCO			2
+#define DAI_LINK_MI2S_DUMMY		3
+#define NUM_DAI_LINKS			4
 
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.0",
@@ -777,6 +778,16 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.codec_dai_name = "dit-hifi",
 		.ops = &tegra_rt5677_bt_sco_ops,
 	},
+
+	[DAI_LINK_MI2S_DUMMY] = {
+		.name = "MI2S DUMMY",
+		.stream_name = "MI2S DUMMY PCM",
+		.codec_name = "spdif-dit.0",
+		.platform_name = "tegra30-i2s.2",
+		.cpu_dai_name = "tegra30-i2s.2",
+		.codec_dai_name = "dit-hifi",
+		.ops = &tegra_rt5677_speaker_ops,
+	},
 };
 
 static int tegra_rt5677_suspend_post(struct snd_soc_card *card)
@@ -1116,6 +1127,11 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	tegra_rt5677_dai[DAI_LINK_SPEAKER].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 	tegra_rt5677_dai[DAI_LINK_SPEAKER].platform_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+
+	tegra_rt5677_dai[DAI_LINK_MI2S_DUMMY].cpu_dai_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+	tegra_rt5677_dai[DAI_LINK_MI2S_DUMMY].platform_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 
 	codec_id = pdata->i2s_param[BT_SCO].audio_port_id;
