@@ -37,7 +37,7 @@ static __initdata struct tegra_drive_pingroup_config flounder_drive_pinmux[] = {
 	SET_DRIVE(SDIO3, ENABLE, DISABLE, DIV_1, 20, 36, FASTEST, FASTEST),
 
 	/* SDMMC4 */
-	SET_DRIVE_WITH_TYPE(GMA, ENABLE, DISABLE, DIV_1, 1, 2, FASTEST,
+	SET_DRIVE_WITH_TYPE(GMA, ENABLE, DISABLE, DIV_1, 10, 20, FASTEST,
 								FASTEST, 1),
 };
 
