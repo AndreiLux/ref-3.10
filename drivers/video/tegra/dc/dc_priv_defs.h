@@ -109,10 +109,10 @@ struct tegra_dc_out_ops {
 	/* callback after new mode is programmed.
 	 * dc clocks are on at this point */
 	void (*modeset_notifier)(struct tegra_dc *dc);
-	/* enable output before dc is fully enabled in order to get
-	 * info such as panel mode for dc enablement.
+	/* Set up interface and sink for partial frame update.
 	 */
-	bool (*early_enable)(struct tegra_dc *dc);
+	int (*partial_update) (struct tegra_dc *dc, unsigned int *xoff,
+		unsigned int *yoff, unsigned int *width, unsigned int *height);
 };
 
 struct tegra_dc_shift_clk_div {
@@ -146,6 +146,13 @@ struct tegra_dc {
 	bool				enabled;
 	bool				suspended;
 
+	/* Some of the setup code could reset display even if
+	 * DC is already by bootloader.  This one-time mark is
+	 * used to suppress such code blocks during system boot,
+	 * a.k.a the call stack above tegra_dc_probe().
+	 */
+	bool				initialized;
+
 	struct tegra_dc_out		*out;
 	struct tegra_dc_out_ops		*out_ops;
 	void				*out_data;
@@ -168,7 +175,9 @@ struct tegra_dc {
 
 	struct resource			*fb_mem;
 	struct tegra_fb_info		*fb;
+#ifdef CONFIG_ADF_TEGRA
 	struct tegra_adf_info		*adf;
+#endif
 
 	struct {
 		u32			id;
@@ -235,6 +244,8 @@ struct tegra_dc {
 	struct tegra_edid		*edid;
 
 	struct tegra_dc_nvsr_data *nvsr;
+
+	bool	disp_active_dirty;
 };
 
 #endif

@@ -26,7 +26,24 @@
 
 #define ELD_MAX_MNL	16
 #define ELD_MAX_SAD	16
-struct tegra_edid;
+#define ELD_MAX_SAD_BYTES (ELD_MAX_SAD * 3)
+
+struct tegra_edid_pvt;
+
+typedef int (*i2c_transfer_func_t)(struct tegra_dc *dc, struct i2c_msg *msgs,
+	int num);
+
+struct tegra_dc_i2c_ops {
+	i2c_transfer_func_t i2c_transfer;
+};
+
+struct tegra_edid {
+	struct tegra_edid_pvt	*data;
+
+	struct mutex		lock;
+	struct tegra_dc_i2c_ops i2c_ops;
+	struct tegra_dc		*dc;
+};
 
 /*
  * ELD: EDID Like Data
@@ -46,11 +63,8 @@ struct tegra_edid_hdmi_eld {
 	u8	aud_synch_delay;
 	u8	spk_alloc;
 	u8	sad_count;
-	u8	sad[ELD_MAX_SAD];
+	u8	sad[ELD_MAX_SAD_BYTES];
 };
-
-typedef int (*i2c_transfer_func_t)(struct tegra_dc *dc, struct i2c_msg *msgs,
-	int num);
 
 struct tegra_edid *tegra_edid_create(struct tegra_dc *dc,
 	i2c_transfer_func_t func);

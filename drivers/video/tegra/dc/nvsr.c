@@ -602,7 +602,6 @@ static int tegra_dc_nvsr_enter_idle(struct tegra_dc_nvsr_data *nvsr)
 		/* set non-continuous mode */
 		tegra_dc_writel(dc, DISP_CTRL_MODE_NC_DISPLAY,
 				DC_CMD_DISPLAY_COMMAND);
-		tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 		tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
 		dc->out->flags |= TEGRA_DC_OUT_ONE_SHOT_MODE;
@@ -845,15 +844,6 @@ static void tegra_dc_nvsr_enable(struct tegra_dc *dc)
 	tegra_dc_nvsr_init_src(nvsr);
 }
 
-static bool tegra_dc_nvsr_early_enable(struct tegra_dc *dc)
-{
-	struct tegra_dc_nvsr_data *nvsr = dc->nvsr;
-	if (nvsr->out_ops.early_enable)
-		return nvsr->out_ops.early_enable(dc);
-
-	return true;
-}
-
 static void tegra_dc_nvsr_disable(struct tegra_dc *dc)
 {
 	struct tegra_dc_nvsr_data *nvsr = dc->nvsr;
@@ -937,11 +927,6 @@ static void tegra_dc_nvsr_init_out_ops(struct tegra_dc_nvsr_data *nvsr,
 	if (out_ops->enable) {
 		tegra_dc_nvsr_ops.enable = tegra_dc_nvsr_enable;
 		nvsr->out_ops.enable = out_ops->enable;
-	}
-
-	if (out_ops->early_enable) {
-		tegra_dc_nvsr_ops.early_enable = tegra_dc_nvsr_early_enable;
-		nvsr->out_ops.early_enable = out_ops->early_enable;
 	}
 
 	if (out_ops->disable) {
@@ -1396,7 +1381,7 @@ static int tegra_dc_nvsr_init(struct tegra_dc *dc)
 			NVSR_RETV(ret, "Out ops init failed.\n");
 		}
 		nvsr->out_data.dp = tegra_dc_get_outdata(dc);
-		nvsr->out_clk = nvsr->out_data.dp->clk;
+		nvsr->out_clk = nvsr->out_data.dp->dpaux_clk;
 		nvsr->reg_ops.read = tegra_nvsr_read_dpaux;
 		nvsr->reg_ops.write = tegra_nvsr_write_dpaux;
 		break;

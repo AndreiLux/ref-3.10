@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2013 Google, Inc.
+ * Copyright (c) 2014, NVIDIA CORPORATION, All rights reserved.
+ *
  * modified from include/video/tegra_dc_ext.h
  *
  * This software is licensed under the terms of the GNU General Public
@@ -32,6 +34,14 @@
 enum tegra_adf_interface_type {
 	TEGRA_ADF_INTF_RGB = ADF_INTF_TYPE_DEVICE_CUSTOM,
 	TEGRA_ADF_INTF_LVDS = ADF_INTF_TYPE_DEVICE_CUSTOM + 1,
+};
+
+#define TEGRA_ADF_EVENT_BANDWIDTH_RENEGOTIATE	ADF_EVENT_DEVICE_CUSTOM
+struct tegra_adf_event_bandwidth {
+	struct adf_event base;
+	__u32 total_bw;
+	__u32 avail_bw;
+	__u32 resvd_bw;
 };
 
 #define TEGRA_ADF_CAPABILITIES_CURSOR_MODE	(1 << 0)

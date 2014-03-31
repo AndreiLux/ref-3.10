@@ -19,8 +19,8 @@
 #include <linux/kernel.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
+#include <linux/tegra-pmc.h>
 
-#include "pmc.h"
 #include "pm.h"
 
 #include "../../arm/mach-tegra/board-flounder.c"

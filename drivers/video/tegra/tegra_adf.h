@@ -1,5 +1,6 @@
 /*
  * Copyright (C) 2013 Google, Inc.
+ * Copyright (c) 2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -27,6 +28,8 @@ int tegra_adf_process_hotplug_connected(struct tegra_adf_info *adf_info,
 void tegra_adf_process_hotplug_disconnected(struct tegra_adf_info *adf_info);
 void tegra_adf_process_vblank(struct tegra_adf_info *adf_info,
 		ktime_t timestamp);
+int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
+		struct tegra_dc_bw_data *bw);
 
 struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 		struct tegra_dc *dc, struct tegra_fb_data *fb_data);
@@ -53,6 +56,12 @@ static inline struct tegra_adf_info *tegra_adf_init(
 		struct tegra_fb_data *fb_data)
 {
 	return ERR_PTR(-ENOENT);
+}
+
+static inline int tegra_adf_process_bandwidth_renegotiate(
+		struct tegra_adf_info *adf_info, struct tegra_dc_bw_data *bw)
+{
+	return -ENOENT;
 }
 
 static inline void tegra_adf_unregister(struct tegra_adf_info *adf_info)

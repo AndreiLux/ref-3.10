@@ -271,7 +271,7 @@ static void nvavp_add_iova_info_locked(struct nvavp_clientctx *clientctx,
 	struct nvavp_info *nvavp = clientctx->nvavp;
 	struct rb_node **p = &clientctx->iova_handles.rb_node;
 
-	dev_info(&nvavp->nvhost_dev->dev,
+	dev_dbg(&nvavp->nvhost_dev->dev,
 		"add iova addr (0x%lx))\n", (unsigned long)h->addr);
 
 	if (parent) {
@@ -829,6 +829,7 @@ static void nvavp_pushbuffer_free(struct nvavp_info *nvavp)
 static int nvavp_pushbuffer_init(struct nvavp_info *nvavp)
 {
 	int ret, channel_id;
+	u32 val;
 
 	for (channel_id = 0; channel_id < NVAVP_NUM_CHANNELS; channel_id++) {
 		ret = nvavp_pushbuffer_alloc(nvavp, channel_id);
@@ -840,8 +841,9 @@ static int nvavp_pushbuffer_init(struct nvavp_info *nvavp)
 		nvavp_set_channel_control_area(nvavp, channel_id);
 		if (IS_VIDEO_CHANNEL_ID(channel_id)) {
 			nvavp->syncpt_id = NVSYNCPT_AVP_0;
-			nvavp->syncpt_value = nvhost_syncpt_read_ext(
-				nvavp->nvhost_dev, nvavp->syncpt_id);
+			if (!nvhost_syncpt_read_ext_check(nvavp->nvhost_dev,
+					nvavp->syncpt_id, &val))
+				nvavp->syncpt_value = val;
 		}
 
 	}

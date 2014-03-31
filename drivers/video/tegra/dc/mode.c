@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2010 Google, Inc.
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -259,6 +259,8 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 
 	print_mode(dc, mode, __func__);
 
+	tegra_dc_get(dc);
+
 	/* use default EMC rate when switching modes */
 #ifdef CONFIG_TEGRA_ISOMGR
 	dc->new_bw_kbps = tegra_dc_calc_min_bandwidth(dc);
@@ -274,6 +276,7 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 	tegra_dc_writel(dc, mode->h_sync_width | (v_sync_width << 16),
 			DC_DISP_SYNC_WIDTH);
 	if ((dc->out->type == TEGRA_DC_OUT_DP) ||
+		(dc->out->type == TEGRA_DC_OUT_NVSR_DP) ||
 		(dc->out->type == TEGRA_DC_OUT_LVDS)) {
 		tegra_dc_writel(dc, mode->h_back_porch |
 			((v_back_porch - mode->v_ref_to_sync) << 16),
@@ -345,19 +348,17 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 	tegra_dc_writel(dc, val, DC_DISP_DISP_INTERFACE_CONTROL);
 
 	rate = tegra_dc_clk_get_rate(dc);
-
 	pclk = tegra_dc_pclk_round_rate(dc, mode->pclk);
+	div = (rate * 2 / pclk) - 2;
+	dev_info(&dc->ndev->dev,
+		"nominal-pclk:%d parent:%lu div:%lu.%lu pclk:%lu %d~%d\n",
+		mode->pclk, rate, (div + 2) / 2, ((div + 2) % 2) * 5, pclk,
+		mode->pclk / 100 * 99, mode->pclk / 100 * 109);
 	if (!pclk || pclk < (mode->pclk / 100 * 99) ||
 	    pclk > (mode->pclk / 100 * 109)) {
-		dev_err(&dc->ndev->dev,
-			"can't divide %ld clock to %d -1/+9%% %ld %d %d\n",
-			rate, mode->pclk,
-			pclk, (mode->pclk / 100 * 99),
-			(mode->pclk / 100 * 109));
+		dev_err(&dc->ndev->dev, "pclk out of range!\n");
 		return -EINVAL;
 	}
-
-	div = (rate * 2 / pclk) - 2;
 
 	/* SW WAR for bug 1045373. To make the shift clk dividor effect under
 	 * all circumstances, write N+2 to SHIFT_CLK_DIVIDER and activate it.
@@ -365,7 +366,6 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
 	tegra_dc_writel(dc, PIXEL_CLK_DIVIDER_PCD1 | SHIFT_CLK_DIVIDER(div + 2),
 			DC_DISP_DISP_CLOCK_CONTROL);
-	tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 	tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
 	udelay(2);
@@ -385,11 +385,12 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 			 (mode->h_active << 16) | mode->v_active);
 #endif
 
-	tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 	tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
 	if (dc->out_ops && dc->out_ops->modeset_notifier)
 		dc->out_ops->modeset_notifier(dc);
+
+	tegra_dc_put(dc);
 
 	dc->mode_dirty = false;
 
@@ -405,9 +406,14 @@ int tegra_dc_get_panel_sync_rate(void)
 }
 EXPORT_SYMBOL(tegra_dc_get_panel_sync_rate);
 
-int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode)
+static int _tegra_dc_set_mode(struct tegra_dc *dc,
+				const struct tegra_dc_mode *mode)
 {
-	mutex_lock(&dc->lock);
+	if (memcmp(&dc->mode, mode, sizeof(dc->mode)) == 0) {
+		/* mode is unchanged, just return */
+		return 0;
+	}
+
 	memcpy(&dc->mode, mode, sizeof(dc->mode));
 	dc->mode_dirty = true;
 
@@ -418,6 +424,14 @@ int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode)
 
 	print_mode(dc, mode, __func__);
 	dc->frametime_ns = calc_frametime_ns(mode);
+
+	return 0;
+}
+
+int tegra_dc_set_mode(struct tegra_dc *dc, const struct tegra_dc_mode *mode)
+{
+	mutex_lock(&dc->lock);
+	_tegra_dc_set_mode(dc, mode);
 	mutex_unlock(&dc->lock);
 
 	return 0;
@@ -586,6 +600,6 @@ int tegra_dc_set_fb_mode(struct tegra_dc *dc,
 	if (!(fbmode->sync & FB_SYNC_VERT_HIGH_ACT))
 		mode.flags |= TEGRA_DC_MODE_FLAG_NEG_V_SYNC;
 
-	return tegra_dc_set_mode(dc, &mode);
+	return _tegra_dc_set_mode(dc, &mode);
 }
 EXPORT_SYMBOL(tegra_dc_set_fb_mode);

@@ -54,7 +54,6 @@ endif
 obj-y                                   += delay.o
 obj-y                                   += pm.o
 obj-$(CONFIG_TEGRA_WDT_RECOVERY)        += wdt-recovery.o
-obj-$(CONFIG_PM_SLEEP)                  += pm-irq.o
 
 obj-y                                   += sleep.o
 obj-$(CONFIG_TEGRA_USE_NCT)             += nct.o nct_sysfs.o
@@ -119,7 +118,6 @@ obj-y					+= tegra_emc.o
 obj-$(CONFIG_ARCH_TEGRA_2x_SOC)		+= tegra20_speedo.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)		+= tegra30_speedo.o
 obj-$(CONFIG_HOTPLUG_CPU)               += hotplug.o
-obj-y                                   += pmc.o
 obj-y                                   += flowctrl.o
 obj-$(CONFIG_CPU_IDLE)                  += cpuidle.o
 obj-$(CONFIG_CPU_IDLE)                  += sleep.o
@@ -232,7 +230,6 @@ obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-memory.o
 obj-${CONFIG_MACH_ARDBEG}               += board-ardbeg-power.o
 obj-${CONFIG_MACH_ARDBEG}               += board-tn8-power.o
 obj-${CONFIG_MACH_ARDBEG}               += board-norrin-power.o
-obj-${CONFIG_MACH_ARDBEG}               += board-norrin-kbc.o
 obj-${CONFIG_MACH_ARDBEG}               += board-norrin-memory.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-1080p-11-6.o
 obj-${CONFIG_MACH_ARDBEG}               += panel-a-1200-800-8-0.o

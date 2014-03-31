@@ -43,7 +43,7 @@ static bool tegra_dvfs_gpu_disabled;
 #define VDD_SAFE_STEP			100
 
 static int cpu_vmin_offsets[] = { 0, -30, };
-static int gpu_vmin_offsets[] = { 0, -30, };
+static int gpu_vmin_offsets[] = { 0, -20, };
 
 static int vdd_core_vmin_trips_table[MAX_THERMAL_LIMITS] = { 20, };
 static int vdd_core_therm_floors_table[MAX_THERMAL_LIMITS] = { 950, };
@@ -97,7 +97,7 @@ static struct dvfs_rail tegra12_dvfs_rail_vdd_cpu = {
 	.stats = {
 		.bin_uV = 10000, /* 10mV */
 	},
-	.version = "P4.25",
+	.version = "P4v36",
 };
 
 static struct dvfs_rail tegra12_dvfs_rail_vdd_core = {
@@ -111,7 +111,7 @@ static struct dvfs_rail tegra12_dvfs_rail_vdd_core = {
 	.stats = {
 		.bin_uV = 10000, /* 10mV */
 	},
-	.version = "P4.26",
+	.version = "P4v36",
 };
 
 static struct dvfs_rail tegra12_dvfs_rail_vdd_gpu = {
@@ -130,7 +130,7 @@ static struct dvfs_rail tegra12_dvfs_rail_vdd_gpu = {
 	.stats = {
 		.bin_uV = 10000, /* 10mV */
 	},
-	.version = "P4.28",
+	.version = "P4v36",
 };
 
 static struct dvfs_rail *tegra12_dvfs_rails[] = {
@@ -147,8 +147,8 @@ void __init tegra12x_vdd_cpu_align(int step_uv, int offset_uv)
 
 /* CPU DVFS tables */
 static unsigned long cpu_max_freq[] = {
-/* speedo_id	0	 1	  2	   3		4  */
-		2014500, 2320500, 2116500, 2524500, 1500000,
+/* speedo_id	0	 1	  2	   3	    4	     5	     */
+		2014500, 2320500, 2116500, 2524500, 1500000, 2218500,
 };
 
 static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
@@ -211,10 +211,10 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 			{1938000,	{2003687, -51145, 402}, {1180000, 0, 0}},
 			{2014500,	{2054787, -52095, 402}, {1220000, 0, 0}},
 			{2116500,	{2124957, -53385, 402}, {1260000, 0, 0}},
-			{2218500,	{2196950, -54665, 402}, {1310000, 0, 0}},
-			{2320500,	{2270765, -55955, 402}, {1360000, 0, 0}},
-			{2422500,	{2346401, -57235, 402}, {1400000, 0, 0}},
-			{2524500,	{2437299, -58535, 402}, {1400000, 0, 0}},
+			{2218500,	{2297880, -59325, 449}, {1310000, 0, 0} },
+			{2320500,	{2376237, -60755, 449}, {1360000, 0, 0} },
+			{2397000,	{2448994, -61835, 449}, {1400000, 0, 0} },
+			{2499000,	{2537299, -62735, 449}, {1400000, 0, 0} },
 			{      0 , 	{      0,      0,   0}, {      0, 0, 0}},
 		},
 		.vmin_trips_table = { 20, 35, 55, 75, 120 },
@@ -453,18 +453,6 @@ static struct dvfs disp_dvfs_table[] = {
 	DEFER_DVFS("disp2",       1, -1, 0, KHZ,  192000, 247000, 306000, 342000, 400000, 432000, 474000, 474000, 535000),
 };
 
-/* Alternative display dvfs table: applicable if only one window B is active */
-static struct dvfs disp_alt_dvfs_table[] = {
-	/* Core voltages (mV):		          800,    850,    900,	  950,    1000,	  1050,   1100,	  1110,    1150 */
-	DEFER_DVFS("disp1",       0,  0, 0, KHZ,  216000, 272000, 330000, 400000, 456000, 490000, 490000, 490000, 490000),
-	DEFER_DVFS("disp1",       0,  1, 0, KHZ,  216000, 280000, 342000, 408000, 480000, 490000, 490000, 490000, 490000),
-	DEFER_DVFS("disp1",       1, -1, 0, KHZ,  216000, 280000, 342000, 408000, 480000, 506000, 535000, 535000, 535000),
-
-	DEFER_DVFS("disp2",       0,  0, 0, KHZ,  216000, 272000, 330000, 400000, 456000, 490000, 490000, 490000, 490000),
-	DEFER_DVFS("disp2",       0,  1, 0, KHZ,  216000, 280000, 342000, 408000, 480000, 490000, 490000, 490000, 490000),
-	DEFER_DVFS("disp2",       1, -1, 0, KHZ,  216000, 280000, 342000, 408000, 480000, 506000, 535000, 535000, 535000),
-};
-
 static int resolve_core_override(int min_override_mv)
 {
 	/* nothing to do -- always resolved */
@@ -697,28 +685,6 @@ static bool __init match_dvfs_one(const char *name,
 		return false;
 	}
 	return true;
-}
-
-static void __init init_alt_dvfs_one(struct dvfs *alt_d)
-{
-	int ret, i;
-	struct clk *c = tegra_get_clock_by_name(alt_d->clk_name);
-
-	if (!c || !c->dvfs) {
-		pr_debug("tegra12_dvfs: invalid alt dvfs for %s\n",
-			alt_d->clk_name);
-		return;
-	}
-
-	if ((c->dvfs->speedo_id == alt_d->speedo_id) &&
-	    (c->dvfs->process_id == alt_d->process_id)) {
-		for (i = 0; i < c->dvfs->num_freqs; i++)
-			alt_d->freqs[i] *= alt_d->freqs_mult;
-		ret = tegra_dvfs_alt_freqs_install(c->dvfs, alt_d->freqs);
-		if (ret)
-			pr_err("tegra12_dvfs: failed install alt dvfs on %s\n",
-			       c->name);
-	}
 }
 
 /* cvb_mv = ((c2 * speedo / s_scale + c1) * speedo / s_scale + c0) / v_scale */
@@ -1248,9 +1214,6 @@ void __init tegra12x_init_dvfs(void)
 			INIT_CORE_DVFS_TABLE(disp_dvfs_table,
 					ARRAY_SIZE(disp_dvfs_table));
 		}
-
-		for (i = 0; i <  ARRAY_SIZE(disp_alt_dvfs_table); i++)
-			init_alt_dvfs_one(&disp_alt_dvfs_table[i]);
 	}
 
 	/* Initialize matching gpu dvfs entry already found when nominal

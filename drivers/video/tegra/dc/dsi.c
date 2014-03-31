@@ -442,7 +442,8 @@ static int __maybe_unused tegra_dsi_syncpt
 	u32 val;
 	int ret = 0;
 
-	dsi->syncpt_val = nvhost_syncpt_read_ext(dsi->dc->ndev, dsi->syncpt_id);
+	if (!nvhost_syncpt_read_ext_check(dsi->dc->ndev, dsi->syncpt_id, &val))
+		dsi->syncpt_val = val;
 
 	val = DSI_INCR_SYNCPT_COND(OP_DONE) |
 		DSI_INCR_SYNCPT_INDX(dsi->syncpt_id);
@@ -728,7 +729,7 @@ static void tegra_dsi_init_sw(struct tegra_dc *dc,
 					dsi->target_hs_clk_khz);
 
 #if DSI_USE_SYNC_POINTS
-	dsi->syncpt_id = NVSYNCPT_DSI;
+	dsi->syncpt_id = nvhost_get_syncpt_client_managed("dsi");
 #endif
 
 	/*
@@ -1714,7 +1715,6 @@ static void tegra_dsi_stop_dc_stream(struct tegra_dc *dc,
 
 	tegra_dc_writel(dc, DISP_CTRL_MODE_STOP, DC_CMD_DISPLAY_COMMAND);
 	tegra_dc_writel(dc, 0, DC_DISP_DISP_WIN_OPTIONS);
-	tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 	tegra_dc_writel(dc, GENERAL_ACT_REQ , DC_CMD_STATE_CONTROL);
 
 	tegra_dc_put(dc);
@@ -1825,7 +1825,6 @@ static void tegra_dsi_start_dc_stream(struct tegra_dc *dc,
 		tegra_dc_writel(dc, DISP_CTRL_MODE_NC_DISPLAY,
 						DC_CMD_DISPLAY_COMMAND);
 
-		tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 		tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
 		if (dsi->info.te_gpio)
@@ -1834,7 +1833,6 @@ static void tegra_dsi_start_dc_stream(struct tegra_dc *dc,
 		/* set continuous mode */
 		tegra_dc_writel(dc, DISP_CTRL_MODE_C_DISPLAY,
 						DC_CMD_DISPLAY_COMMAND);
-		tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 		tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 	}
 
@@ -1871,7 +1869,6 @@ static void tegra_dsi_set_dc_clk(struct tegra_dc *dc,
 	 * After 2us delay, write the target values to it. */
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC) || defined(CONFIG_ARCH_11x_SOC)
 	tegra_dc_writel(dc, val, DC_DISP_DISP_CLOCK_CONTROL);
-	tegra_dc_writel(dc, GENERAL_UPDATE, DC_CMD_STATE_CONTROL);
 	tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
 
 	udelay(2);
@@ -4651,11 +4648,13 @@ static int tegra_dsi_host_suspend(struct tegra_dc *dc)
 	if (!dsi->enabled)
 		return -EINVAL;
 
-	if (dsi->host_suspended)
-		return 0;
-
 	while (!tegra_dsi_host_suspend_trylock(dc, dsi))
 		cond_resched();
+
+	if (dsi->host_suspended) {
+		tegra_dsi_host_suspend_unlock(dc, dsi);
+		return 0;
+	}
 
 	tegra_dc_io_start(dc);
 
@@ -4710,6 +4709,8 @@ static int tegra_dsi_deep_sleep(struct tegra_dc *dc,
 
 	if (!dsi->enabled)
 		return 0;
+
+	cancel_delayed_work(&dsi->idle_work);
 
 	tegra_dsi_bl_off(get_backlight_device_by_name(dsi->info.bl_name));
 
@@ -4783,7 +4784,7 @@ static int tegra_dsi_host_resume(struct tegra_dc *dc)
 	if (!dsi->enabled)
 		return -EINVAL;
 
-	cancel_delayed_work(&dsi->idle_work);
+	cancel_delayed_work_sync(&dsi->idle_work);
 
 	mutex_lock(&dsi->host_lock);
 	if (!dsi->host_suspended) {

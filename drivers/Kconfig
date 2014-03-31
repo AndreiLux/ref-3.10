@@ -176,6 +176,8 @@ source "drivers/ipack/Kconfig"
 
 source "drivers/reset/Kconfig"
 
+source "drivers/edp/Kconfig"
+
 source "drivers/htc_debug/stability/Kconfig"
 
 endmenu

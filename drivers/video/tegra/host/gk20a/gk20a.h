@@ -28,11 +28,13 @@ struct channel_gk20a;
 struct gr_gk20a;
 struct sim_gk20a;
 
-#include "dev.h"
-
-#include <linux/tegra-soc.h>
+#include <linux/sched.h>
 #include <linux/spinlock.h>
 #include <linux/nvhost_gpu_ioctl.h>
+#include <linux/tegra-soc.h>
+
+#include "../../../../../arch/arm/mach-tegra/iomap.h"
+
 #include "as_gk20a.h"
 #include "clk_gk20a.h"
 #include "fifo_gk20a.h"
@@ -42,8 +44,6 @@ struct sim_gk20a;
 #include "priv_ring_gk20a.h"
 #include "therm_gk20a.h"
 #include "platform_gk20a.h"
-
-#include "../../../../../arch/arm/mach-tegra/iomap.h"
 
 extern struct platform_device tegra_gk20a_device;
 
@@ -127,10 +127,12 @@ struct gpu_ops {
 		void (*pg_gr_load_gating_prod)(struct gk20a *g, bool prod);
 		void (*slcg_therm_load_gating_prod)(struct gk20a *g, bool prod);
 	} clock_gating;
+	struct {
+		void (*bind_channel)(struct channel_gk20a *ch_gk20a);
+	} fifo;
 };
 
 struct gk20a {
-	struct nvhost_master *host;
 	struct platform_device *dev;
 
 	struct resource *reg_mem;
@@ -303,7 +305,7 @@ extern u32 gk20a_dbg_ftrace;
 #define gk20a_dbg(dbg_mask, format, arg...)				\
 do {									\
 	if (unlikely((dbg_mask) & gk20a_dbg_mask)) {		\
-		if (nvhost_dbg_ftrace)					\
+		if (gk20a_dbg_ftrace)					\
 			trace_printk(format "\n", ##arg);		\
 		else							\
 			pr_info("gk20a %s: " format "\n",		\
@@ -409,10 +411,6 @@ static inline u32 gk20a_bar1_readl(struct gk20a *g, u32 b)
 static inline struct device *dev_from_gk20a(struct gk20a *g)
 {
 	return &g->dev->dev;
-}
-static inline struct nvhost_syncpt *syncpt_from_gk20a(struct gk20a* g)
-{
-	return &(nvhost_get_host(g->dev)->syncpt);
 }
 static inline struct gk20a *gk20a_from_as(struct gk20a_as *as)
 {

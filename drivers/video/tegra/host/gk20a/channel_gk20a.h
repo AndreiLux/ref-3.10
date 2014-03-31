@@ -30,7 +30,6 @@ struct gk20a;
 struct gr_gk20a;
 struct dbg_session_gk20a;
 
-#include "nvhost_channel.h"
 #include "channel_sync_gk20a.h"
 
 #include "mm_gk20a.h"
@@ -62,6 +61,7 @@ struct channel_ctx_gk20a {
 	struct patch_desc	patch_ctx;
 	struct zcull_ctx_desc	zcull_ctx;
 	u64	global_ctx_buffer_va[NR_GLOBAL_CTX_BUF_VA];
+	u64	global_ctx_buffer_size[NR_GLOBAL_CTX_BUF_VA];
 	bool	global_ctx_buffer_mapped;
 };
 
@@ -165,5 +165,8 @@ long gk20a_channel_ioctl(struct file *filp,
 			 unsigned long arg);
 int gk20a_channel_release(struct inode *inode, struct file *filp);
 struct channel_gk20a *gk20a_get_channel_from_file(int fd);
+void gk20a_channel_update(struct channel_gk20a *c, int nr_completed);
+
+void gk20a_init_fifo(struct gpu_ops *gops);
 
 #endif /*__CHANNEL_GK20A_H__*/

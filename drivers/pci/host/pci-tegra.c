@@ -928,7 +928,7 @@ static int tegra_pcie_enable_pads(bool enable)
 	PR_FUNC_LINE;
 	if (!tegra_platform_is_fpga()) {
 		/* WAR for Eye diagram failure on lanes for T124 platforms */
-		pads_writel(0x34ac34ac, PADS_REFCLK_CFG0);
+		pads_writel(0x44ac44ac, PADS_REFCLK_CFG0);
 		pads_writel(0x00000028, PADS_REFCLK_BIAS);
 		/* T124 PCIe pad programming is moved to XUSB_PADCTL space */
 		err = pcie_phy_pad_enable(enable,
@@ -1778,6 +1778,10 @@ static void tegra_pcie_enable_aspm(void)
 	u16 val = 0, aspm = 0;
 
 	PR_FUNC_LINE;
+	if (!pcie_aspm_support_enabled()) {
+		pr_info("PCIE: ASPM not enabled\n");
+		return;
+	}
 	for_each_pci_dev(pdev) {
 		/* Find ASPM capability */
 		pcie_capability_read_word(pdev, PCI_EXP_LNKCAP, &aspm);

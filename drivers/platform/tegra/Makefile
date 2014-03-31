@@ -13,6 +13,8 @@ endif
 endif
 
 obj-y += mc/
+obj-$(CONFIG_PM_SLEEP) += pm-irq.o
+obj-y += pmc.o
 
 ifneq ($(CONFIG_ARM64),)
 
@@ -36,7 +38,6 @@ obj-$(CONFIG_DEBUG_FS) += clocks_stats.o
 obj-y += tegra_core_volt_cap.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC) += wakeups-t12x.o
 
-obj-$(CONFIG_PM_SLEEP) += pm-irq.o
 
 obj-y += kfuse.o
 obj-y += apbio.o
@@ -76,7 +77,6 @@ obj-y += tegra_emc.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC) += tegra12_emc.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC) += tegra_emc_dt_parse.o
 
-obj-y += pmc.o
 obj-y += flowctrl.o
 obj-y += reset.o
 obj-$(CONFIG_DEBUG_ICEDCC) += sysfs-dcc.o

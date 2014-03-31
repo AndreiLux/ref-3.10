@@ -19,6 +19,7 @@
  * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <linux/nvhost.h>
 #include <linux/list.h>
 #include <linux/delay.h>
 #include <linux/highmem.h> /* need for nvmap.h*/
@@ -28,8 +29,7 @@
 #include <linux/anon_inodes.h>
 #include <linux/dma-buf.h>
 
-#include "dev.h"
-#include "debug.h"
+#include "debug_gk20a.h"
 
 #include "gk20a.h"
 #include "dbg_gpu_gk20a.h"
@@ -39,7 +39,6 @@
 #include "hw_pbdma_gk20a.h"
 #include "hw_ccsr_gk20a.h"
 #include "hw_ltc_gk20a.h"
-#include "chip_support.h"
 
 #define NVMAP_HANDLE_PARAM_SIZE 1
 
@@ -69,12 +68,6 @@ static void channel_gk20a_free_inst(struct gk20a *g,
 static int channel_gk20a_update_runlist(struct channel_gk20a *c,
 					bool add);
 static void gk20a_free_error_notifiers(struct channel_gk20a *ch);
-
-static inline
-struct nvhost_master *host_from_gk20a_channel(struct channel_gk20a *ch)
-{
-	return nvhost_get_host(ch->g->dev);
-}
 
 static struct channel_gk20a *acquire_unused_channel(struct fifo_gk20a *f)
 {
@@ -727,7 +720,7 @@ static struct channel_gk20a *gk20a_open_new_channel(struct gk20a *g)
 
 		return 0;
 	}
-	channel_gk20a_bind(ch);
+	g->ops.fifo.bind_channel(ch);
 	ch->pid = current->pid;
 
 	/* reset timeout counter and update timestamp */
@@ -1315,7 +1308,7 @@ static void trace_write_pushbuffer(struct channel_gk20a *c, struct gpfifo *g)
 	u64 offset;
 	struct dma_buf *dmabuf = NULL;
 
-	if (nvhost_debug_trace_cmdbuf) {
+	if (gk20a_debug_trace_cmdbuf) {
 		u64 gpu_va = (u64)g->entry0 |
 			(u64)((u64)pbdma_gp_entry1_get_hi_v(g->entry1) << 32);
 		int err;
@@ -1332,11 +1325,11 @@ static void trace_write_pushbuffer(struct channel_gk20a *c, struct gpfifo *g)
 		 * Write in batches of 128 as there seems to be a limit
 		 * of how much you can output to ftrace at once.
 		 */
-		for (i = 0; i < words; i += TRACE_MAX_LENGTH) {
+		for (i = 0; i < words; i += 128U) {
 			trace_gk20a_push_cmdbuf(
 				c->g->dev->name,
 				0,
-				min(words - i, TRACE_MAX_LENGTH),
+				min(words - i, 128U),
 				offset + i * sizeof(u32),
 				mem);
 		}
@@ -1410,7 +1403,6 @@ void gk20a_channel_update(struct channel_gk20a *c, int nr_completed)
 	for (i = 0; i < nr_completed; i++)
 		gk20a_channel_idle(c->g->dev);
 }
-EXPORT_SYMBOL(gk20a_channel_update);
 
 static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
 				struct nvhost_gpfifo *gpfifo,
@@ -1902,7 +1894,7 @@ int gk20a_channel_resume(struct gk20a *g)
 	for (chid = 0; chid < f->num_channels; chid++) {
 		if (f->channel[chid].in_use) {
 			gk20a_dbg_info("resume channel %d", chid);
-			channel_gk20a_bind(&f->channel[chid]);
+			g->ops.fifo.bind_channel(&f->channel[chid]);
 			channels_in_use = true;
 		}
 	}
@@ -1959,6 +1951,11 @@ static int gk20a_ioctl_channel_submit_gpfifo(
 clean_up:
 	kfree(gpfifo);
 	return ret;
+}
+
+void gk20a_init_fifo(struct gpu_ops *gops)
+{
+	gops->fifo.bind_channel = channel_gk20a_bind;
 }
 
 long gk20a_channel_ioctl(struct file *filp,

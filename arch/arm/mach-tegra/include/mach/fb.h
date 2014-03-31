@@ -4,7 +4,7 @@
  * Copyright (C) 2010 Google, Inc.
  * Author: Erik Gilling <konkers@google.com>
  *
- * Copyright (c) 2010-2013, NVIDIA CORPORATION, All rights reserved.
+ * Copyright (c) 2010-2014, NVIDIA CORPORATION, All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -61,6 +61,15 @@ static inline void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 					    struct fb_monspecs *specs,
 					    bool (*mode_filter)(const struct tegra_dc *dc,
 					                        struct fb_videomode *mode))
+{
+}
+
+static inline int tegra_fb_create_sysfs(struct device *dev)
+{
+	return -ENOENT;
+}
+
+static inline void tegra_fb_remove_sysfs(struct device *dev)
 {
 }
 

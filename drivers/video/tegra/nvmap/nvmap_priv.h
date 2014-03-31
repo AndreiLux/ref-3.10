@@ -32,15 +32,15 @@
 #include <linux/atomic.h>
 #include <linux/dma-buf.h>
 #include <linux/syscalls.h>
+#include <linux/mm.h>
+#include <linux/miscdevice.h>
 #include <linux/nvmap.h>
-
 #include <linux/workqueue.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-direction.h>
 #include <linux/platform_device.h>
 
 #include <asm/cacheflush.h>
-#include <asm/tlbflush.h>
 #ifndef CONFIG_ARM64
 #include <asm/outercache.h>
 #endif
@@ -60,29 +60,22 @@
 
 #define GFP_NVMAP              (__GFP_NVMAP | __GFP_NOWARN | NVMAP_ZEROED_PAGES)
 
-#define NVMAP_NUM_PTES		64
-
 #ifdef CONFIG_64BIT
 #define NVMAP_LAZY_VFREE
 #endif
 
 struct page;
+struct nvmap_device;
 
-extern const struct file_operations nvmap_fd_fops;
 void _nvmap_handle_free(struct nvmap_handle *h);
 /* holds max number of handles allocted per process at any time */
 extern u32 nvmap_max_handle_count;
-extern size_t cache_maint_inner_threshold;
 
-extern struct platform_device *nvmap_pdev;
-
-#if defined(CONFIG_TEGRA_NVMAP)
 #define CACHE_MAINT_IMMEDIATE		0
 #define CACHE_MAINT_ALLOW_DEFERRED	1
 
 #ifdef CONFIG_ARM64
 #define PG_PROT_KERNEL PAGE_KERNEL
-#define FLUSH_TLB_PAGE(addr) flush_tlb_kernel_range(addr, PAGE_SIZE)
 #define FLUSH_DCACHE_AREA __flush_dcache_area
 #define outer_flush_range(s, e)
 #define outer_inv_range(s, e)
@@ -91,7 +84,6 @@ extern struct platform_device *nvmap_pdev;
 extern void __flush_dcache_page(struct page *);
 #else
 #define PG_PROT_KERNEL pgprot_kernel
-#define FLUSH_TLB_PAGE(addr) flush_tlb_kernel_page(addr)
 #define FLUSH_DCACHE_AREA __cpuc_flush_dcache_area
 extern void __flush_dcache_page(struct address_space *, struct page *);
 #endif
@@ -101,14 +93,13 @@ extern void __flush_dcache_page(struct address_space *, struct page *);
 struct nvmap_pgalloc {
 	struct page **pages;
 	bool contig;			/* contiguous system memory */
-	u32 iovm_addr;	/* is non-zero, if client need specific iova mapping */
 };
 
 struct nvmap_handle {
 	struct rb_node node;	/* entry on global handle tree */
 	atomic_t ref;		/* reference count (i.e., # of duplications) */
 	atomic_t pin;		/* pin count */
-	unsigned long flags;    /* caching flags */
+	u32 flags;		/* caching flags */
 	size_t size;		/* padded (as-allocated) size */
 	size_t orig_size;	/* original (as-requested) size */
 	size_t align;
@@ -126,10 +117,9 @@ struct nvmap_handle {
 		struct nvmap_pgalloc pgalloc;
 		struct nvmap_heap_block *carveout;
 	};
-	bool global;		/* handle may be duplicated by other clients */
 	bool heap_pgalloc;	/* handle is page allocated (sysmem / iovmm) */
 	bool alloc;		/* handle has memory allocated */
-	unsigned int userflags;	/* flags passed from userspace */
+	u32 userflags;		/* flags passed from userspace */
 	void *vaddr;		/* mapping used inside kernel */
 	struct mutex lock;
 	void *nvhost_priv;	/* nvhost private data */
@@ -148,11 +138,6 @@ struct nvmap_handle_ref {
 };
 
 #ifdef CONFIG_NVMAP_PAGE_POOLS
-#define NVMAP_UC_POOL NVMAP_HANDLE_UNCACHEABLE
-#define NVMAP_WC_POOL NVMAP_HANDLE_WRITE_COMBINE
-#define NVMAP_IWB_POOL NVMAP_HANDLE_INNER_CACHEABLE
-#define NVMAP_WB_POOL NVMAP_HANDLE_CACHEABLE
-#define NVMAP_NUM_POOLS (NVMAP_HANDLE_CACHEABLE + 1)
 
 struct nvmap_page_pool {
 	struct mutex lock;
@@ -188,9 +173,23 @@ static inline void nvmap_pp_inc_index(struct nvmap_page_pool *pp, u32 *ind)
 		*ind = 0;
 }
 
+static inline void nvmap_page_pool_lock(struct nvmap_page_pool *pool)
+{
+	mutex_lock(&pool->lock);
+}
+
+static inline void nvmap_page_pool_unlock(struct nvmap_page_pool *pool)
+{
+	mutex_unlock(&pool->lock);
+}
+
 int nvmap_page_pool_init(struct nvmap_device *dev);
 struct page *nvmap_page_pool_alloc(struct nvmap_page_pool *pool);
 bool nvmap_page_pool_fill(struct nvmap_page_pool *pool, struct page *page);
+int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
+					struct page **pages, u32 nr);
+int __nvmap_page_pool_fill_lots_locked(struct nvmap_page_pool *pool,
+				       struct page **pages, u32 nr);
 #endif
 
 struct nvmap_carveout_commit {
@@ -217,19 +216,9 @@ struct nvmap_vma_priv {
 	atomic_t	count;	/* number of processes cloning the VMA */
 };
 
-#include <linux/mm.h>
-#include <linux/miscdevice.h>
-
 struct nvmap_device {
-	struct vm_struct *vm_rgn;
-	pte_t		*ptes[NVMAP_NUM_PTES];
-	unsigned long	ptebits[NVMAP_NUM_PTES / BITS_PER_LONG];
-	unsigned int	lastpte;
-	spinlock_t	ptelock;
-
 	struct rb_root	handles;
 	spinlock_t	handle_lock;
-	wait_queue_head_t pte_wait;
 	struct miscdevice dev_user;
 	struct nvmap_carveout_node *heaps;
 	int nr_carveouts;
@@ -263,6 +252,7 @@ struct nvmap_stats {
 };
 
 extern struct nvmap_stats nvmap_stats;
+extern struct nvmap_device *nvmap_dev;
 
 void nvmap_stats_inc(enum nvmap_stats_t, size_t size);
 void nvmap_stats_dec(enum nvmap_stats_t, size_t size);
@@ -303,23 +293,6 @@ static inline pgprot_t nvmap_pgprot(struct nvmap_handle *h, pgprot_t prot)
 	return prot;
 }
 
-#else /* CONFIG_TEGRA_NVMAP */
-struct nvmap_handle *nvmap_handle_get(struct nvmap_handle *h);
-void nvmap_handle_put(struct nvmap_handle *h);
-pgprot_t nvmap_pgprot(struct nvmap_handle *h, pgprot_t prot);
-
-#endif /* !CONFIG_TEGRA_NVMAP */
-
-struct device *nvmap_client_to_device(struct nvmap_client *client);
-
-pte_t **nvmap_alloc_pte(struct nvmap_device *dev, void **vaddr);
-
-pte_t **nvmap_alloc_pte_irq(struct nvmap_device *dev, void **vaddr);
-
-void nvmap_free_pte(struct nvmap_device *dev, pte_t **pte);
-
-pte_t **nvmap_vaddr_to_pte(struct nvmap_device *dev, unsigned long vaddr);
-
 struct nvmap_heap_block *nvmap_carveout_alloc(struct nvmap_client *dev,
 					      struct nvmap_handle *handle,
 					      unsigned long type);
@@ -334,9 +307,6 @@ void nvmap_carveout_commit_add(struct nvmap_client *client,
 void nvmap_carveout_commit_subtract(struct nvmap_client *client,
 				    struct nvmap_carveout_node *node,
 				    size_t len);
-
-int nvmap_find_cache_maint_op(struct nvmap_device *dev,
-		struct nvmap_handle *h);
 
 void nvmap_handle_put(struct nvmap_handle *h);
 
@@ -386,18 +356,9 @@ void nvmap_client_put(struct nvmap_client *c);
 
 struct nvmap_handle *unmarshal_user_id(u32 id);
 
-static inline void nvmap_flush_tlb_kernel_page(unsigned long kaddr)
-{
-#ifdef CONFIG_ARM_ERRATA_798181
-	flush_tlb_kernel_page_skip_errata_798181(kaddr);
-#else
-	FLUSH_TLB_PAGE(kaddr);
-#endif
-}
-
 /* MM definitions. */
+extern size_t cache_maint_inner_threshold;
 extern size_t cache_maint_outer_threshold;
-extern int inner_cache_maint_threshold;
 
 extern void v7_flush_kern_cache_all(void);
 extern void v7_clean_kern_cache_all(void *);
