@@ -735,11 +735,11 @@ void tegra_dc_remove_sysfs(struct device *dev)
 	if (sd_settings)
 		nvsd_remove_sysfs(dev);
 
-	if (dc->fb)
-		tegra_fb_remove_sysfs(dev);
-
 	if (nvsr)
 		nvsr_remove_sysfs(dev);
+
+	if (dc->fb)
+		tegra_fb_remove_sysfs(dev);
 
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
 		device_remove_file(dev, &dev_attr_smart_panel);
@@ -782,11 +782,11 @@ void tegra_dc_create_sysfs(struct device *dev)
 	if (sd_settings)
 		error |= nvsd_create_sysfs(dev);
 
-	if (dc->fb)
-		error |= tegra_fb_create_sysfs(dev);
-
 	if (nvsr)
 		error |= nvsr_create_sysfs(dev);
+
+	if (dc->fb)
+		error |= tegra_fb_create_sysfs(dev);
 
 	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
 		error |= device_create_file(dev, &dev_attr_smart_panel);

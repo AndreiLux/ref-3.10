@@ -37,8 +37,8 @@
 #include <linux/gpio.h>
 #include <linux/regulator/tegra-dfll-bypass-regulator.h>
 #include <linux/power/bq2419x-charger.h>
-#include <linux/power/bq2477x-charger.h>
 #include <linux/tegra-fuse.h>
+#include <linux/tegra-pmc.h>
 
 #include <asm/mach-types.h>
 #include <mach/pinmux-t12.h>
@@ -58,8 +58,6 @@
 
 #define E1735_EMULATE_E1767_SKU	1001
 
-#define PMC_CTRL                0x0
-#define PMC_CTRL_INTR_LOW       (1 << 17)
 
 /************************ ARDBEG E1733 based regulators ***********/
 static struct regulator_consumer_supply as3722_ldo0_supply[] = {
@@ -306,16 +304,7 @@ static struct i2c_board_info __initdata as3722_regulators[] = {
 
 int __init ardbeg_as3722_regulator_init(void)
 {
-	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
-	u32 pmc_ctrl;
 	struct board_info board_info;
-
-	/* AS3722: Normal state of INT request line is LOW.
-	 * configure the power management controller to trigger PMU
-	 * interrupts when HIGH.
-	 */
-	pmc_ctrl = readl(pmc + PMC_CTRL);
-	writel(pmc_ctrl | PMC_CTRL_INTR_LOW, pmc + PMC_CTRL);
 
 	/* Set vdd_gpu init uV to 1V */
 	as3722_sd6_reg_idata.constraints.init_uV = 900000;
@@ -563,17 +552,8 @@ static struct i2c_board_info palma_ti913_device[] = {
 
 int __init ardbeg_tps65913_regulator_init(void)
 {
-	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
-	u32 pmc_ctrl;
 	int i;
 	struct board_info board_info;
-
-	/* TPS65913: Normal state of INT request line is LOW.
-	 * configure the power management controller to trigger PMU
-	 * interrupts when HIGH.
-	 */
-	pmc_ctrl = readl(pmc + PMC_CTRL);
-	writel(pmc_ctrl | PMC_CTRL_INTR_LOW, pmc + PMC_CTRL);
 
 	/* Tracking configuration */
 	reg_init_data_ti913_ldo8.config_flags =
@@ -610,22 +590,6 @@ static const struct i2c_board_info tca6408_expander[] = {
 	{
 		I2C_BOARD_INFO("tca6408", 0x20),
 		.platform_data = &tca6408_pdata,
-	},
-};
-
-struct bq2477x_platform_data ardbeg_bq2477x_pdata = {
-	.dac_ichg		= 2240,
-	.dac_v			= 9008,
-	.dac_minsv		= 4608,
-	.dac_iin		= 4992,
-	.wdt_refresh_timeout	= 40,
-	.gpio			= TEGRA_GPIO_PK5,
-};
-
-static struct i2c_board_info __initdata bq2477x_boardinfo[] = {
-	{
-		I2C_BOARD_INFO("bq2477x", 0x6A),
-		.platform_data	= &ardbeg_bq2477x_pdata,
 	},
 };
 
@@ -775,6 +739,10 @@ static struct regulator_consumer_supply fixed_reg_en_avdd_3v3_dp_supply[] = {
 	REGULATOR_SUPPLY("avdd_3v3_dp", NULL),
 };
 
+static struct regulator_consumer_supply fixed_reg_en_en_bat_supply[] = {
+	REGULATOR_SUPPLY("en_bat", NULL),
+};
+
 #define fixed_reg_en_ti913_gpio2_supply fixed_reg_en_as3722_gpio1_supply
 #define fixed_reg_en_ti913_gpio3_supply fixed_reg_en_as3722_gpio4_supply
 #define fixed_reg_en_ti913_gpio4_supply fixed_reg_en_tca6408_p0_supply
@@ -870,6 +838,9 @@ FIXED_REG(21,	avdd_3v3_dp,	avdd_3v3_dp,
 	NULL,	0,	0,	TEGRA_GPIO_PH3,
 	false,	true,	0,	3300,	0);
 
+FIXED_REG(22,	en_bat,	en_bat,
+	NULL,	1,	1,	TEGRA_GPIO_PK5,
+	false,	true,	1,	1800,	0);
 /*
  * Creating fixed regulator device tables
  */
@@ -883,7 +854,8 @@ FIXED_REG(21,	avdd_3v3_dp,	avdd_3v3_dp,
 	ADD_FIXED_REG(lcd_bl_en),		\
 	ADD_FIXED_REG(dcdc_1v8),		\
 	ADD_FIXED_REG(vdd_sys_5v0),		\
-	ADD_FIXED_REG(vdd_sd),
+	ADD_FIXED_REG(vdd_sd),			\
+	ADD_FIXED_REG(en_bat),
 
 #define ARDBEG_E1733_FIXED_REG			\
 	ADD_FIXED_REG(as3722_gpio2),		\
@@ -1126,39 +1098,58 @@ int __init ardbeg_rail_alignment_init(void)
 int __init ardbeg_regulator_init(void)
 {
 	struct board_info pmu_board_info;
+	struct device_node *np;
 
 	tegra_get_pmu_board_info(&pmu_board_info);
 
-	if ((pmu_board_info.board_id == BOARD_E1733) ||
-		(pmu_board_info.board_id == BOARD_E1734)) {
+	switch (pmu_board_info.board_id) {
+	case BOARD_E1733:
+	case BOARD_E1734:
+		tegra_pmc_pmu_interrupt_polarity(true);
+		np = of_find_compatible_node(NULL, NULL, "ams,as3722");
+		if (np) {
+			pr_info("AS3722 registration from DT power tree\n");
+			break;
+		}
+
+		pr_info("AS3722 registration from board power tree\n");
 		i2c_register_board_info(0, tca6408_expander,
 				ARRAY_SIZE(tca6408_expander));
 		ardbeg_ams_regulator_init();
 		regulator_has_full_constraints();
-	} else if (pmu_board_info.board_id == BOARD_E1735) {
+		break;
+
+	case BOARD_E1735:
+		tegra_pmc_pmu_interrupt_polarity(true);
+		np = of_find_compatible_node(NULL, NULL, "ti,palmas");
+		if (np) {
+			pr_info("Palmas registration from DT power tree\n");
+			break;
+		}
+
+		pr_info("Palmas registration from board power tree\n");
 		regulator_has_full_constraints();
 		ardbeg_tps65913_regulator_init();
 #ifdef CONFIG_REGULATOR_TEGRA_DFLL_BYPASS
 		tegra_init_cpu_reg_mode_limits(
 			E1735_CPU_VDD_IDLE_MA, REGULATOR_MODE_IDLE);
 #endif
-	} else if (pmu_board_info.board_id == BOARD_E1736 ||
-		pmu_board_info.board_id == BOARD_E1936 ||
-		pmu_board_info.board_id == BOARD_E1769 ||
-		pmu_board_info.board_id == BOARD_P1761) {
+		break;
+
+	case BOARD_E1736:
+	case BOARD_E1936:
+	case BOARD_E1769:
+	case BOARD_P1761:
 		tn8_regulator_init();
 		return 0;
-	} else {
+	default:
 		pr_warn("PMU board id 0x%04x is not supported\n",
 			pmu_board_info.board_id);
+		break;
 	}
 
-	if (get_power_supply_type() == POWER_SUPPLY_TYPE_BATTERY) {
-		i2c_register_board_info(1, bq2477x_boardinfo,
-			ARRAY_SIZE(bq2477x_boardinfo));
-	}
-
-	platform_device_register(&power_supply_extcon_device);
+	if (pmu_board_info.board_id != BOARD_E1735)
+		platform_device_register(&power_supply_extcon_device);
 
 	ardbeg_cl_dvfs_init(&pmu_board_info);
 	return 0;
@@ -1168,6 +1159,7 @@ static int __init ardbeg_fixed_regulator_init(void)
 {
 	struct board_info pmu_board_info;
 	struct board_info display_board_info;
+	struct device_node *np;
 
 	if ((!of_machine_is_compatible("nvidia,ardbeg")) &&
 	    (!of_machine_is_compatible("nvidia,ardbeg_sata")))
@@ -1179,22 +1171,28 @@ static int __init ardbeg_fixed_regulator_init(void)
 		platform_add_devices(fixed_reg_devs_e1824,
 			ARRAY_SIZE(fixed_reg_devs_e1824));
 
-	tegra_get_pmu_board_info(&pmu_board_info);
+	np = of_find_compatible_node(NULL, "fixed-regulators", "simple-bus");
+	if (np) {
+		pr_info("Fixed Regulator is from the DT\n");
+		return 0;
+	}
 
-	if (pmu_board_info.board_id == BOARD_E1733)
+	pr_info("Fixed Regulator is from board files.\n");
+	tegra_get_pmu_board_info(&pmu_board_info);
+	switch (pmu_board_info.board_id) {
+	case BOARD_E1733:
 		return platform_add_devices(fixed_reg_devs_e1733,
 			ARRAY_SIZE(fixed_reg_devs_e1733));
-	else if (pmu_board_info.board_id == BOARD_E1735)
+	case BOARD_E1735:
 		return platform_add_devices(fixed_reg_devs_e1735,
 			ARRAY_SIZE(fixed_reg_devs_e1735));
-	else if (pmu_board_info.board_id == BOARD_E1736 ||
-		 pmu_board_info.board_id == BOARD_P1761 ||
-		 pmu_board_info.board_id == BOARD_E1936)
-		return 0;
-	else
-		pr_warn("The PMU board id 0x%04x is not supported\n",
-			pmu_board_info.board_id);
 
+	case BOARD_E1736:
+	case BOARD_P1761:
+	case BOARD_E1936:
+		return 0;
+	}
+	pr_warn("The PMU board id %04d is not supported\n", pmu_board_info.board_id);
 	return 0;
 }
 
@@ -1559,6 +1557,8 @@ int __init ardbeg_soctherm_init(void)
 
 	if (board_info.board_id == BOARD_P1761 ||
 		board_info.board_id == BOARD_E1784 ||
+		board_info.board_id == BOARD_E1971 ||
+		board_info.board_id == BOARD_E1991 ||
 		board_info.board_id == BOARD_E1922) {
 		tegra_add_cpu_vmin_trips(
 			ardbeg_soctherm_data.therm[THERM_CPU].trips,

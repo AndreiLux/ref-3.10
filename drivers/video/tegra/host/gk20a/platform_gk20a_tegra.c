@@ -15,15 +15,7 @@
  * more details.
  */
 
-#include "platform_gk20a.h"
-#include "gr3d/scale3d.h"
-#include "gk20a_scale.h"
-#include "nvhost_acm.h"
-#include "bus_client.h"
-#include "class_ids.h"
 #include <linux/debugfs.h>
-#include "t124/syncpt_t124.h"
-#include "../../../../../arch/arm/mach-tegra/iomap.h"
 #include <linux/tegra-powergate.h>
 #include <linux/platform_data/tegra_edp.h>
 #include <linux/nvhost_ioctl.h>
@@ -32,8 +24,12 @@
 #include <mach/irqs.h>
 #include <mach/pm_domains.h>
 
+#include "../../../../../arch/arm/mach-tegra/iomap.h"
+
 #include "gk20a.h"
 #include "hal_gk20a.h"
+#include "platform_gk20a.h"
+#include "gk20a_scale.h"
 
 #define TEGRA_GK20A_INTR		INT_GPU
 #define TEGRA_GK20A_INTR_NONSTALL	INT_GPU_NONSTALL
@@ -111,8 +107,9 @@ static int gk20a_tegra_channel_busy(struct platform_device *dev)
 	 * OS-Idle-Display-ON case
 	 * - The code below fixes this use-case
 	 */
-	if (nvhost_get_parent(dev))
-		ret = nvhost_module_busy(nvhost_get_parent(dev));
+	if (to_platform_device(dev->dev.parent))
+		ret = nvhost_module_busy_ext(
+			to_platform_device(dev->dev.parent));
 
 	return ret;
 }
@@ -120,8 +117,8 @@ static int gk20a_tegra_channel_busy(struct platform_device *dev)
 static void gk20a_tegra_channel_idle(struct platform_device *dev)
 {
 	/* Explicitly turn off the host1x clocks */
-	if (nvhost_get_parent(dev))
-		nvhost_module_idle(nvhost_get_parent(dev));
+	if (to_platform_device(dev->dev.parent))
+		nvhost_module_idle_ext(to_platform_device(dev->dev.parent));
 }
 
 #ifdef CONFIG_TEGRA_NVMAP
@@ -481,7 +478,6 @@ static struct resource gk20a_tegra_resources[] = {
 
 struct gk20a_platform t132_gk20a_tegra_platform = {
 	.has_syncpoints = true,
-	.syncpt_base = NVSYNCPT_GK20A_BASE,
 
 	/* power management configuration */
 	.railgate_delay		= 500,
@@ -510,7 +506,6 @@ struct gk20a_platform t132_gk20a_tegra_platform = {
 
 struct gk20a_platform gk20a_tegra_platform = {
 	.has_syncpoints = true,
-	.syncpt_base = NVSYNCPT_GK20A_BASE,
 
 	/* power management configuration */
 	.railgate_delay		= 500,

@@ -48,6 +48,11 @@ static void of_get_regulator_consumer_list(struct device *dev,
 
 	ncount = 0;
 	for_each_child_of_node(np_consumer, child) {
+		/* Ignore the consumer if it is disabled. */
+		ret = of_device_is_available(child);
+		if (!ret)
+			continue;
+
 		ret = of_property_read_string(child,
 				"regulator-consumer-supply",
 				&consumer[ncount].supply);
@@ -126,6 +131,10 @@ static void of_get_regulation_constraints(struct device_node *np,
 	ret = of_property_read_u32(np, "regulator-enable-ramp-delay", &pval);
 	if (!ret)
 		constraints->enable_time = pval;
+
+	ret = of_property_read_u32(np, "regulator-init-mode", &pval);
+	if (!ret)
+		constraints->initial_mode = pval;
 }
 
 /**

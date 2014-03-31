@@ -38,6 +38,10 @@ struct nvhost_device_power_attr;
 struct nvhost_device_profile;
 struct mem_mgr;
 struct nvhost_as_moduleops;
+struct nvhost_ctrl_sync_fence_info;
+struct nvhost_sync_timeline;
+struct nvhost_sync_pt;
+struct sync_pt;
 
 #define NVHOST_MODULE_MAX_CLOCKS		7
 #define NVHOST_MODULE_MAX_POWERGATE_IDS 	2
@@ -52,54 +56,13 @@ struct nvhost_as_moduleops;
 #define NVSYNCPT_INVALID			(-1)
 
 #define NVSYNCPT_GRAPHICS_HOST		(0)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP0_D		(5)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP0_H		(6)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP1_H		(7)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP0_A		(8)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP1_A		(9)	/* t20, t30, t114, t148 */
+
 #define NVSYNCPT_AVP_0			(10)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_CSI_VI_0		(11)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_CSI_VI_1		(12)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_VI_ISP_0		(13)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_VI_ISP_1		(14)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_VI_ISP_2		(15)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_VI_ISP_3		(16)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_VI_ISP_4		(17)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_2D_0			(18)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_VIC			(18)	/* t124 */
-#define NVSYNCPT_2D_1			(19)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_MSENC_SLICE		(19)	/* t124 */
-#define NVSYNCPT_DISP0_B		(20)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP1_B		(21)	/* t20, t30, t114, t148 */
+#define NVSYNCPT_2D_0			(18)
+#define NVSYNCPT_2D_1			(19)
 #define NVSYNCPT_3D			(22)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_MPE			(23)	/* t20, t30 */
-#define NVSYNCPT_MSENC			(23)	/* t114, t148 */
-#define NVSYNCPT_DISP0_C		(24)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_DISP1_C		(25)	/* t20, t30, t114, t148 */
 #define NVSYNCPT_VBLANK0		(26)	/* t20, t30, t114, t148 */
 #define NVSYNCPT_VBLANK1		(27)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_MPE_EBM_EOF		(28)	/* t20, t30 */
-#define NVSYNCPT_TSEC			(28)	/* t114, t148 */
-#define NVSYNCPT_MPE_WR_SAFE		(29)	/* t20, t30 */
-#define NVSYNCPT_DSI			(31)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_ISP_0_0		(32)	/* t124 */
-#define NVSYNCPT_ISP_0_1		(33)	/* t124 */
-#define NVSYNCPT_ISP_0_2		(34)	/* t124 */
-#define NVSYNCPT_ISP_0_3		(35)	/* t124 */
-#define NVSYNCPT_ISP_1_0		(36)	/* t124 */
-#define NVSYNCPT_ISP_1_1		(37)	/* t124 */
-#define NVSYNCPT_ISP_1_2		(38)	/* t124 */
-#define NVSYNCPT_ISP_1_3		(39)	/* t124 */
-#define NVSYNCPT_VI_0_0			(40)	/* t124 */
-#define NVSYNCPT_VI_0_1			(41)	/* t124 */
-#define NVSYNCPT_VI_0_2			(42)	/* t124 */
-#define NVSYNCPT_VI_0_3			(43)	/* t124 */
-#define NVSYNCPT_VI_0_4			(44)	/* t124 */
-#define NVSYNCPT_VI_1_0			(45)	/* t124 */
-#define NVSYNCPT_VI_1_1			(46)	/* t124 */
-#define NVSYNCPT_VI_1_2			(47)	/* t124 */
-#define NVSYNCPT_VI_1_3			(48)	/* t124 */
-#define NVSYNCPT_VI_1_4			(49)	/* t124 */
 
 #define NVWAITBASE_2D_0			(1)	/* t20, t30, t114 */
 #define NVWAITBASE_2D_1			(2)	/* t20, t30, t114 */
@@ -122,21 +85,6 @@ struct nvhost_as_moduleops;
 #define NVMODMUTEX_DSI			(9)	/* t20, t30, t114, t148 */
 #define NVMODMUTEX_VIC			(10)	/* t124 */
 #define NVMODMUTEX_VI_1			(11)	/* t124 */
-
-/* sync points that are wholly managed by the client */
-#define NVSYNCPTS_CLIENT_MANAGED ( \
-	BIT(NVSYNCPT_DISP0_A) | BIT(NVSYNCPT_DISP1_A) | \
-	BIT(NVSYNCPT_DISP0_B) | BIT(NVSYNCPT_DISP1_B) | \
-	BIT(NVSYNCPT_DISP0_C) | BIT(NVSYNCPT_DISP1_C) | \
-	BIT(NVSYNCPT_DISP0_D) | \
-	BIT(NVSYNCPT_DISP0_H) | BIT(NVSYNCPT_DISP1_H) | \
-	BIT(NVSYNCPT_DSI) | \
-	BIT(NVSYNCPT_VBLANK0) | BIT(NVSYNCPT_VBLANK1) | \
-	BIT(NVSYNCPT_CSI_VI_0) | BIT(NVSYNCPT_CSI_VI_1) | \
-	BIT(NVSYNCPT_VI_ISP_1) | BIT(NVSYNCPT_VI_ISP_2) | \
-	BIT(NVSYNCPT_VI_ISP_3) | BIT(NVSYNCPT_VI_ISP_4) | \
-	BIT(NVSYNCPT_MPE_EBM_EOF) | BIT(NVSYNCPT_MPE_WR_SAFE) | \
-	BIT(NVSYNCPT_2D_1) | BIT(NVSYNCPT_AVP_0))
 
 enum nvhost_power_sysfs_attributes {
 	NVHOST_POWER_SYSFS_ATTRIB_CLOCKGATE_DELAY = 0,
@@ -174,7 +122,6 @@ struct nvhost_device_data {
 	struct device_dma_parameters dma_parms;
 
 	u32		syncpts[NVHOST_MODULE_MAX_SYNCPTS];
-	u32		syncpt_base;	/* Device sync point base */
 	u32		waitbases[NVHOST_MODULE_MAX_WAITBASES];
 	u32		modulemutexes[NVHOST_MODULE_MAX_MODMUTEXES];
 	u32		moduleid;	/* Module id for user space API */
@@ -326,27 +273,103 @@ int nvhost_module_busy_ext(struct platform_device *dev);
 void nvhost_module_idle_ext(struct platform_device *dev);
 
 /* public host1x sync-point management APIs */
+u32 nvhost_get_syncpt_client_managed(const char *syncpt_name);
+u32 nvhost_get_syncpt_host_managed(struct platform_device *pdev,
+				   u32 param);
+void nvhost_free_syncpt(u32 id);
+const char *nvhost_syncpt_get_name(struct platform_device *dev, int id);
 u32 nvhost_syncpt_incr_max_ext(struct platform_device *dev, u32 id, u32 incrs);
 void nvhost_syncpt_cpu_incr_ext(struct platform_device *dev, u32 id);
-u32 nvhost_syncpt_read_ext(struct platform_device *dev, u32 id);
+int nvhost_syncpt_read_ext_check(struct platform_device *dev, u32 id, u32 *val);
 int nvhost_syncpt_wait_timeout_ext(struct platform_device *dev, u32 id, u32 thresh,
 	u32 timeout, u32 *value, struct timespec *ts);
 int nvhost_syncpt_create_fence_single_ext(struct platform_device *dev,
 	u32 id, u32 thresh, const char *name, int *fence_fd);
+int nvhost_syncpt_is_expired_ext(struct platform_device *dev,
+	u32 id, u32 thresh);
+void nvhost_syncpt_set_min_eq_max_ext(struct platform_device *dev, u32 id);
+int nvhost_syncpt_nb_pts_ext(struct platform_device *dev);
 
-#ifdef CONFIG_TEGRA_GK20A
-int nvhost_vpr_info_fetch(void);
-#else
-static inline int nvhost_vpr_info_fetch(void)
-{
-	return 0;
-}
-#endif
+/* public host1x interrupt management APIs */
+int nvhost_intr_register_notifier(struct platform_device *pdev,
+				  u32 id, u32 thresh,
+				  void (*callback)(void *, int),
+				  void *private_data);
+
 
 #ifdef CONFIG_TEGRA_GRHOST
 void nvhost_debug_dump_device(struct platform_device *pdev);
+const struct firmware *
+nvhost_client_request_firmware(struct platform_device *dev,
+	const char *fw_name);
 #else
 static inline void nvhost_debug_dump_device(struct platform_device *pdev) {}
+
+static inline const struct firmware *
+nvhost_client_request_firmware(struct platform_device *dev,
+	const char *fw_name)
+{
+	return NULL;
+}
+#endif
+
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+struct sync_fence *nvhost_sync_create_fence(
+		struct platform_device *pdev,
+		struct nvhost_ctrl_sync_fence_info *pts,
+		u32 num_pts,
+		const char *name);
+int nvhost_sync_create_fence_fd(
+		struct platform_device *pdev,
+		struct nvhost_ctrl_sync_fence_info *pts,
+		u32 num_pts,
+		const char *name,
+		s32 *fence_fd);
+struct sync_fence *nvhost_sync_fdget(int fd);
+int nvhost_sync_num_pts(struct sync_fence *fence);
+u32 nvhost_sync_pt_id(struct sync_pt *pt);
+u32 nvhost_sync_pt_thresh(struct sync_pt *pt);
+
+#else
+static inline struct sync_fence *nvhost_sync_create_fence(
+		struct platform_device *pdev,
+		struct nvhost_ctrl_sync_fence_info *pts,
+		u32 num_pts,
+		const char *name)
+{
+	return ERR_PTR(-EINVAL);
+}
+
+static inline int nvhost_sync_create_fence_fd(
+		struct platform_device *pdev,
+		struct nvhost_ctrl_sync_fence_info *pts,
+		u32 num_pts,
+		const char *name,
+		s32 *fence_fd)
+{
+	return -EINVAL;
+}
+
+static inline struct sync_fence *nvhost_sync_fdget(int fd)
+{
+	return NULL;
+}
+
+static inline int nvhost_sync_num_pts(struct sync_fence *fence)
+{
+	return 0;
+}
+
+static inline u32 nvhost_sync_pt_id(struct sync_pt *pt)
+{
+	return NVSYNCPT_INVALID;
+}
+
+static inline u32 nvhost_sync_pt_thresh(struct sync_pt *pt)
+{
+	return 0;
+}
+
 #endif
 
 /* Hacky way to get access to struct nvhost_device_data for VI device. */

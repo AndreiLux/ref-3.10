@@ -23,6 +23,7 @@
 #define pr_fmt(fmt)	"%s: " fmt, __func__
 
 #include <linux/err.h>
+#include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mm.h>
@@ -106,14 +107,10 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 	pool = &nvmap_dev->pool;
 
-	while (page_index < nr_page) {
-		if (!nvmap_page_pool_fill(pool,
-			h->pgalloc.pages[page_index]))
-			break;
-
-		page_index++;
-	}
-
+	nvmap_page_pool_lock(pool);
+	page_index = __nvmap_page_pool_fill_lots_locked(pool, h->pgalloc.pages,
+							nr_page);
+	nvmap_page_pool_unlock(pool);
 #endif
 
 	for (i = page_index; i < nr_page; i++)
@@ -148,26 +145,26 @@ static struct page *nvmap_alloc_pages_exact(gfp_t gfp, size_t size)
 static int handle_page_alloc(struct nvmap_client *client,
 			     struct nvmap_handle *h, bool contiguous)
 {
-	int err = 0;
 	size_t size = PAGE_ALIGN(h->size);
 	unsigned int nr_page = size >> PAGE_SHIFT;
 	pgprot_t prot;
-	unsigned int i = 0, page_index = 0;
+	unsigned int i = 0, page_index;
 	struct page **pages;
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 	struct nvmap_page_pool *pool = NULL;
 	phys_addr_t paddr;
 #endif
 	gfp_t gfp = GFP_NVMAP;
-	unsigned long kaddr;
-	pte_t **pte = NULL;
+	unsigned long kaddr = 0;
+	struct vm_struct *area = NULL;
 
 	if (h->userflags & NVMAP_HANDLE_ZEROED_PAGES || zero_memory) {
 		gfp |= __GFP_ZERO;
 		prot = nvmap_pgprot(h, PG_PROT_KERNEL);
-		pte = nvmap_alloc_pte(nvmap_dev, (void **)&kaddr);
-		if (IS_ERR(pte))
+		area = alloc_vm_area(PAGE_SIZE, NULL);
+		if (!area)
 			return -ENOMEM;
+		kaddr = (ulong)area->addr;
 	}
 
 	pages = altalloc(nr_page * sizeof(*pages));
@@ -189,13 +186,16 @@ static int handle_page_alloc(struct nvmap_client *client,
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 		pool = &nvmap_dev->pool;
 
-		for (i = 0; i < nr_page; i++) {
-			/* Get pages from pool, if available. */
-			pages[i] = nvmap_page_pool_alloc(pool);
-			if (!pages[i])
-				break;
-			if (h->userflags & NVMAP_HANDLE_ZEROED_PAGES ||
-			    zero_memory) {
+		/*
+		 * Get as many pages from the pools as possible.
+		 */
+		nvmap_page_pool_lock(pool);
+		page_index = __nvmap_page_pool_alloc_lots_locked(pool, pages,
+								 nr_page);
+		nvmap_page_pool_unlock(pool);
+
+		if (h->userflags & NVMAP_HANDLE_ZEROED_PAGES || zero_memory) {
+			for (i = 0; i < page_index; i++) {
 				/*
 				 * Just memset low mem pages; they will for
 				 * sure have a virtual address. Otherwise, build
@@ -206,15 +206,15 @@ static int handle_page_alloc(struct nvmap_client *client,
 					       PAGE_SIZE);
 				} else {
 					paddr = page_to_phys(pages[i]);
-					set_pte_at(&init_mm, kaddr, *pte,
-						   pfn_pte(__phys_to_pfn(paddr),
-							   prot));
-					nvmap_flush_tlb_kernel_page(kaddr);
+					ioremap_page_range(kaddr,
+						kaddr + PAGE_SIZE,
+						paddr, prot);
 					memset((char *)kaddr, 0, PAGE_SIZE);
+					unmap_kernel_range(kaddr, PAGE_SIZE);
 				}
 			}
-			page_index++;
 		}
+		i = page_index;
 #endif
 		for (; i < nr_page; i++) {
 			pages[i] = nvmap_alloc_pages_exact(gfp,	PAGE_SIZE);
@@ -231,11 +231,8 @@ static int handle_page_alloc(struct nvmap_client *client,
 	 */
 	nvmap_flush_cache(pages, nr_page);
 
-	if (err)
-		goto fail;
-
 	if (h->userflags & NVMAP_HANDLE_ZEROED_PAGES || zero_memory)
-		nvmap_free_pte(nvmap_dev, pte);
+		free_vm_area(area);
 	h->size = size;
 	h->pgalloc.pages = pages;
 	h->pgalloc.contig = contiguous;
@@ -243,7 +240,7 @@ static int handle_page_alloc(struct nvmap_client *client,
 
 fail:
 	if (h->userflags & NVMAP_HANDLE_ZEROED_PAGES || zero_memory)
-		nvmap_free_pte(nvmap_dev, pte);
+		free_vm_area(area);
 	while (i--)
 		__free_page(pages[i]);
 	altfree(pages, nr_page * sizeof(*pages));
@@ -537,7 +534,7 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	 * Pre-attach nvmap to this new dmabuf. This gets unattached during the
 	 * dma_buf_release() operation.
 	 */
-	h->attachment = dma_buf_attach(h->dmabuf, &nvmap_pdev->dev);
+	h->attachment = dma_buf_attach(h->dmabuf, nvmap_dev->dev_user.parent);
 	if (IS_ERR(h->attachment)) {
 		err = h->attachment;
 		goto dma_buf_attach_fail;

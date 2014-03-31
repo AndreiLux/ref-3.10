@@ -110,6 +110,8 @@ struct tegra_dc_ext_flip_data {
 	struct tegra_dc_ext_flip_win	win[DC_N_WINDOWS];
 	struct list_head		timestamp_node;
 	int act_window_num;
+	u16 dirty_rect[4];
+	bool dirty_rect_valid;
 };
 
 static inline s64 tegra_timespec_to_ns(const struct tegra_timespec *ts)
@@ -505,7 +507,8 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 	}
 
 	if (ext->dc->enabled && !skip_flip) {
-		tegra_dc_update_windows(wins, nr_win);
+		tegra_dc_update_windows(wins, nr_win,
+			data->dirty_rect_valid ? data->dirty_rect : NULL);
 		/* TODO: implement swapinterval here */
 		tegra_dc_sync_windows(wins, nr_win);
 		tegra_dc_program_bandwidth(ext->dc, true);
@@ -528,8 +531,14 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 	}
 
 	/* unpin and deref previous front buffers */
-	for (i = 0; i < nr_unpin; i++)
-		tegra_dc_ext_unpin_window(unpin_handles[i]);
+	for (i = 0; i < nr_unpin; i++) {
+		dma_buf_unmap_attachment(unpin_handles[i]->attach,
+			unpin_handles[i]->sgt, DMA_TO_DEVICE);
+		dma_buf_detach(unpin_handles[i]->buf,
+			       unpin_handles[i]->attach);
+		dma_buf_put(unpin_handles[i]->buf);
+		kfree(unpin_handles[i]);
+	}
 
 	kfree(data);
 }
@@ -607,7 +616,7 @@ static void unlock_windows_for_flip(struct tegra_dc_ext_user *user,
 
 static int sanitize_flip_args(struct tegra_dc_ext_user *user,
 				struct tegra_dc_ext_flip_windowattr *win,
-				int win_num)
+				int win_num, __u16 **dirty_rect)
 {
 	int i, used_windows = 0;
 	struct tegra_dc *dc = user->ext->dc;
@@ -633,6 +642,46 @@ static int sanitize_flip_args(struct tegra_dc_ext_user *user,
 
 	if (!used_windows)
 		return -EINVAL;
+
+	if (*dirty_rect) {
+		unsigned int xoff = (*dirty_rect)[0];
+		unsigned int yoff = (*dirty_rect)[1];
+		unsigned int width = (*dirty_rect)[2];
+		unsigned int height = (*dirty_rect)[3];
+
+		if ((!width && !height) ||
+			dc->mode.vmode == FB_VMODE_INTERLACED ||
+			!dc->out_ops ||
+			!dc->out_ops->partial_update ||
+			(!xoff && !yoff &&
+			(width == dc->mode.h_active) &&
+			(height == dc->mode.v_active))) {
+			/* Partial update undesired, unsupported,
+			 * or dirty_rect covers entire frame. */
+			*dirty_rect = 0;
+		} else {
+			if (!width || !height ||
+				(xoff + width) > dc->mode.h_active ||
+				(yoff + height) > dc->mode.v_active)
+				return -EINVAL;
+
+			/* Constraint 7: H/V_DISP_ACTIVE >= 16.
+			 * Make sure the minimal size of dirty region is 16*16.
+			 * If not, extend the dirty region. */
+			if (width < 16) {
+				width = (*dirty_rect)[2] = 16;
+				if (xoff + width > dc->mode.h_active)
+					(*dirty_rect)[0] = dc->mode.h_active -
+						width;
+			}
+			if (height < 16) {
+				height = (*dirty_rect)[3] = 16;
+				if (yoff + height > dc->mode.v_active)
+					(*dirty_rect)[1] = dc->mode.v_active -
+						height;
+			}
+		}
+	}
 
 	return 0;
 }
@@ -706,12 +755,11 @@ static int tegra_dc_ext_pin_windows(struct tegra_dc_ext_user *user,
 	return 0;
 }
 
-
 static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 			     struct tegra_dc_ext_flip_windowattr *win,
 			     int win_num,
 			     __u32 *syncpt_id, __u32 *syncpt_val,
-			     int *syncpt_fd)
+			     int *syncpt_fd, __u16 *dirty_rect)
 {
 	struct tegra_dc_ext *ext = user->ext;
 	struct tegra_dc_ext_flip_data *data;
@@ -724,7 +772,7 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 	if (!ext->dc->connected)
 		return -1;
 
-	ret = sanitize_flip_args(user, win, win_num);
+	ret = sanitize_flip_args(user, win, win_num, &dirty_rect);
 	if (ret)
 		return ret;
 
@@ -735,6 +783,10 @@ static int tegra_dc_ext_flip(struct tegra_dc_ext_user *user,
 	INIT_WORK(&data->work, tegra_dc_ext_flip_worker);
 	data->ext = ext;
 	data->act_window_num = win_num;
+	if (dirty_rect) {
+		memcpy(data->dirty_rect, dirty_rect, sizeof(data->dirty_rect));
+		data->dirty_rect_valid = true;
+	}
 
 	BUG_ON(win_num > DC_N_WINDOWS);
 
@@ -825,7 +877,12 @@ fail_pin:
 			if (!data->win[i].handle[j])
 				continue;
 
-			tegra_dc_ext_unpin_window(data->win[i].handle[j]);
+			dma_buf_unmap_attachment(data->win[i].handle[j]->attach,
+				data->win[i].handle[j]->sgt, DMA_TO_DEVICE);
+			dma_buf_detach(data->win[i].handle[j]->buf,
+				data->win[i].handle[j]->attach);
+			dma_buf_put(data->win[i].handle[j]->buf);
+			kfree(data->win[i].handle[j]);
 		}
 	}
 	kfree(data);
@@ -1015,8 +1072,6 @@ static int tegra_dc_ext_negotiate_bw(struct tegra_dc_ext_user *user,
 	int ret;
 	struct tegra_dc_win *dc_wins[DC_N_WINDOWS];
 	struct tegra_dc *dc = user->ext->dc;
-	struct tegra_dc_dmabuf *handle;
-	dma_addr_t phys_addr;
 
 	/* If display has been disconnected return with error. */
 	if (!dc->connected)
@@ -1025,13 +1080,7 @@ static int tegra_dc_ext_negotiate_bw(struct tegra_dc_ext_user *user,
 	for (i = 0; i < win_num; i++) {
 		int idx = wins[i].index;
 
-		ret = tegra_dc_ext_pin_window(user, wins[i].buff_id,
-					      &handle, &phys_addr);
-		if (ret)
-			return ret;
-
-		if (handle) {
-			tegra_dc_ext_unpin_window(handle);
+		if (wins[i].buff_id > 0) {
 			tegra_dc_ext_set_windowattr_basic(&dc->tmp_wins[idx],
 							  &wins[i]);
 		}
@@ -1107,7 +1156,8 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 
 		ret = tegra_dc_ext_flip(user, args.win,
 			TEGRA_DC_EXT_FLIP_N_WINDOWS,
-			&args.post_syncpt_id, &args.post_syncpt_val, NULL);
+			&args.post_syncpt_id, &args.post_syncpt_val, NULL,
+			NULL);
 
 		if (copy_to_user(user_arg, &args, sizeof(args)))
 			return -EFAULT;
@@ -1136,7 +1186,8 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
-			&args.post_syncpt_id, &args.post_syncpt_val, NULL);
+			&args.post_syncpt_id, &args.post_syncpt_val, NULL,
+			args.dirty_rect);
 
 		if (copy_to_user(compat_ptr(args.win), win,
 			sizeof(*win) * win_num) ||
@@ -1169,7 +1220,8 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
-			&args.post_syncpt_id, &args.post_syncpt_val, NULL);
+			&args.post_syncpt_id, &args.post_syncpt_val, NULL,
+			args.dirty_rect);
 
 		if (copy_to_user(args.win, win, sizeof(*win) * win_num) ||
 			copy_to_user(user_arg, &args, sizeof(args))) {
@@ -1201,7 +1253,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		}
 
 		ret = tegra_dc_ext_flip(user, win, win_num,
-			NULL, NULL, &args.post_syncpt_fd);
+			NULL, NULL, &args.post_syncpt_fd, args.dirty_rect);
 
 		if (copy_to_user((void *)(uintptr_t)args.win, win,
 				 sizeof(*win) * win_num) ||

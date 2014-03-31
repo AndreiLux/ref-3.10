@@ -56,12 +56,6 @@
 
 #if defined(__KERNEL__)
 
-struct nvmap_handle;
-struct nvmap_handle_ref;
-
-struct nvmap_client;
-struct nvmap_device;
-
 struct dma_buf *nvmap_alloc_dmabuf(size_t size, size_t align,
 				   unsigned int flags,
 				   unsigned int heap_mask);
@@ -90,16 +84,14 @@ struct nvmap_platform_carveout {
 	size_t size;
 	size_t buddy_size;
 	struct device *cma_dev;
-	size_t cma_chunk_size;
 	bool resize;
+	struct device *dma_dev;
 };
 
 struct nvmap_platform_data {
 	const struct nvmap_platform_carveout *carveouts;
 	unsigned int nr_carveouts;
 };
-
-extern struct nvmap_device *nvmap_dev;
 
 #endif /* __KERNEL__ */
 
@@ -236,11 +228,7 @@ struct nvmap_cache_op_32 {
 #endif
 
 struct nvmap_cache_op_list {
-#ifdef CONFIG_COMPAT
 	__u32 handles;		/* Uspace ptr to list of handles */
-#else
-	struct nvmap_handle **handles;
-#endif
 	__u32 nr;		/* Number of handles */
 };
 

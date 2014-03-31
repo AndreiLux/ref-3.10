@@ -22,8 +22,8 @@
 
 #include "gr_ctx_gk20a.h"
 
-#define GR_IDLE_CHECK_DEFAULT		10 /* usec */
-#define GR_IDLE_CHECK_MAX		200 /* usec */
+#define GR_IDLE_CHECK_DEFAULT		100 /* usec */
+#define GR_IDLE_CHECK_MAX		5000 /* usec */
 
 #define INVALID_SCREEN_TILE_ROW_OFFSET	0xFFFFFFFF
 #define INVALID_MAX_WAYS		0xFFFFFFFF
@@ -358,15 +358,11 @@ bool gk20a_gr_sm_debugger_attached(struct gk20a *g);
 #define gr_gk20a_elpg_protected_call(g, func) \
 	({ \
 		int err; \
-		if (support_gk20a_pmu()) { \
-			mutex_lock(&g->pmu.pg_init_mutex); \
+		if (support_gk20a_pmu()) \
 			gk20a_pmu_disable_elpg(g); \
-		} \
 		err = func; \
-		if (support_gk20a_pmu()) { \
+		if (support_gk20a_pmu()) \
 			gk20a_pmu_enable_elpg(g); \
-			mutex_unlock(&g->pmu.pg_init_mutex); \
-		} \
 		err; \
 	})
 

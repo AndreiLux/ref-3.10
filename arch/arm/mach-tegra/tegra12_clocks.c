@@ -706,84 +706,63 @@ static int tegra_periph_clk_enable_refcount[CLK_OUT_ENB_NUM * 32];
 	__raw_writel(value, reg_clk_base + (reg))
 #define clk_readl(reg) \
 	__raw_readl(reg_clk_base + (reg))
-#define clk13_writel(value, reg) \
-	__raw_writel(value, reg_clk13_base + (reg))
-#define clk13_readl(reg) \
-	__raw_readl(reg_clk13_base + (reg))
 #define pmc_writel(value, reg) \
 	__raw_writel(value, reg_pmc_base + (reg))
 #define pmc_readl(reg) \
-	__raw_readl(reg_pmc_base + (reg))
+	readl(reg_pmc_base + (reg))
 #define xusb_padctl_writel(value, reg) \
 	 __raw_writel(value, reg_xusb_padctl_base + (reg))
 #define xusb_padctl_readl(reg) \
-	__raw_readl(reg_xusb_padctl_base + (reg))
+	readl(reg_xusb_padctl_base + (reg))
 
-#define clk_writel_delay(value, reg) 					\
-	do {								\
-		__raw_writel((value), reg_clk_base + (reg));		\
-		__raw_readl(reg_clk_base + (reg));			\
-		udelay(2);						\
-	} while (0)
+static inline void clk_writel_delay(u32 value, u32 reg)
+{
+	__raw_writel((value), reg_clk_base + (reg));
+	__raw_readl(reg_clk_base + (reg));
+	dsb();
+	udelay(2);
+}
 
-#define clk13_writel_delay(value, reg) 					\
-	do {								\
-		clk13_writel(value, reg);					\
-		clk13_readl(reg);						\
-		udelay(2);						\
-	} while (0)
-
-#define pll_writel_delay(value, reg)					\
-	do {								\
-		__raw_writel((value), reg_clk_base + (reg));		\
-		__raw_readl(reg_clk_base + (reg));			\
-		udelay(1);						\
-	} while (0)
+static inline void pll_writel_delay(u32 value, u32 reg)
+{
+	__raw_writel((value), reg_clk_base + (reg));
+	__raw_readl(reg_clk_base + (reg));
+	dsb();
+	udelay(1);
+}
 
 /* Overloading clk_writelx macro based on the TEGRA_13x_SOC define */
 #ifndef CONFIG_ARCH_TEGRA_13x_SOC
 
 #define clk_writelx(value, reg) \
-	__raw_writel(value, (void *)((uintptr_t)reg_clk_base + (reg)))
+	__raw_writel(value, reg_clk_base + (reg))
 #define clk_readlx(reg) \
-	__raw_readl((void *)((uintptr_t)reg_clk_base + (reg)))
-
-#define clk_writelx_delay(value, reg) 					\
-	do {								\
-		clk_writelx(value, reg);					\
-		clk_readlx(reg);						\
-		udelay(2);						\
-	} while (0)
-
-#define pll_writelx_delay(value, reg)					\
-	do {								\
-		clk_writelx(value, reg);					\
-		clk_readlx(reg);						\
-		udelay(1);						\
-	} while (0)
+	__raw_readl(reg_clk_base + (reg))
 
 #else
 
 #define clk_writelx(value, reg) \
-	__raw_writel(value, (void *)((uintptr_t)reg_clk13_base + (reg)))
+	__raw_writel(value, reg_clk13_base + (reg))
 #define clk_readlx(reg) \
-	__raw_readl((void *)((uintptr_t)reg_clk13_base + (reg)))
-
-#define clk_writelx_delay(value, reg) 					\
-	do {								\
-		clk_writelx(value, reg);					\
-		clk_readlx(reg);						\
-		udelay(2);						\
-	} while (0)
-
-#define pll_writelx_delay(value, reg)					\
-	do {								\
-		clk_writelx(value, reg);					\
-		clk_readlx(reg);						\
-		udelay(1);						\
-	} while (0)
+	__raw_readl(reg_clk13_base + (reg))
 
 #endif
+
+static inline void clk_writelx_delay(u32 value, u32 reg)
+{
+	clk_writelx(value, reg);
+	clk_readlx(reg);
+	dsb();
+	udelay(2);
+}
+
+static inline void pll_writelx_delay(u32 value, u32 reg)
+{
+	clk_writelx(value, reg);
+	clk_readlx(reg);
+	dsb();
+	udelay(1);
+}
 
 static inline int clk_set_div(struct clk *c, u32 n)
 {
@@ -1237,7 +1216,7 @@ static void tegra13_super_cclk_init(struct clk *c)
 	int source;
 	int shift;
 	const struct clk_mux_sel *sel;
-	val = clk13_readl(c->reg + SUPER_CLK_MUX);
+	val = clk_readlx(c->reg + SUPER_CLK_MUX);
 	c->state = ON;
 
 	shift  = CLK13_SOURCE_SHIFT;
@@ -1258,13 +1237,13 @@ static void tegra13_super_cclk_init(struct clk *c)
 		 * Make sure 7.1 divider is 1:1; clear h/w skipper control -
 		 * it will be enabled by soctherm later
 		 */
-		val = clk13_readl(c->reg + SUPER_CLK_DIVIDER);
+		val = clk_readlx(c->reg + SUPER_CLK_DIVIDER);
 		BUG_ON(val & SUPER_CLOCK_DIV_U71_MASK);
 		val = 0;
-		clk13_writel(val, c->reg + SUPER_CLK_DIVIDER);
+		clk_writelx(val, c->reg + SUPER_CLK_DIVIDER);
 	}
 	else
-		clk13_writel(0, c->reg + SUPER_CLK_DIVIDER);
+		clk_writelx(0, c->reg + SUPER_CLK_DIVIDER);
 }
 
 static int tegra13_super_cclk_enable(struct clk *c)
@@ -1284,7 +1263,7 @@ static int tegra13_super_cclk_set_parent(struct clk *c, struct clk *p)
 	const struct clk_mux_sel *sel;
 	int shift;
 
-	val = clk13_readl(c->reg);
+	val = clk_readlx(c->reg);
 	shift = CLK13_SOURCE_SHIFT;
 	for (sel = c->inputs; sel->input != NULL; sel++) {
 		if (sel->input == p) {
@@ -1293,14 +1272,14 @@ static int tegra13_super_cclk_set_parent(struct clk *c, struct clk *p)
 
 			if (c->flags & DIV_U71) {
 				/* Make sure 7.1 divider is 1:1 */
-				u32 div = clk13_readl(c->reg + SUPER_CLK_DIVIDER);
+				u32 div = clk_readlx(c->reg + SUPER_CLK_DIVIDER);
 				BUG_ON(div & SUPER_CLOCK_DIV_U71_MASK);
 			}
 
 			if (c->refcnt)
 				clk_enable(p);
 
-			clk13_writel_delay(val, c->reg);
+			clk_writelx_delay(val, c->reg);
 
 			if (c->refcnt && c->parent)
 				clk_disable(c->parent);
@@ -2205,6 +2184,7 @@ static int tegra12_blink_clk_enable(struct clk *c)
 
 	val = pmc_readl(PMC_CTRL);
 	pmc_writel(val | PMC_CTRL_BLINK_ENB, PMC_CTRL);
+	pmc_readl(PMC_CTRL);
 
 	return 0;
 }
@@ -2218,6 +2198,7 @@ static void tegra12_blink_clk_disable(struct clk *c)
 
 	val = pmc_readl(PMC_DPD_PADS_ORIDE);
 	pmc_writel(val & ~PMC_DPD_PADS_ORIDE_BLINK_ENB, PMC_DPD_PADS_ORIDE);
+	pmc_readl(PMC_DPD_PADS_ORIDE);
 }
 
 static int tegra12_blink_clk_set_rate(struct clk *c, unsigned long rate)
@@ -2241,6 +2222,7 @@ static int tegra12_blink_clk_set_rate(struct clk *c, unsigned long rate)
 		val |= PMC_BLINK_TIMER_ENB;
 		pmc_writel(val, c->reg);
 	}
+	pmc_readl(c->reg);
 
 	return 0;
 }
@@ -2385,23 +2367,19 @@ static void tegra12_utmi_param_configure(struct clk *c)
 	reg = clk_readl(UTMIP_PLL_CFG1);
 	reg &= ~UTMIP_PLL_CFG1_FORCE_PLL_ENABLE_POWERUP;
 	reg &= ~UTMIP_PLL_CFG1_FORCE_PLL_ENABLE_POWERDOWN;
-	clk_writel(reg, UTMIP_PLL_CFG1);
-
-	udelay(1);
+	pll_writel_delay(reg, UTMIP_PLL_CFG1);
 
 	/* Setup SW override of UTMIPLL assuming USB2.0
 	   ports are assigned to USB2 */
 	reg = clk_readl(UTMIPLL_HW_PWRDN_CFG0);
 	reg |= UTMIPLL_HW_PWRDN_CFG0_IDDQ_SWCTL;
 	reg |= UTMIPLL_HW_PWRDN_CFG0_IDDQ_OVERRIDE;
-	clk_writel(reg, UTMIPLL_HW_PWRDN_CFG0);
-
-	udelay(1);
+	pll_writel_delay(reg, UTMIPLL_HW_PWRDN_CFG0);
 
 	/* Enable HW control UTMIPLL */
 	reg = clk_readl(UTMIPLL_HW_PWRDN_CFG0);
 	reg |= UTMIPLL_HW_PWRDN_CFG0_SEQ_ENABLE;
-	clk_writel(reg, UTMIPLL_HW_PWRDN_CFG0);
+	pll_writel_delay(reg, UTMIPLL_HW_PWRDN_CFG0);
 }
 
 static void tegra12_pll_clk_init(struct clk *c)
@@ -2453,13 +2431,14 @@ static void tegra12_pll_clk_init(struct clk *c)
 
 		val = clk_readl(c->reg + PLL_BASE);
 		val &= ~PLLU_BASE_OVERRIDE;
-		clk_writel(val, c->reg + PLL_BASE);
+		pll_writel_delay(val, c->reg + PLL_BASE);
 
 		/* Set XUSB PLL pad pwr override and iddq */
 		val = xusb_padctl_readl(XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
 		val |= XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0_PLL_PWR_OVRD;
 		val |= XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0_PLL_IDDQ;
 		xusb_padctl_writel(val, XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
+		xusb_padctl_readl(XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
 	}
 }
 
@@ -3752,9 +3731,8 @@ static void tegra12_pllss_clk_init(struct clk *c)
 	c->div = m * pllss_p[p_div];
 	c->mul = n;
 
-	/* FIXME: hack for bringup */
-	pr_info("%s: val=%08x m=%d n=%d p_div=%d input_rate=%lu\n",
-		c->name, val, m, n, p_div, input_rate);
+	pr_debug("%s: val=%08x m=%d n=%d p_div=%d input_rate=%lu\n",
+		 c->name, val, m, n, p_div, input_rate);
 
 }
 
@@ -4178,7 +4156,7 @@ static void tegra12_plle_clk_disable(struct clk *c)
 	val |= XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0_PLL_PWR_OVRD;
 	val |= XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0_PLL_IDDQ;
 	xusb_padctl_writel(val, XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
-
+	xusb_padctl_readl(XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
 }
 
 static int tegra12_plle_clk_enable(struct clk *c)
@@ -4270,6 +4248,7 @@ static int tegra12_plle_clk_enable(struct clk *c)
 	val &= ~XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0_PLL_PWR_OVRD;
 	val &= ~XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0_PLL_IDDQ;
 	xusb_padctl_writel(val, XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
+	xusb_padctl_readl(XUSB_PADCTL_IOPHY_PLL_P0_CTL1_0);
 
 	/* enable hw control of xusb brick pll */
 	usb_plls_hw_control_enable(XUSBIO_PLL_CFG0);
@@ -5300,6 +5279,7 @@ static int tegra12_clk_out_enable(struct clk *c)
 	val = pmc_readl(c->reg);
 	val |= (0x1 << c->u.periph.clk_num);
 	pmc_writel(val, c->reg);
+	pmc_readl(c->reg);
 	spin_unlock_irqrestore(&clk_out_lock, flags);
 
 	return 0;
@@ -5316,6 +5296,7 @@ static void tegra12_clk_out_disable(struct clk *c)
 	val = pmc_readl(c->reg);
 	val &= ~(0x1 << c->u.periph.clk_num);
 	pmc_writel(val, c->reg);
+	pmc_readl(c->reg);
 	spin_unlock_irqrestore(&clk_out_lock, flags);
 }
 
@@ -5337,6 +5318,7 @@ static int tegra12_clk_out_set_parent(struct clk *c, struct clk *p)
 			val &= ~periph_clk_source_mask(c);
 			val |= (sel->value << periph_clk_source_shift(c));
 			pmc_writel(val, c->reg);
+			pmc_readl(c->reg);
 			spin_unlock_irqrestore(&clk_out_lock, flags);
 
 			if (c->refcnt && c->parent)
@@ -6191,13 +6173,19 @@ static void tegra_clk_shared_bus_user_init(struct clk *c)
 	}
 
 	if (c->u.shared_bus_user.client_id) {
-		c->u.shared_bus_user.client =
+		struct clk *client =
 			tegra_get_clock_by_name(c->u.shared_bus_user.client_id);
-		if (!c->u.shared_bus_user.client) {
+		if (!client) {
 			pr_err("%s: could not find clk %s\n", __func__,
 			       c->u.shared_bus_user.client_id);
 			return;
 		}
+
+		if ((client->state == ON) && !(client->flags & PERIPH_NO_ENB))
+			pr_info("%s: %s client %s left ON\n", __func__,
+				c->parent->name, client->name);
+
+		c->u.shared_bus_user.client = client;
 		c->u.shared_bus_user.client->flags |=
 			c->parent->flags & PERIPH_ON_CBUS;
 		c->flags |= c->parent->flags & PERIPH_ON_CBUS;

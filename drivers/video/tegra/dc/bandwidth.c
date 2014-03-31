@@ -27,11 +27,15 @@
 #include <mach/mc.h>
 #include <linux/nvhost.h>
 #include <mach/latency_allowance.h>
+#include <mach/tegra_emc.h>
 #include <trace/events/display.h>
 
 #include "dc_reg.h"
 #include "dc_config.h"
 #include "dc_priv.h"
+#ifdef CONFIG_ADF_TEGRA
+#include "tegra_adf.h"
+#endif
 
 static int use_dynamic_emc = 1;
 
@@ -188,7 +192,8 @@ static void calc_disp_params(struct tegra_dc *dc,
 	unsigned int reqd_buffering_thresh_disp_bytes_fp = 0;
 	unsigned int latency_buffering_available_in_reqd_buffering_fp = 0;
 	struct clk *emc_clk = clk_get(NULL, "emc");
-	unsigned long emc_freq_mhz = clk_get_rate(emc_clk)/1000000;
+	unsigned long emc_freq_khz = clk_get_rate(emc_clk) / 1000;
+	unsigned long emc_freq_mhz = emc_freq_khz / 1000;
 	unsigned int bw_disruption_time_usec_fp =
 					T12X_LA_BW_DISRUPTION_TIME_EMCCLKS_FP /
 					emc_freq_mhz;
@@ -238,7 +243,8 @@ static void calc_disp_params(struct tegra_dc *dc,
 	unsigned int bw_display_fp = 0;
 	unsigned int bw_delta_fp = 0;
 	unsigned int fill_rate_other_wins_fp = 0;
-	unsigned int dvfs_time_nsec = tegra_get_dvfs_time_nsec(emc_freq_mhz);
+	unsigned int dvfs_time_nsec =
+			tegra_get_dvfs_clk_change_latency_nsec(emc_freq_khz);
 	unsigned int data_shortfall_other_wins_fp = 0;
 	unsigned int duration_usec_fp = 0;
 	unsigned int spool_up_buffering_adj_bytes = 0;
@@ -491,6 +497,21 @@ static void calc_disp_params(struct tegra_dc *dc,
 }
 #endif
 
+/*
+ * tegra_dc_process_bandwidth_renegotiate() is only called in code
+ * sections wrapped by CONFIG_TEGRA_ISOMGR.  Thus it is also wrapped
+ * to avoid "defined but not used" compiler error.
+ */
+#ifdef CONFIG_TEGRA_ISOMGR
+static void tegra_dc_process_bandwidth_renegotiate(struct tegra_dc *dc,
+						struct tegra_dc_bw_data *bw)
+{
+#ifdef CONFIG_ADF_TEGRA
+	tegra_adf_process_bandwidth_renegotiate(dc->adf, bw);
+#endif
+	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id, bw);
+}
+#endif
 
 /* uses the larger of w->bandwidth or w->new_bandwidth */
 static void tegra_dc_set_latency_allowance(struct tegra_dc *dc,
@@ -690,8 +711,7 @@ void tegra_dc_clear_bandwidth(struct tegra_dc *dc)
 		WARN_ONCE(!latency, "tegra_isomgr_realize failed\n");
 	} else {
 		dev_dbg(&dc->ndev->dev, "Failed to clear bw.\n");
-		tegra_dc_ext_process_bandwidth_renegotiate(
-				dc->ndev->id, NULL);
+		tegra_dc_process_bandwidth_renegotiate(dc, NULL);
 	}
 	dc->bw_kbps = 0;
 }
@@ -745,6 +765,9 @@ void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 #ifdef CONFIG_TEGRA_ISOMGR
 		int latency;
 
+		if (!dc->isomgr_handle)
+			return;
+
 		/* reserve atleast the minimum bandwidth. */
 		bw = max(bw, tegra_dc_calc_min_bandwidth(dc));
 		latency = tegra_isomgr_reserve(dc->isomgr_handle, bw, 1000);
@@ -755,8 +778,7 @@ void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new)
 		} else {
 			dev_dbg(&dc->ndev->dev, "Failed to reserve bw %ld.\n",
 									bw);
-			tegra_dc_ext_process_bandwidth_renegotiate(
-				dc->ndev->id, NULL);
+			tegra_dc_process_bandwidth_renegotiate(dc, NULL);
 		}
 #else /* EMC version */
 		int emc_freq;
@@ -850,6 +872,12 @@ long tegra_dc_calc_min_bandwidth(struct tegra_dc *dc)
 #else
 			pclk = KHZ2PICOS(150000); /* 150MHz max */
 #endif
+		} else if ((dc->out->type == TEGRA_DC_OUT_DP) ||
+			(dc->out->type == TEGRA_DC_OUT_NVSR_DP)) {
+			if (dc->mode.pclk)
+				pclk = KHZ2PICOS(dc->mode.pclk / 1000);
+			else
+				pclk = KHZ2PICOS(25200); /* vga */
 		} else {
 			pclk = KHZ2PICOS(dc->mode.pclk / 1000);
 		}
@@ -914,17 +942,17 @@ void tegra_dc_bandwidth_renegotiate(void *p, u32 avail_bw)
 	struct tegra_dc_bw_data data;
 	struct tegra_dc *dc = p;
 
-	if (dc->available_bw == avail_bw)
+	if (WARN_ONCE(!dc, "dc is NULL!"))
 		return;
 
-	if (WARN_ONCE(!dc, "dc is NULL!"))
+	if (dc->available_bw == avail_bw)
 		return;
 
 	data.total_bw = tegra_isomgr_get_total_iso_bw();
 	data.avail_bw = avail_bw;
 	data.resvd_bw = dc->reserved_bw;
 
-	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id, &data);
+	tegra_dc_process_bandwidth_renegotiate(dc, &data);
 
 	mutex_lock(&dc->lock);
 	dc->available_bw = avail_bw;

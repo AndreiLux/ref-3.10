@@ -467,6 +467,8 @@ static struct platform_device *ardbeg_devices[] __initdata = {
 	&bluetooth_dit_device,
 	&baseband_dit_device,
 	&tegra_hda_device,
+	&tegra_offload_device,
+	&tegra30_avp_audio_device,
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_AES)
 	&tegra_aes_device,
 #endif
@@ -1212,8 +1214,8 @@ static void __init tegra_ardbeg_early_init(void)
 		tegra_soc_device_init("norrin");
 	else if (of_machine_is_compatible("nvidia,bowmore"))
 		tegra_soc_device_init("bowmore");
-	else if (of_machine_is_compatible("nvidia,loki"))
-		tegra_soc_device_init("loki");
+	else if (of_machine_is_compatible("nvidia,t132loki"))
+		tegra_soc_device_init("t132loki");
 	else
 		tegra_soc_device_init("ardbeg");
 }
@@ -1299,7 +1301,9 @@ static void __init tegra_ardbeg_late_init(void)
 	ardbeg_dtv_init();
 	ardbeg_suspend_init();
 
-	if (board_info.board_id == BOARD_PM374)
+	if ((board_info.board_id == BOARD_PM374) ||
+		(board_info.board_id == BOARD_E1971) ||
+		(board_info.board_id == BOARD_E1973))
 		norrin_emc_init();
 	else if (board_info.board_id == BOARD_E2548 ||
 			board_info.board_id == BOARD_P2530)
@@ -1321,9 +1325,7 @@ static void __init tegra_ardbeg_late_init(void)
 		tegra_io_dpd_enable(&pexclk1_io);
 		tegra_io_dpd_enable(&pexclk2_io);
 
-	if (board_info.board_id == BOARD_PM374)
-		norrin_kbc_init();
-	else if (board_info.board_id == BOARD_E2548 ||
+	if (board_info.board_id == BOARD_E2548 ||
 			board_info.board_id == BOARD_P2530)
 		loki_kbc_init();
 
@@ -1422,12 +1424,12 @@ static const char * const bowmore_dt_board_compat[] = {
 };
 
 static const char * const loki_dt_board_compat[] = {
-	"nvidia,loki",
+	"nvidia,t132loki",
 	NULL
 };
 
 #ifdef CONFIG_ARCH_TEGRA_13x_SOC
-DT_MACHINE_START(LOKI, "loki")
+DT_MACHINE_START(LOKI, "t132loki")
 	.atag_offset	= 0x100,
 	.smp		= smp_ops(tegra_smp_ops),
 	.map_io		= tegra_map_common_io,

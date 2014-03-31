@@ -189,7 +189,7 @@ void *__nvmap_kmap(struct nvmap_handle *h, unsigned int pagenum)
 	phys_addr_t paddr;
 	unsigned long kaddr;
 	pgprot_t prot;
-	pte_t **pte;
+	struct vm_struct *area = NULL;
 
 	if (!virt_addr_valid(h))
 		return NULL;
@@ -201,18 +201,17 @@ void *__nvmap_kmap(struct nvmap_handle *h, unsigned int pagenum)
 	if (pagenum >= h->size >> PAGE_SHIFT)
 		goto out;
 	prot = nvmap_pgprot(h, PG_PROT_KERNEL);
-	pte = nvmap_alloc_pte(nvmap_dev, (void **)&kaddr);
-	if (!pte)
+	area = alloc_vm_area(PAGE_SIZE, NULL);
+	if (!area)
 		goto out;
+	kaddr = (ulong)area->addr;
 
 	if (h->heap_pgalloc)
 		paddr = page_to_phys(h->pgalloc.pages[pagenum]);
 	else
 		paddr = h->carveout->base + pagenum * PAGE_SIZE;
 
-	set_pte_at(&init_mm, kaddr, *pte,
-				pfn_pte(__phys_to_pfn(paddr), prot));
-	nvmap_flush_tlb_kernel_page(kaddr);
+	ioremap_page_range(kaddr, kaddr + PAGE_SIZE, paddr, prot);
 	return (void *)kaddr;
 out:
 	nvmap_handle_put(h);
@@ -223,7 +222,7 @@ void __nvmap_kunmap(struct nvmap_handle *h, unsigned int pagenum,
 		  void *addr)
 {
 	phys_addr_t paddr;
-	pte_t **pte;
+	struct vm_struct *area = NULL;
 
 	if (!h ||
 	    WARN_ON(!virt_addr_valid(h)) ||
@@ -244,16 +243,19 @@ void __nvmap_kunmap(struct nvmap_handle *h, unsigned int pagenum,
 		outer_flush_range(paddr, paddr + PAGE_SIZE); /* FIXME */
 	}
 
-	pte = nvmap_vaddr_to_pte(nvmap_dev, (unsigned long)addr);
-	nvmap_free_pte(nvmap_dev, pte);
+	area = find_vm_area(addr);
+	if (area)
+		free_vm_area(area);
+	else
+		WARN(1, "Invalid address passed");
 	nvmap_handle_put(h);
 }
 
 void *__nvmap_mmap(struct nvmap_handle *h)
 {
 	pgprot_t prot;
+	void *vaddr = NULL;
 	unsigned long adj_size;
-	unsigned long offs;
 	struct vm_struct *v;
 	void *p;
 
@@ -266,21 +268,20 @@ void *__nvmap_mmap(struct nvmap_handle *h)
 
 	prot = nvmap_pgprot(h, PG_PROT_KERNEL);
 
-#ifdef NVMAP_LAZY_VFREE
 	if (h->heap_pgalloc) {
-		if (!h->vaddr)
-			h->vaddr = vm_map_ram(h->pgalloc.pages,
+		if (!h->vaddr) {
+			vaddr = vm_map_ram(h->pgalloc.pages,
 				h->size >> PAGE_SHIFT, -1, prot);
+		}
+#ifdef NVMAP_LAZY_VFREE
+		if (vaddr && atomic_long_cmpxchg(&h->vaddr, NULL, vaddr))
+			vm_unmap_ram(vaddr, h->size >> PAGE_SHIFT);
 		return h->vaddr;
-	}
-#else
-	if (h->heap_pgalloc)
-		return vm_map_ram(h->pgalloc.pages,
-				h->size >> PAGE_SHIFT, -1, prot);
-
 #endif
-	/* carveout - explicitly map the pfns into a vmalloc area */
+		return vaddr;
+	}
 
+	/* carveout - explicitly map the pfns into a vmalloc area */
 	adj_size = h->carveout->base & ~PAGE_MASK;
 	adj_size += h->size;
 	adj_size = PAGE_ALIGN(adj_size);
@@ -292,35 +293,8 @@ void *__nvmap_mmap(struct nvmap_handle *h)
 	}
 
 	p = v->addr + (h->carveout->base & ~PAGE_MASK);
-
-	for (offs = 0; offs < adj_size; offs += PAGE_SIZE) {
-		unsigned long addr = (unsigned long) v->addr + offs;
-		unsigned int pfn;
-		pgd_t *pgd;
-		pud_t *pud;
-		pmd_t *pmd;
-		pte_t *pte;
-
-		pfn = __phys_to_pfn(h->carveout->base + offs);
-		pgd = pgd_offset_k(addr);
-		pud = pud_alloc(&init_mm, pgd, addr);
-		if (!pud)
-			break;
-		pmd = pmd_alloc(&init_mm, pud, addr);
-		if (!pmd)
-			break;
-		pte = pte_alloc_kernel(pmd, addr);
-		if (!pte)
-			break;
-		set_pte_at(&init_mm, addr, pte, pfn_pte(pfn, prot));
-		nvmap_flush_tlb_kernel_page(addr);
-	}
-
-	if (offs != adj_size) {
-		free_vm_area(v);
-		nvmap_handle_put(h);
-		return NULL;
-	}
+	ioremap_page_range((ulong)v->addr, (ulong)v->addr + adj_size,
+		h->carveout->base & PAGE_MASK, prot);
 
 	/* leave the handle ref count incremented by 1, so that
 	 * the handle will not be freed while the kernel mapping exists.
@@ -338,17 +312,16 @@ void __nvmap_munmap(struct nvmap_handle *h, void *addr)
 	/* Handle can be locked by cache maintenance in
 	 * separate thread */
 	if (h->heap_pgalloc) {
-#ifdef NVMAP_LAZY_VFREE
-		BUG_ON(!h->vaddr);
-#else
+#ifndef NVMAP_LAZY_VFREE
+		BUG_ON(h->vaddr);
 		vm_unmap_ram(addr, h->size >> PAGE_SHIFT);
 #endif
 	} else {
 		struct vm_struct *vm;
 		addr -= (h->carveout->base & ~PAGE_MASK);
-		vm = remove_vm_area(addr);
+		vm = find_vm_area(addr);
 		BUG_ON(!vm);
-		kfree(vm);
+		free_vm_area(vm);
 	}
 	nvmap_handle_put(h);
 }

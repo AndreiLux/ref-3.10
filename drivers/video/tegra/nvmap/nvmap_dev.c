@@ -24,6 +24,7 @@
 #include <linux/bitmap.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
+#include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/device.h>
 #include <linux/oom.h>
@@ -67,12 +68,8 @@ struct nvmap_carveout_node {
 	size_t			size;
 };
 
-struct platform_device *nvmap_pdev;
-EXPORT_SYMBOL(nvmap_pdev);
 struct nvmap_device *nvmap_dev;
-EXPORT_SYMBOL(nvmap_dev);
 struct nvmap_stats nvmap_stats;
-EXPORT_SYMBOL(nvmap_stats);
 
 static struct backing_dev_info nvmap_bdi = {
 	.ra_pages	= 0,
@@ -112,84 +109,6 @@ static struct vm_operations_struct nvmap_vma_ops = {
 int is_nvmap_vma(struct vm_area_struct *vma)
 {
 	return vma->vm_ops == &nvmap_vma_ops;
-}
-
-struct device *nvmap_client_to_device(struct nvmap_client *client)
-{
-	if (!client)
-		return 0;
-	return nvmap_dev->dev_user.this_device;
-}
-
-/* allocates a PTE for the caller's use; returns the PTE pointer or
- * a negative errno. not safe from IRQs */
-pte_t **nvmap_alloc_pte_irq(struct nvmap_device *dev, void **vaddr)
-{
-	unsigned long bit;
-
-	spin_lock(&dev->ptelock);
-	bit = find_next_zero_bit(dev->ptebits, NVMAP_NUM_PTES, dev->lastpte);
-	if (bit == NVMAP_NUM_PTES) {
-		bit = find_first_zero_bit(dev->ptebits, dev->lastpte);
-		if (bit == dev->lastpte)
-			bit = NVMAP_NUM_PTES;
-	}
-
-	if (bit == NVMAP_NUM_PTES) {
-		spin_unlock(&dev->ptelock);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	dev->lastpte = bit;
-	set_bit(bit, dev->ptebits);
-	spin_unlock(&dev->ptelock);
-
-	*vaddr = dev->vm_rgn->addr + bit * PAGE_SIZE;
-	return &(dev->ptes[bit]);
-}
-
-/* allocates a PTE for the caller's use; returns the PTE pointer or
- * a negative errno. must be called from sleepable contexts */
-pte_t **nvmap_alloc_pte(struct nvmap_device *dev, void **vaddr)
-{
-	int ret;
-	pte_t **pte;
-	ret = wait_event_interruptible(dev->pte_wait,
-			!IS_ERR(pte = nvmap_alloc_pte_irq(dev, vaddr)));
-
-	if (ret == -ERESTARTSYS)
-		return ERR_PTR(-EINTR);
-
-	return pte;
-}
-
-/* frees a PTE */
-void nvmap_free_pte(struct nvmap_device *dev, pte_t **pte)
-{
-	unsigned long addr;
-	unsigned int bit = pte - dev->ptes;
-
-	if (WARN_ON(bit >= NVMAP_NUM_PTES))
-		return;
-
-	addr = (unsigned long)dev->vm_rgn->addr + bit * PAGE_SIZE;
-	set_pte_at(&init_mm, addr, *pte, 0);
-
-	spin_lock(&dev->ptelock);
-	clear_bit(bit, dev->ptebits);
-	spin_unlock(&dev->ptelock);
-	wake_up(&dev->pte_wait);
-}
-
-/* get pte for the virtual address */
-pte_t **nvmap_vaddr_to_pte(struct nvmap_device *dev, unsigned long vaddr)
-{
-	unsigned int bit;
-
-	BUG_ON(vaddr < (unsigned long)dev->vm_rgn->addr);
-	bit = (vaddr - (unsigned long)dev->vm_rgn->addr) >> PAGE_SHIFT;
-	BUG_ON(bit >= NVMAP_NUM_PTES);
-	return &(dev->ptes[bit]);
 }
 
 /*
@@ -257,11 +176,10 @@ unsigned long nvmap_carveout_usage(struct nvmap_client *c,
 int nvmap_flush_heap_block(struct nvmap_client *client,
 	struct nvmap_heap_block *block, size_t len, unsigned int prot)
 {
-	pte_t **pte;
-	void *addr;
-	uintptr_t kaddr;
+	ulong kaddr;
 	phys_addr_t phys = block->base;
 	phys_addr_t end = block->base + len;
+	struct vm_struct *area = NULL;
 
 	if (prot == NVMAP_HANDLE_UNCACHEABLE || prot == NVMAP_HANDLE_WRITE_COMBINE)
 		goto out;
@@ -275,28 +193,28 @@ int nvmap_flush_heap_block(struct nvmap_client *client,
 	}
 #endif
 
-	pte = nvmap_alloc_pte(nvmap_dev, &addr);
-	if (IS_ERR(pte))
-		return PTR_ERR(pte);
+	area = alloc_vm_area(PAGE_SIZE, NULL);
+	if (!area)
+		return -ENOMEM;
 
-	kaddr = (uintptr_t)addr;
+	kaddr = (ulong)area->addr;
 
 	while (phys < end) {
 		phys_addr_t next = (phys + PAGE_SIZE) & PAGE_MASK;
-		unsigned long pfn = __phys_to_pfn(phys);
 		void *base = (void *)kaddr + (phys & ~PAGE_MASK);
 
 		next = min(next, end);
-		set_pte_at(&init_mm, kaddr, *pte, pfn_pte(pfn, PG_PROT_KERNEL));
-		nvmap_flush_tlb_kernel_page(kaddr);
+		ioremap_page_range(kaddr, kaddr + PAGE_SIZE,
+			phys, PG_PROT_KERNEL);
 		FLUSH_DCACHE_AREA(base, next - phys);
 		phys = next;
+		unmap_kernel_range(kaddr, PAGE_SIZE);
 	}
 
 	if (prot != NVMAP_HANDLE_INNER_CACHEABLE)
 		outer_flush_range(block->base, block->base + len);
 
-	nvmap_free_pte(nvmap_dev, pte);
+	free_vm_area(area);
 out:
 	wmb();
 	return 0;
@@ -847,13 +765,14 @@ static void allocations_stringify(struct nvmap_client *client,
 			phys_addr_t base = iovmm ? 0 :
 					   (handle->carveout->base);
 			seq_printf(s,
-				"%-18s %-18s %8llx %10zuK %8x %6u %6u %6u\n",
+				"%-18s %-18s %8llx %10zuK %8x %6u %6u %6u %8p\n",
 				"", "",
 				(unsigned long long)base, K(handle->size),
 				handle->userflags,
 				atomic_read(&handle->ref),
 				atomic_read(&ref->dupes),
-				atomic_read(&ref->pin));
+				atomic_read(&ref->pin),
+				handle);
 		}
 	}
 	nvmap_ref_unlock(client);
@@ -868,9 +787,9 @@ static int nvmap_debug_allocations_show(struct seq_file *s, void *unused)
 	spin_lock(&node->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s\n",
 		"CLIENT", "PROCESS", "PID", "SIZE");
-	seq_printf(s, "%-18s %18s %8s %11s %8s %6s %6s %6s\n",
+	seq_printf(s, "%-18s %18s %8s %11s %8s %6s %6s %6s %8s\n",
 			"", "", "BASE", "SIZE", "FLAGS", "REFS",
-			"DUPES", "PINS");
+			"DUPES", "PINS", "UID");
 	list_for_each_entry(commit, &node->clients, list) {
 		struct nvmap_client *client =
 			get_client_from_carveout_commit(node, commit);
@@ -988,9 +907,9 @@ static int nvmap_debug_iovmm_allocations_show(struct seq_file *s, void *unused)
 	spin_lock(&dev->clients_lock);
 	seq_printf(s, "%-18s %18s %8s %11s\n",
 		"CLIENT", "PROCESS", "PID", "SIZE");
-	seq_printf(s, "%-18s %18s %8s %11s %8s %6s %6s %6s\n",
+	seq_printf(s, "%-18s %18s %8s %11s %8s %6s %6s %6s %8s\n",
 			"", "", "BASE", "SIZE", "FLAGS", "REFS",
-			"DUPES", "PINS");
+			"DUPES", "PINS", "UID");
 	list_for_each_entry(client, &dev->clients, list) {
 		int iovm_commit = atomic_read(&client->iovm_commit);
 		client_stringify(client, s);
@@ -1193,53 +1112,15 @@ static int nvmap_probe(struct platform_device *pdev)
 
 	dev->handles = RB_ROOT;
 
-	init_waitqueue_head(&dev->pte_wait);
-
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 	e = nvmap_page_pool_init(dev);
 	if (e)
 		goto fail;
 #endif
 
-	dev->vm_rgn = alloc_vm_area(NVMAP_NUM_PTES * PAGE_SIZE, NULL);
-	if (!dev->vm_rgn) {
-		e = -ENOMEM;
-		dev_err(&pdev->dev, "couldn't allocate remapping region\n");
-		goto fail;
-	}
-
-	spin_lock_init(&dev->ptelock);
 	spin_lock_init(&dev->handle_lock);
 	INIT_LIST_HEAD(&dev->clients);
 	spin_lock_init(&dev->clients_lock);
-
-	for (i = 0; i < NVMAP_NUM_PTES; i++) {
-		unsigned long addr;
-		pgd_t *pgd;
-		pud_t *pud;
-		pmd_t *pmd;
-
-		addr = (unsigned long)dev->vm_rgn->addr + (i * PAGE_SIZE);
-		pgd = pgd_offset_k(addr);
-		pud = pud_alloc(&init_mm, pgd, addr);
-		if (!pud) {
-			e = -ENOMEM;
-			dev_err(&pdev->dev, "couldn't allocate page tables\n");
-			goto fail;
-		}
-		pmd = pmd_alloc(&init_mm, pud, addr);
-		if (!pmd) {
-			e = -ENOMEM;
-			dev_err(&pdev->dev, "couldn't allocate page tables\n");
-			goto fail;
-		}
-		dev->ptes[i] = pte_alloc_kernel(pmd, addr);
-		if (!dev->ptes[i]) {
-			e = -ENOMEM;
-			dev_err(&pdev->dev, "couldn't allocate page tables\n");
-			goto fail;
-		}
-	}
 
 	e = misc_register(&dev->dev_user);
 	if (e) {
@@ -1297,8 +1178,6 @@ static int nvmap_probe(struct platform_device *pdev)
 				debugfs_create_file("allocations", S_IRUGO,
 					heap_root, node,
 					&debug_allocations_fops);
-				nvmap_heap_debugfs_init(heap_root,
-					node->carveout);
 			}
 		}
 	}
@@ -1362,7 +1241,6 @@ static int nvmap_probe(struct platform_device *pdev)
 
 	nvmap_stats_init(nvmap_debug_root);
 	platform_set_drvdata(pdev, dev);
-	nvmap_pdev = pdev;
 	nvmap_dev = dev;
 
 	nvmap_dmabuf_debugfs_init(nvmap_debug_root);
@@ -1380,8 +1258,6 @@ fail:
 	kfree(dev->heaps);
 	if (dev->dev_user.minor != MISC_DYNAMIC_MINOR)
 		misc_deregister(&dev->dev_user);
-	if (dev->vm_rgn)
-		free_vm_area(dev->vm_rgn);
 	kfree(dev);
 	nvmap_dev = NULL;
 	return e;
@@ -1408,7 +1284,6 @@ static int nvmap_remove(struct platform_device *pdev)
 	}
 	kfree(dev->heaps);
 
-	free_vm_area(dev->vm_rgn);
 	kfree(dev);
 	nvmap_dev = NULL;
 	return 0;

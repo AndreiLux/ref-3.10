@@ -183,6 +183,7 @@ struct voltage_limits {
 	int		vmax;
 	seqcount_t	vmin_seqcnt;
 	seqcount_t	vmax_seqcnt;
+	bool		clamped;
 };
 
 struct tegra_cl_dvfs {
@@ -324,7 +325,23 @@ static inline void invalidate_request(struct tegra_cl_dvfs *cld)
 	cl_dvfs_wmb(cld);
 }
 
-static inline void disable_forced_output(struct tegra_cl_dvfs *cld)
+static inline u32 output_force_set_val(struct tegra_cl_dvfs *cld, u8 out_val)
+{
+	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
+	val = (val & CL_DVFS_OUTPUT_FORCE_ENABLE) | (out_val & OUT_MASK);
+	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_FORCE);
+	return cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
+}
+
+static inline void output_force_enable(struct tegra_cl_dvfs *cld)
+{
+	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
+	val |= CL_DVFS_OUTPUT_FORCE_ENABLE;
+	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_FORCE);
+	cl_dvfs_wmb(cld);
+}
+
+static inline void output_force_disable(struct tegra_cl_dvfs *cld)
 {
 	u32 val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
 	val &= ~CL_DVFS_OUTPUT_FORCE_ENABLE;
@@ -686,6 +703,9 @@ static void set_output_limits(struct tegra_cl_dvfs *cld, u8 out_min, u8 out_max)
 	seqcount_t *vmin_seqcnt = NULL;
 	seqcount_t *vmax_seqcnt = NULL;
 
+	if (cld->v_limits.clamped)
+		return;
+
 	if ((cld->lut_min != out_min) || (cld->lut_max != out_max)) {
 		/* limits update tracking start */
 		if (cld->lut_min != out_min) {
@@ -721,28 +741,6 @@ static void set_output_limits(struct tegra_cl_dvfs *cld, u8 out_min, u8 out_max)
 		pr_debug("cl_dvfs limits_mV [%d : %d]\n",
 			 cld->v_limits.vmin, cld->v_limits.vmax);
 	}
-}
-
-static void set_ol_config(struct tegra_cl_dvfs *cld)
-{
-	u32 val;
-	u32 out_min = cld->lut_min;
-	u32 out_max = cld->lut_max;
-
-	/* always tune low (safe) in open loop */
-	if (cld->tune_state != TEGRA_CL_DVFS_TUNE_LOW) {
-		set_tune_state(cld, TEGRA_CL_DVFS_TUNE_LOW);
-		tune_low(cld);
-
-		out_min = get_output_min(cld);
-	}
-	set_output_limits(cld, out_min, out_max);
-
-	/* 1:1 scaling in open loop */
-	val = cl_dvfs_readl(cld, CL_DVFS_FREQ_REQ);
-	val |= (SCALE_MAX - 1) << CL_DVFS_FREQ_REQ_SCALE_SHIFT;
-	val &= ~CL_DVFS_FREQ_REQ_FORCE_ENABLE;
-	cl_dvfs_writel(cld, val, CL_DVFS_FREQ_REQ);
 }
 
 static void cl_dvfs_set_force_out_min(struct tegra_cl_dvfs *cld);
@@ -804,6 +802,34 @@ static void set_cl_config(struct tegra_cl_dvfs *cld, struct dfll_rate_req *req)
 	out_max = max((u8)(out_max), cld->force_out_min);
 
 	set_output_limits(cld, out_min, out_max);
+}
+
+static void set_ol_config(struct tegra_cl_dvfs *cld)
+{
+	u32 val, out_min, out_max;
+
+	/* always unclamp and restore limits before open loop */
+	if (cld->v_limits.clamped) {
+		cld->v_limits.clamped = false;
+		set_cl_config(cld, &cld->last_req);
+	}
+	out_min = cld->lut_min;
+	out_max = cld->lut_max;
+
+	/* always tune low (safe) in open loop */
+	if (cld->tune_state != TEGRA_CL_DVFS_TUNE_LOW) {
+		set_tune_state(cld, TEGRA_CL_DVFS_TUNE_LOW);
+		tune_low(cld);
+
+		out_min = get_output_min(cld);
+	}
+	set_output_limits(cld, out_min, out_max);
+
+	/* 1:1 scaling in open loop */
+	val = cl_dvfs_readl(cld, CL_DVFS_FREQ_REQ);
+	val |= (SCALE_MAX - 1) << CL_DVFS_FREQ_REQ_SCALE_SHIFT;
+	val &= ~CL_DVFS_FREQ_REQ_FORCE_ENABLE;
+	cl_dvfs_writel(cld, val, CL_DVFS_FREQ_REQ);
 }
 
 static void tune_timer_cb(unsigned long data)
@@ -897,7 +923,7 @@ static void cl_dvfs_calibrate(struct tegra_cl_dvfs *cld)
 		/* Forced output must be disabled in closed loop mode */
 		val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
 		if (val & CL_DVFS_OUTPUT_FORCE_ENABLE) {
-			disable_forced_output(cld);
+			output_force_disable(cld);
 			calibration_timer_update(cld);
 			return;
 		}
@@ -1789,16 +1815,10 @@ static int tegra_cl_dvfs_force_output(void *data, unsigned int out_sel)
 
 	clk_lock_save(cld->dfll_clk, &flags);
 
-	val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
-	val = (val & CL_DVFS_OUTPUT_FORCE_ENABLE) | out_sel;
-	cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_FORCE);
-	val = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
-
+	val = output_force_set_val(cld, out_sel);
 	if ((cld->mode < TEGRA_CL_DVFS_CLOSED_LOOP) &&
 	    !(val & CL_DVFS_OUTPUT_FORCE_ENABLE)) {
-		val |= CL_DVFS_OUTPUT_FORCE_ENABLE;
-		cl_dvfs_writel(cld, val, CL_DVFS_OUTPUT_FORCE);
-		cl_dvfs_wmb(cld);
+		output_force_enable(cld);
 		/* enable output only if bypass h/w is alive */
 		if (!cld->safe_dvfs->dfll_data.is_bypass_down ||
 		    !cld->safe_dvfs->dfll_data.is_bypass_down())
@@ -2544,7 +2564,7 @@ int tegra_cl_dvfs_lock(struct tegra_cl_dvfs *cld)
 		output_enable(cld);
 		set_mode(cld, TEGRA_CL_DVFS_CLOSED_LOOP);
 		set_request(cld, req);
-		disable_forced_output(cld);
+		output_force_disable(cld);
 		calibration_timer_update(cld);
 		return 0;
 
@@ -2703,6 +2723,46 @@ int tegra_cl_dvfs_vmax_read_retry(struct tegra_cl_dvfs *cld, uint start)
 	return read_seqcount_retry(&cld->v_limits.vmax_seqcnt, start);
 }
 
+/*
+ * Voltage clamping interface: set maximum and minimum voltage limits at the
+ * same lowest safe (for current temperature and tuning range) level. Allows
+ * temporary fix output voltage in closed loop mode. Clock rate target in this
+ * state is ignored, DFLL rate is just determined by the fixed limits. Clamping
+ * request is rejected if limits are already clamped, or DFLL is not in closed
+ * loop mode.
+ *
+ * This interface is tailored for fixing voltage during SiMon grading; no other
+ * s/w should use it.
+ *
+ * Return: fixed positive voltage if clamping request was successful, or
+ * 0 if un-clamping request was successful, or -EPERM if request is rejected.
+ *
+ */
+int tegra_cl_dvfs_clamp_at_vmin(struct tegra_cl_dvfs *cld, bool clamp)
+{
+	unsigned long flags;
+	int ret = -EPERM;
+
+	clk_lock_save(cld->dfll_clk, &flags);
+	if (cld->mode == TEGRA_CL_DVFS_CLOSED_LOOP) {
+		if (clamp && !cld->v_limits.clamped) {
+			u8 out_min = max(cld->lut_min, cld->force_out_min);
+			set_output_limits(cld, out_min, out_min);
+			cld->v_limits.clamped = true;
+			ret = cld->v_limits.vmin;
+		} else if (!clamp) {
+			if (cld->v_limits.clamped) {
+				cld->v_limits.clamped = false;
+				set_cl_config(cld, &cld->last_req);
+				set_request(cld, &cld->last_req);
+			}
+			ret = 0;
+		}
+	}
+	clk_unlock_restore(cld->dfll_clk, &flags);
+	return ret;
+}
+
 #ifdef CONFIG_DEBUG_FS
 
 static int lock_get(void *data, u64 *val)
@@ -2822,33 +2882,19 @@ static int fout_mv_set(void *data, u64 val)
 	struct clk *c = (struct clk *)data;
 	struct tegra_cl_dvfs *cld = c->u.dfll.cl_dvfs;
 
-	/* FIXME: do we need it in i2c mode ? */
-	if (is_i2c(cld))
-		return -ENOSYS;
-
-	clk_lock_save(c, &flags);
 	clk_enable(cld->soc_clk);
+	clk_lock_save(c, &flags);
 
-	v = cl_dvfs_readl(cld, CL_DVFS_OUTPUT_FORCE);
 	if (val) {
-		val = find_mv_out_cap(cld, (int)val);
-		v = (v & CL_DVFS_OUTPUT_FORCE_ENABLE) | (u32)val;
-		cl_dvfs_writel(cld, v, CL_DVFS_OUTPUT_FORCE);
-		cl_dvfs_wmb(cld);
-
-		if (!(v & CL_DVFS_OUTPUT_FORCE_ENABLE)) {
-			v |= CL_DVFS_OUTPUT_FORCE_ENABLE;
-			cl_dvfs_writel(cld, v, CL_DVFS_OUTPUT_FORCE);
-			cl_dvfs_wmb(cld);
-		}
-	} else if (v & CL_DVFS_OUTPUT_FORCE_ENABLE) {
-		v &= ~CL_DVFS_OUTPUT_FORCE_ENABLE;
-		cl_dvfs_writel(cld, v, CL_DVFS_OUTPUT_FORCE);
-		cl_dvfs_wmb(cld);
+		v = output_force_set_val(cld, find_mv_out_cap(cld, (int)val));
+		if (!(v & CL_DVFS_OUTPUT_FORCE_ENABLE))
+			output_force_enable(cld);
+	} else {
+		output_force_disable(cld);
 	}
 
-	clk_disable(cld->soc_clk);
 	clk_unlock_restore(c, &flags);
+	clk_disable(cld->soc_clk);
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(fout_mv_fops, fout_mv_get, fout_mv_set, "%llu\n");
@@ -2901,6 +2947,20 @@ static int undershoot_set(void *data, u64 val)
 }
 DEFINE_SIMPLE_ATTRIBUTE(undershoot_fops, undershoot_get, undershoot_set,
 			"%llu\n");
+
+static int clamp_get(void *data, u64 *val)
+{
+	struct tegra_cl_dvfs *cld = ((struct clk *)data)->u.dfll.cl_dvfs;
+	*val = cld->v_limits.clamped ? cld->v_limits.vmin : 0;
+	return 0;
+}
+static int clamp_set(void *data, u64 val)
+{
+	struct tegra_cl_dvfs *cld = ((struct clk *)data)->u.dfll.cl_dvfs;
+	int ret = tegra_cl_dvfs_clamp_at_vmin(cld, val);
+	return ret < 0 ? ret : 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(clamp_fops, clamp_get, clamp_set, "%llu\n");
 
 static int cl_profiles_show(struct seq_file *s, void *data)
 {
@@ -3076,6 +3136,10 @@ int __init tegra_cl_dvfs_debug_init(struct clk *dfll_clk)
 
 	if (!debugfs_create_file("pmu_undershoot_gb", S_IRUGO,
 		cl_dvfs_dentry, dfll_clk, &undershoot_fops))
+		goto err_out;
+
+	if (!debugfs_create_file("clamp_at_min", S_IRUGO | S_IWUSR,
+		cl_dvfs_dentry, dfll_clk, &clamp_fops))
 		goto err_out;
 
 	if (!debugfs_create_file("profiles", S_IRUGO,

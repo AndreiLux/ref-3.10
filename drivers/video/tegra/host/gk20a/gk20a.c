@@ -46,11 +46,6 @@
 
 #include <mach/pm_domains.h>
 
-#include "dev.h"
-#include "class_ids.h"
-#include "bus_client.h"
-#include "nvhost_acm.h"
-
 #include "gk20a.h"
 #include "debug_gk20a.h"
 #include "ctrl_gk20a.h"
@@ -760,6 +755,14 @@ static int gk20a_pm_prepare_poweroff(struct device *_dev)
 	if (!g->power_on)
 		return 0;
 
+	ret |= gk20a_channel_suspend(g);
+
+	/* disable elpg before gr or fifo suspend */
+	ret |= gk20a_pmu_destroy(g);
+	ret |= gk20a_gr_suspend(g);
+	ret |= gk20a_mm_suspend(g);
+	ret |= gk20a_fifo_suspend(g);
+
 	/*
 	 * After this point, gk20a interrupts should not get
 	 * serviced.
@@ -769,14 +772,6 @@ static int gk20a_pm_prepare_poweroff(struct device *_dev)
 		free_irq(g->irq_nonstall, g);
 		g->irq_requested = false;
 	}
-
-	ret |= gk20a_channel_suspend(g);
-
-	/* disable elpg before gr or fifo suspend */
-	ret |= gk20a_pmu_destroy(g);
-	ret |= gk20a_gr_suspend(g);
-	ret |= gk20a_mm_suspend(g);
-	ret |= gk20a_fifo_suspend(g);
 
 	/* Disable GPCPLL */
 	ret |= gk20a_suspend_clk_support(g);
@@ -1352,9 +1347,6 @@ static int gk20a_probe(struct platform_device *dev)
 
 	set_gk20a(dev, gk20a);
 	gk20a->dev = dev;
-#ifdef CONFIG_TEGRA_GK20A
-	gk20a->host = nvhost_get_host(dev);
-#endif
 
 	err = gk20a_user_init(dev);
 	if (err)
@@ -1676,6 +1668,7 @@ gk20a_request_firmware(struct gk20a *g, const char *fw_name)
 	if (!fw)
 		fw = nvhost_client_request_firmware(g->dev, fw_name);
 #endif
+
 	if (!fw) {
 		dev_err(dev, "failed to get firmware\n");
 		return NULL;

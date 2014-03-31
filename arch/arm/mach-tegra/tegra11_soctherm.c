@@ -47,7 +47,8 @@
 #include "common.h"
 #include "dvfs.h"
 
-static const int MAX_HIGH_TEMP = 128000;
+static const int MAX_HIGH_TEMP = 127000;
+static const int MIN_LOW_TEMP = -127000;
 
 /* Min temp granularity specified as X in 2^X.
  * -1: Hi precision option: 2^-1 = 0.5C (T12x onwards)
@@ -586,7 +587,7 @@ static inline u32 temp_translate_rev(long temp)
 }
 
 #ifdef CONFIG_THERMAL
-static struct thermal_zone_device *thz[THERM_SIZE];
+static struct thermal_zone_device *soctherm_th_zones[THERM_SIZE];
 #endif
 struct soctherm_oc_irq_chip_data {
 	int			irq_base;
@@ -747,7 +748,6 @@ static inline s64 div64_s64_precise(s64 a, s32 b)
  *
  * Return: the translated temperature in millicelsius
  */
-
 static inline long temp_translate(int readback)
 {
 	int abs = readback >> 8;
@@ -759,6 +759,34 @@ static inline long temp_translate(int readback)
 }
 
 #ifdef CONFIG_THERMAL
+
+/**
+ * enforce_temp_range() - check and enforce temperature range [min, max]
+ * @trip_temp:		The trip temperature to check
+ *
+ * Checks and enforces the permitted temperature range that SOC_THERM
+ * HW can support with 8-bit registers to specify temperature. This is
+ * done while taking care of precision.
+ *
+ * Return: The precsion adjusted capped temperature in millicelsius.
+ */
+static int enforce_temp_range(long trip_temp)
+{
+	long temp = LOWER_PRECISION_FOR_TEMP(trip_temp);
+
+	if (temp < MIN_LOW_TEMP) {
+		pr_info("soctherm: trip_point temp %ld forced to %d\n",
+			trip_temp, LOWER_PRECISION_FOR_CONV(MIN_LOW_TEMP));
+		temp = MIN_LOW_TEMP;
+	} else if (temp > MAX_HIGH_TEMP) {
+		pr_info("soctherm: trip_point temp %ld forced to %d\n",
+			trip_temp, LOWER_PRECISION_FOR_CONV(MAX_HIGH_TEMP));
+		temp = MAX_HIGH_TEMP;
+	}
+
+	return temp;
+}
+
 /**
  * prog_hw_shutdown() - Configures the hardware to shut down the
  * system if a given sensor group reaches a given temperature
@@ -778,24 +806,26 @@ static inline long temp_translate(int readback)
 static inline void prog_hw_shutdown(struct thermal_trip_info *trip_state,
 				    int therm)
 {
-	int trip_temp;
 	u32 r;
+	int temp;
 
-	trip_temp = LOWER_PRECISION_FOR_TEMP(trip_state->trip_temp / 1000);
+
+
+	temp = enforce_temp_range(trip_state->trip_temp) / 1000;
 
 	r = soctherm_readl(THERMTRIP);
 	if (therm == THERM_CPU) {
 		r = REG_SET(r, THERMTRIP_CPU_EN, 1);
-		r = REG_SET(r, THERMTRIP_CPU_THRESH, trip_temp);
+		r = REG_SET(r, THERMTRIP_CPU_THRESH, temp);
 	} else if (therm == THERM_GPU) {
 		r = REG_SET(r, THERMTRIP_GPU_EN, 1);
-		r = REG_SET(r, THERMTRIP_GPUMEM_THRESH, trip_temp);
+		r = REG_SET(r, THERMTRIP_GPUMEM_THRESH, temp);
 	} else if (therm == THERM_PLL) {
 		r = REG_SET(r, THERMTRIP_TSENSE_EN, 1);
-		r = REG_SET(r, THERMTRIP_TSENSE_THRESH, trip_temp);
+		r = REG_SET(r, THERMTRIP_TSENSE_THRESH, temp);
 	} else if (therm == THERM_MEM) {
 		r = REG_SET(r, THERMTRIP_MEM_EN, 1);
-		r = REG_SET(r, THERMTRIP_GPUMEM_THRESH, trip_temp);
+		r = REG_SET(r, THERMTRIP_GPUMEM_THRESH, temp);
 	}
 	r = REG_SET(r, THERMTRIP_ANY_EN, 0);
 	soctherm_writel(r, THERMTRIP);
@@ -815,17 +845,17 @@ static inline void prog_hw_shutdown(struct thermal_trip_info *trip_state,
 static inline void prog_hw_threshold(struct thermal_trip_info *trip_state,
 				     int therm, int throt)
 {
-	int trip_temp;
 	u32 r, reg_off;
+	int temp;
 
-	trip_temp = LOWER_PRECISION_FOR_TEMP(trip_state->trip_temp / 1000);
+	temp = enforce_temp_range(trip_state->trip_temp) / 1000;
 
 	/* Hardcode LITE on level-1 and HEAVY on level-2 */
 	reg_off = TS_THERM_REG_OFFSET(CTL_LVL0_CPU0, throt + 1, therm);
 
 	r = soctherm_readl(reg_off);
-	r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, trip_temp);
-	r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, trip_temp);
+	r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, temp);
+	r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, temp);
 	r = REG_SET(r, CTL_LVL0_CPU0_EN, 1);
 
 	r = REG_SET(r, CTL_LVL0_CPU0_CPU_THROT,
@@ -836,7 +866,6 @@ static inline void prog_hw_threshold(struct thermal_trip_info *trip_state,
 		    throt == THROTTLE_HEAVY ?
 		    CTL_LVL0_CPU0_GPU_THROT_HEAVY :
 		    CTL_LVL0_CPU0_GPU_THROT_LIGHT);
-
 	soctherm_writel(r, reg_off);
 }
 
@@ -854,15 +883,15 @@ static void soctherm_set_limits(enum soctherm_therm_id therm,
 				long lo_limit, long hi_limit)
 {
 	u32 r, reg_off;
+	int lo_temp, hi_temp;
+
+	lo_temp = enforce_temp_range(lo_limit) / 1000;
+	hi_temp = enforce_temp_range(hi_limit) / 1000;
 
 	reg_off = TS_THERM_REG_OFFSET(CTL_LVL0_CPU0, 0, therm);
 	r = soctherm_readl(reg_off);
-
-	lo_limit = LOWER_PRECISION_FOR_TEMP(lo_limit);
-	hi_limit = LOWER_PRECISION_FOR_TEMP(hi_limit);
-
-	r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, lo_limit);
-	r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, hi_limit);
+	r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, lo_temp);
+	r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, hi_temp);
 	r = REG_SET(r, CTL_LVL0_CPU0_EN, 1);
 	soctherm_writel(r, reg_off);
 
@@ -908,7 +937,7 @@ static void soctherm_update_zone(int zn)
 	long trip_temp, passive_low_temp = MAX_HIGH_TEMP, zone_temp;
 	enum thermal_trip_type trip_type;
 	struct thermal_trip_info *trip_state;
-	struct thermal_zone_device *cur_thz = thz[zn];
+	struct thermal_zone_device *cur_thz = soctherm_th_zones[zn];
 	int count, trips;
 
 	thermal_zone_device_update(cur_thz);
@@ -944,7 +973,7 @@ static void soctherm_update_zone(int zn)
 	if (passive_low_temp != MAX_HIGH_TEMP)
 		low_temp = max(low_temp, passive_low_temp);
 
-	soctherm_set_limits(zn, low_temp/1000, high_temp/1000);
+	soctherm_set_limits(zn, low_temp, high_temp);
 }
 
 /**
@@ -962,7 +991,7 @@ static void soctherm_update(void)
 		return;
 
 	for (i = 0; i < THERM_SIZE; i++) {
-		if (thz[i] && thz[i]->trips)
+		if (soctherm_th_zones[i] && soctherm_th_zones[i]->trips)
 			soctherm_update_zone(i);
 	}
 }
@@ -1106,9 +1135,6 @@ static struct thermal_cooling_device_ops soctherm_suspend_ops = {
  * @thz:	The thermal zone device to be bound
  * @cdev:	The cooling device to be bound
  *
- * If a trip point is already bound to a cooling device, it is
- * not rebound.
- *
  * If thermal sensor calibration data is missing from fuses,
  * the cooling devices are not bound.
  *
@@ -1126,23 +1152,19 @@ static struct thermal_cooling_device_ops soctherm_suspend_ops = {
 static int soctherm_bind(struct thermal_zone_device *thz,
 				struct thermal_cooling_device *cdev)
 {
-	int i, index = ((int)thz->devdata) - TSENSE_SIZE;
+	int i;
+	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
 	u32 base_cp, base_ft;
 	s32 shft_cp, shft_ft;
-
-	if (index < 0)
-		return 0;
 
 	/* skip binding cooling devices on improperly fused soctherm */
 	if (tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) < 0 ||
 	    tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) < 0)
 		return 0;
 
-	for (i = 0; i < plat_data.therm[index].num_trips; i++) {
-		trip_state = &plat_data.therm[index].trips[i];
-		if (trip_state->bound)
-			continue;
+	for (i = 0; i < therm->num_trips; i++) {
+		trip_state = &therm->trips[i];
 		if (trip_state->cdev_type &&
 		    !strncmp(trip_state->cdev_type, cdev->type,
 						THERMAL_NAME_LENGTH)) {
@@ -1170,14 +1192,12 @@ static int soctherm_bind(struct thermal_zone_device *thz,
 static int soctherm_unbind(struct thermal_zone_device *thz,
 				struct thermal_cooling_device *cdev)
 {
-	int i, index = ((int)thz->devdata) - TSENSE_SIZE;
+	int i;
+	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
 
-	if (index < 0)
-		return 0;
-
-	for (i = 0; i < plat_data.therm[index].num_trips; i++) {
-		trip_state = &plat_data.therm[index].trips[i];
+	for (i = 0; i < therm->num_trips; i++) {
+		trip_state = &therm->trips[i];
 		if (!trip_state->bound)
 			continue;
 		if (trip_state->cdev_type &&
@@ -1206,56 +1226,45 @@ static int soctherm_unbind(struct thermal_zone_device *thz,
 static int soctherm_get_temp(struct thermal_zone_device *thz,
 					unsigned long *temp)
 {
-	int index = (int)thz->devdata;
+	struct soctherm_therm *therm = thz->devdata;
+	ptrdiff_t index = therm - plat_data.therm;
 	u32 r, regv, shft, mask;
 	enum soctherm_sense i, j;
 	int tt, ti;
 
-	if (index < TSENSE_SIZE) { /* 'TSENSE_XXX' thermal zone */
-		regv = TS_CPU0_STATUS1;
-		shft = TS_CPU0_STATUS1_TEMP_SHIFT;
-		mask = TS_CPU0_STATUS1_TEMP_MASK;
-		i = index;
-		j = index;
-	} else {
-		index -= TSENSE_SIZE; /* 'THERM_XXX' thermal zone */
+	switch (index) {
+	case THERM_CPU:
+		regv = TS_TEMP1;
+		shft = TS_TEMP1_CPU_TEMP_SHIFT;
+		mask = TS_TEMP1_CPU_TEMP_MASK;
+		i = TSENSE_CPU0;
+		j = TSENSE_CPU3;
+		break;
 
-		switch (index) {
-		case THERM_CPU:
-			regv = TS_TEMP1;
-			shft = TS_TEMP1_CPU_TEMP_SHIFT;
-			mask = TS_TEMP1_CPU_TEMP_MASK;
-			i = TSENSE_CPU0;
-			j = TSENSE_CPU3;
-			break;
+	case THERM_GPU:
+		regv = TS_TEMP1;
+		shft = TS_TEMP1_GPU_TEMP_SHIFT;
+		mask = TS_TEMP1_GPU_TEMP_MASK;
+		i = TSENSE_GPU;
+		j = TSENSE_GPU;
+		break;
 
-		case THERM_GPU:
-			regv = TS_TEMP1;
-			shft = TS_TEMP1_GPU_TEMP_SHIFT;
-			mask = TS_TEMP1_GPU_TEMP_MASK;
-			i = TSENSE_GPU;
-			j = TSENSE_GPU;
-			break;
+	case THERM_MEM:
+		regv = TS_TEMP2;
+		shft = TS_TEMP2_MEM_TEMP_SHIFT;
+		mask = TS_TEMP2_MEM_TEMP_MASK;
+		i = TSENSE_MEM0;
+		j = TSENSE_MEM1;
+		break;
 
-		case THERM_PLL:
-			regv = TS_TEMP2;
-			shft = TS_TEMP2_PLLX_TEMP_SHIFT;
-			mask = TS_TEMP2_PLLX_TEMP_MASK;
-			i = TSENSE_PLLX;
-			j = TSENSE_PLLX;
-			break;
-
-		case THERM_MEM:
-			regv = TS_TEMP2;
-			shft = TS_TEMP2_MEM_TEMP_SHIFT;
-			mask = TS_TEMP2_MEM_TEMP_MASK;
-			i = TSENSE_MEM0;
-			j = TSENSE_MEM1;
-			break;
-
-		default:
-			return 0; /* error really */
-		}
+	case THERM_PLL:
+	default: /* if devdata has error, return PLL temp to be safe */
+		regv = TS_TEMP2;
+		shft = TS_TEMP2_PLLX_TEMP_SHIFT;
+		mask = TS_TEMP2_PLLX_TEMP_MASK;
+		i = TSENSE_PLLX;
+		j = TSENSE_PLLX;
+		break;
 	}
 
 	if (read_hw_temp) {
@@ -1293,14 +1302,9 @@ static int soctherm_get_temp(struct thermal_zone_device *thz,
 static int soctherm_get_trip_type(struct thermal_zone_device *thz,
 				int trip, enum thermal_trip_type *type)
 {
-	int index = ((int)thz->devdata) - TSENSE_SIZE;
-	struct thermal_trip_info *trip_state;
+	struct soctherm_therm *therm = thz->devdata;
 
-	if (index < 0)
-		return -EINVAL;
-
-	trip_state = &plat_data.therm[index].trips[trip];
-	*type = trip_state->trip_type;
+	*type = therm->trips[trip].trip_type;
 	return 0;
 }
 
@@ -1321,14 +1325,11 @@ static int soctherm_get_trip_type(struct thermal_zone_device *thz,
 static int soctherm_get_trip_temp(struct thermal_zone_device *thz,
 				int trip, unsigned long *temp)
 {
-	int index = ((int)thz->devdata) - TSENSE_SIZE;
+	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
 	unsigned long trip_temp, zone_temp;
 
-	if (index < 0)
-		return -EINVAL;
-
-	trip_state = &plat_data.therm[index].trips[trip];
+	trip_state = &therm->trips[trip];
 	trip_temp = trip_state->trip_temp;
 	zone_temp = thz->temperature;
 
@@ -1342,7 +1343,6 @@ static int soctherm_get_trip_temp(struct thermal_zone_device *thz,
 	}
 
 	*temp = trip_temp;
-
 	return 0;
 }
 
@@ -1362,39 +1362,35 @@ static int soctherm_get_trip_temp(struct thermal_zone_device *thz,
 static int soctherm_set_trip_temp(struct thermal_zone_device *thz,
 				int trip, unsigned long temp)
 {
-	int index = ((int)thz->devdata) - TSENSE_SIZE;
+	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
 	long rem;
 
-	if (index < 0)
-		return -EINVAL;
-
-	trip_state = &plat_data.therm[index].trips[trip];
-
-	trip_state->trip_temp = temp;
+	trip_state = &therm->trips[trip];
+	trip_state->trip_temp = enforce_temp_range(temp);
 
 	rem = trip_state->trip_temp % LOWER_PRECISION_FOR_CONV(1000);
 	if (rem) {
 		pr_warn("soctherm: zone%d/trip_point%d %ld mC rounded down\n",
-			index, trip, trip_state->trip_temp);
+			thz->id, trip, trip_state->trip_temp);
 		trip_state->trip_temp -= rem;
 	}
 
 	if (trip_state->trip_type == THERMAL_TRIP_HOT) {
 		if (strnstr(trip_state->cdev_type,
 			    "heavy", THERMAL_NAME_LENGTH))
-			prog_hw_threshold(trip_state, index, THROTTLE_HEAVY);
+			prog_hw_threshold(trip_state, thz->id, THROTTLE_HEAVY);
 		else if (strnstr(trip_state->cdev_type,
 				 "light", THERMAL_NAME_LENGTH))
-			prog_hw_threshold(trip_state, index, THROTTLE_LIGHT);
+			prog_hw_threshold(trip_state, thz->id, THROTTLE_LIGHT);
 	}
 
 	/* Allow SW to shutdown at 'Critical temperature reached' */
-	soctherm_update_zone(index);
+	thermal_notify_framework(soctherm_th_zones[thz->id], trip);
 
 	/* Reprogram HW thermtrip */
 	if (trip_state->trip_type == THERMAL_TRIP_CRITICAL)
-		prog_hw_shutdown(trip_state, index);
+		prog_hw_shutdown(trip_state, thz->id);
 
 	return 0;
 }
@@ -1413,14 +1409,12 @@ static int soctherm_set_trip_temp(struct thermal_zone_device *thz,
 static int soctherm_get_crit_temp(struct thermal_zone_device *thz,
 				  unsigned long *temp)
 {
-	int i, index = ((int)thz->devdata) - TSENSE_SIZE;
+	int i;
+	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
 
-	if (index < 0)
-		return -EINVAL;
-
-	for (i = 0; i < plat_data.therm[index].num_trips; i++) {
-		trip_state = &plat_data.therm[index].trips[i];
+	for (i = 0; i < therm->num_trips; i++) {
+		trip_state = &therm->trips[i];
 		if (trip_state->trip_type != THERMAL_TRIP_CRITICAL)
 			continue;
 		*temp = trip_state->trip_temp;
@@ -1461,14 +1455,11 @@ static int soctherm_get_trend(struct thermal_zone_device *thz,
 				int trip,
 				enum thermal_trend *trend)
 {
-	int index = ((int)thz->devdata) - TSENSE_SIZE;
+	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
 	long trip_temp;
 
-	if (index < 0)
-		return -EINVAL;
-
-	trip_state = &plat_data.therm[index].trips[trip];
+	trip_state = &therm->trips[trip];
 	thz->ops->get_trip_temp(thz, trip, &trip_temp);
 
 	switch (trip_state->trip_type) {
@@ -1596,23 +1587,6 @@ static int __init soctherm_thermal_sys_init(void)
 	if (!soctherm_init_platform_done)
 		return 0;
 
-	for (i = 0; i < TSENSE_SIZE; i++) {
-		if (plat_data.sensor_data[i].zone_enable) {
-			snprintf(name, THERMAL_NAME_LENGTH,
-				 "%s-tsensor", sensor_names[i]);
-			/* Create a thermal zone device for each sensor */
-			thermal_zone_device_register(
-					name,
-					0,
-					0,
-					(void *)i,
-					&soctherm_ops,
-					NULL,
-					0,
-					0);
-		}
-	}
-
 	for (i = 0; i < THERM_SIZE; i++) {
 		therm = &plat_data.therm[i];
 		if (!therm->zone_enable)
@@ -1640,17 +1614,16 @@ static int __init soctherm_thermal_sys_init(void)
 			}
 		}
 
-		snprintf(name, THERMAL_NAME_LENGTH,
-			 "%s-therm", therm_names[i]);
-		thz[i] = thermal_zone_device_register(
-					name,
-					therm->num_trips,
-					(1ULL << therm->num_trips) - 1,
-					(void *)TSENSE_SIZE + i,
-					&soctherm_ops,
-					therm->tzp,
-					therm->passive_delay,
-					0);
+		snprintf(name, THERMAL_NAME_LENGTH, "%s-therm", therm_names[i]);
+		soctherm_th_zones[i] = thermal_zone_device_register(
+						name,
+						therm->num_trips,
+						(1ULL << therm->num_trips) - 1,
+						therm,
+						&soctherm_ops,
+						therm->tzp,
+						therm->passive_delay,
+						0);
 
 		for (j = THROTTLE_OC1; !oc_en && j < THROTTLE_SIZE; j++)
 			if ((therm2dev[i] != THROTTLE_DEV_NONE) &&
@@ -2466,7 +2439,7 @@ static void soctherm_therm_trip_init(struct tegra_tsensor_pmu_data *data)
 
 	/* enable therm trip at PMC */
 	val = pmc_readl(PMC_SENSOR_CTRL);
-	val = REG_SET(val, PMC_SCRATCH_WRITE, 1);
+	val = REG_SET(val, PMC_SCRATCH_WRITE, 0);
 	val = REG_SET(val, PMC_ENABLE_RST, 1);
 	pmc_writel(val, PMC_SENSOR_CTRL);
 
@@ -2656,7 +2629,6 @@ static int soctherm_init_platform_data(void)
 	for (i = 0; i < TSENSE_SIZE; i++) {
 		therm = &plat_data.therm[tsensor2therm_map[i]];
 		s = &plat_data.sensor_data[i];
-		s->sensor_enable = s->zone_enable;
 		s->sensor_enable = s->sensor_enable ?: therm->zone_enable;
 		s->tall      = s->tall      ?: sensor_defaults.tall;
 		s->tiddq     = s->tiddq     ?: sensor_defaults.tiddq;
@@ -3281,6 +3253,8 @@ static int regs_show(struct seq_file *s, void *data)
 					sensor2therm_b[i]));
 
 		r = soctherm_readl(TS_TSENSE_REG_OFFSET(TS_CPU0_CONFIG0, i));
+		state = REG_GET(r, TS_CPU0_CONFIG0_STOP);
+		seq_printf(s, "Stop(%d) ", state);
 		state = REG_GET(r, TS_CPU0_CONFIG0_TALL);
 		seq_printf(s, "Tall(%d) ", state);
 		state = REG_GET(r, TS_CPU0_CONFIG0_TCALC_OVER);

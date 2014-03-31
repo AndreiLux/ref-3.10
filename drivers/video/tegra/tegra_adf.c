@@ -1,5 +1,7 @@
 /*
  * Copyright (C) 2013 Google, Inc.
+ * Copyright (c) 2014, NVIDIA CORPORATION, All rights reserved.
+ *
  * modified from drivers/video/tegra/dc/{mode.c,ext/dev.c}
  *
  * This software is licensed under the terms of the GNU General Public
@@ -750,8 +752,8 @@ static void tegra_adf_intf_set_event(struct adf_obj *obj,
 
 static enum adf_interface_type tegra_adf_interface_type(struct tegra_dc *dc)
 {
-	 /* TODO: can RGB and LVDS be mapped to existing ADF_INTF types?
-	    Should they be added to ADF's list? */
+	/* TODO: can RGB and LVDS be mapped to existing ADF_INTF types?
+	 * Should they be added to ADF's list? */
 	switch (tegra_dc_get_out(dc)) {
 	case TEGRA_DC_OUT_RGB:
 		return TEGRA_ADF_INTF_RGB;
@@ -903,6 +905,18 @@ struct adf_overlay_engine_ops tegra_adf_eng_ops = {
 	.n_supported_formats = ARRAY_SIZE(tegra_adf_formats),
 };
 
+int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
+						struct tegra_dc_bw_data *bw)
+{
+	struct tegra_adf_event_bandwidth event;
+	event.base.type = TEGRA_ADF_EVENT_BANDWIDTH_RENEGOTIATE;
+	event.base.length = sizeof(event);
+	event.total_bw = bw->total_bw;
+	event.avail_bw = bw->avail_bw;
+	event.resvd_bw = bw->resvd_bw;
+	return adf_event_notify(&adf_info->base.base, &event.base);
+}
+
 struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 		struct tegra_dc *dc,
 		struct tegra_fb_data *fb_data)
@@ -955,6 +969,8 @@ struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 
 	if (dc->enabled)
 		adf_info->intf.dpms_state = DRM_MODE_DPMS_ON;
+
+	dev_info(&ndev->dev, "ADF initialized\n");
 
 	return adf_info;
 

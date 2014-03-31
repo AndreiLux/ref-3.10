@@ -42,9 +42,9 @@
 #define WIN_ALL_ACT_REQ (WIN_A_ACT_REQ | WIN_B_ACT_REQ | WIN_C_ACT_REQ)
 #endif
 
-static inline void tegra_dc_io_start(struct tegra_dc *dc)
+static inline int tegra_dc_io_start(struct tegra_dc *dc)
 {
-	nvhost_module_busy_ext(dc->ndev);
+	return nvhost_module_busy_ext(dc->ndev);
 }
 
 static inline void tegra_dc_io_end(struct tegra_dc *dc)
@@ -391,7 +391,7 @@ void tegra_dc_clk_disable(struct tegra_dc *dc);
 void tegra_dc_get(struct tegra_dc *dc);
 void tegra_dc_put(struct tegra_dc *dc);
 
-/* defined in dc.c, used in window.c */
+/* defined in dc.c, used in tegra_adf.c */
 void tegra_dc_hold_dc_out(struct tegra_dc *dc);
 void tegra_dc_release_dc_out(struct tegra_dc *dc);
 

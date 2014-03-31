@@ -264,18 +264,6 @@ static struct as3722_platform_data as3722_pdata = {
 	.minor_rev = 1,
 };
 
-static struct pca953x_platform_data tca6416_pdata = {
-	.gpio_base = PMU_TCA6416_GPIO_BASE,
-	.irq_base = PMU_TCA6416_IRQ_BASE,
-};
-
-static struct i2c_board_info tca6416_expander[] = {
-	{
-		I2C_BOARD_INFO("tca6416", 0x20),
-		.platform_data = &tca6416_pdata,
-	},
-};
-
 static struct i2c_board_info __initdata as3722_regulators[] = {
 	{
 		I2C_BOARD_INFO("as3722", 0x40),
@@ -322,9 +310,6 @@ int __init norrin_as3722_regulator_init(void)
 	pr_info("%s: i2c_register_board_info\n", __func__);
 	i2c_register_board_info(4, as3722_regulators,
 			ARRAY_SIZE(as3722_regulators));
-	tca6416_expander[0].irq = gpio_to_irq(TEGRA_GPIO_PQ5);
-	i2c_register_board_info(0, tca6416_expander,
-			ARRAY_SIZE(tca6416_expander));
 	return 0;
 }
 
@@ -920,6 +905,20 @@ int __init norrin_soctherm_init(void)
 			norrin_soctherm_data.therm[THERM_GPU].trips,
 			&norrin_soctherm_data.therm[THERM_GPU].num_trips);
 		tegra_add_core_vmax_trips(
+			norrin_soctherm_data.therm[THERM_PLL].trips,
+			&norrin_soctherm_data.therm[THERM_PLL].num_trips);
+	}
+
+	if (board_info.board_id == BOARD_PM374 ||
+		board_info.board_id == BOARD_E1971 ||
+		board_info.board_id == BOARD_E1991) {
+		tegra_add_cpu_vmin_trips(
+			norrin_soctherm_data.therm[THERM_CPU].trips,
+			&norrin_soctherm_data.therm[THERM_CPU].num_trips);
+		tegra_add_gpu_vmin_trips(
+			norrin_soctherm_data.therm[THERM_GPU].trips,
+			&norrin_soctherm_data.therm[THERM_GPU].num_trips);
+		tegra_add_core_vmin_trips(
 			norrin_soctherm_data.therm[THERM_PLL].trips,
 			&norrin_soctherm_data.therm[THERM_PLL].num_trips);
 	}

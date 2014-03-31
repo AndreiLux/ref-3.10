@@ -206,19 +206,22 @@ dtb-$(CONFIG_ARCH_TEGRA) += tegra20-harmony.dtb \
 	tegra124-bonaire_sim.dtb \
 	tegra124-bonaire.dtb \
 	tegra124-ardbeg.dtb \
-	tegra124-ardbeg-battery.dtb \
 	tegra124-ardbeg-a03-00.dtb \
-	tegra124-ardbeg-a03-00-battery.dtb \
-	tegra124-ardbeg-e1735.dtb \
-	tegra124-ardbeg-e1735-a03-00.dtb \
-	tegra124-ardbeg-e1733.dtb \
-	tegra124-ardbeg-e1733-a03-00.dtb \
-	tegra124-ardbeg-e1735-a03-powerconfig.dtb \
+	tegra124-ardbeg-e1792-1100-a00-00.dtb \
+	tegra124-ardbeg-e1792-1100-a00-01.dtb \
+	tegra124-ardbeg-e1780-1000-a00-00.dtb \
+	tegra124-ardbeg-e1780-1000-a00-01.dtb \
+	tegra124-ardbeg-e1780-1000-a00-00-battery.dtb \
+	tegra124-ardbeg-e1780-1000-a03-00.dtb \
+	tegra124-ardbeg-e1780-1000-a03-01.dtb \
+	tegra124-ardbeg-e1780-1000-a03-00-battery.dtb \
+	tegra124-ardbeg-e1780-1000-a03-00-powerconfig.dtb \
+	tegra124-ardbeg-e1780-1000-a03-00-sata.dtb \
 	tegra124-laguna.dtb \
 	tegra124-laguna-pm358.dtb \
 	tegra124-norrin.dtb \
-	tegra124-norrin-pm374-0001-c00.dtb \
-	tegra124-norrin-pm374-0001-c01.dtb \
+	tegra124-norrin-pm374-0001-a00-00.dtb \
+	tegra124-norrin-pm374-0001-a01-00.dtb \
 	tegra124-loki.dtb \
 	tegra124-loki-02-cell-battery.dtb \
 	tegra124-loki-03-cell-battery.dtb \
@@ -262,9 +265,10 @@ dtb-$(CONFIG_ARCH_TEGRA) += tegra20-harmony.dtb \
 	tegra124-tn8-p1761-1270-a00.dtb \
 	tegra124-tn8-p1761-1270-a02-battery.dtb \
 	tegra124-tn8-p1761-1270-a02.dtb \
+	tegra124-tn8-p1761-1270-a03-battery.dtb \
+	tegra124-tn8-p1761-1270-a03.dtb \
 	tegra124-tn8-p1761-1470-a00-battery.dtb \
 	tegra124-tn8-p1761-1470-a00.dtb \
-	tegra124-ardbeg_sata.dtb \
 	tegra124-vcm30_t124.dtb
 dtb-$(CONFIG_ARCH_VERSATILE) += versatile-ab.dtb \
 	versatile-pb.dtb

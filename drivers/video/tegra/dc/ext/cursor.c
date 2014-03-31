@@ -293,8 +293,13 @@ int tegra_dc_ext_set_cursor_image(struct tegra_dc_ext_user *user,
 
 	mutex_unlock(&ext->cursor.lock);
 
-	if (old_handle)
-		tegra_dc_ext_unpin_window(old_handle);
+	if (old_handle) {
+		dma_buf_unmap_attachment(old_handle->attach,
+			old_handle->sgt, DMA_TO_DEVICE);
+		dma_buf_detach(old_handle->buf, old_handle->attach);
+		dma_buf_put(old_handle->buf);
+		kfree(old_handle);
+	}
 
 	return 0;
 
@@ -504,8 +509,14 @@ int tegra_dc_ext_set_cursor_low_latency(struct tegra_dc_ext_user *user,
 
 	mutex_unlock(&ext->cursor.lock);
 
-	if (old_handle)
-		tegra_dc_ext_unpin_window(old_handle);
+	if (old_handle) {
+		dma_buf_unmap_attachment(old_handle->attach,
+			old_handle->sgt, DMA_TO_DEVICE);
+		dma_buf_detach(old_handle->buf, handle->attach);
+		dma_buf_put(old_handle->buf);
+		kfree(old_handle);
+	}
+
 	return 0;
 
 unlock:
