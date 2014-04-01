@@ -51,6 +51,8 @@ static char *dsp_vad_suffix = "vad";
 module_param(dsp_vad_suffix, charp, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(dsp_vad_suffix, "DSP VAD Firmware Suffix");
 
+extern void set_rt5677_power_extern(bool enable);
+
 static struct rt5677_init_reg init_list[] = {
 	{RT5677_DIG_MISC		, 0x0021},
 	{RT5677_PRIV_INDEX		, 0x003d},
@@ -82,6 +84,8 @@ static struct rt5677_init_reg init_list[] = {
 	{RT5677_MICBIAS			, 0x4000},
 	{RT5677_MONO_ADC_MIXER		, 0xd4d5},
 	{RT5677_TDM1_CTRL2		, 0x0106},
+	{RT5677_GEN_CTRL2		, 0x0200},
+	{RT5677_GPIO_CTRL2		, 0x4000},
 	/* Record End */
 };
 #define RT5677_INIT_REG_LEN ARRAY_SIZE(init_list)
@@ -618,7 +622,6 @@ static struct rt5677_init_reg vad_recover_list[] = {
 	{ RT5677_VAD_CTRL1		, 0x2184 },
 	{ RT5677_IRQ_CTRL2		, 0x0000 },
 	{ RT5677_PWR_DIG2		, 0x0000 },
-	{ RT5677_GPIO_CTRL2		, 0x0000 },
 	{ RT5677_PWR_ANLG2		, 0x0000 },
 	{ RT5677_PWR_DSP2		, 0x0c00 },
 	{ RT5677_PWR_DSP1		, 0x0001 },
@@ -813,17 +816,17 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 	regmap_write(rt5677->regmap, 0x02, 0x5000);
 	regmap_write(rt5677->regmap, 0x00, 0x0002);
 	regmap_read(rt5677->regmap, 0x03, &ret);
-	dev_err(codec->dev, "0x50000000 0x03 %x\n", ret);
+	dev_err(codec->dev, "rt5677 0x50000000 0x03 %x\n", ret);
 	regmap_read(rt5677->regmap, 0x04, &ret);
-	dev_err(codec->dev, "0x50000000 0x04 %x\n", ret);
+	dev_err(codec->dev, "rt5677 0x50000000 0x04 %x\n", ret);
 
 	regmap_write(rt5677->regmap, 0x01, 0x0000);
 	regmap_write(rt5677->regmap, 0x02, 0x6000);
 	regmap_write(rt5677->regmap, 0x00, 0x0002);
 	regmap_read(rt5677->regmap, 0x03, &ret);
-	dev_err(codec->dev, "0x60000000 0x03 %x\n", ret);
+	dev_err(codec->dev, "rt5677 0x60000000 0x03 %x\n", ret);
 	regmap_read(rt5677->regmap, 0x04, &ret);
-	dev_err(codec->dev, "0x60000000 0x04 %x\n", ret);
+	dev_err(codec->dev, "rt5677 0x60000000 0x04 %x\n", ret);
 #endif
 	return 0;
 }
@@ -835,9 +838,13 @@ static unsigned int rt5677_set_vad(
 	int i = 0;
 	unsigned int value;
 	static bool activity;
+	regcache_cache_only(rt5677->regmap, false);
 
 	if (on && !activity) {
 		pr_debug("rt5677_set_vad on\n");
+		set_rt5677_power_extern(true);
+		regcache_cache_only(rt5677->regmap, true);
+
 		gpio_direction_output(rt5677->vad_clock_en, 1);
 		activity = true;
 		for (i = 0; i < ARRAY_SIZE(vad_recover_list); i++) {
@@ -852,8 +859,10 @@ static unsigned int rt5677_set_vad(
 
 		rt5677_dsp_mode_i2c_update_bits(codec, RT5677_PWR_DSP1,
 			0x1, 0x0);
+		regcache_cache_only(rt5677->regmap, false);
 	} else if (!on && activity) {
 		pr_debug("rt5677_set_vad off\n");
+		regcache_cache_only(rt5677->regmap, false);
 		activity = false;
 		rt5677_dsp_mode_i2c_update_bits(codec, RT5677_PWR_DSP1,
 			0x1, 0x1);
@@ -867,7 +876,11 @@ static unsigned int rt5677_set_vad(
 			regmap_write(rt5677->regmap, vad_recover_list[i].reg,
 				vad_recover_list[i].val);
 		rt5677_index_write(codec, 0x14, 0x0f8b);
+		rt5677_index_update_bits(codec,
+			RT5677_BIAS_CUR4, 0x0f00, 0x0000);
 		gpio_direction_output(rt5677->vad_clock_en, 0);
+		set_rt5677_power_extern(false);
+		regcache_cache_only(rt5677->regmap, true);
 	}
 
 	return 0;
@@ -877,10 +890,12 @@ static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
 	case RT5677_RESET:
+/*
 	case RT5677_LOUT1:
 	case RT5677_DSP_I2C_ADDR_MSB:
 	case RT5677_IN1:
 	case RT5677_MICBIAS:
+*/
 	case RT5677_SLIMBUS_PARAM:
 	case RT5677_PDM_DATA_CTRL1:
 	case RT5677_PDM_DATA_CTRL2:
@@ -900,7 +915,7 @@ static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
 	case RT5677_ADC_EQ_CTRL1:
 	case RT5677_EQ_CTRL1:
 	case RT5677_IRQ_CTRL1:
-	case RT5677_IRQ_CTRL2:
+	//case RT5677_IRQ_CTRL2:
 	case RT5677_GPIO_ST:
 	case RT5677_DSP_INB1_SRC_CTRL4:
 	case RT5677_DSP_INB2_SRC_CTRL4:
@@ -920,7 +935,9 @@ static bool rt5677_readable_register(struct device *dev, unsigned int reg)
 {
 	switch (reg) {
 	case RT5677_RESET:
+/*
 	case RT5677_DSP_I2C_ADDR_MSB:
+*/
 	case RT5677_LOUT1:
 	case RT5677_IN1:
 	case RT5677_MICBIAS:
@@ -2762,6 +2779,8 @@ static int rt5677_pre_event(struct snd_soc_dapm_widget *w,
 	case SND_SOC_DAPM_PRE_PMU:
 		regmap_update_bits(rt5677->regmap, RT5677_PWR_ANLG1,
 			RT5677_LDO1_SEL_MASK | RT5677_LDO2_SEL_MASK, 0x0055);
+		rt5677_index_update_bits(codec,
+			RT5677_BIAS_CUR4, 0x0f00, 0x0f00);
 		break;
 	default:
 		return 0;
@@ -4474,6 +4493,7 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 			enum snd_soc_bias_level level)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	int i;
 
 	switch (level) {
 	case SND_SOC_BIAS_ON:
@@ -4498,6 +4518,12 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
+		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+			regcache_cache_only(rt5677->regmap, false);
+			for (i = 0; i < RT5677_VENDOR_ID2 + 1; i++)
+				regcache_sync_region(rt5677->regmap, i, i);
+			rt5677_index_sync(codec);
+		}
 		break;
 
 	case SND_SOC_BIAS_OFF:
@@ -4506,9 +4532,13 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 		regmap_write(rt5677->regmap, RT5677_PWR_DIG2, 0x0000);
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG1, 0x0000);
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0x0000);
+		rt5677_index_update_bits(codec,
+			RT5677_BIAS_CUR4, 0x0f00, 0x0000);
 
 		if (rt5677->vad_mode == RT5677_VAD_IDLE)
 			rt5677_set_vad(codec, 1);
+		if (rt5677->vad_mode == RT5677_VAD_OFF)
+			regcache_cache_only(rt5677->regmap, true);
 		break;
 
 	default:
@@ -4588,6 +4618,8 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 		return ret;
 	}
 
+	rt5677_set_bias_level(codec, SND_SOC_BIAS_OFF);
+
 	return 0;
 }
 
@@ -4605,19 +4637,24 @@ static int rt5677_suspend(struct snd_soc_codec *codec)
 	if (rt5677->vad_mode == RT5677_VAD_SUSPEND)
 		rt5677_set_vad(codec, 1);
 
+	if (rt5677->vad_mode == RT5677_VAD_OFF)
+		regcache_cache_only(rt5677->regmap, true);
+
 	return 0;
 }
 
 static int rt5677_resume(struct snd_soc_codec *codec)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	int i;
 
 	if (rt5677->vad_mode == RT5677_VAD_SUSPEND)
 		rt5677_set_vad(codec, 0);
 
 	if (rt5677->vad_mode == RT5677_VAD_OFF) {
-		regcache_mark_dirty(rt5677->regmap);
-		regcache_sync(rt5677->regmap);
+		regcache_cache_only(rt5677->regmap, false);
+		for (i = 0; i < RT5677_VENDOR_ID2 + 1; i++)
+			regcache_sync_region(rt5677->regmap, i, i);
 		rt5677_index_sync(codec);
 	}
 	return 0;
