@@ -40,6 +40,7 @@
 #include "rt5677-spi.h"
 
 #define VERSION "0.0.2 alsa 1.0.25"
+#define RT5677_PATH "/system/vendor/firmware/rt5677_"
 
 struct rt5677_init_reg {
 	u8 reg;
@@ -777,14 +778,14 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 	unsigned int len;
 	char file_path[64];
 
-	sprintf(file_path, "/system/etc/rt5677_elf_%s",
+	sprintf(file_path, RT5677_PATH "elf_%s",
 		dsp_vad_suffix);
 	len = rt5677_read_dsp_code_from_file(file_path, &buf);
 	if (len) {
 		pr_debug("load %s ok\n", file_path);
 		rt5677_parse_and_load_dsp(buf, len);
 	} else {
-		sprintf(file_path, "/system/etc/rt5677_0x50000000_%s",
+		sprintf(file_path, RT5677_PATH "0x50000000_%s",
 			dsp_vad_suffix);
 		len = rt5677_read_dsp_code_from_file(file_path, &buf);
 		if (len) {
@@ -795,7 +796,7 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 			pr_err("load %s fail\n", file_path);
 		}
 
-		sprintf(file_path, "/system/etc/rt5677_0x60000000_%s",
+		sprintf(file_path, RT5677_PATH "0x60000000_%s",
 			dsp_vad_suffix);
 		len = rt5677_read_dsp_code_from_file(file_path, &buf);
 		if (len) {
