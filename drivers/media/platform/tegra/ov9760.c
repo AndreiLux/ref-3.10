@@ -541,8 +541,8 @@ static long ov9760_ioctl(struct file *file,
 	int err;
 	struct ov9760_info *info = file->private_data;
 
-	switch (cmd) {
-	case OV9760_IOCTL_SET_MODE:
+	switch _IOC_NR((cmd)) {
+	case _IOC_NR(OV9760_IOCTL_SET_MODE):
 	{
 		struct ov9760_mode mode;
 		if (copy_from_user(&mode,
@@ -553,13 +553,13 @@ static long ov9760_ioctl(struct file *file,
 
 		return ov9760_set_mode(info, &mode);
 	}
-	case OV9760_IOCTL_SET_FRAME_LENGTH:
+	case _IOC_NR(OV9760_IOCTL_SET_FRAME_LENGTH):
 		return ov9760_set_frame_length(info, (u32)arg);
-	case OV9760_IOCTL_SET_COARSE_TIME:
+	case _IOC_NR(OV9760_IOCTL_SET_COARSE_TIME):
 		return ov9760_set_coarse_time(info, (u32)arg);
-	case OV9760_IOCTL_SET_GAIN:
+	case _IOC_NR(OV9760_IOCTL_SET_GAIN):
 		return ov9760_set_gain(info, (u16)arg);
-	case OV9760_IOCTL_SET_GROUP_HOLD:
+	case _IOC_NR(OV9760_IOCTL_SET_GROUP_HOLD):
 	{
 		struct ov9760_ae ae;
 		if (copy_from_user(&ae,
@@ -569,7 +569,7 @@ static long ov9760_ioctl(struct file *file,
 		}
 		return ov9760_set_group_hold(info, &ae);
 	}
-	case OV9760_IOCTL_GET_STATUS:
+	case _IOC_NR(OV9760_IOCTL_GET_STATUS):
 	{
 		u8 status;
 
@@ -582,7 +582,7 @@ static long ov9760_ioctl(struct file *file,
 		}
 		return 0;
 	}
-	case OV9760_IOCTL_GET_FUSEID:
+	case _IOC_NR(OV9760_IOCTL_GET_FUSEID):
 	{
 		err = ov9760_get_sensor_id(info);
 		if (err)

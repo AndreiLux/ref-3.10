@@ -99,7 +99,7 @@
 #define DRV201_POS_HIGH_DEFAULT		1023
 #define DRV201_POS_CLAMP		0x03ff
 
-#define DRV201_CONTROL_RING		0x0200BC
+#define DRV201_CONTROL_RING		0x0202BC
 
 
 struct drv201_info {

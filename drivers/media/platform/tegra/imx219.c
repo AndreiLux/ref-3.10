@@ -38,6 +38,17 @@
 
 static bool bank_a = true;
 
+struct previous_ae {
+	bool bank_switch;
+	bool gain_enable;
+	bool coarse_enable;
+	bool frame_enable;
+	u8 gain;
+	u16 coarse_time;
+	u16 frame_length;
+};
+static struct previous_ae pre_ae;
+
 struct imx219_info {
 	struct miscdevice		miscdev_info;
 	int				mode;
@@ -49,21 +60,10 @@ struct imx219_info {
 	struct mutex			imx219_camera_lock;
 	struct dentry			*debugdir;
 	atomic_t			in_use;
-};
-static struct imx219_reg flash_strobe_mod[] = {
-	{0x0324, 0x01},	/* flash strobe output enble on ERS mode */
-	{0x0322, 0x01},	/* reference dividor fron EXT CLK */
-	{0x032F, 0x01},	/* shutter sync mode */
-	{0x0330, 0x00},	/* ref point hi */
-	{0x0331, 0x00},	/* ref point lo */
-	{0x0332, 0x00},	/* latency hi from ref point */
-	{0x0333, 0x00},	/* latency lo from ref point */
-	{0x0334, 0x09},	/* high period of XHS for ERS hi */
-	{0x0335, 0x60},	/* high period of XHS for ERS lo */
-	{0x0336, 0x00},	/* low period of XHS for ERS hi */
-	{0x0337, 0x00},	/* low period of XHS for ERS lo */
-	{0x0338, 0x01},	/* num of ERS flash pulse */
-	{IMX219_TABLE_END, 0x00}
+#ifdef CONFIG_DEBUG_FS
+	struct dentry			*debugfs_root;
+	u32				debug_i2c_offset;
+#endif
 };
 
 static inline void
@@ -198,48 +198,6 @@ imx219_write_table(struct i2c_client *client,
 	return 0;
 }
 
-static int imx219_set_flash_output(struct imx219_info *info)
-{
-	struct imx219_flash_control *fctl;
-
-	if (!info->pdata)
-		return 0;
-
-	fctl = &info->pdata->flash_cap;
-	dev_dbg(&info->i2c_client->dev, "%s: %x\n", __func__, fctl->enable);
-	dev_dbg(&info->i2c_client->dev, "edg: %x, st: %x, rpt: %x, dly: %x\n",
-		fctl->edge_trig_en, fctl->start_edge,
-		fctl->repeat, fctl->delay_frm);
-	return imx219_write_table(info->i2c_client, flash_strobe_mod, NULL, 0);
-}
-
-static int imx219_get_flash_cap(struct imx219_info *info)
-{
-	struct imx219_flash_control *fctl;
-
-	dev_dbg(&info->i2c_client->dev, "%s: %p\n", __func__, info->pdata);
-	if (info->pdata) {
-		fctl = &info->pdata->flash_cap;
-		dev_dbg(&info->i2c_client->dev,
-			"edg: %x, st: %x, rpt: %x, dl: %x\n",
-			fctl->edge_trig_en,
-			fctl->start_edge,
-			fctl->repeat,
-			fctl->delay_frm);
-
-		if (fctl->enable)
-			return 0;
-	}
-	return -ENODEV;
-}
-
-static inline int imx219_set_flash_control(
-	struct imx219_info *info, struct imx219_flash_control *fc)
-{
-	dev_dbg(&info->i2c_client->dev, "%s\n", __func__);
-	return imx219_write_reg(info->i2c_client, 0x0320, 0x01);
-}
-
 static int
 imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 {
@@ -273,9 +231,14 @@ imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 	err = imx219_write_table(info->i2c_client,
 				mode_table[sensor_mode],
 				reg_list, 5);
-		return err;
 
-	imx219_set_flash_output(info);
+	pre_ae.bank_switch = false;
+	pre_ae.gain_enable = false;
+	pre_ae.coarse_enable = false;
+	pre_ae.frame_enable = false;
+	pre_ae.gain = mode->gain;
+	pre_ae.coarse_time = mode->coarse_time;
+	pre_ae.frame_length = mode->frame_length;
 
 	info->mode = sensor_mode;
 	pr_info("[IMX219]: stream on.\n");
@@ -353,26 +316,65 @@ imx219_set_gain(struct imx219_info *info, u16 gain, bool bank_a)
 static int
 imx219_set_group_hold(struct imx219_info *info, struct imx219_ae *ae)
 {
-	int ret;
+	int ret = 0;
+	int i = 0;
+	u8 reg;
 
-	bank_a = !bank_a;
+	if (pre_ae.bank_switch) {
+		for (i = 0; i < 7; i++) {
+	               msleep_range(5);
+	               imx219_read_reg(info->i2c_client, 0x150, &reg);
+	               if (((reg & 0x2) ? false : true) == bank_a)
+	                       break;
+		}
+	}
 
-	if (ae->gain_enable)
+	if (ae->coarse_time_enable || ae->frame_length_enable) {
+		pre_ae.bank_switch =  true;
+		bank_a = !bank_a;
+	}
+	else
+		pre_ae.bank_switch =  false;
+
+
+	if (ae->gain_enable) {
 		imx219_set_gain(info, ae->gain, bank_a);
-	if (ae->coarse_time_enable)
-		imx219_set_coarse_time(info, ae->coarse_time, bank_a);
-	if (ae->frame_length_enable)
+		pre_ae.gain = ae->gain;
+		pre_ae.gain_enable = true;
+	}
+	else {
+		if (pre_ae.gain_enable && pre_ae.bank_switch) {
+			imx219_set_gain(info, pre_ae.gain, bank_a);
+			pre_ae.gain_enable = false;
+		}
+	}
+
+	if (ae->frame_length_enable) {
 		imx219_set_frame_length(info, ae->frame_length, bank_a);
+		pre_ae.frame_length = ae->frame_length;
+		pre_ae.frame_enable = true;
+	}
+	else {
+		if (pre_ae.frame_enable && pre_ae.bank_switch) {
+			imx219_set_frame_length(info, pre_ae.frame_length, bank_a);
+			pre_ae.frame_enable = false;
+		}
+	}
 
-	ret = imx219_write_reg(info->i2c_client, 0x150, bank_a ? 0 : 1);
+	if (ae->coarse_time_enable) {
+		imx219_set_coarse_time(info, ae->coarse_time, bank_a);
+		pre_ae.coarse_time = ae->coarse_time;
+		pre_ae.coarse_enable = true;
+	}
+	else {
+		if (pre_ae.coarse_enable && pre_ae.bank_switch) {
+			imx219_set_coarse_time(info, pre_ae.coarse_time, bank_a);
+			pre_ae.coarse_enable = false;
+		}
+	}
 
-	/* sync the setting after switch bank */
-	if (ae->gain_enable)
-		imx219_set_gain(info, ae->gain, !bank_a);
-	if (ae->coarse_time_enable)
-		imx219_set_coarse_time(info, ae->coarse_time, !bank_a);
-	if (ae->frame_length_enable)
-		imx219_set_frame_length(info, ae->frame_length, !bank_a);
+	if (ae->coarse_time_enable || ae->frame_length_enable)
+		ret = imx219_write_reg(info->i2c_client, 0x150, bank_a ? 0 : 1);
 
 	return ret;
 }
@@ -390,13 +392,13 @@ static int imx219_get_sensor_id(struct imx219_info *info)
 	/* Note 1: If the sensor does not have power at this point
 	Need to supply the power, e.g. by calling power on function */
 
-	for (i = 0; i < 4 ; i++) {
+	for (i = 0; i < 4; i++) {
 		ret |= imx219_read_reg(info->i2c_client, 0x0004 + i, &bak);
 		pr_info("chip unique id 0x%x = 0x%02x\n", i, bak);
 		info->fuse_id.data[i] = bak;
 	}
 
-	for (i = 0; i < 2 ; i++) {
+	for (i = 0; i < 2; i++) {
 		ret |= imx219_read_reg(info->i2c_client, 0x000d + i , &bak);
 		pr_info("chip unique id 0x%x = 0x%02x\n", i + 4, bak);
 		info->fuse_id.data[i + 4] = bak;
@@ -466,13 +468,15 @@ imx219_ioctl(struct file *file,
 	case IMX219_IOCTL_SET_FRAME_LENGTH:
 		err = imx219_set_frame_length(info, (u32)arg, true);
 		err = imx219_set_frame_length(info, (u32)arg, false);
+		break;
 	case IMX219_IOCTL_SET_COARSE_TIME:
 		err = imx219_set_coarse_time(info, (u32)arg, true);
 		err = imx219_set_coarse_time(info, (u32)arg, false);
+		break;
 	case IMX219_IOCTL_SET_GAIN:
 		err = imx219_set_gain(info, (u16)arg, true);
 		err = imx219_set_gain(info, (u16)arg, false);
-		return err;
+		break;
 	case IMX219_IOCTL_GET_STATUS:
 	{
 		u8 status;
@@ -514,149 +518,17 @@ imx219_ioctl(struct file *file,
 	}
 	case IMX219_IOCTL_SET_FLASH_MODE:
 	{
-		struct imx219_flash_control values;
-
 		dev_dbg(&info->i2c_client->dev,
-			"IMX219_IOCTL_SET_FLASH_MODE\n");
-		if (copy_from_user(&values,
-			(const void __user *)arg,
-			sizeof(struct imx219_flash_control))) {
-			err = -EFAULT;
-			break;
-		}
-		err = imx219_set_flash_control(info, &values);
-		break;
+			"IMX219_IOCTL_SET_FLASH_MODE not used\n");
 	}
 	case IMX219_IOCTL_GET_FLASH_CAP:
-		err = imx219_get_flash_cap(info);
-		break;
+		return -ENODEV;/* Flounder not support on sensor strobe */
 	default:
 		pr_err("%s:unknown cmd.\n", __func__);
 		err = -EINVAL;
 	}
 
 	return err;
-}
-
-static int imx219_debugfs_show(struct seq_file *s, void *unused)
-{
-	struct imx219_info *dev = s->private;
-
-	dev_dbg(&dev->i2c_client->dev, "%s: ++\n", __func__);
-
-	mutex_lock(&dev->imx219_camera_lock);
-	mutex_unlock(&dev->imx219_camera_lock);
-
-	return 0;
-}
-
-static ssize_t imx219_debugfs_write(
-	struct file *file,
-	char const __user *buf,
-	size_t count,
-	loff_t *offset)
-{
-	struct imx219_info *dev =
-			((struct seq_file *)file->private_data)->private;
-	struct i2c_client *i2c_client = dev->i2c_client;
-	int ret = 0;
-	char buffer[24];
-	u32 address;
-	u32 data;
-	u8 readback;
-
-	pr_info("%s: ++\n", __func__);
-
-	if (copy_from_user(&buffer, buf, sizeof(buffer)))
-		goto debugfs_write_fail;
-
-	if (sscanf(buf, "0x%x 0x%x", &address, &data) == 2)
-		goto set_attr;
-	if (sscanf(buf, "0X%x 0X%x", &address, &data) == 2)
-		goto set_attr;
-	if (sscanf(buf, "%d %d", &address, &data) == 2)
-		goto set_attr;
-
-	if (sscanf(buf, "0x%x 0x%x", &address, &data) == 1)
-		goto read;
-	if (sscanf(buf, "0X%x 0X%x", &address, &data) == 1)
-		goto read;
-	if (sscanf(buf, "%d %d", &address, &data) == 1)
-		goto read;
-
-	pr_err("SYNTAX ERROR: %s\n", buf);
-	return -EFAULT;
-
-set_attr:
-	pr_info("new address = %x, data = %x\n", address, data);
-	ret |= imx219_write_reg(i2c_client, address, data);
-read:
-	ret |= imx219_read_reg(i2c_client, address, &readback);
-	pr_info("wrote to address 0x%x with value 0x%x\n",
-			address, readback);
-
-	if (ret)
-		goto debugfs_write_fail;
-
-	return count;
-
-debugfs_write_fail:
-	pr_err("%s: test pattern write failed\n", __func__);
-	return -EFAULT;
-}
-
-static int imx219_debugfs_open(struct inode *inode, struct file *file)
-{
-	struct imx219_info *dev = inode->i_private;
-	struct i2c_client *i2c_client = dev->i2c_client;
-
-	dev_dbg(&i2c_client->dev, "%s: ++\n", __func__);
-
-	return single_open(file, imx219_debugfs_show, inode->i_private);
-}
-
-static const struct file_operations imx219_debugfs_fops = {
-	.open		= imx219_debugfs_open,
-	.read		= seq_read,
-	.write		= imx219_debugfs_write,
-	.llseek		= seq_lseek,
-	.release	= single_release,
-};
-
-static void imx219_remove_debugfs(struct imx219_info *dev)
-{
-	struct i2c_client *i2c_client = dev->i2c_client;
-
-	dev_dbg(&i2c_client->dev, "%s: ++\n", __func__);
-
-	debugfs_remove_recursive(dev->debugdir);
-	dev->debugdir = NULL;
-}
-
-static void imx219_create_debugfs(struct imx219_info *dev)
-{
-	struct dentry *ret;
-	struct i2c_client *i2c_client = dev->i2c_client;
-
-	dev_dbg(&i2c_client->dev, "%s\n", __func__);
-
-	dev->debugdir =
-		debugfs_create_dir(dev->miscdev_info.this_device->kobj.name,
-							NULL);
-	if (!dev->debugdir)
-		goto remove_debugfs;
-
-	ret = debugfs_create_file("d",
-				S_IWUSR | S_IRUGO,
-				dev->debugdir, dev,
-				&imx219_debugfs_fops);
-	if (!ret)
-		goto remove_debugfs;
-
-	return;
-remove_debugfs:
-	dev_err(&i2c_client->dev, "couldn't create debugfs\n");
-	imx219_remove_debugfs(dev);
 }
 
 static int
@@ -756,6 +628,131 @@ static struct miscdevice imx219_device = {
 	.fops = &imx219_fileops,
 };
 
+#ifdef CONFIG_DEBUG_FS
+static int imx219_stats_show(struct seq_file *s, void *data)
+{
+	static struct imx219_info *info;
+
+	seq_printf(s, "%-20s : %-20s\n", "Name", "imx219-debugfs-testing");
+	seq_printf(s, "%-20s : 0x%X\n", "Current i2c-offset Addr",
+			info->debug_i2c_offset);
+	seq_printf(s, "%-20s : 0x%X\n", "DC BLC Enabled",
+			info->debug_i2c_offset);
+	return 0;
+}
+
+static int imx219_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, imx219_stats_show, inode->i_private);
+}
+
+static const struct file_operations imx219_stats_fops = {
+	.open       = imx219_stats_open,
+	.read       = seq_read,
+	.llseek     = seq_lseek,
+	.release    = single_release,
+};
+
+static int debug_i2c_offset_w(void *data, u64 val)
+{
+	struct imx219_info *info = (struct imx219_info *)(data);
+	dev_info(&info->i2c_client->dev,
+			"imx219:%s setting i2c offset to 0x%X\n",
+			__func__, (u32)val);
+	info->debug_i2c_offset = (u32)val;
+	dev_info(&info->i2c_client->dev,
+			"imx219:%s new i2c offset is 0x%X\n", __func__,
+			info->debug_i2c_offset);
+	return 0;
+}
+
+static int debug_i2c_offset_r(void *data, u64 *val)
+{
+	struct imx219_info *info = (struct imx219_info *)(data);
+	*val = (u64)info->debug_i2c_offset;
+	dev_info(&info->i2c_client->dev,
+			"imx219:%s reading i2c offset is 0x%X\n", __func__,
+			info->debug_i2c_offset);
+	return 0;
+}
+
+static int debug_i2c_read(void *data, u64 *val)
+{
+	struct imx219_info *info = (struct imx219_info *)(data);
+	u8 temp1 = 0;
+	u8 temp2 = 0;
+	dev_info(&info->i2c_client->dev,
+			"imx219:%s reading offset 0x%X\n", __func__,
+			info->debug_i2c_offset);
+	if (imx219_read_reg(info->i2c_client,
+				info->debug_i2c_offset, &temp1)
+		|| imx219_read_reg(info->i2c_client,
+			info->debug_i2c_offset+1, &temp2)) {
+		dev_err(&info->i2c_client->dev,
+				"imx219:%s failed\n", __func__);
+		return -EIO;
+	}
+	dev_info(&info->i2c_client->dev,
+			"imx219:%s read value is 0x%X\n", __func__,
+			temp1<<8 | temp2);
+	*val = (u64)(temp1<<8 | temp2);
+	return 0;
+}
+
+static int debug_i2c_write(void *data, u64 val)
+{
+	struct imx219_info *info = (struct imx219_info *)(data);
+	dev_info(&info->i2c_client->dev,
+			"imx219:%s writing 0x%X to offset 0x%X\n", __func__,
+			(u8)val, info->debug_i2c_offset);
+	if (imx219_write_reg(info->i2c_client,
+				info->debug_i2c_offset, (u8)val)) {
+		dev_err(&info->i2c_client->dev, "imx219:%s failed\n", __func__);
+		return -EIO;
+	}
+	return 0;
+}
+
+DEFINE_SIMPLE_ATTRIBUTE(i2c_offset_fops, debug_i2c_offset_r,
+		debug_i2c_offset_w, "0x%llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(i2c_read_fops, debug_i2c_read,
+		/*debug_i2c_dummy_w*/ NULL, "0x%llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(i2c_write_fops, /*debug_i2c_dummy_r*/NULL,
+		debug_i2c_write, "0x%llx\n");
+
+static int imx219_debug_init(struct imx219_info *info)
+{
+	dev_dbg(&info->i2c_client->dev, "%s", __func__);
+
+	info->debugfs_root = debugfs_create_dir(imx219_device.name, NULL);
+
+	if (!info->debugfs_root)
+		goto err_out;
+
+	if (!debugfs_create_file("stats", S_IRUGO,
+			info->debugfs_root, info, &imx219_stats_fops))
+		goto err_out;
+
+	if (!debugfs_create_file("offset", S_IRUGO | S_IWUSR,
+			info->debugfs_root, info, &i2c_offset_fops))
+		goto err_out;
+
+	if (!debugfs_create_file("read", S_IRUGO,
+			info->debugfs_root, info, &i2c_read_fops))
+		goto err_out;
+
+	if (!debugfs_create_file("write", S_IWUSR,
+			info->debugfs_root, info, &i2c_write_fops))
+		goto err_out;
+
+	return 0;
+
+err_out:
+	dev_err(&info->i2c_client->dev, "ERROR:%s failed", __func__);
+	debugfs_remove_recursive(info->debugfs_root);
+	return -ENOMEM;
+}
+#endif
 
 static int
 imx219_probe(struct i2c_client *client,
@@ -802,7 +799,9 @@ imx219_probe(struct i2c_client *client,
 
 	i2c_set_clientdata(client, info);
 	/* create debugfs interface */
-	imx219_create_debugfs(info);
+#ifdef CONFIG_DEBUG_FS
+	imx219_debug_init(info);
+#endif
 	return 0;
 
 imx219_probe_fail:
@@ -820,7 +819,9 @@ imx219_remove(struct i2c_client *client)
 
 	imx219_power_put(&info->power);
 
-	imx219_remove_debugfs(info);
+#ifdef CONFIG_DEBUG_FS
+	debugfs_remove_recursive(info->debugfs_root);
+#endif
 	return 0;
 }
 
