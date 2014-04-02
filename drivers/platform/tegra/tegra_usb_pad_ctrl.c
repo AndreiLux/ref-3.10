@@ -224,7 +224,9 @@ int utmi_phy_pad_enable(void)
 {
 	unsigned long val, flags;
 	void __iomem *pad_base =  IO_ADDRESS(TEGRA_USB_BASE);
-
+	val = readl(pad_base + UTMIP_SPARE_CFG0);
+	val &= ~(FUSE_HS_SQUELCH_LEVEL | FUSE_HS_IREF_CAP_CFG);
+	writel(val, pad_base + UTMIP_SPARE_CFG0);
 	if (!utmi_pad_clk)
 		utmi_pad_clk = clk_get_sys("utmip-pad", NULL);
 
@@ -234,8 +236,8 @@ int utmi_phy_pad_enable(void)
 	utmip_pad_count++;
 
 	val = readl(pad_base + UTMIP_BIAS_CFG0);
-	val &= ~(UTMIP_OTGPD | UTMIP_BIASPD);
-	val |= UTMIP_HSSQUELCH_LEVEL(0x2) | UTMIP_HSDISCON_LEVEL(0x3) |
+	val &= ~(UTMIP_HSSQUELCH_LEVEL(~0x0)|UTMIP_OTGPD|UTMIP_BIASPD);
+	val |= UTMIP_HSSQUELCH_LEVEL(0x1) | UTMIP_HSDISCON_LEVEL(0x3) |
 		UTMIP_HSDISCON_LEVEL_MSB;
 	writel(val, pad_base + UTMIP_BIAS_CFG0);
 
