@@ -732,6 +732,7 @@ static void flounder_usb_init(void)
 	tegra_ehci1_utmi_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	/* Host cable is detected through GPIO Interrupt */
 	tegra_udc_pdata.id_det_type = TEGRA_USB_GPIO_ID;
+	tegra_udc_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_GPIO_ID;
 	tegra_ehci1_utmi_pdata.id_extcon_dev_name = "palmas-extcon";
 
