@@ -118,9 +118,9 @@
 			interrupts = <140 0x0>;
 			mcu,intr-gpio  = <&gpio 140 0>;
 			mcu,gs_chip_layout = <1>;
-			mcu,acceleration_axes = <6>;
+			mcu,acceleration_axes = <7>;
 			mcu,magnetic_axes = <7>;
-			mcu,gyro_axes = <6>;
+			mcu,gyro_axes = <7>;
 			mcu,Cpu_wake_mcu-gpio = <&gpio 129 0>;
 			mcu,Reset-gpio = <&gpio 138 0>;
 			mcu,Chip_mode-gpio = <&gpio 164 0>;
