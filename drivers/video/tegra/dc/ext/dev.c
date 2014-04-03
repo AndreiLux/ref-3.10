@@ -114,6 +114,8 @@ struct tegra_dc_ext_flip_data {
 	bool dirty_rect_valid;
 };
 
+static struct lock_class_key tegra_dc_ext_win_lock_key[DC_N_WINDOWS];
+
 static inline s64 tegra_timespec_to_ns(const struct tegra_timespec *ts)
 {
 	return ((s64) ts->tv_sec * NSEC_PER_SEC) + ts->tv_nsec;
@@ -1610,6 +1612,7 @@ static int tegra_dc_ext_setup_windows(struct tegra_dc_ext *ext)
 
 		mutex_init(&win->lock);
 		mutex_init(&win->queue_lock);
+		lockdep_set_class(&win->lock, &tegra_dc_ext_win_lock_key[i]);
 		INIT_LIST_HEAD(&win->timestamp_queue);
 	}
 
