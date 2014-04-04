@@ -170,6 +170,7 @@ struct bq2419x_charger_platform_data {
 	u32 *temp_range;
 	u32 *chg_current_limit;
 	u32 *chg_thermal_voltage_limit;
+	u32 auto_recharge_time_supend;
 	bool otp_control_no_thermister; /* TRUE if chip thermister is unused */
 	struct bq2419x_thermal_prop thermal_prop;
 	bool safety_timer_reset_disable;
