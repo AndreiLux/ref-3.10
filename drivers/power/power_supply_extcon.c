@@ -85,13 +85,19 @@ static int power_supply_extcon_get_property(struct power_supply *psy,
 	int ret = 0;
 	struct power_supply_extcon *psy_extcon;
 
-	if (psy->type == POWER_SUPPLY_TYPE_MAINS) {
+	switch (psy->type) {
+	case POWER_SUPPLY_TYPE_MAINS:
 		psy_extcon = container_of(psy, struct power_supply_extcon, ac);
 		online = psy_extcon->ac_online;
-	} else if (psy->type == POWER_SUPPLY_TYPE_USB) {
+		break;
+
+	case POWER_SUPPLY_TYPE_USB:
+	case POWER_SUPPLY_TYPE_USB_CDP:
 		psy_extcon = container_of(psy, struct power_supply_extcon, usb);
 		online = psy_extcon->usb_online;
-	} else {
+		break;
+
+	default:
 		return -EINVAL;
 	}
 
@@ -126,9 +132,11 @@ static int power_supply_extcon_attach_cable(
 	psy_extcon->ac_online = 0;
 
 	if (true == extcon_get_cable_state(edev, "USB")) {
+		psy_extcon->usb.type = POWER_SUPPLY_TYPE_USB;
 		psy_extcon->usb_online = 1;
 		dev_info(psy_extcon->dev, "USB charger cable detected\n");
 	} else if (true == extcon_get_cable_state(edev, "Charge-downstream")) {
+		psy_extcon->usb.type = POWER_SUPPLY_TYPE_USB_CDP;
 		psy_extcon->usb_online = 1;
 		dev_info(psy_extcon->dev,
 			"USB charger downstream cable detected\n");
