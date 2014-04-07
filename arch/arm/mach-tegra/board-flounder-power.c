@@ -289,7 +289,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 				},
 				{
 					.cdev_type = "cpu-balanced",
-					.trip_temp = 89000,
+					.trip_temp = 90000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -301,43 +301,49 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 			.zone_enable = true,
 			.passive_delay = 1000,
 			.hotspot_offset = 6000,
-			.num_trips = 2,
+			.num_trips = 3,
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 103000,
+					.trip_temp = 101000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
-					.cdev_type = "gpu-balanced",
-					.trip_temp = 91000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-/*
-				{
-					.cdev_type = "gk20a_cdev",
-					.trip_temp = 101000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 101000,
+					.trip_temp = 99000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
-*/
+				{
+					.cdev_type = "gpu-balanced",
+					.trip_temp = 90000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+		[THERM_MEM] = {
+			.zone_enable = true,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 101000, /* = GPU shut */
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
 			},
 			.tzp = &soctherm_tzp,
 		},
 		[THERM_PLL] = {
 			.zone_enable = true,
+			.tzp = &soctherm_tzp,
 		},
 	},
 	.throttle = {
@@ -349,7 +355,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 					.depth = 80,
 				},
 				[THROTTLE_DEV_GPU] = {
-					.enable = false,
+					.enable = true,
 					.throttling_depth = "heavy_throttling",
 				},
 			},
