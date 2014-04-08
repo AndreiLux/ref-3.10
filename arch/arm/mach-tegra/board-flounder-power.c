@@ -50,7 +50,6 @@
 #include "iomap.h"
 #include "tegra_cl_dvfs.h"
 #include "tegra11_soctherm.h"
-#include "tegra3_tsensor.h"
 
 #define PMC_CTRL                0x0
 #define PMC_CTRL_INTR_LOW       (1 << 17)
