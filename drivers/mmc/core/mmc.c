@@ -294,7 +294,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
-	if (card->ext_csd.rev > 7) {
+	if (card->ext_csd.rev > 8) {
 		pr_err("%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
@@ -447,21 +447,18 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			}
 		}
 
-		if (card->ext_csd.rev < 6) {
-			card->ext_csd.sec_trim_mult =
-				ext_csd[EXT_CSD_SEC_TRIM_MULT];
-			card->ext_csd.sec_erase_mult =
-				ext_csd[EXT_CSD_SEC_ERASE_MULT];
-			card->ext_csd.sec_feature_support =
+		card->ext_csd.sec_trim_mult =
+			ext_csd[EXT_CSD_SEC_TRIM_MULT];
+		card->ext_csd.sec_erase_mult =
+			ext_csd[EXT_CSD_SEC_ERASE_MULT];
+		card->ext_csd.sec_feature_support =
 				ext_csd[EXT_CSD_SEC_FEATURE_SUPPORT];
-		}
 
-		if (card->ext_csd.rev == 6) {
+		if (card->ext_csd.rev >= 6) {
 			card->ext_csd.sec_feature_support =
 				ext_csd[EXT_CSD_SEC_FEATURE_SUPPORT] &
 				~EXT_CSD_SEC_ER_EN;
 		}
-
 		card->ext_csd.trim_timeout = 300 *
 			ext_csd[EXT_CSD_TRIM_MULT];
 
