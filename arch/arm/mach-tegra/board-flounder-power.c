@@ -353,6 +353,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 				[THROTTLE_DEV_CPU] = {
 					.enable = true,
 					.depth = 80,
+					.throttling_depth = "heavy_throttling",
 				},
 				[THROTTLE_DEV_GPU] = {
 					.enable = true,
