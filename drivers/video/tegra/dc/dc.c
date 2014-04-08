@@ -935,6 +935,25 @@ static inline void tegra_dc_create_debugfs(struct tegra_dc *dc) { };
 static inline void tegra_dc_remove_debugfs(struct tegra_dc *dc) { };
 #endif /* CONFIG_DEBUGFS */
 
+unsigned long tegra_dc_poll_register(struct tegra_dc *dc, u32 reg, u32 mask,
+		u32 exp_val, u32 poll_interval_us, u32 timeout_ms)
+{
+	unsigned long timeout_jf = jiffies + msecs_to_jiffies(timeout_ms);
+	u32 reg_val = 0;
+
+	do {
+		usleep_range(poll_interval_us, poll_interval_us << 1);
+		reg_val = tegra_dc_readl(dc, reg);
+	} while (((reg_val & mask) != exp_val) &&
+		time_after(timeout_jf, jiffies));
+
+	if ((reg_val & mask) == exp_val)
+		return 0;       /* success */
+	dev_err(&dc->ndev->dev,
+		"dc_poll_register 0x%x: timeout\n", reg);
+	return jiffies - timeout_jf + 1;
+}
+
 static int tegra_dc_set(struct tegra_dc *dc, int index)
 {
 	int ret = 0;
@@ -1493,7 +1512,7 @@ EXPORT_SYMBOL(tegra_dc_get_out_width);
 
 unsigned tegra_dc_get_out_max_pixclock(const struct tegra_dc *dc)
 {
-	if (dc->out && dc->out->max_pixclock)
+	if (dc && dc->out)
 		return dc->out->max_pixclock;
 	else
 		return 0;
@@ -1609,11 +1628,18 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 
 	mutex_lock(&dc->one_shot_lp_lock);
 	dc->out->user_needs_vblank = true;
+
+	mutex_lock(&dc->lock);
 	tegra_dc_unmask_interrupt(dc, MSF_INT);
+	mutex_unlock(&dc->lock);
 
 	ret = wait_for_completion_interruptible(&dc->out->user_vblank_comp);
 	init_completion(&dc->out->user_vblank_comp);
+
+	mutex_lock(&dc->lock);
 	tegra_dc_mask_interrupt(dc, MSF_INT);
+	mutex_unlock(&dc->lock);
+
 	mutex_unlock(&dc->one_shot_lp_lock);
 
 	if (dc->out_ops && dc->out_ops->release)

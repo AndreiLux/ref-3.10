@@ -286,6 +286,7 @@ static struct powergate_partition_info tegra12x_powergate_partition_info[] = {
 #define MC_CLIENT_HOTRESET_STAT		0x204
 #define MC_CLIENT_HOTRESET_CTRL_1	0x970
 #define MC_CLIENT_HOTRESET_STAT_1	0x974
+#define MC_VIDEO_PROTECT_REG_CTRL	0x650
 
 #define PMC_GPU_RG_CNTRL_0		0x2d4
 
@@ -393,6 +394,7 @@ int tegra12x_powergate_mc_flush_done(int id)
 		rst_ctrl = mc_read(rst_ctrl_reg);
 		rst_ctrl &= ~(1 << mcClientBit);
 		mc_write(rst_ctrl, rst_ctrl_reg);
+		mc_read(rst_ctrl_reg);
 
 		spin_unlock_irqrestore(&tegra12x_powergate_lock, flags);
 	}
@@ -416,6 +418,7 @@ static int tegra12x_gpu_powergate(int id, struct powergate_partition_info *pg_in
 
 	/* enable clamp */
 	pmc_write(0x1, PMC_GPU_RG_CNTRL_0);
+	pmc_read(PMC_GPU_RG_CNTRL_0);
 
 	udelay(10);
 
@@ -445,11 +448,26 @@ err_power_off:
 	return ret;
 }
 
+static int mc_check_vpr(void)
+{
+	int ret = 0;
+	u32 val = mc_read(MC_VIDEO_PROTECT_REG_CTRL);
+	if ((val & 1) == 0) {
+		pr_err("VPR configuration not locked down\n");
+		ret = -EINVAL;
+	}
+	return ret;
+}
+
 static int tegra12x_gpu_unpowergate(int id,
 	struct powergate_partition_info *pg_info)
 {
 	int ret = 0;
 	bool first = false;
+
+	ret = mc_check_vpr();
+	if (ret)
+		return ret;
 
 	if (!gpu_rail) {
 		gpu_rail = tegra_dvfs_get_rail_by_name("vdd_gpu");
@@ -488,6 +506,7 @@ static int tegra12x_gpu_unpowergate(int id,
 
 	/* disable clamp */
 	pmc_write(0, PMC_GPU_RG_CNTRL_0);
+	pmc_read(PMC_GPU_RG_CNTRL_0);
 
 	udelay(10);
 

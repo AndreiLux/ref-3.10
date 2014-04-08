@@ -231,7 +231,7 @@ static struct tegra_dc_out macallan_disp2_out = {
 	.flags		= TEGRA_DC_OUT_HOTPLUG_HIGH,
 	.parent_clk	= "pll_d2_out0",
 
-	.dcc_bus	= 3,
+	.ddc_bus	= 3,
 	.hotplug_gpio	= macallan_hdmi_hpd,
 
 	.max_pixclock	= KHZ2PICOS(297000),
@@ -305,21 +305,18 @@ static struct nvmap_platform_carveout macallan_carveouts[] = {
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_IRAM,
 		.base		= TEGRA_IRAM_BASE + TEGRA_RESET_HANDLER_SIZE,
 		.size		= TEGRA_IRAM_SIZE - TEGRA_RESET_HANDLER_SIZE,
-		.buddy_size	= 0, /* no buddy allocation for IRAM */
 	},
 	[1] = {
 		.name		= "generic-0",
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_GENERIC,
 		.base		= 0, /* Filled in by macallan_panel_init() */
 		.size		= 0, /* Filled in by macallan_panel_init() */
-		.buddy_size	= SZ_32K,
 	},
 	[2] = {
 		.name		= "vpr",
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_VPR,
 		.base		= 0, /* Filled in by macallan_panel_init() */
 		.size		= 0, /* Filled in by macallan_panel_init() */
-		.buddy_size	= SZ_32K,
 	},
 };
 

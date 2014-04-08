@@ -349,7 +349,7 @@ static void cdma_timeout_teardown_begin(struct nvhost_cdma *cdma)
 		ch->aperture + host1x_channel_dmactrl_r());
 
 	writel(BIT(ch->chid), dev->sync_aperture + host1x_sync_ch_teardown_r());
-	nvhost_module_reset(ch->dev);
+	nvhost_module_reset(ch->dev, true);
 
 	cdma->running = false;
 	cdma->torndown = true;
@@ -480,7 +480,7 @@ static void cdma_timeout_handler(struct work_struct *work)
 		prev_cmdproc, cmdproc_stop);
 
 	completed = true;
-	for (i = 0; completed && i < cdma->timeout.num_syncpts; ++i) {
+	for (i = 0; i < cdma->timeout.num_syncpts; ++i) {
 		syncpt_val = nvhost_syncpt_update_min(&dev->syncpt,
 				cdma->timeout.sp[i].id);
 

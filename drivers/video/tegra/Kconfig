@@ -40,71 +40,62 @@ config TEGRA_DC
 	  Tegra display controller support.
 
 config TEGRA_DC_CMU
-	bool
-	default n if ARCH_TEGRA_2x_SOC || ARCH_TEGRA_3x_SOC
+	bool "Tegra Color Management Unit"
 	default y
+	help
+	  Say Y here to enable Tegra color management unit.
+	  Enabled by default to support color correction for panels.
+	  It is used to make the representation of color match
+	  accross displays.
 
 config TEGRA_DC_WIN_H
     bool
-    default y if ARCH_TEGRA_14x_SOC
-    default n
 
 config TEGRA_MIPI_CAL
 	bool
-	default n if ARCH_TEGRA_2x_SOC || ARCH_TEGRA_3x_SOC
 	default y
 
 config TEGRA_DC_SCAN_COLUMN
 	bool
-	default y if ARCH_TEGRA_11x_SOC || ARCH_TEGRA_12x_SOC
-	default n
+	default y if ARCH_TEGRA_12x_SOC
 
 config TEGRA_DC_BLENDER_GEN2
     bool
-    default n if ARCH_TEGRA_2x_SOC || ARCH_TEGRA_3x_SOC || ARCH_TEGRA_11x_SOC || ARCH_TEGRA_14x_SOC
     default y
 
 config TEGRA_DC_BLENDER_DEPTH
     bool
     default y if ARCH_TEGRA_12x_SOC
-    default n
 
 config TEGRA_DC_BLOCK_LINEAR
     bool
     default y if ARCH_TEGRA_12x_SOC
-    default n
 
 config TEGRA_DC_INTERLACE
 	bool
 	default y if ARCH_TEGRA_12x_SOC
-	default n
 
 config TEGRA_DC_64BIT_SUPPORT
 	bool
-	default n
 	help
 		T12x LPAE support in dc driver
 
 config TEGRA_DC_LOW_LATENCY_CURSOR
 	bool
 	default y if ARCH_TEGRA_12x_SOC
-	default n
 
 config TEGRA_DC_CLOCK_GEN2
     bool
     default y if ARCH_TEGRA_12x_SOC
-    default n
     help
         T12x redefined pll usages for pll_d and pll_d2.
 
 config TEGRA_SD_GEN2
 	bool
-	default n if ARCH_TEGRA_2x_SOC || ARCH_TEGRA_3x_SOC
 	default y
 
 config TEGRA_DC_TEMPORAL_DITHER
 	bool
-	default n if ARCH_TEGRA_2x_SOC || ARCH_TEGRA_3x_SOC || ARCH_TEGRA_11x_SOC
 	default y
 
 config FB_TEGRA
@@ -145,19 +136,9 @@ config TEGRA_NVMAP
 config NVMAP_HIGHMEM_ONLY
 	bool "Use only HIGHMEM for nvmap"
 	depends on TEGRA_NVMAP && IOMMU_API && HIGHMEM
-	default n
 	help
 	  Say Y here to restrict nvmap system memory allocations (both
 	  physical system memory and IOVMM) to just HIGHMEM pages.
-
-config NVMAP_CARVEOUT_KILLER
-	bool "Reclaim nvmap carveout by killing processes"
-	depends on TEGRA_NVMAP
-	default n
-	help
-	  Say Y here to allow the system to reclaim carveout space by killing
-	  processes. This will kill the largest consumers of lowest priority
-	  first.
 
 config NVMAP_PAGE_POOLS
 	bool "Use page pools to reduce allocation overhead"
@@ -226,17 +207,6 @@ config NVMAP_OUTER_CACHE_MAINT_BY_SET_WAYS
 	  bigger than size of outer cache. This option has no effect on
 	  system without outer cache.
 
-config NVMAP_DEFERRED_CACHE_MAINT
-	bool "Enable deferred cache maintenance"
-	depends on TEGRA_NVMAP
-	help
-	  Say Y here if you want to defer flush requests for
-	  nvmap memory buffer. Cache maintenance of deferred requests
-	  is more efficient since there is a high chance that cache lines
-	  of earlier requests are already flushed. Also, if total size of
-	  deferred ranges is big enough, we flush whole inner or outer
-	  cache.
-
 config NVMAP_DMABUF_STASH
 	bool "Enable stashing of IOVA maps with dmabuf"
 	depends on TEGRA_NVMAP
@@ -253,14 +223,6 @@ config NVMAP_DMABUF_STASH_STATS
 	  Say Y to enable tracking of basic cache statistics on the dmabuf
 	  stash. This adds some overhead but should be very useful for
 	  debugging memory leaks.
-
-config NVMAP_VPR
-	bool "Enable VPR Heap."
-	depends on TEGRA_NVMAP
-	default n
-	help
-	  Say Y here to enable Video Protection Region(VPR) heap.
-	  if unsure, say N.
 
 config NVMAP_FORCE_ZEROED_USER_PAGES
 	bool "Only alloc zeroed pages for user space"
@@ -279,30 +241,49 @@ config NVMAP_USE_CMA_FOR_CARVEOUT
 	  API. CMA reserved memory can be used by applications
 	  when it is not in use by the device that reserved it.
 
-config NVMAP_CPA
-	bool "Use CPA API in nvmap"
-	depends on CPA
+config NVMAP_FD_START
+	hex "FD number to start allocation from"
+	depends on TEGRA_NVMAP
+	default 0x400
 	help
-	  Say Y here to have nvmap use CPA. CPA is necessary for
-	  certain chips where page table aliasing can cause undefined
-	  results due to speculative memory loads/stores. If unsure,
-	  say N.
+	  NvMap handles are represented with FD's in the user processes.
+	  To avoid Linux FD usage limitations, NvMap allocates FD starting
+	  from this number.
+
+config NVMAP_DEFER_FD_RECYCLE
+	bool "Defer FD recycle"
+	depends on TEGRA_NVMAP
+	help
+	  Say Y here to enable deferred FD recycle.
+	  A released nvmap handle would release memory and FD. This FD
+	  can be reused immediately for subsequent nvmap allocation req in
+	  the same process. Any buggy code in client process that continues to
+	  use FD of released allocation would continue to use new allocation
+	  and can lead to undesired consequences, which can be hard to debug.
+	  Enabling this option would defer recycling FD for longer time and
+	  allows debugging incorrect FD references by clients by returning errors
+	  for the accesses that occur after handle/FD release.
+
+config NVMAP_DEFER_FD_RECYCLE_MAX_FD
+	hex "FD number to start free FD recycle"
+	depends on NVMAP_DEFER_FD_RECYCLE
+	default 0x8000
+	help
+	  Once last allocated FD reaches this number, allocation of subsequent
+	  FD's start from NVMAP_START_FD.
 
 config TEGRA_DSI
 	bool "Enable DSI panel."
-	default n
 	help
 	  Say Y here to enable the DSI panel.
 
 config TEGRA_DSI2EDP_TC358767
 	bool "Enable DSI2EDP TC358767 bridge."
-	default n
 	help
 	  Say Y here to enable the DSI2EDP TOSHIBA 358767 adapter.
 
 config TEGRA_DSI2EDP_SN65DSI86
 	bool "Enable DSI2EDP SN65DSI86 bridge."
-	default n
 	help
 	  Say Y here to enable the DSI2EDP TI SN65DSI86 adapter.
 
@@ -332,26 +313,14 @@ config NVMAP_CONVERT_CARVEOUT_TO_IOVMM
 	  Say Y here to force to convert carveout memory requests to
 	  I/O virtual memory requests.
 
-config NVMAP_HANDLE_MARSHAL
-	bool "Marshal nvmap handle id"
-	depends on TEGRA_NVMAP
-	help
-	  Enables nvmap handle id marshalling. Marshalling converts
-	  the nvmap handle id into an unique number before passing
-	  the handle id to user/kernel clients. The marshalling
-	  would allow sharing a 64-bit handle id as 32-bit id to
-	  user space when kernel is 64-bit and user space is 32-bit.
-
 config TEGRA_NVHDCP
 	bool "Support NVHDCP content protection on HDMI"
-	default n
 	help
 	  Say Y here to support NVHDCP upstream and downstream protocols, this
 	  requires a correctly fused chip to negotiate keys.
 
 config TEGRA_HDMI_74MHZ_LIMIT
 	bool "Support only up to 74.25 MHz HDMI pixel frequency"
-	default n
 	help
 	  Say Y here to make kernel report only low bandwidth modes.
 	  Useful only for boards which can't deliver 148.50 MHz.
@@ -366,5 +335,3 @@ config TEGRA_CAMERA
 	  Enables support for the Tegra camera interface
 
 	  If unsure, say Y
-
-source "drivers/video/tegra/host/gk20a/Kconfig"

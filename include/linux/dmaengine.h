@@ -1,5 +1,6 @@
 /*
  * Copyright(c) 2004 - 2006 Intel Corporation. All rights reserved.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the Free
@@ -22,6 +23,7 @@
 #define LINUX_DMAENGINE_H
 
 #include <linux/device.h>
+#include <linux/err.h>
 #include <linux/uio.h>
 #include <linux/bug.h>
 #include <linux/scatterlist.h>
@@ -969,6 +971,8 @@ enum dma_status dma_wait_for_async_tx(struct dma_async_tx_descriptor *tx);
 void dma_issue_pending_all(void);
 struct dma_chan *__dma_request_channel(const dma_cap_mask_t *mask,
 					dma_filter_fn fn, void *fn_param);
+struct dma_chan *dma_request_slave_channel_reason(struct device *dev,
+						const char *name);
 struct dma_chan *dma_request_slave_channel(struct device *dev, const char *name);
 void dma_release_channel(struct dma_chan *chan);
 #else
@@ -984,6 +988,12 @@ static inline struct dma_chan *__dma_request_channel(const dma_cap_mask_t *mask,
 {
 	return NULL;
 }
+static inline struct dma_chan *dma_request_slave_channel_reason(
+					struct device *dev, const char *name)
+{
+	return ERR_PTR(-ENODEV);
+}
+
 static inline struct dma_chan *dma_request_slave_channel(struct device *dev,
 							 const char *name)
 {
@@ -999,6 +1009,7 @@ static inline void dma_release_channel(struct dma_chan *chan)
 int dma_async_device_register(struct dma_device *device);
 void dma_async_device_unregister(struct dma_device *device);
 void dma_run_dependencies(struct dma_async_tx_descriptor *tx);
+struct dma_chan *dma_get_any_slave_channel(struct dma_device *device);
 struct dma_chan *dma_find_channel(enum dma_transaction_type tx_type);
 struct dma_chan *net_dma_find_channel(void);
 #define dma_request_channel(mask, x, y) __dma_request_channel(&(mask), x, y)

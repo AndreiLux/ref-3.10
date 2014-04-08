@@ -236,6 +236,7 @@ static int handle_page_alloc(struct nvmap_client *client,
 	h->size = size;
 	h->pgalloc.pages = pages;
 	h->pgalloc.contig = contiguous;
+	INIT_LIST_HEAD(&h->pgalloc.vmas);
 	return 0;
 
 fail:
@@ -347,13 +348,11 @@ int nvmap_alloc_handle(struct nvmap_client *client,
 	h->align = max_t(size_t, align, L1_CACHE_BYTES);
 	h->kind = kind;
 
-#ifndef CONFIG_TEGRA_IOVMM
 	/* convert iovmm requests to generic carveout. */
 	if (heap_mask & NVMAP_HEAP_IOVMM) {
 		heap_mask = (heap_mask & ~NVMAP_HEAP_IOVMM) |
 			    NVMAP_HEAP_CARVEOUT_GENERIC;
 	}
-#endif
 
 	if (!heap_mask) {
 		err = -EINVAL;

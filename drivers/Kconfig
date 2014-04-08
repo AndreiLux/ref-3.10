@@ -178,6 +178,8 @@ source "drivers/reset/Kconfig"
 
 source "drivers/edp/Kconfig"
 
+source "drivers/gpu/nvgpu/Kconfig"
+
 source "drivers/htc_debug/stability/Kconfig"
 
 endmenu

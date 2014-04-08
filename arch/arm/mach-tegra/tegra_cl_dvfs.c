@@ -285,8 +285,8 @@ static inline void cl_dvfs_i2c_writel(struct tegra_cl_dvfs *cld,
 }
 static inline void cl_dvfs_i2c_wmb(struct tegra_cl_dvfs *cld)
 {
-	wmb();
 	cl_dvfs_i2c_readl(cld, CL_DVFS_I2C_CFG);
+	dsb();
 }
 
 static inline u32 cl_dvfs_readl(struct tegra_cl_dvfs *cld, u32 offs)
@@ -305,8 +305,8 @@ static inline void cl_dvfs_writel(struct tegra_cl_dvfs *cld, u32 val, u32 offs)
 }
 static inline void cl_dvfs_wmb(struct tegra_cl_dvfs *cld)
 {
-	wmb();
 	cl_dvfs_readl(cld, CL_DVFS_CTRL);
+	dsb();
 }
 
 static inline void switch_monitor(struct tegra_cl_dvfs *cld, u32 selector)
@@ -1863,7 +1863,7 @@ static int cl_dvfs_simon_grade_notify_cb(struct notifier_block *nb,
 {
 	unsigned long flags;
 	int i, simon_offset;
-	int curr_domain = (int)v;
+	int curr_domain = (int)((long)v);
 	struct tegra_cl_dvfs *cld = container_of(
 		nb, struct tegra_cl_dvfs, simon_grade_nb);
 	struct dvfs_rail *rail = cld->safe_dvfs->dvfs_rail;
@@ -2536,6 +2536,7 @@ int tegra_cl_dvfs_enable(struct tegra_cl_dvfs *cld)
 
 	cl_dvfs_enable_clocks(cld);
 	set_mode(cld, TEGRA_CL_DVFS_OPEN_LOOP);
+	udelay(1);
 	return 0;
 }
 
@@ -2721,6 +2722,42 @@ int tegra_cl_dvfs_vmax_read_begin(struct tegra_cl_dvfs *cld, uint *start)
 int tegra_cl_dvfs_vmax_read_retry(struct tegra_cl_dvfs *cld, uint start)
 {
 	return read_seqcount_retry(&cld->v_limits.vmax_seqcnt, start);
+}
+
+
+/*
+ * Compare actually set (last delivered) and required Vmin. These levels may
+ * be different if temperature or SiMon grade changes while cl-dvfs output
+ * interface is disabled, and new required setting is not delivered to PMIC.
+ * It actually may happen while cl_dvfs is disabled, or during transition
+ * to/from disabled state.
+ *
+ * Return:
+ * 0 if levels are equal,
+ * +1 if last Vmin is above required,
+ * -1 if last Vmin is below required.
+ */
+int tegra_cl_dvfs_vmin_cmp_needed(struct tegra_cl_dvfs *cld, int *needed_mv)
+{
+	int ret = 0;
+	unsigned long flags;
+	u8 needed_out_min, last_out_min;
+
+
+	clk_lock_save(cld->dfll_clk, &flags);
+	needed_out_min = get_output_min(cld);
+	last_out_min = cld->lut_min;
+
+	if (last_out_min > needed_out_min)
+		ret = 1;
+	else if (last_out_min < needed_out_min)
+		ret = -1;
+
+	if (needed_mv)
+		*needed_mv = get_mv(cld, needed_out_min);
+
+	clk_unlock_restore(cld->dfll_clk, &flags);
+	return ret;
 }
 
 /*

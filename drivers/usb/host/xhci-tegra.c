@@ -4212,7 +4212,7 @@ static struct of_device_id tegra_xhci_of_match[] = {
 };
 
 static ssize_t hsic_power_show(struct device *dev,
-			struct kobj_attribute *attr, char *buf)
+			struct device_attribute *attr, char *buf)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct tegra_xhci_hcd *tegra = platform_get_drvdata(pdev);
@@ -4227,7 +4227,7 @@ static ssize_t hsic_power_show(struct device *dev,
 }
 
 static ssize_t hsic_power_store(struct device *dev,
-			struct kobj_attribute *attr, const char *buf, size_t n)
+			struct device_attribute *attr, const char *buf, size_t n)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct tegra_xhci_hcd *tegra = platform_get_drvdata(pdev);
@@ -4286,7 +4286,7 @@ static int hsic_power_create_file(struct tegra_xhci_hcd *tegra)
 		tegra->hsic_power_attr[p].show = hsic_power_show;
 		tegra->hsic_power_attr[p].store = hsic_power_store;
 		tegra->hsic_power_attr[p].attr.mode = (S_IRUGO | S_IWUSR);
-		sysfs_attr_init(&tegra->hsic_power_attr[p]);
+		sysfs_attr_init(&tegra->hsic_power_attr[p].attr);
 
 		err = device_create_file(dev, &tegra->hsic_power_attr[p]);
 		if (err) {

@@ -71,9 +71,6 @@ void _nvmap_handle_free(struct nvmap_handle *h);
 /* holds max number of handles allocted per process at any time */
 extern u32 nvmap_max_handle_count;
 
-#define CACHE_MAINT_IMMEDIATE		0
-#define CACHE_MAINT_ALLOW_DEFERRED	1
-
 #ifdef CONFIG_ARM64
 #define PG_PROT_KERNEL PAGE_KERNEL
 #define FLUSH_DCACHE_AREA __flush_dcache_area
@@ -88,11 +85,17 @@ extern void __flush_dcache_page(struct page *);
 extern void __flush_dcache_page(struct address_space *, struct page *);
 #endif
 
+struct nvmap_vma_list {
+	struct list_head list;
+	struct vm_area_struct *vma;
+};
+
 /* handles allocated using shared system memory (either IOVMM- or high-order
  * page allocations */
 struct nvmap_pgalloc {
 	struct page **pages;
 	bool contig;			/* contiguous system memory */
+	struct list_head vmas;
 };
 
 struct nvmap_handle {
@@ -190,6 +193,7 @@ int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
 					struct page **pages, u32 nr);
 int __nvmap_page_pool_fill_lots_locked(struct nvmap_page_pool *pool,
 				       struct page **pages, u32 nr);
+int nvmap_page_pool_clear(void);
 #endif
 
 struct nvmap_carveout_commit {
@@ -207,6 +211,7 @@ struct nvmap_client {
 	struct task_struct		*task;
 	struct list_head		list;
 	u32				handle_count;
+	u32				next_fd;
 	struct nvmap_carveout_commit	carveout_commit[0];
 };
 
@@ -275,6 +280,11 @@ static inline void nvmap_ref_unlock(struct nvmap_client *priv)
  */
 static inline struct nvmap_handle *nvmap_handle_get(struct nvmap_handle *h)
 {
+	if (WARN_ON(!virt_addr_valid(h))) {
+		pr_err("%s: invalid handle\n", current->group_leader->comm);
+		return NULL;
+	}
+
 	if (unlikely(atomic_inc_return(&h->ref) <= 1)) {
 		pr_err("%s: %s attempt to get a freed handle\n",
 			__func__, current->group_leader->comm);
@@ -289,7 +299,7 @@ static inline pgprot_t nvmap_pgprot(struct nvmap_handle *h, pgprot_t prot)
 	if (h->flags == NVMAP_HANDLE_UNCACHEABLE)
 		return pgprot_noncached(prot);
 	else if (h->flags == NVMAP_HANDLE_WRITE_COMBINE)
-		return pgprot_writecombine(prot);
+		return pgprot_dmacoherent(prot);
 	return prot;
 }
 
@@ -363,6 +373,7 @@ extern size_t cache_maint_outer_threshold;
 extern void v7_flush_kern_cache_all(void);
 extern void v7_clean_kern_cache_all(void *);
 extern void __flush_dcache_all(void *arg);
+extern void __clean_dcache_all(void *arg);
 
 void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
@@ -388,14 +399,15 @@ int __nvmap_get_handle_param(struct nvmap_client *client,
 			     struct nvmap_handle *h, u32 param, u64 *result);
 int __nvmap_do_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
 			   unsigned long start, unsigned long end,
-			   unsigned int op, unsigned int allow_deferred);
+			   unsigned int op);
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 					   const char *name);
 struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref);
 struct nvmap_handle *__nvmap_ref_to_id(struct nvmap_handle_ref *ref);
 int __nvmap_pin(struct nvmap_handle_ref *ref, phys_addr_t *phys);
 void __nvmap_unpin(struct nvmap_handle_ref *ref);
-int __nvmap_dmabuf_fd(struct dma_buf *dmabuf, int flags);
+int __nvmap_dmabuf_fd(struct nvmap_client *client,
+		      struct dma_buf *dmabuf, int flags);
 
 void nvmap_dmabuf_debugfs_init(struct dentry *nvmap_root);
 int nvmap_dmabuf_stash_init(void);

@@ -34,7 +34,6 @@
 #include "dev.h"
 #include "bus_client.h"
 #include "nvhost_acm.h"
-#include "t114/t114.h"
 #include "t124/t124.h"
 
 #include "common.h"
@@ -120,12 +119,16 @@ static const struct soc_mbus_pixelfmt tegra_camera_formats[] = {
 	},
 };
 
-static void tegra_camera_activate(struct tegra_camera_dev *cam)
+static int tegra_camera_activate(struct tegra_camera_dev *cam)
 {
 	struct tegra_camera_ops *cam_ops = cam->ops;
 	int ret;
 
-	nvhost_module_busy_ext(cam->ndev);
+	ret = nvhost_module_busy_ext(cam->ndev);
+	if (ret) {
+		dev_err(&cam->ndev->dev, "nvhost module is busy\n");
+		return ret;
+	}
 
 	/* Enable external power */
 	if (cam->reg) {
@@ -148,6 +151,8 @@ static void tegra_camera_activate(struct tegra_camera_dev *cam)
 
 	if (cam_ops->save_syncpts)
 		cam_ops->save_syncpts(cam);
+
+	return 0;
 }
 
 static void tegra_camera_deactivate(struct tegra_camera_dev *cam)
@@ -551,9 +556,12 @@ static int tegra_camera_add_device(struct soc_camera_device *icd)
 {
 	struct soc_camera_host *ici = to_soc_camera_host(icd->parent);
 	struct tegra_camera_dev *cam = ici->priv;
+	int ret;
 
 	if (!cam->enable_refcnt) {
-		tegra_camera_activate(cam);
+		ret = tegra_camera_activate(cam);
+		if (ret)
+			return ret;
 		cam->num_frames = 0;
 	}
 	cam->enable_refcnt++;
@@ -775,14 +783,6 @@ static struct soc_camera_host_ops tegra_soc_camera_host_ops = {
 };
 
 static struct of_device_id tegra_vi_of_match[] = {
-#ifdef TEGRA_11X_OR_HIGHER_CONFIG
-	{ .compatible = "nvidia,tegra114-vi",
-		.data = (struct nvhost_device_data *)&t11_vi_info },
-#endif
-#ifdef TEGRA_14X_OR_HIGHER_CONFIG
-	{ .compatible = "nvidia,tegra148-vi",
-		.data = (struct nvhost_device_data *)&t14_vi_info },
-#endif
 #ifdef TEGRA_12X_OR_HIGHER_CONFIG
 	{ .compatible = "nvidia,tegra124-vi",
 		.data = (struct nvhost_device_data *)&t124_vi_info },
@@ -890,7 +890,7 @@ static int tegra_camera_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "%s: failed to map register base\n",
 				__func__);
 		err = -ENXIO;
-		goto exit_deinit_clk;
+		goto exit_free_syncpts;
 	}
 
 	nvhost_module_init(pdev);
@@ -899,13 +899,13 @@ static int tegra_camera_probe(struct platform_device *pdev)
 	if (err) {
 		dev_err(&pdev->dev, "%s: nvhost init failed %d\n",
 				__func__, err);
-		goto exit_deinit_clk;
+		goto exit_free_syncpts;
 	}
 
 	cam->alloc_ctx = vb2_dma_contig_init_ctx(&pdev->dev);
 	if (IS_ERR(cam->alloc_ctx)) {
 		err = PTR_ERR(cam->alloc_ctx);
-		goto exit_deinit_clk;
+		goto exit_free_syncpts;
 	}
 
 	platform_set_drvdata(pdev, cam);
@@ -920,6 +920,8 @@ static int tegra_camera_probe(struct platform_device *pdev)
 exit_cleanup_alloc_ctx:
 	platform_set_drvdata(pdev, cam->ndata);
 	vb2_dma_contig_cleanup_ctx(cam->alloc_ctx);
+exit_free_syncpts:
+	cam->ops->free_syncpts(cam);
 exit_deinit_clk:
 	cam->ops->clks_deinit(cam);
 	kfree(cam);
@@ -940,6 +942,9 @@ static int tegra_camera_remove(struct platform_device *pdev)
 	cam->ndata->aperture[0] = NULL;
 
 	vb2_dma_contig_cleanup_ctx(cam->alloc_ctx);
+
+	if (cam->ops)
+		cam->ops->free_syncpts(cam);
 
 	if (cam->ops)
 		cam->ops->clks_deinit(cam);

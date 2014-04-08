@@ -459,7 +459,7 @@ static int nvmap_dmabuf_begin_cpu_access(struct dma_buf *dmabuf,
 
 	trace_nvmap_dmabuf_begin_cpu_access(dmabuf, start, len);
 	return __nvmap_do_cache_maint(NULL, info->handle, start, start + len,
-				      NVMAP_CACHE_OP_INV, 1);
+				      NVMAP_CACHE_OP_WB_INV);
 }
 
 static void nvmap_dmabuf_end_cpu_access(struct dma_buf *dmabuf,
@@ -470,7 +470,7 @@ static void nvmap_dmabuf_end_cpu_access(struct dma_buf *dmabuf,
 
 	trace_nvmap_dmabuf_end_cpu_access(dmabuf, start, len);
 	__nvmap_do_cache_maint(NULL, info->handle, start, start + len,
-				   NVMAP_CACHE_OP_WB_INV, 1);
+				   NVMAP_CACHE_OP_WB);
 
 }
 
@@ -600,17 +600,26 @@ err_nomem:
 	return ERR_PTR(err);
 }
 
-int __nvmap_dmabuf_fd(struct dma_buf *dmabuf, int flags)
+int __nvmap_dmabuf_fd(struct nvmap_client *client,
+		      struct dma_buf *dmabuf, int flags)
 {
 	int fd;
+	int start_fd = CONFIG_NVMAP_FD_START;
 
+#ifdef CONFIG_NVMAP_DEFER_FD_RECYCLE
+	if (client->next_fd < CONFIG_NVMAP_FD_START)
+		client->next_fd = CONFIG_NVMAP_FD_START;
+	start_fd = client->next_fd++;
+	if (client->next_fd >= CONFIG_NVMAP_DEFER_FD_RECYCLE_MAX_FD)
+		client->next_fd = CONFIG_NVMAP_FD_START;
+#endif
 	if (!dmabuf || !dmabuf->file)
 		return -EINVAL;
-	/* Allocate fd from 1024 onwards to overcome
+	/* Allocate fd from start_fd(>=1024) onwards to overcome
 	 * __FD_SETSIZE limitation issue for select(),
 	 * pselect() syscalls.
 	 */
-	fd = __alloc_fd(current->files, 1024,
+	fd = __alloc_fd(current->files, start_fd,
 			sysctl_nr_open, flags);
 	if (fd < 0)
 		return fd;
@@ -628,7 +637,7 @@ int nvmap_get_dmabuf_fd(struct nvmap_client *client, struct nvmap_handle *h)
 	dmabuf = __nvmap_dmabuf_export(client, h);
 	if (IS_ERR(dmabuf))
 		return PTR_ERR(dmabuf);
-	fd = __nvmap_dmabuf_fd(dmabuf, O_CLOEXEC);
+	fd = __nvmap_dmabuf_fd(client, dmabuf, O_CLOEXEC);
 	if (fd < 0)
 		goto err_out;
 	return fd;
@@ -736,25 +745,6 @@ int nvmap_get_dmabuf_param(struct dma_buf *dmabuf, u32 param, u64 *result)
 
 	info = dmabuf->priv;
 	return __nvmap_get_handle_param(NULL, info->handle, param, result);
-}
-
-struct sg_table *nvmap_dmabuf_sg_table(struct dma_buf *dmabuf)
-{
-	struct nvmap_handle_info *info;
-
-	if (WARN_ON(!virt_addr_valid(dmabuf)))
-		return ERR_PTR(-EINVAL);
-
-	info = dmabuf->priv;
-	return __nvmap_sg_table(NULL, info->handle);
-}
-
-void nvmap_dmabuf_free_sg_table(struct dma_buf *dmabuf, struct sg_table *sgt)
-{
-	if (WARN_ON(!virt_addr_valid(sgt)))
-		return;
-
-	__nvmap_free_sg_table(NULL, NULL, sgt);
 }
 
 /*

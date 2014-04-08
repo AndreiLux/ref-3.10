@@ -39,14 +39,15 @@ void inner_flush_cache_all(void)
 
 void inner_clean_cache_all(void)
 {
-#if defined(CONFIG_ARM64)
-	inner_flush_cache_all();
-#else
-#ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU
+#if defined(CONFIG_ARM64) && \
+	defined(CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU)
+	__clean_dcache_all(NULL);
+#elif defined(CONFIG_ARM64)
+	on_each_cpu(__clean_dcache_all, NULL, 1);
+#elif defined(CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS_ON_ONE_CPU)
 	v7_clean_kern_cache_all(NULL);
 #else
 	on_each_cpu(v7_clean_kern_cache_all, NULL, 1);
-#endif
 #endif
 }
 
@@ -113,7 +114,7 @@ int nvmap_flush_cache_list(struct nvmap_handle **handles, int nr)
 			err = __nvmap_do_cache_maint(handles[i]->owner,
 						     handles[i], 0,
 						     handles[i]->size,
-						     NVMAP_CACHE_OP_WB_INV, 0);
+						     NVMAP_CACHE_OP_WB_INV);
 			if (err)
 				break;
 		}
@@ -121,3 +122,42 @@ int nvmap_flush_cache_list(struct nvmap_handle **handles, int nr)
 
 	return err;
 }
+
+void nvmap_zap_handle(struct nvmap_handle *handle,
+		      u64 offset,
+		      u64 size)
+{
+	struct list_head *vmas;
+	struct nvmap_vma_list *vma_list;
+	struct vm_area_struct *vma;
+
+	if (!handle->heap_pgalloc)
+		return;
+
+	if (!size) {
+		offset = 0;
+		size = handle->size;
+	}
+
+	vmas = &handle->pgalloc.vmas;
+	mutex_lock(&handle->lock);
+	list_for_each_entry(vma_list, vmas, list) {
+		vma = vma_list->vma;
+		zap_page_range(vma, vma->vm_start + offset,
+				offset + size - vma->vm_start,
+				NULL);
+	}
+	mutex_unlock(&handle->lock);
+}
+
+void nvmap_zap_handles(struct nvmap_handle **handles,
+		       u64 *offsets,
+		       u64 *sizes,
+		       u32 nr)
+{
+	int i;
+
+	for (i = 0; i < nr; i++)
+		nvmap_zap_handle(handles[i], offsets[i], sizes[i]);
+}
+
