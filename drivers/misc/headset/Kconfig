@@ -36,3 +36,9 @@ config HTC_HEADSET_ONE_WIRE
 	default n
 	help
 	  Provides support of HTC 1-wire headset detection.
+
+config HEADSET_DEBUG_UART
+	tristate "Headset Debug UART"
+	default n
+	help
+	  Provides support of Headset Debug UART.

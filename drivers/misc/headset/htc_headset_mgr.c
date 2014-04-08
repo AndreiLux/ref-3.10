@@ -961,7 +961,8 @@ static void insert_detect_work_func(struct work_struct *work)
 		HS_LOG("Headset float detect enable");
 		if (mic == HEADSET_UNPLUG) {
 			mutex_unlock(&hi->mutex_lock);
-			update_mic_status(HS_DEF_MIC_DETECT_COUNT);
+			/*update_mic_status(HS_DEF_MIC_DETECT_COUNT);*/
+			set_35mm_hw_state(0);
 			return;
 		}
 	}

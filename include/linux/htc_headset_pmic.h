@@ -92,6 +92,12 @@ struct htc_headset_pmic_platform_data {
 	uint32_t adc_mic_bias[2];
 	uint32_t adc_remote[6];
 	uint32_t adc_metrico[2];
+
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	unsigned int debug_gpio;
+	unsigned int debug_irq;
+	int (*headset_get_debug)(void);
+#endif
 };
 
 struct htc_35mm_pmic_info {
@@ -99,6 +105,9 @@ struct htc_35mm_pmic_info {
 	unsigned int hpin_irq_type;
 	unsigned int hpin_debounce;
 	unsigned int key_irq_type;
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	unsigned int debug_irq_type;
+#endif
 	struct wake_lock hs_wake_lock;
 	struct class* htc_accessory_class;
 	struct device* pmic_dev;

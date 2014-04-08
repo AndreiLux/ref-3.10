@@ -45,6 +45,9 @@
 static struct iio_channel *adc_channel;
 #endif
 
+#ifdef CONFIG_HEADSET_DEBUG_UART
+static int hpin_irq_status = 0;
+#endif
 static struct workqueue_struct *detect_wq;
 static void detect_pmic_work_func(struct work_struct *work);
 //static DECLARE_DELAYED_WORK(detect_pmic_work, detect_pmic_work_func);
@@ -310,6 +313,21 @@ static irqreturn_t detect_irq_handler(int irq, void *data)
 {
 	unsigned int irq_mask = IRQF_TRIGGER_HIGH | IRQF_TRIGGER_LOW;
 	unsigned int hpin_count_local;
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (hi->pdata.headset_get_debug) {
+		if (hi->pdata.headset_get_debug()) {
+			HS_LOG("HEADSET_DEBUG_EN on");
+			if (hpin_irq_status) {
+				disable_irq_nosync(hi->pdata.hpin_irq);
+				HS_LOG("Disable HPIN IRQ");
+				hpin_irq_status = 0;
+			}
+			return IRQ_HANDLED;
+		} else
+			HS_LOG("HEADSET_DEBUG_EN off");
+	}
+#endif
+
 	disable_irq_nosync(hi->pdata.hpin_irq);
 	HS_LOG("Disable HPIN IRQ");
 	hrtimer_start(&hi->timer, ktime_set(0, 200*NSEC_PER_MSEC), HRTIMER_MODE_REL);
@@ -356,6 +374,45 @@ static irqreturn_t button_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+#ifdef CONFIG_HEADSET_DEBUG_UART
+static irqreturn_t debug_irq_handler(int irq, void *data)
+{
+	unsigned int irq_mask = IRQF_TRIGGER_HIGH | IRQF_TRIGGER_LOW;
+	if (hi->pdata.headset_get_debug) {
+		if (hi->pdata.headset_get_debug()) {
+			HS_LOG("HEADSET_DEBUG_EN on");
+			if (hpin_irq_status) {
+				disable_irq_nosync(hi->pdata.hpin_irq);
+				HS_LOG("Disable HPIN IRQ");
+				hpin_irq_status = 0;
+			}
+			hi->debug_irq_type = IRQF_TRIGGER_LOW;
+			set_irq_type(hi->pdata.debug_irq, hi->debug_irq_type);
+		} else {
+			HS_LOG("HEADSET_DEBUG_EN off");
+			detect_pmic_work.insert = gpio_get_value(hi->pdata.hpin_gpio);
+			if (!(hi->pdata.driver_flag & DRIVER_HS_PMIC_EDGE_IRQ)) {
+				if (hi->hpin_irq_type == IRQF_TRIGGER_LOW)
+					detect_pmic_work.insert = 1;
+				else
+					detect_pmic_work.insert = 0;
+				hi->hpin_irq_type ^= irq_mask;
+				set_irq_type(hi->pdata.hpin_irq, hi->hpin_irq_type);
+			}
+			if (!hpin_irq_status) {
+				enable_irq(hi->pdata.hpin_irq);
+				HS_LOG("Re-Enable HPIN IRQ");
+				hpin_irq_status = 1;
+			}
+			hi->debug_irq_type = IRQF_TRIGGER_HIGH;
+			set_irq_type(hi->pdata.debug_irq, hi->debug_irq_type);
+		}
+	}
+
+	return IRQ_HANDLED;
+}
+#endif
+
 static void irq_init_work_func(struct work_struct *work)
 {
 	unsigned int irq_type = IRQF_TRIGGER_LOW;
@@ -369,7 +426,13 @@ static void irq_init_work_func(struct work_struct *work)
 		HS_LOG("Enable detect IRQ");
 		hi->hpin_irq_type = irq_type;
 		set_irq_type(hi->pdata.hpin_irq, hi->hpin_irq_type);
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (!hpin_irq_status)
+#endif
 		enable_irq(hi->pdata.hpin_irq);
+#ifdef CONFIG_HEADSET_DEBUG_UART
+		hpin_irq_status = 1;
+#endif
 	}
 
 	if (hi->pdata.key_gpio) {
@@ -379,6 +442,15 @@ static void irq_init_work_func(struct work_struct *work)
 		if (set_irq_wake(hi->pdata.key_irq, 0) < 0)
 			HS_LOG("Disable remote key irq wake failed");
 	}
+
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (hi->pdata.debug_gpio) {
+		HS_LOG("Enable debug IRQ");
+		hi->debug_irq_type = IRQF_TRIGGER_HIGH;
+		set_irq_type(hi->pdata.debug_irq, hi->debug_irq_type);
+		enable_irq(hi->pdata.debug_irq);
+	}
+#endif
 }
 
 static void hs_pmic_key_int_enable(int enable)
@@ -562,6 +634,12 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 	hi->pdata.hs_controller = pdata->hs_controller;
 	hi->pdata.hs_switch = pdata->hs_switch;
 	hi->pdata.adc_mic = pdata->adc_mic;
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	hi->pdata.debug_gpio = pdata->debug_gpio;
+	hi->pdata.debug_irq = pdata->debug_irq;
+	hi->pdata.headset_get_debug = pdata->headset_get_debug;
+#endif
+
 	hi->htc_accessory_class = hs_get_attribute_class();
 	hpin_count_global = 0;
 
@@ -595,6 +673,9 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 	hi->hpin_irq_type = IRQF_TRIGGER_LOW;
 	hi->hpin_debounce = HS_JIFFIES_ZERO;
 	hi->key_irq_type = IRQF_TRIGGER_LOW;
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	hi->debug_irq_type = IRQF_TRIGGER_LOW;
+#endif
 
 	wake_lock_init(&hi->hs_wake_lock, WAKE_LOCK_SUSPEND, DRIVER_NAME);
 
@@ -613,6 +694,9 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 	}
 
 	if (hi->pdata.hpin_gpio) {
+#ifdef CONFIG_HEADSET_DEBUG_UART
+		hpin_irq_status = 1;
+#endif
 		ret = hs_pmic_request_irq(hi->pdata.hpin_gpio,
 				&hi->pdata.hpin_irq, detect_irq_handler,
 				hi->hpin_irq_type, "HS_PMIC_DETECT", 1);
@@ -620,7 +704,13 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 			HS_ERR("Failed to request PMIC HPIN IRQ (0x%X)", ret);
 			goto err_request_detect_irq;
 		}
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (hpin_irq_status)
+#endif
 		disable_irq(hi->pdata.hpin_irq);
+#ifdef CONFIG_HEADSET_DEBUG_UART
+		hpin_irq_status = 0;
+#endif
 	}
 	if (hi->pdata.key_gpio) {
 		ret = hs_pmic_request_irq(hi->pdata.key_gpio,
@@ -632,6 +722,18 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 		}
 		disable_irq(hi->pdata.key_irq);
 	}
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (hi->pdata.debug_gpio) {
+		ret = hs_pmic_request_irq(hi->pdata.debug_gpio,
+				&hi->pdata.debug_irq, debug_irq_handler,
+				hi->debug_irq_type, "HS_PMIC_DEBUG", 1);
+		if (ret < 0) {
+			HS_ERR("Failed to request PMIC DEBUG IRQ (0x%X)", ret);
+			goto err_request_debug_irq;
+		}
+		disable_irq(hi->pdata.debug_irq);
+	}
+#endif
 
 #ifdef HTC_HEADSET_CONFIG_PMIC_TPS80032_ADC
 	adc_channel = iio_channel_get(&pdev->dev, pdata->iio_channel_name);
@@ -705,6 +807,14 @@ err_request_button_irq:
 	}
 
 err_request_detect_irq:
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (hi->pdata.debug_gpio) {
+		free_irq(hi->pdata.debug_irq, 0);
+		gpio_free(hi->pdata.debug_gpio);
+	}
+
+err_request_debug_irq:
+#endif
 	destroy_workqueue(button_wq);
 
 err_create_button_work_queue:
@@ -730,6 +840,13 @@ static int htc_headset_pmic_remove(struct platform_device *pdev)
 		free_irq(hi->pdata.hpin_irq, 0);
 		gpio_free(hi->pdata.hpin_gpio);
 	}
+
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	if (hi->pdata.debug_gpio) {
+		free_irq(hi->pdata.debug_irq, 0);
+		gpio_free(hi->pdata.debug_gpio);
+	}
+#endif
 
 	destroy_workqueue(button_wq);
 	destroy_workqueue(detect_wq);
