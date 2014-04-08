@@ -960,6 +960,18 @@ static void headset_power(int enable)
 	}
 }
 
+#ifdef CONFIG_HEADSET_DEBUG_UART
+#define	AUD_DEBUG_EN TEGRA_GPIO_PK5
+static int headset_get_debug(void)
+{
+	int ret = 0;
+	ret = gpio_get_value(AUD_DEBUG_EN);
+	pr_info("[HS_BOARD] (%s) AUD_DEBUG_EN=%d\n", __func__, ret);
+
+	return ret;
+}
+#endif
+
 /* HTC_HEADSET_PMIC Driver */
 static struct htc_headset_pmic_platform_data htc_headset_pmic_data = {
 	.driver_flag		= DRIVER_HS_PMIC_ADC,
@@ -973,6 +985,11 @@ static struct htc_headset_pmic_platform_data htc_headset_pmic_data = {
 	.hs_controller		= 0,
 	.hs_switch		= 0,
 	.iio_channel_name = "hs_channel",
+#ifdef CONFIG_HEADSET_DEBUG_UART
+	.debug_gpio		= AUD_DEBUG_EN,
+	.debug_irq		= 0,
+	.headset_get_debug	= headset_get_debug,
+#endif
 };
 
 static struct platform_device htc_headset_pmic = {
