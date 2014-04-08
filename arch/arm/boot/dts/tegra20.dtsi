@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
 /include/ "skeleton.dtsi"
 
 / {
@@ -173,6 +190,7 @@
 			      0 118 0x04
 			      0 119 0x04>;
 		clocks = <&tegra_car 34>;
+		#dma-cells = <1>;
 	};
 
 	ahb {
@@ -250,6 +268,8 @@
 		interrupts = <0 36 0x04>;
 		nvidia,dma-request-selector = <&apbdma 8>;
 		clocks = <&tegra_car 6>;
+		dmas = <&apbdma 8>, <&apbdma 8>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -260,6 +280,8 @@
 		interrupts = <0 37 0x04>;
 		nvidia,dma-request-selector = <&apbdma 9>;
 		clocks = <&tegra_car 96>;
+		dmas = <&apbdma 9>, <&apbdma 9>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -270,6 +292,8 @@
 		interrupts = <0 46 0x04>;
 		nvidia,dma-request-selector = <&apbdma 10>;
 		clocks = <&tegra_car 55>;
+		dmas = <&apbdma 10>, <&apbdma 10>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -280,6 +304,8 @@
 		interrupts = <0 90 0x04>;
 		nvidia,dma-request-selector = <&apbdma 19>;
 		clocks = <&tegra_car 65>;
+		dmas = <&apbdma 19>, <&apbdma 19>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -290,6 +316,8 @@
 		interrupts = <0 91 0x04>;
 		nvidia,dma-request-selector = <&apbdma 20>;
 		clocks = <&tegra_car 66>;
+		dmas = <&apbdma 20>, <&apbdma 20>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -326,6 +354,8 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		clocks = <&tegra_car 43>;
+		dmas = <&apbdma 11>, <&apbdma 11>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -370,6 +400,8 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		clocks = <&tegra_car 41>;
+		dmas = <&apbdma 15>, <&apbdma 15>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -381,6 +413,8 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		clocks = <&tegra_car 44>;
+		dmas = <&apbdma 16>, <&apbdma 16>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -392,6 +426,8 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		clocks = <&tegra_car 46>;
+		dmas = <&apbdma 17>, <&apbdma 17>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -403,6 +439,8 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		clocks = <&tegra_car 68>;
+		dmas = <&apbdma 18>, <&apbdma 18>;
+		dma-names = "rx", "tx";
 		status = "disabled";
 	};
 
@@ -434,7 +472,7 @@
 		       0x58000000 0x02000000>;	/* GART aperture */
 	};
 
-	memory-controller@7000f400 {
+	emc@7000f400 {
 		compatible = "nvidia,tegra20-emc";
 		reg = <0x7000f400 0x200>;
 		#address-cells = <1>;

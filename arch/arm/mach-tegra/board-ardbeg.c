@@ -314,7 +314,7 @@ static struct tegra_asoc_platform_data norrin_audio_pdata_max98090 = {
 	.i2s_param[HIFI_CODEC]	= {
 		.audio_port_id	= 1,
 		.is_i2s_master	= 1,
-		.i2s_mode	= TEGRA_DAIFMT_DSP_A,
+		.i2s_mode	= TEGRA_DAIFMT_I2S,
 		.sample_size	= 16,
 		.channels	= 2,
 		.bit_clk	= 1536000,
@@ -626,7 +626,8 @@ static void ardbeg_usb_init(void)
 	struct board_info bi;
 	tegra_get_pmu_board_info(&bi);
 
-	if (board_info.sku == 1100 || board_info.board_id == BOARD_P1761)
+	if (board_info.sku == 1100 || board_info.board_id == BOARD_P1761 ||
+					board_info.board_id == BOARD_E1784)
 		tegra_ehci1_utmi_pdata.u_data.host.turn_off_vbus_on_lp0 = true;
 
 	if (board_info.board_id == BOARD_PM359 ||
@@ -1387,9 +1388,9 @@ static void __init tegra_ardbeg_reserve(void)
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM) || \
 		defined(CONFIG_TEGRA_NO_CARVEOUT)
 	/* 1920*1200*4*2 = 18432000 bytes */
-	tegra_reserve(0, SZ_16M + SZ_2M, SZ_16M);
+	tegra_reserve4(0, SZ_16M + SZ_2M, SZ_16M, 186 * SZ_1M);
 #else
-	tegra_reserve(SZ_1G, SZ_16M + SZ_2M, SZ_4M);
+	tegra_reserve4(SZ_1G, SZ_16M + SZ_2M, SZ_4M, 186 * SZ_1M);
 #endif
 }
 

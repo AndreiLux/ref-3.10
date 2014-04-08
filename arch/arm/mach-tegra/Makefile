@@ -85,6 +85,7 @@ obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12_dvfs.o
 endif
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra14_dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_14x_SOC)        += tegra_emc_therm.o
+obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra_emc_therm.o
 
 obj-y                                   += latency_allowance.o
 obj-$(CONFIG_ARCH_TEGRA_3x_SOC)         += tegra3_la.o
@@ -151,7 +152,6 @@ obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra3_throttle.o
 endif
 obj-$(CONFIG_DEBUG_ICEDCC)              += sysfs-dcc.o
 obj-$(CONFIG_TEGRA_CLUSTER_CONTROL)     += sysfs-cluster.o
-obj-$(CONFIG_SENSORS_TEGRA_TSENSOR)     += tegra3_tsensor.o
 obj-$(CONFIG_TEGRA_DYNAMIC_PWRDET)      += powerdetect.o
 obj-$(CONFIG_ARCH_TEGRA_HAS_CL_DVFS)    += tegra_cl_dvfs.o
 
@@ -278,6 +278,7 @@ obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-sdhci.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-power.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-panel.o
+obj-${CONFIG_MACH_VCM30_T124}           += therm-monitor.o
 
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o
 obj-${CONFIG_TEGRA_BB_XMM_POWER2}       += baseband-xmm-power2.o

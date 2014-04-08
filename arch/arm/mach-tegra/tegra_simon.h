@@ -26,13 +26,14 @@ enum tegra_simon_domain {
 	TEGRA_SIMON_DOMAIN_NUM,
 };
 
-#define TEGRA_SIMON_GRADING_INTERVAL_SEC	5000000
+#define TEGRA_SIMON_GRADING_INTERVAL_SEC	86400
+#define TEGRA_SIMON_GRADING_TIMEOUT_SEC		864000
 
 struct tegra_simon_grader_desc {
 	enum tegra_simon_domain		domain;
 	int				settle_us;
 	int				grading_mv_max;
-	unsigned long			garding_rate_max;
+	unsigned long			grading_rate_max;
 	int				grading_temperature_min;
 	int (*grade_simon_domain) (int domain, int mv, int temperature);
 };
@@ -40,9 +41,13 @@ struct tegra_simon_grader_desc {
 struct tegra_simon_grader {
 	enum tegra_simon_domain		domain;
 	const char			*domain_name;
+
+	spinlock_t			grade_lock;
+	struct timer_list		grade_wdt;
 	ktime_t				last_grading;
 	bool				stop_grading;
 	int				grade;
+
 	struct work_struct		grade_update_work;
 	struct notifier_block		grading_condition_nb;
 	struct thermal_zone_device	*tzd;

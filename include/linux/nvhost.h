@@ -58,8 +58,6 @@ struct sync_pt;
 #define NVSYNCPT_GRAPHICS_HOST		(0)	/* t20, t30, t114, t148 */
 
 #define NVSYNCPT_AVP_0			(10)	/* t20, t30, t114, t148 */
-#define NVSYNCPT_2D_0			(18)
-#define NVSYNCPT_2D_1			(19)
 #define NVSYNCPT_3D			(22)	/* t20, t30, t114, t148 */
 #define NVSYNCPT_VBLANK0		(26)	/* t20, t30, t114, t148 */
 #define NVSYNCPT_VBLANK1		(27)	/* t20, t30, t114, t148 */
@@ -130,7 +128,6 @@ struct nvhost_device_data {
 	bool		exclusive;	/* True if only one user at a time */
 	bool		keepalive;	/* Do not power gate when opened */
 	bool		waitbasesync;	/* Force sync of wait bases */
-	bool		powerup_reset;	/* Do a reset after power un-gating */
 	bool		serialize;	/* Serialize submits in the channel */
 
 	int		powergate_ids[NVHOST_MODULE_MAX_POWERGATE_IDS];
@@ -151,6 +148,7 @@ struct nvhost_device_data {
 	struct nvhost_channel *channel;	/* Channel assigned for the module */
 
 	/* device node for channel operations */
+	dev_t cdev_region;
 	struct device *node;
 	struct cdev cdev;
 
@@ -197,8 +195,6 @@ struct nvhost_device_data {
 #ifdef CONFIG_PM_GENERIC_DOMAINS
 	struct generic_pm_domain pd;	/* power domain representing power partition */
 #endif
-	/* forces the context restore gather for each submit */
-	bool		force_context_restore;
 
 	/* Finalize power on. Can be used for context restore. */
 	int (*finalize_poweron)(struct platform_device *dev);
@@ -240,16 +236,6 @@ struct nvhost_device_data {
 	/* Allocates a context handler for the device */
 	struct nvhost_hwctx_handler *(*alloc_hwctx_handler)(u32 syncpt,
 			u32 waitbase, struct nvhost_channel *ch);
-
-	/* Read module register into memory */
-	int (*read_reg)(struct platform_device *dev,
-			struct nvhost_channel *ch,
-			struct nvhost_hwctx *hwctx,
-			u32 offset,
-			u32 *value);
-
-	/* Callback when a clock is changed */
-	void (*update_clk)(struct platform_device *dev);
 };
 
 

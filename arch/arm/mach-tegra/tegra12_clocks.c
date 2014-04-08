@@ -1760,7 +1760,6 @@ static int tegra12_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		 * set DFLL rate ready (DFLL is still disabled)
 		 * (set target p_source as dfll, G source is already selected)
 		 */
-		int mv;
 		p_source = dfll;
 		ret = clk_set_rate(dfll,
 			tegra_dvfs_rail_is_dfll_mode(tegra_cpu_rail) ? rate :
@@ -1768,14 +1767,10 @@ static int tegra12_cpu_cmplx_clk_set_parent(struct clk *c, struct clk *p)
 		if (ret)
 			goto abort;
 
-		mv = tegra_cl_dvfs_vmin_read_begin(
-			tegra_dfll_get_cl_dvfs_data(dfll), NULL);
-		if (mv < tegra_dvfs_rail_get_thermal_floor(tegra_cpu_rail)) {
-			ret = tegra_dvfs_rail_dfll_mode_set_cold(
-				tegra_cpu_rail);
-			if (ret)
-				goto abort;
-		}
+		ret = tegra_dvfs_rail_dfll_mode_set_cold(tegra_cpu_rail, dfll);
+		if (ret)
+			goto abort;
+
 	} else
 		/* DFLL is not selected on either side of the switch:
 		 * set target p_source equal to current clock source
@@ -4743,7 +4738,8 @@ static int tegra12_periph_clk_enable(struct clk *c)
 	if (!(c->flags & PERIPH_NO_RESET) && !(c->flags & PERIPH_MANUAL_RESET)) {
 		if (clk_readl(PERIPH_CLK_TO_RST_REG(c)) & PERIPH_CLK_TO_BIT(c)) {
 			udelay(RESET_PROPAGATION_DELAY);
-			clk_writel(PERIPH_CLK_TO_BIT(c), PERIPH_CLK_TO_RST_CLR_REG(c));
+			clk_writel_delay(PERIPH_CLK_TO_BIT(c),
+					 PERIPH_CLK_TO_RST_CLR_REG(c));
 		}
 	}
 	spin_unlock_irqrestore(&periph_refcount_lock, flags);
@@ -4794,11 +4790,11 @@ static void tegra12_periph_clk_reset(struct clk *c, bool assert)
 			if (c->flags & PERIPH_ON_APB)
 				val = tegra_read_chipid();
 
-			clk_writel(PERIPH_CLK_TO_BIT(c),
-				   PERIPH_CLK_TO_RST_SET_REG(c));
+			clk_writel_delay(PERIPH_CLK_TO_BIT(c),
+					 PERIPH_CLK_TO_RST_SET_REG(c));
 		} else
-			clk_writel(PERIPH_CLK_TO_BIT(c),
-				   PERIPH_CLK_TO_RST_CLR_REG(c));
+			clk_writel_delay(PERIPH_CLK_TO_BIT(c),
+					 PERIPH_CLK_TO_RST_CLR_REG(c));
 	}
 }
 
@@ -9396,8 +9392,8 @@ static int tegra12_clk_suspend(void)
 	*ctx++ = clk_readl(CLK_OUT_ENB_W);
 	*ctx++ = clk_readl(CLK_OUT_ENB_X);
 
-	*ctx++ = clk_readl(tegra_clk_cclk_g.reg);
-	*ctx++ = clk_readl(tegra_clk_cclk_g.reg + SUPER_CLK_DIVIDER);
+	*ctx++ = clk_readlx(tegra_clk_cclk_g.reg);
+	*ctx++ = clk_readlx(tegra_clk_cclk_g.reg + SUPER_CLK_DIVIDER);
 
 	*ctx++ = clk_readl(SPARE_REG);
 	*ctx++ = clk_readl(MISC_CLK_ENB);
@@ -9536,8 +9532,8 @@ static void tegra12_clk_resume(void)
 	tegra12_dfll_clk_resume(&tegra_dfll_cpu);
 
 	/* CPU G clock restored after DFLL and PLLs */
-	clk_writel(*ctx++, tegra_clk_cclk_g.reg);
-	clk_writel(*ctx++, tegra_clk_cclk_g.reg + SUPER_CLK_DIVIDER);
+	clk_writelx(*ctx++, tegra_clk_cclk_g.reg);
+	clk_writelx(*ctx++, tegra_clk_cclk_g.reg + SUPER_CLK_DIVIDER);
 
 	clk_writel(*ctx++, SPARE_REG);
 	clk_writel(*ctx++, MISC_CLK_ENB);

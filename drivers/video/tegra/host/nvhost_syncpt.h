@@ -56,6 +56,7 @@ struct nvhost_syncpt {
 	struct nvhost_syncpt_attr invalid_max_attr;
 	struct nvhost_syncpt_attr invalid_name_attr;
 	struct nvhost_syncpt_attr invalid_syncpt_type_attr;
+	struct nvhost_syncpt_attr invalid_assigned_attr;
 #endif
 };
 
@@ -124,6 +125,7 @@ void nvhost_syncpt_cpu_incr(struct nvhost_syncpt *sp, u32 id);
 
 u32 nvhost_syncpt_update_min(struct nvhost_syncpt *sp, u32 id);
 bool nvhost_syncpt_is_expired(struct nvhost_syncpt *sp, u32 id, u32 thresh);
+bool nvhost_is_syncpt_assigned(struct nvhost_syncpt *sp, u32 id);
 int nvhost_syncpt_compare(struct nvhost_syncpt *sp, u32 id,
 				u32 thresh_a, u32 thresh_b);
 

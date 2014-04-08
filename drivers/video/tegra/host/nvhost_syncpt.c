@@ -38,7 +38,7 @@
 #include "host1x/host1x.h"
 
 #define MAX_SYNCPT_LENGTH	5
-#define NUM_SYSFS_ENTRY		4
+#define NUM_SYSFS_ENTRY		5
 
 /* Name of sysfs node for min and max value */
 static const char *min_name = "min";
@@ -66,11 +66,7 @@ int nvhost_syncpt_get_waitbase(struct nvhost_channel *ch, int id)
 	for (i = 0; i < NVHOST_MODULE_MAX_SYNCPTS && pdata->syncpts[i]; ++i)
 		ret |= (pdata->syncpts[i] == id);
 
-#ifdef CONFIG_ARCH_TEGRA_11x_SOC
-	if (!ret || (id == NVSYNCPT_2D_0))
-#else
 	if (!ret)
-#endif
 		return NVSYNCPT_INVALID;
 
 	return pdata->waitbases[0];
@@ -240,7 +236,10 @@ int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id,
 	void *ref;
 	void *waiter;
 	int err = 0, check_count = 0, low_timeout = 0;
-	u32 val;
+	u32 val, old_val, new_val;
+
+	if (!id || id >= nvhost_syncpt_nb_pts(sp))
+		return -EINVAL;
 
 	if (value)
 		*value = 0;
@@ -273,6 +272,8 @@ int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id,
 		err = -EAGAIN;
 		goto done;
 	}
+
+	old_val = val;
 
 	/* schedule a wakeup when the syncpoint value is reached */
 	waiter = nvhost_intr_alloc_waiter();
@@ -327,11 +328,22 @@ int nvhost_syncpt_wait_timeout(struct nvhost_syncpt *sp, u32 id,
 		if (timeout != NVHOST_NO_TIMEOUT)
 			timeout -= check;
 		if (timeout && check_count <= MAX_STUCK_CHECK_COUNT) {
-			dev_warn(&syncpt_to_dev(sp)->dev->dev,
-				"%s: syncpoint id %d (%s) stuck waiting %d, timeout=%d\n",
-				 current->comm, id, syncpt_op().name(sp, id),
-				 thresh, timeout);
-			syncpt_op().debug(sp);
+			new_val = syncpt_op().update_min(sp, id);
+			if (old_val == new_val) {
+				dev_warn(&syncpt_to_dev(sp)->dev->dev,
+					"%s: syncpoint id %d (%s) stuck waiting %d, timeout=%d\n",
+					 current->comm, id,
+					 syncpt_op().name(sp, id),
+					 thresh, timeout);
+				syncpt_op().debug(sp);
+			} else {
+				old_val = new_val;
+				dev_warn(&syncpt_to_dev(sp)->dev->dev,
+					"%s: syncpoint id %d (%s) progressing slowly %d, timeout=%d\n",
+					 current->comm, id,
+					 syncpt_op().name(sp, id),
+					 thresh, timeout);
+			}
 			if (check_count == MAX_STUCK_CHECK_COUNT) {
 				if (low_timeout) {
 					dev_warn(&syncpt_to_dev(sp)->dev->dev,
@@ -601,6 +613,19 @@ static ssize_t syncpt_type_show(struct kobject *kobj,
 		return snprintf(buf, PAGE_SIZE, "%s\n", "non_client_managed");
 }
 
+static ssize_t syncpt_is_assigned(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	struct nvhost_syncpt_attr *syncpt_attr =
+		container_of(attr, struct nvhost_syncpt_attr, attr);
+
+	if (nvhost_is_syncpt_assigned(&syncpt_attr->host->syncpt,
+			syncpt_attr->id))
+		return snprintf(buf, PAGE_SIZE, "%s\n", "assigned");
+	else
+		return snprintf(buf, PAGE_SIZE, "%s\n", "not_assigned");
+}
+
 /* Displays the current value of the sync point via sysfs */
 static ssize_t syncpt_name_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
@@ -651,6 +676,7 @@ static int nvhost_syncpt_timeline_attr(struct nvhost_master *host,
 				       struct nvhost_syncpt_attr *max,
 				       struct nvhost_syncpt_attr *sp_name,
 				       struct nvhost_syncpt_attr *sp_type,
+				       struct nvhost_syncpt_attr *sp_assigned,
 				       int i)
 {
 	char name[MAX_SYNCPT_LENGTH];
@@ -666,7 +692,20 @@ static int nvhost_syncpt_timeline_attr(struct nvhost_master *host,
 	SYSFS_SP_TIMELINE_ATTR(max, max_name, syncpt_max_show);
 	SYSFS_SP_TIMELINE_ATTR(sp_name, "name", syncpt_name_show);
 	SYSFS_SP_TIMELINE_ATTR(sp_type, "syncpt_type", syncpt_type_show);
+	SYSFS_SP_TIMELINE_ATTR(sp_assigned, "syncpt_assigned",
+							syncpt_is_assigned);
 	return 0;
+}
+
+bool nvhost_is_syncpt_assigned(struct nvhost_syncpt *sp, u32 id)
+{
+	bool assigned;
+
+	mutex_lock(&sp->syncpt_mutex);
+	assigned = sp->assigned[id];
+	mutex_unlock(&sp->syncpt_mutex);
+
+	return assigned;
 }
 
 /**
@@ -785,6 +824,8 @@ u32 nvhost_get_syncpt_client_managed(const char *syncpt_name)
 
 	if (!syncpt_name)
 		syncpt_name = kasprintf(GFP_KERNEL, "client_managed");
+	else
+		syncpt_name = kasprintf(GFP_KERNEL, "%s", syncpt_name);
 
 	id = nvhost_get_syncpt(&host->syncpt, true, syncpt_name);
 	if (!id) {
@@ -803,8 +844,19 @@ void nvhost_free_syncpt(u32 id)
 {
 	struct nvhost_master *host = nvhost;
 	struct nvhost_syncpt *sp = &host->syncpt;
+	struct device *d = &host->dev->dev;
 
-	WARN_ON(!sp->assigned[id]);
+	/* first check if we are freeing a valid syncpt */
+	if (!sp->assigned[id]) {
+		nvhost_warn(d, "trying to free unused syncpt %u\n", id);
+		return;
+	}
+	if (!nvhost_syncpt_client_managed(sp, id) &&
+			!nvhost_syncpt_min_eq_max(sp, id)) {
+		nvhost_err(d,
+		    "trying to free host managed syncpt still in use %u\n", id);
+		return;
+	}
 
 	mutex_lock(&sp->syncpt_mutex);
 
@@ -846,29 +898,6 @@ static void nvhost_reserve_syncpts(struct nvhost_syncpt *sp)
 
 	mutex_unlock(&sp->syncpt_mutex);
 }
-
-#ifdef CONFIG_ARCH_TEGRA_11x_SOC
-static void nvhost_reserve_gr_syncpt(struct nvhost_syncpt *sp)
-{
-	mutex_lock(&sp->syncpt_mutex);
-
-	sp->assigned[NVSYNCPT_2D_0] = true;
-	sp->syncpt_names[NVSYNCPT_2D_0] = "2d_0";
-
-	sp->assigned[NVSYNCPT_2D_1] = true;
-	sp->client_managed[NVSYNCPT_2D_1] = true;
-	sp->syncpt_names[NVSYNCPT_2D_1] = "2d_1";
-
-	/* HACK: some tests for t114 require syncpt 17
-	 * to be reserved as client managed
-	 */
-	sp->assigned[17] = true;
-	sp->client_managed[17] = true;
-	sp->syncpt_names[17] = "3d_1";
-
-	mutex_unlock(&sp->syncpt_mutex);
-}
-#endif
 
 int nvhost_syncpt_init(struct platform_device *dev,
 		struct nvhost_syncpt *sp)
@@ -936,9 +965,11 @@ int nvhost_syncpt_init(struct platform_device *dev,
 			&sp->syncpt_attrs[i*NUM_SYSFS_ENTRY+2];
 		struct nvhost_syncpt_attr *syncpt_type =
 			&sp->syncpt_attrs[i*NUM_SYSFS_ENTRY+3];
+		struct nvhost_syncpt_attr *syncpt_assigned =
+			&sp->syncpt_attrs[i*NUM_SYSFS_ENTRY+4];
 
 		err = nvhost_syncpt_timeline_attr(host, sp, min, max, name,
-					syncpt_type, i);
+					syncpt_type, syncpt_assigned, i);
 		if (err)
 			goto fail;
 
@@ -960,6 +991,7 @@ int nvhost_syncpt_init(struct platform_device *dev,
 					  &sp->invalid_max_attr,
 					  &sp->invalid_name_attr,
 					  &sp->invalid_syncpt_type_attr,
+					  &sp->invalid_assigned_attr,
 					  NVSYNCPT_INVALID);
 	if (err)
 		goto fail;
@@ -978,9 +1010,6 @@ int nvhost_syncpt_init(struct platform_device *dev,
 	 * external dependencies / constraints
 	 */
 	nvhost_reserve_syncpts(sp);
-#ifdef CONFIG_ARCH_TEGRA_11x_SOC
-	nvhost_reserve_gr_syncpt(sp);
-#endif
 
 	return err;
 

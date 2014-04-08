@@ -38,6 +38,7 @@ static RAW_NOTIFIER_HEAD(simon_nh);
 static void tegra_simon_grade_notify(struct work_struct *work);
 
 static u32 grading_sec = TEGRA_SIMON_GRADING_INTERVAL_SEC;
+static u32 timeout_sec = TEGRA_SIMON_GRADING_TIMEOUT_SEC;
 
 static struct tegra_simon_grader simon_graders[TEGRA_SIMON_DOMAIN_NUM] = {
 	[TEGRA_SIMON_DOMAIN_CPU] = {
@@ -58,6 +59,52 @@ static void settle_delay(struct tegra_simon_grader *grader)
 		udelay(us);
 	else
 		usleep_range(us, us + 100);
+}
+
+static inline void mod_wdt_on_grade(struct tegra_simon_grader *grader)
+{
+	if (grader->grade) {
+		/* restart WDT while at high grade */
+		struct timespec ts = {timeout_sec, 0};
+		mod_timer(&grader->grade_wdt,
+			  jiffies + timespec_to_jiffies(&ts));
+	}
+}
+
+static void tegra_simon_reset_grade(unsigned long data)
+{
+	unsigned long flags;
+	struct tegra_simon_grader *grader = (struct tegra_simon_grader *)data;
+
+	pr_info("%s: %s grade = 0\n", __func__, grader->domain_name);
+
+	spin_lock_irqsave(&grader->grade_lock, flags);
+	grader->grade = 0;
+	spin_unlock_irqrestore(&grader->grade_lock, flags);
+
+	schedule_work(&grader->grade_update_work);
+}
+
+static void tegra_simon_grade_set(struct tegra_simon_grader *grader,
+				  int grade, bool restart)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&grader->grade_lock, flags);
+
+	/* once low grade is detected, stop grading (unless restart request) */
+	grader->stop_grading = !grade && !restart;
+
+	if (grader->grade == grade) {
+		mod_wdt_on_grade(grader);
+		spin_unlock_irqrestore(&grader->grade_lock, flags);
+		return;
+	}
+	grader->grade = grade;
+	mod_wdt_on_grade(grader);
+	spin_unlock_irqrestore(&grader->grade_lock, flags);
+
+	schedule_work(&grader->grade_update_work);
 }
 
 /*
@@ -111,13 +158,7 @@ static int tegra_simon_gpu_grading_cb(
 	}
 
 	grader->last_grading = now;
-	if (grader->grade != grade) {
-		/* once return to low grade, stay until next boot */
-		if (grade == 0)
-			grader->stop_grading = true;
-		set_mb(grader->grade, grade);
-		schedule_work(&grader->grade_update_work);
-	}
+	tegra_simon_grade_set(grader, grade, false);
 	pr_info("%s: graded %s: v = %d, t = %lu, grade = %d\n",
 		__func__, grader->domain_name, mv, t, grade);
 	return NOTIFY_OK;
@@ -129,6 +170,9 @@ static int __init tegra_simon_init_gpu(void)
 	struct tegra_simon_grader *grader =
 		&simon_graders[TEGRA_SIMON_DOMAIN_GPU];
 
+	spin_lock_init(&grader->grade_lock);
+	setup_timer(&grader->grade_wdt, tegra_simon_reset_grade,
+		    (unsigned long)grader);
 	INIT_WORK(&grader->grade_update_work, tegra_simon_grade_notify);
 
 	grader->tzd = thermal_zone_device_find_by_name("GPU-therm");
@@ -178,7 +222,7 @@ static int tegra_simon_cpu_grading_cb(
 	if (grader->stop_grading)
 		return NOTIFY_OK;
 
-	if (is_lp_cluster() || (rate > grader->desc->garding_rate_max) ||
+	if (is_lp_cluster() || (rate > grader->desc->grading_rate_max) ||
 	    !tegra_dvfs_rail_is_dfll_mode(tegra_cpu_rail))
 		return NOTIFY_OK;
 
@@ -225,13 +269,7 @@ static int tegra_simon_cpu_grading_cb(
 	tegra_cl_dvfs_clamp_at_vmin(cld, false);
 
 	grader->last_grading = now;
-	if (grader->grade != grade) {
-		/* once return to low grade, stay until next boot */
-		if (grade == 0)
-			grader->stop_grading = true;
-		set_mb(grader->grade, grade);
-		schedule_work(&grader->grade_update_work);
-	}
+	tegra_simon_grade_set(grader, grade, false);
 	pr_info("%s: graded %s: v = %d, t = %lu, grade = %d\n",
 		__func__, grader->domain_name, mv, t, grade);
 	return NOTIFY_OK;
@@ -244,6 +282,9 @@ static int __init tegra_simon_init_cpu(void)
 	struct clk *c;
 	int r;
 
+	spin_lock_init(&grader->grade_lock);
+	setup_timer(&grader->grade_wdt, tegra_simon_reset_grade,
+		    (unsigned long)grader);
 	INIT_WORK(&grader->grade_update_work, tegra_simon_grade_notify);
 
 	grader->tzd = thermal_zone_device_find_by_name("CPU-therm");
@@ -369,15 +410,18 @@ static int grade_get(void *data, u64 *val)
 }
 static int grade_set(void *data, u64 val)
 {
+	int grade = (int)val;
 	struct tegra_simon_grader *grader = data;
 
 	if (grader->domain >= TEGRA_SIMON_DOMAIN_NUM)
 		return -EINVAL;
 
-	if (grader->grade != (int)val) {
+	if (!grader->desc && (grader->grade != grade)) {
 		grader->stop_grading = false;
-		grader->grade = (int)val;
+		grader->grade = grade;
 		grade_notify(grader);
+	} else if (grader->desc) {
+		tegra_simon_grade_set(grader, grade, true);
 	}
 	return 0;
 }
@@ -417,6 +461,10 @@ static int __init simon_debugfs_init(void)
 				&grading_sec))
 		goto err_out;
 
+	if (!debugfs_create_u32("timeout_sec", S_IWUSR | S_IRUGO, dir,
+				&timeout_sec))
+		goto err_out;
+
 	for (i = 0; i < TEGRA_SIMON_DOMAIN_NUM; i++) {
 		grader = &simon_graders[i];
 
@@ -454,7 +502,7 @@ static struct tegra_simon_grader_desc gpu_grader_desc = {
 
 static struct tegra_simon_grader_desc cpu_grader_desc = {
 	.domain = TEGRA_SIMON_DOMAIN_CPU,
-	.garding_rate_max = 850000000,
+	.grading_rate_max = 850000000,
 	.grading_temperature_min = 20000,
 	.settle_us = 3000,
 	.grade_simon_domain = fake_grader,

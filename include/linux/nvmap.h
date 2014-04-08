@@ -21,9 +21,9 @@
  */
 
 #include <linux/ioctl.h>
-#include <linux/file.h>
 #include <linux/rbtree.h>
 #if defined(__KERNEL__)
+#include <linux/file.h>
 #include <linux/dma-buf.h>
 #include <linux/device.h>
 #endif
@@ -60,10 +60,6 @@ struct dma_buf *nvmap_alloc_dmabuf(size_t size, size_t align,
 				   unsigned int flags,
 				   unsigned int heap_mask);
 
-struct sg_table *nvmap_dmabuf_sg_table(struct dma_buf *dmabuf);
-
-void nvmap_dmabuf_free_sg_table(struct dma_buf *dmabuf, struct sg_table *sgt);
-
 int nvmap_get_dmabuf_param(struct dma_buf *dmabuf, u32 param, u64 *result);
 
 #ifdef CONFIG_NVMAP_PAGE_POOLS
@@ -82,7 +78,6 @@ struct nvmap_platform_carveout {
 	unsigned int usage_mask;
 	phys_addr_t base;
 	size_t size;
-	size_t buddy_size;
 	struct device *cma_dev;
 	bool resize;
 	struct device *dma_dev;
