@@ -3126,7 +3126,7 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 
 	if (udc->support_pmu_vbus) {
 #ifdef CONFIG_EXTCON
-		if (extcon_get_cable_state(udc->vbus_extcon_dev, "USB"))
+		if (udc->vbus_extcon_dev != NULL && extcon_get_cable_state(udc->vbus_extcon_dev, "USB"))
 			udc->vbus_in_lp0 = true;
 #endif
 	} else {
