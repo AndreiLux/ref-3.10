@@ -19,3 +19,13 @@ config TEGRA_NVAVP_AUDIO
 	  /dev/tegra_audio_avpchannel.
 
 	  If unsure, say N
+
+config TEGRA_NVAVP_REF_DEBUG
+	bool "Enable Reference Debugging for Tegra NVAVP driver"
+	depends on TEGRA_NVAVP
+	default y
+	help
+	  Enables debugging reference to the NVAVP device in event that NVAVP driver
+	  prevents system from going to sleep.
+
+	  If unsure, say N
