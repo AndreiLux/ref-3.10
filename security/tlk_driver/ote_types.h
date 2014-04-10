@@ -60,6 +60,8 @@ enum {
 	OTE_ERROR_SECURITY		= 0xFFFF000F,
 	/* The supplied buffer is too short */
 	OTE_ERROR_SHORT_BUFFER		= 0xFFFF0010,
+
+	OTE_ERROR_NO_ANSWER		= 0xFFFF1003,
 };
 
 /*

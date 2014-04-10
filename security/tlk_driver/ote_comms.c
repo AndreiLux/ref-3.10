@@ -32,6 +32,7 @@
 #ifdef CONFIG_TRUSTY
 #include <linux/trusty/trusty.h>
 #endif
+#include <linux/completion.h>
 
 #include "ote_protocol.h"
 
@@ -40,7 +41,11 @@ core_param(verbose_smc, verbose_smc, bool, 0644);
 
 struct tlk_info {
 	struct device *trusty_dev;
+	atomic_t smc_count;
+	struct completion smc_retry;
+	struct notifier_block smc_notifier;
 };
+
 static struct tlk_info *tlk_info;
 
 #define SET_RESULT(req, r, ro)	{ req->result = r; req->result_origin = ro; }
@@ -328,6 +333,27 @@ static void do_smc(struct te_request *request, struct tlk_device *dev)
 	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params);
 }
 
+#ifdef CONFIG_TRUSTY
+static int tlk_smc_notify(struct notifier_block *nb,
+			unsigned long action, void *data)
+{
+	struct tlk_info *info = container_of(nb, struct tlk_info, smc_notifier);
+
+	if (action != TRUSTY_CALL_RETURNED)
+		return NOTIFY_DONE;
+
+	/* smc_count keeps track of SMCs made to Trusty since the last OTE SMC
+	 * When we have seen more than one SMC call, we need to retry the OTE command
+	 * since the last SMC call may not have been from the OTE driver and the OTE
+	 * command could have finished running in the trusted OS.
+	 */
+	if (!atomic_dec_if_positive(&info->smc_count))
+		complete(&info->smc_retry);
+
+	return NOTIFY_OK;
+}
+#endif
+
 /*
  * Do an SMC call
  */
@@ -336,6 +362,9 @@ static void do_smc_compat(struct te_request_compat *request,
 {
 	uint32_t smc_args;
 	uint32_t smc_params = 0;
+	uint32_t smc_nr = request->type;
+
+	BUG_ON(!mutex_is_locked(&smc_lock));
 
 	smc_args = (char *)request - (char *)(dev->req_addr_compat);
 	if (dev->req_addr_phys)
@@ -350,7 +379,19 @@ static void do_smc_compat(struct te_request_compat *request,
 			smc_params += PAGE_SIZE;
 	}
 
-	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params);
+#ifdef CONFIG_TRUSTY
+	while (true) {
+		INIT_COMPLETION(tlk_info->smc_retry);
+		atomic_set(&tlk_info->smc_count, 2);
+		tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+		if (request->result != OTE_ERROR_NO_ANSWER)
+			break;
+		smc_nr = TE_SMC_RETRY_CMD;
+		wait_for_completion(&tlk_info->smc_retry);
+	}
+#else
+	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+#endif
 }
 
 /*
@@ -549,7 +590,11 @@ static int trusty_ote_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	info->trusty_dev = pdev->dev.parent;
+	init_completion(&info->smc_retry);
 	platform_set_drvdata(pdev, info);
+
+	info->smc_notifier.notifier_call = tlk_smc_notify;
+	trusty_call_notifier_register(info->trusty_dev, &info->smc_notifier);
 
 	tlk_info = info;
 	tlk_ote_init(tlk_info);
