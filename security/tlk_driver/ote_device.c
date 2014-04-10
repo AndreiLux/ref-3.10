@@ -62,6 +62,11 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 	if (use_reqbuf) {
 		dev->req_param_buf = kmalloc((2 * PAGE_SIZE), GFP_KERNEL);
 
+		if (!dev->req_param_buf) {
+			ret = -ENOMEM;
+			goto error;
+		}
+
 		/* requests in the first page, params in the second */
 		dev->req_addr   = (struct te_request *) dev->req_param_buf;
 		dev->param_addr = (struct te_oper_param *)
@@ -76,17 +81,15 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 					&dev->param_addr_phys, GFP_KERNEL);
 	}
 
-	if (!dev->req_addr || !dev->param_addr || !dev->req_param_buf) {
+	if (!dev->req_addr || !dev->param_addr) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	/* requests in the first page, params in the second */
-	dev->req_addr_compat   = (struct te_request_compat *)
-					dev->req_param_buf;
+	dev->req_addr_compat = (struct te_request_compat *)
+					dev->req_addr;
 	dev->param_addr_compat = (struct te_oper_param_compat *)
-					(dev->req_param_buf + PAGE_SIZE);
-
+					dev->param_addr;
 	/* alloc param bitmap allocator */
 	bitmap_size = BITS_TO_LONGS(TE_PARAM_MAX) * sizeof(long);
 	dev->param_bitmap = kzalloc(bitmap_size, GFP_KERNEL);

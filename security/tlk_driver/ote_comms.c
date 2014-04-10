@@ -318,10 +318,17 @@ static void do_smc_compat(struct te_request_compat *request,
 	uint32_t smc_args;
 	uint32_t smc_params = 0;
 
-	smc_args = (char *)request - dev->req_param_buf;
+	smc_args = (char *)request - (char *)(dev->req_addr_compat);
+	if (dev->req_addr_phys)
+		smc_args += dev->req_addr_phys;
+
 	if (request->params) {
-		smc_params =
-			(char *)(uintptr_t)request->params - dev->req_param_buf;
+		smc_params = ((char *)(request->params) -
+				(char *)(dev->param_addr_compat));
+		if (dev->param_addr_phys)
+			smc_params += dev->param_addr_phys;
+		else
+			smc_params += PAGE_SIZE;
 	}
 
 	tlk_generic_smc(request->type, smc_args, smc_params);
