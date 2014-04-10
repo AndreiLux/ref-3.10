@@ -335,28 +335,16 @@ i2c_fail:
 static ssize_t sprint_data(char *buf, s8 *data, ssize_t len)
 {
 	int i;
-	char *str_buf;
-	char *pstr_buf;
 	int rc;
+	size_t buf_remaining = PAGE_SIZE;
 
-	str_buf = kstrndup(buf, PAGE_SIZE, GFP_KERNEL);
-	if (str_buf == NULL) {
-		E("%s: cannot allocate buffer\n", __func__);
-		return -ENOMEM;
+	for (i = 0; i < len; i++) {
+		rc = scnprintf(buf, buf_remaining, "%d%c", data[i],
+				(i == len - 1) ? '\n' : ' ');
+		buf += rc;
+		buf_remaining -= rc;
 	}
-	pstr_buf = str_buf;
-
-	for (i = 0;
-	     (pstr_buf < (str_buf + PAGE_SIZE)) && (i < len);
-	     i++) {
-		rc = scnprintf(pstr_buf,
-			       (PAGE_SIZE - (pstr_buf - str_buf)),
-			       (i >= (len - 1)) ? "%d\n" : "%d ", data[i]);
-		pstr_buf = pstr_buf + rc;
-	}
-	rc = scnprintf(buf, PAGE_SIZE, "%s", str_buf);
-	kfree(str_buf);
-	return rc;
+	return PAGE_SIZE - buf_remaining;
 }
 
 static ssize_t show_calibrator_status_acc(struct device *dev,
