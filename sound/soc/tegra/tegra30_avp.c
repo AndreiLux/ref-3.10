@@ -93,9 +93,9 @@ static const struct tegra30_avp_ucode_desc {
 	int max_mem_size;
 	const char *bin_name;
 } avp_ucode_desc[] = {
-	[CODEC_PCM] = {30000, "nvavp_aud_ucode.bin" },
-	[CODEC_MP3] = {60000, "nvavp_mp3dec_ucode.bin" },
-	[CODEC_AAC] = {100000, "nvavp_aacdec_ucode.bin" },
+	[CODEC_PCM] = {25000, "nvavp_aud_ucode.bin" },
+	[CODEC_MP3] = {45000, "nvavp_mp3dec_ucode.bin" },
+	[CODEC_AAC] = {80000, "nvavp_aacdec_ucode.bin" },
 };
 
 struct tegra30_avp_audio_dma {
