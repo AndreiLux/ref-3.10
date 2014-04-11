@@ -119,7 +119,7 @@
 /*headset*/
 					TEGRA_GPIO(Q, 4)
 /*headset*/
-					TEGRA_GPIO(EE, 5)>;
+					>;
 		};
 	};
 

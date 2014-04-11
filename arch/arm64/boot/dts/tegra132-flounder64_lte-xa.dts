@@ -5,5 +5,12 @@
 / {
 	compatible = "google,flounder64_lte", "nvidia,tegra132";
 	hw-revision = "xa";
+
+        panel_jdi_qxga_8_9 {
+                gpios = <&gpio TEGRA_GPIO(Q, 2) 0>,
+                        <&gpio TEGRA_GPIO(R, 0) 0>,
+                        <&gpio TEGRA_GPIO(I, 4) 0>,
+                        <&gpio TEGRA_GPIO(H, 5) 0>;
+        };
 };
 

@@ -24,6 +24,7 @@
 #include <linux/leds.h>
 #include <linux/ioport.h>
 #include <linux/export.h>
+#include <linux/of_gpio.h>
 
 #include <generated/mach-types.h>
 
@@ -43,17 +44,24 @@
 #define DC_CTRL_MODE	TEGRA_DC_OUT_CONTINUOUS_MODE
 #endif
 
+enum panel_gpios {
+	IOVDD_1V8 = 0,
+	AVDD_4V,
+	DCDC_EN,
+	LCM_RST,
+	NUM_PANEL_GPIOS,
+};
+
 static bool gpio_requested;
 static struct platform_device *disp_device;
 
-#define iovdd_1v8	TEGRA_GPIO_PQ2
-#define avdd_4v 	TEGRA_GPIO_PR0
-#define dcdc_en 	TEGRA_GPIO_PEE5
+static int iovdd_1v8, avdd_4v, dcdc_en, lcm_rst;
 
 static struct gpio panel_init_gpios[] = {
-	{iovdd_1v8,     GPIOF_OUT_INIT_HIGH,    "lcmio_1v8"},
-	{avdd_4v,       GPIOF_OUT_INIT_HIGH,    "avdd_4v"},
-	{dcdc_en,       GPIOF_OUT_INIT_HIGH,    "dcdc_en"},
+	{TEGRA_GPIO_PQ2,	GPIOF_OUT_INIT_HIGH,    "lcmio_1v8"},
+	{TEGRA_GPIO_PR0,	GPIOF_OUT_INIT_HIGH,    "avdd_4v"},
+	{TEGRA_GPIO_PEE5,	GPIOF_OUT_INIT_HIGH,    "dcdc_en"},
+	{TEGRA_GPIO_PH5,	GPIOF_OUT_INIT_HIGH,	"panel_rst"},
 };
 
 static struct tegra_dc_sd_settings dsi_j_qxga_8_9_sd_settings = {
@@ -169,13 +177,6 @@ static int dsi_j_qxga_8_9_gpio_get(void)
 		return err;
 	}
 
-	err = gpio_request_one(dsi_j_qxga_8_9_pdata.dsi_panel_rst_gpio,
-			GPIOF_OUT_INIT_HIGH, "panel rst");
-	if (err) {
-		pr_err("panel reset gpio request failed\n");
-		return err;
-	}
-
 	gpio_requested = true;
 
 	return 0;
@@ -193,7 +194,7 @@ static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 
 	gpio_set_value(dcdc_en, 1);
 	msleep(15);
-	gpio_set_value(dsi_j_qxga_8_9_pdata.dsi_panel_rst_gpio, 1);
+	gpio_set_value(lcm_rst, 1);
 	msleep(15);
 
 	return err;
@@ -209,7 +210,7 @@ static int dsi_j_qxga_8_9_enable(struct device *dev)
 static int dsi_j_qxga_8_9_disable(void)
 {
 
-	gpio_set_value(dsi_j_qxga_8_9_pdata.dsi_panel_rst_gpio, 0);
+	gpio_set_value(lcm_rst, 0);
 	msleep(1);
 	gpio_set_value(dcdc_en, 0);
 	msleep(15);
@@ -553,7 +554,24 @@ static void dsi_j_qxga_8_9_set_disp_device(
 
 static void dsi_j_qxga_8_9_dc_out_init(struct tegra_dc_out *dc)
 {
-	int err;
+	int i;
+	struct device_node *np;
+
+	np = of_find_node_by_name(NULL, "panel_jdi_qxga_8_9");
+	if (np == NULL) {
+		pr_info("can't find device node\n");
+	} else {
+		for (i=0; i<NUM_PANEL_GPIOS; i++) {
+			panel_init_gpios[i].gpio =
+				of_get_gpio_flags(np, i, NULL);
+			pr_info("gpio pin = %d\n", panel_init_gpios[i].gpio);
+		}
+	}
+
+	iovdd_1v8 = panel_init_gpios[IOVDD_1V8].gpio;
+	avdd_4v = panel_init_gpios[AVDD_4V].gpio;
+	dcdc_en = panel_init_gpios[DCDC_EN].gpio;
+	lcm_rst = panel_init_gpios[LCM_RST].gpio;
 
 	dc->dsi = &dsi_j_qxga_8_9_pdata;
 	dc->parent_clk = "pll_d_out0";
