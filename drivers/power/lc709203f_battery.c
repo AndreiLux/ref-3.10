@@ -641,6 +641,8 @@ static void lc709203f_shutdown(struct i2c_client *client)
 	mutex_unlock(&chip->mutex);
 
 	cancel_delayed_work_sync(&chip->work);
+	dev_info(&chip->client->dev, "At shutdown Voltage %dmV and SoC %d%%\n",
+			chip->vcell, chip->soc);
 }
 
 #ifdef CONFIG_PM_SLEEP
