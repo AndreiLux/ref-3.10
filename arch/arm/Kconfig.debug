@@ -690,14 +690,6 @@ config EARLY_PRINTK
 	  kernel low-level debugging functions. Add earlyprintk to your
 	  kernel parameters to enable this console.
 
-config EARLY_PRINTK_DIRECT
-	bool "Early printk direct"
-	depends on DEBUG_LL
-	help
-	  Say Y here if you want to have an early console using the
-	  kernel low-level debugging functions and EARLY_PRINTK is
-	  not early enough.
-
 config OC_ETM
 	bool "On-chip ETM and ETB"
 	depends on ARM_AMBA
@@ -720,5 +712,39 @@ config PID_IN_CONTEXTIDR
 	  the PROCID field of the CONTEXTIDR register, at the expense of some
 	  additional instructions during context switch. Say Y here only if you
 	  are planning to use hardware trace tools with this kernel.
+
+comment "Samsung Rooting Restriction Feature"
+config SEC_RESTRICT_ROOTING
+	bool "Samsung Rooting Restriction Feature"
+	default n
+	help
+	  Restrict unauthorized executions with root permission.
+
+config SEC_RESTRICT_SETUID
+	bool "Restrict changing root privilege except allowed process"
+	depends on SEC_RESTRICT_ROOTING
+	default y
+	help
+	  Say Y here if you want to restrict functions related setuid. Only allowed
+	  process can chanage ROOT privilege. Saying N will not restrict changing
+	  permission.
+
+config SEC_RESTRICT_FORK
+	bool "Restrict forking process except allowed process"
+	depends on SEC_RESTRICT_ROOTING
+	default y
+	help
+	  Say Y here if you want to restrict function related fork. Process matched
+	  special condition will be not forked. Saying N will not restrict forking
+	  process.
+
+config SEC_RESTRICT_ROOTING_LOG
+	bool "Print restricted result to kernel log"
+	depends on SEC_RESTRICT_ROOTING
+	default n
+	help
+	   Say Y here if you want to see result of restricting SETUID or FORK. It will
+	   be displayed by kernel error log. Saying N will not be displayed anything.
+
 
 endmenu

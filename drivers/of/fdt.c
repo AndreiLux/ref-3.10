@@ -24,6 +24,7 @@
 #endif /* CONFIG_PPC */
 
 #include <asm/page.h>
+#include <asm/system_info.h>
 
 char *of_fdt_get_string(struct boot_param_header *blob, u32 offset)
 {
@@ -659,34 +660,12 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 	return 0;
 }
 
-/*
- * Convert configs to something easy to use in C code
- */
-#if defined(CONFIG_CMDLINE_FORCE)
-static const int overwrite_incoming_cmdline = 1;
-static const int read_dt_cmdline;
-static const int concat_cmdline;
-#elif defined(CONFIG_CMDLINE_EXTEND)
-static const int overwrite_incoming_cmdline;
-static const int read_dt_cmdline = 1;
-static const int concat_cmdline = 1;
-#else /* CMDLINE_FROM_BOOTLOADER */
-static const int overwrite_incoming_cmdline;
-static const int read_dt_cmdline = 1;
-static const int concat_cmdline;
-#endif
-
-#ifdef CONFIG_CMDLINE
-static const char *config_cmdline = CONFIG_CMDLINE;
-#else
-static const char *config_cmdline = "";
-#endif
-
 int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
 				     int depth, void *data)
 {
 	unsigned long l;
 	char *p;
+	__be32 *rev, *serial;
 
 	pr_debug("search \"chosen\", depth: %d, uname: %s\n", depth, uname);
 
@@ -696,23 +675,32 @@ int __init early_init_dt_scan_chosen(unsigned long node, const char *uname,
 
 	early_init_dt_check_for_initrd(node);
 
-	/* Put CONFIG_CMDLINE in if forced or if data had nothing in it to start */
-	if (overwrite_incoming_cmdline || !((char *)data)[0])
-		strlcpy(data, config_cmdline, COMMAND_LINE_SIZE);
+	/* Retrieve command line */
+	p = of_get_flat_dt_prop(node, "bootargs", &l);
+	if (p != NULL && l > 0)
+		strlcpy(data, p, min((int)l, COMMAND_LINE_SIZE));
 
-	/* Retrieve command line unless forcing */
-	if (read_dt_cmdline) {
-		p = of_get_flat_dt_prop(node, "bootargs", &l);
-		if (p != NULL && l > 0) {
-			if (concat_cmdline) {
-				strlcat(data, " ", COMMAND_LINE_SIZE);
-				strlcat(data, p, min_t(int, (int)l,
-						       COMMAND_LINE_SIZE));
-			} else
-				strlcpy(data, p, min_t(int, (int)l,
-						       COMMAND_LINE_SIZE));
-		}
+	rev = of_get_flat_dt_prop(node, "revision", &l);
+	if (rev !=NULL && l > 0)
+		system_rev = be32_to_cpup(rev);
+
+	serial = of_get_flat_dt_prop(node, "serial", &l);
+	if (serial !=NULL && l > 0) {
+		system_serial_low = be32_to_cpup(serial++);
+		system_serial_high = be32_to_cpup(serial);
 	}
+
+	/*
+	 * CONFIG_CMDLINE is meant to be a default in case nothing else
+	 * managed to set the command line, unless CONFIG_CMDLINE_FORCE
+	 * is set in which case we override whatever was found earlier.
+	 */
+#ifdef CONFIG_CMDLINE
+#ifndef CONFIG_CMDLINE_FORCE
+	if (!((char *)data)[0])
+#endif
+		strlcpy(data, CONFIG_CMDLINE, COMMAND_LINE_SIZE);
+#endif /* CONFIG_CMDLINE */
 
 	pr_debug("Command line is: %s\n", (char*)data);
 

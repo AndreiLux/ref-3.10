@@ -555,6 +555,13 @@ static int check_reset_complete (
 			return port_status;
 		}
 
+#ifdef CONFIG_EHCI_MODEM_PORTNUM
+		if ((index+1) == CONFIG_EHCI_MODEM_PORTNUM) {
+			/* modem connection port doesn't support handoff */
+			ehci_err(ehci, "port %d cannot handoff\n", index + 1);
+			return port_status;
+		}
+#endif
 		ehci_dbg (ehci, "port %d full speed --> companion\n",
 			index + 1);
 
@@ -858,6 +865,7 @@ static int ehci_hub_control (
 				ehci->reset_done[wIndex] = jiffies
 						+ msecs_to_jiffies(20);
 				usb_hcd_start_port_resume(&hcd->self, wIndex);
+				set_bit(wIndex, &ehci->resuming_ports);
 				/* check the port again */
 				mod_timer(&ehci_to_hcd(ehci)->rh_timer,
 						ehci->reset_done[wIndex]);

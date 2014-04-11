@@ -20,6 +20,8 @@ source "drivers/block/Kconfig"
 
 source "drivers/misc/Kconfig"
 
+source "drivers/muic/Kconfig"
+
 source "drivers/ide/Kconfig"
 
 source "drivers/scsi/Kconfig"
@@ -150,6 +152,8 @@ source "drivers/rpmsg/Kconfig"
 
 source "drivers/devfreq/Kconfig"
 
+source "drivers/motor/Kconfig"
+
 source "drivers/extcon/Kconfig"
 
 source "drivers/memory/Kconfig"
@@ -166,6 +170,24 @@ source "drivers/irqchip/Kconfig"
 
 source "drivers/ipack/Kconfig"
 
+source "drivers/battery/Kconfig"
+
 source "drivers/reset/Kconfig"
+
+source "drivers/fingerprint/Kconfig"
+
+source "drivers/sensorhub/stm/Kconfig"
+
+source "drivers/sensorhub/atmel/Kconfig"
+
+source "drivers/nfc/Kconfig"
+
+source "drivers/gps/Kconfig"
+
+source "drivers/gud/Kconfig"
+
+source "drivers/ice40lm/Kconfig"
+
+source "drivers/secfilter/Kconfig"
 
 endmenu

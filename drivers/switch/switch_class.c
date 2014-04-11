@@ -40,6 +40,22 @@ static ssize_t state_show(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%d\n", sdev->state);
 }
 
+static ssize_t state_store(struct device *dev, struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	u32 state;
+	ssize_t ret = 0;
+	struct switch_dev *edev = (struct switch_dev *) dev_get_drvdata(dev);
+
+	ret = sscanf(buf, "0x%x", &state);
+	if (ret == 0)
+		return -EINVAL;
+	else
+		switch_set_state(edev, state);
+
+	return count;
+}
+
 static ssize_t name_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
@@ -54,8 +70,8 @@ static ssize_t name_show(struct device *dev, struct device_attribute *attr,
 	return sprintf(buf, "%s\n", sdev->name);
 }
 
-static DEVICE_ATTR(state, S_IRUGO, state_show, NULL);
-static DEVICE_ATTR(name, S_IRUGO, name_show, NULL);
+static DEVICE_ATTR(state, S_IRUGO | S_IWUSR, state_show, state_store);
+static DEVICE_ATTR(name, S_IRUGO | S_IWUSR, name_show, state_store);
 
 void switch_set_state(struct switch_dev *sdev, int state)
 {

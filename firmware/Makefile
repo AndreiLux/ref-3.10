@@ -135,6 +135,23 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH) += cypress/cypress_ha_m07.fw cypress/cypress_ha_m09.fw
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20075) += cypress/cypress_20075_k_m06.fw
+#for sensorhub
+fw-shipped-$(CONFIG_SENSORS_SSP_STM) += ssp_stm.fw
+fw-shipped-$(CONFIG_SENSORS_SSP_ATMEL) += ssp_at.fw
+
+TSPFIRMWARE_DIRECTORY = firmware/tsp_synaptics
+ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX) += \
+						tsp_synaptics/synaptics_s5100_a2_k.fw	\
+						tsp_synaptics/synaptics_s5100_a2_k_FHD.fw	\
+						tsp_synaptics/synaptics_s5100_a2_k_WQHD.fw	\
+						tsp_synaptics/synaptics_s5100_a3_kq_WQHD.fw	\
+						tsp_synaptics/synaptics_s5100_a3_k_FHD.fw
+else
+$(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
+endif
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

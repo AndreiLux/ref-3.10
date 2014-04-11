@@ -14,6 +14,21 @@ config PRINTK_TIME
 	  The behavior is also controlled by the kernel command line
 	  parameter printk.time=1. See Documentation/kernel-parameters.txt
 
+
+config PRINTK_CORE_NUM
+	bool "Show core number on printks"
+	depends on PRINTK
+	help
+	  Selecting this option causes core number to be
+	  included in printk output. Or add printk.core_num=1 at boot-time.
+
+config PRINTK_PROCESS
+	bool "Show process information on printks"
+	depends on PRINTK_CORE_NUM
+	help
+	  Selecting this option causes process name and PID to be
+	  included in printk output. Or add printk.process=1 at boot-time.
+
 config DEFAULT_MESSAGE_LOGLEVEL
 	int "Default message log level (1-7)"
 	range 1 7
@@ -1285,7 +1300,7 @@ config FAULT_INJECTION_STACKTRACE_FILTER
 	depends on FAULT_INJECTION_DEBUG_FS && STACKTRACE_SUPPORT
 	depends on !X86_64
 	select STACKTRACE
-	select FRAME_POINTER if !PPC && !S390 && !MICROBLAZE && !ARM_UNWIND
+	select FRAME_POINTER if !MIPS && !PPC && !S390 && !MICROBLAZE && !ARM_UNWIND
 	help
 	  Provide stacktrace filter for fault-injection capabilities
 

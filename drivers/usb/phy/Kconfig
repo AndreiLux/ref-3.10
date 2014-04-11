@@ -113,6 +113,14 @@ config SAMSUNG_USB2PHY
 	  Enable this to support Samsung USB 2.0 (High Speed) PHY controller
 	  driver for Samsung SoCs.
 
+config SAMSUNG_USB2PHY_DUMMY
+	tristate "Samsung USB 2.0 PHY controller dummy Driver"
+	select SAMSUNG_USBPHY
+	help
+	  Enable this not to use controller driver of USB 2.0 (High Speed) PHY
+	  connected to USB 3.0 DRD for Samsung SoCs. It is used for the USB DRD 3.0
+	  is only connected to USB 3.0 PHY, not USB 2.0 PHY.
+
 config SAMSUNG_USB3PHY
 	tristate "Samsung USB 3.0 PHY controller Driver"
 	select SAMSUNG_USBPHY

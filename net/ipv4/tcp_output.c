@@ -51,7 +51,8 @@ int sysctl_tcp_retrans_collapse __read_mostly = 1;
 int sysctl_tcp_workaround_signed_windows __read_mostly = 0;
 
 /* Default TSQ limit of two TSO segments */
-int sysctl_tcp_limit_output_bytes __read_mostly = 131072;
+//int sysctl_tcp_limit_output_bytes __read_mostly = 131072;     // default 128KB
+int sysctl_tcp_limit_output_bytes __read_mostly = 4194304;     // 4MB, For_WiFi_Throughput_enhancement
 
 /* This limits the percentage of the congestion window which we
  * will allow a single TSO frame to consume.  Building TSO frames
@@ -231,13 +232,14 @@ void tcp_select_initial_window(int __space, __u32 mss,
 	}
 
 	/* Set initial window to a value enough for senders starting with
-	 * initial congestion window of sysctl_tcp_default_init_rwnd. Place
+	 * initial congestion window of TCP_DEFAULT_INIT_RCVWND. Place
 	 * a limit on the initial window when mss is larger than 1460.
 	 */
 	if (mss > (1 << *rcv_wscale)) {
-		int init_cwnd = sysctl_tcp_default_init_rwnd;
+		int init_cwnd = TCP_DEFAULT_INIT_RCVWND;
 		if (mss > 1460)
-			init_cwnd = max_t(u32, (1460 * init_cwnd) / mss, 2);
+			init_cwnd =
+			max_t(u32, (1460 * TCP_DEFAULT_INIT_RCVWND) / mss, 2);
 		/* when initializing use the value from init_rcv_wnd
 		 * rather than the default from above
 		 */

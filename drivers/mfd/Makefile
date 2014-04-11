@@ -40,8 +40,8 @@ obj-$(CONFIG_MFD_ARIZONA_SPI)	+= arizona-spi.o
 ifneq ($(CONFIG_MFD_WM5102),n)
 obj-$(CONFIG_MFD_ARIZONA)	+= wm5102-tables.o
 endif
-ifneq ($(CONFIG_MFD_WM5110),n)
-obj-$(CONFIG_MFD_ARIZONA)	+= wm5110-tables.o
+ifneq ($(CONFIG_MFD_FLORIDA),n)
+obj-$(CONFIG_MFD_ARIZONA)	+= florida-tables.o
 endif
 obj-$(CONFIG_MFD_WM8400)	+= wm8400-core.o
 wm831x-objs			:= wm831x-core.o wm831x-irq.o wm831x-otp.o
@@ -106,6 +106,11 @@ obj-$(CONFIG_MFD_DA9055)	+= da9055.o
 
 obj-$(CONFIG_MFD_MAX77686)	+= max77686.o max77686-irq.o
 obj-$(CONFIG_MFD_MAX77693)	+= max77693.o max77693-irq.o
+obj-$(CONFIG_MFD_MAX77804)	+= max77804.o max77804-irq.o
+obj-$(CONFIG_MFD_MAX77804K)	+= max77804.o max77804k-irq.o
+obj-$(CONFIG_MFD_MAX77823)	+= max77823.o
+obj-$(CONFIG_MFD_MAX77828)	+= max77828.o max77828-irq.o
+obj-$(CONFIG_MFD_MAX77888)	+= max77888.o max77888-irq.o
 obj-$(CONFIG_MFD_MAX8907)	+= max8907.o
 max8925-objs			:= max8925-core.o max8925-i2c.o
 obj-$(CONFIG_MFD_MAX8925)	+= max8925.o

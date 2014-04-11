@@ -22,9 +22,23 @@
 #include <linux/sysrq.h>
 #include <linux/init.h>
 #include <linux/nmi.h>
+#include "sched/sched.h"
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+#include <linux/sec_debug.h>
+#endif
+
+#ifdef CONFIG_EXYNOS_CORESIGHT
+#include <mach/coresight.h>
+#endif
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
+#if defined(CONFIG_SOC_EXYNOS5422) || defined(CONFIG_SOC_EXYNOS5430)
+extern void show_exynos_pmu(void);
+#endif
+#if defined(CONFIG_SOC_EXYNOS5422)
+extern void show_exynos_cmu(void);
+#endif
 
 /* Machine specific panic information string */
 char *mach_panic_string;
@@ -113,6 +127,22 @@ void panic(const char *fmt, ...)
 	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
 		dump_stack();
 #endif
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+	sec_debug_save_panic_info(buf,
+		(unsigned int)__builtin_return_address(0));
+#endif
+
+#if defined(CONFIG_SOC_EXYNOS5422) || defined(CONFIG_SOC_EXYNOS5430)
+	show_exynos_pmu();
+#endif
+#if defined(CONFIG_SOC_EXYNOS5422)
+	show_exynos_cmu();
+#endif
+
+#ifdef CONFIG_EXYNOS_CORESIGHT
+	exynos_cs_show_pcval();
+#endif
+	sysrq_sched_debug_show();
 
 	/*
 	 * If we have crashed and we have a crash kernel loaded let it handle

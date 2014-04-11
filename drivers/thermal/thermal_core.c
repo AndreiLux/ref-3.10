@@ -300,11 +300,22 @@ static void thermal_zone_device_set_polling(struct thermal_zone_device *tz,
 					    int delay)
 {
 	if (delay > 1000)
+#ifdef CONFIG_SCHED_HMP
+		mod_delayed_work_on(0, system_freezable_wq, &tz->poll_queue,
+				 round_jiffies(msecs_to_jiffies(delay)));
+#else
 		mod_delayed_work(system_freezable_wq, &tz->poll_queue,
 				 round_jiffies(msecs_to_jiffies(delay)));
+#endif
 	else if (delay)
+#ifdef CONFIG_SCHED_HMP
+		mod_delayed_work_on(0, system_freezable_wq, &tz->poll_queue,
+				 msecs_to_jiffies(delay));
+#else
 		mod_delayed_work(system_freezable_wq, &tz->poll_queue,
 				 msecs_to_jiffies(delay));
+#endif
+
 	else
 		cancel_delayed_work(&tz->poll_queue);
 }
@@ -345,10 +356,12 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 		tz->ops->notify(tz, trip, trip_type);
 
 	if (trip_type == THERMAL_TRIP_CRITICAL) {
+#ifndef CONFIG_EXYNOS_THERMAL
 		dev_emerg(&tz->device,
 			  "critical temperature reached(%d C),shutting down\n",
 			  tz->temperature / 1000);
 		orderly_poweroff(true);
+#endif
 	}
 }
 
@@ -358,15 +371,10 @@ static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
 
 	tz->ops->get_trip_type(tz, trip, &type);
 
-	if (type == THERMAL_TRIP_CRITICAL || type == THERMAL_TRIP_HOT)
+	if (type == THERMAL_TRIP_CRITICAL)
 		handle_critical_trips(tz, trip, type);
 	else
 		handle_non_critical_trips(tz, trip, type);
-	/*
-	 * Alright, we handled this trip successfully.
-	 * So, start monitoring again.
-	 */
-	monitor_thermal_zone(tz);
 }
 
 /**
@@ -439,12 +447,29 @@ static void update_temperature(struct thermal_zone_device *tz)
 
 void thermal_zone_device_update(struct thermal_zone_device *tz)
 {
-	int count;
+	int count, result;
+	enum thermal_device_mode mode;
 
 	update_temperature(tz);
 
-	for (count = 0; count < tz->trips; count++)
-		handle_thermal_trip(tz, count);
+	if (!tz->ops->get_mode)
+		return;
+
+	result = tz->ops->get_mode(tz, &mode);
+	if (result)
+		return;
+
+	if (mode == THERMAL_DEVICE_ENABLED) {
+		for (count = 0; count < tz->trips; count++)
+			handle_thermal_trip(tz, count);
+	}
+
+	/*
+	 * Alright, we handled this trip successfully.
+	 * So, start monitoring again.
+	 */
+	monitor_thermal_zone(tz);
+
 }
 EXPORT_SYMBOL_GPL(thermal_zone_device_update);
 
@@ -546,8 +571,6 @@ trip_point_type_show(struct device *dev, struct device_attribute *attr,
 	switch (type) {
 	case THERMAL_TRIP_CRITICAL:
 		return sprintf(buf, "critical\n");
-	case THERMAL_TRIP_HOT:
-		return sprintf(buf, "hot\n");
 	case THERMAL_TRIP_PASSIVE:
 		return sprintf(buf, "passive\n");
 	case THERMAL_TRIP_ACTIVE:

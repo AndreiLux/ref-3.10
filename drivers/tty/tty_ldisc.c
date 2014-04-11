@@ -446,8 +446,7 @@ static int tty_ldisc_open(struct tty_struct *tty, struct tty_ldisc *ld)
 
 static void tty_ldisc_close(struct tty_struct *tty, struct tty_ldisc *ld)
 {
-	WARN_ON(!test_bit(TTY_LDISC_OPEN, &tty->flags));
-	clear_bit(TTY_LDISC_OPEN, &tty->flags);
+	WARN_ON(!test_and_clear_bit(TTY_LDISC_OPEN, &tty->flags));
 	if (ld->ops->close)
 		ld->ops->close(tty);
 }

@@ -113,11 +113,15 @@ static void __spin_lock_debug(raw_spinlock_t *lock)
 			return;
 		__delay(1);
 	}
+
+#ifndef CONFIG_SOC_EXYNOS5430 /* skip spin_dump in order to avoid logbuf lock recursion */
 	/* lockup suspected: */
 	spin_dump(lock, "lockup suspected");
 #ifdef CONFIG_SMP
 	trigger_all_cpu_backtrace();
 #endif
+
+#endif /* CONFIG_SOC_EXYNOS5430 */
 
 	/*
 	 * The trylock above was causing a livelock.  Give the lower level arch

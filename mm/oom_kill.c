@@ -250,8 +250,13 @@ enum oom_scan_t oom_scan_process_thread(struct task_struct *task,
 		unsigned long totalpages, const nodemask_t *nodemask,
 		bool force_kill)
 {
-	if (task->exit_state)
+	if (task->exit_state) {
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		if (task->pid == task->tgid)
+			return OOM_SCAN_SKIP_SEARCH_THREAD;
+#endif
 		return OOM_SCAN_CONTINUE;
+	}
 	if (oom_unkillable_task(task, NULL, nodemask))
 		return OOM_SCAN_CONTINUE;
 
@@ -300,10 +305,16 @@ static struct task_struct *select_bad_process(unsigned int *ppoints,
 	struct task_struct *chosen = NULL;
 	unsigned long chosen_points = 0;
 
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+	bool skip_search_thread = false;
+#endif
+
 	rcu_read_lock();
 	do_each_thread(g, p) {
 		unsigned int points;
-
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		skip_search_thread = false;
+#endif
 		switch (oom_scan_process_thread(p, totalpages, nodemask,
 						force_kill)) {
 		case OOM_SCAN_SELECT:
@@ -315,17 +326,39 @@ static struct task_struct *select_bad_process(unsigned int *ppoints,
 		case OOM_SCAN_ABORT:
 			rcu_read_unlock();
 			return ERR_PTR(-1UL);
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		case OOM_SCAN_SKIP_SEARCH_THREAD:
+			skip_search_thread = true;
+			/* fall through */
+#endif
 		case OOM_SCAN_OK:
 			break;
 		};
+
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		if(skip_search_thread)
+			break;
+#endif
+
 		points = oom_badness(p, NULL, nodemask, totalpages);
 		if (points > chosen_points) {
 			chosen = p;
 			chosen_points = points;
 		}
 	} while_each_thread(g, p);
+	
 	if (chosen)
+	{
+#ifdef CONFIG_OOM_SCAN_SKIP_SEARCH_THREAD
+		if(chosen->pid != chosen->tgid ) {
+			pr_warning("%s is selected: pid=%d, tgid=%d, "
+				"oom_score_adj=%hd\n",
+				chosen->comm, chosen->pid, chosen->tgid,
+				chosen->signal->oom_score_adj);
+		}
+#endif
 		get_task_struct(chosen);
+	}
 	rcu_read_unlock();
 
 	*ppoints = chosen_points * 1000 / totalpages;

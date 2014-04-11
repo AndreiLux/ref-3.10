@@ -19,12 +19,21 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
+#ifdef CONFIG_TIMA_RKP
+#include <linux/io.h>
+#include <linux/slab.h>
+#include <linux/spinlock_types.h>
+#endif
 
 #include <asm/exception.h>
 #include <asm/pgtable.h>
 #include <asm/system_misc.h>
 #include <asm/system_info.h>
 #include <asm/tlbflush.h>
+
+#if defined(CONFIG_SEC_DEBUG)
+#include <linux/sec_debug.h>
+#endif
 
 #include "fault.h"
 
@@ -110,10 +119,12 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 			break;
 
 		pte = pte_offset_map(pmd, addr);
+#ifndef CONFIG_TIMA_RKP
 		printk(", *pte=%08llx", (long long)pte_val(*pte));
 #ifndef CONFIG_ARM_LPAE
 		printk(", *ppte=%08llx",
 		       (long long)pte_val(pte[PTE_HWTABLE_PTRS]));
+#endif
 #endif
 		pte_unmap(pte);
 	} while(0);
@@ -124,6 +135,37 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 void show_pte(struct mm_struct *mm, unsigned long addr)
 { }
 #endif					/* CONFIG_MMU */
+#ifdef CONFIG_TIMA_RKP
+static DEFINE_RAW_SPINLOCK(par_lock);
+int tima_is_pg_protected(unsigned long va)
+{
+	unsigned long  par;
+	unsigned long flags;
+	raw_spin_lock_irqsave(&par_lock, flags);
+	__asm__ __volatile__ (
+		"mcr	p15, 0, %1, c7, c8, 0\n"
+		"dsb\n"
+		"isb\n"
+		"mrc 	p15, 0, %0, c7, c4, 0\n"
+		:"=r"(par):"r"(va));
+	raw_spin_unlock_irqrestore(&par_lock, flags);
+	if (par & 0x1) {
+		return -1;
+	}
+	raw_spin_lock_irqsave(&par_lock, flags);
+	__asm__ __volatile__ (
+		"mcr	p15, 0, %1, c7, c8, 1\n"
+		"dsb\n"
+		"isb\n"
+		"mrc 	p15, 0, %0, c7, c4, 0\n"
+		:"=r"(par):"r"(va));
+	raw_spin_unlock_irqrestore(&par_lock, flags);
+	if (par & 0x1) {
+		return 1;
+	}
+	return 0;
+}
+#endif   /* CONFIG_TIMA_RKP */
 
 /*
  * Oops.  The kernel tried to access some page that wasn't present.
@@ -152,6 +194,26 @@ __do_kernel_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 	bust_spinlocks(0);
 	do_exit(SIGKILL);
 }
+
+#if defined(CONFIG_SEC_DEBUG_CHECK_TASKPTR_FAULT)
+static void
+__do_kernel_fault_safe(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
+		  struct pt_regs *regs)
+{
+	disable_printk_process();
+
+	printk(KERN_ALERT
+		"Unable to handle kernel %s at virtual address %08lx\n",
+		(addr < PAGE_SIZE) ? "NULL pointer dereference" :
+		"paging request", addr);
+
+	sec_debug_show_regs_simple(regs);
+
+	printk(KERN_ALERT "Call safe panic handler\n");
+
+	sec_debug_panic_handler_safe(regs);
+}
+#endif
 
 /*
  * Something tried to access memory that isn't in our memory map..
@@ -267,6 +329,12 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 
 	if (notify_page_fault(regs, fsr))
 		return 0;
+
+#if defined(CONFIG_SEC_DEBUG_CHECK_TASKPTR_FAULT)
+	/* We may have invalid '*current' due to a stack overflow. */
+	if (!virt_addr_valid(current_thread_info()) || !virt_addr_valid(current))
+		__do_kernel_fault_safe(NULL, addr, fsr, regs);
+#endif
 
 	tsk = current;
 	mm  = tsk->mm;
@@ -549,11 +617,19 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	printk(KERN_ALERT "Unhandled fault: %s (0x%03x) at 0x%08lx\n",
 		inf->name, fsr, addr);
 
+#ifdef CONFIG_SEC_DEBUG
+	show_pte(current->mm, addr);
+#endif
+
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
 	info.si_code  = inf->code;
 	info.si_addr  = (void __user *)addr;
+#if defined(CONFIG_SEC_DEBUG_UNHANDLED_FAULT_SAFE)
+	arm_notify_die("Unhandled fault", regs, &info, fsr, 0);
+#else
 	arm_notify_die("", regs, &info, fsr, 0);
+#endif
 }
 
 void __init

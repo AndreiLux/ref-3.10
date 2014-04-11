@@ -26,11 +26,12 @@
 #include <linux/spinlock.h>
 #include <linux/notifier.h>
 #include <linux/suspend.h>
+#include <linux/debugfs.h>
 
 
 #define MAX_WAKEUP_REASON_IRQS 32
 static int irq_list[MAX_WAKEUP_REASON_IRQS];
-static int irqcount;
+static int irq_count;
 static struct kobject *wakeup_reason;
 static spinlock_t resume_reason_lock;
 
@@ -40,7 +41,7 @@ static ssize_t reason_show(struct kobject *kobj, struct kobj_attribute *attr,
 	int irq_no, buf_offset = 0;
 	struct irq_desc *desc;
 	spin_lock(&resume_reason_lock);
-	for (irq_no = 0; irq_no < irqcount; irq_no++) {
+	for (irq_no = 0; irq_no < irq_count; irq_no++) {
 		desc = irq_to_desc(irq_list[irq_no]);
 		if (desc && desc->action && desc->action->name)
 			buf_offset += sprintf(buf + buf_offset, "%d %s\n",
@@ -79,14 +80,7 @@ void log_wakeup_reason(int irq)
 		printk(KERN_INFO "Resume caused by IRQ %d\n", irq);
 
 	spin_lock(&resume_reason_lock);
-	if (irqcount == MAX_WAKEUP_REASON_IRQS) {
-		spin_unlock(&resume_reason_lock);
-		printk(KERN_WARNING "Resume caused by more than %d IRQs\n",
-				MAX_WAKEUP_REASON_IRQS);
-		return;
-	}
-
-	irq_list[irqcount++] = irq;
+	irq_list[irq_count++] = irq;
 	spin_unlock(&resume_reason_lock);
 }
 
@@ -97,7 +91,7 @@ static int wakeup_reason_pm_event(struct notifier_block *notifier,
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
 		spin_lock(&resume_reason_lock);
-		irqcount = 0;
+		irq_count = 0;
 		spin_unlock(&resume_reason_lock);
 		break;
 	default:
@@ -138,3 +132,61 @@ int __init wakeup_reason_init(void)
 }
 
 late_initcall(wakeup_reason_init);
+
+#ifdef CONFIG_ARCH_EXYNOS
+#define NR_EINT		32
+struct wakeup_reason_stats {
+	int irq;
+	unsigned int wakeup_count;
+};
+static struct wakeup_reason_stats wakeup_reason_stats[NR_EINT] = {{0,},};
+
+void update_wakeup_reason_stats(int irq, int eint)
+{
+	wakeup_reason_stats[eint].irq = irq;
+	wakeup_reason_stats[eint].wakeup_count++;
+}
+
+#ifdef CONFIG_DEBUG_FS
+static int wakeup_reason_stats_show(struct seq_file *s, void *unused)
+{
+	int i;
+
+	seq_puts(s, "eint_no\tirq\twakeup_count\tname\n");
+	for (i = 0; i < NR_EINT; i++) {
+		struct irq_desc *desc = irq_to_desc(wakeup_reason_stats[i].irq);
+		const char *irq_name = NULL;
+
+		if (desc && desc->action && desc->action->name)
+			irq_name = desc->action->name;
+
+		seq_printf(s, "%d\t%d\t%u\t\t%s\n", i,
+				wakeup_reason_stats[i].irq,
+				wakeup_reason_stats[i].wakeup_count, irq_name);
+	}
+
+	return 0;
+}
+
+static int wakeup_reason_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, wakeup_reason_stats_show, NULL);
+}
+
+static const struct file_operations wakeup_reason_stats_ops = {
+	.open           = wakeup_reason_stats_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int __init wakeup_reason_debugfs_init(void)
+{
+	debugfs_create_file("wakeup_reason_stats", S_IFREG | S_IRUGO,
+			NULL, NULL, &wakeup_reason_stats_ops);
+	return 0;
+}
+
+late_initcall(wakeup_reason_debugfs_init);
+#endif /* CONFIG_DEBUG_FS */
+#endif /* CONFIG_ARCH_EXYNOS */

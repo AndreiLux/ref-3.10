@@ -48,6 +48,8 @@
 #include <linux/moduleparam.h>
 #include <linux/uaccess.h>
 
+#include <linux/sec_debug.h>
+
 #include "workqueue_internal.h"
 
 enum {
@@ -2170,7 +2172,9 @@ __acquires(&pool->lock)
 	lock_map_acquire_read(&pwq->wq->lockdep_map);
 	lock_map_acquire(&lockdep_map);
 	trace_workqueue_execute_start(work);
+	sec_debug_work_log(worker, work, worker->current_func, 1);
 	worker->current_func(work);
+	sec_debug_work_log(worker, work, worker->current_func, 2);
 	/*
 	 * While we must be careful to not use "work" after this, the trace
 	 * point will only record its address.
@@ -3398,6 +3402,12 @@ static void copy_workqueue_attrs(struct workqueue_attrs *to,
 {
 	to->nice = from->nice;
 	cpumask_copy(to->cpumask, from->cpumask);
+	/*
+	 * Unlike hash and equality test, this function doesn't ignore
+	 * ->no_numa as it is used for both pool and wq attrs.  Instead,
+	 * get_unbound_pool() explicitly clears ->no_numa after copying.
+	 */
+	to->no_numa = from->no_numa;
 }
 
 /* hash value of the content of @attr */
@@ -3564,6 +3574,12 @@ static struct worker_pool *get_unbound_pool(const struct workqueue_attrs *attrs)
 
 	lockdep_set_subclass(&pool->lock, 1);	/* see put_pwq() */
 	copy_workqueue_attrs(pool->attrs, attrs);
+
+	/*
+	 * no_numa isn't a worker_pool attribute, always clear it.  See
+	 * 'struct workqueue_attrs' comments for detail.
+	 */
+	pool->attrs->no_numa = false;
 
 	/* if cpumask is contained inside a NUMA node, we belong to that node */
 	if (wq_numa_enabled) {

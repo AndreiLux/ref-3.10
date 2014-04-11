@@ -5,6 +5,24 @@
 menu "Near Field Communication (NFC) devices"
 	depends on NFC
 
+config NFC_PN547
+	bool "NXP PN547 NFC Controller Driver"
+	depends on I2C
+	default n
+	help
+	  NXP PN547 Near Field Communication controller support.
+	  This option enables device driver support for the NFC.
+	  It is used by many services. NFC is fully controlled using I2C
+	  to communicate the AP chip.
+
+config NFC_PN547_CLOCK_REQUEST
+    bool "NXP PN547 NFC Controller Driver"
+	depends on I2C
+	default n
+	help
+	  NXP PN547 Near Field Communication controller support.
+	  This option enables internal clock in AP support for the NFC.
+
 config NFC_PN533
 	tristate "NXP PN533 USB driver"
 	depends on USB
@@ -35,6 +53,19 @@ config NFC_MEI_PHY
 	  Intel's Management Engine chip.
 
 	  If unsure, say N.
+
+config NFC_PN65N
+    tristate "PN65N NFC driver"
+	depends on I2C
+	select CRC_CCITT
+	default n
+	---help---
+	  Say yes if you want PN65N Near Field Communication driver.
+	  This is for i2c connected version. If unsure, say N here.
+
+	  To compile this driver as a module, choose m here. The module will
+	  be called pn65n.
+
 
 source "drivers/nfc/pn544/Kconfig"
 source "drivers/nfc/microread/Kconfig"

@@ -646,12 +646,26 @@ static int mmc_sd_init_uhs_card(struct mmc_card *card)
 	if (err)
 		goto out;
 
+try:
 	/* SPI mode doesn't define CMD19 */
 	if (!mmc_host_is_spi(card->host) && card->host->ops->execute_tuning) {
 		mmc_host_clk_hold(card->host);
 		err = card->host->ops->execute_tuning(card->host,
 						      MMC_SEND_TUNING_BLOCK);
 		mmc_host_clk_release(card->host);
+	}
+
+	if (err) {
+		if (card->sw_caps.uhs_max_dtr == UHS_SDR104_MAX_DTR)
+			card->sw_caps.uhs_max_dtr = UHS_SDR50_MAX_DTR;
+		else if (card->sw_caps.uhs_max_dtr == UHS_SDR50_MAX_DTR)
+			card->sw_caps.uhs_max_dtr = UHS_SDR25_MAX_DTR;
+		else if (card->sw_caps.uhs_max_dtr == UHS_SDR25_MAX_DTR)
+			card->sw_caps.uhs_max_dtr = UHS_SDR12_MAX_DTR;
+		else
+			goto out;
+		mmc_set_clock(card->host, card->sw_caps.uhs_max_dtr);
+		goto try;
 	}
 
 out:
@@ -931,6 +945,9 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);
+
+	/* The initialization should be done at 3.3 V I/O voltage. */
+	__mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_330);
 
 	err = mmc_sd_get_cid(host, ocr, cid, &rocr);
 	if (err)

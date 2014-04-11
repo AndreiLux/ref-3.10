@@ -7,6 +7,10 @@
 #include <linux/sched.h>
 #include <asm/irq.h>
 
+#ifdef CONFIG_EXYNOS_CORESIGHT
+#include <mach/coresight.h>
+#endif
+
 /**
  * touch_nmi_watchdog - restart NMI watchdog timeout.
  * 
@@ -35,6 +39,9 @@ static inline void touch_nmi_watchdog(void)
 #ifdef arch_trigger_all_cpu_backtrace
 static inline bool trigger_all_cpu_backtrace(void)
 {
+#ifdef CONFIG_EXYNOS_CORESIGHT
+	exynos_cs_show_pcval();
+#endif
 	arch_trigger_all_cpu_backtrace();
 
 	return true;

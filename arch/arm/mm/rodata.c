@@ -88,7 +88,7 @@ static int set_page_attributes(unsigned long virt, int numpages,
 		pmd_end = min(ALIGN(virt + 1, PMD_SIZE), end);
 
 		if ((pmd_val(*pmd) & PMD_TYPE_MASK) != PMD_TYPE_TABLE) {
-			pr_err("%s: pmd %p=%08lx for %08lx not page table\n",
+			pr_err("%s: pmd %p=%08x for %08lx not page table\n",
 				__func__, pmd, pmd_val(*pmd), virt);
 			virt = pmd_end;
 			continue;
@@ -117,6 +117,12 @@ int set_memory_rw(unsigned long virt, int numpages)
 	return set_page_attributes(virt, numpages, pte_mkwrite);
 }
 EXPORT_SYMBOL(set_memory_rw);
+
+int set_memory_xn(unsigned long virt, int numpages)
+{
+	return set_page_attributes(virt, numpages, pte_mknoexec);
+}
+EXPORT_SYMBOL(set_memory_xn);
 
 void set_kernel_text_rw(void)
 {
@@ -156,4 +162,6 @@ void mark_rodata_ro(void)
 	set_kernel_text_ro();
 
 	rodata_test();
+
+	mark_data_noexec();
 }

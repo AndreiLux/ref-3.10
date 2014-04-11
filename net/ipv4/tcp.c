@@ -796,9 +796,10 @@ static unsigned int tcp_xmit_size_goal(struct sock *sk, u32 mss_now,
 				  tp->tcp_header_len);
 
 		/* TSQ : try to have two TSO segments in flight */
+/* For_WiFi_Throughput_enhancement
 		xmit_size_goal = min_t(u32, xmit_size_goal,
 				       sysctl_tcp_limit_output_bytes >> 1);
-
+*/
 		xmit_size_goal = tcp_bound_to_half_wnd(tp, xmit_size_goal);
 
 		/* We try hard to avoid divides here */
@@ -3490,7 +3491,7 @@ int tcp_nuke_addr(struct net *net, struct sockaddr *addr)
 
 	struct in_addr *in;
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-	struct in6_addr *in6;
+	struct in6_addr *in6 = NULL;
 #endif
 	if (family == AF_INET) {
 		in = &((struct sockaddr_in *)addr)->sin_addr;

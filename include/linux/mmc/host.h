@@ -54,12 +54,13 @@ struct mmc_ios {
 #define MMC_TIMING_LEGACY	0
 #define MMC_TIMING_MMC_HS	1
 #define MMC_TIMING_SD_HS	2
-#define MMC_TIMING_UHS_SDR12	3
-#define MMC_TIMING_UHS_SDR25	4
-#define MMC_TIMING_UHS_SDR50	5
-#define MMC_TIMING_UHS_SDR104	6
-#define MMC_TIMING_UHS_DDR50	7
-#define MMC_TIMING_MMC_HS200	8
+#define MMC_TIMING_UHS_SDR12	MMC_TIMING_LEGACY
+#define MMC_TIMING_UHS_SDR25	MMC_TIMING_SD_HS
+#define MMC_TIMING_UHS_SDR50	3
+#define MMC_TIMING_UHS_SDR104	4
+#define MMC_TIMING_UHS_DDR50	5
+#define MMC_TIMING_MMC_HS200	6
+#define MMC_TIMING_MMC_HS200_DDR	7
 
 #define MMC_SDR_MODE		0
 #define MMC_1_2V_DDR_MODE	1
@@ -147,6 +148,7 @@ struct device;
 
 struct mmc_async_req {
 	/* active mmc request */
+	struct mmc_request	*mrq_que;
 	struct mmc_request	*mrq;
 	/*
 	 * Check error status of completed mmc request.
@@ -196,6 +198,9 @@ struct mmc_supply {
 	struct regulator *vqmmc;	/* Optional Vccq supply */
 };
 
+#define EMMC_MAX_QUEUE_DEPTH		(16)
+#define EMMC_MIN_RT_CLASS_TAG_COUNT	(1)
+
 struct mmc_host {
 	struct device		*parent;
 	struct device		class_dev;
@@ -209,9 +214,14 @@ struct mmc_host {
 	u32			ocr_avail_sd;	/* SD-specific OCR */
 	u32			ocr_avail_mmc;	/* MMC-specific OCR */
 	struct notifier_block	pm_notify;
+
 	u32			max_current_330;
 	u32			max_current_300;
 	u32			max_current_180;
+
+#define MMC_HS200_TUNING	(1 << 0)	/* HS200 tuning mode */
+#define MMC_DDR200_TUNING	(1 << 1)	/* DDR200 tuning mode */
+	unsigned int		tuning_progress;
 
 #define MMC_VDD_165_195		0x00000080	/* VDD voltage 1.65 - 1.95 */
 #define MMC_VDD_20_21		0x00000100	/* VDD voltage 2.0 ~ 2.1 */
@@ -282,6 +292,12 @@ struct mmc_host {
 #define MMC_CAP2_PACKED_CMD	(MMC_CAP2_PACKED_RD | \
 				 MMC_CAP2_PACKED_WR)
 #define MMC_CAP2_NO_PRESCAN_POWERUP (1 << 14)	/* Don't power up before scan */
+#define MMC_CAP2_HS200_1_8V_DDR	(1 << 12)	/* can support */
+#define MMC_CAP2_HS200_1_2V_DDR	(1 << 13)	/* can support */
+#define MMC_CAP2_HS200_DDR	(MMC_CAP2_HS200_1_8V_DDR | \
+				 MMC_CAP2_HS200_1_2V_SDR)
+#define MMC_CAP2_CMDQ		(MMC_CAP2_CACHE_CTRL | \
+				(1 << 15))	/* Allow command queuing */
 
 	mmc_pm_flag_t		pm_caps;	/* supported pm features */
 
@@ -305,6 +321,7 @@ struct mmc_host {
 	unsigned int		max_blk_size;	/* maximum size of one mmc block */
 	unsigned int		max_blk_count;	/* maximum number of blocks in one req */
 	unsigned int		max_discard_to;	/* max. discard timeout in ms */
+	unsigned int		align_size;	/* size of bytes for alignment in host */
 
 	/* private data */
 	spinlock_t		lock;		/* lock for claim and bus ops */
@@ -359,6 +376,26 @@ struct mmc_host {
 
 	struct mmc_async_req	*areq;		/* active async req */
 	struct mmc_context_info	context_info;	/* async synchronization info */
+
+	struct mmc_async_req	*areq_que[EMMC_MAX_QUEUE_DEPTH];
+	struct mmc_async_req	*areq_cur;
+	atomic_t		areq_cnt;
+
+	spinlock_t		que_lock;
+	struct list_head	cmd_que;
+	struct list_head	dat_que;
+	unsigned long		state;
+#define MMC_CMDQ_IDLE		(0)
+#define MMC_CMDQ_CMD		(1 << 0)
+#define MMC_CMDQ_DAT		(1 << 1)
+#define MMC_CMDQ_QRDY		(1 << 2)
+	wait_queue_head_t	cmp_que;
+	struct mmc_request	*busy_mrq;
+	struct mmc_request	*done_mrq;
+	struct mmc_command	chk_cmd;
+	struct mmc_request	chk_mrq;
+	struct mmc_command	que_cmd;
+	struct mmc_request	que_mrq;
 
 #ifdef CONFIG_FAIL_MMC_REQUEST
 	struct fault_attr	fail_mmc_request;
@@ -425,6 +462,9 @@ int mmc_power_restore_host(struct mmc_host *host);
 
 void mmc_detect_change(struct mmc_host *, unsigned long delay);
 void mmc_request_done(struct mmc_host *, struct mmc_request *);
+void mmc_handle_queued_request(struct mmc_host *host);
+int mmc_blk_end_queued_req(struct mmc_host *host,
+		struct mmc_async_req *areq, int index, int status);
 
 int mmc_cache_ctrl(struct mmc_host *, u8);
 
