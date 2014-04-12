@@ -28,6 +28,8 @@
 #define F2FS_MOUNT_XATTR_USER		0x00000010
 #define F2FS_MOUNT_POSIX_ACL		0x00000020
 #define F2FS_MOUNT_DISABLE_EXT_IDENTIFY	0x00000040
+#define F2FS_MOUNT_ERRORS_PANIC		0x00002000
+#define F2FS_MOUNT_ERRORS_RECOVER	0x00004000
 
 #define clear_opt(sbi, option)	(sbi->mount_opt.opt &= ~F2FS_MOUNT_##option)
 #define set_opt(sbi, option)	(sbi->mount_opt.opt |= F2FS_MOUNT_##option)
@@ -37,21 +39,35 @@
 		typecheck(unsigned long long, b) &&			\
 		((long long)((a) - (b)) > 0))
 
-typedef u64 block_t;
+typedef u32 block_t;	/*
+			 * should not change u32, since it is the on-disk block
+			 * address format, __le32.
+			 */
 typedef u32 nid_t;
 
 struct f2fs_mount_info {
 	unsigned int	opt;
 };
 
-static inline __u32 f2fs_crc32(void *buff, size_t len)
+#define CRCPOLY_LE 0xedb88320
+
+static inline __u32 f2fs_crc32(void *buf, size_t len)
 {
-	return crc32_le(F2FS_SUPER_MAGIC, buff, len);
+	unsigned char *p = (unsigned char *)buf;
+	__u32 crc = F2FS_SUPER_MAGIC;
+	int i;
+
+	while (len--) {
+		crc ^= *p++;
+		for (i = 0; i < 8; i++)
+			crc = (crc >> 1) ^ ((crc & 1) ? CRCPOLY_LE : 0);
+	}
+	return crc;
 }
 
-static inline bool f2fs_crc_valid(__u32 blk_crc, void *buff, size_t buff_size)
+static inline bool f2fs_crc_valid(__u32 blk_crc, void *buf, size_t buf_size)
 {
-	return f2fs_crc32(buff, buff_size) == blk_crc;
+	return f2fs_crc32(buf, buf_size) == blk_crc;
 }
 
 /*
@@ -120,11 +136,13 @@ static inline int update_sits_in_cursum(struct f2fs_summary_block *rs, int i)
 /*
  * For INODE and NODE manager
  */
-#define XATTR_NODE_OFFSET	(-1)	/*
-					 * store xattrs to one node block per
-					 * file keeping -1 as its node offset to
-					 * distinguish from index node blocks.
-					 */
+/*
+ * XATTR_NODE_OFFSET stores xattrs to one node block per file keeping -1
+ * as its node offset to distinguish from index node blocks.
+ * But some bits are used to mark the node block.
+ */
+#define XATTR_NODE_OFFSET	((((unsigned int)-1) << OFFSET_BIT_SHIFT) \
+				>> OFFSET_BIT_SHIFT)
 enum {
 	ALLOC_NODE,			/* allocate a new node page if needed */
 	LOOKUP_NODE,			/* look up a node without readahead */
@@ -495,9 +513,17 @@ static inline void clear_ckpt_flags(struct f2fs_checkpoint *cp, unsigned int f)
 
 static inline void mutex_lock_all(struct f2fs_sb_info *sbi)
 {
-	int i = 0;
-	for (; i < NR_GLOBAL_LOCKS; i++)
-		mutex_lock(&sbi->fs_lock[i]);
+	int i;
+
+	for (i = 0; i < NR_GLOBAL_LOCKS; i++) {
+		/*
+		 * This is the only time we take multiple fs_lock[]
+		 * instances; the order is immaterial since we
+		 * always hold cp_mutex, which serializes multiple
+		 * such operations.
+		 */
+		mutex_lock_nest_lock(&sbi->fs_lock[i], &sbi->cp_mutex);
+	}
 }
 
 static inline void mutex_unlock_all(struct f2fs_sb_info *sbi)
@@ -509,15 +535,15 @@ static inline void mutex_unlock_all(struct f2fs_sb_info *sbi)
 
 static inline int mutex_lock_op(struct f2fs_sb_info *sbi)
 {
-	unsigned char next_lock = sbi->next_lock_num % NR_GLOBAL_LOCKS;
+	unsigned char next_lock;
 	int i = 0;
 
 	for (; i < NR_GLOBAL_LOCKS; i++)
 		if (mutex_trylock(&sbi->fs_lock[i]))
 			return i;
 
+	next_lock = sbi->next_lock_num++ % NR_GLOBAL_LOCKS;
 	mutex_lock(&sbi->fs_lock[next_lock]);
-	sbi->next_lock_num++;
 	return next_lock;
 }
 
@@ -553,6 +579,15 @@ static inline int F2FS_HAS_BLOCKS(struct inode *inode)
 		return (inode->i_blocks > F2FS_DEFAULT_ALLOCATED_BLOCKS);
 }
 
+static inline int f2fs_handle_error(struct f2fs_sb_info *sbi)
+{
+	if (test_opt(sbi, ERRORS_PANIC))
+		BUG();
+	if (test_opt(sbi, ERRORS_RECOVER))
+		return 1;
+	return 0;
+}
+
 static inline bool inc_valid_block_count(struct f2fs_sb_info *sbi,
 				 struct inode *inode, blkcnt_t count)
 {
@@ -577,8 +612,20 @@ static inline int dec_valid_block_count(struct f2fs_sb_info *sbi,
 						blkcnt_t count)
 {
 	spin_lock(&sbi->stat_lock);
-	BUG_ON(sbi->total_valid_block_count < (block_t) count);
-	BUG_ON(inode->i_blocks < count);
+
+	if (sbi->total_valid_block_count < (block_t)count) {
+		pr_crit("F2FS-fs (%s): block accounting error: %u < %llu\n",
+			sbi->sb->s_id, sbi->total_valid_block_count, count);
+		f2fs_handle_error(sbi);
+		sbi->total_valid_block_count = count;
+	}
+	if (inode->i_blocks < count) {
+		pr_crit("F2FS-fs (%s): inode accounting error: %llu < %llu\n",
+			sbi->sb->s_id, inode->i_blocks, count);
+		f2fs_handle_error(sbi);
+		inode->i_blocks = count;
+	}
+
 	inode->i_blocks -= count;
 	sbi->total_valid_block_count -= (block_t)count;
 	spin_unlock(&sbi->stat_lock);
@@ -682,7 +729,6 @@ static inline bool inc_valid_node_count(struct f2fs_sb_info *sbi,
 	spin_lock(&sbi->stat_lock);
 
 	valid_block_count = sbi->total_valid_block_count + (block_t)count;
-	sbi->alloc_valid_block_count += (block_t)count;
 	valid_node_count = sbi->total_valid_node_count + count;
 
 	if (valid_block_count > sbi->user_block_count) {
@@ -697,6 +743,7 @@ static inline bool inc_valid_node_count(struct f2fs_sb_info *sbi,
 
 	if (inode)
 		inode->i_blocks += count;
+	sbi->alloc_valid_block_count += (block_t)count;
 	sbi->total_valid_node_count = valid_node_count;
 	sbi->total_valid_block_count = valid_block_count;
 	spin_unlock(&sbi->stat_lock);
@@ -710,9 +757,24 @@ static inline void dec_valid_node_count(struct f2fs_sb_info *sbi,
 {
 	spin_lock(&sbi->stat_lock);
 
-	BUG_ON(sbi->total_valid_block_count < count);
-	BUG_ON(sbi->total_valid_node_count < count);
-	BUG_ON(inode->i_blocks < count);
+	if (sbi->total_valid_block_count < count) {
+		pr_crit("F2FS-fs (%s): block accounting error: %llu < %u\n",
+			sbi->sb->s_id, sbi->total_valid_block_count, count);
+		f2fs_handle_error(sbi);
+		sbi->total_valid_block_count = count;
+	}
+	if (sbi->total_valid_node_count < count) {
+		pr_crit("F2FS-fs (%s): node accounting error: %u < %u\n",
+			sbi->sb->s_id, sbi->total_valid_node_count, count);
+		f2fs_handle_error(sbi);
+		sbi->total_valid_node_count = count;
+	}
+	if (inode->i_blocks < count) {
+		pr_crit("F2FS-fs (%s): inode accounting error: %llu < %u\n",
+			sbi->sb->s_id, inode->i_blocks, count);
+		f2fs_handle_error(sbi);
+		inode->i_blocks = count;
+	}
 
 	inode->i_blocks -= count;
 	sbi->total_valid_node_count -= count;
@@ -843,6 +905,7 @@ static inline int f2fs_clear_bit(unsigned int nr, char *addr)
 /* used for f2fs_inode_info->flags */
 enum {
 	FI_NEW_INODE,		/* indicate newly allocated inode */
+	FI_DIRTY_INODE,		/* indicate inode is dirty or not */
 	FI_INC_LINK,		/* need to increment i_nlink */
 	FI_ACL_MODE,		/* indicate acl mode */
 	FI_NO_ALLOC,		/* should not allocate any blocks */
@@ -884,8 +947,10 @@ static inline int cond_clear_inode_flag(struct f2fs_inode_info *fi, int flag)
 int f2fs_sync_file(struct file *, loff_t, loff_t, int);
 void truncate_data_blocks(struct dnode_of_data *);
 void f2fs_truncate(struct inode *);
+int f2fs_getattr(struct vfsmount *, struct dentry *, struct kstat *);
 int f2fs_setattr(struct dentry *, struct iattr *);
 int truncate_hole(struct inode *, pgoff_t, pgoff_t);
+int truncate_data_blocks_range(struct dnode_of_data *, int);
 long f2fs_ioctl(struct file *, unsigned int, unsigned long);
 long f2fs_compat_ioctl(struct file *, unsigned int, unsigned long);
 
@@ -913,7 +978,7 @@ struct f2fs_dir_entry *f2fs_parent_dir(struct inode *, struct page **);
 ino_t f2fs_inode_by_name(struct inode *, struct qstr *);
 void f2fs_set_link(struct inode *, struct f2fs_dir_entry *,
 				struct page *, struct inode *);
-void init_dent_inode(const struct qstr *, struct page *);
+int update_dent_inode(struct inode *, const struct qstr *);
 int __f2fs_add_link(struct inode *, const struct qstr *, struct inode *);
 void f2fs_delete_entry(struct f2fs_dir_entry *, struct page *, struct inode *);
 int f2fs_make_empty(struct inode *, struct inode *);
@@ -947,9 +1012,11 @@ int is_checkpointed_node(struct f2fs_sb_info *, nid_t);
 void get_node_info(struct f2fs_sb_info *, nid_t, struct node_info *);
 int get_dnode_of_data(struct dnode_of_data *, pgoff_t, int);
 int truncate_inode_blocks(struct inode *, pgoff_t);
+int truncate_xattr_node(struct inode *, struct page *);
+int wait_on_node_pages_writeback(struct f2fs_sb_info *, nid_t);
 int remove_inode_page(struct inode *);
-int new_inode_page(struct inode *, const struct qstr *);
-struct page *new_node_page(struct dnode_of_data *, unsigned int);
+struct page *new_inode_page(struct inode *, const struct qstr *);
+struct page *new_node_page(struct dnode_of_data *, unsigned int, struct page *);
 void ra_node_page(struct f2fs_sb_info *, nid_t);
 struct page *get_node_page(struct f2fs_sb_info *, pgoff_t);
 struct page *get_node_page_ra(struct page *, int);
@@ -974,7 +1041,6 @@ void destroy_node_manager_caches(void);
  */
 void f2fs_balance_fs(struct f2fs_sb_info *);
 void invalidate_blocks(struct f2fs_sb_info *, block_t);
-void locate_dirty_segment(struct f2fs_sb_info *, unsigned int);
 void clear_prefree_segments(struct f2fs_sb_info *);
 int npages_for_summary_flush(struct f2fs_sb_info *);
 void allocate_new_segments(struct f2fs_sb_info *);
@@ -1005,7 +1071,8 @@ void destroy_segment_manager(struct f2fs_sb_info *);
 struct page *grab_meta_page(struct f2fs_sb_info *, pgoff_t);
 struct page *get_meta_page(struct f2fs_sb_info *, pgoff_t);
 long sync_meta_pages(struct f2fs_sb_info *, enum page_type, long);
-int check_orphan_space(struct f2fs_sb_info *);
+int acquire_orphan_inode(struct f2fs_sb_info *);
+void release_orphan_inode(struct f2fs_sb_info *);
 void add_orphan_inode(struct f2fs_sb_info *, nid_t);
 void remove_orphan_inode(struct f2fs_sb_info *, nid_t);
 int recover_orphan_inodes(struct f2fs_sb_info *);
@@ -1025,7 +1092,7 @@ int reserve_new_block(struct dnode_of_data *);
 void update_extent_cache(block_t, struct dnode_of_data *);
 struct page *find_data_page(struct inode *, pgoff_t, bool);
 struct page *get_lock_data_page(struct inode *, pgoff_t);
-struct page *get_new_data_page(struct inode *, pgoff_t, bool);
+struct page *get_new_data_page(struct inode *, struct page *, pgoff_t, bool);
 int f2fs_readpage(struct f2fs_sb_info *, struct page *, block_t, int);
 int do_write_data_page(struct page *);
 
@@ -1078,11 +1145,16 @@ struct f2fs_stat_info {
 	unsigned base_mem, cache_mem;
 };
 
+static inline struct f2fs_stat_info *F2FS_STAT(struct f2fs_sb_info *sbi)
+{
+	return (struct f2fs_stat_info*)sbi->stat_info;
+}
+
 #define stat_inc_call_count(si)	((si)->call_count++)
 
 #define stat_inc_seg_count(sbi, type)					\
 	do {								\
-		struct f2fs_stat_info *si = sbi->stat_info;		\
+		struct f2fs_stat_info *si = F2FS_STAT(sbi);		\
 		(si)->tot_segs++;					\
 		if (type == SUM_TYPE_DATA)				\
 			si->data_segs++;				\
@@ -1095,14 +1167,14 @@ struct f2fs_stat_info {
 
 #define stat_inc_data_blk_count(sbi, blks)				\
 	do {								\
-		struct f2fs_stat_info *si = sbi->stat_info;		\
+		struct f2fs_stat_info *si = F2FS_STAT(sbi);		\
 		stat_inc_tot_blk_count(si, blks);			\
 		si->data_blks += (blks);				\
 	} while (0)
 
 #define stat_inc_node_blk_count(sbi, blks)				\
 	do {								\
-		struct f2fs_stat_info *si = sbi->stat_info;		\
+		struct f2fs_stat_info *si = F2FS_STAT(sbi);		\
 		stat_inc_tot_blk_count(si, blks);			\
 		si->node_blks += (blks);				\
 	} while (0)

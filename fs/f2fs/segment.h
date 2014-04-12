@@ -90,6 +90,8 @@
 	(blk_addr << ((sbi)->log_blocksize - F2FS_LOG_SECTOR_SIZE))
 #define SECTOR_TO_BLOCK(sbi, sectors)					\
 	(sectors >> ((sbi)->log_blocksize - F2FS_LOG_SECTOR_SIZE))
+#define MAX_BIO_BLOCKS(max_hw_blocks)					\
+	(min((int)max_hw_blocks, BIO_MAX_PAGES))
 
 /* during checkpoint, bio_private is used to synchronize the last bio */
 struct bio_private {
@@ -453,7 +455,8 @@ static inline int reserved_sections(struct f2fs_sb_info *sbi)
 
 static inline bool need_SSR(struct f2fs_sb_info *sbi)
 {
-	return (free_sections(sbi) < overprovision_sections(sbi));
+	return ((prefree_segments(sbi) / sbi->segs_per_sec)
+			+ free_sections(sbi) < overprovision_sections(sbi));
 }
 
 static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
@@ -470,7 +473,7 @@ static inline bool has_not_enough_free_secs(struct f2fs_sb_info *sbi, int freed)
 
 static inline int utilization(struct f2fs_sb_info *sbi)
 {
-	return div_u64(valid_user_blocks(sbi) * 100, sbi->user_block_count);
+	return div_u64((u64)valid_user_blocks(sbi) * 100, sbi->user_block_count);
 }
 
 /*

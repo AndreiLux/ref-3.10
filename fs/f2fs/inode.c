@@ -109,12 +109,6 @@ struct inode *f2fs_iget(struct super_block *sb, unsigned long ino)
 	ret = do_read_inode(inode);
 	if (ret)
 		goto bad_inode;
-
-	if (!sbi->por_doing && inode->i_nlink == 0) {
-		ret = -ENOENT;
-		goto bad_inode;
-	}
-
 make_now:
 	if (ino == F2FS_NODE_INO(sbi)) {
 		inode->i_mapping->a_ops = &f2fs_node_aops;
@@ -130,8 +124,7 @@ make_now:
 		inode->i_op = &f2fs_dir_inode_operations;
 		inode->i_fop = &f2fs_dir_operations;
 		inode->i_mapping->a_ops = &f2fs_dblock_aops;
-		mapping_set_gfp_mask(inode->i_mapping, GFP_HIGHUSER_MOVABLE |
-				__GFP_ZERO);
+		mapping_set_gfp_mask(inode->i_mapping, GFP_F2FS_ZERO);
 	} else if (S_ISLNK(inode->i_mode)) {
 		inode->i_op = &f2fs_symlink_inode_operations;
 		inode->i_mapping->a_ops = &f2fs_dblock_aops;
@@ -199,6 +192,7 @@ void update_inode(struct inode *inode, struct page *node_page)
 
 	set_cold_node(inode, node_page);
 	set_page_dirty(node_page);
+	clear_inode_flag(F2FS_I(inode), FI_DIRTY_INODE);
 }
 
 int update_inode_page(struct inode *inode)
@@ -224,8 +218,8 @@ int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
 			inode->i_ino == F2FS_META_INO(sbi))
 		return 0;
 
-	if (wbc)
-		f2fs_balance_fs(sbi);
+	if (!is_inode_flag_set(F2FS_I(inode), FI_DIRTY_INODE))
+		return 0;
 
 	/*
 	 * We need to lock here to prevent from producing dirty node pages
@@ -234,6 +228,10 @@ int f2fs_write_inode(struct inode *inode, struct writeback_control *wbc)
 	ilock = mutex_lock_op(sbi);
 	ret = update_inode_page(inode);
 	mutex_unlock_op(sbi, ilock);
+
+	if (wbc)
+		f2fs_balance_fs(sbi);
+
 	return ret;
 }
 

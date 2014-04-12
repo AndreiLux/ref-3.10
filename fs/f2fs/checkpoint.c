@@ -81,7 +81,7 @@ static int f2fs_write_meta_page(struct page *page,
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 
 	/* Should not write any meta pages, if any IO error was occurred */
-	if (wbc->for_reclaim ||
+	if (wbc->for_reclaim || sbi->por_doing ||
 			is_set_ckpt_flags(F2FS_CKPT(sbi), CP_ERROR_FLAG)) {
 		dec_page_count(sbi, F2FS_DIRTY_META);
 		wbc->pages_skipped++;
@@ -182,7 +182,7 @@ const struct address_space_operations f2fs_meta_aops = {
 	.set_page_dirty	= f2fs_set_meta_page_dirty,
 };
 
-int check_orphan_space(struct f2fs_sb_info *sbi)
+int acquire_orphan_inode(struct f2fs_sb_info *sbi)
 {
 	unsigned int max_orphans;
 	int err = 0;
@@ -197,8 +197,22 @@ int check_orphan_space(struct f2fs_sb_info *sbi)
 	mutex_lock(&sbi->orphan_inode_mutex);
 	if (sbi->n_orphans >= max_orphans)
 		err = -ENOSPC;
+	else
+		sbi->n_orphans++;
 	mutex_unlock(&sbi->orphan_inode_mutex);
 	return err;
+}
+
+void release_orphan_inode(struct f2fs_sb_info *sbi)
+{
+	mutex_lock(&sbi->orphan_inode_mutex);
+	if (sbi->n_orphans == 0) {
+		f2fs_msg(sbi->sb, KERN_ERR, "releasing "
+			"unacquired orphan inode");
+		f2fs_handle_error(sbi);
+	} else
+		sbi->n_orphans--;
+	mutex_unlock(&sbi->orphan_inode_mutex);
 }
 
 void add_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
@@ -229,25 +243,28 @@ retry:
 		list_add(&new->list, this->prev);
 	else
 		list_add_tail(&new->list, head);
-
-	sbi->n_orphans++;
 out:
 	mutex_unlock(&sbi->orphan_inode_mutex);
 }
 
 void remove_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
 {
-	struct list_head *this, *next, *head;
+	struct list_head *head;
 	struct orphan_inode_entry *orphan;
 
 	mutex_lock(&sbi->orphan_inode_mutex);
 	head = &sbi->orphan_inode_list;
-	list_for_each_safe(this, next, head) {
-		orphan = list_entry(this, struct orphan_inode_entry, list);
+	list_for_each_entry(orphan, head, list) {
 		if (orphan->ino == ino) {
 			list_del(&orphan->list);
 			kmem_cache_free(orphan_entry_slab, orphan);
-			sbi->n_orphans--;
+			if (sbi->n_orphans == 0) {
+				f2fs_msg(sbi->sb, KERN_ERR, "removing "
+						"unacquired orphan inode %d",
+						ino);
+				f2fs_handle_error(sbi);
+			} else
+				sbi->n_orphans--;
 			break;
 		}
 	}
@@ -257,7 +274,12 @@ void remove_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
 static void recover_orphan_inode(struct f2fs_sb_info *sbi, nid_t ino)
 {
 	struct inode *inode = f2fs_iget(sbi->sb, ino);
-	BUG_ON(IS_ERR(inode));
+	if (IS_ERR(inode)) {
+		f2fs_msg(sbi->sb, KERN_ERR, "unable to recover orphan inode %d",
+				ino);
+		f2fs_handle_error(sbi);
+		return;
+	}
 	clear_nlink(inode);
 
 	/* truncate all the data during iput */
@@ -357,8 +379,8 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	unsigned long blk_size = sbi->blocksize;
 	struct f2fs_checkpoint *cp_block;
 	unsigned long long cur_version = 0, pre_version = 0;
-	unsigned int crc = 0;
 	size_t crc_offset;
+	__u32 crc = 0;
 
 	/* Read the 1st cp block in this CP pack */
 	cp_page_1 = get_meta_page(sbi, cp_addr);
@@ -369,7 +391,7 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	if (crc_offset >= blk_size)
 		goto invalid_cp1;
 
-	crc = *(unsigned int *)((unsigned char *)cp_block + crc_offset);
+	crc = le32_to_cpu(*((__u32 *)((unsigned char *)cp_block + crc_offset)));
 	if (!f2fs_crc_valid(crc, cp_block, crc_offset))
 		goto invalid_cp1;
 
@@ -384,7 +406,7 @@ static struct page *validate_checkpoint(struct f2fs_sb_info *sbi,
 	if (crc_offset >= blk_size)
 		goto invalid_cp2;
 
-	crc = *(unsigned int *)((unsigned char *)cp_block + crc_offset);
+	crc = le32_to_cpu(*((__u32 *)((unsigned char *)cp_block + crc_offset)));
 	if (!f2fs_crc_valid(crc, cp_block, crc_offset))
 		goto invalid_cp2;
 
@@ -595,7 +617,7 @@ static void do_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 	block_t start_blk;
 	struct page *cp_page;
 	unsigned int data_sum_blocks, orphan_blocks;
-	unsigned int crc32 = 0;
+	__u32 crc32 = 0;
 	void *kaddr;
 	int i;
 
@@ -664,8 +686,8 @@ static void do_checkpoint(struct f2fs_sb_info *sbi, bool is_umount)
 	get_nat_bitmap(sbi, __bitmap_ptr(sbi, NAT_BITMAP));
 
 	crc32 = f2fs_crc32(ckpt, le32_to_cpu(ckpt->checksum_offset));
-	*(__le32 *)((unsigned char *)ckpt +
-				le32_to_cpu(ckpt->checksum_offset))
+	*((__le32 *)((unsigned char *)ckpt +
+				le32_to_cpu(ckpt->checksum_offset)))
 				= cpu_to_le32(crc32);
 
 	start_blk = __start_cp_addr(sbi);

@@ -42,6 +42,9 @@ enum {
 	Opt_noacl,
 	Opt_active_logs,
 	Opt_disable_ext_identify,
+	Opt_err_continue,
+	Opt_err_panic,
+	Opt_err_recover,
 	Opt_err,
 };
 
@@ -54,6 +57,9 @@ static match_table_t f2fs_tokens = {
 	{Opt_noacl, "noacl"},
 	{Opt_active_logs, "active_logs=%u"},
 	{Opt_disable_ext_identify, "disable_ext_identify"},
+	{Opt_err_continue, "errors=continue"},
+	{Opt_err_panic, "errors=panic"},
+	{Opt_err_recover, "errors=recover"},
 	{Opt_err, NULL},
 };
 
@@ -112,6 +118,17 @@ static int f2fs_drop_inode(struct inode *inode)
 	return generic_drop_inode(inode);
 }
 
+/*
+ * f2fs_dirty_inode() is called from __mark_inode_dirty()
+ *
+ * We should call set_dirty_inode to write the dirty inode through write_inode.
+ */
+static void f2fs_dirty_inode(struct inode *inode, int flags)
+{
+	set_inode_flag(F2FS_I(inode), FI_DIRTY_INODE);
+	return;
+}
+
 static void f2fs_i_callback(struct rcu_head *head)
 {
 	struct inode *inode = container_of(head, struct inode, i_rcu);
@@ -130,7 +147,9 @@ static void f2fs_put_super(struct super_block *sb)
 	f2fs_destroy_stats(sbi);
 	stop_gc_thread(sbi);
 
-	write_checkpoint(sbi, true);
+	/* We don't need to do checkpoint when it's clean */
+	if (sbi->s_dirty && get_pages(sbi, F2FS_DIRTY_NODES))
+		write_checkpoint(sbi, true);
 
 	iput(sbi->node_inode);
 	iput(sbi->meta_inode);
@@ -236,6 +255,12 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 	else
 		seq_puts(seq, ",noacl");
 #endif
+	if (test_opt(sbi, ERRORS_PANIC))
+		seq_puts(seq, ",errors=panic");
+	else if (test_opt(sbi, ERRORS_RECOVER))
+		seq_puts(seq, ",errors=recover");
+	else
+		seq_puts(seq, ",errors=continue");
 	if (test_opt(sbi, DISABLE_EXT_IDENTIFY))
 		seq_puts(seq, ",disable_ext_identify");
 
@@ -249,6 +274,7 @@ static struct super_operations f2fs_sops = {
 	.drop_inode	= f2fs_drop_inode,
 	.destroy_inode	= f2fs_destroy_inode,
 	.write_inode	= f2fs_write_inode,
+	.dirty_inode	= f2fs_dirty_inode,
 	.show_options	= f2fs_show_options,
 	.evict_inode	= f2fs_evict_inode,
 	.put_super	= f2fs_put_super,
@@ -365,6 +391,18 @@ static int parse_options(struct super_block *sb, struct f2fs_sb_info *sbi,
 			break;
 		case Opt_disable_ext_identify:
 			set_opt(sbi, DISABLE_EXT_IDENTIFY);
+			break;
+		case Opt_err_continue:
+			clear_opt(sbi, ERRORS_RECOVER);
+			clear_opt(sbi, ERRORS_PANIC);
+			break;
+		case Opt_err_panic:
+			set_opt(sbi, ERRORS_PANIC);
+			clear_opt(sbi, ERRORS_RECOVER);
+			break;
+		case Opt_err_recover:
+			set_opt(sbi, ERRORS_RECOVER);
+			clear_opt(sbi, ERRORS_PANIC);
 			break;
 		default:
 			f2fs_msg(sb, KERN_ERR,

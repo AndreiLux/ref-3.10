@@ -147,12 +147,14 @@ int f2fs_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	} else {
 		/* if there is no written node page, write its inode page */
 		while (!sync_node_pages(sbi, inode->i_ino, &wbc)) {
+			mark_inode_dirty_sync(inode);
 			ret = f2fs_write_inode(inode, NULL);
 			if (ret)
 				goto out;
 		}
-		filemap_fdatawait_range(sbi->node_inode->i_mapping,
-							0, LONG_MAX);
+		ret = wait_on_node_pages_writeback(sbi, inode->i_ino);
+		if (ret)
+			goto out;
 		ret = blkdev_issue_flush(inode->i_sb->s_bdev, GFP_KERNEL, NULL);
 	}
 out:
@@ -168,7 +170,7 @@ static int f2fs_file_mmap(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
-static int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
+int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 {
 	int nr_free = 0, ofs = dn->ofs_in_node;
 	struct f2fs_sb_info *sbi = F2FS_SB(dn->inode->i_sb);
@@ -185,10 +187,10 @@ static int truncate_data_blocks_range(struct dnode_of_data *dn, int count)
 
 		update_extent_cache(NULL_ADDR, dn);
 		invalidate_blocks(sbi, blkaddr);
-		dec_valid_block_count(sbi, dn->inode, 1);
 		nr_free++;
 	}
 	if (nr_free) {
+		dec_valid_block_count(sbi, dn->inode, nr_free);
 		set_page_dirty(dn->node_page);
 		sync_inode_page(dn);
 	}
@@ -291,7 +293,7 @@ void f2fs_truncate(struct inode *inode)
 	}
 }
 
-static int f2fs_getattr(struct vfsmount *mnt,
+int f2fs_getattr(struct vfsmount *mnt,
 			 struct dentry *dentry, struct kstat *stat)
 {
 	struct inode *inode = dentry->d_inode;
@@ -387,7 +389,7 @@ static void fill_zero(struct inode *inode, pgoff_t index,
 	f2fs_balance_fs(sbi);
 
 	ilock = mutex_lock_op(sbi);
-	page = get_new_data_page(inode, index, false);
+	page = get_new_data_page(inode, NULL, index, false);
 	mutex_unlock_op(sbi, ilock);
 
 	if (!IS_ERR(page)) {
@@ -575,10 +577,10 @@ long f2fs_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	int ret;
 
 	switch (cmd) {
-	case FS_IOC_GETFLAGS:
+	case F2FS_IOC_GETFLAGS:
 		flags = fi->i_flags & FS_FL_USER_VISIBLE;
 		return put_user(flags, (int __user *) arg);
-	case FS_IOC_SETFLAGS:
+	case F2FS_IOC_SETFLAGS:
 	{
 		unsigned int oldflags;
 
