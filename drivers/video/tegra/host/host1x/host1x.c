@@ -592,16 +592,10 @@ fail:
 	return err;
 }
 
-struct nvhost_channel *nvhost_alloc_channel(struct platform_device *dev)
+void nvhost_set_chanops(struct nvhost_channel *ch)
 {
-	return host_device_op().alloc_nvhost_channel(dev);
+	host_device_op().set_nvhost_chanops(ch);
 }
-
-void nvhost_free_channel(struct nvhost_channel *ch)
-{
-	host_device_op().free_nvhost_channel(ch);
-}
-
 static void nvhost_free_resources(struct nvhost_master *host)
 {
 	kfree(host->intr.syncpt);
@@ -736,6 +730,10 @@ static int nvhost_probe(struct platform_device *dev)
 	if (err)
 		goto fail;
 
+	err = nvhost_alloc_channels(host);
+	if (err)
+		goto fail;
+
 #ifdef CONFIG_PM_GENERIC_DOMAINS
 	pdata->pd.name = "tegra-host1x";
 	err = nvhost_module_add_domain(&pdata->pd, dev);
@@ -779,6 +777,8 @@ static int __exit nvhost_remove(struct platform_device *dev)
 #else
 	nvhost_module_disable_clk(&dev->dev);
 #endif
+	nvhost_channel_list_free(host);
+
 	return 0;
 }
 
