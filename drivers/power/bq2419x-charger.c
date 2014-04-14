@@ -2474,56 +2474,75 @@ end:
 static int bq2419x_suspend(struct device *dev)
 {
 	struct bq2419x_chip *bq2419x = dev_get_drvdata(dev);
+	int next_wakeup = 0;
 	int ret;
-	int polling_time = 0;
-	bool set_suspend_current = false;
 
 	if (!bq2419x->battery_presense)
 		return 0;
 
 	battery_charging_restart_cancel(bq2419x->bc_dev);
 
+	if (!bq2419x->cable_connected || (bq2419x->in_current_limit <= 500 &&
+			!bq2419x->enable_batt_status_monitor &&
+			!bq2419x->otp_control_no_thermister))
+		goto charge_500;
+
 	ret = bq2419x_reset_wdt(bq2419x, "Suspend");
 	if (ret < 0)
 		dev_err(bq2419x->dev, "Reset WDT failed: %d\n", ret);
 
-	if (bq2419x->cable_connected &&
-		bq2419x->wdt_refresh_timeout &&
-		!bq2419x->disable_suspend_during_charging &&
-		(bq2419x->in_current_limit > 500)) {
-		polling_time = bq2419x->wdt_refresh_timeout;
-		set_suspend_current = false;
-	} else if (bq2419x->cable_connected &&
-		bq2419x->auto_recharge_time_supend &&
-		(bq2419x->in_current_limit > 500) &&
-		(bq2419x->chg_status == BATTERY_CHARGING_DONE)) {
-		polling_time = bq2419x->auto_recharge_time_supend;
-		set_suspend_current = true;
-	} else if (bq2419x->cable_connected &&
-		(bq2419x->enable_batt_status_monitor ||
-		bq2419x->otp_control_no_thermister)) {
-		polling_time = bq2419x->charge_polling_time;
-		if (bq2419x->chg_status == BATTERY_CHARGING_DONE &&
-			(!bq2419x->enable_batt_status_monitor ||
-			 bq2419x->chg_full_stop))
-			polling_time = bq2419x->charge_suspend_polling_time;
-		set_suspend_current = false;
-	} else {
-		polling_time = 0;
-		set_suspend_current = true;
+	switch (bq2419x->chg_status) {
+	case BATTERY_CHARGING_DONE:
+		if (bq2419x->enable_batt_status_monitor) {
+			if (bq2419x->chg_full_stop)
+				next_wakeup =
+					bq2419x->charge_suspend_polling_time;
+			else if (bq2419x->wdt_refresh_timeout)
+				next_wakeup = bq2419x->wdt_refresh_timeout;
+			else
+				next_wakeup = bq2419x->charge_polling_time;
+		} else if (bq2419x->otp_control_no_thermister)
+			next_wakeup =
+				bq2419x->charge_suspend_polling_time;
+		else
+			next_wakeup = bq2419x->auto_recharge_time_supend;
+		break;
+	case BATTERY_CHARGING:
+		if (bq2419x->enable_batt_status_monitor ||
+				bq2419x->otp_control_no_thermister) {
+			if (bq2419x->wdt_refresh_timeout)
+				next_wakeup = bq2419x->wdt_refresh_timeout;
+			else
+				next_wakeup = bq2419x->charge_polling_time;
+		} else {
+			if (bq2419x->disable_suspend_during_charging) {
+				dev_err(bq2419x->dev,
+						"ERROR: Device suspended during charging\n");
+				next_wakeup =
+					bq2419x->auto_recharge_time_supend;
+			} else
+				next_wakeup = bq2419x->wdt_refresh_timeout;
+		}
+		break;
+	default:
+		if (bq2419x->enable_batt_status_monitor ||
+				bq2419x->otp_control_no_thermister)
+			next_wakeup = bq2419x->charge_polling_time;
+		break;
 	}
 
-	if (polling_time)
-		battery_charging_wakeup(bq2419x->bc_dev, polling_time);
+	if (next_wakeup)
+		battery_charging_wakeup(bq2419x->bc_dev, next_wakeup);
 
-	if (set_suspend_current) {
-		ret = bq2419x_set_charging_current_suspend(bq2419x, 500);
-		if (ret < 0)
-			dev_err(bq2419x->dev,
-				"Configuration of charging failed: %d\n", ret);
-	}
+	if (next_wakeup == bq2419x->auto_recharge_time_supend)
+		goto charge_500;
 
 	return 0;
+charge_500:
+	ret = bq2419x_set_charging_current_suspend(bq2419x, 500);
+	if (ret < 0)
+		dev_err(bq2419x->dev, "Config of charging failed: %d\n", ret);
+	return ret;
 }
 
 static int bq2419x_resume(struct device *dev)
