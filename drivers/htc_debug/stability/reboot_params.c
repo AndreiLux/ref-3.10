@@ -193,6 +193,9 @@ static int panic_event(struct notifier_block *this,
 #if defined(CONFIG_ARM)
 		sprint_symbol(pc_symn, tombstone->regs->ARM_pc);
 		sprint_symbol(lr_symn, tombstone->regs->ARM_lr);
+#elif defined(CONFIG_ARM64)
+		sprint_symbol(pc_symn, tombstone->regs->pc);
+		sprint_symbol(lr_symn, tombstone->regs->regs[30]);
 #endif
 
 		snprintf(msg_buf, sizeof(msg_buf),
