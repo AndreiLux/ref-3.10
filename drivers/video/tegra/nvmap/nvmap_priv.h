@@ -71,6 +71,9 @@ void _nvmap_handle_free(struct nvmap_handle *h);
 /* holds max number of handles allocted per process at any time */
 extern u32 nvmap_max_handle_count;
 
+/* If set force zeroed memory to userspace. */
+extern bool zero_memory;
+
 #ifdef CONFIG_ARM64
 #define PG_PROT_KERNEL PAGE_KERNEL
 #define FLUSH_DCACHE_AREA __flush_dcache_area
@@ -78,6 +81,7 @@ extern u32 nvmap_max_handle_count;
 #define outer_inv_range(s, e)
 #define outer_clean_range(s, e)
 #define outer_flush_all()
+#define outer_clean_all()
 extern void __flush_dcache_page(struct page *);
 #else
 #define PG_PROT_KERNEL pgprot_kernel
@@ -142,6 +146,27 @@ struct nvmap_handle_ref {
 
 #ifdef CONFIG_NVMAP_PAGE_POOLS
 
+/*
+ * This is the default ratio defining pool size. It can be thought of as pool
+ * size in either MB per GB or KB per MB. That means the max this number can
+ * be is 1024 (all physical memory - not a very good idea) or 0 (no page pool
+ * at all).
+ */
+#define NVMAP_PP_POOL_SIZE (128)
+
+/*
+ * The wakeup threshold is how many empty page slots there need to be in order
+ * for the background allocater to be woken up.
+ */
+#define NVMAP_PP_DEF_FILL_THRESH (4096)
+
+/*
+ * For when memory does not require zeroing this is the minimum number of pages
+ * remaining in the page pools before the background allocer is woken up. This
+ * essentially disables the page pools (unless its extremely small).
+ */
+#define NVMAP_PP_ZERO_MEM_FILL_MIN (2048)
+
 struct nvmap_page_pool {
 	struct mutex lock;
 	u32 alloc;  /* Alloc index. */
@@ -187,6 +212,7 @@ static inline void nvmap_page_pool_unlock(struct nvmap_page_pool *pool)
 }
 
 int nvmap_page_pool_init(struct nvmap_device *dev);
+int nvmap_page_pool_fini(struct nvmap_device *dev);
 struct page *nvmap_page_pool_alloc(struct nvmap_page_pool *pool);
 bool nvmap_page_pool_fill(struct nvmap_page_pool *pool, struct page *page);
 int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
@@ -379,7 +405,7 @@ void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
 void nvmap_flush_cache(struct page **pages, int numpages);
 
-int nvmap_flush_cache_list(struct nvmap_handle **handles, int nr);
+int nvmap_do_cache_maint_list(struct nvmap_handle **handles, int op, int nr);
 
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,

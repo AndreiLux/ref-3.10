@@ -87,3 +87,4 @@ obj-$(CONFIG_SLIMPORT_ANX7808)	+= slimport_anx7808/
 obj-$(CONFIG_SLIMPORT_ANX7816)  += slimport_anx7816/
 obj-$(CONFIG_ARCH_TEGRA)        +=tegra_timerinfo.o
 obj-$(CONFIG_MODS) 		+= mods/
+obj-$(CONFIG_DENVER_CPU)	+= idle_test_t132.o
