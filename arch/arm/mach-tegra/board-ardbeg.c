@@ -445,9 +445,6 @@ static struct platform_device *ardbeg_devices[] __initdata = {
 	&tegratab_tegra_wakeup_monitor_device,
 #endif
 	&tegra_udc_device,
-#if defined(CONFIG_TEGRA_WATCHDOG)
-	&tegra_wdt0_device,
-#endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
