@@ -390,9 +390,10 @@ static ssize_t set_k_value(const char *buf, size_t count, u8 reg_addr, u8 len)
 	char *str_buf;
 	char *running;
 	int error;
-
-	I("%s: count = %lu, strlen(buf) = %lu, PAGE_SIZE = %lu\n",
-	  __func__, count, strlen(buf), PAGE_SIZE);
+	I(
+	  "%s: count = %lu, strlen(buf) = %lu, PAGE_SIZE = %lu,"
+	  " reg_addr = 0x%x\n",
+	  __func__, count, strlen(buf), PAGE_SIZE, reg_addr);
 
 	str_buf = kstrndup(buf, count, GFP_KERNEL);
 	if (str_buf == NULL) {
@@ -411,7 +412,11 @@ static ssize_t set_k_value(const char *buf, size_t count, u8 reg_addr, u8 len)
 			I("%s: i = %d\n", __func__, i);
 			break;
 		} else {
-			error = kstrtol(token, 10, &data_temp[i]);
+			if (reg_addr ==
+			    CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_PRESSURE)
+				error = kstrtol(token, 16, &data_temp[i]);
+			else
+				error = kstrtol(token, 10, &data_temp[i]);
 			if (error) {
 				E("%s: kstrtol fails, error = %d, i = %d\n",
 				  __func__, error, i);
@@ -960,7 +965,7 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			return -EIO;
 		}
 
-		I("%s: sensors_id = %ld, delay_us = %6d\n",
+		I("%s: sensors_id = %d, delay_us = %6d\n",
 		  __func__, i, mcu_data->report_period[i]);
 	}
 
