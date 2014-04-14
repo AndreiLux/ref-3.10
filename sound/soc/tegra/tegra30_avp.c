@@ -637,7 +637,7 @@ static int tegra30_avp_stream_set_state(int id, enum KSSTATE new_state)
 
 	if (new_state == KSSTATE_RUN)
 		tegra30_avp_audio_start_dma();
-	else
+	else if (old_state == KSSTATE_RUN)
 		tegra30_avp_audio_stop_dma();
 
 	return ret;
@@ -764,6 +764,8 @@ static int tegra30_avp_pcm_open(int *id)
 		dev_err(audio_avp->dev, "All AVP PCM streams are busy");
 		return -EBUSY;
 	}
+
+	audio_avp->stream_active_count++;
 	tegra30_avp_audio_set_state(KSSTATE_RUN);
 	return 0;
 }
@@ -913,6 +915,8 @@ static int tegra30_avp_compr_open(int *id)
 		return -EBUSY;
 	}
 	audio_avp->avp_stream[*id].is_drain_called = 0;
+
+	audio_avp->stream_active_count++;
 	tegra30_avp_audio_set_state(KSSTATE_RUN);
 	return 0;
 }
@@ -1252,7 +1256,10 @@ static void tegra30_avp_stream_close(int id)
 	tegra30_avp_audio_free_dma();
 	stream->stream_allocated = 0;
 	tegra30_avp_stream_set_state(id, KSSTATE_STOP);
-	tegra30_avp_audio_set_state(KSSTATE_STOP);
+
+	audio_avp->stream_active_count--;
+	if (!(audio_avp->stream_active_count))
+		tegra30_avp_audio_set_state(KSSTATE_STOP);
 }
 
 static struct tegra_offload_ops avp_audio_platform = {
