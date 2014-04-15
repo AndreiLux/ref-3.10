@@ -37,3 +37,6 @@ obj-$(CONFIG_USB_NET_QMI_WWAN)	+= qmi_wwan.o
 obj-$(CONFIG_USB_NET_CDC_MBIM)	+= cdc_mbim.o
 obj-$(CONFIG_USB_NET_RAW_IP)	+= raw_ip_net.o
 
+rmnet_usb-y			:= rmnet_usb_ctrl.o rmnet_usb_data.o
+obj-$(CONFIG_MSM_RMNET_USB)	+= rmnet_usb.o
+

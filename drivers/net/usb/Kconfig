@@ -558,4 +558,14 @@ config USB_NET_SMSC95XX_VOH_MODE
 	help
 	  This option enables VOH mode which is required for SMSC compliance.
 
+config MSM_RMNET_USB
+	tristate "RMNET USB Driver"
+	depends on USB_USBNET
+	help
+	Select this if you have a Qualcomm modem device connected via USB
+	supporting RMNET network interface.
+
+	To compile this driver as a module, choose M here: the module
+	will be called rmnet_usb. If unsure, choose N.
+
 endmenu
