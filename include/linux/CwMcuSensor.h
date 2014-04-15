@@ -20,56 +20,15 @@
 #define CWMCU_I2C_NAME "CwMcuSensor"
 
 enum ABS_status {
-	ABS_ACC_X = 0x01,
-	ABS_ACC_Y = 0x02,
-	ABS_ACC_Z = 0x03,
-	ABS_MAG_X = 0x04,
-	ABS_MAG_Y = 0x05,
-	ABS_MAG_Z = 0x06,
-	ABS_GYRO_X = 0x07,
-	ABS_GYRO_Y = 0x08,
-	ABS_GYRO_Z = 0x09,
-	/*ABS_LIGHT_X = 0x0A,*/
-	ABS_MAG_ACCURACY = 0x0A,
-	/*ABS_LIGHT_Y = 0x0B,*/
-	ABS_ORI_ACCURACY = 0x0B,
-	ABS_LIGHT_Z = 0x0C,
-	ABS_GEOMAGNETIC_ROTATION_VECTOR_X = 0x0D,
-	ABS_GEOMAGNETIC_ROTATION_VECTOR_Y = 0x0E,
-	ABS_GEOMAGNETIC_ROTATION_VECTOR_Z = 0x0F,
-	ABS_PRESSURE_X = 0x10,
-	ABS_PRESSURE_Y = 0x11,
-	ABS_PRESSURE_Z = 0x12,
-	ABS_ORI_X = 0x13,
-	ABS_ORI_Y = 0x14,
-	ABS_ORI_Z = 0x15,
-	ABS_ROT_X = 0x16,
-	ABS_ROT_Y = 0x17,
-	ABS_ROT_Z = 0x18,
-	ABS_LIN_X = 0x1A, /* Jump over ABS_DISTANCE */
-	ABS_LIN_Y = 0x1B,
-	ABS_LIN_Z = 0x1C,
-	ABS_GRA_X = 0x1D,
-	ABS_GRA_Y = 0x1E,
-	ABS_GRA_Z = 0x1F,
+	CW_ABS_X = 0x01,
+	CW_ABS_Y,
+	CW_ABS_Z,
+	CW_ABS_X1,
+	CW_ABS_Y1,
+	CW_ABS_Z1,
+	CW_ABS_TIMEDIFF,
 	ABS_STEP_DETECTOR = 0x23,
 	ABS_STEP_COUNTER = 0x24,
-	ABS_GESTURE_MOTION = 0x26,
-	ABS_MAGNETIC_UNCALIBRATED_X = 0x30, /* Jump oveer ABS_MT_SLOT, Sensor HAL cannot receive */
-	ABS_MAGNETIC_UNCALIBRATED_Y = 0x31,
-	ABS_MAGNETIC_UNCALIBRATED_Z = 0x32,
-	ABS_MAGNETIC_UNCALIBRATED_BIAS_X = 0x3F, /* Jump over ABS_MT_WIDTH_MINOR, this cause little white point, and touch fails*/
-	ABS_MAGNETIC_UNCALIBRATED_BIAS_Y = 0x34,
-	ABS_MAGNETIC_UNCALIBRATED_BIAS_Z = 0x35,
-	ABS_GYROSCOPE_UNCALIBRATED_X = 0x36,
-	ABS_GYROSCOPE_UNCALIBRATED_Y = 0x37,
-	ABS_GYROSCOPE_UNCALIBRATED_Z = 0x38,
-	ABS_GYROSCOPE_UNCALIBRATED_BIAS_X = 0x39,
-	ABS_GYROSCOPE_UNCALIBRATED_BIAS_Y = 0x3A,
-	ABS_GYROSCOPE_UNCALIBRATED_BIAS_Z = 0x3B,
-	ABS_GAME_ROTATION_VECTOR_X = 0x3C,
-	ABS_GAME_ROTATION_VECTOR_Y = 0x3D,
-	ABS_GAME_ROTATION_VECTOR_Z = 0x3E,
 };
 
 
@@ -90,20 +49,18 @@ typedef enum {
 	CW_SIGNIFICANT_MOTION          = 20,
 	CW_STEP_DETECTOR               = 21,
 	CW_STEP_COUNTER                = 22,
-	HTC_GESTURE_MOTION             = 24,
-	HTC_ANY_MOTION                 = 28,
-	CW_SENSORS_ID_END /* Be careful, do not exceed 31 */
+	CW_SENSORS_ID_END /* Be careful, do not exceed 31 */,
+	TIME_DIFF_EXHAUSTED            = 97,
+	CW_SYNC_ACK                    = 98,
+	CW_META_DATA                   = 99,
+	CW_MAGNETIC_UNCALIBRATED_BIAS  = 100,
+	CW_GYROSCOPE_UNCALIBRATED_BIAS = 101
 } CW_SENSORS_ID;
 
-#define NS_PER_US 1000000
+#define NS_PER_US 1000000LL
 
 #define FIRMWARE_VERSION 0x10
 
-#define CWSTM32_READ_Touch_Log                     0xF1
-#define CWSTM32_READ_Dump_Backup_Call_Stack_Buffer 0xFB
-#define CWSTM32_READ_Dump_Call_Stack_Buffer        0xFD
-#define CWSTM32_READ_Dump_Debug_Buffer             0xFE
-#define CWSTM32_READ_Debug_Status                  0xFF
 #define HTC_SYSTEM_STATUS_REG                      0x1E
 
 #if defined(CONFIG_SYNC_TOUCH_STATUS)
@@ -175,9 +132,6 @@ int touch_status(u8 status);
 #define	linear_acceleration		CW_LINEARACCELERATION
 #define	gravity				CW_GRAVITY
 
-#define	gesture_motion			HTC_GESTURE_MOTION
-#define	any_motion			HTC_ANY_MOTION
-
 #define magnetic_uncalibrated		CW_MAGNETIC_UNCALIBRATED
 #define gyroscope_uncalibrated		CW_GYROSCOPE_UNCALIBRATED
 #define game_rotation_vector		CW_GAME_ROTATION_VECTOR
@@ -189,10 +143,31 @@ int touch_status(u8 status);
 
 #define num_sensors			CW_SENSORS_ID_END
 
+#define CWSTM32_BATCH_MODE_COMMAND	0x40  /* R/W         1 Byte
+					       * Bit 0: Flush command (W)
+					       * Bit 1: Sync command (W)
+					       * Bit 2: Timeout flag (R/WC)
+					       * Bit 3: TimeDiff exhausted flag
+					       *                          (R/WC)
+					       * Bit 4: Buffer full flag (R/WC)
+					       */
+
+#define CWSTM32_BATCH_MODE_DATA_QUEUE	0x45  /* R/W         9 Bytes */
+#define CWSTM32_BATCH_MODE_TIMEOUT	0x46  /* R/W         4 Bytes    (ms) */
+#define CWSTM32_BATCH_MODE_DATA_COUNTER	0x47  /* R/W         4 Bytes
+					       * (4 bytes, from low byte to
+					       *  high byte */
+
+#define SYNC_TIMESTAMP_BIT		(1 << 1)
+#define TIMESTAMP_SYNC_CODE		(98)
+
+/* If queue is empty */
+#define CWMCU_NODATA	0xFF
+
 #define CWSTM32_ENABLE_REG			0x01
 #define CWSTM32_READ_SEQUENCE_DATA_REG  	0x0F
 
-#define CWSTM32_WRITE_POSITION_Acceleration    	0x20
+#define CWSTM32_WRITE_POSITION_Acceleration	0x20
 #define CWSTM32_WRITE_POSITION_Magnetic		0x21
 #define CWSTM32_WRITE_POSITION_Gyro		0x22
 
@@ -204,12 +179,10 @@ int touch_status(u8 status);
 #define CWSTM32_INT_ST4                         0x0B
 #define CWSTM32_ERR_ST                          0x1F
 
+#define CW_BATCH_ENABLE_REG                     0x41
+
 /* INT_ST1 */
 #define CW_MCU_INT_BIT_LIGHT                    (1 << 3)
-
-/* INT_ST4 */
-#define CW_MCU_INT_BIT_HTC_GESTURE_MOTION       (1 << 0)
-#define CW_MCU_INT_BIT_ANY_MOTION               (1 << 4)
 
 /* INT_ST3 */
 #define CW_MCU_INT_BIT_SIGNIFICANT_MOTION       (1 << 4)
@@ -242,8 +215,6 @@ int touch_status(u8 status);
 #define CWSTM32_READ_SIGNIFICANT_MOTION				0x34
 #define CWSTM32_READ_STEP_DETECTOR				0x35
 #define CWSTM32_READ_STEP_COUNTER				0x36
-#define CWSTM32_READ_Gesture_Motion                             0x38
-#define CWSTM32_READ_Any_Motion                 	        0x3F
 
 #ifdef __KERNEL__
 struct cwmcu_platform_data {
