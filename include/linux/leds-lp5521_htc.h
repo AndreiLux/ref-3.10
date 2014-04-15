@@ -14,12 +14,7 @@
 #define I2C_WRITE_RETRY_TIMES		2
 #define LED_I2C_WRITE_BLOCK_SIZE	80
 
-struct led_i2c_config {
-	const char *name;
-};
-
 struct led_i2c_platform_data {
-	struct led_i2c_config *led_config;
 	int num_leds;
 	int ena_gpio;
 	int ena_gpio_io_ext;

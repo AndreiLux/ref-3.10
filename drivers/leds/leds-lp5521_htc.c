@@ -195,14 +195,10 @@ static void lp5521_led_enable(struct i2c_client *client)
 {
 	int ret = 0;
 	uint8_t data;
-	struct led_i2c_platform_data *pdata;
+	struct lp5521_chip *cdata = i2c_get_clientdata(client);
+	struct led_i2c_platform_data *pdata = cdata->pdata;
 	char data1[1] = {0};
 	I(" %s +++\n" , __func__);
-
-	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
-	if (pdata == NULL)
-		ret = -ENOMEM;
-	ret = lp5521_parse_dt(&client->dev, pdata);
 
 	/* === led pin enable ===*/
 	if (pdata->ena_gpio) {
@@ -702,18 +698,15 @@ static void lp5521_led_off(struct i2c_client *client)
 	uint8_t data = 0x00;
 	int ret;
 	char data1[1] = {0};
-	struct led_i2c_platform_data *pdata;
+	struct lp5521_chip *cdata = i2c_get_clientdata(client);
+	struct led_i2c_platform_data *pdata = cdata->pdata;
 
 	I(" %s +++\n" , __func__);
 	if (!chip_enable) {
 		I(" %s return, chip already disable\n" , __func__);
 		return;
 	}
-	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
 
-	if (pdata == NULL)
-		ret = -ENOMEM;
-	ret = lp5521_parse_dt(&client->dev, pdata);
 	ret = i2c_read_block(client, 0x00, data1, 1);
 	if (!data1[0]) {
 		I(" %s return, chip already disable\n" , __func__);
@@ -919,8 +912,8 @@ static ssize_t lp5521_led_i2c_store(struct device *dev,
 	unsigned long ul_reg, ul_data = 0;
 	uint8_t reg = 0, data;
 	char value[1] = {0};
-	struct led_i2c_platform_data *pdata;
-	pdata = client->dev.platform_data;
+	struct lp5521_chip *cdata = i2c_get_clientdata(client);
+	struct led_i2c_platform_data *pdata = cdata->pdata;
 
 	for (i = 0; i < 2; i++) {
 		token[i] = strsep((char **)&buf, " ");
@@ -992,7 +985,7 @@ static int lp5521_led_probe(struct i2c_client *client
 	printk("[LED][PROBE] led driver probe +++\n");
 
 	/* === init platform and client data === */
-	cdata = kzalloc(sizeof(struct lp5521_chip), GFP_KERNEL);
+	cdata = devm_kzalloc(dev, sizeof(struct lp5521_chip), GFP_KERNEL);
 	if (!cdata) {
 		ret = -ENOMEM;
 		dev_err(&client->dev, "[LED][PROBE_ERR] failed on allocat cdata\n");
@@ -1001,16 +994,17 @@ static int lp5521_led_probe(struct i2c_client *client
 
 	i2c_set_clientdata(client, cdata);
 	cdata->client = client;
-	pdata = kzalloc(sizeof(*pdata), GFP_KERNEL);
-	if (pdata == NULL)
-		ret = -ENOMEM;
-	if (client->dev.platform_data)
-		pdata = client->dev.platform_data;
+	pdata = devm_kzalloc(dev, sizeof(*cdata->pdata), GFP_KERNEL);
 	if (!pdata) {
-		dev_err(&client->dev, "[LED][PROBE_ERR] failed on get pdata\n");
+		ret = -ENOMEM;
+		dev_err(&client->dev, "[LED][PROBE_ERR] failed on allocate pdata\n");
 		goto err_exit;
 	}
-	else {
+	cdata->pdata = pdata;
+
+	if (client->dev.platform_data) {
+		memcpy(pdata, client->dev.platform_data, sizeof(*pdata));
+	} else {
 		ret = lp5521_parse_dt(&client->dev, pdata);
 		if (ret < 0) {
 			dev_err(&client->dev, "[LED][PROBE_ERR] failed on get pdata\n");
@@ -1100,9 +1094,7 @@ err_register_attr_ModeRGB:
 			device_remove_file(cdata->leds[i].cdev.dev,&dev_attr_ModeRGB);
 	}
 err_create_work_queue:
-	kfree(pdata);
 err_exit:
-	kfree(cdata);
 err_cdata:
 	return ret;
 }
