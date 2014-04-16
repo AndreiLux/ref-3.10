@@ -46,7 +46,7 @@ static struct iio_channel *adc_channel;
 #endif
 
 #ifdef CONFIG_HEADSET_DEBUG_UART
-static int hpin_irq_status = 0;
+static bool hpin_irq_disabled;
 #endif
 static struct workqueue_struct *detect_wq;
 static void detect_pmic_work_func(struct work_struct *work);
@@ -313,20 +313,6 @@ static irqreturn_t detect_irq_handler(int irq, void *data)
 {
 	unsigned int irq_mask = IRQF_TRIGGER_HIGH | IRQF_TRIGGER_LOW;
 	unsigned int hpin_count_local;
-#ifdef CONFIG_HEADSET_DEBUG_UART
-	if (hi->pdata.headset_get_debug) {
-		if (hi->pdata.headset_get_debug()) {
-			HS_LOG("HEADSET_DEBUG_EN on");
-			if (hpin_irq_status) {
-				disable_irq_nosync(hi->pdata.hpin_irq);
-				HS_LOG("Disable HPIN IRQ");
-				hpin_irq_status = 0;
-			}
-			return IRQ_HANDLED;
-		} else
-			HS_LOG("HEADSET_DEBUG_EN off");
-	}
-#endif
 
 	disable_irq_nosync(hi->pdata.hpin_irq);
 	HS_LOG("Disable HPIN IRQ");
@@ -381,10 +367,10 @@ static irqreturn_t debug_irq_handler(int irq, void *data)
 	if (hi->pdata.headset_get_debug) {
 		if (hi->pdata.headset_get_debug()) {
 			HS_LOG("HEADSET_DEBUG_EN on");
-			if (hpin_irq_status) {
+			if (!hpin_irq_disabled) {
 				disable_irq_nosync(hi->pdata.hpin_irq);
 				HS_LOG("Disable HPIN IRQ");
-				hpin_irq_status = 0;
+				hpin_irq_disabled = true;
 			}
 			hi->debug_irq_type = IRQF_TRIGGER_LOW;
 			set_irq_type(hi->pdata.debug_irq, hi->debug_irq_type);
@@ -399,10 +385,10 @@ static irqreturn_t debug_irq_handler(int irq, void *data)
 				hi->hpin_irq_type ^= irq_mask;
 				set_irq_type(hi->pdata.hpin_irq, hi->hpin_irq_type);
 			}
-			if (!hpin_irq_status) {
+			if (hpin_irq_disabled) {
 				enable_irq(hi->pdata.hpin_irq);
 				HS_LOG("Re-Enable HPIN IRQ");
-				hpin_irq_status = 1;
+				hpin_irq_disabled = false;
 			}
 			hi->debug_irq_type = IRQF_TRIGGER_HIGH;
 			set_irq_type(hi->pdata.debug_irq, hi->debug_irq_type);
@@ -426,13 +412,7 @@ static void irq_init_work_func(struct work_struct *work)
 		HS_LOG("Enable detect IRQ");
 		hi->hpin_irq_type = irq_type;
 		set_irq_type(hi->pdata.hpin_irq, hi->hpin_irq_type);
-#ifdef CONFIG_HEADSET_DEBUG_UART
-	if (!hpin_irq_status)
-#endif
 		enable_irq(hi->pdata.hpin_irq);
-#ifdef CONFIG_HEADSET_DEBUG_UART
-		hpin_irq_status = 1;
-#endif
 	}
 
 	if (hi->pdata.key_gpio) {
@@ -694,9 +674,6 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 	}
 
 	if (hi->pdata.hpin_gpio) {
-#ifdef CONFIG_HEADSET_DEBUG_UART
-		hpin_irq_status = 1;
-#endif
 		ret = hs_pmic_request_irq(hi->pdata.hpin_gpio,
 				&hi->pdata.hpin_irq, detect_irq_handler,
 				hi->hpin_irq_type, "HS_PMIC_DETECT", 1);
@@ -704,13 +681,7 @@ static int htc_headset_pmic_probe(struct platform_device *pdev)
 			HS_ERR("Failed to request PMIC HPIN IRQ (0x%X)", ret);
 			goto err_request_detect_irq;
 		}
-#ifdef CONFIG_HEADSET_DEBUG_UART
-	if (hpin_irq_status)
-#endif
 		disable_irq(hi->pdata.hpin_irq);
-#ifdef CONFIG_HEADSET_DEBUG_UART
-		hpin_irq_status = 0;
-#endif
 	}
 	if (hi->pdata.key_gpio) {
 		ret = hs_pmic_request_irq(hi->pdata.key_gpio,
