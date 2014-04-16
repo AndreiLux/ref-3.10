@@ -5,6 +5,7 @@
 / {
 	model = "Flounder64";
 	compatible = "google,flounder64", "nvidia,tegra132";
+	hw-revision = "xa,xb";
 	nvidia-boardids = "1780:1100:2:B:7","1794:1000:0:A:6";
 	#address-cells = <2>;
 	#size-cells = <2>;

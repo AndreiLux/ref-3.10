@@ -1333,6 +1333,7 @@ static const char * const flounder_dt_board_compat[] = {
 
 static const char * const flounder64_dt_board_compat[] = {
 	"google,flounder64",
+	"google,flounder64_lte",
 	NULL
 };
 
