@@ -254,6 +254,18 @@ config USB_NV_SHIELD_LED
 	  This driver communicates with the microcontroller on Nvidia Shield
 	  to control the center button LED.
 
+config USB_QCOM_DIAG_BRIDGE
+	tristate "USB Qualcomm diagnostic bridge driver"
+	depends on USB
+	help
+	  Say Y here if you have a Qualcomm modem device connected via USB that
+	  will be bridged in kernel space. This driver communicates with the
+	  diagnostic interface and allows for bridging with the diag forwarding
+	  driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called diag_bridge.  If unsure, choose N.
+
 config USB_QCOM_KS_BRIDGE
 	tristate "USB Qualcomm kick start bridge"
 	depends on USB
