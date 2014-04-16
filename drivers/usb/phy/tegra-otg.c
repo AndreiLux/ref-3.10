@@ -758,6 +758,8 @@ static int tegra_otg_conf(struct platform_device *pdev)
 		extcon_register_notifier(tegra->id_extcon_dev, &otg_id_nb);
 	}
 
+	ATOMIC_INIT_NOTIFIER_HEAD(&tegra->phy.notifier);
+
 	err = usb_add_phy(&tegra->phy, USB_PHY_TYPE_USB2);
 	if (err) {
 		dev_err(&pdev->dev, "usb_set_transceiver failed\n");
