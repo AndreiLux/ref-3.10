@@ -104,18 +104,31 @@
 #endif
 
 static unsigned int flounder_hw_rev;
+static unsigned int flounder_eng_id;
 
 static int __init flounder_hw_revision(char *id)
 {
 	int ret;
+	char *hw_rev;
 
-	ret = kstrtouint(id, 10, &flounder_hw_rev);
+	hw_rev = strsep(&id, ".");
+
+	ret = kstrtouint(hw_rev, 10, &flounder_hw_rev);
 	if (ret < 0) {
-		pr_err("Failed to parse flounder hw_revision=%s\n", id);
+		pr_err("Failed to parse flounder hw_revision=%s\n", hw_rev);
 		return ret;
 	}
 
-	pr_info("Flounder hardware revision = %d\n", flounder_hw_rev);
+	if (id) {
+		ret = kstrtouint(id, 10, &flounder_eng_id);
+		if (ret < 0) {
+			pr_err("Failed to parse flounder eng_id=%s\n", id);
+			return ret;
+		}
+	}
+
+	pr_info("Flounder hardware revision = %d, engineer id = %d\n",
+            flounder_hw_rev, flounder_eng_id);
 
 	return 0;
 }
@@ -124,6 +137,11 @@ early_param("hw_revision", flounder_hw_revision);
 int flounder_get_hw_revision(void)
 {
 	return flounder_hw_rev;
+}
+
+int flounder_get_eng_id(void)
+{
+	return flounder_eng_id;
 }
 
 struct aud_sfio_data {

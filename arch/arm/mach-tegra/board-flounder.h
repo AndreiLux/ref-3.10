@@ -108,5 +108,6 @@ int flounder_edp_init(void);
 #define FLOUNDER_REV_EVT1_1 1
 #define FLOUNDER_REV_EVT1_2 2
 int flounder_get_hw_revision(void);
+int flounder_get_eng_id(void);
 
 #endif
