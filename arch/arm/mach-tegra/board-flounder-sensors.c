@@ -45,6 +45,7 @@
 #include <media/tps61310.h>
 
 #include <linux/platform_device.h>
+#include <linux/input/cy8c_sar.h>
 #include <media/soc_camera.h>
 #include <media/soc_camera_platform.h>
 #include <media/tegra_v4l2_camera.h>
@@ -57,9 +58,61 @@
 #include "board-flounder.h"
 #include "tegra-board-id.h"
 
+int cy8c_sar1_reset(void)
+{
+	pr_info("[SAR] %s Enter\n", __func__);
+	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 1);
+	mdelay(5);
+	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 0);
+	return 0;
+}
+
+int cy8c_sar_reset(void)
+{
+	pr_info("[SAR] %s Enter\n", __func__);
+	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 1);
+	mdelay(5);
+	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 0);
+	return 0;
+}
+
 static struct i2c_board_info flounder_i2c_board_info_cm32181[] = {
 	{
 		I2C_BOARD_INFO("cm32181", 0x48),
+	},
+};
+
+struct cy8c_i2c_sar_platform_data sar1_cy8c_data[] = {
+	{
+		.gpio_irq = TEGRA_GPIO_PCC5,
+		.gpio_rst = TEGRA_GPIO_PG6,
+		.reset    = cy8c_sar1_reset,
+		.position_id = 1,
+	},
+};
+
+struct cy8c_i2c_sar_platform_data sar_cy8c_data[] = {
+	{
+		.gpio_irq = TEGRA_GPIO_PC7,
+		.gpio_rst = TEGRA_GPIO_PG7,
+		.reset    = cy8c_sar_reset,
+		.position_id = 0,
+	},
+};
+
+struct i2c_board_info flounder_i2c_board_info_cypress_sar[] = {
+	{
+		I2C_BOARD_INFO("CYPRESS_SAR", 0xB8 >> 1),
+		.platform_data = &sar_cy8c_data,
+		.irq = -1,
+	},
+};
+
+struct i2c_board_info flounder_i2c_board_info_cypress_sar1[] = {
+	{
+		I2C_BOARD_INFO("CYPRESS_SAR1", 0xBA >> 1),
+		.platform_data = &sar1_cy8c_data,
+		.irq = -1,
 	},
 };
 
@@ -923,10 +976,48 @@ static int flounder_nct72_init(void)
 	return ret;
 }
 
+static int flounder_sar_init(void){
+	int sar_intr = TEGRA_GPIO_PC7;
+	int ret;
+	pr_info("%s: GPIO pin:%d\n", __func__, sar_intr);
+	flounder_i2c_board_info_cypress_sar[0].irq = gpio_to_irq(sar_intr);
+	ret = gpio_request(sar_intr, "sar_interrupt");
+	if (ret < 0)
+		return ret;
+	ret = gpio_direction_input(sar_intr);
+	if (ret < 0) {
+		pr_info("%s: calling gpio_free(sar_intr)", __func__);
+		gpio_free(sar_intr);
+	}
+	i2c_register_board_info(1, flounder_i2c_board_info_cypress_sar,
+			ARRAY_SIZE(flounder_i2c_board_info_cypress_sar));
+	return 0;
+}
+
+static int flounder_sar1_init(void){
+	int sar1_intr = TEGRA_GPIO_PCC5;
+	int ret;
+	pr_info("%s: GPIO pin:%d\n", __func__, sar1_intr);
+	flounder_i2c_board_info_cypress_sar1[0].irq = gpio_to_irq(sar1_intr);
+	ret  = gpio_request(sar1_intr, "sar1_interrupt");
+	if (ret < 0)
+		return ret;
+	ret = gpio_direction_input(sar1_intr);
+	if (ret < 0) {
+		pr_info("%s: calling gpio_free(sar1_intr)", __func__);
+		gpio_free(sar1_intr);
+	}
+	i2c_register_board_info(1, flounder_i2c_board_info_cypress_sar1,
+			ARRAY_SIZE(flounder_i2c_board_info_cypress_sar1));
+	return 0;
+}
+
 int __init flounder_sensors_init(void)
 {
 	flounder_camera_init();
 	flounder_nct72_init();
+	flounder_sar_init();
+	flounder_sar1_init();
 
 	i2c_register_board_info(0, flounder_i2c_board_info_cm32181,
 		ARRAY_SIZE(flounder_i2c_board_info_cm32181));
