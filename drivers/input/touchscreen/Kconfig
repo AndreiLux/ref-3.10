@@ -136,6 +136,14 @@ config TOUCHSCREEN_CY8CTMG110
 	  To compile this driver as a module, choose M here: the
 	  module will be called cy8ctmg110_ts.
 
+config CYPRESS_SAR
+	tristate "Cypress CY8C20045 SAR"
+	depends on I2C
+	default n
+	help
+	  Say Y here if you have sar sensor on your device
+	  If unsure, say N.
+
 config TOUCHSCREEN_CYTTSP_CORE
 	tristate "Cypress TTSP touchscreen"
 	help
