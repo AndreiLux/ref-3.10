@@ -88,3 +88,4 @@ obj-$(CONFIG_SLIMPORT_ANX7816)  += slimport_anx7816/
 obj-$(CONFIG_ARCH_TEGRA)        +=tegra_timerinfo.o
 obj-$(CONFIG_MODS) 		+= mods/
 obj-$(CONFIG_DENVER_CPU)	+= idle_test_t132.o
+obj-$(CONFIG_QCT_9K_MODEM)	+= qcom-mdm-9k/

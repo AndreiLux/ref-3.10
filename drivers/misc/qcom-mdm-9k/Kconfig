@@ -1,0 +1,65 @@
+menu "Qualcomm Modem Drivers"
+
+if QCT_9K_MODEM
+
+config QCOM_USB_MODEM_POWER
+       bool "Qualcomm USB modem power driver"
+       depends on USB
+       default n
+       ---help---
+         Say Y if you want to use one of the following modems
+         QCT 9x15
+         QCT 9x25
+
+         Disabled by default. Choose Y here if you want to build the driver.
+
+config MDM_FTRACE_DEBUG
+       bool "Enable ftrace debug support"
+       depends on QCOM_USB_MODEM_POWER
+       default n
+       help
+         To enable ftrace debug
+
+config MDM_ERRMSG
+       bool "set error message"
+       depends on QCOM_USB_MODEM_POWER
+       default n
+       help
+         Print error message in panic
+
+config MDM_POWEROFF_MODEM_IN_OFFMODE_CHARGING
+       bool "power off modem in offmode charging"
+       depends on QCOM_USB_MODEM_POWER
+       default n
+       help
+         To power off modem in offmode charging
+
+config MSM_SUBSYSTEM_RESTART
+       bool "MSM Subsystem Restart Driver"
+       depends on QCOM_USB_MODEM_POWER
+       default n
+       help
+         This option enables the MSM subsystem restart driver, which provides
+         a framework to handle subsystem crashes.
+
+config MSM_HSIC_SYSMON
+       tristate "MSM HSIC system monitor driver"
+       depends on USB
+       default n
+       help
+         Add support for bridging with the system monitor interface of MDM
+         over HSIC. This driver allows the local system monitor to
+         communicate with the remote system monitor interface.
+
+config MSM_SYSMON_COMM
+       bool "MSM System Monitor communication support"
+       depends on MSM_SUBSYSTEM_RESTART
+       default n
+       help
+         This option adds support for MSM System Monitor library, which
+         provides an API that may be used for notifying subsystems within
+         the SoC about other subsystems' power-up/down state-changes.
+
+endif # QCT_9K_MODEM
+
+endmenu
