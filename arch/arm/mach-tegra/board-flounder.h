@@ -23,6 +23,7 @@
 #include <mach/gpio-tegra.h>
 #include <mach/irqs.h>
 #include "gpio-names.h"
+#include <mach/board_htc.h>
 
 int flounder_pinmux_init(void);
 int flounder_emc_init(void);
@@ -37,6 +38,7 @@ int flounder_rail_alignment_init(void);
 int flounder_soctherm_init(void);
 int flounder_edp_init(void);
 void flounder_camera_auxdata(void *);
+int flounder_mdm_9k_init(void);
 
 
 #define PALMAS_TEGRA_GPIO_BASE	TEGRA_NR_GPIOS
@@ -105,6 +107,21 @@ void flounder_camera_auxdata(void *);
 /* HID keyboard and trackpad irq same for interposer and t124 */
 #define I2C_KB_IRQ	TEGRA_GPIO_PC7
 #define I2C_TP_IRQ	TEGRA_GPIO_PW3
+
+/* Qualcomm mdm9k modem related GPIO */
+#define AP2MDM_VDD_MIN		TEGRA_GPIO_PO6
+#define AP2MDM_PMIC_RESET_N	TEGRA_GPIO_PBB5
+#define AP2MDM_WAKEUP		TEGRA_GPIO_PO1
+#define AP2MDM_STATUS		TEGRA_GPIO_PO2
+#define AP2MDM_ERRFATAL		TEGRA_GPIO_PO3
+#define AP2MDM_IPC1		TEGRA_GPIO_PO4
+#define AP2MDM_IPC2		TEGRA_GPIO_PO5
+#define MDM2AP_ERRFATAL		TEGRA_GPIO_PV0
+#define MDM2AP_HSIC_READY	TEGRA_GPIO_PV1
+#define MDM2AP_VDD_MIN		TEGRA_GPIO_PS7
+#define MDM2AP_WAKEUP		TEGRA_GPIO_PS5
+#define MDM2AP_STATUS		TEGRA_GPIO_PS6
+#define MDM2AP_IPC3		TEGRA_GPIO_PS0
 
 #define FLOUNDER_REV_EVT1_1 1
 #define FLOUNDER_REV_EVT1_2 2

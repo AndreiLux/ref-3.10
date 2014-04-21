@@ -298,6 +298,26 @@ config MACH_FLOUNDER
        help
          Support for Flounder
 
+config QCT_9K_MODEM
+       bool "QCT MDM9K"
+       depends on MACH_T132_FLOUNDER
+       default n
+       select QCOM_USB_MODEM_POWER
+       select MDM_FTRACE_DEBUG
+       select MDM_ERRMSG
+       select MDM_POWEROFF_MODEM_IN_OFFMODE_CHARGING
+       select MSM_SUBSYSTEM_RESTART
+       select MSM_HSIC_SYSMON
+       select MSM_SYSMON_COMM
+       select MSM_RMNET_USB
+       select RMNET_DATA
+       select RMNET_DATA_DEBUG_PKT
+       select USB_QCOM_DIAG_BRIDGE
+       select USB_QCOM_MDM_BRIDGE
+       select USB_QCOM_KS_BRIDGE
+       help
+        Support for Qualcomm 9K modem
+
 config MACH_LOKI
        bool "Loki board"
        depends on ARCH_TEGRA_12x_SOC

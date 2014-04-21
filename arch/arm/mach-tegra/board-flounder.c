@@ -761,7 +761,10 @@ static void flounder_usb_init(void)
 	/* Setup the udc platform data */
 	tegra_udc_device.dev.platform_data = &tegra_udc_pdata;
 
-	if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB)) {
+	if ((!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
+		/* tegra_ehci2_device will reserve for mdm9x25 modem */
+		&& (!is_mdm_modem()))
+	{
 		tegra_ehci2_device.dev.platform_data =
 			&tegra_ehci2_utmi_pdata;
 		platform_device_register(&tegra_ehci2_device);
@@ -1308,6 +1311,8 @@ static void __init tegra_flounder_late_init(void)
 	flounder_display_init();
 	flounder_uart_init();
 	flounder_usb_init();
+	if(is_mdm_modem())
+		flounder_mdm_9k_init();
 	flounder_xusb_init();
 	flounder_i2c_init();
 	flounder_spi_init();
