@@ -2,6 +2,7 @@
  * Generic helpers for smp ipi calls
  *
  * (C) Jens Axboe <jens.axboe@oracle.com> 2008
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  */
 #include <linux/rcupdate.h>
 #include <linux/rculist.h>
@@ -12,6 +13,7 @@
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/cpu.h>
+#include <asm/relaxed.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/smp.h>
 
@@ -104,8 +106,8 @@ void __init call_function_init(void)
  */
 static void csd_lock_wait(struct call_single_data *csd)
 {
-	while (csd->flags & CSD_FLAG_LOCK)
-		cpu_relax();
+	while (cpu_relaxed_read_short(&csd->flags) & CSD_FLAG_LOCK)
+		cpu_read_relax();
 }
 
 static void csd_lock(struct call_single_data *csd)
