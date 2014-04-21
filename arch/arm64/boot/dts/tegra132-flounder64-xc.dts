@@ -6,15 +6,6 @@
 	compatible = "google,flounder64", "nvidia,tegra132";
 	hw-revision = "xc";
 
-	i2c@7000c000 {
-		bq2419x: bq2419x@6b {
-			charger {
-				ti,charge-suspend-polling-time-sec = <3600>;
-				charge-full-by-monitor-full-threshold;
-			};
-		};
-	};
-
 	panel_jdi_qxga_8_9 {
 		gpios = <&gpio TEGRA_GPIO(Q, 2) 0>,
 			<&gpio TEGRA_GPIO(R, 0) 0>,
