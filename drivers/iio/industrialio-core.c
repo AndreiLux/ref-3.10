@@ -370,10 +370,13 @@ static ssize_t iio_read_channel_info(struct device *dev,
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct iio_dev_attr *this_attr = to_iio_dev_attr(attr);
 	unsigned long long tmp;
-	int val, val2;
+	int ret, val, val2;
 	bool scale_db = false;
-	int ret = indio_dev->info->read_raw(indio_dev, this_attr->c,
-					    &val, &val2, this_attr->address);
+	if (likely(indio_dev && indio_dev->info && indio_dev->info->read_raw))
+		ret = indio_dev->info->read_raw(indio_dev, this_attr->c,
+					&val, &val2, this_attr->address);
+	else
+		ret = -ENODEV;
 
 	if (ret < 0)
 		return ret;
