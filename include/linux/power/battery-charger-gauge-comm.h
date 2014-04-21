@@ -30,6 +30,7 @@ enum battery_charger_status {
 	BATTERY_DISCHARGING,
 	BATTERY_CHARGING,
 	BATTERY_CHARGING_DONE,
+	BATTERY_UNKNOWN,
 };
 
 enum charge_thermal_state {
@@ -61,6 +62,7 @@ struct battery_charging_ops {
 		int battery_voltage);
 	int (*charging_full_configure)(struct battery_charger_dev *bc_dev,
 		bool charge_full_done, bool charge_full_stop);
+	int (*unknown_battery_handle)(struct battery_charger_dev *bc_dev);
 };
 
 struct battery_thermal_prop {
@@ -92,6 +94,8 @@ struct battery_charger_info {
 	struct battery_charging_ops *bc_ops;
 	struct battery_thermal_prop thermal_prop;
 	struct charge_full_threshold full_thr;
+	const char *batt_id_channel_name;
+	int unknown_batt_id_min;
 };
 
 struct battery_gauge_info {

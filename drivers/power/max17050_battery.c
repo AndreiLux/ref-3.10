@@ -456,7 +456,8 @@ static bool max17050_soc_adjust(struct max17050_chip *chip,
 	else if (soc < 0)
 		soc = 0;
 
-	if (chip->charger_status == BATTERY_DISCHARGING) {
+	if (chip->charger_status == BATTERY_DISCHARGING ||
+		chip->charger_status == BATTERY_UNKNOWN) {
 		soc_decrease = chip->lasttime_soc - soc;
 		if (time_since_last_update >=
 				MAX17050_SOC_UPDATE_LONG_MS) {
@@ -487,7 +488,8 @@ no_update:
 
 static void max17050_battery_status_check(struct max17050_chip *chip)
 {
-	if (chip->charger_status == BATTERY_DISCHARGING)
+	if (chip->charger_status == BATTERY_DISCHARGING ||
+		chip->charger_status == BATTERY_UNKNOWN)
 		chip->status = POWER_SUPPLY_STATUS_DISCHARGING;
 	else {
 		if (chip->soc >= MAX17050_BATTERY_FULL
@@ -629,6 +631,8 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 
 	if (status == BATTERY_CHARGING)
 		chip->charger_status = BATTERY_CHARGING;
+	else if (status == BATTERY_UNKNOWN)
+		chip->charger_status = BATTERY_UNKNOWN;
 	else if (status == BATTERY_CHARGING_DONE) {
 		chip->charger_status = BATTERY_CHARGING_DONE;
 		chip->charge_complete = 1;

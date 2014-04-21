@@ -60,7 +60,7 @@ enum charging_states {
 
 #define CHG_DISABLE_REASON_THERMAL		BIT(0)
 #define CHG_DISABLE_REASON_USER			BIT(1)
-#define CHG_DISABLE_REASON_NO_BATTERY		BIT(2)
+#define CHG_DISABLE_REASON_UNKNOWN_BATTERY	BIT(2)
 #define CHG_DISABLE_REASON_CHG_FULL_STOP	BIT(3)
 
 #define BQ2419X_INPUT_VINDPM_OFFSET	3880
@@ -192,18 +192,19 @@ static int bq2419x_charger_enable_locked(struct bq2419x_chip *bq2419x,
 			return ret;
 		}
 
-		reason |= CHG_DISABLE_REASON_NO_BATTERY;
+		reason |= CHG_DISABLE_REASON_UNKNOWN_BATTERY;
 		ret = __bq2419x_charger_enable_locked(bq2419x,
 					reason, true);
 	} else {
 		ret = __bq2419x_charger_enable_locked(bq2419x,
-					CHG_DISABLE_REASON_NO_BATTERY, false);
+				CHG_DISABLE_REASON_UNKNOWN_BATTERY, false);
 		if (ret < 0) {
 			dev_err(bq2419x->dev,
 				"charger enable failed %d\n", ret);
 			return ret;
 		}
 
+		reason &= ~CHG_DISABLE_REASON_UNKNOWN_BATTERY;
 		ret = __bq2419x_charger_enable_locked(bq2419x,
 					reason, true);
 	}
@@ -529,6 +530,9 @@ int bq2419x_half_current_enable(struct bq2419x_chip *bq2419x)
 static void bq2419x_monitor_work_control(struct bq2419x_chip *bq2419x,
 								bool start)
 {
+	if (!bq2419x->battery_presense)
+		return;
+
 	if (start) {
 		if (bq2419x->chg_full_by_monitor_full_thr)
 			battery_charger_batt_status_start_monitoring(
@@ -547,19 +551,14 @@ static void bq2419x_monitor_work_control(struct bq2419x_chip *bq2419x,
 	}
 }
 
-static int bq2419x_set_charging_current(struct regulator_dev *rdev,
+static int bq2419x_set_charging_current_locked(struct bq2419x_chip *bq2419x,
 			int min_uA, int max_uA)
 {
-	struct bq2419x_chip *bq2419x = rdev_get_drvdata(rdev);
 	int in_current_limit;
 	int old_current_limit;
 	int ret = 0;
 	int val;
 
-	dev_info(bq2419x->dev, "Setting charging current %d\n", max_uA/1000);
-	msleep(200);
-
-	mutex_lock(&bq2419x->mutex);
 	bq2419x->chg_status = BATTERY_DISCHARGING;
 	bq2419x->charging_state = STATE_INIT;
 	bq2419x->chg_full_stop = false;
@@ -597,20 +596,38 @@ static int bq2419x_set_charging_current(struct regulator_dev *rdev,
 	if (ret < 0)
 		goto error;
 
+	if (!bq2419x->battery_presense)
+		bq2419x->chg_status = BATTERY_UNKNOWN;
+
 	battery_charging_status_update(bq2419x->bc_dev, bq2419x->chg_status);
-	if (bq2419x->disable_suspend_during_charging) {
+	if (bq2419x->disable_suspend_during_charging &&
+		bq2419x->battery_presense) {
 		if (bq2419x->cable_connected && in_current_limit > 500)
 			battery_charger_acquire_wake_lock(bq2419x->bc_dev);
 		else if (!bq2419x->cable_connected && old_current_limit > 500)
 			battery_charger_release_wake_lock(bq2419x->bc_dev);
 	}
 
-	mutex_unlock(&bq2419x->mutex);
 	return 0;
 error:
 	dev_err(bq2419x->dev, "Charger enable failed, err = %d\n", ret);
 done:
+	return ret;
+}
+
+static int bq2419x_set_charging_current(struct regulator_dev *rdev,
+			int min_uA, int max_uA)
+{
+	struct bq2419x_chip *bq2419x = rdev_get_drvdata(rdev);
+	int ret = 0;
+
+	dev_info(bq2419x->dev, "Setting charging current %d\n", max_uA/1000);
+	msleep(200);
+
+	mutex_lock(&bq2419x->mutex);
+	ret = bq2419x_set_charging_current_locked(bq2419x, min_uA, max_uA);
 	mutex_unlock(&bq2419x->mutex);
+
 	return ret;
 }
 
@@ -654,6 +671,11 @@ static int bq2419x_reset_wdt(struct bq2419x_chip *bq2419x, const char *from)
 	int timeout;
 
 	mutex_lock(&bq2419x->mutex);
+	if (!bq2419x->battery_presense) {
+		mutex_unlock(&bq2419x->mutex);
+		return ret;
+	}
+
 	dev_dbg(bq2419x->dev, "%s() from %s()\n", __func__, from);
 
 	/* Clear EN_HIZ */
@@ -835,8 +857,12 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 	if (val & BQ2419x_FAULT_BOOST_FAULT)
 		bq_chg_err(bq2419x, "VBUS Overloaded\n");
 
-	if (!bq2419x->battery_presense)
-		return IRQ_HANDLED;
+	mutex_lock(&bq2419x->mutex);
+	if (!bq2419x->battery_presense) {
+		bq2419x_charger_enable_locked(bq2419x, 0);
+		goto done;
+	}
+	mutex_unlock(&bq2419x->mutex);
 
 	if (val & BQ2419x_FAULT_WATCHDOG_FAULT) {
 		bq_chg_err(bq2419x, "WatchDog Expired\n");
@@ -902,8 +928,9 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 		return ret;
 	}
 
-	if ((val & BQ2419x_CHRG_STATE_MASK) == BQ2419x_CHRG_STATE_CHARGE_DONE) {
-		mutex_lock(&bq2419x->mutex);
+	mutex_lock(&bq2419x->mutex);
+	if ((val & BQ2419x_CHRG_STATE_MASK) == BQ2419x_CHRG_STATE_CHARGE_DONE &&
+		bq2419x->battery_presense) {
 		bq2419x_charging_done_update_locked(bq2419x);
 		if ((!bq2419x->otp_control_no_thermister
 				|| bq2419x->last_chg_voltage.val ==
@@ -916,7 +943,6 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 						bq2419x->bc_dev);
 			bq2419x_monitor_work_control(bq2419x, false);
 		}
-		mutex_unlock(&bq2419x->mutex);
 	}
 
 	if ((val & BQ2419x_VSYS_STAT_MASK) == BQ2419x_VSYS_STAT_BATT_LOW)
@@ -925,7 +951,8 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 
 	/* Update Charging status based on STAT register */
 	if (check_chg_state &&
-	  ((val & BQ2419x_CHRG_STATE_MASK) == BQ2419x_CHRG_STATE_NOTCHARGING)) {
+	  ((val & BQ2419x_CHRG_STATE_MASK) == BQ2419x_CHRG_STATE_NOTCHARGING) &&
+		bq2419x->battery_presense) {
 		bq2419x->chg_status = BATTERY_DISCHARGING;
 		battery_charging_status_update(bq2419x->bc_dev,
 				bq2419x->chg_status);
@@ -934,6 +961,12 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 		if (bq2419x->disable_suspend_during_charging)
 			battery_charger_release_wake_lock(bq2419x->bc_dev);
 	}
+
+	if (!bq2419x->battery_presense)
+		bq2419x_charger_enable_locked(bq2419x, 0);
+
+done:
+	mutex_unlock(&bq2419x->mutex);
 
 	return IRQ_HANDLED;
 }
@@ -1335,7 +1368,8 @@ static int bq2419x_charger_thermal_configure(
 	int curr_ichg, vreg;
 
 	chg_pdata = bq2419x->charger_pdata;
-	if (!bq2419x->cable_connected || !chg_pdata->n_temp_profile)
+	if (!bq2419x->cable_connected || !chg_pdata->n_temp_profile ||
+			!bq2419x->battery_presense)
 		return 0;
 
 	if (bq2419x->last_temp == temp)
@@ -1472,13 +1506,14 @@ done:
 static int bq2419x_charging_restart(struct battery_charger_dev *bc_dev)
 {
 	struct bq2419x_chip *bq2419x = battery_charger_get_drvdata(bc_dev);
-	int ret;
+	int ret = 0;
 
-	if (!bq2419x->cable_connected)
-		return 0;
+	mutex_lock(&bq2419x->mutex);
+	if (!bq2419x->cable_connected || !bq2419x->battery_presense)
+		goto done;
 
 	dev_info(bq2419x->dev, "Restarting the charging\n");
-	ret = bq2419x_set_charging_current(bq2419x->chg_rdev,
+	ret = bq2419x_set_charging_current_locked(bq2419x,
 			bq2419x->last_charging_current,
 			bq2419x->last_charging_current);
 	if (ret < 0) {
@@ -1487,6 +1522,9 @@ static int bq2419x_charging_restart(struct battery_charger_dev *bc_dev)
 		battery_charging_restart(bq2419x->bc_dev,
 				bq2419x->chg_restart_time);
 	}
+
+done:
+	mutex_unlock(&bq2419x->mutex);
 	return ret;
 }
 
@@ -1498,7 +1536,8 @@ static int bq2419x_charger_charging_full_configure(
 
 	mutex_lock(&bq2419x->mutex);
 
-	if (!bq2419x->chg_full_by_monitor_full_thr)
+	if (!bq2419x->chg_full_by_monitor_full_thr ||
+		!bq2419x->battery_presense)
 		goto done;
 
 	if (!bq2419x->cable_connected)
@@ -1538,11 +1577,47 @@ done:
 	return 0;
 }
 
+static int bq2419x_unknown_battery_handle(struct battery_charger_dev *bc_dev)
+{
+	int ret = 0;
+	struct bq2419x_chip *bq2419x = battery_charger_get_drvdata(bc_dev);
+
+	mutex_lock(&bq2419x->mutex);
+	bq2419x->battery_presense = false;
+	bq2419x->chg_status = BATTERY_UNKNOWN;
+	bq2419x->charging_state = STATE_INIT;
+
+	ret = __bq2419x_charger_enable_locked(bq2419x,
+			CHG_DISABLE_REASON_UNKNOWN_BATTERY, false);
+	if (ret < 0) {
+		dev_err(bq2419x->dev,
+				"charger enable failed %d\n", ret);
+		goto error;
+	}
+
+	cancel_delayed_work(&bq2419x->wdt_restart_wq);
+	battery_charging_restart_cancel(bq2419x->bc_dev);
+	battery_charger_batt_status_stop_monitoring(
+			bq2419x->bc_dev);
+
+	battery_charging_status_update(bq2419x->bc_dev, bq2419x->chg_status);
+
+	if (bq2419x->disable_suspend_during_charging
+			&& bq2419x->last_charging_current > 500)
+			battery_charger_release_wake_lock(bq2419x->bc_dev);
+
+	bq2419x->last_charging_current = 0;
+error:
+	mutex_unlock(&bq2419x->mutex);
+	return ret;
+}
+
 static struct battery_charging_ops bq2419x_charger_bci_ops = {
 	.get_charging_status = bq2419x_charger_get_status,
 	.restart_charging = bq2419x_charging_restart,
 	.thermal_configure = bq2419x_charger_thermal_configure,
 	.charging_full_configure = bq2419x_charger_charging_full_configure,
+	.unknown_battery_handle = bq2419x_unknown_battery_handle,
 };
 
 static struct battery_charger_info bq2419x_charger_bci = {
@@ -1577,6 +1652,7 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 		struct bq2419x_charger_platform_data *chg_pdata;
 		const char *status_str;
 		struct bq2419x_charger_platform_data *bcharger_pdata;
+		int unknown_batt_id_min;
 		u32 pval;
 
 		status_str = of_get_property(batt_reg_node, "status", NULL);
@@ -1845,6 +1921,17 @@ skip_therm_profile:
 		if (!ret)
 			bcharger_pdata->full_thr.recharge_voltage_min_mv =
 								full_thr_val;
+
+		bcharger_pdata->batt_id_channel_name =
+			of_get_property(batt_reg_node,
+					"battery-id-channel-name", NULL);
+
+		ret = of_property_read_u32(batt_reg_node,
+					"unknown-battery-id-minimum",
+					&unknown_batt_id_min);
+		if (!ret)
+			bcharger_pdata->unknown_batt_id_min =
+							unknown_batt_id_min;
 	}
 
 vbus_node:
@@ -2051,6 +2138,11 @@ static int bq2419x_probe(struct i2c_client *client,
 		(pdata->bcharger_pdata->charge_voltage_limit_mV ?
 		pdata->bcharger_pdata->charge_voltage_limit_mV - 48 : 0);
 
+	bq2419x_charger_bci.batt_id_channel_name =
+			pdata->bcharger_pdata->batt_id_channel_name;
+	bq2419x_charger_bci.unknown_batt_id_min =
+			pdata->bcharger_pdata->unknown_batt_id_min;
+
 	if (bq2419x->chg_full_by_monitor_full_thr)
 		bq2419x_charger_bci.enable_batt_status_monitor = true;
 	else
@@ -2228,9 +2320,11 @@ static int bq2419x_resume(struct device *dev)
 			return ret;
 		}
 
-		ret = bq2419x_set_charging_current(bq2419x->chg_rdev,
+		mutex_lock(&bq2419x->mutex);
+		ret = bq2419x_set_charging_current_locked(bq2419x,
 				bq2419x->last_charging_current,
 				bq2419x->last_charging_current);
+		mutex_unlock(&bq2419x->mutex);
 		if (ret < 0) {
 			dev_err(bq2419x->dev,
 				"Set charging current failed: %d\n", ret);

@@ -195,6 +195,8 @@
 				thermal-disable-warm-current-half;
 				thermal-overtemp-output-current-milliamp = <1344>;
 				charge-full-by-monitor-full-threshold;
+				unknown-battery-id-minimum = <1343>;
+				battery-id-channel-name = "batt-id-channel";
 				consumers {
 					c1 {
 						regulator-consumer-supply = "usb_bat_chg";

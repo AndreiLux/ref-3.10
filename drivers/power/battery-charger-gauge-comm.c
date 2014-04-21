@@ -40,6 +40,7 @@
 #include <linux/wakelock.h>
 #include <linux/iio/consumer.h>
 #include <linux/iio/iio.h>
+#include <linux/iio/types.h>
 
 #define JETI_TEMP_COLD		(0)
 #define JETI_TEMP_COOL		(100)
@@ -61,6 +62,9 @@
 #define CHARGING_FULL_DONE_CHECK_TIMES		(3)
 #define CHARGING_FULL_DONE_TIMEOUT_S		(5400)
 #define CHARGING_FULL_DONE_LEVEL_MIN		(96)
+
+#define UNKNOWN_BATTERY_ID_CHECK_COUNT	(5)
+#define UNKNOWN_BATTERY_ID_CHECK_DELAY	(3*HZ)
 
 enum battery_monitor_state {
 	MONITOR_WAIT = 0,
@@ -107,6 +111,10 @@ struct battery_charger_dev {
 	int				in_current_limit;
 	struct charge_full_threshold	full_thr;
 	struct mutex			mutex;
+	const char			*batt_id_channel_name;
+	int				unknown_batt_id_min;
+	struct delayed_work		unknown_batt_id_work;
+	int				unknown_batt_id_check_count;
 };
 
 struct battery_gauge_dev {
@@ -785,6 +793,53 @@ int battery_charging_system_power_on_usb_event(
 }
 EXPORT_SYMBOL_GPL(battery_charging_system_power_on_usb_event);
 
+static void battery_charger_unknown_batt_id_work(struct work_struct *work)
+{
+	struct battery_charger_dev *bc_dev;
+	int batt_id = 0;
+	struct iio_channel *batt_id_channel;
+	int ret;
+
+	bc_dev = container_of(work, struct battery_charger_dev,
+					unknown_batt_id_work.work);
+
+	batt_id_channel = iio_channel_get(NULL, bc_dev->batt_id_channel_name);
+	if (IS_ERR(batt_id_channel)) {
+		if (bc_dev->unknown_batt_id_check_count > 0) {
+			bc_dev->unknown_batt_id_check_count--;
+			schedule_delayed_work(&bc_dev->unknown_batt_id_work,
+				UNKNOWN_BATTERY_ID_CHECK_DELAY);
+		} else
+			dev_err(bc_dev->parent_dev,
+					"Failed to get iio channel %s, %ld\n",
+					bc_dev->batt_id_channel_name,
+					PTR_ERR(batt_id_channel));
+	} else {
+		ret = iio_read_channel_processed(batt_id_channel, &batt_id);
+		if (ret < 0)
+			ret = iio_read_channel_raw(batt_id_channel, &batt_id);
+
+		if (ret < 0) {
+			dev_err(bc_dev->parent_dev,
+				"Failed to read batt id, ret=%d\n",
+				ret);
+			return;
+		}
+
+
+		dev_info(bc_dev->parent_dev,
+				"Battery id adc value is %d\n", batt_id);
+		if (batt_id > bc_dev->unknown_batt_id_min) {
+			dev_info(bc_dev->parent_dev,
+				"Unknown battery detected(%d), no charging!\n",
+				batt_id);
+
+			if (bc_dev->ops->unknown_battery_handle)
+				bc_dev->ops->unknown_battery_handle(bc_dev);
+		}
+	}
+}
+
 static void battery_charger_thermal_prop_init(
 	struct battery_charger_dev *bc_dev,
 	struct battery_thermal_prop thermal_prop)
@@ -923,6 +978,22 @@ struct battery_charger_dev *battery_charger_register(struct device *dev,
 						"charger-suspend-lock");
 	list_add(&bc_dev->list, &charger_list);
 	mutex_unlock(&charger_gauge_list_mutex);
+
+	if (bci->batt_id_channel_name && bci->unknown_batt_id_min > 0) {
+		bc_dev->batt_id_channel_name =
+				kstrdup(bci->batt_id_channel_name, GFP_KERNEL);
+		if (bc_dev->batt_id_channel_name) {
+			bc_dev->unknown_batt_id_min = bci->unknown_batt_id_min;
+			bc_dev->unknown_batt_id_check_count =
+					UNKNOWN_BATTERY_ID_CHECK_COUNT;
+			INIT_DEFERRABLE_WORK(&bc_dev->unknown_batt_id_work,
+					battery_charger_unknown_batt_id_work);
+			schedule_delayed_work(&bc_dev->unknown_batt_id_work, 0);
+		} else
+			dev_err(dev,
+				"Failed to duplicate batt id channel name\n");
+	}
+
 	return bc_dev;
 }
 EXPORT_SYMBOL_GPL(battery_charger_register);
@@ -935,6 +1006,8 @@ void battery_charger_unregister(struct battery_charger_dev *bc_dev)
 		cancel_delayed_work(&bc_dev->poll_temp_monitor_wq);
 	if (bc_dev->enable_batt_status_monitor)
 		cancel_delayed_work(&bc_dev->poll_batt_status_monitor_wq);
+	if (bc_dev->batt_id_channel_name && bc_dev->unknown_batt_id_min > 0)
+		cancel_delayed_work(&bc_dev->unknown_batt_id_work);
 	cancel_delayed_work(&bc_dev->restart_charging_wq);
 	wake_lock_destroy(&bc_dev->charger_wake_lock);
 	mutex_unlock(&charger_gauge_list_mutex);
