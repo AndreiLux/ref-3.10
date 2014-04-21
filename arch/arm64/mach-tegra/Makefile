@@ -75,6 +75,8 @@ obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-power.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += flounder-bdaddress.o
 
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-bootparams.o
+
 obj-y                                   += board-touch-maxim_sti-spi.o
 
 ifeq ($(CONFIG_HOTPLUG_CPU),y)

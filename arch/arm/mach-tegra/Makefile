@@ -258,6 +258,8 @@ obj-${CONFIG_MACH_FLOUNDER}             += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_FLOUNDER}             += panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_FLOUNDER}             += flounder-bdaddress.o
 
+obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-bootparams.o
+
 obj-${CONFIG_MACH_LOKI}               	+= board-loki.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-kbc.o
 obj-${CONFIG_MACH_LOKI}               	+= board-loki-sensors.o
