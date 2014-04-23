@@ -183,6 +183,7 @@
 				ti,charge-voltage-limit-millivolt = <4352>;
 				ti,disbale-suspend-during-charging;
 				ti,charge-suspend-polling-time-sec = <3600>;
+				ti,safety-timer-reset-disable;
 				ti,temp-polling-time-sec = <30>;
 				thermal-overtemp-control-no-thermister;
 				thermal-temperature-hot-deciC = <551>;
