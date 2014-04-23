@@ -632,7 +632,6 @@ static int camera_add_drv_by_sensor_name(
 	struct camera_info *cam, struct nvc_param *param)
 {
 	struct camera_module *cm = cam_desc.pdata->modules;
-	struct i2c_adapter *adap = NULL;
 	struct i2c_board_info *bi = NULL;
 	char ref_name[CAMERA_MAX_NAME_LENGTH];
 	int err = 0;
@@ -653,9 +652,6 @@ static int camera_add_drv_by_sensor_name(
 		goto add_sensor_driver_end;
 	}
 
-	dev_dbg(cam->dev, "%s looking for %s on %d\n",
-		__func__, ref_name, param->variant);
-	adap = i2c_get_adapter(param->variant);
 	while (cm) {
 		bi = cm->sensor.bi;
 		if (!bi || !strlen(bi->type))
@@ -663,15 +659,15 @@ static int camera_add_drv_by_sensor_name(
 
 		dev_dbg(cam->dev, "%s\n", bi->type);
 		if (!strcmp(bi->type, ref_name)) {
-			err = camera_add_dev_drv(cam, adap, &cm->sensor);
+			err = camera_add_dev_drv(cam, NULL, &cm->sensor);
 			if (err)
 				break;
 
-			err = camera_add_dev_drv(cam, adap, &cm->focuser);
+			err = camera_add_dev_drv(cam, NULL, &cm->focuser);
 			if (err)
 				break;
 
-			err = camera_add_dev_drv(cam, adap, &cm->flash);
+			err = camera_add_dev_drv(cam, NULL, &cm->flash);
 			if (err)
 				break;
 		}
