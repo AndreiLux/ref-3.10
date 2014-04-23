@@ -46,8 +46,6 @@
 #include <asm/mach-types.h>
 #include "tegra-of-dev-auxdata.h"
 
-static struct board_info board_info, display_board_info;
-
 #if defined(CONFIG_ANDROID) && defined(CONFIG_BLUEDROID_PM)
 static struct resource vcm30_t124_bluedroid_pm_resources[] = {
 	[0] = {
@@ -200,7 +198,8 @@ struct therm_monitor_data vcm30t30_therm_monitor_data = {
  * don't care for this table.
  */
 
-static struct tegra_clk_init_table vcm30t124_fixed_target_clk_table[] = {
+static  __initdata struct tegra_clk_init_table
+				vcm30t124_fixed_target_clk_table[] = {
 
 	/*			name,		fixed target rate*/
 	SET_FIXED_TARGET_RATE("pll_m",		792000000),
@@ -277,7 +276,7 @@ static struct tegra_clk_init_table vcm30t124_fixed_target_clk_table[] = {
 #endif
 };
 
-static struct tegra_clk_init_table vcm30t124_a0x_i2s_clk_table[] = {
+static __initdata struct tegra_clk_init_table vcm30t124_a0x_i2s_clk_table[] = {
 	SET_FIXED_TARGET_RATE("i2s0",		3072000),
 	SET_FIXED_TARGET_RATE("i2s1",		24576000),
 	SET_FIXED_TARGET_RATE("i2s2",		24576000),
@@ -285,7 +284,7 @@ static struct tegra_clk_init_table vcm30t124_a0x_i2s_clk_table[] = {
 	SET_FIXED_TARGET_RATE("i2s4",		12288000),
 };
 
-static struct tegra_clk_init_table vcm30t124_b0x_i2s_clk_table[] = {
+static __initdata struct tegra_clk_init_table vcm30t124_b0x_i2s_clk_table[] = {
 	SET_FIXED_TARGET_RATE("i2s0",		12288000),
 	SET_FIXED_TARGET_RATE("i2s1",		24576000),
 	SET_FIXED_TARGET_RATE("i2s2",		24576000),
@@ -376,7 +375,7 @@ static struct cs_info vcm30_t124_cs_info[] = {
 	},
 };
 
-static void vcm30_t124_nor_init(void)
+static void  __init vcm30_t124_nor_init(void)
 {
 	tegra_nor_device.resource[2].end = TEGRA_NOR_FLASH_BASE + SZ_64M - 1;
 
@@ -407,11 +406,8 @@ static struct i2c_board_info __initdata ad1937_board_info = {
 	I2C_BOARD_INFO("ad1937", 0x07),
 };
 
-static void vcm30_t124_i2c_init(void)
+static void __init vcm30_t124_i2c_init(void)
 {
-	struct board_info board_info;
-
-	tegra_get_board_info(&board_info);
 	i2c_register_board_info(0, &ak4618_board_info, 1);
 	i2c_register_board_info(0, &wm8731_board_info, 1);
 	i2c_register_board_info(0, &ad1937_board_info, 1);
@@ -491,20 +487,6 @@ static struct platform_device tegra_rtc_device = {
 	.num_resources = ARRAY_SIZE(tegra_rtc_resources),
 };
 
-#ifdef CONFIG_SATA_AHCI_TEGRA
-static struct tegra_ahci_platform_data ahci_plat_data = {
-        .gen2_rx_eq = 7,
-};
-
-static void vcm30_t124_sata_init(void)
-{
-        tegra_sata_device.dev.platform_data = &ahci_plat_data;
-        platform_device_register(&tegra_sata_device);
-}
-#else
-static void vcm30_t124_sata_init(void) { }
-#endif
-
 static struct platform_device tegra_snd_vcm30t124 = {
 	.name = "tegra-snd-vcm30t124",
 	.id = 0,
@@ -527,14 +509,13 @@ static void __init vcm30_t124_audio_init(void)
 		platform_device_register(&tegra_snd_vcm30t124);
 }
 
-/* FIXME: Check which devices are needed from the below list */
 static struct platform_device *vcm30_t124_devices[] __initdata = {
 	&tegra_pmu_device,
 	&tegra_rtc_device,
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
-#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE) && !defined(CONFIG_USE_OF)
 	&tegra12_se_device,
 #endif
 #if defined(CONFIG_TEGRA_WATCHDOG)
@@ -664,7 +645,7 @@ static struct tegra_usb_otg_data tegra_otg_pdata = {
 	.ehci_pdata = &tegra_ehci1_utmi_pdata,
 };
 
-static void vcm30_t124_usb_init(void)
+static void __init vcm30_t124_usb_init(void)
 {
 	int usb_port_owner_info = tegra_get_usb_port_owner_info();
 
@@ -727,6 +708,13 @@ struct of_dev_auxdata vcm30_t124_auxdata_lookup[] __initdata = {
 	OF_DEV_AUXDATA("nvidia,tegra124-pwm", 0x7000a000, "tegra-pwm", NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-efuse", TEGRA_FUSE_BASE, "tegra-fuse",
 				NULL),
+#ifdef CONFIG_SATA_AHCI_TEGRA
+	OF_DEV_AUXDATA("nvidia,tegra114-ahci-sata", TEGRA_SATA_BAR5_BASE, "tegra-sata", NULL),
+#endif
+
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
+	OF_DEV_AUXDATA("nvidia,tegra124-se", TEGRA_SE_BASE, "tegra12-se", NULL),
+#endif
 	{}
 };
 #endif
@@ -740,12 +728,6 @@ static void __init tegra_vcm30_t124_early_init(void)
 
 static void __init tegra_vcm30_t124_late_init(void)
 {
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-	pr_info("board_info: id:sku:fab:major:minor = 0x%04x:0x%04x:0x%02x:0x%02x:0x%02x\n",
-		board_info.board_id, board_info.sku,
-		board_info.fab, board_info.major_revision,
-		board_info.minor_revision);
 	vcm30_t124_usb_init();
 /*	vcm30_t124_xusb_init(); */
 	vcm30_t124_nor_init();
@@ -755,29 +737,15 @@ static void __init tegra_vcm30_t124_late_init(void)
 	vcm30_t124_audio_init();
 	platform_add_devices(vcm30_t124_devices,
 			ARRAY_SIZE(vcm30_t124_devices));
-	tegra_io_dpd_init();
 	vcm30_t124_sdhci_init();
 	vcm30_t124_regulator_init();
 	vcm30_t124_suspend_init();
-#if 0
-	vcm30_t124_emc_init();
-	vcm30_t124_edp_init();
-#endif
 	isomgr_init();
-	/* vcm30_t124_panel_init(); */
-	/* vcm30_t124_pmon_init(); */
-	vcm30_t124_sata_init();
 #ifdef CONFIG_TEGRA_WDT_RECOVERY
 	tegra_wdt_recovery_init();
 #endif
-	/* FIXME: Required? */
-#if 0
-	tegra_serial_debug_init(TEGRA_UARTD_BASE, INT_WDT_CPU, NULL, -1, -1);
-
-	vcm30_t124_sensors_init();
-	vcm30_t124_soctherm_init();
-#endif
 	vcm30_t124_panel_init();
+
 #ifdef CONFIG_SENSORS_TMON_TMP411
 	register_therm_monitor(&vcm30t30_therm_monitor_data);
 #endif
@@ -789,9 +757,6 @@ static void __init tegra_vcm30_t124_late_init(void)
 
 static void __init tegra_vcm30_t124_dt_init(void)
 {
-	tegra_get_board_info(&board_info);
-	tegra_get_display_board_info(&display_board_info);
-
 	tegra_vcm30_t124_early_init();
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	carveout_linear_set(&tegra_generic_cma_dev);

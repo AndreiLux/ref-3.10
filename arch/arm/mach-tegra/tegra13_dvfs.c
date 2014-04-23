@@ -98,7 +98,7 @@ static struct dvfs_rail tegra13_dvfs_rail_vdd_cpu = {
 
 static struct dvfs_rail tegra13_dvfs_rail_vdd_core = {
 	.reg_id = "vdd_core",
-	.version = "p4v4",
+	.version = "p4v7",
 	.max_millivolts = 1400,
 	.min_millivolts = 800,
 	.step = VDD_SAFE_STEP,
@@ -109,7 +109,7 @@ static struct dvfs_rail tegra13_dvfs_rail_vdd_core = {
 
 static struct dvfs_rail tegra13_dvfs_rail_vdd_gpu = {
 	.reg_id = "vdd_gpu",
-	.version = "p4_v3",
+	.version = "p4_v4",
 	.max_millivolts = 1350,
 	.min_millivolts = 650,
 	.step = VDD_SAFE_STEP,
@@ -395,6 +395,9 @@ static struct dvfs core_dvfs_table[] = {
 	CORE_DVFS("hda",    	     -1, -1, 1, KHZ,  	  1, 108000, 108000, 108000, 108000, 108000 ,  108000,  108000),
 	CORE_DVFS("hda2codec_2x",    -1, -1, 1, KHZ,  	  1,  48000,  48000,  48000,  48000,  48000 ,   48000,   48000),
 
+        CORE_DVFS("sor0",             0, 0, 1, KHZ,       1, 270000, 540000, 540000, 540000,  540000,  540000,  540000),
+        CORE_DVFS("sor0",             0, 1, 1, KHZ,  162000, 270000, 540000, 540000, 540000,  540000,  540000,  540000),
+
 	OVRRD_DVFS("sdmmc1", -1, -1, 1, KHZ,       	  1,      1,  82000,  82000,  136000, 136000, 136000, 204000),
 	OVRRD_DVFS("sdmmc3", -1, -1, 1, KHZ,          	  1,      1,  82000,  82000,  136000, 136000, 136000, 204000),
 	OVRRD_DVFS("sdmmc4", -1, -1, 1, KHZ,       	  1,      1,  82000,  82000,  136000, 136000, 136000, 200000),
@@ -485,7 +488,7 @@ static struct gpu_cvb_dvfs gpu_cvb_dvfs_table[] = {
 			{  852000, {  }, { 1608418, -21643, -269,     0,    763,  -48}, },
 			{  900000, {  }, { 1706383, -25155, -209,     0,    305,    0}, },
 			{  924000, {  }, { 1739600, -26289, -194,     0,    763,    0}, },
-			{  960000, {  }, { 1889996, -35353,   14,  -179,   4120,   24}, },
+			{  954000, {  }, { 1880996, -35353,   14,  -179,   4120,   24}, },
 			{  984000, {  }, { 1890996, -35353,   14,  -179,   4120,   24}, },
 			{ 1008000, {  }, { 2015834, -44439,  271,  -596,   4730, 1222}, },
 			{       0, {  }, { }, },

@@ -105,6 +105,7 @@ struct nvmap_pgalloc {
 	struct page **pages;
 	bool contig;			/* contiguous system memory */
 	struct list_head vmas;
+	atomic_t ndirty;	/* count number of dirty pages */
 };
 
 struct nvmap_handle {
@@ -413,7 +414,8 @@ void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
 void nvmap_flush_cache(struct page **pages, int numpages);
 
-int nvmap_do_cache_maint_list(struct nvmap_handle **handles, int op, int nr);
+int nvmap_do_cache_maint_list(struct nvmap_handle **handles, u32 *offsets,
+			      u32 *sizes, int op, int nr);
 
 /* Internal API to support dmabuf */
 struct dma_buf *__nvmap_dmabuf_export(struct nvmap_client *client,
@@ -433,7 +435,7 @@ int __nvmap_get_handle_param(struct nvmap_client *client,
 			     struct nvmap_handle *h, u32 param, u64 *result);
 int __nvmap_do_cache_maint(struct nvmap_client *client, struct nvmap_handle *h,
 			   unsigned long start, unsigned long end,
-			   unsigned int op);
+			   unsigned int op, bool clean_only_dirty);
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 					   const char *name);
 struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref);
@@ -451,12 +453,12 @@ void nvmap_altfree(void *ptr, size_t len);
 
 static inline struct page *nvmap_to_page(struct page *page)
 {
-	return (struct page *)((unsigned long)page & ~(3UL));
+	return (struct page *)((unsigned long)page & ~3UL);
 }
 
 static inline bool nvmap_page_dirty(struct page *page)
 {
-	return !!((unsigned long)page | 1UL);
+	return (unsigned long)page & 1UL;
 }
 
 static inline void nvmap_page_mkdirty(struct page **page)
@@ -466,12 +468,12 @@ static inline void nvmap_page_mkdirty(struct page **page)
 
 static inline void nvmap_page_mkclean(struct page **page)
 {
-	*page = (struct page *)((unsigned long)*page & ~(1UL));
+	*page = (struct page *)((unsigned long)*page & ~1UL);
 }
 
 static inline bool nvmap_page_reserved(struct page *page)
 {
-	return !!((unsigned long)page | 2UL);
+	return !!((unsigned long)page & 2UL);
 }
 
 static inline void nvmap_page_mkreserved(struct page **page)
@@ -481,7 +483,39 @@ static inline void nvmap_page_mkreserved(struct page **page)
 
 static inline void nvmap_page_mkunreserved(struct page **page)
 {
-	*page = (struct page *)((unsigned long)*page & ~(2UL));
+	*page = (struct page *)((unsigned long)*page & ~2UL);
+}
+
+static inline void nvmap_handle_mk(struct nvmap_handle *h,
+				   u32 offset, u32 size,
+				   void (*fn)(struct page **))
+{
+	int i;
+	int start_page = PAGE_ALIGN(offset) >> PAGE_SHIFT;
+	int end_page = (offset + size) >> PAGE_SHIFT;
+
+	if (h->heap_pgalloc) {
+		for (i = start_page; i < end_page; i++)
+			fn(&h->pgalloc.pages[i + start_page]);
+	}
+}
+
+static inline void nvmap_handle_mkclean(struct nvmap_handle *h,
+					u32 offset, u32 size)
+{
+	nvmap_handle_mk(h, offset, size, nvmap_page_mkclean);
+}
+
+static inline void nvmap_handle_mkunreserved(struct nvmap_handle *h,
+					     u32 offset, u32 size)
+{
+	nvmap_handle_mk(h, offset, size, nvmap_page_mkunreserved);
+}
+
+static inline void nvmap_handle_mkreserved(struct nvmap_handle *h,
+					   u32 offset, u32 size)
+{
+	nvmap_handle_mk(h, offset, size, nvmap_page_mkreserved);
 }
 
 static inline struct page **nvmap_pages(struct page **pg_pages, u32 nr_pages)
@@ -498,5 +532,15 @@ static inline struct page **nvmap_pages(struct page **pg_pages, u32 nr_pages)
 
 	return pages;
 }
+
+void nvmap_zap_handle(struct nvmap_handle *handle, u32 offset, u32 size);
+
+void nvmap_zap_handles(struct nvmap_handle **handles, u32 *offsets,
+		       u32 *sizes, u32 nr);
+
+void nvmap_vma_open(struct vm_area_struct *vma);
+
+int nvmap_reserve_pages(struct nvmap_handle **handles, u32 *offsets,
+			u32 *sizes, u32 nr, u32 op);
 
 #endif /* __VIDEO_TEGRA_NVMAP_NVMAP_H */

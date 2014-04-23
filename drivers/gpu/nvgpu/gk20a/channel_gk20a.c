@@ -277,10 +277,6 @@ static int channel_gk20a_setup_ramfc(struct channel_gk20a *c,
 
 	gk20a_mem_wr32(inst_ptr, ram_fc_chid_w(), ram_fc_chid_id_f(c->hw_chid));
 
-	/* TBD: alwasy priv mode? */
-	gk20a_mem_wr32(inst_ptr, ram_fc_hce_ctrl_w(),
-		 pbdma_hce_ctrl_hce_priv_mode_yes_f());
-
 	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
@@ -351,6 +347,16 @@ static void channel_gk20a_unbind(struct channel_gk20a *ch_gk20a)
 			ccsr_channel_inst_bind_false_f());
 
 	ch_gk20a->bound = false;
+
+	/*
+	 * if we are agrressive then we can destroy the syncpt
+	 * resource at this point
+	 * if not, then it will be destroyed at channel_free()
+	 */
+	if (ch_gk20a->sync && ch_gk20a->sync->syncpt_aggressive_destroy) {
+		ch_gk20a->sync->destroy(ch_gk20a->sync);
+		ch_gk20a->sync = NULL;
+	}
 }
 
 static int channel_gk20a_alloc_inst(struct gk20a *g,
@@ -1850,6 +1856,7 @@ int gk20a_channel_suspend(struct gk20a *g)
 	for (chid = 0; chid < f->num_channels; chid++) {
 		struct channel_gk20a *c = &f->channel[chid];
 		if (c->in_use && c->obj_class != KEPLER_C) {
+			gk20a_platform_channel_busy(g->dev);
 			err = gk20a_channel_submit_wfi(c);
 			if (err) {
 				gk20a_err(d, "cannot idle channel %d\n",
@@ -1859,6 +1866,7 @@ int gk20a_channel_suspend(struct gk20a *g)
 
 			c->sync->wait_cpu(c->sync, &c->last_submit_fence,
 					  500000);
+			gk20a_platform_channel_idle(g->dev);
 			break;
 		}
 	}

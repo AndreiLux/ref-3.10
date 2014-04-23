@@ -509,6 +509,7 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg, bool is32)
 	vpriv->handle = h;
 	vpriv->offs = op.offset;
 	vma->vm_page_prot = nvmap_pgprot(h, vma->vm_page_prot);
+	nvmap_vma_open(vma);
 
 out:
 	up_read(&current->mm->mmap_sem);
@@ -672,7 +673,8 @@ static int __nvmap_cache_maint(struct nvmap_client *client,
 		(vma->vm_pgoff << PAGE_SHIFT);
 	end = start + op->len;
 
-	err = __nvmap_do_cache_maint(client, vpriv->handle, start, end, op->op);
+	err = __nvmap_do_cache_maint(client, vpriv->handle, start, end, op->op,
+				     false);
 out:
 	up_read(&current->mm->mmap_sem);
 	return err;
@@ -736,8 +738,17 @@ static void outer_cache_maint(unsigned int op, phys_addr_t paddr, size_t size)
 static void heap_page_cache_maint(
 	struct nvmap_handle *h, unsigned long start, unsigned long end,
 	unsigned int op, bool inner, bool outer,
-	unsigned long kaddr, pgprot_t prot)
+	unsigned long kaddr, pgprot_t prot, bool clean_only_dirty)
 {
+	if (h->userflags & NVMAP_HANDLE_CACHE_SYNC) {
+		/*
+		 * zap user VA->PA mappings so that any access to the pages
+		 * will result in a fault and can be marked dirty
+		 */
+		nvmap_handle_mkclean(h, start, end-start);
+		nvmap_zap_handle(h, start, end - start);
+	}
+
 #ifdef NVMAP_LAZY_VFREE
 	if (inner) {
 		void *vaddr = NULL;
@@ -842,10 +853,16 @@ static inline bool can_fast_cache_maint(struct nvmap_handle *h,
 
 static bool fast_cache_maint(struct nvmap_handle *h,
 	unsigned long start,
-	unsigned long end, unsigned int op)
+	unsigned long end, unsigned int op,
+	bool clean_only_dirty)
 {
 	if (!can_fast_cache_maint(h, start, end, op))
 		return false;
+
+	if (h->userflags & NVMAP_HANDLE_CACHE_SYNC) {
+		nvmap_handle_mkclean(h, 0, h->size);
+		nvmap_zap_handle(h, 0, h->size);
+	}
 
 	if (op == NVMAP_CACHE_OP_WB_INV)
 		inner_flush_cache_all();
@@ -858,7 +875,8 @@ static bool fast_cache_maint(struct nvmap_handle *h,
 		{
 			if (h->heap_pgalloc) {
 				heap_page_cache_maint(h, start,
-					end, op, false, true, 0, 0);
+					end, op, false, true, 0, 0,
+					clean_only_dirty);
 			} else  {
 				phys_addr_t pstart;
 
@@ -877,6 +895,7 @@ struct cache_maint_op {
 	struct nvmap_handle *h;
 	bool inner;
 	bool outer;
+	bool clean_only_dirty;
 };
 
 static int do_cache_maint(struct cache_maint_op *cache_work)
@@ -911,7 +930,7 @@ static int do_cache_maint(struct cache_maint_op *cache_work)
 	    h->flags == NVMAP_HANDLE_WRITE_COMBINE || pstart == pend)
 		goto out;
 
-	if (fast_cache_maint(h, pstart, pend, op))
+	if (fast_cache_maint(h, pstart, pend, op, cache_work->clean_only_dirty))
 		goto out;
 
 	prot = nvmap_pgprot(h, PG_PROT_KERNEL);
@@ -925,7 +944,8 @@ static int do_cache_maint(struct cache_maint_op *cache_work)
 	if (h->heap_pgalloc) {
 		heap_page_cache_maint(h, pstart, pend, op, true,
 			(h->flags == NVMAP_HANDLE_INNER_CACHEABLE) ?
-			false : true, kaddr, prot);
+			false : true, kaddr, prot,
+			cache_work->clean_only_dirty);
 		goto out;
 	}
 
@@ -963,7 +983,7 @@ out:
 int __nvmap_do_cache_maint(struct nvmap_client *client,
 			struct nvmap_handle *h,
 			unsigned long start, unsigned long end,
-			unsigned int op)
+			unsigned int op, bool clean_only_dirty)
 {
 	int err;
 	struct cache_maint_op cache_op;
@@ -975,6 +995,10 @@ int __nvmap_do_cache_maint(struct nvmap_client *client,
 	if (op == NVMAP_CACHE_OP_INV)
 		op = NVMAP_CACHE_OP_WB_INV;
 
+	/* clean only dirty is applicable only for Write Back operation */
+	if (op != NVMAP_CACHE_OP_WB)
+		clean_only_dirty = false;
+
 	cache_op.h = h;
 	cache_op.start = start;
 	cache_op.end = end;
@@ -982,6 +1006,7 @@ int __nvmap_do_cache_maint(struct nvmap_client *client,
 	cache_op.inner = h->flags == NVMAP_HANDLE_CACHEABLE ||
 			 h->flags == NVMAP_HANDLE_INNER_CACHEABLE;
 	cache_op.outer = h->flags == NVMAP_HANDLE_CACHEABLE;
+	cache_op.clean_only_dirty = clean_only_dirty;
 
 	nvmap_stats_inc(NS_CFLUSH_RQ, end - start);
 	err = do_cache_maint(&cache_op);
@@ -1083,7 +1108,7 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 		}
 		if (is_read)
 			__nvmap_do_cache_maint(client, h, h_offs,
-				h_offs + elem_size, NVMAP_CACHE_OP_INV);
+				h_offs + elem_size, NVMAP_CACHE_OP_INV, false);
 
 		ret = rw_handle_page(h, is_read, h_offs, sys_addr,
 				     elem_size, (unsigned long)addr);
@@ -1093,7 +1118,8 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 
 		if (!is_read)
 			__nvmap_do_cache_maint(client, h, h_offs,
-				h_offs + elem_size, NVMAP_CACHE_OP_WB_INV);
+				h_offs + elem_size, NVMAP_CACHE_OP_WB_INV,
+				false);
 
 		copied += elem_size;
 		sys_addr += sys_stride;
@@ -1103,3 +1129,68 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 	free_vm_area(area);
 	return ret ?: copied;
 }
+
+int nvmap_ioctl_cache_maint_list(struct file *filp, void __user *arg,
+				 bool is_reserve_ioctl)
+{
+	struct nvmap_cache_op_list op;
+	u32 *handle_ptr;
+	u32 *offset_ptr;
+	u32 *size_ptr;
+	struct nvmap_handle **refs;
+	int i, err = 0;
+
+	if (copy_from_user(&op, arg, sizeof(op)))
+		return -EFAULT;
+
+	if (!op.nr)
+		return -EINVAL;
+
+	if (!access_ok(VERIFY_READ, op.handles, op.nr * sizeof(u32)))
+		return -EFAULT;
+
+	if (!access_ok(VERIFY_READ, op.offsets, op.nr * sizeof(u32)))
+		return -EFAULT;
+
+	if (!access_ok(VERIFY_READ, op.sizes, op.nr * sizeof(u32)))
+		return -EFAULT;
+
+	if (!op.offsets || !op.sizes)
+		return -EINVAL;
+
+	refs = kcalloc(op.nr, sizeof(*refs), GFP_KERNEL);
+
+	if (!refs)
+		return -ENOMEM;
+
+	handle_ptr = (u32 *)(uintptr_t)op.handles;
+	offset_ptr = (u32 *)(uintptr_t)op.offsets;
+	size_ptr = (u32 *)(uintptr_t)op.sizes;
+
+	for (i = 0; i < op.nr; i++) {
+		u32 handle;
+
+		if (copy_from_user(&handle, &handle_ptr[i], sizeof(handle))) {
+			err = -EFAULT;
+			goto free_mem;
+		}
+
+		refs[i] = unmarshal_user_handle(handle);
+		if (!refs[i]) {
+			err = -EINVAL;
+			goto free_mem;
+		}
+	}
+
+	if (is_reserve_ioctl)
+		err = nvmap_reserve_pages(refs, offset_ptr, size_ptr,
+					  op.nr, op.op);
+	else
+		err = nvmap_do_cache_maint_list(refs, offset_ptr, size_ptr,
+						op.op, op.nr);
+
+free_mem:
+	kfree(refs);
+	return err;
+}
+

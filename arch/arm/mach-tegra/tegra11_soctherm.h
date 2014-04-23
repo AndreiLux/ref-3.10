@@ -133,6 +133,12 @@ struct soctherm_tsensor_pmu_data {
 	u8 pmu_i2c_addr;
 };
 
+struct soctherm_fuse_correction_war {
+	/* both scaled *1000000 */
+	int a;
+	int b;
+};
+
 /**
  * struct soctherm_platform_data - Board specific SOC_THERM info.
  * @oc_irq_base:		Base over-current IRQ number
@@ -149,12 +155,11 @@ struct soctherm_tsensor_pmu_data {
  *				responses.
  *				See struct soctherm_throttle.
  * @tshut_pmu_trip_data:	PMU-specific thermal shutdown settings.
- *				See struct tegra_tsensor_pmu_data.
+ *				See struct tegra_thermtrip_pmic_data.
  *
  * therm is used for trip point configuration and should be moved out of
  * soctherm_platform_data.
  */
-
 struct soctherm_platform_data {
 	int oc_irq_base;
 	int num_oc_irqs;
@@ -164,7 +169,7 @@ struct soctherm_platform_data {
 	struct soctherm_sensor sensor_data[TSENSE_SIZE];
 	struct soctherm_therm therm[THERM_SIZE];
 	struct soctherm_throttle throttle[THROTTLE_SIZE];
-	struct tegra_tsensor_pmu_data *tshut_pmu_trip_data;
+	struct tegra_thermtrip_pmic_data *tshut_pmu_trip_data;
 };
 
 #ifdef CONFIG_TEGRA_SOCTHERM

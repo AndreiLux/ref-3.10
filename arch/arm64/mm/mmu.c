@@ -47,7 +47,7 @@
 unsigned long empty_zero_page;
 EXPORT_SYMBOL(empty_zero_page);
 unsigned long zero_page_mask;
-static zero_page_order = 3;
+static int zero_page_order = 3;
 
 pgprot_t pgprot_default;
 EXPORT_SYMBOL(pgprot_default);
@@ -268,7 +268,7 @@ static void __init create_mapping(struct map_desc *io_desc)
 	pgd_t *pgd;
 
 	if (virt < VMALLOC_START) {
-		pr_warning("BUG: not creating mapping for 0x%016llx at 0x%016lx - outside kernel range\n",
+		pr_warning("BUG: not creating mapping for 0x%016lx at 0x%016lx - outside kernel range\n",
 			   phys, virt);
 		return;
 	}
@@ -286,7 +286,7 @@ static void __init create_mapping(struct map_desc *io_desc)
 }
 
 /* To support old-style static device memory mapping. */
-void iotable_init(struct map_desc *io_desc, int nr)
+__init void iotable_init(struct map_desc *io_desc, int nr)
 {
 	struct map_desc *md;
 	struct vm_struct *vm;

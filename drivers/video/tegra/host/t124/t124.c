@@ -28,12 +28,11 @@
 #include "nvhost_job.h"
 #include "class_ids.h"
 #include "t124.h"
-#include "vic03/vic03.h"
 #include "host1x/host1x.h"
 #include "hardware_t124.h"
 #include "syncpt_t124.h"
-#include "msenc/msenc.h"
 #include "tsec/tsec.h"
+#include "flcn/flcn.h"
 #include "vi/vi.h"
 #include "isp/isp.h"
 #include "scale3d.h"
@@ -276,7 +275,7 @@ static struct resource msenc_resources[] = {
 
 struct nvhost_device_data t124_msenc_info = {
 	.num_channels	= 1,
-	.version	= NVHOST_ENCODE_MSENC_VER(3, 1),
+	.version	= NVHOST_ENCODE_FLCN_VER(3, 1),
 	.class		= NV_VIDEO_ENCODE_MSENC_CLASS_ID,
 	.clocks		= {{"msenc", UINT_MAX, 0, TEGRA_MC_CLIENT_MSENC},
 			  {"emc", HOST_EMC_FLOOR} },
@@ -285,13 +284,14 @@ struct nvhost_device_data t124_msenc_info = {
 	.powergate_ids	= { TEGRA_POWERGATE_MPE, -1 },
 	.powergate_delay = 100,
 	.can_powergate	= true,
-	.init           = nvhost_msenc_init,
-	.deinit         = nvhost_msenc_deinit,
-	.finalize_poweron = nvhost_msenc_finalize_poweron,
+	.init           = nvhost_flcn_init,
+	.deinit         = nvhost_flcn_deinit,
+	.finalize_poweron = nvhost_flcn_boot,
 	.scaling_init	= nvhost_scale_init,
 	.scaling_deinit	= nvhost_scale_deinit,
 	.actmon_regs	= HOST1X_CHANNEL_ACTMON1_REG_BASE,
 	.actmon_enabled	= true,
+	.firmware_name	= "nvhost_msenc031.fw",
 };
 
 struct platform_device tegra_msenc03_device = {
@@ -357,7 +357,7 @@ struct nvhost_device_data t124_vic_info = {
 	.modulemutexes		= {NVMODMUTEX_VIC},
 	.clocks			= {{"vic03", UINT_MAX, 0, TEGRA_MC_CLIENT_VIC},
 				  {"emc", UINT_MAX} },
-	.version = NVHOST_ENCODE_VIC_VER(3, 0),
+	.version = NVHOST_ENCODE_FLCN_VER(3, 0),
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.moduleid      = NVHOST_MODULE_VIC,
@@ -365,11 +365,11 @@ struct nvhost_device_data t124_vic_info = {
 	.can_powergate		= true,
 	.powergate_delay	= 500,
 	.powergate_ids		= { TEGRA_POWERGATE_VIC, -1 },
-	.init			= nvhost_vic03_init,
-	.deinit			= nvhost_vic03_deinit,
+	.init			= nvhost_flcn_init,
+	.deinit			= nvhost_flcn_deinit,
 	.alloc_hwctx_handler	= nvhost_vic03_alloc_hwctx_handler,
-	.finalize_poweron	= nvhost_vic03_finalize_poweron,
-	.prepare_poweroff	= nvhost_vic03_prepare_poweroff,
+	.finalize_poweron	= nvhost_vic_finalize_poweron,
+	.prepare_poweroff	= nvhost_vic_prepare_poweroff,
 	.scaling_init		= nvhost_scale3d_init,
 	.scaling_deinit		= nvhost_scale3d_deinit,
 	.busy			= nvhost_scale_notify_busy,
@@ -380,6 +380,7 @@ struct nvhost_device_data t124_vic_info = {
 	.actmon_regs		= HOST1X_CHANNEL_ACTMON2_REG_BASE,
 	.actmon_enabled		= true,
 	.linear_emc		= true,
+	.firmware_name		= "vic03_ucode.bin",
 };
 
 struct platform_device tegra_vic03_device = {
@@ -487,7 +488,7 @@ struct nvhost_device_data t132_vib_info = {
 
 struct nvhost_device_data t132_msenc_info = {
 	.num_channels	= 1,
-	.version	= NVHOST_ENCODE_MSENC_VER(3, 1),
+	.version	= NVHOST_ENCODE_FLCN_VER(3, 1),
 	.class		= NV_VIDEO_ENCODE_MSENC_CLASS_ID,
 	.clocks		= {{"msenc", UINT_MAX, 0, TEGRA_MC_CLIENT_MSENC},
 			  {"emc", HOST_EMC_FLOOR} },
@@ -496,9 +497,10 @@ struct nvhost_device_data t132_msenc_info = {
 	.powergate_ids	= { TEGRA_POWERGATE_MPE, -1 },
 	.powergate_delay = 100,
 	.can_powergate	= true,
-	.init           = nvhost_msenc_init,
-	.deinit         = nvhost_msenc_deinit,
-	.finalize_poweron = nvhost_msenc_finalize_poweron,
+	.init           = nvhost_flcn_init,
+	.deinit         = nvhost_flcn_deinit,
+	.finalize_poweron = nvhost_flcn_boot,
+	.firmware_name	= "nvhost_msenc031.fw",
 };
 
 struct nvhost_device_data t132_tsec_info = {
@@ -522,18 +524,18 @@ struct nvhost_device_data t132_vic_info = {
 	.modulemutexes		= {NVMODMUTEX_VIC},
 	.clocks			= {{"vic03", UINT_MAX, 0, TEGRA_MC_CLIENT_VIC},
 				  {"emc", UINT_MAX} },
-	.version = NVHOST_ENCODE_VIC_VER(3, 0),
+	.version = NVHOST_ENCODE_FLCN_VER(3, 0),
 	NVHOST_MODULE_NO_POWERGATE_IDS,
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.moduleid      = NVHOST_MODULE_VIC,
 	.alloc_hwctx_handler = nvhost_vic03_alloc_hwctx_handler,
 	.powergate_delay	= 500,
 	.powergate_ids		= { TEGRA_POWERGATE_VIC, -1 },
-	.init			= nvhost_vic03_init,
-	.deinit			= nvhost_vic03_deinit,
+	.init			= nvhost_flcn_init,
+	.deinit			= nvhost_flcn_deinit,
 	.alloc_hwctx_handler	= nvhost_vic03_alloc_hwctx_handler,
-	.finalize_poweron	= nvhost_vic03_finalize_poweron,
-	.prepare_poweroff	= nvhost_vic03_prepare_poweroff,
+	.finalize_poweron	= nvhost_vic_finalize_poweron,
+	.prepare_poweroff	= nvhost_vic_prepare_poweroff,
 	.scaling_init		= nvhost_scale3d_init,
 	.scaling_deinit		= nvhost_scale3d_deinit,
 	.busy			= nvhost_scale_notify_busy,
@@ -544,6 +546,7 @@ struct nvhost_device_data t132_vic_info = {
 	.actmon_regs		= HOST1X_CHANNEL_ACTMON2_REG_BASE,
 	.actmon_enabled		= true,
 	.linear_emc		= true,
+	.firmware_name		= "vic03_ucode.bin",
 };
 #endif
 
