@@ -20,6 +20,9 @@
 #include <linux/regulator/consumer.h>
 #include <mach/pinmux.h>
 
+#define MAKE_CONSTUSER_PTR(p)	(const void __user *)((unsigned long)(p))
+#define MAKE_USER_PTR(p)	(void __user *)((unsigned long)(p))
+
 #define NVC_INT2FLOAT_DIVISOR_1K	1000
 #define NVC_INT2FLOAT_DIVISOR_1M	1000000
 #define NVC_INT2FLOAT_DIVISOR		1000
@@ -172,6 +175,8 @@ enum nvc_params_isp {
 #define NVC_IOCTL_PARAM_ISP_RD		_IOWR('o', 200, struct nvc_param_isp)
 #define NVC_IOCTL_PARAM_ISP_WR		_IOWR('o', 201, struct nvc_param_isp)
 #define NVC_IOCTL_FUSE_ID		_IOWR('o', 202, struct nvc_fuseid)
+#define NVC_IOCTL_SET_EEPROM_DATA	_IOWR('o', 254, __u8 *)
+#define NVC_IOCTL_GET_EEPROM_DATA	_IOWR('o', 255, __u8 *)
 
 /* Expected higher level power calls are:
  * 1 = OFF

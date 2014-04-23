@@ -44,10 +44,12 @@ struct pt_regs;
 unsigned int
 quadd_get_user_callchain(struct pt_regs *regs,
 			 struct quadd_callchain *cc_data,
-			 struct quadd_ctx *ctx);
+			 struct quadd_ctx *ctx,
+			 struct task_struct *task);
 
-void quadd_callchain_store(struct quadd_callchain *cc,
-			   unsigned long ip);
+int
+quadd_callchain_store(struct quadd_callchain *cc,
+		      unsigned long ip);
 
 unsigned long
 quadd_user_stack_pointer(struct pt_regs *regs);
@@ -56,11 +58,12 @@ unsigned long
 quadd_user_link_register(struct pt_regs *regs);
 
 static inline int
-is_vma_addr(unsigned long addr, struct vm_area_struct *vma)
+is_vma_addr(unsigned long addr, struct vm_area_struct *vma,
+	    unsigned long nbytes)
 {
 	return	vma &&
 		addr >= vma->vm_start &&
-		addr <= vma->vm_end - sizeof(addr);
+		addr < vma->vm_end - nbytes;
 }
 
 

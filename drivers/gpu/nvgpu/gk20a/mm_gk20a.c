@@ -1321,7 +1321,10 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 		bfr.pgsz_idx = NV_GMMU_VA_IS_UPPER(offset_align) ?
 				gmmu_page_size_big : gmmu_page_size_small;
 	} else {
-		gmmu_select_page_size(&bfr);
+		if (vm->big_pages)
+			gmmu_select_page_size(&bfr);
+		else
+			bfr.pgsz_idx = gmmu_page_size_small;
 	}
 
 	/* validate/adjust bfr attributes */
@@ -1377,7 +1380,7 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 			gk20a_get_comptags(d, dmabuf, &comptags);
 
 			/* init/clear the ctag buffer */
-			g->ops.ltc.clear_comptags(g,
+			g->ops.ltc.cbc_ctrl(g, gk20a_cbc_op_clear,
 					  comptags.offset,
 					  comptags.offset + comptags.lines - 1);
 		}

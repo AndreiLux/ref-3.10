@@ -32,6 +32,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
+#include <linux/tegra_pm_domains.h>
 
 #ifndef CONFIG_ARM64
 #include <asm/gpio.h>
@@ -45,7 +46,6 @@
 
 #include <linux/platform_data/mmc-sdhci-tegra.h>
 #include <mach/pinmux.h>
-#include <mach/pm_domains.h>
 
 #include "sdhci-pltfm.h"
 
@@ -1337,13 +1337,12 @@ static void tegra_sdhci_clock_set_parent(struct sdhci_host *host,
 	if ((pll_c_freq > desired_rate) && (pll_p_freq > desired_rate)) {
 		if (pll_p_freq <= pll_c_freq) {
 			desired_rate = pll_p_freq;
-			parent_clk = pll_p;
+			pll_c_freq = 0;
 		} else {
 			desired_rate = pll_c_freq;
-			parent_clk = pll_c;
+			pll_p_freq = 0;
 		}
 		rc = clk_set_rate(pltfm_host->clk, desired_rate);
-		goto set_clk_parent;
 	}
 
 	if (pll_c_freq > pll_p_freq) {
@@ -1359,7 +1358,6 @@ static void tegra_sdhci_clock_set_parent(struct sdhci_host *host,
 	} else
 		return;
 
-set_clk_parent:
 	rc = clk_set_parent(pltfm_host->clk, parent_clk);
 	if (rc)
 		pr_err("%s: failed to set pll parent clock %d\n",
@@ -1995,7 +1993,7 @@ static int find_best_tap_value(struct tegra_tuning_data *tuning_data,
 			tuning_data->calc_values.t2t_vmax);
 	}
 
-	pr_err("best tap win - (%d-%d), best tap value %d\n",
+	pr_info("best tap win - (%d-%d), best tap value %d\n",
 		tap_data->win_start, tap_data->win_end, best_tap_value);
 	return best_tap_value;
 }

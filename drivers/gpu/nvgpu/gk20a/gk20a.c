@@ -40,11 +40,11 @@
 #include <linux/debugfs.h>
 #include <linux/spinlock.h>
 #include <linux/tegra-powergate.h>
+#include <linux/tegra_pm_domains.h>
 
 #include <linux/sched.h>
 #include <linux/input-cfboost.h>
 
-#include <mach/pm_domains.h>
 
 #include "gk20a.h"
 #include "debug_gk20a.h"
@@ -526,8 +526,6 @@ static void gk20a_pbus_isr(struct gk20a *g)
 	if (val & (bus_intr_0_pri_squash_m() |
 			bus_intr_0_pri_fecserr_m() |
 			bus_intr_0_pri_timeout_m())) {
-		gk20a_err(dev_from_gk20a(g), "top_fs_status_r : 0x%x",
-			gk20a_readl(g, top_fs_status_r()));
 		gk20a_err(dev_from_gk20a(g), "pmc_enable : 0x%x",
 			gk20a_readl(g, mc_enable_r()));
 		gk20a_err(&g->dev->dev,
@@ -1227,11 +1225,11 @@ static int gk20a_pm_suspend(struct device *dev)
 	if (atomic_read(&dev->power.usage_count) > 1)
 		return -EBUSY;
 
+	gk20a_scale_suspend(to_platform_device(dev));
+
 	ret = gk20a_pm_prepare_poweroff(dev);
 	if (ret)
 		return ret;
-
-	gk20a_scale_suspend(to_platform_device(dev));
 
 	if (platform->suspend)
 		platform->suspend(dev);
@@ -1259,7 +1257,7 @@ static int gk20a_pm_initialise_domain(struct platform_device *pdev)
 	struct generic_pm_domain *domain = &platform->g->pd;
 	int ret = 0;
 
-	domain->name = kstrdup(pdev->name, GFP_KERNEL);
+	domain->name = "gpu";
 
 	if (!platform->can_railgate)
 		pm_domain_gov = &pm_domain_always_on_gov;

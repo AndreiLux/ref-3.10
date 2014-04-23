@@ -21,8 +21,9 @@
 #include <linux/nvhost_ioctl.h>
 #include <linux/dma-buf.h>
 #include <linux/nvmap.h>
+#include <linux/tegra_pm_domains.h>
+
 #include <mach/irqs.h>
-#include <mach/pm_domains.h>
 
 #include "../../../arch/arm/mach-tegra/iomap.h"
 
@@ -503,6 +504,7 @@ struct gk20a_platform t132_gk20a_tegra_platform = {
 	/* power management configuration */
 	.railgate_delay		= 500,
 	.clockgate_delay	= 50,
+	.can_railgate		= true,
 
 	.probe = gk20a_tegra_probe,
 	.late_probe = gk20a_tegra_late_probe,

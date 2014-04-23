@@ -72,8 +72,9 @@ static void start_hrtimer(struct quadd_cpu_context *cpu_ctx)
 {
 	u64 period = hrt.sample_period;
 
-	hrtimer_start(&cpu_ctx->hrtimer, ns_to_ktime(period),
-		      HRTIMER_MODE_REL_PINNED);
+	__hrtimer_start_range_ns(&cpu_ctx->hrtimer,
+				 ns_to_ktime(period), 0,
+				 HRTIMER_MODE_REL_PINNED, 0);
 	qm_debug_timer_start(NULL, period);
 }
 
@@ -299,7 +300,20 @@ read_all_sources(struct pt_regs *regs, struct task_struct *task)
 	s->reserved = 0;
 
 	if (ctx->param.backtrace) {
-		bt_size = quadd_get_user_callchain(user_regs, cc, ctx);
+		bt_size = quadd_get_user_callchain(user_regs, cc, ctx, task);
+
+		if (!bt_size && !user_mode(regs)) {
+			unsigned long pc = instruction_pointer(user_regs);
+
+			cc->nr = 0;
+#ifdef CONFIG_ARM64
+			cc->cs_64 = compat_user_mode(user_regs) ? 0 : 1;
+#else
+			cc->cs_64 = 0;
+#endif
+			bt_size += quadd_callchain_store(cc, pc);
+		}
+
 		if (bt_size > 0) {
 			int ip_size = cc->cs_64 ? sizeof(u64) : sizeof(u32);
 
@@ -463,7 +477,7 @@ void __quadd_task_sched_out(struct task_struct *prev,
 		n = remove_active_thread(cpu_ctx, prev->pid);
 		atomic_sub(n, &cpu_ctx->nr_active);
 
-		if (atomic_read(&cpu_ctx->nr_active) == 0) {
+		if (n && atomic_read(&cpu_ctx->nr_active) == 0) {
 			cancel_hrtimer(cpu_ctx);
 			atomic_dec(&hrt.nr_active_all_core);
 
