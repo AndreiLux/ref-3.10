@@ -36,6 +36,7 @@ int flounder_suspend_init(void);
 int flounder_rail_alignment_init(void);
 int flounder_soctherm_init(void);
 int flounder_edp_init(void);
+void flounder_camera_auxdata(void *);
 
 
 #define PALMAS_TEGRA_GPIO_BASE	TEGRA_NR_GPIOS

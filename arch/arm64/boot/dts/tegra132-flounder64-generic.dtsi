@@ -4,6 +4,8 @@
 
 #include "tegra132.dtsi"
 
+#include "tegra132-flounder64-camera.dtsi"
+
 / {
 	gpio: gpio@6000d000 {
 		gpio-init-names = "default";

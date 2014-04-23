@@ -22,6 +22,7 @@
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/nct1008.h>
+#include <linux/of_platform.h>
 #include <linux/pid_thermal_gov.h>
 #include <linux/tegra-fuse.h>
 #include <mach/edp.h>
@@ -207,7 +208,7 @@ static int flounder_imx219_power_off(struct imx219_power_rail *pw)
 	return 0;
 }
 
-struct imx219_platform_data flounder_imx219_pdata = {
+static struct imx219_platform_data flounder_imx219_pdata = {
 	.power_on = flounder_imx219_power_on,
 	.power_off = flounder_imx219_power_off,
 };
@@ -231,6 +232,7 @@ static int flounder_ov9760_power_on(struct ov9760_power_rail *pw)
 
 	return 1;
 }
+
 static int flounder_ov9760_power_off(struct ov9760_power_rail *pw)
 {
 	gpio_set_value(CAM2_RST, 0);
@@ -244,491 +246,11 @@ static int flounder_ov9760_power_off(struct ov9760_power_rail *pw)
 
 	return 0;
 }
-struct ov9760_platform_data flounder_ov9760_data = {
+
+static struct ov9760_platform_data flounder_ov9760_pdata = {
 	.power_on = flounder_ov9760_power_on,
 	.power_off = flounder_ov9760_power_off,
 	.mclk_name = "mclk2",
-};
-
-static int flounder_ar0261_power_on(struct ar0261_power_rail *pw)
-{
-	int err;
-
-	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd || !pw->dvdd)))
-		return -EFAULT;
-
-	/* disable CSIE IOs DPD mode to turn on front camera for flounder */
-	tegra_io_dpd_disable(&csie_io);
-
-	if (flounder_get_extra_regulators())
-		goto flounder_ar0261_poweron_fail;
-
-	gpio_set_value(CAM_RSTN, 0);
-	gpio_set_value(CAM_AF_PWDN, 1);
-
-
-	err = regulator_enable(flounder_vcmvdd);
-	if (unlikely(err))
-		goto ar0261_vcm_fail;
-
-	err = regulator_enable(pw->dvdd);
-	if (unlikely(err))
-		goto ar0261_dvdd_fail;
-
-	err = regulator_enable(pw->avdd);
-	if (unlikely(err))
-		goto ar0261_avdd_fail;
-
-	err = regulator_enable(pw->iovdd);
-	if (unlikely(err))
-		goto ar0261_iovdd_fail;
-
-	usleep_range(1, 2);
-	gpio_set_value(CAM2_PWDN, 1);
-
-	gpio_set_value(CAM_RSTN, 1);
-
-	return 0;
-ar0261_iovdd_fail:
-	regulator_disable(pw->dvdd);
-
-ar0261_dvdd_fail:
-	regulator_disable(pw->avdd);
-
-ar0261_avdd_fail:
-	regulator_disable(flounder_vcmvdd);
-
-ar0261_vcm_fail:
-	pr_err("%s vcmvdd failed.\n", __func__);
-	return -ENODEV;
-
-flounder_ar0261_poweron_fail:
-	/* put CSIE IOs into DPD mode to save additional power for flounder */
-	tegra_io_dpd_enable(&csie_io);
-	pr_err("%s failed.\n", __func__);
-	return -ENODEV;
-}
-
-static int flounder_ar0261_power_off(struct ar0261_power_rail *pw)
-{
-	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd || !pw->dvdd ||
-					!flounder_vcmvdd))) {
-		/* put CSIE IOs into DPD mode to
-		 * save additional power for flounder
-		 */
-		tegra_io_dpd_enable(&csie_io);
-		return -EFAULT;
-	}
-
-	gpio_set_value(CAM_RSTN, 0);
-
-	usleep_range(1, 2);
-
-	regulator_disable(pw->iovdd);
-	regulator_disable(pw->dvdd);
-	regulator_disable(pw->avdd);
-	regulator_disable(flounder_vcmvdd);
-	/* put CSIE IOs into DPD mode to save additional power for flounder */
-	tegra_io_dpd_enable(&csie_io);
-	return 0;
-}
-
-struct ar0261_platform_data flounder_ar0261_data = {
-	.power_on = flounder_ar0261_power_on,
-	.power_off = flounder_ar0261_power_off,
-	.mclk_name = "mclk2",
-};
-
-static int flounder_imx135_get_extra_regulators(struct imx135_power_rail *pw)
-{
-	if (!pw->ext_reg1) {
-		pw->ext_reg1 = regulator_get(NULL, "imx135_reg1");
-		if (WARN_ON(IS_ERR(pw->ext_reg1))) {
-			pr_err("%s: can't get regulator imx135_reg1: %ld\n",
-				__func__, PTR_ERR(pw->ext_reg1));
-			pw->ext_reg1 = NULL;
-			return -ENODEV;
-		}
-	}
-
-	if (!pw->ext_reg2) {
-		pw->ext_reg2 = regulator_get(NULL, "imx135_reg2");
-		if (WARN_ON(IS_ERR(pw->ext_reg2))) {
-			pr_err("%s: can't get regulator imx135_reg2: %ld\n",
-				__func__, PTR_ERR(pw->ext_reg2));
-			pw->ext_reg2 = NULL;
-			return -ENODEV;
-		}
-	}
-
-	return 0;
-}
-
-static int flounder_imx135_power_on(struct imx135_power_rail *pw)
-{
-	int err;
-
-	if (unlikely(WARN_ON(!pw || !pw->iovdd || !pw->avdd)))
-		return -EFAULT;
-
-	/* disable CSIA/B IOs DPD mode to turn on camera for flounder */
-	tegra_io_dpd_disable(&csia_io);
-	tegra_io_dpd_disable(&csib_io);
-
-	if (flounder_imx135_get_extra_regulators(pw))
-		goto imx135_poweron_fail;
-
-	err = regulator_enable(pw->ext_reg1);
-	if (unlikely(err))
-		goto imx135_ext_reg1_fail;
-
-	err = regulator_enable(pw->ext_reg2);
-	if (unlikely(err))
-		goto imx135_ext_reg2_fail;
-
-
-	gpio_set_value(CAM_AF_PWDN, 1);
-	gpio_set_value(CAM1_PWDN, 0);
-	usleep_range(10, 20);
-
-	err = regulator_enable(pw->avdd);
-	if (err)
-		goto imx135_avdd_fail;
-
-	err = regulator_enable(pw->iovdd);
-	if (err)
-		goto imx135_iovdd_fail;
-
-	usleep_range(1, 2);
-	gpio_set_value(CAM1_PWDN, 1);
-
-	usleep_range(300, 310);
-
-	return 1;
-
-
-imx135_iovdd_fail:
-	regulator_disable(pw->avdd);
-
-imx135_avdd_fail:
-	if (pw->ext_reg2)
-		regulator_disable(pw->ext_reg2);
-
-imx135_ext_reg2_fail:
-	if (pw->ext_reg1)
-		regulator_disable(pw->ext_reg1);
-	gpio_set_value(CAM_AF_PWDN, 0);
-
-imx135_ext_reg1_fail:
-imx135_poweron_fail:
-	tegra_io_dpd_enable(&csia_io);
-	tegra_io_dpd_enable(&csib_io);
-	pr_err("%s failed.\n", __func__);
-	return -ENODEV;
-}
-
-static int flounder_imx135_power_off(struct imx135_power_rail *pw)
-{
-	if (unlikely(WARN_ON(!pw || !pw->iovdd || !pw->avdd))) {
-		tegra_io_dpd_enable(&csia_io);
-		tegra_io_dpd_enable(&csib_io);
-		return -EFAULT;
-	}
-
-	regulator_disable(pw->iovdd);
-	regulator_disable(pw->avdd);
-
-	regulator_disable(pw->ext_reg1);
-	regulator_disable(pw->ext_reg2);
-
-	/* put CSIA/B IOs into DPD mode to save additional power for flounder */
-	tegra_io_dpd_enable(&csia_io);
-	tegra_io_dpd_enable(&csib_io);
-	return 0;
-}
-
-struct imx135_platform_data flounder_imx135_data = {
-	.flash_cap = {
-		.enable = 1,
-		.edge_trig_en = 1,
-		.start_edge = 0,
-		.repeat = 1,
-		.delay_frm = 0,
-	},
-	.power_on = flounder_imx135_power_on,
-	.power_off = flounder_imx135_power_off,
-};
-
-static int flounder_dw9718_power_on(struct dw9718_power_rail *pw)
-{
-	int err;
-	pr_info("%s\n", __func__);
-
-	if (unlikely(!pw || !pw->vdd || !pw->vdd_i2c))
-		return -EFAULT;
-
-	err = regulator_enable(pw->vdd);
-	if (unlikely(err))
-		goto dw9718_vdd_fail;
-
-	err = regulator_enable(pw->vdd_i2c);
-	if (unlikely(err))
-		goto dw9718_i2c_fail;
-
-	usleep_range(1000, 1020);
-
-	/* return 1 to skip the in-driver power_on sequence */
-	pr_debug("%s --\n", __func__);
-	return 1;
-
-dw9718_i2c_fail:
-	regulator_disable(pw->vdd);
-
-dw9718_vdd_fail:
-	pr_err("%s FAILED\n", __func__);
-	return -ENODEV;
-}
-
-static int flounder_dw9718_power_off(struct dw9718_power_rail *pw)
-{
-	pr_info("%s\n", __func__);
-
-	if (unlikely(!pw || !pw->vdd || !pw->vdd_i2c))
-		return -EFAULT;
-
-	regulator_disable(pw->vdd);
-	regulator_disable(pw->vdd_i2c);
-
-	return 1;
-}
-
-static u16 dw9718_devid;
-static int flounder_dw9718_detect(void *buf, size_t size)
-{
-	dw9718_devid = 0x9718;
-	return 0;
-}
-
-static struct nvc_focus_cap dw9718_cap = {
-	.settle_time = 30,
-	.slew_rate = 0x3A200C,
-	.focus_macro = 450,
-	.focus_infinity = 200,
-	.focus_hyper = 200,
-};
-
-static struct dw9718_platform_data flounder_dw9718_data = {
-	.cfg = NVC_CFG_NODEV,
-	.num = 0,
-	.sync = 0,
-	.dev_name = "focuser",
-	.cap = &dw9718_cap,
-	.power_on = flounder_dw9718_power_on,
-	.power_off = flounder_dw9718_power_off,
-	.detect = flounder_dw9718_detect,
-};
-
-static struct as364x_platform_data flounder_as3648_data = {
-	.config		= {
-		.led_mask	= 3,
-		.max_total_current_mA = 1000,
-		.max_peak_current_mA = 600,
-		.max_torch_current_mA = 600,
-		.vin_low_v_run_mV = 3070,
-		.strobe_type = 1,
-		},
-	.pinstate	= {
-		.mask	= 1 << (CAM_FLASH_STROBE - TEGRA_GPIO_PBB0),
-		.values	= 1 << (CAM_FLASH_STROBE - TEGRA_GPIO_PBB0)
-		},
-	.dev_name	= "torch",
-	.type		= AS3648,
-	.gpio_strobe	= CAM_FLASH_STROBE,
-};
-
-static int flounder_ov7695_power_on(struct ov7695_power_rail *pw)
-{
-	int err;
-
-	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd)))
-		return -EFAULT;
-
-	gpio_set_value(CAM2_PWDN, 0);
-	usleep_range(1000, 1020);
-
-	err = regulator_enable(pw->avdd);
-	if (unlikely(err))
-		goto ov7695_avdd_fail;
-	usleep_range(300, 320);
-
-	err = regulator_enable(pw->iovdd);
-	if (unlikely(err))
-		goto ov7695_iovdd_fail;
-	usleep_range(1000, 1020);
-
-	gpio_set_value(CAM2_PWDN, 1);
-	usleep_range(1000, 1020);
-
-	return 0;
-
-ov7695_iovdd_fail:
-	regulator_disable(pw->avdd);
-
-ov7695_avdd_fail:
-
-	gpio_set_value(CAM_RSTN, 0);
-	return -ENODEV;
-}
-
-static int flounder_ov7695_power_off(struct ov7695_power_rail *pw)
-{
-	if (unlikely(WARN_ON(!pw || !pw->avdd || !pw->iovdd)))
-		return -EFAULT;
-	usleep_range(100, 120);
-
-	gpio_set_value(CAM2_PWDN, 0);
-	usleep_range(100, 120);
-
-	regulator_disable(pw->iovdd);
-	usleep_range(100, 120);
-
-	regulator_disable(pw->avdd);
-	return 0;
-}
-
-struct ov7695_platform_data flounder_ov7695_pdata = {
-	.power_on = flounder_ov7695_power_on,
-	.power_off = flounder_ov7695_power_off,
-	.mclk_name = "mclk2",
-};
-
-static int flounder_mt9m114_power_on(struct mt9m114_power_rail *pw)
-{
-	int err;
-	if (unlikely(!pw || !pw->avdd || !pw->iovdd))
-		return -EFAULT;
-
-	gpio_set_value(CAM_RSTN, 0);
-	gpio_set_value(CAM2_PWDN, 1);
-	usleep_range(1000, 1020);
-
-	err = regulator_enable(pw->iovdd);
-	if (unlikely(err))
-		goto mt9m114_iovdd_fail;
-
-	err = regulator_enable(pw->avdd);
-	if (unlikely(err))
-		goto mt9m114_avdd_fail;
-
-	usleep_range(1000, 1020);
-	gpio_set_value(CAM_RSTN, 1);
-	gpio_set_value(CAM2_PWDN, 0);
-	usleep_range(1000, 1020);
-
-	/* return 1 to skip the in-driver power_on swquence */
-	return 1;
-
-mt9m114_avdd_fail:
-	regulator_disable(pw->iovdd);
-
-mt9m114_iovdd_fail:
-	gpio_set_value(CAM_RSTN, 0);
-	return -ENODEV;
-}
-
-static int flounder_mt9m114_power_off(struct mt9m114_power_rail *pw)
-{
-	if (unlikely(!pw || !pw->avdd || !pw->iovdd))
-		return -EFAULT;
-
-	usleep_range(100, 120);
-	gpio_set_value(CAM_RSTN, 0);
-	usleep_range(100, 120);
-	regulator_disable(pw->avdd);
-	usleep_range(100, 120);
-	regulator_disable(pw->iovdd);
-
-	return 1;
-}
-
-struct mt9m114_platform_data flounder_mt9m114_pdata = {
-	.power_on = flounder_mt9m114_power_on,
-	.power_off = flounder_mt9m114_power_off,
-	.mclk_name = "mclk2",
-};
-
-
-static int flounder_ov5693_power_on(struct ov5693_power_rail *pw)
-{
-	int err;
-
-	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd)))
-		return -EFAULT;
-
-	if (flounder_get_extra_regulators())
-		goto ov5693_poweron_fail;
-
-	gpio_set_value(CAM1_PWDN, 0);
-	usleep_range(10, 20);
-
-	err = regulator_enable(pw->avdd);
-	if (err)
-		goto ov5693_avdd_fail;
-
-	err = regulator_enable(pw->dovdd);
-	if (err)
-		goto ov5693_iovdd_fail;
-
-	udelay(2);
-	gpio_set_value(CAM1_PWDN, 1);
-
-	err = regulator_enable(flounder_vcmvdd);
-	if (unlikely(err))
-		goto ov5693_vcmvdd_fail;
-
-	usleep_range(300, 310);
-
-	return 0;
-
-ov5693_vcmvdd_fail:
-	regulator_disable(pw->dovdd);
-
-ov5693_iovdd_fail:
-	regulator_disable(pw->avdd);
-
-ov5693_avdd_fail:
-	gpio_set_value(CAM1_PWDN, 0);
-
-ov5693_poweron_fail:
-	pr_err("%s FAILED\n", __func__);
-	return -ENODEV;
-}
-
-static int flounder_ov5693_power_off(struct ov5693_power_rail *pw)
-{
-	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd)))
-		return -EFAULT;
-
-	usleep_range(21, 25);
-	gpio_set_value(CAM1_PWDN, 0);
-	udelay(2);
-
-	regulator_disable(flounder_vcmvdd);
-	regulator_disable(pw->dovdd);
-	regulator_disable(pw->avdd);
-
-	return 0;
-}
-
-static struct nvc_gpio_pdata ov5693_gpio_pdata[] = {
-	{ OV5693_GPIO_TYPE_PWRDN, CAM_RSTN, true, 0, },
-};
-
-static struct ov5693_platform_data flounder_ov5693_pdata = {
-	.gpio_count	= ARRAY_SIZE(ov5693_gpio_pdata),
-	.gpio		= ov5693_gpio_pdata,
-	.power_on	= flounder_ov5693_power_on,
-	.power_off	= flounder_ov5693_power_off,
 };
 
 static int flounder_drv201_power_on(struct drv201_power_rail *pw)
@@ -782,30 +304,6 @@ static struct drv201_platform_data flounder_drv201_pdata = {
 	.power_off	= flounder_drv201_power_off,
 };
 
-static int flounder_ad5823_power_on(struct ad5823_platform_data *pdata)
-{
-	int err = 0;
-
-	pr_info("%s\n", __func__);
-	gpio_set_value_cansleep(pdata->gpio, 1);
-
-	return err;
-}
-
-static int flounder_ad5823_power_off(struct ad5823_platform_data *pdata)
-{
-	pr_info("%s\n", __func__);
-	gpio_set_value_cansleep(pdata->gpio, 0);
-
-	return 0;
-}
-
-static struct ad5823_platform_data flounder_ad5823_pdata = {
-	.gpio = CAM_AF_PWDN,
-	.power_on	= flounder_ad5823_power_on,
-	.power_off	= flounder_ad5823_power_off,
-};
-
 static struct nvc_torch_pin_state flounder_tps61310_pinstate = {
 	.mask		= 1 << (CAM_FLASH_STROBE - TEGRA_GPIO_PBB0), /* VGP4 */
 	.values		= 1 << (CAM_FLASH_STROBE - TEGRA_GPIO_PBB0),
@@ -816,90 +314,25 @@ static struct tps61310_platform_data flounder_tps61310_pdata = {
 	.pinstate	= &flounder_tps61310_pinstate,
 };
 
-static struct i2c_board_info	flounder_i2c_board_info_imx219 = {
-	I2C_BOARD_INFO("imx219", 0x10),
-	.platform_data = &flounder_imx219_pdata,
+static struct camera_data_blob flounder_camera_lut[] = {
+	{"flounder_imx219_pdata", &flounder_imx219_pdata},
+	{"flounder_drv201_pdata", &flounder_drv201_pdata},
+	{"flounder_tps61310_pdata", &flounder_tps61310_pdata},
+	{"flounder_ov9760_pdata", &flounder_ov9760_pdata},
+	{},
 };
 
-static struct i2c_board_info	flounder_i2c_board_info_ov9760 = {
-	I2C_BOARD_INFO("ov9760", 0x36),
-	.platform_data = &flounder_ov9760_data,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_drv201 = {
-	I2C_BOARD_INFO("drv201", 0x0e),
-	.platform_data = &flounder_drv201_pdata,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_tps61310 = {
-	I2C_BOARD_INFO("tps61310", 0x33),
-	.platform_data = &flounder_tps61310_pdata,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_imx135 = {
-	I2C_BOARD_INFO("imx135", 0x10),
-	.platform_data = &flounder_imx135_data,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_ar0261 = {
-	I2C_BOARD_INFO("ar0261", 0x36),
-	.platform_data = &flounder_ar0261_data,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_dw9718 = {
-	I2C_BOARD_INFO("dw9718", 0x0c),
-	.platform_data = &flounder_dw9718_data,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_ov5693 = {
-	I2C_BOARD_INFO("ov5693", 0x10),
-	.platform_data = &flounder_ov5693_pdata,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_ov7695 = {
-	I2C_BOARD_INFO("ov7695", 0x21),
-	.platform_data = &flounder_ov7695_pdata,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_mt9m114 = {
-	I2C_BOARD_INFO("mt9m114", 0x48),
-	.platform_data = &flounder_mt9m114_pdata,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_ad5823 = {
-	I2C_BOARD_INFO("ad5823", 0x0c),
-	.platform_data = &flounder_ad5823_pdata,
-};
-
-static struct i2c_board_info	flounder_i2c_board_info_as3648 = {
-		I2C_BOARD_INFO("as3648", 0x30),
-		.platform_data = &flounder_as3648_data,
-};
-
-static struct camera_module flounder_camera_module_info[] = {
-	{
-		/* rear camera */
-		.sensor = &flounder_i2c_board_info_imx219,
-		.focuser = &flounder_i2c_board_info_drv201,
-		.flash = &flounder_i2c_board_info_tps61310
-	},
-		{
-		/* front camera */
-		.sensor = &flounder_i2c_board_info_ov9760,
-	},
-
-	{}
-};
-
-static struct camera_platform_data flounder_pcl_pdata = {
-	.cfg = 0xAA55AA55,
-	.modules = flounder_camera_module_info,
-};
-
-static struct platform_device flounder_camera_generic = {
-	.name = "pcl-generic",
-	.id = -1,
-};
+void __init flounder_camera_auxdata(void *data)
+{
+	struct of_dev_auxdata *aux_lut = data;
+	while (aux_lut && aux_lut->compatible) {
+		if (!strcmp(aux_lut->compatible, "nvidia,tegra124-camera")) {
+			pr_info("%s: update camera lookup table.\n", __func__);
+			aux_lut->platform_data = flounder_camera_lut;
+		}
+		aux_lut++;
+	}
+}
 
 static int flounder_camera_init(void)
 {
@@ -911,10 +344,6 @@ static int flounder_camera_init(void)
 	tegra_gpio_disable(TEGRA_GPIO_PBB0);
 	tegra_gpio_disable(TEGRA_GPIO_PCC0);
 	tegra_gpio_disable(TEGRA_GPIO_PBB4);
-
-	platform_device_add_data(&flounder_camera_generic,
-		&flounder_pcl_pdata, sizeof(flounder_pcl_pdata));
-	platform_device_register(&flounder_camera_generic);
 
 #if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
 	platform_device_register(&flounder_soc_camera_device);
