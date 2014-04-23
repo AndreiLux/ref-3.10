@@ -497,6 +497,23 @@ static ssize_t set_k_value_barometer_f(struct device *dev,
 			   PRESSURE_CALIBRATOR_LEN);
 }
 
+static ssize_t led_enable(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int error;
+	u8 data = 0x01;
+
+	I("LED ENABLE");
+	error = CWMCU_i2c_write(mcu_data, 0xD0, &data, 1);
+	if (error < 0) {
+		E("%s: error = %d\n", __func__, error);
+		return -EIO;
+	}
+
+	return count;
+}
+
 static ssize_t get_k_value(int type, char *buf, char *data, unsigned len)
 {
 	if (cwmcu_get_calibrator(type, data, len) < 0)
@@ -3159,6 +3176,7 @@ static struct device_attribute attributes[] = {
 	__ATTR(data_light_kadc, 0440, get_light_kadc, NULL),
 	__ATTR(firmware_version, 0440, get_firmware_version, NULL),
 	__ATTR(hall_sensor, 0440, get_hall_sensor, NULL),
+	__ATTR(led_en, 0220, NULL, led_enable),
 };
 
 
