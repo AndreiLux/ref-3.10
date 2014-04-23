@@ -121,4 +121,5 @@ int rt5506_headset_detect(int on);
 void rt5506_set_gain(u8 data);
 u8 rt5506_get_gain(void);
 int rt5506_dump_reg(void);
+int set_rt5506_hp_en(bool on);
 #endif

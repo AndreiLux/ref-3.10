@@ -1469,6 +1469,7 @@ struct rt5677_priv {
 	int vad_mode;
 	int vad_source;
 	unsigned int vad_clock_en;
+	int stream;
 };
 
 #endif /* __RT5677_H__ */

@@ -634,6 +634,9 @@ static int tegra_rt5677_event_headphone_jack(struct snd_soc_dapm_widget *w,
 
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
+		/* set hp_en low and usleep 10 ms for charging */
+		set_rt5506_hp_en(0);
+		usleep_range(10000,10000);
 		dev_dbg(card->dev, "%s: set_rt5506_amp(1,0)\n", __func__);
 		/*msleep(900); depop*/
 		set_rt5506_amp(1, 0);
@@ -883,6 +886,8 @@ void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
 	static bool status = false;
 
 	if (enable && status == false) {
+		/* set hp_en high to depop for headset path */
+		set_rt5506_hp_en(1);
 		pr_info("tegra_rt5677 power_on\n");
 
 		/*V_AUD_1V2*/

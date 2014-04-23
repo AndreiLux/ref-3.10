@@ -2849,6 +2849,36 @@ static int rt5677_set_micbias1_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
+static int rt5677_lout_charge_event(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		if (rt5677->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			regmap_update_bits(rt5677->regmap, RT5677_PWR_ANLG1,
+				RT5677_PWR_VREF1 | RT5677_PWR_MB |
+				RT5677_PWR_BG | RT5677_PWR_VREF2 |
+				RT5677_PWR_LO1 | RT5677_PWR_LO2 |
+				RT5677_LDO1_SEL_MASK | RT5677_LDO2_SEL_MASK,
+				RT5677_PWR_VREF1 | RT5677_PWR_MB |
+				RT5677_PWR_LO1 | RT5677_PWR_LO2 |
+				RT5677_PWR_BG | RT5677_PWR_VREF2 | 0x55);
+			usleep_range(10000, 15000);
+			regmap_update_bits(rt5677->regmap, RT5677_PWR_ANLG1,
+				RT5677_PWR_FV1 | RT5677_PWR_FV2,
+				RT5677_PWR_FV1 | RT5677_PWR_FV2);
+		}
+		break;
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 	SND_SOC_DAPM_SUPPLY_S("PLL1", 0, RT5677_PWR_ANLG2, RT5677_PWR_PLL1_BIT,
 		0, rt5677_set_pll1_event, SND_SOC_DAPM_POST_PMU),
@@ -3301,6 +3331,9 @@ static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA_S("LOUT3 amp", 1, SND_SOC_NOPM, 0, 0,
 		rt5677_lout3_event, SND_SOC_DAPM_PRE_PMD |
 		SND_SOC_DAPM_POST_PMU),
+
+	SND_SOC_DAPM_PGA_S("LOUT Charge", 2, SND_SOC_NOPM, 0, 0,
+		rt5677_lout_charge_event, SND_SOC_DAPM_POST_PMU),
 
 	/* Output Lines */
 	SND_SOC_DAPM_OUTPUT("LOUT1"),
@@ -3989,9 +4022,13 @@ static const struct snd_soc_dapm_route rt5677_dapm_routes[] = {
 	{ "LOUT2 amp", NULL, "DAC 2" },
 	{ "LOUT3 amp", NULL, "DAC 3" },
 
-	{ "LOUT1", NULL, "LOUT1 amp" },
-	{ "LOUT2", NULL, "LOUT2 amp" },
-	{ "LOUT3", NULL, "LOUT3 amp" },
+	{ "LOUT Charge", NULL, "LOUT1 amp" },
+	{ "LOUT Charge", NULL, "LOUT2 amp" },
+	{ "LOUT Charge", NULL, "LOUT3 amp" },
+
+	{ "LOUT1", NULL, "LOUT Charge" },
+	{ "LOUT2", NULL, "LOUT Charge" },
+	{ "LOUT3", NULL, "LOUT Charge" },
 
 	{ "PDM1L", NULL, "PDM1 L Mux" },
 	{ "PDM1R", NULL, "PDM1 R Mux" },
