@@ -42,6 +42,9 @@
 #define VERSION "0.0.2 alsa 1.0.25"
 #define RT5677_PATH "/system/vendor/firmware/rt5677_"
 
+static int dmic_depop_time = 100;
+module_param(dmic_depop_time, int, 0644);
+
 struct rt5677_init_reg {
 	u8 reg;
 	u16 val;
@@ -2524,6 +2527,7 @@ static int rt5677_set_dmic1_event(struct snd_soc_dapm_widget *w,
 			RT5677_DMIC_1L_LH_FALLING | RT5677_DMIC_1R_LH_RISING);
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
 			RT5677_DMIC_1_EN_MASK, RT5677_DMIC_1_EN);
+		msleep(dmic_depop_time);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
@@ -2549,6 +2553,7 @@ static int rt5677_set_dmic2_event(struct snd_soc_dapm_widget *w,
 			RT5677_DMIC_2L_LH_FALLING | RT5677_DMIC_2R_LH_RISING);
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
 			RT5677_DMIC_2_EN_MASK, RT5677_DMIC_2_EN);
+		msleep(dmic_depop_time);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
