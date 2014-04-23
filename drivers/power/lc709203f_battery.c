@@ -63,6 +63,7 @@ struct lc709203f_platform_data {
 	u32 maximum_soc;
 	u32 alert_low_rsoc;
 	u32 alert_low_voltage;
+	bool support_battery_current;
 };
 
 struct lc709203f_chip {
@@ -129,13 +130,9 @@ static int lc709203f_write_word(struct i2c_client *client, u8 reg, u16 value)
 	return ret;
 }
 
-static void lc709203f_work(struct work_struct *work)
+static int lc709203f_update_soc_voltage(struct lc709203f_chip *chip)
 {
-	struct lc709203f_chip *chip;
 	int val;
-	int temperature;
-
-	chip = container_of(work, struct lc709203f_chip, work.work);
 
 	val = lc709203f_read_word(chip->client, LC709203F_VOLTAGE);
 	if (val < 0)
@@ -152,7 +149,7 @@ static void lc709203f_work(struct work_struct *work)
 				chip->pdata->maximum_soc, val * 100);
 
 	if (chip->soc >= LC709203F_BATTERY_FULL && chip->charge_complete != 1)
-		chip->soc = LC709203F_BATTERY_FULL-1;
+		chip->soc = LC709203F_BATTERY_FULL - 1;
 
 	if (chip->status == POWER_SUPPLY_STATUS_FULL && chip->charge_complete) {
 		chip->soc = LC709203F_BATTERY_FULL;
@@ -167,6 +164,17 @@ static void lc709203f_work(struct work_struct *work)
 		chip->health = POWER_SUPPLY_HEALTH_GOOD;
 		chip->capacity_level = POWER_SUPPLY_CAPACITY_LEVEL_NORMAL;
 	}
+	return 0;
+}
+static void lc709203f_work(struct work_struct *work)
+{
+	struct lc709203f_chip *chip;
+	int val;
+	int temperature;
+
+	chip = container_of(work, struct lc709203f_chip, work.work);
+
+	lc709203f_update_soc_voltage(chip);
 
 	if (chip->soc != chip->lasttime_soc ||
 		chip->status != chip->lasttime_status) {
@@ -208,6 +216,7 @@ static enum power_supply_property lc709203f_battery_props[] = {
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CAPACITY_LEVEL,
 	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
 };
 
 static int lc709203f_get_property(struct power_supply *psy,
@@ -217,6 +226,8 @@ static int lc709203f_get_property(struct power_supply *psy,
 	struct lc709203f_chip *chip = container_of(psy,
 				struct lc709203f_chip, battery);
 	int temperature;
+	int curr_ma;
+	int ret;
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_TECHNOLOGY:
@@ -258,6 +269,12 @@ static int lc709203f_get_property(struct power_supply *psy,
 		*/
 		val->intval = temperature - 2732;
 		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		val->intval = 0;
+		ret = battery_gauge_get_battery_current(chip->bg_dev, &curr_ma);
+		if (!ret)
+			val->intval = curr_ma;
+		break;
 	default:
 		return -EINVAL;
 	}
@@ -294,6 +311,7 @@ static struct battery_gauge_ops lc709203f_bg_ops = {
 static struct battery_gauge_info lc709203f_bgi = {
 	.cell_id = 0,
 	.bg_ops = &lc709203f_bg_ops,
+	.current_channel_name = "battery-current",
 };
 
 static irqreturn_t lc709203f_irq(int id, void *dev)
@@ -364,6 +382,9 @@ static void of_lc709203f_parse_platform_data(struct i2c_client *client,
 	ret = of_property_read_u32(np, "onsemi,alert-low-voltage", &pval);
 	if (!ret)
 		pdata->alert_low_voltage = pval;
+
+	pdata->support_battery_current = of_property_read_bool(np,
+						"io-channel-names");
 }
 
 #ifdef CONFIG_DEBUG_FS
@@ -526,6 +547,8 @@ static int lc709203f_probe(struct i2c_client *client,
 	}
 
 skip_thermistor_config:
+	lc709203f_update_soc_voltage(chip);
+
 	chip->battery.name		= "battery";
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= lc709203f_get_property;
@@ -534,6 +557,10 @@ skip_thermistor_config:
 	chip->status			= POWER_SUPPLY_STATUS_DISCHARGING;
 	chip->lasttime_status		= POWER_SUPPLY_STATUS_DISCHARGING;
 	chip->charge_complete		= 0;
+
+	/* Remove current property if it is not supported */
+	if (!chip->pdata->support_battery_current)
+		chip->battery.num_properties--;
 
 	ret = power_supply_register(&client->dev, &chip->battery);
 	if (ret) {

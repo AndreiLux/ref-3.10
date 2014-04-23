@@ -75,7 +75,6 @@ obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += powergate-t12x.o
 
 obj-y                                   += apbio.o
 obj-$(CONFIG_TEGRA_ARB_SEMAPHORE)       += arb_sema.o
-obj-$(CONFIG_PM_GENERIC_DOMAINS)        += pm_domains.o
 obj-y                                   += dvfs.o
 obj-$(CONFIG_ARCH_TEGRA_11x_SOC)        += tegra11_dvfs.o
 ifeq ($(CONFIG_ARCH_TEGRA_13x_SOC),y)
@@ -292,6 +291,7 @@ obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-sdhci.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-power.o
 obj-${CONFIG_MACH_VCM30_T124}           += board-vcm30_t124-panel.o
+obj-${CONFIG_MACH_VCM30_T124}           += panel-a-edp-1080p-14-0.o
 obj-${CONFIG_MACH_VCM30_T124}           += therm-monitor.o
 
 obj-${CONFIG_TEGRA_BB_XMM_POWER}        += baseband-xmm-power.o

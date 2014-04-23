@@ -113,7 +113,7 @@ int nvmap_ioctl_pinop(struct file *filp, bool is_pin, void __user *arg,
 	struct nvmap_handle *h;
 	struct nvmap_handle *on_stack[16];
 	struct nvmap_handle **refs;
-	unsigned long __user *output;
+	unsigned long __user *output = NULL;
 	unsigned int i;
 	int err = 0;
 
@@ -211,9 +211,7 @@ int nvmap_ioctl_pinop(struct file *filp, bool is_pin, void __user *arg,
 		unsigned long addr;
 
 		h = refs[i];
-		if (h->heap_pgalloc && h->pgalloc.contig)
-			addr = page_to_phys(h->pgalloc.pages[0]);
-		else if (h->heap_pgalloc)
+		if (h->heap_pgalloc)
 			addr = sg_dma_address(
 				((struct sg_table *)h->attachment->priv)->sgl);
 		else
@@ -324,9 +322,6 @@ int nvmap_ioctl_alloc(struct file *filp, void __user *arg)
 	/* user-space handles are aligned to page boundaries, to prevent
 	 * data leakage. */
 	op.align = max_t(size_t, op.align, PAGE_SIZE);
-#if defined(CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES)
-	op.flags |= NVMAP_HANDLE_ZEROED_PAGES;
-#endif
 
 	return nvmap_alloc_handle(client, handle, op.heap_mask, op.align,
 				  0, /* no kind */
@@ -352,9 +347,6 @@ int nvmap_ioctl_alloc_kind(struct file *filp, void __user *arg)
 	/* user-space handles are aligned to page boundaries, to prevent
 	 * data leakage. */
 	op.align = max_t(size_t, op.align, PAGE_SIZE);
-#if defined(CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES)
-	op.flags |= NVMAP_HANDLE_ZEROED_PAGES;
-#endif
 
 	return nvmap_alloc_handle(client, handle,
 				  op.heap_mask,
@@ -746,19 +738,21 @@ static void heap_page_cache_maint(
 	unsigned int op, bool inner, bool outer,
 	unsigned long kaddr, pgprot_t prot)
 {
-	struct page *page;
-	phys_addr_t paddr;
-	unsigned long next;
-	unsigned long off;
-	size_t size;
-
 #ifdef NVMAP_LAZY_VFREE
 	if (inner) {
 		void *vaddr = NULL;
 
-		if (!h->vaddr)
-			vaddr = vm_map_ram(h->pgalloc.pages,
+		if (!h->vaddr) {
+			struct page **pages;
+			pages = nvmap_pages(h->pgalloc.pages,
+					    h->size >> PAGE_SHIFT);
+			if (!pages)
+				goto per_page_cache_maint;
+			vaddr = vm_map_ram(pages,
 					h->size >> PAGE_SHIFT, -1, prot);
+			nvmap_altfree(pages,
+				(h->size >> PAGE_SHIFT) * sizeof(*pages));
+		}
 		if (vaddr && atomic_long_cmpxchg(&h->vaddr, 0, (long)vaddr))
 			vm_unmap_ram(vaddr, h->size >> PAGE_SHIFT);
 		if (h->vaddr) {
@@ -770,9 +764,17 @@ static void heap_page_cache_maint(
 			inner = false;
 		}
 	}
+per_page_cache_maint:
 #endif
+
 	while (start < end) {
-		page = h->pgalloc.pages[start >> PAGE_SHIFT];
+		struct page *page;
+		phys_addr_t paddr;
+		unsigned long next;
+		unsigned long off;
+		size_t size;
+
+		page = nvmap_to_page(h->pgalloc.pages[start >> PAGE_SHIFT]);
 		next = min(((start + PAGE_SIZE) & PAGE_MASK), end);
 		off = start & ~PAGE_MASK;
 		size = next - start;
@@ -1004,7 +1006,8 @@ static int rw_handle_page(struct nvmap_handle *h, int is_read,
 		if (!h->heap_pgalloc) {
 			phys = h->carveout->base + start;
 		} else {
-			page = h->pgalloc.pages[start >> PAGE_SHIFT];
+			page =
+			   nvmap_to_page(h->pgalloc.pages[start >> PAGE_SHIFT]);
 			BUG_ON(!page);
 			get_page(page);
 			phys = page_to_phys(page) + (start & ~PAGE_MASK);
@@ -1046,7 +1049,7 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 	int ret = 0;
 	struct vm_struct *area;
 
-	if (!elem_size)
+	if (!elem_size || !count)
 		return -EINVAL;
 
 	if (!h->alloc)
@@ -1058,6 +1061,14 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 		sys_stride = elem_size;
 		count = 1;
 	}
+
+	if (elem_size > h->size ||
+		h_offs >= h->size ||
+		elem_size > sys_stride ||
+		elem_size > h_stride ||
+		sys_stride > (h->size - h_offs) / count ||
+		h_stride > (h->size - h_offs) / count)
+		return -EINVAL;
 
 	area = alloc_vm_area(PAGE_SIZE, NULL);
 	if (!area)

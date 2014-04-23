@@ -337,6 +337,33 @@ void nvmap_handle_add(struct nvmap_device *dev, struct nvmap_handle *h)
 	spin_unlock(&dev->handle_lock);
 }
 
+/* Validates that a handle is in the device master tree and that the
+ * client has permission to access it. */
+struct nvmap_handle *nvmap_validate_get(struct nvmap_handle *id)
+{
+	struct nvmap_handle *h = NULL;
+	struct rb_node *n;
+
+	spin_lock(&nvmap_dev->handle_lock);
+
+	n = nvmap_dev->handles.rb_node;
+
+	while (n) {
+		h = rb_entry(n, struct nvmap_handle, node);
+		if (h == id) {
+			h = nvmap_handle_get(h);
+			spin_unlock(&nvmap_dev->handle_lock);
+			return h;
+		}
+		if (id > h)
+			n = n->rb_right;
+		else
+			n = n->rb_left;
+	}
+	spin_unlock(&nvmap_dev->handle_lock);
+	return NULL;
+}
+
 struct nvmap_client *__nvmap_create_client(struct nvmap_device *dev,
 					   const char *name)
 {
@@ -749,7 +776,7 @@ static int nvmap_vma_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 		page = pfn_to_page(pfn);
 	} else {
 		offs >>= PAGE_SHIFT;
-		page = priv->handle->pgalloc.pages[offs];
+		page = nvmap_to_page(priv->handle->pgalloc.pages[offs]);
 	}
 
 	if (page)
@@ -893,7 +920,8 @@ static void nvmap_iovmm_get_total_mss(u64 *pss, u64 *non_pss, u64 *total)
 		}
 
 		for (i = 0; i < h->size >> PAGE_SHIFT; i++) {
-			int mapcount = page_mapcount(h->pgalloc.pages[i]);
+			struct page *page = nvmap_to_page(h->pgalloc.pages[i]);
+			int mapcount = page_mapcount(page);
 			if (!mapcount)
 				*non_pss += PAGE_SIZE;
 			*total += PAGE_SIZE;
@@ -981,7 +1009,8 @@ static void nvmap_iovmm_get_client_mss(struct nvmap_client *client, u64 *pss,
 			continue;
 
 		for (i = 0; i < h->size >> PAGE_SHIFT; i++) {
-			int mapcount = page_mapcount(h->pgalloc.pages[i]);
+			struct page *page = nvmap_to_page(h->pgalloc.pages[i]);
+			int mapcount = page_mapcount(page);
 			if (!mapcount)
 				*non_pss += PAGE_SIZE;
 			*total += PAGE_SIZE;
@@ -1232,32 +1261,10 @@ static int nvmap_probe(struct platform_device *pdev)
 				dev, &debug_iovmm_allocations_fops);
 			debugfs_create_file("procrank", S_IRUGO, iovmm_root,
 				dev, &debug_iovmm_procrank_fops);
-#ifdef CONFIG_NVMAP_PAGE_POOLS
-			debugfs_create_u32("page_pool_available_pages",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.count);
-#ifdef CONFIG_NVMAP_PAGE_POOL_DEBUG
-			debugfs_create_u32("page_pool_alloc_ind",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.alloc);
-			debugfs_create_u32("page_pool_fill_ind",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.fill);
-			debugfs_create_u64("page_pool_allocs",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.allocs);
-			debugfs_create_u64("page_pool_fills",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.fills);
-			debugfs_create_u64("page_pool_hits",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.hits);
-			debugfs_create_u64("page_pool_misses",
-					   S_IRUGO, iovmm_root,
-					   &dev->pool.misses);
-#endif
-#endif
 		}
+#ifdef CONFIG_NVMAP_PAGE_POOLS
+		nvmap_page_pool_debugfs_init(nvmap_debug_root);
+#endif
 #ifdef CONFIG_NVMAP_CACHE_MAINT_BY_SET_WAYS
 		debugfs_create_size_t("cache_maint_inner_threshold",
 				      S_IRUSR | S_IWUSR,

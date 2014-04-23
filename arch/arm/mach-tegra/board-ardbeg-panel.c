@@ -388,6 +388,54 @@ struct tmds_config ardbeg_tn8_tmds_config[] = {
 	},
 };
 
+/* Equivalent to T132 Bowmore */
+struct tmds_config ardbeg_tn8_tmds_config2[] = {
+	{ /* 480p/576p / 25.2MHz/27MHz modes */
+	.version = MKDEV(1, 0),
+	.pclk = 27000000,
+	.pll0 = 0x01003010,
+	.pll1 = 0x00301B00,
+	.pe_current = 0x00000000,
+	.drive_current = 0x1C1C1C1C,
+	.peak_current = 0x00000000,
+	.pad_ctls0_mask    = 0xfffff0ff,
+	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
+	},
+	{ /* 720p / 74.25MHz modes */
+	.version = MKDEV(1, 0),
+	.pclk = 74250000,
+	.pll0 = 0x01003110,
+	.pll1 = 0x00301500,
+	.pe_current = 0x00000000,
+	.drive_current = 0x22232323,
+	.peak_current = 0x00000000,
+	.pad_ctls0_mask    = 0xfffff0ff,
+	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
+	},
+	{ /* 1080p / 148.5MHz modes */
+	.version = MKDEV(1, 0),
+	.pclk = 148500000,
+	.pll0 = 0x01003310,
+	.pll1 = 0x10300F00,
+	.pe_current = 0x00000000,
+	.drive_current = 0x2A2C2C2A,
+	.peak_current = 0x00000000,
+	.pad_ctls0_mask    = 0xfffff0ff,
+	.pad_ctls0_setting = 0x00000400, /* BG_VREF_LEVEL */
+	},
+	{
+	.version = MKDEV(1, 0),
+	.pclk = INT_MAX,
+	.pll0 = 0x01003F10,
+	.pll1 = 0x10300700,
+	.pe_current = 0x00000000,
+	.drive_current = 0x30323333,
+	.peak_current = 0x10101010,
+	.pad_ctls0_mask    = 0xfffff0ff,
+	.pad_ctls0_setting = 0x00000600, /* BG_VREF_LEVEL */
+	},
+};
+
 struct tegra_hdmi_out ardbeg_hdmi_out = {
 	.tmds_config = ardbeg_tmds_config,
 	.n_tmds_config = ARRAY_SIZE(ardbeg_tmds_config),
@@ -658,11 +706,6 @@ static struct tegra_panel *ardbeg_panel_configure(struct board_info *board_out,
 	case BOARD_PM354:
 		panel = &dsi_a_1080p_14_0;
 		break;
-	case BOARD_E1627:
-		panel = &dsi_p_wuxga_10_1;
-		tegra_io_dpd_enable(&dsic_io);
-		tegra_io_dpd_enable(&dsid_io);
-		break;
 	case BOARD_E1549:
 		panel = &dsi_lgd_wxga_7_0;
 		break;
@@ -826,10 +869,8 @@ int __init ardbeg_panel_init(void)
 	vpr_dma_info.resize = false;
 	vpr_dma_info.cma_dev = NULL;
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
-	carveout_linear_set(&tegra_generic_cma_dev);
 	ardbeg_carveouts[1].cma_dev = &tegra_generic_cma_dev;
 	ardbeg_carveouts[1].resize = false;
-	carveout_linear_set(&tegra_vpr_cma_dev);
 	ardbeg_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
 	ardbeg_carveouts[2].resize = true;
 
@@ -912,8 +953,21 @@ int __init ardbeg_panel_init(void)
 	}
 #endif
 	tegra_get_board_info(&board_info);
-	if (board_info.board_id == BOARD_P1761) {
-		ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config;
+	switch (board_info.board_id) {
+	case BOARD_E1991:
+		ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config2;
+		break;
+	case BOARD_P1761:
+		if (board_info.fab == 3)
+			ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config2;
+		else
+			ardbeg_hdmi_out.tmds_config = ardbeg_tn8_tmds_config;
+		break;
+	case BOARD_PM359:
+	case BOARD_E1971:
+	case BOARD_E1973:
+	default:	 /* default is ardbeg_tmds_config[] */
+		break;
 	}
 
 	if (!of_have_populated_dt() || !dc2_node ||

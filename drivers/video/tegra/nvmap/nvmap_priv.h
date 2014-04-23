@@ -35,6 +35,9 @@
 #include <linux/mm.h>
 #include <linux/miscdevice.h>
 #include <linux/nvmap.h>
+#include <linux/vmalloc.h>
+#include <linux/slab.h>
+
 #include <linux/workqueue.h>
 #include <linux/dma-mapping.h>
 #include <linux/dma-direction.h>
@@ -59,6 +62,8 @@
 #endif
 
 #define GFP_NVMAP              (__GFP_NVMAP | __GFP_NOWARN | NVMAP_ZEROED_PAGES)
+
+extern bool zero_memory;
 
 #ifdef CONFIG_64BIT
 #define NVMAP_LAZY_VFREE
@@ -220,6 +225,7 @@ int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
 int __nvmap_page_pool_fill_lots_locked(struct nvmap_page_pool *pool,
 				       struct page **pages, u32 nr);
 int nvmap_page_pool_clear(void);
+int nvmap_page_pool_debugfs_init(struct dentry *nvmap_root);
 #endif
 
 struct nvmap_carveout_commit {
@@ -349,6 +355,8 @@ void nvmap_handle_put(struct nvmap_handle *h);
 struct nvmap_handle_ref *__nvmap_validate_locked(struct nvmap_client *priv,
 						 struct nvmap_handle *h);
 
+struct nvmap_handle *nvmap_validate_get(struct nvmap_handle *h);
+
 struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 					     size_t size);
 
@@ -437,5 +445,58 @@ int __nvmap_dmabuf_fd(struct nvmap_client *client,
 
 void nvmap_dmabuf_debugfs_init(struct dentry *nvmap_root);
 int nvmap_dmabuf_stash_init(void);
+
+void *nvmap_altalloc(size_t len);
+void nvmap_altfree(void *ptr, size_t len);
+
+static inline struct page *nvmap_to_page(struct page *page)
+{
+	return (struct page *)((unsigned long)page & ~(3UL));
+}
+
+static inline bool nvmap_page_dirty(struct page *page)
+{
+	return !!((unsigned long)page | 1UL);
+}
+
+static inline void nvmap_page_mkdirty(struct page **page)
+{
+	*page = (struct page *)((unsigned long)*page | 1UL);
+}
+
+static inline void nvmap_page_mkclean(struct page **page)
+{
+	*page = (struct page *)((unsigned long)*page & ~(1UL));
+}
+
+static inline bool nvmap_page_reserved(struct page *page)
+{
+	return !!((unsigned long)page | 2UL);
+}
+
+static inline void nvmap_page_mkreserved(struct page **page)
+{
+	*page = (struct page *)((unsigned long)*page | 2UL);
+}
+
+static inline void nvmap_page_mkunreserved(struct page **page)
+{
+	*page = (struct page *)((unsigned long)*page & ~(2UL));
+}
+
+static inline struct page **nvmap_pages(struct page **pg_pages, u32 nr_pages)
+{
+	struct page **pages;
+	int i;
+
+	pages = nvmap_altalloc(sizeof(*pages) * nr_pages);
+	if (!pages)
+		return NULL;
+
+	for (i = 0; i < nr_pages; i++)
+		pages[i] = nvmap_to_page(pg_pages[i]);
+
+	return pages;
+}
 
 #endif /* __VIDEO_TEGRA_NVMAP_NVMAP_H */

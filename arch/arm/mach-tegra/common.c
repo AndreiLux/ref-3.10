@@ -187,7 +187,9 @@ struct device tegra_generic_cma_dev;
 struct device tegra_vpr_cma_dev;
 
 struct device tegra_generic_dev;
+
 struct device tegra_vpr_dev;
+EXPORT_SYMBOL(tegra_vpr_dev);
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvsecurity.h>
@@ -501,6 +503,8 @@ static __initdata struct tegra_clk_init_table tegra12x_clk_init_table[] = {
 	{ "tsensor",	"clk_m",	500000,		false },
 #endif
 	{ "pll_d",	NULL,		0,		true },
+	{ "dsialp",	"pll_p",	70000000,       false },
+	{ "dsiblp",     "pll_p",        70000000,       false },
 	{ NULL,		NULL,		0,		0},
 };
 static __initdata struct tegra_clk_init_table tegra12x_cbus_init_table[] = {

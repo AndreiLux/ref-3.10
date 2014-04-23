@@ -24,6 +24,7 @@
 #include <linux/nct1008.h>
 #include <linux/pid_thermal_gov.h>
 #include <linux/tegra-fuse.h>
+#include <linux/of_platform.h>
 #include <mach/edp.h>
 #include <mach/pinmux-t12.h>
 #include <mach/pinmux.h>
@@ -987,7 +988,7 @@ static int ardbeg_ov5693_power_on(struct ov5693_power_rail *pw)
 	if (unlikely(err))
 		goto ov5693_vcmvdd_fail;
 
-	usleep_range(300, 310);
+	usleep_range(1000, 1110);
 
 	return 0;
 
@@ -1130,7 +1131,7 @@ static int ardbeg_ov5693_front_power_on(struct ov5693_power_rail *pw)
 	if (unlikely(err))
 		goto ov5693_front_vcmvdd_fail;
 
-	usleep_range(300, 310);
+	usleep_range(1000, 1110);
 
 	return 0;
 
@@ -1320,105 +1321,30 @@ static struct ad5823_platform_data ardbeg_ad5823_pdata = {
 	.power_off	= ardbeg_ad5823_power_off,
 };
 
-static struct i2c_board_info	ardbeg_i2c_board_info_imx135 = {
-	I2C_BOARD_INFO("imx135", 0x10),
-	.platform_data = &ardbeg_imx135_data,
+static struct camera_data_blob ardbeg_camera_lut[] = {
+	{"ardbeg_imx135_pdata", &ardbeg_imx135_data},
+	{"ardbeg_dw9718_pdata", &ardbeg_dw9718_data},
+	{"ardbeg_ar0261_pdata", &ardbeg_ar0261_data},
+	{"ardbeg_mt9m114_pdata", &ardbeg_mt9m114_pdata},
+	{"ardbeg_ov5693_pdata", &ardbeg_ov5693_pdata},
+	{"ardbeg_ad5823_pdata", &ardbeg_ad5823_pdata},
+	{"ardbeg_as3648_pdata", &ardbeg_as3648_data},
+	{"ardbeg_ov7695_pdata", &ardbeg_ov7695_pdata},
+	{"ardbeg_ov5693f_pdata", &ardbeg_ov5693_front_pdata},
+	{},
 };
 
-static struct i2c_board_info	ardbeg_i2c_board_info_imx179 = {
-	I2C_BOARD_INFO("imx179", 0x10),
-	.platform_data = &ardbeg_imx179_data,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_ar0261 = {
-	I2C_BOARD_INFO("ar0261", 0x36),
-	.platform_data = &ardbeg_ar0261_data,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_dw9718 = {
-	I2C_BOARD_INFO("dw9718", 0x0c),
-	.platform_data = &ardbeg_dw9718_data,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_ov5693 = {
-	I2C_BOARD_INFO("ov5693", 0x10),
-	.platform_data = &ardbeg_ov5693_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_imx219 = {
-	I2C_BOARD_INFO("imx219", 0x10),
-	.platform_data = &ardbeg_imx219_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_ov5693_front = {
-	I2C_BOARD_INFO("ov5693.1", 0x36),
-	.platform_data = &ardbeg_ov5693_front_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_ov7695 = {
-	I2C_BOARD_INFO("ov7695", 0x21),
-	.platform_data = &ardbeg_ov7695_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_mt9m114 = {
-	I2C_BOARD_INFO("mt9m114", 0x48),
-	.platform_data = &ardbeg_mt9m114_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_drv201 = {
-	I2C_BOARD_INFO("drv201", 0x0e),
-	.platform_data = &ardbeg_drv201_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_ad5823 = {
-	I2C_BOARD_INFO("ad5823", 0x0c),
-	.platform_data = &ardbeg_ad5823_pdata,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_as3648 = {
-		I2C_BOARD_INFO("as3648", 0x30),
-		.platform_data = &ardbeg_as3648_data,
-};
-
-static struct i2c_board_info	ardbeg_i2c_board_info_ov9760 = {
-	I2C_BOARD_INFO("ov9760", 0x36),
-	.platform_data = &ardbeg_ov9760_data,
-};
-
-static struct camera_module ardbeg_camera_module_info[] = {
-	{
-		/* rear camera */
-		.sensor = &ardbeg_i2c_board_info_imx219,
-		.focuser = &ardbeg_i2c_board_info_drv201,
-	},
-		{
-		/* front camera */
-		.sensor = &ardbeg_i2c_board_info_ov9760,
-	},
-	/* E1633 camera board */
-	{
-		/* front camera */
-		.sensor = &ardbeg_i2c_board_info_ov5693_front,
-	},
-	/* IMX179 camera board */
-	{
-		/* rear camera */
-		.sensor = &ardbeg_i2c_board_info_imx179,
-		.focuser = &ardbeg_i2c_board_info_ad5823,
-		.flash = &ardbeg_i2c_board_info_as3648,
-	},
-	{}
-};
-
-static struct camera_platform_data ardbeg_pcl_pdata = {
-	.cfg = 0xAA55AA55,
-	.modules = ardbeg_camera_module_info,
-};
-
-static struct platform_device ardbeg_camera_generic = {
-	.name = "pcl-generic",
-	.id = -1,
-};
+void __init ardbeg_camera_auxdata(void *data)
+{
+	struct of_dev_auxdata *aux_lut = data;
+	while (aux_lut && aux_lut->compatible) {
+		if (!strcmp(aux_lut->compatible, "nvidia,tegra124-camera")) {
+			pr_info("%s: update camera lookup table.\n", __func__);
+			aux_lut->platform_data = ardbeg_camera_lut;
+		}
+		aux_lut++;
+	}
+}
 
 static int ardbeg_camera_init(void)
 {
@@ -1426,12 +1352,6 @@ static int ardbeg_camera_init(void)
 
 	pr_debug("%s: ++\n", __func__);
 	tegra_get_board_info(&board_info);
-
-	/* bug 1443481: TN8 FFD/FFF does not support flash device */
-	if (of_machine_is_compatible("nvidia,tn8") &&
-		(board_info.board_id == BOARD_P1761)) {
-		ardbeg_camera_module_info[2].flash = NULL;
-	}
 
 	/* put CSIA/B/C/D/E IOs into DPD mode to
 	 * save additional power for ardbeg
@@ -1441,10 +1361,6 @@ static int ardbeg_camera_init(void)
 	tegra_io_dpd_enable(&csic_io);
 	tegra_io_dpd_enable(&csid_io);
 	tegra_io_dpd_enable(&csie_io);
-
-	platform_device_add_data(&ardbeg_camera_generic,
-		&ardbeg_pcl_pdata, sizeof(ardbeg_pcl_pdata));
-	platform_device_register(&ardbeg_camera_generic);
 
 #if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
 	platform_device_register(&ardbeg_soc_camera_device);
@@ -2102,6 +2018,9 @@ static int ardbeg_nct72_init(void)
 			board_info.board_id == BOARD_PM363)
 		i2c_register_board_info(1, laguna_i2c_nct72_board_info,
 			ARRAY_SIZE(laguna_i2c_nct72_board_info));
+	else if (board_info.board_id == BOARD_PM375)
+		i2c_register_board_info(0, laguna_i2c_nct72_board_info,
+				ARRAY_SIZE(laguna_i2c_nct72_board_info));
 	else if (board_info.board_id == BOARD_E1971 ||
 		 board_info.board_id == BOARD_E1991)
 		/* bowmore has thermal sensor on GEN1-I2C i.e. instance 0 */
@@ -2280,7 +2199,8 @@ int __init ardbeg_sensors_init(void)
 	if (board_info.board_id != BOARD_PM363 &&
 		board_info.board_id != BOARD_PM359 &&
 		!of_machine_is_compatible("nvidia,tn8") &&
-		!of_machine_is_compatible("nvidia,bowmore"))
+		!of_machine_is_compatible("nvidia,bowmore") &&
+		board_info.board_id != BOARD_PM375)
 		mpuirq_init();
 	ardbeg_camera_init();
 
@@ -2297,7 +2217,8 @@ int __init ardbeg_sensors_init(void)
 #if defined(ARCH_TEGRA_12x_SOC)
 	/* TN8 and PM359 don't have ALS CM32181 */
 	if (!of_machine_is_compatible("nvidia,tn8") &&
-	    board_info.board_id != BOARD_PM359)
+	    board_info.board_id != BOARD_PM359 &&
+	    board_info.board_id != BOARD_PM375)
 		i2c_register_board_info(0, ardbeg_i2c_board_info_cm32181,
 			ARRAY_SIZE(ardbeg_i2c_board_info_cm32181));
 #endif

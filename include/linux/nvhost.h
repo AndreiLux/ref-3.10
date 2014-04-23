@@ -144,7 +144,11 @@ struct nvhost_device_data {
 	struct mutex	lock;		/* Power management lock */
 	struct list_head client_list;	/* List of clients and rate requests */
 
-	struct nvhost_channel *channel;	/* Channel assigned for the module */
+	int		num_channels;	/* Max num of channel supported */
+	int		num_mapped_chs;	/* Num of channel mapped to device */
+
+	/* Channel(s) assigned for the module */
+	struct nvhost_channel **channels;
 
 	/* device node for channel operations */
 	dev_t cdev_region;
@@ -314,6 +318,7 @@ struct sync_fence *nvhost_sync_fdget(int fd);
 int nvhost_sync_num_pts(struct sync_fence *fence);
 u32 nvhost_sync_pt_id(struct sync_pt *pt);
 u32 nvhost_sync_pt_thresh(struct sync_pt *pt);
+int nvhost_sync_fence_set_name(int fence_fd, const char *name);
 
 #else
 static inline struct sync_fence *nvhost_sync_create_fence(
@@ -353,6 +358,11 @@ static inline u32 nvhost_sync_pt_id(struct sync_pt *pt)
 static inline u32 nvhost_sync_pt_thresh(struct sync_pt *pt)
 {
 	return 0;
+}
+
+static inline int nvhost_sync_fence_set_name(int fence_fd, const char *name)
+{
+	return -EINVAL;
 }
 
 #endif

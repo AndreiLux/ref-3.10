@@ -31,14 +31,13 @@
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
 #include <linux/tegra-soc.h>
+#include <linux/tegra_pm_domains.h>
 
 #include "dev.h"
 #include <trace/events/nvhost.h>
 
 #include <linux/nvhost.h>
 #include <linux/nvhost_ioctl.h>
-
-#include <mach/pm_domains.h>
 
 #include "debug.h"
 #include "bus_client.h"
@@ -235,6 +234,31 @@ out:
 #endif
 }
 
+static int nvhost_ioctl_ctrl_sync_fence_set_name(
+	struct nvhost_ctrl_userctx *ctx,
+	struct nvhost_ctrl_sync_fence_name_args *args)
+{
+#ifdef CONFIG_TEGRA_GRHOST_SYNC
+	int err;
+	char name[32];
+	const char __user *args_name =
+		(const char __user *)(uintptr_t)args->name;
+
+	if (args_name) {
+		if (strncpy_from_user(name, args_name, sizeof(name)) < 0)
+			return -EFAULT;
+		name[sizeof(name) - 1] = '\0';
+	} else {
+		name[0] = '\0';
+	}
+
+	err = nvhost_sync_fence_set_name(args->fence_fd, name);
+	return err;
+#else
+	return -EINVAL;
+#endif
+}
+
 static int nvhost_ioctl_ctrl_module_mutex(struct nvhost_ctrl_userctx *ctx,
 	struct nvhost_ctrl_module_mutex_args *args)
 {
@@ -401,6 +425,9 @@ static long nvhost_ctrlctl(struct file *filp,
 	}
 	case NVHOST_IOCTL_CTRL_SYNC_FENCE_CREATE:
 		err = nvhost_ioctl_ctrl_sync_fence_create(priv, (void *)buf);
+		break;
+	case NVHOST_IOCTL_CTRL_SYNC_FENCE_SET_NAME:
+		err = nvhost_ioctl_ctrl_sync_fence_set_name(priv, (void *)buf);
 		break;
 	case NVHOST_IOCTL_CTRL_MODULE_MUTEX:
 		err = nvhost_ioctl_ctrl_module_mutex(priv, (void *)buf);

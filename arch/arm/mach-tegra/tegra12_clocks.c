@@ -2771,11 +2771,12 @@ static int pll_dyn_ramp_cfg(struct clk *c, struct clk_pll_freq_table *cfg,
 	cfg->m = PLL_FIXED_MDIV(c, input_rate);
 	cfg->p = p;
 	cfg->output_rate = rate * cfg->p;
+	if (cfg->output_rate > c->u.pll.vco_max)
+		cfg->output_rate = c->u.pll.vco_max;
 	cfg->n = cfg->output_rate * cfg->m / input_rate;
 
 	/* can use PLLCX N-divider field layout for all dynamic ramp PLLs */
-	if ((cfg->n > (PLLCX_BASE_DIVN_MASK >> PLL_BASE_DIVN_SHIFT)) ||
-	    (cfg->output_rate > c->u.pll.vco_max))
+	if (cfg->n > (PLLCX_BASE_DIVN_MASK >> PLL_BASE_DIVN_SHIFT))
 		return -EINVAL;
 
 	return 0;
@@ -2940,9 +2941,9 @@ static void tegra12_pllcx_clk_init(struct clk *c)
 	 */
 	m = PLL_FIXED_MDIV(c, input_rate);
 	n = m * c->u.pll.vco_min / input_rate;
-	p = pllcx_p[2];
+	p = pllcx_p[1];
 	val = (m << PLL_BASE_DIVM_SHIFT) | (n << PLL_BASE_DIVN_SHIFT) |
-		(2 << PLL_BASE_DIVP_SHIFT);
+		(1 << PLL_BASE_DIVP_SHIFT);
 	clk_writel(val, c->reg + PLL_BASE);	/* PLL disabled */
 
 	pllcx_set_defaults(c, input_rate, n);
@@ -4188,7 +4189,6 @@ static int tegra12_plle_clk_enable(struct clk *c)
 	val |= PLLE_MISC_IDDQ_SW_CTRL;
 	val &= ~PLLE_MISC_IDDQ_SW_VALUE;
 	val |= PLLE_MISC_PLLE_PTS;
-	val |= PLLE_MISC_VREG_BG_CTRL_MASK | PLLE_MISC_VREG_CTRL_MASK;
 	clk_writel(val, c->reg + PLL_MISC(c));
 	udelay(5);
 
@@ -6578,10 +6578,10 @@ static struct clk tegra_pll_c2 = {
 		.input_max = 48000000,
 		.cf_min    = 12000000,
 		.cf_max    = 19200000,
-		.vco_min   = 600000000,
-		.vco_max   = 1200000000,
+		.vco_min   = 650000000,
+		.vco_max   = 1300000000,
 		.freq_table = tegra_pll_cx_freq_table,
-		.lock_delay = 300,
+		.lock_delay = 360,
 		.misc1 = 0x4f0 - 0x4e8,
 		.round_p_to_pdiv = pllcx_round_p_to_pdiv,
 	},
@@ -6599,10 +6599,10 @@ static struct clk tegra_pll_c3 = {
 		.input_max = 48000000,
 		.cf_min    = 12000000,
 		.cf_max    = 19200000,
-		.vco_min   = 600000000,
-		.vco_max   = 1200000000,
+		.vco_min   = 650000000,
+		.vco_max   = 1300000000,
 		.freq_table = tegra_pll_cx_freq_table,
-		.lock_delay = 300,
+		.lock_delay = 360,
 		.misc1 = 0x504 - 0x4fc,
 		.round_p_to_pdiv = pllcx_round_p_to_pdiv,
 	},
