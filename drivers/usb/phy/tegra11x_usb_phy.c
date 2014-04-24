@@ -2089,6 +2089,11 @@ static void uhsic_phy_restore_end(struct tegra_usb_phy *phy)
 		irq_disabled = true;
 	}
 
+	/* Disable PMC remote wake-up detection */
+	val = readl(base + UHSIC_PMC_WAKEUP0);
+	val &= ~EVENT_INT_ENB;
+	writel(val, base + UHSIC_PMC_WAKEUP0);
+
 	/*
 	 * If pmc wakeup is detected after putting controller in suspend
 	 * in usb_phy_bringup_host_cotroller, restart bringing up host
