@@ -411,6 +411,7 @@ static int tps61310_param_rd(struct tps61310_info *info, long arg)
 				__func__, pinstate.mask, pinstate.values);
 		data_ptr = &pinstate;
 		data_size = sizeof(struct nvc_torch_pin_state);
+		gpio_set_value(220, 1);
 		break;
 
 	case NVC_PARAM_STEREO:
@@ -514,6 +515,7 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 		val &= 0xC0; /* 7:6=mode */
 		if (!val) /* turn pwr off if no torch && no pwr_api */
 			tps61310_pm_dev_wr(info, NVC_PWR_OFF);
+		gpio_set_value(220, 0);
 		return err;
 
 	case NVC_PARAM_FLASH_PIN_STATE:

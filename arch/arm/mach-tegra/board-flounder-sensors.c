@@ -343,7 +343,6 @@ static int flounder_camera_init(void)
 	tegra_io_dpd_enable(&csie_io);
 	tegra_gpio_disable(TEGRA_GPIO_PBB0);
 	tegra_gpio_disable(TEGRA_GPIO_PCC0);
-	tegra_gpio_disable(TEGRA_GPIO_PBB4);
 
 #if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
 	platform_device_register(&flounder_soc_camera_device);
