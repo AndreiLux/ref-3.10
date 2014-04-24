@@ -34,6 +34,8 @@
 
 #include <linux/regulator/consumer.h>
 
+#include <linux/firmware.h>
+
 /*#include <mach/gpiomux.h>*/
 #define D(x...) pr_debug("[S_HUB][CW_MCU] " x)
 #define I(x...) pr_info("[S_HUB][CW_MCU] " x)
@@ -61,6 +63,12 @@
 #define GYRO_CALIBRATOR_LEN 3
 #define LIGHT_CALIBRATOR_LEN 4
 #define PRESSURE_CALIBRATOR_LEN 4
+
+#define FW_VER_INFO_LEN 31
+#define FW_VER_HEADER_LEN 7
+#define FW_VER_COUNT 6
+#define FW_RESPONSE_CODE 0x79
+#define FW_I2C_LEN_LIMIT 60
 
 #define ENABLE_LIST_GROUP_NUM 4
 
@@ -92,6 +100,10 @@ static int DEBUG_FLAG_MAGNETIC_UNCALIBRATED;
 module_param(DEBUG_FLAG_MAGNETIC_UNCALIBRATED, int, 0600);
 static int DEBUG_FLAG_GEOMAGNETIC_ROTATION_VECTOR;
 module_param(DEBUG_FLAG_GEOMAGNETIC_ROTATION_VECTOR, int, 0600);
+
+static int DEBUG_DISABLE;
+module_param(DEBUG_DISABLE, int, 0660);
+MODULE_PARM_DESC(DEBUG_DISABLE, "disable " CWMCU_I2C_NAME " driver") ;
 
 static void polling_do_work(struct work_struct *w);
 static DECLARE_DELAYED_WORK(polling_work, polling_do_work);
@@ -159,6 +171,8 @@ struct cwmcu_data {
 
 	int i2c_total_retry;
 	unsigned long i2c_jiffies;
+
+	int disable_access_count;
 };
 static struct cwmcu_data *mcu_data;
 
@@ -592,7 +606,7 @@ static ssize_t get_light_kadc(struct device *dev,
 static ssize_t get_firmware_version(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
-	u8 firmware_version[6] = {0};
+	u8 firmware_version[FW_VER_COUNT] = {0};
 
 	CWMCU_i2c_read(mcu_data, FIRMWARE_VERSION, firmware_version,
 		       sizeof(firmware_version));
@@ -731,6 +745,13 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 	s32 write_res;
 	int i;
 
+	if (DEBUG_DISABLE) {
+		sensor->disable_access_count++;
+		if ((sensor->disable_access_count % 100) == 0)
+			I("%s: DEBUG_DISABLE = %d\n", __func__, DEBUG_DISABLE);
+		return len;
+	}
+
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (sensor->i2c_total_retry > RETRY_TIMES) {
 		mutex_unlock(&mcu_data->activated_i2c_lock);
@@ -792,7 +813,7 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 	u8 als_goldl = 0x38;
 	u8 als_datal = 0, als_datah = 0;
 	u8 bs_dataa = 0, bs_datab = 0, bs_datac = 0, bs_datad = 0;
-	u8 firmware_version[6] = {0};
+	u8 firmware_version[FW_VER_COUNT] = {0};
 
 	sensor->gs_calibrated = 0;
 	sensor->gy_calibrated = 0;
@@ -972,8 +993,315 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 	return 0;
 }
 
+static int check_fw_version(const struct firmware *fw)
+{
+	u8 firmware_version[FW_VER_COUNT] = {0};
+	u8 fw_version[FW_VER_COUNT];
+	char char_ver[4];
+	unsigned long ul_ver;
+	int i;
+	int rc;
+
+	CWMCU_i2c_read(mcu_data, FIRMWARE_VERSION, firmware_version,
+		       sizeof(firmware_version));
+
+	/* Version example: HTCSHUB001.000.001.005.000.001 */
+	if (!strncmp(&fw->data[fw->size - FW_VER_INFO_LEN], "HTCSHUB",
+		     sizeof("HTCSHUB") - 1)) {
+		for (i = 0; i < FW_VER_COUNT; i++) {
+			memcpy(char_ver, &fw->data[fw->size - FW_VER_INFO_LEN +
+						   FW_VER_HEADER_LEN + (i * 4)],
+			       sizeof(char_ver));
+			char_ver[sizeof(char_ver) - 1] = 0;
+			rc = kstrtol(char_ver, 10, &ul_ver);
+			if (rc) {
+				E("%s: kstrtol fails, rc = %d, i = %d\n",
+					__func__, rc, i);
+				return rc;
+			}
+			fw_version[i] = ul_ver;
+			I(
+			  "%s: fw_version[%d] = %u, firmware_version[%d] ="
+			  " %u\n", __func__, i, fw_version[i]
+			  , i, firmware_version[i]);
+		}
+
+		if (memcmp(firmware_version, fw_version,
+			   sizeof(firmware_version))) {
+			I("%s: Sensor HUB firmware update is required\n",
+			  __func__);
+			return 1;
+		} else {
+			I("%s: Sensor HUB firmware is up-to-date\n",
+			  __func__);
+			return 0;
+		}
+
+	} else {
+		E("%s: fw version = %s, incorrect!\n", __func__,
+		  &fw->data[fw->size - FW_VER_INFO_LEN]);
+		return -ESPIPE;
+	}
+	return 0;
+}
+
+static int i2c_rx_bytes(struct cwmcu_data *sensor, u8 *buf, u16 len)
+{
+	int ret;
+
+	do {
+		ret = i2c_master_recv(sensor->client, (char *)buf, (int)len);
+	} while (ret == -EAGAIN);
+	if (ret < 0) {
+		E("I2C RX fail (%d)", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
+static int i2c_tx_bytes(struct cwmcu_data *sensor, u8 *buf, u16 len)
+{
+	int ret;
+
+	do {
+		ret = i2c_master_send(sensor->client, (char *)buf, (int)len);
+	} while (ret == -EAGAIN);
+	if (ret < 0) {
+		E("I2C TX fail (%d)", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
+static int erase_mcu_flash_mem(void)
+{
+	u8 i2c_data[3] = {0};
+	int rc;
+
+	i2c_data[0] = 0x44;
+	i2c_data[1] = 0xBB;
+	rc = i2c_tx_bytes(mcu_data, i2c_data, 2);
+	if (rc != 2) {
+		E("%s: Failed to write 0xBB44, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
+	if (rc != 1) {
+		E("%s: Failed to read, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	if (i2c_data[0] != FW_RESPONSE_CODE) {
+		E("%s: FW NACK, i2c_data = 0x%x\n", __func__, i2c_data[0]);
+		return 1;
+	}
+
+
+	i2c_data[0] = 0xFF;
+	i2c_data[1] = 0xFF;
+	i2c_data[2] = 0;
+	rc = i2c_tx_bytes(mcu_data, i2c_data, 3);
+	if (rc != 3) {
+		E("%s: Failed to write_2, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	I("%s: Tx size = %d\n", __func__, 3);
+	/* Erase needs 9 sec in worst case */
+	mdelay(9000);
+	I("%s: After delay, Tx size = %d\n", __func__, 3);
+
+	return 0;
+}
+
+static int update_mcu_flash_mem_block(u32 start_address,
+				      u8 write_buf[],
+				      int numberofbyte)
+{
+	u8 i2c_data[FW_I2C_LEN_LIMIT+2] = {0};
+	__be32 to_i2c_command;
+	int data_len, checksum;
+	int i;
+	int rc;
+
+	i2c_data[0] = 0x31;
+	i2c_data[1] = 0xCE;
+	rc = i2c_tx_bytes(mcu_data, i2c_data, 2);
+	if (rc != 2) {
+		E("%s: Failed to write 0xCE31, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
+	if (rc != 1) {
+		E("%s: Failed to read, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	if (i2c_data[0] != FW_RESPONSE_CODE) {
+		E("%s: FW NACK, i2c_data = 0x%x\n", __func__, i2c_data[0]);
+		return 1;
+	}
+
+
+	to_i2c_command = cpu_to_be32(start_address);
+	memcpy(i2c_data, &to_i2c_command, sizeof(__be32));
+	i2c_data[4] = i2c_data[0] ^ i2c_data[1] ^ i2c_data[2] ^ i2c_data[3];
+	rc = i2c_tx_bytes(mcu_data, i2c_data, 5);
+	if (rc != 5) {
+		E("%s: Failed to write_2, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
+	if (rc != 1) {
+		E("%s: Failed to read_2, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	if (i2c_data[0] != FW_RESPONSE_CODE) {
+		E("%s: FW NACK_2, i2c_data = 0x%x\n", __func__, i2c_data[0]);
+		return 1;
+	}
+
+
+	checksum = 0x0;
+	data_len = numberofbyte + 2;
+
+	i2c_data[0] = numberofbyte - 1;
+
+	for (i = 0; i < numberofbyte; i++)
+		i2c_data[i+1] = write_buf[i];
+
+	for (i = 0; i < (data_len - 1); i++)
+		checksum ^= i2c_data[i];
+
+	i2c_data[i] = checksum;
+	rc = i2c_tx_bytes(mcu_data, i2c_data, data_len);
+	if (rc != data_len) {
+		E("%s: Failed to write_3, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	udelay(numberofbyte * 35);
+
+	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
+	if (rc != 1) {
+		E("%s: Failed to read_3, rc = %d\n", __func__, rc);
+		return rc;
+	}
+
+	if (i2c_data[0] != FW_RESPONSE_CODE) {
+		E("%s: FW NACK_3, i2c_data = 0x%x\n", __func__, i2c_data[0]);
+		return 1;
+	}
+
+	return 0;
+}
+
+static int update_firmware(struct cwmcu_data *sensor)
+{
+	const struct firmware *fw;
+	int  ret;
+	u8 write_buf[FW_I2C_LEN_LIMIT] = {0};
+	int block_size, data_len;
+	u32 address_point;
+	int i;
+
+	ret = request_firmware(&fw, "sensor_hub.img", &sensor->client->dev);
+	I("%s: request_firmware ret = %d\n", __func__, ret);
+	if (ret || fw == NULL) {
+		E("%s: firmware request failed (%d, %p)", __func__, ret, fw);
+		return -1;
+	}
+
+	I("%s: firmware size = %lu\n", __func__, fw->size);
+
+	ret = check_fw_version(fw);
+	if (ret == 1) { /* Perform firmware update */
+
+		mutex_lock(&mcu_data->activated_i2c_lock);
+
+		mcu_data->client->addr = 0x39;
+
+		gpio_direction_output(mcu_data->gpio_chip_mode, 1);
+		mdelay(10);
+		gpio_direction_output(mcu_data->gpio_reset, 0);
+		mdelay(10);
+		gpio_direction_output(mcu_data->gpio_reset, 1);
+		mdelay(41);
+
+		ret = erase_mcu_flash_mem();
+		if (ret < 0) {
+			E("%s: erase mcu flash memory fails, ret = %d\n",
+			  __func__, ret);
+		}
+
+		I("%s: Start writing firmware\n", __func__);
+
+		block_size = fw->size / FW_I2C_LEN_LIMIT;
+		data_len = fw->size % FW_I2C_LEN_LIMIT;
+		address_point = 0x08000000;
+
+		for (i = 0; i < block_size; i++) {
+			memcpy(write_buf, &fw->data[FW_I2C_LEN_LIMIT*i],
+			       FW_I2C_LEN_LIMIT);
+			ret = update_mcu_flash_mem_block(address_point,
+							 write_buf,
+							 FW_I2C_LEN_LIMIT);
+			if (ret) {
+				E("%s: update_mcu_flash_mem_block fails,"
+				  "ret = %d, i = %d\n", __func__, ret, i);
+				goto out;
+			}
+			address_point += FW_I2C_LEN_LIMIT;
+		}
+
+		if (data_len != 0) {
+			memcpy(write_buf, &fw->data[FW_I2C_LEN_LIMIT*i],
+			       data_len);
+			ret = update_mcu_flash_mem_block(address_point,
+							 write_buf,
+							 data_len);
+			if (ret) {
+				E("%s: update_mcu_flash_mem_block fails_2,"
+				  "ret = %d\n", __func__, ret);
+				goto out;
+			}
+		}
+
+out:
+		I("%s: End writing firmware\n", __func__);
+
+		gpio_direction_output(mcu_data->gpio_chip_mode, 0);
+		mdelay(10);
+		gpio_direction_output(mcu_data->gpio_reset, 0);
+		mdelay(10);
+		gpio_direction_output(mcu_data->gpio_reset, 1);
+		mdelay(20);
+
+		mcu_data->client->addr = 0x72;
+
+		mutex_unlock(&mcu_data->activated_i2c_lock);
+
+	}
+	release_firmware(fw);
+	return ret;
+}
+
 static void polling_do_work(struct work_struct *w)
 {
+	int error;
+
+	error = update_firmware(mcu_data);
+	if (error) {
+		E("%s: update_firmware fails, error = %d\n", __func__, error);
+		DEBUG_DISABLE = 1;
+	}
+
 	cwmcu_sensor_placement(mcu_data);
 	cwmcu_set_sensor_kvalue(mcu_data);
 	cwmcu_restore_status(mcu_data);
@@ -986,6 +1314,13 @@ static int CWMCU_i2c_read(struct cwmcu_data *sensor,
 			 u8 reg_addr, u8 *data, u8 len)
 {
 	s32 rc = 0;
+
+	if (DEBUG_DISABLE) {
+		sensor->disable_access_count++;
+		if ((sensor->disable_access_count % 100) == 0)
+			I("%s: DEBUG_DISABLE = %d\n", __func__, DEBUG_DISABLE);
+		return len;
+	}
 
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (sensor->i2c_total_retry > RETRY_TIMES) {
