@@ -893,7 +893,6 @@ int rt5506_probe(struct i2c_client *client, const struct i2c_device_id *id)
 				goto err_free_allocated_mem;
 			} else {
 				pr_info("rt5506_power_enable=1\n");
-				gpio_free(pdata->rt5506_power_enable);
 			}
 		}
 	}
@@ -1045,8 +1044,6 @@ static int rt5506_remove(struct i2c_client *client)
 				pr_info("rt5506_reg ldoen is disabled\n");
 		}
 	} else {
-		ret = gpio_request(pdata->rt5506_power_enable,
-		"rt5506-power-en");
 		if (ret) {
 			pr_err("%s: Fail gpio_request rt5506_power_enable, %d\n",
 			__func__, ret);
