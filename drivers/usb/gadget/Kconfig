@@ -518,6 +518,12 @@ config USB_F_SS_LB
 config USB_U_SERIAL
 	tristate
 
+config USB_U_CTRL_HSIC
+	tristate
+
+config USB_U_DATA_HSIC
+	tristate
+
 config USB_F_SERIAL
 	tristate
 
@@ -835,6 +841,8 @@ config USB_G_ANDROID
 	select USB_LIBCOMPOSITE
 	select USB_U_SERIAL
 	select USB_F_SERIAL
+	select USB_U_CTRL_HSIC
+	select USB_U_DATA_HSIC
 	help
 	  The Android Composite Gadget supports multiple USB
 	  functions: adb, acm, mass storage, mtp, accessory

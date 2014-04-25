@@ -29,6 +29,9 @@
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
 #include <mach/usb_gadget_xport.h>
+#ifdef CONFIG_DIAG_CHAR
+#include <mach/board_htc.h>
+#endif
 
 #include "gadget_chips.h"
 
@@ -36,6 +39,9 @@
 #include "f_fs.c"
 #include "f_audio_source.c"
 #include "f_mass_storage.c"
+#ifdef CONFIG_DIAG_CHAR
+#include "f_diag.c"
+#endif
 #include "f_mtp.c"
 #include "f_accessory.c"
 #define USB_ETH_RNDIS y
@@ -102,7 +108,7 @@ struct android_dev {
 	char ffs_aliases[256];
 };
 
-#define GSERIAL_NO_PORTS 5
+#define GSERIAL_NO_PORTS 8
 static unsigned int no_tty_ports;
 static unsigned int no_hsic_sports;
 static unsigned int nr_ports;
@@ -1000,7 +1006,9 @@ struct serial_function_config {
 	int instances_on;
 	struct usb_function *f_serial[MAX_SERIAL_INSTANCES];
 	struct usb_function_instance *f_serial_inst[MAX_SERIAL_INSTANCES];
-};
+	struct usb_function *f_serial_modem[MAX_SERIAL_INSTANCES];
+	struct usb_function_instance *f_serial_modem_inst[MAX_SERIAL_INSTANCES];
+}*serial_modem_config;
 
 static int gserial_init_port(int port_num, const char *name, char *serial_type)
 {
@@ -1027,6 +1035,7 @@ static int gserial_init_port(int port_num, const char *name, char *serial_type)
 		break;
 	case USB_GADGET_XPORT_HSIC:
 		/*client port number will be updated in gport_setup*/
+		gserial_ports[port_num].client_port_num = no_hsic_sports;
 		no_hsic_sports++;
 		break;
 	default:
@@ -1050,12 +1059,12 @@ serial_function_init(struct android_usb_function *f,
 	char *name, *str[2];
 	char buf[80], *b;
 
-	config = kzalloc(sizeof(struct serial_function_config), GFP_KERNEL);
+	serial_modem_config = config = kzalloc(sizeof(struct serial_function_config), GFP_KERNEL);
 	if (!config)
 		return -ENOMEM;
 	f->config = config;
 
-	strcpy(serial_transports, "tty,tty,tty:serial");
+	strcpy(serial_transports, "hsic:modem,tty,tty,tty:serial");
 	strncpy(buf, serial_transports, sizeof(buf));
 	buf[79] = 0;
 	pr_info("%s: init string: %s\n",__func__, buf);
@@ -1090,6 +1099,20 @@ serial_function_init(struct android_usb_function *f,
 			goto err_usb_get_function;
 		}
 	}
+
+	for (i = 0; i < no_hsic_sports; i++) {
+		config->f_serial_modem_inst[i] = usb_get_function_instance("modem");
+		if (IS_ERR(config->f_serial_modem_inst[i])) {
+			ret = PTR_ERR(config->f_serial_modem_inst[i]);
+			goto err_usb_get_function_instance;
+		}
+		config->f_serial_modem[i] = usb_get_function(config->f_serial_modem_inst[i]);
+		if (IS_ERR(config->f_serial_modem[i])) {
+			ret = PTR_ERR(config->f_serial_modem[i]);
+			goto err_usb_get_function;
+		}
+	}
+
 	return 0;
 err_usb_get_function_instance:
 	while (--i >= 0) {
@@ -1142,11 +1165,129 @@ err_usb_add_function:
 	return ret;
 }
 
+/* Diag */
+#ifdef CONFIG_DIAG_CHAR
+static char diag_clients[32];	/*enabled DIAG clients- "diag[,diag_mdm]" */
+static ssize_t clients_store(struct device *device, struct device_attribute *attr, const char *buff, size_t size)
+{
+	strlcpy(diag_clients, buff, sizeof(diag_clients));
+
+	return size;
+}
+
+static DEVICE_ATTR(clients, S_IWUSR, NULL, clients_store);
+static struct device_attribute *diag_function_attributes[] = { &dev_attr_clients, NULL };
+
+static int diag_function_init(struct android_usb_function *f, struct usb_composite_dev *cdev)
+{
+	return diag_setup();
+}
+
+static void diag_function_cleanup(struct android_usb_function *f)
+{
+	diag_cleanup();
+}
+
+static int diag_function_bind_config(struct android_usb_function *f, struct usb_configuration *c)
+{
+#if 1
+	int err;
+	int (*notify) (uint32_t, const char *);
+
+	//notify = _android_dev->pdata->update_pid_and_serial_num;
+	notify = NULL;
+
+	err = diag_function_add(c, DIAG_MDM, notify);	/* Note:DIAG_LEGACY->DIAG_MDM */
+	if (err)
+		pr_err("diag: Cannot open channel '%s'", DIAG_MDM);	/* Note:DIAG_LEGACY->DIAG_MDM */
+
+#else
+	char *name;
+	char buf[32], *b;
+	int once = 0, err = -1;
+	int (*notify) (uint32_t, const char *);
+
+	strlcpy(buf, diag_clients, sizeof(buf));
+	b = strim(buf);
+
+	while (b) {
+		notify = NULL;
+		name = strsep(&b, ",");
+		/* Allow only first diag channel to update pid and serial no */
+		if (_android_dev->pdata && !once++)
+			notify = _android_dev->pdata->update_pid_and_serial_num;
+
+		if (name) {
+			if (strcmp(name, f->name) != 0)
+				continue;
+			err = diag_function_add(c, name, notify);
+			if (err)
+				pr_err("diag: Cannot open channel '%s'", name);
+		}
+	}
+#endif
+	return err;
+}
+
+static struct android_usb_function diag_function = {
+	.name = DIAG_MDM,
+	.init = diag_function_init,
+	.cleanup = diag_function_cleanup,
+	.bind_config = diag_function_bind_config,
+	.attributes = diag_function_attributes,
+};
+#endif
+
+static int
+modem_function_bind_config(struct android_usb_function *f,
+		struct usb_configuration *c)
+{
+	int i;
+	int ret = 0;
+	struct serial_function_config *config = serial_modem_config;
+
+	for (i = 0; i < nr_ports; i++) {
+		pr_info("[USB] %s: client num = %d\n",__func__,gserial_ports[i].client_port_num);
+		if (gserial_ports[i].func_type == USB_FSER_FUNC_MODEM)
+			ret = usb_add_function(c, config->f_serial_modem[gserial_ports[i].client_port_num]);
+		if (ret) {
+			pr_err("Could not bind serial%u config\n", i);
+			goto err_usb_add_function;
+		}
+	}
+
+	return 0;
+
+err_usb_add_function:
+	while (i-- > 0)
+		usb_remove_function(c, config->f_serial_modem[gserial_ports[i].client_port_num]);
+	return ret;
+}
+
+static void modem_function_cleanup(struct android_usb_function *f)
+{
+	int i;
+	struct serial_function_config *config = f->config;
+
+	for (i = 0; i < no_hsic_sports; i++) {
+		usb_put_function(config->f_serial_modem[i]);
+		usb_put_function_instance(config->f_serial_modem_inst[i]);
+	}
+	kfree(f->config);
+	f->config = NULL;
+}
+
 static struct android_usb_function serial_function = {
 	.name		= "serial",
 	.init		= serial_function_init,
 	.cleanup	= serial_function_cleanup,
 	.bind_config	= serial_function_bind_config,
+};
+
+static struct android_usb_function modem_function = {
+	.name		= "modem",
+	.cleanup	= modem_function_cleanup,
+	.bind_config	= modem_function_bind_config,
 };
 
 static struct android_usb_function *supported_functions[] = {
@@ -1159,7 +1300,11 @@ static struct android_usb_function *supported_functions[] = {
 	&audio_source_function,
 	&nvusb_function,
 	&serial_function,
+	&modem_function,
 	&acm_function,
+#ifdef CONFIG_DIAG_CHAR
+	&diag_function,
+#endif
 	NULL
 };
 
