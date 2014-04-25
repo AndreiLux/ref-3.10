@@ -47,6 +47,8 @@
 #define RM_VARIABLE_SET_WAKE_UNLOCK				0x0A
 #define RM_VARIABLE_DPW							0x0B
 #define RM_VARIABLE_NS_MODE						0x0C
+#define RM_VARIABLE_TOUCHFILE_STATUS            0x0D
+
 #define RM_IOCTL_GET_VARIABLE				0x1011
 #define RM_VARIABLE_PLATFORM_ID					0x01
 #define RM_VARIABLE_GPIO_SELECT					0x02
@@ -210,6 +212,10 @@
  *	DO NOT MODIFY
  *	NOTE: Need to sync with HAL
  ***************************************************************************/
+#define INPUT_PROTOCOL_TYPE_A	0x01
+#define INPUT_PROTOCOL_TYPE_B	0x02
+#define INPUT_PROTOCOL_CURRENT_SUPPORT INPUT_PROTOCOL_TYPE_B
+
 #define INPUT_POINT_RESET	0x80
 #define MAX_REPORT_TOUCHED_POINTS	10
 
