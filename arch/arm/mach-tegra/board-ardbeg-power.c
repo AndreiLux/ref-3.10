@@ -166,11 +166,12 @@ static struct tegra_cl_dvfs_cfg_param e1733_ardbeg_cl_dvfs_param = {
 /* E1733 volatge map. Fixed 10mv steps from 700mv to 1400mv */
 #define E1733_CPU_VDD_MAP_SIZE ((1400000 - 700000) / 10000 + 1)
 static struct voltage_reg_map e1733_cpu_vdd_map[E1733_CPU_VDD_MAP_SIZE];
-static inline void e1733_fill_reg_map(void)
+static inline void e1733_fill_reg_map(int minor_ver)
 {
         int i;
+	int reg_init_value = (minor_ver == 2) ? 0x1e : 0xa;
         for (i = 0; i < E1733_CPU_VDD_MAP_SIZE; i++) {
-                e1733_cpu_vdd_map[i].reg_value = i + 0xa;
+                e1733_cpu_vdd_map[i].reg_value = i + reg_init_value;
                 e1733_cpu_vdd_map[i].reg_uV = 700000 + 10000 * i;
         }
 }
@@ -252,7 +253,17 @@ static int __init ardbeg_cl_dvfs_init(struct board_info *pmu_board_info)
 
 
 	if (pmu_board_id == BOARD_E1733) {
-		e1733_fill_reg_map();
+		int minor_ver = 1;
+
+		if ((pmu_board_info->major_revision == 'F') &&
+				(pmu_board_info->minor_revision == 0x2)) {
+			pr_err("AMS PMIC version 1V2\n");
+			minor_ver = 2;
+		} else {
+			minor_ver = 1;
+			pr_err("AMS PMIC version 1V2\n");
+		}
+		e1733_fill_reg_map(minor_ver);
 		data = &e1733_cl_dvfs_data;
 	}
 

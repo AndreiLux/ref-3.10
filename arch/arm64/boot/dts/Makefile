@@ -8,6 +8,7 @@ dtb-$(CONFIG_MACH_T132REF) += tegra132-norrin-pm374-0001-a01-00.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-laguna.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-ers-s.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-e1973-1000-a01-00.dtb
+dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-e1973-1000-a01-01.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-ers.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-e1971-1100-a00-00.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-e1971-1100-a00-00-powerconfig.dtb
