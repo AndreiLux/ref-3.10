@@ -130,10 +130,11 @@ static int f2fs_xattr_advise_get(struct dentry *dentry, const char *name,
 {
 	struct inode *inode = dentry->d_inode;
 
-	if (strcmp(name, "") != 0)
+	if (!name || strcmp(name, "") != 0)
 		return -EINVAL;
 
-	*((char *)buffer) = F2FS_I(inode)->i_advise;
+	if (buffer)
+		*((char *)buffer) = F2FS_I(inode)->i_advise;
 	return sizeof(char);
 }
 
@@ -149,7 +150,7 @@ static int f2fs_xattr_advise_set(struct dentry *dentry, const char *name,
 	if (value == NULL)
 		return -EINVAL;
 
-	F2FS_I(inode)->i_advise |= *(char *)value;
+	F2FS_I(inode)->i_advise = *(char *)value;
 	return 0;
 }
 

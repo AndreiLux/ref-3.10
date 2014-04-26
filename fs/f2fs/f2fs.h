@@ -28,6 +28,7 @@
 #define F2FS_MOUNT_XATTR_USER		0x00000010
 #define F2FS_MOUNT_POSIX_ACL		0x00000020
 #define F2FS_MOUNT_DISABLE_EXT_IDENTIFY	0x00000040
+#define F2FS_MOUNT_ANDROID_EMU		0x00001000
 #define F2FS_MOUNT_ERRORS_PANIC		0x00002000
 #define F2FS_MOUNT_ERRORS_RECOVER	0x00004000
 
@@ -167,6 +168,8 @@ struct extent_info {
  */
 #define FADVISE_COLD_BIT	0x01
 #define FADVISE_CP_BIT		0x02
+#define FADVISE_ANDROID_EMU	0x10
+#define FADVISE_ANDROID_EMU_ROOT 0x20
 
 struct f2fs_inode_info {
 	struct inode vfs_inode;		/* serve a vfs inode */
@@ -352,6 +355,11 @@ enum page_type {
 	META_FLUSH,
 };
 
+/*
+ * Android sdcard emulation flags
+ */
+#define F2FS_ANDROID_EMU_NOCASE		0x00000001
+
 struct f2fs_sb_info {
 	struct super_block *sb;			/* pointer to VFS super block */
 	struct buffer_head *raw_super_buf;	/* buffer head of raw sb */
@@ -431,6 +439,10 @@ struct f2fs_sb_info {
 	int total_hit_ext, read_hit_ext;	/* extent cache hit ratio */
 	int bg_gc;				/* background gc calls */
 	spinlock_t stat_lock;			/* lock for stat operations */
+	u32 android_emu_uid;
+	u32 android_emu_gid;
+	umode_t android_emu_mode;
+	int android_emu_flags;
 };
 
 /*
@@ -615,13 +627,15 @@ static inline int dec_valid_block_count(struct f2fs_sb_info *sbi,
 
 	if (sbi->total_valid_block_count < (block_t)count) {
 		pr_crit("F2FS-fs (%s): block accounting error: %u < %llu\n",
-			sbi->sb->s_id, sbi->total_valid_block_count, count);
+			sbi->sb->s_id, sbi->total_valid_block_count,
+			(unsigned long long)count);
 		f2fs_handle_error(sbi);
 		sbi->total_valid_block_count = count;
 	}
 	if (inode->i_blocks < count) {
 		pr_crit("F2FS-fs (%s): inode accounting error: %llu < %llu\n",
-			sbi->sb->s_id, inode->i_blocks, count);
+			sbi->sb->s_id, (unsigned long long)inode->i_blocks,
+			(unsigned long long)count);
 		f2fs_handle_error(sbi);
 		inode->i_blocks = count;
 	}
@@ -759,7 +773,9 @@ static inline void dec_valid_node_count(struct f2fs_sb_info *sbi,
 
 	if (sbi->total_valid_block_count < count) {
 		pr_crit("F2FS-fs (%s): block accounting error: %llu < %u\n",
-			sbi->sb->s_id, sbi->total_valid_block_count, count);
+			sbi->sb->s_id,
+			(unsigned long long)sbi->total_valid_block_count,
+			count);
 		f2fs_handle_error(sbi);
 		sbi->total_valid_block_count = count;
 	}
@@ -771,7 +787,8 @@ static inline void dec_valid_node_count(struct f2fs_sb_info *sbi,
 	}
 	if (inode->i_blocks < count) {
 		pr_crit("F2FS-fs (%s): inode accounting error: %llu < %u\n",
-			sbi->sb->s_id, inode->i_blocks, count);
+			sbi->sb->s_id, (unsigned long long)inode->i_blocks,
+			count);
 		f2fs_handle_error(sbi);
 		inode->i_blocks = count;
 	}
@@ -940,6 +957,14 @@ static inline int cond_clear_inode_flag(struct f2fs_inode_info *fi, int flag)
 	}
 	return 0;
 }
+
+int f2fs_android_emu(struct f2fs_sb_info *, struct inode *, u32 *, u32 *,
+		umode_t *);
+
+#define IS_ANDROID_EMU(sbi, fi, pfi)					\
+	(test_opt((sbi), ANDROID_EMU) &&				\
+	 (((fi)->i_advise & FADVISE_ANDROID_EMU) ||			\
+	  ((pfi)->i_advise & FADVISE_ANDROID_EMU)))
 
 /*
  * file.c
