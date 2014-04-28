@@ -29,9 +29,6 @@
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
 #include <mach/usb_gadget_xport.h>
-#ifdef CONFIG_DIAG_CHAR
-#include <mach/board_htc.h>
-#endif
 
 #include "gadget_chips.h"
 
@@ -1001,7 +998,7 @@ static struct android_usb_function nvusb_function = {
 /* Serial */
 static char serial_transports[64];  /*enabled FSERIAL ports - "tty[,sdio]"*/
 #define MAX_SERIAL_INSTANCES 5
-struct serial_function_config {
+static struct serial_function_config {
 	int instances;
 	int instances_on;
 	struct usb_function *f_serial[MAX_SERIAL_INSTANCES];
@@ -1034,7 +1031,6 @@ static int gserial_init_port(int port_num, const char *name, char *serial_type)
 		no_tty_ports++;
 		break;
 	case USB_GADGET_XPORT_HSIC:
-		/*client port number will be updated in gport_setup*/
 		gserial_ports[port_num].client_port_num = no_hsic_sports;
 		no_hsic_sports++;
 		break;
