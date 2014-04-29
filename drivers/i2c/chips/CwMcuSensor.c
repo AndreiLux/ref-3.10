@@ -3002,6 +3002,9 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		goto err_free_mem;
 	}
 
+	sensor->input_polled->input->close(mcu_data->input_polled->input);
+	D("%s: Do not polling before probed\n", __func__);
+
 	error = create_sysfs_interfaces(sensor);
 
 	if (error)
@@ -3100,6 +3103,9 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	/*vib_trigger_register_simple("vibrator", &vib_trigger);*/
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
+
+	sensor->input_polled->input->open(mcu_data->input_polled->input);
+	D("%s: Start polling after probed\n", __func__);
 
 	return 0;
 
