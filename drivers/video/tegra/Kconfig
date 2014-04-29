@@ -113,6 +113,7 @@ config ADF_TEGRA
 	depends on TEGRA_DC && ADF && FB_TEGRA = n
 	default ADF
 	select ADF_FBDEV
+	select ADF_MEMBLOCK
 	help
 	  ADF device support for the Tegra display controller.
 
