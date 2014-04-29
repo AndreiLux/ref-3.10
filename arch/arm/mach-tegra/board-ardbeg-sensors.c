@@ -1414,29 +1414,6 @@ static struct therm_est_subdevice tn8ffd_skin_devs[] = {
 	},
 };
 
-static struct therm_est_subdevice t132ref_skin_devs[] = {
-	{
-		.dev_data = "CPU-therm",
-		.coeffs = {
-			2, 1, 1, 1,
-			1, 1, 1, 1,
-			1, 1, 1, 0,
-			1, 1, 0, 0,
-			0, 0, -1, -7
-		},
-	},
-	{
-		.dev_data = "Tboard_tegra",
-		.coeffs = {
-			-11, -7, -5, -3,
-			-3, -2, -1, 0,
-			0, 0, 1, 1,
-			1, 2, 2, 3,
-			4, 6, 11, 18
-		},
-	},
-};
-
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
 	.max_err_gain = 1000,
@@ -1569,16 +1546,12 @@ static int __init ardbeg_skin_init(void)
 		of_machine_is_compatible("nvidia,tn8")) {
 		if (board_info.board_id == BOARD_P1761 ||
 				board_info.board_id == BOARD_E1784 ||
+				board_info.board_id == BOARD_E1971 ||
+				board_info.board_id == BOARD_E1991 ||
 				board_info.board_id == BOARD_E1922) {
 			skin_data.ndevs = ARRAY_SIZE(tn8ffd_skin_devs);
 			skin_data.devs = tn8ffd_skin_devs;
 			skin_data.toffset = 4034;
-		} else if (board_info.board_id == BOARD_E1991 ||
-				board_info.board_id == BOARD_E1971 ||
-				board_info.board_id == BOARD_PM374) {
-			skin_data.ndevs = ARRAY_SIZE(t132ref_skin_devs);
-			skin_data.devs = t132ref_skin_devs;
-			skin_data.toffset = 9793;
 		} else {
 			skin_data.ndevs = ARRAY_SIZE(skin_devs);
 			skin_data.devs = skin_devs;
@@ -1741,10 +1714,8 @@ static int ardbeg_nct72_init(void)
 			&ardbeg_nct72_pdata.sensors[EXT].num_trips);
 	}
 
-	/* vmin trips are bound to soctherm on norrin and bowmore */
-	if (!(board_info.board_id == BOARD_PM374 ||
-		board_info.board_id == BOARD_E1971 ||
-		board_info.board_id == BOARD_E1991))
+	/* vmin trips are bound to soctherm on norrin */
+	if (!(board_info.board_id == BOARD_PM374))
 		tegra_add_all_vmin_trips(ardbeg_nct72_pdata.sensors[EXT].trips,
 			&ardbeg_nct72_pdata.sensors[EXT].num_trips);
 
@@ -1768,7 +1739,6 @@ static int ardbeg_nct72_init(void)
 	else if (board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM370 ||
-			board_info.board_id == BOARD_PM374 ||
 			board_info.board_id == BOARD_PM363)
 		i2c_register_board_info(1, ardbeg_i2c_nct72_board_info,
 		ARRAY_SIZE(ardbeg_i2c_nct72_board_info));
@@ -1777,11 +1747,7 @@ static int ardbeg_nct72_init(void)
 		ardbeg_nct72_pdata.sensors[LOC].shutdown_limit = 95;
 		i2c_register_board_info(0, ardbeg_i2c_nct72_board_info,
 					1); /* only register device[0] */
-	} else if (board_info.board_id == BOARD_E1971 ||
-		 board_info.board_id == BOARD_E1991)
-		/* bowmore has thermal sensor on GEN1-I2C i.e. instance 0 */
-		i2c_register_board_info(0, ardbeg_i2c_nct72_board_info,
-					1); /* only register device[0] */
+	}
 	else
 		i2c_register_board_info(1, ardbeg_i2c_nct72_board_info,
 			ARRAY_SIZE(ardbeg_i2c_nct72_board_info));
@@ -1962,6 +1928,8 @@ int __init ardbeg_sensors_init(void)
 
 	if (board_info.board_id == BOARD_P1761 ||
 		board_info.board_id == BOARD_E1784 ||
+		board_info.board_id == BOARD_E1971 ||
+		board_info.board_id == BOARD_E1991 ||
 		board_info.board_id == BOARD_E1922) {
 		platform_add_devices(gadc_thermal_devices,
 				ARRAY_SIZE(gadc_thermal_devices));
