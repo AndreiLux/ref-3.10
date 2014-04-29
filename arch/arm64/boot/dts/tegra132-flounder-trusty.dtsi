@@ -1,0 +1,27 @@
+/ {
+	trusty {
+		compatible = "android,trusty-smc-v1";
+		ranges;
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		irq {
+			compatible = "android,trusty-irq-v1";
+		};
+
+		fiq {
+			compatible = "android,trusty-fiq-v1";
+			ranges;
+			#address-cells = <2>;
+			#size-cells = <2>;
+
+			fiq-debugger {
+				compatible = "android,trusty-fiq-v1-tegra-uart";
+				reg = <0x0 0x70006000 0x0 0x40>;
+				interrupts = <0 36 0x04
+					      0 16 0x04>;
+				interrupt-names = "fiq", "signal";
+			};
+		};
+	};
+};

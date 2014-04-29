@@ -6,6 +6,8 @@
 
 #include "tegra132-flounder-camera.dtsi"
 
+#include "tegra132-flounder-trusty.dtsi"
+
 / {
 	model = "Flounder";
 
