@@ -1964,6 +1964,8 @@ static int tegra_pcie_resume_noirq(struct device *dev)
 			return ret;
 		}
 	}
+	/* give 100ms for 1.05v to come up */
+	msleep(100);
 	ret = tegra_pcie_power_on();
 	if (ret) {
 		pr_err("PCIE: Failed to power on: %d\n", ret);
