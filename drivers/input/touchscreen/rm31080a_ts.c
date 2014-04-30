@@ -780,7 +780,7 @@ int rm_tch_ctrl_wait_for_scan_finish(u8 u8Idx)
 
 		if (g_st_ts.u16_read_para & 0x01) {
 			if (u8Idx)
-				return 1;
+				return 0;
 			else
 				usleep_range(1000, 2000);	/* msleep(1); */
 		} else
@@ -1706,7 +1706,6 @@ static void rm_tch_init_ts_structure_part(void)
 	g_st_ts.b_init_finish = 0;
 	g_st_ts.b_calc_finish = 0;
 	g_st_ts.b_enable_scriber = 0;
-	g_st_ts.b_is_suspended = 0;
 #ifdef ENABLE_SLOW_SCAN
 	g_st_ts.b_enable_slow_scan = false;
 #endif
@@ -1721,7 +1720,9 @@ static void rm_tch_init_ts_structure_part(void)
 	g_st_ts.u16_read_para = 0;
 
 	rm_ctrl_watchdog_func(0);
-	rm_tch_ctrl_init();
+	if(g_st_ts.b_is_suspended==false)
+		rm_tch_ctrl_init();
+	g_st_ts.b_is_suspended = 0;
 
 	b_bl_updated = false;
 }
@@ -2920,6 +2921,7 @@ struct rm_tch_ts *rm_tch_input_init(struct device *dev, unsigned int irq,
 	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(BTN_TOOL_RUBBER, input_dev->keybit);
 #else
+	__set_bit(EV_KEY, input_dev->evbit);
 	__set_bit(EV_ABS, input_dev->evbit);
 	input_set_abs_params(input_dev, ABS_MT_PRESSURE,
 		0, 0xFF, 0, 0);
