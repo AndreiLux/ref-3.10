@@ -68,9 +68,12 @@ static int tegra_dsi_backlight_update_status(struct backlight_device *bl)
 	struct tegra_dsi_bl_data *tbl = dev_get_drvdata(&bl->dev);
 	int brightness = bl->props.brightness;
 
-	if (tbl)
+	if (tbl) {
+		if (tbl->notify)
+			brightness = tbl->notify(tbl->dev, brightness);
+
 		return send_backlight_cmd(tbl, brightness);
-	else
+	} else
 		return dev_err(&bl->dev,
 				"tegra display controller not available\n");
 }
