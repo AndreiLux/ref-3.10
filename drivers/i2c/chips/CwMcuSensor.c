@@ -16,8 +16,6 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/i2c.h>
-#include <linux/input.h>
-#include <linux/input-polldev.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
@@ -25,16 +23,25 @@
 #include <linux/pm_runtime.h>
 #include <linux/CwMcuSensor.h>
 #include <linux/gpio.h>
-#include <linux/delay.h>
 #include <linux/wakelock.h>
 #ifdef CONFIG_OF
 #include <linux/of_gpio.h>
 #endif
+#include <linux/mutex.h>
+#include <linux/spi/spi.h>
 #include <linux/workqueue.h>
 
 #include <linux/regulator/consumer.h>
 
 #include <linux/firmware.h>
+
+#include <linux/iio/buffer.h>
+#include <linux/iio/iio.h>
+#include <linux/iio/sysfs.h>
+#include <linux/iio/trigger.h>
+#include <linux/iio/trigger_consumer.h>
+#include <linux/iio/kfifo_buf.h>
+
 
 /*#include <mach/gpiomux.h>*/
 #define D(x...) pr_debug("[S_HUB][CW_MCU] " x)
@@ -46,12 +53,9 @@
 #define DPS_MAX			(1 << (16 - 1))
 /* ========================================================================= */
 
-/* Input poll interval in milliseconds */
-#define CWMCU_POLL_INTERVAL	10
-#define CWMCU_POLL_MAX		200
-#define CWMCU_POLL_MIN		10
 #define TOUCH_LOG_DELAY		5000
 #define CWMCU_BATCH_TIMEOUT_MIN 200
+#define MS_TO_PERIOD (1000 * 99 / 100)
 
 /* ========================================================================= */
 #define rel_significant_motion REL_WHEEL
@@ -125,8 +129,11 @@ struct cwmcu_data {
 	struct mutex mutex_lock;
 	struct mutex group_i2c_lock;
 	struct mutex activated_i2c_lock;
-	struct input_polled_dev *input_polled;
-	struct input_dev *input;
+
+	struct iio_trigger  *trig;
+	atomic_t pseudo_irq_enable;
+	struct mutex lock;
+
 	struct timeval now;
 	struct class *sensor_class;
 	struct device *sensor_dev;
@@ -176,6 +183,9 @@ struct cwmcu_data {
 	unsigned long i2c_jiffies;
 
 	int disable_access_count;
+
+	s32 iio_data[6];
+	struct iio_dev *indio_dev;
 };
 static struct cwmcu_data *mcu_data;
 
@@ -185,6 +195,50 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
 
 static void cwmcu_batch_read(struct cwmcu_data *sensor);
+
+static int cw_send_event(u8 id, u16 *data, s64 timestamp)
+{
+	u8 event[21];/* Sensor HAL uses fixed 21 bytes */
+
+	event[0] = id;
+	memcpy(&event[1], data, sizeof(u16)*3);
+	memset(&event[7], 0, sizeof(u16)*3);
+	memcpy(&event[13], &timestamp, sizeof(s64));
+
+	D("%s: active_scan_mask = 0x%p, masklength = %u, data(x, y, z) ="
+	  "(%d, %d, %d)\n",
+	  __func__, mcu_data->indio_dev->active_scan_mask,
+	  mcu_data->indio_dev->masklength,
+	  *(s16 *)&event[1], *(s16 *)&event[3], *(s16 *)&event[5]);
+
+	if (mcu_data->indio_dev->active_scan_mask &&
+	    (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
+			   mcu_data->indio_dev->masklength))) {
+		iio_push_to_buffers(mcu_data->indio_dev, event);
+		return 0;
+	} else if (mcu_data->indio_dev->active_scan_mask == NULL)
+		I("%s: active_scan_mask = NULL, event might be missing\n",
+		  __func__);
+
+	return -EIO;
+}
+
+static int cw_send_event_special(u8 id, u16 *data, u16 *bias, s64 timestamp)
+{
+	u8 event[21];
+
+	event[0] = id;
+	memcpy(&event[1], data, sizeof(u16)*3);
+	memcpy(&event[7], bias, sizeof(u16)*3);
+	memcpy(&event[13], &timestamp, sizeof(s64));
+
+	if (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
+			  mcu_data->indio_dev->masklength)) {
+		iio_push_to_buffers(mcu_data->indio_dev, event);
+		return 0;
+	}
+	return -EIO;
+}
 
 static int cwmcu_get_calibrator_status(u8 sensor_id, u8 *data)
 {
@@ -1627,8 +1681,11 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	  __func__, data, CWSTM32_ENABLE_REG+i);
 	CWMCU_i2c_write(mcu_data, CWSTM32_ENABLE_REG+i, &data, 1);
 
-	rc = firmware_odr(sensors_id,
-			  (mcu_data->report_period[sensors_id] / 1000));
+	if (enabled == 0)
+		mcu_data->report_period[sensors_id] = 200000 * MS_TO_PERIOD;
+
+	rc = firmware_odr(sensors_id, mcu_data->report_period[sensors_id] /
+				      MS_TO_PERIOD);
 	if (rc) {
 		E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
 		return rc;
@@ -1657,7 +1714,7 @@ static ssize_t active_show(struct device *dev, struct device_attribute *attr,
 static ssize_t interval_show(struct device *dev, struct device_attribute *attr,
 			     char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE, "%d\n", CWMCU_POLL_INTERVAL);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", atomic_read(&mcu_data->delay));
 }
 
 static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
@@ -1715,7 +1772,28 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-
+int is_continuous_sensor(int sensors_id)
+{
+	switch (sensors_id) {
+	case CW_ACCELERATION:
+	case CW_MAGNETIC:
+	case CW_GYRO:
+	case CW_PRESSURE:
+	case CW_ORIENTATION:
+	case CW_ROTATIONVECTOR:
+	case CW_LINEARACCELERATION:
+	case CW_GRAVITY:
+	case CW_MAGNETIC_UNCALIBRATED:
+	case CW_GYROSCOPE_UNCALIBRATED:
+	case CW_GAME_ROTATION_VECTOR:
+	case CW_GEOMAGNETIC_ROTATION_VECTOR:
+		return 1;
+		break;
+	default:
+		return 0;
+		break;
+	}
+}
 
 
 static ssize_t batch_set(struct device *dev,
@@ -1806,7 +1884,25 @@ static ssize_t batch_set(struct device *dev,
 	D("%s: sensors_id = 0x%x, flag = %d, delay_ms = %d, timeout = %lld\n",
 	  __func__, sensors_id, flag, delay_ms, timeout);
 
-	mcu_data->report_period[sensors_id] = (delay_ms * 1000);
+	/* period is actual delay(us) * 0.99 */
+	mcu_data->report_period[sensors_id] = delay_ms * MS_TO_PERIOD;
+
+	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
+	for (i = 0; i < CW_SENSORS_ID_END; i++) {
+		D("%s: report_period[%d] = %d\n", __func__, i,
+		  mcu_data->report_period[i]);
+		if (is_continuous_sensor(sensors_id) &&
+		     (atomic_read(&mcu_data->delay) >
+		      (mcu_data->report_period[i] / 1000))
+		   )
+			/* report period is actual delay(us) * 0.99,
+			 * actual delay needs to convert back to micro-second */
+			atomic_set(&mcu_data->delay,
+				  mcu_data->report_period[i] / MS_TO_PERIOD);
+	}
+
+	I("%s: Minimum delay = %dms\n", __func__,
+	  atomic_read(&mcu_data->delay));
 
 	mcu_data->sensors_batch_timeout[sensors_id] = timeout;
 
@@ -1950,14 +2046,23 @@ static ssize_t flush_show(struct device *dev, struct device_attribute *attr,
 
 static void cwmcu_send_flush(int id)
 {
-	u32 flush_data;
+	u8 type = CW_META_DATA;
+	u16 data[3];
+	s64 timestamp = 0;
+	int rc;
 
-	flush_data = ((u32)CW_META_DATA << 16) | id;
+	data[0] = (u16)id;
+	data[1] = data[2] = 0;
+
 	D("%s: flush sensor: %d!!\n", __func__, id);
 
-	input_report_abs(mcu_data->input, CW_ABS_Z, -1);
-	input_report_abs(mcu_data->input, CW_ABS_Z, flush_data);
-	input_sync(mcu_data->input);
+	mutex_lock(&mcu_data->lock);
+	rc = cw_send_event(type, data, timestamp);
+	mutex_unlock(&mcu_data->lock);
+	if (rc < 0)
+		E("%s: send_event fails, rc = %d\n", __func__, rc);
+
+	D("%s--:\n", __func__);
 }
 
 static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
@@ -2000,37 +2105,11 @@ static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
 }
 
 
-static void cwmcu_init_input_device(struct cwmcu_data *sensor,
-				    struct input_dev *idev)
-{
-	idev->name = CWMCU_I2C_NAME;
-	idev->id.bustype = BUS_I2C;
-	idev->dev.parent = &sensor->client->dev;
-
-	idev->evbit[0] = BIT_MASK(EV_ABS);
-	set_bit(EV_ABS, idev->evbit);
-	input_set_capability(idev, EV_REL, rel_significant_motion);
-
-	input_set_abs_params(idev, ABS_DISTANCE, 0, 1, 0, 0);
-	input_set_abs_params(idev, ABS_MISC, 0, 9, 0, 0);
-
-	input_set_abs_params(idev, CW_ABS_X, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, CW_ABS_Y, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, CW_ABS_Z, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, CW_ABS_X1, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, CW_ABS_Y1, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, CW_ABS_Z1, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, CW_ABS_TIMEDIFF, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, ABS_STEP_DETECTOR, -DPS_MAX, DPS_MAX, 0, 0);
-	input_set_abs_params(idev, ABS_STEP_COUNTER, -DPS_MAX, DPS_MAX, 0, 0);
-
-}
-
 static void cwmcu_batch_read(struct cwmcu_data *sensor)
 {
 	s32 ret;
 	u8 data_buff;
-	u32 data_event[4] = {0};
+	u16 data_event[4] = {0};
 	int i;
 	int *event_count;
 
@@ -2058,119 +2137,61 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 				/* check if there are no data from queue */
 				if (data[0] != CWMCU_NODATA) {
 					if (data[0] == CW_META_DATA) {
-						data_event[0] = ((u32)data[0]
-								 << 16) |
-								((u32)data[4]
-								 << 8) |
-								(u32)data[3];
+						data_event[0] = (data[4] << 8) |
+								data[3];
 						D(
 						  "CW_META_DATA return flush"
 						  " event_id = %d complete~!!\n"
 						  , data[3]);
-						input_report_abs(sensor->input,
-							CW_ABS_Z,
-							data_event[0]);
-						input_sync(sensor->input);
+						cw_send_event(data[0],
+							      data_event, 0);
 					} else if (data[0] == CW_SYNC_ACK) {
-						data_event[0] = ((u32)data[0]
-								 << 16);
+						data_event[0] = data[0];
 						D("CW_SYNC_ACK\n");
-						input_report_abs(sensor->input,
-							CW_ABS_Z,
-							data_event[0]);
-						input_report_abs(sensor->input,
-							CW_ABS_Z,
-							data_event[0]
-							| SYNC_ACK_MAGIC);
-						input_sync(sensor->input);
-					} else if (data[0] ==
-						CW_MAGNETIC_UNCALIBRATED_BIAS) {
+						cw_send_event(data[0],
+							      data_event, 0);
+					} else if (
+					    (data[0] ==
+					     CW_MAGNETIC_UNCALIBRATED_BIAS)
+					    ||
+					    (data[0] ==
+					     CW_GYROSCOPE_UNCALIBRATED_BIAS)
+						  ) {
 						data_buff =
-						       CW_MAGNETIC_UNCALIBRATED;
+						    (data[0] ==
+						  CW_MAGNETIC_UNCALIBRATED_BIAS)
+						       ?
+						      CW_MAGNETIC_UNCALIBRATED
+						       :
+						      CW_GYROSCOPE_UNCALIBRATED;
+
 						data_event[0] =
-							((u32)data_buff << 16) |
-							((u32)data[4] << 8) |
-							(u32)data[3];
+							((u16)data[4] << 8) |
+							data[3];
 						data_event[1] =
-							((u32)data_buff << 16) |
-							((u32)data[6] << 8) |
-							(u32)data[5];
+							((u16)data[6] << 8) |
+							data[5];
 						data_event[2] =
-							((u32)data_buff << 16) |
-							((u32)data[8] << 8) |
-							(u32)data[7];
+							((u16)data[8] << 8) |
+							data[7];
 
 						D(
 						  "Batch data: total count = "
 						  "%d, current count = %d,"
-						  " event_id = %d, data_x = %d,"
-						  " data_y = %d, data_z = %d\n"
+						  " event_id = %d, bias(x, y,"
+						  " z) = (%d, %d, %d)\n"
 						  , *event_count
 						  , i
 						  , data[0]
-						  , ((int16_t)
-						     (((u32)data[4] << 8) |
-						      (u32)data[3]))
-						  , ((int16_t)
-						     (((u32)data[6] << 8) |
-						      (u32)data[5]))
-						  , ((int16_t)
-						     (((u32)data[8] << 8) |
-						      (u32)data[7]))
-						  );
-						input_report_abs(sensor->input,
-							CW_ABS_X1,
-							data_event[0]);
-						input_report_abs(sensor->input,
-							CW_ABS_Y1,
-							data_event[1]);
-						input_report_abs(sensor->input,
-							CW_ABS_Z1,
-							data_event[2]);
-					} else if (data[0] ==
-					    CW_GYROSCOPE_UNCALIBRATED_BIAS) {
-						data_buff =
-						    CW_GYROSCOPE_UNCALIBRATED;
-						data_event[0] =
-							((u32)data_buff << 16) |
-							((u32)data[4] << 8) |
-							(u32)data[3];
-						data_event[1] =
-							((u32)data_buff << 16) |
-							((u32)data[6] << 8) |
-							(u32)data[5];
-						data_event[2] =
-							((u32)data_buff << 16) |
-							((u32)data[8] << 8) |
-							(u32)data[7];
+						  , (int16_t)((data[4] << 8) |
+							      data[3])
+						  , (int16_t)((data[6] << 8) |
+							      data[5])
+						  , (int16_t)((data[8] << 8) |
+							      data[7]));
 
-						D(
-						  "Batch data: total count ="
-						  " %d, current count = %d,"
-						  " event_id = %d, data_x = %d"
-						  ", data_y = %d, data_z = %d\n"
-						  , *event_count
-						  , i
-						  , data[0]
-						  , ((int16_t)
-						     (((u32)data[4] << 8) |
-						      (u32)data[3]))
-						  , ((int16_t)
-						     (((u32)data[6] << 8) |
-						      (u32)data[5]))
-						  , ((int16_t)
-						     (((u32)data[8] << 8) |
-						      (u32)data[7]))
-						  );
-						input_report_abs(sensor->input,
-							CW_ABS_X1,
-							data_event[0]);
-						input_report_abs(sensor->input,
-							CW_ABS_Y1,
-							data_event[1]);
-						input_report_abs(sensor->input,
-							CW_ABS_Z1,
-							data_event[2]);
+						cw_send_event(data_buff,
+							      data_event, 0);
 					} else {
 						data_event[0] =
 							((u32)data[0] << 16) |
@@ -2201,22 +2222,12 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 						  , (s16)data_event[1]
 						  , (s16)data_event[2]
 						  , (s16)data_event[3]
-						  , data_event[0]
+						  , (u16)data_event[0]
 						  );
 
-						input_report_abs(sensor->input,
-							CW_ABS_X,
-							data_event[1]);
-						input_report_abs(sensor->input,
-							CW_ABS_Y,
-							data_event[2]);
-						input_report_abs(sensor->input,
-							CW_ABS_Z,
-							data_event[3]);
-						input_report_abs(sensor->input,
-							CW_ABS_TIMEDIFF,
-							data_event[0]);
-						input_sync(sensor->input);
+						cw_send_event(data[0],
+							      &data_event[1],
+							      data_event[0]);
 					}
 				}
 			} else
@@ -2238,7 +2249,7 @@ static void cwmcu_check_sensor_update(void)
 		mcu_data->time_diff[id] = temp - mcu_data->sensors_time[id];
 
 		if ((mcu_data->time_diff[id] >= mcu_data->report_period[id])
-		    && (mcu_data->enabled_list & (1<<id))) {
+		    && (mcu_data->enabled_list & (1 << id))) {
 			mcu_data->sensors_time[id] = temp;
 			mcu_data->update_list |= (1 << id);
 		} else
@@ -2246,7 +2257,8 @@ static void cwmcu_check_sensor_update(void)
 	}
 }
 
-static void report_input(int id_check, struct cwmcu_data *sensor)
+static void report_iio(int id_check, struct cwmcu_data *sensor,
+		       struct iio_poll_func *pf)
 {
 	switch (id_check) {
 	case CW_ACCELERATION:
@@ -2261,25 +2273,22 @@ static void report_input(int id_check, struct cwmcu_data *sensor)
 	case CW_GEOMAGNETIC_ROTATION_VECTOR:
 	{
 		u8 data[6] = {0};
-		s32 data_event[3] = {0};
+		u16 data_event[3] = {0};
+		u16 bias_event[3] = {0};
 
 		/* read 6byte */
 		if (CWMCU_i2c_read(sensor,
-		    CW_MCU_I2C_SENSORS_REG_START+
-		    id_check, data, sizeof(data)) >= 0) {
-			data_event[0] = (id_check << 16) |
-					(data[1] << 8) | data[0];
-			data_event[1] = (id_check << 16) |
-					(data[3] << 8) | data[2];
-			data_event[2] = (id_check << 16) |
-					(data[5] << 8) | data[4];
+				   CW_MCU_I2C_SENSORS_REG_START + id_check,
+				   data, sizeof(data)) >= 0) {
+			data_event[0] = (data[1] << 8) | data[0];
+			data_event[1] = (data[3] << 8) | data[2];
+			data_event[2] = (data[5] << 8) | data[4];
 
 			if ((id_check == CW_MAGNETIC)
 			    || (id_check == CW_ORIENTATION)
 			   ) {
 				int rc;
 				u8 accuracy;
-				s32 accuracy_data_event;
 
 				rc = CWMCU_i2c_read(sensor,
 						CW_I2C_REG_SENSORS_ACCURACY_MAG,
@@ -2289,31 +2298,25 @@ static void report_input(int id_check, struct cwmcu_data *sensor)
 					  "%d\n", __func__, rc);
 					accuracy = 3;
 				}
-				accuracy_data_event = (id_check << 16) |
-						      accuracy;
+				bias_event[0] = accuracy;
 
-				input_report_abs(sensor->input, CW_ABS_X1,
-						 accuracy_data_event);
-			}
+				cw_send_event_special(id_check,
+						      data_event,
+						      bias_event,
+						      pf->timestamp);
+			} else
+				cw_send_event(id_check, data_event,
+					      pf->timestamp);
 
 			if (DEBUG_FLAG_GSENSOR == 1) {
 				D(
 				  "3 values: id = %d, data(x, y, z) ="
-				  " (0x%x, 0x%x, 0x%x)\n"
+				  " (0x%x, 0x%x, 0x%x), accuracy = %d\n"
 				  , id_check
 				  , data_event[0], data_event[1], data_event[2]
+				  , bias_event[0]
 				);
 			}
-
-			input_report_abs(sensor->input, CW_ABS_X,
-					 1);
-			input_report_abs(sensor->input, CW_ABS_X,
-					 data_event[0]);
-			input_report_abs(sensor->input, CW_ABS_Y,
-					 data_event[1]);
-			input_report_abs(sensor->input, CW_ABS_Z,
-					 data_event[2]);
-			input_sync(sensor->input);
 		} else
 			D("3 values: CWMCU_i2c_read error!!!\n");
 
@@ -2323,24 +2326,19 @@ static void report_input(int id_check, struct cwmcu_data *sensor)
 	case CW_GYROSCOPE_UNCALIBRATED:
 	{
 		u8 data[12] = {0};
-		s32 data_event[6] = {0};
+		u16 data_event[3] = {0};
+		u16 bias_event[3] = {0};
 
 		/* read 12byte */
 		if (CWMCU_i2c_read(sensor,
-				   CW_MCU_I2C_SENSORS_REG_START+id_check,
+				   CW_MCU_I2C_SENSORS_REG_START + id_check,
 				   data, sizeof(data)) >= 0) {
-			data_event[0] = (id_check << 16) |
-					(data[1] << 8) | data[0];
-			data_event[1] = (id_check << 16) |
-					(data[3] << 8) | data[2];
-			data_event[2] = (id_check << 16) |
-					(data[5] << 8) | data[4];
-			data_event[3] = (id_check << 16) |
-					(data[7] << 8) | data[6];
-			data_event[4] = (id_check << 16) |
-					(data[9] << 8) | data[8];
-			data_event[5] = (id_check << 16) |
-					(data[11] << 8) | data[10];
+			data_event[0] = (data[1] << 8) | data[0];
+			data_event[1] = (data[3] << 8) | data[2];
+			data_event[2] = (data[5] << 8) | data[4];
+			bias_event[0] = (data[7] << 8) | data[6];
+			bias_event[1] = (data[9] << 8) | data[8];
+			bias_event[2] = (data[11] << 8) | data[10];
 
 			if (DEBUG_FLAG_GSENSOR == 1) {
 				D("6 values: id = %d, data(x, y, z) ="
@@ -2348,24 +2346,11 @@ static void report_input(int id_check, struct cwmcu_data *sensor)
 				  " (%d, %d, %d)\n"
 				  , id_check
 				  , data_event[0], data_event[1], data_event[2]
-				  , data_event[3], data_event[4], data_event[5]
+				  , bias_event[0], bias_event[1], bias_event[2]
 				);
 			}
-			input_report_abs(sensor->input, CW_ABS_X,
-					 1);
-			input_report_abs(sensor->input, CW_ABS_X,
-					 data_event[0]);
-			input_report_abs(sensor->input, CW_ABS_Y,
-					 data_event[1]);
-			input_report_abs(sensor->input, CW_ABS_Z,
-					 data_event[2]);
-			input_report_abs(sensor->input, CW_ABS_X1,
-					 data_event[3]);
-			input_report_abs(sensor->input, CW_ABS_Y1,
-					 data_event[4]);
-			input_report_abs(sensor->input, CW_ABS_Z1,
-					 data_event[5]);
-			input_sync(sensor->input);
+			cw_send_event_special(id_check, data_event, bias_event,
+					      pf->timestamp);
 		} else
 			D("6 values: CWMCU_i2c_read error!!!\n");
 		break;
@@ -2375,7 +2360,7 @@ static void report_input(int id_check, struct cwmcu_data *sensor)
 	}
 }
 
-static void cwmcu_read(struct cwmcu_data *sensor)
+static void cwmcu_read(struct cwmcu_data *sensor, struct iio_poll_func *pf)
 {
 	int id_check;
 
@@ -2393,76 +2378,10 @@ static void cwmcu_read(struct cwmcu_data *sensor)
 		     ; id_check++) {
 			if ((sensor->update_list & (1<<id_check)) &&
 			    (sensor->sensors_batch_timeout[id_check] == 0))
-				report_input(id_check, sensor);
+				report_iio(id_check, sensor, pf);
 		}
 	}
 
-}
-
-static void cwmcu_poll(struct input_polled_dev *dev)
-{
-	cwmcu_read(dev->private);
-}
-
-static int cwmcu_open(struct cwmcu_data *sensor)
-{
-	int error;
-
-	error = pm_runtime_get_sync(&sensor->client->dev);
-	if (error && error != -ENOSYS)
-		return error;
-
-	return 0;
-}
-
-static void cwmcu_close(struct cwmcu_data *sensor)
-{
-	pm_runtime_put_sync(&sensor->client->dev);
-}
-
-static void cwmcu_poll_open(struct input_polled_dev *ipoll_dev)
-{
-	struct cwmcu_data *sensor = ipoll_dev->private;
-
-	cwmcu_open(sensor);
-}
-
-static void cwmcu_poll_close(struct input_polled_dev *ipoll_dev)
-{
-	struct cwmcu_data *sensor = ipoll_dev->private;
-
-	cwmcu_close(sensor);
-}
-
-static int cwmcu_register_polled_device(struct cwmcu_data *sensor)
-{
-	struct input_polled_dev *ipoll_dev;
-	int error;
-
-	ipoll_dev = input_allocate_polled_device();
-	if (!ipoll_dev)
-		return -ENOMEM;
-
-	ipoll_dev->private = sensor;
-	ipoll_dev->open = cwmcu_poll_open;
-	ipoll_dev->close = cwmcu_poll_close;
-	ipoll_dev->poll = cwmcu_poll;
-	ipoll_dev->poll_interval = CWMCU_POLL_INTERVAL;
-	ipoll_dev->poll_interval_min = CWMCU_POLL_MIN;
-	ipoll_dev->poll_interval_max = CWMCU_POLL_MAX;
-
-	cwmcu_init_input_device(sensor, ipoll_dev->input);
-
-	error = input_register_polled_device(ipoll_dev);
-	if (error) {
-		input_free_polled_device(ipoll_dev);
-		return error;
-	}
-
-	sensor->input_polled = ipoll_dev;
-	sensor->input = ipoll_dev->input;
-
-	return 0;
 }
 
 
@@ -2522,16 +2441,12 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 						 struct cwmcu_data, irq_work);
 	s32 ret;
 	u8 data[127] = {0};
+	s16 data_buff[3] = {0};
 	u8 INT_st1, INT_st2, INT_st3, INT_st4, ERR_st, Batch_st;
 	u8 clear_intr;
 	u16 light_adc = 0;
 
 	D("[CWMCU] %s\n", __func__);
-
-	if (sensor->input == NULL) {
-		E("[CWMCU] sensor->input == NULL\n");
-		return;
-	}
 
 	CWMCU_i2c_read(sensor, CWSTM32_INT_ST1, &INT_st1, 1);
 	CWMCU_i2c_read(sensor, CWSTM32_INT_ST2, &INT_st2, 1);
@@ -2555,9 +2470,8 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 						sensor->report_period[light];
 				light_adc = (data[2] << 8) | data[1];
 
-				input_report_abs(sensor->input, ABS_MISC,
-						 data[0]);
-				input_sync(sensor->input);
+				data_buff[0] = data[0];
+				cw_send_event(CW_LIGHT, data_buff, 0);
 
 				I(
 				  "light interrupt occur value is %u, adc "
@@ -2585,9 +2499,9 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 			sensor->sensors_time[significant_motion] = 0;
 
 			wake_lock_timeout(&significant_wake_lock, 1 * HZ);
-			input_report_rel(sensor->input,	rel_significant_motion,
-					 1);
-			input_sync(sensor->input);
+
+			data_buff[0] = 1;
+			cw_send_event(CW_SIGNIFICANT_MOTION, data_buff, 0);
 
 			D("%s: Significant Motion interrupt occurs!!\n",
 					__func__);
@@ -2604,11 +2518,8 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 			if (ret >= 0) {
 				sensor->sensors_time[step_detector] = 0;
 
-				input_report_abs(sensor->input,
-						ABS_STEP_DETECTOR, -1);
-				input_report_abs(sensor->input,
-						ABS_STEP_DETECTOR, data[0]);
-				input_sync(sensor->input);
+				data_buff[0] = data[0];
+				cw_send_event(CW_STEP_DETECTOR, data_buff, 0);
 
 				D("%s: Step Detector INT, timestamp = %u\n",
 						__func__, data[0]);
@@ -2629,11 +2540,8 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 			if (ret >= 0) {
 				sensor->sensors_time[step_counter] = 0;
 
-				input_report_abs(sensor->input,
-						ABS_STEP_COUNTER, -1);
-				input_report_abs(sensor->input,
-						ABS_STEP_COUNTER, data[0]);
-				input_sync(sensor->input);
+				data_buff[0] = data[0];
+				cw_send_event(CW_STEP_COUNTER, data_buff, 0);
 
 				D("%s: Step Counter interrupt, step = %u\n",
 						__func__, data[0]);
@@ -2664,15 +2572,10 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 	/* Batch_st */
 	if (Batch_st & 0x1C) {
 		if (Batch_st & 0x8) { /* TimeDiff exhausted */
-			u32 data_event;
-			/* Make sure input system changes */
-			data_event = (TIME_DIFF_EXHAUSTED << 16);
-			input_report_abs(sensor->input, CW_ABS_X, data_event);
-			data_event = (TIME_DIFF_EXHAUSTED << 16)
-				     | EXHAUSTED_MAGIC;
-			input_report_abs(sensor->input, CW_ABS_X, data_event);
 
-			input_sync(sensor->input);
+			data_buff[0] = EXHAUSTED_MAGIC;
+			cw_send_event(TIME_DIFF_EXHAUSTED, data_buff, 0);
+
 			clear_intr = 0x8;
 		} else if (Batch_st & 0x14) { /* timeout or buffer full */
 			cwmcu_batch_read(sensor);
@@ -2706,6 +2609,197 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 
 	return IRQ_HANDLED;
 }
+
+/*=======iio device reg=========*/
+static int cw_data_rdy_trig_poll(struct iio_dev *indio_dev)
+{
+	iio_trigger_poll(mcu_data->trig, iio_get_time_ns());
+	return 0;
+}
+
+static irqreturn_t cw_trigger_handler(int irq, void *p)
+{
+	struct iio_poll_func *pf = p;
+
+	mutex_lock(&mcu_data->lock);
+	cwmcu_read(mcu_data, pf);
+	iio_trigger_notify_done(mcu_data->indio_dev->trig);
+	mutex_unlock(&mcu_data->lock);
+
+	return IRQ_HANDLED;
+}
+
+static const struct iio_buffer_setup_ops cw_buffer_setup_ops = {
+	.preenable = &iio_sw_buffer_preenable,
+	.postenable = &iio_triggered_buffer_postenable,
+	.predisable = &iio_triggered_buffer_predisable,
+};
+
+static int cw_pseudo_irq_enable(struct iio_dev *indio_dev)
+{
+	if (!atomic_cmpxchg(&mcu_data->pseudo_irq_enable, 0, 1)) {
+		I("%s:\n", __func__);
+		queue_delayed_work(mcu_wq, &mcu_data->work, 0);
+	}
+
+	return 0;
+}
+
+static int cw_pseudo_irq_disable(struct iio_dev *indio_dev)
+{
+	if (atomic_cmpxchg(&mcu_data->pseudo_irq_enable, 1, 0)) {
+		I("%s:\n", __func__);
+		cancel_delayed_work_sync(&mcu_data->work);
+	}
+	return 0;
+}
+
+static int cw_set_pseudo_irq(struct iio_dev *indio_dev, int enable)
+{
+	if (enable)
+		cw_pseudo_irq_enable(indio_dev);
+	else
+		cw_pseudo_irq_disable(indio_dev);
+
+	return 0;
+}
+
+static int cw_data_rdy_trigger_set_state(struct iio_trigger *trig,
+		bool state)
+{
+	struct iio_dev *indio_dev =
+			(struct iio_dev *)iio_trigger_get_drvdata(trig);
+
+	cw_set_pseudo_irq(indio_dev, state);
+
+	return 0;
+}
+
+static const struct iio_trigger_ops cw_trigger_ops = {
+	.owner = THIS_MODULE,
+	.set_trigger_state = &cw_data_rdy_trigger_set_state,
+};
+
+static int cw_probe_trigger(struct iio_dev *iio_dev)
+{
+	int ret;
+
+	iio_dev->pollfunc = iio_alloc_pollfunc(&iio_pollfunc_store_time,
+			&cw_trigger_handler, IRQF_ONESHOT, iio_dev,
+			"%s_consumer%d", iio_dev->name, iio_dev->id);
+	if (iio_dev->pollfunc == NULL) {
+		ret = -ENOMEM;
+		goto error_ret;
+	}
+	mcu_data->trig = iio_trigger_alloc("%s-dev%d",
+			iio_dev->name,
+			iio_dev->id);
+	if (!mcu_data->trig) {
+		ret = -ENOMEM;
+		goto error_dealloc_pollfunc;
+	}
+	mcu_data->trig->dev.parent = &mcu_data->client->dev;
+	mcu_data->trig->ops = &cw_trigger_ops;
+	iio_trigger_set_drvdata(mcu_data->trig, iio_dev);
+
+	ret = iio_trigger_register(mcu_data->trig);
+	if (ret)
+		goto error_free_trig;
+
+	return 0;
+
+error_free_trig:
+	iio_trigger_free(mcu_data->trig);
+error_dealloc_pollfunc:
+	iio_dealloc_pollfunc(iio_dev->pollfunc);
+error_ret:
+	return ret;
+}
+
+static int cw_probe_buffer(struct iio_dev *iio_dev)
+{
+	int ret;
+	struct iio_buffer *buffer;
+
+	buffer = iio_kfifo_allocate(iio_dev);
+	if (!buffer) {
+		ret = -ENOMEM;
+		goto error_ret;
+	}
+
+	buffer->scan_timestamp = true;
+	iio_dev->buffer = buffer;
+	iio_dev->setup_ops = &cw_buffer_setup_ops;
+	iio_dev->modes |= INDIO_BUFFER_TRIGGERED;
+	ret = iio_buffer_register(iio_dev, iio_dev->channels,
+				  iio_dev->num_channels);
+	if (ret)
+		goto error_free_buf;
+
+	iio_scan_mask_set(iio_dev, iio_dev->buffer, CW_SCAN_ID);
+	iio_scan_mask_set(iio_dev, iio_dev->buffer, CW_SCAN_X);
+	iio_scan_mask_set(iio_dev, iio_dev->buffer, CW_SCAN_Y);
+	iio_scan_mask_set(iio_dev, iio_dev->buffer, CW_SCAN_Z);
+	return 0;
+
+error_free_buf:
+	iio_kfifo_free(iio_dev->buffer);
+error_ret:
+	return ret;
+}
+
+
+static int cw_read_raw(struct iio_dev *indio_dev,
+		       struct iio_chan_spec const *chan,
+		       int *val,
+		       int *val2,
+		       long mask) {
+	int ret = -EINVAL;
+
+	if (chan->type != IIO_ACCEL)
+		return ret;
+
+	mutex_lock(&mcu_data->lock);
+	switch (mask) {
+	case 0:
+		*val = mcu_data->iio_data[chan->channel2 - IIO_MOD_X];
+		ret = IIO_VAL_INT;
+		break;
+	case IIO_CHAN_INFO_SCALE:
+		/* Gain : counts / uT = 1000 [nT] */
+		/* Scaling factor : 1000000 / Gain = 1000 */
+		*val = 0;
+		*val2 = 1000;
+		ret = IIO_VAL_INT_PLUS_MICRO;
+		break;
+	}
+	mutex_unlock(&mcu_data->lock);
+
+	return ret;
+}
+
+#define CW_CHANNEL(axis)			\
+{						\
+	.type = IIO_ACCEL,			\
+	.modified = 1,				\
+	.channel2 = axis+1,			\
+	.info_mask = BIT(IIO_CHAN_INFO_SCALE),	\
+	.scan_index = axis,			\
+	.scan_type = IIO_ST('u', 32, 32, 0)	\
+}
+
+static const struct iio_chan_spec cw_channels[] = {
+	CW_CHANNEL(CW_SCAN_ID),
+	CW_CHANNEL(CW_SCAN_X),
+	CW_CHANNEL(CW_SCAN_Y),
+	CW_CHANNEL(CW_SCAN_Z),
+	IIO_CHAN_SOFT_TIMESTAMP(CW_SCAN_TIMESTAMP)
+};
+
+static const struct iio_info cw_info = {
+	.read_raw = &cw_read_raw,
+	.driver_module = THIS_MODULE,
+};
 
 static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 {
@@ -2941,6 +3035,7 @@ static struct device_attribute attributes[] = {
 static int create_sysfs_interfaces(struct cwmcu_data *sensor)
 {
 	int i;
+	int res;
 
 	sensor->sensor_class = class_create(THIS_MODULE, "htc_sensorhub");
 	if (sensor->sensor_class == NULL)
@@ -2955,9 +3050,22 @@ static int create_sysfs_interfaces(struct cwmcu_data *sensor)
 		if (device_create_file(sensor->sensor_dev, attributes + i))
 			goto error;
 
+	res = sysfs_create_link(
+				&sensor->sensor_dev->kobj,
+				&sensor->indio_dev->dev.kobj,
+				"iio");
+	if (res < 0) {
+		E("link create error, res = %d\n", res);
+		goto err_fail_sysfs_create_link;
+	}
+
 	return 0;
 
 error:
+	sysfs_delete_link(&sensor->sensor_dev->kobj,
+			  &sensor->indio_dev->dev.kobj,
+			  "iio");
+err_fail_sysfs_create_link:
 	for (; i >= 0; i--)
 		device_remove_file(sensor->sensor_dev, attributes + i);
 custom_device_error:
@@ -2969,47 +3077,92 @@ custom_class_error:
 	return -1;
 }
 
+static void cwmcu_remove_trigger(struct iio_dev *indio_dev)
+{
+	iio_trigger_unregister(mcu_data->trig);
+	iio_trigger_free(mcu_data->trig);
+	iio_dealloc_pollfunc(indio_dev->pollfunc);
+}
+static void cwmcu_remove_buffer(struct iio_dev *indio_dev)
+{
+	iio_buffer_unregister(indio_dev);
+	iio_kfifo_free(indio_dev->buffer);
+}
+
+static void cwmcu_work_report(struct work_struct *work)
+{
+	struct iio_dev *indio_dev = iio_priv_to_dev(mcu_data);
+
+	cw_data_rdy_trig_poll(indio_dev);
+
+	queue_delayed_work(mcu_wq, &mcu_data->work,
+			msecs_to_jiffies(atomic_read(&mcu_data->delay)));
+}
+
 static int CWMCU_i2c_probe(struct i2c_client *client,
 				       const struct i2c_device_id *id)
 {
 	struct cwmcu_data *sensor;
+	struct iio_dev *indio_dev;
 	int error;
 	int i;
 
-	I("%s++: Batch mode supported\n", __func__);
+	I("%s++: Batch mode supported, IIO version\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
 		return -EIO;
 	}
 
-	sensor = kzalloc(sizeof(struct cwmcu_data), GFP_KERNEL);
-	if (!sensor) {
-		D("castor: kzalloc error\n");
+	I("%s: sizeof(*sensor) = %lu\n", __func__, sizeof(*sensor));
+
+	indio_dev = iio_device_alloc(sizeof(*sensor));
+	if (!indio_dev) {
+		I("%s: iio_device_alloc failed\n", __func__);
 		return -ENOMEM;
 	}
+
+	i2c_set_clientdata(client, indio_dev);
+
+	indio_dev->name = CWMCU_I2C_NAME;
+	indio_dev->dev.parent = &client->dev;
+	indio_dev->info = &cw_info;
+	indio_dev->channels = cw_channels;
+	indio_dev->num_channels = ARRAY_SIZE(cw_channels);
+	indio_dev->modes |= INDIO_BUFFER_TRIGGERED;
+
+	sensor = iio_priv(indio_dev);
+	sensor->client = client;
+	sensor->indio_dev = indio_dev;
+
 	mcu_data = sensor;
 
 	mutex_init(&sensor->mutex_lock);
 	mutex_init(&sensor->group_i2c_lock);
 	mutex_init(&sensor->activated_i2c_lock);
+	mutex_init(&sensor->lock);
 
-	sensor->client = client;
-	i2c_set_clientdata(client, sensor);
+	INIT_DELAYED_WORK(&sensor->work, cwmcu_work_report);
 
-	error = cwmcu_register_polled_device(sensor);
+	error = cw_probe_buffer(indio_dev);
 	if (error) {
-		E("castor: cwmcu_register_polled_device error\n");
-		goto err_free_mem;
+		E("%s: iio yas_probe_buffer failed\n", __func__);
+		goto error_free_dev;
+	}
+	error = cw_probe_trigger(indio_dev);
+	if (error) {
+		E("%s: iio yas_probe_trigger failed\n", __func__);
+		goto error_remove_buffer;
+	}
+	error = iio_device_register(indio_dev);
+	if (error) {
+		E("%s: iio iio_device_register failed\n", __func__);
+		goto error_remove_trigger;
 	}
 
-	sensor->input_polled->input->close(mcu_data->input_polled->input);
-	D("%s: Do not polling before probed\n", __func__);
-
 	error = create_sysfs_interfaces(sensor);
-
 	if (error)
-		goto exit_free_input;
+		goto err_free_mem;
 
 	for (i = 0; i < num_sensors; i++) {
 		sensor->sensors_time[i] = 0;
@@ -3051,8 +3204,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		       "significant_wake_lock");
 
 	INIT_WORK(&sensor->irq_work, cwmcu_irq_work_func);
-
-	atomic_set(&sensor->delay, CWMCU_MAX_DELAY);
 
 	mcu_wq = create_singlethread_workqueue("htc_mcu");
 	i2c_set_clientdata(client, sensor);
@@ -3105,24 +3256,25 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
 
-	sensor->input_polled->input->open(mcu_data->input_polled->input);
-	D("%s: Start polling after probed\n", __func__);
-
 	return 0;
 
-exit_free_input:
-	if (sensor && (sensor->input))
-		input_free_device(sensor->input);
-	if (sensor && (sensor->input_polled)) {
-		input_unregister_polled_device(sensor->input_polled);
-		input_free_polled_device(sensor->input_polled);
-	}
 exit_mcu_parse_dt_fail:
 	if (client->dev.of_node &&
 	    ((struct cwmcu_platform_data *)sensor->client->dev.platform_data))
 		kfree(sensor->client->dev.platform_data);
 err_free_mem:
-	kfree(sensor);
+	if (indio_dev)
+		iio_device_unregister(indio_dev);
+error_remove_trigger:
+	if (indio_dev)
+		cwmcu_remove_trigger(indio_dev);
+error_remove_buffer:
+	if (indio_dev)
+		cwmcu_remove_buffer(indio_dev);
+error_free_dev:
+	if (indio_dev)
+		iio_device_free(indio_dev);
+	i2c_set_clientdata(client, NULL);
 	return error;
 }
 
@@ -3130,11 +3282,6 @@ err_free_mem:
 static int CWMCU_i2c_remove(struct i2c_client *client)
 {
 	struct cwmcu_data *sensor = i2c_get_clientdata(client);
-
-	if (sensor && (sensor->input_polled)) {
-		input_unregister_polled_device(sensor->input_polled);
-		input_free_polled_device(sensor->input_polled);
-	}
 
 	wake_lock_destroy(&significant_wake_lock);
 	kfree(sensor);
