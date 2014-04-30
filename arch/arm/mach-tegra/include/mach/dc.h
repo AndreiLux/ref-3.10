@@ -895,8 +895,8 @@ struct device_node *tegra_panel_get_dt_node(
 void find_dc_node(struct device_node **dc1_node,
 				struct device_node **dc2_node);
 
-void tegra_get_fb_resource(struct resource *fb_res);
-void tegra_get_fb2_resource(struct resource *fb2_res);
+int tegra_get_fb_resource(struct resource *fb_res);
+int tegra_get_fb2_resource(struct resource *fb2_res);
 
 /* table of electrical settings, must be in acending order. */
 struct tmds_config {

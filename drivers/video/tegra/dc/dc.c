@@ -2965,20 +2965,26 @@ static int tegra_dc_probe(struct platform_device *ndev)
 
 	if (np) {
 		struct resource of_fb_res;
+		int err;
 		if (ndev->id == 0)
-			tegra_get_fb_resource(&of_fb_res);
+			err = tegra_get_fb_resource(&of_fb_res);
 		else /*ndev->id == 1*/
-			tegra_get_fb2_resource(&of_fb_res);
+			err = tegra_get_fb2_resource(&of_fb_res);
 
-		fb_mem = kzalloc(sizeof(struct resource), GFP_KERNEL);
-		if (fb_mem == NULL) {
-			ret = -ENOMEM;
-			goto err_iounmap_reg;
+		if (err < 0) {
+			dev_dbg(&ndev->dev, "failed to get fb resource: %d\n",
+					-err);
+		} else {
+			fb_mem = kzalloc(sizeof(struct resource), GFP_KERNEL);
+			if (fb_mem == NULL) {
+				ret = -ENOMEM;
+				goto err_iounmap_reg;
+			}
+			fb_mem->name = "fbmem";
+			fb_mem->flags = IORESOURCE_MEM;
+			fb_mem->start = (resource_size_t)of_fb_res.start;
+			fb_mem->end = (resource_size_t)of_fb_res.end;
 		}
-		fb_mem->name = "fbmem";
-		fb_mem->flags = IORESOURCE_MEM;
-		fb_mem->start = (resource_size_t)of_fb_res.start;
-		fb_mem->end = (resource_size_t)of_fb_res.end;
 	} else {
 		fb_mem = platform_get_resource_byname(ndev,
 			IORESOURCE_MEM, "fbmem");

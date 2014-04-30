@@ -2178,18 +2178,26 @@ void tegra_reserve4(ulong carveout_size, ulong fb_size,
 	tegra_reserve(carveout_size, fb_size, fb2_size);
 }
 
-void tegra_get_fb_resource(struct resource *fb_res)
+int tegra_get_fb_resource(struct resource *fb_res)
 {
+	if (!tegra_fb_start)
+		return -ENOMEM;
+
 	fb_res->start = (resource_size_t) tegra_fb_start;
 	fb_res->end = fb_res->start +
 			(resource_size_t) tegra_fb_size - 1;
+	return 0;
 }
 
-void tegra_get_fb2_resource(struct resource *fb2_res)
+int tegra_get_fb2_resource(struct resource *fb2_res)
 {
+	if (!tegra_fb2_start)
+		return -ENOMEM;
+
 	fb2_res->start = (resource_size_t) tegra_fb2_start;
 	fb2_res->end = fb2_res->start +
 			(resource_size_t) tegra_fb2_size - 1;
+	return 0;
 }
 
 
