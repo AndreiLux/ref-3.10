@@ -1955,6 +1955,7 @@ static void cwmcu_send_flush(int id)
 	flush_data = ((u32)CW_META_DATA << 16) | id;
 	D("%s: flush sensor: %d!!\n", __func__, id);
 
+	input_report_abs(mcu_data->input, CW_ABS_Z, -1);
 	input_report_abs(mcu_data->input, CW_ABS_Z, flush_data);
 	input_sync(mcu_data->input);
 }
