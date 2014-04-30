@@ -315,7 +315,6 @@ config QCT_9K_MODEM
        select USB_QCOM_DIAG_BRIDGE
        select USB_QCOM_MDM_BRIDGE
        select USB_QCOM_KS_BRIDGE
-       select USB_SERIAL_QUALCOMM
        select DIAG_CHAR
        select DIAG_OVER_USB
        select DIAG_HSIC_PIPE
