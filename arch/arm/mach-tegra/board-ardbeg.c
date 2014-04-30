@@ -809,6 +809,9 @@ static int baseband_init(void)
 	tegra_pinmux_set_pullupdown(TEGRA_PINGROUP_ULPI_DATA4,
 				    TEGRA_PUPD_PULL_DOWN);
 
+	/* Release modem reset to start boot */
+	gpio_set_value(MDM_RST, 1);
+
 	/* export GPIO for user space access through sysfs */
 	gpio_export(MDM_RST, false);
 	gpio_export(MDM_SAR0, false);
