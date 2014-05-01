@@ -84,20 +84,29 @@ struct tegra_rt5677 {
 	struct regulator *dmic_reg;
 	struct snd_soc_card *pcard;
 	struct delayed_work power_work;
+	struct work_struct hotword_work;
 };
+
+static void tegra_do_hotword_work(struct work_struct *work)
+{
+	struct tegra_rt5677 *machine = container_of(work, struct tegra_rt5677, hotword_work);
+	char *hot_event[] = { "ACTION=HOTWORD", NULL };
+
+	kobject_uevent_env(&machine->pcard->dev->kobj, KOBJ_CHANGE, hot_event);
+}
 
 static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 {
 	int value;
-	struct tegra_asoc_platform_data *pdata = dev_id;
+	struct tegra_rt5677 *machine = dev_id;
 
-	value = gpio_get_value(pdata->gpio_irq1);
+	value = gpio_get_value(machine->pdata->gpio_irq1);
 
 	pr_info("RT5677 IRQ is triggered = 0x%x\n", value);
+	schedule_work(&machine->hotword_work);
 
 	return IRQ_HANDLED;
 }
-
 
 static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
 {
@@ -504,6 +513,7 @@ static int tegra_rt5677_dmic_set(struct snd_kcontrol *kcontrol,
 	pr_info("%s: tegra_rt5677_dmic_set set to %d done\n",
 		__func__, state);
 
+	schedule_work(&machine->hotword_work);
 	return 0;
 }
 
@@ -1181,6 +1191,8 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 
 	usleep_range(1000, 2000);
 
+	INIT_WORK(&machine->hotword_work, tegra_do_hotword_work);
+
 	rt5677_reg = regulator_get(&pdev->dev, "v_ldo2");
 
 	if (gpio_is_valid(pdata->gpio_int_mic_en)) {
@@ -1242,7 +1254,7 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 
 		ret = request_irq(rt5677_irq, detect_rt5677_irq_handler,
 			IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING ,
-			"RT5677_IRQ", pdev->dev.platform_data);
+			"RT5677_IRQ", machine);
 		if (ret) {
 			dev_err(&pdev->dev, "request_irq rt5677_irq failed, %d\n",
 				ret);
@@ -1350,6 +1362,7 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 				ret);
 		}
 		free_irq(rt5677_irq, 0);
+		cancel_work_sync(&machine->hotword_work);
 	} else {
 		dev_err(&pdev->dev, "gpio_irq1 %d is invalid\n",
 			pdata->gpio_irq1);
