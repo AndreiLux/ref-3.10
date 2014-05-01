@@ -737,7 +737,7 @@ static const struct regmap_config tegra30_ahub_apbif_regmap_config = {
 	.readable_reg = tegra30_ahub_apbif_wr_rd_reg,
 	.volatile_reg = tegra30_ahub_apbif_volatile_reg,
 	.precious_reg = tegra30_ahub_apbif_precious_reg,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_FLAT,
 };
 
 static bool tegra30_ahub_ahub_wr_rd_reg(struct device *dev, unsigned int reg)
@@ -756,7 +756,7 @@ static const struct regmap_config tegra30_ahub_ahub_regmap_config = {
 	.max_register = LAST_REG(AUDIO_RX),
 	.writeable_reg = tegra30_ahub_ahub_wr_rd_reg,
 	.readable_reg = tegra30_ahub_ahub_wr_rd_reg,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_FLAT,
 };
 
 static int tegra30_ahub_probe(struct platform_device *pdev)

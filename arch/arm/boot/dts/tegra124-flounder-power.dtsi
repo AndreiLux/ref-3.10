@@ -78,22 +78,16 @@ palmas: tps65913 {
 			      16 0
 			      17 0>;
 		iio_map {
-			ch1 {
-				ti,adc-channel-number = <1>;
-				ti,adc-consumer-device = "generic-adc-thermal.0";
-				ti,adc-consumer-channel ="battery-temp-channel";
+			ch0 {
+				ti,adc-channel-number = <0>;
+				ti,adc-consumer-device = "bq2419x";
+				ti,adc-consumer-channel ="batt-id-channel";
 			};
 
 			ch4 {
 				ti,adc-channel-number = <4>;
 				ti,adc-consumer-device = "HTC_HEADSET_PMIC";
 				ti,adc-consumer-channel ="hs_channel";
-			};
-
-			ch6 {
-				ti,adc-channel-number = <6>;
-				ti,adc-consumer-device = "palmas-battery";
-				ti,adc-consumer-channel ="vbat_channel";
 			};
 		};
 	};

@@ -7,12 +7,6 @@
 	hw-revision = "xd";
 
 	i2c@7000c000 {
-		bq2419x: bq2419x@6b {
-			charger {
-				ti,charge-suspend-polling-time-sec = <3600>;
-				charge-full-by-monitor-full-threshold;
-			};
-		};
 		htc_mcu@72 {
 			compatible = "htc_mcu";
 			reg = <0x72>;
@@ -34,6 +28,14 @@
 			<&gpio TEGRA_GPIO(R, 0) 0>,
 			<&gpio TEGRA_GPIO(I, 4) 0>,
 			<&gpio TEGRA_GPIO(H, 5) 0>;
+	};
+	i2c@7000c400 {
+		richtek_rt5506_amp@52 {
+			compatible = "richtek,rt5506-amp";
+			reg = <0x52>;
+			richtek,enable-gpio = <&gpio 185 0>;
+			richtek,enable-power-gpio = <&gpio 162 0>;
+		};
 	};
 };
 

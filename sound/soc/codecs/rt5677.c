@@ -42,6 +42,9 @@
 #define VERSION "0.0.2 alsa 1.0.25"
 #define RT5677_PATH "/system/vendor/firmware/rt5677_"
 
+static int dmic_depop_time = 100;
+module_param(dmic_depop_time, int, 0644);
+
 struct rt5677_init_reg {
 	u8 reg;
 	u16 val;
@@ -2524,6 +2527,7 @@ static int rt5677_set_dmic1_event(struct snd_soc_dapm_widget *w,
 			RT5677_DMIC_1L_LH_FALLING | RT5677_DMIC_1R_LH_RISING);
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
 			RT5677_DMIC_1_EN_MASK, RT5677_DMIC_1_EN);
+		msleep(dmic_depop_time);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
@@ -2549,6 +2553,7 @@ static int rt5677_set_dmic2_event(struct snd_soc_dapm_widget *w,
 			RT5677_DMIC_2L_LH_FALLING | RT5677_DMIC_2R_LH_RISING);
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
 			RT5677_DMIC_2_EN_MASK, RT5677_DMIC_2_EN);
+		msleep(dmic_depop_time);
 		break;
 	case SND_SOC_DAPM_POST_PMD:
 		regmap_update_bits(rt5677->regmap, RT5677_DMIC_CTRL1,
@@ -2836,6 +2841,36 @@ static int rt5677_set_micbias1_event(struct snd_soc_dapm_widget *w,
 			RT5677_PWR_CLK_MB1 | RT5677_PWR_PP_MB1 |
 			RT5677_PWR_CLK_MB, RT5677_PWR_CLK_MB1 |
 			RT5677_PWR_PP_MB1 | RT5677_PWR_CLK_MB);
+		break;
+	default:
+		return 0;
+	}
+
+	return 0;
+}
+
+static int rt5677_lout_charge_event(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		if (rt5677->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+			regmap_update_bits(rt5677->regmap, RT5677_PWR_ANLG1,
+				RT5677_PWR_VREF1 | RT5677_PWR_MB |
+				RT5677_PWR_BG | RT5677_PWR_VREF2 |
+				RT5677_PWR_LO1 | RT5677_PWR_LO2 |
+				RT5677_LDO1_SEL_MASK | RT5677_LDO2_SEL_MASK,
+				RT5677_PWR_VREF1 | RT5677_PWR_MB |
+				RT5677_PWR_LO1 | RT5677_PWR_LO2 |
+				RT5677_PWR_BG | RT5677_PWR_VREF2 | 0x55);
+			usleep_range(10000, 15000);
+			regmap_update_bits(rt5677->regmap, RT5677_PWR_ANLG1,
+				RT5677_PWR_FV1 | RT5677_PWR_FV2,
+				RT5677_PWR_FV1 | RT5677_PWR_FV2);
+		}
 		break;
 	default:
 		return 0;
@@ -3296,6 +3331,9 @@ static const struct snd_soc_dapm_widget rt5677_dapm_widgets[] = {
 	SND_SOC_DAPM_PGA_S("LOUT3 amp", 1, SND_SOC_NOPM, 0, 0,
 		rt5677_lout3_event, SND_SOC_DAPM_PRE_PMD |
 		SND_SOC_DAPM_POST_PMU),
+
+	SND_SOC_DAPM_PGA_S("LOUT Charge", 2, SND_SOC_NOPM, 0, 0,
+		rt5677_lout_charge_event, SND_SOC_DAPM_POST_PMU),
 
 	/* Output Lines */
 	SND_SOC_DAPM_OUTPUT("LOUT1"),
@@ -3984,9 +4022,13 @@ static const struct snd_soc_dapm_route rt5677_dapm_routes[] = {
 	{ "LOUT2 amp", NULL, "DAC 2" },
 	{ "LOUT3 amp", NULL, "DAC 3" },
 
-	{ "LOUT1", NULL, "LOUT1 amp" },
-	{ "LOUT2", NULL, "LOUT2 amp" },
-	{ "LOUT3", NULL, "LOUT3 amp" },
+	{ "LOUT Charge", NULL, "LOUT1 amp" },
+	{ "LOUT Charge", NULL, "LOUT2 amp" },
+	{ "LOUT Charge", NULL, "LOUT3 amp" },
+
+	{ "LOUT1", NULL, "LOUT Charge" },
+	{ "LOUT2", NULL, "LOUT Charge" },
+	{ "LOUT3", NULL, "LOUT Charge" },
 
 	{ "PDM1L", NULL, "PDM1 L Mux" },
 	{ "PDM1R", NULL, "PDM1 R Mux" },

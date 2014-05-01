@@ -21,6 +21,7 @@
 #include <linux/io.h>
 #include <linux/interrupt.h>
 #include <linux/clk.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/irq.h>
 #include <linux/serial_reg.h>
@@ -28,6 +29,8 @@
 #include <linux/stacktrace.h>
 #include <linux/irqchip/tegra.h>
 #include <linux/tegra_fiq_debugger.h>
+#include <linux/trusty/trusty.h>
+#include <linux/trusty/smcall.h>
 
 #include "../../../drivers/staging/android/fiq_debugger/fiq_debugger.h"
 
@@ -37,6 +40,7 @@ struct tegra_fiq_debugger {
 	struct fiq_debugger_pdata pdata;
 	void __iomem *debug_port_base;
 	bool break_seen;
+	struct device *trusty_dev;
 };
 
 static inline void tegra_write(struct tegra_fiq_debugger *t,
@@ -148,10 +152,25 @@ static void fiq_enable(struct platform_device *pdev, unsigned int irq, bool on)
 }
 #endif
 
+static void trusty_fiq_enable(struct platform_device *pdev,
+				  unsigned int fiq, bool enable)
+{
+	int ret;
+	struct tegra_fiq_debugger *t;
+
+	t = container_of(dev_get_platdata(&pdev->dev), typeof(*t), pdata);
+
+	ret = trusty_fast_call32(t->trusty_dev, SMC_FC_REQUEST_FIQ,
+				 fiq, enable, 0);
+	if (ret)
+		dev_err(&pdev->dev, "SMC_FC_REQUEST_FIQ failed: %d\n", ret);
+}
+
 static int tegra_fiq_debugger_id;
 
 static void __tegra_serial_debug_init(unsigned int base, int fiq, int irq,
-			   struct clk *clk, int signal_irq, int wakeup_irq)
+			   struct clk *clk, int signal_irq, int wakeup_irq,
+			   struct device *trusty_dev)
 {
 	struct tegra_fiq_debugger *t;
 	struct platform_device *pdev;
@@ -174,8 +193,11 @@ static void __tegra_serial_debug_init(unsigned int base, int fiq, int irq,
 #ifdef CONFIG_FIQ
 	t->pdata.fiq_enable = fiq_enable;
 #else
-	BUG_ON(fiq >= 0);
+	BUG_ON(fiq >= 0 && !trusty_dev);
 #endif
+	if (trusty_dev)
+		t->pdata.fiq_enable = trusty_fiq_enable;
+	t->trusty_dev = trusty_dev;
 
 	t->debug_port_base = ioremap(base, PAGE_SIZE);
 	if (!t->debug_port_base) {
@@ -248,12 +270,65 @@ out1:
 void tegra_serial_debug_init(unsigned int base, int fiq,
 			   struct clk *clk, int signal_irq, int wakeup_irq)
 {
-	__tegra_serial_debug_init(base, fiq, -1, clk, signal_irq, wakeup_irq);
+	__tegra_serial_debug_init(base, fiq, -1, clk, signal_irq,
+				  wakeup_irq, NULL);
 }
 #endif
 
 void tegra_serial_debug_init_irq_mode(unsigned int base, int irq,
 			   struct clk *clk, int signal_irq, int wakeup_irq)
 {
-	__tegra_serial_debug_init(base, -1, irq, clk, signal_irq, wakeup_irq);
+	__tegra_serial_debug_init(base, -1, irq, clk, signal_irq,
+				  wakeup_irq, NULL);
 }
+
+static int tegra_serial_debug_trusty_probe(struct platform_device *pdev)
+{
+	struct resource *res;
+	int fiq;
+	int signal_irq;
+	int wakeup_irq;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "No mem resource\n");
+		return -EINVAL;
+	}
+
+	fiq = platform_get_irq_byname(pdev, "fiq");
+	if (fiq < 0) {
+		dev_err(&pdev->dev, "No IRQ for fiq, error=%d\n", fiq);
+		return fiq;
+	}
+
+	signal_irq = platform_get_irq_byname(pdev, "signal");
+	if (signal_irq < 0) {
+		dev_err(&pdev->dev, "No signal IRQ, error=%d\n", signal_irq);
+		return signal_irq;
+	}
+
+	wakeup_irq = platform_get_irq_byname(pdev, "wakeup");
+	if (wakeup_irq < 0)
+		wakeup_irq = -1;
+
+	__tegra_serial_debug_init(res->start, fiq, -1, NULL, signal_irq,
+				  wakeup_irq, pdev->dev.parent->parent);
+
+	return 0;
+}
+
+static const struct of_device_id tegra_serial_debug_trusty_match[] = {
+	{ .compatible = "android,trusty-fiq-v1-tegra-uart", },
+	{}
+};
+
+static struct platform_driver tegra_serial_debug_trusty_driver = {
+	.probe		= tegra_serial_debug_trusty_probe,
+	.driver		= {
+		.name	= "tegra-fiq-debug",
+		.owner	= THIS_MODULE,
+		.of_match_table = of_match_ptr(tegra_serial_debug_trusty_match),
+	},
+};
+
+module_platform_driver(tegra_serial_debug_trusty_driver);

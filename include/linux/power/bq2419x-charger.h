@@ -180,6 +180,9 @@ struct bq2419x_charger_platform_data {
 	struct bq2419x_thermal_prop thermal_prop;
 	bool charge_full_by_monitor_full_thr;
 	struct bq2419x_charge_full_threshold full_thr;
+	const char *batt_id_channel_name;
+	int unknown_batt_id_min;
+	bool safety_timer_reset_disable;
 };
 
 /*

@@ -335,19 +335,7 @@ static int rt5506_release(struct inode *inode, struct file *file)
 
 static void hs_imp_gpio_off(struct work_struct *work)
 {
-	u64 timeout = get_jiffies_64() + 3*HZ;
 	wake_lock(&rt5506_query.gpio_wake_lock);
-
-	while (1) {
-		if (time_after64(get_jiffies_64(), timeout))
-			break;
-		else if (rt5506_query.gpio_off_cancel) {
-			wake_unlock(&rt5506_query.gpio_wake_lock);
-			return;
-		} else
-			usleep_range(10000, 11000);
-	}
-
 	mutex_lock(&rt5506_query.gpiolock);
 	pr_info("%s: disable gpio %d\n", __func__, pdata->rt5506_enable);
 	gpio_set_value(pdata->rt5506_enable, 0);
@@ -613,7 +601,39 @@ int rt5506_dump_reg(void)
 
 	return ret;
 }
+int set_rt5506_hp_en(bool on)
+{
+	if (!rt5506Connect)
+		return 0;
+	pr_info("%s: %d\n", __func__, on);
+	mutex_lock(&rt5506_query.actionlock);
+	rt5506_query.gpio_off_cancel = 1;
 
+	cancel_delayed_work_sync(&rt5506_query.gpio_off_work);
+	cancel_delayed_work_sync(&rt5506_query.volume_ramp_work);
+	mutex_lock(&rt5506_query.gpiolock);
+	if (on) {
+		if (rt5506_query.gpiostatus == AMP_GPIO_OFF) {
+			pr_info("%s: enable gpio %d\n", __func__,
+			pdata->rt5506_enable);
+			gpio_set_value(pdata->rt5506_enable, 1);
+			rt5506_query.gpiostatus = AMP_GPIO_ON;
+			usleep_range(1000, 2000);
+		}
+	} else {
+		if (rt5506_query.gpiostatus == AMP_GPIO_ON) {
+			rt5506_query.gpio_off_cancel = 0;
+			queue_delayed_work(gpio_wq,
+			&rt5506_query.gpio_off_work, msecs_to_jiffies(0));
+		}
+	}
+
+	mutex_unlock(&rt5506_query.gpiolock);
+	mutex_unlock(&rt5506_query.actionlock);
+
+	return 0;
+
+}
 int set_rt5506_amp(int on, int dsp)
 {
 	if (!rt5506Connect)
@@ -893,7 +913,6 @@ int rt5506_probe(struct i2c_client *client, const struct i2c_device_id *id)
 				goto err_free_allocated_mem;
 			} else {
 				pr_info("rt5506_power_enable=1\n");
-				gpio_free(pdata->rt5506_power_enable);
 			}
 		}
 	}
@@ -1045,8 +1064,6 @@ static int rt5506_remove(struct i2c_client *client)
 				pr_info("rt5506_reg ldoen is disabled\n");
 		}
 	} else {
-		ret = gpio_request(pdata->rt5506_power_enable,
-		"rt5506-power-en");
 		if (ret) {
 			pr_err("%s: Fail gpio_request rt5506_power_enable, %d\n",
 			__func__, ret);

@@ -16,6 +16,8 @@
 #include <linux/device.h>
 
 #include "u_serial.h"
+#include "u_data_hsic.h"
+#include "u_ctrl_hsic.h"
 #include "gadget_chips.h"
 
 
@@ -145,6 +147,22 @@ static struct usb_gadget_strings *gser_strings[] = {
 	NULL,
 };
 
+static struct usb_string modem_string_defs[] = {
+	[0].s = "HTC Modem",
+	[1].s = "HTC 9k Modem",
+	{  } /* end of list */
+};
+
+static struct usb_gadget_strings modem_string_table = {
+	.language =     0x0409, /* en-us */
+	.strings =      modem_string_defs,
+};
+
+static struct usb_gadget_strings *modem_strings[] = {
+	&modem_string_table,
+	NULL,
+};
+
 /*-------------------------------------------------------------------------*/
 
 static int gser_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
@@ -168,6 +186,43 @@ static int gser_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 		}
 	}
 	gserial_connect(&gser->port, gser->port_num);
+	return 0;
+}
+
+static int gser_mdm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
+{
+	struct f_gser		*gser = func_to_gser(f);
+	struct usb_composite_dev *cdev = f->config->cdev;
+	int ret;
+
+	/* we know alt == 0, so this is an activation or a reset */
+
+	if (gser->port.in->driver_data) {
+		DBG(cdev, "reset generic ttyGS%d\n", gser->port_num);
+		gserial_disconnect(&gser->port);
+	}
+	if (!gser->port.in->desc || !gser->port.out->desc) {
+		DBG(cdev, "activate generic ttyGS%d\n", gser->port_num);
+		if (config_ep_by_speed(cdev->gadget, f, gser->port.in) ||
+		    config_ep_by_speed(cdev->gadget, f, gser->port.out)) {
+			gser->port.in->desc = NULL;
+			gser->port.out->desc = NULL;
+			return -EINVAL;
+		}
+	}
+	ret = ghsic_ctrl_connect(&gser->port, gser->port_num);
+	if (ret) {
+		pr_err("%s: ghsic_ctrl_connect failed: err:%d\n",
+				__func__, ret);
+		return ret;
+	}
+	ret = ghsic_data_connect(&gser->port, gser->port_num);
+	if (ret) {
+		pr_err("%s: ghsic_data_connect failed: err:%d\n",
+				__func__, ret);
+		ghsic_ctrl_disconnect(&gser->port, gser->port_num);
+		return ret;
+	}
 	return 0;
 }
 
@@ -341,6 +396,37 @@ static struct usb_function_instance *gser_alloc_inst(void)
 	return &opts->func_inst;
 }
 
+static struct usb_function_instance *modem_alloc_inst(void)
+{
+	struct f_serial_opts *opts;
+	int ret;
+
+	opts = kzalloc(sizeof(*opts), GFP_KERNEL);
+	if (!opts)
+		return ERR_PTR(-ENOMEM);
+
+	opts->func_inst.free_func_inst = gser_free_inst;
+
+	ret = ghsic_data_setup(1, USB_GADGET_SERIAL);
+	if (ret) {
+		kfree(opts);
+		return ERR_PTR(ret);
+	}
+
+	ret = ghsic_ctrl_setup(1, USB_GADGET_SERIAL);
+	if (ret) {
+		kfree(opts);
+		return ERR_PTR(ret);
+	}
+
+	opts->port_num = 0;
+
+	config_group_init_type_name(&opts->func_inst.group, "",
+				    &serial_func_type);
+
+	return &opts->func_inst;
+}
+
 static void gser_free(struct usb_function *f)
 {
 	struct f_gser *serial;
@@ -375,10 +461,38 @@ struct usb_function *gser_alloc(struct usb_function_instance *fi)
 	gser->port.func.set_alt = gser_set_alt;
 	gser->port.func.disable = gser_disable;
 	gser->port.func.free_func = gser_free;
+	gser_interface_desc.iInterface = gser_string_defs[0].id;
 
 	return &gser->port.func;
 }
 
+struct usb_function *modem_alloc(struct usb_function_instance *fi)
+{
+	struct f_gser	*gser;
+	struct f_serial_opts *opts;
+
+	/* allocate and initialize one new instance */
+	gser = kzalloc(sizeof(*gser), GFP_KERNEL);
+	if (!gser)
+		return ERR_PTR(-ENOMEM);
+
+	opts = container_of(fi, struct f_serial_opts, func_inst);
+
+	gser->port_num = opts->port_num;
+
+	gser->port.func.name = "modem";
+	gser->port.func.strings = modem_strings;
+	gser->port.func.bind = gser_bind;
+	gser->port.func.unbind = gser_unbind;
+	gser->port.func.set_alt = gser_mdm_set_alt;
+	gser->port.func.disable = gser_disable;
+	gser->port.func.free_func = gser_free;
+	gser_interface_desc.iInterface = modem_string_defs[0].id;
+
+	return &gser->port.func;
+}
+
+DECLARE_USB_FUNCTION_INIT(modem, modem_alloc_inst, modem_alloc);
 DECLARE_USB_FUNCTION_INIT(gser, gser_alloc_inst, gser_alloc);
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Al Borchers");

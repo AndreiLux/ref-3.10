@@ -233,7 +233,7 @@ static int cwmcu_get_calibrator(u8 sensor_id, s8 *data, u8 len)
 		E("%s: invalid arguments, sensor_id = %u, len = %u\n",
 		  __func__, sensor_id, len);
 
-	I("sensors_id = %u, calibrator data = (%d, %d, %d)\n", sensor_id,
+	D("sensors_id = %u, calibrator data = (%d, %d, %d)\n", sensor_id,
 	  data[0], data[1], data[2]);
 	return error_msg;
 }
@@ -255,7 +255,7 @@ static ssize_t set_calibrator_en(struct device *dev,
 
 	/* sensor_id at least should between 0 ~ 31 */
 	data = (u8)sensors_id;
-	I("%s: data(sensors_id) = %u\n", __func__, data);
+	D("%s: data(sensors_id) = %u\n", __func__, data);
 
 	mutex_lock(&mcu_data->group_i2c_lock);
 
@@ -345,7 +345,7 @@ static ssize_t set_calibrator_en(struct device *dev,
 
 i2c_fail:
 	mutex_unlock(&mcu_data->group_i2c_lock);
-	I("%s--: data2 = 0x%x, error = %d\n", __func__, data2, error);
+	E("%s--: data2 = 0x%x, error = %d\n", __func__, data2, error);
 	return error;
 }
 
@@ -408,7 +408,7 @@ static ssize_t set_k_value(const char *buf, size_t count, u8 reg_addr, u8 len)
 	char *running;
 	int error;
 
-	I(
+	D(
 	  "%s: count = %lu, strlen(buf) = %lu, PAGE_SIZE = %lu,"
 	  " reg_addr = 0x%x\n",
 	  __func__, count, strlen(buf), PAGE_SIZE, reg_addr);
@@ -427,7 +427,7 @@ static ssize_t set_k_value(const char *buf, size_t count, u8 reg_addr, u8 len)
 		token = strsep(&running, " ");
 
 		if (token == NULL) {
-			I("%s: i = %d\n", __func__, i);
+			D("%s: i = %d\n", __func__, i);
 			break;
 		} else {
 			if (reg_addr ==
@@ -445,7 +445,7 @@ static ssize_t set_k_value(const char *buf, size_t count, u8 reg_addr, u8 len)
 	}
 	kfree(str_buf);
 
-	I("Set calibration by attr (%ld, %ld, %ld), len = %u, reg_addr = 0x%x\n"
+	D("Set calibration by attr (%ld, %ld, %ld), len = %u, reg_addr = 0x%x\n"
 	  , data_temp[0], data_temp[1], data_temp[2], len, reg_addr);
 
 	mutex_lock(&mcu_data->group_i2c_lock);
@@ -508,7 +508,7 @@ static ssize_t led_enable(struct device *dev,
 	int error;
 	u8 data = 0x01;
 
-	I("LED ENABLE");
+	D("LED ENABLE");
 	error = CWMCU_i2c_write(mcu_data, 0xD0, &data, 1);
 	if (error < 0) {
 		E("%s: error = %d\n", __func__, error);
@@ -544,7 +544,7 @@ static ssize_t get_k_value_acc_rl_f(struct device *dev,
 			   , data, sizeof(data)) >= 0) {
 		for (i = 0; i < sizeof(data); i++) {
 			if (DEBUG_FLAG_GSENSOR == 1)
-				I("data[%d]: %u\n", i, data[i]);
+				D("data[%d]: %u\n", i, data[i]);
 		}
 
 		mcu_data->gs_kvalue_L1 = ((s8)data[1] << 8) | data[0];
@@ -730,7 +730,7 @@ static ssize_t read_mcu_data(struct device *dev, struct device_attribute *attr,
 		else {
 			if (token == NULL) {
 				data_temp[i] = 1;
-				I("%s: token 2 missing\n", __func__);
+				D("%s: token 2 missing\n", __func__);
 				break;
 			} else
 				error = kstrtol(token, 10, &data_temp[i]);
@@ -751,7 +751,7 @@ static ssize_t read_mcu_data(struct device *dev, struct device_attribute *attr,
 	if (len < sizeof(mcu_rdata)) {
 		CWMCU_i2c_read(mcu_data, reg_addr, mcu_rdata, len);
 		for (i = 0; i < len; i++)
-			I("read mcu reg_addr = 0x%x, reg[%u] = 0x%x\n",
+			D("read mcu reg_addr = 0x%x, reg[%u] = 0x%x\n",
 				reg_addr, (reg_addr + i), mcu_rdata[i]);
 	} else
 		E("%s: len = %u, out of range\n", __func__, len);
@@ -882,7 +882,7 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 				CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_ACC,
 				&gs_dataz, 1);
 		sensor->gs_calibrated = 1;
-		I("Set g-sensor kvalue x is %x y is %x z is %x\n",
+		D("Set g-sensor kvalue x is %x y is %x z is %x\n",
 			gs_datax, gs_datay, gs_dataz);
 	}
 
@@ -900,7 +900,7 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 				CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_GYRO,
 				&gy_dataz, 1);
 		sensor->gy_calibrated = 1;
-		I("Set gyro-sensor kvalue x is %x y is %x z is %x\n",
+		D("Set gyro-sensor kvalue x is %x y is %x z is %x\n",
 			gy_datax, gy_datay, gy_dataz);
 	}
 
@@ -920,7 +920,7 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 				CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_LIGHT,
 				&als_datah, 1);
 		sensor->ls_calibrated = 1;
-		I("Set light-sensor kvalue is %x %x\n", als_datah, als_datal);
+		D("Set light-sensor kvalue is %x %x\n", als_datah, als_datal);
 	}
 
 	if (sensor->bs_kheader == 0x67) {
@@ -941,7 +941,7 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 				CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_PRESSURE,
 				&bs_datad, 1);
 		sensor->bs_calibrated = 1;
-		I("Set baro-sensor kvalue a is %x b is %x c is %x d is %x\n",
+		D("Set baro-sensor kvalue a is %x b is %x c is %x d is %x\n",
 			bs_dataa, bs_datab, bs_datac, bs_datad);
 	}
 	I("Sensor calibration matrix is (gs %u gy %u ls %u bs %u)\n",
@@ -953,7 +953,7 @@ static int cwmcu_set_sensor_kvalue(struct cwmcu_data *sensor)
 
 static int cwmcu_sensor_placement(struct cwmcu_data *sensor)
 {
-	I("Set Sensor Placement\n");
+	D("Set Sensor Placement\n");
 	CWMCU_i2c_write(sensor, GENSOR_POSITION, &sensor->acceleration_axes, 1);
 	CWMCU_i2c_write(sensor, COMPASS_POSITION, &sensor->magnetic_axes, 1);
 	CWMCU_i2c_write(sensor, GYRO_POSITION, &sensor->gyro_axes, 1);
@@ -968,16 +968,16 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 	u8 reg_addr = 0;
 	u8 reg_value = 0;
 
-	I("Restore status\n");
+	D("Restore status\n");
 
 	for (i = 0; i < ENABLE_LIST_GROUP_NUM; i++) {
 		data = (u8)(sensor->enabled_list>>(i*8));
 		CWMCU_i2c_write(mcu_data, CWSTM32_ENABLE_REG+i, &data, 1);
-		I("%s: write_addr = 0x%x, write_val = 0x%x\n",
+		D("%s: write_addr = 0x%x, write_val = 0x%x\n",
 		  __func__, (CWSTM32_ENABLE_REG+i), data);
 	}
 
-	I("%s: enable_list = 0x%x\n", __func__, sensor->enabled_list);
+	D("%s: enable_list = 0x%x\n", __func__, sensor->enabled_list);
 
 	for (i = 0; i <= CW_GEOMAGNETIC_ROTATION_VECTOR; i++) {
 		if (i <= CW_GYRO)
@@ -989,7 +989,7 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			reg_addr = (MAGN_UNCA_UPDATE_RATE +
 				   (i - CW_MAGNETIC_UNCALIBRATED));
 		else {
-			I("%s: i = %d, no need to restore sample rate\n",
+			D("%s: i = %d, no need to restore sample rate\n",
 			  __func__, i);
 			continue;
 		}
@@ -1009,14 +1009,14 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			reg_value = UPDATE_RATE_FASTEST;
 			break;
 		default:
-			I(
+			D(
 			  "%s: No need to restore, i = %d,"
 			  " report_period = %d\n",
 			  __func__, i, sensor->report_period[i]);
 			continue;
 		}
 
-		I("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
+		D("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
 		  __func__, reg_addr, reg_value);
 		rc = CWMCU_i2c_write(mcu_data, reg_addr, &reg_value, 1);
 		if (rc) {
@@ -1025,7 +1025,7 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			return -EIO;
 		}
 
-		I("%s: sensors_id = %d, delay_us = %6d\n",
+		D("%s: sensors_id = %d, delay_us = %6d\n",
 		  __func__, i, mcu_data->report_period[i]);
 	}
 
@@ -1059,7 +1059,7 @@ static int check_fw_version(const struct firmware *fw)
 				return rc;
 			}
 			fw_version[i] = ul_ver;
-			I(
+			D(
 			  "%s: fw_version[%d] = %u, firmware_version[%d] ="
 			  " %u\n", __func__, i, fw_version[i]
 			  , i, firmware_version[i]);
@@ -1148,10 +1148,10 @@ static int erase_mcu_flash_mem(void)
 		return rc;
 	}
 
-	I("%s: Tx size = %d\n", __func__, 3);
+	D("%s: Tx size = %d\n", __func__, 3);
 	/* Erase needs 9 sec in worst case */
 	mdelay(9000);
-	I("%s: After delay, Tx size = %d\n", __func__, 3);
+	D("%s: After delay, Tx size = %d\n", __func__, 3);
 
 	return 0;
 }
@@ -1251,13 +1251,13 @@ static int update_firmware(struct cwmcu_data *sensor)
 	int i;
 
 	ret = request_firmware(&fw, "sensor_hub.img", &sensor->client->dev);
-	I("%s: request_firmware ret = %d\n", __func__, ret);
+	D("%s: request_firmware ret = %d\n", __func__, ret);
 	if (ret || fw == NULL) {
 		E("%s: firmware request failed (%d, %p)", __func__, ret, fw);
 		return -1;
 	}
 
-	I("%s: firmware size = %lu\n", __func__, fw->size);
+	D("%s: firmware size = %lu\n", __func__, fw->size);
 
 	ret = check_fw_version(fw);
 	if (ret == 1) { /* Perform firmware update */
@@ -1279,7 +1279,7 @@ static int update_firmware(struct cwmcu_data *sensor)
 			  __func__, ret);
 		}
 
-		I("%s: Start writing firmware\n", __func__);
+		D("%s: Start writing firmware\n", __func__);
 
 		block_size = fw->size / FW_I2C_LEN_LIMIT;
 		data_len = fw->size % FW_I2C_LEN_LIMIT;
@@ -1313,7 +1313,7 @@ static int update_firmware(struct cwmcu_data *sensor)
 		}
 
 out:
-		I("%s: End writing firmware\n", __func__);
+		D("%s: End writing firmware\n", __func__);
 
 		gpio_direction_output(mcu_data->gpio_chip_mode, 0);
 		mdelay(10);
@@ -1406,7 +1406,7 @@ int touch_status(u8 status)
 	if (status == 1 || status == 0) {
 		ret = CWMCU_i2c_write(mcu_data, TOUCH_STATUS_REGISTER,
 				      &status, 1);
-		I("[TP][SensorHub] touch_status = %u\n", status);
+		D("[TP][SensorHub] touch_status = %u\n", status);
 	}
 	return ret;
 }
@@ -1449,7 +1449,7 @@ static void activated_i2c_do_work(struct work_struct *w)
 	mcu_data->i2c_jiffies = jiffies;
 
 	mutex_unlock(&mcu_data->activated_i2c_lock);
-	I("%s--: mcu_data->i2c_total_retry = %d\n", __func__,
+	D("%s--: mcu_data->i2c_total_retry = %d\n", __func__,
 	  mcu_data->i2c_total_retry);
 }
 
@@ -1498,7 +1498,7 @@ static int firmware_odr(int sensors_id, int delay_ms)
 		break;
 	default:
 		reg_addr = 0;
-		I("%s: Only reoprt_period changed, sensors_id = %d,"
+		D("%s: Only reoprt_period changed, sensors_id = %d,"
 			" delay_us = %6d\n",
 			__func__, sensors_id,
 			mcu_data->report_period[sensors_id]);
@@ -1519,7 +1519,7 @@ static int firmware_odr(int sensors_id, int delay_ms)
 		reg_value = UPDATE_RATE_FASTEST;
 		break;
 	default:
-		I("%s: val = %3d, Only reoprt_period changed\n",
+		D("%s: val = %3d, Only reoprt_period changed\n",
 		  __func__, delay_ms);
 		return 0;
 	}
@@ -1550,7 +1550,7 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	/* Try to recover HUB in low CPU utilization */
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (mcu_data->i2c_total_retry > RETRY_TIMES) {
-		I("%s: mcu_data->i2c_total_retry = %d\n", __func__,
+		D("%s: mcu_data->i2c_total_retry = %d\n", __func__,
 		  mcu_data->i2c_total_retry);
 		queue_work(mcu_wq, &activated_i2c_work);
 	}
@@ -1594,7 +1594,7 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	    (sensors_id < CW_SENSORS_ID_END) &&
 	    (sensors_id >= 0)
 	   ) {
-		I("%s: Filter first ZEROs, sensors_id = %ld\n",
+		D("%s: Filter first ZEROs, sensors_id = %ld\n",
 			__func__, sensors_id);
 		mcu_data->filter_first_zeros[sensors_id] = 1;
 	}
@@ -1687,7 +1687,7 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 		else {
 			if (token == NULL) {
 				val = 66;
-				I("%s: delay set to 66\n", __func__);
+				D("%s: delay set to 66\n", __func__);
 			} else
 				error = kstrtol(token, 10, &val);
 		}
@@ -1701,7 +1701,7 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 	kfree(str_buf);
 
 	if ((sensors_id < 0) || (sensors_id >= num_sensors)) {
-		I("%s: Invalid sensors_id = %ld\n", __func__, sensors_id);
+		D("%s: Invalid sensors_id = %ld\n", __func__, sensors_id);
 		return -EINVAL;
 	}
 
@@ -1744,7 +1744,7 @@ static ssize_t batch_set(struct device *dev,
 		mutex_lock(&mcu_data->mutex_lock);
 		if (mcu_data->resume_done != 1) {
 			mutex_unlock(&mcu_data->mutex_lock);
-			I("%s: resume not completed, retry = %d\n",
+			D("%s: resume not completed, retry = %d\n",
 				__func__, retry);
 			usleep_range(5000, 10000);
 		} else {
@@ -1753,7 +1753,7 @@ static ssize_t batch_set(struct device *dev,
 		}
 	}
 	if (retry >= ACTIVE_RETRY_TIMES) {
-		I("%s: resume not completed, retry = %d, retry fails!\n",
+		D("%s: resume not completed, retry = %d, retry fails!\n",
 			__func__, retry);
 		return -ETIMEDOUT;
 	}
@@ -1803,7 +1803,7 @@ static ssize_t batch_set(struct device *dev,
 	}
 	kfree(str_buf);
 
-	I("%s: sensors_id = 0x%x, flag = %d, delay_ms = %d, timeout = %lld\n",
+	D("%s: sensors_id = 0x%x, flag = %d, delay_ms = %d, timeout = %lld\n",
 	  __func__, sensors_id, flag, delay_ms, timeout);
 
 	mcu_data->report_period[sensors_id] = (delay_ms * 1000);
@@ -1818,7 +1818,7 @@ static ssize_t batch_set(struct device *dev,
 				mcu_data->current_timeout =
 					mcu_data->sensors_batch_timeout[i];
 			}
-			I("sensorid = %d, current_timeout = %lld\n",
+			D("sensorid = %d, current_timeout = %lld\n",
 			  i, mcu_data->current_timeout);
 		} else
 			mcu_data->continuous_sensor_count++;
@@ -1837,7 +1837,7 @@ static ssize_t batch_set(struct device *dev,
 		if ((sensors_id == CW_LIGHT)
 		    || (sensors_id == CW_SIGNIFICANT_MOTION)
 		   ) {
-			I("%s: Not support batch, sensors_id = %d!\n",
+			D("%s: Not support batch, sensors_id = %d!\n",
 			  __func__, sensors_id);
 			return -EINVAL;
 		}
@@ -1864,7 +1864,7 @@ static ssize_t batch_set(struct device *dev,
 		case CW_STEP_COUNTER:
 			break;
 		default:
-			I("%s: Batch not supported for this sensor_id = 0x%x\n",
+			D("%s: Batch not supported for this sensor_id = 0x%x\n",
 			  __func__, sensors_id);
 			return count;
 		}
@@ -1955,6 +1955,7 @@ static void cwmcu_send_flush(int id)
 	flush_data = ((u32)CW_META_DATA << 16) | id;
 	D("%s: flush sensor: %d!!\n", __func__, id);
 
+	input_report_abs(mcu_data->input, CW_ABS_Z, -1);
 	input_report_abs(mcu_data->input, CW_ABS_Z, flush_data);
 	input_sync(mcu_data->input);
 }
@@ -1972,7 +1973,7 @@ static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
 		return rc;
 	}
 
-	I("%s: handle = %lu\n", __func__, handle);
+	D("%s: handle = %lu\n", __func__, handle);
 
 	if (handle == TIMESTAMP_SYNC_CODE) {
 		data = SYNC_TIMESTAMP_BIT;
@@ -1984,7 +1985,7 @@ static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
 	} else {
 		data = 0x01;
 
-		I("%s: addr = 0x%x, data = 0x%x\n", __func__,
+		D("%s: addr = 0x%x, data = 0x%x\n", __func__,
 		  CWSTM32_BATCH_MODE_COMMAND, data);
 
 		rc = CWMCU_i2c_write(mcu_data, CWSTM32_BATCH_MODE_COMMAND,
@@ -2471,7 +2472,7 @@ static int cwmcu_suspend(struct device *dev)
 	u8 data = 0x00;
 #endif
 
-	I("[CWMCU] %s\n", __func__);
+	D("[CWMCU] %s\n", __func__);
 
 #if USE_WAKE_MCU
 	use_wake_mcu = 1;
@@ -2489,7 +2490,7 @@ static void resume_do_work(struct work_struct *w)
 {
 	u8 data = 0x01;
 
-	I("[CWMCU] %s++\n", __func__);
+	D("[CWMCU] %s++\n", __func__);
 
 	CWMCU_i2c_write(mcu_data, HTC_SYSTEM_STATUS_REG, &data, 1);
 
@@ -2500,17 +2501,17 @@ static void resume_do_work(struct work_struct *w)
 	mcu_data->resume_done = 1;
 	mutex_unlock(&mcu_data->mutex_lock);
 
-	I("[CWMCU] %s--\n", __func__);
+	D("[CWMCU] %s--\n", __func__);
 }
 
 static int cwmcu_resume(struct device *dev)
 {
-	I("[CWMCU] %s++\n", __func__);
+	D("[CWMCU] %s++\n", __func__);
 
 #if USE_WAKE_MCU
 	queue_work(mcu_wq, &resume_work);
 #endif
-	I("[CWMCU] %s--\n", __func__);
+	D("[CWMCU] %s--\n", __func__);
 	return 0;
 }
 
@@ -2564,7 +2565,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 					data[0], light_adc,
 					sensor->ls_calibrated);
 			} else {
-				I(
+				D(
 				  "light interrupt occur value is %u, adc is"
 				  " %x ls_calibration is %u (message only)\n",
 					data[0], light_adc,
@@ -2588,7 +2589,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 					 1);
 			input_sync(sensor->input);
 
-			I("%s: Significant Motion interrupt occurs!!\n",
+			D("%s: Significant Motion interrupt occurs!!\n",
 					__func__);
 		}
 		clear_intr = CW_MCU_INT_BIT_SIGNIFICANT_MOTION;
@@ -2609,10 +2610,10 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 						ABS_STEP_DETECTOR, data[0]);
 				input_sync(sensor->input);
 
-				I("%s: Step Detector INT, timestamp = %u\n",
+				D("%s: Step Detector INT, timestamp = %u\n",
 						__func__, data[0]);
 			} else
-				I("%s: Step Detector i2c read fail, ret = %d\n",
+				D("%s: Step Detector i2c read fail, ret = %d\n",
 						__func__, ret);
 
 		}
@@ -2634,10 +2635,10 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 						ABS_STEP_COUNTER, data[0]);
 				input_sync(sensor->input);
 
-				I("%s: Step Counter interrupt, step = %u\n",
+				D("%s: Step Counter interrupt, step = %u\n",
 						__func__, data[0]);
 			} else
-				I("%s: Step Counter i2c read fails, ret = %d\n",
+				D("%s: Step Counter i2c read fails, ret = %d\n",
 						__func__, ret);
 
 		}
@@ -2692,7 +2693,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 	struct cwmcu_data *data = handle;
 
 	if (probe_success != 1) {
-		I("%s: probe not completed\n", __func__);
+		D("%s: probe not completed\n", __func__);
 		return IRQ_HANDLED;
 	}
 
@@ -2727,7 +2728,7 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 	int i;
 
 	if (pdata == NULL) {
-		I("%s: pdata is NULL\n", __func__);
+		D("%s: pdata is NULL\n", __func__);
 		return -EINVAL;
 	}
 	pdata->gs_kvalue = 0;
@@ -2737,10 +2738,10 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 				     of_get_property(g_sensor_offset,
 						     G_SENSOR_FLASH_DATA,
 						     &g_sensor_cali_size);
-		I("%s: cali_size = %d\n", __func__, g_sensor_cali_size);
+		D("%s: cali_size = %d\n", __func__, g_sensor_cali_size);
 		if (g_sensor_cali_data) {
 			for (i = 0; (i < g_sensor_cali_size) && (i < 4); i++) {
-				I("g sensor cali_data[%d] = %02x\n", i,
+				D("g sensor cali_data[%d] = %02x\n", i,
 						g_sensor_cali_data[i]);
 				pdata->gs_kvalue |= (g_sensor_cali_data[i] <<
 						    (i * 8));
@@ -2748,7 +2749,7 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 		}
 
 	} else
-		I("%s: G-sensor Calibration data offset not found\n", __func__);
+		E("%s: G-sensor Calibration data offset not found\n", __func__);
 
 	pdata->gs_kvalue_L1 = 0;
 	pdata->gs_kvalue_L2 = 0;
@@ -2764,37 +2765,37 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 					of_get_property(gyro_sensor_offset,
 							GYRO_SENSOR_FLASH_DATA,
 							&gyro_sensor_cali_size);
-		I("%s:gyro cali_size = %d\n", __func__, gyro_sensor_cali_size);
+		D("%s:gyro cali_size = %d\n", __func__, gyro_sensor_cali_size);
 		if (gyro_sensor_cali_data) {
 			for (i = 0; (i < gyro_sensor_cali_size) && (i < 4);
 				     i++) {
-				I("gyro sensor cali_data[%d] = %02x\n", i,
+				D("gyro sensor cali_data[%d] = %02x\n", i,
 					gyro_sensor_cali_data[i]);
 				pdata->gy_kvalue |= (gyro_sensor_cali_data[i] <<
 						     (i * 8));
 			}
 			pdata->gs_kvalue_L1 = (gyro_sensor_cali_data[5] << 8) |
 						gyro_sensor_cali_data[4];
-			I("g sensor cali_data L1 = %x\n", pdata->gs_kvalue_L1);
+			D("g sensor cali_data L1 = %x\n", pdata->gs_kvalue_L1);
 			pdata->gs_kvalue_L2 = (gyro_sensor_cali_data[7] << 8) |
 						gyro_sensor_cali_data[6];
-			I("g sensor cali_data L2 = %x\n", pdata->gs_kvalue_L2);
+			D("g sensor cali_data L2 = %x\n", pdata->gs_kvalue_L2);
 			pdata->gs_kvalue_L3 = (gyro_sensor_cali_data[9] << 8) |
 						gyro_sensor_cali_data[8];
-			I("g sensor cali_data L3 = %x\n", pdata->gs_kvalue_L3);
+			D("g sensor cali_data L3 = %x\n", pdata->gs_kvalue_L3);
 			pdata->gs_kvalue_R1 = (gyro_sensor_cali_data[11] << 8) |
 						gyro_sensor_cali_data[10];
-			I("g sensor cali_data R1 = %x\n", pdata->gs_kvalue_R1);
+			D("g sensor cali_data R1 = %x\n", pdata->gs_kvalue_R1);
 			pdata->gs_kvalue_R2 = (gyro_sensor_cali_data[13] << 8) |
 						gyro_sensor_cali_data[12];
-			I("g sensor cali_data R2 = %x\n", pdata->gs_kvalue_R2);
+			D("g sensor cali_data R2 = %x\n", pdata->gs_kvalue_R2);
 			pdata->gs_kvalue_R3 = (gyro_sensor_cali_data[15] << 8) |
 						gyro_sensor_cali_data[14];
-			I("g sensor cali_data R3 = %x\n", pdata->gs_kvalue_R3);
+			D("g sensor cali_data R3 = %x\n", pdata->gs_kvalue_R3);
 		}
 
 	} else
-		I("%s: GYRO-sensor Calibration data offset not found\n",
+		E("%s: GYRO-sensor Calibration data offset not found\n",
 				__func__);
 
 	pdata->als_kvalue = 0;
@@ -2804,19 +2805,19 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 					 of_get_property(light_sensor_offset,
 						       LIGHT_SENSOR_FLASH_DATA,
 						       &light_sensor_cali_size);
-		I("%s:light cali_size = %d\n", __func__,
+		D("%s:light cali_size = %d\n", __func__,
 				light_sensor_cali_size);
 		if (light_sensor_cali_data) {
 			for (i = 0; (i < light_sensor_cali_size) && (i < 4);
 			     i++) {
-				I("light sensor cali_data[%d] = %02x\n", i,
+				D("light sensor cali_data[%d] = %02x\n", i,
 					light_sensor_cali_data[i]);
 				pdata->als_kvalue |=
 					(light_sensor_cali_data[i] << (i * 8));
 			}
 		}
 	} else
-		I("%s: LIGHT-sensor Calibration data offset not found\n",
+		E("%s: LIGHT-sensor Calibration data offset not found\n",
 			__func__);
 
 	pdata->bs_kvalue = 0;
@@ -2826,11 +2827,11 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 					of_get_property(baro_sensor_offset,
 							BARO_SENSOR_FLASH_DATA,
 							&baro_sensor_cali_size);
-		I("%s: cali_size = %d\n", __func__, baro_sensor_cali_size);
+		D("%s: cali_size = %d\n", __func__, baro_sensor_cali_size);
 		if (baro_sensor_cali_data) {
 			for (i = 0; (i < baro_sensor_cali_size) &&
 			     (i < 5); i++) {
-				I("baro sensor cali_data[%d] = %02x\n", i,
+				D("baro sensor cali_data[%d] = %02x\n", i,
 					baro_sensor_cali_data[i]);
 				if (i == baro_sensor_cali_size - 1)
 					pdata->bs_kheader =
@@ -2842,41 +2843,41 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 			}
 		}
 	} else
-		I("%s: Barometer-sensor Calibration data offset not found\n",
+		E("%s: Barometer-sensor Calibration data offset not found\n",
 			__func__);
 
 	pdata->gpio_wake_mcu = of_get_named_gpio(dt, "mcu,Cpu_wake_mcu-gpio",
 					0);
 	if (!gpio_is_valid(pdata->gpio_wake_mcu))
-		I("DT:gpio_wake_mcu value is not valid\n");
+		E("DT:gpio_wake_mcu value is not valid\n");
 	else
-		I("DT:gpio_wake_mcu=%d\n", pdata->gpio_wake_mcu);
+		D("DT:gpio_wake_mcu=%d\n", pdata->gpio_wake_mcu);
 
 	pdata->gpio_mcu_irq = of_get_named_gpio(dt, "mcu,intr-gpio", 0);
 	if (!gpio_is_valid(pdata->gpio_mcu_irq))
-		I("DT:gpio_mcu_irq value is not valid\n");
+		E("DT:gpio_mcu_irq value is not valid\n");
 	else
-		I("DT:gpio_mcu_irq=%d\n", pdata->gpio_mcu_irq);
+		D("DT:gpio_mcu_irq=%d\n", pdata->gpio_mcu_irq);
 
 	pdata->gpio_reset = of_get_named_gpio(dt, "mcu,Reset-gpio", 0);
 	if (!gpio_is_valid(pdata->gpio_reset))
-		I("DT:gpio_reset value is not valid\n");
+		E("DT:gpio_reset value is not valid\n");
 	else
-		I("DT:gpio_reset=%d\n", pdata->gpio_reset);
+		D("DT:gpio_reset=%d\n", pdata->gpio_reset);
 
 	pdata->gpio_chip_mode = of_get_named_gpio(dt, "mcu,Chip_mode-gpio", 0);
 	if (!gpio_is_valid(pdata->gpio_chip_mode))
-		I("DT:gpio_chip_mode value is not valid\n");
+		E("DT:gpio_chip_mode value is not valid\n");
 	else
-		I("DT:gpio_chip_mode=%d\n", pdata->gpio_chip_mode);
+		D("DT:gpio_chip_mode=%d\n", pdata->gpio_chip_mode);
 
 	prop = of_find_property(dt, "mcu,gs_chip_layout", NULL);
 	if (prop) {
 		of_property_read_u32(dt, "mcu,gs_chip_layout", &buf);
 		pdata->gs_chip_layout = buf;
-		I("%s: chip_layout = %d\n", __func__, pdata->gs_chip_layout);
+		D("%s: chip_layout = %d\n", __func__, pdata->gs_chip_layout);
 	} else
-		I("%s: g_sensor,chip_layout not found", __func__);
+		E("%s: g_sensor,chip_layout not found", __func__);
 
 	prop = of_find_property(dt, "mcu,acceleration_axes", NULL);
 	if (prop) {
@@ -2885,7 +2886,7 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 		I("%s: acceleration axes = %u\n", __func__,
 			pdata->acceleration_axes);
 	} else
-		I("%s: g_sensor axes not found", __func__);
+		E("%s: g_sensor axes not found", __func__);
 
 	prop = of_find_property(dt, "mcu,magnetic_axes", NULL);
 	if (prop) {
@@ -2893,7 +2894,7 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 		pdata->magnetic_axes = buf;
 		I("%s: Compass axes = %u\n", __func__, pdata->magnetic_axes);
 	} else
-		I("%s: Compass axes not found", __func__);
+		E("%s: Compass axes not found", __func__);
 
 	prop = of_find_property(dt, "mcu,gyro_axes", NULL);
 	if (prop) {
@@ -2901,7 +2902,7 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 		pdata->gyro_axes = buf;
 		I("%s: gyro axes = %u\n", __func__, pdata->gyro_axes);
 	} else
-		I("%s: gyro axes not found", __func__);
+		E("%s: gyro axes not found", __func__);
 
 	return 0;
 }
@@ -2984,7 +2985,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	sensor = kzalloc(sizeof(struct cwmcu_data), GFP_KERNEL);
 	if (!sensor) {
-		I("castor: kzalloc error\n");
+		D("castor: kzalloc error\n");
 		return -ENOMEM;
 	}
 	mcu_data = sensor;
@@ -2998,9 +2999,12 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	error = cwmcu_register_polled_device(sensor);
 	if (error) {
-		I("castor: cwmcu_register_polled_device error\n");
+		E("castor: cwmcu_register_polled_device error\n");
 		goto err_free_mem;
 	}
+
+	sensor->input_polled->input->close(mcu_data->input_polled->input);
+	D("%s: Do not polling before probed\n", __func__);
 
 	error = create_sysfs_interfaces(sensor);
 
@@ -3056,15 +3060,15 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	error = gpio_request(sensor->gpio_reset, "cwmcu_reset");
 	if (error)
-		I("%s : request reset gpio fail\n", __func__);
+		E("%s : request reset gpio fail\n", __func__);
 
 	error = gpio_request(sensor->gpio_wake_mcu, "cwmcu_CPU2MCU");
 	if (error)
-		I("%s : request gpio_wake_mcu gpio fail\n", __func__);
+		E("%s : request gpio_wake_mcu gpio fail\n", __func__);
 
 	error = gpio_request(sensor->gpio_chip_mode, "cwmcu_hub_boot_mode");
 	if (error)
-		I("%s : request ghip mode gpio fail\n", __func__);
+		E("%s : request ghip mode gpio fail\n", __func__);
 
 	gpio_direction_output(mcu_data->gpio_reset, 1);
 	gpio_direction_output(mcu_data->gpio_wake_mcu, 0);
@@ -3072,20 +3076,20 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	error = gpio_request(sensor->gpio_mcu_irq, "cwmcu_int");
 	if (error) {
-		I("%s : request irq gpio fail\n",
+		E("%s : request irq gpio fail\n",
 			__func__);
 	}
 	client->irq = gpio_to_irq(sensor->gpio_mcu_irq);
 
 	sensor->IRQ = client->irq;
-	I("Requesting irq = %d\n", sensor->IRQ);
+	D("Requesting irq = %d\n", sensor->IRQ);
 	error = request_irq(sensor->IRQ, cwmcu_irq_handler, IRQF_TRIGGER_RISING,
 				"cwmcu", sensor);
 	if (error)
-		I("[CWMCU] could not request irq %d\n", error);
+		E("[CWMCU] could not request irq %d\n", error);
 	error = enable_irq_wake(sensor->IRQ);
 	if (error < 0)
-		I("[CWMCU] could not enable irq as wakeup source %d\n", error);
+		E("[CWMCU] could not enable irq as wakeup source %d\n", error);
 
 	mutex_lock(&sensor->mutex_lock);
 	sensor->resume_done = 1;
@@ -3100,6 +3104,9 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	/*vib_trigger_register_simple("vibrator", &vib_trigger);*/
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
+
+	sensor->input_polled->input->open(mcu_data->input_polled->input);
+	D("%s: Start polling after probed\n", __func__);
 
 	return 0;
 

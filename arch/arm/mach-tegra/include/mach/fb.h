@@ -72,15 +72,6 @@ static inline int tegra_fb_create_sysfs(struct device *dev)
 static inline void tegra_fb_remove_sysfs(struct device *dev)
 {
 }
-
-static inline int tegra_fb_create_sysfs(struct device *dev)
-{
-	return -ENOENT;
-}
-
-static inline void tegra_fb_remove_sysfs(struct device *dev)
-{
-}
 #endif
 
 #endif

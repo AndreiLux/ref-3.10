@@ -239,7 +239,7 @@ static int flounder_wifi_power(int on)
 	pr_err("%s: %d\n", __func__, on);
 
 	gpio_set_value(FLOUNDER_WLAN_PWR, on);
-	mdelay(100);
+	msleep(100);
 
 	return 0;
 }

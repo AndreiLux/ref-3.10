@@ -247,11 +247,6 @@ static noinline void __init flounder_setup_bluedroid_pm(void)
 static struct tfa9895_platform_data tfa9895_data = {
 	.tfa9895_power_enable = TEGRA_GPIO_PX5,
 };
-
-struct rt5506_platform_data rt5506_data = {
-	.rt5506_enable = TEGRA_GPIO_PX1,
-	.rt5506_power_enable = -1,
-};
 struct rt5677_priv rt5677_data = {
 	.vad_clock_en = TEGRA_GPIO_PX3,
 };
@@ -260,11 +255,6 @@ static struct i2c_board_info __initdata rt5677_board_info = {
 	I2C_BOARD_INFO("rt5677", 0x2d),
 	.platform_data = &rt5677_data,
 };
-static struct i2c_board_info __initdata rt5506_board_info = {
-	I2C_BOARD_INFO("rt5506", 0x52),
-	.platform_data = &rt5506_data,
-};
-
 static struct i2c_board_info __initdata tfa9895_board_info = {
 	I2C_BOARD_INFO("tfa9895", 0x34),
 	.platform_data = &tfa9895_data,
@@ -409,7 +399,6 @@ struct max1187x_pdata max1187x_platdata = {
 static void flounder_i2c_init(void)
 {
 	i2c_register_board_info(1, &rt5677_board_info, 1);
-	i2c_register_board_info(1, &rt5506_board_info, 1);
 	i2c_register_board_info(1, &tfa9895_board_info, 1);
 	i2c_register_board_info(1, &tfa9895l_board_info, 1);
 

@@ -182,6 +182,8 @@
 				ti,charge-term-current-limit-milliamp = <128>;
 				ti,charge-voltage-limit-millivolt = <4352>;
 				ti,disbale-suspend-during-charging;
+				ti,charge-suspend-polling-time-sec = <3600>;
+				ti,safety-timer-reset-disable;
 				ti,temp-polling-time-sec = <30>;
 				thermal-overtemp-control-no-thermister;
 				thermal-temperature-hot-deciC = <551>;
@@ -193,6 +195,9 @@
 				thermal-cool-voltage-millivolt = <4352>;
 				thermal-disable-warm-current-half;
 				thermal-overtemp-output-current-milliamp = <1344>;
+				charge-full-by-monitor-full-threshold;
+				unknown-battery-id-minimum = <1343>;
+				battery-id-channel-name = "batt-id-channel";
 				consumers {
 					c1 {
 						regulator-consumer-supply = "usb_bat_chg";
@@ -242,6 +247,11 @@
 			reg = <0x32>;
 			lp5521,lp5521_en = <&gpio 60 0x00>;
 			lp5521,num_leds = <1>;
+		};
+		richtek_rt5506_amp@52 {
+			compatible = "richtek,rt5506-amp";
+			reg = <0x52>;
+			richtek,enable-gpio = <&gpio 185 0>;
 		};
 	};
 
