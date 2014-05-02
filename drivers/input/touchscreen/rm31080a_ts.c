@@ -219,6 +219,7 @@ struct rm_tch_queue_info g_st_q;
 
 bool g_timer_queue_is_flush;
 bool g_worker_queue_is_flush;
+
 unsigned char *g_pu8_burstread_buf;
 
 unsigned char g_st_cmd_set_idle[KRL_SIZE_SET_IDLE];
@@ -568,39 +569,45 @@ void raydium_report_pointer(void *p)
 
 	for (i = 0; i < i_count; i++) {
 		if (i < sp_tp->uc_touch_count) {
-			switch (sp_tp->uc_tool_type[i]) {
-			case POINT_TYPE_FINGER:
-				if (i == MAX_SUPPORT_SLOT_AMOUNT)
-					break;
-				target_abs_mt_tool = MT_TOOL_FINGER;
-				break;
-			case POINT_TYPE_STYLUS:
-				if (i == MAX_SUPPORT_SLOT_AMOUNT)
-					break;
-				target_abs_mt_tool = MT_TOOL_PEN;
-				break;
-			case POINT_TYPE_ERASER:
-				if (i == MAX_SUPPORT_SLOT_AMOUNT)
-					break;
-				target_abs_mt_tool = MT_TOOL_PEN;
-				target_key_evt_btn_tool = BTN_TOOL_RUBBER;
-				break;
-			default:
-				dev_err(&g_spi->dev,
-					"Raydium - point %d is invalid input tool type: %d\n",
-					i, sp_tp->uc_tool_type[i]);
-				break;
-			}
 
 			input_mt_slot(g_input_dev,
 						sp_tp->uc_slot[i] & 0x7F);
 
-			if (sp_tp->uc_slot[i] & 0x80) {
+			if ((sp_tp->uc_slot[i] & 0x80) ||
+				(sp_tp->uc_id[i] == 0xFF)) {
+				switch (sp_tp->uc_pre_tool_type[i]) {
+				case POINT_TYPE_FINGER:
+					if (i == MAX_SUPPORT_SLOT_AMOUNT)
+						break;
+					target_abs_mt_tool = MT_TOOL_FINGER;
+					break;
+				case POINT_TYPE_STYLUS:
+					if (i == MAX_SUPPORT_SLOT_AMOUNT)
+						break;
+					target_abs_mt_tool = MT_TOOL_PEN;
+					break;
+				case POINT_TYPE_ERASER:
+					if (i == MAX_SUPPORT_SLOT_AMOUNT)
+						break;
+					target_abs_mt_tool = MT_TOOL_PEN;
+					target_key_evt_btn_tool =
+							BTN_TOOL_RUBBER;
+					break;
+				default:
+					if (sp_tp->uc_id[i] != 0xFF) {
+						dev_err(&g_spi->dev,
+						"Raydium - point %d release invalid input tool type: %d, id=%d\n",
+						i, sp_tp->uc_pre_tool_type[i],
+						sp_tp->uc_id[i]);
+					}
+					break;
+				}
+
 				input_mt_report_slot_state(
 					g_input_dev,
 					target_abs_mt_tool, false);
 
-				if (sp_tp->uc_tool_type[i] ==
+				if (sp_tp->uc_pre_tool_type[i] ==
 					POINT_TYPE_ERASER)
 					input_report_key(
 						g_input_dev,
@@ -608,6 +615,31 @@ void raydium_report_pointer(void *p)
 			}
 
 			if (sp_tp->uc_id[i] != 0xFF) {
+				switch (sp_tp->uc_tool_type[i]) {
+				case POINT_TYPE_FINGER:
+					if (i == MAX_SUPPORT_SLOT_AMOUNT)
+						break;
+					target_abs_mt_tool = MT_TOOL_FINGER;
+					break;
+				case POINT_TYPE_STYLUS:
+					if (i == MAX_SUPPORT_SLOT_AMOUNT)
+						break;
+					target_abs_mt_tool = MT_TOOL_PEN;
+					break;
+				case POINT_TYPE_ERASER:
+					if (i == MAX_SUPPORT_SLOT_AMOUNT)
+						break;
+					target_abs_mt_tool = MT_TOOL_PEN;
+					target_key_evt_btn_tool =
+							BTN_TOOL_RUBBER;
+					break;
+				default:
+					dev_err(&g_spi->dev,
+						"Raydium - point %d has invalid input tool type: %d, id=%d\n",
+						i, sp_tp->uc_tool_type[i],
+						sp_tp->uc_id[i]);
+					break;
+				}
 
 				input_mt_report_slot_state(
 					g_input_dev,
@@ -644,15 +676,6 @@ void raydium_report_pointer(void *p)
 					input_report_key(
 						g_input_dev,
 						target_key_evt_btn_tool, true);
-			} else {
-				input_mt_report_slot_state(
-					g_input_dev,
-					target_abs_mt_tool, false);
-
-				if (sp_tp->uc_tool_type[i] == POINT_TYPE_ERASER)
-					input_report_key(
-						g_input_dev,
-						target_key_evt_btn_tool, false);
 			}
 		}
 	}
@@ -718,6 +741,7 @@ void rm_set_ns_para(u8 u8Idx, u8 *u8Para)
 {
 	int ii;
 	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
+
 	for (ii = 0; ii < g_st_rm_ns_para_cmd[2]; ii++) {
 		ts->u8_repeat_counter = u8Para[ii*3+u8Idx];
 		rm_tch_cmd_process(ii, g_st_rm_ns_para_cmd, ts);
@@ -1007,6 +1031,7 @@ void rm_show_kernel_tbl_name(u8 *p_cmd_tbl)
 	dev_err(&g_spi->dev, "Raydium - Table %s cmd failed\n",
 		target_table_name);
 }
+
 static int rm_tch_cmd_process(u8 u8_sel_case,
 	u8 *p_cmd_tbl, struct rm_tch_ts *ts)
 {
@@ -1421,6 +1446,7 @@ static void rm_tch_enter_manual_mode(void)
 		usleep_range(10000, 10050);/*msleep(10);*/
 		return;
 	}
+
 	mutex_unlock(&g_st_ts.mutex_scan_mode);
 }
 
@@ -1429,6 +1455,7 @@ static u32 rm_tch_get_platform_id(u8 *p)
 	u32 u32Ret;
 	struct rm_spi_ts_platform_data *pdata;
 	pdata = g_input_dev->dev.parent->platform_data;
+
 	u32Ret = copy_to_user(p, &pdata->platform_id,
 		sizeof(pdata->platform_id));
 
@@ -1440,6 +1467,7 @@ static u32 rm_tch_get_gpio_sensor_select(u8 *p)
 	u32 u32Ret = 0;
 	struct rm_spi_ts_platform_data *pdata;
 	pdata = g_input_dev->dev.parent->platform_data;
+
 /* Read from GPIO
 	u32Ret = gpio_set_value(pdata->gpio_sensor_select0)
 		| (1 << gpio_set_value(pdata->gpio_sensor_select1));
@@ -1664,6 +1692,7 @@ static long rm_tch_queue_read_raw_data(u8 *p, u32 u32Len)
 	rm_tch_dequeue_finish();
 	return RETURN_OK;
 }
+
 /*===========================================================================*/
 static void rm_work_handler(struct work_struct *work)
 {
@@ -1710,7 +1739,6 @@ static void rm_tch_init_ts_structure_part(void)
 	g_st_ts.b_enable_slow_scan = false;
 #endif
 	g_st_ts.u8_scan_mode_state = RM_SCAN_ACTIVE_MODE;
-	g_st_ts.u8_touchfile_check = 0xFF;
 
 	g_st_ctrl.u8_event_report_mode = EVENT_REPORT_MODE_STYLUS_ERASER_FINGER;
 
@@ -1720,7 +1748,7 @@ static void rm_tch_init_ts_structure_part(void)
 	g_st_ts.u16_read_para = 0;
 
 	rm_ctrl_watchdog_func(0);
-	if(g_st_ts.b_is_suspended==false)
+	if (g_st_ts.b_is_suspended == false)
 		rm_tch_ctrl_init();
 	g_st_ts.b_is_suspended = 0;
 
@@ -1978,7 +2006,7 @@ static ssize_t rm_tch_touchfile_check_show(struct device *dev,
 	struct device_attribute *attr,
 	char *buf)
 {
-	return sprintf(buf, "Touch calibration file check status: 0x%x\n",
+	return sprintf(buf, "0x%x\n",
 		g_st_ts.u8_touchfile_check);
 }
 
@@ -2082,6 +2110,7 @@ static ssize_t selftest_platform_id_gpio_set(struct device *dev,
 {
 	return count;
 }
+
 static ssize_t selftest_platform_id_gpio_get(struct device *dev,
 	struct device_attribute *attr,
 	char *buf)
@@ -2089,6 +2118,7 @@ static ssize_t selftest_platform_id_gpio_get(struct device *dev,
 	struct rm_spi_ts_platform_data *pdata;
 
 	pdata = g_input_dev->dev.parent->platform_data;
+
 	buf[0] = (char)pdata->platform_id;
 
 	/* Read from data struct */
@@ -2378,12 +2408,13 @@ static irqreturn_t rm_tch_irq(int irq, void *handle)
 	trace_touchscreen_raydium_irq("Raydium_interrupt");
 
 	if (g_st_ctrl.u8_power_mode &&
-			(g_st_ts.u8_scan_mode_state == RM_SCAN_IDLE_MODE)) {
+		(g_st_ts.u8_scan_mode_state == RM_SCAN_IDLE_MODE)) {
 		input_event(g_input_dev, EV_MSC, MSC_ACTIVITY, 1);
 #if (INPUT_PROTOCOL_CURRENT_SUPPORT == INPUT_PROTOCOL_TYPE_B)
 		input_sync(g_input_dev);
 #endif
 	}
+
 	if (g_st_ts.b_init_finish && g_st_ts.b_is_suspended == false)
 		queue_work(g_st_ts.rm_workqueue, &g_st_ts.rm_work);
 
@@ -2560,6 +2591,7 @@ static void rm_tch_init_ts_structure(void)
 	mutex_init(&g_st_ts.mutex_ns_mode);
 
 	g_st_ts.u8_resume_cnt = 0;
+	g_st_ts.u8_touchfile_check = 0xFF;
 }
 
 static int rm31080_voltage_notifier_1v8(struct notifier_block *nb,
@@ -2589,11 +2621,9 @@ static void rm_ctrl_resume(struct rm_tch_ts *ts)
 		return;
 
 	mutex_lock(&g_st_ts.mutex_scan_mode);
-
 	rm_tch_init_ts_structure_part();
 
 	rm_tch_cmd_process(0, g_st_rm_resume_cmd, ts);
-
 	mutex_unlock(&g_st_ts.mutex_scan_mode);
 }
 
@@ -2632,11 +2662,8 @@ static void rm_ctrl_suspend(struct rm_tch_ts *ts)
 	input_sync(g_input_dev);
 #endif
 	rm_tch_cmd_process(0, g_st_rm_suspend_cmd, ts);
-
 	rm_tch_ctrl_wait_for_scan_finish(0);
-
 	rm_tch_cmd_process(1, g_st_rm_suspend_cmd, ts);
-
 	mutex_unlock(&g_st_ts.mutex_scan_mode);
 }
 

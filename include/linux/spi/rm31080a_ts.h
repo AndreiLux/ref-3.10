@@ -249,6 +249,7 @@ struct rm_touch_event {
 	unsigned short us_tilt_x[RM_TS_MAX_POINTS];
 	unsigned short us_tilt_y[RM_TS_MAX_POINTS];
 	unsigned char uc_slot[RM_TS_MAX_POINTS];
+	unsigned char uc_pre_tool_type[RM_TS_MAX_POINTS];
 };
 
 struct rm_spi_ts_platform_data {
