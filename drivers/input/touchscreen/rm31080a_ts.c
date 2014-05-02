@@ -2378,9 +2378,12 @@ static irqreturn_t rm_tch_irq(int irq, void *handle)
 	trace_touchscreen_raydium_irq("Raydium_interrupt");
 
 	if (g_st_ctrl.u8_power_mode &&
-			(g_st_ts.u8_scan_mode_state == RM_SCAN_IDLE_MODE))
+			(g_st_ts.u8_scan_mode_state == RM_SCAN_IDLE_MODE)) {
 		input_event(g_input_dev, EV_MSC, MSC_ACTIVITY, 1);
-
+#if (INPUT_PROTOCOL_CURRENT_SUPPORT == INPUT_PROTOCOL_TYPE_B)
+		input_sync(g_input_dev);
+#endif
+	}
 	if (g_st_ts.b_init_finish && g_st_ts.b_is_suspended == false)
 		queue_work(g_st_ts.rm_workqueue, &g_st_ts.rm_work);
 
