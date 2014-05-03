@@ -34,6 +34,12 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 #include <linux/watchdog.h>
+#include <linux/trusty/trusty.h>
+#include <linux/trusty/smcall.h>
+#include <asm/fiq_glue.h>
+#include <asm/system_misc.h>
+
+#include "../staging/android/fiq_debugger/fiq_watchdog.h"
 
 /* minimum and maximum watchdog trigger periods, in seconds */
 #define MIN_WDT_PERIOD	5
@@ -51,8 +57,10 @@ struct tegra_wdt {
 	unsigned long		users;
 	void __iomem		*wdt_source;
 	void __iomem		*wdt_timer;
+	bool			useirq;
 	int			tmrsrc;
 	int			status;
+	struct fiq_glue_handler	fiq_handler;
 };
 
 /*
@@ -144,13 +152,18 @@ static int __tegra_wdt_ping(struct tegra_wdt *tegra_wdt)
 static int __tegra_wdt_enable(struct tegra_wdt *tegra_wdt)
 {
 	u32 val;
+	int period = 16; /* number of timer wraps before watchdog triggers */
 
 	writel(TIMER_PCR_INTR, tegra_wdt->wdt_timer + TIMER_PCR);
-	val = (tegra_wdt->wdt.timeout * USEC_PER_SEC) / 4;
+	val = (tegra_wdt->wdt.timeout * USEC_PER_SEC) / period;
 	val |= (TIMER_EN | TIMER_PERIODIC);
 	writel(val, tegra_wdt->wdt_timer + TIMER_PTV);
 
-	val = tegra_wdt->tmrsrc | WDT_CFG_PERIOD | WDT_CFG_PMC2CAR_RST_EN;
+	val = tegra_wdt->tmrsrc | WDT_CFG_PMC2CAR_RST_EN;
+	if (tegra_wdt->useirq)
+		val |= WDT_CFG_INT_EN | (WDT_CFG_PERIOD * period);
+	else
+		val |= WDT_CFG_PERIOD * (period / 4);
 	writel(val, tegra_wdt->wdt_source + WDT_CFG);
 	writel(WDT_CMD_START_COUNTER, tegra_wdt->wdt_source + WDT_CMD);
 
@@ -212,14 +225,67 @@ static const struct watchdog_ops tegra_wdt_ops = {
 	.set_timeout = tegra_wdt_set_timeout,
 };
 
+#ifdef CONFIG_TEGRA_WATCHDOG_FIQ
+static void tegra_wdt_fiq(struct fiq_glue_handler *h,
+			  const struct pt_regs *regs, void *svc_sp)
+{
+	struct tegra_wdt *tegra_wdt;
+	u32 wdt_status;
+
+	tegra_wdt = container_of(h, struct tegra_wdt, fiq_handler);
+	wdt_status = __raw_readl(tegra_wdt->wdt_source + WDT_STATUS);
+	if (!(wdt_status & WDT_INTR_STAT))
+		return;
+
+	/* speed up watchdog reset */
+	__raw_writel(tegra_wdt->tmrsrc | WDT_CFG_PERIOD |
+		     WDT_CFG_PMC2CAR_RST_EN | WDT_CFG_INT_EN,
+		     tegra_wdt->wdt_source + WDT_CFG);
+
+	fiq_watchdog_triggered(regs, svc_sp);
+
+	while (true)
+		;
+}
+
+static void tegra_wdt_fiq_setup(struct platform_device *pdev,
+				struct tegra_wdt *tegra_wdt, int fiq)
+{
+	int ret;
+	struct device *trusty_dev = pdev->dev.parent->parent;
+
+	tegra_wdt->fiq_handler.fiq = &tegra_wdt_fiq;
+
+	ret = fiq_glue_register_handler(&tegra_wdt->fiq_handler);
+	if (ret) {
+		dev_err(&pdev->dev, "request fiq failed, %d\n", ret);
+		return;
+	}
+	ret = trusty_fast_call32(trusty_dev, SMC_FC_REQUEST_FIQ,
+				 fiq, true, 0);
+	if (ret) {
+		dev_err(&pdev->dev, "request fiq failed, %d\n", ret);
+		return;
+	}
+	tegra_wdt->useirq = true;
+}
+#else
+static void tegra_wdt_fiq_setup(struct platform_device *pdev,
+				struct tegra_wdt *tegra_wdt, int fiq)
+{
+	dev_err(&pdev->dev, "tegra watchdog fiq config option not enabled\n");
+}
+#endif
+
 static int tegra_wdt_probe(struct platform_device *pdev)
 {
-	struct resource *res_src, *res_wdt;
+	struct resource *res_src, *res_wdt, *res_fiq;
 	struct tegra_wdt *tegra_wdt;
 	int ret = 0;
 
 	res_src = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	res_wdt = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+	res_fiq = platform_get_resource_byname(pdev, IORESOURCE_IRQ, "fiq");
 
 	if (!res_src || !res_wdt) {
 		dev_err(&pdev->dev, "incorrect resources\n");
@@ -264,6 +330,10 @@ static int tegra_wdt_probe(struct platform_device *pdev)
 
 	tegra_wdt_disable(&tegra_wdt->wdt);
 	writel(TIMER_PCR_INTR, tegra_wdt->wdt_timer + TIMER_PCR);
+
+	if (res_fiq) {
+		tegra_wdt_fiq_setup(pdev, tegra_wdt, res_fiq->start);
+	}
 
 	tegra_wdt->res_src = res_src;
 	tegra_wdt->res_wdt = res_wdt;
