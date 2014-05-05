@@ -50,7 +50,6 @@
 					TEGRA_GPIO(S, 0)
 					TEGRA_GPIO(S, 1)
 					TEGRA_GPIO(S, 4)
-					TEGRA_GPIO(U, 2)
 					TEGRA_GPIO(U, 5)
 					TEGRA_GPIO(U, 6)
 					TEGRA_GPIO(V, 0)
@@ -448,6 +447,7 @@
 			regulator-name = "ldoen";
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
+			regulator-boot-on;
 			enable-active-high;
 			gpio = <&palmas_gpio 6 0>;
 			vin-supply = <&palmas_smps8>;
