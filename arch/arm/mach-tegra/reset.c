@@ -43,6 +43,9 @@ static void tegra_cpu_reset_handler_enable(void)
 		IO_ADDRESS(TEGRA_EXCEPTION_VECTORS_BASE + 0x100);
 	void __iomem *sb_ctrl = IO_ADDRESS(TEGRA_SB_BASE);
 	unsigned long reg;
+#ifdef CONFIG_DENVER_CPU
+	extern void *__aarch64_tramp;
+#endif
 
 	BUG_ON(is_enabled);
 	BUG_ON(tegra_cpu_reset_handler_size > TEGRA_RESET_HANDLER_SIZE);
@@ -57,10 +60,15 @@ static void tegra_cpu_reset_handler_enable(void)
 	} else {
 #endif
 
+#ifdef CONFIG_DENVER_CPU
+		writel(virt_to_phys(&__aarch64_tramp), evp_cpu_reset);
+#else
 		/* NOTE: This must be the one and only write to the EVP CPU
 		 * reset vector in the entire system. */
 		writel(TEGRA_RESET_HANDLER_BASE +
 			tegra_cpu_reset_handler_offset, evp_cpu_reset);
+#endif
+
 		wmb();
 		reg = readl(evp_cpu_reset);
 

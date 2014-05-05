@@ -7,7 +7,7 @@ asflags-y += -I$(srctree)/arch/arm/mach-tegra/include \
              -I$(srctree)/arch/arm/mach-tegra
 
 # Assemblies
-obj-y += reset-handler.o
+obj-y += reset-handler.o trampoline.o
 
 obj-$(CONFIG_SMP) += platsmp.o
 
