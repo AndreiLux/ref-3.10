@@ -416,7 +416,7 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 
 	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
 	if (!data) {
-		dev_vdbg(dev, "Failed to allocate tegra_offload_pcm_data.");
+		dev_err(dev, "Failed to allocate tegra_offload_pcm_data.");
 		return -ENOMEM;
 	}
 
@@ -579,12 +579,6 @@ static int tegra_offload_pcm_ack(struct snd_pcm_substream *substream)
 
 
 static const struct snd_soc_dapm_widget tegra_offload_widgets[] = {
-	/* FrontEnd DAIs */
-	SND_SOC_DAPM_AIF_IN("offload-pcm-playback", "pcm-playback", 0,
-		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
-	SND_SOC_DAPM_AIF_IN("offload-compr-playback", "compr-playback", 0,
-		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
-
 	/* BackEnd DAIs */
 	SND_SOC_DAPM_AIF_OUT("I2S0_OUT", "tegra30-i2s.0 Playback", 0,
 		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
@@ -718,7 +712,7 @@ static struct snd_soc_dai_driver tegra_offload_dai[] = {
 		.name = "tegra-offload-pcm",
 		.id = 0,
 		.playback = {
-			.stream_name = "pcm-playback",
+			.stream_name = "offload-pcm-playback",
 			.channels_min = 2,
 			.channels_max = 2,
 			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
@@ -730,7 +724,7 @@ static struct snd_soc_dai_driver tegra_offload_dai[] = {
 		.id = 0,
 		.compress_dai = 1,
 		.playback = {
-			.stream_name = "compr-playback",
+			.stream_name = "offload-compr-playback",
 			.channels_min = 2,
 			.channels_max = 2,
 			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
