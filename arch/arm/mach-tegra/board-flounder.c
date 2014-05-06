@@ -591,7 +591,9 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_rtc_device,
 	&tegra_udc_device,
 #if defined(CONFIG_TEGRA_WATCHDOG)
+#ifndef CONFIG_TRUSTY_FIQ
 	&tegra_wdt0_device,
+#endif
 #endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
