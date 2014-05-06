@@ -15,6 +15,7 @@ endif
 obj-y += mc/
 obj-$(CONFIG_PM_SLEEP) += pm-irq.o
 obj-y += pmc.o
+obj-y += pm.o
 
 obj-$(CONFIG_TEGRA_MC_DOMAINS) += pm_domains.o
 
@@ -92,6 +93,7 @@ obj-$(CONFIG_ARCH_TEGRA_13x_SOC) += tegra11_soctherm.o
 endif
 obj-$(CONFIG_TEGRA_USE_SIMON)    += tegra_simon.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC) += tegra12_edp.o
+obj-$(CONFIG_ARCH_TEGRA_13x_SOC) += tegra13_edp.o
 
 obj-y += board-common.o
 

@@ -46,7 +46,6 @@ enum tegra_usb_id_detection {
 };
 
 /**
- *
  * Set the maximum voltage that can be supplied
  * over USB vbus that the board supports if we use
  * a quick charge 2 wall charger.
@@ -86,6 +85,7 @@ struct tegra_utmi_config {
 	u8 xcvr_use_fuses;
 	u8 vbus_oc_map;
 	unsigned char xcvr_hsslew_lsb:2;
+	unsigned char xcvr_hsslew_msb:7;
 };
 
 /**

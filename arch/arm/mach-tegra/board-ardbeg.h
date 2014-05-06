@@ -20,8 +20,6 @@
 #ifndef _MACH_TEGRA_BOARD_ARDBEG_H
 #define _MACH_TEGRA_BOARD_ARDBEG_H
 
-#include <linux/mfd/as3722-plat.h>
-#include <linux/mfd/as3722.h>
 #include <mach/gpio-tegra.h>
 #include <mach/irqs.h>
 #include "gpio-names.h"
@@ -30,8 +28,6 @@ int ardbeg_emc_init(void);
 int ardbeg_display_init(void);
 int ardbeg_panel_init(void);
 int ardbeg_sdhci_init(void);
-int ardbeg_sata_init(void);
-void arbdeg_sata_clk_gate(void);
 int ardbeg_sensors_init(void);
 int ardbeg_regulator_init(void);
 int ardbeg_suspend_init(void);
@@ -62,23 +58,7 @@ void ardbeg_camera_auxdata(void *);
 #define TEGRA_SOC_OC_IRQ_BASE	TEGRA_NR_IRQS
 #define TEGRA_SOC_OC_NUM_IRQ	TEGRA_SOC_OC_IRQ_MAX
 
-#define PALMAS_TEGRA_GPIO_BASE	TEGRA_NR_GPIOS
-#define PALMAS_TEGRA_IRQ_BASE	(TEGRA_SOC_OC_IRQ_BASE + TEGRA_SOC_OC_NUM_IRQ)
-#define AS3722_GPIO_BASE	TEGRA_NR_GPIOS
-#define AS3722_GPIO_END	(AS3722_GPIO_BASE + AS3722_NUM_GPIO)
-
-/* PMU_TCA6416 GPIOs */
-#define PMU_TCA6416_GPIO_BASE   (AS3722_GPIO_END)
-#define PMU_TCA6416_GPIO(x)     (PMU_TCA6416_GPIO_BASE + x)
-#define PMU_TCA6416_NR_GPIOS    18
 /* External peripheral act as interrupt controller */
-/* AS3720 IRQs */
-#define AS3722_IRQ_BASE         (TEGRA_SOC_OC_IRQ_BASE + TEGRA_SOC_OC_NUM_IRQ)
-#define AS3722_IRQ_END		(AS3722_IRQ_BASE + AS3722_IRQ_MAX)
-
-/* TCA6416 IRQ */
-#define PMU_TCA6416_IRQ_BASE	AS3722_IRQ_END
-#define PMU_TCA6416_IRQ_END	(PMU_TCA6416_IRQ_BASE + 16)
 
 #define CAM_RSTN TEGRA_GPIO_PBB3
 #define CAM_FLASH_STROBE TEGRA_GPIO_PBB4
@@ -92,6 +72,7 @@ void ardbeg_camera_auxdata(void *);
 #define MDM_RST			TEGRA_GPIO_PS3
 #define MDM_COLDBOOT		TEGRA_GPIO_PO5
 #define MDM_SAR0		TEGRA_GPIO_PG2
+#define MDM_POWER_REPORT	TEGRA_GPIO_PK0
 
 /* Baseband IDs */
 enum tegra_bb_type {

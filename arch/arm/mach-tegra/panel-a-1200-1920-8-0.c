@@ -149,7 +149,7 @@ static struct tegra_dsi_out dsi_a_1200_1920_8_0_pdata = {
 	.panel_reset = DSI_PANEL_RESET,
 	.power_saving_suspend = true,
 	.video_data_type = TEGRA_DSI_VIDEO_TYPE_VIDEO_MODE,
-	.video_clock_mode = TEGRA_DSI_VIDEO_CLOCK_CONTINUOUS,
+	.video_clock_mode = TEGRA_DSI_VIDEO_CLOCK_TX_ONLY,
 	.dsi_init_cmd = dsi_a_1200_1920_8_0_init_cmd,
 	.n_init_cmd = ARRAY_SIZE(dsi_a_1200_1920_8_0_init_cmd),
 	.boardinfo = {BOARD_P1761, 0, 0, 1},
@@ -315,11 +315,11 @@ static struct tegra_dc_mode dsi_a_1200_1920_8_0_modes[] = {
 		.h_sync_width = 10,
 		.v_sync_width = 2,
 		.h_back_porch = 54,
-		.v_back_porch = 3,
+		.v_back_porch = 15,
 		.h_active = 1200,
 		.v_active = 1920,
 		.h_front_porch = 64,
-		.v_front_porch = 15,
+		.v_front_porch = 3,
 	},
 };
 

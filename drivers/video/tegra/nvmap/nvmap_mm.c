@@ -87,22 +87,39 @@ void nvmap_flush_cache(struct page **pages, int numpages)
 }
 
 /*
- * Perform cache op on the list of passed handles.
+ * Perform cache op on the list of memory regions within passed handles.
+ * A memory region within handle[i] is identified by offsets[i], sizes[i]
+ *
+ * sizes[i] == 0  is a special case which causes handle wide operation,
+ * this is done by replacing offsets[i] = 0, sizes[i] = handles[i]->size.
+ * So, the input arrays sizes, offsets  are not guaranteed to be read-only
+ *
  * This will optimze the op if it can.
  * In the case that all the handles together are larger than the inner cache
  * maint threshold it is possible to just do an entire inner cache flush.
  */
-int nvmap_do_cache_maint_list(struct nvmap_handle **handles, int op, int nr)
+int nvmap_do_cache_maint_list(struct nvmap_handle **handles, u32 *offsets,
+			      u32 *sizes, int op, int nr)
 {
-	int i, err = 0;
+	int i;
 	u64 total = 0;
 
 	for (i = 0; i < nr; i++)
-		total += handles[i]->size;
+		total += sizes[i] ? sizes[i] : handles[i]->size;
 
 	/* Full flush in the case the passed list is bigger than our
 	 * threshold. */
 	if (total >= cache_maint_inner_threshold) {
+		for (i = 0; i < nr; i++) {
+			if (handles[i]->userflags &
+			    NVMAP_HANDLE_CACHE_SYNC) {
+				nvmap_handle_mkclean(handles[i], 0,
+						     handles[i]->size);
+				nvmap_zap_handle(handles[i], 0,
+						 handles[i]->size);
+			}
+		}
+
 		if (op == NVMAP_CACHE_OP_WB) {
 			inner_clean_cache_all();
 			outer_clean_all();
@@ -118,21 +135,21 @@ int nvmap_do_cache_maint_list(struct nvmap_handle **handles, int op, int nr)
 					nvmap_stats_read(NS_CFLUSH_DONE));
 	} else {
 		for (i = 0; i < nr; i++) {
-			err = __nvmap_do_cache_maint(handles[i]->owner,
-						     handles[i], 0,
-						     handles[i]->size,
-						     op);
+			u32 size = sizes[i] ? sizes[i] : handles[i]->size;
+			u32 offset = sizes[i] ? offsets[i] : 0;
+			int err = __nvmap_do_cache_maint(handles[i]->owner,
+							 handles[i], offset,
+							 offset + size,
+							 op, false);
 			if (err)
-				break;
+				return err;
 		}
 	}
 
-	return err;
+	return 0;
 }
 
-void nvmap_zap_handle(struct nvmap_handle *handle,
-		      u64 offset,
-		      u64 size)
+void nvmap_zap_handle(struct nvmap_handle *handle, u32 offset, u32 size)
 {
 	struct list_head *vmas;
 	struct nvmap_vma_list *vma_list;
@@ -146,25 +163,58 @@ void nvmap_zap_handle(struct nvmap_handle *handle,
 		size = handle->size;
 	}
 
-	vmas = &handle->pgalloc.vmas;
+	size = PAGE_ALIGN((offset & ~PAGE_MASK) + size);
+
 	mutex_lock(&handle->lock);
+	vmas = &handle->pgalloc.vmas;
 	list_for_each_entry(vma_list, vmas, list) {
+		struct nvmap_vma_priv *priv;
+		u32 vm_size = size;
+
 		vma = vma_list->vma;
-		zap_page_range(vma, vma->vm_start + offset,
-				offset + size - vma->vm_start,
-				NULL);
+		priv = vma->vm_private_data;
+		if ((offset + size) > (vma->vm_end - vma->vm_start))
+			vm_size = vma->vm_end - vma->vm_start - offset;
+		if (priv->offs || vma->vm_pgoff)
+			/* vma mapping starts in the middle of handle memory.
+			 * zapping needs special care. zap entire range for now.
+			 * FIXME: optimze zapping.
+			 */
+			zap_page_range(vma, vma->vm_start,
+				vma->vm_end - vma->vm_start, NULL);
+		else
+			zap_page_range(vma, vma->vm_start + offset,
+				vm_size, NULL);
 	}
 	mutex_unlock(&handle->lock);
 }
 
-void nvmap_zap_handles(struct nvmap_handle **handles,
-		       u64 *offsets,
-		       u64 *sizes,
-		       u32 nr)
+void nvmap_zap_handles(struct nvmap_handle **handles, u32 *offsets,
+		       u32 *sizes, u32 nr)
 {
 	int i;
 
 	for (i = 0; i < nr; i++)
 		nvmap_zap_handle(handles[i], offsets[i], sizes[i]);
+}
+
+int nvmap_reserve_pages(struct nvmap_handle **handles, u32 *offsets, u32 *sizes,
+			u32 nr, u32 op)
+{
+	int i;
+
+	for (i = 0; i < nr; i++) {
+		u32 size = sizes[i] ? sizes[i] : handles[i]->size;
+		u32 offset = sizes[i] ? offsets[i] : 0;
+
+		if (op == NVMAP_PAGES_RESERVE)
+			nvmap_handle_mkreserved(handles[i], offset, size);
+		else
+			nvmap_handle_mkunreserved(handles[i],offset, size);
+	}
+
+	if (op == NVMAP_PAGES_RESERVE)
+		nvmap_zap_handles(handles, offsets, sizes, nr);
+	return 0;
 }
 

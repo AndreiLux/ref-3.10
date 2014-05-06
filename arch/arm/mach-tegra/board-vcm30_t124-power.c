@@ -24,8 +24,6 @@
 #include <linux/i2c/pca953x.h>
 #include <linux/tegra-pmc.h>
 
-#include <mach/edp.h>
-
 #include "pm.h"
 #include "board.h"
 #include "gpio-names.h"
@@ -247,33 +245,11 @@ int __init vcm30_t124_suspend_init(void)
 	return 0;
 }
 
-/* FIXME: Should this be called? */
-int __init vcm30_t124_edp_init(void)
-{
-	unsigned int regulator_mA;
-
-	regulator_mA = get_maximum_cpu_current_supported();
-	if (!regulator_mA)
-		regulator_mA = 14000;
-
-	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
-	tegra_init_cpu_edp_limits(regulator_mA);
-
-	regulator_mA = get_maximum_core_current_supported();
-	if (!regulator_mA)
-		regulator_mA = 14000;
-
-	pr_info("%s: core regulator %d mA\n", __func__, regulator_mA);
-	tegra_init_core_edp_limits(regulator_mA);
-
-	return 0;
-}
-
 static struct thermal_zone_params soctherm_tzp = {
 	.governor_name = "pid_thermal_gov",
 };
 
-static struct tegra_tsensor_pmu_data tpdata_palmas = {
+static struct tegra_thermtrip_pmic_data tpdata_palmas = {
 	.reset_tegra = 1,
 	.pmu_16bit_ops = 0,
 	.controller_type = 0,
@@ -283,7 +259,7 @@ static struct tegra_tsensor_pmu_data tpdata_palmas = {
 	.poweroff_reg_data = 0x0,
 };
 
-static struct tegra_tsensor_pmu_data tpdata_max77663 = {
+static struct tegra_thermtrip_pmic_data tpdata_max77663 = {
 	.reset_tegra = 1,
 	.pmu_16bit_ops = 0,
 	.controller_type = 0,
@@ -379,9 +355,6 @@ int __init vcm30_t124_soctherm_init(void)
 
 	vcm30_t124_soctherm_data.tshut_pmu_trip_data = &tpdata_max77663;
 
-	tegra_platform_edp_init(vcm30_t124_soctherm_data.therm[THERM_CPU].trips,
-			&vcm30_t124_soctherm_data.therm[THERM_CPU].num_trips,
-			8000); /* edp temperature margin */
 	tegra_add_cpu_vmax_trips(vcm30_t124_soctherm_data.therm[THERM_CPU].trips,
 			&vcm30_t124_soctherm_data.therm[THERM_CPU].num_trips);
 	/*tegra_add_vc_trips(vcm30_t124_soctherm_data.therm[THERM_CPU].trips,
@@ -398,8 +371,13 @@ int __init vcm30_t124_soctherm_init(void)
  */
 static struct gpio vcm30_t124_system_0_gpios[] = {
 	{MISCIO_BT_RST_GPIO,    GPIOF_OUT_INIT_HIGH, "bt_rst"},
+#ifdef CONFIG_TEGRA_PREPOWER_WIFI
+	{MISCIO_WF_EN_GPIO,     GPIOF_OUT_INIT_HIGH, "wifi_en"},
+	{MISCIO_WF_RST_GPIO,    GPIOF_OUT_INIT_HIGH, "wifi_rst"},
+#else
 	{MISCIO_WF_EN_GPIO,     GPIOF_OUT_INIT_LOW,  "wifi_en"},
 	{MISCIO_WF_RST_GPIO,    GPIOF_OUT_INIT_LOW,  "wifi_rst"},
+#endif
 	{MISCIO_BT_EN_GPIO,     GPIOF_OUT_INIT_HIGH, "bt_en"},
 	{MISCIO_BT_WAKEUP_GPIO, GPIOF_OUT_INIT_HIGH, "bt_wk"},
 	{MISCIO_ABB_RST_GPIO,   GPIOF_OUT_INIT_HIGH, "ebb_rst"},

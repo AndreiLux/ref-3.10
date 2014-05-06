@@ -463,6 +463,16 @@ int __init ardbeg_sdhci_init(void)
 	tegra_get_board_info(&board_info);
 	if (board_info.board_id == BOARD_E1780)
 		tegra_sdhci_platform_data2.max_clk_limit = 204000000;
+
+	/* E1780 and E1784 are using interposer E1816, Due to this the
+	 * SDIO trace length got increased. So hard coding the drive
+	 * strength to type A for these boards to support 204 Mhz */
+	if ((board_info.board_id == BOARD_E1780) ||
+		(board_info.board_id == BOARD_E1784)) {
+		tegra_sdhci_platform_data0.default_drv_type =
+			MMC_SET_DRIVER_TYPE_A;
+	}
+
 	tegra_sdhci_platform_data0.max_clk_limit = 136000000;
 
 	if (board_info.board_id == BOARD_E1781)
@@ -486,6 +496,10 @@ int __init ardbeg_sdhci_init(void)
 			tegra_sdhci_platform_data2.uhs_mask =
 				MMC_UHS_MASK_SDR50;
 	}
+
+	if (board_info.board_id == BOARD_E1991)
+		tegra_sdhci_platform_data0.max_clk_limit = 204000000;
+
 	if (board_info.board_id == BOARD_PM374 ||
 		board_info.board_id == BOARD_PM359) {
 			tegra_sdhci_platform_data2.uhs_mask =

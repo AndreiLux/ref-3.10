@@ -93,9 +93,9 @@ static const struct tegra30_avp_ucode_desc {
 	int max_mem_size;
 	const char *bin_name;
 } avp_ucode_desc[] = {
-	[CODEC_PCM] = {30000, "nvavp_aud_ucode.bin" },
-	[CODEC_MP3] = {60000, "nvavp_mp3dec_ucode.bin" },
-	[CODEC_AAC] = {100000, "nvavp_aacdec_ucode.bin" },
+	[CODEC_PCM] = {25000, "nvavp_aud_ucode.bin" },
+	[CODEC_MP3] = {45000, "nvavp_mp3dec_ucode.bin" },
+	[CODEC_AAC] = {80000, "nvavp_aacdec_ucode.bin" },
 };
 
 struct tegra30_avp_audio_dma {
@@ -637,7 +637,7 @@ static int tegra30_avp_stream_set_state(int id, enum KSSTATE new_state)
 
 	if (new_state == KSSTATE_RUN)
 		tegra30_avp_audio_start_dma();
-	else
+	else if (old_state == KSSTATE_RUN)
 		tegra30_avp_audio_stop_dma();
 
 	return ret;
@@ -764,6 +764,8 @@ static int tegra30_avp_pcm_open(int *id)
 		dev_err(audio_avp->dev, "All AVP PCM streams are busy");
 		return -EBUSY;
 	}
+
+	audio_avp->stream_active_count++;
 	tegra30_avp_audio_set_state(KSSTATE_RUN);
 	return 0;
 }
@@ -798,7 +800,8 @@ static int tegra30_avp_pcm_set_params(int id,
 	avp_stream->notify_cb = params->period_elapsed_cb;
 	avp_stream->notify_args = params->period_elapsed_args;
 
-	stream->source_buffer_system = params->source_buf.virt_addr;
+	stream->source_buffer_system =
+			(uintptr_t) (params->source_buf.virt_addr);
 	stream->source_buffer_avp = params->source_buf.phys_addr;
 	stream->source_buffer_size = params->buffer_size;
 
@@ -913,6 +916,8 @@ static int tegra30_avp_compr_open(int *id)
 		return -EBUSY;
 	}
 	audio_avp->avp_stream[*id].is_drain_called = 0;
+
+	audio_avp->stream_active_count++;
 	tegra30_avp_audio_set_state(KSSTATE_RUN);
 	return 0;
 }
@@ -1011,7 +1016,8 @@ static int tegra30_avp_compr_set_params(int id,
 		return ret;
 	}
 
-	stream->source_buffer_system = avp_stream->source_buf.virt_addr;
+	stream->source_buffer_system =
+			(uintptr_t) avp_stream->source_buf.virt_addr;
 	stream->source_buffer_avp = avp_stream->source_buf.phys_addr;
 
 	if (stream->source_buffer_size > AVP_COMPR_THRESHOLD) {
@@ -1096,7 +1102,7 @@ static int tegra30_avp_compr_write(int id, char __user *buf, int bytes)
 	struct tegra30_avp_audio *audio_avp = avp_audio_ctx;
 	struct tegra30_avp_stream *avp_stream = &audio_avp->avp_stream[id];
 	struct stream_data *stream = avp_stream->stream;
-	void *dst = stream->source_buffer_system +
+	void *dst = (char *)(uintptr_t)stream->source_buffer_system +
 		stream->source_buffer_write_position;
 	int avail = 0;
 	int write = 0;
@@ -1134,8 +1140,8 @@ static int tegra30_avp_compr_write(int id, char __user *buf, int bytes)
 			return -EFAULT;
 		}
 
-		ret = copy_from_user(stream->source_buffer_system, buf + write,
-			bytes - write);
+		ret = copy_from_user((void *)(uintptr_t)stream->source_buffer_system,
+				buf + write, bytes - write);
 		if (ret < 0) {
 			dev_err(audio_avp->dev, "Failed to copy user data.");
 			return -EFAULT;
@@ -1252,7 +1258,10 @@ static void tegra30_avp_stream_close(int id)
 	tegra30_avp_audio_free_dma();
 	stream->stream_allocated = 0;
 	tegra30_avp_stream_set_state(id, KSSTATE_STOP);
-	tegra30_avp_audio_set_state(KSSTATE_STOP);
+
+	audio_avp->stream_active_count--;
+	if (!(audio_avp->stream_active_count))
+		tegra30_avp_audio_set_state(KSSTATE_STOP);
 }
 
 static struct tegra_offload_ops avp_audio_platform = {
