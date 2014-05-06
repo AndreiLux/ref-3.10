@@ -48,6 +48,8 @@
 #define RM_VARIABLE_DPW							0x0B
 #define RM_VARIABLE_NS_MODE						0x0C
 #define RM_VARIABLE_TOUCHFILE_STATUS            0x0D
+#define RM_VARIABLE_STYLUS_STATUS               0x0E
+
 
 #define RM_IOCTL_GET_VARIABLE				0x1011
 #define RM_VARIABLE_PLATFORM_ID					0x01
@@ -141,7 +143,7 @@
 #define KRL_SIZE_RM_SETREPTIME			32
 #define KRL_SIZE_RM_NS_PARA				64
 #define KRL_SIZE_RM_WRITE_IMAGE			64
-#define KRL_SIZE_RM_TLK					128
+#define KRL_SIZE_RM_TLK                128
 
 #define KRL_TBL_FIELD_POS_LEN_H				0
 #define KRL_TBL_FIELD_POS_LEN_L				1
@@ -159,7 +161,7 @@
 #define KRL_CMD_WRITE_W_COUNT				0x1C
 #define KRL_CMD_RETURN_RESULT				0x1D
 #define KRL_CMD_RETURN_VALUE				0x1E
-#define KRL_CMD_DRAM_INIT					0x1F
+#define KRL_CMD_DRAM_INIT                   0x1F
 
 
 #define KRL_CMD_SEND_SIGNAL					0x20

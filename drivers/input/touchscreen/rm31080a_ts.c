@@ -149,6 +149,7 @@ struct rm31080a_ts_para {
 #endif
 
 	u8 u8_touchfile_check;
+	u8 u8_stylus_status;
 
 #ifdef ENABLE_SMOOTH_LEVEL
 	u32 u32_smooth_level;
@@ -700,6 +701,7 @@ void raydium_report_pointer(void *p)
 static int rm_tch_read_image_data(unsigned char *p)
 {
 	int ret;
+	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
 	g_pu8_burstread_buf = p;
 
 #if ENABLE_FREQ_HOPPING  /*ENABLE_SCAN_DATA_HEADER*/
@@ -713,7 +715,7 @@ static int rm_tch_read_image_data(unsigned char *p)
 	g_pu8_burstread_buf[7] = 0x00;
 #endif
 
-	ret = rm_tch_cmd_process(0, g_st_rm_readimg_cmd, NULL);
+	ret = rm_tch_cmd_process(0, g_st_rm_readimg_cmd, ts);
 	return ret;
 }
 
@@ -731,8 +733,9 @@ void rm_tch_ctrl_set_baseline(u8 *arg, u16 u16Len)
 static int rm_tch_write_image_data(void)
 {
 	int ret = RETURN_OK;
+	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
 
-	ret = rm_tch_cmd_process(0, g_st_rm_writeimg_cmd, NULL);
+	ret = rm_tch_cmd_process(0, g_st_rm_writeimg_cmd, ts);
 	return ret;
 }
 
@@ -777,6 +780,7 @@ void rm_tch_ctrl_leave_auto_mode(void)
 		mutex_unlock(&g_st_ts.mutex_ns_mode);
 	}
 #endif
+
 	rm_tch_cmd_process(0, g_st_cmd_set_idle, NULL);
 	rm_set_repeat_times(g_st_ctrl.u8_active_digital_repeat_times);
 
@@ -2017,6 +2021,21 @@ static ssize_t rm_tch_touchfile_check_store(struct device *dev,
 	return count;
 }
 
+static ssize_t rm_tch_stylus_status_show(struct device *dev,
+	struct device_attribute *attr,
+	char *buf)
+{
+	return sprintf(buf, "0x%x\n",
+		g_st_ts.u8_stylus_status);
+}
+
+static ssize_t rm_tch_stylus_status_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	return count;
+}
+
 static void rm_tch_smooth_level_change(unsigned long val)
 {
 	int i_info;
@@ -2348,6 +2367,10 @@ static DEVICE_ATTR(touchfile_check, 0640,
 					rm_tch_touchfile_check_show,
 					rm_tch_touchfile_check_store);
 
+static DEVICE_ATTR(stylus_status, 0640,
+					rm_tch_stylus_status_show,
+					rm_tch_stylus_status_store);
+
 static DEVICE_ATTR(smooth_level, 0640,
 					rm_tch_smooth_level_show,
 					rm_tch_smooth_level_store);
@@ -2368,6 +2391,7 @@ static struct attribute *rm_ts_attributes[] = {
 	&dev_attr_get_platform_id_gpio.attr,
 	&dev_attr_slowscan_enable.attr,
 	&dev_attr_touchfile_check.attr,
+	&dev_attr_stylus_status.attr,
 	&dev_attr_selftest_enable.attr,
 	&dev_attr_selftest_spi_byte_read.attr,
 	&dev_attr_selftest_spi_byte_write.attr,
@@ -2543,6 +2567,11 @@ void rm_tch_set_variable(unsigned int index, unsigned int arg)
 	case RM_VARIABLE_TOUCHFILE_STATUS:
 		g_st_ts.u8_touchfile_check = (u8)(arg);
 		break;
+
+	case RM_VARIABLE_STYLUS_STATUS:
+		g_st_ts.u8_stylus_status = (u8)(arg);
+		break;
+
 	default:
 		break;
 	}
@@ -2592,6 +2621,7 @@ static void rm_tch_init_ts_structure(void)
 
 	g_st_ts.u8_resume_cnt = 0;
 	g_st_ts.u8_touchfile_check = 0xFF;
+	g_st_ts.u8_stylus_status = 0xFF;
 }
 
 static int rm31080_voltage_notifier_1v8(struct notifier_block *nb,
