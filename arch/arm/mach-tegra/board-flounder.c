@@ -611,6 +611,13 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&spdif_dit_device,
 	&bluetooth_dit_device,
 	&tegra_hda_device,
+#if IS_ENABLED(CONFIG_SND_SOC_TEGRA_OFFLOAD)
+	&tegra_offload_device,
+#endif
+#if IS_ENABLED(CONFIG_SND_SOC_TEGRA30_AVP)
+	&tegra30_avp_audio_device,
+#endif
+
 #if defined(CONFIG_CRYPTO_DEV_TEGRA_AES)
 	&tegra_aes_device,
 #endif
