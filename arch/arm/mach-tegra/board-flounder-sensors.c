@@ -560,7 +560,9 @@ static struct balanced_throttle gpu_throttle = {
 static int __init flounder_tj_throttle_init(void)
 {
 	if (of_machine_is_compatible("google,flounder") ||
-	    of_machine_is_compatible("google,flounder64")) {
+	    of_machine_is_compatible("google,flounder_lte") ||
+	    of_machine_is_compatible("google,flounder64") ||
+	    of_machine_is_compatible("google,flounder64_lte")) {
 		balanced_throttle_register(&cpu_throttle, "cpu-balanced");
 		balanced_throttle_register(&gpu_throttle, "gpu-balanced");
 	}

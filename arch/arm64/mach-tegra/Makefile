@@ -74,7 +74,7 @@ obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += flounder-bdaddress.o
 
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-bootparams.o
-obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder64-mdm9k.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-mdm9k.o
 
 obj-y                                   += board-touch-maxim_sti-spi.o
 

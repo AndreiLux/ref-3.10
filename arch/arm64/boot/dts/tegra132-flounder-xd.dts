@@ -1,6 +1,6 @@
 /dts-v1/;
 
-#include "tegra132-flounder64-generic.dtsi"
+#include "tegra132-flounder-generic.dtsi"
 
 / {
 	compatible = "google,flounder64", "nvidia,tegra132";

@@ -13,7 +13,10 @@ dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-e1971-1100-a00-00.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-bowmore-e1971-1100-a00-00-powerconfig.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-tn8-p1761-1270-a03-battery.dtb
 dtb-$(CONFIG_MACH_T132REF) += tegra132-tn8-p1761-1270-a03.dtb
-dtb-$(CONFIG_MACH_T132_FLOUNDER) += tegra132-flounder64.dtb
+dtb-$(CONFIG_MACH_T132_FLOUNDER) += tegra132-flounder-xaxb.dtb
+dtb-$(CONFIG_MACH_T132_FLOUNDER) += tegra132-flounder-xc.dtb
+dtb-$(CONFIG_MACH_T132_FLOUNDER) += tegra132-flounder-xd.dtb
+dtb-$(CONFIG_MACH_T132_FLOUNDER) += tegra132-flounder_lte-xa.dtb
 
 DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES))
 ifneq ($(DTB_NAMES),)

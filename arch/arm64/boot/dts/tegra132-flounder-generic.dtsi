@@ -4,10 +4,10 @@
 
 #include "tegra132.dtsi"
 
-#include "tegra132-flounder64-camera.dtsi"
+#include "tegra132-flounder-camera.dtsi"
 
 / {
-	model = "Flounder64";
+	model = "Flounder";
 
 	nvidia-boardids = "1780:1100:2:B:7","1794:1000:0:A:6";
 	#address-cells = <2>;
