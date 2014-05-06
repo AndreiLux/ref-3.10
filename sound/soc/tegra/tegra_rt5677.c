@@ -52,7 +52,11 @@
 #define DAI_LINK_SPEAKER		1
 #define DAI_LINK_BTSCO			2
 #define DAI_LINK_MI2S_DUMMY		3
-#define NUM_DAI_LINKS			4
+#define DAI_LINK_PCM_OFFLOAD_FE	4
+#define DAI_LINK_COMPR_OFFLOAD_FE	5
+#define DAI_LINK_I2S_OFFLOAD_BE	6
+#define NUM_DAI_LINKS		7
+
 
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.0",
@@ -686,6 +690,12 @@ static const struct snd_soc_dapm_route flounder_audio_map[] = {
 	{"DMIC R1", NULL, "Int Mic"},
 	{"DMIC L2", NULL, "Int Mic"},
 	{"DMIC R2", NULL, "Int Mic"},
+	/* AHUB BE connections */
+	{"tegra30-i2s.1 Playback", NULL, "I2S1_OUT"},
+
+	{"I2S1_OUT", NULL, "offload-pcm-playback"},
+	{"I2S1_OUT", NULL, "offload-compr-playback"},
+	{"AIF1 Playback", NULL, "I2S1_OUT"},
 };
 
 static const struct snd_kcontrol_new flounder_controls[] = {
@@ -730,6 +740,30 @@ static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static int tegra_offload_hw_params_be_fixup(struct snd_soc_pcm_runtime *rtd,
+			struct snd_pcm_hw_params *params)
+{
+	if (!params_rate(params)) {
+		struct snd_interval *snd_rate = hw_param_interval(params,
+						SNDRV_PCM_HW_PARAM_RATE);
+
+		snd_rate->min = snd_rate->max = 48000;
+	}
+
+	if (!params_channels(params)) {
+		struct snd_interval *snd_channels = hw_param_interval(params,
+						SNDRV_PCM_HW_PARAM_CHANNELS);
+
+		snd_channels->min = snd_channels->max = 2;
+	}
+	snd_mask_set(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT),
+				ffs(SNDRV_PCM_FORMAT_S16_LE));
+
+	pr_debug("%s::%d %d %d\n", __func__, params_rate(params),
+			params_channels(params), params_format(params));
+	return 0;
+}
+
 static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 	[DAI_LINK_HIFI] = {
 		.name = "rt5677",
@@ -770,6 +804,44 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.cpu_dai_name = "tegra30-i2s.2",
 		.codec_dai_name = "dit-hifi",
 		.ops = &tegra_rt5677_speaker_ops,
+	},
+	[DAI_LINK_PCM_OFFLOAD_FE] = {
+		.name = "offload-pcm",
+		.stream_name = "offload-pcm",
+
+		.platform_name = "tegra-offload",
+		.cpu_dai_name = "tegra-offload-pcm",
+
+		.codec_dai_name =  "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+
+		.dynamic = 1,
+	},
+	[DAI_LINK_COMPR_OFFLOAD_FE] = {
+		.name = "offload-compr",
+		.stream_name = "offload-compr",
+
+		.platform_name = "tegra-offload",
+		.cpu_dai_name = "tegra-offload-compr",
+
+		.codec_dai_name =  "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+
+		.dynamic = 1,
+	},
+	[DAI_LINK_I2S_OFFLOAD_BE] = {
+		.name = "offload-audio",
+		.stream_name = "offload-audio-pcm",
+		.codec_name = "rt5677.1-002d",
+		.platform_name = "tegra30-i2s.1",
+		.cpu_dai_name = "tegra30-i2s.1",
+		.codec_dai_name = "rt5677-aif1",
+		.ops = &tegra_rt5677_ops,
+
+		.no_pcm = 1,
+
+		.be_id = 0,
+		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
 	},
 };
 
@@ -1179,6 +1251,8 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	tegra_rt5677_dai[DAI_LINK_HIFI].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 	tegra_rt5677_dai[DAI_LINK_HIFI].platform_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+	tegra_rt5677_dai[DAI_LINK_I2S_OFFLOAD_BE].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 
 	codec_id = pdata->i2s_param[SPEAKER].audio_port_id;
