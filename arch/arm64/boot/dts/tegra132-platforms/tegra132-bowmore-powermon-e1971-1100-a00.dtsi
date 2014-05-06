@@ -27,7 +27,7 @@
 				#size-cells = <0>;
 				i2c-mux,deselect-on-exit;
 
-				ina3221x@40 {
+				ina3221x: ina3221x@40 {
 					compatible = "ti,ina3221x";
 					reg = <0x40>;
 					ti,trigger-config = <0x7003>;
