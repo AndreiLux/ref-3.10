@@ -62,6 +62,8 @@ struct battery_charging_ops {
 		int battery_voltage);
 	int (*charging_full_configure)(struct battery_charger_dev *bc_dev,
 		bool charge_full_done, bool charge_full_stop);
+	int (*input_voltage_configure)(struct battery_charger_dev *bc_dev,
+		int voltage_min);
 	int (*unknown_battery_handle)(struct battery_charger_dev *bc_dev);
 };
 
@@ -85,6 +87,12 @@ struct charge_full_threshold {
 	int recharge_voltage_min_mv;
 };
 
+struct charge_input_switch {
+	int input_switch_threshold_mv;
+	int input_vmin_high_mv;
+	int input_vmin_low_mv;
+};
+
 struct battery_charger_info {
 	const char *tz_name;
 	int cell_id;
@@ -94,6 +102,7 @@ struct battery_charger_info {
 	struct battery_charging_ops *bc_ops;
 	struct battery_thermal_prop thermal_prop;
 	struct charge_full_threshold full_thr;
+	struct charge_input_switch input_switch;
 	const char *batt_id_channel_name;
 	int unknown_batt_id_min;
 };

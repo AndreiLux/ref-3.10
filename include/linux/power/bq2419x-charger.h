@@ -142,13 +142,6 @@ struct bq2419x_thermal_prop {
 	unsigned int otp_output_current_ma;
 };
 
-struct bq2419x_charge_full_threshold {
-	int chg_done_voltage_min_mv;
-	int chg_done_current_min_ma;
-	int chg_done_low_current_min_ma;
-	int recharge_voltage_min_mv;
-};
-
 /*
  * struct bq2419x_charger_platform_data - bq2419x charger platform data.
  */
@@ -178,11 +171,39 @@ struct bq2419x_charger_platform_data {
 	u32 *chg_thermal_voltage_limit;
 	bool otp_control_no_thermister; /* TRUE if chip thermister is unused */
 	struct bq2419x_thermal_prop thermal_prop;
-	bool charge_full_by_monitor_full_thr;
+	bool safety_timer_reset_disable;
+};
+
+
+/*
+ * struct bq2419x_charge_full_threshold - used for charging full/recharge check
+ */
+struct bq2419x_charge_full_threshold {
+	int chg_done_voltage_min_mv;
+	int chg_done_current_min_ma;
+	int chg_done_low_current_min_ma;
+	int recharge_voltage_min_mv;
+};
+
+/*
+ * struct bq2419x_charge_input_switch - used for adjust input voltage
+ */
+struct bq2419x_charge_input_switch {
+	int input_switch_threshold_mv;
+	int input_vmin_high_mv;
+	int input_vmin_low_mv;
+};
+
+/*
+ * struct bq2419x_charge_policy_platform_data - bq2419x charge policy data
+ *
+ */
+struct bq2419x_charge_policy_platform_data {
+	bool enable_battery_status_monitor;
 	struct bq2419x_charge_full_threshold full_thr;
+	struct bq2419x_charge_input_switch input_switch;
 	const char *batt_id_channel_name;
 	int unknown_batt_id_min;
-	bool safety_timer_reset_disable;
 };
 
 /*
@@ -191,6 +212,7 @@ struct bq2419x_charger_platform_data {
 struct bq2419x_platform_data {
 	struct bq2419x_vbus_platform_data *vbus_pdata;
 	struct bq2419x_charger_platform_data *bcharger_pdata;
+	struct bq2419x_charge_policy_platform_data *cpolicy_pdata;
 };
 
 #endif /* __LINUX_POWER_BQ2419X_CHARGER_H */

@@ -66,6 +66,8 @@
 #define UNKNOWN_BATTERY_ID_CHECK_COUNT	(5)
 #define UNKNOWN_BATTERY_ID_CHECK_DELAY	(3*HZ)
 
+#define DEFAULT_INPUT_VMIN_MV	(4200)
+
 enum battery_monitor_state {
 	MONITOR_WAIT = 0,
 	MONITOR_THERMAL,
@@ -112,6 +114,7 @@ struct battery_charger_dev {
 	struct charge_full_threshold	full_thr;
 	struct mutex			mutex;
 	const char			*batt_id_channel_name;
+	struct charge_input_switch	input_switch;
 	int				unknown_batt_id_min;
 	struct delayed_work		unknown_batt_id_work;
 	int				unknown_batt_id_check_count;
@@ -400,6 +403,29 @@ done:
 	return 0;
 }
 
+static int battery_charger_input_voltage_adjust_func(
+					struct battery_charger_dev *bc_dev)
+{
+	int batt_volt, input_volt_min;
+
+	if (bc_dev->battery_voltage == BATT_INFO_NO_VALUE)
+		return -EINVAL;
+
+	mutex_lock(&bc_dev->mutex);
+	batt_volt = bc_dev->battery_voltage / 1000;
+
+	if (batt_volt > bc_dev->input_switch.input_switch_threshold_mv)
+		input_volt_min = bc_dev->input_switch.input_vmin_high_mv;
+	else
+		input_volt_min = bc_dev->input_switch.input_vmin_low_mv;
+	mutex_unlock(&bc_dev->mutex);
+
+	if (bc_dev->ops->input_voltage_configure)
+		bc_dev->ops->input_voltage_configure(bc_dev, input_volt_min);
+
+	return 0;
+}
+
 static void battery_charger_batt_status_monitor_wq(struct work_struct *work)
 {
 	struct battery_charger_dev *bc_dev;
@@ -410,6 +436,10 @@ static void battery_charger_batt_status_monitor_wq(struct work_struct *work)
 					poll_batt_status_monitor_wq.work);
 
 	ret = battery_charger_thermal_monitor_func(bc_dev);
+	if (!ret)
+		keep_monitor = true;
+
+	ret = battery_charger_input_voltage_adjust_func(bc_dev);
 	if (!ret)
 		keep_monitor = true;
 
@@ -907,6 +937,23 @@ static void battery_charger_charge_full_threshold_init(
 		DEFAULT_BATTERY_REGULATION_VOLTAGE - 48;
 }
 
+static void battery_charger_charge_input_switch_init(
+	struct battery_charger_dev *bc_dev,
+	struct charge_input_switch input_switch)
+{
+	if (!bc_dev)
+		return;
+
+	bc_dev->input_switch.input_vmin_high_mv =
+			input_switch.input_vmin_high_mv ?:
+			DEFAULT_INPUT_VMIN_MV;
+	bc_dev->input_switch.input_vmin_low_mv =
+			input_switch.input_vmin_low_mv ?:
+			DEFAULT_INPUT_VMIN_MV;
+	bc_dev->input_switch.input_switch_threshold_mv =
+			input_switch.input_switch_threshold_mv;
+}
+
 struct battery_charger_dev *battery_charger_register(struct device *dev,
 	struct battery_charger_info *bci, void *drv_data)
 {
@@ -966,6 +1013,7 @@ struct battery_charger_dev *battery_charger_register(struct device *dev,
 
 	battery_charger_thermal_prop_init(bc_dev, bci->thermal_prop);
 	battery_charger_charge_full_threshold_init(bc_dev, bci->full_thr);
+	battery_charger_charge_input_switch_init(bc_dev, bci->input_switch);
 
 	bc_dev->battery_voltage = BATT_INFO_NO_VALUE;
 	bc_dev->battery_current = BATT_INFO_NO_VALUE;

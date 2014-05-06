@@ -196,9 +196,6 @@
 				thermal-cool-voltage-millivolt = <4352>;
 				thermal-disable-warm-current-half;
 				thermal-overtemp-output-current-milliamp = <1344>;
-				charge-full-by-monitor-full-threshold;
-				unknown-battery-id-minimum = <1343>;
-				battery-id-channel-name = "batt-id-channel";
 				consumers {
 					c1 {
 						regulator-consumer-supply = "usb_bat_chg";
@@ -220,6 +217,15 @@
 						regulator-consumer-device = "tegra-otg";
 					};
 				};
+			};
+
+			policy {
+				enable-battery-status-monitor;
+				unknown-battery-id-minimum = <1343>;
+				battery-id-channel-name = "batt-id-channel";
+				input-voltage-min-high-battery-millivolt = <4440>;
+				input-voltage-min-low-battery-millivolt = <4200>;
+				input-voltage-switch-millivolt = <4150>;
 			};
 		};
 

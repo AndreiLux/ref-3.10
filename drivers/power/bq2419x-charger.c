@@ -120,6 +120,7 @@ struct bq2419x_chip {
 	int				last_temp;
 	int				charging_state;
 	struct bq2419x_reg_info		last_chg_voltage;
+	struct bq2419x_reg_info		last_input_src;
 	struct bq2419x_reg_info		input_src;
 	struct bq2419x_reg_info		chg_current_control;
 	struct bq2419x_reg_info		prechg_term_control;
@@ -132,7 +133,7 @@ struct bq2419x_chip {
 	int				charge_suspend_polling_time;
 	int				charge_polling_time;
 	unsigned int			charging_disabled_reason;
-	bool				chg_full_by_monitor_full_thr;
+	bool				enable_batt_status_monitor;
 	bool				chg_full_done;
 	bool				chg_full_stop;
 	bool				safety_timeout_happen;
@@ -350,8 +351,6 @@ static int bq2419x_process_charger_plat_data(struct bq2419x_chip *bq2419x,
 			BQ2419X_INPUT_VINDPM_OFFSET, 80, 4, 0);
 	bq2419x->input_src.mask = BQ2419X_INPUT_VINDPM_MASK;
 	bq2419x->input_src.val = vindpm << 3;
-	bq2419x->input_src.mask |= BQ2419X_INPUT_IINLIM_MASK;
-	bq2419x->input_src.val |= 0x2;
 
 	ichg = bq2419x_val_to_reg(fast_charge_current,
 			BQ2419X_CHARGE_ICHG_OFFSET, 64, 6, 0);
@@ -400,6 +399,7 @@ static int bq2419x_process_charger_plat_data(struct bq2419x_chip *bq2419x,
 static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 {
 	int ret;
+	struct bq2419x_reg_info reg;
 
 	if (bq2419x->charging_state != ENABLED_HALF_IBAT)
 		ret = regmap_update_bits(bq2419x->regmap, BQ2419X_CHRG_CTRL_REG,
@@ -422,8 +422,12 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 		return ret;
 	}
 
+	reg.mask = bq2419x->last_input_src.mask;
+	reg.val = bq2419x->last_input_src.val;
+	reg.mask |= BQ2419X_INPUT_IINLIM_MASK;
+	reg.val |= 0x2;
 	ret = regmap_update_bits(bq2419x->regmap, BQ2419X_INPUT_SRC_REG,
-			bq2419x->input_src.mask, bq2419x->input_src.val);
+			reg.mask, reg.val);
 	if (ret < 0)
 		dev_err(bq2419x->dev, "INPUT_SRC_REG write failed %d\n", ret);
 
@@ -443,7 +447,7 @@ static int bq2419x_charger_init(struct bq2419x_chip *bq2419x)
 	if (ret < 0)
 		dev_err(bq2419x->dev, "TIME_CTRL update failed: %d\n", ret);
 
-	if (bq2419x->chg_full_by_monitor_full_thr) {
+	if (bq2419x->enable_batt_status_monitor) {
 		ret = regmap_update_bits(bq2419x->regmap,
 				BQ2419X_TIME_CTRL_REG,
 				BQ2419X_EN_TERM, 0);
@@ -538,7 +542,7 @@ static void bq2419x_monitor_work_control(struct bq2419x_chip *bq2419x,
 		return;
 
 	if (start) {
-		if (bq2419x->chg_full_by_monitor_full_thr)
+		if (bq2419x->enable_batt_status_monitor)
 			battery_charger_batt_status_start_monitoring(
 				bq2419x->bc_dev,
 				bq2419x->last_charging_current / 1000);
@@ -546,7 +550,7 @@ static void bq2419x_monitor_work_control(struct bq2419x_chip *bq2419x,
 			battery_charger_thermal_start_monitoring(
 				bq2419x->bc_dev);
 	} else {
-		if (bq2419x->chg_full_by_monitor_full_thr)
+		if (bq2419x->enable_batt_status_monitor)
 			battery_charger_batt_status_stop_monitoring(
 				bq2419x->bc_dev);
 		else
@@ -952,7 +956,7 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 		if ((!bq2419x->otp_control_no_thermister
 				|| bq2419x->last_chg_voltage.val ==
 				bq2419x->chg_voltage_control.val)
-				&& !bq2419x->chg_full_by_monitor_full_thr) {
+				&& !bq2419x->enable_batt_status_monitor) {
 			battery_charging_restart(bq2419x->bc_dev,
 					bq2419x->chg_restart_time);
 			if (bq2419x->disable_suspend_during_charging)
@@ -1555,7 +1559,7 @@ static int bq2419x_charger_charging_full_configure(
 
 	mutex_lock(&bq2419x->mutex);
 
-	if (!bq2419x->chg_full_by_monitor_full_thr ||
+	if (!bq2419x->enable_batt_status_monitor ||
 		!bq2419x->battery_presense)
 		goto done;
 
@@ -1593,6 +1597,65 @@ static int bq2419x_charger_charging_full_configure(
 	}
 done:
 	mutex_unlock(&bq2419x->mutex);
+	return 0;
+}
+
+static int bq2419x_input_control(struct battery_charger_dev *bc_dev,
+							int voltage_min)
+{
+	struct bq2419x_chip *bq2419x = battery_charger_get_drvdata(bc_dev);
+	int vindpm, mask;
+	unsigned int val, data;
+	int ret;
+
+	mutex_lock(&bq2419x->mutex);
+
+	if (!bq2419x->battery_presense)
+		goto done;
+
+	if (!bq2419x->cable_connected)
+		goto done;
+
+	/* input source checking */
+	vindpm = bq2419x_val_to_reg(voltage_min,
+			BQ2419X_INPUT_VINDPM_OFFSET, 80, 4, 0);
+	vindpm <<= 3;
+	mask = BQ2419X_INPUT_VINDPM_MASK;
+	if (vindpm != bq2419x->last_input_src.val) {
+		bq2419x->last_input_src.val = vindpm;
+		ret = regmap_update_bits(bq2419x->regmap,
+					BQ2419X_INPUT_SRC_REG,
+					mask, vindpm);
+		if (ret < 0)
+			dev_err(bq2419x->dev,
+					"INPUT_SRC_REG update failed: %d\n",
+					ret);
+	}
+
+	/* Check input current limit if reset */
+	val = current_to_reg(iinlim, ARRAY_SIZE(iinlim),
+			bq2419x->in_current_limit);
+	if (val > 0) {
+		ret = regmap_read(bq2419x->regmap,
+				BQ2419X_INPUT_SRC_REG, &data);
+		if (ret < 0)
+			dev_err(bq2419x->dev,
+					"INPUT_SRC_REG read failed %d\n", ret);
+		else if ((data & BQ2419x_CONFIG_MASK) != val) {
+			ret = regmap_update_bits(bq2419x->regmap,
+					BQ2419X_INPUT_SRC_REG,
+					BQ2419x_CONFIG_MASK,
+					val);
+			if (ret < 0)
+				dev_err(bq2419x->dev,
+					"INPUT_SRC_REG update failed: %d\n",
+					ret);
+		}
+	}
+
+done:
+	mutex_unlock(&bq2419x->mutex);
+
 	return 0;
 }
 
@@ -1636,6 +1699,7 @@ static struct battery_charging_ops bq2419x_charger_bci_ops = {
 	.restart_charging = bq2419x_charging_restart,
 	.thermal_configure = bq2419x_charger_thermal_configure,
 	.charging_full_configure = bq2419x_charger_charging_full_configure,
+	.input_voltage_configure = bq2419x_input_control,
 	.unknown_battery_handle = bq2419x_unknown_battery_handle,
 };
 
@@ -1650,6 +1714,7 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 	struct bq2419x_platform_data *pdata;
 	struct device_node *batt_reg_node;
 	struct device_node *vbus_reg_node;
+	struct device_node *charge_policy_node;
 	int ret;
 
 	pdata = devm_kzalloc(&client->dev, sizeof(*pdata), GFP_KERNEL);
@@ -1666,12 +1731,10 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 		int thermal_temp;
 		unsigned int thermal_volt;
 		unsigned int otp_output_current;
-		unsigned int full_thr_val;
 		struct regulator_init_data *batt_init_data;
 		struct bq2419x_charger_platform_data *chg_pdata;
 		const char *status_str;
 		struct bq2419x_charger_platform_data *bcharger_pdata;
-		int unknown_batt_id_min;
 		u32 pval;
 
 		status_str = of_get_property(batt_reg_node, "status", NULL);
@@ -1909,52 +1972,6 @@ skip_therm_profile:
 		if (!ret)
 			bcharger_pdata->thermal_prop.otp_output_current_ma =
 						otp_output_current;
-
-		bcharger_pdata->charge_full_by_monitor_full_thr =
-				of_property_read_bool(batt_reg_node,
-				"charge-full-by-monitor-full-threshold");
-
-		if (!bcharger_pdata->charge_full_by_monitor_full_thr)
-			goto vbus_node;
-
-		ret = of_property_read_u32(batt_reg_node,
-				"charge-full-done-voltage-min-millivolt",
-				&full_thr_val);
-		if (!ret)
-			bcharger_pdata->full_thr.chg_done_voltage_min_mv =
-								full_thr_val;
-
-		ret = of_property_read_u32(batt_reg_node,
-				"charge-full-done-current-min-milliamp",
-				&full_thr_val);
-		if (!ret)
-			bcharger_pdata->full_thr.chg_done_current_min_ma =
-								full_thr_val;
-
-		ret = of_property_read_u32(batt_reg_node,
-				"charge-full-done-low-current-min-milliamp",
-				&full_thr_val);
-		if (!ret)
-			bcharger_pdata->full_thr.chg_done_low_current_min_ma =
-								full_thr_val;
-
-		ret = of_property_read_u32(batt_reg_node,
-				"charge-full-recharge-voltage-min-millivolt",
-				&full_thr_val);
-		if (!ret)
-			bcharger_pdata->full_thr.recharge_voltage_min_mv =
-								full_thr_val;
-
-		bcharger_pdata->batt_id_channel_name =
-			of_get_property(batt_reg_node,
-					"battery-id-channel-name", NULL);
-
-		ret = of_property_read_u32(batt_reg_node,
-					"unknown-battery-id-minimum",
-					&unknown_batt_id_min);
-		if (!ret)
-			bcharger_pdata->unknown_batt_id_min =
-							unknown_batt_id_min;
 	}
 
 vbus_node:
@@ -1981,7 +1998,155 @@ vbus_node:
 					"ti,otg-iusb-gpio", 0);
 	}
 
+	/* TODO: seperate product policy from chip driver */
+	charge_policy_node = of_find_node_by_name(np, "policy");
+	if (charge_policy_node) {
+		struct bq2419x_charge_policy_platform_data *policy_pdata;
+		unsigned int full_thr_val;
+		unsigned int input_switch_val;
+		int unknown_batt_id_min;
+
+		pdata->cpolicy_pdata = devm_kzalloc(&client->dev,
+			sizeof(*(pdata->cpolicy_pdata)), GFP_KERNEL);
+		if (!pdata->cpolicy_pdata)
+			return ERR_PTR(-ENOMEM);
+
+		policy_pdata = pdata->cpolicy_pdata;
+
+		policy_pdata->enable_battery_status_monitor =
+				of_property_read_bool(charge_policy_node,
+				"enable-battery-status-monitor");
+
+		if (!policy_pdata->enable_battery_status_monitor)
+			goto unknown_battery_id;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"charge-full-done-voltage-min-millivolt",
+				&full_thr_val);
+		if (!ret)
+			policy_pdata->full_thr.chg_done_voltage_min_mv =
+								full_thr_val;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"charge-full-done-current-min-milliamp",
+				&full_thr_val);
+		if (!ret)
+			policy_pdata->full_thr.chg_done_current_min_ma =
+								full_thr_val;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"charge-full-done-low-current-min-milliamp",
+				&full_thr_val);
+		if (!ret)
+			policy_pdata->full_thr.chg_done_low_current_min_ma =
+								full_thr_val;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"charge-full-recharge-voltage-min-millivolt",
+				&full_thr_val);
+		if (!ret)
+			policy_pdata->full_thr.recharge_voltage_min_mv =
+								full_thr_val;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"input-voltage-min-high-battery-millivolt",
+				&input_switch_val);
+		if (!ret)
+			policy_pdata->input_switch.input_vmin_high_mv =
+				input_switch_val;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"input-voltage-min-low-battery-millivolt",
+				&input_switch_val);
+		if (!ret)
+			policy_pdata->input_switch.input_vmin_low_mv =
+				input_switch_val;
+
+		ret = of_property_read_u32(charge_policy_node,
+				"input-voltage-switch-millivolt",
+				&input_switch_val);
+		if (!ret)
+			policy_pdata->input_switch.input_switch_threshold_mv =
+				input_switch_val;
+
+unknown_battery_id:
+		policy_pdata->batt_id_channel_name =
+			of_get_property(charge_policy_node,
+					"battery-id-channel-name", NULL);
+
+		ret = of_property_read_u32(charge_policy_node,
+					"unknown-battery-id-minimum",
+					&unknown_batt_id_min);
+		if (!ret)
+			policy_pdata->unknown_batt_id_min =
+							unknown_batt_id_min;
+	}
+
 	return pdata;
+}
+
+static inline void bq2419x_battery_charger_info_init(
+		struct bq2419x_charger_platform_data *bcharger_pdata,
+		struct bq2419x_charge_policy_platform_data *cpolicy_pdata)
+{
+	if (bcharger_pdata->otp_control_no_thermister)
+		bq2419x_charger_bci.bc_ops->thermal_configure =
+			bq2419x_charger_thermal_configure_no_thermister;
+
+	bq2419x_charger_bci.polling_time_sec =
+			bcharger_pdata->temp_polling_time_sec;
+	bq2419x_charger_bci.tz_name = bcharger_pdata->tz_name;
+
+	bq2419x_charger_bci.thermal_prop.temp_hot_dc =
+			bcharger_pdata->thermal_prop.temp_hot_dc;
+	bq2419x_charger_bci.thermal_prop.temp_cold_dc =
+			bcharger_pdata->thermal_prop.temp_cold_dc;
+	bq2419x_charger_bci.thermal_prop.temp_warm_dc =
+			bcharger_pdata->thermal_prop.temp_warm_dc;
+	bq2419x_charger_bci.thermal_prop.temp_cool_dc =
+			bcharger_pdata->thermal_prop.temp_cool_dc;
+	bq2419x_charger_bci.thermal_prop.temp_hysteresis_dc =
+			bcharger_pdata->thermal_prop.temp_hysteresis_dc;
+	bq2419x_charger_bci.thermal_prop.regulation_voltage_mv =
+			bcharger_pdata->charge_voltage_limit_mV;
+	bq2419x_charger_bci.thermal_prop.warm_voltage_mv =
+			bcharger_pdata->thermal_prop.warm_voltage_mv;
+	bq2419x_charger_bci.thermal_prop.cool_voltage_mv =
+			bcharger_pdata->thermal_prop.cool_voltage_mv;
+	bq2419x_charger_bci.thermal_prop.disable_warm_current_half =
+			bcharger_pdata->thermal_prop.disable_warm_current_half;
+	bq2419x_charger_bci.thermal_prop.disable_cool_current_half =
+			bcharger_pdata->thermal_prop.disable_cool_current_half;
+
+	bq2419x_charger_bci.full_thr.chg_done_voltage_min_mv =
+			cpolicy_pdata->full_thr.chg_done_voltage_min_mv ?:
+			(bcharger_pdata->charge_voltage_limit_mV ?
+			bcharger_pdata->charge_voltage_limit_mV - 102 : 0);
+	bq2419x_charger_bci.full_thr.chg_done_current_min_ma =
+			cpolicy_pdata->full_thr.chg_done_current_min_ma;
+	bq2419x_charger_bci.full_thr.chg_done_low_current_min_ma =
+			cpolicy_pdata->full_thr.chg_done_low_current_min_ma;
+	bq2419x_charger_bci.full_thr.recharge_voltage_min_mv =
+			cpolicy_pdata->full_thr.recharge_voltage_min_mv ?:
+			(bcharger_pdata->charge_voltage_limit_mV ?
+			bcharger_pdata->charge_voltage_limit_mV - 48 : 0);
+
+	bq2419x_charger_bci.input_switch.input_vmin_high_mv =
+			cpolicy_pdata->input_switch.input_vmin_high_mv;
+	bq2419x_charger_bci.input_switch.input_vmin_low_mv =
+			cpolicy_pdata->input_switch.input_vmin_low_mv;
+	bq2419x_charger_bci.input_switch.input_switch_threshold_mv =
+			cpolicy_pdata->input_switch.input_switch_threshold_mv;
+
+	bq2419x_charger_bci.batt_id_channel_name =
+			cpolicy_pdata->batt_id_channel_name;
+	bq2419x_charger_bci.unknown_batt_id_min =
+			cpolicy_pdata->unknown_batt_id_min;
+
+	if (cpolicy_pdata->enable_battery_status_monitor)
+		bq2419x_charger_bci.enable_batt_status_monitor = true;
+	else
+		bq2419x_charger_bci.enable_thermal_monitor = true;
 }
 
 static int bq2419x_debugfs_show(struct seq_file *s, void *unused)
@@ -2094,8 +2259,6 @@ static int bq2419x_probe(struct i2c_client *client,
 	bq2419x->last_temp = -1000;
 	bq2419x->disable_suspend_during_charging =
 			pdata->bcharger_pdata->disable_suspend_during_charging;
-	bq2419x->chg_full_by_monitor_full_thr =
-			pdata->bcharger_pdata->charge_full_by_monitor_full_thr;
 	bq2419x->safety_timer_reset_disable =
 			pdata->bcharger_pdata->safety_timer_reset_disable;
 	bq2419x->charge_suspend_polling_time =
@@ -2105,8 +2268,13 @@ static int bq2419x_probe(struct i2c_client *client,
 
 	bq2419x_process_charger_plat_data(bq2419x, pdata->bcharger_pdata);
 
+	bq2419x->enable_batt_status_monitor =
+			pdata->cpolicy_pdata->enable_battery_status_monitor;
+
 	bq2419x->last_chg_voltage.mask = bq2419x->chg_voltage_control.mask;
 	bq2419x->last_chg_voltage.val = bq2419x->chg_voltage_control.val;
+	bq2419x->last_input_src.mask = bq2419x->input_src.mask;
+	bq2419x->last_input_src.val = bq2419x->input_src.val;
 
 	ret = bq2419x_charger_init(bq2419x);
 	if (ret < 0) {
@@ -2123,55 +2291,10 @@ static int bq2419x_probe(struct i2c_client *client,
 
 	bq2419x->otp_control_no_thermister =
 		pdata->bcharger_pdata->otp_control_no_thermister;
-	if (bq2419x->otp_control_no_thermister)
-		bq2419x_charger_bci.bc_ops->thermal_configure =
-			bq2419x_charger_thermal_configure_no_thermister;
-	bq2419x_charger_bci.polling_time_sec =
-			pdata->bcharger_pdata->temp_polling_time_sec;
-	bq2419x_charger_bci.tz_name = pdata->bcharger_pdata->tz_name;
-	bq2419x_charger_bci.thermal_prop.temp_hot_dc =
-			pdata->bcharger_pdata->thermal_prop.temp_hot_dc;
-	bq2419x_charger_bci.thermal_prop.temp_cold_dc =
-			pdata->bcharger_pdata->thermal_prop.temp_cold_dc;
-	bq2419x_charger_bci.thermal_prop.temp_warm_dc =
-			pdata->bcharger_pdata->thermal_prop.temp_warm_dc;
-	bq2419x_charger_bci.thermal_prop.temp_cool_dc =
-			pdata->bcharger_pdata->thermal_prop.temp_cool_dc;
-	bq2419x_charger_bci.thermal_prop.temp_hysteresis_dc =
-			pdata->bcharger_pdata->thermal_prop.temp_hysteresis_dc;
-	bq2419x_charger_bci.thermal_prop.regulation_voltage_mv =
-			pdata->bcharger_pdata->charge_voltage_limit_mV;
-	bq2419x_charger_bci.thermal_prop.warm_voltage_mv =
-			pdata->bcharger_pdata->thermal_prop.warm_voltage_mv;
-	bq2419x_charger_bci.thermal_prop.cool_voltage_mv =
-		pdata->bcharger_pdata->thermal_prop.cool_voltage_mv;
-	bq2419x_charger_bci.thermal_prop.disable_warm_current_half =
-		pdata->bcharger_pdata->thermal_prop.disable_warm_current_half;
-	bq2419x_charger_bci.thermal_prop.disable_cool_current_half =
-		pdata->bcharger_pdata->thermal_prop.disable_cool_current_half;
 
-	bq2419x_charger_bci.full_thr.chg_done_voltage_min_mv =
-		pdata->bcharger_pdata->full_thr.chg_done_voltage_min_mv ?:
-		(pdata->bcharger_pdata->charge_voltage_limit_mV ?
-		pdata->bcharger_pdata->charge_voltage_limit_mV - 102 : 0);
-	bq2419x_charger_bci.full_thr.chg_done_current_min_ma =
-		pdata->bcharger_pdata->full_thr.chg_done_current_min_ma;
-	bq2419x_charger_bci.full_thr.chg_done_low_current_min_ma =
-		pdata->bcharger_pdata->full_thr.chg_done_low_current_min_ma;
-	bq2419x_charger_bci.full_thr.recharge_voltage_min_mv =
-		pdata->bcharger_pdata->full_thr.recharge_voltage_min_mv ?:
-		(pdata->bcharger_pdata->charge_voltage_limit_mV ?
-		pdata->bcharger_pdata->charge_voltage_limit_mV - 48 : 0);
+	bq2419x_battery_charger_info_init(pdata->bcharger_pdata,
+					pdata->cpolicy_pdata);
 
-	bq2419x_charger_bci.batt_id_channel_name =
-			pdata->bcharger_pdata->batt_id_channel_name;
-	bq2419x_charger_bci.unknown_batt_id_min =
-			pdata->bcharger_pdata->unknown_batt_id_min;
-
-	if (bq2419x->chg_full_by_monitor_full_thr)
-		bq2419x_charger_bci.enable_batt_status_monitor = true;
-	else
-		bq2419x_charger_bci.enable_thermal_monitor = true;
 	bq2419x->bc_dev = battery_charger_register(bq2419x->dev,
 			&bq2419x_charger_bci, bq2419x);
 	if (IS_ERR(bq2419x->bc_dev)) {
@@ -2291,7 +2414,7 @@ static int bq2419x_suspend(struct device *dev)
 			polling_time = bq2419x->wdt_refresh_timeout;
 		else if (bq2419x->charge_polling_time) {
 			if (bq2419x->chg_status != BATTERY_CHARGING_DONE
-				|| (bq2419x->chg_full_by_monitor_full_thr
+				|| (bq2419x->enable_batt_status_monitor
 					&& !bq2419x->chg_full_stop))
 				polling_time = bq2419x->charge_polling_time;
 		}
