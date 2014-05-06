@@ -634,6 +634,7 @@ static struct tegra_usb_platform_data tegra_udc_pdata = {
 		.xcvr_lsfslew = 2,
 		.xcvr_lsrslew = 2,
 		.xcvr_hsslew_lsb = 0,
+		.xcvr_hsslew_msb = 0,
 		.xcvr_setup_offset = 0,
 		.xcvr_use_fuses = 0,
 	},
