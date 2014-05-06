@@ -647,21 +647,20 @@ static void ardbeg_usb_init(void)
 		 * vbus voltages larger then 5V.  Enable this.
 		 */
 		if (board_info.board_id == BOARD_P1761 ||
-			board_info.board_id == BOARD_E1784) {
+			board_info.board_id == BOARD_E1784 ||
+			board_info.board_id == BOARD_E1780) {
+
 			/*
 			 * Set the maximum voltage that can be supplied
 			 * over USB vbus that the board supports if we use
 			 * a quick charge 2 wall charger.
 			 */
 			tegra_udc_pdata.qc2_voltage = TEGRA_USB_QC2_9V;
-			/*
-			 * TN8 board design can handle 3A charging
-			 */
-			tegra_udc_pdata.u_data.dev.qc2_current_limit_ma = 3000;
-		}
+			tegra_udc_pdata.u_data.dev.qc2_current_limit_ma = 1200;
 
-		if (board_info.board_id == BOARD_P1761)
+			/* charger needs to be set to 2A - h/w will do 1.8A */
 			tegra_udc_pdata.u_data.dev.dcp_current_limit_ma = 2000;
+		}
 
 		switch (bi.board_id) {
 		case BOARD_E1733:
@@ -830,6 +829,10 @@ static struct tegra_usb_modem_power_platform_data baseband_pdata = {
 	.short_autosuspend_delay = 50,
 	.tegra_ehci_device = &tegra_ehci2_device,
 	.tegra_ehci_pdata = &tegra_ehci2_hsic_baseband_pdata,
+	.mdm_power_report_gpio = MDM_POWER_REPORT,
+	.mdm_power_irq_flags = IRQF_TRIGGER_RISING |
+				IRQF_TRIGGER_FALLING |
+				IRQF_ONESHOT,
 };
 
 static struct platform_device icera_bruce_device = {
@@ -923,6 +926,8 @@ static struct of_dev_auxdata ardbeg_auxdata_lookup[] __initdata = {
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra124-camera", 0, "pcl-generic",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra114-ahci-sata", 0x70027000, "tegra-sata.0",
+		NULL),
 	{}
 };
 #endif
@@ -1112,6 +1117,7 @@ static void __init ardbeg_sysedp_init(void)
 		else
 			shield_new_sysedp_init();
 		break;
+	case BOARD_E1971:
 	case BOARD_E1922:
 	case BOARD_E1784:
 	case BOARD_P1761:
@@ -1138,6 +1144,7 @@ static void __init ardbeg_sysedp_dynamic_capping_init(void)
 		else
 			shield_sysedp_dynamic_capping_init();
 		break;
+	case BOARD_E1971:
 	case BOARD_E1922:
 	case BOARD_E1784:
 	case BOARD_P1761:
@@ -1287,12 +1294,6 @@ static void __init tegra_ardbeg_late_init(void)
 		loki_sdhci_init();
 	else
 		ardbeg_sdhci_init();
-	if (board_info.board_id == BOARD_E1782 ||
-			board_info.board_id == BOARD_PM374)
-		ardbeg_sata_init();
-	else if (board_info.board_id != BOARD_PM358 &&
-			board_info.board_id != BOARD_PM359)
-		arbdeg_sata_clk_gate();
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM370 ||

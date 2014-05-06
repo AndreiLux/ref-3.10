@@ -984,9 +984,11 @@ static int tegra_pcie_enable_controller(void)
 		/* Extract 2 upper bits from odmdata[28:30] and configure */
 		/* T124 pcie lanes in X2_X1/X4_X1 config based on them */
 		lane_owner = tegra_get_lane_owner_info() >> 1;
-		if (lane_owner == PCIE_LANES_X2_X1)
+		if (lane_owner == PCIE_LANES_X2_X1) {
 			val |= AFI_PCIE_CONFIG_SM2TMS0_XBAR_CONFIG_X2_X1;
-		else {
+			if (tegra_pcie.plat_data->port_status[1])
+				val &= ~AFI_PCIE_CONFIG_PCIEC1_DISABLE_DEVICE;
+		} else {
 			val |= AFI_PCIE_CONFIG_SM2TMS0_XBAR_CONFIG_X4_X1;
 			if ((tegra_pcie.plat_data->port_status[1]) &&
 				(lane_owner == PCIE_LANES_X4_X1))
@@ -1797,6 +1799,10 @@ static void tegra_pcie_enable_aspm(void)
 		pcie_capability_read_word(pdev, PCI_EXP_LNKCTL, &val);
 		val |= aspm >> 10;
 		pcie_capability_write_word(pdev, PCI_EXP_LNKCTL, val);
+#if defined CONFIG_ARCH_TEGRA_12x_SOC
+		pcie_capability_clear_word(pdev, PCI_EXP_LNKCTL,
+				PCI_EXP_LNKCTL_ASPM_L0S);
+#endif
 	}
 }
 
@@ -1958,6 +1964,8 @@ static int tegra_pcie_resume_noirq(struct device *dev)
 			return ret;
 		}
 	}
+	/* give 100ms for 1.05v to come up */
+	msleep(100);
 	ret = tegra_pcie_power_on();
 	if (ret) {
 		pr_err("PCIE: Failed to power on: %d\n", ret);

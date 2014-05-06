@@ -19,7 +19,6 @@ obj-${CONFIG_MACH_EXUMA}              += board-ardbeg64-power.o
 obj-${CONFIG_MACH_EXUMA}              += board-ardbeg64-sdhci.o
 obj-${CONFIG_MACH_EXUMA}              += board-ardbeg64-sensors.o
 obj-${CONFIG_MACH_EXUMA}              += board-ardbeg64-sysedp.o
-obj-${CONFIG_MACH_EXUMA}              += board-ardbeg64-sata.o
 obj-${CONFIG_MACH_EXUMA}              += board-norrin-power.o
 obj-${CONFIG_MACH_EXUMA}              += board-norrin64-memory.o
 obj-${CONFIG_MACH_EXUMA}              += board-tn8-power.o
@@ -45,7 +44,6 @@ obj-${CONFIG_MACH_T132REF}              += board-t132ref-norrin-power.o
 obj-${CONFIG_MACH_T132REF}              += board-t132ref-norrin-memory.o
 obj-${CONFIG_MACH_T132REF}              += board-t132ref-panel.o
 obj-${CONFIG_MACH_T132REF}              += board-t132ref-power.o
-obj-${CONFIG_MACH_T132REF}              += board-t132ref-sata.o
 obj-${CONFIG_MACH_T132REF}              += board-t132ref-sdhci.o
 obj-${CONFIG_MACH_T132REF}              += board-t132ref-tn8-power.o
 obj-${CONFIG_MACH_T132REF}              += board-t132ref-sysedp.o
@@ -85,6 +83,9 @@ obj-$(CONFIG_ARCH_TEGRA_13x_SOC)      += pm-tegra132.o
 endif
 
 obj-$(CONFIG_TEGRA_DYNAMIC_PWRDET)      += powerdetect.o
+
+obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper.o
+obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper_regdump.o
 
 # To override the "-march=armv7-xxx" in arm/mach-tegra/Makefile
 AFLAGS_sleep.o :=

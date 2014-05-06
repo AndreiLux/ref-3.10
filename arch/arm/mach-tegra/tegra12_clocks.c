@@ -394,15 +394,19 @@
 #define PLLSS_SW_PDIV_MAX		5
 
 #define PLLSS_MISC_LOCK_ENABLE		(0x1 << 30)
-
+#define PLLSS_MISC_KCP_SHIFT		25
+#define PLLSS_MISC_KCP_MASK			(0x3 << PLLSS_MISC_KCP_SHIFT)
+#define PLLSS_MISC_KVCO_SHIFT		24
+#define PLLSS_MISC_KVCO_MASK		(0x1 << PLLSS_MISC_KVCO_SHIFT)
+#define PLLSS_MISC_SETUP_SHIFT		0
+#define PLLSS_MISC_SETUP_MASK		(0xFFFFFF << PLLSS_MISC_SETUP_SHIFT)
 #define PLLSS_BASE_LOCK_OVERRIDE	(0x1 << 24)
 #define PLLSS_BASE_LOCK			(0x1 << 27)
 #define PLLSS_BASE_IDDQ			(0x1 << 19)
 
 #define PLLSS_MISC_DEFAULT_VALUE ( \
-	(PLLSS_MISC_KCP	<< 25) | \
-	(PLLSS_MISC_KVCO << 24) | \
-	(PLLSS_MISC_SETUP << 0))
+	(PLLSS_MISC_KVCO << PLLSS_MISC_KVCO_SHIFT) | \
+	(PLLSS_MISC_SETUP << PLLSS_MISC_SETUP_SHIFT))
 #define PLLSS_CFG_DEFAULT_VALUE ( \
 	(PLLSS_EN_SDM << 31) | \
 	(PLLSS_EN_SSC << 30) | \
@@ -416,7 +420,6 @@
 	((PLLSS_SDM_SSC_STEP << 16) | (PLLSS_SDM_DIN << 0))
 
 /* PLLSS configuration */
-#define PLLSS_MISC_KCP			0
 #define PLLSS_MISC_KVCO			0
 #define PLLSS_MISC_SETUP		0
 #define PLLSS_EN_SDM			0
@@ -642,6 +645,7 @@ static unsigned long tegra12_clk_cap_shared_bus(struct clk *bus,
 	unsigned long rate, unsigned long ceiling);
 
 static bool tegra12_periph_is_special_reset(struct clk *c);
+static void tegra12_dfll_cpu_late_init(struct clk *c);
 
 static bool detach_shared_bus;
 module_param(detach_shared_bus, bool, 0644);
@@ -3653,7 +3657,7 @@ static void pllss_set_defaults(struct clk *c, unsigned long input_rate)
 
 	clk_writel(PLLSS_MISC_DEFAULT_VALUE, c->reg + PLL_MISC(c));
 
-	if (!strcmp(c->name, "pll_dp")) {
+	if (strcmp(c->name, "pll_dp") == 0) {
 		clk_writel(PLLDP_SS_CFG_0_DEFAULT_VALUE, c->reg + PLLSS_CFG(c));
 		clk_writel(PLLDP_SS_CTRL1_0_DEFAULT_VALUE, c->reg + PLLSS_CTRL1(c));
 		clk_writel(PLLDP_SS_CTRL2_0_DEFAULT_VALUE, c->reg + PLLSS_CTRL2(c));
@@ -3662,8 +3666,9 @@ static void pllss_set_defaults(struct clk *c, unsigned long input_rate)
 		clk_writel(PLLSS_CTRL1_DEFAULT_VALUE, c->reg + PLLSS_CTRL1(c));
 		clk_writel(PLLSS_CTRL2_DEFAULT_VALUE, c->reg + PLLSS_CTRL2(c));
 	}
-
 	val = clk_readl(c->reg + PLL_MISC(c));
+	val &= ~(PLLSS_MISC_KCP_MASK);
+	val |= (c->u.pll.cpcon_default << PLLSS_MISC_KCP_SHIFT);
 #if USE_PLL_LOCK_BITS
 	val |= PLLSS_MISC_LOCK_ENABLE;
 #else
@@ -4285,38 +4290,6 @@ static void tune_cpu_trimmers(bool trim_high)
 	tegra_soctherm_adjust_cpu_zone(trim_high);
 }
 #endif
-
-static void __init tegra12_dfll_cpu_late_init(struct clk *c)
-{
-#ifdef CONFIG_ARCH_TEGRA_HAS_CL_DVFS
-	int ret;
-	struct clk *cpu = tegra_get_clock_by_name("cpu_g");
-
-	if (!cpu || !cpu->dvfs) {
-		pr_err("%s: CPU dvfs is not present\n", __func__);
-		return;
-	}
-	tegra_dvfs_set_dfll_tune_trimmers(cpu->dvfs, tune_cpu_trimmers);
-
-	/* release dfll clock source reset, init cl_dvfs control logic, and
-	   move dfll to initialized state, so it can be used as CPU source */
-	tegra_periph_reset_deassert(c);
-	ret = tegra_init_cl_dvfs();
-	if (!ret) {
-		c->state = OFF;
-		if (tegra_platform_is_silicon()) {
-			use_dfll = CONFIG_TEGRA_USE_DFLL_RANGE;
-#ifdef CONFIG_ARCH_TEGRA_13x_SOC
-			if (tegra_cpu_speedo_id() == 0)
-				use_dfll = 0;
-#endif
-		}
-		tegra_dvfs_set_dfll_range(cpu->dvfs, use_dfll);
-		tegra_cl_dvfs_debug_init(c);
-		pr_info("Tegra CPU DFLL is initialized with use_dfll = %d\n", use_dfll);
-	}
-#endif
-}
 
 static void __init tegra12_dfll_clk_init(struct clk *c)
 {
@@ -6977,6 +6950,7 @@ static struct clk tegra_pll_c4 = {
 		.lock_delay = 300,
 		.misc1 = 0x8,
 		.round_p_to_pdiv = pllss_round_p_to_pdiv,
+		.cpcon_default = 0,
 	},
 };
 
@@ -7007,6 +6981,7 @@ static struct clk tegra_pll_dp = {
 		.lock_delay = 300,
 		.misc1 = 0x8,
 		.round_p_to_pdiv = pllss_round_p_to_pdiv,
+		.cpcon_default = 0,
 	},
 };
 
@@ -8340,7 +8315,7 @@ struct clk tegra_list_clks[] = {
 	PERIPH_CLK("hdmi",	"hdmi",			NULL,	51,	0x18c,	594000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX | DIV_U71),
 	PERIPH_CLK("disp1",	"tegradc.0",		NULL,	27,	0x138,	600000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX),
 	PERIPH_CLK("disp2",	"tegradc.1",		NULL,	26,	0x13c,	600000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX),
-	PERIPH_CLK_EX("sor0",	"sor0",			NULL,	182,	0x414,	198000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX | DIV_U71, &tegra_sor_clk_ops),
+	PERIPH_CLK_EX("sor0",	"sor0",			NULL,	182,	0x414,	540000000, mux_pllp_pllm_plld_plla_pllc_plld2_clkm,	MUX | DIV_U71, &tegra_sor_clk_ops),
 	PERIPH_CLK("dpaux",	"dpaux",		NULL,	181,	0,	24000000, mux_clk_m,			0),
 	PERIPH_CLK("usbd",	"tegra-udc.0",		NULL,	22,	0,	480000000, mux_clk_m,			0),
 	PERIPH_CLK("usb2",	"tegra-ehci.1",		NULL,	58,	0,	480000000, mux_clk_m,			0),
@@ -8918,6 +8893,40 @@ static bool tegra12_is_dyn_ramp(
 	return false;
 }
 
+/* DFLL late init called with CPU clock lock taken */
+static void __init tegra12_dfll_cpu_late_init(struct clk *c)
+{
+#ifdef CONFIG_ARCH_TEGRA_HAS_CL_DVFS
+	int ret;
+	struct clk *cpu = &tegra_clk_virtual_cpu_g;
+
+	if (!cpu || !cpu->dvfs) {
+		pr_err("%s: CPU dvfs is not present\n", __func__);
+		return;
+	}
+	tegra_dvfs_set_dfll_tune_trimmers(cpu->dvfs, tune_cpu_trimmers);
+
+	/* release dfll clock source reset, init cl_dvfs control logic, and
+	   move dfll to initialized state, so it can be used as CPU source */
+	tegra_periph_reset_deassert(c);
+	ret = tegra_init_cl_dvfs();
+	if (!ret) {
+		c->state = OFF;
+		if (tegra_platform_is_silicon()) {
+			use_dfll = CONFIG_TEGRA_USE_DFLL_RANGE;
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+			if (tegra_cpu_speedo_id() == 0)
+				use_dfll = 0;
+#endif
+		}
+		tegra_dvfs_set_dfll_range(cpu->dvfs, use_dfll);
+		tegra_cl_dvfs_debug_init(c);
+		pr_info("Tegra CPU DFLL is initialized with use_dfll = %d\n",
+			use_dfll);
+	}
+#endif
+}
+
 /*
  * Backup pll is used as transitional CPU clock source while main pll is
  * relocking; in addition all CPU rates below backup level are sourced from
@@ -9400,8 +9409,8 @@ static int tegra12_clk_suspend(void)
 
 	*ctx++ = clk_get_rate_all_locked(&tegra_clk_emc);
 
-	pr_debug("%s: suspend entries: %d, suspend array: %d\n", __func__,
-		(ctx - clk_rst_suspend), ARRAY_SIZE(clk_rst_suspend));
+	pr_debug("%s: suspend entries: %d, suspend array: %u\n", __func__,
+		(s32)(ctx - clk_rst_suspend), (u32)ARRAY_SIZE(clk_rst_suspend));
 	BUG_ON((ctx - clk_rst_suspend) > ARRAY_SIZE(clk_rst_suspend));
 	return 0;
 }

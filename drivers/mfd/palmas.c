@@ -28,6 +28,7 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/system-wakeup.h>
 
 #define EXT_PWR_REQ (PALMAS_EXT_CONTROL_ENABLE1 |	\
 			PALMAS_EXT_CONTROL_ENABLE2 |	\
@@ -445,8 +446,11 @@ struct palmas_irq_chip_data {
 	int			irq_base;
 	int			irq;
 	struct mutex		irq_lock;
+	struct mutex		shutdown_irq_lock;
 	struct irq_chip		irq_chip;
 	struct irq_domain	*domain;
+
+	int			shutdown_irq;
 
 	struct palmas_irq_regs	*irq_regs;
 	struct palmas_irq	*irqs;
@@ -459,6 +463,7 @@ struct palmas_irq_chip_data {
 	int			num_mask_regs;
 	int			num_edge_regs;
 	int			wake_count;
+	bool			wakeup_print_enable;
 };
 
 static inline const struct palmas_irq *irq_to_palmas_irq(
@@ -581,11 +586,33 @@ static const struct irq_chip palmas_irq_chip = {
 	.irq_set_wake		= palmas_irq_set_wake,
 };
 
+static void print_wakeup_irq(struct device *dev, int irq)
+{
+	struct irq_desc *desc;
+
+	desc = irq_to_desc(irq);
+	if (!desc || !desc->action || !desc->action->name)
+		dev_info(dev, "Device WAKEUP sub-irq %d\n", irq);
+	else
+		dev_info(dev, "Device WAKEUP sub-irq %s\n", desc->action->name);
+}
+
 static irqreturn_t palmas_irq_thread(int irq, void *data)
 {
 	struct palmas_irq_chip_data *d = data;
 	int ret, i;
 	bool handled = false;
+	bool print_wakeup = false;
+	int sub_irq;
+
+	if (d->wakeup_print_enable && (irq == get_wakeup_reason_irq()))
+		print_wakeup = true;
+
+	mutex_lock(&d->shutdown_irq_lock);
+	if (d->shutdown_irq) {
+		dev_err(d->palmas->dev, "IRQ %d is shutdown state\n", irq);
+		goto exit;
+	}
 
 	for (i = 0; i < d->num_mask_regs; i++) {
 		ret = palmas_read(d->palmas,
@@ -596,7 +623,7 @@ static irqreturn_t palmas_irq_thread(int irq, void *data)
 		if (ret != 0) {
 			dev_err(d->palmas->dev,
 				"Failed to read IRQ status: %d\n", ret);
-			return IRQ_NONE;
+			goto exit;
 		}
 		d->status_value[i] &= ~d->mask_value[i];
 	}
@@ -604,11 +631,17 @@ static irqreturn_t palmas_irq_thread(int irq, void *data)
 	for (i = 0; i < d->num_irqs; i++) {
 		if (d->status_value[d->irqs[i].mask_reg_index] &
 				d->irqs[i].interrupt_mask) {
+			sub_irq = irq_find_mapping(d->domain, i);
+			if (print_wakeup)
+				print_wakeup_irq(d->palmas->dev, sub_irq);
 			handle_nested_irq(irq_find_mapping(d->domain, i));
 			handled = true;
 		}
 	}
+	d->wakeup_print_enable = false;
 
+exit:
+	mutex_unlock(&d->shutdown_irq_lock);
 	if (handled)
 		return IRQ_HANDLED;
 	else
@@ -668,6 +701,8 @@ static int palmas_add_irq_chip(struct palmas *palmas, int irq, int irq_flags,
 	d->irq = irq;
 	d->irq_base = irq_base;
 	mutex_init(&d->irq_lock);
+	mutex_init(&d->shutdown_irq_lock);
+	d->shutdown_irq = 0;
 	d->irq_chip = palmas_irq_chip;
 	d->irq_chip.name = dev_name(palmas->dev);
 	d->irq_regs = &palmas_irq_regs;
@@ -1264,9 +1299,43 @@ static int palmas_i2c_remove(struct i2c_client *i2c)
 	return 0;
 }
 
+static int palmas_i2c_suspend_no_irq(struct device *dev)
+{
+	struct palmas *palmas = dev_get_drvdata(dev);
+
+	palmas->irq_chip_data->wakeup_print_enable = true;
+	return 0;
+}
+
+static int palmas_i2c_resume(struct device *dev)
+{
+	struct palmas *palmas = dev_get_drvdata(dev);
+
+	palmas->irq_chip_data->wakeup_print_enable = false;
+	return 0;
+}
+
 static void palmas_i2c_shutdown(struct i2c_client *i2c)
 {
 	struct palmas *palmas = i2c_get_clientdata(i2c);
+	struct palmas_irq_chip_data *d = palmas->irq_chip_data;
+	int i, ret;
+
+	mutex_lock(&d->shutdown_irq_lock);
+	d->shutdown_irq = true;
+	disable_irq(palmas->irq);
+
+	dev_info(d->palmas->dev, "masking all palmas interrupts\n");
+	for (i = 0; i < d->num_mask_regs; i++) {
+		ret = palmas_update_bits(d->palmas,
+				d->irq_regs->mask_reg[i].reg_base,
+				d->irq_regs->mask_reg[i].reg_add,
+				d->mask_def_value[i], d->mask_def_value[i]);
+		if (ret < 0)
+			dev_err(d->palmas->dev, "Failed to update masks in %x\n",
+					d->irq_regs->mask_reg[i].reg_add);
+	}
+	mutex_unlock(&d->shutdown_irq_lock);
 
 	palmas->shutdown = true;
 }
@@ -1281,11 +1350,17 @@ static const struct i2c_device_id palmas_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, palmas_i2c_id);
 
+static const struct dev_pm_ops palams_pm_ops = {
+	.suspend_noirq = palmas_i2c_suspend_no_irq,
+	.resume = palmas_i2c_resume,
+};
+
 static struct i2c_driver palmas_i2c_driver = {
 	.driver = {
 		   .name = "palmas",
 		   .of_match_table = of_palmas_match_tbl,
 		   .owner = THIS_MODULE,
+		   .pm = &palams_pm_ops,
 	},
 	.probe = palmas_i2c_probe,
 	.remove = palmas_i2c_remove,
