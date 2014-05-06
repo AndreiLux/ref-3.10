@@ -1543,12 +1543,10 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 
 	/*
 	 * If it is charger type, we start charging now. If it is connected to
-	 * USB host(CDP/SDP), we let upper gadget driver to decide the current
-	 * capability.
+	 * USB host(CDP/SDP), we also start charging now. Upper gadget driver
+	 * won't decide the current while androidboot.mode=charger.
 	 */
-	if ((udc->connect_type != CONNECT_TYPE_SDP) &&
-		(udc->connect_type != CONNECT_TYPE_CDP))
-		tegra_usb_set_charging_current(udc);
+	tegra_usb_set_charging_current(udc);
 
 	return 0;
 }
