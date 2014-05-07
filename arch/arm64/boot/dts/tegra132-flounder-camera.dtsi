@@ -36,7 +36,7 @@
 
 		profiles {
 			imx219_1: imx219@2_0010 {
-				index = <0>;
+				index = <1>;
 				chipname = "pcl_IMX219";
 				type = "sensor";
 				guid = "s_IMX219";
@@ -51,9 +51,32 @@
 				drivername = "imx219";
 				detect = <0x0002 0x0016 0xFFFF 0x0219>;
 				devid = <0x0219>;
+				poweron = <
+					CAMERA_IND_CLK_SET(10000)
+					CAMERA_GPIO_CLR(119)
+					CAMERA_GPIO_SET(59)
+					CAMERA_WAITMS(10)
+					CAMERA_GPIO_SET(58)
+					CAMERA_GPIO_SET(62)
+					CAMERA_GPIO_SET(63)
+					CAMERA_WAITMS(1)
+					CAMERA_GPIO_SET(119)
+					CAMERA_WAITMS(20)
+					CAMERA_END
+					>;
+				poweroff = <
+					CAMERA_IND_CLK_CLR
+					CAMERA_GPIO_CLR(119)
+					CAMERA_WAITUS(1)
+					CAMERA_GPIO_CLR(63)
+					CAMERA_GPIO_CLR(62)
+					CAMERA_GPIO_CLR(58)
+					CAMERA_GPIO_CLR(59)
+					CAMERA_END
+					>;
 			};
 			ov9760_1: ov9760@2_0036 {
-				index = <1>;
+				index = <2>;
 				chipname = "pcl_OV9760";
 				type = "sensor";
 				guid = "s_OV9760";
@@ -63,13 +86,36 @@
 				addr = <0x36>;
 				datalen = <2>;
 				pinmuxgrp = <0xFFFF>;
-				clocks = "mclk";
+				clocks = "mclk2";
 				drivername = "ov9760";
 				detect = <0x0002 0x300A 0xFFFF 0x9760>;
 				devid = <0x9760>;
+				poweron = <
+					CAMERA_IND_CLK_SET(10000)
+					CAMERA_GPIO_CLR(219)
+					CAMERA_GPIO_SET(59)
+					CAMERA_WAITMS(10)
+					CAMERA_GPIO_SET(58)
+					CAMERA_GPIO_SET(62)
+					CAMERA_GPIO_SET(63)
+					CAMERA_WAITMS(1)
+					CAMERA_GPIO_SET(219)
+					CAMERA_WAITMS(20)
+					CAMERA_END
+					>;
+				poweroff = <
+					CAMERA_IND_CLK_CLR
+					CAMERA_GPIO_CLR(219)
+					CAMERA_WAITUS(1)
+					CAMERA_GPIO_CLR(63)
+					CAMERA_GPIO_CLR(62)
+					CAMERA_GPIO_CLR(58)
+					CAMERA_GPIO_CLR(59)
+					CAMERA_END
+					>;
 			};
 			tps61310_1: tps61310@0_0033 {
-				index = <2>;
+				index = <3>;
 				chipname = "pcl_TPS61310";
 				type = "flash";
 				guid = "l_NVCAM0";
@@ -82,9 +128,15 @@
 				drivername = "tps61310";
 				detect = <0x0001 0x0003 0x00F0 0x00C0>;
 				devid = <0x6131>;
+				poweron = <
+					CAMERA_END
+					>;
+				poweroff = <
+					CAMERA_END
+					>;
 			};
 			drv201_1: drv201@2_000e {
-				index = <3>;
+				index = <4>;
 				chipname = "pcl_DRV201";
 				type = "focuser";
 				guid = "f_NVCAM0";
@@ -97,6 +149,25 @@
 				drivername = "drv201";
 				detect = <0x0001 0x0007 0x00FF 0x0083>;
 				devid = <0x0201>;
+				poweron = <
+					CAMERA_GPIO_SET(59)
+					CAMERA_WAITMS(10)
+					CAMERA_GPIO_SET(58)
+					CAMERA_GPIO_SET(62)
+					CAMERA_GPIO_SET(63)
+					CAMERA_WAITMS(1)
+					CAMERA_GPIO_SET(223)
+					CAMERA_WAITMS(10)
+					CAMERA_END
+					>;
+				poweroff = <
+					CAMERA_GPIO_CLR(223)
+					CAMERA_GPIO_CLR(63)
+					CAMERA_GPIO_CLR(62)
+					CAMERA_GPIO_CLR(58)
+					CAMERA_GPIO_CLR(59)
+					CAMERA_END
+					>;
 			};
 		};
 	};
