@@ -20,32 +20,41 @@
 #include <linux/smp.h>
 #include <linux/cpu.h>
 #include <linux/cpu_pm.h>
+#include <linux/tegra-pmc.h>
 
 #include <asm/suspend.h>
 #include <asm/cacheflush.h>
 
-#include <linux/tegra-pmc.h>
-
 #include "pm.h"
+#include "pm-soc.h"
 #include "sleep.h"
 #include "flowctrl.h"
-#include "pm-soc.h"
 #include "pm-tegra132.h"
 #include "denver-knobs.h"
+#include "common.h"
 
-#define HALT_REG_CORE0 \
+#define HALT_REG_WAKE \
 	FLOW_CTRL_WAIT_FOR_INTERRUPT | \
 	FLOW_CTRL_HALT_LIC_IRQ | \
-	FLOW_CTRL_HALT_LIC_FIQ;
+	FLOW_CTRL_HALT_LIC_FIQ
 
-#define HALT_REG_CORE1 FLOW_CTRL_WAITEVENT
+#define HALT_REG_NO_WAKE FLOW_CTRL_WAITEVENT
+
+extern bool tegra_suspend_in_progress(void);
 
 static int tegra132_enter_sleep(unsigned long pmstate)
 {
 	u32 reg;
 	int cpu = smp_processor_id();
 
-	reg = cpu ? HALT_REG_CORE1 : HALT_REG_CORE0;
+	/* Null wake events for CORE1 in non-LP0 hotplug case.
+	 * For all other cases, we enable IRQ/FIQ wake events.
+	 */
+	if (cpu == 0 || !tegra_suspend_in_progress())
+		reg = HALT_REG_WAKE;
+	else
+		reg = HALT_REG_NO_WAKE;
+
 	flowctrl_write_cpu_halt(cpu, reg);
 	reg = readl(FLOW_CTRL_HALT_CPU(cpu));
 
@@ -69,8 +78,6 @@ static void tegra132_tear_down_cpu(void)
 {
 	int cpu = smp_processor_id();
 	u32 reg;
-
-	BUG_ON(cpu == 0);
 
 	tegra_psci_suspend_cpu(tegra_resume);
 
