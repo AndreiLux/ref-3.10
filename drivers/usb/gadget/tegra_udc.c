@@ -1500,7 +1500,9 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 					CONNECT_TYPE_NON_STANDARD_CHARGER);
 			tegra_usb_set_charging_current(udc);
 
-			 if (tegra_usb_phy_qc2_charger_detected(udc->phy,
+			tegra_udc_set_charger_type(udc,
+					CONNECT_TYPE_NONE);
+			if (tegra_usb_phy_qc2_charger_detected(udc->phy,
 					udc->qc2_voltage))
 				tegra_udc_set_charger_type(udc,
 					CONNECT_TYPE_DCP_QC2);
