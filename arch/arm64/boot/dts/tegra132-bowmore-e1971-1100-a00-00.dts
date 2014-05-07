@@ -32,6 +32,19 @@
 			thermal {
 				status = "okay";
 			};
+			pmic {
+				regulators {
+					smps123 {
+						ti,disable-active-discharge-idle;
+					};
+					smps45 {
+						ti,disable-active-discharge-idle;
+					};
+					smps7 {
+						ti,disable-active-discharge-idle;
+					};
+				};
+			};
 		};
 	};
 
