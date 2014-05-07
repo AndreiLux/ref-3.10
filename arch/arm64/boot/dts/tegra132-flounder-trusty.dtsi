@@ -31,5 +31,9 @@
 				interrupt-names = "fiq";
 			};
 		};
+
+		ote {
+			compatible = "android,trusty-ote-v1";
+		};
 	};
 };
