@@ -701,7 +701,7 @@ void raydium_report_pointer(void *p)
 static int rm_tch_read_image_data(unsigned char *p)
 {
 	int ret;
-	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
+
 	g_pu8_burstread_buf = p;
 
 #if ENABLE_FREQ_HOPPING  /*ENABLE_SCAN_DATA_HEADER*/
@@ -715,7 +715,7 @@ static int rm_tch_read_image_data(unsigned char *p)
 	g_pu8_burstread_buf[7] = 0x00;
 #endif
 
-	ret = rm_tch_cmd_process(0, g_st_rm_readimg_cmd, ts);
+	ret = rm_tch_cmd_process(0, g_st_rm_readimg_cmd, NULL);
 	return ret;
 }
 
@@ -771,6 +771,8 @@ void rm_tch_ctrl_enter_auto_mode(void)
 
 void rm_tch_ctrl_leave_auto_mode(void)
 {
+	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
+
 	g_st_ctrl.u8_idle_mode_check |= 0x01;
 
 #if ENABLE_FREQ_HOPPING
@@ -781,7 +783,7 @@ void rm_tch_ctrl_leave_auto_mode(void)
 	}
 #endif
 
-	rm_tch_cmd_process(0, g_st_cmd_set_idle, NULL);
+	rm_tch_cmd_process(0, g_st_cmd_set_idle, ts);
 	rm_set_repeat_times(g_st_ctrl.u8_active_digital_repeat_times);
 
 	if (g_st_ctrl.u8_kernel_msg & DEBUG_DRIVER)
@@ -2455,8 +2457,8 @@ static void rm_tch_enter_test_mode(u8 flag)
 		flush_workqueue(g_st_ts.rm_timer_workqueue);
 	} else { /*leave test mode*/
 		g_st_ts.b_selftest_enable = 0;
-		g_st_ts.b_is_suspended = false;
 		rm_tch_init_ts_structure_part();
+		g_st_ts.b_is_suspended = false;
 	}
 
 	rm_tch_cmd_process(flag, g_st_rm_testmode_cmd, NULL);
@@ -2686,9 +2688,6 @@ static void rm_ctrl_suspend(struct rm_tch_ts *ts)
 			g_input_dev,
 			BTN_STYLUS2, false);
 	}
-	input_mt_report_pointer_emulation(
-		g_input_dev,
-		false);
 	input_sync(g_input_dev);
 #endif
 	rm_tch_cmd_process(0, g_st_rm_suspend_cmd, ts);
