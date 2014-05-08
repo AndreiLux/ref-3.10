@@ -126,4 +126,9 @@
 		nvidia,port1_status = <1>;
 		status = "okay";
 	};
+
+	sata@0x70020000 {
+		status = "okay";
+		nvidia,enable-sata-port;
+	};
 };

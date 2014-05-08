@@ -1,0 +1,16 @@
+/dts-v1/;
+
+#include "tegra132-flounder-generic.dtsi"
+
+/ {
+	compatible = "google,flounder64", "nvidia,tegra132";
+	hw-revision = "xa,xb";
+
+        panel_jdi_qxga_8_9 {
+                gpios = <&gpio TEGRA_GPIO(Q, 2) 0>,
+                        <&gpio TEGRA_GPIO(R, 0) 0>,
+                        <&gpio TEGRA_GPIO(EE, 5) 0>,
+                        <&gpio TEGRA_GPIO(B, 4) 0>;
+        };
+};
+

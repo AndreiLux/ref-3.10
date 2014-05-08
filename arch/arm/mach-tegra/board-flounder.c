@@ -533,7 +533,9 @@ static void __init flounder_uart_init(void)
 			return;
 
 #ifdef CONFIG_TEGRA_FIQ_DEBUGGER
+#ifndef CONFIG_TRUSTY_FIQ
 		tegra_serial_debug_init_irq_mode(TEGRA_UARTA_BASE, INT_UARTA, NULL, -1, -1);
+#endif
 #else
 		platform_device_register(uart_console_debug_device);
 #endif
@@ -589,7 +591,9 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_rtc_device,
 	&tegra_udc_device,
 #if defined(CONFIG_TEGRA_WATCHDOG)
+#ifndef CONFIG_TRUSTY_FIQ
 	&tegra_wdt0_device,
+#endif
 #endif
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
@@ -630,10 +634,11 @@ static struct tegra_usb_platform_data tegra_udc_pdata = {
 		.elastic_limit = 16,
 		.idle_wait_delay = 17,
 		.term_range_adj = 6,
-		.xcvr_setup = 0,
+		.xcvr_setup = 64,
 		.xcvr_lsfslew = 2,
 		.xcvr_lsrslew = 2,
 		.xcvr_hsslew_lsb = 0,
+		.xcvr_hsslew_msb = 0,
 		.xcvr_setup_offset = 0,
 		.xcvr_use_fuses = 0,
 	},
@@ -1373,10 +1378,7 @@ static void __init tegra_flounder_reserve(void)
 
 static const char * const flounder_dt_board_compat[] = {
 	"google,flounder",
-	NULL
-};
-
-static const char * const flounder64_dt_board_compat[] = {
+	"google,flounder_lte",
 	"google,flounder64",
 	"google,flounder64_lte",
 	NULL
@@ -1393,19 +1395,5 @@ DT_MACHINE_START(FLOUNDER, "flounder")
 	.init_machine	= tegra_flounder_dt_init,
 	.restart	= tegra_assert_system_reset,
 	.dt_compat	= flounder_dt_board_compat,
-	.init_late      = tegra_init_late
-MACHINE_END
-
-DT_MACHINE_START(FLOUNDER64, "flounder64")
-	.atag_offset	= 0x100,
-	.smp		= smp_ops(tegra_smp_ops),
-	.map_io		= tegra_map_common_io,
-	.reserve	= tegra_flounder_reserve,
-	.init_early	= tegra_flounder_init_early,
-	.init_irq	= irqchip_init,
-	.init_time	= clocksource_of_init,
-	.init_machine	= tegra_flounder_dt_init,
-	.restart	= tegra_assert_system_reset,
-	.dt_compat	= flounder64_dt_board_compat,
 	.init_late      = tegra_init_late
 MACHINE_END

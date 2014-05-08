@@ -379,10 +379,13 @@ static void calc_disp_params(struct tegra_dc *dc,
 						reqd_lines *
 						bpp_for_line_buffer_storage_fp;
 	thresh_lwm_bytes =
+		la_params.la_fp_to_real(reqd_buffering_thresh_disp_bytes_fp);
+	thresh_lwm_bytes +=
 		la_params.la_fp_to_real(
-			reqd_buffering_thresh_disp_bytes_fp +
-			bw_disruption_buffering_bytes_fp -
-			latency_buffering_available_in_reqd_buffering_fp);
+			(bw_disruption_buffering_bytes_fp >=
+			latency_buffering_available_in_reqd_buffering_fp) ?
+			(bw_disruption_buffering_bytes_fp -
+			latency_buffering_available_in_reqd_buffering_fp) : 0);
 	disp_params->thresh_lwm_bytes = thresh_lwm_bytes;
 
 
@@ -661,12 +664,13 @@ static unsigned long tegra_dc_calc_win_bandwidth(struct tegra_dc *dc,
 		bpp = 16;
 #endif
 
-	ret = (dc->mode.pclk / 1000UL * bpp / 8);
+	ret = (dc->mode.pclk / 1000UL) * (bpp / 8);
 #if defined(CONFIG_ARCH_TEGRA_2x_SOC) || defined(CONFIG_ARCH_TEGRA_3x_SOC)
 	ret *= (win_use_v_filter(dc, w) ? 2 : 1);
 #endif
-	ret *=	div_u64(in_w, w->out_w * (WIN_IS_TILED(w) ?
-			tiled_windows_bw_multiplier : 1));
+	ret *= in_w;
+	ret = div_u64(ret, w->out_w * (WIN_IS_TILED(w) ?
+		      tiled_windows_bw_multiplier : 1));
 #ifdef CONFIG_ARCH_TEGRA_2x_SOC
 	/*
 	 * Assuming 60% efficiency: i.e. if we calculate we need 70MBps, we

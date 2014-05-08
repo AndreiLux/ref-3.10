@@ -1,0 +1,499 @@
+#include <dt-bindings/gpio/tegra-gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/arm-gic.h>
+
+#include "tegra132.dtsi"
+
+#include "tegra132-flounder-camera.dtsi"
+
+#include "tegra132-flounder-trusty.dtsi"
+
+/ {
+	model = "Flounder";
+
+	nvidia-boardids = "1780:1100:2:B:7","1794:1000:0:A:6";
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	chosen {
+		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
+		linux,initrd-start = <0x85000000>;
+		linux,initrd-end = <0x851bc400>;
+	};
+
+	pinmux {
+		status = "disable";
+	};
+
+	gpio: gpio@6000d000 {
+		gpio-init-names = "default";
+		gpio-init-0 = <&gpio_default>;
+
+		gpio_default: default {
+			gpio-input = <  TEGRA_GPIO(C, 7)
+					TEGRA_GPIO(A, 7)
+					TEGRA_GPIO(G, 2)
+					TEGRA_GPIO(G, 3)
+					TEGRA_GPIO(H, 4)
+					TEGRA_GPIO(I, 5)
+					TEGRA_GPIO(I, 6)
+					TEGRA_GPIO(J, 0)
+					TEGRA_GPIO(K, 2)
+					TEGRA_GPIO(K, 3)
+					TEGRA_GPIO(N, 7)
+					TEGRA_GPIO(O, 2)
+					TEGRA_GPIO(O, 3)
+					TEGRA_GPIO(O, 5)
+					TEGRA_GPIO(O, 7)
+					TEGRA_GPIO(Q, 1)
+					TEGRA_GPIO(Q, 6)
+					TEGRA_GPIO(Q, 7)
+					TEGRA_GPIO(R, 4)
+					TEGRA_GPIO(S, 0)
+					TEGRA_GPIO(S, 1)
+					TEGRA_GPIO(S, 4)
+					TEGRA_GPIO(U, 5)
+					TEGRA_GPIO(U, 6)
+					TEGRA_GPIO(V, 0)
+					TEGRA_GPIO(V, 1)
+					TEGRA_GPIO(W, 2)
+/*key*/
+					TEGRA_GPIO(Q, 0)
+					TEGRA_GPIO(Q, 5)
+					TEGRA_GPIO(V, 2)
+/*key*/
+/*headset*/
+					TEGRA_GPIO(S, 2)
+					TEGRA_GPIO(W, 3)
+/*headset*/
+					TEGRA_GPIO(BB, 6)
+					TEGRA_GPIO(BB, 7)
+					TEGRA_GPIO(CC, 1)
+					TEGRA_GPIO(CC, 2)>;
+			gpio-output-low = <TEGRA_GPIO(G, 0)
+					TEGRA_GPIO(G, 1)
+					TEGRA_GPIO(H, 2)
+					TEGRA_GPIO(H, 3)
+					TEGRA_GPIO(H, 5)
+					TEGRA_GPIO(H, 6)
+					TEGRA_GPIO(H, 7)
+					TEGRA_GPIO(I, 0)
+/*key*/
+					TEGRA_GPIO(I, 3)
+/*key*/
+					TEGRA_GPIO(I, 4)
+					TEGRA_GPIO(I, 7)
+/*headset*/
+					TEGRA_GPIO(J, 7)
+					TEGRA_GPIO(S, 3)
+/*headset*/
+					TEGRA_GPIO(K, 0)
+					TEGRA_GPIO(K, 1)
+					TEGRA_GPIO(K, 5)
+					TEGRA_GPIO(O, 0)
+					TEGRA_GPIO(O, 6)
+					TEGRA_GPIO(Q, 3)
+					TEGRA_GPIO(R, 1)
+					TEGRA_GPIO(R, 2)
+					TEGRA_GPIO(R, 5)
+					TEGRA_GPIO(S, 3)
+					TEGRA_GPIO(S, 6)
+					TEGRA_GPIO(U, 3)
+					TEGRA_GPIO(V, 3)
+					TEGRA_GPIO(X, 1)
+					TEGRA_GPIO(X, 3)
+					TEGRA_GPIO(X, 4)
+					TEGRA_GPIO(X, 5)
+					TEGRA_GPIO(X, 7)
+					TEGRA_GPIO(BB, 3)
+					TEGRA_GPIO(BB, 5)
+					TEGRA_GPIO(CC, 5)
+					TEGRA_GPIO(EE, 1)>;
+			gpio-output-high = <TEGRA_GPIO(B, 4)
+					TEGRA_GPIO(I, 2)
+					TEGRA_GPIO(K, 4)
+					TEGRA_GPIO(S, 5)
+					TEGRA_GPIO(R, 0)
+					TEGRA_GPIO(R, 3)
+					TEGRA_GPIO(X, 2)
+					TEGRA_GPIO(Q, 2)
+/*headset*/
+					TEGRA_GPIO(Q, 4)
+/*headset*/
+					>;
+		};
+	};
+
+        host1x {
+                dsi {
+                        nvidia,dsi-controller-vs = <1>;
+                        status = "okay";
+                };
+        };
+
+	serial@70006000 {
+		compatible = "nvidia,tegra114-hsuart";
+		status = "okay";
+	};
+
+	serial@70006040 {
+		compatible = "nvidia,tegra114-hsuart";
+		status = "okay";
+	};
+
+	serial@70006200 {
+		compatible = "nvidia,tegra114-hsuart";
+		status = "okay";
+	};
+
+	serial@70006300 {
+		compatible = "nvidia,tegra114-hsuart";
+		status = "okay";
+	};
+
+	memory@0x80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x80000000>;
+	};
+
+	i2c@7000c000 {
+		status = "okay";
+		clock-frequency = <400000>;
+
+		max17050@36 {
+			compatible = "maxim,max17050";
+			reg = <0x36>;
+		};
+
+		bq2419x: bq2419x@6b {
+			compatible = "ti,bq2419x";
+			reg = <0x6b>;
+
+			interrupt-parent = <&gpio>;
+			interrupts = <TEGRA_GPIO(J, 0) 0x0>;
+
+			charger {
+				regulator-name = "batt_regulator";
+				regulator-max-microamp = <3000000>;
+				ti,watchdog-timeout = <0>;
+				ti,auto-recharge-time = <1800>;
+				ti,input-voltage-limit-millivolt = <4440>;
+				ti,fast-charge-current-limit-milliamp = <2944>;
+				ti,pre-charge-current-limit-milliamp = <512>;
+				ti,charge-term-current-limit-milliamp = <128>;
+				ti,charge-voltage-limit-millivolt = <4352>;
+				ti,disbale-suspend-during-charging;
+				ti,charge-suspend-polling-time-sec = <3600>;
+				ti,safety-timer-reset-disable;
+				ti,temp-polling-time-sec = <30>;
+				thermal-overtemp-control-no-thermister;
+				thermal-temperature-hot-deciC = <551>;
+				thermal-temperature-cold-deciC = <(-1)>;
+				thermal-temperature-warm-deciC = <481>;
+				thermal-temperature-cool-deciC = <100>;
+				thermal-temperature-hysteresis-deciC = <30>;
+				thermal-warm-voltage-millivolt = <4096>;
+				thermal-cool-voltage-millivolt = <4352>;
+				thermal-disable-warm-current-half;
+				thermal-overtemp-output-current-milliamp = <1344>;
+				charge-full-by-monitor-full-threshold;
+				unknown-battery-id-minimum = <1343>;
+				battery-id-channel-name = "batt-id-channel";
+				consumers {
+					c1 {
+						regulator-consumer-supply = "usb_bat_chg";
+						regulator-consumer-device = "tegra-udc.0";
+					};
+				};
+			};
+
+			vbus {
+				regulator-name = "vbus_regulator";
+				consumers {
+					c1 {
+						regulator-consumer-supply = "usb_vbus";
+						regulator-consumer-device = "tegra-ehci.0";
+					};
+
+					c2 {
+						regulator-consumer-supply = "usb_vbus";
+						regulator-consumer-device = "tegra-otg";
+					};
+				};
+			};
+		};
+
+		htc_mcu@72 {
+			compatible = "htc_mcu";
+			reg = <0x72>;
+			interrupt-parent = <&gpio>;
+			interrupts = <140 0x0>;
+			mcu,intr-gpio  = <&gpio 140 0>;
+			mcu,gs_chip_layout = <1>;
+			mcu,acceleration_axes = <7>;
+			mcu,magnetic_axes = <7>;
+			mcu,gyro_axes = <7>;
+			mcu,Cpu_wake_mcu-gpio = <&gpio 129 0>;
+			mcu,Reset-gpio = <&gpio 138 0>;
+			mcu,Chip_mode-gpio = <&gpio 164 0>;
+		};
+	};
+
+	i2c@7000c400 {
+		status = "okay";
+		clock-frequency = <400000>;
+
+		lp5521@32 {
+			compatible = "LP5521-LED";
+			reg = <0x32>;
+			lp5521,lp5521_en = <&gpio 60 0x00>;
+			lp5521,num_leds = <1>;
+		};
+		richtek_rt5506_amp@52 {
+			compatible = "richtek,rt5506-amp";
+			reg = <0x52>;
+			richtek,enable-gpio = <&gpio 185 0>;
+		};
+	};
+
+	i2c@7000c500 {
+		status = "okay";
+		clock-frequency = <400000>;
+	};
+
+	i2c@7000c700 {
+		status = "okay";
+		clock-frequency = <400000>;
+	};
+
+	i2c@7000d000 {
+		status = "okay";
+		clock-frequency = <400000>;
+		nvidia,bit-banging-xfer-after-shutdown;
+
+	/include/ "tegra124-flounder-power.dtsi"
+	};
+
+	i2c@7000d100 {
+		status = "okay";
+		clock-frequency = <400000>;
+	};
+
+	spi@7000d400 {
+		status = "okay";
+		spi-max-frequency = <25000000>;
+	};
+
+	spi@7000d800 {
+		status = "okay";
+		spi-max-frequency = <25000000>;
+	};
+
+	spi@7000da00 {
+		status = "okay";
+		spi-max-frequency = <25000000>;
+	};
+
+	spi@7000dc00 {
+		status = "okay";
+		spi-max-frequency = <25000000>;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		power {
+			label = "Power";
+			gpios = <&gpio TEGRA_GPIO(Q, 0) GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_POWER>;
+			gpio-key,wakeup;
+			debounce-interval = <20>;
+		};
+
+		volume_down {
+			label = "Volume Down";
+			gpios = <&gpio TEGRA_GPIO(Q, 5) GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_VOLUMEDOWN>;
+			debounce-interval = <20>;
+		};
+
+		volume_up {
+			label = "Volume Up";
+			gpios = <&gpio TEGRA_GPIO(V, 2) GPIO_ACTIVE_LOW>;
+			linux,code = <KEY_VOLUMEUP>;
+			debounce-interval = <20>;
+		};
+	};
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		vdd_ac_bat_reg: regulator@0 {
+			compatible = "regulator-fixed";
+			reg = <0>;
+			regulator-name = "vdd_ac_bat";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			regulator-always-on;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "vdd_sys_bl";
+				};
+			};
+		};
+
+		usb0_vbus: regulator@1 {
+			compatible = "regulator-fixed-sync";
+			reg = <1>;
+			regulator-name = "usb0-vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			gpio = <&gpio 108 0>; /*  TEGRA_PN4 */
+			enable-active-high;
+			gpio-open-drain;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "usb_vbus0";
+					regulator-consumer-device = "tegra-xhci";
+				};
+			};
+		};
+
+		usb1_vbus: regulator@2 {
+			compatible = "regulator-fixed-sync";
+			reg = <2>;
+			regulator-name = "usb1-vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			enable-active-high;
+			gpio = <&gpio 109 0>; /* TEGRA_PN5 */
+			gpio-open-drain;
+			vin-supply = <&palmas_smps10_out2>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "usb_vbus";
+					regulator-consumer-device = "tegra-ehci.1";
+				};
+				c2 {
+					regulator-consumer-supply = "usb_vbus1";
+					regulator-consumer-device = "tegra-xhci";
+				};
+			};
+		};
+
+		usb2_vbus: regulator@3 {
+			compatible = "regulator-fixed-sync";
+			reg = <3>;
+			regulator-name = "usb2-vbus";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			enable-active-high;
+			gpio = <&gpio 249 0>; /* TEGRA_PFF1 */
+			gpio-open-drain;
+			vin-supply = <&palmas_smps10_out2>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "usb_vbus";
+					regulator-consumer-device = "tegra-ehci.2";
+				};
+				c2 {
+					regulator-consumer-supply = "usb_vbus2";
+					regulator-consumer-device = "tegra-xhci";
+				};
+			};
+		};
+
+		avdd_lcd: regulator@4 {
+			compatible = "regulator-fixed-sync";
+			reg = <4>;
+			regulator-name = "avdd-lcd";
+			regulator-min-microvolt = <3300000>;
+			regulator-max-microvolt = <3300000>;
+			gpio = <&palmas_gpio 3 0>;
+			enable-active-high;
+			vin-supply = <&palmas_smps9>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "avdd_lcd";
+				};
+			};
+		};
+
+		vdd_lcd: regulator@5 {
+			compatible = "regulator-fixed-sync";
+			reg = <5>;
+			regulator-name = "vdd-lcd";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			enable-active-high;
+			gpio = <&palmas_gpio 4 0>;
+			vin-supply = <&palmas_smps8>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "vdd_lcd_1v2_s";
+				};
+			};
+		};
+
+		ldoen: regulator@6 {
+			compatible = "regulator-fixed-sync";
+			reg = <6>;
+			regulator-name = "ldoen";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-boot-on;
+			enable-active-high;
+			gpio = <&palmas_gpio 6 0>;
+			vin-supply = <&palmas_smps8>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "ldoen";
+					regulator-consumer-device = "1-0052";
+				};
+			};
+		};
+
+		vpp_fuse: regulator@7 {
+			compatible = "regulator-fixed-sync";
+			reg = <7>;
+			regulator-name = "vpp-fuse";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			enable-active-high;
+			gpio = <&palmas_gpio 7 0>;
+			vin-supply = <&palmas_smps8>;
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "vpp_fuse";
+				};
+			};
+		};
+
+		en_lcd_bl: regulator@8 {
+			compatible = "regulator-fixed-sync";
+			reg = <8>;
+			regulator-name = "en-lcd-bl";
+			regulator-min-microvolt = <5000000>;
+			regulator-max-microvolt = <5000000>;
+			enable-active-high;
+			gpio = <&gpio 134 0>; /* TEGRA_PQ6 */
+
+			consumers {
+				c1 {
+					regulator-consumer-supply = "vdd_lcd_bl_en";
+				};
+			};
+		};
+	};
+
+};

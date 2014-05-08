@@ -1612,8 +1612,23 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 {
 	int ret = -ENOTTY;
 
-	if (!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) || !dc->enabled)
+	/* Generally vsync comes at 60Hz (~16.67ms per cycle).
+	 * 2 time periods should be good enough for the timeout.
+	 * We add some margin here for the default timeout value.
+	 */
+	unsigned long timeout_ms = 40;
+
+	if (dc->out->type == TEGRA_DC_OUT_DSI &&
+		dc->out->dsi->rated_refresh_rate != 0)
+		timeout_ms = 2 * DIV_ROUND_UP(1000,
+			 dc->out->dsi->rated_refresh_rate);
+
+	mutex_lock(&dc->one_shot_lp_lock);
+
+	if (!(dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE) || !dc->enabled) {
+		mutex_unlock(&dc->one_shot_lp_lock);
 		return ret;
+	}
 
 	tegra_dc_get(dc);
 	if (dc->out_ops && dc->out_ops->hold)
@@ -1626,26 +1641,25 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 	 * c) Initialize completion for next iteration.
 	 */
 
-	mutex_lock(&dc->one_shot_lp_lock);
 	dc->out->user_needs_vblank = true;
 
 	mutex_lock(&dc->lock);
 	tegra_dc_unmask_interrupt(dc, MSF_INT);
 	mutex_unlock(&dc->lock);
 
-	ret = wait_for_completion_interruptible(&dc->out->user_vblank_comp);
+	ret = wait_for_completion_interruptible_timeout(
+		&dc->out->user_vblank_comp, msecs_to_jiffies(timeout_ms));
 	init_completion(&dc->out->user_vblank_comp);
 
 	mutex_lock(&dc->lock);
 	tegra_dc_mask_interrupt(dc, MSF_INT);
 	mutex_unlock(&dc->lock);
 
-	mutex_unlock(&dc->one_shot_lp_lock);
-
 	if (dc->out_ops && dc->out_ops->release)
 		dc->out_ops->release(dc);
 	tegra_dc_put(dc);
 
+	mutex_unlock(&dc->one_shot_lp_lock);
 	return ret;
 }
 
@@ -2652,6 +2666,8 @@ void tegra_dc_disable(struct tegra_dc *dc)
 	 * lock is acquired. */
 	cancel_delayed_work_sync(&dc->underflow_work);
 
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		mutex_lock(&dc->one_shot_lp_lock);
 	mutex_lock(&dc->lock);
 
 	if (dc->enabled) {
@@ -2665,6 +2681,8 @@ void tegra_dc_disable(struct tegra_dc *dc)
 	switch_set_state(&dc->modeset_switch, 0);
 #endif
 	mutex_unlock(&dc->lock);
+	if (dc->out->flags & TEGRA_DC_OUT_ONE_SHOT_MODE)
+		mutex_unlock(&dc->one_shot_lp_lock);
 	synchronize_irq(dc->irq);
 	trace_display_mode(dc, &dc->mode);
 
@@ -2934,20 +2952,26 @@ static int tegra_dc_probe(struct platform_device *ndev)
 
 	if (np) {
 		struct resource of_fb_res;
+		int err;
 		if (ndev->id == 0)
-			tegra_get_fb_resource(&of_fb_res);
+			err = tegra_get_fb_resource(&of_fb_res);
 		else /*ndev->id == 1*/
-			tegra_get_fb2_resource(&of_fb_res);
+			err = tegra_get_fb2_resource(&of_fb_res);
 
-		fb_mem = kzalloc(sizeof(struct resource), GFP_KERNEL);
-		if (fb_mem == NULL) {
-			ret = -ENOMEM;
-			goto err_iounmap_reg;
+		if (err < 0) {
+			dev_dbg(&ndev->dev, "failed to get fb resource: %d\n",
+					-err);
+		} else {
+			fb_mem = kzalloc(sizeof(struct resource), GFP_KERNEL);
+			if (fb_mem == NULL) {
+				ret = -ENOMEM;
+				goto err_iounmap_reg;
+			}
+			fb_mem->name = "fbmem";
+			fb_mem->flags = IORESOURCE_MEM;
+			fb_mem->start = (resource_size_t)of_fb_res.start;
+			fb_mem->end = (resource_size_t)of_fb_res.end;
 		}
-		fb_mem->name = "fbmem";
-		fb_mem->flags = IORESOURCE_MEM;
-		fb_mem->start = (resource_size_t)of_fb_res.start;
-		fb_mem->end = (resource_size_t)of_fb_res.end;
 	} else {
 		fb_mem = platform_get_resource_byname(ndev,
 			IORESOURCE_MEM, "fbmem");
@@ -3131,7 +3155,7 @@ static int tegra_dc_probe(struct platform_device *ndev)
 
 #ifdef CONFIG_ADF_TEGRA
 		tegra_dc_io_start(dc);
-		dc->adf = tegra_adf_init(ndev, dc, dc->pdata->fb);
+		dc->adf = tegra_adf_init(ndev, dc, dc->pdata->fb, fb_mem);
 		tegra_dc_io_end(dc);
 
 		if (IS_ERR(dc->adf)) {
@@ -3300,10 +3324,13 @@ static int tegra_dc_suspend(struct platform_device *ndev, pm_message_t state)
 
 	if (dc->out && dc->out->postsuspend) {
 		dc->out->postsuspend();
-		if (dc->out->type && dc->out->type == TEGRA_DC_OUT_HDMI)
-			/*
-			 * avoid resume event due to voltage falling
-			 */
+		/* avoid resume event due to voltage falling on interfaces that
+		 * support hotplug wake. And only do this if a panel is
+		 * connected, if we are already disconnected, then no phantom
+		 * hotplug can occur by disabling the voltage.
+		 */
+		if ((dc->out->flags & TEGRA_DC_OUT_HOTPLUG_WAKE_LP0)
+			&& tegra_dc_get_connected(dc))
 			msleep(100);
 	}
 

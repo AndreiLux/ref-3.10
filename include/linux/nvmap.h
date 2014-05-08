@@ -21,8 +21,9 @@
  */
 
 #include <linux/ioctl.h>
-#include <linux/rbtree.h>
+#include <linux/types.h>
 #if defined(__KERNEL__)
+#include <linux/rbtree.h>
 #include <linux/file.h>
 #include <linux/dma-buf.h>
 #include <linux/device.h>
@@ -52,7 +53,8 @@
 #define NVMAP_HANDLE_KIND_SPECIFIED  (0x1ul << 3)
 #define NVMAP_HANDLE_COMPR_SPECIFIED (0x1ul << 4)
 #define NVMAP_HANDLE_ZEROED_PAGES    (0x1ul << 5)
-#define NVMAP_HANDLE_PHYSICALLY_CONTIGUOUS (0x1ul << 6)
+#define NVMAP_HANDLE_PHYS_CONTIG     (0x1ul << 6)
+#define NVMAP_HANDLE_CACHE_SYNC      (0x1ul << 7)
 
 #if defined(__KERNEL__)
 
@@ -110,6 +112,11 @@ enum {
 	NVMAP_CACHE_OP_WB = 0,
 	NVMAP_CACHE_OP_INV,
 	NVMAP_CACHE_OP_WB_INV,
+};
+
+enum {
+	NVMAP_PAGES_UNRESERVE = 0,
+	NVMAP_PAGES_RESERVE
 };
 
 struct nvmap_create_handle {
@@ -223,8 +230,13 @@ struct nvmap_cache_op_32 {
 #endif
 
 struct nvmap_cache_op_list {
-	__u32 handles;		/* Uspace ptr to list of handles */
+	__u64 handles;		/* Ptr to u32 type array, holding handles */
+	__u64 offsets;		/* Ptr to u32 type array, holding offsets
+				 * into handle mem */
+	__u64 sizes;		/* Ptr to u32 type array, holindg sizes of memory
+				 * regions within each handle */
 	__u32 nr;		/* Number of handles */
+	__s32 op;		/* wb/wb_inv/inv */
 };
 
 #define NVMAP_IOC_MAGIC 'N'
@@ -295,6 +307,9 @@ struct nvmap_cache_op_list {
 
 /* Perform cache maintenance on a list of handles. */
 #define NVMAP_IOC_CACHE_LIST _IOW(NVMAP_IOC_MAGIC, 17,	\
+				  struct nvmap_cache_op_list)
+/* Perform reserve operation on a list of handles. */
+#define NVMAP_IOC_RESERVE _IOW(NVMAP_IOC_MAGIC, 18,	\
 				  struct nvmap_cache_op_list)
 /* START of T124 IOCTLS */
 /* Actually allocates memory for the specified handle, with kind */

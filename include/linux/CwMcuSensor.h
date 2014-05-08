@@ -20,15 +20,14 @@
 #define CWMCU_I2C_NAME "CwMcuSensor"
 
 enum ABS_status {
-	CW_ABS_X = 0x01,
-	CW_ABS_Y,
-	CW_ABS_Z,
-	CW_ABS_X1,
-	CW_ABS_Y1,
-	CW_ABS_Z1,
-	CW_ABS_TIMEDIFF,
-	ABS_STEP_DETECTOR = 0x23,
-	ABS_STEP_COUNTER = 0x24,
+	CW_SCAN_ID = 0,
+	CW_SCAN_X,
+	CW_SCAN_Y,
+	CW_SCAN_Z,
+	CW_SCAN_XX,
+	CW_SCAN_YY,
+	CW_SCAN_ZZ,
+	CW_SCAN_TIMESTAMP,
 };
 
 
@@ -92,7 +91,7 @@ int touch_status(u8 status);
 #define CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_PRESSURE         0xB8
 #define CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_PRESSURE         0xB8
 
-#define CWMCU_MAX_DELAY		2000
+#define CWMCU_MAX_DELAY		200
 
 #define G_SENSORS_STATUS                                        0x60
 #define ACCE_UPDATE_RATE                                        0x66

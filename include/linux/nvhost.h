@@ -102,6 +102,7 @@ struct nvhost_notification {
 #define	NVHOST_CHANNEL_FIFO_ERROR_MMU_ERR_FLT	31
 	__u16 info16;	/* info returned depends on method 000c-000d */
 	__u16 status;	/* user sets bit 15, NV sets status 000e-000f */
+#define	NVHOST_CHANNEL_SUBMIT_TIMEOUT		1
 };
 
 struct nvhost_clock {
@@ -119,6 +120,7 @@ struct nvhost_device_data {
 	struct device_dma_parameters dma_parms;
 
 	u32		syncpts[NVHOST_MODULE_MAX_SYNCPTS];
+	u32		client_managed_syncpt;
 	u32		waitbases[NVHOST_MODULE_MAX_WAITBASES];
 	u32		modulemutexes[NVHOST_MODULE_MAX_MODMUTEXES];
 	u32		moduleid;	/* Module id for user space API */
@@ -128,6 +130,8 @@ struct nvhost_device_data {
 	bool		keepalive;	/* Do not power gate when opened */
 	bool		waitbasesync;	/* Force sync of wait bases */
 	bool		serialize;	/* Serialize submits in the channel */
+
+	char		*firmware_name;	/* Name of firmware */
 
 	int		powergate_ids[NVHOST_MODULE_MAX_POWERGATE_IDS];
 	bool		can_powergate;	/* True if module can be power gated */

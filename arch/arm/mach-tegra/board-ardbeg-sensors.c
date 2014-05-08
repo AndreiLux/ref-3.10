@@ -11,9 +11,6 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <linux/i2c.h>
@@ -1936,14 +1933,6 @@ static struct i2c_board_info ardbeg_i2c_nct72_board_info[] = {
 #endif
 };
 
-static struct i2c_board_info laguna_i2c_nct72_board_info[] = {
-	{
-		I2C_BOARD_INFO("nct72", 0x4c),
-		.platform_data = &ardbeg_nct72_pdata,
-		.irq = -1,
-	},
-};
-
 static int ardbeg_nct72_init(void)
 {
 	s32 base_cp, shft_cp;
@@ -2016,12 +2005,14 @@ static int ardbeg_nct72_init(void)
 			board_info.board_id == BOARD_PM370 ||
 			board_info.board_id == BOARD_PM374 ||
 			board_info.board_id == BOARD_PM363)
-		i2c_register_board_info(1, laguna_i2c_nct72_board_info,
-			ARRAY_SIZE(laguna_i2c_nct72_board_info));
-	else if (board_info.board_id == BOARD_PM375)
-		i2c_register_board_info(0, laguna_i2c_nct72_board_info,
-				ARRAY_SIZE(laguna_i2c_nct72_board_info));
-	else if (board_info.board_id == BOARD_E1971 ||
+		i2c_register_board_info(1, ardbeg_i2c_nct72_board_info,
+		ARRAY_SIZE(ardbeg_i2c_nct72_board_info));
+	else if (board_info.board_id == BOARD_PM375) {
+		ardbeg_nct72_pdata.sensors[EXT].shutdown_limit = 100;
+		ardbeg_nct72_pdata.sensors[LOC].shutdown_limit = 95;
+		i2c_register_board_info(0, ardbeg_i2c_nct72_board_info,
+					1); /* only register device[0] */
+	} else if (board_info.board_id == BOARD_E1971 ||
 		 board_info.board_id == BOARD_E1991)
 		/* bowmore has thermal sensor on GEN1-I2C i.e. instance 0 */
 		i2c_register_board_info(0, ardbeg_i2c_nct72_board_info,
