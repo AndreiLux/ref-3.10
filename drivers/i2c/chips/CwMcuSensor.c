@@ -2044,11 +2044,10 @@ static ssize_t flush_show(struct device *dev, struct device_attribute *attr,
 		D("%s: Read Counter fail, ret = %d\n", __func__, ret);
 
 	D("%s: DEBUG: Queue counter = %d\n", __func__,
-	  *(int *)&data[0]);
+	  *(u32 *)&data[0]);
 
-	cwmcu_batch_read(mcu_data);
-
-	return scnprintf(buf, PAGE_SIZE, "data[0] = %d\n", *(int *)&data[0]);
+	return scnprintf(buf, PAGE_SIZE, "Queue counter = %d\n",
+			 *(u32 *)&data[0]);
 }
 
 static void cwmcu_send_flush(int id)
@@ -2118,7 +2117,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 	u8 data_buff;
 	u16 data_event[4] = {0};
 	int i;
-	int *event_count;
+	u32 *event_count;
 
 	/*D("%s++:\n", __func__);*/
 
@@ -2131,8 +2130,8 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 		if (ret < 0)
 			D("Read Batched data Counter fail, ret = %d\n", ret);
 
-		event_count = (int *)(&event_count_data[0]);
-		D("%s: event_count = %d\n", __func__, *event_count);
+		event_count = (u32 *)(&event_count_data[0]);
+		D("%s: event_count = %u\n", __func__, *event_count);
 
 		for (i = 0; i < *event_count; i++) {
 			u8 data[9] = {0};
@@ -2184,7 +2183,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 
 						D(
 						  "Batch data: total count = "
-						  "%d, current count = %d,"
+						  "%u, current count = %d,"
 						  " event_id = %d, bias(x, y,"
 						  " z) = (%d, %d, %d)\n"
 						  , *event_count
@@ -2219,7 +2218,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 
 						D(
 						  "Batch data: total count ="
-						  " %d, current count = %d, "
+						  " %u, current count = %d, "
 						  "event_id = %d, data_x = %d,"
 						  " data_y = %d, data_z = %d,"
 						  " timediff = %d\n"
