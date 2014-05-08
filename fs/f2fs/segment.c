@@ -581,7 +581,10 @@ static void allocate_segment_by_default(struct f2fs_sb_info *sbi,
 	else
 		new_curseg(sbi, type, false);
 out:
+#ifdef CONFIG_F2FS_STAT_FS
 	sbi->segment_count[curseg->alloc_type]++;
+#endif
+	return;
 }
 
 void allocate_new_segments(struct f2fs_sb_info *sbi)
@@ -769,7 +772,7 @@ static int __get_segment_type_6(struct page *page, enum page_type p_type)
 
 		if (S_ISDIR(inode->i_mode))
 			return CURSEG_HOT_DATA;
-		else if (is_cold_data(page) || is_cold_file(inode))
+		else if (is_cold_data(page) || file_is_cold(inode))
 			return CURSEG_COLD_DATA;
 		else
 			return CURSEG_WARM_DATA;
@@ -822,7 +825,9 @@ static void do_write_page(struct f2fs_sb_info *sbi, struct page *page,
 
 	mutex_lock(&sit_i->sentry_lock);
 	__refresh_next_blkoff(sbi, curseg);
+#ifdef CONFIG_F2FS_STAT_FS
 	sbi->block_count[curseg->alloc_type]++;
+#endif
 
 	/*
 	 * SIT information should be updated before segment allocation,

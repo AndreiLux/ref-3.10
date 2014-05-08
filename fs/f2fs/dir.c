@@ -287,7 +287,7 @@ static void init_dent_inode(const struct qstr *name, struct page *ipage)
 	struct f2fs_node *rn;
 
 	/* copy name info. to this inode page */
-	rn = (struct f2fs_node *)page_address(ipage);
+	rn = F2FS_NODE(ipage);
 	rn->i.i_namelen = cpu_to_le32(name->len);
 	memcpy(rn->i.i_name, name->name, name->len);
 	set_page_dirty(ipage);
@@ -388,7 +388,7 @@ static struct page *init_inode_metadata(struct inode *inode,
 	 * We lost i_pino from now on.
 	 */
 	if (is_inode_flag_set(F2FS_I(inode), FI_INC_LINK)) {
-		set_cp_file(inode);
+		file_lost_pino(inode);
 		inc_nlink(inode);
 	}
 	return page;
@@ -402,22 +402,20 @@ error:
 static void update_parent_metadata(struct inode *dir, struct inode *inode,
 						unsigned int current_depth)
 {
-	bool need_dir_update = false;
-
 	if (is_inode_flag_set(F2FS_I(inode), FI_NEW_INODE)) {
 		if (S_ISDIR(inode->i_mode)) {
 			inc_nlink(dir);
-			need_dir_update = true;
+			set_inode_flag(F2FS_I(dir), FI_UPDATE_DIR);
 		}
 		clear_inode_flag(F2FS_I(inode), FI_NEW_INODE);
 	}
 	dir->i_mtime = dir->i_ctime = CURRENT_TIME;
 	if (F2FS_I(dir)->i_current_depth != current_depth) {
 		F2FS_I(dir)->i_current_depth = current_depth;
-		need_dir_update = true;
+		set_inode_flag(F2FS_I(dir), FI_UPDATE_DIR);
 	}
 
-	if (need_dir_update)
+	if (is_inode_flag_set(F2FS_I(dir), FI_UPDATE_DIR))
 		update_inode_page(dir);
 	else
 		mark_inode_dirty(dir);
@@ -534,6 +532,7 @@ add_dentry:
 
 	update_parent_metadata(dir, inode, current_depth);
 fail:
+	clear_inode_flag(F2FS_I(dir), FI_UPDATE_DIR);
 	kunmap(dentry_page);
 	f2fs_put_page(dentry_page, 1);
 	return err;

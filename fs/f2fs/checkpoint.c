@@ -472,12 +472,29 @@ fail_no_cp:
 	return -EINVAL;
 }
 
-void set_dirty_dir_page(struct inode *inode, struct page *page)
+static int __add_dirty_inode(struct inode *inode, struct dir_inode_entry *new)
 {
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
 	struct list_head *head = &sbi->dir_inode_list;
-	struct dir_inode_entry *new;
 	struct list_head *this;
+
+	list_for_each(this, head) {
+		struct dir_inode_entry *entry;
+		entry = list_entry(this, struct dir_inode_entry, list);
+		if (entry->inode == inode)
+			return -EEXIST;
+	}
+	list_add_tail(&new->list, head);
+#ifdef CONFIG_F2FS_STAT_FS
+	sbi->n_dirty_dirs++;
+#endif
+	return 0;
+}
+
+void set_dirty_dir_page(struct inode *inode, struct page *page)
+{
+	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
+	struct dir_inode_entry *new;
 
 	if (!S_ISDIR(inode->i_mode))
 		return;
@@ -491,23 +508,31 @@ retry:
 	INIT_LIST_HEAD(&new->list);
 
 	spin_lock(&sbi->dir_inode_lock);
-	list_for_each(this, head) {
-		struct dir_inode_entry *entry;
-		entry = list_entry(this, struct dir_inode_entry, list);
-		if (entry->inode == inode) {
-			kmem_cache_free(inode_entry_slab, new);
-			goto out;
-		}
-	}
-	list_add_tail(&new->list, head);
-	sbi->n_dirty_dirs++;
+	if (__add_dirty_inode(inode, new))
+		kmem_cache_free(inode_entry_slab, new);
 
-	BUG_ON(!S_ISDIR(inode->i_mode));
-out:
 	inc_page_count(sbi, F2FS_DIRTY_DENTS);
 	inode_inc_dirty_dents(inode);
 	SetPagePrivate(page);
+	spin_unlock(&sbi->dir_inode_lock);
+}
 
+void add_dirty_dir_inode(struct inode *inode)
+{
+	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
+	struct dir_inode_entry *new;
+retry:
+	new = kmem_cache_alloc(inode_entry_slab, GFP_NOFS);
+	if (!new) {
+		cond_resched();
+		goto retry;
+	}
+	new->inode = inode;
+	INIT_LIST_HEAD(&new->list);
+
+	spin_lock(&sbi->dir_inode_lock);
+	if (__add_dirty_inode(inode, new))
+		kmem_cache_free(inode_entry_slab, new);
 	spin_unlock(&sbi->dir_inode_lock);
 }
 
@@ -521,8 +546,10 @@ void remove_dirty_dir_inode(struct inode *inode)
 		return;
 
 	spin_lock(&sbi->dir_inode_lock);
-	if (atomic_read(&F2FS_I(inode)->dirty_dents))
-		goto out;
+	if (atomic_read(&F2FS_I(inode)->dirty_dents)) {
+		spin_unlock(&sbi->dir_inode_lock);
+		return;
+	}
 
 	list_for_each(this, head) {
 		struct dir_inode_entry *entry;
@@ -530,12 +557,38 @@ void remove_dirty_dir_inode(struct inode *inode)
 		if (entry->inode == inode) {
 			list_del(&entry->list);
 			kmem_cache_free(inode_entry_slab, entry);
+#ifdef CONFIG_F2FS_STAT_FS
 			sbi->n_dirty_dirs--;
+#endif
 			break;
 		}
 	}
-out:
 	spin_unlock(&sbi->dir_inode_lock);
+
+	/* Only from the recovery routine */
+	if (is_inode_flag_set(F2FS_I(inode), FI_DELAY_IPUT)) {
+		clear_inode_flag(F2FS_I(inode), FI_DELAY_IPUT);
+		iput(inode);
+	}
+}
+
+struct inode *check_dirty_dir_inode(struct f2fs_sb_info *sbi, nid_t ino)
+{
+	struct list_head *head = &sbi->dir_inode_list;
+	struct list_head *this;
+	struct inode *inode = NULL;
+
+	spin_lock(&sbi->dir_inode_lock);
+	list_for_each(this, head) {
+		struct dir_inode_entry *entry;
+		entry = list_entry(this, struct dir_inode_entry, list);
+		if (entry->inode->i_ino == ino) {
+			inode = entry->inode;
+			break;
+		}
+	}
+	spin_unlock(&sbi->dir_inode_lock);
+	return inode;
 }
 
 void sync_dirty_dir_inodes(struct f2fs_sb_info *sbi)

@@ -39,7 +39,7 @@ static void __set_data_blkaddr(struct dnode_of_data *dn, block_t new_addr)
 
 	wait_on_page_writeback(node_page);
 
-	rn = (struct f2fs_node *)page_address(node_page);
+	rn = F2FS_NODE(node_page);
 
 	/* Get physical address of data block */
 	addr_array = blkaddr_in_node(rn);
@@ -68,7 +68,9 @@ static int check_extent_cache(struct inode *inode, pgoff_t pgofs,
 					struct buffer_head *bh_result)
 {
 	struct f2fs_inode_info *fi = F2FS_I(inode);
+#ifdef CONFIG_F2FS_STAT_FS
 	struct f2fs_sb_info *sbi = F2FS_SB(inode->i_sb);
+#endif
 	pgoff_t start_fofs, end_fofs;
 	block_t start_blkaddr;
 
@@ -78,7 +80,9 @@ static int check_extent_cache(struct inode *inode, pgoff_t pgofs,
 		return 0;
 	}
 
+#ifdef CONFIG_F2FS_STAT_FS
 	sbi->total_hit_ext++;
+#endif
 	start_fofs = fi->ext.fofs;
 	end_fofs = fi->ext.fofs + fi->ext.len - 1;
 	start_blkaddr = fi->ext.blk_addr;
@@ -96,7 +100,9 @@ static int check_extent_cache(struct inode *inode, pgoff_t pgofs,
 		else
 			bh_result->b_size = UINT_MAX;
 
+#ifdef CONFIG_F2FS_STAT_FS
 		sbi->read_hit_ext++;
+#endif
 		read_unlock(&fi->ext.ext_lock);
 		return 1;
 	}
@@ -342,6 +348,8 @@ repeat:
 	if (new_i_size &&
 		i_size_read(inode) < ((index + 1) << PAGE_CACHE_SHIFT)) {
 		i_size_write(inode, ((index + 1) << PAGE_CACHE_SHIFT));
+		/* Only the directory inode sets new_i_size */
+		set_inode_flag(F2FS_I(inode), FI_UPDATE_DIR);
 		mark_inode_dirty_sync(inode);
 	}
 	return page;
