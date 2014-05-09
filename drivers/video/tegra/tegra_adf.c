@@ -1002,11 +1002,32 @@ static int tegra_adf_intf_blank(struct adf_interface *intf, u8 state)
 	return 0;
 }
 
+static int tegra_adf_zero_dma_buf(struct dma_buf *buf)
+{
+	unsigned long i;
+	int err;
+
+	err = dma_buf_begin_cpu_access(buf, 0, buf->size, DMA_TO_DEVICE);
+	if (err < 0)
+		return err;
+
+	for (i = 0; i < buf->size / PAGE_SIZE; i++) {
+		void *mapped = dma_buf_kmap(buf, i);
+		memset(mapped, 0, PAGE_SIZE);
+		dma_buf_kunmap(buf, i, mapped);
+	}
+
+	dma_buf_end_cpu_access(buf, 0, buf->size, DMA_TO_DEVICE);
+
+	return 0;
+}
+
 static int tegra_adf_intf_alloc_simple_buffer(struct adf_interface *intf,
 		u16 w, u16 h, u32 format,
 		struct dma_buf **dma_buf, u32 *offset, u32 *pitch)
 {
 	size_t i;
+	int err;
 	bool format_valid = false;
 
 	for (i = 0; i < ARRAY_SIZE(tegra_adf_formats); i++) {
@@ -1021,13 +1042,16 @@ static int tegra_adf_intf_alloc_simple_buffer(struct adf_interface *intf,
 
 	*offset = 0;
 	*pitch = ALIGN(w * adf_format_bpp(format) / 8, 64);
-	*dma_buf = nvmap_alloc_dmabuf(h * *pitch, 0,
-			NVMAP_HANDLE_WRITE_COMBINE | NVMAP_HANDLE_ZEROED_PAGES,
-			0);
+	*dma_buf = nvmap_alloc_dmabuf(PAGE_ALIGN(h * *pitch), 0,
+			NVMAP_HANDLE_WRITE_COMBINE, 0);
 	if (IS_ERR(*dma_buf))
 		return PTR_ERR(*dma_buf);
 
-	return 0;
+	err = tegra_adf_zero_dma_buf(*dma_buf);
+	if (err < 0)
+		dma_buf_put(*dma_buf);
+
+	return err;
 }
 
 static int tegra_adf_intf_describe_simple_post(struct adf_interface *intf,

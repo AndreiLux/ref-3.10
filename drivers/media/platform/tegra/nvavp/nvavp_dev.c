@@ -1859,6 +1859,7 @@ static int tegra_nvavp_open(struct nvavp_info *nvavp,
 
 	clientctx->nvavp = nvavp;
 	clientctx->iova_handles = RB_ROOT;
+	spin_lock_init(&clientctx->iova_lock);
 	*client = clientctx;
 
 	return ret;
