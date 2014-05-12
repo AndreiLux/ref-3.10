@@ -41,7 +41,7 @@
 #include <linux/iio/trigger.h>
 #include <linux/iio/trigger_consumer.h>
 #include <linux/iio/kfifo_buf.h>
-
+#include <linux/irq_work.h>
 
 /*#include <mach/gpiomux.h>*/
 #define D(x...) pr_debug("[S_HUB][CW_MCU] " x)
@@ -186,6 +186,7 @@ struct cwmcu_data {
 
 	s32 iio_data[6];
 	struct iio_dev *indio_dev;
+	struct irq_work iio_irq_work;
 };
 static struct cwmcu_data *mcu_data;
 
@@ -842,7 +843,7 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 	for (i = 0; i < len; i++) {
 		for (; sensor->i2c_total_retry <= RETRY_TIMES;) {
 			write_res = i2c_smbus_write_byte_data(sensor->client,
-						  reg_addr++, data[i]);
+						  reg_addr, data[i]);
 			if (write_res < 0) {
 				sensor->i2c_total_retry++;
 				E(
@@ -2556,7 +2557,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 
 	/* ERR_st: bit 7 */
 	if (ERR_st & CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET) {
-		D("[CWMCU] Watch Dog Reset \n");
+		I("[CWMCU] Watch Dog Reset \n");
 		msleep(5);
 
 		mutex_lock(&mcu_data->activated_i2c_lock);
@@ -2611,10 +2612,9 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 }
 
 /*=======iio device reg=========*/
-static int cw_data_rdy_trig_poll(struct iio_dev *indio_dev)
+static void iio_trigger_work(struct irq_work *work)
 {
 	iio_trigger_poll(mcu_data->trig, iio_get_time_ns());
-	return 0;
 }
 
 static irqreturn_t cw_trigger_handler(int irq, void *p)
@@ -3091,9 +3091,7 @@ static void cwmcu_remove_buffer(struct iio_dev *indio_dev)
 
 static void cwmcu_work_report(struct work_struct *work)
 {
-	struct iio_dev *indio_dev = iio_priv_to_dev(mcu_data);
-
-	cw_data_rdy_trig_poll(indio_dev);
+	irq_work_queue(&mcu_data->iio_irq_work);
 
 	queue_delayed_work(mcu_wq, &mcu_data->work,
 			msecs_to_jiffies(atomic_read(&mcu_data->delay)));
@@ -3203,6 +3201,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	wake_lock_init(&significant_wake_lock, WAKE_LOCK_SUSPEND,
 		       "significant_wake_lock");
 
+	init_irq_work(&sensor->iio_irq_work, iio_trigger_work);
 	INIT_WORK(&sensor->irq_work, cwmcu_irq_work_func);
 
 	mcu_wq = create_singlethread_workqueue("htc_mcu");
