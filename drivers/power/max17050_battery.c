@@ -45,6 +45,12 @@
 
 #define MAX17050_CHARGING_COMPLETE_CANCEL_SOC	(96)
 
+#define MAX17050_BATTERY_CRITICAL_LOW_MV	(3450)
+#define MAX17050_BATTERY_DEAD_MV		(3400)
+
+#define MAX17050_NORMAL_MAX_SOC_DEC		(2)
+#define MAX17050_CRITICAL_LOW_FORCE_SOC_DROP	(6)
+
 /* Fuel Gauge Maxim MAX17050 Register Definition */
 enum max17050_fg_register {
 	MAX17050_FG_STATUS   	= 0x00,
@@ -173,6 +179,7 @@ struct max17050_chip {
 	bool first_update_done;
 	struct wake_lock update_wake_lock;
 	struct mutex mutex;
+	struct mutex soc_mutex;
 };
 static struct max17050_chip *max17050_data;
 
@@ -431,7 +438,7 @@ static bool max17050_soc_adjust(struct max17050_chip *chip,
 			unsigned long time_since_last_update)
 {
 	int soc_decrease;
-	int soc;
+	int soc, vcell_mv;
 
 	if (!chip->first_update_done) {
 		if (chip->soc_raw >= MAX17050_BATTERY_FULL) {
@@ -458,27 +465,44 @@ static bool max17050_soc_adjust(struct max17050_chip *chip,
 	else if (soc < 0)
 		soc = 0;
 
+	vcell_mv = chip->vcell / 1000;
 	if (chip->charger_status == BATTERY_DISCHARGING ||
 		chip->charger_status == BATTERY_UNKNOWN) {
-		soc_decrease = chip->lasttime_soc - soc;
-		if (time_since_last_update >=
-				MAX17050_SOC_UPDATE_LONG_MS) {
+		if (vcell_mv >= MAX17050_BATTERY_CRITICAL_LOW_MV) {
+			soc_decrease = chip->lasttime_soc - soc;
+			if (time_since_last_update >=
+					MAX17050_SOC_UPDATE_LONG_MS) {
+				if (soc_decrease < 0)
+					soc = chip->lasttime_soc;
+				goto done;
+			} else if (time_since_last_update <
+					MAX17050_SOC_UPDATE_MS) {
+				goto no_update;
+			}
+
 			if (soc_decrease < 0)
-				soc = chip->lasttime_soc;
-			goto done;
-		} else if (time_since_last_update <
-				MAX17050_SOC_UPDATE_MS) {
-			goto no_update;
+				soc_decrease = 0;
+			else if (soc_decrease > MAX17050_NORMAL_MAX_SOC_DEC)
+				soc_decrease = MAX17050_NORMAL_MAX_SOC_DEC;
+
+			soc = chip->lasttime_soc - soc_decrease;
+		} else if (vcell_mv < MAX17050_BATTERY_DEAD_MV) {
+			dev_info(&chip->client->dev,
+				"Battery voltage < %dmV, focibly update level to 0\n",
+				MAX17050_BATTERY_DEAD_MV);
+			soc = 0;
+		} else {
+			dev_info(&chip->client->dev,
+				"Battery voltage < %dmV, focibly decrease level with %d\n",
+				MAX17050_BATTERY_CRITICAL_LOW_MV,
+				MAX17050_CRITICAL_LOW_FORCE_SOC_DROP);
+			soc_decrease = MAX17050_CRITICAL_LOW_FORCE_SOC_DROP;
+			if (chip->lasttime_soc <= soc_decrease)
+				soc = 0;
+			else
+				soc = chip->lasttime_soc - soc_decrease;
 		}
-
-		if (soc_decrease < 0)
-			soc_decrease = 0;
-		else if (soc_decrease > 2)
-			soc_decrease = 2;
-
-		soc = chip->lasttime_soc - soc_decrease;
-	} else if (soc >= MAX17050_BATTERY_FULL
-			&& chip->lasttime_soc < MAX17050_BATTERY_FULL - 1)
+	} else if (soc > chip->lasttime_soc)
 		soc = chip->lasttime_soc + 1;
 done:
 	chip->soc = soc;
@@ -538,20 +562,21 @@ static void max17050_work(struct work_struct *work)
 	unsigned long cur_jiffies;
 	bool do_battery_update = false;
 	bool soc_updated;
+	int vcell, batt_curr, soc_raw;
 
 	chip = container_of(work, struct max17050_chip, work.work);
 
 	wake_lock(&chip->update_wake_lock);
 
+	mutex_lock(&chip->soc_mutex);
 	max17050_get_vcell(chip->client);
 	max17050_get_current(chip->client);
 	max17050_get_temperature(chip->client);
 	max17050_get_soc(chip->client);
 
-	battery_gauge_record_voltage_value(chip->bg_dev, chip->vcell);
-	battery_gauge_record_current_value(chip->bg_dev, chip->batt_curr);
-	battery_gauge_record_capacity_value(chip->bg_dev, chip->soc_raw);
-	battery_gauge_update_record_to_charger(chip->bg_dev);
+	vcell = chip->vcell;
+	batt_curr = chip->batt_curr;
+	soc_raw = chip->soc_raw;
 
 	cur_jiffies = jiffies;
 	chip->total_time_since_last_work_ms = 0;
@@ -595,6 +620,12 @@ static void max17050_work(struct work_struct *work)
 		schedule_delayed_work(&chip->work, MAX17050_DELAY);
 	else
 		schedule_delayed_work(&chip->work, MAX17050_DELAY_FAST);
+	mutex_unlock(&chip->soc_mutex);
+
+	battery_gauge_record_voltage_value(chip->bg_dev, vcell);
+	battery_gauge_record_current_value(chip->bg_dev, batt_curr);
+	battery_gauge_record_capacity_value(chip->bg_dev, soc_raw);
+	battery_gauge_update_record_to_charger(chip->bg_dev);
 
 	wake_unlock(&chip->update_wake_lock);
 }
@@ -631,6 +662,7 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 {
 	struct max17050_chip *chip = battery_gauge_get_drvdata(bg_dev);
 
+	mutex_lock(&chip->soc_mutex);
 	if (status == BATTERY_CHARGING)
 		chip->charger_status = BATTERY_CHARGING;
 	else if (status == BATTERY_UNKNOWN)
@@ -652,6 +684,7 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 		chip->lasttime_status = chip->status;
 		power_supply_changed(&chip->battery);
 	}
+	mutex_unlock(&chip->soc_mutex);
 
 	return 0;
 }
@@ -698,6 +731,7 @@ static int max17050_probe(struct i2c_client *client,
 
 	max17050_data = chip;
 	mutex_init(&chip->mutex);
+	mutex_init(&chip->soc_mutex);
 	chip->shutdown_complete = 0;
 	i2c_set_clientdata(client, chip);
 
@@ -740,6 +774,7 @@ bg_err:
 	power_supply_unregister(&chip->battery);
 error:
 	mutex_destroy(&chip->mutex);
+	mutex_destroy(&chip->soc_mutex);
 
 	return ret;
 }
@@ -753,6 +788,7 @@ static int max17050_remove(struct i2c_client *client)
 	power_supply_unregister(&chip->battery);
 	cancel_delayed_work_sync(&chip->work);
 	mutex_destroy(&chip->mutex);
+	mutex_destroy(&chip->soc_mutex);
 
 	return 0;
 }
