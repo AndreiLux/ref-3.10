@@ -67,6 +67,8 @@
 #define LIGHT_CALIBRATOR_LEN 4
 #define PRESSURE_CALIBRATOR_LEN 4
 
+#define REPORT_EVENT_COMMON_LEN 3
+
 #define FW_VER_INFO_LEN 31
 #define FW_VER_HEADER_LEN 7
 #define FW_VER_COUNT 6
@@ -118,9 +120,13 @@ static DECLARE_WORK(resume_work, resume_do_work);
 static void activated_i2c_do_work(struct work_struct *w);
 static DECLARE_WORK(activated_i2c_work, activated_i2c_do_work);
 
+static void re_init_do_work(struct work_struct *w);
+static DECLARE_WORK(re_init_work, re_init_do_work);
+
 struct workqueue_struct *mcu_wq;
 
 struct wake_lock significant_wake_lock;
+struct wake_lock wake_up_gesture_wake_lock;
 
 struct cwmcu_data {
 	struct i2c_client *client;
@@ -725,7 +731,7 @@ static ssize_t get_barometer(struct device *dev, struct device_attribute *attr,
 static ssize_t get_light_polling(struct device *dev,
 				 struct device_attribute *attr, char *buf)
 {
-	u8 data[3] = {0};
+	u8 data[REPORT_EVENT_COMMON_LEN] = {0};
 	u8 data_polling_enable;
 	u16 light_adc;
 	int rc;
@@ -2048,7 +2054,7 @@ static ssize_t flush_show(struct device *dev, struct device_attribute *attr,
 static void cwmcu_send_flush(int id)
 {
 	u8 type = CW_META_DATA;
-	u16 data[3];
+	u16 data[REPORT_EVENT_COMMON_LEN];
 	s64 timestamp = 0;
 	int rc;
 
@@ -2274,8 +2280,8 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 	case CW_GEOMAGNETIC_ROTATION_VECTOR:
 	{
 		u8 data[6] = {0};
-		u16 data_event[3] = {0};
-		u16 bias_event[3] = {0};
+		u16 data_event[REPORT_EVENT_COMMON_LEN] = {0};
+		u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
 
 		/* read 6byte */
 		if (CWMCU_i2c_read(sensor,
@@ -2310,7 +2316,7 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 					      pf->timestamp);
 
 			if (DEBUG_FLAG_GSENSOR == 1) {
-				D(
+				I(
 				  "3 values: id = %d, data(x, y, z) ="
 				  " (0x%x, 0x%x, 0x%x), accuracy = %d\n"
 				  , id_check
@@ -2327,8 +2333,8 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 	case CW_GYROSCOPE_UNCALIBRATED:
 	{
 		u8 data[12] = {0};
-		u16 data_event[3] = {0};
-		u16 bias_event[3] = {0};
+		u16 data_event[REPORT_EVENT_COMMON_LEN] = {0};
+		u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
 
 		/* read 12byte */
 		if (CWMCU_i2c_read(sensor,
@@ -2342,7 +2348,7 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 			bias_event[2] = (data[11] << 8) | data[10];
 
 			if (DEBUG_FLAG_GSENSOR == 1) {
-				D("6 values: id = %d, data(x, y, z) ="
+				I("6 values: id = %d, data(x, y, z) ="
 				  " (%d, %d, %d), bias(x, y, z) ="
 				  " (%d, %d, %d)\n"
 				  , id_check
@@ -2436,13 +2442,18 @@ static int cwmcu_resume(struct device *dev)
 }
 
 
+static void re_init_do_work(struct work_struct *w)
+{
+	cwmcu_sensor_placement(mcu_data);
+	cwmcu_set_sensor_kvalue(mcu_data);
+	cwmcu_restore_status(mcu_data);
+}
+
 static void cwmcu_irq_work_func(struct work_struct *work)
 {
 	struct cwmcu_data *sensor = container_of((struct work_struct *)work,
 						 struct cwmcu_data, irq_work);
 	s32 ret;
-	u8 data[127] = {0};
-	s16 data_buff[3] = {0};
 	u8 INT_st1, INT_st2, INT_st3, INT_st4, ERR_st, Batch_st;
 	u8 clear_intr;
 	u16 light_adc = 0;
@@ -2463,6 +2474,9 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 
 	/* INT_st1: bit 3 */
 	if (INT_st1 & CW_MCU_INT_BIT_LIGHT) {
+		u8 data[REPORT_EVENT_COMMON_LEN] = {0};
+		s16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
+
 		if (sensor->enabled_list & (1<<light)) {
 			CWMCU_i2c_read(sensor, CWSTM32_READ_Light, data, 3);
 			if (data[0] < 11) {
@@ -2494,9 +2508,31 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 		}
 	}
 
+	/* INT_st2: bit 2 */
+	if (INT_st2 & CW_MCU_INT_BIT_WAKE_UP_GESTURE) {
+		if (sensor->enabled_list & (1<<HTC_WAKE_UP_GESTURE)) {
+			s16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
+
+			wake_lock_timeout(&wake_up_gesture_wake_lock,
+					  msecs_to_jiffies(200));
+
+			I("%s: HTC WAKE UP ALGORITHM occurs!!\n",
+			  __func__);
+
+			data_buff[0] = 1;
+			cw_send_event(HTC_WAKE_UP_GESTURE, data_buff, 0);
+
+			clear_intr = CW_MCU_INT_BIT_WAKE_UP_GESTURE;
+			CWMCU_i2c_write(sensor, CWSTM32_INT_ST2, &clear_intr,
+					1);
+		}
+	}
+
 	/* INT_st3: bit 4 */
 	if (INT_st3 & CW_MCU_INT_BIT_SIGNIFICANT_MOTION) {
 		if (sensor->enabled_list & (1<<significant_motion)) {
+			s16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
+
 			sensor->sensors_time[significant_motion] = 0;
 
 			wake_lock_timeout(&significant_wake_lock, 1 * HZ);
@@ -2514,16 +2550,19 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 	/* INT_st3: bit 5 */
 	if (INT_st3 & CW_MCU_INT_BIT_STEP_DETECTOR) {
 		if (sensor->enabled_list & (1<<step_detector)) {
+			u8 data = 0;
+			s16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
+
 			ret = CWMCU_i2c_read(sensor, CWSTM32_READ_STEP_DETECTOR,
-					     data, 1);
+					     &data, 1);
 			if (ret >= 0) {
 				sensor->sensors_time[step_detector] = 0;
 
-				data_buff[0] = data[0];
+				data_buff[0] = data;
 				cw_send_event(CW_STEP_DETECTOR, data_buff, 0);
 
 				D("%s: Step Detector INT, timestamp = %u\n",
-						__func__, data[0]);
+						__func__, data);
 			} else
 				D("%s: Step Detector i2c read fail, ret = %d\n",
 						__func__, ret);
@@ -2536,16 +2575,22 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 	/* INT_st3: bit 6 */
 	if (INT_st3 & CW_MCU_INT_BIT_STEP_COUNTER) {
 		if (sensor->enabled_list & (1<<step_counter)) {
+			u8 data[4] = {0};
+			__le16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
+
 			ret = CWMCU_i2c_read(sensor, CWSTM32_READ_STEP_COUNTER,
-					     data, 1);
+					     data, sizeof(data));
 			if (ret >= 0) {
 				sensor->sensors_time[step_counter] = 0;
 
-				data_buff[0] = data[0];
+				data_buff[0] = cpu_to_le16p((u16 *)&data[0]);
+				data_buff[1] = cpu_to_le16p((u16 *)&data[2]);
 				cw_send_event(CW_STEP_COUNTER, data_buff, 0);
 
-				D("%s: Step Counter interrupt, step = %u\n",
-						__func__, data[0]);
+				D(
+				  "%s: Step Counter interrupt, step(data_buf) ="
+				  " %u\n",
+				  __func__, *(u32 *)&data_buff[0]);
 			} else
 				D("%s: Step Counter i2c read fails, ret = %d\n",
 						__func__, ret);
@@ -2557,14 +2602,26 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 
 	/* ERR_st: bit 7 */
 	if (ERR_st & CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET) {
+		u8 data[WATCHDOG_STATUS_LEN] = {0};
+
 		I("[CWMCU] Watch Dog Reset \n");
 		msleep(5);
 
-		mutex_lock(&mcu_data->activated_i2c_lock);
-		mcu_data->i2c_total_retry = RETRY_TIMES + 1;
-		mutex_unlock(&mcu_data->activated_i2c_lock);
+		ret = CWMCU_i2c_read(sensor, CW_I2C_REG_WATCHDOG_STATUS,
+				     data, WATCHDOG_STATUS_LEN);
+		if (ret >= 0) {
+			int i;
 
-		queue_work(mcu_wq, &activated_i2c_work);
+			for (i = 0; i < WATCHDOG_STATUS_LEN; i++) {
+				I("%s: Watchdog Status[%d] = 0x%x\n",
+					__func__, i, data[i]);
+			}
+		} else {
+			E("%s: Watchdog status dump fails, ret = %d\n",
+						__func__, ret);
+		}
+
+		queue_work(mcu_wq, &re_init_work);
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET;
 		ret = CWMCU_i2c_write(sensor, CWSTM32_ERR_ST, &clear_intr, 1);
@@ -2573,6 +2630,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 	/* Batch_st */
 	if (Batch_st & 0x1C) {
 		if (Batch_st & 0x8) { /* TimeDiff exhausted */
+			u16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
 
 			data_buff[0] = EXHAUSTED_MAGIC;
 			cw_send_event(TIME_DIFF_EXHAUSTED, data_buff, 0);
@@ -3200,6 +3258,8 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	wake_lock_init(&significant_wake_lock, WAKE_LOCK_SUSPEND,
 		       "significant_wake_lock");
+	wake_lock_init(&wake_up_gesture_wake_lock, WAKE_LOCK_SUSPEND,
+		       "wake_up_gesture_wake_lock");
 
 	init_irq_work(&sensor->iio_irq_work, iio_trigger_work);
 	INIT_WORK(&sensor->irq_work, cwmcu_irq_work_func);
@@ -3283,6 +3343,7 @@ static int CWMCU_i2c_remove(struct i2c_client *client)
 	struct cwmcu_data *sensor = i2c_get_clientdata(client);
 
 	wake_lock_destroy(&significant_wake_lock);
+	wake_lock_destroy(&wake_up_gesture_wake_lock);
 	kfree(sensor);
 	return 0;
 }

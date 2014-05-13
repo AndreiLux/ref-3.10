@@ -41,6 +41,7 @@ typedef enum {
 	CW_ROTATIONVECTOR              = 7,
 	CW_LINEARACCELERATION          = 8,
 	CW_GRAVITY                     = 9,
+	HTC_WAKE_UP_GESTURE            = 10,
 	CW_MAGNETIC_UNCALIBRATED       = 16,
 	CW_GYROSCOPE_UNCALIBRATED      = 17,
 	CW_GAME_ROTATION_VECTOR        = 18,
@@ -112,6 +113,9 @@ int touch_status(u8 status);
 #define GEOM_ROTA_UPDATE_RATE                                   0xC7
 #define SIGN_UPDATE_RATE                                        0xC8
 
+#define CW_I2C_REG_WATCHDOG_STATUS                              0xE6
+#define WATCHDOG_STATUS_LEN                                     12
+
 #define UPDATE_RATE_NORMAL              1
 #define UPDATE_RATE_UI                  2
 #define UPDATE_RATE_GAME                3
@@ -182,6 +186,9 @@ int touch_status(u8 status);
 
 /* INT_ST1 */
 #define CW_MCU_INT_BIT_LIGHT                    (1 << 3)
+
+/* INT_ST2 */
+#define CW_MCU_INT_BIT_WAKE_UP_GESTURE          (1 << 2)
 
 /* INT_ST3 */
 #define CW_MCU_INT_BIT_SIGNIFICANT_MOTION       (1 << 4)
