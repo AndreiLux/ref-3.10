@@ -215,6 +215,8 @@ imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 		sensor_mode = IMX219_MODE_1640x1232;
 	} else if (mode->xres == 1920 && mode->yres == 1080) {
 		sensor_mode = IMX219_MODE_1920x1080;
+	} else if (mode->xres == 1280 && mode->yres == 720) {
+		sensor_mode = IMX219_MODE_1280x720;
 	} else {
 		pr_err("%s: invalid resolution supplied to set mode %d %d\n",
 			 __func__, mode->xres, mode->yres);
