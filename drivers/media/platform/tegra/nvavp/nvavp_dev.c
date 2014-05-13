@@ -614,8 +614,8 @@ static void clock_disable_handler(struct work_struct *work)
 			    clock_disable_work);
 
 	channel_info = nvavp_get_channel_info(nvavp, NVAVP_VIDEO_CHANNEL);
-	mutex_lock(&channel_info->pushbuffer_lock);
 	mutex_lock(&nvavp->open_lock);
+	mutex_lock(&channel_info->pushbuffer_lock);
 	if (nvavp_check_idle(nvavp, NVAVP_VIDEO_CHANNEL) && nvavp->pending) {
 		nvavp->pending = false;
 		nvavp_clks_disable(nvavp);
