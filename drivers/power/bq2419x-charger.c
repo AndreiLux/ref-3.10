@@ -80,7 +80,6 @@ struct bq2419x_chip {
 	int				gpio_otg_iusb;
 	int				wdt_refresh_timeout;
 	int				wdt_time_sec;
-	int				auto_recharge_time_power_off;
 	bool				emulate_input_disconnected;
 
 	struct mutex			mutex;
@@ -1266,7 +1265,6 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 		int temp_range_len, chg_current_lim_len, chg_voltage_lim_len;
 		int wdt_timeout;
 		int chg_restart_time;
-		int auto_recharge_time_power_off;
 		int temp_polling_time;
 		struct regulator_init_data *batt_init_data;
 		struct bq2419x_charger_platform_data *chg_pdata;
@@ -1343,13 +1341,6 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 				"ti,watchdog-timeout", &wdt_timeout);
 		if (!ret)
 			pdata->bcharger_pdata->wdt_timeout = wdt_timeout;
-
-		ret = of_property_read_u32(batt_reg_node,
-			"ti,auto-recharge-time-power-off",
-			&auto_recharge_time_power_off);
-		if (!ret)
-			pdata->bcharger_pdata->auto_recharge_time_power_off =
-					auto_recharge_time_power_off;
 
 		ret = of_property_read_u32(batt_reg_node,
 				"ti,auto-recharge-time", &chg_restart_time);
@@ -1577,8 +1568,6 @@ static int bq2419x_probe(struct i2c_client *client,
 		goto skip_bcharger_init;
 	}
 
-	bq2419x->auto_recharge_time_power_off =
-			pdata->bcharger_pdata->auto_recharge_time_power_off;
 	bq2419x->wdt_time_sec = pdata->bcharger_pdata->wdt_timeout;
 	bq2419x->chg_restart_time = pdata->bcharger_pdata->chg_restart_time;
 	bq2419x->battery_presense = true;
@@ -1689,10 +1678,6 @@ static void bq2419x_shutdown(struct i2c_client *client)
 
 	if (bq2419x->cable_connected && bq2419x->in_current_limit > 500 &&
 			bq2419x->wdt_refresh_timeout) {
-		if ((bq2419x->chg_status == BATTERY_CHARGING_DONE)
-			&& bq2419x->auto_recharge_time_power_off)
-			bq2419x->wdt_refresh_timeout =
-				bq2419x->auto_recharge_time_power_off;
 		ret = battery_charging_system_reset_after(bq2419x->bc_dev,
 				bq2419x->wdt_refresh_timeout);
 		if (ret < 0)
