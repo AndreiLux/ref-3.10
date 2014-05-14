@@ -3554,7 +3554,7 @@ clean_up:
 	return ret;
 }
 
-static void gr_gk20a_pmu_save_zbc(struct gk20a *g, u32 entries)
+void gr_gk20a_pmu_save_zbc(struct gk20a *g, u32 entries)
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct fifo_engine_info_gk20a *gr_info =
@@ -4587,7 +4587,17 @@ int gk20a_init_gr_support(struct gk20a *g)
 	if (err)
 		return err;
 
+	/* GR is inialized, signal possible waiters */
+	g->gr.initialized = true;
+	wake_up(&g->gr.init_wq);
+
 	return 0;
+}
+
+/* Wait until GR is initialized */
+void gk20a_gr_wait_initialized(struct gk20a *g)
+{
+	wait_event(g->gr.init_wq, g->gr.initialized);
 }
 
 #define NVA297_SET_ALPHA_CIRCULAR_BUFFER_SIZE	0x02dc
@@ -5567,6 +5577,8 @@ int gk20a_gr_suspend(struct gk20a *g)
 	gk20a_writel(g, gr_exception2_en_r(), 0);
 
 	gk20a_gr_flush_channel_tlb(&g->gr);
+
+	g->gr.initialized = false;
 
 	gk20a_dbg_fn("done");
 	return ret;
@@ -6841,7 +6853,12 @@ void gr_gk20a_commit_global_pagepool(struct gk20a *g,
 		gr_pd_pagepool_valid_true_f(), patch);
 }
 
-void gk20a_init_gr(struct gpu_ops *gops)
+void gk20a_init_gr(struct gk20a *g)
+{
+	init_waitqueue_head(&g->gr.init_wq);
+}
+
+void gk20a_init_gr_ops(struct gpu_ops *gops)
 {
 	gops->gr.access_smpc_reg = gr_gk20a_access_smpc_reg;
 	gops->gr.bundle_cb_defaults = gr_gk20a_bundle_cb_defaults;
