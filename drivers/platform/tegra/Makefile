@@ -64,9 +64,6 @@ obj-$(CONFIG_ARCH_TEGRA_13x_SOC)        += tegra3_throttle.o
 endif
 
 obj-y += latency_allowance.o
-obj-y += tegra3_la.o
-obj-y += tegra11x_la.o
-obj-y += tegra14x_la.o
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC)        += tegra12x_la.o
 
 obj-$(CONFIG_ARCH_TEGRA_13x_SOC)        += tegra13_speedo.o
@@ -102,6 +99,7 @@ obj-y += board-touch-raydium_spi.o
 obj-y += board-panel.o
 
 obj-${CONFIG_TEGRA_ISOMGR}              += isomgr.o
+obj-$(CONFIG_TEGRA_USE_NCT)             += nct.o nct_sysfs.o
 
 obj-$(CONFIG_TEGRA_EDP_LIMITS)          += edp.o
 

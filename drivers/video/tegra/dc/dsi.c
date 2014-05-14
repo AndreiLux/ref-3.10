@@ -2542,6 +2542,9 @@ static int tegra_dsi_init_hw(struct tegra_dc *dc,
 	dsi->status.dc_stream = DSI_DC_STREAM_DISABLE;
 	dsi->status.lp_op = DSI_LP_OP_NOT_INIT;
 
+	if (!tegra_cpu_is_asim() && DSI_USE_SYNC_POINTS)
+		tegra_dsi_syncpt_reset(dsi);
+
 	return 0;
 }
 
@@ -3075,11 +3078,12 @@ int tegra_dsi_write_data(struct tegra_dc *dc,
 EXPORT_SYMBOL(tegra_dsi_write_data);
 
 int tegra_dsi_start_host_cmd_v_blank_video(struct tegra_dc_dsi_data *dsi,
-	struct tegra_dsi_cmd *cmd)
+				struct tegra_dsi_cmd *cmd, u8 clubbed_cmd_no)
 {
 	struct tegra_dc *dc = dsi->dc;
 	int err = 0;
 	u32 val;
+	u8 i;
 
 	if (!dsi->enabled) {
 		dev_err(&dsi->dc->ndev->dev, "DSI controller suspended\n");
@@ -3088,9 +3092,15 @@ int tegra_dsi_start_host_cmd_v_blank_video(struct tegra_dc_dsi_data *dsi,
 
 	tegra_dc_io_start(dc);
 	tegra_dc_dsi_hold_host(dc);
+
 	val = (DSI_CMD_PKT_VID_ENABLE(1) | DSI_LINE_TYPE(4));
 	tegra_dsi_writel(dsi, val, DSI_VID_MODE_CONTROL);
-	_tegra_dsi_write_data(dsi, cmd);
+	if (clubbed_cmd_no)
+		for (i = 0; i < clubbed_cmd_no; i++)
+			_tegra_dsi_write_data(dsi, &cmd[i]);
+	else
+		_tegra_dsi_write_data(dsi, &cmd[0]);
+
 	if (dsi->status.lphs != DSI_LPHS_IN_HS_MODE) {
 		err = tegra_dsi_set_to_hs_mode(dc, dsi,
 				TEGRA_DSI_DRIVEN_BY_DC);
@@ -3100,9 +3110,10 @@ int tegra_dsi_start_host_cmd_v_blank_video(struct tegra_dc_dsi_data *dsi,
 			goto fail;
 		}
 	}
+
 	tegra_dsi_start_dc_stream(dc, dsi);
 	tegra_dsi_wait_frame_end(dc, dsi, 2);
- fail:
+fail:
 	tegra_dc_dsi_release_host(dc);
 	tegra_dc_io_end(dc);
 
@@ -3126,7 +3137,7 @@ int tegra_dsi_end_host_cmd_v_blank_video(struct tegra_dc *dc,
 }
 EXPORT_SYMBOL(tegra_dsi_end_host_cmd_v_blank_video);
 
-static int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
+int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
 					struct tegra_dc_dsi_data *dsi,
 					struct tegra_dsi_cmd *cmd,
 					u32 n_cmd)
@@ -3141,22 +3152,33 @@ static int tegra_dsi_send_panel_cmd(struct tegra_dc *dc,
 		struct tegra_dsi_cmd *cur_cmd;
 		cur_cmd = &cmd[i];
 
-		/*
-		 * Some Panels need reset midway in the command sequence.
-		 */
 		if (cur_cmd->cmd_type == TEGRA_DSI_GPIO_SET) {
 			gpio_set_value(cur_cmd->sp_len_dly.gpio,
 				       cur_cmd->data_id);
 		} else if (cur_cmd->cmd_type == TEGRA_DSI_DELAY_MS) {
-			mdelay(cur_cmd->sp_len_dly.delay_ms);
+			usleep_range(cur_cmd->sp_len_dly.delay_ms * 1000,
+				(cur_cmd->sp_len_dly.delay_ms * 1000) + 500);
 		} else if (cur_cmd->cmd_type == TEGRA_DSI_SEND_FRAME) {
 				tegra_dsi_send_dc_frames(dc,
 						dsi,
 						cur_cmd->sp_len_dly.frame_cnt);
 		} else if (cur_cmd->cmd_type ==
 					TEGRA_DSI_PACKET_VIDEO_VBLANK_CMD) {
-			tegra_dsi_start_host_cmd_v_blank_video(dsi, cur_cmd);
+			u32 j;
+			for (j = i; j < n_cmd; j++) {
+				if (!IS_DSI_SHORT_PKT(cmd[j]))
+					break;
+				if (cmd[j].club_cmd != CMD_CLUBBED)
+					break;
+				if (j - i + 1 > DSI_HOST_FIFO_DEPTH)
+					break;
+			}
+			/* i..j-1: clubbable streak */
+			tegra_dsi_start_host_cmd_v_blank_video(dsi, cur_cmd,
+									j - i);
 			tegra_dsi_end_host_cmd_v_blank_video(dc, dsi);
+			if (j != i)
+				i = j - 1;
 		} else {
 			delay_ms = DEFAULT_DELAY_MS;
 			if ((i + 1 < n_cmd) &&
@@ -3846,7 +3868,7 @@ static void tegra_dsi_send_dc_frames(struct tegra_dc *dc,
 		if (flag)
 			mutex_unlock(&dc->lock);
 		while (no_of_frames--)
-			tegra_dc_blank(dc);
+			tegra_dc_blank(dc, BLANK_ALL);
 		if (flag)
 			mutex_lock(&dc->lock);
 	} else

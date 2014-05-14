@@ -7,7 +7,7 @@
  *	Colin Cross <ccross@google.com>
  *	Based on arch/arm/plat-omap/cpu-omap.c, (C) 2005 Nokia Corporation
  *
- * Copyright (C) 2010-2013 NVIDIA CORPORATION. All rights reserved.
+ * Copyright (C) 2010-2014 NVIDIA CORPORATION. All rights reserved.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -1027,6 +1027,32 @@ static int __init tegra_cpufreq_init(void)
 
 	return cpufreq_register_driver(&tegra_cpufreq_driver);
 }
+
+#ifdef CONFIG_TEGRA_CPU_FREQ_GOVERNOR_KERNEL_START
+static int __init tegra_cpufreq_governor_init(void)
+{
+	/*
+	 * At this point, the full range of clocks should be available
+	 * Set the CPU governor to performance for a faster boot up
+	 */
+	unsigned int i;
+	struct cpufreq_policy *policy;
+	static char *start_scaling_gov = "performance";
+	for_each_online_cpu(i) {
+		policy = cpufreq_cpu_get(i);
+		if (!(policy && policy->governor &&
+			!(strcmp(policy->governor->name, start_scaling_gov) &&
+				cpufreq_set_gov(start_scaling_gov, i))))
+			pr_info("Failed to set the governor to %s for cpu %u\n",
+				start_scaling_gov, i);
+		if (policy)
+			cpufreq_cpu_put(policy);
+	}
+	return 0;
+}
+
+late_initcall_sync(tegra_cpufreq_governor_init);
+#endif
 
 static void __exit tegra_cpufreq_exit(void)
 {

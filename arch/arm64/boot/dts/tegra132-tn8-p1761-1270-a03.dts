@@ -27,5 +27,25 @@
 		linux,initrd-end = <0x851bc400>;
 	};
 
+	i2c@7000d000 {
+		tps65913 {
+			thermal {
+				status = "okay";
+			};
+			pmic {
+				regulators {
+					smps123 {
+						ti,disable-active-discharge-idle;
+					};
+					smps45 {
+						ti,disable-active-discharge-idle;
+					};
+					smps7 {
+						ti,disable-active-discharge-idle;
+					};
+				};
+			};
+		};
+	};
 };
 

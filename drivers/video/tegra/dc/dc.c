@@ -1115,49 +1115,6 @@ static void tegra_dc_set_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 	}
 }
 
-void tegra_dc_get_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
-{
-	u32 val;
-	u32 i;
-	bool flags;
-
-	val = tegra_dc_readl(dc, DC_DISP_DISP_COLOR_CONTROL);
-	if (val & CMU_ENABLE)
-		flags = true;
-
-	val &= ~CMU_ENABLE;
-	tegra_dc_writel(dc, val, DC_DISP_DISP_COLOR_CONTROL);
-	tegra_dc_writel(dc, GENERAL_ACT_REQ, DC_CMD_STATE_CONTROL);
-
-	/*TODO: Sync up with frame end */
-	mdelay(20);
-
-	for (i = 0; i < 256; i++) {
-		val = LUT1_READ_EN | LUT1_READ_ADDR(i);
-		tegra_dc_writel(dc, val, DC_COM_CMU_LUT1_READ);
-		val = tegra_dc_readl(dc, DC_COM_CMU_LUT1);
-		cmu->lut1[i] = LUT1_READ_DATA(val);
-	}
-
-	cmu->csc.krr = tegra_dc_readl(dc, DC_COM_CMU_CSC_KRR);
-	cmu->csc.kgr = tegra_dc_readl(dc, DC_COM_CMU_CSC_KGR);
-	cmu->csc.kbr = tegra_dc_readl(dc, DC_COM_CMU_CSC_KBR);
-	cmu->csc.krg = tegra_dc_readl(dc, DC_COM_CMU_CSC_KRG);
-	cmu->csc.kgg = tegra_dc_readl(dc, DC_COM_CMU_CSC_KGG);
-	cmu->csc.kbg = tegra_dc_readl(dc, DC_COM_CMU_CSC_KBG);
-	cmu->csc.krb = tegra_dc_readl(dc, DC_COM_CMU_CSC_KRB);
-	cmu->csc.kgb = tegra_dc_readl(dc, DC_COM_CMU_CSC_KGB);
-	cmu->csc.kbb = tegra_dc_readl(dc, DC_COM_CMU_CSC_KBB);
-
-	for (i = 0; i < 960; i++) {
-		val = LUT2_READ_EN | LUT2_READ_ADDR(i);
-		tegra_dc_writel(dc, val, DC_COM_CMU_LUT2_READ);
-		val = tegra_dc_readl(dc, DC_COM_CMU_LUT2);
-		cmu->lut2[i] = LUT2_READ_DATA(val);
-	}
-}
-EXPORT_SYMBOL(tegra_dc_get_cmu);
-
 int _tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 {
 	u32 val;
@@ -1170,7 +1127,7 @@ int _tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 	}
 
 #ifdef CONFIG_TEGRA_DC_CMU
-	if (cmu != &dc->cmu) {
+	if (memcmp(cmu, &dc->cmu, sizeof(struct tegra_dc_cmu))) {
 		tegra_dc_cache_cmu(&dc->cmu, cmu);
 
 		/* Disable CMU */
@@ -1213,17 +1170,20 @@ int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu)
 }
 EXPORT_SYMBOL(tegra_dc_update_cmu);
 
+static struct tegra_dc_cmu *tegra_dc_get_cmu(struct tegra_dc *dc)
+{
+	if (dc->pdata->cmu)
+		return dc->pdata->cmu;
+	else if (dc->out->type == TEGRA_DC_OUT_HDMI)
+		return &default_limited_cmu;
+	else
+		return &default_cmu;
+}
+
 void tegra_dc_cmu_enable(struct tegra_dc *dc, bool cmu_enable)
 {
 	dc->pdata->cmu_enable = cmu_enable;
-	if (dc->pdata->cmu) {
-		tegra_dc_update_cmu(dc, dc->pdata->cmu);
-	} else {
-		if (dc->out->type == TEGRA_DC_OUT_HDMI)
-			tegra_dc_update_cmu(dc, &default_limited_cmu);
-		else
-			tegra_dc_update_cmu(dc, &default_cmu);
-	}
+	tegra_dc_update_cmu(dc, tegra_dc_get_cmu(dc));
 }
 #else
 #define tegra_dc_cache_cmu(dst_cmu, src_cmu)
@@ -1435,6 +1395,16 @@ static int tegra_dc_set_out(struct tegra_dc *dc, struct tegra_dc_out *out)
 				dc->out->h_size, dc->out->v_size,
 				dc->mode.pclk);
 		dc->initialized = true;
+
+#ifdef CONFIG_TEGRA_DC_CMU
+		/*
+		 * If the bootloader already set the mode, assume the CMU
+		 * parameters are also correctly set. It would be better to
+		 * read them, but unfortunately there is no reliable and
+		 * flicker-free way to do this!
+		 */
+		tegra_dc_cache_cmu(&dc->cmu, tegra_dc_get_cmu(dc));
+#endif
 	} else if (out->n_modes > 0)
 		tegra_dc_set_mode(dc, &dc->out->modes[0]);
 
@@ -2242,14 +2212,7 @@ static int tegra_dc_init(struct tegra_dc *dc)
 #endif
 
 #ifdef CONFIG_TEGRA_DC_CMU
-	if (dc->pdata->cmu) {
-		_tegra_dc_update_cmu(dc, dc->pdata->cmu);
-	} else {
-		if (dc->out->type == TEGRA_DC_OUT_HDMI)
-			_tegra_dc_update_cmu(dc, &default_limited_cmu);
-		else
-			_tegra_dc_update_cmu(dc, &default_cmu);
-	}
+	_tegra_dc_update_cmu(dc, tegra_dc_get_cmu(dc));
 #endif
 	tegra_dc_set_color_control(dc);
 	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
@@ -2617,22 +2580,34 @@ bool tegra_dc_stats_get(struct tegra_dc *dc)
 	return true;
 }
 
-/* make the screen blank by disabling all windows */
-void tegra_dc_blank(struct tegra_dc *dc)
+/* blank selected windows by disabling them */
+void tegra_dc_blank(struct tegra_dc *dc, unsigned windows)
 {
 	struct tegra_dc_win *dcwins[DC_N_WINDOWS];
 	unsigned i;
+	unsigned long int blank_windows;
+	int nr_win = 0;
 
-	for_each_set_bit(i, &dc->valid_windows, DC_N_WINDOWS) {
-		dcwins[i] = tegra_dc_get_window(dc, i);
-		if (!dcwins[i])
+	blank_windows = windows & dc->valid_windows;
+
+	if (!blank_windows)
+		return;
+
+	for_each_set_bit(i, &blank_windows, DC_N_WINDOWS) {
+		dcwins[nr_win] = tegra_dc_get_window(dc, i);
+		if (!dcwins[nr_win])
 			continue;
-		dcwins[i]->flags &= ~TEGRA_WIN_FLAG_ENABLED;
+		dcwins[nr_win++]->flags &= ~TEGRA_WIN_FLAG_ENABLED;
 	}
 
-	tegra_dc_update_windows(dcwins, DC_N_WINDOWS, NULL);
-	tegra_dc_sync_windows(dcwins, DC_N_WINDOWS);
+	tegra_dc_update_windows(dcwins, nr_win, NULL);
+	tegra_dc_sync_windows(dcwins, nr_win);
 	tegra_dc_program_bandwidth(dc, true);
+}
+
+int tegra_dc_restore(struct tegra_dc *dc)
+{
+	return tegra_dc_ext_restore(dc->ext);
 }
 
 static void _tegra_dc_disable(struct tegra_dc *dc)
@@ -3201,6 +3176,12 @@ static int tegra_dc_probe(struct platform_device *ndev)
 
 	tegra_dc_create_sysfs(&dc->ndev->dev);
 
+	/*
+	 * Overriding the display mode only applies for modes set up during
+	 * boot. It should not apply for e.g. HDMI hotplug.
+	 */
+	dc->initialized = false;
+
 	return 0;
 
 err_remove_debugfs:
@@ -3336,6 +3317,21 @@ static int tegra_dc_suspend(struct platform_device *ndev, pm_message_t state)
 
 	if (!ret)
 		tegra_dc_io_end(dc);
+
+#ifdef CONFIG_TEGRA_DC_CMU
+	/*
+	 * CMU settings are lost when the DC goes to sleep. User-space will
+	 * perform a blank ioctl upon resume which will call tegra_dc_init()
+	 * and apply CMU settings again, but only if the cached values are
+	 * different from those specified. Clearing the cache here ensures
+	 * that this will happen.
+	 *
+	 * It would be better to reapply the CMU settings in tegra_dc_resume(),
+	 * but color corruption sometimes happens if we do so and
+	 * tegra_dc_init() seems to be the only safe place for this.
+	 */
+	memset(&dc->cmu, 0, sizeof(dc->cmu));
+#endif
 
 	mutex_unlock(&dc->lock);
 	synchronize_irq(dc->irq); /* wait for IRQ handlers to finish */

@@ -187,8 +187,11 @@ static struct nvavp_info *nvavp_info_ctx;
 
 static int nvavp_runtime_get(struct nvavp_info *nvavp)
 {
-	if (nvavp->init_task != current)
+	if (nvavp->init_task != current) {
+		mutex_unlock(&nvavp->open_lock);
 		pm_runtime_get_sync(&nvavp->nvhost_dev->dev);
+		mutex_lock(&nvavp->open_lock);
+	}
 	else
 		pm_runtime_get_noresume(&nvavp->nvhost_dev->dev);
 
@@ -1753,6 +1756,8 @@ static int nvavp_force_clock_stay_on_ioctl(struct file *filp, unsigned int cmd,
 			nvavp_clks_disable(nvavp);
 		}
 		mutex_unlock(&nvavp->open_lock);
+		if (!nvavp->stay_on)
+			schedule_work(&nvavp->clock_disable_work);
 	}
 	return 0;
 }
@@ -2556,12 +2561,16 @@ static int tegra_nvavp_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct nvavp_info *nvavp = platform_get_drvdata(pdev);
 
+	mutex_lock(&nvavp->open_lock);
+
 	if (nvavp->video_refcnt)
 		nvavp_init(nvavp, NVAVP_VIDEO_CHANNEL);
 #if defined(CONFIG_TEGRA_NVAVP_AUDIO)
 	if (nvavp->audio_refcnt)
 		nvavp_init(nvavp, NVAVP_AUDIO_CHANNEL);
 #endif
+
+	mutex_unlock(&nvavp->open_lock);
 
 	return 0;
 }
@@ -2571,14 +2580,10 @@ static int tegra_nvavp_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct nvavp_info *nvavp = platform_get_drvdata(pdev);
 
-	mutex_lock(&nvavp->open_lock);
-
 	/* To balance the unpowergate in suspend routine */
 	nvavp_powergate_vde(nvavp);
 
 	tegra_nvavp_runtime_resume(dev);
-
-	mutex_unlock(&nvavp->open_lock);
 
 	return 0;
 }
@@ -2587,10 +2592,15 @@ static int tegra_nvavp_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct nvavp_info *nvavp = platform_get_drvdata(pdev);
+	int ret = 0;
 
 	mutex_lock(&nvavp->open_lock);
 
-	tegra_nvavp_runtime_suspend(dev);
+	ret = tegra_nvavp_runtime_suspend(dev);
+	if (ret) {
+		mutex_unlock(&nvavp->open_lock);
+		return ret;
+	}
 
 	/* WAR: Leave partition vde on before suspend so that access
 	 * to BSEV registers immediatly after LP0 exit won't fail.

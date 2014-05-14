@@ -29,6 +29,7 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
+#include <linux/fs.h>
 
 #include <asm/exception.h>
 #include <asm/debug-monitors.h>
@@ -103,6 +104,25 @@ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
 	do_exit(SIGKILL);
 }
 
+static void show_map(struct task_struct *tsk, u64 addr)
+{
+	struct vm_area_struct *vma;
+	struct file *file;
+	struct mm_struct *mm = tsk->mm;
+	char path[64];
+	char *p;
+
+	vma = find_vma(mm, addr);
+	if (!vma)
+		return;
+	file = vma->vm_file;
+	if (!file)
+		return;
+	p = d_path(&file->f_path, &path, 64);
+	if (IS_ERR(p))
+		return;
+	pr_alert("Library at 0x%llx: 0x%llx %s\n", addr, vma->vm_start, p);
+}
 /*
  * Something tried to access memory that isn't in our memory map. User mode
  * accesses just cause a SIGSEGV
@@ -120,6 +140,12 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 			addr, esr);
 		show_pte(tsk->mm, addr);
 		show_regs(regs);
+		show_map(tsk, instruction_pointer(regs));
+		if (compat_user_mode(regs))
+			show_map(tsk, regs->compat_lr);
+		else
+			show_map(tsk, regs->regs[30]);
+		pr_alert("vdso base = 0x%llx\n", tsk->mm->context.vdso);
 	}
 
 	tsk->thread.fault_address = addr;
@@ -130,7 +156,7 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 	force_sig_info(sig, &si, tsk);
 }
 
-void do_bad_area(unsigned long addr, unsigned int esr, struct pt_regs *regs)
+static void do_bad_area(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 {
 	struct task_struct *tsk = current;
 	struct mm_struct *mm = tsk->active_mm;
