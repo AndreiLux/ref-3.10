@@ -334,6 +334,7 @@ int __init ardbeg_regulator_init(void)
 	case BOARD_E1936:
 	case BOARD_E1769:
 	case BOARD_P1761:
+	case BOARD_P1765:
 		tn8_regulator_init();
 		return 0;
 	default:
@@ -809,6 +810,7 @@ int __init ardbeg_soctherm_init(void)
 	/* Bowmore and P1761 are T132 platforms */
 	if (board_info.board_id == BOARD_E1971 ||
 			board_info.board_id == BOARD_P1761 ||
+			board_info.board_id == BOARD_P1765 ||
 			board_info.board_id == BOARD_E1991) {
 		cpu_edp_temp_margin = t13x_cpu_edp_temp_margin;
 		gpu_edp_temp_margin = t13x_gpu_edp_temp_margin;
@@ -856,6 +858,7 @@ int __init ardbeg_soctherm_init(void)
 	}
 
 	if (board_info.board_id == BOARD_P1761 ||
+		board_info.board_id == BOARD_P1765 ||
 		board_info.board_id == BOARD_E1784 ||
 		board_info.board_id == BOARD_E1971 ||
 		board_info.board_id == BOARD_E1991 ||
@@ -880,6 +883,7 @@ int __init ardbeg_soctherm_init(void)
 		 pmu_board_info.board_id == BOARD_E1736 ||
 		 pmu_board_info.board_id == BOARD_E1769 ||
 		 pmu_board_info.board_id == BOARD_P1761 ||
+		 pmu_board_info.board_id == BOARD_P1765 ||
 		 pmu_board_info.board_id == BOARD_E1936)
 		ardbeg_soctherm_data.tshut_pmu_trip_data = &tpdata_palmas;
 	else
@@ -895,6 +899,7 @@ int __init ardbeg_soctherm_init(void)
 		break;
 	case BOARD_P1761:
 	case BOARD_E1936:
+	case BOARD_P1765:
 		memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
 		       &battery_oc_throttle,
 		       sizeof(battery_oc_throttle));
