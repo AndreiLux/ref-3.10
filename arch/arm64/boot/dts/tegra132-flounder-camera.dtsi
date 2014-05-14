@@ -49,7 +49,7 @@
 				gpios = <3>;
 				clocks = "mclk";
 				drivername = "imx219";
-				detect = <0x0002 0x0016 0xFFFF 0x0219>;
+				detect = <0x0002 0x0000 0xFFFF 0x0219>;
 				devid = <0x0219>;
 				poweron = <
 					CAMERA_IND_CLK_SET(10000)
