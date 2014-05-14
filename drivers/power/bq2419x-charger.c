@@ -1411,9 +1411,6 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 		if (!ret)
 			pdata->bcharger_pdata->auto_recharge_time_power_off =
 					auto_recharge_time_power_off;
-		else
-			pdata->bcharger_pdata->auto_recharge_time_power_off =
-					3600;
 
 		ret = of_property_read_u32(batt_reg_node,
 				"ti,auto-recharge-time", &chg_restart_time);
@@ -1427,9 +1424,6 @@ static struct bq2419x_platform_data *bq2419x_dt_parse(struct i2c_client *client)
 		if (!ret)
 			pdata->bcharger_pdata->auto_recharge_time_supend =
 							chg_restart_time;
-		else
-			pdata->bcharger_pdata->auto_recharge_time_supend =
-					3600;
 
 		ret = of_property_read_u32(batt_reg_node,
 			"ti,temp-polling-time-sec", &temp_polling_time);
@@ -1759,7 +1753,6 @@ static int bq2419x_remove(struct i2c_client *client)
 static void bq2419x_shutdown(struct i2c_client *client)
 {
 	struct bq2419x_chip *bq2419x = i2c_get_clientdata(client);
-	struct device *dev = &client->dev;
 	int ret;
 	int next_poweron_time = 0;
 
@@ -1769,35 +1762,34 @@ static void bq2419x_shutdown(struct i2c_client *client)
 	if (!bq2419x->cable_connected)
 		goto end;
 
+	if (bq2419x->in_current_limit <= 500)
+		goto end;
+
 	ret = bq2419x_reset_wdt(bq2419x, "SHUTDOWN");
 	if (ret < 0)
 		dev_err(bq2419x->dev, "Reset WDT failed: %d\n", ret);
 
-	if (bq2419x->chg_status == BATTERY_CHARGING_DONE) {
-		dev_info(bq2419x->dev, "Battery charging done\n");
-		goto end;
+	switch (bq2419x->chg_status) {
+	case BATTERY_CHARGING:
+		next_poweron_time = bq2419x->wdt_refresh_timeout;
+		break;
+	case BATTERY_CHARGING_DONE:
+		next_poweron_time = bq2419x->auto_recharge_time_power_off;
+		break;
+	default:
+		break;
 	}
 
-	if (bq2419x->in_current_limit <= 500) {
-		dev_info(bq2419x->dev, "Battery charging with 500mA\n");
-		next_poweron_time = bq2419x->auto_recharge_time_power_off;
-	} else {
-		dev_info(bq2419x->dev, "Battery charging with high current\n");
-		next_poweron_time = bq2419x->wdt_refresh_timeout;
-	}
+	if (!next_poweron_time)
+		goto end;
 
 	ret = battery_charging_system_reset_after(bq2419x->bc_dev,
 				next_poweron_time);
 	if (ret < 0)
-		dev_err(dev, "System poweron after %d config failed %d\n",
+		dev_err(bq2419x->dev,
+			"System poweron after %d config failed %d\n",
 			next_poweron_time, ret);
 end:
-	if (next_poweron_time)
-		dev_info(dev, "System-charger will power-ON after %d sec\n",
-				next_poweron_time);
-	else
-		dev_info(bq2419x->dev, "System-charger will not power-ON\n");
-
 	battery_charging_system_power_on_usb_event(bq2419x->bc_dev);
 }
 
@@ -1813,37 +1805,38 @@ static int bq2419x_suspend(struct device *dev)
 
 	battery_charging_restart_cancel(bq2419x->bc_dev);
 
-	if (!bq2419x->cable_connected)
-		goto end;
+	if (!bq2419x->cable_connected || bq2419x->in_current_limit <= 500)
+		goto charge_500;
 
 	ret = bq2419x_reset_wdt(bq2419x, "Suspend");
 	if (ret < 0)
 		dev_err(bq2419x->dev, "Reset WDT failed: %d\n", ret);
 
-	if (bq2419x->chg_status == BATTERY_CHARGING_DONE) {
-		dev_info(bq2419x->dev, "Battery charging done\n");
-		goto end;
-	}
-
-	if (bq2419x->in_current_limit <= 500) {
-		dev_info(bq2419x->dev, "Battery charging with 500mA\n");
+	switch (bq2419x->chg_status) {
+	case BATTERY_CHARGING_DONE:
 		next_wakeup = bq2419x->auto_recharge_time_supend;
-	} else {
-		dev_info(bq2419x->dev, "Battery charging with high current\n");
-		next_wakeup = bq2419x->wdt_refresh_timeout;
+		break;
+	case BATTERY_CHARGING:
+		if (bq2419x->disable_suspend_during_charging) {
+			dev_err(bq2419x->dev,
+				"ERROR: Device suspended during charging\n");
+			next_wakeup = bq2419x->auto_recharge_time_supend;
+		} else {
+			next_wakeup = bq2419x->wdt_refresh_timeout;
+		}
+		break;
+	default:
+		break;
 	}
 
-	battery_charging_wakeup(bq2419x->bc_dev, next_wakeup);
-end:
 	if (next_wakeup)
-		dev_info(dev, "System-charger will resume after %d sec\n",
-				next_wakeup);
-	else
-		dev_info(dev, "System-charger will not have resume time\n");
+		battery_charging_wakeup(bq2419x->bc_dev, next_wakeup);
 
-	if (next_wakeup == bq2419x->wdt_refresh_timeout)
-		return 0;
+	if (next_wakeup == bq2419x->auto_recharge_time_supend)
+		goto charge_500;
 
+	return 0;
+charge_500:
 	ret = bq2419x_set_charging_current_suspend(bq2419x, 500);
 	if (ret < 0)
 		dev_err(bq2419x->dev, "Config of charging failed: %d\n", ret);
