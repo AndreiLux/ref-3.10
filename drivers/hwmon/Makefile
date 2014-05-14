@@ -149,6 +149,8 @@ obj-$(CONFIG_SENSORS_INA3221)	+= ina3221.o
 obj-$(CONFIG_SENSORS_TMON_TMP411)	+= tmon-tmp411.o
 
 obj-$(CONFIG_PMBUS)		+= pmbus/
+obj-$(CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR) += battery_system_voltage_monitor.o
+obj-$(CONFIG_VOLTAGE_MONITOR_PALMAS) += palmas_voltage_monitor.o
 
 ccflags-$(CONFIG_HWMON_DEBUG_CHIP) := -DDEBUG
 

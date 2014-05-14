@@ -612,6 +612,11 @@ struct palmas_ldousb_in_platform_data {
 	bool enable_in1_above_threshold;
 };
 
+struct palmas_voltage_monitor_platform_data {
+	bool use_vbat_monitor;
+	bool use_vsys_monitor;
+};
+
 struct palmas_platform_data {
 	int irq_flags;
 	int gpio_base;
@@ -630,6 +635,7 @@ struct palmas_platform_data {
 	struct palmas_battery_platform_data *battery_pdata;
 	struct palmas_sim_platform_data *sim_pdata;
 	struct palmas_ldousb_in_platform_data  *ldousb_in_pdata;
+	struct palmas_voltage_monitor_platform_data *voltage_monitor_pdata;
 
 	struct palmas_clk32k_init_data  *clk32k_init_data;
 	int clk32k_init_data_size;

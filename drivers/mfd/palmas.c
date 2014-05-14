@@ -72,6 +72,7 @@ enum palmas_ids {
 	PALMAS_PM_ID,
 	PALMAS_THERM_ID,
 	PALMAS_LDOUSB_IN_ID,
+	PALMAS_VOLTAGE_MONITOR_ID,
 };
 
 static struct resource palmas_rtc_resources[] = {
@@ -90,7 +91,7 @@ static struct resource palmas_rtc_resources[] = {
 		BIT(PALMAS_CLK_ID) | BIT(PALMAS_PWM_ID)		| 	\
 		BIT(PALMAS_USB_ID) | BIT(PALMAS_EXTCON_ID)	|	\
 		BIT(PALMAS_PM_ID) | BIT(PALMAS_THERM_ID) |	\
-		BIT(PALMAS_LDOUSB_IN_ID))
+		BIT(PALMAS_LDOUSB_IN_ID) | BIT(PALMAS_VOLTAGE_MONITOR_ID))
 
 #define TPS80036_SUB_MODULE	(TPS65913_SUB_MODULE |			\
 		BIT(PALMAS_BATTERY_GAUGE_ID) | BIT(PALMAS_CHARGER_ID) |	\
@@ -186,6 +187,10 @@ static const struct mfd_cell palmas_children[] = {
 	{
 		.name = "palmas-ldousb-in",
 		.id = PALMAS_LDOUSB_IN_ID,
+	},
+	{
+		.name = "palmas-voltage-monitor",
+		.id = PALMAS_VOLTAGE_MONITOR_ID,
 	},
 };
 
@@ -1253,6 +1258,11 @@ static int palmas_i2c_probe(struct i2c_client *i2c,
 
 		children[PALMAS_CLK_ID].platform_data = pdata->clk_pdata;
 		children[PALMAS_CLK_ID].pdata_size = sizeof(*pdata->clk_pdata);
+
+		children[PALMAS_VOLTAGE_MONITOR_ID].platform_data =
+						pdata->voltage_monitor_pdata;
+		children[PALMAS_VOLTAGE_MONITOR_ID].pdata_size =
+					sizeof(*pdata->voltage_monitor_pdata);
 
 		ret = mfd_add_devices(palmas->dev, -1,
 					  children, child_count,

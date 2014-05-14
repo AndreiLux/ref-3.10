@@ -27,6 +27,9 @@
 #include <linux/pm.h>
 #include <linux/jiffies.h>
 #include <linux/wakelock.h>
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+#include <linux/battery_system_voltage_monitor.h>
+#endif
 
 #define MAX17050_DELAY_S		(60)
 #define MAX17050_CHARGING_DELAY_S	(30)
@@ -180,6 +183,9 @@ struct max17050_chip {
 	struct wake_lock update_wake_lock;
 	struct mutex mutex;
 	struct mutex soc_mutex;
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+	unsigned int monitor_voltage;
+#endif
 };
 static struct max17050_chip *max17050_data;
 
@@ -556,6 +562,32 @@ static void max17050_get_soc(struct i2c_client *client)
 	}
 }
 
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+static void battery_voltage_monitor_check(
+			struct max17050_chip *chip,
+			bool enable)
+{
+	unsigned int monitor_voltage = 0;
+	int vcell_mv;
+
+	if (enable) {
+		vcell_mv = chip->vcell / 1000;
+		if (vcell_mv > MAX17050_BATTERY_CRITICAL_LOW_MV)
+			monitor_voltage = MAX17050_BATTERY_CRITICAL_LOW_MV;
+		else if (vcell_mv > MAX17050_BATTERY_DEAD_MV)
+			monitor_voltage = MAX17050_BATTERY_DEAD_MV;
+	}
+
+	if (monitor_voltage != chip->monitor_voltage) {
+		if (monitor_voltage)
+			battery_voltage_monitor_on_once(monitor_voltage);
+		else
+			battery_voltage_monitor_off();
+		chip->monitor_voltage = monitor_voltage;
+	}
+}
+#endif
+
 static void max17050_work(struct work_struct *work)
 {
 	struct max17050_chip *chip;
@@ -615,6 +647,15 @@ static void max17050_work(struct work_struct *work)
 
 	if (do_battery_update)
 		power_supply_changed(&chip->battery);
+
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+	if (chip->charger_status != BATTERY_CHARGING &&
+			chip->charger_status != BATTERY_CHARGING_DONE &&
+			chip->soc > 0)
+		battery_voltage_monitor_check(chip, true);
+	else
+		battery_voltage_monitor_check(chip, false);
+#endif
 
 	if (chip->status == POWER_SUPPLY_STATUS_DISCHARGING)
 		schedule_delayed_work(&chip->work, MAX17050_DELAY);
@@ -684,6 +725,15 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 		chip->lasttime_status = chip->status;
 		power_supply_changed(&chip->battery);
 	}
+
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+	if (chip->charger_status != BATTERY_CHARGING &&
+			chip->charger_status != BATTERY_CHARGING_DONE &&
+			chip->soc > 0)
+		battery_voltage_monitor_check(chip, true);
+	else
+		battery_voltage_monitor_check(chip, false);
+#endif
 	mutex_unlock(&chip->soc_mutex);
 
 	return 0;
@@ -696,6 +746,22 @@ static int max17050_get_battery_temp(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+static int max17050_vbat_monitor_notification(unsigned int voltage)
+{
+	if (!max17050_data)
+		return -ENODEV;
+
+	mutex_lock(&max17050_data->soc_mutex);
+	max17050_data->monitor_voltage = 0;
+	cancel_delayed_work(&max17050_data->work);
+	schedule_delayed_work(&max17050_data->work, 0);
+	mutex_unlock(&max17050_data->soc_mutex);
+
+	return 0;
+}
+#endif
 
 static struct battery_gauge_ops max17050_bg_ops = {
 	.update_battery_status = max17050_update_battery_status,
@@ -763,6 +829,12 @@ static int max17050_probe(struct i2c_client *client,
 			ret);
 		goto bg_err;
 	}
+
+#ifdef CONFIG_BATTERY_SYSTEM_VOLTAGE_MONITOR
+	chip->monitor_voltage = 0;
+	battery_voltage_monitor_listener_register(
+			max17050_vbat_monitor_notification);
+#endif
 
 	chip->first_update_done = false;
 	chip->present = 1;
