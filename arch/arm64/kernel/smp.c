@@ -686,6 +686,7 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 
 	case IPI_WAKEUP:
 		break;
+
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 	case IPI_TIMER:
 		irq_enter();
