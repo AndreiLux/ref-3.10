@@ -1308,7 +1308,6 @@ static void tegra_disable_lp1bb_interrupt(void)
 }
 #endif
 
-
 static void tegra_suspend_powergate_control(int partid, bool turn_off)
 {
 	if (turn_off)
