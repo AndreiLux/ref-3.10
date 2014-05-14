@@ -624,32 +624,6 @@ static void bq2419x_wdt_restart_wq(struct work_struct *work)
 		dev_err(bq2419x->dev, "bq2419x_reset_wdt failed: %d\n", ret);
 
 }
-static int bq2419x_reconfigure_charger_param(struct bq2419x_chip *bq2419x,
-		const char *from)
-{
-	int ret;
-
-	dev_info(bq2419x->dev, "Reconfiguring charging param from %s\n", from);
-	ret = bq2419x_watchdog_init(bq2419x, bq2419x->wdt_time_sec, from);
-	if (ret < 0) {
-		dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
-		return ret;
-	}
-
-	ret = bq2419x_charger_init(bq2419x);
-	if (ret < 0) {
-		dev_err(bq2419x->dev, "Charger init failed: %d\n", ret);
-		return ret;
-	}
-
-	ret = bq2419x_configure_charging_current(bq2419x,
-			bq2419x->in_current_limit);
-	if (ret < 0) {
-		dev_err(bq2419x->dev, "Current config failed: %d\n", ret);
-		return ret;
-	}
-	return ret;
-}
 
 static int bq2419x_handle_safety_timer_expire(struct bq2419x_chip *bq2419x)
 {
@@ -684,12 +658,6 @@ static int bq2419x_handle_safety_timer_expire(struct bq2419x_chip *bq2419x)
 		dev_err(dev, "PWR_ON_REG update failed %d\n", ret);
 		return ret;
 	}
-
-	ret = bq2419x_reconfigure_charger_param(bq2419x, "SAFETY-TIMER_EXPIRE");
-	if (ret < 0) {
-		dev_err(dev, "Reconfig of BQ parm failed: %d\n", ret);
-		return ret;
-	}
 	return ret;
 }
 
@@ -717,9 +685,23 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 
 	if (val & BQ2419x_FAULT_WATCHDOG_FAULT) {
 		bq_chg_err(bq2419x, "WatchDog Expired\n");
-		ret = bq2419x_reconfigure_charger_param(bq2419x, "WDT-EXP-ISR");
+		ret = bq2419x_watchdog_init(bq2419x,
+					bq2419x->wdt_time_sec, "ISR");
 		if (ret < 0) {
-			dev_err(bq2419x->dev, "BQ reconfig failed %d\n", ret);
+			dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
+			return ret;
+		}
+
+		ret = bq2419x_charger_init(bq2419x);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "Charger init failed: %d\n", ret);
+			return ret;
+		}
+
+		ret = bq2419x_configure_charging_current(bq2419x,
+					bq2419x->in_current_limit);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "bq2419x init failed: %d\n", ret);
 			return ret;
 		}
 	}
@@ -1838,10 +1820,25 @@ static int bq2419x_resume(struct device *dev)
 	if (val & BQ2419x_FAULT_WATCHDOG_FAULT) {
 		bq_chg_err(bq2419x, "Watchdog Timer Expired\n");
 
-		ret = bq2419x_reconfigure_charger_param(bq2419x,
-				"WDT-EXP-RESUME");
+		ret = bq2419x_watchdog_init(bq2419x, bq2419x->wdt_time_sec,
+						"RESUME");
 		if (ret < 0) {
-			dev_err(bq2419x->dev, "BQ reconfig failed %d\n", ret);
+			dev_err(bq2419x->dev, "BQWDT init failed %d\n", ret);
+			return ret;
+		}
+
+		ret = bq2419x_charger_init(bq2419x);
+		if (ret < 0) {
+			dev_err(bq2419x->dev, "Charger init failed: %d\n", ret);
+			return ret;
+		}
+
+		ret = bq2419x_set_charging_current(bq2419x->chg_rdev,
+				bq2419x->last_charging_current,
+				bq2419x->last_charging_current);
+		if (ret < 0) {
+			dev_err(bq2419x->dev,
+				"Set charging current failed: %d\n", ret);
 			return ret;
 		}
 	} else {
