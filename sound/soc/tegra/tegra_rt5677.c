@@ -1309,8 +1309,6 @@ err_unregister_switch:
 	tegra_asoc_utils_fini(&machine->util_data);
 	free_irq(rt5677_irq, 0);
 err_free_machine:
-	schedule_delayed_work(&machine->power_work,
-		msecs_to_jiffies(1000));
 	if (np)
 		kfree(machine->pdata);
 
