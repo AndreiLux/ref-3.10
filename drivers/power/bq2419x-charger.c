@@ -540,50 +540,21 @@ scrub:
 	return ret;
 }
 
-static int bq2419x_fault_clear_sts(struct bq2419x_chip *bq2419x,
-	unsigned int *reg09_val)
+static int bq2419x_fault_clear_sts(struct bq2419x_chip *bq2419x)
 {
 	int ret;
-	unsigned int reg09_1, reg09_2;
+	unsigned int reg09;
 
-	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &reg09_1);
+	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &reg09);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "FAULT_REG read failed: %d\n", ret);
 		return ret;
 	}
 
-	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &reg09_2);
+	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &reg09);
 	if (ret < 0)
 		dev_err(bq2419x->dev, "FAULT_REG read failed: %d\n", ret);
 
-	if (reg09_val) {
-		unsigned int reg09 = 0;
-
-		if ((reg09_1 | reg09_2) & BQ2419x_FAULT_WATCHDOG_FAULT)
-			reg09 |= BQ2419x_FAULT_WATCHDOG_FAULT;
-		if ((reg09_1 | reg09_2) & BQ2419x_FAULT_BOOST_FAULT)
-			reg09 |= BQ2419x_FAULT_BOOST_FAULT;
-		if ((reg09_1 | reg09_2) & BQ2419x_FAULT_BAT_FAULT)
-			reg09 |= BQ2419x_FAULT_BAT_FAULT;
-		if (((reg09_1 & BQ2419x_FAULT_CHRG_FAULT_MASK) ==
-				BQ2419x_FAULT_CHRG_SAFTY) ||
-			((reg09_2 & BQ2419x_FAULT_CHRG_FAULT_MASK) ==
-				BQ2419x_FAULT_CHRG_SAFTY))
-			reg09 |= BQ2419x_FAULT_CHRG_SAFTY;
-		else if (((reg09_1 & BQ2419x_FAULT_CHRG_FAULT_MASK) ==
-				BQ2419x_FAULT_CHRG_INPUT) ||
-			((reg09_2 & BQ2419x_FAULT_CHRG_FAULT_MASK) ==
-				BQ2419x_FAULT_CHRG_INPUT))
-			reg09 |= BQ2419x_FAULT_CHRG_INPUT;
-		else if (((reg09_1 & BQ2419x_FAULT_CHRG_FAULT_MASK) ==
-				BQ2419x_FAULT_CHRG_THERMAL) ||
-			((reg09_2 & BQ2419x_FAULT_CHRG_FAULT_MASK) ==
-				BQ2419x_FAULT_CHRG_THERMAL))
-			reg09 |= BQ2419x_FAULT_CHRG_THERMAL;
-
-		reg09 |= reg09_2 &BQ2419x_FAULT_NTC_FAULT;
-		*reg09_val = reg09;
-	}
 	return ret;
 }
 
@@ -729,9 +700,9 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 	unsigned int val;
 	int check_chg_state = 0;
 
-	ret = bq2419x_fault_clear_sts(bq2419x, &val);
+	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &val);
 	if (ret < 0) {
-		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
+		dev_err(bq2419x->dev, "FAULT_REG read failed %d\n", ret);
 		return ret;
 	}
 
@@ -780,6 +751,12 @@ static irqreturn_t bq2419x_irq(int irq, void *data)
 		bq_chg_err(bq2419x, "NTC fault %d\n",
 				val & BQ2419x_FAULT_NTC_FAULT);
 		check_chg_state = 1;
+	}
+
+	ret = bq2419x_fault_clear_sts(bq2419x);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
+		return ret;
 	}
 
 	ret = regmap_read(bq2419x->regmap, BQ2419X_SYS_STAT_REG, &val);
@@ -1642,7 +1619,7 @@ static int bq2419x_probe(struct i2c_client *client,
 			goto scrub_mutex;
 		}
 
-		ret = bq2419x_fault_clear_sts(bq2419x, NULL);
+		ret = bq2419x_fault_clear_sts(bq2419x);
 		if (ret < 0) {
 			dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
 			goto scrub_mutex;
@@ -1695,7 +1672,7 @@ static int bq2419x_probe(struct i2c_client *client,
 		goto scrub_wq;
 	}
 
-	ret = bq2419x_fault_clear_sts(bq2419x, NULL);
+	ret = bq2419x_fault_clear_sts(bq2419x);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
 		goto scrub_wq;
@@ -1852,7 +1829,13 @@ static int bq2419x_resume(struct device *dev)
 	if (!bq2419x->battery_presense)
 		return 0;
 
-	ret = bq2419x_fault_clear_sts(bq2419x, &val);
+	ret = regmap_read(bq2419x->regmap, BQ2419X_FAULT_REG, &val);
+	if (ret < 0) {
+		dev_err(bq2419x->dev, "FAULT_REG read failed %d\n", ret);
+		return ret;
+	}
+
+	ret = bq2419x_fault_clear_sts(bq2419x);
 	if (ret < 0) {
 		dev_err(bq2419x->dev, "fault clear status failed %d\n", ret);
 		return ret;
