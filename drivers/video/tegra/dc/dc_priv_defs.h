@@ -44,6 +44,8 @@
 #define CURSOR_CLIP_SHIFT_BITS(win)	(win << 28)
 #define CURSOR_CLIP_GET_WINDOW(reg)	((reg >> 28) & 3)
 
+#define BLANK_ALL	(~0)
+
 static inline u32 ALL_UF_INT(void)
 {
 	if (tegra_platform_is_fpga())
@@ -239,8 +241,6 @@ struct tegra_dc {
 	u32				available_bw;
 	struct tegra_dc_win		tmp_wins[DC_N_WINDOWS];
 
-	int				win_blank_saved_flag;
-	struct tegra_dc_win		win_blank_saved;
 	struct tegra_edid		*edid;
 
 	struct tegra_dc_nvsr_data *nvsr;

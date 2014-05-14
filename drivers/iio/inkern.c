@@ -314,7 +314,7 @@ struct iio_channel *iio_channel_get(struct device *dev,
 	if (dev) {
 		channel = of_iio_channel_get_by_name(dev->of_node,
 						     channel_name);
-		if (channel != NULL)
+		if ((channel != NULL) && (!IS_ERR(channel)))
 			return channel;
 	}
 	return iio_channel_get_sys(name, channel_name);

@@ -1447,12 +1447,10 @@ static int soctherm_bind(struct thermal_zone_device *thz,
 	int i;
 	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
-	u32 base_cp, base_ft;
-	s32 shft_cp, shft_ft;
 
 	/* skip binding cooling devices on improperly fused soctherm */
-	if (tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) < 0 ||
-	    tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) < 0)
+	if (tegra_fuse_calib_base_get_cp(NULL, NULL) < 0 ||
+	    tegra_fuse_calib_base_get_ft(NULL, NULL) < 0)
 		return 0;
 
 	for (i = 0; i < therm->num_trips; i++) {
@@ -2105,7 +2103,7 @@ static int soctherm_handle_alarm(enum soctherm_throttle_id alarm)
 		break;
 
 	case THROTTLE_OC4:
-		pr_info("soctherm: Successfully handled OC4 alarm\n");
+		pr_debug("soctherm: Successfully handled OC4 alarm\n");
 		/* TODO: add OC4 alarm handling code here */
 		rv = 0;
 		break;
@@ -2753,14 +2751,11 @@ static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 	s16 therm_a, therm_b;
 	s32 div, mult, actual_tsensor_ft, actual_tsensor_cp;
 	int fuse_rev;
-	u32 base_cp;
-	s32 shft_cp;
 	struct soctherm_fuse_correction_war *war;
 
-	fuse_rev = tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp);
+	fuse_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
 	if (fuse_rev < 0)
 		return fuse_rev;
-	pr_debug("%s: fuse_rev %d\n", __func__, fuse_rev);
 
 	tegra_fuse_get_tsensor_calib(sensor2tsensorcalib[sensor], &value);
 
@@ -2800,7 +2795,7 @@ static int soctherm_fuse_read_tsensor(enum soctherm_sense sensor)
 		war = fuse_rev ?
 			&t12x_fuse_war1[sensor] : &t12x_fuse_war2[sensor];
 	else if (IS_T13X)
-		war = fuse_rev ?
+		war = fuse_rev == 2 ?
 			&t13x_fuse_war1[sensor] : &t13x_fuse_war2[sensor];
 	else
 		war = &no_fuse_war[sensor];
@@ -2853,7 +2848,7 @@ static void soctherm_adjust_zone(int tz)
 {
 	u32 r, s;
 	int i;
-	unsigned long ztemp, pll_temp, diff;
+	long ztemp, pll_temp, diff;
 	bool low_voltage;
 
 	if (soctherm_suspended)
@@ -2888,6 +2883,10 @@ static void soctherm_adjust_zone(int tz)
 			diff = ztemp - pll_temp;
 		else
 			diff = 0;
+
+		/* cap hotspot offset to max offset from pdata */
+		if (diff > plat_data.therm[tz].hotspot_offset)
+			diff = plat_data.therm[tz].hotspot_offset;
 
 		/* Program hotspot offsets per <tz> ~ PLL diff */
 		r = soctherm_readl(TS_HOTSPOT_OFF);
@@ -3592,13 +3591,15 @@ static int regs_show(struct seq_file *s, void *data)
 	uint m, n, q;
 	char *depth;
 
+	seq_printf(s, "-----TSENSE (precision %s  fuse %d  convert %s)-----\n",
+		   PRECISION_TO_STR(), tegra_fuse_calib_base_get_cp(NULL, NULL),
+		   read_hw_temp ? "HW" : "SW");
+
 	if (soctherm_suspended) {
 		seq_puts(s, "SOC_THERM is SUSPENDED\n");
 		return 0;
 	}
 
-	seq_printf(s, "-----TSENSE (precision %s  convert %s)-----\n",
-		   PRECISION_TO_STR(), read_hw_temp ? "HW" : "SW");
 	for (i = 0; i < TSENSE_SIZE; i++) {
 		r = soctherm_readl(TS_TSENSE_REG_OFFSET(TS_CPU0_CONFIG1, i));
 		state = REG_GET(r, TS_CPU0_CONFIG1_EN);

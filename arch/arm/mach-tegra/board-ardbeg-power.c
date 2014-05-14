@@ -166,11 +166,12 @@ static struct tegra_cl_dvfs_cfg_param e1733_ardbeg_cl_dvfs_param = {
 /* E1733 volatge map. Fixed 10mv steps from 700mv to 1400mv */
 #define E1733_CPU_VDD_MAP_SIZE ((1400000 - 700000) / 10000 + 1)
 static struct voltage_reg_map e1733_cpu_vdd_map[E1733_CPU_VDD_MAP_SIZE];
-static inline void e1733_fill_reg_map(void)
+static inline void e1733_fill_reg_map(int minor_ver)
 {
         int i;
+	int reg_init_value = (minor_ver == 2) ? 0x1e : 0xa;
         for (i = 0; i < E1733_CPU_VDD_MAP_SIZE; i++) {
-                e1733_cpu_vdd_map[i].reg_value = i + 0xa;
+                e1733_cpu_vdd_map[i].reg_value = i + reg_init_value;
                 e1733_cpu_vdd_map[i].reg_uV = 700000 + 10000 * i;
         }
 }
@@ -252,7 +253,17 @@ static int __init ardbeg_cl_dvfs_init(struct board_info *pmu_board_info)
 
 
 	if (pmu_board_id == BOARD_E1733) {
-		e1733_fill_reg_map();
+		int minor_ver = 1;
+
+		if ((pmu_board_info->major_revision == 'F') &&
+				(pmu_board_info->minor_revision == 0x2)) {
+			pr_err("AMS PMIC version 1V2\n");
+			minor_ver = 2;
+		} else {
+			minor_ver = 1;
+			pr_err("AMS PMIC version 1V2\n");
+		}
+		e1733_fill_reg_map(minor_ver);
 		data = &e1733_cl_dvfs_data;
 	}
 
@@ -629,7 +640,7 @@ static struct soctherm_platform_data t132ref_v1_soctherm_data = {
 		[THERM_CPU] = {
 			.zone_enable = true,
 			.passive_delay = 1000,
-			.hotspot_offset = 6000,
+			.hotspot_offset = 10000,
 		},
 		[THERM_PLL] = {
 			.zone_enable = true,
@@ -638,21 +649,87 @@ static struct soctherm_platform_data t132ref_v1_soctherm_data = {
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 99000,
+					.trip_temp = 97000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 96000,
+					.trip_temp = 94000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "cpu-balanced",
-					.trip_temp = 86000,
+					.trip_temp = 84000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+	},
+};
+
+/* Only the diffs from ardbeg_soctherm_data structure */
+static struct soctherm_platform_data t132ref_v2_soctherm_data = {
+	.therm = {
+		[THERM_CPU] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.hotspot_offset = 10000,
+			.num_trips = 3,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 105000,
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 102000,
+					.trip_type = THERMAL_TRIP_HOT,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "cpu-balanced",
+					.trip_temp = 92000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+		[THERM_GPU] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.hotspot_offset = 5000,
+			.num_trips = 3,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 101000,
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 99000,
+					.trip_type = THERMAL_TRIP_HOT,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "gpu-balanced",
+					.trip_temp = 89000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -666,7 +743,10 @@ static struct soctherm_platform_data t132ref_v1_soctherm_data = {
 static struct soctherm_throttle battery_oc_throttle = {
 	.throt_mode = BRIEF,
 	.polarity = SOCTHERM_ACTIVE_LOW,
-	.priority = 100,
+	.priority = 50,
+	.intr = true,
+	.alarm_cnt_threshold = 15,
+	.alarm_filter = 5100000,
 	.devs = {
 		[THROTTLE_DEV_CPU] = {
 			.enable = true,
@@ -706,11 +786,14 @@ static struct soctherm_throttle voltmon_throttle = {
 
 int __init ardbeg_soctherm_init(void)
 {
-	s32 base_cp, shft_cp;
-	u32 base_ft, shft_ft;
+	const int t12x_edp_temp_margin = 7000,
+		t13x_cpu_edp_temp_margin = 5000,
+		t13x_gpu_edp_temp_margin = 6000;
+	int cpu_edp_temp_margin, gpu_edp_temp_margin;
+	int cp_rev, ft_rev;
 	struct board_info pmu_board_info;
 	struct board_info board_info;
-	enum soctherm_therm_id therm_cpu;
+	enum soctherm_therm_id therm_cpu = THERM_CPU;
 
 	tegra_get_board_info(&board_info);
 
@@ -720,32 +803,44 @@ int __init ardbeg_soctherm_init(void)
 				ardbeg_therm_pop, sizeof(ardbeg_therm_pop));
 	}
 
-	/* Bowmore and P1761 are T132 platforms: ATE rev check (TODO) */
+	cp_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
+	ft_rev = tegra_fuse_calib_base_get_ft(NULL, NULL);
+
+	/* Bowmore and P1761 are T132 platforms */
 	if (board_info.board_id == BOARD_E1971 ||
 			board_info.board_id == BOARD_P1761 ||
 			board_info.board_id == BOARD_E1991) {
-		memcpy(&ardbeg_soctherm_data.therm[THERM_CPU],
-			&t132ref_v1_soctherm_data.therm[THERM_CPU],
-			sizeof(t132ref_v1_soctherm_data.therm[THERM_CPU]));
-		memcpy(&ardbeg_soctherm_data.therm[THERM_PLL],
-			&t132ref_v1_soctherm_data.therm[THERM_PLL],
-			sizeof(t132ref_v1_soctherm_data.therm[THERM_PLL]));
-		therm_cpu = THERM_PLL; /* override CPU zone with PLL zone */
+		cpu_edp_temp_margin = t13x_cpu_edp_temp_margin;
+		gpu_edp_temp_margin = t13x_gpu_edp_temp_margin;
+		if (!cp_rev) {
+			/* ATE rev is NEW: use v2 table */
+			ardbeg_soctherm_data.therm[THERM_CPU] =
+				t132ref_v2_soctherm_data.therm[THERM_CPU];
+			ardbeg_soctherm_data.therm[THERM_GPU] =
+				t132ref_v2_soctherm_data.therm[THERM_GPU];
+		} else {
+			/* ATE rev is Old or Mid: use PLLx sensor only */
+			ardbeg_soctherm_data.therm[THERM_CPU] =
+				t132ref_v1_soctherm_data.therm[THERM_CPU];
+			ardbeg_soctherm_data.therm[THERM_PLL] =
+				t132ref_v1_soctherm_data.therm[THERM_PLL];
+			therm_cpu = THERM_PLL; /* override CPU with PLL zone */
+		}
 	} else {
-		therm_cpu = THERM_CPU;
+		cpu_edp_temp_margin = t12x_edp_temp_margin;
+		gpu_edp_temp_margin = t12x_edp_temp_margin;
 	}
 
 	/* do this only for supported CP,FT fuses */
-	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
-	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
+	if ((cp_rev >= 0) && (ft_rev >= 0)) {
 		tegra_platform_edp_init(
 			ardbeg_soctherm_data.therm[therm_cpu].trips,
 			&ardbeg_soctherm_data.therm[therm_cpu].num_trips,
-			7000); /* edp temperature margin */
+			cpu_edp_temp_margin);
 		tegra_platform_gpu_edp_init(
 			ardbeg_soctherm_data.therm[THERM_GPU].trips,
 			&ardbeg_soctherm_data.therm[THERM_GPU].num_trips,
-			7000);
+			gpu_edp_temp_margin);
 		tegra_add_cpu_vmax_trips(
 			ardbeg_soctherm_data.therm[therm_cpu].trips,
 			&ardbeg_soctherm_data.therm[therm_cpu].num_trips);
@@ -792,7 +887,12 @@ int __init ardbeg_soctherm_init(void)
 			pmu_board_info.board_id);
 
 	/* Enable soc_therm OC throttling on selected platforms */
-	switch (pmu_board_info.board_id) {
+	switch (board_info.board_id) {
+	case BOARD_E1971:
+		memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
+		       &battery_oc_throttle,
+		       sizeof(battery_oc_throttle));
+		break;
 	case BOARD_P1761:
 		memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
 		       &battery_oc_throttle,

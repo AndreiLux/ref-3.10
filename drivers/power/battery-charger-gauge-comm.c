@@ -39,6 +39,7 @@
 #include <linux/power/reset/system-pmic.h>
 #include <linux/wakelock.h>
 #include <linux/iio/consumer.h>
+#include <linux/iio/types.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/types.h>
 
@@ -617,6 +618,32 @@ static ssize_t battery_show_snapshot_capacity(struct device *dev,
 				bg_dev->battery_snapshot_capacity);
 }
 
+static ssize_t battery_show_max_capacity(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	struct iio_channel *channel;
+	int val, ret;
+
+	channel = iio_channel_get(dev, "batt_id");
+	if (IS_ERR(channel)) {
+		dev_err(dev,
+			"%s: Failed to get channel batt_id, %ld\n",
+			__func__, PTR_ERR(channel));
+			return 0;
+	}
+
+	ret = iio_read_channel_raw(channel, &val);
+	if (ret < 0) {
+		dev_err(dev,
+			"%s: Failed to read channel, %d\n",
+			__func__, ret);
+			return 0;
+	}
+
+	return snprintf(buf, MAX_STR_PRINT, "%d\n", val);
+}
+
 static DEVICE_ATTR(battery_snapshot_voltage, S_IRUGO,
 		battery_show_snapshot_voltage, NULL);
 
@@ -626,10 +653,14 @@ static DEVICE_ATTR(battery_snapshot_current, S_IRUGO,
 static DEVICE_ATTR(battery_snapshot_capacity, S_IRUGO,
 		battery_show_snapshot_capacity, NULL);
 
+static DEVICE_ATTR(battery_max_capacity, S_IRUGO,
+		battery_show_max_capacity, NULL);
+
 static struct attribute *battery_snapshot_attributes[] = {
 	&dev_attr_battery_snapshot_voltage.attr,
 	&dev_attr_battery_snapshot_current.attr,
 	&dev_attr_battery_snapshot_capacity.attr,
+	&dev_attr_battery_max_capacity.attr,
 	NULL
 };
 
@@ -1159,12 +1190,13 @@ struct battery_gauge_dev *battery_gauge_register(struct device *dev,
 	bg_dev->ops = bgi->bg_ops;
 	bg_dev->parent_dev = dev;
 	bg_dev->drv_data = drv_data;
-	bg_dev->tz_name = kstrdup(bgi->tz_name, GFP_KERNEL);
+	bg_dev->tz_name = NULL;
 
 	if (bgi->current_channel_name)
 		bg_dev->bat_curr_channel_name = bgi->current_channel_name;
 
-	if (bg_dev->tz_name) {
+	if (bgi->tz_name) {
+		bg_dev->tz_name = kstrdup(bgi->tz_name, GFP_KERNEL);
 		bg_dev->battery_tz = thermal_zone_device_find_by_name(
 			bg_dev->tz_name);
 		if (!bg_dev->battery_tz)

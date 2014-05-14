@@ -8389,6 +8389,8 @@ struct clk tegra_list_clks[] = {
 #endif
 	SHARED_EMC_CLK("disp1.emc",	"tegradc.0",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, BIT(EMC_USER_DC1)),
 	SHARED_EMC_CLK("disp2.emc",	"tegradc.1",	"emc",	&tegra_clk_emc, NULL, 0, SHARED_ISO_BW, BIT(EMC_USER_DC2)),
+	SHARED_EMC_CLK("disp1.la.emc",	"tegradc.0",	"emc.la",	&tegra_clk_emc, NULL, 0, 0, 0),
+	SHARED_EMC_CLK("disp2.la.emc",	"tegradc.1",	"emc.la",	&tegra_clk_emc, NULL, 0, 0, 0),
 	SHARED_EMC_CLK("hdmi.emc",	"hdmi",		"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
 	SHARED_EMC_CLK("usbd.emc",	"tegra-udc.0",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
 	SHARED_EMC_CLK("usb1.emc",	"tegra-ehci.0",	"emc",	&tegra_clk_emc, NULL, 0, 0, 0),
@@ -9298,6 +9300,11 @@ unsigned long tegra_emc_cpu_limit(unsigned long cpu_rate)
 
 	/* Vote on memory bus frequency based on cpu frequency;
 	   cpu rate is in kHz, emc rate is in Hz */
+
+        if ((tegra_revision != TEGRA_REVISION_A01) &&
+            (tegra_revision != TEGRA_REVISION_A02))
+                return 0; /* no frequency dependency for A03+ revisions */
+
 	if (cpu_rate > 1020000)
 		emc_rate = 600000000;	/* cpu > 1.02GHz, emc 600MHz */
 	else
