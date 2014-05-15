@@ -2161,7 +2161,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 void tegra_reserve4(ulong carveout_size, ulong fb_size,
 		       ulong fb2_size, ulong vpr_size)
 {
-#ifdef CONFIG_TRUSTED_LITTLE_KERNEL
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	tegra_vpr_start = 0;
 	tegra_vpr_size = vpr_size;
 #endif
