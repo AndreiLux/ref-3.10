@@ -733,9 +733,8 @@ void rm_tch_ctrl_set_baseline(u8 *arg, u16 u16Len)
 static int rm_tch_write_image_data(void)
 {
 	int ret = RETURN_OK;
-	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
 
-	ret = rm_tch_cmd_process(0, g_st_rm_writeimg_cmd, ts);
+	ret = rm_tch_cmd_process(0, g_st_rm_writeimg_cmd, NULL);
 	return ret;
 }
 
@@ -2875,19 +2874,19 @@ static struct rm_spi_ts_platform_data *rm_ts_parse_dt(struct device *dev,
 	if (ret < 0)
 		goto exit_release_all_gpio;
 	pdata->config = (unsigned char *)val;
+
 	ret = of_property_read_u32(np, "platform-id", &val);
 	if (ret < 0)
 		goto exit_release_all_gpio;
 	pdata->platform_id = val;
+
 	ret = of_property_read_string(np, "name-of-clock", &str);
-	if (ret < 0)
-		goto exit_release_all_gpio;
-	pdata->name_of_clock = (char *)str;
+	if (ret == 0)
+		pdata->name_of_clock = (char *)str;
 
 	ret = of_property_read_string(np, "name-of-clock-con", &str);
-	if (ret < 0)
-		goto exit_release_all_gpio;
-	pdata->name_of_clock_con = (char *)str;
+	if (ret == 0)
+		pdata->name_of_clock_con = (char *)str;
 
 	return pdata;
 

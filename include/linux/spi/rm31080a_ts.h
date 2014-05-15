@@ -97,6 +97,7 @@
 #define RM_PLATFORM_L005	0x09
 #define RM_PLATFORM_K156	0x0A
 #define RM_PLATFORM_T008	0x0B
+#define RM_PLATFORM_T008_2	0x0D
 #define RM_PLATFORM_RAYPRJ	0x80
 
 /***************************************************************************
