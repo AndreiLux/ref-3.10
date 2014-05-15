@@ -72,6 +72,7 @@ struct regulator *rt5677_reg;
 struct tegra_rt5677 {
 	struct tegra_asoc_utils_data util_data;
 	struct tegra_asoc_platform_data *pdata;
+	struct snd_soc_codec *codec;
 	int gpio_requested;
 	enum snd_soc_bias_level bias_level;
 	int clock_enabled;
@@ -92,7 +93,7 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 
 	value = gpio_get_value(pdata->gpio_irq1);
 
-	pr_debug("RT5677 IRQ is triggered = 0x%x\n", value);
+	pr_info("RT5677 IRQ is triggered = 0x%x\n", value);
 
 	return IRQ_HANDLED;
 }
@@ -736,6 +737,7 @@ static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_nc_pin(dapm, "LOUT1");
 	snd_soc_dapm_nc_pin(dapm, "LOUT2");
 	snd_soc_dapm_sync(dapm);
+	machine->codec = codec;
 
 	return 0;
 }
@@ -920,13 +922,24 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 	struct snd_soc_dapm_context *dapm, enum snd_soc_bias_level level)
 {
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct snd_soc_codec *codec = NULL;
+	struct rt5677_priv *rt5677 = NULL;
+
+	if (machine->codec) {
+		codec = machine->codec;
+		rt5677 = snd_soc_codec_get_drvdata(codec);
+	}
 
 	if (machine->bias_level != SND_SOC_BIAS_OFF &&
 		level == SND_SOC_BIAS_OFF && machine->clock_enabled) {
 		machine->clock_enabled = 0;
 		tegra_asoc_utils_clk_disable(&machine->util_data);
-		schedule_delayed_work(&machine->power_work,
-			msecs_to_jiffies(1000));
+		if (rt5677)
+		{
+			if (rt5677->vad_mode != RT5677_VAD_IDLE) {
+				schedule_delayed_work(&machine->power_work, msecs_to_jiffies(1000));
+			}
+		}
 	}
 
 	machine->bias_level = level;
