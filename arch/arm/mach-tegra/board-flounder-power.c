@@ -264,31 +264,32 @@ static struct tegra_thermtrip_pmic_data tpdata_palmas = {
 	.poweroff_reg_data = 0x0,
 };
 
+/* This is really v2 rev of the flounder_soctherm_data structure */
 static struct soctherm_platform_data flounder_soctherm_data = {
 	.therm = {
 		[THERM_CPU] = {
 			.zone_enable = true,
 			.passive_delay = 1000,
-			.hotspot_offset = 6000,
+			.hotspot_offset = 10000,
 			.num_trips = 3,
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
-					.trip_temp = 101000,
+					.trip_temp = 105000,
 					.trip_type = THERMAL_TRIP_CRITICAL,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "tegra-heavy",
-					.trip_temp = 99000,
+					.trip_temp = 102000,
 					.trip_type = THERMAL_TRIP_HOT,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
 				},
 				{
 					.cdev_type = "cpu-balanced",
-					.trip_temp = 90000,
+					.trip_temp = 92000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -299,7 +300,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 		[THERM_GPU] = {
 			.zone_enable = true,
 			.passive_delay = 1000,
-			.hotspot_offset = 6000,
+			.hotspot_offset = 5000,
 			.num_trips = 3,
 			.trips = {
 				{
@@ -318,7 +319,7 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 				},
 				{
 					.cdev_type = "gpu-balanced",
-					.trip_temp = 90000,
+					.trip_temp = 89000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
@@ -364,39 +365,96 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 	.tshut_pmu_trip_data = &tpdata_palmas,
 };
 
+/* Only the diffs from flounder_soctherm_data structure */
+static struct soctherm_platform_data flounder_v1_soctherm_data = {
+	.therm = {
+		[THERM_CPU] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.hotspot_offset = 10000,
+		},
+		[THERM_PLL] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.num_trips = 3,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 97000,
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 94000,
+					.trip_type = THERMAL_TRIP_HOT,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "cpu-balanced",
+					.trip_temp = 84000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+	},
+};
+
 int __init flounder_soctherm_init(void)
 {
-	s32 base_cp, shft_cp;
-	u32 base_ft, shft_ft;
+	const int t13x_cpu_edp_temp_margin = 5000,
+		t13x_gpu_edp_temp_margin = 6000;
+	int cp_rev, ft_rev;
 	struct board_info pmu_board_info;
+	enum soctherm_therm_id therm_cpu = THERM_CPU;
+
+	cp_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
+	ft_rev = tegra_fuse_calib_base_get_ft(NULL, NULL);
+
+	if (cp_rev) {
+		/* ATE rev is Old or Mid - use PLLx sensor only */
+		flounder_soctherm_data.therm[THERM_CPU] =
+			flounder_v1_soctherm_data.therm[THERM_CPU];
+		flounder_soctherm_data.therm[THERM_PLL] =
+			flounder_v1_soctherm_data.therm[THERM_PLL];
+		therm_cpu = THERM_PLL; /* override CPU with PLL zone */
+	}
 
 	/* do this only for supported CP,FT fuses */
-	if ((tegra_fuse_calib_base_get_cp(&base_cp, &shft_cp) >= 0) &&
-	    (tegra_fuse_calib_base_get_ft(&base_ft, &shft_ft) >= 0)) {
+	if ((cp_rev >= 0) && (ft_rev >= 0)) {
 		tegra_platform_edp_init(
-			flounder_soctherm_data.therm[THERM_CPU].trips,
-			&flounder_soctherm_data.therm[THERM_CPU].num_trips,
-			7000); /* edp temperature margin */
+			flounder_soctherm_data.therm[therm_cpu].trips,
+			&flounder_soctherm_data.therm[therm_cpu].num_trips,
+			t13x_cpu_edp_temp_margin);
 		tegra_platform_gpu_edp_init(
 			flounder_soctherm_data.therm[THERM_GPU].trips,
 			&flounder_soctherm_data.therm[THERM_GPU].num_trips,
-			7000);
+			t13x_gpu_edp_temp_margin);
 		tegra_add_cpu_vmax_trips(
-			flounder_soctherm_data.therm[THERM_CPU].trips,
-			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
-		tegra_add_core_edp_trips(
-			flounder_soctherm_data.therm[THERM_CPU].trips,
-			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
+			flounder_soctherm_data.therm[therm_cpu].trips,
+			&flounder_soctherm_data.therm[therm_cpu].num_trips);
 		tegra_add_tgpu_trips(
 			flounder_soctherm_data.therm[THERM_GPU].trips,
 			&flounder_soctherm_data.therm[THERM_GPU].num_trips);
-		tegra_add_vc_trips(
-			flounder_soctherm_data.therm[THERM_CPU].trips,
-			&flounder_soctherm_data.therm[THERM_CPU].num_trips);
 		tegra_add_core_vmax_trips(
 			flounder_soctherm_data.therm[THERM_PLL].trips,
 			&flounder_soctherm_data.therm[THERM_PLL].num_trips);
 	}
+
+	tegra_add_cpu_vmin_trips(
+		flounder_soctherm_data.therm[therm_cpu].trips,
+		&flounder_soctherm_data.therm[therm_cpu].num_trips);
+	tegra_add_gpu_vmin_trips(
+		flounder_soctherm_data.therm[THERM_GPU].trips,
+		&flounder_soctherm_data.therm[THERM_GPU].num_trips);
+	tegra_add_core_vmin_trips(
+		flounder_soctherm_data.therm[THERM_PLL].trips,
+		&flounder_soctherm_data.therm[THERM_PLL].num_trips);
 
 	tegra_get_pmu_board_info(&pmu_board_info);
 
