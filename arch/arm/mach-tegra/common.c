@@ -1751,15 +1751,26 @@ void __init tegra_protected_aperture_init(unsigned long aperture)
 	writel(aperture, mc_base + MC_SECURITY_CFG2);
 }
 
-/*
- * Due to conflicting restrictions on the placement of the framebuffer,
- * the bootloader is likely to leave the framebuffer pointed at a location
- * in memory that is outside the grhost aperture.  This function will move
- * the framebuffer contents from a physical address that is anywhere (lowmem,
- * highmem, or outside the memory map) to a physical address that is outside
- * the memory map.
- */
-void __tegra_move_framebuffer(struct platform_device *pdev,
+static void __tegra_move_framebuffer_kmap(phys_addr_t to, phys_addr_t from,
+	size_t size)
+{
+	size_t i;
+
+	BUG_ON(!pfn_valid(page_to_pfn(phys_to_page(from))));
+
+	for (i = 0; i < size; i += PAGE_SIZE) {
+		struct page *from_page = phys_to_page(from + i);
+		void *from_virt = kmap(from_page);
+		struct page *to_page = phys_to_page(to + i);
+		void *to_virt = kmap(to_page);
+
+		memcpy(to_virt, from_virt, PAGE_SIZE);
+		kunmap(from_virt);
+		kunmap(to_virt);
+	}
+}
+
+static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 	phys_addr_t to, phys_addr_t from,
 	size_t size)
 {
@@ -1768,24 +1779,20 @@ void __tegra_move_framebuffer(struct platform_device *pdev,
 	void *from_virt;
 	unsigned long i;
 
-	BUG_ON(PAGE_ALIGN((unsigned long)to) != (unsigned long)to);
-	BUG_ON(PAGE_ALIGN(from) != from);
-	BUG_ON(PAGE_ALIGN(size) != size);
-
 	to_io = ioremap(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
 	}
 
-	if (from && pfn_valid(page_to_pfn(phys_to_page(from)))) {
+	if (pfn_valid(page_to_pfn(phys_to_page(from)))) {
 		for (i = 0 ; i < size; i += PAGE_SIZE) {
 			page = phys_to_page(from + i);
 			from_virt = kmap(page);
 			memcpy(to_io + i, from_virt, PAGE_SIZE);
 			kunmap(page);
 		}
-	} else if (from) {
+	} else {
 		void __iomem *from_io = ioremap(from, size);
 		if (!from_io) {
 			pr_err("%s: Failed to map source framebuffer\n",
@@ -1801,6 +1808,31 @@ void __tegra_move_framebuffer(struct platform_device *pdev,
 
 out:
 	iounmap(to_io);
+}
+
+/*
+ * Due to conflicting restrictions on the placement of the framebuffer,
+ * the bootloader is likely to leave the framebuffer pointed at a location
+ * in memory that is outside the grhost aperture.  This function will move
+ * the framebuffer contents from a physical address that is anywhere (lowmem,
+ * highmem, or outside the memory map) to a physical address that is outside
+ * the memory map.
+ */
+void __tegra_move_framebuffer(struct platform_device *pdev,
+	phys_addr_t to, phys_addr_t from,
+	size_t size)
+{
+	BUG_ON(PAGE_ALIGN((unsigned long)to) != (unsigned long)to);
+	BUG_ON(PAGE_ALIGN(from) != from);
+	BUG_ON(PAGE_ALIGN(size) != size);
+
+	if (!from)
+		return;
+
+	if (pfn_valid(page_to_pfn(phys_to_page(to))))
+		__tegra_move_framebuffer_kmap(to, from, size);
+	else
+		__tegra_move_framebuffer_ioremap(pdev, to, from, size);
 }
 
 void __tegra_clear_framebuffer(struct platform_device *pdev,
