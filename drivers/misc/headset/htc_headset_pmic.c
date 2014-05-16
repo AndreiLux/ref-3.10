@@ -258,7 +258,7 @@ static int hs_pmic_adc_to_keycode(int adc)
 
 	HS_DBG();
 
-	if (!hi->pdata.adc_remote[5])
+	if (!hi->pdata.adc_remote[7])
 		return HS_MGR_KEY_INVALID;
 
 	if (adc >= hi->pdata.adc_remote[0] &&
@@ -266,11 +266,14 @@ static int hs_pmic_adc_to_keycode(int adc)
 		key_code = HS_MGR_KEY_PLAY;
 	else if (adc >= hi->pdata.adc_remote[2] &&
 		 adc <= hi->pdata.adc_remote[3])
-		key_code = HS_MGR_KEY_BACKWARD;
+		key_code = HS_MGR_KEY_ASSIST;
 	else if (adc >= hi->pdata.adc_remote[4] &&
 		 adc <= hi->pdata.adc_remote[5])
-		key_code = HS_MGR_KEY_FORWARD;
-	else if (adc > hi->pdata.adc_remote[5])
+		key_code = HS_MGR_KEY_VOLUP;
+	else if (adc >= hi->pdata.adc_remote[6] &&
+		 adc <= hi->pdata.adc_remote[7])
+		key_code = HS_MGR_KEY_VOLDOWN;
+	else if (adc > hi->pdata.adc_remote[7])
 		key_code = HS_MGR_KEY_NONE;
 
 	if (key_code != HS_MGR_KEY_INVALID)

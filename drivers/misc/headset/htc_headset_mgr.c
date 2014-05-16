@@ -360,6 +360,9 @@ static void get_key_name(int keycode, char *buf)
 	case HS_MGR_KEYCODE_RW:
 		sprintf(buf, "ReWind");
 		break;
+	case HS_MGR_KEYCODE_ASSIST:
+		sprintf(buf, "ASSIST");
+		break;
 	default:
 		sprintf(buf, "%d", keycode);
 	}
@@ -774,10 +777,13 @@ static void button_35mm_work_func(struct work_struct *work)
 			key = HS_MGR_KEYCODE_MEDIA;
 			break;
 		case 2:
-			key = HS_MGR_KEYCODE_BACKWARD;
+			key = HS_MGR_KEYCODE_VOLUP;
 			break;
 		case 3:
-			key = HS_MGR_KEYCODE_FORWARD;
+			key = HS_MGR_KEYCODE_VOLDOWN;
+			break;
+		case 4:
+			key = HS_MGR_KEYCODE_ASSIST;
 			break;
 		default:
 			HS_LOG("3.5mm RC: WRONG Button Pressed");
