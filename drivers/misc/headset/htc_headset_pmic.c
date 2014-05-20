@@ -372,6 +372,7 @@ static irqreturn_t debug_irq_handler(int irq, void *data)
 			HS_LOG("HEADSET_DEBUG_EN on");
 			if (!hpin_irq_disabled) {
 				disable_irq_nosync(hi->pdata.hpin_irq);
+				irq_set_irq_wake(hi->pdata.hpin_irq, 0);
 				HS_LOG("Disable HPIN IRQ");
 				hpin_irq_disabled = true;
 			}
@@ -389,6 +390,7 @@ static irqreturn_t debug_irq_handler(int irq, void *data)
 				set_irq_type(hi->pdata.hpin_irq, hi->hpin_irq_type);
 			}
 			if (hpin_irq_disabled) {
+				irq_set_irq_wake(hi->pdata.hpin_irq, 1);
 				enable_irq(hi->pdata.hpin_irq);
 				HS_LOG("Re-Enable HPIN IRQ");
 				hpin_irq_disabled = false;
