@@ -103,7 +103,8 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 	value = gpio_get_value(machine->pdata->gpio_irq1);
 
 	pr_info("RT5677 IRQ is triggered = 0x%x\n", value);
-	schedule_work(&machine->hotword_work);
+	if (value == 1)
+		schedule_work(&machine->hotword_work);
 
 	return IRQ_HANDLED;
 }
@@ -512,8 +513,6 @@ static int tegra_rt5677_dmic_set(struct snd_kcontrol *kcontrol,
 
 	pr_info("%s: tegra_rt5677_dmic_set set to %d done\n",
 		__func__, state);
-
-	schedule_work(&machine->hotword_work);
 	return 0;
 }
 
