@@ -245,7 +245,7 @@ static int mdm_panic_prep(struct notifier_block *this, unsigned long event, void
 
 	for (i = MDM_MODEM_TIMEOUT; i > 0; i -= MDM_MODEM_DELTA) {
 		/* pet_watchdog(); */
-		mdelay(MDM_MODEM_DELTA);
+		msleep(MDM_MODEM_DELTA);
 		if (gpio_get_value(modem->pdata->mdm2ap_status_gpio) == 0)
 			break;
 	}
@@ -531,7 +531,7 @@ static void mdm_fatal(struct work_struct *ws)
 #endif
 
 	if (get_enable_ramdumps()) {
-		mdelay(3000);
+		msleep(3000);
 	}
 
 	/* Before do radio restart, make sure mdm_hsic_phy is not suspended, otherwise, PORTSC will be kept at 1800 */
@@ -1678,7 +1678,7 @@ static int mdm_subsys_shutdown(const struct subsys_data *crashed_subsys)
 		/* Wait for the external modem to complete
 		 * its preparation for ramdumps.
 		 */
-		mdelay(modem->pdata->ramdump_delay_ms);
+		msleep(modem->pdata->ramdump_delay_ms);
 	}
 
 	//Power down mdm
