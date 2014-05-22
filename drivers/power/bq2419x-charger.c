@@ -2512,6 +2512,9 @@ static void bq2419x_shutdown(struct i2c_client *client)
 		next_poweron_time = bq2419x->wdt_refresh_timeout;
 	}
 
+	if (!next_poweron_time)
+		goto end;
+
 	ret = battery_charging_system_reset_after(bq2419x->bc_dev,
 				next_poweron_time);
 	if (ret < 0)

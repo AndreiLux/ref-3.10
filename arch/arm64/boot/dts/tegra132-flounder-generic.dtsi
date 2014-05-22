@@ -171,6 +171,7 @@
 				regulator-name = "batt_regulator";
 				regulator-max-microamp = <3000000>;
 				ti,watchdog-timeout = <0>;
+				ti,auto-recharge-time-power-off = <0>;
 				ti,auto-recharge-time = <1800>;
 				ti,input-voltage-limit-millivolt = <4440>;
 				ti,fast-charge-current-limit-milliamp = <2944>;
