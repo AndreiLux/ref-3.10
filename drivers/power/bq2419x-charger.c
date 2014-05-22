@@ -711,7 +711,7 @@ static int bq2419x_reset_wdt(struct bq2419x_chip *bq2419x, const char *from)
 	int timeout;
 
 	mutex_lock(&bq2419x->mutex);
-	if (!bq2419x->battery_presense) {
+	if (!bq2419x->battery_presense || !bq2419x->wdt_refresh_timeout) {
 		mutex_unlock(&bq2419x->mutex);
 		return ret;
 	}
