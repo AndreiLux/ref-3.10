@@ -1774,7 +1774,7 @@ void __tegra_move_framebuffer(struct platform_device *pdev,
 	BUG_ON(PAGE_ALIGN(from) != from);
 	BUG_ON(PAGE_ALIGN(size) != size);
 
-	to_io = ioremap(to, size);
+	to_io = ioremap_wc(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
@@ -1788,7 +1788,7 @@ void __tegra_move_framebuffer(struct platform_device *pdev,
 			kunmap(page);
 		}
 	} else if (from) {
-		void __iomem *from_io = ioremap(from, size);
+		void __iomem *from_io = ioremap_wc(from, size);
 		if (!from_io) {
 			pr_err("%s: Failed to map source framebuffer\n",
 				__func__);
@@ -1796,7 +1796,8 @@ void __tegra_move_framebuffer(struct platform_device *pdev,
 		}
 
 		for (i = 0; i < size; i += 4)
-			writel(readl(from_io + i), to_io + i);
+			writel_relaxed(readl_relaxed(from_io + i), to_io + i);
+		dmb();
 
 		iounmap(from_io);
 	}
@@ -1814,7 +1815,7 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 	BUG_ON(PAGE_ALIGN((unsigned long)to) != (unsigned long)to);
 	BUG_ON(PAGE_ALIGN(size) != size);
 
-	to_io = ioremap(to, size);
+	to_io = ioremap_wc(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
@@ -1825,7 +1826,8 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 			memset(to_io + i, 0, PAGE_SIZE);
 	} else {
 		for (i = 0; i < size; i += 4)
-			writel(0, to_io + i);
+			writel_relaxed(0, to_io + i);
+		dmb();
 	}
 
 	iounmap(to_io);
