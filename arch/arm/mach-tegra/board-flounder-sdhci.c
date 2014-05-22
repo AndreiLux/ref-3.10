@@ -359,7 +359,6 @@ int __init flounder_sdhci_init(void)
 	}
 
 	tegra_sdhci_platform_data0.max_clk_limit = 136000000;
-	tegra_sdhci_platform_data0.disable_clock_gate = 1;
 
 	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
 	tegra_sdhci_platform_data0.cpu_speedo = speedo;
