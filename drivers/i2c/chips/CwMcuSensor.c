@@ -567,9 +567,19 @@ static ssize_t led_enable(struct device *dev,
 		const char *buf, size_t count)
 {
 	int error;
-	u8 data = 0x01;
+	u8 data;
+	long data_temp = 0;
 
-	D("LED ENABLE");
+	error = kstrtol(buf, 10, &data_temp);
+	if (error) {
+		E("%s: kstrtol fails, error = %d\n", __func__, error);
+		return error;
+	}
+
+	data = data_temp ? 2 : 4;
+
+	I("LED %s\n", (data == 2) ? "ENABLE" : "DISABLE");
+
 	error = CWMCU_i2c_write(mcu_data, 0xD0, &data, 1);
 	if (error < 0) {
 		E("%s: error = %d\n", __func__, error);
