@@ -116,6 +116,18 @@ int touch_status(u8 status);
 #define CW_I2C_REG_WATCHDOG_STATUS                              0xE6
 #define WATCHDOG_STATUS_LEN                                     12
 
+#define CW_I2C_REG_EXCEPTION_BUFFER_LEN                   0xFD
+#define EXCEPTION_BUFFER_LEN_SIZE                         4
+#define CW_I2C_REG_EXCEPTION_BUFFER                       0xFE
+#define EXCEPTION_BLOCK_LEN                               16
+
+#define CW_I2C_REG_WARN_MSG_ENABLE                        0xFA
+#define CW_I2C_REG_WARN_MSG_BUFFER_LEN                    0xFB
+#define WARN_MSG_BUFFER_LEN_SIZE                          8
+#define CW_I2C_REG_WARN_MSG_BUFFER                        0xFC
+#define WARN_MSG_BLOCK_LEN                                16
+#define WARN_MSG_PER_ITEM_LEN                             120
+
 #define UPDATE_RATE_NORMAL              1
 #define UPDATE_RATE_UI                  2
 #define UPDATE_RATE_GAME                3
@@ -196,6 +208,7 @@ int touch_status(u8 status);
 #define CW_MCU_INT_BIT_STEP_COUNTER             (1 << 6)
 
 /* ERR_ST */
+#define CW_MCU_INT_BIT_ERROR_WARN_MSG           (1 << 5)
 #define CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION      (1 << 6)
 #define CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET     (1 << 7)
 
