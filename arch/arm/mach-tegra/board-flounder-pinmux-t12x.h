@@ -367,7 +367,7 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ0, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ5, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PV2, true, 0),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PI3, false, 0),
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PI3, false, 1),
 /* key end */
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ6, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PR0, false, 1),
