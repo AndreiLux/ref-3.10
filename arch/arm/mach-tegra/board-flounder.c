@@ -18,6 +18,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/of.h>
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/ctype.h>
@@ -923,8 +924,14 @@ static struct spi_board_info maxim_sti_spi_board = {
 
 static int __init flounder_touch_init(void)
 {
-	pr_info("%s init maxim spi touch\n", __func__);
-	(void)touch_init_maxim_sti(&maxim_sti_spi_board);
+	pr_info("%s init synaptics spi touch\n", __func__);
+
+	if (of_find_node_by_path("/spi@7000d800/synaptics_dsx@0") == NULL) {
+		pr_info("[TP] %s init maxim spi touch\n", __func__);
+		(void)touch_init_maxim_sti(&maxim_sti_spi_board);
+	} else {
+		pr_info("[TP] synaptics device tree found\n");
+	}
 	return 0;
 }
 
