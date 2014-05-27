@@ -338,7 +338,6 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX7, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PW2, true, 0),
 	/* DVFS_CLK set as GPIO to control RT8812 mode (high on boot) */
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX2, false, 1),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB3, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB5, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB6, true, 0),
