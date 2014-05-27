@@ -634,9 +634,6 @@ int tegra_suspend_dram(enum tegra_suspend_mode mode, unsigned int flags)
 		mode = TEGRA_SUSPEND_LP1;
 	}
 
-	if ((mode == TEGRA_SUSPEND_LP0) || (mode == TEGRA_SUSPEND_LP1))
-		tegra_suspend_check_pwr_stats();
-
 	/* turn off VDE partition in LP1 */
 	if (mode == TEGRA_SUSPEND_LP1 &&
 		tegra_powergate_is_powered(TEGRA_POWERGATE_VDEC)) {
@@ -739,7 +736,12 @@ static int tegra_suspend_valid(suspend_state_t state)
 
 static int tegra_suspend_prepare_late(void)
 {
+	if ((current_suspend_mode == TEGRA_SUSPEND_LP0) ||
+			(current_suspend_mode == TEGRA_SUSPEND_LP1))
+		tegra_suspend_check_pwr_stats();
+
 	suspend_in_progress = true;
+
 	return 0;
 }
 
