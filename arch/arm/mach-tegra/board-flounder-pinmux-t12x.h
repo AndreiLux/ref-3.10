@@ -335,8 +335,8 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PX7, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PW2, true, 0),
 	/* DVFS_CLK set as GPIO to control RT8812 mode (high on boot) */
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PO7, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB3, false, 0),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB5, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB6, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB7, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PCC1, true, 0),
@@ -400,7 +400,7 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PO4, false, 0), //AP2MDM_IPC1#PO4 (flashlight feature)
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PO5, false, 0), //AP2MDM_IPC2#PO5 (EFS SYNC)
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PO6, false, 0), //AP2MDM_VDDMIN#PO6 (reserved)
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PO7, false, 0), //AP2MDM_PON_RESET_N#PO7
+	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PBB5, false, 0), //AP2MDM_PON_RESET_N#PBB5
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PQ7, false, 0), //AP2MDM_CHNL_RDY_CPU (reserved)
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS0, false, 0), //MDM2AP_IPC3#PS0 (reserved)
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PS5, true, 0), //MDM2AP_WAKEUP#PS5
