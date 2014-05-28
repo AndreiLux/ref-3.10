@@ -19,7 +19,9 @@
 tlk_driver-objs += ote_device.o
 tlk_driver-objs += ote_comms.o
 tlk_driver-objs += ote_fs.o
+ifeq ($(CONFIG_TRUSTY),)
 tlk_driver-objs += ote_asm.o
+endif
 tlk_driver-objs += ote_log.o
 
 ifeq ($(CONFIG_ARM),y)

@@ -32,10 +32,11 @@ static DECLARE_COMPLETION(req_complete);
 
 static struct te_ss_op *ss_op_shmem;
 static uint32_t ss_op_size;
+static struct tlk_info *tlk_info;
 
 static void indicate_ss_op_complete(void)
 {
-	tlk_generic_smc(TE_SMC_SS_REQ_COMPLETE, 0, 0);
+	tlk_generic_smc(tlk_info, TE_SMC_SS_REQ_COMPLETE, 0, 0);
 }
 
 int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
@@ -85,7 +86,7 @@ void tlk_ss_op(uint32_t size)
 	indicate_ss_op_complete();
 }
 
-static int __init tlk_ss_init(void)
+int tlk_ss_init(struct tlk_info *info)
 {
 	dma_addr_t ss_op_shmem_dma;
 
@@ -97,10 +98,10 @@ static int __init tlk_ss_init(void)
 		return -ENOMEM;
 	}
 
-	tlk_generic_smc(TE_SMC_SS_REGISTER_HANDLER,
+	tlk_info = info;
+
+	tlk_generic_smc(info, TE_SMC_SS_REGISTER_HANDLER,
 			(uintptr_t)tlk_ss_op, (uintptr_t)ss_op_shmem);
 
 	return 0;
 }
-
-arch_initcall(tlk_ss_init);

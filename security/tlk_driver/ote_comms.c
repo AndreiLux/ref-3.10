@@ -26,11 +26,27 @@
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/pagemap.h>
+#include <linux/device.h>
+#include <linux/platform_device.h>
+#include <linux/of.h>
+#ifdef CONFIG_TRUSTY
+#include <linux/trusty/trusty.h>
+#endif
+#include <linux/completion.h>
 
 #include "ote_protocol.h"
 
 bool verbose_smc;
 core_param(verbose_smc, verbose_smc, bool, 0644);
+
+struct tlk_info {
+	struct device *trusty_dev;
+	atomic_t smc_count;
+	struct completion smc_retry;
+	struct notifier_block smc_notifier;
+};
+
+static struct tlk_info *tlk_info;
 
 #define SET_RESULT(req, r, ro)	{ req->result = r; req->result_origin = ro; }
 
@@ -212,7 +228,7 @@ static void te_unpin_temp_buffers_compat(struct te_request_compat *request,
 	}
 }
 
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) && !defined(CONFIG_TRUSTY)
 cpumask_t saved_cpu_mask;
 static void switch_cpumask_to_cpu0(void)
 {
@@ -251,17 +267,21 @@ static inline void switch_cpumask_to_cpu0(void) {};
 static inline void restore_cpumask(void) {};
 #endif
 
-uint32_t tlk_generic_smc(uint32_t arg0, uintptr_t arg1, uintptr_t arg2)
+uint32_t tlk_generic_smc(struct tlk_info *info,
+			 uint32_t arg0, uintptr_t arg1, uintptr_t arg2)
 {
 	uint32_t retval;
 
-	switch_cpumask_to_cpu0();
 
+#ifndef CONFIG_TRUSTY
+	switch_cpumask_to_cpu0();
 	retval = _tlk_generic_smc(arg0, arg1, arg2);
 	while (retval == 0xFFFFFFFD)
 		retval = _tlk_generic_smc((60 << 24), 0, 0);
-
 	restore_cpumask();
+#else
+	retval = trusty_std_call32(tlk_info->trusty_dev, arg0, arg1, arg2, 0);
+#endif
 
 	/* Print TLK logs if any */
 	ote_print_logs();
@@ -269,8 +289,9 @@ uint32_t tlk_generic_smc(uint32_t arg0, uintptr_t arg1, uintptr_t arg2)
 	return retval;
 }
 
-uint32_t tlk_extended_smc(uintptr_t *regs)
+uint32_t tlk_extended_smc(struct tlk_info *info, uintptr_t *regs)
 {
+#ifndef CONFIG_TRUSTY
 	uint32_t retval;
 
 	switch_cpumask_to_cpu0();
@@ -285,6 +306,9 @@ uint32_t tlk_extended_smc(uintptr_t *regs)
 	ote_print_logs();
 
 	return retval;
+#else
+	return OTE_ERROR_GENERIC;
+#endif
 }
 
 /*
@@ -306,8 +330,29 @@ static void do_smc(struct te_request *request, struct tlk_device *dev)
 			smc_params = (uint32_t)virt_to_phys(request->params);
 	}
 
-	tlk_generic_smc(request->type, smc_args, smc_params);
+	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params);
 }
+
+#ifdef CONFIG_TRUSTY
+static int tlk_smc_notify(struct notifier_block *nb,
+			unsigned long action, void *data)
+{
+	struct tlk_info *info = container_of(nb, struct tlk_info, smc_notifier);
+
+	if (action != TRUSTY_CALL_RETURNED)
+		return NOTIFY_DONE;
+
+	/* smc_count keeps track of SMCs made to Trusty since the last OTE SMC
+	 * When we have seen more than one SMC call, we need to retry the OTE command
+	 * since the last SMC call may not have been from the OTE driver and the OTE
+	 * command could have finished running in the trusted OS.
+	 */
+	if (!atomic_dec_if_positive(&info->smc_count))
+		complete(&info->smc_retry);
+
+	return NOTIFY_OK;
+}
+#endif
 
 /*
  * Do an SMC call
@@ -317,14 +362,36 @@ static void do_smc_compat(struct te_request_compat *request,
 {
 	uint32_t smc_args;
 	uint32_t smc_params = 0;
+	uint32_t smc_nr = request->type;
 
-	smc_args = (char *)request - dev->req_param_buf;
+	BUG_ON(!mutex_is_locked(&smc_lock));
+
+	smc_args = (char *)request - (char *)(dev->req_addr_compat);
+	if (dev->req_addr_phys)
+		smc_args += dev->req_addr_phys;
+
 	if (request->params) {
-		smc_params =
-			(char *)(uintptr_t)request->params - dev->req_param_buf;
+		smc_params = ((char *)(request->params) -
+				(char *)(dev->param_addr_compat));
+		if (dev->param_addr_phys)
+			smc_params += dev->param_addr_phys;
+		else
+			smc_params += PAGE_SIZE;
 	}
 
-	tlk_generic_smc(request->type, smc_args, smc_params);
+#ifdef CONFIG_TRUSTY
+	while (true) {
+		INIT_COMPLETION(tlk_info->smc_retry);
+		atomic_set(&tlk_info->smc_count, 2);
+		tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+		if (request->result != OTE_ERROR_NO_ANSWER)
+			break;
+		smc_nr = TE_SMC_RETRY_CMD;
+		wait_for_completion(&tlk_info->smc_retry);
+	}
+#else
+	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+#endif
 }
 
 /*
@@ -337,7 +404,7 @@ int te_set_vpr_params(void *vpr_base, size_t vpr_size)
 	/* Share the same lock used when request is send from user side */
 	mutex_lock(&smc_lock);
 
-	retval = tlk_generic_smc(TE_SMC_PROGRAM_VPR, (uintptr_t)vpr_base,
+	retval = tlk_generic_smc(tlk_info, TE_SMC_PROGRAM_VPR, (uintptr_t)vpr_base,
 			vpr_size);
 
 	mutex_unlock(&smc_lock);
@@ -496,11 +563,75 @@ void te_launch_operation_compat(struct te_launchop_compat *cmd,
 	te_unpin_temp_buffers_compat(request, context);
 }
 
+static void tlk_ote_init(struct tlk_info *info)
+{
+	tlk_ss_init(info);
+	ote_logger_init(info);
+	tlk_device_init(info);
+}
+
+#ifndef CONFIG_TRUSTY
 static int __init tlk_register_irq_handler(void)
 {
-	tlk_generic_smc(TE_SMC_REGISTER_IRQ_HANDLER,
+	tlk_generic_smc(tlk_info, TE_SMC_REGISTER_IRQ_HANDLER,
 		(uintptr_t)tlk_irq_handler, 0);
+	tlk_ote_init(NULL);
 	return 0;
 }
 
 arch_initcall(tlk_register_irq_handler);
+#else
+static int trusty_ote_probe(struct platform_device *pdev)
+{
+	struct tlk_info *info;
+
+	info = kzalloc(sizeof(struct tlk_info), GFP_KERNEL);
+	if (!info)
+		return -ENOMEM;
+
+	info->trusty_dev = pdev->dev.parent;
+	init_completion(&info->smc_retry);
+	platform_set_drvdata(pdev, info);
+
+	info->smc_notifier.notifier_call = tlk_smc_notify;
+	trusty_call_notifier_register(info->trusty_dev, &info->smc_notifier);
+
+	tlk_info = info;
+	tlk_ote_init(tlk_info);
+
+	return 0;
+}
+
+static int trusty_ote_remove(struct platform_device *pdev)
+{
+	/* Note: We currently cannot remove this driver because
+	 * of downstream dependencies like tlk_device, etc. Those need
+	 * to be properly fixed to support dynamic unregistration. Until then,
+	 * we cannot remove this device.
+	 */
+	return -EBUSY;
+}
+
+static const struct of_device_id trusty_of_match[] = {
+	{
+		.compatible	= "android,trusty-ote-v1",
+	},
+};
+
+MODULE_DEVICE_TABLE(of, trusty_of_match);
+
+static struct platform_driver trusty_ote_driver = {
+	.probe = trusty_ote_probe,
+	.remove = trusty_ote_remove,
+	.driver = {
+		.name = "trusty-ote",
+		.owner = THIS_MODULE,
+		.of_match_table = trusty_of_match,
+	},
+};
+
+module_platform_driver(trusty_ote_driver);
+
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("OTE driver");
+#endif

@@ -19,6 +19,10 @@
 #ifndef __OTE_PROTOCOL_H__
 #define __OTE_PROTOCOL_H__
 
+#ifdef CONFIG_TRUSTY
+#include <linux/trusty/smcall.h>
+#endif
+
 #include "ote_types.h"
 
 #define TE_IOCTL_MAGIC_NUMBER ('t')
@@ -56,14 +60,17 @@
 
 #define MAX_EXT_SMC_ARGS	12
 
+struct tlk_info;
+
 extern struct mutex smc_lock;
 extern struct tlk_device tlk_dev;
 
 uint32_t _tlk_generic_smc(uint32_t arg0, uintptr_t arg1, uintptr_t arg2);
-uint32_t tlk_generic_smc(uint32_t arg0, uintptr_t arg1, uintptr_t arg2);
+uint32_t tlk_generic_smc(struct tlk_info *info, uint32_t arg0, uintptr_t arg1, uintptr_t arg2);
 uint32_t _tlk_extended_smc(uintptr_t *args);
-uint32_t tlk_extended_smc(uintptr_t *args);
+uint32_t tlk_extended_smc(struct tlk_info *info, uintptr_t *args);
 void tlk_irq_handler(void);
+int tlk_device_init(struct tlk_info *info);
 
 struct tlk_device {
 	struct te_request *req_addr;
@@ -80,6 +87,8 @@ struct tlk_device {
 
 	struct list_head used_cmd_list;
 	struct list_head free_cmd_list;
+
+	struct tlk_info *tlk_info;
 };
 
 struct te_cmd_req_desc {
@@ -105,6 +114,7 @@ struct tlk_context {
 };
 
 enum {
+#ifndef CONFIG_TRUSTY
 	/* Trusted Application Calls */
 	TE_SMC_OPEN_SESSION		= 0x30000001,
 	TE_SMC_CLOSE_SESSION		= 0x30000002,
@@ -120,6 +130,23 @@ enum {
 
 	/* SIP (SOC specific) calls.  */
 	TE_SMC_PROGRAM_VPR		= 0x82000003,
+#else
+	TE_SMC_OPEN_SESSION		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_APP, 1),
+	TE_SMC_CLOSE_SESSION		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_APP, 2),
+	TE_SMC_LAUNCH_OPERATION		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_APP, 3),
+	TE_SMC_RETRY_CMD		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_APP, 4),
+
+	/* Trusted OS calls */
+	TE_SMC_REGISTER_REQ_BUF		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 2),
+	TE_SMC_REGISTER_IRQ_HANDLER	= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 4),
+	TE_SMC_NS_IRQ_DONE		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 5),
+	TE_SMC_INIT_LOGGER		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 7),
+	TE_SMC_SS_REGISTER_HANDLER	= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 8),
+	TE_SMC_SS_REQ_COMPLETE		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 9),
+
+	/* SIP (SOC specific) calls.  */
+	TE_SMC_PROGRAM_VPR		= SMC_STDCALL_NR(SMC_ENTITY_SIP, 3)
+#endif
 };
 
 enum {
@@ -311,10 +338,14 @@ struct te_ss_op {
 	uint8_t		data[SS_OP_MAX_DATA_SIZE];
 };
 
+int tlk_ss_init(struct tlk_info *info);
 int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
 		unsigned long ioctl_param);
 int te_handle_fs_ioctl(struct file *file, unsigned int ioctl_num,
 		unsigned long ioctl_param);
+
+int ote_logger_init(struct tlk_info *tlk_info);
+
 void ote_print_logs(void);
 
 #endif

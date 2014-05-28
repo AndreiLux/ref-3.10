@@ -57,17 +57,22 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 	 * phys addresses are passed in do_smc).
 	 */
 	dev->req_param_buf = NULL;
-	use_reqbuf = !tlk_generic_smc(TE_SMC_REGISTER_REQ_BUF, 0, 0);
+	use_reqbuf = !tlk_generic_smc(dev->tlk_info, TE_SMC_REGISTER_REQ_BUF, 0, 0);
 
 	if (use_reqbuf) {
 		dev->req_param_buf = kmalloc((2 * PAGE_SIZE), GFP_KERNEL);
+
+		if (!dev->req_param_buf) {
+			ret = -ENOMEM;
+			goto error;
+		}
 
 		/* requests in the first page, params in the second */
 		dev->req_addr   = (struct te_request *) dev->req_param_buf;
 		dev->param_addr = (struct te_oper_param *)
 					(dev->req_param_buf + PAGE_SIZE);
 
-		tlk_generic_smc(TE_SMC_REGISTER_REQ_BUF,
+		tlk_generic_smc(dev->tlk_info, TE_SMC_REGISTER_REQ_BUF,
 				(uintptr_t)dev->req_addr, (2 * PAGE_SIZE));
 	} else {
 		dev->req_addr = dma_alloc_coherent(NULL, PAGE_SIZE,
@@ -76,17 +81,15 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 					&dev->param_addr_phys, GFP_KERNEL);
 	}
 
-	if (!dev->req_addr || !dev->param_addr || !dev->req_param_buf) {
+	if (!dev->req_addr || !dev->param_addr) {
 		ret = -ENOMEM;
 		goto error;
 	}
 
-	/* requests in the first page, params in the second */
-	dev->req_addr_compat   = (struct te_request_compat *)
-					dev->req_param_buf;
+	dev->req_addr_compat = (struct te_request_compat *)
+					dev->req_addr;
 	dev->param_addr_compat = (struct te_oper_param_compat *)
-					(dev->req_param_buf + PAGE_SIZE);
-
+					dev->param_addr;
 	/* alloc param bitmap allocator */
 	bitmap_size = BITS_TO_LONGS(TE_PARAM_MAX) * sizeof(long);
 	dev->param_bitmap = kzalloc(bitmap_size, GFP_KERNEL);
@@ -747,18 +750,17 @@ struct miscdevice tlk_misc_device = {
 	.fops = &tlk_device_fops,
 };
 
-static int __init tlk_init(void)
+int tlk_device_init(struct tlk_info *tlk_info)
 {
 	int ret;
 
 	INIT_LIST_HEAD(&(tlk_dev.used_cmd_list));
 	INIT_LIST_HEAD(&(tlk_dev.free_cmd_list));
 
+	tlk_dev.tlk_info = tlk_info;
 	ret = te_create_free_cmd_list(&tlk_dev);
 	if (ret != 0)
 		return ret;
 
 	return misc_register(&tlk_misc_device);
 }
-
-module_init(tlk_init);
