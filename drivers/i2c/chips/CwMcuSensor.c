@@ -89,20 +89,18 @@
 #define MCU_WARN_MSGS 1
 
 static int probe_success;
+
+#ifdef CONFIG_CWSTM32_DEBUG  /* Remove this from defconfig when release */
+
 static int DEBUG_FLAG_GSENSOR;
 module_param(DEBUG_FLAG_GSENSOR, int, 0600);
-static int DEBUG_FLAG_COMPASS;
-module_param(DEBUG_FLAG_COMPASS, int, 0600);
-static int DEBUG_FLAG_GYRO;
-module_param(DEBUG_FLAG_GYRO, int, 0600);
-static int DEBUG_FLAG_PRESSURE;
-module_param(DEBUG_FLAG_PRESSURE, int, 0600);
-static int DEBUG_FLAG_FUSION;
-module_param(DEBUG_FLAG_FUSION, int, 0600);
-static int DEBUG_FLAG_MAGNETIC_UNCALIBRATED;
-module_param(DEBUG_FLAG_MAGNETIC_UNCALIBRATED, int, 0600);
-static int DEBUG_FLAG_GEOMAGNETIC_ROTATION_VECTOR;
-module_param(DEBUG_FLAG_GEOMAGNETIC_ROTATION_VECTOR, int, 0600);
+
+#else
+
+#define DEBUG_FLAG_GSENSOR 0
+
+#endif
+
 
 static int DEBUG_DISABLE;
 module_param(DEBUG_DISABLE, int, 0660);
@@ -680,13 +678,15 @@ static ssize_t get_k_value_acc_f(struct device *dev,
 static ssize_t get_k_value_acc_rl_f(struct device *dev,
 				   struct device_attribute *attr, char *buf)
 {
-	int i;
 	u8 data[ACC_CALIBRATOR_RL_LEN] = {0};
 
 	if (CWMCU_i2c_read_power(mcu_data, CW_I2C_REG_SENSORS_CALIBRATOR_RESULT_RL_ACC
 			   , data, sizeof(data)) >= 0) {
-		for (i = 0; i < sizeof(data); i++) {
-			if (DEBUG_FLAG_GSENSOR == 1)
+
+		if (DEBUG_FLAG_GSENSOR == 1) {
+			int i;
+
+			for (i = 0; i < sizeof(data); i++)
 				D("data[%d]: %u\n", i, data[i]);
 		}
 
@@ -2244,6 +2244,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 			D("Read Batched data Counter fail, ret = %d\n", ret);
 
 		event_count = (u32 *)(&event_count_data[0]);
+
 		if (DEBUG_FLAG_GSENSOR == 1)
 			I("%s: event_count = %u\n", __func__, *event_count);
 
@@ -2441,6 +2442,7 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 				  , bias_event[0]
 				);
 			}
+
 		} else
 			D("3 values: CWMCU_i2c_read error!!!\n");
 
@@ -2473,6 +2475,7 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 				  , bias_event[0], bias_event[1], bias_event[2]
 				);
 			}
+
 			cw_send_event_special(id_check, data_event, bias_event,
 					      pf->timestamp);
 		} else
