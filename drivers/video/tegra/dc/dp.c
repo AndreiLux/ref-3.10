@@ -2046,7 +2046,7 @@ static int tegra_dp_edid(struct tegra_dc_dp_data *dp)
 
 	/* adjust clk for new mode */
 	tegra_dc_setup_clk(dc, dc->clk);
-
+	kfree(specs.modedb);
 	return 0;
 fail:
 	return err;
