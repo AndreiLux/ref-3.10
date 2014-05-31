@@ -90,7 +90,7 @@ struct htc_headset_pmic_platform_data {
 	/* ADC tables */
 	uint32_t adc_mic;
 	uint32_t adc_mic_bias[2];
-	uint32_t adc_remote[6];
+	uint32_t adc_remote[8];
 	uint32_t adc_metrico[2];
 
 #ifdef CONFIG_HEADSET_DEBUG_UART

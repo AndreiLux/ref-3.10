@@ -97,6 +97,7 @@
 #define BQ2419x_FAULT_CHRG_INPUT		0x10
 #define BQ2419x_FAULT_CHRG_THERMAL		0x20
 #define BQ2419x_FAULT_CHRG_SAFTY		0x30
+#define BQ2419x_FAULT_BAT_FAULT			BIT(3)
 
 #define BQ2419x_FAULT_NTC_FAULT			0x07
 #define BQ2419x_TREG				0x03
@@ -160,6 +161,7 @@ struct bq2419x_charger_platform_data {
 	int num_consumer_supplies;
 	struct regulator_consumer_supply *consumer_supplies;
 	int chg_restart_time;
+	int auto_recharge_time_power_off;
 	const char *tz_name; /* Thermal zone name */
 	bool disable_suspend_during_charging;
 	bool enable_thermal_monitor; /* TRUE if FuelGauge provides temp */
@@ -169,6 +171,7 @@ struct bq2419x_charger_platform_data {
 	u32 *temp_range;
 	u32 *chg_current_limit;
 	u32 *chg_thermal_voltage_limit;
+	u32 auto_recharge_time_supend;
 	bool otp_control_no_thermister; /* TRUE if chip thermister is unused */
 	struct bq2419x_thermal_prop thermal_prop;
 	bool safety_timer_reset_disable;

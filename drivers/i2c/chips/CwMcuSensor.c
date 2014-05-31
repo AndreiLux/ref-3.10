@@ -87,6 +87,8 @@
 #define LIGHT_SENSOR_FLASH_DATA "als_flash"
 #define BARO_SENSOR_FLASH_DATA "bs_flash"
 
+#define MCU_WARN_MSGS 1
+
 #if USE_WAKE_MCU
 static int use_wake_mcu;
 #endif
@@ -121,7 +123,7 @@ static void activated_i2c_do_work(struct work_struct *w);
 static DECLARE_WORK(activated_i2c_work, activated_i2c_do_work);
 
 static void re_init_do_work(struct work_struct *w);
-static DECLARE_WORK(re_init_work, re_init_do_work);
+static DECLARE_DELAYED_WORK(re_init_work, re_init_do_work);
 
 struct workqueue_struct *mcu_wq;
 
@@ -410,6 +412,29 @@ i2c_fail:
 	return error;
 }
 
+static void print_hex_data(char *buf, u32 index, u8 *data, size_t len)
+{
+	int i;
+	int rc;
+	char *buf_start;
+	size_t buf_remaining =
+		3*EXCEPTION_BLOCK_LEN; /* 3 characters per data */
+
+	buf_start = buf;
+
+	for (i = 0; i < len; i++) {
+		rc = scnprintf(buf, buf_remaining, "%02x%c", data[i],
+				(i == len - 1) ? '\0' : ' ');
+		buf += rc;
+		buf_remaining -= rc;
+	}
+
+	printk(KERN_ERR "[S_HUB][CW_MCU] Exception Buffer[%d] = %.*s\n",
+			index * EXCEPTION_BLOCK_LEN,
+			(int)(buf - buf_start),
+			buf_start);
+}
+
 static ssize_t sprint_data(char *buf, s8 *data, ssize_t len)
 {
 	int i;
@@ -567,9 +592,19 @@ static ssize_t led_enable(struct device *dev,
 		const char *buf, size_t count)
 {
 	int error;
-	u8 data = 0x01;
+	u8 data;
+	long data_temp = 0;
 
-	D("LED ENABLE");
+	error = kstrtol(buf, 10, &data_temp);
+	if (error) {
+		E("%s: kstrtol fails, error = %d\n", __func__, error);
+		return error;
+	}
+
+	data = data_temp ? 2 : 4;
+
+	I("LED %s\n", (data == 2) ? "ENABLE" : "DISABLE");
+
 	error = CWMCU_i2c_write(mcu_data, 0xD0, &data, 1);
 	if (error < 0) {
 		E("%s: error = %d\n", __func__, error);
@@ -1028,6 +1063,7 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 	u8 data;
 	u8 reg_addr = 0;
 	u8 reg_value = 0;
+	int delay_ms;
 
 	D("Restore status\n");
 
@@ -1055,27 +1091,16 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			continue;
 		}
 
-		switch (sensor->report_period[i]/1000) {
-		case 200:
+		delay_ms = sensor->report_period[i] / 1000;
+
+		if (delay_ms >= 200)
 			reg_value = UPDATE_RATE_NORMAL;
-			break;
-		case 66:
+		else if ((60 <= delay_ms) && (delay_ms <= 199))
 			reg_value = UPDATE_RATE_UI;
-			break;
-		case 20:
+		else if ((20 <= delay_ms) && (delay_ms <= 59))
 			reg_value = UPDATE_RATE_GAME;
-			break;
-		case 10:
-		case 16:
+		else if (delay_ms <= 19)
 			reg_value = UPDATE_RATE_FASTEST;
-			break;
-		default:
-			D(
-			  "%s: No need to restore, i = %d,"
-			  " report_period = %d\n",
-			  __func__, i, sensor->report_period[i]);
-			continue;
-		}
 
 		D("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
 		  __func__, reg_addr, reg_value);
@@ -1090,6 +1115,17 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 		  __func__, i, mcu_data->report_period[i]);
 	}
 
+#ifdef MCU_WARN_MSGS
+	reg_value = 1;
+	rc = CWMCU_i2c_write(mcu_data, CW_I2C_REG_WARN_MSG_ENABLE,
+			     &reg_value, 1);
+	if (rc) {
+		E("%s: CWMCU_i2c_write(WARN_MSG) fails, rc = %d, i = %d\n",
+		  __func__, rc, i);
+		return -EIO;
+	}
+	I("%s: WARN_MSGS enabled\n", __func__);
+#endif
 	return 0;
 }
 
@@ -1486,8 +1522,7 @@ static void reset_hub(void)
 	mcu_data->i2c_total_retry = 0;
 	mcu_data->i2c_jiffies = jiffies;
 
-	queue_delayed_work(mcu_wq, &polling_work,
-			msecs_to_jiffies(5000));
+	usleep_range(1000, 2000); /* HUB need at least 1ms to be ready */
 }
 
 static void activated_i2c_do_work(struct work_struct *w)
@@ -1512,6 +1547,10 @@ static void activated_i2c_do_work(struct work_struct *w)
 	mutex_unlock(&mcu_data->activated_i2c_lock);
 	D("%s--: mcu_data->i2c_total_retry = %d\n", __func__,
 	  mcu_data->i2c_total_retry);
+
+	cwmcu_sensor_placement(mcu_data);
+	cwmcu_set_sensor_kvalue(mcu_data);
+	cwmcu_restore_status(mcu_data);
 }
 
 static int firmware_odr(int sensors_id, int delay_ms)
@@ -1565,27 +1604,17 @@ static int firmware_odr(int sensors_id, int delay_ms)
 			mcu_data->report_period[sensors_id]);
 		return 0;
 	}
-	switch (delay_ms) {
-	case 200:
-		reg_value = UPDATE_RATE_NORMAL;
-		break;
-	case 66:
-		reg_value = UPDATE_RATE_UI;
-		break;
-	case 20:
-		reg_value = UPDATE_RATE_GAME;
-		break;
-	case 10:
-	case 16:
-		reg_value = UPDATE_RATE_FASTEST;
-		break;
-	default:
-		D("%s: val = %3d, Only reoprt_period changed\n",
-		  __func__, delay_ms);
-		return 0;
-	}
 
-	D("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
+	if (delay_ms >= 200)
+		reg_value = UPDATE_RATE_NORMAL;
+	else if ((60 <= delay_ms) && (delay_ms <= 199))
+		reg_value = UPDATE_RATE_UI;
+	else if ((20 <= delay_ms) && (delay_ms <= 59))
+		reg_value = UPDATE_RATE_GAME;
+	else if (delay_ms <= 19)
+		reg_value = UPDATE_RATE_FASTEST;
+
+	I("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
 	  __func__, reg_addr, reg_value);
 	rc = CWMCU_i2c_write(mcu_data, reg_addr, &reg_value, 1);
 	if (rc) {
@@ -2044,11 +2073,10 @@ static ssize_t flush_show(struct device *dev, struct device_attribute *attr,
 		D("%s: Read Counter fail, ret = %d\n", __func__, ret);
 
 	D("%s: DEBUG: Queue counter = %d\n", __func__,
-	  *(int *)&data[0]);
+	  *(u32 *)&data[0]);
 
-	cwmcu_batch_read(mcu_data);
-
-	return scnprintf(buf, PAGE_SIZE, "data[0] = %d\n", *(int *)&data[0]);
+	return scnprintf(buf, PAGE_SIZE, "Queue counter = %d\n",
+			 *(u32 *)&data[0]);
 }
 
 static void cwmcu_send_flush(int id)
@@ -2118,7 +2146,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 	u8 data_buff;
 	u16 data_event[4] = {0};
 	int i;
-	int *event_count;
+	u32 *event_count;
 
 	/*D("%s++:\n", __func__);*/
 
@@ -2131,8 +2159,8 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 		if (ret < 0)
 			D("Read Batched data Counter fail, ret = %d\n", ret);
 
-		event_count = (int *)(&event_count_data[0]);
-		D("%s: event_count = %d\n", __func__, *event_count);
+		event_count = (u32 *)(&event_count_data[0]);
+		D("%s: event_count = %u\n", __func__, *event_count);
 
 		for (i = 0; i < *event_count; i++) {
 			u8 data[9] = {0};
@@ -2184,7 +2212,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 
 						D(
 						  "Batch data: total count = "
-						  "%d, current count = %d,"
+						  "%u, current count = %d,"
 						  " event_id = %d, bias(x, y,"
 						  " z) = (%d, %d, %d)\n"
 						  , *event_count
@@ -2219,7 +2247,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 
 						D(
 						  "Batch data: total count ="
-						  " %d, current count = %d, "
+						  " %u, current count = %d, "
 						  "event_id = %d, data_x = %d,"
 						  " data_y = %d, data_z = %d,"
 						  " timediff = %d\n"
@@ -2449,6 +2477,32 @@ static void re_init_do_work(struct work_struct *w)
 	cwmcu_restore_status(mcu_data);
 }
 
+
+#ifdef MCU_WARN_MSGS
+static void print_warn_msg(char *buf, u32 len, u32 index)
+{
+	int ret;
+	char *buf_start = buf;
+
+	while ((buf - buf_start) < len) {
+		ret = min((u32)WARN_MSG_BLOCK_LEN,
+			  (u32)(len - (buf - buf_start)));
+		ret = CWMCU_i2c_read(mcu_data,
+				     CW_I2C_REG_WARN_MSG_BUFFER,
+				     buf, ret);
+		if (ret == 0) {
+			break;
+		} else if (ret < 0) {
+			E("%s: warn i2c_read: ret = %d\n", __func__, ret);
+			break;
+		} else
+			buf += ret;
+	}
+	printk(KERN_WARNING "[S_HUB][CW_MCU] Warning MSG[%d] = %.*s",
+			index, (int)(buf - buf_start), buf_start);
+}
+#endif
+
 static void cwmcu_irq_work_func(struct work_struct *work)
 {
 	struct cwmcu_data *sensor = container_of((struct work_struct *)work,
@@ -2600,6 +2654,97 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 		CWMCU_i2c_write(sensor, CWSTM32_INT_ST3, &clear_intr, 1);
 	}
 
+#ifdef MCU_WARN_MSGS
+	/* ERR_st: bit 5 */
+	if (ERR_st & CW_MCU_INT_BIT_ERROR_WARN_MSG) {
+		u8 buf_len[WARN_MSG_BUFFER_LEN_SIZE] = {0};
+
+		ret = CWMCU_i2c_read(sensor, CW_I2C_REG_WARN_MSG_BUFFER_LEN,
+				     buf_len, sizeof(buf_len));
+		if (ret >= 0) {
+			int i;
+			char buf[WARN_MSG_PER_ITEM_LEN];
+
+			for (i = 0; i < WARN_MSG_BUFFER_LEN_SIZE; i++) {
+				if (buf_len[i] <= WARN_MSG_PER_ITEM_LEN)
+					print_warn_msg(buf, buf_len[i], i);
+			}
+		} else {
+			E("%s: Warn MSG read fails, ret = %d\n",
+						__func__, ret);
+		}
+		clear_intr = CW_MCU_INT_BIT_ERROR_WARN_MSG;
+		ret = CWMCU_i2c_write(sensor, CWSTM32_ERR_ST, &clear_intr, 1);
+	}
+#endif
+
+	/* ERR_st: bit 6 */
+	if (ERR_st & CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION) {
+		u8 buf_len[EXCEPTION_BUFFER_LEN_SIZE] = {0};
+
+		ret = CWMCU_i2c_read(sensor, CW_I2C_REG_EXCEPTION_BUFFER_LEN,
+				     buf_len, sizeof(buf_len));
+		if (ret >= 0) {
+			__le32 exception_len;
+			u8 data[EXCEPTION_BLOCK_LEN];
+			int i;
+
+			exception_len = cpu_to_le32p((u32 *)&buf_len[0]);
+			I("%s: exception_len = %u\n", __func__, exception_len);
+
+			for (i = 0; exception_len >= EXCEPTION_BLOCK_LEN; i++) {
+				memset(data, 0, sizeof(data));
+				ret = CWMCU_i2c_read(sensor,
+						    CW_I2C_REG_EXCEPTION_BUFFER,
+						    data, sizeof(data));
+				if (ret >= 0) {
+					char buf[3*EXCEPTION_BLOCK_LEN];
+
+					print_hex_data(buf, i, data,
+							EXCEPTION_BLOCK_LEN);
+					exception_len -= EXCEPTION_BLOCK_LEN;
+				} else {
+					E(
+					  "%s: i = %d, excp1 i2c_read: ret = %d"
+					  "\n", __func__, i, ret);
+					goto exception_end;
+				}
+			}
+			if ((exception_len > 0) &&
+			    (exception_len < sizeof(data))) {
+				ret = CWMCU_i2c_read(sensor,
+						    CW_I2C_REG_EXCEPTION_BUFFER,
+						    data, exception_len);
+				if (ret >= 0) {
+					char buf[3*EXCEPTION_BLOCK_LEN];
+
+					print_hex_data(buf, i, data,
+						       exception_len);
+				} else {
+					E(
+					  "%s: i = %d, excp2 i2c_read: ret = %d"
+					  "\n", __func__, i, ret);
+				}
+			}
+		} else {
+			E("%s: Exception status dump fails, ret = %d\n",
+						__func__, ret);
+		}
+exception_end:
+		mutex_lock(&mcu_data->activated_i2c_lock);
+
+		reset_hub();
+
+		mutex_unlock(&mcu_data->activated_i2c_lock);
+
+		cwmcu_sensor_placement(mcu_data);
+		cwmcu_set_sensor_kvalue(mcu_data);
+		cwmcu_restore_status(mcu_data);
+
+		clear_intr = CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION;
+		ret = CWMCU_i2c_write(sensor, CWSTM32_ERR_ST, &clear_intr, 1);
+	}
+
 	/* ERR_st: bit 7 */
 	if (ERR_st & CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET) {
 		u8 data[WATCHDOG_STATUS_LEN] = {0};
@@ -2621,7 +2766,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 						__func__, ret);
 		}
 
-		queue_work(mcu_wq, &re_init_work);
+		queue_delayed_work(mcu_wq, &re_init_work, 0);
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET;
 		ret = CWMCU_i2c_write(sensor, CWSTM32_ERR_ST, &clear_intr, 1);
@@ -3163,7 +3308,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Batch mode supported, IIO version\n", __func__);
+	I("%s++: Exception supported\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");

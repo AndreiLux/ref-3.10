@@ -122,9 +122,9 @@ EXPORT_SYMBOL(get_radio_image_status);
 bool is_mdm_modem()
 {
 	bool ret = false;
+	int mdm_modem = get_modem_sku();
 
-	/* FIXME: Currently only check radio image status */
-	if ((get_radio_image_status() == RADIO_IMG_EXIST))
+	if ((mdm_modem == MDM_SKU_UL) || (mdm_modem == MDM_SKU_WL))
 		ret = true;
 
 	return ret;

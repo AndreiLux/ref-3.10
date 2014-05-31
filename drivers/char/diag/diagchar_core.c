@@ -1753,8 +1753,6 @@ static int diagchar_write(struct file *file, const char __user * buf, size_t cou
 				}
 			}
 		}
-		if (!remote_proc)
-			diag_process_hdlc((void *)(user_space_data), payload_size);
 
 		diagmem_free(driver, user_space_data, POOL_TYPE_USER);
 		user_space_data = NULL;

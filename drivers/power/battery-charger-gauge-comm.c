@@ -331,7 +331,8 @@ static int battery_charger_batt_status_monitor_func(
 	level = bc_dev->battery_capacity;
 
 	is_thermal_normal = is_charge_thermal_normal(bc_dev);
-	if (!bc_dev->chg_full_done && !is_thermal_normal) {
+	if (level < CHARGING_FULL_DONE_LEVEL_MIN ||
+			(!bc_dev->chg_full_done && !is_thermal_normal)) {
 		bc_dev->chg_full_done_prev_check_count = 0;
 		bc_dev->chg_full_done = false;
 		bc_dev->chg_full_stop = false;

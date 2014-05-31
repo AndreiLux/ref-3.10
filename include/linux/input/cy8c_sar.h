@@ -109,7 +109,6 @@ struct cy8c_sar_data {
 	struct class *sar_class;
 	struct device *sar_dev;
 	struct delayed_work sleep_work;
-	struct wake_lock sleep_wake_lock;
 };
 
 /*For wifi call back*/

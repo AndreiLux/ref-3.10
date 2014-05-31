@@ -258,7 +258,7 @@ static int hs_pmic_adc_to_keycode(int adc)
 
 	HS_DBG();
 
-	if (!hi->pdata.adc_remote[5])
+	if (!hi->pdata.adc_remote[7])
 		return HS_MGR_KEY_INVALID;
 
 	if (adc >= hi->pdata.adc_remote[0] &&
@@ -266,11 +266,14 @@ static int hs_pmic_adc_to_keycode(int adc)
 		key_code = HS_MGR_KEY_PLAY;
 	else if (adc >= hi->pdata.adc_remote[2] &&
 		 adc <= hi->pdata.adc_remote[3])
-		key_code = HS_MGR_KEY_BACKWARD;
+		key_code = HS_MGR_KEY_ASSIST;
 	else if (adc >= hi->pdata.adc_remote[4] &&
 		 adc <= hi->pdata.adc_remote[5])
-		key_code = HS_MGR_KEY_FORWARD;
-	else if (adc > hi->pdata.adc_remote[5])
+		key_code = HS_MGR_KEY_VOLUP;
+	else if (adc >= hi->pdata.adc_remote[6] &&
+		 adc <= hi->pdata.adc_remote[7])
+		key_code = HS_MGR_KEY_VOLDOWN;
+	else if (adc > hi->pdata.adc_remote[7])
 		key_code = HS_MGR_KEY_NONE;
 
 	if (key_code != HS_MGR_KEY_INVALID)
@@ -369,6 +372,7 @@ static irqreturn_t debug_irq_handler(int irq, void *data)
 			HS_LOG("HEADSET_DEBUG_EN on");
 			if (!hpin_irq_disabled) {
 				disable_irq_nosync(hi->pdata.hpin_irq);
+				irq_set_irq_wake(hi->pdata.hpin_irq, 0);
 				HS_LOG("Disable HPIN IRQ");
 				hpin_irq_disabled = true;
 			}
@@ -386,6 +390,7 @@ static irqreturn_t debug_irq_handler(int irq, void *data)
 				set_irq_type(hi->pdata.hpin_irq, hi->hpin_irq_type);
 			}
 			if (hpin_irq_disabled) {
+				irq_set_irq_wake(hi->pdata.hpin_irq, 1);
 				enable_irq(hi->pdata.hpin_irq);
 				HS_LOG("Re-Enable HPIN IRQ");
 				hpin_irq_disabled = false;

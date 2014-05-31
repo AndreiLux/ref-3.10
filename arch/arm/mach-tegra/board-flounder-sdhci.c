@@ -59,12 +59,14 @@ static int flounder_wifi_reset(int on);
 static int flounder_wifi_power(int on);
 static int flounder_wifi_set_carddetect(int val);
 static int flounder_wifi_get_mac_addr(unsigned char *buf);
+static void* flounder_wifi_get_country_code(char *country_iso_code);
 
 static struct wifi_platform_data flounder_wifi_control = {
 	.set_power	= flounder_wifi_power,
 	.set_reset	= flounder_wifi_reset,
 	.set_carddetect	= flounder_wifi_set_carddetect,
 	.get_mac_addr	= flounder_wifi_get_mac_addr,
+	.get_country_code	= flounder_wifi_get_country_code,
 #if defined (CONFIG_BCMDHD_EDP_SUPPORT)
 	/* wifi edp client information */
 	.client_info	= {
@@ -301,6 +303,107 @@ static int flounder_wifi_get_mac_addr(unsigned char *buf)
 	return 0;
 }
 
+#define WLC_CNTRY_BUF_SZ	4		/* Country string is 3 bytes + NUL */
+
+static char flounder_country_code[WLC_CNTRY_BUF_SZ] = { 0 };
+
+static int __init flounder_country_code_setup(char *str)
+{
+	if (!str)
+		return 0;
+	pr_debug("wlan country code = %s\n", str);
+	if (strlen(str) >= sizeof(flounder_country_code))
+		return 0;
+	strcpy(flounder_country_code, str);
+	return 1;
+}
+__setup("androidboot.wificountrycode=", flounder_country_code_setup);
+
+struct cntry_locales_custom {
+	char iso_abbrev[WLC_CNTRY_BUF_SZ];	/* ISO 3166-1 country abbreviation */
+	char custom_locale[WLC_CNTRY_BUF_SZ];	/* Custom firmware locale */
+	s32 custom_locale_rev;		/* Custom local revisin default -1 */
+};
+
+struct cntry_locales_custom country_code_custom_table[] = {
+/* Table should be filled out based on custom platform regulatory requirement */
+	{"",   "XZ", 11},  /* Universal if Country code is unknown or empty */
+	{"US", "US", 0},
+	{"AE", "AE", 1},
+	{"AR", "AR", 1},
+	{"AT", "AT", 1},
+	{"AU", "AU", 2},
+	{"BE", "BE", 1},
+	{"BG", "BG", 1},
+	{"BN", "BN", 1},
+	{"CA", "CA", 2},
+	{"CH", "CH", 1},
+	{"CY", "CY", 1},
+	{"CZ", "CZ", 1},
+	{"DE", "DE", 3},
+	{"DK", "DK", 1},
+	{"EE", "EE", 1},
+	{"ES", "ES", 1},
+	{"FI", "FI", 1},
+	{"FR", "FR", 1},
+	{"GB", "GB", 1},
+	{"GR", "GR", 1},
+	{"HR", "HR", 1},
+	{"HU", "HU", 1},
+	{"IE", "IE", 1},
+	{"IS", "IS", 1},
+	{"IT", "IT", 1},
+	{"ID", "ID", 12},
+	{"JP", "JP", 8},
+	{"KR", "KR", 24},
+	{"KW", "KW", 1},
+	{"LI", "LI", 1},
+	{"LT", "LT", 1},
+	{"LU", "LU", 1},
+	{"LV", "LV", 1},
+	{"MA", "MA", 1},
+	{"MT", "MT", 1},
+	{"MX", "MX", 1},
+	{"NL", "NL", 1},
+	{"NO", "NO", 1},
+	{"PL", "PL", 1},
+	{"PT", "PT", 1},
+	{"PY", "PY", 1},
+	{"RO", "RO", 1},
+	{"SE", "SE", 1},
+	{"SI", "SI", 1},
+	{"SK", "SK", 1},
+	{"TR", "TR", 7},
+	{"TW", "TW", 1},
+	{"IR", "XZ", 11},	/* Universal if Country code is IRAN, (ISLAMIC REPUBLIC OF) */
+	{"SD", "XZ", 11},	/* Universal if Country code is SUDAN */
+	{"SY", "XZ", 11},	/* Universal if Country code is SYRIAN ARAB REPUBLIC */
+	{"GL", "XZ", 11},	/* Universal if Country code is GREENLAND */
+	{"PS", "XZ", 11},	/* Universal if Country code is PALESTINIAN TERRITORY, OCCUPIED */
+	{"TL", "XZ", 11},	/* Universal if Country code is TIMOR-LESTE (EAST TIMOR) */
+	{"MH", "XZ", 11},	/* Universal if Country code is MARSHALL ISLANDS */
+};
+
+static void* flounder_wifi_get_country_code(char *country_iso_code)
+{
+	int size, i;
+
+	size = ARRAY_SIZE(country_code_custom_table);
+
+	if (size == 0)
+		 return NULL;
+
+	if (!country_iso_code || country_iso_code[0] == 0)
+		country_iso_code = flounder_country_code;
+
+	for (i = 0; i < size; i++) {
+		if (strcmp(country_iso_code, country_code_custom_table[i].iso_abbrev) == 0)
+			return &country_code_custom_table[i];
+	}
+	/* if no country code matched return first universal code */
+	return &country_code_custom_table[0];
+}
+
 static int __init flounder_wifi_init(void)
 {
 	int rc;
@@ -359,7 +462,6 @@ int __init flounder_sdhci_init(void)
 	}
 
 	tegra_sdhci_platform_data0.max_clk_limit = 136000000;
-	tegra_sdhci_platform_data0.disable_clock_gate = 1;
 
 	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
 	tegra_sdhci_platform_data0.cpu_speedo = speedo;

@@ -224,10 +224,8 @@ static void sar_sleep_func(struct work_struct *work)
 	int mode, err;
 	pr_info("[SAR] %s\n", __func__);
 
-	wake_lock(&sar->sleep_wake_lock);
 	mode = sar_update_mode(sar->radio_state, sar->pm_state);
 	if (mode == sar->sleep_mode) {
-		wake_unlock(&sar->sleep_wake_lock);
 		pr_info("[SAR] sleep mode no change.");
 		return;
 	}
@@ -244,7 +242,6 @@ static void sar_sleep_func(struct work_struct *work)
 		err = i2c_cy8c_write_byte_data(sar->client, CS_MODE, CS_CMD_DSLEEP);
 		if (err < 0) {
 			pr_err("[SAR] %s: I2C write fail. reg %d, err %d\n", __func__, CS_CMD_DSLEEP, err);
-			wake_unlock(&sar->sleep_wake_lock);
 			return;
 		}
 		break;
@@ -253,7 +250,6 @@ static void sar_sleep_func(struct work_struct *work)
 		return;
 	}
 	sar->sleep_mode = mode;
-	wake_unlock(&sar->sleep_wake_lock);
 	pr_info("[SAR] Set SAR sleep mode = %d\n", sar->sleep_mode);
 }
 
@@ -407,7 +403,6 @@ static int cy8c_sar_probe(struct i2c_client *client,
 	}
 	INIT_WORK(&sar->work, cy8c_sar_work_func);
 	INIT_DELAYED_WORK(&sar->sleep_work, sar_sleep_func);
-	wake_lock_init(&sar->sleep_wake_lock, WAKE_LOCK_SUSPEND, "sar_sleep");
 
 	sar->reset                 = pdata->reset;
 	sar->intr_irq              = gpio_to_irq(sar->intr);
@@ -442,7 +437,6 @@ err_create_device_file:
 err_create_device:
 	class_destroy(sar->sar_class);
 err_create_class:
-	wake_lock_destroy(&sar->sleep_wake_lock);
 	destroy_workqueue(sar->cy8c_wq);
 err_init_sensor_failed:
 err_create_wq_failed:
@@ -462,7 +456,6 @@ static int cy8c_sar_remove(struct i2c_client *client)
 	device_unregister(sar->sar_dev);
 	class_destroy(sar->sar_class);
 	destroy_workqueue(sar->cy8c_wq);
-	wake_lock_destroy(&sar->sleep_wake_lock);
 	free_irq(client->irq, sar);
 
 	kfree(sar);
@@ -478,6 +471,7 @@ static int cy8c_sar_suspend(struct device *dev)
 	cancel_delayed_work_sync(&sar->sleep_work);
 	sar->pm_state = DEEP_SLEEP;
 	queue_delayed_work(sar->cy8c_wq, &sar->sleep_work, 0);
+	flush_delayed_work(&sar->sleep_work);
 	return 0;
 }
 

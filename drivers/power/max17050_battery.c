@@ -43,6 +43,8 @@
 #define MAX17050_I2C_RETRY_TIMES (5)
 #define MAX17050_TEMPERATURE_RE_READ_MS (1400)
 
+#define MAX17050_CHARGING_COMPLETE_CANCEL_SOC	(96)
+
 /* Fuel Gauge Maxim MAX17050 Register Definition */
 enum max17050_fg_register {
 	MAX17050_FG_STATUS   	= 0x00,
@@ -633,13 +635,16 @@ static int max17050_update_battery_status(struct battery_gauge_dev *bg_dev,
 		chip->charger_status = BATTERY_CHARGING;
 	else if (status == BATTERY_UNKNOWN)
 		chip->charger_status = BATTERY_UNKNOWN;
-	else if (status == BATTERY_CHARGING_DONE) {
+	else if (status == BATTERY_CHARGING_DONE)
 		chip->charger_status = BATTERY_CHARGING_DONE;
-		chip->charge_complete = 1;
-	} else {
+	else
 		chip->charger_status = BATTERY_DISCHARGING;
+
+	if (status == BATTERY_CHARGING_DONE)
+		chip->charge_complete = 1;
+	else if (status != BATTERY_CHARGING ||
+		chip->soc_raw < MAX17050_CHARGING_COMPLETE_CANCEL_SOC)
 		chip->charge_complete = 0;
-	}
 
 	max17050_battery_status_check(chip);
 

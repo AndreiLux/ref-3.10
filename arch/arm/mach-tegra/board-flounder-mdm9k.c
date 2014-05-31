@@ -42,6 +42,10 @@ static struct gpio modem_gpios[] = { /* QCT 9K modem */
 	{AP2MDM_PMIC_RESET_N, GPIOF_OUT_INIT_LOW, "AP2MDM_PMIC_RESET_N"},
 	{AP2MDM_IPC1, GPIOF_OUT_INIT_LOW, "AP2MDM_IPC1"},
 	{MDM2AP_IPC3, GPIOF_IN, "MDM2AP_IPC3"},
+	{AP2MDM_VDD_MIN, GPIOF_OUT_INIT_LOW, "AP2MDM_VDD_MIN"},
+	{AP2MDM_IPC2, GPIOF_OUT_INIT_LOW, "AP2MDM_IPC2"},
+	{MDM2AP_VDD_MIN, GPIOF_IN, "MDM2AP_VDD_MIN"},
+	{AP2MDM_CHNL_RDY_CPU, GPIOF_OUT_INIT_LOW, "AP2MDM_CHNL_RDY_CPU"},
 };
 
 static void modem_dump_gpio_value(struct qcom_usb_modem *modem, int gpio_value, char *label);

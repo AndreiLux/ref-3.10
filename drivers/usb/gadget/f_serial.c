@@ -199,7 +199,8 @@ static int gser_mdm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 
 	if (gser->port.in->driver_data) {
 		DBG(cdev, "reset generic ttyGS%d\n", gser->port_num);
-		gserial_disconnect(&gser->port);
+		ghsic_ctrl_disconnect(&gser->port, gser->port_num);
+		ghsic_data_disconnect(&gser->port, gser->port_num);
 	}
 	if (!gser->port.in->desc || !gser->port.out->desc) {
 		DBG(cdev, "activate generic ttyGS%d\n", gser->port_num);

@@ -73,6 +73,9 @@
 #include <dhd_pno.h>
 #endif
 
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif
 #ifdef DHDTCPACK_SUPPRESS
 #include <dhd_ip.h>
 #endif /* DHDTCPACK_SUPPRESS */
@@ -378,6 +381,9 @@ typedef struct dhd_info {
 #endif
 	unsigned int unit;
 	struct notifier_block pm_notifier;
+#ifdef SAR_SUPPORT
+	struct notifier_block sar_notifier;
+#endif
 } dhd_info_t;
 
 /* Flag to indicate if we should download firmware on driver load */
@@ -627,7 +633,31 @@ static bool dhd_pm_notifier_registered = FALSE;
 extern int register_pm_notifier(struct notifier_block *nb);
 extern int unregister_pm_notifier(struct notifier_block *nb);
 #endif /* CONFIG_PM_SLEEP */
+#ifdef SAR_SUPPORT
+static int dhd_sar_callback(struct notifier_block *nfb, unsigned long action, void *ignored)
+{
+	dhd_info_t *dhd = (dhd_info_t*)container_of(nfb, struct dhd_info, sar_notifier);
+	char iovbuf[32];
+	s32 sar_enable;
+	int ret = 0;
 
+	/* '0' means activate sarlimit and '-1' means back to normal state (deactivate
+	 * sarlimit)
+	 */
+	sar_enable = action ? 0 : -1;
+
+	bcm_mkiovar("sar_enable", (char *)&sar_enable, 4, iovbuf, sizeof(iovbuf));
+	if ((ret = dhd_wl_ioctl_cmd(&dhd->pub, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
+		DHD_ERROR(("%s wl sar_enable %d failed %d\n", __FUNCTION__, sar_enable, ret));
+
+	return NOTIFY_DONE;
+}
+
+static bool dhd_sar_notifier_registered = FALSE;
+
+extern int register_notifier_by_sar(struct notifier_block *nb);
+extern int unregister_notifier_by_sar(struct notifier_block *nb);
+#endif
 /* Request scheduling of the bus rx frame */
 static void dhd_sched_rxf(dhd_pub_t *dhdp, void *skb);
 static void dhd_os_rxflock(dhd_pub_t *pub);
@@ -2777,17 +2807,40 @@ dhd_ioctl_entry(struct net_device *net, struct ifreq *ifr, int cmd)
 
 	memset(&ioc, 0, sizeof(ioc));
 
-	/* Copy the ioc control structure part of ioctl request */
-	if (copy_from_user(&ioc, ifr->ifr_data, sizeof(wl_ioctl_t))) {
-		bcmerror = BCME_BADADDR;
-		goto done;
-	}
+#ifdef CONFIG_COMPAT
+	if (is_compat_task()) {
+		compat_wl_ioctl_t compat_ioc;
+		if (copy_from_user(&compat_ioc, ifr->ifr_data, sizeof(compat_wl_ioctl_t))) {
+			bcmerror = BCME_BADADDR;
+			goto done;
+		}
+		ioc.cmd = compat_ioc.cmd;
+		ioc.buf = compat_ptr(compat_ioc.buf);
+		ioc.len = compat_ioc.len;
+		ioc.set = compat_ioc.set;
+		ioc.used = compat_ioc.used;
+		ioc.needed = compat_ioc.needed;
+		/* To differentiate between wl and dhd read 4 more byes */
+		if ((copy_from_user(&ioc.driver, (char *)ifr->ifr_data + sizeof(compat_wl_ioctl_t),
+			sizeof(uint)) != 0)) {
+			bcmerror = BCME_BADADDR;
+			goto done;
+		}
+	} else
+#endif /* CONFIG_COMPAT */
+	{
+		/* Copy the ioc control structure part of ioctl request */
+		if (copy_from_user(&ioc, ifr->ifr_data, sizeof(wl_ioctl_t))) {
+			bcmerror = BCME_BADADDR;
+			goto done;
+		}
 
-	/* To differentiate between wl and dhd read 4 more byes */
-	if ((copy_from_user(&ioc.driver, (char *)ifr->ifr_data + sizeof(wl_ioctl_t),
-		sizeof(uint)) != 0)) {
-		bcmerror = BCME_BADADDR;
-		goto done;
+		/* To differentiate between wl and dhd read 4 more byes */
+		if ((copy_from_user(&ioc.driver, (char *)ifr->ifr_data + sizeof(wl_ioctl_t),
+			sizeof(uint)) != 0)) {
+			bcmerror = BCME_BADADDR;
+			goto done;
+		}
 	}
 
 	if (!capable(CAP_NET_ADMIN)) {
@@ -3438,6 +3491,13 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 		register_pm_notifier(&dhd->pm_notifier);
 	}
 #endif /* CONFIG_PM_SLEEP */
+#ifdef SAR_SUPPORT
+	dhd->sar_notifier.notifier_call = dhd_sar_callback;
+	if (!dhd_sar_notifier_registered) {
+		dhd_sar_notifier_registered = TRUE;
+		register_notifier_by_sar(&dhd->sar_notifier);
+	}
+#endif
 
 #if defined(CONFIG_HAS_EARLYSUSPEND) && defined(DHD_USE_EARLYSUSPEND)
 	dhd->early_suspend.level = EARLY_SUSPEND_LEVEL_BLANK_SCREEN + 20;
@@ -4995,6 +5055,12 @@ void dhd_detach(dhd_pub_t *dhdp)
 		dhd_pm_notifier_registered = FALSE;
 	}
 #endif /* CONFIG_PM_SLEEP */
+#ifdef SAR_SUPPORT
+	if (dhd_sar_notifier_registered) {
+		unregister_notifier_by_sar(&dhd->sar_notifier);
+		dhd_sar_notifier_registered = FALSE;
+	}
+#endif
 #ifdef DEBUG_CPU_FREQ
 		if (dhd->new_freq)
 			free_percpu(dhd->new_freq);
