@@ -80,7 +80,6 @@
 #define SYNC_ACK_MAGIC  0x66
 #define EXHAUSTED_MAGIC 0x77
 
-#define USE_WAKE_MCU 1
 #define CALIBRATION_DATA_PATH "/calibration_data"
 #define G_SENSOR_FLASH_DATA "gs_flash"
 #define GYRO_SENSOR_FLASH_DATA "gyro_flash"
@@ -88,10 +87,6 @@
 #define BARO_SENSOR_FLASH_DATA "bs_flash"
 
 #define MCU_WARN_MSGS 1
-
-#if USE_WAKE_MCU
-static int use_wake_mcu;
-#endif
 
 static int probe_success;
 static int DEBUG_FLAG_GSENSOR;
@@ -137,6 +132,7 @@ struct cwmcu_data {
 	struct mutex mutex_lock;
 	struct mutex group_i2c_lock;
 	struct mutex activated_i2c_lock;
+	struct mutex power_mode_lock;
 
 	struct iio_trigger  *trig;
 	atomic_t pseudo_irq_enable;
@@ -195,15 +191,48 @@ struct cwmcu_data {
 	s32 iio_data[6];
 	struct iio_dev *indio_dev;
 	struct irq_work iio_irq_work;
+
+	/* power status */
+	int power_on_counter;
 };
+
 static struct cwmcu_data *mcu_data;
 
 static int CWMCU_i2c_read(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
+static int CWMCU_i2c_read_power(struct cwmcu_data *sensor,
+			 u8 reg_addr, u8 *data, u8 len);
 static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
 
-static void cwmcu_batch_read(struct cwmcu_data *sensor);
+static void gpio_make_falling_edge(int gpio)
+{
+	if (!gpio_get_value(gpio))
+		gpio_set_value(gpio, 1);
+	gpio_set_value(gpio, 0);
+}
+
+static void cwmcu_powermode_switch(int onoff)
+{
+	mutex_lock(&mcu_data->power_mode_lock);
+	if (onoff) {
+		if (mcu_data->power_on_counter == 0) {
+			gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
+			D("%s: 11 onoff = %d\n", __func__, onoff);
+			usleep_range(500, 600);
+		}
+		mcu_data->power_on_counter++;
+	} else {
+		mcu_data->power_on_counter--;
+		if (mcu_data->power_on_counter <= 0) {
+			mcu_data->power_on_counter = 0;
+			gpio_set_value(mcu_data->gpio_wake_mcu, 1);
+			D("%s: 22 onoff = %d\n", __func__, onoff);
+		}
+	}
+	mutex_unlock(&mcu_data->power_mode_lock);
+	D("%s: onoff = %d, power_counter = %d\n", __func__, onoff, mcu_data->power_on_counter);
+}
 
 static int cw_send_event(u8 id, u16 *data, s64 timestamp)
 {
@@ -252,16 +281,17 @@ static int cw_send_event_special(u8 id, u16 *data, u16 *bias, s64 timestamp)
 static int cwmcu_get_calibrator_status(u8 sensor_id, u8 *data)
 {
 	int error_msg = 0;
+
 	if (sensor_id == CW_ACCELERATION)
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_STATUS_ACC,
 				data, 1);
 	else if (sensor_id == CW_MAGNETIC)
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_STATUS_MAG,
 				data, 1);
 	else if (sensor_id == CW_GYRO)
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_STATUS_GYRO,
 				data, 1);
 
@@ -273,23 +303,23 @@ static int cwmcu_get_calibrator(u8 sensor_id, s8 *data, u8 len)
 	int error_msg = 0;
 
 	if ((sensor_id == CW_ACCELERATION) && (len == ACC_CALIBRATOR_LEN))
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_ACC,
 				data, len);
 	else if ((sensor_id == CW_MAGNETIC) && (len == MAG_CALIBRATOR_LEN))
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_MAG,
 				data, len);
 	else if ((sensor_id == CW_GYRO) && (len == GYRO_CALIBRATOR_LEN))
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_GYRO,
 				data, len);
 	else if ((sensor_id == CW_LIGHT) && (len == LIGHT_CALIBRATOR_LEN))
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_LIGHT,
 				data, len);
 	else if ((sensor_id == CW_PRESSURE) && (len == PRESSURE_CALIBRATOR_LEN))
-		error_msg = CWMCU_i2c_read(mcu_data,
+		error_msg = CWMCU_i2c_read_power(mcu_data,
 				CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_PRESSURE,
 				data, len);
 	else
@@ -319,6 +349,8 @@ static ssize_t set_calibrator_en(struct device *dev,
 	/* sensor_id at least should between 0 ~ 31 */
 	data = (u8)sensors_id;
 	D("%s: data(sensors_id) = %u\n", __func__, data);
+
+	cwmcu_powermode_switch(1);
 
 	mutex_lock(&mcu_data->group_i2c_lock);
 
@@ -401,13 +433,18 @@ static ssize_t set_calibrator_en(struct device *dev,
 		break;
 	default:
 		mutex_unlock(&mcu_data->group_i2c_lock);
+		cwmcu_powermode_switch(0);
 		E("%s: Improper sensor_id = %u\n", __func__, data);
 		return -EINVAL;
 	}
+
 	error = count;
 
 i2c_fail:
 	mutex_unlock(&mcu_data->group_i2c_lock);
+
+	cwmcu_powermode_switch(0);
+
 	E("%s--: data2 = 0x%x, error = %d\n", __func__, data2, error);
 	return error;
 }
@@ -534,18 +571,23 @@ static ssize_t set_k_value(const char *buf, size_t count, u8 reg_addr, u8 len)
 	D("Set calibration by attr (%ld, %ld, %ld), len = %u, reg_addr = 0x%x\n"
 	  , data_temp[0], data_temp[1], data_temp[2], len, reg_addr);
 
+	cwmcu_powermode_switch(1);
+
 	mutex_lock(&mcu_data->group_i2c_lock);
 	for (i = 0; i < len; i++) {
 		u8 data = (u8)(data_temp[i]);
 		/* Firmware can't write multi bytes */
 		error = CWMCU_i2c_write(mcu_data, reg_addr, &data, 1);
 		if (error < 0) {
-			E("%s: error = %d, i = %d\n", __func__, error, i);
 			mutex_unlock(&mcu_data->group_i2c_lock);
+			cwmcu_powermode_switch(0);
+			E("%s: error = %d, i = %d\n", __func__, error, i);
 			return -EIO;
 		}
 	}
 	mutex_unlock(&mcu_data->group_i2c_lock);
+
+	cwmcu_powermode_switch(0);
 
 	return count;
 }
@@ -605,11 +647,16 @@ static ssize_t led_enable(struct device *dev,
 
 	I("LED %s\n", (data == 2) ? "ENABLE" : "DISABLE");
 
+	cwmcu_powermode_switch(1);
+
 	error = CWMCU_i2c_write(mcu_data, 0xD0, &data, 1);
 	if (error < 0) {
+		cwmcu_powermode_switch(0);
 		E("%s: error = %d\n", __func__, error);
 		return -EIO;
 	}
+
+	cwmcu_powermode_switch(0);
 
 	return count;
 }
@@ -636,7 +683,7 @@ static ssize_t get_k_value_acc_rl_f(struct device *dev,
 	int i;
 	u8 data[ACC_CALIBRATOR_RL_LEN] = {0};
 
-	if (CWMCU_i2c_read(mcu_data, CW_I2C_REG_SENSORS_CALIBRATOR_RESULT_RL_ACC
+	if (CWMCU_i2c_read_power(mcu_data, CW_I2C_REG_SENSORS_CALIBRATOR_RESULT_RL_ACC
 			   , data, sizeof(data)) >= 0) {
 		for (i = 0; i < sizeof(data); i++) {
 			if (DEBUG_FLAG_GSENSOR == 1)
@@ -704,6 +751,17 @@ static ssize_t get_k_value_barometer_f(struct device *dev,
 	return get_k_value(CW_PRESSURE, buf, data, sizeof(data));
 }
 
+static int CWMCU_i2c_read_power(struct cwmcu_data *sensor,
+			 u8 reg_addr, u8 *data, u8 len)
+{
+	int ret;
+
+	cwmcu_powermode_switch(1);
+	ret = CWMCU_i2c_read(sensor, reg_addr, data, len);
+	cwmcu_powermode_switch(0);
+	return ret;
+}
+
 static ssize_t get_light_kadc(struct device *dev,
 			      struct device_attribute *attr, char *buf)
 {
@@ -711,8 +769,8 @@ static ssize_t get_light_kadc(struct device *dev,
 	u16 light_gadc;
 	u16 light_kadc;
 
-	CWMCU_i2c_read(mcu_data, LIGHT_SENSORS_CALIBRATION_DATA, data,
-		       sizeof(data));
+	CWMCU_i2c_read_power(mcu_data, LIGHT_SENSORS_CALIBRATION_DATA, data,
+			     sizeof(data));
 
 	light_gadc = (data[1] << 8) | data[0];
 	light_kadc = (data[3] << 8) | data[2];
@@ -725,8 +783,9 @@ static ssize_t get_firmware_version(struct device *dev,
 {
 	u8 firmware_version[FW_VER_COUNT] = {0};
 
-	CWMCU_i2c_read(mcu_data, FIRMWARE_VERSION, firmware_version,
-		       sizeof(firmware_version));
+	CWMCU_i2c_read_power(mcu_data, FIRMWARE_VERSION, firmware_version,
+			     sizeof(firmware_version));
+
 	return scnprintf(buf, PAGE_SIZE,
 			 "Firmware Architecture version %u, "
 			 "Sense version %u, Cywee lib version %u,"
@@ -743,7 +802,8 @@ static ssize_t get_hall_sensor(struct device *dev,
 	/* TESTME, array 2 change to variable */
 	u8 hall_sensor = 0;
 
-	CWMCU_i2c_read(mcu_data, CWSTM32_READ_Hall_Sensor, &hall_sensor, 1);
+	CWMCU_i2c_read_power(mcu_data, CWSTM32_READ_Hall_Sensor,
+			     &hall_sensor, 1);
 
 	return scnprintf(buf, PAGE_SIZE,
 			 "Hall_1(S, N) = (%u, %u), Hall_2(S, N)"
@@ -758,7 +818,9 @@ static ssize_t get_barometer(struct device *dev, struct device_attribute *attr,
 {
 	u8 data[6] = {0};
 
-	CWMCU_i2c_read(mcu_data, CWSTM32_READ_Pressure, data, sizeof(data));
+	CWMCU_i2c_read_power(mcu_data, CWSTM32_READ_Pressure, data,
+			     sizeof(data));
+
 	return scnprintf(buf, PAGE_SIZE, "%x %x %x %x\n", data[0], data[1],
 					 data[2], data[3]);
 }
@@ -773,23 +835,28 @@ static ssize_t get_light_polling(struct device *dev,
 
 	data_polling_enable = CW_MCU_BIT_LIGHT_POLLING;
 
+	cwmcu_powermode_switch(1);
+
 	mutex_lock(&mcu_data->group_i2c_lock);
 	rc = CWMCU_i2c_write(mcu_data, LIGHT_SENSORS_STATUS,
 			&data_polling_enable, 1);
 	if (rc < 0) {
-		E("%s: write fail, rc = %d\n", __func__, rc);
 		mutex_unlock(&mcu_data->group_i2c_lock);
+		cwmcu_powermode_switch(0);
+		E("%s: write fail, rc = %d\n", __func__, rc);
 		return rc;
 	}
 	CWMCU_i2c_read(mcu_data, CWSTM32_READ_Light, data, sizeof(data));
 	if (rc < 0) {
-		E("%s: read fail, rc = %d\n", __func__, rc);
 		mutex_unlock(&mcu_data->group_i2c_lock);
+		cwmcu_powermode_switch(0);
+		E("%s: read fail, rc = %d\n", __func__, rc);
 		return rc;
 	}
 	mutex_unlock(&mcu_data->group_i2c_lock);
 
-	/* TESTME for light_adc is changed from array to variable */
+	cwmcu_powermode_switch(0);
+
 	light_adc = (data[2] << 8) | data[1];
 
 	return scnprintf(buf, PAGE_SIZE, "ADC[0x%04X] => level %u\n", light_adc,
@@ -845,7 +912,8 @@ static ssize_t read_mcu_data(struct device *dev, struct device_attribute *attr,
 	len = (u8)(data_temp[1]);
 
 	if (len < sizeof(mcu_rdata)) {
-		CWMCU_i2c_read(mcu_data, reg_addr, mcu_rdata, len);
+		CWMCU_i2c_read_power(mcu_data, reg_addr, mcu_rdata, len);
+
 		for (i = 0; i < len; i++)
 			D("read mcu reg_addr = 0x%x, reg[%u] = 0x%x\n",
 				reg_addr, (reg_addr + i), mcu_rdata[i]);
@@ -871,21 +939,20 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (sensor->i2c_total_retry > RETRY_TIMES) {
+		D("%s: mcu_data->i2c_total_retry = %d\n", __func__,
+		  mcu_data->i2c_total_retry);
+		/* Try to recover HUB in low CPU utilization */
+		queue_work(mcu_wq, &activated_i2c_work);
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 		return -EIO;
 	}
-
-	#if USE_WAKE_MCU
-	if (!gpio_get_value(mcu_data->gpio_wake_mcu))
-		gpio_set_value(mcu_data->gpio_wake_mcu, 1);
-	gpio_set_value(mcu_data->gpio_wake_mcu, 0);
-	#endif
 
 	for (i = 0; i < len; i++) {
 		for (; sensor->i2c_total_retry <= RETRY_TIMES;) {
 			write_res = i2c_smbus_write_byte_data(sensor->client,
 						  reg_addr, data[i]);
 			if (write_res < 0) {
+				gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
 				sensor->i2c_total_retry++;
 				E(
 				  "%s: i2c write error,"
@@ -900,18 +967,11 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 		}
 
 		if (sensor->i2c_total_retry > RETRY_TIMES) {
-			E("%s: retry over %d\n", __func__, RETRY_TIMES);
-			#if USE_WAKE_MCU
-			gpio_set_value(mcu_data->gpio_wake_mcu, 1);
-			#endif
 			mutex_unlock(&mcu_data->activated_i2c_lock);
+			E("%s: retry over %d\n", __func__, RETRY_TIMES);
 			return -EIO;
 		}
 	}
-
-	#if USE_WAKE_MCU
-	gpio_set_value(mcu_data->gpio_wake_mcu, 1);
-	#endif
 
 	mutex_unlock(&mcu_data->activated_i2c_lock);
 
@@ -928,9 +988,9 @@ static int CWMCU_i2c_multi_write(struct cwmcu_data *sensor,
 	for (i = 0; i < len; i++) {
 		rc = CWMCU_i2c_write(mcu_data, reg_addr, &data[i], 1);
 		if (rc) {
+			mutex_unlock(&mcu_data->group_i2c_lock);
 			E("%s: CWMCU_i2c_write fails, rc = %d, i = %d\n",
 			  __func__, rc, i);
-			mutex_unlock(&mcu_data->group_i2c_lock);
 			return -EIO;
 		}
 	}
@@ -1091,7 +1151,7 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			continue;
 		}
 
-		delay_ms = sensor->report_period[i] / 1000;
+		delay_ms = sensor->report_period[i] / MS_TO_PERIOD;
 
 		if (delay_ms >= 200)
 			reg_value = UPDATE_RATE_NORMAL;
@@ -1102,8 +1162,11 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 		else if (delay_ms <= 19)
 			reg_value = UPDATE_RATE_FASTEST;
 
-		D("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
-		  __func__, reg_addr, reg_value);
+		D(
+		  "%s: reg_addr = 0x%x, reg_value = 0x%x, period[%d] = %d,"
+		  " delay_ms = %d\n",
+		  __func__, reg_addr, reg_value, i, sensor->report_period[i],
+		  delay_ms);
 		rc = CWMCU_i2c_write(mcu_data, reg_addr, &reg_value, 1);
 		if (rc) {
 			E("%s: CWMCU_i2c_write fails, rc = %d, i = %d\n",
@@ -1432,6 +1495,8 @@ static void polling_do_work(struct work_struct *w)
 {
 	int error;
 
+	cwmcu_powermode_switch(1);
+
 	error = update_firmware(mcu_data);
 	if (error) {
 		E("%s: update_firmware fails, error = %d\n", __func__, error);
@@ -1441,6 +1506,9 @@ static void polling_do_work(struct work_struct *w)
 	cwmcu_sensor_placement(mcu_data);
 	cwmcu_set_sensor_kvalue(mcu_data);
 	cwmcu_restore_status(mcu_data);
+
+	cwmcu_powermode_switch(0);
+
 	cancel_delayed_work(&polling_work);
 }
 
@@ -1462,15 +1530,16 @@ static int CWMCU_i2c_read(struct cwmcu_data *sensor,
 	if (sensor->i2c_total_retry > RETRY_TIMES) {
 		for (rc = 0; rc < len; rc++)
 			data[rc] = 0; /* Assign data to 0 when chip NACK */
+
+		/* Try to recover HUB in low CPU utilization */
+		D("%s: mcu_data->i2c_total_retry = %d\n", __func__,
+		  mcu_data->i2c_total_retry);
+		queue_work(mcu_wq, &activated_i2c_work);
+
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 		return len;
 	}
 
-#if USE_WAKE_MCU
-	if (!gpio_get_value(mcu_data->gpio_wake_mcu))
-		gpio_set_value(mcu_data->gpio_wake_mcu, 1);
-	gpio_set_value(mcu_data->gpio_wake_mcu, 0);
-#endif
 	for (; sensor->i2c_total_retry <= RETRY_TIMES;) {
 		rc = i2c_smbus_read_i2c_block_data(sensor->client, reg_addr,
 						   len, data);
@@ -1478,15 +1547,12 @@ static int CWMCU_i2c_read(struct cwmcu_data *sensor,
 			sensor->i2c_total_retry = 0;
 			break;
 		} else {
+			gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
 			sensor->i2c_total_retry++;
 			E("%s: i2c read, rc = %d, total_retry = %d\n", __func__,
 			  rc, sensor->i2c_total_retry);
 		}
 	}
-
-#if USE_WAKE_MCU
-	gpio_set_value(mcu_data->gpio_wake_mcu, 1);
-#endif
 
 	if (sensor->i2c_total_retry > RETRY_TIMES)
 		E("%s: retry over %d\n", __func__, RETRY_TIMES);
@@ -1522,7 +1588,7 @@ static void reset_hub(void)
 	mcu_data->i2c_total_retry = 0;
 	mcu_data->i2c_jiffies = jiffies;
 
-	usleep_range(1000, 2000); /* HUB need at least 1ms to be ready */
+	usleep_range(500000, 1000000); /* HUB need at least 500ms to be ready */
 }
 
 static void activated_i2c_do_work(struct work_struct *w)
@@ -1531,10 +1597,25 @@ static void activated_i2c_do_work(struct work_struct *w)
 	if ((mcu_data->i2c_total_retry > RETRY_TIMES) &&
 	    (time_after(jiffies, mcu_data->i2c_jiffies + REACTIVATE_PERIOD))) {
 		reset_hub();
+
+		mutex_unlock(&mcu_data->activated_i2c_lock);
+
+		I("%s: Restore parameters!!\n", __func__);
+
+		cwmcu_powermode_switch(1);
+
+		cwmcu_sensor_placement(mcu_data);
+		cwmcu_set_sensor_kvalue(mcu_data);
+		cwmcu_restore_status(mcu_data);
+
+		cwmcu_powermode_switch(0);
+
+		mutex_lock(&mcu_data->activated_i2c_lock);
+
 	}
 
 	if (mcu_data->i2c_total_retry > RETRY_TIMES) {
-		E("%s: i2c_total_retry = %d\n", __func__,
+		D("%s: i2c_total_retry = %d\n", __func__,
 		  mcu_data->i2c_total_retry);
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 		return;
@@ -1547,10 +1628,6 @@ static void activated_i2c_do_work(struct work_struct *w)
 	mutex_unlock(&mcu_data->activated_i2c_lock);
 	D("%s--: mcu_data->i2c_total_retry = %d\n", __func__,
 	  mcu_data->i2c_total_retry);
-
-	cwmcu_sensor_placement(mcu_data);
-	cwmcu_set_sensor_kvalue(mcu_data);
-	cwmcu_restore_status(mcu_data);
 }
 
 static int firmware_odr(int sensors_id, int delay_ms)
@@ -1637,15 +1714,6 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	u32 sensors_bit;
 	int rc;
 
-	/* Try to recover HUB in low CPU utilization */
-	mutex_lock(&mcu_data->activated_i2c_lock);
-	if (mcu_data->i2c_total_retry > RETRY_TIMES) {
-		D("%s: mcu_data->i2c_total_retry = %d\n", __func__,
-		  mcu_data->i2c_total_retry);
-		queue_work(mcu_wq, &activated_i2c_work);
-	}
-	mutex_unlock(&mcu_data->activated_i2c_lock);
-
 	str_buf = kstrndup(buf, count, GFP_KERNEL);
 	if (str_buf == NULL) {
 		E("%s: cannot allocate buffer\n", __func__);
@@ -1711,6 +1779,8 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 			mcu_data->now.tv_usec;
 	}
 
+	cwmcu_powermode_switch(1);
+
 	i = sensors_id / 8;
 	data = (u8)(mcu_data->enabled_list>>(i*8));
 	D("%s: i2c_write: data = 0x%x, CWSTM32_ENABLE_REG+i = 0x%x\n",
@@ -1723,9 +1793,12 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	rc = firmware_odr(sensors_id, mcu_data->report_period[sensors_id] /
 				      MS_TO_PERIOD);
 	if (rc) {
+		cwmcu_powermode_switch(0);
 		E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
 		return rc;
 	}
+
+	cwmcu_powermode_switch(0);
 
 	I("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
 		__func__, sensors_id, enabled, mcu_data->enabled_list);
@@ -1738,11 +1811,9 @@ static ssize_t active_show(struct device *dev, struct device_attribute *attr,
 {
 	u8 data;
 
-	D("%s: i2c_read: CWSTM32_ENABLE_REG = 0x%x\n", __func__,
-	  CWSTM32_ENABLE_REG);
+	CWMCU_i2c_read_power(mcu_data, CWSTM32_ENABLE_REG, &data, sizeof(data));
 
-	CWMCU_i2c_read(mcu_data, CWSTM32_ENABLE_REG, &data, sizeof(data));
-	D("%s: enable_1 = 0x%x\n", __func__, data);
+	I("%s: enable[1] = 0x%x\n", __func__, data);
 
 	return scnprintf(buf, PAGE_SIZE, "%u\n", mcu_data->enabled_list);
 }
@@ -1798,12 +1869,16 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
+	cwmcu_powermode_switch(1);
+
 	rc = firmware_odr(sensors_id, val);
 	if (rc) {
-		E("%s: firmware_odr fails, rc = %d\n",
-		  __func__, rc);
+		cwmcu_powermode_switch(0);
+		E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
 		return rc;
 	}
+
+	cwmcu_powermode_switch(0);
 
 	return count;
 }
@@ -2015,6 +2090,8 @@ static ssize_t batch_set(struct device *dev,
 
 		data = (u8)(mcu_data->batched_list>>(i*8));
 
+		cwmcu_powermode_switch(1);
+
 		D("%s: Writing, addr = 0x%x, data = 0x%x, i = %d\n", __func__,
 		  (CW_BATCH_ENABLE_REG+i), data, i);
 		rc = CWMCU_i2c_write(mcu_data,
@@ -2041,6 +2118,9 @@ static ssize_t batch_set(struct device *dev,
 			E("%s: CWMCU_i2c_write fails, rc = %d\n", __func__, rc);
 		else
 			rc = count;
+
+		cwmcu_powermode_switch(0);
+
 	}
 
 	I(
@@ -2067,7 +2147,7 @@ static ssize_t flush_show(struct device *dev, struct device_attribute *attr,
 	int ret;
 	u8 data[4] = {0};
 
-	ret = CWMCU_i2c_read(mcu_data, CWSTM32_BATCH_MODE_DATA_COUNTER,
+	ret = CWMCU_i2c_read_power(mcu_data, CWSTM32_BATCH_MODE_DATA_COUNTER,
 			     data, sizeof(data));
 	if (ret < 0)
 		D("%s: Read Counter fail, ret = %d\n", __func__, ret);
@@ -2115,6 +2195,8 @@ static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
 
 	D("%s: handle = %lu\n", __func__, handle);
 
+	cwmcu_powermode_switch(1);
+
 	if (handle == TIMESTAMP_SYNC_CODE) {
 		data = SYNC_TIMESTAMP_BIT;
 		rc = CWMCU_i2c_write(mcu_data,
@@ -2136,10 +2218,12 @@ static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
 		cwmcu_send_flush(handle);
 	}
 
+	cwmcu_powermode_switch(0);
+
 	return count;
 }
 
-
+/* cwmcu_powermode_switch() must be held by caller */
 static void cwmcu_batch_read(struct cwmcu_data *sensor)
 {
 	s32 ret;
@@ -2160,7 +2244,8 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 			D("Read Batched data Counter fail, ret = %d\n", ret);
 
 		event_count = (u32 *)(&event_count_data[0]);
-		D("%s: event_count = %u\n", __func__, *event_count);
+		if (DEBUG_FLAG_GSENSOR == 1)
+			I("%s: event_count = %u\n", __func__, *event_count);
 
 		for (i = 0; i < *event_count; i++) {
 			u8 data[9] = {0};
@@ -2210,20 +2295,22 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 							((u16)data[8] << 8) |
 							data[7];
 
-						D(
-						  "Batch data: total count = "
-						  "%u, current count = %d,"
-						  " event_id = %d, bias(x, y,"
-						  " z) = (%d, %d, %d)\n"
-						  , *event_count
-						  , i
-						  , data[0]
-						  , (int16_t)((data[4] << 8) |
-							      data[3])
-						  , (int16_t)((data[6] << 8) |
-							      data[5])
-						  , (int16_t)((data[8] << 8) |
-							      data[7]));
+						if (DEBUG_FLAG_GSENSOR == 1) {
+							I(
+							  "Batch data: total count = "
+							  "%u, current count = %d,"
+							  " event_id = %d, bias(x, y,"
+							  " z) = (%d, %d, %d)\n"
+							  , *event_count
+							  , i
+							  , data[0]
+							  , (int16_t)((data[4] << 8) |
+								      data[3])
+							  , (int16_t)((data[6] << 8) |
+								      data[5])
+							  , (int16_t)((data[8] << 8) |
+								      data[7]));
+						}
 
 						cw_send_event(data_buff,
 							      data_event, 0);
@@ -2245,20 +2332,22 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 							((u32)data[8] << 8) |
 							(u32)data[7];
 
-						D(
-						  "Batch data: total count ="
-						  " %u, current count = %d, "
-						  "event_id = %d, data_x = %d,"
-						  " data_y = %d, data_z = %d,"
-						  " timediff = %d\n"
-						  , *event_count
-						  , i
-						  , data[0]
-						  , (s16)data_event[1]
-						  , (s16)data_event[2]
-						  , (s16)data_event[3]
-						  , (u16)data_event[0]
-						  );
+						if (DEBUG_FLAG_GSENSOR == 1) {
+							I(
+							  "Batch data: total count ="
+							  " %u, current count = %d, "
+							  "event_id = %d, data_x = %d,"
+							  " data_y = %d, data_z = %d,"
+							  " timediff = %d\n"
+							  , *event_count
+							  , i
+							  , data[0]
+							  , (s16)data_event[1]
+							  , (s16)data_event[2]
+							  , (s16)data_event[3]
+							  , (u16)data_event[0]
+							  );
+						}
 
 						cw_send_event(data[0],
 							      &data_event[1],
@@ -2266,8 +2355,7 @@ static void cwmcu_batch_read(struct cwmcu_data *sensor)
 					}
 				}
 			} else
-				D("Read Queue fails, ret = %d\n", ret);
-
+				E("Read Queue fails, ret = %d\n", ret);
 		}
 	}
 }
@@ -2292,6 +2380,7 @@ static void cwmcu_check_sensor_update(void)
 	}
 }
 
+/* cwmcu_powermode_switch() must be held by caller */
 static void report_iio(int id_check, struct cwmcu_data *sensor,
 		       struct iio_poll_func *pf)
 {
@@ -2395,6 +2484,7 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 	}
 }
 
+/* cwmcu_powermode_switch() must be held by caller */
 static void cwmcu_read(struct cwmcu_data *sensor, struct iio_poll_func *pf)
 {
 	int id_check;
@@ -2422,17 +2512,11 @@ static void cwmcu_read(struct cwmcu_data *sensor, struct iio_poll_func *pf)
 
 static int cwmcu_suspend(struct device *dev)
 {
-#if USE_WAKE_MCU
-	u8 data = 0x00;
-#endif
-
 	D("[CWMCU] %s\n", __func__);
 
-#if USE_WAKE_MCU
-	use_wake_mcu = 1;
-	CWMCU_i2c_write(mcu_data, HTC_SYSTEM_STATUS_REG, &data, 1);
 	gpio_set_value(mcu_data->gpio_wake_mcu, 1);
-#endif
+	mcu_data->power_on_counter = 0;
+
 	mutex_lock(&mcu_data->mutex_lock);
 	mcu_data->resume_done = 0;
 	mutex_unlock(&mcu_data->mutex_lock);
@@ -2442,15 +2526,8 @@ static int cwmcu_suspend(struct device *dev)
 
 static void resume_do_work(struct work_struct *w)
 {
-	u8 data = 0x01;
-
 	D("[CWMCU] %s++\n", __func__);
 
-	CWMCU_i2c_write(mcu_data, HTC_SYSTEM_STATUS_REG, &data, 1);
-
-#if USE_WAKE_MCU
-	use_wake_mcu = 0;
-#endif
 	mutex_lock(&mcu_data->mutex_lock);
 	mcu_data->resume_done = 1;
 	mutex_unlock(&mcu_data->mutex_lock);
@@ -2462,9 +2539,8 @@ static int cwmcu_resume(struct device *dev)
 {
 	D("[CWMCU] %s++\n", __func__);
 
-#if USE_WAKE_MCU
 	queue_work(mcu_wq, &resume_work);
-#endif
+
 	D("[CWMCU] %s--\n", __func__);
 	return 0;
 }
@@ -2472,9 +2548,13 @@ static int cwmcu_resume(struct device *dev)
 
 static void re_init_do_work(struct work_struct *w)
 {
+	cwmcu_powermode_switch(1);
+
 	cwmcu_sensor_placement(mcu_data);
 	cwmcu_set_sensor_kvalue(mcu_data);
 	cwmcu_restore_status(mcu_data);
+
+	cwmcu_powermode_switch(0);
 }
 
 
@@ -2513,6 +2593,8 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 	u16 light_adc = 0;
 
 	D("[CWMCU] %s\n", __func__);
+
+	cwmcu_powermode_switch(1);
 
 	CWMCU_i2c_read(sensor, CWSTM32_INT_ST1, &INT_st1, 1);
 	CWMCU_i2c_read(sensor, CWSTM32_INT_ST2, &INT_st2, 1);
@@ -2792,6 +2874,8 @@ exception_end:
 				      &clear_intr, 1);
 	}
 
+	cwmcu_powermode_switch(0);
+
 	enable_irq(sensor->IRQ);
 }
 
@@ -2824,10 +2908,14 @@ static irqreturn_t cw_trigger_handler(int irq, void *p)
 {
 	struct iio_poll_func *pf = p;
 
+	cwmcu_powermode_switch(1);
+
 	mutex_lock(&mcu_data->lock);
 	cwmcu_read(mcu_data, pf);
 	iio_trigger_notify_done(mcu_data->indio_dev->trig);
 	mutex_unlock(&mcu_data->lock);
+
+	cwmcu_powermode_switch(1);
 
 	return IRQ_HANDLED;
 }
@@ -3308,7 +3396,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Exception supported\n", __func__);
+	I("%s++: Stop Mode, reset_hub in i2c access\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3337,38 +3425,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	sensor->indio_dev = indio_dev;
 
 	mcu_data = sensor;
-
-	mutex_init(&sensor->mutex_lock);
-	mutex_init(&sensor->group_i2c_lock);
-	mutex_init(&sensor->activated_i2c_lock);
-	mutex_init(&sensor->lock);
-
-	INIT_DELAYED_WORK(&sensor->work, cwmcu_work_report);
-
-	error = cw_probe_buffer(indio_dev);
-	if (error) {
-		E("%s: iio yas_probe_buffer failed\n", __func__);
-		goto error_free_dev;
-	}
-	error = cw_probe_trigger(indio_dev);
-	if (error) {
-		E("%s: iio yas_probe_trigger failed\n", __func__);
-		goto error_remove_buffer;
-	}
-	error = iio_device_register(indio_dev);
-	if (error) {
-		E("%s: iio iio_device_register failed\n", __func__);
-		goto error_remove_trigger;
-	}
-
-	error = create_sysfs_interfaces(sensor);
-	if (error)
-		goto err_free_mem;
-
-	for (i = 0; i < num_sensors; i++) {
-		sensor->sensors_time[i] = 0;
-		sensor->report_period[i] = 200000;
-	}
 
 	if (client->dev.of_node) {
 		D("Device Tree parsing.");
@@ -3401,18 +3457,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		}
 	}
 
-	wake_lock_init(&significant_wake_lock, WAKE_LOCK_SUSPEND,
-		       "significant_wake_lock");
-	wake_lock_init(&wake_up_gesture_wake_lock, WAKE_LOCK_SUSPEND,
-		       "wake_up_gesture_wake_lock");
-
-	init_irq_work(&sensor->iio_irq_work, iio_trigger_work);
-	INIT_WORK(&sensor->irq_work, cwmcu_irq_work_func);
-
-	mcu_wq = create_singlethread_workqueue("htc_mcu");
-	i2c_set_clientdata(client, sensor);
-	pm_runtime_enable(&client->dev);
-
 	error = gpio_request(sensor->gpio_reset, "cwmcu_reset");
 	if (error)
 		E("%s : request reset gpio fail\n", __func__);
@@ -3434,6 +3478,52 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		E("%s : request irq gpio fail\n",
 			__func__);
 	}
+
+	mutex_init(&sensor->mutex_lock);
+	mutex_init(&sensor->group_i2c_lock);
+	mutex_init(&sensor->activated_i2c_lock);
+	mutex_init(&sensor->power_mode_lock);
+	mutex_init(&sensor->lock);
+
+	INIT_DELAYED_WORK(&sensor->work, cwmcu_work_report);
+
+	error = cw_probe_buffer(indio_dev);
+	if (error) {
+		E("%s: iio yas_probe_buffer failed\n", __func__);
+		goto error_free_dev;
+	}
+	error = cw_probe_trigger(indio_dev);
+	if (error) {
+		E("%s: iio yas_probe_trigger failed\n", __func__);
+		goto error_remove_buffer;
+	}
+	error = iio_device_register(indio_dev);
+	if (error) {
+		E("%s: iio iio_device_register failed\n", __func__);
+		goto error_remove_trigger;
+	}
+
+	error = create_sysfs_interfaces(sensor);
+	if (error)
+		goto err_free_mem;
+
+	for (i = 0; i < num_sensors; i++) {
+		sensor->sensors_time[i] = 0;
+		sensor->report_period[i] = 200000;
+	}
+
+	wake_lock_init(&significant_wake_lock, WAKE_LOCK_SUSPEND,
+		       "significant_wake_lock");
+	wake_lock_init(&wake_up_gesture_wake_lock, WAKE_LOCK_SUSPEND,
+		       "wake_up_gesture_wake_lock");
+
+	init_irq_work(&sensor->iio_irq_work, iio_trigger_work);
+	INIT_WORK(&sensor->irq_work, cwmcu_irq_work_func);
+
+	mcu_wq = create_singlethread_workqueue("htc_mcu");
+	i2c_set_clientdata(client, sensor);
+	pm_runtime_enable(&client->dev);
+
 	client->irq = gpio_to_irq(sensor->gpio_mcu_irq);
 
 	sensor->IRQ = client->irq;
@@ -3456,16 +3546,11 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	queue_delayed_work(mcu_wq, &polling_work,
 			msecs_to_jiffies(5000));
 
-	/*vib_trigger_register_simple("vibrator", &vib_trigger);*/
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
 
 	return 0;
 
-exit_mcu_parse_dt_fail:
-	if (client->dev.of_node &&
-	    ((struct cwmcu_platform_data *)sensor->client->dev.platform_data))
-		kfree(sensor->client->dev.platform_data);
 err_free_mem:
 	if (indio_dev)
 		iio_device_unregister(indio_dev);
@@ -3476,9 +3561,14 @@ error_remove_buffer:
 	if (indio_dev)
 		cwmcu_remove_buffer(indio_dev);
 error_free_dev:
+	if (client->dev.of_node &&
+	    ((struct cwmcu_platform_data *)sensor->client->dev.platform_data))
+		kfree(sensor->client->dev.platform_data);
+exit_mcu_parse_dt_fail:
 	if (indio_dev)
 		iio_device_free(indio_dev);
 	i2c_set_clientdata(client, NULL);
+
 	return error;
 }
 
@@ -3486,6 +3576,8 @@ error_free_dev:
 static int CWMCU_i2c_remove(struct i2c_client *client)
 {
 	struct cwmcu_data *sensor = i2c_get_clientdata(client);
+
+	gpio_set_value(mcu_data->gpio_wake_mcu, 1);
 
 	wake_lock_destroy(&significant_wake_lock);
 	wake_lock_destroy(&wake_up_gesture_wake_lock);
@@ -3522,7 +3614,7 @@ static struct i2c_driver cwmcu_driver = {
 		.of_match_table = mcu_match_table,
 	},
 	.probe    = CWMCU_i2c_probe,
-	.remove   = /*__devexit_p(*/CWMCU_i2c_remove/*)*/,
+	.remove   = CWMCU_i2c_remove,
 	.id_table = cwmcu_id,
 };
 
