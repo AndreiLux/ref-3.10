@@ -703,4 +703,8 @@
 		};
 	};
 
+	htc_battery_max17050 {
+		status = "okay";
+		compatible = "htc,max17050_battery";
+	};
 };
