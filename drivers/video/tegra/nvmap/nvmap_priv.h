@@ -247,6 +247,7 @@ struct nvmap_client {
 	u32				handle_count;
 	u32				next_fd;
 	struct nvmap_carveout_commit	carveout_commit[0];
+	int warned;
 };
 
 struct nvmap_vma_priv {
@@ -328,10 +329,24 @@ static inline struct nvmap_handle *nvmap_handle_get(struct nvmap_handle *h)
 	return h;
 }
 
+
 static inline pgprot_t nvmap_pgprot(struct nvmap_handle *h, pgprot_t prot)
 {
-	if (h->flags == NVMAP_HANDLE_UNCACHEABLE)
+	if (h->flags == NVMAP_HANDLE_UNCACHEABLE) {
+#ifdef CONFIG_ARM64
+		if (h->owner && !h->owner->warned) {
+			char task_comm[TASK_COMM_LEN];
+			h->owner->warned = 1;
+			get_task_comm(task_comm, h->owner->task);
+			pr_err("PID %d: %s: WARNING: "
+				"NVMAP_HANDLE_WRITE_COMBINE "
+				"should be used in place of "
+				"NVMAP_HANDLE_UNCACHEABLE on ARM64\n",
+				h->owner->task->pid, task_comm);
+		}
+#endif
 		return pgprot_noncached(prot);
+	}
 	else if (h->flags == NVMAP_HANDLE_WRITE_COMBINE)
 		return pgprot_dmacoherent(prot);
 	return prot;
