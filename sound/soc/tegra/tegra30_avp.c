@@ -105,8 +105,8 @@ struct tegra30_avp_audio_dma {
 	struct dma_slave_config		chan_slave_config;
 	dma_cookie_t			chan_cookie;
 
-	int				use_count;
-	int				active_count;
+	atomic_t			is_dma_allocated;
+	atomic_t			active_count;
 };
 
 struct tegra30_avp_stream {
@@ -141,7 +141,7 @@ struct tegra30_avp_audio {
 
 	unsigned int			*cmd_buf;
 	int				cmd_buf_idx;
-	int				stream_active_count;
+	atomic_t		stream_active_count;
 	struct tegra30_avp_audio_dma	audio_dma;
 	spinlock_t			lock;
 };
@@ -438,11 +438,10 @@ static int tegra30_avp_audio_alloc_dma(struct tegra_offload_dma_params *params)
 	dma_cap_mask_t mask;
 	int ret = 0;
 
-	dev_vdbg(audio_avp->dev, "%s : use %d",
-		__func__, dma->use_count);
+	dev_vdbg(audio_avp->dev, "%s: is_dma_allocated %d",
+			__func__, atomic_read(&dma->is_dma_allocated));
 
-	dma->use_count++;
-	if (dma->use_count > 1)
+	if (atomic_read(&dma->is_dma_allocated) == 1)
 		return 0;
 
 	memcpy(&dma->params, params, sizeof(struct tegra_offload_dma_params));
@@ -469,6 +468,8 @@ static int tegra30_avp_audio_alloc_dma(struct tegra_offload_dma_params *params)
 		return ret;
 	}
 	audio_engine->apb_channel_handle = dma->chan->chan_id;
+	atomic_set(&dma->is_dma_allocated, 1);
+
 	return 0;
 }
 
@@ -477,17 +478,15 @@ static void tegra30_avp_audio_free_dma(void)
 	struct tegra30_avp_audio *audio_avp = avp_audio_ctx;
 	struct tegra30_avp_audio_dma *dma = &audio_avp->audio_dma;
 
-	dev_vdbg(audio_avp->dev, "%s : use %d",
-		__func__, dma->use_count);
+	dev_vdbg(audio_avp->dev, "%s: is_dma_allocated %d",
+			__func__, atomic_read(&dma->is_dma_allocated));
 
-	if (dma->use_count <= 0)
-		return;
+	if (atomic_read(&dma->is_dma_allocated) == 1) {
+		dma_release_channel(dma->chan);
+		atomic_set(&dma->is_dma_allocated, 0);
+	}
 
-	dma->use_count--;
-	if (dma->use_count)
-		return;
-
-	dma_release_channel(dma->chan);
+	return;
 }
 
 static int tegra30_avp_audio_start_dma(void)
@@ -496,10 +495,10 @@ static int tegra30_avp_audio_start_dma(void)
 	struct tegra30_avp_audio_dma *dma = &audio_avp->audio_dma;
 	struct audio_engine_data *audio_engine = audio_avp->audio_engine;
 
-	dev_vdbg(audio_avp->dev, "%s: active %d.", __func__, dma->active_count);
+	dev_vdbg(audio_avp->dev, "%s: active %d", __func__,
+			atomic_read(&dma->active_count));
 
-	dma->active_count++;
-	if (dma->active_count > 1)
+	if (atomic_inc_return(&dma->active_count) > 1)
 		return 0;
 
 	dma->chan_desc = dmaengine_prep_dma_cyclic(dma->chan,
@@ -522,14 +521,12 @@ static int tegra30_avp_audio_stop_dma(void)
 	struct tegra30_avp_audio *audio_avp = avp_audio_ctx;
 	struct tegra30_avp_audio_dma *dma = &audio_avp->audio_dma;
 
-	dev_vdbg(audio_avp->dev, "%s : active %d",
-		__func__, dma->active_count);
+	dev_vdbg(audio_avp->dev, "%s: active %d.", __func__,
+			atomic_read(&dma->active_count));
 
-	dma->active_count--;
-	if (dma->active_count > 0)
-		return 0;
+	if (atomic_dec_and_test(&dma->active_count))
+		dmaengine_terminate_all(dma->chan);
 
-	dmaengine_terminate_all(dma->chan);
 	return 0;
 }
 
@@ -765,8 +762,11 @@ static int tegra30_avp_pcm_open(int *id)
 		return -EBUSY;
 	}
 
-	audio_avp->stream_active_count++;
+	audio_engine->stream[*id].stream_allocated = 1;
+
+	atomic_inc(&audio_avp->stream_active_count);
 	tegra30_avp_audio_set_state(KSSTATE_RUN);
+
 	return 0;
 }
 
@@ -917,8 +917,9 @@ static int tegra30_avp_compr_open(int *id)
 	}
 	audio_avp->avp_stream[*id].is_drain_called = 0;
 
-	audio_avp->stream_active_count++;
+	atomic_inc(&audio_avp->stream_active_count);
 	tegra30_avp_audio_set_state(KSSTATE_RUN);
+
 	return 0;
 }
 
@@ -1255,13 +1256,13 @@ static void tegra30_avp_stream_close(int id)
 		return;
 	}
 	tegra30_avp_mem_free(&avp_stream->source_buf);
-	tegra30_avp_audio_free_dma();
 	stream->stream_allocated = 0;
 	tegra30_avp_stream_set_state(id, KSSTATE_STOP);
 
-	audio_avp->stream_active_count--;
-	if (!(audio_avp->stream_active_count))
+	if (atomic_dec_and_test(&audio_avp->stream_active_count)) {
+		tegra30_avp_audio_free_dma();
 		tegra30_avp_audio_set_state(KSSTATE_STOP);
+	}
 }
 
 static struct tegra_offload_ops avp_audio_platform = {

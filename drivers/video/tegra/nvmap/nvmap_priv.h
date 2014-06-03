@@ -87,6 +87,7 @@ extern bool zero_memory;
 #define outer_clean_range(s, e)
 #define outer_flush_all()
 #define outer_clean_all()
+extern void __clean_dcache_page(struct page *);
 extern void __flush_dcache_page(struct page *);
 #else
 #define PG_PROT_KERNEL pgprot_kernel
@@ -412,6 +413,7 @@ extern void __clean_dcache_all(void *arg);
 
 void inner_flush_cache_all(void);
 void inner_clean_cache_all(void);
+void nvmap_clean_cache(struct page **pages, int numpages);
 void nvmap_flush_cache(struct page **pages, int numpages);
 
 int nvmap_do_cache_maint_list(struct nvmap_handle **handles, u32 *offsets,
@@ -486,6 +488,10 @@ static inline void nvmap_page_mkunreserved(struct page **page)
 	*page = (struct page *)((unsigned long)*page & ~2UL);
 }
 
+/*
+ * FIXME: assume user space requests for reserve operations
+ * are page aligned
+ */
 static inline void nvmap_handle_mk(struct nvmap_handle *h,
 				   u32 offset, u32 size,
 				   void (*fn)(struct page **))
@@ -496,7 +502,7 @@ static inline void nvmap_handle_mk(struct nvmap_handle *h,
 
 	if (h->heap_pgalloc) {
 		for (i = start_page; i < end_page; i++)
-			fn(&h->pgalloc.pages[i + start_page]);
+			fn(&h->pgalloc.pages[i]);
 	}
 }
 

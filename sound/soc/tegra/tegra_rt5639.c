@@ -312,12 +312,13 @@ static int tegra_rt5639_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 
-	/*for 24 bit audio we support only S24_LE (S24_3LE is not supported)
-	which is rendered on bus in 32 bits packet so consider as 32 bit
-	depth in clock calculations, extra 4 is required by codec,
-	God knows why ?*/
+	/*
+	 * For 24 bit audio we support only S24_LE (S24_3LE is not supported)
+	 * which is rendered on bus in 32 bits packet so consider as 32 bit
+	 * depth in clock calculations
+	 */
 	if (sample_size == 24)
-		i2sclock = srate * params_channels(params) * 32 * 4;
+		i2sclock = srate * params_channels(params) * 32;
 	else
 		i2sclock = 0;
 
@@ -928,10 +929,10 @@ static const struct snd_soc_dapm_route ardbeg_audio_map[] = {
 	/*{"IN1P", NULL, "micbias1"},*/
 	/*{"IN1N", NULL, "micbias1"},*/
 	/* AHUB BE connections */
-	{"tegra30-i2s.1 Playback", NULL, "I2S1_OUT"},
-
 	{"I2S1_OUT", NULL, "offload-pcm-playback"},
 	{"I2S1_OUT", NULL, "offload-compr-playback"},
+
+	{"AIF1 Playback", NULL, "I2S1_OUT"},
 };
 
 
@@ -1072,6 +1073,7 @@ static struct snd_soc_dai_link tegra_rt5639_dai[NUM_DAI_LINKS] = {
 		.cpu_dai_name = "tegra30-i2s.1",
 		.codec_dai_name = "rt5639-aif1",
 		.ops = &tegra_rt5639_ops,
+		.ignore_pmdown_time = 1,
 
 		.no_pcm = 1,
 

@@ -2801,6 +2801,42 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 			gr_gk20a_commit_global_ctx_buffers(g, c, true));
 	}
 
+	/* tweak any perf parameters per-context here */
+	if (args->class_num == KEPLER_COMPUTE_A) {
+		int begin_err;
+		u32 tex_lock_disable_mask =
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_m()         |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tile_m()    |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_phase_m()   |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tex_m()     |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_timeout_m() |
+			gr_gpcs_tpcs_sm_sch_texlock_dot_t_unlock_m();
+
+		u32 texlock = gk20a_readl(g, gr_gpcs_tpcs_sm_sch_texlock_r());
+
+		texlock = (texlock & ~tex_lock_disable_mask) |
+		(gr_gpcs_tpcs_sm_sch_texlock_tex_hash_disable_f()         |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tile_disable_f()    |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_phase_disable_f()   |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tex_disable_f()     |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_timeout_disable_f() |
+		 gr_gpcs_tpcs_sm_sch_texlock_dot_t_unlock_disable_f());
+
+		begin_err = gr_gk20a_ctx_patch_write_begin(g, ch_ctx);
+
+		if (!begin_err) {
+			err = gr_gk20a_ctx_patch_write(g, ch_ctx,
+				gr_gpcs_tpcs_sm_sch_texlock_r(),
+				texlock, true);
+		}
+		if ((begin_err || err)) {
+			gk20a_err(dev_from_gk20a(g),
+				   "failed to set texlock for compute class");
+		}
+		if (!begin_err)
+			gr_gk20a_ctx_patch_write_end(g, ch_ctx);
+	}
+
 	/* init golden image, ELPG enabled after this is done */
 	err = gr_gk20a_init_golden_ctx_image(g, c);
 	if (err) {
@@ -4072,6 +4108,7 @@ static void gk20a_gr_enable_gpc_exceptions(struct gk20a *g)
 		gr_gpc0_gpccs_gpc_exception_en_tpc_0_enabled_f());
 }
 
+
 void gr_gk20a_enable_hww_exceptions(struct gk20a *g)
 {
 	/* enable exceptions */
@@ -4854,6 +4891,22 @@ static int gk20a_gr_handle_illegal_class(struct gk20a *g,
 	return -EINVAL;
 }
 
+static int gk20a_gr_handle_fecs_error(struct gk20a *g,
+					  struct gr_isr_data *isr_data)
+{
+	struct fifo_gk20a *f = &g->fifo;
+	struct channel_gk20a *ch = &f->channel[isr_data->chid];
+	u32 gr_fecs_intr = gk20a_readl(g, gr_fecs_intr_r());
+	gk20a_dbg_fn("");
+
+	gk20a_err(dev_from_gk20a(g),
+		   "unhandled fecs error interrupt 0x%08x for channel %u",
+		   gr_fecs_intr, ch->hw_chid);
+
+	gk20a_writel(g, gr_fecs_intr_r(), gr_fecs_intr);
+	return -EINVAL;
+}
+
 static int gk20a_gr_handle_class_error(struct gk20a *g,
 					  struct gr_isr_data *isr_data)
 {
@@ -5339,6 +5392,13 @@ int gk20a_gr_isr(struct gk20a *g)
 		gk20a_writel(g, gr_intr_r(),
 			gr_intr_illegal_class_reset_f());
 		gr_intr &= ~gr_intr_illegal_class_pending_f();
+	}
+
+	if (gr_intr & gr_intr_fecs_error_pending_f()) {
+		need_reset |= gk20a_gr_handle_fecs_error(g, &isr_data);
+		gk20a_writel(g, gr_intr_r(),
+			gr_intr_fecs_error_reset_f());
+		gr_intr &= ~gr_intr_fecs_error_pending_f();
 	}
 
 	if (gr_intr & gr_intr_class_error_pending_f()) {

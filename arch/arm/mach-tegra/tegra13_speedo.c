@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/tegra13_speedo.c
  *
- * Copyright (C) 2013 NVIDIA Corporation. All rights reserved.
+ * Copyright (C) 2013-2014 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -41,6 +41,7 @@
 #define FUSE_SOC_SPEEDO_0	0x134
 #define FUSE_SOC_SPEEDO_1	0x138
 #define FUSE_SOC_SPEEDO_2	0x13c
+#define FUSE_PACKAGE_INFO	0X1FC
 #define FUSE_CPU_IDDQ		0x118
 #define FUSE_SOC_IDDQ		0x140
 #define FUSE_GPU_IDDQ		0x228
@@ -99,9 +100,16 @@ static void rev_sku_to_speedo_ids(int rev, int sku)
 	} else {
 		switch (sku) {
 		case 0x00: /* Engg sku */
+		case 0x0f:
 			cpu_speedo_id = 1;
 			soc_speedo_id = 0;
 			gpu_speedo_id = 1;
+			threshold_index = 0;
+			break;
+		case 0x83:
+			cpu_speedo_id = 1;
+			soc_speedo_id = 0;
+			gpu_speedo_id = 2;
 			threshold_index = 0;
 			break;
 		default:
@@ -138,6 +146,8 @@ void tegra_init_speedo_data(void)
 		gpu_iddq_value = 0;
 		return;
 	}
+
+	package_id = tegra_fuse_readl(FUSE_PACKAGE_INFO) & 0x0F;
 
 	cpu_speedo_0_value = tegra_fuse_readl(FUSE_CPU_SPEEDO_0);
 	cpu_speedo_1_value = tegra_fuse_readl(FUSE_CPU_SPEEDO_1);

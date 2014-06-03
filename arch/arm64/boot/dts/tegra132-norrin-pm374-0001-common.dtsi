@@ -143,4 +143,10 @@
 		nvidia,pexp-gpio = <&tca6416 9 0>;
 		nvidia,enable-sata-port;
 	};
+
+	denver_cpuidle_pmic {
+		type = <1>; /* AMS 3722/3723 */
+		retention-voltage = <20>;
+		lock = <0>;
+	};
 };

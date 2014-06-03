@@ -133,6 +133,7 @@ static char *const tegra_udc_extcon_cable[] = {
 	[CONNECT_TYPE_SDP] = "USB",
 	[CONNECT_TYPE_DCP] = "TA",
 	[CONNECT_TYPE_DCP_QC2] = "QC2",
+	[CONNECT_TYPE_DCP_MAXIM] = "MAXIM",
 	[CONNECT_TYPE_CDP] = "Charge-downstream",
 	[CONNECT_TYPE_NV_CHARGER] = "Fast-charger",
 	[CONNECT_TYPE_NON_STANDARD_CHARGER] = "Slow-charger",
@@ -1358,7 +1359,6 @@ static void tegra_udc_set_charger_type(struct tegra_udc *udc,
 	udc->connect_type = type;
 }
 
-#ifdef CONFIG_EXTCON
 static void tegra_udc_set_extcon_state(struct tegra_udc *udc)
 {
 	const char **cables;
@@ -1375,7 +1375,6 @@ static void tegra_udc_set_extcon_state(struct tegra_udc *udc)
 	if (udc->connect_type != udc->connect_type_lp0)
 		extcon_set_cable_state(edev, cables[udc->connect_type], true);
 }
-#endif
 
 static void tegra_udc_notify_event(struct tegra_udc *udc, int event)
 {
@@ -1417,6 +1416,11 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 	case CONNECT_TYPE_DCP_QC2:
 		dev_info(dev, "connected to QuickCharge 2(wall charger)\n");
 		max_ua = udc->qc2_current_limit;
+		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
+		break;
+	case CONNECT_TYPE_DCP_MAXIM:
+		dev_info(dev, "connected to Maxim(wall charger)\n");
+		max_ua = udc->dcp_current_limit;
 		tegra_udc_notify_event(udc, USB_EVENT_CHARGER);
 		break;
 	case CONNECT_TYPE_CDP:
@@ -1474,9 +1478,7 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 								 0, max_ua);
 	}
 	if (!udc->vbus_in_lp0) {
-#ifdef CONFIG_EXTCON
 		tegra_udc_set_extcon_state(udc);
-#endif
 		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
 	}
 	return ret;
@@ -1492,6 +1494,9 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 	if (tegra_usb_phy_charger_detected(udc->phy)) {
 		if (tegra_usb_phy_cdp_charger_detected(udc->phy))
 			tegra_udc_set_charger_type(udc, CONNECT_TYPE_CDP);
+		else if (tegra_usb_phy_maxim_charger_detected(udc->phy))
+			tegra_udc_set_charger_type(udc,
+						CONNECT_TYPE_DCP_MAXIM);
 		else if (udc->qc2_voltage) {
 			/* Must be DCP -- figure out if Quick Charge 2 or DCP.
 			 * Initially set low current since QC2 will reset to
@@ -1504,7 +1509,9 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 					CONNECT_TYPE_NON_STANDARD_CHARGER);
 			tegra_usb_set_charging_current(udc);
 
-			 if (tegra_usb_phy_qc2_charger_detected(udc->phy,
+			tegra_udc_set_charger_type(udc,
+					CONNECT_TYPE_NONE);
+			if (tegra_usb_phy_qc2_charger_detected(udc->phy,
 					udc->qc2_voltage))
 				tegra_udc_set_charger_type(udc,
 					CONNECT_TYPE_DCP_QC2);
@@ -1581,7 +1588,8 @@ static int tegra_vbus_session(struct usb_gadget *gadget, int is_active)
 		tegra_detect_cable_type(udc);
 		/* start the controller if USB host detected */
 		if ((udc->connect_type == CONNECT_TYPE_SDP) ||
-		    (udc->connect_type == CONNECT_TYPE_CDP))
+		    (udc->connect_type == CONNECT_TYPE_CDP) ||
+		    (udc->connect_type == CONNECT_TYPE_DCP_MAXIM))
 			dr_controller_run(udc);
 	}
 	mutex_unlock(&udc->sync_lock);
@@ -2950,7 +2958,6 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 	setup_timer(&boost_timer, tegra_udc_set_cpu_freq_normal, 0);
 #endif
 
-#ifdef CONFIG_EXTCON
 	/* External connector */
 	udc->edev = kzalloc(sizeof(struct extcon_dev), GFP_KERNEL);
 	if (!udc->edev) {
@@ -2971,7 +2978,6 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 	if (udc->support_pmu_vbus && pdata->vbus_extcon_dev_name)
 		udc->vbus_extcon_dev =
 			extcon_get_extcon_dev(pdata->vbus_extcon_dev_name);
-#endif
 
 	/* Create work for controlling clocks to the phy if otg is disabled */
 	INIT_WORK(&udc->irq_work, tegra_udc_irq_work);
@@ -3043,12 +3049,10 @@ static int __exit tegra_udc_remove(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-#ifdef CONFIG_EXTCON
 	if (udc->edev != NULL) {
 		extcon_dev_unregister(udc->edev);
 		kfree(udc->edev);
 	}
-#endif
 
 	usb_del_gadget_udc(&udc->gadget);
 	udc->done = &done;
@@ -3096,10 +3100,8 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
 	if (udc->support_pmu_vbus) {
-#ifdef CONFIG_EXTCON
 		if (udc->vbus_extcon_dev != NULL && extcon_get_cable_state(udc->vbus_extcon_dev, "USB"))
 			udc->vbus_in_lp0 = true;
-#endif
 	} else {
 		temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
 		if (temp & USB_SYS_VBUS_STATUS)
@@ -3149,18 +3151,18 @@ static int tegra_udc_resume(struct platform_device *pdev)
 	/* Set Current limit to 0 if charger is disconnected in LP0 */
 	if (udc->vbus_reg != NULL) {
 		if (udc->support_pmu_vbus) {
-#ifdef CONFIG_EXTCON
 			if ((udc->connect_type_lp0 != CONNECT_TYPE_NONE) &&
 			!extcon_get_cable_state(udc->vbus_extcon_dev, "USB")) {
+				tegra_udc_set_extcon_state(udc);
 				udc->connect_type_lp0 = CONNECT_TYPE_NONE;
 				regulator_set_current_limit(udc->vbus_reg,
 									 0, 0);
 			}
-#endif
 		} else {
 			temp = udc_readl(udc, VBUS_WAKEUP_REG_OFFSET);
 			if ((udc->connect_type_lp0 != CONNECT_TYPE_NONE) &&
 					!(temp & USB_SYS_VBUS_STATUS)) {
+				tegra_udc_set_extcon_state(udc);
 				udc->connect_type_lp0 = CONNECT_TYPE_NONE;
 				regulator_set_current_limit(udc->vbus_reg,
 									 0, 0);

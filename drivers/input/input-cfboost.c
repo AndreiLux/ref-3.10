@@ -46,7 +46,7 @@ MODULE_DESCRIPTION("Input event CPU frequency booster");
 MODULE_LICENSE("GPL v2");
 
 
-static struct pm_qos_request freq_req, core_req;
+static struct pm_qos_request freq_req, core_req, emc_req;
 static struct dev_pm_qos_request gpu_wakeup_req;
 static unsigned int boost_freq; /* kHz */
 static int boost_freq_set(const char *arg, const struct kernel_param *kp)
@@ -67,12 +67,18 @@ static struct kernel_param_ops boost_freq_ops = {
 	.get = boost_freq_get,
 };
 module_param_cb(boost_freq, &boost_freq_ops, &boost_freq, 0644);
+static unsigned int boost_emc; /* kHz */
+module_param(boost_emc, uint, 0644);
 static unsigned long boost_time = 500; /* ms */
 module_param(boost_time, ulong, 0644);
+static unsigned long boost_cpus;
+module_param(boost_cpus, ulong, 0644);
 static bool gpu_wakeup = 1; /* 1 = enabled */
 module_param(gpu_wakeup, bool, 0644);
 static struct device *gpu_device;
 static DEFINE_MUTEX(gpu_device_lock);
+
+static unsigned long last_boost_jiffies;
 
 int cfb_add_device(struct device *dev)
 {
@@ -105,11 +111,18 @@ EXPORT_SYMBOL(cfb_remove_device);
 
 static void cfb_boost(struct kthread_work *w)
 {
-	trace_input_cfboost_params("boost_params", boost_freq, boost_time);
-	pm_qos_update_request_timeout(&core_req, 1, boost_time * 1000);
+	trace_input_cfboost_params("boost_params", boost_freq, boost_emc,
+			boost_time);
+	if (boost_cpus > 0)
+		pm_qos_update_request_timeout(&core_req, boost_cpus,
+				boost_time * 1000);
 
 	if (boost_freq > 0)
 		pm_qos_update_request_timeout(&freq_req, boost_freq,
+				boost_time * 1000);
+
+	if (boost_emc > 0)
+		pm_qos_update_request_timeout(&emc_req, boost_emc,
 				boost_time * 1000);
 
 	if (gpu_wakeup && gpu_device) {
@@ -128,7 +141,11 @@ static void cfb_input_event(struct input_handle *handle, unsigned int type,
 			    unsigned int code, int value)
 {
 	trace_input_cfboost_event("event", type, code, value);
-	queue_kthread_work(&boost_worker, &boost_work);
+	if (jiffies < last_boost_jiffies ||
+		jiffies > last_boost_jiffies + msecs_to_jiffies(boost_time/2)) {
+		queue_kthread_work(&boost_worker, &boost_work);
+		last_boost_jiffies = jiffies;
+	}
 }
 
 static int cfb_input_connect(struct input_handler *handler,
@@ -171,18 +188,15 @@ static void cfb_input_disconnect(struct input_handle *handle)
 
 /* XXX make configurable */
 static const struct input_device_id cfb_ids[] = {
-	{ /* raydium touch screen */
+	{ /* touch screens send this at wakeup */
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
-				INPUT_DEVICE_ID_MATCH_KEYBIT,
-		.evbit = { BIT_MASK(EV_ABS) },
-		.keybit = {[BIT_WORD(BTN_TOOL_RUBBER)] =
-			BIT_MASK(BTN_TOOL_RUBBER) },
+				INPUT_DEVICE_ID_MATCH_MSCIT,
+		.evbit = { BIT_MASK(EV_MSC) },
+		.mscbit = {BIT_MASK(MSC_ACTIVITY)},
 	},
-	{ /* other touch screen */
-		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
-				INPUT_DEVICE_ID_MATCH_KEYBIT,
+	{ /* trigger on any touch screen events */
+		.flags = INPUT_DEVICE_ID_MATCH_EVBIT,
 		.evbit = { BIT_MASK(EV_ABS) },
-		.keybit = {[BIT_WORD(BTN_TOUCH)] = BIT_MASK(BTN_TOUCH) },
 	},
 	{ /* mouse */
 		.flags = INPUT_DEVICE_ID_MATCH_EVBIT |
@@ -288,6 +302,8 @@ static int __init cfboost_init(void)
 			   PM_QOS_DEFAULT_VALUE);
 	pm_qos_add_request(&freq_req, PM_QOS_CPU_FREQ_MIN,
 			   PM_QOS_DEFAULT_VALUE);
+	pm_qos_add_request(&emc_req, PM_QOS_EMC_FREQ_MIN,
+			   PM_QOS_DEFAULT_VALUE);
 
 	return 0;
 }
@@ -297,6 +313,7 @@ static void __exit cfboost_exit(void)
 	/* stop input events */
 	input_unregister_handler(&cfb_input_handler);
 	kthread_stop(boost_kthread);
+	pm_qos_remove_request(&emc_req);
 	pm_qos_remove_request(&freq_req);
 	pm_qos_remove_request(&core_req);
 }

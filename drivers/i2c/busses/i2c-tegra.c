@@ -1124,8 +1124,12 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_dev *i2c_dev,
 			"i2c transfer timed out, addr 0x%04x, data 0x%02x\n",
 			msg->addr, msg->buf[0]);
 
-		tegra_i2c_init(i2c_dev);
-		return -ETIMEDOUT;
+		ret = tegra_i2c_init(i2c_dev);
+		if (!ret)
+			ret = -ETIMEDOUT;
+		else
+			WARN_ON(1);
+		return ret;
 	}
 
 	dev_dbg(i2c_dev->dev, "transfer complete: %d %d %d\n",
@@ -1169,7 +1173,11 @@ static int tegra_i2c_xfer_msg(struct tegra_i2c_dev *i2c_dev,
 	if (i2c_dev->msg_err == I2C_ERR_NO_ACK)
 		udelay(DIV_ROUND_UP(2 * 1000000, i2c_dev->bus_clk_rate));
 
-	tegra_i2c_init(i2c_dev);
+	ret = tegra_i2c_init(i2c_dev);
+	if (ret) {
+		WARN_ON(1);
+		return ret;
+	}
 
 	/* Arbitration Lost occurs, Start recovery */
 	if (i2c_dev->msg_err == I2C_ERR_ARBITRATION_LOST) {
@@ -1228,7 +1236,7 @@ static int tegra_i2c_xfer(struct i2c_adapter *adap, struct i2c_msg msgs[],
 	struct tegra_i2c_dev *i2c_dev = i2c_get_adapdata(adap);
 	int i;
 	int ret = 0;
-
+	BUG_ON(!rt_mutex_is_locked(&(adap->bus_lock)));
 	if (i2c_dev->is_suspended)
 		return -EBUSY;
 

@@ -398,9 +398,10 @@ int gk20a_init_fifo_reset_enable_hw(struct gk20a *g)
 		gk20a_writel(g, pbdma_intr_stall_r(i), intr_stall);
 		gk20a_writel(g, pbdma_intr_0_r(i), 0xFFFFFFFF);
 		gk20a_writel(g, pbdma_intr_en_0_r(i),
-			(~0) & ~pbdma_intr_en_0_lbreq_enabled_f());
+			~pbdma_intr_en_0_lbreq_enabled_f());
 		gk20a_writel(g, pbdma_intr_1_r(i), 0xFFFFFFFF);
-		gk20a_writel(g, pbdma_intr_en_1_r(i), 0xFFFFFFFF);
+		gk20a_writel(g, pbdma_intr_en_1_r(i),
+			~pbdma_intr_en_0_lbreq_enabled_f());
 	}
 
 	/* TBD: apply overrides */
@@ -444,7 +445,6 @@ static void gk20a_init_fifo_pbdma_intr_descs(struct fifo_gk20a *f)
 		pbdma_intr_0_memflush_pending_f() |
 		pbdma_intr_0_memop_pending_f() |
 		pbdma_intr_0_lbconnect_pending_f() |
-		pbdma_intr_0_lbreq_pending_f() |
 		pbdma_intr_0_lback_timeout_pending_f() |
 		pbdma_intr_0_lback_extra_pending_f() |
 		pbdma_intr_0_lbdat_timeout_pending_f() |
@@ -1101,6 +1101,15 @@ static void gk20a_fifo_trigger_mmu_fault(struct gk20a *g,
 	unsigned long engine_id;
 	int ret;
 
+	/*
+	 * sched error prevents recovery, and ctxsw error will retrigger
+	 * every 100ms. Disable the sched error to allow recovery.
+	 */
+	gk20a_writel(g, fifo_intr_en_0_r(),
+		     0x7FFFFFFF & ~fifo_intr_en_0_sched_error_m());
+	gk20a_writel(g, fifo_intr_0_r(),
+			fifo_intr_0_sched_error_reset_f());
+
 	/* trigger faults for all bad engines */
 	for_each_set_bit(engine_id, &engine_ids, 32) {
 		if (engine_id > g->fifo.max_engines) {
@@ -1134,6 +1143,9 @@ static void gk20a_fifo_trigger_mmu_fault(struct gk20a *g,
 	/* release mmu fault trigger */
 	for_each_set_bit(engine_id, &engine_ids, 32)
 		gk20a_writel(g, fifo_trigger_mmu_fault_r(engine_id), 0);
+
+	/* Re-enable sched error */
+	gk20a_writel(g, fifo_intr_en_0_r(), 0x7FFFFFFF);
 }
 
 void gk20a_fifo_recover(struct gk20a *g, u32 __engine_ids,

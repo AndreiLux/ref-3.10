@@ -106,6 +106,14 @@ static inline u32 gr_intr_illegal_class_reset_f(void)
 {
 	return 0x20;
 }
+static inline u32 gr_intr_fecs_error_pending_f(void)
+{
+	return 0x80000;
+}
+static inline u32 gr_intr_fecs_error_reset_f(void)
+{
+	return 0x80000;
+}
 static inline u32 gr_intr_class_error_pending_f(void)
 {
 	return 0x100000;
@@ -129,6 +137,10 @@ static inline u32 gr_intr_firmware_method_pending_f(void)
 static inline u32 gr_intr_firmware_method_reset_f(void)
 {
 	return 0x100;
+}
+static inline u32 gr_fecs_intr_r(void)
+{
+	return 0x00400144;
 }
 static inline u32 gr_intr_nonstall_r(void)
 {
@@ -3177,5 +3189,57 @@ static inline u32 gr_gpc0_tpc0_l1c_dbg_r(void)
 static inline u32 gr_gpc0_tpc0_l1c_dbg_cya15_en_f(void)
 {
 	return 0x8000000;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_r(void)
+{
+	return 0x00419ec8;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_m(void)
+{
+	return 0x1 << 0;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_disable_f(void)
+{
+	return 0x0;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tile_m(void)
+{
+	return 0x1 << 1;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tile_disable_f(void)
+{
+	return 0x0;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_phase_m(void)
+{
+	return 0x1 << 2;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_phase_disable_f(void)
+{
+	return 0x0;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tex_m(void)
+{
+	return 0x1 << 3;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tex_disable_f(void)
+{
+	return 0x0;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_timeout_m(void)
+{
+	return 0xff << 4;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_timeout_disable_f(void)
+{
+	return 0x0;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_dot_t_unlock_m(void)
+{
+	return 0x1 << 16;
+}
+static inline u32 gr_gpcs_tpcs_sm_sch_texlock_dot_t_unlock_disable_f(void)
+{
+	return 0x0;
 }
 #endif

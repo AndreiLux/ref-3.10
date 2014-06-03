@@ -53,6 +53,7 @@
 #include <linux/irqchip/tegra.h>
 #include <linux/tegra-pm.h>
 #include <linux/tegra_pm_domains.h>
+#include <linux/kmemleak.h>
 
 #include <trace/events/power.h>
 #include <trace/events/nvsecurity.h>
@@ -415,11 +416,24 @@ static void suspend_cpu_complex(u32 mode)
 	tegra_gic_cpu_disable(true);
 }
 
-static void tegra_sleep_core(enum tegra_suspend_mode mode,
-			     unsigned long v2p)
+void tegra_psci_suspend_cpu(void *entry_point)
 {
 	struct psci_power_state pps;
 
+	if (tegra_cpu_is_secure()) {
+		if (psci_ops.cpu_suspend) {
+			pps.id = TEGRA_ID_CPU_SUSPEND_LP0;
+			pps.type = PSCI_POWER_STATE_TYPE_POWER_DOWN;
+			pps.affinity_level = TEGRA_PWR_DN_AFFINITY_CLUSTER;
+
+			psci_ops.cpu_suspend(pps, virt_to_phys(entry_point));
+		}
+	}
+}
+
+static void tegra_sleep_core(enum tegra_suspend_mode mode,
+			     unsigned long v2p)
+{
 	if (tegra_cpu_is_secure()) {
 		__flush_dcache_area(&tegra_resume_timestamps_start,
 					(&tegra_resume_timestamps_end -
@@ -428,13 +442,7 @@ static void tegra_sleep_core(enum tegra_suspend_mode mode,
 		BUG_ON(mode != TEGRA_SUSPEND_LP0);
 
 		trace_smc_sleep_core(NVSEC_SMC_START);
-		if (psci_ops.cpu_suspend) {
-			pps.id = TEGRA_ID_CPU_SUSPEND_LP0;
-			pps.type = PSCI_POWER_STATE_TYPE_POWER_DOWN;
-			pps.affinity_level = TEGRA_PWR_DN_AFFINITY_CLUSTER;
-
-			psci_ops.cpu_suspend(pps, virt_to_phys(tegra_resume));
-		}
+		tegra_psci_suspend_cpu(tegra_resume);
 		trace_smc_sleep_core(NVSEC_SMC_DONE);
 	}
 
@@ -627,9 +635,6 @@ int tegra_suspend_dram(enum tegra_suspend_mode mode, unsigned int flags)
 		mode = TEGRA_SUSPEND_LP1;
 	}
 
-	if ((mode == TEGRA_SUSPEND_LP0) || (mode == TEGRA_SUSPEND_LP1))
-		tegra_suspend_check_pwr_stats();
-
 	/* turn off VDE partition in LP1 */
 	if (mode == TEGRA_SUSPEND_LP1 &&
 		tegra_powergate_is_powered(TEGRA_POWERGATE_VDEC)) {
@@ -732,7 +737,12 @@ static int tegra_suspend_valid(suspend_state_t state)
 
 static int tegra_suspend_prepare_late(void)
 {
+	if ((current_suspend_mode == TEGRA_SUSPEND_LP0) ||
+			(current_suspend_mode == TEGRA_SUSPEND_LP1))
+		tegra_suspend_check_pwr_stats();
+
 	suspend_in_progress = true;
+
 	return 0;
 }
 
@@ -987,7 +997,13 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 			goto out;
 		}
 
-		orig = ioremap(tegra_lp0_vec_start, tegra_lp0_vec_size);
+		/* Avoid a kmemleak false positive. The allocated memory
+		 * block is later referenced by a physical address (i.e.
+		 * tegra_lp0_vec_start) which kmemleak can't detect.
+		 */
+		kmemleak_not_leak(reloc_lp0);
+
+		orig = ioremap_wc(tegra_lp0_vec_start, tegra_lp0_vec_size);
 		WARN_ON(!orig);
 		if (!orig) {
 			pr_err("%s: Failed to map tegra_lp0_vec_start %llx\n",
@@ -1000,6 +1016,7 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		tmp = (tmp + L1_CACHE_BYTES - 1) & ~(L1_CACHE_BYTES - 1);
 		reloc_lp0 = (unsigned char *)tmp;
 		memcpy(reloc_lp0, orig, tegra_lp0_vec_size);
+		wmb();
 		iounmap(orig);
 		tegra_lp0_vec_start = virt_to_phys(reloc_lp0);
 	}

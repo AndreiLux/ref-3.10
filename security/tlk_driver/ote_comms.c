@@ -33,6 +33,7 @@
 #include <linux/trusty/trusty.h>
 #endif
 #include <linux/completion.h>
+#include <asm/smp_plat.h>
 
 #include "ote_protocol.h"
 
@@ -234,33 +235,19 @@ static void switch_cpumask_to_cpu0(void)
 {
 	long ret;
 	cpumask_t local_cpu_mask = CPU_MASK_NONE;
-	unsigned long flags;
-
-	flags = current->flags;
-	current->flags &= ~PF_NO_SETAFFINITY;
 
 	cpu_set(0, local_cpu_mask);
 	cpumask_copy(&saved_cpu_mask, tsk_cpus_allowed(current));
 	ret = sched_setaffinity(0, &local_cpu_mask);
 	if (ret)
 		pr_err("sched_setaffinity #1 -> 0x%lX", ret);
-
-	current->flags = flags;
 }
 
 static void restore_cpumask(void)
 {
-	unsigned long flags;
-	long ret;
-
-	flags = current->flags;
-	current->flags &= ~PF_NO_SETAFFINITY;
-
-	ret = sched_setaffinity(0, &saved_cpu_mask);
+	long ret = sched_setaffinity(0, &saved_cpu_mask);
 	if (ret)
 		pr_err("sched_setaffinity #2 -> 0x%lX", ret);
-
-	current->flags = flags;
 }
 #else
 static inline void switch_cpumask_to_cpu0(void) {};
@@ -276,8 +263,16 @@ uint32_t tlk_generic_smc(struct tlk_info *info,
 #ifndef CONFIG_TRUSTY
 	switch_cpumask_to_cpu0();
 	retval = _tlk_generic_smc(arg0, arg1, arg2);
-	while (retval == 0xFFFFFFFD)
-		retval = _tlk_generic_smc((60 << 24), 0, 0);
+	while (retval == TE_ERROR_PREEMPT_BY_IRQ ||
+	       retval == TE_ERROR_PREEMPT_BY_FS) {
+		if (retval == TE_ERROR_PREEMPT_BY_IRQ) {
+			retval = _tlk_generic_smc((60 << 24), 0, 0);
+		} else {
+			tlk_ss_op();
+			retval = _tlk_generic_smc(TE_SMC_SS_REQ_COMPLETE, 0, 0);
+		}
+	}
+
 	restore_cpumask();
 #else
 	retval = trusty_std_call32(tlk_info->trusty_dev, arg0, arg1, arg2, 0);
@@ -394,8 +389,37 @@ static void do_smc_compat(struct te_request_compat *request,
 #endif
 }
 
+struct tlk_smc_work_args {
+	uint32_t arg0;
+	uint32_t arg1;
+	uint32_t arg2;
+};
+
+static long tlk_generic_smc_on_cpu0(void *args)
+{
+	struct tlk_smc_work_args *work;
+	int cpu = cpu_logical_map(smp_processor_id());
+	uint32_t retval;
+
+	BUG_ON(cpu != 0);
+
+	work = (struct tlk_smc_work_args *)args;
+	retval = tlk_generic_smc(tlk_info, work->arg0, work->arg1, work->arg2);
+	while (retval == 0xFFFFFFFD)
+		retval = tlk_generic_smc(tlk_info, (60 << 24), 0, 0);
+	return retval;
+}
+
 /*
  * VPR programming SMC
+ *
+ * This routine is called both from normal threads and worker threads.
+ * The worker threads are per-cpu and have PF_NO_SETAFFINITY set, so
+ * any calls to sched_setaffinity will fail.
+ *
+ * If it's a worker thread on CPU0, just invoke the SMC directly. If
+ * it's running on a non-CPU0, use work_on_cpu() to schedule the SMC
+ * on CPU0.
  */
 int te_set_vpr_params(void *vpr_base, size_t vpr_size)
 {
@@ -404,8 +428,26 @@ int te_set_vpr_params(void *vpr_base, size_t vpr_size)
 	/* Share the same lock used when request is send from user side */
 	mutex_lock(&smc_lock);
 
-	retval = tlk_generic_smc(tlk_info, TE_SMC_PROGRAM_VPR, (uintptr_t)vpr_base,
-			vpr_size);
+	if (current->flags &
+	    (PF_WQ_WORKER | PF_NO_SETAFFINITY | PF_KTHREAD)) {
+		struct tlk_smc_work_args work_args;
+		int cpu = cpu_logical_map(smp_processor_id());
+
+		work_args.arg0 = TE_SMC_PROGRAM_VPR;
+		work_args.arg1 = (uint32_t)vpr_base;
+		work_args.arg2 = vpr_size;
+
+		/* workers don't change CPU. depending on the CPU, execute
+		 * directly or sched work */
+		if (cpu == 0 && (current->flags & PF_WQ_WORKER))
+			retval = tlk_generic_smc_on_cpu0(&work_args);
+		else
+			retval = work_on_cpu(0,
+					tlk_generic_smc_on_cpu0, &work_args);
+	} else {
+		retval = tlk_generic_smc(tlk_info, TE_SMC_PROGRAM_VPR,
+					(uintptr_t)vpr_base, vpr_size);
+	}
 
 	mutex_unlock(&smc_lock);
 
@@ -565,6 +607,7 @@ void te_launch_operation_compat(struct te_launchop_compat *cmd,
 
 static void tlk_ote_init(struct tlk_info *info)
 {
+	tlk_ss_init_legacy(info);
 	tlk_ss_init(info);
 	ote_logger_init(info);
 	tlk_device_init(info);
