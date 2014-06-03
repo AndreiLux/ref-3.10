@@ -41,6 +41,12 @@
 #define TE_IOCTL_LAUNCH_OPERATION_COMPAT \
 	_IOWR(TE_IOCTL_MAGIC_NUMBER, 0x14, union te_cmd_compat)
 
+#define TE_IOCTL_SS_NEW_REQ_LEGACY \
+	_IOR(TE_IOCTL_MAGIC_NUMBER,  0x20, struct te_ss_op_legacy)
+#define TE_IOCTL_SS_REQ_COMPLETE_LEGACY \
+	_IOWR(TE_IOCTL_MAGIC_NUMBER, 0x21, struct te_ss_op_legacy)
+
+/* ioctls using new SS structs (eventually to replace current SS ioctls) */
 #define TE_IOCTL_SS_NEW_REQ \
 	_IOR(TE_IOCTL_MAGIC_NUMBER,  0x20, struct te_ss_op)
 #define TE_IOCTL_SS_REQ_COMPLETE \
@@ -71,6 +77,12 @@ uint32_t _tlk_extended_smc(uintptr_t *args);
 uint32_t tlk_extended_smc(struct tlk_info *info, uintptr_t *args);
 void tlk_irq_handler(void);
 int tlk_device_init(struct tlk_info *info);
+
+/* errors returned by secure world in reponse to SMC calls */
+enum {
+	TE_ERROR_PREEMPT_BY_IRQ = 0xFFFFFFFD,
+	TE_ERROR_PREEMPT_BY_FS = 0xFFFFFFFE,
+};
 
 struct tlk_device {
 	struct te_request *req_addr;
@@ -125,8 +137,9 @@ enum {
 	TE_SMC_REGISTER_IRQ_HANDLER	= 0x32000004,
 	TE_SMC_NS_IRQ_DONE		= 0x32000005,
 	TE_SMC_INIT_LOGGER		= 0x32000007,
-	TE_SMC_SS_REGISTER_HANDLER	= 0x32000008,
+	TE_SMC_SS_REGISTER_HANDLER_LEGACY	= 0x32000008,
 	TE_SMC_SS_REQ_COMPLETE		= 0x32000009,
+	TE_SMC_SS_REGISTER_HANDLER	= 0x32000010,
 
 	/* SIP (SOC specific) calls.  */
 	TE_SMC_PROGRAM_VPR		= 0x82000003,
@@ -141,8 +154,9 @@ enum {
 	TE_SMC_REGISTER_IRQ_HANDLER	= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 4),
 	TE_SMC_NS_IRQ_DONE		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 5),
 	TE_SMC_INIT_LOGGER		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 7),
-	TE_SMC_SS_REGISTER_HANDLER	= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 8),
+	TE_SMC_SS_REGISTER_HANDLER_LEGACY = SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 8),
 	TE_SMC_SS_REQ_COMPLETE		= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 9),
+	TE_SMC_SS_REGISTER_HANDLER	= SMC_STDCALL_NR(SMC_ENTITY_TRUSTED_OS, 10),
 
 	/* SIP (SOC specific) calls.  */
 	TE_SMC_PROGRAM_VPR		= SMC_STDCALL_NR(SMC_ENTITY_SIP, 3)
@@ -335,10 +349,19 @@ void te_launch_operation_compat(struct te_launchop_compat *cmd,
 
 #define SS_OP_MAX_DATA_SIZE	0x1000
 struct te_ss_op {
+	uint32_t	req_size;
 	uint8_t		data[SS_OP_MAX_DATA_SIZE];
 };
 
 int tlk_ss_init(struct tlk_info *info);
+int tlk_ss_init_legacy(struct tlk_info *info);
+
+struct te_ss_op_legacy {
+	uint8_t		data[SS_OP_MAX_DATA_SIZE];
+};
+
+int te_handle_ss_ioctl_legacy(struct file *file, unsigned int ioctl_num,
+		unsigned long ioctl_param);
 int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
 		unsigned long ioctl_param);
 int te_handle_fs_ioctl(struct file *file, unsigned int ioctl_num,
@@ -347,5 +370,6 @@ int te_handle_fs_ioctl(struct file *file, unsigned int ioctl_num,
 int ote_logger_init(struct tlk_info *tlk_info);
 
 void ote_print_logs(void);
+void tlk_ss_op(void);
 
 #endif

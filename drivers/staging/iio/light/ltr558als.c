@@ -2,10 +2,14 @@
  *
  * Copyright (c) 2012-2014, NVIDIA CORPORATION.  All rights reserved.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  */
 
 #include <linux/delay.h>
@@ -100,8 +104,24 @@ static int ltr558_ps_enable(struct i2c_client *client, int gainrange)
 			break;
 	}
 
-	error = ltr558_i2c_write_reg(client, LTR558_PS_CONTR, setgain);
-	mdelay(WAKEUP_DELAY);
+	/*
+	 * Per HW Suggestion, LED Current: 100mA, Duty Cycle: 100%, PMF: 30KHz
+	 * LED Pulse Count: 5, Measurement Repeat Rate: 200ms
+	 */
+	error = ltr558_i2c_write_reg(client, LTR558_PS_LED,
+			PS_LED_PMF_30KHZ | PS_LED_CUR_DUTY_100 |
+			PS_LED_CUR_LEVEL_100);
+	if (!error)
+		error = ltr558_i2c_write_reg(client, LTR558_PS_N_PULSES,
+				PS_N_PULSES_5);
+	if (!error)
+		error = ltr558_i2c_write_reg(client, LTR558_PS_MEAS_RATE,
+				PS_MEAS_RATE_200MS);
+	if (!error) {
+		error = ltr558_i2c_write_reg(client,
+					     LTR558_PS_CONTR, BIT(5) | setgain);
+		mdelay(WAKEUP_DELAY);
+	}
 	return error;
 }
 
@@ -125,6 +145,10 @@ static int ltr558_ps_read(struct i2c_client *client)
 		goto out;
 	}
 
+	/* PS should never saturate */
+	/* FIX ME: enable WARN_ON once sensor is calibrated */
+	/* WARN_ON(psval_hi & BIT(7)); */
+
 	psdata = ((psval_hi & 0x07) * 256) + psval_lo;
 out:
 	return psdata;
@@ -141,7 +165,7 @@ static int ltr558_als_enable(struct i2c_client *client, int gainrange)
 		error = ltr558_i2c_write_reg(client, LTR558_ALS_CONTR,
 				MODE_ALS_ON_Range2);
 
-	mdelay(WAKEUP_DELAY);
+	msleep(WAKEUP_DELAY);
 	return error;
 }
 
@@ -691,7 +715,7 @@ static int ltr558_chip_init(struct i2c_client *client)
 	struct ltr558_chip *chip = iio_priv(indio_dev);
 	int error = 0;
 
-	mdelay(PON_DELAY);
+	msleep(PON_DELAY);
 
 	chip->is_prox_enable  = 0;
 	chip->prox_low_thres = 0;
@@ -868,48 +892,6 @@ static int ltr558_remove(struct i2c_client *client)
 	return 0;
 }
 
-
-static int ltr558_suspend(struct i2c_client *client, pm_message_t mesg)
-{
-	struct iio_dev *indio_dev = i2c_get_clientdata(client);
-	struct ltr558_chip *chip = iio_priv(indio_dev);
-	int ret;
-
-	if (chip->is_als_enable == 1)
-		chip->als_enabled_before_suspend = 1;
-	if (chip->is_prox_enable == 1)
-		chip->prox_enabled_before_suspend = 1;
-
-	ret = ltr558_ps_disable(client);
-	if (ret == 0)
-		ret = ltr558_als_disable(client);
-
-	return ret;
-}
-
-
-static int ltr558_resume(struct i2c_client *client)
-{
-	struct iio_dev *indio_dev = i2c_get_clientdata(client);
-	struct ltr558_chip *chip = iio_priv(indio_dev);
-	int error = 0;
-
-	mdelay(PON_DELAY);
-
-	if (chip->prox_enabled_before_suspend == 1) {
-		error = ltr558_ps_enable(client, chip->ps_gainrange);
-		if (error < 0)
-			goto out;
-	}
-
-	if (chip->als_enabled_before_suspend == 1) {
-		error = ltr558_als_enable(client, chip->als_gainrange);
-	}
-out:
-	return error;
-}
-
-
 static const struct i2c_device_id ltr558_id[] = {
 	{ DEVICE_NAME, 0 },
 	{}
@@ -933,8 +915,6 @@ static struct i2c_driver ltr558_driver = {
 		.name = DEVICE_NAME,
 		.of_match_table = of_match_ptr(ltr558_of_match),
 	},
-	.suspend = ltr558_suspend,
-	.resume = ltr558_resume,
 };
 
 

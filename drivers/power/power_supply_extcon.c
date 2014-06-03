@@ -30,6 +30,7 @@
 #include <linux/power/power_supply_extcon.h>
 #include <linux/slab.h>
 #include <linux/extcon.h>
+#include <linux/mutex.h>
 
 #define CHARGER_TYPE_DETECTION_DEFAULT_DEBOUNCE_TIME_MS		500
 
@@ -41,6 +42,7 @@ struct power_supply_extcon {
 	uint8_t					ac_online;
 	uint8_t					usb_online;
 	struct power_supply_extcon_plat_data	*pdata;
+	struct mutex				lock;
 };
 
 struct power_supply_cables {
@@ -61,6 +63,9 @@ static struct power_supply_cables psy_cables[] = {
 	},
 	{
 		.name	= "QC2",
+	},
+	{
+		.name	= "MAXIM",
 	},
 	{
 		.name	= "Fast-charger",
@@ -154,6 +159,9 @@ static int power_supply_extcon_attach_cable(
 	} else if (true == extcon_get_cable_state(edev, "QC2")) {
 		psy_extcon->ac_online = 1;
 		dev_info(psy_extcon->dev, "USB QC2-charger cable detected\n");
+	} else if (true == extcon_get_cable_state(edev, "MAXIM")) {
+		psy_extcon->ac_online = 1;
+		dev_info(psy_extcon->dev, "USB Maxim-charger cable detected\n");
 	} else if (true == extcon_get_cable_state(edev, "Fast-charger")) {
 		psy_extcon->ac_online = 1;
 		dev_info(psy_extcon->dev, "USB Fast-charger cable detected\n");
@@ -200,11 +208,17 @@ static int psy_extcon_extcon_notifier(struct notifier_block *self,
 {
 	struct power_supply_cables *cable = container_of(self,
 		struct power_supply_cables, nb);
+	struct power_supply_extcon *psy_extcon = cable->psy_extcon;
+	struct extcon_dev *edev = cable->extcon_dev->edev;
 
+	mutex_lock(&psy_extcon->lock);
 	cable->event = event;
-	cancel_delayed_work(&cable->extcon_notifier_work);
-	schedule_delayed_work(&cable->extcon_notifier_work,
-	    msecs_to_jiffies(CHARGER_TYPE_DETECTION_DEFAULT_DEBOUNCE_TIME_MS));
+	if (cable->event == 0)
+		power_supply_extcon_remove_cable(psy_extcon, edev);
+	else if (cable->event == 1)
+		power_supply_extcon_attach_cable(psy_extcon, edev);
+
+	mutex_unlock(&psy_extcon->lock);
 
 	return NOTIFY_DONE;
 }
@@ -256,6 +270,7 @@ static int psy_extcon_probe(struct platform_device *pdev)
 
 	psy_extcon->dev = &pdev->dev;
 	dev_set_drvdata(&pdev->dev, psy_extcon);
+	mutex_init(&psy_extcon->lock);
 
 	dev_info(psy_extcon->dev, "Extcon name %s\n", pdata->extcon_name);
 
@@ -312,7 +327,9 @@ static int psy_extcon_probe(struct platform_device *pdev)
 		goto econ_err;
 	}
 
+	mutex_lock(&psy_extcon->lock);
 	power_supply_extcon_attach_cable(psy_extcon, psy_extcon->edev);
+	mutex_unlock(&psy_extcon->lock);
 	dev_info(&pdev->dev, "%s() get success\n", __func__);
 	return 0;
 

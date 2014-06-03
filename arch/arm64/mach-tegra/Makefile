@@ -7,7 +7,7 @@ asflags-y += -I$(srctree)/arch/arm/mach-tegra/include \
              -I$(srctree)/arch/arm/mach-tegra
 
 # Assemblies
-obj-y += reset-handler.o
+obj-y += reset-handler.o trampoline.o
 
 obj-$(CONFIG_SMP) += platsmp.o
 
@@ -99,6 +99,7 @@ obj-$(CONFIG_TEGRA_DYNAMIC_PWRDET)      += powerdetect.o
 
 obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper.o
 obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper_regdump.o
+obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper-footprint.o
 
 # To override the "-march=armv7-xxx" in arm/mach-tegra/Makefile
 AFLAGS_sleep.o :=

@@ -38,7 +38,8 @@
 
 #define DSI_PANEL_RESET		1
 
-#define DC_CTRL_MODE	TEGRA_DC_OUT_CONTINUOUS_MODE
+#define DC_CTRL_MODE	(TEGRA_DC_OUT_CONTINUOUS_MODE  |\
+			TEGRA_DC_OUT_INITIALIZED_MODE)
 
 static bool reg_requested;
 static bool gpio_requested;
@@ -226,6 +227,9 @@ static int dsi_a_1200_1920_8_0_enable(struct device *dev)
 	int err = 0;
 	struct board_info mainboard;
 	struct board_info board;
+	struct tegra_dc_out *disp_out =
+			((struct tegra_dc_platform_data *)
+			(disp_device->dev.platform_data))->default_out;
 
 	tegra_get_board_info(&mainboard);
 	tegra_get_display_board_info(&board);
@@ -272,12 +276,14 @@ static int dsi_a_1200_1920_8_0_enable(struct device *dev)
 
 	msleep(100);
 #if DSI_PANEL_RESET
-	gpio_direction_output(en_panel_rst, 1);
-	usleep_range(1000, 5000);
-	gpio_set_value(en_panel_rst, 0);
-	msleep(150);
-	gpio_set_value(en_panel_rst, 1);
-	msleep(20);
+	if (!(disp_out->flags & TEGRA_DC_OUT_INITIALIZED_MODE)) {
+		gpio_direction_output(en_panel_rst, 1);
+		usleep_range(1000, 5000);
+		gpio_set_value(en_panel_rst, 0);
+		msleep(150);
+		gpio_set_value(en_panel_rst, 1);
+		msleep(20);
+	}
 #endif
 
 	return 0;

@@ -609,8 +609,9 @@ static void gk20a_remove_support(struct platform_device *dev)
 {
 	struct gk20a *g = get_gk20a(dev);
 
-	/* pmu support should already be removed when driver turns off
-	   gpu power rail in prepapre_poweroff */
+	if (g->pmu.remove_support)
+		g->pmu.remove_support(&g->pmu);
+
 	if (g->gk20a_cdev.gk20a_cooling_dev)
 		thermal_cooling_device_unregister(g->gk20a_cdev.gk20a_cooling_dev);
 
@@ -746,6 +747,8 @@ static int gk20a_pm_prepare_poweroff(struct device *dev)
 	int ret = 0;
 
 	gk20a_dbg_fn("");
+
+	gk20a_scale_suspend(to_platform_device(dev));
 
 	if (!g->power_on)
 		return 0;
@@ -1158,6 +1161,12 @@ static int gk20a_pm_disable_clk(struct device *dev)
 	return 0;
 }
 
+static void gk20a_pm_shutdown(struct platform_device *pdev)
+{
+	dev_info(&pdev->dev, "shutting down");
+	__pm_runtime_disable(&pdev->dev, false);
+}
+
 #ifdef CONFIG_PM
 const struct dev_pm_ops gk20a_pm_ops = {
 #if defined(CONFIG_PM_RUNTIME) && !defined(CONFIG_PM_GENERIC_DOMAINS)
@@ -1198,8 +1207,6 @@ static int gk20a_pm_suspend(struct device *dev)
 
 	if (atomic_read(&dev->power.usage_count) > 1)
 		return -EBUSY;
-
-	gk20a_scale_suspend(to_platform_device(dev));
 
 	ret = gk20a_pm_prepare_poweroff(dev);
 	if (ret)
@@ -1476,6 +1483,7 @@ static int __exit gk20a_remove(struct platform_device *dev)
 static struct platform_driver gk20a_driver = {
 	.probe = gk20a_probe,
 	.remove = __exit_p(gk20a_remove),
+	.shutdown = gk20a_pm_shutdown,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "gk20a",
@@ -1514,6 +1522,8 @@ int gk20a_busy(struct platform_device *pdev)
 
 #ifdef CONFIG_PM_RUNTIME
 	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0)
+		pm_runtime_put_noidle(&pdev->dev);
 #endif
 	gk20a_scale_notify_busy(pdev);
 

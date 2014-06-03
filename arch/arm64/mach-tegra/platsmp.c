@@ -21,43 +21,30 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/cpumask.h>
-#include <linux/tegra-powergate.h>
 
 #include <asm/cputype.h>
 #include <asm/smp_plat.h>
 #include <asm/soc.h>
 
 #include "common.h"
-#include "reset.h"
-#include "iomap.h"
+#include "pm-soc.h"
 
-#define PWRGATE_TOGGLE		0x30
-#define PMC_TOGGLE_START	0x100
+void (*tegra_boot_secondary_cpu)(int cpu);
 
-static void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
-#define pmc_writel(value, reg)	writel(value, pmc + (reg))
-#define pmc_readl(reg)		readl(pmc + (reg))
-
-#ifdef CONFIG_ARCH_TEGRA_21x_SOC
 static int tegra_boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
-	u32 reg;
-
 	BUG_ON(cpu == smp_processor_id());
 
-	cpu = cpu_logical_map(cpu);
-
-	reg = PMC_TOGGLE_START | TEGRA_CPU_POWERGATE_ID(cpu);
-	pmc_writel(reg, PWRGATE_TOGGLE);
+	if (tegra_boot_secondary_cpu) {
+		cpu = cpu_logical_map(cpu);
+		tegra_boot_secondary_cpu(cpu);
+	}
 
 	return 0;
 }
-#endif
 
 struct smp_operations tegra_smp_ops __initdata = {
-#ifdef CONFIG_ARCH_TEGRA_21x_SOC
 	.smp_boot_secondary	= tegra_boot_secondary,
-#endif
 #ifdef CONFIG_HOTPLUG_CPU
 	.cpu_die		= tegra_cpu_die,
 #endif

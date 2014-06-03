@@ -86,6 +86,7 @@
 			regulator-max-microvolt = <1800000>;
 			gpio = <&palmas_gpio 6 0>;
 			enable-active-high;
+			regulator-boot-on;
 			vin-supply = <&palmas_smps8>;
 
 			consumers {

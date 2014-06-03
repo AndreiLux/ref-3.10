@@ -174,7 +174,7 @@ static __initdata struct tegra_clk_init_table ardbeg_clk_init_table[] = {
 	{ "i2s3",	"pll_a_out0",	0,		false},
 	{ "i2s4",	"pll_a_out0",	0,		false},
 	{ "spdif_out",	"pll_a_out0",	0,		false},
-	{ "d_audio",	"clk_m",	12000000,	false},
+	{ "d_audio",	"pll_a_out0",	12288000,	false},
 	{ "dam0",	"clk_m",	12000000,	false},
 	{ "dam1",	"clk_m",	12000000,	false},
 	{ "dam2",	"clk_m",	12000000,	false},
@@ -501,7 +501,7 @@ static struct tegra_usb_platform_data tegra_udc_pdata = {
 static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 	.port_otg = true,
 	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
@@ -528,7 +528,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 static struct tegra_usb_platform_data tegra_ehci2_utmi_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
@@ -554,7 +554,7 @@ static struct tegra_usb_platform_data tegra_ehci2_utmi_pdata = {
 static struct tegra_usb_platform_data tegra_ehci3_utmi_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_UTMI,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
@@ -586,7 +586,7 @@ static struct gpio modem_gpios[] = { /* Bruce modem */
 static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
 	.op_mode = TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
@@ -600,7 +600,7 @@ static struct tegra_usb_platform_data tegra_ehci2_hsic_baseband_pdata = {
 static struct tegra_usb_platform_data tegra_ehci2_hsic_smsc_hub_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
-	.unaligned_dma_buf_supported = false,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
 	.op_mode	= TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
@@ -1002,6 +1002,14 @@ static struct rm_spi_ts_platform_data rm31080ts_tn8_data = {
 	.name_of_clock_con = "extern2",
 };
 
+static struct rm_spi_ts_platform_data rm31080ts_tn8_p1765_data = {
+	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
+	.config = 0,
+	.platform_id = RM_PLATFORM_T008_2,
+	.name_of_clock = "clk_out_2",
+	.name_of_clock_con = "extern2",
+};
+
 static struct rm_spi_ts_platform_data rm31080ts_norrin_data = {
 	.gpio_reset = TOUCH_GPIO_RST_RAYDIUM_SPI,
 	.config = 0,
@@ -1049,10 +1057,22 @@ static struct spi_board_info rm31080a_tn8_spi_board[1] = {
 		.modalias = "rm_ts_spidev",
 		.bus_num = TOUCH_SPI_ID,
 		.chip_select = TOUCH_SPI_CS,
-		.max_speed_hz = 12 * 1000 * 1000,
+		.max_speed_hz = 18 * 1000 * 1000,
 		.mode = SPI_MODE_0,
 		.controller_data = &dev_cdata,
 		.platform_data = &rm31080ts_tn8_data,
+	},
+};
+
+static struct spi_board_info rm31080a_tn8_p1765_spi_board[1] = {
+	{
+		.modalias = "rm_ts_spidev",
+		.bus_num = TOUCH_SPI_ID,
+		.chip_select = TOUCH_SPI_CS,
+		.max_speed_hz = 18 * 1000 * 1000,
+		.mode = SPI_MODE_0,
+		.controller_data = &dev_cdata,
+		.platform_data = &rm31080ts_tn8_p1765_data,
 	},
 };
 
@@ -1114,13 +1134,21 @@ static int __init ardbeg_touch_init(void)
 					&rm31080a_ardbeg_spi_board[0],
 					ARRAY_SIZE(rm31080a_ardbeg_spi_board));
 		} else if (board_info.board_id == BOARD_P1761) {
-			rm31080a_ardbeg_spi_board[0].irq =
+			rm31080a_tn8_spi_board[0].irq =
 				gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
 			touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
 				TOUCH_GPIO_RST_RAYDIUM_SPI,
 				&rm31080ts_tn8_data,
 				&rm31080a_tn8_spi_board[0],
 				ARRAY_SIZE(rm31080a_tn8_spi_board));
+                } else if (board_info.board_id == BOARD_P1765) {
+                        rm31080a_tn8_p1765_spi_board[0].irq =
+                                gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);
+                        touch_init_raydium(TOUCH_GPIO_IRQ_RAYDIUM_SPI,
+                                TOUCH_GPIO_RST_RAYDIUM_SPI,
+                                &rm31080ts_tn8_p1765_data,
+                                &rm31080a_tn8_p1765_spi_board[0],
+                                ARRAY_SIZE(rm31080a_tn8_p1765_spi_board));
 		} else {
 			rm31080a_ardbeg_spi_board[0].irq =
 				gpio_to_irq(TOUCH_GPIO_IRQ_RAYDIUM_SPI);

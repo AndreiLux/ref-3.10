@@ -418,6 +418,7 @@ enum tegra_connect_type {
 	CONNECT_TYPE_NONE,
 	CONNECT_TYPE_SDP,
 	CONNECT_TYPE_DCP,
+	CONNECT_TYPE_DCP_MAXIM,
 	CONNECT_TYPE_DCP_QC2,
 	CONNECT_TYPE_CDP,
 	CONNECT_TYPE_NV_CHARGER,
@@ -478,10 +479,8 @@ struct tegra_udc {
 	bool fence_read;
 	bool vbus_in_lp0;
 	bool charging_supported;
-#ifdef CONFIG_EXTCON
 	struct extcon_dev *edev;
 	struct extcon_dev *vbus_extcon_dev;
-#endif
 };
 
 

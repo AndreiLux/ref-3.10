@@ -191,6 +191,9 @@ struct device tegra_generic_dev;
 struct device tegra_vpr_dev;
 EXPORT_SYMBOL(tegra_vpr_dev);
 
+struct device tegra_iram_dev;
+EXPORT_SYMBOL(tegra_iram_dev);
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvsecurity.h>
 
@@ -1121,8 +1124,7 @@ int tegra_get_sku_override(void)
 	return sku_override;
 }
 
-#if !defined(CONFIG_TRUSTED_LITTLE_KERNEL) || \
-	!defined(CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT)
+#ifndef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 static int __init tegra_vpr_arg(char *options)
 {
 	char *p = options;
@@ -1779,7 +1781,7 @@ static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 	void *from_virt;
 	unsigned long i;
 
-	to_io = ioremap(to, size);
+	to_io = ioremap_wc(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
@@ -1793,7 +1795,7 @@ static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 			kunmap(page);
 		}
 	} else {
-		void __iomem *from_io = ioremap(from, size);
+		void __iomem *from_io = ioremap_wc(from, size);
 		if (!from_io) {
 			pr_err("%s: Failed to map source framebuffer\n",
 				__func__);
@@ -1801,7 +1803,8 @@ static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 		}
 
 		for (i = 0; i < size; i += 4)
-			writel(readl(from_io + i), to_io + i);
+			writel_relaxed(readl_relaxed(from_io + i), to_io + i);
+		dmb();
 
 		iounmap(from_io);
 	}
@@ -1844,7 +1847,7 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 	BUG_ON(PAGE_ALIGN((unsigned long)to) != (unsigned long)to);
 	BUG_ON(PAGE_ALIGN(size) != size);
 
-	to_io = ioremap(to, size);
+	to_io = ioremap_wc(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
@@ -1855,7 +1858,8 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 			memset(to_io + i, 0, PAGE_SIZE);
 	} else {
 		for (i = 0; i < size; i += 4)
-			writel(0, to_io + i);
+			writel_relaxed(0, to_io + i);
+		dmb();
 	}
 
 	iounmap(to_io);
@@ -2205,7 +2209,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 void tegra_reserve4(ulong carveout_size, ulong fb_size,
 		       ulong fb2_size, ulong vpr_size)
 {
-#ifdef CONFIG_TRUSTED_LITTLE_KERNEL
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	tegra_vpr_start = 0;
 	tegra_vpr_size = vpr_size;
 #endif

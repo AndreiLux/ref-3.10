@@ -16,8 +16,6 @@
 
 	chosen {
 		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
-		linux,initrd-start = <0x85000000>;
-		linux,initrd-end = <0x851bc400>;
 	};
 
 	pinmux {
@@ -82,12 +80,13 @@
 		status = "okay";
 		nvidia,invert-interrupt;
 		nvidia,suspend-mode = <0>;
-		nvidia,cpu-pwr-good-time = <2000>;
-		nvidia,cpu-pwr-off-time = <2000>;
+		nvidia,cpu-pwr-good-time = <500>;
+		nvidia,cpu-pwr-off-time = <300>;
 		nvidia,core-pwr-good-time = <3845 3845>;
 		nvidia,core-pwr-off-time = <2000>;
 		nvidia,core-power-req-active-high;
 		nvidia,sys-clock-req-active-high;
+		nvidia,lp0-vec = <0xf46ff000 2064>;
 	};
 
 	pcie-controller {

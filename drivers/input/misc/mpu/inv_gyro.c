@@ -46,7 +46,7 @@
 #include "inv_gyro.h"
 
 
-#define NVI_VERSION			(40)
+#define NVI_VERSION			(45)
 
 /* regulator names in order of powering on */
 static char *nvi_vregs[] = {
@@ -294,7 +294,7 @@ static int nvi_accel_config2_wr(struct inv_gyro_state_s *inf, u8 val)
 	int err = 0;
 
 	if (val != inf->hw.accl_config2) {
-		err = inv_i2c_single_write(inf, 0x1D, val);
+		err = inv_i2c_single_write(inf, REG_6500_ACCEL_CONFIG2, val);
 		if (!err) {
 			inf->hw.accl_config2 = val;
 			err = 1; /* flag change made */
@@ -930,7 +930,7 @@ static int nvi_nb_vreg(struct inv_gyro_state_s *st,
 	return NOTIFY_OK;
 }
 
-int nvi_pm_wr(struct inv_gyro_state_s *st,
+static int nvi_pm_wr(struct inv_gyro_state_s *st,
 	      u8 pwr_mgmt_1, u8 pwr_mgmt_2, u8 lpa)
 {
 	s64 por_ns;
@@ -999,9 +999,17 @@ int nvi_pm_wr(struct inv_gyro_state_s *st,
 		break;
 
 	default: /* INV_MPU65XX */
-		ret_t |= nvi_lp_accel_odr_wr(st, lpa);
+		if (pwr_mgmt_1 & st->reg->cycle) {
+			ret_t |= nvi_lp_accel_odr_wr(st, lpa);
+			ret_t |= nvi_accel_config_wr(st, 0,
+			st->chip_config.accl_fsr, (BIT_FIFO_SIZE_1K
+						| BIT_ACCEL_FCHOCIE_B));
+		}
 		ret_t |= nvi_pwr_mgmt_2_wr(st, pwr_mgmt_2);
 		ret_t |= nvi_pwr_mgmt_1_wr(st, pwr_mgmt_1);
+		if (!(pwr_mgmt_1 & st->reg->cycle))
+			ret_t |= nvi_accel_config_wr(st, 0,
+			st->chip_config.accl_fsr, BIT_FIFO_SIZE_1K);
 		break;
 	}
 
@@ -1024,7 +1032,7 @@ static int nvi_reset(struct inv_gyro_state_s *inf,
  *      are for internal use.
  * @return int: returns 0 for success or error code
  */
-static int nvi_pm(struct inv_gyro_state_s *st, int pm_req)
+int nvi_pm(struct inv_gyro_state_s *st, int pm_req)
 {
 	bool irq;
 	u8 pwr_mgmt_1;
@@ -1227,7 +1235,8 @@ static int nvi_aux_delay(struct inv_gyro_state_s *inf,
 	/* HW global delay */
 	delay_new *= 1000;
 	delay_new /= inf->sample_delay_us;
-	delay_new++;
+	if (delay_new)
+		delay_new--;
 	inf->aux.delay_hw = (u8)delay_new;
 	nvi_i2c_slv4_ctrl_wr(inf, (bool)(inf->hw.i2c_slv4_ctrl & BIT_SLV_EN));
 	/* HW port delay enable */
@@ -3286,6 +3295,26 @@ static ssize_t inv_key_show(struct device *dev, struct device_attribute *attr,
 		key[13], key[14], key[15]);
 }
 
+static ssize_t inv_accl_max_range_st_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct inv_gyro_state_s *st = dev_get_drvdata(dev);
+	unsigned int range;
+
+	range = inv_hwselftest_accel_fsr(st);
+	return sprintf(buf, "%u\n", range);
+}
+
+static ssize_t inv_gyro_max_range_st_show(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct inv_gyro_state_s *st = dev_get_drvdata(dev);
+	unsigned int range;
+
+	range = inv_hwselftest_gyro_fsr(st);
+	return sprintf(buf, "%u\n", range);
+}
+
 /**
  *  OBSOLETE
  */
@@ -3929,7 +3958,7 @@ static ssize_t nvi_data_show(struct device *dev,
 	return -EINVAL;
 }
 
-#if DEBUG_SYSFS_INTERFACE
+#ifdef DEBUG_SYSFS_INTERFACE
 static ssize_t nvi_dbg_i2c_addr_store(struct device *dev,
 				      struct device_attribute *attr,
 				      const char *buf, size_t count)
@@ -4035,6 +4064,13 @@ static ssize_t nvi_dbg_dat_show(struct device *dev,
 		       __func__, dbg_i2c_addr, inf->dbg_reg, dbg_dat, err);
 	return ret;
 }
+
+static DEVICE_ATTR(dbg_reg, S_IRUGO | S_IWUSR | S_IWGRP,
+		   nvi_dbg_reg_show, nvi_dbg_reg_store);
+static DEVICE_ATTR(dbg_dat, S_IRUGO | S_IWUSR | S_IWGRP,
+		   nvi_dbg_dat_show, nvi_dbg_dat_store);
+static DEVICE_ATTR(dbg_i2c_addr, S_IRUGO | S_IWUSR | S_IWGRP,
+		   nvi_dbg_i2c_addr_show, nvi_dbg_i2c_addr_store);
 #endif /* DEBUG_SYSFS_INTERFACE */
 
 static DEVICE_ATTR(gyro_enable, S_IRUGO | S_IWUSR | S_IWGRP,
@@ -4101,18 +4137,16 @@ static DEVICE_ATTR(self_test, S_IRUGO,
 		   inv_self_test_show, NULL);
 static DEVICE_ATTR(data, S_IRUGO | S_IWUSR | S_IWGRP,
 		   nvi_data_show, nvi_data_store);
-static DEVICE_ATTR(dbg_reg, S_IRUGO | S_IWUSR | S_IWGRP,
-		   nvi_dbg_reg_show, nvi_dbg_reg_store);
-static DEVICE_ATTR(dbg_dat, S_IRUGO | S_IWUSR | S_IWGRP,
-		   nvi_dbg_dat_show, nvi_dbg_dat_store);
-static DEVICE_ATTR(dbg_i2c_addr, S_IRUGO | S_IWUSR | S_IWGRP,
-		   nvi_dbg_i2c_addr_show, nvi_dbg_i2c_addr_store);
 static DEVICE_ATTR(reg_dump, S_IRUGO,
 		   inv_reg_dump_show, NULL);
 static DEVICE_ATTR(power_state, S_IRUGO | S_IWUSR | S_IWGRP,
 		   inv_power_state_show, inv_power_state_store);
 static DEVICE_ATTR(key, S_IRUGO | S_IWUSR | S_IWGRP,
 		   inv_key_show, inv_key_store);
+static DEVICE_ATTR(accl_max_range_st, S_IRUGO,
+		   inv_accl_max_range_st_show, NULL);
+static DEVICE_ATTR(gyro_max_range_st, S_IRUGO,
+		   inv_gyro_max_range_st_show, NULL);
 
 static struct device_attribute *inv_attributes[] = {
 	&dev_attr_accl_enable,
@@ -4135,7 +4169,9 @@ static struct device_attribute *inv_attributes[] = {
 	&dev_attr_enable,
 	&dev_attr_power_state,
 	&dev_attr_key,
-#if DEBUG_SYSFS_INTERFACE
+	&dev_attr_accl_max_range_st,
+	&dev_attr_gyro_max_range_st,
+#ifdef DEBUG_SYSFS_INTERFACE
 	&dev_attr_dbg_reg,
 	&dev_attr_dbg_dat,
 	&dev_attr_dbg_i2c_addr,
@@ -4495,7 +4531,7 @@ static int nvi_suspend(struct device *dev)
 	spin_unlock_irqrestore(&inf->time_stamp_lock, flags);
 	synchronize_irq(inf->i2c->irq);
 
-	flush_work_sync(&inf->work_struct);
+	flush_work(&inf->work_struct);
 
 	mutex_lock(&inf->mutex);
 	inf->suspend = true;
@@ -4551,7 +4587,7 @@ static void nvi_shutdown(struct i2c_client *client)
 	spin_unlock_irqrestore(&inf->time_stamp_lock, flags);
 	synchronize_irq(inf->i2c->irq);
 
-	flush_work_sync(&inf->work_struct);
+	flush_work(&inf->work_struct);
 
 	mutex_lock(&inf->mutex);
 	for (i = 0; i < AUX_PORT_SPECIAL; i++) {
@@ -4702,6 +4738,8 @@ static int nvi_probe(struct i2c_client *client,
 	result = nvi_dev_init(st, id);
 	if (result)
 		goto out_free;
+
+	inv_hwselftest_setting(st);
 
 	INIT_KFIFO(st->trigger.timestamps);
 	result = create_sysfs_interfaces(st);
