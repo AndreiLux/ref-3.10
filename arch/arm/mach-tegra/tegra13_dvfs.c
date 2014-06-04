@@ -79,7 +79,7 @@ static struct tegra_cooling_device gpu_vts_cdev = {
 
 static struct dvfs_rail tegra13_dvfs_rail_vdd_cpu = {
 	.reg_id = "vdd_cpu",
-	.version = "p4v8",
+	.version = "p4v12",
 	.max_millivolts = 1300,
 	.min_millivolts = 700,
 	.step = VDD_SAFE_STEP,
@@ -226,7 +226,7 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 		.speedo_id = 1,
 		.process_id = -1,
 		.dfll_tune_data  = {
-			.tune1		= 0x000000FF,
+			.tune1		= 0x00000099,
 			.droop_rate_min = 1000000,
 			.tune_high_min_millivolts = 900,
 			.min_millivolts = 700,
@@ -726,7 +726,7 @@ static int round_voltage(int mv, struct rail_alignment *align, bool up)
 
 static void __init set_cpu_dfll_tuning_data(struct cpu_cvb_dvfs *d, int speedo)
 {
-	if (d->speedo_id == 1) {
+	if (d->speedo_id >= 1) {
 		if (speedo <= 2336) {
 			d->dfll_tune_data.tune0 = 0x9315FF;
 			d->dfll_tune_data.tune0_high_mv = 0x9340FF;
