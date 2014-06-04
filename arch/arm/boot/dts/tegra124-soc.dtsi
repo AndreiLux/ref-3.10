@@ -643,6 +643,7 @@
 
 	pcie-controller {
 		compatible = "nvidia,tegra124-pcie";
+		status = "disabled";
 	};
 
 	sata@0x70020000 {
