@@ -305,7 +305,7 @@ static int hs_1wire_report_type(char **string)
 		return 14;
 	}else {
 		*string = hs_type[hi->aid - 1];
-		HS_LOG("Report %s type, size %d", *string, sizeof(hs_type[hi->aid -1]));
+		HS_LOG("Report %s type, size %zd", *string, sizeof(hs_type[hi->aid -1]));
 		return sizeof(hs_type[hi->aid -1]);
 	}
 }
