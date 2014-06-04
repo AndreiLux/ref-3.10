@@ -36,6 +36,13 @@
 
 #include <linux/firmware.h>
 
+#if defined(CONFIG_FB)
+#include <linux/notifier.h>
+#include <linux/fb.h>
+#endif
+
+#include <linux/sensor_hub.h>
+
 #include <linux/iio/buffer.h>
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
@@ -195,9 +202,27 @@ struct cwmcu_data {
 	int power_on_counter;
 
 	struct input_dev *input;
+#if defined(CONFIG_FB)
+	struct notifier_block fb_notif;
+#endif
 };
 
 static struct cwmcu_data *mcu_data;
+
+BLOCKING_NOTIFIER_HEAD(double_tap_notifier_list);
+
+int register_notifier_by_facedown(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_register(&double_tap_notifier_list, nb);
+}
+EXPORT_SYMBOL(register_notifier_by_facedown);
+
+int unregister_notifier_by_facedown(struct notifier_block *nb)
+{
+	return blocking_notifier_chain_unregister(&double_tap_notifier_list,
+						  nb);
+}
+EXPORT_SYMBOL(unregister_notifier_by_facedown);
 
 static int CWMCU_i2c_read(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
@@ -205,6 +230,13 @@ static int CWMCU_i2c_read_power(struct cwmcu_data *sensor,
 			 u8 reg_addr, u8 *data, u8 len);
 static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
+static int CWMCU_i2c_write_power(struct cwmcu_data *sensor,
+			u8 reg_addr, u8 *data, u8 len);
+
+#if defined(CONFIG_FB)
+static int fb_notifier_callback(struct notifier_block *self,
+				unsigned long event, void *data);
+#endif
 
 static void gpio_make_falling_edge(int gpio)
 {
@@ -648,16 +680,12 @@ static ssize_t led_enable(struct device *dev,
 
 	I("LED %s\n", (data == 2) ? "ENABLE" : "DISABLE");
 
-	cwmcu_powermode_switch(1);
-
-	error = CWMCU_i2c_write(mcu_data, 0xD0, &data, 1);
+	error = CWMCU_i2c_write_power(mcu_data, 0xD0, &data, 1);
 	if (error < 0) {
 		cwmcu_powermode_switch(0);
 		E("%s: error = %d\n", __func__, error);
 		return -EIO;
 	}
-
-	cwmcu_powermode_switch(0);
 
 	return count;
 }
@@ -761,6 +789,17 @@ static int CWMCU_i2c_read_power(struct cwmcu_data *sensor,
 
 	cwmcu_powermode_switch(1);
 	ret = CWMCU_i2c_read(sensor, reg_addr, data, len);
+	cwmcu_powermode_switch(0);
+	return ret;
+}
+
+static int CWMCU_i2c_write_power(struct cwmcu_data *sensor,
+				 u8 reg_addr, u8 *data, u8 len)
+{
+	int ret;
+
+	cwmcu_powermode_switch(1);
+	ret = CWMCU_i2c_write(sensor, reg_addr, data, len);
 	cwmcu_powermode_switch(0);
 	return ret;
 }
@@ -1178,9 +1217,6 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 			  __func__, rc, i);
 			return -EIO;
 		}
-
-		D("%s: sensors_id = %d, delay_us = %6d\n",
-		  __func__, i, mcu_data->report_period[i]);
 	}
 
 #ifdef MCU_WARN_MSGS
@@ -1192,7 +1228,7 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 		  __func__, rc, i);
 		return -EIO;
 	}
-	I("%s: WARN_MSGS enabled\n", __func__);
+	D("%s: WARN_MSGS enabled\n", __func__);
 #endif
 
 	reg_value = 1;
@@ -2617,6 +2653,12 @@ void magic_cover_report_input(u8 val)
 	return;
 }
 
+void activate_double_tap(u8 facedown)
+{
+	blocking_notifier_call_chain(&double_tap_notifier_list, facedown, NULL);
+	return;
+}
+
 static void cwmcu_irq_work_func(struct work_struct *work)
 {
 	struct cwmcu_data *sensor = container_of((struct work_struct *)work,
@@ -2788,6 +2830,26 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 
 		}
 		clear_intr = CW_MCU_INT_BIT_STEP_COUNTER;
+		CWMCU_i2c_write(sensor, CWSTM32_INT_ST3, &clear_intr, 1);
+	}
+
+	/* INT_st3: bit 7 */
+	if (INT_st3 & CW_MCU_INT_BIT_FACEDOWN_DETECTION) {
+		if (sensor->enabled_list & (1<<HTC_FACEDOWN_DETECTION)) {
+			u8 data;
+
+			ret = CWMCU_i2c_read(sensor,
+					     CWSTM32_READ_FACEDOWN_DETECTION,
+					     &data, sizeof(data));
+			if (ret >= 0) {
+				I("%s: FACEDOWN = %u\n", __func__, data);
+				activate_double_tap(data);
+			} else
+				E("%s: FACEDOWN i2c read fails, ret = %d\n",
+						__func__, ret);
+
+		}
+		clear_intr = CW_MCU_INT_BIT_FACEDOWN_DETECTION;
 		CWMCU_i2c_write(sensor, CWSTM32_INT_ST3, &clear_intr, 1);
 	}
 
@@ -3467,6 +3529,52 @@ static int cwmcu_input_init(struct input_dev **input)
 	return err;
 }
 
+#if defined(CONFIG_FB)
+static int fb_notifier_callback(struct notifier_block *self,
+				unsigned long event, void *data)
+{
+	struct fb_event *evdata = data;
+	int *blank;
+
+	D("%s\n", __func__);
+
+	if (evdata && evdata->data && (event == FB_EVENT_BLANK) && mcu_data &&
+			mcu_data->client) {
+		u8 data;
+		int i;
+
+		blank = evdata->data;
+		i = (HTC_FACEDOWN_DETECTION / 8);
+
+		switch (*blank) {
+		case FB_BLANK_UNBLANK:
+			D("MCU late_resume\n");
+			mcu_data->enabled_list &=
+				~(1 << HTC_FACEDOWN_DETECTION);
+			data = (u8)(mcu_data->enabled_list>>(i*8));
+
+			CWMCU_i2c_write_power(mcu_data,
+					CWSTM32_ENABLE_REG + i,
+					&data, 1);
+			break;
+		case FB_BLANK_POWERDOWN:
+		case FB_BLANK_HSYNC_SUSPEND:
+		case FB_BLANK_VSYNC_SUSPEND:
+		case FB_BLANK_NORMAL:
+			D("MCU early_suspend\n");
+			mcu_data->enabled_list |= (1 << HTC_FACEDOWN_DETECTION);
+			data = (u8)(mcu_data->enabled_list>>(i*8));
+
+			CWMCU_i2c_write_power(mcu_data,
+					CWSTM32_ENABLE_REG + i,
+					&data, 1);
+			break;
+		}
+	}
+	return 0;
+}
+#endif
+
 static int CWMCU_i2c_probe(struct i2c_client *client,
 				       const struct i2c_device_id *id)
 {
@@ -3475,7 +3583,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Support Magic Cover\n", __func__);
+	I("%s++: Support Facedown Detection\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3632,10 +3740,24 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	}
 	input_set_drvdata(sensor->input, sensor);
 
+#if defined(CONFIG_FB)
+	mcu_data->fb_notif.notifier_call = fb_notifier_callback;
+	error = fb_register_client(&mcu_data->fb_notif);
+	if (error) {
+		E("%s: Unable to register fb_notifier: %d\n", __func__, error);
+		goto err_fb_register_client;
+	}
+#endif
+
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
 
 	return 0;
+
+#if defined(CONFIG_FB)
+err_fb_register_client:
+	input_free_device(sensor->input);
+#endif
 
 err_register_input:
 	free_irq(sensor->IRQ, sensor);

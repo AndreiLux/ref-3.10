@@ -50,6 +50,7 @@ typedef enum {
 	CW_SIGNIFICANT_MOTION          = 20,
 	CW_STEP_DETECTOR               = 21,
 	CW_STEP_COUNTER                = 22,
+	HTC_FACEDOWN_DETECTION         = 23,
 	CW_SENSORS_ID_END /* Be careful, do not exceed 31 */,
 	TIME_DIFF_EXHAUSTED            = 97,
 	CW_SYNC_ACK                    = 98,
@@ -210,6 +211,7 @@ int touch_status(u8 status);
 #define CW_MCU_INT_BIT_SIGNIFICANT_MOTION       (1 << 4)
 #define CW_MCU_INT_BIT_STEP_DETECTOR            (1 << 5)
 #define CW_MCU_INT_BIT_STEP_COUNTER             (1 << 6)
+#define CW_MCU_INT_BIT_FACEDOWN_DETECTION       (1 << 7)
 
 /* ERR_ST */
 #define CW_MCU_INT_BIT_ERROR_WARN_MSG           (1 << 5)
@@ -238,6 +240,7 @@ int touch_status(u8 status);
 #define CWSTM32_READ_SIGNIFICANT_MOTION				0x34
 #define CWSTM32_READ_STEP_DETECTOR				0x35
 #define CWSTM32_READ_STEP_COUNTER				0x36
+#define CWSTM32_READ_FACEDOWN_DETECTION				0x3A
 
 #ifdef __KERNEL__
 struct cwmcu_platform_data {
