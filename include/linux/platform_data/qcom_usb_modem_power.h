@@ -76,7 +76,6 @@ struct qcom_usb_modem {
 
 	/* wake lock */
 	struct wake_lock wake_lock;	/* modem wake lock */
-	struct wake_lock hsic_wake_lock; /* HSIC wake lock */
 
 	/* usb */
 	unsigned int vid;	/* modem vendor id */
@@ -93,7 +92,6 @@ struct qcom_usb_modem {
 	/* workqueue */
 	struct workqueue_struct *usb_host_wq;   /* Usb host workqueue */
 	struct workqueue_struct *wq;	/* modem workqueue */
-	struct workqueue_struct *wakeup_wq; /* modem wakeup workqueue */
 	struct workqueue_struct *mdm_recovery_wq; /* modem recovery workqueue */
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	struct workqueue_struct *ftrace_wq; /* ftrace workqueue */
@@ -109,7 +107,6 @@ struct qcom_usb_modem {
 	struct pm_qos_request cpu_boost_req; /* min CPU freq request */
 	struct work_struct cpu_boost_work;	/* CPU freq boost work */
 	struct delayed_work cpu_unboost_work;	/* CPU freq unboost work */
-	struct work_struct mdm_wakeup_work; /* modem wakeup work */
 	struct work_struct mdm_hsic_ready_work; /* modem hsic ready work */
 	struct work_struct mdm_status_work; /* modem status changed work */
 	struct work_struct mdm_errfatal_work; /* modem errfatal work */
@@ -128,10 +125,6 @@ struct qcom_usb_modem {
 	unsigned int mdm9k_status;
 	struct proc_dir_entry *mdm9k_pde;
 	unsigned short int mdm_status;
-	bool is_mdm_hsic_phy_suspended;
-	bool is_mdm_hsic_wakeup_in_progress;
-	unsigned long mdm_hsic_phy_resume_jiffies;
-	unsigned long mdm_hsic_phy_active_total_ms;
 	bool is_mdm_support_mdm2ap_ipc3;
 	unsigned int mdm2ap_ipc3_status;
 	atomic_t final_efs_wait;
@@ -157,8 +150,10 @@ struct qcom_usb_modem {
 	struct completion mdm_boot;
 	struct completion mdm_ram_dumps;
 #endif
-	/* remote wakeup */
-	bool hsic_wakeup_pending;
+
+	/* hsic wakeup */
+	unsigned long mdm_hsic_phy_resume_jiffies;
+	unsigned long mdm_hsic_phy_active_total_ms;
 };
 
 /* modem operations */

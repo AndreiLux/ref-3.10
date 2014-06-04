@@ -237,9 +237,9 @@ static void trigger_modem_errfatal(struct qcom_usb_modem *modem)
 	}
 
 	gpio_direction_output(modem->pdata->ap2mdm_errfatal_gpio, 0);
-	mdelay(1000);
+	msleep(1000);
 	gpio_direction_output(modem->pdata->ap2mdm_errfatal_gpio, 1);
-	mdelay(1000);
+	msleep(1000);
 	gpio_direction_output(modem->pdata->ap2mdm_errfatal_gpio, 0);
 
 	pr_info("%s-\n", __func__);
@@ -337,15 +337,15 @@ static struct qcom_usb_modem_power_platform_data mdm_pdata = {
 	.ap2mdm_ipc1_gpio = AP2MDM_IPC1,
 	.ap2mdm_ipc2_gpio = -1,
 	.mdm2ap_ipc3_gpio = MDM2AP_IPC3,
-	.errfatal_irq_flags = IRQF_TRIGGER_RISING,
+	.errfatal_irq_flags = IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 	.status_irq_flags = IRQF_TRIGGER_RISING |
-				    IRQF_TRIGGER_FALLING,
-	.wake_irq_flags = IRQF_TRIGGER_RISING,
+				    IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+	.wake_irq_flags = IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 	.vdd_min_irq_flags = -1,
 	.hsic_ready_irq_flags = IRQF_TRIGGER_RISING |
-				    IRQF_TRIGGER_FALLING,
+				    IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 	.ipc3_irq_flags = IRQF_TRIGGER_RISING |
-				    IRQF_TRIGGER_FALLING,
+				    IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 	.autosuspend_delay = 2000,
 	.short_autosuspend_delay = 50,
 	.ramdump_delay_ms = 2000,
