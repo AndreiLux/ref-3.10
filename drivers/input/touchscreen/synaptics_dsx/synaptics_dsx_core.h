@@ -131,17 +131,29 @@ struct synaptics_rmi4_fn_full_addr {
 };
 
 /*
+ * struct synaptics_rmi4_f11_extra_data - extra data of F$11
+ * @data38_offset: offset to F11_2D_DATA38 register
+ */
+struct synaptics_rmi4_f11_extra_data {
+	unsigned char data38_offset;
+};
+
+/*
  * struct synaptics_rmi4_f12_extra_data - extra data of F$12
  * @data1_offset: offset to F12_2D_DATA01 register
+ * @data4_offset: offset to F12_2D_DATA04 register
  * @data15_offset: offset to F12_2D_DATA15 register
  * @data15_size: size of F12_2D_DATA15 register
  * @data15_data: buffer for reading F12_2D_DATA15 register
+ * @ctrl20_offset: offset to F12_2D_CTRL20 register
  */
 struct synaptics_rmi4_f12_extra_data {
 	unsigned char data1_offset;
+	unsigned char data4_offset;
 	unsigned char data15_offset;
 	unsigned char data15_size;
 	unsigned char data15_data[(F12_FINGERS_TO_SUPPORT + 7) / 8];
+	unsigned char ctrl20_offset;
 };
 
 /*
@@ -237,9 +249,13 @@ struct synaptics_rmi4_report_points {
  * @flash_prog_mode: flag to indicate flash programming mode status
  * @irq_enabled: flag to indicate attention interrupt enable status
  * @fingers_on_2d: flag to indicate presence of fingers in 2D area
+ * @suspend: flag to indicate whether in suspend state
  * @sensor_sleep: flag to indicate sleep state of sensor
  * @stay_awake: flag to indicate whether to stay awake during suspend
  * @irq_enable: pointer to interrupt enable function
+ * @f11_wakeup_gesture: flag to indicate support for wakeup gestures in F$11
+ * @f12_wakeup_gesture: flag to indicate support for wakeup gestures in F$12
+ * @enable_wakeup_gesture: flag to indicate usage of wakeup gestures
  * @reset_device: pointer to device reset function
  */
 struct synaptics_rmi4_data {
@@ -274,6 +290,10 @@ struct synaptics_rmi4_data {
 	unsigned short f01_cmd_base_addr;
 	unsigned short f01_ctrl_base_addr;
 	unsigned short f01_data_base_addr;
+	unsigned short f54_query_base_addr;
+	unsigned short f54_cmd_base_addr;
+	unsigned short f54_ctrl_base_addr;
+	unsigned short f54_data_base_addr;
 	unsigned int firmware_id;
 	int irq;
 	int sensor_max_x;
@@ -281,11 +301,16 @@ struct synaptics_rmi4_data {
 	bool flash_prog_mode;
 	bool irq_enabled;
 	bool fingers_on_2d;
+	bool suspend;
 	bool sensor_sleep;
 	bool stay_awake;
 	int (*irq_enable)(struct synaptics_rmi4_data *rmi4_data, bool enable);
+	bool f11_wakeup_gesture;
+	bool f12_wakeup_gesture;
+	bool enable_wakeup_gesture;
 	int (*reset_device)(struct synaptics_rmi4_data *rmi4_data);
 	int tw_vendor_pin;
+	int face_down;
 };
 
 struct synaptics_dsx_bus_access {
