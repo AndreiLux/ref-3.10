@@ -16,6 +16,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/i2c.h>
+#include <linux/input.h>
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/slab.h>
@@ -192,6 +193,8 @@ struct cwmcu_data {
 
 	/* power status */
 	int power_on_counter;
+
+	struct input_dev *input;
 };
 
 static struct cwmcu_data *mcu_data;
@@ -1127,10 +1130,12 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 
 	D("Restore status\n");
 
+	sensor->enabled_list |= (1 << HTC_MAGIC_COVER);
+
 	for (i = 0; i < ENABLE_LIST_GROUP_NUM; i++) {
 		data = (u8)(sensor->enabled_list>>(i*8));
 		CWMCU_i2c_write(mcu_data, CWSTM32_ENABLE_REG+i, &data, 1);
-		D("%s: write_addr = 0x%x, write_val = 0x%x\n",
+		I("%s: write_addr = 0x%x, write_val = 0x%x\n",
 		  __func__, (CWSTM32_ENABLE_REG+i), data);
 	}
 
@@ -1189,6 +1194,17 @@ static int cwmcu_restore_status(struct cwmcu_data *sensor)
 	}
 	I("%s: WARN_MSGS enabled\n", __func__);
 #endif
+
+	reg_value = 1;
+	rc = CWMCU_i2c_write(mcu_data, CW_I2C_REG_WATCH_DOG_ENABLE,
+			     &reg_value, 1);
+	if (rc) {
+		E("%s: CWMCU_i2c_write(WATCH_DOG) fails, rc = %d\n",
+		  __func__, rc);
+		return -EIO;
+	}
+	D("%s: Watch dog enabled\n", __func__);
+
 	return 0;
 }
 
@@ -2586,6 +2602,21 @@ static void print_warn_msg(char *buf, u32 len, u32 index)
 }
 #endif
 
+void magic_cover_report_input(u8 val)
+{
+	u32 data = ((val >> 6) & 0x3);
+
+	if ((data == 1) || (data == 2)) {
+		input_report_switch(mcu_data->input, SW_LID, (data - 1));
+		input_sync(mcu_data->input);
+	} else if (data == 3) {
+		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 1);
+		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 0);
+		input_sync(mcu_data->input);
+	}
+	return;
+}
+
 static void cwmcu_irq_work_func(struct work_struct *work)
 {
 	struct cwmcu_data *sensor = container_of((struct work_struct *)work,
@@ -2626,7 +2657,6 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 
 				data_buff[0] = data[0];
 				cw_send_event(CW_LIGHT, data_buff, 0);
-
 				I(
 				  "light interrupt occur value is %u, adc "
 				  "is %x ls_calibration is %u\n",
@@ -2662,6 +2692,28 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 			cw_send_event(HTC_WAKE_UP_GESTURE, data_buff, 0);
 
 			clear_intr = CW_MCU_INT_BIT_WAKE_UP_GESTURE;
+			CWMCU_i2c_write(sensor, CWSTM32_INT_ST2, &clear_intr,
+					1);
+		}
+	}
+
+	/* INT_st2: bit 4 */
+	if (INT_st2 & CW_MCU_INT_BIT_MAGIC_COVER) {
+		if (sensor->enabled_list & (1<<HTC_MAGIC_COVER)) {
+			u8 data;
+
+			ret = CWMCU_i2c_read(sensor, CWSTM32_READ_Hall_Sensor,
+					     &data, 1);
+			if (ret >= 0) {
+				I("%s: MAGIC COVER = 0x%x\n", __func__,
+				  ((data >> 6) & 0x3));
+				magic_cover_report_input(data);
+			} else {
+				E("%s: MAGIC COVER read fails, ret = %d\n",
+				  __func__, ret);
+			}
+
+			clear_intr = CW_MCU_INT_BIT_MAGIC_COVER;
 			CWMCU_i2c_write(sensor, CWSTM32_INT_ST2, &clear_intr,
 					1);
 		}
@@ -3391,6 +3443,30 @@ static void cwmcu_work_report(struct work_struct *work)
 			msecs_to_jiffies(atomic_read(&mcu_data->delay)));
 }
 
+static int cwmcu_input_init(struct input_dev **input)
+{
+	int err;
+
+	*input = input_allocate_device();
+	if (!*input)
+		return -ENOMEM;
+
+	set_bit(EV_SW, (*input)->evbit);
+
+	input_set_capability(*input, EV_SW, SW_LID);
+	input_set_capability(*input, EV_SW, SW_CAMERA_LENS_COVER);
+
+	(*input)->name = CWMCU_I2C_NAME;
+
+	err = input_register_device(*input);
+	if (err) {
+		input_free_device(*input);
+		return err;
+	}
+
+	return err;
+}
+
 static int CWMCU_i2c_probe(struct i2c_client *client,
 				       const struct i2c_device_id *id)
 {
@@ -3399,7 +3475,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Stop Mode, reset_hub in i2c access\n", __func__);
+	I("%s++: Support Magic Cover\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3549,11 +3625,20 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	queue_delayed_work(mcu_wq, &polling_work,
 			msecs_to_jiffies(5000));
 
+	error = cwmcu_input_init(&sensor->input);
+	if (error) {
+		E("%s: input_dev register failed", __func__);
+		goto err_register_input;
+	}
+	input_set_drvdata(sensor->input, sensor);
+
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
 
 	return 0;
 
+err_register_input:
+	free_irq(sensor->IRQ, sensor);
 err_free_mem:
 	if (indio_dev)
 		iio_device_unregister(indio_dev);
