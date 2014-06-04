@@ -2150,6 +2150,7 @@ static int htc_headset_mgr_probe(struct platform_device *pdev)
 	set_bit(KEY_SEND, hi->input->keybit);
 	set_bit(KEY_FASTFORWARD, hi->input->keybit);
 	set_bit(KEY_REWIND, hi->input->keybit);
+	set_bit(KEY_SEARCH, hi->input->keybit);
 
 	ret = input_register_device(hi->input);
 	if (ret < 0)
