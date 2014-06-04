@@ -588,6 +588,18 @@ struct nvhost_sync_timeline *nvhost_syncpt_timeline(struct nvhost_syncpt *sp,
 }
 #endif
 
+const char *nvhost_syncpt_get_name_from_id(int id)
+{
+	struct nvhost_master *host = nvhost;
+	struct nvhost_syncpt *sp = &host->syncpt;
+	const char *name = NULL;
+
+	name = sp->syncpt_names[id];
+
+	return name ? name : "";
+}
+EXPORT_SYMBOL_GPL(nvhost_syncpt_get_name_from_id);
+
 const char *nvhost_syncpt_get_name(struct platform_device *pdev, int id)
 {
 	struct nvhost_master *host = nvhost_get_host(pdev);
