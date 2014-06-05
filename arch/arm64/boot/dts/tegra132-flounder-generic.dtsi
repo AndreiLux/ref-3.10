@@ -245,12 +245,6 @@
 		status = "okay";
 		clock-frequency = <400000>;
 
-		lp5521@32 {
-			compatible = "LP5521-LED";
-			reg = <0x32>;
-			lp5521,lp5521_en = <&gpio 60 0x00>;
-			lp5521,num_leds = <1>;
-		};
 		richtek_rt5506_amp@52 {
 			compatible = "richtek,rt5506-amp";
 			reg = <0x52>;
