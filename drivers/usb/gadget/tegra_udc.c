@@ -1431,15 +1431,7 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 		break;
 	case CONNECT_TYPE_CDP:
 		dev_info(dev, "connected to CDP(1.5A)\n");
-		/*
-		 * if current is more than VBUS suspend current, we draw CDP
-		 * allowed maximum current (override SDP max current which is
-		 * set by the upper level driver).
-		 */
-		if (udc->current_limit > 2)
-			max_ua = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
-		else
-			max_ua = udc->current_limit * 1000;
+		max_ua = USB_CHARGING_CDP_CURRENT_LIMIT_UA;
 		tegra_udc_notify_event(udc, USB_EVENT_VBUS);
 		break;
 	case CONNECT_TYPE_NV_CHARGER:
