@@ -229,7 +229,7 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 			.tune1		= 0x000000FF,
 			.droop_rate_min = 1000000,
 			.tune_high_min_millivolts = 900,
-			.min_millivolts = 700,
+			.min_millivolts = 800,
 			.tune_high_margin_mv = 30,
 		},
 		.max_mv = 1260,
