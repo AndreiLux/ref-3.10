@@ -1,7 +1,7 @@
 /dts-v1/;
 
 #include "tegra124.dtsi"
-#include "tegra124-platforms/tegra124-tn8-keys-e1780-1100-a02.dtsi"
+#include "tegra124-platforms/tegra124-jetson_tk1-keys-pm375-0000-c00-00.dtsi"
 #include "tegra124-platforms/tegra124-jetson_tk1-gpio-pm375-0000-c00-00.dtsi"
 #include "tegra124-platforms/tegra124-jetson_tk1-pinmux-pm375-0000-c00-00.dtsi"
 #include "tegra124-platforms/tegra124-jetson_tk1-pmic-pm375-0000-c00-00.dtsi"
@@ -95,4 +95,14 @@
 		status = "okay";
 	};
 
+	xusb@70090000 {
+		/* nvidia,uses_external_pmic;
+		nvidia,gpio_controls_muxed_ss_lanes; */
+		nvidia,gpio_ss1_sata = <0>;
+		nvidia,portmap = <0x701>; /* SSP0, USB2P0, USBP1, USBP2 */
+		nvidia,ss_portmap = <0x72>; /* SSP0 on USB2P2 */
+		nvidia,lane_owner = <4>; /* USB3P0 USB3P1 */
+		nvidia,ulpicap = <0>; /* No ulpi support. can we remove */
+		status = "okay";
+	};
 };

@@ -1377,7 +1377,8 @@ static void tegra_udc_set_extcon_state(struct tegra_udc *udc)
 	if (udc->prev_connect_type != CONNECT_TYPE_NONE)
 		extcon_set_cable_state(edev, cables[udc->prev_connect_type],
 					false);
-	if (udc->connect_type != udc->connect_type_lp0)
+	if (udc->connect_type != udc->connect_type_lp0
+			&& udc->connect_type != CONNECT_TYPE_NONE)
 		extcon_set_cable_state(edev, cables[udc->connect_type], true);
 }
 
@@ -1482,6 +1483,8 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 			ret = regulator_set_current_limit(udc->vbus_reg,
 								 0, max_ua);
 	}
+
+
 	if (!udc->vbus_in_lp0) {
 		tegra_udc_set_extcon_state(udc);
 		udc->connect_type_lp0 = CONNECT_TYPE_NONE;
@@ -1514,8 +1517,6 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 					CONNECT_TYPE_NON_STANDARD_CHARGER);
 			tegra_usb_set_charging_current(udc);
 
-			tegra_udc_set_charger_type(udc,
-					CONNECT_TYPE_NONE);
 			if (tegra_usb_phy_qc2_charger_detected(udc->phy,
 					udc->qc2_voltage))
 				tegra_udc_set_charger_type(udc,

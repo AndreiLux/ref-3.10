@@ -330,6 +330,19 @@ static int palmas_gpadc_auto_conv_reset(struct palmas_gpadc *adc)
 	return 0;
 }
 
+static inline int palmas_gpadc_set_current_src(struct palmas_gpadc *adc,
+					       u8 ch0_current, u8 ch3_current)
+{
+	unsigned int mask, val;
+
+	mask = (PALMAS_GPADC_CTRL1_CURRENT_SRC_CH0_MASK |
+		PALMAS_GPADC_CTRL1_CURRENT_SRC_CH3_MASK);
+	val = (ch0_current << PALMAS_GPADC_CTRL1_CURRENT_SRC_CH0_SHIFT) |
+		(ch3_current << PALMAS_GPADC_CTRL1_CURRENT_SRC_CH3_SHIFT);
+	return palmas_update_bits(adc->palmas, PALMAS_GPADC_BASE,
+				  PALMAS_GPADC_CTRL1, mask, val);
+}
+
 static int palmas_gpadc_check_status(struct palmas_gpadc *adc)
 {
 	int retry_cnt = 3;
@@ -640,16 +653,11 @@ static int palmas_gpadc_read_raw(struct iio_dev *indio_dev,
 
 		if ((adc_chan == PALMAS_ADC_CH_IN3)
 				&& adc->ch3_dual_current && val2) {
-			unsigned int reg_mask, reg_val;
-
-			reg_mask = PALMAS_GPADC_CTRL1_CURRENT_SRC_CH3_MASK;
-			reg_val = ((adc->ch3_current + 1)
-				<< PALMAS_GPADC_CTRL1_CURRENT_SRC_CH3_SHIFT);
-			ret = palmas_update_bits(adc->palmas, PALMAS_GPADC_BASE,
-						PALMAS_GPADC_CTRL1,
-						reg_mask, reg_val);
+			ret = palmas_gpadc_set_current_src(adc,
+					adc->ch0_current, adc->ch3_current + 1);
 			if (ret < 0) {
-				dev_err(adc->dev, "CTRL1 update failed\n");
+				dev_err(adc->dev,
+					"Failed to set current src: %d\n", ret);
 				goto out;
 			}
 
@@ -683,6 +691,62 @@ out:
 }
 
 #ifdef CONFIG_DEBUG_FS
+static int palams_gpadc_get_auto_conv_val(struct palmas_gpadc *adc,
+					int auto_conv_ch)
+{
+	unsigned int reg;
+	unsigned int val;
+	int ret;
+
+	if (auto_conv_ch == 0) {
+		reg = PALMAS_GPADC_AUTO_CONV0_LSB;
+	} else if (auto_conv_ch == 1) {
+		reg = PALMAS_GPADC_AUTO_CONV1_LSB;
+	} else {
+		dev_err(adc->dev, "%s: Invalid auto conv channel %d\n\n",
+			__func__, auto_conv_ch);
+		return -EINVAL;
+	}
+
+	ret = palmas_bulk_read(adc->palmas, PALMAS_GPADC_BASE, reg, &val, 2);
+	if (ret < 0) {
+		dev_err(adc->dev, "%s: Auto conv%d data read failed: %d\n",
+			__func__, auto_conv_ch, ret);
+		return ret;
+	}
+
+	return (val & 0xFFF);
+}
+
+static ssize_t auto_conv_val_read(struct file *file,
+			char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct palmas_gpadc *adc = file->private_data;
+	unsigned char *d_iname;
+	char buf[64] = { 0, };
+	ssize_t ret = 0;
+	int auto_conv_ch = -1;
+
+	d_iname = file->f_path.dentry->d_iname;
+
+	if (!strcmp("auto_conv0_val", d_iname))
+		auto_conv_ch = 0;
+	else if (!strcmp("auto_conv1_val", d_iname))
+		auto_conv_ch = 1;
+
+	ret = palams_gpadc_get_auto_conv_val(adc, auto_conv_ch);
+	if (ret < 0)
+		return ret;
+
+	ret = snprintf(buf, sizeof(buf), "%d\n", ret);
+	return simple_read_from_buffer(user_buf, count, ppos, buf, ret);
+}
+
+static const struct file_operations auto_conv_val_fops = {
+	.open		= simple_open,
+	.read		= auto_conv_val_read,
+};
+
 static int auto_conv_period_get(void *data, u64 *val)
 {
 	struct palmas_gpadc *adc = (struct palmas_gpadc *)data;
@@ -828,6 +892,8 @@ static void palmas_gpadc_debugfs_init(struct palmas_gpadc *adc)
 				    adc->dentry, adc, &auto_conv_data_fops);
 		debugfs_create_file("auto_conv0_shutdown", 0644,
 				    adc->dentry, adc, &auto_conv_data_fops);
+		debugfs_create_file("auto_conv0_val", 0444,
+				    adc->dentry, adc, &auto_conv_val_fops);
 	}
 
 	if (adc->auto_conv1_enable) {
@@ -839,6 +905,8 @@ static void palmas_gpadc_debugfs_init(struct palmas_gpadc *adc)
 				    adc->dentry, adc, &auto_conv_data_fops);
 		debugfs_create_file("auto_conv1_shutdown", 0644,
 				    adc->dentry, adc, &auto_conv_data_fops);
+		debugfs_create_file("auto_conv1_val", 0444,
+				    adc->dentry, adc, &auto_conv_val_fops);
 	}
 }
 #else
@@ -1131,6 +1199,14 @@ static int palmas_gpadc_probe(struct platform_device *pdev)
 		adc->ch3_current = PALMAS_ADC_CH3_CURRENT_SRC_400;
 	else
 		adc->ch3_current = PALMAS_ADC_CH3_CURRENT_SRC_800;
+
+	/* Init current source for CH0 and CH3 */
+	ret = palmas_gpadc_set_current_src(adc, adc->ch0_current,
+					   adc->ch3_current);
+	if (ret < 0) {
+		dev_err(adc->dev, "Failed to set current src: %d\n", ret);
+		goto out_irq_auto1_free;
+	}
 
 	/* If ch3_dual_current is true, it will measure ch3 input signal with
 	 * ch3_current and the next current of ch3_current. */
