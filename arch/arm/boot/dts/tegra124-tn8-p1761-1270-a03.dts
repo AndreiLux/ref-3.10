@@ -47,5 +47,26 @@
 		linux,initrd-end = <0x851bc400>;
 	};
 
+	i2c@7000d000 {
+		tps65913 {
+			pmic {
+				regulators {
+					ldo3 {
+						regulator-min-microvolt = <3300000>;
+						regulator-max-microvolt = <3300000>;
+						regulator-enable-ramp-delay = <3000>;
+						ti,disable-pull-down;
+					};
+				};
+			};
+		};
+	};
+
+	regulators {
+		regulator@8  {
+			vin-supply = <&ldo3_reg>;
+			regulator-disable-parent-after-enable;
+		};
+	};
 };
 

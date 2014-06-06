@@ -130,6 +130,10 @@ void machine_halt(void)
 
 void machine_power_off(void)
 {
+	/* Disable interrupts and preemption */
+	local_irq_disable();
+	preempt_disable();
+
 	machine_shutdown();
 	if (pm_power_off)
 		pm_power_off();

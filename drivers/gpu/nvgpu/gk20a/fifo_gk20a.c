@@ -831,9 +831,6 @@ static void gk20a_fifo_handle_mmu_fault_thread(struct work_struct *work)
 	struct gk20a *g = f->g;
 	int i;
 
-	/* Reinitialise FECS and GR */
-	gk20a_init_pmu_setup_hw2(g);
-
 	/* It is safe to enable ELPG again. */
 	gk20a_pmu_enable_elpg(g);
 
@@ -1148,6 +1145,51 @@ static void gk20a_fifo_trigger_mmu_fault(struct gk20a *g,
 	gk20a_writel(g, fifo_intr_en_0_r(), 0x7FFFFFFF);
 }
 
+u32 gk20a_fifo_engines_on_ch(struct gk20a *g, u32 hw_chid)
+{
+	int i;
+	u32 engines = 0;
+
+	for (i = 0; i < g->fifo.max_engines; i++) {
+		u32 status = gk20a_readl(g, fifo_engine_status_r(i));
+		u32 ctx_status =
+			fifo_engine_status_ctx_status_v(status);
+		bool type_ch = fifo_pbdma_status_id_type_v(status) ==
+			fifo_pbdma_status_id_type_chid_v();
+		bool busy = fifo_engine_status_engine_v(status) ==
+			fifo_engine_status_engine_busy_v();
+		u32 id = (ctx_status ==
+			fifo_engine_status_ctx_status_ctxsw_load_v()) ?
+			fifo_engine_status_next_id_v(status) :
+			fifo_engine_status_id_v(status);
+
+		if (type_ch && busy && id == hw_chid)
+			engines |= BIT(i);
+	}
+
+	return engines;
+}
+
+void gk20a_fifo_recover_ch(struct gk20a *g, u32 hw_chid, bool verbose)
+{
+	u32 engines = gk20a_fifo_engines_on_ch(g, hw_chid);
+	if (engines)
+		gk20a_fifo_recover(g, engines, verbose);
+	else {
+		int i;
+		struct channel_gk20a *ch =
+			g->fifo.channel + hw_chid;
+
+		gk20a_disable_channel_no_update(ch);
+		for (i = 0; i < g->fifo.max_runlists; i++)
+			gk20a_fifo_update_runlist(g, i,
+					hw_chid, false, false);
+
+		if (gk20a_fifo_set_ctx_mmu_error(g, ch))
+			gk20a_debug_dump(g->dev);
+	}
+}
+
 void gk20a_fifo_recover(struct gk20a *g, u32 __engine_ids,
 		bool verbose)
 {
@@ -1329,7 +1371,6 @@ static u32 fifo_error_isr(struct gk20a *g, u32 fifo_intr)
 	return handled;
 }
 
-
 static u32 gk20a_fifo_handle_pbdma_intr(struct device *dev,
 					struct gk20a *g,
 					struct fifo_gk20a *f,
@@ -1338,35 +1379,27 @@ static u32 gk20a_fifo_handle_pbdma_intr(struct device *dev,
 	u32 pbdma_intr_0 = gk20a_readl(g, pbdma_intr_0_r(pbdma_id));
 	u32 pbdma_intr_1 = gk20a_readl(g, pbdma_intr_1_r(pbdma_id));
 	u32 handled = 0;
-	bool reset_device = false;
-	bool reset_channel = false;
+	bool reset = false;
 
 	gk20a_dbg_fn("");
 
 	gk20a_dbg(gpu_dbg_intr, "pbdma id intr pending %d %08x %08x", pbdma_id,
 			pbdma_intr_0, pbdma_intr_1);
 	if (pbdma_intr_0) {
-		if (f->intr.pbdma.device_fatal_0 & pbdma_intr_0) {
-			dev_err(dev, "unrecoverable device error: "
-				"pbdma_intr_0(%d):0x%08x", pbdma_id, pbdma_intr_0);
-			reset_device = true;
-			/* TODO: disable pbdma intrs */
-			handled |= f->intr.pbdma.device_fatal_0 & pbdma_intr_0;
-		}
-		if (f->intr.pbdma.channel_fatal_0 & pbdma_intr_0) {
-			dev_warn(dev, "channel error: "
-				 "pbdma_intr_0(%d):0x%08x", pbdma_id, pbdma_intr_0);
-			reset_channel = true;
-			/* TODO: clear pbdma channel errors */
-			handled |= f->intr.pbdma.channel_fatal_0 & pbdma_intr_0;
-		}
-		if (f->intr.pbdma.restartable_0 & pbdma_intr_0) {
-			dev_warn(dev, "sw method: %08x %08x",
-				gk20a_readl(g, pbdma_method0_r(0)),
-				gk20a_readl(g, pbdma_method0_r(0)+4));
-			gk20a_writel(g, pbdma_method0_r(0), 0);
-			gk20a_writel(g, pbdma_method0_r(0)+4, 0);
-			handled |= f->intr.pbdma.restartable_0 & pbdma_intr_0;
+		if ((f->intr.pbdma.device_fatal_0 |
+		     f->intr.pbdma.channel_fatal_0 |
+		     f->intr.pbdma.restartable_0) & pbdma_intr_0) {
+			gk20a_err(dev_from_gk20a(g),
+				"pbdma_intr_0(%d):0x%08x PBH: %08x SHADOW: %08x M0: %08x",
+				pbdma_id, pbdma_intr_0,
+				gk20a_readl(g, pbdma_pb_header_r(pbdma_id)),
+				gk20a_readl(g, pbdma_hdr_shadow_r(pbdma_id)),
+				gk20a_readl(g, pbdma_method0_r(pbdma_id)));
+			reset = true;
+			handled |= ((f->intr.pbdma.device_fatal_0 |
+				     f->intr.pbdma.channel_fatal_0 |
+				     f->intr.pbdma.restartable_0) &
+				    pbdma_intr_0);
 		}
 
 		gk20a_writel(g, pbdma_intr_0_r(pbdma_id), pbdma_intr_0);
@@ -1377,11 +1410,19 @@ static u32 gk20a_fifo_handle_pbdma_intr(struct device *dev,
 	if (pbdma_intr_1) {
 		dev_err(dev, "channel hce error: pbdma_intr_1(%d): 0x%08x",
 			pbdma_id, pbdma_intr_1);
-		reset_channel = true;
+		reset = true;
 		gk20a_writel(g, pbdma_intr_1_r(pbdma_id), pbdma_intr_1);
 	}
 
-
+	if (reset) {
+		/* Remove the channel from runlist */
+		u32 status = gk20a_readl(g, fifo_pbdma_status_r(pbdma_id));
+		u32 hw_chid = fifo_pbdma_status_id_v(status);
+		if (fifo_pbdma_status_id_type_v(status)
+				== fifo_pbdma_status_id_type_chid_v()) {
+			gk20a_fifo_recover_ch(g, hw_chid, true);
+		}
+	}
 
 	return handled;
 }
@@ -1506,34 +1547,14 @@ int gk20a_fifo_preempt_channel(struct gk20a *g, u32 hw_chid)
 			!tegra_platform_is_silicon());
 
 	if (ret) {
-		int i;
-		u32 engines = 0;
-		struct fifo_gk20a *f = &g->fifo;
-		struct channel_gk20a *ch = &f->channel[hw_chid];
+		struct channel_gk20a *ch = &g->fifo.channel[hw_chid];
 
 		gk20a_err(dev_from_gk20a(g), "preempt channel %d timeout\n",
 			    hw_chid);
 
-		/* forcefully reset all busy engines using this channel */
-		for (i = 0; i < g->fifo.max_engines; i++) {
-			u32 status = gk20a_readl(g, fifo_engine_status_r(i));
-			u32 ctx_status =
-				fifo_engine_status_ctx_status_v(status);
-			bool type_ch = fifo_pbdma_status_id_type_v(status) ==
-				fifo_pbdma_status_id_type_chid_v();
-			bool busy = fifo_engine_status_engine_v(status) ==
-				fifo_engine_status_engine_busy_v();
-			u32 id = (ctx_status ==
-				fifo_engine_status_ctx_status_ctxsw_load_v()) ?
-				fifo_engine_status_next_id_v(status) :
-				fifo_engine_status_id_v(status);
-
-			if (type_ch && busy && id == hw_chid)
-				engines |= BIT(i);
-		}
 		gk20a_set_error_notifier(ch,
 				NVHOST_CHANNEL_FIFO_ERROR_IDLE_TIMEOUT);
-		gk20a_fifo_recover(g, engines, true);
+		gk20a_fifo_recover_ch(g, hw_chid, true);
 	}
 
 	/* re-enable elpg or release pmu mutex */

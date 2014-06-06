@@ -687,6 +687,11 @@ static void ardbeg_usb_init(void)
 			tegra_ehci1_utmi_pdata.id_extcon_dev_name =
 							 "palmas-extcon";
 		}
+
+		/* Enable Y-Cable support */
+		if (bi.board_id == BOARD_P1761)
+			tegra_ehci1_utmi_pdata.u_data.host.support_y_cable =
+							true;
 	}
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
@@ -740,7 +745,6 @@ static void ardbeg_xusb_init(void)
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM374 ||
-			board_info.board_id == BOARD_PM375 ||
 			board_info.board_id == BOARD_PM370 ||
 			board_info.board_id == BOARD_PM363) {
 		if (board_info.board_id == BOARD_PM374 ||
@@ -758,6 +762,13 @@ static void ardbeg_xusb_init(void)
 				TEGRA_XUSB_SS_P1 | TEGRA_XUSB_USB2_P2);
 
 		/* FIXME Add for UTMIP2 when have odmdata assigend */
+	} else if (board_info.board_id == BOARD_PM375) {
+		if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB))
+			xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P0);
+		if (!(usb_port_owner_info & UTMI2_PORT_OWNER_XUSB))
+			xusb_pdata.portmap &= ~(TEGRA_XUSB_USB2_P2 |
+					TEGRA_XUSB_USB2_P1 | TEGRA_XUSB_SS_P0);
+		xusb_pdata.portmap &= ~(TEGRA_XUSB_SS_P1);
 	} else {
 		/* Ardbeg */
 		if (board_info.board_id == BOARD_E1781) {
