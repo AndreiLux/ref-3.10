@@ -3297,7 +3297,7 @@ static int tegra_dc_suspend(struct platform_device *ndev, pm_message_t state)
 	int ret = 0;
 
 	trace_display_suspend(dc);
-	dev_info(&ndev->dev, "suspend\n");
+	dev_dbg(&ndev->dev, "suspend\n");
 
 	tegra_dc_ext_disable(dc->ext);
 
@@ -3354,7 +3354,7 @@ static int tegra_dc_resume(struct platform_device *ndev)
 	struct tegra_dc *dc = platform_get_drvdata(ndev);
 
 	trace_display_resume(dc);
-	dev_info(&ndev->dev, "resume\n");
+	dev_dbg(&ndev->dev, "resume\n");
 
 	mutex_lock(&dc->lock);
 	dc->suspended = false;
