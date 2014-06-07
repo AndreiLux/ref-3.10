@@ -60,7 +60,7 @@
 
 int cy8c_sar1_reset(void)
 {
-	pr_info("[SAR] %s Enter\n", __func__);
+	pr_debug("[SAR] %s Enter\n", __func__);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 1);
 	mdelay(5);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 0);
@@ -69,7 +69,7 @@ int cy8c_sar1_reset(void)
 
 int cy8c_sar_reset(void)
 {
-	pr_info("[SAR] %s Enter\n", __func__);
+	pr_debug("[SAR] %s Enter\n", __func__);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 1);
 	mdelay(5);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 0);
