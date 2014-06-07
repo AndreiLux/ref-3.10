@@ -146,7 +146,7 @@ static ssize_t sleep_store(struct device *dev, struct device_attribute *attr, co
 		return count;
 	cancel_delayed_work_sync(&sar->sleep_work);
 
-	pr_info("[SAR] %s: current mode = %d, new mode = %d\n", __func__, sar->sleep_mode, data);
+	pr_debug("[SAR] %s: current mode = %d, new mode = %d\n", __func__, sar->sleep_mode, data);
 	spin_lock_irqsave(&sar->spin_lock, sar->spinlock_flags);
 	sar->radio_state = data;
 	if (sar->radio_state == KEEP_AWAKE)
@@ -211,7 +211,7 @@ err_fw_get_fail:
 
 static int sar_update_mode(int radio, int pm)
 {
-	pr_info("[SAR] %s: radio=%d, pm=%d\n", __func__, radio, pm);
+	pr_debug("[SAR] %s: radio=%d, pm=%d\n", __func__, radio, pm);
 	if (radio == KEEP_AWAKE && pm == KEEP_AWAKE)
 		return KEEP_AWAKE;
 	else
@@ -222,11 +222,11 @@ static void sar_sleep_func(struct work_struct *work)
 {
 	struct cy8c_sar_data *sar = container_of(work, struct cy8c_sar_data, sleep_work.work);
 	int mode, err;
-	pr_info("[SAR] %s\n", __func__);
+	pr_debug("[SAR] %s\n", __func__);
 
 	mode = sar_update_mode(sar->radio_state, sar->pm_state);
 	if (mode == sar->sleep_mode) {
-		pr_info("[SAR] sleep mode no change.");
+		pr_debug("[SAR] sleep mode no change.\n");
 		return;
 	}
 	switch (mode) {
@@ -250,7 +250,7 @@ static void sar_sleep_func(struct work_struct *work)
 		return;
 	}
 	sar->sleep_mode = mode;
-	pr_info("[SAR] Set SAR sleep mode = %d\n", sar->sleep_mode);
+	pr_debug("[SAR] Set SAR sleep mode = %d\n", sar->sleep_mode);
 }
 
 static int sysfs_create(struct cy8c_sar_data *sar)
@@ -467,7 +467,7 @@ static int cy8c_sar_suspend(struct device *dev)
 {
 	struct cy8c_sar_data *sar = dev_get_drvdata(dev);
 
-	pr_info("[SAR] %s\n", __func__);
+	pr_debug("[SAR] %s\n", __func__);
 	cancel_delayed_work_sync(&sar->sleep_work);
 	sar->pm_state = DEEP_SLEEP;
 	queue_delayed_work(sar->cy8c_wq, &sar->sleep_work, 0);
@@ -479,7 +479,7 @@ static int cy8c_sar_resume(struct device *dev)
 {
 	struct cy8c_sar_data *sar = dev_get_drvdata(dev);
 
-	pr_info("[SAR] %s\n", __func__);
+	pr_debug("[SAR] %s\n", __func__);
 
 	cancel_delayed_work_sync(&sar->sleep_work);
 	sar->pm_state = KEEP_AWAKE;
