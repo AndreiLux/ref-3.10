@@ -527,25 +527,42 @@ done:
 	return IRQ_HANDLED;
 }
 
-static void mdm_ipc3(struct work_struct *ws)
+static irqreturn_t qcom_usb_modem_ipc3_thread(int irq, void *data)
 {
-	struct qcom_usb_modem *modem = container_of(ws, struct qcom_usb_modem,
-						     mdm_ipc3_work);
+	struct qcom_usb_modem *modem = (struct qcom_usb_modem *)data;
 	int value;
+	unsigned int elapsed_ms;
+	static unsigned long last_ipc3_high_jiffies = 0;
 
 	mutex_lock(&modem->lock);
 
 	value = gpio_get_value(modem->pdata->mdm2ap_ipc3_gpio);
 
+	if (modem->mdm_status & MDM_STATUS_BOOT_DONE) {
+		if (value == 1) {
+			last_ipc3_high_jiffies = get_jiffies_64();
+		} else 	if (last_ipc3_high_jiffies != 0) {
+			elapsed_ms = jiffies_to_msecs(get_jiffies_64() - last_ipc3_high_jiffies);
+
+			if ( elapsed_ms>=450 && elapsed_ms<=550 ) {
+				pr_info("need trigger mdm reset by Kickstart : normal reset \n");
+				modem->boot_type = CHARM_NORMAL_BOOT;
+				complete(&modem->mdm_needs_reload);
+			} else if ( elapsed_ms>=50 && elapsed_ms<=150 ) {
+				pr_info("need trigger mdm reset by Kickstart : CNV reset \n");
+				modem->boot_type = CHARM_CNV_RESET;
+				complete(&modem->mdm_needs_reload);
+			} else {
+				pr_info("IPC3 interrupt is noise. interval is %d ms. \n", elapsed_ms);
+			}
+			last_ipc3_high_jiffies = 0;
+		}
+	} else {
+		last_ipc3_high_jiffies = 0;
+	}
+
 	if (modem->mdm_debug_on && modem->ops && modem->ops->dump_mdm_gpio_cb)
 		modem->ops->dump_mdm_gpio_cb(modem, modem->pdata->mdm2ap_ipc3_gpio, "qcom_usb_modem_ipc3_thread");
-
-	if (!modem->is_mdm_support_mdm2ap_ipc3) {
-		if (modem->mdm2ap_ipc3_status == 1 && value == 0) {
-			modem->is_mdm_support_mdm2ap_ipc3 = true;
-			pr_info("is_mdm_support_mdm2ap_ipc3 = true\n");
-		}
-	}
 
 	modem->mdm2ap_ipc3_status = value;
 
@@ -555,14 +572,6 @@ static void mdm_ipc3(struct work_struct *ws)
 #endif
 
 	mutex_unlock(&modem->lock);
-
-	return;
-}
-static irqreturn_t qcom_usb_modem_ipc3_thread(int irq, void *data)
-{
-	struct qcom_usb_modem *modem = (struct qcom_usb_modem *)data;
-
-	queue_work(modem->wq, &modem->mdm_ipc3_work);
 
 	return IRQ_HANDLED;
 }
@@ -1394,7 +1403,12 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		ret = wait_for_completion_interruptible(&modem->mdm_needs_reload);
 		mutex_lock(&modem->lock);
 
-		pr_info("%s: modem boot_type=%s\n", __func__, (modem->boot_type?"Ram_dump":"Normal_boot"));
+		if ( modem->boot_type==CHARM_NORMAL_BOOT ) {
+		        pr_info("%s: modem boot_type=Normal_boot\n", __func__);
+		} else {
+		        pr_info("%s: modem boot_type=%s\n", __func__, ((modem->boot_type==CHARM_RAM_DUMPS)?"Ram_dump":"CNV_Reset"));
+		}
+
 		if (!ret)
 			put_user(modem->boot_type, (unsigned long __user *)arg);
 		INIT_COMPLETION(modem->mdm_needs_reload);
@@ -1782,7 +1796,6 @@ static int mdm_init(struct qcom_usb_modem *modem, struct platform_device *pdev)
 	INIT_WORK(&modem->mdm_hsic_ready_work, mdm_hsic_ready);
 	INIT_WORK(&modem->mdm_status_work, mdm_status_changed);
 	INIT_WORK(&modem->mdm_errfatal_work, mdm_fatal);
-	INIT_WORK(&modem->mdm_ipc3_work, mdm_ipc3);
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	INIT_WORK(&modem->ftrace_enable_log_work, ftrace_enable_basic_log_fn);
 #endif
@@ -2010,7 +2023,6 @@ error:
 	cancel_work_sync(&modem->mdm_hsic_ready_work);
 	cancel_work_sync(&modem->mdm_status_work);
 	cancel_work_sync(&modem->mdm_errfatal_work);
-	cancel_work_sync(&modem->mdm_ipc3_work);
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	cancel_work_sync(&modem->ftrace_enable_log_work);
 #endif
@@ -2144,7 +2156,6 @@ static int __exit qcom_usb_modem_remove(struct platform_device *pdev)
 	cancel_work_sync(&modem->mdm_hsic_ready_work);
 	cancel_work_sync(&modem->mdm_status_work);
 	cancel_work_sync(&modem->mdm_errfatal_work);
-	cancel_work_sync(&modem->mdm_ipc3_work);
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	cancel_work_sync(&modem->ftrace_enable_log_work);
 #endif

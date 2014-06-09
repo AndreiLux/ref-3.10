@@ -43,6 +43,7 @@ struct mdm_msr_info {
 enum charm_boot_type {
 	CHARM_NORMAL_BOOT = 0,
 	CHARM_RAM_DUMPS,
+	CHARM_CNV_RESET,
 };
 
 struct qcom_usb_modem {
@@ -110,7 +111,6 @@ struct qcom_usb_modem {
 	struct work_struct mdm_hsic_ready_work; /* modem hsic ready work */
 	struct work_struct mdm_status_work; /* modem status changed work */
 	struct work_struct mdm_errfatal_work; /* modem errfatal work */
-	struct work_struct mdm_ipc3_work; /* modem ipc3 work */
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	struct work_struct ftrace_enable_log_work; /* ftrace enable log work */
 #endif
@@ -125,7 +125,6 @@ struct qcom_usb_modem {
 	unsigned int mdm9k_status;
 	struct proc_dir_entry *mdm9k_pde;
 	unsigned short int mdm_status;
-	bool is_mdm_support_mdm2ap_ipc3;
 	unsigned int mdm2ap_ipc3_status;
 	atomic_t final_efs_wait;
 	struct completion usb_host_reset_done;
