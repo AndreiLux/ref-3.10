@@ -1189,7 +1189,7 @@ static void nct1008_power_control(struct nct1008_data *data, bool is_enable)
 			(data->chip == NCT72) ? "72" : "1008",
 			ret);
 	else
-		dev_info(&data->client->dev, "success in %s rail vdd_nct%s\n",
+		dev_dbg(&data->client->dev, "success in %s rail vdd_nct%s\n",
 			(is_enable) ? "enabling" : "disabling",
 			(data->chip == NCT72) ? "72" : "1008");
 	data->nct_disabled = !is_enable;

@@ -70,7 +70,7 @@ int tegra_gpio_to_wake(int gpio)
 
 	for (i = 0; i < tegra_wake_table_len; i++) {
 		if (tegra_gpio_wake_table[i] == gpio) {
-			pr_info("gpio wake%d for gpio=%d\n", i, gpio);
+			pr_debug("gpio wake%d for gpio=%d\n", i, gpio);
 			last_gpio = i;
 			return i;
 		}
@@ -87,7 +87,7 @@ void tegra_irq_to_wake(int irq, int *wak_list, int *wak_size)
 	*wak_size = 0;
 	for (i = 0; i < tegra_wake_table_len; i++) {
 		if (tegra_irq_wake_table[i] == irq) {
-			pr_info("Wake%d for irq=%d\n", i, irq);
+			pr_debug("Wake%d for irq=%d\n", i, irq);
 			wak_list[*wak_size] = i;
 			*wak_size = *wak_size + 1;
 		}
@@ -108,7 +108,7 @@ void tegra_irq_to_wake(int irq, int *wak_list, int *wak_size)
 
 	bank_irq = tegra_gpio_get_bank_int_nr(tegra_gpio_wake_table[last_gpio]);
 	if (bank_irq == irq) {
-		pr_info("gpio bank wake found: wake%d for irq=%d\n", i, irq);
+		pr_debug("gpio bank wake found: wake%d for irq=%d\n", i, irq);
 		wak_list[*wak_size] = last_gpio;
 		*wak_size = 1;
 	}

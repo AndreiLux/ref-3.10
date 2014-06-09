@@ -844,7 +844,7 @@ static int nvhost_suspend(struct device *dev)
 	clock_off_host(pdev);
 	nvhost_module_disable_clk(dev);
 
-	dev_info(dev, "suspended\n");
+	dev_dbg(dev, "suspended\n");
 
 	return 0;
 }
@@ -858,7 +858,7 @@ static int nvhost_resume(struct device *dev)
 	power_on_host(pdev);
 	nvhost_module_disable_clk(dev);
 
-	dev_info(dev, "resuming\n");
+	dev_dbg(dev, "resuming\n");
 
 	return 0;
 }
