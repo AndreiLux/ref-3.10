@@ -27,6 +27,13 @@
 #define	TEGRA_DAIFMT_RIGHT_J		3
 #define	TEGRA_DAIFMT_LEFT_J		4
 
+struct gpio_config {
+	const char *name;
+	int id;
+	int dir_in;
+	int pg;
+};
+
 struct i2s_config {
 	int audio_port_id;
 	int is_i2s_master;
