@@ -472,6 +472,10 @@ static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
 		.is_i2s_master = 1,
 		.i2s_mode = TEGRA_DAIFMT_DSP_A,
 	},
+	.codec_mclk = {
+		.name = "extperiph1_clk",
+		.id   = TEGRA_GPIO_PW4,
+	}
 };
 
 static struct tegra_spi_device_controller_data dev_cdata_rt5677 = {
@@ -498,7 +502,11 @@ static void flounder_audio_init(void)
 
 	spi_register_board_info(&rt5677_flounder_spi_board[0],
 	ARRAY_SIZE(rt5677_flounder_spi_board));
+	/* To prevent power leakage */
+	gpio_request(TEGRA_GPIO_PN1, "I2S0_SDATA_IN");
+	tegra_pinctrl_pg_set_pullupdown(TEGRA_PINGROUP_DAP1_DIN, TEGRA_PUPD_PULL_DOWN);
 
+	/* To config SFIO */
 	for (i = 0; i < ARRAY_SIZE(audio_sfio_pins); i++)
 		if (tegra_is_gpio(audio_sfio_pins[i].id)) {
 			gpio_request(audio_sfio_pins[i].id, audio_sfio_pins[i].name);

@@ -80,6 +80,7 @@ struct tegra_asoc_platform_data {
 	int gpio_codec1;
 	int gpio_codec2;
 	int gpio_codec3;
+	struct gpio_config codec_mclk;
 	bool micbias_gpio_absent;
 	bool use_codec_jd_irq;
 	unsigned int debounce_time_hp;
