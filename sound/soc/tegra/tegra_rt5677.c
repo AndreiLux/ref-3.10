@@ -40,9 +40,8 @@
 #include "../codecs/rt5506.h"
 #include "../codecs/tfa9895.h"
 
-
+#include "tegra_rt5677.h"
 #include "tegra_pcm.h"
-#include "tegra_asoc_utils.h"
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
 
@@ -67,25 +66,6 @@ const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 };
 
 struct regulator *rt5677_reg;
-
-struct tegra_rt5677 {
-	struct tegra_asoc_utils_data util_data;
-	struct tegra_asoc_platform_data *pdata;
-	struct snd_soc_codec *codec;
-	int gpio_requested;
-	enum snd_soc_bias_level bias_level;
-	int clock_enabled;
-	struct regulator *codec_reg;
-	struct regulator *digital_reg;
-	struct regulator *analog_reg;
-	struct regulator *spk_reg;
-	struct regulator *mic_reg;
-	struct regulator *dmic_reg;
-	struct snd_soc_card *pcard;
-	struct delayed_work power_work;
-	struct work_struct hotword_work;
-	struct mutex rt5677_lock;
-};
 
 void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable);
 void set_rt5677_power_locked(struct tegra_rt5677 *machine, bool enable);

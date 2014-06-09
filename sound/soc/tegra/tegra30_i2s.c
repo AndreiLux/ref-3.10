@@ -41,10 +41,14 @@
 #include <sound/soc.h>
 #include <asm/delay.h>
 #include <mach/tegra_asoc_pdata.h>
+#include <mach/gpio-tegra.h>
+#include <linux/gpio.h>
 
 #include "tegra30_ahub.h"
 #include "tegra30_dam.h"
 #include "tegra30_i2s.h"
+#include "tegra_rt5677.h"
+#include <mach/pinmux.h>
 
 #define DRV_NAME "tegra30-i2s"
 
@@ -87,13 +91,97 @@ static int tegra30_i2s_runtime_resume(struct device *dev)
 	return 0;
 }
 
+void tegra30_i2s_request_gpio(struct snd_pcm_substream *substream, int i2s_id)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int i, ret;
+	mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+	pr_debug("%s: pdata->gpio_free_count[%d]=%d\n", __func__, i2s_id, pdata->gpio_free_count[i2s_id]);
+	if (i2s_id > 1) {
+		/* Only HIFI_CODEC and SPEAKER GPIO need re-config */
+		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+		return;
+	} else {
+		pdata->gpio_free_count[i2s_id]--;
+		if (pdata->gpio_free_count[i2s_id] > 0) {
+			pr_debug("pdata->gpio_free_count[%d]=%d > 0, needless to request again\n",
+			            i2s_id, pdata->gpio_free_count[i2s_id]);
+			mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+			return;
+		}
+		pr_debug("pdata->gpio_free_count[%d]=%d\n", i2s_id, pdata->gpio_free_count[i2s_id]);
+	}
+	for (i = 0; i<4; i++) {
+		ret = gpio_request(pdata->i2s_set[i2s_id*4 + i].id,
+						pdata->i2s_set[i2s_id*4 + i].name);
+		if (!pdata->i2s_set[i2s_id*4 + i].dir_in) {
+			gpio_direction_output(pdata->i2s_set[i2s_id*4 + i].id, 0);
+		} else {
+			tegra_pinctrl_pg_set_pullupdown(pdata->i2s_set[i2s_id*4 + i].pg, TEGRA_PUPD_PULL_DOWN);
+			gpio_direction_input(pdata->i2s_set[i2s_id*4 + i].id);
+		}
+		pr_debug("%s: gpio_request for gpio[%d] %s, return %d\n",
+				__func__, pdata->i2s_set[i2s_id*4 + i].id, pdata->i2s_set[i2s_id*4 + i].name, ret);
+	}
+	mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+}
+
+void tegra30_i2s_free_gpio(struct snd_pcm_substream *substream, int i2s_id)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int i;
+	if (i2s_id > 1) {
+		/* Only HIFI_CODEC and SPEAKER GPIO need re-config */
+		return;
+	}
+
+	if (pdata->first_time_free[i2s_id]) {
+		mutex_init(&pdata->i2s_gpio_lock[i2s_id]);
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+		pdata->gpio_free_count[i2s_id]++;
+		pr_debug("pdata->gpio_free_count[%d]=%d, 1st time enter, don't need free gpio\n",
+                       i2s_id, pdata->gpio_free_count[i2s_id]);
+		pdata->first_time_free[i2s_id] = false;
+		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+		return;
+	}
+
+	mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+	pdata->gpio_free_count[i2s_id]++;
+	if (pdata->gpio_free_count[i2s_id] > 1) {
+		pr_debug("pdata->gpio_free_count[%d]=%d > 1, needless to free again\n",
+		            i2s_id, pdata->gpio_free_count[i2s_id]);
+		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+		return;
+	}
+
+	for (i = 0; i<4; i++) {
+		gpio_free(pdata->i2s_set[i2s_id*4 + i].id);
+		pr_debug("%s: gpio_free for gpio[%d] %s,\n",
+				__func__, pdata->i2s_set[i2s_id*4 + i].id, pdata->i2s_set[i2s_id*4 + i].name);
+	}
+	mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+}
+
 int tegra30_i2s_startup(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
-	int ret;
+	int ret, i2s_id;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		/* To prevent power leakage */
+		if (i2s->playback_ref_count == 0) {
+			i2s_id = i2s->playback_i2s_cif - TEGRA30_AHUB_RXCIF_I2S0_RX0 - 1;
+			pr_debug("%s-playback:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_free_gpio(substream, i2s_id);
+		}
 		/* increment the playback ref count */
 		i2s->playback_ref_count++;
 
@@ -108,6 +196,13 @@ int tegra30_i2s_startup(struct snd_pcm_substream *substream,
 				i2s->playback_i2s_cif,
 				i2s->playback_fifo_cif);
 	} else {
+		/* To prevent power leakage */
+		if (i2s->capture_ref_count == 0) {
+			i2s_id = i2s->capture_i2s_cif - TEGRA30_AHUB_TXCIF_I2S0_TX0 - 1;
+			pr_debug("%s-capture:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_free_gpio(substream, i2s_id);
+		}
+		/* increment the capture ref count */
 		i2s->capture_ref_count++;
 		ret = tegra30_ahub_allocate_rx_fifo(&i2s->capture_fifo_cif,
 					&i2s->capture_dma_data.addr,
@@ -125,11 +220,17 @@ void tegra30_i2s_shutdown(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
+	int i2s_id;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		if (i2s->playback_ref_count == 1)
+		if (i2s->playback_ref_count == 1) {
 			tegra30_ahub_unset_rx_cif_source(
 				i2s->playback_i2s_cif);
+			/* To prevent power leakage */
+			i2s_id = i2s->playback_i2s_cif - TEGRA30_AHUB_RXCIF_I2S0_RX0 - 1;
+			pr_debug("%s-playback:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_request_gpio(substream, i2s_id);
+		}
 
 		/* free the apbif dma channel*/
 		tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
@@ -138,9 +239,13 @@ void tegra30_i2s_shutdown(struct snd_pcm_substream *substream,
 		/* decrement the playback ref count */
 		i2s->playback_ref_count--;
 	} else {
-		if (i2s->capture_ref_count == 1)
+		if (i2s->capture_ref_count == 1) {
 			tegra30_ahub_unset_rx_cif_source(i2s->capture_fifo_cif);
-
+			/* To prevent power leakage */
+			i2s_id = i2s->capture_i2s_cif - TEGRA30_AHUB_TXCIF_I2S0_TX0 - 1;
+			pr_debug("%s-capture:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_request_gpio(substream, i2s_id);
+		}
 		/* free the apbif dma channel*/
 		tegra30_ahub_free_rx_fifo(i2s->capture_fifo_cif);
 
@@ -2177,7 +2282,6 @@ static int tegra30_i2s_platform_probe(struct platform_device *pdev)
 	struct resource *mem, *memregion;
 	void __iomem *regs;
 	int ret;
-
 	i2s = devm_kzalloc(&pdev->dev, sizeof(struct tegra30_i2s), GFP_KERNEL);
 	if (!i2s) {
 		dev_err(&pdev->dev, "Can't allocate tegra30_i2s\n");

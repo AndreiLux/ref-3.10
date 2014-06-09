@@ -473,6 +473,45 @@ static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
 		.is_i2s_master = 1,
 		.i2s_mode = TEGRA_DAIFMT_DSP_A,
 	},
+	/* Add for MI2S driver to get GPIO */
+	.i2s_set[HIFI_CODEC*4 + 0] = {
+		.name = "I2S1_LRCK",
+		.id   = TEGRA_GPIO_PA2,
+	},
+	.i2s_set[HIFI_CODEC*4 + 1] = {
+		.name = "I2S1_SCLK",
+		.id   = TEGRA_GPIO_PA3,
+	},
+	.i2s_set[HIFI_CODEC*4 + 2] = {
+		.name = "I2S1_SDATA_IN",
+		.id   = TEGRA_GPIO_PA4,
+		.dir_in = 1,
+		.pg = TEGRA_PINGROUP_DAP2_DIN,
+	},
+	.i2s_set[HIFI_CODEC*4 + 3] = {
+		.name = "I2S1_SDATA_OUT",
+		.id   = TEGRA_GPIO_PA5,
+	},
+	.i2s_set[SPEAKER*4 + 0] = {
+		.name = "I2S2_LRCK",
+		.id   = TEGRA_GPIO_PP0,
+	},
+	.i2s_set[SPEAKER*4 + 1] = {
+		.name = "I2S2_SDATA_IN",
+		.id   = TEGRA_GPIO_PP1,
+		.dir_in = 1,
+		.pg   = TEGRA_PINGROUP_DAP3_DIN,
+	},
+	.i2s_set[SPEAKER*4 + 2] = {
+		.name = "I2S2_SDATA_OUT",
+		.id   = TEGRA_GPIO_PP2,
+	},
+	.i2s_set[SPEAKER*4 + 3] = {
+		.name = "I2S2_SCLK",
+		.id   = TEGRA_GPIO_PP3,
+	},
+	.first_time_free[HIFI_CODEC] = 1,
+	.first_time_free[SPEAKER] = 1,
 	.codec_mclk = {
 		.name = "extperiph1_clk",
 		.id   = TEGRA_GPIO_PW4,

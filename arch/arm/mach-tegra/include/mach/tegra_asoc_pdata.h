@@ -87,5 +87,9 @@ struct tegra_asoc_platform_data {
 	bool edp_support;
 	unsigned int edp_states[TEGRA_SPK_EDP_NUM_STATES];
 	struct i2s_config i2s_param[NUM_I2S_DEVICES];
+	struct gpio_config i2s_set[NUM_I2S_DEVICES*4];
+	struct mutex i2s_gpio_lock[NUM_I2S_DEVICES];
+	int gpio_free_count[NUM_I2S_DEVICES];
+	bool first_time_free[NUM_I2S_DEVICES];
 	struct ahub_bbc1_config *ahub_bbc1_param;
 };
