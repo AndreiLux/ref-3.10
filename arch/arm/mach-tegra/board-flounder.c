@@ -99,6 +99,7 @@
 #include "../../../sound/soc/codecs/rt5506.h"
 #include "../../../sound/soc/codecs/rt5677.h"
 #include "../../../sound/soc/codecs/tfa9895.h"
+#include "../../../sound/soc/codecs/rt5677-spi.h"
 
 #if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
 #include <linux/platform_data/slimport_device.h>
@@ -483,6 +484,61 @@ static struct tegra_spi_device_controller_data dev_cdata_rt5677 = {
 	.tx_clk_tap_delay = 16,
 };
 
+static struct gpio_config flounder_spi_pdata_rt5677[] = {
+	[0] = {
+		.name = "SPI5_MOSI",
+		.id = TEGRA_GPIO_PY0,
+	},
+	[1] = {
+		.name = "SPI5_MISO",
+		.id = TEGRA_GPIO_PY1,
+		.dir_in = 1,
+		.pg = TEGRA_PINGROUP_ULPI_DIR,
+	},
+	[2] = {
+		.name = "SPI5_SCLK",
+		.id = TEGRA_GPIO_PY2,
+	},
+	[3] = {
+		.name = "SPI5_CS#",
+		.id = TEGRA_GPIO_PY3,
+	},
+};
+
+void flounder_rt5677_spi_suspend(bool on)
+{
+	int i, ret;
+	if (on) {
+		pr_info("%s: suspend", __func__);
+		for (i = 0; i < ARRAY_SIZE(flounder_spi_pdata_rt5677); i++) {
+			ret = gpio_request(flounder_spi_pdata_rt5677[i].id,
+								flounder_spi_pdata_rt5677[i].name);
+			if (ret < 0) {
+				pr_err("%s: gpio_request failed for gpio[%d] %s, return %d\n",
+				__func__, flounder_spi_pdata_rt5677[i].id, flounder_spi_pdata_rt5677[i].name, ret);
+				continue;
+			}
+			if (!flounder_spi_pdata_rt5677[i].dir_in) {
+				gpio_direction_output(flounder_spi_pdata_rt5677[i].id, 0);
+			} else {
+				tegra_pinctrl_pg_set_pullupdown(flounder_spi_pdata_rt5677[i].pg,
+												TEGRA_PUPD_PULL_DOWN);
+				gpio_direction_input(flounder_spi_pdata_rt5677[i].id);
+			}
+
+		}
+	} else {
+		pr_info("%s: resume", __func__);
+		for (i = 0; i < ARRAY_SIZE(flounder_spi_pdata_rt5677); i++) {
+			gpio_free(flounder_spi_pdata_rt5677[i].id);
+		}
+	}
+}
+
+static struct rt5677_spi_platform_data rt5677_spi_pdata = {
+	.spi_suspend = flounder_rt5677_spi_suspend
+};
+
 struct spi_board_info rt5677_flounder_spi_board[1] = {
 	{
 	 .modalias = "rt5677_spidev",
@@ -491,6 +547,7 @@ struct spi_board_info rt5677_flounder_spi_board[1] = {
 	 .max_speed_hz = 12 * 1000 * 1000,
 	 .mode = SPI_MODE_0,
 	 .controller_data = &dev_cdata_rt5677,
+	 .platform_data = &rt5677_spi_pdata,
 	 },
 };
 
@@ -828,7 +885,6 @@ static struct tegra_spi_platform_data flounder_spi4_pdata = {
 	.spi_max_frequency	= 25000000,
 	.clock_always_on	= false,
 };
-
 static void __init flounder_spi_init(void)
 {
 	tegra11_spi_device1.dev.platform_data = &flounder_spi1_pdata;
