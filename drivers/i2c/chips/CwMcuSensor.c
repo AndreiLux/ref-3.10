@@ -2433,7 +2433,7 @@ static void cwmcu_check_sensor_update(void)
 	}
 }
 
-/* cwmcu_powermode_switch() must be held by caller */
+
 static void report_iio(int id_check, struct cwmcu_data *sensor,
 		       struct iio_poll_func *pf)
 {
@@ -2452,6 +2452,8 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 		u8 data[6] = {0};
 		u16 data_event[REPORT_EVENT_COMMON_LEN] = {0};
 		u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
+
+		cwmcu_powermode_switch(1);
 
 		/* read 6byte */
 		if (CWMCU_i2c_read(sensor,
@@ -2498,6 +2500,8 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 		} else
 			D("3 values: CWMCU_i2c_read error!!!\n");
 
+		cwmcu_powermode_switch(0);
+
 		break;
 	}
 	case CW_MAGNETIC_UNCALIBRATED:
@@ -2506,6 +2510,8 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 		u8 data[12] = {0};
 		u16 data_event[REPORT_EVENT_COMMON_LEN] = {0};
 		u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
+
+		cwmcu_powermode_switch(1);
 
 		/* read 12byte */
 		if (CWMCU_i2c_read(sensor,
@@ -2532,6 +2538,9 @@ static void report_iio(int id_check, struct cwmcu_data *sensor,
 					      pf->timestamp);
 		} else
 			D("6 values: CWMCU_i2c_read error!!!\n");
+
+		cwmcu_powermode_switch(0);
+
 		break;
 	}
 	default:
@@ -3025,14 +3034,10 @@ static irqreturn_t cw_trigger_handler(int irq, void *p)
 {
 	struct iio_poll_func *pf = p;
 
-	cwmcu_powermode_switch(1);
-
 	mutex_lock(&mcu_data->lock);
 	cwmcu_read(mcu_data, pf);
 	iio_trigger_notify_done(mcu_data->indio_dev->trig);
 	mutex_unlock(&mcu_data->lock);
-
-	cwmcu_powermode_switch(1);
 
 	return IRQ_HANDLED;
 }
