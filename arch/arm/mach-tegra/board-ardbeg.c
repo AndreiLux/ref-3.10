@@ -636,8 +636,16 @@ static void ardbeg_usb_init(void)
 			board_info.board_id == BOARD_PM363) {
 		/* Laguna */
 		/* Host cable is detected through AMS PMU Interrupt */
-		tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
-		tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
+		if (board_info.major_revision >= 'A' &&
+			board_info.major_revision <= 'D' &&
+			board_info.board_id == BOARD_PM375) {
+			tegra_udc_pdata.id_det_type = TEGRA_USB_VIRTUAL_ID;
+			tegra_ehci1_utmi_pdata.id_det_type =
+						TEGRA_USB_VIRTUAL_ID;
+		} else {
+			tegra_udc_pdata.id_det_type = TEGRA_USB_PMU_ID;
+			tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_PMU_ID;
+		}
 		tegra_ehci1_utmi_pdata.id_extcon_dev_name = "as3722-extcon";
 	} else {
 		/* Ardbeg and TN8 */
@@ -1191,6 +1199,7 @@ static void __init ardbeg_sysedp_init(void)
 	case BOARD_E1922:
 	case BOARD_E1784:
 	case BOARD_P1761:
+	case BOARD_P1765:
 		tn8_new_sysedp_init();
 		break;
 	case BOARD_PM358:
@@ -1218,6 +1227,7 @@ static void __init ardbeg_sysedp_dynamic_capping_init(void)
 	case BOARD_E1922:
 	case BOARD_E1784:
 	case BOARD_P1761:
+	case BOARD_P1765:
 		tn8_sysedp_dynamic_capping_init();
 		break;
 	case BOARD_PM358:
@@ -1367,6 +1377,7 @@ static void __init tegra_ardbeg_late_init(void)
 	if (board_info.board_id == BOARD_PM359 ||
 			board_info.board_id == BOARD_PM358 ||
 			board_info.board_id == BOARD_PM370 ||
+			board_info.board_id == BOARD_PM375 ||
 			board_info.board_id == BOARD_PM363)
 		laguna_regulator_init();
 	else if (board_info.board_id == BOARD_PM374)
