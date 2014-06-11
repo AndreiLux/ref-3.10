@@ -1091,6 +1091,9 @@ void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable)
 			else
 				pr_info("tegra_rt5677_reg v_ldo2 is disabled\n");
 		}
+
+		/* set hp_en low to prevent power leakage */
+		set_rt5506_hp_en(0);
 		status = false;
 	}
 
