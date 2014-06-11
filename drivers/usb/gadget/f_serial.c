@@ -236,6 +236,16 @@ static void gser_disable(struct usb_function *f)
 	gserial_disconnect(&gser->port);
 }
 
+static void gser_mdm_disable(struct usb_function *f)
+{
+	struct f_gser	*gser = func_to_gser(f);
+	struct usb_composite_dev *cdev = f->config->cdev;
+
+	DBG(cdev, "generic ttyGS%d deactivated\n", gser->port_num);
+	ghsic_ctrl_disconnect(&gser->port, gser->port_num);
+	ghsic_data_disconnect(&gser->port, gser->port_num);
+}
+
 /*-------------------------------------------------------------------------*/
 
 /* serial function driver setup/binding */
@@ -486,7 +496,7 @@ struct usb_function *modem_alloc(struct usb_function_instance *fi)
 	gser->port.func.bind = gser_bind;
 	gser->port.func.unbind = gser_unbind;
 	gser->port.func.set_alt = gser_mdm_set_alt;
-	gser->port.func.disable = gser_disable;
+	gser->port.func.disable = gser_mdm_disable;
 	gser->port.func.free_func = gser_free;
 	gser_interface_desc.iInterface = modem_string_defs[0].id;
 
