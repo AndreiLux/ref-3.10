@@ -33,6 +33,8 @@
 
 extern volatile ulong secondary_holding_pen_release;
 
+extern bool tegra_suspend_in_progress(void);
+
 /*
  * platform-specific code to shutdown a CPU
  *
@@ -40,11 +42,31 @@ extern volatile ulong secondary_holding_pen_release;
  */
 void tegra_cpu_die(unsigned int cpu)
 {
-	/* Enter C7 for hotplug */
-	tegra_tear_down_cpu();
+	static unsigned long pmstate;
 
-	while (secondary_holding_pen_release != cpu)
-		cpu_relax();
+	if (tegra_suspend_in_progress()) {
+		BUG_ON(cpu == 0);
+
+		/* CPU1 must be in C7 for LP0/LP1 */
+		tegra_tear_down_cpu();
+
+		/* Synchronize with CPU0 */
+		while (secondary_holding_pen_release != cpu)
+			cpu_relax();
+	}
+	else {
+		do {
+			asm volatile (
+			"	msr actlr_el1, %0\n"
+			"	wfi\n"
+			: : "r" (T132_CORE_C6));
+		} while (secondary_holding_pen_release != cpu);
+	}
+
+#ifdef CONFIG_TEGRA_NVDUMPER
+	/* set debug footprint */
+	dbg_set_cpu_hotplug_on(cpu, 0xDEAD);
+#endif
 }
 
 noinline void setup_mca(void *info)
