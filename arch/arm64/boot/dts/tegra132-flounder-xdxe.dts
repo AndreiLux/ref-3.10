@@ -4,7 +4,7 @@
 
 / {
 	compatible = "google,flounder64", "nvidia,tegra132";
-	hw-revision = "xd";
+	hw-revision = "xd,xe";
 
 	i2c@7000c000 {
 		htc_mcu@72 {
