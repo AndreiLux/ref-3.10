@@ -197,7 +197,7 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	/*NFC end */
 
 	/*USB start*/
-	GPIO_PINMUX(SDMMC3_CMD, NORMAL, NORMAL, INPUT, DISABLE),
+	GPIO_PINMUX(SDMMC3_CMD, PULL_DOWN, NORMAL, INPUT, DISABLE),
 	/*USB end*/
 
 	/*key start*/
