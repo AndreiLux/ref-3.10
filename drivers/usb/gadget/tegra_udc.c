@@ -1370,8 +1370,7 @@ static void tegra_udc_set_extcon_state(struct tegra_udc *udc)
 	cables = udc->edev->supported_cable;
 	/* set previous cable type to false, then set current type to true */
 	if (udc->prev_connect_type != CONNECT_TYPE_NONE)
-		extcon_set_cable_state(edev, cables[udc->prev_connect_type],
-					false);
+		extcon_set_state(edev, 0x0);
 	if (udc->connect_type != udc->connect_type_lp0
 			&& udc->connect_type != CONNECT_TYPE_NONE)
 		extcon_set_cable_state(edev, cables[udc->connect_type], true);
@@ -2865,7 +2864,7 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 
 		DBG("%s: QC2 voltage = %d, current = %d\n",
 			__func__,
-			udc->qc2_voltage_limit,
+			udc->qc2_voltage,
 			udc->qc2_current_limit);
 
 		if (pdata->u_data.dev.dcp_current_limit_ma)
