@@ -205,6 +205,7 @@ struct cwmcu_data {
 #if defined(CONFIG_FB)
 	struct notifier_block fb_notif;
 #endif
+	s16 light_last_data[REPORT_EVENT_COMMON_LEN];
 };
 
 static struct cwmcu_data *mcu_data;
@@ -1855,6 +1856,12 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	I("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
 		__func__, sensors_id, enabled, mcu_data->enabled_list);
 
+	if ((sensors_id == CW_LIGHT) && (!!enabled)) {
+		I("%s: Initial lightsensor = %d\n",
+		  __func__, mcu_data->light_last_data[0]);
+		cw_send_event(CW_LIGHT, &mcu_data->light_last_data[0], 0);
+	}
+
 	return count;
 }
 
@@ -2707,6 +2714,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 				light_adc = (data[2] << 8) | data[1];
 
 				data_buff[0] = data[0];
+				mcu_data->light_last_data[0] = data_buff[0];
 				cw_send_event(CW_LIGHT, data_buff, 0);
 				I(
 				  "light interrupt occur value is %u, adc "
