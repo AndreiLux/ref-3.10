@@ -1479,7 +1479,7 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 	case POWER_OFF_CHARM:
 		pr_info("%s: (HTC_POWER_OFF_CHARM)Powering off mdm\n", __func__);
 		if (modem->ops && modem->ops->stop2) {
-			modem->mdm_status = MDM_STATUS_POWER_DOWN;
+			modem->mdm_status &= (MDM_STATUS_POWER_DOWN | MDM_STATUS_RESET);
 			if(modem->mdm_debug_on)
 				pr_info("%s: modem->mdm_status=0x%x\n", __func__, modem->mdm_status);
 			modem->ops->stop2(modem);
