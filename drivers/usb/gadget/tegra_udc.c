@@ -430,13 +430,8 @@ static void dr_controller_run(struct tegra_udc *udc)
 	temp = udc_readl(udc, USB_CMD_REG_OFFSET);
 	temp &= ~USB_CMD_ITC;
 	temp |= USB_CMD_ITC_1_MICRO_FRM;
-	if (can_pullup(udc)) {
+	if (can_pullup(udc))
 		temp |= USB_CMD_RUN_STOP;
-		if (udc->charging_supported &&
-			(udc->connect_type == CONNECT_TYPE_SDP) && !USB_drive_strength_test)
-			schedule_delayed_work(&udc->non_std_charger_work,
-				msecs_to_jiffies(NON_STD_CHARGER_DET_TIME_MS));
-	}
 	else
 		temp &= ~USB_CMD_RUN_STOP;
 	udc_writel(udc, temp, USB_CMD_REG_OFFSET);
@@ -1412,6 +1407,9 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 			dev_info(dev, "connected to SDP\n");
 		max_ua = min(udc->current_limit * 1000,
 				USB_CHARGING_SDP_CURRENT_LIMIT_UA);
+		if (udc->charging_supported && !USB_drive_strength_test)
+			schedule_delayed_work(&udc->non_std_charger_work,
+				msecs_to_jiffies(NON_STD_CHARGER_DET_TIME_MS));
 		tegra_udc_notify_event(udc, USB_EVENT_VBUS);
 		break;
 	case CONNECT_TYPE_DCP:
