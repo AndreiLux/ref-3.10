@@ -103,14 +103,12 @@
 					TEGRA_GPIO(BB, 5)
 					TEGRA_GPIO(EE, 1)>;
 			gpio-output-high = <TEGRA_GPIO(B, 4)
-					TEGRA_GPIO(I, 2)
 /*key*/
 					TEGRA_GPIO(I, 3)
 /*key*/
 					TEGRA_GPIO(S, 5)
 					TEGRA_GPIO(R, 0)
 					TEGRA_GPIO(H, 5)
-					TEGRA_GPIO(R, 3)
 					TEGRA_GPIO(Q, 2)
 /*headset*/
 					TEGRA_GPIO(Q, 4)
@@ -583,8 +581,6 @@
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			enable-active-high;
-			gpio = <&gpio 109 0>; /* TEGRA_PN5 */
-			gpio-open-drain;
 			vin-supply = <&palmas_smps10_out2>;
 
 			consumers {
@@ -697,7 +693,6 @@
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			enable-active-high;
-			gpio = <&gpio 134 0>; /* TEGRA_PQ6 */
 
 			consumers {
 				c1 {
