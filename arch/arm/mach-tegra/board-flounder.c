@@ -101,10 +101,6 @@
 #include "../../../sound/soc/codecs/tfa9895.h"
 #include "../../../sound/soc/codecs/rt5677-spi.h"
 
-#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
-#include <linux/platform_data/slimport_device.h>
-#endif
-
 static unsigned int flounder_hw_rev;
 static unsigned int flounder_eng_id;
 
@@ -1299,121 +1295,6 @@ static struct tegra_io_dpd pexclk2_io = {
 	.io_dpd_bit		= 6,
 };
 
-#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
-#define GPIO_SLIMPORT_CBL_DET    TEGRA_GPIO_PBB6
-#define GPIO_SLIMPORT_PWR_DWN    TEGRA_GPIO_PI2
-#define ANX_AVDD33_EN            TEGRA_GPIO_PR3
-#define GPIO_SLIMPORT_RESET_N    TEGRA_GPIO_PEE4
-#define GPIO_SLIMPORT_INT_N      TEGRA_GPIO_PBB7
-
-static int slimport_dvdd_onoff(bool on)
-{
-	static bool power_state = 0;
-	static struct regulator *slimport_dvdd_reg = NULL;
-	int rc = 0;
-
-	pr_info("slimport_dvdd_onoff, on = %d", on);
-
-	if (power_state == on) {
-		pr_info("slimport dvdd is already %s \n", power_state ? "on" : "off");
-		goto out;
-	}
-
-	if (!slimport_dvdd_reg) {
-		slimport_dvdd_reg= regulator_get(NULL, "slimport_dvdd");
-		if (IS_ERR(slimport_dvdd_reg)) {
-			rc = PTR_ERR(slimport_dvdd_reg);
-			pr_err("%s: regulator_get anx7808_dvdd_reg failed. rc=%d\n",
-					__func__, rc);
-			slimport_dvdd_reg = NULL;
-			goto out;
-		}
-		rc = regulator_set_voltage(slimport_dvdd_reg, 1100000, 1100000);
-		if (rc ) {
-			pr_err("%s: regulator_set_voltage slimport_dvdd_reg failed\
-			rc=%d\n", __func__, rc);
-			goto out;
-		}
-	}
-
-	if (on) {
-		rc = regulator_set_optimum_mode(slimport_dvdd_reg, 100000);
-		if (rc < 0) {
-			pr_err("%s : set optimum mode 100000, slimport_dvdd_reg failed \
-					(%d)\n", __func__, rc);
-			goto out;
-		}
-		rc = regulator_enable(slimport_dvdd_reg);
-		if (rc) {
-			pr_err("%s : slimport_dvdd_reg enable failed (%d)\n",
-					__func__, rc);
-			goto out;
-		}
-	}
-	else {
-		rc = regulator_disable(slimport_dvdd_reg);
-		if (rc) {
-			pr_err("%s : anx7808_dvdd_reg disable failed (%d)\n",
-				__func__, rc);
-			goto out;
-		}
-		rc = regulator_set_optimum_mode(slimport_dvdd_reg, 100);
-		if (rc < 0) {
-			pr_err("%s : set optimum mode 100, slimport_dvdd_reg failed \
-				(%d)\n", __func__, rc);
-			goto out;
-		}
-	}
-	power_state = on;
-
-out:
-	return rc;
-
-}
-
-static int slimport_avdd_onoff(bool on)
-{
-	static bool init_done = 0;
-	int rc = 0;
-
-	if (!init_done) {
-		rc = gpio_request_one(ANX_AVDD33_EN,
-					GPIOF_OUT_INIT_HIGH, "anx_avdd33_en");
-		if (rc) {
-			pr_err("request anx_avdd33_en failed, rc=%d\n", rc);
-			return rc;
-		}
-		init_done = 1;
-	}
-
-	gpio_set_value(ANX_AVDD33_EN, on);
-	return 0;
-}
-
-static struct slimport_platform_data slimport_pdata = {
-	.gpio_p_dwn = GPIO_SLIMPORT_PWR_DWN,
-	.gpio_reset = GPIO_SLIMPORT_RESET_N,
-	.gpio_int = GPIO_SLIMPORT_INT_N,
-	.gpio_cbl_det = GPIO_SLIMPORT_CBL_DET,
-	.dvdd_power = slimport_dvdd_onoff,
-	.avdd_power = slimport_avdd_onoff,
-};
-
-static struct i2c_board_info i2c_slimport_info[] = {
-	{
-		I2C_BOARD_INFO("slimport", 0x72 >> 1),
-		.platform_data = &slimport_pdata,
-	},
-};
-
-static void __init flounder_slimport_init(void)
-{
-	i2c_register_board_info(0,
-		i2c_slimport_info,
-		ARRAY_SIZE(i2c_slimport_info));
-}
-#endif
-
 static void __init tegra_flounder_late_init(void)
 {
 	platform_device_register(&tegra124_pinctrl_device);
@@ -1428,7 +1309,6 @@ static void __init tegra_flounder_late_init(void)
 	flounder_i2c_init();
 	flounder_spi_init();
 	flounder_audio_init();
-	flounder_slimport_init();
 	platform_add_devices(flounder_devices, ARRAY_SIZE(flounder_devices));
 	tegra_io_dpd_init();
 	flounder_sdhci_init();
