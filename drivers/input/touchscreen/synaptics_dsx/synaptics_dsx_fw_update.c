@@ -633,11 +633,12 @@ static int fwu_wait_for_idle(int timeout_ms)
 		usleep_range(MIN_SLEEP_TIME_US, MAX_SLEEP_TIME_US);
 
 		count++;
-		if (!gpio_get_value(bdata->irq_gpio))
+		if (!gpio_get_value(bdata->irq_gpio)) {
 			fwu_read_f34_flash_status();
 
-		if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
-			return 0;
+			if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
+				return 0;
+		}
 	} while (count < timeout_count);
 
 	fwu_read_f34_flash_status();
@@ -646,8 +647,8 @@ static int fwu_wait_for_idle(int timeout_ms)
 		return 0;
 
 	dev_err(rmi4_data->pdev->dev.parent,
-			"%s: Timed out waiting for idle status\n",
-			__func__);
+			"%s: Timed out waiting for idle status, command: %X, status: %X\n",
+			__func__, fwu->command, fwu->flash_status);
 
 	return -ETIMEDOUT;
 }
@@ -1175,22 +1176,34 @@ static int fwu_do_reflash(void)
 
 	if (fwu->firmware_data) {
 		retval = fwu_write_firmware();
-		if (retval < 0)
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to write firmware\n",
+					__func__);
 			return retval;
+		}
 		pr_notice("%s: Firmware programmed\n", __func__);
 	}
 
 	if (fwu->config_data) {
 		retval = fwu_write_configuration();
-		if (retval < 0)
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to write configuration\n",
+					__func__);
 			return retval;
+		}
 		pr_notice("%s: Configuration programmed\n", __func__);
 	}
 
 	if (fwu->disp_config_data) {
 		retval = fwu_write_disp_configuration();
-		if (retval < 0)
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to write disp configuration\n",
+					__func__);
 			return retval;
+		}
 		pr_notice("%s: Display configuration programmed\n", __func__);
 	}
 
@@ -1489,6 +1502,8 @@ static int fwu_start_reflash(void)
 
 	pr_notice("%s: Start of reflash process\n", __func__);
 
+	rmi4_data->irq_enable(rmi4_data, false);
+
 	if (fwu->ext_data_source) {
 		fw_image = fwu->ext_data_source;
 	} else {
@@ -1604,6 +1619,7 @@ static int fwu_start_reflash(void)
 	}
 
 exit:
+	rmi4_data->irq_enable(rmi4_data, true);
 	rmi4_data->reset_device(rmi4_data);
 
 	if (fw_entry)
