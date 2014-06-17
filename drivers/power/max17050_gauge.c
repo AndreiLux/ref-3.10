@@ -273,6 +273,64 @@ static int max17050_get_current(struct i2c_client *client, int *batt_curr)
 	return ret;
 }
 
+static int max17050_get_avgcurrent(struct i2c_client *client, int *batt_avg_curr)
+{
+	int avg_curr;
+	int ret = 0;
+
+	/*
+	 * TODO: Assumes current sense resistor is 10mohms.
+	 */
+
+	avg_curr = max17050_read_word(client, MAX17050_FG_AvgCurrent);
+	if (avg_curr < 0) {
+		dev_err(&client->dev, "%s: err %d\n", __func__, avg_curr);
+		ret = -EINVAL;
+	} else
+		*batt_avg_curr = ((int16_t) avg_curr) * 5000 / 32;
+
+	return ret;
+}
+
+static int max17050_get_charge(struct i2c_client *client, int *batt_charge)
+{
+	int charge;
+	int ret = 0;
+
+	/*
+	 * TODO: Assumes current sense resistor is 10mohms.
+	 */
+
+	charge = max17050_read_word(client, MAX17050_FG_AvCap);
+	if (charge < 0) {
+		dev_err(&client->dev, "%s: err %d\n", __func__, charge);
+		ret = -EINVAL;
+	} else
+		*batt_charge = ((int16_t) charge) / 10;
+
+	return ret;
+}
+
+static int max17050_get_charge_ext(struct i2c_client *client, int64_t *batt_charge_ext)
+{
+	int charge_msb, charge_lsb;
+	int ret = 0;
+
+	/*
+	 * TODO: Assumes current sense resistor is 10mohms.
+	 */
+
+	charge_msb = max17050_read_word(client, MAX17050_FG_QH);
+	charge_lsb = max17050_read_word(client, MAX17050_FG_QL);
+	if (charge_msb < 0 || charge_lsb < 0) {
+		dev_err(&client->dev, "%s: err %d\n", __func__, charge_msb);
+		ret = -EINVAL;
+	} else
+		*batt_charge_ext = ((int16_t) charge_msb <<16 | (int16_t) charge_lsb);
+
+	return ret;
+}
+
 static int __max17050_get_temperature(struct i2c_client *client, int *batt_temp)
 {
 	int temp;
@@ -385,6 +443,51 @@ static int htc_batt_max17050_get_current(int *batt_curr)
 	return ret;
 }
 
+static int htc_batt_max17050_get_avgcurrent(int *batt_avgcurr)
+{
+	int ret = 0;
+
+	if (!batt_avgcurr)
+		return -EINVAL;
+
+	if (!max17050_data)
+		return -ENODEV;
+
+	ret = max17050_get_avgcurrent(max17050_data->client, batt_avgcurr);
+
+	return ret;
+}
+
+static int htc_batt_max17050_get_charge(int *batt_charge)
+{
+	int ret = 0;
+
+	if (!batt_charge)
+		return -EINVAL;
+
+	if (!max17050_data)
+		return -ENODEV;
+
+	ret = max17050_get_charge(max17050_data->client, batt_charge);
+
+	return ret;
+}
+
+static int htc_batt_max17050_get_charge_ext(int64_t *batt_charge_ext)
+{
+	int ret = 0;
+
+	if (!batt_charge_ext)
+		return -EINVAL;
+
+	if (!max17050_data)
+		return -ENODEV;
+
+	ret = max17050_get_charge_ext(max17050_data->client, batt_charge_ext);
+
+	return ret;
+}
+
 static int htc_batt_max17050_get_temperature(int *batt_temp)
 {
 	int ret = 0;
@@ -433,9 +536,12 @@ static int htc_batt_max17050_get_ocv(int *batt_ocv)
 struct htc_battery_max17050_ops htc_batt_max17050_ops = {
 	.get_vcell = htc_batt_max17050_get_vcell,
 	.get_battery_current = htc_batt_max17050_get_current,
+	.get_battery_avgcurrent = htc_batt_max17050_get_avgcurrent,
 	.get_temperature = htc_batt_max17050_get_temperature,
 	.get_soc = htc_batt_max17050_get_soc,
 	.get_ocv = htc_batt_max17050_get_ocv,
+	.get_battery_charge = htc_batt_max17050_get_charge,
+	.get_battery_charge_ext = htc_batt_max17050_get_charge_ext,
 };
 
 static int max17050_probe(struct i2c_client *client,

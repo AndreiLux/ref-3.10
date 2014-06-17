@@ -79,6 +79,12 @@ struct htc_battery_max17050_data {
 	int batt_temp;
 	/* battery current */
 	int batt_curr;
+	/* battery average current */
+	int batt_avgcurr;
+	/* battery accumulated charge */
+	int batt_charge;
+	/* battery accumulated charge 64-bit extented*/
+	int64_t batt_charge_ext;
 
 	int lasttime_soc;
 	int lasttime_status;
@@ -124,6 +130,51 @@ static int htc_battery_max17050_get_current(
 	}
 
 	ret = data->ops->get_battery_current(batt_curr);
+
+	return ret;
+}
+
+static int htc_battery_max17050_get_avgcurrent(
+		struct htc_battery_max17050_data *data, int *batt_avgcurr)
+{
+	int ret = 0;
+
+	if (!data->ops || !data->ops->get_battery_avgcurrent) {
+		dev_warn(data->dev, "can not read battery average current");
+		return -ENODEV;
+	}
+
+	ret = data->ops->get_battery_avgcurrent(batt_avgcurr);
+
+	return ret;
+}
+
+static int htc_battery_max17050_get_accumulated_charge(
+		struct htc_battery_max17050_data *data, int *batt_charge)
+{
+	int ret = 0;
+
+	if (!data->ops || !data->ops->get_battery_charge) {
+		dev_warn(data->dev, "can not read battery charge");
+		return -ENODEV;
+	}
+
+	ret = data->ops->get_battery_charge(batt_charge);
+
+	return ret;
+}
+
+static int htc_battery_max17050_get_accumulated_charge_ext(
+		struct htc_battery_max17050_data *data, int64_t *batt_charge_ext)
+{
+	int ret = 0;
+
+	if (!data->ops || !data->ops->get_battery_charge_ext) {
+		dev_warn(data->dev, "can not read battery charge 64-bit extended");
+		return -ENODEV;
+	}
+
+	ret = data->ops->get_battery_charge_ext(batt_charge_ext);
 
 	return ret;
 }
@@ -315,7 +366,8 @@ static void htc_battery_max17050_work(struct work_struct *work)
 	bool do_battery_update = false;
 	bool soc_updated;
 	int ret;
-	int vcell, batt_curr, batt_temp, soc_raw;
+	int vcell, batt_curr, batt_temp, soc_raw, batt_avgcurr, batt_charge;
+	int64_t batt_charge_ext;
 
 	data = container_of(work, struct htc_battery_max17050_data, work.work);
 
@@ -342,6 +394,21 @@ static void htc_battery_max17050_work(struct work_struct *work)
 		data->batt_curr = batt_curr;
 	else
 		batt_curr = data->batt_curr;
+	ret = htc_battery_max17050_get_avgcurrent(data, &batt_avgcurr);
+	if (!ret)
+		data->batt_avgcurr = batt_avgcurr;
+	else
+		batt_avgcurr = data->batt_avgcurr;
+	ret = htc_battery_max17050_get_accumulated_charge(data, &batt_charge);
+	if (!ret)
+		data->batt_charge = batt_charge;
+	else
+		batt_charge = data->batt_charge;
+	ret = htc_battery_max17050_get_accumulated_charge_ext(data, &batt_charge_ext);
+	if (!ret)
+		data->batt_charge_ext = batt_charge_ext;
+	else
+		batt_charge_ext = data->batt_charge_ext;
 	ret = htc_battery_max17050_get_temperature(data, &batt_temp);
 	if (!ret)
 		data->batt_temp = batt_temp;
@@ -366,13 +433,17 @@ static void htc_battery_max17050_work(struct work_struct *work)
 		data->total_time_since_last_soc_update_ms = 0;
 
 	dev_dbg(data->dev,
-		"level=%d,level_raw=%d,vol=%d,temp=%d,current=%d,status=%d\n",
+		"level=%d,level_raw=%d,vol=%d,temp=%d,current=%d,status=%d"\
+		",avg_current=%d,charge=%d,charge_ext=%lld\n",
 		data->soc,
 		data->soc_raw,
 		data->vcell,
 		data->batt_temp,
 		data->batt_curr,
-		data->status);
+		data->status,
+		data->batt_avgcurr,
+		data->batt_charge,
+		data->batt_charge_ext);
 
 	if (data->soc != data->lasttime_soc) {
 		data->lasttime_soc = data->soc;
@@ -426,6 +497,9 @@ static enum power_supply_property htc_battery_max17050_prop[] = {
 	POWER_SUPPLY_PROP_TEMP,
 	POWER_SUPPLY_PROP_PRESENT,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_CURRENT_AVG,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
 };
 
 static int htc_battery_max17050_get_property(struct power_supply *psy,
@@ -449,6 +523,9 @@ static int htc_battery_max17050_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		val->intval = data->batt_curr;
 		break;
+	case POWER_SUPPLY_PROP_CURRENT_AVG:
+		val->intval = data->batt_avgcurr;
+		break;
 	case POWER_SUPPLY_PROP_CAPACITY:
 		val->intval = data->soc;
 		break;
@@ -467,6 +544,12 @@ static int htc_battery_max17050_get_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_PRESENT:
 		val->intval = data->present;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		val->intval = data->batt_charge;
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT:
+		val->intval = data->batt_charge_ext;
 		break;
 	default:
 		return -EINVAL;
@@ -532,7 +615,10 @@ int htc_battery_max17050_gauge_register(struct htc_battery_max17050_ops *ops)
 		return -ENODEV;
 
 	if (!ops || !ops->get_vcell || !ops->get_battery_current ||
-		!ops->get_temperature || !ops->get_soc) {
+			!ops->get_temperature || !ops->get_soc ||
+			!ops->get_battery_avgcurrent ||
+			!ops->get_battery_charge ||
+			!ops->get_battery_charge_ext) {
 		dev_err(htc_battery_data->dev,
 				"Gauge operation register fail!");
 		return -EINVAL;
@@ -617,6 +703,9 @@ static int htc_battery_max17050_probe(struct platform_device *pdev)
 	data->vcell		= MAX17050_VCELL_INIT_VALUE;
 	data->batt_temp		= MAX17050_TEMPERATURE_INIT_VALUE;
 	data->batt_curr		= MAX17050_CURRENT_INIT_VALUE;
+	data->batt_avgcurr	= MAX17050_CURRENT_INIT_VALUE;
+	data->batt_charge	= 0;
+	data->batt_charge_ext	= 0;
 	data->soc_raw		= MAX17050_SOC_INIT_VALUE;
 	data->status		= POWER_SUPPLY_STATUS_DISCHARGING;
 	data->lasttime_status	= POWER_SUPPLY_STATUS_DISCHARGING;

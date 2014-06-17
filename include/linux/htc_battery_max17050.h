@@ -14,12 +14,17 @@
 #ifndef __HTC_BATTERY_MAX17050_H_
 #define __HTC_BATTERY_MAX17050_H_
 
+#include<linux/types.h>
+
 struct htc_battery_max17050_ops {
 	int (*get_vcell)(int *batt_volt);
 	int (*get_battery_current)(int *batt_curr);
+	int (*get_battery_avgcurrent)(int *batt_curr_avg);
 	int (*get_temperature)(int *batt_temp);
 	int (*get_soc)(int *batt_soc);
 	int (*get_ocv)(int *batt_ocv);
+	int (*get_battery_charge)(int *batt_charge);
+	int (*get_battery_charge_ext)(int64_t *batt_charge_ext);
 };
 
 int htc_battery_max17050_gauge_register(struct htc_battery_max17050_ops *ops);
