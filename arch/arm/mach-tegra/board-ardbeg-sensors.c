@@ -1391,6 +1391,29 @@ static struct therm_est_subdevice tn8ffd_skin_devs[] = {
 	},
 };
 
+static struct therm_est_subdevice tn8ffd_t132_skin_devs[] = {
+	{
+		.dev_data = "Tdiode",
+		.coeffs = {
+			-1, -1, 0, -1,
+			0, -1, -1, 0,
+			0, 0, 1, 1,
+			1, 1, 2, 2,
+			2, 2, 3, 5
+		},
+	},
+	{
+		.dev_data = "Tboard",
+		.coeffs = {
+			-3, -1, 1, 1,
+			2, 1, 2, 1,
+			-1, -1, 0, 2,
+			3, 4, 5, 3,
+			3, 4, 6, 36
+		},
+	},
+};
+
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
 	.max_err_gain = 1000,
@@ -1517,7 +1540,12 @@ static int __init ardbeg_skin_init(void)
 
 	tegra_get_board_info(&board_info);
 
-	if (board_info.board_id == BOARD_P1761 ||
+	if (board_info.board_id == BOARD_P1761 &&
+			board_info.fab == BOARD_FAB_D) {
+		skin_data.ndevs = ARRAY_SIZE(tn8ffd_t132_skin_devs);
+		skin_data.devs = tn8ffd_t132_skin_devs;
+		skin_data.toffset = 708;
+	} else if (board_info.board_id == BOARD_P1761 ||
 			board_info.board_id == BOARD_E1784 ||
 			board_info.board_id == BOARD_E1971 ||
 			board_info.board_id == BOARD_E1991 ||
