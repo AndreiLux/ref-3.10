@@ -29,7 +29,7 @@ struct imx219_reg {
 	u8 val;
 };
 
-static struct imx219_reg mode_3280x2464[] = {
+static struct imx219_reg mode_3280x2460[] = {
 	/* software reset */
 	{0x0103, 0x01},
 	/* global settings */
@@ -62,7 +62,7 @@ static struct imx219_reg mode_3280x2464[] = {
 	{0x016C, 0x0C},
 	{0x016D, 0xD0},
 	{0x016E, 0x09},
-	{0x016F, 0xA0},
+	{0x016F, 0x9C},
 	{0x0170, 0x01},
 	{0x0171, 0x01},
 	{0x0174, 0x00},
@@ -88,7 +88,7 @@ static struct imx219_reg mode_3280x2464[] = {
 	{0x026C, 0x0C},
 	{0x026D, 0xD0},
 	{0x026E, 0x09},
-	{0x026F, 0xA0},
+	{0x026F, 0x9C},
 	{0x0270, 0x01},
 	{0x0271, 0x01},
 	{0x0274, 0x00},
@@ -405,14 +405,14 @@ static struct imx219_reg mode_1280x720[] = {
 	{IMX219_TABLE_END, 0x00}
 };
 enum {
-	IMX219_MODE_3280x2464,
+	IMX219_MODE_3280x2460,
 	IMX219_MODE_1920x1080,
 	IMX219_MODE_1640x1232,
 	IMX219_MODE_1280x720,
 };
 
 static struct imx219_reg *mode_table[] = {
-	[IMX219_MODE_3280x2464] = mode_3280x2464,
+	[IMX219_MODE_3280x2460] = mode_3280x2460,
 	[IMX219_MODE_1920x1080] = mode_1920x1080,
 	[IMX219_MODE_1640x1232] = mode_1640x1232,
 	[IMX219_MODE_1280x720]  = mode_1280x720,
