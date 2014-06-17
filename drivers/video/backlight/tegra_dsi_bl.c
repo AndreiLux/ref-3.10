@@ -149,17 +149,5 @@ static struct platform_driver tegra_dsi_bl_driver = {
 };
 module_platform_driver(tegra_dsi_bl_driver);
 
-static int __init tegra_dsi_bl_init(void)
-{
-	return platform_driver_register(&tegra_dsi_bl_driver);
-}
-late_initcall(tegra_dsi_bl_init);
-
-static void __exit tegra_dsi_bl_exit(void)
-{
-	platform_driver_unregister(&tegra_dsi_bl_driver);
-}
-module_exit(tegra_dsi_bl_exit);
-
 MODULE_DESCRIPTION("Tegra DSI Backlight Driver");
 MODULE_LICENSE("GPL");
