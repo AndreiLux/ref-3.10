@@ -124,7 +124,11 @@
                         nvidia,dsi-controller-vs = <1>;
                         status = "okay";
                 };
-        };
+
+		hdmi {
+			status = "disabled";
+		};
+	};
 
 	serial@70006000 {
 		compatible = "nvidia,tegra114-hsuart";

@@ -37,10 +37,5 @@
 			richtek,enable-power-gpio = <&gpio 162 0>;
 		};
 	};
-	host1x {
-		hdmi {
-			status = "disabled";
-		};
-	};
 };
 
