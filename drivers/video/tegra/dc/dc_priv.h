@@ -445,4 +445,9 @@ int tegra_dc_update_cmu(struct tegra_dc *dc, struct tegra_dc_cmu *cmu);
 struct tegra_dc_platform_data
 	*of_dc_parse_platform_data(struct platform_device *ndev);
 
+/* defined in cursor.c, used in ext/cursor.c */
+int tegra_dc_cursor_image(struct tegra_dc *dc, u32 format, unsigned size,
+	u32 fg, u32 bg, dma_addr_t phys_addr);
+int tegra_dc_cursor_set(struct tegra_dc *dc, bool enable, int x, int y);
+int tegra_dc_cursor_clip(struct tegra_dc *dc, unsigned clip);
 #endif
