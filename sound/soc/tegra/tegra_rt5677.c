@@ -1289,6 +1289,7 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 			goto err_free_machine;
 		} else {
 			dev_dbg(&pdev->dev, "request_irq rt5677_irq ok\n");
+			enable_irq_wake(rt5677_irq);
 		}
 	} else {
 		dev_err(&pdev->dev, "gpio_irq1 %d is invalid\n",
@@ -1364,6 +1365,7 @@ err_unregister_card:
 	snd_soc_unregister_card(card);
 err_unregister_switch:
 	tegra_asoc_utils_fini(&machine->util_data);
+	disable_irq_wake(rt5677_irq);
 	free_irq(rt5677_irq, 0);
 err_free_machine:
 	if (np)
@@ -1395,8 +1397,10 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 			ret = rt5677_irq;
 			dev_err(&pdev->dev, "Fail gpio_to_irq gpio_irq1, %d\n",
 				ret);
+		} else {
+			disable_irq_wake(rt5677_irq);
+			free_irq(rt5677_irq, 0);
 		}
-		free_irq(rt5677_irq, 0);
 		cancel_work_sync(&machine->hotword_work);
 	} else {
 		dev_err(&pdev->dev, "gpio_irq1 %d is invalid\n",
