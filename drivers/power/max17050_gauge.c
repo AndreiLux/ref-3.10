@@ -21,6 +21,8 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/htc_battery_max17050.h>
+#include <linux/debugfs.h>
+#include <linux/kernel.h>
 
 #define MAX17050_I2C_RETRY_TIMES (5)
 #define MAX17050_TEMPERATURE_RE_READ_MS (1400)
@@ -116,11 +118,21 @@ enum max17050_fg_register {
 	MAX17050_FG_VFSOC	= 0xFF,
 };
 
+int debugfs_regs[] = {
+	MAX17050_FG_STATUS, MAX17050_FG_Age, MAX17050_FG_Cycles,
+	MAX17050_FG_SHFTCFG, MAX17050_FG_VALRT_Th, MAX17050_FG_TALRT_Th,
+	MAX17050_FG_SALRT_Th, MAX17050_FG_AvgCurrent, MAX17050_FG_Current,
+	MAX17050_FG_MinMaxCurr, MAX17050_FG_VCELL, MAX17050_FG_AvgVCELL,
+	MAX17050_FG_MinMaxVolt, MAX17050_FG_TEMP, MAX17050_FG_AvgTA,
+	MAX17050_FG_MinMaxTemp, MAX17050_FG_AvSOC, MAX17050_FG_AvCap,
+};
+
 struct max17050_chip {
 	struct i2c_client *client;
 	struct max17050_platform_data *pdata;
 	int shutdown_complete;
 	struct mutex mutex;
+	struct dentry *dentry;
 };
 static struct max17050_chip *max17050_data;
 
@@ -533,6 +545,31 @@ static int htc_batt_max17050_get_ocv(int *batt_ocv)
 	return ret;
 }
 
+static int max17050_debugfs_show(struct seq_file *s, void *unused)
+{
+	struct max17050_chip *chip = s->private;
+	int index;
+	u8 reg;
+	unsigned int data;
+
+	for (index = 0; index < ARRAY_SIZE(debugfs_regs); index++) {
+		reg = debugfs_regs[index];
+		data = max17050_read_word(chip->client, reg);
+		if (data < 0)
+			dev_err(&chip->client->dev, "%s: err %d\n", __func__,
+									data);
+		else
+			seq_printf(s, "0x%02x:\t0x%04x\n", reg, data);
+	}
+
+	return 0;
+}
+
+static int max17050_debugfs_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, max17050_debugfs_show, inode->i_private);
+}
+
 struct htc_battery_max17050_ops htc_batt_max17050_ops = {
 	.get_vcell = htc_batt_max17050_get_vcell,
 	.get_battery_current = htc_batt_max17050_get_current,
@@ -542,6 +579,13 @@ struct htc_battery_max17050_ops htc_batt_max17050_ops = {
 	.get_ocv = htc_batt_max17050_get_ocv,
 	.get_battery_charge = htc_batt_max17050_get_charge,
 	.get_battery_charge_ext = htc_batt_max17050_get_charge_ext,
+};
+
+static const struct file_operations max17050_debugfs_fops = {
+	.open		= max17050_debugfs_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
 };
 
 static int max17050_probe(struct i2c_client *client,
@@ -561,6 +605,9 @@ static int max17050_probe(struct i2c_client *client,
 
 	htc_battery_max17050_gauge_register(&htc_batt_max17050_ops);
 
+	chip->dentry = debugfs_create_file("max17050-regs", S_IRUSR, NULL,
+						chip, &max17050_debugfs_fops);
+
 	return 0;
 }
 
@@ -568,6 +615,7 @@ static int max17050_remove(struct i2c_client *client)
 {
 	struct max17050_chip *chip = i2c_get_clientdata(client);
 
+	debugfs_remove(chip->dentry);
 	htc_battery_max17050_gauge_unregister();
 	mutex_destroy(&chip->mutex);
 
