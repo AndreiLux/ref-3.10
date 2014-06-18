@@ -84,6 +84,7 @@
 #include <../../../drivers/staging/android/timed_gpio.h>
 
 #include <mach/flounder-bdaddress.h>
+#include "bcm_gps_hostwake.h"
 #include "board.h"
 #include "board-flounder.h"
 #include "board-common.h"
@@ -1236,6 +1237,18 @@ static struct class *gps_class;
 
 extern int tegra_get_hw_rev(void);
 
+#define GPS_HOSTWAKE_GPIO 69
+static struct bcm_gps_hostwake_platform_data gps_hostwake_data = {
+	.gpio_hostwake = GPS_HOSTWAKE_GPIO,
+};
+
+static struct platform_device bcm_gps_hostwake = {
+	.name   = "bcm-gps-hostwake",
+	.id     = -1,
+	.dev    = {
+		.platform_data  = &gps_hostwake_data,
+	},
+};
 
 #define PRJ_F	302
 static int __init flounder_gps_init(void)
@@ -1278,6 +1291,11 @@ static int __init flounder_gps_init(void)
 	gpio_direction_output(gps_onoff, 0);
 	gpio_export (gps_onoff, 1);
 	gpio_export_link(gps_dev,"gps_onoff", gps_onoff);
+
+	if (product_id == PRJ_F) {
+		pr_info("GPS: init gps hostwake\n");
+		platform_device_register(&bcm_gps_hostwake);
+	}
 
 	return 0;
 }

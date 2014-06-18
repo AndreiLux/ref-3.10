@@ -169,6 +169,7 @@ obj-${CONFIG_SYSEDP_FRAMEWORK}          += board-ardbeg-sysedp.o
 endif
 
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder.o
+obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-gps.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-kbc.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-sdhci.o
 obj-${CONFIG_MACH_FLOUNDER}             += board-flounder-sensors.o
