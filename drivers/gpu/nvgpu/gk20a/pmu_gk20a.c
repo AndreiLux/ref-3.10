@@ -1751,6 +1751,7 @@ int gk20a_init_pmu_setup_hw1(struct gk20a *g)
 	gk20a_dbg_fn("");
 
 	mutex_lock(&pmu->isr_enable_lock);
+	pmu->pmu_state = PMU_STATE_STARTING;
 	pmu_reset(pmu);
 	pmu->isr_enabled = true;
 	mutex_unlock(&pmu->isr_enable_lock);
@@ -2023,7 +2024,7 @@ static void pmu_handle_pg_elpg_msg(struct gk20a *g, struct pmu_msg *msg,
 	case PMU_PG_ELPG_MSG_DISALLOW_ACK:
 		gk20a_dbg_pmu("DISALLOW is acknowledged from PMU");
 		pmu->elpg_stat = PMU_ELPG_STAT_OFF;
-		if (pmu->pmu_state == PMU_STATE_STARTING)
+		if (pmu->pmu_state == PMU_STATE_ELPG_BOOTING)
 			pmu->pmu_state = PMU_STATE_ELPG_BOOTED;
 		schedule_work(&pmu->pg_init);
 		break;
@@ -2120,7 +2121,10 @@ static int pmu_init_powergating(struct pmu_gk20a *pmu)
 	gk20a_pmu_cmd_post(g, &cmd, NULL, NULL, PMU_COMMAND_QUEUE_HPQ,
 			pmu_handle_pg_elpg_msg, pmu, &seq, ~0);
 
-	pmu->pmu_state = PMU_STATE_STARTING;
+	/* start with elpg disabled until first enable call */
+	pmu->elpg_refcnt = 0;
+
+	pmu->pmu_state = PMU_STATE_ELPG_BOOTING;
 
 	return 0;
 }
@@ -2889,7 +2893,8 @@ void gk20a_pmu_isr(struct gk20a *g)
 
 	gk20a_dbg_pmu("received falcon interrupt: 0x%08x", intr);
 
-	if (!intr) {
+	if (!intr || pmu->pmu_state == PMU_STATE_OFF) {
+		gk20a_writel(g, pwr_falcon_irqsclr_r(), intr);
 		mutex_unlock(&pmu->isr_mutex);
 		mutex_unlock(&pmu->isr_enable_lock);
 		return;
