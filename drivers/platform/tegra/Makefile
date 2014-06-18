@@ -89,7 +89,12 @@ obj-$(CONFIG_TEGRA_PCI) += pcie.o
 ifeq ($(CONFIG_TEGRA_SOCTHERM),y)
 obj-$(CONFIG_ARCH_TEGRA_13x_SOC) += tegra11_soctherm.o
 endif
-obj-$(CONFIG_TEGRA_USE_SIMON)    += tegra_simon.o
+ifeq ($(CONFIG_TEGRA_USE_SIMON),y)
+obj-y    += tegra_simon.o
+obj-y    += tegra_apb2jtag.o
+obj-y    += tegra_ism.o
+obj-$(CONFIG_ARCH_TEGRA_13x_SOC) += tegra13_simon_graders.o
+endif
 obj-$(CONFIG_ARCH_TEGRA_12x_SOC) += tegra12_edp.o
 obj-$(CONFIG_ARCH_TEGRA_13x_SOC) += tegra13_edp.o
 
