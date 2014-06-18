@@ -39,6 +39,8 @@ struct quadd_cpu_context {
 	atomic_t nr_active;
 };
 
+struct timecounter;
+
 struct quadd_hrt_ctx {
 	struct quadd_cpu_context * __percpu cpu_ctx;
 	u64 sample_period;
@@ -54,9 +56,12 @@ struct quadd_hrt_ctx {
 
 	unsigned long vm_size_prev;
 	unsigned long rss_size_prev;
+
+	struct timecounter *tc;
+	unsigned int unw_method;
 };
 
-#define QUADD_HRT_MIN_FREQ	110
+#define QUADD_HRT_MIN_FREQ	100
 
 #define QUADD_U32_MAX (~(__u32)0)
 
