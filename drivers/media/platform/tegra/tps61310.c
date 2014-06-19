@@ -92,6 +92,8 @@
 #include <media/nvc.h>
 #include <media/tps61310.h>
 #include <linux/gpio.h>
+#include <linux/sysedp.h>
+#include <linux/backlight.h>
 
 #define STRB1	181 /*GPIO PW5*/
 #define TPS61310_REG0		0x00
@@ -106,6 +108,9 @@
 				+ (sizeof(tps61310_torch_cap.guidenum[0]) \
 				* (TPS61310_MAX_TORCH_LEVEL + 1)))
 
+#define SYSEDP_OFF_MODE		0
+#define SYSEDP_TORCH_MODE	1
+#define SYSEDP_FLASH_MODE	2
 
 static struct nvc_torch_flash_capabilities tps61310_flash_cap = {
 	TPS61310_MAX_FLASH_LEVEL + 1,
@@ -153,6 +158,7 @@ struct tps61310_info {
 	int pwr_dev;
 	u8 s_mode;
 	struct tps61310_info *s_info;
+	struct sysedp_consumer *sysedpc;
 	char devname[16];
 };
 
@@ -453,7 +459,16 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 {
 	u8 reg;
 	int err = 0;
+	static u8 sysedp_state = SYSEDP_OFF_MODE;
+	static u8 sysedp_old_state = SYSEDP_OFF_MODE;
+	static u8 sysedp_bl_state = SYSEDP_OFF_MODE;
+	struct backlight_device *bd;
 
+	bd = get_backlight_device_by_name("tegra-dsi-backlight.0");
+	if (bd == NULL)
+		pr_err("%s: error getting backlight device!\n", __func__);
+	else if (bd->sysedpc == NULL)
+		pr_err("%s: backlight sysedpc is not initialized!\n", __func__);
 	/*
 	 * 7:6 flash/torch mode
 	 * 0 0 = off (power save)
@@ -473,6 +488,7 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 		gpio_set_value(STRB1, val ? 0 : 1);
 		if (val) {
 			val--;
+			sysedp_state = SYSEDP_FLASH_MODE;
 			if (val > tps61310_default_pdata.max_amp_flash)
 				val = tps61310_default_pdata.max_amp_flash;
 			/* Amp limit values are in the board-sensors file. */
@@ -482,10 +498,27 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 			val = val << 1; /* 1:4 flash current*/
 			val |= 0x80; /* 7:7=flash mode */
 		} else {
+			sysedp_state = SYSEDP_OFF_MODE;
 			err = tps61310_i2c_rd(info, TPS61310_REG0, &reg);
 			if (reg & 0x07) /* 2:0=torch setting */
 				val = 0x40; /* 6:6 enable just torch */
 		}
+		if (sysedp_state != sysedp_old_state) {
+			/*
+			 * Remove backlight budget since flash will be enabled.
+			 * And restore backlight budget after flash finished
+			 */
+			if (sysedp_state == SYSEDP_FLASH_MODE) {
+				sysedp_bl_state = sysedp_get_state(bd->sysedpc);
+				sysedp_set_state(bd->sysedpc, SYSEDP_OFF_MODE);
+				sysedp_bl_state = sysedp_get_state(bd->sysedpc);
+			}
+			else {
+				sysedp_set_state(bd->sysedpc, sysedp_bl_state);
+			}
+			sysedp_set_state(info->sysedpc, sysedp_state);
+		}
+		sysedp_old_state = sysedp_state;
 		dev_dbg(&info->i2c_client->dev, "write reg1: 0x%x\n",val);
 		err |= tps61310_i2c_wr(info, TPS61310_REG1, val);
 		return err;
@@ -500,6 +533,7 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 		gpio_set_value(STRB1, val ? 1 : 0);
 		reg &= 0x80; /* 7:7=flash */
 		if (val) {
+			sysedp_state = SYSEDP_TORCH_MODE;
 			if (val > tps61310_default_pdata.max_amp_torch)
 				val = tps61310_default_pdata.max_amp_torch;
 			/* Amp limit values are in the board-sensors file. */
@@ -509,7 +543,12 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 			if (!reg) /* test if flash/torch off */
 				val |= (0x40); /* 6:6=torch only mode */
 		} else {
+			sysedp_state = SYSEDP_OFF_MODE;
 			val |= reg;
+		}
+		if (sysedp_state != sysedp_old_state) {
+			sysedp_set_state(info->sysedpc, sysedp_state);
+			sysedp_old_state = sysedp_state;
 		}
 		err |= tps61310_i2c_wr(info, TPS61310_REG1, val);
 		val &= 0xC0; /* 7:6=mode */
@@ -800,6 +839,7 @@ static int tps61310_remove(struct i2c_client *client)
 
 	dev_dbg(&info->i2c_client->dev, "%s\n", __func__);
 	misc_deregister(&info->miscdev);
+	sysedp_free_consumer(info->sysedpc);
 	tps61310_del(info);
 	return 0;
 }
@@ -853,6 +893,7 @@ static int tps61310_probe(
 		return -ENODEV;
 	}
 
+	info->sysedpc = sysedp_create_consumer("tps61310", "tps61310");
 	return 0;
 }
 
