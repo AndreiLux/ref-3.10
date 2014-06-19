@@ -3387,6 +3387,7 @@ static int tegra_dc_suspend(struct platform_device *ndev, pm_message_t state)
 
 	tegra_dc_ext_disable(dc->ext);
 
+	tegra_dc_cursor_suspend(dc);
 	mutex_lock(&dc->lock);
 	ret = tegra_dc_io_start(dc);
 
@@ -3461,6 +3462,7 @@ static int tegra_dc_resume(struct platform_device *ndev)
 		dc->out_ops->resume(dc);
 
 	mutex_unlock(&dc->lock);
+	tegra_dc_cursor_resume(dc);
 
 	return 0;
 }
