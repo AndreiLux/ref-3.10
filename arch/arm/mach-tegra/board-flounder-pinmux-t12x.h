@@ -88,7 +88,7 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	DEFAULT_PINMUX(GPIO_PH1,      PWM1,        NORMAL,    NORMAL,   OUTPUT),
 
 	/* SOC pinmux */
-	DEFAULT_PINMUX(GPIO_PJ2,      SOC,         NORMAL,   NORMAL,   INPUT),
+	DEFAULT_PINMUX(GPIO_PJ2,      SOC,         PULL_UP,   NORMAL,   INPUT),
 	DEFAULT_PINMUX(KB_ROW15,      SOC,         PULL_UP,   NORMAL,   INPUT),
 	DEFAULT_PINMUX(CLK_32K_OUT,   SOC,         PULL_UP,   NORMAL,   INPUT),
 

@@ -266,6 +266,8 @@ static struct tegra_thermtrip_pmic_data tpdata_palmas = {
 
 /* This is really v2 rev of the flounder_soctherm_data structure */
 static struct soctherm_platform_data flounder_soctherm_data = {
+	.oc_irq_base = TEGRA_SOC_OC_IRQ_BASE,
+	.num_oc_irqs = TEGRA_SOC_OC_NUM_IRQ,
 	.therm = {
 		[THERM_CPU] = {
 			.zone_enable = true,
@@ -405,6 +407,26 @@ static struct soctherm_platform_data flounder_v1_soctherm_data = {
 	},
 };
 
+static struct soctherm_throttle battery_oc_throttle_t13x = {
+	.throt_mode = BRIEF,
+	.polarity = SOCTHERM_ACTIVE_LOW,
+	.priority = 50,
+	.intr = true,
+	.alarm_cnt_threshold = 15,
+	.alarm_filter = 5100000,
+	.devs = {
+		[THROTTLE_DEV_CPU] = {
+			.enable = true,
+			.depth = 50,
+			.throttling_depth = "low_throttling",
+		},
+		[THROTTLE_DEV_GPU] = {
+			.enable = true,
+			.throttling_depth = "medium_throttling",
+		},
+	},
+};
+
 int __init flounder_soctherm_init(void)
 {
 	const int t13x_cpu_edp_temp_margin = 5000,
@@ -415,6 +437,9 @@ int __init flounder_soctherm_init(void)
 
 	cp_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
 	ft_rev = tegra_fuse_calib_base_get_ft(NULL, NULL);
+
+	/* TODO: remove this line once hboot changes merged */
+	tegra_gpio_disable(TEGRA_GPIO_PJ2);
 
 	if (cp_rev) {
 		/* ATE rev is Old or Mid - use PLLx sensor only */
@@ -457,6 +482,9 @@ int __init flounder_soctherm_init(void)
 		&flounder_soctherm_data.therm[THERM_PLL].num_trips);
 
 	tegra_get_pmu_board_info(&pmu_board_info);
-
+	/* Enable soc_therm OC throttling on selected platforms */
+	memcpy(&flounder_soctherm_data.throttle[THROTTLE_OC4],
+		       &battery_oc_throttle_t13x,
+		       sizeof(battery_oc_throttle_t13x));
 	return tegra11_soctherm_init(&flounder_soctherm_data);
 }

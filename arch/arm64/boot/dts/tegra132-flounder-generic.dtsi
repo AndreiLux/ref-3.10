@@ -3,12 +3,10 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
 #include "tegra132.dtsi"
-
 #include "tegra132-flounder-camera.dtsi"
-
 #include "tegra132-flounder-trusty.dtsi"
-
 #include "tegra132-flounder-sysedp.dtsi"
+#include "tegra132-flounder-powermon.dtsi"
 / {
 	model = "Flounder";
 
