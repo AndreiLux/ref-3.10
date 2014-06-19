@@ -1629,6 +1629,10 @@ static int tegra_pullup(struct usb_gadget *gadget, int is_on)
 			OTG_STATE_B_PERIPHERAL)
 			return 0;
 
+	/* set charger type to SDP type if recognize as non standard charger before */
+	if (udc->connect_type == CONNECT_TYPE_NON_STANDARD_CHARGER)
+		tegra_udc_set_charger_type(udc, CONNECT_TYPE_SDP);
+
 	/* set interrupt latency to 125 uS (1 uFrame) */
 	tmp = udc_readl(udc, USB_CMD_REG_OFFSET);
 	tmp &= ~USB_CMD_ITC;
