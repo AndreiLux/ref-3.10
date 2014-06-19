@@ -29,6 +29,7 @@
 #include <linux/clk/tegra.h>
 #include <linux/tegra-soc.h>
 #include <linux/tegra-fuse.h>
+#include <linux/moduleparam.h>
 #include <mach/pinmux.h>
 #include <mach/tegra_usb_pmc.h>
 #include <mach/tegra_usb_pad_ctrl.h>
@@ -292,6 +293,10 @@
 #define HSIC_IDLE_WAIT_DELAY		17
 #define HSIC_ELASTIC_UNDERRUN_LIMIT	16
 #define HSIC_ELASTIC_OVERRUN_LIMIT	16
+
+static int dynamic_utmi_xcvr_setup = -1;
+module_param(dynamic_utmi_xcvr_setup, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dynamic_utmi_xcvr_setup, "dynamic set setup value");
 
 struct tegra_usb_pmc_data pmc_data[3];
 
@@ -1099,6 +1104,9 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 		 UTMIP_FORCE_PD2_POWERDOWN | UTMIP_FORCE_PDZI_POWERDOWN |
 		 UTMIP_XCVR_SETUP(~0) | UTMIP_XCVR_LSFSLEW(~0) |
 		 UTMIP_XCVR_LSRSLEW(~0) | UTMIP_XCVR_HSSLEW_MSB(~0));
+	/* utmi_xcvr_setup value range is 0~127 */
+	if (dynamic_utmi_xcvr_setup >= 0 && dynamic_utmi_xcvr_setup < 128)
+		phy->utmi_xcvr_setup = dynamic_utmi_xcvr_setup;
 	val |= UTMIP_XCVR_SETUP(phy->utmi_xcvr_setup);
 	val |= UTMIP_XCVR_SETUP_MSB(XCVR_SETUP_MSB_CALIB(phy->utmi_xcvr_setup));
 	val |= UTMIP_XCVR_LSFSLEW(config->xcvr_lsfslew);
