@@ -61,11 +61,6 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	DEFAULT_PINMUX(ULPI_STP,      SPI5,        NORMAL,    NORMAL,   OUTPUT),
 	/*audio end*/
 
-
-	/* CLDVFS pinmux */
-	DEFAULT_PINMUX(DVFS_PWM,      CLDVFS,      NORMAL,    TRISTATE, OUTPUT),
-	DEFAULT_PINMUX(DVFS_CLK,      CLDVFS,      NORMAL,    NORMAL,   OUTPUT),
-
 	/* I2C3 pinmux */
 	I2C_PINMUX(CAM_I2C_SCL, I2C3, NORMAL, NORMAL, INPUT, DISABLE, ENABLE),
 	I2C_PINMUX(CAM_I2C_SDA, I2C3, NORMAL, NORMAL, INPUT, DISABLE, ENABLE),
