@@ -318,7 +318,7 @@ static int max17050_get_charge(struct i2c_client *client, int *batt_charge)
 		dev_err(&client->dev, "%s: err %d\n", __func__, charge);
 		ret = -EINVAL;
 	} else
-		*batt_charge = ((int16_t) charge) * 100;
+		*batt_charge = ((int16_t) charge) * 500;
 
 	return ret;
 }
