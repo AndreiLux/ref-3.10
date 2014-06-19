@@ -30,6 +30,7 @@
 #include <linux/pm_runtime.h>
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/gpio-tegra.h>
+#include <linux/sysedp.h>
 
 #include <sound/core.h>
 #include <sound/jack.h>
@@ -66,6 +67,7 @@ const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 };
 
 struct regulator *rt5677_reg;
+static struct sysedp_consumer *sysedpc;
 
 void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable);
 void set_rt5677_power_locked(struct tegra_rt5677 *machine, bool enable);
@@ -104,6 +106,7 @@ static int tegra_rt5677_spk_startup(struct snd_pcm_substream *substream)
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
 
 	mutex_lock(&machine->spk_amp_lock);
+	sysedp_set_state(sysedpc, 1);
 	set_tfa9895_spkamp(1, 0);
 	set_tfa9895l_spkamp(1, 0);
 	mutex_unlock(&machine->spk_amp_lock);
@@ -125,6 +128,7 @@ static void tegra_rt5677_spk_shutdown(struct snd_pcm_substream *substream)
 	mutex_lock(&machine->spk_amp_lock);
 	set_tfa9895_spkamp(0, 0);
 	set_tfa9895l_spkamp(0, 0);
+	sysedp_set_state(sysedpc, 0);
 	mutex_unlock(&machine->spk_amp_lock);
 }
 
@@ -1396,6 +1400,9 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	schedule_delayed_work(&machine->power_work,
 		msecs_to_jiffies(1000));
 	machine->bias_level = SND_SOC_BIAS_OFF;
+
+	sysedpc = sysedp_create_consumer("speaker", "speaker");
+
 	return 0;
 
 err_unregister_card:
@@ -1474,6 +1481,8 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 	snd_soc_unregister_card(card);
 
 	tegra_asoc_utils_fini(&machine->util_data);
+
+	sysedp_free_consumer(sysedpc);
 
 	if (np)
 		kfree(machine->pdata);
