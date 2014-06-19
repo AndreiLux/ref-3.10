@@ -27,7 +27,7 @@
 #include <media/imx219.h>
 #include <linux/gpio.h>
 #include <linux/module.h>
-
+#include <linux/sysedp.h>
 #include <linux/kernel.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
@@ -64,6 +64,7 @@ struct imx219_info {
 	struct dentry			*debugfs_root;
 	u32				debug_i2c_offset;
 #endif
+	struct sysedp_consumer *sysedpc;
 };
 
 static inline void
@@ -447,14 +448,17 @@ imx219_ioctl(struct file *file,
 			break;
 		if (arg && info->pdata->power_on) {
 			err = imx219_mclk_enable(info);
-			if (!err)
+			if (!err) {
+				sysedp_set_state(info->sysedpc, 1);
 				err = info->pdata->power_on(&info->power);
+			}
 			if (err < 0)
 				imx219_mclk_disable(info);
 		}
 		if (!arg && info->pdata->power_off) {
 			info->pdata->power_off(&info->power);
 			imx219_mclk_disable(info);
+			sysedp_set_state(info->sysedpc, 0);
 		}
 		break;
 	case IMX219_IOCTL_SET_MODE:
@@ -804,6 +808,7 @@ imx219_probe(struct i2c_client *client,
 #ifdef CONFIG_DEBUG_FS
 	imx219_debug_init(info);
 #endif
+	info->sysedpc = sysedp_create_consumer("imx219", "imx219");
 	return 0;
 
 imx219_probe_fail:
@@ -824,6 +829,7 @@ imx219_remove(struct i2c_client *client)
 #ifdef CONFIG_DEBUG_FS
 	debugfs_remove_recursive(info->debugfs_root);
 #endif
+	sysedp_free_consumer(info->sysedpc);
 	return 0;
 }
 
