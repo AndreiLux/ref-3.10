@@ -1262,8 +1262,24 @@ static int __init flounder_gps_init(void)
 }
 #undef PRJ_F
 
+static void __init sysedp_init(void)
+{
+	flounder_new_sysedp_init();
+}
+
+static void __init edp_init(void)
+{
+	flounder_edp_init();
+}
+
+static void __init sysedp_dynamic_capping_init(void)
+{
+	flounder_sysedp_dynamic_capping_init();
+}
+
 static void __init tegra_flounder_early_init(void)
 {
+	sysedp_init();
 	tegra_clk_init_from_table(flounder_clk_init_table);
 	tegra_clk_verify_parents();
 	tegra_soc_device_init("flounder");
@@ -1340,6 +1356,7 @@ static void __init tegra_flounder_late_init(void)
 
 	flounder_setup_bluedroid_pm();
 	tegra_register_fuse();
+	sysedp_dynamic_capping_init();
 }
 
 static void __init tegra_flounder_init_early(void)

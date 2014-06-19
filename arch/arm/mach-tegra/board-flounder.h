@@ -39,7 +39,12 @@ int flounder_soctherm_init(void);
 int flounder_edp_init(void);
 void flounder_camera_auxdata(void *);
 int flounder_mdm_9k_init(void);
+void flounder_new_sysedp_init(void);
+void flounder_sysedp_dynamic_capping_init(void);
 
+/* generated soc_therm OC interrupts */
+#define TEGRA_SOC_OC_IRQ_BASE	TEGRA_NR_IRQS
+#define TEGRA_SOC_OC_NUM_IRQ	TEGRA_SOC_OC_IRQ_MAX
 
 #define PALMAS_TEGRA_GPIO_BASE	TEGRA_NR_GPIOS
 #define PALMAS_TEGRA_IRQ_BASE	TEGRA_NR_IRQS

@@ -72,6 +72,7 @@ obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-pinmux.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-power.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += flounder-bdaddress.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sysedp.o
 
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-bootparams.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-mdm9k.o

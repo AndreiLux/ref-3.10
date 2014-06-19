@@ -8,6 +8,7 @@
 
 #include "tegra132-flounder-trusty.dtsi"
 
+#include "tegra132-flounder-sysedp.dtsi"
 / {
 	model = "Flounder";
 
