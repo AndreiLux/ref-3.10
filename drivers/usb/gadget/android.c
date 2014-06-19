@@ -40,6 +40,7 @@
 #ifdef CONFIG_DIAG_CHAR
 #include "f_diag.c"
 #endif
+#include "f_rmnet.c"
 #include "f_mtp.c"
 #include "f_accessory.c"
 #define USB_ETH_RNDIS y
@@ -1163,6 +1164,105 @@ err_usb_add_function:
 	return ret;
 }
 
+/*rmnet transport string format(per port):"ctrl0,data0,ctrl1,data1..." */
+#define MAX_XPORT_STR_LEN 50
+static char rmnet_transports[MAX_XPORT_STR_LEN];
+static int rmnet_nports;
+
+static void rmnet_function_cleanup(struct android_usb_function *f)
+{
+	frmnet_cleanup();
+}
+
+static int rmnet_function_bind_config(struct android_usb_function *f,
+					 struct usb_configuration *c)
+{
+	int i, err;
+
+	for (i = 0; i < rmnet_nports; i++) {
+		err = frmnet_bind_config(c, i);
+		if (err) {
+			pr_err("Could not bind rmnet%u config\n", i);
+			break;
+		}
+	}
+
+	return err;
+}
+
+static int rmnet_function_init(struct android_usb_function *f,
+		struct usb_composite_dev *cdev)
+{
+	int err = 0;
+	char *name;
+	char *ctrl_name;
+	char *data_name;
+	char buf[MAX_XPORT_STR_LEN], *b;
+
+	strcpy(rmnet_transports, "HSIC:HSIC");
+	strlcpy(buf, rmnet_transports, sizeof(buf));
+	b = strim(buf);
+
+	while (b) {
+		ctrl_name = data_name = 0;
+		name = strsep(&b, ",");
+		if (name) {
+			ctrl_name = strsep(&name, ":");
+			if (ctrl_name)
+				data_name = strsep(&name, ":");
+		}
+		if (ctrl_name && data_name) {
+			err = frmnet_init_port(ctrl_name, data_name);
+			if (err) {
+				pr_err("rmnet: Cannot open ctrl port:"
+						"'%s' data port:'%s'\n",
+						ctrl_name, data_name);
+				goto out;
+			}
+			rmnet_nports++;
+		}
+	}
+
+	err = rmnet_gport_setup();
+	if (err) {
+		pr_err("rmnet: Cannot setup transports");
+		goto out;
+	}
+out:
+	return err;
+}
+
+static ssize_t rmnet_transports_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n", rmnet_transports);
+}
+
+static ssize_t rmnet_transports_store(
+		struct device *device, struct device_attribute *attr,
+		const char *buff, size_t size)
+{
+	strlcpy(rmnet_transports, buff, sizeof(rmnet_transports));
+
+	return size;
+}
+
+static struct device_attribute dev_attr_rmnet_transports =
+					__ATTR(transports, S_IRUGO | S_IWUSR,
+						rmnet_transports_show,
+						rmnet_transports_store);
+static struct device_attribute *rmnet_function_attributes[] = {
+					&dev_attr_rmnet_transports,
+					NULL };
+
+static struct android_usb_function rmnet_function = {
+	.name		= "rmnet",
+	.cleanup	= rmnet_function_cleanup,
+	.bind_config	= rmnet_function_bind_config,
+	.attributes	= rmnet_function_attributes,
+	.init		= rmnet_function_init,
+};
+
 /* Diag */
 #ifdef CONFIG_DIAG_CHAR
 static char diag_clients[32];	/*enabled DIAG clients- "diag[,diag_mdm]" */
@@ -1303,6 +1403,7 @@ static struct android_usb_function *supported_functions[] = {
 #ifdef CONFIG_DIAG_CHAR
 	&diag_function,
 #endif
+	&rmnet_function,
 	NULL
 };
 
