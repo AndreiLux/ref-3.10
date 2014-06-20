@@ -135,6 +135,7 @@ struct nvmap_handle {
 	u32 userflags;		/* flags passed from userspace */
 	void *vaddr;		/* mapping used inside kernel */
 	struct list_head vmas;	/* list of all user vma's */
+	atomic_t share_count;	/* number of processes sharing the handle */
 	struct mutex lock;
 	void *nvhost_priv;	/* nvhost private data */
 	void (*nvhost_priv_delete)(void *priv);
