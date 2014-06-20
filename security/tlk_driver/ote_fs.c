@@ -87,7 +87,7 @@ void tlk_ss_op_legacy(uint32_t size)
 	indicate_ss_op_complete();
 }
 
-int __init tlk_ss_init_legacy(struct tlk_info *info)
+int tlk_ss_init_legacy(struct tlk_info *info)
 {
 	dma_addr_t ss_op_shmem_dma;
 
@@ -146,7 +146,7 @@ void tlk_ss_op(void)
 	wait_for_completion(&req_complete);
 }
 
-int __init tlk_ss_init(struct tlk_info *info)
+int tlk_ss_init(struct tlk_info *info)
 {
 	dma_addr_t ss_op_shmem_dma;
 	int32_t ret;
