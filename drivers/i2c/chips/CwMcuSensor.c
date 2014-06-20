@@ -93,8 +93,6 @@
 #define LIGHT_SENSOR_FLASH_DATA "als_flash"
 #define BARO_SENSOR_FLASH_DATA "bs_flash"
 
-#define MCU_WARN_MSGS 1
-
 static int probe_success;
 
 #ifdef CONFIG_CWSTM32_DEBUG  /* Remove this from defconfig when release */
