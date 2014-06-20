@@ -437,21 +437,26 @@ int rmnet_usb_ctrl_start_rx(struct rmnet_ctrl_udev *dev)
 {
 	int	retval = 0;
 
-	usb_anchor_urb(dev->inturb, &dev->rx_submitted);
-	retval = usb_submit_urb(dev->inturb, GFP_KERNEL);
-	if (retval < 0) {
-		usb_unanchor_urb(dev->inturb);
-		if (retval != -ENODEV)
-			pr_err("%s Intr submit %d\n", __func__, retval);
-	}
+	mutex_lock(&dev->udev_lock);
+	if (!dev->inturb->anchor) {
+		usb_anchor_urb(dev->inturb, &dev->rx_submitted);
+		retval = usb_submit_urb(dev->inturb, GFP_KERNEL);
+		if (retval < 0) {
+			usb_unanchor_urb(dev->inturb);
+			if (retval != -ENODEV)
+				pr_err("%s Intr submit %d\n", __func__, retval);
+		}
 
 #ifdef CONFIG_QCT_9K_MODEM
-	if (get_radio_flag() & RADIO_FLAG_MORE_LOG) {
-		if (dev && dev->intf) {
-			dev_info(&(dev->intf->dev), "%s submit dev->inturb:0x%p, retval:%x\n", __func__, dev->inturb, retval);
+		if (get_radio_flag() & RADIO_FLAG_MORE_LOG) {
+			if (dev && dev->intf) {
+				dev_info(&(dev->intf->dev), "%s submit dev->inturb:0x%p, retval:%x\n", __func__, dev->inturb, retval);
+			}
 		}
-	}
 #endif
+	}
+	mutex_unlock(&dev->udev_lock);
+
 	return retval;
 }
 
@@ -1066,6 +1071,7 @@ int rmnet_usb_ctrl_probe(struct usb_interface *intf,
 			 notification_available_cb, cudev, interval);
 
 	usb_mark_last_busy(udev);
+	mutex_init(&cudev->udev_lock);
 	ret = rmnet_usb_ctrl_start_rx(cudev);
 	if (ret) {
 		usb_free_urb(cudev->inturb);
