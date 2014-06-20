@@ -701,7 +701,7 @@ static ssize_t led_enable(struct device *dev,
 static ssize_t get_k_value(int type, char *buf, char *data, unsigned len)
 {
 	if (cwmcu_get_calibrator(type, data, len) < 0)
-		memset(data, len, 0);
+		memset(data, 0, len);
 
 	return sprint_data(buf, data, len);
 }
