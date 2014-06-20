@@ -57,6 +57,8 @@
 #define E(x...) pr_err("[S_HUB][CW_MCU] " x)
 
 #define RETRY_TIMES 20
+#define LATCH_TIMES  1
+#define LATCH_ERROR_NO (-110)
 #define ACTIVE_RETRY_TIMES 10
 #define DPS_MAX			(1 << (16 - 1))
 /* ========================================================================= */
@@ -190,6 +192,7 @@ struct cwmcu_data {
 	u8 filter_first_zeros[num_sensors];
 
 	s32 i2c_total_retry;
+	s32 i2c_latch_retry;
 	unsigned long i2c_jiffies;
 
 	int disable_access_count;
@@ -286,7 +289,9 @@ static int cw_send_event(u8 id, u16 *data, s64 timestamp)
 	if (mcu_data->indio_dev->active_scan_mask &&
 	    (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
 			   mcu_data->indio_dev->masklength))) {
+		mutex_lock(&mcu_data->mutex_lock);
 		iio_push_to_buffers(mcu_data->indio_dev, event);
+		mutex_unlock(&mcu_data->mutex_lock);
 		return 0;
 	} else if (mcu_data->indio_dev->active_scan_mask == NULL)
 		I("%s: active_scan_mask = NULL, event might be missing\n",
@@ -306,7 +311,9 @@ static int cw_send_event_special(u8 id, u16 *data, u16 *bias, s64 timestamp)
 
 	if (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
 			  mcu_data->indio_dev->masklength)) {
+		mutex_lock(&mcu_data->mutex_lock);
 		iio_push_to_buffers(mcu_data->indio_dev, event);
+		mutex_unlock(&mcu_data->mutex_lock);
 		return 0;
 	}
 	return -EIO;
@@ -966,6 +973,17 @@ static ssize_t read_mcu_data(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+static inline bool retry_exhausted(struct cwmcu_data *sensor)
+{
+	return ((sensor->i2c_total_retry > RETRY_TIMES) ||
+		(sensor->i2c_latch_retry > LATCH_TIMES));
+}
+
+static inline void retry_reset(struct cwmcu_data *sensor)
+{
+	sensor->i2c_total_retry = 0;
+	sensor->i2c_latch_retry = 0;
+}
 
 static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 			  u8 reg_addr, u8 *data, u8 len)
@@ -981,9 +999,10 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 	}
 
 	mutex_lock(&mcu_data->activated_i2c_lock);
-	if (sensor->i2c_total_retry > RETRY_TIMES) {
-		D("%s: mcu_data->i2c_total_retry = %d\n", __func__,
-		  mcu_data->i2c_total_retry);
+	if (retry_exhausted(sensor)) {
+		D("%s: mcu_data->i2c_total_retry = %d, i2c_latch_retry = %d\n",
+		  __func__,
+		  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
 		/* Try to recover HUB in low CPU utilization */
 		queue_work(mcu_wq, &activated_i2c_work);
 		mutex_unlock(&mcu_data->activated_i2c_lock);
@@ -991,27 +1010,29 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 	}
 
 	for (i = 0; i < len; i++) {
-		for (; sensor->i2c_total_retry <= RETRY_TIMES;) {
+		while (!retry_exhausted(sensor)) {
 			write_res = i2c_smbus_write_byte_data(sensor->client,
 						  reg_addr, data[i]);
-			if (write_res < 0) {
-				gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
-				sensor->i2c_total_retry++;
-				E(
-				  "%s: i2c write error,"
-				  " write_res = %d, total_retry = %d\n",
-					__func__, write_res,
-					sensor->i2c_total_retry);
-				continue;
-			} else {
-				sensor->i2c_total_retry = 0;
+			if (write_res >= 0) {
+				retry_reset(sensor);
 				break;
 			}
+			gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
+			if (write_res == LATCH_ERROR_NO)
+				sensor->i2c_latch_retry++;
+			sensor->i2c_total_retry++;
+			E(
+			  "%s: i2c write error, write_res = %d, total_retry ="
+			  " %d, latch_retry = %d\n", __func__, write_res,
+				sensor->i2c_total_retry,
+				sensor->i2c_latch_retry);
 		}
 
-		if (sensor->i2c_total_retry > RETRY_TIMES) {
+		if (retry_exhausted(sensor)) {
 			mutex_unlock(&mcu_data->activated_i2c_lock);
-			E("%s: retry over %d\n", __func__, RETRY_TIMES);
+			E("%s: mcu_data->i2c_total_retry = %d, "
+			  "i2c_latch_retry = %d, EIO\n", __func__,
+			  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
 			return -EIO;
 		}
 	}
@@ -1580,35 +1601,42 @@ static int CWMCU_i2c_read(struct cwmcu_data *sensor,
 	}
 
 	mutex_lock(&mcu_data->activated_i2c_lock);
-	if (sensor->i2c_total_retry > RETRY_TIMES) {
+	if (retry_exhausted(sensor)) {
 		for (rc = 0; rc < len; rc++)
 			data[rc] = 0; /* Assign data to 0 when chip NACK */
 
 		/* Try to recover HUB in low CPU utilization */
-		D("%s: mcu_data->i2c_total_retry = %d\n", __func__,
-		  mcu_data->i2c_total_retry);
+		D("%s: mcu_data->i2c_total_retry = %d, "
+		  "mcu_data->i2c_latch_retry = %d\n", __func__,
+		  mcu_data->i2c_total_retry,
+		  mcu_data->i2c_latch_retry);
 		queue_work(mcu_wq, &activated_i2c_work);
 
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 		return len;
 	}
 
-	for (; sensor->i2c_total_retry <= RETRY_TIMES;) {
+	while (!retry_exhausted(sensor)) {
 		rc = i2c_smbus_read_i2c_block_data(sensor->client, reg_addr,
 						   len, data);
 		if (rc == len) {
-			sensor->i2c_total_retry = 0;
+			retry_reset(sensor);
 			break;
 		} else {
 			gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
 			sensor->i2c_total_retry++;
-			E("%s: i2c read, rc = %d, total_retry = %d\n", __func__,
-			  rc, sensor->i2c_total_retry);
+			if (rc == LATCH_ERROR_NO)
+				sensor->i2c_latch_retry++;
+			E("%s: rc = %d, total_retry = %d, latch_retry = %d\n",
+			  __func__,
+			  rc, sensor->i2c_total_retry, sensor->i2c_latch_retry);
 		}
 	}
 
-	if (sensor->i2c_total_retry > RETRY_TIMES)
-		E("%s: retry over %d\n", __func__, RETRY_TIMES);
+	if (retry_exhausted(sensor)) {
+		E("%s: total_retry = %d, latch_retry = %d, return\n",
+		  __func__, sensor->i2c_total_retry, sensor->i2c_latch_retry);
+	}
 
 	mutex_unlock(&mcu_data->activated_i2c_lock);
 
@@ -1638,7 +1666,7 @@ static void reset_hub(void)
 	I("%s: gpio_reset = %d\n", __func__,
 	  gpio_get_value_cansleep(mcu_data->gpio_reset));
 
-	mcu_data->i2c_total_retry = 0;
+	retry_reset(mcu_data);
 	mcu_data->i2c_jiffies = jiffies;
 
 	usleep_range(500000, 1000000); /* HUB need at least 500ms to be ready */
@@ -1647,8 +1675,8 @@ static void reset_hub(void)
 static void activated_i2c_do_work(struct work_struct *w)
 {
 	mutex_lock(&mcu_data->activated_i2c_lock);
-	if ((mcu_data->i2c_total_retry > RETRY_TIMES) &&
-	    (time_after(jiffies, mcu_data->i2c_jiffies + REACTIVATE_PERIOD))) {
+	if (retry_exhausted(mcu_data) &&
+	    time_after(jiffies, mcu_data->i2c_jiffies + REACTIVATE_PERIOD)) {
 		reset_hub();
 
 		mutex_unlock(&mcu_data->activated_i2c_lock);
@@ -1667,9 +1695,9 @@ static void activated_i2c_do_work(struct work_struct *w)
 
 	}
 
-	if (mcu_data->i2c_total_retry > RETRY_TIMES) {
-		D("%s: i2c_total_retry = %d\n", __func__,
-		  mcu_data->i2c_total_retry);
+	if (retry_exhausted(mcu_data)) {
+		D("%s: i2c_total_retry = %d, i2c_latch_retry = %d\n", __func__,
+		  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 		return;
 	}
@@ -1679,8 +1707,9 @@ static void activated_i2c_do_work(struct work_struct *w)
 	mcu_data->i2c_jiffies = jiffies;
 
 	mutex_unlock(&mcu_data->activated_i2c_lock);
-	D("%s--: mcu_data->i2c_total_retry = %d\n", __func__,
-	  mcu_data->i2c_total_retry);
+	D("%s--: mcu_data->i2c_total_retry = %d, mcu_data->i2c_latch_retry ="
+	  " %d\n", __func__,
+	  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
 }
 
 static int firmware_odr(int sensors_id, int delay_ms)
@@ -1838,7 +1867,13 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	data = (u8)(mcu_data->enabled_list>>(i*8));
 	D("%s: i2c_write: data = 0x%x, CWSTM32_ENABLE_REG+i = 0x%x\n",
 	  __func__, data, CWSTM32_ENABLE_REG+i);
-	CWMCU_i2c_write(mcu_data, CWSTM32_ENABLE_REG+i, &data, 1);
+	rc = CWMCU_i2c_write(mcu_data, CWSTM32_ENABLE_REG+i, &data, 1);
+	if (rc) {
+		E("%s: CWMCU_i2c_write fails, rc = %d\n",
+		  __func__, rc);
+		cwmcu_powermode_switch(0);
+		return -EIO;
+	}
 
 	if (enabled == 0)
 		mcu_data->report_period[sensors_id] = 200000 * MS_TO_PERIOD;
@@ -2744,8 +2779,7 @@ static void cwmcu_irq_work_func(struct work_struct *work)
 			wake_lock_timeout(&wake_up_gesture_wake_lock,
 					  msecs_to_jiffies(200));
 
-			I("%s: HTC WAKE UP ALGORITHM occurs!!\n",
-			  __func__);
+			I("%s: HTC WAKE UP GESTURE occurs!!\n", __func__);
 
 			data_buff[0] = 1;
 			cw_send_event(HTC_WAKE_UP_GESTURE, data_buff, 0);
@@ -3091,7 +3125,9 @@ static int cw_data_rdy_trigger_set_state(struct iio_trigger *trig,
 	struct iio_dev *indio_dev =
 			(struct iio_dev *)iio_trigger_get_drvdata(trig);
 
+	mutex_lock(&mcu_data->mutex_lock);
 	cw_set_pseudo_irq(indio_dev, state);
+	mutex_unlock(&mcu_data->mutex_lock);
 
 	return 0;
 }
@@ -3596,7 +3632,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Support Facedown Detection\n", __func__);
+	I("%s++: Shorten latch retry times\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
