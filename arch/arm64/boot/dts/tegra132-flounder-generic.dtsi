@@ -510,6 +510,12 @@
 		spi-max-frequency = <25000000>;
 	};
 
+	denver_cpuidle_pmic {
+		type = <4>; /* TPS 65913 2.3*/
+		retention-voltage = <16>;  /* vret = 0.6v */
+		lock = <0>;
+	};
+
 	gpio-keys {
 		compatible = "gpio-keys";
 
