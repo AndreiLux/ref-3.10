@@ -20,11 +20,19 @@
 
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
+#include <linux/dma-attrs.h>
 
 struct gk20a;
 struct channel_gk20a;
 struct gr_ctx_buffer_desc;
 struct gk20a_scale_profile;
+
+struct secure_page_buffer {
+	void (*destroy)(struct platform_device *, struct secure_page_buffer *);
+	size_t size;
+	u64 iova;
+	struct dma_attrs attrs;
+};
 
 struct gk20a_platform {
 #ifdef CONFIG_TEGRA_GK20A
@@ -79,6 +87,13 @@ struct gk20a_platform {
 			    struct gr_ctx_buffer_desc *desc,
 			    size_t size);
 
+	/* Function to allocate a secure buffer of PAGE_SIZE at probe time.
+	 * This is also helpful to trigger secure memory resizing
+	 * while GPU is off
+	 */
+	int (*secure_page_alloc)(struct platform_device *dev);
+	struct secure_page_buffer secure_buffer;
+
 	/* Device is going to be suspended */
 	int (*suspend)(struct device *);
 
@@ -87,6 +102,9 @@ struct gk20a_platform {
 
 	/* Called to turn on the device */
 	int (*unrailgate)(struct platform_device *dev);
+
+	/* Called to check state of device */
+	bool (*is_railgated)(struct platform_device *dev);
 
 	/* Postscale callback is called after frequency change */
 	void (*postscale)(struct platform_device *pdev,

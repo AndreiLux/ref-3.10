@@ -40,7 +40,7 @@ struct palmas_therm_zone {
 	struct palmas			*palmas;
 	struct thermal_zone_device	*tz_device;
 	int				irq;
-	unsigned long			hd_threshold_temp;
+	long				hd_threshold_temp;
 	const char			*tz_name;
 };
 
@@ -53,7 +53,7 @@ static struct thermal_trip_info palmas_tpoint = {
 };
 
 static int palmas_thermal_get_temp(struct thermal_zone_device *tz_device,
-			unsigned long *temp)
+			long *temp)
 {
 	int ret;
 	unsigned int val;
@@ -87,7 +87,7 @@ static int palmas_thermal_get_trip_type(struct thermal_zone_device *tz_device,
 }
 
 static int palmas_thermal_get_trip_temp(struct thermal_zone_device *tz_device,
-			int trip, unsigned long *temp)
+			int trip, long *temp)
 {
 	if (trip >= 1)
 		return -EINVAL;
@@ -172,7 +172,7 @@ static int palmas_thermal_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, ptherm_zone);
 	ptherm_zone->dev = &pdev->dev;
 	ptherm_zone->palmas = palmas;
-	ptherm_zone->hd_threshold_temp = (unsigned long) hd_threshold_temp;
+	ptherm_zone->hd_threshold_temp = (long)hd_threshold_temp;
 	ptherm_zone->tz_name = tz_name;
 
 	ptherm_zone->tz_device = thermal_zone_device_register(tz_name,

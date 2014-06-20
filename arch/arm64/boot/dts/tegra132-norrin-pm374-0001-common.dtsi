@@ -146,7 +146,7 @@
 
 	denver_cpuidle_pmic {
 		type = <1>; /* AMS 3722/3723 */
-		retention-voltage = <20>;
+		retention-voltage = <15>; /* vret = .55V */
 		lock = <0>;
 	};
 };
