@@ -626,25 +626,17 @@ static int fwu_wait_for_idle(int timeout_ms)
 	int count = 0;
 	int timeout_count = ((timeout_ms * 1000) / MAX_SLEEP_TIME_US) + 1;
 	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;
-	const struct synaptics_dsx_board_data *bdata =
-				rmi4_data->hw_if->board_data;
 
 	do {
 		usleep_range(MIN_SLEEP_TIME_US, MAX_SLEEP_TIME_US);
 
 		count++;
-		if (!gpio_get_value(bdata->irq_gpio)) {
+		if (count == timeout_count)
 			fwu_read_f34_flash_status();
 
-			if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
-				return 0;
-		}
+		if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
+			return 0;
 	} while (count < timeout_count);
-
-	fwu_read_f34_flash_status();
-
-	if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
-		return 0;
 
 	dev_err(rmi4_data->pdev->dev.parent,
 			"%s: Timed out waiting for idle status, command: %X, status: %X\n",
@@ -1502,8 +1494,6 @@ static int fwu_start_reflash(void)
 
 	pr_notice("%s: Start of reflash process\n", __func__);
 
-	rmi4_data->irq_enable(rmi4_data, false);
-
 	if (fwu->ext_data_source) {
 		fw_image = fwu->ext_data_source;
 	} else {
@@ -1619,7 +1609,6 @@ static int fwu_start_reflash(void)
 	}
 
 exit:
-	rmi4_data->irq_enable(rmi4_data, true);
 	rmi4_data->reset_device(rmi4_data);
 
 	if (fw_entry)

@@ -300,8 +300,8 @@
 			synaptics,reset-on-state = <0>;
 			synaptics,reset-active-ms = <20>;
 			synaptics,reset-delay-ms = <100>;
-			synaptics,byte-delay-us = <20>;
-			synaptics,block-delay-us = <20>;
+			synaptics,byte-delay-us = <30>;
+			synaptics,block-delay-us = <30>;
 
 			config_2 {
 				pr_number     = <1671106>;
