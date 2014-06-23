@@ -95,6 +95,7 @@
 #include <linux/sysedp.h>
 #include <linux/backlight.h>
 
+#define STRB0	220 /*GPIO PBB4*/
 #define STRB1	181 /*GPIO PW5*/
 #define TPS61310_REG0		0x00
 #define TPS61310_REG1		0x01
@@ -417,7 +418,7 @@ static int tps61310_param_rd(struct tps61310_info *info, long arg)
 				__func__, pinstate.mask, pinstate.values);
 		data_ptr = &pinstate;
 		data_size = sizeof(struct nvc_torch_pin_state);
-		gpio_set_value(220, 1);
+		gpio_set_value(STRB0, 1);
 		break;
 
 	case NVC_PARAM_STEREO:
@@ -554,7 +555,7 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 		val &= 0xC0; /* 7:6=mode */
 		if (!val) /* turn pwr off if no torch && no pwr_api */
 			tps61310_pm_dev_wr(info, NVC_PWR_OFF);
-		gpio_set_value(220, 0);
+		gpio_set_value(STRB0, 0);
 		return err;
 
 	case NVC_PARAM_FLASH_PIN_STATE:
@@ -804,6 +805,8 @@ static int tps61310_release(struct inode *inode, struct file *file)
 	struct tps61310_info *info = file->private_data;
 
 	dev_dbg(&info->i2c_client->dev, "%s\n", __func__);
+        gpio_set_value(STRB0, 0);
+        gpio_set_value(STRB1, 0);
 	tps61310_pm_wr_s(info, NVC_PWR_OFF);
 	file->private_data = NULL;
 	WARN_ON(!atomic_xchg(&info->in_use, 0));
