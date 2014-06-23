@@ -733,9 +733,9 @@ static int rt5677_parse_and_load_dsp(u8 *buf, unsigned int len)
 		if (pr_hdr->p_paddr && pr_hdr->p_filesz) {
 			pr_debug("Load [0x%x] -> 0x%x\n", pr_hdr->p_filesz,
 			       pr_hdr->p_paddr);
-			rt5677_spi_burst_write(pr_hdr->p_paddr,
-					       buf + pr_hdr->p_offset,
-					       pr_hdr->p_filesz);
+			rt5677_spi_write(pr_hdr->p_paddr,
+					 buf + pr_hdr->p_offset,
+					 pr_hdr->p_filesz);
 		}
 		pr_hdr++;
 	}
@@ -764,7 +764,7 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 		len = rt5677_read_dsp_code_from_file(file_path, &buf);
 		if (len) {
 			pr_debug("load %s ok\n", file_path);
-			rt5677_spi_burst_write(0x50000000, buf, len);
+			rt5677_spi_write(0x50000000, buf, len);
 			kfree(buf);
 		} else {
 			pr_err("load %s fail\n", file_path);
@@ -775,7 +775,7 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 		len = rt5677_read_dsp_code_from_file(file_path, &buf);
 		if (len) {
 			pr_debug("load %s ok\n", file_path);
-			rt5677_spi_burst_write(0x60000000, buf, len);
+			rt5677_spi_write(0x60000000, buf, len);
 			kfree(buf);
 		} else {
 			pr_err("load %s fail\n", file_path);

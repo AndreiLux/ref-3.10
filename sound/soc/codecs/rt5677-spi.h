@@ -12,8 +12,7 @@
 #ifndef __RT5671_DSP_H__
 #define __RT5671_DSP_H__
 
-int rt5677_spi_write(u8 *txbuf, size_t len);
-int rt5677_spi_burst_write(u32 addr, u8 *txbuf, size_t len);
+int rt5677_spi_write(u32 addr, u8 *txbuf, size_t len);
 int rt5677_spi_read(u32 addr, u8 *rxbuf, size_t len);
 
 struct rt5677_spi_platform_data {

@@ -127,23 +127,7 @@ int rt5677_spi_read(u32 addr, u8 *rx_data, size_t len)
 	return status;
 }
 
-int rt5677_spi_write(u8 *txbuf, size_t len)
-{
-	int status;
-
-	mutex_lock(&spi_mutex);
-
-	status = spi_write(g_spi, txbuf, len);
-
-	mutex_unlock(&spi_mutex);
-
-	if (status)
-		dev_err(&g_spi->dev, "rt5677_spi_write error %d\n", status);
-
-	return status;
-}
-
-int rt5677_spi_burst_write(u32 addr, u8 *txbuf, size_t len)
+int rt5677_spi_write(u32 addr, u8 *txbuf, size_t len)
 {
 	unsigned int i, end, offset = 0;
 	int status = 0;
@@ -203,7 +187,10 @@ int rt5677_spi_burst_write(u32 addr, u8 *txbuf, size_t len)
 		}
 		write_buf[end + SPI_HEADER] = spi_cmd;
 
-		status |= rt5677_spi_write(write_buf, end + SPI_HEADER + 1);
+		mutex_lock(&spi_mutex);
+		status |= spi_write(g_spi, write_buf, end + SPI_HEADER + 1);
+		mutex_unlock(&spi_mutex);
+
 		offset += end;
 	}
 
