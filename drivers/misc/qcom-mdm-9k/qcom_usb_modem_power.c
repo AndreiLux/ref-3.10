@@ -473,6 +473,9 @@ static void mdm_fatal(struct work_struct *ws)
 	mutex_lock(&modem->lock);
 
 	modem->mdm_status = MDM_STATUS_RESET;
+
+	mutex_unlock(&modem->lock);
+
 	if(modem->mdm_debug_on)
 		pr_info("%s: modem->mdm_status=0x%x\n", __func__, modem->mdm_status);
 
@@ -490,8 +493,6 @@ static void mdm_fatal(struct work_struct *ws)
 	if (get_enable_ramdumps()) {
 		msleep(modem->pdata->ramdump_delay_ms);
 	}
-
-	mutex_unlock(&modem->lock);
 
 #ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 	subsystem_restart(EXTERNAL_MODEM);
