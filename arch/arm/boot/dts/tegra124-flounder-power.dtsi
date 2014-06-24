@@ -37,7 +37,7 @@ palmas: tps65913 {
 			pin_gpio0 {
 				pins = "gpio0";
 				function = "id";
-				bias-pull-up;
+				bias-pull-down;
 			};
 
 			pin_gpio1 {
