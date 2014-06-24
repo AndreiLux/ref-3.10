@@ -36,4 +36,5 @@ struct tegra_rt5677 {
 	struct delayed_work power_work;
 	struct work_struct hotword_work;
 	struct mutex rt5677_lock;
+	struct mutex spk_amp_lock;
 };

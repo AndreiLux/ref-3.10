@@ -92,6 +92,42 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static int tegra_rt5677_spk_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	pr_info("%s:mi2s amp on\n",__func__);
+
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
+
+	mutex_lock(&machine->spk_amp_lock);
+	set_tfa9895_spkamp(1, 0);
+	set_tfa9895l_spkamp(1, 0);
+	mutex_unlock(&machine->spk_amp_lock);
+
+	return 0;
+}
+
+static void tegra_rt5677_spk_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	pr_info("%s:mi2s amp off\n",__func__);
+
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
+
+	mutex_lock(&machine->spk_amp_lock);
+	set_tfa9895_spkamp(0, 0);
+	set_tfa9895l_spkamp(0, 0);
+	mutex_unlock(&machine->spk_amp_lock);
+}
+
 static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -360,8 +396,8 @@ static struct snd_soc_ops tegra_rt5677_ops = {
 
 static struct snd_soc_ops tegra_rt5677_speaker_ops = {
 	.hw_params = tegra_speaker_hw_params,
-	.startup = tegra_rt5677_startup,
-	.shutdown = tegra_rt5677_shutdown,
+	.startup = tegra_rt5677_spk_startup,
+	.shutdown = tegra_rt5677_spk_shutdown,
 };
 
 static struct snd_soc_ops tegra_rt5677_bt_sco_ops = {
@@ -1243,6 +1279,7 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 
 	usleep_range(1000, 2000);
 	mutex_init(&machine->rt5677_lock);
+	mutex_init(&machine->spk_amp_lock);
 
 	set_rt5677_power_locked(machine, true);
 
