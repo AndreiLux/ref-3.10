@@ -167,7 +167,6 @@ struct cwmcu_data {
 	u32	continuous_sensor_count;
 	int	IRQ;
 	struct delayed_work	work;
-	struct work_struct	irq_work;
 	u32 gpio_wake_mcu;
 	u32 gpio_reset;
 	u32 gpio_chip_mode;
@@ -2710,14 +2709,18 @@ void activate_double_tap(u8 facedown)
 	return;
 }
 
-static void cwmcu_irq_work_func(struct work_struct *work)
+static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 {
-	struct cwmcu_data *sensor = container_of((struct work_struct *)work,
-						 struct cwmcu_data, irq_work);
+	struct cwmcu_data *sensor = handle;
 	s32 ret;
 	u8 INT_st1, INT_st2, INT_st3, INT_st4, ERR_st, Batch_st;
 	u8 clear_intr;
 	u16 light_adc = 0;
+
+	if (probe_success != 1) {
+		D("%s: probe not completed\n", __func__);
+		return IRQ_HANDLED;
+	}
 
 	D("[CWMCU] %s\n", __func__);
 
@@ -3043,25 +3046,6 @@ exception_end:
 	}
 
 	cwmcu_powermode_switch(0);
-
-	enable_irq(sensor->IRQ);
-}
-
-static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
-{
-	struct cwmcu_data *data = handle;
-
-	if (probe_success != 1) {
-		D("%s: probe not completed\n", __func__);
-		return IRQ_HANDLED;
-	}
-
-	if ((data == NULL) || (data->client == NULL))
-		return IRQ_HANDLED;
-
-	disable_irq_nosync(data->IRQ);
-
-	schedule_work(&data->irq_work);
 
 	return IRQ_HANDLED;
 }
@@ -3754,7 +3738,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		       "wake_up_gesture_wake_lock");
 
 	init_irq_work(&sensor->iio_irq_work, iio_trigger_work);
-	INIT_WORK(&sensor->irq_work, cwmcu_irq_work_func);
 
 	mcu_wq = create_singlethread_workqueue("htc_mcu");
 	i2c_set_clientdata(client, sensor);
@@ -3764,8 +3747,8 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	sensor->IRQ = client->irq;
 	D("Requesting irq = %d\n", sensor->IRQ);
-	error = request_irq(sensor->IRQ, cwmcu_irq_handler, IRQF_TRIGGER_RISING,
-				"cwmcu", sensor);
+	error = request_threaded_irq(sensor->IRQ, NULL, cwmcu_irq_handler,
+			IRQF_TRIGGER_RISING | IRQF_ONESHOT, "cwmcu", sensor);
 	if (error)
 		E("[CWMCU] could not request irq %d\n", error);
 	error = enable_irq_wake(sensor->IRQ);
