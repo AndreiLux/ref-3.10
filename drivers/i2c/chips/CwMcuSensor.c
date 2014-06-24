@@ -188,8 +188,6 @@ struct cwmcu_data {
 	u8  bs_calibrated;
 	u8  gy_calibrated;
 
-	u8 filter_first_zeros[num_sensors];
-
 	s32 i2c_total_retry;
 	s32 i2c_latch_retry;
 	unsigned long i2c_jiffies;
@@ -1829,15 +1827,6 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	if (probe_success != 1)
 		return -EBUSY;
 
-	if ((enabled == 1) &&
-	    (sensors_id < CW_SENSORS_ID_END) &&
-	    (sensors_id >= 0)
-	   ) {
-		D("%s: Filter first ZEROs, sensors_id = %ld\n",
-			__func__, sensors_id);
-		mcu_data->filter_first_zeros[sensors_id] = 1;
-	}
-
 	if ((sensors_id >= CW_SENSORS_ID_END) ||
 	    (sensors_id < 0)
 	   ) {
@@ -3262,11 +3251,6 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 
 	int i;
 
-	if (pdata == NULL) {
-		D("%s: pdata is NULL\n", __func__);
-		return -EINVAL;
-	}
-	pdata->gs_kvalue = 0;
 	g_sensor_offset = of_find_node_by_path(CALIBRATION_DATA_PATH);
 	if (g_sensor_offset) {
 		g_sensor_cali_data = (unsigned char *)
@@ -3285,14 +3269,6 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 
 	} else
 		E("%s: G-sensor Calibration data offset not found\n", __func__);
-
-	pdata->gs_kvalue_L1 = 0;
-	pdata->gs_kvalue_L2 = 0;
-	pdata->gs_kvalue_L3 = 0;
-	pdata->gs_kvalue_R1 = 0;
-	pdata->gs_kvalue_R2 = 0;
-	pdata->gs_kvalue_R3 = 0;
-	pdata->gy_kvalue = 0;
 
 	gyro_sensor_offset = of_find_node_by_path(CALIBRATION_DATA_PATH);
 	if (gyro_sensor_offset) {
@@ -3333,7 +3309,6 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 		E("%s: GYRO-sensor Calibration data offset not found\n",
 				__func__);
 
-	pdata->als_kvalue = 0;
 	light_sensor_offset = of_find_node_by_path(CALIBRATION_DATA_PATH);
 	if (light_sensor_offset) {
 		light_sensor_cali_data = (unsigned char *)
@@ -3355,7 +3330,6 @@ static int mcu_parse_dt(struct device *dev, struct cwmcu_data *pdata)
 		E("%s: LIGHT-sensor Calibration data offset not found\n",
 			__func__);
 
-	pdata->bs_kvalue = 0;
 	baro_sensor_offset = of_find_node_by_path(CALIBRATION_DATA_PATH);
 	if (baro_sensor_offset) {
 		baro_sensor_cali_data = (unsigned char *)
@@ -3758,9 +3732,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	mutex_lock(&sensor->mutex_lock);
 	sensor->resume_done = 1;
 	mutex_unlock(&sensor->mutex_lock);
-
-	for (i = 0; i < num_sensors; i++)
-		sensor->filter_first_zeros[i] = 0;
 
 	queue_delayed_work(mcu_wq, &polling_work,
 			msecs_to_jiffies(5000));
