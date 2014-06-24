@@ -28,7 +28,6 @@
 #include <linux/tegra-powergate.h>
 #include <video/tegra_dc_ext.h>
 
-
 #define WIN_IS_TILED(win)	((win)->flags & TEGRA_WIN_FLAG_TILED)
 #define WIN_IS_ENABLED(win)	((win)->flags & TEGRA_WIN_FLAG_ENABLED)
 #define WIN_IS_FB(win)		((win)->flags & TEGRA_WIN_FLAG_FB)

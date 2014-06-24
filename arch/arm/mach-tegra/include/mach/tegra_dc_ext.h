@@ -74,6 +74,7 @@ void tegra_dc_ext_disable(struct tegra_dc_ext *dc_ext)
 static inline
 int tegra_dc_ext_restore(struct tegra_dc_ext *ext)
 {
+	return 0;
 }
 static inline
 int tegra_dc_ext_process_hotplug(int output)
