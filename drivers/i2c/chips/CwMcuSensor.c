@@ -116,9 +116,6 @@ static int DEBUG_DISABLE;
 module_param(DEBUG_DISABLE, int, 0660);
 MODULE_PARM_DESC(DEBUG_DISABLE, "disable " CWMCU_I2C_NAME " driver") ;
 
-static void polling_do_work(struct work_struct *w);
-static DECLARE_DELAYED_WORK(polling_work, polling_do_work);
-
 static void resume_do_work(struct work_struct *w);
 static DECLARE_WORK(resume_work, resume_do_work);
 
@@ -1472,36 +1469,34 @@ static int update_mcu_flash_mem_block(u32 start_address,
 	return 0;
 }
 
-static int update_firmware(struct cwmcu_data *sensor)
+static void update_firmware(const struct firmware *fw, void *context)
 {
-	const struct firmware *fw;
+	struct cwmcu_data *sensor = context;
 	int  ret;
 	u8 write_buf[FW_I2C_LEN_LIMIT] = {0};
 	int block_size, data_len;
 	u32 address_point;
 	int i;
 
-	ret = request_firmware(&fw, "sensor_hub.img", &sensor->client->dev);
-	D("%s: request_firmware ret = %d\n", __func__, ret);
-	if (ret || fw == NULL) {
-		E("%s: firmware request failed (%d, %p)", __func__, ret, fw);
-		return -1;
-	}
+	cwmcu_powermode_switch(1);
+
+	if (!fw)
+		goto fast_exit;
 
 	D("%s: firmware size = %lu\n", __func__, fw->size);
 
 	ret = check_fw_version(fw);
 	if (ret == 1) { /* Perform firmware update */
 
-		mutex_lock(&mcu_data->activated_i2c_lock);
+		mutex_lock(&sensor->activated_i2c_lock);
 
-		mcu_data->client->addr = 0x39;
+		sensor->client->addr = 0x39;
 
-		gpio_direction_output(mcu_data->gpio_chip_mode, 1);
+		gpio_direction_output(sensor->gpio_chip_mode, 1);
 		mdelay(10);
-		gpio_direction_output(mcu_data->gpio_reset, 0);
+		gpio_direction_output(sensor->gpio_reset, 0);
 		mdelay(10);
-		gpio_direction_output(mcu_data->gpio_reset, 1);
+		gpio_direction_output(sensor->gpio_reset, 1);
 		mdelay(41);
 
 		ret = erase_mcu_flash_mem();
@@ -1546,43 +1541,27 @@ static int update_firmware(struct cwmcu_data *sensor)
 out:
 		D("%s: End writing firmware\n", __func__);
 
-		gpio_direction_output(mcu_data->gpio_chip_mode, 0);
+		gpio_direction_output(sensor->gpio_chip_mode, 0);
 		mdelay(10);
-		gpio_direction_output(mcu_data->gpio_reset, 0);
+		gpio_direction_output(sensor->gpio_reset, 0);
 		mdelay(10);
-		gpio_direction_output(mcu_data->gpio_reset, 1);
+		gpio_direction_output(sensor->gpio_reset, 1);
 		mdelay(20);
 
-		mcu_data->client->addr = 0x72;
+		sensor->client->addr = 0x72;
 
-		mutex_unlock(&mcu_data->activated_i2c_lock);
+		mutex_unlock(&sensor->activated_i2c_lock);
 
 	}
 	release_firmware(fw);
-	return ret;
-}
 
-static void polling_do_work(struct work_struct *w)
-{
-	int error;
-
-	cwmcu_powermode_switch(1);
-
-	error = update_firmware(mcu_data);
-	if (error) {
-		E("%s: update_firmware fails, error = %d\n", __func__, error);
-		DEBUG_DISABLE = 1;
-	}
-
-	cwmcu_sensor_placement(mcu_data);
-	cwmcu_set_sensor_kvalue(mcu_data);
-	cwmcu_restore_status(mcu_data);
+fast_exit:
+	cwmcu_sensor_placement(sensor);
+	cwmcu_set_sensor_kvalue(sensor);
+	cwmcu_restore_status(sensor);
 
 	cwmcu_powermode_switch(0);
-
-	cancel_delayed_work(&polling_work);
 }
-
 
 /* Returns the number of read bytes on success */
 static int CWMCU_i2c_read(struct cwmcu_data *sensor,
@@ -3733,8 +3712,9 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	sensor->resume_done = 1;
 	mutex_unlock(&sensor->mutex_lock);
 
-	queue_delayed_work(mcu_wq, &polling_work,
-			msecs_to_jiffies(5000));
+	request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+			"sensor_hub.img", &client->dev, GFP_KERNEL, sensor,
+			update_firmware);
 
 	error = cwmcu_input_init(&sensor->input);
 	if (error) {
