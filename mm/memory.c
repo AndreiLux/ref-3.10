@@ -1485,7 +1485,12 @@ struct page *follow_page_mask(struct vm_area_struct *vma,
 	pte_t *ptep, pte;
 	spinlock_t *ptl;
 	struct page *page;
-	struct mm_struct *mm = vma->vm_mm;
+	struct mm_struct *mm;
+
+	if (WARN_ON(!vma))
+		return NULL;
+
+	mm = vma->vm_mm;
 
 	*page_mask = 0;
 
