@@ -241,20 +241,14 @@ static int mdm_panic_prep(struct notifier_block *this, unsigned long event, void
 
 	modem = dev_get_drvdata(dev);
 
-	mutex_lock(&modem->lock);
-
-	mdm_disable_irqs(modem, false);
-	mdm_disable_irqs(modem, true);
 	gpio_set_value(modem->pdata->ap2mdm_errfatal_gpio, 1);
 
 	if (modem->pdata->ap2mdm_wakeup_gpio >= 0)
 		gpio_set_value(modem->pdata->ap2mdm_wakeup_gpio, 1);
 
-	mutex_unlock(&modem->lock);
-
 	for (i = MDM_MODEM_TIMEOUT; i > 0; i -= MDM_MODEM_DELTA) {
 		/* pet_watchdog(); */
-		msleep(MDM_MODEM_DELTA);
+		mdelay(MDM_MODEM_DELTA);
 		if (gpio_get_value(modem->pdata->mdm2ap_status_gpio) == 0)
 			break;
 	}
