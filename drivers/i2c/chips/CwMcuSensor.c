@@ -36,10 +36,7 @@
 
 #include <linux/firmware.h>
 
-#if defined(CONFIG_FB)
 #include <linux/notifier.h>
-#include <linux/fb.h>
-#endif
 
 #include <linux/sensor_hub.h>
 
@@ -199,9 +196,6 @@ struct cwmcu_data {
 	int power_on_counter;
 
 	struct input_dev *input;
-#if defined(CONFIG_FB)
-	struct notifier_block fb_notif;
-#endif
 	s16 light_last_data[REPORT_EVENT_COMMON_LEN];
 };
 
@@ -230,11 +224,6 @@ static int CWMCU_i2c_write(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
 static int CWMCU_i2c_write_power(struct cwmcu_data *sensor,
 			u8 reg_addr, u8 *data, u8 len);
-
-#if defined(CONFIG_FB)
-static int fb_notifier_callback(struct notifier_block *self,
-				unsigned long event, void *data);
-#endif
 
 static void gpio_make_falling_edge(int gpio)
 {
@@ -2284,6 +2273,42 @@ static ssize_t flush_set(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+static ssize_t facedown_set(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t size)
+{
+	struct cwmcu_data *sensor = dev_get_drvdata(dev);
+	bool on;
+	u8 data;
+	int i;
+
+	if (strtobool(buf, &on) < 0)
+		return -EINVAL;
+
+	if (!!on == !!(sensor->enabled_list & (1 << HTC_FACEDOWN_DETECTION)))
+		return size;
+
+	i = (HTC_FACEDOWN_DETECTION / 8);
+
+	if (on)
+		sensor->enabled_list |= (1 << HTC_FACEDOWN_DETECTION);
+	else
+		sensor->enabled_list &= ~(1 << HTC_FACEDOWN_DETECTION);
+
+	data = (u8)(sensor->enabled_list >> (i * 8));
+	CWMCU_i2c_write_power(sensor, CWSTM32_ENABLE_REG + i, &data, 1);
+
+	return size;
+}
+
+static ssize_t facedown_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct cwmcu_data *sensor = dev_get_drvdata(dev);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+		!!(sensor->enabled_list & (1U << HTC_FACEDOWN_DETECTION)));
+}
+
 /* cwmcu_powermode_switch() must be held by caller */
 static void cwmcu_batch_read(struct cwmcu_data *sensor)
 {
@@ -3423,6 +3448,7 @@ static struct device_attribute attributes[] = {
 	__ATTR(firmware_version, 0440, get_firmware_version, NULL),
 	__ATTR(hall_sensor, 0440, get_hall_sensor, NULL),
 	__ATTR(led_en, 0220, NULL, led_enable),
+	__ATTR(facedown_enabled, 0660, facedown_show, facedown_set),
 };
 
 
@@ -3438,6 +3464,8 @@ static int create_sysfs_interfaces(struct cwmcu_data *sensor)
 	sensor->sensor_dev = device_create(sensor->sensor_class, NULL, 0, "%s",
 					   "sensor_hub");
 	if (sensor->sensor_dev == NULL)
+		goto custom_device_error;
+	if (dev_set_drvdata(sensor->sensor_dev, sensor))
 		goto custom_device_error;
 
 	for (i = 0; i < ARRAY_SIZE(attributes); i++)
@@ -3514,52 +3542,6 @@ static int cwmcu_input_init(struct input_dev **input)
 
 	return err;
 }
-
-#if defined(CONFIG_FB)
-static int fb_notifier_callback(struct notifier_block *self,
-				unsigned long event, void *data)
-{
-	struct fb_event *evdata = data;
-	int *blank;
-
-	D("%s\n", __func__);
-
-	if (evdata && evdata->data && (event == FB_EVENT_BLANK) && mcu_data &&
-			mcu_data->client) {
-		u8 data;
-		int i;
-
-		blank = evdata->data;
-		i = (HTC_FACEDOWN_DETECTION / 8);
-
-		switch (*blank) {
-		case FB_BLANK_UNBLANK:
-			D("MCU late_resume\n");
-			mcu_data->enabled_list &=
-				~(1 << HTC_FACEDOWN_DETECTION);
-			data = (u8)(mcu_data->enabled_list>>(i*8));
-
-			CWMCU_i2c_write_power(mcu_data,
-					CWSTM32_ENABLE_REG + i,
-					&data, 1);
-			break;
-		case FB_BLANK_POWERDOWN:
-		case FB_BLANK_HSYNC_SUSPEND:
-		case FB_BLANK_VSYNC_SUSPEND:
-		case FB_BLANK_NORMAL:
-			D("MCU early_suspend\n");
-			mcu_data->enabled_list |= (1 << HTC_FACEDOWN_DETECTION);
-			data = (u8)(mcu_data->enabled_list>>(i*8));
-
-			CWMCU_i2c_write_power(mcu_data,
-					CWSTM32_ENABLE_REG + i,
-					&data, 1);
-			break;
-		}
-	}
-	return 0;
-}
-#endif
 
 static int CWMCU_i2c_probe(struct i2c_client *client,
 				       const struct i2c_device_id *id)
@@ -3723,24 +3705,10 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	}
 	input_set_drvdata(sensor->input, sensor);
 
-#if defined(CONFIG_FB)
-	mcu_data->fb_notif.notifier_call = fb_notifier_callback;
-	error = fb_register_client(&mcu_data->fb_notif);
-	if (error) {
-		E("%s: Unable to register fb_notifier: %d\n", __func__, error);
-		goto err_fb_register_client;
-	}
-#endif
-
 	probe_success = 1;
 	I("CWMCU_i2c_probe success!\n");
 
 	return 0;
-
-#if defined(CONFIG_FB)
-err_fb_register_client:
-	input_free_device(sensor->input);
-#endif
 
 err_register_input:
 	free_irq(sensor->IRQ, sensor);
