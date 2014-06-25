@@ -167,39 +167,6 @@
 			interrupt-parent = <&gpio>;
 			interrupts = <TEGRA_GPIO(J, 0) 0x0>;
 
-			charger {
-				regulator-name = "batt_regulator";
-				regulator-max-microamp = <3000000>;
-				ti,watchdog-timeout = <0>;
-				ti,auto-recharge-time-power-off = <0>;
-				ti,auto-recharge-time = <1800>;
-				ti,input-voltage-limit-millivolt = <4440>;
-				ti,fast-charge-current-limit-milliamp = <2944>;
-				ti,pre-charge-current-limit-milliamp = <512>;
-				ti,charge-term-current-limit-milliamp = <128>;
-				ti,charge-voltage-limit-millivolt = <4352>;
-				ti,disbale-suspend-during-charging;
-				ti,charge-suspend-polling-time-sec = <3600>;
-				ti,safety-timer-reset-disable;
-				ti,temp-polling-time-sec = <30>;
-				thermal-overtemp-control-no-thermister;
-				thermal-temperature-hot-deciC = <551>;
-				thermal-temperature-cold-deciC = <(-1)>;
-				thermal-temperature-warm-deciC = <481>;
-				thermal-temperature-cool-deciC = <100>;
-				thermal-temperature-hysteresis-deciC = <30>;
-				thermal-warm-voltage-millivolt = <4096>;
-				thermal-cool-voltage-millivolt = <4352>;
-				thermal-disable-warm-current-half;
-				thermal-overtemp-output-current-milliamp = <1344>;
-				consumers {
-					c1 {
-						regulator-consumer-supply = "usb_bat_chg";
-						regulator-consumer-device = "tegra-udc.0";
-					};
-				};
-			};
-
 			vbus {
 				regulator-name = "vbus_regulator";
 				consumers {
@@ -213,15 +180,6 @@
 						regulator-consumer-device = "tegra-otg";
 					};
 				};
-			};
-
-			policy {
-				enable-battery-status-monitor;
-				unknown-battery-id-minimum = <1343>;
-				battery-id-channel-name = "batt-id-channel";
-				input-voltage-min-high-battery-millivolt = <4440>;
-				input-voltage-min-low-battery-millivolt = <4200>;
-				input-voltage-switch-millivolt = <4150>;
 			};
 		};
 
@@ -861,7 +819,41 @@
 	};
 
 	htc_battery_max17050 {
-		status = "okay";
 		compatible = "htc,max17050_battery";
+	};
+
+	htc_battery_bq2419x {
+		compatible = "htc,bq2419x_battery";
+		regulator-name = "batt_regulator";
+		regulator-max-microamp = <3000000>;
+		auto-recharge-time = <30>;
+		input-voltage-limit-millivolt = <4440>;
+		fast-charge-current-limit-milliamp = <2944>;
+		pre-charge-current-limit-milliamp = <512>;
+		charge-voltage-limit-millivolt = <4352>;
+		charge-suspend-polling-time-sec = <3600>;
+		temp-polling-time-sec = <30>;
+		disable-suspend-during-charging;
+		thermal-overtemp-control-no-thermister;
+		thermal-temperature-hot-deciC = <551>;
+		thermal-temperature-cold-deciC = <(-1)>;
+		thermal-temperature-warm-deciC = <481>;
+		thermal-temperature-cool-deciC = <100>;
+		thermal-temperature-hysteresis-deciC = <30>;
+		thermal-warm-voltage-millivolt = <4096>;
+		thermal-cool-voltage-millivolt = <4352>;
+		thermal-disable-warm-current-half;
+		thermal-overtemp-output-current-milliamp = <1344>;
+		unknown-battery-id-minimum = <1343>;
+		battery-id-channel-name = "batt-id-channel";
+		input-voltage-min-high-battery-millivolt = <4440>;
+		input-voltage-min-low-battery-millivolt = <4200>;
+		input-voltage-switch-millivolt = <4150>;
+		consumers {
+			c1 {
+				regulator-consumer-supply = "usb_bat_chg";
+				regulator-consumer-device = "tegra-udc.0";
+			};
+		};
 	};
 };

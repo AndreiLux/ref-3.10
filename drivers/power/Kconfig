@@ -47,6 +47,20 @@ config CHARGER_BQ2419X
 	  Say Y here to enable driver support for TI BQ24190/
 	  BQ24192/BQ24192i/BQ24193 Charger.
 
+config CHARGER_BQ2419X_HTC
+	tristate "BQ24190/BQ24192/BQ24192i/BQ24193 HTC Charger driver support"
+	depends on I2C && HTC_BATTERY_BQ2419X
+	help
+	  Say Y here to enable driver support for TI BQ24190/
+	  BQ24192/BQ24192i/BQ24193 Charger with HTC policy.
+
+config HTC_BATTERY_BQ2419X
+	tristate "HTC Battery policy for BQ2419X charging control"
+	select BATTERY_CHARGER_GAUGE_COMM
+	select CABLE_VBUS_MONITOR
+	help
+	  This module is to control charging through BQ2419X driver.
+
 config CHARGER_BQ2471X
 	tristate "BQ24715/BQ24717 Charger driver support"
 	depends on I2C

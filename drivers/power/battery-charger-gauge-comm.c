@@ -101,6 +101,7 @@ struct battery_charger_dev {
 	struct rtc_device		*rtc;
 	bool				enable_thermal_monitor;
 	bool				enable_batt_status_monitor;
+	ktime_t				batt_status_last_check_time;
 	struct battery_thermal_prop	thermal_prop;
 	enum charge_thermal_state	thermal_state;
 	struct battery_info_ops		batt_info_ops;
@@ -330,6 +331,7 @@ static int battery_charger_batt_status_monitor_func(
 	curr = bc_dev->battery_current / 1000;
 	level = bc_dev->battery_capacity;
 
+	cur_boottime = ktime_get_boottime();
 	is_thermal_normal = is_charge_thermal_normal(bc_dev);
 	if (level < CHARGING_FULL_DONE_LEVEL_MIN ||
 			(!bc_dev->chg_full_done && !is_thermal_normal)) {
@@ -339,7 +341,6 @@ static int battery_charger_batt_status_monitor_func(
 		goto done;
 	}
 
-	cur_boottime = ktime_get_boottime();
 	if (!bc_dev->chg_full_done &&
 		volt >= bc_dev->full_thr.chg_done_voltage_min_mv &&
 		curr >= CHARGING_CURRENT_0_TORRENCE &&
@@ -396,6 +397,7 @@ static int battery_charger_batt_status_monitor_func(
 done:
 	chg_full_done = bc_dev->chg_full_done;
 	chg_full_stop = bc_dev->chg_full_stop;
+	bc_dev->batt_status_last_check_time = cur_boottime;
 	mutex_unlock(&bc_dev->mutex);
 
 	if (bc_dev->ops->charging_full_configure)
@@ -490,6 +492,7 @@ int battery_charger_thermal_start_monitoring(
 	if (bc_dev->start_monitoring == MONITOR_WAIT) {
 		bc_dev->start_monitoring = MONITOR_THERMAL;
 		bc_dev->thermal_state = CHARGE_THERMAL_START;
+		bc_dev->batt_status_last_check_time = ktime_get_boottime();
 		schedule_delayed_work(&bc_dev->poll_temp_monitor_wq,
 				msecs_to_jiffies(1000));
 	}
@@ -555,6 +558,54 @@ int battery_charger_batt_status_stop_monitoring(
 	return 0;
 }
 EXPORT_SYMBOL_GPL(battery_charger_batt_status_stop_monitoring);
+
+int battery_charger_batt_status_force_check(
+	struct battery_charger_dev *bc_dev)
+{
+	if (!bc_dev)
+		return -EINVAL;
+
+	mutex_lock(&bc_dev->mutex);
+	if (bc_dev->start_monitoring == MONITOR_BATT_STATUS) {
+		cancel_delayed_work(&bc_dev->poll_batt_status_monitor_wq);
+		schedule_delayed_work(&bc_dev->poll_batt_status_monitor_wq, 0);
+	}
+	mutex_unlock(&bc_dev->mutex);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(battery_charger_batt_status_monitor_force_check);
+
+int battery_charger_get_batt_status_no_update_time_ms(
+	struct battery_charger_dev *bc_dev, s64 *time)
+{
+	int ret = 0;
+	ktime_t cur_boottime;
+	s64 delta;
+
+	if (!bc_dev || !time)
+		return -EINVAL;
+
+	mutex_lock(&bc_dev->mutex);
+	if (bc_dev->start_monitoring != MONITOR_BATT_STATUS)
+		ret = -ENODEV;
+	else {
+		cur_boottime = ktime_get_boottime();
+		if (ktime_compare(cur_boottime,
+				bc_dev->batt_status_last_check_time) <= 0)
+			*time = 0;
+		else {
+			delta = ktime_us_delta(
+					cur_boottime,
+					bc_dev->batt_status_last_check_time);
+			do_div(delta, 1000);
+			*time = delta;
+		}
+	}
+	mutex_unlock(&bc_dev->mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(battery_charger_get_batt_status_no_update_time_ms);
 
 int battery_charger_acquire_wake_lock(struct battery_charger_dev *bc_dev)
 {

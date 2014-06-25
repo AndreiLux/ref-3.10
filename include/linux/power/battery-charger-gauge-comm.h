@@ -130,6 +130,11 @@ int battery_charger_batt_status_start_monitoring(
 		int in_current_limit);
 int battery_charger_batt_status_stop_monitoring(
 		struct battery_charger_dev *bc_dev);
+int battery_charger_batt_status_force_check(
+		struct battery_charger_dev *bc_dev);
+int battery_charger_get_batt_status_no_update_time_ms(
+		struct battery_charger_dev *bc_dev,
+		s64 *time);
 int battery_charger_acquire_wake_lock(struct battery_charger_dev *bc_dev);
 int battery_charger_release_wake_lock(struct battery_charger_dev *bc_dev);
 
