@@ -50,7 +50,7 @@ CONFIG_PREEMPT=y
 CONFIG_CMDLINE="no_console_suspend=1 tegra_wdt.enable_on_probe=1 tegra_wdt.heartbeat=120"
 CONFIG_CMDLINE_EXTEND=y
 CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE=y
-CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES="tegra132-flounder-xaxb tegra132-flounder-xc tegra132-flounder-xdxe tegra132-flounder_lte-xaxbxc"
+CONFIG_BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES="tegra132-flounder-xaxb tegra132-flounder-xc tegra132-flounder-xdxe tegra132-flounder_lte-xaxbxcxd"
 CONFIG_COMPAT=y
 CONFIG_PM_AUTOSLEEP=y
 CONFIG_PM_WAKELOCKS=y
