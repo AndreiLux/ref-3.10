@@ -3458,45 +3458,52 @@ static int create_sysfs_interfaces(struct cwmcu_data *sensor)
 	int res;
 
 	sensor->sensor_class = class_create(THIS_MODULE, "htc_sensorhub");
-	if (sensor->sensor_class == NULL)
-		goto custom_class_error;
+	if (IS_ERR(sensor->sensor_class))
+		return PTR_ERR(sensor->sensor_class);
 
 	sensor->sensor_dev = device_create(sensor->sensor_class, NULL, 0, "%s",
-					   "sensor_hub");
-	if (sensor->sensor_dev == NULL)
-		goto custom_device_error;
-	if (dev_set_drvdata(sensor->sensor_dev, sensor))
-		goto custom_device_error;
+				"sensor_hub");
+	if (IS_ERR(sensor->sensor_dev)) {
+		res = PTR_ERR(sensor->sensor_dev);
+		goto err_device_create;
+	}
+
+	res = dev_set_drvdata(sensor->sensor_dev, sensor);
+	if (res)
+		goto err_set_drvdata;
 
 	for (i = 0; i < ARRAY_SIZE(attributes); i++)
 		if (device_create_file(sensor->sensor_dev, attributes + i))
 			goto error;
 
-	res = sysfs_create_link(
-				&sensor->sensor_dev->kobj,
-				&sensor->indio_dev->dev.kobj,
-				"iio");
-	if (res < 0) {
-		E("link create error, res = %d\n", res);
-		goto err_fail_sysfs_create_link;
-	}
+	res = sysfs_create_link(&sensor->sensor_dev->kobj,
+				&sensor->indio_dev->dev.kobj, "iio");
+	if (res < 0)
+		goto error;
 
 	return 0;
 
 error:
-	sysfs_delete_link(&sensor->sensor_dev->kobj,
-			  &sensor->indio_dev->dev.kobj,
-			  "iio");
-err_fail_sysfs_create_link:
-	for (; i >= 0; i--)
+	while (--i >= 0)
 		device_remove_file(sensor->sensor_dev, attributes + i);
-custom_device_error:
-	if (sensor->sensor_class)
-		class_destroy(sensor->sensor_class);
-custom_class_error:
-	dev_err(&sensor->client->dev, "%s:Unable to create class\n",
-		__func__);
-	return -1;
+err_set_drvdata:
+	put_device(sensor->sensor_dev);
+	device_unregister(sensor->sensor_dev);
+err_device_create:
+	class_destroy(sensor->sensor_class);
+	return res;
+}
+
+static void destroy_sysfs_interfaces(struct cwmcu_data *sensor)
+{
+	int i;
+
+	sysfs_remove_link(&sensor->sensor_dev->kobj, "iio");
+	for (i = 0; i < ARRAY_SIZE(attributes); i++)
+		device_remove_file(sensor->sensor_dev, attributes + i);
+	put_device(sensor->sensor_dev);
+	device_unregister(sensor->sensor_dev);
+	class_destroy(sensor->sensor_class);
 }
 
 static void cwmcu_remove_trigger(struct iio_dev *indio_dev)
@@ -3742,6 +3749,7 @@ static int CWMCU_i2c_remove(struct i2c_client *client)
 
 	wake_lock_destroy(&significant_wake_lock);
 	wake_lock_destroy(&wake_up_gesture_wake_lock);
+	destroy_sysfs_interfaces(sensor);
 	kfree(sensor);
 	return 0;
 }
