@@ -1523,6 +1523,10 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 
 	gk20a_dbg_fn("");
 
+	/* start with elpg disabled until first enable call */
+	mutex_init(&pmu->elpg_mutex);
+	pmu->elpg_refcnt = 0;
+
 	if (pmu->sw_ready) {
 		for (i = 0; i < pmu->mutex_cnt; i++) {
 			pmu->mutex[i].id    = i;
@@ -1664,7 +1668,6 @@ int gk20a_init_pmu_setup_sw(struct gk20a *g)
 	pmu->sw_ready = true;
 
 skip_init:
-	mutex_init(&pmu->elpg_mutex);
 	mutex_init(&pmu->isr_mutex);
 	mutex_init(&pmu->isr_enable_lock);
 	mutex_init(&pmu->pmu_copy_lock);
@@ -2116,9 +2119,6 @@ static int pmu_init_powergating(struct pmu_gk20a *pmu)
 	gk20a_dbg_pmu("cmd post PMU_PG_ELPG_CMD_DISALLOW");
 	gk20a_pmu_cmd_post(g, &cmd, NULL, NULL, PMU_COMMAND_QUEUE_HPQ,
 			pmu_handle_pg_elpg_msg, pmu, &seq, ~0);
-
-	/* start with elpg disabled until first enable call */
-	pmu->elpg_refcnt = 0;
 
 	pmu->pmu_state = PMU_STATE_STARTING;
 
