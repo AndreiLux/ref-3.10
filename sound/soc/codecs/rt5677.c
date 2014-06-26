@@ -29,6 +29,8 @@
 #include <sound/initval.h>
 #include <sound/tlv.h>
 
+#define RTK_IOCTL
+
 #ifdef RTK_IOCTL
 #if defined(CONFIG_SND_HWDEP) || defined(CONFIG_SND_HWDEP_MODULE)
 #include "rt_codec_ioctl.h"
@@ -744,20 +746,21 @@ static int rt5677_parse_and_load_dsp(u8 *buf, unsigned int len)
 
 static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 {
-#ifdef DEBUG
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret = 0;
-#endif
 	u8 *buf;
 	unsigned int len;
 	char file_path[64];
+	int err = 0;
+#ifdef DEBUG
+	int ret = 0;
+#endif
 
 	sprintf(file_path, RT5677_PATH "elf_%s",
 		dsp_vad_suffix);
 	len = rt5677_read_dsp_code_from_file(file_path, &buf);
 	if (len) {
 		pr_debug("load %s ok\n", file_path);
-		rt5677_parse_and_load_dsp(buf, len);
+		err = rt5677_parse_and_load_dsp(buf, len);
 	} else {
 		sprintf(file_path, RT5677_PATH "0x50000000_%s",
 			dsp_vad_suffix);
@@ -781,6 +784,13 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 			pr_err("load %s fail\n", file_path);
 		}
 	}
+	if (rt5677->model_buf && rt5677->model_len) {
+		err = rt5677_spi_write(RT5677_MODEL_ADDR, rt5677->model_buf,
+				       rt5677->model_len);
+		if (err)
+			pr_err("model load failed: %u\n", err);
+	}
+
 #ifdef DEBUG
 	msleep(50);
 	regmap_write(rt5677->regmap, 0x01, 0x0000);
@@ -799,7 +809,7 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 	regmap_read(rt5677->regmap, 0x04, &ret);
 	dev_err(codec->dev, "rt5677 0x60000000 0x04 %x\n", ret);
 #endif
-	return 0;
+	return err;
 }
 
 static unsigned int rt5677_set_vad(
@@ -4857,8 +4867,11 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 
 static int rt5677_i2c_remove(struct i2c_client *i2c)
 {
+	struct rt5677_priv *rt5677 = i2c_get_clientdata(i2c);
+
 	snd_soc_unregister_codec(&i2c->dev);
-	kfree(i2c_get_clientdata(i2c));
+	kfree(rt5677->model_buf);
+	kfree(rt5677);
 	return 0;
 }
 
