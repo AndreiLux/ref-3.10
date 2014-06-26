@@ -92,6 +92,7 @@
 #define TEGRA_DC_EXT_FLIP_FLAG_BLOCKLINEAR	(1 << 5)
 #define TEGRA_DC_EXT_FLIP_FLAG_SCAN_COLUMN	(1 << 6)
 #define TEGRA_DC_EXT_FLIP_FLAG_INTERLACE	(1 << 7)
+#define TEGRA_DC_EXT_FLIP_FLAG_UPDATE_CSC	(1 << 9)
 
 struct tegra_timespec {
 	__s32	tv_sec; /* seconds */
@@ -138,11 +139,24 @@ struct tegra_dc_ext_flip_windowattr {
 	/* log2(blockheight) for blocklinear format */
 	__u8	block_height_log2;
 	__u8	pad1[2];
-	__u32	offset2;
-	__u32	offset_u2;
-	__u32	offset_v2;
-	/* Leave some wiggle room for future expansion */
-	__u32   pad2[1];
+	union { /* fields for mutually exclusive options */
+		struct { /* TEGRA_DC_EXT_FLIP_FLAG_INTERLACE */
+			__u32	offset2;
+			__u32	offset_u2;
+			__u32	offset_v2;
+			__u32   pad2[1];
+		};
+		struct { /* TEGRA_DC_EXT_FLIP_FLAG_UPDATE_CSC */
+			__u16 yof;	/* s.7.0 */
+			__u16 kyrgb;	/*   2.8 */
+			__u16 kur;	/* s.2.8 */
+			__u16 kvr;	/* s.2.8 */
+			__u16 kug;	/* s.1.8 */
+			__u16 kvg;	/* s.1.8 */
+			__u16 kub;	/* s.2.8 */
+			__u16 kvb;	/* s.2.8 */
+		} csc;
+	};
 };
 
 #define TEGRA_DC_EXT_FLIP_N_WINDOWS	3

@@ -1298,7 +1298,9 @@ static void __init tegra_ardbeg_early_init(void)
 	ardbeg_sysedp_init();
 	tegra_clk_init_from_table(ardbeg_clk_init_table);
 	tegra_clk_verify_parents();
-	if (of_machine_is_compatible("nvidia,laguna"))
+	if (of_machine_is_compatible("nvidia,jetson-tk1"))
+		tegra_soc_device_init("jetson-tk1");
+	else if (of_machine_is_compatible("nvidia,laguna"))
 		tegra_soc_device_init("laguna");
 	else if (of_machine_is_compatible("nvidia,tn8"))
 		tegra_soc_device_init("tn8");
@@ -1479,13 +1481,33 @@ static void __init tegra_ardbeg_dt_init(void)
 
 static void __init tegra_ardbeg_reserve(void)
 {
+#ifdef CONFIG_TEGRA_HDMI_PRIMARY
+	ulong tmp;
+#endif /* CONFIG_TEGRA_HDMI_PRIMARY */
+
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM) || \
 		defined(CONFIG_TEGRA_NO_CARVEOUT)
-	/* 1920*1200*4*2 = 18432000 bytes */
-	tegra_reserve4(0, SZ_16M + SZ_2M, SZ_16M, 186 * SZ_1M);
+	ulong carveout_size = 0;
+	ulong fb2_size = SZ_16M;
 #else
-	tegra_reserve4(SZ_1G, SZ_16M + SZ_2M, SZ_4M, 186 * SZ_1M);
+	ulong carveout_size = SZ_1G;
+	ulong fb2_size = SZ_4M;
 #endif
+	ulong fb1_size = SZ_16M + SZ_2M;
+	ulong vpr_size = 186 * SZ_1M;
+
+#ifdef CONFIG_FRAMEBUFFER_CONSOLE
+	/* support FBcon on 4K monitors */
+	fb2_size = SZ_64M + SZ_8M;	/* 4096*2160*4*2 = 70778880 bytes */
+#endif /* CONFIG_FRAMEBUFFER_CONSOLE */
+
+#ifdef CONFIG_TEGRA_HDMI_PRIMARY
+	tmp = fb1_size;
+	fb1_size = fb2_size;
+	fb2_size = tmp;
+#endif /* CONFIG_TEGRA_HDMI_PRIMARY */
+
+	tegra_reserve4(carveout_size, fb1_size, fb2_size, vpr_size);
 }
 
 static const char * const ardbeg_dt_board_compat[] = {
@@ -1520,6 +1542,11 @@ static const char * const bowmore_dt_board_compat[] = {
 
 static const char * const loki_dt_board_compat[] = {
 	"nvidia,t132loki",
+	NULL
+};
+
+static const char * const jetson_dt_board_compat[] = {
+	"nvidia,jetson-tk1",
 	NULL
 };
 
@@ -1622,4 +1649,18 @@ DT_MACHINE_START(ARDBEG_SATA, "ardbeg_sata")
 	.dt_compat	= ardbeg_sata_dt_board_compat,
 	.init_late      = tegra_init_late
 
+MACHINE_END
+
+DT_MACHINE_START(JETSON_TK1, "jetson-tk1")
+	.atag_offset	= 0x100,
+	.smp		= smp_ops(tegra_smp_ops),
+	.map_io		= tegra_map_common_io,
+	.reserve	= tegra_ardbeg_reserve,
+	.init_early	= tegra_ardbeg_init_early,
+	.init_irq	= irqchip_init,
+	.init_time	= clocksource_of_init,
+	.init_machine	= tegra_ardbeg_dt_init,
+	.restart	= tegra_assert_system_reset,
+	.dt_compat	= jetson_dt_board_compat,
+	.init_late      = tegra_init_late
 MACHINE_END

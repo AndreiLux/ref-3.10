@@ -425,7 +425,7 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg, bool is32)
 #ifdef CONFIG_COMPAT
 	struct nvmap_map_caller_32 op32;
 #endif
-	struct nvmap_vma_priv *vpriv;
+	struct nvmap_vma_priv *priv;
 	struct vm_area_struct *vma;
 	struct nvmap_handle *h = NULL;
 	int err = 0;
@@ -464,7 +464,7 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg, bool is32)
 	down_read(&current->mm->mmap_sem);
 
 	vma = find_vma(current->mm, op.addr);
-	if (!vma || !vma->vm_private_data) {
+	if (!vma) {
 		err = -ENOMEM;
 		goto out;
 	}
@@ -479,9 +479,6 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg, bool is32)
 		goto out;
 	}
 
-	vpriv = vma->vm_private_data;
-	BUG_ON(!vpriv);
-
 	/* the VMA must exactly match the requested mapping operation, and the
 	 * VMA that is targetted must have been created by this driver
 	 */
@@ -492,22 +489,24 @@ int nvmap_map_into_caller_ptr(struct file *filp, void __user *arg, bool is32)
 	}
 
 	/* verify that each mmap() system call creates a unique VMA */
-
-	if (vpriv->handle && (h == vpriv->handle)) {
+	if (vma->vm_private_data)
 		goto out;
-	} else if (vpriv->handle) {
-		err = -EADDRNOTAVAIL;
-		goto out;
-	}
 
 	if (!h->heap_pgalloc && (h->carveout->base & ~PAGE_MASK)) {
 		err = -EFAULT;
 		goto out;
 	}
 
+	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
+	if (!priv)  {
+		err = -ENOMEM;
+		goto out;
+	}
+
 	vma->vm_flags |= (h->heap_pgalloc ? 0 : VM_PFNMAP);
-	vpriv->handle = h;
-	vpriv->offs = op.offset;
+	priv->handle = h;
+	priv->offs = op.offset;
+	vma->vm_private_data = priv;
 	vma->vm_page_prot = nvmap_pgprot(h, vma->vm_page_prot);
 	nvmap_vma_open(vma);
 
@@ -640,7 +639,7 @@ static int __nvmap_cache_maint(struct nvmap_client *client,
 			       struct nvmap_cache_op *op)
 {
 	struct vm_area_struct *vma;
-	struct nvmap_vma_priv *vpriv;
+	struct nvmap_vma_priv *priv;
 	struct nvmap_handle *handle;
 	unsigned long start;
 	unsigned long end;
@@ -662,9 +661,9 @@ static int __nvmap_cache_maint(struct nvmap_client *client,
 		goto out;
 	}
 
-	vpriv = (struct nvmap_vma_priv *)vma->vm_private_data;
+	priv = (struct nvmap_vma_priv *)vma->vm_private_data;
 
-	if (vpriv->handle != handle) {
+	if (priv->handle != handle) {
 		err = -EFAULT;
 		goto out;
 	}
@@ -673,7 +672,7 @@ static int __nvmap_cache_maint(struct nvmap_client *client,
 		(vma->vm_pgoff << PAGE_SHIFT);
 	end = start + op->len;
 
-	err = __nvmap_do_cache_maint(client, vpriv->handle, start, end, op->op,
+	err = __nvmap_do_cache_maint(client, priv->handle, start, end, op->op,
 				     false);
 out:
 	up_read(&current->mm->mmap_sem);

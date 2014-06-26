@@ -54,6 +54,7 @@
 #include <linux/tegra-pm.h>
 #include <linux/tegra_pm_domains.h>
 #include <linux/kmemleak.h>
+#include <linux/cpu.h>
 
 #include <trace/events/power.h>
 #include <trace/events/nvsecurity.h>
@@ -212,6 +213,8 @@ static bool suspend_in_progress;
 
 bool tegra_suspend_in_progress(void)
 {
+	smp_rmb();
+
 	return suspend_in_progress;
 }
 
@@ -741,9 +744,43 @@ static int tegra_suspend_prepare_late(void)
 			(current_suspend_mode == TEGRA_SUSPEND_LP1))
 		tegra_suspend_check_pwr_stats();
 
+	return 0;
+}
+
+/*
+ * LP0 WAR: Bring all CPUs online before LP0 so that they can be put into C7 on
+ * subsequent __cpu_downs otherwise we end up hanging the system by leaving a
+ * core in C6 and requesting LP0 from CPU0
+ */
+static int __cpuinit pm_suspend_notifier(struct notifier_block *nb,
+						unsigned long event, void *data)
+{
+	int cpu, ret;
+
+	if (event != PM_SUSPEND_PREPARE)
+		return NOTIFY_OK;
+
 	suspend_in_progress = true;
 
-	return 0;
+	dsb();
+
+	for_each_present_cpu(cpu) {
+		if (!cpu)
+			continue;
+		ret = cpu_up(cpu);
+
+		/*
+		 * Error in getting CPU out of C6. Let -EINVAL through as CPU
+		 * could have come online
+		 */
+		if (ret && ret != -EINVAL) {
+			pr_err("%s: Couldn't bring up CPU%d on LP0 entry: %d\n",
+					__func__, cpu, ret);
+			return NOTIFY_BAD;
+		}
+	}
+
+	return NOTIFY_OK;
 }
 
 static void tegra_suspend_finish(void)
@@ -760,6 +797,16 @@ static const struct platform_suspend_ops tegra_suspend_ops = {
 	.valid		= tegra_suspend_valid,
 	.finish		= tegra_suspend_finish,
 	.enter		= tegra_suspend_enter,
+};
+
+/*
+ * Note: The priority of this notifier needs to be higher than cpu_hotplug's
+ * suspend notifier otherwise the subsequent cpu_up operation in
+ * pm_suspend_notifier will fail
+ */
+static struct notifier_block __cpuinitdata suspend_notifier = {
+	.notifier_call = pm_suspend_notifier,
+	.priority = 1,
 };
 
 static ssize_t suspend_mode_show(struct kobject *kobj,
@@ -1077,6 +1124,9 @@ out:
 
 	if (pdata->suspend_mode == TEGRA_SUSPEND_LP0)
 		tegra_lp0_suspend_init();
+
+	if (register_pm_notifier(&suspend_notifier))
+		pr_err("%s: Failed to register suspend notifier\n", __func__);
 
 	suspend_set_ops(&tegra_suspend_ops);
 

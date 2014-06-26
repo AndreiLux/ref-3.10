@@ -158,7 +158,17 @@ static inline int is_event_supported(struct source_info *si, int event)
 	return 0;
 }
 
-static int set_parameters(struct quadd_parameters *p, uid_t *debug_app_uid)
+static int
+validate_freq(unsigned int freq)
+{
+	if (capable(CAP_SYS_ADMIN))
+		return freq >= 100 && freq <= 100000;
+	else
+		return freq == 100 || freq == 1000 || freq == 10000;
+}
+
+static int
+set_parameters(struct quadd_parameters *p, uid_t *debug_app_uid)
 {
 	int i, err;
 	int pmu_events_id[QUADD_MAX_COUNTERS];
@@ -168,9 +178,10 @@ static int set_parameters(struct quadd_parameters *p, uid_t *debug_app_uid)
 	struct task_struct *task;
 	unsigned int extra;
 
-	if (ctx.param.freq != 100 && ctx.param.freq != 1000 &&
-	    ctx.param.freq != 10000)
+	if (!validate_freq(p->freq)) {
+		pr_err("%s: incorrect frequency: %u\n", __func__, p->freq);
 		return -EINVAL;
+	}
 
 	ctx.param.freq = p->freq;
 	ctx.param.ma_freq = p->ma_freq;
@@ -283,6 +294,9 @@ static int set_parameters(struct quadd_parameters *p, uid_t *debug_app_uid)
 
 	if (extra & QUADD_PARAM_EXTRA_BT_FP)
 		pr_info("unwinding: frame pointers\n");
+
+	if (extra & QUADD_PARAM_EXTRA_BT_MIXED)
+		pr_info("unwinding: mixed mode\n");
 
 	quadd_unwind_start(task);
 
@@ -416,6 +430,10 @@ static void get_capabilities(struct quadd_comm_cap *cap)
 	extra |= QUADD_COMM_CAP_EXTRA_SUPPORT_AARCH64;
 	extra |= QUADD_COMM_CAP_EXTRA_SPECIAL_ARCH_MMAP;
 	extra |= QUADD_COMM_CAP_EXTRA_UNWIND_MIXED;
+	extra |= QUADD_COMM_CAP_EXTRA_UNW_ENTRY_TYPE;
+
+	if (ctx.hrt->tc)
+		extra |= QUADD_COMM_CAP_EXTRA_USE_ARCH_TIMER;
 
 	cap->reserved[QUADD_COMM_CAP_IDX_EXTRA] = extra;
 }
@@ -436,9 +454,16 @@ void quadd_get_state(struct quadd_module_state *state)
 }
 
 static int
-set_extab(struct quadd_extables *extabs)
+set_extab(struct quadd_extables *extabs,
+	  struct quadd_extabs_mmap *mmap)
 {
-	return quadd_unwind_set_extab(extabs);
+	return quadd_unwind_set_extab(extabs, mmap);
+}
+
+static void
+delete_mmap(struct quadd_extabs_mmap *mmap)
+{
+	quadd_unwind_delete_mmap(mmap);
 }
 
 static struct quadd_comm_control_interface control = {
@@ -448,6 +473,7 @@ static struct quadd_comm_control_interface control = {
 	.get_capabilities	= get_capabilities,
 	.get_state		= quadd_get_state,
 	.set_extab		= set_extab,
+	.delete_mmap		= delete_mmap,
 };
 
 static int __init quadd_module_init(void)
