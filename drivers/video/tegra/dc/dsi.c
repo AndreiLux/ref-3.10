@@ -3895,12 +3895,14 @@ static void tegra_dsi_send_dc_frames(struct tegra_dc *dc,
 
 static void tegra_dsi_setup_initialized_panel(struct tegra_dc_dsi_data *dsi)
 {
-	int err = 0;
+	int err;
 
-	if (dsi->avdd_dsi_csi)
+	if (dsi->avdd_dsi_csi) {
 		err = regulator_enable(dsi->avdd_dsi_csi);
-	dev_warn(&dsi->dc->ndev->dev,
-		"unable to enable regulator err = %d", err);
+		if (err)
+			dev_warn(&dsi->dc->ndev->dev,
+				"unable to enable regulator err = %d", err);
+	}
 
 	dsi->status.init = DSI_MODULE_INIT;
 

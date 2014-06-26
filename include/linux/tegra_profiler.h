@@ -19,8 +19,8 @@
 
 #include <linux/ioctl.h>
 
-#define QUADD_SAMPLES_VERSION	25
-#define QUADD_IO_VERSION	11
+#define QUADD_SAMPLES_VERSION	29
+#define QUADD_IO_VERSION	12
 
 #define QUADD_IO_VERSION_DYNAMIC_RB		5
 #define QUADD_IO_VERSION_RB_MAX_FILL_COUNT	6
@@ -29,6 +29,7 @@
 #define QUADD_IO_VERSION_GET_MMAP		9
 #define QUADD_IO_VERSION_BT_UNWIND_TABLES	10
 #define QUADD_IO_VERSION_UNWIND_MIXED		11
+#define QUADD_IO_VERSION_EXTABLES_MMAP		12
 
 #define QUADD_SAMPLE_VERSION_THUMB_MODE_FLAG	17
 #define QUADD_SAMPLE_VERSION_GROUP_SAMPLES	18
@@ -37,6 +38,10 @@
 #define QUADD_SAMPLE_VERSION_SUPPORT_IP64	23
 #define QUADD_SAMPLE_VERSION_SPECIAL_MMAP	24
 #define QUADD_SAMPLE_VERSION_UNWIND_MIXED	25
+#define QUADD_SAMPLE_VERSION_UNW_ENTRY_TYPE	26
+#define QUADD_SAMPLE_VERSION_USE_ARCH_TIMER	27
+#define QUADD_SAMPLE_VERSION_SCHED_SAMPLES	28
+#define QUADD_SAMPLE_VERSION_HDR_UNW_METHOD	29
 
 #define QUADD_MAX_COUNTERS	32
 #define QUADD_MAX_PROCESS	64
@@ -123,6 +128,7 @@ enum quadd_record_type {
 	QUADD_RECORD_TYPE_HEADER,
 	QUADD_RECORD_TYPE_POWER_RATE,
 	QUADD_RECORD_TYPE_ADDITIONAL_SAMPLE,
+	QUADD_RECORD_TYPE_SCHED,
 };
 
 enum quadd_event_source {
@@ -145,6 +151,7 @@ enum {
 	QUADD_UNW_METHOD_FP = 0,
 	QUADD_UNW_METHOD_EHT,
 	QUADD_UNW_METHOD_MIXED,
+	QUADD_UNW_METHOD_NONE,
 };
 
 #define QUADD_SAMPLE_URC_SHIFT		1
@@ -164,12 +171,23 @@ enum {
 	QUADD_URC_SPARE_ENCODING,
 	QUADD_URC_UNSUPPORTED_PR,
 	QUADD_URC_PC_INCORRECT,
+	QUADD_URC_LEVEL_TOO_DEEP,
+	QUADD_URC_FP_INCORRECT,
+	QUADD_URC_MAX,
 };
 
 #define QUADD_SED_IP64			(1 << 0)
 
 #define QUADD_SED_UNW_METHOD_SHIFT	1
 #define QUADD_SED_UNW_METHOD_MASK	(0x07 << QUADD_SED_UNW_METHOD_SHIFT)
+
+enum {
+	QUADD_UNW_TYPE_FP = 0,
+	QUADD_UNW_TYPE_UT,
+	QUADD_UNW_TYPE_LR_FP,
+	QUADD_UNW_TYPE_LR_UT,
+	QUADD_UNW_TYPE_KCTX,
+};
 
 struct quadd_sample_data {
 	u64 ip;
@@ -224,6 +242,18 @@ struct quadd_additional_sample {
 	u16 extra_length;
 };
 
+struct quadd_sched_data {
+	u32 pid;
+	u64 time;
+
+	u32	cpu:6,
+		lp_mode:1,
+		sched_in:1,
+		reserved:24;
+
+	u32 data[2];
+};
+
 enum {
 	QM_DEBUG_SAMPLE_TYPE_SCHED_IN = 1,
 	QM_DEBUG_SAMPLE_TYPE_SCHED_OUT,
@@ -257,6 +287,9 @@ struct quadd_debug_data {
 
 #define QUADD_HEADER_MAGIC	0x1122
 
+#define QUADD_HDR_UNW_METHOD_SHIFT	0
+#define QUADD_HDR_UNW_METHOD_MASK	(0x07 << QUADD_HDR_UNW_METHOD_SHIFT)
+
 struct quadd_header_data {
 	u16 magic;
 	u16 version;
@@ -288,6 +321,7 @@ struct quadd_record_data {
 		struct quadd_debug_data		debug;
 		struct quadd_header_data	hdr;
 		struct quadd_power_rate_data	power_rate;
+		struct quadd_sched_data		sched;
 		struct quadd_additional_sample	additional_sample;
 	};
 } __aligned(4);
@@ -354,6 +388,8 @@ enum {
 #define QUADD_COMM_CAP_EXTRA_SUPPORT_AARCH64	(1 << 4)
 #define QUADD_COMM_CAP_EXTRA_SPECIAL_ARCH_MMAP	(1 << 5)
 #define QUADD_COMM_CAP_EXTRA_UNWIND_MIXED	(1 << 6)
+#define QUADD_COMM_CAP_EXTRA_UNW_ENTRY_TYPE	(1 << 7)
+#define QUADD_COMM_CAP_EXTRA_USE_ARCH_TIMER	(1 << 8)
 
 struct quadd_comm_cap {
 	u32	pmu:1,
@@ -399,6 +435,12 @@ struct quadd_module_version {
 struct quadd_sec_info {
 	u64 addr;
 	u64 length;
+};
+
+enum {
+	QUADD_EXT_IDX_EXTAB_OFFSET = 0,
+	QUADD_EXT_IDX_EXIDX_OFFSET = 1,
+	QUADD_EXT_IDX_MMAP_VM_START = 2,
 };
 
 struct quadd_extables {

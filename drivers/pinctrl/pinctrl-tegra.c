@@ -415,6 +415,7 @@ static void tegra_pinctrl_disable(struct pinctrl_dev *pctldev,
 	const struct tegra_pingroup *g;
 	u32 val;
 	unsigned long flags;
+	int i;
 
 	g = &pmx->soc->groups[group];
 
@@ -425,7 +426,11 @@ static void tegra_pinctrl_disable(struct pinctrl_dev *pctldev,
 
 	val = pmx_readl(pmx, g->mux_bank, g->mux_reg);
 	val &= ~(0x3 << g->mux_bit);
-	val |= g->func_safe << g->mux_bit;
+	for (i = 0; i < ARRAY_SIZE(g->funcs); i++) {
+		if (g->funcs[i] == g->func_safe)
+			break;
+	}
+	val |= i << g->mux_bit;
 	pmx_writel(pmx, val, g->mux_bank, g->mux_reg);
 
 	spin_unlock_irqrestore(&mux_lock, flags);

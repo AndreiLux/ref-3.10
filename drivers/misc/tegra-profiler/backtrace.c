@@ -26,8 +26,6 @@
 #include "backtrace.h"
 #include "eh_unwind.h"
 
-#define QUADD_USER_SPACE_MIN_ADDR	0x8000
-
 static inline int
 is_thumb_mode(struct pt_regs *regs)
 {
@@ -77,34 +75,60 @@ quadd_user_link_register(struct pt_regs *regs)
 #endif
 }
 
+static inline void
+put_unw_type(u32 *p, int bt_idx, unsigned int type)
+{
+	int word_idx, shift;
+
+	word_idx = bt_idx / 8;
+	shift = (bt_idx % 8) * 4;
+
+	*(p + word_idx) &= ~(0x0f << shift);
+	*(p + word_idx) |= (type & 0x0f) << shift;
+}
+
 int
 quadd_callchain_store(struct quadd_callchain *cc,
-		      unsigned long ip)
+		      unsigned long ip, unsigned int type)
 {
-	if (ip && cc->nr < QUADD_MAX_STACK_DEPTH) {
-		if (cc->cs_64)
-			cc->ip_64[cc->nr++] = ip;
-		else
-			cc->ip_32[cc->nr++] = ip;
-
-		return 1;
+	if (!validate_pc_addr(ip, sizeof(unsigned long))) {
+		cc->unw_rc = QUADD_URC_PC_INCORRECT;
+		return 0;
 	}
-	return 0;
+
+	if (cc->nr >= QUADD_MAX_STACK_DEPTH) {
+		cc->unw_rc = QUADD_URC_LEVEL_TOO_DEEP;
+		return 0;
+	}
+
+	put_unw_type(cc->types, cc->nr, type);
+
+	if (cc->cs_64)
+		cc->ip_64[cc->nr++] = ip;
+	else
+		cc->ip_32[cc->nr++] = ip;
+
+	return 1;
 }
 
 static unsigned long __user *
-user_backtrace(unsigned long __user *tail,
+user_backtrace(struct pt_regs *regs,
+	       unsigned long __user *tail,
 	       struct quadd_callchain *cc,
-	       struct vm_area_struct *stack_vma)
+	       struct vm_area_struct *stack_vma,
+	       struct task_struct *task)
 {
+	int nr_added;
 	unsigned long value, value_lr = 0, value_fp = 0;
 	unsigned long __user *fp_prev = NULL;
 
 	if (!is_vma_addr((unsigned long)tail, stack_vma, sizeof(*tail)))
 		return NULL;
 
-	if (__copy_from_user_inatomic(&value, tail, sizeof(unsigned long)))
+	if (__copy_from_user_inatomic(&value, tail, sizeof(unsigned long))) {
+		cc->unw_rc = QUADD_URC_EACCESS;
 		return NULL;
+	}
 
 	if (is_vma_addr(value, stack_vma, sizeof(value))) {
 		/* gcc thumb/clang frame */
@@ -115,26 +139,39 @@ user_backtrace(unsigned long __user *tail,
 			return NULL;
 
 		if (__copy_from_user_inatomic(&value_lr, tail + 1,
-					      sizeof(value_lr)))
+					      sizeof(value_lr))) {
+			cc->unw_rc = QUADD_URC_EACCESS;
 			return NULL;
+		}
+
+		cc->curr_fp = value_fp;
+		cc->curr_sp = (unsigned long)tail + sizeof(value_fp) * 2;
+		cc->curr_pc = value_lr;
 	} else {
 		/* gcc arm frame */
 		if (__copy_from_user_inatomic(&value_fp, tail - 1,
-					      sizeof(value_fp)))
+					      sizeof(value_fp))) {
+			cc->unw_rc = QUADD_URC_EACCESS;
 			return NULL;
+		}
+
+		cc->curr_fp = value_fp;
+		cc->curr_sp = (unsigned long)tail + sizeof(value_fp);
+		cc->curr_pc = value_lr = value;
 
 		if (!is_vma_addr(value_fp, stack_vma, sizeof(value_fp)))
 			return NULL;
-
-		value_lr = value;
 	}
 
 	fp_prev = (unsigned long __user *)value_fp;
 
-	if (value_lr < QUADD_USER_SPACE_MIN_ADDR)
+	nr_added = quadd_callchain_store(cc, value_lr, QUADD_UNW_TYPE_FP);
+	if (nr_added == 0)
 		return NULL;
 
-	quadd_callchain_store(cc, value_lr);
+	if (cc->unw_method == QUADD_UNW_METHOD_MIXED &&
+	    quadd_is_ex_entry_exist(regs, value_lr, task))
+		return NULL;
 
 	if (fp_prev <= tail)
 		return NULL;
@@ -148,15 +185,17 @@ get_user_callchain_fp(struct pt_regs *regs,
 		      struct task_struct *task)
 {
 	unsigned long fp, sp, pc, reg;
-	struct vm_area_struct *vma, *vma_pc;
+	struct vm_area_struct *vma, *vma_pc = NULL;
 	unsigned long __user *tail = NULL;
 	struct mm_struct *mm = task->mm;
 
 	cc->nr = 0;
-	cc->unw_method = QUADD_UNW_METHOD_FP;
+	cc->unw_rc = QUADD_URC_FP_INCORRECT;
 
-	if (!regs || !mm)
+	if (!regs || !mm) {
+		cc->unw_rc = QUADD_URC_FAILURE;
 		return 0;
+	}
 
 	sp = quadd_user_stack_pointer(regs);
 	pc = instruction_pointer(regs);
@@ -166,18 +205,23 @@ get_user_callchain_fp(struct pt_regs *regs,
 		return 0;
 
 	vma = find_vma(mm, sp);
-	if (!vma)
+	if (!vma) {
+		cc->unw_rc = QUADD_URC_SP_INCORRECT;
 		return 0;
+	}
 
 	if (!is_vma_addr(fp, vma, sizeof(fp)))
 		return 0;
 
 	if (probe_kernel_address(fp, reg)) {
-		pr_warn_once("frame error: sp/fp: %#lx/%#lx, pc/lr: %#lx/%#lx, vma: %#lx-%#lx\n",
-			     sp, fp, pc, quadd_user_link_register(regs),
-			     vma->vm_start, vma->vm_end);
+		pr_warn_once("%s: failed for address: %#lx\n", __func__, fp);
+		cc->unw_rc = QUADD_URC_EACCESS;
 		return 0;
 	}
+
+	pr_debug("sp/fp: %#lx/%#lx, pc/lr: %#lx/%#lx, *fp: %#lx, stack: %#lx-%#lx\n",
+		 sp, fp, pc, quadd_user_link_register(regs), reg,
+		 vma->vm_start, vma->vm_end);
 
 	if (is_thumb_mode(regs)) {
 		if (reg <= fp || !is_vma_addr(reg, vma, sizeof(reg)))
@@ -191,8 +235,10 @@ get_user_callchain_fp(struct pt_regs *regs,
 			if (__copy_from_user_inatomic(
 					&value,
 					(unsigned long __user *)fp + 1,
-					sizeof(unsigned long)))
+					sizeof(unsigned long))) {
+				cc->unw_rc = QUADD_URC_EACCESS;
 				return 0;
+			}
 
 			vma_pc = find_vma(mm, pc);
 			read_lr = 1;
@@ -200,12 +246,14 @@ get_user_callchain_fp(struct pt_regs *regs,
 
 		if (!read_lr || !is_vma_addr(value, vma_pc, sizeof(value))) {
 			/* gcc: fp --> short frame tail (fp) */
+			int nr_added;
 			unsigned long lr = quadd_user_link_register(regs);
 
-			if (lr < QUADD_USER_SPACE_MIN_ADDR)
-				return 0;
+			nr_added = quadd_callchain_store(cc, lr,
+							 QUADD_UNW_TYPE_LR_FP);
+			if (nr_added == 0)
+				return cc->nr;
 
-			quadd_callchain_store(cc, lr);
 			tail = (unsigned long __user *)reg;
 		}
 	}
@@ -214,48 +262,60 @@ get_user_callchain_fp(struct pt_regs *regs,
 		tail = (unsigned long __user *)fp;
 
 	while (tail && !((unsigned long)tail & 0x3))
-		tail = user_backtrace(tail, cc, vma);
+		tail = user_backtrace(regs, tail, cc, vma, task);
 
 	return cc->nr;
 }
 
 static unsigned int
-__user_backtrace(struct quadd_callchain *cc, struct task_struct *task)
+__user_backtrace(struct pt_regs *regs,
+		 struct quadd_callchain *cc,
+		 struct task_struct *task)
 {
 	struct mm_struct *mm = task->mm;
 	struct vm_area_struct *vma;
 	unsigned long __user *tail;
 
-	if (!mm)
-		goto out;
+	cc->unw_rc = QUADD_URC_FP_INCORRECT;
+
+	if (!mm) {
+		cc->unw_rc = QUADD_URC_FAILURE;
+		return cc->nr;
+	}
 
 	vma = find_vma(mm, cc->curr_sp);
-	if (!vma)
-		goto out;
+	if (!vma) {
+		cc->unw_rc = QUADD_URC_SP_INCORRECT;
+		return cc->nr;
+	}
 
 	tail = (unsigned long __user *)cc->curr_fp;
 
 	while (tail && !((unsigned long)tail & 0x3))
-		tail = user_backtrace(tail, cc, vma);
+		tail = user_backtrace(regs, tail, cc, vma, task);
 
-out:
 	return cc->nr;
 }
 
 #ifdef CONFIG_ARM64
 static u32 __user *
-user_backtrace_compat(u32 __user *tail,
-	       struct quadd_callchain *cc,
-	       struct vm_area_struct *stack_vma)
+user_backtrace_compat(struct pt_regs *regs,
+		      u32 __user *tail,
+		      struct quadd_callchain *cc,
+		      struct vm_area_struct *stack_vma,
+		      struct task_struct *task)
 {
+	int nr_added;
 	u32 value, value_lr = 0, value_fp = 0;
 	u32 __user *fp_prev = NULL;
 
 	if (!is_vma_addr((unsigned long)tail, stack_vma, sizeof(*tail)))
 		return NULL;
 
-	if (__copy_from_user_inatomic(&value, tail, sizeof(value)))
+	if (__copy_from_user_inatomic(&value, tail, sizeof(value))) {
+		cc->unw_rc = QUADD_URC_EACCESS;
 		return NULL;
+	}
 
 	if (is_vma_addr(value, stack_vma, sizeof(value))) {
 		/* gcc thumb/clang frame */
@@ -266,26 +326,39 @@ user_backtrace_compat(u32 __user *tail,
 			return NULL;
 
 		if (__copy_from_user_inatomic(&value_lr, tail + 1,
-					      sizeof(value_lr)))
+					      sizeof(value_lr))) {
+			cc->unw_rc = QUADD_URC_EACCESS;
 			return NULL;
+		}
+
+		cc->curr_fp = value_fp;
+		cc->curr_sp = (unsigned long)tail + sizeof(value_fp) * 2;
+		cc->curr_pc = value_lr;
 	} else {
 		/* gcc arm frame */
 		if (__copy_from_user_inatomic(&value_fp, tail - 1,
-					      sizeof(value_fp)))
+					      sizeof(value_fp))) {
+			cc->unw_rc = QUADD_URC_EACCESS;
 			return NULL;
+		}
+
+		cc->curr_fp = value_fp;
+		cc->curr_sp = (unsigned long)tail + sizeof(value_fp);
+		cc->curr_pc = value_lr = value;
 
 		if (!is_vma_addr(value_fp, stack_vma, sizeof(value_fp)))
 			return NULL;
-
-		value_lr = value;
 	}
 
 	fp_prev = (u32 __user *)(unsigned long)value_fp;
 
-	if (value_lr < QUADD_USER_SPACE_MIN_ADDR)
+	nr_added = quadd_callchain_store(cc, value_lr, QUADD_UNW_TYPE_FP);
+	if (nr_added == 0)
 		return NULL;
 
-	quadd_callchain_store(cc, value_lr);
+	if (cc->unw_method == QUADD_UNW_METHOD_MIXED &&
+	    quadd_is_ex_entry_exist(regs, value_lr, task))
+		return NULL;
 
 	if (fp_prev <= tail)
 		return NULL;
@@ -299,14 +372,17 @@ get_user_callchain_fp_compat(struct pt_regs *regs,
 			     struct task_struct *task)
 {
 	u32 fp, sp, pc, reg;
-	struct vm_area_struct *vma, *vma_pc;
+	struct vm_area_struct *vma, *vma_pc = NULL;
 	u32 __user *tail = NULL;
 	struct mm_struct *mm = task->mm;
 
 	cc->nr = 0;
+	cc->unw_rc = QUADD_URC_FP_INCORRECT;
 
-	if (!regs || !mm)
+	if (!regs || !mm) {
+		cc->unw_rc = QUADD_URC_FAILURE;
 		return 0;
+	}
 
 	sp = quadd_user_stack_pointer(regs);
 	pc = instruction_pointer(regs);
@@ -316,18 +392,23 @@ get_user_callchain_fp_compat(struct pt_regs *regs,
 		return 0;
 
 	vma = find_vma(mm, sp);
-	if (!vma)
+	if (!vma) {
+		cc->unw_rc = QUADD_URC_SP_INCORRECT;
 		return 0;
+	}
 
 	if (!is_vma_addr(fp, vma, sizeof(fp)))
 		return 0;
 
 	if (probe_kernel_address((unsigned long)fp, reg)) {
-		pr_warn_once("frame error: sp/fp: %#x/%#x, pc/lr: %#x/%#x, vma: %#lx-%#lx\n",
-			     sp, fp, pc, (u32)quadd_user_link_register(regs),
-			     vma->vm_start, vma->vm_end);
+		pr_warn_once("%s: failed for address: %#x\n", __func__, fp);
+		cc->unw_rc = QUADD_URC_EACCESS;
 		return 0;
 	}
+
+	pr_debug("sp/fp: %#x/%#x, pc/lr: %#x/%#x, *fp: %#x, stack: %#lx-%#lx\n",
+		 sp, fp, pc, (u32)quadd_user_link_register(regs), reg,
+		 vma->vm_start, vma->vm_end);
 
 	if (is_thumb_mode(regs)) {
 		if (reg <= fp || !is_vma_addr(reg, vma, sizeof(reg)))
@@ -341,8 +422,10 @@ get_user_callchain_fp_compat(struct pt_regs *regs,
 			if (__copy_from_user_inatomic(
 					&value,
 					(u32 __user *)(fp + sizeof(u32)),
-					sizeof(value)))
+					sizeof(value))) {
+				cc->unw_rc = QUADD_URC_EACCESS;
 				return 0;
+			}
 
 			vma_pc = find_vma(mm, pc);
 			read_lr = 1;
@@ -350,12 +433,14 @@ get_user_callchain_fp_compat(struct pt_regs *regs,
 
 		if (!read_lr || !is_vma_addr(value, vma_pc, sizeof(value))) {
 			/* gcc: fp --> short frame tail (fp) */
+			int nr_added;
 			u32 lr = quadd_user_link_register(regs);
 
-			if (lr < QUADD_USER_SPACE_MIN_ADDR)
-				return 0;
+			nr_added = quadd_callchain_store(cc, lr,
+							 QUADD_UNW_TYPE_LR_FP);
+			if (nr_added == 0)
+				return cc->nr;
 
-			quadd_callchain_store(cc, lr);
 			tail = (u32 __user *)(unsigned long)reg;
 		}
 	}
@@ -364,31 +449,38 @@ get_user_callchain_fp_compat(struct pt_regs *regs,
 		tail = (u32 __user *)(unsigned long)fp;
 
 	while (tail && !((unsigned long)tail & 0x3))
-		tail = user_backtrace_compat(tail, cc, vma);
+		tail = user_backtrace_compat(regs, tail, cc, vma, task);
 
 	return cc->nr;
 }
 
 static unsigned int
-__user_backtrace_compat(struct quadd_callchain *cc, struct task_struct *task)
+__user_backtrace_compat(struct pt_regs *regs,
+			struct quadd_callchain *cc,
+			struct task_struct *task)
 {
 	struct mm_struct *mm = task->mm;
 	struct vm_area_struct *vma;
 	u32 __user *tail;
 
-	if (!mm)
-		goto out;
+	cc->unw_rc = QUADD_URC_FP_INCORRECT;
+
+	if (!mm) {
+		cc->unw_rc = QUADD_URC_FAILURE;
+		return cc->nr;
+	}
 
 	vma = find_vma(mm, cc->curr_sp);
-	if (!vma)
-		goto out;
+	if (!vma) {
+		cc->unw_rc = QUADD_URC_SP_INCORRECT;
+		return cc->nr;
+	}
 
 	tail = (u32 __user *)cc->curr_fp;
 
 	while (tail && !((unsigned long)tail & 0x3))
-		tail = user_backtrace_compat(tail, cc, vma);
+		tail = user_backtrace_compat(regs, tail, cc, vma, task);
 
-out:
 	return cc->nr;
 }
 
@@ -400,28 +492,49 @@ __get_user_callchain_fp(struct pt_regs *regs,
 		      struct task_struct *task)
 {
 	if (cc->nr > 0) {
-		int nr, nr_prev = cc->nr;
+		if (cc->unw_rc == QUADD_URC_LEVEL_TOO_DEEP)
+			return cc->nr;
+
 #ifdef CONFIG_ARM64
 		if (compat_user_mode(regs))
-			nr = __user_backtrace_compat(cc, task);
+			__user_backtrace_compat(regs, cc, task);
 		else
-			nr = __user_backtrace(cc, task);
+			__user_backtrace(regs, cc, task);
 #else
-		nr = __user_backtrace(cc, task);
+		__user_backtrace(regs, cc, task);
 #endif
-		if (nr != nr_prev)
-			cc->unw_method = QUADD_UNW_METHOD_MIXED;
 
-		return nr;
+		return cc->nr;
 	}
-
-	cc->unw_method = QUADD_UNW_METHOD_FP;
 
 #ifdef CONFIG_ARM64
 	if (compat_user_mode(regs))
 		return get_user_callchain_fp_compat(regs, cc, task);
 #endif
+
 	return get_user_callchain_fp(regs, cc, task);
+}
+
+static unsigned int
+get_user_callchain_mixed(struct pt_regs *regs,
+		      struct quadd_callchain *cc,
+		      struct task_struct *task)
+{
+	int nr_prev;
+
+	do {
+		nr_prev = cc->nr;
+
+		quadd_get_user_callchain_ut(regs, cc, task);
+		if (nr_prev > 0 && cc->nr == nr_prev)
+			break;
+
+		nr_prev = cc->nr;
+
+		__get_user_callchain_fp(regs, cc, task);
+	} while (nr_prev != cc->nr);
+
+	return cc->nr;
 }
 
 unsigned int
@@ -430,17 +543,18 @@ quadd_get_user_callchain(struct pt_regs *regs,
 			 struct quadd_ctx *ctx,
 			 struct task_struct *task)
 {
-	int unw_fp, unw_eht, unw_mix, nr = 0;
-	unsigned int extra;
-	struct quadd_parameters *param = &ctx->param;
+	unsigned int method = cc->unw_method;
 
 	cc->nr = 0;
 
-	if (!regs)
+	if (!regs) {
+		cc->unw_rc = QUADD_URC_FAILURE;
 		return 0;
+	}
 
 	cc->curr_sp = 0;
 	cc->curr_fp = 0;
+	cc->curr_pc = 0;
 
 #ifdef CONFIG_ARM64
 	cc->cs_64 = compat_user_mode(regs) ? 0 : 1;
@@ -448,21 +562,25 @@ quadd_get_user_callchain(struct pt_regs *regs,
 	cc->cs_64 = 0;
 #endif
 
-	extra = param->reserved[QUADD_PARAM_IDX_EXTRA];
-
-	unw_fp = extra & QUADD_PARAM_EXTRA_BT_FP;
-	unw_eht = extra & QUADD_PARAM_EXTRA_BT_UNWIND_TABLES;
-	unw_mix = extra & QUADD_PARAM_EXTRA_BT_MIXED;
-
 	cc->unw_rc = 0;
 
-	if (unw_eht)
-		nr = quadd_get_user_callchain_ut(regs, cc, task);
+	switch (method) {
+	case QUADD_UNW_METHOD_FP:
+		__get_user_callchain_fp(regs, cc, task);
+		break;
 
-	if (unw_fp) {
-		if (!nr || unw_mix)
-			nr = __get_user_callchain_fp(regs, cc, task);
+	case QUADD_UNW_METHOD_EHT:
+		quadd_get_user_callchain_ut(regs, cc, task);
+		break;
+
+	case QUADD_UNW_METHOD_MIXED:
+		get_user_callchain_mixed(regs, cc, task);
+		break;
+
+	case QUADD_UNW_METHOD_NONE:
+	default:
+		break;
 	}
 
-	return nr;
+	return cc->nr;
 }

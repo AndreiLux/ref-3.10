@@ -197,18 +197,19 @@ EXPORT_SYMBOL(tegra_iram_dev);
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvsecurity.h>
 
-static void tegra_update_resize_cfg(phys_addr_t base , size_t size)
+static int tegra_update_resize_cfg(phys_addr_t base , size_t size)
 {
-#ifdef CONFIG_TRUSTED_LITTLE_KERNEL
 	int err = 0;
+#ifdef CONFIG_TRUSTED_LITTLE_KERNEL
 
 	err = gk20a_do_idle();
 	if (!err) {
 		/* Config VPR_BOM/_SIZE in MC */
-		te_set_vpr_params((void *)(uintptr_t)base, size);
+		err = te_set_vpr_params((void *)(uintptr_t)base, size);
 		gk20a_do_unidle();
 	}
 #endif
+	return err;
 }
 
 struct dma_resize_notifier_ops vpr_dev_ops = {
@@ -2470,10 +2471,13 @@ static int __init set_tegra_split_mem(char *options)
 early_param("tegra_split_mem", set_tegra_split_mem);
 
 #define FUSE_SKU_INFO       0x110
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+#define STRAP_OPT 0x464
+#define RAM_ID_MASK (0xF << 4)
+#else
 #define STRAP_OPT 0x008
-#define GMI_AD0 BIT(4)
-#define GMI_AD1 BIT(5)
-#define RAM_ID_MASK (GMI_AD0 | GMI_AD1)
+#define RAM_ID_MASK (3 << 4)
+#endif
 #define RAM_CODE_SHIFT 4
 
 #ifdef CONFIG_TEGRA_PRE_SILICON_SUPPORT
@@ -2543,8 +2547,11 @@ static void tegra_set_chip_id(void)
 static void tegra_set_bct_strapping(void)
 {
 	u32 reg;
-
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	reg = readl(IO_ADDRESS(TEGRA_PMC_BASE + STRAP_OPT));
+#else
 	reg = readl(IO_ADDRESS(TEGRA_APB_MISC_BASE + STRAP_OPT));
+#endif
 	tegra_chip_bct_strapping = (reg & RAM_ID_MASK) >> RAM_CODE_SHIFT;
 }
 

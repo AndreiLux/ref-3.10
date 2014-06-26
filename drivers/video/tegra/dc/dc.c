@@ -606,6 +606,10 @@ static void _dump_regs(struct tegra_dc *dc, void *data,
 	DUMP_REG(DC_DISP_CURSOR_BACKGROUND);
 	DUMP_REG(DC_DISP_CURSOR_START_ADDR);
 	DUMP_REG(DC_DISP_CURSOR_START_ADDR_NS);
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	DUMP_REG(DC_DISP_CURSOR_START_ADDR_HI);
+	DUMP_REG(DC_DISP_CURSOR_START_ADDR_HI_NS);
+#endif
 	DUMP_REG(DC_DISP_CURSOR_POSITION);
 	DUMP_REG(DC_DISP_CURSOR_POSITION_NS);
 	DUMP_REG(DC_DISP_INIT_SEQ_CONTROL);
@@ -1450,6 +1454,9 @@ static int tegra_dc_set_out(struct tegra_dc *dc, struct tegra_dc_out *out)
 		if (err < 0) {
 			dc->out = NULL;
 			dc->out_ops = NULL;
+			dev_err(&dc->ndev->dev,
+				"Error: out->type:%d out_ops->init() failed\n",
+				out->type);
 			return err;
 		}
 	}
@@ -2255,6 +2262,9 @@ static int tegra_dc_init(struct tegra_dc *dc)
 		if (!dc->initialized) {
 			if (tegra_dc_program_mode(dc, &dc->mode)) {
 				tegra_dc_io_end(dc);
+				dev_warn(&dc->ndev->dev,
+					"%s: tegra_dc_program_mode failed\n",
+					__func__);
 				return -EINVAL;
 			}
 		} else {
@@ -2314,6 +2324,8 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 			tegra_dc_clk_disable(dc);
 		else
 			tegra_dvfs_set_rate(dc->clk, 0);
+		dev_warn(&dc->ndev->dev,
+			"%s: tegra_dc_init failed\n", __func__);
 		return false;
 	}
 
@@ -2327,6 +2339,19 @@ static bool _tegra_dc_controller_enable(struct tegra_dc *dc)
 		dc->blend.z[i] = -1;
 
 	tegra_dc_ext_enable(dc->ext);
+
+	/* initialize cursor to defaults, as driver depends on HW state */
+	tegra_dc_writel(dc, 0, DC_DISP_CURSOR_START_ADDR);
+	tegra_dc_writel(dc, 0, DC_DISP_CURSOR_START_ADDR_NS);
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	tegra_dc_writel(dc, 0, DC_DISP_CURSOR_START_ADDR_HI);
+	tegra_dc_writel(dc, 0, DC_DISP_CURSOR_START_ADDR_HI_NS);
+#endif
+	tegra_dc_writel(dc, 0, DC_DISP_CURSOR_POSITION);
+	tegra_dc_writel(dc, 0, DC_DISP_CURSOR_POSITION_NS);
+	tegra_dc_writel(dc, 0xffffff, DC_DISP_CURSOR_FOREGROUND); /* white */
+	tegra_dc_writel(dc, 0x000000, DC_DISP_CURSOR_BACKGROUND); /* black */
+	tegra_dc_writel(dc, 0, DC_DISP_BLEND_CURSOR_CONTROL);
 
 	trace_display_enable(dc);
 

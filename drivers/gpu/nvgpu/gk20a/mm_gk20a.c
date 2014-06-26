@@ -1935,8 +1935,6 @@ static int gk20a_vm_put_empty(struct vm_gk20a *vm, u64 vaddr,
 		vaddr += pgsz;
 	}
 
-	gk20a_mm_l2_flush(mm->g, true);
-
 	return 0;
 
 err_unmap:
@@ -2780,8 +2778,6 @@ int gk20a_mm_fb_flush(struct gk20a *g)
 
 	mutex_lock(&mm->l2_op_lock);
 
-	g->ops.ltc.elpg_flush(g);
-
 	/* Make sure all previous writes are committed to the L2. There's no
 	   guarantee that writes are to DRAM. This will be a sysmembar internal
 	   to the L2. */
@@ -2988,8 +2984,7 @@ int gk20a_mm_suspend(struct gk20a *g)
 {
 	gk20a_dbg_fn("");
 
-	gk20a_mm_fb_flush(g);
-	gk20a_mm_l2_flush(g, true);
+	g->ops.ltc.elpg_flush(g);
 
 	gk20a_dbg_fn("done");
 	return 0;
