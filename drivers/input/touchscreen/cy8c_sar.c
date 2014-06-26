@@ -12,7 +12,6 @@
  * GNU General Public License for more details.
  *
  */
-#define DEBUG
 #include <linux/input/cy8c_sar.h>
 #include <linux/delay.h>
 #include <linux/hrtimer.h>
@@ -317,7 +316,7 @@ static void cy8c_sar_work_func(struct work_struct *work)
 	/*	state ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);*/
 
 	if (active != sar->is_actived && buf[0] != 0) {
-		pr_debug("[SAR] down the power!!\n");
+		pr_info("[SAR] reduce Wifi power\n");
 		sar->is_actived = active;
 
 		if (sar->position_id == 0)
@@ -325,7 +324,7 @@ static void cy8c_sar_work_func(struct work_struct *work)
 		else
 			active = SAR1_ACT;
 	} else {
-		pr_debug("[SAR] resume the power!!\n");
+		pr_info("[SAR] restore Wifi power\n");
 		sar->is_actived = 0;
 
 		if (sar->position_id == 0)
