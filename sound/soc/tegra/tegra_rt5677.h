@@ -17,6 +17,7 @@
  * 02110-1301 USA
  *
  */
+#include <linux/wakelock.h>
 #include "tegra_asoc_utils.h"
 
 struct tegra_rt5677 {
@@ -37,4 +38,5 @@ struct tegra_rt5677 {
 	struct work_struct hotword_work;
 	struct mutex rt5677_lock;
 	struct mutex spk_amp_lock;
+	struct wake_lock vad_wake;
 };

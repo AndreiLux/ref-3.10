@@ -88,9 +88,10 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 	value = gpio_get_value(machine->pdata->gpio_irq1);
 
 	pr_info("RT5677 IRQ is triggered = 0x%x\n", value);
-	if (value == 1)
+	if (value == 1) {
 		schedule_work(&machine->hotword_work);
-
+		wake_lock_timeout(&machine->vad_wake, msecs_to_jiffies(500));
+	}
 	return IRQ_HANDLED;
 }
 
@@ -1403,6 +1404,8 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 
 	sysedpc = sysedp_create_consumer("speaker", "speaker");
 
+	wake_lock_init(&machine->vad_wake, WAKE_LOCK_SUSPEND, "rt5677_wake");
+
 	return 0;
 
 err_unregister_card:
@@ -1483,6 +1486,8 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 	tegra_asoc_utils_fini(&machine->util_data);
 
 	sysedp_free_consumer(sysedpc);
+
+	wake_lock_destroy(&machine->vad_wake);
 
 	if (np)
 		kfree(machine->pdata);
