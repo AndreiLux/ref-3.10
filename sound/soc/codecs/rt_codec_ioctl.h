@@ -20,6 +20,13 @@ struct rt_codec_cmd {
 	int __user *buf;
 };
 
+#ifdef CONFIG_COMPAT
+struct compat_rt_codec_cmd {
+	compat_size_t number;
+	compat_caddr_t buf;
+};
+#endif /* CONFIG_COMPAT */
+
 struct rt_codec_ops {
 	int (*index_write)(struct snd_soc_codec *codec,
 		unsigned int reg, unsigned int value);
