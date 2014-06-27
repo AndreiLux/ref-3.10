@@ -106,6 +106,14 @@ enum RM_SLOW_SCAN_LEVELS {
 };
 #endif
 
+enum RM_TEST_MODE {
+	RM_TEST_MODE_NULL,
+	RM_TEST_MODE_IDLE_SHOW,
+	RM_TEST_MODE_IDLE_LEVEL,
+	RM_TEST_MODE_CALC_TIME_SHOW,
+	RM_TEST_MODE_MAX
+};
+
 #ifdef ENABLE_SMOOTH_LEVEL
 #define RM_SMOOTH_LEVEL_NORMAL		0
 #define RM_SMOOTH_LEVEL_MAX			4
@@ -162,6 +170,8 @@ struct rm31080a_ts_para {
 	u8 u8_repeat;
 	u16 u16_read_para;
 	u8 u8_spi_locked;
+	u8 u8_test_mode;
+	u8 u8_test_mode_type;
 #if ENABLE_FREQ_HOPPING
 	u8 u8_ns_para[9];
 	u8 u8_ns_mode;
@@ -238,6 +248,7 @@ unsigned char g_st_rm_set_rep_time_cmd[KRL_SIZE_RM_SETREPTIME];
 unsigned char g_st_rm_ns_para_cmd[KRL_SIZE_RM_NS_PARA];
 unsigned char g_st_rm_writeimg_cmd[KRL_SIZE_RM_WRITE_IMAGE];
 unsigned char g_st_rm_tlk_cmd[KRL_SIZE_RM_TLK];
+unsigned char g_st_rm_kl_testmode_cmd[KRL_SIZE_RM_KL_TESTMODE];
 
 int g_service_busy_report_count;
 struct timer_list ts_timer_triggle;
@@ -247,6 +258,9 @@ static unsigned int g_spi_bufsize; /*= 0; remove by checkpatch*/
 static unsigned char g_spi_addr;
 bool b_bl_updated;
 u8 g_u8_update_baseline[RM_RAW_DATA_LENGTH];
+
+size_t g_u8_test_mode_count;
+char *g_u8_test_mode_buf;
 
 /*=============================================================================
 	FUNCTION DECLARATION
@@ -283,7 +297,7 @@ static int rm_tch_spi_read(u8 u8addr, u8 *rxbuf, size_t len)
 
 	if (g_st_ts.u8_spi_locked) {
 		memset(rxbuf, 0, len);
-		if (g_st_ctrl.u8_kernel_msg & DEBUG_DRIVER_REGISTER)
+		if (g_st_ctrl.u8_kernel_msg & DEBUG_REGISTER)
 			rm_printk("Raydium - SPI Read Locked!! 0x%x:%d\n",
 				u8addr, len);
 		/*return RETURN_FAIL;*/
@@ -305,7 +319,7 @@ static int rm_tch_spi_read(u8 u8addr, u8 *rxbuf, size_t len)
 	/*It returns zero on succcess,else a negative error code.*/
 	status = spi_sync(g_spi, &message);
 
-	if (g_st_ctrl.u8_kernel_msg & DEBUG_DRIVER_REGISTER)
+	if (g_st_ctrl.u8_kernel_msg & DEBUG_REGISTER)
 		if (g_st_ts.b_init_finish == 0)
 			rm_printk("Raydium - READ: addr=0x%2x, value=0x%2x",
 				(u8addr&0x7F), rxbuf[0]);
@@ -334,7 +348,7 @@ static int rm_tch_spi_write(u8 *txbuf, size_t len)
 	/*It returns zero on succcess,else a negative error code.*/
 
 	if (g_st_ts.u8_spi_locked) {
-		if (g_st_ctrl.u8_kernel_msg & DEBUG_DRIVER_REGISTER)
+		if (g_st_ctrl.u8_kernel_msg & DEBUG_REGISTER)
 			rm_printk("Raydium - SPI write Locked!! 0x%x:0x%x\n",
 				txbuf[0], txbuf[1]);
 		/*return RETURN_FAIL;*/
@@ -343,7 +357,7 @@ static int rm_tch_spi_write(u8 *txbuf, size_t len)
 
 	status = spi_write(g_spi, txbuf, len);
 
-	if (g_st_ctrl.u8_kernel_msg & DEBUG_DRIVER_REGISTER)
+	if (g_st_ctrl.u8_kernel_msg & DEBUG_REGISTER)
 		if (g_st_ts.b_init_finish == 0)
 			rm_printk("Raydium - WRITE: addr=0x%2x, value=0x%2x",
 				txbuf[0], txbuf[1]);
@@ -1028,6 +1042,9 @@ void rm_show_kernel_tbl_name(u8 *p_cmd_tbl)
 	else if (p_cmd_tbl == g_st_rm_tlk_cmd)
 		snprintf(target_table_name,
 			sizeof(target_table_name), "TLK");
+	else if (p_cmd_tbl == g_st_rm_kl_testmode_cmd)
+		snprintf(target_table_name,
+			sizeof(target_table_name), "Kernel_Test");
 	else {
 		dev_err(&g_spi->dev, "Raydium - %s : no such kernel table - err:%p\n",
 			__func__, p_cmd_tbl);
@@ -1394,6 +1411,9 @@ int rm_set_kernel_tbl(int i_func_idx, u8 *p_u8_src)
 	case KRL_INDEX_RM_TLK:
 		p_u8_dst = g_st_rm_tlk_cmd;
 		break;
+	case KRL_INDEX_RM_KL_TESTMODE:
+		p_u8_dst = g_st_rm_kl_testmode_cmd;
+		break;
 	default:
 		dev_err(&g_spi->dev, "Raydium - %s : no such kernel table - err:%d\n",
 			__func__, i_func_idx);
@@ -1758,6 +1778,9 @@ static void rm_tch_init_ts_structure_part(void)
 
 	rm_ctrl_watchdog_func(0);
 
+	/*g_st_ts.u8_test_mode = false;*/
+	g_st_ts.u8_test_mode_type = RM_TEST_MODE_NULL;
+
 	b_bl_updated = false;
 }
 
@@ -2089,6 +2112,122 @@ static ssize_t rm_tch_smooth_level_store(struct device *dev,
 	return count;
 }
 
+void rm_set_kernel_test_para(u8 u8Idx, u8 u8Para)
+{
+	struct rm_tch_ts *ts = input_get_drvdata(g_input_dev);
+
+	ts->u8_repeat_counter = u8Para;
+	rm_tch_cmd_process(u8Idx, g_st_rm_kl_testmode_cmd, ts);
+}
+
+static ssize_t rm_tch_testmode_handler(const char *buf, size_t count)
+{
+	unsigned long val = 0;
+	ssize_t error;
+	ssize_t ret;
+
+	if (count < 2)
+		return -EINVAL;
+
+	ret = (ssize_t) count;
+
+	if (count == 2) {
+		if (buf[0] == '0') {
+			g_st_ts.u8_test_mode = false;
+			g_st_ts.u8_test_mode_type = RM_TEST_MODE_NULL;
+			rm_set_kernel_test_para(0, g_st_ctrl.u8_idle_mode_thd);
+		} else if (buf[0] == '1') {
+			g_st_ts.u8_test_mode = true;
+			g_st_ts.u8_test_mode_type = RM_TEST_MODE_IDLE_SHOW;
+		}
+	} else if ((buf[0] == '2') && (buf[1] == ' ')) {
+		error = kstrtoul(&buf[2], 10, &val);
+
+		if (error) {
+			if ((buf[2] == '2') && (buf[3] == ' ')) {
+				g_st_ts.u8_test_mode = true;
+				g_st_ts.u8_test_mode_type =
+				RM_TEST_MODE_IDLE_LEVEL;
+				error = kstrtoul(&buf[4], 10, &val);
+				if (error) {
+					g_st_ts.u8_test_mode = false;
+					ret = error;
+				} else {
+					rm_set_kernel_test_para(0, val);
+				}
+			} else {
+				g_st_ts.u8_test_mode = false;
+				ret = error;
+			}
+		} else {
+		g_st_ts.u8_test_mode = true;
+		g_st_ts.u8_test_mode_type = 1 << ((u8)val - 1);
+		switch (val) {
+		case RM_TEST_MODE_IDLE_SHOW:
+		if (g_st_ts.u8_scan_mode_state == RM_SCAN_IDLE_MODE)
+#if (ISR_POST_HANDLER == WORK_QUEUE)
+			queue_work(g_st_ts.rm_workqueue,
+				&g_st_ts.rm_work);
+#elif (ISR_POST_HANDLER == KTHREAD)
+		{
+		if (waitqueue_active(&g_st_ts.rm_thread_wait_q)) {
+			g_st_ts.b_thread_active = true;
+			wake_up_interruptible(&g_st_ts.rm_thread_wait_q);
+		} else {
+		mutex_lock(&g_st_ts.mutex_irq_wait);
+		g_st_ts.b_irq_is_waited = true;
+		mutex_unlock(&g_st_ts.mutex_irq_wait);
+		}
+		}
+#endif
+		break;
+		case RM_TEST_MODE_IDLE_LEVEL:
+			if ((buf[2] == '2') && (buf[3] == ' ')) {
+				error = kstrtoul(&buf[4], 0, &val);
+				if (error) {
+					g_st_ts.u8_test_mode = false;
+					ret = error;
+				} else {
+					rm_set_kernel_test_para(0, val);
+				}
+			}
+			break;
+		case RM_TEST_MODE_CALC_TIME_SHOW:
+			break;
+		default:
+			g_st_ts.u8_test_mode = false;
+			g_st_ts.u8_test_mode_type = 0;
+		break;
+		}
+		}
+	}
+	rm_printk("Raydium - rm_kernel_test_mode:%s,Type:%d,Para:%d",
+		g_st_ts.u8_test_mode ?
+		"Enabled" : "Disabled",
+		g_st_ts.u8_test_mode_type, (u8)val);
+			return ret;
+}
+
+static ssize_t rm_tch_test_mode_show(struct device *dev,
+	struct device_attribute *attr,
+	char *buf)
+{
+		return sprintf(buf, "Test Mode:%s\nType:%d\n",
+			g_st_ts.u8_test_mode ?
+			"Enabled" : "Disabled",
+			g_st_ts.u8_test_mode_type);
+}
+
+static ssize_t rm_tch_test_mode_store(struct device *dev,
+	struct device_attribute *attr,
+	const char *buf, size_t count)
+{
+	g_u8_test_mode_count = count;
+	memcpy(&g_u8_test_mode_buf, &buf, sizeof(buf));
+
+	return rm_tch_testmode_handler(buf, count);
+}
+
 static ssize_t rm_tch_self_test_handler(struct rm_tch_ts *ts,
 	const char *buf, size_t count)
 {
@@ -2144,9 +2283,9 @@ static ssize_t selftest_platform_id_gpio_get(struct device *dev,
 
 	/* Read from data struct */
 	if (pdata->gpio_sensor_select0)
-		buf[1] = 0;
+		buf[1] |= 0x01;
 	if (pdata->gpio_sensor_select1)
-		buf[1] = 1;
+		buf[1] |= 0x02;
 	return 2;
 }
 
@@ -2376,18 +2515,26 @@ static DEVICE_ATTR(stylus_status, 0640,
 static DEVICE_ATTR(smooth_level, 0640,
 					rm_tch_smooth_level_show,
 					rm_tch_smooth_level_store);
+
 static DEVICE_ATTR(self_test, 0640,
 					rm_tch_self_test_show,
 					rm_tch_self_test_store);
+
 static DEVICE_ATTR(version, 0640,
 					rm_tch_version_show,
 					rm_tch_version_store);
+
 static DEVICE_ATTR(module_detect, 0640,
 					rm_tch_module_detect_show,
 					rm_tch_module_detect_store);
+
 static DEVICE_ATTR(report_mode, 0640,
 					rm_tch_report_mode_show,
 					rm_tch_report_mode_store);
+
+static DEVICE_ATTR(test_mode, 0640,
+					rm_tch_test_mode_show,
+					rm_tch_test_mode_store);
 
 static struct attribute *rm_ts_attributes[] = {
 	&dev_attr_get_platform_id_gpio.attr,
@@ -2404,6 +2551,7 @@ static struct attribute *rm_ts_attributes[] = {
 	&dev_attr_version.attr,
 	&dev_attr_module_detect.attr,
 	&dev_attr_report_mode.attr,
+	&dev_attr_test_mode.attr,
 	NULL
 };
 
@@ -2584,6 +2732,7 @@ void rm_tch_set_variable(unsigned int index, unsigned int arg)
 	}
 
 }
+
 static u32 rm_tch_get_variable(unsigned int index, u8 *arg)
 {
 	u32 ret = RETURN_OK;
@@ -2629,6 +2778,7 @@ static void rm_tch_init_ts_structure(void)
 	g_st_ts.u8_resume_cnt = 0;
 	g_st_ts.u8_touchfile_check = 0xFF;
 	g_st_ts.u8_stylus_status = 0xFF;
+	g_st_ts.u8_test_mode = false;
 	rm_tch_ctrl_init();
 }
 
@@ -2663,6 +2813,10 @@ static void rm_ctrl_resume(struct rm_tch_ts *ts)
 
 	rm_tch_cmd_process(0, g_st_rm_resume_cmd, ts);
 	mutex_unlock(&g_st_ts.mutex_scan_mode);
+
+	if (g_st_ts.u8_test_mode)
+		rm_tch_testmode_handler(g_u8_test_mode_buf,
+			g_u8_test_mode_count);
 }
 
 static void rm_ctrl_suspend(struct rm_tch_ts *ts)
@@ -2681,7 +2835,6 @@ static void rm_ctrl_suspend(struct rm_tch_ts *ts)
 
 	rm_tch_ctrl_wait_for_scan_finish(0);
 
-	mutex_lock(&g_st_ts.mutex_scan_mode);
 #if (INPUT_PROTOCOL_CURRENT_SUPPORT == INPUT_PROTOCOL_TYPE_B)
 	for (i = 0; i < MAX_SUPPORT_SLOT_AMOUNT; i++) {
 		input_mt_slot(g_input_dev, i);
@@ -2696,6 +2849,7 @@ static void rm_ctrl_suspend(struct rm_tch_ts *ts)
 	}
 	input_sync(g_input_dev);
 #endif
+	mutex_lock(&g_st_ts.mutex_scan_mode);
 	rm_tch_cmd_process(0, g_st_rm_suspend_cmd, ts);
 	rm_tch_ctrl_wait_for_scan_finish(0);
 	rm_tch_cmd_process(1, g_st_rm_suspend_cmd, ts);
@@ -2888,12 +3042,14 @@ static struct rm_spi_ts_platform_data *rm_ts_parse_dt(struct device *dev,
 	pdata->platform_id = val;
 
 	ret = of_property_read_string(np, "name-of-clock", &str);
-	if (ret == 0)
-		pdata->name_of_clock = (char *)str;
+	if (ret < 0)
+		goto exit_release_all_gpio;
+	pdata->name_of_clock = (char *)str;
 
 	ret = of_property_read_string(np, "name-of-clock-con", &str);
-	if (ret == 0)
-		pdata->name_of_clock_con = (char *)str;
+	if (ret < 0)
+		goto exit_release_all_gpio;
+	pdata->name_of_clock_con = (char *)str;
 
 	return pdata;
 

@@ -23,7 +23,7 @@
 #define TRUE					1
 #define FALSE					0
 #define DEBUG_DRIVER			0x01
-#define DEBUG_DRIVER_REGISTER	0x02
+#define DEBUG_REGISTER			0x02
 
 #define RM_IOCTL_REPORT_POINT				0x1001
 #define RM_IOCTL_SET_HAL_PID				0x1002
@@ -47,8 +47,8 @@
 #define RM_VARIABLE_SET_WAKE_UNLOCK				0x0A
 #define RM_VARIABLE_DPW							0x0B
 #define RM_VARIABLE_NS_MODE						0x0C
-#define RM_VARIABLE_TOUCHFILE_STATUS            0x0D
-#define RM_VARIABLE_STYLUS_STATUS               0x0E
+#define RM_VARIABLE_TOUCHFILE_STATUS			0x0D
+#define RM_VARIABLE_STYLUS_STATUS				0x0E
 
 
 #define RM_IOCTL_GET_VARIABLE				0x1011
@@ -129,6 +129,7 @@
 #define KRL_INDEX_RM_NSPARA				12
 #define KRL_INDEX_RM_WRITE_IMG			13
 #define KRL_INDEX_RM_TLK				14
+#define KRL_INDEX_RM_KL_TESTMODE		15
 
 #define KRL_SIZE_SET_IDLE				128
 #define KRL_SIZE_PAUSE_AUTO				64
@@ -144,7 +145,8 @@
 #define KRL_SIZE_RM_SETREPTIME			32
 #define KRL_SIZE_RM_NS_PARA				64
 #define KRL_SIZE_RM_WRITE_IMAGE			64
-#define KRL_SIZE_RM_TLK                128
+#define KRL_SIZE_RM_TLK					128
+#define KRL_SIZE_RM_KL_TESTMODE			128
 
 #define KRL_TBL_FIELD_POS_LEN_H				0
 #define KRL_TBL_FIELD_POS_LEN_L				1
@@ -162,7 +164,7 @@
 #define KRL_CMD_WRITE_W_COUNT				0x1C
 #define KRL_CMD_RETURN_RESULT				0x1D
 #define KRL_CMD_RETURN_VALUE				0x1E
-#define KRL_CMD_DRAM_INIT                   0x1F
+#define KRL_CMD_DRAM_INIT					0x1F
 
 
 #define KRL_CMD_SEND_SIGNAL					0x20

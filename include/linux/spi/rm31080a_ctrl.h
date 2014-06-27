@@ -30,6 +30,7 @@ struct rm_tch_ctrl_para {
 	unsigned char u8_watch_dog_normal_cnt;
 	unsigned char u8_ns_func_enable;
 	unsigned char u8_event_report_mode;
+	unsigned char u8_idle_mode_thd;
 };
 
 extern struct rm_tch_ctrl_para g_st_ctrl;
