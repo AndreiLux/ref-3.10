@@ -117,11 +117,6 @@ static void synaptics_rmi4_early_suspend(struct early_suspend *h);
 static void synaptics_rmi4_late_resume(struct early_suspend *h);
 #endif
 
-#ifdef CONFIG_FB
-static int fb_notifier_callback(struct notifier_block *self,
-				 unsigned long event, void *data);
-#endif
-
 static int synaptics_rmi4_suspend(struct device *dev);
 
 static int synaptics_rmi4_resume(struct device *dev);
@@ -152,6 +147,12 @@ static ssize_t synaptics_rmi4_wake_gesture_show(struct device *dev,
 
 static ssize_t synaptics_rmi4_wake_gesture_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
+
+static ssize_t synaptics_rmi4_interactive_show(struct device *dev,
+        struct device_attribute *attr, char *buf);
+
+static ssize_t synaptics_rmi4_interactive_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t count);
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_WAKEUP_GESTURE
 static int facedown_status_handler_func(struct notifier_block *this,
@@ -391,6 +392,9 @@ static struct device_attribute attrs[] = {
 	__ATTR(wake_gesture, (S_IRUGO | S_IWUGO),
 			synaptics_rmi4_wake_gesture_show,
 			synaptics_rmi4_wake_gesture_store),
+	__ATTR(interactive, (S_IRUGO | S_IWUGO),
+            synaptics_rmi4_interactive_show,
+            synaptics_rmi4_interactive_store),
 };
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
@@ -571,6 +575,7 @@ static ssize_t synaptics_rmi4_wake_gesture_show(struct device *dev,
 
 	buf[0] = '0' + rmi4_data->enable_wakeup_gesture;
 	buf[1] = '\n';
+	buf[2] = 0;
 	return 2;
 }
 
@@ -595,6 +600,35 @@ static ssize_t synaptics_rmi4_wake_gesture_store(struct device *dev,
 		rmi4_data->enable_wakeup_gesture = input;
 
 	return count;
+}
+
+static ssize_t synaptics_rmi4_interactive_show(struct device *dev,
+        struct device_attribute *attr, char *buf)
+{
+    struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+    buf[0] = '0' + rmi4_data->interactive;
+    buf[1] = '\n';
+    buf[2] = 0;
+    return 2;
+}
+
+static ssize_t synaptics_rmi4_interactive_store(struct device *dev,
+        struct device_attribute *attr, const char *buf, size_t count)
+{
+    struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
+
+    if (strtobool(buf, &rmi4_data->interactive))
+        return -EINVAL;
+
+    if (rmi4_data->interactive) {
+        dev_info(rmi4_data->pdev->dev.parent, " %s: resume\n", __func__);
+        synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
+    } else {
+        dev_info(rmi4_data->pdev->dev.parent, " %s: suspend\n", __func__);
+        synaptics_rmi4_suspend((&rmi4_data->input_dev->dev));
+    }
+    return count;
 }
 
 static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
@@ -2807,10 +2841,6 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 	rmi4_data->early_suspend.resume = synaptics_rmi4_late_resume;
 	register_early_suspend(&rmi4_data->early_suspend);
 #endif
-#ifdef CONFIG_FB
-	rmi4_data->fb_notifier.notifier_call = fb_notifier_callback;
-	fb_register_client(&rmi4_data->fb_notifier);
-#endif
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_WAKEUP_GESTURE
 	retval = register_notifier_by_facedown(&facedown_status_handler);
@@ -2872,9 +2902,6 @@ err_enable_irq:
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->early_suspend);
 #endif
-#ifdef CONFIG_FB
-	fb_unregister_client(&rmi4_data->fb_notifier);
-#endif
 
 	synaptics_rmi4_empty_fn_list(rmi4_data);
 	input_unregister_device(rmi4_data->input_dev);
@@ -2929,9 +2956,6 @@ static int synaptics_rmi4_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&rmi4_data->early_suspend);
-#endif
-#ifdef CONFIG_FB
-	fb_unregister_client(&rmi4_data->fb_notifier);
 #endif
 
 	synaptics_rmi4_empty_fn_list(rmi4_data);
@@ -3353,32 +3377,6 @@ exit:
 
 	return 0;
 }
-
-#ifdef CONFIG_FB
-static int fb_notifier_callback(struct notifier_block *self,
-				 unsigned long event, void *data)
-{
-	struct fb_event *evdata = data;
-	int *blank;
-	struct synaptics_rmi4_data *rmi4_data =
-		container_of(self, struct synaptics_rmi4_data, fb_notifier);
-
-	dev_dbg(rmi4_data->pdev->dev.parent, " %s\n", __func__);
-	if (evdata && evdata->data && event == FB_EVENT_BLANK) {
-		blank = evdata->data;
-		switch (*blank) {
-		case FB_BLANK_UNBLANK:
-			synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
-			break;
-		case FB_BLANK_POWERDOWN:
-			synaptics_rmi4_suspend((&rmi4_data->input_dev->dev));
-			break;
-		}
-	}
-
-	return 0;
-}
-#endif
 
 #if !defined(CONFIG_FB)
 static const struct dev_pm_ops synaptics_rmi4_dev_pm_ops = {

@@ -311,6 +311,7 @@ struct synaptics_rmi4_data {
 	int (*reset_device)(struct synaptics_rmi4_data *rmi4_data);
 	int tw_vendor_pin;
 	int face_down;
+	bool interactive;
 };
 
 struct synaptics_dsx_bus_access {
