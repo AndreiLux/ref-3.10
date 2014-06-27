@@ -605,7 +605,7 @@ static int max17050_probe(struct i2c_client *client,
 
 	htc_battery_max17050_gauge_register(&htc_batt_max17050_ops);
 
-	chip->dentry = debugfs_create_file("max17050-regs", S_IRUSR, NULL,
+	chip->dentry = debugfs_create_file("max17050-regs", S_IRUGO, NULL,
 						chip, &max17050_debugfs_fops);
 
 	return 0;
