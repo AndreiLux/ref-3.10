@@ -1254,6 +1254,8 @@ static int synaptics_rmi4_irq_enable(struct synaptics_rmi4_data *rmi4_data,
 		if (retval < 0)
 			return retval;
 
+		irq_set_irq_wake(rmi4_data->irq, 1);
+
 		rmi4_data->irq_enabled = true;
 	} else {
 		if (rmi4_data->irq_enabled) {
@@ -2745,6 +2747,8 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 	rmi4_data->suspend = false;
 	rmi4_data->irq_enabled = false;
 	rmi4_data->fingers_on_2d = false;
+	rmi4_data->f11_wakeup_gesture = false;
+	rmi4_data->f12_wakeup_gesture = false;
 
 	rmi4_data->irq_enable = synaptics_rmi4_irq_enable;
 	rmi4_data->reset_device = synaptics_rmi4_reset_device;
@@ -2966,6 +2970,13 @@ static void synaptics_rmi4_f11_wg(struct synaptics_rmi4_data *rmi4_data,
 			break;
 	}
 
+	if (fhandler->fn_number != SYNAPTICS_RMI4_F11) {
+		dev_info(rmi4_data->pdev->dev.parent,
+				"%s: No F11 function\n",
+				__func__);
+		return;
+	}
+
 	retval = synaptics_rmi4_reg_read(rmi4_data,
 			fhandler->full_addr.ctrl_base,
 			&reporting_control,
@@ -3012,6 +3023,13 @@ static void synaptics_rmi4_f12_wg(struct synaptics_rmi4_data *rmi4_data,
 	list_for_each_entry(fhandler, &rmi->support_fn_list, link) {
 		if (fhandler->fn_number == SYNAPTICS_RMI4_F12)
 			break;
+	}
+
+	if (fhandler->fn_number != SYNAPTICS_RMI4_F12) {
+		dev_info(rmi4_data->pdev->dev.parent,
+				"%s: No F12 function\n",
+				__func__);
+		return;
 	}
 
 	extra_data = (struct synaptics_rmi4_f12_extra_data *)fhandler->extra;
@@ -3138,14 +3156,17 @@ static void synaptics_rmi4_early_suspend(struct early_suspend *h)
 			container_of(h, struct synaptics_rmi4_data,
 			early_suspend);
 
+	dev_info(rmi4_data->pdev->dev.parent, " %s\n", __func__);
 	if (rmi4_data->stay_awake)
 		return;
 
-	if (rmi4_data->enable_wakeup_gesture) {
+	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
+		dev_info(rmi4_data->pdev->dev.parent, " %s: gesture mode\n", __func__);
 		synaptics_rmi4_wakeup_gesture(rmi4_data, true);
 		goto exit;
 	}
 
+	dev_info(rmi4_data->pdev->dev.parent, " %s: sleep mode\n", __func__);
 	synaptics_rmi4_irq_enable(rmi4_data, false);
 	synaptics_rmi4_sensor_sleep(rmi4_data);
 	synaptics_rmi4_free_fingers(rmi4_data);
@@ -3174,11 +3195,14 @@ static void synaptics_rmi4_late_resume(struct early_suspend *h)
 			container_of(h, struct synaptics_rmi4_data,
 			early_suspend);
 
+	dev_info(rmi4_data->pdev->dev.parent, " %s\n", __func__);
 	if (rmi4_data->stay_awake)
 		return;
 
-	if (rmi4_data->enable_wakeup_gesture) {
+	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
+		dev_info(rmi4_data->pdev->dev.parent, " %s: wake up from gesture mode\n", __func__);
 		synaptics_rmi4_wakeup_gesture(rmi4_data, false);
+		synaptics_rmi4_force_cal(rmi4_data);
 		goto exit;
 	}
 
@@ -3186,6 +3210,7 @@ static void synaptics_rmi4_late_resume(struct early_suspend *h)
 		synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
 
 	if (rmi4_data->suspend) {
+		dev_info(rmi4_data->pdev->dev.parent, " %s: wake up\n", __func__);
 		synaptics_rmi4_sensor_wake(rmi4_data);
 		synaptics_rmi4_irq_enable(rmi4_data, true);
 	}
@@ -3200,6 +3225,7 @@ static void synaptics_rmi4_late_resume(struct early_suspend *h)
 
 exit:
 	rmi4_data->suspend = false;
+	rmi4_data->face_down = 0;
 
 	return;
 }
@@ -3312,7 +3338,6 @@ static int synaptics_rmi4_resume(struct device *dev)
 	dev_info(rmi4_data->pdev->dev.parent, " %s: wake up\n", __func__);
 	synaptics_rmi4_sensor_wake(rmi4_data);
 	synaptics_rmi4_irq_enable(rmi4_data, true);
-	synaptics_rmi4_force_cal(rmi4_data);
 
 	mutex_lock(&exp_data.mutex);
 	if (!list_empty(&exp_data.list)) {
@@ -3355,17 +3380,19 @@ static int fb_notifier_callback(struct notifier_block *self,
 }
 #endif
 
+#if !defined(CONFIG_FB)
 static const struct dev_pm_ops synaptics_rmi4_dev_pm_ops = {
 	.suspend = synaptics_rmi4_suspend,
 	.resume  = synaptics_rmi4_resume,
 };
+#endif
 #endif
 
 static struct platform_driver synaptics_rmi4_driver = {
 	.driver = {
 		.name = PLATFORM_DRIVER_NAME,
 		.owner = THIS_MODULE,
-#ifdef CONFIG_PM
+#if defined(CONFIG_PM) && !defined(CONFIG_FB)
 		.pm = &synaptics_rmi4_dev_pm_ops,
 #endif
 	},

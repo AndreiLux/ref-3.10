@@ -31,6 +31,8 @@
 #define SPI_READ 0x80
 #define SPI_WRITE 0x00
 
+#define SYN_SPI_RETRY_TIMES 5
+
 #ifdef CONFIG_OF
 static int parse_config(struct device *dev, struct synaptics_dsx_board_data *bdata)
 {
@@ -250,7 +252,7 @@ static int synaptics_rmi4_spi_set_page(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short addr)
 {
 	int retval;
-	unsigned int index;
+	unsigned int index, retry;
 	unsigned int xfer_count = PAGE_SELECT_LEN + 1;
 	unsigned char txbuf[xfer_count];
 	unsigned char page;
@@ -279,11 +281,20 @@ static int synaptics_rmi4_spi_set_page(struct synaptics_rmi4_data *rmi4_data,
 		if (bdata->block_delay_us)
 			xfers[index - 1].delay_usecs = bdata->block_delay_us;
 
-		retval = spi_sync(spi, &msg);
-		if (retval == 0) {
-			rmi4_data->current_page = page;
-			retval = PAGE_SELECT_LEN;
-		} else {
+		for (retry = 0; retry < SYN_SPI_RETRY_TIMES; retry++) {
+			retval = spi_sync(spi, &msg);
+			if (retval == 0) {
+				rmi4_data->current_page = page;
+				retval = PAGE_SELECT_LEN;
+			} else {
+				dev_dbg(rmi4_data->pdev->dev.parent,
+						"%s: SPI transfer, error = %d, retry = %d\n",
+						__func__, retval, retry + 1);
+				mdelay(5);
+			}
+		}
+
+		if (retry == SYN_SPI_RETRY_TIMES) {
 			dev_err(rmi4_data->pdev->dev.parent,
 					"%s: Failed to complete SPI transfer, error = %d\n",
 					__func__, retval);
@@ -299,7 +310,7 @@ static int synaptics_rmi4_spi_read(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short addr, unsigned char *data, unsigned short length)
 {
 	int retval;
-	unsigned int index;
+	unsigned int index, retry;
 	unsigned int xfer_count = length + ADDRESS_WORD_LEN;
 	unsigned char txbuf[ADDRESS_WORD_LEN];
 	unsigned char *rxbuf = NULL;
@@ -353,11 +364,21 @@ static int synaptics_rmi4_spi_read(struct synaptics_rmi4_data *rmi4_data,
 	if (bdata->block_delay_us)
 		xfers[index - 1].delay_usecs = bdata->block_delay_us;
 
-	retval = spi_sync(spi, &msg);
-	if (retval == 0) {
-		retval = length;
-		memcpy(data, rxbuf, length);
-	} else {
+	for (retry = 0; retry < SYN_SPI_RETRY_TIMES; retry++) {
+		retval = spi_sync(spi, &msg);
+		if (retval == 0) {
+			retval = length;
+			memcpy(data, rxbuf, length);
+			break;
+		} else {
+			dev_dbg(rmi4_data->pdev->dev.parent,
+					"%s: SPI transfer, error = %d, retry = %d\n",
+					__func__, retval, retry + 1);
+			mdelay(5);
+		}
+	}
+
+	if (retry == SYN_SPI_RETRY_TIMES) {
 		dev_err(rmi4_data->pdev->dev.parent,
 				"%s: Failed to complete SPI transfer, error = %d\n",
 				__func__, retval);
@@ -376,7 +397,7 @@ static int synaptics_rmi4_spi_write(struct synaptics_rmi4_data *rmi4_data,
 		unsigned short addr, unsigned char *data, unsigned short length)
 {
 	int retval;
-	unsigned int index;
+	unsigned int index, retry;
 	unsigned int xfer_count = length + ADDRESS_WORD_LEN;
 	unsigned char *txbuf = NULL;
 	struct spi_message msg;
@@ -427,10 +448,20 @@ static int synaptics_rmi4_spi_write(struct synaptics_rmi4_data *rmi4_data,
 	if (bdata->block_delay_us)
 		xfers[index - 1].delay_usecs = bdata->block_delay_us;
 
-	retval = spi_sync(spi, &msg);
-	if (retval == 0) {
-		retval = length;
-	} else {
+	for (retry = 0; retry < SYN_SPI_RETRY_TIMES; retry++) {
+		retval = spi_sync(spi, &msg);
+		if (retval == 0) {
+			retval = length;
+			break;
+		} else {
+			dev_dbg(rmi4_data->pdev->dev.parent,
+					"%s: SPI transfer, error = %d, retry = %d\n",
+					__func__, retval, retry + 1);
+			mdelay(5);
+		}
+	}
+
+	if (retry == SYN_SPI_RETRY_TIMES) {
 		dev_err(rmi4_data->pdev->dev.parent,
 				"%s: Failed to complete SPI transfer, error = %d\n",
 				__func__, retval);

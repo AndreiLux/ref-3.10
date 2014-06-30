@@ -294,7 +294,7 @@
 			interrupt-parent = <&gpio>;
 			interrupts = <TEGRA_GPIO(K, 2) 0x2>;
 			synaptics,irq-gpio = <&gpio TEGRA_GPIO(K, 2) 0x00>;
-			synaptics,irq-flags = <0x2002>;
+			synaptics,irq-flags = <0x2008>;
 			synaptics,reset-gpio = <&gpio TEGRA_GPIO(X, 6) 0x00>;
 			synaptics,reset-on-state = <0>;
 			synaptics,reset-active-ms = <20>;
