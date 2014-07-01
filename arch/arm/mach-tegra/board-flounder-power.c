@@ -345,6 +345,16 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 		},
 		[THERM_PLL] = {
 			.zone_enable = true,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "tegra-dram",
+					.trip_temp = 78000,
+					.trip_type = THERMAL_TRIP_ACTIVE,
+					.upper = 1,
+					.lower = 1,
+				},
+			},
 			.tzp = &soctherm_tzp,
 		},
 	},
@@ -378,7 +388,7 @@ static struct soctherm_platform_data flounder_v1_soctherm_data = {
 		[THERM_PLL] = {
 			.zone_enable = true,
 			.passive_delay = 1000,
-			.num_trips = 3,
+			.num_trips = 4,
 			.trips = {
 				{
 					.cdev_type = "tegra-shutdown",
@@ -400,6 +410,13 @@ static struct soctherm_platform_data flounder_v1_soctherm_data = {
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+				.cdev_type = "tegra-dram",
+				.trip_temp = 78000,
+				.trip_type = THERMAL_TRIP_ACTIVE,
+				.upper = 1,
+				.lower = 1,
 				},
 			},
 			.tzp = &soctherm_tzp,
