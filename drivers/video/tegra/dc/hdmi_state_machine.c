@@ -181,7 +181,7 @@ static void hdmi_disable_l(struct tegra_dc_hdmi_data *hdmi)
 	pr_info("%s: hpd_switch 0\n", __func__);
 #endif
 	tegra_nvhdcp_set_plug(hdmi->nvhdcp, 0);
-	if (hdmi->dc->enabled) {
+	if (hdmi->dc->connected) {
 		pr_info("HDMI from connected to disconnected\n");
 		hdmi->dc->connected = false;
 		tegra_dc_disable(hdmi->dc);
