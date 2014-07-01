@@ -2771,8 +2771,6 @@ static struct tegra12_emc_pdata flounder_lpddr3_emc_pdata = {
  */
 int __init flounder_emc_init(void)
 {
-	int use_dt_emc_table = 0;
-
 	/*
 	 * If the EMC table is successfully read from the NCT partition,
 	 * we do not need to check for board ids and blindly load the one
@@ -2782,16 +2780,19 @@ int __init flounder_emc_init(void)
 	if (!tegra12_nct_emc_table_init(&board_emc_pdata)) {
 		tegra_emc_device.dev.platform_data = &board_emc_pdata;
 		pr_info("Loading EMC table read from NCT partition.\n");
-	} else {
+	} else 
 	#endif
+	if (of_find_compatible_node(NULL, NULL, "nvidia,tegra12-emc")) {
+		/* If Device Tree Partition contains emc-tables, load them
+		 * from Device Tree Partition
+		 */
+		pr_info("Loading EMC tables from DeviceTree.\n");
+	} else {
 		pr_info("Loading Flounder EMC tables.\n");
 		tegra_emc_device.dev.platform_data = &flounder_lpddr3_emc_pdata;
-	#ifdef CONFIG_TEGRA_USE_NCT
-	}
-	#endif
 
-	if (!use_dt_emc_table)
 		platform_device_register(&tegra_emc_device);
+	}
 
 	tegra12_emc_init();
 	return 0;

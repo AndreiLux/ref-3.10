@@ -7,6 +7,8 @@
 #include "tegra132-flounder-trusty.dtsi"
 #include "tegra132-flounder-sysedp.dtsi"
 #include "tegra132-flounder-powermon.dtsi"
+#include "tegra132-flounder-emc.dtsi"
+
 / {
 	model = "Flounder";
 
