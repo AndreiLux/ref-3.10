@@ -58,7 +58,17 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 		ret = rt5677_spi_read(addr, buf, rt_codec.number);
 		if (ret)
 			goto err;
-		if (copy_to_user(rt_codec.buf, buf, rt_codec.number)) {
+		/* Format: <offset:4 -> buf0> buf1 buf0 */
+		addr = le32_to_cpup((u32 *)buf);
+		if (addr >= rt_codec.number)
+			addr = sizeof(u32);
+		if (copy_to_user(rt_codec.buf, buf + addr,
+				 rt_codec.number - addr)) {
+			ret = -EFAULT;
+			goto err;
+		}
+		if (copy_to_user(rt_codec.buf + rt_codec.number - addr,
+				 buf + sizeof(u32), addr - sizeof(u32))) {
 			ret = -EFAULT;
 			goto err;
 		}
