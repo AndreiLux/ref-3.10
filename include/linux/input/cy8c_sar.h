@@ -5,6 +5,7 @@
 #include <linux/types.h>
 #include <linux/notifier.h>
 #include <linux/wakelock.h>
+#include <linux/list.h>
 
 #define CYPRESS_SAR_NAME 	"CYPRESS_SAR"
 #define CYPRESS_SAR1_NAME	"CYPRESS_SAR1"
@@ -62,13 +63,6 @@ enum mode {
 	DEEP_SLEEP,
 };
 
-enum sar_state {
-	SAR_ACT = 0,
-	SAR_NON_ACT,
-	SAR1_ACT,
-	SAR1_NON_ACT,
-};
-
 struct infor {
 	uint8_t  config;
 	uint16_t chipid;
@@ -86,16 +80,16 @@ struct cy8c_i2c_sar_platform_data {
 };
 
 struct cy8c_sar_data {
+	struct list_head list;
 	struct i2c_client *client;
 	struct input_dev *input_dev;
 	struct workqueue_struct *cy8c_wq;
-	struct work_struct work;
 	uint8_t use_irq;
 	int radio_state;
 	uint16_t position_id;
 	enum mode sleep_mode;
 	int pm_state;
-	uint8_t is_actived;
+	uint8_t is_activated;
 	uint8_t polarity;
 	int intr_irq;
 	struct hrtimer timer;

@@ -27,6 +27,9 @@
 #include <linux/irq.h>
 #include <linux/pm.h>
 
+static LIST_HEAD(sar_list);
+static DEFINE_SPINLOCK(sar_list_lock);
+
 BLOCKING_NOTIFIER_HEAD(sar_notifier_list);
 
 /**
@@ -232,12 +235,10 @@ static void sar_sleep_func(struct work_struct *work)
 	case KEEP_AWAKE:
 		sar->reset();
 		mdelay(50);
-		queue_work(sar->cy8c_wq, &sar->work);
+		enable_irq(sar->intr_irq);
 		break;
 	case DEEP_SLEEP:
 		disable_irq(sar->intr_irq);
-		if (cancel_work_sync(&sar->work))
-			enable_irq(sar->intr_irq);
 		err = i2c_cy8c_write_byte_data(sar->client, CS_MODE, CS_CMD_DSLEEP);
 		if (err < 0) {
 			pr_err("[SAR] %s: I2C write fail. reg %d, err %d\n", __func__, CS_CMD_DSLEEP, err);
@@ -297,52 +298,31 @@ static int sysfs_create(struct cy8c_sar_data *sar)
 
 	return 0;
 }
-
-static void cy8c_sar_work_func(struct work_struct *work)
-{
-	struct cy8c_sar_data *sar;
-	uint8_t buf[1] = {0};
-	int state, active, ret;
-
-	pr_debug("[SAR] %s: enter\n", __func__);
-	sar = container_of(work, struct cy8c_sar_data, work);
-
-	ret = i2c_cy8c_read(sar->client, CS_STATUS, buf, 1);
-	state = gpio_get_value(sar->intr);
-	active = (state ^ !sar->polarity) ? 1 : 0;
-	pr_debug("[SAR] CS_STATUS:0x%x\n", buf[0]);
-	pr_debug("[SAR] %s active=%d, is_actived=%d\n", __func__, active, sar->is_actived);
-	/*irq_set_irq_type(sar->intr_irq,*/
-	/*	state ? IRQF_TRIGGER_LOW : IRQF_TRIGGER_HIGH);*/
-
-	if (active != sar->is_actived && buf[0] != 0) {
-		pr_info("[SAR] reduce Wifi power\n");
-		sar->is_actived = active;
-
-		if (sar->position_id == 0)
-			active = SAR_ACT;
-		else
-			active = SAR1_ACT;
-	} else {
-		pr_info("[SAR] restore Wifi power\n");
-		sar->is_actived = 0;
-
-		if (sar->position_id == 0)
-			active = SAR_NON_ACT;
-		else
-			active = SAR1_NON_ACT;
-	}
-	blocking_notifier_call_chain(&sar_notifier_list, active, NULL);
-
-	enable_irq(sar->client->irq);
-}
-
 static irqreturn_t cy8c_sar_irq_handler(int irq, void *dev_id)
 {
 	struct cy8c_sar_data *sar = dev_id;
+	uint8_t buf[1] = {0};
+	int state, active = 0, ret;
 
-	disable_irq_nosync(sar->client->irq);
-	queue_work(sar->cy8c_wq, &sar->work);
+	pr_debug("[SAR] %s: enter\n", __func__);
+
+	ret = i2c_cy8c_read(sar->client, CS_STATUS, buf, 1);
+	state = gpio_get_value(sar->intr);
+	sar->is_activated = !!buf[0];
+	pr_debug("[SAR] CS_STATUS:0x%x ,active = %d, is_activated = %d\n"
+			, buf[0], active, sar->is_activated);
+	spin_lock_irqsave(&sar_list_lock, sar->spinlock_flags);
+	list_for_each_entry(sar, &sar_list, list) {
+		if (sar->is_activated) {
+			pr_debug("[SAR%d] reduce Wifi power\n"
+					, sar->position_id);
+			active |= 1 << (sar->position_id);
+		}
+	}
+	spin_unlock_irqrestore(&sar_list_lock, sar->spinlock_flags);
+	pr_info("[SAR] active=%x\n", active);
+	blocking_notifier_call_chain(&sar_notifier_list, active, NULL);
+
 	return IRQ_HANDLED;
 }
 
@@ -384,7 +364,7 @@ static int cy8c_sar_probe(struct i2c_client *client,
 		goto err_init_sensor_failed;
 	}
 	sar->sleep_mode = sar->radio_state = sar->pm_state = KEEP_AWAKE;
-	sar->is_actived = 0;
+	sar->is_activated = 0;
 	sar->polarity = 0; /* 0: low active */
 
 	if (pdata) {
@@ -394,13 +374,16 @@ static int cy8c_sar_probe(struct i2c_client *client,
 		}
 	}
 
+	spin_lock_irqsave(&sar_list_lock, sar->spinlock_flags);
+	list_add(&sar->list, &sar_list);
+	spin_unlock_irqrestore(&sar_list_lock, sar->spinlock_flags);
+
 	sar->cy8c_wq = create_singlethread_workqueue("cypress_sar");
 	if (!sar->cy8c_wq) {
 		ret = -ENOMEM;
 		pr_err("[SAR][ERR] create_singlethread_workqueue cy8c_wq fail\n");
 		goto err_create_wq_failed;
 	}
-	INIT_WORK(&sar->work, cy8c_sar_work_func);
 	INIT_DELAYED_WORK(&sar->sleep_work, sar_sleep_func);
 
 	sar->reset                 = pdata->reset;
@@ -417,9 +400,10 @@ static int cy8c_sar_probe(struct i2c_client *client,
 
 	sar->use_irq = 1;
 	if (client->irq && sar->use_irq) {
-		ret = request_irq(sar->intr_irq, cy8c_sar_irq_handler,
-				  IRQF_TRIGGER_FALLING,
-				  CYPRESS_SAR_NAME, sar);
+		ret = request_threaded_irq(sar->intr_irq, NULL
+				, cy8c_sar_irq_handler
+				, IRQF_TRIGGER_FALLING | IRQF_ONESHOT
+				,CYPRESS_SAR_NAME, sar);
 		if (ret < 0) {
 			dev_err(&client->dev, "[SAR][ERR] request_irq failed\n");
 			pr_err("[SAR][ERR] request_irq failed for gpio %d, irq %d\n",
@@ -451,6 +435,9 @@ static int cy8c_sar_remove(struct i2c_client *client)
 	struct cy8c_sar_data *sar = i2c_get_clientdata(client);
 
 	disable_irq(client->irq);
+	spin_lock_irqsave(&sar_list_lock, sar->spinlock_flags);
+	list_del(&sar->list);
+	spin_unlock_irqrestore(&sar_list_lock, sar->spinlock_flags);
 	sysfs_remove_group(&sar->sar_dev->kobj, &sar_attr_group);
 	device_unregister(sar->sar_dev);
 	class_destroy(sar->sar_class);
