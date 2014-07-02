@@ -43,7 +43,7 @@ struct previous_ae {
 	bool gain_enable;
 	bool coarse_enable;
 	bool frame_enable;
-	u8 gain;
+	struct imx219_gain gain;
 	u16 coarse_time;
 	u16 frame_length;
 };
@@ -92,10 +92,14 @@ imx219_get_coarse_time_regs(struct imx219_reg *regs, u32 coarse_time)
 }
 
 static inline void
-imx219_get_gain_reg(struct imx219_reg *regs, u16 gain)
+imx219_get_gain_reg(struct imx219_reg *regs, struct imx219_gain gain)
 {
 	regs->addr = 0x157;
-	regs->val = gain;
+	regs->val = gain.again;
+	(regs+1)->addr = 0x158;
+	(regs+1)->val = gain.dgain_upper;
+	(regs+2)->addr = 0x159;
+	(regs+2)->val = gain.dgain_lower;
 }
 
 static int
@@ -123,12 +127,15 @@ imx219_read_reg(struct i2c_client *client, u16 addr, u8 *val)
 	msg[1].buf = data + 2;
 
 	err = i2c_transfer(client->adapter, msg, 2);
+	if (err == 2) {
+		*val = data[2];
+		return 0;
+	}
 
-	if (err != 2)
-		return -EINVAL;
+	pr_err("%s:i2c read failed, addr %x, err %d\n",
+			__func__, addr, err);
 
-	*val = data[2];
-	return 0;
+	return err;
 }
 
 static int
@@ -154,8 +161,8 @@ imx219_write_reg(struct i2c_client *client, u16 addr, u8 val)
 	if (err == 1)
 		return 0;
 
-	pr_err("%s:i2c write failed, %x = %x\n",
-			__func__, addr, val);
+	pr_err("%s:i2c write failed, addr %x, val %x, err %d\n",
+			__func__, addr, val, err);
 
 	return err;
 }
@@ -206,9 +213,10 @@ imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 	int err;
 	struct imx219_reg reg_list[8];
 
-	pr_info("%s: xres %u yres %u framelength %u coarsetime %u gain %u\n",
+	pr_info("%s: xres %u yres %u framelength %u coarsetime %u again %u dgain %u%u\n",
 			 __func__, mode->xres, mode->yres, mode->frame_length,
-			 mode->coarse_time, mode->gain);
+			 mode->coarse_time, mode->gain.again,
+			 mode->gain.dgain_upper, mode->gain.dgain_lower);
 
 	if (mode->xres == 3280 && mode->yres == 2460) {
 		sensor_mode = IMX219_MODE_3280x2460;
@@ -303,15 +311,22 @@ imx219_set_coarse_time(struct imx219_info *info, u32 coarse_time,
 }
 
 static int
-imx219_set_gain(struct imx219_info *info, u16 gain, bool bank_a)
+imx219_set_gain(struct imx219_info *info, struct imx219_gain gain, bool bank_a)
 {
+	int i;
 	int ret;
-	struct imx219_reg reg_list;
+	struct imx219_reg reg_list[3];
 
-	imx219_get_gain_reg(&reg_list, gain);
-	if (!bank_a)
-		reg_list.addr += 0x100;
-	ret = imx219_write_reg(info->i2c_client, reg_list.addr, reg_list.val);
+	imx219_get_gain_reg(reg_list, gain);
+	for (i = 0; i < 3; ++i) {
+		ret = imx219_write_reg(info->i2c_client,
+								reg_list[i].addr + 0x100 * !bank_a,
+								reg_list[i].val);
+		if (ret) {
+			pr_err("%s: unable to write register: %d", __func__, ret);
+			return ret;
+		}
+	}
 
 	return ret;
 }
@@ -342,7 +357,9 @@ imx219_set_group_hold(struct imx219_info *info, struct imx219_ae *ae)
 
 	if (ae->gain_enable) {
 		imx219_set_gain(info, ae->gain, bank_a);
-		pre_ae.gain = ae->gain;
+		pre_ae.gain.again = ae->gain.again;
+		pre_ae.gain.dgain_upper = ae->gain.dgain_upper;
+		pre_ae.gain.dgain_lower = ae->gain.dgain_lower;
 		pre_ae.gain_enable = true;
 	}
 	else {
@@ -480,9 +497,17 @@ imx219_ioctl(struct file *file,
 		err = imx219_set_coarse_time(info, (u32)arg, false);
 		break;
 	case IMX219_IOCTL_SET_GAIN:
-		err = imx219_set_gain(info, (u16)arg, true);
-		err = imx219_set_gain(info, (u16)arg, false);
+	{
+		struct imx219_gain gain;
+		if (copy_from_user(&gain, (const void __user *)arg,
+			sizeof(struct imx219_gain))) {
+			pr_err("%s:Failed to get gain from user\n", __func__);
+			return -EFAULT;
+		    }
+		err = imx219_set_gain(info, gain, true);
+		err = imx219_set_gain(info, gain, false);
 		break;
+	}
 	case IMX219_IOCTL_GET_STATUS:
 	{
 		u8 status;
@@ -530,7 +555,7 @@ imx219_ioctl(struct file *file,
 	case IMX219_IOCTL_GET_FLASH_CAP:
 		return -ENODEV;/* Flounder not support on sensor strobe */
 	default:
-		pr_err("%s:unknown cmd.\n", __func__);
+		pr_err("%s:unknown cmd: %u\n", __func__, cmd);
 		err = -EINVAL;
 	}
 
@@ -596,8 +621,8 @@ static int imx219_regulator_get(struct imx219_info *info,
 
 	reg = regulator_get(&info->i2c_client->dev, vreg_name);
 	if (unlikely(IS_ERR_OR_NULL(reg))) {
-		dev_err(&info->i2c_client->dev, "%s %s ERR: %d\n",
-			__func__, vreg_name, (int)reg);
+		dev_err(&info->i2c_client->dev, "%s %s ERR: %p\n",
+			__func__, vreg_name, reg);
 		err = PTR_ERR(reg);
 		reg = NULL;
 	} else

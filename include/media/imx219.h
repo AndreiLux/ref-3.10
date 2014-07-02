@@ -26,12 +26,18 @@
 #define IMX219_IOCTL_GET_FLASH_CAP	_IOR('o', 30, __u32)
 #define IMX219_IOCTL_SET_FLASH_MODE _IOW('o', 31, struct imx219_flash_control)
 
+struct imx219_gain {
+	__u16 again;
+	__u8 dgain_upper;
+	__u8 dgain_lower;
+};
+
 struct imx219_mode {
 	int xres;
 	int yres;
 	__u32 frame_length;
 	__u32 coarse_time;
-	__u16 gain;
+	struct imx219_gain gain;
 };
 
 struct imx219_ae {
@@ -39,7 +45,7 @@ struct imx219_ae {
 	__u8  frame_length_enable;
 	__u32 coarse_time;
 	__u8  coarse_time_enable;
-	__s32 gain;
+	struct imx219_gain gain;
 	__u8  gain_enable;
 };
 
