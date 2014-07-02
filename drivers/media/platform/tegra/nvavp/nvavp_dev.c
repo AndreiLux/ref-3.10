@@ -614,8 +614,8 @@ static void clock_disable_handler(struct work_struct *work)
 			    clock_disable_work);
 
 	channel_info = nvavp_get_channel_info(nvavp, NVAVP_VIDEO_CHANNEL);
-	mutex_lock(&nvavp->open_lock);
 	mutex_lock(&channel_info->pushbuffer_lock);
+	mutex_lock(&nvavp->open_lock);
 	if (nvavp_check_idle(nvavp, NVAVP_VIDEO_CHANNEL) && nvavp->pending) {
 		nvavp->pending = false;
 		nvavp_clks_disable(nvavp);
@@ -1950,8 +1950,11 @@ static int tegra_nvavp_release(struct nvavp_clientctx *clientctx,
 
 	if (nvavp->refcount > 0)
 		nvavp->refcount--;
-	if (!nvavp->refcount)
+	if (!nvavp->refcount) {
+		mutex_unlock(&nvavp->open_lock);
 		nvavp_uninit(nvavp);
+		mutex_lock(&nvavp->open_lock);
+	}
 
 	if (IS_VIDEO_CHANNEL_ID(channel_id))
 		nvavp->video_refcnt--;
