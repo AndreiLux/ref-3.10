@@ -840,7 +840,7 @@ static void mdm_hsic_phy_suspend(struct qcom_usb_modem *modem)
 		trace_printk("%s\n", __func__);
 #endif
 
-	mutex_lock(&modem->lock);
+	mutex_lock(&modem->hsic_phy_lock);
 
 	if (modem->mdm_hsic_phy_resume_jiffies != 0) {
 		elapsed_ms = jiffies_to_msecs(jiffies - modem->mdm_hsic_phy_resume_jiffies);
@@ -859,7 +859,7 @@ static void mdm_hsic_phy_suspend(struct qcom_usb_modem *modem)
 
 	pr_info("%s: phy_active_total_ms: %lu ms\n", __func__, modem->mdm_hsic_phy_active_total_ms);
 
-	mutex_unlock(&modem->lock);
+	mutex_unlock(&modem->hsic_phy_lock);
 
 	return;
 }
@@ -923,11 +923,11 @@ static void mdm_hsic_phy_resume(struct qcom_usb_modem *modem)
 		trace_printk("%s\n", __func__);
 #endif
 
-	mutex_lock(&modem->lock);
+	mutex_lock(&modem->hsic_phy_lock);
 
 	modem->mdm_hsic_phy_resume_jiffies = jiffies;
 
-	mutex_unlock(&modem->lock);
+	mutex_unlock(&modem->hsic_phy_lock);
 
 	return;
 }
@@ -1774,6 +1774,7 @@ static int mdm_init(struct qcom_usb_modem *modem, struct platform_device *pdev)
 
 	mutex_init(&(modem->lock));
 	mutex_init(&modem->hc_lock);
+	mutex_init(&modem->hsic_phy_lock);
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	mutex_init(&modem->ftrace_cmd_lock);
 #endif

@@ -71,6 +71,7 @@ struct qcom_usb_modem {
 	/* mutex */
 	struct mutex lock;
 	struct mutex hc_lock;
+	struct mutex hsic_phy_lock;
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	struct mutex ftrace_cmd_lock;
 #endif
