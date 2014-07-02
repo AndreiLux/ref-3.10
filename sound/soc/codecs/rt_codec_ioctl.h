@@ -79,6 +79,15 @@ enum {
 	RT_GET_CODEC_ID = _IOR('R', 0x30, struct rt_codec_cmd),
 };
 
+#ifdef CONFIG_COMPAT
+enum {
+	RT_READ_CODEC_DSP_IOCTL_COMPAT =
+				_IOR('R', 0x04, struct compat_rt_codec_cmd),
+	RT_WRITE_CODEC_DSP_IOCTL_COMPAT =
+				_IOW('R', 0x04, struct compat_rt_codec_cmd),
+};
+#endif
+
 int realtek_ce_init_hwdep(struct snd_soc_codec *codec);
 struct rt_codec_ops *rt_codec_get_ioctl_ops(void);
 

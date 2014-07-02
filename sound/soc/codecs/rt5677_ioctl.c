@@ -26,6 +26,7 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 	u8 *buf = NULL;
 	int ret = -EFAULT;
 	u32 addr = RT5677_MIC_BUF_ADDR;
+	size_t size;
 
 #ifdef CONFIG_COMPAT
 	if (is_compat_task()) {
@@ -46,28 +47,31 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 	dev_dbg(codec->dev, "%s: rt_codec.number=%zu, cmd=%u\n",
 		__func__, rt_codec.number, cmd);
 
+	size = sizeof(int) * rt_codec.number;
 	switch (cmd) {
 	case RT_READ_CODEC_DSP_IOCTL:
-		buf = kzalloc(rt_codec.number, GFP_KERNEL);
+	case RT_READ_CODEC_DSP_IOCTL_COMPAT:
+		buf = kzalloc(size, GFP_KERNEL);
 		if (!buf) {
 			ret = -ENOMEM;
 			goto err;
 		}
 
 		/* Read from DSP to buf */
-		ret = rt5677_spi_read(addr, buf, rt_codec.number);
+		ret = rt5677_spi_read(addr, buf, size);
 		if (ret)
 			goto err;
 		/* Format: <offset:4 -> buf0> buf1 buf0 */
 		addr = le32_to_cpup((u32 *)buf);
-		if (addr >= rt_codec.number)
+		if (addr >= size)
 			addr = sizeof(u32);
-		if (copy_to_user(rt_codec.buf, buf + addr,
-				 rt_codec.number - addr)) {
+		if (copy_to_user(rt_codec.buf, buf + addr, size - addr)) {
 			ret = -EFAULT;
 			goto err;
 		}
-		if (copy_to_user(rt_codec.buf + rt_codec.number - addr,
+		if (addr <= sizeof(u32))
+			break;
+		if (copy_to_user((u8 *)(rt_codec.buf) + size - addr,
 				 buf + sizeof(u32), addr - sizeof(u32))) {
 			ret = -EFAULT;
 			goto err;
@@ -75,24 +79,24 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 		break;
 
 	case RT_WRITE_CODEC_DSP_IOCTL:
+	case RT_WRITE_CODEC_DSP_IOCTL_COMPAT:
 		kfree(rt5677->model_buf);
 		rt5677->model_len = 0;
-		rt5677->model_buf = kzalloc(rt_codec.number, GFP_KERNEL);
+		rt5677->model_buf = kzalloc(size, GFP_KERNEL);
 		if (!rt5677->model_buf) {
 			ret = -ENOMEM;
 			goto err;
 		}
-		if (copy_from_user(rt5677->model_buf, rt_codec.buf,
-				   rt_codec.number))
+		if (copy_from_user(rt5677->model_buf, rt_codec.buf, size))
 			goto err;
-		rt5677->model_len = rt_codec.number;
+		rt5677->model_len = size;
+		ret = 0;
 		break;
 
 	default:
 		ret = -ENOTSUPP;
 		break;
 	}
-
 err:
 	kfree(buf);
 	return ret;
