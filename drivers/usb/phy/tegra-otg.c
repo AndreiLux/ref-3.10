@@ -1025,10 +1025,6 @@ static int tegra_otg_suspend(struct device *dev)
 	clk_disable_unprepare(tegra->clk);
 	pm_runtime_put_sync(dev);
 
-	/* suspend peripheral mode, host mode is taken care by host driver */
-	if (from == OTG_STATE_B_PERIPHERAL)
-		tegra_change_otg_state(tegra, OTG_STATE_A_SUSPEND);
-
 	if (from == OTG_STATE_A_HOST && tegra->turn_off_vbus_on_lp0)
 		tegra_otg_vbus_enable(tegra->vbus_reg, 0);
 
