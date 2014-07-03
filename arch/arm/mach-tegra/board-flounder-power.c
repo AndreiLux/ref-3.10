@@ -454,8 +454,9 @@ int __init flounder_soctherm_init(void)
 	cp_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
 	ft_rev = tegra_fuse_calib_base_get_ft(NULL, NULL);
 
-	/* TODO: remove this line once hboot changes merged */
+	/* TODO: remove this part once bootloader changes merged */
 	tegra_gpio_disable(TEGRA_GPIO_PJ2);
+	tegra_gpio_disable(TEGRA_GPIO_PS7);
 
 	if (cp_rev) {
 		/* ATE rev is Old or Mid - use PLLx sensor only */

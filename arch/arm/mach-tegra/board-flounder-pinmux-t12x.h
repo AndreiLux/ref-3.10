@@ -89,7 +89,6 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 
 	/* SOC pinmux */
 	DEFAULT_PINMUX(GPIO_PJ2,      SOC,         PULL_UP,   NORMAL,   INPUT),
-	DEFAULT_PINMUX(KB_ROW15,      SOC,         PULL_UP,   NORMAL,   INPUT),
 	DEFAULT_PINMUX(CLK_32K_OUT,   SOC,         PULL_UP,   NORMAL,   INPUT),
 
 	/* EXTPERIPH2 pinmux */
@@ -269,6 +268,7 @@ static __initdata struct tegra_pingroup_config unused_pins_lowpower[] = {
 	UNUSED_PINMUX(PEX_L1_RST_N),
 	UNUSED_PINMUX(PEX_WAKE_N),
 	UNUSED_PINMUX(GPIO_PFF2),
+	UNUSED_PINMUX(KB_ROW15),
 	UNUSED_PINMUX(KB_ROW16),
 	UNUSED_PINMUX(KB_ROW17),
 	UNUSED_PINMUX(OWR),
