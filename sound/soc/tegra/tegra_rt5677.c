@@ -106,11 +106,12 @@ static int tegra_rt5677_spk_startup(struct snd_pcm_substream *substream)
 
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
 
-	mutex_lock(&machine->spk_amp_lock);
-	sysedp_set_state(sysedpc, 1);
-	set_tfa9895_spkamp(1, 0);
-	set_tfa9895l_spkamp(1, 0);
-	mutex_unlock(&machine->spk_amp_lock);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		mutex_lock(&machine->spk_amp_lock);
+		set_tfa9895_spkamp(1, 0);
+		set_tfa9895l_spkamp(1, 0);
+		mutex_unlock(&machine->spk_amp_lock);
+	}
 
 	return 0;
 }
@@ -126,11 +127,12 @@ static void tegra_rt5677_spk_shutdown(struct snd_pcm_substream *substream)
 
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
 
-	mutex_lock(&machine->spk_amp_lock);
-	set_tfa9895_spkamp(0, 0);
-	set_tfa9895l_spkamp(0, 0);
-	sysedp_set_state(sysedpc, 0);
-	mutex_unlock(&machine->spk_amp_lock);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		mutex_lock(&machine->spk_amp_lock);
+		set_tfa9895_spkamp(0, 0);
+		set_tfa9895l_spkamp(0, 0);
+		mutex_unlock(&machine->spk_amp_lock);
+	}
 }
 
 static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
