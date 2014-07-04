@@ -779,21 +779,17 @@ static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
 static int tegra_offload_hw_params_be_fixup(struct snd_soc_pcm_runtime *rtd,
 			struct snd_pcm_hw_params *params)
 {
-	if (!params_rate(params)) {
-		struct snd_interval *snd_rate = hw_param_interval(params,
+	struct snd_interval *snd_rate = hw_param_interval(params,
 						SNDRV_PCM_HW_PARAM_RATE);
-
-		snd_rate->min = snd_rate->max = 48000;
-	}
-
-	if (!params_channels(params)) {
-		struct snd_interval *snd_channels = hw_param_interval(params,
+	struct snd_interval *snd_channels = hw_param_interval(params,
 						SNDRV_PCM_HW_PARAM_CHANNELS);
 
-		snd_channels->min = snd_channels->max = 2;
-	}
-	snd_mask_set(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT),
-				ffs(SNDRV_PCM_FORMAT_S16_LE));
+	snd_rate->min = snd_rate->max = 48000;
+	snd_channels->min = snd_channels->max = 2;
+
+	snd_mask_set(&params->masks[SNDRV_PCM_HW_PARAM_FORMAT -
+				SNDRV_PCM_HW_PARAM_FIRST_MASK],
+				SNDRV_PCM_FORMAT_S16_LE);
 
 	pr_debug("%s::%d %d %d\n", __func__, params_rate(params),
 			params_channels(params), params_format(params));

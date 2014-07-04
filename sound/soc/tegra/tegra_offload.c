@@ -119,19 +119,22 @@ static int tegra_set_compress_volume(struct snd_kcontrol *kcontrol,
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
 	struct snd_soc_pcm_runtime *rtd = stream->device->private_data;
 	struct device *dev = rtd->platform->dev;
+	int left = (int)ucontrol->value.integer.value[0];
+	int right = (int)ucontrol->value.integer.value[1];
 
 	pr_debug("%s: value[0]: %d value[1]: %d\n", __func__,
-		(int)ucontrol->value.integer.value[0],
-		(int)ucontrol->value.integer.value[1]);
-	ret = data->ops->set_stream_volume(data->stream_id,
-			(int)ucontrol->value.integer.value[0],
-			(int)ucontrol->value.integer.value[1]);
-	if (ret < 0) {
-		dev_err(dev, "Failed to get compr caps. ret %d", ret);
-		return ret;
-	} else {
-		data->stream_vol[0] = (int)ucontrol->value.integer.value[0];
-		data->stream_vol[1] = (int)ucontrol->value.integer.value[1];
+		left, right);
+
+	if (data) {
+		ret = data->ops->set_stream_volume(data->stream_id,
+				left, right);
+		if (ret < 0) {
+			dev_err(dev, "Failed to get compr caps. ret %d", ret);
+			return ret;
+		} else {
+			data->stream_vol[0] = left;
+			data->stream_vol[1] = right;
+		}
 	}
 	return 1;
 }
@@ -143,8 +146,10 @@ static int tegra_get_compress_volume(struct snd_kcontrol *kcontrol,
 	struct snd_compr_stream *stream = snd_kcontrol_chip(kcontrol);
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
 
-	ucontrol->value.integer.value[0] = data->stream_vol[0];
-	ucontrol->value.integer.value[1] = data->stream_vol[1];
+	if (data) {
+		ucontrol->value.integer.value[0] = data->stream_vol[0];
+		ucontrol->value.integer.value[1] = data->stream_vol[1];
+	}
 
 	return 0;
 }
@@ -160,11 +165,13 @@ static int tegra_offload_compr_add_controls(struct snd_compr_stream *stream)
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
 
-	data->kcontrol =  snd_ctl_new1(&tegra_offload_volume, stream);
-	ret = snd_ctl_add(rtd->card->snd_card, data->kcontrol);
-	if (ret < 0) {
-		dev_err(dev, "Can't add offload volume");
-		return ret;
+	if (data) {
+		data->kcontrol =  snd_ctl_new1(&tegra_offload_volume, stream);
+		ret = snd_ctl_add(rtd->card->snd_card, data->kcontrol);
+		if (ret < 0) {
+			dev_err(dev, "Can't add offload volume");
+			return ret;
+		}
 	}
 	return ret;
 }
@@ -177,10 +184,12 @@ static int tegra_offload_compr_remove_controls(struct snd_compr_stream *stream)
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
 
-	ret = snd_ctl_remove(rtd->card->snd_card, data->kcontrol);
-	if (ret < 0) {
-		dev_err(dev, "Can't remove offload volume");
-		return ret;
+	if (data) {
+		ret = snd_ctl_remove(rtd->card->snd_card, data->kcontrol);
+		if (ret < 0) {
+			dev_err(dev, "Can't remove offload volume");
+			return ret;
+		}
 	}
 	return ret;
 }
@@ -193,6 +202,8 @@ static int tegra_offload_compr_open(struct snd_compr_stream *stream)
 	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
+
+	stream->runtime->private_data = NULL;
 
 	if (!tegra_offload_init_done) {
 		dev_err(dev, "Offload interface is not registered");
@@ -212,6 +223,7 @@ static int tegra_offload_compr_open(struct snd_compr_stream *stream)
 	ret = data->ops->stream_open(&data->stream_id);
 	if (ret < 0) {
 		dev_err(dev, "Failed to open offload stream. err %d", ret);
+		devm_kfree(dev, data);
 		return ret;
 	}
 
@@ -232,12 +244,15 @@ static int tegra_offload_compr_free(struct snd_compr_stream *stream)
 
 	dev_vdbg(dev, "%s", __func__);
 
-	ret = tegra_offload_compr_remove_controls(stream);
-	if (ret)
-		dev_err(dev, "Failed to remove controls\n");
+	if (data) {
+		ret = tegra_offload_compr_remove_controls(stream);
+		if (ret)
+			dev_err(dev, "Failed to remove controls\n");
 
-	data->ops->stream_close(data->stream_id);
-	devm_kfree(dev, data);
+		data->ops->stream_close(data->stream_id);
+		devm_kfree(dev, data);
+	}
+
 	return 0;
 }
 
@@ -433,15 +448,11 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 
 	dev_vdbg(dev, "%s", __func__);
 
+	substream->runtime->private_data = NULL;
+
 	if (!tegra_offload_init_done) {
 		dev_err(dev, "Offload interface is not registered");
 		return -ENODEV;
-	}
-
-	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
-	if (!data) {
-		dev_err(dev, "Failed to allocate tegra_offload_pcm_data.");
-		return -ENOMEM;
 	}
 
 	/* Set HW params now that initialization is complete */
@@ -454,14 +465,22 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 		dev_err(dev, "failed to set constraint %d\n", ret);
 		return ret;
 	}
+
+	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
+	if (!data) {
+		dev_err(dev, "Failed to allocate tegra_offload_pcm_data.");
+		return -ENOMEM;
+	}
+
 	data->ops = &offload_ops.pcm_ops;
 
 	ret = data->ops->stream_open(&data->stream_id);
 	if (ret < 0) {
 		dev_err(dev, "Failed to open offload stream. err %d", ret);
+		devm_kfree(dev, data);
 		return ret;
 	}
-	 offload_ops.device_ops.set_hw_rate(48000);
+	offload_ops.device_ops.set_hw_rate(48000);
 	substream->runtime->private_data = data;
 	return 0;
 }
@@ -474,8 +493,10 @@ static int tegra_offload_pcm_close(struct snd_pcm_substream *substream)
 
 	dev_vdbg(dev, "%s", __func__);
 
-	data->ops->stream_close(data->stream_id);
-	devm_kfree(dev, data);
+	if (data) {
+		data->ops->stream_close(data->stream_id);
+		devm_kfree(dev, data);
+	}
 	return 0;
 }
 
