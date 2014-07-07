@@ -126,9 +126,6 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	DEFAULT_PINMUX(GPIO_PU0,      UARTA,       NORMAL,    NORMAL,   OUTPUT),
 	DEFAULT_PINMUX(GPIO_PU1,      UARTA,       PULL_UP,   NORMAL,   INPUT),
 
-	/* DISPLAYA_ALT pinmux */
-	DEFAULT_PINMUX(KB_ROW6,       DISPLAYA_ALT, NORMAL, NORMAL,   INPUT),
-
 	/* I2CPWR pinmux */
 	I2C_PINMUX(PWR_I2C_SCL, I2CPWR, NORMAL, NORMAL, INPUT, DEFAULT, ENABLE),
 	I2C_PINMUX(PWR_I2C_SDA, I2CPWR, NORMAL, NORMAL, INPUT, DEFAULT, ENABLE),
@@ -364,7 +361,6 @@ static struct gpio_init_pin_info init_gpio_mode_flounder_common[] = {
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PU3, false, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PU5, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PU6, true, 0),
-	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PN7, true, 0),
 	GPIO_INIT_PIN_MODE(TEGRA_GPIO_PK5, true, 0),
 
 	/*radio start*/

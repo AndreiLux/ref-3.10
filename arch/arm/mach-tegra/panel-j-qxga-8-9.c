@@ -120,6 +120,7 @@ static struct tegra_dsi_cmd dsi_j_qxga_8_9_init_cmd[] = {
 };
 
 static struct tegra_dsi_cmd dsi_j_qxga_8_9_suspend_cmd[] = {
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x51, 0x00, CMD_CLUBBED),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_SET_DISPLAY_OFF, 0x0, CMD_CLUBBED),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_ENTER_SLEEP_MODE, 0x0, CMD_CLUBBED),
 	DSI_SEND_FRAME(3),
@@ -189,6 +190,8 @@ static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 		return err;
 	}
 
+	gpio_set_value(avdd_4v, 1);
+	msleep(1);
 	gpio_set_value(dcdc_en, 1);
 	msleep(15);
 	gpio_set_value(lcm_rst, 1);
@@ -211,6 +214,7 @@ static int dsi_j_qxga_8_9_disable(void)
 	msleep(1);
 	gpio_set_value(dcdc_en, 0);
 	msleep(15);
+	gpio_set_value(avdd_4v, 0);
 	gpio_set_value(iovdd_1v8, 0);
 	msleep(10);
 
