@@ -1010,4 +1010,17 @@ config USB_G_WEBCAM
 
 endchoice
 
+config QCT_USB_MODEM_SUPPORT
+	boolean "modem support in generic serial function driver"
+	depends on USB_G_ANDROID && USB_F_SERIAL
+	default y
+	help
+	  This feature enables the modem functionality in the
+	  generic serial function driver.
+	  adds interrupt endpoint support to send modem notifications
+	  to host.
+	  adds CDC descriptors to enumerate the generic serial as MODEM.
+	  adds CDC class requests to configure MODEM line settings.
+	  Say "y" to enable MODEM support in the generic serial function driver.
+
 endif # USB_GADGET
