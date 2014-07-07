@@ -20,6 +20,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/battery_system_voltage_monitor.h>
+#include <linux/power_supply.h>
 
 struct palmas_voltage_monitor_dev {
 	int id;
@@ -34,6 +35,7 @@ struct palmas_voltage_monitor_dev {
 struct palmas_voltage_monitor {
 	struct palmas *palmas;
 	struct device *dev;
+	struct power_supply v_monitor;
 
 	bool use_vbat_monitor;
 	bool use_vsys_monitor;
@@ -206,6 +208,7 @@ static irqreturn_t palmas_vbat_mon_irq_handler(int irq,
 				monitor->vbat_mon_dev.monitor_volt_mv);
 		monitor->vbat_mon_dev.monitor_on = false;
 	}
+	power_supply_changed(&monitor->v_monitor);
 	mutex_unlock(&monitor->mutex);
 
 	return IRQ_HANDLED;
@@ -281,6 +284,24 @@ struct battery_system_voltage_monitor_worker vbat_monitor_worker = {
 	.data = NULL,
 };
 
+static ssize_t voltage_monitor_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int voltage;
+	struct palmas_voltage_monitor *pvm;
+
+	pvm = dev_get_drvdata(dev);
+	sscanf(buf, "%u", &voltage);
+	if (voltage == 0)
+		plasmas_voltage_monitor_vbat_monitor_off(pvm);
+	else
+		plasmas_voltage_monitor_vbat_monitor_on_once(voltage, pvm);
+	return count;
+}
+
+static DEVICE_ATTR(voltage_monitor, S_IWUSR | S_IWGRP, NULL,
+							voltage_monitor_store);
+
 static int palmas_voltage_monitor_probe(struct platform_device *pdev)
 {
 	struct palmas *palmas = dev_get_drvdata(pdev->dev.parent);
@@ -288,7 +309,7 @@ static int palmas_voltage_monitor_probe(struct platform_device *pdev)
 	struct palmas_voltage_monitor_platform_data *vapdata = NULL;
 	struct device_node *node = pdev->dev.of_node;
 	struct palmas_voltage_monitor *palmas_voltage_monitor;
-	int status;
+	int status, ret;
 
 	palmas_voltage_monitor = devm_kzalloc(&pdev->dev,
 				sizeof(*palmas_voltage_monitor), GFP_KERNEL);
@@ -375,6 +396,23 @@ static int palmas_voltage_monitor_probe(struct platform_device *pdev)
 		}
 	}
 
+	palmas_voltage_monitor->v_monitor.name = "palmas_voltage_monitor";
+	palmas_voltage_monitor->v_monitor.type = POWER_SUPPLY_TYPE_UNKNOWN;
+
+	ret = power_supply_register(palmas_voltage_monitor->dev,
+					&palmas_voltage_monitor->v_monitor);
+	if (ret) {
+		dev_err(palmas_voltage_monitor->dev,
+					"Failed: power supply register\n");
+		return ret;
+	}
+
+	ret = sysfs_create_file(&pdev->dev.kobj,
+						&dev_attr_voltage_monitor.attr);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "error creating sysfs file %d\n", ret);
+		return ret;
+	}
 	return 0;
 }
 
@@ -386,8 +424,10 @@ static int palmas_voltage_monitor_remove(struct platform_device *pdev)
 	disable_irq(monitor->vbat_mon_dev.irq);
 	disable_irq(monitor->vsys_mon_dev.irq);
 	mutex_unlock(&monitor->mutex);
+	sysfs_remove_file(&monitor->v_monitor.dev->kobj,
+						&dev_attr_voltage_monitor.attr);
+	power_supply_unregister(&monitor->v_monitor);
 	mutex_destroy(&monitor->mutex);
-
 	return 0;
 }
 
