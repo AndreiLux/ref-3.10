@@ -164,9 +164,6 @@ static __initdata struct tegra_pingroup_config flounder_pinmux_common[] = {
 	/* USB pinmux */
 	USB_PINMUX(USB_VBUS_EN0, USB, PULL_UP, NORMAL, INPUT, DISABLE, DISABLE),
 
-	/* DTV pinmux */
-	DEFAULT_PINMUX(GPIO_PI7,      DTV,         PULL_DOWN, NORMAL, OUTPUT),
-
 	/* GPIO pinmux */
 
 	/*audio start*/
