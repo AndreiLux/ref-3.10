@@ -631,7 +631,7 @@ late_initcall(flounder_tj_throttle_init);
 static struct thermal_trip_info skin_trips[] = {
 	{
 		.cdev_type = "skin-balanced",
-		.trip_temp = 43000,
+		.trip_temp = 48000,
 		.trip_type = THERMAL_TRIP_PASSIVE,
 		.upper = THERMAL_NO_LIMIT,
 		.lower = THERMAL_NO_LIMIT,
@@ -643,21 +643,21 @@ static struct therm_est_subdevice skin_devs[] = {
 	{
 		.dev_data = "Tdiode_tegra",
 		.coeffs = {
-			2, 1, 1, 1,
-			1, 1, 1, 1,
-			1, 1, 1, 0,
-			1, 1, 0, 0,
-			0, 0, -1, -7
+			3, 0, -1, -1,
+			0, 0, -1, 0,
+			0, 0, -1, 0,
+			0, -1, 0, 0,
+			0, 0,  0, -8
 		},
 	},
 	{
 		.dev_data = "Tboard_tegra",
 		.coeffs = {
-			-11, -7, -5, -3,
-			-3, -2, -1, 0,
-			0, 0, 1, 1,
-			1, 2, 2, 3,
-			4, 6, 11, 18
+			10, 7, 5, 4,
+			4, 5, 5, 5,
+			4, 6, 6, 4,
+			4, 5, 5, 3,
+			4, 6, 8, 14
 		},
 	},
 };
@@ -752,9 +752,16 @@ static struct balanced_throttle skin_throttle = {
 
 static int __init flounder_skin_init(void)
 {
-	balanced_throttle_register(&skin_throttle, "skin-balanced");
-	tegra_skin_therm_est_device.dev.platform_data = &skin_data;
-	platform_device_register(&tegra_skin_therm_est_device);
+	/* turn on tskin only on XE (PVT) device */
+	if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
+		skin_data.ndevs = ARRAY_SIZE(skin_devs);
+		skin_data.devs = skin_devs;
+		skin_data.toffset = -4626;
+
+		balanced_throttle_register(&skin_throttle, "skin-balanced");
+		tegra_skin_therm_est_device.dev.platform_data = &skin_data;
+		platform_device_register(&tegra_skin_therm_est_device);
+	}
 	return 0;
 }
 late_initcall(flounder_skin_init);
