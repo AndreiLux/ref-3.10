@@ -23,6 +23,7 @@
 #include <linux/htc_battery_max17050.h>
 #include <linux/debugfs.h>
 #include <linux/kernel.h>
+#include <linux/power_supply.h>
 
 #define MAX17050_I2C_RETRY_TIMES (5)
 #define MAX17050_TEMPERATURE_RE_READ_MS (1400)
@@ -128,11 +129,13 @@ int debugfs_regs[] = {
 };
 
 struct max17050_chip {
-	struct i2c_client *client;
-	struct max17050_platform_data *pdata;
-	int shutdown_complete;
-	struct mutex mutex;
-	struct dentry *dentry;
+	struct i2c_client		*client;
+	struct max17050_platform_data	*pdata;
+	int				shutdown_complete;
+	struct mutex			mutex;
+	struct dentry			*dentry;
+	struct device			*dev;
+	struct power_supply		battery;
 };
 static struct max17050_chip *max17050_data;
 
@@ -588,10 +591,63 @@ static const struct file_operations max17050_debugfs_fops = {
 	.release	= single_release,
 };
 
+static enum power_supply_property max17050_prop[] = {
+	POWER_SUPPLY_PROP_TECHNOLOGY,
+	POWER_SUPPLY_PROP_VOLTAGE_NOW,
+	POWER_SUPPLY_PROP_CAPACITY,
+	POWER_SUPPLY_PROP_VOLTAGE_OCV,
+	POWER_SUPPLY_PROP_TEMP,
+	POWER_SUPPLY_PROP_CURRENT_NOW,
+	POWER_SUPPLY_PROP_CURRENT_AVG,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER,
+	POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT,
+};
+
+static int max17050_get_property(struct power_supply *psy,
+			    enum power_supply_property psp,
+			    union power_supply_propval *val)
+{
+	int ret = 0;
+
+	switch (psp) {
+	case POWER_SUPPLY_PROP_TECHNOLOGY:
+		val->intval = POWER_SUPPLY_TECHNOLOGY_LION;
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_NOW:
+		ret = htc_batt_max17050_get_vcell(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_NOW:
+		ret = htc_batt_max17050_get_current(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CURRENT_AVG:
+		ret = htc_batt_max17050_get_avgcurrent(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CAPACITY:
+		ret = htc_batt_max17050_get_soc(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_VOLTAGE_OCV:
+		htc_batt_max17050_get_ocv(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_TEMP:
+		htc_batt_max17050_get_temperature(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
+		htc_batt_max17050_get_charge(&val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT:
+		htc_batt_max17050_get_charge_ext(&val->int64val);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return ret;
+}
+
 static int max17050_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct max17050_chip *chip;
+	int ret;
 
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -603,7 +659,16 @@ static int max17050_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, chip);
 	max17050_data = chip;
 
-	htc_battery_max17050_gauge_register(&htc_batt_max17050_ops);
+	chip->battery.name		= "max17050";
+	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
+	chip->battery.get_property	= max17050_get_property;
+	chip->battery.properties	= max17050_prop;
+	chip->battery.num_properties	= ARRAY_SIZE(max17050_prop);
+	chip->dev			= &client->dev;
+
+	ret = power_supply_register(&client->dev, &chip->battery);
+	if (ret)
+		dev_err(&client->dev, "failed: power supply register\n");
 
 	chip->dentry = debugfs_create_file("max17050-regs", S_IRUGO, NULL,
 						chip, &max17050_debugfs_fops);
@@ -616,7 +681,7 @@ static int max17050_remove(struct i2c_client *client)
 	struct max17050_chip *chip = i2c_get_clientdata(client);
 
 	debugfs_remove(chip->dentry);
-	htc_battery_max17050_gauge_unregister();
+	power_supply_unregister(&chip->battery);
 	mutex_destroy(&chip->mutex);
 
 	return 0;
