@@ -1321,13 +1321,19 @@ static struct balanced_throttle emergency_throttle = {
 
 static int __init ardbeg_balanced_throttle_init(void)
 {
-	if (!balanced_throttle_register(&cpu_throttle, "cpu-balanced"))
-		pr_err("balanced_throttle_register 'cpu-balanced' FAILED.\n");
-	if (!balanced_throttle_register(&gpu_throttle, "gpu-balanced"))
-		pr_err("balanced_throttle_register 'gpu-balanced' FAILED.\n");
-	if (!balanced_throttle_register(&emergency_throttle,
-							"emergency-balanced"))
-		pr_err("balanced_throttle_register 'emergency-balanced' FAILED\n");
+	if (of_machine_is_compatible("nvidia,ardbeg") ||
+		of_machine_is_compatible("nvidia,norrin") ||
+		of_machine_is_compatible("nvidia,bowmore") ||
+		of_machine_is_compatible("nvidia,tn8")) {
+
+		if (!balanced_throttle_register(&cpu_throttle, "cpu-balanced"))
+			pr_err("balanced_throttle_register 'cpu-balanced' FAILED.\n");
+		if (!balanced_throttle_register(&gpu_throttle, "gpu-balanced"))
+			pr_err("balanced_throttle_register 'gpu-balanced' FAILED.\n");
+		if (!balanced_throttle_register(&emergency_throttle,
+								"emergency-balanced"))
+			pr_err("balanced_throttle_register 'emergency-balanced' FAILED\n");
+	}
 
 	return 0;
 }
@@ -1538,32 +1544,38 @@ static int __init ardbeg_skin_init(void)
 {
 	struct board_info board_info;
 
-	tegra_get_board_info(&board_info);
+	if (of_machine_is_compatible("nvidia,ardbeg") ||
+		of_machine_is_compatible("nvidia,norrin") ||
+		of_machine_is_compatible("nvidia,bowmore") ||
+		of_machine_is_compatible("nvidia,tn8")) {
 
-	if (board_info.board_id == BOARD_P1761 &&
-			board_info.fab == BOARD_FAB_D) {
-		skin_data.ndevs = ARRAY_SIZE(tn8ffd_t132_skin_devs);
-		skin_data.devs = tn8ffd_t132_skin_devs;
-		skin_data.toffset = 708;
-	} else if (board_info.board_id == BOARD_P1761 ||
-			board_info.board_id == BOARD_E1784 ||
-			board_info.board_id == BOARD_E1971 ||
-			board_info.board_id == BOARD_E1991 ||
-			board_info.board_id == BOARD_E1922) {
-		skin_data.ndevs = ARRAY_SIZE(tn8ffd_skin_devs);
-		skin_data.devs = tn8ffd_skin_devs;
-		skin_data.toffset = 4034;
-	} else {
-		skin_data.ndevs = ARRAY_SIZE(skin_devs);
-		skin_data.devs = skin_devs;
-		skin_data.toffset = 9793;
+		tegra_get_board_info(&board_info);
+
+		if (board_info.board_id == BOARD_P1761 &&
+				board_info.fab == BOARD_FAB_D) {
+			skin_data.ndevs = ARRAY_SIZE(tn8ffd_t132_skin_devs);
+			skin_data.devs = tn8ffd_t132_skin_devs;
+			skin_data.toffset = 708;
+		} else if (board_info.board_id == BOARD_P1761 ||
+				board_info.board_id == BOARD_E1784 ||
+				board_info.board_id == BOARD_E1971 ||
+				board_info.board_id == BOARD_E1991 ||
+				board_info.board_id == BOARD_E1922) {
+			skin_data.ndevs = ARRAY_SIZE(tn8ffd_skin_devs);
+			skin_data.devs = tn8ffd_skin_devs;
+			skin_data.toffset = 4034;
+		} else {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs);
+			skin_data.devs = skin_devs;
+			skin_data.toffset = 9793;
+		}
+
+		tegra_skin_therm_est_device.dev.platform_data = &skin_data;
+		platform_device_register(&tegra_skin_therm_est_device);
+
+		if (!balanced_throttle_register(&skin_throttle, "skin-balanced"))
+			pr_err("balanced_throttle_register 'skin-balanced' FAILED.\n");
 	}
-
-	tegra_skin_therm_est_device.dev.platform_data = &skin_data;
-	platform_device_register(&tegra_skin_therm_est_device);
-
-	if (!balanced_throttle_register(&skin_throttle, "skin-balanced"))
-		pr_err("balanced_throttle_register 'skin-balanced' FAILED.\n");
 
 	return 0;
 }
