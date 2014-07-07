@@ -329,17 +329,15 @@ config BATTERY_MAX17048
 config GAUGE_MAX17050
 	tristate "Maxim MAX17050 Fuel Gauge"
 	depends on I2C
-	select HTC_BATTERY_MAX17050
 	help
 	  MAX17050 is fuel-gauge systems for lithium-ion (Li+) batteries
 	  in handheld and portable equipment. The MAX17050 is configured
 	  to operate with a single lithium cell.
 
-config HTC_BATTERY_MAX17050
-	tristate "HTC Battery policy for MAX17050 based monitoring"
-	select BATTERY_CHARGER_GAUGE_COMM
+config FLOUNDER_BATTERY
+	tristate "Battery handling for flounder boards"
 	help
-	  This module is to monitor battery through MAX17050 driver.
+	  This module adds battery handling specific to flounder boards.
 
 config BATTERY_BQ27441
 	tristate "TI's BQ27441 Fuel Gauge"
