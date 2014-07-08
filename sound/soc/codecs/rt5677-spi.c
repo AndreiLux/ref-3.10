@@ -31,7 +31,7 @@
 
 #define SPI_BURST_LEN		240
 #define SPI_HEADER		5
-#define SPI_READ_FREQ		(6 * 1000000)
+#define SPI_READ_FREQ		(12228000 / 2)
 
 #define RT5677_SPI_WRITE_BURST	0x5
 #define RT5677_SPI_READ_BURST	0x4
