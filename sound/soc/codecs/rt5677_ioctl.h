@@ -16,7 +16,7 @@
 #include <linux/ioctl.h>
 
 #define RT5677_MIC_BUF_ADDR	0x60030000
-#define RT5677_MODEL_ADDR	0x60000000
+#define RT5677_MODEL_ADDR	0x5FFC9800
 
 int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 			unsigned int cmd, unsigned long arg);
