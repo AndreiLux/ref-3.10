@@ -2687,8 +2687,8 @@ void magic_cover_report_input(u8 val)
 		input_report_switch(mcu_data->input, SW_LID, (data - 1));
 		input_sync(mcu_data->input);
 	} else if (data == 3) {
-		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 1);
-		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 0);
+		input_report_key(mcu_data->input, KEY_CAMERA, 1);
+		input_report_key(mcu_data->input, KEY_CAMERA, 0);
 		input_sync(mcu_data->input);
 	}
 	return;
@@ -3535,7 +3535,7 @@ static int cwmcu_input_init(struct input_dev **input)
 	set_bit(EV_SW, (*input)->evbit);
 
 	input_set_capability(*input, EV_SW, SW_LID);
-	input_set_capability(*input, EV_SW, SW_CAMERA_LENS_COVER);
+	input_set_capability(*input, EV_KEY, KEY_CAMERA);
 
 	(*input)->name = CWMCU_I2C_NAME;
 
