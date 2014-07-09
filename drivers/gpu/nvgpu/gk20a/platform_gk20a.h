@@ -93,6 +93,7 @@ struct gk20a_platform {
 	 */
 	int (*secure_page_alloc)(struct platform_device *dev);
 	struct secure_page_buffer secure_buffer;
+	bool secure_alloc_ready;
 
 	/* Device is going to be suspended */
 	int (*suspend)(struct device *);
@@ -102,6 +103,7 @@ struct gk20a_platform {
 
 	/* Called to turn on the device */
 	int (*unrailgate)(struct platform_device *dev);
+	struct mutex railgate_lock;
 
 	/* Called to check state of device */
 	bool (*is_railgated)(struct platform_device *dev);

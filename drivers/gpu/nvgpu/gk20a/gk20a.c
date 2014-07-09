@@ -76,6 +76,8 @@ u32 gk20a_dbg_mask = GK20A_DEFAULT_DBG_MASK;
 u32 gk20a_dbg_ftrace;
 #endif
 
+#define GK20A_WAIT_FOR_IDLE_MS	2000
+
 static int gk20a_pm_finalize_poweron(struct device *dev);
 static int gk20a_pm_prepare_poweroff(struct device *dev);
 
@@ -1193,8 +1195,11 @@ static int gk20a_pm_unrailgate(struct generic_pm_domain *domain)
 	struct gk20a_platform *platform = platform_get_drvdata(g->dev);
 	int ret = 0;
 
-	if (platform->unrailgate)
+	if (platform->unrailgate) {
+		mutex_lock(&platform->railgate_lock);
 		ret = platform->unrailgate(platform->g->dev);
+		mutex_unlock(&platform->railgate_lock);
+	}
 
 	return ret;
 }
@@ -1259,6 +1264,8 @@ static int gk20a_pm_init(struct platform_device *dev)
 	struct gk20a_platform *platform = platform_get_drvdata(dev);
 	int err = 0;
 
+	mutex_init(&platform->railgate_lock);
+
 	/* Initialise pm runtime */
 	if (platform->clockgate_delay) {
 		pm_runtime_set_autosuspend_delay(&dev->dev,
@@ -1295,6 +1302,9 @@ int gk20a_secure_page_alloc(struct platform_device *pdev)
 		err = platform->secure_page_alloc(pdev);
 		tegra_periph_reset_deassert(platform->clk[0]);
 	}
+
+	if (!err)
+		platform->secure_alloc_ready = true;
 
 	return err;
 }
@@ -1398,10 +1408,9 @@ static int gk20a_probe(struct platform_device *dev)
 	}
 
 	err = gk20a_secure_page_alloc(dev);
-	if (err) {
-		dev_err(&dev->dev, "failed to allocate secure buffer\n");
-		return err;
-	}
+	if (err)
+		dev_err(&dev->dev,
+			"failed to allocate secure buffer %d\n", err);
 
 	gk20a_debug_init(dev);
 
@@ -1611,9 +1620,10 @@ int gk20a_do_idle(void)
 		NULL, "gk20a.0"));
 	struct gk20a *g = get_gk20a(pdev);
 	struct gk20a_platform *platform = dev_get_drvdata(&pdev->dev);
-	struct fifo_gk20a *f = &g->fifo;
-	unsigned long timeout = jiffies + msecs_to_jiffies(200);
-	int chid, ref_cnt;
+	unsigned long timeout = jiffies +
+		msecs_to_jiffies(GK20A_WAIT_FOR_IDLE_MS);
+	int ref_cnt;
+	bool is_railgated;
 
 	if (!platform->can_railgate)
 		return -ENOSYS;
@@ -1621,18 +1631,21 @@ int gk20a_do_idle(void)
 	/* acquire busy lock to block other busy() calls */
 	down_write(&g->busy_lock);
 
+	/* acquire railgate lock to prevent unrailgate in midst of do_idle() */
+	mutex_lock(&platform->railgate_lock);
+
+	/* check if it is already railgated ? */
+	if (platform->is_railgated(pdev))
+		return 0;
+
 	/* prevent suspend by incrementing usage counter */
 	pm_runtime_get_noresume(&pdev->dev);
 
 	/* check and wait until GPU is idle (with a timeout) */
 	pm_runtime_barrier(&pdev->dev);
 
-	for (chid = 0; chid < f->num_channels; chid++)
-		if (gk20a_wait_channel_idle(&f->channel[chid]))
-			goto fail;
-
 	do {
-		mdelay(1);
+		msleep(1);
 		ref_cnt = atomic_read(&pdev->dev.power.usage_count);
 	} while (ref_cnt != 1 && time_before(jiffies, timeout));
 
@@ -1646,23 +1659,25 @@ int gk20a_do_idle(void)
 	pm_runtime_put_sync(&pdev->dev);
 
 	/* add sufficient delay to allow GPU to rail gate */
-	mdelay(platform->railgate_delay);
+	msleep(platform->railgate_delay);
 
-	if (platform->is_railgated(pdev))
+	timeout = jiffies + msecs_to_jiffies(GK20A_WAIT_FOR_IDLE_MS);
+
+	/* check in loop if GPU is railgated or not */
+	do {
+		msleep(1);
+		is_railgated = platform->is_railgated(pdev);
+	} while (!is_railgated && time_before(jiffies, timeout));
+
+	if (is_railgated)
 		return 0;
-	else {
-		/* wait for some more time */
-		mdelay(100);
-		if (platform->is_railgated(pdev))
-			return 0;
-	}
-
-	/* GPU is not rail gated by now, return error */
-	up_write(&g->busy_lock);
-	return -EBUSY;
+	else
+		goto fail_timeout;
 
 fail:
 	pm_runtime_put_noidle(&pdev->dev);
+fail_timeout:
+	mutex_unlock(&platform->railgate_lock);
 	up_write(&g->busy_lock);
 	return -EBUSY;
 }
@@ -1676,8 +1691,10 @@ int gk20a_do_unidle(void)
 		bus_find_device_by_name(&platform_bus_type,
 		NULL, "gk20a.0"));
 	struct gk20a *g = get_gk20a(pdev);
+	struct gk20a_platform *platform = dev_get_drvdata(&pdev->dev);
 
 	/* release the lock and open up all other busy() calls */
+	mutex_unlock(&platform->railgate_lock);
 	up_write(&g->busy_lock);
 
 	return 0;

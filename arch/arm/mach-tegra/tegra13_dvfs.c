@@ -32,6 +32,7 @@
 #include "tegra_cl_dvfs.h"
 #include "tegra_core_sysfs_limits.h"
 #include "pm.h"
+#include "tegra_simon.h"
 
 static bool tegra_dvfs_cpu_disabled;
 static bool tegra_dvfs_core_disabled;
@@ -42,11 +43,14 @@ static bool tegra_dvfs_gpu_disabled;
 
 #define VDD_SAFE_STEP			100
 
+static int cpu_vmin_offsets[] = { 0, -20, };
+static int gpu_vmin_offsets[] = { 0, -20, };
+
 static int vdd_core_vmin_trips_table[MAX_THERMAL_LIMITS] = { 20, };
 static int vdd_core_therm_floors_table[MAX_THERMAL_LIMITS] = { 950, };
 
-static int vdd_core_vmax_trips_table[MAX_THERMAL_LIMITS] = { 62, };
-static int vdd_core_therm_caps_table[MAX_THERMAL_LIMITS] = { 1100, };
+static int vdd_core_vmax_trips_table[MAX_THERMAL_LIMITS] = { 62, 72, 82, };
+static int vdd_core_therm_caps_table[MAX_THERMAL_LIMITS] = { 1130, 1100, 1060, };
 
 #ifndef CONFIG_TEGRA_CPU_VOLT_CAP
 static int vdd_cpu_vmax_trips_table[MAX_THERMAL_LIMITS] = { 62,   72,   82, };
@@ -79,9 +83,10 @@ static struct tegra_cooling_device gpu_vts_cdev = {
 
 static struct dvfs_rail tegra13_dvfs_rail_vdd_cpu = {
 	.reg_id = "vdd_cpu",
-	.version = "p4v12",
+	.version = "p4v17",
 	.max_millivolts = 1300,
-	.min_millivolts = 700,
+	.min_millivolts = 680,
+	.simon_domain = TEGRA_SIMON_DOMAIN_CPU,
 	.step = VDD_SAFE_STEP,
 	.jmp_to_zero = true,
 	.vmin_cdev = &cpu_vmin_cdev,
@@ -112,6 +117,7 @@ static struct dvfs_rail tegra13_dvfs_rail_vdd_gpu = {
 	.version = "p4_v10",
 	.max_millivolts = 1350,
 	.min_millivolts = 650,
+	.simon_domain = TEGRA_SIMON_DOMAIN_GPU,
 	.step = VDD_SAFE_STEP,
 	.step_up = 1350,
 	.in_band_pm = true,
@@ -228,8 +234,7 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 		.dfll_tune_data  = {
 			.tune1		= 0x00000099,
 			.droop_rate_min = 1000000,
-			.tune_high_min_millivolts = 900,
-			.min_millivolts = 700,
+			.min_millivolts = 680,
 			.tune_high_margin_mv = 30,
 		},
 		.max_mv = 1260,
@@ -239,33 +244,33 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 		.voltage_scale = 1000,
 		.cvb_table = {
 			/*f       dfll: c0,     c1,   c2  pll:  c0,   c1,    c2 */
-			{204000,        {1151451, -34565,  652}, {980000,  0, 0} },
-			{306000,        {1188309, -35785,  652}, {980000,  0, 0} },
-			{408000,        {1226277, -37005,  652}, {980000,  0, 0} },
-			{510000,        {1265355, -38225,  652}, {980000,  0, 0} },
-			{612000,        {1305549, -39455,  652}, {1020000, 0, 0} },
-			{714000,        {1346847, -40675,  652}, {1060000, 0, 0} },
-			{816000,        {1389255, -41895,  652}, {1100000, 0, 0} },
-			{918000,        {1432773, -43115,  652}, {1150000, 0, 0} },
-			{1020000,       {1477401, -44335,  652}, {1190000, 0, 0} },
-			{1122000,       {1523140, -45555,  652}, {1230000, 0, 0} },
-			{1224000,       {1569988, -46775,  652}, {1260000, 0, 0} },
-			{1326000,       {1617946, -47995,  652}, {1260000, 0, 0} },
-			{1428000,       {1667014, -49215,  652}, {1260000, 0, 0} },
-			{1530000,       {1717192, -50435,  652}, {1260000, 0, 0} },
-			{1632000,       {1768480, -51655,  652}, {1260000, 0, 0} },
-			{1734000,       {1820878, -52875,  652}, {1260000, 0, 0} },
-			{1836000,       {1874386, -54095,  652}, {1260000, 0, 0} },
-			{1938000,       {1929005, -55315,  652}, {1260000, 0, 0} },
-			{2014500,       {1970423, -56225,  652}, {1260000, 0, 0} },
-			{2091000,       {2013013, -57145,  652}, {1260000, 0, 0} },
-			{2193000,       {2070406, -58365,  652}, {1260000, 0, 0} },
-			{2295000,       {2128910, -59585,  652}, {1260000, 0, 0} },
-			{2397000,       {2188523, -60805,  652}, {1260000, 0, 0} },
-			{2499000,       {2254766, -62025,  652}, {1260000, 0, 0} },
+			{204000,        {1225091, -39915,  743}, {980000,  0, 0} },
+			{306000,        {1263591, -41215,  743}, {980000,  0, 0} },
+			{408000,        {1303202, -42515,  743}, {980000,  0, 0} },
+			{510000,        {1343922, -43815,  743}, {980000,  0, 0} },
+			{612000,        {1385753, -45115,  743}, {1020000, 0, 0} },
+			{714000,        {1428693, -46415,  743}, {1060000, 0, 0} },
+			{816000,        {1472743, -47715,  743}, {1100000, 0, 0} },
+			{918000,        {1517903, -49015,  743}, {1150000, 0, 0} },
+			{1020000,       {1564174, -50315,  743}, {1190000, 0, 0} },
+			{1122000,       {1611553, -51615,  743}, {1230000, 0, 0} },
+			{1224000,       {1660043, -52915,  743}, {1260000, 0, 0} },
+			{1326000,       {1709643, -54215,  743}, {1260000, 0, 0} },
+			{1428000,       {1760353, -55515,  743}, {1260000, 0, 0} },
+			{1530000,       {1812172, -56815,  743}, {1260000, 0, 0} },
+			{1632000,       {1865102, -58115,  743}, {1260000, 0, 0} },
+			{1734000,       {1919141, -59425,  743}, {1260000, 0, 0} },
+			{1836000,       {1974291, -60725,  743}, {1260000, 0, 0} },
+			{1938000,       {2030550, -62025,  743}, {1260000, 0, 0} },
+			{2014500,       {2073190, -62985,  743}, {1260000, 0, 0} },
+			{2091000,       {2117020, -63975,  743}, {1260000, 0, 0} },
+			{2193000,       {2176054, -65275,  743}, {1260000, 0, 0} },
+			{2295000,       {2236198, -66575,  743}, {1260000, 0, 0} },
+			{2397000,       {2297452, -67875,  743}, {1260000, 0, 0} },
+			{2499000,       {2359816, -69175,  743}, {1260000, 0, 0} },
 			{      0,       {      0,      0,    0}, {      0, 0, 0} },
 		},
-		.cvb_vmin =  {  0, { 2870000, -174300, 3600, -357,  -339,  53}, },
+		.cvb_vmin =  {  0, { 2877000, -174300, 3600, -357,  -339,  53}, },
 		.vmin_trips_table = { 15, 30, 50, 70, 120, },
 		.therm_floors_table = { 890, 760, 740, 720, 700, },
 	},
@@ -497,11 +502,14 @@ static struct gpu_cvb_dvfs gpu_cvb_dvfs_table[] = {
 static int gpu_vmin[MAX_THERMAL_RANGES];
 static int gpu_peak_millivolts[MAX_DVFS_FREQS];
 static int gpu_millivolts[MAX_THERMAL_RANGES][MAX_DVFS_FREQS];
+static int gpu_millivolts_offs[MAX_THERMAL_RANGES][MAX_DVFS_FREQS];
 static struct dvfs gpu_dvfs = {
 	.clk_name	= "gbus",
 	.auto_dvfs	= true,
 	.dvfs_rail	= &tegra13_dvfs_rail_vdd_gpu,
 };
+
+static struct notifier_block gpu_simon_grade_nb;
 
 int tegra_dvfs_disable_core_set(const char *arg, const struct kernel_param *kp)
 {
@@ -727,12 +735,21 @@ static int round_voltage(int mv, struct rail_alignment *align, bool up)
 static void __init set_cpu_dfll_tuning_data(struct cpu_cvb_dvfs *d, int speedo)
 {
 	if (d->speedo_id >= 1) {
-		if (speedo <= 2336) {
-			d->dfll_tune_data.tune0 = 0x9315FF;
-			d->dfll_tune_data.tune0_high_mv = 0x9340FF;
+		/* Initial (low SiMon grade) settings - same for all parts */
+		d->dfll_tune_data.tune0 = 0x8315FF;
+		d->dfll_tune_data.tune0_high_mv = 0x8340FF;
+
+		if (speedo <= 2180) {
+			/* Toggle SiMon mask - high grade settings 0x8A....*/
+			d->dfll_tune_data.tune0_simon_mask = 0x090000;
+			d->dfll_tune_data.tune_high_min_millivolts = 950;
+		} else if (speedo < 2336) {
+			/* Toggle SiMon mask - high grade settings 0x87....*/
+			d->dfll_tune_data.tune0_simon_mask = 0x040000;
+			d->dfll_tune_data.tune_high_min_millivolts = 900;
 		} else {
-			d->dfll_tune_data.tune0 = 0x8315FF;
-			d->dfll_tune_data.tune0_high_mv = 0x8340FF;
+			/* High and low grade settings are the same */
+			d->dfll_tune_data.tune_high_min_millivolts = 900;
 		}
 	}
 }
@@ -800,14 +817,15 @@ static int __init set_cpu_dvfs_data(unsigned long max_freq,
 	unsigned long fmin_use_dfll = 0;
 	struct cvb_dvfs_table *table = NULL;
 	int speedo = tegra_cpu_speedo_value();
-	struct rail_alignment *align = &tegra13_dvfs_rail_vdd_cpu.alignment;
+	struct dvfs_rail *rail = &tegra13_dvfs_rail_vdd_cpu;
+	struct rail_alignment *align = &rail->alignment;
 
 	set_cpu_dfll_tuning_data(d, speedo);
 
 	min_dfll_mv = d->dfll_tune_data.min_millivolts;
 	min_dfll_mv =  round_voltage(min_dfll_mv, align, true);
 	d->max_mv = round_voltage(d->max_mv, align, false);
-	BUG_ON(min_dfll_mv < tegra13_dvfs_rail_vdd_cpu.min_millivolts);
+	BUG_ON(min_dfll_mv < rail->min_millivolts);
 
 	/*
 	 * Use CVB table to fill in CPU dvfs frequencies and voltages. Each
@@ -901,9 +919,28 @@ static int __init set_cpu_dvfs_data(unsigned long max_freq,
 #ifndef CONFIG_TEGRA_CPU_VOLT_CAP
 	tegra_dvfs_rail_init_vmax_thermal_profile(
 		vdd_cpu_vmax_trips_table, vdd_cpu_therm_caps_table,
-		&tegra13_dvfs_rail_vdd_cpu, &cpu_dvfs->dfll_data);
+		rail, &cpu_dvfs->dfll_data);
 
 #endif
+	if (cpu_dvfs->speedo_id == 0)
+		return 0;
+
+	/* Init cpu Vmin SiMon offsets */
+	tegra_dvfs_rail_init_simon_vmin_offsets(cpu_vmin_offsets,
+		ARRAY_SIZE(cpu_vmin_offsets), rail);
+
+	/* check Vmin SiMon offset: ignore SiMon if it pushes too low */
+	if (rail->therm_mv_floors && rail->simon_vmin_offsets) {
+		mv = rail->therm_mv_floors[rail->therm_mv_floors_num - 1];
+		mv += rail->simon_vmin_offsets[rail->simon_vmin_offs_num - 1];
+		mv = round_voltage(mv, align, true);
+		if (mv < min_dfll_mv) {
+			WARN(1, "tegra13_dvfs: cpu simon min %dmV below dfll min %dmV\n",
+			     mv, min_dfll_mv);
+			rail->simon_vmin_offsets = NULL;
+			rail->simon_vmin_offs_num = 0;
+		}
+	}
 
 	return 0;
 }
@@ -911,13 +948,18 @@ static int __init set_cpu_dvfs_data(unsigned long max_freq,
 static int __init set_gpu_dvfs_data(unsigned long max_freq,
 	struct gpu_cvb_dvfs *d, struct dvfs *gpu_dvfs, int *max_freq_index)
 {
-	int i, j, thermal_ranges, mv;
+	int i, j, thermal_ranges, simon_offs, mv;
 	struct cvb_dvfs_table *table = NULL;
 	int speedo = tegra_gpu_speedo_value();
 	struct dvfs_rail *rail = &tegra13_dvfs_rail_vdd_gpu;
 	struct rail_alignment *align = &rail->alignment;
 
 	d->max_mv = round_voltage(d->max_mv, align, false);
+
+	/* Init gpu Vmin SiMon offsets (Tegra13 has exactly 2 offsests) */
+	BUILD_BUG_ON(ARRAY_SIZE(gpu_vmin_offsets) != 2);
+	tegra_dvfs_rail_init_simon_vmin_offsets(gpu_vmin_offsets, 2, rail);
+	simon_offs = rail->simon_vmin_offsets ? rail->simon_vmin_offsets[1] : 0;
 
 	/*
 	 * Init thermal trips, find number of thermal ranges; note that the
@@ -952,6 +994,16 @@ static int __init set_gpu_dvfs_data(unsigned long max_freq,
 			     mvj, rail->min_millivolts);
 			mvj = rail->min_millivolts;
 		}
+
+		/* check Vmin SiMon offset: ignore SiMon if it pushes too low */
+		if (mvj + simon_offs < rail->min_millivolts) {
+			WARN(1, "tegra13_dvfs: gpu simon min %dmV below rail min %dmV\n",
+			     mvj + simon_offs, rail->min_millivolts);
+			rail->simon_vmin_offsets = NULL;
+			rail->simon_vmin_offs_num = 0;
+			simon_offs = 0;
+		}
+
 		gpu_vmin[j] = mvj;
 	}
 
@@ -969,7 +1021,7 @@ static int __init set_gpu_dvfs_data(unsigned long max_freq,
 			speedo, d->speedo_scale, &table->cvb_pll_param);
 
 		for (j = 0; j < thermal_ranges; j++) {
-			int mvj = mv;
+			int mvj_offs, mvj = mv;
 			int t = rail->vts_cdev->trip_temperatures[j];
 
 			/* get thermal offset for this trip-point */
@@ -978,6 +1030,7 @@ static int __init set_gpu_dvfs_data(unsigned long max_freq,
 			mvj = round_cvb_voltage(mvj, d->voltage_scale, align);
 
 			/* clip to minimum, abort if above maximum */
+			mvj_offs = max(mvj, gpu_vmin[j] + simon_offs);
 			mvj = max(mvj, gpu_vmin[j]);
 			if (mvj > d->max_mv)
 				break;
@@ -987,6 +1040,10 @@ static int __init set_gpu_dvfs_data(unsigned long max_freq,
 			gpu_millivolts[j][i] = mvj;
 			if (j && (gpu_millivolts[j-1][i] < mvj))
 				gpu_millivolts[j-1][i] = mvj;
+
+			gpu_millivolts_offs[j][i] = mvj_offs;
+			if (j && (gpu_millivolts_offs[j-1][i] < mvj_offs))
+				gpu_millivolts_offs[j-1][i] = mvj_offs;
 		}
 		/* Make sure all voltages for this frequency are below max */
 		if (j < thermal_ranges)
@@ -1026,6 +1083,50 @@ static int __init set_gpu_dvfs_data(unsigned long max_freq,
 
 	return 0;
 }
+
+static int gpu_simon_grade_notify_cb(struct notifier_block *nb,
+				     unsigned long grade, void *v)
+{
+	struct dvfs_rail *rail = &tegra13_dvfs_rail_vdd_gpu;
+	int curr_domain = (int)((long)v);
+	int ret;
+
+	if (curr_domain != rail->simon_domain)
+		return NOTIFY_DONE;
+
+	/* Only 2 grades are supported; both voltage tables must be valid */
+	ret = tegra_dvfs_replace_voltage_table(&gpu_dvfs,
+		grade ? &gpu_millivolts_offs[0][0] : &gpu_millivolts[0][0]);
+
+	if (!WARN_ON(ret == -EINVAL))
+		pr_info("tegra_dvfs: set %s simon grade %lu\n",
+			rail->reg_id, grade);
+
+	return NOTIFY_OK;
+};
+
+static int __init tegra13_register_gpu_simon_notifier(void)
+{
+	int ret;
+	struct dvfs_rail *rail = &tegra13_dvfs_rail_vdd_gpu;
+
+	/* Stay at default if no simon offsets or thermal dvfs is broken */
+	if (!gpu_dvfs.therm_dvfs || !rail->simon_vmin_offsets)
+		return 0;
+
+	gpu_simon_grade_nb.notifier_call = gpu_simon_grade_notify_cb;
+
+	ret = tegra_register_simon_notifier(&gpu_simon_grade_nb);
+	if (ret) {
+		pr_err("tegra13_dvfs: failed to register %s simon notifier\n",
+		       rail->reg_id);
+		return ret;
+	}
+
+	pr_info("tegra dvfs: registered %s simon notifier\n", rail->reg_id);
+	return 0;
+}
+late_initcall(tegra13_register_gpu_simon_notifier);
 
 static int __init get_core_nominal_mv_index(int speedo_id)
 {

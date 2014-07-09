@@ -730,6 +730,7 @@ static struct channel_gk20a *gk20a_open_new_channel(struct gk20a *g)
 	ch->timeout_ms_max = gk20a_get_gr_idle_timeout(g);
 	ch->timeout_debug_dump = true;
 	ch->has_timedout = false;
+	ch->obj_class = 0;
 
 	/* The channel is *not* runnable at this point. It still needs to have
 	 * an address space bound and allocate a gpfifo and grctx. */
@@ -903,21 +904,6 @@ static void channel_gk20a_free_priv_cmdbuf(struct channel_gk20a *c)
 	}
 
 	memset(q, 0, sizeof(struct priv_cmd_queue));
-}
-
-int gk20a_find_from_priv_cmdbuf(struct channel_gk20a *c,
-				u64 gpu_va, u32 **cpu_va)
-{
-	struct priv_cmd_queue *q = &c->priv_cmd_q;
-	int ret;
-
-	if (gpu_va >= q->base_gpuva && gpu_va < (q->base_gpuva + q->size)) {
-		*cpu_va = gpu_va - q->base_gpuva + q->mem.base_cpuva;
-		ret = 0;
-	} else
-		ret = -EINVAL;
-
-	return ret;
 }
 
 /* allocate a cmd buffer with given size. size is number of u32 entries */
@@ -1387,10 +1373,8 @@ static int gk20a_channel_add_job(struct channel_gk20a *c,
 
 void gk20a_channel_update(struct channel_gk20a *c, int nr_completed)
 {
-	struct gk20a *g = c->g;
 	struct vm_gk20a *vm = c->vm;
 	struct channel_gk20a_job *job, *n;
-	int i;
 
 	wake_up(&c->submit_wq);
 
@@ -1409,12 +1393,9 @@ void gk20a_channel_update(struct channel_gk20a *c, int nr_completed)
 
 		list_del_init(&job->list);
 		kfree(job);
-		gk20a_idle(g->dev);
+		gk20a_idle(c->g->dev);
 	}
 	mutex_unlock(&c->jobs_lock);
-
-	for (i = 0; i < nr_completed; i++)
-		gk20a_idle(c->g->dev);
 }
 
 static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
@@ -1841,27 +1822,14 @@ int gk20a_channel_suspend(struct gk20a *g)
 	struct fifo_gk20a *f = &g->fifo;
 	u32 chid;
 	bool channels_in_use = false;
-	struct device *d = dev_from_gk20a(g);
 	int err;
 
 	gk20a_dbg_fn("");
 
-	/* idle the engine by submitting WFI on non-KEPLER_C channel */
-	for (chid = 0; chid < f->num_channels; chid++) {
-		struct channel_gk20a *c = &f->channel[chid];
-		if (c->in_use && c->obj_class != KEPLER_C && !c->has_timedout) {
-			err = gk20a_channel_submit_wfi(c);
-			if (err) {
-				gk20a_err(d, "cannot idle channel %d\n",
-						chid);
-				return err;
-			}
-
-			c->sync->wait_cpu(c->sync, &c->last_submit_fence,
-					  500000);
-			break;
-		}
-	}
+	/* wait for engine idle */
+	err = gk20a_fifo_wait_engine_idle(g);
+	if (err)
+		return err;
 
 	for (chid = 0; chid < f->num_channels; chid++) {
 		if (f->channel[chid].in_use) {
