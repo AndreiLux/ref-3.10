@@ -102,22 +102,24 @@ void tegra30_i2s_request_gpio(struct snd_pcm_substream *substream, int i2s_id)
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	int i, ret;
-	mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+
 	pr_debug("%s: pdata->gpio_free_count[%d]=%d\n", __func__, i2s_id, pdata->gpio_free_count[i2s_id]);
 	if (i2s_id > 1) {
 		/* Only HIFI_CODEC and SPEAKER GPIO need re-config */
+		return;
+	}
+
+	mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+	pdata->gpio_free_count[i2s_id]--;
+
+	if (pdata->gpio_free_count[i2s_id] > 0) {
+		pr_info("pdata->gpio_free_count[%d]=%d > 0, needless to request again\n",
+		            i2s_id, pdata->gpio_free_count[i2s_id]);
 		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
 		return;
-	} else {
-		pdata->gpio_free_count[i2s_id]--;
-		if (pdata->gpio_free_count[i2s_id] > 0) {
-			pr_debug("pdata->gpio_free_count[%d]=%d > 0, needless to request again\n",
-			            i2s_id, pdata->gpio_free_count[i2s_id]);
-			mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
-			return;
-		}
 		pr_debug("pdata->gpio_free_count[%d]=%d\n", i2s_id, pdata->gpio_free_count[i2s_id]);
 	}
+
 	for (i = 0; i<4; i++) {
 		ret = gpio_request(pdata->i2s_set[i2s_id*4 + i].id,
 						pdata->i2s_set[i2s_id*4 + i].name);
