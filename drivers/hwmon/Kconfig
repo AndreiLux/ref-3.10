@@ -1574,13 +1574,18 @@ config BATTERY_SYSTEM_VOLTAGE_MONITOR
 	bool "Battery System Voltage Monitor interface"
 	help
 	  If yes, the Battery System Voltage Monitor interface is used.
-          It supports VBAT and VSYS monitoring by setting a threshold to
-          a registered voltage monitor driver.
+	  To set a threshold to get notification if the  VBAT or VSYS
+	  voltage threshold is exceeded.
+
+config CABLE_VBUS_MONITOR
+	bool "Cable VBUS monitor interface"
+	help
+	  If yes, the cable VBUS monitor interface is used.
+	  To check if VBUS is latched once.
 
 config VOLTAGE_MONITOR_PALMAS
 	tristate "Palmas Voltage Monitor driver"
-	depends on MFD_PALMAS
-	select BATTERY_SYSTEM_VOLTAGE_MONITOR
+	depends on MFD_PALMAS && BATTERY_SYSTEM_VOLTAGE_MONITOR
 	help
 	  If yes, the Palmas Voltage Monitor driver will be enabled.
           It supports VBAT and VSYS monitoring by seting a threshold

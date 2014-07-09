@@ -1,5 +1,5 @@
 /*
- * palmas_voltage_monitor.h
+ * battery_system_voltage_monitor.h
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and

@@ -21,6 +21,9 @@
 #include <linux/of_platform.h>
 #include <linux/battery_system_voltage_monitor.h>
 #include <linux/power_supply.h>
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+#include <linux/cable_vbus_monitor.h>
+#endif
 
 struct palmas_voltage_monitor_dev {
 	int id;
@@ -44,12 +47,45 @@ struct palmas_voltage_monitor {
 	struct palmas_voltage_monitor_dev vsys_mon_dev;
 
 	struct mutex mutex;
+
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+	bool has_vbus_latched_cb;
+#endif
 };
 
 enum {
 	VBAT_MON_DEV,
 	VSYS_MON_DEV,
 };
+
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+static int palmas_voltage_monitor_is_vbus_latched(void *data)
+{
+	struct palmas_voltage_monitor *monitor = data;
+	int ret;
+	unsigned int val;
+
+	if (!monitor)
+		return -EINVAL;
+
+	ret = palmas_read(monitor->palmas, PALMAS_USB_OTG_BASE,
+			PALMAS_USB_VBUS_INT_LATCH_SET, &val);
+	if (ret < 0) {
+		dev_err(monitor->dev,
+			"USB_VBUS_INIT_LATCH_SET read fail, ret=%d\n", ret);
+		return 0;
+	}
+
+	ret = palmas_write(monitor->palmas, PALMAS_USB_OTG_BASE,
+			PALMAS_USB_VBUS_INT_LATCH_CLR,
+			PALMAS_USB_VBUS_INT_LATCH_SET_VA_VBUS_VLD);
+	if (ret < 0)
+		dev_err(monitor->dev,
+			"USB_VBUS_INIT_LATCH_CLR write fail, ret=%d\n", ret);
+
+	return !!(val & PALMAS_USB_VBUS_INT_LATCH_SET_VA_VBUS_VLD);
+}
+#endif
 
 static inline struct palmas_voltage_monitor_dev *get_monitor_dev_by_id(
 	struct palmas_voltage_monitor *monitor,
@@ -96,6 +132,7 @@ static void palmas_voltage_monitor_listener_unregister(
 	struct palmas_voltage_monitor *monitor, int monitor_id)
 {
 	struct palmas_voltage_monitor_dev *mon_dev;
+	int ret;
 
 	if (!monitor)
 		return;
@@ -110,19 +147,22 @@ static void palmas_voltage_monitor_listener_unregister(
 	mon_dev->monitor_volt_mv = 0;
 	mon_dev->monitor_on = false;
 
-	palmas_write(monitor->palmas, PALMAS_PMU_CONTROL_BASE, mon_dev->reg, 0);
+	ret = palmas_write(monitor->palmas, PALMAS_PMU_CONTROL_BASE,
+							mon_dev->reg, 0);
+	if (ret < 0)
+		dev_err(monitor->dev, "palmas write fail, ret=%d\n", ret);
 
 	mon_dev->notification = NULL;
 	mutex_unlock(&monitor->mutex);
 }
 
-#define PALSMAS_MON_THRESHOLD_MV_MIN	(2300)
-#define PALSMAS_MON_THRESHOLD_MV_MAX	(4600)
-#define PALSMAS_MON_BITS_MIN		(0x06)
-#define PALSMAS_MON_BITS_MAX		(0x34)
-#define PALSMAS_MON_MV_STEP_PER_BIT	(50)
-#define PALSMAS_MON_ENABLE_BIT	(4600)
-static int plasmas_voltage_monitor_voltage_monitor_on_once(
+#define PALMAS_MON_THRESHOLD_MV_MIN	(2300)
+#define PALMAS_MON_THRESHOLD_MV_MAX	(4600)
+#define PALMAS_MON_BITS_MIN		(0x06)
+#define PALMAS_MON_BITS_MAX		(0x34)
+#define PALMAS_MON_MV_STEP_PER_BIT	(50)
+#define PALMAS_MON_ENABLE_BIT	(4600)
+static int palmas_voltage_monitor_voltage_monitor_on_once(
 	struct palmas_voltage_monitor *monitor, int monitor_id,
 	unsigned int voltage)
 {
@@ -141,14 +181,14 @@ static int plasmas_voltage_monitor_voltage_monitor_on_once(
 	if (mon_dev->notification && !mon_dev->monitor_on) {
 		mon_dev->monitor_volt_mv = voltage;
 
-		if (voltage <= PALSMAS_MON_THRESHOLD_MV_MIN)
-			bits = PALSMAS_MON_BITS_MIN;
-		else if (voltage >= PALSMAS_MON_THRESHOLD_MV_MAX)
-			bits = PALSMAS_MON_BITS_MAX;
+		if (voltage <= PALMAS_MON_THRESHOLD_MV_MIN)
+			bits = PALMAS_MON_BITS_MIN;
+		else if (voltage >= PALMAS_MON_THRESHOLD_MV_MAX)
+			bits = PALMAS_MON_BITS_MAX;
 		else {
-			bits = PALSMAS_MON_BITS_MIN +
-				(voltage - PALSMAS_MON_THRESHOLD_MV_MIN) /
-				PALSMAS_MON_MV_STEP_PER_BIT;
+			bits = PALMAS_MON_BITS_MIN +
+				(voltage - PALMAS_MON_THRESHOLD_MV_MIN) /
+				PALMAS_MON_MV_STEP_PER_BIT;
 		}
 		bits |= mon_dev->reg_enable_bit;
 
@@ -163,7 +203,7 @@ static int plasmas_voltage_monitor_voltage_monitor_on_once(
 	return 0;
 }
 
-static void plasmas_voltage_monitor_voltage_monitor_off(
+static void palmas_voltage_monitor_voltage_monitor_off(
 	struct palmas_voltage_monitor *monitor, int monitor_id)
 {
 	struct palmas_voltage_monitor_dev *mon_dev;
@@ -193,11 +233,15 @@ static irqreturn_t palmas_vbat_mon_irq_handler(int irq,
 {
 	struct palmas_voltage_monitor *monitor = _palmas_voltage_monitor;
 	unsigned int vbat_mon_line_state;
+	int ret;
 
-	palmas_read(monitor->palmas, PALMAS_INTERRUPT_BASE,
+	ret = palmas_read(monitor->palmas, PALMAS_INTERRUPT_BASE,
 		PALMAS_INT1_LINE_STATE, &vbat_mon_line_state);
-
-	dev_dbg(monitor->dev, "vbat-mon-irq() INT1_LINE_STATE 0x%02x\n",
+	if (ret < 0)
+		dev_err(monitor->dev, "INT1_LINE_STATE read fail, ret=%d\n",
+					ret);
+	else
+		dev_dbg(monitor->dev, "vbat-mon-irq() INT1_LINE_STATE 0x%02x\n",
 			vbat_mon_line_state);
 
 	mutex_lock(&monitor->mutex);
@@ -219,11 +263,15 @@ static irqreturn_t palmas_vsys_mon_irq_handler(int irq,
 {
 	struct palmas_voltage_monitor *monitor = _palmas_voltage_monitor;
 	unsigned int vsys_mon_line_state;
+	int ret;
 
-	palmas_read(monitor->palmas, PALMAS_INTERRUPT_BASE,
+	ret = palmas_read(monitor->palmas, PALMAS_INTERRUPT_BASE,
 		PALMAS_INT1_LINE_STATE, &vsys_mon_line_state);
-
-	dev_dbg(monitor->dev, "vsys-mon-irq() INT1_LINE_STATE 0x%02x\n",
+	if (ret < 0)
+		dev_err(monitor->dev, "INT1_LINE_STATE read fail, ret=%d\n",
+					ret);
+	else
+		dev_dbg(monitor->dev, "vsys-mon-irq() INT1_LINE_STATE 0x%02x\n",
 			vsys_mon_line_state);
 
 	mutex_lock(&monitor->mutex);
@@ -255,26 +303,26 @@ static void palmas_voltage_monitor_vbat_listener_unregister(void *data)
 	palmas_voltage_monitor_listener_unregister(monitor, VBAT_MON_DEV);
 }
 
-static int plasmas_voltage_monitor_vbat_monitor_on_once(
+static int palmas_voltage_monitor_vbat_monitor_on_once(
 	unsigned int voltage, void *data)
 {
 	struct palmas_voltage_monitor *monitor = data;
 
-	return plasmas_voltage_monitor_voltage_monitor_on_once(
+	return palmas_voltage_monitor_voltage_monitor_on_once(
 			monitor, VBAT_MON_DEV, voltage);
 }
 
-static void plasmas_voltage_monitor_vbat_monitor_off(void *data)
+static void palmas_voltage_monitor_vbat_monitor_off(void *data)
 {
 	struct palmas_voltage_monitor *monitor = data;
 
-	return plasmas_voltage_monitor_voltage_monitor_off(monitor,
+	return palmas_voltage_monitor_voltage_monitor_off(monitor,
 								VBAT_MON_DEV);
 }
 
 struct battery_system_voltage_monitor_worker_operations vbat_monitor_ops = {
-	.monitor_on_once = plasmas_voltage_monitor_vbat_monitor_on_once,
-	.monitor_off = plasmas_voltage_monitor_vbat_monitor_off,
+	.monitor_on_once = palmas_voltage_monitor_vbat_monitor_on_once,
+	.monitor_off = palmas_voltage_monitor_vbat_monitor_off,
 	.listener_register = palmas_voltage_monitor_vbat_listener_register,
 	.listener_unregister = palmas_voltage_monitor_vbat_listener_unregister,
 };
@@ -293,9 +341,9 @@ static ssize_t voltage_monitor_store(struct device *dev,
 	pvm = dev_get_drvdata(dev);
 	sscanf(buf, "%u", &voltage);
 	if (voltage == 0)
-		plasmas_voltage_monitor_vbat_monitor_off(pvm);
+		palmas_voltage_monitor_vbat_monitor_off(pvm);
 	else
-		plasmas_voltage_monitor_vbat_monitor_on_once(voltage, pvm);
+		palmas_voltage_monitor_vbat_monitor_on_once(voltage, pvm);
 	return count;
 }
 
@@ -413,35 +461,121 @@ static int palmas_voltage_monitor_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "error creating sysfs file %d\n", ret);
 		return ret;
 	}
+
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+	ret = palmas_write(palmas_voltage_monitor->palmas,
+				PALMAS_USB_OTG_BASE,
+				PALMAS_USB_VBUS_INT_EN_LO_SET,
+				PALMAS_USB_VBUS_INT_EN_LO_SET_VA_VBUS_VLD);
+	if (ret < 0) {
+		dev_err(palmas_voltage_monitor->dev,
+				"USB_VBUS_INT_EN_LO_SET update fail, ret=%d\n",
+				ret);
+		goto skip_vbus_latch_register;
+	}
+
+	cable_vbus_monitor_latch_cb_register(
+			palmas_voltage_monitor_is_vbus_latched,
+			palmas_voltage_monitor);
+	palmas_voltage_monitor->has_vbus_latched_cb = true;
+
+skip_vbus_latch_register:
+#endif
 	return 0;
 }
 
 static int palmas_voltage_monitor_remove(struct platform_device *pdev)
 {
 	struct palmas_voltage_monitor *monitor = dev_get_drvdata(&pdev->dev);
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+	int ret;
+#endif
 
 	mutex_lock(&monitor->mutex);
-	disable_irq(monitor->vbat_mon_dev.irq);
-	disable_irq(monitor->vsys_mon_dev.irq);
+	if (monitor->use_vbat_monitor) {
+		disable_irq(monitor->vbat_mon_dev.irq);
+		devm_free_irq(monitor->dev, monitor->vbat_mon_dev.irq,
+					monitor);
+	}
+
+	if (monitor->use_vsys_monitor) {
+		disable_irq(monitor->vsys_mon_dev.irq);
+		devm_free_irq(monitor->dev, monitor->vbat_mon_dev.irq,
+					monitor);
+	}
+
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+	if (monitor->has_vbus_latched_cb) {
+		cable_vbus_monitor_latch_cb_unregister(monitor);
+		monitor->has_vbus_latched_cb = false;
+		ret = palmas_write(monitor->palmas,
+				PALMAS_USB_OTG_BASE,
+				PALMAS_USB_VBUS_INT_EN_LO_CLR,
+				PALMAS_USB_VBUS_INT_EN_LO_CLR_VA_VBUS_VLD);
+		if (ret < 0)
+			dev_err(monitor->dev,
+					"USB_VBUS_INT_EN_LO_SET update fail, ret=%d\n",
+					ret);
+	}
+#endif
 	mutex_unlock(&monitor->mutex);
 	sysfs_remove_file(&monitor->v_monitor.dev->kobj,
 						&dev_attr_voltage_monitor.attr);
 	power_supply_unregister(&monitor->v_monitor);
 	mutex_destroy(&monitor->mutex);
+	devm_kfree(monitor->dev, monitor);
+
 	return 0;
 }
 
 static void palmas_voltage_monitor_shutdown(struct platform_device *pdev)
 {
 	struct palmas_voltage_monitor *monitor = dev_get_drvdata(&pdev->dev);
+	int ret;
 
-	disable_irq(monitor->vbat_mon_dev.irq);
-	disable_irq(monitor->vsys_mon_dev.irq);
+	mutex_lock(&monitor->mutex);
+	if (monitor->use_vbat_monitor) {
+		disable_irq(monitor->vbat_mon_dev.irq);
+		devm_free_irq(monitor->dev,
+					monitor->vbat_mon_dev.irq,
+					monitor);
+		ret = palmas_write(monitor->palmas, PALMAS_PMU_CONTROL_BASE,
+				PALMAS_VBAT_MON, 0);
+		if (ret < 0)
+			dev_err(monitor->dev,
+					"PALMAS_VBAT_MON write fail, ret=%d\n",
+					ret);
+	}
 
-	palmas_write(monitor->palmas, PALMAS_PMU_CONTROL_BASE,
-			PALMAS_VBAT_MON, 0);
-	palmas_write(monitor->palmas, PALMAS_PMU_CONTROL_BASE,
-			PALMAS_VSYS_MON, 0);
+	if (monitor->use_vsys_monitor) {
+		disable_irq(monitor->vsys_mon_dev.irq);
+		devm_free_irq(monitor->dev,
+					monitor->vsys_mon_dev.irq,
+					monitor);
+		ret = palmas_write(monitor->palmas, PALMAS_PMU_CONTROL_BASE,
+				PALMAS_VSYS_MON, 0);
+		if (ret < 0)
+			dev_err(monitor->dev,
+					"PALMAS_VSYS_MON write fail, ret=%d\n",
+					ret);
+	}
+
+#ifdef CONFIG_CABLE_VBUS_MONITOR
+	if (monitor->has_vbus_latched_cb) {
+		cable_vbus_monitor_latch_cb_unregister(monitor);
+		monitor->has_vbus_latched_cb = false;
+		ret = palmas_write(monitor->palmas,
+				PALMAS_USB_OTG_BASE,
+				PALMAS_USB_VBUS_INT_EN_LO_CLR,
+				PALMAS_USB_VBUS_INT_EN_LO_CLR_VA_VBUS_VLD);
+		if (ret < 0)
+			dev_err(monitor->dev,
+					"USB_VBUS_INT_EN_LO_SET update fail, ret=%d\n",
+					ret);
+	}
+#endif
+	mutex_unlock(&monitor->mutex);
+
 }
 
 static const struct of_device_id palmas_voltage_monitor_dt_match[] = {
