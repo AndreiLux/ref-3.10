@@ -62,8 +62,9 @@ int cy8c_sar1_reset(void)
 {
 	pr_debug("[SAR] %s Enter\n", __func__);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 1);
-	mdelay(5);
+	msleep(5);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 0);
+	msleep(50);/*wait chip reset finish time*/
 	return 0;
 }
 
@@ -71,8 +72,9 @@ int cy8c_sar_reset(void)
 {
 	pr_debug("[SAR] %s Enter\n", __func__);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 1);
-	mdelay(5);
+	msleep(5);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 0);
+	msleep(50);/*wait chip reset finish time*/
 	return 0;
 }
 
@@ -85,18 +87,20 @@ static struct i2c_board_info flounder_i2c_board_info_cm32181[] = {
 struct cy8c_i2c_sar_platform_data sar1_cy8c_data[] = {
 	{
 		.gpio_irq = TEGRA_GPIO_PCC5,
-		.gpio_rst = TEGRA_GPIO_PG6,
 		.reset    = cy8c_sar1_reset,
 		.position_id = 1,
+		.bl_addr = 0x61,
+		.ap_addr = 0x5d,
 	},
 };
 
 struct cy8c_i2c_sar_platform_data sar_cy8c_data[] = {
 	{
 		.gpio_irq = TEGRA_GPIO_PC7,
-		.gpio_rst = TEGRA_GPIO_PG7,
 		.reset    = cy8c_sar_reset,
 		.position_id = 0,
+		.bl_addr = 0x60,
+		.ap_addr = 0x5c,
 	},
 };
 
