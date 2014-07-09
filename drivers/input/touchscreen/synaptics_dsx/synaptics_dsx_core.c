@@ -2235,6 +2235,9 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
 #endif
 
 #ifdef TYPE_B_PROTOCOL
+	if (rmi4_data->input_dev->mt &&
+		rmi4_data->input_dev->mt->num_slots != rmi4_data->num_of_fingers)
+		input_mt_destroy_slots(rmi4_data->input_dev);
 	input_mt_init_slots(rmi4_data->input_dev,
 			rmi4_data->num_of_fingers, 0);
 #endif
