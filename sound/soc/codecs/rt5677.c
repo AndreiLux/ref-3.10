@@ -44,6 +44,8 @@
 #define VERSION "0.0.2 alsa 1.0.25"
 #define RT5677_PATH "/system/vendor/firmware/rt5677_"
 
+#define RT5677_DMIC_CLK_MAX 2048000
+
 static int dmic_depop_time = 100;
 module_param(dmic_depop_time, int, 0644);
 
@@ -1337,9 +1339,9 @@ static int set_dmic_clk(struct snd_soc_dapm_widget *w,
 	int rate, red, bound, temp;
 
 	rate = rt5677->lrck[rt5677->aif_pu] << 8;
-	red = 2000000 * 12;
+	red = RT5677_DMIC_CLK_MAX * 12;
 	for (i = 0; i < ARRAY_SIZE(div); i++) {
-		bound = div[i] * 2000000;
+		bound = div[i] * RT5677_DMIC_CLK_MAX;
 		if (rate > bound)
 			continue;
 		temp = bound - rate;
