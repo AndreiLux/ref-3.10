@@ -96,6 +96,10 @@ enum ote_ns_callback_id {
 	/* First available callback code to userspace */
 	OTE_NS_CB_FIRST_USER = 0x4,
 
+	/* Acquire and Release SE */
+	OTE_NS_CB_SE_ACQUIRE = 0x4,
+	OTE_NS_CB_SE_RELEASE = 0x5,
+
 	OTE_NS_CB_SS = 0x6,
 
 	OTE_NS_CB_MAX = 0xFFF,
