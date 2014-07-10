@@ -252,16 +252,16 @@ static struct tegra_dc_mode dsi_j_qxga_8_9_modes[] = {
 		/* dc constraint, min v_ref_to_sync + 1 */
 		.v_front_porch = 2,
 #else
-		.pclk = 257000000, /* @60Hz */
+		.pclk = 247600000, /* @60Hz */
 		.h_ref_to_sync = 1,
 		.v_ref_to_sync = 1,
-		.h_sync_width = 62,
+		.h_sync_width = 76,
 		.v_sync_width = 4,
-		.h_back_porch = 152,
+		.h_back_porch = 80,
 		.v_back_porch = 8,
 		.h_active = 768 * 2,
 		.v_active = 2048,
-		.h_front_porch = 322,
+		.h_front_porch = 300,
 		.v_front_porch = 12,
 #endif
 	},
