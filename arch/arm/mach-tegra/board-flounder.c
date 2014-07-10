@@ -1381,12 +1381,16 @@ static void __init tegra_flounder_dt_init(void)
 
 static void __init tegra_flounder_reserve(void)
 {
+	struct device_node *hdmi_node = of_find_node_by_path("/host1x/hdmi");
+	bool fb2_enabled = hdmi_node && of_device_is_available(hdmi_node);
+	of_node_put(hdmi_node);
+
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM) || \
 		defined(CONFIG_TEGRA_NO_CARVEOUT)
 	/* 1536*2048*4*2 = 25165824 bytes */
-	tegra_reserve(0, SZ_16M + SZ_8M, SZ_16M);
+	tegra_reserve(0, SZ_16M + SZ_8M, fb2_enabled ? SZ_16M : 0);
 #else
-	tegra_reserve(SZ_1G, SZ_16M + SZ_8M, SZ_4M);
+	tegra_reserve(SZ_1G, SZ_16M + SZ_8M, fb2_enabled ? SZ_4M : 0);
 #endif
 }
 
