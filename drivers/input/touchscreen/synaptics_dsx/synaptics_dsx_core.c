@@ -105,17 +105,15 @@ static int synaptics_rmi4_free_fingers(struct synaptics_rmi4_data *rmi4_data);
 static int synaptics_rmi4_reinit_device(struct synaptics_rmi4_data *rmi4_data);
 static int synaptics_rmi4_reset_device(struct synaptics_rmi4_data *rmi4_data);
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
 static ssize_t synaptics_rmi4_full_pm_cycle_show(struct device *dev,
 		struct device_attribute *attr, char *buf);
 
 static ssize_t synaptics_rmi4_full_pm_cycle_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count);
 
-static void synaptics_rmi4_early_suspend(struct early_suspend *h);
+static void synaptics_rmi4_early_suspend(struct device *dev);
 
-static void synaptics_rmi4_late_resume(struct early_suspend *h);
-#endif
+static void synaptics_rmi4_late_resume(struct device *dev);
 
 static int synaptics_rmi4_suspend(struct device *dev);
 
@@ -366,11 +364,9 @@ struct synaptics_rmi4_exp_fn_data {
 static struct synaptics_rmi4_exp_fn_data exp_data;
 
 static struct device_attribute attrs[] = {
-#ifdef CONFIG_HAS_EARLYSUSPEND
 	__ATTR(full_pm_cycle, (S_IRUGO | S_IWUGO),
 			synaptics_rmi4_full_pm_cycle_show,
 			synaptics_rmi4_full_pm_cycle_store),
-#endif
 	__ATTR(reset, S_IWUGO,
 			synaptics_rmi4_show_error,
 			synaptics_rmi4_f01_reset_store),
@@ -397,7 +393,6 @@ static struct device_attribute attrs[] = {
             synaptics_rmi4_interactive_store),
 };
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
 static ssize_t synaptics_rmi4_full_pm_cycle_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -420,7 +415,6 @@ static ssize_t synaptics_rmi4_full_pm_cycle_store(struct device *dev,
 
 	return count;
 }
-#endif
 
 static ssize_t synaptics_rmi4_f01_reset_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
@@ -623,10 +617,10 @@ static ssize_t synaptics_rmi4_interactive_store(struct device *dev,
 
     if (rmi4_data->interactive) {
         dev_info(rmi4_data->pdev->dev.parent, " %s: resume\n", __func__);
-        synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
+        synaptics_rmi4_late_resume(&(rmi4_data->input_dev->dev));
     } else {
         dev_info(rmi4_data->pdev->dev.parent, " %s: suspend\n", __func__);
-        synaptics_rmi4_suspend((&rmi4_data->input_dev->dev));
+        synaptics_rmi4_early_suspend((&rmi4_data->input_dev->dev));
     }
     return count;
 }
@@ -3175,13 +3169,10 @@ static void synaptics_rmi4_sensor_wake(struct synaptics_rmi4_data *rmi4_data)
 	return;
 }
 
-#ifdef CONFIG_HAS_EARLYSUSPEND
-static void synaptics_rmi4_early_suspend(struct early_suspend *h)
+static void synaptics_rmi4_early_suspend(struct device *dev)
 {
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
-	struct synaptics_rmi4_data *rmi4_data =
-			container_of(h, struct synaptics_rmi4_data,
-			early_suspend);
+	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 
 	dev_info(rmi4_data->pdev->dev.parent, " %s\n", __func__);
 	if (rmi4_data->stay_awake)
@@ -3215,12 +3206,10 @@ exit:
 	return;
 }
 
-static void synaptics_rmi4_late_resume(struct early_suspend *h)
+static void synaptics_rmi4_late_resume(struct device *dev)
 {
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
-	struct synaptics_rmi4_data *rmi4_data =
-			container_of(h, struct synaptics_rmi4_data,
-			early_suspend);
+	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 
 	dev_info(rmi4_data->pdev->dev.parent, " %s\n", __func__);
 	if (rmi4_data->stay_awake)
@@ -3256,7 +3245,6 @@ exit:
 
 	return;
 }
-#endif
 
 #ifdef CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_WAKEUP_GESTURE
 static int facedown_status_handler_func(struct notifier_block *this,
@@ -3301,16 +3289,11 @@ static int synaptics_rmi4_suspend(struct device *dev)
 		return 0;
 
 	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: gesture mode\n", __func__);
-		synaptics_rmi4_wakeup_gesture(rmi4_data, true);
-		goto exit;
-	}
-
-	if (!rmi4_data->suspend) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: sleep mode\n", __func__);
-		synaptics_rmi4_irq_enable(rmi4_data, false);
-		synaptics_rmi4_sensor_sleep(rmi4_data);
-		synaptics_rmi4_free_fingers(rmi4_data);
+		if (rmi4_data->irq_enabled) {
+			dev_info(rmi4_data->pdev->dev.parent, " %s, irq disabled\n", __func__);
+			disable_irq(rmi4_data->irq);
+			rmi4_data->irq_enabled = false;
+		}
 	}
 
 	mutex_lock(&exp_data.mutex);
@@ -3323,9 +3306,6 @@ static int synaptics_rmi4_suspend(struct device *dev)
 
 	if (rmi4_data->pwr_reg)
 		regulator_disable(rmi4_data->pwr_reg);
-
-exit:
-	rmi4_data->suspend = true;
 
 	return 0;
 }
@@ -3342,13 +3322,6 @@ static int synaptics_rmi4_resume(struct device *dev)
 	if (rmi4_data->stay_awake)
 		return 0;
 
-	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: wake up from gesture mode\n", __func__);
-		synaptics_rmi4_wakeup_gesture(rmi4_data, false);
-		synaptics_rmi4_force_cal(rmi4_data);
-		goto exit;
-	}
-
 	if (rmi4_data->pwr_reg) {
 		retval = regulator_enable(rmi4_data->pwr_reg);
 		if (retval < 0) {
@@ -3362,9 +3335,13 @@ static int synaptics_rmi4_resume(struct device *dev)
 			rmi4_data->hw_if->ui_hw_init(rmi4_data);
 	}
 
-	dev_info(rmi4_data->pdev->dev.parent, " %s: wake up\n", __func__);
-	synaptics_rmi4_sensor_wake(rmi4_data);
-	synaptics_rmi4_irq_enable(rmi4_data, true);
+	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
+		if (!rmi4_data->irq_enabled) {
+			dev_info(rmi4_data->pdev->dev.parent, " %s, irq enabled\n", __func__);
+			enable_irq(rmi4_data->irq);
+			rmi4_data->irq_enabled = true;
+		}
+	}
 
 	mutex_lock(&exp_data.mutex);
 	if (!list_empty(&exp_data.list)) {
@@ -3374,26 +3351,20 @@ static int synaptics_rmi4_resume(struct device *dev)
 	}
 	mutex_unlock(&exp_data.mutex);
 
-exit:
-	rmi4_data->suspend = false;
-	rmi4_data->face_down = 0;
-
 	return 0;
 }
 
-#if !defined(CONFIG_FB)
 static const struct dev_pm_ops synaptics_rmi4_dev_pm_ops = {
 	.suspend = synaptics_rmi4_suspend,
 	.resume  = synaptics_rmi4_resume,
 };
-#endif
 #endif
 
 static struct platform_driver synaptics_rmi4_driver = {
 	.driver = {
 		.name = PLATFORM_DRIVER_NAME,
 		.owner = THIS_MODULE,
-#if defined(CONFIG_PM) && !defined(CONFIG_FB)
+#ifdef CONFIG_PM
 		.pm = &synaptics_rmi4_dev_pm_ops,
 #endif
 	},
