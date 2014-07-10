@@ -56,7 +56,8 @@
 #define DAI_LINK_COMPR_OFFLOAD_FE	5
 #define DAI_LINK_I2S_OFFLOAD_BE	6
 #define DAI_LINK_I2S_OFFLOAD_SPEAKER_BE	7
-#define NUM_DAI_LINKS		8
+#define DAI_LINK_PCM_OFFLOAD_CAPTURE_FE 8
+#define NUM_DAI_LINKS		9
 
 
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
@@ -861,6 +862,17 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 
 		.dynamic = 1,
 	},
+	[DAI_LINK_PCM_OFFLOAD_CAPTURE_FE] = {
+                .name = "offload-pcm-capture",
+                .stream_name = "offload-pcm-capture",
+
+                .platform_name = "tegra-offload",
+                .cpu_dai_name = "tegra-offload-pcm",
+
+                .codec_dai_name =  "snd-soc-dummy-dai",
+                .codec_name = "snd-soc-dummy",
+
+        },
 	[DAI_LINK_I2S_OFFLOAD_BE] = {
 		.name = "offload-audio-codec",
 		.stream_name = "offload-audio-pcm",
