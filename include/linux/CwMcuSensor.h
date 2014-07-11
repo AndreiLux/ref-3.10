@@ -53,7 +53,7 @@ typedef enum {
 	HTC_FACEDOWN_DETECTION         = 23,
 	CW_SENSORS_ID_END /* Be careful, do not exceed 31 */,
 	TIME_DIFF_EXHAUSTED            = 97,
-	CW_SYNC_ACK                    = 98,
+	CW_TIME_BASE                   = 98,
 	CW_META_DATA                   = 99,
 	CW_MAGNETIC_UNCALIBRATED_BIAS  = 100,
 	CW_GYROSCOPE_UNCALIBRATED_BIAS = 101
@@ -179,6 +179,8 @@ int touch_status(u8 status);
 
 #define SYNC_TIMESTAMP_BIT		(1 << 1)
 #define TIMESTAMP_SYNC_CODE		(98)
+
+#define CW_I2C_REG_MCU_TIME                     0x11
 
 /* If queue is empty */
 #define CWMCU_NODATA	0xFF

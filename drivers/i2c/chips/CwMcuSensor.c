@@ -195,6 +195,7 @@ struct cwmcu_data {
 
 	struct input_dev *input;
 	s16 light_last_data[REPORT_EVENT_COMMON_LEN];
+	u64 time_base;
 };
 
 static struct cwmcu_data *mcu_data;
@@ -2183,9 +2184,20 @@ static ssize_t batch_set(struct device *dev,
 static ssize_t batch_show(struct device *dev, struct device_attribute *attr,
 		      char *buf)
 {
-	return scnprintf(buf, PAGE_SIZE,
-			"batched_list = 0x%x, current_timeout = %lld\n",
-			mcu_data->batched_list, mcu_data->current_timeout);
+	u64 timestamp = 0;
+	struct timespec kt;
+	u64 k_timestamp;
+
+	kt = current_kernel_time();
+
+	CWMCU_i2c_read_power(mcu_data, CW_I2C_REG_MCU_TIME, (u8 *)&timestamp,
+			     sizeof(timestamp));
+
+	le64_to_cpus(&timestamp);
+
+	k_timestamp = (u64)(kt.tv_sec*NSEC_PER_SEC) + (u64)kt.tv_nsec;
+
+	return scnprintf(buf, PAGE_SIZE, "%llu", timestamp);
 }
 
 
@@ -2307,141 +2319,155 @@ static ssize_t facedown_show(struct device *dev, struct device_attribute *attr,
 		!!(sensor->enabled_list & (1U << HTC_FACEDOWN_DETECTION)));
 }
 
+static void report_iio(struct cwmcu_data *sensor, int *i, u8 *data,
+		       __le64 *data64, u32 *event_count)
+{
+	s32 ret;
+	u8 data_buff;
+	s16 data_event[3];
+	s16 bias_event[3];
+	u16 timestamp_event;
+
+	if (data[0] == CW_META_DATA) {
+		__le16 *data16 = (__le16 *)(data + 1);
+
+		data_event[0] = le16_to_cpup(data16 + 1);
+		D("CW_META_DATA return flush event_id = %d complete~!!\n",
+		  data[3]);
+		cw_send_event(data[0], data_event, 0);
+	} else if (data[0] == CW_TIME_BASE) {
+		u64 timestamp;
+
+		timestamp = le64_to_cpup(data64 + 1);
+
+		I("CW_TIME_BASE = %llu\n", timestamp);
+		sensor->time_base = timestamp;
+	} else if ((data[0] == CW_MAGNETIC_UNCALIBRATED_BIAS) ||
+		   (data[0] == CW_GYROSCOPE_UNCALIBRATED_BIAS)) {
+		__le16 *data16 = (__le16 *)(data + 1);
+
+		data_buff = (data[0] == CW_MAGNETIC_UNCALIBRATED_BIAS) ?
+				CW_MAGNETIC_UNCALIBRATED :
+				CW_GYROSCOPE_UNCALIBRATED;
+
+		bias_event[0] = le16_to_cpup(data16 + 1);
+		bias_event[1] = le16_to_cpup(data16 + 2);
+		bias_event[2] = le16_to_cpup(data16 + 3);
+
+		ret = CWMCU_i2c_read(sensor, CWSTM32_BATCH_MODE_DATA_QUEUE,
+				     data, 9);
+		if (ret >= 0) {
+			(*i)++;
+			timestamp_event = le16_to_cpup(data16);
+			data_event[0] = le16_to_cpup(data16 + 1);
+			data_event[1] = le16_to_cpup(data16 + 2);
+			data_event[2] = le16_to_cpup(data16 + 3);
+
+			if (DEBUG_FLAG_GSENSOR == 1) {
+				I(
+				  "Batch data: total count = %u, current "
+				  "count = %d, event_id = %d, data(x, y, z) = "
+				  "(%d, %d, %d), bias(x, y,  z) = "
+				  "(%d, %d, %d)\n"
+				  , *event_count, *i, data_buff
+				  , data_event[0], data_event[1], data_event[2]
+				  , bias_event[0], bias_event[1]
+				  , bias_event[2]);
+			}
+
+			cw_send_event_special(data_buff,
+				data_event,
+				bias_event,
+				timestamp_event +
+				sensor->time_base);
+		} else {
+			E("Read Uncalibrated data fails, ret = %d\n", ret);
+		}
+	} else {
+		__le16 *data16 = (__le16 *)(data + 1);
+
+		timestamp_event = le16_to_cpup(data16);
+		data_event[0] = le16_to_cpup(data16 + 1);
+		data_event[1] = le16_to_cpup(data16 + 2);
+		data_event[2] = le16_to_cpup(data16 + 3);
+
+		if (DEBUG_FLAG_GSENSOR == 1) {
+			I(
+			  "Batch data: total count = %u, current count = %d, "
+			  "event_id = %d, data(x, y, z) = (%d, %d, %d), "
+			  "timediff = %d, time_base = %llu, r_time = %llu\n"
+			  , *event_count, *i, data[0]
+			  , data_event[0], data_event[1], data_event[2]
+			  , timestamp_event
+			  , sensor->time_base
+			  , sensor->time_base + timestamp_event
+			  );
+		}
+		if ((data[0] == CW_MAGNETIC) || (data[0] == CW_ORIENTATION)) {
+			int rc;
+			u8 accuracy;
+			u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
+
+			rc = CWMCU_i2c_read(sensor,
+					    CW_I2C_REG_SENSORS_ACCURACY_MAG,
+					    &accuracy, 1);
+			if (rc < 0) {
+				E(
+				  "%s: read ACCURACY_MAG fails, rc = "
+				  "%d\n", __func__, rc);
+				accuracy = 3;
+			}
+			bias_event[0] = accuracy;
+
+			cw_send_event_special(data[0], data_event, bias_event,
+					      timestamp_event +
+					      sensor->time_base);
+		} else {
+			cw_send_event(data[0], data_event,
+				      timestamp_event + sensor->time_base);
+		}
+	}
+}
+
 /* cwmcu_powermode_switch() must be held by caller */
 static void cwmcu_batch_read(struct cwmcu_data *sensor)
 {
 	s32 ret;
-	u8 data_buff;
-	u16 data_event[4] = {0};
 	int i;
 	u32 *event_count;
+	u8 event_count_data[4] = {0};
 
 	/*D("%s++:\n", __func__);*/
 
-	if (sensor->batched_list) {
-		u8 event_count_data[4] = {0};
 
-		ret = CWMCU_i2c_read(sensor, CWSTM32_BATCH_MODE_DATA_COUNTER,
-				     event_count_data,
-				     sizeof(event_count_data));
-		if (ret < 0)
-			D("Read Batched data Counter fail, ret = %d\n", ret);
+	ret = CWMCU_i2c_read(sensor, CWSTM32_BATCH_MODE_DATA_COUNTER,
+			     event_count_data,
+			     sizeof(event_count_data));
+	if (ret < 0)
+		D("Read Batched data Counter fail, ret = %d\n", ret);
 
-		event_count = (u32 *)(&event_count_data[0]);
+	event_count = (u32 *)(&event_count_data[0]);
 
-		if (DEBUG_FLAG_GSENSOR == 1)
-			I("%s: event_count = %u\n", __func__, *event_count);
+	if (DEBUG_FLAG_GSENSOR == 1)
+		I("%s: event_count = %u\n", __func__, *event_count);
 
-		for (i = 0; i < *event_count; i++) {
-			u8 data[9] = {0};
+	for (i = 0; i < *event_count; i++) {
+		__le64 data64[2];
+		u8 *data = (u8 *)data64;
 
-			ret = CWMCU_i2c_read(sensor,
-					     CWSTM32_BATCH_MODE_DATA_QUEUE,
-					     data, 9);
-			if (ret >= 0) {
-				/* check if there are no data from queue */
-				if (data[0] != CWMCU_NODATA) {
-					if (data[0] == CW_META_DATA) {
-						data_event[0] = (data[4] << 8) |
-								data[3];
-						D(
-						  "CW_META_DATA return flush"
-						  " event_id = %d complete~!!\n"
-						  , data[3]);
-						cw_send_event(data[0],
-							      data_event, 0);
-					} else if (data[0] == CW_SYNC_ACK) {
-						data_event[0] = data[0];
-						D("CW_SYNC_ACK\n");
-						cw_send_event(data[0],
-							      data_event, 0);
-					} else if (
-					    (data[0] ==
-					     CW_MAGNETIC_UNCALIBRATED_BIAS)
-					    ||
-					    (data[0] ==
-					     CW_GYROSCOPE_UNCALIBRATED_BIAS)
-						  ) {
-						data_buff =
-						    (data[0] ==
-						  CW_MAGNETIC_UNCALIBRATED_BIAS)
-						       ?
-						      CW_MAGNETIC_UNCALIBRATED
-						       :
-						      CW_GYROSCOPE_UNCALIBRATED;
+		data = data + 7;
 
-						data_event[0] =
-							((u16)data[4] << 8) |
-							data[3];
-						data_event[1] =
-							((u16)data[6] << 8) |
-							data[5];
-						data_event[2] =
-							((u16)data[8] << 8) |
-							data[7];
-
-						if (DEBUG_FLAG_GSENSOR == 1) {
-							I(
-							  "Batch data: total count = "
-							  "%u, current count = %d,"
-							  " event_id = %d, bias(x, y,"
-							  " z) = (%d, %d, %d)\n"
-							  , *event_count
-							  , i
-							  , data[0]
-							  , (int16_t)((data[4] << 8) |
-								      data[3])
-							  , (int16_t)((data[6] << 8) |
-								      data[5])
-							  , (int16_t)((data[8] << 8) |
-								      data[7]));
-						}
-
-						cw_send_event(data_buff,
-							      data_event, 0);
-					} else {
-						data_event[0] =
-							((u32)data[0] << 16) |
-							((u32)data[2] << 8) |
-							(u32)data[1];
-						data_event[1] =
-							((u32)data[0] << 16) |
-							((u32)data[4] << 8) |
-							(u32)data[3];
-						data_event[2] =
-							((u32)data[0] << 16) |
-							((u32)data[6] << 8) |
-							(u32)data[5];
-						data_event[3] =
-							((u32)data[0] << 16) |
-							((u32)data[8] << 8) |
-							(u32)data[7];
-
-						if (DEBUG_FLAG_GSENSOR == 1) {
-							I(
-							  "Batch data: total count ="
-							  " %u, current count = %d, "
-							  "event_id = %d, data_x = %d,"
-							  " data_y = %d, data_z = %d,"
-							  " timediff = %d\n"
-							  , *event_count
-							  , i
-							  , data[0]
-							  , (s16)data_event[1]
-							  , (s16)data_event[2]
-							  , (s16)data_event[3]
-							  , (u16)data_event[0]
-							  );
-						}
-
-						cw_send_event(data[0],
-							      &data_event[1],
-							      data_event[0]);
-					}
-				}
-			} else
-				E("Read Queue fails, ret = %d\n", ret);
-		}
+		ret = CWMCU_i2c_read(sensor,
+				     CWSTM32_BATCH_MODE_DATA_QUEUE,
+				     data, 9);
+		if (ret >= 0) {
+			/* check if there are no data from queue */
+			if (data[0] != CWMCU_NODATA) {
+				report_iio(sensor, &i, data, data64,
+					   event_count);
+			}
+		} else
+			E("Read Queue fails, ret = %d\n", ret);
 	}
 }
 
@@ -2465,121 +2491,6 @@ static void cwmcu_check_sensor_update(void)
 	}
 }
 
-
-static void report_iio(int id_check, struct cwmcu_data *sensor,
-		       struct iio_poll_func *pf)
-{
-	switch (id_check) {
-	case CW_ACCELERATION:
-	case CW_MAGNETIC:
-	case CW_GYRO:
-	case CW_PRESSURE:
-	case CW_ORIENTATION:
-	case CW_ROTATIONVECTOR:
-	case CW_LINEARACCELERATION:
-	case CW_GRAVITY:
-	case CW_GAME_ROTATION_VECTOR:
-	case CW_GEOMAGNETIC_ROTATION_VECTOR:
-	{
-		u8 data[6] = {0};
-		u16 data_event[REPORT_EVENT_COMMON_LEN] = {0};
-		u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
-
-		cwmcu_powermode_switch(1);
-
-		/* read 6byte */
-		if (CWMCU_i2c_read(sensor,
-				   CW_MCU_I2C_SENSORS_REG_START + id_check,
-				   data, sizeof(data)) >= 0) {
-			data_event[0] = (data[1] << 8) | data[0];
-			data_event[1] = (data[3] << 8) | data[2];
-			data_event[2] = (data[5] << 8) | data[4];
-
-			if ((id_check == CW_MAGNETIC)
-			    || (id_check == CW_ORIENTATION)
-			   ) {
-				int rc;
-				u8 accuracy;
-
-				rc = CWMCU_i2c_read(sensor,
-						CW_I2C_REG_SENSORS_ACCURACY_MAG,
-						&accuracy, 1);
-				if (rc < 0) {
-					E("%s: read ACCURACY_MAG fails, rc = "
-					  "%d\n", __func__, rc);
-					accuracy = 3;
-				}
-				bias_event[0] = accuracy;
-
-				cw_send_event_special(id_check,
-						      data_event,
-						      bias_event,
-						      pf->timestamp);
-			} else
-				cw_send_event(id_check, data_event,
-					      pf->timestamp);
-
-			if (DEBUG_FLAG_GSENSOR == 1) {
-				I(
-				  "3 values: id = %d, data(x, y, z) ="
-				  " (0x%x, 0x%x, 0x%x), accuracy = %d\n"
-				  , id_check
-				  , data_event[0], data_event[1], data_event[2]
-				  , bias_event[0]
-				);
-			}
-
-		} else
-			D("3 values: CWMCU_i2c_read error!!!\n");
-
-		cwmcu_powermode_switch(0);
-
-		break;
-	}
-	case CW_MAGNETIC_UNCALIBRATED:
-	case CW_GYROSCOPE_UNCALIBRATED:
-	{
-		u8 data[12] = {0};
-		u16 data_event[REPORT_EVENT_COMMON_LEN] = {0};
-		u16 bias_event[REPORT_EVENT_COMMON_LEN] = {0};
-
-		cwmcu_powermode_switch(1);
-
-		/* read 12byte */
-		if (CWMCU_i2c_read(sensor,
-				   CW_MCU_I2C_SENSORS_REG_START + id_check,
-				   data, sizeof(data)) >= 0) {
-			data_event[0] = (data[1] << 8) | data[0];
-			data_event[1] = (data[3] << 8) | data[2];
-			data_event[2] = (data[5] << 8) | data[4];
-			bias_event[0] = (data[7] << 8) | data[6];
-			bias_event[1] = (data[9] << 8) | data[8];
-			bias_event[2] = (data[11] << 8) | data[10];
-
-			if (DEBUG_FLAG_GSENSOR == 1) {
-				I("6 values: id = %d, data(x, y, z) ="
-				  " (%d, %d, %d), bias(x, y, z) ="
-				  " (%d, %d, %d)\n"
-				  , id_check
-				  , data_event[0], data_event[1], data_event[2]
-				  , bias_event[0], bias_event[1], bias_event[2]
-				);
-			}
-
-			cw_send_event_special(id_check, data_event, bias_event,
-					      pf->timestamp);
-		} else
-			D("6 values: CWMCU_i2c_read error!!!\n");
-
-		cwmcu_powermode_switch(0);
-
-		break;
-	}
-	default:
-		break;
-	}
-}
-
 /* cwmcu_powermode_switch() must be held by caller */
 static void cwmcu_read(struct cwmcu_data *sensor, struct iio_poll_func *pf)
 {
@@ -2597,9 +2508,13 @@ static void cwmcu_read(struct cwmcu_data *sensor, struct iio_poll_func *pf)
 		for (id_check = 0 ;
 		     (id_check < CW_SENSORS_ID_END)
 		     ; id_check++) {
-			if ((sensor->update_list & (1<<id_check)) &&
-			    (sensor->sensors_batch_timeout[id_check] == 0))
-				report_iio(id_check, sensor, pf);
+			if ((is_continuous_sensor(id_check)) &&
+			    (sensor->update_list & (1<<id_check)) &&
+			    (sensor->sensors_batch_timeout[id_check] == 0)) {
+				cwmcu_powermode_switch(1);
+				cwmcu_batch_read(sensor);
+				cwmcu_powermode_switch(0);
+			}
 		}
 	}
 
@@ -2652,7 +2567,6 @@ static void re_init_do_work(struct work_struct *w)
 
 	cwmcu_powermode_switch(0);
 }
-
 
 #ifdef MCU_WARN_MSGS
 static void print_warn_msg(char *buf, u32 len, u32 index)
@@ -3029,7 +2943,7 @@ exception_end:
 			cwmcu_batch_read(sensor);
 			clear_intr = 0x14;
 		}
-		I("%s: clear_intr = 0x%x, write_addr = 0x%x", __func__,
+		D("%s: clear_intr = 0x%x, write_addr = 0x%x", __func__,
 		  clear_intr, CWSTM32_BATCH_MODE_COMMAND);
 		ret = CWMCU_i2c_write(sensor,
 				      CWSTM32_BATCH_MODE_COMMAND,
@@ -3556,7 +3470,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Shorten latch retry times\n", __func__);
+	I("%s++: Enhance timestamp accuracy\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
