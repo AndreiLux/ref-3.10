@@ -33,7 +33,7 @@
 
 #define DO_STARTUP_FW_UPDATE
 
-#define FORCE_UPDATE true
+#define FORCE_UPDATE false
 #define DO_LOCKDOWN false
 
 #define MAX_IMAGE_NAME_LEN 256
