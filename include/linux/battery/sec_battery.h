@@ -30,16 +30,21 @@
 #include <linux/workqueue.h>
 #include <linux/proc_fs.h>
 #include <linux/jiffies.h>
+#include <linux/of_gpio.h>
 
-#if defined(CONFIG_MUIC_NOTIFIER)
-#include <linux/muic/muic.h>
-#include <linux/muic/muic_notifier.h>
-#endif /* CONFIG_MUIC_NOTIFIER */
-
-#include <linux/sec_batt.h>
+#if defined(CONFIG_EXTCON)
+#include <linux/extcon.h>
+struct sec_battery_extcon_cable{
+	struct extcon_specific_cable_nb extcon_nb;
+	struct notifier_block batt_nb;
+	int cable_index;
+};
+#endif /* CONFIG_EXTCON */
 
 #define ADC_CH_COUNT		10
 #define ADC_SAMPLE_COUNT	10
+
+#define TEMP_HIGHLIMIT_DEFAULT	2000
 
 struct adc_sample_info {
 	unsigned int cnt;
@@ -60,7 +65,9 @@ struct sec_battery_info {
 	struct power_supply psy_ps;
 	unsigned int irq;
 
-	struct notifier_block batt_nb;
+#if defined(CONFIG_EXTCON)
+	struct sec_battery_extcon_cable extcon_cable_list[EXTCON_NONE];
+#endif /* CONFIG_EXTCON */
 
 	int status;
 	int health;
@@ -91,6 +98,8 @@ struct sec_battery_info {
 	bool polling_in_sleep;
 	bool polling_short;
 
+	bool fuelgauge_in_sleep;
+
 	struct delayed_work polling_work;
 	struct alarm polling_alarm;
 	ktime_t last_poll_time;
@@ -98,9 +107,7 @@ struct sec_battery_info {
 	/* event set */
 	unsigned int event;
 	unsigned int event_wait;
-
 	struct alarm event_termination_alarm;
-
 	ktime_t	last_event_time;
 
 	/* battery check */
@@ -137,16 +144,16 @@ struct sec_battery_info {
 	/* charging */
 	unsigned int charging_mode;
 	bool is_recharging;
-	bool is_jig_on;
 	int cable_type;
-	int extended_cable_type;
 	struct wake_lock cable_wake_lock;
-	struct work_struct cable_work;
+	struct delayed_work cable_work;
 	struct wake_lock vbus_wake_lock;
 	unsigned int full_check_cnt;
 	unsigned int recharge_check_cnt;
+	struct wake_lock vbus_detect_wake_lock;
+	struct delayed_work vbus_detect_work;
 
-	/* wireless charging enable*/
+	/* wireless charging enable */
 	int wc_enable;
 	int wc_status;
 
@@ -155,17 +162,17 @@ struct sec_battery_info {
 	/* wearable charging */
 	int ps_enable;
 	int ps_status;
+	int ps_changed;
 
 	/* test mode */
 	int test_mode;
 	bool factory_mode;
+	bool store_mode;
 	bool slate_mode;
 
 	int siop_level;
-#if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
 	int stability_test;
 	int eng_not_full_status;
-#endif
 };
 
 ssize_t sec_bat_show_attrs(struct device *dev,
@@ -183,19 +190,19 @@ ssize_t sec_bat_store_attrs(struct device *dev,
 }
 
 /* event check */
-#define EVENT_NONE				(0)
+#define EVENT_NONE			(0)
 #define EVENT_2G_CALL			(0x1 << 0)
 #define EVENT_3G_CALL			(0x1 << 1)
-#define EVENT_MUSIC				(0x1 << 2)
-#define EVENT_VIDEO				(0x1 << 3)
+#define EVENT_MUSIC			(0x1 << 2)
+#define EVENT_VIDEO			(0x1 << 3)
 #define EVENT_BROWSER			(0x1 << 4)
 #define EVENT_HOTSPOT			(0x1 << 5)
 #define EVENT_CAMERA			(0x1 << 6)
 #define EVENT_CAMCORDER			(0x1 << 7)
 #define EVENT_DATA_CALL			(0x1 << 8)
-#define EVENT_WIFI				(0x1 << 9)
-#define EVENT_WIBRO				(0x1 << 10)
-#define EVENT_LTE				(0x1 << 11)
+#define EVENT_WIFI			(0x1 << 9)
+#define EVENT_WIBRO			(0x1 << 10)
+#define EVENT_LTE			(0x1 << 11)
 #define EVENT_LCD			(0x1 << 12)
 #define EVENT_GPS			(0x1 << 13)
 
@@ -232,7 +239,9 @@ enum {
 	WC_ADC,
 	WC_STATUS,
 	WC_ENABLE,
+	HV_CHARGER_STATUS,
 	FACTORY_MODE,
+	STORE_MODE,
 	UPDATE,
 	TEST_MODE,
 
@@ -254,16 +263,22 @@ enum {
 	BATT_EVENT_LCD,
 	BATT_EVENT_GPS,
 	BATT_EVENT,
+	BATT_TEMP_TABLE,
 #if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
 	BATT_TEST_CHARGE_CURRENT,
-	BATT_STABILITY_TEST,
 #endif
+	BATT_STABILITY_TEST,
 };
 
 #ifdef CONFIG_OF
 extern int adc_read(struct sec_battery_info *battery, int channel);
-extern void adc_init(struct platform_device *pdev, struct sec_battery_info *battery);
+extern void board_battery_init(struct platform_device *pdev, struct sec_battery_info *battery);
+extern void cable_initial_check(struct sec_battery_info *battery);
+extern bool sec_bat_check_jig_status(void);
 extern void adc_exit(struct sec_battery_info *battery);
+extern int sec_bat_check_cable_callback(struct sec_battery_info *battery);
+extern void sec_bat_check_cable_result_callback(int cable_type);
+extern bool sec_bat_check_callback(struct sec_battery_info *battery);
 #endif
 
 #endif /* __SEC_BATTERY_H */

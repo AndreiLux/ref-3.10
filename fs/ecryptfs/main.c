@@ -39,9 +39,11 @@
 #include <linux/magic.h>
 #include "ecryptfs_kernel.h"
 
+
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 #include <linux/ctype.h>
 #endif
+
 
 /**
  * Module parameter that defines the ecryptfs_verbosity level.
@@ -182,7 +184,7 @@ enum { ecryptfs_opt_sig, ecryptfs_opt_ecryptfs_sig,
        ecryptfs_opt_unlink_sigs, ecryptfs_opt_mount_auth_tok_only,
        ecryptfs_opt_check_dev_ruid,
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
-       ecryptfs_opt_enable_filtering,
+	ecryptfs_opt_enable_filtering,
 #endif
        ecryptfs_opt_err };
 
@@ -262,6 +264,7 @@ static int parse_enc_file_filter_parms(
 	}
 	return 0;
 }
+
 
 static int parse_enc_ext_filter_parms(
 	struct ecryptfs_mount_crypt_stat *mcs, char *str)

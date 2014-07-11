@@ -80,8 +80,8 @@ struct max86900_device_data
 	struct input_dev *hrm_input_dev;
 	struct mutex i2clock;
 	struct mutex activelock;
-	struct regulator *vdd_1p8;
 	struct regulator *vdd_3p3;
+	const char *led_3p3;
 	bool *bio_status;
 	u8 is_enable;
 	u8 led_current;
@@ -97,6 +97,7 @@ struct max86900_device_data
 	u8 eol_test_status;
 	u16 led;
 	u16 sample_cnt;
+	int hrm_vdd_en;
 	int hrm_int;
 	int irq;
 	int hrm_temp;

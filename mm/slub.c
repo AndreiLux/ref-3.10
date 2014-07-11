@@ -38,6 +38,11 @@
 
 #include "internal.h"
 
+#ifdef CONFIG_SEC_DEBUG_DOUBLE_FREE
+#include <mach/sec_debug.h>
+#endif
+
+
 /*
  * Lock order:
  *   1. slab_mutex (Global Mutex)
@@ -1386,7 +1391,9 @@ static struct page *new_slab(struct kmem_cache *s, gfp_t flags, int node)
 	}
 	setup_object(s, page, last);
 	set_freepointer(s, last, NULL);
-
+#ifdef CONFIG_TIMA_RKP_30
+	tima_send_cmd3(page_to_phys(page), compound_order(page), 1, 0x3f826221);
+#endif
 	page->freelist = start;
 	page->inuse = page->objects;
 	page->frozen = 1;
@@ -1442,6 +1449,9 @@ static void rcu_free_slab(struct rcu_head *h)
 
 static void free_slab(struct kmem_cache *s, struct page *page)
 {
+#ifdef CONFIG_TIMA_RKP_30
+	tima_send_cmd3(page_to_phys(page), compound_order(page), 0, 0x3f826221);
+#endif
 	if (unlikely(s->flags & SLAB_DESTROY_BY_RCU)) {
 		struct rcu_head *head;
 
@@ -3347,10 +3357,23 @@ out_unlock:
 EXPORT_SYMBOL(verify_mem_not_deleted);
 #endif
 
+#ifdef CONFIG_SEC_DEBUG_DOUBLE_FREE
+void kfree(const void *y)
+#else
 void kfree(const void *x)
+#endif
 {
 	struct page *page;
+#ifdef CONFIG_SEC_DEBUG_DOUBLE_FREE
+	void *x = (void *)y;
+#endif
 	void *object = (void *)x;
+
+#ifdef CONFIG_SEC_DEBUG_DOUBLE_FREE
+	object = x = kfree_hook(x, __builtin_return_address(0));
+	if (!x)
+		return;
+#endif
 
 	trace_kfree(_RET_IP_, x);
 

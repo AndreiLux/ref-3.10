@@ -88,9 +88,9 @@ static int samsung_dmadev_prepare(unsigned ch,
 			&sg, 1, param->direction, DMA_PREP_INTERRUPT);
 		break;
 	case DMA_CYCLIC:
-		desc = chan->device->device_prep_dma_cyclic(chan,
-				param->buf, param->len, param->period,
-				param->direction, true, &param->infiniteloop);
+		desc = dmaengine_prep_dma_cyclic(chan, param->buf,
+			param->len, param->period, param->direction,
+			DMA_PREP_INTERRUPT | DMA_CTRL_ACK);
 		break;
 	default:
 		dev_err(&chan->dev->device, "unsupported format\n");
@@ -117,12 +117,6 @@ static inline int samsung_dmadev_trigger(unsigned ch)
 	return 0;
 }
 
-static inline int samsung_dmadev_getposition(unsigned ch,
-		dma_addr_t *src, dma_addr_t *dst)
-{
-	return pl330_dma_getposition((struct dma_chan *)ch, src, dst);
-}
-
 static inline int samsung_dmadev_flush(unsigned ch)
 {
 	return dmaengine_terminate_all((struct dma_chan *)ch);
@@ -135,7 +129,6 @@ static struct samsung_dma_ops dmadev_ops = {
 	.prepare	= samsung_dmadev_prepare,
 	.trigger	= samsung_dmadev_trigger,
 	.started	= NULL,
-	.getposition	= samsung_dmadev_getposition,
 	.flush		= samsung_dmadev_flush,
 	.stop		= samsung_dmadev_flush,
 };

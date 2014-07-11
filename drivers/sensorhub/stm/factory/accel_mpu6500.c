@@ -92,10 +92,6 @@ int set_accel_cal(struct ssp_data *data)
 	accel_cal[2] = data->accelcal.z;
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		return -ENOMEM;
-	}
 	msg->cmd = MSG2SSP_AP_MCU_SET_ACCEL_CAL;
 	msg->length = 6;
 	msg->options = AP2HUB_WRITE;
@@ -163,6 +159,7 @@ static int accel_do_calibrate(struct ssp_data *data, int iEnable)
 		data->accelcal.y = 0;
 		data->accelcal.z = 0;
 		set_accel_cal(data);
+
 		iRet = enable_accel_for_cal(data);
 		msleep(300);
 
@@ -284,10 +281,6 @@ static ssize_t accel_reactive_alert_store(struct device *dev,
 		data->bAccelAlert = 0;
 
 		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		if (msg == NULL) {
-			pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-			return -ENOMEM;
-		}
 		msg->cmd = ACCELEROMETER_FACTORY;
 		msg->length = 1;
 		msg->options = AP2HUB_READ;
@@ -308,8 +301,7 @@ static ssize_t accel_reactive_alert_store(struct device *dev,
 		pr_err("[SSP]: %s - invalid value %d\n", __func__, *buf);
 		return -EINVAL;
 	}
-exit:
-	return size;
+	exit: return size;
 }
 
 static ssize_t accel_reactive_alert_show(struct device *dev,
@@ -338,10 +330,6 @@ static ssize_t accel_hw_selftest_show(struct device *dev,
 	struct ssp_msg *msg;
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		goto exit;
-	}
 	msg->cmd = ACCELEROMETER_FACTORY;
 	msg->length = 8;
 	msg->options = AP2HUB_READ;
@@ -352,7 +340,7 @@ static ssize_t accel_hw_selftest_show(struct device *dev,
 	iRet = ssp_spi_sync(data, msg, 3000);
 	if (iRet != SUCCESS) {
 		pr_err("[SSP] %s - accel hw selftest Timeout!!\n", __func__);
-		goto exit;
+		return sprintf(buf, "%d,%d,%d,%d\n", -5, 0, 0, 0);
 	}
 
 	init_status = chTempBuf[0];
@@ -363,16 +351,11 @@ static ssize_t accel_hw_selftest_show(struct device *dev,
 
 	pr_info("[SSP] %s - %d, %d, %d, %d, %d\n", __func__,
 		init_status, result, shift_ratio[0], shift_ratio[1], shift_ratio[2]);
-
 	return sprintf(buf, "%d,%d.%d,%d.%d,%d.%d\n", result,
 		shift_ratio[0] / 10, shift_ratio[0] % 10,
 		shift_ratio[1] / 10, shift_ratio[1] % 10,
 		shift_ratio[2] / 10, shift_ratio[2] % 10);
-exit:
-	return sprintf(buf, "%d,%d,%d,%d\n", -5, 0, 0, 0);
 }
-
-
 static DEVICE_ATTR(name, S_IRUGO, accel_name_show, NULL);
 static DEVICE_ATTR(vendor, S_IRUGO, accel_vendor_show, NULL);
 static DEVICE_ATTR(calibration, S_IRUGO | S_IWUSR | S_IWGRP,

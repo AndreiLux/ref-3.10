@@ -15,7 +15,7 @@
 
 #include <linux/device.h>
 #include <linux/notifier.h>
-#include <linux/opp.h>
+#include <linux/pm_opp.h>
 
 #define DEVFREQ_NAME_LEN 16
 
@@ -38,8 +38,8 @@ struct devfreq;
  */
 struct devfreq_dev_status {
 	/* both since the last measure */
-	unsigned long long total_time;
-	unsigned long long busy_time;
+	unsigned long total_time;
+	unsigned long busy_time;
 	unsigned long current_frequency;
 	void *private_data;
 };
@@ -51,6 +51,24 @@ struct devfreq_dev_status {
  * bound (greatest lower bound)
  */
 #define DEVFREQ_FLAG_LEAST_UPPER_BOUND		0x1
+
+#define DEVFREQ_FLAG_FAST_HINT			0x2
+#define DEVFREQ_FLAG_SLOW_HINT			0x4
+#define DEVFREQ_FLAG_WAKEUP_MAXFREQ		0x8
+
+/**
+ * struct devfreq_governor_data - mapping to per device governor data
+ * @name:		The name of the governor.
+ * @data:		Private data for the governor.
+ *
+ * Devices may pass in an array of this structure to allow governors
+ * to get the correct data pointer when they are enabled after
+ * the devfreq_add_device() call.
+ */
+struct devfreq_governor_data {
+	const char *name;
+	void *data;
+};
 
 /**
  * struct devfreq_dev_profile - Devfreq's user device profile
@@ -75,6 +93,11 @@ struct devfreq_dev_status {
  *			this is the time to unregister it.
  * @freq_table:	Optional list of frequencies to support statistics.
  * @max_state:	The size of freq_table.
+ * @governor_data:	Optional array of private data for governors.
+ *			This is used to set devfreq->data correctly
+ *			when a governor is enabled via sysfs or other
+ *			mechanisms after the devfreq_add_device() call.
+ * @num_governor_data:  Number of elements in governor_data.
  */
 struct devfreq_dev_profile {
 	unsigned long initial_freq;
@@ -88,6 +111,8 @@ struct devfreq_dev_profile {
 
 	unsigned int *freq_table;
 	unsigned int max_state;
+	const struct devfreq_governor_data *governor_data;
+	unsigned int num_governor_data;
 };
 
 /**
@@ -111,7 +136,8 @@ struct devfreq_governor {
 	struct list_head node;
 
 	const char name[DEVFREQ_NAME_LEN];
-	int (*get_target_freq)(struct devfreq *this, unsigned long *freq);
+	int (*get_target_freq)(struct devfreq *this, unsigned long *freq,
+				u32 *flag);
 	int (*event_handler)(struct devfreq *devfreq,
 				unsigned int event, void *data);
 };
@@ -192,13 +218,6 @@ extern int devfreq_register_opp_notifier(struct device *dev,
 extern int devfreq_unregister_opp_notifier(struct device *dev,
 					   struct devfreq *devfreq);
 
-#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND) || IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_USAGE)
-struct devfreq_notifier_block {
-	struct notifier_block nb;
-	struct devfreq *df;
-};
-#endif
-
 #if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_ONDEMAND)
 /**
  * struct devfreq_simple_ondemand_data - void *data fed to struct devfreq
@@ -209,45 +228,17 @@ struct devfreq_notifier_block {
  *			the governor may consider slowing the frequency down.
  *			Specify 0 to use the default. Valid value = 0 to 100.
  *			downdifferential < upthreshold must hold.
+ * @simple_scaling:	Setting this flag will scale the clocks up only if the
+ *			load is above @upthreshold and will scale the clocks
+ *			down only if the load is below @downdifferential.
  *
  * If the fed devfreq_simple_ondemand_data pointer is NULL to the governor,
  * the governor uses the default values.
  */
 struct devfreq_simple_ondemand_data {
-	unsigned int multiplication_weight;
 	unsigned int upthreshold;
 	unsigned int downdifferential;
-	unsigned long cal_qos_max;
-	int pm_qos_class;
-	struct devfreq_notifier_block nb;
-};
-#endif
-
-#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_USAGE)
-struct devfreq_simple_usage_data {
-	unsigned int multiplication_weight;
-	unsigned int proportional;
-	unsigned int upthreshold;
-	unsigned int target_percentage;
-	int pm_qos_class;
-	unsigned long cal_qos_max;
-	bool en_monitoring;
-	struct devfreq_notifier_block nb;
-};
-#endif
-
-#if IS_ENABLED(CONFIG_DEVFREQ_GOV_SIMPLE_EXYNOS)
-struct devfreq_simple_exynos_data {
-	unsigned int urgentthreshold;
-	unsigned int upthreshold;
-	unsigned int downthreshold;
-	unsigned int idlethreshold;
-	unsigned long above_freq;
-	unsigned long below_freq;
-	int pm_qos_class;
-	unsigned long cal_qos_max;
-	bool en_monitoring;
-	struct devfreq_notifier_block nb;
+	unsigned int simple_scaling;
 };
 #endif
 

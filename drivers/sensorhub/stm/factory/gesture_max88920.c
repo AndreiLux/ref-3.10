@@ -17,16 +17,17 @@
 #define	VENDOR		"MAXIM"
 #define	CHIP_ID		"MAX88920"
 
+
 static ssize_t gestrue_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", VENDOR);
+	return snprintf(buf, PAGE_SIZE, "%s\n", VENDOR);
 }
 
 static ssize_t gestrue_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	return snprintf(buf, PAGE_SIZE, "%s\n", CHIP_ID);
 }
 
 static ssize_t raw_data_read(struct device *dev,
@@ -71,9 +72,7 @@ static ssize_t gesture_get_selftest_show(struct device *dev,
 	pr_info("[SSP] %s: self test A = %d, B = %d, C = %d, D = %d\n",
 		__func__, raw_A, raw_B, raw_C, raw_D);
 
-exit:
-	return sprintf(buf, "%d,%d,%d,%d\n",
-            raw_A, raw_B, raw_C, raw_D);
+	exit: return sprintf(buf, "%d,%d,%d,%d\n", raw_A, raw_B, raw_C, raw_D);
 }
 
 static ssize_t ir_current_show(struct device *dev,
@@ -104,10 +103,10 @@ static ssize_t ir_current_store(struct device *dev,
 		for(current_index = 0; current_index < 16; current_index++) {
 			if (set_current[0][current_index] == uNewIrCurrent) {
 				data->uIr_Current = set_current[1][current_index];
-			}
+			}	
 		}
 		set_gesture_current(data, data->uIr_Current);
-		data->uIr_Current = uNewIrCurrent;
+		data->uIr_Current= uNewIrCurrent;
 	}
 
 	ssp_dbg("[SSP]: %s - new Ir_Current Setting : %d\n",
@@ -121,7 +120,7 @@ static DEVICE_ATTR(name, S_IRUGO, gestrue_name_show, NULL);
 static DEVICE_ATTR(raw_data, S_IRUGO, raw_data_read, NULL);
 static DEVICE_ATTR(selftest, S_IRUGO, gesture_get_selftest_show, NULL);
 static DEVICE_ATTR(ir_current, S_IRUGO | S_IWUSR | S_IWGRP,
-    ir_current_show, ir_current_store);
+	ir_current_show, ir_current_store);
 
 static struct device_attribute *gesture_attrs[] = {
 	&dev_attr_vendor,

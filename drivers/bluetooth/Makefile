@@ -2,6 +2,10 @@
 # Makefile for the Linux Bluetooth HCI device drivers.
 #
 
+ifeq ($(CONFIG_GPIO_PCAL6416A),y)
+    EXTRA_CFLAGS += -DUSE_GPIO_EXPANDER_BT_EN
+endif
+
 obj-$(CONFIG_BT_HCIVHCI)	+= hci_vhci.o
 obj-$(CONFIG_BT_HCIUART)	+= hci_uart.o
 obj-$(CONFIG_BT_HCIBCM203X)	+= bcm203x.o
@@ -19,6 +23,7 @@ obj-$(CONFIG_BT_ATH3K)		+= ath3k.o
 obj-$(CONFIG_BT_MRVL)		+= btmrvl.o
 obj-$(CONFIG_BT_MRVL_SDIO)	+= btmrvl_sdio.o
 obj-$(CONFIG_BT_WILINK)		+= btwilink.o
+obj-$(CONFIG_MSM_BT_POWER)	+= bluetooth-power.o
 
 btmrvl-y			:= btmrvl_main.o
 btmrvl-$(CONFIG_DEBUG_FS)	+= btmrvl_debugfs.o
@@ -30,7 +35,3 @@ hci_uart-$(CONFIG_BT_HCIUART_LL)	+= hci_ll.o
 hci_uart-$(CONFIG_BT_HCIUART_ATH3K)	+= hci_ath.o
 hci_uart-$(CONFIG_BT_HCIUART_3WIRE)	+= hci_h5.o
 hci_uart-objs				:= $(hci_uart-y)
-
-obj-$(CONFIG_BT_BCM43457)		+= bcm43457.o
-obj-$(CONFIG_BT_BCM4339)		+= bcm4339.o
-obj-$(CONFIG_BT_BCM4354)		+= bcm4354.o

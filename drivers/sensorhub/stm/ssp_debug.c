@@ -14,8 +14,9 @@
  */
 #include "ssp.h"
 #include <linux/fs.h>
-#include <linux/sec_debug.h>
-
+#if SSP_SEC_DEBUG
+#include <mach/sec_debug.h>
+#endif
 
 
 #define SSP_DEBUG_TIMER_SEC		(10 * HZ)
@@ -26,33 +27,34 @@
 #define DUMP_FILE_PATH "/data/log/MCU_DUMP"
 
 void ssp_dump_task(struct work_struct *work) {
+#if SSP_SEC_DEBUG
 	struct ssp_big *big;
 	struct file *dump_file;
 	struct ssp_msg *msg;
 	char *buffer;
 	char strFilePath[60];
 	struct timeval cur_time;
-	int iTimeTemp;
 	mm_segment_t fs;
 	int buf_len, packet_len, residue, iRet = 0, index = 0 ,iRetTrans=0 ,iRetWrite=0;
 
+
 	big = container_of(work, struct ssp_big, work);
-	pr_err("[SSP]: %s - start ssp dumping (%d)(%d)\n", __func__,big->data->bMcuDumpMode,big->data->uDumpCnt);
+	pr_err("[SSP]: %s - start ssp dumping (%d)(%d)\n", __func__, big->data->bMcuDumpMode, big->data->uDumpCnt);
 	big->data->uDumpCnt++;
 	wake_lock(&big->data->ssp_wake_lock);
 
 	fs = get_fs();
 	set_fs(get_ds());
-
+	
 	if(big->data->bMcuDumpMode == true)
 	{
 		do_gettimeofday(&cur_time);
-		iTimeTemp = (int) cur_time.tv_sec;
 
-		sprintf(strFilePath, "%s%d.txt", DUMP_FILE_PATH, iTimeTemp);
-
+		sprintf(strFilePath, "%s%d.dump", DUMP_FILE_PATH, (int)cur_time.tv_sec);
 		dump_file = filp_open(strFilePath, O_RDWR | O_CREAT | O_APPEND, 0666);
-		if (IS_ERR(dump_file)) {
+
+		if (IS_ERR(dump_file))
+		{
 			pr_err("[SSP]: %s - Can't open dump file\n", __func__);
 			set_fs(fs);
 			iRet = PTR_ERR(dump_file);
@@ -64,11 +66,13 @@ void ssp_dump_task(struct work_struct *work) {
 	else
 		dump_file = NULL;
 
+
 	buf_len = big->length > DATA_PACKET_SIZE ? DATA_PACKET_SIZE : big->length;
 	buffer = kzalloc(buf_len, GFP_KERNEL);
 	residue = big->length;
 
-	while (residue > 0) {
+	while (residue > 0)
+	{
 		packet_len = residue > DATA_PACKET_SIZE ? DATA_PACKET_SIZE : residue;
 
 		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
@@ -79,43 +83,52 @@ void ssp_dump_task(struct work_struct *work) {
 		msg->buffer = buffer;
 		msg->free_buffer = 0;
 
-		iRetTrans = ssp_spi_sync(big->data, msg, 1000);
-		if (iRetTrans != SUCCESS) {
+		iRetTrans = ssp_spi_sync(big->data, msg, 5000);
+		
+		if (iRetTrans != SUCCESS)
+		{
 			pr_err("[SSP]: %s - Fail to receive data %d (%d)\n", __func__, iRetTrans,residue);
 			break;
 		}
+
 		if(big->data->bMcuDumpMode == true)
 		{
-			iRetWrite = vfs_write(dump_file, (char __user *) buffer, packet_len,
-				&dump_file->f_pos);
-			if (iRetWrite < 0) {
-			pr_err("[SSP]: %s - Can't write dump to file\n", __func__);
-			break;
+			iRetWrite = vfs_write(dump_file, (char __user *) buffer, packet_len, &dump_file->f_pos);
+			
+			if (iRetWrite < 0)
+			{
+				pr_err("[SSP]: %s - Can't write dump to file\n", __func__);
+				break;
 			}
 		}
 		residue -= packet_len;
 	}
 
-	if(big->data->bMcuDumpMode == true && (iRetTrans != SUCCESS || iRetWrite < 0) )
+
+	if(big->data->bMcuDumpMode == true)
 	{
-		char FAILSTRING[100];
-		sprintf(FAILSTRING,"FAIL OCCURED(%d)(%d)(%d)",iRetTrans,iRetWrite,big->length);
-		vfs_write(dump_file, (char __user *) FAILSTRING, strlen(FAILSTRING),&dump_file->f_pos);
+		if(iRetTrans != SUCCESS || iRetWrite < 0)	// error case
+		{
+			char FAILSTRING[100];
+			sprintf(FAILSTRING,"FAIL OCCURED(%d)(%d)(%d)",iRetTrans,iRetWrite,big->length);
+			vfs_write(dump_file, (char __user *) FAILSTRING, strlen(FAILSTRING),&dump_file->f_pos);
+		}
+
+		filp_close(dump_file, current->files);
 	}
 
 	big->data->bDumping = false;
-	if(big->data->bMcuDumpMode == true)
-		filp_close(dump_file, current->files);
 
 	set_fs(fs);
 
 	wake_unlock(&big->data->ssp_wake_lock);
 	kfree(buffer);
 	kfree(big);
-
+#endif
 	pr_err("[SSP]: %s done\n", __func__);
 }
 
+#ifdef CONFIG_SENSORS_SSP_SHTC1
 void ssp_temp_task(struct work_struct *work) {
 	struct ssp_big *big;
 	struct ssp_msg *msg;
@@ -126,13 +139,12 @@ void ssp_temp_task(struct work_struct *work) {
 	buf_len = big->length > DATA_PACKET_SIZE ? DATA_PACKET_SIZE : big->length;
 	buffer = kzalloc(buf_len, GFP_KERNEL);
 	residue = big->length;
-#ifdef CONFIG_SENSORS_SSP_SHTC1
 	mutex_lock(&big->data->bulk_temp_read_lock);
 	if (big->data->bulk_buffer == NULL)
 		big->data->bulk_buffer = kzalloc(sizeof(struct shtc1_buffer),
 				GFP_KERNEL);
 	big->data->bulk_buffer->len = big->length / 12;
-#endif
+
 	while (residue > 0) {
 		packet_len = residue > DATA_PACKET_SIZE ? DATA_PACKET_SIZE : residue;
 
@@ -158,7 +170,6 @@ void ssp_temp_task(struct work_struct *work) {
 					*((s16 *) (buffer + i + 0)), *((s16 *) (buffer + i + 2)),
 					*((s16 *) (buffer + i + 4)), *((s16 *) (buffer + i + 6)),
 					*((s16 *) (buffer + i + 8)), *((s16 *) (buffer +i + 10)));
-#ifdef CONFIG_SENSORS_SSP_SHTC1
 			big->data->bulk_buffer->batt[buffindex] = *((u16 *) (buffer + i + 0));
 			big->data->bulk_buffer->chg[buffindex] = *((u16 *) (buffer + i + 2));
 			big->data->bulk_buffer->temp[buffindex] = *((s16 *) (buffer + i + 4));
@@ -167,23 +178,18 @@ void ssp_temp_task(struct work_struct *work) {
 			big->data->bulk_buffer->gyro[buffindex] = *((s16 *) (buffer + i + 10));
 			buffindex++;
 			i += 12;
-#else
-			buffindex++;
-			i += 12;//6 ??
-#endif
 		}
 
 		residue -= packet_len;
 	}
-#ifdef CONFIG_SENSORS_SSP_SHTC1
 	if (iRet == SUCCESS)
 		report_bulk_comp_data(big->data);
 	mutex_unlock(&big->data->bulk_temp_read_lock);
-#endif
 	kfree(buffer);
 	kfree(big);
 	ssp_dbg("[SSP]: %s done\n", __func__);
 }
+#endif
 
 /*************************************************************************/
 /* SSP Debug timer function                                              */
@@ -219,15 +225,20 @@ void sync_sensor_state(struct ssp_data *data)
 	unsigned char uBuf[9] = {0,};
 	unsigned int uSensorCnt;
 	int iRet = 0;
-
+#ifdef CONFIG_SENSORS_SSP_YAS532
+	iRet = set_hw_offset(data);
+	if (iRet < 0) {
+		pr_err("[SSP]: %s - set_hw_offset failed\n", __func__);
+	}
+#endif
 	iRet = set_gyro_cal(data);
-	if (iRet < 0)
+	if (iRet < 0) {
 		pr_err("[SSP]: %s - set_gyro_cal failed\n", __func__);
-
+	}
 	iRet = set_accel_cal(data);
-	if (iRet < 0)
+	if (iRet < 0) {
 		pr_err("[SSP]: %s - set_accel_cal failed\n", __func__);
-
+	}
 	udelay(10);
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++) {
@@ -249,14 +260,13 @@ void sync_sensor_state(struct ssp_data *data)
 
 	set_proximity_threshold(data, data->uProxHiThresh,data->uProxLoThresh);
 
-
-	data->bMcuDumpMode = ssp_check_sec_dump_mode();
+#if SSP_SEC_DEBUG
+	data->bMcuDumpMode = sec_debug_is_enabled();
 	iRet = ssp_send_cmd(data, MSG2SSP_AP_MCU_SET_DUMPMODE,data->bMcuDumpMode);
 	if (iRet < 0) {
 		pr_err("[SSP]: %s - MSG2SSP_AP_MCU_SET_DUMPMODE failed\n", __func__);
 	}
-
-
+#endif
 }
 
 static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
@@ -300,14 +310,14 @@ static void print_sensordata(struct ssp_data *data, unsigned int uSensor)
 			data->buf[uSensor].z, get_msdelay(data->adDelayBuf[uSensor]));
 		break;
 	case LIGHT_SENSOR:
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
+#ifdef CONFIG_SENSORS_SSP_TMG399X
 		ssp_dbg("[SSP] %u : %u, %u, %u, %u, %u, %u (%ums)\n", uSensor,
 			data->buf[uSensor].r, data->buf[uSensor].g,
 			data->buf[uSensor].b, data->buf[uSensor].w,
 			data->buf[uSensor].a_time, data->buf[uSensor].a_gain,
 			get_msdelay(data->adDelayBuf[uSensor]));
 		break;
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
+#else
 		ssp_dbg("[SSP] %u : %u, %u, %u, %u, %u, %u (%ums)\n", uSensor,
 			data->buf[uSensor].r, data->buf[uSensor].g,
 			data->buf[uSensor].b, data->buf[uSensor].w,
@@ -424,14 +434,4 @@ int initialize_debug_timer(struct ssp_data *data)
 
 	INIT_WORK(&data->work_debug, debug_work_func);
 	return SUCCESS;
-}
-
-unsigned int  ssp_check_sec_dump_mode()   // if returns true dump mode on
-{
-#ifdef CONFIG_SEC_DEBUG
-	if (sec_debug_level.en.kernel_fault == 1)
-		return 1;
-	else
-#endif
-		return 0;
 }

@@ -18,18 +18,9 @@ config ARM_DT_BL_CPUFREQ
 config ARM_EXYNOS_CPUFREQ
 	bool "SAMSUNG EXYNOS SoCs"
 	depends on ARCH_EXYNOS
+	default y
 	help
 	  This adds the CPUFreq driver common part for Samsung
-	  EXYNOS SoCs.
-
-	  If in doubt, say N.
-
-config ARM_EXYNOS_MP_CPUFREQ
-	bool "SAMSUNG EXYNOS SoCs for MP"
-	depends on ARCH_EXYNOS
-	depends on SCHED_HMP
-	help
-	  This adds the MP CPUFreq driver common part for Samsung
 	  EXYNOS SoCs.
 
 	  If in doubt, say N.
@@ -52,18 +43,6 @@ config ARM_EXYNOS5250_CPUFREQ
 	  This adds the CPUFreq driver for Samsung EXYNOS5250
 	  SoC.
 
-config ARM_EXYNOS5430_CPUFREQ
-	def_bool SOC_EXYNOS5430
-	help
-	  This adds the CPUFreq driver for Samsung EXYNOS5430
-	  SoC.
-
-config ARM_EXYNOS5422_CPUFREQ
-	def_bool SOC_EXYNOS5422
-	help
-	  This adds the CPUFreq driver for Samsung EXYNOS5422
-	  SoC.
-
 config ARM_EXYNOS5440_CPUFREQ
 	def_bool SOC_EXYNOS5440
 	depends on HAVE_CLK && PM_OPP && OF
@@ -76,7 +55,6 @@ config ARM_EXYNOS5440_CPUFREQ
 config ARM_HIGHBANK_CPUFREQ
 	tristate "Calxeda Highbank-based"
 	depends on ARCH_HIGHBANK
-	select CPU_FREQ_TABLE
 	select GENERIC_CPUFREQ_CPU0
 	select PM_OPP
 	select REGULATOR
@@ -115,7 +93,6 @@ config ARM_OMAP2PLUS_CPUFREQ
 	bool "TI OMAP2+"
 	depends on ARCH_OMAP2PLUS
 	default ARCH_OMAP2PLUS
-	select CPU_FREQ_TABLE
 
 config ARM_S3C2416_CPUFREQ
 	bool "S3C2416 CPU Frequency scaling support"
@@ -151,7 +128,6 @@ config ARM_S3C64XX_CPUFREQ
 config ARM_S5PV210_CPUFREQ
 	bool "Samsung S5PV210 and S5PC110"
 	depends on CPU_S5PV210
-	select CPU_FREQ_TABLE
 	default y
 	help
 	  This adds the CPUFreq driver for Samsung S5PV210 and

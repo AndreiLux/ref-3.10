@@ -152,8 +152,25 @@ void do_bad_area(unsigned long addr, unsigned int esr, struct pt_regs *regs)
 #define ESR_CM			(1 << 8)
 #define ESR_LNX_EXEC		(1 << 24)
 
+/*
+ * Check that the permissions on the VMA allow for the fault which occurred.
+ * If we encountered a write fault, we must have write permission, otherwise
+ * we allow any permission.
+ */
+static inline bool access_error(unsigned int esr, struct vm_area_struct *vma)
+{
+	unsigned int mask = VM_READ | VM_WRITE | VM_EXEC;
+
+	if (esr & ESR_WRITE)
+		mask = VM_WRITE;
+	if (esr & ESR_LNX_EXEC)
+		mask = VM_EXEC;
+
+	return vma->vm_flags & mask ? false : true;
+}
+
 static int __do_page_fault(struct mm_struct *mm, unsigned long addr,
-			   unsigned int mm_flags, unsigned long vm_flags,
+			   unsigned int esr, unsigned int flags,
 			   struct task_struct *tsk)
 {
 	struct vm_area_struct *vma;
@@ -171,17 +188,12 @@ static int __do_page_fault(struct mm_struct *mm, unsigned long addr,
 	 * it.
 	 */
 good_area:
-	/*
-	 * Check that the permissions on the VMA allow for the fault which
-	 * occurred. If we encountered a write or exec fault, we must have
-	 * appropriate permissions, otherwise we allow any permission.
-	 */
-	if (!(vma->vm_flags & vm_flags)) {
+	if (access_error(esr, vma)) {
 		fault = VM_FAULT_BADACCESS;
 		goto out;
 	}
 
-	return handle_mm_fault(mm, vma, addr & PAGE_MASK, mm_flags);
+	return handle_mm_fault(mm, vma, addr & PAGE_MASK, flags);
 
 check_stack:
 	if (vma->vm_flags & VM_GROWSDOWN && !expand_stack(vma, addr))
@@ -196,15 +208,9 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	struct task_struct *tsk;
 	struct mm_struct *mm;
 	int fault, sig, code;
-	unsigned long vm_flags = VM_READ | VM_WRITE | VM_EXEC;
-	unsigned int mm_flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
-
-	if (esr & ESR_LNX_EXEC) {
-		vm_flags = VM_EXEC;
-	} else if ((esr & ESR_WRITE) && !(esr & ESR_CM)) {
-		vm_flags = VM_WRITE;
-		mm_flags |= FAULT_FLAG_WRITE;
-	}
+	bool write = (esr & ESR_WRITE) && !(esr & ESR_CM);
+	unsigned int flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE |
+		(write ? FAULT_FLAG_WRITE : 0);
 
 	tsk = current;
 	mm  = tsk->mm;
@@ -242,7 +248,7 @@ retry:
 #endif
 	}
 
-	fault = __do_page_fault(mm, addr, mm_flags, vm_flags, tsk);
+	fault = __do_page_fault(mm, addr, esr, flags, tsk);
 
 	/*
 	 * If we need to retry but a fatal signal is pending, handle the
@@ -259,7 +265,7 @@ retry:
 	 */
 
 	perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS, 1, regs, addr);
-	if (mm_flags & FAULT_FLAG_ALLOW_RETRY) {
+	if (flags & FAULT_FLAG_ALLOW_RETRY) {
 		if (fault & VM_FAULT_MAJOR) {
 			tsk->maj_flt++;
 			perf_sw_event(PERF_COUNT_SW_PAGE_FAULTS_MAJ, 1, regs,
@@ -274,7 +280,7 @@ retry:
 			 * Clear FAULT_FLAG_ALLOW_RETRY to avoid any risk of
 			 * starvation.
 			 */
-			mm_flags &= ~FAULT_FLAG_ALLOW_RETRY;
+			flags &= ~FAULT_FLAG_ALLOW_RETRY;
 			goto retry;
 		}
 	}

@@ -48,8 +48,9 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_MAX98088 if I2C
 	select SND_SOC_MAX98090 if I2C
 	select SND_SOC_MAX98095 if I2C
+	select SND_SOC_MAX98504 if I2C
+	select SND_SOC_MAX98504A if I2C
 	select SND_SOC_MAX9850 if I2C
-	select SND_SOC_MAX9768 if I2C
 	select SND_SOC_MAX9877 if I2C
 	select SND_SOC_MC13783 if MFD_MC13XXX
 	select SND_SOC_ML26124 if I2C
@@ -79,10 +80,9 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_WM0010 if SPI_MASTER
 	select SND_SOC_WM1250_EV1 if I2C
 	select SND_SOC_WM2000 if I2C
-	select SND_SOC_WM2200 if I2C
 	select SND_SOC_WM5100 if I2C
 	select SND_SOC_WM5102 if MFD_WM5102
-	select SND_SOC_FLORIDA if MFD_FLORIDA
+	select SND_SOC_WM5110 if MFD_WM5110
 	select SND_SOC_WM8350 if MFD_WM8350
 	select SND_SOC_WM8400 if MFD_WM8400
 	select SND_SOC_WM8510 if SND_SOC_I2C_AND_SPI
@@ -125,7 +125,6 @@ config SND_SOC_ALL_CODECS
 	select SND_SOC_WM9705 if SND_SOC_AC97_BUS
 	select SND_SOC_WM9712 if SND_SOC_AC97_BUS
 	select SND_SOC_WM9713 if SND_SOC_AC97_BUS
-	select SND_SOC_ES515
         help
           Normally ASoC codec drivers are only built if a machine driver which
           uses them is also built since they are only usable with a machine
@@ -143,9 +142,9 @@ config SND_SOC_88PM860X
 config SND_SOC_ARIZONA
 	tristate
 	default y if SND_SOC_WM5102=y
-	default y if SND_SOC_FLORIDA=y
+	default y if SND_SOC_WM5110=y
 	default m if SND_SOC_WM5102=m
-	default m if SND_SOC_FLORIDA=m
+	default m if SND_SOC_WM5110=m
 
 config SND_SOC_WM_HUBS
 	tristate
@@ -155,10 +154,8 @@ config SND_SOC_WM_HUBS
 config SND_SOC_WM_ADSP
 	tristate
 	default y if SND_SOC_WM5102=y
-	default y if SND_SOC_FLORIDA=y
 	default y if SND_SOC_WM2200=y
 	default m if SND_SOC_WM5102=m
-	default m if SND_SOC_FLORIDA=m
 	default m if SND_SOC_WM2200=m
 
 config SND_SOC_AB8500_CODEC
@@ -287,6 +284,30 @@ config SND_SOC_MAX98090
 config SND_SOC_MAX98095
        tristate
 
+config SND_SOC_MAX98504
+	bool "Support MAX98504"
+	depends on I2C
+	help
+	MAX98504 driver
+
+config SND_SOC_MAX98504A
+	bool "Support MAX98504"
+	depends on I2C
+	help
+	MAX98504 driver
+
+config SND_SOC_3MIC_SUPPORT
+	tristate "ES705 3MIC"
+	default n
+	help
+		To add support for ES705 3MI
+
+config SND_SOC_MAXIM_DSM
+	bool "Support MAXIM DSM"
+	depends on SND_SOC_MAX98504 || SND_SOC_MAX98505
+	help
+	MAXIM DSM driver
+
 config SND_SOC_MAX9850
 	tristate
 
@@ -360,6 +381,44 @@ config SND_SOC_UDA134X
 config SND_SOC_UDA1380
         tristate
 
+config SND_SOC_WCD9310
+	tristate
+
+config SND_SOC_WCD9320
+        tristate
+
+config SND_SOC_WCD9306
+        tristate
+
+config SND_SOC_WCD9330
+        tristate
+
+config SND_SOC_WCD9XXX
+	tristate
+	default y if SND_SOC_WCD9320=y || SND_SOC_WCD9306=y || SND_SOC_WCD9330=y
+
+config SND_SOC_MSM8X10_WCD
+	tristate
+
+config SND_SOC_MSM8X16_WCD
+	tristate
+
+config SND_SOC_WCD_CPE
+	tristate
+	default y if SND_SOC_WCD9330=y
+
+config SND_SOC_ES705
+	tristate "eS705"
+	default n		
+        ---help---
+        Valid configurations:
+         * SLIMbus
+         * I2C and I2S
+         * SPI and I2S
+         * UART and I2S
+
+        NOTE: Only one configuration should be enabled.
+
 config SND_SOC_WL1273
 	tristate
 
@@ -381,7 +440,7 @@ config SND_SOC_WM5100
 config SND_SOC_WM5102
 	tristate
 
-config SND_SOC_FLORIDA
+config SND_SOC_WM5110
 	tristate
 
 config SND_SOC_WM8350
@@ -510,17 +569,8 @@ config SND_SOC_WM9712
 config SND_SOC_WM9713
 	tristate
 
-config SND_SOC_ES515
-	tristate
-
-config SND_SOC_DUMMY_CODEC
-	tristate
-
 # Amp
 config SND_SOC_LM4857
-	tristate
-
-config SND_SOC_MAX9768
 	tristate
 
 config SND_SOC_MAX9877
@@ -534,3 +584,13 @@ config SND_SOC_ML26124
 
 config SND_SOC_TPA6130A2
 	tristate
+
+config SND_SOC_MSM_STUB
+	tristate
+
+config SND_SOC_MSM_HDMI_CODEC_RX
+	bool "HDMI Audio Playback"
+	depends on FB_MSM_MDSS_HDMI_PANEL && (SND_SOC_MSM8974 || SND_SOC_APQ8084 || SND_SOC_MPQ8092)
+	help
+	HDMI audio drivers should be built only if the platform
+        supports hdmi panel.

@@ -437,7 +437,6 @@ struct bcache_device {
 
 	/* If nonzero, we're detaching/unregistering from cache set */
 	atomic_t		detaching;
-	int			flush_done;
 
 	atomic_long_t		sectors_dirty;
 	unsigned long		sectors_dirty_gc;

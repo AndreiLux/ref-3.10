@@ -956,6 +956,34 @@ config SENSORS_NTC_THERMISTOR
 	  This driver can also be built as a module.  If so, the module
 	  will be called ntc-thermistor.
 
+config SENSORS_EPM_ADC
+	tristate "EPM ADC Driver for power measurement"
+	depends on I2C && SPI_MASTER
+	default n
+	help
+	  Provides interface for measuring the current on specific power rails
+	  through the channels on ADC1158 ADC
+
+config SENSORS_QPNP_ADC_VOLTAGE
+	tristate "Support for Qualcomm QPNP Voltage ADC"
+	depends on SPMI
+	help
+	  This is the VADC arbiter driver for Qualcomm QPNP ADC Chip.
+
+	  The driver supports reading the HKADC, XOADC through the ADC AMUX arbiter.
+	  The VADC includes support for the conversion sequencer. The driver supports
+	  reading the ADC through the AMUX channels for external pull-ups simultaneously.
+
+config SENSORS_QPNP_ADC_CURRENT
+	tristate "Support for Qualcomm QPNP current ADC"
+	depends on SPMI
+	help
+	  This is the IADC driver for Qualcomm QPNP ADC Chip.
+
+	  The driver supports single mode operation to read from upto seven channel
+	  configuration that include reading the external/internal Rsense, CSP_EX,
+	  CSN_EX pair along with the gain and offset calibration.
+
 config SENSORS_PC87360
 	tristate "National Semiconductor PC87360 family"
 	depends on !PPC
@@ -1527,15 +1555,6 @@ config SENSORS_MC13783_ADC
         depends on MFD_MC13XXX
         help
           Support for the A/D converter on MC13783 and MC13892 PMIC.
-
-config SENSORS_SEC_THERMISTOR
-	tristate "SEC Thermistor support"
-	depends on S3C_ADC
-	default n
-	help
-	  This driver supports SEC Thermistor sensor reading and its
-	  interpretation. The driver uses s3c adc driver and needs
-	  adc-temperature mapping table for conversion.
 
 if ACPI
 

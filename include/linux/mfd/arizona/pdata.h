@@ -8,8 +8,6 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/kernel.h>
-
 #ifndef _ARIZONA_PDATA_H
 #define _ARIZONA_PDATA_H
 
@@ -73,16 +71,13 @@
 
 #define ARIZONA_MAX_PDM_SPK 2
 
-/* Treat INT_MAX impedance as open circuit */
-#define ARIZONA_HP_Z_OPEN INT_MAX
-
 struct regulator_init_data;
 
 struct arizona_micbias {
 	int mV;                    /** Regulated voltage */
 	unsigned int ext_cap:1;    /** External capacitor fitted */
 	unsigned int discharge:1;  /** Actively discharge */
-	unsigned int soft_start:1; /** Disable aggressive startup ramp rate */
+	unsigned int fast_start:1; /** Enable aggressive startup ramp rate */
 	unsigned int bypass:1;     /** Use bypass mode */
 };
 
@@ -141,12 +136,6 @@ struct arizona_pdata {
 	/** GPIO used for mic isolation with HPDET */
 	int hpdet_id_gpio;
 
-	/** Callback notifying HPDET result */
-	void (*hpdet_cb)(unsigned int measurement);
-
-	/** Use software comparison to determine mic presence */
-	bool micd_software_compare;
-
 	/** Extra debounce timeout used during initial mic detection (ms) */
 	int micd_detect_debounce;
 
@@ -168,15 +157,6 @@ struct arizona_pdata {
 	/** Force MICBIAS on for mic detect */
 	bool micd_force_micbias;
 
-	/** Force MICBIAS on for initial mic detect only, not button detect */
-	bool micd_force_micbias_initial;
-
-	/** Declare an open circuit as a 4 pole jack */
-	bool micd_open_circuit_declare;
-
-	/** Delay between jack detection and MICBIAS ramp */
-	int init_mic_delay;
-
 	/** Mic detect level parameters */
 	const struct arizona_micd_range *micd_ranges;
 	int num_micd_ranges;
@@ -197,9 +177,6 @@ struct arizona_pdata {
 	/** Mode for outputs */
 	bool out_mono[ARIZONA_MAX_OUTPUT];
 
-	/** Provide improved ultrasonic frequency response */
-	bool ultrasonic_response;
-
 	/** PDM speaker mute setting */
 	unsigned int spk_mute[ARIZONA_MAX_PDM_SPK];
 
@@ -211,15 +188,6 @@ struct arizona_pdata {
 
 	/** GPIO for primary IRQ (used for edge triggered emulation) */
 	int irq_gpio;
-
-	/** General purpose switch control */
-	int gpsw;
-
-	/** Callback which is called when the trigger phrase is detected */
-	void (*ez2ctrl_trigger)(void);
-
-	/** wm5102t output power */
-	unsigned int wm5102t_output_pwr;
 };
 
 #endif

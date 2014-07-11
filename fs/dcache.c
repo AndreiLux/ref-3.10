@@ -2730,9 +2730,9 @@ char *simple_dname(struct dentry *dentry, char *buffer, int buflen)
 	/* these dentries are never renamed, so d_lock is not needed */
 	if (prepend(&end, &buflen, " (deleted)", 11) ||
 	    prepend_name(&end, &buflen, &dentry->d_name) ||
-	    prepend(&end, &buflen, "/", 1))
+	    prepend(&end, &buflen, "/", 1))  
 		end = ERR_PTR(-ENAMETOOLONG);
-	return end;
+	return end;  
 }
 
 /*

@@ -112,6 +112,13 @@ void report_acc_data(struct ssp_data *data, struct sensor_value *accdata)
 	accel_buf[0] = data->buf[ACCELEROMETER_SENSOR].x;
 	accel_buf[1] = data->buf[ACCELEROMETER_SENSOR].y;
 	accel_buf[2] = data->buf[ACCELEROMETER_SENSOR].z;
+#if defined(CONFIG_SEC_LENTIS_PROJECT)
+	if (data->ap_rev < MPU6500_REV) {
+		accel_buf[0] <<= 2;
+		accel_buf[1] <<= 2;
+		accel_buf[2] <<= 2;
+	}
+#endif
 
 	ssp_push_6bytes_buffer(data->accel_indio_dev, accdata->timestamp,
 		accel_buf);
@@ -345,13 +352,8 @@ void report_light_data(struct ssp_data *data, struct sensor_value *lightdata)
 	data->buf[LIGHT_SENSOR].g = lightdata->g;
 	data->buf[LIGHT_SENSOR].b = lightdata->b;
 	data->buf[LIGHT_SENSOR].w = lightdata->w;
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
 	data->buf[LIGHT_SENSOR].a_time = lightdata->a_time;
 	data->buf[LIGHT_SENSOR].a_gain = (0x03) & (lightdata->a_gain);
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
-	data->buf[LIGHT_SENSOR].ir_cmp = lightdata->ir_cmp;
-	data->buf[LIGHT_SENSOR].amb_pga = lightdata->amb_pga;
-#endif
 
 	input_report_rel(data->light_input_dev, REL_HWHEEL,
 		data->buf[LIGHT_SENSOR].r + 1);
@@ -361,18 +363,11 @@ void report_light_data(struct ssp_data *data, struct sensor_value *lightdata)
 		data->buf[LIGHT_SENSOR].b + 1);
 	input_report_rel(data->light_input_dev, REL_MISC,
 		data->buf[LIGHT_SENSOR].w + 1);
-
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
 	input_report_rel(data->light_input_dev, REL_RY,
 		data->buf[LIGHT_SENSOR].a_time + 1);
 	input_report_rel(data->light_input_dev, REL_RZ,
 		data->buf[LIGHT_SENSOR].a_gain + 1);
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
-	input_report_rel(data->light_input_dev, REL_RY,
-		data->buf[LIGHT_SENSOR].ir_cmp + 1);
-	input_report_rel(data->light_input_dev, REL_RZ,
-		data->buf[LIGHT_SENSOR].amb_pga + 1);
-#endif
+
 	input_sync(data->light_input_dev);
 }
 
@@ -457,14 +452,17 @@ void report_temp_humidity_data(struct ssp_data *data,
 		wake_lock_timeout(&data->ssp_wake_lock, 2 * HZ);
 }
 
-#ifdef CONFIG_SENSORS_SSP_SHTC1
-void report_bulk_comp_data(struct ssp_data *data)
+void report_tsp_angle_data(struct ssp_data *data,
+	struct sensor_value *tsp_angle_data)
 {
-	input_report_rel(data->temp_humi_input_dev, REL_WHEEL,
-		data->bulk_buffer->len);
-	input_sync(data->temp_humi_input_dev);
+	mutex_lock(&data->tsp_mutex);
+	data->buf[TSP_ANGLE].x = tsp_angle_data->x;
+	data->buf[TSP_ANGLE].y = tsp_angle_data->y;
+
+	ssp_dbg("[SSP]: %s - tsp angle = %d, position = %d\n",
+		__func__, (char)data->buf[TSP_ANGLE].x, (char)data->buf[TSP_ANGLE].y);
+	mutex_unlock(&data->tsp_mutex);
 }
-#endif
 
 int initialize_event_symlink(struct ssp_data *data)
 {
@@ -481,10 +479,6 @@ int initialize_event_symlink(struct ssp_data *data)
 	iRet = sensors_create_symlink(data->prox_input_dev);
 	if (iRet < 0)
 		goto iRet_prox_sysfs_create_link;
-
-	iRet = sensors_create_symlink(data->temp_humi_input_dev);
-	if (iRet < 0)
-		goto iRet_temp_humi_sysfs_create_link;
 
 	iRet = sensors_create_symlink(data->mag_input_dev);
 	if (iRet < 0)
@@ -523,8 +517,6 @@ iRet_sig_motion_sysfs_create_link:
 iRet_uncal_mag_sysfs_create_link:
 	sensors_remove_symlink(data->mag_input_dev);
 iRet_mag_sysfs_create_link:
-	sensors_remove_symlink(data->temp_humi_input_dev);
-iRet_temp_humi_sysfs_create_link:
 	sensors_remove_symlink(data->prox_input_dev);
 iRet_prox_sysfs_create_link:
 	sensors_remove_symlink(data->light_input_dev);
@@ -541,7 +533,6 @@ void remove_event_symlink(struct ssp_data *data)
 	sensors_remove_symlink(data->gesture_input_dev);
 	sensors_remove_symlink(data->light_input_dev);
 	sensors_remove_symlink(data->prox_input_dev);
-	sensors_remove_symlink(data->temp_humi_input_dev);
 	sensors_remove_symlink(data->mag_input_dev);
 	sensors_remove_symlink(data->uncal_mag_input_dev);
 	sensors_remove_symlink(data->sig_motion_input_dev);
@@ -796,10 +787,9 @@ int initialize_input_dev(struct ssp_data *data)
 	input_set_capability(data->light_input_dev, EV_REL, REL_DIAL);
 	input_set_capability(data->light_input_dev, EV_REL, REL_WHEEL);
 	input_set_capability(data->light_input_dev, EV_REL, REL_MISC);
-#if defined(CONFIG_SENSORS_SSP_MAX88921) || defined(CONFIG_SENSORS_SSP_TMG399X)
 	input_set_capability(data->light_input_dev, EV_REL, REL_RY);
 	input_set_capability(data->light_input_dev, EV_REL, REL_RZ);
-#endif
+
 	iRet = input_register_device(data->light_input_dev);
 	if (iRet < 0) {
 		input_free_device(data->light_input_dev);

@@ -321,6 +321,40 @@ struct tty_ldisc *tty_ldisc_ref(struct tty_struct *tty)
 }
 EXPORT_SYMBOL_GPL(tty_ldisc_ref);
 
+#ifdef CONFIG_TTY_WAITQUEUE_DOUBLE_CHECK
+/**
+ *	tty_ldisc_waitqueue_valid		-	check ldisk waitqueue validation
+ *
+ *	There is issue that ldisk freed by hangup before waitqueue_active.
+ *	In that case, wake_up executed with freed ldisc (lead kernel panic).
+ *	Becasue, waitqueue_active only is checking next list existence.
+ *	tty_ldisc_waitqueue_valid is checking waitqueue's next list validation.
+ *
+ */
+
+static bool tty_ldisc_waitqueue_valid(wait_queue_head_t *q)
+{
+	struct list_head *head;
+	struct list_head *next;
+
+	head = &q->task_list;
+	next = head->next;
+
+	if((u32)next < PAGE_OFFSET || (u32)next > (u32)high_memory) {
+		WARN(1, "next ptr invalid 0x%08X\n", (u32)next);
+		return false;
+	}
+
+	if(next->prev != head) {
+		WARN(1, "next ptr:0x%08X, next->prev:0x%08X not matched head:0x%08X\n",
+			(u32)next, (u32)next->prev, (u32)head);
+		return false;
+	}
+	else
+		return true;
+}
+#endif
+
 /**
  *	tty_ldisc_deref		-	free a tty ldisc reference
  *	@ld: reference to free up
@@ -346,7 +380,11 @@ void tty_ldisc_deref(struct tty_ldisc *ld)
 	WARN_ON(atomic_dec_and_test(&ld->users));
 	raw_spin_unlock_irqrestore(&tty_ldisc_lock, flags);
 
+#ifdef CONFIG_TTY_WAITQUEUE_DOUBLE_CHECK
+	if (waitqueue_active(&ld->wq_idle) && tty_ldisc_waitqueue_valid(&ld->wq_idle))
+#else
 	if (waitqueue_active(&ld->wq_idle))
+#endif
 		wake_up(&ld->wq_idle);
 }
 EXPORT_SYMBOL_GPL(tty_ldisc_deref);
@@ -446,7 +484,8 @@ static int tty_ldisc_open(struct tty_struct *tty, struct tty_ldisc *ld)
 
 static void tty_ldisc_close(struct tty_struct *tty, struct tty_ldisc *ld)
 {
-	WARN_ON(!test_and_clear_bit(TTY_LDISC_OPEN, &tty->flags));
+	WARN_ON(!test_bit(TTY_LDISC_OPEN, &tty->flags));
+	clear_bit(TTY_LDISC_OPEN, &tty->flags);
 	if (ld->ops->close)
 		ld->ops->close(tty);
 }

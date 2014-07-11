@@ -5,7 +5,6 @@
 # Object files in subdirectories
 
 obj-$(CONFIG_USB)		+= core/
-
 obj-$(CONFIG_USB_PHY)		+= phy/
 
 obj-$(CONFIG_USB_DWC3)		+= dwc3/

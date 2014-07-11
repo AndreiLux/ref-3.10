@@ -70,6 +70,13 @@ struct w1_slave
 	u32			flags;
 	int			ttl;
 
+	u32 id_min;
+	u32 id_max;
+	u32 id_default;
+	u32 color_min;
+	u32 color_max;
+	u32 color_default;
+
 	struct w1_master	*master;
 	struct w1_family	*family;
 	void			*family_data;
@@ -215,7 +222,6 @@ struct w1_master *w1_search_master_id(u32 id);
  */
 void w1_reconnect_slaves(struct w1_family *f, int attach);
 void w1_slave_detach(struct w1_slave *sl);
-void w1_master_search(void);
 
 u8 w1_triplet(struct w1_master *dev, int bdir);
 void w1_write_8(struct w1_master *, u8);
@@ -253,9 +259,8 @@ extern struct mutex w1_mlock;
 
 extern int w1_process(void *);
 
-extern void w1_work(struct work_struct *work);
-
 #ifdef CONFIG_W1_WORKQUEUE
+extern void w1_work(struct work_struct *work);
 extern struct w1_master *w1_gdev;
 #endif
 

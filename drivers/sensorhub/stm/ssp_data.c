@@ -96,12 +96,9 @@ static void get_step_det_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 static void get_light_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
+#ifdef CONFIG_SENSORS_SSP_TMG399X
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 10);
 	*iDataIdx += 10;
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 12);
-	*iDataIdx += 12;
 #else
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 8);
 	*iDataIdx += 8;
@@ -130,6 +127,7 @@ static void get_proximity_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 {
 	memset(&sensorsdata->prox[0], 0, 1);
 	memcpy(&sensorsdata->prox[0], pchRcvDataFrame + *iDataIdx, 2);
+	//memcpy(&sensorsdata->prox[1], pchRcvDataFrame + *iDataIdx + 1, 1);
 	*iDataIdx += 2;
 }
 
@@ -203,8 +201,7 @@ void refresh_task(struct work_struct *work) {
 		if (data->uLastResumeState != 0)
 			ssp_send_cmd(data, data->uLastResumeState, 0);
 		data->uTimeOutCnt = 0;
-	} else
-		data->uSensorState = 0;
+	}
 
 	wake_unlock(&data->ssp_wake_lock);
 }
@@ -327,5 +324,7 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->ssp_big_task[BIG_TYPE_VOICE_NET] = ssp_send_big_library_task;
 	data->ssp_big_task[BIG_TYPE_VOICE_GRAM] = ssp_send_big_library_task;
 	data->ssp_big_task[BIG_TYPE_VOICE_PCM] = ssp_pcm_dump_task;
+#ifdef CONFIG_SENSORS_SSP_SHTC1
 	data->ssp_big_task[BIG_TYPE_TEMP] = ssp_temp_task;
+#endif
 }

@@ -76,7 +76,7 @@ static void enable_sensor(struct ssp_data *data,
 		data->aiCheckStatus[iSensorType] = RUNNING_SENSOR_STATE;
 
 		if (iSensorType == PROXIMITY_SENSOR) {
-			proximity_open_lcd_ldi(data);
+			get_proximity_threshold(data);
 			proximity_open_calibration(data);
 			set_proximity_threshold(data, data->uProxHiThresh, data->uProxLoThresh);
 
@@ -224,9 +224,6 @@ static ssize_t show_sensors_enable(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	ssp_dbg("[SSP]: %s - cur_enable = %d\n", __func__,
-		 atomic_read(&data->aSensorEnable));
-
 	return sprintf(buf, "%9u\n", atomic_read(&data->aSensorEnable));
 }
 
@@ -247,7 +244,7 @@ static ssize_t set_sensors_enable(struct device *dev,
 
 	if ((uNewEnable != atomic_read(&data->aSensorEnable)) &&
 		!(data->uSensorState & (uNewEnable - atomic_read(&data->aSensorEnable)))) {
-		pr_info("[SSP] %s - %u is not connected(sensortate: 0x%x)\n",
+		pr_info("[SSP] %s - %u is not connected(sensor state: 0x%x)\n",
 			__func__, uNewEnable - atomic_read(&data->aSensorEnable), data->uSensorState);
 		return -EINVAL;
 	}
@@ -279,7 +276,7 @@ static ssize_t set_sensors_enable(struct device *dev,
 					else if (uChangedSensor == PRESSURE_SENSOR)
 						pressure_open_calibration(data);
 					else if (uChangedSensor == PROXIMITY_SENSOR) {
-						proximity_open_lcd_ldi(data);
+						get_proximity_threshold(data);
 						proximity_open_calibration(data);
 						set_proximity_threshold(data, data->uProxHiThresh, data->uProxLoThresh);
 					}
@@ -624,25 +621,20 @@ static ssize_t set_prox_delay(struct device *dev,
 	return size;
 }
 
-static ssize_t show_temp_humi_delay(struct device *dev,
+static ssize_t show_tsp_angle(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	struct ssp_data *data  = dev_get_drvdata(dev);
+	struct ssp_data *data = dev_get_drvdata(dev);
+	int size;
 
-	return sprintf(buf, "%lld\n",
-		data->adDelayBuf[TEMPERATURE_HUMIDITY_SENSOR]);
-}
+	mutex_lock(&data->tsp_mutex);
+	size = sprintf(buf, "%d %d\n",
+			data->buf[TSP_ANGLE].x, data->buf[TSP_ANGLE].y);
 
-static ssize_t set_temp_humi_delay(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	int64_t dNewDelay;
-	struct ssp_data *data  = dev_get_drvdata(dev);
+	data->buf[TSP_ANGLE].x = 0;
+	data->buf[TSP_ANGLE].y = 0;
+	mutex_unlock(&data->tsp_mutex);
 
-	if (kstrtoll(buf, 10, &dNewDelay) < 0)
-		return -EINVAL;
-
-	change_sensor_delay(data, TEMPERATURE_HUMIDITY_SENSOR, dNewDelay);
 	return size;
 }
 
@@ -704,6 +696,7 @@ static DEVICE_ATTR(pressure_poll_delay, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_pressure_delay, set_pressure_delay);
 static DEVICE_ATTR(ssp_flush, S_IWUSR | S_IWGRP,
 	NULL, set_flush);
+static DEVICE_ATTR(tsp_angle, S_IRUGO, show_tsp_angle, NULL);
 
 static struct device_attribute dev_attr_mag_poll_delay
 	= __ATTR(poll_delay, S_IRUGO | S_IWUSR | S_IWGRP,
@@ -720,9 +713,6 @@ static struct device_attribute dev_attr_light_poll_delay
 static struct device_attribute dev_attr_prox_poll_delay
 	= __ATTR(poll_delay, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_prox_delay, set_prox_delay);
-static struct device_attribute dev_attr_temp_humi_poll_delay
-	= __ATTR(poll_delay, S_IRUGO | S_IWUSR | S_IWGRP,
-	show_temp_humi_delay, set_temp_humi_delay);
 static struct device_attribute dev_attr_sig_motion_poll_delay
 	= __ATTR(poll_delay, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_sig_motion_delay, set_sig_motion_delay);
@@ -752,6 +742,7 @@ static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_step_det_poll_delay,
 	&dev_attr_pressure_poll_delay,
 	&dev_attr_ssp_flush,
+	&dev_attr_tsp_angle,
 	NULL,
 };
 
@@ -868,10 +859,6 @@ int initialize_sysfs(struct ssp_data *data)
 		&dev_attr_prox_poll_delay))
 		goto err_prox_input_dev;
 
-	if (device_create_file(&data->temp_humi_input_dev->dev,
-		&dev_attr_temp_humi_poll_delay))
-		goto err_temp_humi_input_dev;
-
 	if (device_create_file(&data->mag_input_dev->dev,
 		&dev_attr_mag_poll_delay))
 		goto err_mag_input_dev;
@@ -906,9 +893,6 @@ int initialize_sysfs(struct ssp_data *data)
 	initialize_magnetic_factorytest(data);
 	initialize_mcu_factorytest(data);
 	initialize_gesture_factorytest(data);
-#ifdef CONFIG_SENSORS_SSP_SHTC1
-	initialize_temphumidity_factorytest(data);
-#endif
 #ifdef CONFIG_SENSORS_SSP_MOBEAM
 	initialize_mobeam(data);
 #endif
@@ -932,9 +916,6 @@ err_uncal_mag_input_dev:
 	device_remove_file(&data->mag_input_dev->dev,
 		&dev_attr_mag_poll_delay);
 err_mag_input_dev:
-	device_remove_file(&data->temp_humi_input_dev->dev,
-		&dev_attr_temp_humi_poll_delay);
-err_temp_humi_input_dev:
 	device_remove_file(&data->prox_input_dev->dev,
 		&dev_attr_prox_poll_delay);
 err_prox_input_dev:
@@ -956,8 +937,6 @@ void remove_sysfs(struct ssp_data *data)
 		&dev_attr_light_poll_delay);
 	device_remove_file(&data->prox_input_dev->dev,
 		&dev_attr_prox_poll_delay);
-	device_remove_file(&data->temp_humi_input_dev->dev,
-		&dev_attr_temp_humi_poll_delay);
 	device_remove_file(&data->mag_input_dev->dev,
 		&dev_attr_mag_poll_delay);
 	device_remove_file(&data->uncal_mag_input_dev->dev,
@@ -978,9 +957,6 @@ void remove_sysfs(struct ssp_data *data)
 	remove_magnetic_factorytest(data);
 	remove_mcu_factorytest(data);
 	remove_gesture_factorytest(data);
-#ifdef CONFIG_SENSORS_SSP_SHTC1
-	remove_temphumidity_factorytest(data);
-#endif
 #ifdef CONFIG_SENSORS_SSP_MOBEAM
 	remove_mobeam(data);
 #endif

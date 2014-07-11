@@ -14,9 +14,7 @@
 #ifndef __SND_SOC_SAMSUNG_IDMA_H_
 #define __SND_SOC_SAMSUNG_IDMA_H_
 
-void idma_reg_addr_init(void __iomem *regs, dma_addr_t addr);
-int asoc_idma_platform_register(struct device *dev);
-void asoc_idma_platform_unregister(struct device *dev);
+extern void idma_reg_addr_init(void __iomem *regs, dma_addr_t addr);
 
 /* dma_state */
 #define LPAM_DMA_STOP	0

@@ -48,8 +48,6 @@ static LIST_HEAD(mc_devices);
  */
 static void const *edac_mc_owner;
 
-static struct bus_type mc_bus[EDAC_MAX_MCS];
-
 unsigned edac_dimm_info_location(struct dimm_info *dimm, char *buf,
 			         unsigned len)
 {
@@ -725,11 +723,6 @@ int edac_mc_add_mc(struct mem_ctl_info *mci)
 	int ret = -EINVAL;
 	edac_dbg(0, "\n");
 
-	if (mci->mc_idx >= EDAC_MAX_MCS) {
-		pr_warn_once("Too many memory controllers: %d\n", mci->mc_idx);
-		return -ENODEV;
-	}
-
 #ifdef CONFIG_EDAC_DEBUG
 	if (edac_debug_level >= 3)
 		edac_mc_dump_mci(mci);
@@ -768,8 +761,6 @@ int edac_mc_add_mc(struct mem_ctl_info *mci)
 
 	/* set load time so that error rate can be tracked */
 	mci->start_time = jiffies;
-
-	mci->bus = &mc_bus[mci->mc_idx];
 
 	if (edac_create_sysfs_mci_device(mci)) {
 		edac_mc_printk(mci, KERN_WARNING,

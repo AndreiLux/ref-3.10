@@ -13,6 +13,7 @@ arm	ARM Ltd.
 atmel	Atmel Corporation
 bosch	Bosch Sensortec GmbH
 brcm	Broadcom Corporation
+capella	Capella Microsystems, Inc.
 cavium	Cavium, Inc.
 chrp	Common Hardware Reference Platform
 cirrus	Cirrus Logic, Inc.
@@ -22,15 +23,20 @@ denx	Denx Software Engineering
 emmicro	EM Microelectronic
 epson	Seiko Epson Corp.
 est	ESTeem Wireless Modems
+fairchild	Fairchild Semiconductor International, Inc.
+focaltech Focaltech systems
 fsl	Freescale Semiconductor
 GEFanuc	GE Fanuc Intelligent Platforms Embedded Systems, Inc.
+goodix	Goodix. Ltd.
 gef	GE Fanuc Intelligent Platforms Embedded Systems, Inc.
 hp	Hewlett Packard
 ibm	International Business Machines (IBM)
 idt	Integrated Device Technologies, Inc.
 img	Imagination Technologies Ltd.
 intercontrol	Inter Control Group
+invn	InvenSense Inc.
 linux	Linux-specific binding
+kionix	Kionix Inc.
 marvell	Marvell Technology Group Ltd.
 maxim	Maxim Integrated Products
 mosaixtech	Mosaix Technologies, Inc.
@@ -39,9 +45,10 @@ nintendo	Nintendo
 nvidia	NVIDIA
 nxp	NXP Semiconductors
 onnn	ON Semiconductor Corp.
+ovti	OmniVision Technologies, Inc.
 picochip	Picochip Ltd
 powervr	PowerVR (deprecated, use img)
-qcom	Qualcomm, Inc.
+qcom	Qualcomm Technologies, Inc
 ralink	Mediatek/Ralink Technology Corp.
 ramtron	Ramtron International
 realtek Realtek Semiconductor Corp.
@@ -49,10 +56,14 @@ renesas	Renesas Electronics Corporation
 samsung	Samsung Semiconductor
 sbs	Smart Battery System
 schindler	Schindler
+smartv SmartV Ltd
+stk	Sensortek Technology Corporation.(formerly Sitronix Technology Co., Ltd.)
+shinetech	Shine Tech Corporation, Ltd.
 sil	Silicon Image
 silabs	Silicon Laboratories
 simtek
 sirf	SiRF Technology, Inc.
+sne	Sony
 snps 	Synopsys, Inc.
 st	STMicroelectronics
 ste	ST-Ericsson

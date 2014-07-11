@@ -1561,6 +1561,7 @@ static int multipath_ioctl(struct dm_target *ti, unsigned int cmd,
 	unsigned long flags;
 	int r;
 
+again:
 	bdev = NULL;
 	mode = 0;
 	r = 0;
@@ -1578,7 +1579,7 @@ static int multipath_ioctl(struct dm_target *ti, unsigned int cmd,
 	}
 
 	if ((pgpath && m->queue_io) || (!pgpath && m->queue_if_no_path))
-		r = -ENOTCONN;
+		r = -EAGAIN;
 	else if (!bdev)
 		r = -EIO;
 
@@ -1590,8 +1591,11 @@ static int multipath_ioctl(struct dm_target *ti, unsigned int cmd,
 	if (!r && ti->len != i_size_read(bdev->bd_inode) >> SECTOR_SHIFT)
 		r = scsi_verify_blk_ioctl(NULL, cmd);
 
-	if (r == -ENOTCONN && !fatal_signal_pending(current))
+	if (r == -EAGAIN && !fatal_signal_pending(current)) {
 		queue_work(kmultipathd, &m->process_queued_ios);
+		msleep(10);
+		goto again;
+	}
 
 	return r ? : __blkdev_driver_ioctl(bdev, mode, cmd, arg);
 }

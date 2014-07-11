@@ -2175,6 +2175,19 @@ static int n_tty_ioctl(struct tty_struct *tty, struct file *file,
 	}
 }
 
+#if defined (CONFIG_SND_SOC_ES705)
+int read_n_tty_read_cnt(struct tty_struct *tty)
+{
+	struct n_tty_data *ldata = tty->disc_data;
+	int retval;
+
+	retval = ldata->read_cnt;
+
+	return retval;
+}
+EXPORT_SYMBOL(read_n_tty_read_cnt);
+#endif
+
 struct tty_ldisc_ops tty_ldisc_N_TTY = {
 	.magic           = TTY_LDISC_MAGIC,
 	.name            = "n_tty",

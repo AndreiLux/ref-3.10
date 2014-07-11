@@ -23,6 +23,7 @@
  *      20130913 - use kfifo as read buffer queue
  *      20130913 - add polling handler
  *      20130914 - fix ep read condition check mistake
+ *      20131004 - support USB 3.0 (SuperSpeed)
  */
 
 #include <linux/module.h>
@@ -88,6 +89,30 @@ static struct usb_interface_descriptor conn_gadget_interface_desc = {
 	.bInterfaceProtocol     = 1,
 };
 
+static struct usb_endpoint_descriptor conn_gadget_superspeed_in_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_IN,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_endpoint_descriptor conn_gadget_superspeed_out_desc = {
+	.bLength                = USB_DT_ENDPOINT_SIZE,
+	.bDescriptorType        = USB_DT_ENDPOINT,
+	.bEndpointAddress       = USB_DIR_OUT,
+	.bmAttributes           = USB_ENDPOINT_XFER_BULK,
+	.wMaxPacketSize         = __constant_cpu_to_le16(1024),
+};
+
+static struct usb_ss_ep_comp_descriptor conn_gadget_superspeed_bulk_comp_desc = {
+    .bLength                = sizeof(conn_gadget_superspeed_bulk_comp_desc),
+    .bDescriptorType        = USB_DT_SS_ENDPOINT_COMP,
+    /* the following 2 values can be tweaked if nessary */
+    /* .bMaxBurst           = 0, */
+    /* .bmAttributes        = 0, */
+};
+
 static struct usb_endpoint_descriptor conn_gadget_highspeed_in_desc = {
 	.bLength                = USB_DT_ENDPOINT_SIZE,
 	.bDescriptorType        = USB_DT_ENDPOINT,
@@ -131,6 +156,16 @@ static struct usb_descriptor_header *hs_conn_gadget_descs[] = {
 	(struct usb_descriptor_header *) &conn_gadget_highspeed_out_desc,
 	NULL,
 };
+
+static struct usb_descriptor_header *ss_conn_gadget_descs[] = {
+    (struct usb_descriptor_header *) &conn_gadget_interface_desc,
+	(struct usb_descriptor_header *) &conn_gadget_superspeed_in_desc,
+	(struct usb_descriptor_header *) &conn_gadget_superspeed_bulk_comp_desc,
+	(struct usb_descriptor_header *) &conn_gadget_superspeed_out_desc,
+	(struct usb_descriptor_header *) &conn_gadget_superspeed_bulk_comp_desc,
+    NULL,
+};
+
 
 /* temporary variable used between conn_gadget_open() and conn_gadget_gadget_bind() */
 static struct conn_gadget_dev *_conn_gadget_dev;
@@ -662,7 +697,16 @@ conn_gadget_function_bind(struct usb_configuration *c, struct usb_function *f)
 			conn_gadget_fullspeed_out_desc.bEndpointAddress;
 	}
 
+    /* support super speed hardware */
+    if (gadget_is_superspeed(c->cdev->gadget)) {
+        conn_gadget_superspeed_in_desc.bEndpointAddress =
+            conn_gadget_fullspeed_in_desc.bEndpointAddress;
+        conn_gadget_superspeed_out_desc.bEndpointAddress =
+            conn_gadget_fullspeed_out_desc.bEndpointAddress;
+    }
+
 	pr_debug("%s speed %s: IN/%s, OUT/%s\n",
+            gadget_is_superspeed(c->cdev->gadget) ? "super" :
 			gadget_is_dualspeed(c->cdev->gadget) ? "dual" : "full",
 			f->name, dev->ep_in->name, dev->ep_out->name);
 	return 0;
@@ -782,6 +826,7 @@ static int conn_gadget_bind_config(struct usb_configuration *c)
 	dev->function.name = "conn_gadget";
 	dev->function.fs_descriptors = fs_conn_gadget_descs;
 	dev->function.hs_descriptors = hs_conn_gadget_descs;
+	dev->function.ss_descriptors = ss_conn_gadget_descs;
 	dev->function.bind = conn_gadget_function_bind;
 	dev->function.unbind = conn_gadget_function_unbind;
 	dev->function.set_alt = conn_gadget_function_set_alt;
@@ -842,4 +887,3 @@ static void conn_gadget_cleanup(void)
 	kfree(_conn_gadget_dev);
 	_conn_gadget_dev = NULL;
 }
-

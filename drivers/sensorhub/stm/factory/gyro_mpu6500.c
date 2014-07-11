@@ -136,10 +136,6 @@ int set_gyro_cal(struct ssp_data *data)
 	gyro_cal[2] = data->gyrocal.z;
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		return -ENOMEM;
-	}
 	msg->cmd = MSG2SSP_AP_MCU_SET_GYRO_CAL;
 	msg->length = 6;
 	msg->options = AP2HUB_WRITE;
@@ -183,10 +179,6 @@ short mpu6500_gyro_get_temp(struct ssp_data *data)
 	int iRet = 0;
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		goto exit;
-	}
 	msg->cmd = GYROSCOPE_TEMP_FACTORY;
 	msg->length = 2;
 	msg->options = AP2HUB_READ;
@@ -209,13 +201,40 @@ short mpu6500_gyro_get_temp(struct ssp_data *data)
 	return temperature;
 }
 
+char k330_gyro_get_temp(struct ssp_data *data)
+{
+	char chTemp = 0;
+	int iRet = 0;
+
+	struct ssp_msg *msg;
+
+	if (!(data->uSensorState & (1 << GYROSCOPE_SENSOR)))
+		goto exit;
+
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	msg->cmd = GYROSCOPE_TEMP_FACTORY;
+	msg->length = 1;
+	msg->options = AP2HUB_READ;
+	msg->buffer = &chTemp;
+	msg->free_buffer = 0;
+
+	iRet = ssp_spi_sync(data, msg, 3000);
+
+	if (iRet != SUCCESS) {
+		pr_err("[SSP]: %s - Gyro Temp Timeout!!\n", __func__);
+		goto exit;
+	}
+
+	ssp_dbg("[SSP]: %s - %d\n", __func__, chTemp);
+	exit:
+	return chTemp;
+}
 
 static ssize_t gyro_get_temp(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	short temperature = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
-
 	temperature = mpu6500_gyro_get_temp(data);
 	return sprintf(buf, "%d\n", temperature);
 }
@@ -286,8 +305,78 @@ u32 mpu6050_selftest_sqrt(u32 sqsum)
 	return sq_rt;
 }
 
-static ssize_t mpu6500_gyro_selftest(struct device *dev,
-	struct device_attribute *attr, char *buf)
+ssize_t k330_gyro_selftest(char *buf, struct ssp_data *data)
+{
+	char chTempBuf[36] = { 0,};
+	u8 uFifoPass = 2;
+	u8 uBypassPass = 2;
+	u8 uCalPass = 0;
+	u8 dummy[2] = {0,};
+	s16 iNOST[3] = {0,}, iST[3] = {0,}, iCalData[3] = {0,};
+	s16 iZeroRateData[3] = {0,}, fifo_data[4] = {0,};
+	int iRet = 0;
+
+	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	msg->cmd = GYROSCOPE_FACTORY;
+	msg->length = 36;
+	msg->options = AP2HUB_READ;
+	msg->buffer = chTempBuf;
+	msg->free_buffer = 0;
+
+	iRet = ssp_spi_sync(data, msg, 5000);
+
+	if (iRet != SUCCESS) {
+		pr_err("[SSP]: %s - Gyro Selftest Timeout!!\n", __func__);
+		goto exit;
+	}
+
+	data->uTimeOutCnt = 0;
+
+	iNOST[0] = (s16)((chTempBuf[0] << 8) + chTempBuf[1]);
+	iNOST[1] = (s16)((chTempBuf[2] << 8) + chTempBuf[3]);
+	iNOST[2] = (s16)((chTempBuf[4] << 8) + chTempBuf[5]);
+
+	iST[0] = (s16)((chTempBuf[6] << 8) + chTempBuf[7]);
+	iST[1] = (s16)((chTempBuf[8] << 8) + chTempBuf[9]);
+	iST[2] = (s16)((chTempBuf[10] << 8) + chTempBuf[11]);
+
+	iCalData[0] = (s16)((chTempBuf[12] << 8) + chTempBuf[13]);
+	iCalData[1] =( s16)((chTempBuf[14] << 8) + chTempBuf[15]);
+	iCalData[2] = (s16)((chTempBuf[16] << 8) + chTempBuf[17]);
+
+	iZeroRateData[0] = (s16)((chTempBuf[18] << 8) + chTempBuf[19]);
+	iZeroRateData[1] = (s16)((chTempBuf[20] << 8) + chTempBuf[21]);
+	iZeroRateData[2] = (s16)((chTempBuf[22] << 8) + chTempBuf[23]);
+
+	fifo_data[0] = chTempBuf[24];
+	fifo_data[1] = (s16)((chTempBuf[25] << 8) + chTempBuf[26]);
+	fifo_data[2] = (s16)((chTempBuf[27] << 8) + chTempBuf[28]);
+	fifo_data[3] = (s16)((chTempBuf[29] << 8) + chTempBuf[30]);
+
+	uCalPass = chTempBuf[31];
+	uFifoPass = chTempBuf[32];
+	uBypassPass = chTempBuf[33];
+	dummy[0] = chTempBuf[34];
+	dummy[1] = chTempBuf[35];
+	pr_info("[SSP] %s dummy = 0x%X, 0x%X\n", __func__, dummy[0], dummy[1]);
+	if (uFifoPass && uBypassPass && uCalPass)
+		save_gyro_caldata(data, iCalData);
+
+	ssp_dbg("[SSP]: %s - %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+		__func__, iNOST[0], iNOST[1], iNOST[2], iST[0], iST[1], iST[2],
+		iZeroRateData[0], iZeroRateData[1], iZeroRateData[2],
+		fifo_data[0], fifo_data[1], fifo_data[2], fifo_data[3],
+		uFifoPass & uBypassPass & uCalPass, uFifoPass, uCalPass);
+
+	exit:
+	return sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",
+		iNOST[0], iNOST[1], iNOST[2], iST[0], iST[1], iST[2],
+		iZeroRateData[0], iZeroRateData[1], iZeroRateData[2],
+		fifo_data[0], fifo_data[1], fifo_data[2], fifo_data[3],
+		uFifoPass & uBypassPass & uCalPass, uFifoPass, uCalPass);
+}
+
+ssize_t mpu6500_gyro_selftest(char *buf, struct ssp_data *data)
 {
 	char chTempBuf[36] = { 0,};
 	u8 initialized = 0;
@@ -302,13 +391,8 @@ static ssize_t mpu6500_gyro_selftest(struct device *dev,
 	int dps_rms[3] = { 0, };
 	u32 temp = 0;
 	int bias_thresh = DEF_BIAS_LSB_THRESH_SELF_6500;
-	struct ssp_data *data = dev_get_drvdata(dev);
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		goto exit;
-	}
 	msg->cmd = GYROSCOPE_FACTORY;
 	msg->length = 36;
 	msg->options = AP2HUB_READ;
@@ -324,11 +408,9 @@ static ssize_t mpu6500_gyro_selftest(struct device *dev,
 	}
 
 	data->uTimeOutCnt = 0;
-
-	pr_err("[SSP]%d %d %d %d %d %d %d %d %d %d %d %d", chTempBuf[0],
-		chTempBuf[1], chTempBuf[2], chTempBuf[3], chTempBuf[4],
-		chTempBuf[5], chTempBuf[6], chTempBuf[7], chTempBuf[8],
-		chTempBuf[9], chTempBuf[10], chTempBuf[11]);
+	pr_err("[SSP]%d %d %d %d %d %d %d %d %d %d %d %d", chTempBuf[0], chTempBuf[1],
+		chTempBuf[2], chTempBuf[3], chTempBuf[4], chTempBuf[5], chTempBuf[6],
+		chTempBuf[7], chTempBuf[8], chTempBuf[9], chTempBuf[10], chTempBuf[11]);
 
 	initialized = chTempBuf[0];
 	shift_ratio[0] = (s16)((chTempBuf[2] << 8) +
@@ -521,6 +603,13 @@ exit:
 		(int)(total_count/3));
 }
 
+static ssize_t gyro_selftest_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct ssp_data *data = dev_get_drvdata(dev);
+	return mpu6500_gyro_selftest(buf, data);
+}
+
 static ssize_t gyro_selftest_dps_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -536,10 +625,6 @@ static ssize_t gyro_selftest_dps_store(struct device *dev,
 		goto exit;
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		goto exit;
-	}
 	msg->cmd = GYROSCOPE_DPS_FACTORY;
 	msg->length = 1;
 	msg->options = AP2HUB_READ;
@@ -590,7 +675,7 @@ static DEVICE_ATTR(vendor, S_IRUGO, gyro_vendor_show, NULL);
 static DEVICE_ATTR(power_off, S_IRUGO, gyro_power_off, NULL);
 static DEVICE_ATTR(power_on, S_IRUGO, gyro_power_on, NULL);
 static DEVICE_ATTR(temperature, S_IRUGO, gyro_get_temp, NULL);
-static DEVICE_ATTR(selftest, S_IRUGO, mpu6500_gyro_selftest, NULL);
+static DEVICE_ATTR(selftest, S_IRUGO, gyro_selftest_show, NULL);
 static DEVICE_ATTR(selftest_dps, S_IRUGO | S_IWUSR | S_IWGRP,
 	gyro_selftest_dps_show, gyro_selftest_dps_store);
 

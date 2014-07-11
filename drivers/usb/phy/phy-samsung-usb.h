@@ -196,15 +196,7 @@
 #define PHYCLKRST_COMMONONN			(0x1 << 0)
 
 #define EXYNOS5_DRD_PHYREG0			(0x14)
-#define EXYNOS5_DRD_PHYREG0_CR_WRITE		(1 << 19)
-#define EXYNOS5_DRD_PHYREG0_CR_READ		(1 << 18)
-#define EXYNOS5_DRD_PHYREG0_CR_DATA_IN(_x)	((_x) << 2)
-#define EXYNOS5_DRD_PHYREG0_CR_CR_CAP_DATA	(1 << 1)
-#define EXYNOS5_DRD_PHYREG0_CR_CR_CAP_ADDR	(1 << 0)
-
 #define EXYNOS5_DRD_PHYREG1			(0x18)
-#define EXYNOS5_DRD_PHYREG1_CR_DATA_OUT(_x)	((_x) << 1)
-#define EXYNOS5_DRD_PHYREG1_CR_ACK		(1 << 0)
 
 #define EXYNOS5_DRD_PHYPARAM0			(0x1c)
 
@@ -233,14 +225,6 @@
 #define EXYNOS5_DRD_PHYRESUME			(0x34)
 #define EXYNOS5_DRD_LINKPORT			(0x44)
 
-/* Set for same value of bootloader */
-#define PHYPARAM0_TXPREEMPAMPTUNE_MASK	(0x3 << 15)
-#define	PHYPARAM0_TXPREEMPAMPTUNE		(0x1 << 15)
-#define PHYPARAM0_TXVREFPTUNE_MASK		(0xf << 22)
-#define	PHYPARAM0_TXVREFPTUNE			(0xb << 22)
-#define DEFAULT_VALUE_PHYPARAM0			(0x24d466e4)
-
-
 #ifndef MHZ
 #define MHZ (1000*1000)
 #endif
@@ -254,24 +238,10 @@
 #define EXYNOS_USBPHY_ENABLE			(0x1 << 0)
 #define EXYNOS_USB20PHY_CFG_HOST_LINK		(0x1 << 0)
 
-#define EXYNOS5_USB2PHY_CTRL_OFFSET		(0x8)
-
-/* USB 3.0 DRD SS Function Control Regs used to access by CR PORT */
-#define EXYNOS5_DRD_PHYSS_LOSLEVEL_OVRD_IN	(0x15)
-#define LOSLEVEL_OVRD_IN_LOS_BIAS_5420		(0x5 << 13)
-#define LOSLEVEL_OVRD_IN_LOS_BIAS_DEFAULT	(0x0 << 13)
-#define LOSLEVEL_OVRD_IN_EN			(0x1 << 10)
-#define LOSLEVEL_OVRD_IN_LOS_LEVEL_DEFAULT	(0x9 << 0)
-
-#define EXYNOS5_DRD_PHYSS_TX_VBOOSTLEVEL_OVRD_IN	(0x12)
-#define TX_VBOOSTLEVEL_OVRD_IN_VBOOST_5420		(0x5 << 13)
-#define TX_VBOOSTLEVEL_OVRD_IN_VBOOST_DEFAULT		(0x4 << 13)
-
 enum samsung_cpu_type {
 	TYPE_S3C64XX,
 	TYPE_EXYNOS4210,
 	TYPE_EXYNOS5250,
-	TYPE_EXYNOS5,
 };
 
 /*
@@ -296,11 +266,8 @@ struct samsung_usbphy_drvdata {
 	int cpu_type;
 	int devphy_en_mask;
 	int hostphy_en_mask;
-	int hsicphy_en_mask;
 	u32 devphy_reg_offset;
 	u32 hostphy_reg_offset;
-	u32 hsicphy_reg_offset;
-	bool need_crport_tuning;
 };
 
 /*
@@ -309,12 +276,10 @@ struct samsung_usbphy_drvdata {
  * @plat: platform data
  * @dev: The parent device supplied to the probe function
  * @clk: usb phy clock
- * @lpa_nb: notifier block for LPA events
  * @regs: usb phy controller registers memory base
  * @pmuregs: USB device PHY_CONTROL register memory base
  * @sysreg: USB2.0 PHY_CFG register memory base
  * @ref_clk_freq: reference clock frequency selection
- * @usage_count: phy usage counter
  * @drv_data: driver data available for different SoCs
  * @phy_type: Samsung SoCs specific phy types:	#HOST
  *						#DEVICE
@@ -326,18 +291,14 @@ struct samsung_usbphy {
 	struct samsung_usbphy_data *plat;
 	struct device	*dev;
 	struct clk	*clk;
-	struct notifier_block lpa_nb;
 	void __iomem	*regs;
 	void __iomem	*pmuregs;
 	void __iomem	*sysreg;
 	int		ref_clk_freq;
-	int		usage_count;
-	int		has_hsic_pmureg;
 	const struct samsung_usbphy_drvdata *drv_data;
 	enum samsung_usb_phy_type phy_type;
 	atomic_t	phy_usage;
 	spinlock_t	lock;
-	struct raw_notifier_head notifier;
 };
 
 #define phy_to_sphy(x)		container_of((x), struct samsung_usbphy, phy)
@@ -360,7 +321,6 @@ static inline const struct samsung_usbphy_drvdata
 
 extern int samsung_usbphy_parse_dt(struct samsung_usbphy *sphy);
 extern void samsung_usbphy_set_isolation(struct samsung_usbphy *sphy, bool on);
-extern void samsung_hsicphy_set_isolation(struct samsung_usbphy *sphy, bool on);
 extern void samsung_usbphy_cfg_sel(struct samsung_usbphy *sphy);
 extern int samsung_usbphy_set_type(struct usb_phy *phy,
 					enum samsung_usb_phy_type phy_type);

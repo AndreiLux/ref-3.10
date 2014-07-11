@@ -462,6 +462,18 @@ static ssize_t hw_offset_show(struct device *dev,
 		(s8)data->magoffset.z);
 }
 
+int initialize_magnetic_sensor(struct ssp_data *data)
+{
+	int ret;
+
+	ret = set_static_matrix(data);
+	if (ret < 0)
+		pr_err("[SSP]: %s - set_magnetic_static_matrix failed %d\n",
+			__func__, ret);
+
+	return ret;
+}
+
 static DEVICE_ATTR(name, S_IRUGO, magnetic_name_show, NULL);
 static DEVICE_ATTR(vendor, S_IRUGO, magnetic_vendor_show, NULL);
 static DEVICE_ATTR(raw_data, S_IRUGO | S_IWUSR | S_IWGRP,

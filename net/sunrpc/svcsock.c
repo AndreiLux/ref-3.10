@@ -917,10 +917,7 @@ static void svc_tcp_clear_pages(struct svc_sock *svsk)
 	len = svsk->sk_datalen;
 	npages = (len + PAGE_SIZE - 1) >> PAGE_SHIFT;
 	for (i = 0; i < npages; i++) {
-		if (svsk->sk_pages[i] == NULL) {
-			WARN_ON_ONCE(1);
-			continue;
-		}
+		BUG_ON(svsk->sk_pages[i] == NULL);
 		put_page(svsk->sk_pages[i]);
 		svsk->sk_pages[i] = NULL;
 	}
@@ -1095,10 +1092,8 @@ static int svc_tcp_recvfrom(struct svc_rqst *rqstp)
 		goto err_noclose;
 	}
 
-	if (svsk->sk_datalen < 8) {
-		svsk->sk_datalen = 0;
+	if (svc_sock_reclen(svsk) < 8)
 		goto err_delete; /* client is nuts. */
-	}
 
 	rqstp->rq_arg.len = svsk->sk_datalen;
 	rqstp->rq_arg.page_base = 0;

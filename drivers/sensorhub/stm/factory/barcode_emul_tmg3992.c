@@ -1,11 +1,12 @@
 #include "../ssp.h"
-#include <linux/sec_sysfs.h>
 
 #define	VENDOR		"AMS"
 #define	CHIP_ID		"TMG399x"
 
+extern struct class *sec_class;
+struct device *mobeam_dev;
 u8 hop_count;
-u8 is_beaming;
+u8 Is_beaming;
 
 static struct reg_index_table reg_id_table[15] = {
 	{0x81, 0}, {0x88, 1}, {0x8F, 2}, {0x96, 3}, {0x9D, 4},
@@ -33,7 +34,7 @@ enum {
 	index,
 };
 
-void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
+void mobeam_write(struct ssp_data *data, int type, u8* u_buf)
 {
 	int iRet = 0;
 	u8 command = -1;
@@ -65,27 +66,18 @@ void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
 		case start:
 			command = MSG2SSP_AP_MOBEAM_START;
 			data_length = 1;
-			is_beaming = BEAMING_ON;
+			Is_beaming = BEAMING_ON;
 			break;
 		default:
 			pr_info("[SSP] %s - unknown cmd type\n", __func__);
 			break;
 	}
 
-	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP]: %s - failed to allocate memory\n", __func__);
-		return;
-	}
+	msg= kzalloc(sizeof(*msg), GFP_KERNEL);
 	msg->cmd = command;
 	msg->length = data_length;
 	msg->options = AP2HUB_WRITE;
-	msg->buffer = (char *) kzalloc(data_length, GFP_KERNEL);
-	if ((msg->buffer) == NULL) {
-		pr_err("[SSP]: %s - failed to allocate memory\n", __func__);
-		kfree(msg);
-		return;
-	}
+	msg->buffer = (char*) kzalloc(data_length, GFP_KERNEL);
 	msg->free_buffer = 1;
 
 	memcpy(msg->buffer, u_buf, data_length);
@@ -98,7 +90,6 @@ void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
 	}
 
 	pr_info("[SSP] %s command = 0x%X\n", __func__, command);
-	return;
 }
 
 void mobeam_stop_set(struct ssp_data *data)
@@ -108,11 +99,7 @@ void mobeam_stop_set(struct ssp_data *data)
 	u8 buffer = 0;
 
 retries:
-	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP]: %s - failed to allocate memory\n", __func__);
-		return;
-	}
+	msg= kzalloc(sizeof(*msg), GFP_KERNEL);
 	msg->cmd = MSG2SSP_AP_MOBEAM_STOP;
 	msg->length = 1;
 	msg->options = AP2HUB_READ;
@@ -123,14 +110,14 @@ retries:
 	if (iRet != SUCCESS) {
 		pr_err("[SSP] %s fail %d\n", __func__, iRet);
 
-		if (iReties++ < 2) {
+		if(iReties++ < 2) {
 			pr_err("[SSP] %s fail, retry\n", __func__);
 			mdelay(5);
 			goto retries;
 		}
 	} else {
-		is_beaming = BEAMING_OFF;
-		pr_info("[SSP] %s - success(%u)\n", __func__, is_beaming);
+		Is_beaming = BEAMING_OFF;
+		pr_info("[SSP] %s - success(%u)\n", __func__, Is_beaming);
 	}
 	return;
 }
@@ -164,7 +151,7 @@ static ssize_t barcode_emul_store(struct device *dev,
 	} else if (buf[0] == 0xFF && buf[1] == STOP_BEAMING) {
 		pr_info("[SSP] %s - STOP BEAMING(0x%X, 0x%X)\n", __func__,
 			buf[0], buf[1]);
-		if (is_beaming == BEAMING_ON)
+		if (Is_beaming == BEAMING_ON)
 			mobeam_stop_set(data);
 		else
 			pr_info("[SSP] %s - skip stop command\n", __func__);
@@ -208,7 +195,7 @@ static ssize_t barcode_led_status_show(struct device *dev,
 		struct device_attribute *attr,
 		char *buf)
 {
-	return snprintf(buf, sizeof(buf), "%u\n", is_beaming);
+	return snprintf(buf, sizeof(buf), "%u\n", Is_beaming);
 }
 
 static ssize_t barcode_ver_check_show(struct device *dev,
@@ -263,48 +250,51 @@ static DEVICE_ATTR(barcode_ver_check, S_IRUGO, barcode_ver_check_show, NULL);
 static DEVICE_ATTR(barcode_test_send, S_IWUSR | S_IWGRP,
 	NULL, barcode_emul_test_store);
 
+
 void initialize_mobeam(struct ssp_data *data)
 {
 	pr_info("[SSP] %s\n", __func__);
-	data->mobeam_device = sec_device_create(data, "sec_barcode_emul");
 
-	if (IS_ERR(data->mobeam_device))
+	mobeam_dev = device_create(sec_class, NULL, 0,
+				data, "sec_barcode_emul");
+
+	if (IS_ERR(mobeam_dev))
 		pr_err("[SSP] Failed to create mobeam_dev device\n");
 
-	if (device_create_file(data->mobeam_device, &dev_attr_vendor) < 0)
+	if (device_create_file(mobeam_dev, &dev_attr_vendor) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_vendor.attr.name);
 
-	if (device_create_file(data->mobeam_device, &dev_attr_name) < 0)
+	if (device_create_file(mobeam_dev, &dev_attr_name) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_name.attr.name);
 
-	if (device_create_file(data->mobeam_device, &dev_attr_barcode_send) < 0)
+	if (device_create_file(mobeam_dev, &dev_attr_barcode_send) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_barcode_send.attr.name);
 
-	if (device_create_file(data->mobeam_device, &dev_attr_barcode_led_status) < 0)
+	if (device_create_file(mobeam_dev, &dev_attr_barcode_led_status) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_barcode_led_status.attr.name);
 
-	if (device_create_file(data->mobeam_device, &dev_attr_barcode_ver_check) < 0)
+	if (device_create_file(mobeam_dev, &dev_attr_barcode_ver_check) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_barcode_ver_check.attr.name);
 
-	if (device_create_file(data->mobeam_device, &dev_attr_barcode_test_send) < 0)
+	if (device_create_file(mobeam_dev, &dev_attr_barcode_test_send) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_barcode_test_send.attr.name);
-	is_beaming = BEAMING_OFF;
+
+	Is_beaming = BEAMING_OFF;
 }
 
 void remove_mobeam(struct ssp_data *data)
 {
 	pr_info("[SSP] %s\n", __func__);
-
-	device_remove_file(data->mobeam_device, &dev_attr_barcode_test_send);
-	device_remove_file(data->mobeam_device, &dev_attr_barcode_ver_check);
-	device_remove_file(data->mobeam_device, &dev_attr_barcode_led_status);
-	device_remove_file(data->mobeam_device, &dev_attr_barcode_send);
-	device_remove_file(data->mobeam_device, &dev_attr_name);
-	device_remove_file(data->mobeam_device, &dev_attr_vendor);
+	device_remove_file(mobeam_dev, &dev_attr_barcode_test_send);
+	device_remove_file(mobeam_dev, &dev_attr_barcode_ver_check);
+	device_remove_file(mobeam_dev, &dev_attr_barcode_led_status);
+	device_remove_file(mobeam_dev, &dev_attr_barcode_send);
+	device_remove_file(mobeam_dev, &dev_attr_name);
+	device_remove_file(mobeam_dev, &dev_attr_vendor);
 }

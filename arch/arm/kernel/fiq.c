@@ -39,6 +39,7 @@
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
+#include <linux/irq.h>
 #include <linux/seq_file.h>
 
 #include <asm/cacheflush.h>
@@ -84,17 +85,14 @@ int show_fiq_list(struct seq_file *p, int prec)
 
 void set_fiq_handler(void *start, unsigned int length)
 {
-#if defined(CONFIG_CPU_USE_DOMAINS)
-	void *base = (void *)0xffff0000;
-#else
 	void *base = vectors_page;
-#endif
 	unsigned offset = FIQ_OFFSET;
 
 	memcpy(base + offset, start, length);
+	if (!cache_is_vipt_nonaliasing())
+		flush_icache_range((unsigned long)base + offset, offset +
+				   length);
 	flush_icache_range(0xffff0000 + offset, 0xffff0000 + offset + length);
-	if (!vectors_high())
-		flush_icache_range(offset, offset + length);
 }
 
 int claim_fiq(struct fiq_handler *f)
@@ -142,6 +140,11 @@ void disable_fiq(int fiq)
 	disable_irq(fiq + fiq_start);
 }
 
+void fiq_set_type(int fiq, unsigned int type)
+{
+	irq_set_irq_type(fiq + FIQ_START, type);
+}
+
 EXPORT_SYMBOL(set_fiq_handler);
 EXPORT_SYMBOL(__set_fiq_regs);	/* defined in fiqasm.S */
 EXPORT_SYMBOL(__get_fiq_regs);	/* defined in fiqasm.S */
@@ -149,6 +152,7 @@ EXPORT_SYMBOL(claim_fiq);
 EXPORT_SYMBOL(release_fiq);
 EXPORT_SYMBOL(enable_fiq);
 EXPORT_SYMBOL(disable_fiq);
+EXPORT_SYMBOL(fiq_set_type);
 
 void __init init_FIQ(int start)
 {

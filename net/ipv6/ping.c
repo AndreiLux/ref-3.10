@@ -18,7 +18,6 @@
  *
  */
 
-#include <linux/export.h>
 #include <net/addrconf.h>
 #include <net/ipv6.h>
 #include <net/ip6_route.h>
@@ -62,7 +61,7 @@ int dummy_ipv6_recv_error(struct sock *sk, struct msghdr *msg, int len)
 {
 	return -EAFNOSUPPORT;
 }
-int dummy_datagram_recv_ctl(struct sock *sk, struct msghdr *msg,
+int dummy_ip6_datagram_recv_ctl(struct sock *sk, struct msghdr *msg,
 				 struct sk_buff *skb)
 {
 	return -EAFNOSUPPORT;
@@ -95,7 +94,7 @@ int __init pingv6_init(void)
 void pingv6_exit(void)
 {
 	pingv6_ops.ipv6_recv_error = dummy_ipv6_recv_error;
-	pingv6_ops.ip6_datagram_recv_ctl = dummy_datagram_recv_ctl;
+	pingv6_ops.ip6_datagram_recv_ctl = dummy_ip6_datagram_recv_ctl;
 	pingv6_ops.icmpv6_err_convert = dummy_icmpv6_err_convert;
 	pingv6_ops.ipv6_icmp_error = dummy_ipv6_icmp_error;
 	pingv6_ops.ipv6_chk_addr = dummy_ipv6_chk_addr;

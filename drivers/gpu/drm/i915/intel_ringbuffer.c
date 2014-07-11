@@ -490,6 +490,9 @@ cleanup_pipe_control(struct intel_ring_buffer *ring)
 	struct pipe_control *pc = ring->private;
 	struct drm_i915_gem_object *obj;
 
+	if (!ring->private)
+		return;
+
 	obj = pc->obj;
 
 	kunmap(sg_page(obj->pages->sgl));
@@ -497,6 +500,7 @@ cleanup_pipe_control(struct intel_ring_buffer *ring)
 	drm_gem_object_unreference(&obj->base);
 
 	kfree(pc);
+	ring->private = NULL;
 }
 
 static int init_render_ring(struct intel_ring_buffer *ring)
@@ -567,10 +571,7 @@ static void render_ring_cleanup(struct intel_ring_buffer *ring)
 	if (HAS_BROKEN_CS_TLB(dev))
 		drm_gem_object_unreference(to_gem_object(ring->private));
 
-	if (INTEL_INFO(dev)->gen >= 5)
-		cleanup_pipe_control(ring);
-
-	ring->private = NULL;
+	cleanup_pipe_control(ring);
 }
 
 static void

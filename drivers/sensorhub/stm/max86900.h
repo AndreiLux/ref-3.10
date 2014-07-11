@@ -80,10 +80,14 @@ struct max86900_device_data
 	struct input_dev *hrm_input_dev;
 	struct mutex i2clock;
 	struct mutex activelock;
-	struct regulator *vdd_1p8;
 	struct regulator *vdd_3p3;
+	struct regulator *vdd_1p8;
+	const char *sub_ldo4;
+	
+	const char *led_3p3;
 	bool *bio_status;
 	u8 is_enable;
+	u8 is_suspend;
 	u8 led_current;
 	u8 hr_range;
 	u8 hr_range2;
@@ -97,6 +101,7 @@ struct max86900_device_data
 	u8 eol_test_status;
 	u16 led;
 	u16 sample_cnt;
+	int hrm_vdd_en;
 	int hrm_int;
 	int irq;
 	int hrm_temp;
@@ -106,8 +111,8 @@ struct max86900_device_data
 	int r_sum;
 };
 
-extern int sensors_create_symlink(struct input_dev *inputdev);
-extern void sensors_remove_symlink(struct input_dev *inputdev);
+extern int sensors_create_symlink(struct kobject *target, const char *name);
+extern void sensors_remove_symlink(struct kobject *target, const char *name);
 extern int sensors_register(struct device *dev, void * drvdata,
 	struct device_attribute *attributes[], char *name);
 extern void sensors_unregister(struct device *dev,

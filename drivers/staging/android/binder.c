@@ -1503,14 +1503,13 @@ static void binder_transaction(struct binder_proc *proc,
 	for (; offp < off_end; offp++) {
 		struct flat_binder_object *fp;
 		if (*offp > t->buffer->data_size - sizeof(*fp) ||
-				*offp < off_min ||
+		    *offp < off_min ||
 		    t->buffer->data_size < sizeof(*fp) ||
 		    !IS_ALIGNED(*offp, sizeof(void *))) {
-			binder_user_error("%d:%d got transaction with invalid offset, %zd (min %zd, max %zd)\n",
-			  proc->pid, thread->pid, *offp,
-			  off_min,
-			  (t->buffer->data_size -
-			  sizeof(*fp)));
+			binder_user_error("binder: %d:%d got transaction with "
+				"invalid offset, %zd(min %zd, max %zd)\n",
+				proc->pid, thread->pid, *offp, off_min,
+				(t->buffer->data_size - sizeof(*fp)));
 			return_error = BR_FAILED_REPLY;
 			goto err_bad_offset;
 		}
@@ -1798,7 +1797,7 @@ int binder_thread_write(struct binder_proc *proc, struct binder_thread *thread,
 		case BC_INCREFS_DONE:
 		case BC_ACQUIRE_DONE: {
 			void __user *node_ptr;
-			void *cookie;
+			void __user *cookie;
 			struct binder_node *node;
 
 			if (get_user(node_ptr, (void * __user *)ptr))
@@ -2929,19 +2928,16 @@ static int binder_node_release(struct binder_node *node, int refs)
 
 	hlist_for_each_entry(ref, &node->refs, node_entry) {
 		refs++;
-
-		if (!ref->death)
-			continue;
-
-		death++;
-
-		if (list_empty(&ref->death->work.entry)) {
-			ref->death->work.type = BINDER_WORK_DEAD_BINDER;
-			list_add_tail(&ref->death->work.entry,
-				      &ref->proc->todo);
-			wake_up_interruptible(&ref->proc->wait);
-		} else
-			BUG();
+		if (ref->death) {
+			death++;
+			if (list_empty(&ref->death->work.entry)) {
+				ref->death->work.type = BINDER_WORK_DEAD_BINDER;
+				list_add_tail(&ref->death->work.entry,
+						&ref->proc->todo);
+				wake_up_interruptible(&ref->proc->wait);
+			} else
+				BUG();
+		}
 	}
 
 	binder_debug(BINDER_DEBUG_DEAD_BINDER,

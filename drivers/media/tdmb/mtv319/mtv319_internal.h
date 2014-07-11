@@ -25,9 +25,9 @@ extern "C"{
 #endif
 
 #include "mtv319.h"
-
-#if defined(RTV_CIF_MODE_ENABLED) && defined(RTV_CIFDEC_IN_DRIVER)
 	#include "mtv319_cifdec.h"
+
+#if defined(RTV_MULTIPLE_CHANNEL_MODE) && defined(RTV_MCHDEC_IN_DRIVER)
 	#define TDMB_CIF_MODE_DRIVER /* Internal use only */
 #endif
 
@@ -174,10 +174,10 @@ struct RTV_ADC_CFG_INFO {
 	#define ONE_DATA_LEN_BITVAL	(1<<5)
 #endif
 
-#ifdef RTV_CIF_MODE_ENABLED /* can be with FIC or multi subch */
-	#define HEADER_LEN_BITVAL	(1<<2)
+#ifdef RTV_MSC_HDR_ENABLED
+		#define DMB_HEADER_LEN_BITVAL	(1<<2) /* 4bytes header */
 #else
-	#define HEADER_LEN_BITVAL	0x00
+	#define DMB_HEADER_LEN_BITVAL	0x00
 #endif
 
 
@@ -216,6 +216,7 @@ struct RTV_ADC_CFG_INFO {
 #else
 	#define RTV_REG_MAP_SEL(page)\
 		do {\
+			g_bRtvPage = MAP_SEL_REG;\
 			RTV_REG_SET(MAP_SEL_REG, MAP_SEL_VAL(page));\
 			g_bRtvPage = page;\
 		} while (0)
@@ -444,7 +445,6 @@ static INLINE void rtv_EnableFicTsifPath(void)
 
 static INLINE void rtv_DisableFicInterrupt(UINT nOpenedSubChNum)
 {
-#ifndef RTV_FIC_POLLING_MODE
 #if defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
 	if (!nOpenedSubChNum) {
 		RTV_REG_MAP_SEL(SPI_CTRL_PAGE);
@@ -459,15 +459,16 @@ static INLINE void rtv_DisableFicInterrupt(UINT nOpenedSubChNum)
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0x17, 0xFF);
 #endif
-#endif /* #ifndef RTV_FIC_POLLING_MODE */
 }
 
 
 static INLINE void rtv_EnableFicInterrupt(UINT nOpenedSubChNum)
 {
-#ifndef RTV_FIC_POLLING_MODE
 #if defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
-	#ifdef RTV_CIF_MODE_ENABLED
+	#if defined(RTV_SPI_FIC_DECODE_IN_PLAY)\
+	|| defined(RTV_FIC__SCAN_I2C__PLAY_TSIF)\
+	|| defined(RTV_FIC__SCAN_TSIF__PLAY_TSIF)
+	/* The size should equal to the size of MSC interrupt. */
 	UINT nThresholdSize = RTV_SPI_CIF_MODE_INTERRUPT_SIZE;
 	#else
 	UINT nThresholdSize = 384;
@@ -479,15 +480,15 @@ static INLINE void rtv_EnableFicInterrupt(UINT nOpenedSubChNum)
 		RTV_REG_SET(0x2A, 1);
 		RTV_REG_SET(0x2A, 0);
 
+		/* Enable interrupts. */
 		g_bRtvIntrMaskReg &= ~(SPI_INTR_BITS);
-		RTV_REG_SET(0x24, g_bRtvIntrMaskReg); /* Enable interrupts. */
+		RTV_REG_SET(0x24, g_bRtvIntrMaskReg);
 	}
 
 #else
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0x17, 0xEF);
 #endif
-#endif /* #ifndef RTV_FIC_POLLING_MODE */
 }
 
 static INLINE void rtv_CloseFIC(UINT nOpenedSubChNum)
@@ -531,8 +532,14 @@ static INLINE void rtv_CloseFIC(UINT nOpenedSubChNum)
 
 static INLINE void rtv_OpenFIC_SPI_Play(void)
 {
+#ifdef RTV_PLAY_FIC_HDR_ENABLED
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0xB2, 0x04|N_DATA_LEN_BITVAL); /* out_en, hdr_on */
+
+#else
+	RTV_REG_MAP_SEL(FEC_PAGE);
+	RTV_REG_SET(0xB2, 0x00|N_DATA_LEN_BITVAL); /* out_en, no_hdr*/
+#endif
 }
 
 static INLINE void rtv_OpenFIC_SPI_Scan(void)
@@ -551,8 +558,14 @@ static INLINE void rtv_OpenFIC_SPI_Scan(void)
 	g_bRtvIntrMaskReg &= ~(SPI_INTR_BITS);
 	RTV_REG_SET(0x24, g_bRtvIntrMaskReg); /* Enable interrupts. */
 
+#ifdef RTV_SCAN_FIC_HDR_ENABLED
+	RTV_REG_MAP_SEL(FEC_PAGE);
+	RTV_REG_SET(0xB2, 0x04|N_DATA_LEN_BITVAL); /* out_en, hdr_on */
+
+#else
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0xB2, 0x00|N_DATA_LEN_BITVAL); /* out_en, no_hdr*/
+#endif
 }
 
 #if defined(RTV_IF_TSIF) || defined(RTV_IF_SPI_SLAVE)
@@ -565,8 +578,11 @@ static INLINE enum E_RTV_FIC_OPENED_PATH_TYPE rtv_OpenFIC_TSIF_Play(void)
 	rtv_DisableFicTsifPath(); /* For I2C path */
 
 	#ifndef RTV_FIC_POLLING_MODE
-	rtv_EnableFicInterrupt(1);
+	RTV_REG_MAP_SEL(HOST_PAGE);
+	RTV_REG_SET(0x1A, 0x00); /* GPD3 PAD enable */
 	#endif
+
+	rtv_EnableFicInterrupt(1);
 
 	ePath = FIC_OPENED_PATH_I2C_IN_PLAY;
 
@@ -586,8 +602,14 @@ static INLINE enum E_RTV_FIC_OPENED_PATH_TYPE rtv_OpenFIC_TSIF_Play(void)
 	#error "Code not present"
 #endif
 
+#ifdef RTV_PLAY_FIC_HDR_ENABLED
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0xB2, 0x04|N_DATA_LEN_BITVAL); /* out_en, hdr_on */
+
+#else
+	RTV_REG_MAP_SEL(FEC_PAGE);
+	RTV_REG_SET(0xB2, 0x00|N_DATA_LEN_BITVAL); /* out_en, no_hdr*/
+#endif
 
 	return ePath;
 }
@@ -605,8 +627,9 @@ static INLINE enum E_RTV_FIC_OPENED_PATH_TYPE rtv_OpenFIC_TSIF_Scan(void)
 	#ifndef RTV_FIC_POLLING_MODE
 	RTV_REG_MAP_SEL(HOST_PAGE);
 	RTV_REG_SET(0x1A, 0x00); /* GPD3 PAD enable */
-	rtv_EnableFicInterrupt(1);
 	#endif
+
+	rtv_EnableFicInterrupt(1);
 
 	ePath = FIC_OPENED_PATH_I2C_IN_SCAN;
 
@@ -620,8 +643,14 @@ static INLINE enum E_RTV_FIC_OPENED_PATH_TYPE rtv_OpenFIC_TSIF_Scan(void)
 	#error "Code not present"
 #endif
 
+#ifdef RTV_SCAN_FIC_HDR_ENABLED
+	RTV_REG_MAP_SEL(FEC_PAGE);
+	RTV_REG_SET(0xB2, 0x04|N_DATA_LEN_BITVAL); /* out_en, hdr_on */
+
+#else
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0xB2, 0x00|N_DATA_LEN_BITVAL); /* out_en, no_hdr*/
+#endif
 
 	return ePath;
 }
@@ -638,7 +667,6 @@ static INLINE INT rtv_OpenFIC(enum E_TDMB_STATE eTdmbState)
 	#endif
 		break;
 
-#ifdef RTV_FIC_CIFMODE_ENABLED
 	case TDMB_STATE_PLAY:
 	#if defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
 		rtv_OpenFIC_SPI_Play();
@@ -646,7 +674,7 @@ static INLINE INT rtv_OpenFIC(enum E_TDMB_STATE eTdmbState)
 		g_nRtvFicOpenedStatePath = rtv_OpenFIC_TSIF_Play();
 	#endif
 		break;
-#endif
+
 	default:
 		return RTV_INVALID_FIC_OPEN_STATE;
 	}
@@ -656,7 +684,7 @@ static INLINE INT rtv_OpenFIC(enum E_TDMB_STATE eTdmbState)
 
 /*=============================================================================
 * External functions for RAONTV driver core.
-*============================================================================*/ 
+*============================================================================*/
 INT rtv_InitSystem(void);
 
 #ifdef __cplusplus

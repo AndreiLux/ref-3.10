@@ -47,10 +47,12 @@
 #include <linux/nodemask.h>
 #include <linux/moduleparam.h>
 #include <linux/uaccess.h>
-
-#include <linux/sec_debug.h>
+#include <linux/bug.h>
 
 #include "workqueue_internal.h"
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#endif
 
 enum {
 	/*
@@ -2172,9 +2174,11 @@ __acquires(&pool->lock)
 	lock_map_acquire_read(&pwq->wq->lockdep_map);
 	lock_map_acquire(&lockdep_map);
 	trace_workqueue_execute_start(work);
-	sec_debug_work_log(worker, work, worker->current_func, 1);
+#ifdef CONFIG_SEC_DEBUG
+	secdbg_sched_msg("@%pS", worker->current_func);
+#endif
 	worker->current_func(work);
-	sec_debug_work_log(worker, work, worker->current_func, 2);
+
 	/*
 	 * While we must be careful to not use "work" after this, the trace
 	 * point will only record its address.
@@ -2189,6 +2193,7 @@ __acquires(&pool->lock)
 		       current->comm, preempt_count(), task_pid_nr(current),
 		       worker->current_func);
 		debug_show_held_locks(current);
+		BUG_ON(PANIC_CORRUPTION);
 		dump_stack();
 	}
 
@@ -3402,12 +3407,6 @@ static void copy_workqueue_attrs(struct workqueue_attrs *to,
 {
 	to->nice = from->nice;
 	cpumask_copy(to->cpumask, from->cpumask);
-	/*
-	 * Unlike hash and equality test, this function doesn't ignore
-	 * ->no_numa as it is used for both pool and wq attrs.  Instead,
-	 * get_unbound_pool() explicitly clears ->no_numa after copying.
-	 */
-	to->no_numa = from->no_numa;
 }
 
 /* hash value of the content of @attr */
@@ -3574,12 +3573,6 @@ static struct worker_pool *get_unbound_pool(const struct workqueue_attrs *attrs)
 
 	lockdep_set_subclass(&pool->lock, 1);	/* see put_pwq() */
 	copy_workqueue_attrs(pool->attrs, attrs);
-
-	/*
-	 * no_numa isn't a worker_pool attribute, always clear it.  See
-	 * 'struct workqueue_attrs' comments for detail.
-	 */
-	pool->attrs->no_numa = false;
 
 	/* if cpumask is contained inside a NUMA node, we belong to that node */
 	if (wq_numa_enabled) {
@@ -5006,3 +4999,170 @@ static int __init init_workqueues(void)
 	return 0;
 }
 early_initcall(init_workqueues);
+
+#ifdef CONFIG_WORKQUEUE_FRONT
+/**
+ * insert_work - insert a work into a pool
+ * @pwq: pwq @work belongs to
+ * @work: work to insert
+ * @head: insertion point
+ * @extra_flags: extra WORK_STRUCT_* flags to set
+ *
+ * Insert @work which belongs to @pwq after @head.  @extra_flags is or'd to
+ * work_struct flags.
+ *
+ * CONTEXT:
+ * spin_lock_irq(pool->lock).
+ */
+static void insert_work_front(struct pool_workqueue *pwq,
+			struct work_struct *work, struct list_head *head,
+			unsigned int extra_flags)
+{
+	struct worker_pool *pool = pwq->pool;
+
+	/* we own @work, set data and link */
+	set_work_pwq(work, pwq, extra_flags);
+	list_add(&work->entry, head);
+	get_pwq(pwq);
+
+	/*
+	 * Ensure either wq_worker_sleeping() sees the above
+	 * list_add_tail() or we see zero nr_running to avoid workers lying
+	 * around lazily while there are works to be processed.
+	 */
+	smp_mb();
+
+	if (__need_more_worker(pool))
+		wake_up_worker(pool);
+}
+
+static void __queue_work_front(int cpu, struct workqueue_struct *wq,
+			 struct work_struct *work)
+{
+	struct pool_workqueue *pwq;
+	struct worker_pool *last_pool;
+	struct list_head *worklist;
+	unsigned int work_flags;
+	unsigned int req_cpu = cpu;
+
+	/*
+	 * While a work item is PENDING && off queue, a task trying to
+	 * steal the PENDING will busy-loop waiting for it to either get
+	 * queued or lose PENDING.  Grabbing PENDING and queueing should
+	 * happen with IRQ disabled.
+	 */
+	WARN_ON_ONCE(!irqs_disabled());
+
+	debug_work_activate(work);
+
+	/* if dying, only works from the same workqueue are allowed */
+	if (unlikely(wq->flags & __WQ_DRAINING) &&
+	    WARN_ON_ONCE(!is_chained_work(wq)))
+		return;
+retry:
+	if (req_cpu == WORK_CPU_UNBOUND)
+		cpu = raw_smp_processor_id();
+
+	/* pwq which will be used unless @work is executing elsewhere */
+	if (!(wq->flags & WQ_UNBOUND))
+		pwq = per_cpu_ptr(wq->cpu_pwqs, cpu);
+	else
+		pwq = unbound_pwq_by_node(wq, cpu_to_node(cpu));
+
+	/*
+	 * If @work was previously on a different pool, it might still be
+	 * running there, in which case the work needs to be queued on that
+	 * pool to guarantee non-reentrancy.
+	 */
+	last_pool = get_work_pool(work);
+	if (last_pool && last_pool != pwq->pool) {
+		struct worker *worker;
+
+		spin_lock(&last_pool->lock);
+
+		worker = find_worker_executing_work(last_pool, work);
+
+		if (worker && worker->current_pwq->wq == wq) {
+			pwq = worker->current_pwq;
+		} else {
+			/* meh... not running there, queue here */
+			spin_unlock(&last_pool->lock);
+			spin_lock(&pwq->pool->lock);
+		}
+	} else {
+		spin_lock(&pwq->pool->lock);
+	}
+
+	/*
+	 * pwq is determined and locked.  For unbound pools, we could have
+	 * raced with pwq release and it could already be dead.  If its
+	 * refcnt is zero, repeat pwq selection.  Note that pwqs never die
+	 * without another pwq replacing it in the numa_pwq_tbl or while
+	 * work items are executing on it, so the retrying is guaranteed to
+	 * make forward-progress.
+	 */
+	if (unlikely(!pwq->refcnt)) {
+		if (wq->flags & WQ_UNBOUND) {
+			spin_unlock(&pwq->pool->lock);
+			cpu_relax();
+			goto retry;
+		}
+		/* oops */
+		WARN_ONCE(true, "workqueue: per-cpu pwq for %s on cpu%d has 0 refcnt",
+			  wq->name, cpu);
+	}
+
+	/* pwq determined, queue */
+	trace_workqueue_queue_work(req_cpu, pwq, work);
+
+	if (WARN_ON(!list_empty(&work->entry))) {
+		spin_unlock(&pwq->pool->lock);
+		return;
+	}
+
+	pwq->nr_in_flight[pwq->work_color]++;
+	work_flags = work_color_to_flags(pwq->work_color);
+
+	if (likely(pwq->nr_active < pwq->max_active)) {
+		trace_workqueue_activate_work(work);
+		pwq->nr_active++;
+		worklist = &pwq->pool->worklist;
+	} else {
+		work_flags |= WORK_STRUCT_DELAYED;
+		worklist = &pwq->delayed_works;
+	}
+
+	insert_work_front(pwq, work, worklist, work_flags);
+
+	spin_unlock(&pwq->pool->lock);
+}
+
+/**
+ * queue_work_on_front - queue work on specific cpu
+ * @cpu: CPU number to execute work on
+ * @wq: workqueue to use
+ * @work: work to queue
+ *
+ * Returns %false if @work was already on a queue, %true otherwise.
+ *
+ * We queue the work to a specific CPU, the caller must ensure it
+ * can't go away.
+ */
+bool queue_work_on_front(int cpu, struct workqueue_struct *wq,
+		   struct work_struct *work)
+{
+	bool ret = false;
+	unsigned long flags;
+
+	local_irq_save(flags);
+
+	if (!test_and_set_bit(WORK_STRUCT_PENDING_BIT, work_data_bits(work))) {
+		__queue_work_front(cpu, wq, work);
+		ret = true;
+	}
+
+	local_irq_restore(flags);
+	return ret;
+}
+EXPORT_SYMBOL(queue_work_on_front);
+#endif

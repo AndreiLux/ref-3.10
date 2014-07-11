@@ -2,6 +2,7 @@
 #define LINUX_MM_INLINE_H
 
 #include <linux/huge_mm.h>
+#include <linux/swap.h>
 
 /**
  * page_is_file_cache - should the page be on a file LRU or anon LRU?
@@ -28,6 +29,11 @@ static __always_inline void add_page_to_lru_list(struct page *page,
 	mem_cgroup_update_lru_size(lruvec, lru, nr_pages);
 	list_add(&page->lru, &lruvec->lists[lru]);
 	__mod_zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru, nr_pages);
+
+#if defined(CONFIG_CMA_PAGE_COUNTING)
+	if (is_cma_pageblock(page))
+		__mod_zone_page_state(page_zone(page), NR_FREE_CMA_PAGES + 1 + lru, 1);
+#endif
 }
 
 static __always_inline void del_page_from_lru_list(struct page *page,
@@ -37,6 +43,11 @@ static __always_inline void del_page_from_lru_list(struct page *page,
 	mem_cgroup_update_lru_size(lruvec, lru, -nr_pages);
 	list_del(&page->lru);
 	__mod_zone_page_state(lruvec_zone(lruvec), NR_LRU_BASE + lru, -nr_pages);
+
+#if defined(CONFIG_CMA_PAGE_COUNTING)
+	if (is_cma_pageblock(page))
+		__mod_zone_page_state(page_zone(page), NR_FREE_CMA_PAGES + 1 + lru, -1);
+#endif
 }
 
 /**

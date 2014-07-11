@@ -135,23 +135,36 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
-fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH) += cypress/cypress_ha_m07.fw cypress/cypress_ha_m09.fw
-fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20075) += cypress/cypress_20075_k_m06.fw
-#for sensorhub
-fw-shipped-$(CONFIG_SENSORS_SSP_STM) += ssp_stm.fw
-fw-shipped-$(CONFIG_SENSORS_SSP_ATMEL) += ssp_at.fw
 
-TSPFIRMWARE_DIRECTORY = firmware/tsp_synaptics
-ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
-fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_DSX) += \
-						tsp_synaptics/synaptics_s5100_a2_k.fw	\
-						tsp_synaptics/synaptics_s5100_a2_k_FHD.fw	\
-						tsp_synaptics/synaptics_s5100_a2_k_WQHD.fw	\
-						tsp_synaptics/synaptics_s5100_a3_kq_WQHD.fw	\
-						tsp_synaptics/synaptics_s5100_a3_k_FHD.fw
-else
-$(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
+# for TouchScreen
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI)      += tsp_synaptics/synaptics_s5050_h.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI_G)    += tsp_synaptics/synaptics_s5100_l.fw
+
+ifdef CONFIG_SEC_TRLTE_PROJECT
+fw-shipped-$(CONFIG_TOUCHSCREEN_STM)      += tsp_stm/stm_tr.fw
 endif
+ifdef CONFIG_SEC_TBLTE_PROJECT
+fw-shipped-$(CONFIG_TOUCHSCREEN_STM)      += tsp_stm/stm_tb.fw
+endif
+
+# Tkey
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_H)      += tkey/hlte_cypress_tkey.fw
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY) += tkey/semco_cypress_tkey.fw tkey/semco_l_cypress_tkey.fw
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCHKEY_T)      += tkey/tr_cypress_tkey.fw
+
+# Wacom
+fw-shipped-$(CONFIG_INPUT_WACOM) += epen/W9012_tr.bin
+
+# IR LED FPGA
+fw-shipped-$(CONFIG_SEC_FPGA_ICE40XX) += ice40xx/i2c_top_bitmap_1.fw \
+					ice40xx/i2c_top_bitmap_2.fw
+
+
+#for sensorhub
+fw-shipped-$(CONFIG_SENSORS_SSP_ATMEL) += ssp_crashed_at.fw
+fw-shipped-$(CONFIG_SEC_LENTIS_PROJECT) += ssp_at.fw ssp_at_bmi.fw
+fw-shipped-$(CONFIG_SEC_TRLTE_PROJECT) += ssp_at_tr.fw
+fw-shipped-$(CONFIG_SENSORS_SSP_STM) += ssp_stm.fw ssp_crashed.fw
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

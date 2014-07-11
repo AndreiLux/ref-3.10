@@ -426,8 +426,6 @@ ext4_ext_show_eh(struct inode *inode, struct ext4_extent_header *eh)
 				inode->i_ino);
 
 		for (i = 0; i < 4; i++, ex++) {
-			if (ex == NULL)
-				return;
 			printk(KERN_ERR "leaf - block : %d / length : [%d]%d /"
 				" pblock : %llu\n",le32_to_cpu(ex->ee_block),
 				ext4_ext_is_uninitialized(ex),
@@ -442,8 +440,6 @@ ext4_ext_show_eh(struct inode *inode, struct ext4_extent_header *eh)
 				inode->i_ino);
 
 		for (i = 0; i < 4; i++, ei++) {
-			if (ei == NULL)
-				return;
 			printk(KERN_ERR "idx - block : %d / pblock : %llu\n",
 					le32_to_cpu(ei->ei_block),
 					ext4_idx_pblock(ei));
@@ -4435,20 +4431,9 @@ void ext4_ext_truncate(handle_t *handle, struct inode *inode)
 
 	last_block = (inode->i_size + sb->s_blocksize - 1)
 			>> EXT4_BLOCK_SIZE_BITS(sb);
-retry:
 	err = ext4_es_remove_extent(inode, last_block,
 				    EXT_MAX_BLOCKS - last_block);
-	if (err == -ENOMEM) {
-		cond_resched();
-		congestion_wait(BLK_RW_ASYNC, HZ/50);
-		goto retry;
-	}
-	if (err) {
-		ext4_std_error(inode->i_sb, err);
-		return;
-	}
 	err = ext4_ext_remove_space(inode, last_block, EXT_MAX_BLOCKS - 1);
-	ext4_std_error(inode->i_sb, err);
 }
 
 static void ext4_falloc_update_inode(struct inode *inode,
@@ -4719,7 +4704,7 @@ static int ext4_xattr_fiemap(struct inode *inode,
 		error = ext4_get_inode_loc(inode, &iloc);
 		if (error)
 			return error;
-		physical = (__u64)iloc.bh->b_blocknr << blockbits;
+		physical = iloc.bh->b_blocknr << blockbits;
 		offset = EXT4_GOOD_OLD_INODE_SIZE +
 				EXT4_I(inode)->i_extra_isize;
 		physical += offset;
@@ -4727,7 +4712,7 @@ static int ext4_xattr_fiemap(struct inode *inode,
 		flags |= FIEMAP_EXTENT_DATA_INLINE;
 		brelse(iloc.bh);
 	} else { /* external block */
-		physical = (__u64)EXT4_I(inode)->i_file_acl << blockbits;
+		physical = EXT4_I(inode)->i_file_acl << blockbits;
 		length = inode->i_sb->s_blocksize;
 	}
 

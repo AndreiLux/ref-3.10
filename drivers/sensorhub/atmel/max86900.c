@@ -1,4 +1,4 @@
-/* 
+/*
  * Copyright (c)2013 Maxim Integrated Products, Inc.
  *
  * This software is licensed under the terms of the GNU General Public
@@ -120,46 +120,28 @@ static int max86900_read_reg(struct max86900_device_data *data,
 /* Device Control */
 static int max86900_regulator_onoff(struct max86900_device_data *data, int onoff)
 {
-	int err;
-	data->vdd_1p8 = regulator_get(NULL, "V_HRM_1.8V");
-	if (IS_ERR(data->vdd_1p8)) {
-		pr_err("%s - regulator_get fail\n", __func__);
-		goto err_1p8;
-	}
-
-	data->vdd_3p3 = regulator_get(NULL, "V_IRLED_3.3V");
-	if (IS_ERR(data->vdd_3p3)) {
-		pr_err("%s - regulator_get fail\n", __func__);
-		goto err_3p3;
-	}
+	int rc=0;
 
 	pr_info("%s - onoff = %d\n", __func__, onoff);
 
 	if (onoff == HRM_LDO_ON) {
-		err = regulator_enable(data->vdd_1p8);
-		if (err < 0) {
-			pr_err("%s enable vdd_1p8 fail\n", __func__);
-		}
-
-		err = regulator_enable(data->vdd_3p3);
-		if (err < 0) {
-			pr_err("%s enable vdd_3p3 fail\n", __func__);
-		}
-
+		gpio_set_value(data->hrm_vdd_en, 1);
+		regulator_set_voltage(data->vdd_3p3, 3300000, 3300000);
+		rc = regulator_enable(data->vdd_3p3);
+        if (rc) {
+            pr_err("enable vdd_3p3 failed, rc=%d\n", rc);
+            return -ENODEV;
+        }
 	} else {
-		regulator_disable(data->vdd_1p8);
-		regulator_disable(data->vdd_3p3);
+		rc = regulator_disable(data->vdd_3p3);
+        if (rc) {
+            pr_err("disable vdd_3p3 failed, rc=%d\n", rc);
+            return -ENODEV;
+        }
+		gpio_set_value(data->hrm_vdd_en, 0);
 	}
 
-	regulator_put(data->vdd_1p8);
-	regulator_put(data->vdd_3p3);
-
 	return 0;
-
-err_3p3:
-	regulator_put(data->vdd_1p8);
-err_1p8:
-	return -ENODEV;
 }
 
 static int max86900_init_device(struct max86900_device_data *data)
@@ -484,16 +466,17 @@ void max86900_mode_enable(struct max86900_device_data *data, int onoff)
 {
 	int err;
 	if (onoff) {
-		err = max86900_regulator_onoff(data, HRM_LDO_ON);
-		if (err < 0)
-			pr_err("%s max86900_regulator_on fail err = %d\n",
-				__func__, err);
-		usleep_range(1000, 1100);
-		err = max86900_init_device(data);
-		if (err)
-			pr_err("%s max86900_init device fail err = %d\n",
-				__func__, err);
-
+		if (data->hrm_vdd_en > 0) {
+			err = max86900_regulator_onoff(data, HRM_LDO_ON);
+			if (err < 0)
+				pr_err("%s max86900_regulator_on fail err = %d\n",
+					__func__, err);
+			usleep_range(1000, 1100);
+			err = max86900_init_device(data);
+			if (err)
+				pr_err("%s max86900_init device fail err = %d\n",
+					__func__, err);
+		}
 		err = max86900_enable(data);
 		if (err != 0)
 			pr_err("max86900_enable err : %d\n", err);
@@ -502,10 +485,12 @@ void max86900_mode_enable(struct max86900_device_data *data, int onoff)
 		err = max86900_disable(data);
 		if (err != 0)
 			pr_err("max86900_disable err : %d\n", err);
-		err = max86900_regulator_onoff(data, HRM_LDO_OFF);
-		if (err < 0)
-			pr_err("%s max86900_regulator_off fail err = %d\n",
-				__func__, err);
+		if (data->hrm_vdd_en > 0) {
+			err = max86900_regulator_onoff(data, HRM_LDO_OFF);
+			if (err < 0)
+				pr_err("%s max86900_regulator_off fail err = %d\n",
+					__func__, err);
+		}
 		data->is_enable = 0;
 	}
 	pr_info("%s - part_type = %u, onoff = %d\n", __func__, data->part_type, onoff);
@@ -1087,12 +1072,23 @@ static int max86900_parse_dt(struct max86900_device_data *data,
 
 	if (dNode == NULL)
 		return -ENODEV;
-
 	data->hrm_int = of_get_named_gpio_flags(dNode,
 		"max86900,hrm_int-gpio", 0, &flags);
 	if (data->hrm_int < 0) {
 		pr_err("%s - get hrm_int error\n", __func__);
 		return -ENODEV;
+	}
+	data->hrm_vdd_en = of_get_named_gpio_flags(dNode,
+		"max86900,hrm_pwr-1p8v", 0, &flags);
+	if (data->hrm_vdd_en < 0) {
+		pr_err("%s - get hrm_vdd_en error\n", __func__);
+		return -ENODEV;
+	}
+
+	data->vdd_3p3= devm_regulator_get(dev, "hrm_vreg");
+	if (IS_ERR(data->vdd_3p3)) {
+		pr_err("[SSP] could not get vdd_3p3, %ld\n",
+			PTR_ERR(data->vdd_3p3));
 	}
 
 	return 0;
@@ -1101,6 +1097,12 @@ static int max86900_parse_dt(struct max86900_device_data *data,
 static int max86900_gpio_setup(struct max86900_device_data *data)
 {
 	int errorno = -EIO;
+
+	errorno = gpio_request(data->hrm_vdd_en, "hrm_pwr");
+	if (errorno) {
+		pr_err("%s - failed to request hrm_vdd_en\n", __func__);
+		return errorno;
+	}
 
 	errorno = gpio_request(data->hrm_int, "hrm_int");
 	if (errorno) {
@@ -1115,24 +1117,30 @@ static int max86900_gpio_setup(struct max86900_device_data *data)
 	}
 
 	data->irq = gpio_to_irq(data->hrm_int);
+	goto done;
+err_gpio_direction_input:
+	gpio_free(data->hrm_int);
+	gpio_free(data->hrm_vdd_en);
+done:
+	return errorno;
+}
+
+static int max86900_setup_irq(struct max86900_device_data *data)
+{
+	int errorno = -EIO;
 
 	errorno = request_threaded_irq(data->irq, NULL,
 		max86900_irq_handler, IRQF_TRIGGER_FALLING|IRQF_ONESHOT,
 		"hrm_sensor_irq", data);
 
 	if (errorno < 0) {
-		pr_err("%s - request_irq(%d) failed for gpio %d (%d)\n",
-		       __func__, data->irq, data->hrm_int, errorno);
+		pr_err("%s - failed for setup irq errono= %d\n",
+			   __func__, errorno);
 		errorno = -ENODEV;
-		goto err_request_irq;
+		return errorno;
 	}
 
 	disable_irq(data->irq);
-	goto done;
-err_request_irq:
-err_gpio_direction_input:
-	gpio_free(data->hrm_int);
-done:
 	return errorno;
 }
 
@@ -1175,11 +1183,19 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 		goto err_of_node;
 	}
 
-	err = max86900_regulator_onoff(data, HRM_LDO_ON);
-	if (err < 0) {
-		pr_err("%s max86900_regulator_onoff fail(%d, %d)\n", __func__,
-			err, HRM_LDO_ON);
-		goto err_of_node;
+	err = max86900_gpio_setup(data);
+	if (err) {
+		pr_err("[SENSOR] %s - could not setup gpio\n", __func__);
+		goto err_setup_gpio;
+	}
+
+	if (data->hrm_vdd_en > 0) {
+		err = max86900_regulator_onoff(data, HRM_LDO_ON);
+		if (err < 0) {
+			pr_err("%s max86900_regulator_on fail err = %d\n",
+				__func__, err);
+			goto err_regulator_enable;
+		}
 	}
 	usleep_range(1000, 1100);
 
@@ -1265,10 +1281,10 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 		goto err_sysfs_create_group;
 	}
 
-	err = max86900_gpio_setup(data);
+	err = max86900_setup_irq(data);
 	if (err) {
-		pr_err("[SENSOR] %s - could not setup gpio\n", __func__);
-		goto err_setup_gpio;
+		pr_err("[SENSOR] %s - could not setup irq\n", __func__);
+		goto err_setup_irq;
 	}
 
 	/* set sysfs for hrm sensor */
@@ -1292,13 +1308,14 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id )
 		goto dev_set_drvdata_failed;
 	}
 
-	err = max86900_regulator_onoff(data, HRM_LDO_OFF);
-	if (err < 0) {
-		pr_err("%s max86900_regulator_onoff fail(%d, %d)\n", __func__,
-			err, HRM_LDO_OFF);
-		goto dev_set_drvdata_failed;
+	if (data->hrm_vdd_en > 0) {
+		err = max86900_regulator_onoff(data, HRM_LDO_OFF);
+		if (err < 0) {
+			pr_err("%s max86900_regulator_off fail(%d, %d)\n",
+				__func__, err, HRM_LDO_OFF);
+			goto dev_set_drvdata_failed;
+		}
 	}
-
 	pr_info("%s success\n", __func__);
 	goto done;
 
@@ -1306,8 +1323,7 @@ dev_set_drvdata_failed:
 max86900_init_device_failed:
 	sensors_unregister(data->dev, hrm_sensor_attrs);
 hrm_sensor_register_failed:
-	gpio_free(data->hrm_int);
-err_setup_gpio:
+err_setup_irq:
 err_sysfs_create_group:
 	sensors_remove_symlink(data->hrm_input_dev);
 err_sensors_create_symlink:
@@ -1316,6 +1332,10 @@ err_input_register_device:
 err_input_allocate_device:
 err_of_read_chipid:
 	max86900_regulator_onoff(data, HRM_LDO_OFF);
+err_regulator_enable:
+	gpio_free(data->hrm_int);
+	gpio_free(data->hrm_vdd_en);
+err_setup_gpio:
 err_of_node:
 	mutex_destroy(&data->i2clock);
 	mutex_destroy(&data->activelock);

@@ -24,18 +24,14 @@ void __check_vmalloc_seq(struct mm_struct *mm);
 
 #ifdef CONFIG_CPU_HAS_ASID
 
+#ifdef CONFIG_TIMA_RKP_DEBUG
+extern unsigned long tima_debug_infra_cnt;
+#endif
+
 void check_and_switch_context(struct mm_struct *mm, struct task_struct *tsk);
 #define init_new_context(tsk,mm)	({ atomic64_set(&mm->context.id, 0); 0; })
 
-#ifdef CONFIG_ARM_ERRATA_798181
-void a15_erratum_get_cpumask(int this_cpu, struct mm_struct *mm,
-			     cpumask_t *mask);
-#else  /* !CONFIG_ARM_ERRATA_798181 */
-static inline void a15_erratum_get_cpumask(int this_cpu, struct mm_struct *mm,
-					   cpumask_t *mask)
-{
-}
-#endif /* CONFIG_ARM_ERRATA_798181 */
+DECLARE_PER_CPU(atomic64_t, active_asids);
 
 #else	/* !CONFIG_CPU_HAS_ASID */
 
@@ -55,7 +51,7 @@ static inline void check_and_switch_context(struct mm_struct *mm,
 		 * on non-ASID CPUs, the old mm will remain valid until the
 		 * finish_arch_post_lock_switch() call.
 		 */
-		mm->context.switch_pending = 1;
+		set_ti_thread_flag(task_thread_info(tsk), TIF_SWITCH_MM);
 	else
 		cpu_switch_mm(mm->pgd, mm);
 }
@@ -64,21 +60,9 @@ static inline void check_and_switch_context(struct mm_struct *mm,
 	finish_arch_post_lock_switch
 static inline void finish_arch_post_lock_switch(void)
 {
-	struct mm_struct *mm = current->mm;
-
-	if (mm && mm->context.switch_pending) {
-		/*
-		 * Preemption must be disabled during cpu_switch_mm() as we
-		 * have some stateful cache flush implementations. Check
-		 * switch_pending again in case we were preempted and the
-		 * switch to this mm was already done.
-		 */
-		preempt_disable();
-		if (mm->context.switch_pending) {
-			mm->context.switch_pending = 0;
-			cpu_switch_mm(mm->pgd, mm);
-		}
-		preempt_enable_no_resched();
+	if (test_and_clear_thread_flag(TIF_SWITCH_MM)) {
+		struct mm_struct *mm = current->mm;
+		cpu_switch_mm(mm->pgd, mm);
 	}
 }
 
@@ -111,10 +95,24 @@ enter_lazy_tlb(struct mm_struct *mm, struct task_struct *tsk)
  * calling the CPU specific function when the mm hasn't
  * actually changed.
  */
+#ifdef	CONFIG_TIMA_RKP
+extern unsigned long tima_switch_count;
+extern spinlock_t tima_switch_count_lock;
+#endif
 static inline void
 switch_mm(struct mm_struct *prev, struct mm_struct *next,
 	  struct task_struct *tsk)
 {
+	
+#ifdef	CONFIG_TIMA_RKP
+	unsigned long flags;
+#endif
+#ifdef CONFIG_TIMA_RKP_DEBUG
+	int i;
+	unsigned long pmd;
+	unsigned long va;
+	int ret;
+#endif 
 #ifdef CONFIG_MMU
 	unsigned int cpu = smp_processor_id();
 
@@ -126,6 +124,44 @@ switch_mm(struct mm_struct *prev, struct mm_struct *next,
 #endif
 	if (!cpumask_test_and_set_cpu(cpu, mm_cpumask(next)) || prev != next) {
 		check_and_switch_context(next, tsk);
+#ifdef	CONFIG_TIMA_RKP
+		spin_lock_irqsave(&tima_switch_count_lock, flags);
+		tima_switch_count++;
+		spin_unlock_irqrestore(&tima_switch_count_lock, flags);
+#endif
+	#ifdef CONFIG_TIMA_RKP_DEBUG
+		/* 
+		 * if debug infrastructure is enabled,
+		 * check is L1 and L2 page tables of a 
+		 * process are protected (readonly) at 
+		 * each context switch
+		 */
+		#ifdef CONFIG_TIMA_RKP_L1_TABLES
+		for (i=0; i<4; i++) {
+			if (tima_debug_page_protection(((unsigned long)next->pgd + i*0x1000), 1, 1) == 0) {
+				tima_debug_signal_failure(0x3f80f221, 1);
+				//tima_send_cmd((unsigned long)next->pgd, 0x3f80e221);
+				//printk(KERN_ERR"TIMA: New L1 PGT not protected\n");
+			}
+		}
+		#endif
+		#ifdef CONFIG_TIMA_RKP_L2_TABLES
+		for (i=0; i<0x1000; i++) {
+			pmd = *(unsigned long *)((unsigned long)next->pgd + i*4);
+			if ((pmd & 0x3) != 0x1)
+				continue;
+			if((0x07e00000 <= pmd) && (pmd <= 0x07f00000)) /* skip sect to pgt region */
+			       continue;	
+			va = (unsigned long)phys_to_virt(pmd & (~0x3ff)) ;
+			if ((ret = tima_debug_page_protection(va, 0x101, 1)) == 0) {
+				tima_debug_signal_failure(0x3f80f221, 101);
+				//printk(KERN_ERR"TIMA: New L2 PGT not RO va=%lx pa=%lx tima_debug_infra_cnt=%lx ret=%d\n", va, pmd, tima_debug_infra_cnt, ret);
+			} else if (ret == 1) {
+				tima_debug_infra_cnt++;
+			}
+		}
+		#endif /* CONFIG_TIMA_RKP_L2_TABLES */
+	#endif /* CONFIG_TIMA_RKP_DEBUG */
 		if (cache_is_vivt())
 			cpumask_clear_cpu(cpu, mm_cpumask(prev));
 	}

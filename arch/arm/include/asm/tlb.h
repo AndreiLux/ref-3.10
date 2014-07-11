@@ -43,7 +43,6 @@ struct mmu_gather {
 	struct mm_struct	*mm;
 	unsigned int		fullmm;
 	struct vm_area_struct	*vma;
-	unsigned long		start, end;
 	unsigned long		range_start;
 	unsigned long		range_end;
 	unsigned int		nr;
@@ -108,12 +107,10 @@ static inline void tlb_flush_mmu(struct mmu_gather *tlb)
 }
 
 static inline void
-tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm, unsigned long start, unsigned long end)
+tlb_gather_mmu(struct mmu_gather *tlb, struct mm_struct *mm, unsigned int fullmm)
 {
 	tlb->mm = mm;
-	tlb->fullmm = !(start | (end+1));
-	tlb->start = start;
-	tlb->end = end;
+	tlb->fullmm = fullmm;
 	tlb->vma = NULL;
 	tlb->max = ARRAY_SIZE(tlb->local);
 	tlb->pages = tlb->local;
@@ -196,6 +193,18 @@ static inline void __pte_free_tlb(struct mmu_gather *tlb, pgtable_t pte,
 #endif
 
 	tlb_remove_page(tlb, pte);
+#ifdef CONFIG_TIMA_RKP_DEBUG
+	/* with debug infrastructure, check if a page was 
+	 * unprotected after being freed. Scream if not.
+	 */
+	#ifdef CONFIG_TIMA_RKP_L2_TABLES
+		if (tima_debug_page_protection((unsigned long)pte, 4, 0) == 1) {
+			tima_debug_signal_failure(0x3f80f221, 4);
+			//tima_send_cmd((unsigned long)pte, 0x3f80e221);
+			//printk(KERN_ERR"TIMA: New L2 PGT still protected! __pte_free_tlb\n");
+		}
+	#endif
+#endif 
 }
 
 static inline void __pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmdp,

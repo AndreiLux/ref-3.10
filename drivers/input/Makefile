@@ -26,4 +26,6 @@ obj-$(CONFIG_INPUT_MISC)	+= misc/
 
 obj-$(CONFIG_INPUT_APMPOWER)	+= apm-power.o
 obj-$(CONFIG_INPUT_KEYRESET)	+= keyreset.o
-obj-$(CONFIG_HALL)		+= hall.o
+
+# Input Booster
+obj-$(CONFIG_INPUT_BOOSTER)	+= input_booster.o

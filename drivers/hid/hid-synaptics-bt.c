@@ -213,8 +213,8 @@ static int hid_synaptics_probe(struct hid_device *hdev, const struct hid_device_
 	dev_info(&hdev->dev, "registered rmi hid driver for %s\n", hdev->phys);
 	return 0;
 
-hid_init_failed:
-        hdev->ll_driver->close(hdev);
+hid_init_failed:		
+		input_free_device(input_dev);
 hid_stop:
         hid_hw_stop(hdev);
 

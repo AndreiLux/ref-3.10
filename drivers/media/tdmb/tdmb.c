@@ -52,11 +52,13 @@
 #include <linux/wakelock.h>
 #include <linux/input.h>
 #include <linux/pm_qos.h>
+#include <linux/regulator/consumer.h>
 
 #include <linux/of_gpio.h>
 #if defined(CONFIG_TDMB_QUALCOMM)
 #include <mach/gpiomux.h>
-#include <mach/cpuidle.h>
+#include <linux/cpuidle.h>
+#include <soc/qcom/pm.h>
 #endif
 #if defined(CONFIG_TDMB_EXYNOS)
 #include <plat/gpio-cfg.h>
@@ -75,7 +77,7 @@ static struct wake_lock tdmb_wlock;
 #include "tdmb.h"
 #define TDMB_PRE_MALLOC 1
 
-#ifndef VM_RESERVED 	/* for kernel 3.10 */
+#ifndef VM_RESERVED		/* for kernel 3.10 */
 #define VM_RESERVED (VM_DONTEXPAND | VM_DONTDUMP)
 #endif
 
@@ -100,6 +102,46 @@ static struct tdmb_dt_platform_data *dt_pdata;
 static struct device  *dmb_device;
 
 static bool tdmb_pwr_on;
+
+#ifdef CONFIG_TDMB_VREG_SUPPORT
+static int tdmb_vreg_init(struct device *dev)
+{
+	int rc = 0;
+	DPRINTK("vdd_name : %s", dt_pdata->tdmb_vreg_name);
+	dt_pdata->tdmb_vreg = regulator_get(dev, dt_pdata->tdmb_vreg_name);
+	if (IS_ERR(dt_pdata->tdmb_vreg)) {
+		DPRINTK("Failed to get tdmb_vreg\n");
+		rc = -ENXIO;
+		return rc;
+	}
+	rc = regulator_set_voltage(dt_pdata->tdmb_vreg, 1800000, 1800000);
+	if (rc) {
+		DPRINTK("regulator set_vtg failed rc=%d\n", rc);
+		regulator_put(dt_pdata->tdmb_vreg);
+		return rc;
+	}
+	return rc;
+}
+
+static void tdmb_vreg_onoff(bool onoff)
+{
+	int rc;
+	if (onoff) {
+		if (!regulator_is_enabled(dt_pdata->tdmb_vreg)) {
+			rc = regulator_enable(dt_pdata->tdmb_vreg);
+			if (rc)
+				DPRINTK("tdmb_vreg enable failed rc=%d\n", rc);
+		}
+	} else {
+		if (regulator_is_enabled(dt_pdata->tdmb_vreg)) {
+			rc = regulator_disable(dt_pdata->tdmb_vreg);
+			if (rc)
+				DPRINTK("tdmb_vreg disable failed rc=%d\n", rc);
+		}
+	}
+	DPRINTK("%s : (%d)\n", __func__, onoff);
+}
+#endif
 
 static void tdmb_set_config_poweron(void)
 {
@@ -140,9 +182,9 @@ static void tdmb_set_config_poweroff(void)
 			GPIO_CFG_ENABLE);
 	}
 	if (dt_pdata->tdmb_use_irq) {
-		gpio_tlmm_config(GPIO_CFG(dt_pdata->tdmb_irq, GPIOMUX_FUNC_GPIO,
-			GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
-			GPIO_CFG_ENABLE);
+	gpio_tlmm_config(GPIO_CFG(dt_pdata->tdmb_irq, GPIOMUX_FUNC_GPIO,
+		GPIO_CFG_INPUT, GPIO_CFG_PULL_DOWN, GPIO_CFG_2MA),
+		GPIO_CFG_ENABLE);
 	}
 #elif defined(CONFIG_TDMB_SLSI)
 	struct pinctrl *pinctrl;
@@ -159,7 +201,9 @@ static void tdmb_set_config_poweroff(void)
 static void tdmb_gpio_on(void)
 {
 	DPRINTK("tdmb_gpio_on\n");
-
+#ifdef CONFIG_TDMB_VREG_SUPPORT
+	tdmb_vreg_onoff(true);
+#endif
 	tdmb_set_config_poweron();
 
 	gpio_set_value(dt_pdata->tdmb_en, 0);
@@ -178,7 +222,9 @@ static void tdmb_gpio_on(void)
 static void tdmb_gpio_off(void)
 {
 	DPRINTK("tdmb_gpio_off\n");
-
+#ifdef CONFIG_TDMB_VREG_SUPPORT
+	tdmb_vreg_onoff(false);
+#endif
 	tdmb_set_config_poweroff();
 
 	gpio_set_value(dt_pdata->tdmb_en, 0);
@@ -890,8 +936,8 @@ static struct tdmb_dt_platform_data *get_tdmb_dt_pdata(struct device *dev)
 		ret = gpio_request(pdata->tdmb_en, "tdmb_pwr_en");
 		if (ret) {
 			DPRINTK("Unable to request tdmb_pwr_en [%d]\n", pdata->tdmb_en);
-			goto alloc_err;
-		}
+		goto alloc_err;
+	}
 		gpio_direction_output(pdata->tdmb_en, 0);
 	} else {
 		DPRINTK("Failed to get is valid tdmb_pwr_en\n");
@@ -899,33 +945,33 @@ static struct tdmb_dt_platform_data *get_tdmb_dt_pdata(struct device *dev)
 	}
 	pdata->tdmb_use_rst = of_property_read_bool(dev->of_node, "tdmb_use_rst");
 	if (pdata->tdmb_use_rst) {
-		pdata->tdmb_rst = of_get_named_gpio(dev->of_node, "tdmb_rst", 0);
-		if (gpio_is_valid(pdata->tdmb_rst)) {
-			int ret;
-			ret = gpio_request(pdata->tdmb_rst, "tdmb_rst");
-			if (ret) {
-				DPRINTK("Unable to request tdmb_rst [%d]\n", pdata->tdmb_rst);
-				goto alloc_err;
-			}
-		} else {
-			DPRINTK("%s : without tdmb_rst\n", __func__);
+	pdata->tdmb_rst = of_get_named_gpio(dev->of_node, "tdmb_rst", 0);
+	if (gpio_is_valid(pdata->tdmb_rst)) {
+		int ret;
+		ret = gpio_request(pdata->tdmb_rst, "tdmb_rst");
+		if (ret) {
+			DPRINTK("Unable to request tdmb_rst [%d]\n", pdata->tdmb_rst);
+			goto alloc_err;
 		}
+	} else {
+		DPRINTK("%s : without tdmb_rst\n", __func__);
+	}
 	} else {
 		DPRINTK("%s : without tdmb_use_rst\n", __func__);
 	}
 	pdata->tdmb_use_irq = of_property_read_bool(dev->of_node, "tdmb_use_irq");
 	if (pdata->tdmb_use_irq) {
-		pdata->tdmb_irq = of_get_named_gpio(dev->of_node, "tdmb_irq", 0);
-		if (gpio_is_valid(pdata->tdmb_irq)) {
-			int ret;
-			ret = gpio_request(pdata->tdmb_irq, "tdmb_irq");
-			if (ret) {
-				DPRINTK("Unable to request tdmb_int [%d]\n", pdata->tdmb_irq);
-				goto alloc_err;
-			}
-		} else {
-			DPRINTK("%s : without tdmb_irq\n", __func__);
+	pdata->tdmb_irq = of_get_named_gpio(dev->of_node, "tdmb_irq", 0);
+	if (gpio_is_valid(pdata->tdmb_irq)) {
+		int ret;
+		ret = gpio_request(pdata->tdmb_irq, "tdmb_irq");
+		if (ret) {
+			DPRINTK("Unable to request tdmb_int [%d]\n", pdata->tdmb_irq);
+			goto alloc_err;
 		}
+	} else {
+		DPRINTK("%s : without tdmb_irq\n", __func__);
+	}
 	} else {
 		DPRINTK("%s : without tdmb_use_irq\n", __func__);
 	}
@@ -943,6 +989,13 @@ static struct tdmb_dt_platform_data *get_tdmb_dt_pdata(struct device *dev)
 		goto alloc_err;
 	}
 #endif
+#ifdef CONFIG_TDMB_VREG_SUPPORT
+	if(of_property_read_string(dev->of_node,
+			"tdmb_vreg_supply", &pdata->tdmb_vreg_name)) {
+		DPRINTK("Unable to find tdmb_vdd_supply\n");
+		goto alloc_err;
+	}
+#endif
 	return pdata;
 alloc_err:
 	devm_kfree(dev, pdata);
@@ -956,12 +1009,18 @@ static int tdmb_probe(struct platform_device *pdev)
 	struct device *tdmb_dev;
 
 	DPRINTK("call tdmb_probe\n");
+
+#if defined(CONFIG_TDMB_TSIF_QC)
+	tdmb_tsi_init();
+#endif
+
 	dt_pdata = get_tdmb_dt_pdata(&pdev->dev);
-	dmb_device = &pdev->dev;
 	if (!dt_pdata) {
 		pr_err("%s : tdmb_dt_pdata is NULL.\n", __func__);
 		return -ENODEV;
 	}
+
+	dmb_device = &pdev->dev;
 
 	ret = register_chrdev(TDMB_DEV_MAJOR, TDMB_DEV_NAME, &tdmb_ctl_fops);
 	if (ret < 0)
@@ -1001,6 +1060,14 @@ static int tdmb_probe(struct platform_device *pdev)
 	wake_lock_init(&tdmb_wlock, WAKE_LOCK_SUSPEND, "tdmb_wlock");
 #endif
 
+#ifdef CONFIG_TDMB_VREG_SUPPORT
+	ret = tdmb_vreg_init(&pdev->dev);
+	if (ret) {
+		DPRINTK("tdmb_vreg_init failed!\n");
+		return -ENXIO;
+	}
+#endif
+
 #if defined(CONFIG_TDMB_ANT_DET)
 	wake_lock_init(&tdmb_ant_wlock, WAKE_LOCK_SUSPEND, "tdmb_ant_wlock");
 
@@ -1028,6 +1095,13 @@ static int tdmb_remove(struct platform_device *pdev)
 	tdmb_ant_det_destroy_wq();
 	tdmb_ant_det_irq_set(false);
 	wake_lock_destroy(&tdmb_ant_wlock);
+#endif
+
+#if defined(CONFIG_TDMB_TSIF_QC)
+	tdmb_tsi_deinit();
+#endif
+#ifdef CONFIG_TDMB_VREG_SUPPORT
+	regulator_put(dt_pdata->tdmb_vreg);
 #endif
 	return 0;
 }
@@ -1062,6 +1136,13 @@ static struct platform_driver tdmb_driver = {
 static int __init tdmb_init(void)
 {
 	int ret;
+
+#ifdef CONFIG_SAMSUNG_LPM_MODE
+	if (poweroff_charging) {
+		pr_info("%s : LPM Charging Mode! return 0\n", __func__);
+		return 0;
+	}
+#endif
 
 	DPRINTK("<klaatu TDMB> module init\n");
 	ret = platform_driver_register(&tdmb_driver);

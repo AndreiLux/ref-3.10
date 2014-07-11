@@ -32,13 +32,6 @@
 #define LDI_GRAY	'1'
 #define LDI_WHITE	'2'
 
-#define DEFUALT_HIGH_THRESHOLD	130
-#define DEFUALT_LOW_THRESHOLD	90
-#define TBD_HIGH_THRESHOLD	130
-#define TBD_LOW_THRESHOLD	90
-#define WHITE_HIGH_THRESHOLD	130
-#define WHITE_LOW_THRESHOLD	90
-
 /*************************************************************************/
 /* factory Sysfs                                                         */
 /*************************************************************************/
@@ -135,6 +128,7 @@ static int get_proximity_threshold(struct ssp_data *data)
 	if (data->uCrosstalk < 55) {
 		data->uProxCanc = 0;
 		data->uProxCalResult = 2;
+		pr_info("[SSP] crosstalk <= 45, skip calibration\n");
 	} else if (data->uCrosstalk <= 90) {
 		data->uProxCanc = data->uCrosstalk * 5 / 10;
 		data->uProxCalResult = 1;
@@ -150,7 +144,6 @@ static int get_proximity_threshold(struct ssp_data *data)
 	pr_info("[SSP] %s - crosstalk_offset = %u(%u), HI_THD = %u, LOW_THD = %u\n",
 		__func__, data->uProxCanc, data->uCrosstalk,
 		data->uProxHiThresh, data->uProxLoThresh);
-
 	return SUCCESS;
 }
 
@@ -252,7 +245,7 @@ int proximity_open_calibration(struct ssp_data *data)
 			data->uProxLoThresh_default + data->uProxCanc;
 	}
 
-	pr_info("[SSP] %s: proximity ps_canc = %d, ps_thresh hi - %d lo - %d\n",
+	pr_info("%s: proximity ps_canc = %d, ps_thresh hi - %d lo - %d\n",
 		__func__, data->uProxCanc, data->uProxHiThresh,
 		data->uProxLoThresh);
 

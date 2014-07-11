@@ -21,7 +21,7 @@
 #include <mach/common.h>
 #include <mach/time.h>
 #include <mach/da8xx.h>
-#include <mach/cpuidle.h>
+#include <linux/cpuidle.h>
 #include <mach/sram.h>
 
 #include "clock.h"

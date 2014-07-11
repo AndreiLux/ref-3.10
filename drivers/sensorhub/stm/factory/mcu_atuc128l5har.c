@@ -140,10 +140,6 @@ ssize_t mcu_factorytest_store(struct device *dev,
 
 	if (sysfs_streq(buf, "1")) {
 		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		if (msg == NULL) {
-			pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-			return -ENOMEM;
-		}
 		msg->cmd = MCU_FACTORY;
 		msg->length = 5;
 		msg->options = AP2HUB_READ;
@@ -202,10 +198,6 @@ ssize_t mcu_sleep_factorytest_store(struct device *dev,
 
 	if (sysfs_streq(buf, "1")) {
 		msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-		if (msg == NULL) {
-			pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-			return -ENOMEM;
-		}
 		msg->cmd = MCU_SLEEP_FACTORY;
 		msg->length = FACTORY_DATA_MAX;
 		msg->options = AP2HUB_READ;
@@ -219,7 +211,7 @@ ssize_t mcu_sleep_factorytest_store(struct device *dev,
 		return -EINVAL;
 	}
 
-	ssp_dbg("[SSP]: MCU Sleep Factory Test Start! - %d\n", iRet);
+	ssp_dbg("[SSP]: MCU Sleep Factory Test Start! - %d\n", 1);
 
 	return size;
 }
@@ -253,18 +245,14 @@ ssize_t mcu_sleep_factorytest_show(struct device *dev,
 
 exit:
 	ssp_dbg("[SSP]: %s Result\n"
-		"accel %d,%d,%d\n"
-		"gyro %d,%d,%d\n"
-		"mag %d,%d,%d\n"
-		"baro %d,%d\n"
-		"ges %d,%d,%d,%d\n"
-		"prox %u,%u\n"
-		"temp %d,%d,%d\n"
-#if defined(CONFIG_SENSORS_SSP_TMG399X) || defined(CONFIG_SENSORS_SSP_MAX88921)
-		"light %u,%u,%u,%u,%u,%u\n", __func__,
-#else
-		"light %u,%u,%u,%u\n", __func__,
-#endif
+		"[SSP] accel %d,%d,%d\n"
+		"[SSP] gyro %d,%d,%d\n"
+		"[SSP] mag %d,%d,%d\n"
+		"[SSP] baro %d,%d\n"
+		"[SSP] ges %d,%d,%d,%d\n"
+		"[SSP] prox %u,%u\n"
+		"[SSP] temp %d,%d,%d\n"
+		"[SSP] light %u,%u,%u,%u,%u,%u\n", __func__,
 		fsb[ACCELEROMETER_SENSOR].x, fsb[ACCELEROMETER_SENSOR].y,
 		fsb[ACCELEROMETER_SENSOR].z, fsb[GYROSCOPE_SENSOR].x,
 		fsb[GYROSCOPE_SENSOR].y, fsb[GYROSCOPE_SENSOR].z,
@@ -279,19 +267,15 @@ exit:
 		fsb[TEMPERATURE_HUMIDITY_SENSOR].z,
 		fsb[LIGHT_SENSOR].r, fsb[LIGHT_SENSOR].g, fsb[LIGHT_SENSOR].b,
 		fsb[LIGHT_SENSOR].w,
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
+#ifdef CONFIG_SENSORS_SSP_TMG399X
 		fsb[LIGHT_SENSOR].a_time, fsb[LIGHT_SENSOR].a_gain
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
+#else
 		fsb[LIGHT_SENSOR].ir_cmp, fsb[LIGHT_SENSOR].amb_pga
 #endif
 		);
 
 	return sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%u,"
-#if defined(CONFIG_SENSORS_SSP_TMG399X) || defined(CONFIG_SENSORS_SSP_MAX88921)
 		"%u,%u,%u,%u,%u,%u,%d,%d,%d,%d,%d,%d\n",
-#else
-		"%u,%u,%u,%u,%d,%d,%d,%d,%d,%d\n",
-#endif
 		fsb[ACCELEROMETER_SENSOR].x, fsb[ACCELEROMETER_SENSOR].y,
 		fsb[ACCELEROMETER_SENSOR].z, fsb[GYROSCOPE_SENSOR].x,
 		fsb[GYROSCOPE_SENSOR].y, fsb[GYROSCOPE_SENSOR].z,
@@ -300,9 +284,9 @@ exit:
 		fsb[PRESSURE_SENSOR].pressure[1], fsb[PROXIMITY_SENSOR].prox[1],
 		fsb[LIGHT_SENSOR].r, fsb[LIGHT_SENSOR].g, fsb[LIGHT_SENSOR].b,
 		fsb[LIGHT_SENSOR].w,
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
+#ifdef CONFIG_SENSORS_SSP_TMG399X
 		fsb[LIGHT_SENSOR].a_time, fsb[LIGHT_SENSOR].a_gain,
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
+#else
 		fsb[LIGHT_SENSOR].ir_cmp, fsb[LIGHT_SENSOR].amb_pga,
 #endif
 		fsb[GESTURE_SENSOR].data[0], fsb[GESTURE_SENSOR].data[1],

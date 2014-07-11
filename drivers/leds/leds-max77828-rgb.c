@@ -25,22 +25,10 @@
 #include <linux/fs.h>
 #include <linux/uaccess.h>
 #include <linux/regmap.h>
-#include <linux/sec_sysfs.h>
+#include <linux/sec_class.h>
 
 #define SEC_LED_SPECIFIC
 
-/* Registers */
-/*defined max77828-private.h*//*
- max77828_led_reg {
-	MAX77828_RGBLED_REG_LEDEN           = 0x30,
-	MAX77828_RGBLED_REG_LED0BRT         = 0x31,
-	MAX77828_RGBLED_REG_LED1BRT         = 0x32,
-	MAX77828_RGBLED_REG_LED2BRT         = 0x33,
-	MAX77828_RGBLED_REG_LED3BRT         = 0x34,
-	MAX77828_RGBLED_REG_LEDBLNK         = 0x35,
-	MAX77828_RGBLED_REG_LEDRMP          = 0x36,
-	MAX77828_LED_REG_END,
-};*/
 /* MAX77828_REG_LEDEN */
 #define max77828_LED3_EN	0x08
 #define max77828_LED2_EN	0x04
@@ -139,7 +127,7 @@ static void max77828_rgb_set(struct led_classdev *led_cdev,
 	if (brightness == LED_OFF) {
 		/* Flash OFF */
 		ret = max77828_update_reg(max77828_rgb->i2c,
-					MAX77828_RGBLED_REG_LEDEN, 0 , 1 << n);
+					MAX77828_LED_REG_LEDEN, 0 , 1 << n);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "can't write LEDEN : %d\n", ret);
 			return;
@@ -147,14 +135,14 @@ static void max77828_rgb_set(struct led_classdev *led_cdev,
 	} else {
 		/* Set current */
 		ret = max77828_write_reg(max77828_rgb->i2c,
-				MAX77828_RGBLED_REG_LED0BRT + n, brightness);
+				MAX77828_LED_REG_LED0BRT + n, brightness);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "can't write LEDxBRT : %d\n", ret);
 			return;
 		}
 		/* Flash ON */
 		ret = max77828_update_reg(max77828_rgb->i2c,
-				MAX77828_RGBLED_REG_LEDEN, 0xFF, 1 << n);
+				MAX77828_LED_REG_LEDEN, 0xFF, 1 << n);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "can't write FLASH_EN : %d\n", ret);
 			return;
@@ -183,7 +171,7 @@ static unsigned int max77828_rgb_get(struct led_classdev *led_cdev)
 
 	/* Get status */
 	ret = max77828_read_reg(max77828_rgb->i2c,
-				MAX77828_RGBLED_REG_LEDEN, &value);
+				MAX77828_LED_REG_LEDEN, &value);
 	if (IS_ERR_VALUE(ret)) {
 		dev_err(dev, "can't read LEDEN : %d\n", ret);
 		return 0;
@@ -193,7 +181,7 @@ static unsigned int max77828_rgb_get(struct led_classdev *led_cdev)
 
 	/* Get current */
 	ret = max77828_read_reg(max77828_rgb->i2c,
-				MAX77828_RGBLED_REG_LED0BRT + n, &value);
+				MAX77828_LED_REG_LED0BRT + n, &value);
 	if (IS_ERR_VALUE(ret)) {
 		dev_err(dev, "can't read LED0BRT : %d\n", ret);
 		return 0;
@@ -212,7 +200,7 @@ static int max77828_rgb_ramp(struct device *dev, int ramp_up, int ramp_down)
 	ramp_down /= 100;
 	value = (ramp_down) | (ramp_up << 4);
 	ret = max77828_write_reg(max77828_rgb->i2c,
-					MAX77828_RGBLED_REG_LEDRMP, value);
+					MAX77828_LED_REG_LEDRMP, value);
 	if (IS_ERR_VALUE(ret)) {
 		dev_err(dev, "can't write REG_LEDRMP : %d\n", ret);
 		return -ENODEV;
@@ -230,7 +218,7 @@ static int max77828_rgb_blink(struct device *dev,
 
 	if (delay_on == 0 && delay_off == 0) {
 		ret = max77828_write_reg(max77828_rgb->i2c,
-					MAX77828_RGBLED_REG_LEDBLNK, 0x50);
+					MAX77828_LED_REG_LEDBLNK, 0x50);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "can't write REG_LEDBLNK : %d\n", ret);
 			return -ENODEV;
@@ -248,7 +236,7 @@ static int max77828_rgb_blink(struct device *dev,
 
 		value |= ((delay_on / 200) <<  4);
 		ret = max77828_write_reg(max77828_rgb->i2c,
-					MAX77828_RGBLED_REG_LEDBLNK, value);
+					MAX77828_LED_REG_LEDBLNK, value);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "can't write REG_LEDBLNK : %d\n", ret);
 			return -EINVAL;
@@ -263,7 +251,6 @@ static struct max77828_rgb_platform_data
 			*max77828_rgb_parse_dt(struct device *dev)
 {
 	struct max77828_rgb_platform_data *pdata;
-	struct device_node *nproot = dev->parent->of_node;
 	struct device_node *np;
 	int ret;
 	int i;
@@ -272,7 +259,7 @@ static struct max77828_rgb_platform_data
 	if (unlikely(pdata == NULL))
 		return ERR_PTR(-ENOMEM);
 
-	np = of_find_node_by_name(nproot, "rgb");
+	np = of_find_node_by_name(NULL, "rgb");
 	if (unlikely(np == NULL)) {
 		dev_err(dev, "rgb node not found\n");
 		devm_kfree(dev, pdata);
@@ -718,7 +705,8 @@ static int max77828_rgb_probe(struct platform_device *pdev)
 		}
 	}
 
-	led_dev = sec_device_create(max77828_rgb, "led");
+#ifdef SEC_LED_SPECIFIC
+	led_dev = device_create(sec_class, NULL, 0, max77828_rgb, "led");
 	if (IS_ERR(led_dev)) {
 		dev_err(dev, "Failed to create device for samsung specific led\n");
 		goto alloc_err_flash;
@@ -729,6 +717,7 @@ static int max77828_rgb_probe(struct platform_device *pdev)
 		dev_err(dev, "Failed to create sysfs group for samsung specific led\n");
 		goto alloc_err_flash;
 	}
+#endif
 
 	platform_set_drvdata(pdev, max77828_rgb);
 
@@ -770,8 +759,9 @@ void max77828_rgb_shutdown(struct device *dev)
 
 	max77828_rgb_reset(dev);
 
+#ifdef SEC_LED_SPECIFIC
 	sysfs_remove_group(&led_dev->kobj, &sec_led_attr_group);
-
+#endif
 	for (i = 0; i < 4; i++){
 		sysfs_remove_group(&max77828_rgb->led[i].dev->kobj,
 						&common_led_attr_group);
@@ -786,7 +776,7 @@ static struct platform_driver max77828_fled_driver = {
 		.shutdown = max77828_rgb_shutdown,
 	},
 	.probe		= max77828_rgb_probe,
-	.remove		= __devexit_p(max77828_rgb_remove),
+	.remove		= max77828_rgb_remove,
 };
 
 static int __init max77828_rgb_init(void)

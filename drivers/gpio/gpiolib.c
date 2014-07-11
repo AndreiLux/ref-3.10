@@ -242,6 +242,9 @@ static int gpiod_get_direction(const struct gpio_desc *desc)
  */
 static DEFINE_MUTEX(sysfs_lock);
 
+static DEFINE_MUTEX(divclk_lock);
+static int divclk_cnt = 0;
+
 /*
  * /sys/class/gpio/gpioN... only for GPIOs that are exported
  *   /direction
@@ -1750,6 +1753,32 @@ int gpio_direction_output(unsigned gpio, int value)
 	return gpiod_direction_output(gpio_to_desc(gpio), value);
 }
 EXPORT_SYMBOL_GPL(gpio_direction_output);
+
+int gpio_direction_output_ex(unsigned gpio, int value)
+{
+	int ret = 0;
+
+	pr_info("%s : value = %d, divclk cnt = %d\n", __func__, value, divclk_cnt);
+	
+	mutex_lock(&divclk_lock);
+	if (value) {
+		divclk_cnt++;
+
+		if (divclk_cnt == 1)
+			ret = gpiod_direction_output(gpio_to_desc(gpio), 1);
+	} else {
+		if (divclk_cnt > 0) {
+			divclk_cnt--;
+
+			if (divclk_cnt ==0)
+				ret = gpiod_direction_output(gpio_to_desc(gpio), 0);
+		}
+	}	
+	mutex_unlock(&divclk_lock);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(gpio_direction_output_ex);
 
 /**
  * gpio_set_debounce - sets @debounce time for a @gpio

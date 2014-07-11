@@ -96,16 +96,8 @@ static void get_step_det_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 static void get_light_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 10);
 	*iDataIdx += 10;
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 12);
-	*iDataIdx += 12;
-#else
-	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 8);
-	*iDataIdx += 8;
-#endif
 }
 
 static void get_pressure_sensordata(char *pchRcvDataFrame, int *iDataIdx,
@@ -160,6 +152,13 @@ static void get_step_cnt_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 {
 	memcpy(&sensorsdata->step_diff, pchRcvDataFrame + *iDataIdx, 4);
 	*iDataIdx += 4;
+}
+
+static void get_tsp_angle_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 3);
+	*iDataIdx += 3;
 }
 
 int handle_big_data(struct ssp_data *data, char *pchRcvDataFrame, int *pDataIdx) {
@@ -300,6 +299,7 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->get_sensor_data[SIG_MOTION_SENSOR] = get_sig_motion_sensordata;
 	data->get_sensor_data[GYRO_UNCALIB_SENSOR] = get_uncalib_sensordata;
 	data->get_sensor_data[STEP_COUNTER] = get_step_cnt_sensordata;
+	data->get_sensor_data[TSP_ANGLE] = get_tsp_angle_sensordata;
 
 	data->report_sensor_data[ACCELEROMETER_SENSOR] = report_acc_data;
 	data->report_sensor_data[GYROSCOPE_SENSOR] = report_gyro_data;
@@ -321,11 +321,11 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->report_sensor_data[SIG_MOTION_SENSOR] = report_sig_motion_data;
 	data->report_sensor_data[GYRO_UNCALIB_SENSOR] = report_uncalib_gyro_data;
 	data->report_sensor_data[STEP_COUNTER] = report_step_cnt_data;
+	data->report_sensor_data[TSP_ANGLE] = report_tsp_angle_data;
 
 	data->ssp_big_task[BIG_TYPE_DUMP] = ssp_dump_task;
 	data->ssp_big_task[BIG_TYPE_READ_LIB] = ssp_read_big_library_task;
 	data->ssp_big_task[BIG_TYPE_VOICE_NET] = ssp_send_big_library_task;
 	data->ssp_big_task[BIG_TYPE_VOICE_GRAM] = ssp_send_big_library_task;
 	data->ssp_big_task[BIG_TYPE_VOICE_PCM] = ssp_pcm_dump_task;
-	data->ssp_big_task[BIG_TYPE_TEMP] = ssp_temp_task;
 }

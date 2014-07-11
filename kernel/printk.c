@@ -47,13 +47,16 @@
 #include <linux/utsname.h>
 
 #include <asm/uaccess.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#include <linux/io.h>
+#include <linux/proc_fs.h>
+#endif
+
+
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/printk.h>
-
-#ifdef        CONFIG_DEBUG_LL
-extern void printascii(char *);
-#endif
 
 /* printk's without a loglevel use this.. */
 #define DEFAULT_MESSAGE_LOGLEVEL CONFIG_DEFAULT_MESSAGE_LOGLEVEL
@@ -225,6 +228,11 @@ struct log {
 static DEFINE_RAW_SPINLOCK(logbuf_lock);
 
 #ifdef CONFIG_PRINTK
+
+#ifdef CONFIG_SEC_DEBUG
+static void sec_log_add(const struct log *msg);
+#endif
+
 DECLARE_WAIT_QUEUE_HEAD(log_wait);
 /* the next printk record to read by syslog(READ) or /proc/kmsg */
 static u64 syslog_seq;
@@ -317,38 +325,6 @@ static bool printk_process = 0;
 #endif
 module_param_named(process, printk_process, bool, S_IRUGO | S_IWUSR);
 
-#if defined(CONFIG_SEC_DEBUG)
-void disable_printk_process(void)
-{
-	printk_process = 0;
-}
-#endif
-
-#ifdef CONFIG_SEC_LOG
-static void (*log_text_hook)(char *text, size_t size);
-static char *seclog_buf;
-static unsigned *seclog_ptr;
-static size_t seclog_size;
-static char sec_text[1024]; /* buffer size: LOG_LINE_MAX + PREFIX_MAX */
-void register_log_text_hook(void (*f)(char *text, size_t size), char * buf,
-	unsigned *position, size_t bufsize)
-{
-	unsigned long flags;
-	raw_spin_lock_irqsave(&logbuf_lock, flags);
-	if (buf && bufsize) {
-		seclog_buf = buf;
-		seclog_ptr = position;
-		seclog_size = bufsize;
-		log_text_hook = f;
-	}
-	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
-}
-EXPORT_SYMBOL(register_log_text_hook);
-static size_t msg_print_text(const struct log *msg, enum log_flags prev,
-			     bool syslog, char *buf, size_t size);
-
-#endif
-
 /* insert record into the buffer, discard old ones, update heads */
 static void log_store(int facility, int level,
 		      enum log_flags flags, u64 ts_nsec,
@@ -411,13 +387,10 @@ static void log_store(int facility, int level,
 		msg->cpu = smp_processor_id();
 		msg->in_interrupt = in_interrupt()? 1 : 0;
 	}
-#ifdef CONFIG_SEC_LOG
-	if (log_text_hook) {
-		size = msg_print_text(msg, msg->flags, true,
-			sec_text, 1024);
 
-		log_text_hook(sec_text, size);
-	}
+#ifdef CONFIG_SEC_DEBUG
+	/* Save the log here,using "msg".*/
+	sec_log_add(msg);
 #endif
 	/* insert message */
 	log_next_idx += msg->len;
@@ -921,13 +894,6 @@ static inline void boot_delay_msec(int level)
 {
 }
 #endif
-
-#if defined(CONFIG_PRINTK_CORE_NUM)
-static bool printk_core_num = 1;
-#else
-static bool printk_core_num = 0;
-#endif
-module_param_named(core_num, printk_core_num, bool, S_IRUGO | S_IWUSR);
 
 #if defined(CONFIG_PRINTK_TIME)
 static bool printk_time = 1;
@@ -1453,9 +1419,9 @@ static int console_trylock_for_printk(unsigned int cpu)
 		}
 	}
 	logbuf_cpu = UINT_MAX;
-	raw_spin_unlock(&logbuf_lock);
 	if (wake)
 		up(&console_sem);
+	raw_spin_unlock(&logbuf_lock);
 	return retval;
 }
 
@@ -1548,6 +1514,7 @@ static bool cont_add(int facility, int level, const char *text, size_t len)
 
 	return true;
 }
+
 static size_t cont_print_text(char *text, size_t size)
 {
 	size_t textlen = 0;
@@ -1579,7 +1546,6 @@ static size_t cont_print_text(char *text, size_t size)
 	return textlen;
 }
 
-
 asmlinkage int vprintk_emit(int facility, int level,
 			    const char *dict, size_t dictlen,
 			    const char *fmt, va_list args)
@@ -1592,7 +1558,6 @@ asmlinkage int vprintk_emit(int facility, int level,
 	unsigned long flags;
 	int this_cpu;
 	int printed_len = 0;
-	static bool prev_new_line = true;
 
 	boot_delay_msec(level);
 	printk_delay();
@@ -1638,33 +1603,12 @@ asmlinkage int vprintk_emit(int facility, int level,
 	 * The printf needs to come first; we need the syslog
 	 * prefix which might be passed-in as a parameter.
 	 */
-	if (printk_core_num && prev_new_line) {
-		static char tempbuf[LOG_LINE_MAX];
-		char *temp = tempbuf;
-
-		vscnprintf(temp, sizeof(tempbuf), fmt, args);
-		if (printk_get_level(tempbuf))
-			text_len = snprintf(text, sizeof(textbuf),
-					    "%c%c[c%d] %s", tempbuf[0],
-					    tempbuf[1], this_cpu, &tempbuf[2]);
-		else
-			text_len = snprintf(text, sizeof(textbuf), "[c%d] %s",
-					    this_cpu, &tempbuf[0]);
-	} else {
-		text_len = vscnprintf(text, sizeof(textbuf), fmt, args);
-	}
-
-#ifdef	CONFIG_DEBUG_LL
-	printascii(text);
-#endif
+	text_len = vscnprintf(text, sizeof(textbuf), fmt, args);
 
 	/* mark and strip a trailing newline */
 	if (text_len && text[text_len-1] == '\n') {
 		text_len--;
 		lflags |= LOG_NEWLINE;
-		prev_new_line = true;
-	} else {
-		prev_new_line = false;
 	}
 
 	/* strip kernel syslog prefix and extract log level or control flags */
@@ -1765,6 +1709,289 @@ asmlinkage int printk_emit(int facility, int level,
 	return r;
 }
 EXPORT_SYMBOL(printk_emit);
+
+#ifdef CONFIG_SEC_DEBUG
+#define CONFIG_PRINTK_NOCACHE
+/*
+ * Example usage: sec_log=256K@0x45000000
+ *
+ * In above case, log_buf size is 256KB and its physical base address
+ * is 0x45000000. Actually, *(int *)(base - 8) is log_magic and *(int
+ * *)(base - 4) is log_ptr. Therefore we reserve (size + 8) bytes from
+ * (base - 8)
+ */
+#define LOG_MAGIC 0x4d474f4c /* "LOGM" */
+
+/* These variables are also protected by logbuf_lock */
+static unsigned *sec_log_ptr;
+static char *sec_log_buf;
+static unsigned sec_log_size;
+
+#ifdef CONFIG_PRINTK_NOCACHE
+static unsigned sec_log_save_size;
+static phys_addr_t sec_log_save_base;
+static phys_addr_t sec_log_reserve_base;
+unsigned sec_log_reserve_size;
+unsigned int *sec_log_irq_en;
+#ifdef CONFIG_SEC_LOG_LAST_KMSG
+#define LAST_LOG_BUF_SHIFT 19
+static char *last_kmsg_buffer;
+static unsigned last_kmsg_size;
+#endif /* CONFIG_SEC_LOG_LAST_KMSG */
+#endif /* CONFIG_PRINTK_NOCACHE */
+
+
+static inline void emit_sec_log_char(char c)
+{
+	if (sec_log_buf && sec_log_ptr) {
+		sec_log_buf[*sec_log_ptr & (sec_log_size - 1)] = c;
+		(*sec_log_ptr)++;
+	}
+}
+
+static void sec_log_add(const struct log *msg)
+{
+	static char sTemp[1024];
+	static unsigned char prev_flag=0;
+	int size=0;
+	int i;
+
+	size=msg_print_text(msg, prev_flag, true, sTemp, 1024);
+	prev_flag=msg->flags;
+	for (i=0; i<size; i++) {
+		emit_sec_log_char(sTemp[i]);
+	}		
+}
+
+static void sec_log_add_on_bootup(void)
+{
+	u32 current_idx=log_first_idx;	
+	struct log *msg;
+
+	while(current_idx<log_next_idx) {		
+		msg = log_from_idx(current_idx);
+		sec_log_add(msg);
+		current_idx=log_next(current_idx);
+	}
+}
+
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+void sec_debug_subsys_set_kloginfo(unsigned int *first_idx_paddr,
+	unsigned int *next_idx_paddr, unsigned int *log_paddr, unsigned int *size)
+{
+	*first_idx_paddr = (unsigned int)__pa(&log_first_idx); 
+	*next_idx_paddr = (unsigned int)__pa(&log_next_idx); 	
+	*log_paddr = (unsigned int)__pa(log_buf);
+	*size = __LOG_BUF_LEN;
+}
+#endif
+
+#ifdef CONFIG_SEC_LOG_LAST_KMSG
+static int __init sec_log_save_old(void)
+{
+
+	/* provide previous log as last_kmsg */
+	last_kmsg_size =
+	    min((unsigned)(1 << LAST_LOG_BUF_SHIFT), *sec_log_ptr);
+	last_kmsg_buffer = (char *)kmalloc(last_kmsg_size, GFP_KERNEL);
+
+	if (last_kmsg_size && last_kmsg_buffer && sec_log_buf) {
+		unsigned int i;
+		for (i = 0; i < last_kmsg_size; i++)
+			last_kmsg_buffer[i] =
+			    sec_log_buf[(*sec_log_ptr - last_kmsg_size +
+					 i) & (sec_log_size - 1)];
+		return 1;
+	} else {
+		return 0;
+	}
+}
+#else
+static int __init sec_log_save_old(void)
+{
+	return 1;
+}
+#endif
+
+	
+#ifdef CONFIG_PRINTK_NOCACHE
+static int __init printk_remap_nocache(void)
+{
+	void __iomem *nocache_base = 0;
+	unsigned *sec_log_mag;
+	unsigned long flags;
+	int rc = 0;
+	int bOk=0;
+
+	sec_getlog_supply_kloginfo(log_buf);
+
+#ifndef CONFIG_SEC_DEBUG_NOCACHE_LOG_IN_LEVEL_LOW
+	if (0 == sec_debug_is_enabled()) {
+#ifdef CONFIG_SEC_DEBUG_LOW_LOG
+		nocache_base = ioremap_nocache(sec_log_save_base - 4096,
+		sec_log_save_size + 8192);
+		nocache_base = nocache_base + 4096;
+
+		sec_log_mag = nocache_base - 8;
+		sec_log_ptr = nocache_base - 4;
+		sec_log_buf = nocache_base;
+		sec_log_size = sec_log_save_size;
+		sec_log_irq_en = nocache_base - 0xC ;
+#endif
+		return rc;
+	}
+#endif /* CONFIG_SEC_DEBUG_NOCACHE_LOG_IN_LEVEL_LOW */
+
+#ifdef CONFIG_ARM_LPAE
+	pr_err("%s: sec_log_save_size %d at sec_log_save_base 0x%llx\n",
+	__func__, sec_log_save_size, sec_log_save_base);
+
+	pr_err("%s: sec_log_reserve_size %d at sec_log_reserve_base 0x%llx\n",
+	__func__, sec_log_reserve_size, sec_log_reserve_base);
+#else
+	pr_err("%s: sec_log_save_size %d at sec_log_save_base 0x%lx\n",
+				__func__, sec_log_save_size, (unsigned long) sec_log_save_base);
+
+	pr_err("%s: sec_log_reserve_size %d at sec_log_reserve_base 0x%lx\n",
+				__func__, sec_log_reserve_size, (unsigned long) sec_log_reserve_base);
+#endif
+
+	nocache_base = ioremap_nocache((phys_addr_t)(sec_log_save_base-4096),
+					sec_log_save_size + 8192);
+
+	if (!nocache_base) {
+		pr_err("Failed to remap nocache log region\n");
+		return rc;
+	}
+
+#ifdef CONFIG_ARM_LPAE
+	pr_err("%s: nocache_base printk virtual addrs 0x%x phy=0x%llx\n",__func__,
+				(unsigned int)(nocache_base), sec_log_save_base);
+#else
+	pr_err("%s: nocache_base printk virtual addrs 0x%x phy=0x%lx\n",__func__,
+			(unsigned int)(nocache_base), (unsigned long) sec_log_save_base);
+#endif
+
+	nocache_base = nocache_base + 4096;
+
+	sec_log_mag = nocache_base - 8;
+	sec_log_ptr = nocache_base - 4;
+	sec_log_buf = nocache_base;
+	sec_log_size = sec_log_save_size;
+	sec_log_irq_en = nocache_base - 0xC ;
+
+	if (*sec_log_mag != LOG_MAGIC) {
+		*sec_log_ptr = 0;
+		*sec_log_mag = LOG_MAGIC;
+	} else {
+		bOk=sec_log_save_old();
+	}
+
+	raw_spin_lock_irqsave(&logbuf_lock, flags);
+	//We have to save logs printed prior to the sec log initialization here.	
+	sec_log_add_on_bootup();	
+	raw_spin_unlock_irqrestore(&logbuf_lock, flags);
+
+	if (bOk){
+		pr_info("%s: saved old log at %d@%p\n",
+			__func__, last_kmsg_size, last_kmsg_buffer);
+	} else {
+		pr_err("%s: failed saving old log %d@%p\n",
+	       __func__, last_kmsg_size, last_kmsg_buffer);
+	}
+	
+	return rc;
+}
+
+static ssize_t seclog_read(struct file *file, char __user *buf,
+				    size_t len, loff_t *offset)
+{
+	loff_t pos = *offset;
+	ssize_t count = 0;
+#ifdef CONFIG_SEC_LOG_LAST_KMSG
+	size_t log_size = last_kmsg_size;
+	const char *log = last_kmsg_buffer;
+#else
+	size_t log_size = sec_log_size;
+	const char *log = sec_log_buf;
+#endif
+
+	if (pos < log_size) {
+		count = min(len, (size_t)(log_size - pos));
+		if (copy_to_user(buf, log + pos, count))
+			return -EFAULT;
+	}
+
+	*offset += count;
+	return count;
+}
+
+static const struct file_operations seclog_file_ops = {
+	.owner = THIS_MODULE,
+	.read = seclog_read,
+};
+static int __init seclog_late_init(void)
+{
+	struct proc_dir_entry *entry;
+
+	if (!sec_log_buf)
+		return 0;
+
+	/* The reason we are using the file name "last_kmsg" is only
+	 * because the dumpstate app is dumping this file.
+	 * If we add a line in the dumpstate app (and we should change
+	 * the owner and permission in init.rc) with a new name, then
+	 * we can use a more appropriate name. (But the purpose of
+	 * last_kmsg and this file are almost the same, so the name isn't
+	 * that odd) */ 
+	entry = proc_create_data("last_kmsg",S_IFREG | S_IRUGO, NULL, &seclog_file_ops, NULL);
+	if (!entry) {
+		pr_err("%s: failed to create proc entry. ram console may be"\
+			"present.\n", __func__);
+		return 0;
+	}
+
+#ifdef CONFIG_SEC_LOG_LAST_KMSG
+	proc_set_size(entry, last_kmsg_size);
+#else
+	proc_set_size(entry, sec_log_size);
+#endif
+	return 0;
+}
+late_initcall(seclog_late_init);
+#endif
+
+static int __init sec_log_setup(char *str)
+{
+	unsigned size = memparse(str, &str);
+	int ret;
+/*
+	unsigned *sec_log_mag;
+	unsigned start;
+	unsigned long flags;
+*/
+
+	if (size && (size == roundup_pow_of_two(size)) && (*str == '@')) {
+		unsigned long long base = 0;
+
+		ret = kstrtoull(++str, 0, &base);
+
+#ifdef CONFIG_PRINTK_NOCACHE
+		sec_log_save_size = size;
+		sec_log_save_base = base;
+		sec_log_size = size;
+		sec_log_reserve_base = base - 8;
+		sec_log_reserve_size = size + 8;
+#endif
+	}
+	return 1;
+}
+
+__setup("sec_log=", sec_log_setup);
+
+#endif
+
+
 
 /**
  * printk - print a kernel message
@@ -2019,6 +2246,21 @@ void resume_console(void)
 	console_unlock();
 }
 
+#if defined(CONFIG_GSM_MODEM_SPRD6500)
+int get_console_suspended(void)
+{
+	return console_suspended;
+}
+#endif
+
+static void __cpuinit console_flush(struct work_struct *work)
+{
+	console_lock();
+	console_unlock();
+}
+
+static __cpuinitdata DECLARE_WORK(console_cpu_notify_work, console_flush);
+
 /**
  * console_cpu_notify - print deferred console messages after CPU hotplug
  * @self: notifier struct
@@ -2029,17 +2271,27 @@ void resume_console(void)
  * will be spooled but will not show up on the console.  This function is
  * called when a new CPU comes online (or fails to come up), and ensures
  * that any such output gets printed.
+ *
+ * Special handling must be done for cases invoked from an atomic context,
+ * as we can't be taking the console semaphore here.
  */
 static int __cpuinit console_cpu_notify(struct notifier_block *self,
 	unsigned long action, void *hcpu)
 {
 	switch (action) {
-	case CPU_ONLINE:
 	case CPU_DEAD:
 	case CPU_DOWN_FAILED:
 	case CPU_UP_CANCELED:
 		console_lock();
 		console_unlock();
+		break;
+	case CPU_ONLINE:
+	case CPU_DYING:
+		/* invoked with preemption disabled, so defer */
+		if (!console_trylock())
+			schedule_work(&console_cpu_notify_work);
+		else
+			console_unlock();
 	}
 	return NOTIFY_OK;
 }
@@ -3029,5 +3281,9 @@ void show_regs_print_info(const char *log_lvl)
 	       log_lvl, current, current_thread_info(),
 	       task_thread_info(current));
 }
+
+#ifdef CONFIG_PRINTK_NOCACHE
+module_init(printk_remap_nocache);
+#endif
 
 #endif

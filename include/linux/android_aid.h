@@ -17,8 +17,6 @@
 #define _LINUX_ANDROID_AID_H
 
 /* AIDs that the kernel treats differently */
-#define AID_SYSTEM	1000  /* system server */
-
 #define AID_OBSOLETE_000 3001  /* was NET_BT_ADMIN */
 #define AID_OBSOLETE_001 3002  /* was NET_BT */
 #define AID_INET         3003

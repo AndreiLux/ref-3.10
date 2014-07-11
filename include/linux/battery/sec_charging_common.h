@@ -31,9 +31,10 @@
 #include <linux/power_supply.h>
 #include <linux/slab.h>
 #include <linux/device.h>
+#include <linux/wakelock.h>
 
 /* definitions */
-#define	SEC_SIZEOF_POWER_SUPPLY_TYPE	POWER_SUPPLY_TYPE_WIRELESS_REMOVE
+#define	SEC_SIZEOF_POWER_SUPPLY_TYPE	POWER_SUPPLY_TYPE_MAX
 
 enum sec_battery_voltage_mode {
 	/* average voltage */
@@ -148,8 +149,8 @@ enum sec_battery_full_charged {
   * full-charged by absolute-timer only in high voltage
   */
 #define SEC_BATTERY_FULL_CONDITION_NOTIMEFULL	1
-/* SEC_BATTERY_FULL_CONDITION_SLEEPINFULL
-  * change polling time as sleep polling time even in full-charged
+/* SEC_BATTERY_FULL_CONDITION_NOSLEEPINFULL
+  * do not set polling time as sleep polling time in full-charged
   */
 #define SEC_BATTERY_FULL_CONDITION_NOSLEEPINFULL	2
 /* SEC_BATTERY_FULL_CONDITION_SOC
@@ -288,10 +289,6 @@ enum sec_battery_temp_check {
  * by ADC
  */
 #define	SEC_BATTERY_CABLE_SOURCE_ADC		4
-/* SEC_BATTERY_CABLE_SOURCE_EXTENDED
- * use extended cable type
- */
-#define SEC_BATTERY_CABLE_SOURCE_EXTENDED	8
 
 /* capacity calculation type (can be used overlapped) */
 #define sec_fuelgauge_capacity_type_t int
@@ -343,15 +340,9 @@ enum sec_battery_temp_check {
  * @adc: adc value
  * @temperature: temperature(C) * 10
  */
-
 struct sec_bat_adc_table_data {
-#ifdef CONFIG_OF
-	unsigned int adc;
-	unsigned int data;
-#else
 	int adc;
 	int data;
-#endif
 };
 #define sec_bat_adc_table_data_t \
 	struct sec_bat_adc_table_data
@@ -364,17 +355,10 @@ struct sec_bat_adc_region {
 	struct sec_bat_adc_region
 
 struct sec_charging_current {
-#ifdef CONFIG_OF
-	unsigned int input_current_limit;
-	unsigned int fast_charging_current;
-	unsigned int full_check_current_1st;
-	unsigned int full_check_current_2nd;
-#else
 	int input_current_limit;
 	int fast_charging_current;
 	int full_check_current_1st;
 	int full_check_current_2nd;
-#endif
 };
 #define sec_charging_current_t \
 	struct sec_charging_current
@@ -382,16 +366,14 @@ struct sec_charging_current {
 struct sec_battery_platform_data {
 	/* NO NEED TO BE CHANGED */
 	/* callback functions */
-	void (*initial_check)(void);
 	void (*monitor_additional_check)(void);
 	bool (*bat_gpio_init)(void);
 	bool (*fg_gpio_init)(void);
 	bool (*chg_gpio_init)(void);
 	bool (*is_lpm)(void);
-	bool (*check_jig_status) (void);
+	bool (*check_jig_status)(void);
 	bool (*is_interrupt_cable_check_possible)(int);
 	int (*check_cable_callback)(void);
-	int (*get_cable_from_extended_cable_type)(int);
 	bool (*cable_switch_check)(void);
 	bool (*cable_switch_normal)(void);
 	bool (*check_cable_result_callback)(int);
@@ -403,6 +385,7 @@ struct sec_battery_platform_data {
 	bool (*get_temperature_callback)(
 			enum power_supply_property,
 			union power_supply_propval*);
+	void (*check_batt_id)(void);
 
 	/* ADC API for each ADC type */
 	sec_bat_adc_api_t adc_api[SEC_BATTERY_ADC_TYPE_NUM];
@@ -413,12 +396,10 @@ struct sec_battery_platform_data {
 	/* charging current for type (0: not use) */
 	sec_charging_current_t *charging_current;
 #ifdef CONFIG_OF
-	unsigned int *polling_time;
 	char *chip_vendor;
 	unsigned int temp_adc_type;
-#else
-	int *polling_time;
 #endif
+	int *polling_time;
 	/* NO NEED TO BE CHANGED */
 
 	char *pmic_name;
@@ -432,8 +413,11 @@ struct sec_battery_platform_data {
 	int bat_gpio_ta_nconnected;
 	/* 1 : active high, 0 : active low */
 	int bat_polarity_ta_nconnected;
+	int ta_irq;
+	int ta_irq_gpio; /* TA_INT(Vbus detecting) */
+	unsigned long ta_irq_attr;
 	int bat_irq;
-	int bat_irq_gpio;
+	int bat_irq_gpio; /* BATT_INT(BAT_ID detecting) */
 	unsigned long bat_irq_attr;
 	int jig_irq;
 	unsigned long jig_irq_attr;
@@ -549,6 +533,8 @@ struct sec_battery_platform_data {
 
 	/* charger */
 	char *charger_name;
+
+	int vbus_ctrl_gpio;
 	int chg_gpio_en;
 	/* 1 : active high, 0 : active low */
 	int chg_polarity_en;
@@ -561,11 +547,7 @@ struct sec_battery_platform_data {
 	int chg_irq;
 	unsigned long chg_irq_attr;
 	/* float voltage (mV) */
-#ifdef CONFIG_OF
-	unsigned int chg_float_voltage;
-#else
 	int chg_float_voltage;
-#endif
 	sec_charger_functions_t chg_functions_setting;
 
 	/* ADC setting */
@@ -594,11 +576,13 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 			__func__, (name));	\
 		value.intval = 0;	\
 	} else {	\
-		ret = psy->function##_property(psy, (property), &(value)); \
-		if (ret < 0) {	\
-			pr_err("%s: Fail to "#name" "#function" (%d=>%d)\n", \
-				__func__, (property), ret);	\
-			value.intval = 0;	\
+		if (psy->function##_property != NULL) { \
+			ret = psy->function##_property(psy, (property), &(value)); \
+			if (ret < 0) {	\
+				pr_err("%s: Fail to %s "#function" (%d=>%d)\n", \
+						__func__, name, (property), ret);	\
+				value.intval = 0;	\
+			}	\
 		}	\
 	}	\
 }
@@ -619,12 +603,5 @@ static inline struct power_supply *get_power_supply_by_name(char *name)
 #define get_battery_data(driver)	\
 	(((struct battery_data_t *)(driver)->pdata->battery_data)	\
 	[(driver)->pdata->battery_type])
-
-#define GET_MAIN_CABLE_TYPE(extended)	\
-	((extended >> ONLINE_TYPE_MAIN_SHIFT)&0xf)
-#define GET_SUB_CABLE_TYPE(extended)	\
-	((extended >> ONLINE_TYPE_SUB_SHIFT)&0xf)
-#define GET_POWER_CABLE_TYPE(extended)	\
-	((extended >> ONLINE_TYPE_PWR_SHIFT)&0xf)
 
 #endif /* __SEC_CHARGING_COMMON_H */

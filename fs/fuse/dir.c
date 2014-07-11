@@ -1225,29 +1225,13 @@ static int fuse_direntplus_link(struct file *file,
 		if (name.name[1] == '.' && name.len == 2)
 			return 0;
 	}
-
-	if (invalid_nodeid(o->nodeid))
-		return -EIO;
-	if (!fuse_valid_type(o->attr.mode))
-		return -EIO;
-
 	fc = get_fuse_conn(dir);
 
 	name.hash = full_name_hash(name.name, name.len);
 	dentry = d_lookup(parent, &name);
-	if (dentry) {
+	if (dentry && dentry->d_inode) {
 		inode = dentry->d_inode;
-		if (!inode) {
-			d_drop(dentry);
-		} else if (get_node_id(inode) != o->nodeid ||
-			   ((o->attr.mode ^ inode->i_mode) & S_IFMT)) {
-			err = d_invalidate(dentry);
-			if (err)
-				goto out;
-		} else if (is_bad_inode(inode)) {
-			err = -EIO;
-			goto out;
-		} else {
+		if (get_node_id(inode) == o->nodeid) {
 			struct fuse_inode *fi;
 			fi = get_fuse_inode(inode);
 			spin_lock(&fc->lock);
@@ -1260,6 +1244,9 @@ static int fuse_direntplus_link(struct file *file,
 			 */
 			goto found;
 		}
+		err = d_invalidate(dentry);
+		if (err)
+			goto out;
 		dput(dentry);
 		dentry = NULL;
 	}
@@ -1274,19 +1261,10 @@ static int fuse_direntplus_link(struct file *file,
 	if (!inode)
 		goto out;
 
-	if (S_ISDIR(inode->i_mode)) {
-		mutex_lock(&fc->inst_mutex);
-		alias = fuse_d_add_directory(dentry, inode);
-		mutex_unlock(&fc->inst_mutex);
-		err = PTR_ERR(alias);
-		if (IS_ERR(alias)) {
-			iput(inode);
-			goto out;
-		}
-	} else {
-		alias = d_splice_alias(inode, dentry);
-	}
-
+	alias = d_materialise_unique(dentry, inode);
+	err = PTR_ERR(alias);
+	if (IS_ERR(alias))
+		goto out;
 	if (alias) {
 		dput(dentry);
 		dentry = alias;

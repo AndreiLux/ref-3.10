@@ -450,6 +450,18 @@ config INPUT_GPIO
 	help
 	  Say Y here if you want to support gpio based keys, wheels etc...
 
+config INPUT_ISA1200_FF_MEMLESS
+	tristate "ISA1200 haptic ff-memless support"
+	depends on I2C
+	select INPUT_FF_MEMLESS
+	help
+	  ISA1200 is a high performance enhanced haptic chip.
+	  Say Y here if you want to support ISA1200 connected via I2C,
+	  and select N if you are unsure.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called isa1200-ff-memless.
+
 config HP_SDC_RTC
 	tristate "HP SDC Real Time Clock"
 	depends on (GSC || HP300) && SERIO
@@ -653,13 +665,64 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
-config INPUT_BOOSTER
-	tristate "Input booster device to support frequency min lock"
+config BMP18X
+       tristate "BMP18X digital pressure sensor"
+       depends on (I2C ) && SYSFS
+       help
+         If you say yes here you get support for Bosch Sensortec
+	 digital pressure sensors BMP085, BMP180.
+
+         To compile this driver as a module, choose M here: the
+         module will be called bmp18x-core.
+
+config BMP18X_I2C
+       tristate "support I2C bus connection"
+       depends on BMP18X && I2C
+       help
+         Say Y here if you want to support Bosch Sensortec digital pressure
+         sensor hooked to an I2C bus.
+
+         To compile this driver as a module, choose M here: the
+         module will be called bmp18x-i2c.
+
+config SENSORS_MMA8X5X
+	tristate "MMA8451/MMA8452/MMA8453/MMA8652/MMA8653 device driver"
+	depends on I2C && SYSFS
+	select INPUT_POLLDEV
+	default n
 	help
-	  Say Y here if you want to support input booster for the input device such
-	  as key, touch, pen, toucheky.
+	  If you say yes here you get support for the Freescale MMA8451/
+	  MMA8452/MMA8453/MMA8652/MMA8653  sensors.
 
 	  To compile this driver as a module, choose M here: the
-	  module will be called input_booster.
+	  module will be called mma8x5x.
 
+config SENSORS_MMA_POSITION
+	int "MMA8x5x Accelerate Sensor Position Setting"
+	depends on SENSORS_MMA8X5X
+	default "0"
+	help
+	  this provide the sensor position setting , value is between 0~7
+
+config SENSORS_STK3X1X
+	tristate "STK3X1X device driver"
+	depends on I2C
+	default n
+	help
+	  Say Y here you want to enable for the sitronix stk3x1x
+	  light and proximity sensors driver.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called stk3x1x.
+
+config SENSORS_CAPELLA_CM36283
+	tristate "CM36283 proximity and light sensor"
+	depends on I2C
+	default n
+	help
+	  Say Y here to enable the CM36283 Proximity
+	  Sensor with Ambient Light Sensor.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called CM36283.
 endif

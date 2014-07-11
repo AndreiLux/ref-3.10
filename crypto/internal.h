@@ -36,6 +36,9 @@
  * FIPS_FUNC_TEST 3 will make sure all the logs needed in no error mode
  * FIPS_FUNC_TEST 4 will make the necessary dumps for zeroization test
  * FIPS_FUNC_TEST 5 will make the continous PRNG test fail
+ * FIPS_FUNC_TEST 6 will make the SHA1 test fail
+ * FIPS_FUNC_TEST 7 will make the TDES test fail
+ * FIPS_FUNC_TEST 8 will make the RNG test fail
  */
 
 
@@ -110,6 +113,7 @@ void crypto_exit_compress_ops(struct crypto_tfm *tfm);
 struct crypto_larval *crypto_larval_alloc(const char *name, u32 type, u32 mask);
 void crypto_larval_kill(struct crypto_alg *alg);
 struct crypto_alg *crypto_larval_lookup(const char *name, u32 type, u32 mask);
+void crypto_larval_error(const char *name, u32 type, u32 mask);
 void crypto_alg_tested(const char *name, int err);
 
 void crypto_remove_spawns(struct crypto_alg *alg, struct list_head *list,

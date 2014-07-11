@@ -706,7 +706,6 @@ void ssp_sensorhub_remove(struct ssp_data *ssp_data)
 	complete_all(&hub_data->read_done);
 	wake_lock_destroy(&hub_data->sensorhub_wake_lock);
 	kfree(hub_data);
-	sensorhub_err("DONE");
 }
 
 MODULE_DESCRIPTION("Seamless Sensor Platform(SSP) sensorhub driver");

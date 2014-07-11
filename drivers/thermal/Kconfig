@@ -69,7 +69,6 @@ config THERMAL_GOV_USER_SPACE
 config CPU_THERMAL
 	bool "generic cpu cooling support"
 	depends on CPU_FREQ
-	select CPU_FREQ_TABLE
 	help
 	  This implements the generic cpu cooling mechanism through frequency
 	  reduction. An ACPI version of this already exists
@@ -90,6 +89,27 @@ config THERMAL_EMULATION
 	  WARNING: Be careful while enabling this option on production systems,
 	  because userland can easily disable the thermal policy by simply
 	  flooding this sysfs node with low temperature values.
+
+config THERMAL_TSENS8974
+	tristate "Qualcomm 8974 TSENS Temperature driver"
+	depends on THERMAL
+	help
+	  This enables the thermal sysfs driver for the TSENS device. It shows
+	  up in Sysfs as a thermal zone with multiple trip points. Also able
+	  to set threshold temperature for both warm and cool and update
+	  thermal userspace client when a threshold is reached. Warm/Cool
+	  temperature thresholds can be set independently for each sensor.
+
+config THERMAL_MONITOR
+	bool "Monitor thermal state and limit CPU Frequency"
+	depends on THERMAL_TSENS8960 || THERMAL_TSENS8974
+	depends on CPU_FREQ_MSM
+	default n
+	help
+	  This enables thermal monitoring capability in the kernel in the
+	  absence of a system wide thermal monitoring entity or until such an
+	  entity starts running in the userspace. Monitors TSENS temperature
+	  and limits the max frequency of the cores.
 
 config SPEAR_THERMAL
 	bool "SPEAr thermal sensor driver"
@@ -169,28 +189,29 @@ config INTEL_POWERCLAMP
 	  enforce idle time which results in more package C-state residency. The
 	  user interface is exposed via generic thermal framework.
 
-config CPU_THERMAL_IPA
-	bool "Enable Intelligent Power Arbiter"
-	depends on THERMAL && CPU_FREQ && EXYNOS_THERMAL
+config THERMAL_QPNP
+	tristate "Qualcomm Plug-and-Play PMIC Temperature Alarm"
+	depends on THERMAL
+	depends on OF
+	depends on SPMI
+	depends on OF_SPMI
 	help
-	  This implements the Intelligent Power Arbiter (IPA)
+	  This enables a thermal Sysfs driver for Qualcomm plug-and-play (QPNP)
+	  PMIC devices. It shows up in Sysfs as a thermal zone with multiple
+	  trip points. The temperature reported by the thermal zone reflects the
+	  real time die temperature if an ADC is present or an estimate of the
+	  temperature based upon the over temperature stage value if no ADC is
+	  available. If allowed via compile time configuration; enabling the
+	  thermal zone device via the mode file results in shifting PMIC over
+	  temperature shutdown control from hardware to software.
 
-config CPU_THERMAL_IPA_CONTROL
-	bool "Enable control"
-	depends on CPU_THERMAL_IPA
+config THERMAL_QPNP_ADC_TM
+	tristate "Qualcomm 8974 Thermal Monitor ADC Driver"
+	depends on THERMAL && SPMI
 	help
-	  This implements the intelligent power arbiter (IPA) control algorithms.
-	  If you want this support, you should say Y here.
-
-config CPU_THERMAL_IPA_DEBUG
-	bool "Enable debugging"
-	depends on CPU_THERMAL_IPA
-	select FUNCTION_TRACER
-	select DYNAMIC_FTRACE
-	help
-	  This enables *trace* routines in IPA, used to collect logs
-	  of temperature, CPU and GPU utilisations and power
-	  estimates.  If you want to analyze IPA behaviour, you should
-	  say Y here.
-
+	  This enables the thermal Sysfs driver for the ADC thermal monitoring
+	  device. It shows up in Sysfs as a thermal zone with multiple trip points.
+	  Disabling the thermal zone device via the mode file results in disabling
+	  the sensor. Also able to set threshold temperature for both hot and cold
+	  and update when a threshold is reached.
 endif

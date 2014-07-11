@@ -22,21 +22,10 @@
 #define VENDOR		"BOSCH"
 #define CHIP_ID		"BMI058"
 
-#define CALIBRATION_FILE_PATH	"/efs/gyro_cal_data"
+#define CALIBRATION_FILE_PATH              "/efs/gyro_cal_data"
 #define CALIBRATION_DATA_AMOUNT            20
 #define SELFTEST_DATA_AMOUNT               64
 #define SELFTEST_LIMITATION_OF_ERROR       5250
-///////////////////////////
-#define VERBOSE_OUT 1
-#define DEF_GYRO_FULLSCALE	2000
-#define DEF_GYRO_SENS	(32768 / DEF_GYRO_FULLSCALE)
-#define DEF_BIAS_LSB_THRESH_SELF	(20 * DEF_GYRO_SENS)
-#define DEF_BIAS_LSB_THRESH_SELF_6500	(30 * DEF_GYRO_SENS)
-#define DEF_RMS_LSB_TH_SELF (5 * DEF_GYRO_SENS)
-#define DEF_RMS_THRESH	((DEF_RMS_LSB_TH_SELF) * (DEF_RMS_LSB_TH_SELF))
-#define DEF_SCALE_FOR_FLOAT (1000)
-#define DEF_RMS_SCALE_FOR_RMS (10000)
-#define DEF_SQRT_SCALE_FOR_RMS (100)
 
 static ssize_t gyro_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -90,9 +79,9 @@ static int save_gyro_caldata(struct ssp_data *data, s16 *iCalData)
 	struct file *cal_filp = NULL;
 	mm_segment_t old_fs;
 
-	data->gyrocal.x = iCalData[0]; // << 2;
-	data->gyrocal.y = iCalData[1]; // << 2;
-	data->gyrocal.z = iCalData[2]; //<< 2;
+	data->gyrocal.x = iCalData[0];
+	data->gyrocal.y = iCalData[1];
+	data->gyrocal.z = iCalData[2];
 
 	ssp_dbg("[SSP]: do gyro calibrate %d, %d, %d\n",
 		data->gyrocal.x, data->gyrocal.y, data->gyrocal.z);
@@ -180,7 +169,7 @@ static ssize_t gyro_power_on(struct device *dev,
 	return sprintf(buf, "%d\n", 1);
 }
 
-short bmi058_gyro_get_temp(struct ssp_data *data)
+short gyro_get_temp(struct ssp_data *data)
 {
 	char chTempBuf = 0;
 	short temperature = 0;
@@ -209,18 +198,15 @@ short bmi058_gyro_get_temp(struct ssp_data *data)
 	return temperature;
 }
 
-static ssize_t gyro_get_temp(struct device *dev,
+static ssize_t gyro_temp_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	short temperature = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	temperature = bmi058_gyro_get_temp(data);
-	return sprintf(buf, "%d\n", temperature);
+	return sprintf(buf, "%d\n", gyro_get_temp(data));
 }
 
-static ssize_t bmi058_gyro_selftest_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
+ssize_t gyro_selftest(char *buf, struct ssp_data *data)
 {
 	char chTempBuf[19] = { 0,};
 	u8 bist=0, selftest = 0;
@@ -229,8 +215,6 @@ static ssize_t bmi058_gyro_selftest_show(struct device *dev,
 	int dataz_check = 0;
 	s16 iCalData[3] = {0,};
 	int iRet = 0;
-
-	struct ssp_data *data = dev_get_drvdata(dev);
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (!msg)
@@ -263,48 +247,34 @@ static ssize_t bmi058_gyro_selftest_show(struct device *dev,
 	else
 		bist =0;
 	datax_check = (int)((chTempBuf[4] << 24) + (chTempBuf[3] <<16)
-						  +(chTempBuf[2] << 8) + chTempBuf[1]);
+		+(chTempBuf[2] << 8) + chTempBuf[1]);
 	datay_check = (int)((chTempBuf[8] << 24) + (chTempBuf[7] <<16)
-						  +(chTempBuf[6] << 8) + chTempBuf[5]);
+		+(chTempBuf[6] << 8) + chTempBuf[5]);
 	dataz_check = (int)((chTempBuf[12] << 24) + (chTempBuf[11] <<16)
-						  +(chTempBuf[10] << 8) + chTempBuf[9]);
-	iCalData[0] = (s16)((chTempBuf[14] << 8) +
-				chTempBuf[13]);
-	iCalData[1] = (s16)((chTempBuf[16] << 8) +
-				chTempBuf[15]);
-	iCalData[2] = (s16)((chTempBuf[18] << 8) +
-				chTempBuf[17]);
-	//shift_ratio[1] = (s16)((chTempBuf[4] << 8) +chTempBuf[3]);
-	//total_count = (int)((chTempBuf[11] << 24) +(chTempBuf[10] << 16) + (chTempBuf[9] << 8) +chTempBuf[8]);
+		+(chTempBuf[10] << 8) + chTempBuf[9]);
+	iCalData[0] = (s16)((chTempBuf[14] << 8) + chTempBuf[13]);
+	iCalData[1] = (s16)((chTempBuf[16] << 8) + chTempBuf[15]);
+	iCalData[2] = (s16)((chTempBuf[18] << 8) + chTempBuf[17]);
+
 	pr_info("[SSP] gyro bist: %d, selftest: %d\n", bist, selftest);
-	pr_info("[SSP] gyro X: %d, Y: %d, Z: %d\n", datax_check, datay_check, dataz_check);
-	pr_info("[SSP] iCalData X: %d, Y: %d, Z: %d\n", iCalData[0], iCalData[1], iCalData[2]);
-	//pr_info("[SSP] avg %+8ld %+8ld %+8ld (LSB)\n", avg[0], avg[1], avg[2]);
+	pr_info("[SSP] gyro X: %d, Y: %d, Z: %d\n",
+		datax_check, datay_check, dataz_check);
+	pr_info("[SSP] iCalData X: %d, Y: %d, Z: %d\n",
+		iCalData[0], iCalData[1], iCalData[2]);
 
 	if ((datax_check <= SELFTEST_LIMITATION_OF_ERROR)
 		&& (datay_check <= SELFTEST_LIMITATION_OF_ERROR)
 		&& (dataz_check <= SELFTEST_LIMITATION_OF_ERROR)) {
-		pr_info("[SENSOR]: %s - Gyro zero rate OK!- Gyro selftest Pass\n", __func__);
-		//bmg160_get_caldata(data);
+		pr_info("[SSP]: %s - Gyro zero rate OK!- Gyro selftest Pass\n",
+			__func__);
 		save_gyro_caldata(data, iCalData);
 	} else {
-		pr_info("[SENSOR]: %s - Gyro zero rate NG!- Gyro selftest fail!\n", __func__);
+		pr_info("[SSP]: %s - Gyro zero rate NG!- Gyro selftest fail!\n",
+			__func__);
 		selftest |= 1;
 	}
-
-	#if 0 /*Do Not saveing gyro cal after selftest NOW at BMI058*/
-	if (likely(!ret_val)) {
-		save_gyro_caldata(data, iCalData);
-	} else {
-		pr_err("[SSP] ret_val != 0, gyrocal is 0 at all axis\n");
-		data->gyrocal.x = 0;
-		data->gyrocal.y = 0;
-		data->gyrocal.z = 0;
-	}
-	#endif
-
 exit:
-	pr_info("%d,%d,%d.%03d,%d.%03d,%d.%03d\n",
+	pr_info("[SSP] %s - %d,%d,%d.%03d,%d.%03d,%d.%03d\n", __func__,
 			selftest ? 0 : 1, bist,
 			(datax_check / 1000), (datax_check % 1000),
 			(datay_check / 1000), (datay_check % 1000),
@@ -316,6 +286,14 @@ exit:
 			(datay_check / 1000), (datay_check % 1000),
 			(dataz_check / 1000), (dataz_check % 1000),
 			iRet ,iRet ,iRet ,iRet ,iRet ,iRet ,iRet ,iRet);
+}
+
+static ssize_t gyro_selftest_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	return gyro_selftest(buf, data);
 }
 
 static ssize_t gyro_selftest_dps_store(struct device *dev,
@@ -385,10 +363,10 @@ static DEVICE_ATTR(name, S_IRUGO, gyro_name_show, NULL);
 static DEVICE_ATTR(vendor, S_IRUGO, gyro_vendor_show, NULL);
 static DEVICE_ATTR(power_off, S_IRUGO, gyro_power_off, NULL);
 static DEVICE_ATTR(power_on, S_IRUGO, gyro_power_on, NULL);
-static DEVICE_ATTR(temperature, S_IRUGO, gyro_get_temp, NULL);
-static DEVICE_ATTR(selftest, S_IRUGO, bmi058_gyro_selftest_show, NULL);
+static DEVICE_ATTR(temperature, S_IRUGO, gyro_temp_show, NULL);
+static DEVICE_ATTR(selftest, S_IRUGO, gyro_selftest_show, NULL);
 static DEVICE_ATTR(selftest_dps, S_IRUGO | S_IWUSR | S_IWGRP,
-							gyro_selftest_dps_show, gyro_selftest_dps_store);
+	gyro_selftest_dps_show, gyro_selftest_dps_store);
 
 static struct device_attribute *gyro_attrs[] = {
 	&dev_attr_name,

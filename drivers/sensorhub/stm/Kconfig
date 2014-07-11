@@ -21,35 +21,13 @@ config SENSORS_SSP
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
-config SENSORS_SSP_STM
-	tristate "Sensors ssp stm"
+config SENSORS_SSP_AK8963C
+	tristate "Sensors ssp ak8963c"
 	default n
 	depends on SPI
 	help
-	  ssp driver for sensor hub.
-          If you say yes here you get ssp support for
-	  sensor hub.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_MPU6500
-	tristate "Sensors ssp mpu6500"
-	default n
-	depends on SPI
-	help
-	  mpu6500 file for factory test in ssp driver.
-          If you say yes here you get mpu6500 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_BMI058
-	tristate "Sensors ssp bmi058"
-	default n
-	depends on SPI
-	help
-	  bmi058 file for factory test in ssp driver.
-          If you say yes here you get bmi058 support for
+	  ak8963c file for factory test in ssp driver.
+          If you say yes here you get ak8963c support for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
@@ -76,80 +54,50 @@ config SENSORS_SSP_YAS532
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
-config SENSORS_SSP_CM3320
-	tristate "Sensors ssp cm3320"
-	default n
-	depends on SPI
+config SENSORS_SSP_ACCELEROMETER_POSITION
+	int "Accelerometer Sensor Mounting Position on Board"
+	depends on SENSORS_SSP
+	default "0"
 	help
-	  cm3320 file for factory test in ssp driver.
-          If you say yes here you get cm3320 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
+	  X Y Z axis position.
+	    0:  X, Y, Z
+	    1:  Y,-X, Z
+	    2: -X,-Y, Z
+	    3: -Y, X, Z
+	    4: -X, Y,-Z
+	    5:  Y, X,-Z
+	    6:  X,-Y,-Z
+	    7: -Y,-X,-Z
 
-config SENSORS_SSP_MAX88920
-	tristate "Sensors ssp max88920"
-	default n
-	depends on SPI
+config SENSORS_SSP_GYROSCOPE_POSITION
+	int "Gyroscope Sensor Mounting Position on Board"
+	depends on SENSORS_SSP
+	default "0"
 	help
-	  max88920 file for factory test in ssp driver.
-          If you say yes here you get max88920 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
+	  X Y Z axis position.
+	    0:  X, Y, Z
+	    1:  Y,-X, Z
+	    2: -X,-Y, Z
+	    3: -Y, X, Z
+	    4: -X, Y,-Z
+	    5:  Y, X,-Z
+	    6:  X,-Y,-Z
+	    7: -Y,-X,-Z
 
-config SENSORS_SSP_MAX88921
-	tristate "Sensors ssp max88921"
-	default n
-	depends on SPI
+config SENSORS_SSP_MAGNETOMETER_POSITION
+	int "Geomagnetic Sensor Mounting Position on Board"
+	depends on SENSORS_SSP
+	default "0"
 	help
-	  max88921 file for factory test in ssp driver.
-          If you say yes here you get max88921 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_LPS25H
-	tristate "Sensors ssp lps25h"
-	default n
-	depends on SPI
-	help
-	  lps25h file for factory test in ssp driver.
-          If you say yes here you get lps25h support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_SHTC1
-	tristate "Sensors ssp shtc1"
-	default n
-	depends on SPI
-	help
-	  shtc1 file for factory test in ssp driver.
-          If you say yes here you get shtc1 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
-
-config SENSORS_SSP_SHTC1_VER
-	string "Sensors shtc1 version name"
-	default "No_Version_Name"
-	depends on SENSORS_SSP_SHTC1
-	help
-	  shtc1 version for temphumid factory test in ssp driver.
-          If you give version name here you get shtc1 version for
-	  lcd test.
-
-config SENSORS_SSP_STM32F401
-	tristate "Sensors ssp stm32f401"
-	default n
-	depends on SPI
-	help
-	  stm32f401 file for factory test in ssp driver.
-          If you say yes here you get stm32f401 support for
-	  factory test.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
+	  X Y Z axis position.
+	    0:  X, Y, Z
+	    1:  Y,-X, Z
+	    2: -X,-Y, Z
+	    3: -Y, X, Z
+	    4: -X, Y,-Z
+	    5:  Y, X,-Z
+	    6:  X,-Y,-Z
+	    7: -Y,-X,-Z
 
 config SENSORS_SSP_SENSORHUB
 	tristate "Sensors ssp sensorhub"
@@ -162,33 +110,65 @@ config SENSORS_SSP_SENSORHUB
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
-config SENSORS_SSP_TMG399X
-	tristate "Sensors ssp tmg399x"
+config SENSORS_SSP_FACTORY
+	tristate "ssp factory"
+	depends on SENSORS_SSP
 	default n
-	depends on SPI
 	help
-	  max88005 file for factory test in ssp driver.
-          If you say yes here you get tmg399x support for
+	  ssp sensor hub driver for factory test.
+          If you say yes here you can enable fatory drvier for
 	  factory test.
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
-config SENSORS_SSP_MOBEAM
-	tristate "Sensors ssp mobeam"
+config SENSORS_SSP_C12SD
+	tristate "Sensors ssp C12SD"
 	default n
-	depends on I2C
+	depends on SENSORS_SSP
 	help
-	  mobeam file for ssp driver.
-          If you say yes here you get mobeam support using TMG399x.
-	  To compile this driver as a module, choose M here: the
-	  module will be called ssp.
+	  This is for GUVA_C12SD UV Sensor
+	  device driver.
+	  GUVA_C12SD is made by Genicom.
+          If you say yes here you get c12sd support.
+	  If you say no here c12sd will not be supported.
+
+config SENSORS_AD7146
+	tristate "ANALOG DEVICES AD7146 Multi-Proximity Sensor"
+	default n
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for the AD7146
+	  multi proximity sensor.
+	  This driver can also be built as a module.  If so, the module
+	  will be called ad7146.
 
 config SENSORS_MAX86900
 	tristate "MAXIM MAX86900 HRM Sensor"
 	default n
-	depends on I2C
+	depends on I2C && SYSFS
 	help
 	  If you say yes here you get support for the MAX86900
 	  HRM sensor.
 	  This driver can also be built as a module.  If so, the module
 	  will be called max86900.
+
+config SENSORS_MAX86900_UV
+	tristate "MAXIM MAX86900 HRM & UV Sensor"
+	default n
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for the MAX86900
+	  HRM & UV sensor.
+	  This driver can also be built as a module.  If so, the module
+	  will be called max86900.
+
+config SENSORS_SSP_BOUNCE_FIRMWARE
+	tristate "Sensors ssp BOUNCE_FIRMWARE"
+	default n
+	depends on SENSORS_SSP_STM
+	help
+	  This is for Bounce firmware support.
+          If you say yes here you get bounce firmware support.
+	  If you say no here bounce firmware will not be supported.
+
+source "drivers/sensorhub/stm/factory/Kconfig"

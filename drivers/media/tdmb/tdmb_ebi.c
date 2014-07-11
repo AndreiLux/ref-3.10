@@ -254,7 +254,7 @@ static int tdmb_sromc_probe(struct platform_device *pdev)
 	if (tdmb_ebi_init(pdev) < 0) {
 		DPRINTK("%s : tdmb_ebi_init error\n", __func__);
 		return -1;
-	}
+}
 
 	v_addr_ebi_cs_base = ioremap(ebi_dt_pdata->cs_base, ebi_dt_pdata->mem_size);
 	DPRINTK("%s : v_addr_ebi_cs_base 0x%p\n", __func__, v_addr_ebi_cs_base);

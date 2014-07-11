@@ -49,10 +49,13 @@
 #include <asm/timex.h>
 #include <asm/io.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/timer.h>
 
-#include <linux/sec_debug.h>
 u64 jiffies_64 __cacheline_aligned_in_smp = INITIAL_JIFFIES;
 
 EXPORT_SYMBOL(jiffies_64);
@@ -150,11 +153,9 @@ static unsigned long round_jiffies_common(unsigned long j, int cpu,
 	/* now that we have rounded, subtract the extra skew again */
 	j -= cpu * 3;
 
-	/*
-	 * Make sure j is still in the future. Otherwise return the
-	 * unmodified value.
-	 */
-	return time_is_after_jiffies(j) ? j : original;
+	if (j <= jiffies) /* rounding ate our timeout entirely; */
+		return original;
+	return j;
 }
 
 /**
@@ -605,7 +606,8 @@ static inline void
 debug_activate(struct timer_list *timer, unsigned long expires)
 {
 	debug_timer_activate(timer);
-	trace_timer_start(timer, expires);
+	trace_timer_start(timer, expires,
+			 tbase_get_deferrable(timer->base) > 0 ? 'y' : 'n');
 }
 
 static inline void debug_deactivate(struct timer_list *timer)
@@ -775,55 +777,6 @@ out_unlock:
 	return ret;
 }
 
-static inline int
-__mod_timer_on(struct timer_list *timer, int cpu,
-						unsigned long expires, bool pending_only)
-{
-	struct tvec_base *base, *new_base;
-	unsigned long flags;
-	int ret = 0;
-
-	timer_stats_timer_set_start_info(timer);
-	BUG_ON(!timer->function);
-
-	base = lock_timer_base(timer, &flags);
-
-	ret = detach_if_pending(timer, base, false);
-	if (!ret && pending_only)
-		goto out_unlock;
-
-	debug_activate(timer, expires);
-
-	new_base = per_cpu(tvec_bases, cpu);
-
-	if (base != new_base) {
-		/*
-		 * We are trying to schedule the timer on the local CPU.
-		 * However we can't change timer's base while it is running,
-		 * otherwise del_timer_sync() can't detect that the timer's
-		 * handler yet has not finished. This also guarantees that
-		 * the timer is serialized wrt itself.
-		 */
-		if (likely(base->running_timer != timer)) {
-			/* See the comment in lock_timer_base() */
-			timer_set_base(timer, NULL);
-			spin_unlock(&base->lock);
-			base = new_base;
-			spin_lock(&base->lock);
-			timer_set_base(timer, base);
-		}
-	}
-
-	timer->expires = expires;
-	internal_add_timer(base, timer);
-
-out_unlock:
-	spin_unlock_irqrestore(&base->lock, flags);
-
-	return ret;
-}
-
-
 /**
  * mod_timer_pending - modify a pending timer's timeout
  * @timer: the pending timer to be modified
@@ -914,22 +867,6 @@ int mod_timer(struct timer_list *timer, unsigned long expires)
 	return __mod_timer(timer, expires, false, TIMER_NOT_PINNED);
 }
 EXPORT_SYMBOL(mod_timer);
-
-int mod_timer_on(struct timer_list *timer, int cpu, unsigned long expires)
-{
-	expires = apply_slack(timer, expires);
-
-	/*
-	 * This is a common optimization triggered by the
-	 * networking code - if the timer is re-modified
-	 * to be the same thing then just return:
-	 */
-	if (timer_pending(timer) && timer->expires == expires)
-		return 1;
-
-	return __mod_timer_on(timer, cpu, expires, false);
-}
-EXPORT_SYMBOL(mod_timer_on);
 
 /**
  * mod_timer_pinned - modify a timer's timeout
@@ -1180,9 +1117,13 @@ static void call_timer_fn(struct timer_list *timer, void (*fn)(unsigned long),
 	lock_map_acquire(&lockdep_map);
 
 	trace_timer_expire_entry(timer);
-	sec_debug_timer_log(5555, (void *)fn);
+#ifdef CONFIG_SEC_DEBUG
+	secdbg_msg("timer %pS entry", fn);
+#endif
 	fn(data);
-	sec_debug_timer_log(6666, (void *)fn);
+#ifdef CONFIG_SEC_DEBUG
+	secdbg_msg("timer %pS exit", fn);
+#endif
 	trace_timer_expire_exit(timer);
 
 	lock_map_release(&lockdep_map);

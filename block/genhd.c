@@ -19,6 +19,7 @@
 #include <linux/idr.h>
 #include <linux/log2.h>
 #include <linux/pm_runtime.h>
+#include <linux/stlog.h>
 
 #include "blk.h"
 
@@ -510,9 +511,14 @@ static void register_disk(struct gendisk *disk)
 	struct hd_struct *part;
 	int err;
 
+	#ifdef CONFIG_STLOG
+	int major 			= disk->major;	
+	int first_minor 	= disk->first_minor;
+	#endif
+
 	ddev->parent = disk->driverfs_dev;
 
-	dev_set_name(ddev, "%s", disk->disk_name);
+	dev_set_name(ddev, disk->disk_name);
 
 	/* delay uevents, until we scanned partition table */
 	dev_set_uevent_suppress(ddev, 1);
@@ -560,11 +566,14 @@ exit:
 	/* announce disk after possible partitions are created */
 	dev_set_uevent_suppress(ddev, 0);
 	kobject_uevent(&ddev->kobj, KOBJ_ADD);
+	ST_LOG("<%s> KOBJ_ADD %d:%d",__func__,major,first_minor);
 
 	/* announce possible partitions */
 	disk_part_iter_init(&piter, disk, 0);
-	while ((part = disk_part_iter_next(&piter)))
+	while ((part = disk_part_iter_next(&piter))){
 		kobject_uevent(&part_to_dev(part)->kobj, KOBJ_ADD);
+		ST_LOG("<%s> KOBJ_ADD %d:%d",__func__,major,first_minor+part->partno);
+	}
 	disk_part_iter_exit(&piter);
 }
 
@@ -635,6 +644,10 @@ void del_gendisk(struct gendisk *disk)
 	struct disk_part_iter piter;
 	struct hd_struct *part;
 
+	#ifdef CONFIG_STLOG
+	struct device *dev;
+	#endif
+
 	disk_del_events(disk);
 
 	/* invalidate stuff */
@@ -664,6 +677,11 @@ void del_gendisk(struct gendisk *disk)
 	if (!sysfs_deprecated)
 		sysfs_remove_link(block_depr, dev_name(disk_to_dev(disk)));
 	pm_runtime_set_memalloc_noio(disk_to_dev(disk), false);
+	#ifdef CONFIG_STLOG
+	dev=disk_to_dev(disk);
+	ST_LOG("<%s> KOBJ_REMOVE %d:%d %s",
+	__func__,MAJOR(dev->devt),MINOR(dev->devt),dev->kobj.name);
+	#endif	
 	device_del(disk_to_dev(disk));
 	blk_free_devt(disk_to_dev(disk)->devt);
 }
@@ -1120,9 +1138,12 @@ static int disk_uevent(struct device *dev, struct kobj_uevent_env *env)
 		cnt++;
 	disk_part_iter_exit(&piter);
 	add_uevent_var(env, "NPARTS=%u", cnt);
-#ifdef CONFIG_USB_HOST_NOTIFY
-	if (disk->interfaces == GENHD_IF_USB)
+#ifdef CONFIG_USB_STORAGE_DETECT
+	if (disk->interfaces == GENHD_IF_USB) {
 		add_uevent_var(env, "MEDIAPRST=%d", disk->media_present);
+		pr_info("%s %d, disk->media_present=%d, cnt=%d\n",
+				__func__, __LINE__, disk->media_present, cnt);
+	}
 #endif
 	return 0;
 }
@@ -1632,15 +1653,12 @@ static void disk_check_events(struct disk_events *ev,
 	struct gendisk *disk = ev->disk;
 	char *envp[ARRAY_SIZE(disk_uevents) + 1] = { };
 	unsigned int clearing = *clearing_ptr;
-	unsigned int events = 0;
+	unsigned int events;
 	unsigned long intv;
 	int nr_events = 0, i;
 
-#ifdef CONFIG_USB_HOST_NOTIFY
-	if (disk->interfaces != GENHD_IF_USB)
-		/* check events */
-		events = disk->fops->check_events(disk, clearing);
-#endif
+	/* check events */
+	events = disk->fops->check_events(disk, clearing);
 
 	/* accumulate pending events and schedule next poll if necessary */
 	spin_lock_irq(&ev->lock);
@@ -1664,12 +1682,9 @@ static void disk_check_events(struct disk_events *ev,
 		if (events & disk->events & (1 << i))
 			envp[nr_events++] = disk_uevents[i];
 
-#ifdef CONFIG_USB_HOST_NOTIFY
-	if (disk->interfaces != GENHD_IF_USB) {
-		if (nr_events)
-			kobject_uevent_env(&disk_to_dev(disk)->kobj,
-					KOBJ_CHANGE, envp);
-	}
+#ifdef CONFIG_USB_STORAGE_DETECT
+	if (nr_events && disk->interfaces != GENHD_IF_USB)
+		kobject_uevent_env(&disk_to_dev(disk)->kobj, KOBJ_CHANGE, envp);
 #endif
 }
 

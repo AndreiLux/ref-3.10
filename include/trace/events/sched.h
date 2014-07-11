@@ -51,6 +51,44 @@ TRACE_EVENT(sched_kthread_stop_ret,
 );
 
 /*
+ * Tracepoint for task enqueue/dequeue:
+ */
+TRACE_EVENT(sched_enq_deq_task,
+
+	TP_PROTO(struct task_struct *p, int enqueue),
+
+	TP_ARGS(p, enqueue),
+
+	TP_STRUCT__entry(
+		__array(	char,	comm,	TASK_COMM_LEN	)
+		__field(	pid_t,	pid			)
+		__field(	int,	prio			)
+		__field(	int,	cpu			)
+		__field(	int,	enqueue			)
+		__field(unsigned int,	nr_running		)
+		__field(unsigned long,	cpu_load		)
+		__field(unsigned int,	rt_nr_running		)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, p->comm, TASK_COMM_LEN);
+		__entry->pid		= p->pid;
+		__entry->prio		= p->prio;
+		__entry->cpu		= task_cpu(p);
+		__entry->enqueue	= enqueue;
+		__entry->nr_running	= task_rq(p)->nr_running;
+		__entry->cpu_load	= task_rq(p)->cpu_load[0];
+		__entry->rt_nr_running	= task_rq(p)->rt.rt_nr_running;
+	),
+
+	TP_printk("cpu=%d %s comm=%s pid=%d prio=%d nr_running=%u cpu_load=%lu rt_nr_running=%u",
+			__entry->cpu, __entry->enqueue ? "enqueue" : "dequeue",
+			__entry->comm, __entry->pid,
+			__entry->prio, __entry->nr_running,
+			__entry->cpu_load, __entry->rt_nr_running)
+);
+
+/*
  * Tracepoint for waking up a task:
  */
 DECLARE_EVENT_CLASS(sched_wakeup_template,
@@ -180,6 +218,81 @@ TRACE_EVENT(sched_migrate_task,
 	TP_printk("comm=%s pid=%d prio=%d orig_cpu=%d dest_cpu=%d",
 		  __entry->comm, __entry->pid, __entry->prio,
 		  __entry->orig_cpu, __entry->dest_cpu)
+);
+
+/*
+ * Tracepoint for a CPU going offline/online:
+ */
+TRACE_EVENT(sched_cpu_hotplug,
+
+	TP_PROTO(int affected_cpu, int error, int status),
+
+	TP_ARGS(affected_cpu, error, status),
+
+	TP_STRUCT__entry(
+		__field(	int,	affected_cpu		)
+		__field(	int,	error			)
+		__field(	int,	status			)
+	),
+
+	TP_fast_assign(
+		__entry->affected_cpu	= affected_cpu;
+		__entry->error		= error;
+		__entry->status		= status;
+	),
+
+	TP_printk("cpu %d %s error=%d", __entry->affected_cpu,
+		__entry->status ? "online" : "offline", __entry->error)
+);
+
+/*
+ * Tracepoint for load balancing:
+ */
+#if NR_CPUS > 32
+#error "Unsupported NR_CPUS for lb tracepoint."
+#endif
+TRACE_EVENT(sched_load_balance,
+
+	TP_PROTO(int cpu, enum cpu_idle_type idle, int balance,
+		 unsigned long group_mask, int busiest_nr_running,
+		 unsigned long imbalance, unsigned int env_flags, int ld_moved,
+		 unsigned int balance_interval),
+
+	TP_ARGS(cpu, idle, balance, group_mask, busiest_nr_running,
+		imbalance, env_flags, ld_moved, balance_interval),
+
+	TP_STRUCT__entry(
+		__field(	int,			cpu)
+		__field(	enum cpu_idle_type,	idle)
+		__field(	int,			balance)
+		__field(	unsigned long,		group_mask)
+		__field(	int,			busiest_nr_running)
+		__field(	unsigned long,		imbalance)
+		__field(	unsigned int,		env_flags)
+		__field(	int,			ld_moved)
+		__field(	unsigned int,		balance_interval)
+	),
+
+	TP_fast_assign(
+		__entry->cpu			= cpu;
+		__entry->idle			= idle;
+		__entry->balance		= balance;
+		__entry->group_mask		= group_mask;
+		__entry->busiest_nr_running	= busiest_nr_running;
+		__entry->imbalance		= imbalance;
+		__entry->env_flags		= env_flags;
+		__entry->ld_moved		= ld_moved;
+		__entry->balance_interval	= balance_interval;
+	),
+
+	TP_printk("cpu=%d state=%s balance=%d group=%#lx busy_nr=%d imbalance=%ld flags=%#x ld_moved=%d bal_int=%d",
+		  __entry->cpu,
+		  __entry->idle == CPU_IDLE ? "idle" :
+		  (__entry->idle == CPU_NEWLY_IDLE ? "newly_idle" : "busy"),
+		  __entry->balance,
+		  __entry->group_mask, __entry->busiest_nr_running,
+		  __entry->imbalance, __entry->env_flags, __entry->ld_moved,
+		  __entry->balance_interval)
 );
 
 DECLARE_EVENT_CLASS(sched_process_template,
@@ -428,232 +541,6 @@ TRACE_EVENT(sched_pi_setprio,
 	TP_printk("comm=%s pid=%d oldprio=%d newprio=%d",
 			__entry->comm, __entry->pid,
 			__entry->oldprio, __entry->newprio)
-);
-
-/*
- * Tracepoint for showing tracked load contribution.
- */
-TRACE_EVENT(sched_task_load_contrib,
-
-	TP_PROTO(struct task_struct *tsk, unsigned long load_contrib),
-
-	TP_ARGS(tsk, load_contrib),
-
-	TP_STRUCT__entry(
-		__array(char, comm, TASK_COMM_LEN)
-		__field(pid_t, pid)
-		__field(unsigned long, load_contrib)
-	),
-
-	TP_fast_assign(
-		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->pid            = tsk->pid;
-		__entry->load_contrib   = load_contrib;
-	),
-
-	TP_printk("comm=%s pid=%d load_contrib=%lu",
-			__entry->comm, __entry->pid,
-			__entry->load_contrib)
-);
-
-/*
- * Tracepoint for showing tracked task runnable ratio [0..1023].
- */
-TRACE_EVENT(sched_task_runnable_ratio,
-
-	TP_PROTO(struct task_struct *tsk, unsigned long ratio),
-
-	TP_ARGS(tsk, ratio),
-
-	TP_STRUCT__entry(
-		__array(char, comm, TASK_COMM_LEN)
-		__field(pid_t, pid)
-		__field(unsigned long, ratio)
-	),
-
-	TP_fast_assign(
-	memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->pid   = tsk->pid;
-		__entry->ratio = ratio;
-	),
-
-	TP_printk("comm=%s pid=%d ratio=%lu",
-			__entry->comm, __entry->pid,
-			__entry->ratio)
-);
-
-/*
- * Tracepoint for showing tracked rq runnable ratio [0..1023].
- */
-TRACE_EVENT(sched_rq_runnable_ratio,
-
-	TP_PROTO(int cpu, unsigned long ratio),
-
-	TP_ARGS(cpu, ratio),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-		__field(unsigned long, ratio)
-	),
-
-	TP_fast_assign(
-		__entry->cpu   = cpu;
-		__entry->ratio = ratio;
-	),
-
-	TP_printk("cpu=%d ratio=%lu",
-			__entry->cpu,
-			__entry->ratio)
-);
-
-/*
- * Tracepoint for showing tracked rq runnable load.
- */
-TRACE_EVENT(sched_rq_runnable_load,
-
-	TP_PROTO(int cpu, u64 load),
-
-	TP_ARGS(cpu, load),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-		__field(u64, load)
-	),
-
-	TP_fast_assign(
-		__entry->cpu  = cpu;
-		__entry->load = load;
-	),
-
-	TP_printk("cpu=%d load=%llu",
-			__entry->cpu,
-			__entry->load)
-);
-
-TRACE_EVENT(sched_rq_nr_running,
-
-	TP_PROTO(int cpu, unsigned int nr_running, int nr_iowait),
-
-	TP_ARGS(cpu, nr_running, nr_iowait),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-		__field(unsigned int, nr_running)
-		__field(int, nr_iowait)
-	),
-
-	TP_fast_assign(
-		__entry->cpu  = cpu;
-		__entry->nr_running = nr_running;
-		__entry->nr_iowait = nr_iowait;
-	),
-
-	TP_printk("cpu=%d nr_running=%u nr_iowait=%d",
-		__entry->cpu,
-		__entry->nr_running, __entry->nr_iowait)
-);
-
-
-/*
- * Tracepoint for showing tracked task cpu usage ratio [0..1023].
- */
-TRACE_EVENT(sched_task_usage_ratio,
-
-	TP_PROTO(struct task_struct *tsk, unsigned long ratio),
-
-	TP_ARGS(tsk, ratio),
-
-	TP_STRUCT__entry(
-		__array(char, comm, TASK_COMM_LEN)
-		__field(pid_t, pid)
-		__field(unsigned long, ratio)
-	),
-
-	TP_fast_assign(
-	memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->pid   = tsk->pid;
-		__entry->ratio = ratio;
-	),
-
-	TP_printk("comm=%s pid=%d ratio=%lu",
-			__entry->comm, __entry->pid,
-			__entry->ratio)
-);
-
-/*
- * Tracepoint for HMP (CONFIG_SCHED_HMP) task migrations.
- */
-#define HMP_MIGRATE_WAKEUP	0
-#define HMP_MIGRATE_FORCE	1
-#define HMP_MIGRATE_OFFLOAD	2
-#define HMP_MIGRATE_IDLE_PULL	3
-TRACE_EVENT(sched_hmp_migrate,
-
-	TP_PROTO(struct task_struct *tsk, int dest, int force),
-
-	TP_ARGS(tsk, dest, force),
-
-	TP_STRUCT__entry(
-		__array(char, comm, TASK_COMM_LEN)
-		__field(pid_t, pid)
-		__field(int,  dest)
-		__field(int,  force)
-	),
-
-	TP_fast_assign(
-	memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->pid   = tsk->pid;
-		__entry->dest  = dest;
-		__entry->force = force;
-	),
-
-	TP_printk("comm=%s pid=%d dest=%d force=%d",
-			__entry->comm, __entry->pid,
-			__entry->dest, __entry->force)
-);
-
-TRACE_EVENT(sched_hmp_offload_abort,
-
-	TP_PROTO(int cpu, int data, char *label),
-
-	TP_ARGS(cpu,data,label),
-
-	TP_STRUCT__entry(
-		__array(char, label, 64)
-		__field(int, cpu)
-		__field(int, data)
-	),
-
-	TP_fast_assign(
-		strncpy(__entry->label, label, 64);
-		__entry->cpu   = cpu;
-		__entry->data = data;
-	),
-
-	TP_printk("cpu=%d data=%d label=%63s",
-		__entry->cpu, __entry->data,
-		__entry->label)
-);
-
-TRACE_EVENT(sched_hmp_offload_succeed,
-
-	TP_PROTO(int cpu, int dest_cpu),
-
-	TP_ARGS(cpu,dest_cpu),
-
-	TP_STRUCT__entry(
-		__field(int, cpu)
-		__field(int, dest_cpu)
-	),
-
-	TP_fast_assign(
-		__entry->cpu   = cpu;
-		__entry->dest_cpu = dest_cpu;
-	),
-
-	TP_printk("cpu=%d dest=%d",
-		__entry->cpu,
-		__entry->dest_cpu)
 );
 
 #endif /* _TRACE_SCHED_H */

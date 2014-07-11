@@ -54,13 +54,11 @@ array[1]=".rodata first_crypto_rodata last_crypto_rodata \$5 \$6"
 array[2]=".init.text first_crypto_init last_crypto_init \$4 \$5"
 array[3]=".exit.text first_crypto_exit last_crypto_exit \$4 \$5"
 
-# Enable this to include arch/arm/crypto with FIPS boundary
-# Enable in fips_integrity.c also
 # # FOR ASM CRYPTO FILES
-#array[4]=".text first_crypto_asm_text last_crypto_asm_text \$5 \$6"
-#array[5]=".rodata first_crypto_asm_rodata last_crypto_asm_rodata \$5 \$6"
-#array[6]=".init.text first_crypto_asm_init last_crypto_asm_init \$4 \$5"
-#array[7]=".exit.text first_crypto_asm_exit last_crypto_asm_exit \$4 \$5"
+array[4]=".text first_crypto_asm_text last_crypto_asm_text \$5 \$6"
+array[5]=".rodata first_crypto_asm_rodata last_crypto_asm_rodata \$5 \$6"
+array[6]=".init.text first_crypto_asm_init last_crypto_asm_init \$4 \$5"
+array[7]=".exit.text first_crypto_asm_exit last_crypto_asm_exit \$4 \$5"
 
 
 rm -f offsets_sizes.txt
@@ -109,7 +107,7 @@ for i in "${array[@]}"; do
 	offset=`cat vmlinux.elf |grep -w $var1|grep PROGBITS|awk '{print '$var5'}'`
 	if  [[ ! $offset =~ $reg ]]; then echo "$0 : offset invalid"; exit 1; fi
 
-	if [[ $((16#$first_addr)) -le $((16#$start_addr)) ]]; then echo "$0 : first_addr <= start_addr"; exit 1; fi
+	if [[ $((16#$first_addr)) -lt $((16#$start_addr)) ]]; then echo "$0 : first_addr < start_addr"; exit 1; fi
 
 	if [[ $((16#$last_addr)) -le $((16#$first_addr)) ]]; then echo "$0 : last_addr <= first_addr"; exit 1; fi
 

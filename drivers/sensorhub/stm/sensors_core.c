@@ -10,7 +10,6 @@
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/err.h>
-#include <linux/input.h>
 
 struct class *sensors_class;
 EXPORT_SYMBOL_GPL(sensors_class);
@@ -33,19 +32,18 @@ static void set_sensor_attr(struct device *dev,
 				"(dev, attributes[%d])\n", i);
 }
 
-int sensors_create_symlink(struct input_dev *inputdev)
+int sensors_create_symlink(struct kobject *target,
+		      const char *name)
 {
 	int err = 0;
 
-	if (symlink_dev == NULL) {
+	if (symlink_dev == NULL)
 		pr_err("%s, symlink_dev is NULL!!!\n", __func__);
-		return err ;
-	}
 
-	err = sysfs_create_link(&symlink_dev->kobj, &inputdev->dev.kobj, inputdev->name);
+	err = sysfs_create_link(&symlink_dev->kobj, target, name);
 
 	if (err < 0) {
-		pr_err("%s, %s failed!(%d)\n", __func__, inputdev->name, err);
+		pr_err("%s, %s failed!(%d)\n", __func__, name, err);
 		return err;
 	}
 
@@ -53,20 +51,19 @@ int sensors_create_symlink(struct input_dev *inputdev)
 }
 EXPORT_SYMBOL_GPL(sensors_create_symlink);
 
-void sensors_remove_symlink(struct input_dev *inputdev)
+void sensors_remove_symlink(struct kobject *target,
+		      const char *name)
 {
 
-	if (symlink_dev == NULL) {
+	if (symlink_dev == NULL)
 		pr_err("%s, symlink_dev is NULL!!!\n", __func__);
-		return;
-	}
 
-	sysfs_delete_link(&symlink_dev->kobj, &inputdev->dev.kobj, inputdev->name);
+	sysfs_delete_link(&symlink_dev->kobj, target, name);
 }
 EXPORT_SYMBOL_GPL(sensors_remove_symlink);
 
 
-int sensors_register(struct device *dev, void *drvdata,
+int sensors_register(struct device *dev, void * drvdata,
 	struct device_attribute *attributes[], char *name)
 {
 	int ret = 0;
@@ -109,11 +106,9 @@ void destroy_sensor_class(void)
 		class_destroy(sensors_class);
 		sensors_class = NULL;
 	}
-
 	if (sensors_event_class) {
 		device_destroy(sensors_event_class, symlink_dev->devt);
 		class_destroy(sensors_event_class);
-		symlink_dev = NULL;
 		sensors_event_class = NULL;
 	}
 }
@@ -130,7 +125,7 @@ static int __init sensors_class_init(void)
 		return PTR_ERR(sensors_class);
 	}
 
-	/* For symbolic link */
+    /* For symbolic link */
 	sensors_event_class = class_create(THIS_MODULE, "sensor_event");
 	if (IS_ERR(sensors_event_class)) {
 		pr_err("%s, create sensors_class is failed.(err=%ld)\n",

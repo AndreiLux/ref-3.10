@@ -24,6 +24,11 @@
 #define CALIBRATION_FILE_PATH	"/efs/calibration_data"
 #define CALIBRATION_DATA_AMOUNT	20
 
+#define MAX_ACCEL_1G		16384
+#define MAX_ACCEL_2G		32767
+#define MIN_ACCEL_2G		-32768
+#define MAX_ACCEL_4G		65536
+
 static ssize_t accel_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -92,15 +97,17 @@ int set_accel_cal(struct ssp_data *data)
 	accel_cal[2] = data->accelcal.z;
 
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
+	if (!msg)
 		return -ENOMEM;
-	}
+
 	msg->cmd = MSG2SSP_AP_MCU_SET_ACCEL_CAL;
 	msg->length = 6;
 	msg->options = AP2HUB_WRITE;
 	msg->buffer = (char*) kzalloc(6, GFP_KERNEL);
-
+	if (!(msg->buffer)) {
+		kfree(msg);
+		return -ENOMEM;
+	}
 	msg->free_buffer = 1;
 	memcpy(msg->buffer, accel_cal, 6);
 
@@ -157,11 +164,15 @@ static int accel_do_calibrate(struct ssp_data *data, int iEnable)
 	int iRet = 0, iCount;
 	struct file *cal_filp = NULL;
 	mm_segment_t old_fs;
+	int max_accel_1g = 0;
+
+	max_accel_1g = MAX_ACCEL_1G;
 
 	if (iEnable) {
 		data->accelcal.x = 0;
 		data->accelcal.y = 0;
 		data->accelcal.z = 0;
+		set_accel_cal(data);
 
 		iRet = enable_accel_for_cal(data);
 		msleep(300);
@@ -179,16 +190,16 @@ static int accel_do_calibrate(struct ssp_data *data, int iEnable)
 		data->accelcal.z = (iSum[2] / CALIBRATION_DATA_AMOUNT);
 
 		if (data->accelcal.z > 0)
-			data->accelcal.z -= MAX_ACCEL_1G;
+			data->accelcal.z -= max_accel_1g;
 		else if (data->accelcal.z < 0)
-			data->accelcal.z += MAX_ACCEL_1G;
+			data->accelcal.z += max_accel_1g;
 	} else {
 		data->accelcal.x = 0;
 		data->accelcal.y = 0;
 		data->accelcal.z = 0;
 	}
 
-	ssp_dbg("[SSP]: do accel calibrate %d, %d, %d\n",
+	ssp_dbg("[SSP]: %s - %d, %d, %d\n", __func__,
 		data->accelcal.x, data->accelcal.y, data->accelcal.z);
 
 	old_fs = get_fs();
@@ -228,7 +239,7 @@ static ssize_t accel_calibration_show(struct device *dev,
 	if (iRet < 0)
 		pr_err("[SSP]: %s - calibration open failed(%d)\n", __func__, iRet);
 
-	ssp_dbg("[SSP] Cal data : %d %d %d - %d\n",
+	ssp_dbg("[SSP] %s : %d %d %d - %d\n", __func__,
 		data->accelcal.x, data->accelcal.y, data->accelcal.z, iRet);
 
 	iCount = sprintf(buf, "%d %d %d %d\n", iRet, data->accelcal.x,

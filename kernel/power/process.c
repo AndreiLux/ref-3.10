@@ -26,6 +26,9 @@ unsigned int __read_mostly freeze_timeout_msecs = 20 * MSEC_PER_SEC;
 static int try_to_freeze_tasks(bool user_only)
 {
 	struct task_struct *g, *p;
+#ifdef CONFIG_SEC_PM_DEBUG
+	struct task_struct *q;
+#endif
 	unsigned long end_time;
 	unsigned int todo;
 	bool wq_busy = false;
@@ -49,8 +52,12 @@ static int try_to_freeze_tasks(bool user_only)
 			if (p == current || !freeze_task(p))
 				continue;
 
-			if (!freezer_should_skip(p))
+			if (!freezer_should_skip(p)) {
 				todo++;
+#ifdef CONFIG_SEC_PM_DEBUG
+				q = p;
+#endif
+			}
 		} while_each_thread(g, p);
 		read_unlock(&tasklist_lock);
 
@@ -89,6 +96,14 @@ static int try_to_freeze_tasks(bool user_only)
 		       wakeup ? "aborted" : "failed",
 		       elapsed_msecs / 1000, elapsed_msecs % 1000,
 		       todo - wq_busy, wq_busy);
+
+#ifdef CONFIG_SEC_PM_DEBUG
+		if (wakeup) {
+			printk(KERN_ERR "Freezing of %s aborted (%d) (%s)\n",
+					user_only ? "user space " : "tasks ",
+					q ? q->pid : 0, q ? q->comm : "NONE");
+		}
+#endif
 
 		if (!wakeup) {
 			read_lock(&tasklist_lock);

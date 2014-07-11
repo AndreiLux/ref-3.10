@@ -1,11 +1,11 @@
 #include "../ssp.h"
-#include <linux/sec_sysfs.h>
 
 #define	VENDOR		"AMS"
 #define	CHIP_ID		"TMG399x"
 
+extern struct class *sec_class;
 u8 hop_count;
-u8 is_beaming;
+u8 Is_beaming;
 
 static struct reg_index_table reg_id_table[15] = {
 	{0x81, 0}, {0x88, 1}, {0x8F, 2}, {0x96, 3}, {0x9D, 4},
@@ -65,7 +65,7 @@ void mobeam_write(struct ssp_data *data, int type, u8 *u_buf)
 		case start:
 			command = MSG2SSP_AP_MOBEAM_START;
 			data_length = 1;
-			is_beaming = BEAMING_ON;
+			Is_beaming = BEAMING_ON;
 			break;
 		default:
 			pr_info("[SSP] %s - unknown cmd type\n", __func__);
@@ -129,8 +129,8 @@ retries:
 			goto retries;
 		}
 	} else {
-		is_beaming = BEAMING_OFF;
-		pr_info("[SSP] %s - success(%u)\n", __func__, is_beaming);
+		Is_beaming = BEAMING_OFF;
+		pr_info("[SSP] %s - success(%u)\n", __func__, Is_beaming);
 	}
 	return;
 }
@@ -164,7 +164,7 @@ static ssize_t barcode_emul_store(struct device *dev,
 	} else if (buf[0] == 0xFF && buf[1] == STOP_BEAMING) {
 		pr_info("[SSP] %s - STOP BEAMING(0x%X, 0x%X)\n", __func__,
 			buf[0], buf[1]);
-		if (is_beaming == BEAMING_ON)
+		if (Is_beaming == BEAMING_ON)
 			mobeam_stop_set(data);
 		else
 			pr_info("[SSP] %s - skip stop command\n", __func__);
@@ -208,7 +208,7 @@ static ssize_t barcode_led_status_show(struct device *dev,
 		struct device_attribute *attr,
 		char *buf)
 {
-	return snprintf(buf, sizeof(buf), "%u\n", is_beaming);
+	return snprintf(buf, sizeof(buf), "%u\n", Is_beaming);
 }
 
 static ssize_t barcode_ver_check_show(struct device *dev,
@@ -266,7 +266,9 @@ static DEVICE_ATTR(barcode_test_send, S_IWUSR | S_IWGRP,
 void initialize_mobeam(struct ssp_data *data)
 {
 	pr_info("[SSP] %s\n", __func__);
-	data->mobeam_device = sec_device_create(data, "sec_barcode_emul");
+
+	data->mobeam_device = device_create(sec_class, NULL, 0,
+				data, "sec_barcode_emul");
 
 	if (IS_ERR(data->mobeam_device))
 		pr_err("[SSP] Failed to create mobeam_dev device\n");
@@ -294,7 +296,8 @@ void initialize_mobeam(struct ssp_data *data)
 	if (device_create_file(data->mobeam_device, &dev_attr_barcode_test_send) < 0)
 		pr_err("[SSP] Failed to create device file(%s)!\n",
 				dev_attr_barcode_test_send.attr.name);
-	is_beaming = BEAMING_OFF;
+
+	Is_beaming = BEAMING_OFF;
 }
 
 void remove_mobeam(struct ssp_data *data)

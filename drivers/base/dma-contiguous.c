@@ -9,6 +9,9 @@
  * modify it under the terms of the GNU General Public License as
  * published by the Free Software Foundation; either version 2 of the
  * License or (at your optional) any later version of the license.
+ *
+ * The Linux Foundation chooses to take subject only to the GPLv2 license
+ * terms, and distributes only under these terms.
  */
 
 #define pr_fmt(fmt) "cma: " fmt
@@ -24,6 +27,9 @@
 
 #include <linux/memblock.h>
 #include <linux/err.h>
+#include <linux/of.h>
+#include <linux/of_fdt.h>
+#include <linux/of_platform.h>
 #include <linux/mm.h>
 #include <linux/mutex.h>
 #include <linux/page-isolation.h>
@@ -32,17 +38,60 @@
 #include <linux/swap.h>
 #include <linux/mm_types.h>
 #include <linux/dma-contiguous.h>
+#include <linux/dma-removed.h>
+#include <trace/events/kmem.h>
 
 struct cma {
 	unsigned long	base_pfn;
 	unsigned long	count;
-	unsigned long	free_count;
 	unsigned long	*bitmap;
-	unsigned long	carved_out_count;
-	bool isolated;
+	bool in_system;
+	struct mutex lock;
 };
 
-struct cma *dma_contiguous_default_area;
+static DEFINE_MUTEX(cma_mutex);
+
+struct cma *dma_contiguous_def_area;
+phys_addr_t dma_contiguous_def_base;
+
+static struct cma_area {
+	phys_addr_t base;
+	unsigned long size;
+	struct cma *cma;
+	const char *name;
+	bool to_system;
+} cma_areas[MAX_CMA_AREAS];
+static unsigned cma_area_count;
+
+
+static struct cma_map {
+	phys_addr_t base;
+	struct device *dev;
+} cma_maps[MAX_CMA_AREAS] __initdata;
+static unsigned cma_map_count __initdata;
+
+static struct cma *cma_get_area(phys_addr_t base)
+{
+	int i;
+	for (i = 0; i < cma_area_count; i++)
+		if (cma_areas[i].base == base)
+			return cma_areas[i].cma;
+	return NULL;
+}
+
+static struct cma *cma_get_area_by_name(const char *name)
+{
+	int i;
+	if (!name)
+		return NULL;
+
+	for (i = 0; i < cma_area_count; i++)
+		if (cma_areas[i].name && strcmp(cma_areas[i].name, name) == 0)
+			return cma_areas[i].cma;
+	return NULL;
+}
+
+
 
 #ifdef CONFIG_CMA_SIZE_MBYTES
 #define CMA_SIZE_MBYTES CONFIG_CMA_SIZE_MBYTES
@@ -50,6 +99,11 @@ struct cma *dma_contiguous_default_area;
 #define CMA_SIZE_MBYTES 0
 #endif
 
+#ifdef CONFIG_CMA_RESERVE_DEFAULT_AREA
+#define CMA_RESERVE_AREA 1
+#else
+#define CMA_RESERVE_AREA 0
+#endif
 /*
  * Default global CMA area size can be defined in kernel's .config.
  * This is usefull mainly for distro maintainers to create a kernel
@@ -98,46 +152,6 @@ static inline __maybe_unused phys_addr_t cma_early_percent_memory(void)
 
 #endif
 
-/**
- * dma_contiguous_reserve() - reserve area for contiguous memory handling
- * @limit: End address of the reserved memory (optional, 0 for any).
- *
- * This function reserves memory from early allocator. It should be
- * called by arch specific code once the early allocator (memblock or bootmem)
- * has been activated and all other subsystems have already allocated/reserved
- * memory.
- */
-void __init dma_contiguous_reserve(phys_addr_t limit)
-{
-	phys_addr_t selected_size = 0;
-
-	pr_debug("%s(limit %08lx)\n", __func__, (unsigned long)limit);
-
-	if (size_cmdline != -1) {
-		selected_size = size_cmdline;
-	} else {
-#ifdef CONFIG_CMA_SIZE_SEL_MBYTES
-		selected_size = size_bytes;
-#elif defined(CONFIG_CMA_SIZE_SEL_PERCENTAGE)
-		selected_size = cma_early_percent_memory();
-#elif defined(CONFIG_CMA_SIZE_SEL_MIN)
-		selected_size = min(size_bytes, cma_early_percent_memory());
-#elif defined(CONFIG_CMA_SIZE_SEL_MAX)
-		selected_size = max(size_bytes, cma_early_percent_memory());
-#endif
-	}
-
-	if (selected_size) {
-		pr_debug("%s: reserving %ld MiB for global area\n", __func__,
-			 (unsigned long)selected_size / SZ_1M);
-
-		dma_declare_contiguous(NULL, selected_size, 0, limit);
-	}
-};
-
-static DEFINE_MUTEX(cma_mutex);
-
-#ifndef CMA_NO_MIGRATION
 static __init int cma_activate_area(unsigned long base_pfn, unsigned long count)
 {
 	unsigned long pfn = base_pfn;
@@ -159,16 +173,9 @@ static __init int cma_activate_area(unsigned long base_pfn, unsigned long count)
 	} while (--i);
 	return 0;
 }
-#else
-static __init int cma_activate_area(unsigned long base_pfn, unsigned long count)
-{
-	return 0;
-}
-#endif
 
 static __init struct cma *cma_create_area(unsigned long base_pfn,
-				     unsigned long carved_out_count,
-				     unsigned long count)
+				     unsigned long count, bool system)
 {
 	int bitmap_size = BITS_TO_LONGS(count) * sizeof(long);
 	struct cma *cma;
@@ -176,24 +183,24 @@ static __init struct cma *cma_create_area(unsigned long base_pfn,
 
 	pr_debug("%s(base %08lx, count %lx)\n", __func__, base_pfn, count);
 
-	cma = kzalloc(sizeof *cma, GFP_KERNEL);
+	cma = kmalloc(sizeof *cma, GFP_KERNEL);
 	if (!cma)
 		return ERR_PTR(-ENOMEM);
 
 	cma->base_pfn = base_pfn;
 	cma->count = count;
-	cma->free_count = count;
+	cma->in_system = system;
 	cma->bitmap = kzalloc(bitmap_size, GFP_KERNEL);
-#ifdef CMA_NO_MIGRATION
-	cma->isolated = true;
-#endif
 
 	if (!cma->bitmap)
 		goto no_mem;
 
-	ret = cma_activate_area(base_pfn, carved_out_count);
-	if (ret)
-		goto error;
+	if (cma->in_system) {
+		ret = cma_activate_area(base_pfn, count);
+		if (ret)
+			goto error;
+	}
+	mutex_init(&cma->lock);
 
 	pr_debug("%s: returned %p\n", __func__, (void *)cma);
 	return cma;
@@ -205,58 +212,132 @@ no_mem:
 	return ERR_PTR(ret);
 }
 
-static struct cma_reserved {
-	phys_addr_t start;
-	unsigned long size;
-	phys_addr_t carved_out_start;
-	unsigned long carved_out_size;
-	struct device *dev;
-} cma_reserved[MAX_CMA_AREAS] __initdata;
-static unsigned cma_reserved_count __initdata;
+/*****************************************************************************/
 
-static int __init cma_init_reserved_areas(void)
+#ifdef CONFIG_OF
+int __init cma_fdt_scan(unsigned long node, const char *uname,
+				int depth, void *data)
 {
-	struct cma_reserved *r = cma_reserved;
-	unsigned i = cma_reserved_count;
+	phys_addr_t base, size;
+	unsigned long len;
+	__be32 *prop;
+	char *name;
+	bool in_system;
+	bool remove;
+	unsigned long size_cells = dt_root_size_cells;
+	unsigned long addr_cells = dt_root_addr_cells;
+	phys_addr_t limit = MEMBLOCK_ALLOC_ANYWHERE;
 
-	pr_debug("%s()\n", __func__);
+	if (!of_get_flat_dt_prop(node, "linux,reserve-contiguous-region", NULL))
+		return 0;
 
-	for (; i; --i, ++r) {
-		struct cma *cma;
-		cma = cma_create_area(PFN_DOWN(r->carved_out_start),
-				      r->carved_out_size >> PAGE_SHIFT,
-				      r->size >> PAGE_SHIFT);
-		if (!IS_ERR(cma))
-			dev_set_cma_area(r->dev, cma);
-	}
+	prop = of_get_flat_dt_prop(node, "#size-cells", NULL);
+	if (prop)
+		size_cells = be32_to_cpup(prop);
+
+	prop = of_get_flat_dt_prop(node, "#address-cells", NULL);
+	if (prop)
+		addr_cells = be32_to_cpup(prop);
+
+	prop = of_get_flat_dt_prop(node, "reg", &len);
+	if (!prop || depth != 2)
+		return 0;
+
+	base = dt_mem_next_cell(addr_cells, &prop);
+	size = dt_mem_next_cell(size_cells, &prop);
+
+	name = of_get_flat_dt_prop(node, "label", NULL);
+	in_system =
+		of_get_flat_dt_prop(node, "linux,reserve-region", NULL) ? 0 : 1;
+
+	prop = of_get_flat_dt_prop(node, "linux,memory-limit", NULL);
+	if (prop)
+		limit = be32_to_cpu(prop[0]);
+
+	remove =
+	     of_get_flat_dt_prop(node, "linux,remove-completely", NULL) ? 1 : 0;
+
+	pr_info("Found %s, memory base %pa, size %ld MiB, limit %pa\n", uname,
+			&base, (unsigned long)size / SZ_1M, &limit);
+	dma_contiguous_reserve_area(size, &base, limit, name,
+					in_system, remove);
+
 	return 0;
 }
-core_initcall(cma_init_reserved_areas);
+#endif
 
 /**
- * dma_declare_contiguous() - reserve area for contiguous memory handling
- *			      for particular device
- * @dev:   Pointer to device structure.
- * @size:  Size of the reserved memory.
- * @base:  Start address of the reserved memory (optional, 0 for any).
+ * dma_contiguous_reserve() - reserve area for contiguous memory handling
  * @limit: End address of the reserved memory (optional, 0 for any).
  *
- * This function reserves memory for specified device. It should be
- * called by board specific code when early allocator (memblock or bootmem)
- * is still activate.
+ * This function reserves memory from early allocator. It should be
+ * called by arch specific code once the early allocator (memblock or bootmem)
+ * has been activated and all other subsystems have already allocated/reserved
+ * memory. It reserves contiguous areas for global, device independent
+ * allocations and (optionally) all areas defined in device tree structures.
  */
-int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
-				  phys_addr_t base, phys_addr_t limit)
+void __init dma_contiguous_reserve(phys_addr_t limit)
 {
-	struct cma_reserved *r = &cma_reserved[cma_reserved_count];
-	phys_addr_t alignment;
+	phys_addr_t sel_size = 0;
 
-	pr_debug("%s(size %lx, base %08lx, limit %08lx)\n", __func__,
-		 (unsigned long)size, (unsigned long)base,
-		 (unsigned long)limit);
+	pr_debug("%s(limit %pa)\n", __func__, &limit);
+
+	if (size_cmdline != -1) {
+		sel_size = size_cmdline;
+	} else {
+#ifdef CONFIG_CMA_SIZE_SEL_MBYTES
+		sel_size = size_bytes;
+#elif defined(CONFIG_CMA_SIZE_SEL_PERCENTAGE)
+		sel_size = cma_early_percent_memory();
+#elif defined(CONFIG_CMA_SIZE_SEL_MIN)
+		sel_size = min(size_bytes, cma_early_percent_memory());
+#elif defined(CONFIG_CMA_SIZE_SEL_MAX)
+		sel_size = max(size_bytes, cma_early_percent_memory());
+#endif
+	}
+
+	if (sel_size) {
+		phys_addr_t base = 0;
+		pr_debug("%s: reserving %ld MiB for global area\n", __func__,
+			 (unsigned long)sel_size / SZ_1M);
+
+		if (dma_contiguous_reserve_area(sel_size, &base, limit, NULL,
+		    CMA_RESERVE_AREA ? 0 : 1, false) == 0)
+			dma_contiguous_def_base = base;
+	}
+#ifdef CONFIG_OF
+	of_scan_flat_dt(cma_fdt_scan, NULL);
+#endif
+};
+
+/**
+ * dma_contiguous_reserve_area() - reserve custom contiguous area
+ * @size: Size of the reserved area (in bytes),
+ * @base: Pointer to the base address of the reserved area, also used to return
+ * 	  base address of the actually reserved area, optional, use pointer to
+ *	  0 for any
+ * @limit: End address of the reserved memory (optional, 0 for any).
+ *
+ * This function reserves memory from early allocator. It should be
+ * called by arch specific code once the early allocator (memblock or bootmem)
+ * has been activated and all other subsystems have already allocated/reserved
+ * memory. This function allows to create custom reserved areas for specific
+ * devices.
+ */
+int __init dma_contiguous_reserve_area(phys_addr_t size, phys_addr_t *res_base,
+				       phys_addr_t limit, const char *name,
+				       bool to_system, bool remove)
+{
+	phys_addr_t base = *res_base;
+	phys_addr_t alignment;
+	int ret = 0;
+
+	pr_debug("%s(size %lx, base %pa, limit %pa)\n", __func__,
+		 (unsigned long)size, &base,
+		 &limit);
 
 	/* Sanity checks */
-	if (cma_reserved_count == ARRAY_SIZE(cma_reserved)) {
+	if (cma_area_count == ARRAY_SIZE(cma_areas)) {
 		pr_err("Not enough slots for CMA reserved regions!\n");
 		return -ENOSPC;
 	}
@@ -264,18 +345,8 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
 	if (!size)
 		return -EINVAL;
 
-	r->size = PAGE_ALIGN(size);
-
 	/* Sanitise input arguments */
-#ifndef CMA_NO_MIGRATION
 	alignment = PAGE_SIZE << max(MAX_ORDER - 1, pageblock_order);
-#else
-	alignment = PAGE_SIZE;
-#endif
-	if (base & (alignment - 1)) {
-		pr_err("Invalid alignment of base address %pa\n", &base);
-		return -EINVAL;
-	}
 	base = ALIGN(base, alignment);
 	size = ALIGN(size, alignment);
 	limit &= ~(alignment - 1);
@@ -284,7 +355,7 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
 	if (base) {
 		if (memblock_is_region_reserved(base, size) ||
 		    memblock_reserve(base, size) < 0) {
-			base = -EBUSY;
+			ret = -EBUSY;
 			goto err;
 		}
 	} else {
@@ -294,10 +365,19 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
 		 */
 		phys_addr_t addr = __memblock_alloc_base(size, alignment, limit);
 		if (!addr) {
-			base = -ENOMEM;
+			ret = -ENOMEM;
 			goto err;
 		} else {
 			base = addr;
+		}
+	}
+
+	if (remove) {
+		if (!to_system) {
+			memblock_free(base, size);
+			memblock_remove(base, size);
+		} else {
+			WARN(1, "Removing is incompatible with staying in the system\n");
 		}
 	}
 
@@ -305,19 +385,130 @@ int __init dma_declare_contiguous(struct device *dev, phys_addr_t size,
 	 * Each reserved area must be initialised later, when more kernel
 	 * subsystems (like slab allocator) are available.
 	 */
-	r->carved_out_start = base;
-	r->carved_out_size = size;
-	r->dev = dev;
-	cma_reserved_count++;
-	pr_info("CMA: reserved %ld MiB at %08lx\n", (unsigned long)size / SZ_1M,
-		(unsigned long)base);
+	cma_areas[cma_area_count].base = base;
+	cma_areas[cma_area_count].size = size;
+	cma_areas[cma_area_count].name = name;
+	cma_areas[cma_area_count].to_system = to_system;
+	cma_area_count++;
+	*res_base = base;
+
+	pr_info("CMA: reserved %ld MiB at %pa\n", (unsigned long)size / SZ_1M,
+		 &base);
 
 	/* Architecture specific contiguous memory fixup. */
-	dma_contiguous_early_fixup(base, size);
+	if (!remove)
+		dma_contiguous_early_fixup(base, size);
 	return 0;
 err:
 	pr_err("CMA: failed to reserve %ld MiB\n", (unsigned long)size / SZ_1M);
-	return base;
+	return ret;
+}
+
+/**
+ * dma_contiguous_add_device() - add device to custom contiguous reserved area
+ * @dev:   Pointer to device structure.
+ * @base: Pointer to the base address of the reserved area returned by
+ *        dma_contiguous_reserve_area() function, also used to return
+ *
+ * This function assigns the given device to the contiguous memory area
+ * reserved earlier by dma_contiguous_reserve_area() function.
+ */
+int __init dma_contiguous_add_device(struct device *dev, phys_addr_t base)
+{
+	if (cma_map_count == ARRAY_SIZE(cma_maps)) {
+		pr_err("Not enough slots for CMA reserved regions!\n");
+		return -ENOSPC;
+	}
+	cma_maps[cma_map_count].dev = dev;
+	cma_maps[cma_map_count].base = base;
+	cma_map_count++;
+	return 0;
+}
+
+#ifdef CONFIG_OF
+static void cma_assign_device_from_dt(struct device *dev)
+{
+	struct device_node *node;
+	struct cma *cma;
+	const char *name;
+	u32 value;
+
+	node = of_parse_phandle(dev->of_node, "linux,contiguous-region", 0);
+	if (!node)
+		return;
+	if (of_property_read_u32(node, "reg", &value) && !value)
+		return;
+
+	if (of_property_read_string(node, "label", &name))
+		return;
+
+	cma = cma_get_area_by_name(name);
+	if (!cma)
+		return;
+
+	dev_set_cma_area(dev, cma);
+
+	if (of_property_read_bool(node, "linux,remove-completely"))
+		set_dma_ops(dev, &removed_dma_ops);
+
+	pr_info("Assigned CMA region at %lx to %s device\n", (unsigned long)value, dev_name(dev));
+}
+
+static int cma_device_init_notifier_call(struct notifier_block *nb,
+					 unsigned long event, void *data)
+{
+	struct device *dev = data;
+	if (event == BUS_NOTIFY_ADD_DEVICE && dev->of_node)
+		cma_assign_device_from_dt(dev);
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block cma_dev_init_nb = {
+	.notifier_call = cma_device_init_notifier_call,
+};
+#endif
+
+static int __init cma_init_reserved_areas(void)
+{
+	struct cma *cma;
+	int i;
+
+	for (i = 0; i < cma_area_count; i++) {
+		phys_addr_t base = PFN_DOWN(cma_areas[i].base);
+		unsigned int count = cma_areas[i].size >> PAGE_SHIFT;
+		bool system = cma_areas[i].to_system;
+
+		cma = cma_create_area(base, count, system);
+		if (!IS_ERR(cma))
+			cma_areas[i].cma = cma;
+	}
+
+	dma_contiguous_def_area = cma_get_area(dma_contiguous_def_base);
+
+	for (i = 0; i < cma_map_count; i++) {
+		cma = cma_get_area(cma_maps[i].base);
+		dev_set_cma_area(cma_maps[i].dev, cma);
+	}
+
+#ifdef CONFIG_OF
+	bus_register_notifier(&platform_bus_type, &cma_dev_init_nb);
+#endif
+	return 0;
+}
+core_initcall(cma_init_reserved_areas);
+
+phys_addr_t cma_get_base(struct device *dev)
+{
+	struct cma *cma = dev_get_cma_area(dev);
+
+	return cma->base_pfn << PAGE_SHIFT;
+}
+
+static void clear_cma_bitmap(struct cma *cma, unsigned long pfn, int count)
+{
+	mutex_lock(&cma->lock);
+	bitmap_clear(cma->bitmap, pfn - cma->base_pfn, count);
+	mutex_unlock(&cma->lock);
 }
 
 /**
@@ -331,16 +522,16 @@ err:
  * global one. Requires architecture specific get_dev_cma_area() helper
  * function.
  */
-struct page *dma_alloc_from_contiguous(struct device *dev, int count,
+unsigned long dma_alloc_from_contiguous(struct device *dev, int count,
 				       unsigned int align)
 {
-	unsigned long mask, pfn, pageno, start = 0;
+	unsigned long mask, pfn = 0, pageno, start = 0;
 	struct cma *cma = dev_get_cma_area(dev);
-	struct page *page = NULL;
-	int ret;
+	int ret = 0;
+	int tries = 0;
 
 	if (!cma || !cma->count)
-		return NULL;
+		return 0;
 
 	if (align > CONFIG_CMA_ALIGNMENT)
 		align = CONFIG_CMA_ALIGNMENT;
@@ -349,38 +540,52 @@ struct page *dma_alloc_from_contiguous(struct device *dev, int count,
 		 count, align);
 
 	if (!count)
-		return NULL;
+		return 0;
 
 	mask = (1 << align) - 1;
 
-	mutex_lock(&cma_mutex);
 
 	for (;;) {
+		mutex_lock(&cma->lock);
 		pageno = bitmap_find_next_zero_area(cma->bitmap, cma->count,
 						    start, count, mask);
-		if (pageno >= cma->count)
-			break;
-
-		pfn = cma->base_pfn + pageno;
-		ret = cma->isolated ?
-			0 : alloc_contig_range(pfn, pfn + count, MIGRATE_CMA);
-		if (ret == 0) {
-			bitmap_set(cma->bitmap, pageno, count);
-			page = pfn_to_page(pfn);
-			cma->free_count -= count;
-			break;
-		} else if (ret != -EBUSY) {
+		if (pageno >= cma->count) {
+			mutex_unlock(&cma->lock);
 			break;
 		}
+		bitmap_set(cma->bitmap, pageno, count);
+		/*
+		 * It's safe to drop the lock here. We've marked this region for
+		 * our exclusive use. If the migration fails we will take the
+		 * lock again and unmark it.
+		 */
+		mutex_unlock(&cma->lock);
+
+		pfn = cma->base_pfn + pageno;
+		if (cma->in_system) {
+			mutex_lock(&cma_mutex);
+			ret = alloc_contig_range(pfn, pfn + count, MIGRATE_CMA);
+			mutex_unlock(&cma_mutex);
+		}
+		if (ret == 0) {
+			break;
+		} else if (ret != -EBUSY) {
+			pfn = 0;
+			clear_cma_bitmap(cma, pfn, count);
+			break;
+		}
+		clear_cma_bitmap(cma, pfn, count);
+		tries++;
+		trace_dma_alloc_contiguous_retry(tries);
+
 		pr_debug("%s(): memory range at %p is busy, retrying\n",
 			 __func__, pfn_to_page(pfn));
 		/* try again with a bit different memory target */
 		start = pageno + mask + 1;
 	}
 
-	mutex_unlock(&cma_mutex);
-	pr_debug("%s(): returned %p\n", __func__, page);
-	return page;
+	pr_debug("%s(): returned %lx\n", __func__, pfn);
+	return pfn;
 }
 
 /**
@@ -393,157 +598,24 @@ struct page *dma_alloc_from_contiguous(struct device *dev, int count,
  * It returns false when provided pages do not belong to contiguous area and
  * true otherwise.
  */
-bool dma_release_from_contiguous(struct device *dev, struct page *pages,
+bool dma_release_from_contiguous(struct device *dev, unsigned long pfn,
 				 int count)
 {
 	struct cma *cma = dev_get_cma_area(dev);
-	unsigned long pfn;
 
-	if (!cma || !pages)
+	if (!cma || !pfn)
 		return false;
 
-	pr_debug("%s(page %p)\n", __func__, (void *)pages);
-
-	pfn = page_to_pfn(pages);
+	pr_debug("%s(pfn %lx)\n", __func__, pfn);
 
 	if (pfn < cma->base_pfn || pfn >= cma->base_pfn + cma->count)
 		return false;
 
 	VM_BUG_ON(pfn + count > cma->base_pfn + cma->count);
 
-	mutex_lock(&cma_mutex);
-	bitmap_clear(cma->bitmap, pfn - cma->base_pfn, count);
-	if (!cma->isolated)
+	if (cma->in_system)
 		free_contig_range(pfn, count);
-	cma->free_count += count;
-	mutex_unlock(&cma_mutex);
+	clear_cma_bitmap(cma, pfn, count);
 
 	return true;
 }
-
-/**
- * dma_contiguous_info() - retrieving contiguous memory information
- * @dev:  Pointer to device to get the information.
- * @info: [OUT] pointer to a structure to store the information
- *
- * This fills @info the status of a contiguous memory. -ENODEV if
- * the given device does not have contiguous memory.
- */
-int dma_contiguous_info(struct device *dev, struct cma_info *info)
-{
-	struct cma *cma = dev_get_cma_area(dev);
-
-	if (!info)
-		return 0;
-
-	if (!cma)
-		return -ENODEV;
-
-	info->base = cma->base_pfn << PAGE_SHIFT;
-	info->size = cma->count << PAGE_SHIFT;
-	info->free = cma->free_count << PAGE_SHIFT;
-	info->isolated = cma->isolated;
-
-	return 0;
-}
-
-#ifndef CMA_NO_MIGRATION
-static void dma_contiguous_deisolate_until(struct device *dev, int idx_until)
-{
-	struct cma *cma = dev_get_cma_area(dev);
-	int idx;
-
-	if (!cma || !idx_until)
-		return;
-
-	mutex_lock(&cma_mutex);
-
-	if (!cma->isolated) {
-		mutex_unlock(&cma_mutex);
-		dev_err(dev, "Not isolated!\n");
-		return;
-	}
-
-	idx = find_first_zero_bit(cma->bitmap, idx_until);
-	while (idx < idx_until) {
-		int idx_set;
-
-		idx_set = find_next_bit(cma->bitmap, idx_until, idx);
-
-		free_contig_range(cma->base_pfn + idx, idx_set - idx);
-
-		idx = find_next_zero_bit(cma->bitmap, idx_until, idx_set);
-	}
-
-	cma->isolated = false;
-
-	mutex_unlock(&cma_mutex);
-}
-
-/**
- * dma_contiguous_deisolate() - return contiguous memory to the page allocator
- * @dev: Pointer to device which owns the contiguous memory
- *
- * This function return the contiguous memory that is not allocated by CMA to
- * the page allocator so that the kernel can allocate the contiguous memory.
- */
-void dma_contiguous_deisolate(struct device *dev)
-{
-	struct cma *cma = dev_get_cma_area(dev);
-	dma_contiguous_deisolate_until(dev, cma->count);
-}
-
-/**
- * dma_contiguous_isolate() - isolate contiguous memory from the page allocator
- * @dev: Pointer to device which owns the contiguous memory
- *
- * This function isolates contiguous memory from the page allocator. If some of
- * the contiguous memory is allocated, it is reclaimed.
- */
-int dma_contiguous_isolate(struct device *dev)
-{
-	struct cma *cma = dev_get_cma_area(dev);
-	int ret;
-	int idx;
-
-	if (!cma)
-		return -ENODEV;
-
-	if (cma->count == 0)
-		return 0;
-
-	mutex_lock(&cma_mutex);
-
-	if (cma->isolated) {
-		mutex_unlock(&cma_mutex);
-		dev_err(dev, "Alread isolated!\n");
-		return 0;
-	}
-
-	idx = find_first_zero_bit(cma->bitmap, cma->count);
-	while (idx < cma->count) {
-		int idx_set;
-
-		idx_set = find_next_bit(cma->bitmap, cma->count, idx);
-		ret = alloc_contig_range(cma->base_pfn + idx,
-					cma->base_pfn + idx_set,
-					MIGRATE_CMA);
-		if (ret != 0) {
-			mutex_unlock(&cma_mutex);
-			dma_contiguous_deisolate_until(dev, idx_set);
-			dev_err(dev, "Failed to isolate %#lx@%#010x.\n",
-				(idx_set - idx) * PAGE_SIZE,
-				PFN_PHYS(cma->base_pfn + idx));
-			return ret;
-		}
-
-		idx = find_next_zero_bit(cma->bitmap, cma->count, idx_set);
-	}
-
-	cma->isolated = true;
-
-	mutex_unlock(&cma_mutex);
-
-	return 0;
-}
-#endif /* CMA_NO_MIGRATION */

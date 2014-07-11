@@ -16,14 +16,11 @@
 
 #define NUM_IRQ_REGS	4
 
-#define SEC_PMIC_REV(iodev)	(iodev)->rev_num
-
 enum sec_device_type {
 	S5M8751X,
 	S5M8763X,
 	S5M8767X,
 	S2MPS11X,
-	S2MPS13X,
 };
 
 /**
@@ -45,14 +42,12 @@ struct sec_pmic_dev {
 	struct device *dev;
 	struct sec_platform_data *pdata;
 	struct regmap *regmap;
-	struct regmap *rtc_regmap;
 	struct i2c_client *i2c;
 	struct i2c_client *rtc;
 	struct mutex iolock;
 	struct mutex irqlock;
 
 	int device_type;
-	int rev_num;
 	int irq_base;
 	int irq;
 	struct regmap_irq_chip_data *irq_data;
@@ -64,22 +59,15 @@ struct sec_pmic_dev {
 	bool wakeup;
 };
 
-/**
- * struct sec_wtsr_smpl - settings for WTSR/SMPL
- * @wtsr_en:		WTSR Function Enable Control
- * @smpl_en:		SMPL Function Enable Control
- * @wtsr_timer_val:	Set the WTSR timer Threshold
- * @smpl_timer_val:	Set the SMPL timer Threshold
- * @check_jigon:	if this value is true, do not enable SMPL function when
- *			JIGONB is low(JIG cable is attached)
- */
-struct sec_wtsr_smpl {
-	bool wtsr_en;
-	bool smpl_en;
-	int wtsr_timer_val;
-	int smpl_timer_val;
-	bool check_jigon;
-};
+int sec_irq_init(struct sec_pmic_dev *sec_pmic);
+void sec_irq_exit(struct sec_pmic_dev *sec_pmic);
+int sec_irq_resume(struct sec_pmic_dev *sec_pmic);
+
+extern int sec_reg_read(struct sec_pmic_dev *sec_pmic, u8 reg, void *dest);
+extern int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u8 reg, int count, u8 *buf);
+extern int sec_reg_write(struct sec_pmic_dev *sec_pmic, u8 reg, u8 value);
+extern int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u8 reg, int count, u8 *buf);
+extern int sec_reg_update(struct sec_pmic_dev *sec_pmic, u8 reg, u8 val, u8 mask);
 
 struct sec_platform_data {
 	struct sec_regulator_data	*regulators;
@@ -117,18 +105,11 @@ struct sec_platform_data {
 	int                             buck_ramp_delay;
 
 	int				buck2_ramp_delay;
-	int				buck3_ramp_delay;
-	int				buck4_ramp_delay;
-	int				buck6_ramp_delay;
-	int				buck710_ramp_delay;
-	int				buck89_ramp_delay;
-	int				buck15_ramp_delay;
 	int				buck34_ramp_delay;
 	int				buck5_ramp_delay;
 	int				buck16_ramp_delay;
 	int				buck7810_ramp_delay;
 	int				buck9_ramp_delay;
-	int				bb1_ramp_delay;
 
 	bool                            buck2_ramp_enable;
 	bool                            buck3_ramp_enable;
@@ -138,31 +119,7 @@ struct sec_platform_data {
 	int				buck2_init;
 	int				buck3_init;
 	int				buck4_init;
-
-	/* ---- RTC ---- */
-	struct sec_wtsr_smpl *wtsr_smpl;
-	struct rtc_time *init_time;
 };
-
-int sec_irq_init(struct sec_pmic_dev *sec_pmic);
-void sec_irq_exit(struct sec_pmic_dev *sec_pmic);
-int sec_irq_resume(struct sec_pmic_dev *sec_pmic);
-
-extern int sec_reg_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest);
-extern int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count, u8 *buf);
-extern int sec_reg_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value);
-extern int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count, u8 *buf);
-extern int sec_reg_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val, u32 mask);
-
-
-extern int sec_rtc_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest);
-extern int sec_rtc_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
-				u8 *buf);
-extern int sec_rtc_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value);
-extern int sec_rtc_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
-				u8 *buf);
-extern int sec_rtc_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val,
-				u32 mask);
 
 /**
  * sec_regulator_data - regulator data
@@ -197,9 +154,9 @@ struct sec_opmode_data {
 
 enum sec_opmode {
 	SEC_OPMODE_OFF,
-	SEC_OPMODE_SUSPEND,
-	SEC_OPMODE_LOWPOWER,
 	SEC_OPMODE_ON,
+	SEC_OPMODE_LOWPOWER,
+	SEC_OPMODE_SUSPEND,
 };
 
 #endif /*  __LINUX_MFD_SEC_CORE_H */

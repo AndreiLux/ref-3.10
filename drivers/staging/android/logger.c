@@ -32,7 +32,16 @@
 #include "logger.h"
 
 #include <asm/ioctls.h>
-#include <linux/sec_debug.h>
+#ifdef CONFIG_SEC_DEBUG
+#include <mach/sec_debug.h>
+#include <linux/string.h>
+#define MAX_KLOG_BUF_SIZE (256)
+static char klog_buf[MAX_KLOG_BUF_SIZE];
+#endif
+
+#ifndef CONFIG_LOGCAT_SIZE
+#define CONFIG_LOGCAT_SIZE 256
+#endif
 
 /**
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
@@ -455,24 +464,22 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 			 * message corruption from missing fragments.
 			 */
 			return -EFAULT;
-
-	/* print as kernel log if the log string starts with "!@" */
-	if (count >= 2) {
-		if (log->buffer[log->w_off] == '!'
-		    && log->buffer[logger_offset(log, log->w_off + 1)] == '@') {
-			char tmp[256];
-			int i;
-			for (i = 0; i < min(count, sizeof(tmp) - 1); i++)
-				tmp[i] =
-				    log->buffer[logger_offset \
-						(log, log->w_off + i)];
-			tmp[i] = '\0';
-			printk(KERN_INFO"%s\n", tmp);
-#ifdef CONFIG_SEC_DEBUG_TSP_LOG
-			sec_debug_tsp_log("%s\n", tmp);
-#endif
+		
+#ifdef CONFIG_SEC_DEBUG
+	if (strncmp(log->buffer + log->w_off, "!@", 2) == 0) {		
+		if (count < MAX_KLOG_BUF_SIZE-1) {
+			memcpy(klog_buf, log->buffer + log->w_off, count);
+			klog_buf[count]=0;
+		} else {
+			memcpy(klog_buf, log->buffer + log->w_off, MAX_KLOG_BUF_SIZE-1);
+			klog_buf[MAX_KLOG_BUF_SIZE-1] = 0;
 		}
+	} else {
+		klog_buf[0]=0;
+		klog_buf[1]=0;
 	}
+#endif
+
 	log->w_off = logger_offset(log, log->w_off + count);
 
 	return count;
@@ -487,7 +494,7 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 			 unsigned long nr_segs, loff_t ppos)
 {
 	struct logger_log *log = file_get_log(iocb->ki_filp);
-	size_t orig;
+	size_t orig = log->w_off;
 	struct logger_entry header;
 	struct timespec now;
 	ssize_t ret = 0;
@@ -507,8 +514,6 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 		return 0;
 
 	mutex_lock(&log->mutex);
-
-	orig = log->w_off;
 
 	/*
 	 * Fix up any readers, pulling them forward to the first readable
@@ -543,6 +548,11 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 
 	/* wake up any blocked readers */
 	wake_up_interruptible(&log->wq);
+	
+#ifdef CONFIG_SEC_DEBUG
+	if (klog_buf[0]=='!' && klog_buf[1]=='@')
+		printk(KERN_INFO "%s\n", klog_buf);
+#endif
 
 	return ret;
 }
@@ -611,14 +621,12 @@ static int logger_release(struct inode *ignored, struct file *file)
 	if (file->f_mode & FMODE_READ) {
 		struct logger_reader *reader = file->private_data;
 		struct logger_log *log = reader->log;
-		unsigned long start = jiffies;
+
 		mutex_lock(&log->mutex);
 		list_del(&reader->list);
 		mutex_unlock(&log->mutex);
 
 		kfree(reader);
-		pr_info("%s: took %d msec\n", __func__,
-			jiffies_to_msecs(jiffies - start));
 	}
 
 	return 0;
@@ -762,6 +770,67 @@ static const struct file_operations logger_fops = {
 	.release = logger_release,
 };
 
+#ifdef CONFIG_SEC_DEBUG 
+/* Use the old way because the new logger gets log buffers by means of vmalloc().
+    getlog tool considers that log buffers lie on physically contiguous memory area. */
+    
+/*
+ * Defines a log structure with name 'NAME' and a size of 'SIZE' bytes, which
+ * must be a power of two, and greater than
+ * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
+ */
+#define DEFINE_LOGGER_DEVICE(VAR, NAME, SIZE) \
+static unsigned char _buf_ ## VAR[SIZE]; \
+static struct logger_log VAR = { \
+	.buffer = _buf_ ## VAR, \
+	.misc = { \
+		.minor = MISC_DYNAMIC_MINOR, \
+		.name = NAME, \
+		.fops = &logger_fops, \
+		.parent = NULL, \
+	}, \
+	.wq = __WAIT_QUEUE_HEAD_INITIALIZER(VAR .wq), \
+	.readers = LIST_HEAD_INIT(VAR .readers), \
+	.mutex = __MUTEX_INITIALIZER(VAR .mutex), \
+	.w_off = 0, \
+	.head = 0, \
+	.size = SIZE, \
+	.logs = LIST_HEAD_INIT(VAR .logs), \
+};
+
+#ifdef CONFIG_SEC_LOGGER_BUFFER_EXPANSION
+DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024*4)	// 1MB
+#else
+DEFINE_LOGGER_DEVICE(log_main, LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024*2)	// 512MB
+#endif
+DEFINE_LOGGER_DEVICE(log_events, LOGGER_LOG_EVENTS, CONFIG_LOGCAT_SIZE*1024)	// 256KB
+DEFINE_LOGGER_DEVICE(log_radio, LOGGER_LOG_RADIO, CONFIG_LOGCAT_SIZE*1024*4)	// 1MB
+DEFINE_LOGGER_DEVICE(log_system, LOGGER_LOG_SYSTEM, CONFIG_LOGCAT_SIZE*1024)	// 256KB
+
+struct logger_log * log_buffers[]={
+	&log_main,
+	&log_events,
+	&log_radio,
+	&log_system,
+	NULL,
+};
+
+struct logger_log *sec_get_log_buffer(char *log_name, int size)
+{
+	struct logger_log **log_buf=&log_buffers[0];
+	
+	while (*log_buf) {
+		if (!strcmp(log_name,(*log_buf)->misc.name)) {
+			return *log_buf;
+		}
+
+		log_buf++;			
+	}
+	return NULL;
+}
+#endif
+
+
 /*
  * Log size must must be a power of two, and greater than
  * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
@@ -770,9 +839,34 @@ static int __init create_log(char *log_name, int size)
 {
 	int ret = 0;
 	struct logger_log *log;
+
+#ifdef CONFIG_SEC_DEBUG 
+
+	log = sec_get_log_buffer(log_name,size);
+	if (!log) {
+		pr_info("No \"%s\" buffer registered\n",log_name);
+		return -1;
+	}
+
+	list_add_tail(&log->logs, &log_list);
+
+	/* finally, initialize the misc device for this log */
+	ret = misc_register(&log->misc);
+	if (unlikely(ret)) {
+		pr_err("failed to register misc device for log '%s'!\n",
+				log->misc.name);
+		return ret;
+	}
+
+	pr_info("created %luK log '%s'\n",
+		(unsigned long) log->size >> 10, log->misc.name);
+
+	return ret;
+#else
+
 	unsigned char *buffer;
 
-	buffer = kmalloc(size, GFP_KERNEL);
+	buffer = vmalloc(size);
 	if (buffer == NULL)
 		return -ENOMEM;
 
@@ -781,6 +875,7 @@ static int __init create_log(char *log_name, int size)
 		ret = -ENOMEM;
 		goto out_free_buffer;
 	}
+
 	log->buffer = buffer;
 
 	log->misc.minor = MISC_DYNAMIC_MINOR;
@@ -814,49 +909,48 @@ static int __init create_log(char *log_name, int size)
 	pr_info("created %luK log '%s'\n",
 		(unsigned long) log->size >> 10, log->misc.name);
 
-	sec_getlog_supply_loggerinfo(buffer, log->misc.name);
-
 	return 0;
 
 out_free_log:
 	kfree(log);
 
 out_free_buffer:
-	kfree(buffer);
+	vfree(buffer);
+
 	return ret;
+#endif //CONFIG_SEC_DEBUG	
 }
+
 
 #if (defined CONFIG_SEC_DEBUG && defined CONFIG_SEC_DEBUG_SUBSYS)
 int sec_debug_subsys_set_logger_info(
 	struct sec_debug_subsys_logger_log_info *log_info)
 {
-	struct logger_log *log;
-
+	/*
+	struct secdbg_logger_log_info log_info = {
+		.stinfo = {
+			.buffer_offset = offsetof(struct logger_log, buffer),
+			.w_off_offset = offsetof(struct logger_log, w_off),
+			.head_offset = offsetof(struct logger_log, head),
+			.size_offset = offsetof(struct logger_log, size),
+			.size_t_typesize = sizeof(size_t),
+		},
+	};
+	*/
 	log_info->stinfo.buffer_offset = offsetof(struct logger_log, buffer);
 	log_info->stinfo.w_off_offset = offsetof(struct logger_log, w_off);
 	log_info->stinfo.head_offset = offsetof(struct logger_log, head);
 	log_info->stinfo.size_offset = offsetof(struct logger_log, size);
 	log_info->stinfo.size_t_typesize = sizeof(size_t);
-	
-	list_for_each_entry(log, &log_list, logs)
-	{
-		if(!strcmp(log->misc.name,LOGGER_LOG_MAIN)) {
-			log_info->main.log_paddr = virt_to_phys(log);
-			log_info->main.buffer_paddr = virt_to_phys(log->buffer);
-		}
-		else if(!strcmp(log->misc.name,LOGGER_LOG_SYSTEM)) {
-			log_info->system.log_paddr = virt_to_phys(log);
-			log_info->system.buffer_paddr = virt_to_phys(log->buffer);
-		}
-		else if(!strcmp(log->misc.name,LOGGER_LOG_EVENTS)) {
-			log_info->events.log_paddr = virt_to_phys(log);
-			log_info->events.buffer_paddr = virt_to_phys(log->buffer);
-		}
-		else if(!strcmp(log->misc.name,LOGGER_LOG_RADIO)) {
-			log_info->radio.log_paddr = virt_to_phys(log);
-			log_info->radio.buffer_paddr = virt_to_phys(log->buffer);
-		}
-	}
+
+	log_info->main.log_paddr = __pa(&log_main);
+	log_info->main.buffer_paddr = __pa(_buf_log_main);
+	log_info->system.log_paddr = __pa(&log_system);
+	log_info->system.buffer_paddr = __pa(_buf_log_system);
+	log_info->events.log_paddr = __pa(&log_events);
+	log_info->events.buffer_paddr = __pa(_buf_log_events);
+	log_info->radio.log_paddr = __pa(&log_radio);
+	log_info->radio.buffer_paddr = __pa(_buf_log_radio);
 
 	return 0;
 }
@@ -866,26 +960,25 @@ static int __init logger_init(void)
 {
 	int ret;
 
-	ret = create_log(LOGGER_LOG_MAIN, 2048*1024);
+	ret = create_log(LOGGER_LOG_MAIN, CONFIG_LOGCAT_SIZE*1024);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_EVENTS, 256*1024);
+	ret = create_log(LOGGER_LOG_EVENTS, CONFIG_LOGCAT_SIZE*1024);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_RADIO, 2048*1024);
+	ret = create_log(LOGGER_LOG_RADIO, CONFIG_LOGCAT_SIZE*1024);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_SYSTEM, 256*1024);
+	ret = create_log(LOGGER_LOG_SYSTEM, CONFIG_LOGCAT_SIZE*1024);
 	if (unlikely(ret))
 		goto out;
-
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-	ret = create_log(LOGGER_LOG_SF, 256*1024);
-	if (unlikely(ret))
-		goto out;
+	
+#ifdef CONFIG_SEC_DEBUG
+	sec_getlog_supply_loggerinfo(_buf_log_main, _buf_log_radio,
+					 _buf_log_events, _buf_log_system);
 #endif
 
 out:

@@ -18,9 +18,12 @@
 */
 
 #include <linux/spi/spi.h>
+#include <linux/i2c.h>
 
 #include "mtv319.h"
 #include "mtv319_internal.h"
+#include "mtv319_cifdec.h"
+
 #include "tdmb.h"
 
 
@@ -38,10 +41,20 @@
 
 #if defined(RTV_IF_SPI)
 static struct spi_device *mtv_spi;
+#else /* i2c */
+static struct i2c_client *mtv_i2c;
+#endif
+
 void mtv319_set_port_if(unsigned long interface)
 {
+#if defined(RTV_IF_SPI)
 	mtv_spi = (struct spi_device *)interface;
+#else /* i2c */
+	mtv_i2c = (struct i2c_client *)interface;
+#endif
 }
+
+#if defined(RTV_IF_SPI)
 unsigned char mtv319_spi_read(unsigned char page, unsigned char reg)
 {
 	int ret;
@@ -161,4 +174,80 @@ void mtv319_spi_recover(unsigned char *buf, unsigned int intr_size)
 	if (ret)
 		DPRINTK("error: %d\n", ret);
 }
+
+#else /* I2C */
+void mtv319_i2c_read_burst(unsigned char reg, unsigned char *buf, int size)
+{
+	int ret;
+	u8 wbuf[1] = {reg};
+
+	struct i2c_msg msg[2] = {
+		 {
+			.addr = RTV_CHIP_ADDR>>1,
+			.flags = 0,
+			.buf = wbuf,
+			.len = 1
+		 },
+		 {
+			.addr = RTV_CHIP_ADDR>>1,
+			.flags = I2C_M_RD,
+			.buf = buf,
+			.len = size
+		 }
+	};
+
+	ret = i2c_transfer(mtv_i2c->adapter, msg, 2);
+	if (ret != 2) {
+		 DPRINTK("error: %d\n", ret);
+	}
+}
+
+unsigned char mtv319_i2c_read(unsigned char chipid, unsigned char reg)
+{
+	int ret;
+	u8 wbuf[1] = {reg};
+	u8 rbuf[1];
+
+	struct i2c_msg msg[2] = {
+	     {.addr = chipid>>1, .flags = 0, .buf = wbuf, .len = 1},
+	     {.addr = chipid>>1, .flags = I2C_M_RD, .buf = rbuf, .len = 1}
+	};
+
+	ret = i2c_transfer(mtv_i2c->adapter, msg, 2);
+	if (ret != 2) {
+	     DPRINTK("error: %d\n", ret);
+	     return 0x00;
+	}
+
+	return rbuf[0];
+}
+
+void mtv319_i2c_write(unsigned char chipid, unsigned char reg, unsigned char val)
+{
+	int ret;
+	u8 wbuf[2] = {reg, val};
+
+	struct i2c_msg msg =
+		{.addr = chipid>>1, .flags = 0, .buf = wbuf, .len = 2};
+
+	ret = i2c_transfer(mtv_i2c->adapter, &msg, 1);
+	if (ret != 1) {
+	     DPRINTK("error: %d\n", ret);
+	}
+}
 #endif
+
+#ifdef RTV_SCAN_FIC_HDR_ENABLED
+int mtv319_assemble_fic(unsigned char *fic_buf, const unsigned char *ts_data,
+			unsigned int ts_size)
+{
+	struct RTV_CIF_DEC_INFO cifdec;
+
+	cifdec.fic_buf_ptr = fic_buf;
+
+	rtvCIFDEC_Decode(&cifdec, ts_data, ts_size);
+
+	return (int)cifdec.fic_size;
+}
+#endif
+

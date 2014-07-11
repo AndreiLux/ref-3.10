@@ -25,8 +25,7 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/anon_inodes.h>
-
-#include "sync.h"
+#include <linux/sync.h>
 
 #define CREATE_TRACE_POINTS
 #include "trace/sync.h"
@@ -34,7 +33,7 @@
 static void sync_fence_signal_pt(struct sync_pt *pt);
 static int _sync_pt_has_signaled(struct sync_pt *pt);
 static void sync_fence_free(struct kref *kref);
-static void sync_dump(void);
+static void sync_dump(struct sync_fence *fence);
 
 static LIST_HEAD(sync_timeline_list_head);
 static DEFINE_SPINLOCK(sync_timeline_list_lock);
@@ -92,14 +91,14 @@ static void sync_timeline_free(struct kref *kref)
 void sync_timeline_destroy(struct sync_timeline *obj)
 {
 	obj->destroyed = true;
-	smp_wmb();
 
 	/*
-	 * signal any children that their parent is going away.
+	 * If this is not the last reference, signal any children
+	 * that their parent is going away.
 	 */
-	sync_timeline_signal(obj);
 
-	kref_put(&obj->kref, sync_timeline_free);
+	if (!kref_put(&obj->kref, sync_timeline_free))
+		sync_timeline_signal(obj);
 }
 EXPORT_SYMBOL(sync_timeline_destroy);
 
@@ -613,7 +612,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 
 	if (fence->status < 0) {
 		pr_info("fence error %d on [%p]\n", fence->status, fence);
-		sync_dump();
+		sync_dump(fence);
 		return fence->status;
 	}
 
@@ -621,7 +620,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 		if (timeout > 0) {
 			pr_info("fence timeout on [%p] after %dms\n", fence,
 				jiffies_to_msecs(timeout));
-			sync_dump();
+			sync_dump(fence);
 		}
 		return -ETIME;
 	}
@@ -988,7 +987,7 @@ late_initcall(sync_debugfs_init);
 
 #define DUMP_CHUNK 256
 static char sync_dump_buf[64 * 1024];
-void sync_dump(void)
+static void sync_dump(struct sync_fence *fence)
 {
 	struct seq_file s = {
 		.buf = sync_dump_buf,
@@ -996,7 +995,9 @@ void sync_dump(void)
 	};
 	int i;
 
-	sync_debugfs_show(&s, NULL);
+	seq_puts(&s, "fence:\n--------------\n");
+	sync_print_fence(&s, fence);
+	seq_puts(&s, "\n");
 
 	for (i = 0; i < s.count; i += DUMP_CHUNK) {
 		if ((s.count - i) > DUMP_CHUNK) {
@@ -1011,7 +1012,7 @@ void sync_dump(void)
 	}
 }
 #else
-static void sync_dump(void)
+static void sync_dump(struct sync_fence *fence)
 {
 }
 #endif

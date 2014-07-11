@@ -491,13 +491,12 @@ static void qh_link_periodic(struct ehci_hcd *ehci, struct ehci_qh *qh)
 	unsigned	i;
 	unsigned	period = qh->period;
 
-#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	dev_dbg (&qh->dev->dev,
 		"link qh%d-%04x/%p start %d [%d/%d us]\n",
 		period, hc32_to_cpup(ehci, &qh->hw->hw_info2)
 			& (QH_CMASK | QH_SMASK),
 		qh, qh->start, qh->usecs, qh->c_usecs);
-#endif
+
 	/* high bandwidth, or otherwise every microframe */
 	if (period == 0)
 		period = 1;
@@ -586,13 +585,12 @@ static void qh_unlink_periodic(struct ehci_hcd *ehci, struct ehci_qh *qh)
 		? ((qh->usecs + qh->c_usecs) / qh->period)
 		: (qh->usecs * 8);
 
-#if !defined(CONFIG_LINK_DEVICE_HSIC)
 	dev_dbg (&qh->dev->dev,
 		"unlink qh%d-%04x/%p start %d [%d/%d us]\n",
 		qh->period,
 		hc32_to_cpup(ehci, &qh->hw->hw_info2) & (QH_CMASK | QH_SMASK),
 		qh, qh->start, qh->usecs, qh->c_usecs);
-#endif
+
 	/* qh->qh_next still "live" to HC */
 	qh->qh_state = QH_STATE_UNLINK;
 	qh->qh_next.ptr = NULL;
@@ -839,11 +837,8 @@ static int qh_schedule(struct ehci_hcd *ehci, struct ehci_qh *qh)
 			? cpu_to_hc32(ehci, 1 << uframe)
 			: cpu_to_hc32(ehci, QH_SMASK);
 		hw->hw_info2 |= c_mask;
-	}
-#if !defined(CONFIG_LINK_DEVICE_HSIC)
-	else
+	} else
 		ehci_dbg (ehci, "reused qh %p schedule\n", qh);
-#endif
 
 done:
 	return status;
@@ -1032,8 +1027,11 @@ iso_stream_init (
 			/* c-mask as specified in USB 2.0 11.18.4 3.c */
 			tmp = (1 << (hs_transfers + 2)) - 1;
 			stream->raw_mask |= tmp << (8 + 2);
-		} else
+		} else if (hs_transfers <=
+				(sizeof(smask_out) / sizeof(smask_out[0]))) {
 			stream->raw_mask = smask_out [hs_transfers - 1];
+		}
+
 		bandwidth = stream->usecs + stream->c_usecs;
 		bandwidth /= interval << 3;
 
@@ -1396,20 +1394,21 @@ iso_stream_schedule (
 
 		/* Behind the scheduling threshold? */
 		if (unlikely(start < next)) {
-			unsigned now2 = (now - base) & (mod - 1);
 
 			/* USB_ISO_ASAP: Round up to the first available slot */
 			if (urb->transfer_flags & URB_ISO_ASAP)
 				start += (next - start + period - 1) & -period;
 
 			/*
-			 * Not ASAP: Use the next slot in the stream,
-			 * no matter what.
+			 * Not ASAP: Use the next slot in the stream.  If
+			 * the entire URB falls before the threshold, fail.
 			 */
-			else if (start + span - period < now2) {
-				ehci_dbg(ehci, "iso underrun %p (%u+%u < %u)\n",
+			else if (start + span - period < next) {
+				ehci_dbg(ehci, "iso urb late %p (%u+%u < %u)\n",
 						urb, start + base,
-						span - period, now2 + base);
+						span - period, next + base);
+				status = -EXDEV;
+				goto fail;
 			}
 		}
 

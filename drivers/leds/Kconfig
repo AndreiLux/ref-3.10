@@ -4,37 +4,6 @@ config LEDS_GPIO_REGISTER
 	  This option provides the function gpio_led_register_device.
 	  As this function is used by arch code it must not be compiled as a
 	  module.
-	  
-config NEW_LEDS
-	bool "LED Support"
-	help
-	  Say Y to enable Linux LED support.  This allows control of supported
-	  LEDs from both userspace and optionally, by kernel events (triggers).
-
-	  This is not related to standard keyboard LEDs which are controlled
-	  via the input system.
-
-config LEDS_CLASS
-	tristate "LED Class Support"
-	help
-	  This option enables the led sysfs class in /sys/class/leds.  You'll
-	  need this to do anything useful with LEDs.  If unsure, say N.
-	  
-config LEDS_LM3560
-	tristate "LED support for LM3560"
-	depends on I2C
-	depends on LEDS_CLASS
-	help
-	  This option enables support for LEDs connected to LM3560.
-	  LM3560 includes Torch, Flash and Indicator functions.
-	  
-config LEDS_SKY81296
-	tristate "LED support for SKY81296"
-	depends on I2C
-	depends on LEDS_CLASS
-	help
-	  This option enables support for LEDs connected to SKY81296.
-	  SKY81296 includes Torch, Flash and Indicator functions.
 
 menuconfig NEW_LEDS
 	bool "LED Support"
@@ -263,26 +232,6 @@ config LEDS_LP5562
 	  Driver provides direct control via LED class and interface for
 	  programming the engines.
 
-config LEDS_LP55XX_COMMON_VER_J
-	tristate "Common Driver for TI/National LP5521, LP5523/55231 and LP5562"
-	depends on LEDS_LP5521 || LEDS_LP5523 || LEDS_LP5562
-	select FW_LOADER
-	help
-	  This option supports common operations for LP5521 and LP5523/55231
-	  devices.
-	  This configuration will include the driver which used in 2012
-
-config LEDS_LP5562_VER_J
-	tristate "LED Support for TI LP5562 LED driver chip"
-	depends on LEDS_CLASS && I2C
-	select LEDS_LP55XX_COMMON_VER_J
-	help
-	  If you say yes here you get support for TI LP5562 LED driver.
-	  It is 4 channels chip with programmable engines.
-	  Driver provides direct control via LED class and interface for
-	  programming the engines.
-	  This configuration will include the driver which used in 2012
-
 config LEDS_LP8788
 	tristate "LED support for the TI LP8788 PMIC"
 	depends on LEDS_CLASS
@@ -337,6 +286,26 @@ config LEDS_PCA9633
 	help
 	  This option enables support for LEDs connected to the PCA9633
 	  LED driver chip accessed via the I2C bus.
+
+config LEDS_QPNP
+	tristate "Support for QPNP LEDs"
+	depends on SPMI && OF_SPMI
+	help
+	  This driver supports the leds functionality of Qualcomm PNP PMIC.  It
+	  includes RGB Leds, WLED and Flash Led.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called leds-qpnp.
+
+config LEDS_MSM_GPIO_FLASH
+	tristate "Support for GPIO Flash LEDs"
+	depends on GPIO_MSM_V3
+	help
+	  This driver supports the leds functionality of GPIO Flash LED. It
+	  includes flash mode and torch mode.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called leds-gpio-flash.
 
 config LEDS_WM831X_STATUS
 	tristate "LED support for status LEDs on WM831x PMICs"
@@ -500,12 +469,6 @@ config LEDS_TCA6507
 	  LED driver chips accessed via the I2C bus.
 	  Driver support brightness control and hardware-assisted blinking.
 
-config LEDS_MAX77804
-        bool "LED support for the MAX77804"
-        depends on LEDS_CLASS
-        help
-          This option enables support for the LEDs on the MAX77804.
-
 config LEDS_MAX8997
 	tristate "LED support for MAX8997 PMIC"
 	depends on LEDS_CLASS && MFD_MAX8997
@@ -542,6 +505,61 @@ config LEDS_MAX77828_RGB
 	help
 	  If you say yes here you will get support for
 	  for the MAX77828 RGB led chip.
+
+config LEDS_MAX77843_RGB
+	tristate "Led max77843 rgb"
+	depends on MFD_MAX77843 && LEDS_CLASS && I2C
+	help
+	  If you say yes here you will get support for
+	  for the MAX77843 RGB led chip.
+
+config LEDS_MAX77803
+	bool "LED support for the MAX77803"
+	depends on LEDS_CLASS
+	depends on MFD_MAX77803
+	default n
+	help
+	  This option enables support for the LEDs
+
+config LEDS_MAX77804K
+	bool "LED support for the MAX77804K"
+	depends on LEDS_CLASS
+	depends on MFD_MAX77804K
+	default n
+	help
+	  This option enables support for the LEDs
+	  Now camera_class is exceptioned
+	  by sanghoon.lee.
+
+config LEDS_MAX77828
+	bool "LED support for the MAX77828"
+	depends on LEDS_CLASS
+	depends on MFD_MAX77828
+	default n
+	help
+	  This option enables support for the LEDs
+
+config LEDS_MIC2873
+	bool "LED support for the MIC2873"
+	depends on LEDS_CLASS
+	default n
+	help
+	  This option enables support for the LEDs
+
+config DEBUG_FLASH
+	bool "for LED driver debugging"
+	depends on LEDS_CLASS
+	default n
+	help
+	  This option enables support for the LED debugging
+
+config LEDS_AN30259A
+	tristate "LED support for AN30259A I2C chip"
+	depends on LEDS_CLASS
+	depends on I2C
+	help
+	  This option enables support for LEDs connected to the AN30259A
+	  LED driver chip accessed via the I2C bus.
 
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"

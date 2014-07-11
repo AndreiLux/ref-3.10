@@ -38,21 +38,33 @@
 
 #include <linux/vmalloc.h>
 
+#include <mach/gpio.h>
+
 #include "mtv319.h"
 #include "mtv319_internal.h"
 #include "mtv319_ficdec_internal.h"
 #include "mtv319_ficdec.h"
+#include "mtv319_port.h"
 
 #include "tdmb.h"
 
 #define MTV319_INTERRUPT_SIZE (188*16)
 #define MTV319_TS_BUF_SIZE (MTV319_SPI_CMD_SIZE + MTV319_INTERRUPT_SIZE)
 
+#if defined(CONFIG_TDMB_TSIF_SLSI) || defined(CONFIG_TDMB_TSIF_QC)
+#define TDMB_FIC_USE_TSIF
+#define FIC_PACKET_COUNT 3
+#define MSC_PACKET_COUNT 16
+#endif
+
 /* #define TDMB_DEBUG_SCAN */
 
 static bool mtv319_on_air;
 static bool mtv319_pwr_on;
+
+#ifdef CONFIG_TDMB_SPI
 static U8 stream_buff[MTV319_TS_BUF_SIZE] __cacheline_aligned;
+#endif
 static U8 fic_buf[MTV319_FIC_BUF_SIZE] __cacheline_aligned;
 
 #ifdef TDMB_DEBUG_SCAN
@@ -97,7 +109,11 @@ static void mtv319_power_off(void)
 
 	if (mtv319_pwr_on) {
 		mtv319_on_air = false;
+#if defined(CONFIG_TDMB_TSIF_SLSI) || defined(CONFIG_TDMB_TSIF_QC)
+		tdmb_tsi_stop();
+#else
 		tdmb_control_irq(false);
+#endif
 		tdmb_control_gpio(false);
 
 		mtv319_pwr_on = false;
@@ -121,7 +137,9 @@ static bool mtv319_power_on(void)
 			tdmb_control_gpio(false);
 			return false;
 		} else {
+#if !defined(CONFIG_TDMB_TSIF_SLSI) && !defined(CONFIG_TDMB_TSIF_QC)
 			tdmb_control_irq(true);
+#endif
 			mtv319_pwr_on = true;
 			return true;
 		}
@@ -143,6 +161,36 @@ static void mtv319_get_dm(struct tdmb_dm *info)
 	}
 }
 
+#if defined(CONFIG_TDMB_TSIF_SLSI) || defined(CONFIG_TDMB_TSIF_QC)
+#ifdef TDMB_FIC_USE_TSIF
+#define FIC_TIMEOUT 1200
+#define FIC_WAIT_TIME 20
+static int rtv_fic_dec_result;
+static int rtv_fic_dec_timeout;
+static void dmb_drv_fic_cb(u8 *data, u32 length)
+{
+	enum E_RTV_FIC_DEC_RET_TYPE dc;
+	int fic_size;
+	if (rtv_fic_dec_result == RTV_FIC_RET_DONE)
+		return;
+
+	fic_size = mtv319_assemble_fic(fic_buf, data, length);
+	if (fic_size >= 96)
+		dc = rtvFICDEC_Decode(fic_buf, fic_size);
+	rtv_fic_dec_result = dc;
+#ifdef TDMB_DEBUG_SCAN
+	DPRINTK("%s : length:%d fic_size:%d decode:%d\n",
+			__func__, length, fic_size, rtv_fic_dec_result);
+#endif
+}
+#endif
+
+static void dmb_drv_msc_cb(u8 *data, u32 length)
+{
+/*	DPRINTK("%s : 0x%x 0x%x 0x%x 0x%x \n", __func__, data[0], data[1], data[3], data[4]); */
+	tdmb_store_data(data, length);
+}
+#endif
 static bool mtv319_set_ch(unsigned long freq
 						, unsigned char subchid
 						, bool factory_test)
@@ -156,7 +204,11 @@ static bool mtv319_set_ch(unsigned long freq
 		int ch_ret;
 
 		rtvTDMB_CloseAllSubChannels();
-
+#if defined(CONFIG_TDMB_TSIF_SLSI) || defined(CONFIG_TDMB_TSIF_QC)
+		tdmb_tsi_stop();
+		if (tdmb_tsi_start(dmb_drv_msc_cb, MSC_PACKET_COUNT) != 0)
+			return false;
+#endif
 		if (subchid >= 64) {
 			subchid -= 64;
 			svc_type = RTV_SERVICE_DMB;
@@ -183,19 +235,38 @@ static bool mtv319_set_ch(unsigned long freq
 static bool mtv319_scan_ch(struct ensemble_info_type *e_info
 							, unsigned long freq)
 {
-	enum E_RTV_FIC_DEC_RET_TYPE dc;
 	bool ret = false;
 
 	if (mtv319_pwr_on == true && e_info != NULL) {
 		rtvTDMB_CloseAllSubChannels();
+#if defined(TDMB_FIC_USE_TSIF)
+		rtv_fic_dec_result = RTV_FIC_RET_GOING;
+		rtv_fic_dec_timeout = FIC_TIMEOUT;
 
+		tdmb_tsi_stop();
+		if (tdmb_tsi_start(dmb_drv_fic_cb, FIC_PACKET_COUNT) != 0)
+			return false;
+		rtvFICDEC_Init();
+#endif
 		if (rtvTDMB_ScanFrequency(freq/1000) == RTV_SUCCESS) {
+#if defined(TDMB_FIC_USE_TSIF)
+			while(rtv_fic_dec_result == RTV_FIC_RET_GOING \
+					&& rtv_fic_dec_timeout > 0) {
+				RTV_DELAY_MS(FIC_WAIT_TIME);
+				rtv_fic_dec_timeout -= FIC_WAIT_TIME;
+			};
+
+			rtvTDMB_CloseFIC();
+			if (rtv_fic_dec_result == RTV_FIC_RET_DONE)
+				ret = true;
+#else
+			enum E_RTV_FIC_DEC_RET_TYPE dc;
 			unsigned int i;
-			int ret_size;
 
 			rtvFICDEC_Init(); /* FIC parser Init */
 
 			for (i = 0; i < 30; i++) {
+				int ret_size;
 				ret_size = rtvTDMB_ReadFIC(fic_buf);
 				if (ret_size > 0) {
 					dc = rtvFICDEC_Decode(fic_buf, 384);
@@ -212,14 +283,19 @@ static bool mtv319_scan_ch(struct ensemble_info_type *e_info
 			}
 
 			rtvTDMB_CloseFIC();
+#endif
 			if (ret == true)
-				__get_ensemble_info(e_info, (freq));
+				ret = __get_ensemble_info(e_info, (freq));
+		} else {
+			DPRINTK("%s : Scan fail : %ld\n", __func__, freq);
+			ret = false;
 		}
 	}
 
 	return ret;
 }
 
+#if !defined(CONFIG_TDMB_TSIF_SLSI) && !defined(CONFIG_TDMB_TSIF_QC)
 static void mtv319_pull_data(void)
 {
 	U8 ifreg, istatus;
@@ -262,6 +338,7 @@ static void mtv319_pull_data(void)
 exit_read_mem:
 	RTV_GUARD_FREE;
 }
+#endif
 
 static unsigned long mtv319_int_size(void)
 {
@@ -280,7 +357,9 @@ static struct tdmb_drv_func raontech_mtv319_drv_func = {
 	.scan_ch = mtv319_scan_ch,
 	.get_dm = mtv319_get_dm,
 	.set_ch = mtv319_set_ch,
+#if !defined(CONFIG_TDMB_TSIF_SLSI) && !defined(CONFIG_TDMB_TSIF_QC)
 	.pull_data = mtv319_pull_data,
+#endif
 	.get_int_size = mtv319_int_size,
 };
 

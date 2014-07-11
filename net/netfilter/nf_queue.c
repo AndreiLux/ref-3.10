@@ -27,18 +27,6 @@
  */
 static const struct nf_queue_handler __rcu *queue_handler __read_mostly;
 
-/* return FALSE when somebody else is registered
- * return TRUE in case of queue handler pointer is null. */
-bool nf_register_queue_handler_is_null(void)
-{
-	/* check queue handler pointer is null */
-	if (rcu_access_pointer(queue_handler) == NULL)
-		return true;
-	pr_info("%s:%s queue handler is not null!\n", __FILE__, __func__);
-	return false;
-}
-EXPORT_SYMBOL(nf_register_queue_handler_is_null);
-
 /* return EBUSY when somebody else is registered, return EEXIST if the
  * same handler is registered, return 0 in case of success. */
 void nf_register_queue_handler(const struct nf_queue_handler *qh)

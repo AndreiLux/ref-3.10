@@ -46,7 +46,6 @@ enum tick_nohz_mode {
  * @idle_exittime:	Time when the idle state was left
  * @idle_sleeptime:	Sum of the time slept in idle with sched tick stopped
  * @iowait_sleeptime:	Sum of the time slept in idle with sched tick stopped, with IO outstanding
- * @sleep_length:	Duration of the current idle sleep
  * @do_timer_lst:	CPU was the last one doing do_timer before going idle
  */
 struct tick_sched {
@@ -65,7 +64,6 @@ struct tick_sched {
 	ktime_t				idle_exittime;
 	ktime_t				idle_sleeptime;
 	ktime_t				iowait_sleeptime;
-	ktime_t				sleep_length;
 	unsigned long			last_jiffies;
 	unsigned long			next_jiffies;
 	ktime_t				idle_expires;
@@ -95,7 +93,16 @@ extern struct cpumask *tick_get_broadcast_mask(void);
 #  ifdef CONFIG_TICK_ONESHOT
 extern struct cpumask *tick_get_broadcast_oneshot_mask(void);
 #  endif
+#else
+static inline struct tick_device *tick_get_broadcast_device(void)
+{
+	return NULL;
+}
 
+static inline struct cpumask *tick_get_broadcast_mask(void)
+{
+	return NULL;
+}
 # endif /* BROADCAST */
 
 # ifdef CONFIG_TICK_ONESHOT
@@ -112,6 +119,10 @@ static inline void tick_clock_notify(void) { }
 static inline int tick_check_oneshot_change(int allow_nohz) { return 0; }
 static inline void tick_check_idle(int cpu) { }
 static inline int tick_oneshot_mode_active(void) { return 0; }
+static inline struct cpumask *tick_get_broadcast_oneshot_mask(void)
+{
+	return NULL;
+}
 # endif
 
 #else /* CONFIG_GENERIC_CLOCKEVENTS */
@@ -173,5 +184,11 @@ static inline void tick_nohz_full_kick_all(void) { }
 static inline void tick_nohz_task_switch(struct task_struct *tsk) { }
 #endif
 
+
+# ifdef CONFIG_CPU_IDLE_GOV_MENU
+extern void menu_hrtimer_cancel(void);
+# else
+static inline void menu_hrtimer_cancel(void) {}
+# endif /* CONFIG_CPU_IDLE_GOV_MENU */
 
 #endif

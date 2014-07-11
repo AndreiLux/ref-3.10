@@ -19,7 +19,7 @@
 #define	LPS25H_REV	6
 
 
-#define CALIBRATION_FILE_PATH		"/efs/FactoryApp/baro_delta"
+#define CALIBRATION_FILE_PATH	"/efs/FactoryApp/baro_delta"
 
 #define	PR_ABS_MAX	8388607		/* 24 bit 2'compl */
 #define	PR_ABS_MIN	-8388608
@@ -117,43 +117,11 @@ static ssize_t pressure_cabratioin_show(struct device *dev,
 
 	return sprintf(buf, "%d\n", data->iPressureCal);
 }
-/*
-static ssize_t eeprom_check_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	char chTempBuf  = 0;
-	int iRet = 0;
-	struct ssp_data *data = dev_get_drvdata(dev);
 
-	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
-	if (msg == NULL) {
-		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
-		goto exit;
-	}
-	msg->cmd = PRESSURE_FACTORY;
-	msg->length = 1;
-	msg->options = AP2HUB_READ;
-	msg->buffer = &chTempBuf;
-	msg->free_buffer = 0;
-
-	iRet = ssp_spi_sync(data, msg, 3000);
-	if (iRet != SUCCESS) {
-		pr_err("[SSP]: %s - Pressure Selftest Timeout!!\n", __func__);
-		goto exit;
-	}
-
-	ssp_dbg("[SSP]: %s - %u\n", __func__, chTempBuf);
-
-	exit:
-	return snprintf(buf, PAGE_SIZE, "%d", chTempBuf);
-}
-*/
 /* sysfs for vendor & name */
 static ssize_t pressure_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	//struct ssp_data *data = dev_get_drvdata(dev);
-
 	return sprintf(buf, "%s\n", VENDOR);
 }
 
@@ -165,21 +133,11 @@ static ssize_t pressure_name_show(struct device *dev,
 
 static DEVICE_ATTR(vendor,  S_IRUGO, pressure_vendor_show, NULL);
 static DEVICE_ATTR(name,  S_IRUGO, pressure_name_show, NULL);
-/*static DEVICE_ATTR(eeprom_check, S_IRUGO, eeprom_check_show, NULL); */
 static DEVICE_ATTR(calibration,  S_IRUGO | S_IWUSR | S_IWGRP,
 	pressure_cabratioin_show, pressure_cabratioin_store);
 static DEVICE_ATTR(sea_level_pressure, /*S_IRUGO |*/ S_IWUSR | S_IWGRP,
 	NULL, sea_level_pressure_store);
-/*
-static struct device_attribute *pressure_attrs_bmp280[] = {
-	&dev_attr_vendor,
-	&dev_attr_name,
-	&dev_attr_calibration,
-	&dev_attr_sea_level_pressure,
-	&dev_attr_eeprom_check,
-	NULL,
-};
-*/
+
 static struct device_attribute *pressure_attrs[] = {
 	&dev_attr_vendor,
 	&dev_attr_name,

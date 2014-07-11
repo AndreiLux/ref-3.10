@@ -38,16 +38,6 @@ config DEVFREQ_GOV_SIMPLE_ONDEMAND
 	  values that imply the usage rate. A device may provide tuned
 	  values to the governor with data field at devfreq_add_device().
 
-config DEVFREQ_GOV_SIMPLE_USAGE
-	tristate "Simple Usage"
-	help
-	  Chooses frequency based on the percentage of target device.
-
-config DEVFREQ_GOV_SIMPLE_EXYNOS
-	tristate "Simple Exynos"
-	help
-	  Chooses frequency based on the threshold of target device.
-
 config DEVFREQ_GOV_PERFORMANCE
 	tristate "Performance"
 	help
@@ -73,6 +63,33 @@ config DEVFREQ_GOV_USERSPACE
 	  Otherwise, the governor does not change the frequnecy
 	  given at the initialization.
 
+config DEVFREQ_GOV_MSM_ADRENO_TZ
+	tristate "MSM Adreno Trustzone"
+	depends on MSM_KGSL && MSM_SCM
+	help
+	  Trustzone based governor for the Adreno GPU.
+	  Sets the frequency using a "on-demand" algorithm.
+	  This governor is unlikely to be useful for other devices.
+
+config DEVFREQ_GOV_MSM_CPUFREQ
+	bool "MSM CPUfreq"
+	depends on CPU_FREQ_MSM
+	help
+	  MSM CPUfreq based governor for CPU bandwidth voting.  Sets the CPU
+	  to DDR BW vote based on the current CPU frequency.  This governor
+	  is unlikely to be useful for non-MSM devices.
+
+config DEVFREQ_GOV_MSM_CPUBW_HWMON
+	tristate "HW monitor based governor for CPUBW"
+	depends on ARCH_MSM_KRAIT
+	help
+	  HW monitor based governor for CPU to DDR bandwidth voting. This
+	  governor currently supports only Krait L2 PM counters.  Sets the CPU
+	  BW vote by using L2 PM counters to monitor the Krait's use of DDR.
+	  Since this governor uses some of the PM counters it can conflict
+	  with existing profiling tools.  This governor is unlikely to be
+	  useful for other devices.
+
 comment "DEVFREQ Drivers"
 
 config ARM_EXYNOS4_BUS_DEVFREQ
@@ -87,40 +104,5 @@ config ARM_EXYNOS4_BUS_DEVFREQ
 	  the operating frequencies and voltages with OPP support.
 	  To operate with optimal voltages, ASV support is required
 	  (CONFIG_EXYNOS_ASV).
-
-config ARM_EXYNOS5422_BUS_DEVFREQ
-	bool "ARM Exynos5422 Memory Bus DEVFREQ Driver"
-	depends on SOC_EXYNOS5422
-	select ARCH_HAS_OPP
-	select PM_OPP
-	select DEVFREQ_GOV_SIMPLE_ONDEMAND
-	help
-	  This adds the DEVFREQ driver for Exynos5 series memory and int.
-
-config ARM_EXYNOS5430_BUS_DEVFREQ
-	bool "ARM Exynos5430 Memory Bus DEVFREQ Driver"
-	depends on SOC_EXYNOS5430
-	select ARCH_HAS_OPP
-	select PM_OPP
-	select DEVFREQ_GOV_SIMPLE_ONDEMAND
-	help
-	  This adds the DEVFREQ driver for Exynos5 series memory and int.
-
-choice
-	prompt "ARM Exynos5430 DEVFREQ Driver for CAM"
-	default ARM_EXYNOS5430_BUS_DEVFREQ_CAM_16M
-
-config ARM_EXYNOS5430_BUS_DEVFREQ_CAM_16M
-	bool "ARM Exynos5430 DEVFREQ for CAM 16M"
-	depends on ARM_EXYNOS5430_BUS_DEVFREQ
-	help
-	 This adds the DVFS table for CAM 16M
-
-config ARM_EXYNOS5430_BUS_DEVFREQ_CAM_13M
-	bool "ARM Exynos5430 DEVFREQ for CAM 13M"
-	depends on ARM_EXYNOS5430_BUS_DEVFREQ
-	help
-	 This adds the DVFS table for CAM 13M
-endchoice
 
 endif # PM_DEVFREQ

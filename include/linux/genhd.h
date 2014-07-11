@@ -138,7 +138,7 @@ struct hd_struct {
 #define GENHD_FL_NATIVE_CAPACITY		128
 #define GENHD_FL_BLOCK_EVENTS_ON_EXCL_WRITE	256
 #define GENHD_FL_NO_PART_SCAN			512
-#ifdef CONFIG_USB_HOST_NOTIFY
+#ifdef CONFIG_USB_STORAGE_DETECT
 #define GENHD_IF_USB	1
 #endif
 
@@ -203,7 +203,7 @@ struct gendisk {
 	struct blk_integrity *integrity;
 #endif
 	int node_id;
-#ifdef CONFIG_USB_HOST_NOTIFY
+#ifdef CONFIG_USB_STORAGE_DETECT
 	int media_present;
 	int interfaces;
 #endif

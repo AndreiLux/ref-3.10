@@ -46,20 +46,18 @@ dtb-$(CONFIG_ARCH_DAVINCI) += da850-enbw-cmc.dtb \
 dtb-$(CONFIG_ARCH_DOVE) += dove-cm-a510.dtb \
 	dove-cubox.dtb \
 	dove-dove-db.dtb
-#dtb-$(CONFIG_ARCH_EXYNOS) += exynos4210-origen.dtb \
-#	exynos4210-smdkv310.dtb \
-#	exynos4210-trats.dtb \
-#	exynos4210-universal_c210.dtb \
-#	exynos4412-odroidx.dtb \
-#	exynos4412-smdk4412.dtb \
-#	exynos4412-origen.dtb \
-#	exynos5250-arndale.dtb \
-#	exynos5440-sd5v1.dtb \
-#	exynos5250-smdk5250.dtb \
-#	exynos5250-snow.dtb \
-#	exynos5422-smdk5422.dtb \
-#	exynos5430-xyref5430.dtb \
-#	exynos5440-ssdk5440.dtb
+dtb-$(CONFIG_ARCH_EXYNOS) += exynos4210-origen.dtb \
+	exynos4210-smdkv310.dtb \
+	exynos4210-trats.dtb \
+	exynos4210-universal_c210.dtb \
+	exynos4412-odroidx.dtb \
+	exynos4412-smdk4412.dtb \
+	exynos4412-origen.dtb \
+	exynos5250-arndale.dtb \
+	exynos5440-sd5v1.dtb \
+	exynos5250-smdk5250.dtb \
+	exynos5250-snow.dtb \
+	exynos5440-ssdk5440.dtb
 dtb-$(CONFIG_ARCH_HIGHBANK) += highbank.dtb \
 	ecx-2000.dtb
 dtb-$(CONFIG_ARCH_INTEGRATOR) += integratorap.dtb \
@@ -91,8 +89,6 @@ dtb-$(CONFIG_ARCH_KIRKWOOD) += kirkwood-cloudbox.dtb \
 	kirkwood-ts219-6282.dtb \
 	kirkwood-openblocks_a6.dtb
 dtb-$(CONFIG_ARCH_MARCO) += marco-evb.dtb
-dtb-$(CONFIG_ARCH_MSM) += msm8660-surf.dtb \
-	msm8960-cdp.dtb
 dtb-$(CONFIG_ARCH_MVEBU) += armada-370-db.dtb \
 	armada-370-mirabox.dtb \
 	armada-370-rd.dtb \
@@ -161,7 +157,6 @@ dtb-$(CONFIG_ARCH_U8500) += snowball.dtb \
 	hrefprev60.dtb \
 	hrefv60plus.dtb \
 	ccu9540.dtb
-dtb-$(CONFIG_ARCH_S3C24XX) += s3c2416-smdk2416.dtb
 dtb-$(CONFIG_ARCH_SHMOBILE) += emev2-kzm9d.dtb \
 	r8a7740-armadillo800eva.dtb \
 	r8a7778-bockw.dtb \
@@ -222,6 +217,9 @@ endif
 
 targets += dtbs
 targets += $(DTB_LIST)
+
+#used for cleaning - not building
+subdir- := qcom
 endif
 
 # *.dtb used to be generated in the directory above. Clean out the

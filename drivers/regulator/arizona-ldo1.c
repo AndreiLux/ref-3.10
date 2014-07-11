@@ -158,7 +158,7 @@ static const struct regulator_desc arizona_ldo1 = {
 	.min_uV = 900000,
 	.uV_step = 50000,
 	.n_voltages = 7,
-	.enable_time = 5000,
+	.enable_time = 500,
 
 	.owner = THIS_MODULE,
 };

@@ -397,8 +397,4 @@ static inline void print_hex_dump_bytes(const char *prefix_str, int prefix_type,
 		       groupsize, buf, len, ascii)
 #endif /* defined(CONFIG_DYNAMIC_DEBUG) */
 
-#if defined(CONFIG_SEC_DEBUG)
-extern void disable_printk_process(void);
-#endif /* defined(CONFIG_SEC_DEBUG) */
-
 #endif

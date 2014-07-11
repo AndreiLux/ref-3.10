@@ -14,20 +14,30 @@
  */
 #include "ssp.h"
 
-#define SSP_FIRMWARE_REVISION		14021900
+#if defined(CONFIG_SEC_LENTIS_PROJECT)
+#define SSP_BMI_FIRMWARE_REVISION	14041100
+#define BL_BMI_FW_NAME   "ssp_at_bmi.fw"
+#endif
 
-/* SPI Speeds */
-#define BOOT_SPI_HZ 4800000
-#define NORM_SPI_HZ  4800000
-/* Bootloader id */
-#define BL_EXTENDED_ID_BYTE_ID      0x24u
-#define BL_EXTENDED_ID_BYTE_VERSION 0x01u
+#ifdef CONFIG_SEC_TRLTE_PROJECT
+#define SSP_FIRMWARE_REVISION		14052901
+#define BL_FW_NAME			"ssp_at_tr.fw"
+#else
+#define SSP_FIRMWARE_REVISION		14061000
+#define BL_FW_NAME			"ssp_at.fw"
+#endif
 
 /* Bootload mode cmd */
-#define BL_FW_NAME   "ssp_at.fw"
-#define BL_UMS_FW_NAME   "ssp_at.bin"
-#define BL_CRASHED_FW_NAME  "ssp_crashed.fw"
-#define BL_UMS_FW_PATH   255
+#define BL_UMS_FW_NAME			"ssp_at.bin"
+#define BL_CRASHED_FW_NAME		"ssp_crashed_at.fw"
+
+/* SPI Speeds */
+#define BOOT_SPI_HZ			4800000
+#define NORM_SPI_HZ			4800000
+/* Bootloader id */
+#define BL_UMS_FW_PATH			255
+#define BL_EXTENDED_ID_BYTE_ID		0x24u
+#define BL_EXTENDED_ID_BYTE_VERSION	0x01u
 /* Bootloader mode status */
 #define BL_WAITING_BOOTLOAD_CMD		0xc0	/* valid 7 6 bit only */
 #define BL_WAITING_FRAME_DATA		0x80	/* valid 7 6 bit only */
@@ -37,12 +47,22 @@
 #define BL_APP_CRC_FAIL			0x40	/* valid 7 8 bit only */
 #define BL_BOOT_STATUS_MASK		0x3f
 
-#define BL_VERSION				0x24
+#define BL_VERSION			0x24
 #define BL_EXTENDED			0x01
 
 /* Command to unlock bootloader */
 #define BL_UNLOCK_CMD_MSB		0xaa
 #define BL_UNLOCK_CMD_LSB		0xdc
+
+unsigned int get_module_rev(struct ssp_data *data)
+{
+#if defined(CONFIG_SEC_LENTIS_PROJECT)
+	if (data->ap_rev < MPU6500_REV)
+		return SSP_BMI_FIRMWARE_REVISION;
+#endif
+
+	return SSP_FIRMWARE_REVISION;
+}
 
 static int ssp_wait_for_chg(struct ssp_data *data)
 {
@@ -64,11 +84,6 @@ static int ssp_wait_for_chg(struct ssp_data *data)
 	}
 
 	return 0;
-}
-
-unsigned int get_module_rev(struct ssp_data *data)
-{
-	return SSP_FIRMWARE_REVISION;
 }
 
 static int spi_read_wait_chg(struct ssp_data *data, uint8_t *buffer, int len)
@@ -427,50 +442,44 @@ void toggle_mcu_reset(struct ssp_data *data)
 
 	if (!gpio_get_value(data->mcu_int2)) {
 		pr_err("[SSP]: SH has entered bootloader in %s !!!!!", __func__);
-		//return -EIO;
 	}
-	//return 0;
 }
 
 static int update_mcu_bin(struct ssp_data *data, int iBinType)
 {
 
-        int iRet = SUCCESS;
-        uint8_t bfr[3];
+	int iRet = SUCCESS;
+	uint8_t bfr[3];
 
-        pr_info("[SSP] ssp_change_to_bootmode\n");
-        change_to_bootmode(data);
+	pr_info("[SSP] ssp_change_to_bootmode\n");
+	change_to_bootmode(data);
 
-        iRet = spi_read_wait_chg(data, bfr, 3);
-        if (iRet < 0) {
-	        pr_err("[SSP] unable to contact bootmode = %d\n", iRet);
-               return iRet;
-        }
+	iRet = spi_read_wait_chg(data, bfr, 3);
+	if (iRet < 0) {
+		pr_err("[SSP] unable to contact bootmode = %d\n", iRet);
+		   return iRet;
+	}
 
-        if (bfr[1] != BL_VERSION ||
-             bfr[2] != BL_EXTENDED) {
-                pr_err("[SSP] unable to enter bootmode= %d\n", iRet);
-                return -EIO;
-        }
+	if (bfr[1] != BL_VERSION ||
+		 bfr[2] != BL_EXTENDED) {
+			pr_err("[SSP] unable to enter bootmode= %d\n", iRet);
+			return -EIO;
+	}
 
 	switch (iBinType) {
 	case KERNEL_BINARY:
-#if 1
-		iRet = load_kernel_fw_bootmode(data,
-			BL_FW_NAME);
+#if defined(CONFIG_SEC_LENTIS_PROJECT)
+		if (data->ap_rev < MPU6500_REV)
+			iRet = load_kernel_fw_bootmode(data, BL_BMI_FW_NAME);
+		else
 #endif
-#if 0
-		iRet = load_ums_fw_bootmode(data,
-			BL_UMS_FW_NAME);
-#endif
+			iRet = load_kernel_fw_bootmode(data, BL_FW_NAME);
 		break;
 	case KERNEL_CRASHED_BINARY:
-		iRet = load_kernel_fw_bootmode(data,
-			BL_CRASHED_FW_NAME);
+		iRet = load_kernel_fw_bootmode(data, BL_CRASHED_FW_NAME);
 		break;
 	case UMS_BINARY:
-		iRet = load_ums_fw_bootmode(data,
-			BL_UMS_FW_NAME);
+		iRet = load_ums_fw_bootmode(data, BL_UMS_FW_NAME);
 		break;
 	default:
 		pr_err("[SSP] binary type error!!\n");
@@ -513,7 +522,7 @@ int forced_to_download_binary(struct ssp_data *data, int iBinType)
 	pr_info("[SSP] %s, DL state = %d\n", __func__, data->fw_dl_state);
 	ssp_enable(data, true);
 
-	proximity_open_lcd_ldi(data);
+	get_proximity_threshold(data);
 	proximity_open_calibration(data);
 	accel_open_calibration(data);
 	gyro_open_calibration(data);
@@ -532,7 +541,7 @@ int check_fwbl(struct ssp_data *data)
 	int iRet;
 	unsigned int fw_revision;
 
-	fw_revision = SSP_FIRMWARE_REVISION;
+	fw_revision = get_module_rev(data);
 	data->uCurFirmRev = get_firmware_rev(data);
 
 	if ((data->uCurFirmRev == SSP_INVALID_REVISION) \

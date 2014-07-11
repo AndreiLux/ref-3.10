@@ -22,7 +22,23 @@
 #define __LINUX_MFD_STBCFG01_H
 
 #include <linux/battery/sec_charger.h>
-#include <linux/battery/sec_fuelgauge.h>
+#include <linux/regulator/consumer.h>
+
+struct max77823_regulator_data {
+	int id;
+	struct regulator_init_data *initdata;
+};
+
+
+/* MAX77683 regulator IDs */
+enum max77823_regulators {
+	MAX77823_ESAFEOUT1 = 0,
+	MAX77823_ESAFEOUT2,
+
+	MAX77823_CHARGER,
+
+	MAX77823_REG_MAX,
+};
 
 struct max77823_platform_data {
 	sec_battery_platform_data_t *charger_data;
@@ -32,6 +48,11 @@ struct max77823_platform_data {
 	int irq_gpio;
 	bool wakeup;
 	struct mutex irqlock;
+	struct max77823_regulator_data *regulators;
+	int num_regulators;
 };
+
+extern struct max77823_regulator_data max77823_regulators[];
+extern int max77823_muic_set_safeout(int path);
 
 #endif /*  __LINUX_MFD_MAX8998_H */

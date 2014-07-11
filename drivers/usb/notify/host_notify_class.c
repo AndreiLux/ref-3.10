@@ -69,7 +69,7 @@ static ssize_t mode_store(
 			ndev->set_mode(NOTIFY_SET_ON);
 		else if (!strncmp(mode, "NONE", 4))
 			ndev->set_mode(NOTIFY_SET_OFF);
-		printk(KERN_INFO "host_notify: set mode %s\n", mode);
+		pr_info("host_notify: set mode %s\n", mode);
 	}
 	ret = size;
 	kfree(mode);
@@ -94,7 +94,7 @@ static ssize_t booster_show(struct device *dev, struct device_attribute *attr,
 		break;
 	}
 
-	printk(KERN_INFO "host_notify: read booster %s\n", booster);
+	pr_info("booster_show: %s\n", booster);
 	return snprintf(buf,  sizeof(booster)+1, "%s\n", booster);
 }
 
@@ -122,7 +122,7 @@ static ssize_t booster_store(
 			ndev->set_booster(NOTIFY_SET_OFF);
 			ndev->mode = NOTIFY_NONE_MODE;
 		}
-		printk(KERN_INFO "host_notify: set booster %s\n", booster);
+		pr_info("host_notify: set booster %s\n", booster);
 	}
 	ret = size;
 	kfree(booster);
@@ -158,7 +158,7 @@ char *host_state_string(int type)
 
 int host_state_notify(struct host_notify_dev *ndev, int state)
 {
-	printk(KERN_INFO "host_notify: ndev name=%s: (%s --> %s)\n",
+	pr_info("host_notify: ndev name=%s: (%s --> %s)\n",
 		ndev->name,
 		host_state_string(ndev->state),
 		host_state_string(state));

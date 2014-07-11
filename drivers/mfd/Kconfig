@@ -303,59 +303,66 @@ config MFD_MAX77693
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
 
-config MFD_MAX77804
-        bool "Maxim Semiconductor MAX77804 PMIC Support"
-        depends on I2C=y && GENERIC_HARDIRQS
-        select MFD_CORE
-        help
-          Say yes here to support for Maxim Semiconductor MAX77804.
-          This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
-          MUIC controls on chip.
-          This driver provides common support for accessing the device;
-          additional drivers
-
-config MFD_MAX77804K
-        bool "Maxim Semiconductor MAX77804K PMIC Support"
-        depends on I2C=y && GENERIC_HARDIRQS
-        select MFD_CORE
-        help
-          Say yes here to support for Maxim Semiconductor MAX77804K.
-          This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
-          MUIC controls on chip.
-          This driver provides common support for accessing the device;
-          additional drivers
-
-config MFD_MAX77823
-        bool "Maxim Semiconductor MAX77823 Support"
-        depends on I2C=y && GENERIC_HARDIRQS
-        select MFD_CORE
-        help
-          Say yes here to support for Maxim Semiconductor MAX77823.
-          This is a Charger, Fuel Gauge controls on chip.
-          This driver provides common support for accessing the device;
-          additional drivers
+config MFD_MAX77803
+	bool "Maxim Semiconductor MAX77803 PMIC Support"
+	depends on I2C=y && GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_I2C
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77803.
+	  This is a companion Power Management IC with Flash, Haptic, Charger,
+	  and MUIC(Micro USB Interface Controller) controls on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
 
 config MFD_MAX77828
-        bool "Maxim Semiconductor MAX77828 PMIC Support"
-        depends on I2C=y && GENERIC_HARDIRQS
-        select MFD_CORE
-        help
-          Say yes here to support for Maxim Semiconductor MAX77828.
-          This is a Power Management IC with RTC, Flash, SVC led, Haptic,
-          MUIC controls on chip.
-          This driver provides common support for accessing the device;
-          additional drivers
+	bool "Maxim Semiconductor MAX77828 PMIC Support"
+	depends on I2C=y && GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_I2C
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77828.
+	  This is a companion Power Management IC with Flash, Haptic, Charger,
+	  and MUIC(Micro USB Interface Controller) controls on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
 
-config MFD_MAX77888
-        bool "Maxim Semiconductor MAX77888 PMIC Support"
-        depends on I2C=y && GENERIC_HARDIRQS
-        select MFD_CORE
-        help
-          Say yes here to support for Maxim Semiconductor MAX77888.
-          This is a Power Management IC with Charger, safe LDOs, Flash, Haptic
-          and MUIC controls on chip.
-          This driver provides common support for accessing the device;
-          additional drivers
+config MFD_MAX77823
+	bool "Maxim Semiconductor MAX77823 Support"
+	depends on I2C=y && GENERIC_HARDIRQS
+	select MFD_CORE
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77823.
+	  This is a Charger, Fuel Gauge controls on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
+
+config MFD_MAX77804K
+	bool "Maxim Semiconductor MAX77804K/National LP3974 PMIC Support"
+	depends on I2C=y && GENERIC_HARDIRQS
+	select MFD_CORE
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77804K and
+	  National Semiconductor LP3974. This is a Power Management IC.
+	  This driver provies common support for accessing the device,
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
+
+config MFD_MAX77843
+	bool "Maxim Semiconductor MAX77843 PMIC Support"
+	depends on I2C=y && GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_I2C
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77843.
+	  This is a companion Power Management IC with Flash, Haptic, Charger,
+	  and MUIC(Micro USB Interface Controller) controls on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
 
 config MFD_MAX8907
 	tristate "Maxim Semiconductor MAX8907 PMIC Support"
@@ -1094,12 +1101,11 @@ config MFD_WM5102
 	help
 	  Support for Wolfson Microelectronics WM5102 low power audio SoC
 
-config MFD_FLORIDA
-	bool "Wolfson Microelectronics Florida class codecs"
+config MFD_WM5110
+	bool "Wolfson Microelectronics WM5110"
 	depends on MFD_ARIZONA
 	help
-	  Support for Wolfson Microelectronics Florida class low power audio SoC
-	  such as the WM8280
+	  Support for Wolfson Microelectronics WM5110 low power audio SoC
 
 config MFD_WM8400
 	bool "Wolfson Microelectronics WM8400"
@@ -1170,6 +1176,48 @@ config MFD_WM8994
 	  supported via the relevant subsystems.  This driver provides
 	  core support for the WM8994, in order to use the actual
 	  functionaltiy of the device other drivers must be enabled.
+
+config WCD9304_CODEC
+        tristate "WCD9304 Codec"
+        select SLIMBUS
+        select MFD_CORE
+        default n
+        help
+          Enables the WCD9304 core driver. The core driver provides
+          read/write capability to registers which are part of the
+          WCD9304 core and gives the ability to use the WCD9304 codec.
+
+config WCD9310_CODEC
+        tristate "WCD9310 Codec"
+        select SLIMBUS
+        select MFD_CORE
+        default n
+        help
+          Enables the WCD9310 core driver. The core driver provides
+          read/write capability to registers which are part of the
+          WCD9310 core and gives the ability to use the WCD9310 codec.
+
+config WCD9320_CODEC
+	tristate "WCD9320 Codec"
+	select SLIMBUS
+	select MFD_CORE
+	help
+	  Enables the WCD9xxx codec core driver. The core driver provides
+	  read/write capability to registers which are part of the
+	  WCD9320 core and gives the ability to use the WCD9320 codec.
+	  The WCD9320 codec support either I2C/I2S or Slimbus for
+	  control and data exchnage with master processor.
+
+config WCD9306_CODEC
+	tristate "WCD9306 Codec"
+	select SLIMBUS
+	select MFD_CORE
+	help
+	  Enables the WCD9xxx codec core driver. The core driver provides
+	  read/write capability to registers which are part of the
+	  WCD9306 core and gives the ability to use the WCD9306 codec.
+	  The WCD9306 codec supports either I2C/I2S or Slimbus for
+	  control and data exchnage with master processor.
 
 endmenu
 endif

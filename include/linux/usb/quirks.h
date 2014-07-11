@@ -30,16 +30,6 @@
    descriptor */
 #define USB_QUIRK_DELAY_INIT		0x00000040
 
-/* device does not need GET_STATUS request after reset_resume */
-#define USB_QUIRK_NO_GET_STATUS		0x00000100
-
-/* device needs hsic specific tunning */
-#define USB_QUIRK_HSIC_TUNE             0x00000200
-
-/* resume bus driver after dpm resume  */
-#define USB_QUIRK_NO_DPM_RESUME         0x00000400
-
-/* Remove the kobj list to avoid device_shutdown race condition */
-#define USB_QUIRK_DISCONNECT_KSET        0x00000800
+#define USB_QUIRK_OTG_PET		0x00000080
 
 #endif /* __LINUX_USB_QUIRKS_H */

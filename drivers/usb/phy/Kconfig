@@ -113,14 +113,6 @@ config SAMSUNG_USB2PHY
 	  Enable this to support Samsung USB 2.0 (High Speed) PHY controller
 	  driver for Samsung SoCs.
 
-config SAMSUNG_USB2PHY_DUMMY
-	tristate "Samsung USB 2.0 PHY controller dummy Driver"
-	select SAMSUNG_USBPHY
-	help
-	  Enable this not to use controller driver of USB 2.0 (High Speed) PHY
-	  connected to USB 3.0 DRD for Samsung SoCs. It is used for the USB DRD 3.0
-	  is only connected to USB 3.0 PHY, not USB 2.0 PHY.
-
 config SAMSUNG_USB3PHY
 	tristate "Samsung USB 3.0 PHY controller Driver"
 	select SAMSUNG_USBPHY
@@ -136,6 +128,34 @@ config TWL4030_USB
 	  family chips (including the TWL5030 and TPS659x0 devices).
 	  This transceiver supports high and full speed devices plus,
 	  in host mode, low speed.
+
+config USB_MSM_OTG_72K
+	bool "OTG support for Legcay Qualcomm on-chip USB controller"
+	depends on ARCH_MSM
+	select USB_OTG_UTILS
+	default USB_MSM_72K
+	help
+	  Enable this to support the USB OTG transceiver on MSM chips. It
+	  handles PHY initialization, clock management, low power mode and
+	  workarounds required after resetting the hardware. This driver is
+	  required for even peripheral only or host only mode configuration.
+	  Supports SRP and HNP when both gadget and Host are selected.
+
+config MSM_OTG_ENABLE_A_WAIT_BCON_TIMEOUT
+	bool "Enable A-device timeout for B-device connection"
+	depends on USB_MSM_OTG_72K
+	default n
+	help
+	   OTG specification allows A-device to turn off VBUS if B-device
+	   fails to signal connect event before TA_WAIT_BCON (1.1 - 30 sec).
+	   SRP detection is enabled and hardware is put into low power mode
+	   upon this timeout.
+
+	   If you say yes, VBUS will be turned off if B-device does not signal
+	   connect in 30 sec. Otherwise VBUS is not turned off when Micro-A
+	   cable is connected. But hardware is put into LPM. Say no if leakage
+	   currents in your system are minimum.
+
 
 config TWL6030_USB
 	tristate "TWL6030 USB Transceiver Driver"
@@ -180,6 +200,55 @@ config USB_MSM_OTG
 	  mode configurations.
 	  This driver is not supported on boards like trout which
 	  has an external PHY.
+
+config USB_MSM_ACA
+	bool "Support for Accessory Charger Adapter (ACA)"
+	depends on (USB_MSM_OTG || USB_MSM_OTG_72K) && ARCH_MSM
+	default n
+	help
+	  Accesory Charger Adapter is a charger specified in USB Battery
+	  Charging Specification(1.1). It enables OTG devices to charge
+	  while operating as a host or peripheral at the same time.
+
+config USB_MSM_STANDARD_ACA
+	bool "Support for Standard ACA"
+	depends on USB_MSM_ACA
+	default USB_MSM_OTG_72K
+	help
+	  A Standard ACA has a Standard-A receptacle on the Accessory Port,
+	  and can only be attached to a B-device.  RID_A and RID_GND states
+	  are only possible with Standard ACA.  Select this feature if the
+	  board is intended to support only Standard ACA.
+
+config USB_MSM_HSPHY
+	tristate "MSM HSUSB PHY Driver"
+	select USB_OTG_UTILS
+	default USB_DWC3_MSM
+	help
+	  Enable this to support the High-speed USB transceiver on MSM chips.
+	  This driver supports the PHY which uses the QSCRATCH-based register
+	  set for its control sequences, normally paired with newer DWC3-based
+	  SuperSpeed controllers.
+
+config USB_MSM_SSPHY
+	tristate "MSM SSUSB PHY Driver"
+	select USB_OTG_UTILS
+	default USB_DWC3_MSM
+	help
+	  Enable this to support the SuperSpeed USB transceiver on MSM chips.
+	  This driver supports the PHY which uses the QSCRATCH-based register
+	  set for its control sequences, normally paired with newer DWC3-based
+	  SuperSpeed controllers.
+
+config USB_MSM_SSPHY_QMP
+	tristate "MSM SSUSB QMP PHY Driver"
+	select USB_OTG_UTILS
+	default n
+	help
+	  Enable this to support the SuperSpeed USB transceiver on MSM chips.
+	  This driver supports the PHY which uses the QSCRATCH-based register
+	  set for its control sequences, normally paired with newer DWC3-based
+	  SuperSpeed controllers.
 
 config USB_MV_OTG
 	tristate "Marvell USB OTG support"

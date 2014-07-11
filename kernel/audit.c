@@ -67,8 +67,8 @@
 
 #include "audit.h"
 
-#ifdef CONFIG_SEC_AVC_LOG
-#include <linux/sec_debug.h>
+#ifdef CONFIG_PROC_AVC
+#include <linux/proc_avc.h>
 #endif
 
 /* No auditing will take place until audit_initialized == AUDIT_INITIALIZED.
@@ -369,14 +369,17 @@ static void audit_hold_skb(struct sk_buff *skb)
  */
 static void audit_printk_skb(struct sk_buff *skb)
 {
-#ifdef CONFIG_SEC_AVC_LOG
 	struct nlmsghdr *nlh = nlmsg_hdr(skb);
+#ifdef CONFIG_PROC_AVC
 	char *data = nlmsg_data(nlh);
+#endif
 
 	if (nlh->nlmsg_type != AUDIT_EOE) {
-		sec_debug_avc_log("type=%d %s\n", nlh->nlmsg_type, data);
-	}
+#ifdef CONFIG_PROC_AVC
+		sec_avc_log("%s\n", data);
 #endif
+	}
+
 	audit_hold_skb(skb);
 }
 
@@ -393,13 +396,13 @@ static void kauditd_send_skb(struct sk_buff *skb)
 		audit_pid = 0;
 		/* we might get lucky and get this in the next auditd */
 		audit_hold_skb(skb);
-	} else {
-#ifdef CONFIG_SEC_AVC_LOG
+	} else{
+#ifdef CONFIG_PROC_AVC
 		struct nlmsghdr *nlh = nlmsg_hdr(skb);
-		char *data = NLMSG_DATA(nlh);
+		char *data = nlmsg_data(nlh);
 	
 		if (nlh->nlmsg_type != AUDIT_EOE) {
-			sec_debug_avc_log("%s\n", data);
+			sec_avc_log("%s\n", data);
 		}
 #endif
 		/* drop the extra reference if sent ok */
@@ -1130,7 +1133,7 @@ struct audit_buffer *audit_log_start(struct audit_context *ctx, gfp_t gfp_mask,
 				wait_for_auditd(sleep_time);
 			continue;
 		}
-		if (audit_rate_check() && printk_ratelimit())
+		if (audit_rate_check())
 			printk(KERN_WARNING
 			       "audit: audit_backlog=%d > "
 			       "audit_backlog_limit=%d\n",

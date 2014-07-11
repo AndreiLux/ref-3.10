@@ -176,8 +176,9 @@ INT rtvRF_SetFrequency(U32 dwChFreqKHz)
 	RTV_REG_SET(0x32, (WR32 | 0x02)); /* ENVCOCAL_I2C = 1 */
 	RTV_REG_SET(0x2A, (WR2A | 0x80)); /* RECONF_I2C = 1 */
 	RTV_REG_SET(0x2A, (WR2A | 0xC0)); /* INIT_VCOCAL_I2C = 1 */
-	RTV_REG_SET(0x2A, (WR2A | 0x80)); /* INIT_VCOCAL_I2C = 1 */
-	RTV_REG_SET(0x2A, (WR2A | 0x00)); /* RECONF_I2C = 1 */
+	RTV_DELAY_MS(1);
+	RTV_REG_SET(0x2A, (WR2A | 0x80)); /* INIT_VCOCAL_I2C = 0 */
+	RTV_REG_SET(0x2A, (WR2A | 0x00)); /* RECONF_I2C = 0 */
 
 	while (1) {
 		RTV_DELAY_MS(1);
@@ -185,6 +186,12 @@ INT rtvRF_SetFrequency(U32 dwChFreqKHz)
 		RD00 = RTV_REG_GET(0x00);
 		if (RD00 & 0x20)
 			break;
+
+		RTV_REG_SET(0x2A, (WR2A | 0x80)); /* RECONF_I2C = 1 */
+		RTV_REG_SET(0x2A, (WR2A | 0xC0)); /* INIT_VCOCAL_I2C = 1 */
+		RTV_DELAY_MS(1);
+		RTV_REG_SET(0x2A, (WR2A | 0x80)); /* INIT_VCOCAL_I2C = 1 */
+		RTV_REG_SET(0x2A, (WR2A | 0x00)); /* RECONF_I2C = 1 */
 
 		if (--nRetryCnt == 0) {
 			RTV_DBGMSG0("[rtvRF_SetFrequency] PLL Unlocked!\n");

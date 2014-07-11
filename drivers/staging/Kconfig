@@ -140,8 +140,6 @@ source "drivers/staging/netlogic/Kconfig"
 
 source "drivers/staging/dwc2/Kconfig"
 
-source "drivers/staging/samsung/Kconfig"
-
 source "drivers/staging/vnswap/Kconfig"
 
 endif # STAGING

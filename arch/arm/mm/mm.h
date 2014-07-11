@@ -81,8 +81,10 @@ extern __init void add_static_vm_early(struct static_vm *svm);
 
 #ifdef CONFIG_ZONE_DMA
 extern phys_addr_t arm_dma_limit;
+extern unsigned long arm_dma_pfn_limit;
 #else
 #define arm_dma_limit ((phys_addr_t)~0)
+#define arm_dma_pfn_limit (~0ul >> PAGE_SHIFT)
 #endif
 
 extern phys_addr_t arm_lowmem_limit;
@@ -90,4 +92,3 @@ extern phys_addr_t arm_lowmem_limit;
 void __init bootmem_init(void);
 void arm_mm_memblock_reserve(void);
 void dma_contiguous_remap(void);
-void mark_data_noexec(void);

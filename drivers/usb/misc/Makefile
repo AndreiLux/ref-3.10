@@ -22,16 +22,18 @@ obj-$(CONFIG_USB_LED)			+= usbled.o
 obj-$(CONFIG_USB_LEGOTOWER)		+= legousbtower.o
 obj-$(CONFIG_USB_RIO500)		+= rio500.o
 obj-$(CONFIG_USB_TEST)			+= usbtest.o
+obj-$(CONFIG_USB_EHSET_TEST_FIXTURE)	+= ehset.o
 obj-$(CONFIG_USB_TRANCEVIBRATOR)	+= trancevibrator.o
 obj-$(CONFIG_USB_USS720)		+= uss720.o
 obj-$(CONFIG_USB_SEVSEG)		+= usbsevseg.o
 obj-$(CONFIG_USB_YUREX)			+= yurex.o
 obj-$(CONFIG_USB_HSIC_USB3503)		+= usb3503.o
-obj-$(CONFIG_USB_EXYNOS_SWITCH)		+= exynos-usb-switch.o
 
 obj-$(CONFIG_USB_SISUSBVGA)		+= sisusbvga/
+
 obj-$(CONFIG_USB_QCOM_DIAG_BRIDGE)	+= diag_bridge.o
-obj-$(CONFIG_USB_QCOM_DIAG_BRIDGE_TEST)	+= diag_bridge_test.o
 mdm_bridge-y				:= mdm_ctrl_bridge.o mdm_data_bridge.o
 obj-$(CONFIG_USB_QCOM_MDM_BRIDGE) 	+= mdm_bridge.o
 obj-$(CONFIG_USB_QCOM_KS_BRIDGE)	+= ks_bridge.o
+obj-$(CONFIG_USB_QCOM_IPC_BRIDGE)	+= ipc_bridge.o
+obj-$(CONFIG_USB_QCOM_CIQ_BRIDGE)	+= ciq_bridge.o

@@ -79,7 +79,7 @@ int __ieee80211_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 			return err;
 		} else if (err > 0) {
 			WARN_ON(err != 1);
-			return err;
+			local->wowlan = false;
 		} else {
 			goto suspend;
 		}
@@ -99,13 +99,10 @@ int __ieee80211_suspend(struct ieee80211_hw *hw, struct cfg80211_wowlan *wowlan)
 	}
 	mutex_unlock(&local->sta_mtx);
 
-	/* remove all interfaces that were created in the driver */
+	/* remove all interfaces */
 	list_for_each_entry(sdata, &local->interfaces, list) {
-		if (!ieee80211_sdata_running(sdata) ||
-		    sdata->vif.type == NL80211_IFTYPE_AP_VLAN ||
-		    sdata->vif.type == NL80211_IFTYPE_MONITOR)
+		if (!ieee80211_sdata_running(sdata))
 			continue;
-
 		drv_remove_interface(local, sdata);
 	}
 

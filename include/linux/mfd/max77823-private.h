@@ -21,8 +21,6 @@
 #ifndef __LINUX_MFD_STBCFG01_PRIV_H
 #define __LINUX_MFD_STBCFG01_PRIV_H
 
-#include "max77823.h"
-
 #include <linux/i2c.h>
 
 #define I2C_ADDR_FUELGAUGE                0x36
@@ -71,38 +69,8 @@ enum max77823_charger_reg {
 
 /* Slave addr = 0x6C : Fuelgauge */
 enum max77823_fuelgauge_reg {
-	STATUS_REG                                   = 0x00,
-	VALRT_THRESHOLD_REG                          = 0x01,
-	TALRT_THRESHOLD_REG                          = 0x02,
-	SALRT_THRESHOLD_REG                          = 0x03,
-	REMCAP_REP_REG                               = 0x05,
-	SOCREP_REG                                   = 0x06,
-	TEMPERATURE_REG                              = 0x08,
-	VCELL_REG                                    = 0x09,
-	CURRENT_REG                                  = 0x0A,
-	AVG_CURRENT_REG                              = 0x0B,
-	SOCMIX_REG                                   = 0x0D,
-	SOCAV_REG                                    = 0x0E,
-	REMCAP_MIX_REG                               = 0x0F,
-	FULLCAP_REG                                  = 0x10,
-	RFAST_REG                                    = 0x15,
-	AVR_TEMPERATURE_REG                          = 0x16,
-	CYCLES_REG                                   = 0x17,
-	DESIGNCAP_REG                                = 0x18,
-	AVR_VCELL_REG                                = 0x19,
-	CONFIG_REG                                   = 0x1D,
-	REMCAP_AV_REG                                = 0x1F,
-	FULLCAP_NOM_REG                              = 0x23,
-	MISCCFG_REG                                  = 0x2B,
-	RCOMP_REG                                    = 0x38,
-	FSTAT_REG                                    = 0x3D,
-	DQACC_REG                                    = 0x45,
-	DPACC_REG                                    = 0x46,
-	OCV_REG                                      = 0xEE,
-	VFOCV_REG                                    = 0xFB,
-	VFSOC_REG                                    = 0xFF,
-
-	MAX77823_FG_END,
+	MAX77823_FUEL_INT                             = 0xB0,
+	MAX77823_FUEL_INT_MASK                        = 0xB1,
 };
 
 enum max77823_irq_source {
@@ -155,5 +123,4 @@ extern int max77823_write_word(struct i2c_client *i2c, u8 reg, u16 value);
 extern int max77823_read_word(struct i2c_client *i2c, u8 reg);
 
 extern int max77823_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask);
-
 #endif /*  __LINUX_MFD_STBCFG01_PRIV_H */

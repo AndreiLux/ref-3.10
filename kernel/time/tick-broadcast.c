@@ -522,15 +522,7 @@ void tick_check_oneshot_broadcast(int cpu)
 	if (cpumask_test_cpu(cpu, tick_broadcast_oneshot_mask)) {
 		struct tick_device *td = &per_cpu(tick_cpu_device, cpu);
 
-		/*
-		 * We might be in the middle of switching over from
-		 * periodic to oneshot. If the CPU has not yet
-		 * switched over, leave the device alone.
-		 */
-		if (td->mode == TICKDEV_MODE_ONESHOT) {
-			clockevents_set_mode(td->evtdev,
-					     CLOCK_EVT_MODE_ONESHOT);
-		}
+		clockevents_set_mode(td->evtdev, CLOCK_EVT_MODE_ONESHOT);
 	}
 }
 
@@ -576,6 +568,12 @@ again:
 	cpumask_or(tmpmask, tmpmask, tick_broadcast_force_mask);
 	cpumask_clear(tick_broadcast_force_mask);
 
+	/*
+	* Sanity check. Catch the case where we try to broadcast to
+	* offline cpus.
+	*/
+	if (WARN_ON_ONCE(!cpumask_subset(tmpmask, cpu_online_mask)))
+		cpumask_and(tmpmask, tmpmask, cpu_online_mask);
 	/*
 	 * Wakeup the cpus which have an expired event.
 	 */
@@ -818,8 +816,12 @@ void tick_shutdown_broadcast_oneshot(unsigned int *cpup)
 	/*
 	 * Clear the broadcast mask flag for the dead cpu, but do not
 	 * stop the broadcast device!
+	 * Clear the broadcast masks for the dead cpu, but do not stop
+	 * the broadcast device!
 	 */
 	cpumask_clear_cpu(cpu, tick_broadcast_oneshot_mask);
+	cpumask_clear_cpu(cpu, tick_broadcast_pending_mask);
+	cpumask_clear_cpu(cpu, tick_broadcast_force_mask);
 
 	raw_spin_unlock_irqrestore(&tick_broadcast_lock, flags);
 }

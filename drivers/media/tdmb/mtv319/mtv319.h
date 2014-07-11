@@ -85,6 +85,26 @@ enum E_RTV_SERVICE_TYPE {
 	RTV_SERVICE_DABPLUS = 2 /* DAB+ */
 };
 
+/* Cont flag of multi channel header */
+enum RTV_MCH_HDR_CONT_FLAG_T {
+	RTV_MCH_HDR_CONT_MED = 0,
+	RTV_MCH_HDR_CONT_LAST = 1,
+	RTV_MCH_HDR_CONT_FIRST = 2,
+	RTV_MCH_HDR_CONT_ALONE = 3
+};
+
+/* ID flag of multi channel header */
+enum RTV_MCH_HDR_ID_FLAG_T {
+	RTV_MCH_HDR_ID_DAB = 0,
+	RTV_MCH_HDR_ID_DMB = 1,
+	RTV_MCH_HDR_ID_FIDC = 2,
+	RTV_MCH_HDR_ID_FIC = 3,
+	MAX_NUM_MCH_HDR_ID_TYPE
+};
+
+#define RTV_MCH_HDR_SIZE	4 /* Size, in bytes,  of MCH header */
+#define MAX_MCH_PAYLOAD_SIZE	(RTV_TSP_XFER_SIZE - RTV_MCH_HDR_SIZE)
+
 /*=============================================================================
 *
 * TDMB definitions, types and APIs.

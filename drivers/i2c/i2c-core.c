@@ -2145,12 +2145,34 @@ static s32 i2c_smbus_xfer_emulated(struct i2c_adapter *adapter, u16 addr,
 		}
 		break;
 	case I2C_SMBUS_BYTE_DATA:
+#if defined(CONFIG_SND_SOC_MAX98504) || defined(CONFIG_SND_SOC_MAX98504A)
+		if(addr == 0x31) { // To supprot 16 bits address for AX70
+			msgbuf0[0] = 0;
+			msgbuf0[1] = command;
+			if (read_write == I2C_SMBUS_READ)
+			{
+				msg[0].len = 2; // reg length
+				msg[1].len = 1; // data length
+			} else {
+				msg[0].len = 3;
+				msgbuf0[2] = data->byte;
+			}
+		} else {
+			if (read_write == I2C_SMBUS_READ)
+				msg[1].len = 1;
+			else {
+				msg[0].len = 2;
+				msgbuf0[1] = data->byte;
+			}
+		}
+#else
 		if (read_write == I2C_SMBUS_READ)
 			msg[1].len = 1;
 		else {
 			msg[0].len = 2;
 			msgbuf0[1] = data->byte;
 		}
+#endif
 		break;
 	case I2C_SMBUS_WORD_DATA:
 		if (read_write == I2C_SMBUS_READ)

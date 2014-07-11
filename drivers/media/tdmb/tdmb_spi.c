@@ -50,7 +50,7 @@ static const struct of_device_id tdmb_spi_match_table[] = {
 	{}
 };
 
-static int __devexit tdmbspi_remove(struct spi_device *spi)
+static int tdmbspi_remove(struct spi_device *spi)
 {
 	return 0;
 }
@@ -62,7 +62,7 @@ static struct spi_driver tdmbspi_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.probe	= tdmbspi_probe,
-	.remove	= __devexit_p(tdmbspi_remove),
+	.remove	= tdmbspi_remove,
 };
 
 static int __init tdmb_spi_init(void)

@@ -28,6 +28,13 @@
 #define MAX_INTERESTING 50000
 #define STDDEV_THRESH 400
 
+/* 60 * 60 > STDDEV_THRESH * INTERVALS = 400 * 8 */
+#define MAX_DEVIATION 60
+
+static DEFINE_PER_CPU(struct hrtimer, menu_hrtimer);
+static DEFINE_PER_CPU(int, hrtimer_status);
+/* menu hrtimer mode */
+enum {MENU_HRTIMER_STOP, MENU_HRTIMER_REPEAT, MENU_HRTIMER_GENERAL};
 
 /*
  * Concepts and ideas behind the menu governor
@@ -109,6 +116,13 @@
  *
  */
 
+/*
+ * The C-state residency is so long that is is worthwhile to exit
+ * from the shallow C-state and re-enter into a deeper C-state.
+ */
+static unsigned int perfect_cstate_ms __read_mostly = 30;
+module_param(perfect_cstate_ms, uint, 0000);
+
 struct menu_device {
 	int		last_state_idx;
 	int             needs_update;
@@ -125,15 +139,6 @@ struct menu_device {
 
 #define LOAD_INT(x) ((x) >> FSHIFT)
 #define LOAD_FRAC(x) LOAD_INT(((x) & (FIXED_1-1)) * 100)
-/*
-static int get_loadavg(void)
-{
-	unsigned long this = this_cpu_load();
-
-
-	return LOAD_INT(this) * 10 + LOAD_FRAC(this) / 10;
-}
-*/
 
 static inline int which_bucket(unsigned int duration)
 {
@@ -172,15 +177,6 @@ static inline int performance_multiplier(void)
 {
 	int mult = 1;
 
-	/* for higher loadavg, we are more reluctant */
-
-	/*
-	 * this doesn't work as intended - it is almost always 0, but can
-	 * sometimes, depending on workload, spike very high into the hundreds
-	 * even when the average cpu load is under 10%.
-	 */
-	/* mult += 2 * get_loadavg(); */
-
 	/* for IO wait tasks (per cpu!) we add 5x each */
 	mult += 10 * nr_iowait_cpu(smp_processor_id());
 
@@ -197,17 +193,52 @@ static u64 div_round64(u64 dividend, u32 divisor)
 	return div_u64(dividend + (divisor / 2), divisor);
 }
 
+/* Cancel the hrtimer if it is not triggered yet */
+void menu_hrtimer_cancel(void)
+{
+	int cpu = smp_processor_id();
+	struct hrtimer *hrtmr = &per_cpu(menu_hrtimer, cpu);
+
+	/* The timer is still not time out*/
+	if (per_cpu(hrtimer_status, cpu)) {
+		hrtimer_cancel(hrtmr);
+		per_cpu(hrtimer_status, cpu) = MENU_HRTIMER_STOP;
+	}
+}
+EXPORT_SYMBOL_GPL(menu_hrtimer_cancel);
+
+/* Call back for hrtimer is triggered */
+static enum hrtimer_restart menu_hrtimer_notify(struct hrtimer *hrtimer)
+{
+	int cpu = smp_processor_id();
+	struct menu_device *data = &per_cpu(menu_devices, cpu);
+
+	/* In general case, the expected residency is much larger than
+	 *  deepest C-state target residency, but prediction logic still
+	 *  predicts a small predicted residency, so the prediction
+	 *  history is totally broken if the timer is triggered.
+	 *  So reset the correction factor.
+	 */
+	if (per_cpu(hrtimer_status, cpu) == MENU_HRTIMER_GENERAL)
+		data->correction_factor[data->bucket] = RESOLUTION * DECAY;
+
+	per_cpu(hrtimer_status, cpu) = MENU_HRTIMER_STOP;
+
+	return HRTIMER_NORESTART;
+}
+
 /*
  * Try detecting repeating patterns by keeping track of the last 8
  * intervals, and checking if the standard deviation of that set
  * of points is below a threshold. If it is... then use the
  * average of these 8 points as the estimated value.
  */
-static void get_typical_interval(struct menu_device *data)
+static u32 get_typical_interval(struct menu_device *data)
 {
 	int i = 0, divisor = 0;
 	uint64_t max = 0, avg = 0, stddev = 0;
 	int64_t thresh = LLONG_MAX; /* Discard outliers above this value. */
+	unsigned int ret = 0;
 
 again:
 
@@ -248,19 +279,17 @@ again:
 	if (((avg > stddev * 6) && (divisor * 4 >= INTERVALS * 3))
 							|| stddev <= 20) {
 		data->predicted_us = avg;
-		return;
+		ret = 1;
+		return ret;
 
 	} else if ((divisor * 4) > INTERVALS * 3) {
 		/* Exclude the max interval */
 		thresh = max - 1;
 		goto again;
 	}
-}
 
-/* In some cases, idle should return RIGHT index to enter
- * correct idle states.
- */
-#define CONFIG_SKIP_IDLE_CORRELATION
+	return ret;
+}
 
 /**
  * menu_select - selects the next idle state to enter
@@ -274,6 +303,9 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	int i;
 	int multiplier;
 	struct timespec t;
+	int repeat = 0, low_predicted = 0;
+	int cpu = smp_processor_id();
+	struct hrtimer *hrtmr = &per_cpu(menu_hrtimer, cpu);
 
 	if (data->needs_update) {
 		menu_update(drv, dev);
@@ -297,11 +329,6 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 
 	multiplier = performance_multiplier();
 
-#ifdef CONFIG_SKIP_IDLE_CORRELATION
-       if (dev->skip_idle_correlation)
-               data->correction_factor[data->bucket] = RESOLUTION * DECAY;
-#endif
-
 	/*
 	 * if the correction factor is 0 (eg first time init or cpu hotplug
 	 * etc), we actually want to start out with a unity factor.
@@ -313,17 +340,7 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 	data->predicted_us = div_round64(data->expected_us * data->correction_factor[data->bucket],
 					 RESOLUTION * DECAY);
 
-	/* This patch is not checked */
-#ifndef CONFIG_CPU_THERMAL_IPA
-	get_typical_interval(data);
-#else
-	/*
-	 * HACK - Ignore repeating patterns when we're
-	 * forecasting a very large idle period.
-	 */
-	if(data->predicted_us < MAX_INTERESTING)
-		get_typical_interval(data);
-#endif
+	repeat = get_typical_interval(data);
 
 	/*
 	 * We want to default to C1 (hlt), not to busy polling
@@ -344,8 +361,10 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 
 		if (s->disabled || su->disable)
 			continue;
-		if (s->target_residency > data->predicted_us)
+		if (s->target_residency > data->predicted_us) {
+			low_predicted = 1;
 			continue;
+		}
 		if (s->exit_latency > latency_req)
 			continue;
 		if (s->exit_latency * multiplier > data->predicted_us)
@@ -353,6 +372,44 @@ static int menu_select(struct cpuidle_driver *drv, struct cpuidle_device *dev)
 
 		data->last_state_idx = i;
 		data->exit_us = s->exit_latency;
+	}
+
+	/* not deepest C-state chosen for low predicted residency */
+	if (low_predicted) {
+		unsigned int timer_us = 0;
+		unsigned int perfect_us = 0;
+
+		/*
+		 * Set a timer to detect whether this sleep is much
+		 * longer than repeat mode predicted.  If the timer
+		 * triggers, the code will evaluate whether to put
+		 * the CPU into a deeper C-state.
+		 * The timer is cancelled on CPU wakeup.
+		 */
+		timer_us = 2 * (data->predicted_us + MAX_DEVIATION);
+
+		perfect_us = perfect_cstate_ms * 1000;
+
+		if (repeat && (4 * timer_us < data->expected_us)) {
+			RCU_NONIDLE(hrtimer_start(hrtmr,
+				ns_to_ktime(1000 * timer_us),
+				HRTIMER_MODE_REL_PINNED));
+			/* In repeat case, menu hrtimer is started */
+			per_cpu(hrtimer_status, cpu) = MENU_HRTIMER_REPEAT;
+		} else if (perfect_us < data->expected_us) {
+			/*
+			 * The next timer is long. This could be because
+			 * we did not make a useful prediction.
+			 * In that case, it makes sense to re-enter
+			 * into a deeper C-state after some time.
+			 */
+			RCU_NONIDLE(hrtimer_start(hrtmr,
+				ns_to_ktime(1000 * timer_us),
+				HRTIMER_MODE_REL_PINNED));
+			/* In general case, menu hrtimer is started */
+			per_cpu(hrtimer_status, cpu) = MENU_HRTIMER_GENERAL;
+		}
+
 	}
 
 	return data->last_state_idx;
@@ -370,7 +427,6 @@ static void menu_reflect(struct cpuidle_device *dev, int index)
 {
 	struct menu_device *data = &__get_cpu_var(menu_devices);
 	data->last_state_idx = index;
-
 	if (index >= 0)
 		data->needs_update = 1;
 }
@@ -446,6 +502,9 @@ static int menu_enable_device(struct cpuidle_driver *drv,
 				struct cpuidle_device *dev)
 {
 	struct menu_device *data = &per_cpu(menu_devices, dev->cpu);
+	struct hrtimer *t = &per_cpu(menu_hrtimer, dev->cpu);
+	hrtimer_init(t, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	t->function = menu_hrtimer_notify;
 
 	memset(data, 0, sizeof(struct menu_device));
 

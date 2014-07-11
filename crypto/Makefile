@@ -4,6 +4,7 @@
 
 #Keep this on the top
 obj-$(CONFIG_CRYPTO_FIPS) += first_file.o
+obj-$(CONFIG_CRYPTO_FIPS) += fips_integrity.o
 
 obj-$(CONFIG_CRYPTO) += crypto.o
 crypto-y := api.o cipher.o compress.o
@@ -11,7 +12,6 @@ crypto-y := api.o cipher.o compress.o
 obj-$(CONFIG_CRYPTO_WORKQUEUE) += crypto_wq.o
 
 obj-$(CONFIG_CRYPTO_FIPS) += fips.o
-obj-$(CONFIG_CRYPTO_FIPS) += fips_integrity.o
 
 crypto_algapi-$(CONFIG_PROC_FS) += proc.o
 crypto_algapi-y := algapi.o scatterwalk.o $(crypto_algapi-y)

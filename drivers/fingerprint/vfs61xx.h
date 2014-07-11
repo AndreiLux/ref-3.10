@@ -47,9 +47,7 @@
 #include <linux/sched.h>
 #include <linux/jiffies.h>
 #include <linux/wakelock.h>
-#include <linux/pinctrl/consumer.h>
-#include <linux/gpio.h>
-#include <plat/gpio-cfg.h>
+#include <linux/fprint_secure.h>
 
 /* Major number of device ID.
  * A device ID consists of two parts: a major number, identifying the class of
@@ -63,19 +61,14 @@
 
 #define DRDY_ACTIVE_STATUS      0
 #define BITS_PER_WORD           16
-#define DRDY_IRQ_FLAG	(IRQF_TRIGGER_FALLING | IRQF_ONESHOT)
+#define DRDY_IRQ_FLAG           IRQF_TRIGGER_FALLING
 
 /* Timeout value for polling DRDY signal assertion */
 #define DRDY_TIMEOUT_MS      40
 
-#ifdef CONFIG_SEC_FACTORY
-#undef ENABLE_SENSORS_FPRINT_SECURE
-#else
-#define ENABLE_SENSORS_FPRINT_SECURE
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
 #define FEATURE_SPI_WAKELOCK
 #endif
-
-#define PINCONTROL
 
 /*
  * Definitions of structures which are used by IOCTL commands

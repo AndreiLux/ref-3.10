@@ -79,17 +79,18 @@ static void Disable_DABP_SUBCH(void)
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0x83, 00);
 
-#ifdef RTV_CIF_MODE_ENABLED /* can be with FIC or multi subch */
+#ifdef RTV_MSC_HDR_ENABLED
 	RTV_REG_SET(0xB5, 0x84); /* TSIF_DABP */
 #else
-	RTV_REG_SET(0xB7, 0x00); /* TSIF_ONE */
+	RTV_REG_SET(0xB7, 0x00); /* TSIF_ONE: no header, no dummy */
 #endif
 }
 
 static void Enable_DABP_SUBCH(UINT nSubChID)
 {
 	RTV_REG_MAP_SEL(FEC_PAGE);
-#ifdef RTV_CIF_MODE_ENABLED /* can be with FIC or multi subch */
+
+#ifdef RTV_MSC_HDR_ENABLED
 	RTV_REG_SET(0xB5, 0x04|N_DATA_LEN_BITVAL); /* TSIF_DABP */
 #else
 	RTV_REG_SET(0xB7, 0x00|ONE_DATA_LEN_BITVAL); /* TSIF_ONE */
@@ -109,7 +110,7 @@ static void Disable_DAB_SUBCH1(void)
 	/* Disable data path if the all DAB was closed. */
 	if (!(g_nUsedHwSubChIdxBits
 		& (((1<<TDMB_HW_CH_IDX_DAB_0))|((1<<TDMB_HW_CH_IDX_DAB_1))))) {
-#ifdef RTV_CIF_MODE_ENABLED
+#ifdef RTV_MSC_HDR_ENABLED
 		RTV_REG_SET(0xB3, 0x86); /* TSIF_MSC */
 #else
 		RTV_REG_SET(0xB7, 0x10); /* TSIF_ONE */
@@ -126,7 +127,7 @@ static void Enable_DAB_SUBCH1(UINT nSubChID)
 	/* Enable data path if the all DAB was closed. */
 	if (!(g_nUsedHwSubChIdxBits
 		& (((1<<TDMB_HW_CH_IDX_DAB_0))|((1<<TDMB_HW_CH_IDX_DAB_1))))) {
-	#ifdef RTV_CIF_MODE_ENABLED /* can be with FIC or multi subch */
+	#ifdef RTV_MSC_HDR_ENABLED
 		RTV_REG_SET(0xB3, 0x04|N_DATA_LEN_BITVAL); /* TSIF_MSC */
 	#else
 		RTV_REG_MAP_SEL(FEC_PAGE);
@@ -151,7 +152,7 @@ static void Disable_DAB_SUBCH0(void)
 	if (!(g_nUsedHwSubChIdxBits
 		& (((1<<TDMB_HW_CH_IDX_DAB_0))|((1<<TDMB_HW_CH_IDX_DAB_1))))) {
 #endif
-	#ifdef RTV_CIF_MODE_ENABLED /* can be with FIC or multi subch */
+	#ifdef RTV_MSC_HDR_ENABLED
 		RTV_REG_SET(0xB3, 0x86); /* TSIF_MSC */
 	#else
 		RTV_REG_SET(0xB7, 0x10); /* TSIF_ONE */
@@ -172,7 +173,7 @@ static void Enable_DAB_SUBCH0(UINT nSubChID)
 	if (!(g_nUsedHwSubChIdxBits
 		& (((1<<TDMB_HW_CH_IDX_DAB_0))|((1<<TDMB_HW_CH_IDX_DAB_1))))) {
 #endif
-	#ifdef RTV_CIF_MODE_ENABLED /* can be with FIC or multi subch */
+	#ifdef RTV_MSC_HDR_ENABLED
 		RTV_REG_SET(0xB3, 0x04|N_DATA_LEN_BITVAL); /* TSIF_MSC */
 	#else
 		RTV_REG_SET(0xB7, 0x90|ONE_DATA_LEN_BITVAL); /* TSIF_ONE */
@@ -199,7 +200,7 @@ static void Enable_TDMB_SUBCH(UINT nSubChID)
 {
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_SET(0x81, (0xC0 | nSubChID));
-	RTV_REG_SET(0xB4, 0x10|HEADER_LEN_BITVAL|N_DATA_LEN_BITVAL);
+	RTV_REG_SET(0xB4, 0x10|DMB_HEADER_LEN_BITVAL|N_DATA_LEN_BITVAL);
 
 	g_nUsedHwSubChIdxBits |= (1<<TDMB_HW_CH_IDX_TDMB);
 }
@@ -235,7 +236,7 @@ static void tdmb_DisableFastScanMode(void)
 	RTV_REG_SET(0x14, 0x46);
 	RTV_REG_SET(0x50, 0x02);
 	RTV_REG_SET(0x40, 0x42);
-	RTV_REG_SET(0x4C, 0x41);
+	RTV_REG_SET(0x4C, 0x42);
 
 	g_fTdmbFastScanEnabled = FALSE;
 }
@@ -264,9 +265,9 @@ void rtvTDMB_StandbyMode(int on)
 {
 }
 
-static INLINE UINT tdmb_GetLockStatus(void)
+static INLINE UINT tdmb_GetOfdmLockStatus(void)
 {
-	U8 OFDM_B8, FECL;
+	U8 OFDM_B8;
 	UINT lock_st = 0;
 
 	RTV_REG_MAP_SEL(OFDM_PAGE);
@@ -280,13 +281,21 @@ static INLINE UINT tdmb_GetLockStatus(void)
 	if (OFDM_B8 & 0x08)
 		lock_st |= RTV_TDMB_AGC_LOCK_MASK;
 
+	return lock_st;
+}
+
+static INLINE UINT tdmb_GetFecLockStatus(void)
+{
+	U8 FECL;
+	UINT lock_st = 0;
+
 	RTV_REG_MAP_SEL(FEC_PAGE);
 	RTV_REG_MASK_SET(0x11, 0x04, 0x04);
 	RTV_REG_MASK_SET(0x11, 0x04, 0x00);
 
 	FECL = RTV_REG_GET(0x10); /* FEC Lock (Viterbi Lock) */
 	if (FECL & 0x01)
-		lock_st |= RTV_TDMB_FEC_LOCK_MASK;
+		lock_st = RTV_TDMB_FEC_LOCK_MASK;
 
 	return lock_st;
 }
@@ -296,7 +305,10 @@ UINT rtvTDMB_GetLockStatus(void)
 	UINT lock_st;
 
 	RTV_GUARD_LOCK;
-	lock_st = tdmb_GetLockStatus();
+
+	lock_st = tdmb_GetOfdmLockStatus();
+	lock_st |= tdmb_GetFecLockStatus();
+
 	RTV_GUARD_FREE;
 
 	return lock_st;
@@ -435,6 +447,7 @@ S32 rtvTDMB_GetRSSI(void)
 	GVBB = RTV_REG_GET(0x01);
 
 	RTV_GUARD_FREE;
+
 #ifdef DEBUG_LOG_FOR_RSSI_FITTING
 	CH_FLAG = ((RD00 & 0xC0) >> 6);
 #endif
@@ -471,7 +484,7 @@ S32 rtvTDMB_GetRSSI(void)
 	}
 
 #ifdef DEBUG_LOG_FOR_RSSI_FITTING
-	RTV_DBGMSG3("\n[rtvTDMB_GetRSSI] Channel Flag = %d 0x00=0x%02x, 0x01=0x%02x\n",CH_FLAG, RD00, GVBB);
+	RTV_DBGMSG3("[rtvTDMB_GetRSSI] Channel Flag = %d 0x00=0x%02x, 0x01=0x%02x\n",CH_FLAG, RD00, GVBB);
 	RTV_DBGMSG3("LNAGAIN = %d, RFAGC = %d GVBB : %d\n", LNAGAIN, RFAGC,GVBB);
 #endif
 
@@ -517,7 +530,7 @@ U32 rtvTDMB_GetCNR(void)
 		else if ((data > 200) && (data <= 600))
 			snr = (-15 * (S32)data/400 * RTV_TDMB_CNR_DIVIDER)
 				+ (U32)(42.5*RTV_TDMB_CNR_DIVIDER);
-		else if (data <= 200)
+		else /* if (data <= 200) */
 			snr = 35 * RTV_TDMB_CNR_DIVIDER;
 	} else
 		snr = 5 * RTV_TDMB_CNR_DIVIDER;
@@ -721,7 +734,7 @@ static void tdmb_OpenSubChannel(UINT nSubChID,
 		enum E_TDMB_HW_SUBCH_IDX_TYPE eHwSubChIdx)
 {
 	UINT i;
-#if defined(TDMB_CIF_MODE_DRIVER) || defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
+
 	if (g_nOpenedSubChNum == 0) { /* The first open */
 	#ifdef TDMB_CIF_MODE_DRIVER
 		rtvCIFDEC_Init();
@@ -745,7 +758,6 @@ static void tdmb_OpenSubChannel(UINT nSubChID,
 		rtvCIFDEC_AddSubChannelID(nSubChID, eServiceType);
 	#endif
 	}
-#endif
 
 	/* Call the specified enabling of SUBCH function. */
 	g_pfnEnableSUBCH[eHwSubChIdx](nSubChID);
@@ -753,11 +765,11 @@ static void tdmb_OpenSubChannel(UINT nSubChID,
 	g_aRegSubChIdBits[DIV32(nSubChID)] |= (1 << MOD32(nSubChID));
 
 	/* To use when close .*/
-#if (RTV_MAX_NUM_USE_SUBCHANNEL >= 2)
+#if (RTV_MAX_NUM_USE_SUBCHANNEL == 1)
+	i = 0;
+#else
 	for (i = 0; i < RTV_MAX_NUM_USE_SUBCHANNEL; i++) {
 		if ((g_nRegSubChArrayIdxBits & (1<<i)) == 0) {
-#else
-	i = 0;
 #endif
 			g_nRegSubChArrayIdxBits |= (1<<i);
 			g_atRegSubchInfo[i].nSubChID = nSubChID;
@@ -806,7 +818,7 @@ INT rtvTDMB_OpenSubChannel(U32 dwChFreqKHz, UINT nSubChID,
 		return RTV_INVAILD_THRESHOLD_SIZE;
 #endif
 
-#ifndef RTV_CIF_MODE_ENABLED
+#ifndef RTV_MULTIPLE_CHANNEL_MODE
 	if (g_fRtvFicOpened)
 		return RTV_SHOULD_CLOSE_FIC;
 #endif
@@ -815,7 +827,7 @@ INT rtvTDMB_OpenSubChannel(U32 dwChFreqKHz, UINT nSubChID,
 		return RTV_NO_MORE_SUBCHANNEL;
 
 #if (defined(RTV_IF_SPI) || defined(RTV_IF_EBI2))\
-&& defined(RTV_CIF_MODE_ENABLED)
+&& defined(RTV_MULTIPLE_CHANNEL_MODE)
 	nThresholdSize = RTV_SPI_CIF_MODE_INTERRUPT_SIZE;
 #endif
 
@@ -934,6 +946,9 @@ static INLINE BOOL tdmb_CheckScanStatus(INT *sucess_flag,
 	return fBreak;
 }
 
+/* SCAN debuging log enable */
+/* #define DEBUG_LOG_FOR_SCAN */
+
 /* NOTE: When this rountine executed, all sub channel and FIC should closed */
 INT rtvTDMB_ScanFrequency(U32 dwChFreqKHz)
 {
@@ -950,6 +965,11 @@ INT rtvTDMB_ScanFrequency(U32 dwChFreqKHz)
 	int scan_status = 0;
 	U8 FIC_Sync = 0;
 	U8 Ccnt = 0, Tcnt = 0;
+	UINT nDelayTime;
+#if defined(__KERNEL__) /* Linux kernel */
+	unsigned long start_jiffies, end_jiffies;
+	UINT diff_time = 0;
+#endif
 
 	sucess_flag = RTV_CHANNEL_NOT_DETECTED;
 
@@ -972,7 +992,6 @@ INT rtvTDMB_ScanFrequency(U32 dwChFreqKHz)
 #if defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
 	rtv_OpenFIC_SPI_Scan();
 #else
-	RTV_DBGMSG0("[rtvTDMB_ScanFrequency] rtv_OpenFIC_TSIF_Scan()\n");
 	g_nRtvFicOpenedStatePath = rtv_OpenFIC_TSIF_Scan();
 		RTV_REG_MAP_SEL(FEC_PAGE);
 		RTV_REG_MASK_SET(0x11, 0x04, 0x04);
@@ -983,23 +1002,24 @@ INT rtvTDMB_ScanFrequency(U32 dwChFreqKHz)
 	if (sucess_flag != RTV_SUCCESS)
 		goto TDMB_SCAN_EXIT;
 
-	RTV_DELAY_MS(20);
+#if defined(RTV_SCAN_FIC_HDR_ENABLED) && defined(RTV_MCHDEC_IN_DRIVER)
+	rtvCIFDEC_Init();
+#endif
+
+	RTV_DELAY_MS(50);
 	rtv_SoftReset();
 
 	while (1) {
-		if (++ScanT == 800) {
-			RTV_DBGMSG0("[rtvTDMB_ScanFrequency] Scan Timeout!\n");\
-			scan_status = 7;
-			sucess_flag = RTV_CHANNEL_NOT_DETECTED;
-			break;
-		}
+#if defined(__KERNEL__) /* Linux kernel */
+		start_jiffies = get_jiffies_64();
+#endif
 
 		RTV_REG_MAP_SEL(OFDM_PAGE);
-                RTV_REG_MASK_SET(0x82, 0x02,0x02);
-                RTV_REG_MASK_SET(0x82, 0x02,0x00);
+		RTV_REG_MASK_SET(0x82, 0x02,0x02);
+		RTV_REG_MASK_SET(0x82, 0x02,0x00);
 
-                DAB_Mode = RTV_REG_GET(0xBA);
-                DAB_Mode = (DAB_Mode>>4) & 0x03;
+		DAB_Mode = RTV_REG_GET(0xBA);
+		DAB_Mode = (DAB_Mode>>4) & 0x03;
 
 		RTV_REG_MASK_SET(0x12, 0x80, 0x80);
 		RTV_REG_MASK_SET(0x12, 0x80, 0x00);
@@ -1052,13 +1072,39 @@ INT rtvTDMB_ScanFrequency(U32 dwChFreqKHz)
 			}
 		}
 
-		RTV_DELAY_MS(1);
+#if defined(__KERNEL__) /* Linux kernel */
+		end_jiffies = get_jiffies_64();
+		diff_time = jiffies_to_msecs(end_jiffies - start_jiffies);
+		if (diff_time < 4)
+			nDelayTime = 4 - diff_time;
+		else
+			nDelayTime = 0;
+
+		ScanT += diff_time;
+#else
+		nDelayTime = 4;
+#endif
+
+		if (ScanT >= 1000) {
+			RTV_DBGMSG0("[rtvTDMB_ScanFrequency] Scan Timeout!\n");
+			scan_status = 7;
+			sucess_flag = RTV_CHANNEL_NOT_DETECTED;
+			break;
+		}
+
+		if (nDelayTime) { /* Up to 4ms delay */
+			ScanT += nDelayTime;
+			RTV_DELAY_MS(nDelayTime);
+		}
 	}
 
 TDMB_SCAN_EXIT:
 	tdmb_DisableFastScanMode();
 
 	if (sucess_flag != RTV_SUCCESS) {
+#if defined(RTV_SCAN_FIC_HDR_ENABLED) && defined(RTV_MCHDEC_IN_DRIVER)
+		rtvCIFDEC_Deinit();
+#endif
 		rtv_CloseFIC(0); /* rtvTDMB_CloseFIC() was called when lock_s */
 		g_eTdmbState = TDMB_STATE_INIT;
 		g_fRtvFicOpened = FALSE;
@@ -1066,13 +1112,13 @@ TDMB_SCAN_EXIT:
 
 	RTV_GUARD_FREE;
 
-#if 1
-	RTV_DBGMSG3("\n[rtvTDMB_ScanFrequency: %u] Power_Peak(%d), AGCL(%d)\n",
+#ifdef DEBUG_LOG_FOR_SCAN
+	RTV_DBGMSG3("[rtvTDMB_ScanFrequency: %u] Power_Peak(%d), AGCL(%d)\n",
 			dwChFreqKHz, peak_pwr, AGC_L);
 	RTV_DBGMSG2("\tOFDML = %d, CRC = %d\n", OFDM_L, FIC_CRC);
 	RTV_DBGMSG3("\tScanT = %d Status = %d scan_done = %d\n",
 			ScanT, scan_status, Sdone);
-	RTV_DBGMSG3("\tscan_lock = %d FSM = %d scan_success = %d\n",
+	RTV_DBGMSG3("\tscan_lock = %d FSM = %d scan_success = %d\n\n",
 			Slock, Mon_FSM, sucess_flag);
 #endif
 
@@ -1099,12 +1145,23 @@ static INLINE INT tdmb_ReadFIC_SPI(U8 *pbBuf)
 				RTV_REG_MAP_SEL(SPI_MEM_PAGE);
 				RTV_REG_BURST_GET(0x10, pbBuf,
 						g_nRtvInterruptLevelSize);
+
+#ifdef RTV_SCAN_FIC_HDR_ENABLED
+				ret_size = g_nRtvInterruptLevelSize;
+#else
 				ret_size = 384;
+#endif
+
+#if 0
+				printk(KERN_INFO "[READ] 0x%02X 0x%02X 0x%02X 0x%02X 0x%02X\n",
+				pbBuf[0], pbBuf[1], pbBuf[2], pbBuf[3], pbBuf[4]);
+#endif
+
 				break;
 			}
 		}
 
-		lock_s = tdmb_GetLockStatus();
+		lock_s = tdmb_GetOfdmLockStatus();
 		if (!(lock_s & RTV_TDMB_OFDM_LOCK_MASK)) {
 			RTV_DELAY_MS(30);
 			RTV_DBGMSG2("[tdmb_ReadFIC_SPI] ##lock_s(0x%02X)[%u]\n",
@@ -1131,11 +1188,12 @@ static INLINE INT tdmb_ReadFIC_I2C(U8 *pbBuf)
 #ifdef RTV_FIC_POLLING_MODE
 	U8 istatus;
 	int ret_size;
+	UINT lock_s;
+	UINT elapsed_cnt = 0;
 	UINT timeout_cnt = RTV_TDMB_READ_FIC_TIMEOUT_CNT;
 
-	RTV_REG_MAP_SEL(FEC_PAGE);
-
 	while (1) {
+		RTV_REG_MAP_SEL(FEC_PAGE);
 		istatus = RTV_REG_GET(0x13) & 0x10; /* [4] */
 	#if 0
 		RTV_DBGMSG1("[tdmb_ReadFIC_I2C] istatus(0x%02X)\n", istatus);
@@ -1158,12 +1216,23 @@ static INLINE INT tdmb_ReadFIC_I2C(U8 *pbBuf)
 			break;
 		}
 
+		lock_s = tdmb_GetOfdmLockStatus();
+		if (!(lock_s & RTV_TDMB_OFDM_LOCK_MASK)) {
+			RTV_DELAY_MS(30);
+			RTV_DBGMSG2("[tdmb_ReadFIC_I2C] ##lock_s(0x%02X)[%u]\n",
+					lock_s, elapsed_cnt);
+			ret_size = -55;
+			break;
+		}
+
 		if (timeout_cnt--)
 			RTV_DELAY_MS(1);
 		else {
 			ret_size = RTV_FIC_READ_TIMEOUT;
 			break;
 		}
+
+		elapsed_cnt = RTV_TDMB_READ_FIC_TIMEOUT_CNT - timeout_cnt;
 	}
 
 	return ret_size;
@@ -1196,7 +1265,10 @@ pbBuf[382], pbBuf[383], pbBuf[398], pbBuf[399]);
 }
 #endif
 
-/* NOTE: Do NOT read at the ISR */
+/*
+NOTE: Do NOT read at the ISR.
+This function should called when scan state.
+*/
 INT rtvTDMB_ReadFIC(U8 *pbBuf)
 {
 	int ret_size = 0;
@@ -1230,8 +1302,10 @@ void rtvTDMB_CloseFIC(void)
 	rtv_CloseFIC(g_nOpenedSubChNum);
 
 	if (!g_nOpenedSubChNum) {
-#ifdef TDMB_CIF_MODE_DRIVER
+#if defined(TDMB_CIF_MODE_DRIVER)
 		rtvCIFDEC_Deinit(); /* Skip rtvCIFDEC_DeleteSubChannelID() */
+#elif defined(RTV_SCAN_FIC_HDR_ENABLED) && defined(RTV_MCHDEC_IN_DRIVER)
+		rtvCIFDEC_Deinit();
 #endif
 		g_eTdmbState = TDMB_STATE_INIT; /* Update the state of TDMB. */
 	}
@@ -1245,7 +1319,7 @@ INT rtvTDMB_OpenFIC(void)
 {
 	INT nRet = RTV_SUCCESS;
 
-	RTV_DBGMSG1("[rtvTDMB_OpenFIC] g_eTdmbState(%d)\n", g_eTdmbState);
+	/*RTV_DBGMSG1("[rtvTDMB_OpenFIC] g_eTdmbState(%d)\n", g_eTdmbState);*/
 
 	if (g_fRtvFicOpened)
 		return RTV_SUCCESS;
@@ -1300,12 +1374,16 @@ RTV_REG_GET(0x08), RTV_REG_GET(0x1A));
 
 #if defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
 	RTV_REG_SET(0x05, (1<<7) | 0x3F);
-#else
-	RTV_REG_SET(0x05, 0x3F);
-#endif
 
 	RTV_REG_SET(0x07, 0x41);
 	RTV_REG_SET(0x07, 0x40);
+
+#else
+	RTV_REG_SET(0x05, 0x3F);
+
+	RTV_REG_SET(0x07, 0x01);
+	RTV_REG_SET(0x07, 0x00);
+#endif
 
 #if defined(RTV_IF_SPI) || defined(RTV_IF_EBI2)
 	/* <2> SPI_INT0(GPP0) disable  <4> I2C INT0 disable */
@@ -1357,6 +1435,11 @@ static void tdmb_InitFEC(void)
 	RTV_REG_SET(0xAA, 0x00);
 	RTV_REG_SET(0xB0, 0x07);
 	RTV_REG_SET(0xD5, 0x80); /* DEFAULT Time Slice OFF. */
+
+#if defined(RTV_SCAN_FIC_HDR_ENABLED) || defined(RTV_PLAY_FIC_HDR_ENABLED)\
+|| defined(RTV_MSC_HDR_ENABLED)
+	RTV_REG_SET(0xEA, RTV_MCH_HEADER_SYNC_BYTE); /* Header sync byte */
+#endif
 
 #ifdef RTV_FORCE_INSERT_SYNC_BYTE
 	RTV_REG_SET(0xF8, 0x04|0x02);
@@ -1439,9 +1522,9 @@ INT rtvTDMB_Initialize(unsigned long interface)
 {
 	INT nRet;
 
-#if defined(RTV_IF_SPI)
+#if defined(RTV_IF_SPI) || defined (RTV_IF_TSIF)
 	mtv319_set_port_if(interface);
-#endif	
+#endif
 	g_nOpenedSubChNum = 0;
 	g_nRegSubChArrayIdxBits = 0x0;
 

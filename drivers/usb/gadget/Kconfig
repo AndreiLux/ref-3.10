@@ -1,4 +1,3 @@
-
 #
 # USB Gadget support on a system involves
 #    (a) a peripheral controller, and
@@ -84,7 +83,7 @@ config USB_GADGET_DEBUG_FS
 config USB_GADGET_VBUS_DRAW
 	int "Maximum VBUS Power usage (2-500 mA)"
 	range 2 500
-	default 2
+	default 500
 	help
 	   Some devices need to draw power from USB when they are
 	   configured, perhaps to operate circuitry or to recharge
@@ -458,6 +457,60 @@ config USB_EG20T
 	  ML7213/ML7831 is companion chip for Intel Atom E6xx series.
 	  ML7213/ML7831 is completely compatible for Intel EG20T PCH.
 
+config USB_CI13XXX_MSM
+	tristate "MIPS USB CI13xxx for MSM"
+	depends on ARCH_MSM
+	select USB_MSM_OTG
+	help
+	  MSM SoC has chipidea USB controller.  This driver uses
+	  ci13xxx_udc core.
+	  This driver depends on OTG driver for PHY initialization,
+	  clock management, powering up VBUS, and power management.
+	  This driver is not supported on boards like trout which
+	  has an external PHY.
+
+	  Say "y" to link the driver statically, or "m" to build a
+	  dynamically linked module called "ci13xxx_msm" and force all
+	  gadget drivers to also be dynamically linked.
+
+config USB_CI13XXX_MSM_HSIC
+	tristate "MIPS HSIC CI13xxx for MSM"
+	depends on ARCH_MSM
+	select USB_GADGET_DUALSPEED
+	help
+	  MSM SoC has chipidea USB controller.  This driver uses
+	  ci13xxx_udc core. Support USB-HSIC core.
+
+	  Say "y" to link the driver statically, or "m" to build a
+	  dynamically linked module called "ci13xxx_msm_hsic" and force all
+	  gadget drivers to also be dynamically linked.
+
+config USB_DWC3_MSM
+	tristate "DesignWare USB3.0 (DRD) Controller for MSM"
+	depends on ARCH_MSM
+	select USB_DWC3
+	select USB_GADGET_DUALSPEED
+	select USB_GADGET_SELECTED
+	help
+	  The DesignWare USB3.0 controller is a SuperSpeed USB3.0 Controller
+	  integrated into the Qualcomm MSM chipset series, supporting host,
+	  device and otg modes of operation. For more information please
+	  refer to http://www.qualcomm.com/chipsets.
+
+config USB_DWC3_OMAP
+	tristate "DesignWare USB3.0 (DRD) Controller for OMAP"
+	depends on ARCH_OMAP
+	select USB_DWC3
+	select USB_GADGET_DUALSPEED
+	select USB_GADGET_SUPERSPEED
+	select USB_GADGET_SELECTED
+	help
+	  DesignWare USB3.0 controller is a SuperSpeed USB3.0 Controller
+	  which can be configured for peripheral-only, host-only, hub-only
+	  and Dual-Role operation. This Controller was first integrated into
+	  the OMAP5 series of processors. More information about the OMAP5
+	  version of this controller, refer to http://www.ti.com/omap5.
+
 #
 # LAST -- dummy/emulated controller
 #
@@ -822,6 +875,7 @@ config USB_G_PRINTER
 config USB_G_ANDROID
 	boolean "Android Composite Gadget"
 	select USB_F_ACM
+	select USB_F_SERIAL
 	select USB_LIBCOMPOSITE
 	select USB_U_SERIAL
 	help
@@ -835,28 +889,10 @@ config USB_ANDROID_SAMSUNG_COMPOSITE
 	boolean "Samsung Composite function"
 	depends on USB_G_ANDROID
 	help
-	  Provides SAMSUNG composite driver.
-	  It also provides KIES connection and
-	  Multi Configuration.
-	  If you enable this option, android composite will be changed.
-
-config USB_ANDROID_SAMSUNG_MTP
-	boolean "Samsung MTP function"
-	depends on USB_G_ANDROID && !SEC_FACTORY
-	help
-	  Provides Media Transfer Protocol (MTP) support
-	  for samsung gadget driver.
-	  If you enable this option,
-	  google mtp will be changed to samsung mtp.
-
-config USB_LOCK_SUPPORT_FOR_MDM
-	boolean "Samsung USB_LOCK function for MDM"
-	depends on USB_G_ANDROID
-	help
-	  Support USB lock for SDS MDM function.
-	  If you enable this option,
-	  USB is not connected to the work in office.
-	  Of employees who have installed MDM(SDS).
+		Provides SAMSUNG composite driver.
+		It also provides KIES connection and
+		Multi Configuration.
+		If you enable this option, android composite will be changed.
 
 config USB_DUN_SUPPORT
 	boolean "DUN support function"
@@ -867,47 +903,47 @@ config USB_DUN_SUPPORT
 	  It uses misc register.
 	  Support fops : open, close, release, read, poll, llseek, ioctl
 
-config USB_NCM_SUPPORT_MTU_CHANGE
-	boolean "Samsung NCM MTU Change function"
-	depends on USB_G_ANDROID
+config USB_ANDROID_SAMSUNG_MTP
+	boolean "Samsung MTP function"
+	depends on USB_G_ANDROID && !SEC_FACTORY
 	help
-	   Provides NCM MTU Change support
-	   for samsung gadget driver.
-	   If you enable this option,
-	   NCM MTU Change will be able to be used.
-
-config USB_GADGET_DUALSPEED
-	boolean "Samsung Dual Speed support"
-	depends on USB_G_ANDROID
-	help
-		Dual spped support.
-
-config USB_RNDIS_MULTIPACKET
-	boolean "Samsung Rndis Multi Packet support"
-	depends on USB_G_ANDROID
-	help
-		Rndis Multipacket Support.
-
-config USBIRQ_BALANCING_LTE_HIGHTP
-	bool "USBIRQ_BALANCING_LTE_HIGHTP"
-	depends on USB_G_ANDROID
-	help
+		Provides Media Transfer Protocol (MTP) support
+		for samsung gadget driver.
 		If you enable this option,
-		DWC interrupt work on cpu1.
+		google mtp will be changed to samsung mtp.
+
+config USB_ANDROID_SAMSUNG_SIDESYNC
+	boolean "Samsung SideSync function"
+	depends on USB_G_ANDROID
+	help
+	  Provides SideSync support
+	  for samsung gadget driver.
+	  If you enable this option,
+	  SideSync will be able to be used.
+
+config USB_LOCK_SUPPORT_FOR_MDM
+	boolean "Samsung USB_LOCK function for MDM"
+	depends on USB_G_ANDROID
+	help
+	  Support USB lock for SDS MDM function.
+	  If you enable this option,
+	  USB is not connected to the work in office.
+	  Of employees who have installed MDM(SDS).
+
+config USB_ANDROID_SAMSUNG_USB30_MENU
+	boolean "Samsung USB 3.0 select function"
+	depends on USB_G_ANDROID
+	help
+	  Provides USB 3.0 select menu support
+	  for samsung gadget driver.
+	  If you enable this option,
+	  you can connect USB via 3.0 with selectable menu.
 
 config USB_ANDROID_RNDIS_DWORD_ALIGNED
 	boolean "Use double word aligned"
 	depends on USB_G_ANDROID
 	help
 		Provides dword aligned for DMA controller.
-
-config USB_SUPER_HIGH_SPEED_SWITCH_CHANGE
-	boolean "Samsung Super / High Speed switching change"
-	depends on USB_G_ANDROID
-	help
-	  Detection of USB 3.0 Support on Host.
-	  Default connection to USB 2.0.
-	  Dynamic switching between usb 2.0 to usb 3.0.
 
 if TTY
 
@@ -1062,5 +1098,80 @@ config USB_G_WEBCAM
 	  dynamically linked module called "g_webcam".
 
 endchoice
+
+config USB_CSW_HACK
+	boolean "USB Mass storage csw hack Feature"
+	default y
+	help
+	 This csw hack feature is for increasing the performance of the mass
+	 storage
+
+config USB_MSC_PROFILING
+	bool "USB MSC performance profiling"
+	help
+	  If you say Y here, support will be added for collecting
+	  Mass-storage performance numbers at the VFS level.
+
+config MODEM_SUPPORT
+	boolean "modem support in generic serial function driver"
+	depends on USB_G_ANDROID
+	default y
+	help
+          This feature enables the modem functionality in the
+	  generic serial.
+	  adds interrupt endpoint support to send modem notifications
+	  to host.
+	  adds CDC descriptors to enumerate the generic serial as MODEM.
+	  adds CDC class requests to configure MODEM line settings.
+	  Say "y" to enable MODEM support in the generic serial driver.
+
+config RMNET_SMD_CTL_CHANNEL
+	string "RMNET control SMD channel name"
+	depends on USB_G_ANDROID && MSM_SMD
+	default ""
+	help
+	  Control SMD channel for transferring QMI messages
+
+config RMNET_SMD_DATA_CHANNEL
+	string "RMNET Data SMD channel name"
+	depends on USB_G_ANDROID && MSM_SMD
+	default ""
+	help
+	  Data SMD channel for transferring network data
+
+config RMNET_SDIO_CTL_CHANNEL
+       int "RMNET control SDIO channel id"
+       default 8
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       help
+         Control SDIO channel for transferring RMNET QMI messages
+
+config RMNET_SDIO_DATA_CHANNEL
+       int "RMNET Data SDIO channel id"
+       default 8
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       help
+         Data SDIO channel for transferring network data
+
+config RMNET_SMD_SDIO_CTL_CHANNEL
+       int "RMNET(sdio_smd) Control SDIO channel id"
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       default 8
+       help
+         Control SDIO channel for transferring QMI messages
+
+config RMNET_SMD_SDIO_DATA_CHANNEL
+       int "RMNET(sdio_smd) Data SDIO channel id"
+       default 8
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       help
+         Data SDIO channel for transferring network data
+
+config RMNET_SDIO_SMD_DATA_CHANNEL
+       string "RMNET(sdio_smd) Data SMD channel name"
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       default "DATA40"
+       help
+	  Data SMD channel for transferring network data
 
 endif # USB_GADGET

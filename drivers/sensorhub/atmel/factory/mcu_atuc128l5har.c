@@ -18,7 +18,7 @@
 /* factory Sysfs                                                         */
 /*************************************************************************/
 
-#define MODEL_NAME			"ATSAMG53"
+#define MODEL_NAME			"SAMG53G19-UUR-101"
 
 ssize_t mcu_revision_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
@@ -265,11 +265,7 @@ exit:
 		"[SSP]: ges %d,%d,%d,%d\n"
 		"[SSP]: prox %u,%u\n"
 		"[SSP]: temp %d,%d,%d\n"
-#if defined(CONFIG_SENSORS_SSP_TMG399X) || defined(CONFIG_SENSORS_SSP_MAX88921)
 		"[SSP]: light %u,%u,%u,%u,%u,%u\n", __func__,
-#else
-		"[SSP]: light %u,%u,%u,%u\n", __func__,
-#endif
 		fsb[ACCELEROMETER_SENSOR].x, fsb[ACCELEROMETER_SENSOR].y,
 		fsb[ACCELEROMETER_SENSOR].z, fsb[GYROSCOPE_SENSOR].x,
 		fsb[GYROSCOPE_SENSOR].y, fsb[GYROSCOPE_SENSOR].z,
@@ -284,19 +280,10 @@ exit:
 		fsb[TEMPERATURE_HUMIDITY_SENSOR].z,
 		fsb[LIGHT_SENSOR].r, fsb[LIGHT_SENSOR].g, fsb[LIGHT_SENSOR].b,
 		fsb[LIGHT_SENSOR].w
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
-		,fsb[LIGHT_SENSOR].a_time, fsb[LIGHT_SENSOR].a_gain
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
-		,fsb[LIGHT_SENSOR].ir_cmp, fsb[LIGHT_SENSOR].amb_pga
-#endif
-		);
+		,fsb[LIGHT_SENSOR].a_time, fsb[LIGHT_SENSOR].a_gain);
 
 	return sprintf(buf, "%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%u,"
-#if defined(CONFIG_SENSORS_SSP_TMG399X) || defined(CONFIG_SENSORS_SSP_MAX88921)
 		"%u,%u,%u,%u,%u,%u,%d,%d,%d,%d,%d,%d\n",
-#else
-		"%u,%u,%u,%u,%d,%d,%d,%d,%d,%d\n",
-#endif
 		fsb[ACCELEROMETER_SENSOR].x, fsb[ACCELEROMETER_SENSOR].y,
 		fsb[ACCELEROMETER_SENSOR].z, fsb[GYROSCOPE_SENSOR].x,
 		fsb[GYROSCOPE_SENSOR].y, fsb[GYROSCOPE_SENSOR].z,
@@ -305,11 +292,7 @@ exit:
 		fsb[PRESSURE_SENSOR].pressure[1], fsb[PROXIMITY_SENSOR].prox[1],
 		fsb[LIGHT_SENSOR].r, fsb[LIGHT_SENSOR].g, fsb[LIGHT_SENSOR].b,
 		fsb[LIGHT_SENSOR].w,
-#if defined(CONFIG_SENSORS_SSP_TMG399X)
 		fsb[LIGHT_SENSOR].a_time, fsb[LIGHT_SENSOR].a_gain,
-#elif defined(CONFIG_SENSORS_SSP_MAX88921)
-		fsb[LIGHT_SENSOR].ir_cmp, fsb[LIGHT_SENSOR].amb_pga,
-#endif
 		fsb[GESTURE_SENSOR].data[0], fsb[GESTURE_SENSOR].data[1],
 		fsb[GESTURE_SENSOR].data[2], fsb[GESTURE_SENSOR].data[3],
 		fsb[TEMPERATURE_HUMIDITY_SENSOR].x,

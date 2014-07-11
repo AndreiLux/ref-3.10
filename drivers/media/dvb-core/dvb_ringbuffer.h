@@ -5,6 +5,8 @@
  * Copyright (C) 2003 Oliver Endriss
  * Copyright (C) 2004 Andrew de Quincey
  *
+ * Copyright (c) 2012,2014, The Linux Foundation. All rights reserved.
+ *
  * based on code originally found in av7110.c & dvb_ci.c:
  * Copyright (C) 1999-2003 Ralph Metzler & Marcus Metzler
  *                         for convergence integrated media GmbH
@@ -31,11 +33,12 @@
 #include <linux/wait.h>
 
 struct dvb_ringbuffer {
-	u8               *data;
-	ssize_t           size;
-	ssize_t           pread;
-	ssize_t           pwrite;
-	int               error;
+	u8		*data;
+	ssize_t		size;
+	ssize_t		pread;
+	ssize_t		pwrite;
+	atomic_t	fill;
+	int		error;
 
 	wait_queue_head_t queue;
 	spinlock_t        lock;
@@ -77,13 +80,13 @@ struct dvb_ringbuffer {
 extern void dvb_ringbuffer_init(struct dvb_ringbuffer *rbuf, void *data, size_t len);
 
 /* test whether buffer is empty */
-extern int dvb_ringbuffer_empty(struct dvb_ringbuffer *rbuf);
+extern int dvb_ringbuffer_empty(const struct dvb_ringbuffer *rbuf);
 
 /* return the number of free bytes in the buffer */
-extern ssize_t dvb_ringbuffer_free(struct dvb_ringbuffer *rbuf);
+extern ssize_t dvb_ringbuffer_free(const struct dvb_ringbuffer *rbuf);
 
 /* return the number of bytes waiting in the buffer */
-extern ssize_t dvb_ringbuffer_avail(struct dvb_ringbuffer *rbuf);
+extern ssize_t dvb_ringbuffer_avail(const struct dvb_ringbuffer *rbuf);
 
 
 /*
@@ -107,7 +110,13 @@ extern void dvb_ringbuffer_flush_spinlock_wakeup(struct dvb_ringbuffer *rbuf);
 
 /* advance read ptr by <num> bytes */
 #define DVB_RINGBUFFER_SKIP(rbuf,num)	\
-			(rbuf)->pread=((rbuf)->pread+(num))%(rbuf)->size
+	{ (rbuf)->pread = ((rbuf)->pread+(num))%(rbuf)->size;	\
+	atomic_sub((num), &(rbuf)->fill); }
+
+/* advance write ptr by <num> bytes */
+#define DVB_RINGBUFFER_PUSH(rbuf, num)	\
+	{ ((rbuf)->pwrite = (((rbuf)->pwrite+(num))%(rbuf)->size));	\
+	atomic_add((num), &(rbuf)->fill); }
 
 /*
 ** read <len> bytes from ring buffer into <buf>
@@ -125,7 +134,8 @@ extern void dvb_ringbuffer_read(struct dvb_ringbuffer *rbuf,
 /* write single byte to ring buffer */
 #define DVB_RINGBUFFER_WRITE_BYTE(rbuf,byte)	\
 			{ (rbuf)->data[(rbuf)->pwrite]=(byte); \
-			(rbuf)->pwrite=((rbuf)->pwrite+1)%(rbuf)->size; }
+			(rbuf)->pwrite = ((rbuf)->pwrite+1)%(rbuf)->size; \
+			atomic_inc(&(rbuf)->fill); }
 /*
 ** write <len> bytes to ring buffer
 ** <usermem> specifies whether <buf> resides in user space
@@ -134,6 +144,8 @@ extern void dvb_ringbuffer_read(struct dvb_ringbuffer *rbuf,
 extern ssize_t dvb_ringbuffer_write(struct dvb_ringbuffer *rbuf, const u8 *buf,
 				    size_t len);
 
+extern ssize_t dvb_ringbuffer_write_user(struct dvb_ringbuffer *rbuf,
+					const u8 *buf, size_t len);
 
 /**
  * Write a packet into the ringbuffer.
@@ -181,6 +193,32 @@ extern void dvb_ringbuffer_pkt_dispose(struct dvb_ringbuffer *rbuf, size_t idx);
  * returns Packet index (if >=0), or -1 if no packets available.
  */
 extern ssize_t dvb_ringbuffer_pkt_next(struct dvb_ringbuffer *rbuf, size_t idx, size_t* pktlen);
+
+
+/**
+ * Start a new packet that will be written directly by the user to the packet buffer.
+ * The function only writes the header of the packet into the packet buffer,
+ * and the packet is in pending state (can't be read by the reader) until it is
+ * closed using dvb_ringbuffer_pkt_close. You must write the data into the
+ * packet buffer using dvb_ringbuffer_write followed by
+ * dvb_ringbuffer_pkt_close.
+ *
+ * <rbuf> Ringbuffer concerned.
+ * <len> Size of the packet's data
+ * returns Index of the packet's header that was started.
+ */
+extern ssize_t dvb_ringbuffer_pkt_start(struct dvb_ringbuffer *rbuf,
+						size_t len);
+
+/**
+ * Close a packet that was started using dvb_ringbuffer_pkt_start.
+ * The packet will be marked as ready to be ready.
+ *
+ * <rbuf> Ringbuffer concerned.
+ * <idx> Packet index that was returned by dvb_ringbuffer_pkt_start
+ * returns error status, -EINVAL if the provided index is invalid
+ */
+extern int dvb_ringbuffer_pkt_close(struct dvb_ringbuffer *rbuf, ssize_t idx);
 
 
 #endif /* _DVB_RINGBUFFER_H_ */

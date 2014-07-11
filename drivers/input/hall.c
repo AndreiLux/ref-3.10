@@ -23,110 +23,68 @@
 #include <linux/wakelock.h>
 #include <linux/hall.h>
 
-struct device *sec_device_create(void *drvdata, const char *fmt);
+#if defined(CONFIG_SEC_FACTORY)
+#define CONFIG_W1_KTHREAD
+#endif
+
+#if !defined(CONFIG_W1_KTHREAD)
+extern void w1_master_search(void);
+#endif
+
+extern int verification, fail_cnt;
 
 struct hall_drvdata {
 	struct input_dev *input;
 	int gpio_flip_cover;
 	int irq_flip_cover;
+	bool flip_cover;
 	struct work_struct work;
 	struct delayed_work flip_cover_dwork;
 	struct wake_lock flip_wake_lock;
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	struct mutex irq_lock;
-	bool gsm_area;
-	bool irq_state;
-	bool cover_state;
-	bool wa_enable;
-#endif
 };
 
-static bool flip_cover = 1;
-
-/* WorkAround for K3G Hall IRQ Problem */
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-struct hall_drvdata *g_drvdata;
-
-#define enable_hall_irq() \
-	do { \
-		if (g_drvdata->irq_state == false) { \
-			g_drvdata->irq_state = true; \
-			enable_irq(g_drvdata->irq_flip_cover); \
-			pr_info("%s():irq is enabled\n", __func__);\
-		} else { \
-			pr_info("%s():irq is already enabled\n",\
-					__func__);\
-		}\
-	} while (0)
-
-#define disable_hall_irq() \
-	do { \
-		if (g_drvdata->irq_state == true) { \
-			g_drvdata->irq_state = false; \
-			disable_irq(g_drvdata->irq_flip_cover); \
-			pr_info("%s():irq is disabled\n", __func__);\
-		} else { \
-			pr_info("%s():irq is already disabled\n",\
-					__func__);\
-		}\
-	} while (0)
-
-void hall_irq_set(int state, bool auth_changed)
+#if !defined(CONFIG_SEC_FACTORY)
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+static int check_verification_status(void)
 {
-	if (auth_changed)
-		g_drvdata->cover_state = state;
-
-	pr_info("%s: gsm: %d, cover: %d, irq: %d, state: %d, auth: %d\n",
-			__func__, g_drvdata->gsm_area, g_drvdata->cover_state,
-			g_drvdata->irq_state, state, auth_changed);
-
-	if (g_drvdata->gsm_area) {
-		mutex_lock(&g_drvdata->irq_lock);
-
-		if (state)
-			enable_hall_irq();
-		else
-			disable_hall_irq();
-
-		mutex_unlock(&g_drvdata->irq_lock);
-	}
-}
-
-static ssize_t hall_irq_ctrl_store(struct device *dev,
-		struct device_attribute *attr, const char *buf,
-		size_t count)
-{
-	pr_info("%s: %s\n", __func__, buf);
-
-	if (!g_drvdata->wa_enable)
-		return count;
-
-	if (!strncasecmp(buf, "ON", 2)) {
-		g_drvdata->gsm_area = true;
-		if (!g_drvdata->cover_state)
-			hall_irq_set(disable, false);
-	} else if (!strncasecmp(buf, "OFF", 3)) {
-		hall_irq_set(enable, false);
-		g_drvdata->gsm_area = false;
-	} else {
-		pr_info("%s: Wrong command, current state %s\n",
-				__func__, g_drvdata->gsm_area?"ON":"OFF");
-	}
-
-	return count;
-}
-
-static DEVICE_ATTR(hall_irq_ctrl, 0664, NULL, hall_irq_ctrl_store);
+	int limit_cnt;
+#if defined(CONFIG_W1_KTHREAD)
+	limit_cnt = 4;
+#else
+	limit_cnt = 0;
 #endif
 
+#if !defined(CONFIG_W1_KTHREAD)
+	w1_master_search();
+	/* one more chance to verify */
+	if (verification != 0)
+		w1_master_search();
+#endif
+
+	if (verification != 0) {
+		if (fail_cnt > limit_cnt) {
+			printk("%s : fail counter is over %d\n",__func__, limit_cnt);
+			return -1;
+		} else {
+			printk("%s : Not verified, but ...\n",__func__);
+			return 0;
+		}
+	} else {
+		printk("%s : Verified\n",__func__);
+		return 0;
+	}
+}
+#endif
+#endif
 static ssize_t hall_detect_show(struct device *dev,
 				struct device_attribute *attr, char *buf)
 {
-	if (flip_cover) {
+	struct hall_drvdata *ddata = dev_get_drvdata(dev);
+
+	if (ddata->flip_cover)
 		sprintf(buf, "OPEN");
-	} else {
+	else
 		sprintf(buf, "CLOSE");
-	}
 
 	return strlen(buf);
 }
@@ -134,10 +92,6 @@ static DEVICE_ATTR(hall_detect, 0664, hall_detect_show, NULL);
 
 static struct attribute *hall_attrs[] = {
 	&dev_attr_hall_detect.attr,
-/* WorkAround for K3G Hall IRQ Problem */
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	&dev_attr_hall_irq_ctrl.attr,
-#endif
 	NULL,
 };
 
@@ -155,18 +109,25 @@ static void flip_cover_work(struct work_struct *work)
 
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk("keys:%s #1 : %d\n", __func__, first);
+	printk(KERN_DEBUG "keys:%s #1 : %d\n",
+		__func__, first);
 
 	msleep(50);
 
 	second = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk("keys:%s #2 : %d\n", __func__, second);
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+	printk(KERN_DEBUG "[keys] %s : %d, Verification(%d)\n",
+		__func__, ddata->flip_cover, verification);
+#else
+	printk(KERN_DEBUG "keys:%s #2 : %d\n",
+		__func__, second);
+#endif
 
-	if(first == second && flip_cover != first) {
-		flip_cover = first;
+	if(first == second && ddata->flip_cover != first) {
+		ddata->flip_cover = first;
 		input_report_switch(ddata->input,
-			SW_FLIP, flip_cover);
+			SW_FLIP, ddata->flip_cover);
 		input_sync(ddata->input);
 	}
 }
@@ -174,33 +135,28 @@ static void flip_cover_work(struct work_struct *work)
 static void flip_cover_work(struct work_struct *work)
 {
 	bool first;
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	bool second;
-#endif
 	struct hall_drvdata *ddata =
 		container_of(work, struct hall_drvdata,
 				flip_cover_dwork.work);
 
 	first = gpio_get_value(ddata->gpio_flip_cover);
 
-	printk("keys:%s #1 : %d\n", __func__, first);
+#ifdef CONFIG_W1_SLAVE_DS28EL15
+	printk(KERN_DEBUG "[keys] %s : %d, Verification(%d)\n",
+		__func__, ddata->flip_cover, verification);
 
-/* WorkAround for K3G Hall IRQ Problem */
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	if (g_drvdata->gsm_area) {
-		pr_info("%s: NDT\n", __func__);
-		mdelay(7);
-		second = gpio_get_value(ddata->gpio_flip_cover);
-		if (first != second) {
-			pr_info("%s: NDT, not stable value\n", __func__);
-			return;
-		}
-	}
+	if (check_verification_status() != 0 && first == 0)	return;
+#else
+	printk(KERN_DEBUG "keys:%s #1 : %d\n",
+		__func__, first);
 #endif
-	flip_cover = first;
-	input_report_switch(ddata->input,
-		SW_FLIP, flip_cover);
-	input_sync(ddata->input);
+
+	if(ddata->flip_cover != first) {
+		ddata->flip_cover = first;
+		input_report_switch(ddata->input,
+			SW_FLIP, ddata->flip_cover);
+		input_sync(ddata->input);
+	}
 }
 #endif
 
@@ -258,8 +214,6 @@ static void init_hall_ic_irq(struct input_dev *input)
 	int ret = 0;
 	int irq = ddata->irq_flip_cover;
 
-	flip_cover = gpio_get_value(ddata->gpio_flip_cover);
-
 	INIT_DELAYED_WORK(&ddata->flip_cover_dwork, flip_cover_work);
 
 	ret =
@@ -275,9 +229,6 @@ static void init_hall_ic_irq(struct input_dev *input)
 		irq, ddata->gpio_flip_cover);
 	} else {
 		pr_info("%s : success\n", __func__);
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-		g_drvdata->irq_state = true;
-#endif
 	}
 }
 
@@ -287,10 +238,6 @@ static int of_hall_data_parsing_dt(struct hall_drvdata *ddata)
 	struct device_node *np_haptic;
 	int gpio;
 	enum of_gpio_flags flags;
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	u32 temp;
-	int ret;
-#endif
 
 	np_haptic = of_find_node_by_path("/hall");
 	if (np_haptic == NULL) {
@@ -303,17 +250,6 @@ static int of_hall_data_parsing_dt(struct hall_drvdata *ddata)
 
 	gpio = gpio_to_irq(gpio);
 	ddata->irq_flip_cover = gpio;
-
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	ret = of_property_read_u32(np_haptic, "hall,gsm_wa", &temp);
-	if (ret) {
-		pr_info("%s: No property about WA\n", __func__);
-		ddata->wa_enable = false;
-	} else {
-		pr_info("%s: get the wa property\n", __func__);
-		ddata->wa_enable = temp;
-	}
-#endif
 
 	return 0;
 }
@@ -328,10 +264,6 @@ static int hall_probe(struct platform_device *pdev)
 	int wakeup = 0;
 
 	ddata = kzalloc(sizeof(struct hall_drvdata), GFP_KERNEL);
-	if (!ddata) {
-		dev_err(dev, "failed to allocate state\n");
-		return -ENOMEM;
-	}
 
 #ifdef CONFIG_OF
 	if(dev->of_node) {
@@ -344,7 +276,7 @@ static int hall_probe(struct platform_device *pdev)
 #endif
 
 	input = input_allocate_device();
-	if (!input) {
+	if (!ddata || !input) {
 		dev_err(dev, "failed to allocate state\n");
 		error = -ENOMEM;
 		goto fail1;
@@ -371,17 +303,9 @@ static int hall_probe(struct platform_device *pdev)
 	/* Enable auto repeat feature of Linux input subsystem */
 	__set_bit(EV_REP, input->evbit);
 
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	mutex_init(&ddata->irq_lock);
-
-	ddata->gsm_area = false;
-	ddata->cover_state = false;
-	g_drvdata = ddata;
-#endif
-
 	init_hall_ic_irq(input);
 
-	error = sysfs_create_group(&sec_key->kobj, &hall_attr_group);
+	error = sysfs_create_group(&pdev->dev.kobj, &hall_attr_group);
 	if (error) {
 		dev_err(dev, "Unable to export keys/switches, error: %d\n",
 			error);
@@ -448,15 +372,7 @@ static int hall_suspend(struct device *dev)
 
 /* need to be change */
 /* Without below one line, it is not able to get the irq during freezing */
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	/* gsm_area can be controlled only in hall_irq_set */
-	if (!g_drvdata->cover_state && g_drvdata->gsm_area)
-		disable_irq_wake(ddata->irq_flip_cover);
-	else
-		enable_irq_wake(ddata->irq_flip_cover);
-#else
 	enable_irq_wake(ddata->irq_flip_cover);
-#endif
 
 	if (device_may_wakeup(dev)) {
 		enable_irq_wake(ddata->irq_flip_cover);
@@ -477,11 +393,6 @@ static int hall_resume(struct device *dev)
 
 	printk("%s start\n", __func__);
 	input_sync(input);
-#ifdef CONFIG_SENSORS_HALL_IRQ_CTRL
-	/* gsm_area can be controlled only in hall_irq_set */
-	if (g_drvdata->cover_state && g_drvdata->gsm_area)
-		hall_irq_set(enable, false);
-#endif
 	return 0;
 }
 #endif

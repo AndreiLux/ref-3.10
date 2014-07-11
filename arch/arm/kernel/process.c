@@ -14,6 +14,7 @@
 #include <linux/sched.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
+#include <linux/vmalloc.h>
 #include <linux/stddef.h>
 #include <linux/unistd.h>
 #include <linux/user.h>
@@ -40,6 +41,7 @@
 #include <asm/thread_notify.h>
 #include <asm/stacktrace.h>
 #include <asm/mach/time.h>
+#include <asm/tls.h>
 
 #ifdef CONFIG_CC_STACKPROTECTOR
 #include <linux/stackprotector.h>
@@ -167,7 +169,8 @@ EXPORT_SYMBOL_GPL(arm_pm_restart);
  * This is our default idle handler.
  */
 
-void (*arm_pm_idle)(void);
+extern void arch_idle(void);
+void (*arm_pm_idle)(void) = arch_idle;
 
 static void default_idle(void)
 {
@@ -255,7 +258,7 @@ void machine_shutdown(void)
  */
 void machine_halt(void)
 {
-	local_irq_disable();
+	preempt_disable();
 	smp_send_stop();
 
 	local_irq_disable();
@@ -270,7 +273,7 @@ void machine_halt(void)
  */
 void machine_power_off(void)
 {
-	local_irq_disable();
+	preempt_disable();
 	smp_send_stop();
 
 	if (pm_power_off)
@@ -290,7 +293,7 @@ void machine_power_off(void)
  */
 void machine_restart(char *cmd)
 {
-	local_irq_disable();
+	preempt_disable();
 	smp_send_stop();
 
 	/* Flush the console to make sure all the relevant messages make it
@@ -343,7 +346,12 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 		printk("%04lx ", (unsigned long)p & 0xffff);
 		for (j = 0; j < 8; j++) {
 			u32	data;
-			if (probe_kernel_address(p, data)) {
+			/*
+			 * vmalloc addresses may point to
+			 * memory-mapped peripherals
+			 */
+			if (is_vmalloc_addr(p) ||
+			    probe_kernel_address(p, data)) {
 				printk(" ********");
 			} else {
 				printk(" %08x", data);
@@ -357,29 +365,48 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 static void show_extra_register_data(struct pt_regs *regs, int nbytes)
 {
 	mm_segment_t fs;
+	unsigned long is_user;
 
 	fs = get_fs();
+	is_user = user_mode(regs);
+
 	set_fs(KERNEL_DS);
-	show_data(regs->ARM_pc - nbytes, nbytes * 2, "PC");
-	show_data(regs->ARM_lr - nbytes, nbytes * 2, "LR");
-	show_data(regs->ARM_sp - nbytes, nbytes * 2, "SP");
-	show_data(regs->ARM_ip - nbytes, nbytes * 2, "IP");
-	show_data(regs->ARM_fp - nbytes, nbytes * 2, "FP");
-	show_data(regs->ARM_r0 - nbytes, nbytes * 2, "R0");
-	show_data(regs->ARM_r1 - nbytes, nbytes * 2, "R1");
-	show_data(regs->ARM_r2 - nbytes, nbytes * 2, "R2");
-	show_data(regs->ARM_r3 - nbytes, nbytes * 2, "R3");
-	show_data(regs->ARM_r4 - nbytes, nbytes * 2, "R4");
-	show_data(regs->ARM_r5 - nbytes, nbytes * 2, "R5");
-	show_data(regs->ARM_r6 - nbytes, nbytes * 2, "R6");
-	show_data(regs->ARM_r7 - nbytes, nbytes * 2, "R7");
-	show_data(regs->ARM_r8 - nbytes, nbytes * 2, "R8");
-	show_data(regs->ARM_r9 - nbytes, nbytes * 2, "R9");
-	show_data(regs->ARM_r10 - nbytes, nbytes * 2, "R10");
+	if (!is_user || regs->ARM_pc < TASK_SIZE)
+		show_data(regs->ARM_pc - nbytes, nbytes * 2, "PC");
+	if (!is_user || regs->ARM_lr < TASK_SIZE)
+		show_data(regs->ARM_lr - nbytes, nbytes * 2, "LR");
+	if (!is_user || regs->ARM_sp < TASK_SIZE)
+		show_data(regs->ARM_sp - nbytes, nbytes * 2, "SP");
+	if (!is_user || regs->ARM_ip < TASK_SIZE)
+		show_data(regs->ARM_ip - nbytes, nbytes * 2, "IP");
+	if (!is_user || regs->ARM_fp < TASK_SIZE)
+		show_data(regs->ARM_fp - nbytes, nbytes * 2, "FP");
+	if (!is_user || regs->ARM_r0 < TASK_SIZE)
+		show_data(regs->ARM_r0 - nbytes, nbytes * 2, "R0");
+	if (!is_user || regs->ARM_r1 < TASK_SIZE)
+		show_data(regs->ARM_r1 - nbytes, nbytes * 2, "R1");
+	if (!is_user || regs->ARM_r2 < TASK_SIZE)
+		show_data(regs->ARM_r2 - nbytes, nbytes * 2, "R2");
+	if (!is_user || regs->ARM_r3 < TASK_SIZE)
+		show_data(regs->ARM_r3 - nbytes, nbytes * 2, "R3");
+	if (!is_user || regs->ARM_r4 < TASK_SIZE)
+		show_data(regs->ARM_r4 - nbytes, nbytes * 2, "R4");
+	if (!is_user || regs->ARM_r5 < TASK_SIZE)
+		show_data(regs->ARM_r5 - nbytes, nbytes * 2, "R5");
+	if (!is_user || regs->ARM_r6 < TASK_SIZE)
+		show_data(regs->ARM_r6 - nbytes, nbytes * 2, "R6");
+	if (!is_user || regs->ARM_r7 < TASK_SIZE)
+		show_data(regs->ARM_r7 - nbytes, nbytes * 2, "R7");
+	if (!is_user || regs->ARM_r8 < TASK_SIZE)
+		show_data(regs->ARM_r8 - nbytes, nbytes * 2, "R8");
+	if (!is_user || regs->ARM_r9 < TASK_SIZE)
+		show_data(regs->ARM_r9 - nbytes, nbytes * 2, "R9");
+	if (!is_user || regs->ARM_r10 < TASK_SIZE)
+		show_data(regs->ARM_r10 - nbytes, nbytes * 2, "R10");
 	set_fs(fs);
 }
 
-void __show_regs_without_extra(struct pt_regs *regs)
+void __show_regs(struct pt_regs *regs)
 {
 	unsigned long flags;
 	char buf[64];
@@ -436,41 +463,6 @@ void __show_regs_without_extra(struct pt_regs *regs)
 	}
 #endif
 
-#ifdef CONFIG_CPU_CP15
-	{
-		unsigned long reg0, reg1, reg2, reg3;
-
-		asm ("mrc p15, 0, %0, c0, c0, 5\n": "=r" (reg0));
-		if (reg0 & (1 << 31))
-			/* MPIDR */
-			printk("CPU %ld / CLUSTER %ld\n",
-					reg0 & 0x3, (reg0 >> 8) & 0xF);
-
-		asm ("mrc p15, 0, %0, c5, c0, 0\n\t"
-		     "mrc p15, 0, %1, c5, c1, 0\n"
-		     : "=r" (reg0), "=r" (reg1));
-		asm ("mrc p15, 0, %0, c5, c0, 1\n\t"
-		     "mrc p15, 0, %1, c5, c1, 1\n"
-		     : "=r" (reg2), "=r" (reg3));
-		printk("DFSR: %08lx, ADFSR: %08lx, IFSR: %08lx, AIFSR: %08lx\n",
-			reg0, reg1, reg2, reg3);
-
-		asm ("mrc p15, 0, %0, c0, c0, 0\n": "=r" (reg0));
-		if (((reg0 >> 4) & 0xFFF) == 0xC0F) { /* Cortex-A15 */
-			asm ("mrrc p15, 0, %0, %1, c15\n\t"
-			     "mrrc p15, 1, %2, %3, c15\n"
-			     : "=r" (reg0), "=r" (reg1),
-			     "=r" (reg2), "=r" (reg3));
-			printk("CPUMERRSR: %08lx_%08lx, L2MERRSR: %08lx_%08lx\n",
-				reg1, reg0, reg3, reg2);
-		}
-	}
-#endif
-}
-
-void __show_regs(struct pt_regs *regs)
-{
-	__show_regs_without_extra(regs);
 	show_extra_register_data(regs, 128);
 }
 
@@ -539,7 +531,8 @@ copy_thread(unsigned long clone_flags, unsigned long stack_start,
 	clear_ptrace_hw_breakpoint(p);
 
 	if (clone_flags & CLONE_SETTLS)
-		thread->tp_value = childregs->ARM_r3;
+		thread->tp_value[0] = childregs->ARM_r3;
+	thread->tp_value[1] = get_tpuser();
 
 	thread_notify(THREAD_NOTIFY_COPY, thread);
 
@@ -638,9 +631,14 @@ int in_gate_area_no_mm(unsigned long addr)
 
 const char *arch_vma_name(struct vm_area_struct *vma)
 {
-	return is_gate_vma(vma) ? "[vectors]" :
-		(vma->vm_mm && vma->vm_start == vma->vm_mm->context.sigpage) ?
-		 "[sigpage]" : NULL;
+	if (is_gate_vma(vma))
+		return "[vectors]";
+	else if (vma->vm_mm && vma->vm_start == vma->vm_mm->context.sigpage)
+		return "[sigpage]";
+	else if (vma == get_user_timers_vma(NULL))
+		return "[timers]";
+	else
+		return NULL;
 }
 
 static struct page *signal_page;

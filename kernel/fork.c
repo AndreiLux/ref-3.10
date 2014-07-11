@@ -509,7 +509,24 @@ static inline int mm_alloc_pgd(struct mm_struct *mm)
 
 static inline void mm_free_pgd(struct mm_struct *mm)
 {
+#ifdef CONFIG_TIMA_RKP_DEBUG
+	int i;
+#endif
 	pgd_free(mm, mm->pgd);
+#ifdef CONFIG_TIMA_RKP_DEBUG
+        /* with debug infrastructure, check if a page was
+	 * unprotected after being freed. Scream if not.
+	 */ 
+	#ifdef CONFIG_TIMA_RKP_L1_TABLES
+	for(i=0; i<4; i++) {
+		if (tima_debug_page_protection(((unsigned long)mm->pgd + i*0x1000), 5, 0) == 1) {
+			tima_debug_signal_failure(0x3f80f221, 5);
+			//tima_send_cmd((unsigned long)mm->pgd, 0x3f80e221);
+			//printk(KERN_ERR"TIMA: New L1 PGT still protected! mm_free_pgd\n");
+		}
+	}
+	#endif
+#endif 
 }
 #else
 #define dup_mmap(mm, oldmm)	(0)
@@ -623,8 +640,9 @@ EXPORT_SYMBOL_GPL(__mmdrop);
 /*
  * Decrement the use count and release all resources for an mm.
  */
-void mmput(struct mm_struct *mm)
+int mmput(struct mm_struct *mm)
 {
+	int mm_freed = 0;
 	might_sleep();
 
 	if (atomic_dec_and_test(&mm->mm_users)) {
@@ -642,7 +660,9 @@ void mmput(struct mm_struct *mm)
 		if (mm->binfmt)
 			module_put(mm->binfmt->module);
 		mmdrop(mm);
+		mm_freed = 1;
 	}
+	return mm_freed;
 }
 EXPORT_SYMBOL_GPL(mmput);
 
@@ -1692,12 +1712,6 @@ SYSCALL_DEFINE5(clone, unsigned long, newsp, unsigned long, clone_flags,
 		 int __user *, parent_tidptr,
 		 int __user *, child_tidptr,
 		 int, tls_val)
-#elif defined(CONFIG_CLONE_BACKWARDS3)
-SYSCALL_DEFINE6(clone, unsigned long, clone_flags, unsigned long, newsp,
-		int, stack_size,
-		int __user *, parent_tidptr,
-		int __user *, child_tidptr,
-		int, tls_val)
 #else
 SYSCALL_DEFINE5(clone, unsigned long, clone_flags, unsigned long, newsp,
 		 int __user *, parent_tidptr,

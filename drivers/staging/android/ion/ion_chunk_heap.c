@@ -106,9 +106,11 @@ static void ion_chunk_heap_free(struct ion_buffer *buffer)
 
 	if (ion_buffer_cached(buffer))
 		dma_sync_sg_for_device(NULL, table->sgl, table->nents,
-								DMA_BIDIRECTIONAL);
+                                       DMA_BIDIRECTIONAL);
 
 	for_each_sg(table->sgl, sg, table->nents, i) {
+		if (ion_buffer_cached(buffer))
+			dma_sync_sg_for_device(NULL, sg, 1, DMA_BIDIRECTIONAL);
 		gen_pool_free(chunk_heap->pool, page_to_phys(sg_page(sg)),
 			      sg->length);
 	}
@@ -142,18 +144,10 @@ static struct ion_heap_ops chunk_heap_ops = {
 struct ion_heap *ion_chunk_heap_create(struct ion_platform_heap *heap_data)
 {
 	struct ion_chunk_heap *chunk_heap;
-	int ret;
-	struct page *page;
-	size_t size;
+	struct vm_struct *vm_struct;
+	pgprot_t pgprot = pgprot_writecombine(PAGE_KERNEL);
+	int i, ret;
 
-	page = pfn_to_page(PFN_DOWN(heap_data->base));
-	size = heap_data->size;
-
-	ion_pages_sync_for_device(NULL, page, size, DMA_BIDIRECTIONAL);
-
-	ret = ion_heap_pages_zero(page, size, pgprot_writecombine(PAGE_KERNEL));
-	if (ret)
-		return ERR_PTR(ret);
 
 	chunk_heap = kzalloc(sizeof(struct ion_chunk_heap), GFP_KERNEL);
 	if (!chunk_heap)
@@ -170,15 +164,39 @@ struct ion_heap *ion_chunk_heap_create(struct ion_platform_heap *heap_data)
 	chunk_heap->size = heap_data->size;
 	chunk_heap->allocated = 0;
 
+	vm_struct = get_vm_area(PAGE_SIZE, VM_ALLOC);
+	if (!vm_struct) {
+		ret = -ENOMEM;
+		goto error;
+	}
+	for (i = 0; i < chunk_heap->size; i += PAGE_SIZE) {
+		struct page *page = pfn_to_page(PFN_DOWN(chunk_heap->base + i));
+		struct page **pages = &page;
+
+		ret = map_vm_area(vm_struct, pgprot, &pages);
+		if (ret)
+			goto error_map_vm_area;
+		memset(vm_struct->addr, 0, PAGE_SIZE);
+		unmap_kernel_range((unsigned long)vm_struct->addr, PAGE_SIZE);
+	}
+	free_vm_area(vm_struct);
+
+	ion_pages_sync_for_device(NULL, pfn_to_page(PFN_DOWN(heap_data->base)),
+			heap_data->size, DMA_BIDIRECTIONAL);
+
 	gen_pool_add(chunk_heap->pool, chunk_heap->base, heap_data->size, -1);
 	chunk_heap->heap.ops = &chunk_heap_ops;
 	chunk_heap->heap.type = ION_HEAP_TYPE_CHUNK;
 	chunk_heap->heap.flags = ION_HEAP_FLAG_DEFER_FREE;
-	pr_info("%s: base %lu size %zu align %ld\n", __func__, chunk_heap->base,
-		heap_data->size, heap_data->align);
+	pr_info("%s: base %pa size %zu align %pa\n", __func__,
+		&chunk_heap->base, heap_data->size, &heap_data->align);
 
 	return &chunk_heap->heap;
 
+error_map_vm_area:
+	free_vm_area(vm_struct);
+error:
+	gen_pool_destroy(chunk_heap->pool);
 error_gen_pool_create:
 	kfree(chunk_heap);
 	return ERR_PTR(ret);

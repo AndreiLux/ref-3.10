@@ -106,7 +106,7 @@ static void usb_gadget_state_work(struct work_struct *work)
 {
 	struct usb_gadget	*gadget = work_to_gadget(work);
 
-	sysfs_notify(&gadget->dev.kobj, NULL, "state");
+	sysfs_notify(&gadget->dev.kobj, NULL, "status");
 }
 
 void usb_gadget_set_state(struct usb_gadget *gadget,
@@ -345,15 +345,6 @@ static int udc_bind_to_driver(struct usb_udc *udc, struct usb_gadget_driver *dri
 		driver->unbind(udc->gadget);
 		goto err1;
 	}
-	/*
-	 * HACK: The Android gadget driver disconnects the gadget
-	 * on bind and expects the gadget to stay disconnected until
-	 * it calls usb_gadget_connect when userspace is ready. Remove
-	 * the call to usb_gadget_connect bellow to avoid enabling the
-	 * pullup before userspace is ready.
-	 *
-	 * usb_gadget_connect(udc->gadget);
-	 */
 
 	kobject_uevent(&udc->dev.kobj, KOBJ_CHANGE);
 	return 0;
@@ -402,8 +393,9 @@ int usb_gadget_probe_driver(struct usb_gadget_driver *driver)
 
 	mutex_lock(&udc_lock);
 	list_for_each_entry(udc, &udc_list, list) {
-		/* For now we take the first one */
-		if (!udc->driver)
+		/* Match according to usb_core_id */
+		if (!udc->driver && udc->gadget &&
+		    udc->gadget->usb_core_id == driver->usb_core_id)
 			goto found;
 	}
 

@@ -44,135 +44,217 @@
 #include <linux/clk.h>
 #include <linux/wakelock.h>
 #include <linux/io.h>
-#include <mach/map.h>
+#include <linux/of.h>
+#include <linux/of_gpio.h>
+#include <linux/regulator/machine.h>
+#include <linux/regulator/krait-regulator.h>
+#include <linux/mfd/pm8xxx/pwm.h>
+#include "../staging/android/timed_output.h"
+
 #include "tspdrv.h"
-#ifdef CONFIG_MOTOR_DRV_ISA1200
-#include "ImmVibeSPI_isa1200.c"
-#elif defined(CONFIG_MOTOR_DRV_ISA1400)
-#include "ImmVibeSPI_isa1400.c"
-#else
-#include "ImmVibeSPI.c"
-#endif
+#include <linux/vibrator.h>
+#include "immvibespi.c"
+
 #if defined(VIBE_DEBUG) && defined(VIBE_RECORD)
 #include <tspdrvRecorder.c>
 #endif
-
+#include <mach/msm_xo.h>
 /* Device name and version information */
-
 /* DO NOT CHANGE - this is auto-generated */
-#define VERSION_STR " v3.4.55.8\n"
-
+#define VERSION_STR " v3.4.55.7\n"
 /* account extra space for future extra digits in version number */
 #define VERSION_STR_LEN 16
-
-/* initialized in init_module */
-static char g_szDeviceName[(VIBE_MAX_DEVICE_NAME_LENGTH
+/* initialized in tspdrv_probe */
+static char g_szdevice_name[(VIBE_MAX_DEVICE_NAME_LENGTH
 							+ VERSION_STR_LEN)
 							* NUM_ACTUATORS];
-/* initialized in init_module */
-static size_t g_cchDeviceName;
+static size_t g_cchdevice_name;
 
 static struct wake_lock vib_wake_lock;
 
 /* Flag indicating whether the driver is in use */
-static char g_bIsPlaying;
+static char g_bisplaying;
 
 /* Buffer to store data sent to SPI */
-#define SPI_BUFFER_SIZE (NUM_ACTUATORS * \
-	(VIBE_OUTPUT_SAMPLE_SIZE + SPI_HEADER_SIZE))
-static int g_bStopRequested;
-static actuator_samples_buffer g_SamplesBuffer[NUM_ACTUATORS] = { {0} };
-static char g_cWriteBuffer[SPI_BUFFER_SIZE];
+#define SPI_BUFFER_SIZE \
+		(NUM_ACTUATORS * (VIBE_OUTPUT_SAMPLE_SIZE + SPI_HEADER_SIZE))
+static int g_bstoprequested;
+static actuator_samples_buffer g_samples_buffer[NUM_ACTUATORS] = {{0} };
+static char g_cwrite_buffer[SPI_BUFFER_SIZE];
 
-/* #define VIBE_TUNING */
+#define VIBE_TUNING
 /* #define VIBE_ENABLE_SYSTEM_TIMER */
-/* #define IMPLEMENT_AS_CHAR_DRIVER */
 
 /* For QA purposes */
 #ifdef QA_TEST
 #define FORCE_LOG_BUFFER_SIZE   128
 #define TIME_INCREMENT          5
-static int g_nTime;
-static int g_nForceLogIndex;
-static VibeInt8 g_nForceLog[FORCE_LOG_BUFFER_SIZE];
-#endif
-
-#if ((LINUX_VERSION_CODE & 0xFFFF00) < KERNEL_VERSION(2, 6, 0))
-#error Unsupported Kernel version
+static int g_ntime;
+static int g_nforcelog_index;
+static int8_t g_nforcelog[FORCE_LOG_BUFFER_SIZE];
 #endif
 
 #ifdef IMPLEMENT_AS_CHAR_DRIVER
-static int g_nMajor;
+static int g_nmajor;
 #endif
 
 /* Needs to be included after the global variables because it uses them */
 #ifdef CONFIG_HIGH_RES_TIMERS
-#include "VibeOSKernelLinuxHRTime.c"
+    #include "VibeOSKernelLinuxHRTime.c"
 #else
-#include "VibeOSKernelLinuxTime.c"
+    #include "VibeOSKernelLinuxTime.c"
 #endif
+
+/* timed_output */
+static void _set_vibetonz_work(struct work_struct *unused);
+
+static DECLARE_WORK(vibetonz_work, _set_vibetonz_work);
+
+
+static struct hrtimer timer;
+static int max_timeout = 10000;
+
+static int vibrator_value = -1;
+static int vibrator_work;
+
+#define TEST_MODE_TIME 10000
+
+struct vibrator_platform_data vibrator_drvdata;
+
+static int set_vibetonz(int timeout)
+{
+	int8_t strength;
+	if (!timeout) {
+		if (vibrator_drvdata.vib_model == HAPTIC_PWM) {
+			strength = 0;
+			ImmVibeSPI_ForceOut_SetSamples(0, 8, 1, &strength);
+		} else { /* HAPTIC_MOTOR */
+			ImmVibeSPI_ForceOut_AmpDisable(0);
+		}
+	} else {
+		DbgOut((KERN_INFO "tspdrv: ENABLE\n"));
+		if (vibrator_drvdata.vib_model == HAPTIC_PWM) {
+			strength = 126;
+			/* 90% duty cycle */
+			ImmVibeSPI_ForceOut_SetSamples(0, 8, 1, &strength);
+		} else { /* HAPTIC_MOTOR */
+		DbgOut((KERN_INFO "tspdrv: ampenable\n"));
+			ImmVibeSPI_ForceOut_AmpEnable(0);
+		}
+	}
+
+	vibrator_value = timeout;
+	return 0;
+}
+
+static void _set_vibetonz_work(struct work_struct *unused)
+{
+	set_vibetonz(vibrator_work);
+	return;
+}
+
+static enum hrtimer_restart vibetonz_timer_func(struct hrtimer *timer)
+{
+	/* set_vibetonz(0); */
+	vibrator_work = 0;
+	schedule_work(&vibetonz_work);
+
+	return HRTIMER_NORESTART;
+}
+
+static int get_time_for_vibetonz(struct timed_output_dev *dev)
+{
+	int remaining;
+
+	if (hrtimer_active(&timer))	{
+		ktime_t r = hrtimer_get_remaining(&timer);
+		remaining = ktime_to_ms(r);/*returning time in ms*/
+	} else {
+		remaining = 0;
+	}
+
+	if (vibrator_value == -1)
+		remaining = -1;
+
+	return remaining;
+
+}
+
+static void enable_vibetonz_from_user(struct timed_output_dev *dev, int value)
+{
+	printk(KERN_DEBUG "tspdrv: Enable time = %d msec\n", value);
+	hrtimer_cancel(&timer);
+
+	/* set_vibetonz(value); */
+	vibrator_work = value;
+	schedule_work(&vibetonz_work);
+
+	if (value > 0 && (value != TEST_MODE_TIME)) {
+		if (value > max_timeout)
+			value = max_timeout;
+
+		hrtimer_start(&timer,
+			ktime_set(value / 1000, (value % 1000) * 1000000),
+			HRTIMER_MODE_REL);
+		vibrator_value = 0;
+	}
+}
+
+static struct timed_output_dev timed_output_vt = {
+	.name     = "vibrator",
+	.get_time = get_time_for_vibetonz,
+	.enable   = enable_vibetonz_from_user,
+};
+
+static void vibetonz_start(void)
+{
+	int ret = 0;
+
+	hrtimer_init(&timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	timer.function = vibetonz_timer_func;
+
+	ret = timed_output_dev_register(&timed_output_vt);
+
+	if (ret)
+		DbgOut((KERN_ERR
+		"tspdrv: timed_output_dev_register is fail\n"));
+}
 
 /* File IO */
 static int open(struct inode *inode, struct file *file);
 static int release(struct inode *inode, struct file *file);
 static ssize_t read(struct file *file, char *buf, size_t count, loff_t *ppos);
 static ssize_t write(struct file *file, const char *buf, size_t count,
-	loff_t *ppos);
-static long unlocked_ioctl(struct file *file, unsigned int cmd,
-	unsigned long arg);
+					 loff_t *ppos);
+#if HAVE_UNLOCKED_IOCTL
+static long ioctl(struct file *filp, unsigned int cmd, unsigned long arg);
+#endif
 static const struct file_operations fops = {
-	.owner = THIS_MODULE,
-	.read = read,
-	.write = write,
-	.unlocked_ioctl = unlocked_ioctl,
-	.open = open,
-	.release = release,
-	.llseek =	default_llseek
+	.owner =    THIS_MODULE,
+	.read =     read,
+	.write =    write,
+	.unlocked_ioctl =    ioctl,
+	.open =     open,
+	.release =  release ,
+	.llseek =   default_llseek
 };
 
 #ifndef IMPLEMENT_AS_CHAR_DRIVER
 static struct miscdevice miscdev = {
-	.minor =    MISC_DYNAMIC_MINOR,
+	.minor =    0, //MISC_DYNAMIC_MINOR,
 	.name =     MODULE_NAME,
 	.fops =     &fops
 };
 #endif
 
-static int suspend(struct platform_device *pdev, pm_message_t state);
-static int resume(struct platform_device *pdev);
-static struct platform_driver platdrv = {
-	.suspend =  suspend,
-	.resume =   resume,
-	.driver = {
-		.name = MODULE_NAME,
-	},
-};
-
-static void platform_release(struct device *dev);
-static struct platform_device platdev = {
-	.name =     MODULE_NAME,
-	/* means that there is only one device */
-	.id =       -1,
-	.dev = {
-		.platform_data = NULL,
-		/* a warning is thrown during rmmod if this is absent */
-		.release = platform_release,
-	},
-};
-
-/* Module info */
-MODULE_AUTHOR("Immersion Corporation");
-MODULE_DESCRIPTION("TouchSense Kernel Module");
-MODULE_LICENSE("GPL v2");
-
 #ifdef VIBE_ENABLE_SYSTEM_TIMER
 int vibetonz_clk_on(struct device *dev)
 {
 	struct clk *vibetonz_clk = NULL;
-    /*printk(KERN_ERR"[VIBRATOR]vibetonz_clk_on is called\n");*/
+
 	vibetonz_clk = clk_get(dev, "timers");
 	if (IS_ERR(vibetonz_clk)) {
-		printk(KERN_ERR "tspdrv: failed to get clock for vibetonz\n");
+		DbgOut((KERN_ERR "tspdrv: failed to get clock for vibetonz\n"));
 		goto err_clk0;
 	}
 	clk_enable(vibetonz_clk);
@@ -216,94 +298,190 @@ int vibetonz_clk_off(struct device *dev)
 }
 #endif	/* VIBE_ENABLE_SYSTEM_TIMER */
 
-int init_module(void)
+static int tspdrv_parse_dt(struct platform_device *pdev)
 {
-	int nRet, i;   /* initialized below */
-	nRet = 0;
+	struct device_node *np = pdev->dev.of_node;
+	int rc;
+
+	vibrator_drvdata.vib_pwm_gpio = of_get_named_gpio(np, "samsung,pmic_vib_pwm", 0);
+	if (!gpio_is_valid(vibrator_drvdata.vib_pwm_gpio)) {
+		pr_err("%s:%d, reset gpio not specified\n",
+				__func__, __LINE__);
+	}
+	rc = of_property_read_u32(np, "samsung,vib_model", &vibrator_drvdata.vib_model);
+	if (rc) {
+		pr_err("%s:%d, vib_model not specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	rc = of_property_read_u32(np, "samsung,pmic_vib_en", &vibrator_drvdata.is_pmic_vib_en);
+	if (rc) {
+		pr_err("%s:%d, is_pmic_vib_en not specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	rc = of_property_read_u32(np, "samsung,pmic_haptic_pwr_en", &vibrator_drvdata.is_pmic_haptic_pwr_en);
+	if (rc) {
+		pr_err("%s:%d, is_pmic_haptic_pwr_en not specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	//vibrator_drvdata.is_pmic_vib_pwm = 0;  AP PWM PIN
+	//vibrator_drvdata.is_pmic_vib_pwm = 1;  PMIC PWM PIN
+	rc = of_property_read_u32(np, "samsung,is_pmic_vib_pwm", &vibrator_drvdata.is_pmic_vib_pwm);
+	if (rc) {
+		pr_err("%s:%d, is_pmic_vib_pwm not specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	rc = of_property_read_u32(np, "samsung,pwm_period_us", &vibrator_drvdata.pwm_period_us);
+	if (rc) {
+		pr_err("%s:%d, pwm_period_us not specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+	rc = of_property_read_u32(np, "samsung,duty_us", &vibrator_drvdata.duty_us);
+	if (rc) {
+		pr_err("%s:%d, duty_us not specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+
+	rc = of_property_read_u32(np, "samsung,motor_ic", &vibrator_drvdata.motor_ic);
+	if (rc) {
+		pr_err("%s:%d, motor IC isn't specified\n",
+						__func__, __LINE__);
+		return -EINVAL;
+	}
+	return rc;
+}
+
+#if defined(CONFIG_MOTOR_DRV_MAX77828) || defined(CONFIG_MOTOR_DRV_MAX77804K) || defined(CONFIG_MOTOR_DRV_MAX77843)
+static void max778xx_haptic_power_onoff(int onoff)
+{
+	int ret;
+	static struct regulator *reg_ldo;
+
+	if (!reg_ldo) {
+		reg_ldo = regulator_get(NULL, "8084_l19");
+		ret = regulator_set_voltage(reg_ldo, 3000000, 3000000);
+		if (IS_ERR(reg_ldo)) {
+			printk(KERN_ERR"could not get 8084_ldo, rc = %ld\n",
+				PTR_ERR(reg_ldo));
+			return;
+		}
+	}
+
+	if (onoff) {
+		ret = regulator_enable(reg_ldo);
+		if (ret) {
+			printk(KERN_ERR"enable ldo failed, rc=%d\n", ret);
+			return;
+		}
+		printk(KERN_DEBUG"haptic power_on is finished.\n");
+	} else {
+		if (regulator_is_enabled(reg_ldo)) {
+			ret = regulator_disable(reg_ldo);
+			if (ret) {
+				printk(KERN_ERR"disable ldo failed, rc=%d\n",
+									ret);
+				return;
+			}
+		}
+		printk(KERN_DEBUG"haptic power_off is finished.\n");
+	}
+}
+#endif
+
+static int tspdrv_probe(struct platform_device *pdev)
+{
+	int ret, i;   /* initialized below */
+
+	DbgOut((KERN_INFO "tspdrv: tspdrv_probe.\n"));
+	motor_min_strength = g_nlra_gp_clk_n*MOTOR_MIN_STRENGTH/100;
+	if(!pdev->dev.of_node){
+		DbgOut(KERN_ERR "tspdrv: tspdrv probe failed, DT is NULL");
+		return -ENODEV;
+	}
+
+	ret = tspdrv_parse_dt(pdev);
+	if(ret)
+		return ret;
+
+	virt_mmss_gp1_base = ioremap(MSM_MMSS_GP1_BASE,0x28);
+
+	if (!virt_mmss_gp1_base)
+		panic("tspdrv : Unable to ioremap MSM_MMSS_GP1 memory!");
+#if defined(CONFIG_MOTOR_DRV_MAX77828) || defined(CONFIG_MOTOR_DRV_MAX77804K) || defined(CONFIG_MOTOR_DRV_MAX77843)
+	vibrator_drvdata.power_onoff = max778xx_haptic_power_onoff;
+#endif
+	vibrator_drvdata.pwm_dev = NULL;
 
 #ifdef IMPLEMENT_AS_CHAR_DRIVER
-	printk(KERN_ERR
-		"[VIBRATOR]IMPLEMENT_AS_CHAR_DRIVER\n");
-	g_nMajor = register_chrdev(0, MODULE_NAME, &fops);
-	if (g_nMajor < 0) {
-		printk(KERN_ERR"[VIBRATOR]tspdrv: can't get major number.\n");
-		return g_nMajor;
+	g_nmajor = register_chrdev(0, MODULE_NAME, &fops);
+	if (g_nmajor < 0) {
+		DbgOut((KERN_ERR "tspdrv: can't get major number.\n"));
+		ret = g_nmajor;
+		iounmap(virt_mmss_gp1_base);
+		return ret;
 	}
 #else
-	nRet = misc_register(&miscdev);
-	if (nRet) {
-		printk(KERN_ERR "[VIBRATOR]tspdrv: misc_register failed.\n");
-		return nRet;
+	ret = misc_register(&miscdev);
+	if (ret) {
+		DbgOut((KERN_ERR "tspdrv: misc_register failed.\n"));
+		iounmap(virt_mmss_gp1_base);
+		return ret;
 	}
 #endif
 
-	nRet = platform_device_register(&platdev);
-	if (nRet) {
-		printk(KERN_ERR "tspdrv: platform_device_register failed.\n");
-		goto err_platform_dev_reg;
-	}
-
-	nRet = platform_driver_register(&platdrv);
-	if (nRet) {
-		printk(KERN_ERR "tspdrv: platform_driver_register failed.\n");
-		goto err_platform_drv_reg;
-	}
-
 	DbgRecorderInit(());
 
-	vibetonz_clk_on(&platdev.dev);
+	vibetonz_clk_on(&pdev->dev);
 
 	ImmVibeSPI_ForceOut_Initialize();
 	VibeOSKernelLinuxInitTimer();
 
 	/* Get and concatenate device name and initialize data buffer */
-	g_cchDeviceName = 0;
+	g_cchdevice_name = 0;
 	for (i = 0; i < NUM_ACTUATORS; i++) {
-		char *szName = g_szDeviceName + g_cchDeviceName;
-		ImmVibeSPI_Device_GetName(i, szName,
-			VIBE_MAX_DEVICE_NAME_LENGTH);
+		char *szName = g_szdevice_name + g_cchdevice_name;
+		ImmVibeSPI_Device_GetName(i,
+				szName, VIBE_MAX_DEVICE_NAME_LENGTH);
 
 		/* Append version information and get buffer length */
-		strcat(szName, VERSION_STR);
-		g_cchDeviceName += strlen(szName);
+		strlcat(szName, VERSION_STR, sizeof(VERSION_STR));
+		g_cchdevice_name += strnlen(szName, sizeof(szName));
 
-		g_SamplesBuffer[i].nIndexPlayingBuffer = -1; /* Not playing */
-		g_SamplesBuffer[i].actuatorSamples[0].nBufferSize = 0;
-		g_SamplesBuffer[i].actuatorSamples[1].nBufferSize = 0;
+		g_samples_buffer[i].nindex_playing_buffer = -1;/* Not playing */
+		g_samples_buffer[i].actuator_samples[0].nbuffer_size = 0;
+		g_samples_buffer[i].actuator_samples[1].nbuffer_size = 0;
 	}
-
 	wake_lock_init(&vib_wake_lock, WAKE_LOCK_SUSPEND, "vib_present");
-	return 0;
 
-err_platform_drv_reg:
-	platform_device_unregister(&platdev);
-err_platform_dev_reg:
-#ifdef IMPLEMENT_AS_CHAR_DRIVER
-	unregister_chrdev(g_nMajor, MODULE_NAME);
-#else
-	misc_deregister(&miscdev);
-#endif
-	return nRet;
+	vibetonz_start();
+
+
+	return 0;
 }
 
-void cleanup_module(void)
+static int tspdrv_remove(struct platform_device *pdev)
 {
-	DbgOut((KERN_INFO "tspdrv: cleanup_module.\n"));
+	DbgOut((KERN_INFO "tspdrv: tspdrv_remove.\n"));
+
+	iounmap(virt_mmss_gp1_base);
 
 	DbgRecorderTerminate(());
 
 	VibeOSKernelLinuxTerminateTimer();
 	ImmVibeSPI_ForceOut_Terminate();
 
-	platform_driver_unregister(&platdrv);
-	platform_device_unregister(&platdev);
-
-#ifdef IMPLEMENT_AS_CHAR_DRIVER
-	unregister_chrdev(g_nMajor, MODULE_NAME);
-#else
-	misc_deregister(&miscdev);
-#endif
 	wake_lock_destroy(&vib_wake_lock);
+
+	return 0;
 }
 
 static int open(struct inode *inode, struct file *file)
@@ -341,30 +519,32 @@ static int release(struct inode *inode, struct file *file)
 
 static ssize_t read(struct file *file, char *buf, size_t count, loff_t *ppos)
 {
-	const size_t nBufSize = (g_cchDeviceName > (size_t)(*ppos)) ?
-		min(count, g_cchDeviceName - (size_t)(*ppos)) : 0;
+	const size_t nbufsize =
+			(g_cchdevice_name > (size_t)(*ppos)) ?
+			min(count, g_cchdevice_name - (size_t)(*ppos)) : 0;
 
 	/* End of buffer, exit */
-	if (0 == nBufSize)
+	if (0 == nbufsize)
 		return 0;
 
-	if (0 != copy_to_user(buf, g_szDeviceName + (*ppos), nBufSize))	{
+	if (0 != copy_to_user(buf, g_szdevice_name + (*ppos), nbufsize)) {
 		/* Failed to copy all the data, exit */
 		DbgOut((KERN_ERR "tspdrv: copy_to_user failed.\n"));
 		return 0;
 	}
 
 	/* Update file position and return copied buffer size */
-	*ppos += nBufSize;
-	return nBufSize;
+	*ppos += nbufsize;
+	return nbufsize;
 }
 
 static ssize_t write(struct file *file, const char *buf, size_t count,
-	loff_t *ppos)
+					 loff_t *ppos)
 {
 	int i = 0;
 
 	*ppos = 0;  /* file position not used, always set to 0 */
+	/* DbgOut((KERN_ERR "tspdrv: write....\n")); */
 
 	/*
 	** Prevent unauthorized caller to write data.
@@ -374,33 +554,39 @@ static ssize_t write(struct file *file, const char *buf, size_t count,
 		DbgOut((KERN_ERR "tspdrv: unauthorized write.\n"));
 		return 0;
 	}
-
+#ifdef CONFIG_TACTILE_ASSIST
 	/* Check buffer size */
 	if ((count < SPI_HEADER_SIZE) || (count > SPI_BUFFER_SIZE)) {
 		DbgOut((KERN_ERR "tspdrv: invalid write buffer size.\n"));
 		return 0;
 	}
-
-	if (count == SPI_HEADER_SIZE) {
+	if (count == SPI_HEADER_SIZE)
 		g_bOutputDataBufferEmpty = 1;
-	} else {
+	else
 		g_bOutputDataBufferEmpty = 0;
+#else
+	if ((count <= SPI_HEADER_SIZE) || (count > SPI_BUFFER_SIZE)) {
+		DbgOut((KERN_ERR "tspdrv: invalid write buffer size.\n"));
+		return 0;
 	}
-
+#endif
 	/* Copy immediately the input buffer */
-	if (0 != copy_from_user(g_cWriteBuffer, buf, count)) {
+	if (0 != copy_from_user(g_cwrite_buffer, buf, count)) {
 		/* Failed to copy all the data, exit */
 		DbgOut((KERN_ERR "tspdrv: copy_from_user failed.\n"));
 		return 0;
 	}
 
 	while (i < count) {
-		int nIndexFreeBuffer;   /* initialized below */
+		int nindex_free_buffer;   /* initialized below */
 
-		samples_buffer* pInputBuffer =	(samples_buffer *)
-			(&g_cWriteBuffer[i]);
-
-		if ((i + SPI_HEADER_SIZE) > count) {
+		samples_buffer *pinput_buffer =
+			(samples_buffer *)(&g_cwrite_buffer[i]);
+#ifdef CONFIG_TACTILE_ASSIST
+				if ((i + SPI_HEADER_SIZE) > count) {
+#else
+				if ((i + SPI_HEADER_SIZE) >= count) {
+#endif
 			/*
 			** Index is about to go beyond the buffer size.
 			** (Should never happen).
@@ -410,10 +596,9 @@ static ssize_t write(struct file *file, const char *buf, size_t count,
 		}
 
 		/* Check bit depth */
-		if (8 != pInputBuffer->nBitDepth)
+		if (8 != pinput_buffer->nbit_depth)
 			DbgOut((KERN_WARNING
-				"tspdrv: invalid bit depth."
-				"Use default value (8)\n"));
+			"tspdrv: invalid bit depth.Use default value(8).\n"));
 
 		/* The above code not valid if SPI header size is not 3 */
 #if (SPI_HEADER_SIZE != 3)
@@ -421,7 +606,8 @@ static ssize_t write(struct file *file, const char *buf, size_t count,
 #endif
 
 		/* Check buffer size */
-		if ((i + SPI_HEADER_SIZE + pInputBuffer->nBufferSize) > count) {
+		if ((i + SPI_HEADER_SIZE + pinput_buffer->nbuffer_size)
+			> count) {
 			/*
 			** Index is about to go beyond the buffer size.
 			** (Should never happen).
@@ -431,82 +617,82 @@ static ssize_t write(struct file *file, const char *buf, size_t count,
 		}
 
 		/* Check actuator index */
-		if (NUM_ACTUATORS <= pInputBuffer->nActuatorIndex) {
+		if (NUM_ACTUATORS <= pinput_buffer->nactuator_index) {
 			DbgOut((KERN_ERR "tspdrv: invalid actuator index.\n"));
-			i += (SPI_HEADER_SIZE + pInputBuffer->nBufferSize);
+			i += (SPI_HEADER_SIZE + pinput_buffer->nbuffer_size);
 			continue;
 		}
 
-		if (0 == g_SamplesBuffer[pInputBuffer->nActuatorIndex].
-			actuatorSamples[0].nBufferSize) {
-			nIndexFreeBuffer = 0;
-		} else if (0 == g_SamplesBuffer[pInputBuffer->nActuatorIndex].
-			actuatorSamples[1].nBufferSize) {
-			nIndexFreeBuffer = 1;
+		if (0 == g_samples_buffer[pinput_buffer->nactuator_index]
+			.actuator_samples[0].nbuffer_size) {
+			nindex_free_buffer = 0;
+		} else if (0 == g_samples_buffer[pinput_buffer->nactuator_index]
+			.actuator_samples[1].nbuffer_size) {
+			nindex_free_buffer = 1;
 		} else {
 			/* No room to store new samples  */
 			DbgOut((KERN_ERR
-				"tspdrv: no room to store new samples.\n"));
+			 "tspdrv: no room to store new samples.\n"));
 			return 0;
 		}
 
 		/* Store the data in the free buffer of the given actuator */
-		memcpy(&(g_SamplesBuffer[pInputBuffer->nActuatorIndex].
-			actuatorSamples[nIndexFreeBuffer]), &g_cWriteBuffer[i],
-			(SPI_HEADER_SIZE + pInputBuffer->nBufferSize));
+		memcpy(
+			   &(g_samples_buffer[pinput_buffer->nactuator_index]
+			   .actuator_samples[nindex_free_buffer]),
+			   &g_cwrite_buffer[i],
+			   (SPI_HEADER_SIZE + pinput_buffer->nbuffer_size));
 
-		/* if the no buffer is playing, prepare to play
-		  * g_SamplesBuffer[pInputBuffer->nActuatorIndex].
-		  * actuatorSamples[nIndexFreeBuffer] */
-		if (-1 == g_SamplesBuffer[pInputBuffer->
-			nActuatorIndex].nIndexPlayingBuffer) {
-			g_SamplesBuffer[pInputBuffer->nActuatorIndex].
-				nIndexPlayingBuffer = nIndexFreeBuffer;
-			g_SamplesBuffer[pInputBuffer->nActuatorIndex].
-				nIndexOutputValue = 0;
+		/*  If the no buffer is playing, prepare to play
+		 ** g_samples_buffer[pinput_buffer->nactuator_index].
+		 ** actuator_samples[nindex_free_buffer]
+		 */
+		if (-1 == g_samples_buffer[pinput_buffer->nactuator_index]
+			.nindex_playing_buffer) {
+			g_samples_buffer[pinput_buffer->nactuator_index]
+				.nindex_playing_buffer = nindex_free_buffer;
+			g_samples_buffer[pinput_buffer->nactuator_index]
+				.nindex_output_value = 0;
 		}
 
 		/* Increment buffer index */
-		i += (SPI_HEADER_SIZE + pInputBuffer->nBufferSize);
+		i += (SPI_HEADER_SIZE + pinput_buffer->nbuffer_size);
 	}
 
 #ifdef QA_TEST
-	g_nForceLog[g_nForceLogIndex++] = g_cSPIBuffer[0];
-	if (g_nForceLogIndex >= FORCE_LOG_BUFFER_SIZE) {
+	g_nforcelog[g_nforcelog_index++] = g_cSPIBuffer[0];
+	if (g_nforcelog_index >= FORCE_LOG_BUFFER_SIZE) {
 		for (i = 0; i < FORCE_LOG_BUFFER_SIZE; i++) {
-			printk(KERN_DEBUG "<6>%d\t%d\n",
-				g_nTime, g_nForceLog[i]);
-			g_nTime += TIME_INCREMENT;
+			printk(KERN_INFO "%d\t%d\n", g_ntime, g_nforcelog[i]);
+			g_ntime += TIME_INCREMENT;
 		}
-		g_nForceLogIndex = 0;
+		g_nforcelog_index = 0;
 	}
 #endif
 
 	/* Start the timer after receiving new output force */
-	g_bIsPlaying = true;
+	g_bisplaying = true;
 	VibeOSKernelLinuxStartTimer();
 
 	return count;
 }
 
-static long unlocked_ioctl(struct file *file, unsigned int cmd,
-	unsigned long arg)
+static long ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 #ifdef QA_TEST
 	int i;
 #endif
 
-	DbgOut((KERN_INFO "tspdrv: ioctl cmd[0x%x].\n", cmd));
-
+	/* DbgOut(KERN_INFO "tspdrv: ioctl cmd[0x%x].\n", cmd); */
 	switch (cmd) {
 	case TSPDRV_STOP_KERNEL_TIMER:
 		/*
-		  * As we send one sample ahead of time,
-		  * we need to finish playing the last sample
-		  * before stopping the timer. So we just set a flag here.
-		  */
-		if (true == g_bIsPlaying)
-			g_bStopRequested = true;
+		** As we send one sample ahead of time, we need to finish
+		** playing the last sample before stopping the timer.
+		** So we just set a flag here.
+		*/
+		if (true == g_bisplaying)
+			g_bstoprequested = true;
 
 #ifdef VIBEOSKERNELPROCESSDATA
 		/* Last data processing to disable amp and stop timer */
@@ -514,46 +700,51 @@ static long unlocked_ioctl(struct file *file, unsigned int cmd,
 #endif
 
 #ifdef QA_TEST
-		if (g_nForceLogIndex) {
-			for (i = 0; i < g_nForceLogIndex; i++) {
-				printk(KERN_DEBUG "<6>%d\t%d\n",
-					g_nTime, g_nForceLog[i]);
-				g_nTime += TIME_INCREMENT;
+		if (g_nforcelog_index) {
+			for (i = 0; i < g_nforcelog_index; i++) {
+				printk(KERN_INFO "%d\t%d\n"
+					   , g_ntime, g_nforcelog[i]);
+				g_ntime += TIME_INCREMENT;
 			}
 		}
-		g_nTime = 0;
-		g_nForceLogIndex = 0;
+		g_ntime = 0;
+		g_nforcelog_index = 0;
 #endif
 		break;
 
 	case TSPDRV_MAGIC_NUMBER:
+#ifdef CONFIG_TACTILE_ASSIST
 	case TSPDRV_SET_MAGIC_NUMBER:
-		file->private_data = (void *)TSPDRV_MAGIC_NUMBER;
+#endif
+		filp->private_data = (void *)TSPDRV_MAGIC_NUMBER;
 		break;
 
 	case TSPDRV_ENABLE_AMP:
 		wake_lock(&vib_wake_lock);
+		vibe_set_pwm_freq(0);
+		vibe_pwm_onoff(1);
 		ImmVibeSPI_ForceOut_AmpEnable(arg);
 		DbgRecorderReset((arg));
 		DbgRecord((arg, ";------- TSPDRV_ENABLE_AMP ---------\n"));
 		break;
 
 	case TSPDRV_DISABLE_AMP:
-		/* Small fix for now to handle proper combination of
-		  * TSPDRV_STOP_KERNEL_TIMER and TSPDRV_DISABLE_AMP together
-		  * If a stop was requested, ignore the request as the amp
-		  * will be disabled by the timer proc when it's ready
-		  */
-#if 0
-		if (!g_bStopRequested) {
-			ImmVibeSPI_ForceOut_AmpDisable(arg);
-#endif
-		g_bStopRequested = true;
+		/*
+		** Small fix for now to handle proper combination of
+		** TSPDRV_STOP_KERNEL_TIMER and TSPDRV_DISABLE_AMP together
+		** If a stop was requested, ignore the request as the amp
+		** will be disabled by the timer proc when it's ready
+		*/
+#ifdef CONFIG_TACTILE_ASSIST
+		g_bstoprequested = true;
 		/* Last data processing to disable amp and stop timer */
 		VibeOSKernelProcessData(NULL);
-		g_bIsPlaying = false;
+		g_bisplaying = false;
+#else
+		if (!g_bstoprequested)
+			ImmVibeSPI_ForceOut_AmpDisable(arg);
+#endif
 		wake_unlock(&vib_wake_lock);
-
 		break;
 
 	case TSPDRV_GET_NUM_ACTUATORS:
@@ -567,26 +758,55 @@ static int suspend(struct platform_device *pdev, pm_message_t state)
 {
 	int ret;
 
-	if (g_bIsPlaying) {
+	if (g_bisplaying) {
 		ret = -EBUSY;
 	} else {
+		/* Disable system timers */
+		vibetonz_clk_off(&pdev->dev);
+
 		ret = 0;
 	}
-
-	DbgOut((KERN_DEBUG "tspdrv: %s (%d).\n", __func__, ret));
+	DbgOut(KERN_DEBUG "tspdrv: %s (%d).\n", __func__, ret);
 	return ret;
 }
 
 static int resume(struct platform_device *pdev)
 {
-	DbgOut((KERN_DEBUG "tspdrv: %s.\n", __func__));
+	/* Restart system timers */
+	DbgOut(KERN_DEBUG "tspdrv: %s.\n", __func__);
 	return 0;
 }
 
-static void platform_release(struct device *dev)
+static const struct of_device_id vib_motor_match[] = {
+	{.compatible = "vibrator"},
+	{}
+};
+static struct platform_driver tspdrv_driver = {
+	.probe = tspdrv_probe,
+	.remove = (tspdrv_remove),
+	.suspend = suspend,
+	.resume = resume,
+	.driver = {
+		.name = MODULE_NAME,
+		.owner = THIS_MODULE,
+		.of_match_table = vib_motor_match,
+	},
+};
+
+static int __init tspdrv_init(void)
 {
-	DbgOut((KERN_INFO "tspdrv: platform_release.\n"));
+	return platform_driver_register(&tspdrv_driver);
 }
 
-late_initcall(init_module);
-module_exit(cleanup_module);
+static void __exit tspdrv_exit(void)
+{
+	platform_driver_unregister(&tspdrv_driver);
+}
+
+late_initcall(tspdrv_init);
+module_exit(tspdrv_exit);
+
+/* Module info */
+MODULE_AUTHOR("Immersion Corporation");
+MODULE_DESCRIPTION("TouchSense Kernel Module");
+MODULE_LICENSE("GPL v2");

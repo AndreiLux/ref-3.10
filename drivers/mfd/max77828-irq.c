@@ -2,7 +2,7 @@
  * max77828-irq.c - Interrupt controller support for MAX77828
  *
  * Copyright (C) 2011 Samsung Electronics Co.Ltd
- * Seoyoung Jeong <seo0.jeong@samsung.com>
+ * SangYoung Son <hello.son@samsung.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,7 +27,6 @@
 #include <linux/gpio.h>
 #include <linux/mfd/max77828.h>
 #include <linux/mfd/max77828-private.h>
-#include <plat/gpio-cfg.h>
 
 static const u8 max77828_mask_reg[] = {
 	[MUIC_INT1] = MAX77828_MUIC_REG_INTMASK1,
@@ -70,8 +69,8 @@ static const struct max77828_irq_data max77828_irqs[] = {
 	DECLARE_IRQ(MAX77828_MUIC_IRQ_INT3_MPNACK,	MUIC_INT3, 1 << 3),
 	DECLARE_IRQ(MAX77828_MUIC_IRQ_INT3_MRXBUFOW,	MUIC_INT3, 1 << 4),
 	DECLARE_IRQ(MAX77828_MUIC_IRQ_INT3_MRXTRF,	MUIC_INT3, 1 << 5),
-	DECLARE_IRQ(MAX77828_MUIC_IRQ_MRXPERR,		MUIC_INT3, 1 << 6),
-	DECLARE_IRQ(MAX77828_MUIC_IRQ_MRXRDY,		MUIC_INT3, 1 << 7),
+	DECLARE_IRQ(MAX77828_MUIC_IRQ_INT3_MRXPERR,	MUIC_INT3, 1 << 6),
+	DECLARE_IRQ(MAX77828_MUIC_IRQ_INT3_MRXRDY,	MUIC_INT3, 1 << 7),
 };
 
 static void max77828_irq_lock(struct irq_data *data)
@@ -117,7 +116,7 @@ static void max77828_irq_mask(struct irq_data *data)
 	if (irq_data->group >= MAX77828_IRQ_GROUP_NR)
 		return;
 
-		max77828->irq_masks_cur[irq_data->group] &= ~irq_data->mask;
+	max77828->irq_masks_cur[irq_data->group] &= ~irq_data->mask;
 }
 
 static void max77828_irq_unmask(struct irq_data *data)
@@ -129,15 +128,19 @@ static void max77828_irq_unmask(struct irq_data *data)
 	if (irq_data->group >= MAX77828_IRQ_GROUP_NR)
 		return;
 
-		max77828->irq_masks_cur[irq_data->group] |= irq_data->mask;
+	max77828->irq_masks_cur[irq_data->group] |= irq_data->mask;
 }
 
+static void max77828_irq_ack(struct irq_data *data)
+{
+}
 static struct irq_chip max77828_irq_chip = {
-	.name			= MFD_DEV_NAME,
+	.name			= "max77828",
 	.irq_bus_lock		= max77828_irq_lock,
 	.irq_bus_sync_unlock	= max77828_irq_sync_unlock,
 	.irq_mask		= max77828_irq_mask,
 	.irq_unmask		= max77828_irq_unmask,
+	.irq_ack		= max77828_irq_ack,
 };
 
 static irqreturn_t max77828_irq_thread(int irq, void *data)
@@ -145,56 +148,36 @@ static irqreturn_t max77828_irq_thread(int irq, void *data)
 	struct max77828_dev *max77828 = data;
 	u8 irq_reg[MAX77828_IRQ_GROUP_NR] = {0};
 	u8 tmp_irq_reg[MAX77828_IRQ_GROUP_NR] = {};
-	static int check_num;
-	int i, ret;
-
+	int i;
 	pr_debug("%s: irq gpio pre-state(0x%02x)\n", __func__,
-				gpio_get_value(max77828->irq_gpio));
+		gpio_get_value(max77828->irq_gpio));
 
-#if defined(CONFIG_MUIC_IRQ_CHECK_WR)
 clear_retry:
-#endif /* CONFIG_MUIC_IRQ_CHECK_WR */
-	ret = max77828_bulk_read(max77828->muic, MAX77828_MUIC_REG_INT1,
-				MAX77828_NUM_IRQ_MUIC_REGS,
-				&tmp_irq_reg[MUIC_INT1]);
-	if (ret) {
-		pr_err("%s:%s Failed to read interrupt source: %d\n",
-			MFD_DEV_NAME, __func__, ret);
-		return IRQ_NONE;
-	}
+	max77828_bulk_read(max77828->muic, MAX77828_MUIC_REG_INT1,
+			MAX77828_NUM_IRQ_MUIC_REGS,
+			&tmp_irq_reg[MUIC_INT1]);
 
 	/* Or temp irq register to irq register for if it retries */
-	for (i = MUIC_INT1; i <= MUIC_MAX_INT; i++)
+	for (i = MUIC_INT1; i < MAX77828_IRQ_GROUP_NR; i++)
 		irq_reg[i] |= tmp_irq_reg[i];
 
-	pr_info("%s: muic interrupt(0x%02x, 0x%02x, 0x%02x)\n", __func__,
-		irq_reg[MUIC_INT1], irq_reg[MUIC_INT2], irq_reg[MUIC_INT3]);
+	pr_info("%s: muic interrupt(0x%02x, 0x%02x, 0x%02x)\n",
+		__func__, irq_reg[MUIC_INT1],
+		irq_reg[MUIC_INT2], irq_reg[MUIC_INT3]);
 
-	/* for debug */
-	if ( (irq_reg[MUIC_INT1] == 0) && (irq_reg[MUIC_INT2] == 0)
-			&& (irq_reg[MUIC_INT3] == 0)) {
-		pr_info("%s: irq gpio post-state(0x%02x)\n", __func__,
-			gpio_get_value(max77828->irq_gpio));
-		if (check_num >= 15) {
-			max77828_muic_read_register(max77828->muic);
-			panic("max77828 muic interrupt gpio Err!\n");
-		}
-		check_num++;
-	} else
-		check_num = 0;
+	pr_debug("%s: irq gpio post-state(0x%02x)\n", __func__,
+		gpio_get_value(max77828->irq_gpio));
 
-#if defined(CONFIG_MUIC_IRQ_CHECK_WR)
 	if (gpio_get_value(max77828->irq_gpio) == 0) {
 		pr_warn("%s: irq_gpio is not High!\n", __func__);
 		goto clear_retry;
 	}
-#endif /* CONFIG_MUIC_IRQ_CHECK_WR */
-
+#if 0
 	/* Apply masking */
 	for (i = 0; i < MAX77828_IRQ_GROUP_NR; i++) {
-		irq_reg[i] &= max77828->irq_masks_cur[i];
+			irq_reg[i] &= max77828->irq_masks_cur[i];
 	}
-
+#endif
 	/* Report */
 	for (i = 0; i < MAX77828_IRQ_NR; i++) {
 		if (irq_reg[max77828_irqs[i].group] & max77828_irqs[i].mask)
@@ -204,12 +187,25 @@ clear_retry:
 	return IRQ_HANDLED;
 }
 
+int max77828_irq_resume(struct max77828_dev *max77828)
+{
+	int ret = 0;
+	if (max77828->irq && max77828->irq_base)
+		ret = max77828_irq_thread(max77828->irq_base, max77828);
+
+	dev_info(max77828->dev, "%s: irq_resume ret=%d", __func__, ret);
+
+	return ret >= 0 ? 0 : ret;
+}
+
 int max77828_irq_init(struct max77828_dev *max77828)
 {
 	int i;
 	int cur_irq;
 	int ret;
 
+	pr_info("func: %s, irq_gpio: %d, irq_base: %d\n", __func__,
+			max77828->irq_gpio, max77828->irq_base);
 	if (!max77828->irq_gpio) {
 		dev_warn(max77828->dev, "No interrupt specified.\n");
 		max77828->irq_base = 0;
@@ -224,9 +220,6 @@ int max77828_irq_init(struct max77828_dev *max77828)
 	mutex_init(&max77828->irqlock);
 
 	max77828->irq = gpio_to_irq(max77828->irq_gpio);
-	pr_info("%s:%s irq=%d, irq->gpio=%d\n", MFD_DEV_NAME, __func__,
-			max77828->irq, max77828->irq_gpio);
-
 	ret = gpio_request(max77828->irq_gpio, "if_pmic_irq");
 	if (ret) {
 		dev_err(max77828->dev, "%s: failed requesting gpio %d\n",
@@ -265,7 +258,7 @@ int max77828_irq_init(struct max77828_dev *max77828)
 		cur_irq = i + max77828->irq_base;
 		irq_set_chip_data(cur_irq, max77828);
 		irq_set_chip_and_handler(cur_irq, &max77828_irq_chip,
-					 handle_level_irq);
+					 handle_edge_irq);
 		irq_set_nested_thread(cur_irq, 1);
 #ifdef CONFIG_ARM
 		set_irq_flags(cur_irq, IRQF_VALID);
@@ -275,7 +268,7 @@ int max77828_irq_init(struct max77828_dev *max77828)
 	}
 
 	ret = request_threaded_irq(max77828->irq, NULL, max77828_irq_thread,
-				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+				   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 				   "max77828-irq", max77828);
 
 	if (ret) {

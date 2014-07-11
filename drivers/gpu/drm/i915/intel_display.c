@@ -4333,8 +4333,7 @@ static void vlv_update_pll(struct intel_crtc *crtc)
 
 static void i9xx_update_pll(struct intel_crtc *crtc,
 			    intel_clock_t *reduced_clock,
-			    int num_connectors,
-			    bool needs_tv_clock)
+			    int num_connectors)
 {
 	struct drm_device *dev = crtc->base.dev;
 	struct drm_i915_private *dev_priv = dev->dev_private;
@@ -4392,7 +4391,7 @@ static void i9xx_update_pll(struct intel_crtc *crtc,
 	if (INTEL_INFO(dev)->gen >= 4)
 		dpll |= (6 << PLL_LOAD_PULSE_PHASE_SHIFT);
 
-	if (is_sdvo && needs_tv_clock)
+	if (is_sdvo && intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_TVOUT))
 		dpll |= PLL_REF_INPUT_TVCLKINBC;
 	else if (intel_pipe_has_type(&crtc->base, INTEL_OUTPUT_TVOUT))
 		/* XXX: just matching BIOS for now */
@@ -4717,8 +4716,7 @@ static int i9xx_crtc_mode_set(struct drm_crtc *crtc,
 	else
 		i9xx_update_pll(intel_crtc,
 				has_reduced_clock ? &reduced_clock : NULL,
-				num_connectors,
-				is_sdvo && is_tv);
+				num_connectors);
 
 	/* Set up the display plane register */
 	dspcntr = DISPPLANE_GAMMA_ENABLE;
@@ -8148,20 +8146,15 @@ static void intel_set_config_restore_state(struct drm_device *dev,
 }
 
 static bool
-is_crtc_connector_off(struct drm_mode_set *set)
+is_crtc_connector_off(struct drm_crtc *crtc, struct drm_connector *connectors,
+		      int num_connectors)
 {
 	int i;
 
-	if (set->num_connectors == 0)
-		return false;
-
-	if (WARN_ON(set->connectors == NULL))
-		return false;
-
-	for (i = 0; i < set->num_connectors; i++)
-		if (set->connectors[i]->encoder &&
-		    set->connectors[i]->encoder->crtc == set->crtc &&
-		    set->connectors[i]->dpms != DRM_MODE_DPMS_ON)
+	for (i = 0; i < num_connectors; i++)
+		if (connectors[i].encoder &&
+		    connectors[i].encoder->crtc == crtc &&
+		    connectors[i].dpms != DRM_MODE_DPMS_ON)
 			return true;
 
 	return false;
@@ -8174,8 +8167,10 @@ intel_set_config_compute_mode_changes(struct drm_mode_set *set,
 
 	/* We should be able to check here if the fb has the same properties
 	 * and then just flip_or_move it */
-	if (is_crtc_connector_off(set)) {
-		config->mode_changed = true;
+	if (set->connectors != NULL &&
+	    is_crtc_connector_off(set->crtc, *set->connectors,
+				  set->num_connectors)) {
+			config->mode_changed = true;
 	} else if (set->crtc->fb != set->fb) {
 		/* If we have no fb then treat it as a full mode set */
 		if (set->crtc->fb == NULL) {
@@ -8919,17 +8914,6 @@ static void quirk_invert_brightness(struct drm_device *dev)
 	DRM_INFO("applying inverted panel brightness quirk\n");
 }
 
-/*
- * Some machines (Dell XPS13) suffer broken backlight controls if
- * BLM_PCH_PWM_ENABLE is set.
- */
-static void quirk_no_pcm_pwm_enable(struct drm_device *dev)
-{
-	struct drm_i915_private *dev_priv = dev->dev_private;
-	dev_priv->quirks |= QUIRK_NO_PCH_PWM_ENABLE;
-	DRM_INFO("applying no-PCH_PWM_ENABLE quirk\n");
-}
-
 struct intel_quirk {
 	int device;
 	int subsystem_vendor;
@@ -8999,11 +8983,6 @@ static struct intel_quirk intel_quirks[] = {
 
 	/* Acer Aspire 4736Z */
 	{ 0x2a42, 0x1025, 0x0260, quirk_invert_brightness },
-
-	/* Dell XPS13 HD Sandy Bridge */
-	{ 0x0116, 0x1028, 0x052e, quirk_no_pcm_pwm_enable },
-	/* Dell XPS13 HD and XPS13 FHD Ivy Bridge */
-	{ 0x0166, 0x1028, 0x058b, quirk_no_pcm_pwm_enable },
 };
 
 static void intel_init_quirks(struct drm_device *dev)

@@ -33,6 +33,27 @@ config IR_LIRC_CODEC
 	   Enable this option to pass raw IR to and from userspace via
 	   the LIRC interface.
 
+config USER_RC_INPUT
+	tristate "User Space Input device wrapper for Remote Control"
+	depends on RC_CORE
+
+	---help---
+	   Say Y if you want to report remote control input events
+	   from userspace.
+
+	   To compile this driver as a module, choose M here: the module will
+	   be called user-rc-input.
+
+config USER_SP_RC_INPUT
+	tristate "User Space Input device wrapper for Standby Processor Remote Control"
+	depends on RC_CORE
+
+	---help---
+	   Say Y if you want to report remote control input events
+	   from userspace.
+
+	   To compile this driver as a module, choose M here: the module will
+	   be called user-sp-input.
 
 config IR_NEC_DECODER
 	tristate "Enable IR raw decoder for the NEC protocol"
@@ -320,5 +341,24 @@ config IR_GPIO_CIR
 
 	   To compile this driver as a module, choose M here: the module will
 	   be called gpio-ir-recv.
+
+config IR_MSM_GENI
+	tristate "MSM GENI IR Controller"
+	depends on RC_CORE
+	default n
+	---help---
+	   Say Y here to enable support for integrated infrared module
+	   for MSM family processors.
+
+	   To compile this driver as a module, choose M here: the
+	   module will be called msm-geni-ir.
+
+config IR_MSM_GENI_TX
+	bool "MSM GENI IR Controller trasmitter"
+	depends on IR_MSM_GENI
+	default n
+	---help---
+	   Say Y here to enable support for integrated infrared transmitter
+	   for MSM family processors.
 
 endif #RC_DEVICES

@@ -597,16 +597,6 @@ config IO_36
 
 comment "Processor Features"
 
-config ARM_TRUSTZONE
-	bool "Support TrustZone-enabled Trusted Execution Environment"
-	default y
-	help
-	  Select if you want a kernel to be executed at non-secure world.
-	  This option should be used with related secure bootloader and
-	  TrustZone software.
-
-	  If you don't know about TrustZone, say 'N'.
-
 config ARM_LPAE
 	bool "Support for the Large Physical Address Extension"
 	depends on MMU && CPU_32v7 && !CPU_32v6 && !CPU_32v5 && \
@@ -799,15 +789,18 @@ config KUSER_HELPERS
 	  the CPU type fitted to the system.  This permits binaries to be
 	  run on ARMv4 through to ARMv7 without modification.
 
+	  See Documentation/arm/kernel_user_helpers.txt for details.
+
 	  However, the fixed address nature of these helpers can be used
 	  by ROP (return orientated programming) authors when creating
 	  exploits.
 
 	  If all of the binaries and libraries which run on your platform
 	  are built specifically for your platform, and make no use of
-	  these helpers, then you can turn this option off.  However,
-	  when such an binary or library is run, it will receive a SIGILL
-	  signal, which will terminate the program.
+	  these helpers, then you can turn this option off to hinder
+	  such exploits. However, in that case, if a binary or library
+	  relying on those helpers is run, it will receive a SIGILL signal,
+	  which will terminate the program.
 
 	  Say N here only if you are absolutely certain that you do not
 	  need these helpers; otherwise, the safe option is to say Y.
@@ -939,3 +932,15 @@ config ARCH_HAS_BARRIERS
 	help
 	  This option allows the use of custom mandatory barriers
 	  included via the mach/barriers.h file.
+
+config STRICT_MEMORY_RWX
+	bool "restrict kernel memory permissions as much as possible"
+	default n
+	help
+	  If this is set, kernel text will be made RX, kernel data and stack
+	  RW, rodata R (otherwise all of the kernel 1-to-1 mapping is
+	  made RWX).
+	  The tradeoff is that several sections are padded to
+	  1M boundaries (because their permissions are different and
+	  splitting the 1M pages into 4K ones causes TLB performance
+	  problems), wasting memory.

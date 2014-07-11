@@ -468,6 +468,25 @@ static inline bool queue_work(struct workqueue_struct *wq,
 {
 	return queue_work_on(WORK_CPU_UNBOUND, wq, work);
 }
+#ifdef CONFIG_WORKQUEUE_FRONT
+/**
+ * queue_work_front - queue work on a front workqueue
+ * @wq: workqueue to use
+ * @work: work to queue
+ *
+ * Returns %false if @work was already on a queue, %true otherwise.
+ *
+ * We queue the work to the CPU on which it was submitted, but if the CPU dies
+ * it can be processed by another CPU.
+ */
+extern bool queue_work_on_front(int cpu, struct workqueue_struct *wq,
+			struct work_struct *work);
+static inline bool queue_work_front(struct workqueue_struct *wq,
+			      struct work_struct *work)
+{
+	return queue_work_on_front(WORK_CPU_UNBOUND, wq, work);
+}
+#endif
 
 /**
  * queue_delayed_work - queue work on a workqueue after delay

@@ -15,12 +15,11 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/slab.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
 
-#include <linux/platform_data/video-msm_fb.h>
+#include <mach/msm_fb.h>
 
 struct panel_info {
 	struct platform_device pdev;

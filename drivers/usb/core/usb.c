@@ -41,9 +41,6 @@
 #include <linux/scatterlist.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_MDM_HSIC_PM)
-#include <linux/usb/quirks.h>
-#endif
 
 #include "usb.h"
 
@@ -278,19 +275,6 @@ static int usb_dev_suspend(struct device *dev)
 
 static int usb_dev_resume(struct device *dev)
 {
-#ifndef CONFIG_LTE_MODEM_SHANNON
-#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_MDM_HSIC_PM)
-	struct usb_device *udev = to_usb_device(dev);
-	struct device *pdev = dev->parent;
-
-	if (udev && udev->quirks & USB_QUIRK_NO_DPM_RESUME)
-		return 0;
-
-	/* EHCI root-hub resume later */
-	if (pdev && !strcmp("s5p-ehci", pdev->driver->name))
-		return 0;
-#endif
-#endif
 	return usb_resume(dev, PMSG_RESUME);
 }
 
@@ -460,8 +444,11 @@ struct usb_device *usb_alloc_dev(struct usb_device *parent,
 	INIT_LIST_HEAD(&dev->filelist);
 
 #ifdef	CONFIG_PM
-	pm_runtime_set_autosuspend_delay(&dev->dev,
-			usb_autosuspend_delay * 1000);
+	if (usb_hcd->driver->set_autosuspend_delay)
+		usb_hcd->driver->set_autosuspend_delay(dev);
+	else
+		pm_runtime_set_autosuspend_delay(&dev->dev,
+				usb_autosuspend_delay * 1000);
 	dev->connect_time = jiffies;
 	dev->active_duration = -jiffies;
 #endif
@@ -1009,12 +996,25 @@ static void usb_debugfs_cleanup(void)
 	debugfs_remove(usb_debug_root);
 }
 
+#ifdef CONFIG_SAMSUNG_LPM_MODE
+extern int poweroff_charging;
+#endif
+
 /*
  * Init
  */
 static int __init usb_init(void)
 {
 	int retval;
+
+#ifdef CONFIG_SAMSUNG_LPM_MODE
+	if(poweroff_charging)
+	{
+		nousb = true;
+		return 0;
+	}
+#endif
+
 	if (nousb) {
 		pr_info("%s: USB support disabled\n", usbcore_name);
 		return 0;

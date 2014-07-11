@@ -41,33 +41,39 @@
  * every single port-type of the following cable names. Please choose cable
  * names that are actually used in your extcon device.
  */
-const char extcon_cable_name[][CABLE_NAME_MAX + 1] = {
+const char *extcon_cable_name[] = {
 	[EXTCON_USB]		= "USB",
 	[EXTCON_USB_HOST]	= "USB-Host",
+	[EXTCON_USB_HOST_5V]	= "USB-Host-5V",
 	[EXTCON_TA]		= "TA",
+	[EXTCON_HV_TA]		= "High Voltage TA",
+	[EXTCON_CEA936_CHG]	= "CEA936",
 	[EXTCON_FAST_CHARGER]	= "Fast-charger",
 	[EXTCON_SLOW_CHARGER]	= "Slow-charger",
 	[EXTCON_CHARGE_DOWNSTREAM]	= "Charge-downstream",
-	[EXTCON_HDMI]		= "HDMI",
 	[EXTCON_MHL]		= "MHL",
-	[EXTCON_DVI]		= "DVI",
-	[EXTCON_VGA]		= "VGA",
-	[EXTCON_DOCK]		= "Dock",
-	[EXTCON_LINE_IN]	= "Line-in",
+	[EXTCON_MHL_VB]		= "MHL-VB",
 	[EXTCON_LINE_OUT]	= "Line-out",
-	[EXTCON_MIC_IN]		= "Microphone",
-	[EXTCON_HEADPHONE_OUT]	= "Headphone",
-	[EXTCON_SPDIF_IN]	= "SPDIF-in",
-	[EXTCON_SPDIF_OUT]	= "SPDIF-out",
-	[EXTCON_VIDEO_IN]	= "Video-in",
-	[EXTCON_VIDEO_OUT]	= "Video-out",
-	[EXTCON_MECHANICAL]	= "Mechanical",
+	[EXTCON_DESKDOCK]	= "Desk-dock",
+	[EXTCON_DESKDOCK_VB]	= "Desk-dock-VB",
+	[EXTCON_CARDOCK]	= "Car-dock",
+	[EXTCON_CARDOCK_VB]	= "Car-dock0-VB",
+	[EXTCON_AUDIODOCK]	= "Audio-dock",
+	[EXTCON_SMARTDOCK]	= "Smart-dock",
+	[EXTCON_SMARTDOCK_TA]	= "Smart-dock-TA",
+	[EXTCON_SMARTDOCK_USB]	= "Smart-dock-USB",
+	[EXTCON_JIG_UARTOFF]	= "JIG-UART-OFF",
+	[EXTCON_JIG_UARTOFF_VB]	= "JIG-UART-OFF-VB",
+	[EXTCON_JIG_UARTON]	= "JIG-UART-ON",
+	[EXTCON_JIG_USBOFF]	= "JIG-USB-OFF",
+	[EXTCON_JIG_USBON]	= "JIG-USB-ON",
+	[EXTCON_INCOMPATIBLE]	= "Incompatible-TA",
+	[EXTCON_CHARGING_CABLE] = "Charging-Cable",
+	[EXTCON_NONE]		= "None",
+	NULL,
 };
 
 static struct class *extcon_class;
-#if defined(CONFIG_ANDROID)
-static struct class_compat *switch_class;
-#endif /* CONFIG_ANDROID */
 
 static LIST_HEAD(extcon_dev_list);
 static DEFINE_MUTEX(extcon_dev_list_lock);
@@ -89,13 +95,17 @@ static int check_mutually_exclusive(struct extcon_dev *edev, u32 new_state)
 		return 0;
 
 	for (i = 0; edev->mutually_exclusive[i]; i++) {
-		int weight;
+		int count = 0, j;
 		u32 correspondants = new_state & edev->mutually_exclusive[i];
+		u32 exp = 1;
 
-		/* calculate the total number of bits set */
-		weight = hweight32(correspondants);
-		if (weight > 1)
-			return i + 1;
+		for (j = 0; j < 32; j++) {
+			if (exp & correspondants)
+				count++;
+			if (count > 1)
+				return i + 1;
+			exp <<= 1;
+		}
 	}
 
 	return 0;
@@ -129,7 +139,6 @@ static ssize_t state_show(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-int extcon_set_state(struct extcon_dev *edev, u32 state);
 static ssize_t state_store(struct device *dev, struct device_attribute *attr,
 			   const char *buf, size_t count)
 {
@@ -230,6 +239,8 @@ int extcon_update_state(struct extcon_dev *edev, u32 mask, u32 state)
 	int length;
 	unsigned long flags;
 
+	dev_info(edev->dev, "state: 0x%x, 0x%x, mask: 0x%x\n",
+						edev->state, state, mask);
 	spin_lock_irqsave(&edev->lock, flags);
 
 	if (edev->state != ((edev->state & ~mask) | (state & mask))) {
@@ -244,6 +255,8 @@ int extcon_update_state(struct extcon_dev *edev, u32 mask, u32 state)
 		edev->state &= ~mask;
 		edev->state |= state & mask;
 
+		dev_info(edev->dev, "state: 0x%x --> 0x%x\n",
+					old_state, edev->state);
 		raw_notifier_call_chain(&edev->nh, old_state, edev);
 
 		/* This could be in interrupt handler */
@@ -281,6 +294,7 @@ int extcon_update_state(struct extcon_dev *edev, u32 mask, u32 state)
 	} else {
 		/* No changes */
 		spin_unlock_irqrestore(&edev->lock, flags);
+		dev_info(edev->dev, "no changes\n");
 	}
 
 	return 0;
@@ -356,7 +370,7 @@ int extcon_get_cable_state(struct extcon_dev *edev, const char *cable_name)
 EXPORT_SYMBOL_GPL(extcon_get_cable_state);
 
 /**
- * extcon_set_cable_state_() - Set the status of a specific cable.
+ * extcon_get_cable_state_() - Set the status of a specific cable.
  * @edev:	the extcon device that has the cable.
  * @index:	cable index that can be retrieved by extcon_find_cable_index().
  * @cable_state:	the new cable status. The default semantics is
@@ -367,6 +381,7 @@ int extcon_set_cable_state_(struct extcon_dev *edev,
 {
 	u32 state;
 
+	dev_info(edev->dev, "index = %d\n", index);
 	if (index < 0 || (edev->max_supported && edev->max_supported <= index))
 		return -EINVAL;
 
@@ -376,7 +391,7 @@ int extcon_set_cable_state_(struct extcon_dev *edev,
 EXPORT_SYMBOL_GPL(extcon_set_cable_state_);
 
 /**
- * extcon_set_cable_state() - Set the status of a specific cable.
+ * extcon_get_cable_state() - Set the status of a specific cable.
  * @edev:	the extcon device that has the cable.
  * @cable_name:	cable name.
  * @cable_state:	the new cable status. The default semantics is
@@ -387,6 +402,8 @@ EXPORT_SYMBOL_GPL(extcon_set_cable_state_);
 int extcon_set_cable_state(struct extcon_dev *edev,
 			const char *cable_name, bool cable_state)
 {
+	dev_info(edev->dev, "%s: %s is %s\n", __func__,
+			cable_name, (cable_state) ? "attached" : "detached");
 	return extcon_set_cable_state_(edev, extcon_find_cable_index
 					(edev, cable_name), cable_state);
 }
@@ -428,6 +445,11 @@ static int _call_per_cable(struct notifier_block *nb, unsigned long val,
 		if (val & (1 << obj->cable_index))
 			cable_state = false;
 
+		dev_info(edev->dev, "%s: %s is %s, calling %pF\n", __func__,
+				extcon_cable_name[obj->cable_index],
+				(cable_state) ? "attached" : "detached",
+				obj->user_nb->notifier_call);
+
 		return obj->user_nb->notifier_call(obj->user_nb,
 				cable_state, ptr);
 	}
@@ -441,8 +463,6 @@ static int _call_per_cable(struct notifier_block *nb, unsigned long val,
  *			      extcon device.
  * @obj:	an empty extcon_specific_cable_nb object to be returned.
  * @extcon_name:	the name of extcon device.
- *			if NULL, extcon_register_interest will register
- *			every cable with the target cable_name given.
  * @cable_name:		the target cable name.
  * @nb:		the notifier block to get notified.
  *
@@ -462,6 +482,7 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 			     const char *extcon_name, const char *cable_name,
 			     struct notifier_block *nb)
 {
+
 	if (!obj || !cable_name || !nb)
 		return -EINVAL;
 
@@ -471,23 +492,23 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 			return -ENODEV;
 
 		obj->cable_index = extcon_find_cable_index(obj->edev,
-							  cable_name);
+								cable_name);
 		if (obj->cable_index < 0)
-			return obj->cable_index;
+			return -ENODEV;
 
 		obj->user_nb = nb;
 
 		obj->internal_nb.notifier_call = _call_per_cable;
 
 		return raw_notifier_chain_register(&obj->edev->nh,
-						  &obj->internal_nb);
+							&obj->internal_nb);
 	} else {
 		struct class_dev_iter iter;
 		struct extcon_dev *extd;
 		struct device *dev;
-
 		if (!extcon_class)
 			return -ENODEV;
+
 		class_dev_iter_init(&iter, extcon_class, NULL, NULL);
 		while ((dev = class_dev_iter_next(&iter))) {
 			extd = (struct extcon_dev *)dev_get_drvdata(dev);
@@ -498,12 +519,10 @@ int extcon_register_interest(struct extcon_specific_cable_nb *obj,
 			class_dev_iter_exit(&iter);
 			return extcon_register_interest(obj, extd->name,
 						cable_name, nb);
+			}
+			return -ENODEV;
 		}
-
-		return -ENODEV;
-	}
 }
-
 /**
  * extcon_unregister_interest() - Unregister the notifier registered by
  *				extcon_register_interest().
@@ -561,19 +580,48 @@ static int create_extcon_class(void)
 			return PTR_ERR(extcon_class);
 		extcon_class->dev_attrs = extcon_attrs;
 
-#if defined(CONFIG_ANDROID)
-		switch_class = class_compat_register("switch");
-		if (WARN(!switch_class, "cannot allocate"))
-			return -ENOMEM;
-#endif /* CONFIG_ANDROID */
 	}
 
 	return 0;
 }
 
+static void extcon_cleanup(struct extcon_dev *edev, bool skip)
+{
+	mutex_lock(&extcon_dev_list_lock);
+	list_del(&edev->entry);
+	mutex_unlock(&extcon_dev_list_lock);
+
+	if (!skip && get_device(edev->dev)) {
+		int index;
+
+		if (edev->mutually_exclusive && edev->max_supported) {
+			for (index = 0; edev->mutually_exclusive[index];
+			     index++)
+				kfree(edev->d_attrs_muex[index].attr.name);
+			kfree(edev->d_attrs_muex);
+			kfree(edev->attrs_muex);
+		}
+
+		for (index = 0; index < edev->max_supported; index++)
+			kfree(edev->cables[index].attr_g.name);
+
+		if (edev->max_supported) {
+			kfree(edev->extcon_dev_type.groups);
+			kfree(edev->cables);
+		}
+
+		device_unregister(edev->dev);
+		put_device(edev->dev);
+	}
+
+	kfree(edev->dev);
+}
+
 static void extcon_dev_release(struct device *dev)
 {
-	kfree(dev);
+	struct extcon_dev *edev = (struct extcon_dev *) dev_get_drvdata(dev);
+
+	extcon_cleanup(edev, true);
 }
 
 static const char *muex_name = "mutually_exclusive";
@@ -749,11 +797,6 @@ int extcon_dev_register(struct extcon_dev *edev, struct device *dev)
 		put_device(edev->dev);
 		goto err_dev;
 	}
-#if defined(CONFIG_ANDROID)
-	if (switch_class)
-		ret = class_compat_create_link(switch_class, edev->dev,
-					       NULL);
-#endif /* CONFIG_ANDROID */
 
 	spin_lock_init(&edev->lock);
 
@@ -799,40 +842,7 @@ EXPORT_SYMBOL_GPL(extcon_dev_register);
  */
 void extcon_dev_unregister(struct extcon_dev *edev)
 {
-	int index;
-
-	mutex_lock(&extcon_dev_list_lock);
-	list_del(&edev->entry);
-	mutex_unlock(&extcon_dev_list_lock);
-
-	if (IS_ERR_OR_NULL(get_device(edev->dev))) {
-		dev_err(edev->dev, "Failed to unregister extcon_dev (%s)\n",
-				dev_name(edev->dev));
-		return;
-	}
-
-	if (edev->mutually_exclusive && edev->max_supported) {
-		for (index = 0; edev->mutually_exclusive[index];
-				index++)
-			kfree(edev->d_attrs_muex[index].attr.name);
-		kfree(edev->d_attrs_muex);
-		kfree(edev->attrs_muex);
-	}
-
-	for (index = 0; index < edev->max_supported; index++)
-		kfree(edev->cables[index].attr_g.name);
-
-	if (edev->max_supported) {
-		kfree(edev->extcon_dev_type.groups);
-		kfree(edev->cables);
-	}
-
-#if defined(CONFIG_ANDROID)
-	if (switch_class)
-		class_compat_remove_link(switch_class, edev->dev, NULL);
-#endif
-	device_unregister(edev->dev);
-	put_device(edev->dev);
+	extcon_cleanup(edev, false);
 }
 EXPORT_SYMBOL_GPL(extcon_dev_unregister);
 
@@ -844,9 +854,6 @@ module_init(extcon_class_init);
 
 static void __exit extcon_class_exit(void)
 {
-#if defined(CONFIG_ANDROID)
-	class_compat_unregister(switch_class);
-#endif
 	class_destroy(extcon_class);
 }
 module_exit(extcon_class_exit);

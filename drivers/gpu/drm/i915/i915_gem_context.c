@@ -113,7 +113,7 @@ static int get_context_size(struct drm_device *dev)
 	case 7:
 		reg = I915_READ(GEN7_CXT_SIZE);
 		if (IS_HASWELL(dev))
-			ret = HSW_CXT_TOTAL_SIZE;
+			ret = HSW_CXT_TOTAL_SIZE(reg) * 64;
 		else
 			ret = GEN7_CXT_TOTAL_SIZE(reg) * 64;
 		break;

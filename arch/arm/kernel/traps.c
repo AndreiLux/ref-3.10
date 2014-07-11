@@ -34,10 +34,12 @@
 #include <asm/unwind.h>
 #include <asm/tls.h>
 #include <asm/system_misc.h>
-
 #ifdef CONFIG_SEC_DEBUG
-#include <linux/sec_debug.h>
+#include <mach/sec_debug.h>
 #endif
+
+#include <trace/events/exception.h>
+
 static const char *handler[]= { "prefetch abort", "data abort", "address exception", "interrupt" };
 
 void *vectors_page;
@@ -242,20 +244,24 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		return 1;
 
 	print_modules();
-#if defined(CONFIG_SEC_DEBUG_UNHANDLED_FAULT_SAFE)
-	if (!strcmp("Unhandled fault", str))
-		__show_regs_without_extra(regs);
-	else
-		__show_regs(regs);
-#else
 	__show_regs(regs);
-#endif
 	printk(KERN_EMERG "Process %.*s (pid: %d, stack limit = 0x%p)\n",
 		TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), end_of_stack(tsk));
 
 	if (!user_mode(regs) || in_interrupt()) {
+#ifndef CONFIG_SEC_DEBUG
 		dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
 			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+#else
+		if (THREAD_SIZE + (unsigned long)task_stack_page(tsk) - regs->ARM_sp
+			> THREAD_SIZE) {
+			dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+					THREAD_SIZE/4 + regs->ARM_sp);
+		} else {
+			dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+					THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+		}
+#endif		
 		dump_backtrace(regs, tsk);
 		dump_instr(KERN_EMERG, regs);
 	}
@@ -305,19 +311,10 @@ static void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	raw_local_irq_restore(flags);
 	oops_exit();
 
-#if defined(CONFIG_SEC_DEBUG)
-	if (in_interrupt())
-		panic("%-51s\nPC is at %-42pS\nLR is at %-42pS",
-				"Fatal exception in interrupt", (void *)regs->ARM_pc, (void *)regs->ARM_lr);
-	if (panic_on_oops)
-		panic("%-51s\nPC is at %-42pS\nLR is at %-42pS",
-				"Fatal exception", (void *)regs->ARM_pc, (void *)regs->ARM_lr);
-#else
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)
 		panic("Fatal exception");
-#endif
 	if (signr)
 		do_exit(signr);
 }
@@ -330,6 +327,10 @@ void die(const char *str, struct pt_regs *regs, int err)
 	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
 	unsigned long flags = oops_begin();
 	int sig = SIGSEGV;
+	
+#ifdef CONFIG_SEC_DEBUG
+	secdbg_sched_msg("!!die!!");
+#endif
 
 	if (!user_mode(regs))
 		bug_type = report_bug(regs->ARM_pc, regs);
@@ -451,6 +452,8 @@ asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 		return;
 
 die_sig:
+	trace_undef_instr(regs, (void *)pc);
+
 #ifdef CONFIG_DEBUG_USER
 	if (user_debug & UDBG_UNDEFINED) {
 		printk(KERN_INFO "%s (%d): undefined instruction: pc=%p\n",
@@ -602,7 +605,7 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		return regs->ARM_r0;
 
 	case NR(set_tls):
-		thread->tp_value = regs->ARM_r0;
+		thread->tp_value[0] = regs->ARM_r0;
 		if (tls_emu)
 			return 0;
 		if (has_tls_reg) {
@@ -720,7 +723,7 @@ static int get_tp_trap(struct pt_regs *regs, unsigned int instr)
 	int reg = (instr >> 12) & 15;
 	if (reg == 15)
 		return 1;
-	regs->uregs[reg] = current_thread_info()->tp_value;
+	regs->uregs[reg] = current_thread_info()->tp_value[0];
 	regs->ARM_pc += 4;
 	return 0;
 }

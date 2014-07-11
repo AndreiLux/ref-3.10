@@ -20,8 +20,6 @@
 #define __MAX77823_CHARGER_H __FILE__
 
 #include <linux/mfd/core.h>
-#include <linux/mfd/max77823.h>
-#include <linux/mfd/max77823-private.h>
 #include <linux/regulator/machine.h>
 
 #define MAX77823_SAFEOUT2                0x80
@@ -86,13 +84,14 @@
 #define CHG_CNFG_00_OTG_SHIFT		        1
 #define CHG_CNFG_00_BUCK_SHIFT		        2
 #define CHG_CNFG_00_BOOST_SHIFT		        3
-#define CHG_CNFG_00_DIS_MUIC_CTRL_SHIFT	        5
 #define CHG_CNFG_00_MODE_MASK		        (0xf << CHG_CNFG_00_MODE_SHIFT)
 #define CHG_CNFG_00_CHG_MASK		        (1 << CHG_CNFG_00_CHG_SHIFT)
 #define CHG_CNFG_00_OTG_MASK		        (1 << CHG_CNFG_00_OTG_SHIFT)
 #define CHG_CNFG_00_BUCK_MASK		        (1 << CHG_CNFG_00_BUCK_SHIFT)
 #define CHG_CNFG_00_BOOST_MASK		        (1 << CHG_CNFG_00_BOOST_SHIFT)
-#define CHG_CNFG_00_DIS_MUIC_CTRL_MASK	        (1 << CHG_CNFG_00_DIS_MUIC_CTRL_SHIFT)
+#define CHG_CNFG_00_OTG_CTRL		\
+	(CHG_CNFG_00_OTG_MASK | CHG_CNFG_00_BOOST_MASK)
+
 #define MAX77823_MODE_DEFAULT                   0x04
 #define MAX77823_MODE_CHGR                      0x01
 #define MAX77823_MODE_OTG                       0x02
@@ -117,6 +116,9 @@
 /* MAX77823_CHG_REG_CHG_CNFG_09 */
 #define MAX77823_CHG_CHGIN_LIM                  0x7F
 
+/* MAX77823_CHG_REG_CHG_CNFG_10 */
+#define MAX77823_CHG_WCIN_LIM                  0x3F
+
 /* MAX77823_CHG_REG_CHG_CNFG_12 */
 #define MAX77823_CHG_WCINSEL		        0x40
 
@@ -138,6 +140,8 @@
 #define SIOP_CHARGING_LIMIT_CURRENT             1000
 #define SLOW_CHARGING_CURRENT_STANDARD          400
 
+#define INPUT_CURRENT_1000mA                    0x1E
+
 struct max77823_charger_data {
 	struct device           *dev;
 	struct i2c_client       *i2c;
@@ -147,6 +151,7 @@ struct max77823_charger_data {
 	struct max77823_platform_data *max77823_pdata;
 
 	struct power_supply	psy_chg;
+	struct power_supply	psy_otg;
 
 	struct workqueue_struct *wqueue;
 	struct work_struct	chgin_work;
@@ -154,6 +159,7 @@ struct max77823_charger_data {
 	struct delayed_work	recovery_work;	/*  softreg recovery work */
 	struct delayed_work	wpc_work;	/*  wpc detect work */
 	struct delayed_work	chgin_init_work;	/*  chgin init work */
+	struct delayed_work  chg_cable_work;
 
 /* mutex */
 	struct mutex irq_lock;
@@ -162,6 +168,7 @@ struct max77823_charger_data {
 	/* wakelock */
 	struct wake_lock recovery_wake_lock;
 	struct wake_lock wpc_wake_lock;
+	struct wake_lock chgin_wake_lock;
 
 	unsigned int	is_charging;
 	unsigned int	charging_type;
@@ -211,5 +218,4 @@ struct max77823_charger_data {
 	sec_battery_platform_data_t	*pdata;
 };
 
-extern void cp_usb_power_control(int enable);
 #endif /* __MAX77823_CHARGER_H */

@@ -56,7 +56,7 @@ static const struct i2c_device_id tdmb_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, tdmb_i2c_id);
 
-static int __devexit tdmb_i2c_remove(struct i2c_client *client)
+static int tdmb_i2c_remove(struct i2c_client *client)
 {
 	i2c_set_clientdata(client, NULL);
 	return 0;
@@ -69,7 +69,7 @@ static struct i2c_driver tdmb_i2c_driver = {
 		.owner	= THIS_MODULE,
 	},
 	.probe	= tdmb_i2c_probe,
-	.remove	= __devexit_p(tdmb_i2c_remove),
+	.remove	= tdmb_i2c_remove,
 	.id_table = tdmb_i2c_id,
 };
 

@@ -1,99 +1,86 @@
-#ifndef _LINUX_INPUT_BOOSTER_H
-#define _LINUX_INPUT_BOOSTER_H
 
-#define INPUT_BOOSTER_NAME "input_booster"
+#ifndef _INPUT_BOOSTER_H_
+#define _INPUT_BOOSTER_H_
 
-/* We can use input handler to catch up specific events which are
- * used for the input booster.
- */
-/*#define BOOSTER_USE_INPUT_HANDLER*/
+#include <linux/cpufreq.h>
 
-#define BOOSTER_DEFAULT_ON_TIME		500	/* msec */
-#define BOOSTER_DEFAULT_OFF_TIME	500	/* msec */
-#define BOOSTER_DEFAULT_CHG_TIME	130	/* msec */
-
-#define BOOSTER_DEBUG_CHG_TIME		500 /* msec */
-#define BOOSTER_DEBUG_OFF_TIME		1000 /* msec */
-
-/* Booster levels are used as below comment.
- * 0	: OFF
- * 1	: SIP (default SIP)
- * 2	: Default
- * 3	: Hangout SIP
- * 4	: Browsable App's
- * 5	: Light SIP, MMS, ..
- * 9	: Max for benchmark tool
- */
-enum booster_level {
-	BOOSTER_LEVEL0 = 0,
-	BOOSTER_LEVEL1,
-	BOOSTER_LEVEL2,
-	BOOSTER_LEVEL3,
-	BOOSTER_LEVEL4,
-	BOOSTER_LEVEL5,
-	BOOSTER_LEVEL9 = 9,
-	BOOSTER_LEVEL9_CHG,
-	BOOSTER_LEVEL_MAX,
+enum input_booster_id {
+	INPUT_BOOSTER_ID_TSP = 0,
+	INPUT_BOOSTER_ID_TKEY,
+	INPUT_BOOSTER_ID_WACOM,
 };
 
-enum booster_device_type {
-	BOOSTER_DEVICE_KEY = 0,
-	BOOSTER_DEVICE_TOUCHKEY,
-	BOOSTER_DEVICE_TOUCH,
-	BOOSTER_DEVICE_PEN,
-	BOOSTER_DEVICE_MAX,
-	BOOSTER_DEVICE_NOT_DEFINED,
-};
+#define DVFS_STAGE_NONE	1 << 0	// 0000 0000 0000 0001
+#define DVFS_STAGE_SINGLE	1 << 1	// 0000 0000 0000 0010
+#define DVFS_STAGE_DUAL	1 << 2	// 0000 0000 0000 0100
+#define DVFS_STAGE_TRIPLE	1 << 3	// 0000 0000 0000 1000
+#define DVFS_STAGE_PENTA	1 << 5	// 0000 0000 0010 0000
+#define DVFS_STAGE_NINTH	1 << 9	// 0000 0010 0000 0000
 
-enum booster_mode {
-	BOOSTER_MODE_OFF = 0,
-	BOOSTER_MODE_ON,
-	BOOSTER_MODE_FORCE_OFF,
-};
-
-struct dvfs_time {
-	int chg_time;
-	int off_time;
-	int pri_time;
-};
-
-struct dvfs_freq {
-	s32 cpu_freq;
-	s32 kfc_freq;
-	s32 mif_freq;
-	s32 int_freq;
-};
-
-struct booster_key {
-	const char *desc;
-	int code;
-	const struct dvfs_time *time_table;
-	const struct dvfs_freq *freq_table;
-};
-
-struct input_booster_platform_data {
-	struct booster_key *keys;
-	int nkeys;
-	enum booster_device_type (*get_device_type) (int code);
-};
-
-#ifdef BOOSTER_USE_INPUT_HANDLER
-#define INPUT_BOOSTER_SEND_EVENT(code, value)
-#define INPUT_BOOSTER_REPORT_KEY_EVENT(dev, code, value)	\
-	input_report_key(dev, code, value)
-#else
-extern void input_booster_send_event(unsigned int code, int value);
-
-#define INPUT_BOOSTER_SEND_EVENT(code, value)	\
-		input_booster_send_event(code, value)
-#define INPUT_BOOSTER_REPORT_KEY_EVENT(dev, code, value)
+/* Set DVFS STAGE for each model */
+#if defined(CONFIG_SEC_LENTIS_PROJECT) || defined(CONFIG_SEC_TRLTE_PROJECT)
+#define DVFS_TSP_STAGE		(DVFS_STAGE_NONE | DVFS_STAGE_SINGLE |\
+				DVFS_STAGE_DUAL | DVFS_STAGE_TRIPLE |\
+				DVFS_STAGE_PENTA | DVFS_STAGE_NINTH)
+#define DVFS_TKEY_STAGE	(DVFS_STAGE_NONE | DVFS_STAGE_SINGLE |\
+				DVFS_STAGE_DUAL)
 #endif
 
-/* Now we support sysfs file to change booster level under input_booster class.
- * But previous sysfs is scatterd into each driver, so we need to support it also.
- * Enable below define. if you want to use previous sysfs files.
- */
-extern void change_booster_level_for_tsp(unsigned char level);
-extern void change_booster_level_for_tsk(unsigned char level);
+#if defined(CONFIG_SEC_TRLTE_PROJECT)
+#define DVFS_WACOM_STAGE	(DVFS_STAGE_NONE | DVFS_STAGE_SINGLE |\
+				DVFS_STAGE_DUAL | DVFS_STAGE_TRIPLE)
+#endif
 
-#endif /* _LINUX_INPUT_BOOSTER_H */
+#ifndef DVFS_TSP_STAGE
+#define DVFS_TSP_STAGE		0
+#endif
+#ifndef DVFS_TKEY_STAGE
+#define DVFS_TKEY_STAGE	0
+#endif
+#ifndef DVFS_WACOM_STAGE
+#define DVFS_WACOM_STAGE	0
+#endif
+
+#if DVFS_TSP_STAGE
+#define TSP_BOOSTER
+#endif
+#if DVFS_TKEY_STAGE
+#define TKEY_BOOSTER
+#endif
+#if DVFS_WACOM_STAGE
+#define WACOM_BOOSTER
+#endif
+
+/* TSP */
+#define INPUT_BOOSTER_OFF_TIME_TSP		500
+#define INPUT_BOOSTER_CHG_TIME_TSP		130
+#define INPUT_BOOSTER_HIGH_OFF_TIME_TSP		1000
+#define INPUT_BOOSTER_HIGH_CHG_TIME_TSP		500
+
+/* Touchkey */
+#define INPUT_BOOSTER_OFF_TIME_TKEY		500
+#define INPUT_BOOSTER_CHG_TIME_TKEY		500
+
+/* Wacom */
+#define INPUT_BOOSTER_OFF_TIME_WACOM		500
+#define INPUT_BOOSTER_CHG_TIME_WACOM		130
+
+struct input_booster {
+	struct delayed_work	work_dvfs_off;
+	struct delayed_work	work_dvfs_chg;
+	struct mutex		dvfs_lock;
+
+	bool dvfs_lock_status;
+	int dvfs_old_stauts;
+	int dvfs_boost_mode;
+	int dvfs_freq;
+	int dvfs_id;
+	int dvfs_stage;
+
+	int (*dvfs_off)(struct input_booster *);
+	void (*dvfs_set)(struct input_booster *, int);
+};
+
+void input_booster_init_dvfs(struct input_booster *booster, int id);
+
+#endif /* _INPUT_BOOSTER_H_ */

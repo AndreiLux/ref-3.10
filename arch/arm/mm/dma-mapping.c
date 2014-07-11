@@ -9,6 +9,7 @@
  *
  *  DMA uncached mapping support.
  */
+#include <linux/bootmem.h>
 #include <linux/module.h>
 #include <linux/mm.h>
 #include <linux/gfp.h>
@@ -37,7 +38,16 @@
 #include <asm/dma-contiguous.h>
 
 #include "mm.h"
+#ifdef CONFIG_TIMA_RKP_DMA_MVA_TO_SETWAY
 
+#define L1_NWAY 4
+#define L2_NWAY 8
+#define L1_WAY_OFFSET 30
+#define L2_WAY_OFFSET 29
+#define TIMA_L1_SETMASK 0xfc0
+#define TIMA_L2_SETMASK 0x3ff80
+
+#endif/*CONFIG_TIMA_RKP_DMA_MVA_TO_SETWAY*/
 /*
  * The DMA API is built upon the notion of "buffer ownership".  A buffer
  * is either exclusively owned by the CPU (and therefore may be accessed
@@ -157,49 +167,43 @@ struct dma_map_ops arm_coherent_dma_ops = {
 };
 EXPORT_SYMBOL(arm_coherent_dma_ops);
 
-static void *arm_exynos_dma_mcode_alloc(struct device *dev, size_t size,
-	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs);
-static void arm_exynos_dma_mcode_free(struct device *dev, size_t size, void *cpu_addr,
-				  dma_addr_t handle, struct dma_attrs *attrs);
+static int __dma_supported(struct device *dev, u64 mask, bool warn)
+{
+	unsigned long max_dma_pfn;
 
-struct dma_map_ops arm_exynos_dma_mcode_ops = {
-	.alloc			= arm_exynos_dma_mcode_alloc,
-	.free			= arm_exynos_dma_mcode_free,
-	.mmap			= arm_dma_mmap,
-	.get_sgtable		= arm_dma_get_sgtable,
-	.map_page		= arm_dma_map_page,
-	.unmap_page		= arm_dma_unmap_page,
-	.map_sg			= arm_dma_map_sg,
-	.unmap_sg		= arm_dma_unmap_sg,
-	.sync_single_for_cpu	= arm_dma_sync_single_for_cpu,
-	.sync_single_for_device	= arm_dma_sync_single_for_device,
-	.sync_sg_for_cpu	= arm_dma_sync_sg_for_cpu,
-	.sync_sg_for_device	= arm_dma_sync_sg_for_device,
-	.set_dma_mask		= arm_dma_set_mask,
-};
-EXPORT_SYMBOL(arm_exynos_dma_mcode_ops);
+	/*
+	 * If the mask allows for more memory than we can address,
+	 * and we actually have that much memory, then we must
+	 * indicate that DMA to this device is not supported.
+	 */
+	if (sizeof(mask) != sizeof(dma_addr_t) &&
+	    mask > (dma_addr_t)~0 &&
+	    dma_to_pfn(dev, ~0) < max_pfn) {
+		if (warn) {
+			dev_warn(dev, "Coherent DMA mask %#llx is larger than dma_addr_t allows\n",
+				 mask);
+			dev_warn(dev, "Driver did not use or check the return value from dma_set_coherent_mask()?\n");
+		}
+		return 0;
+	}
 
-static void *arm_exynos_dma_alloc(struct device *dev, size_t size,
-	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs);
-static void arm_exynos_dma_free(struct device *dev, size_t size, void *cpu_addr,
-				  dma_addr_t handle, struct dma_attrs *attrs);
+	max_dma_pfn = min(max_pfn, arm_dma_pfn_limit);
 
-struct dma_map_ops arm_exynos_dma_ops = {
-	.alloc			= arm_exynos_dma_alloc,
-	.free			= arm_exynos_dma_free,
-	.mmap			= arm_dma_mmap,
-	.get_sgtable		= arm_dma_get_sgtable,
-	.map_page		= arm_dma_map_page,
-	.unmap_page		= arm_dma_unmap_page,
-	.map_sg			= arm_dma_map_sg,
-	.unmap_sg		= arm_dma_unmap_sg,
-	.sync_single_for_cpu	= arm_dma_sync_single_for_cpu,
-	.sync_single_for_device	= arm_dma_sync_single_for_device,
-	.sync_sg_for_cpu	= arm_dma_sync_sg_for_cpu,
-	.sync_sg_for_device	= arm_dma_sync_sg_for_device,
-	.set_dma_mask		= arm_dma_set_mask,
-};
-EXPORT_SYMBOL(arm_exynos_dma_ops);
+	/*
+	 * Translate the device's DMA mask to a PFN limit.  This
+	 * PFN number includes the page which we can DMA to.
+	 */
+	if (dma_to_pfn(dev, mask) < max_dma_pfn) {
+		if (warn)
+			dev_warn(dev, "Coherent DMA mask %#llx (pfn %#lx-%#lx) covers a smaller range of system memory than the DMA zone pfn 0x0-%#lx\n",
+				 mask,
+				 dma_to_pfn(dev, 0), dma_to_pfn(dev, mask) + 1,
+				 max_dma_pfn + 1);
+		return 0;
+	}
+
+	return 1;
+}
 
 static u64 get_coherent_dma_mask(struct device *dev)
 {
@@ -217,12 +221,8 @@ static u64 get_coherent_dma_mask(struct device *dev)
 			return 0;
 		}
 
-		if ((~mask) & (u64)arm_dma_limit) {
-			dev_warn(dev, "coherent DMA mask %#llx is smaller "
-				 "than system GFP_DMA mask %#llx\n",
-				 mask, (u64)arm_dma_limit);
+		if (!__dma_supported(dev, mask, true))
 			return 0;
-		}
 	}
 
 	return mask;
@@ -299,7 +299,8 @@ static void __dma_free_buffer(struct page *page, size_t size)
 
 static void *__alloc_from_contiguous(struct device *dev, size_t size,
 				     pgprot_t prot, struct page **ret_page,
-				     const void *caller);
+				     const void *caller,
+				     bool no_kernel_mapping);
 
 static void *__alloc_remap_buffer(struct device *dev, size_t size, gfp_t gfp,
 				 pgprot_t prot, struct page **ret_page,
@@ -330,12 +331,13 @@ __dma_alloc_remap(struct page *page, size_t size, gfp_t gfp, pgprot_t prot,
 	return (void *)addr;
 }
 
-static void __dma_free_remap(void *cpu_addr, size_t size)
+static void __dma_free_remap(void *cpu_addr, size_t size, bool no_warn)
 {
 	unsigned int flags = VM_ARM_DMA_CONSISTENT | VM_USERMAP;
 	struct vm_struct *area = find_vm_area(cpu_addr);
 	if (!area || (area->flags & flags) != flags) {
-		WARN(1, "trying to free invalid coherent area: %p\n", cpu_addr);
+		WARN(!no_warn, "trying to free invalid coherent area: %p\n",
+				cpu_addr);
 		return;
 	}
 	unmap_kernel_range((unsigned long)cpu_addr, size);
@@ -382,11 +384,10 @@ void __init init_dma_coherent_pool_size(unsigned long size)
 /*
  * Initialise the coherent pool for atomic allocations.
  */
-__attribute__ ((unused))
 static int __init atomic_pool_init(void)
 {
 	struct dma_pool *pool = &atomic_pool;
-	pgprot_t prot = pgprot_dmacoherent(pgprot_kernel);
+	pgprot_t prot = pgprot_dmacoherent(PAGE_KERNEL);
 	gfp_t gfp = GFP_KERNEL | GFP_DMA;
 	unsigned long nr_pages = pool->size >> PAGE_SHIFT;
 	unsigned long *bitmap;
@@ -405,7 +406,7 @@ static int __init atomic_pool_init(void)
 
 	if (IS_ENABLED(CONFIG_CMA))
 		ptr = __alloc_from_contiguous(NULL, pool->size, prot, &page,
-					      atomic_pool_init);
+					      atomic_pool_init, false);
 	else
 		ptr = __alloc_remap_buffer(NULL, pool->size, gfp, prot, &page,
 					   atomic_pool_init);
@@ -433,58 +434,10 @@ no_bitmap:
 	       (unsigned)pool->size / 1024);
 	return -ENOMEM;
 }
-
-static int __init exynos_atomic_pool_init(void)
-{
-	struct dma_pool *pool = &atomic_pool;
-	pgprot_t prot = pgprot_dmacoherent(pgprot_kernel);
-	gfp_t gfp = GFP_KERNEL | GFP_DMA;
-	unsigned long nr_pages = pool->size >> PAGE_SHIFT;
-	unsigned long *bitmap;
-	struct page *page;
-	struct page **pages;
-	void *ptr;
-	int bitmap_size = BITS_TO_LONGS(nr_pages) * sizeof(long);
-
-	bitmap = kzalloc(bitmap_size, GFP_KERNEL);
-	if (!bitmap)
-		goto no_bitmap;
-
-	pages = kzalloc(nr_pages * sizeof(struct page *), GFP_KERNEL);
-	if (!pages)
-		goto no_pages;
-
-	ptr = __alloc_remap_buffer(NULL, pool->size, gfp, prot, &page,
-					   exynos_atomic_pool_init);
-	if (ptr) {
-		int i;
-
-		for (i = 0; i < nr_pages; i++)
-			pages[i] = page + i;
-
-		spin_lock_init(&pool->lock);
-		pool->vaddr = ptr;
-		pool->pages = pages;
-		pool->bitmap = bitmap;
-		pool->nr_pages = nr_pages;
-		pr_info("DMA: preallocated %u KiB pool for atomic coherent allocations\n",
-		       (unsigned)pool->size / 1024);
-		return 0;
-	}
-
-	kfree(pages);
-no_pages:
-	kfree(bitmap);
-no_bitmap:
-	pr_err("DMA: failed to allocate %u KiB pool for atomic coherent allocation\n",
-	       (unsigned)pool->size / 1024);
-	return -ENOMEM;
-}
 /*
  * CMA is activated by core_initcall, so we must be called after it.
  */
-
-postcore_initcall(exynos_atomic_pool_init);
+postcore_initcall(atomic_pool_init);
 
 struct dma_contig_early_reserve {
 	phys_addr_t base;
@@ -542,12 +495,27 @@ static int __dma_update_pte(pte_t *pte, pgtable_t token, unsigned long addr,
 	return 0;
 }
 
-static void __dma_remap(struct page *page, size_t size, pgprot_t prot)
+static int __dma_clear_pte(pte_t *pte, pgtable_t token, unsigned long addr,
+			    void *data)
+{
+	pte_clear(&init_mm, addr, pte);
+	return 0;
+}
+
+static void __dma_remap(struct page *page, size_t size, pgprot_t prot,
+			bool no_kernel_map)
 {
 	unsigned long start = (unsigned long) page_address(page);
 	unsigned end = start + size;
+	int (*func)(pte_t *pte, pgtable_t token, unsigned long addr,
+			    void *data);
 
-	apply_to_page_range(&init_mm, start, size, __dma_update_pte, &prot);
+	if (no_kernel_map)
+		func = __dma_clear_pte;
+	else
+		func = __dma_update_pte;
+
+	apply_to_page_range(&init_mm, start, size, func, &prot);
 	dsb();
 	flush_tlb_kernel_range(start, end);
 }
@@ -648,29 +616,44 @@ static int __free_from_pool(void *start, size_t size)
 	return 1;
 }
 
+#define NO_KERNEL_MAPPING_DUMMY	0x2222
 static void *__alloc_from_contiguous(struct device *dev, size_t size,
 				     pgprot_t prot, struct page **ret_page,
-				     const void *caller)
+				     const void *caller,
+				     bool no_kernel_mapping)
 {
 	unsigned long order = get_order(size);
 	size_t count = size >> PAGE_SHIFT;
+	unsigned long pfn;
 	struct page *page;
 	void *ptr;
 
-	page = dma_alloc_from_contiguous(dev, count, order);
-	if (!page)
+	pfn = dma_alloc_from_contiguous(dev, count, order);
+	if (!pfn)
 		return NULL;
+
+	page = pfn_to_page(pfn);
 
 	__dma_clear_buffer(page, size);
 
 	if (PageHighMem(page)) {
-		ptr = __dma_alloc_remap(page, size, GFP_KERNEL, prot, caller);
-		if (!ptr) {
-			dma_release_from_contiguous(dev, page, count);
-			return NULL;
+		if (no_kernel_mapping) {
+			/*
+			 * Something non-NULL needs to be returned here. Give
+			 * back a dummy address that is unmapped to catch
+			 * clients trying to use the address incorrectly
+			 */
+			ptr = (void *)NO_KERNEL_MAPPING_DUMMY;
+		} else {
+			ptr = __dma_alloc_remap(page, size, GFP_KERNEL, prot,
+						caller);
+			if (!ptr) {
+				dma_release_from_contiguous(dev, pfn, count);
+				return NULL;
+			}
 		}
 	} else {
-		__dma_remap(page, size, prot);
+		__dma_remap(page, size, prot, no_kernel_mapping);
 		ptr = page_address(page);
 	}
 	*ret_page = page;
@@ -681,17 +664,24 @@ static void __free_from_contiguous(struct device *dev, struct page *page,
 				   void *cpu_addr, size_t size)
 {
 	if (PageHighMem(page))
-		__dma_free_remap(cpu_addr, size);
+		__dma_free_remap(cpu_addr, size, true);
 	else
-		__dma_remap(page, size, pgprot_kernel);
-	dma_release_from_contiguous(dev, page, size >> PAGE_SHIFT);
+		__dma_remap(page, size, PAGE_KERNEL, false);
+	dma_release_from_contiguous(dev, page_to_pfn(page), size >> PAGE_SHIFT);
 }
 
 static inline pgprot_t __get_dma_pgprot(struct dma_attrs *attrs, pgprot_t prot)
 {
-	prot = dma_get_attr(DMA_ATTR_WRITE_COMBINE, attrs) ?
-			    pgprot_writecombine(prot) :
-			    pgprot_dmacoherent(prot);
+	if (dma_get_attr(DMA_ATTR_WRITE_COMBINE, attrs))
+		prot = pgprot_writecombine(prot);
+	else if (dma_get_attr(DMA_ATTR_STRONGLY_ORDERED, attrs))
+		prot = pgprot_stronglyordered(prot);
+	/* if non-consistent just pass back what was given */
+	else if (!dma_get_attr(DMA_ATTR_NON_CONSISTENT, attrs))
+		prot = pgprot_dmacoherent(prot);
+#ifdef CONFIG_TIMA_RKP
+	 prot = __pgprot_modify(prot, 0, L_PTE_XN);
+#endif
 	return prot;
 }
 
@@ -704,10 +694,10 @@ static inline pgprot_t __get_dma_pgprot(struct dma_attrs *attrs, pgprot_t prot)
 #define __get_dma_pgprot(attrs, prot)	__pgprot(0)
 #define __alloc_remap_buffer(dev, size, gfp, prot, ret, c)	NULL
 #define __alloc_from_pool(size, ret_page)			NULL
-#define __alloc_from_contiguous(dev, size, prot, ret, c)	NULL
+#define __alloc_from_contiguous(dev, size, prot, ret, c, w)	NULL
 #define __free_from_pool(cpu_addr, size)			0
 #define __free_from_contiguous(dev, page, cpu_addr, size)	do { } while (0)
-#define __dma_free_remap(cpu_addr, size)			do { } while (0)
+#define __dma_free_remap(cpu_addr, size, w)			do { } while (0)
 
 #endif	/* CONFIG_MMU */
 
@@ -726,7 +716,8 @@ static void *__alloc_simple_buffer(struct device *dev, size_t size, gfp_t gfp,
 
 
 static void *__dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
-			 gfp_t gfp, pgprot_t prot, bool is_coherent, const void *caller)
+			 gfp_t gfp, pgprot_t prot, bool is_coherent,
+			 const void *caller, bool no_kernel_mapping)
 {
 	u64 mask = get_coherent_dma_mask(dev);
 	struct page *page = NULL;
@@ -766,7 +757,8 @@ static void *__dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 	else if (!IS_ENABLED(CONFIG_CMA))
 		addr = __alloc_remap_buffer(dev, size, gfp, prot, &page, caller);
 	else
-		addr = __alloc_from_contiguous(dev, size, prot, &page, caller);
+		addr = __alloc_from_contiguous(dev, size, prot, &page, caller,
+						no_kernel_mapping);
 
 	if (addr)
 		*handle = pfn_to_dma(dev, page_to_pfn(page));
@@ -781,83 +773,31 @@ static void *__dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 void *arm_dma_alloc(struct device *dev, size_t size, dma_addr_t *handle,
 		    gfp_t gfp, struct dma_attrs *attrs)
 {
-	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
+	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
 	void *memory;
+	bool no_kernel_mapping = dma_get_attr(DMA_ATTR_NO_KERNEL_MAPPING,
+					attrs);
 
 	if (dma_alloc_from_coherent(dev, size, handle, &memory))
 		return memory;
 
 	return __dma_alloc(dev, size, handle, gfp, prot, false,
-			   __builtin_return_address(0));
+			   __builtin_return_address(0), no_kernel_mapping);
 }
 
 static void *arm_coherent_dma_alloc(struct device *dev, size_t size,
 	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs)
 {
-	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
+	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
 	void *memory;
+	bool no_kernel_mapping = dma_get_attr(DMA_ATTR_NO_KERNEL_MAPPING,
+					attrs);
 
 	if (dma_alloc_from_coherent(dev, size, handle, &memory))
 		return memory;
 
 	return __dma_alloc(dev, size, handle, gfp, prot, true,
-			   __builtin_return_address(0));
-}
-
-static void *arm_exynos_dma_mcode_alloc(struct device *dev, size_t size,
-	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs)
-{
-	void *addr;
-
-	if (!*handle)
-		return NULL;
-
-	addr = ioremap(*handle, size);
-
-	return addr;
-}
-
-static void *arm_exynos_dma_alloc(struct device *dev, size_t size,
-	dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs)
-{
-	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
-	struct page *page = NULL;
-	void *addr;
-	void *memory;
-	u64 mask = get_coherent_dma_mask(dev);
-
-#ifdef CONFIG_DMA_API_DEBUG
-	u64 limit = (mask + 1) & ~mask;
-	if (limit && size >= limit) {
-		dev_warn(dev, "coherent allocation too big (requested %#x mask %#llx)\n",
-			size, mask);
-		return NULL;
-	}
-#endif
-
-	if (!mask)
-		return NULL;
-
-	if (dma_alloc_from_coherent(dev, size, handle, &memory))
-		return memory;
-
-	if (mask < 0xffffffffULL)
-		gfp |= GFP_DMA;
-
-	gfp &= ~(__GFP_COMP);
-
-	*handle = DMA_ERROR_CODE;
-	size = PAGE_ALIGN(size);
-
-	if (!(gfp & __GFP_WAIT))
-		addr = __alloc_from_pool(size, &page);
-	else
-		addr = __alloc_remap_buffer(dev, size, gfp, prot, &page,
-				__builtin_return_address(0));
-	if (addr)
-		*handle = pfn_to_dma(dev, page_to_pfn(page));
-
-	return addr;
+			   __builtin_return_address(0), no_kernel_mapping);
 }
 
 /*
@@ -909,7 +849,7 @@ static void __arm_dma_free(struct device *dev, size_t size, void *cpu_addr,
 	} else if (__free_from_pool(cpu_addr, size)) {
 		return;
 	} else if (!IS_ENABLED(CONFIG_CMA)) {
-		__dma_free_remap(cpu_addr, size);
+		__dma_free_remap(cpu_addr, size, false);
 		__dma_free_buffer(page, size);
 	} else {
 		/*
@@ -932,30 +872,6 @@ static void arm_coherent_dma_free(struct device *dev, size_t size, void *cpu_add
 	__arm_dma_free(dev, size, cpu_addr, handle, attrs, true);
 }
 
-static void arm_exynos_dma_mcode_free(struct device *dev, size_t size, void *cpu_addr,
-				  dma_addr_t handle, struct dma_attrs *attrs)
-{
-	iounmap(cpu_addr);
-}
-
-static void arm_exynos_dma_free(struct device *dev, size_t size, void *cpu_addr,
-				  dma_addr_t handle, struct dma_attrs *attrs)
-{
-	struct page *page = pfn_to_page(dma_to_pfn(dev, handle));
-
-	if (dma_release_from_coherent(dev, get_order(size), cpu_addr))
-		return;
-
-	size = PAGE_ALIGN(size);
-
-	if (__free_from_pool(cpu_addr, size)) {
-		return;
-	} else {
-		__dma_free_remap(cpu_addr, size);
-		__dma_free_buffer(page, size);
-	}
-}
-
 int arm_dma_get_sgtable(struct device *dev, struct sg_table *sgt,
 		 void *cpu_addr, dma_addr_t handle, size_t size,
 		 struct dma_attrs *attrs)
@@ -970,6 +886,82 @@ int arm_dma_get_sgtable(struct device *dev, struct sg_table *sgt,
 	sg_set_page(sgt->sgl, page, PAGE_ALIGN(size), 0);
 	return 0;
 }
+
+#ifdef CONFIG_TIMA_RKP_DMA_MVA_TO_SETWAY
+
+void tima_cache_invalidate_setway(unsigned int reg_c7)
+{
+          __asm__ __volatile__ (
+                        "mov    r0, %0\n"
+                        "mcr	p15, 0, r0, c7, c14, 2\n"
+                        ::"r"(reg_c7):"r0");
+}
+void tima_cache_clean_setway(unsigned int reg_c7)
+{
+        __asm__ __volatile__ (
+                        "mov    r0, %0\n"
+                        "mcr	p15, 0, r0, c7, c10, 2\n"		 
+                        ::"r"(reg_c7):"r0");
+}
+
+void tima_flush_cache_setway_func(unsigned int reg_c7,enum dma_data_direction dir)
+{
+        __asm__ __volatile__ (
+                        "mov    r0, %0\n"
+                        "mov    r1, %1\n"
+                        "teq	r1, #2\n"
+                        "beq	tima_cache_invalidate_setway\n"
+                        "mov    r0, %0\n"
+                        "b	tima_cache_clean_setway\n"
+                        ::"r"(reg_c7),"r"(dir));
+}
+static void tima_cache_isb_dsb(void)
+{
+        __asm__ __volatile__ (
+                        "dsb\n"
+                        "isb\n"
+                        );
+}
+/**
+ *    tima_flush_cache- Flush Nonsecure side caches using set/way mechanism
+ */
+
+static void tima_flush_cache(unsigned int phy_addr,enum dma_data_direction dir)
+{
+        unsigned int l1_set_mask = TIMA_L1_SETMASK;
+        unsigned int l2_set_mask = TIMA_L2_SETMASK;
+        unsigned int way;
+        unsigned int reg_c7;
+        unsigned int addr_offset;
+
+        for (way = 0; way < L1_NWAY; way++) {
+                for (addr_offset=0;addr_offset<l1_set_mask;addr_offset+=0x40) {
+                        reg_c7 = 0x00 | ((phy_addr+addr_offset) & l1_set_mask) | (way << L1_WAY_OFFSET);
+                        tima_flush_cache_setway_func(reg_c7,dir);
+                }
+        }
+
+        for (way = 0; way < L2_NWAY; way++) {
+                for (addr_offset=0;addr_offset<0x1000;addr_offset+=0x80) {
+                        reg_c7 = 0x02 | ((phy_addr+addr_offset) & l2_set_mask) | (way << L2_WAY_OFFSET);
+                        tima_flush_cache_setway_func(reg_c7,dir);
+                }
+        }
+        tima_cache_isb_dsb();
+}
+
+/*
+ *    tima_cache_maint_page- Tima Equivalent of dma_cache_maint_page().
+ *    Here we flush cache based on physical address+set/way mechanism
+ */
+static void tima_cache_maint_page(struct page *page,enum dma_data_direction dir)
+{
+    unsigned long paddr;
+
+    paddr = page_to_phys(page);
+    tima_flush_cache(paddr,dir);
+}
+#endif/*CONFIG_TIMA_RKP_DMA_MVA_TO_SETWAY*/
 
 static void dma_cache_maint_page(struct page *page, unsigned long offset,
 	size_t size, enum dma_data_direction dir,
@@ -998,9 +990,14 @@ static void dma_cache_maint_page(struct page *page, unsigned long offset,
 				len = PAGE_SIZE - offset;
 
 			if (cache_is_vipt_nonaliasing()) {
+#ifdef CONFIG_TIMA_RKP_DMA_MVA_TO_SETWAY
+                tima_cache_maint_page(page,dir);
+#else
+				/* unmapped pages might still be cached */
 				vaddr = kmap_atomic(page);
 				op(vaddr + offset, len, dir);
 				kunmap_atomic(vaddr);
+#endif/*CONFIG_TIMA_RKP_DMA_MVA_TO_SETWAY*/
 			} else {
 				vaddr = kmap_high_get(page);
 				if (vaddr) {
@@ -1167,9 +1164,7 @@ void arm_dma_sync_sg_for_device(struct device *dev, struct scatterlist *sg,
  */
 int dma_supported(struct device *dev, u64 mask)
 {
-	if (mask < (u64)arm_dma_limit)
-		return 0;
-	return 1;
+	return __dma_supported(dev, mask, false);
 }
 EXPORT_SYMBOL(dma_supported);
 
@@ -1260,10 +1255,13 @@ static struct page **__iommu_alloc_buffer(struct device *dev, size_t size,
 	{
 		unsigned long order = get_order(size);
 		struct page *page;
+		unsigned long pfn;
 
-		page = dma_alloc_from_contiguous(dev, count, order);
-		if (!page)
+		pfn = dma_alloc_from_contiguous(dev, count, order);
+		if (!pfn)
 			goto error;
+
+		pfn = pfn_to_page(pfn);
 
 		__dma_clear_buffer(page, size);
 
@@ -1319,7 +1317,7 @@ static int __iommu_free_buffer(struct device *dev, struct page **pages,
 	int i;
 
 	if (dma_get_attr(DMA_ATTR_FORCE_CONTIGUOUS, attrs)) {
-		dma_release_from_contiguous(dev, pages[0], count);
+		dma_release_from_contiguous(dev, page_to_pfn(pages[0]), count);
 	} else {
 		for (i = 0; i < count; i++)
 			if (pages[i])
@@ -1477,7 +1475,7 @@ static void __iommu_free_atomic(struct device *dev, void *cpu_addr,
 static void *arm_iommu_alloc_attrs(struct device *dev, size_t size,
 	    dma_addr_t *handle, gfp_t gfp, struct dma_attrs *attrs)
 {
-	pgprot_t prot = __get_dma_pgprot(attrs, pgprot_kernel);
+	pgprot_t prot = __get_dma_pgprot(attrs, PAGE_KERNEL);
 	struct page **pages;
 	void *addr = NULL;
 

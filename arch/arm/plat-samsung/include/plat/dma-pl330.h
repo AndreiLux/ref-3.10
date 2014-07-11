@@ -116,11 +116,6 @@ static inline bool samsung_dma_is_dmadev(void)
 	return true;
 }
 
-static inline bool samsung_dma_has_infiniteloop(void)
-{
-	return true;
-}
-
 #include <plat/dma-ops.h>
 
 #endif	/* __DMA_PL330_H_ */

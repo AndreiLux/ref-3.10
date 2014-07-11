@@ -1258,6 +1258,9 @@ struct xhci_td {
 	struct xhci_segment	*start_seg;
 	union xhci_trb		*first_trb;
 	union xhci_trb		*last_trb;
+
+	/* ZLP received in data stage of a control transfer */
+	bool			zlp_data;
 };
 
 /* xHCI command default timeout value */
@@ -1516,6 +1519,60 @@ struct xhci_hcd {
 #define XHCI_SPURIOUS_REBOOT	(1 << 13)
 #define XHCI_COMP_MODE_QUIRK	(1 << 14)
 #define XHCI_AVOID_BEI		(1 << 15)
+#define XHCI_PLAT		(1 << 16)
+/*
+ * In Synopsis DWC3 controller, PORTSC register access involves multiple clock
+ * domains. When the software does a PORTSC write, handshakes are needed
+ * across these clock domains. This results in long access times, especially
+ * for USB 2.0 ports. In order to solve this issue, when the PORTSC write
+ * operations happen on the system bus, the command is latched and system bus
+ * is released immediately. However, the real PORTSC write access will take
+ * some time internally to complete. If the software quickly does a read to the
+ * PORTSC, some fields (port status change related fields like OCC, etc.) may
+ * not have correct value due to the current way of handling these bits.
+ *
+ * The workaround is to give some delay (5 mac2_clk -> UTMI clock = 60 MHz ->
+ * (16.66 ns x 5 = 84ns) ~100ns after writing to the PORTSC register.
+ */
+#define XHCI_PORTSC_DELAY	(1 << 17)
+/*
+ * In Synopsis DWC3 controller, XHCI RESET takes some time complete. If PIPE
+ * RESET is not complete by the time USBCMD.RUN bit is set then HC fails to
+ * carry out SS transfers.
+ *
+ * The workaround is to give worst case pipe delay ~350us after resetting HC
+ */
+#define XHCI_RESET_DELAY	(1 << 18)
+/*
+ * When the Endpoint State (EP State) is not Error/Stopped, a Set TR Dequeue
+ * Pointer Command must generate a Command Completion Event with the Completion
+ * Code indicating Context State Error. But, Synopsis DWC3 controller instead
+ * generates a Command Completion Event indicating TRB Error.
+ *
+ * The workaround is to handle TRB Error and Context State Error in same way
+ */
+#define XHCI_TR_DEQ_ERR_QUIRK	(1 << 19)
+#define XHCI_NO_SELECTIVE_SUSPEND (1 << 20)
+#define XHCI_TR_DEQ_RESET_QUIRK   (1 << 21)
+/*
+ * The DWC_usb3 controller has an internal bus interval counter for tracking the
+ * microframes. The following is the expected behavior of the counter: If all of
+ * the USB 3.0 and 2.0 ports are in either suspended or disconnected state, the
+ * counter is stopped. Whenever a suspended device is disconnected, or a new
+ * device is connected, or the root port exits the suspend state, the counter is
+ * restarted. Because of an error, when multiple connects/disconnects are
+ * performed and the suspend_clk frequency is less than the ref_clk frequency,
+ * the counter does not increment correctly after a suspended device is
+ * disconnected, or a new device is connected or the root port exits the suspend
+ * state.
+ *
+ * Workaround is if all the 2.0 and 3.0 ports are either in suspended or
+ * disconnect state and port status change event of device disconnect or port
+ * status change event of super speed device connect is reported from any of the
+ * root ports, clear and set the USBCMD.RunStop bit. And then follow the xHCI
+ * programming sequence of initiliazing the host controller from halted state.
+ */
+#define XHCI_RESET_RS_ON_RESUME_QUIRK	(1 << 22)
 	unsigned int		num_active_eps;
 	unsigned int		limit_active_eps;
 	/* There are two roothubs to keep track of bus suspend info for */
@@ -1614,6 +1671,30 @@ static inline int xhci_link_trb_quirk(struct xhci_hcd *xhci)
 }
 
 /* xHCI debugging */
+
+/* Maximum debug message length */
+#define DBG_MSG_LEN   64UL
+
+/* Maximum number of messages */
+#define DBG_MAX_MSG   1024UL
+#define TIME_BUF_LEN  20
+#define HEX_DUMP_LEN  72
+struct dbg_data {
+	char     (ctrl_buf[DBG_MAX_MSG])[DBG_MSG_LEN];
+	char     (data_buf[DBG_MAX_MSG])[DBG_MSG_LEN];
+	unsigned ctrl_idx;
+	rwlock_t ctrl_lck;
+	unsigned data_idx;
+	rwlock_t data_lck;
+	unsigned int log_events;
+	unsigned int log_payload;
+	unsigned int inep_log_mask;
+	unsigned int outep_log_mask;
+};
+
+void __maybe_unused
+xhci_dbg_log_event(struct dbg_data *d, struct urb *urb, char *event,
+		unsigned extra);
 void xhci_print_ir_set(struct xhci_hcd *xhci, int set_num);
 void xhci_print_registers(struct xhci_hcd *xhci);
 void xhci_dbg_regs(struct xhci_hcd *xhci);
@@ -1669,6 +1750,7 @@ void xhci_slot_copy(struct xhci_hcd *xhci,
 int xhci_endpoint_init(struct xhci_hcd *xhci, struct xhci_virt_device *virt_dev,
 		struct usb_device *udev, struct usb_host_endpoint *ep,
 		gfp_t mem_flags);
+void xhci_reinit_xfer_ring(struct xhci_ring *ring, unsigned int cycle_state);
 void xhci_ring_free(struct xhci_hcd *xhci, struct xhci_ring *ring);
 int xhci_ring_expansion(struct xhci_hcd *xhci, struct xhci_ring *ring,
 				unsigned int num_trbs, gfp_t flags);
@@ -1711,6 +1793,11 @@ static inline int xhci_register_pci(void) { return 0; }
 static inline void xhci_unregister_pci(void) {}
 #endif
 
+struct xhci_plat_data {
+	unsigned vendor;
+	unsigned revision;
+};
+
 #if defined(CONFIG_USB_XHCI_PLATFORM) \
 	|| defined(CONFIG_USB_XHCI_PLATFORM_MODULE)
 int xhci_register_plat(void);
@@ -1728,6 +1815,7 @@ int xhci_handshake(struct xhci_hcd *xhci, void __iomem *ptr,
 		u32 mask, u32 done, int usec);
 void xhci_quiesce(struct xhci_hcd *xhci);
 int xhci_halt(struct xhci_hcd *xhci);
+int xhci_start(struct xhci_hcd *xhci);
 int xhci_reset(struct xhci_hcd *xhci);
 int xhci_init(struct usb_hcd *hcd);
 int xhci_run(struct usb_hcd *hcd);
@@ -1820,6 +1908,7 @@ int xhci_cancel_cmd(struct xhci_hcd *xhci, struct xhci_command *command,
 		union xhci_trb *cmd_trb);
 void xhci_ring_ep_doorbell(struct xhci_hcd *xhci, unsigned int slot_id,
 		unsigned int ep_index, unsigned int stream_id);
+union xhci_trb *xhci_find_next_enqueue(struct xhci_ring *ring);
 
 /* xHCI roothub code */
 void xhci_set_link_state(struct xhci_hcd *xhci, __le32 __iomem **port_array,
@@ -1855,5 +1944,9 @@ struct xhci_ep_ctx *xhci_get_ep_ctx(struct xhci_hcd *xhci, struct xhci_container
 
 /* xHCI quirks */
 bool xhci_compliance_mode_recovery_timer_quirk_check(void);
+
+/* EHSET */
+int xhci_submit_single_step_set_feature(struct usb_hcd *hcd, struct urb *urb,
+					int is_setup);
 
 #endif /* __LINUX_XHCI_HCD_H */

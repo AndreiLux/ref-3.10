@@ -53,7 +53,10 @@ extern void thaw_kernel_threads(void);
  */
 static inline bool try_to_freeze_unsafe(void)
 {
-	might_sleep();
+/* This causes problems for ARM targets and is a known
+ * problem upstream.
+ *	might_sleep();
+ */
 	if (likely(!freezing(current)))
 		return false;
 	return __refrigerator(false);

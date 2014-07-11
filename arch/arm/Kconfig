@@ -19,6 +19,7 @@ config ARM
 	select GENERIC_STRNCPY_FROM_USER
 	select GENERIC_STRNLEN_USER
 	select HARDIRQS_SW_RESEND
+	select HAVE_AOUT
 	select HAVE_ARCH_JUMP_LABEL if !XIP_KERNEL
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_SECCOMP_FILTER
@@ -206,6 +207,9 @@ config NEED_RET_TO_USER
 config ARCH_MTD_XIP
 	bool
 
+config ARCH_WANT_KMAP_ATOMIC_FLUSH
+	bool
+
 config VECTORS_BASE
 	hex
 	default 0xffff0000 if MMU || CPU_HIGH_VECTOR
@@ -265,11 +269,23 @@ config GENERIC_BUG
 	def_bool y
 	depends on BUG
 
-config SEC_FACTORY
-        bool "when it comes to sec factory mode"
-        default n
-        help
-          It will support a sec factory mode
+config ARM_USER_ACCESSIBLE_TIMER_BASE
+	hex "Base address of user-accessible timer counter page"
+	default 0xfffef000
+	depends on ARM_USE_USER_ACCESSIBLE_TIMERS
+	help
+	 Specify the base user-space virtual address where the user-accessible
+	 timer counter page should be mapped by the kernel.  User-space apps
+	 will read directly from the page at this address.
+
+config ARCH_RANDOM
+	bool "SOC specific random number generation"
+	help
+	 Allow the kernel to use an architecture specific implementation for
+	 random number generation
+
+	 If unsure, say N
+
 
 source "init/Kconfig"
 
@@ -627,10 +643,22 @@ config ARCH_PXA
 
 config ARCH_MSM
 	bool "Qualcomm MSM"
+	select ARCH_HAS_CPUFREQ
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKDEV_LOOKUP
 	select GENERIC_CLOCKEVENTS
+	select GENERIC_GPIO
+	select GENERIC_TIME
+	select GENERIC_ALLOCATOR
 	select HAVE_CLK
+	select HAVE_CLK_PREPARE
+	select NEED_MACH_MEMORY_H
+	select NEED_MACH_IO_H
+	select NEED_MACH_GPIO_H
+	select SOC_BUS
+	select MULTI_IRQ_HANDLER
+	select SPARSE_IRQ
+	select USE_OF
 	help
 	  Support for Qualcomm MSM/QSD based systems.  This runs on the
 	  apps processor of the MSM/QSD and depends on a shared memory
@@ -790,6 +818,8 @@ config ARCH_S5PV210
 config ARCH_EXYNOS
 	bool "Samsung EXYNOS"
 	select ARCH_HAS_CPUFREQ
+	select ARCH_HAS_HOLES_MEMORYMODEL
+	select ARCH_SPARSEMEM_ENABLE
 	select CLKDEV_LOOKUP
 	select COMMON_CLK
 	select CPU_V7
@@ -800,7 +830,6 @@ config ARCH_EXYNOS
 	select HAVE_S3C_RTC if RTC_CLASS
 	select NEED_MACH_GPIO_H
 	select NEED_MACH_MEMORY_H
-	select SPARSE_IRQ
 	help
 	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
 
@@ -1067,8 +1096,17 @@ source arch/arm/mm/Kconfig
 
 config ARM_NR_BANKS
 	int
-	default 16 if ARCH_EP93XX || ARCH_EXYNOS
+	default 16 if ARCH_EP93XX
 	default 8
+
+config RESERVE_FIRST_PAGE
+	bool
+	default n
+	help
+	  Reserve the first page at PHYS_OFFSET. The first
+	  physical page is used by many platforms for warm
+	  boot operations. Reserve this page so that it is
+	  not allocated by the kernel.
 
 config IWMMXT
 	bool "Enable iWMMXt support" if !CPU_PJ4
@@ -1341,43 +1379,6 @@ config PL310_ERRATA_769419
 	  on systems with an outer cache, the store buffer is drained
 	  explicitly.
 
-config ARM_ERRATA_761320
-	bool "ARM errata: no direct eviction"
-	depends on CPU_V7 && SMP
-	help
-	  This option enables the workaround for the 761320 Cortex-A9 erratum.
-
-config ARM_ERRATA_766421
-	bool "ARM errata: Strongly-Ordered/Device load or NC LDREX could return incorrect data"
-	depends on CPU_V7
-	help
-	  This option enables the workaround for the 766421 Cortex-A15 erratum.
-	  In certain situations, a strongly ordered or device load instruction,
-	  or a non-cacheable normal memory load-exclusive instruction could
-	  match multiple fill buffers and return incorrect data.
-	  This workaround is add DMB instruction when making any change to the
-	  translation regime and before doing any new loads/stores/preloads
-	  in the new translation regime.
-
-config ARM_ERRATA_773022
-	bool "ARM errata: incorrect instructions may be executed from loop buffer"
-	depends on CPU_V7
-	help
-	  This option enables the workaround for the 773022 Cortex-A15 erratum.
-	  In certain rare sequences of code, the loop buffer may deliver
-	  incorrect instructions.
-	  This workaround is to disable loop buffer.
-
-config ARM_ERRATA_774769
-	bool "ARM errata: data corruption may occur with store streaming in a system"
-	depends on CPU_V7
-	help
-	  This option enables the workaround for the erratum 774769.
-	  External memory may be corrupted on erratum 774769.
-	  The workaround is to configure write streaming on versions of A15
-	  affected by this erratum such that no streaming-write ever allocates
-	  into the L2 cache.
-
 config ARM_ERRATA_775420
        bool "ARM errata: A data cache maintenance operation which aborts, might lead to deadlock"
        depends on CPU_V7
@@ -1397,6 +1398,12 @@ config ARM_ERRATA_798181
 	  option enables the Linux kernel workaround for this erratum
 	  which sends an IPI to the CPUs that are running the same ASID
 	  as the one being invalidated.
+
+config PERFMAP
+        tristate "Perfmap support (EXPERIMENTAL)"
+	depends on ARCH_MSM_KRAIT
+        help
+          Perfmap: memory mapped interface for performance monitors.
 
 endmenu
 
@@ -1536,107 +1543,6 @@ config SCHED_SMT
 	  MultiThreading at a cost of slightly increased overhead in some
 	  places. If unsure say N here.
 
-config DISABLE_CPU_SCHED_DOMAIN_BALANCE
-	bool "(EXPERIMENTAL) Disable CPU level scheduler load-balancing"
-	help
-	  Disables scheduler load-balancing at CPU sched domain level.
-
-config SCHED_HMP
-	bool "(EXPERIMENTAL) Heterogenous multiprocessor scheduling"
-	depends on DISABLE_CPU_SCHED_DOMAIN_BALANCE && SCHED_MC && FAIR_GROUP_SCHED && !SCHED_AUTOGROUP
-	help
-	  Experimental scheduler optimizations for heterogeneous platforms.
-	  Attempts to introspectively select task affinity to optimize power
-	  and performance. Basic support for multiple (>2) cpu types is in place,
-	  but it has only been tested with two types of cpus.
-	  There is currently no support for migration of task groups, hence
-	  !SCHED_AUTOGROUP. Furthermore, normal load-balancing must be disabled
-	  between cpus of different type (DISABLE_CPU_SCHED_DOMAIN_BALANCE).
-
-config SCHED_HMP_PRIO_FILTER
-	bool "(EXPERIMENTAL) Filter HMP migrations by task priority"
-	depends on SCHED_HMP
-	help
-	  Enables task priority based HMP migration filter. Any task with
-	  a NICE value above the threshold will always be on low-power cpus
-	  with less compute capacity.
-
-config SCHED_HMP_PRIO_FILTER_VAL
-	int "NICE priority threshold"
-	default 5
-	depends on SCHED_HMP_PRIO_FILTER
-
-config HMP_FAST_CPU_MASK
-	string "HMP scheduler fast CPU mask"
-	depends on SCHED_HMP
-	help
-          Leave empty to use device tree information.
-	  Specify the cpuids of the fast CPUs in the system as a list string,
-	  e.g. cpuid 0+1 should be specified as 0-1.
-
-config HMP_SLOW_CPU_MASK
-	string "HMP scheduler slow CPU mask"
-	depends on SCHED_HMP
-	help
-	  Leave empty to use device tree information.
-	  Specify the cpuids of the slow CPUs in the system as a list string,
-	  e.g. cpuid 0+1 should be specified as 0-1.
-
-config HMP_VARIABLE_SCALE
-	bool "Allows changing the load tracking scale through sysfs"
-	depends on SCHED_HMP
-	help
-	  When turned on, this option exports the thresholds and load average
-	  period value for the load tracking patches through sysfs.
-	  The values can be modified to change the rate of load accumulation
-	  and the thresholds used for HMP migration.
-	  The load_avg_period_ms is the time in ms to reach a load average of
-	  0.5 for an idle task of 0 load average ratio that start a busy loop.
-	  The up_threshold and down_threshold is the value to go to a faster
-	  CPU or to go back to a slower cpu.
-	  The {up,down}_threshold are devided by 1024 before being compared
-	  to the load average.
-	  For examples, with load_avg_period_ms = 128 and up_threshold = 512,
-	  a running task with a load of 0 will be migrated to a bigger CPU after
-	  128ms, because after 128ms its load_avg_ratio is 0.5 and the real
-	  up_threshold is 0.5.
-	  This patch has the same behavior as changing the Y of the load
-	  average computation to
-	        (1002/1024)^(LOAD_AVG_PERIOD/load_avg_period_ms)
-	  but it remove intermadiate overflows in computation.
-
-config HMP_FREQUENCY_INVARIANT_SCALE
-	bool "(EXPERIMENTAL) Frequency-Invariant Tracked Load for HMP"
-	depends on HMP_VARIABLE_SCALE && CPU_FREQ
-	default y
-	help
-	  Scales the current load contribution in line with the frequency
-	  of the CPU that the task was executed on.
-	  In this version, we use a simple linear scale derived from the
-	  maximum frequency reported by CPUFreq.
-	  Restricting tracked load to be scaled by the CPU's frequency
-	  represents the consumption of possible compute capacity
-	  (rather than consumption of actual instantaneous capacity as
-	  normal) and allows the HMP migration's simple threshold
-	  migration strategy to interact more predictably with CPUFreq's
-	  asynchronous compute capacity changes.
-
-config HMP_REAL_HEAVIEST_PICK
-	bool "Heaviest task searching change for HMP"
-	depends on SCHED_HMP
-	default n
-	help
-		Heaviest task search all of the cfs runqueues.
-		android basically 3 scheduling group.
-		previous checking only current se runqueue.
-
-config HMP_DEBUG
-	bool "Debug feature for HMP"
-	depends on SCHED_HMP
-	default n
-	help
-		Debug feature for HMP.
-
 config HAVE_ARM_SCU
 	bool
 	help
@@ -1742,7 +1648,7 @@ source kernel/Kconfig.preempt
 config HZ
 	int
 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
-		ARCH_S5PV210 || ARCH_EXYNOS
+		ARCH_S5PV210 || ARCH_EXYNOS4
 	default AT91_TIMER_HZ if ARCH_AT91
 	default SHMOBILE_TIMER_HZ if ARCH_SHMOBILE
 	default 100
@@ -1816,7 +1722,7 @@ config AEABI
 config OABI_COMPAT
 	bool "Allow old ABI binaries to run with this kernel (EXPERIMENTAL)"
 	depends on AEABI && !THUMB2_KERNEL
-	default y
+	default y if !SMP
 	help
 	  This option preserves the old syscall interface along with the
 	  new (ARM EABI) one. It also provides a compatibility layer to
@@ -1875,6 +1781,42 @@ config HW_PERF_EVENTS
 	  disabled, perf events will use software events only.
 
 source "mm/Kconfig"
+
+config ARCH_MEMORY_PROBE
+	def_bool n
+
+config ARCH_MEMORY_REMOVE
+	def_bool n
+
+config ENABLE_DMM
+	def_bool n
+
+choice
+	prompt "Virtual Memory Reclaim"
+	default NO_VM_RECLAIM
+	help
+	  Select the method of reclaiming virtual memory
+
+config ENABLE_VMALLOC_SAVING
+	bool "Reclaim memory for each subsystem"
+	help
+	  Enable this config to reclaim the virtual space belonging
+	  to any subsystem which is expected to have a lifetime of
+	  the entire system. This feature allows lowmem to be non-
+	  contiguous.
+
+config NO_VM_RECLAIM
+	bool "Do not reclaim memory"
+	help
+	  Do not reclaim any memory. This might result in less lowmem
+	  and wasting virtual memory space which could otherwise be
+	  reclaimed by using any of the other two config options.
+
+endchoice
+
+config HOLES_IN_ZONE
+	def_bool n
+	depends on SPARSEMEM
 
 config FORCE_MAX_ZONEORDER
 	int "Maximum zone order" if ARCH_SHMOBILE
@@ -1961,6 +1903,17 @@ config XEN
 	select ARM_PSCI
 	help
 	  Say Y if you want to run Linux in a Virtual Machine on Xen on ARM.
+
+config CP_ACCESS
+	tristate "CP register access tool"
+	default m
+	help
+	  Provide support for Coprocessor register access using /sys
+	  interface. Read and write to CP registers from userspace
+	  through sysfs interface. A sys file (cp_rw) will be created under
+	  /sys/devices/cpaccess/cpaccess0.
+
+	  If unsure, say N.
 
 config ARM_FLUSH_CONSOLE_ON_RESTART
 	bool "Force flush the console on restart"
@@ -2297,6 +2250,14 @@ endif
 source "drivers/cpuidle/Kconfig"
 
 endmenu
+
+config CPU_FREQ_MSM
+        bool
+        depends on CPU_FREQ && ARCH_MSM
+        default y
+        help
+          This enables the CPUFreq driver for Qualcomm CPUs.
+          If in doubt, say Y.
 
 menu "Floating point emulation"
 

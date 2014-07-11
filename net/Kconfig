@@ -232,6 +232,7 @@ source "net/batman-adv/Kconfig"
 source "net/openvswitch/Kconfig"
 source "net/vmw_vsock/Kconfig"
 source "net/netlink/Kconfig"
+source "net/rmnet_data/Kconfig"
 
 config RPS
 	boolean "RPS"
@@ -350,6 +351,7 @@ source "net/9p/Kconfig"
 source "net/caif/Kconfig"
 source "net/ceph/Kconfig"
 source "net/nfc/Kconfig"
+source "net/ipc_router/Kconfig"
 
 
 endif   # if NET

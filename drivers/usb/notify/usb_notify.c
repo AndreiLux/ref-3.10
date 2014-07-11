@@ -151,6 +151,10 @@ int register_gpios(struct otg_notify *n)
 		return ret;
 	}
 
+	pr_info("vbus_detect %d, redriver_en %d\n",
+			n->vbus_detect_gpio,
+			n->redriver_en_gpio);
+
 	if (n->vbus_detect_gpio < 0)
 		goto redriver_en_gpio_phase;
 
@@ -232,17 +236,22 @@ static void otg_notify_work(struct work_struct *data)
 			if (notify->is_wakelock)
 				wake_lock(&u_notify->wlock);
 			u_notify->ndev.mode = NOTIFY_PERIPHERAL_MODE;
+
 			if (!(notify->redriver_en_gpio < 0))
 				gpio_direction_output
 					(notify->redriver_en_gpio, 1);
+
 			if (notify->set_peripheral)
 				notify->set_peripheral(true);
+
 		} else {
 			if (notify->set_peripheral)
 				notify->set_peripheral(false);
+
 			if (!(notify->redriver_en_gpio < 0))
 				gpio_direction_output
 					(notify->redriver_en_gpio, 0);
+
 			u_notify->ndev.mode = NOTIFY_NONE_MODE;
 			if (notify->is_wakelock)
 				wake_unlock(&u_notify->wlock);
@@ -372,6 +381,7 @@ static int create_usb_notify(void)
 		ret = -ENOMEM;
 		goto err1;
 	}
+	pr_info("create usb notify: done\n");
 
 	return 0;
 
@@ -411,8 +421,11 @@ EXPORT_SYMBOL(set_notify_data);
 
 struct otg_notify *get_otg_notify(void)
 {
-	if (!u_notify)
+	if (!u_notify) {
+		pr_err("otg_notify is null\n");
+		panic("otg_notify is null\n");
 		return NULL;
+	}
 	return u_notify->o_notify;
 }
 EXPORT_SYMBOL(get_otg_notify);
@@ -521,7 +534,7 @@ int set_otg_notify(struct otg_notify *n)
 		goto err2;
 	}
 
-	if (!(n->vbus_detect_gpio < 0) || !(n->redriver_en_gpio < 0)) {
+	if ((n->vbus_detect_gpio >= 0) || (n->redriver_en_gpio >= 0)) {
 		ret = register_gpios(n);
 		if (ret < 0) {
 			pr_err("register_vbus_irq is failed\n");
@@ -577,7 +590,6 @@ static void __exit usb_notify_exit(void)
 module_init(usb_notify_init);
 module_exit(usb_notify_exit);
 
-MODULE_AUTHOR("Samsung usb team");
-MODULE_DESCRIPTION("Usb notify layer");
+MODULE_AUTHOR("Samsung USB Team");
+MODULE_DESCRIPTION("USB Notify Layer");
 MODULE_LICENSE("GPL");
-
