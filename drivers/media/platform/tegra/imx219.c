@@ -65,6 +65,9 @@ struct imx219_info {
 	u32				debug_i2c_offset;
 #endif
 	struct sysedp_consumer *sysedpc;
+    // AF Data
+    u8 afdat[4];
+    bool afdat_read;
 };
 
 static inline void
@@ -432,6 +435,41 @@ static int imx219_get_sensor_id(struct imx219_info *info)
 	return ret;
 }
 
+static int imx219_get_af_data(struct imx219_info *info)
+{
+	int ret = 0;
+	int i;
+	u8 bak = 0;
+    u8 *dat = (u8 *)info->afdat;
+
+	pr_info("%s\n", __func__);
+	if (info->afdat_read)
+		return 0;
+
+    imx219_write_reg(info->i2c_client, 0x0100, 0); // SW-Stanby
+    msleep_range(33); // wait one frame
+
+    imx219_write_reg(info->i2c_client, 0x012A, 0x18); // 24Mhz input
+    imx219_write_reg(info->i2c_client, 0x012B, 0x00); //
+
+    imx219_write_reg(info->i2c_client, 0x3302, 0x02); // clock setting
+    imx219_write_reg(info->i2c_client, 0x3303, 0x58); // clock setting
+    imx219_write_reg(info->i2c_client, 0x3300, 0); // ECC ON
+    imx219_write_reg(info->i2c_client, 0x3200, 1); // set 'Read'
+
+    imx219_write_reg(info->i2c_client, 0x3202, 1); // page 1
+
+	for (i = 0; i < 4; i++) {
+		ret |= imx219_read_reg(info->i2c_client, 0x3204 + i, &bak);
+		*(dat+3-i) = bak;
+        printk("[%d] x%x ", i, bak);
+	}
+    printk("\n");
+    info->afdat_read = true;
+
+	return ret;
+}
+
 static void imx219_mclk_disable(struct imx219_info *info)
 {
 	dev_dbg(&info->i2c_client->dev, "%s: disable MCLK\n", __func__);
@@ -547,6 +585,20 @@ imx219_ioctl(struct file *file,
 		}
 		return imx219_set_group_hold(info, &ae);
 	}
+    case IMX219_IOCTL_GET_AFDAT:
+    {
+        err = imx219_get_af_data(info);
+
+		if (err) {
+			pr_err("%s:Failed to get af data.\n", __func__);
+			return err;
+		}
+        if (copy_to_user((void __user *)arg, info->afdat, 4)) {
+			pr_err("%s:Failed to copy status to user\n", __func__);
+			return -EFAULT;
+		}
+        return 0;
+    }
 	case IMX219_IOCTL_SET_FLASH_MODE:
 	{
 		dev_dbg(&info->i2c_client->dev,
@@ -806,6 +858,7 @@ imx219_probe(struct i2c_client *client,
 	info->i2c_client = client;
 	atomic_set(&info->in_use, 0);
 	info->mode = -1;
+    info->afdat_read = false;
 
 	mclk_name = info->pdata->mclk_name ?
 		    info->pdata->mclk_name : "default_mclk";

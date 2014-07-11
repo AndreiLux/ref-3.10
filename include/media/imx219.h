@@ -22,6 +22,7 @@
 #define IMX219_IOCTL_SET_GAIN           _IOW('o', 5, __u16)
 #define IMX219_IOCTL_GET_FUSEID         _IOR('o', 6, struct nvc_fuseid)
 #define IMX219_IOCTL_SET_GROUP_HOLD     _IOW('o', 7, struct imx219_ae)
+#define IMX219_IOCTL_GET_AFDAT            _IOR('o', 8, __u32)
 #define IMX219_IOCTL_SET_POWER		_IOW('o', 20, __u32)
 #define IMX219_IOCTL_GET_FLASH_CAP	_IOR('o', 30, __u32)
 #define IMX219_IOCTL_SET_FLASH_MODE _IOW('o', 31, struct imx219_flash_control)
