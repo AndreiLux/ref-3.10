@@ -55,7 +55,8 @@
 #define DAI_LINK_PCM_OFFLOAD_FE	4
 #define DAI_LINK_COMPR_OFFLOAD_FE	5
 #define DAI_LINK_I2S_OFFLOAD_BE	6
-#define NUM_DAI_LINKS		7
+#define DAI_LINK_I2S_OFFLOAD_SPEAKER_BE	7
+#define NUM_DAI_LINKS		8
 
 
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
@@ -727,11 +728,9 @@ static const struct snd_soc_dapm_route flounder_audio_map[] = {
 	{"DMIC L2", NULL, "Int Mic"},
 	{"DMIC R2", NULL, "Int Mic"},
 	/* AHUB BE connections */
-	{"tegra30-i2s.1 Playback", NULL, "I2S1_OUT"},
-
-	{"I2S1_OUT", NULL, "offload-pcm-playback"},
-	{"I2S1_OUT", NULL, "offload-compr-playback"},
 	{"AIF1 Playback", NULL, "I2S1_OUT"},
+
+	{"Playback", NULL, "I2S2_OUT"},
 };
 
 static const struct snd_kcontrol_new flounder_controls[] = {
@@ -867,7 +866,7 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.dynamic = 1,
 	},
 	[DAI_LINK_I2S_OFFLOAD_BE] = {
-		.name = "offload-audio",
+		.name = "offload-audio-codec",
 		.stream_name = "offload-audio-pcm",
 		.codec_name = "rt5677.1-002d",
 		.platform_name = "tegra30-i2s.1",
@@ -878,6 +877,22 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.no_pcm = 1,
 
 		.be_id = 0,
+		.ignore_pmdown_time = 1,
+		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
+	},
+	[DAI_LINK_I2S_OFFLOAD_SPEAKER_BE] = {
+		.name = "offload-audio-speaker",
+		.stream_name = "offload-audio-pcm-spk",
+		.codec_name = "spdif-dit.0",
+		.platform_name = "tegra30-i2s.2",
+		.cpu_dai_name = "tegra30-i2s.2",
+		.codec_dai_name = "dit-hifi",
+		.ops = &tegra_rt5677_speaker_ops,
+
+		.no_pcm = 1,
+
+		.be_id = 1,
+		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
 	},
 };
@@ -1357,6 +1372,9 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	tegra_rt5677_dai[DAI_LINK_SPEAKER].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 	tegra_rt5677_dai[DAI_LINK_SPEAKER].platform_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+
+	tegra_rt5677_dai[DAI_LINK_I2S_OFFLOAD_SPEAKER_BE].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 
 	tegra_rt5677_dai[DAI_LINK_MI2S_DUMMY].cpu_dai_name =
