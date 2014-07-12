@@ -991,6 +991,8 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 		NULL),
 	OF_DEV_AUXDATA("nvidia,tegra132-dfll", 0x70040084, "tegra_cl_dvfs",
 		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-efuse", TEGRA_FUSE_BASE, "tegra-fuse",
+			NULL),
 	{}
 };
 #endif
@@ -1359,7 +1361,6 @@ static void __init tegra_flounder_late_init(void)
 	flounder_soctherm_init();
 
 	flounder_setup_bluedroid_pm();
-	tegra_register_fuse();
 	sysedp_dynamic_capping_init();
 }
 
