@@ -1843,7 +1843,7 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 
 	cwmcu_powermode_switch(0);
 
-	I("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
+	D("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
 		__func__, sensors_id, enabled, mcu_data->enabled_list);
 
 	if ((sensors_id == CW_LIGHT) && (!!enabled)) {
@@ -2061,7 +2061,7 @@ static ssize_t batch_set(struct device *dev,
 				  mcu_data->report_period[i] / MS_TO_PERIOD);
 	}
 
-	I("%s: Minimum delay = %dms\n", __func__,
+	D("%s: Minimum delay = %dms\n", __func__,
 	  atomic_read(&mcu_data->delay));
 
 	mcu_data->sensors_batch_timeout[sensors_id] = timeout;
