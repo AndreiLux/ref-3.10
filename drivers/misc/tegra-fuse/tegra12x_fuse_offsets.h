@@ -84,12 +84,15 @@
 #define FUSE_FAB_CODE_MASK	0x3f
 #define FUSE_LOT_CODE_0		0x208
 #define FUSE_LOT_CODE_1		0x20c
+#define FUSE_LOT_CODE_1_MASK	0x0fffffff
 #define FUSE_WAFER_ID		0x210
 #define FUSE_WAFER_ID_MASK	0x3f
 #define FUSE_X_COORDINATE	0x214
 #define FUSE_X_COORDINATE_MASK	0x1ff
 #define FUSE_Y_COORDINATE	0x218
 #define FUSE_Y_COORDINATE_MASK	0x1ff
+#define FUSE_OPS_RESERVED	0x220
+#define FUSE_OPS_RESERVED_MASK	0x3f
 #define FUSE_GPU_INFO		0x390
 #define FUSE_GPU_INFO_MASK	(1<<2)
 #define FUSE_SPARE_BIT		0x300
@@ -309,6 +312,90 @@ unsigned long long tegra_chip_uid(void)
 	return uid;
 }
 
+/* return uid in bootloader format */
+static void tegra_chip_unique_id(u32 uid[4])
+{
+	u32 vendor;
+	u32 fab;
+	u32 wafer;
+	u32 lot0;
+	u32 lot1;
+	u32 x, y;
+	u32 rsvd;
+
+	/** For t12x:
+	 *
+	 * Field        Bits     Data
+	 * (LSB first)
+	 * --------     ----     ----------------------------------------
+	 * Reserved       6
+	 * Y              9      Wafer Y-coordinate
+	 * X              9      Wafer X-coordinate
+	 * WAFER          6      Wafer id
+	 * LOT_0         32      Lot code 0
+	 * LOT_1         28      Lot code 1
+	 * FAB            6      FAB code
+	 * VENDOR         4      Vendor code
+	 * --------     ----
+	 * Total        100
+	 *
+	 * Gather up all the bits and pieces.
+	 *
+	 * <Vendor:4>
+	 * <Fab:6><Lot0:26>
+	 * <Lot0:6><Lot1:26>
+	 * <Lot1:2><Wafer:6><X:9><Y:9><Reserved:6>
+	 *
+	 **/
+
+	vendor = tegra_fuse_readl(FUSE_VENDOR_CODE) & FUSE_VENDOR_CODE_MASK;
+	fab = tegra_fuse_readl(FUSE_FAB_CODE) & FUSE_FAB_CODE_MASK;
+	wafer = tegra_fuse_readl(FUSE_WAFER_ID) & FUSE_WAFER_ID_MASK;
+	x = tegra_fuse_readl(FUSE_X_COORDINATE) & FUSE_X_COORDINATE_MASK;
+	y = tegra_fuse_readl(FUSE_Y_COORDINATE) & FUSE_Y_COORDINATE_MASK;
+
+	lot0 = tegra_fuse_readl(FUSE_LOT_CODE_0);
+	lot1 = tegra_fuse_readl(FUSE_LOT_CODE_1) & FUSE_LOT_CODE_1_MASK;
+	rsvd = tegra_fuse_readl(FUSE_OPS_RESERVED) & FUSE_OPS_RESERVED_MASK;
+
+	/* <Lot1:2><Wafer:6><X:9><Y:9><Reserved:6> */
+	uid[3] = (lot1 << 30) | (wafer << 24) | (x << 15) | (y << 6) | rsvd;
+	/* <Lot0:6><Lot1:26> */
+	uid[2] = (lot0 << 26) | (lot1 >> 2);
+	/* <Fab:6><Lot0:26> */
+	uid[1] = (fab << 26) | (lot0 >> 6);
+	/* <Vendor:4> */
+	uid[0] = vendor;
+}
+
+
+static ssize_t tegra_cprev_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	u32 rev, major, minor;
+
+	rev = tegra_fuse_readl(FUSE_CP_REV);
+	minor = rev & 0x1f;
+	major = (rev >> 5) & 0x3f;
+
+	sprintf(buf, "%u.%u\n", major, minor);
+
+	return strlen(buf);
+}
+
+static ssize_t tegra_uid_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	u32 uid[4];
+
+	tegra_chip_unique_id(uid);
+	sprintf(buf, "%X%08X%08X%08X\n", uid[0], uid[1], uid[2], uid[3]);
+	return strlen(buf);
+}
+
+DEVICE_ATTR(cp_rev, 0444, tegra_cprev_show, NULL);
+DEVICE_ATTR(uid, 0444, tegra_uid_show, NULL);
+
 static int tsensor_calib_offset[] = {
 	[0] = 0x198,
 	[1] = 0x184,
@@ -415,11 +502,16 @@ int tegra_fuse_add_sysfs_variables(struct platform_device *pdev,
 		dev_attr_public_key.attr.mode =  0440;
 		dev_attr_pkc_disable.attr.mode = 0440;
 		dev_attr_vp8_enable.attr.mode = 0440;
+		dev_attr_cp_rev.attr.mode = 0444;
+		dev_attr_uid.attr.mode = 0444;
 	} else {
 		dev_attr_public_key.attr.mode =  0640;
 		dev_attr_pkc_disable.attr.mode = 0640;
 		dev_attr_vp8_enable.attr.mode = 0640;
+		dev_attr_cp_rev.attr.mode = 0444;
+		dev_attr_uid.attr.mode = 0444;
 	}
+
 	CHK_ERR(&pdev->dev, sysfs_create_file(&pdev->dev.kobj,
 				&dev_attr_public_key.attr));
 	CHK_ERR(&pdev->dev, sysfs_create_file(&pdev->dev.kobj,
@@ -428,6 +520,10 @@ int tegra_fuse_add_sysfs_variables(struct platform_device *pdev,
 				&dev_attr_vp8_enable.attr));
 	CHK_ERR(&pdev->dev, sysfs_create_file(&pdev->dev.kobj,
 				&dev_attr_odm_lock.attr));
+	CHK_ERR(&pdev->dev, sysfs_create_file(&pdev->dev.kobj,
+				&dev_attr_cp_rev.attr));
+	CHK_ERR(&pdev->dev, sysfs_create_file(&pdev->dev.kobj,
+				&dev_attr_uid.attr));
 
 	return 0;
 }
@@ -438,6 +534,8 @@ int tegra_fuse_rm_sysfs_variables(struct platform_device *pdev)
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_pkc_disable.attr);
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_vp8_enable.attr);
 	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_odm_lock.attr);
+	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_cp_rev.attr);
+	sysfs_remove_file(&pdev->dev.kobj, &dev_attr_uid.attr);
 
 	return 0;
 }
@@ -450,6 +548,10 @@ int tegra_fuse_ch_sysfs_perm(struct device *dev, struct kobject *kobj)
 				&dev_attr_pkc_disable.attr, 0440));
 	CHK_ERR(dev, sysfs_chmod_file(kobj,
 				&dev_attr_vp8_enable.attr, 0440));
+	CHK_ERR(dev, sysfs_chmod_file(kobj,
+				&dev_attr_cp_rev.attr, 0444));
+	CHK_ERR(dev, sysfs_chmod_file(kobj,
+				&dev_attr_uid.attr, 0444));
 
 	return 0;
 }
