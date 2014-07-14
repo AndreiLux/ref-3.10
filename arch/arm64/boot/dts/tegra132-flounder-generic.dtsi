@@ -41,6 +41,7 @@
 					TEGRA_GPIO(J, 0)
 					TEGRA_GPIO(K, 2)
 					TEGRA_GPIO(K, 3)
+					TEGRA_GPIO(N, 4)
 					TEGRA_GPIO(O, 2)
 					TEGRA_GPIO(O, 3)
 					TEGRA_GPIO(O, 5)
@@ -678,9 +679,7 @@
 			regulator-name = "usb0-vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio 108 0>; /*  TEGRA_PN4 */
 			enable-active-high;
-			gpio-open-drain;
 
 			consumers {
 				c1 {
