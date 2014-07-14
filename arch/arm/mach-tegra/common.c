@@ -197,6 +197,11 @@ EXPORT_SYMBOL(tegra_iram_dev);
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvsecurity.h>
 
+static inline phys_addr_t memblock_end_of_4G(phys_addr_t size)
+{
+	return memblock_find_in_range(0, SZ_4G, size, PAGE_SIZE);
+}
+
 static int tegra_update_resize_cfg(phys_addr_t base , size_t size)
 {
 	int err = 0;
@@ -1884,7 +1889,7 @@ static struct platform_device ramoops_dev  = {
 static void __init tegra_reserve_ramoops_memory(unsigned long reserve_size)
 {
 	ramoops_data.mem_size = reserve_size;
-	ramoops_data.mem_address = memblock_end_of_4G() - reserve_size;
+	ramoops_data.mem_address = memblock_end_of_4G(reserve_size);
 	ramoops_data.console_size = reserve_size - FTRACE_MEM_SIZE;
 	ramoops_data.ftrace_size = FTRACE_MEM_SIZE;
 	ramoops_data.dump_oops = 1;
@@ -1914,8 +1919,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 		 * Place the carveout below the 4 GB physical address limit
 		 * because IOVAs are only 32 bit wide.
 		 */
-		BUG_ON(memblock_end_of_4G() == 0);
-		tegra_carveout_start = memblock_end_of_4G() - carveout_size;
+		tegra_carveout_start = memblock_end_of_4G(carveout_size);
 		if (memblock_remove(tegra_carveout_start, carveout_size)) {
 			pr_err("Failed to remove carveout %08lx@%08llx "
 				"from memory map\n",
@@ -1932,13 +1936,12 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 		 * Place fb2 below the 4 GB physical address limit because
 		 * IOVAs are only 32 bit wide.
 		 */
-		BUG_ON(memblock_end_of_4G() == 0);
 #if IS_ENABLED(CONFIG_ADF_TEGRA)
 		tegra_fb2_start = memblock_alloc_base(fb2_size, PAGE_SIZE,
 				SZ_4G);
 		tegra_fb2_size = fb2_size;
 #else
-		tegra_fb2_start = memblock_end_of_4G() - fb2_size;
+		tegra_fb2_start = memblock_end_of_4G(fb2_size);
 		if (memblock_remove(tegra_fb2_start, fb2_size)) {
 			pr_err("Failed to remove second framebuffer "
 				"%08lx@%08llx from memory map\n",
@@ -1960,8 +1963,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 				SZ_4G);
 		tegra_fb_size = fb_size;
 #else
-		BUG_ON(memblock_end_of_4G() == 0);
-		tegra_fb_start = memblock_end_of_4G() - fb_size;
+		tegra_fb_start = memblock_end_of_4G(fb_size);
 		if (memblock_remove(tegra_fb_start, fb_size)) {
 			pr_err("Failed to remove framebuffer %08lx@%08llx "
 				"from memory map\n",
@@ -2198,14 +2200,14 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 	/* Keep these at the end */
 	if (carveout_size) {
 		if (dma_declare_contiguous(&tegra_generic_cma_dev,
-			carveout_size, 0, memblock_end_of_4G()))
+			carveout_size, 0, memblock_end_of_4G(0)))
 			pr_err("dma_declare_contiguous failed for generic\n");
 		tegra_carveout_size = carveout_size;
 	}
 
 	if (tegra_vpr_size)
 		if (dma_declare_contiguous(&tegra_vpr_cma_dev,
-			tegra_vpr_size, 0, memblock_end_of_4G()))
+			tegra_vpr_size, 0, memblock_end_of_4G(0)))
 			pr_err("dma_declare_contiguous failed VPR carveout\n");
 #endif
 
