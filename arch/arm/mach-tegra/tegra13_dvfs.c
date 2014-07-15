@@ -42,6 +42,8 @@ static bool tegra_dvfs_gpu_disabled;
 #define MHZ 1000000
 
 #define VDD_SAFE_STEP			100
+#define FUSE_FT_REV		0x128
+#define FUSE_CP_REV		0x190
 
 static int cpu_vmin_offsets[] = { 0, -20, };
 static int gpu_vmin_offsets[] = { 0, -20, };
@@ -754,12 +756,51 @@ static void __init set_cpu_dfll_tuning_data(struct cpu_cvb_dvfs *d, int speedo)
 	}
 }
 
+static bool fuse_cp_ft_rev_check(void)
+{
+	u32 rev, rev_major, rev_minor;
+	bool cp_check, ft_check;
+
+	rev = tegra_fuse_readl(FUSE_CP_REV);
+	rev_minor = rev & 0x1f;
+	rev_major = (rev >> 5) & 0x3f;
+
+	cp_check = ((rev_major == 0 && rev_minor == 12) ||
+		(rev_major == 1 && rev_minor == 0))
+		? true : false;
+
+	rev = tegra_fuse_readl(FUSE_FT_REV);
+	rev_minor = rev & 0x1f;
+	rev_major = (rev >> 5) & 0x3f;
+
+	ft_check = ((rev_major == 0 && rev_minor == 12) ||
+		(rev_major == 0 && rev_minor == 13) ||
+		(rev_major == 1 && rev_minor == 0))
+		? true : false;
+
+	if (cp_check && ft_check)
+		return true;
+
+	return false;
+}
+
+
 static void __init set_cpu_dfll_vmin_data(
 	struct cpu_cvb_dvfs *d, struct dvfs *cpu_dvfs,
 	int speedo, struct rail_alignment *align)
 {
 	int mv, mvj, t, j;
 	struct dvfs_rail *rail = &tegra13_dvfs_rail_vdd_cpu;
+
+	/* Increase vmin if fuse check returned false */
+	if (!fuse_cp_ft_rev_check()) {
+		for (j = 0; j <= MAX_THERMAL_LIMITS; j++) {
+			int *floor = &d->therm_floors_table[j];
+			if (*floor == 0)
+				break;
+			*floor = max(*floor, 820);
+		}
+	}
 
 	/* First install fixed Vmin profile */
 	tegra_dvfs_rail_init_vmin_thermal_profile(d->vmin_trips_table,
