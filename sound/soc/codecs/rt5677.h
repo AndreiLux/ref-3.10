@@ -1393,6 +1393,9 @@
 #define RT5677_DSP_IB_9_L			(0x1 << 1)
 #define RT5677_DSP_IB_9_L_SFT			1
 
+/* Register controlling boot vector */
+#define RT5677_DSP_BOOT_VECTOR			0x1801f090
+
 /* Debug String Length */
 #define RT5677_REG_DISP_LEN 12
 

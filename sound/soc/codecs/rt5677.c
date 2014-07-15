@@ -448,6 +448,63 @@ err:
 }
 
 /**
+ * rt5677_dsp_mode_i2c_write_address - Write value to address on DSP mode.
+ * @codec: SoC audio codec device.
+ * @address: Target address.
+ * @value: Target data.
+ *
+ *
+ * Returns 0 for success or negative error code.
+ */
+static int rt5677_dsp_mode_i2c_write_address(struct snd_soc_codec *codec,
+		unsigned int address, unsigned int value, unsigned int opcode)
+{
+	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
+	int ret;
+
+	mutex_lock(&rt5677->index_lock);
+
+	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_MSB,
+			   address >> 16);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to set addr msb value: %d\n", ret);
+		goto err;
+	}
+
+	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_LSB,
+			   address & 0xFFFF);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to set addr lsb value: %d\n", ret);
+		goto err;
+	}
+
+	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_DATA_MSB,
+			   value >> 16);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to set data msb value: %d\n", ret);
+		goto err;
+	}
+
+	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_DATA_LSB,
+			   value & 0xFFFF);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to set data lsb value: %d\n", ret);
+		goto err;
+	}
+
+	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_OP_CODE, opcode);
+	if (ret < 0) {
+		dev_err(codec->dev, "Failed to set op code value: %d\n", ret);
+		goto err;
+	}
+
+err:
+	mutex_unlock(&rt5677->index_lock);
+
+	return ret;
+}
+
+/**
  * rt5677_dsp_mode_i2c_write - Write register on DSP mode.
  * @codec: SoC audio codec device.
  * @reg: Register index.
@@ -459,39 +516,8 @@ err:
 static int rt5677_dsp_mode_i2c_write(struct snd_soc_codec *codec,
 		unsigned int reg, unsigned int value)
 {
-	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	int ret;
-
-	mutex_lock(&rt5677->index_lock);
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_MSB, 0x1802);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set addr msb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_ADDR_LSB, reg * 2);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set addr lsb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_DATA_LSB, value);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set data lsb value: %d\n", ret);
-		goto err;
-	}
-
-	ret = regmap_write(rt5677->regmap, RT5677_DSP_I2C_OP_CODE, 0x0001);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to set op code value: %d\n", ret);
-		goto err;
-	}
-
-err:
-	mutex_unlock(&rt5677->index_lock);
-
-	return ret;
+	return rt5677_dsp_mode_i2c_write_address(codec, 0x18020000 + reg * 2,
+						 value, 0x0001);
 }
 
 /**
@@ -799,13 +825,13 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 
 #ifdef DEBUG
 	msleep(50);
-	regmap_write(rt5677->regmap, 0x01, 0x0000);
-	regmap_write(rt5677->regmap, 0x02, 0x5000);
+	regmap_write(rt5677->regmap, 0x01, 0x0520);
+	regmap_write(rt5677->regmap, 0x02, 0x5ffe);
 	regmap_write(rt5677->regmap, 0x00, 0x0002);
 	regmap_read(rt5677->regmap, 0x03, &ret);
-	dev_err(codec->dev, "rt5677 0x50000000 0x03 %x\n", ret);
+	dev_err(codec->dev, "rt5677 0x5ffe0520 0x03 %x\n", ret);
 	regmap_read(rt5677->regmap, 0x04, &ret);
-	dev_err(codec->dev, "rt5677 0x50000000 0x04 %x\n", ret);
+	dev_err(codec->dev, "rt5677 0x5ffe0520 0x04 %x\n", ret);
 
 	regmap_write(rt5677->regmap, 0x01, 0x0000);
 	regmap_write(rt5677->regmap, 0x02, 0x6000);
@@ -833,6 +859,14 @@ static unsigned int rt5677_set_vad(
 		regcache_cache_only(rt5677->regmap, false);
 		regcache_cache_bypass(rt5677->regmap, true);
 		rt5677_set_vad_source(codec, rt5677->vad_source);
+
+		/* Boot the firmware from IRAM instead of SRAM0. */
+		rt5677_dsp_mode_i2c_write_address(codec, RT5677_DSP_BOOT_VECTOR,
+						  0x0009, 0x0003);
+		rt5677_dsp_mode_i2c_write_address(codec, RT5677_DSP_BOOT_VECTOR,
+						  0x0019, 0x0003);
+		rt5677_dsp_mode_i2c_write_address(codec, RT5677_DSP_BOOT_VECTOR,
+						  0x0009, 0x0003);
 
 		rt5677_load_dsp_from_file(codec);
 
