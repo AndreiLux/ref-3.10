@@ -606,6 +606,21 @@ static void flounder_audio_init(void)
 			pr_info("%s: gpio_free for gpio[%d] %s\n",
 				__func__, audio_sfio_pins[i].id, audio_sfio_pins[i].name);
 		}
+
+	/* To config GPIO */
+	for (i = 0; i < SPEAKER*2; i++) {
+		gpio_request(flounder_audio_pdata_rt5677.i2s_set[i].id,
+						flounder_audio_pdata_rt5677.i2s_set[i].name);
+		if (!flounder_audio_pdata_rt5677.i2s_set[i].dir_in) {
+			gpio_direction_output(flounder_audio_pdata_rt5677.i2s_set[i].id, 0);
+		} else {
+			tegra_pinctrl_pg_set_pullupdown(flounder_audio_pdata_rt5677.i2s_set[i].pg, TEGRA_PUPD_PULL_DOWN);
+			gpio_direction_input(flounder_audio_pdata_rt5677.i2s_set[i].id);
+		}
+		pr_info("%s: gpio_request for gpio[%d] %s\n",
+				__func__, flounder_audio_pdata_rt5677.i2s_set[i].id, flounder_audio_pdata_rt5677.i2s_set[i].name);
+	}
+
 }
 
 static struct platform_device flounder_audio_device_rt5677 = {

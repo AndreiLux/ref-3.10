@@ -150,15 +150,12 @@ void tegra30_i2s_free_gpio(struct snd_pcm_substream *substream, int i2s_id)
 	if (pdata->first_time_free[i2s_id]) {
 		mutex_init(&pdata->i2s_gpio_lock[i2s_id]);
 		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
-		pdata->gpio_free_count[i2s_id]++;
-		pr_debug("pdata->gpio_free_count[%d]=%d, 1st time enter, don't need free gpio\n",
+		pr_info("pdata->gpio_free_count[%d]=%d, 1st time enter, don't need free gpio\n",
                        i2s_id, pdata->gpio_free_count[i2s_id]);
 		pdata->first_time_free[i2s_id] = false;
-		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
-		return;
+	} else {
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
 	}
-
-	mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
 	pdata->gpio_free_count[i2s_id]++;
 	if (pdata->gpio_free_count[i2s_id] > 1) {
 		pr_debug("pdata->gpio_free_count[%d]=%d > 1, needless to free again\n",
