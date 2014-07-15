@@ -219,7 +219,6 @@ int __init flounder_regulator_init(void)
 	platform_device_register(&gadc_thermal_battery);
 	platform_device_register(&power_supply_extcon_device);
 
-	flounder_cl_dvfs_init();
 	return 0;
 }
 

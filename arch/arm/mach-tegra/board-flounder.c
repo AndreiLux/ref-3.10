@@ -987,6 +987,10 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 				&xusb_pdata),
 	OF_DEV_AUXDATA("nvidia,tegra124-camera", 0, "pcl-generic",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-dfll", 0x70110000, "tegra_cl_dvfs",
+		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra132-dfll", 0x70040084, "tegra_cl_dvfs",
+		NULL),
 	{}
 };
 #endif
