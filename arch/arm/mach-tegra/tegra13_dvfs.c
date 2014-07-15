@@ -236,7 +236,7 @@ static struct cpu_cvb_dvfs cpu_cvb_dvfs_table[] = {
 		.dfll_tune_data  = {
 			.tune1		= 0x00000099,
 			.droop_rate_min = 1000000,
-			.min_millivolts = 800,
+			.min_millivolts = 680,
 			.tune_high_margin_mv = 30,
 		},
 		.max_mv = 1260,
