@@ -1055,13 +1055,33 @@ void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable)
 		set_rt5506_hp_en(1);
 		pr_info("tegra_rt5677 power_on\n");
 
+		/*V_IO_1V8*/
+		if (gpio_is_valid(pdata->gpio_ldo1_en)) {
+			pr_info("gpio_ldo1_en %d is valid\n", pdata->gpio_ldo1_en);
+			ret = gpio_request(pdata->gpio_ldo1_en, "rt5677-ldo-enable");
+			if (ret) {
+				pr_err("Fail gpio_request gpio_ldo1_en, %d\n", ret);
+			} else {
+				ret = gpio_direction_output(pdata->gpio_ldo1_en, 1);
+				if (ret) {
+					pr_err("gpio_ldo1_en=1 fail,%d\n", ret);
+					gpio_free(pdata->gpio_ldo1_en);
+				} else
+					pr_info("gpio_ldo1_en=1\n");
+			}
+		} else {
+			pr_err("gpio_ldo1_en %d is invalid\n", pdata->gpio_ldo1_en);
+		}
+
+		usleep_range(1000, 2000);
+
 		/*V_AUD_1V2*/
 		if (IS_ERR(rt5677_reg))
 			pr_info("Fail regulator_get v_ldo2\n");
 		else {
 			ret = regulator_enable(rt5677_reg);
 			if (ret)
-				pr_info("Fail regulator_enable v_ldo2, %d\n", ret);
+				pr_err("Fail regulator_enable v_ldo2, %d\n", ret);
 			else
 				pr_info("tegra_rt5677_reg v_ldo2 is enabled\n");
 		}
@@ -1121,13 +1141,29 @@ void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable)
 
 		/*V_AUD_1V2*/
 		if (IS_ERR(rt5677_reg))
-			pr_info("Fail regulator_get v_ldo2\n");
+			pr_err("Fail regulator_get v_ldo2\n");
 		else {
 			ret = regulator_disable(rt5677_reg);
 			if (ret)
-				pr_info("Fail regulator_disable v_ldo2, %d\n", ret);
+				pr_err("Fail regulator_disable v_ldo2, %d\n", ret);
 			else
 				pr_info("tegra_rt5677_reg v_ldo2 is disabled\n");
+		}
+
+		usleep_range(1000, 2000);
+
+		/*V_IO_1V8*/
+		if (gpio_is_valid(pdata->gpio_ldo1_en)) {
+			pr_info("gpio_ldo1_en %d is valid\n", pdata->gpio_ldo1_en);
+			ret = gpio_direction_output(pdata->gpio_ldo1_en, 0);
+			if (ret)
+				pr_err("gpio_ldo1_en=0 fail,%d\n", ret);
+			else
+				pr_info("gpio_ldo1_en=0\n");
+
+			gpio_free(pdata->gpio_ldo1_en);
+		} else {
+			pr_err("gpio_ldo1_en %d is invalid\n", pdata->gpio_ldo1_en);
 		}
 
 		/* set hp_en low to prevent power leakage */
