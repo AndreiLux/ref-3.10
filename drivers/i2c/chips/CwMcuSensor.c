@@ -152,7 +152,7 @@ struct cwmcu_data {
 	/* report time */
 	s64	sensors_time[num_sensors];
 	s64	time_diff[num_sensors];
-	s32	report_period[num_sensors]; /* Micro Second */
+	s32	report_period[num_sensors]; /* Microseconds * 0.99 */
 	u32	update_list;
 	s64	sensors_batch_timeout[num_sensors];
 	s64	current_timeout;
@@ -468,7 +468,7 @@ i2c_fail:
 
 	cwmcu_powermode_switch(0);
 
-	E("%s--: data2 = 0x%x, error = %d\n", __func__, data2, error);
+	D("%s--: data2 = 0x%x, rc = %d\n", __func__, data2, error);
 	return error;
 }
 
@@ -1721,7 +1721,7 @@ static int firmware_odr(int sensors_id, int delay_ms)
 		break;
 	default:
 		reg_addr = 0;
-		D("%s: Only reoprt_period changed, sensors_id = %d,"
+		D("%s: Only report_period changed, sensors_id = %d,"
 			" delay_us = %6d\n",
 			__func__, sensors_id,
 			mcu_data->report_period[sensors_id]);
@@ -1835,13 +1835,11 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 
 	rc = firmware_odr(sensors_id, mcu_data->report_period[sensors_id] /
 				      MS_TO_PERIOD);
+	cwmcu_powermode_switch(0);
 	if (rc) {
-		cwmcu_powermode_switch(0);
 		E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
 		return rc;
 	}
-
-	cwmcu_powermode_switch(0);
 
 	D("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
 		__func__, sensors_id, enabled, mcu_data->enabled_list);
@@ -1862,7 +1860,7 @@ static ssize_t active_show(struct device *dev, struct device_attribute *attr,
 
 	CWMCU_i2c_read_power(mcu_data, CWSTM32_ENABLE_REG, &data, sizeof(data));
 
-	I("%s: enable[1] = 0x%x\n", __func__, data);
+	D("%s: enable[1] = 0x%x\n", __func__, data);
 
 	return scnprintf(buf, PAGE_SIZE, "%u\n", mcu_data->enabled_list);
 }
@@ -1918,16 +1916,18 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
-	cwmcu_powermode_switch(1);
+	if (mcu_data->report_period[sensors_id] != val * MS_TO_PERIOD) {
+		/* period is actual delay(us) * 0.99 */
+		mcu_data->report_period[sensors_id] = val * MS_TO_PERIOD;
 
-	rc = firmware_odr(sensors_id, val);
-	if (rc) {
+		cwmcu_powermode_switch(1);
+		rc = firmware_odr(sensors_id, val);
 		cwmcu_powermode_switch(0);
-		E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
-		return rc;
+		if (rc) {
+			E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
+			return rc;
+		}
 	}
-
-	cwmcu_powermode_switch(0);
 
 	return count;
 }
@@ -1972,6 +1972,7 @@ static ssize_t batch_set(struct device *dev,
 	char *running;
 	long input_val;
 	unsigned long long input_val_l;
+	bool need_update_fw_odr;
 
 	if (probe_success != 1) {
 		E("%s: probe_success = %d\n", __func__, probe_success);
@@ -2044,8 +2045,12 @@ static ssize_t batch_set(struct device *dev,
 	D("%s: sensors_id = 0x%x, flag = %d, delay_ms = %d, timeout = %lld\n",
 	  __func__, sensors_id, flag, delay_ms, timeout);
 
-	/* period is actual delay(us) * 0.99 */
-	mcu_data->report_period[sensors_id] = delay_ms * MS_TO_PERIOD;
+	if (mcu_data->report_period[sensors_id] != delay_ms * MS_TO_PERIOD) {
+		/* period is actual delay(us) * 0.99 */
+		mcu_data->report_period[sensors_id] = delay_ms * MS_TO_PERIOD;
+		need_update_fw_odr = true;
+	} else
+		need_update_fw_odr = false;
 
 	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
 	for (i = 0; i < CW_SENSORS_ID_END; i++) {
@@ -2053,7 +2058,7 @@ static ssize_t batch_set(struct device *dev,
 		  mcu_data->report_period[i]);
 		if (is_continuous_sensor(sensors_id) &&
 		     (atomic_read(&mcu_data->delay) >
-		      (mcu_data->report_period[i] / 1000))
+		      (mcu_data->report_period[i] / MS_TO_PERIOD))
 		   )
 			/* report period is actual delay(us) * 0.99,
 			 * actual delay needs to convert back to micro-second */
@@ -2139,10 +2144,11 @@ static ssize_t batch_set(struct device *dev,
 
 		data = (u8)(mcu_data->batched_list>>(i*8));
 
-		cwmcu_powermode_switch(1);
-
 		D("%s: Writing, addr = 0x%x, data = 0x%x, i = %d\n", __func__,
 		  (CW_BATCH_ENABLE_REG+i), data, i);
+
+		cwmcu_powermode_switch(1);
+
 		rc = CWMCU_i2c_write(mcu_data,
 					    CW_BATCH_ENABLE_REG+i,
 					    &data, 1);
@@ -2163,13 +2169,24 @@ static ssize_t batch_set(struct device *dev,
 				     CWSTM32_BATCH_MODE_TIMEOUT,
 				     u8_timeout_data,
 				     sizeof(u8_timeout_data));
+		cwmcu_powermode_switch(0);
 		if (rc)
 			E("%s: CWMCU_i2c_write fails, rc = %d\n", __func__, rc);
 		else
 			rc = count;
 
-		cwmcu_powermode_switch(0);
+	}
 
+	if ((need_update_fw_odr == true) &&
+	    (mcu_data->enabled_list & (1 << sensors_id))) {
+		cwmcu_powermode_switch(1);
+		rc = firmware_odr(sensors_id,
+				  mcu_data->report_period[sensors_id] /
+				  MS_TO_PERIOD);
+		cwmcu_powermode_switch(0);
+		if (rc) {
+			E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
+		}
 	}
 
 	I(
@@ -3583,7 +3600,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	for (i = 0; i < num_sensors; i++) {
 		sensor->sensors_time[i] = 0;
-		sensor->report_period[i] = 200000;
+		sensor->report_period[i] = 200000 * MS_TO_PERIOD;
 	}
 
 	wake_lock_init(&significant_wake_lock, WAKE_LOCK_SUSPEND,
