@@ -1737,7 +1737,7 @@ static int firmware_odr(int sensors_id, int delay_ms)
 	else if (delay_ms <= 19)
 		reg_value = UPDATE_RATE_FASTEST;
 
-	I("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
+	D("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
 	  __func__, reg_addr, reg_value);
 	rc = CWMCU_i2c_write(mcu_data, reg_addr, &reg_value, 1);
 	if (rc) {
@@ -2189,7 +2189,7 @@ static ssize_t batch_set(struct device *dev,
 		}
 	}
 
-	I(
+	D(
 	  "%s: sensors_id = %d, timeout = %lld, batched_list = 0x%x,"
 	  " delay_ms = %d\n",
 	  __func__, sensors_id, timeout, mcu_data->batched_list,
@@ -2357,7 +2357,7 @@ static void report_iio(struct cwmcu_data *sensor, int *i, u8 *data,
 
 		timestamp = le64_to_cpup(data64 + 1);
 
-		I("CW_TIME_BASE = %llu\n", timestamp);
+		D("CW_TIME_BASE = %llu\n", timestamp);
 		sensor->time_base = timestamp;
 	} else if ((data[0] == CW_MAGNETIC_UNCALIBRATED_BIAS) ||
 		   (data[0] == CW_GYROSCOPE_UNCALIBRATED_BIAS)) {
@@ -2676,7 +2676,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 				data_buff[0] = data[0];
 				mcu_data->light_last_data[0] = data_buff[0];
 				cw_send_event(CW_LIGHT, data_buff, 0);
-				I(
+				D(
 				  "light interrupt occur value is %u, adc "
 				  "is %x ls_calibration is %u\n",
 					data[0], light_adc,
@@ -2704,7 +2704,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 			wake_lock_timeout(&wake_up_gesture_wake_lock,
 					  msecs_to_jiffies(200));
 
-			I("%s: HTC WAKE UP GESTURE occurs!!\n", __func__);
+			D("%s: HTC WAKE UP GESTURE occurs!!\n", __func__);
 
 			data_buff[0] = 1;
 			cw_send_event(HTC_WAKE_UP_GESTURE, data_buff, 0);
@@ -2723,7 +2723,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 			ret = CWMCU_i2c_read(sensor, CWSTM32_READ_Hall_Sensor,
 					     &data, 1);
 			if (ret >= 0) {
-				I("%s: MAGIC COVER = 0x%x\n", __func__,
+				D("%s: MAGIC COVER = 0x%x\n", __func__,
 				  ((data >> 6) & 0x3));
 				magic_cover_report_input(data);
 			} else {
@@ -2818,7 +2818,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 					     CWSTM32_READ_FACEDOWN_DETECTION,
 					     &data, sizeof(data));
 			if (ret >= 0) {
-				I("%s: FACEDOWN = %u\n", __func__, data);
+				D("%s: FACEDOWN = %u\n", __func__, data);
 				activate_double_tap(data);
 			} else
 				E("%s: FACEDOWN i2c read fails, ret = %d\n",
@@ -2999,7 +2999,7 @@ static const struct iio_buffer_setup_ops cw_buffer_setup_ops = {
 static int cw_pseudo_irq_enable(struct iio_dev *indio_dev)
 {
 	if (!atomic_cmpxchg(&mcu_data->pseudo_irq_enable, 0, 1)) {
-		I("%s:\n", __func__);
+		D("%s:\n", __func__);
 		queue_delayed_work(mcu_wq, &mcu_data->work, 0);
 	}
 
@@ -3009,7 +3009,7 @@ static int cw_pseudo_irq_enable(struct iio_dev *indio_dev)
 static int cw_pseudo_irq_disable(struct iio_dev *indio_dev)
 {
 	if (atomic_cmpxchg(&mcu_data->pseudo_irq_enable, 1, 0)) {
-		I("%s:\n", __func__);
+		D("%s:\n", __func__);
 		cancel_delayed_work_sync(&mcu_data->work);
 	}
 	return 0;
