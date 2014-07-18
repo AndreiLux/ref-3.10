@@ -43,7 +43,7 @@
 #include "rt5677-spi.h"
 
 #define VERSION "0.0.2 alsa 1.0.25"
-#define RT5677_PATH "/system/vendor/firmware/rt5677_"
+#define RT5677_PATH "/vendor/firmware/rt5677_"
 
 static int dmic_depop_time = 100;
 module_param(dmic_depop_time, int, 0644);
