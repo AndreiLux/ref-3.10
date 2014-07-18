@@ -338,7 +338,7 @@ static int max17050_get_charge_ext(struct i2c_client *client, int64_t *batt_char
 		dev_err(&client->dev, "%s: err %d\n", __func__, charge_msb);
 		ret = -EINVAL;
 	} else
-		*batt_charge_ext = ((int16_t) charge_msb <<16 | (int16_t) charge_lsb);
+		*batt_charge_ext = ((int16_t) charge_msb <<16 | (int16_t) charge_lsb) * 8;
 
 	return ret;
 }
