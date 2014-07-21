@@ -76,6 +76,8 @@ struct htc_battery_bq2419x_data {
 	int				in_current_limit;
 	struct wake_lock		charge_change_wake_lock;
 
+	struct power_supply		charger;
+
 	struct regulator_dev		*chg_rdev;
 	struct regulator_desc		chg_reg_desc;
 	struct regulator_init_data	chg_reg_init_data;
@@ -1410,6 +1412,23 @@ static inline void htc_battery_bq2419x_battery_info_init(
 	htc_battery_bq2419x_charger_bci.enable_batt_status_monitor = true;
 }
 
+static enum power_supply_property charger_bq2419x_properties[] = {
+	POWER_SUPPLY_PROP_STATUS,
+};
+
+static int charger_bq2419x_get_property(struct power_supply *psy,
+			enum power_supply_property psp,
+			union power_supply_propval *val)
+{
+	struct htc_battery_bq2419x_data *data = container_of(psy, struct htc_battery_bq2419x_data, charger);
+
+	if (psp == POWER_SUPPLY_PROP_STATUS)
+		val->intval = data->chg_status;
+	else
+		return -EINVAL;
+	return 0;
+}
+
 static int htc_battery_bq2419x_probe(struct platform_device *pdev)
 {
 	struct htc_battery_bq2419x_data *data;
@@ -1488,6 +1507,17 @@ static int htc_battery_bq2419x_probe(struct platform_device *pdev)
 		goto scrub_mutex;
 	}
 
+	data->charger.name = "charger";
+	data->charger.type = POWER_SUPPLY_TYPE_BATTERY;
+	data->charger.get_property = charger_bq2419x_get_property;
+	data->charger.properties = charger_bq2419x_properties;
+	data->charger.num_properties = ARRAY_SIZE(charger_bq2419x_properties);
+	power_supply_register(data->dev, &data->charger);
+	if (ret) {
+		battery_charger_unregister(data->bc_dev);
+		dev_err(data->dev, "failed: power supply register\n");
+		goto scrub_mutex;
+	}
 	htc_battery_data = data;
 
 	return 0;
@@ -1513,6 +1543,7 @@ static int htc_battery_bq2419x_remove(struct platform_device *pdev)
 		cancel_delayed_work_sync(&data->aicl_wq);
 		wake_lock_destroy(&data->charge_change_wake_lock);
 		wake_lock_destroy(&data->charge_change_wake_lock);
+		power_supply_unregister(&data->charger);
 	}
 	mutex_destroy(&data->mutex);
 	return 0;
