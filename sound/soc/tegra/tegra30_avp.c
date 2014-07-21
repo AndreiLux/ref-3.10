@@ -111,6 +111,7 @@ struct tegra30_avp_audio_dma {
 
 	atomic_t			is_dma_allocated;
 	atomic_t			active_count;
+	int					dma_started;
 };
 
 struct tegra30_avp_stream {
@@ -519,6 +520,7 @@ static void tegra30_avp_audio_free_dma(void)
 	return;
 }
 
+/* Call this function with avp lock held */
 static int tegra30_avp_audio_start_dma(void)
 {
 	struct tegra30_avp_audio *audio_avp = avp_audio_ctx;
@@ -528,7 +530,6 @@ static int tegra30_avp_audio_start_dma(void)
 	struct stream_data *stream;
 	int i, start_dma = 1;
 
-	spin_lock(&audio_avp->lock);
 	for (i = 0; i < max_stream_id; i++) {
 		avp_stream = &audio_avp->avp_stream[i];
 		stream = avp_stream->stream;
@@ -539,9 +540,8 @@ static int tegra30_avp_audio_start_dma(void)
 			break;
 		}
 	}
-	spin_unlock(&audio_avp->lock);
 
-	if (start_dma) {
+	if (start_dma && dma->dma_started == 0) {
 		dma->chan_desc = dmaengine_prep_dma_cyclic(dma->chan,
 				(dma_addr_t)audio_engine->device_buffer_avp,
 				DEVICE_BUFFER_SIZE,
@@ -554,6 +554,7 @@ static int tegra30_avp_audio_start_dma(void)
 		}
 		dma->chan_cookie = dmaengine_submit(dma->chan_desc);
 		dma_async_issue_pending(dma->chan);
+		dma->dma_started = 1;
 	}
 	dev_vdbg(audio_avp->dev, "%s: dma %s\n",
 		__func__, (start_dma ? "started" : "already running"));
@@ -561,15 +562,16 @@ static int tegra30_avp_audio_start_dma(void)
 	return 0;
 }
 
+/* Call this function with avp lock held */
 static int tegra30_avp_audio_stop_dma(void)
 {
 	struct tegra30_avp_audio *audio_avp = avp_audio_ctx;
+	struct audio_engine_data *audio_engine = audio_avp->audio_engine;
 	struct tegra30_avp_audio_dma *dma = &audio_avp->audio_dma;
 	struct tegra30_avp_stream *avp_stream;
 	struct stream_data *stream;
 	int i, stop_dma = 1;
 
-	spin_lock(&audio_avp->lock);
 	for (i = 0; i < max_stream_id; i++) {
 		avp_stream = &audio_avp->avp_stream[i];
 		stream = avp_stream->stream;
@@ -580,11 +582,12 @@ static int tegra30_avp_audio_stop_dma(void)
 			break;
 		}
 	}
-	spin_unlock(&audio_avp->lock);
 
-	if (stop_dma)
+	if (stop_dma && dma->dma_started) {
 		dmaengine_terminate_all(dma->chan);
-
+		dma->dma_started = 0;
+		audio_engine->device_buffer_write_position = 0;
+	}
 	dev_vdbg(audio_avp->dev, "%s: dma is %s\n", __func__,
 			(stop_dma ? "stopped" : "running"));
 
@@ -636,8 +639,6 @@ static int tegra30_avp_audio_set_state(enum KSSTATE new_state)
 	return 0;
 }
 
-
-/* Call this function with stream lock held */
 static int tegra30_avp_stream_set_state(int id, enum KSSTATE new_state)
 {
 	struct tegra30_avp_audio *audio_avp = avp_audio_ctx;
@@ -687,14 +688,26 @@ static int tegra30_avp_stream_set_state(int id, enum KSSTATE new_state)
 			break;
 		}
 	}
+	spin_lock(&audio_avp->lock);
 	/* must be called before updating new state */
 	if (new_state == KSSTATE_RUN)
 		tegra30_avp_audio_start_dma();
 
-	spin_lock(&avp_stream->lock);
+	stream->stream_state_target = new_state;
+	avp_stream->stream_state_target = new_state;
+
+	/* must be called after updating new state */
+	if (new_state == KSSTATE_STOP || new_state == KSSTATE_PAUSE)
+		tegra30_avp_audio_stop_dma();
+
 	if (new_state == KSSTATE_STOP) {
 		stream->source_buffer_write_position = 0;
 		stream->source_buffer_write_count = 0;
+		stream->source_buffer_read_position = 0;
+		stream->source_buffer_read_position_fraction = 0;
+		stream->source_buffer_presentation_position = 0;
+		stream->source_buffer_linear_position = 0;
+		stream->source_buffer_frames_decoded = 0;
 		avp_stream->source_buffer_write_position = 0;
 		avp_stream->source_buffer_write_count = 0;
 		avp_stream->last_notification_offset = 0;
@@ -702,14 +715,8 @@ static int tegra30_avp_stream_set_state(int id, enum KSSTATE new_state)
 		avp_stream->source_buffer_offset = 0;
 		avp_stream->total_bytes_copied = 0;
 	}
-	stream->stream_state_target = new_state;
-	avp_stream->stream_state_target = new_state;
 
-	spin_unlock(&avp_stream->lock);
-
-	/* must be called after updating new state */
-	if (new_state == KSSTATE_STOP || new_state == KSSTATE_PAUSE)
-		tegra30_avp_audio_stop_dma();
+	spin_unlock(&audio_avp->lock);
 
 	return ret;
 }
@@ -731,15 +738,15 @@ static void tegra30_avp_stream_notify(void)
 		if (!avp_stream->is_stream_active)
 			continue;
 
-		if (atomic_read(&avp_stream->is_drain_called) &&
-		   (stream->source_buffer_read_position ==
+		if ((stream->source_buffer_read_position ==
 			avp_stream->source_buffer_write_position) &&
 		   (avp_stream->notification_received >=
-			stream->stream_notification_request)) {
+			stream->stream_notification_request) &&
+			atomic_read(&avp_stream->is_drain_called)) {
+			atomic_set(&avp_stream->is_drain_called, 0);
+			tegra30_avp_stream_set_state(i, KSSTATE_STOP);
 			/* End of stream occured and noitfy same with value 1 */
 			avp_stream->notify_cb(avp_stream->notify_args, 1);
-			tegra30_avp_stream_set_state(i, KSSTATE_STOP);
-			atomic_set(&avp_stream->is_drain_called, 0);
 		} else if (stream->stream_notification_request >
 			avp_stream->notification_received) {
 			spin_lock(&avp_stream->lock);
@@ -1530,10 +1537,10 @@ static void tegra30_avp_stream_close(int id)
 		return;
 	}
 	mutex_lock(&audio_avp->mutex);
+	tegra30_avp_stream_set_state(id, KSSTATE_STOP);
 	stream->stream_allocated = 0;
 	avp_stream->is_stream_active = 0;
 	avp_stream->total_bytes_copied = 0;
-	tegra30_avp_stream_set_state(id, KSSTATE_STOP);
 	tegra30_avp_mem_free(&avp_stream->source_buf);
 
 	if (id == loopback_stream_id)
