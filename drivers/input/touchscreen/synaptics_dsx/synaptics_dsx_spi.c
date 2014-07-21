@@ -286,6 +286,7 @@ static int synaptics_rmi4_spi_set_page(struct synaptics_rmi4_data *rmi4_data,
 			if (retval == 0) {
 				rmi4_data->current_page = page;
 				retval = PAGE_SELECT_LEN;
+				break;
 			} else {
 				dev_dbg(rmi4_data->pdev->dev.parent,
 						"%s: SPI transfer, error = %d, retry = %d\n",
