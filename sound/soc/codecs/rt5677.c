@@ -21,6 +21,7 @@
 #include <linux/spi/spi.h>
 #include <linux/of_gpio.h>
 #include <linux/elf.h>
+#include <linux/firmware.h>
 #include <sound/core.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
@@ -43,7 +44,7 @@
 #include "rt5677-spi.h"
 
 #define VERSION "0.0.2 alsa 1.0.25"
-#define RT5677_PATH "/vendor/firmware/rt5677_"
+#define RT5677_PATH "rt5677_"
 
 static int dmic_depop_time = 100;
 module_param(dmic_depop_time, int, 0644);
@@ -602,34 +603,19 @@ err:
 	return ret;
 }
 
-static unsigned int rt5677_read_dsp_code_from_file(char *file_path,
-	 u8 **buf)
+static unsigned int rt5677_read_dsp_code_from_file(const struct firmware **fwp,
+			const char *file_path, struct snd_soc_codec *codec)
 {
-	loff_t pos = 0;
-	unsigned int file_size = 0;
-	struct file *fp;
+	int ret;
 
 	pr_debug("%s\n", __func__);
 
-	fp = filp_open(file_path, O_RDONLY, 0);
-	if (!IS_ERR(fp)) {
-		file_size = vfs_llseek(fp, pos, SEEK_END);
-		*buf = kzalloc(file_size, GFP_KERNEL);
-		if (*buf == NULL) {
-			pr_err("%s: kzalloc size=0x%x fail\n", __func__,
-				file_size);
-			filp_close(fp, 0);
-			return 0;
-		}
-
-		kernel_read(fp, pos, *buf, file_size);
-		filp_close(fp, 0);
-
-		return file_size;
-	} else {
-		pr_err("%s: filp_open fail: %s\n", __func__, file_path);
+	ret = request_firmware(fwp, file_path, codec->dev);
+	if (ret != 0) {
+		pr_err("Failed to request '%s' = %d\n", file_path, ret);
+		return 0;
 	}
-	return 0;
+	return (*fwp)->size;
 }
 
 static unsigned int rt5677_set_vad_source(
@@ -738,7 +724,7 @@ static unsigned int rt5677_set_vad_source(
 	return 0;
 }
 
-static int rt5677_parse_and_load_dsp(u8 *buf, unsigned int len)
+static int rt5677_parse_and_load_dsp(const u8 *buf, unsigned int len)
 {
 	Elf32_Ehdr *elf_hdr;
 	Elf32_Phdr *pr_hdr;
@@ -779,40 +765,39 @@ static int rt5677_parse_and_load_dsp(u8 *buf, unsigned int len)
 static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
-	u8 *buf;
 	unsigned int len;
+	const struct firmware *fwp;
 	char file_path[64];
 	int err = 0;
 #ifdef DEBUG
 	int ret = 0;
 #endif
 
-	sprintf(file_path, RT5677_PATH "elf_%s",
-		dsp_vad_suffix);
-	len = rt5677_read_dsp_code_from_file(file_path, &buf);
+	sprintf(file_path, RT5677_PATH "elf_%s", dsp_vad_suffix);
+	len = rt5677_read_dsp_code_from_file(&fwp, file_path, codec);
 	if (len) {
-		pr_debug("load %s ok\n", file_path);
-		err = rt5677_parse_and_load_dsp(buf, len);
-		kfree(buf);
+		pr_debug("load %s [%u] ok\n", file_path, len);
+		err = rt5677_parse_and_load_dsp(fwp->data, len);
+		release_firmware(fwp);
 	} else {
 		sprintf(file_path, RT5677_PATH "0x50000000_%s",
 			dsp_vad_suffix);
-		len = rt5677_read_dsp_code_from_file(file_path, &buf);
+		len = rt5677_read_dsp_code_from_file(&fwp, file_path, codec);
 		if (len) {
 			pr_debug("load %s ok\n", file_path);
-			rt5677_spi_write(0x50000000, buf, len);
-			kfree(buf);
+			rt5677_spi_write(0x50000000, fwp->data, len);
+			release_firmware(fwp);
 		} else {
 			pr_err("load %s fail\n", file_path);
 		}
 
 		sprintf(file_path, RT5677_PATH "0x60000000_%s",
 			dsp_vad_suffix);
-		len = rt5677_read_dsp_code_from_file(file_path, &buf);
+		len = rt5677_read_dsp_code_from_file(&fwp, file_path, codec);
 		if (len) {
 			pr_debug("load %s ok\n", file_path);
-			rt5677_spi_write(0x60000000, buf, len);
-			kfree(buf);
+			rt5677_spi_write(0x60000000, fwp->data, len);
+			release_firmware(fwp);
 		} else {
 			pr_err("load %s fail\n", file_path);
 		}

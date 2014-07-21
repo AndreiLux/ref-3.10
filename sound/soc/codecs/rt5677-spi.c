@@ -127,7 +127,7 @@ int rt5677_spi_read(u32 addr, u8 *rx_data, size_t len)
 	return status;
 }
 
-int rt5677_spi_write(u32 addr, u8 *txbuf, size_t len)
+int rt5677_spi_write(u32 addr, const u8 *txbuf, size_t len)
 {
 	unsigned int i, end, offset = 0;
 	int status = 0;
