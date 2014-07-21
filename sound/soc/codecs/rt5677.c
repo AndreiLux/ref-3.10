@@ -793,6 +793,7 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 	if (len) {
 		pr_debug("load %s ok\n", file_path);
 		err = rt5677_parse_and_load_dsp(buf, len);
+		kfree(buf);
 	} else {
 		sprintf(file_path, RT5677_PATH "0x50000000_%s",
 			dsp_vad_suffix);
