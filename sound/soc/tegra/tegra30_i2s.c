@@ -169,6 +169,8 @@ void tegra30_i2s_shutdown(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		if (i2s->playback_ref_count == 1)
@@ -178,7 +180,7 @@ void tegra30_i2s_shutdown(struct snd_pcm_substream *substream,
 		mutex_lock(&apbif_mutex);
 		apbif_ref_cnt--;
 		/* free the apbif dma channel*/
-		if (!apbif_ref_cnt) {
+		if ((!apbif_ref_cnt) || (!dai_link->no_pcm)) {
 			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
 			allocated_fe = NULL;
 		}
