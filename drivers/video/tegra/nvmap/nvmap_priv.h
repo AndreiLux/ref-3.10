@@ -98,6 +98,7 @@ extern void __flush_dcache_page(struct address_space *, struct page *);
 struct nvmap_vma_list {
 	struct list_head list;
 	struct vm_area_struct *vma;
+	pid_t pid;
 };
 
 /* handles allocated using shared system memory (either IOVMM- or high-order
