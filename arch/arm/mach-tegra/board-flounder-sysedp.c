@@ -43,6 +43,10 @@ static unsigned int tps61310_states[] = {
 	0, 110 ,3350
 };
 
+static unsigned int qcom_mdm_states[] = {
+	8, 2570, 1363, 2570, 3287
+};
+
 static struct sysedp_consumer_data flounder_sysedp_consumer_data[] = {
 	SYSEDP_CONSUMER_DATA("imx219", imx219_states),
 	SYSEDP_CONSUMER_DATA("ov9760", ov9760_states),
@@ -52,6 +56,7 @@ static struct sysedp_consumer_data flounder_sysedp_consumer_data[] = {
 	SYSEDP_CONSUMER_DATA("sdhci-tegra.0", sdhci_states),
 	SYSEDP_CONSUMER_DATA("sdhci-tegra.3", sdhci_states),
 	SYSEDP_CONSUMER_DATA("tps61310", tps61310_states),
+	SYSEDP_CONSUMER_DATA("qcom-mdm-9k", qcom_mdm_states),
 };
 
 static struct sysedp_platform_data flounder_sysedp_platform_data = {
