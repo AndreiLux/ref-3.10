@@ -90,6 +90,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/module.h>
 #include <media/nvc.h>
+#include <media/camera.h>
 #include <media/tps61310.h>
 #include <linux/gpio.h>
 #include <linux/sysedp.h>
@@ -341,9 +342,15 @@ static int tps61310_param_rd(struct tps61310_info *info, long arg)
 	u32 data_size = 0;
 	int err;
 
+#ifdef CONFIG_COMPAT
+	memset(&params, 0, sizeof(params));
+	if (copy_from_user(&params, (const void __user *)arg,
+	sizeof(struct nvc_param_32))) {
+#else
 	if (copy_from_user(&params,
 			(const void __user *)arg,
 			sizeof(struct nvc_param))) {
+#endif
 		dev_err(&info->i2c_client->dev, "%s %d copy_from_user err\n",
 				__func__, __LINE__);
 		return -EINVAL;
@@ -442,7 +449,7 @@ static int tps61310_param_rd(struct tps61310_info *info, long arg)
 		return -EINVAL;
 	}
 
-	if (copy_to_user((void __user *)params.p_value,
+	if (copy_to_user(MAKE_USER_PTR(params.p_value),
 			 data_ptr,
 			 data_size)) {
 		dev_err(&info->i2c_client->dev,
@@ -577,14 +584,20 @@ static int tps61310_param_wr(struct tps61310_info *info, long arg)
 	u8 val;
 	int err = 0;
 
+#ifdef CONFIG_COMPAT
+	memset(&params, 0, sizeof(params));
 	if (copy_from_user(&params, (const void __user *)arg,
-			   sizeof(struct nvc_param))) {
+		sizeof(struct nvc_param_32))) {
+#else
+	if (copy_from_user(&params, (const void __user *)arg,
+		sizeof(struct nvc_param))) {
+#endif
 		dev_err(&info->i2c_client->dev, "%s %d copy_from_user err\n",
 				__func__, __LINE__);
 		return -EINVAL;
 	}
 
-	if (copy_from_user(&val, (const void __user *)params.p_value,
+	if (copy_from_user(&val, MAKE_CONSTUSER_PTR(params.p_value),
 			   sizeof(val))) {
 		dev_err(&info->i2c_client->dev, "%s %d copy_from_user err\n",
 				__func__, __LINE__);
@@ -677,21 +690,27 @@ static long tps61310_ioctl(struct file *file,
 	struct tps61310_info *info = file->private_data;
 	int pwr;
 
-	switch (_IOC_NR(cmd)) {
-	case _IOC_NR(NVC_IOCTL_PARAM_WR):
+	switch (cmd) {
+	case NVC_IOCTL_PARAM_WR:
+#ifdef CONFIG_COMPAT
+	case NVC_IOCTL_32_PARAM_WR:
+#endif
 		return tps61310_param_wr(info, arg);
 
-	case _IOC_NR(NVC_IOCTL_PARAM_RD):
+	case NVC_IOCTL_PARAM_RD:
+#ifdef CONFIG_COMPAT
+	case NVC_IOCTL_32_PARAM_RD:
+#endif
 		return tps61310_param_rd(info, arg);
 
-	case _IOC_NR(NVC_IOCTL_PWR_WR):
+	case NVC_IOCTL_PWR_WR:
 		/* This is a Guaranteed Level of Service (GLOS) call */
 		pwr = (int)arg * 2;
 		dev_dbg(&info->i2c_client->dev, "%s PWR_WR: %d\n",
 				__func__, pwr);
 		return tps61310_pm_api_wr(info, pwr);
 
-	case _IOC_NR(NVC_IOCTL_PWR_RD):
+	case NVC_IOCTL_PWR_RD:
 		if (info->s_mode == NVC_SYNC_SLAVE)
 			pwr = info->s_info->pwr_api / 2;
 		else

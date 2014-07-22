@@ -86,6 +86,7 @@
 #include <linux/gpio.h>
 #include <linux/module.h>
 #include <media/drv201.h>
+#include <media/camera.h>
 
 #define DRV201_FOCAL_LENGTH_FLOAT	(3.094f)
 #define DRV201_FNUMBER_FLOAT		(2.4f)
@@ -396,7 +397,7 @@ static int drv201_set_focuser_capabilities(struct drv201_info *info,
 					struct nvc_param *params)
 {
 	if (copy_from_user(&info->cfg_usr,
-		(const void __user *)params->p_value, sizeof(info->cfg_usr))) {
+		MAKE_CONSTUSER_PTR(params->p_value), sizeof(info->cfg_usr))) {
 			dev_err(info->dev, "%s Err: copy_from_user bytes %d\n",
 			__func__, sizeof(info->cfg_usr));
 			return -EFAULT;
@@ -452,9 +453,15 @@ static int drv201_param_rd(struct drv201_info *info, unsigned long arg)
 	u32 data_size = 0;
 	int err = 0;
 
+#ifdef CONFIG_COMPAT
+	memset(&params, 0, sizeof(params));
+	if (copy_from_user(&params, (const void __user *)arg,
+	sizeof(struct nvc_param_32))) {
+#else
 	if (copy_from_user(&params,
 		(const void __user *)arg,
 		sizeof(struct nvc_param))) {
+#endif
 		dev_err(info->dev, "%s %d copy_from_user err\n",
 			__func__, __LINE__);
 		return -EFAULT;
@@ -506,7 +513,7 @@ static int drv201_param_rd(struct drv201_info *info, unsigned long arg)
 			__func__, params.sizeofvalue, data_size, params.param);
 		return -EINVAL;
 	}
-	if (!err && copy_to_user((void __user *)params.p_value,
+	if (!err && copy_to_user(MAKE_USER_PTR(params.p_value),
 		data_ptr, data_size)) {
 		dev_err(info->dev,
 			"%s copy_to_user err line %d\n", __func__, __LINE__);
@@ -522,14 +529,20 @@ static int drv201_param_wr(struct drv201_info *info, unsigned long arg)
 	u32 u32val;
 	int err = 0;
 
+#ifdef CONFIG_COMPAT
+	memset(&params, 0, sizeof(params));
+	if (copy_from_user(&params, (const void __user *)arg,
+		sizeof(struct nvc_param_32))) {
+#else
 	if (copy_from_user(&params, (const void __user *)arg,
 		sizeof(struct nvc_param))) {
+#endif
 		dev_err(info->dev, "%s copy_from_user err line %d\n",
 			__func__, __LINE__);
 		return -EFAULT;
 	}
 	if (copy_from_user(&u32val,
-		(const void __user *)params.p_value, sizeof(u32val))) {
+		MAKE_CONSTUSER_PTR(params.p_value), sizeof(u32val))) {
 		dev_err(info->dev, "%s %d copy_from_user err\n",
 			__func__, __LINE__);
 		return -EFAULT;
@@ -576,11 +589,17 @@ static long drv201_ioctl(struct file *file,
 	int err = 0;
 	switch (cmd) {
 	case NVC_IOCTL_PARAM_WR:
+#ifdef CONFIG_COMPAT
+	case NVC_IOCTL_32_PARAM_WR:
+#endif
 		drv201_pm_dev_wr(info, NVC_PWR_ON);
 		err = drv201_param_wr(info, arg);
 		drv201_pm_dev_wr(info, NVC_PWR_OFF);
 		return err;
 	case NVC_IOCTL_PARAM_RD:
+#ifdef CONFIG_COMPAT
+	case NVC_IOCTL_32_PARAM_RD:
+#endif
 		drv201_pm_dev_wr(info, NVC_PWR_ON);
 		err = drv201_param_rd(info, arg);
 		drv201_pm_dev_wr(info, NVC_PWR_OFF);
