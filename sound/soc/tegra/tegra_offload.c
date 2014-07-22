@@ -38,6 +38,7 @@
 enum {
 	PCM_OFFLOAD_DAI,
 	COMPR_OFFLOAD_DAI,
+	PCM_CAPTURE_OFFLOAD_DAI,
 	MAX_OFFLOAD_DAI
 };
 
@@ -61,7 +62,7 @@ static DEFINE_MUTEX(tegra_offload_lock);
 
 static int codec, spk;
 
-static const struct snd_pcm_hardware tegra_offload_pcm_hardware = {
+static const struct snd_pcm_hardware tegra_offload_pcm_hw_pb = {
 	.info			= SNDRV_PCM_INFO_MMAP |
 				  SNDRV_PCM_INFO_MMAP_VALID |
 				  SNDRV_PCM_INFO_PAUSE |
@@ -76,6 +77,23 @@ static const struct snd_pcm_hardware tegra_offload_pcm_hardware = {
 	.periods_max		= 8,
 	.buffer_bytes_max	= PAGE_SIZE * 8,
 	.fifo_size		= 4,
+};
+
+static const struct snd_pcm_hardware tegra_offload_pcm_hw_cap = {
+	.info                   = SNDRV_PCM_INFO_MMAP |
+	SNDRV_PCM_INFO_MMAP_VALID |
+	SNDRV_PCM_INFO_PAUSE |
+	SNDRV_PCM_INFO_RESUME |
+	SNDRV_PCM_INFO_INTERLEAVED,
+	.formats                = SNDRV_PCM_FMTBIT_S16_LE,
+	.channels_min           = 2,
+	.channels_max           = 2,
+	.period_bytes_min       = 128,
+	.period_bytes_max       = PAGE_SIZE * 2,
+	.periods_min            = 1,
+	.periods_max            = 8,
+	.buffer_bytes_max       = PAGE_SIZE * 8,
+	.fifo_size              = 4,
 };
 
 int tegra_register_offload_ops(struct tegra_offload_ops *ops)
@@ -455,8 +473,12 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 		return -ENODEV;
 	}
 
-	/* Set HW params now that initialization is complete */
-	snd_soc_set_runtime_hwparams(substream, &tegra_offload_pcm_hardware);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		snd_soc_set_runtime_hwparams(substream,
+				&tegra_offload_pcm_hw_pb);
+	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		snd_soc_set_runtime_hwparams(substream,
+				&tegra_offload_pcm_hw_cap);
 
 	/* Ensure period size is multiple of 4 */
 	ret = snd_pcm_hw_constraint_step(substream->runtime, 0,
@@ -472,13 +494,26 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 		return -ENOMEM;
 	}
 
-	data->ops = &offload_ops.pcm_ops;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		data->ops = &offload_ops.pcm_ops;
 
-	ret = data->ops->stream_open(&data->stream_id);
-	if (ret < 0) {
-		dev_err(dev, "Failed to open offload stream. err %d", ret);
-		devm_kfree(dev, data);
-		return ret;
+		ret = data->ops->stream_open(&data->stream_id, "pcm");
+		if (ret < 0) {
+			dev_err(dev,
+				"Failed to open offload stream err %d", ret);
+			devm_kfree(dev, data);
+			return ret;
+		}
+	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		data->ops = &offload_ops.loopback_ops;
+
+		ret = data->ops->stream_open(&data->stream_id, "loopback");
+		if (ret < 0) {
+			dev_err(dev,
+				"Failed to open offload stream err %d", ret);
+			devm_kfree(dev, data);
+			return ret;
+		}
 	}
 	offload_ops.device_ops.set_hw_rate(48000);
 	substream->runtime->private_data = data;
@@ -507,49 +542,61 @@ static int tegra_offload_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_pcm_data *data = substream->runtime->private_data;
 	struct snd_dma_buffer *buf = &substream->dma_buffer;
-	struct tegra_pcm_dma_params *dmap;
 	struct tegra_offload_pcm_params offl_params;
 	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
 
-	dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-	if (!dmap) {
-		struct snd_soc_dpcm *dpcm;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		struct tegra_pcm_dma_params *dmap;
+		dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
+		if (!dmap) {
+			struct snd_soc_dpcm *dpcm;
 
-		if (list_empty(&rtd->dpcm[substream->stream].be_clients)) {
-			dev_err(dev, "No backend DAIs enabled for %s\n",
+			if (list_empty(&rtd->dpcm[substream->stream].be_clients)) {
+				dev_err(dev,
+					"No backend DAIs enabled for %s\n",
 					rtd->dai_link->name);
-			return -EINVAL;
-		}
-
-		list_for_each_entry(dpcm,
-			&rtd->dpcm[substream->stream].be_clients, list_be) {
-			struct snd_soc_pcm_runtime *be = dpcm->be;
-			struct snd_pcm_substream *be_substream =
-				snd_soc_dpcm_get_substream(be,
-						substream->stream);
-			struct snd_soc_dai_link *dai_link = be->dai_link;
-
-			dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
-						be_substream);
-
-			if (spk && strstr(dai_link->name, "speaker")) {
-				dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
-						be_substream);
-				break;
+				return -EINVAL;
 			}
-			if (codec && strstr(dai_link->name, "codec")) {
+
+			list_for_each_entry(dpcm,
+				&rtd->dpcm[substream->stream].be_clients,
+				list_be) {
+				struct snd_soc_pcm_runtime *be = dpcm->be;
+				struct snd_pcm_substream *be_substream =
+					snd_soc_dpcm_get_substream(be,
+							substream->stream);
+				struct snd_soc_dai_link *dai_link =
+							be->dai_link;
+
 				dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
-						be_substream);
-				break;
+							be_substream);
+
+				if (spk && strstr(dai_link->name, "speaker")) {
+					dmap = snd_soc_dai_get_dma_data(
+							be->cpu_dai,
+							be_substream);
+					break;
+				}
+				if (codec && strstr(dai_link->name, "codec")) {
+					dmap = snd_soc_dai_get_dma_data(
+							be->cpu_dai,
+							be_substream);
+					break;
+				}
+				/* TODO : Multiple BE to
+				 * single FE not yet supported */
 			}
-			/* TODO : Multiple BE to single FE not yet supported */
 		}
-	}
-	if (!dmap) {
-		dev_err(dev, "Failed to get DMA params.");
-		return -ENODEV;
+		if (!dmap) {
+			dev_err(dev, "Failed to get DMA params.");
+			return -ENODEV;
+		}
+		offl_params.dma_params.addr = dmap->addr;
+		offl_params.dma_params.width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+		offl_params.dma_params.req_sel = dmap->req_sel;
+		offl_params.dma_params.max_burst = 4;
 	}
 
 	offl_params.bits_per_sample =
@@ -559,11 +606,6 @@ static int tegra_offload_pcm_hw_params(struct snd_pcm_substream *substream,
 	offl_params.buffer_size = params_buffer_bytes(params);
 	offl_params.period_size = params_period_size(params) *
 		((offl_params.bits_per_sample >> 3) * offl_params.channels);
-
-	offl_params.dma_params.addr = dmap->addr;
-	offl_params.dma_params.width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-	offl_params.dma_params.req_sel = dmap->req_sel;
-	offl_params.dma_params.max_burst = 4;
 
 	offl_params.source_buf.virt_addr = buf->area;
 	offl_params.source_buf.phys_addr = buf->addr;
@@ -789,17 +831,39 @@ static int tegra_offload_dma_allocate(struct snd_soc_pcm_runtime *rtd,
 static int tegra_offload_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct device *dev = rtd->platform->dev;
+	struct snd_pcm *pcm = rtd->pcm;
+	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
 
-	return tegra_offload_dma_allocate(rtd , SNDRV_PCM_STREAM_PLAYBACK,
-				tegra_offload_pcm_hardware.buffer_bytes_max);
+	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream) {
+		ret = tegra_offload_dma_allocate(rtd,
+				SNDRV_PCM_STREAM_PLAYBACK,
+				tegra_offload_pcm_hw_pb.buffer_bytes_max);
+		if (ret < 0) {
+			dev_err(pcm->card->dev, "Failed to allocate memory");
+			return -ENOMEM;
+		}
+	}
+	if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream) {
+		ret = tegra_offload_dma_allocate(rtd,
+				SNDRV_PCM_STREAM_CAPTURE,
+				tegra_offload_pcm_hw_cap.buffer_bytes_max);
+		if (ret < 0) {
+			dev_err(pcm->card->dev, "Failed to allocate memory");
+			return -ENOMEM;
+		}
+	}
+	return ret;
 }
 
 static void tegra_offload_pcm_free(struct snd_pcm *pcm)
 {
-	tegra_offload_dma_free(pcm, SNDRV_PCM_STREAM_PLAYBACK);
 	pr_debug("%s", __func__);
+	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream)
+		tegra_offload_dma_free(pcm, SNDRV_PCM_STREAM_PLAYBACK);
+	if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream)
+		tegra_offload_dma_free(pcm, SNDRV_PCM_STREAM_CAPTURE);
 }
 
 static int tegra_offload_pcm_probe(struct snd_soc_platform *platform)
@@ -843,6 +907,13 @@ static struct snd_soc_dai_driver tegra_offload_dai[] = {
 		.id = 0,
 		.playback = {
 			.stream_name = "offload-pcm-playback",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		},
+		.capture = {
+			.stream_name = "offload-pcm-capture",
 			.channels_min = 2,
 			.channels_max = 2,
 			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
