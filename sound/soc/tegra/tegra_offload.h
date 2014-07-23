@@ -17,6 +17,8 @@
 #ifndef __TEGRA_OFFLOAD_H__
 #define __TEGRA_OFFLOAD_H__
 
+#define AVP_UNITY_STREAM_VOLUME		0x10000
+
 struct tegra_offload_dma_params {
 	unsigned long	addr;
 	unsigned long	width;

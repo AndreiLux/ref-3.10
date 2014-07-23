@@ -52,7 +52,6 @@
 #define AVP_INIT_SAMPLE_RATE		48000
 
 #define AVP_COMPR_THRESHOLD		(4 * 1024)
-#define AVP_UNITY_STREAM_VOLUME		0x10000
 
 #define AVP_CMD_BUFFER_SIZE		256
 
@@ -1516,9 +1515,10 @@ static int tegra30_avp_compr_set_volume(int id, int left, int right)
 		dev_err(audio_avp->dev, "AVP platform not initialized.");
 		return -ENODEV;
 	}
-
+	spin_lock(&avp_stream->lock);
 	stream->stream_volume[0] = left;
 	stream->stream_volume[1] = right;
+	spin_unlock(&avp_stream->lock);
 
 	return 0;
 }
