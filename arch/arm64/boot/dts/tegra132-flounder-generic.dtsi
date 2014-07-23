@@ -848,6 +848,7 @@
 		input-voltage-min-high-battery-millivolt = <4440>;
 		input-voltage-min-low-battery-millivolt = <4200>;
 		input-voltage-switch-millivolt = <4150>;
+		gauge-power-supply-name = "battery";
 		consumers {
 			c1 {
 				regulator-consumer-supply = "usb_bat_chg";

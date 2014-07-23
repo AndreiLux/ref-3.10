@@ -1354,6 +1354,9 @@ static struct htc_battery_bq2419x_platform_data
 	if (!ret)
 		pdata->unknown_batt_id_min = unknown_batt_id_min;
 
+	pdata->gauge_psy_name =
+		of_get_property(np, "gauge-power-supply-name", NULL);
+
 	return pdata;
 }
 
@@ -1408,6 +1411,9 @@ static inline void htc_battery_bq2419x_battery_info_init(
 			pdata->batt_id_channel_name;
 	htc_battery_bq2419x_charger_bci.unknown_batt_id_min =
 			pdata->unknown_batt_id_min;
+
+	htc_battery_bq2419x_charger_bci.gauge_psy_name =
+			pdata->gauge_psy_name;
 
 	htc_battery_bq2419x_charger_bci.enable_batt_status_monitor = true;
 }

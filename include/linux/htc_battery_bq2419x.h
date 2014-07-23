@@ -81,6 +81,7 @@ struct htc_battery_bq2419x_platform_data {
 	struct htc_battery_charge_input_switch input_switch;
 	const char *batt_id_channel_name;
 	int unknown_batt_id_min;
+	const char *gauge_psy_name;
 };
 
 struct htc_battery_bq2419x_ops {

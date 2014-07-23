@@ -105,6 +105,7 @@ struct battery_charger_info {
 	struct charge_input_switch input_switch;
 	const char *batt_id_channel_name;
 	int unknown_batt_id_min;
+	const char *gauge_psy_name;
 };
 
 struct battery_gauge_info {
@@ -165,7 +166,6 @@ int battery_gauge_record_capacity_value(struct battery_gauge_dev *bg_dev,
 								int capacity);
 int battery_gauge_record_snapshot_values(struct battery_gauge_dev *bg_dev,
 								int interval);
-int battery_gauge_update_record_to_charger(struct battery_gauge_dev *bg_dev);
 int battery_gauge_get_scaled_soc(struct battery_gauge_dev *bg_dev,
 		int actual_soc_semi, int thresod_soc);
 int battery_gauge_get_adjusted_soc(struct battery_gauge_dev *bg_dev,
