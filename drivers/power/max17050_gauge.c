@@ -659,7 +659,7 @@ static int max17050_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, chip);
 	max17050_data = chip;
 
-	chip->battery.name		= "max17050";
+	chip->battery.name		= "battery";
 	chip->battery.type		= POWER_SUPPLY_TYPE_BATTERY;
 	chip->battery.get_property	= max17050_get_property;
 	chip->battery.properties	= max17050_prop;
