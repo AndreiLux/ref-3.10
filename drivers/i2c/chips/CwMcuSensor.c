@@ -188,6 +188,8 @@ struct cwmcu_data {
 	struct workqueue_struct *mcu_wq;
 	struct wake_lock significant_wake_lock;
 	struct wake_lock wake_up_gesture_wake_lock;
+
+	int fw_update_status;
 };
 
 BLOCKING_NOTIFIER_HEAD(double_tap_notifier_list);
@@ -1283,6 +1285,9 @@ static int check_fw_version(struct cwmcu_data *mcu_data,
 	int i;
 	int rc;
 
+	if (mcu_data->fw_update_status & (FW_FLASH_FAILED | FW_ERASE_FAILED))
+		return 1;
+
 	CWMCU_i2c_read(mcu_data, FIRMWARE_VERSION, firmware_version,
 		       sizeof(firmware_version));
 
@@ -1313,8 +1318,7 @@ static int check_fw_version(struct cwmcu_data *mcu_data,
 			  __func__);
 			return 1;
 		} else {
-			I("%s: Sensor HUB firmware is up-to-date\n",
-			  __func__);
+			I("%s: Sensor HUB firmware is up-to-date\n", __func__);
 			return 0;
 		}
 
@@ -1495,8 +1499,11 @@ static void update_firmware(const struct firmware *fw, void *context)
 
 	cwmcu_powermode_switch(mcu_data, 1);
 
-	if (!fw)
+	if (!fw) {
+		E("%s: fw does not exist\n", __func__);
+		mcu_data->fw_update_status |= FW_DOES_NOT_EXIST;
 		goto fast_exit;
+	}
 
 	D("%s: firmware size = %lu\n", __func__, fw->size);
 
@@ -1514,10 +1521,15 @@ static void update_firmware(const struct firmware *fw, void *context)
 		gpio_direction_output(mcu_data->gpio_reset, 1);
 		mdelay(41);
 
+		mcu_data->fw_update_status |= FW_FLASH_FAILED;
+
 		ret = erase_mcu_flash_mem(mcu_data);
 		if (ret < 0) {
 			E("%s: erase mcu flash memory fails, ret = %d\n",
 			  __func__, ret);
+			mcu_data->fw_update_status |= FW_ERASE_FAILED;
+		} else {
+			mcu_data->fw_update_status &= ~FW_ERASE_FAILED;
 		}
 
 		D("%s: Start writing firmware\n", __func__);
@@ -1554,6 +1566,7 @@ static void update_firmware(const struct firmware *fw, void *context)
 				goto out;
 			}
 		}
+		mcu_data->fw_update_status &= ~FW_FLASH_FAILED;
 
 out:
 		D("%s: End writing firmware\n", __func__);
@@ -1573,11 +1586,13 @@ out:
 	release_firmware(fw);
 
 fast_exit:
-	cwmcu_sensor_placement(mcu_data);
-	cwmcu_set_sensor_kvalue(mcu_data);
-	cwmcu_restore_status(mcu_data);
+	queue_delayed_work(mcu_data->mcu_wq, &mcu_data->re_init_work, 0);
 
 	cwmcu_powermode_switch(mcu_data, 0);
+
+	mcu_data->fw_update_status &= ~FW_UPDATE_QUEUED;
+	I("%s--: fw_update_status = 0x%x\n", __func__,
+	  mcu_data->fw_update_status);
 }
 
 /* Returns the number of read bytes on success */
@@ -1641,19 +1656,6 @@ static int CWMCU_i2c_read(struct cwmcu_data *mcu_data,
 	return rc;
 }
 
-#if defined(CONFIG_SYNC_TOUCH_STATUS)
-int touch_status(struct cwmcu_data *mcu_data, u8 status)
-{
-	int ret = -1;
-	if (status == 1 || status == 0) {
-		ret = CWMCU_i2c_write(mcu_data, TOUCH_STATUS_REGISTER,
-				      &status, 1);
-		D("[TP][SensorHub] touch_status = %u\n", status);
-	}
-	return ret;
-}
-#endif
-
 static void reset_hub(struct cwmcu_data *mcu_data)
 {
 	gpio_direction_output(mcu_data->gpio_reset, 0);
@@ -1680,19 +1682,16 @@ static void activated_i2c_do_work(struct work_struct *w)
 	    time_after(jiffies, mcu_data->i2c_jiffies + REACTIVATE_PERIOD)) {
 		reset_hub(mcu_data);
 
-		mutex_unlock(&mcu_data->activated_i2c_lock);
+		I("%s: fw_update_status = 0x%x\n", __func__,
+		  mcu_data->fw_update_status);
 
-		I("%s: Restore parameters!!\n", __func__);
-
-		cwmcu_powermode_switch(mcu_data, 1);
-
-		cwmcu_sensor_placement(mcu_data);
-		cwmcu_set_sensor_kvalue(mcu_data);
-		cwmcu_restore_status(mcu_data);
-
-		cwmcu_powermode_switch(mcu_data, 0);
-
-		mutex_lock(&mcu_data->activated_i2c_lock);
+		if (!(mcu_data->fw_update_status &
+		      (FW_DOES_NOT_EXIST | FW_UPDATE_QUEUED))) {
+			mcu_data->fw_update_status |= FW_UPDATE_QUEUED;
+			request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+				"sensor_hub.img", &mcu_data->client->dev,
+				GFP_KERNEL, mcu_data, update_firmware);
+		}
 
 	}
 
@@ -2648,7 +2647,8 @@ static void re_init_do_work(struct work_struct *w)
 }
 
 #ifdef MCU_WARN_MSGS
-static void print_warn_msg(char *buf, u32 len, u32 index)
+static void print_warn_msg(struct cwmcu_data *mcu_data,
+			   char *buf, u32 len, u32 index)
 {
 	int ret;
 	char *buf_start = buf;
@@ -2911,7 +2911,8 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 
 			for (i = 0; i < WARN_MSG_BUFFER_LEN_SIZE; i++) {
 				if (buf_len[i] <= WARN_MSG_PER_ITEM_LEN)
-					print_warn_msg(buf, buf_len[i], i);
+					print_warn_msg(mcu_data, buf,
+						       buf_len[i], i);
 			}
 		} else {
 			E("%s: Warn MSG read fails, ret = %d\n",
@@ -2981,9 +2982,8 @@ exception_end:
 
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 
-		cwmcu_sensor_placement(mcu_data);
-		cwmcu_set_sensor_kvalue(mcu_data);
-		cwmcu_restore_status(mcu_data);
+		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->re_init_work,
+				   0);
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION;
 		ret = CWMCU_i2c_write(mcu_data, CWSTM32_ERR_ST, &clear_intr, 1);
@@ -3575,7 +3575,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Clean up codes\n", __func__);
+	I("%s++: Re-flash firmware when necessary\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");

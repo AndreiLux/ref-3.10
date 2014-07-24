@@ -65,11 +65,6 @@ typedef enum {
 
 #define HTC_SYSTEM_STATUS_REG                      0x1E
 
-#if defined(CONFIG_SYNC_TOUCH_STATUS)
-int touch_status(u8 status);
-#define TOUCH_STATUS_REGISTER                      0xF2
-#endif
-
 #define CW_I2C_REG_SENSORS_CALIBRATOR_STATUS_ACC                0x60
 #define CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_ACC              0x68
 #define CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_ACC              0x68
@@ -221,6 +216,11 @@ int touch_status(u8 status);
 #define CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET     (1 << 7)
 
 #define CW_MCU_BIT_LIGHT_POLLING		(1 << 5)
+
+#define FW_DOES_NOT_EXIST                       (1 << 0)
+#define FW_UPDATE_QUEUED                        (1 << 1)
+#define FW_ERASE_FAILED                         (1 << 2)
+#define FW_FLASH_FAILED                         (1 << 3)
 
 #define	CW_MCU_I2C_SENSORS_REG_START		(0x20)
 
