@@ -270,7 +270,7 @@ static int cw_send_event(struct cwmcu_data *mcu_data, u8 id, u16 *data,
 		mutex_unlock(&mcu_data->mutex_lock);
 		return 0;
 	} else if (mcu_data->indio_dev->active_scan_mask == NULL)
-		I("%s: active_scan_mask = NULL, event might be missing\n",
+		D("%s: active_scan_mask = NULL, event might be missing\n",
 		  __func__);
 
 	return -EIO;
@@ -286,13 +286,17 @@ static int cw_send_event_special(struct cwmcu_data *mcu_data, u8 id, u16 *data,
 	memcpy(&event[7], bias, sizeof(u16)*3);
 	memcpy(&event[13], &timestamp, sizeof(s64));
 
-	if (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
-			  mcu_data->indio_dev->masklength)) {
+	if (mcu_data->indio_dev->active_scan_mask &&
+	    (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
+			   mcu_data->indio_dev->masklength))) {
 		mutex_lock(&mcu_data->mutex_lock);
 		iio_push_to_buffers(mcu_data->indio_dev, event);
 		mutex_unlock(&mcu_data->mutex_lock);
 		return 0;
-	}
+	} else if (mcu_data->indio_dev->active_scan_mask == NULL)
+		D("%s: active_scan_mask = NULL, event might be missing\n",
+		  __func__);
+
 	return -EIO;
 }
 
@@ -3587,7 +3591,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Enable IRQ when resume\n", __func__);
+	I("%s++: Correct log level when active_scan_mask = NULL\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
