@@ -112,7 +112,7 @@ MODULE_PARM_DESC(DEBUG_DISABLE, "disable " CWMCU_I2C_NAME " driver") ;
 struct cwmcu_data {
 	struct i2c_client *client;
 	atomic_t delay;
-	int resume_done;
+	int suspended;
 	struct mutex mutex_lock;
 	struct mutex group_i2c_lock;
 	struct mutex activated_i2c_lock;
@@ -1004,6 +1004,13 @@ static int CWMCU_i2c_write(struct cwmcu_data *mcu_data,
 		return len;
 	}
 
+	mutex_lock(&mcu_data->mutex_lock);
+	if (mcu_data->suspended == 1) {
+		mutex_unlock(&mcu_data->mutex_lock);
+		return len;
+	}
+	mutex_unlock(&mcu_data->mutex_lock);
+
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (retry_exhausted(mcu_data)) {
 		D("%s: mcu_data->i2c_total_retry = %d, i2c_latch_retry = %d\n",
@@ -1608,6 +1615,13 @@ static int CWMCU_i2c_read(struct cwmcu_data *mcu_data,
 		return len;
 	}
 
+	mutex_lock(&mcu_data->mutex_lock);
+	if (mcu_data->suspended == 1) {
+		mutex_unlock(&mcu_data->mutex_lock);
+		return len;
+	}
+	mutex_unlock(&mcu_data->mutex_lock);
+
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (retry_exhausted(mcu_data)) {
 		for (rc = 0; rc < len; rc++)
@@ -2026,9 +2040,9 @@ static ssize_t batch_set(struct device *dev,
 
 	for (retry = 0; retry < ACTIVE_RETRY_TIMES; retry++) {
 		mutex_lock(&mcu_data->mutex_lock);
-		if (mcu_data->resume_done != 1) {
+		if (mcu_data->suspended == 1) {
 			mutex_unlock(&mcu_data->mutex_lock);
-			D("%s: resume not completed, retry = %d\n",
+			D("%s: suspended, retry = %d\n",
 				__func__, retry);
 			usleep_range(5000, 10000);
 		} else {
@@ -2587,19 +2601,24 @@ static void cwmcu_read(struct cwmcu_data *mcu_data, struct iio_poll_func *pf)
 
 }
 
-
 static int cwmcu_suspend(struct device *dev)
 {
 	struct cwmcu_data *mcu_data = dev_get_drvdata(dev);
+	int i;
 
 	D("[CWMCU] %s\n", __func__);
 
+	mutex_lock(&mcu_data->mutex_lock);
+	mcu_data->suspended = 1;
+	mutex_unlock(&mcu_data->mutex_lock);
+
+	for (i = 0; (mcu_data->power_on_counter != 0) &&
+		    (gpio_get_value(mcu_data->gpio_wake_mcu) != 1) &&
+		    (i < ACTIVE_RETRY_TIMES); i++)
+		usleep_range(10, 20);
+
 	gpio_set_value(mcu_data->gpio_wake_mcu, 1);
 	mcu_data->power_on_counter = 0;
-
-	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->resume_done = 0;
-	mutex_unlock(&mcu_data->mutex_lock);
 
 	return 0;
 }
@@ -2612,7 +2631,7 @@ static void resume_do_work(struct work_struct *w)
 	D("[CWMCU] %s++\n", __func__);
 
 	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->resume_done = 1;
+	mcu_data->suspended = 0;
 	mutex_unlock(&mcu_data->mutex_lock);
 
 	D("[CWMCU] %s--\n", __func__);
@@ -3575,7 +3594,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Re-flash firmware when necessary\n", __func__);
+	I("%s++: Make sure no i2c access after suspend\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3715,7 +3734,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		E("[CWMCU] could not enable irq as wakeup source %d\n", error);
 
 	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->resume_done = 1;
+	mcu_data->suspended = 0;
 	mutex_unlock(&mcu_data->mutex_lock);
 
 	request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
