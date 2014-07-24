@@ -33,6 +33,7 @@
 #include "host1x/host1x.h"
 #include "vi.h"
 #include "vi_irq.h"
+#include <linux/pm_qos.h>
 
 static DEFINE_MUTEX(la_lock);
 
@@ -223,6 +224,24 @@ static int vi_set_la(struct vi *tegra_vi1, uint vi_bw)
 	return ret;
 }
 
+static int vi_set_cpu_clock(struct vi *tegra_vi,
+		unsigned long freq)
+{
+	dev_dbg(&tegra_vi->ndev->dev, "%s: update cpu freq to = %lu\n",
+		__func__, freq);
+	if (!tegra_vi->cpu_info.boost_cpu && freq > 0) {
+		pm_qos_add_request(&tegra_vi->cpu_info.min_cpu_req,
+			PM_QOS_CPU_FREQ_MIN,
+			PM_QOS_DEFAULT_VALUE);
+		pm_qos_update_request(&tegra_vi->cpu_info.min_cpu_req, freq);
+		tegra_vi->cpu_info.boost_cpu = true;
+	} else if (tegra_vi->cpu_info.boost_cpu) {
+		pm_qos_remove_request(&tegra_vi->cpu_info.min_cpu_req);
+		tegra_vi->cpu_info.boost_cpu = false;
+	}
+
+	return 0;
+}
 
 long vi_ioctl(struct file *file,
 		unsigned int cmd, unsigned long arg)
@@ -309,6 +328,17 @@ long vi_ioctl(struct file *file,
 #endif
 		return ret;
 	}
+	case NVHOST_VI_IOCTL_SET_CPU_FREQ: {
+		uint val = 0;
+		if (copy_from_user(&val,
+			(const void __user *)arg, sizeof(uint))) {
+			dev_err(&tegra_vi->ndev->dev,
+				"%s: Failed to copy arg from user\n", __func__);
+			return -EFAULT;
+		}
+		vi_set_cpu_clock(tegra_vi, val);
+		break;
+	}
 	default:
 		dev_err(&tegra_vi->ndev->dev,
 			"%s: Unknown vi ioctl.\n", __func__);
@@ -345,6 +375,9 @@ static int vi_release(struct inode *inode, struct file *file)
 {
 	int ret = 0;
 	struct vi *tegra_vi = file->private_data;
+
+	if (tegra_vi->cpu_info.boost_cpu)
+		vi_set_cpu_clock(tegra_vi, 0);
 
 	ret = vi_disable_irq(tegra_vi);
 	if (ret) {

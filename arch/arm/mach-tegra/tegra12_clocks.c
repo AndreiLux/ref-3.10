@@ -8669,6 +8669,16 @@ struct clk_duplicate tegra_clk_duplicates[] = {
 	CLK_DUPLICATE("dam2", NULL, "dam2"),
 	CLK_DUPLICATE("spdif_in", NULL, "spdif_in"),
 	CLK_DUPLICATE("mclk", NULL, "default_mclk"),
+	CLK_DUPLICATE("amx", NULL, "amx"),
+	CLK_DUPLICATE("amx1", NULL, "amx1"),
+	CLK_DUPLICATE("adx", NULL, "adx"),
+	CLK_DUPLICATE("adx1", NULL, "adx1"),
+	CLK_DUPLICATE("afc0", NULL, "afc0"),
+	CLK_DUPLICATE("afc1", NULL, "afc1"),
+	CLK_DUPLICATE("afc2", NULL, "afc2"),
+	CLK_DUPLICATE("afc3", NULL, "afc3"),
+	CLK_DUPLICATE("afc4", NULL, "afc4"),
+	CLK_DUPLICATE("afc5", NULL, "afc5"),
 	CLK_DUPLICATE("amx", "tegra124-amx.0", NULL),
 	CLK_DUPLICATE("amx1", "tegra124-amx.1", NULL),
 	CLK_DUPLICATE("adx", "tegra124-adx.0", NULL),
@@ -9667,8 +9677,8 @@ static void tegra12_clk_resume(void)
 
 		/* emc switched to the new parent by low level code, but ref
 		   count and s/w state need to be updated */
-		clk_disable(p);
-		clk_enable(tegra_clk_emc.parent);
+		clk_disable_locked(p);
+		clk_enable_locked(tegra_clk_emc.parent);
 	}
 
 	rate = clk_get_rate_all_locked(&tegra_clk_emc);
