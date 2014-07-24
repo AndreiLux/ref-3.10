@@ -143,7 +143,6 @@ struct cwmcu_data {
 	u32	continuous_sensor_count;
 	int	IRQ;
 	struct delayed_work	work;
-	struct delayed_work	resume_work;
 	struct delayed_work	activated_i2c_work;
 	struct delayed_work	re_init_work;
 	u32 gpio_wake_mcu;
