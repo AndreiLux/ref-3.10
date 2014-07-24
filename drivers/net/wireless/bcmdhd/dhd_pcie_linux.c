@@ -173,13 +173,15 @@ static int dhdpcie_set_suspend_resume(struct pci_dev *pdev, bool state)
 
 	/* When firmware is not loaded do the PCI bus */
 	/* suspend/resume only */
-	if (bus && (bus->dhd->busstate == DHD_BUS_DOWN)) {
+	if (bus && (bus->dhd->busstate == DHD_BUS_DOWN) &&
+		!bus->dhd->dongle_reset) {
 		ret = dhdpcie_pci_suspend_resume(bus->dev, state);
 		return ret;
 	}
 
 	if (bus && ((bus->dhd->busstate == DHD_BUS_SUSPEND)||
-		(bus->dhd->busstate == DHD_BUS_DATA))) {
+		(bus->dhd->busstate == DHD_BUS_DATA)) &&
+		(bus->suspended != state)) {
 
 		ret = dhdpcie_bus_suspend(bus, state);
 	}
@@ -206,7 +208,8 @@ static int dhdpcie_suspend_dev(struct pci_dev *dev)
 	dhdpcie_pme_active(dev, TRUE);
 	pci_save_state(dev);
 	pci_enable_wake(dev, PCI_D0, TRUE);
-	pci_disable_device(dev);
+	if (pci_is_enabled(dev))
+		pci_disable_device(dev);
 	ret = pci_set_power_state(dev, PCI_D3hot);
 	return ret;
 }
