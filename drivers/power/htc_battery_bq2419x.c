@@ -1428,10 +1428,25 @@ static int charger_bq2419x_get_property(struct power_supply *psy,
 {
 	struct htc_battery_bq2419x_data *data = container_of(psy, struct htc_battery_bq2419x_data, charger);
 
-	if (psp == POWER_SUPPLY_PROP_STATUS)
-		val->intval = data->chg_status;
-	else
+	if (psp == POWER_SUPPLY_PROP_STATUS) {
+		switch (data->chg_status) {
+		case BATTERY_CHARGING:
+			val->intval = POWER_SUPPLY_STATUS_CHARGING;
+			break;
+		case BATTERY_CHARGING_DONE:
+			val->intval = POWER_SUPPLY_STATUS_FULL;
+			break;
+		case BATTERY_DISCHARGING:
+		case BATTERY_UNKNOWN:
+		default:
+			if (!data->cable_connected)
+				val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
+			else
+				val->intval = POWER_SUPPLY_STATUS_NOT_CHARGING;
+		}
+	} else
 		return -EINVAL;
+
 	return 0;
 }
 
