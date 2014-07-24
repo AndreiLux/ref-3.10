@@ -2608,6 +2608,8 @@ static int cwmcu_suspend(struct device *dev)
 
 	D("[CWMCU] %s\n", __func__);
 
+	disable_irq(mcu_data->IRQ);
+
 	mutex_lock(&mcu_data->mutex_lock);
 	mcu_data->suspended = 1;
 	mutex_unlock(&mcu_data->mutex_lock);
@@ -2623,19 +2625,6 @@ static int cwmcu_suspend(struct device *dev)
 	return 0;
 }
 
-static void resume_do_work(struct work_struct *w)
-{
-	struct cwmcu_data *mcu_data = container_of((struct delayed_work *)w,
-			struct cwmcu_data, resume_work);
-
-	D("[CWMCU] %s++\n", __func__);
-
-	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->suspended = 0;
-	mutex_unlock(&mcu_data->mutex_lock);
-
-	D("[CWMCU] %s--\n", __func__);
-}
 
 static int cwmcu_resume(struct device *dev)
 {
@@ -2644,7 +2633,11 @@ static int cwmcu_resume(struct device *dev)
 
 	D("[CWMCU] %s++\n", __func__);
 
-	queue_delayed_work(mcu_data->mcu_wq, &mcu_data->resume_work, 0);
+	mutex_lock(&mcu_data->mutex_lock);
+	mcu_data->suspended = 0;
+	mutex_unlock(&mcu_data->mutex_lock);
+
+	enable_irq(mcu_data->IRQ);
 
 	D("[CWMCU] %s--\n", __func__);
 	return 0;
@@ -3594,7 +3587,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Make sure no i2c access after suspend\n", __func__);
+	I("%s++: Enable IRQ when resume\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3681,7 +3674,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	mutex_init(&mcu_data->lock);
 
 	INIT_DELAYED_WORK(&mcu_data->work, cwmcu_work_report);
-	INIT_DELAYED_WORK(&mcu_data->resume_work, resume_do_work);
 	INIT_DELAYED_WORK(&mcu_data->activated_i2c_work, activated_i2c_do_work);
 	INIT_DELAYED_WORK(&mcu_data->re_init_work, re_init_do_work);
 
