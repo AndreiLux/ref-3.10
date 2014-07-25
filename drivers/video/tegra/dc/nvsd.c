@@ -63,6 +63,7 @@ NVSD_ATTR(sd_window);
 NVSD_ATTR(soft_clipping_enable);
 NVSD_ATTR(soft_clipping_threshold);
 NVSD_ATTR(soft_clipping_correction);
+NVSD_ATTR(soft_clipping_recip_offset);
 NVSD_ATTR(smooth_k_enable);
 NVSD_ATTR(smooth_k_incr);
 NVSD_ATTR(use_vpulse2);
@@ -94,6 +95,7 @@ static struct attribute *nvsd_attrs[] = {
 	NVSD_ATTRS_ENTRY(soft_clipping_enable),
 	NVSD_ATTRS_ENTRY(soft_clipping_threshold),
 	NVSD_ATTRS_ENTRY(soft_clipping_correction),
+	NVSD_ATTRS_ENTRY(soft_clipping_recip_offset),
 	NVSD_ATTRS_ENTRY(smooth_k_enable),
 	NVSD_ATTRS_ENTRY(smooth_k_incr),
 	NVSD_ATTRS_ENTRY(use_vpulse2),
@@ -537,6 +539,7 @@ void nvsd_init(struct tegra_dc *dc, struct tegra_dc_sd_settings *settings)
 	if (settings->soft_clipping_enable) {
 		/* Write soft clipping */
 		val = (64 * 1024) / (256 - settings->soft_clipping_threshold);
+		val += settings->soft_clipping_recip_offset;
 		val = SD_SOFT_CLIPPING_RECIP(val) |
 		SD_SOFT_CLIPPING_THRESHOLD(settings->soft_clipping_threshold);
 		tegra_dc_writel(dc, val, DC_DISP_SD_SOFT_CLIPPING);
@@ -911,6 +914,9 @@ static ssize_t nvsd_settings_show(struct kobject *kobj,
 		else if (IS_NVSD_ATTR(soft_clipping_correction))
 			res = snprintf(buf, PAGE_SIZE, "%d\n",
 				sd_settings->soft_clipping_correction);
+		else if (IS_NVSD_ATTR(soft_clipping_recip_offset))
+			res = snprintf(buf, PAGE_SIZE, "%d\n",
+				sd_settings->soft_clipping_recip_offset);
 		else if (IS_NVSD_ATTR(smooth_k_enable))
 			res = snprintf(buf, PAGE_SIZE, "%d\n",
 				sd_settings->smooth_k_enable);
@@ -1101,6 +1107,8 @@ static ssize_t nvsd_settings_store(struct kobject *kobj,
 			nvsd_check_and_update(0, 255, soft_clipping_threshold);
 		} else if (IS_NVSD_ATTR(soft_clipping_correction)) {
 			nvsd_check_and_update(0, 1, soft_clipping_correction);
+		} else if (IS_NVSD_ATTR(soft_clipping_recip_offset)) {
+			nvsd_check_and_update(-65536, 65536, soft_clipping_recip_offset);
 		} else if (IS_NVSD_ATTR(smooth_k_enable)) {
 			nvsd_check_and_update(0, 1, smooth_k_enable);
 		} else if (IS_NVSD_ATTR(smooth_k_incr)) {
