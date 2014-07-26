@@ -118,6 +118,9 @@ struct te_shmem_desc {
 	void *buffer;
 	size_t size;
 	unsigned int mem_type;
+	bool writable;
+	unsigned long nrpages;
+	struct page *pages[];
 };
 
 struct tlk_context {

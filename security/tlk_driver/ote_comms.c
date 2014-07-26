@@ -52,14 +52,21 @@ static struct tlk_info *tlk_info;
 #define SET_RESULT(req, r, ro)	{ req->result = r; req->result_origin = ro; }
 
 static struct te_shmem_desc *te_add_shmem_desc(void *buffer, size_t size,
-		struct tlk_context *context)
+		bool writable, struct tlk_context *context)
 {
 	struct te_shmem_desc *shmem_desc = NULL;
-	shmem_desc = kzalloc(sizeof(struct te_shmem_desc), GFP_KERNEL);
+	unsigned long nrpages = (PAGE_ALIGN((uintptr_t)buffer + size) -
+				 round_down((uintptr_t)buffer, PAGE_SIZE)) /
+				PAGE_SIZE;
+
+	shmem_desc = kzalloc(sizeof(struct te_shmem_desc) +
+			     nrpages * sizeof(struct page *), GFP_KERNEL);
 	if (shmem_desc) {
 		INIT_LIST_HEAD(&(shmem_desc->list));
 		shmem_desc->buffer = buffer;
 		shmem_desc->size = size;
+		shmem_desc->nrpages = nrpages;
+		shmem_desc->writable = writable;
 		list_add_tail(&shmem_desc->list, &(context->shmem_alloc_list));
 	}
 
@@ -67,20 +74,37 @@ static struct te_shmem_desc *te_add_shmem_desc(void *buffer, size_t size,
 }
 
 static int te_pin_mem_buffers(void *buffer, size_t size,
-		struct tlk_context *context)
+		struct tlk_context *context, bool write)
 {
 	struct te_shmem_desc *shmem_desc = NULL;
-	int ret = 0;
+	int ret;
+	int nrpages_pinned;
+	int i;
 
-	shmem_desc = te_add_shmem_desc(buffer, size, context);
+	shmem_desc = te_add_shmem_desc(buffer, size, write, context);
 	if (!shmem_desc) {
 		pr_err("%s: te_add_shmem_desc Failed\n", __func__);
 		ret = OTE_ERROR_OUT_OF_MEMORY;
-		goto error;
+		goto err_shmem;
 	}
 
+	nrpages_pinned = get_user_pages_fast((unsigned long)buffer,
+					     shmem_desc->nrpages, write,
+					     shmem_desc->pages);
+
+	if (nrpages_pinned != shmem_desc->nrpages)
+		goto err_pin_pages;
+
 	return OTE_SUCCESS;
-error:
+
+err_pin_pages:
+	for (i = 0; i < nrpages_pinned; i++)
+		put_page(shmem_desc->pages[i]);
+
+	list_del(&shmem_desc->list);
+	kfree(shmem_desc);
+	ret = OTE_ERROR_BAD_PARAMETERS;
+err_shmem:
 	return ret;
 }
 
@@ -90,6 +114,7 @@ static int te_setup_temp_buffers(struct te_request *request,
 	uint32_t i;
 	int ret = OTE_SUCCESS;
 	struct te_oper_param *params = request->params;
+	bool write = true;
 
 	for (i = 0; i < request->params_size; i++) {
 		switch (params[i].type) {
@@ -98,11 +123,12 @@ static int te_setup_temp_buffers(struct te_request *request,
 		case TE_PARAM_TYPE_INT_RW:
 			break;
 		case TE_PARAM_TYPE_MEM_RO:
+			write = false;
 		case TE_PARAM_TYPE_MEM_RW:
 			ret = te_pin_mem_buffers(
 				params[i].u.Mem.base,
 				params[i].u.Mem.len,
-				context);
+				context, write);
 			if (ret < 0) {
 				pr_err("%s failed with err (%d)\n",
 					__func__, ret);
@@ -125,6 +151,7 @@ static int te_setup_temp_buffers_compat(struct te_request_compat *request,
 	uint32_t i;
 	int ret = OTE_SUCCESS;
 	struct te_oper_param_compat *params;
+	bool write = true;
 
 	params = (struct te_oper_param_compat *)(uintptr_t)request->params;
 	for (i = 0; i < request->params_size; i++) {
@@ -134,11 +161,12 @@ static int te_setup_temp_buffers_compat(struct te_request_compat *request,
 		case TE_PARAM_TYPE_INT_RW:
 			break;
 		case TE_PARAM_TYPE_MEM_RO:
+			write = false;
 		case TE_PARAM_TYPE_MEM_RW:
 			ret = te_pin_mem_buffers(
 				(void *)(uintptr_t)params[i].u.Mem.base,
 				params[i].u.Mem.len,
-				context);
+				context, write);
 			if (ret < 0) {
 				pr_err("%s failed with err (%d)\n",
 					__func__, ret);
@@ -155,16 +183,29 @@ static int te_setup_temp_buffers_compat(struct te_request_compat *request,
 	return ret;
 }
 
+static void te_free_shmem_desc(struct te_shmem_desc *shmem_desc)
+{
+	unsigned long i;
+
+	for (i = 0; i < shmem_desc->nrpages; i++) {
+		BUG_ON(!shmem_desc->pages[i]);
+		if (shmem_desc->writable)
+			set_page_dirty(shmem_desc->pages[i]);
+		put_page(shmem_desc->pages[i]);
+	}
+
+	list_del(&shmem_desc->list);
+	kfree(shmem_desc);
+}
+
 static void te_del_shmem_desc(void *buffer, struct tlk_context *context)
 {
 	struct te_shmem_desc *shmem_desc, *tmp_shmem_desc;
 
 	list_for_each_entry_safe(shmem_desc, tmp_shmem_desc,
 		&(context->shmem_alloc_list), list) {
-		if (shmem_desc->buffer == buffer) {
-			list_del(&shmem_desc->list);
-			kfree(shmem_desc);
-		}
+		if (shmem_desc->buffer == buffer)
+			return te_free_shmem_desc(shmem_desc);
 	}
 }
 
