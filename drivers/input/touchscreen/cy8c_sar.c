@@ -37,11 +37,13 @@ static DECLARE_WORK(notifier_work, sar_event_handler);
 BLOCKING_NOTIFIER_HEAD(sar_notifier_list);
 
 /**
- * register_notifier_by_sar - Register function for Wifi core(s) to decrease/recover the transmission power
+ * register_notifier_by_sar
+ *	- Register function for Wifi core(s) to decrease/recover
+ *	  the transmission power
  * @nb: Hook to be registered
  *
- * The register_notifier_by_sar is used to notify the Wifi core(s) about the SAR sensor state changes
- * Returns zero always as notifier_chain_register.
+ * The register_notifier_by_sar is used to notify the Wifi core(s) about
+ * the SAR sensor state changes Returns zero always as notifier_chain_register.
  */
 int register_notifier_by_sar(struct notifier_block *nb)
 {
@@ -62,7 +64,8 @@ int unregister_notifier_by_sar(struct notifier_block *nb)
 	return blocking_notifier_chain_unregister(&sar_notifier_list, nb);
 }
 
-static int i2c_cy8c_read(struct i2c_client *client, uint8_t addr, uint8_t *data, uint8_t length)
+static int i2c_cy8c_read(
+	struct i2c_client *client, uint8_t addr, uint8_t *data, uint8_t length)
 {
 	int retry, ret;
 
@@ -77,12 +80,14 @@ static int i2c_cy8c_read(struct i2c_client *client, uint8_t addr, uint8_t *data,
 	return -EIO;
 }
 
-static int i2c_cy8c_write(struct i2c_client *client, uint8_t addr, uint8_t *data, uint8_t length)
+static int i2c_cy8c_write(
+	struct i2c_client *client, uint8_t addr, uint8_t *data, uint8_t length)
 {
 	int retry, ret;
 
 	for (retry = 0; retry < CY8C_I2C_RETRY_TIMES; retry++) {
-		ret = i2c_smbus_write_i2c_block_data(client, addr, length, data);
+		ret = i2c_smbus_write_i2c_block_data(
+				client, addr, length, data);
 		if (ret == 0)
 			return ret;
 		msleep(10);
@@ -93,7 +98,8 @@ static int i2c_cy8c_write(struct i2c_client *client, uint8_t addr, uint8_t *data
 
 }
 
-static int i2c_cy8c_write_byte_data(struct i2c_client *client, uint8_t addr, uint8_t value)
+static int i2c_cy8c_write_byte_data(
+	struct i2c_client *client, uint8_t addr, uint8_t value)
 {
 	return i2c_cy8c_write(client, addr, &value, 1);
 }
@@ -144,7 +150,9 @@ static ssize_t cy8c_sar_gpio_show(struct device *dev,
 }
 static DEVICE_ATTR(gpio, S_IRUGO, cy8c_sar_gpio_show, NULL);
 
-static ssize_t sleep_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t count)
+static ssize_t sleep_store(
+	struct device *dev, struct device_attribute *attr,
+	const char *buf, size_t count)
 {
 	unsigned int data;
 	struct cy8c_sar_data *sar = dev_get_drvdata(dev);
@@ -157,20 +165,20 @@ static ssize_t sleep_store(struct device *dev, struct device_attribute *attr, co
 		return count;
 	cancel_delayed_work_sync(&sar->sleep_work);
 
-	pr_debug("[SAR] %s: current mode = %d, new mode = %d\n", __func__, sar->sleep_mode, data);
+	pr_debug("[SAR] %s: current mode = %d, new mode = %d\n",
+		 __func__, sar->sleep_mode, data);
 	spin_lock_irqsave(&sar->spin_lock, spinlock_flags);
 	sar->radio_state = data;
-	if (sar->radio_state == KEEP_AWAKE)
-		queue_delayed_work(sar->cy8c_wq, &sar->sleep_work, WAKEUP_DELAY);
-	else
-		queue_delayed_work(sar->cy8c_wq, &sar->sleep_work, 0);
+	queue_delayed_work(sar->cy8c_wq, &sar->sleep_work,
+			(sar->radio_state == KEEP_AWAKE) ? WAKEUP_DELAY : 0);
 
 	spin_unlock_irqrestore(&sar->spin_lock, spinlock_flags);
 	pr_debug("[SAR] %s ---", __func__);
 	return count;
 }
 
-static ssize_t sleep_show(struct device *dev, struct device_attribute *attr, char *buf)
+static ssize_t sleep_show(
+	struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct cy8c_sar_data *sar = dev_get_drvdata(dev);
 	pr_debug("[SAR] %s: sleep_mode = %d\n", __func__, sar->sleep_mode);
@@ -249,9 +257,8 @@ static void sar_event_handler(struct work_struct *work)
 
 		pdata = sar->client->dev.platform_data;
 		active &= ~SAR_MISSING;
-		if (sar->is_activated) {
+		if (sar->is_activated)
 			active |= 1 << (pdata->position_id);
-		}
 		if (sar->dysfunctional)
 			active |= SAR_DYSFUNCTIONAL << pdata->position_id;
 	}
@@ -315,7 +322,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 			}
 		}
 		j = 0;
-		msleep(100);/*wait chip ready and set BL command*/
+		/* wait chip ready and set BL command */
+		msleep(100);
 		i2cbuf[0] = CS_FW_BLADD;
 		i2cbuf[1] = 1;
 		ret = i2c_tx_bytes(sar, 2, i2cbuf);
@@ -324,7 +332,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 
 		client->addr = pdata->bl_addr;
 		pr_info("[SAR] @set TOP BL mode addr:0x%x\n", pdata->bl_addr);
-		msleep(100);/*wait chip into BL mode.*/
+		/* wait chip into BL mode. */
+		msleep(100);
 		memcpy(wbuf+2, sarfw, 10);
 		ret = i2c_tx_bytes(sar, 12, wbuf);/*1st Block*/
 		if (ret != 12) {
@@ -335,7 +344,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 		memset(wbuf, 0, sizeof(wbuf));
 		j += 10;
 
-		msleep(100);/*wait chip move buf data to RAM for 1ST FW block*/
+		/* wait chip move buf data to RAM for 1ST FW block */
+		msleep(100);
 		ret = smart_blmode_check(sar);
 		if (ret < 0) {
 			pr_err("[SAR][ERR] 1st Blk BL Check Err\n");
@@ -351,7 +361,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 					wbuf[0] = 0;
 					wbuf[1] = 0x10*i;
 					memcpy(wbuf+2, sarfw+j, 16);
-					ret = i2c_tx_bytes(sar, 18, wbuf);/*Write Blocks*/
+					/* Write Blocks */
+					ret = i2c_tx_bytes(sar, 18, wbuf);
 					if (ret != 18) {
 						pr_err("[SAR][ERR] i2c_write ERROR!! Data Block = %d\n"
 								, cnt_blk);
@@ -376,10 +387,15 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				memset(wbuf, 0 , sizeof(wbuf));
 				j += 14;
 
-				msleep(150);/*wait chip move buf to RAM for each data block.*/
+				/*
+				 * wait chip move buf to RAM for
+				 * each data block.
+				 */
+				msleep(150);
 				ret = smart_blmode_check(sar);/*confirm Bl*/
 				if (ret < 0) {
-					pr_err("[SAR][ERR] Check BL Error Blk = %d\n", cnt_blk);
+					pr_err("[SAR][ERR] Check BL Error Blk = %d\n",
+						cnt_blk);
 					goto error_fw_fail;
 				}
 			} else if (sarfw[j+1] == 0x3B) {
@@ -393,7 +409,11 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				memset(wbuf, 0, sizeof(wbuf));
 				j += 10;
 
-				msleep(200);/*write all block done, wait chip internal reset time.*/
+				/*
+				 * write all block done,
+				 * wait chip internal reset time.
+				 */
+				msleep(200);
 				pr_info("[SAR] Firmware Update OK!\n");
 				break;
 			} else {
@@ -515,7 +535,8 @@ static int sar_update_mode(int radio, int pm)
 
 static void sar_sleep_func(struct work_struct *work)
 {
-	struct cy8c_sar_data *sar = container_of(work, struct cy8c_sar_data, sleep_work.work);
+	struct cy8c_sar_data *sar = container_of(
+				work, struct cy8c_sar_data, sleep_work.work);
 	int mode, err;
 	struct i2c_client *client = sar->client;
 	struct cy8c_i2c_sar_platform_data *pdata = client->dev.platform_data;
@@ -565,7 +586,8 @@ static int sysfs_create(struct cy8c_sar_data *sar)
 			sar->sar_class = NULL;
 			return -ENXIO;
 		}
-		sar->sar_dev = device_create(sar->sar_class, NULL, 0, sar, "sar");
+		sar->sar_dev = device_create(sar->sar_class, NULL, 0,
+						sar, "sar");
 		if (unlikely(IS_ERR(sar->sar_dev))) {
 			pr_info("[SAR] %s, position=%d, create class fail2\n"
 					, __func__, pdata->position_id);
@@ -582,7 +604,8 @@ static int sysfs_create(struct cy8c_sar_data *sar)
 			sar->sar_class = NULL;
 			return -ENXIO;
 		}
-		sar->sar_dev = device_create(sar->sar_class, NULL, 0, sar, "sar1");
+		sar->sar_dev = device_create(sar->sar_class, NULL, 0,
+						sar, "sar1");
 		if (unlikely(IS_ERR(sar->sar_dev))) {
 			pr_info("[SAR] %s, position=%d, create class fail4\n"
 					, __func__, pdata->position_id);
@@ -594,7 +617,8 @@ static int sysfs_create(struct cy8c_sar_data *sar)
 
 	ret = sysfs_create_group(&sar->sar_dev->kobj, &sar_attr_group);
 	if (ret) {
-		dev_err(sar->sar_dev, "Unable to create sar attr, error: %d\n", ret);
+		dev_err(sar->sar_dev,
+			"Unable to create sar attr, error: %d\n", ret);
 		return -EEXIST;
 	}
 
@@ -647,9 +671,8 @@ static int cy8c_sar_probe(struct i2c_client *client,
 	i2c_set_clientdata(client, sar);
 	pdata = client->dev.platform_data;
 
-	if (pdata) {
+	if (pdata)
 		pdata->reset();
-	}
 
 	sar->intr_irq = gpio_to_irq(pdata->gpio_irq);
 
@@ -695,7 +718,7 @@ static int cy8c_sar_probe(struct i2c_client *client,
 		ret = request_threaded_irq(sar->intr_irq, NULL
 				, cy8c_sar_irq_handler
 				, IRQF_TRIGGER_FALLING | IRQF_ONESHOT
-				,CYPRESS_SAR_NAME, sar);
+				, CYPRESS_SAR_NAME, sar);
 		if (ret < 0) {
 			dev_err(&client->dev, "[SAR][ERR] request_irq failed\n");
 			pr_err("[SAR][ERR] request_irq failed for gpio %d, irq %d\n",

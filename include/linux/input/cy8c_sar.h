@@ -7,9 +7,9 @@
 #include <linux/wakelock.h>
 #include <linux/list.h>
 
-#define CYPRESS_SAR_NAME 	"CYPRESS_SAR"
+#define CYPRESS_SAR_NAME	"CYPRESS_SAR"
 #define CYPRESS_SAR1_NAME	"CYPRESS_SAR1"
-#define CYPRESS_SS_NAME 	"CY8C21x34B"
+#define CYPRESS_SS_NAME		"CY8C21x34B"
 #define SAR_MISSING		(0x80)
 #define SAR_DYSFUNCTIONAL	(0x10)
 
@@ -60,14 +60,16 @@
 #define BL_CODEADD             (0x02)
 #define CS_FW_VERADD           (0x06)
 #define CS_FW_CHIPADD          (0x08)
-#define BL_BLIVE               (0x02)	/* Image verify need check BL state*/
-#define BL_BLMODE              (0x10)	/* use check BL mode state*/
-#define BL_RETMODE             (0x20)	/* reset bootloader mode*/
-#define BL_COMPLETE            (0x21)	/* bootloader mode complete*/
-#define BL_RETBL               (0x38)	/* checksum error, reset bootloader mode*/
-#define ENABLE_CAP_ONLY_3KEY   1        /* 1:Enable 0:Disable. Let cap only support 3Key.*/
+#define BL_BLIVE               (0x02)	/* Image verify need check BL state */
+#define BL_BLMODE              (0x10)	/* use check BL mode state */
+#define BL_RETMODE             (0x20)	/* reset bootloader mode */
+#define BL_COMPLETE            (0x21)	/* bootloader mode complete */
+#define BL_RETBL               (0x38)	/* checksum error, reset bootloader */
 
-#define CY8C_I2C_RETRY_TIMES 	(5)
+/* 1:Enable 0:Disable. Let cap only support 3Key.*/
+#define ENABLE_CAP_ONLY_3KEY   1
+
+#define CY8C_I2C_RETRY_TIMES	(5)
 #define WAKEUP_DELAY (1*HZ)
 
 enum mode {
@@ -85,8 +87,8 @@ struct cy8c_i2c_sar_platform_data {
 	uint16_t position_id;
 	uint8_t bl_addr;
 	uint8_t ap_addr;
-	int 	(*reset)(void);
-	void 	(*gpio_init)(void);
+	int	(*reset)(void);
+	void	(*gpio_init)(void);
 };
 
 struct cy8c_sar_data {
