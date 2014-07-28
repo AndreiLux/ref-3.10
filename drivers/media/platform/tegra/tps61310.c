@@ -806,7 +806,7 @@ static int tps61310_release(struct inode *inode, struct file *file)
 
 	dev_dbg(&info->i2c_client->dev, "%s\n", __func__);
         gpio_set_value(STRB0, 0);
-        gpio_set_value(STRB1, 0);
+        gpio_set_value(STRB1, 1);
 	tps61310_pm_wr_s(info, NVC_PWR_OFF);
 	file->private_data = NULL;
 	WARN_ON(!atomic_xchg(&info->in_use, 0));
