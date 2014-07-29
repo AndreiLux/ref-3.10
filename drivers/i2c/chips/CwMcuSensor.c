@@ -140,7 +140,6 @@ struct cwmcu_data {
 	u32	update_list;
 	s64	sensors_batch_timeout[num_sensors];
 	s64	current_timeout;
-	u32	continuous_sensor_count;
 	int	IRQ;
 	struct delayed_work	work;
 	struct delayed_work	activated_i2c_work;
@@ -1802,6 +1801,154 @@ static int firmware_odr(struct cwmcu_data *mcu_data, int sensors_id,
 	return 0;
 }
 
+int is_continuous_sensor(int sensors_id)
+{
+	switch (sensors_id) {
+	case CW_ACCELERATION:
+	case CW_MAGNETIC:
+	case CW_GYRO:
+	case CW_PRESSURE:
+	case CW_ORIENTATION:
+	case CW_ROTATIONVECTOR:
+	case CW_LINEARACCELERATION:
+	case CW_GRAVITY:
+	case CW_MAGNETIC_UNCALIBRATED:
+	case CW_GYROSCOPE_UNCALIBRATED:
+	case CW_GAME_ROTATION_VECTOR:
+	case CW_GEOMAGNETIC_ROTATION_VECTOR:
+		return 1;
+		break;
+	default:
+		return 0;
+		break;
+	}
+}
+
+static int handle_batch_params(struct cwmcu_data *mcu_data,
+			       size_t count,
+			       int sensors_id,
+			       s64 timeout)
+{
+	int rc;
+	u8 i;
+	int delay_ms;
+	__le32 timeout_data;
+	u8 data;
+	u32 continuous_sensor_count;
+
+	switch (sensors_id) {
+	case CW_ACCELERATION:
+	case CW_MAGNETIC:
+	case CW_GYRO:
+	case CW_PRESSURE:
+	case CW_ORIENTATION:
+	case CW_ROTATIONVECTOR:
+	case CW_LINEARACCELERATION:
+	case CW_GRAVITY:
+	case CW_MAGNETIC_UNCALIBRATED:
+	case CW_GYROSCOPE_UNCALIBRATED:
+	case CW_GAME_ROTATION_VECTOR:
+	case CW_GEOMAGNETIC_ROTATION_VECTOR:
+	case CW_STEP_DETECTOR:
+	case CW_STEP_COUNTER:
+		break;
+	case CW_LIGHT:
+	case CW_SIGNIFICANT_MOTION:
+	default:
+		D("%s: Batch not supported for this sensor_id = 0x%x\n",
+		  __func__, sensors_id);
+		return count;
+	}
+
+	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
+	for (i = 0; i < CW_SENSORS_ID_END; i++) {
+		D("%s: report_period[%d] = %d\n", __func__, i,
+		  mcu_data->report_period[i]);
+
+		if (!is_continuous_sensor(sensors_id))
+			continue;
+		/* report_period is actual delay(us) * 0.99), convert to
+		 * microseconds */
+		delay_ms = mcu_data->report_period[i] / MS_TO_PERIOD;
+		if (atomic_read(&mcu_data->delay) > delay_ms)
+			atomic_set(&mcu_data->delay, delay_ms);
+
+	}
+
+	D("%s: Minimum delay = %dms\n", __func__,
+	  atomic_read(&mcu_data->delay));
+
+	mcu_data->sensors_batch_timeout[sensors_id] = timeout;
+
+	for (continuous_sensor_count = 0, i = 0; i < CW_SENSORS_ID_END; i++) {
+		if (mcu_data->sensors_batch_timeout[i] != 0) {
+			if ((mcu_data->current_timeout >
+			     mcu_data->sensors_batch_timeout[i]) ||
+			    (mcu_data->current_timeout == 0)) {
+				mcu_data->current_timeout =
+					mcu_data->sensors_batch_timeout[i];
+			}
+			D("sensorid = %d, current_timeout = %lld\n",
+			  i, mcu_data->current_timeout);
+		} else
+			continuous_sensor_count++;
+	}
+
+	if (continuous_sensor_count != CW_SENSORS_ID_END)
+		mcu_data->batch_enabled = true;
+	else {
+		mcu_data->batch_enabled = false;
+		mcu_data->current_timeout = 0;
+	}
+
+	if ((timeout > 0) && (timeout < CWMCU_BATCH_TIMEOUT_MIN))
+		timeout = CWMCU_BATCH_TIMEOUT_MIN;
+
+	mcu_data->sensors_batch_timeout[sensors_id] = timeout;
+
+	timeout_data = cpu_to_le32(mcu_data->current_timeout);
+
+	mcu_data->batched_list &= ~(1<<sensors_id);
+	if (timeout > 0) {
+		mcu_data->batched_list |= (mcu_data->batch_enabled <<
+						sensors_id);
+	}
+
+	i = (sensors_id / 8);
+
+	data = (u8)(mcu_data->batched_list>>(i*8));
+
+	D("%s: Writing, addr = 0x%x, data = 0x%x, i = %d\n", __func__,
+	  (CW_BATCH_ENABLE_REG+i), data, i);
+
+	cwmcu_powermode_switch(mcu_data, 1);
+
+	rc = CWMCU_i2c_write(mcu_data,
+			     CW_BATCH_ENABLE_REG+i,
+			     &data, 1);
+	if (rc)
+		E("%s: CWMCU_i2c_write fails, rc = %d\n",
+		  __func__, rc);
+
+	D(
+	  "%s: Writing, write_addr = 0x%x, current_timeout = %lld,"
+	  " timeout_data = 0x%x\n",
+	  __func__, CWSTM32_BATCH_MODE_TIMEOUT, mcu_data->current_timeout,
+	  timeout_data);
+
+	rc = CWMCU_i2c_multi_write(mcu_data,
+				   CWSTM32_BATCH_MODE_TIMEOUT,
+				   (u8 *)&timeout_data,
+				   sizeof(timeout_data));
+	cwmcu_powermode_switch(mcu_data, 0);
+	if (rc)
+		E("%s: CWMCU_i2c_write fails, rc = %d\n", __func__, rc);
+	else
+		rc = count;
+
+	return rc;
+}
+
 static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 			  const char *buf, size_t count)
 {
@@ -1859,6 +2006,9 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	sensors_bit = (1 << sensors_id);
 	mcu_data->enabled_list &= ~sensors_bit;
 	mcu_data->enabled_list |= enabled ? sensors_bit : 0;
+
+	if ((mcu_data->batched_list & sensors_bit) && (!enabled))
+		handle_batch_params(mcu_data, 0, sensors_id, 0);
 
 	/* clean timeout value if sensor turn off */
 	if (enabled == 0) {
@@ -1992,29 +2142,6 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
-int is_continuous_sensor(int sensors_id)
-{
-	switch (sensors_id) {
-	case CW_ACCELERATION:
-	case CW_MAGNETIC:
-	case CW_GYRO:
-	case CW_PRESSURE:
-	case CW_ORIENTATION:
-	case CW_ROTATIONVECTOR:
-	case CW_LINEARACCELERATION:
-	case CW_GRAVITY:
-	case CW_MAGNETIC_UNCALIBRATED:
-	case CW_GYROSCOPE_UNCALIBRATED:
-	case CW_GAME_ROTATION_VECTOR:
-	case CW_GEOMAGNETIC_ROTATION_VECTOR:
-		return 1;
-		break;
-	default:
-		return 0;
-		break;
-	}
-}
-
 
 static ssize_t batch_set(struct device *dev,
 		     struct device_attribute *attr,
@@ -2023,10 +2150,8 @@ static ssize_t batch_set(struct device *dev,
 	struct cwmcu_data *mcu_data = dev_get_drvdata(dev);
 	s64 timeout = 0;
 	int sensors_id = 0, flag = 0, delay_ms = 0;
-	u8 data;
 	u8 i;
 	int retry;
-	u8 u8_timeout_data[4];
 	int rc;
 	char *token;
 	char *str_buf;
@@ -2034,6 +2159,7 @@ static ssize_t batch_set(struct device *dev,
 	long input_val;
 	unsigned long long input_val_l;
 	bool need_update_fw_odr;
+	s32 period;
 
 	if (mcu_data->probe_success != 1) {
 		E("%s: probe_success = %d\n", __func__,
@@ -2107,144 +2233,17 @@ static ssize_t batch_set(struct device *dev,
 	D("%s: sensors_id = 0x%x, flag = %d, delay_ms = %d, timeout = %lld\n",
 	  __func__, sensors_id, flag, delay_ms, timeout);
 
-	if (mcu_data->report_period[sensors_id] != delay_ms * MS_TO_PERIOD) {
-		/* period is actual delay(us) * 0.99 */
-		mcu_data->report_period[sensors_id] = delay_ms * MS_TO_PERIOD;
-		need_update_fw_odr = true;
-	} else
-		need_update_fw_odr = false;
+	/* period is actual delay(us) * 0.99 */
+	period = delay_ms * MS_TO_PERIOD;
+	need_update_fw_odr = mcu_data->report_period[sensors_id] != period;
+	mcu_data->report_period[sensors_id] = period;
 
-	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
-	for (i = 0; i < CW_SENSORS_ID_END; i++) {
-		D("%s: report_period[%d] = %d\n", __func__, i,
-		  mcu_data->report_period[i]);
-		if (is_continuous_sensor(sensors_id) &&
-		     (atomic_read(&mcu_data->delay) >
-		      (mcu_data->report_period[i] / MS_TO_PERIOD))
-		   )
-			/* report period is actual delay(us) * 0.99,
-			 * actual delay needs to convert back to micro-second */
-			atomic_set(&mcu_data->delay,
-				  mcu_data->report_period[i] / MS_TO_PERIOD);
-	}
-
-	D("%s: Minimum delay = %dms\n", __func__,
-	  atomic_read(&mcu_data->delay));
-
-	mcu_data->sensors_batch_timeout[sensors_id] = timeout;
-
-	for (i = 0; i < CW_SENSORS_ID_END; i++) {
-		if (mcu_data->sensors_batch_timeout[i] != 0) {
-			if ((mcu_data->current_timeout >
-			     mcu_data->sensors_batch_timeout[i]) ||
-			    (mcu_data->current_timeout == 0)) {
-				mcu_data->current_timeout =
-					mcu_data->sensors_batch_timeout[i];
-			}
-			D("sensorid = %d, current_timeout = %lld\n",
-			  i, mcu_data->current_timeout);
-		} else
-			mcu_data->continuous_sensor_count++;
-	}
-
-	if (mcu_data->continuous_sensor_count != CW_SENSORS_ID_END)
-		mcu_data->batch_enabled = true;
-	else {
-		mcu_data->batch_enabled = false;
-		mcu_data->current_timeout = 0;
-	}
-
-	mcu_data->continuous_sensor_count = 0;
-
-	if (timeout > 0) {
-		if ((sensors_id == CW_LIGHT)
-		    || (sensors_id == CW_SIGNIFICANT_MOTION)
-		   ) {
-			D("%s: Not support batch, sensors_id = %d!\n",
-			  __func__, sensors_id);
-			return -EINVAL;
-		}
-
-		if (timeout < CWMCU_BATCH_TIMEOUT_MIN)
-			timeout = CWMCU_BATCH_TIMEOUT_MIN;
-
-		switch (sensors_id) {
-		case CW_ACCELERATION:
-		case CW_MAGNETIC:
-		case CW_GYRO:
-		case CW_LIGHT:
-		case CW_PRESSURE:
-		case CW_ORIENTATION:
-		case CW_ROTATIONVECTOR:
-		case CW_LINEARACCELERATION:
-		case CW_GRAVITY:
-		case CW_MAGNETIC_UNCALIBRATED:
-		case CW_GYROSCOPE_UNCALIBRATED:
-		case CW_GAME_ROTATION_VECTOR:
-		case CW_GEOMAGNETIC_ROTATION_VECTOR:
-		case CW_SIGNIFICANT_MOTION:
-		case CW_STEP_DETECTOR:
-		case CW_STEP_COUNTER:
-			break;
-		default:
-			D("%s: Batch not supported for this sensor_id = 0x%x\n",
-			  __func__, sensors_id);
-			return count;
-		}
-
-		mcu_data->sensors_batch_timeout[sensors_id] = timeout;
-
-		u8_timeout_data[0] = (u8)(mcu_data->current_timeout);
-		u8_timeout_data[1] = (u8)(mcu_data->current_timeout >> 8);
-		u8_timeout_data[2] = (u8)(mcu_data->current_timeout >> 16);
-		u8_timeout_data[3] = (u8)(mcu_data->current_timeout >> 24);
-
-		mcu_data->batched_list &= ~(1<<sensors_id);
-		mcu_data->batched_list |= mcu_data->batch_enabled << sensors_id;
-
-		i = (sensors_id / 8);
-
-		data = (u8)(mcu_data->batched_list>>(i*8));
-
-		D("%s: Writing, addr = 0x%x, data = 0x%x, i = %d\n", __func__,
-		  (CW_BATCH_ENABLE_REG+i), data, i);
-
-		cwmcu_powermode_switch(mcu_data, 1);
-
-		rc = CWMCU_i2c_write(mcu_data,
-					    CW_BATCH_ENABLE_REG+i,
-					    &data, 1);
-		if (rc)
-			E("%s: CWMCU_i2c_write fails, rc = %d\n",
-			  __func__, rc);
-
-		D(
-		  "%s: Writing, write_addr = 0x%x, current_timeout = %lld,"
-		  " u8_timeout_data(0, 1, 2, 3)"
-		  " = (0x%x, 0x%x, 0x%x, 0x%x)\n",
-		  __func__, CWSTM32_BATCH_MODE_TIMEOUT,
-		  mcu_data->current_timeout,
-		  u8_timeout_data[0], u8_timeout_data[1],
-		  u8_timeout_data[2], u8_timeout_data[3]);
-
-		rc = CWMCU_i2c_multi_write(mcu_data,
-				     CWSTM32_BATCH_MODE_TIMEOUT,
-				     u8_timeout_data,
-				     sizeof(u8_timeout_data));
-		cwmcu_powermode_switch(mcu_data, 0);
-		if (rc)
-			E("%s: CWMCU_i2c_write fails, rc = %d\n", __func__, rc);
-		else
-			rc = count;
-
-	}
+	rc = handle_batch_params(mcu_data, count, sensors_id, timeout);
 
 	if ((need_update_fw_odr == true) &&
 	    (mcu_data->enabled_list & (1 << sensors_id))) {
 		cwmcu_powermode_switch(mcu_data, 1);
-		rc = firmware_odr(mcu_data, sensors_id,
-				  mcu_data->report_period[sensors_id] /
-				  MS_TO_PERIOD);
+		rc = firmware_odr(mcu_data, sensors_id, delay_ms);
 		cwmcu_powermode_switch(mcu_data, 0);
 		if (rc) {
 			E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
@@ -3590,7 +3589,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Correct log level when active_scan_mask = NULL\n", __func__);
+	I("%s++: Fix batch mode enable/disable issue\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
