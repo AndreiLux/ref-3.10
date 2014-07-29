@@ -27,11 +27,20 @@
 #define NVC_INT2FLOAT_DIVISOR_1M	1000000
 #define NVC_INT2FLOAT_DIVISOR		1000
 
+struct nvc_param_32 {
+	__u32 param;
+	__u32 sizeofvalue;
+	__u32 variant;
+	__u32 variant2;
+	__u32 p_value;
+} __packed;
+
 struct nvc_param {
 	__u32 param;
 	__u32 sizeofvalue;
 	__u32 variant;
-	__u32 p_value;
+	__u32 variant2;
+	void *p_value;
 } __packed;
 
 enum nvc_params {
@@ -171,7 +180,9 @@ enum nvc_params_isp {
 #define NVC_IOCTL_PWR_WR		_IOW('o', 102, int)
 #define NVC_IOCTL_PWR_RD		_IOW('o', 103, int)
 #define NVC_IOCTL_PARAM_WR		_IOW('o', 104, struct nvc_param)
+#define NVC_IOCTL_32_PARAM_WR		_IOW('o', 104, struct nvc_param_32)
 #define NVC_IOCTL_PARAM_RD		_IOWR('o', 105, struct nvc_param)
+#define NVC_IOCTL_32_PARAM_RD		_IOWR('o', 105, struct nvc_param_32)
 #define NVC_IOCTL_PARAM_ISP_RD		_IOWR('o', 200, struct nvc_param_isp)
 #define NVC_IOCTL_PARAM_ISP_WR		_IOWR('o', 201, struct nvc_param_isp)
 #define NVC_IOCTL_FUSE_ID		_IOWR('o', 202, struct nvc_fuseid)
