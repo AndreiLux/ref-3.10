@@ -99,13 +99,23 @@ void tegra30_i2s_request_gpio(struct snd_pcm_substream *substream, int i2s_id)
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	int i, ret;
 
+	if (pdata == NULL)
+		return;
 	pr_debug("%s: pdata->gpio_free_count[%d]=%d\n", __func__, i2s_id, pdata->gpio_free_count[i2s_id]);
 	if (i2s_id > 1) {
 		/* Only HIFI_CODEC and SPEAKER GPIO need re-config */
 		return;
 	}
+	if (pdata->first_time_free[i2s_id]) {
+		mutex_init(&pdata->i2s_gpio_lock[i2s_id]);
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+		pr_info("pdata->gpio_free_count[%d]=%d, 1st time enter, don't need free gpio\n",
+                       i2s_id, pdata->gpio_free_count[i2s_id]);
+		pdata->first_time_free[i2s_id] = false;
+	} else {
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+	}
 
-	mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
 	pdata->gpio_free_count[i2s_id]--;
 
 	if (pdata->gpio_free_count[i2s_id] > 0) {
