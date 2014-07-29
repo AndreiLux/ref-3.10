@@ -50,49 +50,10 @@ static int virtual_update(
 	mutex_lock(&cdev->mutex);
 	for (idx = 0; idx < num; idx++) {
 		switch (upd[idx].type) {
-		case UPDATE_EDP:
-		{
-			struct edp_cfg ec;
-			struct camera_edp_cfg *pec = &cdev->edpc;
-
-			dev_dbg(cdev->dev, "%s UPDATE_EDP config\n", __func__);
-			if (pec->edp_client) {
-				dev_err(cdev->dev, "edp client already set!\n");
-				err = -EEXIST;
-				break;
-			}
-			if (upd[idx].size != sizeof(ec)) {
-				dev_err(cdev->dev, "Invalid edp cfg size!\n");
-				err = -EINVAL;
-				break;
-			}
-			memset(&ec, 0, sizeof(ec));
-			if (copy_from_user(&ec,
-				((const void __user *)
-				(unsigned long)upd[idx].arg),
-				sizeof(ec))) {
-				dev_err(cdev->dev,
-					"%s copy_from_user err line %d\n",
-					__func__, __LINE__);
-				err = -EFAULT;
-				break;
-			}
-			if (ec.num > CAMERA_MAX_EDP_ENTRIES) {
-				dev_err(cdev->dev, "too many estate entries!\n");
-				err = -E2BIG;
-				break;
-			}
-
-			memcpy(pec->estates, ec.estates,
-				ec.num * sizeof(pec->estates[0]));
-			pec->num = ec.num;
-			camera_edp_register(cdev);
-			break;
-		}
 		case UPDATE_CLOCK:
 		{
 			struct clk *ck;
-			u8 buf[CAMERA_MAX_NAME_LENGTH];
+			char *clk_name;
 
 			if (!cdev->num_clk) {
 				dev_err(cdev->dev, "NO clock needed.\n");
@@ -107,30 +68,19 @@ static int virtual_update(
 				break;
 			}
 
-			memset(buf, 0, sizeof(buf));
-			if (copy_from_user(buf,
-				((const void __user *)
-				(unsigned long)upd[idx].arg),
-				sizeof(buf) - 1 < upd[idx].size ?
-				sizeof(buf) - 1 : upd[idx].size)) {
-				dev_err(cdev->dev,
-					"%s copy_from_user err line %d\n",
-					__func__, __LINE__);
-				err = -EFAULT;
-				break;
-			}
-
+			clk_name = (void *)upd[idx].args;
 			dev_dbg(cdev->dev, "%s UPDATE_CLOCK %d of %d, %s\n",
-				__func__, upd[idx].index, cdev->num_clk, buf);
-			ck = devm_clk_get(cdev->dev, buf);
+				__func__, upd[idx].index,
+				cdev->num_clk, clk_name);
+			ck = devm_clk_get(cdev->dev, clk_name);
 			if (IS_ERR(ck)) {
 				dev_err(cdev->dev, "%s: get clock %s FAILED.\n",
-					__func__, buf);
+					__func__, clk_name);
 				return PTR_ERR(ck);
 			}
 			cdev->clks[upd[idx].index] = ck;
 			dev_dbg(cdev->dev, "UPDATE_CLOCK: %d %s\n",
-				upd[idx].index, buf);
+				upd[idx].index, clk_name);
 			break;
 		}
 		case UPDATE_PINMUX:
@@ -460,15 +410,36 @@ int virtual_device_add(struct device *dev, unsigned long arg)
 	int buf_len;
 	int err = 0;
 
-	dev_info(dev, "%s\n", __func__);
-
+#ifdef CONFIG_COMPAT
+	struct virtual_device_32 dvi32;
+	if (copy_from_user(
+		&dvi32, (const void __user *)arg, sizeof(dvi32))) {
+		dev_err(dev, "%s copy_from_user err line %d\n",
+			__func__, __LINE__);
+			return -EFAULT;
+	}
+	dev_info.power_on = (void *)((unsigned long)dvi32.power_on);
+	dev_info.power_off = (void *)((unsigned long)dvi32.power_off);
+	dev_info.regmap_cfg = dvi32.regmap_cfg;
+	dev_info.bus_type = dvi32.bus_type;
+	dev_info.gpio_num = dvi32.gpio_num;
+	dev_info.reg_num = dvi32.reg_num;
+	dev_info.pwr_on_size = dvi32.pwr_on_size;
+	dev_info.pwr_off_size = dvi32.pwr_off_size;
+	dev_info.clk_num = dvi32.clk_num;
+	memcpy(dev_info.name, dvi32.name, sizeof(dvi32.name));
+	memcpy(dev_info.reg_names, dvi32.reg_names,
+		sizeof(dvi32.reg_names));
+#else
 	if (copy_from_user(
 		&dev_info, (const void __user *)arg, sizeof(dev_info))) {
 		dev_err(dev, "%s copy_from_user err line %d\n",
 			__func__, __LINE__);
 			return -EFAULT;
 	}
+#endif
 
+	dev_info(dev, "%s\n", __func__);
 	err = virtual_device_sanity_check(dev, &dev_info, &buf_len);
 	if (err)
 		return err;

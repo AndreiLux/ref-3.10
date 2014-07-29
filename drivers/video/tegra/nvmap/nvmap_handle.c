@@ -259,6 +259,7 @@ static void alloc_handle(struct nvmap_client *client,
 
 		b = nvmap_carveout_alloc(client, h, type);
 		if (b) {
+			h->heap_type = type;
 			h->heap_pgalloc = false;
 			/* barrier to ensure all handle alloc data
 			 * is visible before alloc is seen by other
@@ -266,21 +267,15 @@ static void alloc_handle(struct nvmap_client *client,
 			 */
 			mb();
 			h->alloc = true;
-			nvmap_carveout_commit_add(client,
-				nvmap_heap_to_arg(nvmap_block_to_heap(b)),
-				h->size);
 		}
 	} else if (type & iovmm_mask) {
 		int ret;
-		size_t reserved = PAGE_ALIGN(h->size);
 
-		atomic_add(reserved, &client->iovm_commit);
 		ret = handle_page_alloc(client, h,
 			h->userflags & NVMAP_HANDLE_PHYS_CONTIG);
-		if (ret) {
-			atomic_sub(reserved, &client->iovm_commit);
+		if (ret)
 			return;
-		}
+		h->heap_type = NVMAP_HEAP_IOVMM;
 		h->heap_pgalloc = true;
 		mb();
 		h->alloc = true;
@@ -418,17 +413,7 @@ void nvmap_free_handle(struct nvmap_client *client,
 	pins = atomic_read(&ref->pin);
 	rb_erase(&ref->node, &client->handle_refs);
 	client->handle_count--;
-
-	if (h->alloc && h->heap_pgalloc)
-		atomic_sub(h->size, &client->iovm_commit);
-
-	if (h->alloc && !h->heap_pgalloc) {
-		mutex_lock(&h->lock);
-		nvmap_carveout_commit_subtract(client,
-			nvmap_heap_to_arg(nvmap_block_to_heap(h->carveout)),
-			h->size);
-		mutex_unlock(&h->lock);
-	}
+	atomic_dec(&ref->handle->share_count);
 
 	nvmap_ref_unlock(client);
 
@@ -478,6 +463,7 @@ static void add_handle_ref(struct nvmap_client *client,
 	client->handle_count++;
 	if (client->handle_count > nvmap_max_handle_count)
 		nvmap_max_handle_count = client->handle_count;
+	atomic_inc(&ref->handle->share_count);
 	nvmap_ref_unlock(client);
 }
 
@@ -593,16 +579,6 @@ struct nvmap_handle_ref *nvmap_duplicate_handle(struct nvmap_client *client,
 	if (!ref) {
 		nvmap_handle_put(h);
 		return ERR_PTR(-ENOMEM);
-	}
-
-	if (!h->heap_pgalloc) {
-		mutex_lock(&h->lock);
-		nvmap_carveout_commit_add(client,
-			nvmap_heap_to_arg(nvmap_block_to_heap(h->carveout)),
-			h->size);
-		mutex_unlock(&h->lock);
-	} else {
-		atomic_add(h->size, &client->iovm_commit);
 	}
 
 	atomic_set(&ref->dupes, 1);

@@ -112,18 +112,47 @@ static void camera_ref_lock(void)
 	} while (true);
 }
 
-static int camera_get_params(
+#ifdef CONFIG_COMPAT
+int camera_copy_user_params(unsigned long arg, struct nvc_param *prm)
+{
+	struct nvc_param_32 p32;
+
+	memcpy(&p32, prm, sizeof(p32));
+	p32.p_value = (u32)prm->p_value;
+
+	return copy_to_user(
+		(void __user *)arg, (const void *)&p32, sizeof(p32));
+}
+#else
+int camera_copy_user_params(unsigned long arg, struct nvc_param *prm)
+{
+	return copy_to_user(
+		MAKE_USER_PTR(arg), (const void *)prm, sizeof(*prm));
+}
+#endif
+
+int camera_get_params(
 	struct camera_info *cam, unsigned long arg, int u_size,
 	struct nvc_param *prm, void **data)
 {
 	void *buf;
 	unsigned size;
 
+#ifdef CONFIG_COMPAT
+	memset(prm, 0, sizeof(*prm));
+	if (copy_from_user(
+		prm, (const void __user *)arg, sizeof(struct nvc_param_32))) {
+		dev_err(cam->dev, "%s copy_from_user err line %d\n",
+			__func__, __LINE__);
+		return -EFAULT;
+	}
+#else
 	if (copy_from_user(prm, (const void __user *)arg, sizeof(*prm))) {
 		dev_err(cam->dev, "%s copy_from_user err line %d\n",
 			__func__, __LINE__);
 		return -EFAULT;
 	}
+#endif
 	if (!data)
 		return 0;
 
@@ -256,8 +285,7 @@ seq_wr_table:
 	}
 
 seq_wr_upd:
-	if (copy_to_user((void __user *)arg,
-		(const void *)&params, sizeof(params))) {
+	if (camera_copy_user_params(arg, &params)) {
 		dev_err(cam->dev, "%s copy_to_user err line %d\n",
 			__func__, __LINE__);
 		err = -EFAULT;
@@ -650,7 +678,7 @@ static int camera_layout_get(struct camera_info *cam, unsigned long arg)
 
 	param.sizeofvalue = len;
 	param.variant = cam_desc.size_layout;
-	if (copy_to_user((void __user *)arg, &param, sizeof(param))) {
+	if (camera_copy_user_params(arg, &param)) {
 		dev_err(cam->dev, "%s copy_to_user err line %d\n",
 			__func__, __LINE__);
 		err = -EFAULT;
@@ -797,56 +825,88 @@ static long camera_ioctl(struct file *file,
 	}
 
 	/* command distributor */
-	switch (_IOC_NR(cmd)) {
-	case _IOC_NR(PCLLK_IOCTL_CHIP_REG):
+	switch (cmd) {
+	case PCLLK_IOCTL_CHIP_REG:
 		err = virtual_device_add(cam_desc.dev, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_DEV_REG):
+	case PCLLK_IOCTL_DEV_REG:
 		err = camera_new_device(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_DEV_DEL):
+	case PCLLK_IOCTL_DEV_DEL:
 		mutex_lock(cam_desc.d_mutex);
 		list_del(&cam->cdev->list);
 		mutex_unlock(cam_desc.d_mutex);
 		camera_remove_device(cam->cdev, true);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_DEV_FREE):
+	case PCLLK_IOCTL_DEV_FREE:
 		err = camera_free_device(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_SEQ_WR):
+	case PCLLK_IOCTL_SEQ_WR:
 		err = camera_seq_wr(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_SEQ_RD):
+	case PCLLK_IOCTL_SEQ_RD:
 		err = camera_seq_rd(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_PARAM_RD):
+	case PCLLK_IOCTL_PARAM_RD:
 		/* err = camera_param_rd(cam, arg); */
 		break;
-	case _IOC_NR(PCLLK_IOCTL_PWR_WR):
+	case PCLLK_IOCTL_PWR_WR:
 		/* This is a Guaranteed Level of Service (GLOS) call */
 		err = camera_dev_pwr_set(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_PWR_RD):
+	case PCLLK_IOCTL_PWR_RD:
 		err = camera_dev_pwr_get(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_UPDATE):
+	case PCLLK_IOCTL_UPDATE:
 		err = camera_update(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_LAYOUT_WR):
+	case PCLLK_IOCTL_LAYOUT_WR:
 		err = camera_layout_update(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_LAYOUT_RD):
+	case PCLLK_IOCTL_LAYOUT_RD:
 		err = camera_layout_get(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_DRV_ADD):
+	case PCLLK_IOCTL_DRV_ADD:
 		err = camera_add_drivers(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_DT_GET):
+	case PCLLK_IOCTL_DT_GET:
 		err = of_camera_get_property(cam, arg);
 		break;
-	case _IOC_NR(PCLLK_IOCTL_MSG):
+	case PCLLK_IOCTL_MSG:
 		err = camera_msg(cam, arg);
 		break;
+#ifdef CONFIG_COMPAT
+	case PCLLK_IOCTL_32_CHIP_REG:
+		err = virtual_device_add(cam_desc.dev, arg);
+		break;
+	case PCLLK_IOCTL_32_SEQ_WR:
+		err = camera_seq_wr(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_SEQ_RD:
+		err = camera_seq_rd(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_PARAM_RD:
+		/* err = camera_param_rd(cam, arg); */
+		break;
+	case PCLLK_IOCTL_32_UPDATE:
+		err = camera_update(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_LAYOUT_WR:
+		err = camera_layout_update(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_LAYOUT_RD:
+		err = camera_layout_get(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_DRV_ADD:
+		err = camera_add_drivers(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_DT_GET:
+		err = of_camera_get_property(cam, arg);
+		break;
+	case PCLLK_IOCTL_32_MSG:
+		err = camera_msg(cam, arg);
+		break;
+#endif
 	default:
 		dev_err(cam->dev, "%s unsupported ioctl: %x\n",
 			__func__, cmd);

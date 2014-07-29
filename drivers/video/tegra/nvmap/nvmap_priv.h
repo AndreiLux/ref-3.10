@@ -98,6 +98,7 @@ extern void __flush_dcache_page(struct address_space *, struct page *);
 struct nvmap_vma_list {
 	struct list_head list;
 	struct vm_area_struct *vma;
+	pid_t pid;
 };
 
 /* handles allocated using shared system memory (either IOVMM- or high-order
@@ -132,9 +133,11 @@ struct nvmap_handle {
 	};
 	bool heap_pgalloc;	/* handle is page allocated (sysmem / iovmm) */
 	bool alloc;		/* handle has memory allocated */
+	u32 heap_type;		/* handle heap is allocated from */
 	u32 userflags;		/* flags passed from userspace */
 	void *vaddr;		/* mapping used inside kernel */
 	struct list_head vmas;	/* list of all user vma's */
+	atomic_t share_count;	/* number of processes sharing the handle */
 	struct mutex lock;
 	void *nvhost_priv;	/* nvhost private data */
 	void (*nvhost_priv_delete)(void *priv);
@@ -230,15 +233,9 @@ int nvmap_page_pool_clear(void);
 int nvmap_page_pool_debugfs_init(struct dentry *nvmap_root);
 #endif
 
-struct nvmap_carveout_commit {
-	size_t commit;
-	struct list_head list;
-};
-
 struct nvmap_client {
 	const char			*name;
 	struct rb_root			handle_refs;
-	atomic_t			iovm_commit;
 	struct mutex			ref_lock;
 	bool				kernel_client;
 	atomic_t			count;
@@ -246,7 +243,6 @@ struct nvmap_client {
 	struct list_head		list;
 	u32				handle_count;
 	u32				next_fd;
-	struct nvmap_carveout_commit	carveout_commit[0];
 	int warned;
 };
 
@@ -360,12 +356,6 @@ unsigned long nvmap_carveout_usage(struct nvmap_client *c,
 				   struct nvmap_heap_block *b);
 
 struct nvmap_carveout_node;
-void nvmap_carveout_commit_add(struct nvmap_client *client,
-			       struct nvmap_carveout_node *node, size_t len);
-
-void nvmap_carveout_commit_subtract(struct nvmap_client *client,
-				    struct nvmap_carveout_node *node,
-				    size_t len);
 
 void nvmap_handle_put(struct nvmap_handle *h);
 
