@@ -495,7 +495,6 @@ void tegra_dc_hold_dc_out(struct tegra_dc *dc)
 		tegra_dc_get(dc);
 		if (dc->out_ops && dc->out_ops->hold)
 			dc->out_ops->hold(dc);
-		atomic_inc(&dc->holding);
 	}
 }
 
