@@ -348,7 +348,7 @@ static struct qcom_usb_modem_power_platform_data mdm_pdata = {
 	.ipc3_irq_flags = IRQF_TRIGGER_RISING |
 				    IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 	.autosuspend_delay = 2000,
-	.short_autosuspend_delay = 50,
+	.short_autosuspend_delay = -1,
 	.ramdump_delay_ms = 2000,
 	.tegra_ehci_device = &tegra_ehci2_device,
 	.tegra_ehci_pdata = &tegra_ehci2_hsic_modem_pdata,
