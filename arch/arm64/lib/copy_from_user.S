@@ -29,6 +29,18 @@
  */
 ENTRY(__copy_from_user)
 	add	x4, x1, x2			// upper user buffer boundary
+unaligned:
+	cbz	x2, 5f
+	and	x3, x0, #7
+	and	x5, x1, #7
+	orr	x5, x3, x5
+	cbz	x5, aligned
+USER(9f, ldrb	w3, [x1], #1	)
+	strb	w3, [x0]
+	add	x0, x0, #1
+	sub	x2, x2, #1
+	b	unaligned
+aligned:
 	subs	x2, x2, #8
 	b.mi	2f
 1:
