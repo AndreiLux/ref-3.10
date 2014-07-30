@@ -2780,7 +2780,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 			wake_lock_timeout(&mcu_data->wake_up_gesture_wake_lock,
 					  msecs_to_jiffies(200));
 
-			D("%s: HTC WAKE UP GESTURE occurs!!\n", __func__);
+			I("%s: HTC WAKE UP GESTURE occurs!!\n", __func__);
 
 			data_buff[0] = 1;
 			cw_send_event(mcu_data, HTC_WAKE_UP_GESTURE, data_buff,
