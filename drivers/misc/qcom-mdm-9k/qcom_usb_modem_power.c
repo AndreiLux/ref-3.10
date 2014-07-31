@@ -326,6 +326,8 @@ static irqreturn_t qcom_usb_modem_wake_thread(int irq, void *data)
 			usb_unlock_device(modem->udev);
 			mutex_lock(&modem->lock);
 		}
+		else
+			modem->hsic_wakeup_pending = true;
 
 #ifdef CONFIG_PM
 		if (modem->short_autosuspend_enabled && modem->pdata->autosuspend_delay > 0) {
@@ -731,6 +733,20 @@ static int mdm_pm_notifier(struct notifier_block *notifier,
 	case PM_POST_SUSPEND:
 		pr_info("%s : PM_POST_SUSPEND\n", __func__);
 		modem->system_suspend = 0;
+		if(modem->hsic_wakeup_pending)
+		{
+			if(modem->mdm_debug_on)
+				pr_info("%s: hsic wakeup pending\n", __func__);
+
+			usb_lock_device(modem->udev);
+			if (usb_autopm_get_interface(modem->intf) == 0)
+			{
+				pr_info("%s: usb_autopm_get_interface OK\n", __func__);
+				usb_autopm_put_interface_async(modem->intf);
+			}
+			usb_unlock_device(modem->udev);
+			modem->hsic_wakeup_pending = false;
+		}
 		mutex_unlock(&modem->lock);
 		return NOTIFY_OK;
 	}
@@ -1849,6 +1865,7 @@ static int mdm_init(struct qcom_usb_modem *modem, struct platform_device *pdev)
 	/* hsic wakeup */
 	modem->mdm_hsic_phy_resume_jiffies = 0;
 	modem->mdm_hsic_phy_active_total_ms = 0;
+	modem->hsic_wakeup_pending = false;
 
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	memset(modem->ftrace_cmd, sizeof(modem->ftrace_cmd), 0);

@@ -154,6 +154,7 @@ struct qcom_usb_modem {
 	/* hsic wakeup */
 	unsigned long mdm_hsic_phy_resume_jiffies;
 	unsigned long mdm_hsic_phy_active_total_ms;
+	bool hsic_wakeup_pending;
 };
 
 /* modem operations */
