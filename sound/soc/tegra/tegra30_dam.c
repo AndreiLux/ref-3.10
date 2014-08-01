@@ -933,10 +933,6 @@ int tegra30_dam_set_acif(int ifc, int chid, unsigned int audio_channels,
 		return -EINVAL;
 
 #ifndef CONFIG_ARCH_TEGRA_3x_SOC
-	/*ch0 takes input as mono always*/
-	if ((chid == dam_ch_in0) &&
-		((client_channels != 1)))
-		return -EINVAL;
 	/*as per dam spec file chout is fixed to 32 bits*/
 	/*so accept ch0, ch1 and chout as 32bit always*/
 	if (client_bits != 32)
@@ -1050,6 +1046,21 @@ void tegra30_dam_enable(int ifc, int on, int chid)
 	}
 }
 
+void tegra30_dam_enable_stereo_mixing(int ifc, int on)
+{
+	u32 val;
+
+	if ((ifc < 0) || (ifc >= TEGRA30_NR_DAM_IFC))
+		return;
+
+	val = tegra30_dam_readl(dams_cont_info[ifc], TEGRA30_DAM_CTRL);
+	if (on)
+		val |= TEGRA30_DAM_CTRL_STEREO_MIXING_ENABLE;
+	else
+		val &= ~TEGRA30_DAM_CTRL_STEREO_MIXING_ENABLE;
+	tegra30_dam_writel(dams_cont_info[ifc], val, TEGRA30_DAM_CTRL);
+}
+
 void tegra30_dam_ch0_set_datasync(int ifc, int datasync)
 {
 	u32 val;
@@ -1120,6 +1131,28 @@ int tegra30_dam_set_acif_stereo_conv(int ifc, int chtype, int conv)
 	return 0;
 }
 
+int tegra30_dam_soft_reset(int ifc)
+{
+	int dcnt = 10;
+	u32 val;
+	struct tegra30_dam_context *dam = NULL;
+
+	dam =  dams_cont_info[ifc];
+	val = tegra30_dam_readl(dam, TEGRA30_DAM_CTRL);
+	val |= TEGRA30_DAM_CTRL_SOFT_RESET_ENABLE;
+	tegra30_dam_writel(dam, val, TEGRA30_DAM_CTRL);
+
+	while ((tegra30_dam_readl(dam, TEGRA30_DAM_CTRL) &
+			TEGRA30_DAM_CTRL_SOFT_RESET_ENABLE) && dcnt--)
+		udelay(100);
+
+	/* Restore reg_ctrl to ensure if a concurrent playback/capture
+	   session was active it continues after SOFT_RESET */
+	val &= ~TEGRA30_DAM_CTRL_SOFT_RESET_ENABLE;
+	tegra30_dam_writel(dam, val, TEGRA30_DAM_CTRL);
+
+	return (dcnt < 0) ? -ETIMEDOUT : 0;
+}
 
 /*
 DAM Driver probe and remove functions

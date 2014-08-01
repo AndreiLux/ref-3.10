@@ -180,20 +180,13 @@ int tegra_pcm_hw_free(struct snd_pcm_substream *substream)
 int tegra_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct tegra_pcm_dma_params * dmap;
 	struct tegra_runtime_data *prtd;
 
 	if (rtd->dai_link->no_pcm)
 		return 0;
 
-	dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-
-
 	prtd = (struct tegra_runtime_data *)
-	snd_dmaengine_pcm_get_data(substream);
-
-	if (!dmap)
-		return 0;
+		snd_dmaengine_pcm_get_data(substream);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
@@ -206,17 +199,21 @@ int tegra_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		} else {
 			substream->runtime->no_period_wakeup = 0;
 		}
-
+		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
+			rtd->dai_link->ops->trigger(substream, cmd);
 		return snd_dmaengine_pcm_trigger(substream,
-					SNDRV_PCM_TRIGGER_START);
+				SNDRV_PCM_TRIGGER_START);
 
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		prtd->running = 0;
 
-		return snd_dmaengine_pcm_trigger(substream,
+		snd_dmaengine_pcm_trigger(substream,
 					SNDRV_PCM_TRIGGER_STOP);
+		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
+				rtd->dai_link->ops->trigger(substream, cmd);
+		return 0;
 	default:
 		return -EINVAL;
 	}
@@ -367,9 +364,46 @@ void tegra_pcm_free(struct snd_pcm *pcm)
 	tegra_pcm_deallocate_dma_buffer(pcm, SNDRV_PCM_STREAM_PLAYBACK);
 }
 
+static struct snd_soc_dai_driver tegra_fast_dai[] = {
+	[0] = {
+		.name = "tegra-fast-pcm",
+		.id = 0,
+		.playback = {
+			.stream_name = "fast-pcm-playback",
+			.channels_min = 1,
+			.channels_max = 2,
+			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		},
+	},
+	[1] = {
+		.name = "tegra-fast-pcm1",
+		.id = 1,
+		.playback = {
+			.stream_name = "fast-pcm-playback1",
+			.channels_min = 1,
+			.channels_max = 2,
+			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		},
+	},
+};
+
 static int tegra_pcm_probe(struct snd_soc_platform *platform)
 {
-	platform->dapm.idle_bias_off = 1;
+	platform->dapm.idle_bias_off = 0;
+	return 0;
+}
+
+unsigned int tegra_fast_pcm_read(struct snd_soc_platform *platform,
+		unsigned int reg)
+{
+	return 0;
+}
+
+int tegra_fast_pcm_write(struct snd_soc_platform *platform,
+		unsigned int reg, unsigned int val)
+{
 	return 0;
 }
 
@@ -378,6 +412,8 @@ static struct snd_soc_platform_driver tegra_pcm_platform = {
 	.pcm_new	= tegra_pcm_new,
 	.pcm_free	= tegra_pcm_free,
 	.probe		= tegra_pcm_probe,
+	.read		= tegra_fast_pcm_read,
+	.write		= tegra_fast_pcm_write,
 };
 
 int tegra_pcm_platform_register(struct device *dev)
@@ -391,6 +427,44 @@ void tegra_pcm_platform_unregister(struct device *dev)
 	snd_soc_unregister_platform(dev);
 }
 EXPORT_SYMBOL_GPL(tegra_pcm_platform_unregister);
+
+static const struct snd_soc_component_driver tegra_fast_pcm_component = {
+	.name = "tegra-pcm-audio",
+};
+
+static int tegra_soc_platform_probe(struct platform_device *pdev)
+{
+	int ret = 0;
+
+	tegra_pcm_platform_register(&pdev->dev);
+
+	ret = snd_soc_register_component(&pdev->dev, &tegra_fast_pcm_component,
+			tegra_fast_dai, ARRAY_SIZE(tegra_fast_dai));
+	if (ret)
+		dev_err(&pdev->dev, "Could not register component: %d\n", ret);
+
+	return 0;
+}
+
+static int tegra_soc_platform_remove(struct platform_device *pdev)
+{
+	pr_info("tegra_soc_platform_remove");
+	tegra_pcm_platform_unregister(&pdev->dev);
+	return 0;
+}
+
+static struct platform_driver tegra_pcm_driver = {
+	.driver = {
+			.name = "tegra-pcm-audio",
+			.owner = THIS_MODULE,
+	},
+
+	.probe = tegra_soc_platform_probe,
+	.remove = tegra_soc_platform_remove,
+};
+
+module_platform_driver(tegra_pcm_driver);
+
 
 MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
 MODULE_DESCRIPTION("Tegra PCM ASoC driver");

@@ -39,4 +39,11 @@ struct tegra_rt5677 {
 	struct mutex rt5677_lock;
 	struct mutex spk_amp_lock;
 	struct wake_lock vad_wake;
+	enum tegra30_ahub_txcif playback_fast_fifo_cif;
+	enum tegra30_ahub_txcif playback_fifo_cif;
+	struct tegra_pcm_dma_params playback_fast_dma_data;
+	struct tegra_pcm_dma_params playback_dma_data;
+	int dam_ifc;
+	int dam_ref_cnt;
+	struct mutex dam_mutex;
 };

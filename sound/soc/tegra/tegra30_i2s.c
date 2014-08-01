@@ -54,10 +54,6 @@
 
 #define RETRY_CNT	10
 
-static struct snd_soc_pcm_runtime *allocated_fe;
-static int apbif_ref_cnt;
-static DEFINE_MUTEX(apbif_mutex);
-
 extern int tegra_i2sloopback_func;
 static struct tegra30_i2s *i2scont[TEGRA30_NR_I2S_IFC];
 #if defined(CONFIG_ARCH_TEGRA_14x_SOC)
@@ -177,13 +173,9 @@ int tegra30_i2s_startup(struct snd_pcm_substream *substream,
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
 	int ret = 0;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 	int i2s_id;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		int allocate_fifo = 1;
-
 		/* To prevent power leakage */
 		if (i2s->playback_ref_count == 0) {
 			i2s_id = i2s->playback_i2s_cif - TEGRA30_AHUB_RXCIF_I2S0_RX0 - 1;
@@ -193,53 +185,19 @@ int tegra30_i2s_startup(struct snd_pcm_substream *substream,
 		/* increment the playback ref count */
 		i2s->playback_ref_count++;
 
-		mutex_lock(&apbif_mutex);
-		if (dai_link->no_pcm) {
-			struct snd_soc_dpcm *dpcm;
-
-			list_for_each_entry(dpcm,
-				&rtd->dpcm[substream->stream].fe_clients,
-				list_fe) {
-				struct snd_soc_pcm_runtime *fe = dpcm->fe;
-
-				if (allocated_fe == fe) {
-					allocate_fifo = 0;
-					break;
-				}
-
-				if (allocated_fe == NULL) {
-					allocated_fe = fe;
-					snd_soc_pcm_set_drvdata(allocated_fe,
-						i2s);
-				}
-			}
-		}
-
-		if (allocate_fifo) {
+		if (i2s->allocate_pb_fifo_cif) {
 			ret = tegra30_ahub_allocate_tx_fifo(
 					&i2s->playback_fifo_cif,
 					&i2s->playback_dma_data.addr,
 					&i2s->playback_dma_data.req_sel);
 			i2s->playback_dma_data.wrap = 4;
 			i2s->playback_dma_data.width = 32;
-		} else {
-			struct tegra30_i2s *allocated_be =
-					snd_soc_pcm_get_drvdata(allocated_fe);
-			if (allocated_be) {
-				memcpy(&i2s->playback_dma_data,
-					&allocated_be->playback_dma_data,
-					sizeof(struct tegra_pcm_dma_params));
-				i2s->playback_fifo_cif =
-						allocated_be->playback_fifo_cif;
-			}
-		}
-		apbif_ref_cnt++;
-		mutex_unlock(&apbif_mutex);
 
-		if (!i2s->is_dam_used)
-			tegra30_ahub_set_rx_cif_source(
-				i2s->playback_i2s_cif,
-				i2s->playback_fifo_cif);
+			if (!i2s->is_dam_used)
+				tegra30_ahub_set_rx_cif_source(
+					i2s->playback_i2s_cif,
+					i2s->playback_fifo_cif);
+		}
 	} else {
 		/* To prevent power leakage */
 		if (i2s->capture_ref_count == 0) {
@@ -265,29 +223,24 @@ void tegra30_i2s_shutdown(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai_link *dai_link = rtd->dai_link;
 	int i2s_id;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		if (i2s->playback_ref_count == 1) {
-			tegra30_ahub_unset_rx_cif_source(
-				i2s->playback_i2s_cif);
+			if (i2s->allocate_pb_fifo_cif)
+				tegra30_ahub_unset_rx_cif_source(
+					i2s->playback_i2s_cif);
 			/* To prevent power leakage */
 			i2s_id = i2s->playback_i2s_cif - TEGRA30_AHUB_RXCIF_I2S0_RX0 - 1;
 			pr_debug("%s-playback:i2s_id = %d\n", __func__, i2s_id);
 			tegra30_i2s_request_gpio(substream, i2s_id);
 		}
 
-		mutex_lock(&apbif_mutex);
-		apbif_ref_cnt--;
 		/* free the apbif dma channel*/
-		if ((!apbif_ref_cnt) || (!dai_link->no_pcm)) {
+		if (i2s->allocate_pb_fifo_cif) {
 			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
-			allocated_fe = NULL;
+			i2s->playback_fifo_cif = -1;
 		}
-		mutex_unlock(&apbif_mutex);
-		i2s->playback_fifo_cif = -1;
 
 		/* decrement the playback ref count */
 		i2s->playback_ref_count--;
@@ -1069,7 +1022,10 @@ static int tegra30_i2s_probe(struct snd_soc_dai *dai)
 	i2s->dsp_config.rx_data_offset = 1;
 	i2s->dsp_config.tx_data_offset = 1;
 	tegra_i2sloopback_func = 0;
-
+	i2s->playback_fifo_cif = -1;
+	i2s->capture_fifo_cif = -1;
+	i2s->allocate_pb_fifo_cif = true;
+	i2s->allocate_cap_fifo_cif = true;
 
 	return 0;
 }
@@ -2335,6 +2291,7 @@ static int tegra30_i2s_platform_probe(struct platform_device *pdev)
 	struct resource *mem, *memregion;
 	void __iomem *regs;
 	int ret;
+
 	i2s = devm_kzalloc(&pdev->dev, sizeof(struct tegra30_i2s), GFP_KERNEL);
 	if (!i2s) {
 		dev_err(&pdev->dev, "Can't allocate tegra30_i2s\n");
@@ -2531,7 +2488,8 @@ static struct platform_driver tegra30_i2s_driver = {
 	.remove = tegra30_i2s_platform_remove,
 };
 module_platform_driver(tegra30_i2s_driver);
-
+MODULE_AUTHOR("Ravindra Lokhande <rlokhande@nvidia.com>");
+MODULE_AUTHOR("Manoj Gangwal <mgangwal@nvidia.com>");
 MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
 MODULE_DESCRIPTION("Tegra30 I2S ASoC driver");
 MODULE_LICENSE("GPL");

@@ -41,10 +41,11 @@
 #include "../codecs/rt5506.h"
 #include "../codecs/tfa9895.h"
 
-#include "tegra_rt5677.h"
 #include "tegra_pcm.h"
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
+#include "tegra30_dam.h"
+#include "tegra_rt5677.h"
 
 #define DRV_NAME "tegra-snd-rt5677"
 
@@ -56,9 +57,9 @@
 #define DAI_LINK_COMPR_OFFLOAD_FE	5
 #define DAI_LINK_I2S_OFFLOAD_BE	6
 #define DAI_LINK_I2S_OFFLOAD_SPEAKER_BE	7
-#define DAI_LINK_PCM_OFFLOAD_CAPTURE_FE 8
-#define NUM_DAI_LINKS		9
-
+#define DAI_LINK_PCM_OFFLOAD_CAPTURE_FE	8
+#define DAI_LINK_FAST_FE	9
+#define NUM_DAI_LINKS		10
 
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.0",
@@ -97,6 +98,236 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static void tegra_rt5677_set_cif(int cif, unsigned int channels,
+	unsigned int sample_size)
+{
+	tegra30_ahub_set_tx_cif_channels(cif, channels, channels);
+
+	switch (sample_size) {
+	case 8:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_8, TEGRA30_AUDIOCIF_BITS_8);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif,
+		  TEGRA30_AHUB_CHANNEL_CTRL_TX_PACK_8_4);
+		break;
+
+	case 16:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_16, TEGRA30_AUDIOCIF_BITS_16);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif,
+		  TEGRA30_AHUB_CHANNEL_CTRL_TX_PACK_16);
+		break;
+
+	case 24:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_24, TEGRA30_AUDIOCIF_BITS_24);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif, 0);
+		break;
+
+	case 32:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_32, TEGRA30_AUDIOCIF_BITS_32);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif, 0);
+		break;
+
+	default:
+		pr_err("Error in sample_size\n");
+		break;
+	}
+}
+
+
+static int tegra_rt5677_fe_pcm_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_allocate_tx_fifo(
+		&machine->playback_fifo_cif,
+		&machine->playback_dma_data.addr,
+		&machine->playback_dma_data.req_sel);
+
+	machine->playback_dma_data.wrap = 4;
+	machine->playback_dma_data.width = 32;
+	cpu_dai->playback_dma_data = &machine->playback_dma_data;
+
+	tegra30_ahub_set_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2), machine->playback_fifo_cif);
+
+	return 0;
+}
+
+static void tegra_rt5677_fe_pcm_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2));
+	tegra30_ahub_free_tx_fifo(machine->playback_fifo_cif);
+	machine->playback_fifo_cif = -1;
+}
+
+static int tegra_rt5677_fe_pcm_trigger(struct snd_pcm_substream *substream,
+			int cmd)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_ENABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		tegra30_ahub_enable_tx_fifo(machine->playback_fifo_cif);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		tegra30_ahub_disable_tx_fifo(machine->playback_fifo_cif);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_DISABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int tegra_rt5677_fe_compr_ops_startup(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *fe = cstream->private_data;
+	struct snd_soc_dai *cpu_dai = fe->cpu_dai;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
+
+	tegra30_ahub_allocate_tx_fifo(
+		&machine->playback_fifo_cif,
+		&machine->playback_dma_data.addr,
+		&machine->playback_dma_data.req_sel);
+
+	machine->playback_dma_data.wrap = 4;
+	machine->playback_dma_data.width = 32;
+	cpu_dai->playback_dma_data = &machine->playback_dma_data;
+
+	tegra30_ahub_set_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2), machine->playback_fifo_cif);
+
+	return 0;
+}
+
+static void tegra_rt5677_fe_compr_ops_shutdown(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *fe = cstream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
+
+	tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2));
+	tegra30_ahub_free_tx_fifo(machine->playback_fifo_cif);
+	machine->playback_fifo_cif = -1;
+}
+
+static int tegra_rt5677_fe_compr_ops_trigger(struct snd_compr_stream *cstream,
+			int cmd)
+{
+	struct snd_soc_pcm_runtime *fe = cstream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_ENABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		tegra30_ahub_enable_tx_fifo(machine->playback_fifo_cif);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		tegra30_ahub_disable_tx_fifo(machine->playback_fifo_cif);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_DISABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int tegra_rt5677_fe_fast_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_allocate_tx_fifo(
+		&machine->playback_fast_fifo_cif,
+		&machine->playback_fast_dma_data.addr,
+		&machine->playback_fast_dma_data.req_sel);
+
+	machine->playback_fast_dma_data.width = 32;
+	machine->playback_fast_dma_data.wrap = 4;
+	cpu_dai->playback_dma_data = &machine->playback_fast_dma_data;
+
+	tegra30_ahub_set_rx_cif_source(
+			TEGRA30_AHUB_RXCIF_DAM0_RX1 + (machine->dam_ifc * 2),
+			machine->playback_fast_fifo_cif);
+
+	return 0;
+}
+
+static void tegra_rt5677_fe_fast_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX1 +
+			(machine->dam_ifc * 2));
+	tegra30_ahub_free_tx_fifo(machine->playback_fast_fifo_cif);
+	machine->playback_fast_fifo_cif = -1;
+}
+
+static int tegra_rt5677_fe_fast_trigger(struct snd_pcm_substream *substream,
+			int cmd)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		tegra30_dam_ch0_set_datasync(machine->dam_ifc, 2);
+		tegra30_dam_ch1_set_datasync(machine->dam_ifc, 0);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_ENABLE,
+				TEGRA30_DAM_CHIN1);
+		tegra30_ahub_enable_tx_fifo(machine->playback_fast_fifo_cif);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		tegra30_ahub_disable_tx_fifo(machine->playback_fast_fifo_cif);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_DISABLE,
+				TEGRA30_DAM_CHIN1);
+		tegra30_dam_ch0_set_datasync(machine->dam_ifc, 1);
+		tegra30_dam_ch1_set_datasync(machine->dam_ifc, 0);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int tegra_rt5677_spk_startup(struct snd_pcm_substream *substream)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
@@ -104,9 +335,57 @@ static int tegra_rt5677_spk_startup(struct snd_pcm_substream *substream)
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
 	struct snd_soc_card *card = rtd->card;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	int dam_ifc = machine->dam_ifc;
 	pr_info("%s:mi2s amp on\n",__func__);
 
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_SPEAKER_BE) {
+			mutex_lock(&machine->dam_mutex);
+			if (machine->dam_ref_cnt == 0) {
+				tegra30_dam_soft_reset(dam_ifc);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN0_SRC);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN1);
+				tegra30_dam_enable_clock(dam_ifc);
+
+				tegra30_dam_set_samplerate(dam_ifc, TEGRA30_DAM_CHOUT,
+					48000);
+				tegra30_dam_set_samplerate(dam_ifc,
+					TEGRA30_DAM_CHIN0_SRC, 48000);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					2, 16, 2, 32);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN1,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN1,
+					2, 16, 2, 32);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHOUT,
+					2, 16, 2, 32);
+				tegra30_dam_enable_stereo_mixing(machine->dam_ifc, 1);
+				tegra30_dam_ch0_set_datasync(dam_ifc, 0);
+				tegra30_dam_ch1_set_datasync(dam_ifc, 0);
+			}
+			tegra30_ahub_set_rx_cif_source(i2s->playback_i2s_cif,
+					TEGRA30_AHUB_TXCIF_DAM0_TX0 + machine->dam_ifc);
+			machine->dam_ref_cnt++;
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_allocate_tx_fifo(
+					&i2s->playback_fifo_cif,
+					&i2s->playback_dma_data.addr,
+					&i2s->playback_dma_data.req_sel);
+			i2s->playback_dma_data.wrap = 4;
+			i2s->playback_dma_data.width = 32;
+			cpu_dai->playback_dma_data = &i2s->playback_dma_data;
+			tegra30_ahub_set_rx_cif_source(
+				i2s->playback_i2s_cif,
+				i2s->playback_fifo_cif);
+			}
+	}
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		mutex_lock(&machine->spk_amp_lock);
@@ -127,7 +406,20 @@ static void tegra_rt5677_spk_shutdown(struct snd_pcm_substream *substream)
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	pr_info("%s:mi2s amp off\n",__func__);
 
-	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_SPEAKER_BE) {
+			mutex_lock(&machine->dam_mutex);
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			machine->dam_ref_cnt--;
+			if (machine->dam_ref_cnt == 0)
+				tegra30_dam_disable_clock(machine->dam_ifc);
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
+			i2s->playback_fifo_cif = -1;
+		}
+	}
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		mutex_lock(&machine->spk_amp_lock);
@@ -135,6 +427,7 @@ static void tegra_rt5677_spk_shutdown(struct snd_pcm_substream *substream)
 		set_tfa9895l_spkamp(0, 0);
 		mutex_unlock(&machine->spk_amp_lock);
 	}
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
 }
 
 static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
@@ -146,7 +439,10 @@ static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_card *card = rtd->card;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
-	pr_debug("%s i2s->id=%d %d\n",__func__, i2s->id, pdata->i2s_param[HIFI_CODEC].audio_port_id);
+	int dam_ifc = machine->dam_ifc;
+
+	pr_debug("%s i2s->id=%d %d\n", __func__, i2s->id,
+			pdata->i2s_param[HIFI_CODEC].audio_port_id);
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
 	if (i2s->id == pdata->i2s_param[HIFI_CODEC].audio_port_id) {
 		cancel_delayed_work_sync(&machine->power_work);
@@ -154,6 +450,53 @@ static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
 			set_rt5677_power_locked(machine, true, true);
 		else
 			set_rt5677_power_locked(machine, true, false);
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_BE) {
+			mutex_lock(&machine->dam_mutex);
+			if (machine->dam_ref_cnt == 0) {
+				tegra30_dam_soft_reset(dam_ifc);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN0_SRC);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN1);
+				tegra30_dam_enable_clock(dam_ifc);
+
+				tegra30_dam_set_samplerate(dam_ifc, TEGRA30_DAM_CHOUT,
+					48000);
+				tegra30_dam_set_samplerate(dam_ifc,
+					TEGRA30_DAM_CHIN0_SRC, 48000);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					2, 16, 2, 32);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN1,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN1,
+					2, 16, 2, 32);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHOUT,
+					2, 16, 2, 32);
+				tegra30_dam_enable_stereo_mixing(machine->dam_ifc, 1);
+				tegra30_dam_ch0_set_datasync(dam_ifc, 0);
+				tegra30_dam_ch1_set_datasync(dam_ifc, 0);
+			}
+			tegra30_ahub_set_rx_cif_source(i2s->playback_i2s_cif,
+					TEGRA30_AHUB_TXCIF_DAM0_TX0 + machine->dam_ifc);
+			machine->dam_ref_cnt++;
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_allocate_tx_fifo(
+					&i2s->playback_fifo_cif,
+					&i2s->playback_dma_data.addr,
+					&i2s->playback_dma_data.req_sel);
+			i2s->playback_dma_data.wrap = 4;
+			i2s->playback_dma_data.width = 32;
+			cpu_dai->playback_dma_data = &i2s->playback_dma_data;
+			tegra30_ahub_set_rx_cif_source(
+				i2s->playback_i2s_cif,
+				i2s->playback_fifo_cif);
+		}
 	}
 	return 0;
 }
@@ -163,6 +506,22 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_BE) {
+			mutex_lock(&machine->dam_mutex);
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			machine->dam_ref_cnt--;
+			if (machine->dam_ref_cnt == 0)
+				tegra30_dam_disable_clock(machine->dam_ifc);
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
+			i2s->playback_fifo_cif = -1;
+		}
+	}
 
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
 }
@@ -298,6 +657,16 @@ static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
 		return err;
 	}
 
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if ((int)machine->playback_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fifo_cif,
+				params_channels(params), sample_size);
+
+		if ((int)machine->playback_fast_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fast_fifo_cif,
+				params_channels(params), sample_size);
+	}
+
 	return 0;
 }
 
@@ -309,7 +678,7 @@ static int tegra_speaker_hw_params(struct snd_pcm_substream *substream,
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	int i2s_daifmt;
-	int err;
+	int err, sample_size;
 
 	i2s_daifmt = SND_SOC_DAIFMT_NB_NF;
 	i2s_daifmt |= pdata->i2s_param[SPEAKER].is_i2s_master ?
@@ -340,6 +709,33 @@ static int tegra_speaker_hw_params(struct snd_pcm_substream *substream,
 	if (err < 0) {
 		dev_err(card->dev, "cpu_dai fmt not set\n");
 		return err;
+	}
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S8:
+		sample_size = 8;
+		break;
+	case SNDRV_PCM_FORMAT_S16_LE:
+		sample_size = 16;
+		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
+		sample_size = 24;
+		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		sample_size = 32;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if ((int)machine->playback_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fifo_cif,
+				params_channels(params), sample_size);
+
+		if ((int)machine->playback_fast_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fast_fifo_cif,
+				params_channels(params), sample_size);
 	}
 
 	return 0;
@@ -404,6 +800,24 @@ static struct snd_soc_ops tegra_rt5677_ops = {
 	.hw_free = tegra_hw_free,
 	.startup = tegra_rt5677_startup,
 	.shutdown = tegra_rt5677_shutdown,
+};
+
+static struct snd_soc_ops tegra_rt5677_fe_pcm_ops = {
+	.startup = tegra_rt5677_fe_pcm_startup,
+	.shutdown = tegra_rt5677_fe_pcm_shutdown,
+	.trigger = tegra_rt5677_fe_pcm_trigger,
+};
+
+static struct snd_soc_compr_ops tegra_rt5677_fe_compr_ops = {
+	.startup = tegra_rt5677_fe_compr_ops_startup,
+	.shutdown = tegra_rt5677_fe_compr_ops_shutdown,
+	.trigger = tegra_rt5677_fe_compr_ops_trigger,
+};
+
+static struct snd_soc_ops tegra_rt5677_fe_fast_ops = {
+	.startup = tegra_rt5677_fe_fast_startup,
+	.shutdown = tegra_rt5677_fe_fast_shutdown,
+	.trigger = tegra_rt5677_fe_fast_trigger,
 };
 
 static struct snd_soc_ops tegra_rt5677_speaker_ops = {
@@ -732,8 +1146,9 @@ static const struct snd_soc_dapm_route flounder_audio_map[] = {
 	{"DMIC L2", NULL, "Int Mic"},
 	{"DMIC R2", NULL, "Int Mic"},
 	/* AHUB BE connections */
+	{"DAM VMixer", NULL, "fast-pcm-playback"},
+	{"DAM VMixer", NULL, "offload-compr-playback"},
 	{"AIF1 Playback", NULL, "I2S1_OUT"},
-
 	{"Playback", NULL, "I2S2_OUT"},
 };
 
@@ -776,6 +1191,16 @@ static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
 	snd_soc_dapm_nc_pin(dapm, "LOUT2");
 	snd_soc_dapm_sync(dapm);
 	machine->codec = codec;
+
+	return 0;
+}
+
+static int tegra_rt5677_be_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_dai *dai = rtd->cpu_dai;
+	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
+
+	i2s->allocate_pb_fifo_cif = false;
 
 	return 0;
 }
@@ -842,7 +1267,7 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.ops = &tegra_rt5677_speaker_ops,
 	},
 	[DAI_LINK_PCM_OFFLOAD_FE] = {
-		.name = "offload-pcm",
+		.name = "fe-offload-pcm",
 		.stream_name = "offload-pcm",
 
 		.platform_name = "tegra-offload",
@@ -850,11 +1275,11 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 
 		.codec_dai_name =  "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-
+		.ops = &tegra_rt5677_fe_pcm_ops,
 		.dynamic = 1,
 	},
 	[DAI_LINK_COMPR_OFFLOAD_FE] = {
-		.name = "offload-compr",
+		.name = "fe-offload-compr",
 		.stream_name = "offload-compr",
 
 		.platform_name = "tegra-offload",
@@ -862,47 +1287,59 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 
 		.codec_dai_name =  "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-
+		.compr_ops = &tegra_rt5677_fe_compr_ops,
 		.dynamic = 1,
 	},
 	[DAI_LINK_PCM_OFFLOAD_CAPTURE_FE] = {
-                .name = "offload-pcm-capture",
-                .stream_name = "offload-pcm-capture",
+		.name = "fe-offload-pcm-capture",
+		.stream_name = "offload-pcm-capture",
 
-                .platform_name = "tegra-offload",
-                .cpu_dai_name = "tegra-offload-pcm",
+		.platform_name = "tegra-offload",
+		.cpu_dai_name = "tegra-offload-pcm",
 
-                .codec_dai_name =  "snd-soc-dummy-dai",
-                .codec_name = "snd-soc-dummy",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
 
-        },
+	},
+	[DAI_LINK_FAST_FE] = {
+		.name = "fe-fast-pcm",
+		.stream_name = "fast-pcm",
+		.platform_name = "tegra-pcm-audio",
+		.cpu_dai_name = "tegra-fast-pcm",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ops = &tegra_rt5677_fe_fast_ops,
+		.dynamic = 1,
+	},
 	[DAI_LINK_I2S_OFFLOAD_BE] = {
-		.name = "offload-audio-codec",
+		.name = "be-offload-audio-codec",
 		.stream_name = "offload-audio-pcm",
 		.codec_name = "rt5677.1-002d",
 		.platform_name = "tegra30-i2s.1",
 		.cpu_dai_name = "tegra30-i2s.1",
 		.codec_dai_name = "rt5677-aif1",
+		.init = tegra_rt5677_be_init,
 		.ops = &tegra_rt5677_ops,
 
 		.no_pcm = 1,
 
-		.be_id = 0,
+		.be_id = DAI_LINK_I2S_OFFLOAD_BE,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
 	},
 	[DAI_LINK_I2S_OFFLOAD_SPEAKER_BE] = {
-		.name = "offload-audio-speaker",
+		.name = "be-offload-audio-speaker",
 		.stream_name = "offload-audio-pcm-spk",
 		.codec_name = "spdif-dit.0",
 		.platform_name = "tegra30-i2s.2",
 		.cpu_dai_name = "tegra30-i2s.2",
 		.codec_dai_name = "dit-hifi",
+		.init = tegra_rt5677_be_init,
 		.ops = &tegra_rt5677_speaker_ops,
 
 		.no_pcm = 1,
 
-		.be_id = 1,
+		.be_id = DAI_LINK_I2S_OFFLOAD_SPEAKER_BE,
 		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
 	},
@@ -1474,6 +1911,16 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 
 	wake_lock_init(&machine->vad_wake, WAKE_LOCK_SUSPEND, "rt5677_wake");
 
+	machine->playback_fifo_cif = -1;
+	machine->playback_fast_fifo_cif = -1;
+
+	machine->dam_ifc = tegra30_dam_allocate_controller();
+	if (machine->dam_ifc < 0) {
+		dev_err(&pdev->dev, "DAM allocation failed\n");
+		goto err_unregister_card;
+	}
+	mutex_init(&machine->dam_mutex);
+
 	return 0;
 
 err_unregister_card:
@@ -1549,6 +1996,9 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 			pdata->gpio_ldo1_en);
 	}
 
+	if (machine->dam_ifc >= 0)
+		tegra30_dam_free_controller(machine->dam_ifc);
+
 	snd_soc_unregister_card(card);
 
 	tegra_asoc_utils_fini(&machine->util_data);
@@ -1592,7 +2042,8 @@ static void __exit tegra_rt5677_modexit(void)
 	platform_driver_unregister(&tegra_rt5677_driver);
 }
 module_exit(tegra_rt5677_modexit);
-
+MODULE_AUTHOR("Ravindra Lokhande <rlokhande@nvidia.com>");
+MODULE_AUTHOR("Manoj Gangwal <mgangwal@nvidia.com>");
 MODULE_AUTHOR("Nikesh Oswal <noswal@nvidia.com>");
 MODULE_DESCRIPTION("Tegra+rt5677 machine ASoC driver");
 MODULE_LICENSE("GPL");

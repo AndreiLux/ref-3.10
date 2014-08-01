@@ -257,15 +257,15 @@ static int tegra_offload_compr_set_params(struct snd_compr_stream *stream,
 	else
 		dir = SNDRV_PCM_STREAM_CAPTURE;
 
-	dmap = rtd->cpu_dai->playback_dma_data;
-	if (!dmap) {
-		struct snd_soc_dpcm *dpcm;
-
-		if (list_empty(&rtd->dpcm[dir].be_clients)) {
+	if (list_empty(&rtd->dpcm[dir].be_clients)) {
 			dev_err(dev, "No backend DAIs enabled for %s\n",
 					rtd->dai_link->name);
 			return -EINVAL;
-		}
+	}
+
+	dmap = rtd->cpu_dai->playback_dma_data;
+	if (!dmap) {
+		struct snd_soc_dpcm *dpcm;
 
 		list_for_each_entry(dpcm,
 			&rtd->dpcm[dir].be_clients, list_be) {
@@ -332,12 +332,38 @@ static int tegra_offload_compr_get_params(struct snd_compr_stream *stream,
 static int tegra_offload_compr_trigger(struct snd_compr_stream *stream, int cmd)
 {
 	struct device *dev = stream->device->dev;
+	struct snd_soc_pcm_runtime *rtd = stream->private_data;
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
+	int ret = 0;
 
 	dev_vdbg(dev, "%s : cmd %d", __func__, cmd);
 
-	data->ops->set_stream_state(data->stream_id, cmd);
-	return 0;
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (rtd->dai_link->compr_ops &&
+				rtd->dai_link->compr_ops->trigger) {
+			rtd->dai_link->compr_ops->trigger(stream, cmd);
+		}
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		if (rtd->dai_link->compr_ops &&
+				rtd->dai_link->compr_ops->trigger) {
+			rtd->dai_link->compr_ops->trigger(stream, cmd);
+		}
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
 static int tegra_offload_compr_pointer(struct snd_compr_stream *stream,
@@ -514,16 +540,17 @@ static int tegra_offload_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		struct tegra_pcm_dma_params *dmap;
-		dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-		if (!dmap) {
-			struct snd_soc_dpcm *dpcm;
 
-			if (list_empty(&rtd->dpcm[substream->stream].be_clients)) {
+		if (list_empty(&rtd->dpcm[substream->stream].be_clients)) {
 				dev_err(dev,
 					"No backend DAIs enabled for %s\n",
 					rtd->dai_link->name);
 				return -EINVAL;
-			}
+		}
+
+		dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
+		if (!dmap) {
+			struct snd_soc_dpcm *dpcm;
 
 			list_for_each_entry(dpcm,
 				&rtd->dpcm[substream->stream].be_clients,
@@ -605,16 +632,33 @@ static int tegra_offload_pcm_trigger(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_pcm_data *data = substream->runtime->private_data;
+	int ret = 0;
 
 	dev_vdbg(dev, "%s : cmd %d", __func__, cmd);
 
-	data->ops->set_stream_state(data->stream_id, cmd);
-	if ((cmd == SNDRV_PCM_TRIGGER_STOP) ||
-	    (cmd == SNDRV_PCM_TRIGGER_SUSPEND) ||
-	    (cmd == SNDRV_PCM_TRIGGER_PAUSE_PUSH))
-		data->appl_ptr = 0;
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
+			rtd->dai_link->ops->trigger(substream, cmd);
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		break;
 
-	return 0;
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
+			rtd->dai_link->ops->trigger(substream, cmd);
+		data->appl_ptr = 0;
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
 static snd_pcm_uframes_t tegra_offload_pcm_pointer(
@@ -717,15 +761,14 @@ static const struct snd_soc_dapm_widget tegra_offload_widgets[] = {
 		&codec_control, 1),
 	SND_SOC_DAPM_MIXER("SPK VMixer", SND_SOC_NOPM, 0, 0,
 		&spk_control, 1),
+	SND_SOC_DAPM_MIXER("DAM VMixer", SND_SOC_NOPM, 0, 0,
+		NULL, 0),
 };
 
 static const struct snd_soc_dapm_route graph[] = {
-	{"Codec VMixer", "Codec Switch", "offload-pcm-playback"},
-	{"Codec VMixer", "Codec Switch", "offload-compr-playback"},
+	{"Codec VMixer", "Codec Switch", "DAM VMixer"},
 	{"I2S1_OUT", NULL, "Codec VMixer"},
-
-	{"SPK VMixer", "SPK Switch", "offload-pcm-playback"},
-	{"SPK VMixer", "SPK Switch", "offload-compr-playback"},
+	{"SPK VMixer", "SPK Switch", "DAM VMixer"},
 	{"I2S2_OUT", NULL, "SPK VMixer"},
 };
 
@@ -835,7 +878,7 @@ static int tegra_offload_pcm_probe(struct snd_soc_platform *platform)
 {
 	pr_debug("%s", __func__);
 
-	platform->dapm.idle_bias_off = 1;
+	platform->dapm.idle_bias_off = 0;
 	return 0;
 }
 
