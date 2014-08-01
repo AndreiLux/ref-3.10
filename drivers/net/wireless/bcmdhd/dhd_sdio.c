@@ -7114,6 +7114,17 @@ dhdsdio_probe_attach(struct dhd_bus *bus, osl_t *osh, void *sdh, void *regsva,
 		bus->srmemsize = si_socram_srmem_size(bus->sih);
 	}
 
+	/* HACK: Fix HW problem with baseband chip in coex */
+	if (((uint16)bus->sih->chip) == BCM4354_CHIP_ID) {
+		bcmsdh_reg_write(bus->sdh, 0x18000c40, 4, 0);
+		if (bcmsdh_regfail(bus->sdh))
+			DHD_ERROR(("DHD: RECONFIG_GPIO3 step 1 failed.\n"));
+
+		bcmsdh_reg_write(bus->sdh, 0x18000e00, 4, 0x00001038);
+		if (bcmsdh_regfail(bus->sdh))
+			DHD_ERROR(("DHD: RECONFIG_GPIO3 step 2 failed.\n"));
+	}
+
 	/* ...but normally deal with the SDPCMDEV core */
 	if (!(bus->regs = si_setcore(bus->sih, PCMCIA_CORE_ID, 0)) &&
 	    !(bus->regs = si_setcore(bus->sih, SDIOD_CORE_ID, 0))) {
