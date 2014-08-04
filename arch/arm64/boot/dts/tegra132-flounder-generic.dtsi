@@ -466,7 +466,6 @@
 		charge-voltage-limit-millivolt = <4352>;
 		charge-suspend-polling-time-sec = <3600>;
 		temp-polling-time-sec = <30>;
-		disable-suspend-during-charging;
 		thermal-overtemp-control-no-thermister;
 		thermal-temperature-hot-deciC = <551>;
 		thermal-temperature-cold-deciC = <(-1)>;
