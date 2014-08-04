@@ -469,6 +469,7 @@ static void mdm_fatal(struct work_struct *ws)
 	mutex_lock(&modem->lock);
 
 	modem->mdm_status = MDM_STATUS_RESET;
+	modem->system_suspend = false;
 
 	mutex_unlock(&modem->lock);
 
