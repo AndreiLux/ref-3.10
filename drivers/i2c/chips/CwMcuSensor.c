@@ -142,8 +142,10 @@ struct cwmcu_data {
 	s64	current_timeout;
 	int	IRQ;
 	struct delayed_work	work;
-	struct delayed_work	activated_i2c_work;
-	struct delayed_work	re_init_work;
+	struct work_struct	one_shot_work;
+	bool w_activated_i2c;
+	bool w_re_init;
+	bool w_facedown_set;
 	u32 gpio_wake_mcu;
 	u32 gpio_reset;
 	u32 gpio_chip_mode;
@@ -1015,13 +1017,13 @@ static int CWMCU_i2c_write(struct cwmcu_data *mcu_data,
 
 	mutex_lock(&mcu_data->activated_i2c_lock);
 	if (retry_exhausted(mcu_data)) {
+		mutex_unlock(&mcu_data->activated_i2c_lock);
 		D("%s: mcu_data->i2c_total_retry = %d, i2c_latch_retry = %d\n",
 		  __func__,
 		  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
 		/* Try to recover HUB in low CPU utilization */
-		queue_delayed_work(mcu_data->mcu_wq,
-				   &mcu_data->activated_i2c_work, 0);
-		mutex_unlock(&mcu_data->activated_i2c_lock);
+		mcu_data->w_activated_i2c = true;
+		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 		return -EIO;
 	}
 
@@ -1595,7 +1597,8 @@ out:
 	release_firmware(fw);
 
 fast_exit:
-	queue_delayed_work(mcu_data->mcu_wq, &mcu_data->re_init_work, 0);
+	mcu_data->w_re_init = true;
+	queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 	cwmcu_powermode_switch(mcu_data, 0);
 
@@ -1635,9 +1638,8 @@ static int CWMCU_i2c_read(struct cwmcu_data *mcu_data,
 		  "mcu_data->i2c_latch_retry = %d\n", __func__,
 		  mcu_data->i2c_total_retry,
 		  mcu_data->i2c_latch_retry);
-		queue_delayed_work(mcu_data->mcu_wq,
-				   &mcu_data->activated_i2c_work,
-				   0);
+		mcu_data->w_activated_i2c = true;
+		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 		return len;
@@ -1688,45 +1690,6 @@ static void reset_hub(struct cwmcu_data *mcu_data)
 	usleep_range(500000, 1000000); /* HUB need at least 500ms to be ready */
 }
 
-static void activated_i2c_do_work(struct work_struct *w)
-{
-	struct cwmcu_data *mcu_data = container_of((struct delayed_work *)w,
-			struct cwmcu_data, activated_i2c_work);
-
-	mutex_lock(&mcu_data->activated_i2c_lock);
-	if (retry_exhausted(mcu_data) &&
-	    time_after(jiffies, mcu_data->i2c_jiffies + REACTIVATE_PERIOD)) {
-		reset_hub(mcu_data);
-
-		I("%s: fw_update_status = 0x%x\n", __func__,
-		  mcu_data->fw_update_status);
-
-		if (!(mcu_data->fw_update_status &
-		      (FW_DOES_NOT_EXIST | FW_UPDATE_QUEUED))) {
-			mcu_data->fw_update_status |= FW_UPDATE_QUEUED;
-			request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
-				"sensor_hub.img", &mcu_data->client->dev,
-				GFP_KERNEL, mcu_data, update_firmware);
-		}
-
-	}
-
-	if (retry_exhausted(mcu_data)) {
-		D("%s: i2c_total_retry = %d, i2c_latch_retry = %d\n", __func__,
-		  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
-		mutex_unlock(&mcu_data->activated_i2c_lock);
-		return;
-	}
-
-	/* record the failure */
-	mcu_data->i2c_total_retry++;
-	mcu_data->i2c_jiffies = jiffies;
-
-	mutex_unlock(&mcu_data->activated_i2c_lock);
-	D("%s--: mcu_data->i2c_total_retry = %d, mcu_data->i2c_latch_retry ="
-	  " %d\n", __func__,
-	  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
-}
 
 static int firmware_odr(struct cwmcu_data *mcu_data, int sensors_id,
 			int delay_ms)
@@ -2369,8 +2332,6 @@ static ssize_t facedown_set(struct device *dev, struct device_attribute *attr,
 {
 	struct cwmcu_data *mcu_data = dev_get_drvdata(dev);
 	bool on;
-	u8 data;
-	int i;
 
 	if (strtobool(buf, &on) < 0)
 		return -EINVAL;
@@ -2378,15 +2339,13 @@ static ssize_t facedown_set(struct device *dev, struct device_attribute *attr,
 	if (!!on == !!(mcu_data->enabled_list & (1 << HTC_FACEDOWN_DETECTION)))
 		return size;
 
-	i = (HTC_FACEDOWN_DETECTION / 8);
-
 	if (on)
 		mcu_data->enabled_list |= (1 << HTC_FACEDOWN_DETECTION);
 	else
 		mcu_data->enabled_list &= ~(1 << HTC_FACEDOWN_DETECTION);
 
-	data = (u8)(mcu_data->enabled_list >> (i * 8));
-	CWMCU_i2c_write_power(mcu_data, CWSTM32_ENABLE_REG + i, &data, 1);
+	mcu_data->w_facedown_set = true;
+	queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 	return size;
 }
@@ -2645,20 +2604,6 @@ static int cwmcu_resume(struct device *dev)
 	return 0;
 }
 
-
-static void re_init_do_work(struct work_struct *w)
-{
-	struct cwmcu_data *mcu_data = container_of((struct delayed_work *)w,
-			struct cwmcu_data, re_init_work);
-
-	cwmcu_powermode_switch(mcu_data, 1);
-
-	cwmcu_sensor_placement(mcu_data);
-	cwmcu_set_sensor_kvalue(mcu_data);
-	cwmcu_restore_status(mcu_data);
-
-	cwmcu_powermode_switch(mcu_data, 0);
-}
 
 #ifdef MCU_WARN_MSGS
 static void print_warn_msg(struct cwmcu_data *mcu_data,
@@ -2996,8 +2941,8 @@ exception_end:
 
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 
-		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->re_init_work,
-				   0);
+		mcu_data->w_re_init = true;
+		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION;
 		ret = CWMCU_i2c_write(mcu_data, CWSTM32_ERR_ST, &clear_intr, 1);
@@ -3024,8 +2969,8 @@ exception_end:
 						__func__, ret);
 		}
 
-		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->re_init_work,
-				   0);
+		mcu_data->w_re_init = true;
+		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET;
 		ret = CWMCU_i2c_write(mcu_data, CWSTM32_ERR_ST, &clear_intr, 1);
@@ -3103,8 +3048,8 @@ static int cw_pseudo_irq_disable(struct iio_dev *indio_dev)
 	struct cwmcu_data *mcu_data = iio_priv(indio_dev);
 
 	if (atomic_cmpxchg(&mcu_data->pseudo_irq_enable, 1, 0)) {
-		D("%s:\n", __func__);
 		cancel_delayed_work_sync(&mcu_data->work);
+		D("%s:\n", __func__);
 	}
 	return 0;
 }
@@ -3546,15 +3491,91 @@ static void cwmcu_remove_buffer(struct iio_dev *indio_dev)
 	iio_kfifo_free(indio_dev->buffer);
 }
 
+static void cwmcu_one_shot(struct work_struct *work)
+{
+	struct cwmcu_data *mcu_data = container_of((struct work_struct *)work,
+			struct cwmcu_data, one_shot_work);
+
+	if (mcu_data->w_activated_i2c == true) {
+		mcu_data->w_activated_i2c = false;
+
+		mutex_lock(&mcu_data->activated_i2c_lock);
+		if (retry_exhausted(mcu_data) &&
+		    time_after(jiffies, mcu_data->i2c_jiffies +
+					REACTIVATE_PERIOD)) {
+			reset_hub(mcu_data);
+
+			I("%s: fw_update_status = 0x%x\n", __func__,
+			  mcu_data->fw_update_status);
+
+			if (!(mcu_data->fw_update_status &
+			      (FW_DOES_NOT_EXIST | FW_UPDATE_QUEUED))) {
+				mcu_data->fw_update_status |= FW_UPDATE_QUEUED;
+				request_firmware_nowait(THIS_MODULE,
+					FW_ACTION_HOTPLUG,
+					"sensor_hub.img",
+					&mcu_data->client->dev,
+					GFP_KERNEL, mcu_data, update_firmware);
+			}
+
+		}
+
+		if (retry_exhausted(mcu_data)) {
+			D("%s: i2c_total_retry = %d, i2c_latch_retry = %d\n",
+			  __func__, mcu_data->i2c_total_retry,
+			  mcu_data->i2c_latch_retry);
+			mutex_unlock(&mcu_data->activated_i2c_lock);
+			return;
+		}
+
+		/* record the failure */
+		mcu_data->i2c_total_retry++;
+		mcu_data->i2c_jiffies = jiffies;
+
+		mutex_unlock(&mcu_data->activated_i2c_lock);
+		D(
+		  "%s--: mcu_data->i2c_total_retry = %d, "
+		  "mcu_data->i2c_latch_retry = %d\n", __func__,
+		  mcu_data->i2c_total_retry, mcu_data->i2c_latch_retry);
+	}
+
+	if (mcu_data->w_re_init == true) {
+		mcu_data->w_re_init = false;
+
+		cwmcu_powermode_switch(mcu_data, 1);
+
+		cwmcu_sensor_placement(mcu_data);
+		cwmcu_set_sensor_kvalue(mcu_data);
+		cwmcu_restore_status(mcu_data);
+
+		cwmcu_powermode_switch(mcu_data, 0);
+	}
+
+	if (mcu_data->w_facedown_set == true) {
+		u8 data;
+		int i;
+
+		mcu_data->w_facedown_set = false;
+
+		i = (HTC_FACEDOWN_DETECTION / 8);
+
+		data = (u8)(mcu_data->enabled_list >> (i * 8));
+		CWMCU_i2c_write_power(mcu_data, CWSTM32_ENABLE_REG + i, &data,
+				      1);
+	}
+}
+
+
 static void cwmcu_work_report(struct work_struct *work)
 {
 	struct cwmcu_data *mcu_data = container_of((struct delayed_work *)work,
 			struct cwmcu_data, work);
 
-	irq_work_queue(&mcu_data->iio_irq_work);
-
-	queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
-			msecs_to_jiffies(atomic_read(&mcu_data->delay)));
+	if (atomic_read(&mcu_data->pseudo_irq_enable)) {
+		irq_work_queue(&mcu_data->iio_irq_work);
+		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
+		    msecs_to_jiffies(atomic_read(&mcu_data->delay)));
+	}
 }
 
 static int cwmcu_input_init(struct input_dev **input)
@@ -3589,7 +3610,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Fix batch mode enable/disable issue\n", __func__);
+	I("%s++: Merge the work queues\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3676,8 +3697,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	mutex_init(&mcu_data->lock);
 
 	INIT_DELAYED_WORK(&mcu_data->work, cwmcu_work_report);
-	INIT_DELAYED_WORK(&mcu_data->activated_i2c_work, activated_i2c_do_work);
-	INIT_DELAYED_WORK(&mcu_data->re_init_work, re_init_do_work);
+	INIT_WORK(&mcu_data->one_shot_work, cwmcu_one_shot);
 
 	error = cw_probe_buffer(indio_dev);
 	if (error) {
