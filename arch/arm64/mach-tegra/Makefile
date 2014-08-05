@@ -75,6 +75,9 @@ obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += flounder-bdaddress.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sysedp.o
 
+#CAM
+obj-${CONFIG_MACH_T132_FLOUNDER}        += htc_awb_cal.o
+
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-bootparams.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-mdm9k.o
 
