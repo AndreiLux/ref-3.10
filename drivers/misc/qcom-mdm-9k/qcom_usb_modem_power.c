@@ -1611,7 +1611,7 @@ static int mdm_subsys_shutdown(const struct subsys_data *crashed_subsys)
 		pr_info("[%s] start\n", __func__);
 
 	gpio_direction_output(modem->pdata->ap2mdm_errfatal_gpio, 1);
-	if (modem->pdata->ramdump_delay_ms > 0) {
+	if (get_enable_ramdumps() && modem->pdata->ramdump_delay_ms > 0) {
 		/* Wait for the external modem to complete
 		 * its preparation for ramdumps.
 		 */
