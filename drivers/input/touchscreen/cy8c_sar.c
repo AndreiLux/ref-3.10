@@ -222,6 +222,33 @@ static int check_fw_version(char *buf, int len,
 	}
 }
 
+int i2c_cy8c_lock_write(struct i2c_client *client, uint8_t *data, uint8_t length)
+{
+	int retry;
+
+	struct i2c_msg msg[] = {
+		{
+			.addr = client->addr,
+			.flags = 0,
+			.len = length ,
+			.buf = data,
+		}
+	};
+
+	for (retry = 0; retry < CY8C_I2C_RETRY_TIMES; retry++) {
+		if (__i2c_transfer(client->adapter, msg, 1) == 1)
+			break;
+		mdelay(10);
+	}
+
+	if (retry == CY8C_I2C_RETRY_TIMES) {
+		printk(KERN_ERR "[sar]i2c_write_block retry over %d\n",
+				CY8C_I2C_RETRY_TIMES);
+		return -EIO;
+	}
+	return 0;
+}
+
 static int i2c_tx_bytes(struct cy8c_sar_data *sar, u16 len, u8 *buf)
 {
 	int ret;
@@ -356,19 +383,19 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 			if (sarfw[j+1] == 0x39) {
 				cnt_blk++;
 				msleep(10);
+				i2c_lock_adapter(client->adapter);
 
 				for (i = 0; i < 4; i++) {
 					wbuf[0] = 0;
 					wbuf[1] = 0x10*i;
 					memcpy(wbuf+2, sarfw+j, 16);
 					/* Write Blocks */
-					ret = i2c_tx_bytes(sar, 18, wbuf);
-					if (ret != 18) {
+					ret = i2c_cy8c_lock_write(client, wbuf, 18);
+					if (ret != 0) {
 						pr_err("[SAR][ERR] i2c_write ERROR!! Data Block = %d\n"
 								, cnt_blk);
 						goto error_fw_fail;
 					}
-
 					memset(wbuf, 0, sizeof(wbuf));
 					msleep(10);
 					j += 16;
@@ -377,9 +404,9 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 
 				wbuf[1] = 0x40;
 				memcpy(wbuf+2, sarfw+j, 14);
-				ret = i2c_tx_bytes(sar, 16, wbuf);
+				ret = i2c_cy8c_lock_write(client, wbuf, 16);
 
-				if (ret != 16) {
+				if (ret != 0) {
 					pr_err("[SAR][ERR] i2c_write ERROR!! Data Block = %d\n"
 							, cnt_blk);
 					goto error_fw_fail;
@@ -391,7 +418,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				 * wait chip move buf to RAM for
 				 * each data block.
 				 */
-				msleep(150);
+				msleep(100);
+				i2c_unlock_adapter(client->adapter);
 				ret = smart_blmode_check(sar);/*confirm Bl*/
 				if (ret < 0) {
 					pr_err("[SAR][ERR] Check BL Error Blk = %d\n",
