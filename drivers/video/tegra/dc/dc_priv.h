@@ -402,6 +402,13 @@ unsigned long tegra_dc_poll_register(struct tegra_dc *dc,
 u32 reg, u32 mask, u32 exp_val, u32 poll_interval_us,
 u32 timeout_ms);
 
+/* defined in dc.c, used in ext/dev.c */
+int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable);
+
+/* defined in dc.c, used in dsi.c */
+int _tegra_dc_wait_for_frame_end(struct tegra_dc *dc,
+	u32 timeout_ms);
+
 /* defined in bandwidth.c, used in dc.c */
 void tegra_dc_clear_bandwidth(struct tegra_dc *dc);
 void tegra_dc_program_bandwidth(struct tegra_dc *dc, bool use_new);

@@ -1664,6 +1664,43 @@ int tegra_dc_wait_for_vsync(struct tegra_dc *dc)
 	return ret;
 }
 
+static int _tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable)
+{
+	tegra_dc_io_start(dc);
+	if (enable) {
+		atomic_inc(&dc->frame_end_ref);
+		tegra_dc_unmask_interrupt(dc, FRAME_END_INT);
+	} else if (!atomic_dec_return(&dc->frame_end_ref))
+		tegra_dc_mask_interrupt(dc, FRAME_END_INT);
+	tegra_dc_io_end(dc);
+
+	return 0;
+}
+
+int _tegra_dc_wait_for_frame_end(struct tegra_dc *dc,
+	u32 timeout_ms)
+{
+	int ret;
+
+	INIT_COMPLETION(dc->frame_end_complete);
+
+	tegra_dc_get(dc);
+
+	tegra_dc_flush_interrupt(dc, FRAME_END_INT);
+	/* unmask frame end interrupt */
+	_tegra_dc_config_frame_end_intr(dc, true);
+
+	ret = wait_for_completion_interruptible_timeout(
+			&dc->frame_end_complete,
+			msecs_to_jiffies(timeout_ms));
+
+	_tegra_dc_config_frame_end_intr(dc, false);
+
+	tegra_dc_put(dc);
+
+	return ret;
+}
+
 static void tegra_dc_prism_update_backlight(struct tegra_dc *dc)
 {
 	/* Do the actual brightness update outside of the mutex dc->lock */
@@ -1903,6 +1940,17 @@ static void tegra_dc_process_vblank(struct tegra_dc *dc, ktime_t timestamp)
 		tegra_dc_ext_process_vblank(dc->ndev->id, timestamp);
 #endif
 	}
+}
+
+int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable)
+{
+	int ret;
+
+	mutex_lock(&dc->lock);
+	ret = _tegra_dc_config_frame_end_intr(dc, enable);
+	mutex_unlock(&dc->lock);
+
+	return ret;
 }
 
 static void tegra_dc_one_shot_irq(struct tegra_dc *dc, unsigned long status,
