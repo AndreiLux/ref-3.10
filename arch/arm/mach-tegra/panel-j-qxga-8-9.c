@@ -191,11 +191,11 @@ static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 	}
 
 	gpio_set_value(avdd_4v, 1);
-	msleep(1);
+	usleep_range(1 * 1000, 1 * 1000 + 500);
 	gpio_set_value(dcdc_en, 1);
-	msleep(15);
+	usleep_range(15 * 1000, 15 * 1000 + 500);
 	gpio_set_value(lcm_rst, 1);
-	msleep(15);
+	usleep_range(15 * 1000, 15 * 1000 + 500);
 
 	return err;
 }
@@ -203,7 +203,7 @@ static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 static int dsi_j_qxga_8_9_enable(struct device *dev)
 {
 	gpio_set_value(iovdd_1v8, 1);
-	msleep(15);
+	usleep_range(15 * 1000, 15 * 1000 + 500);
 	return 0;
 }
 
