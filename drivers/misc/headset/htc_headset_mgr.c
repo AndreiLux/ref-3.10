@@ -1298,6 +1298,9 @@ int hs_notify_key_irq(void)
 		/* hs_notify_hpin_irq(); */
 		update_mic_status(HS_DEF_MIC_DETECT_COUNT);
 	} else if (hs_hpin_stable()) {
+#ifndef CONFIG_HTC_HEADSET_ONE_WIRE
+		msleep(50);
+#endif
 		hs_mgr_notifier.remote_adc(&adc);
 		key_code = hs_mgr_notifier.remote_keycode(adc);
 		hs_notify_key_event(key_code);
