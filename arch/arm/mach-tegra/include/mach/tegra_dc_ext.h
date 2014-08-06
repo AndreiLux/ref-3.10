@@ -37,6 +37,7 @@ void tegra_dc_ext_disable(struct tegra_dc_ext *dc_ext);
 int tegra_dc_ext_restore(struct tegra_dc_ext *ext);
 
 int tegra_dc_ext_process_hotplug(int output);
+int tegra_dc_ext_process_vblank(int output, ktime_t timestamp);
 int tegra_dc_ext_process_bandwidth_renegotiate(int output,
 					struct tegra_dc_bw_data *bw);
 
@@ -73,6 +74,7 @@ void tegra_dc_ext_disable(struct tegra_dc_ext *dc_ext)
 static inline
 int tegra_dc_ext_restore(struct tegra_dc_ext *ext)
 {
+	return 0;
 }
 static inline
 int tegra_dc_ext_process_hotplug(int output)
@@ -81,6 +83,11 @@ int tegra_dc_ext_process_hotplug(int output)
 }
 static inline
 int tegra_dc_ext_process_bandwidth_renegotiate(int output)
+{
+	return 0;
+}
+static inline
+int tegra_dc_ext_process_vblank(int output, ktime_t timestamp)
 {
 	return 0;
 }
