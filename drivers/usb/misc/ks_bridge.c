@@ -30,6 +30,7 @@
 #include <linux/list.h>
 #include <linux/wait.h>
 #include <linux/poll.h>
+#include <linux/wakelock.h>
 
 #ifdef CONFIG_QCT_9K_MODEM
 #include <mach/board_htc.h>
@@ -115,6 +116,9 @@ struct ks_bridge {
 
 	/* to handle INT IN ep */
 	unsigned int		period;
+
+	/* wake lock */
+	struct wake_lock ks_wake_lock;
 
 #define DBG_MSG_LEN   40
 #define DBG_MAX_MSG   500
@@ -591,7 +595,11 @@ add_to_list:
 	spin_unlock(&ksb->lock);
 	/* wake up read thread */
 	if (wakeup)
+	{
+		/* make sure ks bridge data can pass to user space process before pm freeze user space */
+		wake_lock_timeout(&ksb->ks_wake_lock, HZ);
 		wake_up(&ksb->ks_wait_q);
+	}
 done:
 	atomic_dec(&ksb->rx_pending_cnt);
 	wake_up(&ksb->pending_urb_wait);
@@ -1030,6 +1038,8 @@ static int __init ksb_init(void)
 		ksb->dbg_idx = 0;
 		ksb->dbg_lock = __RW_LOCK_UNLOCKED(lck);
 
+		wake_lock_init(&ksb->ks_wake_lock, WAKE_LOCK_SUSPEND, "ks_bridge_lock");
+
 		if (!IS_ERR(dbg_dir))
 			debugfs_create_file(ksb->name, S_IRUGO, dbg_dir,
 					ksb, &dbg_fops);
@@ -1075,6 +1085,9 @@ static void __exit ksb_exit(void)
 
 	if (!IS_ERR(dbg_dir))
 		debugfs_remove_recursive(dbg_dir);
+
+	//Destory ks wake lock
+	wake_lock_destroy(&ksb->ks_wake_lock);
 
 	usb_deregister(&ksb_usb_driver);
 
