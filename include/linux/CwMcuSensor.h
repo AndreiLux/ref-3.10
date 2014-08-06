@@ -88,6 +88,7 @@ typedef enum {
 #define CW_I2C_REG_SENSORS_CALIBRATOR_STATUS_PRESSURE           0xB0
 #define CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_PRESSURE         0xB8
 #define CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_PRESSURE         0xB8
+#define PRESSURE_UPDATE_RATE                                    0xB6
 
 #define CWMCU_MAX_DELAY		200
 

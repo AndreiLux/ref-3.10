@@ -1735,6 +1735,9 @@ static int firmware_odr(struct cwmcu_data *mcu_data, int sensors_id,
 	case CW_SIGNIFICANT_MOTION:
 		reg_addr = SIGN_UPDATE_RATE;
 		break;
+	case CW_PRESSURE:
+		reg_addr = PRESSURE_UPDATE_RATE;
+		break;
 	default:
 		reg_addr = 0;
 		D("%s: Only report_period changed, sensors_id = %d,"
@@ -3610,7 +3613,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Merge the work queues\n", __func__);
+	I("%s++: Fix Pressure sampling rate issue\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
