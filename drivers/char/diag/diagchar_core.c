@@ -1415,6 +1415,9 @@ drop_userspace:
 		goto exit;
 	}
 exit:
+	if (ret)
+		wake_lock_timeout(&driver->wake_lock, HZ / 2);
+
 	if (clear_read_wakelock) {
 		for (i = 0; i < NUM_SMD_DATA_CHANNELS; i++)
 			process_lock_on_copy_complete(&driver->smd_data[i].nrt_lock);
@@ -2046,6 +2049,7 @@ static int diagchar_cleanup(void)
 		}
 		if (!IS_ERR(driver->diagchar_class))
 			class_destroy(driver->diagchar_class);
+		wake_lock_destroy(&driver->wake_lock);
 		kfree(driver);
 	}
 	return 0;
@@ -2157,6 +2161,7 @@ static int __init diagchar_init(void)
 		driver->num = 1;
 		driver->name = ((void *)driver) + sizeof(struct diagchar_dev);
 		strlcpy(driver->name, "diag", 4);
+		wake_lock_init(&driver->wake_lock, WAKE_LOCK_SUSPEND, "diagchar");
 
 		/* Get major number from kernel and initialize */
 		error = alloc_chrdev_region(&dev, driver->minor_start, driver->num, driver->name);
