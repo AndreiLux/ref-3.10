@@ -54,6 +54,21 @@
 #define PMC_CTRL                0x0
 #define PMC_CTRL_INTR_LOW       (1 << 17)
 
+static void flounder_board_suspend(int state, enum suspend_stage stage)
+{
+	static int request = 0;
+
+	if (state == TEGRA_SUSPEND_LP0 && stage == TEGRA_SUSPEND_BEFORE_PERIPHERAL) {
+		if (!request)
+			gpio_request_one(TEGRA_GPIO_PB5, GPIOF_OUT_INIT_HIGH,
+				"sdmmc3_dat2");
+		else
+			gpio_direction_output(TEGRA_GPIO_PB5,1);
+
+		request = 1;
+	}
+}
+
 static struct tegra_suspend_platform_data flounder_suspend_data = {
 	.cpu_timer      = 500,
 	.cpu_off_timer  = 300,
@@ -68,6 +83,7 @@ static struct tegra_suspend_platform_data flounder_suspend_data = {
 	.min_residency_ncpu_slow = 5000,
 	.min_residency_mclk_stop = 5000,
 	.min_residency_crail = 20000,
+	.board_suspend = flounder_board_suspend,
 };
 
 static struct power_supply_extcon_plat_data extcon_pdata = {
