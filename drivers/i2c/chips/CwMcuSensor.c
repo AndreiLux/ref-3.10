@@ -1690,7 +1690,8 @@ static void reset_hub(struct cwmcu_data *mcu_data)
 	usleep_range(500000, 1000000); /* HUB need at least 500ms to be ready */
 }
 
-
+/* This informs firmware for Output Data Rate of each sensor.
+ * Need powermode held by caller */
 static int firmware_odr(struct cwmcu_data *mcu_data, int sensors_id,
 			int delay_ms)
 {
@@ -2004,23 +2005,44 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	if (enabled == 0)
 		mcu_data->report_period[sensors_id] = 200000 * MS_TO_PERIOD;
 
+	if ((sensors_id == CW_STEP_COUNTER) && (!!enabled)) {
+		__le16 data[2] = {0};
+
+		rc = CWMCU_i2c_read(mcu_data,
+				    CWSTM32_READ_STEP_COUNTER,
+				    (u8 *)data, sizeof(data));
+		if (rc >= 0) {
+			u16 data_buff[REPORT_EVENT_COMMON_LEN];
+
+			mcu_data->sensors_time[step_counter] = 0;
+
+			data_buff[0] = le16_to_cpup(data);
+			data_buff[1] = le16_to_cpup(data + 1);
+			cw_send_event(mcu_data, CW_STEP_COUNTER, data_buff, 0);
+
+			D("%s: Initial Step Counter, step(data_buf) = %u\n",
+			  __func__, *(u32 *)&data_buff[0]);
+		} else
+			D("%s: Step Counter i2c read fails, rc = %d\n",
+			  __func__, rc);
+	}
+
 	rc = firmware_odr(mcu_data, sensors_id,
 			  mcu_data->report_period[sensors_id] / MS_TO_PERIOD);
 	cwmcu_powermode_switch(mcu_data, 0);
 	if (rc) {
 		E("%s: firmware_odr fails, rc = %d\n", __func__, rc);
-		return rc;
 	}
 
-	D("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
-		__func__, sensors_id, enabled, mcu_data->enabled_list);
-
 	if ((sensors_id == CW_LIGHT) && (!!enabled)) {
-		I("%s: Initial lightsensor = %d\n",
+		D("%s: Initial lightsensor = %d\n",
 		  __func__, mcu_data->light_last_data[0]);
 		cw_send_event(mcu_data, CW_LIGHT, &mcu_data->light_last_data[0],
 			      0);
 	}
+
+	D("%s: sensors_id = %ld, enable = %ld, enable_list = 0x%x\n",
+		__func__, sensors_id, enabled, mcu_data->enabled_list);
 
 	return count;
 }
@@ -3613,7 +3635,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Fix Pressure sampling rate issue\n", __func__);
+	I("%s++: Report initial Step Counter event\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
