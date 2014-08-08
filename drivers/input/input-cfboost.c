@@ -73,7 +73,7 @@ static unsigned long boost_time = 500; /* ms */
 module_param(boost_time, ulong, 0644);
 static unsigned long boost_cpus;
 module_param(boost_cpus, ulong, 0644);
-static bool gpu_wakeup = 1; /* 1 = enabled */
+static bool gpu_wakeup; /* 0 = disabled */
 module_param(gpu_wakeup, bool, 0644);
 static struct device *gpu_device;
 static DEFINE_MUTEX(gpu_device_lock);
