@@ -195,6 +195,7 @@ config QCT_9K_MODEM
        select USB_ANDROID_RMNET
        select MSM_RMNET_BAM
        select MODEM_SUPPORT
+       select MDM_SYSEDP
        help
         Support for Qualcomm 9K modem
 

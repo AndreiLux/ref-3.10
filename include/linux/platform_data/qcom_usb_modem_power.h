@@ -24,6 +24,10 @@
 #include <linux/pm_qos.h>
 #include <linux/wakelock.h>
 
+#ifdef CONFIG_MDM_SYSEDP
+#include <linux/sysedp.h>
+#endif
+
 /* modem private data structure */
 #if defined(CONFIG_MDM_FTRACE_DEBUG) || defined(CONFIG_MDM_ERRMSG)
 #define MDM_COM_BUF_SIZE 256
@@ -45,6 +49,17 @@ enum charm_boot_type {
 	CHARM_RAM_DUMPS,
 	CHARM_CNV_RESET,
 };
+
+#ifdef CONFIG_MDM_SYSEDP
+enum sysedp_radio_statue {
+	MDM_SYSEDP_AIRPLANE_MODE = 0,
+	MDM_SYSEDP_SEARCHING_MODE = 1,
+	MDM_SYSEDP_2G_MODE = 2,
+	MDM_SYSEDP_3G_MODE = 3,
+	MDM_SYSEDP_LTE_MODE = 4,
+	MDM_SYSEDP_MAX
+};
+#endif
 
 struct qcom_usb_modem {
 	struct qcom_usb_modem_power_platform_data *pdata;
@@ -155,6 +170,10 @@ struct qcom_usb_modem {
 	unsigned long mdm_hsic_phy_resume_jiffies;
 	unsigned long mdm_hsic_phy_active_total_ms;
 	bool hsic_wakeup_pending;
+#ifdef CONFIG_MDM_SYSEDP
+	struct sysedp_consumer *sysedpc;
+	enum sysedp_radio_statue radio_state;
+#endif
 };
 
 /* modem operations */

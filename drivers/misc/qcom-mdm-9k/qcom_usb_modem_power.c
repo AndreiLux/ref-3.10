@@ -87,6 +87,10 @@
 #define NV_WRITE_DONE		_IO(CHARM_CODE, 100)
 #define POWER_OFF_CHARM _IOW(CHARM_CODE, 101, int)
 
+#ifdef CONFIG_MDM_SYSEDP
+#define SYSEDP_RADIO_STATE _IOW(CHARM_CODE, 111, int)
+#endif
+
 #ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 extern int get_enable_ramdumps(void);
 #else
@@ -1265,6 +1269,9 @@ static int mdm_modem_open(struct inode *inode, struct file *file)
 long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 	int status, ret = 0;
+#ifdef CONFIG_MDM_SYSEDP
+	int radio_state = -1;
+#endif
 	struct device *dev;
 	struct qcom_usb_modem *modem;
 
@@ -1497,6 +1504,21 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 			modem->ops->stop2(modem);
 		}
 		break;
+
+#ifdef CONFIG_MDM_SYSEDP
+	case SYSEDP_RADIO_STATE:
+		if(modem->mdm_debug_on)
+			pr_info("%s: set sysdep radio state\n", __func__);
+		get_user(radio_state, (unsigned long __user *)arg);
+		if ((radio_state < 0) || (radio_state >= MDM_SYSEDP_MAX)) {
+			pr_err("%s: send a wrong radio statue %d\n", __func__, radio_state);
+		} else {
+			modem->radio_state = radio_state;
+			sysedp_set_state(modem->sysedpc, modem->radio_state);
+			pr_info("%s: send radio statue %d to sysedp\n", __func__, modem->radio_state);
+		}
+		break;
+#endif
 
 	default:
 		pr_err("%s: invalid ioctl cmd = %d\n", __func__, _IOC_NR(cmd));
@@ -2013,6 +2035,14 @@ static int mdm_init(struct qcom_usb_modem *modem, struct platform_device *pdev)
 	modem->mdm_irq_enabled = true;
 	mdm_disable_irqs(modem, false);
 
+#ifdef CONFIG_MDM_SYSEDP
+	modem->sysedpc = sysedp_create_consumer("qcom-mdm-9k", "qcom-mdm-9k");
+	if (modem->sysedpc == NULL) {
+		dev_err(&pdev->dev, "request sysdep fail\n");
+		goto error;
+	}
+#endif
+
 	/* Reigster misc mdm driver */
 	pr_info("%s: Registering mdm modem\n", __func__);
 	ret = misc_register(&mdm_modem_misc);
@@ -2140,6 +2170,10 @@ static int __exit qcom_usb_modem_remove(struct platform_device *pdev)
 #endif
 
 	misc_deregister(&mdm_modem_misc);
+
+#ifdef CONFIG_MDM_SYSEDP
+	sysedp_free_consumer(modem->sysedpc);
+#endif
 
 	mdm_unloaded_info(modem);
 
