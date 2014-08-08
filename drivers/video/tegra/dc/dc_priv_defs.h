@@ -33,7 +33,9 @@
 
 #include <mach/dc.h>
 
+#ifdef CONFIG_TEGRA_DC_EXTENSIONS
 #include <mach/tegra_dc_ext.h>
+#endif
 #include <mach/isomgr.h>
 
 #include "dc_reg.h"
@@ -236,7 +238,9 @@ struct tegra_dc {
 #endif
 	} stats;
 
+#ifdef CONFIG_TEGRA_DC_EXTENSIONS
 	struct tegra_dc_ext		*ext;
+#endif
 
 	struct tegra_dc_feature		*feature;
 	int				gen1_blend_num;
@@ -252,6 +256,7 @@ struct tegra_dc {
 	atomic_t			frame_end_ref;
 
 	bool				mode_dirty;
+	atomic_t			holding;
 
 	u32				reserved_bw;
 	u32				available_bw;

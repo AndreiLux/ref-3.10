@@ -199,7 +199,7 @@ EXPORT_SYMBOL(tegra_iram_dev);
 
 static inline phys_addr_t memblock_end_of_4G(phys_addr_t size)
 {
-	return memblock_find_in_range(0, SZ_4G, size, PAGE_SIZE);
+	return memblock_find_in_range(0, SZ_4G-1, size, PAGE_SIZE);
 }
 
 static int tegra_update_resize_cfg(phys_addr_t base , size_t size)
@@ -1941,8 +1941,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 				SZ_4G);
 		tegra_fb2_size = fb2_size;
 #else
-		BUG_ON(memblock_end_of_4G() == 0);
-		tegra_fb2_start = memblock_end_of_4G() - fb2_size;
+		tegra_fb2_start = memblock_end_of_4G(fb2_size);
 		if (memblock_remove(tegra_fb2_start, fb2_size)) {
 			pr_err("Failed to remove second framebuffer "
 				"%08lx@%08llx from memory map\n",
@@ -1964,8 +1963,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 				SZ_4G);
 		tegra_fb_size = fb_size;
 #else
-		BUG_ON(memblock_end_of_4G() == 0);
-		tegra_fb_start = memblock_end_of_4G() - fb_size;
+		tegra_fb_start = memblock_end_of_4G(fb_size);
 		if (memblock_remove(tegra_fb_start, fb_size)) {
 			pr_err("Failed to remove framebuffer %08lx@%08llx "
 				"from memory map\n",
