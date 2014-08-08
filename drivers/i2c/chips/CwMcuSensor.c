@@ -3598,8 +3598,10 @@ static void cwmcu_work_report(struct work_struct *work)
 
 	if (atomic_read(&mcu_data->pseudo_irq_enable)) {
 		irq_work_queue(&mcu_data->iio_irq_work);
-		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
-		    msecs_to_jiffies(atomic_read(&mcu_data->delay)));
+		if (atomic_read(&mcu_data->delay) >= 10) {
+			queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
+			    msecs_to_jiffies(atomic_read(&mcu_data->delay)));
+		}
 	}
 }
 
@@ -3754,6 +3756,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	wake_lock_init(&mcu_data->wake_up_gesture_wake_lock, WAKE_LOCK_SUSPEND,
 		       "wake_up_gesture_wake_lock");
 
+	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
 	init_irq_work(&mcu_data->iio_irq_work, iio_trigger_work);
 
 	mcu_data->mcu_wq = create_singlethread_workqueue("htc_mcu");
