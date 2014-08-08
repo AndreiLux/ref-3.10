@@ -989,9 +989,12 @@ static int f2fs_fill_super(struct super_block *sb, void *data, int silent)
 	struct inode *root;
 	long err = -EINVAL;
 	const char *descr = "";
+	bool retry = true;
 	int i;
 
 	f2fs_msg(sb, KERN_INFO, "mounting..");
+
+try_onemore:
 	/* allocate memory for f2fs-specific super block info */
 	sbi = kzalloc(sizeof(struct f2fs_sb_info), GFP_KERNEL);
 	if (!sbi)
@@ -1185,9 +1188,10 @@ get_cp:
 				goto get_cp;
 			}
 			f2fs_msg(sb, KERN_ERR,
-				"cannot recover all fsync data errno=%ld", err);
+				"Cannot recover all fsync data errno=%ld", err);
 			/* checkpoint what we have */
 			write_checkpoint(sbi, false);
+			goto free_kobj;
 		}
 	}
 
@@ -1229,6 +1233,12 @@ free_sb_buf:
 	brelse(raw_super_buf);
 free_sbi:
 	kfree(sbi);
+	/* give only one another chance */
+	if (retry) {
+		retry = !retry;
+		shrink_dcache_sb(sb);
+		goto try_onemore;
+	}
 	f2fs_msg(sb, KERN_ERR, "mount failed");
 	return err;
 }
