@@ -92,7 +92,7 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 	pr_info("RT5677 IRQ is triggered = 0x%x\n", value);
 	if (value == 1) {
 		schedule_work(&machine->hotword_work);
-		wake_lock_timeout(&machine->vad_wake, msecs_to_jiffies(500));
+		wake_lock_timeout(&machine->vad_wake, msecs_to_jiffies(1500));
 	}
 	return IRQ_HANDLED;
 }
