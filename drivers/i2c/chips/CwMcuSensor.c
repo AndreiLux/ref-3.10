@@ -3597,11 +3597,13 @@ static void cwmcu_work_report(struct work_struct *work)
 			struct cwmcu_data, work);
 
 	if (atomic_read(&mcu_data->pseudo_irq_enable)) {
+		unsigned long jiff;
+
+		jiff = msecs_to_jiffies(atomic_read(&mcu_data->delay));
+		if (!jiff)
+			jiff = 1;
 		irq_work_queue(&mcu_data->iio_irq_work);
-		if (atomic_read(&mcu_data->delay) >= 10) {
-			queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
-			    msecs_to_jiffies(atomic_read(&mcu_data->delay)));
-		}
+		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work, jiff);
 	}
 }
 
