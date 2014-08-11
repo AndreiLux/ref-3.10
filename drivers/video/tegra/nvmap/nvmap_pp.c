@@ -39,6 +39,7 @@ static bool enable_pp = 1;
 static int pool_size;
 
 static struct task_struct *background_allocator;
+static DECLARE_WAIT_QUEUE_HEAD(nvmap_bg_wait);
 static struct page *pending_pages[PENDING_PAGES_SIZE];
 static atomic_t bg_pages_to_fill;
 
@@ -72,6 +73,17 @@ static inline struct page *get_page_list_page(struct nvmap_page_pool *pool)
 	pool->count--;
 
 	return page;
+}
+
+static inline bool nvmap_bg_should_run(struct nvmap_page_pool *pool)
+{
+	bool ret;
+
+	mutex_lock(&pool->lock);
+	ret = (pool->to_zero > 0 || atomic_read(&bg_pages_to_fill));
+	mutex_unlock(&pool->lock);
+
+	return ret;
 }
 
 /*
@@ -155,17 +167,20 @@ static void nvmap_pp_do_background_fill(struct nvmap_page_pool *pool)
  */
 static int nvmap_background_zero_allocator(void *arg)
 {
+	struct nvmap_page_pool *pool = &nvmap_dev->pool;
+	struct sched_param param = { .sched_priority = 0 };
+
 	pr_info("PP alloc thread starting.\n");
 
-	while (1) {
-		if (kthread_should_stop())
-			break;
+	set_freezable();
+	sched_setscheduler(current, SCHED_IDLE, &param);
 
-		nvmap_pp_do_background_fill(&nvmap_dev->pool);
+	while (!kthread_should_stop()) {
+		nvmap_pp_do_background_fill(pool);
 
-		/* Pending work is done - go to sleep. */
-		set_current_state(TASK_INTERRUPTIBLE);
-		schedule();
+		wait_event_freezable(&nvmap_bg_wait,
+				nvmap_bg_should_run(pool) ||
+				kthread_should_stop());
 	}
 
 	return 0;
@@ -206,7 +221,7 @@ static inline void nvmap_pp_wake_up_allocator(void)
 	/* Let the background thread know how much memory to fill. */
 	atomic_set(&bg_pages_to_fill,
 		   min(tmp, (int)(pool->max - pool->count)));
-	wake_up_process(background_allocator);
+	wake_up_interruptible(&nvmap_bg_wait);
 }
 
 /*
