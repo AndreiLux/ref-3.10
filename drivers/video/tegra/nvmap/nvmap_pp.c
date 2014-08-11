@@ -664,7 +664,11 @@ int nvmap_page_pool_init(struct nvmap_device *dev)
 
 	mutex_lock(&pool->lock);
 	for (i = 0; i < pages_to_fill; i++) {
-		page = alloc_page(GFP_NVMAP);
+		gfp_t gfp = GFP_NVMAP;
+		if (zero_memory) {
+			gfp |= __GFP_ZERO;
+		}
+		page = alloc_page(gfp);
 		if (!page)
 			goto done;
 		if (!nvmap_page_pool_fill_locked(pool, page)) {
