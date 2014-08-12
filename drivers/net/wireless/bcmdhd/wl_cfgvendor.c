@@ -751,35 +751,32 @@ void wl_cfgvendor_rtt_evt(void *ctx, void *rtt_data)
 	/* fill in the rtt results on each entry */
 	list_for_each_entry(rtt_result, rtt_list, list) {
 		entry_len = 0;
-		if (rtt_result->TOF_type == TOF_TYPE_ONE_WAY) {
-			entry_len = sizeof(rtt_report_t);
-			rtt_report = kzalloc(entry_len, kflags);
-			if (!rtt_report) {
-				WL_ERR(("rtt_report alloc failed"));
-				goto exit;
-			}
-			rtt_report->addr = rtt_result->peer_mac;
-			rtt_report->num_measurement = 1; /* ONE SHOT */
-			rtt_report->status = rtt_result->err_code;
-			rtt_report->type = (rtt_result->TOF_type == TOF_TYPE_ONE_WAY) ? RTT_ONE_WAY: RTT_TWO_WAY;
-			rtt_report->peer = rtt_result->target_info->peer;
-			rtt_report->channel = rtt_result->target_info->channel;
-			rtt_report->rssi = rtt_result->avg_rssi;
-			/* tx_rate */
-			rtt_report->tx_rate = rtt_result->tx_rate;
-			/* RTT */
-			rtt_report->rtt = rtt_result->meanrtt;
-			rtt_report->rtt_sd = rtt_result->sdrtt;
-			/* convert to centi meter */
-			if (rtt_result->distance != 0xffffffff)
-				rtt_report->distance = (rtt_result->distance >> 2) * 25;
-			else /* invalid distance */
-				rtt_report->distance = -1;
-
-			rtt_report->ts = rtt_result->ts;
-			nla_append(skb, entry_len, rtt_report);
-			kfree(rtt_report);
+		entry_len = sizeof(rtt_report_t);
+		rtt_report = kzalloc(entry_len, kflags);
+		if (!rtt_report) {
+			WL_ERR(("rtt_report alloc failed"));
+			goto exit;
 		}
+		rtt_report->addr = rtt_result->peer_mac;
+		rtt_report->num_measurement = 1; /* ONE SHOT */
+		rtt_report->status = rtt_result->err_code;
+		rtt_report->type = (rtt_result->TOF_type == TOF_TYPE_ONE_WAY) ? RTT_ONE_WAY: RTT_TWO_WAY;
+		rtt_report->peer = rtt_result->target_info->peer;
+		rtt_report->channel = rtt_result->target_info->channel;
+		rtt_report->rssi = rtt_result->avg_rssi;
+		/* tx_rate */
+		rtt_report->tx_rate = rtt_result->tx_rate;
+		/* RTT */
+		rtt_report->rtt = rtt_result->meanrtt;
+		rtt_report->rtt_sd = rtt_result->sdrtt/10;
+		/* convert to centi meter */
+		if (rtt_result->distance != 0xffffffff)
+			rtt_report->distance = (rtt_result->distance >> 2) * 25;
+		else /* invalid distance */
+			rtt_report->distance = -1;
+		rtt_report->ts = rtt_result->ts;
+		nla_append(skb, entry_len, rtt_report);
+		kfree(rtt_report);
 	}
 	cfg80211_vendor_event(skb, kflags);
 exit:
@@ -794,7 +791,9 @@ static int wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev 
 	const struct nlattr *iter, *iter1, *iter2;
 	int8 eabuf[ETHER_ADDR_STR_LEN];
 	int8 chanbuf[CHANSPEC_STR_LEN];
+	int32 feature_set = 0;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
+	feature_set = dhd_dev_get_feature_set(bcmcfg_to_prmry_ndev(cfg));
 
 	WL_DBG(("In\n"));
 	err = dhd_dev_rtt_register_noti_callback(wdev->netdev, wdev, wl_cfgvendor_rtt_evt);
@@ -812,6 +811,7 @@ static int wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev 
 				WL_ERR(("exceed max target count : %d\n",
 					rtt_param.rtt_target_cnt));
 				err = BCME_RANGE;
+				goto exit;
 			}
 			break;
 		case RTT_ATTRIBUTE_TARGET_INFO:
@@ -821,13 +821,38 @@ static int wl_cfgvendor_rtt_set_config(struct wiphy *wiphy, struct wireless_dev 
 					type = nla_type(iter2);
 					switch (type) {
 					case RTT_ATTRIBUTE_TARGET_MAC:
-						memcpy(&rtt_target->addr, nla_data(iter2), ETHER_ADDR_LEN);
+						memcpy(&rtt_target->addr, nla_data(iter2),
+							ETHER_ADDR_LEN);
 						break;
 					case RTT_ATTRIBUTE_TARGET_TYPE:
 						rtt_target->type = nla_get_u8(iter2);
+						if (!(feature_set & WIFI_FEATURE_D2D_RTT)) {
+							if (rtt_target->type == RTT_TWO_WAY ||
+								rtt_target->type == RTT_INVALID) {
+								WL_ERR(("doesn't support RTT type : %d\n",
+									rtt_target->type));
+								err = -EINVAL;
+								goto exit;
+							} else if (rtt_target->type == RTT_AUTO) {
+								rtt_target->type = RTT_ONE_WAY;
+							}
+						} else {
+							if (rtt_target->type == RTT_INVALID) {
+								WL_ERR(("doesn't support RTT type : %d\n",
+									rtt_target->type));
+								err = -EINVAL;
+								goto exit;
+							}
+						}
 						break;
 					case RTT_ATTRIBUTE_TARGET_PEER:
 						rtt_target->peer= nla_get_u8(iter2);
+						if (rtt_target->peer != RTT_PEER_AP) {
+							WL_ERR(("doesn't support peer type : %d\n",
+								rtt_target->peer));
+							err = -EINVAL;
+							goto exit;
+						}
 						break;
 					case RTT_ATTRIBUTE_TARGET_CHAN:
 						memcpy(&rtt_target->channel, nla_data(iter2),

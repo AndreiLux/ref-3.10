@@ -571,6 +571,17 @@ int dhd_monitor_init(void *dhd_pub);
 int dhd_monitor_uninit(void);
 int dhd_start_xmit(struct sk_buff *skb, struct net_device *net);
 
+#ifdef ROAM_CHANNEL_CACHE
+void init_roam(int ioctl_ver);
+void reset_roam_cache(void);
+void add_roam_cache(wl_bss_info_t *bi);
+int  get_roam_channel_list(int target_chan,
+	chanspec_t *channels, const wlc_ssid_t *ssid, int ioctl_ver);
+void print_roam_cache(void);
+void set_roam_band(int band);
+void update_roam_cache(struct bcm_cfg80211 *cfg, int ioctl_ver);
+#define MAX_ROAM_CACHE_NUM 100
+#endif /* ROAM_CHANNEL_CACHE */
 
 static int wl_cfg80211_delayed_roam(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	const struct ether_addr *bssid);
@@ -3785,9 +3796,12 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	u32 chan_cnt = 0;
 	struct ether_addr bssid;
 	s32 bssidx;
+#ifdef ROAM_CHANNEL_CACHE
+	chanspec_t chanspec_list[MAX_ROAM_CACHE_NUM];
+#endif /* ROAM_CHANNEL_CACHE */
 	int ret;
 	int wait_cnt;
-
+	bool use_chan_cache = FALSE;
 	WL_DBG(("In\n"));
 
 	if (unlikely(!sme->ssid)) {
@@ -3931,8 +3945,25 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 		chan_cnt = 1;
 		WL_DBG(("channel (%d), center_req (%d), %d channels\n", cfg->channel,
 			chan->center_freq, chan_cnt));
-	} else
+	} else {
+#ifdef ROAM_CHANNEL_CACHE
+		wlc_ssid_t ssid;
+		int band;
+		use_chan_cache = TRUE;
+		err = wldev_get_band(dev, &band);
+		if (!err) {
+			set_roam_band(band);
+		}
+
 		cfg->channel = 0;
+		memcpy(ssid.SSID, sme->ssid, sme->ssid_len);
+		ssid.SSID_len = sme->ssid_len;
+		chan_cnt = get_roam_channel_list(cfg->channel, chanspec_list, &ssid, ioctl_version);
+#else
+		cfg->channel = 0;
+#endif /* ROAM_CHANNEL_CACHE */
+
+	}
 	WL_DBG(("ie (%p), ie_len (%zd)\n", sme->ie, sme->ie_len));
 	WL_DBG(("3. set wapi version \n"));
 	err = wl_set_wpa_version(dev, sme);
@@ -3997,18 +4028,23 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 		memcpy(&ext_join_params->assoc.bssid, &ether_bcast, ETH_ALEN);
 	ext_join_params->assoc.chanspec_num = chan_cnt;
 	if (chan_cnt) {
-		u16 channel, band, bw, ctl_sb;
-		chanspec_t chspec;
-		channel = cfg->channel;
-		band = (channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G
-			: WL_CHANSPEC_BAND_5G;
-		bw = WL_CHANSPEC_BW_20;
-		ctl_sb = WL_CHANSPEC_CTL_SB_NONE;
-		chspec = (channel | band | bw | ctl_sb);
-		ext_join_params->assoc.chanspec_list[0]  &= WL_CHANSPEC_CHAN_MASK;
-		ext_join_params->assoc.chanspec_list[0] |= chspec;
-		ext_join_params->assoc.chanspec_list[0] =
-			wl_chspec_host_to_driver(ext_join_params->assoc.chanspec_list[0]);
+		if (use_chan_cache) {
+			memcpy(ext_join_params->assoc.chanspec_list, chanspec_list,
+				sizeof(chanspec_t) * chan_cnt);
+		} else {
+			u16 channel, band, bw, ctl_sb;
+			chanspec_t chspec;
+			channel = cfg->channel;
+			band = (channel <= CH_MAX_2G_CHANNEL) ? WL_CHANSPEC_BAND_2G
+				: WL_CHANSPEC_BAND_5G;
+			bw = WL_CHANSPEC_BW_20;
+			ctl_sb = WL_CHANSPEC_CTL_SB_NONE;
+			chspec = (channel | band | bw | ctl_sb);
+			ext_join_params->assoc.chanspec_list[0]  &= WL_CHANSPEC_CHAN_MASK;
+			ext_join_params->assoc.chanspec_list[0] |= chspec;
+			ext_join_params->assoc.chanspec_list[0] =
+				wl_chspec_host_to_driver(ext_join_params->assoc.chanspec_list[0]);
+		}
 	}
 	ext_join_params->assoc.chanspec_num = htod32(ext_join_params->assoc.chanspec_num);
 	if (ext_join_params->ssid.SSID_len < IEEE80211_MAX_SSID_LEN) {
@@ -6474,6 +6510,12 @@ wl_cfg80211_bcn_bringup_ap(
 	s32 infra = 1;
 	s32 join_params_size = 0;
 	s32 ap = 1;
+#ifdef DISABLE_11H_SOFTAP
+	s32 spect = 0;
+#endif /* DISABLE_11H_SOFTAP */
+#ifdef MAX_GO_CLIENT_CNT
+	s32 bss_maxassoc = MAX_GO_CLIENT_CNT;
+#endif
 	s32 err = BCME_OK;
 
 	WL_DBG(("Enter dev_role: %d\n", dev_role));
@@ -6506,6 +6548,13 @@ wl_cfg80211_bcn_bringup_ap(
 				WL_ERR(("GO Bring up error %d\n", err));
 				goto exit;
 			}
+#ifdef MAX_GO_CLIENT_CNT
+			err = wldev_iovar_setint_bsscfg(dev, "bss_maxassoc", bss_maxassoc, bssidx);
+			if (unlikely(err)) {
+				WL_ERR(("bss_maxassoc error (%d)\n", err));
+				goto exit;
+			}
+#endif
 		} else
 			WL_DBG(("Bss is already up\n"));
 	} else if ((dev_role == NL80211_IFTYPE_AP) &&
@@ -6525,6 +6574,13 @@ wl_cfg80211_bcn_bringup_ap(
 			WL_ERR(("setting AP mode failed %d \n", err));
 			goto exit;
 		}
+#ifdef DISABLE_11H_SOFTAP
+		err = wldev_ioctl(dev, WLC_SET_SPECT_MANAGMENT, &spect, sizeof(s32), true);
+		if (err < 0) {
+			WL_ERR(("SET SPECT_MANAGMENT error %d\n", err));
+			goto exit;
+		}
+#endif /* DISABLE_11H_SOFTAP */
 
 		err = wldev_ioctl(dev, WLC_UP, &ap, sizeof(s32), true);
 		if (unlikely(err)) {
@@ -7868,12 +7924,22 @@ static s32 wl_inform_bss(struct bcm_cfg80211 *cfg)
 
 	bss_list = cfg->bss_list;
 	WL_DBG(("scanned AP count (%d)\n", bss_list->count));
+#ifdef ROAM_CHANNEL_CACHE
+	reset_roam_cache();
+#endif /* ROAM_CHANNEL_CACHE */
 	bi = next_bss(bss_list, bi);
 	for_each_bss(bss_list, bi, i) {
+#ifdef ROAM_CHANNEL_CACHE
+		add_roam_cache(bi);
+#endif /* ROAM_CHANNEL_CACHE */
 		err = wl_inform_single_bss(cfg, bi, false);
 		if (unlikely(err))
 			break;
 	}
+#ifdef ROAM_CHANNEL_CACHE
+	/* print_roam_cache(); */
+	update_roam_cache(cfg, ioctl_version);
+#endif /* ROAM_CHANNEL_CACHE */
 	return err;
 }
 
@@ -8522,8 +8588,20 @@ static s32 wl_get_assoc_ies(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 static void wl_ch_to_chanspec(int ch, struct wl_join_params *join_params,
         size_t *join_params_size)
 {
+#ifndef ROAM_CHANNEL_CACHE
 	chanspec_t chanspec = 0;
+#endif
+
 	if (ch != 0) {
+#ifdef ROAM_CHANNEL_CACHE
+		int n_channels;
+
+		n_channels = get_roam_channel_list(ch, join_params->params.chanspec_list,
+			&join_params->ssid, ioctl_version);
+		join_params->params.chanspec_num = htod32(n_channels);
+		*join_params_size += WL_ASSOC_PARAMS_FIXED_SIZE +
+			join_params->params.chanspec_num * sizeof(chanspec_t);
+#else
 		join_params->params.chanspec_num = 1;
 		join_params->params.chanspec_list[0] = ch;
 
@@ -8545,6 +8623,7 @@ static void wl_ch_to_chanspec(int ch, struct wl_join_params *join_params,
 
 		join_params->params.chanspec_num =
 			htod32(join_params->params.chanspec_num);
+#endif /* ROAM_CHANNEL_CACHE */
 		WL_DBG(("join_params->params.chanspec_list[0]= %X, %d channels\n",
 			join_params->params.chanspec_list[0],
 			join_params->params.chanspec_num));
@@ -8565,6 +8644,10 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 	s32 err = 0;
 	struct wiphy *wiphy;
 	u32 channel;
+#ifdef  ROAM_CHANNEL_CACHE
+	struct ieee80211_channel *cur_channel;
+	u32 freq, band;
+#endif /* ROAM_CHANNEL_CACHE */
 
 	wiphy = bcmcfg_to_wiphy(cfg);
 
@@ -8603,6 +8686,16 @@ static s32 wl_update_bss_info(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 		beacon_interval = cpu_to_le16(bi->beacon_period);
 	} else {
 		WL_DBG(("Found the AP in the list - BSSID %pM\n", bss->bssid));
+#ifdef  ROAM_CHANNEL_CACHE
+#if LINUX_VERSION_CODE == KERNEL_VERSION(2, 6, 38) && !defined(WL_COMPAT_WIRELESS)
+		freq = ieee80211_channel_to_frequency(channel);
+#else
+		band = (channel <= CH_MAX_2G_CHANNEL) ? IEEE80211_BAND_2GHZ : IEEE80211_BAND_5GHZ;
+		freq = ieee80211_channel_to_frequency(channel, band);
+#endif
+		cur_channel = ieee80211_get_channel(wiphy, freq);
+		bss->channel = cur_channel;
+#endif /* ROAM_CHANNEL_CACHE */
 #if defined(WL_CFG80211_P2P_DEV_IF)
 		ie = (u8 *)bss->ies->data;
 		ie_len = bss->ies->len;
@@ -11356,6 +11449,9 @@ s32 wl_cfg80211_up(void *para)
 	err = __wl_cfg80211_up(cfg);
 	if (unlikely(err))
 		WL_ERR(("__wl_cfg80211_up failed\n"));
+#ifdef ROAM_CHANNEL_CACHE
+	init_roam(ioctl_version);
+#endif
 	mutex_unlock(&cfg->usr_sync);
 
 

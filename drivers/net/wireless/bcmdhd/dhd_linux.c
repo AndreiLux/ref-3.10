@@ -5148,6 +5148,10 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef CUSTOM_PSPRETEND_THR
 	uint32 pspretend_thr = CUSTOM_PSPRETEND_THR;
 #endif
+#ifdef MAX_AP_CLIENT_CNT
+	uint32 max_assoc = MAX_AP_CLIENT_CNT;
+#endif
+
 #ifdef PKT_FILTER_SUPPORT
 	dhd_pkt_filter_enable = TRUE;
 #endif /* PKT_FILTER_SUPPORT */
@@ -5240,6 +5244,13 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
 			sizeof(iovbuf), TRUE, 0)) < 0) {
 			DHD_ERROR(("%s mpc for HostAPD failed  %d\n", __FUNCTION__, ret));
+		}
+#endif
+#ifdef MAX_AP_CLIENT_CNT
+		bcm_mkiovar("maxassoc", (char *)&max_assoc, 4, iovbuf, sizeof(iovbuf));
+		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
+			sizeof(iovbuf), TRUE, 0)) < 0) {
+			DHD_ERROR(("%s maxassoc for HostAPD failed  %d\n", __FUNCTION__, ret));
 		}
 #endif
 	} else if ((!op_mode && dhd_get_fw_mode(dhd->info) == DHD_FLAG_MFG_MODE) ||
@@ -5682,9 +5693,8 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 		bcmstrtok(&ptr, "\n", 0);
 		/* Print fw version info */
 		DHD_ERROR(("Firmware version = %s\n", buf));
-#if defined(BCMSDIO)
+
 		dhd_set_version_info(dhd, buf);
-#endif /* defined(BCMSDIO) */
 	}
 
 #if defined(BCMSDIO)
@@ -7293,8 +7303,9 @@ int dhd_dev_get_feature_set(struct net_device *dev)
 		if (FW_SUPPORTED(dhd, rttd2d))
 			feature_set |= WIFI_FEATURE_D2D_RTT;
 	}
-	if (FW_SUPPORTED(dhd, proxd))
-		feature_set |= WIFI_FEATURE_D2AP_RTT;
+#ifdef RTT_SUPPORT
+	feature_set |= WIFI_FEATURE_D2AP_RTT;
+#endif /* RTT_SUPPORT */
 
 	/* Supports STA + STA always */
 	feature_set |= WIFI_FEATURE_ADDITIONAL_STA;
@@ -8188,7 +8199,7 @@ bool dhd_os_check_if_up(dhd_pub_t *pub)
 	return pub->up;
 }
 
-#if defined(BCMSDIO)
+
 /* function to collect firmware, chip id and chip version info */
 void dhd_set_version_info(dhd_pub_t *dhdp, char *fw)
 {
@@ -8204,7 +8215,6 @@ void dhd_set_version_info(dhd_pub_t *dhdp, char *fw)
 		"\n  Chip: %x Rev %x Pkg %x", dhd_bus_chip_id(dhdp),
 		dhd_bus_chiprev_id(dhdp), dhd_bus_chippkg_id(dhdp));
 }
-#endif /* defined(BCMSDIO) */
 int dhd_ioctl_entry_local(struct net_device *net, wl_ioctl_t *ioc, int cmd)
 {
 	int ifidx;
