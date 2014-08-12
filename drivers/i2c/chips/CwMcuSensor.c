@@ -229,6 +229,10 @@ static void cwmcu_powermode_switch(struct cwmcu_data *mcu_data, int onoff)
 	if (onoff) {
 		if (mcu_data->power_on_counter == 0) {
 			gpio_make_falling_edge(mcu_data->gpio_wake_mcu);
+			udelay(10);
+			gpio_set_value(mcu_data->gpio_wake_mcu, 1);
+			udelay(10);
+			gpio_set_value(mcu_data->gpio_wake_mcu, 0);
 			D("%s: 11 onoff = %d\n", __func__, onoff);
 			usleep_range(500, 600);
 		}
@@ -3639,7 +3643,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Report initial Step Counter event\n", __func__);
+	I("%s++: Twice falling edge for CPU2MCU pin\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
