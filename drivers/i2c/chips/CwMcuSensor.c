@@ -219,6 +219,8 @@ static int CWMCU_i2c_write(struct cwmcu_data *mcu_data,
 			u8 reg_addr, u8 *data, u8 len);
 static int CWMCU_i2c_write_power(struct cwmcu_data *mcu_data,
 			u8 reg_addr, u8 *data, u8 len);
+static int firmware_odr(struct cwmcu_data *mcu_data, int sensors_id,
+			int delay_ms);
 
 static void gpio_make_falling_edge(int gpio)
 {
@@ -1220,9 +1222,7 @@ static int cwmcu_restore_status(struct cwmcu_data *mcu_data)
 {
 	int i, rc;
 	u8 data;
-	u8 reg_addr = 0;
 	u8 reg_value = 0;
-	int delay_ms;
 
 	D("Restore status\n");
 
@@ -1238,39 +1238,10 @@ static int cwmcu_restore_status(struct cwmcu_data *mcu_data)
 	D("%s: enable_list = 0x%x\n", __func__, mcu_data->enabled_list);
 
 	for (i = 0; i <= CW_GEOMAGNETIC_ROTATION_VECTOR; i++) {
-		if (i <= CW_GYRO)
-			reg_addr = (ACCE_UPDATE_RATE + (i * 0x10));
-		else if ((i >= CW_ORIENTATION) && (i <= CW_GRAVITY))
-			reg_addr = (ORIE_UPDATE_RATE + (i - CW_ORIENTATION));
-		else if ((i >= CW_MAGNETIC_UNCALIBRATED) &&
-			 (i <= CW_GEOMAGNETIC_ROTATION_VECTOR))
-			reg_addr = (MAGN_UNCA_UPDATE_RATE +
-				   (i - CW_MAGNETIC_UNCALIBRATED));
-		else {
-			D("%s: i = %d, no need to restore sample rate\n",
-			  __func__, i);
-			continue;
-		}
-
-		delay_ms = mcu_data->report_period[i] / MS_TO_PERIOD;
-
-		if (delay_ms >= 200)
-			reg_value = UPDATE_RATE_NORMAL;
-		else if ((60 <= delay_ms) && (delay_ms <= 199))
-			reg_value = UPDATE_RATE_UI;
-		else if ((20 <= delay_ms) && (delay_ms <= 59))
-			reg_value = UPDATE_RATE_GAME;
-		else if (delay_ms <= 19)
-			reg_value = UPDATE_RATE_FASTEST;
-
-		D(
-		  "%s: reg_addr = 0x%x, reg_value = 0x%x, period[%d] = %d,"
-		  " delay_ms = %d\n",
-		  __func__, reg_addr, reg_value, i, mcu_data->report_period[i],
-		  delay_ms);
-		rc = CWMCU_i2c_write(mcu_data, reg_addr, &reg_value, 1);
+		rc = firmware_odr(mcu_data, i,
+			     mcu_data->report_period[i] / MS_TO_PERIOD);
 		if (rc) {
-			E("%s: CWMCU_i2c_write fails, rc = %d, i = %d\n",
+			E("%s: firmware_odr fails, rc = %d, i = %d\n",
 			  __func__, rc, i);
 			return -EIO;
 		}
@@ -1781,11 +1752,15 @@ static int firmware_odr(struct cwmcu_data *mcu_data, int sensors_id,
 
 	if (delay_ms >= 200)
 		reg_value = UPDATE_RATE_NORMAL;
-	else if ((60 <= delay_ms) && (delay_ms <= 199))
+	else if (delay_ms >= 100)
+		reg_value = UPDATE_RATE_RATE_10Hz;
+	else if (delay_ms >= 60)
 		reg_value = UPDATE_RATE_UI;
-	else if ((20 <= delay_ms) && (delay_ms <= 59))
+	else if (delay_ms >= 40)
+		reg_value = UPDATE_RATE_RATE_25Hz;
+	else if (delay_ms >= 20)
 		reg_value = UPDATE_RATE_GAME;
-	else if (delay_ms <= 19)
+	else
 		reg_value = UPDATE_RATE_FASTEST;
 
 	D("%s: reg_addr = 0x%x, reg_value = 0x%x\n",
@@ -3679,7 +3654,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Properly deal with the iio polling rate\n", __func__);
+	I("%s++: Support 25Hz and 10Hz sampling rate\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");

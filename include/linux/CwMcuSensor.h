@@ -132,6 +132,8 @@ typedef enum {
 #define UPDATE_RATE_UI                  2
 #define UPDATE_RATE_GAME                3
 #define UPDATE_RATE_FASTEST             4
+#define UPDATE_RATE_RATE_10Hz           5
+#define UPDATE_RATE_RATE_25Hz           6
 
 #define GENSOR_POSITION			0x65
 #define COMPASS_POSITION		0x75
