@@ -123,8 +123,7 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 		h->pgalloc.pages[i] = nvmap_to_page(h->pgalloc.pages[i]);
 
 #if defined(CONFIG_NVMAP_PAGE_POOLS)
-	if (!zero_memory)
-		page_index = nvmap_page_pool_fill_lots(&nvmap_dev->pool,
+	page_index = nvmap_page_pool_fill_lots(&nvmap_dev->pool,
 				h->pgalloc.pages, nr_page);
 #endif
 
