@@ -616,10 +616,10 @@ static ssize_t synaptics_rmi4_interactive_store(struct device *dev,
         return -EINVAL;
 
     if (rmi4_data->interactive) {
-        dev_info(rmi4_data->pdev->dev.parent, " %s: resume\n", __func__);
+        dev_dbg(rmi4_data->pdev->dev.parent, " %s: resume\n", __func__);
         synaptics_rmi4_late_resume(&(rmi4_data->input_dev->dev));
     } else {
-        dev_info(rmi4_data->pdev->dev.parent, " %s: suspend\n", __func__);
+        dev_dbg(rmi4_data->pdev->dev.parent, " %s: suspend\n", __func__);
         synaptics_rmi4_early_suspend((&rmi4_data->input_dev->dev));
     }
     return count;
@@ -822,7 +822,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	size_of_2d_data = sizeof(struct synaptics_rmi4_f12_finger_data);
 
 	if (rmi4_data->suspend && rmi4_data->enable_wakeup_gesture) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s, enable_wakeup_gesture\n", __func__);
+		dev_dbg(rmi4_data->pdev->dev.parent, " %s, enable_wakeup_gesture\n", __func__);
 		retval = synaptics_rmi4_reg_read(rmi4_data,
 				data_addr + extra_data->data4_offset,
 				&detected_gestures,
@@ -831,7 +831,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			return 0;
 
 		if (detected_gestures) {
-			dev_info(rmi4_data->pdev->dev.parent, " %s, detected_gestures\n", __func__);
+			dev_dbg(rmi4_data->pdev->dev.parent, " %s, detected_gestures\n", __func__);
 			input_report_key(rmi4_data->input_dev, KEY_WAKEUP, 1);
 			input_sync(rmi4_data->input_dev);
 			input_report_key(rmi4_data->input_dev, KEY_WAKEUP, 0);
@@ -3101,7 +3101,7 @@ static void synaptics_rmi4_f12_wg(struct synaptics_rmi4_data *rmi4_data,
 static void synaptics_rmi4_wakeup_gesture(struct synaptics_rmi4_data *rmi4_data,
 		bool enable)
 {
-	dev_info(rmi4_data->pdev->dev.parent, " %s:%d\n", __func__, enable);
+	dev_dbg(rmi4_data->pdev->dev.parent, " %s:%d\n", __func__, enable);
 	if (rmi4_data->f11_wakeup_gesture)
 		synaptics_rmi4_f11_wg(rmi4_data, enable);
 	else if (rmi4_data->f12_wakeup_gesture)
@@ -3186,17 +3186,17 @@ static void synaptics_rmi4_early_suspend(struct device *dev)
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 
-	dev_info(rmi4_data->pdev->dev.parent, " %s\n", __func__);
+	dev_dbg(rmi4_data->pdev->dev.parent, " %s\n", __func__);
 	if (rmi4_data->stay_awake)
 		return;
 
 	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: gesture mode\n", __func__);
+		dev_dbg(rmi4_data->pdev->dev.parent, " %s: gesture mode\n", __func__);
 		synaptics_rmi4_wakeup_gesture(rmi4_data, true);
 		goto exit;
 	}
 
-	dev_info(rmi4_data->pdev->dev.parent, " %s: sleep mode\n", __func__);
+	dev_dbg(rmi4_data->pdev->dev.parent, " %s: sleep mode\n", __func__);
 	synaptics_rmi4_irq_enable(rmi4_data, false);
 	synaptics_rmi4_sensor_sleep(rmi4_data);
 	synaptics_rmi4_free_fingers(rmi4_data);
@@ -3223,12 +3223,12 @@ static void synaptics_rmi4_late_resume(struct device *dev)
 	struct synaptics_rmi4_exp_fhandler *exp_fhandler;
 	struct synaptics_rmi4_data *rmi4_data = dev_get_drvdata(dev);
 
-	dev_info(rmi4_data->pdev->dev.parent, " %s\n", __func__);
+	dev_dbg(rmi4_data->pdev->dev.parent, " %s\n", __func__);
 	if (rmi4_data->stay_awake)
 		return;
 
 	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: wake up from gesture mode\n", __func__);
+		dev_dbg(rmi4_data->pdev->dev.parent, " %s: wake up from gesture mode\n", __func__);
 		synaptics_rmi4_wakeup_gesture(rmi4_data, false);
 		synaptics_rmi4_force_cal(rmi4_data);
 		goto exit;
@@ -3238,7 +3238,7 @@ static void synaptics_rmi4_late_resume(struct device *dev)
 		synaptics_rmi4_resume(&(rmi4_data->input_dev->dev));
 
 	if (rmi4_data->suspend) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: wake up\n", __func__);
+		dev_dbg(rmi4_data->pdev->dev.parent, " %s: wake up\n", __func__);
 		synaptics_rmi4_sensor_wake(rmi4_data);
 		synaptics_rmi4_irq_enable(rmi4_data, true);
 	}
@@ -3263,7 +3263,7 @@ static int facedown_status_handler_func(struct notifier_block *this,
 	unsigned long status, void *unused)
 {
 	struct synaptics_rmi4_data *rmi4_data = exp_data.rmi4_data;
-	dev_info(rmi4_data->pdev->dev.parent, " %s: status: %lu\n", __func__, status);
+	dev_dbg(rmi4_data->pdev->dev.parent, " %s: status: %lu\n", __func__, status);
 
 	if (rmi4_data->stay_awake || (!rmi4_data->suspend))
 		return 0;
@@ -3271,7 +3271,7 @@ static int facedown_status_handler_func(struct notifier_block *this,
 		return 0;
 
 	if (!status) {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: gesture mode\n", __func__);
+		dev_dbg(rmi4_data->pdev->dev.parent, " %s: gesture mode\n", __func__);
 		if (rmi4_data->enable_wakeup_gesture) {
 			synaptics_rmi4_sensor_wake(rmi4_data);
 			synaptics_rmi4_irq_enable(rmi4_data, true);
@@ -3280,7 +3280,7 @@ static int facedown_status_handler_func(struct notifier_block *this,
 		rmi4_data->face_down = 0;
 	}
 	else {
-		dev_info(rmi4_data->pdev->dev.parent, " %s: sleep mode\n", __func__);
+		dev_dbg(rmi4_data->pdev->dev.parent, " %s: sleep mode\n", __func__);
 		if (rmi4_data->enable_wakeup_gesture)
 			synaptics_rmi4_wakeup_gesture(rmi4_data, false);
 		synaptics_rmi4_irq_enable(rmi4_data, false);
@@ -3302,7 +3302,7 @@ static int synaptics_rmi4_suspend(struct device *dev)
 
 	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
 		if (rmi4_data->irq_enabled) {
-			dev_info(rmi4_data->pdev->dev.parent, " %s, irq disabled\n", __func__);
+			dev_dbg(rmi4_data->pdev->dev.parent, " %s, irq disabled\n", __func__);
 			disable_irq(rmi4_data->irq);
 			rmi4_data->irq_enabled = false;
 		}
@@ -3349,7 +3349,7 @@ static int synaptics_rmi4_resume(struct device *dev)
 
 	if (rmi4_data->enable_wakeup_gesture && !rmi4_data->face_down) {
 		if (!rmi4_data->irq_enabled) {
-			dev_info(rmi4_data->pdev->dev.parent, " %s, irq enabled\n", __func__);
+			dev_dbg(rmi4_data->pdev->dev.parent, " %s, irq enabled\n", __func__);
 			enable_irq(rmi4_data->irq);
 			rmi4_data->irq_enabled = true;
 		}
