@@ -1,7 +1,7 @@
 /*
  * tegra_rt5677.c - Tegra machine ASoC driver for boards using ALC5645 codec.
  *
- * Copyright (c) 2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION. All rights reserved.
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
@@ -522,8 +522,12 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 			i2s->playback_fifo_cif = -1;
 		}
 	}
-
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
+
+	if (machine->codec && machine->codec->active)
+		return;
+
+	__set_rt5677_power(machine, false, false);
 }
 
 static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
@@ -1451,6 +1455,7 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct snd_soc_codec *codec = NULL;
 	struct rt5677_priv *rt5677 = NULL;
+	int i = 0;
 
 	if (machine->codec) {
 		codec = machine->codec;
@@ -1458,6 +1463,13 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 	}
 
 	mutex_lock(&machine->rt5677_lock);
+
+	for (i = 0; i < card->num_rtd; i++) {
+		codec = card->rtd[i].codec;
+		if (codec && codec->active)
+			goto exit;
+	}
+
 	if (machine->bias_level != SND_SOC_BIAS_OFF &&
 		level == SND_SOC_BIAS_OFF && machine->clock_enabled) {
 		mclk_enable(machine, 0);
@@ -1469,6 +1481,7 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 		}
 	}
 	machine->bias_level = level;
+exit:
 	mutex_unlock(&machine->rt5677_lock);
 
 	return 0;
@@ -1648,7 +1661,6 @@ static void trgra_do_power_work(struct work_struct *work)
 		pr_info("%s to close MCLK\n", __func__);
 		mclk_enable(machine, 0);
 	}
-	__set_rt5677_power(machine, false, false);
 	mutex_unlock(&machine->rt5677_lock);
 }
 

@@ -878,7 +878,7 @@ static int tegra_offload_pcm_probe(struct snd_soc_platform *platform)
 {
 	pr_debug("%s", __func__);
 
-	platform->dapm.idle_bias_off = 0;
+	platform->dapm.idle_bias_off = 1;
 	return 0;
 }
 

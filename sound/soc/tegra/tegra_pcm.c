@@ -391,7 +391,7 @@ static struct snd_soc_dai_driver tegra_fast_dai[] = {
 
 static int tegra_pcm_probe(struct snd_soc_platform *platform)
 {
-	platform->dapm.idle_bias_off = 0;
+	platform->dapm.idle_bias_off = 1;
 	return 0;
 }
 
