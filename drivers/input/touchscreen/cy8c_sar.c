@@ -455,13 +455,13 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				, pdata->ap_addr);
 	}
 	kfree(sarfw);
-	enable_irq(client->irq);
+	enable_irq(sar->intr_irq);
 	return 0;
 
 error_fw_fail:
 	kfree(sarfw);
 	client->addr = pdata->position_id ? 0xBA >> 1 : 0xB8 >> 1;
-	enable_irq(client->irq);
+	enable_irq(sar->intr_irq);
 	return -1;
 }
 
