@@ -226,12 +226,16 @@ int __init flounder_edp_init(void)
 {
 	unsigned int regulator_mA;
 
-	regulator_mA = get_maximum_cpu_current_supported();
-	if (!regulator_mA)
-		regulator_mA = 16000;
+	/* Both vdd_cpu and vdd_gpu uses 3-phase rail, so EDP current
+	 * limit will be the same.
+	 * */
+	regulator_mA = 16800;
 
 	pr_info("%s: CPU regulator %d mA\n", __func__, regulator_mA);
 	tegra_init_cpu_edp_limits(regulator_mA);
+
+	pr_info("%s: GPU regulator %d mA\n", __func__, regulator_mA);
+	tegra_init_gpu_edp_limits(regulator_mA);
 
 	return 0;
 }
