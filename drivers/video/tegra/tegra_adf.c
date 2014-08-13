@@ -1155,6 +1155,13 @@ int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
 						struct tegra_dc_bw_data *bw)
 {
 	struct tegra_adf_event_bandwidth event;
+
+	if (unlikely(!adf_info)) {
+		pr_debug("%s: suppressing bandwidth event since ADF is not finished probing\n",
+				__func__);
+		return 0;
+	}
+
 	event.base.type = TEGRA_ADF_EVENT_BANDWIDTH_RENEGOTIATE;
 	event.base.length = sizeof(event);
 	if (bw == NULL) {
