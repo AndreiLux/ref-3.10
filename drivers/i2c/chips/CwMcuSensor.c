@@ -187,7 +187,6 @@ struct cwmcu_data {
 	int probe_success;
 	struct workqueue_struct *mcu_wq;
 	struct wake_lock significant_wake_lock;
-	struct wake_lock wake_up_gesture_wake_lock;
 
 	int fw_update_status;
 };
@@ -2746,26 +2745,6 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 		}
 	}
 
-	/* INT_st2: bit 2 */
-	if (INT_st2 & CW_MCU_INT_BIT_WAKE_UP_GESTURE) {
-		if (mcu_data->enabled_list & (1<<HTC_WAKE_UP_GESTURE)) {
-			s16 data_buff[REPORT_EVENT_COMMON_LEN] = {0};
-
-			wake_lock_timeout(&mcu_data->wake_up_gesture_wake_lock,
-					  msecs_to_jiffies(200));
-
-			I("%s: HTC WAKE UP GESTURE occurs!!\n", __func__);
-
-			data_buff[0] = 1;
-			cw_send_event(mcu_data, HTC_WAKE_UP_GESTURE, data_buff,
-				      0);
-
-			clear_intr = CW_MCU_INT_BIT_WAKE_UP_GESTURE;
-			CWMCU_i2c_write(mcu_data, CWSTM32_INT_ST2, &clear_intr,
-					1);
-		}
-	}
-
 	/* INT_st2: bit 4 */
 	if (INT_st2 & CW_MCU_INT_BIT_MAGIC_COVER) {
 		if (mcu_data->enabled_list & (1<<HTC_MAGIC_COVER)) {
@@ -3643,7 +3622,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Twice falling edge for CPU2MCU pin\n", __func__);
+	I("%s++: Remove SENSOR_TYPE_WAKE_GESTURE\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3759,8 +3738,6 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 
 	wake_lock_init(&mcu_data->significant_wake_lock, WAKE_LOCK_SUSPEND,
 		       "significant_wake_lock");
-	wake_lock_init(&mcu_data->wake_up_gesture_wake_lock, WAKE_LOCK_SUSPEND,
-		       "wake_up_gesture_wake_lock");
 
 	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
 	init_irq_work(&mcu_data->iio_irq_work, iio_trigger_work);
@@ -3832,7 +3809,6 @@ static int CWMCU_i2c_remove(struct i2c_client *client)
 	gpio_set_value(mcu_data->gpio_wake_mcu, 1);
 
 	wake_lock_destroy(&mcu_data->significant_wake_lock);
-	wake_lock_destroy(&mcu_data->wake_up_gesture_wake_lock);
 	destroy_sysfs_interfaces(mcu_data);
 	kfree(mcu_data);
 	return 0;

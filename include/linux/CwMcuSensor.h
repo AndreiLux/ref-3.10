@@ -41,7 +41,6 @@ typedef enum {
 	CW_ROTATIONVECTOR              = 7,
 	CW_LINEARACCELERATION          = 8,
 	CW_GRAVITY                     = 9,
-	HTC_WAKE_UP_GESTURE            = 10,
 	HTC_MAGIC_COVER                = 12,
 	CW_MAGNETIC_UNCALIBRATED       = 16,
 	CW_GYROSCOPE_UNCALIBRATED      = 17,
@@ -202,7 +201,6 @@ typedef enum {
 #define CW_MCU_INT_BIT_LIGHT                    (1 << 3)
 
 /* INT_ST2 */
-#define CW_MCU_INT_BIT_WAKE_UP_GESTURE          (1 << 2)
 #define CW_MCU_INT_BIT_MAGIC_COVER              (1 << 4)
 
 /* INT_ST3 */
