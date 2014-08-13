@@ -41,7 +41,6 @@ static int pool_size;
 
 static struct task_struct *background_allocator;
 static DECLARE_WAIT_QUEUE_HEAD(nvmap_bg_wait);
-static struct page *pending_pages[PENDING_PAGES_SIZE];
 
 #ifdef CONFIG_NVMAP_PAGE_POOL_DEBUG
 static inline void __pp_dbg_var_add(u64 *dbg_var, u32 nr)
@@ -117,28 +116,34 @@ static void nvmap_pp_do_background_zero_pages(struct nvmap_page_pool *pool)
 	struct page *page;
 	int ret;
 
+	/*
+	 * Statically declared array of pages to be zeroed in a batch,
+	 * local to this thread but too big for the stack.
+	 */
+	static struct page *pending_zero_pages[PENDING_PAGES_SIZE];
+
 	mutex_lock(&pool->lock);
 	for (i = 0; i < PENDING_PAGES_SIZE; i++) {
 		page = get_zero_list_page(pool);
 		if (page == NULL)
 			break;
-		pending_pages[i] = page;
+		pending_zero_pages[i] = page;
 	}
 	mutex_unlock(&pool->lock);
 
-	ret = nvmap_pp_zero_pages(pending_pages, i);
+	ret = nvmap_pp_zero_pages(pending_zero_pages, i);
 	if (ret < 0) {
 		ret = 0;
 		goto out;
 	}
 
 	mutex_lock(&pool->lock);
-	ret = __nvmap_page_pool_fill_lots_locked(pool, pending_pages, i);
+	ret = __nvmap_page_pool_fill_lots_locked(pool, pending_zero_pages, i);
 	mutex_unlock(&pool->lock);
 
 out:
 	for (; ret < i; ret++)
-		__free_page(pending_pages[ret]);
+		__free_page(pending_zero_pages[ret]);
 }
 
 /*
@@ -212,17 +217,17 @@ static struct page *nvmap_page_pool_alloc_locked(struct nvmap_page_pool *pool,
  * Alloc a bunch of pages from the page pool. This will alloc as many as it can
  * and return the number of pages allocated. Pages are placed into the passed
  * array in a linear fashion starting from index 0.
- *
- * You must lock the page pool before using this.
  */
-static int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
-					struct page **pages, u32 nr)
+int nvmap_page_pool_alloc_lots(struct nvmap_page_pool *pool,
+				struct page **pages, u32 nr)
 {
 	u32 real_nr;
 	u32 ind = 0;
 
 	if (!enable_pp)
 		return 0;
+
+	mutex_lock(&pool->lock);
 
 	real_nr = min_t(u32, nr, pool->count);
 
@@ -237,51 +242,13 @@ static int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
 			BUG_ON(atomic_read(&page->_count) != 1);
 		}
 	}
+	mutex_unlock(&pool->lock);
 
 	pp_alloc_add(pool, ind);
 	pp_hit_add(pool, ind);
 	pp_miss_add(pool, nr - ind);
 
 	return ind;
-}
-
-int nvmap_page_pool_alloc_lots(struct nvmap_page_pool *pool,
-				struct page **pages, u32 nr)
-{
-	int ret;
-
-	mutex_lock(&pool->lock);
-	ret = __nvmap_page_pool_alloc_lots_locked(pool, pages, nr);
-	mutex_unlock(&pool->lock);
-
-	return ret;
-}
-
-/*
- * This adds a page to the pool. Returns true if the passed page is added.
- * That means if the pool is full this operation will fail.
- */
-static bool nvmap_page_pool_fill_locked(struct nvmap_page_pool *pool,
-					struct page *page)
-{
-	if (!enable_pp)
-		return false;
-
-	if (pool->count >= pool->max)
-		return false;
-
-	/* Sanity check. */
-	if (IS_ENABLED(CONFIG_NVMAP_PAGE_POOL_DEBUG)) {
-		atomic_inc(&page->_count);
-		BUG_ON(atomic_read(&page->_count) != 2);
-		BUG_ON(pool->count > pool->max);
-	}
-
-	list_add_tail(&page->lru, &pool->page_list);
-	pool->count++;
-	pp_fill_add(pool, 1);
-
-	return true;
 }
 
 /*
@@ -591,6 +558,7 @@ int nvmap_page_pool_init(struct nvmap_device *dev)
 	struct sysinfo info;
 	struct nvmap_page_pool *pool = &dev->pool;
 #ifdef CONFIG_NVMAP_PAGE_POOLS_INIT_FILLUP
+	struct page **pending_init_pages = NULL;
 	int i;
 	struct page *page;
 	int pages_to_fill;
@@ -636,21 +604,33 @@ int nvmap_page_pool_init(struct nvmap_device *dev)
 			PAGE_SIZE;
 	pages_to_fill = pages_to_fill ? : pool->max;
 
-	mutex_lock(&pool->lock);
-	for (i = 0; i < pages_to_fill; i++) {
-		gfp_t gfp = GFP_NVMAP;
-		if (zero_memory) {
-			gfp |= __GFP_ZERO;
+	pending_init_pages = kcalloc(PENDING_PAGES_SIZE, sizeof(struct page),
+				GFP_KERNEL);
+	if (!pending_init_pages)
+		goto done;
+
+	while (pages_to_fill > 0) {
+		int pages = min_t(int, pages_to_fill, PENDING_PAGES_SIZE);
+
+		for (i = 0; i < pages; i++) {
+			page = alloc_page(GFP_NVMAP);
+			if (!page) {
+				for (i = i - 1; i >= 0; i--)
+					__free_page(pending_init_pages[i]);
+				goto done;
+			}
+			if (PageHighMem(page))
+				highmem_pages++;
+			pending_init_pages[i] = page;
 		}
-		page = alloc_page(gfp);
-		if (!page)
-			goto done;
-		if (!nvmap_page_pool_fill_locked(pool, page)) {
-			__free_page(page);
+		i = nvmap_page_pool_fill_lots(pool, pending_init_pages, pages);
+		pages_to_fill -= i;
+		if (i < pages) {
+			for (; i < pages; i++)
+				__free_page(pending_init_pages[i]);
 			goto done;
 		}
-		if (PageHighMem(page))
-			highmem_pages++;
+
 	}
 
 	si_meminfo(&info);
@@ -659,7 +639,7 @@ int nvmap_page_pool_init(struct nvmap_device *dev)
 		highmem_pages, pool->max,
 		info.totalram, info.freeram, info.totalhigh, info.freehigh);
 done:
-	mutex_unlock(&pool->lock);
+	kfree(pending_init_pages);
 #endif
 	return 0;
 fail:
