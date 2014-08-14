@@ -291,6 +291,7 @@ struct synaptics_rmi4_data {
 	int irq;
 	int sensor_max_x;
 	int sensor_max_y;
+	int sensor_max_z;
 	bool flash_prog_mode;
 	bool irq_enabled;
 	bool fingers_on_2d;

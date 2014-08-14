@@ -644,6 +644,7 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	unsigned short data_offset;
 	int x;
 	int y;
+	int z;
 	int wx;
 	int wy;
 	int temp;
@@ -725,6 +726,9 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			y = (data[1] << 4) | ((data[2] >> 4) & MASK_4BIT);
 			wx = (data[3] & MASK_4BIT);
 			wy = (data[3] >> 4) & MASK_4BIT;
+#ifdef REPORT_2D_Z
+			z = data[4];
+#endif
 
 			if (rmi4_data->hw_if->board_data->swap_axes) {
 				temp = x;
@@ -748,6 +752,10 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					ABS_MT_POSITION_X, x);
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_POSITION_Y, y);
+#ifdef REPORT_2D_Z
+			input_report_abs(rmi4_data->input_dev,
+					ABS_MT_PRESSURE, z);
+#endif
 #ifdef REPORT_2D_W
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_TOUCH_MAJOR, max(wx, wy));
@@ -763,11 +771,12 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					"status = 0x%02x\n"
 					"x = %d\n"
 					"y = %d\n"
+					"z = %d\n"
 					"wx = %d\n"
 					"wy = %d\n",
 					__func__, finger,
 					finger_status,
-					x, y, wx, wy);
+					x, y, z, wx, wy);
 
 			touch_count++;
 		}
@@ -804,6 +813,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	unsigned short data_addr;
 	int x;
 	int y;
+	int z;
 	int wx;
 	int wy;
 	int temp;
@@ -910,6 +920,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 			x = (finger_data->x_msb << 8) | (finger_data->x_lsb);
 			y = (finger_data->y_msb << 8) | (finger_data->y_lsb);
+#ifdef REPORT_2D_Z
+			z = finger_data->z;
+#endif
 #ifdef REPORT_2D_W
 			wx = finger_data->wx;
 			wy = finger_data->wy;
@@ -937,6 +950,10 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					ABS_MT_POSITION_X, x);
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_POSITION_Y, y);
+#ifdef REPORT_2D_Z
+			input_report_abs(rmi4_data->input_dev,
+					ABS_MT_PRESSURE, z);
+#endif
 #ifdef REPORT_2D_W
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_TOUCH_MAJOR, max(wx, wy));
@@ -952,11 +969,12 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 					"status = 0x%02x\n"
 					"x = %d\n"
 					"y = %d\n"
+					"z = %d\n"
 					"wx = %d\n"
 					"wy = %d\n",
 					__func__, finger,
 					finger_status,
-					x, y, wx, wy);
+					x, y, z, wx, wy);
 
 			touch_count++;
 			break;
@@ -1364,16 +1382,20 @@ static int synaptics_rmi4_f11_init(struct synaptics_rmi4_data *rmi4_data,
 	if (retval < 0)
 		return retval;
 
-	/* Maximum x and y */
+	/* Maximum x, y and z */
 	rmi4_data->sensor_max_x = ((control[6] & MASK_8BIT) << 0) |
 			((control[7] & MASK_4BIT) << 8);
 	rmi4_data->sensor_max_y = ((control[8] & MASK_8BIT) << 0) |
 			((control[9] & MASK_4BIT) << 8);
+#ifdef REPORT_2D_Z
+	rmi4_data->sensor_max_z = 255;
+#endif
 	dev_dbg(rmi4_data->pdev->dev.parent,
-			"%s: Function %02x max x = %d max y = %d\n",
+			"%s: Function %02x max x = %d max y = %d max z = %d\n",
 			__func__, fhandler->fn_number,
 			rmi4_data->sensor_max_x,
-			rmi4_data->sensor_max_y);
+			rmi4_data->sensor_max_y,
+			rmi4_data->sensor_max_z);
 
 	rmi4_data->max_touch_width = MAX_F11_TOUCH_WIDTH;
 
@@ -1546,18 +1568,22 @@ static int synaptics_rmi4_f12_init(struct synaptics_rmi4_data *rmi4_data,
 	if (retval < 0)
 		return retval;
 
-	/* Maximum x and y */
+	/* Maximum x, y and z */
 	rmi4_data->sensor_max_x =
 			((unsigned short)ctrl_8.max_x_coord_lsb << 0) |
 			((unsigned short)ctrl_8.max_x_coord_msb << 8);
 	rmi4_data->sensor_max_y =
 			((unsigned short)ctrl_8.max_y_coord_lsb << 0) |
 			((unsigned short)ctrl_8.max_y_coord_msb << 8);
+#ifdef REPORT_2D_Z
+	rmi4_data->sensor_max_z = 255;
+#endif
 	dev_dbg(rmi4_data->pdev->dev.parent,
-			"%s: Function %02x max x = %d max y = %d\n",
+			"%s: Function %02x max x = %d max y = %d max z = %d\n",
 			__func__, fhandler->fn_number,
 			rmi4_data->sensor_max_x,
-			rmi4_data->sensor_max_y);
+			rmi4_data->sensor_max_y,
+			rmi4_data->sensor_max_z);
 
 	rmi4_data->num_of_rx = ctrl_8.num_of_rx;
 	rmi4_data->num_of_tx = ctrl_8.num_of_tx;
@@ -2208,6 +2234,11 @@ static void synaptics_rmi4_set_params(struct synaptics_rmi4_data *rmi4_data)
 	input_set_abs_params(rmi4_data->input_dev,
 			ABS_MT_POSITION_Y, 0,
 			rmi4_data->sensor_max_y, 0, 0);
+#ifdef REPORT_2D_Z
+	input_set_abs_params(rmi4_data->input_dev,
+			ABS_MT_PRESSURE, 0,
+			rmi4_data->sensor_max_z, 0, 0);
+#endif
 #ifdef REPORT_2D_W
 	input_set_abs_params(rmi4_data->input_dev,
 			ABS_MT_TOUCH_MAJOR, 0,
