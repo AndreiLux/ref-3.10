@@ -1,7 +1,7 @@
 /*
  * arch/arm/mach-tegra/board-flounder-power.c
  *
- * Copyright (c) 2013 NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -27,7 +27,6 @@
 #include <linux/platform_data/tegra_edp.h>
 #include <linux/pid_thermal_gov.h>
 #include <linux/regulator/fixed.h>
-#include <linux/generic_adc_thermal.h>
 #include <linux/mfd/palmas.h>
 #include <linux/power/power_supply_extcon.h>
 #include <linux/regulator/machine.h>
@@ -176,50 +175,6 @@ int __init flounder_rail_alignment_init(void)
 	return 0;
 }
 
-/* -40 to 125 degC */
-static int flounder_batt_temperature_table[] = {
-	259, 266, 272, 279, 286, 293, 301, 308,
-	316, 324, 332, 340, 349, 358, 367, 376,
-	386, 395, 405, 416, 426, 437, 448, 459,
-	471, 483, 495, 508, 520, 533, 547, 561,
-	575, 589, 604, 619, 634, 650, 666, 682,
-	699, 716, 733, 751, 769, 787, 806, 825,
-	845, 865, 885, 905, 926, 947, 969, 990,
-	1013, 1035, 1058, 1081, 1104, 1127, 1151, 1175,
-	1199, 1224, 1249, 1273, 1298, 1324, 1349, 1374,
-	1400, 1426, 1451, 1477, 1503, 1529, 1554, 1580,
-	1606, 1631, 1657, 1682, 1707, 1732, 1757, 1782,
-	1807, 1831, 1855, 1878, 1902, 1925, 1948, 1970,
-	1992, 2014, 2036, 2057, 2077, 2097, 2117, 2136,
-	2155, 2174, 2192, 2209, 2227, 2243, 2259, 2275,
-	2291, 2305, 2320, 2334, 2347, 2361, 2373, 2386,
-	2397, 2409, 2420, 2430, 2441, 2450, 2460, 2469,
-	2478, 2486, 2494, 2502, 2509, 2516, 2523, 2529,
-	2535, 2541, 2547, 2552, 2557, 2562, 2567, 2571,
-	2575, 2579, 2583, 2587, 2590, 2593, 2596, 2599,
-	2602, 2605, 2607, 2609, 2611, 2614, 2615, 2617,
-	2619, 2621, 2622, 2624, 2625, 2626,
-};
-
-static struct gadc_thermal_platform_data gadc_thermal_battery_pdata = {
-	.iio_channel_name = "battery-temp-channel",
-	.tz_name = "battery-temp",
-	.temp_offset = 0,
-	.adc_to_temp = NULL,
-	.adc_temp_lookup = flounder_batt_temperature_table,
-	.lookup_table_size = ARRAY_SIZE(flounder_batt_temperature_table),
-	.first_index_temp = 125,
-	.last_index_temp = -40,
-};
-
-static struct platform_device gadc_thermal_battery = {
-	.name   = "generic-adc-thermal",
-	.id     = 0,
-	.dev    = {
-		.platform_data = &gadc_thermal_battery_pdata,
-	},
-};
-
 int __init flounder_regulator_init(void)
 {
 	void __iomem *pmc = IO_ADDRESS(TEGRA_PMC_BASE);
@@ -232,7 +187,6 @@ int __init flounder_regulator_init(void)
 	pmc_ctrl = readl(pmc + PMC_CTRL);
 	writel(pmc_ctrl | PMC_CTRL_INTR_LOW, pmc + PMC_CTRL);
 
-	platform_device_register(&gadc_thermal_battery);
 	platform_device_register(&power_supply_extcon_device);
 
 	return 0;
@@ -283,10 +237,163 @@ static struct tegra_thermtrip_pmic_data tpdata_palmas = {
 	.poweroff_reg_data = 0x0,
 };
 
-/* This is really v2 rev of the flounder_soctherm_data structure */
+/*
+ * @PSKIP_CONFIG_NOTE: For T132, throttling config of PSKIP is no longer
+ * done in soctherm registers. These settings are now done via registers in
+ * denver:ccroc module which are at a different register offset. More
+ * importantly, there are _only_ three levels of throttling: 'low',
+ * 'medium' and 'heavy' and are selected via the 'throttling_depth' field
+ * in the throttle->devs[] section of the soctherm config. Since the depth
+ * specification is per device, it is necessary to manually make sure the
+ * depths specified alongwith a given level are the same across all devs,
+ * otherwise it will overwrite a previously set depth with a different
+ * depth. We will refer to this comment at each relevant location in the
+ * config sections below.
+ */
 static struct soctherm_platform_data flounder_soctherm_data = {
 	.oc_irq_base = TEGRA_SOC_OC_IRQ_BASE,
 	.num_oc_irqs = TEGRA_SOC_OC_NUM_IRQ,
+	.therm = {
+		[THERM_CPU] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.hotspot_offset = 6000,
+			.num_trips = 3,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 101000,
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 99000,
+					.trip_type = THERMAL_TRIP_HOT,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "cpu-balanced",
+					.trip_temp = 90000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+		[THERM_GPU] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.hotspot_offset = 6000,
+			.num_trips = 3,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 101000,
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 99000,
+					.trip_type = THERMAL_TRIP_HOT,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "gpu-balanced",
+					.trip_temp = 90000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+		[THERM_MEM] = {
+			.zone_enable = true,
+			.num_trips = 1,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 101000, /* = GPU shut */
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+		[THERM_PLL] = {
+			.zone_enable = true,
+			.tzp = &soctherm_tzp,
+		},
+	},
+	.throttle = {
+		[THROTTLE_HEAVY] = {
+			.priority = 100,
+			.devs = {
+				[THROTTLE_DEV_CPU] = {
+					.enable = true,
+					.depth = 80,
+					/* see @PSKIP_CONFIG_NOTE */
+					.throttling_depth = "heavy_throttling",
+				},
+				[THROTTLE_DEV_GPU] = {
+					.enable = true,
+					.throttling_depth = "heavy_throttling",
+				},
+			},
+		},
+	},
+};
+
+/* Only the diffs from flounder_soctherm_data structure */
+static struct soctherm_platform_data t132ref_v1_soctherm_data = {
+	.therm = {
+		[THERM_CPU] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.hotspot_offset = 10000,
+		},
+		[THERM_PLL] = {
+			.zone_enable = true,
+			.passive_delay = 1000,
+			.num_trips = 3,
+			.trips = {
+				{
+					.cdev_type = "tegra-shutdown",
+					.trip_temp = 97000,
+					.trip_type = THERMAL_TRIP_CRITICAL,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "tegra-heavy",
+					.trip_temp = 94000,
+					.trip_type = THERMAL_TRIP_HOT,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+				{
+					.cdev_type = "cpu-balanced",
+					.trip_temp = 84000,
+					.trip_type = THERMAL_TRIP_PASSIVE,
+					.upper = THERMAL_NO_LIMIT,
+					.lower = THERMAL_NO_LIMIT,
+				},
+			},
+			.tzp = &soctherm_tzp,
+		},
+	},
+};
+
+/* Only the diffs from ardbeg_soctherm_data structure */
+static struct soctherm_platform_data t132ref_v2_soctherm_data = {
 	.therm = {
 		[THERM_CPU] = {
 			.zone_enable = true,
@@ -348,98 +455,6 @@ static struct soctherm_platform_data flounder_soctherm_data = {
 			},
 			.tzp = &soctherm_tzp,
 		},
-		[THERM_MEM] = {
-			.zone_enable = true,
-			.num_trips = 1,
-			.trips = {
-				{
-					.cdev_type = "tegra-shutdown",
-					.trip_temp = 101000, /* = GPU shut */
-					.trip_type = THERMAL_TRIP_CRITICAL,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-			},
-			.tzp = &soctherm_tzp,
-		},
-		[THERM_PLL] = {
-			.zone_enable = true,
-			.num_trips = 1,
-			.trips = {
-				{
-					.cdev_type = "tegra-dram",
-					.trip_temp = 78000,
-					.trip_type = THERMAL_TRIP_ACTIVE,
-					.upper = 1,
-					.lower = 1,
-				},
-			},
-			.tzp = &soctherm_tzp,
-		},
-	},
-	.throttle = {
-		[THROTTLE_HEAVY] = {
-			.priority = 100,
-			.devs = {
-				[THROTTLE_DEV_CPU] = {
-					.enable = true,
-					.depth = 80,
-					.throttling_depth = "heavy_throttling",
-				},
-				[THROTTLE_DEV_GPU] = {
-					.enable = true,
-					.throttling_depth = "heavy_throttling",
-				},
-			},
-		},
-	},
-	.tshut_pmu_trip_data = &tpdata_palmas,
-};
-
-/* Only the diffs from flounder_soctherm_data structure */
-static struct soctherm_platform_data flounder_v1_soctherm_data = {
-	.therm = {
-		[THERM_CPU] = {
-			.zone_enable = true,
-			.passive_delay = 1000,
-			.hotspot_offset = 10000,
-		},
-		[THERM_PLL] = {
-			.zone_enable = true,
-			.passive_delay = 1000,
-			.num_trips = 4,
-			.trips = {
-				{
-					.cdev_type = "tegra-shutdown",
-					.trip_temp = 97000,
-					.trip_type = THERMAL_TRIP_CRITICAL,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-				{
-					.cdev_type = "tegra-heavy",
-					.trip_temp = 94000,
-					.trip_type = THERMAL_TRIP_HOT,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-				{
-					.cdev_type = "cpu-balanced",
-					.trip_temp = 84000,
-					.trip_type = THERMAL_TRIP_PASSIVE,
-					.upper = THERMAL_NO_LIMIT,
-					.lower = THERMAL_NO_LIMIT,
-				},
-				{
-				.cdev_type = "tegra-dram",
-				.trip_temp = 78000,
-				.trip_type = THERMAL_TRIP_ACTIVE,
-				.upper = 1,
-				.lower = 1,
-				},
-			},
-			.tzp = &soctherm_tzp,
-		},
 	},
 };
 
@@ -454,6 +469,7 @@ static struct soctherm_throttle battery_oc_throttle_t13x = {
 		[THROTTLE_DEV_CPU] = {
 			.enable = true,
 			.depth = 50,
+			/* see @PSKIP_CONFIG_NOTE */
 			.throttling_depth = "low_throttling",
 		},
 		[THROTTLE_DEV_GPU] = {
@@ -467,8 +483,8 @@ int __init flounder_soctherm_init(void)
 {
 	const int t13x_cpu_edp_temp_margin = 5000,
 		t13x_gpu_edp_temp_margin = 6000;
+	int cpu_edp_temp_margin, gpu_edp_temp_margin;
 	int cp_rev, ft_rev;
-	struct board_info pmu_board_info;
 	enum soctherm_therm_id therm_cpu = THERM_CPU;
 
 	cp_rev = tegra_fuse_calib_base_get_cp(NULL, NULL);
@@ -478,12 +494,21 @@ int __init flounder_soctherm_init(void)
 	tegra_gpio_disable(TEGRA_GPIO_PJ2);
 	tegra_gpio_disable(TEGRA_GPIO_PS7);
 
-	if (cp_rev) {
-		/* ATE rev is Old or Mid - use PLLx sensor only */
+	cpu_edp_temp_margin = t13x_cpu_edp_temp_margin;
+	gpu_edp_temp_margin = t13x_gpu_edp_temp_margin;
+
+	if (!cp_rev) {
+		/* ATE rev is NEW: use v2 table */
 		flounder_soctherm_data.therm[THERM_CPU] =
-			flounder_v1_soctherm_data.therm[THERM_CPU];
+			t132ref_v2_soctherm_data.therm[THERM_CPU];
+		flounder_soctherm_data.therm[THERM_GPU] =
+			t132ref_v2_soctherm_data.therm[THERM_GPU];
+	} else {
+		/* ATE rev is Old or Mid: use PLLx sensor only */
+		flounder_soctherm_data.therm[THERM_CPU] =
+			t132ref_v1_soctherm_data.therm[THERM_CPU];
 		flounder_soctherm_data.therm[THERM_PLL] =
-			flounder_v1_soctherm_data.therm[THERM_PLL];
+			t132ref_v1_soctherm_data.therm[THERM_PLL];
 		therm_cpu = THERM_PLL; /* override CPU with PLL zone */
 	}
 
@@ -518,7 +543,7 @@ int __init flounder_soctherm_init(void)
 		flounder_soctherm_data.therm[THERM_PLL].trips,
 		&flounder_soctherm_data.therm[THERM_PLL].num_trips);
 
-	tegra_get_pmu_board_info(&pmu_board_info);
+	flounder_soctherm_data.tshut_pmu_trip_data = &tpdata_palmas;
 	/* Enable soc_therm OC throttling on selected platforms */
 	memcpy(&flounder_soctherm_data.throttle[THROTTLE_OC4],
 		       &battery_oc_throttle_t13x,
