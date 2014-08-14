@@ -84,6 +84,7 @@
 
 #define ENABLE_LIST_GROUP_NUM 4
 #define REACTIVATE_PERIOD (10*HZ)
+#define RESET_PERIOD (30*HZ)
 #define SYNC_ACK_MAGIC  0x66
 #define EXHAUSTED_MAGIC 0x77
 
@@ -112,7 +113,6 @@ MODULE_PARM_DESC(DEBUG_DISABLE, "disable " CWMCU_I2C_NAME " driver") ;
 struct cwmcu_data {
 	struct i2c_client *client;
 	atomic_t delay;
-	int suspended;
 	struct mutex mutex_lock;
 	struct mutex group_i2c_lock;
 	struct mutex activated_i2c_lock;
@@ -146,6 +146,11 @@ struct cwmcu_data {
 	bool w_activated_i2c;
 	bool w_re_init;
 	bool w_facedown_set;
+
+	bool suspended;
+	bool probe_success;
+	bool is_block_i2c;
+
 	u32 gpio_wake_mcu;
 	u32 gpio_reset;
 	u32 gpio_chip_mode;
@@ -170,6 +175,7 @@ struct cwmcu_data {
 	s32 i2c_total_retry;
 	s32 i2c_latch_retry;
 	unsigned long i2c_jiffies;
+	unsigned long reset_jiffies;
 
 	int disable_access_count;
 
@@ -184,7 +190,6 @@ struct cwmcu_data {
 	s16 light_last_data[REPORT_EVENT_COMMON_LEN];
 	u64 time_base;
 
-	int probe_success;
 	struct workqueue_struct *mcu_wq;
 	struct wake_lock significant_wake_lock;
 
@@ -1011,8 +1016,15 @@ static int CWMCU_i2c_write(struct cwmcu_data *mcu_data,
 		return len;
 	}
 
+	if (mcu_data->is_block_i2c) {
+		if (time_after(jiffies,
+			       mcu_data->reset_jiffies + RESET_PERIOD))
+			mcu_data->is_block_i2c = 0;
+		return len;
+	}
+
 	mutex_lock(&mcu_data->mutex_lock);
-	if (mcu_data->suspended == 1) {
+	if (mcu_data->suspended) {
 		mutex_unlock(&mcu_data->mutex_lock);
 		return len;
 	}
@@ -1410,7 +1422,7 @@ static int erase_mcu_flash_mem(struct cwmcu_data *mcu_data)
 
 	D("%s: Tx size = %d\n", __func__, 3);
 	/* Erase needs 9 sec in worst case */
-	mdelay(9000);
+	msleep(9000);
 	D("%s: After delay, Tx size = %d\n", __func__, 3);
 
 	return 0;
@@ -1486,7 +1498,8 @@ static int update_mcu_flash_mem_block(struct cwmcu_data *mcu_data,
 		return rc;
 	}
 
-	udelay(numberofbyte * 35);
+	i = numberofbyte * 35;
+	usleep_range(i, i + 1000);
 
 	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
 	if (rc != 1) {
@@ -1623,8 +1636,15 @@ static int CWMCU_i2c_read(struct cwmcu_data *mcu_data,
 		return len;
 	}
 
+	if (mcu_data->is_block_i2c) {
+		if (time_after(jiffies,
+			       mcu_data->reset_jiffies + RESET_PERIOD))
+			mcu_data->is_block_i2c = 0;
+		return len;
+	}
+
 	mutex_lock(&mcu_data->mutex_lock);
-	if (mcu_data->suspended == 1) {
+	if (mcu_data->suspended) {
 		mutex_unlock(&mcu_data->mutex_lock);
 		return len;
 	}
@@ -1677,20 +1697,28 @@ static int CWMCU_i2c_read(struct cwmcu_data *mcu_data,
 	return rc;
 }
 
-static void reset_hub(struct cwmcu_data *mcu_data)
+static bool reset_hub(struct cwmcu_data *mcu_data)
 {
-	gpio_direction_output(mcu_data->gpio_reset, 0);
-	I("%s: gpio_reset = %d\n", __func__,
-	  gpio_get_value_cansleep(mcu_data->gpio_reset));
-	usleep_range(10000, 15000);
-	gpio_direction_output(mcu_data->gpio_reset, 1);
-	I("%s: gpio_reset = %d\n", __func__,
-	  gpio_get_value_cansleep(mcu_data->gpio_reset));
+	if (time_after(jiffies, mcu_data->reset_jiffies + RESET_PERIOD)) {
+		gpio_direction_output(mcu_data->gpio_reset, 0);
+		D("%s: gpio_reset = %d\n", __func__,
+		  gpio_get_value_cansleep(mcu_data->gpio_reset));
+		usleep_range(10000, 15000);
+		gpio_direction_output(mcu_data->gpio_reset, 1);
+		D("%s: gpio_reset = %d\n", __func__,
+		  gpio_get_value_cansleep(mcu_data->gpio_reset));
 
-	retry_reset(mcu_data);
-	mcu_data->i2c_jiffies = jiffies;
+		retry_reset(mcu_data);
+		mcu_data->i2c_jiffies = jiffies;
 
-	usleep_range(500000, 1000000); /* HUB need at least 500ms to be ready */
+		/* HUB need at least 500ms to be ready */
+		usleep_range(500000, 1000000);
+		mcu_data->is_block_i2c = false;
+	} else
+		mcu_data->is_block_i2c = true;
+
+	mcu_data->reset_jiffies = jiffies;
+	return !mcu_data->is_block_i2c;
 }
 
 /* This informs firmware for Output Data Rate of each sensor.
@@ -1963,7 +1991,7 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 	}
 	kfree(str_buf);
 
-	if (mcu_data->probe_success != 1)
+	if (!mcu_data->probe_success)
 		return -EBUSY;
 
 	if ((sensors_id >= CW_SENSORS_ID_END) ||
@@ -2152,7 +2180,7 @@ static ssize_t batch_set(struct device *dev,
 	bool need_update_fw_odr;
 	s32 period;
 
-	if (mcu_data->probe_success != 1) {
+	if (!mcu_data->probe_success) {
 		E("%s: probe_success = %d\n", __func__,
 		  mcu_data->probe_success);
 		return -1;
@@ -2160,7 +2188,7 @@ static ssize_t batch_set(struct device *dev,
 
 	for (retry = 0; retry < ACTIVE_RETRY_TIMES; retry++) {
 		mutex_lock(&mcu_data->mutex_lock);
-		if (mcu_data->suspended == 1) {
+		if (mcu_data->suspended) {
 			mutex_unlock(&mcu_data->mutex_lock);
 			D("%s: suspended, retry = %d\n",
 				__func__, retry);
@@ -2565,7 +2593,7 @@ static void cwmcu_read(struct cwmcu_data *mcu_data, struct iio_poll_func *pf)
 {
 	int id_check;
 
-	if (mcu_data->probe_success != 1) {
+	if (!mcu_data->probe_success) {
 		E("%s: probe_success = %d\n", __func__,
 		  mcu_data->probe_success);
 		return;
@@ -2600,7 +2628,7 @@ static int cwmcu_suspend(struct device *dev)
 	disable_irq(mcu_data->IRQ);
 
 	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->suspended = 1;
+	mcu_data->suspended = true;
 	mutex_unlock(&mcu_data->mutex_lock);
 
 	for (i = 0; (mcu_data->power_on_counter != 0) &&
@@ -2623,7 +2651,7 @@ static int cwmcu_resume(struct device *dev)
 	D("[CWMCU] %s++\n", __func__);
 
 	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->suspended = 0;
+	mcu_data->suspended = false;
 	mutex_unlock(&mcu_data->mutex_lock);
 
 	enable_irq(mcu_data->IRQ);
@@ -2688,7 +2716,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 	u8 clear_intr;
 	u16 light_adc = 0;
 
-	if (mcu_data->probe_success != 1) {
+	if (!mcu_data->probe_success) {
 		D("%s: probe not completed\n", __func__);
 		return IRQ_HANDLED;
 	}
@@ -2893,6 +2921,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 	/* err_st: bit 6 */
 	if (err_st & CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION) {
 		u8 buf_len[EXCEPTION_BUFFER_LEN_SIZE] = {0};
+		bool reset_done;
 
 		ret = CWMCU_i2c_read(mcu_data, CW_I2C_REG_EXCEPTION_BUFFER_LEN,
 				     buf_len, sizeof(buf_len));
@@ -2944,13 +2973,14 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 		}
 exception_end:
 		mutex_lock(&mcu_data->activated_i2c_lock);
-
-		reset_hub(mcu_data);
-
+		reset_done = reset_hub(mcu_data);
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 
-		mcu_data->w_re_init = true;
-		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
+		if (reset_done) {
+			mcu_data->w_re_init = true;
+			queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
+			E("%s: reset after exception done\n", __func__);
+		}
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION;
 		ret = CWMCU_i2c_write(mcu_data, CWSTM32_ERR_ST, &clear_intr, 1);
@@ -3511,13 +3541,16 @@ static void cwmcu_one_shot(struct work_struct *work)
 		if (retry_exhausted(mcu_data) &&
 		    time_after(jiffies, mcu_data->i2c_jiffies +
 					REACTIVATE_PERIOD)) {
-			reset_hub(mcu_data);
+			bool reset_done;
+
+			reset_done = reset_hub(mcu_data);
 
 			I("%s: fw_update_status = 0x%x\n", __func__,
 			  mcu_data->fw_update_status);
 
-			if (!(mcu_data->fw_update_status &
-			      (FW_DOES_NOT_EXIST | FW_UPDATE_QUEUED))) {
+			if (reset_done &&
+			    (!(mcu_data->fw_update_status &
+			    (FW_DOES_NOT_EXIST | FW_UPDATE_QUEUED)))) {
 				mcu_data->fw_update_status |= FW_UPDATE_QUEUED;
 				request_firmware_nowait(THIS_MODULE,
 					FW_ACTION_HOTPLUG,
@@ -3622,7 +3655,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Remove SENSOR_TYPE_WAKE_GESTURE\n", __func__);
+	I("%s++: Do not recover firmware too aggressive\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
@@ -3759,7 +3792,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 		E("[CWMCU] could not enable irq as wakeup source %d\n", error);
 
 	mutex_lock(&mcu_data->mutex_lock);
-	mcu_data->suspended = 0;
+	mcu_data->suspended = false;
 	mutex_unlock(&mcu_data->mutex_lock);
 
 	request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
@@ -3773,7 +3806,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	}
 	input_set_drvdata(mcu_data->input, mcu_data);
 
-	mcu_data->probe_success = 1;
+	mcu_data->probe_success = true;
 	I("CWMCU_i2c_probe success!\n");
 
 	return 0;
