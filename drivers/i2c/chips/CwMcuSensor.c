@@ -1822,6 +1822,42 @@ int is_continuous_sensor(int sensors_id)
 	}
 }
 
+static void setup_delay(struct cwmcu_data *mcu_data)
+{
+	u8 i;
+	int delay_ms;
+	int delay_candidate_ms;
+
+	delay_candidate_ms = CWMCU_NO_POLLING_DELAY;
+	for (i = 0; i < CW_SENSORS_ID_END; i++) {
+		if ((mcu_data->enabled_list & (1 << i)) &&
+		    is_continuous_sensor(i) &&
+		    !(mcu_data->batched_list & (1 << i))) {
+			D("%s: report_period[%d] = %d\n", __func__, i,
+			  mcu_data->report_period[i]);
+
+			/* report_period is actual delay(us) * 0.99), convert to
+			 * microseconds */
+			delay_ms = mcu_data->report_period[i] / MS_TO_PERIOD;
+			if (delay_ms > CWMCU_MAX_DELAY)
+				delay_ms = CWMCU_MAX_DELAY;
+
+			if (delay_candidate_ms > delay_ms)
+				delay_candidate_ms = delay_ms;
+			}
+	}
+
+	if (delay_candidate_ms != atomic_read(&mcu_data->delay)) {
+		atomic_set(&mcu_data->delay, delay_candidate_ms);
+		cancel_delayed_work_sync(&mcu_data->work);
+		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work, 0);
+	}
+
+	D("%s: Minimum delay = %dms\n", __func__,
+	  atomic_read(&mcu_data->delay));
+
+}
+
 static int handle_batch_params(struct cwmcu_data *mcu_data,
 			       size_t count,
 			       int sensors_id,
@@ -1829,7 +1865,6 @@ static int handle_batch_params(struct cwmcu_data *mcu_data,
 {
 	int rc;
 	u8 i;
-	int delay_ms;
 	__le32 timeout_data;
 	u8 data;
 	u32 continuous_sensor_count;
@@ -1857,24 +1892,6 @@ static int handle_batch_params(struct cwmcu_data *mcu_data,
 		  __func__, sensors_id);
 		return count;
 	}
-
-	atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY);
-	for (i = 0; i < CW_SENSORS_ID_END; i++) {
-		D("%s: report_period[%d] = %d\n", __func__, i,
-		  mcu_data->report_period[i]);
-
-		if (!is_continuous_sensor(sensors_id))
-			continue;
-		/* report_period is actual delay(us) * 0.99), convert to
-		 * microseconds */
-		delay_ms = mcu_data->report_period[i] / MS_TO_PERIOD;
-		if (atomic_read(&mcu_data->delay) > delay_ms)
-			atomic_set(&mcu_data->delay, delay_ms);
-
-	}
-
-	D("%s: Minimum delay = %dms\n", __func__,
-	  atomic_read(&mcu_data->delay));
 
 	mcu_data->sensors_batch_timeout[sensors_id] = timeout;
 
@@ -1911,6 +1928,8 @@ static int handle_batch_params(struct cwmcu_data *mcu_data,
 		mcu_data->batched_list |= (mcu_data->batch_enabled <<
 						sensors_id);
 	}
+
+	setup_delay(mcu_data);
 
 	i = (sensors_id / 8);
 
@@ -2058,6 +2077,8 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 			  __func__, rc);
 	}
 
+	setup_delay(mcu_data);
+
 	rc = firmware_odr(mcu_data, sensors_id,
 			  mcu_data->report_period[sensors_id] / MS_TO_PERIOD);
 	cwmcu_powermode_switch(mcu_data, 0);
@@ -2148,6 +2169,8 @@ static ssize_t interval_set(struct device *dev, struct device_attribute *attr,
 	if (mcu_data->report_period[sensors_id] != val * MS_TO_PERIOD) {
 		/* period is actual delay(us) * 0.99 */
 		mcu_data->report_period[sensors_id] = val * MS_TO_PERIOD;
+
+		setup_delay(mcu_data);
 
 		cwmcu_powermode_switch(mcu_data, 1);
 		rc = firmware_odr(mcu_data, sensors_id, val);
@@ -3075,6 +3098,7 @@ static int cw_pseudo_irq_enable(struct iio_dev *indio_dev)
 
 	if (!atomic_cmpxchg(&mcu_data->pseudo_irq_enable, 0, 1)) {
 		D("%s:\n", __func__);
+		cancel_delayed_work_sync(&mcu_data->work);
 		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work, 0);
 	}
 
@@ -3655,7 +3679,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Do not recover firmware too aggressive\n", __func__);
+	I("%s++: Properly deal with the iio polling rate\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");

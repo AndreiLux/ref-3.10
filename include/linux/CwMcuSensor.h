@@ -90,6 +90,7 @@ typedef enum {
 #define PRESSURE_UPDATE_RATE                                    0xB6
 
 #define CWMCU_MAX_DELAY		200
+#define CWMCU_NO_POLLING_DELAY		10000
 
 #define G_SENSORS_STATUS                                        0x60
 #define ACCE_UPDATE_RATE                                        0x66
