@@ -643,44 +643,21 @@ static struct therm_est_subdevice skin_devs[] = {
 	{
 		.dev_data = "Tdiode_tegra",
 		.coeffs = {
-			3, 0, -1, -1,
-			0, 0, -1, 0,
-			0, 0, -1, 0,
-			0, -1, 0, 0,
-			0, 0,  0, -8
+			3, 0, 0, -1,
+			-1, -1, -1, -1,
+			-1, 0, -1, 0,
+			0, 0, 0, 0,
+			0, -1, -2, -11
 		},
 	},
 	{
 		.dev_data = "Tboard_tegra",
 		.coeffs = {
-			10, 7, 5, 4,
-			4, 5, 5, 5,
-			4, 6, 6, 4,
-			4, 5, 5, 3,
-			4, 6, 8, 14
-		},
-	},
-};
-
-static struct therm_est_subdevice tn8ffd_skin_devs[] = {
-	{
-		.dev_data = "Tdiode",
-		.coeffs = {
-			3, 0, 0, 0,
-			1, 0, -1, 0,
-			1, 0, 0, 1,
-			1, 0, 0, 0,
-			0, 1, 2, 2
-		},
-	},
-	{
-		.dev_data = "Tboard",
-		.coeffs = {
-			1, 1, 2, 8,
-			6, -8, -13, -9,
-			-9, -8, -17, -18,
-			-18, -16, 2, 17,
-			15, 27, 42, 60
+			19, 13, 7, 5,
+			3, 2, 2, 3,
+			4, 4, 5, 5,
+			3, 3, 3, 4,
+			5, 6, 9, 13
 		},
 	},
 };
@@ -752,15 +729,22 @@ static struct balanced_throttle skin_throttle = {
 
 static int __init flounder_skin_init(void)
 {
-	/* turn on tskin only on XE (PVT) device */
-	if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
-		skin_data.ndevs = ARRAY_SIZE(skin_devs);
-		skin_data.devs = skin_devs;
-		skin_data.toffset = -4626;
+	if (of_machine_is_compatible("google,flounder") ||
+	    of_machine_is_compatible("google,flounder_lte") ||
+	    of_machine_is_compatible("google,flounder64") ||
+	    of_machine_is_compatible("google,flounder64_lte")) {
+		/* turn on tskin only on XE (PVT) device */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs);
+			skin_data.devs = skin_devs;
+			skin_data.toffset = -2932;
 
-		balanced_throttle_register(&skin_throttle, "skin-balanced");
-		tegra_skin_therm_est_device.dev.platform_data = &skin_data;
-		platform_device_register(&tegra_skin_therm_est_device);
+			balanced_throttle_register(&skin_throttle,
+							"skin-balanced");
+			tegra_skin_therm_est_device.dev.platform_data =
+							&skin_data;
+			platform_device_register(&tegra_skin_therm_est_device);
+		}
 	}
 	return 0;
 }
