@@ -625,6 +625,30 @@ static ssize_t synaptics_rmi4_interactive_store(struct device *dev,
     return count;
 }
 
+static unsigned short synaptics_sqrt(unsigned int num)
+{
+	unsigned short root, remainder, place;
+
+	root = 0;
+	remainder = num;
+	place = 0x4000;
+
+	while (place > remainder)
+		place = place >> 2;
+	while (place)
+	{
+		if (remainder >= root + place)
+		{
+			remainder = remainder - root - place;
+			root = root + (place << 1);
+		}
+		root = root >> 1;
+		place = place >> 2;
+	}
+
+	return root;
+}
+
 static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
@@ -754,7 +778,7 @@ static int synaptics_rmi4_f11_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #endif
 #ifdef REPORT_2D_W
 			input_report_abs(rmi4_data->input_dev,
-					ABS_MT_TOUCH_MAJOR, max(wx, wy));
+					ABS_MT_TOUCH_MAJOR, synaptics_sqrt(wx*wx + wy*wy));
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_TOUCH_MINOR, min(wx, wy));
 #endif
@@ -944,7 +968,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #endif
 #ifdef REPORT_2D_W
 			input_report_abs(rmi4_data->input_dev,
-					ABS_MT_TOUCH_MAJOR, max(wx, wy));
+					ABS_MT_TOUCH_MAJOR, synaptics_sqrt(wx*wx + wy*wy));
 			input_report_abs(rmi4_data->input_dev,
 					ABS_MT_TOUCH_MINOR, min(wx, wy));
 #endif
@@ -1256,8 +1280,6 @@ static int synaptics_rmi4_irq_enable(struct synaptics_rmi4_data *rmi4_data,
 		bool enable)
 {
 	int retval = 0;
-	const struct synaptics_dsx_board_data *bdata =
-			rmi4_data->hw_if->board_data;
 
 	if (enable) {
 		if (rmi4_data->irq_enabled)
@@ -1381,7 +1403,8 @@ static int synaptics_rmi4_f11_init(struct synaptics_rmi4_data *rmi4_data,
 			rmi4_data->sensor_max_y,
 			rmi4_data->sensor_max_z);
 
-	rmi4_data->max_touch_width = MAX_F11_TOUCH_WIDTH;
+	rmi4_data->max_touch_width = synaptics_sqrt(
+			MAX_F11_TOUCH_WIDTH * MAX_F11_TOUCH_WIDTH * 2);
 
 	synaptics_rmi4_set_intr_mask(fhandler, fd, intr_count);
 
@@ -1571,8 +1594,9 @@ static int synaptics_rmi4_f12_init(struct synaptics_rmi4_data *rmi4_data,
 
 	rmi4_data->num_of_rx = ctrl_8.num_of_rx;
 	rmi4_data->num_of_tx = ctrl_8.num_of_tx;
-	rmi4_data->max_touch_width = max(rmi4_data->num_of_rx,
-			rmi4_data->num_of_tx);
+	rmi4_data->max_touch_width = synaptics_sqrt(
+			rmi4_data->num_of_rx*rmi4_data->num_of_rx +
+			rmi4_data->num_of_tx*rmi4_data->num_of_tx);
 
 	rmi4_data->f12_wakeup_gesture = query_5.ctrl27_is_present;
 	if (rmi4_data->f12_wakeup_gesture) {
