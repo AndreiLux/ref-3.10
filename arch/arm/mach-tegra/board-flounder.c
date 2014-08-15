@@ -758,13 +758,13 @@ static struct tegra_usb_platform_data tegra_udc_pdata = {
 		.elastic_limit = 16,
 		.idle_wait_delay = 17,
 		.term_range_adj = 6,
-		.xcvr_setup = 64,
+		.xcvr_setup = 8,
 		.xcvr_lsfslew = 2,
 		.xcvr_lsrslew = 2,
-		.xcvr_hsslew_lsb = 0,
-		.xcvr_hsslew_msb = 0,
-		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 0,
+		.xcvr_hsslew_lsb = 3,
+		.xcvr_hsslew_msb = 3,
+		.xcvr_setup_offset = 3,
+		.xcvr_use_fuses = 1,
 	},
 };
 
@@ -788,7 +788,9 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.xcvr_setup = 15,
 		.xcvr_lsfslew = 0,
 		.xcvr_lsrslew = 3,
-		.xcvr_setup_offset = 0,
+		.xcvr_hsslew_lsb = 3,
+		.xcvr_hsslew_msb = 3,
+		.xcvr_setup_offset = 3,
 		.xcvr_use_fuses = 1,
 		.vbus_oc_map = 0x4,
 		.xcvr_hsslew_lsb = 2,
@@ -866,6 +868,8 @@ static void flounder_usb_init(void)
 	tegra_udc_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_GPIO_ID;
 	tegra_ehci1_utmi_pdata.id_extcon_dev_name = "palmas-extcon";
+	if (!is_mdm_modem())
+		tegra_ehci1_utmi_pdata.u_cfg.utmi.xcvr_setup_offset = -3;
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
 		tegra_otg_pdata.is_xhci = false;
@@ -874,6 +878,8 @@ static void flounder_usb_init(void)
 		tegra_otg_pdata.is_xhci = true;
 		tegra_udc_pdata.u_data.dev.is_xhci = true;
 	}
+	if (!is_mdm_modem())
+		tegra_udc_pdata.u_cfg.utmi.xcvr_setup_offset = -3;
 	tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
 	platform_device_register(&tegra_otg_device);
 	/* Setup the udc platform data */
