@@ -262,7 +262,7 @@ struct nvmap_device {
 	struct nvmap_page_pool pool;
 #endif
 	struct list_head clients;
-	spinlock_t	clients_lock;
+	struct mutex	clients_lock;
 };
 
 enum nvmap_stats_t {
