@@ -2645,8 +2645,7 @@ static int tegra_dsi_init_hw(struct tegra_dc *dc,
 		err = regulator_enable(dsi->avdd_dsi_csi);
 	if (WARN(err, "unable to enable regulator"))
 		return err;
-	/* stablization delay */
-	mdelay(50);
+
 	/* Enable DSI clocks */
 	tegra_dsi_clk_enable(dsi);
 	tegra_dsi_set_dsi_clk(dc, dsi, dsi->target_lp_clk_khz);
@@ -2655,7 +2654,8 @@ static int tegra_dsi_init_hw(struct tegra_dc *dc,
 	 * to avoid visible glitches on panel during transition
 	 * from bootloader to kernel driver
 	 */
-	tegra_dsi_stop_dc_stream_at_frame_end(dc, dsi, 2);
+	if (dsi->status.dc_stream == DSI_DC_STREAM_ENABLE)
+		tegra_dsi_stop_dc_stream_at_frame_end(dc, dsi, 2);
 
 	tegra_dsi_writel(dsi,
 		DSI_POWER_CONTROL_LEG_DSI_ENABLE(TEGRA_DSI_DISABLE),
