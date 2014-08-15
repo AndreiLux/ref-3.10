@@ -199,6 +199,7 @@ struct diag_write_device {
 struct diag_client_map {
 	char name[20];
 	int pid;
+	int timeout;
 };
 
 struct diag_nrt_wake_lock {

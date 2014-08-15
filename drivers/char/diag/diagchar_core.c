@@ -215,6 +215,7 @@ void diag_add_client(int i, struct file *file)
 	struct diagchar_priv *diagpriv_data;
 
 	driver->client_map[i].pid = current->tgid;
+	driver->client_map[i].timeout = 0;
 	diagpriv_data = kmalloc(sizeof(struct diagchar_priv), GFP_KERNEL);
 	if (diagpriv_data)
 		diagpriv_data->pid = current->tgid;
@@ -341,6 +342,7 @@ static int diagchar_close(struct inode *inode, struct file *file)
 	for (i = 0; i < driver->num_clients; i++) {
 		if (NULL != diagpriv_data && diagpriv_data->pid == driver->client_map[i].pid) {
 			driver->client_map[i].pid = 0;
+			driver->client_map[i].timeout = 0;
 			kfree(diagpriv_data);
 			diagpriv_data = NULL;
 			break;
@@ -1046,6 +1048,17 @@ long diagchar_ioctl(struct file *filp, unsigned int iocmd, unsigned long ioarg)
 			}
 		}
 		break;
+	case DIAG_IOCTL_NONBLOCKING_TIMEOUT:
+		for (i = 0; i < driver->num_clients; i++)
+			if (driver->client_map[i].pid == current->tgid)
+				break;
+		if (i == driver->num_clients)
+			return -EINVAL;
+		mutex_lock(&driver->diagchar_mutex);
+		driver->client_map[i].timeout = (int)ioarg;
+		mutex_unlock(&driver->diagchar_mutex);
+		result = 1;
+		break;
 	}
 	return result;
 }
@@ -1053,22 +1066,27 @@ long diagchar_ioctl(struct file *filp, unsigned int iocmd, unsigned long ioarg)
 static int diagchar_read(struct file *file, char __user * buf, size_t count, loff_t * ppos)
 {
 	struct diag_dci_client_tbl *entry;
-	int index = -1, i = 0, ret = 0;
+	int index = -1, i = 0, ret = 0, timeout = 0;
 	int num_data = 0, data_type;
 	int remote_token;
 	int exit_stat;
 	int clear_read_wakelock;
 
 	for (i = 0; i < driver->num_clients; i++)
-		if (driver->client_map[i].pid == current->tgid)
+		if (driver->client_map[i].pid == current->tgid) {
 			index = i;
+			timeout = driver->client_map[i].timeout;
+		}
 
 	if (index == -1) {
 		pr_err("diag: Client PID not found in table");
 		return -EINVAL;
 	}
 
-	wait_event_interruptible(driver->wait_q, driver->data_ready[index]);
+	if (timeout)
+		wait_event_interruptible_timeout(driver->wait_q, driver->data_ready[index], timeout * HZ);
+	else
+		wait_event_interruptible(driver->wait_q, driver->data_ready[index]);
 
 	mutex_lock(&driver->diagchar_mutex);
 
