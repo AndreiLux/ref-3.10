@@ -379,6 +379,8 @@ static void dr_controller_run(struct tegra_udc *udc)
 	unsigned long timeout;
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
+	pm_stay_awake(&udc->pdev->dev);
+
 	/* Clear stopped bit */
 	udc->stopped = 0;
 
@@ -472,6 +474,8 @@ static void dr_controller_stop(struct tegra_udc *udc)
 	tmp = udc_readl(udc, USB_CMD_REG_OFFSET);
 	tmp &= ~USB_CMD_RUN_STOP;
 	udc_writel(udc, tmp, USB_CMD_REG_OFFSET);
+
+	pm_relax(&udc->pdev->dev);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
 	return;
@@ -2474,6 +2478,7 @@ static void tegra_udc_non_std_charger_detect_work(struct work_struct *work)
 
 	tegra_udc_set_charger_type(udc, CONNECT_TYPE_NON_STANDARD_CHARGER);
 	tegra_usb_set_charging_current(udc);
+	dr_controller_stop(udc);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
 }
@@ -2813,6 +2818,8 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 		VDBG("Wrong device");
 		return -ENODEV;
 	}
+
+	device_init_wakeup(&pdev->dev, true);
 
 	the_udc = udc = kzalloc(sizeof(struct tegra_udc), GFP_KERNEL);
 	if (udc == NULL) {
