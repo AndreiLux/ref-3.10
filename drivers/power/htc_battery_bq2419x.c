@@ -35,6 +35,8 @@
 #include <linux/iio/types.h>
 #include <linux/iio/iio.h>
 
+#define MAX_STR_PRINT 50
+
 enum charging_states {
 	STATE_INIT = 0,
 	ENABLED_HALF_IBAT,
@@ -140,6 +142,8 @@ struct htc_battery_bq2419x_data {
 	int				input_adjust_retry_count;
 	ktime_t				input_adjust_retry_time;
 	bool				input_adjust;
+
+	bool				input_reset_check_disable;
 };
 
 static struct htc_battery_bq2419x_data *htc_battery_data;
@@ -1160,7 +1164,7 @@ static int htc_battery_bq2419x_input_control(
 	}
 
 	/* Check input current limit if reset */
-	if (data->ops->get_input_current) {
+	if (!data->input_reset_check_disable && data->ops->get_input_current) {
 		if (data->aicl_target_input > 0)
 			target_input = data->aicl_target_input;
 		else
@@ -1271,6 +1275,35 @@ static struct battery_charger_info htc_battery_bq2419x_charger_bci = {
 	.cell_id = 0,
 	.bc_ops = &htc_battery_bq2419x_charger_bci_ops,
 };
+
+static ssize_t bq2419x_show_input_reset_check_disable(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct htc_battery_bq2419x_data *data;
+
+	data = dev_get_drvdata(dev);
+
+	return snprintf(buf, MAX_STR_PRINT, "%d\n",
+				data->input_reset_check_disable);
+}
+
+static ssize_t bq2419x_set_input_reset_check_disable(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	unsigned int disable;
+	struct htc_battery_bq2419x_data *data;
+
+	data = dev_get_drvdata(dev);
+	sscanf(buf, "%u", &disable);
+
+	data->input_reset_check_disable = !!disable;
+
+	return count;
+}
+
+static DEVICE_ATTR(input_reset_check_disable, (S_IRUGO | (S_IWUSR | S_IWGRP)),
+		bq2419x_show_input_reset_check_disable,
+		bq2419x_set_input_reset_check_disable);
 
 static struct htc_battery_bq2419x_platform_data
 		*htc_battery_bq2419x_dt_parse(struct platform_device *pdev)
@@ -1644,6 +1677,13 @@ static int htc_battery_bq2419x_probe(struct platform_device *pdev)
 		dev_err(data->dev, "failed: power supply register\n");
 		goto scrub_mutex;
 	}
+
+	data->input_reset_check_disable = false;
+	ret = sysfs_create_file(&data->dev->kobj,
+				&dev_attr_input_reset_check_disable.attr);
+	if (ret < 0)
+		dev_err(data->dev, "error creating sysfs file %d\n", ret);
+
 	htc_battery_data = data;
 
 	return 0;
