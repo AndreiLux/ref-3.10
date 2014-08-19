@@ -143,6 +143,7 @@ static int tegra_rt5677_fe_pcm_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
 
+	tegra30_ahub_enable_clocks();
 	tegra30_ahub_allocate_tx_fifo(
 		&machine->playback_fifo_cif,
 		&machine->playback_dma_data.addr,
@@ -167,6 +168,7 @@ static void tegra_rt5677_fe_pcm_shutdown(struct snd_pcm_substream *substream)
 		(machine->dam_ifc * 2));
 	tegra30_ahub_free_tx_fifo(machine->playback_fifo_cif);
 	machine->playback_fifo_cif = -1;
+	tegra30_ahub_disable_clocks();
 }
 
 static int tegra_rt5677_fe_pcm_trigger(struct snd_pcm_substream *substream,
@@ -205,6 +207,7 @@ static int tegra_rt5677_fe_compr_ops_startup(struct snd_compr_stream *cstream)
 	struct snd_soc_dai *cpu_dai = fe->cpu_dai;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
 
+	tegra30_ahub_enable_clocks();
 	tegra30_ahub_allocate_tx_fifo(
 		&machine->playback_fifo_cif,
 		&machine->playback_dma_data.addr,
@@ -229,6 +232,7 @@ static void tegra_rt5677_fe_compr_ops_shutdown(struct snd_compr_stream *cstream)
 		(machine->dam_ifc * 2));
 	tegra30_ahub_free_tx_fifo(machine->playback_fifo_cif);
 	machine->playback_fifo_cif = -1;
+	tegra30_ahub_disable_clocks();
 }
 
 static int tegra_rt5677_fe_compr_ops_trigger(struct snd_compr_stream *cstream,
@@ -267,6 +271,7 @@ static int tegra_rt5677_fe_fast_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
 
+	tegra30_ahub_enable_clocks();
 	tegra30_ahub_allocate_tx_fifo(
 		&machine->playback_fast_fifo_cif,
 		&machine->playback_fast_dma_data.addr,
@@ -292,6 +297,7 @@ static void tegra_rt5677_fe_fast_shutdown(struct snd_pcm_substream *substream)
 			(machine->dam_ifc * 2));
 	tegra30_ahub_free_tx_fifo(machine->playback_fast_fifo_cif);
 	machine->playback_fast_fifo_cif = -1;
+	tegra30_ahub_disable_clocks();
 }
 
 static int tegra_rt5677_fe_fast_trigger(struct snd_pcm_substream *substream,
