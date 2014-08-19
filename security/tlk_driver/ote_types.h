@@ -61,7 +61,9 @@ enum {
 	/* The supplied buffer is too short */
 	OTE_ERROR_SHORT_BUFFER		= 0xFFFF0010,
 
-	OTE_ERROR_NO_ANSWER		= 0xFFFF1003,
+	/* OTE command called back */
+	OTE_ERROR_NS_CB			= 0xFFFF1000,
+	OTE_ERROR_NS_CB_MASK		= 0xFFFFF000,
 };
 
 /*
@@ -76,6 +78,25 @@ enum {
 	OTE_RESULT_ORIGIN_KERNEL = 3,
 	/* Originated from Trusted APP Code */
 	OTE_RESULT_ORIGIN_TRUSTED_APP = 4,
+};
+
+/* NS callback codes
+ * These codes are ORed into the LSBs of
+ * OTE_ERROR_NS_CB
+ */
+enum ote_ns_callback_id {
+	/* Reserved codes */
+	OTE_NS_CB_RES0 = 0x0,
+	OTE_NS_CB_RES1 = 0x1,
+	OTE_NS_CB_RES2 = 0x2,
+
+	/* Retry last OTE command */
+	OTE_NS_CB_RETRY = 0x3,
+
+	/* First available callback code to userspace */
+	OTE_NS_CB_FIRST_USER = 0x4,
+
+	OTE_NS_CB_MAX = 0xFFF,
 };
 
 #endif

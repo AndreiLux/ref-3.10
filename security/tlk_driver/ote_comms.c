@@ -390,6 +390,18 @@ static int tlk_smc_notify(struct notifier_block *nb,
 }
 #endif
 
+static uint32_t ote_ns_cb_retry(void)
+{
+	wait_for_completion(&tlk_info->smc_retry);
+	return OTE_SUCCESS;
+}
+
+typedef uint32_t (*ote_ns_cb_t)(void);
+
+ote_ns_cb_t cb_table[] = {
+	[OTE_NS_CB_RETRY] = ote_ns_cb_retry,
+};
+
 /*
  * Do an SMC call
  */
@@ -399,6 +411,7 @@ static void do_smc_compat(struct te_request_compat *request,
 	uint32_t smc_args;
 	uint32_t smc_params = 0;
 	uint32_t smc_nr = request->type;
+	uint32_t cb_code;
 
 	BUG_ON(!mutex_is_locked(&smc_lock));
 
@@ -420,10 +433,18 @@ static void do_smc_compat(struct te_request_compat *request,
 		INIT_COMPLETION(tlk_info->smc_retry);
 		atomic_set(&tlk_info->smc_count, 2);
 		tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
-		if (request->result != OTE_ERROR_NO_ANSWER)
+		if ((request->result & OTE_ERROR_NS_CB_MASK) != OTE_ERROR_NS_CB)
 			break;
-		smc_nr = TE_SMC_RETRY_CMD;
-		wait_for_completion(&tlk_info->smc_retry);
+
+		cb_code = request->result & ~OTE_ERROR_NS_CB_MASK;
+		if (cb_code < ARRAY_SIZE(cb_table) && cb_table[cb_code]) {
+			request->result = cb_table[cb_code]();
+		} else {
+			pr_err("Unknown TEE callback: 0x%x\n", cb_code);
+			request->result = OTE_ERROR_NOT_IMPLEMENTED;
+		}
+		request->type = cb_code;
+		smc_nr = TE_SMC_NS_CB_COMPLETE;
 	}
 #else
 	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
