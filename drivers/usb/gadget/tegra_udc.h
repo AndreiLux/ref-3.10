@@ -50,7 +50,7 @@
 #define USB_CHARGING_TEST_MODE_CURRENT_LIMIT_MA 100u
 
 /* 1 sec wait time for non-std charger detection after vbus is detected */
-#define NON_STD_CHARGER_DET_TIME_MS 1000
+#define NON_STD_CHARGER_DET_TIME_MS 2000
 #define BOOST_TRIGGER_SIZE 4096
 
 #define UDC_RESET_TIMEOUT_MS 1000
