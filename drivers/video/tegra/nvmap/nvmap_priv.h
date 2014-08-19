@@ -55,15 +55,7 @@
 #define __GFP_NVMAP     (GFP_KERNEL | __GFP_HIGHMEM)
 #endif
 
-#ifdef CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES
-#define NVMAP_ZEROED_PAGES     __GFP_ZERO
-#else
-#define NVMAP_ZEROED_PAGES     0
-#endif
-
-#define GFP_NVMAP              (__GFP_NVMAP | __GFP_NOWARN | NVMAP_ZEROED_PAGES)
-
-extern bool zero_memory;
+#define GFP_NVMAP              (__GFP_NVMAP | __GFP_NOWARN)
 
 #ifdef CONFIG_64BIT
 #define NVMAP_LAZY_VFREE
@@ -179,11 +171,12 @@ struct nvmap_handle_ref {
 
 struct nvmap_page_pool {
 	struct mutex lock;
-	u32 alloc;  /* Alloc index. */
-	u32 fill;   /* Fill index. */
-	u32 count;  /* Number of pages in the table. */
-	u32 length; /* Length of the pages array. */
-	struct page **page_array;
+	u32 count;  /* Number of pages in the page list. */
+	u32 max;    /* Max length of the page list. */
+	int to_zero; /* Number of pages on the zero list */
+	struct list_head page_list;
+	struct list_head zero_list;
+	bool contains_dirty_pages;
 
 #ifdef CONFIG_NVMAP_PAGE_POOL_DEBUG
 	u64 allocs;
@@ -193,41 +186,12 @@ struct nvmap_page_pool {
 #endif
 };
 
-#define pp_empty(pp)				\
-	((pp)->fill == (pp)->alloc && !(pp)->page_array[(pp)->alloc])
-#define pp_full(pp)				\
-	((pp)->fill == (pp)->alloc && (pp)->page_array[(pp)->alloc])
-
-#define nvmap_pp_alloc_inc(pp) nvmap_pp_inc_index((pp), &(pp)->alloc)
-#define nvmap_pp_fill_inc(pp)  nvmap_pp_inc_index((pp), &(pp)->fill)
-
-/* Handle wrap around. */
-static inline void nvmap_pp_inc_index(struct nvmap_page_pool *pp, u32 *ind)
-{
-	*ind += 1;
-
-	/* Wrap condition. */
-	if (*ind >= pp->length)
-		*ind = 0;
-}
-
-static inline void nvmap_page_pool_lock(struct nvmap_page_pool *pool)
-{
-	mutex_lock(&pool->lock);
-}
-
-static inline void nvmap_page_pool_unlock(struct nvmap_page_pool *pool)
-{
-	mutex_unlock(&pool->lock);
-}
-
 int nvmap_page_pool_init(struct nvmap_device *dev);
 int nvmap_page_pool_fini(struct nvmap_device *dev);
 struct page *nvmap_page_pool_alloc(struct nvmap_page_pool *pool);
-bool nvmap_page_pool_fill(struct nvmap_page_pool *pool, struct page *page);
-int __nvmap_page_pool_alloc_lots_locked(struct nvmap_page_pool *pool,
+int nvmap_page_pool_alloc_lots(struct nvmap_page_pool *pool,
 					struct page **pages, u32 nr);
-int __nvmap_page_pool_fill_lots_locked(struct nvmap_page_pool *pool,
+int nvmap_page_pool_fill_lots(struct nvmap_page_pool *pool,
 				       struct page **pages, u32 nr);
 int nvmap_page_pool_clear(void);
 int nvmap_page_pool_debugfs_init(struct dentry *nvmap_root);
