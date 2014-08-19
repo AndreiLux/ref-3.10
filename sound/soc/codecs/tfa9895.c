@@ -223,7 +223,7 @@ int set_tfa9895_spkamp(int en, int dsp_mode)
 	unsigned char power_data[3] = {0, 0, 0};
 	unsigned char SPK_CR[3] = {0x8, 0x8, 0};
 
-	pr_info("%s: en = %d dsp_enabled = %d\n", __func__, en, dsp_enabled);
+	pr_debug("%s: en = %d dsp_enabled = %d\n", __func__, en, dsp_enabled);
 	mutex_lock(&spk_amp_lock);
 	if (en && !last_spkamp_state) {
 		last_spkamp_state = 1;

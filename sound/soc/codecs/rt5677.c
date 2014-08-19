@@ -4733,7 +4733,7 @@ static int rt5677_resume(struct snd_soc_codec *codec)
 static void rt5677_shutdown(struct snd_pcm_substream *substream,
 	struct snd_soc_dai *dai)
 {
-	pr_info("enter %s\n", __func__);
+	pr_debug("enter %s\n", __func__);
 }
 
 #define RT5677_STEREO_RATES SNDRV_PCM_RATE_8000_96000

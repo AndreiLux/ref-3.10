@@ -213,7 +213,7 @@ static int rt5677_suspend(struct device *dev)
 {
 	struct spi_device *spi = to_spi_device(dev);
 	struct rt5677_spi_platform_data *pdata;
-	pr_info("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	if (spi == NULL) {
 		pr_debug("spi_device didn't exist");
 		return 0;
@@ -228,7 +228,7 @@ static int rt5677_resume(struct device *dev)
 {
 	struct spi_device *spi = to_spi_device(dev);
 	struct rt5677_spi_platform_data *pdata;
-	pr_info("%s\n", __func__);
+	pr_debug("%s\n", __func__);
 	if (spi == NULL) {
 		pr_debug("spi_device didn't exist");
 		return 0;

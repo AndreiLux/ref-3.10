@@ -545,7 +545,7 @@ void flounder_rt5677_spi_suspend(bool on)
 {
 	int i, ret;
 	if (on) {
-		pr_info("%s: suspend", __func__);
+		pr_debug("%s: suspend", __func__);
 		for (i = 0; i < ARRAY_SIZE(flounder_spi_pdata_rt5677); i++) {
 			ret = gpio_request(flounder_spi_pdata_rt5677[i].id,
 								flounder_spi_pdata_rt5677[i].name);
@@ -564,7 +564,7 @@ void flounder_rt5677_spi_suspend(bool on)
 
 		}
 	} else {
-		pr_info("%s: resume", __func__);
+		pr_debug("%s: resume", __func__);
 		for (i = 0; i < ARRAY_SIZE(flounder_spi_pdata_rt5677); i++) {
 			gpio_free(flounder_spi_pdata_rt5677[i].id);
 		}
