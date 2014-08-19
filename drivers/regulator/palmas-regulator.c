@@ -1437,6 +1437,7 @@ static void palmas_dt_to_pdata(struct device *dev,
 	}
 
 	pdata->ldo6_vibrator = of_property_read_bool(node, "ti,ldo6-vibrator");
+	pdata->disable_smps10_in_suspend = of_property_read_bool(node, "ti,disable-smps10-in-suspend");
 }
 
 
@@ -1810,6 +1811,9 @@ static int palmas_regulators_probe(struct platform_device *pdev)
 		}
 	}
 
+	if (pdata && pdata->disable_smps10_in_suspend)
+		pmic->disable_smps10_in_suspend = true;
+
 	palmas_dvfs_init(palmas, pdata);
 	return 0;
 
@@ -1875,6 +1879,15 @@ static int palmas_suspend(struct device *dev)
 		}
 		palams_rail_pd_control(palmas, id, false);
 	}
+
+	if (pmic->disable_smps10_in_suspend) {
+		palmas_smps_read(palmas, PALMAS_SMPS10_CTRL, &(pmic->smps10_ctrl_reg));
+		dev_dbg(dev, "%s:Save SMPS10_CTRL register before suspend: 0x%x\n", __func__, pmic->smps10_ctrl_reg);
+
+		/* disable SMPS10 in suspend*/
+		palmas_smps_write(palmas, PALMAS_SMPS10_CTRL, 0);
+	}
+
 	return 0;
 }
 
@@ -1883,6 +1896,7 @@ static int palmas_resume(struct device *dev)
 	struct palmas *palmas = dev_get_drvdata(dev->parent);
 	struct palmas_pmic *pmic = dev_get_drvdata(dev);
 	int id;
+	unsigned int reg;
 
 	for (id = 0; id < PALMAS_NUM_REGS; id++) {
 		unsigned int cf = pmic->config_flags[id];
@@ -1901,7 +1915,15 @@ static int palmas_resume(struct device *dev)
 
 		palams_rail_pd_control(palmas, id,
 				pmic->disable_active_discharge_idle[id]);
+
 	}
+
+	if (pmic->disable_smps10_in_suspend) {
+		palmas_smps_write(palmas, PALMAS_SMPS10_CTRL, pmic->smps10_ctrl_reg);
+		palmas_smps_read(palmas, PALMAS_SMPS10_CTRL, &reg);
+		dev_dbg(dev, "%s: Restore SMPS10_CTRL register: 0x%x\n", __func__, reg);
+	}
+
 	return 0;
 }
 #endif

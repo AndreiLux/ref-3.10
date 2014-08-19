@@ -118,6 +118,7 @@ palmas: tps65913 {
 		ldo5-in-supply = <&palmas_smps8>;
 		ldo7-in-supply = <&palmas_smps8>;
 		ldoln-in-supply = <&palmas_smps10_out2>;
+		ti,disable-smps10-in-suspend;
 
 		regulators {
 			smps123 {

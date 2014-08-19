@@ -470,6 +470,8 @@ struct palmas_pmic_platform_data {
 	int ldo6_vibrator;
 
 	bool disable_smps10_boost_suspend;
+
+	bool disable_smps10_in_suspend;
 };
 
 struct palmas_usb_platform_data {
@@ -742,6 +744,9 @@ struct palmas_pmic {
 	unsigned int current_reg_mode[PALMAS_REG_SMPS10_OUT1];
 	unsigned long config_flags[PALMAS_NUM_REGS];
 	bool disable_active_discharge_idle[PALMAS_NUM_REGS];
+
+	bool disable_smps10_in_suspend;
+	unsigned int smps10_ctrl_reg;
 };
 
 struct palmas_resource {
