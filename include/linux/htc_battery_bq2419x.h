@@ -82,6 +82,9 @@ struct htc_battery_bq2419x_platform_data {
 	const char *batt_id_channel_name;
 	int unknown_batt_id_min;
 	const char *gauge_psy_name;
+	const char *vbus_channel_name;
+	unsigned int vbus_channel_max_voltage_mv;
+	unsigned int vbus_channel_max_adc;
 };
 
 struct htc_battery_bq2419x_ops {

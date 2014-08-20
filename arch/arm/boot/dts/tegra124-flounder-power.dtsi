@@ -89,6 +89,12 @@ palmas: tps65913 {
 				ti,adc-consumer-device = "HTC_HEADSET_PMIC";
 				ti,adc-consumer-channel ="hs_channel";
 			};
+
+			ch10 {
+				ti,adc-channel-number = <10>;
+				ti,adc-consumer-device = "bq2419x";
+				ti,adc-consumer-channel ="charger-vbus";
+			};
 		};
 	};
 

@@ -482,6 +482,9 @@
 		input-voltage-min-low-battery-millivolt = <4200>;
 		input-voltage-switch-millivolt = <4150>;
 		gauge-power-supply-name = "battery";
+		vbus-channel-name = "charger-vbus";
+		vbus-channel-max-voltage-mv = <6875>;
+		vbus-channel-max-adc = <4096>;
 		consumers {
 			c1 {
 				regulator-consumer-supply = "usb_bat_chg";

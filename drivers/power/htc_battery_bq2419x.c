@@ -31,6 +31,9 @@
 #include <linux/of.h>
 #include <linux/ktime.h>
 #include <linux/cable_vbus_monitor.h>
+#include <linux/iio/consumer.h>
+#include <linux/iio/types.h>
+#include <linux/iio/iio.h>
 
 enum charging_states {
 	STATE_INIT = 0,
@@ -67,6 +70,11 @@ enum aicl_phase {
 #define AICL_RECHECK_TIME_S		(300)
 #define AICL_MAX_RETRY_COUNT		(3)
 #define AICL_DETECT_RESET_CHARGING_S	(2)
+
+#define INPUT_ADJUST_RETRY_TIMES_MAX	(2)
+#define INPUT_ADJUST_RETRY_DELAY_S	(300)
+#define INPUT_ADJUST_CURRENT_MA		(900)
+#define INPUT_ADJUST_VBUS_CHECK_MA	(4100)
 
 struct htc_battery_bq2419x_data {
 	struct device			*dev;
@@ -124,9 +132,49 @@ struct htc_battery_bq2419x_data {
 	bool				aicl_wake_lock_locked;
 	int				aicl_retry_count;
 	bool				aicl_disable_after_detect;
+	struct iio_channel		*vbus_channel;
+	const char			*vbus_channel_name;
+	unsigned int			vbus_channel_max_voltage;
+	unsigned int			vbus_channel_max_adc;
+
+	int				input_adjust_retry_count;
+	ktime_t				input_adjust_retry_time;
+	bool				input_adjust;
 };
 
 static struct htc_battery_bq2419x_data *htc_battery_data;
+
+static int bq2419x_get_vbus(struct htc_battery_bq2419x_data *data)
+{
+	int vbus = -1, ret;
+
+	if (!data->vbus_channel_name || !data->vbus_channel_max_voltage ||
+					!data->vbus_channel_max_adc)
+		return -EINVAL;
+
+	if (!data->vbus_channel || IS_ERR(data->vbus_channel))
+		data->vbus_channel =
+			iio_channel_get(NULL, data->vbus_channel_name);
+
+	if (data->vbus_channel && !IS_ERR(data->vbus_channel)) {
+		ret = iio_read_channel_processed(data->vbus_channel, &vbus);
+		if (ret < 0)
+			ret = iio_read_channel_raw(data->vbus_channel, &vbus);
+
+		if (ret < 0) {
+			dev_err(data->dev,
+					"Failed to read charger vbus, ret=%d\n",
+					ret);
+			vbus = -1;
+		}
+	}
+
+	if (vbus > 0)
+		vbus = data->vbus_channel_max_voltage * vbus /
+					data->vbus_channel_max_adc;
+
+	return vbus;
+}
 
 static int htc_battery_bq2419x_charger_enable(
 				struct htc_battery_bq2419x_data *data,
@@ -604,6 +652,8 @@ static int __htc_battery_bq2419x_set_charging_current(
 	data->chg_full_done = false;
 	data->last_chg_voltage = data->chg_voltage_control;
 	data->is_recheck_charge = false;
+	data->input_adjust_retry_count = INPUT_ADJUST_RETRY_TIMES_MAX;
+	data->input_adjust = false;
 
 	battery_charging_restart_cancel(data->bc_dev);
 
@@ -652,7 +702,7 @@ static int __htc_battery_bq2419x_set_charging_current(
 			battery_charger_batt_status_start_monitoring(
 				data->bc_dev,
 				data->last_charging_current / 1000);
-		htc_battery_bq2419x_aicl_enable(data, true);
+		htc_battery_bq2419x_aicl_enable(data, false);
 	}
 	ret = htc_battery_bq2419x_aicl_configure_current(data,
 			in_current_limit);
@@ -1074,7 +1124,8 @@ static int htc_battery_bq2419x_input_control(
 					battery_charger_get_drvdata(bc_dev);
 	unsigned int val;
 	int ret = 0;
-	int now_input;
+	int now_input, target_input, vbus;
+	ktime_t timeout, cur_boottime;
 
 	if (!data)
 		return -EINVAL;
@@ -1110,15 +1161,53 @@ static int htc_battery_bq2419x_input_control(
 
 	/* Check input current limit if reset */
 	if (data->ops->get_input_current) {
-		if (data->aicl_input_current > 0)
+		if (data->aicl_target_input > 0)
+			target_input = data->aicl_target_input;
+		else
+			target_input = data->in_current_limit;
+
+		if (data->input_adjust)
+			now_input = INPUT_ADJUST_CURRENT_MA;
+		else if (data->aicl_input_current > 0)
 			now_input = data->aicl_input_current;
 		else
 			now_input = data->in_current_limit;
+
+		cur_boottime = ktime_get_boottime();
+		if (data->input_adjust && data->input_adjust_retry_count > 0 &&
+				target_input > now_input &&
+				ktime_compare(cur_boottime,
+					data->input_adjust_retry_time) >= 0) {
+			data->input_adjust = false;
+			data->input_adjust_retry_count--;
+			now_input = target_input;
+			dev_info(data->dev,
+					"reset input current to %d\n",
+					now_input);
+			htc_battery_bq2419x_configure_charging_current(data,
+					now_input);
+		}
+
+		vbus = bq2419x_get_vbus(data);
 		ret = data->ops->get_input_current(&val, data->ops_data);
 
-		if (!ret && val != now_input)
+		dev_dbg(data->dev, "vbus = %d\n", vbus);
+		if ((!ret && val != now_input) ||
+			(vbus > 0 && vbus < INPUT_ADJUST_VBUS_CHECK_MA)) {
+			if (now_input > INPUT_ADJUST_CURRENT_MA) {
+				data->input_adjust = true;
+				timeout = ktime_set(INPUT_ADJUST_RETRY_DELAY_S,
+							0);
+				data->input_adjust_retry_time =
+					ktime_add(cur_boottime, timeout);
+				now_input = INPUT_ADJUST_CURRENT_MA;
+				dev_info(data->dev,
+					"adjust input current to %d due to input unstable\n",
+					now_input);
+			}
 			htc_battery_bq2419x_configure_charging_current(data,
 								now_input);
+		}
 	}
 
 error:
@@ -1357,6 +1446,19 @@ static struct htc_battery_bq2419x_platform_data
 	pdata->gauge_psy_name =
 		of_get_property(np, "gauge-power-supply-name", NULL);
 
+	pdata->vbus_channel_name =
+		of_get_property(np, "vbus-channel-name", NULL);
+
+	ret = of_property_read_u32(np,
+			"vbus-channel-max-voltage-mv", &pval);
+	if (!ret)
+		pdata->vbus_channel_max_voltage_mv = pval;
+
+	ret = of_property_read_u32(np,
+			"vbus-channel-max-adc", &pval);
+	if (!ret)
+		pdata->vbus_channel_max_adc = pval;
+
 	return pdata;
 }
 
@@ -1503,6 +1605,9 @@ static int htc_battery_bq2419x_probe(struct platform_device *pdev)
 	data->charge_suspend_polling_time =
 			pdata->charge_suspend_polling_time_sec;
 	data->charge_polling_time = pdata->temp_polling_time_sec;
+	data->vbus_channel_name = pdata->vbus_channel_name;
+	data->vbus_channel_max_voltage = pdata->vbus_channel_max_voltage_mv;
+	data->vbus_channel_max_adc = pdata->vbus_channel_max_adc;
 
 	htc_battery_bq2419x_process_plat_data(data, pdata);
 
