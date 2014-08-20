@@ -425,7 +425,6 @@ static int tps61310_param_rd(struct tps61310_info *info, long arg)
 				__func__, pinstate.mask, pinstate.values);
 		data_ptr = &pinstate;
 		data_size = sizeof(struct nvc_torch_pin_state);
-		gpio_set_value(STRB0, 1);
 		break;
 
 	case NVC_PARAM_STEREO:
@@ -511,6 +510,7 @@ static int tps61310_param_wr_s(struct tps61310_info *info,
 			if (reg & 0x07) /* 2:0=torch setting */
 				val = 0x40; /* 6:6 enable just torch */
 		}
+		gpio_set_value(STRB0,  val ? 1 : 0);
 		if (sysedp_state != sysedp_old_state) {
 			/*
 			 * Remove backlight budget since flash will be enabled.
