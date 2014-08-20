@@ -374,6 +374,9 @@ static void dr_controller_run(struct tegra_udc *udc)
 	unsigned long timeout;
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
+	if (!udc->stopped)
+		return;
+
 	pm_stay_awake(&udc->pdev->dev);
 
 	/* Clear stopped bit */
@@ -459,6 +462,9 @@ static void dr_controller_stop(struct tegra_udc *udc)
 {
 	unsigned int tmp;
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
+
+	if (udc->stopped)
+		return;
 
 	/* Clear pending interrupt status bits */
 	tmp = udc_readl(udc, USB_STS_REG_OFFSET);
@@ -1645,6 +1651,10 @@ static int tegra_pullup(struct usb_gadget *gadget, int is_on)
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
 	udc = container_of(gadget, struct tegra_udc, gadget);
+
+	if (udc->stopped)
+		dr_controller_run(udc);
+
 	udc->softconnect = (is_on != 0);
 	if (udc->transceiver && udc->transceiver->state !=
 			OTG_STATE_B_PERIPHERAL)
