@@ -521,8 +521,8 @@ static int init_cpu_edp_limits_calculated(void)
 				power_cap_levels[pwr_idx] / 100;
 			limit = cpu_edp_calculate_maxf(params,
 						   50,
+						   -1,
 						   power_cap_levels[pwr_idx],
-						   0,
 						   cpu_iddq_ma,
 						   n_cores_idx);
 			if (limit == -EINVAL)
