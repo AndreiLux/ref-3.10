@@ -298,6 +298,9 @@ static int tlk_device_release(struct inode *inode, struct file *file)
 	struct rb_node *n;
 	struct te_session *session;
 
+	if (context->is_ss_daemon)
+		tlk_ss_close();
+
 	mutex_lock(&smc_lock);
 	while ((n = rb_first(&context->sessions))) {
 		session = rb_entry(n, struct te_session, node);

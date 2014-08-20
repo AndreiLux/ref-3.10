@@ -29,6 +29,7 @@
 
 static DECLARE_COMPLETION(req_ready);
 static DECLARE_COMPLETION(req_complete);
+static bool ready_for_req;
 
 static struct te_ss_op_legacy *ss_op_shmem_legacy;
 static struct te_ss_op *ss_op_shmem;
@@ -110,6 +111,7 @@ int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
 {
 	int ss_cmd;
 	int ret;
+	struct tlk_context *context = file->private_data;
 
 	switch (ioctl_num) {
 	case TE_IOCTL_SS_CMD:
@@ -121,6 +123,14 @@ int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
 
 		switch (ss_cmd) {
 		case TE_IOCTL_SS_CMD_GET_NEW_REQ:
+			if (!context->is_ss_daemon) {
+				mutex_lock(&smc_lock);
+				INIT_COMPLETION(req_ready);
+				INIT_COMPLETION(req_complete);
+				context->is_ss_daemon = true;
+				ready_for_req = true;
+				mutex_unlock(&smc_lock);
+			}
 			/* wait for a new request */
 			ret = wait_for_completion_interruptible(&req_ready);
 			if (ret != 0)
@@ -143,13 +153,30 @@ int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
 	return 0;
 }
 
-void tlk_ss_op(void)
+uint32_t tlk_ss_op(void)
 {
+	if (!ready_for_req) {
+		pr_err("%s: daemon not ready\n", __func__);
+		return OTE_ERROR_BAD_STATE;
+	}
 	/* signal consumer */
 	complete(&req_ready);
 
 	/* wait for the consumer's signal */
 	wait_for_completion(&req_complete);
+
+	if (!ready_for_req) {
+		pr_err("%s: daemon done\n", __func__);
+		return OTE_ERROR_BAD_STATE;
+	}
+
+	return OTE_SUCCESS;
+}
+
+void tlk_ss_close(void)
+{
+	ready_for_req = false;
+	complete_all(&req_complete);
 }
 
 int tlk_ss_init(struct tlk_info *info)

@@ -140,6 +140,7 @@ struct tlk_context {
 	struct rb_root sessions;
 	struct list_head temp_shmem_list;
 	struct list_head temp_persist_shmem_list;
+	bool is_ss_daemon;
 };
 
 enum {
@@ -389,6 +390,7 @@ int te_handle_fs_ioctl(struct file *file, unsigned int ioctl_num,
 int ote_logger_init(struct tlk_info *tlk_info);
 
 void ote_print_logs(void);
-void tlk_ss_op(void);
+uint32_t tlk_ss_op(void);
+void tlk_ss_close(void);
 
 #endif

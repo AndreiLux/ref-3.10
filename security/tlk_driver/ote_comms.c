@@ -381,6 +381,8 @@ typedef uint32_t (*ote_ns_cb_t)(void);
 
 ote_ns_cb_t cb_table[] = {
 	[OTE_NS_CB_RETRY] = ote_ns_cb_retry,
+
+	[OTE_NS_CB_SS] = tlk_ss_op,
 };
 
 /*
