@@ -51,3 +51,20 @@ config MMC_FREQ_SCALING
 	  device frequency dynamically. Enable this config only if
 	  there is a custom implementation to determine the frequency
 	  using the device stats.
+
+config ENABLE_MMC_USER_CONTROL
+	bool "Enable sending commands (e.g. shutdown) to the mmc"
+	default N
+	help
+	  If you say Y here, you can enable the feature in runtime by
+	  setting mmc_user_control_cmd module param to any of the following:
+	  1) "r: <msec_delay> <write_pattern>": This instructs the mmc to shutdown
+	  after msec_delay msecs when doing a write command that starts with write_pattern
+
+config MMC_SHUTDOWN_GPIO
+	int "The gpio number that is activated in order to shutdown the mmc"
+	depends on ENABLE_MMC_USER_CONTROL
+	help
+	  The gpio number that will be triggered to shutdown the mmc after
+	  encountering the MMC_SHUTDOWN_PATTERN in the head of an mmc data
+	  write request.
