@@ -1395,7 +1395,7 @@ static void tegra_udc_notify_event(struct tegra_udc *udc, int event)
 	}
 }
 
-static int tegra_usb_set_charging_current(struct tegra_udc *udc)
+static int tegra_usb_set_charging_current(struct tegra_udc *udc, bool charger_detect)
 {
 	int max_ua;
 	struct device *dev;
@@ -1416,7 +1416,8 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc)
 			dev_info(dev, "connected to SDP\n");
 		max_ua = min(udc->current_limit * 1000,
 				USB_CHARGING_SDP_CURRENT_LIMIT_UA);
-		if (udc->charging_supported && !USB_drive_strength_test)
+
+		if (udc->charging_supported && !USB_drive_strength_test && charger_detect)
 			schedule_delayed_work(&udc->non_std_charger_work,
 				msecs_to_jiffies(NON_STD_CHARGER_DET_TIME_MS));
 		tegra_udc_notify_event(udc, USB_EVENT_VBUS);
@@ -1513,7 +1514,7 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 			 */
 			tegra_udc_set_charger_type(udc,
 					CONNECT_TYPE_NON_STANDARD_CHARGER);
-			tegra_usb_set_charging_current(udc);
+			tegra_usb_set_charging_current(udc, true);
 
 			if (tegra_usb_phy_qc2_charger_detected(udc->phy,
 					udc->qc2_voltage))
@@ -1543,7 +1544,8 @@ static int tegra_detect_cable_type(struct tegra_udc *udc)
 	 * USB host(CDP/SDP), we also start charging now. Upper gadget driver
 	 * won't decide the current while androidboot.mode=charger.
 	 */
-	tegra_usb_set_charging_current(udc);
+
+	tegra_usb_set_charging_current(udc, true);
 
 	return 0;
 }
@@ -1575,7 +1577,7 @@ static int tegra_vbus_session(struct usb_gadget *gadget, int is_active)
 		tegra_udc_set_charger_type(udc, CONNECT_TYPE_NONE);
 		spin_unlock_irqrestore(&udc->lock, flags);
 		tegra_usb_phy_power_off(udc->phy);
-		tegra_usb_set_charging_current(udc);
+		tegra_usb_set_charging_current(udc, false);
 		udc->current_limit = 0;
 	} else if (!udc->vbus_active && is_active) {
 		tegra_usb_phy_power_on(udc->phy);
@@ -2423,7 +2425,7 @@ static void tegra_udc_set_current_limit_work(struct work_struct *work)
 {
 	struct tegra_udc *udc = container_of(work, struct tegra_udc,
 						current_work);
-	tegra_usb_set_charging_current(udc);
+	tegra_usb_set_charging_current(udc, false);
 }
 
 #ifdef CONFIG_TEGRA_GADGET_BOOST_CPU_FREQ
@@ -2487,7 +2489,7 @@ static void tegra_udc_non_std_charger_detect_work(struct work_struct *work)
 	DBG("%s(%d) BEGIN\n", __func__, __LINE__);
 
 	tegra_udc_set_charger_type(udc, CONNECT_TYPE_NON_STANDARD_CHARGER);
-	tegra_usb_set_charging_current(udc);
+	tegra_usb_set_charging_current(udc, true);
 	dr_controller_stop(udc);
 
 	DBG("%s(%d) END\n", __func__, __LINE__);
