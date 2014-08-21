@@ -9371,7 +9371,7 @@ unsigned long tegra_emc_cpu_limit(unsigned long cpu_rate)
 
 	if ((tegra_revision != TEGRA_REVISION_A01) &&
 	    (tegra_revision != TEGRA_REVISION_A02))
-		return 0; /* no frequency dependency for A03+ revisions */
+		return 68000000; /* 68MHz floor for A03+ all the time */
 
 	if (cpu_rate > 1020000)
 		emc_rate = 600000000;	/* cpu > 1.02GHz, emc 600MHz */
