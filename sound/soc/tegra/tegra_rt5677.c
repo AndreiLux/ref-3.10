@@ -1631,6 +1631,9 @@ void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop
 		/* set hp_en low to prevent power leakage */
 		set_rt5506_hp_en(0);
 		status = false;
+		if (machine->clock_enabled)
+			mclk_enable(machine, 0);
+		machine->bias_level = SND_SOC_BIAS_OFF;
 	}
 
 	return;
