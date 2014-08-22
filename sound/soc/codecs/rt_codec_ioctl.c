@@ -38,6 +38,7 @@ static int rt_codec_hwdep_ioctl_common(struct snd_hwdep *hw,
 	struct rt_codec_cmd __user *_rt_codec = (struct rt_codec_cmd *)arg;
 	struct rt_codec_cmd rt_codec;
 	int *buf, *p;
+	int ret = 0;
 
 	if (is_compat_task()) {
 		if (NULL == rt_codec_ioctl_ops.ioctl_common)
@@ -102,12 +103,12 @@ static int rt_codec_hwdep_ioctl_common(struct snd_hwdep *hw,
 		if (NULL == rt_codec_ioctl_ops.ioctl_common)
 			goto err;
 
-		rt_codec_ioctl_ops.ioctl_common(hw, file, cmd, arg);
+		ret = rt_codec_ioctl_ops.ioctl_common(hw, file, cmd, arg);
 		break;
 	}
 
 	kfree(buf);
-	return 0;
+	return ret;
 
 err:
 	kfree(buf);
