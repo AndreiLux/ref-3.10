@@ -499,7 +499,6 @@ struct tegra_dc_sd_settings {
 
 	bool soft_clipping_enable;
 	u8 soft_clipping_threshold;
-	int soft_clipping_recip_offset;
 
 	bool smooth_k_enable;
 	u16 smooth_k_incr;
