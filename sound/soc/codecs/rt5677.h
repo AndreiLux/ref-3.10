@@ -1476,6 +1476,9 @@ struct rt5677_priv {
 
 	u8 *model_buf;
 	u32 model_len;
+	u32 mic_read_offset;
+	u8 *mic_buf;
+	u32 mic_buf_len;
 };
 
 #endif /* __RT5677_H__ */

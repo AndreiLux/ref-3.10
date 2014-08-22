@@ -32,6 +32,7 @@
 
 #define RTK_IOCTL
 #define RT5677_DMIC_CLK_MAX 2400000
+#define RT5677_PRIV_MIC_BUF_SIZE (64 * 1024)
 
 #ifdef RTK_IOCTL
 #if defined(CONFIG_SND_HWDEP) || defined(CONFIG_SND_HWDEP_MODULE)
@@ -845,6 +846,9 @@ static unsigned int rt5677_set_vad(
 		regcache_cache_only(rt5677->regmap, false);
 		regcache_cache_bypass(rt5677->regmap, true);
 		rt5677_set_vad_source(codec, rt5677->vad_source);
+
+		/* Reset the mic buffer read pointer. */
+		rt5677->mic_read_offset = 0;
 
 		/* Boot the firmware from IRAM instead of SRAM0. */
 		rt5677_dsp_mode_i2c_write_address(codec, RT5677_DSP_BOOT_VECTOR,
@@ -4891,6 +4895,13 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 	if (NULL == rt5677)
 		return -ENOMEM;
 
+	rt5677->mic_buf_len = RT5677_PRIV_MIC_BUF_SIZE;
+	rt5677->mic_buf = kmalloc(rt5677->mic_buf_len, GFP_KERNEL);
+	if (NULL == rt5677->mic_buf) {
+		kfree(rt5677);
+		return -ENOMEM;
+	}
+
 	i2c_set_clientdata(i2c, rt5677);
 
 	rt5677->regmap = devm_regmap_init_i2c(i2c, &rt5677_regmap);
@@ -4942,6 +4953,7 @@ static int rt5677_i2c_remove(struct i2c_client *i2c)
 	struct rt5677_priv *rt5677 = i2c_get_clientdata(i2c);
 
 	snd_soc_unregister_codec(&i2c->dev);
+	kfree(rt5677->mic_buf);
 	kfree(rt5677->model_buf);
 	kfree(rt5677);
 	return 0;
