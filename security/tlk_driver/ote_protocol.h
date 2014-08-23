@@ -123,8 +123,14 @@ struct te_shmem_desc {
 	struct page *pages[];
 };
 
+struct te_session {
+	struct rb_node	node;
+	uint32_t	session_id;
+};
+
 struct tlk_context {
 	struct tlk_device *dev;
+	struct rb_root sessions;
 	struct list_head shmem_alloc_list;
 };
 
