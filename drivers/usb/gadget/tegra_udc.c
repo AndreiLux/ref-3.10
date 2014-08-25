@@ -377,7 +377,9 @@ static void dr_controller_run(struct tegra_udc *udc)
 	if (!udc->stopped)
 		return;
 
-	pm_stay_awake(&udc->pdev->dev);
+	if ((udc->connect_type == CONNECT_TYPE_SDP) ||
+		(udc->connect_type == CONNECT_TYPE_SDP))
+		pm_stay_awake(&udc->pdev->dev);
 
 	/* Clear stopped bit */
 	udc->stopped = 0;
