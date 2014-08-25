@@ -50,7 +50,22 @@ typedef enum {
 	CW_STEP_DETECTOR               = 21,
 	CW_STEP_COUNTER                = 22,
 	HTC_FACEDOWN_DETECTION         = 23,
-	CW_SENSORS_ID_END /* Be careful, do not exceed 31 */,
+	CW_SENSORS_ID_FW /* Be careful, do not exceed 31, Firmware ID limit */,
+	CW_ACCELERATION_W                = 32,
+	CW_MAGNETIC_W                    = 33,
+	CW_GYRO_W                        = 34,
+	CW_PRESSURE_W                    = 37,
+	CW_ORIENTATION_W                 = 38,
+	CW_ROTATIONVECTOR_W              = 39,
+	CW_LINEARACCELERATION_W          = 40,
+	CW_GRAVITY_W                     = 41,
+	CW_MAGNETIC_UNCALIBRATED_W       = 48,
+	CW_GYROSCOPE_UNCALIBRATED_W      = 49,
+	CW_GAME_ROTATION_VECTOR_W        = 50,
+	CW_GEOMAGNETIC_ROTATION_VECTOR_W = 51,
+	CW_STEP_DETECTOR_W               = 53,
+	CW_STEP_COUNTER_W                = 54,
+	CW_SENSORS_ID_TOTAL              = 55, /* Includes Wake up version */
 	TIME_DIFF_EXHAUSTED            = 97,
 	CW_TIME_BASE                   = 98,
 	CW_META_DATA                   = 99,
@@ -88,17 +103,22 @@ typedef enum {
 #define CW_I2C_REG_SENSORS_CALIBRATOR_GET_DATA_PRESSURE         0xB8
 #define CW_I2C_REG_SENSORS_CALIBRATOR_SET_DATA_PRESSURE         0xB8
 #define PRESSURE_UPDATE_RATE                                    0xB6
+#define PRESSURE_WAKE_UPDATE_RATE                               0xB7
 
 #define CWMCU_MAX_DELAY		200
 #define CWMCU_NO_POLLING_DELAY		10000
 
 #define G_SENSORS_STATUS                                        0x60
 #define ACCE_UPDATE_RATE                                        0x66
+#define ACCE_WAKE_UPDATE_RATE                                   0x67
 #define ECOMPASS_SENSORS_STATUS                                 0x70
 #define MAGN_UPDATE_RATE                                        0x76
+#define MAGN_WAKE_UPDATE_RATE                                   0x77
 #define GYRO_SENSORS_STATUS                                     0x80
 #define GYRO_UPDATE_RATE                                        0x86
+#define GYRO_WAKE_UPDATE_RATE                                   0x87
 #define LIGHT_SENSORS_STATUS                                    0x90
+#define LIGHT_UPDATE_PERIOD                                     0x96
 #define LIGHT_SENSORS_CALIBRATION_DATA				0x98
 
 #define ORIE_UPDATE_RATE                                        0xC0
@@ -110,6 +130,16 @@ typedef enum {
 #define GAME_ROTA_UPDATE_RATE                                   0xC6
 #define GEOM_ROTA_UPDATE_RATE                                   0xC7
 #define SIGN_UPDATE_RATE                                        0xC8
+
+#define ORIE_WAKE_UPDATE_RATE                                   0xC9
+#define ROTA_WAKE_UPDATE_RATE                                   0xCA
+#define LINE_WAKE_UPDATE_RATE                                   0xCB
+#define GRAV_WAKE_UPDATE_RATE                                   0xCC
+#define MAGN_UNCA_WAKE_UPDATE_RATE                              0xCD
+#define GYRO_UNCA_WAKE_UPDATE_RATE                              0xCE
+#define GAME_ROTA_WAKE_UPDATE_RATE                              0xCF
+#define GEOM_ROTA_WAKE_UPDATE_RATE                              0xD2
+#define STEP_COUNTER_UPDATE_PERIOD                              0xD3
 
 #define CW_I2C_REG_WATCHDOG_STATUS                              0xE6
 #define WATCHDOG_STATUS_LEN                                     12
@@ -158,14 +188,10 @@ typedef enum {
 #define step_detector			CW_STEP_DETECTOR
 #define step_counter			CW_STEP_COUNTER
 
-#define num_sensors			CW_SENSORS_ID_END
+#define num_sensors			CW_SENSORS_ID_TOTAL
 
 #define CWSTM32_BATCH_MODE_COMMAND	0x40  /* R/W         1 Byte
-					       * Bit 0: Flush command (W)
-					       * Bit 1: Sync command (W)
 					       * Bit 2: Timeout flag (R/WC)
-					       * Bit 3: TimeDiff exhausted flag
-					       *                          (R/WC)
 					       * Bit 4: Buffer full flag (R/WC)
 					       */
 
@@ -174,11 +200,21 @@ typedef enum {
 #define CWSTM32_BATCH_MODE_DATA_COUNTER	0x47  /* R/W         4 Bytes
 					       * (4 bytes, from low byte to
 					       *  high byte */
+#define CWSTM32_BATCH_FLUSH		0x48  /* W        1 Byte (sensors_id) */
+
+#define CWSTM32_WAKE_UP_BATCH_MODE_DATA_QUEUE	0x55  /* R/W         9 Bytes */
+#define CWSTM32_WAKE_UP_BATCH_MODE_TIMEOUT      0x56  /* R/W         4 Bytes
+						       * (ms) */
+#define CWSTM32_WAKE_UP_BATCH_MODE_DATA_COUNTER	0x57  /* R/W         4 Bytes
+						       * (4 bytes, from low byte
+						       *  to high byte) */
 
 #define SYNC_TIMESTAMP_BIT		(1 << 1)
 #define TIMESTAMP_SYNC_CODE		(98)
 
 #define CW_I2C_REG_MCU_TIME                     0x11
+
+#define MAX_EVENT_COUNT                         2500
 
 /* If queue is empty */
 #define CWMCU_NODATA	0xFF
@@ -199,6 +235,9 @@ typedef enum {
 #define CWSTM32_ERR_ST                          0x1F
 
 #define CW_BATCH_ENABLE_REG                     0x41
+#define CW_WAKE_UP_BATCH_ENABLE_REG             0x51
+
+#define CW_CPU_STATUS_REG                       0xD1
 
 /* INT_ST1 */
 #define CW_MCU_INT_BIT_LIGHT                    (1 << 3)
@@ -216,6 +255,15 @@ typedef enum {
 #define CW_MCU_INT_BIT_ERROR_WARN_MSG           (1 << 5)
 #define CW_MCU_INT_BIT_ERROR_MCU_EXCEPTION      (1 << 6)
 #define CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET     (1 << 7)
+
+/* batch_st */
+#define CW_MCU_INT_BIT_BATCH_TIMEOUT      (1 << 2)
+#define CW_MCU_INT_BIT_BATCH_BUFFER_FULL  (1 << 4)
+#define CW_MCU_INT_BIT_BATCH_TRIGGER_READ (CW_MCU_INT_BIT_BATCH_TIMEOUT |\
+					   CW_MCU_INT_BIT_BATCH_BUFFER_FULL)
+#define CW_MCU_INT_BIT_BATCH_INT_MASK     CW_MCU_INT_BIT_BATCH_TRIGGER_READ
+
+#define IIO_SENSORS_MASK     (0xFFFFEFFFFFFFEFFF)
 
 #define CW_MCU_BIT_LIGHT_POLLING		(1 << 5)
 
