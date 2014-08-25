@@ -157,6 +157,7 @@ struct suspend_context tegra_sctx;
 #define PMC_IO_DPD2_REQ         0x1C0
 
 #define PMC_WAKE_STATUS		0x14
+#define PMC_WAKE2_STATUS	0x168
 #define PMC_SW_WAKE_STATUS	0x18
 #define PMC_COREPWRGOOD_TIMER	0x3c
 #define PMC_CPUPWRGOOD_TIMER	0xc8
@@ -748,6 +749,26 @@ static int tegra_suspend_prepare_late(void)
 }
 
 /*
+ * Clear the wake status on suspend prepare. If we're starting to suspend,
+ * the previous wake reason can be misleading.
+ */
+static int pm_suspend_clear_status(struct notifier_block *nb,
+						unsigned long event, void *data)
+{
+	u32 temp;
+	if (event == PM_SUSPEND_PREPARE) {
+		temp = readl(pmc + PMC_WAKE_STATUS);
+		if (temp)
+			pmc_32kwritel(temp, PMC_WAKE_STATUS);
+#ifndef CONFIG_ARCH_TEGRA_2x_SOC
+		temp = readl(pmc + PMC_WAKE2_STATUS);
+		if (temp)
+			pmc_32kwritel(temp, PMC_WAKE2_STATUS);
+	}
+	return NOTIFY_OK;
+}
+
+/*
  * LP0 WAR: Bring all CPUs online before LP0 so that they can be put into C7 on
  * subsequent __cpu_downs otherwise we end up hanging the system by leaving a
  * core in C6 and requesting LP0 from CPU0
@@ -807,6 +828,10 @@ static const struct platform_suspend_ops tegra_suspend_ops = {
 static struct notifier_block __cpuinitdata suspend_notifier = {
 	.notifier_call = pm_suspend_notifier,
 	.priority = 1,
+};
+
+static struct notifier_block suspend_clear_status = {
+	.notifier_call = pm_suspend_clear_status,
 };
 
 static ssize_t suspend_mode_show(struct kobject *kobj,
@@ -1127,6 +1152,9 @@ out:
 
 	if (register_pm_notifier(&suspend_notifier))
 		pr_err("%s: Failed to register suspend notifier\n", __func__);
+
+	if (register_pm_notifier(&suspend_clear_status))
+		pr_err("%s: Failed to register suspend status clearer\n", __func__);
 
 	suspend_set_ops(&tegra_suspend_ops);
 
