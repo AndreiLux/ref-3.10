@@ -270,10 +270,10 @@ static struct notifier_block mdm_panic_blk = {
 
 /* supported modems */
 static const struct usb_device_id modem_list[] = {
-	{USB_DEVICE(0x1d6b, 0x0002),	/* USB HSIC Hub */
+	{USB_DEVICE(0x05c6, 0x9008),	/* USB MDM Boot Device */
 	 .driver_info = 0,
 	 },
-	{USB_DEVICE(0x05c6, 0x9048),	/* USB MDM HSIC */
+	{USB_DEVICE(0x05c6, 0x9048),	/* USB MDM Device */
 	 .driver_info = 0,
 	 },
 	{}
