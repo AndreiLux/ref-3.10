@@ -81,7 +81,7 @@ int rt5677_spi_read(u32 addr, u8 *rx_data, size_t len)
 			if (offset + SPI_BURST_LEN <= len)
 				end = SPI_BURST_LEN;
 			else {
-				end = len % SPI_BURST_LEN;
+				end = len - offset;
 				end = (((end - 1) >> 3) + 1) << 3;
 			}
 			break;
@@ -150,7 +150,7 @@ int rt5677_spi_write(u32 addr, const u8 *txbuf, size_t len)
 			if (offset + SPI_BURST_LEN <= len)
 				end = SPI_BURST_LEN;
 			else {
-				end = len % SPI_BURST_LEN;
+				end = len - offset;
 				end = (((end - 1) >> 3) + 1) << 3;
 			}
 			break;
