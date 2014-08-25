@@ -572,7 +572,7 @@ static void sar_sleep_func(struct work_struct *work)
 	pr_debug("[SAR] %s\n", __func__);
 
 	mode = sar_update_mode(sar->radio_state, sar->pm_state);
-	if (mode == sar->sleep_mode) {
+	if (mode == sar->sleep_mode || sar->dysfunctional) {
 		pr_debug("[SAR] sleep mode no change.\n");
 		return;
 	}
