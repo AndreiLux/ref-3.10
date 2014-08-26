@@ -139,11 +139,8 @@ static struct resource flounder_disp2_resources[] = {
 };
 
 
-static struct tegra_dc_sd_settings sd_settings;
-
 static struct tegra_dc_out flounder_disp1_out = {
 	.type		= TEGRA_DC_OUT_DSI,
-	.sd_settings	= &sd_settings,
 };
 
 static int flounder_hdmi_enable(struct device *dev)
@@ -426,9 +423,6 @@ static void flounder_panel_select(void)
 	panel = flounder_panel_configure(&board, &dsi_instance);
 
 	if (panel) {
-		if (panel->init_sd_settings)
-			panel->init_sd_settings(&sd_settings);
-
 		if (panel->init_dc_out) {
 			panel->init_dc_out(&flounder_disp1_out);
 			if (flounder_disp1_out.type == TEGRA_DC_OUT_DSI) {
