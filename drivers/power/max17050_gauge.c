@@ -356,8 +356,15 @@ static int __max17050_get_temperature(struct i2c_client *client, int *batt_temp)
 		return temp;
 	}
 
-	*batt_temp = ((int16_t) temp) * 10 / (1 << 8);
+	/* The value is signed. */
+	if (temp & 0x8000) {
+		temp = (0x7fff & ~temp) + 1;
+		temp *= -1;
+	}
+	/* The value is converted into deci-centigrade scale */
+	/* Units of LSB = 1 / 256 degree Celsius */
 
+	*batt_temp = temp * 10 / (1 << 8);
 	return 0;
 }
 
