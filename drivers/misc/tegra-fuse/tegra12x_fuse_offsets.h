@@ -138,7 +138,7 @@ DEVICE_ATTR(odm_lock, 0440, tegra_fuse_show, tegra_fuse_store);
  *  T13x: Mid pattern:	1:	T132: Mid ATE CP1/CP2 fuse (rev 0.9 - 0.11)
  *  T13x: New pattern:	0:	T132: New ATE CP1/CP2 fuse (rev 0.12 onwards)
  */
-static inline int fuse_cp_rev_check(void)
+inline int fuse_cp_rev_check(void)
 {
 	static enum tegra_chipid chip_id;
 	u32 rev, rev_major, rev_minor;

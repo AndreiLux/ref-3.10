@@ -290,7 +290,35 @@ error:
 
 static int tlk_device_release(struct inode *inode, struct file *file)
 {
-	kfree(file->private_data);
+	struct tlk_context *context = file->private_data;
+	struct te_closesession_compat cmd;
+	struct te_cmd_req_desc_compat *cmd_desc = NULL;
+	struct te_request_compat *request;
+	struct rb_node *n;
+	struct te_session *session;
+
+	mutex_lock(&smc_lock);
+	while ((n = rb_first(&context->sessions))) {
+		session = rb_entry(n, struct te_session, node);
+		cmd.session_id = session->session_id;
+
+		cmd_desc = te_get_free_cmd_desc_compat(context->dev);
+		if (!cmd_desc) {
+			pr_err("%s: failed to get cmd_desc\n", __func__);
+			break;
+		}
+
+		request = cmd_desc->req_addr;
+		memset(request, 0, sizeof(struct te_request));
+
+		/* close session cannot fail */
+		te_close_session_compat(&cmd, request, context);
+
+		if (cmd_desc)
+			te_put_used_cmd_desc_compat(context->dev, cmd_desc);
+	}
+	mutex_unlock(&smc_lock);
+	kfree(context);
 	file->private_data = NULL;
 	return 0;
 }

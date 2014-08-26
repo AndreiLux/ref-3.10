@@ -521,6 +521,78 @@ int te_set_vpr_params(void *vpr_base, size_t vpr_size)
 }
 EXPORT_SYMBOL(te_set_vpr_params);
 
+static int te_allocate_session(struct tlk_context *context, uint32_t session_id,
+			       struct te_session **sessionp)
+{
+	struct rb_node **p = &context->sessions.rb_node;
+	struct rb_node *parent = NULL;
+	struct te_session *session;
+
+	pr_debug("%s: %d\n", __func__, session_id);
+
+	while (*p) {
+		parent = *p;
+		session = rb_entry(parent, struct te_session, node);
+
+		if (session_id < session->session_id)
+			p = &parent->rb_left;
+		else if (session_id > session->session_id)
+			p = &parent->rb_right;
+		else
+			return -EBUSY;
+	}
+
+	session = kzalloc(sizeof(*session), GFP_KERNEL);
+	if (!session)
+		return -ENOMEM;
+
+	session->session_id = session_id;
+
+	rb_link_node(&session->node, parent, p);
+	rb_insert_color(&session->node, &context->sessions);
+	*sessionp = session;
+
+	return 0;
+}
+
+static struct te_session *te_session_lookup(struct tlk_context *context,
+					    uint32_t session_id)
+{
+	struct rb_node *n = context->sessions.rb_node;
+	struct te_session *session;
+
+	pr_debug("%s: %d\n", __func__, session_id);
+	while (n) {
+		session = rb_entry(n, struct te_session, node);
+
+		if (session_id < session->session_id)
+			n = n->rb_left;
+		else if (session_id > session->session_id)
+			n = n->rb_right;
+		else
+			return session;
+	}
+	return NULL;
+}
+
+static void te_session_opened(struct tlk_context *context, uint32_t session_id)
+{
+	int ret;
+	struct te_session *session;
+
+	ret = te_allocate_session(context, session_id, &session);
+	if (ret)
+		pr_err("%s: failed to allocate session, %d\n", __func__, ret);
+}
+
+static void te_session_closed(struct tlk_context *context,
+			      struct te_session *session)
+{
+	pr_debug("%s: %d\n", __func__, session->session_id);
+	rb_erase(&session->node, &context->sessions);
+	kfree(session);
+}
+
 /*
  * Open session SMC (supporting client-based te_open_session() calls)
  */
@@ -551,6 +623,9 @@ void te_open_session(struct te_opensession *cmd,
 
 	do_smc(request, context->dev);
 
+	if (request->result == OTE_SUCCESS)
+		te_session_opened(context, request->session_id);
+
 	te_unpin_temp_buffers(request, context);
 }
 
@@ -561,12 +636,24 @@ void te_close_session(struct te_closesession *cmd,
 		      struct te_request *request,
 		      struct tlk_context *context)
 {
+	struct te_session *session;
+
+	session = te_session_lookup(context, cmd->session_id);
+	if (!session) {
+		pr_err("%s: error unknown session: %d\n",
+		       __func__, cmd->session_id);
+		request->result = OTE_ERROR_BAD_PARAMETERS;
+		return;
+	}
+
 	request->session_id = cmd->session_id;
 	request->type = TE_SMC_CLOSE_SESSION;
 
 	do_smc(request, context->dev);
 	if (request->result)
 		pr_info("Error closing session: %08x\n", request->result);
+
+	te_session_closed(context, session);
 }
 
 /*
@@ -577,6 +664,15 @@ void te_launch_operation(struct te_launchop *cmd,
 			 struct tlk_context *context)
 {
 	int ret;
+	struct te_session *session;
+
+	session = te_session_lookup(context, cmd->session_id);
+	if (!session) {
+		pr_err("%s: error unknown session: %d\n",
+		       __func__, cmd->session_id);
+		request->result = OTE_ERROR_BAD_PARAMETERS;
+		return;
+	}
 
 	ret = te_setup_temp_buffers(request, context);
 	if (ret != OTE_SUCCESS) {
@@ -624,6 +720,9 @@ void te_open_session_compat(struct te_opensession_compat *cmd,
 
 	do_smc_compat(request, context->dev);
 
+	if (request->result == OTE_SUCCESS)
+		te_session_opened(context, request->session_id);
+
 	te_unpin_temp_buffers_compat(request, context);
 }
 
@@ -634,12 +733,24 @@ void te_close_session_compat(struct te_closesession_compat *cmd,
 			     struct te_request_compat *request,
 			     struct tlk_context *context)
 {
+	struct te_session *session;
+
+	session = te_session_lookup(context, cmd->session_id);
+	if (!session) {
+		pr_err("%s: error unknown session: %d\n",
+		       __func__, cmd->session_id);
+		request->result = OTE_ERROR_BAD_PARAMETERS;
+		return;
+	}
+
 	request->session_id = cmd->session_id;
 	request->type = TE_SMC_CLOSE_SESSION;
 
 	do_smc_compat(request, context->dev);
 	if (request->result)
 		pr_info("Error closing session: %08x\n", request->result);
+
+	te_session_closed(context, session);
 }
 
 /*
@@ -650,6 +761,15 @@ void te_launch_operation_compat(struct te_launchop_compat *cmd,
 				struct tlk_context *context)
 {
 	int ret;
+	struct te_session *session;
+
+	session = te_session_lookup(context, cmd->session_id);
+	if (!session) {
+		pr_err("%s: error unknown session: %d\n",
+		       __func__, cmd->session_id);
+		request->result = OTE_ERROR_BAD_PARAMETERS;
+		return;
+	}
 
 	ret = te_setup_temp_buffers_compat(request, context);
 	if (ret != OTE_SUCCESS) {

@@ -3319,6 +3319,8 @@ int se_suspend(struct device *dev, bool polling)
 
 	se_dev->polling = polling;
 
+	mutex_lock(&se_hw_lock);
+
 	/* Generate SRK */
 	err = tegra_se_generate_srk(se_dev);
 	if (err) {
@@ -3424,6 +3426,8 @@ int se_suspend(struct device *dev, bool polling)
 out:
 	/* put the device into runtime suspend state - disable clock */
 	pm_runtime_put_sync(dev);
+	mutex_unlock(&se_hw_lock);
+
 	return err;
 }
 EXPORT_SYMBOL(se_suspend);
@@ -3536,6 +3540,26 @@ static void __exit tegra_se_module_exit(void)
 {
 	platform_driver_unregister(&tegra_se_driver);
 }
+
+void tegra_se_acquire(void)
+{
+	mutex_lock(&se_hw_lock);
+
+	BUG_ON(!sg_tegra_se_dev->pclk);
+
+	clk_prepare_enable(sg_tegra_se_dev->pclk);
+}
+EXPORT_SYMBOL(tegra_se_acquire);
+
+void tegra_se_release(void)
+{
+	BUG_ON(!sg_tegra_se_dev->pclk);
+
+	clk_disable_unprepare(sg_tegra_se_dev->pclk);
+
+	mutex_unlock(&se_hw_lock);
+}
+EXPORT_SYMBOL(tegra_se_release);
 
 module_init(tegra_se_module_init);
 module_exit(tegra_se_module_exit);
