@@ -32,6 +32,7 @@
 
 static LIST_HEAD(sar_list);
 static DEFINE_SPINLOCK(sar_list_lock);
+static int cy8c_check_sensor(struct cy8c_sar_data *sar);
 static void sar_event_handler(struct work_struct *work);
 static DECLARE_WORK(notifier_work, sar_event_handler);
 BLOCKING_NOTIFIER_HEAD(sar_notifier_list);
@@ -252,22 +253,46 @@ int i2c_cy8c_lock_write(struct i2c_client *client, uint8_t *data, uint8_t length
 static int i2c_tx_bytes(struct cy8c_sar_data *sar, u16 len, u8 *buf)
 {
 	int ret;
-	ret = i2c_master_send(sar->client, (char *)buf, (int)len);
-	if (ret != len) {
-		pr_err("[SAR][ERR] I2C TX fail (%d)", ret);
-		ret = -EIO;
+	uint8_t retry;
+	struct i2c_client *client = sar->client;
+	struct cy8c_i2c_sar_platform_data *pdata = client->dev.platform_data;
+	uint16_t position_id = pdata->position_id;
+
+	for (retry = 0; retry < CY8C_I2C_RETRY_TIMES; retry++) {
+		ret = i2c_master_send(client, (char *)buf, (int)len);
+		if (ret > 0) {
+			if (ret == len)
+				return ret;
+			ret = -EIO;
+			break;
+		}
+		mdelay(10);
 	}
+
+	pr_err("[SAR%d][ERR] I2C TX fail (%d)", position_id, ret);
 	return ret;
 }
 
 static int i2c_rx_bytes(struct cy8c_sar_data *sar, u16 len, u8 *buf)
 {
 	int ret;
-	ret = i2c_master_recv(sar->client, (char *)buf, (int)len);
-	if (ret != len) {
-		pr_err("[SAR][ERR] I2C RX fail (%d)", ret);
-		ret = -EIO;
+	uint8_t retry;
+	struct i2c_client *client = sar->client;
+	struct cy8c_i2c_sar_platform_data *pdata = client->dev.platform_data;
+	uint16_t position_id = pdata->position_id;
+
+	for (retry = 0; retry < CY8C_I2C_RETRY_TIMES; retry++) {
+		ret = i2c_master_recv(client, (char *)buf, (int)len);
+		if (ret > 0) {
+			if (ret == len)
+				return ret;
+			ret = -EIO;
+			break;
+		}
+		mdelay(10);
 	}
+
+	pr_err("[SAR%d][ERR] I2C RX fail (%d)", position_id, ret);
 	return ret;
 }
 
@@ -285,7 +310,7 @@ static void sar_event_handler(struct work_struct *work)
 		pdata = sar->client->dev.platform_data;
 		active &= ~SAR_MISSING;
 		if (sar->is_activated)
-			active |= 1 << (pdata->position_id);
+			active |= 1 << pdata->position_id;
 		if (sar->dysfunctional)
 			active |= SAR_DYSFUNCTIONAL << pdata->position_id;
 	}
@@ -298,15 +323,18 @@ static int smart_blmode_check(struct cy8c_sar_data *sar)
 {
 	int ret;
 	uint8_t i2cbuf[3] = {0};
+	struct i2c_client *client = sar->client;
+	struct cy8c_i2c_sar_platform_data *pdata = client->dev.platform_data;
+	uint16_t position_id = pdata->position_id;
 
 	ret = i2c_tx_bytes(sar, 2, i2cbuf);
 	if (ret != 2) {
-		pr_err("[SAR][ERR] Shift i2c_write ERROR!!\n");
+		pr_err("[SAR%d][ERR] Shift i2c_write ERROR!!\n", position_id);
 		return -1;
 	}
 	ret = i2c_rx_bytes(sar, 3, i2cbuf);/*Confirm in BL mode*/
 	if (ret != 3)
-		pr_err("[SAR][ERR] i2c_BL_read ERROR!!\n");
+		pr_err("[SAR%d][ERR] i2c_BL_read ERROR!!\n", position_id);
 
 	switch (i2cbuf[BL_CODEADD]) {
 	case BL_RETMODE:
@@ -315,8 +343,8 @@ static int smart_blmode_check(struct cy8c_sar_data *sar)
 	case BL_BLIVE:
 		return (i2cbuf[BL_STATUSADD] == BL_BLMODE) ? 1 : -1;
 	default:
-		pr_err("[SAR][ERR] code = %x %x %x\n"
-				, i2cbuf[0], i2cbuf[1], i2cbuf[2]);
+		pr_err("[SAR%d][ERR] code = %x %x %x\n"
+				, position_id, i2cbuf[0], i2cbuf[1], i2cbuf[2]);
 		return -1;
 	}
 	return -1;
@@ -330,8 +358,9 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 	int taglen;
 	struct i2c_client *client = sar->client;
 	struct cy8c_i2c_sar_platform_data *pdata = client->dev.platform_data;
+	uint16_t position_id = pdata->position_id;
 
-	pr_info("[SAR] %s, %d\n", __func__, len);
+	pr_info("[SAR%d] %s, %d\n", position_id, __func__, len);
 	sarfw = kzalloc(len/2, GFP_KERNEL);
 
 	disable_irq(sar->intr_irq);
@@ -353,18 +382,21 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 		msleep(100);
 		i2cbuf[0] = CS_FW_BLADD;
 		i2cbuf[1] = 1;
+		client->addr = pdata->ap_addr;
 		ret = i2c_tx_bytes(sar, 2, i2cbuf);
 		if (ret != 2)
-			pr_err("[SAR][ERR] i2c_write G2B ERROR!!\n");
+			pr_info("[SAR%d] G2B command fail\n", position_id);
 
 		client->addr = pdata->bl_addr;
-		pr_info("[SAR] @set TOP BL mode addr:0x%x\n", pdata->bl_addr);
+		pr_debug("[SAR%d] @set BL mode addr:0x%x\n", position_id
+				, pdata->bl_addr);
 		/* wait chip into BL mode. */
-		msleep(100);
+		msleep(300);
 		memcpy(wbuf+2, sarfw, 10);
 		ret = i2c_tx_bytes(sar, 12, wbuf);/*1st Block*/
 		if (ret != 12) {
-			pr_err("[SAR][ERR] 1st i2c_write ERROR!!\n");
+			pr_err("[SAR%d][ERR] 1st i2c_write ERROR!!\n"
+					, position_id);
 			goto error_fw_fail;
 		}
 
@@ -375,10 +407,11 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 		msleep(100);
 		ret = smart_blmode_check(sar);
 		if (ret < 0) {
-			pr_err("[SAR][ERR] 1st Blk BL Check Err\n");
+			pr_err("[SAR%d][ERR] 1st Blk BL Check Err\n"
+					, position_id);
 			goto error_fw_fail;
 		}
-		pr_info("[SAR] check 1st BL mode Done!!\n");
+		pr_debug("[SAR%d] check 1st BL mode Done!!\n", position_id);
 		while (1) {
 			if (sarfw[j+1] == 0x39) {
 				cnt_blk++;
@@ -392,8 +425,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 					/* Write Blocks */
 					ret = i2c_cy8c_lock_write(client, wbuf, 18);
 					if (ret != 0) {
-						pr_err("[SAR][ERR] i2c_write ERROR!! Data Block = %d\n"
-								, cnt_blk);
+						pr_err("[SAR%d][ERR] i2c_write ERROR!! Data Block = %d\n"
+							, position_id, cnt_blk);
 						goto error_fw_fail;
 					}
 					memset(wbuf, 0, sizeof(wbuf));
@@ -407,8 +440,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				ret = i2c_cy8c_lock_write(client, wbuf, 16);
 
 				if (ret != 0) {
-					pr_err("[SAR][ERR] i2c_write ERROR!! Data Block = %d\n"
-							, cnt_blk);
+					pr_err("[SAR%d][ERR] i2c_write ERROR!! Data Block = %d\n"
+							, position_id, cnt_blk);
 					goto error_fw_fail;
 				}
 				memset(wbuf, 0 , sizeof(wbuf));
@@ -422,8 +455,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				i2c_unlock_adapter(client->adapter);
 				ret = smart_blmode_check(sar);/*confirm Bl*/
 				if (ret < 0) {
-					pr_err("[SAR][ERR] Check BL Error Blk = %d\n",
-						cnt_blk);
+					pr_err("[SAR%d][ERR] Check BL Error Blk = %d\n"
+						, position_id, cnt_blk);
 					goto error_fw_fail;
 				}
 			} else if (sarfw[j+1] == 0x3B) {
@@ -431,7 +464,8 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				memcpy(wbuf+2, sarfw+j, 10);
 				ret = i2c_tx_bytes(sar, 12, wbuf);
 				if (ret != 12) {
-					pr_err("[SAR][ERR] i2c_write ERROR!! Last Block\n");
+					pr_err("[SAR%d][ERR] i2c_write ERROR!! Last Block\n"
+							, position_id);
 					goto error_fw_fail;
 				}
 				memset(wbuf, 0, sizeof(wbuf));
@@ -442,17 +476,19 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 				 * wait chip internal reset time.
 				 */
 				msleep(200);
-				pr_info("[SAR] Firmware Update OK!\n");
+				pr_info("[SAR%d] Firmware Update OK!\n"
+						, position_id);
 				break;
 			} else {
-				pr_err("[SAR][ERR] Smart sensor firmware update error!!\n");
+				pr_err("[SAR%d][ERR] Smart sensor firmware update error!!\n"
+						, position_id);
 				break;
 			}
 		}
 
 		client->addr = pdata->ap_addr;
-		pr_debug("[SAR] Firmware Update OK and set the slave addr to %x\n"
-				, pdata->ap_addr);
+		pr_debug("[SAR%d] Firmware Update OK and set the slave addr to %x\n"
+				, position_id, pdata->ap_addr);
 	}
 	kfree(sarfw);
 	enable_irq(sar->intr_irq);
@@ -460,7 +496,7 @@ static int update_firmware(char *buf, int len, struct cy8c_sar_data *sar)
 
 error_fw_fail:
 	kfree(sarfw);
-	client->addr = pdata->position_id ? 0xBA >> 1 : 0xB8 >> 1;
+	client->addr = pdata->ap_addr;
 	enable_irq(sar->intr_irq);
 	return -1;
 }
@@ -490,6 +526,7 @@ static void cy8c_sar_fw_update_func(const struct firmware *fw, void *context)
 				schedule_work(&notifier_work);
 			}
 		} else {
+			cy8c_check_sensor(sar);
 			sar->dysfunctional = 0;
 			break;
 		}
@@ -509,39 +546,42 @@ static int sar_fw_update(struct cy8c_sar_data *sar)
 	return ret;
 }
 
-static int cy8c_init_sensor(struct cy8c_sar_data *sar)
+static int cy8c_check_sensor(struct cy8c_sar_data *sar)
 {
 	uint8_t ver = 0, chip = 0;
 	int ret;
 	struct i2c_client *client = sar->client;
 	struct cy8c_i2c_sar_platform_data *pdata = client->dev.platform_data;
 
-	pr_info("[SAR] %s\n", __func__);
+	pr_info("[SAR%d] %s\n", pdata->position_id, __func__);
+	client->addr = pdata->ap_addr;
 	ret = i2c_cy8c_read(client, CS_FW_CHIPID, &chip, 1);
 	if (ret < 0) {
+		pr_info("[SAR%d] Retrieve chip ID under BL\n"
+				, pdata->position_id);
 		client->addr = pdata->bl_addr;
 		ret = i2c_cy8c_read(client, CS_FW_CHIPID, &chip, 1);
-		if (ret < 0) {
-			pr_err("[SAR%d] Chip not found\n", pdata->position_id);
+		client->addr = pdata->ap_addr;
+		if (ret < 0)
 			goto err_chip_found;
-		} else {
-			pr_err("[SAR][ERR] Chip in the BL mode need to recover\n");
+		else
 			goto err_fw_get_fail;
-		}
 	}
 
 	ret = i2c_cy8c_read(client, CS_FW_VERSION, &ver, 1);
 	if (ret < 0) {
-		pr_err("[SAR][ERR] Ver Read Err\n");
+		pr_err("[SAR%d][ERR] Ver Read Err\n", pdata->position_id);
 		goto err_fw_get_fail;
 	} else
 		sar->id.version = ver;
 
 	if (chip == CS_CHIPID) {
 		sar->id.chipid = chip;
-		pr_info("[SAR] CY8C_SAR_V%x\n", sar->id.version);
+		pr_info("[SAR%d] CY8C_SAR_V%x\n"
+				, pdata->position_id, sar->id.version);
 	} else
-		pr_info("[SAR] CY8C_Cap_V%x\n", sar->id.version);
+		pr_info("[SAR%d] CY8C_Cap_V%x\n"
+				, pdata->position_id, sar->id.version);
 	return 0;
 
 err_fw_get_fail:
@@ -549,6 +589,7 @@ err_fw_get_fail:
 			, pdata->position_id);
 	return -2;
 err_chip_found:
+	pr_err("[SAR%d][ERR] Chip not found\n", pdata->position_id);
 	return -1;
 }
 
@@ -601,15 +642,16 @@ static void sar_sleep_func(struct work_struct *work)
 static int sysfs_create(struct cy8c_sar_data *sar)
 {
 	int ret;
-	struct cy8c_i2c_sar_platform_data *pdata;
+	struct cy8c_i2c_sar_platform_data *pdata
+			= sar->client->dev.platform_data;
+	uint16_t position_id = pdata->position_id;
 
-	pdata = sar->client->dev.platform_data;
-	pr_info("[SAR] %s, position=%d\n", __func__, pdata->position_id);
-	if (pdata->position_id == 0) {
+	pr_debug("[SAR] %s, position=%d\n", __func__, position_id);
+	if (position_id == 0) {
 		sar->sar_class = class_create(THIS_MODULE, "cap_sense");
 		if (IS_ERR(sar->sar_class)) {
 			pr_info("[SAR] %s, position=%d, create class fail1\n"
-					, __func__, pdata->position_id);
+					, __func__, position_id);
 			ret = PTR_ERR(sar->sar_class);
 			sar->sar_class = NULL;
 			return -ENXIO;
@@ -618,16 +660,16 @@ static int sysfs_create(struct cy8c_sar_data *sar)
 						sar, "sar");
 		if (unlikely(IS_ERR(sar->sar_dev))) {
 			pr_info("[SAR] %s, position=%d, create class fail2\n"
-					, __func__, pdata->position_id);
+					, __func__, position_id);
 			ret = PTR_ERR(sar->sar_dev);
 			sar->sar_dev = NULL;
 			return -ENOMEM;
 		}
-	} else if (pdata->position_id == 1) {
+	} else if (position_id == 1) {
 		sar->sar_class = class_create(THIS_MODULE, "cap_sense1");
 		if (IS_ERR(sar->sar_class)) {
 			pr_info("[SAR] %s, position=%d, create class fail3\n"
-					, __func__, pdata->position_id);
+					, __func__, position_id);
 			ret = PTR_ERR(sar->sar_class);
 			sar->sar_class = NULL;
 			return -ENXIO;
@@ -636,7 +678,7 @@ static int sysfs_create(struct cy8c_sar_data *sar)
 						sar, "sar1");
 		if (unlikely(IS_ERR(sar->sar_dev))) {
 			pr_info("[SAR] %s, position=%d, create class fail4\n"
-					, __func__, pdata->position_id);
+					, __func__, position_id);
 			ret = PTR_ERR(sar->sar_dev);
 			sar->sar_dev = NULL;
 			return -ENOMEM;
@@ -704,19 +746,10 @@ static int cy8c_sar_probe(struct i2c_client *client,
 
 	sar->intr_irq = gpio_to_irq(pdata->gpio_irq);
 
-	ret = cy8c_init_sensor(sar);
-	if (ret < 0) {
-		if (ret == -1) {
-			pr_err("[SAR][ERR], chip not found.\n");
-			goto err_init_sensor_failed;
-		} else if (ret == -2)
-			ret = sar_fw_update(sar);
-			if (ret) {
-				pr_err("[SAR][ERR], recover fail.\n");
-				goto err_check_functionality_failed;
-			} else
-				cy8c_init_sensor(sar);
-	}
+	ret = cy8c_check_sensor(sar);
+	if (ret == -1)
+		goto err_init_sensor_failed;
+
 	sar->sleep_mode = sar->radio_state = sar->pm_state = KEEP_AWAKE;
 	sar->is_activated = 0;
 	sar->polarity = 0; /* 0: low active */
@@ -756,7 +789,7 @@ static int cy8c_sar_probe(struct i2c_client *client,
 	}
 	ret = sar_fw_update(sar);
 	if (ret) {
-		pr_err("[SAR%d][ERR] SAR sensor fail %d.\n"
+		pr_err("[SAR%d][ERR] Fail to create update work (%d).\n"
 				, pdata->position_id, ret);
 		goto err_check_functionality_failed;
 	}
