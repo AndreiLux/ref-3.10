@@ -123,7 +123,6 @@ static struct imx219_reg mode_3280x2460[] = {
 	{0x4797, 0x0E},
 	{0x479B, 0x0E},
 	/* stream on */
-	{0x0152, 0x01},
 	{0x0100, 0x01},
 	{IMX219_TABLE_WAIT_MS, IMX219_WAIT_MS},
 	{IMX219_TABLE_END, 0x00}
@@ -222,7 +221,6 @@ static struct imx219_reg mode_3280x1846[] = {
 	{0x4797, 0x0E},
 	{0x479B, 0x0E},
 	/* stream on */
-	{0x0152, 0x01},
 	{0x0100, 0x01},
 	{IMX219_TABLE_WAIT_MS, IMX219_WAIT_MS},
 	{IMX219_TABLE_END, 0x00}
@@ -321,7 +319,6 @@ static struct imx219_reg mode_1640x1232[] = {
 	{0x4797, 0x0E},
 	{0x479B, 0x0E},
 	/* stream on */
-	{0x0152, 0x01},
 	{0x0100, 0x01},
 	{IMX219_TABLE_WAIT_MS, IMX219_WAIT_MS},
 	{IMX219_TABLE_END, 0x00}
@@ -421,7 +418,6 @@ static struct imx219_reg mode_1280x720[] = {
 	{0x4797, 0x0E},
 	{0x479B, 0x0E},
 	/* stream on */
-	{0x0152, 0x01},
 	{0x0100, 0x01},
 	{IMX219_TABLE_WAIT_MS, IMX219_WAIT_MS},
 	{IMX219_TABLE_END, 0x00}

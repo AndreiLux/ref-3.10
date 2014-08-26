@@ -468,15 +468,6 @@ imx219_set_group_hold(struct imx219_info *info, struct imx219_ae *ae)
 
 	ret = imx219_write_reg(info->i2c_client, 0x150, bank_a ? 0 : 1);
 
-	if (pre_ae.bank_switch) {
-		for (i = 0; i < 10; i++) {
-			msleep_range(5);
-			imx219_read_reg(info->i2c_client, 0x150, &reg);
-			if (((reg & 0x2) ? false : true) == bank_a)
-				break;
-		}
-	}
-
 #ifdef GROUP_HOLD_DEBUG
 	imx219_read_reg(info->i2c_client, 0x150, &reg);
 	BK = reg & 0x2;
