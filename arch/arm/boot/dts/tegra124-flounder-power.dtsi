@@ -63,7 +63,6 @@ palmas: tps65913 {
 		compatible = "ti,palmas-usb";
 		extcon-name = "palmas-extcon";
 		ti,wakeup;
-		ti,enable-id-detection;
 		ti,enable-vbus-detection;
 	};
 

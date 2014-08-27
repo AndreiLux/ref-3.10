@@ -867,7 +867,6 @@ static void flounder_usb_init(void)
 	tegra_udc_pdata.id_det_type = TEGRA_USB_GPIO_ID;
 	tegra_udc_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_GPIO_ID;
-	tegra_ehci1_utmi_pdata.id_extcon_dev_name = "palmas-extcon";
 	if (!is_mdm_modem())
 		tegra_ehci1_utmi_pdata.u_cfg.utmi.xcvr_setup_offset = -3;
 
