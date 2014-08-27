@@ -302,6 +302,7 @@ static const struct qcom_modem_operations mdm_operations = {
 struct tegra_usb_platform_data tegra_ehci2_hsic_modem_pdata = {
 	.port_otg = false,
 	.has_hostpc = true,
+	.unaligned_dma_buf_supported = true,
 	.phy_intf = TEGRA_USB_PHY_INTF_HSIC,
 	.op_mode	= TEGRA_USB_OPMODE_HOST,
 	.u_data.host = {
