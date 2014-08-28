@@ -629,28 +629,52 @@ static struct thermal_trip_info skin_trips[] = {
 	}
 };
 
-static struct therm_est_subdevice skin_devs[] = {
+static struct therm_est_subdevice skin_devs_wifi[] = {
 	{
 		.dev_data = "Tdiode_tegra",
 		.coeffs = {
-			3, 0, 0, -1,
-			-1, -1, -1, -1,
-			-1, 0, -1, 0,
+			3, 0, 0, 0,
+			-1, 0, 0, 0,
 			0, 0, 0, 0,
-			0, -1, -2, -11
+			0, 0, 0, 0,
+			0, 0, 0, -1
 		},
 	},
 	{
 		.dev_data = "Tboard_tegra",
 		.coeffs = {
-			19, 13, 7, 5,
-			3, 2, 2, 3,
-			4, 4, 5, 5,
-			3, 3, 3, 4,
-			5, 6, 9, 13
+			7, 6, 5, 3,
+			3, 4, 4, 4,
+			4, 4, 4, 4,
+			3, 4, 3, 3,
+			4, 6, 9, 15
 		},
 	},
 };
+
+static struct therm_est_subdevice skin_devs_lte[] = {
+	{
+		.dev_data = "Tdiode_tegra",
+		.coeffs = {
+			2, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, -1, -2
+		},
+	},
+	{
+		.dev_data = "Tboard_tegra",
+		.coeffs = {
+			7, 5, 4, 3,
+			3, 3, 4, 4,
+			3, 3, 3, 3,
+			4, 4, 3, 3,
+			3, 5, 10, 16
+		},
+	},
+};
+
 
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
@@ -720,14 +744,12 @@ static struct balanced_throttle skin_throttle = {
 static int __init flounder_skin_init(void)
 {
 	if (of_machine_is_compatible("google,flounder") ||
-	    of_machine_is_compatible("google,flounder_lte") ||
-	    of_machine_is_compatible("google,flounder64") ||
-	    of_machine_is_compatible("google,flounder64_lte")) {
-		/* turn on tskin only on XE (PVT) device */
+	    of_machine_is_compatible("google,flounder64")) {
+		/* turn on tskin only on XE (PVT) and later revision */
 		if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
-			skin_data.ndevs = ARRAY_SIZE(skin_devs);
-			skin_data.devs = skin_devs;
-			skin_data.toffset = -2932;
+			skin_data.ndevs = ARRAY_SIZE(skin_devs_wifi);
+			skin_data.devs = skin_devs_wifi;
+			skin_data.toffset = -4746;
 
 			balanced_throttle_register(&skin_throttle,
 							"skin-balanced");
@@ -735,6 +757,22 @@ static int __init flounder_skin_init(void)
 							&skin_data;
 			platform_device_register(&tegra_skin_therm_est_device);
 		}
+	}
+	else if (of_machine_is_compatible("google,flounder_lte") ||
+	    of_machine_is_compatible("google,flounder64_lte")) {
+		/* turn on tskin only on LTE XD (DVT) and later revision  */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_DVT ) {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs_lte);
+			skin_data.devs = skin_devs_lte;
+			skin_data.toffset = -1625;
+
+			balanced_throttle_register(&skin_throttle,
+							"skin-balanced");
+			tegra_skin_therm_est_device.dev.platform_data =
+							&skin_data;
+			platform_device_register(&tegra_skin_therm_est_device);
+		}
+
 	}
 	return 0;
 }
