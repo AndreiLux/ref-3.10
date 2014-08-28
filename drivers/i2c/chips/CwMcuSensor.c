@@ -3072,7 +3072,7 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 			ret = CWMCU_i2c_read(mcu_data, CWSTM32_READ_Hall_Sensor,
 					     &data, 1);
 			if (ret >= 0) {
-				D("%s: MAGIC COVER = 0x%x\n", __func__,
+				I("%s: MAGIC COVER = 0x%x\n", __func__,
 				  ((data >> 6) & 0x3));
 				magic_cover_report_input(mcu_data, data);
 			} else {
