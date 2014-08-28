@@ -133,7 +133,7 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 			ret = rt5677_spi_read(addr + second_chunk_start,
 					      rt5677->mic_buf + first_chunk_len,
 					      second_chunk_len);
-			if (ret > 0)
+			if (!ret)
 				bytes_to_user += second_chunk_len;
 		}
 
