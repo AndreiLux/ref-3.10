@@ -1967,6 +1967,8 @@ static void pmu_setup_hw_enable_elpg(struct gk20a *g)
 		gk20a_aelpg_init(g);
 		gk20a_aelpg_init_and_enable(g, PMU_AP_CTRL_ID_GRAPHICS);
 	}
+
+	wake_up(&g->pmu.boot_wq);
 }
 
 int gk20a_init_pmu_support(struct gk20a *g)

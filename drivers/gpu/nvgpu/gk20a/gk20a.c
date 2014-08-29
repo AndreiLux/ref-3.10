@@ -914,6 +914,8 @@ static int gk20a_pm_finalize_poweron(struct device *dev)
 		goto done;
 	}
 
+	wait_event(g->pmu.boot_wq, g->pmu.pmu_state == PMU_STATE_STARTED);
+
 	gk20a_channel_resume(g);
 	set_user_nice(current, nice_value);
 
@@ -1469,6 +1471,7 @@ static int gk20a_probe(struct platform_device *dev)
 					&gk20a->timeouts_enabled);
 	gk20a_pmu_debugfs_init(dev);
 #endif
+	init_waitqueue_head(&gk20a->pmu.boot_wq);
 
 	gk20a_init_gr(gk20a);
 
