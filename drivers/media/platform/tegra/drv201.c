@@ -88,9 +88,9 @@
 #include <media/drv201.h>
 #include <media/camera.h>
 
-#define DRV201_FOCAL_LENGTH_FLOAT	(3.094f)
+#define DRV201_FOCAL_LENGTH_FLOAT	(3.097f)
 #define DRV201_FNUMBER_FLOAT		(2.4f)
-#define DRV201_FOCAL_LENGTH		(0x40460419) /* 3.094f */
+#define DRV201_FOCAL_LENGTH		(0x4046353f) /* 3.097f */
 #define DRV201_FNUMBER			(0x4019999a) /* 2.4f */
 #define DRV201_ACTUATOR_RANGE	1023
 #define DRV201_SETTLETIME		15
