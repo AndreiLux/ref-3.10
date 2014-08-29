@@ -1903,11 +1903,12 @@ static void setup_delay(struct cwmcu_data *mcu_data)
 
 	if (delay_candidate_ms != atomic_read(&mcu_data->delay)) {
 		cancel_delayed_work_sync(&mcu_data->work);
-		atomic_set(&mcu_data->delay, delay_candidate_ms);
 		if (mcu_data->enabled_list & IIO_SENSORS_MASK) {
+			atomic_set(&mcu_data->delay, delay_candidate_ms);
 			queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
 					   0);
-		}
+		} else
+			atomic_set(&mcu_data->delay, CWMCU_MAX_DELAY + 1);
 	}
 
 	D("%s: Minimum delay = %dms\n", __func__,
