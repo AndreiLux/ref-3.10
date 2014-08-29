@@ -316,6 +316,14 @@ config CRYPTO_DEV_TEGRA_SE
 	  This option allows you to have support of Security Engine for crypto
 	  acceleration.
 
+config CRYPTO_DEV_TEGRA_SE_NO_ALGS
+	bool "Do not register crypto algorithms"
+	depends on CRYPTO_DEV_TEGRA_SE
+	help
+	  This option disables registration of crypto algorithms with the kernel.
+	  The SE has other uses in the context of TEEs which do not require
+	  Linux to use hardware based crypto.
+
 config CRYPTO_DEV_NX
 	bool "Support for IBM Power7+ in-Nest cryptographic acceleration"
 	depends on PPC64 && IBMVIO
