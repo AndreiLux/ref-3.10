@@ -26,7 +26,6 @@
 #include <linux/power_supply.h>
 
 #define MAX17050_I2C_RETRY_TIMES (5)
-#define MAX17050_TEMPERATURE_RE_READ_MS (1400)
 
 /* Fuel Gauge Maxim MAX17050 Register Definition */
 enum max17050_fg_register {
@@ -399,12 +398,6 @@ static int max17050_get_temperature(struct i2c_client *client, int *batt_temp)
 		goto error;
 
 	ret = max17050_write_word(client, MAX17050_FG_TOFF, toff);
-	if (ret < 0)
-		goto error;
-
-	msleep(MAX17050_TEMPERATURE_RE_READ_MS);
-
-	ret  = __max17050_get_temperature(client, &temp);
 	if (ret < 0)
 		goto error;
 
