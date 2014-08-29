@@ -973,7 +973,7 @@ static int htc_battery_bq2419x_charger_thermal_configure_no_thermister(
 
 	data->last_temp = temp;
 
-	dev_info(data->dev, "Battery temp %d\n", temp);
+	dev_dbg(data->dev, "Battery temp %d\n", temp);
 	if (enable_charger) {
 
 		if (battery_voltage > 0
@@ -1748,10 +1748,10 @@ static int htc_battery_bq2419x_suspend(struct device *dev)
 	battery_charging_wakeup(data->bc_dev, next_wakeup);
 end:
 	if (next_wakeup)
-		dev_info(dev, "System-charger will resume after %d sec\n",
+		dev_dbg(dev, "System-charger will resume after %d sec\n",
 				next_wakeup);
 	else
-		dev_info(dev, "System-charger will not have resume time\n");
+		dev_dbg(dev, "System-charger will not have resume time\n");
 
 	return 0;
 }
