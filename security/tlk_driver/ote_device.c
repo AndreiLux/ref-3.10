@@ -280,7 +280,8 @@ static int tlk_device_open(struct inode *inode, struct file *file)
 		goto error;
 	}
 	context->dev = &tlk_dev;
-	INIT_LIST_HEAD(&(context->shmem_alloc_list));
+	INIT_LIST_HEAD(&(context->temp_shmem_list));
+	INIT_LIST_HEAD(&(context->temp_persist_shmem_list));
 
 	file->private_data = context;
 	return 0;
@@ -296,6 +297,9 @@ static int tlk_device_release(struct inode *inode, struct file *file)
 	struct te_request_compat *request;
 	struct rb_node *n;
 	struct te_session *session;
+
+	if (context->is_ss_daemon)
+		tlk_ss_close();
 
 	mutex_lock(&smc_lock);
 	while ((n = rb_first(&context->sessions))) {
@@ -750,6 +754,7 @@ static long tlk_device_ioctl(struct file *file, unsigned int ioctl_num,
 
 	case TE_IOCTL_SS_NEW_REQ:
 	case TE_IOCTL_SS_REQ_COMPLETE:
+	case TE_IOCTL_SS_CMD:
 		err = te_handle_ss_ioctl(file, ioctl_num, ioctl_param);
 		break;
 

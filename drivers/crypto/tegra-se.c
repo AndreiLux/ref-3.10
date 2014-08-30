@@ -3319,8 +3319,6 @@ int se_suspend(struct device *dev, bool polling)
 
 	se_dev->polling = polling;
 
-	mutex_lock(&se_hw_lock);
-
 	/* Generate SRK */
 	err = tegra_se_generate_srk(se_dev);
 	if (err) {
@@ -3426,7 +3424,6 @@ int se_suspend(struct device *dev, bool polling)
 out:
 	/* put the device into runtime suspend state - disable clock */
 	pm_runtime_put_sync(dev);
-	mutex_unlock(&se_hw_lock);
 
 	return err;
 }

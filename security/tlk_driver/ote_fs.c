@@ -29,6 +29,7 @@
 
 static DECLARE_COMPLETION(req_ready);
 static DECLARE_COMPLETION(req_complete);
+static bool ready_for_req;
 
 static struct te_ss_op_legacy *ss_op_shmem_legacy;
 static struct te_ss_op *ss_op_shmem;
@@ -108,42 +109,74 @@ int tlk_ss_init_legacy(struct tlk_info *info)
 int te_handle_ss_ioctl(struct file *file, unsigned int ioctl_num,
 	unsigned long ioctl_param)
 {
+	int ss_cmd;
+	int ret;
+	struct tlk_context *context = file->private_data;
+
 	switch (ioctl_num) {
-	case TE_IOCTL_SS_NEW_REQ:
-		/* wait for a new request */
-		if (wait_for_completion_interruptible(&req_ready))
-			return -ENODATA;
-
-		/* transfer pending request to daemon's buffer */
-		if (copy_to_user((void __user *)ioctl_param, ss_op_shmem->data,
-					ss_op_shmem->req_size)) {
-			pr_err("copy_to_user failed for new request\n");
-			return -EFAULT;
-		}
-		break;
-
-	case TE_IOCTL_SS_REQ_COMPLETE: /* request complete */
-		if (copy_from_user(ss_op_shmem->data,
-			(void __user *)ioctl_param, ss_op_shmem->req_size)) {
-			pr_err("copy_from_user failed for request\n");
+	case TE_IOCTL_SS_CMD:
+		if (copy_from_user(&ss_cmd, (void __user *)ioctl_param,
+				   sizeof(ss_cmd))) {
+			pr_err("%s: copy from user space failed\n", __func__);
 			return -EFAULT;
 		}
 
-		/* signal the producer */
-		complete(&req_complete);
+		switch (ss_cmd) {
+		case TE_IOCTL_SS_CMD_GET_NEW_REQ:
+			if (!context->is_ss_daemon) {
+				mutex_lock(&smc_lock);
+				INIT_COMPLETION(req_ready);
+				INIT_COMPLETION(req_complete);
+				context->is_ss_daemon = true;
+				ready_for_req = true;
+				mutex_unlock(&smc_lock);
+			}
+			/* wait for a new request */
+			ret = wait_for_completion_interruptible(&req_ready);
+			if (ret != 0)
+				return ret;
+			break;
+		case TE_IOCTL_SS_CMD_REQ_COMPLETE:
+			/* signal the producer */
+			complete(&req_complete);
+			break;
+		default:
+			pr_err("%s: unknown ss_cmd 0x%x\n", __func__, ss_cmd);
+			return -EINVAL;
+		}
 		break;
+	default:
+		pr_err("%s: unknown ioctl cmd 0x%x\n", __func__, ioctl_num);
+		return -EINVAL;
 	}
 
 	return 0;
 }
 
-void tlk_ss_op(void)
+uint32_t tlk_ss_op(void)
 {
+	if (!ready_for_req) {
+		pr_err("%s: daemon not ready\n", __func__);
+		return OTE_ERROR_BAD_STATE;
+	}
 	/* signal consumer */
 	complete(&req_ready);
 
 	/* wait for the consumer's signal */
 	wait_for_completion(&req_complete);
+
+	if (!ready_for_req) {
+		pr_err("%s: daemon done\n", __func__);
+		return OTE_ERROR_BAD_STATE;
+	}
+
+	return OTE_SUCCESS;
+}
+
+void tlk_ss_close(void)
+{
+	ready_for_req = false;
+	complete_all(&req_complete);
 }
 
 int tlk_ss_init(struct tlk_info *info)
@@ -161,7 +194,7 @@ int tlk_ss_init(struct tlk_info *info)
 
 	tlk_info = info;
 
-	tlk_generic_smc(info, TE_SMC_SS_REGISTER_HANDLER,
+	ret = tlk_generic_smc(info, TE_SMC_SS_REGISTER_HANDLER,
 			(uintptr_t)ss_op_shmem, 0);
 	if (ret != 0) {
 		dma_free_coherent(NULL, sizeof(struct te_ss_op),
