@@ -28,6 +28,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
+#include <linux/cpufreq.h>
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/gpio-tegra.h>
 #include <linux/sysedp.h>
@@ -61,6 +62,9 @@
 #define DAI_LINK_FAST_FE	9
 #define NUM_DAI_LINKS		10
 
+#define HOTWORD_CPU_FREQ_BOOST_MIN 2000000
+#define HOTWORD_CPU_FREQ_BOOST_DURATION_MS 400
+
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.0",
 	"tegra30-i2s.1",
@@ -75,12 +79,56 @@ static struct sysedp_consumer *sysedpc;
 void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop);
 void set_rt5677_power_locked(struct tegra_rt5677 *machine, bool enable, bool hp_depop);
 
+static int hotword_cpufreq_notifier(struct notifier_block* nb,
+				    unsigned long event, void* data)
+{
+	struct cpufreq_policy *policy = data;
+
+	if (policy == NULL || event != CPUFREQ_ADJUST)
+		return 0;
+
+	pr_debug("%s: adjusting cpu%d min freq to %d for hotword (currently "
+		 "at %d)\n", __func__, policy->cpu, HOTWORD_CPU_FREQ_BOOST_MIN,
+		 policy->cur);
+
+	/* Make sure that the policy makes sense overall. */
+	cpufreq_verify_within_limits(policy, HOTWORD_CPU_FREQ_BOOST_MIN,
+				     policy->cpuinfo.max_freq);
+	return 0;
+}
+
+static struct notifier_block hotword_cpufreq_notifier_block = {
+	.notifier_call = hotword_cpufreq_notifier
+};
+
 static void tegra_do_hotword_work(struct work_struct *work)
 {
 	struct tegra_rt5677 *machine = container_of(work, struct tegra_rt5677, hotword_work);
 	char *hot_event[] = { "ACTION=HOTWORD", NULL };
+	int ret, i;
+
+	/* Register a CPU policy change listener that will bump up the min
+	 * frequency while we're processing the hotword. */
+	ret = cpufreq_register_notifier(&hotword_cpufreq_notifier_block,
+					CPUFREQ_POLICY_NOTIFIER);
+	if (!ret) {
+		for_each_online_cpu(i)
+			cpufreq_update_policy(i);
+	}
 
 	kobject_uevent_env(&machine->pcard->dev->kobj, KOBJ_CHANGE, hot_event);
+
+	/* If we registered the notifier, we can wait the specified duration
+	 * before reseting the CPUs back to what they were. */
+	if (!ret) {
+		msleep(HOTWORD_CPU_FREQ_BOOST_DURATION_MS);
+		cpufreq_unregister_notifier(&hotword_cpufreq_notifier_block,
+					    CPUFREQ_POLICY_NOTIFIER);
+		for_each_online_cpu(i)
+			cpufreq_update_policy(i);
+	}
+
+	return;
 }
 
 static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
