@@ -141,6 +141,9 @@ typedef enum {
 #define GEOM_ROTA_WAKE_UPDATE_RATE                              0xD2
 #define STEP_COUNTER_UPDATE_PERIOD                              0xD3
 
+#define STEP_COUNTER_MASK ((1ULL << CW_STEP_COUNTER) | \
+			   (1ULL << CW_STEP_COUNTER_W))
+
 #define CW_I2C_REG_WATCHDOG_STATUS                              0xE6
 #define WATCHDOG_STATUS_LEN                                     12
 
@@ -168,25 +171,6 @@ typedef enum {
 #define GENSOR_POSITION			0x65
 #define COMPASS_POSITION		0x75
 #define GYRO_POSITION			0x85
-#define standardbase			0
-#define	acceleration			CW_ACCELERATION
-#define	magnetic			CW_MAGNETIC
-#define	gyro				CW_GYRO
-#define	light				CW_LIGHT
-#define	pressure			CW_PRESSURE
-#define	orientation			CW_ORIENTATION
-#define	rotation_vector			CW_ROTATIONVECTOR
-#define	linear_acceleration		CW_LINEARACCELERATION
-#define	gravity				CW_GRAVITY
-
-#define magnetic_uncalibrated		CW_MAGNETIC_UNCALIBRATED
-#define gyroscope_uncalibrated		CW_GYROSCOPE_UNCALIBRATED
-#define game_rotation_vector		CW_GAME_ROTATION_VECTOR
-#define geomagnetic_rotation_vector	CW_GEOMAGNETIC_ROTATION_VECTOR
-
-#define significant_motion		CW_SIGNIFICANT_MOTION
-#define step_detector			CW_STEP_DETECTOR
-#define step_counter			CW_STEP_COUNTER
 
 #define num_sensors			CW_SENSORS_ID_TOTAL
 
@@ -263,7 +247,8 @@ typedef enum {
 					   CW_MCU_INT_BIT_BATCH_BUFFER_FULL)
 #define CW_MCU_INT_BIT_BATCH_INT_MASK     CW_MCU_INT_BIT_BATCH_TRIGGER_READ
 
-#define IIO_SENSORS_MASK     (0xFFFFEFFFFFFFEFFF)
+#define IIO_SENSORS_MASK (((u64)(~0ULL)) & ~(1ULL << HTC_MAGIC_COVER) & \
+					   ~(1ULL << (HTC_MAGIC_COVER+32)))
 
 #define CW_MCU_BIT_LIGHT_POLLING		(1 << 5)
 
