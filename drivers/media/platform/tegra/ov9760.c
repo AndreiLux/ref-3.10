@@ -661,36 +661,6 @@ static int ov9760_power_put(struct ov9760_power_rail *pw)
 	return 0;
 }
 
-static int ov9760_regulator_get(struct ov9760_info *info,
-	struct regulator **vreg, char vreg_name[])
-{
-	struct regulator *reg = NULL;
-	int err = 0;
-
-	reg = regulator_get(&info->i2c_client->dev, vreg_name);
-	if (unlikely(IS_ERR(reg))) {
-		dev_err(&info->i2c_client->dev, "%s %s ERR: %d\n",
-			__func__, vreg_name, (int)reg);
-		err = PTR_ERR(reg);
-		reg = NULL;
-	} else
-		dev_dbg(&info->i2c_client->dev, "%s: %s\n",
-			__func__, vreg_name);
-
-	*vreg = reg;
-	return err;
-}
-
-static int ov9760_power_get(struct ov9760_info *info)
-{
-	struct ov9760_power_rail *pw = &info->power;
-
-	ov9760_regulator_get(info, &pw->avdd, "vana"); /* ananlog 2.7v */
-	ov9760_regulator_get(info, &pw->iovdd, "vif"); /* interface 1.8v */
-	return 0;
-}
-
-
 static const struct file_operations ov9760_fileops = {
 	.owner = THIS_MODULE,
 	.open = ov9760_open,
@@ -862,8 +832,6 @@ static int ov9760_probe(struct i2c_client *client,
 			__func__, mclk_name);
 		return PTR_ERR(info->mclk);
 	}
-
-	ov9760_power_get(info);
 
 	memcpy(&info->miscdev_info,
 		&ov9760_device,

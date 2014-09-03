@@ -761,36 +761,6 @@ static int imx219_power_put(struct imx219_power_rail *pw)
 	return 0;
 }
 
-static int imx219_regulator_get(struct imx219_info *info,
-	struct regulator **vreg, char vreg_name[])
-{
-	struct regulator *reg = NULL;
-	int err = 0;
-
-	reg = regulator_get(&info->i2c_client->dev, vreg_name);
-	if (unlikely(IS_ERR_OR_NULL(reg))) {
-		dev_err(&info->i2c_client->dev, "%s %s ERR: %p\n",
-			__func__, vreg_name, reg);
-		err = PTR_ERR(reg);
-		reg = NULL;
-	} else
-		dev_dbg(&info->i2c_client->dev, "%s: %s\n",
-			__func__, vreg_name);
-
-	*vreg = reg;
-	return err;
-}
-
-static int imx219_power_get(struct imx219_info *info)
-{
-	struct imx219_power_rail *pw = &info->power;
-
-	imx219_regulator_get(info, &pw->avdd, "vana"); /* ananlog 2.7v */
-	imx219_regulator_get(info, &pw->iovdd, "vif"); /* interface 1.8v */
-
-	return 0;
-}
-
 static const struct file_operations imx219_fileops = {
 	.owner = THIS_MODULE,
 	.open = imx219_open,
@@ -964,8 +934,6 @@ imx219_probe(struct i2c_client *client,
 			__func__, mclk_name);
 		return PTR_ERR(info->mclk);
 	}
-
-	imx219_power_get(info);
 
 	memcpy(&info->miscdev_info,
 		&imx219_device,
