@@ -2592,12 +2592,69 @@ static struct of_device_id tegra_se_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, tegra_se_of_match);
 
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE_NO_ALGS)
+static void tegra_se_unregister_algs(struct tegra_se_dev *se_dev,
+				     int nalgs, int nhash)
+{
+}
+
+static int tegra_se_register_algs(struct tegra_se_dev *se_dev)
+{
+	return 0;
+}
+#else
+static void tegra_se_unregister_algs(struct tegra_se_dev *se_dev,
+				     int nalgs, int nhash)
+{
+	int k;
+
+	for (k = 0; k < nalgs; k++)
+		crypto_unregister_alg(&aes_algs[k]);
+
+	for (k = 0; k < nhash; k++)
+		crypto_unregister_ahash(&hash_algs[k]);
+}
+
+static int tegra_se_register_algs(struct tegra_se_dev *se_dev)
+{
+	int err = 0, i = 0, j = 0;
+
+	for (i = 0; i < ARRAY_SIZE(aes_algs); i++) {
+		if (isAlgoSupported(se_dev, aes_algs[i].cra_name)) {
+			INIT_LIST_HEAD(&aes_algs[i].cra_list);
+			err = crypto_register_alg(&aes_algs[i]);
+			if (err) {
+				dev_err(se_dev->dev,
+				"crypto_register_alg failed index[%d]\n", i);
+				goto err_exit;
+			}
+		}
+	}
+
+	for (j = 0; j < ARRAY_SIZE(hash_algs); j++) {
+		if (isAlgoSupported(se_dev, hash_algs[j].halg.base.cra_name)) {
+			err = crypto_register_ahash(&hash_algs[j]);
+			if (err) {
+				dev_err(se_dev->dev,
+				"crypto_register_sha alg failed index[%d]\n",
+				i);
+				goto err_exit;
+			}
+		}
+	}
+	return 0;
+err_exit:
+	tegra_se_unregister_algs(se_dev, i, j);
+	return err;
+}
+#endif
+
 static int tegra_se_probe(struct platform_device *pdev)
 {
 	struct tegra_se_dev *se_dev = NULL;
 	struct resource *res = NULL;
 	const struct of_device_id *match;
-	int err = 0, i = 0, j = 0, k = 0;
+	int err = 0;
 
 	se_dev = kzalloc(sizeof(struct tegra_se_dev), GFP_KERNEL);
 	if (!se_dev) {
@@ -2714,29 +2771,9 @@ static int tegra_se_probe(struct platform_device *pdev)
 		goto clean;
 	}
 
-	for (i = 0; i < ARRAY_SIZE(aes_algs); i++) {
-		if (isAlgoSupported(se_dev, aes_algs[i].cra_name)) {
-			INIT_LIST_HEAD(&aes_algs[i].cra_list);
-			err = crypto_register_alg(&aes_algs[i]);
-			if (err) {
-				dev_err(se_dev->dev,
-				"crypto_register_alg failed index[%d]\n", i);
-				goto clean;
-			}
-		}
-	}
-
-	for (j = 0; j < ARRAY_SIZE(hash_algs); j++) {
-		if (isAlgoSupported(se_dev, hash_algs[j].halg.base.cra_name)) {
-			err = crypto_register_ahash(&hash_algs[j]);
-			if (err) {
-				dev_err(se_dev->dev,
-				"crypto_register_sha alg failed index[%d]\n",
-				i);
-				goto clean;
-			}
-		}
-	}
+	err = tegra_se_register_algs(se_dev);
+	if (err)
+		goto clean;
 
 #if defined(CONFIG_PM)
 	if (!se_dev->chipdata->drbg_supported)
@@ -2786,11 +2823,6 @@ static int tegra_se_probe(struct platform_device *pdev)
 
 clean:
 	pm_runtime_disable(se_dev->dev);
-	for (k = 0; k < i; k++)
-		crypto_unregister_alg(&aes_algs[k]);
-
-	for (k = 0; k < j; k++)
-		crypto_unregister_ahash(&hash_algs[j]);
 
 	tegra_se_free_ll_buf(se_dev);
 
@@ -2821,7 +2853,6 @@ fail:
 static int tegra_se_remove(struct platform_device *pdev)
 {
 	struct tegra_se_dev *se_dev = platform_get_drvdata(pdev);
-	int i;
 
 	if (!se_dev)
 		return -ENODEV;
@@ -2832,10 +2863,9 @@ static int tegra_se_remove(struct platform_device *pdev)
 	if (se_work_q)
 		destroy_workqueue(se_work_q);
 	free_irq(se_dev->irq, &pdev->dev);
-	for (i = 0; i < ARRAY_SIZE(aes_algs); i++)
-		crypto_unregister_alg(&aes_algs[i]);
-	for (i = 0; i < ARRAY_SIZE(hash_algs); i++)
-		crypto_unregister_ahash(&hash_algs[i]);
+
+	tegra_se_unregister_algs(se_dev, ARRAY_SIZE(aes_algs),
+				 ARRAY_SIZE(hash_algs));
 
 	if (se_dev->enclk)
 		clk_put(se_dev->enclk);
