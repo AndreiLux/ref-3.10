@@ -3,10 +3,13 @@
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 
 #include "tegra132.dtsi"
-
 #include "tegra132-flounder-camera.dtsi"
-
 #include "tegra132-flounder-trusty.dtsi"
+#include "tegra132-flounder-sysedp.dtsi"
+#include "tegra132-flounder-powermon.dtsi"
+#include "tegra132-flounder-emc.dtsi"
+#include "tegra132-tn8-dfll.dtsi"
+#include "tegra132-flounder-touch.dtsi"
 
 / {
 	model = "Flounder";
@@ -34,13 +37,12 @@
 					TEGRA_GPIO(A, 7)
 					TEGRA_GPIO(G, 2)
 					TEGRA_GPIO(G, 3)
-					TEGRA_GPIO(H, 4)
 					TEGRA_GPIO(I, 5)
 					TEGRA_GPIO(I, 6)
 					TEGRA_GPIO(J, 0)
 					TEGRA_GPIO(K, 2)
 					TEGRA_GPIO(K, 3)
-					TEGRA_GPIO(N, 7)
+					TEGRA_GPIO(N, 4)
 					TEGRA_GPIO(O, 2)
 					TEGRA_GPIO(O, 3)
 					TEGRA_GPIO(O, 5)
@@ -67,17 +69,13 @@
 					TEGRA_GPIO(W, 3)
 /*headset*/
 					TEGRA_GPIO(BB, 6)
-					TEGRA_GPIO(BB, 7)
 					TEGRA_GPIO(CC, 1)
 					TEGRA_GPIO(CC, 2)>;
 			gpio-output-low = <TEGRA_GPIO(H, 2)
 					TEGRA_GPIO(H, 3)
-					TEGRA_GPIO(H, 5)
 					TEGRA_GPIO(H, 6)
 					TEGRA_GPIO(H, 7)
 					TEGRA_GPIO(I, 0)
-					TEGRA_GPIO(I, 4)
-					TEGRA_GPIO(I, 7)
 /*headset*/
 					TEGRA_GPIO(J, 7)
 					TEGRA_GPIO(S, 3)
@@ -102,15 +100,15 @@
 					TEGRA_GPIO(X, 7)
 					TEGRA_GPIO(BB, 3)
 					TEGRA_GPIO(BB, 5)
+					TEGRA_GPIO(BB, 7)
 					TEGRA_GPIO(EE, 1)>;
 			gpio-output-high = <TEGRA_GPIO(B, 4)
-					TEGRA_GPIO(I, 2)
 /*key*/
 					TEGRA_GPIO(I, 3)
 /*key*/
 					TEGRA_GPIO(S, 5)
 					TEGRA_GPIO(R, 0)
-					TEGRA_GPIO(R, 3)
+					TEGRA_GPIO(H, 5)
 					TEGRA_GPIO(Q, 2)
 /*headset*/
 					TEGRA_GPIO(Q, 4)
@@ -124,7 +122,11 @@
                         nvidia,dsi-controller-vs = <1>;
                         status = "okay";
                 };
-        };
+
+		hdmi {
+			status = "disabled";
+		};
+	};
 
 	serial@70006000 {
 		compatible = "nvidia,tegra114-hsuart";
@@ -167,39 +169,6 @@
 			interrupt-parent = <&gpio>;
 			interrupts = <TEGRA_GPIO(J, 0) 0x0>;
 
-			charger {
-				regulator-name = "batt_regulator";
-				regulator-max-microamp = <3000000>;
-				ti,watchdog-timeout = <0>;
-				ti,auto-recharge-time-power-off = <0>;
-				ti,auto-recharge-time = <1800>;
-				ti,input-voltage-limit-millivolt = <4440>;
-				ti,fast-charge-current-limit-milliamp = <2944>;
-				ti,pre-charge-current-limit-milliamp = <512>;
-				ti,charge-term-current-limit-milliamp = <128>;
-				ti,charge-voltage-limit-millivolt = <4352>;
-				ti,disbale-suspend-during-charging;
-				ti,charge-suspend-polling-time-sec = <3600>;
-				ti,safety-timer-reset-disable;
-				ti,temp-polling-time-sec = <30>;
-				thermal-overtemp-control-no-thermister;
-				thermal-temperature-hot-deciC = <551>;
-				thermal-temperature-cold-deciC = <(-1)>;
-				thermal-temperature-warm-deciC = <481>;
-				thermal-temperature-cool-deciC = <100>;
-				thermal-temperature-hysteresis-deciC = <30>;
-				thermal-warm-voltage-millivolt = <4096>;
-				thermal-cool-voltage-millivolt = <4352>;
-				thermal-disable-warm-current-half;
-				thermal-overtemp-output-current-milliamp = <1344>;
-				consumers {
-					c1 {
-						regulator-consumer-supply = "usb_bat_chg";
-						regulator-consumer-device = "tegra-udc.0";
-					};
-				};
-			};
-
 			vbus {
 				regulator-name = "vbus_regulator";
 				consumers {
@@ -213,15 +182,6 @@
 						regulator-consumer-device = "tegra-otg";
 					};
 				};
-			};
-
-			policy {
-				enable-battery-status-monitor;
-				unknown-battery-id-minimum = <1343>;
-				battery-id-channel-name = "batt-id-channel";
-				input-voltage-min-high-battery-millivolt = <4440>;
-				input-voltage-min-low-battery-millivolt = <4200>;
-				input-voltage-switch-millivolt = <4150>;
 			};
 		};
 
@@ -245,12 +205,6 @@
 		status = "okay";
 		clock-frequency = <400000>;
 
-		lp5521@32 {
-			compatible = "LP5521-LED";
-			reg = <0x32>;
-			lp5521,lp5521_en = <&gpio 60 0x00>;
-			lp5521,num_leds = <1>;
-		};
 		richtek_rt5506_amp@52 {
 			compatible = "richtek,rt5506-amp";
 			reg = <0x52>;
@@ -289,144 +243,6 @@
 	spi@7000d800 {
 		status = "okay";
 		spi-max-frequency = <25000000>;
-
-		synaptics_dsx@0 {
-			compatible = "synaptics,dsx";
-			reg = <0x0>;
-			spi-max-frequency = <4000000>;
-			spi-cpha;
-			spi-cpol;
-			interrupt-parent = <&gpio>;
-			interrupts = <TEGRA_GPIO(K, 2) 0x2>;
-			synaptics,irq-gpio = <&gpio TEGRA_GPIO(K, 2) 0x00>;
-			synaptics,irq-flags = <0x2002>;
-			synaptics,reset-gpio = <&gpio TEGRA_GPIO(X, 6) 0x00>;
-			synaptics,reset-on-state = <0>;
-			synaptics,reset-active-ms = <20>;
-			synaptics,reset-delay-ms = <100>;
-			synaptics,byte-delay-us = <20>;
-			synaptics,block-delay-us = <20>;
-
-			config_1 {
-				pr_number     = <1662137>;
-				config = [
-					00 00 00 05 00 06 03 1E
-					05 00 0C 00 09 AE 4B 9A
-					4D 0E 0E 0D 0D 26 1C 1E
-					05 58 10 A0 03 2D 1D 01
-					32 00 52 BA 36 BE C3 80
-					C4 C4 05 03 1E 28 00 0F
-					0A 01 01 07 05 05 0A C0
-					19 C8 26 26 80 80 00 00
-					2F 14 00 10 00 00 00 00
-					00 00 00 00 00 FC E6 00
-					00 0A 32 50 99 40 00 50
-					00 00 55 00 80 00 01 64
-					00 FF FF 66 66 01 40 40
-					32 3C 00 00 00 00 00 0C
-					00 09 3C 32 00 00 00 00
-					4C 04 6C 07 1E 05 00 00
-					00 01 05 0A 00 01 FF 00
-					17 01 80 04 1B 00 00 00
-					C8 00 FF FF BF 64 88 13
-					00 C0 80 00 71 00 D0 07
-					0A 00 03 03 07 07 03 D0
-					07 01 04 04 3B 00 13 00
-					00 00 02 00 02 5A 84 3A
-					00 12 00 01 00 02 00 02
-					5E 04 39 00 12 00 02 00
-					02 00 02 60 84 38 00 12
-					00 03 00 02 00 02 62 84
-					36 00 11 00 04 00 02 00
-					02 64 84 34 00 11 00 06
-					00 02 00 02 68 03 32 00
-					10 00 08 00 02 00 02 6C
-					83 30 00 10 00 0A 00 05
-					00 04 5A 05 05 05 05 05
-					05 05 05 05 05 05 05 05
-					05 05 05 04 05 05 04 04
-					05 05 05 05 04 05 05 05
-					05 05 05 05 05 05 05 05
-					05 20 00 05 00 A6 00 14
-					64 01 00 07 07 06 06 00
-					00 03 05 32 C8 0C 26 0A
-					80 FE 00 00 00 00 00 00
-					63 00 05 00 00 00 00 0B
-					00 00 00 00 00 00 00 3E
-					41 47 49 37 3F 35 33 30
-					36 24 4A 1F 1E 22 1A 1B
-					16 18 34 32 31 2F 2B 28
-					2C 2A 25 2D 23 20 21 1D
-					1C 17 19 14 13 0F 0A 10
-					0C 0B 05 03 08 06 0E 09
-					07 52 56 5C 5E 54 55 53
-					58 57 59 5B 5D 60 5F 63
-					62 02 10 02 10 02 10 02
-					10 00 10 00 10 00 10 00
-					10 FF 0A 0A 0A 0A 01
-				];
-			};
-
-			config_0 {
-				pr_number     = <1637894>;
-				config = [
-					00 00 00 04 00 06 03 1E
-					05 00 0C 00 09 AE 4B 9A
-					4D 0E 0E 0D 0D 26 1C 1E
-					05 58 10 A0 03 2D 1D 01
-					32 00 52 BA 36 BE C3 80
-					C4 C4 05 03 0F 28 50 0F
-					0A 01 01 07 05 05 0A C0
-					19 C8 26 26 80 80 00 00
-					2F 14 00 10 00 00 00 00
-					00 00 00 00 00 FC E6 00
-					00 0A 32 50 99 40 00 50
-					00 00 55 00 80 00 01 64
-					00 FF FF 80 80 01 40 40
-					32 3C 00 00 00 00 00 0C
-					00 09 3C 32 00 00 00 00
-					4C 04 6C 07 1E 05 00 00
-					00 01 05 0A 00 01 FF 00
-					04 01 80 04 1B 00 00 00
-					C8 00 FF FF BF 64 F4 01
-					00 C0 80 00 71 00 E8 03
-					14 00 03 03 07 07 03 E8
-					03 01 04 03 32 00 10 00
-					00 00 02 00 02 6A 03 30
-					00 10 00 02 00 05 00 04
-					5A 03 2F 00 0F 00 04 00
-					05 00 04 5D 03 2D 00 0F
-					00 06 00 04 00 03 5A 03
-					2C 00 0E 00 08 00 04 00
-					03 5D 03 2A 00 0E 00 0A
-					00 04 00 03 60 03 29 00
-					0D 00 0C 00 03 00 02 58
-					03 28 00 0D 00 0E 00 03
-					00 02 5B 05 05 05 05 05
-					05 05 05 05 05 05 05 05
-					05 05 05 05 05 05 05 05
-					05 05 05 05 05 05 05 05
-					05 05 05 05 05 05 05 05
-					05 28 00 05 00 A6 00 14
-					64 05 00 07 07 06 06 00
-					00 03 05 32 C8 0C 26 0A
-					80 FE 00 00 00 00 00 00
-					63 00 05 00 00 00 00 0B
-					00 00 00 00 00 00 00 3E
-					41 47 49 37 3F 35 33 30
-					36 24 4A 1F 1E 22 1A 1B
-					16 18 34 32 31 2F 2B 28
-					2C 2A 25 2D 23 20 21 1D
-					1C 17 19 14 13 0F 0A 10
-					0C 0B 05 03 08 06 0E 09
-					07 52 56 5C 5E 54 55 53
-					58 57 59 5B 5D 60 5F 63
-					62 02 10 02 10 02 10 02
-					10 00 10 00 10 00 10 00
-					10 9B 0A 0A 0A 0A 01
-				];
-			};
-		};
 	};
 
 	spi@7000da00 {
@@ -437,6 +253,12 @@
 	spi@7000dc00 {
 		status = "okay";
 		spi-max-frequency = <25000000>;
+	};
+
+	denver_cpuidle_pmic {
+		type = <4>; /* TPS 65913 2.3*/
+		retention-voltage = <11>;  /* Vret = 0.55v */
+		lock = <0>;
 	};
 
 	gpio-keys {
@@ -491,9 +313,7 @@
 			regulator-name = "usb0-vbus";
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
-			gpio = <&gpio 108 0>; /*  TEGRA_PN4 */
 			enable-active-high;
-			gpio-open-drain;
 
 			consumers {
 				c1 {
@@ -510,8 +330,6 @@
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			enable-active-high;
-			gpio = <&gpio 109 0>; /* TEGRA_PN5 */
-			gpio-open-drain;
 			vin-supply = <&palmas_smps10_out2>;
 
 			consumers {
@@ -571,7 +389,6 @@
 			regulator-min-microvolt = <1200000>;
 			regulator-max-microvolt = <1200000>;
 			enable-active-high;
-			gpio = <&palmas_gpio 4 0>;
 			vin-supply = <&palmas_smps8>;
 
 			consumers {
@@ -624,7 +441,6 @@
 			regulator-min-microvolt = <5000000>;
 			regulator-max-microvolt = <5000000>;
 			enable-active-high;
-			gpio = <&gpio 134 0>; /* TEGRA_PQ6 */
 
 			consumers {
 				c1 {
@@ -634,4 +450,45 @@
 		};
 	};
 
+	htc_battery_max17050 {
+		compatible = "htc,max17050_battery";
+	};
+
+	htc_battery_bq2419x {
+		compatible = "htc,bq2419x_battery";
+		regulator-name = "batt_regulator";
+		regulator-max-microamp = <3000000>;
+		auto-recharge-time = <30>;
+		input-voltage-limit-millivolt = <4440>;
+		fast-charge-current-limit-milliamp = <2944>;
+		pre-charge-current-limit-milliamp = <512>;
+		charge-voltage-limit-millivolt = <4352>;
+		charge-suspend-polling-time-sec = <3600>;
+		temp-polling-time-sec = <30>;
+		thermal-overtemp-control-no-thermister;
+		thermal-temperature-hot-deciC = <551>;
+		thermal-temperature-cold-deciC = <(-1)>;
+		thermal-temperature-warm-deciC = <481>;
+		thermal-temperature-cool-deciC = <100>;
+		thermal-temperature-hysteresis-deciC = <30>;
+		thermal-warm-voltage-millivolt = <4096>;
+		thermal-cool-voltage-millivolt = <4352>;
+		thermal-disable-warm-current-half;
+		thermal-overtemp-output-current-milliamp = <1344>;
+		unknown-battery-id-minimum = <1343>;
+		battery-id-channel-name = "batt-id-channel";
+		input-voltage-min-high-battery-millivolt = <4440>;
+		input-voltage-min-low-battery-millivolt = <4200>;
+		input-voltage-switch-millivolt = <4150>;
+		gauge-power-supply-name = "battery";
+		vbus-channel-name = "charger-vbus";
+		vbus-channel-max-voltage-mv = <6875>;
+		vbus-channel-max-adc = <4096>;
+		consumers {
+			c1 {
+				regulator-consumer-supply = "usb_bat_chg";
+				regulator-consumer-device = "tegra-udc.0";
+			};
+		};
+	};
 };

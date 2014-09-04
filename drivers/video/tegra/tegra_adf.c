@@ -16,7 +16,8 @@
  */
 
 #include <linux/memblock.h>
-#include <linux/nvmap.h>
+#include <linux/gfp.h>
+#include <media/videobuf2-dma-contig.h>
 #include <video/adf.h>
 #include <video/adf_client.h>
 #include <video/adf_fbdev.h>
@@ -25,7 +26,6 @@
 
 #include "dc/dc_config.h"
 #include "dc/dc_priv.h"
-#include "nvmap/nvmap_priv.h"
 #include "tegra_adf.h"
 
 struct tegra_adf_info {
@@ -37,6 +37,7 @@ struct tegra_adf_info {
 #endif
 	struct tegra_dc			*dc;
 	struct tegra_fb_data		*fb_data;
+	void				*vb2_dma_conf;
 };
 
 struct tegra_adf_flip_data {
@@ -250,6 +251,7 @@ int tegra_adf_process_hotplug_connected(struct tegra_adf_info *adf_info,
 
 void tegra_adf_process_hotplug_disconnected(struct tegra_adf_info *adf_info)
 {
+	adf_interface_blank(&adf_info->intf, DRM_MODE_DPMS_OFF);
 	adf_hotplug_notify_disconnected(&adf_info->intf);
 }
 
@@ -523,9 +525,13 @@ static inline dma_addr_t tegra_adf_phys_addr(struct adf_buffer *buf,
 		struct adf_buffer_mapping *mapping,
 		size_t plane)
 {
-	dma_addr_t addr = buf->dma_bufs[plane] ?
-			sg_dma_address(mapping->sg_tables[plane]->sgl) :
-			sg_dma_address(mapping->sg_tables[TEGRA_DC_Y]->sgl);
+	struct scatterlist *sgl = buf->dma_bufs[plane] ?
+			mapping->sg_tables[plane]->sgl :
+			mapping->sg_tables[TEGRA_DC_Y]->sgl;
+
+	dma_addr_t addr = sg_dma_address(sgl);
+	if (!addr)
+		addr = sg_phys(sgl);
 	addr += buf->offset[plane];
 	return addr;
 }
@@ -1001,34 +1007,16 @@ static int tegra_adf_intf_blank(struct adf_interface *intf, u8 state)
 		return -ENOTTY;
 	}
 
+#if IS_ENABLED(CONFIG_ADF_TEGRA_FBDEV)
 	if (intf->flags & ADF_INTF_FLAG_PRIMARY) {
 		struct fb_event event;
 		int fb_state = tegra_adf_dpms_to_fb_blank(state);
 
-		event.info = NULL;
+		event.info = adf_info->fbdev.info;
 		event.data = &fb_state;
 		fb_notifier_call_chain(FB_EVENT_BLANK, &event);
 	}
-
-	return 0;
-}
-
-static int tegra_adf_zero_dma_buf(struct dma_buf *buf)
-{
-	unsigned long i;
-	int err;
-
-	err = dma_buf_begin_cpu_access(buf, 0, buf->size, DMA_TO_DEVICE);
-	if (err < 0)
-		return err;
-
-	for (i = 0; i < buf->size / PAGE_SIZE; i++) {
-		void *mapped = dma_buf_kmap(buf, i);
-		memset(mapped, 0, PAGE_SIZE);
-		dma_buf_kunmap(buf, i, mapped);
-	}
-
-	dma_buf_end_cpu_access(buf, 0, buf->size, DMA_TO_DEVICE);
+#endif
 
 	return 0;
 }
@@ -1038,7 +1026,9 @@ static int tegra_adf_intf_alloc_simple_buffer(struct adf_interface *intf,
 		struct dma_buf **dma_buf, u32 *offset, u32 *pitch)
 {
 	size_t i;
-	int err;
+	struct tegra_adf_info *adf_info = adf_intf_to_tegra(intf);
+	const struct vb2_mem_ops *mem_ops = &vb2_dma_contig_memops;
+	void *vb2_buf;
 	bool format_valid = false;
 
 	for (i = 0; i < ARRAY_SIZE(tegra_adf_formats); i++) {
@@ -1053,16 +1043,18 @@ static int tegra_adf_intf_alloc_simple_buffer(struct adf_interface *intf,
 
 	*offset = 0;
 	*pitch = ALIGN(w * adf_format_bpp(format) / 8, 64);
-	*dma_buf = nvmap_alloc_dmabuf(PAGE_ALIGN(h * *pitch), 0,
-			NVMAP_HANDLE_WRITE_COMBINE, 0);
-	if (IS_ERR(*dma_buf))
-		return PTR_ERR(*dma_buf);
 
-	err = tegra_adf_zero_dma_buf(*dma_buf);
-	if (err < 0)
-		dma_buf_put(*dma_buf);
+	vb2_buf = mem_ops->alloc(adf_info->vb2_dma_conf,
+				 h * *pitch, __GFP_HIGHMEM);
+	if (IS_ERR(vb2_buf))
+		return PTR_ERR(vb2_buf);
 
-	return err;
+	*dma_buf = mem_ops->get_dmabuf(vb2_buf);
+	mem_ops->put(vb2_buf);
+	if (!*dma_buf)
+		return -ENOMEM;
+
+	return 0;
 }
 
 static int tegra_adf_intf_describe_simple_post(struct adf_interface *intf,
@@ -1148,11 +1140,24 @@ int tegra_adf_process_bandwidth_renegotiate(struct tegra_adf_info *adf_info,
 						struct tegra_dc_bw_data *bw)
 {
 	struct tegra_adf_event_bandwidth event;
+
+	if (unlikely(!adf_info)) {
+		pr_debug("%s: suppressing bandwidth event since ADF is not finished probing\n",
+				__func__);
+		return 0;
+	}
+
 	event.base.type = TEGRA_ADF_EVENT_BANDWIDTH_RENEGOTIATE;
 	event.base.length = sizeof(event);
-	event.total_bw = bw->total_bw;
-	event.avail_bw = bw->avail_bw;
-	event.resvd_bw = bw->resvd_bw;
+	if (bw == NULL) {
+		event.total_bw = 0;
+		event.avail_bw = 0;
+		event.resvd_bw = 0;
+	} else {
+		event.total_bw = bw->total_bw;
+		event.avail_bw = bw->avail_bw;
+		event.resvd_bw = bw->resvd_bw;
+	}
 	return adf_event_notify(&adf_info->base.base, &event.base);
 }
 
@@ -1259,6 +1264,10 @@ struct tegra_adf_info *tegra_adf_init(struct platform_device *ndev,
 	err = adf_attachment_allow(&adf_info->base, &adf_info->eng,
 			&adf_info->intf);
 	if (err < 0)
+		goto err_attach;
+
+	adf_info->vb2_dma_conf = vb2_dma_contig_init_ctx(&ndev->dev);
+	if ((err = IS_ERR(adf_info->vb2_dma_conf)))
 		goto err_attach;
 
 	if (dc->out->n_modes) {

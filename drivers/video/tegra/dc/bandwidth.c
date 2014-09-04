@@ -514,7 +514,9 @@ static void tegra_dc_process_bandwidth_renegotiate(struct tegra_dc *dc,
 #ifdef CONFIG_ADF_TEGRA
 	tegra_adf_process_bandwidth_renegotiate(dc->adf, bw);
 #endif
+#ifdef CONFIG_TEGRA_DC_EXTENSIONS
 	tegra_dc_ext_process_bandwidth_renegotiate(dc->ndev->id, bw);
+#endif
 }
 #endif
 
@@ -867,7 +869,7 @@ int tegra_dc_set_dynamic_emc(struct tegra_dc *dc)
 		struct tegra_dc_win *win = tegra_dc_get_window(dc, i);
 		if (win) {
 			windows[len++] = win;
-			if (win->flags && TEGRA_WIN_FLAG_ENABLED)
+			if (win->flags & TEGRA_WIN_FLAG_ENABLED)
 				win_status |= 1 << i;
 		}
 	}

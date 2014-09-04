@@ -986,6 +986,14 @@ struct pmu_pg_stats {
 #define PMU_FALCON_REG_RSVD2		(31)
 #define PMU_FALCON_REG_SIZE		(32)
 
+/* Choices for pmu_state */
+#define PMU_STATE_OFF			0 /* PMU is off */
+#define PMU_STATE_STARTING		1 /* PMU is booting */
+#define PMU_STATE_ELPG_BOOTED		2 /* ELPG is initialized */
+#define PMU_STATE_LOADING_PG_BUF	3 /* Loading PG buf */
+#define PMU_STATE_LOADING_ZBC		4 /* Loading ZBC buf */
+#define PMU_STATE_STARTED		5 /* Fully unitialized */
+
 struct pmu_gk20a {
 
 	struct gk20a *g;
@@ -1021,14 +1029,13 @@ struct pmu_gk20a {
 
 	u32 stat_dmem_offset;
 
-	bool elpg_ready;
 	u32 elpg_stat;
-	wait_queue_head_t pg_wq;
+
+	int pmu_state;
+	wait_queue_head_t boot_wq;
 
 #define PMU_ELPG_ENABLE_ALLOW_DELAY_MSEC	1 /* msec */
-	struct delayed_work elpg_enable; /* deferred elpg enable */
 	struct work_struct pg_init;
-	bool elpg_enable_allow; /* true after init, false after disable, true after delay */
 	struct mutex elpg_mutex; /* protect elpg enable/disable */
 	int elpg_refcnt; /* disable -1, enable +1, <=0 elpg disabled, > 0 elpg enabled */
 
@@ -1044,6 +1051,9 @@ struct pmu_gk20a {
 	u32 sample_buffer;
 
 	struct mutex isr_mutex;
+	struct mutex isr_enable_lock;
+	bool isr_enabled;
+
 	bool zbc_ready;
 	union {
 		struct pmu_cmdline_args_v0 args_v0;
@@ -1051,23 +1061,8 @@ struct pmu_gk20a {
 	};
 };
 
-struct gk20a_pmu_save_state {
-	struct pmu_sequence *seq;
-	u32 next_seq_desc;
-	struct pmu_mutex *mutex;
-	u32 mutex_cnt;
-	struct pmu_ucode_desc *desc;
-	struct pmu_mem_desc ucode;
-	struct pmu_mem_desc seq_buf;
-	struct pmu_mem_desc pg_buf;
-	struct delayed_work elpg_enable;
-	wait_queue_head_t pg_wq;
-	bool sw_ready;
-	struct work_struct pg_init;
-};
-
 int gk20a_init_pmu_support(struct gk20a *g);
-int gk20a_init_pmu_setup_hw2(struct gk20a *g);
+int gk20a_init_pmu_bind_fecs(struct gk20a *g);
 
 void gk20a_pmu_isr(struct gk20a *g);
 

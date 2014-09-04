@@ -25,13 +25,15 @@
 
 #include <asm/suspend.h>
 
+#include <mach/nvdumper-footprint.h>
+
 #include "sleep.h"
 #include "pm-soc.h"
 #include "pm-tegra132.h"
 
 extern volatile ulong secondary_holding_pen_release;
 
-extern bool tegra_suspend_in_progress();
+extern bool tegra_suspend_in_progress(void);
 
 /*
  * platform-specific code to shutdown a CPU
@@ -43,25 +45,28 @@ void tegra_cpu_die(unsigned int cpu)
 	static unsigned long pmstate;
 
 	if (tegra_suspend_in_progress()) {
-		/*
-		 * Only secondary cores should be killed here. The
-		 * main/boot core should die in pm.c during LP0.
-		 */
 		BUG_ON(cpu == 0);
 
-		/* 2nd cores must be in C7 for LP0/LP1 */
+		/* CPU1 must be in C7 for LP0/LP1 */
 		tegra_tear_down_cpu();
-	} else {
-		pmstate = T132_CORE_C6;
 
+		/* Synchronize with CPU0 */
+		while (secondary_holding_pen_release != cpu)
+			cpu_relax();
+	}
+	else {
 		do {
-			asm volatile(
+			asm volatile (
 			"	msr actlr_el1, %0\n"
 			"	wfi\n"
-			:
-			: "r" (pmstate));
+			: : "r" (T132_CORE_C6));
 		} while (secondary_holding_pen_release != cpu);
 	}
+
+#ifdef CONFIG_TEGRA_NVDUMPER
+	/* set debug footprint */
+	dbg_set_cpu_hotplug_on(cpu, 0xDEAD);
+#endif
 }
 
 noinline void setup_mca(void *info)

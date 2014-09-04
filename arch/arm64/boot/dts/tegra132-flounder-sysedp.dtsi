@@ -1,0 +1,52 @@
+/*
+ * arch/arm64/boot/dts/tegra132-flounder-sysedp.dtsi
+ *
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+
+/ {
+	sysedp_batmon_calc {
+		compatible = "nvidia,tegra124-sysedp_batmon_calc";
+		ocv_lut = <
+			100 4300000
+			80  4079000
+			60  3893000
+			40  3770000
+			20  3710000
+			0   3552000
+		>;
+		ibat_lut = <
+			600    9000
+			0      9000
+			(-200) 5000
+			(-210) 0
+		>;
+		rbat_data = <
+			50000	60000	70000	76000	95000	115000	130000	155000
+			50000	60000	70000	76000	95000	115000	130000	155000
+			50000	60000	70000	76000	95000	115000	130000	155000
+			50000	60000	70000	76000	95000	115000	130000	155000
+			50000	60000	70000	76000	95000	115000	130000	155000
+			50000	60000	70000	76000	95000	115000	130000	155000
+		>;
+		temp_axis = <600 450 300 230 150 50 0 (-200)>;
+		capacity_axis = <100 80 60 40 20 0>;
+		power_supply = "battery";
+		r_const = <40000>;
+		vsys_min = <2600000>;
+	};
+};

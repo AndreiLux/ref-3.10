@@ -299,9 +299,8 @@ int gk20a_dbg_gpu_dev_release(struct inode *inode, struct file *filp)
 	gk20a_dbg(gpu_dbg_gpu_dbg | gpu_dbg_fn, "%s", dev_name(dbg_s->dev));
 
 	/* unbind if it was bound */
-	if (!dbg_s->ch)
-		return 0;
-	dbg_unbind_channel_gk20a(dbg_s);
+	if (dbg_s->ch)
+		dbg_unbind_channel_gk20a(dbg_s);
 
 	kfree(dbg_s);
 	return 0;
@@ -519,7 +518,7 @@ static int nvhost_ioctl_channel_reg_ops(struct dbg_session_gk20a *dbg_s,
 		err = -EFAULT;
 		goto clean_up;
 	}
-	return 0;
+
  clean_up:
 	kfree(ops);
 	return err;
@@ -559,6 +558,8 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 			if (err)
 				return -EPERM;
 
+			/*do elpg disable before clock gating disable*/
+			gk20a_pmu_disable_elpg(g);
 			g->ops.clock_gating.slcg_gr_load_gating_prod(g,
 					false);
 			g->ops.clock_gating.slcg_perf_load_gating_prod(g,
@@ -569,7 +570,6 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 			gr_gk20a_init_elcg_mode(g, ELCG_RUN, ENGINE_GR_GK20A);
 			gr_gk20a_init_elcg_mode(g, ELCG_RUN, ENGINE_CE2_GK20A);
 
-			gk20a_pmu_disable_elpg(g);
 		}
 
 		dbg_s->is_pg_disabled = true;
@@ -615,6 +615,8 @@ static int dbg_set_powergate(struct dbg_session_gk20a *dbg_s,
 		break;
 	}
 
+	gk20a_dbg(gpu_dbg_fn|gpu_dbg_gpu_dbg, "%s powergate mode = %d done",
+		   dev_name(dbg_s->dev), powermode);
 	return err;
 }
 

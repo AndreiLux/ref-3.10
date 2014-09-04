@@ -1,7 +1,7 @@
 /dts-v1/;
 
 #include "tegra124.dtsi"
-#include "tegra124-platforms/tegra124-tn8-keys-e1780-1100-a02.dtsi"
+#include "tegra124-platforms/tegra124-jetson_tk1-keys-pm375-0000-c00-00.dtsi"
 #include "tegra124-platforms/tegra124-jetson_tk1-gpio-pm375-0000-c00-00.dtsi"
 #include "tegra124-platforms/tegra124-jetson_tk1-pinmux-pm375-0000-c00-00.dtsi"
 #include "tegra124-platforms/tegra124-jetson_tk1-pmic-pm375-0000-c00-00.dtsi"
@@ -9,15 +9,13 @@
 
 / {
 	model = "NVIDIA Tegra124 PM375";
-	compatible = "nvidia,jetson-tk1", "nvidia,laguna", "nvidia,tegra124";
+	compatible = "nvidia,jetson-tk1", "nvidia,tegra124";
 	nvidia,dtsfilename = __FILE__;
 	#address-cells = <2>;
 	#size-cells = <2>;
 
 	chosen {
 		bootargs = "tegraid=40.0.0.00.00 vmalloc=256M video=tegrafb console=ttyS0,115200n8 earlyprintk";
-		linux,initrd-start = <0x85000000>;
-		linux,initrd-end = <0x851bc400>;
 	};
 
 	pinmux {
@@ -82,12 +80,13 @@
 		status = "okay";
 		nvidia,invert-interrupt;
 		nvidia,suspend-mode = <0>;
-		nvidia,cpu-pwr-good-time = <2000>;
-		nvidia,cpu-pwr-off-time = <2000>;
+		nvidia,cpu-pwr-good-time = <500>;
+		nvidia,cpu-pwr-off-time = <300>;
 		nvidia,core-pwr-good-time = <3845 3845>;
 		nvidia,core-pwr-off-time = <2000>;
 		nvidia,core-power-req-active-high;
 		nvidia,sys-clock-req-active-high;
+		nvidia,lp0-vec = <0xf46ff000 2064>;
 	};
 
 	pcie-controller {
@@ -96,4 +95,14 @@
 		status = "okay";
 	};
 
+	xusb@70090000 {
+		/* nvidia,uses_external_pmic;
+		nvidia,gpio_controls_muxed_ss_lanes; */
+		nvidia,gpio_ss1_sata = <0>;
+		nvidia,portmap = <0x701>; /* SSP0, USB2P0, USBP1, USBP2 */
+		nvidia,ss_portmap = <0x72>; /* SSP0 on USB2P2 */
+		nvidia,lane_owner = <4>; /* USB3P0 USB3P1 */
+		nvidia,ulpicap = <0>; /* No ulpi support. can we remove */
+		status = "okay";
+	};
 };

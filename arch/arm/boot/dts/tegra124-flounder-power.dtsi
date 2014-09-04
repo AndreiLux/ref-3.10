@@ -10,6 +10,8 @@ palmas: tps65913 {
 		compatible = "ti,palmas-gpio";
 		gpio-controller;
 		#gpio-cells = <2>;
+		ti,enable-boost-bypass;
+		v_boost_bypass_gpio = <4>;
 	};
 
 	rtc {
@@ -61,14 +63,13 @@ palmas: tps65913 {
 		compatible = "ti,palmas-usb";
 		extcon-name = "palmas-extcon";
 		ti,wakeup;
-		ti,enable-id-detection;
 		ti,enable-vbus-detection;
 	};
 
 	power_pm {
 		compatible = "ti,palmas-pm";
 		system-pmic-power-off;
-		system-pmic-power-reset;
+		boot-up-at-vbus;
 	};
 
 	gpadc {
@@ -88,6 +89,12 @@ palmas: tps65913 {
 				ti,adc-channel-number = <4>;
 				ti,adc-consumer-device = "HTC_HEADSET_PMIC";
 				ti,adc-consumer-channel ="hs_channel";
+			};
+
+			ch10 {
+				ti,adc-channel-number = <10>;
+				ti,adc-consumer-device = "bq2419x";
+				ti,adc-consumer-channel ="charger-vbus";
 			};
 		};
 	};
@@ -110,15 +117,17 @@ palmas: tps65913 {
 		ldo5-in-supply = <&palmas_smps8>;
 		ldo7-in-supply = <&palmas_smps8>;
 		ldoln-in-supply = <&palmas_smps10_out2>;
+		ti,disable-smps10-in-suspend;
 
 		regulators {
 			smps123 {
 				regulator-name = "vdd-cpu";
-				regulator-min-microvolt = <700000>;
+				regulator-min-microvolt = <650000>;
 				regulator-max-microvolt = <1400000>;
 				regulator-always-on;
 				regulator-boot-on;
 				ti,roof-floor = <1>;
+				ti,config-flags = <8>;
 
 				consumers {
 					c1 {
@@ -505,8 +514,8 @@ palmas: tps65913 {
 
 			ldo8 {
 				regulator-name = "vdd-rtc";
-				regulator-min-microvolt = <900000>;
-				regulator-max-microvolt = <1100000>;
+				regulator-min-microvolt = <950000>;
+				regulator-max-microvolt = <950000>;
 				regulator-always-on;
 				regulator-boot-on;
 
@@ -602,5 +611,10 @@ palmas: tps65913 {
 				};
 			};
 		};
+	};
+
+	voltage_monitor {
+		compatible = "ti,palmas-voltage-monitor";
+		ti,use-vbat-monitor;
 	};
 };

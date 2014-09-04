@@ -6890,7 +6890,7 @@ static struct clk tegra_pll_x = {
 		.input_max = 800000000,
 		.cf_min    = 12000000,
 		.cf_max    = 19200000,	/* s/w policy, h/w capability 50 MHz */
-		.vco_min   = 700000000,
+		.vco_min   = 1200000000,
 		.vco_max   = 3000000000UL,
 		.freq_table = tegra_pll_x_freq_table,
 		.lock_delay = 300,
@@ -8669,6 +8669,16 @@ struct clk_duplicate tegra_clk_duplicates[] = {
 	CLK_DUPLICATE("dam2", NULL, "dam2"),
 	CLK_DUPLICATE("spdif_in", NULL, "spdif_in"),
 	CLK_DUPLICATE("mclk", NULL, "default_mclk"),
+	CLK_DUPLICATE("amx", NULL, "amx"),
+	CLK_DUPLICATE("amx1", NULL, "amx1"),
+	CLK_DUPLICATE("adx", NULL, "adx"),
+	CLK_DUPLICATE("adx1", NULL, "adx1"),
+	CLK_DUPLICATE("afc0", NULL, "afc0"),
+	CLK_DUPLICATE("afc1", NULL, "afc1"),
+	CLK_DUPLICATE("afc2", NULL, "afc2"),
+	CLK_DUPLICATE("afc3", NULL, "afc3"),
+	CLK_DUPLICATE("afc4", NULL, "afc4"),
+	CLK_DUPLICATE("afc5", NULL, "afc5"),
 	CLK_DUPLICATE("amx", "tegra124-amx.0", NULL),
 	CLK_DUPLICATE("amx1", "tegra124-amx.1", NULL),
 	CLK_DUPLICATE("adx", "tegra124-adx.0", NULL),
@@ -9144,15 +9154,14 @@ void __init tegra12x_clk_init_la(void)
 static struct cpufreq_frequency_table freq_table[CPU_FREQ_TABLE_MAX_SIZE];
 static struct tegra_cpufreq_table_data freq_table_data;
 
+#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
 {
 	int i, j;
 	bool g_vmin_done = false;
 	unsigned int freq, lp_backup_freq, g_vmin_freq, g_start_freq, max_freq;
 	struct clk *cpu_clk_g = tegra_get_clock_by_name("cpu_g");
-#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	struct clk *cpu_clk_lp = tegra_get_clock_by_name("cpu_lp");
-#endif
 
 	/* Initialize once */
 	if (freq_table_data.freq_table)
@@ -9164,36 +9173,28 @@ struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
 		freq_table[i].frequency = CPUFREQ_TABLE_END;
 	}
 
-#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	lp_backup_freq = cpu_clk_lp->u.cpu.backup_rate / 1000;
-#else
-	lp_backup_freq = cpu_clk_g->u.cpu.backup_rate / 1000;
-#endif
 	if (!lp_backup_freq) {
 		WARN(1, "%s: cannot make cpufreq table: no LP CPU backup rate\n",
 		     __func__);
 		return NULL;
 	}
-#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	if (!cpu_clk_lp->dvfs) {
 		WARN(1, "%s: cannot make cpufreq table: no LP CPU dvfs\n",
 		     __func__);
 		return NULL;
 	}
-#endif
 	if (!cpu_clk_g->dvfs) {
 		WARN(1, "%s: cannot make cpufreq table: no G CPU dvfs\n",
 		     __func__);
 		return NULL;
 	}
 	g_vmin_freq = cpu_clk_g->dvfs->freqs[0] / 1000;
-#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	if (g_vmin_freq < lp_backup_freq) {
 		WARN(1, "%s: cannot make cpufreq table: LP CPU backup rate"
 			" exceeds G CPU rate at Vmin\n", __func__);
 		return NULL;
 	}
-#endif
 	/* Avoid duplicate frequency if g_vim_freq is already part of table */
 	if (g_vmin_freq == lp_backup_freq)
 		g_vmin_done = true;
@@ -9213,7 +9214,6 @@ struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
 	 * dvfs rate at minimum voltage is not missed (if it happens to be below
 	 * LP maximum rate)
 	 */
-#ifndef CONFIG_ARCH_TEGRA_13x_SOC
 	max_freq = cpu_clk_lp->max_rate / 1000;
 	for (j = 0; j < cpu_clk_lp->dvfs->num_freqs; j++) {
 		freq = cpu_clk_lp->dvfs->freqs[j] / 1000;
@@ -9230,7 +9230,6 @@ struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
 		if (freq == max_freq)
 			break;
 	}
-#endif
 
 	/* Set G CPU min rate at least one table step below LP maximum */
 	cpu_clk_g->min_rate = min(freq_table[i-2].frequency, g_vmin_freq)*1000;
@@ -9266,6 +9265,75 @@ struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
 	return &freq_table_data;
 }
 
+#else
+
+#define GRANULARITY_KHZ   25500
+#define GRANULARITY_END 1020000
+#define CPU_THROTTLE_FREQ 408000
+#define CPU_SUSPEND_FREQ  408000
+
+struct tegra_cpufreq_table_data *tegra_cpufreq_table_get(void)
+{
+	int i, j;
+	unsigned int freq, max_freq, cpu_min_freq;
+	struct clk *cpu_clk_g = tegra_get_clock_by_name("cpu_g");
+
+	/* Initialize once */
+	if (freq_table_data.freq_table)
+		return &freq_table_data;
+
+	/* Clean table */
+	for (i = 0; i < CPU_FREQ_TABLE_MAX_SIZE; i++) {
+		freq_table[i].index = i;
+		freq_table[i].frequency = CPUFREQ_TABLE_END;
+	}
+
+	if (!cpu_clk_g->dvfs) {
+		WARN(1, "%s: cannot make cpufreq table: no CPU dvfs\n",
+		     __func__);
+		return NULL;
+	}
+
+	cpu_min_freq = 204000;
+
+	cpu_clk_g->min_rate = cpu_min_freq*1000;
+
+	i = 0;
+	freq_table[i++].frequency = cpu_min_freq;
+	for (j=1; j <= (GRANULARITY_END - cpu_min_freq)/GRANULARITY_KHZ; j++)
+		freq_table[i++].frequency = cpu_min_freq + j*GRANULARITY_KHZ;
+
+	/* Now, step along the rest of G CPU dvfs ladder */
+	max_freq = cpu_clk_g->max_rate / 1000;
+	for (j = 0; j < cpu_clk_g->dvfs->num_freqs; j++) {
+		freq = cpu_clk_g->dvfs->freqs[j] / 1000;
+		if (freq > GRANULARITY_END)
+			freq_table[i++].frequency = freq;
+		if (freq == max_freq)
+			break;
+	}
+
+	freq_table_data.throttle_lowest_index = 0;
+	freq_table_data.suspend_index = 0;
+
+	for (j = 1; j < i; j++) {
+		if ((freq_table[j].frequency > CPU_THROTTLE_FREQ) &&
+			(freq_table[j-1].frequency <= CPU_THROTTLE_FREQ))
+			freq_table_data.throttle_lowest_index = j - 1;
+		if ((freq_table[j].frequency > CPU_SUSPEND_FREQ) &&
+			(freq_table[j-1].frequency <= CPU_SUSPEND_FREQ))
+			freq_table_data.suspend_index = j - 1;
+	}
+
+	/* Throttle high index one step below maximum */
+	BUG_ON(i >= CPU_FREQ_TABLE_MAX_SIZE);
+	freq_table_data.throttle_highest_index = i - 2;
+	freq_table_data.freq_table = freq_table;
+	return &freq_table_data;
+}
+
+#endif
+
 /* EMC/CPU frequency ratio for power/performance optimization */
 unsigned long tegra_emc_to_cpu_ratio(unsigned long cpu_rate)
 {
@@ -9280,11 +9348,11 @@ unsigned long tegra_emc_to_cpu_ratio(unsigned long cpu_rate)
 	if (cpu_rate >= 1300000)
 		return emc_max_rate;	/* cpu >= 1.3GHz, emc max */
 	else if (cpu_rate >= 975000)
-		return 400000000;	/* cpu >= 975 MHz, emc 400 MHz */
+		return 550000000;	/* cpu >= 975 MHz, emc 550 MHz */
 	else if (cpu_rate >= 725000)
-		return  200000000;	/* cpu >= 725 MHz, emc 200 MHz */
+		return  350000000;	/* cpu >= 725 MHz, emc 350 MHz */
 	else if (cpu_rate >= 500000)
-		return  100000000;	/* cpu >= 500 MHz, emc 100 MHz */
+		return  150000000;	/* cpu >= 500 MHz, emc 150 MHz */
 	else if (cpu_rate >= 275000)
 		return  50000000;	/* cpu >= 275 MHz, emc 50 MHz */
 	else
@@ -9301,9 +9369,9 @@ unsigned long tegra_emc_cpu_limit(unsigned long cpu_rate)
 	/* Vote on memory bus frequency based on cpu frequency;
 	   cpu rate is in kHz, emc rate is in Hz */
 
-        if ((tegra_revision != TEGRA_REVISION_A01) &&
-            (tegra_revision != TEGRA_REVISION_A02))
-                return 0; /* no frequency dependency for A03+ revisions */
+	if ((tegra_revision != TEGRA_REVISION_A01) &&
+	    (tegra_revision != TEGRA_REVISION_A02))
+		return 68000000; /* 68MHz floor for A03+ all the time */
 
 	if (cpu_rate > 1020000)
 		emc_rate = 600000000;	/* cpu > 1.02GHz, emc 600MHz */
@@ -9609,8 +9677,8 @@ static void tegra12_clk_resume(void)
 
 		/* emc switched to the new parent by low level code, but ref
 		   count and s/w state need to be updated */
-		clk_disable(p);
-		clk_enable(tegra_clk_emc.parent);
+		clk_disable_locked(p);
+		clk_enable_locked(tegra_clk_emc.parent);
 	}
 
 	rate = clk_get_rate_all_locked(&tegra_clk_emc);

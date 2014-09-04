@@ -983,7 +983,7 @@ static long mtp_ioctl(struct file *fp, unsigned code, unsigned long value)
 			ret = -EFAULT;
 		else {
 			event.length = event_32.length;
-			event.data = &(event_32.data);
+			event.data = (void *)(event_32.data);
 			ret = mtp_send_event(dev, &event);
 		}
 		goto out;
@@ -1258,14 +1258,11 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 
 	printk(KERN_INFO "mtp_bind_config\n");
 
-	/* allocate a string ID for our interface */
-	if (mtp_string_defs[INTERFACE_STRING_INDEX].id == 0) {
-		ret = usb_string_id(c->cdev);
-		if (ret < 0)
-			return ret;
-		mtp_string_defs[INTERFACE_STRING_INDEX].id = ret;
-		mtp_interface_desc.iInterface = ret;
-	}
+	ret = usb_string_id(c->cdev);
+	if (ret < 0)
+		return ret;
+	mtp_string_defs[INTERFACE_STRING_INDEX].id = ret;
+	mtp_interface_desc.iInterface = ret;
 
 	dev->cdev = c->cdev;
 	dev->function.name = "mtp";

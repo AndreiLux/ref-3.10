@@ -3737,6 +3737,7 @@ tegra_xhci_suspend(struct platform_device *pdev,
 
 	regulator_disable(tegra->xusb_s1p8v_reg);
 	regulator_disable(tegra->xusb_s1p05v_reg);
+	regulator_disable(tegra->xusb_s3p3v_reg);
 	tegra_usb2_clocks_deinit(tegra);
 
 	return ret;
@@ -3768,6 +3769,7 @@ tegra_xhci_resume(struct platform_device *pdev)
 
 	regulator_enable(tegra->xusb_s1p05v_reg);
 	regulator_enable(tegra->xusb_s1p8v_reg);
+	regulator_enable(tegra->xusb_s3p3v_reg);
 	tegra_usb2_clocks_init(tegra);
 
 	return 0;

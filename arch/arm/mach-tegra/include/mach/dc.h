@@ -695,6 +695,7 @@ struct tegra_dc_win {
 	unsigned		z;
 
 	struct tegra_dc_csc	csc;
+	bool			csc_dirty;
 
 	int			dirty;
 	int			underflows;
@@ -799,8 +800,6 @@ struct tegra_dc_bw_data {
 };
 
 #define TEGRA_DC_FLAG_ENABLED		(1 << 0)
-#define TEGRA_DC_FLAG_CMU_DISABLE	(0 << 1)
-#define TEGRA_DC_FLAG_CMU_ENABLE	(1 << 1)
 
 struct drm_mode_modeinfo;
 
@@ -835,6 +834,7 @@ struct sync_fence *tegra_dc_create_fence(struct tegra_dc *dc, int i, u32 val);
 int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n,
 	u16 *dirty_rect);
 int tegra_dc_sync_windows(struct tegra_dc_win *windows[], int n);
+void tegra_dc_disable_window(struct tegra_dc *dc, unsigned win);
 int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable);
 bool tegra_dc_is_within_n_vsync(struct tegra_dc *dc, s64 ts);
 bool tegra_dc_does_vsync_separate(struct tegra_dc *dc, s64 new_ts, s64 old_ts);

@@ -369,6 +369,9 @@ struct palmas_reg_init {
 	 * discharge on idle state and enable on suspend/shutdown.
 	 */
 	bool disable_active_discharge_idle;
+
+	/* Disable pull down fro LDO */
+	bool disable_pull_down;
 };
 
 enum palmas_regulators {
@@ -467,6 +470,8 @@ struct palmas_pmic_platform_data {
 	int ldo6_vibrator;
 
 	bool disable_smps10_boost_suspend;
+
+	bool disable_smps10_in_suspend;
 };
 
 struct palmas_usb_platform_data {
@@ -548,6 +553,7 @@ struct palmas_rtc_platform_data {
 struct palmas_pm_platform_data {
 	bool use_power_off;
 	bool use_power_reset;
+	bool use_boot_up_at_vbus;
 };
 
 struct palmas_pinctrl_config {
@@ -609,6 +615,11 @@ struct palmas_ldousb_in_platform_data {
 	bool enable_in1_above_threshold;
 };
 
+struct palmas_voltage_monitor_platform_data {
+	bool use_vbat_monitor;
+	bool use_vsys_monitor;
+};
+
 struct palmas_platform_data {
 	int irq_flags;
 	int gpio_base;
@@ -627,6 +638,7 @@ struct palmas_platform_data {
 	struct palmas_battery_platform_data *battery_pdata;
 	struct palmas_sim_platform_data *sim_pdata;
 	struct palmas_ldousb_in_platform_data  *ldousb_in_pdata;
+	struct palmas_voltage_monitor_platform_data *voltage_monitor_pdata;
 
 	struct palmas_clk32k_init_data  *clk32k_init_data;
 	int clk32k_init_data_size;
@@ -724,6 +736,7 @@ struct palmas_pmic {
 	bool smps10_regulator_enabled;
 	int ldo_vref0p425;
 	bool smps10_boost_disable_deferred;
+	bool shutdown;
 
 	int range[PALMAS_REG_SMPS10_OUT1];
 	unsigned int ramp_delay[PALMAS_REG_SMPS10_OUT1];
@@ -731,6 +744,9 @@ struct palmas_pmic {
 	unsigned int current_reg_mode[PALMAS_REG_SMPS10_OUT1];
 	unsigned long config_flags[PALMAS_NUM_REGS];
 	bool disable_active_discharge_idle[PALMAS_NUM_REGS];
+
+	bool disable_smps10_in_suspend;
+	unsigned int smps10_ctrl_reg;
 };
 
 struct palmas_resource {

@@ -28,6 +28,7 @@
 #include <linux/platform_data/mmc-sdhci-tegra.h>
 #include <linux/mfd/max77660/max77660-core.h>
 #include <linux/tegra-fuse.h>
+#include <linux/dma-mapping.h>
 
 #include <asm/mach-types.h>
 #include <mach/irqs.h>
@@ -171,6 +172,8 @@ static struct embedded_sdio_data embedded_sdio_data0 = {
 };
 #endif
 
+static u64 tegra_sdhci_dmamask = DMA_BIT_MASK(64);
+
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.mmc_data = {
 		.register_status_notify	= ardbeg_wifi_status_register,
@@ -227,6 +230,8 @@ static struct platform_device tegra_sdhci_device0 = {
 	.resource	= sdhci_resource0,
 	.num_resources	= ARRAY_SIZE(sdhci_resource0),
 	.dev = {
+		.dma_mask = &tegra_sdhci_dmamask,
+		.coherent_dma_mask = DMA_BIT_MASK(64),
 		.platform_data = &tegra_sdhci_platform_data0,
 	},
 };
@@ -237,6 +242,8 @@ static struct platform_device tegra_sdhci_device2 = {
 	.resource	= sdhci_resource2,
 	.num_resources	= ARRAY_SIZE(sdhci_resource2),
 	.dev = {
+		.dma_mask = &tegra_sdhci_dmamask,
+		.coherent_dma_mask = DMA_BIT_MASK(64),
 		.platform_data = &tegra_sdhci_platform_data2,
 	},
 };
@@ -247,6 +254,8 @@ static struct platform_device tegra_sdhci_device3 = {
 	.resource	= sdhci_resource3,
 	.num_resources	= ARRAY_SIZE(sdhci_resource3),
 	.dev = {
+		.dma_mask = &tegra_sdhci_dmamask,
+		.coherent_dma_mask = DMA_BIT_MASK(64),
 		.platform_data = &tegra_sdhci_platform_data3,
 	},
 };
@@ -416,7 +425,8 @@ static int __init ardbeg_wifi_prepower(void)
 		!of_machine_is_compatible("nvidia,ardbeg_sata") &&
 		!of_machine_is_compatible("nvidia,tn8") &&
 		!of_machine_is_compatible("nvidia,norrin") &&
-		!of_machine_is_compatible("nvidia,bowmore"))
+		!of_machine_is_compatible("nvidia,bowmore") &&
+		!of_machine_is_compatible("nvidia,jetson-tk1"))
 		return 0;
 	ardbeg_wifi_power(1);
 
@@ -458,7 +468,8 @@ int __init ardbeg_sdhci_init(void)
 		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
 	}
 
-	if (of_machine_is_compatible("nvidia,laguna"))
+	if (of_machine_is_compatible("nvidia,laguna") ||
+	    of_machine_is_compatible("nvidia,jetson-tk1"))
 		tegra_sdhci_platform_data2.wp_gpio = ARDBEG_SD_WP;
 
 	tegra_get_board_info(&board_info);
@@ -485,6 +496,14 @@ int __init ardbeg_sdhci_init(void)
 		board_info.board_id == BOARD_PM363 ||
 		board_info.board_id == BOARD_PM359)
 			tegra_sdhci_platform_data0.disable_clock_gate = 1;
+
+	/*
+	 * FIXME: Set max clk limit to 200MHz for SDMMC3 for PM375.
+	 * Requesting 208MHz results in getting 204MHz from PLL_P
+	 * and CRC errors are seen with same.
+	 */
+	if (board_info.board_id == BOARD_PM375)
+		tegra_sdhci_platform_data2.max_clk_limit = 200000000;
 
 	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
 	tegra_sdhci_platform_data0.cpu_speedo = speedo;

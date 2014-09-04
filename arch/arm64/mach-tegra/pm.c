@@ -53,6 +53,8 @@
 #include <linux/irqchip/tegra.h>
 #include <linux/tegra-pm.h>
 #include <linux/tegra_pm_domains.h>
+#include <linux/kmemleak.h>
+#include <linux/cpu.h>
 
 #include <trace/events/power.h>
 #include <trace/events/nvsecurity.h>
@@ -155,6 +157,7 @@ struct suspend_context tegra_sctx;
 #define PMC_IO_DPD2_REQ         0x1C0
 
 #define PMC_WAKE_STATUS		0x14
+#define PMC_WAKE2_STATUS	0x168
 #define PMC_SW_WAKE_STATUS	0x18
 #define PMC_COREPWRGOOD_TIMER	0x3c
 #define PMC_CPUPWRGOOD_TIMER	0xc8
@@ -211,6 +214,8 @@ static bool suspend_in_progress;
 
 bool tegra_suspend_in_progress(void)
 {
+	smp_rmb();
+
 	return suspend_in_progress;
 }
 
@@ -415,11 +420,24 @@ static void suspend_cpu_complex(u32 mode)
 	tegra_gic_cpu_disable(true);
 }
 
-static void tegra_sleep_core(enum tegra_suspend_mode mode,
-			     unsigned long v2p)
+void tegra_psci_suspend_cpu(void *entry_point)
 {
 	struct psci_power_state pps;
 
+	if (tegra_cpu_is_secure()) {
+		if (psci_ops.cpu_suspend) {
+			pps.id = TEGRA_ID_CPU_SUSPEND_LP0;
+			pps.type = PSCI_POWER_STATE_TYPE_POWER_DOWN;
+			pps.affinity_level = TEGRA_PWR_DN_AFFINITY_CLUSTER;
+
+			psci_ops.cpu_suspend(pps, virt_to_phys(entry_point));
+		}
+	}
+}
+
+static void tegra_sleep_core(enum tegra_suspend_mode mode,
+			     unsigned long v2p)
+{
 	if (tegra_cpu_is_secure()) {
 		__flush_dcache_area(&tegra_resume_timestamps_start,
 					(&tegra_resume_timestamps_end -
@@ -428,13 +446,7 @@ static void tegra_sleep_core(enum tegra_suspend_mode mode,
 		BUG_ON(mode != TEGRA_SUSPEND_LP0);
 
 		trace_smc_sleep_core(NVSEC_SMC_START);
-		if (psci_ops.cpu_suspend) {
-			pps.id = TEGRA_ID_CPU_SUSPEND_LP0;
-			pps.type = PSCI_POWER_STATE_TYPE_POWER_DOWN;
-			pps.affinity_level = TEGRA_PWR_DN_AFFINITY_CLUSTER;
-
-			psci_ops.cpu_suspend(pps, virt_to_phys(tegra_resume));
-		}
+		tegra_psci_suspend_cpu(tegra_resume);
 		trace_smc_sleep_core(NVSEC_SMC_DONE);
 	}
 
@@ -627,9 +639,6 @@ int tegra_suspend_dram(enum tegra_suspend_mode mode, unsigned int flags)
 		mode = TEGRA_SUSPEND_LP1;
 	}
 
-	if ((mode == TEGRA_SUSPEND_LP0) || (mode == TEGRA_SUSPEND_LP1))
-		tegra_suspend_check_pwr_stats();
-
 	/* turn off VDE partition in LP1 */
 	if (mode == TEGRA_SUSPEND_LP1 &&
 		tegra_powergate_is_powered(TEGRA_POWERGATE_VDEC)) {
@@ -732,8 +741,68 @@ static int tegra_suspend_valid(suspend_state_t state)
 
 static int tegra_suspend_prepare_late(void)
 {
-	suspend_in_progress = true;
+	if ((current_suspend_mode == TEGRA_SUSPEND_LP0) ||
+			(current_suspend_mode == TEGRA_SUSPEND_LP1))
+		tegra_suspend_check_pwr_stats();
+
 	return 0;
+}
+
+/*
+ * Clear the wake status on suspend prepare. If we're starting to suspend,
+ * the previous wake reason can be misleading.
+ */
+static int pm_suspend_clear_status(struct notifier_block *nb,
+						unsigned long event, void *data)
+{
+	u32 temp;
+	if (event == PM_SUSPEND_PREPARE) {
+		temp = readl(pmc + PMC_WAKE_STATUS);
+		if (temp)
+			pmc_32kwritel(temp, PMC_WAKE_STATUS);
+#ifndef CONFIG_ARCH_TEGRA_2x_SOC
+		temp = readl(pmc + PMC_WAKE2_STATUS);
+		if (temp)
+			pmc_32kwritel(temp, PMC_WAKE2_STATUS);
+#endif
+	}
+	return NOTIFY_OK;
+}
+
+/*
+ * LP0 WAR: Bring all CPUs online before LP0 so that they can be put into C7 on
+ * subsequent __cpu_downs otherwise we end up hanging the system by leaving a
+ * core in C6 and requesting LP0 from CPU0
+ */
+static int __cpuinit pm_suspend_notifier(struct notifier_block *nb,
+						unsigned long event, void *data)
+{
+	int cpu, ret;
+
+	if (event != PM_SUSPEND_PREPARE)
+		return NOTIFY_OK;
+
+	suspend_in_progress = true;
+
+	dsb();
+
+	for_each_present_cpu(cpu) {
+		if (!cpu)
+			continue;
+		ret = cpu_up(cpu);
+
+		/*
+		 * Error in getting CPU out of C6. Let -EINVAL through as CPU
+		 * could have come online
+		 */
+		if (ret && ret != -EINVAL) {
+			pr_err("%s: Couldn't bring up CPU%d on LP0 entry: %d\n",
+					__func__, cpu, ret);
+			return NOTIFY_BAD;
+		}
+	}
+
+	return NOTIFY_OK;
 }
 
 static void tegra_suspend_finish(void)
@@ -750,6 +819,20 @@ static const struct platform_suspend_ops tegra_suspend_ops = {
 	.valid		= tegra_suspend_valid,
 	.finish		= tegra_suspend_finish,
 	.enter		= tegra_suspend_enter,
+};
+
+/*
+ * Note: The priority of this notifier needs to be higher than cpu_hotplug's
+ * suspend notifier otherwise the subsequent cpu_up operation in
+ * pm_suspend_notifier will fail
+ */
+static struct notifier_block __cpuinitdata suspend_notifier = {
+	.notifier_call = pm_suspend_notifier,
+	.priority = 1,
+};
+
+static struct notifier_block suspend_clear_status = {
+	.notifier_call = pm_suspend_clear_status,
 };
 
 static ssize_t suspend_mode_show(struct kobject *kobj,
@@ -987,7 +1070,13 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 			goto out;
 		}
 
-		orig = ioremap(tegra_lp0_vec_start, tegra_lp0_vec_size);
+		/* Avoid a kmemleak false positive. The allocated memory
+		 * block is later referenced by a physical address (i.e.
+		 * tegra_lp0_vec_start) which kmemleak can't detect.
+		 */
+		kmemleak_not_leak(reloc_lp0);
+
+		orig = ioremap_wc(tegra_lp0_vec_start, tegra_lp0_vec_size);
 		WARN_ON(!orig);
 		if (!orig) {
 			pr_err("%s: Failed to map tegra_lp0_vec_start %llx\n",
@@ -1000,6 +1089,7 @@ void __init tegra_init_suspend(struct tegra_suspend_platform_data *plat)
 		tmp = (tmp + L1_CACHE_BYTES - 1) & ~(L1_CACHE_BYTES - 1);
 		reloc_lp0 = (unsigned char *)tmp;
 		memcpy(reloc_lp0, orig, tegra_lp0_vec_size);
+		wmb();
 		iounmap(orig);
 		tegra_lp0_vec_start = virt_to_phys(reloc_lp0);
 	}
@@ -1060,6 +1150,12 @@ out:
 
 	if (pdata->suspend_mode == TEGRA_SUSPEND_LP0)
 		tegra_lp0_suspend_init();
+
+	if (register_pm_notifier(&suspend_notifier))
+		pr_err("%s: Failed to register suspend notifier\n", __func__);
+
+	if (register_pm_notifier(&suspend_clear_status))
+		pr_err("%s: Failed to register suspend status clearer\n", __func__);
 
 	suspend_set_ops(&tegra_suspend_ops);
 

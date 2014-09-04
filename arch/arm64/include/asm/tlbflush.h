@@ -25,9 +25,12 @@
 #include <asm/cputype.h>
 
 extern void __cpu_flush_user_tlb_range(unsigned long, unsigned long, struct vm_area_struct *);
+extern void __local_cpu_flush_user_tlb_range(unsigned long, unsigned long, struct vm_area_struct *);
 extern void __cpu_flush_kern_tlb_range(unsigned long, unsigned long);
 
 extern struct cpu_tlb_fns cpu_tlb;
+
+#define FLUSH_TLB_ALL_THRESHOLD (PAGE_SIZE * 128)
 
 /*
  *	TLB Management
@@ -78,31 +81,72 @@ static inline void flush_tlb_all(void)
 	isb();
 }
 
+static inline void local_flush_tlb_all(void)
+{
+	dsb();
+	asm("tlbi	vmalle1");
+	dsb();
+	isb();
+}
+
 static inline void flush_tlb_mm(struct mm_struct *mm)
 {
 	unsigned long asid = (unsigned long)ASID(mm) << 48;
 
+	preempt_disable();
 	dsb();
-	asm("tlbi	aside1is, %0" : : "r" (asid));
+	if (cpumask_equal(mm_cpumask(mm), cpumask_of(smp_processor_id())))
+		asm("tlbi	aside1, %0" : : "r" (asid));
+	else
+		asm("tlbi	aside1is, %0" : : "r" (asid));
 	dsb();
+	preempt_enable();
 }
 
 static inline void flush_tlb_page(struct vm_area_struct *vma,
 				  unsigned long uaddr)
 {
-	unsigned long addr = uaddr >> 12 |
-		((unsigned long)ASID(vma->vm_mm) << 48);
+	struct mm_struct *mm = vma->vm_mm;
+	unsigned long addr = uaddr >> 12 | ((unsigned long)ASID(mm) << 48);
 
+	preempt_disable();
 	dsb();
-	asm("tlbi	vae1is, %0" : : "r" (addr));
+	if (cpumask_equal(mm_cpumask(mm), cpumask_of(smp_processor_id())))
+		asm("tlbi	vae1, %0" : : "r" (addr));
+	else
+		asm("tlbi	vae1is, %0" : : "r" (addr));
 	dsb();
+	preempt_enable();
 }
 
-/*
- * Convert calls to our calling convention.
- */
-#define flush_tlb_range(vma,start,end)	__cpu_flush_user_tlb_range(start,end,vma)
-#define flush_tlb_kernel_range(s,e)	__cpu_flush_kern_tlb_range(s,e)
+static inline void flush_tlb_range(struct vm_area_struct *vma,
+					unsigned long start, unsigned long end)
+{
+	struct mm_struct *mm = vma->vm_mm;
+
+	preempt_disable();
+	if (cpumask_equal(mm_cpumask(mm), cpumask_of(smp_processor_id()))) {
+		if (end - start > FLUSH_TLB_ALL_THRESHOLD)
+			local_flush_tlb_all();
+		else
+			__local_cpu_flush_user_tlb_range(start,end,vma);
+	} else {
+		if (end - start > FLUSH_TLB_ALL_THRESHOLD)
+			flush_tlb_all();
+		else
+			__cpu_flush_user_tlb_range(start,end,vma);
+	}
+	preempt_enable();
+}
+
+static inline void flush_tlb_kernel_range(unsigned long start,
+					unsigned long end)
+{
+	if (end - start > FLUSH_TLB_ALL_THRESHOLD)
+		flush_tlb_all();
+	else
+		__cpu_flush_kern_tlb_range(start, end);
+}
 
 /*
  * On AArch64, the cache coherency is handled via the set_pte_at() function.

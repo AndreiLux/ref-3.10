@@ -1124,7 +1124,7 @@ static int smmu_iommu_map_pages(struct iommu_domain *domain, unsigned long iova,
 		}
 
 		pte = &ptbl[ptn];
-		FLUSH_CPU_DCACHE(pte, tbl_page, count * sizeof(u32 *));
+		FLUSH_CPU_DCACHE(pte, tbl_page, count * sizeof(*pte));
 		if (!flush_all)
 			flush_ptc_and_tlb_range(smmu, as, iova, pte, tbl_page,
 						count);
@@ -1209,7 +1209,7 @@ static int smmu_iommu_map_sg(struct iommu_domain *domain, unsigned long iova,
 		}
 
 		pte = &ptbl[ptn];
-		FLUSH_CPU_DCACHE(pte, tbl_page, count * sizeof(u32 *));
+		FLUSH_CPU_DCACHE(pte, tbl_page, count * sizeof(*pte));
 		if (!flush_all)
 			flush_ptc_and_tlb_range(smmu, as, iova, pte, tbl_page,
 						count);

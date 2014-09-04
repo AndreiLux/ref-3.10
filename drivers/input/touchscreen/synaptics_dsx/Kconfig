@@ -103,4 +103,11 @@ config TOUCHSCREEN_SYNAPTICS_DSX_DEBUG
 	  To compile this driver as a module, choose M here: the
 	  module will be called synaptics_dsx_debug.
 
+config TOUCHSCREEN_SYNAPTICS_DSX_WAKEUP_GESTURE
+	bool "Synaptics DSX wake up gesture"
+	depends on TOUCHSCREEN_SYNAPTICS_DSX_CORE
+	help
+	  Say Y here to enable support for double tap gesture.
+
+	  If unsure, say N.
 endif

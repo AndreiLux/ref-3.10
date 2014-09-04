@@ -371,7 +371,7 @@ static int __get_trip_temp(struct thermal_zone_device *thz, int trip,
 }
 
 static int therm_est_get_trip_temp(struct thermal_zone_device *thz,
-				   int trip, unsigned long *temp)
+				   int trip, long *temp)
 {
 	struct therm_estimator *est = thz->devdata;
 	struct therm_est_timer_trip_info *timer_info;
@@ -401,7 +401,7 @@ static int therm_est_get_trip_temp(struct thermal_zone_device *thz,
 }
 
 static int therm_est_set_trip_temp(struct thermal_zone_device *thz,
-				   int trip, unsigned long temp)
+				   int trip, long temp)
 {
 	struct therm_estimator *est = thz->devdata;
 
@@ -412,8 +412,7 @@ static int therm_est_set_trip_temp(struct thermal_zone_device *thz,
 	return 0;
 }
 
-static int therm_est_get_temp(struct thermal_zone_device *thz,
-				unsigned long *temp)
+static int therm_est_get_temp(struct thermal_zone_device *thz, long *temp)
 {
 	struct therm_estimator *est = thz->devdata;
 
@@ -885,6 +884,8 @@ static void therm_est_shutdown(struct platform_device *pdev)
 
 	cancel_delayed_work_sync(&est->therm_est_work);
 	cancel_delayed_work_sync(&est->timer_trip_work);
+	thermal_zone_device_unregister(est->thz);
+	thermal_cooling_device_unregister(est->cdev);
 }
 
 static struct platform_driver therm_est_driver = {

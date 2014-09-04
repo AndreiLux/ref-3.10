@@ -40,6 +40,7 @@
 #include "pm.h"
 #include "dvfs.h"
 #include "board.h"
+#include "common.h"
 #include "tegra-board-id.h"
 #include "board-pmu-defines.h"
 #include "board-common.h"
@@ -51,7 +52,7 @@
 #include "tegra11_soctherm.h"
 
 #define E1735_EMULATE_E1767_SKU	1001
-
+static u32 tegra_chip_id;
 static struct tegra_suspend_platform_data ardbeg_suspend_data = {
 	.cpu_timer      = 500,
 	.cpu_off_timer  = 300,
@@ -163,8 +164,13 @@ static struct tegra_cl_dvfs_cfg_param e1733_ardbeg_cl_dvfs_param = {
 	.scale_out_ramp = 0x0,
 };
 
-/* E1733 volatge map. Fixed 10mv steps from 700mv to 1400mv */
-#define E1733_CPU_VDD_MAP_SIZE ((1400000 - 700000) / 10000 + 1)
+/* E1733 volatge map. Fixed 10mv steps from VDD_MIN to 1400mv */
+#ifdef CONFIG_ARCH_TEGRA_13x_SOC
+#define E1733_CPU_VDD_MIN	650000
+#else
+#define E1733_CPU_VDD_MIN	700000
+#endif
+#define E1733_CPU_VDD_MAP_SIZE ((1400000 - E1733_CPU_VDD_MIN) / 10000 + 1)
 static struct voltage_reg_map e1733_cpu_vdd_map[E1733_CPU_VDD_MAP_SIZE];
 static inline void e1733_fill_reg_map(int minor_ver)
 {
@@ -172,7 +178,7 @@ static inline void e1733_fill_reg_map(int minor_ver)
 	int reg_init_value = (minor_ver == 2) ? 0x1e : 0xa;
         for (i = 0; i < E1733_CPU_VDD_MAP_SIZE; i++) {
                 e1733_cpu_vdd_map[i].reg_value = i + reg_init_value;
-                e1733_cpu_vdd_map[i].reg_uV = 700000 + 10000 * i;
+		e1733_cpu_vdd_map[i].reg_uV = E1733_CPU_VDD_MIN + 10000 * i;
         }
 }
 
@@ -334,6 +340,7 @@ int __init ardbeg_regulator_init(void)
 	case BOARD_E1936:
 	case BOARD_E1769:
 	case BOARD_P1761:
+	case BOARD_P1765:
 		tn8_regulator_init();
 		return 0;
 	default:
@@ -533,6 +540,19 @@ static struct soctherm_therm ardbeg_therm_pop[THERM_SIZE] = {
 	},
 };
 
+/*
+ * @PSKIP_CONFIG_NOTE: For T132, throttling config of PSKIP is no longer
+ * done in soctherm registers. These settings are now done via registers in
+ * denver:ccroc module which are at a different register offset. More
+ * importantly, there are _only_ three levels of throttling: 'low',
+ * 'medium' and 'heavy' and are selected via the 'throttling_depth' field
+ * in the throttle->devs[] section of the soctherm config. Since the depth
+ * specification is per device, it is necessary to manually make sure the
+ * depths specified alongwith a given level are the same across all devs,
+ * otherwise it will overwrite a previously set depth with a different
+ * depth. We will refer to this comment at each relevant location in the
+ * config sections below.
+ */
 static struct soctherm_platform_data ardbeg_soctherm_data = {
 	.oc_irq_base = TEGRA_SOC_OC_IRQ_BASE,
 	.num_oc_irqs = TEGRA_SOC_OC_NUM_IRQ,
@@ -623,6 +643,7 @@ static struct soctherm_platform_data ardbeg_soctherm_data = {
 				[THROTTLE_DEV_CPU] = {
 					.enable = true,
 					.depth = 80,
+					/* see @PSKIP_CONFIG_NOTE */
 					.throttling_depth = "heavy_throttling",
 				},
 				[THROTTLE_DEV_GPU] = {
@@ -740,7 +761,7 @@ static struct soctherm_platform_data t132ref_v2_soctherm_data = {
 	},
 };
 
-static struct soctherm_throttle battery_oc_throttle = {
+static struct soctherm_throttle battery_oc_throttle_t13x = {
 	.throt_mode = BRIEF,
 	.polarity = SOCTHERM_ACTIVE_LOW,
 	.priority = 50,
@@ -751,7 +772,8 @@ static struct soctherm_throttle battery_oc_throttle = {
 		[THROTTLE_DEV_CPU] = {
 			.enable = true,
 			.depth = 50,
-			.throttling_depth = "medium_throttling",
+			/* see @PSKIP_CONFIG_NOTE */
+			.throttling_depth = "low_throttling",
 		},
 		[THROTTLE_DEV_GPU] = {
 			.enable = true,
@@ -760,7 +782,26 @@ static struct soctherm_throttle battery_oc_throttle = {
 	},
 };
 
-static struct soctherm_throttle voltmon_throttle = {
+static struct soctherm_throttle battery_oc_throttle_t12x = {
+	.throt_mode = BRIEF,
+	.polarity = SOCTHERM_ACTIVE_LOW,
+	.priority = 50,
+	.intr = true,
+	.alarm_cnt_threshold = 15,
+	.alarm_filter = 5100000,
+	.devs = {
+		[THROTTLE_DEV_CPU] = {
+			.enable = true,
+			.depth = 50,
+		},
+		[THROTTLE_DEV_GPU] = {
+			.enable = true,
+			.throttling_depth = "medium_throttling",
+		},
+	},
+};
+
+static struct soctherm_throttle voltmon_throttle_t13x = {
 	.throt_mode = BRIEF,
 	.polarity = SOCTHERM_ACTIVE_LOW,
 	.priority = 50,
@@ -775,7 +816,31 @@ static struct soctherm_throttle voltmon_throttle = {
 			.divisor = 255,
 			.duration = 0,
 			.step = 0,
+			/* see @PSKIP_CONFIG_NOTE */
 			.throttling_depth = "medium_throttling",
+		},
+		[THROTTLE_DEV_GPU] = {
+			.enable = true,
+			.throttling_depth = "medium_throttling",
+		},
+	},
+};
+
+static struct soctherm_throttle voltmon_throttle_t12x = {
+	.throt_mode = BRIEF,
+	.polarity = SOCTHERM_ACTIVE_LOW,
+	.priority = 50,
+	.intr = true,
+	.alarm_cnt_threshold = 100,
+	.alarm_filter = 5100000,
+	.devs = {
+		[THROTTLE_DEV_CPU] = {
+			.enable = true,
+			/* throttle depth 75% with 3.76us ramp rate */
+			.dividend = 63,
+			.divisor = 255,
+			.duration = 0,
+			.step = 0,
 		},
 		[THROTTLE_DEV_GPU] = {
 			.enable = true,
@@ -796,6 +861,7 @@ int __init ardbeg_soctherm_init(void)
 	enum soctherm_therm_id therm_cpu = THERM_CPU;
 
 	tegra_get_board_info(&board_info);
+	tegra_chip_id = tegra_get_chip_id();
 
 	if (board_info.board_id == BOARD_E1923 ||
 			board_info.board_id == BOARD_E1922) {
@@ -809,6 +875,7 @@ int __init ardbeg_soctherm_init(void)
 	/* Bowmore and P1761 are T132 platforms */
 	if (board_info.board_id == BOARD_E1971 ||
 			board_info.board_id == BOARD_P1761 ||
+			board_info.board_id == BOARD_P1765 ||
 			board_info.board_id == BOARD_E1991) {
 		cpu_edp_temp_margin = t13x_cpu_edp_temp_margin;
 		gpu_edp_temp_margin = t13x_gpu_edp_temp_margin;
@@ -856,6 +923,7 @@ int __init ardbeg_soctherm_init(void)
 	}
 
 	if (board_info.board_id == BOARD_P1761 ||
+		board_info.board_id == BOARD_P1765 ||
 		board_info.board_id == BOARD_E1784 ||
 		board_info.board_id == BOARD_E1971 ||
 		board_info.board_id == BOARD_E1991 ||
@@ -880,6 +948,7 @@ int __init ardbeg_soctherm_init(void)
 		 pmu_board_info.board_id == BOARD_E1736 ||
 		 pmu_board_info.board_id == BOARD_E1769 ||
 		 pmu_board_info.board_id == BOARD_P1761 ||
+		 pmu_board_info.board_id == BOARD_P1765 ||
 		 pmu_board_info.board_id == BOARD_E1936)
 		ardbeg_soctherm_data.tshut_pmu_trip_data = &tpdata_palmas;
 	else
@@ -890,16 +959,28 @@ int __init ardbeg_soctherm_init(void)
 	switch (board_info.board_id) {
 	case BOARD_E1971:
 		memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
-		       &battery_oc_throttle,
-		       sizeof(battery_oc_throttle));
+		       &battery_oc_throttle_t13x,
+		       sizeof(battery_oc_throttle_t13x));
 		break;
 	case BOARD_P1761:
-		memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
-		       &battery_oc_throttle,
-		       sizeof(battery_oc_throttle));
-		memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC1],
-		       &voltmon_throttle,
-		       sizeof(voltmon_throttle));
+	case BOARD_E1936:
+	case BOARD_P1765:
+		if (tegra_chip_id == TEGRA_CHIPID_TEGRA13) {
+			memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
+				   &battery_oc_throttle_t13x,
+				   sizeof(battery_oc_throttle_t13x));
+			memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC1],
+				   &voltmon_throttle_t13x,
+				   sizeof(voltmon_throttle_t13x));
+		} else {
+			memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC4],
+				   &battery_oc_throttle_t12x,
+				   sizeof(battery_oc_throttle_t12x));
+			memcpy(&ardbeg_soctherm_data.throttle[THROTTLE_OC1],
+				   &voltmon_throttle_t12x,
+				   sizeof(voltmon_throttle_t12x));
+		}
+
 
 		break;
 	default:

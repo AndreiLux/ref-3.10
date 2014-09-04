@@ -128,8 +128,6 @@ int channel_gk20a_commit_va(struct channel_gk20a *c)
 	gk20a_mem_wr32(inst_ptr, ram_in_adr_limit_hi_w(),
 		ram_in_adr_limit_hi_f(u64_hi32(c->vm->va_limit)));
 
-	gk20a_mm_l2_invalidate(c->g);
-
 	return 0;
 }
 
@@ -159,8 +157,6 @@ static int channel_gk20a_commit_userd(struct channel_gk20a *c)
 		 pbdma_userd_target_vid_mem_f() |
 		 pbdma_userd_hi_addr_f(addr_hi));
 
-	gk20a_mm_l2_invalidate(c->g);
-
 	return 0;
 }
 
@@ -182,9 +178,6 @@ static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
 
 	/* preempt the channel */
 	WARN_ON(gk20a_fifo_preempt_channel(c->g, c->hw_chid));
-
-	/* flush GPU cache */
-	gk20a_mm_l2_flush(c->g, true);
 
 	/* value field is 8 bits long */
 	while (value >= 1 << 8) {
@@ -208,8 +201,6 @@ static int channel_gk20a_set_schedule_params(struct channel_gk20a *c,
 	gk20a_writel(c->g, ccsr_channel_r(c->hw_chid),
 		gk20a_readl(c->g, ccsr_channel_r(c->hw_chid)) |
 		ccsr_channel_enable_set_true_f());
-
-	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
 }
@@ -277,8 +268,6 @@ static int channel_gk20a_setup_ramfc(struct channel_gk20a *c,
 
 	gk20a_mem_wr32(inst_ptr, ram_fc_chid_w(), ram_fc_chid_id_f(c->hw_chid));
 
-	gk20a_mm_l2_invalidate(c->g);
-
 	return 0;
 }
 
@@ -298,8 +287,6 @@ static int channel_gk20a_setup_userd(struct channel_gk20a *c)
 	gk20a_mem_wr32(c->userd_cpu_va, ram_userd_get_hi_w(), 0);
 	gk20a_mem_wr32(c->userd_cpu_va, ram_userd_gp_get_w(), 0);
 	gk20a_mem_wr32(c->userd_cpu_va, ram_userd_gp_put_w(), 0);
-
-	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
 }
@@ -431,7 +418,7 @@ void gk20a_disable_channel_no_update(struct channel_gk20a *ch)
 		     ccsr_channel_enable_clr_true_f());
 }
 
-static int gk20a_wait_channel_idle(struct channel_gk20a *ch)
+int gk20a_wait_channel_idle(struct channel_gk20a *ch)
 {
 	bool channel_idle = false;
 	unsigned long end_jiffies = jiffies +
@@ -448,8 +435,11 @@ static int gk20a_wait_channel_idle(struct channel_gk20a *ch)
 	} while (time_before(jiffies, end_jiffies)
 			|| !tegra_platform_is_silicon());
 
-	if (!channel_idle)
-		gk20a_err(dev_from_gk20a(ch->g), "channel jobs not freed");
+	if (!channel_idle) {
+		gk20a_err(dev_from_gk20a(ch->g), "jobs not freed for channel %d\n",
+				ch->hw_chid);
+		return -EBUSY;
+	}
 
 	return 0;
 }
@@ -649,8 +639,6 @@ void gk20a_free_channel(struct channel_gk20a *ch, bool finish)
 	ch->gpfifo.cpu_va = NULL;
 	ch->gpfifo.iova = 0;
 
-	gk20a_mm_l2_invalidate(ch->g);
-
 	memset(&ch->gpfifo, 0, sizeof(struct gpfifo_desc));
 
 #if defined(CONFIG_GK20A_CYCLE_STATS)
@@ -742,6 +730,7 @@ static struct channel_gk20a *gk20a_open_new_channel(struct gk20a *g)
 	ch->timeout_ms_max = gk20a_get_gr_idle_timeout(g);
 	ch->timeout_debug_dump = true;
 	ch->has_timedout = false;
+	ch->obj_class = 0;
 
 	/* The channel is *not* runnable at this point. It still needs to have
 	 * an address space bound and allocate a gpfifo and grctx. */
@@ -1155,8 +1144,6 @@ static int gk20a_alloc_channel_gpfifo(struct channel_gk20a *c,
 	channel_gk20a_setup_userd(c);
 	channel_gk20a_commit_userd(c);
 
-	gk20a_mm_l2_invalidate(c->g);
-
 	/* TBD: setup engine contexts */
 
 	err = channel_gk20a_alloc_priv_cmdbuf(c);
@@ -1386,10 +1373,8 @@ static int gk20a_channel_add_job(struct channel_gk20a *c,
 
 void gk20a_channel_update(struct channel_gk20a *c, int nr_completed)
 {
-	struct gk20a *g = c->g;
 	struct vm_gk20a *vm = c->vm;
 	struct channel_gk20a_job *job, *n;
-	int i;
 
 	wake_up(&c->submit_wq);
 
@@ -1408,12 +1393,9 @@ void gk20a_channel_update(struct channel_gk20a *c, int nr_completed)
 
 		list_del_init(&job->list);
 		kfree(job);
-		gk20a_idle(g->dev);
+		gk20a_idle(c->g->dev);
 	}
 	mutex_unlock(&c->jobs_lock);
-
-	for (i = 0; i < nr_completed; i++)
-		gk20a_idle(c->g->dev);
 }
 
 static int gk20a_submit_channel_gpfifo(struct channel_gk20a *c,
@@ -1840,27 +1822,14 @@ int gk20a_channel_suspend(struct gk20a *g)
 	struct fifo_gk20a *f = &g->fifo;
 	u32 chid;
 	bool channels_in_use = false;
-	struct device *d = dev_from_gk20a(g);
 	int err;
 
 	gk20a_dbg_fn("");
 
-	/* idle the engine by submitting WFI on non-KEPLER_C channel */
-	for (chid = 0; chid < f->num_channels; chid++) {
-		struct channel_gk20a *c = &f->channel[chid];
-		if (c->in_use && c->obj_class != KEPLER_C) {
-			err = gk20a_channel_submit_wfi(c);
-			if (err) {
-				gk20a_err(d, "cannot idle channel %d\n",
-						chid);
-				return err;
-			}
-
-			c->sync->wait_cpu(c->sync, &c->last_submit_fence,
-					  500000);
-			break;
-		}
-	}
+	/* wait for engine idle */
+	err = gk20a_fifo_wait_engine_idle(g);
+	if (err)
+		return err;
 
 	for (chid = 0; chid < f->num_channels; chid++) {
 		if (f->channel[chid].in_use) {

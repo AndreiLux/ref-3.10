@@ -11989,56 +11989,61 @@ int __init loki_emc_init(void)
 {
 	struct board_info bi;
 
-	tegra_get_board_info(&bi);
-
-	if (bi.board_id == BOARD_E2548) {
-		if (bi.fab == 0x0) {
-			pr_info("Loki a02 EMC is not supported\n");
-			return -EINVAL;
-		}
-		switch (bi.sku) {
-		case BOARD_SKU_0:
-			pr_info("Loading Loki B00 sku0 EMC table.\n");
-			tegra_emc_device.dev.platform_data =
-				&loki_b00_sku0_emc_pdata;
-			break;
-		case BOARD_SKU_100:
-		default:
-			WARN(1, "EMC for this loki sku not supported: %u\n",
-					bi.sku);
-			return -EINVAL;
-		}
-	} else if (bi.board_id == BOARD_E2549) {
-		pr_info("Loading Thor 1.95 EMC table: 0x%08x\n", bi.sku);
-		tegra_emc_device.dev.platform_data =
-			&thor_195_b00_emc_pdata;
-	} else if (bi.board_id == BOARD_P2530) {
-		switch (bi.sku) {
-		case BOARD_SKU_FOSTER:
-		case BOARD_SKU_0:
-			pr_info("Loading Loki FFD sku0 EMC table: 0x%08x\n",
-				bi.sku);
-			tegra_emc_device.dev.platform_data =
-				&loki_ffd_sku0_emc_pdata;
-			break;
-		case BOARD_SKU_100:
-			pr_info("Loading Loki FFD sku100 EMC table: 0x%08x\n",
-				bi.sku);
-			tegra_emc_device.dev.platform_data =
-				&loki_ffd_sku100_emc_pdata;
-			break;
-		default:
-			WARN(1, "EMC for this loki sku not supported: %u\n",
-					bi.sku);
-			return -EINVAL;
-		}
+	if (of_find_compatible_node(NULL, NULL, "nvidia,tegra12-emc")) {
+		pr_info("Loading EMC tables from DeviceTree.\n");
 	} else {
-		WARN(1, "EMC on this board not yet supported: 0x%08x\n",
-				bi.board_id);
-		return -EINVAL;
+		tegra_get_board_info(&bi);
+
+		if (bi.board_id == BOARD_E2548) {
+			if (bi.fab == 0x0) {
+				pr_info("Loki a02 EMC is not supported\n");
+				return -EINVAL;
+			}
+			switch (bi.sku) {
+			case BOARD_SKU_0:
+				pr_info("Loading Loki B00 sku0 EMC table.\n");
+				tegra_emc_device.dev.platform_data =
+					&loki_b00_sku0_emc_pdata;
+				break;
+			case BOARD_SKU_100:
+			default:
+				WARN(1, "EMC for this loki sku not supported: %u\n",
+						bi.sku);
+				return -EINVAL;
+			}
+		} else if (bi.board_id == BOARD_E2549) {
+			pr_info("Loading Thor 1.95 EMC table: 0x%08x\n", bi.sku);
+			tegra_emc_device.dev.platform_data =
+				&thor_195_b00_emc_pdata;
+		} else if (bi.board_id == BOARD_P2530) {
+			switch (bi.sku) {
+			case BOARD_SKU_FOSTER:
+			case BOARD_SKU_0:
+				pr_info("Loading Loki FFD sku0 EMC table: 0x%08x\n",
+					bi.sku);
+				tegra_emc_device.dev.platform_data =
+					&loki_ffd_sku0_emc_pdata;
+				break;
+			case BOARD_SKU_100:
+				pr_info("Loading Loki FFD sku100 EMC table: 0x%08x\n",
+					bi.sku);
+				tegra_emc_device.dev.platform_data =
+					&loki_ffd_sku100_emc_pdata;
+				break;
+			default:
+				WARN(1, "EMC for this loki sku not supported: %u\n",
+						bi.sku);
+				return -EINVAL;
+			}
+		} else {
+			WARN(1, "EMC on this board not yet supported: 0x%08x\n",
+					bi.board_id);
+			return -EINVAL;
+		}
+
+		platform_device_register(&tegra_emc_device);
 	}
 
-	platform_device_register(&tegra_emc_device);
 	tegra12_emc_init();
 	return 0;
 }

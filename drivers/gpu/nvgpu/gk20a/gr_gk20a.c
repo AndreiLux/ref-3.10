@@ -652,10 +652,6 @@ static int gr_gk20a_commit_inst(struct channel_gk20a *c, u64 gpu_va)
 
 	gk20a_dbg_fn("");
 
-	/* flush gpu_va before commit */
-	gk20a_mm_fb_flush(c->g);
-	gk20a_mm_l2_flush(c->g, true);
-
 	inst_ptr = c->inst_block.cpuva;
 	if (!inst_ptr)
 		return -ENOMEM;
@@ -669,8 +665,6 @@ static int gr_gk20a_commit_inst(struct channel_gk20a *c, u64 gpu_va)
 
 	gk20a_mem_wr32(inst_ptr, ram_in_gr_wfi_ptr_hi_w(),
 		 ram_in_gr_wfi_ptr_hi_f(addr_hi));
-
-	gk20a_mm_l2_invalidate(c->g);
 
 	return 0;
 }
@@ -714,8 +708,6 @@ int gr_gk20a_ctx_patch_write_end(struct gk20a *g,
 
 	vunmap(ch_ctx->patch_ctx.cpu_va);
 	ch_ctx->patch_ctx.cpu_va = NULL;
-
-	gk20a_mm_l2_invalidate(g);
 	return 0;
 }
 
@@ -832,10 +824,7 @@ static int gr_gk20a_ctx_zcull_setup(struct gk20a *g, struct channel_gk20a *c,
 		}
 	}
 
-	/* Channel gr_ctx buffer is gpu cacheable.
-	   Flush and invalidate before cpu update. */
 	gk20a_mm_fb_flush(g);
-	gk20a_mm_l2_flush(g, true);
 
 	gk20a_mem_wr32(ctx_ptr + ctxsw_prog_main_image_zcull_o(), 0,
 		 ch_ctx->zcull_ctx.ctx_sw_mode);
@@ -850,7 +839,6 @@ static int gr_gk20a_ctx_zcull_setup(struct gk20a *g, struct channel_gk20a *c,
 			goto clean_up;
 		}
 	}
-	gk20a_mm_l2_invalidate(g);
 
 clean_up:
 	vunmap(ctx_ptr);
@@ -1580,10 +1568,7 @@ static int gr_gk20a_init_golden_ctx_image(struct gk20a *g,
 	ctx_header_words =  roundup(ctx_header_bytes, sizeof(u32));
 	ctx_header_words >>= 2;
 
-	/* Channel gr_ctx buffer is gpu cacheable.
-	   Flush before cpu read. */
-	gk20a_mm_fb_flush(g);
-	gk20a_mm_l2_flush(g, false);
+	gk20a_mm_l2_flush(g, true);
 
 	for (i = 0; i < ctx_header_words; i++) {
 		data = gk20a_mem_rd32(ctx_ptr, i);
@@ -1618,8 +1603,6 @@ static int gr_gk20a_init_golden_ctx_image(struct gk20a *g,
 
 	gr->ctx_vars.golden_image_initialized = true;
 
-	gk20a_mm_l2_invalidate(g);
-
 	gk20a_writel(g, gr_fecs_current_ctx_r(),
 		gr_fecs_current_ctx_valid_false_f());
 
@@ -1646,11 +1629,8 @@ int gr_gk20a_update_smpc_ctxsw_mode(struct gk20a *g,
 	void *ctx_ptr = NULL;
 	u32 data;
 
-	/*XXX caller responsible for making sure the channel is quiesced? */
-
 	/* Channel gr_ctx buffer is gpu cacheable.
 	   Flush and invalidate before cpu update. */
-	gk20a_mm_fb_flush(g);
 	gk20a_mm_l2_flush(g, true);
 
 	ctx_ptr = vmap(ch_ctx->gr_ctx.pages,
@@ -1668,8 +1648,6 @@ int gr_gk20a_update_smpc_ctxsw_mode(struct gk20a *g,
 		 data);
 
 	vunmap(ctx_ptr);
-
-	gk20a_mm_l2_invalidate(g);
 
 	return 0;
 }
@@ -1693,7 +1671,6 @@ static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 
 	/* Channel gr_ctx buffer is gpu cacheable.
 	   Flush and invalidate before cpu update. */
-	gk20a_mm_fb_flush(g);
 	gk20a_mm_l2_flush(g, true);
 
 	ctx_ptr = vmap(ch_ctx->gr_ctx.pages,
@@ -1749,8 +1726,6 @@ static int gr_gk20a_load_golden_ctx_image(struct gk20a *g,
 
 
 	vunmap(ctx_ptr);
-
-	gk20a_mm_l2_invalidate(g);
 
 	if (tegra_platform_is_linsim()) {
 		u32 inst_base_ptr =
@@ -2367,6 +2342,9 @@ static int gr_gk20a_alloc_global_ctx_buffers(struct gk20a *g)
 				       &gr->global_ctx_buffer[ATTRIBUTE_VPR],
 				       attr_buffer_size);
 
+	if (platform->secure_buffer.destroy)
+		platform->secure_buffer.destroy(pdev, &platform->secure_buffer);
+
 	gk20a_dbg_info("golden_image_size : %d",
 		   gr->ctx_vars.golden_image_size);
 
@@ -2801,6 +2779,42 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 			gr_gk20a_commit_global_ctx_buffers(g, c, true));
 	}
 
+	/* tweak any perf parameters per-context here */
+	if (args->class_num == KEPLER_COMPUTE_A) {
+		int begin_err;
+		u32 tex_lock_disable_mask =
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_m()         |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tile_m()    |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_phase_m()   |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tex_m()     |
+			gr_gpcs_tpcs_sm_sch_texlock_tex_hash_timeout_m() |
+			gr_gpcs_tpcs_sm_sch_texlock_dot_t_unlock_m();
+
+		u32 texlock = gk20a_readl(g, gr_gpcs_tpcs_sm_sch_texlock_r());
+
+		texlock = (texlock & ~tex_lock_disable_mask) |
+		(gr_gpcs_tpcs_sm_sch_texlock_tex_hash_disable_f()         |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tile_disable_f()    |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_phase_disable_f()   |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_tex_disable_f()     |
+		 gr_gpcs_tpcs_sm_sch_texlock_tex_hash_timeout_disable_f() |
+		 gr_gpcs_tpcs_sm_sch_texlock_dot_t_unlock_disable_f());
+
+		begin_err = gr_gk20a_ctx_patch_write_begin(g, ch_ctx);
+
+		if (!begin_err) {
+			err = gr_gk20a_ctx_patch_write(g, ch_ctx,
+				gr_gpcs_tpcs_sm_sch_texlock_r(),
+				texlock, true);
+		}
+		if ((begin_err || err)) {
+			gk20a_err(dev_from_gk20a(g),
+				   "failed to set texlock for compute class");
+		}
+		if (!begin_err)
+			gr_gk20a_ctx_patch_write_end(g, ch_ctx);
+	}
+
 	/* init golden image, ELPG enabled after this is done */
 	err = gr_gk20a_init_golden_ctx_image(g, c);
 	if (err) {
@@ -2820,7 +2834,6 @@ int gk20a_alloc_obj_ctx(struct channel_gk20a  *c,
 		}
 		c->first_init = true;
 	}
-	gk20a_mm_l2_invalidate(g);
 
 	c->num_objects++;
 
@@ -3518,7 +3531,7 @@ clean_up:
 	return ret;
 }
 
-static void gr_gk20a_pmu_save_zbc(struct gk20a *g, u32 entries)
+void gr_gk20a_pmu_save_zbc(struct gk20a *g, u32 entries)
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct fifo_engine_info_gk20a *gr_info =
@@ -3565,6 +3578,7 @@ int gr_gk20a_add_zbc(struct gk20a *g, struct gr_gk20a *gr,
 
 	/* no endian swap ? */
 
+	mutex_lock(&gr->zbc_lock);
 	switch (zbc_val->type) {
 	case GK20A_ZBC_TYPE_COLOR:
 		/* search existing tables */
@@ -3580,7 +3594,8 @@ int gr_gk20a_add_zbc(struct gk20a *g, struct gr_gk20a *gr,
 				    sizeof(zbc_val->color_l2))) {
 					gk20a_err(dev_from_gk20a(g),
 						"zbc l2 and ds color don't match with existing entries");
-					return -EINVAL;
+					ret = -EINVAL;
+					goto err_mutex;
 				}
 				added = true;
 				c_tbl->ref_cnt++;
@@ -3636,7 +3651,8 @@ int gr_gk20a_add_zbc(struct gk20a *g, struct gr_gk20a *gr,
 	default:
 		gk20a_err(dev_from_gk20a(g),
 			"invalid zbc table type %d", zbc_val->type);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto err_mutex;
 	}
 
 	if (!added && ret == 0) {
@@ -3646,89 +3662,8 @@ int gr_gk20a_add_zbc(struct gk20a *g, struct gr_gk20a *gr,
 		gr_gk20a_pmu_save_zbc(g, entries);
 	}
 
-	return ret;
-}
-
-int gr_gk20a_clear_zbc_table(struct gk20a *g, struct gr_gk20a *gr)
-{
-	struct fifo_gk20a *f = &g->fifo;
-	struct fifo_engine_info_gk20a *gr_info = f->engine_info + ENGINE_GR_GK20A;
-	u32 i, j;
-	unsigned long end_jiffies = jiffies +
-		msecs_to_jiffies(gk20a_get_gr_idle_timeout(g));
-	u32 ret;
-
-	ret = gk20a_fifo_disable_engine_activity(g, gr_info, true);
-	if (ret) {
-		gk20a_err(dev_from_gk20a(g),
-			"failed to disable gr engine activity\n");
-		return ret;
-	}
-
-	ret = gr_gk20a_wait_idle(g, end_jiffies, GR_IDLE_CHECK_DEFAULT);
-	if (ret) {
-		gk20a_err(dev_from_gk20a(g),
-			"failed to idle graphics\n");
-		goto clean_up;
-	}
-
-	for (i = 0; i < GK20A_ZBC_TABLE_SIZE; i++) {
-		gr->zbc_col_tbl[i].format = 0;
-		gr->zbc_col_tbl[i].ref_cnt = 0;
-
-		gk20a_writel(g, gr_ds_zbc_color_fmt_r(),
-			gr_ds_zbc_color_fmt_val_invalid_f());
-		gk20a_writel(g, gr_ds_zbc_tbl_index_r(),
-			gr_ds_zbc_tbl_index_val_f(i + GK20A_STARTOF_ZBC_TABLE));
-
-		/* trigger the write */
-		gk20a_writel(g, gr_ds_zbc_tbl_ld_r(),
-			gr_ds_zbc_tbl_ld_select_c_f() |
-			gr_ds_zbc_tbl_ld_action_write_f() |
-			gr_ds_zbc_tbl_ld_trigger_active_f());
-
-		/* clear l2 table */
-		g->ops.ltc.clear_zbc_color_entry(g, i);
-
-		for (j = 0; j < GK20A_ZBC_COLOR_VALUE_SIZE; j++) {
-			gr->zbc_col_tbl[i].color_l2[j] = 0;
-			gr->zbc_col_tbl[i].color_ds[j] = 0;
-		}
-	}
-	gr->max_used_color_index = 0;
-	gr->max_default_color_index = 0;
-
-	for (i = 0; i < GK20A_ZBC_TABLE_SIZE; i++) {
-		gr->zbc_dep_tbl[i].depth = 0;
-		gr->zbc_dep_tbl[i].format = 0;
-		gr->zbc_dep_tbl[i].ref_cnt = 0;
-
-		gk20a_writel(g, gr_ds_zbc_z_fmt_r(),
-			gr_ds_zbc_z_fmt_val_invalid_f());
-		gk20a_writel(g, gr_ds_zbc_tbl_index_r(),
-			gr_ds_zbc_tbl_index_val_f(i + GK20A_STARTOF_ZBC_TABLE));
-
-		/* trigger the write */
-		gk20a_writel(g, gr_ds_zbc_tbl_ld_r(),
-			gr_ds_zbc_tbl_ld_select_z_f() |
-			gr_ds_zbc_tbl_ld_action_write_f() |
-			gr_ds_zbc_tbl_ld_trigger_active_f());
-
-		/* clear l2 table */
-		g->ops.ltc.clear_zbc_depth_entry(g, i);
-	}
-	gr->max_used_depth_index = 0;
-	gr->max_default_depth_index = 0;
-
-clean_up:
-	ret = gk20a_fifo_enable_engine_activity(g, gr_info);
-	if (ret) {
-		gk20a_err(dev_from_gk20a(g),
-			"failed to enable gr engine activity\n");
-	}
-
-	/* elpg stuff */
-
+err_mutex:
+	mutex_unlock(&gr->zbc_lock);
 	return ret;
 }
 
@@ -3775,6 +3710,42 @@ int gr_gk20a_query_zbc(struct gk20a *g, struct gr_gk20a *gr,
 		return -EINVAL;
 	}
 
+	return 0;
+}
+
+int gr_gk20a_load_zbc_table(struct gk20a *g, struct gr_gk20a *gr)
+{
+	int i, ret;
+
+	mutex_init(&gr->zbc_lock);
+	for (i = 0; i < gr->max_used_color_index; i++) {
+		struct zbc_color_table *c_tbl = &gr->zbc_col_tbl[i];
+		struct zbc_entry zbc_val;
+
+		zbc_val.type = GK20A_ZBC_TYPE_COLOR;
+		memcpy(zbc_val.color_ds,
+		       c_tbl->color_ds, sizeof(zbc_val.color_ds));
+		memcpy(zbc_val.color_l2,
+		       c_tbl->color_l2, sizeof(zbc_val.color_l2));
+		zbc_val.format = c_tbl->format;
+
+		ret = gr_gk20a_add_zbc_color(g, gr, &zbc_val, i);
+
+		if (ret)
+			return ret;
+	}
+	for (i = 0; i < gr->max_used_depth_index; i++) {
+		struct zbc_depth_table *d_tbl = &gr->zbc_dep_tbl[i];
+		struct zbc_entry zbc_val;
+
+		zbc_val.type = GK20A_ZBC_TYPE_DEPTH;
+		zbc_val.depth = d_tbl->depth;
+		zbc_val.format = d_tbl->format;
+
+		ret = gr_gk20a_add_zbc_depth(g, gr, &zbc_val, i);
+		if (ret)
+			return ret;
+	}
 	return 0;
 }
 
@@ -4072,6 +4043,7 @@ static void gk20a_gr_enable_gpc_exceptions(struct gk20a *g)
 		gr_gpc0_gpccs_gpc_exception_en_tpc_0_enabled_f());
 }
 
+
 void gr_gk20a_enable_hww_exceptions(struct gk20a *g)
 {
 	/* enable exceptions */
@@ -4266,7 +4238,11 @@ static int gk20a_init_gr_setup_hw(struct gk20a *g)
 	data = gk20a_readl(g, gr_status_mask_r());
 	gk20a_writel(g, gr_status_mask_r(), data & gr->status_disable_mask);
 
-	g->ops.ltc.init_zbc(g, gr);
+	if (gr->sw_ready)
+		gr_gk20a_load_zbc_table(g, gr);
+	else
+		gr_gk20a_load_zbc_default_table(g, gr);
+
 	g->ops.ltc.init_cbc(g, gr);
 
 	/* load ctx init */
@@ -4322,8 +4298,6 @@ restore_fe_go_idle:
 			gr_pri_mme_shadow_raw_index_write_trigger_f() |
 			sw_method_init->l[i].addr);
 	}
-
-	gk20a_mm_l2_invalidate(g);
 
 	err = gr_gk20a_wait_idle(g, end_jiffies, GR_IDLE_CHECK_DEFAULT);
 	if (err)
@@ -4588,7 +4562,17 @@ int gk20a_init_gr_support(struct gk20a *g)
 	if (err)
 		return err;
 
+	/* GR is inialized, signal possible waiters */
+	g->gr.initialized = true;
+	wake_up(&g->gr.init_wq);
+
 	return 0;
+}
+
+/* Wait until GR is initialized */
+void gk20a_gr_wait_initialized(struct gk20a *g)
+{
+	wait_event(g->gr.init_wq, g->gr.initialized);
 }
 
 #define NVA297_SET_ALPHA_CIRCULAR_BUFFER_SIZE	0x02dc
@@ -4752,15 +4736,47 @@ static void gk20a_gr_set_alpha_circular_buffer_size(struct gk20a *g, u32 data)
 	}
 }
 
-void gk20a_gr_reset(struct gk20a *g)
+int gk20a_gr_reset(struct gk20a *g)
 {
 	int err;
+	u32 size;
+
 	err = gk20a_init_gr_prepare(g);
-	BUG_ON(err);
+	if (err)
+		return err;
+
 	err = gk20a_init_gr_reset_enable_hw(g);
-	BUG_ON(err);
+	if (err)
+		return err;
+
 	err = gk20a_init_gr_setup_hw(g);
-	BUG_ON(err);
+	if (err)
+		return err;
+
+	size = 0;
+	err = gr_gk20a_fecs_get_reglist_img_size(g, &size);
+	if (err) {
+		gk20a_err(dev_from_gk20a(g),
+			"fail to query fecs pg buffer size");
+		return err;
+	}
+
+	err = gr_gk20a_fecs_set_reglist_bind_inst(g,
+			g->mm.pmu.inst_block.cpu_pa);
+	if (err) {
+		gk20a_err(dev_from_gk20a(g),
+			"fail to bind pmu inst to gr");
+		return err;
+	}
+
+	err = gr_gk20a_fecs_set_reglist_virtual_addr(g, g->pmu.pg_buf.pmu_va);
+	if (err) {
+		gk20a_err(dev_from_gk20a(g),
+			"fail to set pg buffer pmu va");
+		return err;
+	}
+
+	return 0;
 }
 
 static int gr_gk20a_handle_sw_method(struct gk20a *g, u32 addr,
@@ -4854,18 +4870,37 @@ static int gk20a_gr_handle_illegal_class(struct gk20a *g,
 	return -EINVAL;
 }
 
+static int gk20a_gr_handle_fecs_error(struct gk20a *g,
+					  struct gr_isr_data *isr_data)
+{
+	struct fifo_gk20a *f = &g->fifo;
+	struct channel_gk20a *ch = &f->channel[isr_data->chid];
+	u32 gr_fecs_intr = gk20a_readl(g, gr_fecs_intr_r());
+	gk20a_dbg_fn("");
+
+	gk20a_err(dev_from_gk20a(g),
+		   "unhandled fecs error interrupt 0x%08x for channel %u",
+		   gr_fecs_intr, ch->hw_chid);
+
+	gk20a_writel(g, gr_fecs_intr_r(), gr_fecs_intr);
+	return -EINVAL;
+}
+
 static int gk20a_gr_handle_class_error(struct gk20a *g,
 					  struct gr_isr_data *isr_data)
 {
 	struct fifo_gk20a *f = &g->fifo;
 	struct channel_gk20a *ch = &f->channel[isr_data->chid];
+	u32 gr_class_error =
+		gr_class_error_code_v(gk20a_readl(g, gr_class_error_r()));
 	gk20a_dbg_fn("");
 
 	gk20a_set_error_notifier(ch,
 			NVHOST_CHANNEL_GR_ERROR_SW_NOTIFY);
 	gk20a_err(dev_from_gk20a(g),
-		   "class error 0x%08x, offset 0x%08x",
-		   isr_data->class_num, isr_data->offset);
+		   "class error 0x%08x, offset 0x%08x, unhandled intr 0x%08x for channel %u\n",
+		   isr_data->class_num, isr_data->offset,
+		   gr_class_error, ch->hw_chid);
 	return -EINVAL;
 }
 
@@ -5341,6 +5376,13 @@ int gk20a_gr_isr(struct gk20a *g)
 		gr_intr &= ~gr_intr_illegal_class_pending_f();
 	}
 
+	if (gr_intr & gr_intr_fecs_error_pending_f()) {
+		need_reset |= gk20a_gr_handle_fecs_error(g, &isr_data);
+		gk20a_writel(g, gr_intr_r(),
+			gr_intr_fecs_error_reset_f());
+		gr_intr &= ~gr_intr_fecs_error_pending_f();
+	}
+
 	if (gr_intr & gr_intr_class_error_pending_f()) {
 		need_reset |= gk20a_gr_handle_class_error(g, &isr_data);
 		gk20a_writel(g, gr_intr_r(),
@@ -5469,7 +5511,7 @@ int gr_gk20a_fecs_set_reglist_bind_inst(struct gk20a *g, phys_addr_t addr)
 			   .mailbox.fail = 0});
 }
 
-int gr_gk20a_fecs_set_reglist_virual_addr(struct gk20a *g, u64 pmu_va)
+int gr_gk20a_fecs_set_reglist_virtual_addr(struct gk20a *g, u64 pmu_va)
 {
 	return gr_gk20a_submit_fecs_method_op(g,
 		   (struct fecs_method_op_gk20a) {
@@ -5513,6 +5555,8 @@ int gk20a_gr_suspend(struct gk20a *g)
 	gk20a_writel(g, gr_exception2_en_r(), 0);
 
 	gk20a_gr_flush_channel_tlb(&g->gr);
+
+	g->gr.initialized = false;
 
 	gk20a_dbg_fn("done");
 	return ret;
@@ -5874,10 +5918,6 @@ int gr_gk20a_ctx_patch_smpc(struct gk20a *g,
 
 				/* we're not caching these on cpu side,
 				   but later watch for it */
-
-				/* the l2 invalidate in the patch_write
-				 * would be too early for this? */
-				gk20a_mm_l2_invalidate(g);
 				return 0;
 			}
 		}
@@ -6615,9 +6655,6 @@ int gr_gk20a_exec_ctx_ops(struct channel_gk20a *ch,
 		goto cleanup;
 	}
 
-	/* Channel gr_ctx buffer is gpu cacheable; so flush and invalidate.
-	 * There should be no on-going/in-flight references by the gpu now. */
-	gk20a_mm_fb_flush(g);
 	gk20a_mm_l2_flush(g, true);
 
 	/* write to appropriate place in context image,
@@ -6787,7 +6824,12 @@ void gr_gk20a_commit_global_pagepool(struct gk20a *g,
 		gr_pd_pagepool_valid_true_f(), patch);
 }
 
-void gk20a_init_gr(struct gpu_ops *gops)
+void gk20a_init_gr(struct gk20a *g)
+{
+	init_waitqueue_head(&g->gr.init_wq);
+}
+
+void gk20a_init_gr_ops(struct gpu_ops *gops)
 {
 	gops->gr.access_smpc_reg = gr_gk20a_access_smpc_reg;
 	gops->gr.bundle_cb_defaults = gr_gk20a_bundle_cb_defaults;

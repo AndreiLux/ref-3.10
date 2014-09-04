@@ -223,7 +223,7 @@ int set_tfa9895_spkamp(int en, int dsp_mode)
 	unsigned char power_data[3] = {0, 0, 0};
 	unsigned char SPK_CR[3] = {0x8, 0x8, 0};
 
-	pr_info("%s: en = %d dsp_enabled = %d\n", __func__, en, dsp_enabled);
+	pr_debug("%s: en = %d dsp_enabled = %d\n", __func__, en, dsp_enabled);
 	mutex_lock(&spk_amp_lock);
 	if (en && !last_spkamp_state) {
 		last_spkamp_state = 1;
@@ -441,11 +441,12 @@ int tfa9895_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	for (i = 0; i < 3; i++)
 		tfa9895_i2c_write(cf_dsp_bypass[i], 3);
-		/* Enable NXP PVP Bit10 of Reg 8 per acoustic's request in bypass mode.(Hboot loopback & MFG ROM) */
-		tfa9895_i2c_write(SPK_CR, 1);
-		tfa9895_i2c_read(SPK_CR + 1, 2);
-		SPK_CR[1] |= 0x4; /* Enable PVP bit10 */
-		tfa9895_i2c_write(SPK_CR, 3);
+
+	/* Enable NXP PVP Bit10 of Reg 8 per acoustic's request in bypass mode.(Hboot loopback & MFG ROM) */
+	tfa9895_i2c_write(SPK_CR, 1);
+	tfa9895_i2c_read(SPK_CR + 1, 2);
+	SPK_CR[1] |= 0x4; /* Enable PVP bit10 */
+	tfa9895_i2c_write(SPK_CR, 3);
 
 	return 0;
 

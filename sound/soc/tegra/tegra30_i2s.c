@@ -41,10 +41,14 @@
 #include <sound/soc.h>
 #include <asm/delay.h>
 #include <mach/tegra_asoc_pdata.h>
+#include <mach/gpio-tegra.h>
+#include <linux/gpio.h>
 
 #include "tegra30_ahub.h"
 #include "tegra30_dam.h"
 #include "tegra30_i2s.h"
+#include "tegra_rt5677.h"
+#include <mach/pinmux.h>
 
 #define DRV_NAME "tegra30-i2s"
 
@@ -87,27 +91,131 @@ static int tegra30_i2s_runtime_resume(struct device *dev)
 	return 0;
 }
 
+void tegra30_i2s_request_gpio(struct snd_pcm_substream *substream, int i2s_id)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int i, ret;
+
+	if (pdata == NULL)
+		return;
+	pr_debug("%s: pdata->gpio_free_count[%d]=%d\n", __func__, i2s_id, pdata->gpio_free_count[i2s_id]);
+	if (i2s_id > 1) {
+		/* Only HIFI_CODEC and SPEAKER GPIO need re-config */
+		return;
+	}
+	if (pdata->first_time_free[i2s_id]) {
+		mutex_init(&pdata->i2s_gpio_lock[i2s_id]);
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+		pr_info("pdata->gpio_free_count[%d]=%d, 1st time enter, don't need free gpio\n",
+                       i2s_id, pdata->gpio_free_count[i2s_id]);
+		pdata->first_time_free[i2s_id] = false;
+	} else {
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+	}
+
+	pdata->gpio_free_count[i2s_id]--;
+
+	if (pdata->gpio_free_count[i2s_id] > 0) {
+		pr_info("pdata->gpio_free_count[%d]=%d > 0, needless to request again\n",
+		            i2s_id, pdata->gpio_free_count[i2s_id]);
+		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+		return;
+		pr_debug("pdata->gpio_free_count[%d]=%d\n", i2s_id, pdata->gpio_free_count[i2s_id]);
+	}
+
+	for (i = 0; i<4; i++) {
+		ret = gpio_request(pdata->i2s_set[i2s_id*4 + i].id,
+						pdata->i2s_set[i2s_id*4 + i].name);
+		if (!pdata->i2s_set[i2s_id*4 + i].dir_in) {
+			gpio_direction_output(pdata->i2s_set[i2s_id*4 + i].id, 0);
+		} else {
+			tegra_pinctrl_pg_set_pullupdown(pdata->i2s_set[i2s_id*4 + i].pg, TEGRA_PUPD_PULL_DOWN);
+			gpio_direction_input(pdata->i2s_set[i2s_id*4 + i].id);
+		}
+		pr_debug("%s: gpio_request for gpio[%d] %s, return %d\n",
+				__func__, pdata->i2s_set[i2s_id*4 + i].id, pdata->i2s_set[i2s_id*4 + i].name, ret);
+	}
+	mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+}
+
+void tegra30_i2s_free_gpio(struct snd_pcm_substream *substream, int i2s_id)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int i;
+	if (i2s_id > 1) {
+		/* Only HIFI_CODEC and SPEAKER GPIO need re-config */
+		return;
+	}
+
+	if (pdata->first_time_free[i2s_id]) {
+		mutex_init(&pdata->i2s_gpio_lock[i2s_id]);
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+		pr_info("pdata->gpio_free_count[%d]=%d, 1st time enter, don't need free gpio\n",
+                       i2s_id, pdata->gpio_free_count[i2s_id]);
+		pdata->first_time_free[i2s_id] = false;
+	} else {
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
+	}
+	pdata->gpio_free_count[i2s_id]++;
+	if (pdata->gpio_free_count[i2s_id] > 1) {
+		pr_debug("pdata->gpio_free_count[%d]=%d > 1, needless to free again\n",
+		            i2s_id, pdata->gpio_free_count[i2s_id]);
+		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+		return;
+	}
+
+	for (i = 0; i<4; i++) {
+		gpio_free(pdata->i2s_set[i2s_id*4 + i].id);
+		pr_debug("%s: gpio_free for gpio[%d] %s,\n",
+				__func__, pdata->i2s_set[i2s_id*4 + i].id, pdata->i2s_set[i2s_id*4 + i].name);
+	}
+	mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
+}
+
 int tegra30_i2s_startup(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
-	int ret;
+	int ret = 0;
+	int i2s_id;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		/* To prevent power leakage */
+		if (i2s->playback_ref_count == 0) {
+			i2s_id = i2s->playback_i2s_cif - TEGRA30_AHUB_RXCIF_I2S0_RX0 - 1;
+			pr_debug("%s-playback:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_free_gpio(substream, i2s_id);
+		}
 		/* increment the playback ref count */
 		i2s->playback_ref_count++;
 
-		ret = tegra30_ahub_allocate_tx_fifo(&i2s->playback_fifo_cif,
+		if (i2s->allocate_pb_fifo_cif) {
+			ret = tegra30_ahub_allocate_tx_fifo(
+					&i2s->playback_fifo_cif,
 					&i2s->playback_dma_data.addr,
 					&i2s->playback_dma_data.req_sel);
-		i2s->playback_dma_data.wrap = 4;
-		i2s->playback_dma_data.width = 32;
+			i2s->playback_dma_data.wrap = 4;
+			i2s->playback_dma_data.width = 32;
 
-		if (!i2s->is_dam_used)
-			tegra30_ahub_set_rx_cif_source(
-				i2s->playback_i2s_cif,
-				i2s->playback_fifo_cif);
+			if (!i2s->is_dam_used)
+				tegra30_ahub_set_rx_cif_source(
+					i2s->playback_i2s_cif,
+					i2s->playback_fifo_cif);
+		}
 	} else {
+		/* To prevent power leakage */
+		if (i2s->capture_ref_count == 0) {
+			i2s_id = i2s->capture_i2s_cif - TEGRA30_AHUB_TXCIF_I2S0_TX0 - 1;
+			pr_debug("%s-capture:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_free_gpio(substream, i2s_id);
+		}
+		/* increment the capture ref count */
 		i2s->capture_ref_count++;
 		ret = tegra30_ahub_allocate_rx_fifo(&i2s->capture_fifo_cif,
 					&i2s->capture_dma_data.addr,
@@ -125,22 +233,35 @@ void tegra30_i2s_shutdown(struct snd_pcm_substream *substream,
 			struct snd_soc_dai *dai)
 {
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
+	int i2s_id;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		if (i2s->playback_ref_count == 1)
-			tegra30_ahub_unset_rx_cif_source(
-				i2s->playback_i2s_cif);
+		if (i2s->playback_ref_count == 1) {
+			if (i2s->allocate_pb_fifo_cif)
+				tegra30_ahub_unset_rx_cif_source(
+					i2s->playback_i2s_cif);
+			/* To prevent power leakage */
+			i2s_id = i2s->playback_i2s_cif - TEGRA30_AHUB_RXCIF_I2S0_RX0 - 1;
+			pr_debug("%s-playback:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_request_gpio(substream, i2s_id);
+		}
 
 		/* free the apbif dma channel*/
-		tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
-		i2s->playback_fifo_cif = -1;
+		if (i2s->allocate_pb_fifo_cif) {
+			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
+			i2s->playback_fifo_cif = -1;
+		}
 
 		/* decrement the playback ref count */
 		i2s->playback_ref_count--;
 	} else {
-		if (i2s->capture_ref_count == 1)
+		if (i2s->capture_ref_count == 1) {
 			tegra30_ahub_unset_rx_cif_source(i2s->capture_fifo_cif);
-
+			/* To prevent power leakage */
+			i2s_id = i2s->capture_i2s_cif - TEGRA30_AHUB_TXCIF_I2S0_TX0 - 1;
+			pr_debug("%s-capture:i2s_id = %d\n", __func__, i2s_id);
+			tegra30_i2s_request_gpio(substream, i2s_id);
+		}
 		/* free the apbif dma channel*/
 		tegra30_ahub_free_rx_fifo(i2s->capture_fifo_cif);
 
@@ -478,9 +599,11 @@ static int tegra30_i2s_hw_params(struct snd_pcm_substream *substream,
 		sample_size = 16;
 		break;
 	case SNDRV_PCM_FORMAT_S24_LE:
-		val = TEGRA30_I2S_CTRL_BIT_SIZE_24;
-		sample_size = 24;
-		break;
+	/* Fallthrough
+	 * for 24 bit audio we support only S24_LE (S24_3LE is not
+	 * supported) which is rendered on bus in 32 bits packet so
+	 * consider as 32 bit
+	 */
 	case SNDRV_PCM_FORMAT_S32_LE:
 		val = TEGRA30_I2S_CTRL_BIT_SIZE_32;
 		sample_size = 32;
@@ -909,7 +1032,10 @@ static int tegra30_i2s_probe(struct snd_soc_dai *dai)
 	i2s->dsp_config.rx_data_offset = 1;
 	i2s->dsp_config.tx_data_offset = 1;
 	tegra_i2sloopback_func = 0;
-
+	i2s->playback_fifo_cif = -1;
+	i2s->capture_fifo_cif = -1;
+	i2s->allocate_pb_fifo_cif = true;
+	i2s->allocate_cap_fifo_cif = true;
 
 	return 0;
 }
@@ -948,7 +1074,7 @@ static struct snd_soc_dai_driver tegra30_i2s_dai_template = {
 		.stream_name = "Playback",
 		.channels_min = 1,
 		.channels_max = 16,
-		.rates = SNDRV_PCM_RATE_8000_96000,
+		.rates = SNDRV_PCM_RATE_8000_192000,
 		.formats = SNDRV_PCM_FMTBIT_S8 | SNDRV_PCM_FMTBIT_S16_LE |
 			SNDRV_PCM_FMTBIT_S24_LE | SNDRV_PCM_FMTBIT_S32_LE,
 	},
@@ -2372,7 +2498,8 @@ static struct platform_driver tegra30_i2s_driver = {
 	.remove = tegra30_i2s_platform_remove,
 };
 module_platform_driver(tegra30_i2s_driver);
-
+MODULE_AUTHOR("Ravindra Lokhande <rlokhande@nvidia.com>");
+MODULE_AUTHOR("Manoj Gangwal <mgangwal@nvidia.com>");
 MODULE_AUTHOR("Stephen Warren <swarren@nvidia.com>");
 MODULE_DESCRIPTION("Tegra30 I2S ASoC driver");
 MODULE_LICENSE("GPL");

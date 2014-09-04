@@ -34,7 +34,7 @@
 #include <asm/hw_breakpoint.h>
 #include <asm/ptrace.h>
 #include <asm/types.h>
-#include <asm/atomic.h>
+#include <asm/relaxed.h>
 
 #ifdef __KERNEL__
 #define STACK_TOP_MAX		TASK_SIZE_64
@@ -149,8 +149,6 @@ unsigned long get_wchan(struct task_struct *p);
 
 #define cpu_relax()			barrier()
 
-#define cpu_relaxed_read(p)		ldax32(p)
-#define cpu_relaxed_read_long(p)	ldax64((u64 *)p)
 #define cpu_read_relax()		wfe()
 
 /* Thread switching */
@@ -160,8 +158,8 @@ extern struct task_struct *cpu_switch_to(struct task_struct *prev,
 #define task_pt_regs(p) \
 	((struct pt_regs *)(THREAD_START_SP + task_stack_page(p)) - 1)
 
-#define KSTK_EIP(tsk)	task_pt_regs(tsk)->pc
-#define KSTK_ESP(tsk)	task_pt_regs(tsk)->sp
+#define KSTK_EIP(tsk)	((unsigned long)task_pt_regs(tsk)->pc)
+#define KSTK_ESP(tsk)	user_stack_pointer(task_pt_regs(tsk))
 
 /*
  * Prefetching support

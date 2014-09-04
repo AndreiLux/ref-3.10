@@ -191,17 +191,30 @@ struct device tegra_generic_dev;
 struct device tegra_vpr_dev;
 EXPORT_SYMBOL(tegra_vpr_dev);
 
+struct device tegra_iram_dev;
+EXPORT_SYMBOL(tegra_iram_dev);
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/nvsecurity.h>
 
-static void tegra_update_resize_cfg(phys_addr_t base , size_t size)
+static inline phys_addr_t memblock_end_of_4G(phys_addr_t size)
 {
+	return memblock_find_in_range(0, SZ_4G-1, size, PAGE_SIZE);
+}
+
+static int tegra_update_resize_cfg(phys_addr_t base , size_t size)
+{
+	int err = 0;
 #ifdef CONFIG_TRUSTED_LITTLE_KERNEL
-	/* Config VPR_BOM/_SIZE in MC */
-	te_set_vpr_params((void *)(uintptr_t)base, size);
-	/* trigger GPU to refetch VPR base and size. */
-	nvhost_vpr_info_fetch();
+
+	err = gk20a_do_idle();
+	if (!err) {
+		/* Config VPR_BOM/_SIZE in MC */
+		err = te_set_vpr_params((void *)(uintptr_t)base, size);
+		gk20a_do_unidle();
+	}
 #endif
+	return err;
 }
 
 struct dma_resize_notifier_ops vpr_dev_ops = {
@@ -1121,8 +1134,7 @@ int tegra_get_sku_override(void)
 	return sku_override;
 }
 
-#if !defined(CONFIG_TRUSTED_LITTLE_KERNEL) || \
-	!defined(CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT)
+#ifndef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 static int __init tegra_vpr_arg(char *options)
 {
 	char *p = options;
@@ -1779,7 +1791,7 @@ static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 	void *from_virt;
 	unsigned long i;
 
-	to_io = ioremap(to, size);
+	to_io = ioremap_wc(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
@@ -1793,7 +1805,7 @@ static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 			kunmap(page);
 		}
 	} else {
-		void __iomem *from_io = ioremap(from, size);
+		void __iomem *from_io = ioremap_wc(from, size);
 		if (!from_io) {
 			pr_err("%s: Failed to map source framebuffer\n",
 				__func__);
@@ -1801,7 +1813,8 @@ static void __tegra_move_framebuffer_ioremap(struct platform_device *pdev,
 		}
 
 		for (i = 0; i < size; i += 4)
-			writel(readl(from_io + i), to_io + i);
+			writel_relaxed(readl_relaxed(from_io + i), to_io + i);
+		dmb();
 
 		iounmap(from_io);
 	}
@@ -1844,7 +1857,7 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 	BUG_ON(PAGE_ALIGN((unsigned long)to) != (unsigned long)to);
 	BUG_ON(PAGE_ALIGN(size) != size);
 
-	to_io = ioremap(to, size);
+	to_io = ioremap_wc(to, size);
 	if (!to_io) {
 		pr_err("%s: Failed to map target framebuffer\n", __func__);
 		return;
@@ -1855,7 +1868,8 @@ void __tegra_clear_framebuffer(struct platform_device *pdev,
 			memset(to_io + i, 0, PAGE_SIZE);
 	} else {
 		for (i = 0; i < size; i += 4)
-			writel(0, to_io + i);
+			writel_relaxed(0, to_io + i);
+		dmb();
 	}
 
 	iounmap(to_io);
@@ -1875,11 +1889,11 @@ static struct platform_device ramoops_dev  = {
 static void __init tegra_reserve_ramoops_memory(unsigned long reserve_size)
 {
 	ramoops_data.mem_size = reserve_size;
-	ramoops_data.mem_address = memblock_end_of_4G() - reserve_size;
+	ramoops_data.mem_address = memblock_end_of_4G(reserve_size);
 	ramoops_data.console_size = reserve_size - FTRACE_MEM_SIZE;
 	ramoops_data.ftrace_size = FTRACE_MEM_SIZE;
 	ramoops_data.dump_oops = 1;
-	memblock_reserve(ramoops_data.mem_address, ramoops_data.mem_size);
+	memblock_remove(ramoops_data.mem_address, ramoops_data.mem_size);
 }
 
 static int __init tegra_register_ramoops_device(void)
@@ -1905,8 +1919,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 		 * Place the carveout below the 4 GB physical address limit
 		 * because IOVAs are only 32 bit wide.
 		 */
-		BUG_ON(memblock_end_of_4G() == 0);
-		tegra_carveout_start = memblock_end_of_4G() - carveout_size;
+		tegra_carveout_start = memblock_end_of_4G(carveout_size);
 		if (memblock_remove(tegra_carveout_start, carveout_size)) {
 			pr_err("Failed to remove carveout %08lx@%08llx "
 				"from memory map\n",
@@ -1923,13 +1936,12 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 		 * Place fb2 below the 4 GB physical address limit because
 		 * IOVAs are only 32 bit wide.
 		 */
-		BUG_ON(memblock_end_of_4G() == 0);
 #if IS_ENABLED(CONFIG_ADF_TEGRA)
 		tegra_fb2_start = memblock_alloc_base(fb2_size, PAGE_SIZE,
 				SZ_4G);
 		tegra_fb2_size = fb2_size;
 #else
-		tegra_fb2_start = memblock_end_of_4G() - fb2_size;
+		tegra_fb2_start = memblock_end_of_4G(fb2_size);
 		if (memblock_remove(tegra_fb2_start, fb2_size)) {
 			pr_err("Failed to remove second framebuffer "
 				"%08lx@%08llx from memory map\n",
@@ -1951,8 +1963,7 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 				SZ_4G);
 		tegra_fb_size = fb_size;
 #else
-		BUG_ON(memblock_end_of_4G() == 0);
-		tegra_fb_start = memblock_end_of_4G() - fb_size;
+		tegra_fb_start = memblock_end_of_4G(fb_size);
 		if (memblock_remove(tegra_fb_start, fb_size)) {
 			pr_err("Failed to remove framebuffer %08lx@%08llx "
 				"from memory map\n",
@@ -2181,31 +2192,32 @@ void __init tegra_reserve(unsigned long carveout_size, unsigned long fb_size,
 	}
 #endif
 
+#ifdef CONFIG_PSTORE_RAM
+	tegra_reserve_ramoops_memory(RAMOOPS_MEM_SIZE);
+#endif
+
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	/* Keep these at the end */
 	if (carveout_size) {
 		if (dma_declare_contiguous(&tegra_generic_cma_dev,
-			carveout_size, 0, memblock_end_of_4G()))
+			carveout_size, 0, memblock_end_of_4G(0)))
 			pr_err("dma_declare_contiguous failed for generic\n");
 		tegra_carveout_size = carveout_size;
 	}
 
 	if (tegra_vpr_size)
 		if (dma_declare_contiguous(&tegra_vpr_cma_dev,
-			tegra_vpr_size, 0, memblock_end_of_4G()))
+			tegra_vpr_size, 0, memblock_end_of_4G(0)))
 			pr_err("dma_declare_contiguous failed VPR carveout\n");
 #endif
 
 	tegra_fb_linear_set(map);
-#ifdef CONFIG_PSTORE_RAM
-	tegra_reserve_ramoops_memory(RAMOOPS_MEM_SIZE);
-#endif
 }
 
 void tegra_reserve4(ulong carveout_size, ulong fb_size,
 		       ulong fb2_size, ulong vpr_size)
 {
-#ifdef CONFIG_TRUSTED_LITTLE_KERNEL
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
 	tegra_vpr_start = 0;
 	tegra_vpr_size = vpr_size;
 #endif
@@ -2462,10 +2474,13 @@ static int __init set_tegra_split_mem(char *options)
 early_param("tegra_split_mem", set_tegra_split_mem);
 
 #define FUSE_SKU_INFO       0x110
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+#define STRAP_OPT 0x464
+#define RAM_ID_MASK (0xF << 4)
+#else
 #define STRAP_OPT 0x008
-#define GMI_AD0 BIT(4)
-#define GMI_AD1 BIT(5)
-#define RAM_ID_MASK (GMI_AD0 | GMI_AD1)
+#define RAM_ID_MASK (3 << 4)
+#endif
 #define RAM_CODE_SHIFT 4
 
 #ifdef CONFIG_TEGRA_PRE_SILICON_SUPPORT
@@ -2535,8 +2550,11 @@ static void tegra_set_chip_id(void)
 static void tegra_set_bct_strapping(void)
 {
 	u32 reg;
-
+#if defined(CONFIG_ARCH_TEGRA_12x_SOC)
+	reg = readl(IO_ADDRESS(TEGRA_PMC_BASE + STRAP_OPT));
+#else
 	reg = readl(IO_ADDRESS(TEGRA_APB_MISC_BASE + STRAP_OPT));
+#endif
 	tegra_chip_bct_strapping = (reg & RAM_ID_MASK) >> RAM_CODE_SHIFT;
 }
 

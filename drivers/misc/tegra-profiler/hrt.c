@@ -23,9 +23,12 @@
 #include <linux/ptrace.h>
 #include <linux/interrupt.h>
 #include <linux/err.h>
+#include <linux/nsproxy.h>
+#include <clocksource/arm_arch_timer.h>
 
 #include <asm/cputype.h>
 #include <asm/irq_regs.h>
+#include <asm/arch_timer.h>
 
 #include <linux/tegra_profiler.h>
 
@@ -90,12 +93,30 @@ static void init_hrtimer(struct quadd_cpu_context *cpu_ctx)
 	cpu_ctx->hrtimer.function = hrtimer_handler;
 }
 
-u64 quadd_get_time(void)
+static inline u64 get_posix_clock_monotonic_time(void)
 {
 	struct timespec ts;
 
 	do_posix_clock_monotonic_gettime(&ts);
 	return timespec_to_ns(&ts);
+}
+
+static inline u64 get_arch_time(struct timecounter *tc)
+{
+	cycle_t value;
+	const struct cyclecounter *cc = tc->cc;
+
+	value = cc->read(cc);
+	return cyclecounter_cyc2ns(cc, value);
+}
+
+u64 quadd_get_time(void)
+{
+	struct timecounter *tc = hrt.tc;
+
+	return (tc && hrt.use_arch_timer) ?
+		get_arch_time(tc) :
+		get_posix_clock_monotonic_time();
 }
 
 static void put_header(void)
@@ -137,6 +158,11 @@ static void put_header(void)
 	hdr->reserved = 0;
 	hdr->extra_length = 0;
 
+	hdr->reserved |= hrt.unw_method << QUADD_HDR_UNW_METHOD_SHIFT;
+
+	if (hrt.use_arch_timer)
+		hdr->reserved |= QUADD_HDR_USE_ARCH_TIMER;
+
 	if (pmu)
 		nr_events += pmu->get_current_events(events, max_events);
 
@@ -159,6 +185,31 @@ void quadd_put_sample(struct quadd_record_data *data,
 
 	comm->put_sample(data, vec, vec_count);
 	atomic64_inc(&hrt.counter_samples);
+}
+
+static void
+put_sched_sample(struct task_struct *task, int is_sched_in)
+{
+	unsigned int cpu, flags;
+	struct quadd_record_data record;
+	struct quadd_sched_data *s = &record.sched;
+
+	record.record_type = QUADD_RECORD_TYPE_SCHED;
+
+	cpu = quadd_get_processor_id(NULL, &flags);
+	s->cpu = cpu;
+	s->lp_mode = (flags & QUADD_CPUMODE_TEGRA_POWER_CLUSTER_LP) ? 1 : 0;
+
+	s->sched_in = is_sched_in ? 1 : 0;
+	s->time = quadd_get_time();
+	s->pid = task->pid;
+
+	s->reserved = 0;
+
+	s->data[0] = 0;
+	s->data[1] = 0;
+
+	quadd_put_sample(&record, NULL, 0);
 }
 
 static int get_sample_data(struct quadd_sample_data *sample,
@@ -236,7 +287,7 @@ read_all_sources(struct pt_regs *regs, struct task_struct *task)
 	int i, vec_idx = 0, bt_size = 0;
 	int nr_events = 0, nr_positive_events = 0;
 	struct pt_regs *user_regs;
-	struct quadd_iovec vec[4];
+	struct quadd_iovec vec[5];
 	struct hrt_event_value events[QUADD_MAX_COUNTERS];
 	u32 events_extra[QUADD_MAX_COUNTERS];
 
@@ -253,22 +304,15 @@ read_all_sources(struct pt_regs *regs, struct task_struct *task)
 	if (atomic_read(&cpu_ctx->nr_active) == 0)
 		return;
 
-	if (!task) {
-		pid_t pid;
-		struct pid *pid_s;
-		struct quadd_thread_data *t_data;
+	if (!task)
+		task = current;
 
-		t_data = &cpu_ctx->active_thread;
-		pid = t_data->pid;
-
-		rcu_read_lock();
-		pid_s = find_vpid(pid);
-		if (pid_s)
-			task = pid_task(pid_s, PIDTYPE_PID);
+	rcu_read_lock();
+	if (!task_nsproxy(task)) {
 		rcu_read_unlock();
-		if (!task)
-			return;
+		return;
 	}
+	rcu_read_unlock();
 
 	if (ctx->pmu && ctx->pmu_info.active)
 		nr_events += read_source(ctx->pmu, regs,
@@ -290,9 +334,6 @@ read_all_sources(struct pt_regs *regs, struct task_struct *task)
 	if (get_sample_data(s, regs, task))
 		return;
 
-	if (cc->cs_64)
-		extra_data |= QUADD_SED_IP64;
-
 	vec[vec_idx].base = &extra_data;
 	vec[vec_idx].len = sizeof(extra_data);
 	vec_idx++;
@@ -300,6 +341,7 @@ read_all_sources(struct pt_regs *regs, struct task_struct *task)
 	s->reserved = 0;
 
 	if (ctx->param.backtrace) {
+		cc->unw_method = hrt.unw_method;
 		bt_size = quadd_get_user_callchain(user_regs, cc, ctx, task);
 
 		if (!bt_size && !user_mode(regs)) {
@@ -311,23 +353,29 @@ read_all_sources(struct pt_regs *regs, struct task_struct *task)
 #else
 			cc->cs_64 = 0;
 #endif
-			bt_size += quadd_callchain_store(cc, pc);
+			bt_size += quadd_callchain_store(cc, pc,
+							 QUADD_UNW_TYPE_KCTX);
 		}
 
 		if (bt_size > 0) {
 			int ip_size = cc->cs_64 ? sizeof(u64) : sizeof(u32);
+			int nr_types = DIV_ROUND_UP(bt_size, 8);
 
 			vec[vec_idx].base = cc->cs_64 ?
 				(void *)cc->ip_64 : (void *)cc->ip_32;
 			vec[vec_idx].len = bt_size * ip_size;
 			vec_idx++;
+
+			vec[vec_idx].base = cc->types;
+			vec[vec_idx].len = nr_types * sizeof(cc->types[0]);
+			vec_idx++;
+
+			if (cc->cs_64)
+				extra_data |= QUADD_SED_IP64;
 		}
 
 		extra_data |= cc->unw_method << QUADD_SED_UNW_METHOD_SHIFT;
-
-		if (cc->unw_method == QUADD_UNW_METHOD_EHT ||
-		    cc->unw_method == QUADD_UNW_METHOD_MIXED)
-			s->reserved |= cc->unw_rc << QUADD_SAMPLE_URC_SHIFT;
+		s->reserved |= cc->unw_rc << QUADD_SAMPLE_URC_SHIFT;
 	}
 	s->callchain_nr = bt_size;
 
@@ -434,6 +482,8 @@ void __quadd_task_sched_in(struct task_struct *prev,
 */
 
 	if (is_profile_process(task)) {
+		put_sched_sample(task, 1);
+
 		add_active_thread(cpu_ctx, task->pid, task->tgid);
 		atomic_inc(&cpu_ctx->nr_active);
 
@@ -484,6 +534,8 @@ void __quadd_task_sched_out(struct task_struct *prev,
 			if (ctx->pmu)
 				ctx->pmu->stop();
 		}
+
+		put_sched_sample(prev, 0);
 	}
 }
 
@@ -541,9 +593,25 @@ int quadd_hrt_start(void)
 
 	reset_cpu_ctx();
 
-	put_header();
-
 	extra = param->reserved[QUADD_PARAM_IDX_EXTRA];
+
+	if (extra & QUADD_PARAM_EXTRA_BT_MIXED)
+		hrt.unw_method = QUADD_UNW_METHOD_MIXED;
+	else if (extra & QUADD_PARAM_EXTRA_BT_UNWIND_TABLES)
+		hrt.unw_method = QUADD_UNW_METHOD_EHT;
+	else if (extra & QUADD_PARAM_EXTRA_BT_FP)
+		hrt.unw_method = QUADD_UNW_METHOD_FP;
+	else
+		hrt.unw_method = QUADD_UNW_METHOD_NONE;
+
+	if (hrt.tc && (extra & QUADD_PARAM_EXTRA_USE_ARCH_TIMER))
+		hrt.use_arch_timer = 1;
+	else
+		hrt.use_arch_timer = 0;
+
+	pr_info("timer: %s\n", hrt.use_arch_timer ? "arch" : "monotonic clock");
+
+	put_header();
 
 	if (extra & QUADD_PARAM_EXTRA_GET_MMAP) {
 		err = quadd_get_current_mmap(param->pids[0]);
@@ -597,6 +665,16 @@ void quadd_hrt_get_state(struct quadd_module_state *state)
 	state->nr_skipped_samples = 0;
 }
 
+static void init_arch_timer(void)
+{
+	u32 cntkctl = arch_timer_get_cntkctl();
+
+	if (cntkctl & ARCH_TIMER_USR_VCT_ACCESS_EN)
+		hrt.tc = arch_timer_get_timecounter();
+	else
+		hrt.tc = NULL;
+}
+
 struct quadd_hrt_ctx *quadd_hrt_init(struct quadd_ctx *ctx)
 {
 	int cpu_id;
@@ -618,6 +696,7 @@ struct quadd_hrt_ctx *quadd_hrt_init(struct quadd_ctx *ctx)
 		hrt.ma_period = 0;
 
 	atomic64_set(&hrt.counter_samples, 0);
+	init_arch_timer();
 
 	hrt.cpu_ctx = alloc_percpu(struct quadd_cpu_context);
 	if (!hrt.cpu_ctx)

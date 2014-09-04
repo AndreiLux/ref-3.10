@@ -27,6 +27,13 @@
 #define	TEGRA_DAIFMT_RIGHT_J		3
 #define	TEGRA_DAIFMT_LEFT_J		4
 
+struct gpio_config {
+	const char *name;
+	int id;
+	int dir_in;
+	int pg;
+};
+
 struct i2s_config {
 	int audio_port_id;
 	int is_i2s_master;
@@ -73,11 +80,16 @@ struct tegra_asoc_platform_data {
 	int gpio_codec1;
 	int gpio_codec2;
 	int gpio_codec3;
+	struct gpio_config codec_mclk;
 	bool micbias_gpio_absent;
 	bool use_codec_jd_irq;
 	unsigned int debounce_time_hp;
 	bool edp_support;
 	unsigned int edp_states[TEGRA_SPK_EDP_NUM_STATES];
 	struct i2s_config i2s_param[NUM_I2S_DEVICES];
+	struct gpio_config i2s_set[NUM_I2S_DEVICES*4];
+	struct mutex i2s_gpio_lock[NUM_I2S_DEVICES];
+	int gpio_free_count[NUM_I2S_DEVICES];
+	bool first_time_free[NUM_I2S_DEVICES];
 	struct ahub_bbc1_config *ahub_bbc1_param;
 };

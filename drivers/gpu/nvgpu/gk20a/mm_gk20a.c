@@ -1103,6 +1103,7 @@ static u64 __locked_gmmu_map(struct vm_gk20a *vm,
 				int rw_flag)
 {
 	int err = 0, i = 0;
+	bool allocated = false;
 	u32 pde_lo, pde_hi;
 	struct device *d = dev_from_vm(vm);
 
@@ -1113,8 +1114,9 @@ static u64 __locked_gmmu_map(struct vm_gk20a *vm,
 		if (!map_offset) {
 			gk20a_err(d, "failed to allocate va space");
 			err = -ENOMEM;
-			goto fail;
+			goto fail_alloc;
 		}
+		allocated = true;
 	}
 
 	pde_range_from_vaddr_range(vm,
@@ -1129,7 +1131,7 @@ static u64 __locked_gmmu_map(struct vm_gk20a *vm,
 		if (err) {
 			gk20a_err(d, "failed to validate page table %d: %d",
 							   i, err);
-			goto fail;
+			goto fail_validate;
 		}
 	}
 
@@ -1143,11 +1145,14 @@ static u64 __locked_gmmu_map(struct vm_gk20a *vm,
 				      rw_flag);
 	if (err) {
 		gk20a_err(d, "failed to update ptes on map");
-		goto fail;
+		goto fail_validate;
 	}
 
 	return map_offset;
- fail:
+fail_validate:
+	if (allocated)
+		gk20a_vm_free_va(vm, map_offset, size, pgsz_idx);
+fail_alloc:
 	gk20a_err(d, "%s: failed with err=%d\n", __func__, err);
 	return 0;
 }
@@ -1279,6 +1284,7 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 	int err = 0;
 	struct buffer_attrs bfr = {0};
 	struct gk20a_comptags comptags;
+	u64 buf_addr;
 
 	mutex_lock(&vm->update_gmmu_lock);
 
@@ -1311,7 +1317,10 @@ u64 gk20a_vm_map(struct vm_gk20a *vm,
 
 	bfr.kind_v = kind;
 	bfr.size = dmabuf->size;
-	bfr.align = 1 << __ffs((u64)sg_dma_address(bfr.sgt->sgl));
+	buf_addr = (u64)sg_dma_address(bfr.sgt->sgl);
+	if (unlikely(!buf_addr))
+		buf_addr = (u64)sg_phys(bfr.sgt->sgl);
+	bfr.align = 1 << __ffs(buf_addr);
 	bfr.pgsz_idx = -1;
 
 	/* If FIX_OFFSET is set, pgsz is determined. Otherwise, select
@@ -1926,8 +1935,6 @@ static int gk20a_vm_put_empty(struct vm_gk20a *vm, u64 vaddr,
 		vaddr += pgsz;
 	}
 
-	gk20a_mm_l2_flush(mm->g, true);
-
 	return 0;
 
 err_unmap:
@@ -2013,6 +2020,7 @@ static void gk20a_vm_remove_support(struct vm_gk20a *vm)
 	struct mapped_buffer_node *mapped_buffer;
 	struct vm_reserved_va_node *va_node, *va_node_tmp;
 	struct rb_node *node;
+	int i;
 
 	gk20a_dbg_fn("");
 	mutex_lock(&vm->update_gmmu_lock);
@@ -2035,8 +2043,25 @@ static void gk20a_vm_remove_support(struct vm_gk20a *vm)
 		kfree(va_node);
 	}
 
-	/* TBD: unmapping all buffers above may not actually free
+	/* unmapping all buffers above may not actually free
 	 * all vm ptes.  jettison them here for certain... */
+	for (i = 0; i < vm->pdes.num_pdes; i++) {
+		struct page_table_gk20a *pte =
+			&vm->pdes.ptes[gmmu_page_size_small][i];
+		if (pte->ref) {
+			free_gmmu_pages(vm, pte->ref, pte->sgt,
+				vm->mm->page_table_sizing[gmmu_page_size_small].order,
+				pte->size);
+			pte->ref = NULL;
+		}
+		pte = &vm->pdes.ptes[gmmu_page_size_big][i];
+		if (pte->ref) {
+			free_gmmu_pages(vm, pte->ref, pte->sgt,
+				vm->mm->page_table_sizing[gmmu_page_size_big].order,
+				pte->size);
+			pte->ref = NULL;
+		}
+	}
 
 	unmap_gmmu_pages(vm->pdes.ref, vm->pdes.sgt, vm->pdes.kv);
 	free_gmmu_pages(vm, vm->pdes.ref, vm->pdes.sgt, 0, vm->pdes.size);
@@ -2753,8 +2778,6 @@ int gk20a_mm_fb_flush(struct gk20a *g)
 
 	mutex_lock(&mm->l2_op_lock);
 
-	g->ops.ltc.elpg_flush(g);
-
 	/* Make sure all previous writes are committed to the L2. There's no
 	   guarantee that writes are to DRAM. This will be a sysmembar internal
 	   to the L2. */
@@ -2961,8 +2984,7 @@ int gk20a_mm_suspend(struct gk20a *g)
 {
 	gk20a_dbg_fn("");
 
-	gk20a_mm_fb_flush(g);
-	gk20a_mm_l2_flush(g, true);
+	g->ops.ltc.elpg_flush(g);
 
 	gk20a_dbg_fn("done");
 	return 0;
@@ -2982,49 +3004,4 @@ bool gk20a_mm_mmu_debug_mode_enabled(struct gk20a *g)
 	u32 debug_ctrl = gk20a_readl(g, fb_mmu_debug_ctrl_r());
 	return fb_mmu_debug_ctrl_debug_v(debug_ctrl) ==
 		fb_mmu_debug_ctrl_debug_enabled_v();
-}
-
-static int gk20a_mm_mmu_vpr_info_fetch_wait(struct gk20a *g,
-					    const unsigned int msec)
-{
-	unsigned long timeout;
-
-	timeout = jiffies + msecs_to_jiffies(msec);
-	while (1) {
-		u32 val;
-
-		val = gk20a_readl(g, fb_mmu_vpr_info_r());
-		if (fb_mmu_vpr_info_fetch_v(val) ==
-		    fb_mmu_vpr_info_fetch_false_v())
-			break;
-
-		if (tegra_platform_is_silicon() &&
-				WARN_ON(time_after(jiffies, timeout)))
-			return -ETIME;
-	}
-
-	return 0;
-}
-
-int gk20a_mm_mmu_vpr_info_fetch(struct gk20a *g)
-{
-	int ret = 0;
-
-	gk20a_busy_noresume(g->dev);
-	if (!pm_runtime_active(&g->dev->dev))
-		goto fail;
-
-	if (gk20a_mm_mmu_vpr_info_fetch_wait(g, 5)) {
-		ret = -ETIME;
-		goto fail;
-	}
-
-	gk20a_writel(g, fb_mmu_vpr_info_r(),
-		     fb_mmu_vpr_info_fetch_true_v());
-
-	ret = gk20a_mm_mmu_vpr_info_fetch_wait(g, 5);
-
- fail:
-	gk20a_idle(g->dev);
-	return ret;
 }

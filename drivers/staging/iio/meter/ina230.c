@@ -74,6 +74,7 @@ enum {
 	CHANNEL_NAME = 0,
 	CURRENT_THRESHOLD,
 	ALERT_FLAG,
+	VBUS_VOLTAGE_CURRENT,
 };
 
 struct ina230_platform_data {
@@ -480,6 +481,53 @@ static int ina230_get_shunt_power(struct ina230_chip *chip, int *power_mw)
 	return 0;
 }
 
+static int ina230_get_vbus_voltage_current(struct ina230_chip *chip,
+					   int *current_ma, int *voltage_mv)
+{
+	int ret = 0, val;
+	int ma;
+
+	mutex_lock(&chip->mutex);
+	/* ensure that triggered mode will be used */
+	chip->running = 0;
+	ret = ina230_ensure_enabled_start(chip);
+	if (ret < 0)
+		goto out;
+
+	ret = __locked_wait_for_conversion(chip);
+	if (ret)
+		goto out;
+
+	val = i2c_smbus_read_word_data(chip->client, INA230_VOLTAGE);
+	if (val < 0) {
+		ret = val;
+		goto out;
+	}
+	*voltage_mv = busv_register_to_mv(be16_to_cpu(val));
+
+	if (chip->pdata->resistor) {
+		val = i2c_smbus_read_word_data(chip->client, INA230_SHUNT);
+		if (val < 0) {
+			ret = val;
+			goto out;
+		}
+		ma = shuntv_register_to_uv((s16)be16_to_cpu(val));
+		ma = DIV_ROUND_CLOSEST(ma, chip->pdata->resistor);
+		if (chip->pdata->shunt_polarity_inverted)
+			ma *= -1;
+		*current_ma = ma;
+	} else {
+		*current_ma = 0;
+	}
+out:
+	/* restart continuous current monitoring, if enabled */
+	if (chip->pdata->current_threshold)
+		__locked_ina230_evaluate_state(chip);
+	mutex_unlock(&chip->mutex);
+	return ret;
+}
+
+
 static int ina230_set_current_threshold(struct ina230_chip *chip,
 		int current_ma)
 {
@@ -603,6 +651,9 @@ static ssize_t ina230_show_channel(struct device *dev,
 	struct iio_dev *indio_dev = dev_to_iio_dev(dev);
 	struct ina230_chip *chip = iio_priv(indio_dev);
 	struct iio_dev_attr *this_attr = to_iio_dev_attr(attr);
+	int current_ma = 0;
+	int voltage_mv = 0;
+	int ret;
 
 	switch (this_attr->address) {
 	case CHANNEL_NAME:
@@ -613,6 +664,13 @@ static ssize_t ina230_show_channel(struct device *dev,
 
 	case ALERT_FLAG:
 		return ina230_show_alert_flag(chip, buf);
+
+	case VBUS_VOLTAGE_CURRENT:
+		ret = ina230_get_vbus_voltage_current(chip, &current_ma,
+						      &voltage_mv);
+		if (!ret)
+			return sprintf(buf, "%d %d\n", voltage_mv, current_ma);
+		return ret;
 
 	default:
 		break;
@@ -629,6 +687,7 @@ static ssize_t ina230_set_channel(struct device *dev,
 	int mode = this_attr->address;
 	long val;
 	int current_ma;
+	int ret;
 
 	switch (mode) {
 	case CURRENT_THRESHOLD:
@@ -636,8 +695,10 @@ static ssize_t ina230_set_channel(struct device *dev,
 			return -EINVAL;
 
 		current_ma = (int) val;
-		return ina230_set_current_threshold(chip, current_ma);
-
+		ret = ina230_set_current_threshold(chip, current_ma);
+		if (ret)
+			return ret;
+		return len;
 	default:
 		break;
 	}
@@ -653,11 +714,16 @@ static IIO_DEVICE_ATTR(current_threshold, S_IRUGO | S_IWUSR,
 static IIO_DEVICE_ATTR(alert_flag, S_IRUGO,
 		ina230_show_channel, NULL, ALERT_FLAG);
 
+static IIO_DEVICE_ATTR(ui_input, S_IRUSR|S_IRGRP,
+		       ina230_show_channel, NULL,
+		       VBUS_VOLTAGE_CURRENT);
+
 
 static struct attribute *ina230_attributes[] = {
 	&iio_dev_attr_rail_name.dev_attr.attr,
 	&iio_dev_attr_current_threshold.dev_attr.attr,
 	&iio_dev_attr_alert_flag.dev_attr.attr,
+	&iio_dev_attr_ui_input.dev_attr.attr,
 	NULL,
 };
 
@@ -835,12 +901,18 @@ static int ina230_probe(struct i2c_client *client,
 		goto exit;
 	}
 
-	/* set ina230 to power down mode */
-	ret = i2c_smbus_write_word_data(client, INA230_CONFIG,
-			__constant_cpu_to_be16(INA230_POWER_DOWN));
-	if (ret < 0) {
-		dev_err(&client->dev, "INA power down failed: %d\n", ret);
-		goto exit;
+	/* Power it on once current_threshold defined, or power it down */
+	if (pdata->current_threshold) {
+		ina230_evaluate_state(chip);
+	} else {
+		/* set ina230 to power down mode */
+		ret = i2c_smbus_write_word_data(client, INA230_CONFIG,
+				__constant_cpu_to_be16(INA230_POWER_DOWN));
+		if (ret < 0) {
+			dev_err(&client->dev, "INA power down failed: %d\n",
+				ret);
+			goto exit;
+		}
 	}
 
 	return 0;

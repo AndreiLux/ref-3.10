@@ -84,6 +84,7 @@
 #include <../../../drivers/staging/android/timed_gpio.h>
 
 #include <mach/flounder-bdaddress.h>
+#include "bcm_gps_hostwake.h"
 #include "board.h"
 #include "board-flounder.h"
 #include "board-common.h"
@@ -99,10 +100,7 @@
 #include "../../../sound/soc/codecs/rt5506.h"
 #include "../../../sound/soc/codecs/rt5677.h"
 #include "../../../sound/soc/codecs/tfa9895.h"
-
-#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
-#include <linux/platform_data/slimport_device.h>
-#endif
+#include "../../../sound/soc/codecs/rt5677-spi.h"
 
 static unsigned int flounder_hw_rev;
 static unsigned int flounder_eng_id;
@@ -472,11 +470,109 @@ static struct tegra_asoc_platform_data flounder_audio_pdata_rt5677 = {
 		.is_i2s_master = 1,
 		.i2s_mode = TEGRA_DAIFMT_DSP_A,
 	},
+	/* Add for MI2S driver to get GPIO */
+	.i2s_set[HIFI_CODEC*4 + 0] = {
+		.name = "I2S1_LRCK",
+		.id   = TEGRA_GPIO_PA2,
+	},
+	.i2s_set[HIFI_CODEC*4 + 1] = {
+		.name = "I2S1_SCLK",
+		.id   = TEGRA_GPIO_PA3,
+	},
+	.i2s_set[HIFI_CODEC*4 + 2] = {
+		.name = "I2S1_SDATA_IN",
+		.id   = TEGRA_GPIO_PA4,
+		.dir_in = 1,
+		.pg = TEGRA_PINGROUP_DAP2_DIN,
+	},
+	.i2s_set[HIFI_CODEC*4 + 3] = {
+		.name = "I2S1_SDATA_OUT",
+		.id   = TEGRA_GPIO_PA5,
+	},
+	.i2s_set[SPEAKER*4 + 0] = {
+		.name = "I2S2_LRCK",
+		.id   = TEGRA_GPIO_PP0,
+	},
+	.i2s_set[SPEAKER*4 + 1] = {
+		.name = "I2S2_SDATA_IN",
+		.id   = TEGRA_GPIO_PP1,
+		.dir_in = 1,
+		.pg   = TEGRA_PINGROUP_DAP3_DIN,
+	},
+	.i2s_set[SPEAKER*4 + 2] = {
+		.name = "I2S2_SDATA_OUT",
+		.id   = TEGRA_GPIO_PP2,
+	},
+	.i2s_set[SPEAKER*4 + 3] = {
+		.name = "I2S2_SCLK",
+		.id   = TEGRA_GPIO_PP3,
+	},
+	.first_time_free[HIFI_CODEC] = 1,
+	.first_time_free[SPEAKER] = 1,
+	.codec_mclk = {
+		.name = "extperiph1_clk",
+		.id   = TEGRA_GPIO_PW4,
+	}
 };
 
 static struct tegra_spi_device_controller_data dev_cdata_rt5677 = {
 	.rx_clk_tap_delay = 0,
 	.tx_clk_tap_delay = 16,
+};
+
+static struct gpio_config flounder_spi_pdata_rt5677[] = {
+	[0] = {
+		.name = "SPI5_MOSI",
+		.id = TEGRA_GPIO_PY0,
+	},
+	[1] = {
+		.name = "SPI5_MISO",
+		.id = TEGRA_GPIO_PY1,
+		.dir_in = 1,
+		.pg = TEGRA_PINGROUP_ULPI_DIR,
+	},
+	[2] = {
+		.name = "SPI5_SCLK",
+		.id = TEGRA_GPIO_PY2,
+	},
+	[3] = {
+		.name = "SPI5_CS#",
+		.id = TEGRA_GPIO_PY3,
+	},
+};
+
+void flounder_rt5677_spi_suspend(bool on)
+{
+	int i, ret;
+	if (on) {
+		pr_debug("%s: suspend", __func__);
+		for (i = 0; i < ARRAY_SIZE(flounder_spi_pdata_rt5677); i++) {
+			ret = gpio_request(flounder_spi_pdata_rt5677[i].id,
+								flounder_spi_pdata_rt5677[i].name);
+			if (ret < 0) {
+				pr_err("%s: gpio_request failed for gpio[%d] %s, return %d\n",
+				__func__, flounder_spi_pdata_rt5677[i].id, flounder_spi_pdata_rt5677[i].name, ret);
+				continue;
+			}
+			if (!flounder_spi_pdata_rt5677[i].dir_in) {
+				gpio_direction_output(flounder_spi_pdata_rt5677[i].id, 0);
+			} else {
+				tegra_pinctrl_pg_set_pullupdown(flounder_spi_pdata_rt5677[i].pg,
+												TEGRA_PUPD_PULL_DOWN);
+				gpio_direction_input(flounder_spi_pdata_rt5677[i].id);
+			}
+
+		}
+	} else {
+		pr_debug("%s: resume", __func__);
+		for (i = 0; i < ARRAY_SIZE(flounder_spi_pdata_rt5677); i++) {
+			gpio_free(flounder_spi_pdata_rt5677[i].id);
+		}
+	}
+}
+
+static struct rt5677_spi_platform_data rt5677_spi_pdata = {
+	.spi_suspend = flounder_rt5677_spi_suspend
 };
 
 struct spi_board_info rt5677_flounder_spi_board[1] = {
@@ -487,6 +583,7 @@ struct spi_board_info rt5677_flounder_spi_board[1] = {
 	 .max_speed_hz = 12 * 1000 * 1000,
 	 .mode = SPI_MODE_0,
 	 .controller_data = &dev_cdata_rt5677,
+	 .platform_data = &rt5677_spi_pdata,
 	 },
 };
 
@@ -498,7 +595,11 @@ static void flounder_audio_init(void)
 
 	spi_register_board_info(&rt5677_flounder_spi_board[0],
 	ARRAY_SIZE(rt5677_flounder_spi_board));
+	/* To prevent power leakage */
+	gpio_request(TEGRA_GPIO_PN1, "I2S0_SDATA_IN");
+	tegra_pinctrl_pg_set_pullupdown(TEGRA_PINGROUP_DAP1_DIN, TEGRA_PUPD_PULL_DOWN);
 
+	/* To config SFIO */
 	for (i = 0; i < ARRAY_SIZE(audio_sfio_pins); i++)
 		if (tegra_is_gpio(audio_sfio_pins[i].id)) {
 			gpio_request(audio_sfio_pins[i].id, audio_sfio_pins[i].name);
@@ -506,6 +607,21 @@ static void flounder_audio_init(void)
 			pr_info("%s: gpio_free for gpio[%d] %s\n",
 				__func__, audio_sfio_pins[i].id, audio_sfio_pins[i].name);
 		}
+
+	/* To config GPIO */
+	for (i = 0; i < SPEAKER*2; i++) {
+		gpio_request(flounder_audio_pdata_rt5677.i2s_set[i].id,
+						flounder_audio_pdata_rt5677.i2s_set[i].name);
+		if (!flounder_audio_pdata_rt5677.i2s_set[i].dir_in) {
+			gpio_direction_output(flounder_audio_pdata_rt5677.i2s_set[i].id, 0);
+		} else {
+			tegra_pinctrl_pg_set_pullupdown(flounder_audio_pdata_rt5677.i2s_set[i].pg, TEGRA_PUPD_PULL_DOWN);
+			gpio_direction_input(flounder_audio_pdata_rt5677.i2s_set[i].id);
+		}
+		pr_info("%s: gpio_request for gpio[%d] %s\n",
+				__func__, flounder_audio_pdata_rt5677.i2s_set[i].id, flounder_audio_pdata_rt5677.i2s_set[i].name);
+	}
+
 }
 
 static struct platform_device flounder_audio_device_rt5677 = {
@@ -599,6 +715,7 @@ static struct platform_device *flounder_devices[] __initdata = {
 #if defined(CONFIG_TEGRA_AVP)
 	&tegra_avp_device,
 #endif
+	&tegra_pcm_device,
 	&tegra_ahub_device,
 	&tegra_dam_device0,
 	&tegra_dam_device1,
@@ -611,7 +728,6 @@ static struct platform_device *flounder_devices[] __initdata = {
 	&tegra_spdif_device,
 	&spdif_dit_device,
 	&bluetooth_dit_device,
-	&tegra_hda_device,
 #if IS_ENABLED(CONFIG_SND_SOC_TEGRA_OFFLOAD)
 	&tegra_offload_device,
 #endif
@@ -642,13 +758,13 @@ static struct tegra_usb_platform_data tegra_udc_pdata = {
 		.elastic_limit = 16,
 		.idle_wait_delay = 17,
 		.term_range_adj = 6,
-		.xcvr_setup = 64,
+		.xcvr_setup = 8,
 		.xcvr_lsfslew = 2,
 		.xcvr_lsrslew = 2,
-		.xcvr_hsslew_lsb = 0,
-		.xcvr_hsslew_msb = 0,
-		.xcvr_setup_offset = 0,
-		.xcvr_use_fuses = 0,
+		.xcvr_hsslew_lsb = 3,
+		.xcvr_hsslew_msb = 3,
+		.xcvr_setup_offset = 3,
+		.xcvr_use_fuses = 1,
 	},
 };
 
@@ -672,7 +788,9 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.xcvr_setup = 15,
 		.xcvr_lsfslew = 0,
 		.xcvr_lsrslew = 3,
-		.xcvr_setup_offset = 0,
+		.xcvr_hsslew_lsb = 3,
+		.xcvr_hsslew_msb = 3,
+		.xcvr_setup_offset = 3,
 		.xcvr_use_fuses = 1,
 		.vbus_oc_map = 0x4,
 		.xcvr_hsslew_lsb = 2,
@@ -749,7 +867,8 @@ static void flounder_usb_init(void)
 	tegra_udc_pdata.id_det_type = TEGRA_USB_GPIO_ID;
 	tegra_udc_pdata.vbus_extcon_dev_name = "palmas-extcon";
 	tegra_ehci1_utmi_pdata.id_det_type = TEGRA_USB_GPIO_ID;
-	tegra_ehci1_utmi_pdata.id_extcon_dev_name = "palmas-extcon";
+	if (!is_mdm_modem())
+		tegra_ehci1_utmi_pdata.u_cfg.utmi.xcvr_setup_offset = -3;
 
 	if (!(usb_port_owner_info & UTMI1_PORT_OWNER_XUSB)) {
 		tegra_otg_pdata.is_xhci = false;
@@ -758,6 +877,8 @@ static void flounder_usb_init(void)
 		tegra_otg_pdata.is_xhci = true;
 		tegra_udc_pdata.u_data.dev.is_xhci = true;
 	}
+	if (!is_mdm_modem())
+		tegra_udc_pdata.u_cfg.utmi.xcvr_setup_offset = -3;
 	tegra_otg_device.dev.platform_data = &tegra_otg_pdata;
 	platform_device_register(&tegra_otg_device);
 	/* Setup the udc platform data */
@@ -820,7 +941,6 @@ static struct tegra_spi_platform_data flounder_spi4_pdata = {
 	.spi_max_frequency	= 25000000,
 	.clock_always_on	= false,
 };
-
 static void __init flounder_spi_init(void)
 {
 	tegra11_spi_device1.dev.platform_data = &flounder_spi1_pdata;
@@ -888,6 +1008,12 @@ static struct of_dev_auxdata flounder_auxdata_lookup[] __initdata = {
 				&xusb_pdata),
 	OF_DEV_AUXDATA("nvidia,tegra124-camera", 0, "pcl-generic",
 				NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-dfll", 0x70110000, "tegra_cl_dvfs",
+		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra132-dfll", 0x70040084, "tegra_cl_dvfs",
+		NULL),
+	OF_DEV_AUXDATA("nvidia,tegra124-efuse", TEGRA_FUSE_BASE, "tegra-fuse",
+			NULL),
 	{}
 };
 #endif
@@ -1007,7 +1133,7 @@ static struct htc_headset_pmic_platform_data htc_headset_pmic_data = {
 	.key_irq		= 0,
 	.key_enable_gpio	= 0,
 	.adc_mic		= 0,
-	.adc_remote 	= {0, 117, 118, 262, 263, 414, 415, 829},
+	.adc_remote 	= {0, 117, 118, 230, 231, 414, 415, 829},
 	.hs_controller		= 0,
 	.hs_switch		= 0,
 	.iio_channel_name = "hs_channel",
@@ -1116,6 +1242,18 @@ static struct class *gps_class;
 
 extern int tegra_get_hw_rev(void);
 
+#define GPS_HOSTWAKE_GPIO 69
+static struct bcm_gps_hostwake_platform_data gps_hostwake_data = {
+	.gpio_hostwake = GPS_HOSTWAKE_GPIO,
+};
+
+static struct platform_device bcm_gps_hostwake = {
+	.name   = "bcm-gps-hostwake",
+	.id     = -1,
+	.dev    = {
+		.platform_data  = &gps_hostwake_data,
+	},
+};
 
 #define PRJ_F	302
 static int __init flounder_gps_init(void)
@@ -1159,12 +1297,33 @@ static int __init flounder_gps_init(void)
 	gpio_export (gps_onoff, 1);
 	gpio_export_link(gps_dev,"gps_onoff", gps_onoff);
 
+	if (product_id == PRJ_F) {
+		pr_info("GPS: init gps hostwake\n");
+		platform_device_register(&bcm_gps_hostwake);
+	}
+
 	return 0;
 }
 #undef PRJ_F
 
+static void __init sysedp_init(void)
+{
+	flounder_new_sysedp_init();
+}
+
+static void __init edp_init(void)
+{
+	flounder_edp_init();
+}
+
+static void __init sysedp_dynamic_capping_init(void)
+{
+	flounder_sysedp_dynamic_capping_init();
+}
+
 static void __init tegra_flounder_early_init(void)
 {
+	sysedp_init();
 	tegra_clk_init_from_table(flounder_clk_init_table);
 	tegra_clk_verify_parents();
 	tegra_soc_device_init("flounder");
@@ -1196,121 +1355,6 @@ static struct tegra_io_dpd pexclk2_io = {
 	.io_dpd_bit		= 6,
 };
 
-#if defined(CONFIG_SLIMPORT_ANX7808) || defined(CONFIG_SLIMPORT_ANX7816)
-#define GPIO_SLIMPORT_CBL_DET    TEGRA_GPIO_PBB6
-#define GPIO_SLIMPORT_PWR_DWN    TEGRA_GPIO_PI2
-#define ANX_AVDD33_EN            TEGRA_GPIO_PR3
-#define GPIO_SLIMPORT_RESET_N    TEGRA_GPIO_PEE4
-#define GPIO_SLIMPORT_INT_N      TEGRA_GPIO_PBB7
-
-static int slimport_dvdd_onoff(bool on)
-{
-	static bool power_state = 0;
-	static struct regulator *slimport_dvdd_reg = NULL;
-	int rc = 0;
-
-	pr_info("slimport_dvdd_onoff, on = %d", on);
-
-	if (power_state == on) {
-		pr_info("slimport dvdd is already %s \n", power_state ? "on" : "off");
-		goto out;
-	}
-
-	if (!slimport_dvdd_reg) {
-		slimport_dvdd_reg= regulator_get(NULL, "slimport_dvdd");
-		if (IS_ERR(slimport_dvdd_reg)) {
-			rc = PTR_ERR(slimport_dvdd_reg);
-			pr_err("%s: regulator_get anx7808_dvdd_reg failed. rc=%d\n",
-					__func__, rc);
-			slimport_dvdd_reg = NULL;
-			goto out;
-		}
-		rc = regulator_set_voltage(slimport_dvdd_reg, 1100000, 1100000);
-		if (rc ) {
-			pr_err("%s: regulator_set_voltage slimport_dvdd_reg failed\
-			rc=%d\n", __func__, rc);
-			goto out;
-		}
-	}
-
-	if (on) {
-		rc = regulator_set_optimum_mode(slimport_dvdd_reg, 100000);
-		if (rc < 0) {
-			pr_err("%s : set optimum mode 100000, slimport_dvdd_reg failed \
-					(%d)\n", __func__, rc);
-			goto out;
-		}
-		rc = regulator_enable(slimport_dvdd_reg);
-		if (rc) {
-			pr_err("%s : slimport_dvdd_reg enable failed (%d)\n",
-					__func__, rc);
-			goto out;
-		}
-	}
-	else {
-		rc = regulator_disable(slimport_dvdd_reg);
-		if (rc) {
-			pr_err("%s : anx7808_dvdd_reg disable failed (%d)\n",
-				__func__, rc);
-			goto out;
-		}
-		rc = regulator_set_optimum_mode(slimport_dvdd_reg, 100);
-		if (rc < 0) {
-			pr_err("%s : set optimum mode 100, slimport_dvdd_reg failed \
-				(%d)\n", __func__, rc);
-			goto out;
-		}
-	}
-	power_state = on;
-
-out:
-	return rc;
-
-}
-
-static int slimport_avdd_onoff(bool on)
-{
-	static bool init_done = 0;
-	int rc = 0;
-
-	if (!init_done) {
-		rc = gpio_request_one(ANX_AVDD33_EN,
-					GPIOF_OUT_INIT_HIGH, "anx_avdd33_en");
-		if (rc) {
-			pr_err("request anx_avdd33_en failed, rc=%d\n", rc);
-			return rc;
-		}
-		init_done = 1;
-	}
-
-	gpio_set_value(ANX_AVDD33_EN, on);
-	return 0;
-}
-
-static struct slimport_platform_data slimport_pdata = {
-	.gpio_p_dwn = GPIO_SLIMPORT_PWR_DWN,
-	.gpio_reset = GPIO_SLIMPORT_RESET_N,
-	.gpio_int = GPIO_SLIMPORT_INT_N,
-	.gpio_cbl_det = GPIO_SLIMPORT_CBL_DET,
-	.dvdd_power = slimport_dvdd_onoff,
-	.avdd_power = slimport_avdd_onoff,
-};
-
-static struct i2c_board_info i2c_slimport_info[] = {
-	{
-		I2C_BOARD_INFO("slimport", 0x72 >> 1),
-		.platform_data = &slimport_pdata,
-	},
-};
-
-static void __init flounder_slimport_init(void)
-{
-	i2c_register_board_info(0,
-		i2c_slimport_info,
-		ARRAY_SIZE(i2c_slimport_info));
-}
-#endif
-
 static void __init tegra_flounder_late_init(void)
 {
 	platform_device_register(&tegra124_pinctrl_device);
@@ -1325,7 +1369,6 @@ static void __init tegra_flounder_late_init(void)
 	flounder_i2c_init();
 	flounder_spi_init();
 	flounder_audio_init();
-	flounder_slimport_init();
 	platform_add_devices(flounder_devices, ARRAY_SIZE(flounder_devices));
 	tegra_io_dpd_init();
 	flounder_sdhci_init();
@@ -1356,7 +1399,7 @@ static void __init tegra_flounder_late_init(void)
 	flounder_soctherm_init();
 
 	flounder_setup_bluedroid_pm();
-	tegra_register_fuse();
+	sysedp_dynamic_capping_init();
 }
 
 static void __init tegra_flounder_init_early(void)
@@ -1381,12 +1424,16 @@ static void __init tegra_flounder_dt_init(void)
 
 static void __init tegra_flounder_reserve(void)
 {
+	struct device_node *hdmi_node = of_find_node_by_path("/host1x/hdmi");
+	bool fb2_enabled = hdmi_node && of_device_is_available(hdmi_node);
+	of_node_put(hdmi_node);
+
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM) || \
 		defined(CONFIG_TEGRA_NO_CARVEOUT)
 	/* 1536*2048*4*2 = 25165824 bytes */
-	tegra_reserve(0, SZ_16M + SZ_8M, SZ_16M);
+	tegra_reserve(0, SZ_16M + SZ_8M, fb2_enabled ? SZ_16M : 0);
 #else
-	tegra_reserve(SZ_1G, SZ_16M + SZ_8M, SZ_4M);
+	tegra_reserve(SZ_1G, SZ_16M + SZ_8M, fb2_enabled ? SZ_4M : 0);
 #endif
 }
 

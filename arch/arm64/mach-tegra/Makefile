@@ -7,7 +7,7 @@ asflags-y += -I$(srctree)/arch/arm/mach-tegra/include \
              -I$(srctree)/arch/arm/mach-tegra
 
 # Assemblies
-obj-y += reset-handler.o
+obj-y += reset-handler.o trampoline.o
 
 obj-$(CONFIG_SMP) += platsmp.o
 
@@ -63,6 +63,7 @@ obj-${CONFIG_MACH_T132REF}              += panel-s-wqxga-10-1.o
 obj-${CONFIG_MACH_T132REF}              += panel-i-edp-1080p-11-6.o
 
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-gps.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-kbc.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sdhci.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sensors.o
@@ -72,6 +73,10 @@ obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-pinmux.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-power.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += panel-j-qxga-8-9.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += flounder-bdaddress.o
+obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-sysedp.o
+
+#CAM
+obj-${CONFIG_MACH_T132_FLOUNDER}        += htc_awb_cal.o
 
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-bootparams.o
 obj-${CONFIG_MACH_T132_FLOUNDER}        += board-flounder-mdm9k.o
@@ -99,6 +104,7 @@ obj-$(CONFIG_TEGRA_DYNAMIC_PWRDET)      += powerdetect.o
 
 obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper.o
 obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper_regdump.o
+obj-${CONFIG_TEGRA_NVDUMPER}            += nvdumper-footprint.o
 
 # To override the "-march=armv7-xxx" in arm/mach-tegra/Makefile
 AFLAGS_sleep.o :=

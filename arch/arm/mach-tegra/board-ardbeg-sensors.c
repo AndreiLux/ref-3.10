@@ -253,18 +253,6 @@ static struct tegra_io_dpd csib_io = {
 	.io_dpd_bit		= 1,
 };
 
-static struct tegra_io_dpd csic_io = {
-	.name			= "CSIC",
-	.io_dpd_reg_index	= 1,
-	.io_dpd_bit		= 10,
-};
-
-static struct tegra_io_dpd csid_io = {
-	.name			= "CSID",
-	.io_dpd_reg_index	= 1,
-	.io_dpd_bit		= 11,
-};
-
 static struct tegra_io_dpd csie_io = {
 	.name			= "CSIE",
 	.io_dpd_reg_index	= 1,
@@ -1101,10 +1089,6 @@ static int ardbeg_ov5693_front_power_on(struct ov5693_power_rail *pw)
 	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd)))
 		return -EFAULT;
 
-	/* disable CSIC/D IOs DPD mode to turn on camera for ardbeg */
-	tegra_io_dpd_disable(&csic_io);
-	tegra_io_dpd_disable(&csid_io);
-
 	if (ardbeg_get_extra_regulators())
 		goto ov5693_front_poweron_fail;
 
@@ -1143,9 +1127,6 @@ ov5693_front_avdd_fail:
 	gpio_set_value(CAM_RSTN, 0);
 
 ov5693_front_poweron_fail:
-	/* put CSIC/D IOs into DPD mode to save additional power for ardbeg */
-	tegra_io_dpd_enable(&csic_io);
-	tegra_io_dpd_enable(&csid_io);
 	pr_err("%s FAILED\n", __func__);
 	return -ENODEV;
 }
@@ -1153,11 +1134,6 @@ ov5693_front_poweron_fail:
 static int ardbeg_ov5693_front_power_off(struct ov5693_power_rail *pw)
 {
 	if (unlikely(WARN_ON(!pw || !pw->dovdd || !pw->avdd))) {
-		/* put CSIC/D IOs into DPD mode to
-		 * save additional power for ardbeg
-		 */
-		tegra_io_dpd_enable(&csic_io);
-		tegra_io_dpd_enable(&csid_io);
 		return -EFAULT;
 	}
 
@@ -1170,9 +1146,6 @@ static int ardbeg_ov5693_front_power_off(struct ov5693_power_rail *pw)
 	regulator_disable(pw->dovdd);
 	regulator_disable(pw->avdd);
 
-	/* put CSIC/D IOs into DPD mode to save additional power for ardbeg */
-	tegra_io_dpd_enable(&csic_io);
-	tegra_io_dpd_enable(&csid_io);
 	return 0;
 }
 
@@ -1355,8 +1328,6 @@ static int ardbeg_camera_init(void)
 	 */
 	tegra_io_dpd_enable(&csia_io);
 	tegra_io_dpd_enable(&csib_io);
-	tegra_io_dpd_enable(&csic_io);
-	tegra_io_dpd_enable(&csid_io);
 	tegra_io_dpd_enable(&csie_io);
 
 #if IS_ENABLED(CONFIG_SOC_CAMERA_PLATFORM)
@@ -1572,24 +1543,36 @@ static struct balanced_throttle gpu_throttle = {
 	.throt_tab = gpu_throttle_table,
 };
 
-static int __init ardbeg_tj_throttle_init(void)
-{
-	void *r1, *r2;
+/* throttle table that sets all clocks to approximately 50% of their max */
+static struct throttle_table emergency_throttle_table[] = {
+	/*      CPU,    GPU,  C2BUS,  C3BUS,   SCLK,    EMC   */
+	{ { 1122000, 391000, 288000, 420000, 252000, 396000 } },
+};
 
+static struct balanced_throttle emergency_throttle = {
+	.throt_tab_size = ARRAY_SIZE(emergency_throttle_table),
+	.throt_tab = emergency_throttle_table,
+};
+
+static int __init ardbeg_balanced_throttle_init(void)
+{
 	if (of_machine_is_compatible("nvidia,ardbeg") ||
-	    of_machine_is_compatible("nvidia,norrin") ||
-	    of_machine_is_compatible("nvidia,bowmore") ||
-	    of_machine_is_compatible("nvidia,tn8")) {
-		r1 = balanced_throttle_register(&cpu_throttle, "cpu-balanced");
-		r2 = balanced_throttle_register(&gpu_throttle, "gpu-balanced");
-		if (!r1 || !r2)
-			pr_err("%s: balanced_throttle_register FAILED.\n",
-				__func__);
+		of_machine_is_compatible("nvidia,norrin") ||
+		of_machine_is_compatible("nvidia,bowmore") ||
+		of_machine_is_compatible("nvidia,tn8")) {
+
+		if (!balanced_throttle_register(&cpu_throttle, "cpu-balanced"))
+			pr_err("balanced_throttle_register 'cpu-balanced' FAILED.\n");
+		if (!balanced_throttle_register(&gpu_throttle, "gpu-balanced"))
+			pr_err("balanced_throttle_register 'gpu-balanced' FAILED.\n");
+		if (!balanced_throttle_register(&emergency_throttle,
+								"emergency-balanced"))
+			pr_err("balanced_throttle_register 'emergency-balanced' FAILED\n");
 	}
 
 	return 0;
 }
-late_initcall(ardbeg_tj_throttle_init);
+late_initcall(ardbeg_balanced_throttle_init);
 
 #ifdef CONFIG_TEGRA_SKIN_THROTTLE
 static struct thermal_trip_info skin_trips[] = {
@@ -1645,6 +1628,29 @@ static struct therm_est_subdevice tn8ffd_skin_devs[] = {
 			-9, -8, -17, -18,
 			-18, -16, 2, 17,
 			15, 27, 42, 60
+		},
+	},
+};
+
+static struct therm_est_subdevice tn8ffd_t132_skin_devs[] = {
+	{
+		.dev_data = "Tdiode",
+		.coeffs = {
+			-1, -1, 0, -1,
+			0, -1, -1, 0,
+			0, 0, 1, 1,
+			1, 1, 2, 2,
+			2, 2, 3, 5
+		},
+	},
+	{
+		.dev_data = "Tboard",
+		.coeffs = {
+			-3, -1, 1, 1,
+			2, 1, 2, 1,
+			-1, -1, 0, 2,
+			3, 4, 5, 3,
+			3, 4, 6, 36
 		},
 	},
 };
@@ -1773,13 +1779,19 @@ static int __init ardbeg_skin_init(void)
 {
 	struct board_info board_info;
 
-	tegra_get_board_info(&board_info);
-
 	if (of_machine_is_compatible("nvidia,ardbeg") ||
-	    of_machine_is_compatible("nvidia,norrin") ||
-	    of_machine_is_compatible("nvidia,bowmore") ||
+		of_machine_is_compatible("nvidia,norrin") ||
+		of_machine_is_compatible("nvidia,bowmore") ||
 		of_machine_is_compatible("nvidia,tn8")) {
-		if (board_info.board_id == BOARD_P1761 ||
+
+		tegra_get_board_info(&board_info);
+
+		if (board_info.board_id == BOARD_P1761 &&
+				board_info.fab == BOARD_FAB_D) {
+			skin_data.ndevs = ARRAY_SIZE(tn8ffd_t132_skin_devs);
+			skin_data.devs = tn8ffd_t132_skin_devs;
+			skin_data.toffset = 708;
+		} else if (board_info.board_id == BOARD_P1761 ||
 				board_info.board_id == BOARD_E1784 ||
 				board_info.board_id == BOARD_E1971 ||
 				board_info.board_id == BOARD_E1991 ||
@@ -1793,10 +1805,13 @@ static int __init ardbeg_skin_init(void)
 			skin_data.toffset = 9793;
 		}
 
-		balanced_throttle_register(&skin_throttle, "skin-balanced");
 		tegra_skin_therm_est_device.dev.platform_data = &skin_data;
 		platform_device_register(&tegra_skin_therm_est_device);
+
+		if (!balanced_throttle_register(&skin_throttle, "skin-balanced"))
+			pr_err("balanced_throttle_register 'skin-balanced' FAILED.\n");
 	}
+
 	return 0;
 }
 late_initcall(ardbeg_skin_init);

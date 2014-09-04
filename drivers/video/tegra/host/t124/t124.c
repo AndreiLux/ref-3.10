@@ -207,8 +207,6 @@ struct nvhost_device_data t124_vi_info = {
 		{"cilab", 102000000},
 		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID},
 		{"sclk", 80000000} },
-	.init             = nvhost_vi_init,
-	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
 	.finalize_poweron = nvhost_vi_finalize_poweron,
 	.ctrl_ops         = &tegra_vi_ctrl_ops,
@@ -246,8 +244,6 @@ struct nvhost_device_data t124_vib_info = {
 		{"cile", 102000000},
 		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID},
 		{"sclk", 80000000} },
-	.init             = nvhost_vi_init,
-	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
 	.finalize_poweron = nvhost_vi_finalize_poweron,
 	.ctrl_ops         = &tegra_vi_ctrl_ops,
@@ -278,7 +274,7 @@ struct nvhost_device_data t124_msenc_info = {
 	.version	= NVHOST_ENCODE_FLCN_VER(3, 1),
 	.class		= NV_VIDEO_ENCODE_MSENC_CLASS_ID,
 	.clocks		= {{"msenc", UINT_MAX, 0, TEGRA_MC_CLIENT_MSENC},
-			  {"emc", HOST_EMC_FLOOR} },
+			  {"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.moduleid	= NVHOST_MODULE_MSENC,
 	.powergate_ids	= { TEGRA_POWERGATE_MPE, -1 },
@@ -450,8 +446,6 @@ struct nvhost_device_data t132_vi_info = {
 		{"csi", 0},
 		{"cilab", 102000000},
 		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID} },
-	.init             = nvhost_vi_init,
-	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
 	.finalize_poweron = nvhost_vi_finalize_poweron,
 	.ctrl_ops         = &tegra_vi_ctrl_ops,
@@ -477,8 +471,6 @@ struct nvhost_device_data t132_vib_info = {
 		{"cilcd", 102000000},
 		{"cile", 102000000},
 		{"emc", 0, TEGRA_HOST1X_EMC_MODULE_ID} },
-	.init             = nvhost_vi_init,
-	.deinit           = nvhost_vi_deinit,
 	.prepare_poweroff = nvhost_vi_prepare_poweroff,
 	.finalize_poweron = nvhost_vi_finalize_poweron,
 	.ctrl_ops         = &tegra_vi_ctrl_ops,
@@ -491,7 +483,7 @@ struct nvhost_device_data t132_msenc_info = {
 	.version	= NVHOST_ENCODE_FLCN_VER(3, 1),
 	.class		= NV_VIDEO_ENCODE_MSENC_CLASS_ID,
 	.clocks		= {{"msenc", UINT_MAX, 0, TEGRA_MC_CLIENT_MSENC},
-			  {"emc", HOST_EMC_FLOOR} },
+			  {"emc", HOST_EMC_FLOOR, TEGRA_HOST1X_EMC_MODULE_ID} },
 	NVHOST_DEFAULT_CLOCKGATE_DELAY,
 	.moduleid	= NVHOST_MODULE_MSENC,
 	.powergate_ids	= { TEGRA_POWERGATE_MPE, -1 },
@@ -518,38 +510,6 @@ struct nvhost_device_data t132_tsec_info = {
 	.finalize_poweron = nvhost_tsec_finalize_poweron,
 };
 
-#ifdef CONFIG_ARCH_TEGRA_VIC
-struct nvhost_device_data t132_vic_info = {
-	.num_channels	= 1,
-	.modulemutexes		= {NVMODMUTEX_VIC},
-	.clocks			= {{"vic03", UINT_MAX, 0, TEGRA_MC_CLIENT_VIC},
-				  {"emc", UINT_MAX} },
-	.version = NVHOST_ENCODE_FLCN_VER(3, 0),
-	NVHOST_MODULE_NO_POWERGATE_IDS,
-	NVHOST_DEFAULT_CLOCKGATE_DELAY,
-	.moduleid      = NVHOST_MODULE_VIC,
-	.alloc_hwctx_handler = nvhost_vic03_alloc_hwctx_handler,
-	.powergate_delay	= 500,
-	.powergate_ids		= { TEGRA_POWERGATE_VIC, -1 },
-	.init			= nvhost_flcn_init,
-	.deinit			= nvhost_flcn_deinit,
-	.alloc_hwctx_handler	= nvhost_vic03_alloc_hwctx_handler,
-	.finalize_poweron	= nvhost_vic_finalize_poweron,
-	.prepare_poweroff	= nvhost_vic_prepare_poweroff,
-	.scaling_init		= nvhost_scale3d_init,
-	.scaling_deinit		= nvhost_scale3d_deinit,
-	.busy			= nvhost_scale_notify_busy,
-	.idle			= nvhost_scale_notify_idle,
-	.suspend_ndev		= nvhost_scale3d_suspend,
-	.scaling_post_cb	= &nvhost_scale3d_callback,
-	.devfreq_governor	= "nvhost_podgov",
-	.actmon_regs		= HOST1X_CHANNEL_ACTMON2_REG_BASE,
-	.actmon_enabled		= true,
-	.linear_emc		= true,
-	.firmware_name		= "vic03_ucode.bin",
-};
-#endif
-
 static struct {
 	struct nvhost_device_data *from;
 	struct nvhost_device_data *to;
@@ -559,9 +519,6 @@ static struct {
 	{&t124_vi_info, &t132_vi_info},
 	{&t124_msenc_info, &t132_msenc_info},
 	{&t124_tsec_info, &t132_tsec_info},
-#if defined(CONFIG_ARCH_TEGRA_VIC)
-	{&t124_vic_info, &t132_vic_info},
-#endif
 };
 
 static struct platform_device *t124_devices[] = {

@@ -25,6 +25,7 @@
 #include <linux/input.h>
 #include <linux/firmware.h>
 #include <linux/platform_device.h>
+#include <linux/wakelock.h>
 #include <linux/input/synaptics_dsx.h>
 #include "synaptics_dsx_core.h"
 
@@ -290,6 +291,7 @@ struct synaptics_rmi4_fwu_handle {
 	struct work_struct fwu_work;
 	struct synaptics_rmi4_fn_desc f34_fd;
 	struct synaptics_rmi4_data *rmi4_data;
+	struct wake_lock fwu_wake_lock;
 };
 
 static struct bin_attribute dev_attr_data = {
@@ -626,28 +628,21 @@ static int fwu_wait_for_idle(int timeout_ms)
 	int count = 0;
 	int timeout_count = ((timeout_ms * 1000) / MAX_SLEEP_TIME_US) + 1;
 	struct synaptics_rmi4_data *rmi4_data = fwu->rmi4_data;
-	const struct synaptics_dsx_board_data *bdata =
-				rmi4_data->hw_if->board_data;
 
 	do {
 		usleep_range(MIN_SLEEP_TIME_US, MAX_SLEEP_TIME_US);
 
 		count++;
-		if (!gpio_get_value(bdata->irq_gpio))
+		if (count == timeout_count)
 			fwu_read_f34_flash_status();
 
 		if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
 			return 0;
 	} while (count < timeout_count);
 
-	fwu_read_f34_flash_status();
-
-	if ((fwu->command == 0x00) && (fwu->flash_status == 0x00))
-		return 0;
-
 	dev_err(rmi4_data->pdev->dev.parent,
-			"%s: Timed out waiting for idle status\n",
-			__func__);
+			"%s: Timed out waiting for idle status, command: %X, status: %X\n",
+			__func__, fwu->command, fwu->flash_status);
 
 	return -ETIMEDOUT;
 }
@@ -1175,22 +1170,34 @@ static int fwu_do_reflash(void)
 
 	if (fwu->firmware_data) {
 		retval = fwu_write_firmware();
-		if (retval < 0)
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to write firmware\n",
+					__func__);
 			return retval;
+		}
 		pr_notice("%s: Firmware programmed\n", __func__);
 	}
 
 	if (fwu->config_data) {
 		retval = fwu_write_configuration();
-		if (retval < 0)
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to write configuration\n",
+					__func__);
 			return retval;
+		}
 		pr_notice("%s: Configuration programmed\n", __func__);
 	}
 
 	if (fwu->disp_config_data) {
 		retval = fwu_write_disp_configuration();
-		if (retval < 0)
+		if (retval < 0) {
+			dev_err(rmi4_data->pdev->dev.parent,
+					"%s: Failed to write disp configuration\n",
+					__func__);
 			return retval;
+		}
 		pr_notice("%s: Display configuration programmed\n", __func__);
 	}
 
@@ -1658,6 +1665,7 @@ int synaptics_config_updater(struct synaptics_dsx_board_data *bdata)
 	if (!fwu->initialized)
 		return -ENODEV;
 
+	rmi4_data->stay_awake = true;
 	/* Get device config ID */
 	retval = synaptics_rmi4_reg_read(rmi4_data,
 				fwu->f34_fd.ctrl_base_addr,
@@ -1756,6 +1764,7 @@ int synaptics_config_updater(struct synaptics_dsx_board_data *bdata)
 exit:
 	rmi4_data->reset_device(rmi4_data);
 
+	rmi4_data->stay_awake = false;
 	pr_notice("%s: End of write config process\n", __func__);
 
 	dev_info(rmi4_data->pdev->dev.parent, " %s end\n", __func__);
@@ -1766,9 +1775,11 @@ EXPORT_SYMBOL(synaptics_config_updater);
 #ifdef DO_STARTUP_FW_UPDATE
 static void fwu_startup_fw_update_work(struct work_struct *work)
 {
+	wake_lock(&fwu->fwu_wake_lock);
 	synaptics_fw_updater(NULL);
 
 	synaptics_config_updater(fwu->rmi4_data->hw_if->board_data);
+	wake_unlock(&fwu->fwu_wake_lock);
 
 	return;
 }
@@ -2092,6 +2103,7 @@ static int synaptics_rmi4_fwu_init(struct synaptics_rmi4_data *rmi4_data)
 	}
 
 #ifdef DO_STARTUP_FW_UPDATE
+	wake_lock_init(&fwu->fwu_wake_lock, WAKE_LOCK_SUSPEND, "fwu_wake_lock");
 	fwu->fwu_workqueue = create_singlethread_workqueue("fwu_workqueue");
 	INIT_WORK(&fwu->fwu_work, fwu_startup_fw_update_work);
 	queue_work(fwu->fwu_workqueue,
@@ -2130,6 +2142,7 @@ static void synaptics_rmi4_fwu_remove(struct synaptics_rmi4_data *rmi4_data)
 	cancel_work_sync(&fwu->fwu_work);
 	flush_workqueue(fwu->fwu_workqueue);
 	destroy_workqueue(fwu->fwu_workqueue);
+	wake_lock_destroy(&fwu->fwu_wake_lock);
 #endif
 
 	for (attr_count = 0; attr_count < ARRAY_SIZE(attrs); attr_count++) {

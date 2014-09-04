@@ -60,19 +60,21 @@
 
 int cy8c_sar1_reset(void)
 {
-	pr_info("[SAR] %s Enter\n", __func__);
+	pr_debug("[SAR] %s Enter\n", __func__);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 1);
-	mdelay(5);
+	msleep(5);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG6, 0);
+	msleep(50);/*wait chip reset finish time*/
 	return 0;
 }
 
 int cy8c_sar_reset(void)
 {
-	pr_info("[SAR] %s Enter\n", __func__);
+	pr_debug("[SAR] %s Enter\n", __func__);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 1);
-	mdelay(5);
+	msleep(5);
 	gpio_set_value_cansleep(TEGRA_GPIO_PG7, 0);
+	msleep(50);/*wait chip reset finish time*/
 	return 0;
 }
 
@@ -85,18 +87,20 @@ static struct i2c_board_info flounder_i2c_board_info_cm32181[] = {
 struct cy8c_i2c_sar_platform_data sar1_cy8c_data[] = {
 	{
 		.gpio_irq = TEGRA_GPIO_PCC5,
-		.gpio_rst = TEGRA_GPIO_PG6,
 		.reset    = cy8c_sar1_reset,
 		.position_id = 1,
+		.bl_addr = 0x61,
+		.ap_addr = 0x5d,
 	},
 };
 
 struct cy8c_i2c_sar_platform_data sar_cy8c_data[] = {
 	{
 		.gpio_irq = TEGRA_GPIO_PC7,
-		.gpio_rst = TEGRA_GPIO_PG7,
 		.reset    = cy8c_sar_reset,
 		.position_id = 0,
+		.bl_addr = 0x60,
+		.ap_addr = 0x5c,
 	},
 };
 
@@ -627,7 +631,7 @@ late_initcall(flounder_tj_throttle_init);
 static struct thermal_trip_info skin_trips[] = {
 	{
 		.cdev_type = "skin-balanced",
-		.trip_temp = 43000,
+		.trip_temp = 48000,
 		.trip_type = THERMAL_TRIP_PASSIVE,
 		.upper = THERMAL_NO_LIMIT,
 		.lower = THERMAL_NO_LIMIT,
@@ -639,44 +643,21 @@ static struct therm_est_subdevice skin_devs[] = {
 	{
 		.dev_data = "Tdiode_tegra",
 		.coeffs = {
-			2, 1, 1, 1,
-			1, 1, 1, 1,
-			1, 1, 1, 0,
-			1, 1, 0, 0,
-			0, 0, -1, -7
+			3, 0, 0, -1,
+			-1, -1, -1, -1,
+			-1, 0, -1, 0,
+			0, 0, 0, 0,
+			0, -1, -2, -11
 		},
 	},
 	{
 		.dev_data = "Tboard_tegra",
 		.coeffs = {
-			-11, -7, -5, -3,
-			-3, -2, -1, 0,
-			0, 0, 1, 1,
-			1, 2, 2, 3,
-			4, 6, 11, 18
-		},
-	},
-};
-
-static struct therm_est_subdevice tn8ffd_skin_devs[] = {
-	{
-		.dev_data = "Tdiode",
-		.coeffs = {
-			3, 0, 0, 0,
-			1, 0, -1, 0,
-			1, 0, 0, 1,
-			1, 0, 0, 0,
-			0, 1, 2, 2
-		},
-	},
-	{
-		.dev_data = "Tboard",
-		.coeffs = {
-			1, 1, 2, 8,
-			6, -8, -13, -9,
-			-9, -8, -17, -18,
-			-18, -16, 2, 17,
-			15, 27, 42, 60
+			19, 13, 7, 5,
+			3, 2, 2, 3,
+			4, 4, 5, 5,
+			3, 3, 3, 4,
+			5, 6, 9, 13
 		},
 	},
 };
@@ -697,6 +678,10 @@ static struct thermal_zone_params skin_tzp = {
 	.governor_params = &skin_pid_params,
 };
 
+static struct thermal_zone_params skin_step_wise_tzp = {
+	.governor_name = "step_wise",
+};
+
 static struct therm_est_data skin_data = {
 	.num_trips = ARRAY_SIZE(skin_trips),
 	.trips = skin_trips,
@@ -704,95 +689,37 @@ static struct therm_est_data skin_data = {
 	.passive_delay = 15000,
 	.tc1 = 10,
 	.tc2 = 1,
-	.tzp = &skin_tzp,
+	.tzp = &skin_step_wise_tzp,
 };
 
 static struct throttle_table skin_throttle_table[] = {
 	/* CPU_THROT_LOW cannot be used by other than CPU */
 	/*      CPU,    GPU,  C2BUS,  C3BUS,   SCLK,    EMC   */
-	{ { 2295000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2269500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2244000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2218500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2193000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2167500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2142000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2116500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2091000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2065500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2040000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 2014500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1989000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1963500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1938000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1912500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1887000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1861500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1836000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1810500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1785000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1759500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1734000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1708500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1683000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1657500, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1632000, NO_CAP, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1606500, 790000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1581000, 776000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1555500, 762000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1530000, 749000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1504500, 735000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1479000, 721000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1453500, 707000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1428000, 693000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1402500, 679000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1377000, 666000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1351500, 652000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1326000, 638000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1300500, 624000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1275000, 610000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1249500, 596000, NO_CAP, NO_CAP, NO_CAP, NO_CAP } },
-	{ { 1224000, 582000, NO_CAP, NO_CAP, NO_CAP, 792000 } },
-	{ { 1198500, 569000, NO_CAP, NO_CAP, NO_CAP, 792000 } },
-	{ { 1173000, 555000, NO_CAP, NO_CAP, 360000, 792000 } },
-	{ { 1147500, 541000, NO_CAP, NO_CAP, 360000, 792000 } },
-	{ { 1122000, 527000, NO_CAP, 684000, 360000, 792000 } },
-	{ { 1096500, 513000, 444000, 684000, 360000, 792000 } },
-	{ { 1071000, 499000, 444000, 684000, 360000, 792000 } },
-	{ { 1045500, 486000, 444000, 684000, 360000, 792000 } },
-	{ { 1020000, 472000, 444000, 684000, 324000, 792000 } },
-	{ {  994500, 458000, 444000, 684000, 324000, 792000 } },
-	{ {  969000, 444000, 444000, 600000, 324000, 792000 } },
-	{ {  943500, 430000, 444000, 600000, 324000, 792000 } },
-	{ {  918000, 416000, 396000, 600000, 324000, 792000 } },
-	{ {  892500, 402000, 396000, 600000, 324000, 792000 } },
-	{ {  867000, 389000, 396000, 600000, 324000, 792000 } },
-	{ {  841500, 375000, 396000, 600000, 288000, 792000 } },
-	{ {  816000, 361000, 396000, 600000, 288000, 792000 } },
-	{ {  790500, 347000, 396000, 600000, 288000, 792000 } },
-	{ {  765000, 333000, 396000, 504000, 288000, 792000 } },
-	{ {  739500, 319000, 348000, 504000, 288000, 792000 } },
-	{ {  714000, 306000, 348000, 504000, 288000, 624000 } },
-	{ {  688500, 292000, 348000, 504000, 288000, 624000 } },
-	{ {  663000, 278000, 348000, 504000, 288000, 624000 } },
-	{ {  637500, 264000, 348000, 504000, 288000, 624000 } },
-	{ {  612000, 250000, 348000, 504000, 252000, 624000 } },
-	{ {  586500, 236000, 348000, 504000, 252000, 624000 } },
-	{ {  561000, 222000, 348000, 420000, 252000, 624000 } },
-	{ {  535500, 209000, 288000, 420000, 252000, 624000 } },
-	{ {  510000, 195000, 288000, 420000, 252000, 624000 } },
-	{ {  484500, 181000, 288000, 420000, 252000, 624000 } },
-	{ {  459000, 167000, 288000, 420000, 252000, 624000 } },
-	{ {  433500, 153000, 288000, 420000, 252000, 396000 } },
-	{ {  408000, 139000, 288000, 420000, 252000, 396000 } },
-	{ {  382500, 126000, 288000, 420000, 252000, 396000 } },
-	{ {  357000, 112000, 288000, 420000, 252000, 396000 } },
-	{ {  331500,  98000, 288000, 420000, 252000, 396000 } },
-	{ {  306000,  84000, 288000, 420000, 252000, 396000 } },
-	{ {  280500,  84000, 288000, 420000, 252000, 396000 } },
-	{ {  255000,  84000, 288000, 420000, 252000, 396000 } },
-	{ {  229500,  84000, 288000, 420000, 252000, 396000 } },
-	{ {  204000,  84000, 288000, 420000, 252000, 396000 } },
+       { { 2000000, 804000, 480000, 756000, NO_CAP, NO_CAP } },
+       { { 1900000, 756000, 480000, 648000, NO_CAP, NO_CAP } },
+       { { 1800000, 708000, 444000, 648000, NO_CAP, NO_CAP } },
+       { { 1700000, 648000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1600000, 648000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1500000, 612000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1450000, 612000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1400000, 540000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1350000, 540000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1300000, 540000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1250000, 540000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1200000, 540000, 444000, 600000, NO_CAP, NO_CAP } },
+       { { 1150000, 468000, 444000, 600000, 240000, NO_CAP } },
+       { { 1100000, 468000, 444000, 600000, 240000, NO_CAP } },
+       { { 1050000, 468000, 396000, 600000, 240000, NO_CAP } },
+       { { 1000000, 468000, 396000, 504000, 204000, NO_CAP } },
+       { {  975000, 468000, 396000, 504000, 204000, 792000 } },
+       { {  950000, 468000, 396000, 504000, 204000, 792000 } },
+       { {  925000, 468000, 396000, 504000, 204000, 792000 } },
+       { {  900000, 468000, 348000, 504000, 204000, 792000 } },
+       { {  875000, 468000, 348000, 504000, 136000, 600000 } },
+       { {  850000, 468000, 348000, 420000, 136000, 600000 } },
+       { {  825000, 396000, 348000, 420000, 136000, 600000 } },
+       { {  800000, 396000, 348000, 420000, 136000, 528000 } },
+       { {  775000, 396000, 348000, 420000, 136000, 528000 } },
 };
 
 static struct balanced_throttle skin_throttle = {
@@ -802,9 +729,23 @@ static struct balanced_throttle skin_throttle = {
 
 static int __init flounder_skin_init(void)
 {
-	balanced_throttle_register(&skin_throttle, "skin-balanced");
-	tegra_skin_therm_est_device.dev.platform_data = &skin_data;
-	platform_device_register(&tegra_skin_therm_est_device);
+	if (of_machine_is_compatible("google,flounder") ||
+	    of_machine_is_compatible("google,flounder_lte") ||
+	    of_machine_is_compatible("google,flounder64") ||
+	    of_machine_is_compatible("google,flounder64_lte")) {
+		/* turn on tskin only on XE (PVT) device */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs);
+			skin_data.devs = skin_devs;
+			skin_data.toffset = -2932;
+
+			balanced_throttle_register(&skin_throttle,
+							"skin-balanced");
+			tegra_skin_therm_est_device.dev.platform_data =
+							&skin_data;
+			platform_device_register(&tegra_skin_therm_est_device);
+		}
+	}
 	return 0;
 }
 late_initcall(flounder_skin_init);

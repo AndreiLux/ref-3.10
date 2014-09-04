@@ -88,6 +88,9 @@ struct rmnet_ctrl_udev {
 	unsigned int		zlp_cnt;
 	unsigned int		invalid_mux_id_cnt;
 	unsigned int		ignore_encap_work;
+
+	/*mutex*/
+	struct mutex		udev_lock;
 };
 
 struct rmnet_ctrl_dev {

@@ -23,6 +23,7 @@
 			ams,hi-threshold = <256>;
 			ams,low-threshold = <128>;
 			ams,enable-clock32k-out;
+			ams,oc-pg-mask = <AS3722_OC_PG_MASK_AC_OK>;
 
 			pinctrl-names = "default";
 			pinctrl-0 = <&as3722_default>;
@@ -61,7 +62,7 @@
 
 				as3722_sd0: sd0 {
 				    regulator-name = "vdd-cpu";
-				    regulator-min-microvolt = <700000>;
+				    regulator-min-microvolt = <650000>;
 				    regulator-max-microvolt = <1400000>;
 				    regulator-max-microamp = <3500000>;
 				    regulator-always-on;

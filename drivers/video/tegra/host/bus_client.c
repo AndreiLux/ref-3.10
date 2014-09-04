@@ -54,6 +54,8 @@
 #include "nvhost_hwctx.h"
 #include "nvhost_sync.h"
 
+DEFINE_MUTEX(channel_lock);
+
 static int validate_reg(struct platform_device *ndev, u32 offset, int count)
 {
 	int err = 0;
@@ -173,6 +175,11 @@ static int nvhost_channelrelease(struct inode *inode, struct file *filp)
 {
 	struct nvhost_channel_userctx *priv = filp->private_data;
 
+	mutex_lock(&channel_lock);
+	if (!priv->ch || !priv->ch->dev) {
+		mutex_unlock(&channel_lock);
+		return 0;
+	}
 	trace_nvhost_channel_release(dev_name(&priv->ch->dev->dev));
 
 	filp->private_data = NULL;
@@ -194,6 +201,7 @@ static int nvhost_channelrelease(struct inode *inode, struct file *filp)
 	if (priv->job)
 		nvhost_job_put(priv->job);
 
+	mutex_unlock(&channel_lock);
 	nvhost_putchannel(priv->ch);
 	kfree(priv);
 	return 0;
@@ -210,19 +218,28 @@ static int __nvhost_channelopen(struct inode *inode,
 	if (inode) {
 		pdata = container_of(inode->i_cdev,
 				struct nvhost_device_data, cdev);
-		ch = nvhost_channel_map(pdata);
-		if (!ch || !ch->dev) {
+		ret = nvhost_channel_map(pdata, &ch);
+		if (ret) {
 			pr_err("%s: failed to map channel\n", __func__);
-			return -ENOMEM;
+			return ret;
 		}
 	} else {
 		if (!ch || !ch->dev) {
 			pr_err("%s: NULL channel request to get\n", __func__);
 			return -EINVAL;
 		}
-		nvhost_getchannel(ch);
+		pdata = platform_get_drvdata(ch->dev);
+		if (!pdata->exclusive)
+			nvhost_getchannel(ch);
+		else
+			return -EBUSY;
 	}
 
+	mutex_lock(&channel_lock);
+	if (!ch || !ch->dev) {
+		mutex_unlock(&channel_lock);
+		return -EINVAL;
+	}
 	trace_nvhost_channel_open(dev_name(&ch->dev->dev));
 
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
@@ -257,12 +274,14 @@ static int __nvhost_channelopen(struct inode *inode,
 	priv->timeout_debug_dump = true;
 	if (!tegra_platform_is_silicon())
 		priv->timeout = 0;
+	mutex_unlock(&channel_lock);
 	return 0;
 fail_priv:
 	nvhost_module_remove_client(ch->dev, priv);
 fail_add_client:
 	kfree(priv);
 fail:
+	mutex_unlock(&channel_lock);
 	nvhost_channelrelease(inode, filp);
 	return -ENOMEM;
 }

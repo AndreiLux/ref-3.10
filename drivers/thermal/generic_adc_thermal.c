@@ -149,8 +149,7 @@ static int gadc_thermal_unbind(struct thermal_zone_device *tz,
 	return 0;
 }
 
-static int gadc_thermal_get_temp(struct thermal_zone_device *tz,
-				 unsigned long *temp)
+static int gadc_thermal_get_temp(struct thermal_zone_device *tz, long *temp)
 {
 	struct gadc_thermal_driver_data *drvdata = tz->devdata;
 	int val = 0, val2 = 0;
@@ -185,7 +184,7 @@ static int gadc_thermal_get_trip_type(struct thermal_zone_device *tz, int trip,
 }
 
 static int gadc_thermal_get_trip_temp(struct thermal_zone_device *tz, int trip,
-				      unsigned long *temp)
+				      long *temp)
 {
 	struct gadc_thermal_driver_data *drvdata = tz->devdata;
 	struct thermal_trip_info *trip_state = &drvdata->pdata->trips[trip];
@@ -207,7 +206,7 @@ static int gadc_thermal_get_trip_temp(struct thermal_zone_device *tz, int trip,
 }
 
 static int gadc_thermal_set_trip_temp(struct thermal_zone_device *tz, int trip,
-				      unsigned long temp)
+				      long temp)
 {
 	struct gadc_thermal_driver_data *drvdata = tz->devdata;
 	struct thermal_trip_info *trip_state = &drvdata->pdata->trips[trip];
@@ -335,7 +334,7 @@ static const struct file_operations raw_adc_fops = {
 	.release	= single_release,
 };
 
-static int temp_offset_write(struct file *file, const char __user *user_buf,
+static ssize_t temp_offset_write(struct file *file, const char __user *user_buf,
 			     size_t count, loff_t *ppos)
 {
 	struct gadc_thermal_driver_data *drvdata =
@@ -505,6 +504,12 @@ static int gadc_thermal_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void gadc_thermal_shutdown(struct platform_device *pdev)
+{
+	struct gadc_thermal_driver_data *drvdata = platform_get_drvdata(pdev);
+	thermal_zone_device_unregister(drvdata->tz);
+}
+
 static struct platform_driver gadc_thermal_driver = {
 	.driver = {
 		.name = "generic-adc-thermal",
@@ -512,6 +517,7 @@ static struct platform_driver gadc_thermal_driver = {
 	},
 	.probe = gadc_thermal_probe,
 	.remove = gadc_thermal_remove,
+	.shutdown = gadc_thermal_shutdown,
 };
 
 module_platform_driver(gadc_thermal_driver);

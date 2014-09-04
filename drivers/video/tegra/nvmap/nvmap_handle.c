@@ -40,7 +40,13 @@
 #include "nvmap_priv.h"
 #include "nvmap_ioctl.h"
 
+#ifdef CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES
+bool zero_memory = true;
+#define ZERO_MEMORY_PERMS 0444
+#else
 bool zero_memory;
+#define ZERO_MEMORY_PERMS 0644
+#endif
 
 static int zero_memory_set(const char *arg, const struct kernel_param *kp)
 {
@@ -54,7 +60,7 @@ static struct kernel_param_ops zero_memory_ops = {
 	.set = zero_memory_set,
 };
 
-module_param_cb(zero_memory, &zero_memory_ops, &zero_memory, 0644);
+module_param_cb(zero_memory, &zero_memory_ops, &zero_memory, ZERO_MEMORY_PERMS);
 
 u32 nvmap_max_handle_count;
 
@@ -86,10 +92,6 @@ void nvmap_altfree(void *ptr, size_t len)
 void _nvmap_handle_free(struct nvmap_handle *h)
 {
 	unsigned int i, nr_page, page_index = 0;
-#if defined(CONFIG_NVMAP_PAGE_POOLS) && \
-	!defined(CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES)
-	struct nvmap_page_pool *pool;
-#endif
 
 	if (h->nvhost_priv)
 		h->nvhost_priv_delete(h->nvhost_priv);
@@ -120,16 +122,9 @@ void _nvmap_handle_free(struct nvmap_handle *h)
 	for (i = 0; i < nr_page; i++)
 		h->pgalloc.pages[i] = nvmap_to_page(h->pgalloc.pages[i]);
 
-#if defined(CONFIG_NVMAP_PAGE_POOLS) && \
-	!defined(CONFIG_NVMAP_FORCE_ZEROED_USER_PAGES)
-	if (!zero_memory) {
-		pool = &nvmap_dev->pool;
-
-		nvmap_page_pool_lock(pool);
-		page_index = __nvmap_page_pool_fill_lots_locked(pool,
-						h->pgalloc.pages, nr_page);
-		nvmap_page_pool_unlock(pool);
-	}
+#if defined(CONFIG_NVMAP_PAGE_POOLS)
+	page_index = nvmap_page_pool_fill_lots(&nvmap_dev->pool,
+				h->pgalloc.pages, nr_page);
 #endif
 
 	for (i = page_index; i < nr_page; i++)
@@ -169,9 +164,6 @@ static int handle_page_alloc(struct nvmap_client *client,
 	pgprot_t prot;
 	unsigned int i = 0, page_index = 0;
 	struct page **pages;
-#ifdef CONFIG_NVMAP_PAGE_POOLS
-	struct nvmap_page_pool *pool = NULL;
-#endif
 	gfp_t gfp = GFP_NVMAP;
 
 	if (zero_memory)
@@ -194,15 +186,11 @@ static int handle_page_alloc(struct nvmap_client *client,
 
 	} else {
 #ifdef CONFIG_NVMAP_PAGE_POOLS
-		pool = &nvmap_dev->pool;
-
 		/*
 		 * Get as many pages from the pools as possible.
 		 */
-		nvmap_page_pool_lock(pool);
-		page_index = __nvmap_page_pool_alloc_lots_locked(pool, pages,
+		page_index = nvmap_page_pool_alloc_lots(&nvmap_dev->pool, pages,
 								 nr_page);
-		nvmap_page_pool_unlock(pool);
 #endif
 		for (i = page_index; i < nr_page; i++) {
 			pages[i] = nvmap_alloc_pages_exact(gfp,	PAGE_SIZE);
@@ -212,17 +200,24 @@ static int handle_page_alloc(struct nvmap_client *client,
 	}
 
 	/*
-	 * Make sure any data in the caches is flushed out before
+	 * Make sure any data in the caches is cleaned out before
 	 * passing these pages to userspace. otherwise, It can lead to
 	 * corruption in pages that get mapped as something other than WB in
 	 * userspace and leaked kernel data structures.
+	 *
+	 * FIXME: For ARMv7 we don't have __clean_dcache_page() so we continue
+	 * to use the flush cache version.
 	 */
-	nvmap_flush_cache(pages, nr_page);
+	if (page_index < nr_page)
+#ifdef ARM64
+		nvmap_clean_cache(&pages[page_index], nr_page - page_index);
+#else
+		nvmap_flush_cache(&pages[page_index], nr_page - page_index);
+#endif
 
 	h->size = size;
 	h->pgalloc.pages = pages;
 	h->pgalloc.contig = contiguous;
-	INIT_LIST_HEAD(&h->pgalloc.vmas);
 	atomic_set(&h->pgalloc.ndirty, 0);
 	return 0;
 
@@ -253,6 +248,7 @@ static void alloc_handle(struct nvmap_client *client,
 
 		b = nvmap_carveout_alloc(client, h, type);
 		if (b) {
+			h->heap_type = type;
 			h->heap_pgalloc = false;
 			/* barrier to ensure all handle alloc data
 			 * is visible before alloc is seen by other
@@ -260,21 +256,15 @@ static void alloc_handle(struct nvmap_client *client,
 			 */
 			mb();
 			h->alloc = true;
-			nvmap_carveout_commit_add(client,
-				nvmap_heap_to_arg(nvmap_block_to_heap(b)),
-				h->size);
 		}
 	} else if (type & iovmm_mask) {
 		int ret;
-		size_t reserved = PAGE_ALIGN(h->size);
 
-		atomic_add(reserved, &client->iovm_commit);
 		ret = handle_page_alloc(client, h,
 			h->userflags & NVMAP_HANDLE_PHYS_CONTIG);
-		if (ret) {
-			atomic_sub(reserved, &client->iovm_commit);
+		if (ret)
 			return;
-		}
+		h->heap_type = NVMAP_HEAP_IOVMM;
 		h->heap_pgalloc = true;
 		mb();
 		h->alloc = true;
@@ -412,17 +402,7 @@ void nvmap_free_handle(struct nvmap_client *client,
 	pins = atomic_read(&ref->pin);
 	rb_erase(&ref->node, &client->handle_refs);
 	client->handle_count--;
-
-	if (h->alloc && h->heap_pgalloc)
-		atomic_sub(h->size, &client->iovm_commit);
-
-	if (h->alloc && !h->heap_pgalloc) {
-		mutex_lock(&h->lock);
-		nvmap_carveout_commit_subtract(client,
-			nvmap_heap_to_arg(nvmap_block_to_heap(h->carveout)),
-			h->size);
-		mutex_unlock(&h->lock);
-	}
+	atomic_dec(&ref->handle->share_count);
 
 	nvmap_ref_unlock(client);
 
@@ -472,6 +452,7 @@ static void add_handle_ref(struct nvmap_client *client,
 	client->handle_count++;
 	if (client->handle_count > nvmap_max_handle_count)
 		nvmap_max_handle_count = client->handle_count;
+	atomic_inc(&ref->handle->share_count);
 	nvmap_ref_unlock(client);
 }
 
@@ -503,6 +484,7 @@ struct nvmap_handle_ref *nvmap_create_handle(struct nvmap_client *client,
 	h->size = h->orig_size = size;
 	h->flags = NVMAP_HANDLE_WRITE_COMBINE;
 	mutex_init(&h->lock);
+	INIT_LIST_HEAD(&h->vmas);
 
 	/*
 	 * This takes out 1 ref on the dambuf. This corresponds to the
@@ -586,16 +568,6 @@ struct nvmap_handle_ref *nvmap_duplicate_handle(struct nvmap_client *client,
 	if (!ref) {
 		nvmap_handle_put(h);
 		return ERR_PTR(-ENOMEM);
-	}
-
-	if (!h->heap_pgalloc) {
-		mutex_lock(&h->lock);
-		nvmap_carveout_commit_add(client,
-			nvmap_heap_to_arg(nvmap_block_to_heap(h->carveout)),
-			h->size);
-		mutex_unlock(&h->lock);
-	} else {
-		atomic_add(h->size, &client->iovm_commit);
 	}
 
 	atomic_set(&ref->dupes, 1);

@@ -272,6 +272,7 @@ static struct soctherm_platform_data norrin_soctherm_data = {
 				[THROTTLE_DEV_CPU] = {
 					.enable = true,
 					.depth = 80,
+			/* see @PSKIP_CONFIG_NOTE in board-ardbeg-power.c */
 					.throttling_depth = "heavy_throttling",
 				},
 				[THROTTLE_DEV_GPU] = {
@@ -383,7 +384,8 @@ int __init norrin_soctherm_init(void)
 
 	tegra_get_pmu_board_info(&pmu_board_info);
 
-	if (pmu_board_info.board_id == BOARD_PM374)
+	if ((pmu_board_info.board_id == BOARD_PM374) ||
+		(pmu_board_info.board_id == BOARD_PM375))
 		norrin_soctherm_data.tshut_pmu_trip_data = &tpdata_as3722;
 	else
 		pr_warn("soctherm THERMTRIP not supported on PMU (BOARD_P%d)\n",

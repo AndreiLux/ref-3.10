@@ -92,12 +92,41 @@ int FXDIV(int x, int y)
 	return (x << pos) / y;
 }
 
+static void gk20a_tegra_secure_page_destroy(struct platform_device *pdev,
+				       struct secure_page_buffer *secure_buffer)
+{
+	dma_free_attrs(&tegra_vpr_dev, secure_buffer->size,
+			(void *)(uintptr_t)secure_buffer->iova,
+			secure_buffer->iova, &secure_buffer->attrs);
+}
+
+static int gk20a_tegra_secure_page_alloc(struct platform_device *pdev)
+{
+	struct gk20a_platform *platform = platform_get_drvdata(pdev);
+	struct secure_page_buffer *secure_buffer = &platform->secure_buffer;
+	DEFINE_DMA_ATTRS(attrs);
+	dma_addr_t iova;
+	size_t size = PAGE_SIZE;
+
+	(void)dma_alloc_attrs(&tegra_vpr_dev, size, &iova,
+				      DMA_MEMORY_NOMAP, &attrs);
+	if (dma_mapping_error(&tegra_vpr_dev, iova))
+		return -ENOMEM;
+
+	secure_buffer->size = size;
+	secure_buffer->iova = iova;
+	secure_buffer->attrs = attrs;
+	secure_buffer->destroy = gk20a_tegra_secure_page_destroy;
+
+	return 0;
+}
+
 static void gk20a_tegra_secure_destroy(struct platform_device *pdev,
 				       struct gr_ctx_buffer_desc *desc)
 {
 	gk20a_free_sgtable(&desc->sgt);
 	dma_free_attrs(&tegra_vpr_dev, desc->size,
-			(void *)(uintptr_t)&desc->iova,
+			(void *)(uintptr_t)desc->iova,
 			desc->iova, &desc->attrs);
 }
 
@@ -105,6 +134,7 @@ static int gk20a_tegra_secure_alloc(struct platform_device *pdev,
 				    struct gr_ctx_buffer_desc *desc,
 				    size_t size)
 {
+	struct gk20a_platform *platform = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
 	DEFINE_DMA_ATTRS(attrs);
 	dma_addr_t iova;
@@ -112,10 +142,11 @@ static int gk20a_tegra_secure_alloc(struct platform_device *pdev,
 	struct page *page;
 	int err = 0;
 
-	dma_set_attr(DMA_ATTR_NO_KERNEL_MAPPING, &attrs);
+	if (!platform->secure_alloc_ready)
+		return -EINVAL;
 
 	(void)dma_alloc_attrs(&tegra_vpr_dev, size, &iova,
-				      GFP_KERNEL, &attrs);
+				      DMA_MEMORY_NOMAP, &attrs);
 	if (dma_mapping_error(&tegra_vpr_dev, iova))
 		return -ENOMEM;
 
@@ -207,7 +238,7 @@ static void gk20a_tegra_prescale(struct platform_device *pdev)
 	u32 avg = 0;
 
 	gk20a_pmu_load_norm(g, &avg);
-	tegra_edp_notify_gpu_load(avg);
+	tegra_edp_notify_gpu_load(avg, gk20a_clk_get_rate(g));
 }
 
 /*
@@ -301,6 +332,17 @@ void gk20a_tegra_calibrate_emc(struct gk20a_emc_params *emc_params,
 			FXMUL(max_rate_3d - emc_params->emc_xmid,
 				max_rate_3d - emc_params->emc_xmid));
 	emc_params->emc_dip_offset -= correction;
+}
+
+/*
+ * gk20a_tegra_is_railgated()
+ *
+ * Check status of gk20a power rail
+ */
+
+static bool gk20a_tegra_is_railgated(struct platform_device *pdev)
+{
+	return !tegra_powergate_is_powered(TEGRA_POWERGATE_GPU);
 }
 
 /*
@@ -435,7 +477,7 @@ static int gk20a_tegra_late_probe(struct platform_device *dev)
 
 static int gk20a_tegra_suspend(struct device *dev)
 {
-	tegra_edp_notify_gpu_load(0);
+	tegra_edp_notify_gpu_load(0, 0);
 	return 0;
 }
 
@@ -482,6 +524,7 @@ struct gk20a_platform t132_gk20a_tegra_platform = {
 	.suspend = gk20a_tegra_suspend,
 	.railgate = gk20a_tegra_railgate,
 	.unrailgate = gk20a_tegra_unrailgate,
+	.is_railgated = gk20a_tegra_is_railgated,
 
 	/* frequency scaling configuration */
 	.prescale = gk20a_tegra_prescale,
@@ -490,6 +533,7 @@ struct gk20a_platform t132_gk20a_tegra_platform = {
 	.qos_id = PM_QOS_GPU_FREQ_MIN,
 
 	.secure_alloc = gk20a_tegra_secure_alloc,
+	.secure_page_alloc = gk20a_tegra_secure_page_alloc,
 	.dump_platform_dependencies = gk20a_tegra_debug_dump,
 };
 
@@ -508,6 +552,7 @@ struct gk20a_platform gk20a_tegra_platform = {
 	.suspend = gk20a_tegra_suspend,
 	.railgate = gk20a_tegra_railgate,
 	.unrailgate = gk20a_tegra_unrailgate,
+	.is_railgated = gk20a_tegra_is_railgated,
 
 	/* frequency scaling configuration */
 	.prescale = gk20a_tegra_prescale,
@@ -516,6 +561,7 @@ struct gk20a_platform gk20a_tegra_platform = {
 	.qos_id = PM_QOS_GPU_FREQ_MIN,
 
 	.secure_alloc = gk20a_tegra_secure_alloc,
+	.secure_page_alloc = gk20a_tegra_secure_page_alloc,
 	.dump_platform_dependencies = gk20a_tegra_debug_dump,
 };
 

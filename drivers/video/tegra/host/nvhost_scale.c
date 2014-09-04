@@ -222,7 +222,9 @@ static void nvhost_scale_notify(struct platform_device *pdev, bool busy)
 	if (pdata->gpu_edp_device) {
 		u32 avg = 0;
 		actmon_op().read_avg_norm(profile->actmon, &avg);
-		tegra_edp_notify_gpu_load(avg);
+		BUG();
+		/* the next line passes a bogus frequency */
+		tegra_edp_notify_gpu_load(avg, 0);
 	}
 
 	/* If defreq is disabled, set the freq to max or min */

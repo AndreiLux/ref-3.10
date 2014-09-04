@@ -73,6 +73,23 @@
 #define PCLLK_IOCTL_DT_GET	_IOWR('o', 160, struct nvc_param)
 #define PCLLK_IOCTL_MSG		_IOWR('o', 170, struct nvc_param)
 
+#ifdef CONFIG_COMPAT
+/* IOCTL commands that pass 32 bit pointers from user space.
+   CAUTION: the nr number of these commands MUST be the same value as the
+   nr number of the related normal commands. */
+#define PCLLK_IOCTL_32_CHIP_REG	_IOW('o', 100, struct virtual_device_32)
+#define PCLLK_IOCTL_32_SEQ_WR	_IOWR('o', 112, struct nvc_param_32)
+#define PCLLK_IOCTL_32_SEQ_RD	_IOWR('o', 113, struct nvc_param_32)
+#define PCLLK_IOCTL_32_UPDATE	_IOW('o', 116, struct nvc_param_32)
+#define PCLLK_IOCTL_32_LAYOUT_WR	_IOW('o', 120, struct nvc_param_32)
+#define PCLLK_IOCTL_32_LAYOUT_RD	_IOWR('o', 121, struct nvc_param_32)
+#define PCLLK_IOCTL_32_PARAM_WR	_IOWR('o', 140, struct nvc_param_32)
+#define PCLLK_IOCTL_32_PARAM_RD	_IOWR('o', 141, struct nvc_param_32)
+#define PCLLK_IOCTL_32_DRV_ADD	_IOW('o', 150, struct nvc_param_32)
+#define PCLLK_IOCTL_32_DT_GET	_IOWR('o', 160, struct nvc_param_32)
+#define PCLLK_IOCTL_32_MSG		_IOWR('o', 170, struct nvc_param_32)
+#endif
+
 #define CAMERA_MAX_EDP_ENTRIES  16
 #define CAMERA_MAX_NAME_LENGTH	32
 #define CAMDEV_INVALID		0xffffffff
@@ -115,29 +132,29 @@ enum {
 };
 
 struct camera_device_info {
-	u8 name[CAMERA_MAX_NAME_LENGTH];
-	u32 type;
-	u8 bus;
-	u8 addr;
+	__u8 name[CAMERA_MAX_NAME_LENGTH];
+	__u32 type;
+	__u8 bus;
+	__u8 addr;
 };
 
 struct camera_reg {
-	u32 addr;
-	u32 val;
+	__u32 addr;
+	__u32 val;
 };
 
 struct regmap_cfg {
 	int addr_bits;
 	int val_bits;
-	u32 cache_type;
+	__u32 cache_type;
 };
 
 struct gpio_cfg {
 	int gpio;
-	u8 own;
-	u8 active_high;
-	u8 flag;
-	u8 reserved;
+	__u8 own;
+	__u8 active_high;
+	__u8 flag;
+	__u8 reserved;
 };
 
 struct edp_cfg {
@@ -149,10 +166,25 @@ struct edp_cfg {
 #define VIRTUAL_DEV_MAX_GPIOS		8
 #define VIRTUAL_REGNAME_SIZE		(VIRTUAL_DEV_MAX_REGULATORS * \
 						CAMERA_MAX_NAME_LENGTH)
-
-struct virtual_device {
+#ifdef CONFIG_COMPAT
+struct virtual_device_32 {
 	__u32 power_on;
 	__u32 power_off;
+	struct regmap_cfg regmap_cfg;
+	__u32 bus_type;
+	__u32 gpio_num;
+	__u32 reg_num;
+	__u32 pwr_on_size;
+	__u32 pwr_off_size;
+	__u32 clk_num;
+	__u8 name[32];
+	__u8 reg_names[VIRTUAL_REGNAME_SIZE];
+};
+#endif
+
+struct virtual_device {
+	void *power_on;
+	void *power_off;
 	struct regmap_cfg regmap_cfg;
 	__u32 bus_type;
 	__u32 gpio_num;
@@ -169,15 +201,15 @@ enum {
 	UPDATE_GPIO,
 	UPDATE_POWER,
 	UPDATE_CLOCK,
-	UPDATE_EDP,
 	UPDATE_MAX_NUM,
 };
 
 struct cam_update {
-	u32 type;
-	u32 index;
-	u32 size;
-	u32 arg;
+	__u32 type;
+	__u32 index;
+	__u32 size;
+	__u32 arg;
+	__u32 args[28];
 };
 
 enum {
@@ -208,8 +240,8 @@ struct cam_device_layout {
 };
 
 struct camera_property_info {
-	u8 name[CAMERA_MAX_NAME_LENGTH];
-	u32 type;
+	__u8 name[CAMERA_MAX_NAME_LENGTH];
+	__u32 type;
 };
 
 #ifdef __KERNEL__
@@ -354,6 +386,10 @@ struct camera_platform_info {
 };
 
 /* common functions */
+int camera_get_params(
+	struct camera_info *, unsigned long, int, struct nvc_param *, void **);
+int camera_copy_user_params(unsigned long, struct nvc_param *);
+
 int virtual_device_add(struct device *, unsigned long);
 int camera_regulator_get(struct device *, struct nvc_regulator *, char *);
 

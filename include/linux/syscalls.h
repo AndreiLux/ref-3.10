@@ -77,6 +77,8 @@ struct sigaltstack;
 #include <linux/quota.h>
 #include <linux/key.h>
 #include <trace/syscall.h>
+#undef CREATE_TRACE_POINTS
+#include <trace/events/sys_calls.h>
 
 /*
  * __MAP - apply a macro to syscall arguments
@@ -188,7 +190,10 @@ extern struct trace_event_functions exit_syscall_print_funcs;
 	static inline long SYSC##name(__MAP(x,__SC_DECL,__VA_ARGS__));	\
 	asmlinkage long SyS##name(__MAP(x,__SC_LONG,__VA_ARGS__))	\
 	{								\
-		long ret = SYSC##name(__MAP(x,__SC_CAST,__VA_ARGS__));	\
+		long ret;						\
+		trace_syscall_enter(""#name);				\
+		ret = SYSC##name(__MAP(x,__SC_CAST,__VA_ARGS__));	\
+		trace_syscall_exit(""#name);				\
 		__MAP(x,__SC_TEST,__VA_ARGS__);				\
 		__PROTECT(x, ret,__MAP(x,__SC_ARGS,__VA_ARGS__));	\
 		return ret;						\
@@ -846,4 +851,6 @@ asmlinkage long sys_process_vm_writev(pid_t pid,
 asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type,
 			 unsigned long idx1, unsigned long idx2);
 asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
+asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
+			    const char __user *uargs);
 #endif

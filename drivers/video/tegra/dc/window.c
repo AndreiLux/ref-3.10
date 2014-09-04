@@ -49,21 +49,6 @@ static bool tegra_dc_windows_are_clean(struct tegra_dc_win *windows[],
 	return true;
 }
 
-int tegra_dc_config_frame_end_intr(struct tegra_dc *dc, bool enable)
-{
-
-	mutex_lock(&dc->lock);
-	tegra_dc_io_start(dc);
-	if (enable) {
-		atomic_inc(&dc->frame_end_ref);
-		tegra_dc_unmask_interrupt(dc, FRAME_END_INT);
-	} else if (!atomic_dec_return(&dc->frame_end_ref))
-		tegra_dc_mask_interrupt(dc, FRAME_END_INT);
-	tegra_dc_io_end(dc);
-	mutex_unlock(&dc->lock);
-	return 0;
-}
-
 static int get_topmost_window(u32 *depths, unsigned long *wins, int win_num)
 {
 	int idx, best = -1;
@@ -647,16 +632,12 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n,
 				DC_WIN_SIZE);
 		}
 
-		/* Check scan_column flag to set window size and scaling. */
 		win_options = WIN_ENABLE;
-		if (scan_column) {
+		if (scan_column)
 			win_options |= WIN_SCAN_COLUMN;
-			win_options |= H_FILTER_ENABLE(filter_v);
-			win_options |= V_FILTER_ENABLE(filter_h);
-		} else {
-			win_options |= H_FILTER_ENABLE(filter_h);
-			win_options |= V_FILTER_ENABLE(filter_v);
-		}
+
+		win_options |= H_FILTER_ENABLE(filter_h);
+		win_options |= V_FILTER_ENABLE(filter_v);
 
 		/* Update scaling registers if window supports scaling. */
 		if (likely(tegra_dc_feature_has_scaling(dc, win->idx)))
@@ -889,6 +870,11 @@ int tegra_dc_update_windows(struct tegra_dc_win *windows[], int n,
 				win_options |= INTERLACE_ENABLE;
 		}
 #endif
+		if (dc_win->csc_dirty) {
+			tegra_dc_set_csc(dc, &dc_win->csc);
+			dc_win->csc_dirty = false;
+		}
+
 		tegra_dc_writel(dc, win_options, DC_WIN_WIN_OPTIONS);
 
 		dc_win->dirty = no_vsync ? 0 : 1;

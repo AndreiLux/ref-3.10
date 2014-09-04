@@ -106,6 +106,22 @@ static inline u32 pbdma_gp_put_r(u32 i)
 {
 	return 0x00040000 + i*8192;
 }
+static inline u32 pbdma_timeout_r(u32 i)
+{
+	return 0x0004012c + i*8192;
+}
+static inline u32 pbdma_timeout__size_1_v(void)
+{
+	return 0x00000001;
+}
+static inline u32 pbdma_timeout_period_m(void)
+{
+	return 0xffffffff << 0;
+}
+static inline u32 pbdma_timeout_period_max_f(void)
+{
+	return 0xffffffff;
+}
 static inline u32 pbdma_pb_fetch_r(u32 i)
 {
 	return 0x00040054 + i*8192;
@@ -205,6 +221,10 @@ static inline u32 pbdma_pb_header_first_true_f(void)
 static inline u32 pbdma_pb_header_type_inc_f(void)
 {
 	return 0x20000000;
+}
+static inline u32 pbdma_hdr_shadow_r(u32 i)
+{
+	return 0x00040118 + i*8192;
 }
 static inline u32 pbdma_subdevice_r(u32 i)
 {

@@ -16,25 +16,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/string.h>
-#include <linux/module.h>
-#include <linux/clk.h>
-#include <linux/kobject.h>
-#include <linux/err.h>
+#ifdef CONFIG_ARCH_TEGRA_12x_SOC
+
 #include <linux/tegra-fuse.h>
-
 #include <mach/edp.h>
-
-#include "clock.h"
-#include "common.h"
-
-#define CORE_MODULES_STATES 1
-#define TEMPERATURE_RANGES 5
-#define CAP_CLKS_NUM 2
-#define	TOTAL_CAPS (CORE_EDP_PROFILES_NUM * CORE_MODULES_STATES *\
-			TEMPERATURE_RANGES * CAP_CLKS_NUM)
 
 #if defined(CONFIG_SYSEDP_FRAMEWORK) && !defined(CONFIG_ARCH_TEGRA_13x_SOC)
 static struct tegra_sysedp_corecap td580d_sysedp_corecap[] = {
@@ -236,31 +221,55 @@ struct tegra_sysedp_corecap *tegra_get_sysedp_corecap(unsigned int *sz)
 }
 #endif
 
-struct core_edp_entry {
-	int sku;
-	unsigned int cap_mA;
-	int mult;
-	unsigned long cap_cpu[CORE_EDP_PROFILES_NUM][
-		CORE_MODULES_STATES][TEMPERATURE_RANGES][CAP_CLKS_NUM];
-};
-
-static int temperatures[] = { 50, 70, 80, 90, 100 };
-
-#ifdef CONFIG_TEGRA_DUAL_CBUS
-static char *cap_clks_names[] = { "edp.emc", "edp.c2bus" };
-#else
-static char *cap_clks_names[] = { "edp.emc", "edp.cbus" };
-#endif
-static struct clk *cap_clks[CAP_CLKS_NUM];
-
-/* FIXME: Populate with correct values as per final EDP tables.
- * Currently contains *safe* values
- */
-static struct core_edp_entry core_edp_table[] = {
-};
-
 #ifdef CONFIG_TEGRA_EDP_LIMITS
 
+#ifdef CONFIG_TEGRA_GPU_EDP
+static struct tegra_edp_gpu_powermodel_params t12x_gpu_powermodel_params = {
+	.common = {
+		.temp_scaled      = 10,
+		.dyn_scaled       = 1000,
+		.dyn_consts_n     = { 10646, },
+		.consts_scaled    = 1,
+		.leakage_consts_n = { 1, },
+		.ijk_scaled       = 100000,
+		.leakage_min      = 30,
+		.leakage_consts_ijk = {
+			/* i = 0 */
+			{ {  -208796792,   37746202,  -9648869,   725660, },
+			  {   704446675, -133808535,  34470023, -2464142, },
+			  {  -783701649,  146557393, -38623024,  2654269, },
+			  {   292709580,  -51246839,  13984499,  -934964, },
+			},
+			/* i = 1 */
+			{ {   115095343,  -65602614,  11251896,  -838394, },
+			  {  -394753929,  263095142, -49006854,  3326269, },
+			  {   441644020, -313320338,  61612126, -3916786, },
+			  {  -164021554,  118634317, -24406245,  1517573, },
+			},
+			/* i = 2 */
+			{ {   -38857760,   12243796,  -1964159,   181232, },
+			  {   143265078,  -71110695,  13985680,  -917947, },
+			  {  -171456530,   98906114, -21261015,  1216159, },
+			  {    67437536,  -40520060,   9265259,  -484818, },
+			},
+			/* i = 3 */
+			{ {     1795940,    -345535,     83004,   -20007, },
+			  {    -8549105,    6333235,  -1479815,   115441, },
+			  {    12192546,  -10880741,   2632212,  -161404, },
+			  {    -5328587,    4953756,  -1215038,    64556, },
+			},
+		},
+	},
+};
+
+struct tegra_edp_gpu_powermodel_params *tegra12x_get_gpu_powermodel_params(void)
+{
+	return &t12x_gpu_powermodel_params;
+}
+
+#endif /* CONFIG_TEGRA_GPU_EDP */
+
+#if !defined(CONFIG_ARCH_TEGRA_13x_SOC)
 #define LEAKAGE_CONSTS_IJK_COMMON					\
 {									\
 	/* i = 0 */							\
@@ -290,6 +299,7 @@ static struct core_edp_entry core_edp_table[] = {
 }
 
 #define EDP_PARAMS_COMMON_PART						\
+{									\
 	.temp_scaled      = 10,						\
 	.dyn_scaled       = 1000,					\
 	.dyn_consts_n     = { 950,  1399, 2166, 3041 },			\
@@ -298,259 +308,43 @@ static struct core_edp_entry core_edp_table[] = {
 	.ijk_scaled       = 100000,					\
 	.leakage_min      = 30,						\
 	/* .volt_temp_cap = { 70, 1240 }, - TODO for T124 */		\
-	.leakage_consts_ijk = LEAKAGE_CONSTS_IJK_COMMON
+	.leakage_consts_ijk = LEAKAGE_CONSTS_IJK_COMMON			\
+}
 
-static struct tegra_edp_cpu_leakage_params t12x_leakage_params[] = {
+static struct tegra_edp_cpu_powermodel_params t12x_cpu_powermodel_params[] = {
 	{
-		.cpu_speedo_id      = 0, /* Engg SKU */
-		EDP_PARAMS_COMMON_PART,
+		.cpu_speedo_id = 0, /* Engg SKU */
+		.common = EDP_PARAMS_COMMON_PART,
 	},
 	{
-		.cpu_speedo_id      = 1, /* Prod SKU */
-		EDP_PARAMS_COMMON_PART,
+		.cpu_speedo_id = 1, /* Prod SKU */
+		.common = EDP_PARAMS_COMMON_PART,
 	},
 	{
-		.cpu_speedo_id      = 2, /* Prod SKU */
-		EDP_PARAMS_COMMON_PART,
+		.cpu_speedo_id = 2, /* Prod SKU */
+		.common = EDP_PARAMS_COMMON_PART,
 	},
 	{
-		.cpu_speedo_id      = 3, /* Prod SKU */
-		EDP_PARAMS_COMMON_PART,
+		.cpu_speedo_id = 3, /* Prod SKU */
+		.common = EDP_PARAMS_COMMON_PART,
 	},
 	{
-		.cpu_speedo_id      = 5, /* Prod SKU */
-		EDP_PARAMS_COMMON_PART,
+		.cpu_speedo_id = 5, /* Prod SKU */
+		.common = EDP_PARAMS_COMMON_PART,
 	},
 };
 
-#define LEAKAGE13_CONSTS_IJK_COMMON					\
-{									\
-	/* i = 0 */							\
-	{ {     379418152,   -346934015,    78200120,   -4417754, },	\
-	  {   -1206883115,   1104697779,  -249217981,   14061354, },	\
-	  {    1254008683,  -1149673559,   259614111,  -14624565, },	\
-	  {    -425176538,    391251722,   -88449682,    4972193, },	\
-	},								\
-	/* i = 1 */							\
-	{ {    -503813674,    440324321,   -98337254,    5557249, },	\
-	  {    1602759501,  -1397938820,   312576285,  -17649754, },	\
-	  {   -1665439839,   1449369020,  -324538025,   18306811, },	\
-	  {     565165401,   -490769906,   110089714,   -6198017, },	\
-	},								\
-	/* i = 2 */							\
-	{ {     173847877,   -151521690,    33543642,   -1892650, },	\
-	  {    -551852158,    480614203,  -106527695,    6012566, },	\
-	  {     571798826,   -497665481,   110462057,   -6235968, },	\
-	  {    -193342746,    168293820,   -37412123,    2112012, },	\
-	},								\
-	/* i = 3 */							\
-	{ {     -16787513,     14607225,    -3223101,     181933, },	\
-	  {      53238061,    -46295241,    10228756,    -577786, },	\
-	  {     -55099102,     47886289,   -10596814,     598956, },	\
-	  {      18611025,    -16172040,     3585182,    -202741, },	\
-	},								\
-}
-
-/* XXX: On T132, offlining a core within Linux is not sufficient to guarantee
- * that the core is continually in a powered-down state. Until we do have a
- * sufficient guarantee, we will use EDP tables to always enforce the 2-core
- * freq cap even when a single core is ONLINE.
- *
- * To do this in the simplest way, values in the dynamic_constants[] array and
- * the leakage_constants[] array are all set to the 2-core value below in the
- * structure init. With this, there's no need to modify the code edp logic in
- * edp.c and it remains specific to this chip.
- *
- * The actual 1-core values for these two arrays is saved as a comment to
- * resurrect when actually needed.
- */
-#define EDP13_PARAMS_COMMON_PART					\
-	.temp_scaled      = 10,						\
-	.dyn_scaled       = 1000,					\
-	.dyn_consts_n     = { 4900, 4900 }, /* { save: 2700, 4900 } */ 	\
-	.consts_scaled    = 100,					\
-	.leakage_consts_n = { 100, 100 }, /* { save: 60, 100 } */	\
-	.ijk_scaled       = 10000,					\
-	.leakage_min      = 30,						\
-	/* .safety_cap       = { 2400000, 2200000, }, */		\
-	/* .volt_temp_cap = { 70, 1240 }, - TODO for T132 */		\
-	.leakage_consts_ijk = LEAKAGE13_CONSTS_IJK_COMMON
-
-static struct tegra_edp_cpu_leakage_params t13x_leakage_params[] = {
-	{
-		.cpu_speedo_id      = 0, /* Engg SKU */
-		EDP13_PARAMS_COMMON_PART,
-	},
-	{
-		.cpu_speedo_id      = 1, /* Engg SKU */
-		EDP13_PARAMS_COMMON_PART,
-	},
-};
-
-#ifdef CONFIG_TEGRA_GPU_EDP
-static struct tegra_edp_gpu_leakage_params t12x_gpu_leakage_params = {
-	.temp_scaled      = 10,
-	.dyn_scaled       = 1000,
-	.dyn_consts_n     = 10646,
-	.consts_scaled    = 1,
-	.leakage_consts_n = 1,
-	.ijk_scaled       = 100000,
-	.leakage_consts_ijk = {
-		/* i = 0 */
-		{ {  -208796792,     37746202,    -9648869,     725660, },
-		  {   704446675,   -133808535,    34470023,   -2464142, },
-		  {  -783701649,    146557393,   -38623024,    2654269, },
-		  {   292709580,    -51246839,    13984499,    -934964, },
-		},
-		/* i = 1 */
-		{ {   115095343,    -65602614,    11251896,    -838394, },
-		  {  -394753929,    263095142,   -49006854,    3326269, },
-		  {   441644020,   -313320338,    61612126,   -3916786, },
-		  {  -164021554,    118634317,   -24406245,    1517573, },
-		},
-		/* i = 2 */
-		{ {   -38857760,     12243796,    -1964159,     181232, },
-		  {   143265078,    -71110695,    13985680,    -917947, },
-		  {  -171456530,     98906114,   -21261015,    1216159, },
-		  {    67437536,    -40520060,     9265259,    -484818, },
-		},
-		/* i = 3 */
-		{ {     1795940,      -345535,       83004,     -20007, },
-		  {    -8549105,      6333235,    -1479815,     115441, },
-		  {    12192546,    -10880741,     2632212,    -161404, },
-		  {    -5328587,      4953756,    -1215038,      64556, },
-		},
-	},
-	.leakage_min = 30,
-};
-
-struct tegra_edp_gpu_leakage_params *tegra12x_get_gpu_leakage_params(void)
-{
-	return &t12x_gpu_leakage_params;
-}
-
-struct tegra_edp_gpu_leakage_params *tegra13x_get_gpu_leakage_params(void)
-{
-	return &t12x_gpu_leakage_params; /* T132 has same GPU_EDP params */
-}
-#endif
-
-struct tegra_edp_cpu_leakage_params *tegra12x_get_leakage_params(int index,
+struct tegra_edp_cpu_powermodel_params *tegra12x_get_cpu_powermodel_params(
+							int index,
 							unsigned int *sz)
 {
-	BUG_ON(index >= ARRAY_SIZE(t12x_leakage_params));
+	BUG_ON(index >= ARRAY_SIZE(t12x_cpu_powermodel_params));
 	if (sz)
-		*sz = ARRAY_SIZE(t12x_leakage_params);
-	return &t12x_leakage_params[index];
+		*sz = ARRAY_SIZE(t12x_cpu_powermodel_params);
+	return &t12x_cpu_powermodel_params[index];
 }
+#endif /* CONFIG_ARCH_TEGRA_12x_SOC && !CONFIG_ARCH_TEGRA_13x_SOC */
 
-struct tegra_edp_cpu_leakage_params *tegra13x_get_leakage_params(int index,
-							unsigned int *sz)
-{
-	BUG_ON(index >= ARRAY_SIZE(t13x_leakage_params));
-	if (sz)
-		*sz = ARRAY_SIZE(t13x_leakage_params);
-	return &t13x_leakage_params[index];
-}
-#endif
+#endif /* CONFIG_TEGRA_EDP_LIMITS */
 
-static struct core_edp_entry *find_edp_entry(int sku, unsigned int regulator_mA)
-{
-	int i;
-
-	for (i = 0; i < ARRAY_SIZE(core_edp_table); i++) {
-		struct core_edp_entry *entry = &core_edp_table[i];
-		if ((entry->sku == sku) && (entry->cap_mA == regulator_mA))
-			return entry;
-	}
-	return NULL;
-}
-
-static unsigned long clip_cap_rate(struct clk *cap_clk, unsigned long rate)
-{
-	unsigned long floor, ceiling;
-	struct clk *p = clk_get_parent(cap_clk);
-
-	if (!p || !p->ops || !p->ops->shared_bus_update) {
-		WARN(1, "%s: edp cap clk %s is not a shared bus user\n",
-			__func__, cap_clk->name);
-		return rate;
-	}
-
-	/*
-	 * Clip cap rate to shared bus possible rates (going up via shared
-	 * bus * ladder since bus clocks always rounds up with resolution of
-	 * at least 2kHz)
-	 */
-	ceiling = clk_round_rate(p, clk_get_min_rate(p));
-	do {
-		floor = ceiling;
-		ceiling = clk_round_rate(p, floor + 2000);
-		if (IS_ERR_VALUE(ceiling)) {
-			pr_err("%s: failed to clip %lu to %s possible rates\n",
-			       __func__, rate, p->name);
-			return rate;
-		}
-	} while ((floor < ceiling) && (ceiling <= rate));
-
-	if (floor > rate)
-		WARN(1, "%s: %s cap rate %lu is below %s floor %lu\n",
-			__func__, cap_clk->name, rate, p->name, floor);
-	return floor;
-}
-
-int __init tegra12x_select_core_edp_table(unsigned int regulator_mA,
-					  struct tegra_core_edp_limits *limits)
-{
-	int i;
-	int sku;
-	unsigned long *cap_rates;
-	struct core_edp_entry *edp_entry;
-
-	BUG_ON(ARRAY_SIZE(temperatures) != TEMPERATURE_RANGES);
-	BUG_ON(ARRAY_SIZE(cap_clks_names) != CAP_CLKS_NUM);
-
-	for (i = 0; i < CAP_CLKS_NUM; i++) {
-		struct clk *c = tegra_get_clock_by_name(cap_clks_names[i]);
-		if (!c) {
-			pr_err("%s: failed to find edp cap clock %s\n",
-			       __func__, cap_clks_names[i]);
-			return -ENODEV;
-		}
-		cap_clks[i] = c;
-	}
-
-	sku = tegra_get_sku_id();
-	if (sku == 0x0)
-		sku = 0x7;
-
-	if ((sku == 0x7) && (regulator_mA >= 3500)) {
-		pr_info("%s: no core edp capping for sku %d, %d mA\n",
-		       __func__, sku, regulator_mA);
-		return -ENODATA;
-	}
-
-	edp_entry = find_edp_entry(sku, regulator_mA);
-	if (!edp_entry) {
-		pr_info("%s: no core edp table for sku %d, %d mA\n",
-		       __func__, sku, regulator_mA);
-		return -ENODATA;
-	}
-
-	limits->sku = sku;
-	limits->cap_clocks = cap_clks;
-	limits->cap_clocks_num = CAP_CLKS_NUM;
-	limits->temperatures = temperatures;
-	limits->temperature_ranges = TEMPERATURE_RANGES;
-	limits->core_modules_states = CORE_MODULES_STATES;
-
-	cap_rates = &edp_entry->cap_cpu[0][0][0][0];
-	limits->cap_rates_scpu_on = cap_rates;
-	limits->cap_rates_scpu_off = cap_rates;
-	for (i = 0; i < TOTAL_CAPS; i++, cap_rates++) {
-		unsigned long rate = *cap_rates * edp_entry->mult;
-		*cap_rates = clip_cap_rate(cap_clks[i % CAP_CLKS_NUM], rate);
-	}
-
-	return 0;
-}
+#endif /* CONFIG_ARCH_TEGRA_12x_SOC */

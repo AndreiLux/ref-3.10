@@ -1393,8 +1393,11 @@
 #define RT5677_DSP_IB_9_L			(0x1 << 1)
 #define RT5677_DSP_IB_9_L_SFT			1
 
+/* Register controlling boot vector */
+#define RT5677_DSP_BOOT_VECTOR			0x1801f090
+
 /* Debug String Length */
-#define RT5677_REG_DISP_LEN 23
+#define RT5677_REG_DISP_LEN 12
 
 #define RT5677_NO_JACK		BIT(0)
 #define RT5677_HEADSET_DET	BIT(1)
@@ -1470,6 +1473,12 @@ struct rt5677_priv {
 	int vad_source;
 	unsigned int vad_clock_en;
 	int stream;
+
+	u8 *model_buf;
+	u32 model_len;
+	u32 mic_read_offset;
+	u8 *mic_buf;
+	u32 mic_buf_len;
 };
 
 #endif /* __RT5677_H__ */

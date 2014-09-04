@@ -119,6 +119,33 @@
 		adx@70303900 {
 			status = "okay";
 		};
+		dam@70302000 {
+			status = "okay";
+		};
+		dam@70302200 {
+			status = "okay";
+		};
+		dam@70302400 {
+			status = "okay";
+		};
+		afc@70307000 {
+			status = "okay";
+		};
+		afc@70307100 {
+			status = "okay";
+		};
+		afc@70307200 {
+			status = "okay";
+		};
+		afc@70307300 {
+			status = "okay";
+		};
+		afc@70307400 {
+			status = "okay";
+		};
+		afc@70307500 {
+			status = "okay";
+		};
 	};
 
 	pcie-controller {
@@ -137,7 +164,7 @@
 		trim-delay = <0x4>;
 		ddr-trim-delay = <0x4>;
 		mmc-ocr-mask = <0>;
-		uhs_mask = <0x20>;
+		uhs_mask = <0x40>;
 		bus-width = <8>;
 		built-in;
 		ddr-clk-limit = <51000000>;

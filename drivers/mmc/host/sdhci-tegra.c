@@ -33,6 +33,7 @@
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
 #include <linux/tegra_pm_domains.h>
+#include <linux/dma-mapping.h>
 
 #ifndef CONFIG_ARM64
 #include <asm/gpio.h>
@@ -351,6 +352,8 @@ struct tap_hole_coeffs t12x_tap_hole_coeffs[] = {
 	SET_TAP_HOLE_COEFFS("sdhci-tegra.3",	81600,	3090,	351666,	3090,
 		351666,	1583,	247913),
 	SET_TAP_HOLE_COEFFS("sdhci-tegra.2",	204000,	468,	36031,	468,
+		36031,	253,	21264),
+	SET_TAP_HOLE_COEFFS("sdhci-tegra.2",	200000,	468,	36031,	468,
 		36031,	253,	21264),
 	SET_TAP_HOLE_COEFFS("sdhci-tegra.2",	136000,	1146,	117841,	1146,
 		117841,	589,	78993),
@@ -2009,8 +2012,10 @@ static int sdhci_tegra_calculate_best_tap(struct sdhci_host *sdhci,
 
 	curr_vmin = tegra_dvfs_predict_millivolts(pltfm_host->clk,
 		tuning_data->freq_hz);
-	vmin = curr_vmin;
+	if (!curr_vmin)
+		curr_vmin = tegra_host->boot_vcore_mv;
 
+	vmin = curr_vmin;
 	do {
 		SDHCI_TEGRA_DBG("%s: checking for win opening with vmin %d\n",
 			mmc_hostname(sdhci->mmc), vmin);
@@ -2052,11 +2057,25 @@ static int sdhci_tegra_calculate_best_tap(struct sdhci_host *sdhci,
 	tuning_data->best_tap_value = best_tap_value;
 	tuning_data->nom_best_tap_value = best_tap_value;
 
-	/* Set the new vmin if there is any change. */
-	if ((tuning_data->best_tap_value >= 0) && (curr_vmin != vmin))
+	/*
+	 * Set the new vmin if there is any change. If dvfs overrides are
+	 * disabled, then print the error message but continue execution
+	 * rather than disabling tuning altogether.
+	 */
+	if ((tuning_data->best_tap_value >= 0) && (curr_vmin != vmin)) {
 		err = tegra_dvfs_set_fmax_at_vmin(pltfm_host->clk,
 			tuning_data->freq_hz, vmin);
-
+		if ((err == -EPERM) || (err == -ENOSYS)) {
+			/*
+			 * tegra_dvfs_set_fmax_at_vmin: will return EPERM or
+			 * ENOSYS, when DVFS override is not enabled, continue
+			 * tuning with default core voltage.
+			 */
+			SDHCI_TEGRA_DBG(
+				"dvfs overrides disabled. Vmin not updated\n");
+			err = 0;
+		}
+	}
 	kfree(temp_tap_data);
 	return err;
 }
@@ -2131,8 +2150,8 @@ static int sdhci_tegra_issue_tuning_cmd(struct sdhci_host *sdhci)
 		err = 0;
 		sdhci->tuning_done = 1;
 	} else {
-		tegra_sdhci_reset(sdhci, SDHCI_RESET_CMD);
 		tegra_sdhci_reset(sdhci, SDHCI_RESET_DATA);
+		tegra_sdhci_reset(sdhci, SDHCI_RESET_CMD);
 		err = -EIO;
 	}
 
@@ -2971,8 +2990,21 @@ static int sdhci_tegra_set_tuning_voltage(struct sdhci_host *sdhci,
 
 	SDHCI_TEGRA_DBG("%s: Setting vcore override %d\n",
 		mmc_hostname(sdhci->mmc), voltage);
-	/* First clear any previous dvfs override settings */
+	/*
+	 * First clear any previous dvfs override settings. If dvfs overrides
+	 * are disabled, then print the error message but continue execution
+	 * rather than failing tuning altogether.
+	 */
 	err = tegra_dvfs_override_core_voltage(pltfm_host->clk, 0);
+	if ((err == -EPERM) || (err == -ENOSYS)) {
+		/*
+		 * tegra_dvfs_override_core_voltage will return EPERM or ENOSYS,
+		 * when DVFS override is not enabled. Continue tuning
+		 * with default core voltage
+		 */
+		SDHCI_TEGRA_DBG("dvfs overrides disabled. Nothing to clear\n");
+		err = 0;
+	}
 	if (!voltage)
 		return err;
 
@@ -2989,8 +3021,20 @@ static int sdhci_tegra_set_tuning_voltage(struct sdhci_host *sdhci,
 			nom_emc_freq_set = true;
 	}
 
+	/*
+	 * If dvfs overrides are disabled, then print the error message but
+	 * continue tuning execution rather than failing tuning altogether.
+	 */
 	err = tegra_dvfs_override_core_voltage(pltfm_host->clk, voltage);
-	if (err)
+	if ((err == -EPERM) || (err == -ENOSYS)) {
+		/*
+		 * tegra_dvfs_override_core_voltage will return EPERM or ENOSYS,
+		 * when DVFS override is not enabled. Continue tuning
+		 * with default core voltage
+		 */
+		SDHCI_TEGRA_DBG("dvfs overrides disabled. No overrides set\n");
+		err = 0;
+	} else if (err)
 		dev_err(mmc_dev(sdhci->mmc),
 			"failed to set vcore override %dmv\n", voltage);
 
@@ -3226,6 +3270,9 @@ static int tegra_sdhci_suspend(struct sdhci_host *sdhci)
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(sdhci);
 	struct sdhci_tegra *tegra_host = pltfm_host->priv;
 	int err = 0;
+	struct platform_device *pdev = to_platform_device(mmc_dev(sdhci->mmc));
+	const struct tegra_sdhci_platform_data *plat;
+	unsigned int cd_irq;
 
 	tegra_sdhci_set_clock(sdhci, 0);
 
@@ -3236,6 +3283,18 @@ static int tegra_sdhci_suspend(struct sdhci_host *sdhci)
 		if (err)
 			dev_err(mmc_dev(sdhci->mmc),
 			"Regulators disable in suspend failed %d\n", err);
+	}
+	plat = pdev->dev.platform_data;
+	if (plat && gpio_is_valid(plat->cd_gpio)) {
+		if (!plat->cd_wakeup_incapable) {
+			/* Enable wake irq at end of suspend */
+			cd_irq = gpio_to_irq(plat->cd_gpio);
+			err = enable_irq_wake(cd_irq);
+			if (err < 0)
+				dev_err(mmc_dev(sdhci->mmc),
+				"SD card wake-up event registration for irq=%d failed with error: %d\n",
+				cd_irq, err);
+		}
 	}
 	return err;
 }
@@ -3248,11 +3307,17 @@ static int tegra_sdhci_resume(struct sdhci_host *sdhci)
 	struct tegra_sdhci_platform_data *plat;
 	unsigned int signal_voltage = 0;
 	int err;
+	unsigned int cd_irq;
 
 	pdev = to_platform_device(mmc_dev(sdhci->mmc));
 	plat = pdev->dev.platform_data;
 
-	if (gpio_is_valid(plat->cd_gpio)) {
+	if (plat && gpio_is_valid(plat->cd_gpio)) {
+		/* disable wake capability at start of resume */
+		if (!plat->cd_wakeup_incapable) {
+			cd_irq = gpio_to_irq(plat->cd_gpio);
+			disable_irq_wake(cd_irq);
+		}
 		tegra_host->card_present =
 			(gpio_get_value_cansleep(plat->cd_gpio) == 0);
 	}
@@ -3270,7 +3335,8 @@ static int tegra_sdhci_resume(struct sdhci_host *sdhci)
 			return err;
 		}
 		if (tegra_host->vdd_io_reg) {
-			if (plat->mmc_data.ocr_mask & SDHOST_1V8_OCR_MASK)
+			if (plat && (plat->mmc_data.ocr_mask &
+				SDHOST_1V8_OCR_MASK))
 				signal_voltage = MMC_SIGNAL_VOLTAGE_180;
 			else
 				signal_voltage = MMC_SIGNAL_VOLTAGE_330;
@@ -3888,7 +3954,7 @@ static struct sdhci_tegra_soc_data soc_data_tegra12 = {
 	.t2t_coeffs = t12x_tuning_coeffs,
 	.t2t_coeffs_count = 3,
 	.tap_hole_coeffs = t12x_tap_hole_coeffs,
-	.tap_hole_coeffs_count = 12,
+	.tap_hole_coeffs_count = 13,
 };
 
 static const struct of_device_id sdhci_tegra_dt_match[] = {
@@ -3990,6 +4056,17 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 		rc = -ENXIO;
 		goto err_no_plat;
 	}
+
+	/* FIXME: This is for until dma-mask binding is supported in DT.
+	 *        Set coherent_dma_mask for each Tegra SKUs.
+	 *        If dma_mask is NULL, set it to coherent_dma_mask. */
+	if (soc_data == &soc_data_tegra11)
+		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+	else
+		pdev->dev.coherent_dma_mask = DMA_BIT_MASK(64);
+
+	if (!pdev->dev.dma_mask)
+		pdev->dev.dma_mask = &pdev->dev.coherent_dma_mask;
 
 	tegra_host = devm_kzalloc(&pdev->dev, sizeof(*tegra_host), GFP_KERNEL);
 	if (!tegra_host) {
@@ -4298,13 +4375,6 @@ static int sdhci_tegra_probe(struct platform_device *pdev)
 			dev_err(mmc_dev(host->mmc), "request irq error\n");
 			goto err_cd_irq_req;
 		}
-		if (!plat->cd_wakeup_incapable) {
-			rc = enable_irq_wake(gpio_to_irq(plat->cd_gpio));
-			if (rc < 0)
-				dev_err(mmc_dev(host->mmc),
-					"SD card wake-up event registration "
-					"failed with error: %d\n", rc);
-		}
 	}
 	sdhci_tegra_error_stats_debugfs(host);
 	device_create_file(&pdev->dev, &dev_attr_cmd_state);
@@ -4366,8 +4436,6 @@ static int sdhci_tegra_remove(struct platform_device *pdev)
 	int rc = 0;
 
 	sdhci_remove_host(host, dead);
-
-	disable_irq_wake(gpio_to_irq(plat->cd_gpio));
 
 	rc = tegra_sdhci_configure_regulators(tegra_host, CONFIG_REG_DIS, 0, 0);
 	if (rc)

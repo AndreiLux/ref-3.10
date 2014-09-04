@@ -29,13 +29,15 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
-#include <linux/fs.h>
 
 #include <asm/exception.h>
 #include <asm/debug-monitors.h>
 #include <asm/system_misc.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/pagefault.h>
 
 static const char *fault_name(unsigned int esr);
 
@@ -104,25 +106,6 @@ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
 	do_exit(SIGKILL);
 }
 
-static void show_map(struct task_struct *tsk, u64 addr)
-{
-	struct vm_area_struct *vma;
-	struct file *file;
-	struct mm_struct *mm = tsk->mm;
-	char path[64];
-	char *p;
-
-	vma = find_vma(mm, addr);
-	if (!vma)
-		return;
-	file = vma->vm_file;
-	if (!file)
-		return;
-	p = d_path(&file->f_path, &path, 64);
-	if (IS_ERR(p))
-		return;
-	pr_alert("Library at 0x%llx: 0x%llx %s\n", addr, vma->vm_start, p);
-}
 /*
  * Something tried to access memory that isn't in our memory map. User mode
  * accesses just cause a SIGSEGV
@@ -140,12 +123,6 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 			addr, esr);
 		show_pte(tsk->mm, addr);
 		show_regs(regs);
-		show_map(tsk, instruction_pointer(regs));
-		if (compat_user_mode(regs))
-			show_map(tsk, regs->compat_lr);
-		else
-			show_map(tsk, regs->regs[30]);
-		pr_alert("vdso base = 0x%llx\n", tsk->mm->context.vdso);
 	}
 
 	tsk->thread.fault_address = addr;
@@ -225,6 +202,8 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	unsigned long vm_flags = VM_READ | VM_WRITE | VM_EXEC;
 	unsigned int mm_flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
 
+	trace_pagefault_entry(addr);
+
 	tsk = current;
 	mm  = tsk->mm;
 
@@ -279,7 +258,7 @@ retry:
 	 * would already be released in __lock_page_or_retry in mm/filemap.c.
 	 */
 	if ((fault & VM_FAULT_RETRY) && fatal_signal_pending(current))
-		return 0;
+		goto return0;
 
 	/*
 	 * Major/minor page fault accounting is only done on the initial
@@ -315,7 +294,7 @@ retry:
 	 */
 	if (likely(!(fault & (VM_FAULT_ERROR | VM_FAULT_BADMAP |
 			      VM_FAULT_BADACCESS))))
-		return 0;
+		goto return0;
 
 	/*
 	 * If we are in kernel mode at this point, we have no context to
@@ -331,7 +310,7 @@ retry:
 		 * oom-killed).
 		 */
 		pagefault_out_of_memory();
-		return 0;
+		goto return0;
 	}
 
 	if (fault & VM_FAULT_SIGBUS) {
@@ -352,10 +331,12 @@ retry:
 	}
 
 	__do_user_fault(tsk, addr, esr, sig, code, regs);
-	return 0;
+	goto return0;
 
 no_context:
 	__do_kernel_fault(mm, addr, esr, regs);
+return0:
+	trace_pagefault_exit(addr);
 	return 0;
 }
 

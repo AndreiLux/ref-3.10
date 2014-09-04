@@ -59,7 +59,7 @@ static int flounder_wifi_reset(int on);
 static int flounder_wifi_power(int on);
 static int flounder_wifi_set_carddetect(int val);
 static int flounder_wifi_get_mac_addr(unsigned char *buf);
-static void* flounder_wifi_get_country_code(char *country_iso_code);
+static void* flounder_wifi_get_country_code(char *country_iso_code, u32 flags);
 
 static struct wifi_platform_data flounder_wifi_control = {
 	.set_power	= flounder_wifi_power,
@@ -175,6 +175,7 @@ static struct tegra_sdhci_platform_data tegra_sdhci_platform_data0 = {
 	.uhs_mask = MMC_UHS_MASK_DDR50,
 	.calib_3v3_offsets = 0x7676,
 	.calib_1v8_offsets = 0x7676,
+	.default_drv_type = MMC_SET_DRIVER_TYPE_A,
 };
 
 static struct tegra_sdhci_platform_data tegra_sdhci_platform_data3 = {
@@ -330,61 +331,70 @@ struct cntry_locales_custom country_code_custom_table[] = {
 	{"",   "XZ", 11},  /* Universal if Country code is unknown or empty */
 	{"US", "US", 0},
 	{"AE", "AE", 1},
-	{"AR", "AR", 1},
-	{"AT", "AT", 1},
-	{"AU", "AU", 2},
-	{"BE", "BE", 1},
-	{"BG", "BG", 1},
-	{"BN", "BN", 1},
-	{"CA", "CA", 2},
-	{"CH", "CH", 1},
-	{"CY", "CY", 1},
-	{"CZ", "CZ", 1},
-	{"DE", "DE", 3},
-	{"DK", "DK", 1},
-	{"EE", "EE", 1},
-	{"ES", "ES", 1},
-	{"FI", "FI", 1},
-	{"FR", "FR", 1},
-	{"GB", "GB", 1},
-	{"GR", "GR", 1},
-	{"HR", "HR", 1},
-	{"HU", "HU", 1},
-	{"IE", "IE", 1},
-	{"IS", "IS", 1},
-	{"IT", "IT", 1},
-	{"ID", "ID", 12},
-	{"JP", "JP", 8},
-	{"KR", "KR", 24},
-	{"KW", "KW", 1},
-	{"LI", "LI", 1},
-	{"LT", "LT", 1},
-	{"LU", "LU", 1},
-	{"LV", "LV", 1},
-	{"MA", "MA", 1},
-	{"MT", "MT", 1},
-	{"MX", "MX", 1},
-	{"NL", "NL", 1},
-	{"NO", "NO", 1},
-	{"PL", "PL", 1},
-	{"PT", "PT", 1},
-	{"PY", "PY", 1},
-	{"RO", "RO", 1},
-	{"SE", "SE", 1},
-	{"SI", "SI", 1},
-	{"SK", "SK", 1},
+	{"AR", "AR", 21},
+	{"AT", "AT", 4},
+	{"AU", "AU", 6},
+	{"BE", "BE", 4},
+	{"BG", "BG", 4},
+	{"BN", "BN", 4},
+	{"BR", "BR", 4},
+	{"CA", "US", 0},   /* Previousely was CA/31 */
+	{"CH", "CH", 4},
+	{"CY", "CY", 4},
+	{"CZ", "CZ", 4},
+	{"DE", "DE", 7},
+	{"DK", "DK", 4},
+	{"EE", "EE", 4},
+	{"ES", "ES", 4},
+	{"FI", "FI", 4},
+	{"FR", "FR", 5},
+	{"GB", "GB", 6},
+	{"GR", "GR", 4},
+	{"HK", "HK", 2},
+	{"HR", "HR", 4},
+	{"HU", "HU", 4},
+	{"IE", "IE", 5},
+	{"IN", "IN", 3},
+	{"IS", "IS", 4},
+	{"IT", "IT", 4},
+	{"ID", "ID", 13},
+	{"JP", "JP", 58},
+	{"KR", "KR", 57},
+	{"KW", "KW", 5},
+	{"LI", "LI", 4},
+	{"LT", "LT", 4},
+	{"LU", "LU", 3},
+	{"LV", "LV", 4},
+	{"MA", "MA", 2},
+	{"MT", "MT", 4},
+	{"MX", "MX", 20},
+	{"MY", "MY", 3},
+	{"NL", "NL", 4},
+	{"NO", "NO", 4},
+	{"NZ", "NZ", 4},
+	{"PL", "PL", 4},
+	{"PT", "PT", 4},
+	{"PY", "PY", 2},
+	{"RO", "RO", 4},
+	{"RU", "RU", 5},
+	{"SE", "SE", 4},
+	{"SG", "SG", 4},
+	{"SI", "SI", 4},
+	{"SK", "SK", 4},
+	{"TH", "TH", 5},
 	{"TR", "TR", 7},
 	{"TW", "TW", 1},
+	{"VN", "VN", 4},
 	{"IR", "XZ", 11},	/* Universal if Country code is IRAN, (ISLAMIC REPUBLIC OF) */
 	{"SD", "XZ", 11},	/* Universal if Country code is SUDAN */
 	{"SY", "XZ", 11},	/* Universal if Country code is SYRIAN ARAB REPUBLIC */
 	{"GL", "XZ", 11},	/* Universal if Country code is GREENLAND */
-	{"PS", "XZ", 11},	/* Universal if Country code is PALESTINIAN TERRITORY, OCCUPIED */
+	{"PS", "XZ", 11},	/* Universal if Country code is PALESTINIAN TERRITORIES */
 	{"TL", "XZ", 11},	/* Universal if Country code is TIMOR-LESTE (EAST TIMOR) */
 	{"MH", "XZ", 11},	/* Universal if Country code is MARSHALL ISLANDS */
 };
 
-static void* flounder_wifi_get_country_code(char *country_iso_code)
+static void* flounder_wifi_get_country_code(char *country_iso_code, u32 flags)
 {
 	int size, i;
 
@@ -461,7 +471,7 @@ int __init flounder_sdhci_init(void)
 		tegra_sdhci_platform_data3.boot_vcore_mv = boot_vcore_mv;
 	}
 
-	tegra_sdhci_platform_data0.max_clk_limit = 136000000;
+	tegra_sdhci_platform_data0.max_clk_limit = 204000000;
 
 	speedo = tegra_fuse_readl(FUSE_SOC_SPEEDO_0);
 	tegra_sdhci_platform_data0.cpu_speedo = speedo;

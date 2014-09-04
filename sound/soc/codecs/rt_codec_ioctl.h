@@ -20,6 +20,13 @@ struct rt_codec_cmd {
 	int __user *buf;
 };
 
+#ifdef CONFIG_COMPAT
+struct compat_rt_codec_cmd {
+	compat_size_t number;
+	compat_caddr_t buf;
+};
+#endif /* CONFIG_COMPAT */
+
 struct rt_codec_ops {
 	int (*index_write)(struct snd_soc_codec *codec,
 		unsigned int reg, unsigned int value);
@@ -71,6 +78,15 @@ enum {
 	RT_GET_CODEC_DRC_AGC_COMP_IOCTL = _IOR('R', 0x13, struct rt_codec_cmd),
 	RT_GET_CODEC_ID = _IOR('R', 0x30, struct rt_codec_cmd),
 };
+
+#ifdef CONFIG_COMPAT
+enum {
+	RT_READ_CODEC_DSP_IOCTL_COMPAT =
+				_IOR('R', 0x04, struct compat_rt_codec_cmd),
+	RT_WRITE_CODEC_DSP_IOCTL_COMPAT =
+				_IOW('R', 0x04, struct compat_rt_codec_cmd),
+};
+#endif
 
 int realtek_ce_init_hwdep(struct snd_soc_codec *codec);
 struct rt_codec_ops *rt_codec_get_ioctl_ops(void);

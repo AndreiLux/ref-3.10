@@ -1,0 +1,41 @@
+/dts-v1/;
+
+#include "tegra132-flounder-generic.dtsi"
+
+/ {
+	compatible = "google,flounder64", "nvidia,tegra132";
+	hw-revision = "xd,xe,pvt";
+
+	i2c@7000c000 {
+		htc_mcu@72 {
+			compatible = "htc_mcu";
+			reg = <0x72>;
+			interrupt-parent = <&gpio>;
+			interrupts = <140 0x0>;
+			mcu,intr-gpio  = <&gpio 140 0>;
+			mcu,gs_chip_layout = <1>;
+			mcu,acceleration_axes = <6>;
+			mcu,magnetic_axes = <7>;
+			mcu,gyro_axes = <6>;
+			mcu,Cpu_wake_mcu-gpio = <&gpio 129 0>;
+			mcu,Reset-gpio = <&gpio 138 0>;
+			mcu,Chip_mode-gpio = <&gpio 164 0>;
+		};
+	};
+
+	panel_jdi_qxga_8_9 {
+		gpios = <&gpio TEGRA_GPIO(Q, 2) 0>,
+			<&gpio TEGRA_GPIO(R, 0) 0>,
+			<&gpio TEGRA_GPIO(I, 4) 0>,
+			<&gpio TEGRA_GPIO(H, 5) 0>;
+	};
+	i2c@7000c400 {
+		richtek_rt5506_amp@52 {
+			compatible = "richtek,rt5506-amp";
+			reg = <0x52>;
+			richtek,enable-gpio = <&gpio 185 0>;
+			richtek,enable-power-gpio = <&gpio 162 0>;
+		};
+	};
+};
+

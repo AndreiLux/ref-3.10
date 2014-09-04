@@ -1,7 +1,7 @@
 /*
  * tegra_rt5677.c - Tegra machine ASoC driver for boards using ALC5645 codec.
  *
- * Copyright (c) 2013, NVIDIA CORPORATION. All rights reserved.
+ * Copyright (c) 2013-2014, NVIDIA CORPORATION. All rights reserved.
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * version 2 as published by the Free Software Foundation.
@@ -30,6 +30,7 @@
 #include <linux/pm_runtime.h>
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/gpio-tegra.h>
+#include <linux/sysedp.h>
 
 #include <sound/core.h>
 #include <sound/jack.h>
@@ -40,11 +41,11 @@
 #include "../codecs/rt5506.h"
 #include "../codecs/tfa9895.h"
 
-
 #include "tegra_pcm.h"
-#include "tegra_asoc_utils.h"
 #include "tegra30_ahub.h"
 #include "tegra30_i2s.h"
+#include "tegra30_dam.h"
+#include "tegra_rt5677.h"
 
 #define DRV_NAME "tegra-snd-rt5677"
 
@@ -55,8 +56,10 @@
 #define DAI_LINK_PCM_OFFLOAD_FE	4
 #define DAI_LINK_COMPR_OFFLOAD_FE	5
 #define DAI_LINK_I2S_OFFLOAD_BE	6
-#define NUM_DAI_LINKS		7
-
+#define DAI_LINK_I2S_OFFLOAD_SPEAKER_BE	7
+#define DAI_LINK_PCM_OFFLOAD_CAPTURE_FE	8
+#define DAI_LINK_FAST_FE	9
+#define NUM_DAI_LINKS		10
 
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.0",
@@ -66,26 +69,11 @@ const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.4",
 };
 
-void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable);
 struct regulator *rt5677_reg;
+static struct sysedp_consumer *sysedpc;
 
-struct tegra_rt5677 {
-	struct tegra_asoc_utils_data util_data;
-	struct tegra_asoc_platform_data *pdata;
-	struct snd_soc_codec *codec;
-	int gpio_requested;
-	enum snd_soc_bias_level bias_level;
-	int clock_enabled;
-	struct regulator *codec_reg;
-	struct regulator *digital_reg;
-	struct regulator *analog_reg;
-	struct regulator *spk_reg;
-	struct regulator *mic_reg;
-	struct regulator *dmic_reg;
-	struct snd_soc_card *pcard;
-	struct delayed_work power_work;
-	struct work_struct hotword_work;
-};
+void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop);
+void set_rt5677_power_locked(struct tegra_rt5677 *machine, bool enable, bool hp_depop);
 
 static void tegra_do_hotword_work(struct work_struct *work)
 {
@@ -103,10 +91,349 @@ static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
 	value = gpio_get_value(machine->pdata->gpio_irq1);
 
 	pr_info("RT5677 IRQ is triggered = 0x%x\n", value);
-	if (value == 1)
+	if (value == 1) {
 		schedule_work(&machine->hotword_work);
-
+		wake_lock_timeout(&machine->vad_wake, msecs_to_jiffies(1500));
+	}
 	return IRQ_HANDLED;
+}
+
+static void tegra_rt5677_set_cif(int cif, unsigned int channels,
+	unsigned int sample_size)
+{
+	tegra30_ahub_set_tx_cif_channels(cif, channels, channels);
+
+	switch (sample_size) {
+	case 8:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_8, TEGRA30_AUDIOCIF_BITS_8);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif,
+		  TEGRA30_AHUB_CHANNEL_CTRL_TX_PACK_8_4);
+		break;
+
+	case 16:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_16, TEGRA30_AUDIOCIF_BITS_16);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif,
+		  TEGRA30_AHUB_CHANNEL_CTRL_TX_PACK_16);
+		break;
+
+	case 24:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_24, TEGRA30_AUDIOCIF_BITS_24);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif, 0);
+		break;
+
+	case 32:
+		tegra30_ahub_set_tx_cif_bits(cif,
+		  TEGRA30_AUDIOCIF_BITS_32, TEGRA30_AUDIOCIF_BITS_32);
+		tegra30_ahub_set_tx_fifo_pack_mode(cif, 0);
+		break;
+
+	default:
+		pr_err("Error in sample_size\n");
+		break;
+	}
+}
+
+
+static int tegra_rt5677_fe_pcm_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_enable_clocks();
+	tegra30_ahub_allocate_tx_fifo(
+		&machine->playback_fifo_cif,
+		&machine->playback_dma_data.addr,
+		&machine->playback_dma_data.req_sel);
+
+	machine->playback_dma_data.wrap = 4;
+	machine->playback_dma_data.width = 32;
+	cpu_dai->playback_dma_data = &machine->playback_dma_data;
+
+	tegra30_ahub_set_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2), machine->playback_fifo_cif);
+
+	return 0;
+}
+
+static void tegra_rt5677_fe_pcm_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2));
+	tegra30_ahub_free_tx_fifo(machine->playback_fifo_cif);
+	machine->playback_fifo_cif = -1;
+	tegra30_ahub_disable_clocks();
+}
+
+static int tegra_rt5677_fe_pcm_trigger(struct snd_pcm_substream *substream,
+			int cmd)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_ENABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		tegra30_ahub_enable_tx_fifo(machine->playback_fifo_cif);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		tegra30_ahub_disable_tx_fifo(machine->playback_fifo_cif);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_DISABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int tegra_rt5677_fe_compr_ops_startup(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *fe = cstream->private_data;
+	struct snd_soc_dai *cpu_dai = fe->cpu_dai;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
+
+	tegra30_ahub_enable_clocks();
+	tegra30_ahub_allocate_tx_fifo(
+		&machine->playback_fifo_cif,
+		&machine->playback_dma_data.addr,
+		&machine->playback_dma_data.req_sel);
+
+	machine->playback_dma_data.wrap = 4;
+	machine->playback_dma_data.width = 32;
+	cpu_dai->playback_dma_data = &machine->playback_dma_data;
+
+	tegra30_ahub_set_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2), machine->playback_fifo_cif);
+
+	return 0;
+}
+
+static void tegra_rt5677_fe_compr_ops_shutdown(struct snd_compr_stream *cstream)
+{
+	struct snd_soc_pcm_runtime *fe = cstream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
+
+	tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX0 +
+		(machine->dam_ifc * 2));
+	tegra30_ahub_free_tx_fifo(machine->playback_fifo_cif);
+	machine->playback_fifo_cif = -1;
+	tegra30_ahub_disable_clocks();
+}
+
+static int tegra_rt5677_fe_compr_ops_trigger(struct snd_compr_stream *cstream,
+			int cmd)
+{
+	struct snd_soc_pcm_runtime *fe = cstream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(fe->card);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_ENABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		tegra30_ahub_enable_tx_fifo(machine->playback_fifo_cif);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		tegra30_ahub_disable_tx_fifo(machine->playback_fifo_cif);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_DISABLE,
+			TEGRA30_DAM_CHIN0_SRC);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int tegra_rt5677_fe_fast_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_enable_clocks();
+	tegra30_ahub_allocate_tx_fifo(
+		&machine->playback_fast_fifo_cif,
+		&machine->playback_fast_dma_data.addr,
+		&machine->playback_fast_dma_data.req_sel);
+
+	machine->playback_fast_dma_data.width = 32;
+	machine->playback_fast_dma_data.wrap = 4;
+	cpu_dai->playback_dma_data = &machine->playback_fast_dma_data;
+
+	tegra30_ahub_set_rx_cif_source(
+			TEGRA30_AHUB_RXCIF_DAM0_RX1 + (machine->dam_ifc * 2),
+			machine->playback_fast_fifo_cif);
+
+	return 0;
+}
+
+static void tegra_rt5677_fe_fast_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	tegra30_ahub_unset_rx_cif_source(TEGRA30_AHUB_RXCIF_DAM0_RX1 +
+			(machine->dam_ifc * 2));
+	tegra30_ahub_free_tx_fifo(machine->playback_fast_fifo_cif);
+	machine->playback_fast_fifo_cif = -1;
+	tegra30_ahub_disable_clocks();
+}
+
+static int tegra_rt5677_fe_fast_trigger(struct snd_pcm_substream *substream,
+			int cmd)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
+
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		tegra30_dam_ch0_set_datasync(machine->dam_ifc, 2);
+		tegra30_dam_ch1_set_datasync(machine->dam_ifc, 0);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_ENABLE,
+				TEGRA30_DAM_CHIN1);
+		tegra30_ahub_enable_tx_fifo(machine->playback_fast_fifo_cif);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		tegra30_ahub_disable_tx_fifo(machine->playback_fast_fifo_cif);
+		tegra30_dam_enable(machine->dam_ifc, TEGRA30_DAM_DISABLE,
+				TEGRA30_DAM_CHIN1);
+		tegra30_dam_ch0_set_datasync(machine->dam_ifc, 1);
+		tegra30_dam_ch1_set_datasync(machine->dam_ifc, 0);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int tegra_rt5677_spk_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	int dam_ifc = machine->dam_ifc;
+	pr_info("%s:mi2s amp on\n",__func__);
+
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_SPEAKER_BE) {
+			mutex_lock(&machine->dam_mutex);
+			if (machine->dam_ref_cnt == 0) {
+				tegra30_dam_soft_reset(dam_ifc);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN0_SRC);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN1);
+				tegra30_dam_enable_clock(dam_ifc);
+
+				tegra30_dam_set_samplerate(dam_ifc, TEGRA30_DAM_CHOUT,
+					48000);
+				tegra30_dam_set_samplerate(dam_ifc,
+					TEGRA30_DAM_CHIN0_SRC, 48000);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					2, 16, 2, 32);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN1,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN1,
+					2, 16, 2, 32);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHOUT,
+					2, 16, 2, 32);
+				tegra30_dam_enable_stereo_mixing(machine->dam_ifc, 1);
+				tegra30_dam_ch0_set_datasync(dam_ifc, 0);
+				tegra30_dam_ch1_set_datasync(dam_ifc, 0);
+			}
+			tegra30_ahub_set_rx_cif_source(i2s->playback_i2s_cif,
+					TEGRA30_AHUB_TXCIF_DAM0_TX0 + machine->dam_ifc);
+			machine->dam_ref_cnt++;
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_allocate_tx_fifo(
+					&i2s->playback_fifo_cif,
+					&i2s->playback_dma_data.addr,
+					&i2s->playback_dma_data.req_sel);
+			i2s->playback_dma_data.wrap = 4;
+			i2s->playback_dma_data.width = 32;
+			cpu_dai->playback_dma_data = &i2s->playback_dma_data;
+			tegra30_ahub_set_rx_cif_source(
+				i2s->playback_i2s_cif,
+				i2s->playback_fifo_cif);
+			}
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		mutex_lock(&machine->spk_amp_lock);
+		set_tfa9895_spkamp(1, 0);
+		set_tfa9895l_spkamp(1, 0);
+		mutex_unlock(&machine->spk_amp_lock);
+	}
+
+	return 0;
+}
+
+static void tegra_rt5677_spk_shutdown(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	struct snd_soc_card *card = rtd->card;
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
+	pr_info("%s:mi2s amp off\n",__func__);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_SPEAKER_BE) {
+			mutex_lock(&machine->dam_mutex);
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			machine->dam_ref_cnt--;
+			if (machine->dam_ref_cnt == 0)
+				tegra30_dam_disable_clock(machine->dam_ifc);
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
+			i2s->playback_fifo_cif = -1;
+		}
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		mutex_lock(&machine->spk_amp_lock);
+		set_tfa9895_spkamp(0, 0);
+		set_tfa9895l_spkamp(0, 0);
+		mutex_unlock(&machine->spk_amp_lock);
+	}
+	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
 }
 
 static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
@@ -118,11 +445,64 @@ static int tegra_rt5677_startup(struct snd_pcm_substream *substream)
 	struct snd_soc_card *card = rtd->card;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
-	pr_debug("%s i2s->id=%d %d\n",__func__, i2s->id, pdata->i2s_param[HIFI_CODEC].audio_port_id);
+	int dam_ifc = machine->dam_ifc;
+
+	pr_debug("%s i2s->id=%d %d\n", __func__, i2s->id,
+			pdata->i2s_param[HIFI_CODEC].audio_port_id);
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, false);
 	if (i2s->id == pdata->i2s_param[HIFI_CODEC].audio_port_id) {
 		cancel_delayed_work_sync(&machine->power_work);
-		set_rt5677_power(pdata, true);
+		if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+			set_rt5677_power_locked(machine, true, true);
+		else
+			set_rt5677_power_locked(machine, true, false);
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_BE) {
+			mutex_lock(&machine->dam_mutex);
+			if (machine->dam_ref_cnt == 0) {
+				tegra30_dam_soft_reset(dam_ifc);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN0_SRC);
+				tegra30_dam_allocate_channel(dam_ifc,
+						TEGRA30_DAM_CHIN1);
+				tegra30_dam_enable_clock(dam_ifc);
+
+				tegra30_dam_set_samplerate(dam_ifc, TEGRA30_DAM_CHOUT,
+					48000);
+				tegra30_dam_set_samplerate(dam_ifc,
+					TEGRA30_DAM_CHIN0_SRC, 48000);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN0_SRC,
+					2, 16, 2, 32);
+				tegra30_dam_set_gain(dam_ifc, TEGRA30_DAM_CHIN1,
+					0x1000);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHIN1,
+					2, 16, 2, 32);
+				tegra30_dam_set_acif(dam_ifc, TEGRA30_DAM_CHOUT,
+					2, 16, 2, 32);
+				tegra30_dam_enable_stereo_mixing(machine->dam_ifc, 1);
+				tegra30_dam_ch0_set_datasync(dam_ifc, 0);
+				tegra30_dam_ch1_set_datasync(dam_ifc, 0);
+			}
+			tegra30_ahub_set_rx_cif_source(i2s->playback_i2s_cif,
+					TEGRA30_AHUB_TXCIF_DAM0_TX0 + machine->dam_ifc);
+			machine->dam_ref_cnt++;
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_allocate_tx_fifo(
+					&i2s->playback_fifo_cif,
+					&i2s->playback_dma_data.addr,
+					&i2s->playback_dma_data.req_sel);
+			i2s->playback_dma_data.wrap = 4;
+			i2s->playback_dma_data.width = 32;
+			cpu_dai->playback_dma_data = &i2s->playback_dma_data;
+			tegra30_ahub_set_rx_cif_source(
+				i2s->playback_i2s_cif,
+				i2s->playback_fifo_cif);
+		}
 	}
 	return 0;
 }
@@ -132,8 +512,28 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
 	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(cpu_dai);
+	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(rtd->card);
 
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (rtd->dai_link->be_id == DAI_LINK_I2S_OFFLOAD_BE) {
+			mutex_lock(&machine->dam_mutex);
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			machine->dam_ref_cnt--;
+			if (machine->dam_ref_cnt == 0)
+				tegra30_dam_disable_clock(machine->dam_ifc);
+			mutex_unlock(&machine->dam_mutex);
+		} else {
+			tegra30_ahub_unset_rx_cif_source(i2s->playback_i2s_cif);
+			tegra30_ahub_free_tx_fifo(i2s->playback_fifo_cif);
+			i2s->playback_fifo_cif = -1;
+		}
+	}
 	tegra_asoc_utils_tristate_pd_dap(i2s->id, true);
+
+	if (machine->codec && machine->codec->active)
+		return;
+
+	__set_rt5677_power(machine, false, false);
 }
 
 static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
@@ -267,6 +667,16 @@ static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
 		return err;
 	}
 
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if ((int)machine->playback_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fifo_cif,
+				params_channels(params), sample_size);
+
+		if ((int)machine->playback_fast_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fast_fifo_cif,
+				params_channels(params), sample_size);
+	}
+
 	return 0;
 }
 
@@ -278,7 +688,7 @@ static int tegra_speaker_hw_params(struct snd_pcm_substream *substream,
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	int i2s_daifmt;
-	int err;
+	int err, sample_size;
 
 	i2s_daifmt = SND_SOC_DAIFMT_NB_NF;
 	i2s_daifmt |= pdata->i2s_param[SPEAKER].is_i2s_master ?
@@ -309,6 +719,33 @@ static int tegra_speaker_hw_params(struct snd_pcm_substream *substream,
 	if (err < 0) {
 		dev_err(card->dev, "cpu_dai fmt not set\n");
 		return err;
+	}
+
+	switch (params_format(params)) {
+	case SNDRV_PCM_FORMAT_S8:
+		sample_size = 8;
+		break;
+	case SNDRV_PCM_FORMAT_S16_LE:
+		sample_size = 16;
+		break;
+	case SNDRV_PCM_FORMAT_S24_LE:
+		sample_size = 24;
+		break;
+	case SNDRV_PCM_FORMAT_S32_LE:
+		sample_size = 32;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if ((int)machine->playback_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fifo_cif,
+				params_channels(params), sample_size);
+
+		if ((int)machine->playback_fast_fifo_cif >= 0)
+			tegra_rt5677_set_cif(machine->playback_fast_fifo_cif,
+				params_channels(params), sample_size);
 	}
 
 	return 0;
@@ -375,10 +812,28 @@ static struct snd_soc_ops tegra_rt5677_ops = {
 	.shutdown = tegra_rt5677_shutdown,
 };
 
+static struct snd_soc_ops tegra_rt5677_fe_pcm_ops = {
+	.startup = tegra_rt5677_fe_pcm_startup,
+	.shutdown = tegra_rt5677_fe_pcm_shutdown,
+	.trigger = tegra_rt5677_fe_pcm_trigger,
+};
+
+static struct snd_soc_compr_ops tegra_rt5677_fe_compr_ops = {
+	.startup = tegra_rt5677_fe_compr_ops_startup,
+	.shutdown = tegra_rt5677_fe_compr_ops_shutdown,
+	.trigger = tegra_rt5677_fe_compr_ops_trigger,
+};
+
+static struct snd_soc_ops tegra_rt5677_fe_fast_ops = {
+	.startup = tegra_rt5677_fe_fast_startup,
+	.shutdown = tegra_rt5677_fe_fast_shutdown,
+	.trigger = tegra_rt5677_fe_fast_trigger,
+};
+
 static struct snd_soc_ops tegra_rt5677_speaker_ops = {
 	.hw_params = tegra_speaker_hw_params,
-	.startup = tegra_rt5677_startup,
-	.shutdown = tegra_rt5677_shutdown,
+	.startup = tegra_rt5677_spk_startup,
+	.shutdown = tegra_rt5677_spk_shutdown,
 };
 
 static struct snd_soc_ops tegra_rt5677_bt_sco_ops = {
@@ -701,11 +1156,10 @@ static const struct snd_soc_dapm_route flounder_audio_map[] = {
 	{"DMIC L2", NULL, "Int Mic"},
 	{"DMIC R2", NULL, "Int Mic"},
 	/* AHUB BE connections */
-	{"tegra30-i2s.1 Playback", NULL, "I2S1_OUT"},
-
-	{"I2S1_OUT", NULL, "offload-pcm-playback"},
-	{"I2S1_OUT", NULL, "offload-compr-playback"},
+	{"DAM VMixer", NULL, "fast-pcm-playback"},
+	{"DAM VMixer", NULL, "offload-compr-playback"},
 	{"AIF1 Playback", NULL, "I2S1_OUT"},
+	{"Playback", NULL, "I2S2_OUT"},
 };
 
 static const struct snd_kcontrol_new flounder_controls[] = {
@@ -751,24 +1205,30 @@ static int tegra_rt5677_init(struct snd_soc_pcm_runtime *rtd)
 	return 0;
 }
 
+static int tegra_rt5677_be_init(struct snd_soc_pcm_runtime *rtd)
+{
+	struct snd_soc_dai *dai = rtd->cpu_dai;
+	struct tegra30_i2s *i2s = snd_soc_dai_get_drvdata(dai);
+
+	i2s->allocate_pb_fifo_cif = false;
+
+	return 0;
+}
+
 static int tegra_offload_hw_params_be_fixup(struct snd_soc_pcm_runtime *rtd,
 			struct snd_pcm_hw_params *params)
 {
-	if (!params_rate(params)) {
-		struct snd_interval *snd_rate = hw_param_interval(params,
+	struct snd_interval *snd_rate = hw_param_interval(params,
 						SNDRV_PCM_HW_PARAM_RATE);
-
-		snd_rate->min = snd_rate->max = 48000;
-	}
-
-	if (!params_channels(params)) {
-		struct snd_interval *snd_channels = hw_param_interval(params,
+	struct snd_interval *snd_channels = hw_param_interval(params,
 						SNDRV_PCM_HW_PARAM_CHANNELS);
 
-		snd_channels->min = snd_channels->max = 2;
-	}
-	snd_mask_set(hw_param_mask(params, SNDRV_PCM_HW_PARAM_FORMAT),
-				ffs(SNDRV_PCM_FORMAT_S16_LE));
+	snd_rate->min = snd_rate->max = 48000;
+	snd_channels->min = snd_channels->max = 2;
+
+	snd_mask_set(&params->masks[SNDRV_PCM_HW_PARAM_FORMAT -
+				SNDRV_PCM_HW_PARAM_FIRST_MASK],
+				SNDRV_PCM_FORMAT_S16_LE);
 
 	pr_debug("%s::%d %d %d\n", __func__, params_rate(params),
 			params_channels(params), params_format(params));
@@ -817,7 +1277,7 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 		.ops = &tegra_rt5677_speaker_ops,
 	},
 	[DAI_LINK_PCM_OFFLOAD_FE] = {
-		.name = "offload-pcm",
+		.name = "fe-offload-pcm",
 		.stream_name = "offload-pcm",
 
 		.platform_name = "tegra-offload",
@@ -825,11 +1285,11 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 
 		.codec_dai_name =  "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
-
+		.ops = &tegra_rt5677_fe_pcm_ops,
 		.dynamic = 1,
 	},
 	[DAI_LINK_COMPR_OFFLOAD_FE] = {
-		.name = "offload-compr",
+		.name = "fe-offload-compr",
 		.stream_name = "offload-compr",
 
 		.platform_name = "tegra-offload",
@@ -837,24 +1297,89 @@ static struct snd_soc_dai_link tegra_rt5677_dai[NUM_DAI_LINKS] = {
 
 		.codec_dai_name =  "snd-soc-dummy-dai",
 		.codec_name = "snd-soc-dummy",
+		.compr_ops = &tegra_rt5677_fe_compr_ops,
+		.dynamic = 1,
+	},
+	[DAI_LINK_PCM_OFFLOAD_CAPTURE_FE] = {
+		.name = "fe-offload-pcm-capture",
+		.stream_name = "offload-pcm-capture",
 
+		.platform_name = "tegra-offload",
+		.cpu_dai_name = "tegra-offload-pcm",
+
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+
+	},
+	[DAI_LINK_FAST_FE] = {
+		.name = "fe-fast-pcm",
+		.stream_name = "fast-pcm",
+		.platform_name = "tegra-pcm-audio",
+		.cpu_dai_name = "tegra-fast-pcm",
+		.codec_dai_name = "snd-soc-dummy-dai",
+		.codec_name = "snd-soc-dummy",
+		.ops = &tegra_rt5677_fe_fast_ops,
 		.dynamic = 1,
 	},
 	[DAI_LINK_I2S_OFFLOAD_BE] = {
-		.name = "offload-audio",
+		.name = "be-offload-audio-codec",
 		.stream_name = "offload-audio-pcm",
 		.codec_name = "rt5677.1-002d",
 		.platform_name = "tegra30-i2s.1",
 		.cpu_dai_name = "tegra30-i2s.1",
 		.codec_dai_name = "rt5677-aif1",
+		.init = tegra_rt5677_be_init,
 		.ops = &tegra_rt5677_ops,
 
 		.no_pcm = 1,
 
-		.be_id = 0,
+		.be_id = DAI_LINK_I2S_OFFLOAD_BE,
+		.ignore_pmdown_time = 1,
+		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
+	},
+	[DAI_LINK_I2S_OFFLOAD_SPEAKER_BE] = {
+		.name = "be-offload-audio-speaker",
+		.stream_name = "offload-audio-pcm-spk",
+		.codec_name = "spdif-dit.0",
+		.platform_name = "tegra30-i2s.2",
+		.cpu_dai_name = "tegra30-i2s.2",
+		.codec_dai_name = "dit-hifi",
+		.init = tegra_rt5677_be_init,
+		.ops = &tegra_rt5677_speaker_ops,
+
+		.no_pcm = 1,
+
+		.be_id = DAI_LINK_I2S_OFFLOAD_SPEAKER_BE,
+		.ignore_pmdown_time = 1,
 		.be_hw_params_fixup = tegra_offload_hw_params_be_fixup,
 	},
 };
+
+void mclk_enable(struct tegra_rt5677 *machine, bool on)
+{
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
+	int ret;
+	if (on) {
+		gpio_free(pdata->codec_mclk.id);
+		pr_debug("%s: gpio_free for gpio[%d] %s\n",
+				__func__, pdata->codec_mclk.id, pdata->codec_mclk.name);
+		machine->clock_enabled = 1;
+		tegra_asoc_utils_clk_enable(&machine->util_data);
+	} else {
+		machine->clock_enabled = 0;
+		tegra_asoc_utils_clk_disable(&machine->util_data);
+		ret = gpio_request(pdata->codec_mclk.id,
+					 pdata->codec_mclk.name);
+		if (ret) {
+			pr_err("Fail gpio_request codec_mclk, %d\n",
+				ret);
+			return;
+		}
+		gpio_direction_output(pdata->codec_mclk.id, 0);
+		pr_debug("%s: gpio_request for gpio[%d] %s, return %d\n",
+				__func__, pdata->codec_mclk.id, pdata->codec_mclk.name, ret);
+	}
+}
 
 static int tegra_rt5677_suspend_post(struct snd_soc_card *card)
 {
@@ -872,10 +1397,11 @@ static int tegra_rt5677_suspend_post(struct snd_soc_card *card)
 	if (suspend_allowed) {
 		/*This may be required if dapm setbias level is not called in
 		some cases, may be due to a wrong dapm map*/
+		mutex_lock(&machine->rt5677_lock);
 		if (machine->clock_enabled) {
-			machine->clock_enabled = 0;
-			tegra_asoc_utils_clk_disable(&machine->util_data);
+			mclk_enable(machine, 0);
 		}
+		mutex_unlock(&machine->rt5677_lock);
 		/*TODO: Disable Audio Regulators*/
 	}
 
@@ -886,7 +1412,6 @@ static int tegra_rt5677_resume_pre(struct snd_soc_card *card)
 {
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	int i, suspend_allowed = 1;
-	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	/*In Voice Call we ignore suspend..so check for that*/
 	for (i = 0; i < machine->pcard->num_links; i++) {
 		if (machine->pcard->dai_link[i].ignore_suspend) {
@@ -898,12 +1423,14 @@ static int tegra_rt5677_resume_pre(struct snd_soc_card *card)
 	if (suspend_allowed) {
 		/*This may be required if dapm setbias level is not called in
 		some cases, may be due to a wrong dapm map*/
+		mutex_lock(&machine->rt5677_lock);
 		if (!machine->clock_enabled &&
 				machine->bias_level != SND_SOC_BIAS_OFF) {
-			set_rt5677_power(pdata, true);
-			machine->clock_enabled = 1;
+			mclk_enable(machine, 1);
 			tegra_asoc_utils_clk_enable(&machine->util_data);
+			__set_rt5677_power(machine, true, true);
 		}
+		mutex_unlock(&machine->rt5677_lock);
 		/*TODO: Enable Audio Regulators*/
 	}
 
@@ -914,15 +1441,16 @@ static int tegra_rt5677_set_bias_level(struct snd_soc_card *card,
 	struct snd_soc_dapm_context *dapm, enum snd_soc_bias_level level)
 {
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_asoc_platform_data *pdata = machine->pdata;
+
+	cancel_delayed_work_sync(&machine->power_work);
+	mutex_lock(&machine->rt5677_lock);
 	if (machine->bias_level == SND_SOC_BIAS_OFF &&
 		level != SND_SOC_BIAS_OFF && (!machine->clock_enabled)) {
-		cancel_delayed_work_sync(&machine->power_work);
-		set_rt5677_power(pdata, true);
-		machine->clock_enabled = 1;
-		tegra_asoc_utils_clk_enable(&machine->util_data);
+		mclk_enable(machine, 1);
 		machine->bias_level = level;
+		__set_rt5677_power(machine, true, false);
 	}
+	mutex_unlock(&machine->rt5677_lock);
 
 	return 0;
 }
@@ -933,16 +1461,24 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	struct snd_soc_codec *codec = NULL;
 	struct rt5677_priv *rt5677 = NULL;
+	int i = 0;
 
 	if (machine->codec) {
 		codec = machine->codec;
 		rt5677 = snd_soc_codec_get_drvdata(codec);
 	}
 
+	mutex_lock(&machine->rt5677_lock);
+
+	for (i = 0; i < card->num_rtd; i++) {
+		codec = card->rtd[i].codec;
+		if (codec && codec->active)
+			goto exit;
+	}
+
 	if (machine->bias_level != SND_SOC_BIAS_OFF &&
 		level == SND_SOC_BIAS_OFF && machine->clock_enabled) {
-		machine->clock_enabled = 0;
-		tegra_asoc_utils_clk_disable(&machine->util_data);
+		mclk_enable(machine, 0);
 		if (rt5677)
 		{
 			if (rt5677->vad_mode != RT5677_VAD_IDLE) {
@@ -950,8 +1486,9 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 			}
 		}
 	}
-
 	machine->bias_level = level;
+exit:
+	mutex_unlock(&machine->rt5677_lock);
 
 	return 0;
 }
@@ -974,25 +1511,47 @@ static struct snd_soc_card snd_soc_tegra_rt5677 = {
 	.fully_routed = true,
 };
 
-void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
+void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop)
 {
+	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	int ret = 0;
 	static bool status = false;
 
 	if (enable && status == false) {
 		/* set hp_en high to depop for headset path */
-		set_rt5506_hp_en(1);
+		if (hp_depop)
+			set_rt5506_hp_en(1);
 		pr_info("tegra_rt5677 power_on\n");
+
+		/*V_IO_1V8*/
+		if (gpio_is_valid(pdata->gpio_ldo1_en)) {
+			pr_debug("gpio_ldo1_en %d is valid\n", pdata->gpio_ldo1_en);
+			ret = gpio_request(pdata->gpio_ldo1_en, "rt5677-ldo-enable");
+			if (ret) {
+				pr_err("Fail gpio_request gpio_ldo1_en, %d\n", ret);
+			} else {
+				ret = gpio_direction_output(pdata->gpio_ldo1_en, 1);
+				if (ret) {
+					pr_err("gpio_ldo1_en=1 fail,%d\n", ret);
+					gpio_free(pdata->gpio_ldo1_en);
+				} else
+					pr_debug("gpio_ldo1_en=1\n");
+			}
+		} else {
+			pr_err("gpio_ldo1_en %d is invalid\n", pdata->gpio_ldo1_en);
+		}
+
+		usleep_range(1000, 2000);
 
 		/*V_AUD_1V2*/
 		if (IS_ERR(rt5677_reg))
-			pr_info("Fail regulator_get v_ldo2\n");
+			pr_err("Fail regulator_get v_ldo2\n");
 		else {
 			ret = regulator_enable(rt5677_reg);
 			if (ret)
-				pr_info("Fail regulator_enable v_ldo2, %d\n", ret);
+				pr_err("Fail regulator_enable v_ldo2, %d\n", ret);
 			else
-				pr_info("tegra_rt5677_reg v_ldo2 is enabled\n");
+				pr_debug("tegra_rt5677_reg v_ldo2 is enabled\n");
 		}
 
 		usleep_range(1000, 2000);
@@ -1003,7 +1562,7 @@ void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
 			if (ret)
 				pr_err("Turn on gpio_int_mic_en fail,%d\n", ret);
 			else
-				pr_info("Turn on gpio_int_mic_en\n");
+				pr_debug("Turn on gpio_int_mic_en\n");
 		} else {
 			pr_err("gpio_int_mic_en is invalid,%d\n", ret);
 		}
@@ -1016,7 +1575,7 @@ void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
 			if (ret)
 				pr_err("Turn on gpio_reset fail,%d\n", ret);
 			else
-				pr_info("Turn on gpio_reset\n");
+				pr_debug("Turn on gpio_reset\n");
 		} else {
 			pr_err("gpio_reset is invalid,%d\n", ret);
 		}
@@ -1030,7 +1589,7 @@ void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
 			if (ret)
 				pr_err("Turn off gpio_reset fail,%d\n", ret);
 			else
-				pr_info("Turn off gpio_reset\n");
+				pr_debug("Turn off gpio_reset\n");
 		} else {
 			pr_err("gpio_reset is invalid,%d\n", ret);
 		}
@@ -1041,7 +1600,7 @@ void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
 			if (ret)
 				pr_err("Turn off gpio_int_mic_en fail,%d\n", ret);
 			else
-				pr_info("Turn off gpio_int_mic_en\n");
+				pr_debug("Turn off gpio_int_mic_en\n");
 		} else {
 			pr_err("gpio_int_mic_en is invalid,%d\n", ret);
 		}
@@ -1050,35 +1609,68 @@ void set_rt5677_power(struct tegra_asoc_platform_data *pdata, bool enable)
 
 		/*V_AUD_1V2*/
 		if (IS_ERR(rt5677_reg))
-			pr_info("Fail regulator_get v_ldo2\n");
+			pr_err("Fail regulator_get v_ldo2\n");
 		else {
 			ret = regulator_disable(rt5677_reg);
 			if (ret)
-				pr_info("Fail regulator_disable v_ldo2, %d\n", ret);
+				pr_err("Fail regulator_disable v_ldo2, %d\n", ret);
 			else
-				pr_info("tegra_rt5677_reg v_ldo2 is disabled\n");
+				pr_debug("tegra_rt5677_reg v_ldo2 is disabled\n");
 		}
+
+		usleep_range(1000, 2000);
+
+		/*V_IO_1V8*/
+		if (gpio_is_valid(pdata->gpio_ldo1_en)) {
+			pr_debug("gpio_ldo1_en %d is valid\n", pdata->gpio_ldo1_en);
+			ret = gpio_direction_output(pdata->gpio_ldo1_en, 0);
+			if (ret)
+				pr_err("gpio_ldo1_en=0 fail,%d\n", ret);
+			else
+				pr_debug("gpio_ldo1_en=0\n");
+
+			gpio_free(pdata->gpio_ldo1_en);
+		} else {
+			pr_err("gpio_ldo1_en %d is invalid\n", pdata->gpio_ldo1_en);
+		}
+
+		/* set hp_en low to prevent power leakage */
+		set_rt5506_hp_en(0);
 		status = false;
+		if (machine->clock_enabled)
+			mclk_enable(machine, 0);
+		machine->bias_level = SND_SOC_BIAS_OFF;
 	}
+
 	return;
+}
+
+void set_rt5677_power_locked(struct tegra_rt5677 *machine, bool enable, bool hp_depop)
+{
+	mutex_lock(&machine->rt5677_lock);
+	__set_rt5677_power(machine, enable, hp_depop);
+	mutex_unlock(&machine->rt5677_lock);
 }
 
 void set_rt5677_power_extern(bool enable)
 {
 	struct snd_soc_card *card = &snd_soc_tegra_rt5677;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_asoc_platform_data *pdata = machine->pdata;
 
-	set_rt5677_power(pdata, enable);
-}EXPORT_SYMBOL(set_rt5677_power_extern);
+	set_rt5677_power_locked(machine, enable, false);
+}
+EXPORT_SYMBOL(set_rt5677_power_extern);
 
 static void trgra_do_power_work(struct work_struct *work)
 {
 	struct snd_soc_card *card = &snd_soc_tegra_rt5677;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
-	struct tegra_asoc_platform_data *pdata = machine->pdata;
-
-	set_rt5677_power(pdata, false);
+	mutex_lock(&machine->rt5677_lock);
+	if (machine->clock_enabled == 1) {
+		pr_info("%s to close MCLK\n", __func__);
+		mclk_enable(machine, 0);
+	}
+	mutex_unlock(&machine->rt5677_lock);
 }
 
 static int tegra_rt5677_driver_probe(struct platform_device *pdev)
@@ -1214,8 +1806,10 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "gpio_reset %d is invalid\n", pdata->gpio_reset);
 
 	usleep_range(1000, 2000);
+	mutex_init(&machine->rt5677_lock);
+	mutex_init(&machine->spk_amp_lock);
 
-	set_rt5677_power(pdata, true);
+	set_rt5677_power_locked(machine, true, false);
 
 	usleep_range(500, 1500);
 
@@ -1260,6 +1854,7 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 			goto err_free_machine;
 		} else {
 			dev_dbg(&pdev->dev, "request_irq rt5677_irq ok\n");
+			enable_irq_wake(rt5677_irq);
 		}
 	} else {
 		dev_err(&pdev->dev, "gpio_irq1 %d is invalid\n",
@@ -1283,6 +1878,9 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	tegra_rt5677_dai[DAI_LINK_SPEAKER].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 	tegra_rt5677_dai[DAI_LINK_SPEAKER].platform_name =
+	tegra_rt5677_i2s_dai_name[codec_id];
+
+	tegra_rt5677_dai[DAI_LINK_I2S_OFFLOAD_SPEAKER_BE].cpu_dai_name =
 	tegra_rt5677_i2s_dai_name[codec_id];
 
 	tegra_rt5677_dai[DAI_LINK_MI2S_DUMMY].cpu_dai_name =
@@ -1322,8 +1920,27 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	}
 #endif
 
+	if (machine->clock_enabled == 1) {
+		pr_info("%s to close MCLK\n", __func__);
+		mclk_enable(machine, 0);
+	}
 	schedule_delayed_work(&machine->power_work,
 		msecs_to_jiffies(1000));
+	machine->bias_level = SND_SOC_BIAS_OFF;
+
+	sysedpc = sysedp_create_consumer("speaker", "speaker");
+
+	wake_lock_init(&machine->vad_wake, WAKE_LOCK_SUSPEND, "rt5677_wake");
+
+	machine->playback_fifo_cif = -1;
+	machine->playback_fast_fifo_cif = -1;
+
+	machine->dam_ifc = tegra30_dam_allocate_controller();
+	if (machine->dam_ifc < 0) {
+		dev_err(&pdev->dev, "DAM allocation failed\n");
+		goto err_unregister_card;
+	}
+	mutex_init(&machine->dam_mutex);
 
 	return 0;
 
@@ -1331,13 +1948,17 @@ err_unregister_card:
 	snd_soc_unregister_card(card);
 err_unregister_switch:
 	tegra_asoc_utils_fini(&machine->util_data);
+	disable_irq_wake(rt5677_irq);
 	free_irq(rt5677_irq, 0);
 err_free_machine:
 	if (np)
 		kfree(machine->pdata);
 
 	kfree(machine);
-
+	if (machine->clock_enabled == 1) {
+		pr_info("%s to close MCLK\n", __func__);
+		mclk_enable(machine, 0);
+	}
 	return ret;
 }
 
@@ -1359,15 +1980,17 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 			ret = rt5677_irq;
 			dev_err(&pdev->dev, "Fail gpio_to_irq gpio_irq1, %d\n",
 				ret);
+		} else {
+			disable_irq_wake(rt5677_irq);
+			free_irq(rt5677_irq, 0);
 		}
-		free_irq(rt5677_irq, 0);
 		cancel_work_sync(&machine->hotword_work);
 	} else {
 		dev_err(&pdev->dev, "gpio_irq1 %d is invalid\n",
 			pdata->gpio_irq1);
 	}
 
-	set_rt5677_power(pdata, false);
+	set_rt5677_power_locked(machine, false, false);
 
 	if (gpio_is_valid(pdata->gpio_int_mic_en))
 		gpio_free(pdata->gpio_int_mic_en);
@@ -1394,9 +2017,16 @@ static int tegra_rt5677_driver_remove(struct platform_device *pdev)
 			pdata->gpio_ldo1_en);
 	}
 
+	if (machine->dam_ifc >= 0)
+		tegra30_dam_free_controller(machine->dam_ifc);
+
 	snd_soc_unregister_card(card);
 
 	tegra_asoc_utils_fini(&machine->util_data);
+
+	sysedp_free_consumer(sysedpc);
+
+	wake_lock_destroy(&machine->vad_wake);
 
 	if (np)
 		kfree(machine->pdata);
@@ -1433,7 +2063,8 @@ static void __exit tegra_rt5677_modexit(void)
 	platform_driver_unregister(&tegra_rt5677_driver);
 }
 module_exit(tegra_rt5677_modexit);
-
+MODULE_AUTHOR("Ravindra Lokhande <rlokhande@nvidia.com>");
+MODULE_AUTHOR("Manoj Gangwal <mgangwal@nvidia.com>");
 MODULE_AUTHOR("Nikesh Oswal <noswal@nvidia.com>");
 MODULE_DESCRIPTION("Tegra+rt5677 machine ASoC driver");
 MODULE_LICENSE("GPL");

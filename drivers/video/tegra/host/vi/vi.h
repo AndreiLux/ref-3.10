@@ -35,6 +35,12 @@ struct tegra_vi_stats {
 	atomic_t overflow;
 };
 
+struct vi_cpu_info {
+	/* client to change min cpu freq rate*/
+	struct pm_qos_request min_cpu_req;
+	bool boost_cpu;
+};
+
 struct vi {
 	struct tegra_camera *camera;
 	struct platform_device *ndev;
@@ -47,13 +53,12 @@ struct vi {
 #if defined(CONFIG_TEGRA_ISOMGR)
 	tegra_isomgr_handle isomgr_handle;
 #endif
+	struct vi_cpu_info cpu_info;
 };
 
 extern const struct file_operations tegra_vi_ctrl_ops;
 int nvhost_vi_prepare_poweroff(struct platform_device *);
 int nvhost_vi_finalize_poweron(struct platform_device *);
-int nvhost_vi_init(struct platform_device *);
-void nvhost_vi_deinit(struct platform_device *);
 void nvhost_vi_reset(struct platform_device *);
 
 #endif

@@ -38,6 +38,7 @@
 enum {
 	PCM_OFFLOAD_DAI,
 	COMPR_OFFLOAD_DAI,
+	PCM_CAPTURE_OFFLOAD_DAI,
 	MAX_OFFLOAD_DAI
 };
 
@@ -51,15 +52,17 @@ struct tegra_offload_compr_data {
 	struct tegra_offload_compr_ops *ops;
 	struct snd_codec codec;
 	int stream_id;
-	int stream_vol[2];
-	struct snd_kcontrol *kcontrol;
 };
 
 static struct tegra_offload_ops offload_ops;
 static int tegra_offload_init_done;
 static DEFINE_MUTEX(tegra_offload_lock);
+static unsigned int compr_vol[2] = {AVP_UNITY_STREAM_VOLUME,
+			AVP_UNITY_STREAM_VOLUME};
 
-static const struct snd_pcm_hardware tegra_offload_pcm_hardware = {
+static int codec, spk;
+
+static const struct snd_pcm_hardware tegra_offload_pcm_hw_pb = {
 	.info			= SNDRV_PCM_INFO_MMAP |
 				  SNDRV_PCM_INFO_MMAP_VALID |
 				  SNDRV_PCM_INFO_PAUSE |
@@ -74,6 +77,23 @@ static const struct snd_pcm_hardware tegra_offload_pcm_hardware = {
 	.periods_max		= 8,
 	.buffer_bytes_max	= PAGE_SIZE * 8,
 	.fifo_size		= 4,
+};
+
+static const struct snd_pcm_hardware tegra_offload_pcm_hw_cap = {
+	.info                   = SNDRV_PCM_INFO_MMAP |
+	SNDRV_PCM_INFO_MMAP_VALID |
+	SNDRV_PCM_INFO_PAUSE |
+	SNDRV_PCM_INFO_RESUME |
+	SNDRV_PCM_INFO_INTERLEAVED,
+	.formats                = SNDRV_PCM_FMTBIT_S16_LE,
+	.channels_min           = 2,
+	.channels_max           = 2,
+	.period_bytes_min       = 128,
+	.period_bytes_max       = PAGE_SIZE * 2,
+	.periods_min            = 1,
+	.periods_max            = 8,
+	.buffer_bytes_max       = PAGE_SIZE * 8,
+	.fifo_size              = 4,
 };
 
 int tegra_register_offload_ops(struct tegra_offload_ops *ops)
@@ -112,76 +132,50 @@ static void tegra_offload_compr_fragment_elapsed(void *arg, unsigned int is_eos)
 static int tegra_set_compress_volume(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	int ret = 1;
-	struct snd_compr_stream *stream = snd_kcontrol_chip(kcontrol);
-	struct tegra_offload_compr_data *data = stream->runtime->private_data;
-	struct snd_soc_pcm_runtime *rtd = stream->device->private_data;
-	struct device *dev = rtd->platform->dev;
+	int ret = 0;
+	struct snd_soc_platform *platform = snd_kcontrol_chip(kcontrol);
+	struct tegra_offload_compr_data *data =
+			snd_soc_platform_get_drvdata(platform);
 
-	pr_debug("%s: value[0]: %d value[1]: %d\n", __func__,
-		(int)ucontrol->value.integer.value[0],
-		(int)ucontrol->value.integer.value[1]);
-	ret = data->ops->set_stream_volume(data->stream_id,
-			(int)ucontrol->value.integer.value[0],
-			(int)ucontrol->value.integer.value[1]);
-	if (ret < 0) {
-		dev_err(dev, "Failed to get compr caps. ret %d", ret);
-		return ret;
-	} else {
-		data->stream_vol[0] = (int)ucontrol->value.integer.value[0];
-		data->stream_vol[1] = (int)ucontrol->value.integer.value[1];
+	mutex_lock(&tegra_offload_lock);
+	compr_vol[0] = ucontrol->value.integer.value[0];
+	compr_vol[1] = ucontrol->value.integer.value[1];
+	mutex_unlock(&tegra_offload_lock);
+
+	pr_debug("%s:compr_vol[0] %d, compr_vol[1] %d\n",
+		__func__, compr_vol[0], compr_vol[1]);
+
+	if (data) {
+		ret = data->ops->set_stream_volume(data->stream_id,
+				compr_vol[0], compr_vol[1]);
+		if (ret < 0) {
+			pr_err("Failed to get compr caps. ret %d", ret);
+			return ret;
+		}
+		return 1;
 	}
-	return 1;
+	return ret;
 }
 
 
 static int tegra_get_compress_volume(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
-	struct snd_compr_stream *stream = snd_kcontrol_chip(kcontrol);
-	struct tegra_offload_compr_data *data = stream->runtime->private_data;
+	mutex_lock(&tegra_offload_lock);
+	ucontrol->value.integer.value[0] = compr_vol[0];
+	ucontrol->value.integer.value[1] = compr_vol[1];
+	mutex_unlock(&tegra_offload_lock);
 
-	ucontrol->value.integer.value[0] = data->stream_vol[0];
-	ucontrol->value.integer.value[1] = data->stream_vol[1];
-
+	pr_debug("%s:compr_vol[0] %d, compr_vol[1] %d\n",
+		__func__, compr_vol[0], compr_vol[1]);
 	return 0;
 }
 
-struct snd_kcontrol_new tegra_offload_volume =
-		SOC_DOUBLE_EXT("Compress Playback Volume", 0, 1, 0, 0xFFFFFFFF,
-		1, tegra_get_compress_volume, tegra_set_compress_volume);
-
-static int tegra_offload_compr_add_controls(struct snd_compr_stream *stream)
-{
-	int ret = 0;
-	struct snd_soc_pcm_runtime *rtd = stream->device->private_data;
-	struct device *dev = rtd->platform->dev;
-	struct tegra_offload_compr_data *data = stream->runtime->private_data;
-
-	data->kcontrol =  snd_ctl_new1(&tegra_offload_volume, stream);
-	ret = snd_ctl_add(rtd->card->snd_card, data->kcontrol);
-	if (ret < 0) {
-		dev_err(dev, "Can't add offload volume");
-		return ret;
-	}
-	return ret;
-}
-
-
-static int tegra_offload_compr_remove_controls(struct snd_compr_stream *stream)
-{
-	int ret = 0;
-	struct snd_soc_pcm_runtime *rtd = stream->device->private_data;
-	struct device *dev = rtd->platform->dev;
-	struct tegra_offload_compr_data *data = stream->runtime->private_data;
-
-	ret = snd_ctl_remove(rtd->card->snd_card, data->kcontrol);
-	if (ret < 0) {
-		dev_err(dev, "Can't remove offload volume");
-		return ret;
-	}
-	return ret;
-}
+static const struct snd_kcontrol_new tegra_offload_volume[] = {
+		SOC_DOUBLE_EXT("Compress Playback Volume", 0, 0, 1,
+		AVP_UNITY_STREAM_VOLUME, 0, tegra_get_compress_volume,
+		tegra_set_compress_volume),
+};
 
 static int tegra_offload_compr_open(struct snd_compr_stream *stream)
 {
@@ -189,8 +183,11 @@ static int tegra_offload_compr_open(struct snd_compr_stream *stream)
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_compr_data *data;
 	int ret = 0;
+	unsigned left, right;
 
 	dev_vdbg(dev, "%s", __func__);
+
+	stream->runtime->private_data = NULL;
 
 	if (!tegra_offload_init_done) {
 		dev_err(dev, "Offload interface is not registered");
@@ -210,32 +207,35 @@ static int tegra_offload_compr_open(struct snd_compr_stream *stream)
 	ret = data->ops->stream_open(&data->stream_id);
 	if (ret < 0) {
 		dev_err(dev, "Failed to open offload stream. err %d", ret);
+		devm_kfree(dev, data);
 		return ret;
 	}
 
 	stream->runtime->private_data = data;
+	snd_soc_platform_set_drvdata(rtd->platform, data);
 
-	ret = tegra_offload_compr_add_controls(stream);
-	if (ret)
-		dev_err(dev, "Failed to add controls\n");
-
+	mutex_lock(&tegra_offload_lock);
+	left = compr_vol[0];
+	right = compr_vol[1];
+	mutex_unlock(&tegra_offload_lock);
+	data->ops->set_stream_volume(data->stream_id,
+				left, right);
 	return 0;
 }
 
 static int tegra_offload_compr_free(struct snd_compr_stream *stream)
 {
+	struct snd_soc_pcm_runtime *rtd = stream->device->private_data;
 	struct device *dev = stream->device->dev;
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
-	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
 
-	ret = tegra_offload_compr_remove_controls(stream);
-	if (ret)
-		dev_err(dev, "Failed to remove controls\n");
-
-	data->ops->stream_close(data->stream_id);
-	devm_kfree(dev, data);
+	if (data) {
+		snd_soc_platform_set_drvdata(rtd->platform, NULL);
+		data->ops->stream_close(data->stream_id);
+		devm_kfree(dev, data);
+	}
 	return 0;
 }
 
@@ -247,32 +247,54 @@ static int tegra_offload_compr_set_params(struct snd_compr_stream *stream,
 	struct snd_soc_pcm_runtime *rtd = stream->device->private_data;
 	struct tegra_pcm_dma_params *dmap;
 	struct tegra_offload_compr_params offl_params;
+	int dir;
 	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
+
+	if (stream->direction == SND_COMPRESS_PLAYBACK)
+		dir = SNDRV_PCM_STREAM_PLAYBACK;
+	else
+		dir = SNDRV_PCM_STREAM_CAPTURE;
+
+	if (list_empty(&rtd->dpcm[dir].be_clients)) {
+			dev_err(dev, "No backend DAIs enabled for %s\n",
+					rtd->dai_link->name);
+			return -EINVAL;
+	}
 
 	dmap = rtd->cpu_dai->playback_dma_data;
 	if (!dmap) {
 		struct snd_soc_dpcm *dpcm;
 
 		list_for_each_entry(dpcm,
-			&rtd->dpcm[SNDRV_PCM_STREAM_PLAYBACK].be_clients,
-			list_be) {
+			&rtd->dpcm[dir].be_clients, list_be) {
 			struct snd_soc_pcm_runtime *be = dpcm->be;
 			struct snd_pcm_substream *be_substream =
-				snd_soc_dpcm_get_substream(be,
-					SNDRV_PCM_STREAM_PLAYBACK);
+				snd_soc_dpcm_get_substream(be, dir);
+			struct snd_soc_dai_link *dai_link = be->dai_link;
 
 			dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
-							be_substream);
-			if (!dmap) {
-				dev_err(dev, "Failed to get DMA params.");
-				return -ENODEV;
+						be_substream);
+
+			if (spk && strstr(dai_link->name, "speaker")) {
+				dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
+						be_substream);
+				break;
+			}
+			if (codec && strstr(dai_link->name, "codec")) {
+				dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
+						be_substream);
+				break;
 			}
 			/* TODO : Multiple BE to single FE not yet supported */
-			break;
 		}
 	}
+	if (!dmap) {
+		dev_err(dev, "Failed to get DMA params.");
+		return -ENODEV;
+	}
+
 	offl_params.codec_type = params->codec.id;
 	offl_params.bits_per_sample = 16;
 	offl_params.rate = snd_pcm_rate_bit_to_rate(params->codec.sample_rate);
@@ -310,12 +332,38 @@ static int tegra_offload_compr_get_params(struct snd_compr_stream *stream,
 static int tegra_offload_compr_trigger(struct snd_compr_stream *stream, int cmd)
 {
 	struct device *dev = stream->device->dev;
+	struct snd_soc_pcm_runtime *rtd = stream->private_data;
 	struct tegra_offload_compr_data *data = stream->runtime->private_data;
+	int ret = 0;
 
 	dev_vdbg(dev, "%s : cmd %d", __func__, cmd);
 
-	data->ops->set_stream_state(data->stream_id, cmd);
-	return 0;
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (rtd->dai_link->compr_ops &&
+				rtd->dai_link->compr_ops->trigger) {
+			rtd->dai_link->compr_ops->trigger(stream, cmd);
+		}
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		break;
+
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		if (rtd->dai_link->compr_ops &&
+				rtd->dai_link->compr_ops->trigger) {
+			rtd->dai_link->compr_ops->trigger(stream, cmd);
+		}
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
 static int tegra_offload_compr_pointer(struct snd_compr_stream *stream,
@@ -409,19 +457,19 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 
 	dev_vdbg(dev, "%s", __func__);
 
+	substream->runtime->private_data = NULL;
+
 	if (!tegra_offload_init_done) {
 		dev_err(dev, "Offload interface is not registered");
 		return -ENODEV;
 	}
 
-	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
-	if (!data) {
-		dev_vdbg(dev, "Failed to allocate tegra_offload_pcm_data.");
-		return -ENOMEM;
-	}
-
-	/* Set HW params now that initialization is complete */
-	snd_soc_set_runtime_hwparams(substream, &tegra_offload_pcm_hardware);
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		snd_soc_set_runtime_hwparams(substream,
+				&tegra_offload_pcm_hw_pb);
+	else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		snd_soc_set_runtime_hwparams(substream,
+				&tegra_offload_pcm_hw_cap);
 
 	/* Ensure period size is multiple of 4 */
 	ret = snd_pcm_hw_constraint_step(substream->runtime, 0,
@@ -430,14 +478,35 @@ static int tegra_offload_pcm_open(struct snd_pcm_substream *substream)
 		dev_err(dev, "failed to set constraint %d\n", ret);
 		return ret;
 	}
-	data->ops = &offload_ops.pcm_ops;
 
-	ret = data->ops->stream_open(&data->stream_id);
-	if (ret < 0) {
-		dev_err(dev, "Failed to open offload stream. err %d", ret);
-		return ret;
+	data = devm_kzalloc(dev, sizeof(*data), GFP_KERNEL);
+	if (!data) {
+		dev_err(dev, "Failed to allocate tegra_offload_pcm_data.");
+		return -ENOMEM;
 	}
-	 offload_ops.device_ops.set_hw_rate(48000);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		data->ops = &offload_ops.pcm_ops;
+
+		ret = data->ops->stream_open(&data->stream_id, "pcm");
+		if (ret < 0) {
+			dev_err(dev,
+				"Failed to open offload stream err %d", ret);
+			devm_kfree(dev, data);
+			return ret;
+		}
+	} else if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		data->ops = &offload_ops.loopback_ops;
+
+		ret = data->ops->stream_open(&data->stream_id, "loopback");
+		if (ret < 0) {
+			dev_err(dev,
+				"Failed to open offload stream err %d", ret);
+			devm_kfree(dev, data);
+			return ret;
+		}
+	}
+	offload_ops.device_ops.set_hw_rate(48000);
 	substream->runtime->private_data = data;
 	return 0;
 }
@@ -450,8 +519,10 @@ static int tegra_offload_pcm_close(struct snd_pcm_substream *substream)
 
 	dev_vdbg(dev, "%s", __func__);
 
-	data->ops->stream_close(data->stream_id);
-	devm_kfree(dev, data);
+	if (data) {
+		data->ops->stream_close(data->stream_id);
+		devm_kfree(dev, data);
+	}
 	return 0;
 }
 
@@ -462,32 +533,62 @@ static int tegra_offload_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_pcm_data *data = substream->runtime->private_data;
 	struct snd_dma_buffer *buf = &substream->dma_buffer;
-	struct tegra_pcm_dma_params *dmap;
 	struct tegra_offload_pcm_params offl_params;
 	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
 
-	dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
-	if (!dmap) {
-		struct snd_soc_dpcm *dpcm;
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		struct tegra_pcm_dma_params *dmap;
 
-		list_for_each_entry(dpcm,
-			&rtd->dpcm[substream->stream].be_clients, list_be) {
-			struct snd_soc_pcm_runtime *be = dpcm->be;
-			struct snd_pcm_substream *be_substream =
-				snd_soc_dpcm_get_substream(be,
-						substream->stream);
-
-			dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
-							be_substream);
-			if (!dmap) {
-				dev_err(dev, "Failed to get DMA params.");
-				return -ENODEV;
-			}
-			/* TODO : Multiple BE to single FE not yet supported */
-			break;
+		if (list_empty(&rtd->dpcm[substream->stream].be_clients)) {
+				dev_err(dev,
+					"No backend DAIs enabled for %s\n",
+					rtd->dai_link->name);
+				return -EINVAL;
 		}
+
+		dmap = snd_soc_dai_get_dma_data(rtd->cpu_dai, substream);
+		if (!dmap) {
+			struct snd_soc_dpcm *dpcm;
+
+			list_for_each_entry(dpcm,
+				&rtd->dpcm[substream->stream].be_clients,
+				list_be) {
+				struct snd_soc_pcm_runtime *be = dpcm->be;
+				struct snd_pcm_substream *be_substream =
+					snd_soc_dpcm_get_substream(be,
+							substream->stream);
+				struct snd_soc_dai_link *dai_link =
+							be->dai_link;
+
+				dmap = snd_soc_dai_get_dma_data(be->cpu_dai,
+							be_substream);
+
+				if (spk && strstr(dai_link->name, "speaker")) {
+					dmap = snd_soc_dai_get_dma_data(
+							be->cpu_dai,
+							be_substream);
+					break;
+				}
+				if (codec && strstr(dai_link->name, "codec")) {
+					dmap = snd_soc_dai_get_dma_data(
+							be->cpu_dai,
+							be_substream);
+					break;
+				}
+				/* TODO : Multiple BE to
+				 * single FE not yet supported */
+			}
+		}
+		if (!dmap) {
+			dev_err(dev, "Failed to get DMA params.");
+			return -ENODEV;
+		}
+		offl_params.dma_params.addr = dmap->addr;
+		offl_params.dma_params.width = DMA_SLAVE_BUSWIDTH_4_BYTES;
+		offl_params.dma_params.req_sel = dmap->req_sel;
+		offl_params.dma_params.max_burst = 4;
 	}
 
 	offl_params.bits_per_sample =
@@ -497,11 +598,6 @@ static int tegra_offload_pcm_hw_params(struct snd_pcm_substream *substream,
 	offl_params.buffer_size = params_buffer_bytes(params);
 	offl_params.period_size = params_period_size(params) *
 		((offl_params.bits_per_sample >> 3) * offl_params.channels);
-
-	offl_params.dma_params.addr = dmap->addr;
-	offl_params.dma_params.width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-	offl_params.dma_params.req_sel = dmap->req_sel;
-	offl_params.dma_params.max_burst = 4;
 
 	offl_params.source_buf.virt_addr = buf->area;
 	offl_params.source_buf.phys_addr = buf->addr;
@@ -536,16 +632,33 @@ static int tegra_offload_pcm_trigger(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct device *dev = rtd->platform->dev;
 	struct tegra_offload_pcm_data *data = substream->runtime->private_data;
+	int ret = 0;
 
 	dev_vdbg(dev, "%s : cmd %d", __func__, cmd);
 
-	data->ops->set_stream_state(data->stream_id, cmd);
-	if ((cmd == SNDRV_PCM_TRIGGER_STOP) ||
-	    (cmd == SNDRV_PCM_TRIGGER_SUSPEND) ||
-	    (cmd == SNDRV_PCM_TRIGGER_PAUSE_PUSH))
-		data->appl_ptr = 0;
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
+			rtd->dai_link->ops->trigger(substream, cmd);
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		break;
 
-	return 0;
+	case SNDRV_PCM_TRIGGER_STOP:
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+		ret = data->ops->set_stream_state(data->stream_id, cmd);
+		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
+			rtd->dai_link->ops->trigger(substream, cmd);
+		data->appl_ptr = 0;
+		break;
+
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
 static snd_pcm_uframes_t tegra_offload_pcm_pointer(
@@ -577,14 +690,61 @@ static int tegra_offload_pcm_ack(struct snd_pcm_substream *substream)
 	return 0;
 }
 
+static int codec_get_mixer(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = codec;
+	return 0;
+}
+
+static int codec_put_switch(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_dapm_widget_list *wlist = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_dapm_widget *widget = wlist->widgets[0];
+
+	if (ucontrol->value.integer.value[0]) {
+		codec = ucontrol->value.integer.value[0];
+		snd_soc_dapm_mixer_update_power(widget, kcontrol, 1);
+	} else {
+		codec = ucontrol->value.integer.value[0];
+		snd_soc_dapm_mixer_update_power(widget, kcontrol, 0);
+	}
+	return 1;
+}
+
+static int spk_get_mixer(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = spk;
+	return 0;
+}
+
+static int spk_put_switch(struct snd_kcontrol *kcontrol,
+	struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_dapm_widget_list *wlist = snd_kcontrol_chip(kcontrol);
+	struct snd_soc_dapm_widget *widget = wlist->widgets[0];
+
+	if (ucontrol->value.integer.value[0]) {
+		spk = ucontrol->value.integer.value[0];
+		snd_soc_dapm_mixer_update_power(widget, kcontrol, 1);
+	} else {
+		spk = ucontrol->value.integer.value[0];
+		snd_soc_dapm_mixer_update_power(widget, kcontrol, 0);
+	}
+	return 1;
+}
+
+static const struct snd_kcontrol_new codec_control =
+	SOC_SINGLE_EXT("Codec Switch", SND_SOC_NOPM, 0, 1, 0,
+			codec_get_mixer, codec_put_switch);
+
+static const struct snd_kcontrol_new spk_control =
+	SOC_SINGLE_EXT("SPK Switch", SND_SOC_NOPM, 1, 1, 0,
+			spk_get_mixer, spk_put_switch);
 
 static const struct snd_soc_dapm_widget tegra_offload_widgets[] = {
-	/* FrontEnd DAIs */
-	SND_SOC_DAPM_AIF_IN("offload-pcm-playback", "pcm-playback", 0,
-		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
-	SND_SOC_DAPM_AIF_IN("offload-compr-playback", "compr-playback", 0,
-		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
-
 	/* BackEnd DAIs */
 	SND_SOC_DAPM_AIF_OUT("I2S0_OUT", "tegra30-i2s.0 Playback", 0,
 		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
@@ -597,6 +757,19 @@ static const struct snd_soc_dapm_widget tegra_offload_widgets[] = {
 	SND_SOC_DAPM_AIF_OUT("I2S4_OUT", "tegra30-i2s.4 Playback", 0,
 		0/*wreg*/, 0/*wshift*/, 0/*winvert*/),
 
+	SND_SOC_DAPM_MIXER("Codec VMixer", SND_SOC_NOPM, 0, 0,
+		&codec_control, 1),
+	SND_SOC_DAPM_MIXER("SPK VMixer", SND_SOC_NOPM, 0, 0,
+		&spk_control, 1),
+	SND_SOC_DAPM_MIXER("DAM VMixer", SND_SOC_NOPM, 0, 0,
+		NULL, 0),
+};
+
+static const struct snd_soc_dapm_route graph[] = {
+	{"Codec VMixer", "Codec Switch", "DAM VMixer"},
+	{"I2S1_OUT", NULL, "Codec VMixer"},
+	{"SPK VMixer", "SPK Switch", "DAM VMixer"},
+	{"I2S2_OUT", NULL, "SPK VMixer"},
 };
 
 static struct snd_pcm_ops tegra_pcm_ops = {
@@ -666,27 +839,45 @@ static int tegra_offload_dma_allocate(struct snd_soc_pcm_runtime *rtd,
 static int tegra_offload_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct device *dev = rtd->platform->dev;
+	struct snd_pcm *pcm = rtd->pcm;
+	int ret = 0;
 
 	dev_vdbg(dev, "%s", __func__);
 
-	return tegra_offload_dma_allocate(rtd , SNDRV_PCM_STREAM_PLAYBACK,
-				tegra_offload_pcm_hardware.buffer_bytes_max);
+	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream) {
+		ret = tegra_offload_dma_allocate(rtd,
+				SNDRV_PCM_STREAM_PLAYBACK,
+				tegra_offload_pcm_hw_pb.buffer_bytes_max);
+		if (ret < 0) {
+			dev_err(pcm->card->dev, "Failed to allocate memory");
+			return -ENOMEM;
+		}
+	}
+	if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream) {
+		ret = tegra_offload_dma_allocate(rtd,
+				SNDRV_PCM_STREAM_CAPTURE,
+				tegra_offload_pcm_hw_cap.buffer_bytes_max);
+		if (ret < 0) {
+			dev_err(pcm->card->dev, "Failed to allocate memory");
+			return -ENOMEM;
+		}
+	}
+	return ret;
 }
 
 static void tegra_offload_pcm_free(struct snd_pcm *pcm)
 {
-	tegra_offload_dma_free(pcm, SNDRV_PCM_STREAM_PLAYBACK);
 	pr_debug("%s", __func__);
+	if (pcm->streams[SNDRV_PCM_STREAM_PLAYBACK].substream)
+		tegra_offload_dma_free(pcm, SNDRV_PCM_STREAM_PLAYBACK);
+	if (pcm->streams[SNDRV_PCM_STREAM_CAPTURE].substream)
+		tegra_offload_dma_free(pcm, SNDRV_PCM_STREAM_CAPTURE);
 }
 
 static int tegra_offload_pcm_probe(struct snd_soc_platform *platform)
 {
 	pr_debug("%s", __func__);
 
-	snd_soc_dapm_new_controls(&platform->dapm, tegra_offload_widgets,
-					ARRAY_SIZE(tegra_offload_widgets));
-
-	snd_soc_dapm_new_widgets(&platform->dapm);
 	platform->dapm.idle_bias_off = 1;
 	return 0;
 }
@@ -711,6 +902,13 @@ static struct snd_soc_platform_driver tegra_offload_platform = {
 	.probe		= tegra_offload_pcm_probe,
 	.read		= tegra_offload_pcm_read,
 	.write		= tegra_offload_pcm_write,
+
+	.dapm_widgets	= tegra_offload_widgets,
+	.num_dapm_widgets	= ARRAY_SIZE(tegra_offload_widgets),
+	.dapm_routes	= graph,
+	.num_dapm_routes	= ARRAY_SIZE(graph),
+	.controls	= tegra_offload_volume,
+	.num_controls	= ARRAY_SIZE(tegra_offload_volume),
 };
 
 static struct snd_soc_dai_driver tegra_offload_dai[] = {
@@ -718,7 +916,14 @@ static struct snd_soc_dai_driver tegra_offload_dai[] = {
 		.name = "tegra-offload-pcm",
 		.id = 0,
 		.playback = {
-			.stream_name = "pcm-playback",
+			.stream_name = "offload-pcm-playback",
+			.channels_min = 2,
+			.channels_max = 2,
+			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
+			.formats = SNDRV_PCM_FMTBIT_S16_LE,
+		},
+		.capture = {
+			.stream_name = "offload-pcm-capture",
 			.channels_min = 2,
 			.channels_max = 2,
 			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
@@ -730,7 +935,7 @@ static struct snd_soc_dai_driver tegra_offload_dai[] = {
 		.id = 0,
 		.compress_dai = 1,
 		.playback = {
-			.stream_name = "compr-playback",
+			.stream_name = "offload-compr-playback",
 			.channels_min = 2,
 			.channels_max = 2,
 			.rates = SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,

@@ -60,6 +60,13 @@ config MSM_SYSMON_COMM
          provides an API that may be used for notifying subsystems within
          the SoC about other subsystems' power-up/down state-changes.
 
+config MDM_SYSEDP
+       bool "Modem Sysedp support"
+       depends on SYSEDP_FRAMEWORK
+       default n
+       help
+         This option adds support to system EDP to handle the power
+
 endif # QCT_9K_MODEM
 
 endmenu

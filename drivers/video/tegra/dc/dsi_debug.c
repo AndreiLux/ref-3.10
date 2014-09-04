@@ -397,6 +397,11 @@ static int send_write_data_cmd(struct seq_file *s, void *unused)
 	DSI_DLY_MS(20),
 	};
 
+	if (!dsi->enabled) {
+		seq_puts(s, "DSI controller suspended\n");
+		return 0;
+	}
+
 	seq_printf(s, "data_id taken :0x%x\n", data_id);
 	seq_printf(s, "command value taken :0x%x\n", command_value);
 	seq_printf(s, "second command value taken :0x%x\n", command_value1);

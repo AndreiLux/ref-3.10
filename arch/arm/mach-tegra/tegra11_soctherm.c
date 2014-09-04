@@ -366,6 +366,7 @@ static const int precision; /* default 0 -> low precision */
 #define THROT_LEVEL_LOW				0
 #define THROT_LEVEL_MED				1
 #define THROT_LEVEL_HVY				2
+#define THROT_LEVEL_NONE			-1 /* invalid */
 
 #define THROT_PRIORITY_LITE			0x444
 #define THROT_PRIORITY_LITE_PRIO_SHIFT		0
@@ -979,22 +980,12 @@ static inline void prog_hw_shutdown(struct thermal_trip_info *trip_state,
  *
  * Configure sensor group @therm to engage a hardware throttling response at
  * the threshold indicated by @trip_state.
- *
- * Checks to see if HW config register needs reprogramming:
- *
- * There's an intentional side-effect of writing trip temperature thresholds
- * in HW; It resets the up/down state machine that track hysteresis and can
- * cause unnecessary thermal events (interrupts).
- *
- * Avoid unnecessary events by checking if the trip config register is
- * being configured to the same settings and skipping the write.
  */
 static inline void prog_hw_threshold(struct thermal_trip_info *trip_state,
 				     int therm, int throt)
 {
 	u32 r, reg_off;
 	int temp;
-	bool reprogram;
 	int cpu_throt, gpu_throt;
 
 	temp = enforce_temp_range(trip_state->trip_temp) / 1000;
@@ -1014,20 +1005,12 @@ static inline void prog_hw_threshold(struct thermal_trip_info *trip_state,
 	}
 
 	r = soctherm_readl(reg_off);
-	reprogram = ((REG_GET(r, CTL_LVL0_CPU0_DN_THRESH) != temp) ||
-		     (REG_GET(r, CTL_LVL0_CPU0_UP_THRESH) != temp) ||
-		     (REG_GET(r, CTL_LVL0_CPU0_CPU_THROT) != cpu_throt) ||
-		     (REG_GET(r, CTL_LVL0_CPU0_GPU_THROT) != gpu_throt) ||
-		     (REG_GET(r, CTL_LVL0_CPU0_EN) != 1));
-
-	if (reprogram) {
-		r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, temp);
-		r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, temp);
-		r = REG_SET(r, CTL_LVL0_CPU0_CPU_THROT, cpu_throt);
-		r = REG_SET(r, CTL_LVL0_CPU0_GPU_THROT, gpu_throt);
-		r = REG_SET(r, CTL_LVL0_CPU0_EN, 1);
-		soctherm_writel(r, reg_off);
-	}
+	r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, temp);
+	r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, temp);
+	r = REG_SET(r, CTL_LVL0_CPU0_CPU_THROT, cpu_throt);
+	r = REG_SET(r, CTL_LVL0_CPU0_GPU_THROT, gpu_throt);
+	r = REG_SET(r, CTL_LVL0_CPU0_EN, 1);
+	soctherm_writel(r, reg_off);
 }
 
 /**
@@ -1039,33 +1022,23 @@ static inline void prog_hw_threshold(struct thermal_trip_info *trip_state,
  *
  * Configures sensor group @therm to raise an interrupt when temperature goes
  * above @hi_limit or below @lo_limit.
- *
- * Checks to see if HW config register needs reprogramming. See comment in
- * prog_hw_threshold().
  */
 static void soctherm_set_limits(enum soctherm_therm_id therm,
 				long lo_limit, long hi_limit)
 {
 	u32 r, reg_off;
 	int rlo_limit, rhi_limit;
-	bool reprogram;
 
 	rlo_limit = LOWER_PRECISION_FOR_TEMP(lo_limit) / 1000;
 	rhi_limit = LOWER_PRECISION_FOR_TEMP(hi_limit) / 1000;
 
 	reg_off = TS_THERM_REG_OFFSET(CTL_LVL0_CPU0, 0, therm);
+
 	r = soctherm_readl(reg_off);
-
-	reprogram = ((REG_GET(r, CTL_LVL0_CPU0_DN_THRESH) != rlo_limit) ||
-		     (REG_GET(r, CTL_LVL0_CPU0_UP_THRESH) != rhi_limit) ||
-		     (REG_GET(r, CTL_LVL0_CPU0_EN) != 1));
-
-	if (reprogram) {
-		r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, rlo_limit);
-		r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, rhi_limit);
-		r = REG_SET(r, CTL_LVL0_CPU0_EN, 1);
-		soctherm_writel(r, reg_off);
-	}
+	r = REG_SET(r, CTL_LVL0_CPU0_DN_THRESH, rlo_limit);
+	r = REG_SET(r, CTL_LVL0_CPU0_UP_THRESH, rhi_limit);
+	r = REG_SET(r, CTL_LVL0_CPU0_EN, 1);
+	soctherm_writel(r, reg_off);
 
 	switch (therm) {
 	case THERM_CPU:
@@ -1117,8 +1090,7 @@ static void soctherm_update_zone(int zn)
 	trips = cur_thz->trips;
 	for (count = 0; count < trips; count++) {
 		cur_thz->ops->get_trip_type(cur_thz, count, &trip_type);
-		if ((trip_type == THERMAL_TRIP_HOT) ||
-		    (trip_type == THERMAL_TRIP_CRITICAL))
+		if (trip_type == THERMAL_TRIP_HOT)
 			continue; /* handled in HW */
 
 		cur_thz->ops->get_trip_temp(cur_thz, count, &trip_temp);
@@ -1131,7 +1103,7 @@ static void soctherm_update_zone(int zn)
 				high_temp = trip_temp;
 		} else { /* tripped? update low */
 			if (trip_type != THERMAL_TRIP_PASSIVE) {
-				/* get highest ACTIVE */
+				/* get highest ACTIVE and CRITICAL*/
 				if (trip_temp > low_temp)
 					low_temp = trip_temp;
 			} else {
@@ -1513,8 +1485,7 @@ static int soctherm_unbind(struct thermal_zone_device *thz,
  *
  * Return: 0
  */
-static int soctherm_get_temp(struct thermal_zone_device *thz,
-					unsigned long *temp)
+static int soctherm_get_temp(struct thermal_zone_device *thz, long *temp)
 {
 	struct soctherm_therm *therm = thz->devdata;
 	ptrdiff_t index = therm - plat_data.therm;
@@ -1613,11 +1584,11 @@ static int soctherm_get_trip_type(struct thermal_zone_device *thz,
  */
 
 static int soctherm_get_trip_temp(struct thermal_zone_device *thz,
-				int trip, unsigned long *temp)
+				int trip, long *temp)
 {
 	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
-	unsigned long trip_temp, zone_temp;
+	long trip_temp, zone_temp;
 
 	trip_state = &therm->trips[trip];
 	trip_temp = trip_state->trip_temp;
@@ -1650,7 +1621,7 @@ static int soctherm_get_trip_temp(struct thermal_zone_device *thz,
  * Return: 0 if successful else %-EINVAL
  */
 static int soctherm_set_trip_temp(struct thermal_zone_device *thz,
-				int trip, unsigned long temp)
+				int trip, long temp)
 {
 	struct soctherm_therm *therm = thz->devdata;
 	struct thermal_trip_info *trip_state;
@@ -1697,8 +1668,7 @@ static int soctherm_set_trip_temp(struct thermal_zone_device *thz,
  * Return: 0 if it is able to find a critical temperature point and stores it
  * into the variable pointed by the address in @temp; Otherwise, return -EINVAL.
  */
-static int soctherm_get_crit_temp(struct thermal_zone_device *thz,
-				  unsigned long *temp)
+static int soctherm_get_crit_temp(struct thermal_zone_device *thz, long *temp)
 {
 	int i;
 	struct soctherm_therm *therm = thz->devdata;
@@ -2289,8 +2259,8 @@ static bool throttlectl_cpu_mn(enum soctherm_throttle_id throt)
  */
 static bool throttlectl_cpu_level(enum soctherm_throttle_id throt)
 {
-	u32 r, throt_vect = 0;
-	int throt_level = 0;
+	u32 r, throt_vect;
+	int throt_level;
 	struct soctherm_throttle *data = &plat_data.throttle[throt];
 	struct soctherm_throttle_dev *dev = &data->devs[THROTTLE_DEV_CPU];
 
@@ -2304,9 +2274,12 @@ static bool throttlectl_cpu_level(enum soctherm_throttle_id throt)
 	} else if (!strcmp(dev->throttling_depth, "medium_throttling")) {
 		throt_level = THROT_LEVEL_MED;
 		throt_vect = THROT_VECT_MED;
-	} else {
+	} else if (!strcmp(dev->throttling_depth, "low_throttling")) {
 		throt_level = THROT_LEVEL_LOW;
 		throt_vect = THROT_VECT_LOW;
+	} else {
+		throt_level = THROT_LEVEL_NONE;
+		throt_vect = THROT_VECT_NONE;
 	}
 
 	if (dev->depth)
@@ -2314,20 +2287,22 @@ static bool throttlectl_cpu_level(enum soctherm_throttle_id throt)
 
 	r = soctherm_readl(THROT_PSKIP_CTRL(throt, THROTTLE_DEV_CPU));
 	r = REG_SET(r, THROT_PSKIP_CTRL_ENABLE, dev->enable);
-	/* for T132: setup throttle vector in soctherm register */
+	/* setup throttle vector in soctherm register */
 	r = REG_SET(r, THROT_PSKIP_CTRL_VECT_CPU, throt_vect);
 	r = REG_SET(r, THROT_PSKIP_CTRL_VECT2_CPU, throt_vect);
 	soctherm_writel(r, THROT_PSKIP_CTRL(throt, THROTTLE_DEV_CPU));
 
-	/* No point programming the sequencer, since we're bypassing it */
-
-	/* for T132: setup actual depth in ccroc nv_therm register */
-	r = soctherm_readl(THROT_PSKIP_RAMP(throt, THROTTLE_DEV_CPU));
-	r = REG_SET(r, THROT_PSKIP_RAMP_SEQ_BYPASS_MODE, 1);
+	/* bypass sequencer in soc_therm as it is programmed in ccroc */
+	r = REG_SET(0, THROT_PSKIP_RAMP_SEQ_BYPASS_MODE, 1);
 	soctherm_writel(r, THROT_PSKIP_RAMP(throt, THROTTLE_DEV_CPU));
 
+	if (throt_level == THROT_LEVEL_NONE)
+		return true;
+
+	/* setup PSKIP in ccroc nv_therm registers */
 	r = clk_reset13_readl(THROT13_PSKIP_RAMP_CPU(throt_level));
-	r = REG_SET(r, THROT_PSKIP_RAMP_SEQ_BYPASS_MODE, 1);
+	r = REG_SET(r, THROT_PSKIP_RAMP_DURATION, dev->duration);
+	r = REG_SET(r, THROT_PSKIP_RAMP_STEP, dev->step);
 	clk_reset13_writel(r, THROT13_PSKIP_RAMP_CPU(throt_level));
 
 	r = clk_reset13_readl(THROT13_PSKIP_CTRL_CPU(throt_level));
@@ -3232,32 +3207,53 @@ static int soctherm_sync(void)
 late_initcall_sync(soctherm_sync);
 
 /**
- * soctherm_pm_notify() - reacts to system PM suspend or resume events
+ * soctherm_pm_suspend() - reacts to system PM suspend event
  * @nb:         pointer to notifier_block. Currently not being used
  * @event:      type of action (suspend/resume)
  * @data:       argument for callback, currently not being used
  *
- * Currently supports %PM_SUSPEND_PREPARE and %PM_POST_SUSPEND
+ * Currently supports %PM_SUSPEND_PREPARE. Ignores %PM_POST_SUSPEND
  *
  * Return: %NOTIFY_OK
  */
-static int soctherm_pm_notify(struct notifier_block *nb,
+static int soctherm_pm_suspend(struct notifier_block *nb,
 				unsigned long event, void *data)
 {
-	switch (event) {
-	case PM_SUSPEND_PREPARE:
+	if (event == PM_SUSPEND_PREPARE) {
 		soctherm_suspend();
-		break;
-	case PM_POST_SUSPEND:
-		soctherm_resume();
-		break;
+		pr_info("tegra_soctherm: suspended\n");
 	}
-
 	return NOTIFY_OK;
 }
 
-static struct notifier_block soctherm_nb = {
-	.notifier_call = soctherm_pm_notify,
+/**
+ * soctherm_pm_resume() - reacts to system PM resume event
+ * @nb:         pointer to notifier_block. Currently not being used
+ * @event:      type of action (suspend/resume)
+ * @data:       argument for callback, currently not being used
+ *
+ * Currently supports %PM_POST_SUSPEND. Ignores %PM_SUSPEND_PREPARE
+ *
+ * Return: %NOTIFY_OK
+ */
+static int soctherm_pm_resume(struct notifier_block *nb,
+				unsigned long event, void *data)
+{
+	if (event == PM_POST_SUSPEND) {
+		soctherm_resume();
+		pr_info("tegra_soctherm: resumed\n");
+	}
+	return NOTIFY_OK;
+}
+
+static struct notifier_block soctherm_suspend_nb = {
+	.notifier_call = soctherm_pm_suspend,
+	.priority = -2,
+};
+
+static struct notifier_block soctherm_resume_nb = {
+	.notifier_call = soctherm_pm_resume,
+	.priority = 2,
 };
 
 /**
@@ -3497,13 +3493,15 @@ late_initcall_sync(soctherm_core_rail_notify_init);
 int __init tegra11_soctherm_init(struct soctherm_platform_data *data)
 {
 	int ret;
+
 	tegra_chip_id = tegra_get_chip_id();
 	if (!(IS_T11X || IS_T14X || IS_T12X || IS_T13X)) {
 		pr_err("%s: Unknown chip_id %d", __func__, tegra_chip_id);
 		return -1;
 	}
 
-	register_pm_notifier(&soctherm_nb);
+	register_pm_notifier(&soctherm_suspend_nb);
+	register_pm_notifier(&soctherm_resume_nb);
 
 	if (!data)
 		return -1;
@@ -3803,7 +3801,7 @@ static int regs_show(struct seq_file *s, void *data)
 				continue;
 			}
 
-			level = THROT_LEVEL_LOW;
+			level = THROT_LEVEL_NONE; /* invalid */
 			depth = "";
 			q = 0;
 			if (IS_T13X && j == THROTTLE_DEV_CPU) {
@@ -3821,6 +3819,7 @@ static int regs_show(struct seq_file *s, void *data)
 			}
 			if ((IS_T12X || IS_T13X) && j == THROTTLE_DEV_GPU) {
 				state = REG_GET(r, THROT_PSKIP_CTRL_VECT_GPU);
+				/* Mapping is hard-coded in gk20a:nv_therm */
 				if (state == THROT_VECT_HVY) {
 					q = 87;
 					depth = "hi";
@@ -3833,7 +3832,9 @@ static int regs_show(struct seq_file *s, void *data)
 				}
 			}
 
-			if (IS_T13X && j == THROTTLE_DEV_CPU)
+			if (level == THROT_LEVEL_NONE)
+				r = 0;
+			else if (IS_T13X && j == THROTTLE_DEV_CPU)
 				r = clk_reset13_readl(
 					THROT13_PSKIP_CTRL_CPU(level));
 			else

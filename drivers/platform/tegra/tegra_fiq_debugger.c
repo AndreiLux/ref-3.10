@@ -80,6 +80,7 @@ static int debug_port_init(struct platform_device *pdev)
 
 	/* clear LSR */
 	tegra_read(t, UART_LSR);
+	t->break_seen = false;
 
 	/* enable rx interrupt */
 	tegra_write(t, UART_IER_RDI, UART_IER);

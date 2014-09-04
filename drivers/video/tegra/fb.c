@@ -293,26 +293,30 @@ static int tegra_fb_setcmap(struct fb_cmap *cmap, struct fb_info *info)
 static int tegra_fb_blank(int blank, struct fb_info *info)
 {
 	struct tegra_fb_info *tegra_fb = info->par;
+	struct tegra_dc *dc = tegra_fb->win.dc;
 
 	switch (blank) {
 	case FB_BLANK_UNBLANK:
 		dev_dbg(&tegra_fb->ndev->dev, "unblank\n");
-		tegra_dc_enable(tegra_fb->win.dc);
-		if (!tegra_fb->win.dc->suspended &&
-		    !tegra_dc_restore(tegra_fb->win.dc)) {
+		tegra_dc_enable(dc);
+		if (!dc->suspended && dc->blanked &&
+		    !tegra_dc_restore(dc)) {
 			struct tegra_dc_win *win = &tegra_fb->win;
 			tegra_dc_update_windows(&win, 1, NULL);
 			tegra_dc_sync_windows(&win, 1);
-			tegra_dc_program_bandwidth(win->dc, true);
+			tegra_dc_program_bandwidth(dc, true);
 		}
+
+		dc->blanked = false;
 		return 0;
 
 	case FB_BLANK_NORMAL:
 		dev_dbg(&tegra_fb->ndev->dev, "blank - normal\n");
 		/* To pan fb at the unblank */
-		if (tegra_fb->win.dc->enabled)
+		if (dc->enabled)
 			tegra_fb->curr_xoffset = -1;
-		tegra_dc_blank(tegra_fb->win.dc, BLANK_ALL);
+		dc->blanked = true;
+		tegra_dc_blank(dc, BLANK_ALL);
 		return 0;
 
 	case FB_BLANK_VSYNC_SUSPEND:
@@ -320,9 +324,9 @@ static int tegra_fb_blank(int blank, struct fb_info *info)
 	case FB_BLANK_POWERDOWN:
 		dev_dbg(&tegra_fb->ndev->dev, "blank - powerdown\n");
 		/* To pan fb while switching from X */
-		if (!tegra_fb->win.dc->suspended && tegra_fb->win.dc->enabled)
+		if (!dc->suspended && dc->enabled)
 			tegra_fb->curr_xoffset = -1;
-		tegra_dc_disable(tegra_fb->win.dc);
+		tegra_dc_disable(dc);
 		return 0;
 
 	default:
@@ -498,7 +502,7 @@ static int tegra_fb_ioctl(struct fb_info *info,
 		break;
 
 	case FBIOGET_VBLANK:
-		if (tegra_dc_has_vsync(tegra_fb->win.dc))
+		if (tegra_dc_has_vsync(dc))
 			vblank.flags = FB_VBLANK_HAVE_VSYNC;
 
 		if (copy_to_user(
@@ -582,6 +586,9 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 {
 	struct fb_event event;
 	int i;
+#ifdef CONFIG_FRAMEBUFFER_CONSOLE
+	struct tegra_dc_mode dcmode;
+#endif /* CONFIG_FRAMEBUFFER_CONSOLE */
 
 	mutex_lock(&fb_info->info->lock);
 	fb_destroy_modedb(fb_info->info->monspecs.modedb);
@@ -626,6 +633,22 @@ void tegra_fb_update_monspecs(struct tegra_fb_info *fb_info,
 #ifdef CONFIG_FRAMEBUFFER_CONSOLE
 	console_lock();
 	fb_notifier_call_chain(FB_EVENT_NEW_MODELIST, &event);
+	dcmode.pclk          = specs->modedb[0].pixclock;
+	dcmode.pclk          = PICOS2KHZ(dcmode.pclk);
+	dcmode.pclk         *= 1000;
+	dcmode.h_ref_to_sync = 1;
+	dcmode.v_ref_to_sync = 1;
+	dcmode.h_sync_width  = specs->modedb[0].hsync_len;
+	dcmode.v_sync_width  = specs->modedb[0].vsync_len;
+	dcmode.h_back_porch  = specs->modedb[0].left_margin;
+	dcmode.v_back_porch  = specs->modedb[0].upper_margin;
+	dcmode.h_active      = specs->modedb[0].xres;
+	dcmode.v_active      = specs->modedb[0].yres;
+	dcmode.h_front_porch = specs->modedb[0].right_margin;
+	dcmode.v_front_porch = specs->modedb[0].lower_margin;
+	tegra_dc_set_mode(fb_info->win.dc, &dcmode);
+	fb_videomode_to_var(&fb_info->info->var, &specs->modedb[0]);
+	fb_notifier_call_chain(FB_EVENT_MODE_CHANGE_ALL, &event);
 	console_unlock();
 #else
 	fb_notifier_call_chain(FB_EVENT_NEW_MODELIST, &event);
@@ -713,7 +736,7 @@ struct tegra_fb_info *tegra_fb_register(struct platform_device *ndev,
 	if (fb_mem) {
 		fb_size = resource_size(fb_mem);
 		tegra_fb->phys_start = fb_mem->start;
-		fb_base = ioremap_nocache(tegra_fb->phys_start, fb_size);
+		fb_base = ioremap_wc(tegra_fb->phys_start, fb_size);
 		if (!fb_base) {
 			dev_err(&ndev->dev, "fb can't be mapped\n");
 			ret = -EBUSY;

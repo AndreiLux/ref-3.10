@@ -75,9 +75,6 @@ struct gpu_ops {
 		void (*set_zbc_depth_entry)(struct gk20a *g,
 					    struct zbc_entry *depth_val,
 					    u32 index);
-		void (*clear_zbc_color_entry)(struct gk20a *g, u32 index);
-		void (*clear_zbc_depth_entry)(struct gk20a *g, u32 index);
-		int  (*init_zbc)(struct gk20a *g, struct gr_gk20a *gr);
 		void (*init_cbc)(struct gk20a *g, struct gr_gk20a *gr);
 		void (*sync_debugfs)(struct gk20a *g);
 		void (*init_fs_state)(struct gk20a *g);
@@ -217,6 +214,11 @@ struct gk20a {
 	void __iomem *bar1;
 
 	bool power_on;
+#ifdef CONFIG_INPUT_CFBOOST
+	bool boost_added;
+#endif
+
+	struct rw_semaphore busy_lock;
 
 	struct clk_gk20a clk;
 	struct fifo_gk20a fifo;
@@ -239,6 +241,7 @@ struct gk20a {
 	bool elcg_enabled;
 	bool elpg_enabled;
 	bool aelpg_enabled;
+	bool forced_idle;
 
 #ifdef CONFIG_DEBUG_FS
 	spinlock_t debugfs_lock;

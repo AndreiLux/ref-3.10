@@ -32,6 +32,17 @@
 #define PCIE_LANES_X4_X0		2
 #define PCIE_LANES_X2_X1		3
 
+/* UTMIP SPARE CFG*/
+#define UTMIP_SPARE_CFG0	0x834
+#define HS_RX_IPG_ERROR_ENABLE		(1 << 0)
+#define HS_RX_FLUSH_ALAP		(1 << 1)
+#define HS_RX_LATE_SQUELCH		(1 << 2)
+#define FUSE_SETUP_SEL			(1 << 3)
+#define HS_TERM_RANGE_ADJ_SEL		(1 << 4)
+#define FUSE_SPARE			(1 << 5)
+#define FUSE_HS_SQUELCH_LEVEL		(1 << 6)
+#define FUSE_HS_IREF_CAP_CFG		(1 << 7)
+
 /* xusb padctl regs for pad programming of t124 usb3 */
 #define XUSB_PADCTL_IOPHY_PLL_S0_CTL1_0			0x138
 #define XUSB_PADCTL_IOPHY_PLL_S0_CTL1_0_PLL0_REFCLK_NDIV_MASK	(0x3 << 20)

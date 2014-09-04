@@ -25,7 +25,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhdioctl.h 424863 2013-09-19 20:06:14Z $
+ * $Id: dhdioctl.h 438755 2013-11-22 23:20:40Z $
  */
 
 #ifndef _dhdioctl_h_
@@ -93,6 +93,7 @@ enum {
 #define DHD_NOCHECKDIED_VAL		0x20000 /* UTF WAR */
 #define DHD_WL_VAL2		0x40000
 #define DHD_PNO_VAL		0x80000
+#define DHD_RTT_VAL		0x100000
 
 #ifdef SDTEST
 /* For pktgen iovar */

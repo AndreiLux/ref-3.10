@@ -214,6 +214,7 @@ static const struct ov5693_reg ov5693_2592x1944_i2c[] = {
 	{0x371e, 0xa1},
 	{0x371f, 0x0c},
 	{0x3721, 0x00},
+	{0x3724, 0x10},
 	{0x3726, 0x00},
 	{0x372a, 0x01},
 	{0x3730, 0x10},
@@ -3522,8 +3523,6 @@ static int ov5693_probe(
 	if (IS_ERR(info->regulators.avdd) || IS_ERR(info->regulators.dovdd))
 			return -EFAULT;
 
-	info->sysedpc = sysedp_create_consumer("ov5693", "ov5693");
-
 	ov5693_sdata_init(info);
 	if (info->pdata->cfg & (NVC_CFG_NODEV | NVC_CFG_BOOT_INIT)) {
 		if (info->pdata->probe_clock) {
@@ -3555,6 +3554,8 @@ static int ov5693_probe(
 		ov5693_del(info);
 		return -ENODEV;
 	}
+
+	info->sysedpc = sysedp_create_consumer("ov5693", info->devname);
 
 	dev_dbg(&client->dev, "ov5693 sensor driver loading done\n");
 	return 0;

@@ -314,14 +314,10 @@ static int hs_mgr_rpc_call(struct msm_rpc_server *server,
 	return 0;
 }
 #endif
+
 static ssize_t h2w_print_name(struct switch_dev *sdev, char *buf)
 {
 	return sprintf(buf, "Headset\n");
-}
-
-static ssize_t usb_audio_print_name(struct switch_dev *sdev, char *buf)
-{
-	return sprintf(buf, "usb_audio\n");
 }
 
 static void get_key_name(int keycode, char *buf)
@@ -1302,6 +1298,9 @@ int hs_notify_key_irq(void)
 		/* hs_notify_hpin_irq(); */
 		update_mic_status(HS_DEF_MIC_DETECT_COUNT);
 	} else if (hs_hpin_stable()) {
+#ifndef CONFIG_HTC_HEADSET_ONE_WIRE
+		msleep(50);
+#endif
 		hs_mgr_notifier.remote_adc(&adc);
 		key_code = hs_mgr_notifier.remote_keycode(adc);
 		hs_notify_key_event(key_code);
@@ -2150,6 +2149,7 @@ static int htc_headset_mgr_probe(struct platform_device *pdev)
 	set_bit(KEY_SEND, hi->input->keybit);
 	set_bit(KEY_FASTFORWARD, hi->input->keybit);
 	set_bit(KEY_REWIND, hi->input->keybit);
+	set_bit(KEY_SEARCH, hi->input->keybit);
 
 	ret = input_register_device(hi->input);
 	if (ret < 0)

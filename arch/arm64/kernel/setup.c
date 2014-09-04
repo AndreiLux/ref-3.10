@@ -217,9 +217,7 @@ static void __init setup_processor(void)
 	elf_hwcap = 0;
 
 	/* Read the number of ASID bits */
-	reg_value = read_cpuid(ID_AA64MMFR0_EL1);
-	features=reg_value;
-	reg_value=reg_value & 0xf0;
+	reg_value = read_cpuid(ID_AA64MMFR0_EL1) & 0xf0;
 	if (reg_value == 0x00)
 		max_asid_bits = 8;
 	else if (reg_value == 0x20)
@@ -232,6 +230,7 @@ static void __init setup_processor(void)
 	 * The blocks we test below represent incremental functionality
 	 * for non-negative values. Negative values are reserved.
 	 */
+	features = read_cpuid(ID_AA64ISAR0_EL1);
 	block = (features >> 4) & 0xf;
 	if (!(block & 0x8)) {
 		switch (block) {
@@ -512,9 +511,11 @@ static int c_show(struct seq_file *m, void *v)
 		if (elf_hwcap & (1 << i))
 			seq_printf(m, "%s ", hwcap_str[i]);
 #ifdef CONFIG_ARMV7_COMPAT_CPUINFO
-	/* Print out the non-optional ARMv8 HW capabilities */
-	seq_printf(m, "wp half thumb fastmult vfp edsp neon vfpv3 tlsi ");
-	seq_printf(m, "vfpv4 idiva idivt ");
+	if (is_compat_task()) {
+		/* Print out the non-optional ARMv8 HW capabilities */
+		seq_printf(m, "wp half thumb fastmult vfp edsp neon vfpv3 tlsi ");
+		seq_printf(m, "vfpv4 idiva idivt ");
+	}
 #endif
 
 	seq_printf(m, "\nCPU implementer\t: 0x%02x\n", read_cpuid_id() >> 24);

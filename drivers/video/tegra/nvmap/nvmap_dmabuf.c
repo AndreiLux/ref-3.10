@@ -375,12 +375,7 @@ static struct sg_table *nvmap_dmabuf_map_dma_buf(
 			goto err_map;
 		}
 		BUG_ON(ents != 1);
-	} else if (info->handle->alloc) {
-		/* carveout has linear map setup. */
-		mutex_lock(&info->handle->lock);
-		sg_dma_address(sgt->sgl) = info->handle->carveout->base;
-		mutex_unlock(&info->handle->lock);
-	} else {
+	} else if (!info->handle->alloc) {
 		goto err_map;
 	}
 
@@ -434,6 +429,8 @@ static void nvmap_dmabuf_release(struct dma_buf *dmabuf)
 				   info->handle->owner->name : "unknown",
 				   info->handle,
 				   dmabuf);
+	BUG_ON(dmabuf != info->handle->dmabuf);
+	info->handle->dmabuf = NULL;
 
 	mutex_lock(&info->maps_lock);
 	while (!list_empty(&info->maps)) {
@@ -445,8 +442,7 @@ static void nvmap_dmabuf_release(struct dma_buf *dmabuf)
 	}
 	mutex_unlock(&info->maps_lock);
 
-	dma_buf_detach(info->handle->dmabuf, info->handle->attachment);
-	info->handle->dmabuf = NULL;
+	dma_buf_detach(dmabuf, info->handle->attachment);
 	nvmap_handle_put(info->handle);
 	kfree(info);
 }

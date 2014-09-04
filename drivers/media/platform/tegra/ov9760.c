@@ -33,6 +33,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/debugfs.h>
+#include <linux/sysedp.h>
 
 #define SIZEOF_I2C_TRANSBUF 32
 
@@ -55,6 +56,7 @@ struct ov9760_info {
 	struct dentry			*debugfs_root;
 	u32				debug_i2c_offset;
 #endif
+	struct sysedp_consumer *sysedpc;
 };
 
 #define OV9760_TABLE_WAIT_MS 0
@@ -615,6 +617,7 @@ static int ov9760_open(struct inode *inode, struct file *file)
 	file->private_data = info;
 
 	if (info->pdata && info->pdata->power_on) {
+		sysedp_set_state(info->sysedpc, 1);
 		ov9760_mclk_enable(info);
 		info->pdata->power_on(&info->power);
 	} else {
@@ -633,6 +636,7 @@ int ov9760_release(struct inode *inode, struct file *file)
 	if (info->pdata && info->pdata->power_off) {
 		ov9760_mclk_disable(info);
 		info->pdata->power_off(&info->power);
+		sysedp_set_state(info->sysedpc, 0);
 	}
 	file->private_data = NULL;
 
@@ -877,6 +881,7 @@ static int ov9760_probe(struct i2c_client *client,
 #ifdef CONFIG_DEBUG_FS
 	ov9760_debug_init(info);
 #endif
+	info->sysedpc = sysedp_create_consumer("ov9760", "ov9760");
 
 	return err;
 }
@@ -887,6 +892,7 @@ static int ov9760_remove(struct i2c_client *client)
 
 	ov9760_power_put(&info->power);
 	misc_deregister(&ov9760_device);
+	sysedp_free_consumer(info->sysedpc);
 #ifdef CONFIG_DEBUG_FS
 	debugfs_remove_recursive(info->debugfs_root);
 #endif

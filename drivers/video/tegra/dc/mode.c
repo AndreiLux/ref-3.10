@@ -71,7 +71,9 @@ static int calc_h_ref_to_sync(const struct tegra_dc_mode *mode, int *href)
 static int calc_v_ref_to_sync(const struct tegra_dc_mode *mode, int *vref)
 {
 	long a;
-	a = 1; /* Constraint 5: V_REF_TO_SYNC >= 1 */
+
+	/* Constraint 5: V_REF_TO_SYNC >= 1 */
+	a = mode->v_front_porch - 1;
 
 	/* Constraint 2: V_REF_TO_SYNC + V_SYNC_WIDTH + V_BACK_PORCH > 1 */
 	if (a + mode->v_sync_width + mode->v_back_porch <= 1)
@@ -348,19 +350,17 @@ int tegra_dc_program_mode(struct tegra_dc *dc, struct tegra_dc_mode *mode)
 	tegra_dc_writel(dc, val, DC_DISP_DISP_INTERFACE_CONTROL);
 
 	rate = tegra_dc_clk_get_rate(dc);
-
 	pclk = tegra_dc_pclk_round_rate(dc, mode->pclk);
+	div = (rate * 2 / pclk) - 2;
+	dev_info(&dc->ndev->dev,
+		"nominal-pclk:%d parent:%lu div:%lu.%lu pclk:%lu %d~%d\n",
+		mode->pclk, rate, (div + 2) / 2, ((div + 2) % 2) * 5, pclk,
+		mode->pclk / 100 * 99, mode->pclk / 100 * 109);
 	if (!pclk || pclk < (mode->pclk / 100 * 99) ||
 	    pclk > (mode->pclk / 100 * 109)) {
-		dev_err(&dc->ndev->dev,
-			"can't divide %ld clock to %d -1/+9%% %ld %d %d\n",
-			rate, mode->pclk,
-			pclk, (mode->pclk / 100 * 99),
-			(mode->pclk / 100 * 109));
+		dev_err(&dc->ndev->dev, "pclk out of range!\n");
 		return -EINVAL;
 	}
-
-	div = (rate * 2 / pclk) - 2;
 
 	/* SW WAR for bug 1045373. To make the shift clk dividor effect under
 	 * all circumstances, write N+2 to SHIFT_CLK_DIVIDER and activate it.

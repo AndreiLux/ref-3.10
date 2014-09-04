@@ -39,8 +39,10 @@ static unsigned int gpu_high_threshold = 500;
 static unsigned int gpu_window = 80;
 static unsigned int gpu_high_hist;
 static unsigned int gpu_high_count = 2;
+static unsigned int priority_bias = 75;
 static unsigned int online_cpu_count;
 static bool gpu_busy;
+static unsigned int fgpu;
 static unsigned int avail_power;
 static unsigned int avail_oc_relax;
 static unsigned int cap_method;
@@ -161,7 +163,9 @@ static void apply_caps(struct tegra_sysedp_devcap *devcap)
 
 static inline bool gpu_priority(void)
 {
-	return gpu_busy || force_gpu_pri;
+	return (force_gpu_pri ||
+		(gpu_busy &&
+		 (fgpu > cur_corecap->cpupri.gpufreq * priority_bias / 100)));
 }
 
 static inline struct tegra_sysedp_devcap *get_devcap(void)
@@ -271,12 +275,13 @@ static bool calc_gpu_busy(unsigned int load)
 	return (gpu_high_hist & mask) == mask;
 }
 
-void tegra_edp_notify_gpu_load(unsigned int load)
+void tegra_edp_notify_gpu_load(unsigned int load, unsigned int freq_in_hz)
 {
 	bool old;
 
 	old = gpu_busy;
 	gpu_busy = calc_gpu_busy(load);
+	fgpu = freq_in_hz / 1000;
 
 	if (gpu_busy == old || force_gpu_pri || !capping_device_platdata)
 		return;
@@ -310,8 +315,9 @@ static int tegra_edp_cpu_notify(struct notifier_block *nb,
 }
 
 static struct notifier_block tegra_edp_cpu_nb = {
-	.notifier_call = tegra_edp_cpu_notify
+       .notifier_call = tegra_edp_cpu_notify
 };
+
 
 #ifdef CONFIG_DEBUG_FS
 static struct dentry *capping_debugfs_dir;
@@ -499,6 +505,7 @@ static void init_debug(void)
 	create_attr("gain", &capping_device_platdata->core_gain);
 	create_attr("gpu_high_count", &gpu_high_count);
 	create_attr("cap_method", &cap_method);
+	create_attr("priority_bias", &priority_bias);
 
 	create_longattr("corecaps", corecaps_show);
 	create_longattr("cpucaps", cpucaps_show);

@@ -196,10 +196,10 @@ int tegra_pm_irq_set_wake(int wake, int enable)
 
 	if (enable) {
 		tegra_lp0_wake_enb |= 1ull << wake;
-		pr_info("Enabling wake%d\n", wake);
+		pr_debug("Enabling wake%d\n", wake);
 	} else {
 		tegra_lp0_wake_enb &= ~(1ull << wake);
-		pr_info("Disabling wake%d\n", wake);
+		pr_debug("Disabling wake%d\n", wake);
 	}
 
 	return 0;

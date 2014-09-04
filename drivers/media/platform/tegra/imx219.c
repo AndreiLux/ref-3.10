@@ -27,7 +27,7 @@
 #include <media/imx219.h>
 #include <linux/gpio.h>
 #include <linux/module.h>
-
+#include <linux/sysedp.h>
 #include <linux/kernel.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
@@ -35,7 +35,6 @@
 #include "nvc_utilities.h"
 
 #include "imx219_tables.h"
-
 static bool bank_a = true;
 
 struct previous_ae {
@@ -43,7 +42,7 @@ struct previous_ae {
 	bool gain_enable;
 	bool coarse_enable;
 	bool frame_enable;
-	u8 gain;
+	struct imx219_gain gain;
 	u16 coarse_time;
 	u16 frame_length;
 };
@@ -64,6 +63,10 @@ struct imx219_info {
 	struct dentry			*debugfs_root;
 	u32				debug_i2c_offset;
 #endif
+	struct sysedp_consumer *sysedpc;
+    // AF Data
+    u8 afdat[4];
+    bool afdat_read;
 };
 
 static inline void
@@ -82,6 +85,15 @@ imx219_get_frame_length_regs(struct imx219_reg *regs, u32 frame_length)
 }
 
 static inline void
+imx219_get_frame_length_bankB_regs(struct imx219_reg *regs, u32 frame_length)
+{
+	regs->addr = 0x0260;
+	regs->val = (frame_length >> 8) & 0xff;
+	(regs + 1)->addr = 0x0261;
+	(regs + 1)->val = (frame_length) & 0xff;
+}
+
+static inline void
 imx219_get_coarse_time_regs(struct imx219_reg *regs, u32 coarse_time)
 {
 	regs->addr = 0x15a;
@@ -91,10 +103,34 @@ imx219_get_coarse_time_regs(struct imx219_reg *regs, u32 coarse_time)
 }
 
 static inline void
-imx219_get_gain_reg(struct imx219_reg *regs, u16 gain)
+imx219_get_coarse_time_bankB_regs(struct imx219_reg *regs, u32 coarse_time)
+{
+	regs->addr = 0x25a;
+	regs->val = (coarse_time >> 8) & 0xff;
+	(regs + 1)->addr = 0x25b;
+	(regs + 1)->val = (coarse_time) & 0xff;
+}
+
+static inline void
+imx219_get_gain_reg(struct imx219_reg *regs, struct imx219_gain gain)
 {
 	regs->addr = 0x157;
-	regs->val = gain;
+	regs->val = gain.again;
+	(regs+1)->addr = 0x158;
+	(regs+1)->val = gain.dgain_upper;
+	(regs+2)->addr = 0x159;
+	(regs+2)->val = gain.dgain_lower;
+}
+
+static inline void
+imx219_get_gain_bankB_reg(struct imx219_reg *regs, struct imx219_gain gain)
+{
+	regs->addr = 0x257;
+	regs->val = gain.again;
+	(regs+1)->addr = 0x258;
+	(regs+1)->val = gain.dgain_upper;
+	(regs+2)->addr = 0x259;
+	(regs+2)->val = gain.dgain_lower;
 }
 
 static int
@@ -122,13 +158,54 @@ imx219_read_reg(struct i2c_client *client, u16 addr, u8 *val)
 	msg[1].buf = data + 2;
 
 	err = i2c_transfer(client->adapter, msg, 2);
+	if (err == 2) {
+		*val = data[2];
+		return 0;
+	}
 
-	if (err != 2)
-		return -EINVAL;
+	pr_err("%s:i2c read failed, addr %x, err %d\n",
+			__func__, addr, err);
 
-	*val = data[2];
-	return 0;
+	return err;
 }
+
+#ifdef GROUP_HOLD_DEBUG
+static int
+imx219_read_reg16(struct i2c_client *client, u16 addr, u16 *val)
+{
+	int err;
+	struct i2c_msg msg[2];
+	unsigned char data[4];
+
+	if (!client->adapter)
+		return -ENODEV;
+
+	msg[0].addr = client->addr;
+	msg[0].flags = 0;
+	msg[0].len = 2;
+	msg[0].buf = data;
+
+	/* high byte goes out first */
+	data[0] = (u8) (addr >> 8);
+	data[1] = (u8) (addr & 0xff);
+
+	msg[1].addr = client->addr;
+	msg[1].flags = I2C_M_RD;
+	msg[1].len = 2;
+	msg[1].buf = data + 2;
+
+	err = i2c_transfer(client->adapter, msg, 2);
+	if (err == 2) {
+		*val = ((data[2] << 8) | data[3]);
+		return 0;
+	}
+
+	pr_err("%s:i2c read failed, addr %x, err %d\n",
+			__func__, addr, err);
+
+	return err;
+}
+#endif
 
 static int
 imx219_write_reg(struct i2c_client *client, u16 addr, u8 val)
@@ -153,8 +230,8 @@ imx219_write_reg(struct i2c_client *client, u16 addr, u8 val)
 	if (err == 1)
 		return 0;
 
-	pr_err("%s:i2c write failed, %x = %x\n",
-			__func__, addr, val);
+	pr_err("%s:i2c write failed, addr %x, val %x, err %d\n",
+			__func__, addr, val, err);
 
 	return err;
 }
@@ -203,18 +280,19 @@ imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 {
 	int sensor_mode;
 	int err;
-	struct imx219_reg reg_list[8];
+	struct imx219_reg reg_list[15];
 
-	pr_info("%s: xres %u yres %u framelength %u coarsetime %u gain %u\n",
+	pr_info("%s: xres %u yres %u framelength %u coarsetime %u again %u dgain %u%u\n",
 			 __func__, mode->xres, mode->yres, mode->frame_length,
-			 mode->coarse_time, mode->gain);
+			 mode->coarse_time, mode->gain.again,
+			 mode->gain.dgain_upper, mode->gain.dgain_lower);
 
-	if (mode->xres == 3280 && mode->yres == 2464) {
-		sensor_mode = IMX219_MODE_3280x2464;
+	if (mode->xres == 3280 && mode->yres == 2460) {
+		sensor_mode = IMX219_MODE_3280x2460;
 	} else if (mode->xres == 1640 && mode->yres == 1232) {
 		sensor_mode = IMX219_MODE_1640x1232;
-	} else if (mode->xres == 1920 && mode->yres == 1080) {
-		sensor_mode = IMX219_MODE_1920x1080;
+	} else if (mode->xres == 3280 && mode->yres == 1846) {
+		sensor_mode = IMX219_MODE_3280x1846;
 	} else if (mode->xres == 1280 && mode->yres == 720) {
 		sensor_mode = IMX219_MODE_1280x720;
 	} else {
@@ -226,13 +304,21 @@ imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 	/* get a list of override regs for the asking frame length, */
 	/* coarse integration time, and gain.                       */
 	imx219_get_frame_length_regs(reg_list, mode->frame_length);
-	imx219_get_coarse_time_regs(reg_list + 2, mode->coarse_time);
-	imx219_get_gain_reg(reg_list + 4, mode->gain);
+        /* sync frame length to bank B */
+	imx219_get_frame_length_bankB_regs(reg_list +2, mode->frame_length);
+
+	imx219_get_coarse_time_regs(reg_list + 4, mode->coarse_time);
+        /* sync coarse time to bank B */
+	imx219_get_coarse_time_bankB_regs(reg_list + 6, mode->coarse_time);
+
+	imx219_get_gain_reg(reg_list + 8, mode->gain);
+        /* sync gain to bank B */
+	imx219_get_gain_bankB_reg(reg_list + 11, mode->gain);
 
 	bank_a = true;
 	err = imx219_write_table(info->i2c_client,
 				mode_table[sensor_mode],
-				reg_list, 5);
+				reg_list, 14);
 
 	pre_ae.bank_switch = false;
 	pre_ae.gain_enable = false;
@@ -302,15 +388,22 @@ imx219_set_coarse_time(struct imx219_info *info, u32 coarse_time,
 }
 
 static int
-imx219_set_gain(struct imx219_info *info, u16 gain, bool bank_a)
+imx219_set_gain(struct imx219_info *info, struct imx219_gain gain, bool bank_a)
 {
+	int i;
 	int ret;
-	struct imx219_reg reg_list;
+	struct imx219_reg reg_list[3];
 
-	imx219_get_gain_reg(&reg_list, gain);
-	if (!bank_a)
-		reg_list.addr += 0x100;
-	ret = imx219_write_reg(info->i2c_client, reg_list.addr, reg_list.val);
+	imx219_get_gain_reg(reg_list, gain);
+	for (i = 0; i < 3; ++i) {
+		ret = imx219_write_reg(info->i2c_client,
+								reg_list[i].addr + 0x100 * !bank_a,
+								reg_list[i].val);
+		if (ret) {
+			pr_err("%s: unable to write register: %d", __func__, ret);
+			return ret;
+		}
+	}
 
 	return ret;
 }
@@ -322,26 +415,24 @@ imx219_set_group_hold(struct imx219_info *info, struct imx219_ae *ae)
 	int i = 0;
 	u8 reg;
 
-	if (pre_ae.bank_switch) {
-		for (i = 0; i < 7; i++) {
-	               msleep_range(5);
-	               imx219_read_reg(info->i2c_client, 0x150, &reg);
-	               if (((reg & 0x2) ? false : true) == bank_a)
-	                       break;
-		}
-	}
+#ifdef GROUP_HOLD_DEBUG
+	u16 reg16;
+	u16 CT = 0, FL = 0, AG = 0, DG = 0, BK;
+#endif
 
-	if (ae->coarse_time_enable || ae->frame_length_enable) {
-		pre_ae.bank_switch =  true;
-		bank_a = !bank_a;
-	}
-	else
-		pre_ae.bank_switch =  false;
+	pre_ae.bank_switch =  true;
+	bank_a = !bank_a;
 
+#ifdef GROUP_HOLD_DEBUG
+	pr_info("banks %x coares %x frame length %x gain %x\n",
+		(bank_a ? 0 : 2), ae->coarse_time, ae->frame_length, ae->gain);
+#endif
 
 	if (ae->gain_enable) {
 		imx219_set_gain(info, ae->gain, bank_a);
-		pre_ae.gain = ae->gain;
+		pre_ae.gain.again = ae->gain.again;
+		pre_ae.gain.dgain_upper = ae->gain.dgain_upper;
+		pre_ae.gain.dgain_lower = ae->gain.dgain_lower;
 		pre_ae.gain_enable = true;
 	}
 	else {
@@ -375,9 +466,35 @@ imx219_set_group_hold(struct imx219_info *info, struct imx219_ae *ae)
 		}
 	}
 
-	if (ae->coarse_time_enable || ae->frame_length_enable)
-		ret = imx219_write_reg(info->i2c_client, 0x150, bank_a ? 0 : 1);
+	ret = imx219_write_reg(info->i2c_client, 0x150, bank_a ? 0 : 1);
 
+#ifdef GROUP_HOLD_DEBUG
+	imx219_read_reg(info->i2c_client, 0x150, &reg);
+	BK = reg & 0x2;
+	imx219_read_reg16(info->i2c_client, 0x15a, &reg16);
+	CT = reg16;
+	imx219_read_reg16(info->i2c_client, 0x160, &reg16);
+	FL = reg16;
+	imx219_read_reg16(info->i2c_client, 0x158, &reg16);
+	DG = reg16;
+	imx219_read_reg(info->i2c_client, 0x157, &reg);
+	AG = reg;
+
+	pr_info("bankA %x coares %x frame length %x again %x dgain %x\n",
+		BK, CT, FL, AG, DG);
+
+	imx219_read_reg16(info->i2c_client, 0x25a, &reg16);
+	CT = reg16;
+	imx219_read_reg16(info->i2c_client, 0x260, &reg16);
+	FL = reg16;
+	imx219_read_reg16(info->i2c_client, 0x258, &reg16);
+	DG = reg16;
+	imx219_read_reg(info->i2c_client, 0x257, &reg);
+	AG = reg;
+
+	pr_info("bankB %x coares %x frame length %x again %x dgain %x\n",
+		BK, CT, FL, AG, DG);
+#endif
 	return ret;
 }
 
@@ -410,6 +527,41 @@ static int imx219_get_sensor_id(struct imx219_info *info)
 		info->fuse_id.size = 6;
 
 	/* Note 2: Need to clean up any action carried out in Note 1 */
+
+	return ret;
+}
+
+static int imx219_get_af_data(struct imx219_info *info)
+{
+	int ret = 0;
+	int i;
+	u8 bak = 0;
+    u8 *dat = (u8 *)info->afdat;
+
+	pr_info("%s\n", __func__);
+	if (info->afdat_read)
+		return 0;
+
+    imx219_write_reg(info->i2c_client, 0x0100, 0); // SW-Stanby
+    msleep_range(33); // wait one frame
+
+    imx219_write_reg(info->i2c_client, 0x012A, 0x18); // 24Mhz input
+    imx219_write_reg(info->i2c_client, 0x012B, 0x00); //
+
+    imx219_write_reg(info->i2c_client, 0x3302, 0x02); // clock setting
+    imx219_write_reg(info->i2c_client, 0x3303, 0x58); // clock setting
+    imx219_write_reg(info->i2c_client, 0x3300, 0); // ECC ON
+    imx219_write_reg(info->i2c_client, 0x3200, 1); // set 'Read'
+
+    imx219_write_reg(info->i2c_client, 0x3202, 1); // page 1
+
+	for (i = 0; i < 4; i++) {
+		ret |= imx219_read_reg(info->i2c_client, 0x3204 + i, &bak);
+		*(dat+3-i) = bak;
+        printk("[%d] x%x ", i, bak);
+	}
+    printk("\n");
+    info->afdat_read = true;
 
 	return ret;
 }
@@ -447,14 +599,17 @@ imx219_ioctl(struct file *file,
 			break;
 		if (arg && info->pdata->power_on) {
 			err = imx219_mclk_enable(info);
-			if (!err)
+			if (!err) {
+				sysedp_set_state(info->sysedpc, 1);
 				err = info->pdata->power_on(&info->power);
+			}
 			if (err < 0)
 				imx219_mclk_disable(info);
 		}
 		if (!arg && info->pdata->power_off) {
 			info->pdata->power_off(&info->power);
 			imx219_mclk_disable(info);
+			sysedp_set_state(info->sysedpc, 0);
 		}
 		break;
 	case IMX219_IOCTL_SET_MODE:
@@ -476,9 +631,17 @@ imx219_ioctl(struct file *file,
 		err = imx219_set_coarse_time(info, (u32)arg, false);
 		break;
 	case IMX219_IOCTL_SET_GAIN:
-		err = imx219_set_gain(info, (u16)arg, true);
-		err = imx219_set_gain(info, (u16)arg, false);
+	{
+		struct imx219_gain gain;
+		if (copy_from_user(&gain, (const void __user *)arg,
+			sizeof(struct imx219_gain))) {
+			pr_err("%s:Failed to get gain from user\n", __func__);
+			return -EFAULT;
+		    }
+		err = imx219_set_gain(info, gain, true);
+		err = imx219_set_gain(info, gain, false);
 		break;
+	}
 	case IMX219_IOCTL_GET_STATUS:
 	{
 		u8 status;
@@ -518,6 +681,20 @@ imx219_ioctl(struct file *file,
 		}
 		return imx219_set_group_hold(info, &ae);
 	}
+    case IMX219_IOCTL_GET_AFDAT:
+    {
+        err = imx219_get_af_data(info);
+
+		if (err) {
+			pr_err("%s:Failed to get af data.\n", __func__);
+			return err;
+		}
+        if (copy_to_user((void __user *)arg, info->afdat, 4)) {
+			pr_err("%s:Failed to copy status to user\n", __func__);
+			return -EFAULT;
+		}
+        return 0;
+    }
 	case IMX219_IOCTL_SET_FLASH_MODE:
 	{
 		dev_dbg(&info->i2c_client->dev,
@@ -526,7 +703,7 @@ imx219_ioctl(struct file *file,
 	case IMX219_IOCTL_GET_FLASH_CAP:
 		return -ENODEV;/* Flounder not support on sensor strobe */
 	default:
-		pr_err("%s:unknown cmd.\n", __func__);
+		pr_err("%s:unknown cmd: %u\n", __func__, cmd);
 		err = -EINVAL;
 	}
 
@@ -592,8 +769,8 @@ static int imx219_regulator_get(struct imx219_info *info,
 
 	reg = regulator_get(&info->i2c_client->dev, vreg_name);
 	if (unlikely(IS_ERR_OR_NULL(reg))) {
-		dev_err(&info->i2c_client->dev, "%s %s ERR: %d\n",
-			__func__, vreg_name, (int)reg);
+		dev_err(&info->i2c_client->dev, "%s %s ERR: %p\n",
+			__func__, vreg_name, reg);
 		err = PTR_ERR(reg);
 		reg = NULL;
 	} else
@@ -777,6 +954,7 @@ imx219_probe(struct i2c_client *client,
 	info->i2c_client = client;
 	atomic_set(&info->in_use, 0);
 	info->mode = -1;
+    info->afdat_read = false;
 
 	mclk_name = info->pdata->mclk_name ?
 		    info->pdata->mclk_name : "default_mclk";
@@ -804,6 +982,7 @@ imx219_probe(struct i2c_client *client,
 #ifdef CONFIG_DEBUG_FS
 	imx219_debug_init(info);
 #endif
+	info->sysedpc = sysedp_create_consumer("imx219", "imx219");
 	return 0;
 
 imx219_probe_fail:
@@ -824,6 +1003,7 @@ imx219_remove(struct i2c_client *client)
 #ifdef CONFIG_DEBUG_FS
 	debugfs_remove_recursive(info->debugfs_root);
 #endif
+	sysedp_free_consumer(info->sysedpc);
 	return 0;
 }
 

@@ -27,6 +27,7 @@
 
 #include <trace/events/nvhost.h>
 #include <linux/nvhost_ioctl.h>
+#include <linux/nvhost.h>
 #include <linux/slab.h>
 
 #define NVHOST_CHANNEL_LOW_PRIO_MAX_WAIT 50
@@ -142,6 +143,7 @@ int nvhost_channel_unmap(struct nvhost_channel *ch)
 	struct nvhost_device_data *pdata;
 	struct nvhost_master *host;
 	int max_channels;
+	int i = 0;
 
 	if (!ch->dev) {
 		pr_err("%s: freeing unmapped channel\n", __func__);
@@ -171,17 +173,33 @@ int nvhost_channel_unmap(struct nvhost_channel *ch)
 	 * nvhost_module_enable_poweroff
 	 */
 	if (!pdata->num_mapped_chs) {
+		channel_cdma_op().stop(&ch->cdma);
+		nvhost_cdma_deinit(&ch->cdma);
+
 		if (pdata->keepalive)
 			nvhost_module_enable_poweroff(pdata->pdev);
 
 		if (pdata->deinit)
 			pdata->deinit(ch->dev);
+
+		/*
+		 * when ALL of the channels are unmapped from device,
+		 * we can free all the host managed syncpts assigned
+		 * to that device
+		 */
+		for (i = 0; i < NVHOST_MODULE_MAX_SYNCPTS; ++i) {
+			if (pdata->syncpts[i]) {
+				nvhost_free_syncpt(pdata->syncpts[i]);
+				pdata->syncpts[i] = 0;
+			}
+		}
 	}
 
 	clear_bit(ch->chid, &host->allocated_channels);
 
 	ch->chid = NVHOST_INVALID_CHANNEL;
 	ch->dev = NULL;
+	kfree(ch->ctxhandler);
 	ch->ctxhandler = NULL;
 	ch->cur_ctx = NULL;
 	ch->aperture = NULL;
@@ -193,7 +211,8 @@ int nvhost_channel_unmap(struct nvhost_channel *ch)
 }
 
 /* Maps free channel with device */
-struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
+int nvhost_channel_map(struct nvhost_device_data *pdata,
+			struct nvhost_channel **channel)
 {
 	struct nvhost_master *host = NULL;
 	struct nvhost_channel *ch = NULL;
@@ -203,7 +222,7 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 
 	if (!pdata) {
 		pr_err("%s: NULL device data\n", __func__);
-		return NULL;
+		return -EINVAL;
 	}
 
 	host = nvhost_get_host(pdata->pdev);
@@ -213,11 +232,16 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 
 	/* Check if already channel(s) assigned for device */
 	if (pdata->num_channels == pdata->num_mapped_chs) {
+		if (pdata->exclusive) {
+			mutex_unlock(&host->chlist_mutex);
+			return -EBUSY;
+		}
 		ch = nvhost_check_channel(pdata);
 		if (ch)
 			nvhost_getchannel(ch);
 		mutex_unlock(&host->chlist_mutex);
-		return ch;
+		*channel = ch;
+		return 0;
 	}
 
 	index = find_next_zero_bit(&host->allocated_channels,
@@ -232,7 +256,7 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 			pr_err("All host1x channels are mapped, BITMAP: %lu\n",
 					host->allocated_channels);
 			mutex_unlock(&host->chlist_mutex);
-			return NULL;
+			return -ENOMEM;
 		}
 	}
 
@@ -241,7 +265,7 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 	if (!ch) {
 		dev_err(&host->dev->dev, "%s: No channel is free\n", __func__);
 		mutex_unlock(&host->chlist_mutex);
-		return NULL;
+		return -EBUSY;
 	}
 	if (ch->chid == NVHOST_INVALID_CHANNEL) {
 		ch->dev = pdata->pdev;
@@ -251,7 +275,7 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 	} else {
 		dev_err(&host->dev->dev, "%s: wrong channel map\n", __func__);
 		mutex_unlock(&host->chlist_mutex);
-		return NULL;
+		return -EINVAL;
 	}
 
 	/* Initialize channel */
@@ -260,7 +284,7 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 		dev_err(&ch->dev->dev, "%s: channel init failed\n", __func__);
 		mutex_unlock(&host->chlist_mutex);
 		nvhost_channel_unmap(ch);
-		return NULL;
+		return err;
 	}
 	nvhost_getchannel(ch);
 	set_bit(ch->chid, &host->allocated_channels);
@@ -271,14 +295,14 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 	else
 		host->next_free_ch = index + 1;
 
-	if (pdata->init)
+	if (pdata->init && pdata->num_mapped_chs == 1) {
 		err = pdata->init(ch->dev);
-
-	if (err) {
-		dev_err(&ch->dev->dev, "%s: device init failed\n", __func__);
-		mutex_unlock(&host->chlist_mutex);
-		nvhost_channel_unmap(ch);
-		return NULL;
+		if (err) {
+			dev_err(&ch->dev->dev, "device init failed\n");
+			mutex_unlock(&host->chlist_mutex);
+			nvhost_channel_unmap(ch);
+			return err;
+		}
 	}
 
 	/* Keep alive modules that needs to be when a channel is open */
@@ -288,7 +312,8 @@ struct nvhost_channel *nvhost_channel_map(struct nvhost_device_data *pdata)
 	dev_dbg(&ch->dev->dev, "channel %d mapped\n", ch->chid);
 	mutex_unlock(&host->chlist_mutex);
 
-	return ch;
+	*channel = ch;
+	return 0;
 }
 
 /* Free channel memory and list */

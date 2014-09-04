@@ -588,6 +588,18 @@ struct nvhost_sync_timeline *nvhost_syncpt_timeline(struct nvhost_syncpt *sp,
 }
 #endif
 
+const char *nvhost_syncpt_get_name_from_id(int id)
+{
+	struct nvhost_master *host = nvhost;
+	struct nvhost_syncpt *sp = &host->syncpt;
+	const char *name = NULL;
+
+	name = sp->syncpt_names[id];
+
+	return name ? name : "";
+}
+EXPORT_SYMBOL_GPL(nvhost_syncpt_get_name_from_id);
+
 const char *nvhost_syncpt_get_name(struct platform_device *pdev, int id)
 {
 	struct nvhost_master *host = nvhost_get_host(pdev);
@@ -606,6 +618,9 @@ static ssize_t syncpt_type_show(struct kobject *kobj,
 	struct nvhost_syncpt_attr *syncpt_attr =
 		container_of(attr, struct nvhost_syncpt_attr, attr);
 
+	if (syncpt_attr->id < 0)
+		return snprintf(buf, PAGE_SIZE, "non_client_managed\n");
+
 	if (nvhost_syncpt_client_managed(&syncpt_attr->host->syncpt,
 			syncpt_attr->id))
 		return snprintf(buf, PAGE_SIZE, "%s\n", "client_managed");
@@ -618,6 +633,9 @@ static ssize_t syncpt_is_assigned(struct kobject *kobj,
 {
 	struct nvhost_syncpt_attr *syncpt_attr =
 		container_of(attr, struct nvhost_syncpt_attr, attr);
+
+	if (syncpt_attr->id < 0)
+		return snprintf(buf, PAGE_SIZE, "not_assigned\n");
 
 	if (nvhost_is_syncpt_assigned(&syncpt_attr->host->syncpt,
 			syncpt_attr->id))
@@ -633,6 +651,9 @@ static ssize_t syncpt_name_show(struct kobject *kobj,
 	struct nvhost_syncpt_attr *syncpt_attr =
 		container_of(attr, struct nvhost_syncpt_attr, attr);
 
+	if (syncpt_attr->id < 0)
+		return snprintf(buf, PAGE_SIZE, "\n");
+
 	return snprintf(buf, PAGE_SIZE, "%s\n",
 		nvhost_syncpt_get_name(syncpt_attr->host->dev,
 				       syncpt_attr->id));
@@ -644,6 +665,9 @@ static ssize_t syncpt_min_show(struct kobject *kobj,
 	struct nvhost_syncpt_attr *syncpt_attr =
 		container_of(attr, struct nvhost_syncpt_attr, attr);
 
+	if (syncpt_attr->id < 0)
+		return snprintf(buf, PAGE_SIZE, "0\n");
+
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			nvhost_syncpt_read(&syncpt_attr->host->syncpt,
 				syncpt_attr->id));
@@ -654,6 +678,9 @@ static ssize_t syncpt_max_show(struct kobject *kobj,
 {
 	struct nvhost_syncpt_attr *syncpt_attr =
 		container_of(attr, struct nvhost_syncpt_attr, attr);
+
+	if (syncpt_attr->id < 0)
+		return snprintf(buf, PAGE_SIZE, "0\n");
 
 	return snprintf(buf, PAGE_SIZE, "%u\n",
 			nvhost_syncpt_read_max(&syncpt_attr->host->syncpt,
@@ -861,6 +888,8 @@ void nvhost_free_syncpt(u32 id)
 	mutex_lock(&sp->syncpt_mutex);
 
 	/* set to default state */
+	if (nvhost_syncpt_client_managed(sp, id))
+		nvhost_syncpt_set_min_eq_max(sp, id);
 	sp->assigned[id] = false;
 	sp->client_managed[id] = false;
 	kfree(sp->syncpt_names[id]);

@@ -2,6 +2,7 @@
 	dfll@70040084 {
 		board-params = <&{/cpu_dfll_board_params}>;
 		i2c-pmic-integration = <&{/cpu_dfll_pmic_integration}>;
+		monitor-data-new-workaround;
 		status = "okay";
 	};
 
@@ -21,6 +22,5 @@
 		pmic-i2c-voltage-register = <0x23>;
 		i2c-fs-rate = <400000>;
 		sel-conversion-slope = <1>;
-		pmic-undershoot-gb = <100>;
 	};
 };

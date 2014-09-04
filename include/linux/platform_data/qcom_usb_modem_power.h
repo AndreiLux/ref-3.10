@@ -24,6 +24,10 @@
 #include <linux/pm_qos.h>
 #include <linux/wakelock.h>
 
+#ifdef CONFIG_MDM_SYSEDP
+#include <linux/sysedp.h>
+#endif
+
 /* modem private data structure */
 #if defined(CONFIG_MDM_FTRACE_DEBUG) || defined(CONFIG_MDM_ERRMSG)
 #define MDM_COM_BUF_SIZE 256
@@ -43,7 +47,19 @@ struct mdm_msr_info {
 enum charm_boot_type {
 	CHARM_NORMAL_BOOT = 0,
 	CHARM_RAM_DUMPS,
+	CHARM_CNV_RESET,
 };
+
+#ifdef CONFIG_MDM_SYSEDP
+enum sysedp_radio_statue {
+	MDM_SYSEDP_AIRPLANE_MODE = 0,
+	MDM_SYSEDP_SEARCHING_MODE = 1,
+	MDM_SYSEDP_2G_MODE = 2,
+	MDM_SYSEDP_3G_MODE = 3,
+	MDM_SYSEDP_LTE_MODE = 4,
+	MDM_SYSEDP_MAX
+};
+#endif
 
 struct qcom_usb_modem {
 	struct qcom_usb_modem_power_platform_data *pdata;
@@ -70,13 +86,13 @@ struct qcom_usb_modem {
 	/* mutex */
 	struct mutex lock;
 	struct mutex hc_lock;
+	struct mutex hsic_phy_lock;
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	struct mutex ftrace_cmd_lock;
 #endif
 
 	/* wake lock */
 	struct wake_lock wake_lock;	/* modem wake lock */
-	struct wake_lock hsic_wake_lock; /* HSIC wake lock */
 
 	/* usb */
 	unsigned int vid;	/* modem vendor id */
@@ -93,7 +109,6 @@ struct qcom_usb_modem {
 	/* workqueue */
 	struct workqueue_struct *usb_host_wq;   /* Usb host workqueue */
 	struct workqueue_struct *wq;	/* modem workqueue */
-	struct workqueue_struct *wakeup_wq; /* modem wakeup workqueue */
 	struct workqueue_struct *mdm_recovery_wq; /* modem recovery workqueue */
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	struct workqueue_struct *ftrace_wq; /* ftrace workqueue */
@@ -109,11 +124,9 @@ struct qcom_usb_modem {
 	struct pm_qos_request cpu_boost_req; /* min CPU freq request */
 	struct work_struct cpu_boost_work;	/* CPU freq boost work */
 	struct delayed_work cpu_unboost_work;	/* CPU freq unboost work */
-	struct work_struct mdm_wakeup_work; /* modem wakeup work */
 	struct work_struct mdm_hsic_ready_work; /* modem hsic ready work */
 	struct work_struct mdm_status_work; /* modem status changed work */
 	struct work_struct mdm_errfatal_work; /* modem errfatal work */
-	struct work_struct mdm_ipc3_work; /* modem ipc3 work */
 #ifdef CONFIG_MDM_FTRACE_DEBUG
 	struct work_struct ftrace_enable_log_work; /* ftrace enable log work */
 #endif
@@ -128,11 +141,6 @@ struct qcom_usb_modem {
 	unsigned int mdm9k_status;
 	struct proc_dir_entry *mdm9k_pde;
 	unsigned short int mdm_status;
-	bool is_mdm_hsic_phy_suspended;
-	bool is_mdm_hsic_wakeup_in_progress;
-	unsigned long mdm_hsic_phy_resume_jiffies;
-	unsigned long mdm_hsic_phy_active_total_ms;
-	bool is_mdm_support_mdm2ap_ipc3;
 	unsigned int mdm2ap_ipc3_status;
 	atomic_t final_efs_wait;
 	struct completion usb_host_reset_done;
@@ -157,8 +165,15 @@ struct qcom_usb_modem {
 	struct completion mdm_boot;
 	struct completion mdm_ram_dumps;
 #endif
-	/* remote wakeup */
+
+	/* hsic wakeup */
+	unsigned long mdm_hsic_phy_resume_jiffies;
+	unsigned long mdm_hsic_phy_active_total_ms;
 	bool hsic_wakeup_pending;
+#ifdef CONFIG_MDM_SYSEDP
+	struct sysedp_consumer *sysedpc;
+	enum sysedp_radio_statue radio_state;
+#endif
 };
 
 /* modem operations */

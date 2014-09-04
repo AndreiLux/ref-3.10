@@ -92,6 +92,7 @@
 #define TEGRA_DC_EXT_FLIP_FLAG_BLOCKLINEAR	(1 << 5)
 #define TEGRA_DC_EXT_FLIP_FLAG_SCAN_COLUMN	(1 << 6)
 #define TEGRA_DC_EXT_FLIP_FLAG_INTERLACE	(1 << 7)
+#define TEGRA_DC_EXT_FLIP_FLAG_UPDATE_CSC	(1 << 9)
 
 struct tegra_timespec {
 	__s32	tv_sec; /* seconds */
@@ -138,11 +139,24 @@ struct tegra_dc_ext_flip_windowattr {
 	/* log2(blockheight) for blocklinear format */
 	__u8	block_height_log2;
 	__u8	pad1[2];
-	__u32	offset2;
-	__u32	offset_u2;
-	__u32	offset_v2;
-	/* Leave some wiggle room for future expansion */
-	__u32   pad2[1];
+	union { /* fields for mutually exclusive options */
+		struct { /* TEGRA_DC_EXT_FLIP_FLAG_INTERLACE */
+			__u32	offset2;
+			__u32	offset_u2;
+			__u32	offset_v2;
+			__u32   pad2[1];
+		};
+		struct { /* TEGRA_DC_EXT_FLIP_FLAG_UPDATE_CSC */
+			__u16 yof;	/* s.7.0 */
+			__u16 kyrgb;	/*   2.8 */
+			__u16 kur;	/* s.2.8 */
+			__u16 kvr;	/* s.2.8 */
+			__u16 kug;	/* s.1.8 */
+			__u16 kvg;	/* s.1.8 */
+			__u16 kub;	/* s.2.8 */
+			__u16 kvb;	/* s.2.8 */
+		} csc;
+	};
 };
 
 #define TEGRA_DC_EXT_FLIP_N_WINDOWS	3
@@ -170,6 +184,15 @@ struct tegra_dc_ext_flip_3 {
 	__u16 reserved2; /* unused - must be 0 */
 	__s32 post_syncpt_fd;
 	__u16 dirty_rect[4]; /* x,y,w,h for partial screen update. 0 ignores */
+};
+
+/*
+ * vblank control - enable or disable vblank events
+ */
+
+struct tegra_dc_ext_set_vblank {
+	__u8	enable;
+	__u8	reserved[3]; /* unused - must be 0 */
 };
 
 /*
@@ -419,6 +442,9 @@ struct tegra_dc_ext_feature {
 #define TEGRA_DC_EXT_FLIP3 \
 	_IOWR('D', 0x14, struct tegra_dc_ext_flip_3)
 
+#define TEGRA_DC_EXT_SET_VBLANK \
+	_IOW('D', 0x15, struct tegra_dc_ext_set_vblank)
+
 enum tegra_dc_ext_control_output_type {
 	TEGRA_DC_EXT_DSI,
 	TEGRA_DC_EXT_LVDS,
@@ -469,13 +495,21 @@ struct tegra_dc_ext_event {
 	char	data[0];
 };
 
-#define TEGRA_DC_EXT_EVENT_HOTPLUG	0x1
+/* Events types are bits in a mask */
+#define TEGRA_DC_EXT_EVENT_HOTPLUG			(1 << 0)
 struct tegra_dc_ext_control_event_hotplug {
 	__u32 handle;
 };
 
-#define TEGRA_DC_EXT_EVENT_BANDWIDTH_INC	0x3
-#define TEGRA_DC_EXT_EVENT_BANDWIDTH_DEC	0x4
+#define TEGRA_DC_EXT_EVENT_VBLANK			(1 << 1)
+struct tegra_dc_ext_control_event_vblank {
+	__u32 handle;
+	__u32 reserved; /* unused */
+	__u64 timestamp_ns;
+};
+
+#define TEGRA_DC_EXT_EVENT_BANDWIDTH_INC	(1 << 2)
+#define TEGRA_DC_EXT_EVENT_BANDWIDTH_DEC	(1 << 3)
 struct tegra_dc_ext_control_event_bandwidth {
 	__u32 handle;
 	__u32 total_bw;

@@ -209,6 +209,7 @@
 #define PCIE2_RP_VEND_XP_BIST_GOTO_L1_L2_AFTER_DLLP_DONE	(1 << 28)
 
 #define NV_PCIE2_RP_ECTL_1_R2					0x00000FD8
+#define PCIE2_RP_ECTL_1_R2_TX_CMADJ_1C				(0xD << 8)
 #define PCIE2_RP_ECTL_1_R2_TX_DRV_CNTL_1C			(0x3 << 28)
 
 
@@ -387,7 +388,8 @@ static struct tegra_pcie_bus *tegra_pcie_bus_alloc(unsigned int busnr)
 	pgprot_t prot = L_PTE_PRESENT | L_PTE_YOUNG | L_PTE_DIRTY | L_PTE_XN |
 			L_PTE_MT_DEV_SHARED | L_PTE_SHARED;
 #else
-	pgprot_t prot = PTE_PRESENT | PTE_YOUNG | PTE_DIRTY | PTE_XN | PTE_SHARED;
+	pgprot_t prot = PTE_PRESENT | PTE_YOUNG | PTE_DIRTY | PTE_XN |
+		PTE_SHARED | PTE_TYPE_PAGE;
 	(void)pgprot_dmacoherent(prot); /* L_PTE_MT_DEV_SHARED */
 #endif
 
@@ -1441,6 +1443,7 @@ static void tegra_pcie_apply_sw_war(int index, bool enum_done)
 	} else {
 		/* WAR for Eye diagram failure on lanes for T124 platforms */
 		data = rp_readl(NV_PCIE2_RP_ECTL_1_R2, index);
+		data |= PCIE2_RP_ECTL_1_R2_TX_CMADJ_1C;
 		data |= PCIE2_RP_ECTL_1_R2_TX_DRV_CNTL_1C;
 		rp_writel(data, NV_PCIE2_RP_ECTL_1_R2, index);
 		/* Avoid warning during enumeration for invalid IRQ of RP */

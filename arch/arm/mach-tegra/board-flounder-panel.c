@@ -139,11 +139,8 @@ static struct resource flounder_disp2_resources[] = {
 };
 
 
-static struct tegra_dc_sd_settings sd_settings;
-
 static struct tegra_dc_out flounder_disp1_out = {
 	.type		= TEGRA_DC_OUT_DSI,
-	.sd_settings	= &sd_settings,
 };
 
 static int flounder_hdmi_enable(struct device *dev)
@@ -364,18 +361,21 @@ static struct nvmap_platform_carveout flounder_carveouts[] = {
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_IRAM,
 		.base		= TEGRA_IRAM_BASE + TEGRA_RESET_HANDLER_SIZE,
 		.size		= TEGRA_IRAM_SIZE - TEGRA_RESET_HANDLER_SIZE,
+		.dma_dev	= &tegra_iram_dev,
 	},
 	[1] = {
 		.name		= "generic-0",
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_GENERIC,
 		.base		= 0, /* Filled in by flounder_panel_init() */
 		.size		= 0, /* Filled in by flounder_panel_init() */
+		.dma_dev	= &tegra_generic_dev,
 	},
 	[2] = {
 		.name		= "vpr",
 		.usage_mask	= NVMAP_HEAP_CARVEOUT_VPR,
 		.base		= 0, /* Filled in by flounder_panel_init() */
 		.size		= 0, /* Filled in by flounder_panel_init() */
+		.dma_dev	= &tegra_vpr_dev,
 	},
 };
 
@@ -423,9 +423,6 @@ static void flounder_panel_select(void)
 	panel = flounder_panel_configure(&board, &dsi_instance);
 
 	if (panel) {
-		if (panel->init_sd_settings)
-			panel->init_sd_settings(&sd_settings);
-
 		if (panel->init_dc_out) {
 			panel->init_dc_out(&flounder_disp1_out);
 			if (flounder_disp1_out.type == TEGRA_DC_OUT_DSI) {

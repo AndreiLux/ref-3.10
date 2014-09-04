@@ -150,7 +150,10 @@ static int rmnet_usb_suspend(struct usb_interface *iface, pm_message_t message)
 	if (work_busy(&dev->get_encap_work))
 		return -EBUSY;
 
+	usbnet_pause_rx(unet);
+
 	if (usbnet_suspend(iface, message)) {
+		usbnet_resume_rx(unet);
 		rmnet_usb_ctrl_start_rx(dev);
 		return -EBUSY;
 	}
@@ -166,6 +169,7 @@ static int rmnet_usb_resume(struct usb_interface *iface)
 	dev = (struct rmnet_ctrl_udev *)unet->data[1];
 
 	usbnet_resume(iface);
+	usbnet_resume_rx(unet);
 
 	return rmnet_usb_ctrl_start_rx(dev);
 }

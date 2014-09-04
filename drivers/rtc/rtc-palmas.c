@@ -383,7 +383,7 @@ static int palmas_rtc_suspend(struct device *dev)
 		enable_irq_wake(palmas_rtc->irq);
 		ret = palmas_rtc_read_alarm(dev, &alm);
 		if (!ret)
-			dev_info(dev, "%s() alrm %d time %d %d %d %d %d %d\n",
+			dev_dbg(dev, "%s() alrm %d time %d %d %d %d %d %d\n",
 				__func__, alm.enabled,
 				alm.time.tm_year, alm.time.tm_mon,
 				alm.time.tm_mday, alm.time.tm_hour,
@@ -404,7 +404,7 @@ static int palmas_rtc_resume(struct device *dev)
 		disable_irq_wake(palmas_rtc->irq);
 		ret = palmas_rtc_read_time(dev, &tm);
 		if (!ret)
-			dev_info(dev, "%s() %d %d %d %d %d %d\n",
+			dev_dbg(dev, "%s() %d %d %d %d %d %d\n",
 				__func__, tm.tm_year, tm.tm_mon, tm.tm_mday,
 				tm.tm_hour, tm.tm_min, tm.tm_sec);
 	}

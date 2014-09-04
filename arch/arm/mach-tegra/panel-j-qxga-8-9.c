@@ -36,13 +36,10 @@
 
 #define TEGRA_DSI_GANGED_MODE	1
 
-#define DSI_PANEL_RESET		1
+#define DSI_PANEL_RESET		0
 
-#ifdef CONFIG_ARCH_TEGRA_12x_SOC
-#define DC_CTRL_MODE	TEGRA_DC_OUT_CONTINUOUS_MODE
-#else
-#define DC_CTRL_MODE	TEGRA_DC_OUT_CONTINUOUS_MODE
-#endif
+#define DC_CTRL_MODE	(TEGRA_DC_OUT_CONTINUOUS_MODE  |\
+			TEGRA_DC_OUT_INITIALIZED_MODE)
 
 enum panel_gpios {
 	IOVDD_1V8 = 0,
@@ -65,7 +62,7 @@ static struct gpio panel_init_gpios[] = {
 };
 
 static struct tegra_dc_sd_settings dsi_j_qxga_8_9_sd_settings = {
-        .enable = 1, /* enabled by default. */
+        .enable = 0, /* disabled by default. */
         .use_auto_pwm = false,
         .hw_update_delay = 0,
         .bin_width = -1,
@@ -123,6 +120,7 @@ static struct tegra_dsi_cmd dsi_j_qxga_8_9_init_cmd[] = {
 };
 
 static struct tegra_dsi_cmd dsi_j_qxga_8_9_suspend_cmd[] = {
+	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x51, 0x00, CMD_CLUBBED),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_SET_DISPLAY_OFF, 0x0, CMD_CLUBBED),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_ENTER_SLEEP_MODE, 0x0, CMD_CLUBBED),
 	DSI_SEND_FRAME(3),
@@ -192,10 +190,12 @@ static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 		return err;
 	}
 
+	gpio_set_value(avdd_4v, 1);
+	usleep_range(1 * 1000, 1 * 1000 + 500);
 	gpio_set_value(dcdc_en, 1);
-	msleep(15);
+	usleep_range(15 * 1000, 15 * 1000 + 500);
 	gpio_set_value(lcm_rst, 1);
-	msleep(15);
+	usleep_range(15 * 1000, 15 * 1000 + 500);
 
 	return err;
 }
@@ -203,7 +203,7 @@ static int dsi_j_qxga_8_9_postpoweron(struct device *dev)
 static int dsi_j_qxga_8_9_enable(struct device *dev)
 {
 	gpio_set_value(iovdd_1v8, 1);
-	msleep(15);
+	usleep_range(15 * 1000, 15 * 1000 + 500);
 	return 0;
 }
 
@@ -214,6 +214,7 @@ static int dsi_j_qxga_8_9_disable(void)
 	msleep(1);
 	gpio_set_value(dcdc_en, 0);
 	msleep(15);
+	gpio_set_value(avdd_4v, 0);
 	gpio_set_value(iovdd_1v8, 0);
 	msleep(10);
 
@@ -251,16 +252,16 @@ static struct tegra_dc_mode dsi_j_qxga_8_9_modes[] = {
 		/* dc constraint, min v_ref_to_sync + 1 */
 		.v_front_porch = 2,
 #else
-		.pclk = 257000000, /* @60Hz */
+		.pclk = 247600000, /* @60Hz */
 		.h_ref_to_sync = 1,
 		.v_ref_to_sync = 1,
-		.h_sync_width = 62,
+		.h_sync_width = 76,
 		.v_sync_width = 4,
-		.h_back_porch = 152,
+		.h_back_porch = 80,
 		.v_back_porch = 8,
 		.h_active = 768 * 2,
 		.v_active = 2048,
-		.h_front_porch = 322,
+		.h_front_porch = 300,
 		.v_front_porch = 12,
 #endif
 	},
@@ -436,12 +437,12 @@ static struct tegra_dc_cmu dsi_j_qxga_8_9_cmu = {
 #endif
 
 #define ORIG_PWM_MAX 255
-#define ORIG_PWM_DEF 142
-#define ORIG_PWM_MIN 30
+#define ORIG_PWM_DEF 133
+#define ORIG_PWM_MIN 10
 
 #define MAP_PWM_MAX     255
 #define MAP_PWM_DEF     90
-#define MAP_PWM_MIN     13
+#define MAP_PWM_MIN     7
 
 static unsigned char shrink_pwm(int val)
 {
@@ -502,41 +503,9 @@ static struct platform_device __maybe_unused
 	&dsi_j_qxga_8_9_bl_device,
 };
 
-#if 0
-static unsigned int dsi_s_shield_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_s_shield_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
-};
-static unsigned int dsi_s_tn8_edp_states[] = {
-	909, 809, 709, 609, 509, 410, 310, 210, 110, 0
-};
-static unsigned int dsi_s_tn8_edp_brightness[] = {
-	255, 227, 199, 171, 143, 115, 87, 59, 31, 0
-};
-#endif
-
 static int __init dsi_j_qxga_8_9_register_bl_dev(void)
 {
 	int err = 0;
-	struct board_info board_info;
-	tegra_get_board_info(&board_info);
-#if 0
-	if (board_info.board_id == BOARD_E1780) {
-		if (board_info.sku == 1000) {
-			dsi_j_qxga_8_9_bl_data.edp_states =
-				dsi_s_shield_edp_states;
-			dsi_j_qxga_8_9_bl_data.edp_brightness =
-				dsi_s_shield_edp_brightness;
-		} else if (board_info.sku == 1100) {
-			dsi_j_qxga_8_9_bl_data.edp_states =
-				dsi_s_tn8_edp_states;
-			dsi_j_qxga_8_9_bl_data.edp_brightness =
-				dsi_s_tn8_edp_brightness;
-		}
-	}
-#endif
 	err = platform_add_devices(dsi_j_qxga_8_9_bl_devices,
 				ARRAY_SIZE(dsi_j_qxga_8_9_bl_devices));
 	if (err) {

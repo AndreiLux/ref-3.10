@@ -116,6 +116,8 @@ struct tegra_dc_ext_flip_data {
 
 static struct lock_class_key tegra_dc_ext_win_lock_key[DC_N_WINDOWS];
 
+static int tegra_dc_ext_set_vblank(struct tegra_dc_ext *ext, bool enable);
+
 static inline s64 tegra_timespec_to_ns(const struct tegra_timespec *ts)
 {
 	return ((s64) ts->tv_sec * NSEC_PER_SEC) + ts->tv_nsec;
@@ -146,8 +148,10 @@ static int tegra_dc_ext_get_window(struct tegra_dc_ext_user *user,
 
 	mutex_lock(&win->lock);
 
-	if (!win->user)
+	if (!win->user) {
 		win->user = user;
+		win->enabled = false;
+	}
 	else if (win->user != user)
 		ret = -EBUSY;
 
@@ -173,6 +177,7 @@ static int tegra_dc_ext_put_window(struct tegra_dc_ext_user *user,
 	if (win->user == user) {
 		flush_workqueue(win->flip_wq);
 		win->user = 0;
+		win->enabled = false;
 	} else {
 		ret = -EACCES;
 	}
@@ -184,13 +189,22 @@ static int tegra_dc_ext_put_window(struct tegra_dc_ext_user *user,
 
 int tegra_dc_ext_restore(struct tegra_dc_ext *ext)
 {
-	int i;
+	struct tegra_dc_win *wins[DC_N_WINDOWS];
+	int i, nr_win = 0;
 
 	for_each_set_bit(i, &ext->dc->valid_windows, DC_N_WINDOWS)
-		if (ext->win[i].user)
-			return 1;
+		if (ext->win[i].enabled) {
+			wins[nr_win] = tegra_dc_get_window(ext->dc, i);
+			wins[nr_win++]->flags |= TEGRA_WIN_FLAG_ENABLED;
+		}
 
-	return 0;
+	if (nr_win) {
+		tegra_dc_update_windows(&wins[0], nr_win, NULL);
+		tegra_dc_sync_windows(&wins[0], nr_win);
+		tegra_dc_program_bandwidth(ext->dc, true);
+	}
+
+	return nr_win;
 }
 
 static void set_enable(struct tegra_dc_ext *ext, bool en)
@@ -221,6 +235,11 @@ void tegra_dc_ext_disable(struct tegra_dc_ext *ext)
 {
 	int i;
 	set_enable(ext, false);
+
+	/*
+	 * Disable vblank requests
+	 */
+	tegra_dc_ext_set_vblank(ext, false);
 
 	/*
 	 * Flush the flip queue -- note that this must be called with dc->lock
@@ -431,6 +450,27 @@ static int tegra_dc_ext_set_windowattr(struct tegra_dc_ext *ext,
 	return err;
 }
 
+static int tegra_dc_ext_set_vblank(struct tegra_dc_ext *ext, bool enable)
+{
+	struct tegra_dc *dc;
+
+	if (ext->vblank_enabled == enable)
+		return 0;
+
+	dc = ext->dc;
+
+	if (enable) {
+		tegra_dc_hold_dc_out(dc);
+		tegra_dc_vsync_enable(dc);
+	} else {
+		tegra_dc_vsync_disable(dc);
+		tegra_dc_release_dc_out(dc);
+	}
+
+	ext->vblank_enabled = enable;
+	return 0;
+}
+
 static void tegra_dc_ext_unpin_handles(struct tegra_dc_dmabuf *unpin_handles[],
 				       int nr_unpin)
 {
@@ -528,13 +568,28 @@ static void tegra_dc_ext_flip_worker(struct work_struct *work)
 			}
 		}
 
+		if (data->win[i].attr.flags
+			& TEGRA_DC_EXT_FLIP_FLAG_UPDATE_CSC) {
+			win->csc.yof = data->win[i].attr.csc.yof;
+			win->csc.kyrgb = data->win[i].attr.csc.kyrgb;
+			win->csc.kur = data->win[i].attr.csc.kur;
+			win->csc.kug = data->win[i].attr.csc.kug;
+			win->csc.kub = data->win[i].attr.csc.kub;
+			win->csc.kvr = data->win[i].attr.csc.kvr;
+			win->csc.kvg = data->win[i].attr.csc.kvg;
+			win->csc.kvb = data->win[i].attr.csc.kvb;
+			win->csc_dirty = true;
+		}
+
 		if (!skip_flip)
 			tegra_dc_ext_set_windowattr(ext, win, &data->win[i]);
 
+		ext_win->enabled = !!(win->flags & TEGRA_WIN_FLAG_ENABLED);
 		wins[nr_win++] = win;
 	}
 
 	if (ext->dc->enabled && !skip_flip) {
+		ext->dc->blanked = false;
 		tegra_dc_update_windows(wins, nr_win,
 			data->dirty_rect_valid ? data->dirty_rect : NULL);
 		/* TODO: implement swapinterval here */
@@ -1366,6 +1421,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 		return tegra_dc_ext_get_cursor(user);
 	case TEGRA_DC_EXT_PUT_CURSOR:
 		return tegra_dc_ext_put_cursor(user);
+	case TEGRA_DC_EXT_SET_CURSOR_IMAGE_LOW_LATENCY:
 	case TEGRA_DC_EXT_SET_CURSOR_IMAGE:
 	{
 		struct tegra_dc_ext_cursor_image args;
@@ -1375,6 +1431,7 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 
 		return tegra_dc_ext_set_cursor_image(user, &args);
 	}
+	case TEGRA_DC_EXT_SET_CURSOR_LOW_LATENCY:
 	case TEGRA_DC_EXT_SET_CURSOR:
 	{
 		struct tegra_dc_ext_cursor args;
@@ -1383,26 +1440,6 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 			return -EFAULT;
 
 		return tegra_dc_ext_set_cursor(user, &args);
-	}
-
-	case TEGRA_DC_EXT_SET_CURSOR_IMAGE_LOW_LATENCY:
-	{
-		struct tegra_dc_ext_cursor_image args;
-
-		if (copy_from_user(&args, user_arg, sizeof(args)))
-			return -EFAULT;
-
-		return tegra_dc_ext_set_cursor_image_low_latency(user, &args);
-	}
-
-	case TEGRA_DC_EXT_SET_CURSOR_LOW_LATENCY:
-	{
-		struct tegra_dc_ext_cursor_image args;
-
-		if (copy_from_user(&args, user_arg, sizeof(args)))
-			return -EFAULT;
-
-		return tegra_dc_ext_set_cursor_low_latency(user, &args);
 	}
 
 	case TEGRA_DC_EXT_SET_CSC:
@@ -1593,6 +1630,16 @@ static long tegra_dc_ioctl(struct file *filp, unsigned int cmd,
 #endif
 	}
 
+	case TEGRA_DC_EXT_SET_VBLANK:
+	{
+		struct tegra_dc_ext_set_vblank args;
+
+		if (copy_from_user(&args, user_arg, sizeof(args)))
+			return -EFAULT;
+
+		return tegra_dc_ext_set_vblank(user->ext, args.enable);
+	}
+
 	default:
 		return -EINVAL;
 	}
@@ -1629,9 +1676,13 @@ static int tegra_dc_release(struct inode *inode, struct file *filp)
 		}
 	}
 
-	tegra_dc_blank(ext->dc, windows);
-	for_each_set_bit(i, &windows, DC_N_WINDOWS)
-		tegra_dc_ext_unpin_window(&ext->win[i]);
+	if (ext->dc->enabled) {
+		tegra_dc_blank(ext->dc, windows);
+		for_each_set_bit(i, &windows, DC_N_WINDOWS) {
+			tegra_dc_ext_unpin_window(&ext->win[i]);
+			tegra_dc_disable_window(ext->dc, i);
+		}
+	}
 
 	if (ext->cursor.user == user)
 		tegra_dc_ext_put_cursor(user);

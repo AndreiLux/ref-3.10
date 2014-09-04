@@ -29,6 +29,7 @@
 #include <linux/clk/tegra.h>
 #include <linux/tegra-soc.h>
 #include <linux/tegra-fuse.h>
+#include <linux/moduleparam.h>
 #include <mach/pinmux.h>
 #include <mach/tegra_usb_pmc.h>
 #include <mach/tegra_usb_pad_ctrl.h>
@@ -112,7 +113,7 @@
 #define   UTMIP_XCVR_SETUP_MSB(x)		(((x) & 0x7) << 22)
 #define   UTMIP_XCVR_HSSLEW_MSB(x)		(((x) & 0x7f) << 25)
 #define   UTMIP_XCVR_HSSLEW_LSB(x)		(((x) & 0x3) << 4)
-#define   UTMIP_XCVR_MAX_OFFSET		2
+#define   UTMIP_XCVR_MAX_OFFSET		3
 #define   UTMIP_XCVR_SETUP_MAX_VALUE	0x7f
 #define   UTMIP_XCVR_SETUP_MIN_VALUE	0
 #define   XCVR_SETUP_MSB_CALIB(x) ((x) >> 4)
@@ -281,6 +282,9 @@
 #define TDP_SRC_ON_MS	 100
 #define TDPSRC_CON_MS	 40
 
+/* Maxim Debounce Timer */
+#define MAXIM_DEBOUNCE_TIME 120
+
 /* Force port resume wait time in micro second on remote resume */
 #define FPR_WAIT_TIME_US 25000
 
@@ -289,6 +293,10 @@
 #define HSIC_IDLE_WAIT_DELAY		17
 #define HSIC_ELASTIC_UNDERRUN_LIMIT	16
 #define HSIC_ELASTIC_OVERRUN_LIMIT	16
+
+static int dynamic_utmi_xcvr_setup = -1;
+module_param(dynamic_utmi_xcvr_setup, int, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(dynamic_utmi_xcvr_setup, "dynamic set setup value");
 
 struct tegra_usb_pmc_data pmc_data[3];
 
@@ -1082,13 +1090,8 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 	utmi_phy_pad_enable();
 
 	val = readl(base + UTMIP_SPARE_CFG0);
-
-	/* For USB eye diagram test :
-	 * To maunally adjust the SETUP value
-	 * USB1_UTMIP_SPARE_CFG0_0[4:3] = 00b */
-	if (phy->inst == 0 && !config->xcvr_use_fuses) {
-		val &= ~(0x18);
-	}
+	val &= ~FUSE_SETUP_SEL;
+	val |= FUSE_ATERM_SEL;
 	writel(val, base + UTMIP_SPARE_CFG0);
 
 	val = readl(base + UTMIP_XCVR_CFG0);
@@ -1096,6 +1099,9 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 		 UTMIP_FORCE_PD2_POWERDOWN | UTMIP_FORCE_PDZI_POWERDOWN |
 		 UTMIP_XCVR_SETUP(~0) | UTMIP_XCVR_LSFSLEW(~0) |
 		 UTMIP_XCVR_LSRSLEW(~0) | UTMIP_XCVR_HSSLEW_MSB(~0));
+	/* utmi_xcvr_setup value range is 0~127 */
+	if (dynamic_utmi_xcvr_setup >= 0 && dynamic_utmi_xcvr_setup < 128)
+		phy->utmi_xcvr_setup = dynamic_utmi_xcvr_setup;
 	val |= UTMIP_XCVR_SETUP(phy->utmi_xcvr_setup);
 	val |= UTMIP_XCVR_SETUP_MSB(XCVR_SETUP_MSB_CALIB(phy->utmi_xcvr_setup));
 	val |= UTMIP_XCVR_LSFSLEW(config->xcvr_lsfslew);
@@ -1124,16 +1130,6 @@ static int utmi_phy_power_on(struct tegra_usb_phy *phy)
 		val |= UTMIP_BIAS_PDTRK_COUNT(phy->freq->pdtrk_count);
 		writel(val, base + UTMIP_BIAS_CFG1);
 	}
-	val = readl(base + UTMIP_SPARE_CFG0);
-	val &= ~FUSE_SETUP_SEL;
-	val |= FUSE_ATERM_SEL;
-	/* For USB eye diagram test :
-	 * Use default drive strength
-	 * USB1_UTMIP_SPARE_CFG0_0[4:3] = 11b */
-	if (phy->inst == 0 && config->xcvr_use_fuses) {
-		val |= 0x18;
-	}
-	writel(val, base + UTMIP_SPARE_CFG0);
 
 	val = readl(base + USB_SUSP_CTRL);
 	val |= UTMIP_PHY_ENABLE;
@@ -1273,14 +1269,14 @@ static void utmi_phy_restore_end(struct tegra_usb_phy *phy)
 
 		/* Add delay sothat resume will be driven for more than 20 ms */
 		if (phy->port_speed != USB_PHY_PORT_SPEED_FULL) {
-			mdelay(10);
+			usleep_range(10000, 11000);
 			local_irq_save(flags);
 			pmc->pmc_ops->disable_pmc_bus_ctrl(pmc, 1);
 			phy->pmc_remote_wakeup = false;
 			phy->pmc_hotplug_wakeup = false;
 			local_irq_restore(flags);
 		} else {
-			mdelay(25);
+			usleep_range(25000, 26000);
 			local_irq_save(flags);
 			pmc->pmc_ops->disable_pmc_bus_ctrl(pmc, 0);
 			phy->pmc_remote_wakeup = false;
@@ -1580,6 +1576,44 @@ static bool cdp_charger_detection(struct tegra_usb_phy *phy)
 	return status;
 }
 
+static bool maxim_charger_detection(struct tegra_usb_phy *phy)
+{
+	void __iomem *base = phy->regs;
+	unsigned long val;
+	unsigned long org_flags;
+	int status;
+
+	/*
+	 * Enable charger detection logic
+	 * 3.3V on D+, Sink D- (high speed usb)
+	 * Maxim charger will remove short !! -- DCP will not
+	 */
+	org_flags = utmi_phy_set_dp_dm_pull_up_down(phy,
+		FORCE_PULLUP_DP   | DISABLE_PULLUP_DM |
+		DISABLE_PULLDN_DP | DISABLE_PULLDN_DM);
+	val = readl(base + UTMIP_BAT_CHRG_CFG0);
+	val &= ~(UTMIP_OP_SRC_EN | UTMIP_ON_SINK_EN);
+	val &= ~(UTMIP_ON_SRC_EN | UTMIP_OP_SINK_EN);
+	val |= UTMIP_ON_SINK_EN;
+	writel(val, base + UTMIP_BAT_CHRG_CFG0);
+
+	/* Source should be on at least 120 ms per Maxim spec */
+	msleep(MAXIM_DEBOUNCE_TIME);
+
+	val = readl(base + USB_PHY_VBUS_WAKEUP_ID);
+	if (val & VDAT_DET_STS) {
+		status = false;
+		DBG("%s: Maxim charger not found\n", __func__);
+		utmi_phy_set_dp_dm_pull_up_down(phy, org_flags);
+	} else {
+		status = true;
+		DBG("%s: Maxim Charger detected\n", __func__);
+	}
+
+	disable_charger_detection(base);
+	return status;
+}
+
 static bool utmi_phy_qc2_charger_detect(struct tegra_usb_phy *phy,
 		int max_voltage)
 {
@@ -1613,12 +1647,27 @@ static bool utmi_phy_qc2_charger_detect(struct tegra_usb_phy *phy,
 	writel(0, base + UTMIP_BAT_CHRG_CFG0);
 	utmi_phy_set_dp_dm_pull_up_down(phy, 0);
 
-	/* Force wall charger detection logic to reset */
-	org_flags = utmi_phy_set_dp_dm_pull_up_down(phy,
-		FORCE_PULLDN_DP | FORCE_PULLDN_DM);
-	ssleep(1);
-	msleep(500);
-	utmi_phy_set_dp_dm_pull_up_down(phy, org_flags);
+	/*
+	 * The QC2 charger can be inserted when the system is
+	 * powered down.  In this case it will act as a DCP unless
+	 * it is forced to negotiate voltage.  This is because
+	 * the QC2 charger will not see D+/D- voltage signaling
+	 * with in its negotiation timer window.
+	 * We try to detect this condition.  We know that if
+	 * we enter suspend then system must be active before
+	 * the QC2 charger was seen.
+	 * In this case no reset of the charger is needed, otherwise
+	 * we force the D+ and D- Pull Up down which will reset a
+	 * QC2 charger but have no effect on a normal DCP.
+	 */
+	if (!phy->qc2_no_reset) {
+		phy->qc2_no_reset = true;
+		org_flags = utmi_phy_set_dp_dm_pull_up_down(phy,
+			FORCE_PULLDN_DP | FORCE_PULLDN_DM);
+		ssleep(1);
+		msleep(500);
+		utmi_phy_set_dp_dm_pull_up_down(phy, org_flags);
+	}
 
 	/* Enable charger detection logic */
 	val = readl(base + UTMIP_BAT_CHRG_CFG0);
@@ -1647,7 +1696,7 @@ static bool utmi_phy_qc2_charger_detect(struct tegra_usb_phy *phy,
 			__func__, __LINE__, phy->inst);
 
 		/* Wall charger needs time before setting D+/D- */
-		mdelay(25);
+		usleep_range(25000, 26000);
 
 		switch (max_voltage) {
 		case TEGRA_USB_QC2_9V:
@@ -2065,6 +2114,11 @@ static void uhsic_phy_restore_end(struct tegra_usb_phy *phy)
 		irq_disabled = true;
 	}
 
+	/* Disable PMC remote wake-up detection */
+	val = readl(base + UHSIC_PMC_WAKEUP0);
+	val &= ~EVENT_INT_ENB;
+	writel(val, base + UHSIC_PMC_WAKEUP0);
+
 	/*
 	 * If pmc wakeup is detected after putting controller in suspend
 	 * in usb_phy_bringup_host_cotroller, restart bringing up host
@@ -2079,6 +2133,20 @@ static void uhsic_phy_restore_end(struct tegra_usb_phy *phy)
 				__func__);
 		phy->ctrlr_suspended = false;
 	}
+
+	val = tegra_usb_pmc_reg_read(PMC_UHSIC_SLEEP_CFG(phy->inst));
+	if (val & UHSIC_MASTER_ENABLE(phy->inst)) {
+		val = readl(base + UHSIC_PADS_CFG1);
+		val &= ~(UHSIC_PD_TX);
+		writel(val, base + UHSIC_PADS_CFG1);
+	}
+
+	if (irq_disabled) {
+		local_irq_restore(flags);
+		usleep_range(25000, 26000);
+		local_irq_save(flags);
+	} else
+		usleep_range(10000, 11000);
 
 	pmc->pmc_ops->disable_pmc_bus_ctrl(pmc, 1);
 	phy->pmc_remote_wakeup = false;
@@ -2298,9 +2366,12 @@ static int uhsic_phy_power_on(struct tegra_usb_phy *phy)
 	writel(val, base + USB_SUSP_CTRL);
 	udelay(1);
 
-	val = readl(base + UHSIC_PADS_CFG1);
-	val &= ~(UHSIC_PD_TX);
-	writel(val, base + UHSIC_PADS_CFG1);
+	val = tegra_usb_pmc_reg_read(PMC_UHSIC_SLEEP_CFG(phy->inst));
+	if (!(val & UHSIC_MASTER_ENABLE(phy->inst))) {
+		val = readl(base + UHSIC_PADS_CFG1);
+		val &= ~(UHSIC_PD_TX);
+		writel(val, base + UHSIC_PADS_CFG1);
+	}
 
 	/* HSIC pad tracking circuit power down sequence */
 	val = readl(base + UHSIC_PADS_CFG1);
@@ -2491,6 +2562,7 @@ static struct tegra_usb_phy_ops utmi_phy_ops = {
 	.qc2_charger_detect = utmi_phy_qc2_charger_detect,
 	.cdp_charger_detect = cdp_charger_detection,
 	.nv_charger_detect = utmi_phy_nv_charger_detect,
+	.maxim_charger_14675 = maxim_charger_detection,
 	.apple_charger_1000ma_detect = utmi_phy_apple_charger_1000ma_detect,
 	.apple_charger_2000ma_detect = utmi_phy_apple_charger_2000ma_detect,
 	.apple_charger_500ma_detect = utmi_phy_apple_charger_500ma_detect,
@@ -2499,6 +2571,7 @@ static struct tegra_usb_phy_ops utmi_phy_ops = {
 
 static struct tegra_usb_phy_ops uhsic_phy_ops = {
 	.init		= _usb_phy_init,
+	.reset		= usb_phy_reset,
 	.open		= uhsic_phy_open,
 	.close		= uhsic_phy_close,
 	.irq		= uhsic_phy_irq,

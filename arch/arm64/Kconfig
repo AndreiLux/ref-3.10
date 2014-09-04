@@ -16,6 +16,7 @@ config ARM64
 	select DCACHE_WORD_ACCESS
 	select GENERIC_CLOCKEVENTS
 	select GENERIC_CLOCKEVENTS_BROADCAST if SMP
+	select GENERIC_CPU_AUTOPROBE
 	select GENERIC_IOMAP
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
@@ -335,17 +336,6 @@ config ARMV7_COMPAT_CPUINFO
 
 	 If you want to execute ARMv7 applications, say Y
 
-config ARMV7_COMPAT_CP15_BARRIER
-	bool "Allow applications to use the CP15 barrier operations"
-	depends on ARMV7_COMPAT
-	default y
-	help
-	 This option allows applications to use deprecated CP15 barrier
-	 instructions. This is useful because this was the only way to create
-	 a barrier on older ARM processors.
-
-	 If you want to execute ARMv7 applications, say Y
-
 source "mm/Kconfig"
 
 endmenu
@@ -461,5 +451,8 @@ source "arch/arm64/Kconfig.debug"
 source "security/Kconfig"
 
 source "crypto/Kconfig"
+if CRYPTO
+source "arch/arm64/crypto/Kconfig"
+endif
 
 source "lib/Kconfig"

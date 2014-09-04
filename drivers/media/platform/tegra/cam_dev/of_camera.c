@@ -203,17 +203,17 @@ int of_camera_get_property(struct camera_info *cam, unsigned long arg)
 	int len, i, err = 0;
 
 	dev_dbg(cam->dev, "%s %lx", __func__, arg);
-	if (copy_from_user(&param, (const void __user *)arg, sizeof(param))) {
-		dev_err(cam->dev, "%s copy_from_user err line %d\n",
-			__func__, __LINE__);
-		return -EFAULT;
+	err = camera_get_params(cam, arg, 0, &param, NULL);
+	if (err) {
+		dev_err(cam->dev, "%s ERROR line %d\n", __func__, __LINE__);
+		return err;
 	}
 
 	if ((param.param & CAMERA_DT_TYPE_MASK) == CAMERA_DT_QUERY) {
 		param.sizeofvalue = cam_desc->pdata->max_blob_size;
 		param.variant = cam_desc->pdata->prof_num;
 		param.param = cam_desc->pdata->mod_num;
-		if (copy_to_user((void __user *)arg, &param, sizeof(param))) {
+		if (camera_copy_user_params(arg, &param)) {
 			dev_err(cam->dev, "%s copy_to_user err line %d\n",
 				__func__, __LINE__);
 			return -EFAULT;
@@ -228,8 +228,9 @@ int of_camera_get_property(struct camera_info *cam, unsigned long arg)
 		return -EBADF;
 	}
 
-	dev_dbg(cam->dev, "%s params: %x, %x, %x, %d\n", __func__,
-		param.param, param.variant, param.p_value, param.sizeofvalue);
+	dev_dbg(cam->dev, "%s params: %x, %x, %p, %d\n",
+		__func__, param.param, param.variant,
+		MAKE_CONSTUSER_PTR(param.p_value), param.sizeofvalue);
 	/* use bit mask to determine if it's a profile or a module query */
 	switch (param.param & CAMERA_DT_HANDLE_MASK) {
 	case CAMERA_DT_HANDLE_PROFILE:
@@ -408,7 +409,7 @@ int of_camera_get_property(struct camera_info *cam, unsigned long arg)
 	}
 
 get_property_end:
-	if (copy_to_user((void __user *)arg, &param, sizeof(param))) {
+	if (camera_copy_user_params(arg, &param)) {
 		dev_err(cam->dev, "%s copy_to_user err line %d\n",
 			__func__, __LINE__);
 		err = -EFAULT;

@@ -33,7 +33,9 @@
 
 #include <mach/dc.h>
 
+#ifdef CONFIG_TEGRA_DC_EXTENSIONS
 #include <mach/tegra_dc_ext.h>
+#endif
 #include <mach/isomgr.h>
 
 #include "dc_reg.h"
@@ -124,6 +126,19 @@ struct tegra_dc_shift_clk_div {
 
 struct tegra_dc_nvsr_data;
 
+enum tegra_dc_cursor_size {
+	TEGRA_DC_CURSOR_SIZE_32X32 = 0,
+	TEGRA_DC_CURSOR_SIZE_64X64 = 1,
+	TEGRA_DC_CURSOR_SIZE_128X128 = 2,
+	TEGRA_DC_CURSOR_SIZE_256X256 = 3,
+};
+
+enum tegra_dc_cursor_format {
+	TEGRA_DC_CURSOR_FORMAT_2BIT_LEGACY = 0,
+	TEGRA_DC_CURSOR_FORMAT_RGBA_NON_PREMULT_ALPHA = 1,
+	TEGRA_DC_CURSOR_FORMAT_RGBA_PREMULT_ALPHA = 3,
+};
+
 struct tegra_dc {
 	struct platform_device		*ndev;
 	struct tegra_dc_platform_data	*pdata;
@@ -147,6 +162,7 @@ struct tegra_dc {
 	bool				connected;
 	bool				enabled;
 	bool				suspended;
+	bool				blanked;
 
 	/* Some of the setup code could reset display even if
 	 * DC is already by bootloader.  This one-time mark is
@@ -167,6 +183,8 @@ struct tegra_dc {
 	int				n_windows;
 #ifdef CONFIG_TEGRA_DC_CMU
 	struct tegra_dc_cmu		cmu;
+	bool				cmu_dirty;
+	bool				cmu_enabled;
 #endif
 	wait_queue_head_t		wq;
 	wait_queue_head_t		timestamp_wq;
@@ -220,7 +238,9 @@ struct tegra_dc {
 #endif
 	} stats;
 
+#ifdef CONFIG_TEGRA_DC_EXTENSIONS
 	struct tegra_dc_ext		*ext;
+#endif
 
 	struct tegra_dc_feature		*feature;
 	int				gen1_blend_num;
@@ -236,6 +256,7 @@ struct tegra_dc {
 	atomic_t			frame_end_ref;
 
 	bool				mode_dirty;
+	atomic_t			holding;
 
 	u32				reserved_bw;
 	u32				available_bw;
@@ -246,6 +267,18 @@ struct tegra_dc {
 	struct tegra_dc_nvsr_data *nvsr;
 
 	bool	disp_active_dirty;
-};
 
+	struct tegra_dc_cursor {
+		bool dirty;
+		bool enabled;
+		dma_addr_t phys_addr;
+		u32 fg;
+		u32 bg;
+		unsigned clip_win;
+		int x;
+		int y;
+		enum tegra_dc_cursor_size size;
+		enum tegra_dc_cursor_format format;
+	} cursor;
+};
 #endif
