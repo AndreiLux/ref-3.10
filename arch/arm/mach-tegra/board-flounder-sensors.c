@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <asm/atomic.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <linux/mpu.h>
@@ -192,25 +193,6 @@ static struct platform_device flounder_soc_camera_device = {
 };
 #endif
 
-static int flounder_cam_pwd_cnt = 0;
-static struct regulator *flounder_vcmvdd;
-
-static int flounder_get_extra_regulators(void)
-{
-	if (!flounder_vcmvdd) {
-		flounder_vcmvdd = regulator_get(NULL, "avdd_af1_cam");
-		if (WARN_ON(IS_ERR(flounder_vcmvdd))) {
-			pr_err("%s: can't get regulator avdd_af1_cam: %ld\n",
-					__func__, PTR_ERR(flounder_vcmvdd));
-			regulator_put(flounder_vcmvdd);
-			flounder_vcmvdd = NULL;
-			return -ENODEV;
-		}
-	}
-
-	return 0;
-}
-
 static struct tegra_io_dpd csia_io = {
 	.name			= "CSIA",
 	.io_dpd_reg_index	= 0,
@@ -229,27 +211,46 @@ static struct tegra_io_dpd csie_io = {
 	.io_dpd_bit		= 12,
 };
 
+static atomic_t shared_gpios_refcnt = ATOMIC_INIT(0);
+
+static void flounder_enable_shared_gpios(void)
+{
+	if (1 == atomic_add_return(1, &shared_gpios_refcnt)) {
+		gpio_set_value(CAM_VCM2V85_EN, 1);
+		usleep_range(100, 120);
+		gpio_set_value(CAM_1V2_EN, 1);
+		gpio_set_value(CAM_A2V85_EN, 1);
+		gpio_set_value(CAM_1V8_EN, 1);
+		pr_debug("%s\n", __func__);
+	}
+}
+
+static void flounder_disable_shared_gpios(void)
+{
+	if (atomic_dec_and_test(&shared_gpios_refcnt)) {
+		gpio_set_value(CAM_1V8_EN, 0);
+		gpio_set_value(CAM_A2V85_EN, 0);
+		gpio_set_value(CAM_1V2_EN, 0);
+		gpio_set_value(CAM_VCM2V85_EN, 0);
+		pr_debug("%s\n", __func__);
+	}
+}
+
 static int flounder_imx219_power_on(struct imx219_power_rail *pw)
 {
-	flounder_cam_pwd_cnt ++;
-	pr_info("%s flounder cam power = %d\n", __FUNCTION__, flounder_cam_pwd_cnt);
-
 	/* disable CSIA/B IOs DPD mode to turn on camera for flounder */
 	tegra_io_dpd_disable(&csia_io);
 	tegra_io_dpd_disable(&csib_io);
 
 	gpio_set_value(CAM_PWDN, 0);
 
-	gpio_set_value(CAM_VCM2V85_EN, 1);
-	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 1);
-	gpio_set_value(CAM_A2V85_EN, 1);
-	gpio_set_value(CAM_1V8_EN, 1);
+	flounder_enable_shared_gpios();
 
 	usleep_range(1, 2);
 	gpio_set_value(CAM_PWDN, 1);
 
 	usleep_range(300, 310);
+	pr_debug("%s\n", __func__);
 	return 1;
 }
 
@@ -257,15 +258,9 @@ static int flounder_imx219_power_off(struct imx219_power_rail *pw)
 {
 	gpio_set_value(CAM_PWDN, 0);
 	usleep_range(100, 120);
-	flounder_cam_pwd_cnt --;
-	pr_info("%s flounder cam power = %d\n", __FUNCTION__, flounder_cam_pwd_cnt);
-	if (!flounder_cam_pwd_cnt)
-	{
-		gpio_set_value(CAM_1V2_EN, 0);
-		gpio_set_value(CAM_A2V85_EN, 0);
-		gpio_set_value(CAM_1V8_EN, 0);
-		gpio_set_value(CAM_VCM2V85_EN, 0);
-	}
+	pr_debug("%s\n", __func__);
+
+	flounder_disable_shared_gpios();
 
 	/* put CSIA/B IOs into DPD mode to save additional power for flounder */
 	tegra_io_dpd_enable(&csia_io);
@@ -280,21 +275,16 @@ static struct imx219_platform_data flounder_imx219_pdata = {
 
 static int flounder_ov9760_power_on(struct ov9760_power_rail *pw)
 {
-	flounder_cam_pwd_cnt ++;
-	pr_info("%s flounder cam power = %d\n", __FUNCTION__, flounder_cam_pwd_cnt);
 	/* disable CSIE IO DPD mode to turn on camera for flounder */
 	tegra_io_dpd_disable(&csie_io);
 
 	gpio_set_value(CAM2_RST, 0);
 
-	gpio_set_value(CAM_VCM2V85_EN, 1);
-	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 1);
-	gpio_set_value(CAM_A2V85_EN, 1);
-	gpio_set_value(CAM_1V8_EN, 1);
+	flounder_enable_shared_gpios();
 
 	usleep_range(100, 120);
 	gpio_set_value(CAM2_RST, 1);
+	pr_debug("%s\n", __func__);
 
 	return 1;
 }
@@ -303,15 +293,10 @@ static int flounder_ov9760_power_off(struct ov9760_power_rail *pw)
 {
 	gpio_set_value(CAM2_RST, 0);
 	usleep_range(100, 120);
-	flounder_cam_pwd_cnt --;
-	pr_info("%s flounder cam power = %d\n", __FUNCTION__, flounder_cam_pwd_cnt);
-	if (!flounder_cam_pwd_cnt)
-	{
-		gpio_set_value(CAM_1V2_EN, 0);
-		gpio_set_value(CAM_A2V85_EN, 0);
-		gpio_set_value(CAM_1V8_EN, 0);
-		gpio_set_value(CAM_VCM2V85_EN, 0);
-	}
+	pr_debug("%s\n", __func__);
+
+	flounder_disable_shared_gpios();
+
 	/* put CSIE IOs into DPD mode to save additional power for flounder */
 	tegra_io_dpd_enable(&csie_io);
 
@@ -326,33 +311,24 @@ static struct ov9760_platform_data flounder_ov9760_pdata = {
 
 static int flounder_drv201_power_on(struct drv201_power_rail *pw)
 {
-	int err;
-	pr_info("%s\n", __func__);
+	gpio_set_value(CAM_VCM_PWDN, 0);
 
-	gpio_set_value(CAM_VCM2V85_EN, 1);
-	usleep_range(100, 120);
-	gpio_set_value(CAM_A2V85_EN, 1);
-	gpio_set_value(CAM_1V2_EN, 1);
-	gpio_set_value(CAM_1V8_EN, 1);
+	flounder_enable_shared_gpios();
 
 	gpio_set_value(CAM_VCM_PWDN, 1);
 	usleep_range(100, 120);
+	pr_debug("%s\n", __func__);
 
-	/* return 1 to skip the in-driver power_on sequence */
-	pr_debug("%s --\n", __func__);
 	return 1;
 }
 
 static int flounder_drv201_power_off(struct drv201_power_rail *pw)
 {
-	pr_info("%s\n", __func__);
-
 	gpio_set_value(CAM_VCM_PWDN, 0);
 	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 0);
-	gpio_set_value(CAM_A2V85_EN, 0);
-	gpio_set_value(CAM_1V8_EN, 0);
-	gpio_set_value(CAM_VCM2V85_EN, 0);
+	pr_debug("%s\n", __func__);
+
+	flounder_disable_shared_gpios();
 
 	return 1;
 }
