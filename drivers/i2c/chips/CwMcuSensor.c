@@ -3044,9 +3044,9 @@ void magic_cover_report_input(struct cwmcu_data *mcu_data, u8 val)
 	if ((data == 1) || (data == 2)) {
 		input_report_switch(mcu_data->input, SW_LID, (data - 1));
 		input_sync(mcu_data->input);
-	} else if (data == 3) {
-		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 1);
-		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 0);
+	} else if ((data == 3) || (data == 0)) {
+		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER,
+				    !data);
 		input_sync(mcu_data->input);
 	}
 	return;
