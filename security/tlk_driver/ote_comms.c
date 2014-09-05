@@ -33,6 +33,7 @@
 #include <linux/trusty/trusty.h>
 #endif
 #include <linux/completion.h>
+#include <linux/se_access.h>
 #include <asm/smp_plat.h>
 
 #include "ote_protocol.h"
@@ -377,11 +378,42 @@ static uint32_t ote_ns_cb_retry(void)
 	return OTE_SUCCESS;
 }
 
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
+static uint32_t errno_to_ote_err(int err)
+{
+	switch (err) {
+	case 0:
+		return OTE_SUCCESS;
+	case -EINVAL:
+		return OTE_ERROR_BAD_PARAMETERS;
+	case -EBUSY:
+		return OTE_ERROR_BUSY;
+	default:
+		return OTE_ERROR_BAD_STATE;
+	}
+}
+
+static uint32_t ote_ns_cb_se_acquire(void)
+{
+	int err = tegra_se_acquire(SE_AES_OP_MODE_RNG_DRBG);
+	return errno_to_ote_err(err);
+}
+
+static uint32_t ote_ns_cb_se_release(void)
+{
+	int err = tegra_se_release();
+	return errno_to_ote_err(err);
+}
+#endif
+
 typedef uint32_t (*ote_ns_cb_t)(void);
 
 ote_ns_cb_t cb_table[] = {
 	[OTE_NS_CB_RETRY] = ote_ns_cb_retry,
-
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
+	[OTE_NS_CB_SE_ACQUIRE] = ote_ns_cb_se_acquire,
+	[OTE_NS_CB_SE_RELEASE] = ote_ns_cb_se_release,
+#endif
 	[OTE_NS_CB_SS] = tlk_ss_op,
 };
 
