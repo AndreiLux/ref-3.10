@@ -725,7 +725,8 @@ static unsigned int rt5677_set_vad_source(
 	return 0;
 }
 
-static int rt5677_parse_and_load_dsp(const u8 *buf, unsigned int len)
+static int rt5677_parse_and_load_dsp(const u8 *buf, unsigned int len,
+				     int skip_model_section)
 {
 	Elf32_Ehdr *elf_hdr;
 	Elf32_Phdr *pr_hdr;
@@ -751,7 +752,11 @@ static int rt5677_parse_and_load_dsp(const u8 *buf, unsigned int len)
 	pr_hdr = (Elf32_Phdr *)(buf + elf_hdr->e_phoff);
 	for (i=0; i < elf_hdr->e_phnum; i++) {
 		/* TODO: handle p_memsz != p_filesz */
-		if (pr_hdr->p_paddr && pr_hdr->p_filesz) {
+		/* Only if it's a valid section, or it's not where the model is
+		 * about to go should we actually write this section. */
+		if (pr_hdr->p_paddr && pr_hdr->p_filesz &&
+		    (!skip_model_section ||
+		     pr_hdr->p_paddr != RT5677_MODEL_ADDR)) {
 			pr_debug("Load [0x%x] -> 0x%x\n", pr_hdr->p_filesz,
 			       pr_hdr->p_paddr);
 			rt5677_spi_write(pr_hdr->p_paddr,
@@ -778,7 +783,8 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 	len = rt5677_read_dsp_code_from_file(&fwp, file_path, codec);
 	if (len) {
 		pr_debug("load %s [%u] ok\n", file_path, len);
-		err = rt5677_parse_and_load_dsp(fwp->data, len);
+		err = rt5677_parse_and_load_dsp(fwp->data, len,
+						rt5677->model_len != 0);
 		release_firmware(fwp);
 	} else {
 		sprintf(file_path, RT5677_PATH "0x50000000_%s",
