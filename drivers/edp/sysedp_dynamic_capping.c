@@ -39,7 +39,7 @@ static unsigned int gpu_high_threshold = 500;
 static unsigned int gpu_window = 80;
 static unsigned int gpu_high_hist;
 static unsigned int gpu_high_count = 2;
-static unsigned int priority_bias = 75;
+static unsigned int priority_bias = 60;
 static unsigned int online_cpu_count;
 static bool gpu_busy;
 static unsigned int fgpu;
