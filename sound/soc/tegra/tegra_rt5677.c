@@ -581,7 +581,8 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 	if (machine->codec && machine->codec->active)
 		return;
 
-	__set_rt5677_power(machine, false, false);
+	schedule_delayed_work(&machine->power_work,
+			msecs_to_jiffies(1000));
 }
 
 static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
@@ -1718,6 +1719,7 @@ static void trgra_do_power_work(struct work_struct *work)
 		pr_info("%s to close MCLK\n", __func__);
 		mclk_enable(machine, 0);
 	}
+	__set_rt5677_power(machine, false, false);
 	mutex_unlock(&machine->rt5677_lock);
 }
 
