@@ -278,7 +278,8 @@ static inline void restore_cpumask(void) {};
 #endif
 
 uint32_t tlk_generic_smc(struct tlk_info *info,
-			 uint32_t arg0, uintptr_t arg1, uintptr_t arg2)
+			 uint32_t arg0, uintptr_t arg1, uintptr_t arg2,
+			 uintptr_t arg3)
 {
 	uint32_t retval;
 
@@ -298,7 +299,8 @@ uint32_t tlk_generic_smc(struct tlk_info *info,
 
 	restore_cpumask();
 #else
-	retval = trusty_std_call32(tlk_info->trusty_dev, arg0, arg1, arg2, 0);
+	retval = trusty_std_call32(tlk_info->trusty_dev,
+					arg0, arg1, arg2, arg3);
 #endif
 
 	/* Print TLK logs if any */
@@ -348,7 +350,7 @@ static void do_smc(struct te_request *request, struct tlk_device *dev)
 			smc_params = (uint32_t)virt_to_phys(request->params);
 	}
 
-	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params);
+	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params, 0);
 }
 
 #ifdef CONFIG_TRUSTY
@@ -447,7 +449,7 @@ static void do_smc_compat(struct te_request_compat *request,
 	while (true) {
 		INIT_COMPLETION(tlk_info->smc_retry);
 		atomic_set(&tlk_info->smc_count, 2);
-		tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+		tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params, 0);
 		if ((request->result & OTE_ERROR_NS_CB_MASK) != OTE_ERROR_NS_CB)
 			break;
 
@@ -462,7 +464,7 @@ static void do_smc_compat(struct te_request_compat *request,
 		smc_nr = TE_SMC_NS_CB_COMPLETE;
 	}
 #else
-	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params, 0);
 #endif
 }
 
@@ -481,9 +483,10 @@ static long tlk_generic_smc_on_cpu0(void *args)
 	BUG_ON(cpu != 0);
 
 	work = (struct tlk_smc_work_args *)args;
-	retval = tlk_generic_smc(tlk_info, work->arg0, work->arg1, work->arg2);
+	retval = tlk_generic_smc(tlk_info,
+				work->arg0, work->arg1, work->arg2, 0);
 	while (retval == 0xFFFFFFFD)
-		retval = tlk_generic_smc(tlk_info, (60 << 24), 0, 0);
+		retval = tlk_generic_smc(tlk_info, (60 << 24), 0, 0, 0);
 	return retval;
 }
 
@@ -523,7 +526,7 @@ int te_set_vpr_params(void *vpr_base, size_t vpr_size)
 					tlk_generic_smc_on_cpu0, &work_args);
 	} else {
 		retval = tlk_generic_smc(tlk_info, TE_SMC_PROGRAM_VPR,
-					(uintptr_t)vpr_base, vpr_size);
+					(uintptr_t)vpr_base, vpr_size, 0);
 	}
 
 	mutex_unlock(&smc_lock);
@@ -845,7 +848,7 @@ static void tlk_ote_init(struct tlk_info *info)
 static int __init tlk_register_irq_handler(void)
 {
 	tlk_generic_smc(tlk_info, TE_SMC_REGISTER_IRQ_HANDLER,
-		(uintptr_t)tlk_irq_handler, 0);
+		(uintptr_t)tlk_irq_handler, 0, 0);
 	tlk_ote_init(NULL);
 	return 0;
 }

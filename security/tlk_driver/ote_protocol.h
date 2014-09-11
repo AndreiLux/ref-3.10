@@ -79,7 +79,8 @@ extern struct mutex smc_lock;
 extern struct tlk_device tlk_dev;
 
 uint32_t _tlk_generic_smc(uint32_t arg0, uintptr_t arg1, uintptr_t arg2);
-uint32_t tlk_generic_smc(struct tlk_info *info, uint32_t arg0, uintptr_t arg1, uintptr_t arg2);
+uint32_t tlk_generic_smc(struct tlk_info *info, uint32_t arg0,
+			 uintptr_t arg1, uintptr_t arg2, uintptr_t arg3);
 uint32_t _tlk_extended_smc(uintptr_t *args);
 uint32_t tlk_extended_smc(struct tlk_info *info, uintptr_t *args);
 void tlk_irq_handler(void);

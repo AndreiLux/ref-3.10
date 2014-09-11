@@ -57,7 +57,8 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 	 * phys addresses are passed in do_smc).
 	 */
 	dev->req_param_buf = NULL;
-	use_reqbuf = !tlk_generic_smc(dev->tlk_info, TE_SMC_REGISTER_REQ_BUF, 0, 0);
+	use_reqbuf = !tlk_generic_smc(dev->tlk_info,
+					TE_SMC_REGISTER_REQ_BUF, 0, 0, 0);
 
 	if (use_reqbuf) {
 		dev->req_param_buf = kmalloc((2 * PAGE_SIZE), GFP_KERNEL);
@@ -73,7 +74,7 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 					(dev->req_param_buf + PAGE_SIZE);
 
 		tlk_generic_smc(dev->tlk_info, TE_SMC_REGISTER_REQ_BUF,
-				(uintptr_t)dev->req_addr, (2 * PAGE_SIZE));
+				(uintptr_t)dev->req_addr, (2 * PAGE_SIZE), 0);
 	} else {
 		dev->req_addr = dma_alloc_coherent(NULL, PAGE_SIZE,
 					&dev->req_addr_phys, GFP_KERNEL);
