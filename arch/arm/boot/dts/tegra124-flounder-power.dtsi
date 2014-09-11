@@ -539,30 +539,9 @@ palmas: tps65913 {
 				regulator-name = "vddio-hv";
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
-				regulator-always-on;
-				regulator-boot-on;
+				ti,roof-floor = <3>;
 
 				consumers {
-					c1 {
-						regulator-consumer-supply = "vddio_hv";
-						regulator-consumer-device = "tegradc.1";
-					};
-					c2 {
-						regulator-consumer-supply = "avdd_hdmi";
-						regulator-consumer-device = "tegradc.1";
-
-					};
-					c3 {
-						regulator-consumer-supply = "pwrdet_hv";
-					};
-					c4 {
-						regulator-consumer-supply = "vddio_pex_ctl";
-						regulator-consumer-device = "tegra-pcie";
-					};
-					c5 {
-						regulator-consumer-supply = "vdd";
-						regulator-consumer-device = "0-004c";
-					};
 				};
 			};
 
