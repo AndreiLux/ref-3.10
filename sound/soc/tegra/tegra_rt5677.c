@@ -582,7 +582,7 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 		return;
 
 	schedule_delayed_work(&machine->power_work,
-			msecs_to_jiffies(1000));
+			msecs_to_jiffies(500));
 }
 
 static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
