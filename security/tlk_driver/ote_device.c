@@ -551,6 +551,13 @@ static int copy_params_from_user_compat(struct te_request_compat *req,
 		user_param = (struct te_oper_param_compat *)(uintptr_t)
 			param_array[i].next_ptr_user;
 	}
+
+	if (i != operation->list_count) {
+		pr_err("Malformed request: list_count=%d\n, params_num=%d\n",
+		       operation->list_count, i);
+		return 1;
+	}
+
 	return 0;
 }
 
