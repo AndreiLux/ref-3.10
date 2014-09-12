@@ -98,6 +98,11 @@ struct tlk_device {
 	struct te_oper_param *param_addr;
 	dma_addr_t param_addr_phys;
 
+	struct te_oper_param_page_info *param_pages;
+	dma_addr_t param_pages_phys;
+	size_t param_pages_size;
+	size_t param_pages_tail;
+
 	struct te_request_compat *req_addr_compat;
 	struct te_oper_param_compat *param_addr_compat;
 
@@ -205,6 +210,10 @@ struct te_oper_param {
 		} Mem;
 	} u;
 	void *next_ptr_user;
+};
+
+struct te_oper_param_page_info {
+	uint64_t attr;
 };
 
 struct te_oper_param_compat {
@@ -393,5 +402,8 @@ int ote_logger_init(struct tlk_info *tlk_info);
 void ote_print_logs(void);
 uint32_t tlk_ss_op(void);
 void tlk_ss_close(void);
+
+int te_fill_page_info(struct te_oper_param_page_info *pg_inf,
+		unsigned long start, struct page *page);
 
 #endif

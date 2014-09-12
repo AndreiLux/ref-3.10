@@ -80,6 +80,27 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 					&dev->req_addr_phys, GFP_KERNEL);
 		dev->param_addr = dma_alloc_coherent(NULL, PAGE_SIZE,
 					&dev->param_addr_phys, GFP_KERNEL);
+
+#ifdef CONFIG_TRUSTY
+		dev->param_pages = dma_alloc_coherent(NULL, PAGE_SIZE,
+					&dev->param_pages_phys, GFP_KERNEL);
+		if (!dev->param_pages) {
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		if (dev->param_pages_phys & 0xFFFFFFFF00000000) {
+			pr_err("Unsupported address range\n");
+			dma_free_coherent(NULL, PAGE_SIZE,
+					  dev->param_pages,
+					  dev->param_pages_phys);
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		dev->param_pages_size = PAGE_SIZE;
+		dev->param_pages_tail = 0;
+#endif
 	}
 
 	if (!dev->req_addr || !dev->param_addr) {
