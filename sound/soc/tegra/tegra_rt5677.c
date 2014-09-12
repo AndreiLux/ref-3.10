@@ -1974,8 +1974,7 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 		pr_info("%s to close MCLK\n", __func__);
 		mclk_enable(machine, 0);
 	}
-	schedule_delayed_work(&machine->power_work,
-		msecs_to_jiffies(1000));
+
 	machine->bias_level = SND_SOC_BIAS_OFF;
 
 	sysedpc = sysedp_create_consumer("speaker", "speaker");
