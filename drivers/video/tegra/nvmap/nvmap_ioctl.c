@@ -48,24 +48,14 @@ static ssize_t rw_handle(struct nvmap_client *client, struct nvmap_handle *h,
 			 unsigned long sys_stride, unsigned long elem_size,
 			 unsigned long count);
 
-static struct nvmap_handle *fd_to_handle_id(int handle)
+struct nvmap_handle *unmarshal_user_handle(__u32 handle)
 {
 	struct nvmap_handle *h;
 
-	h = nvmap_get_id_from_dmabuf_fd(NULL, handle);
+	h = nvmap_get_id_from_dmabuf_fd(NULL, (int)handle);
 	if (!IS_ERR(h))
 		return h;
 	return 0;
-}
-
-static struct nvmap_handle *unmarshal_user_handle(__u32 handle)
-{
-	return fd_to_handle_id((int)handle);
-}
-
-struct nvmap_handle *unmarshal_user_id(u32 id)
-{
-	return unmarshal_user_handle(id);
 }
 
 /*
