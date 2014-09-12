@@ -376,7 +376,7 @@ struct cntry_locales_custom country_code_custom_table[] = {
 	{"PT", "PT", 4},
 	{"PY", "PY", 2},
 	{"RO", "RO", 4},
-	{"RU", "RU", 5},
+	{"RU", "RU", 13},
 	{"SE", "SE", 4},
 	{"SG", "SG", 4},
 	{"SI", "SI", 4},
