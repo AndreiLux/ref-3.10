@@ -38,7 +38,7 @@ static struct tlk_info *tlk_info;
 
 static void indicate_ss_op_complete(void)
 {
-	tlk_generic_smc(tlk_info, TE_SMC_SS_REQ_COMPLETE, 0, 0);
+	tlk_generic_smc(tlk_info, TE_SMC_SS_REQ_COMPLETE, 0, 0, 0);
 }
 
 int te_handle_ss_ioctl_legacy(struct file *file, unsigned int ioctl_num,
@@ -101,7 +101,7 @@ int tlk_ss_init_legacy(struct tlk_info *info)
 	}
 
 	tlk_generic_smc(info, TE_SMC_SS_REGISTER_HANDLER_LEGACY,
-		(uintptr_t)tlk_ss_op_legacy, (uintptr_t)ss_op_shmem_legacy);
+		(uintptr_t)tlk_ss_op_legacy, (uintptr_t)ss_op_shmem_legacy, 0);
 
 	return 0;
 }
@@ -195,7 +195,7 @@ int tlk_ss_init(struct tlk_info *info)
 	tlk_info = info;
 
 	ret = tlk_generic_smc(info, TE_SMC_SS_REGISTER_HANDLER,
-			(uintptr_t)ss_op_shmem, 0);
+			(uintptr_t)ss_op_shmem, 0, 0);
 	if (ret != 0) {
 		dma_free_coherent(NULL, sizeof(struct te_ss_op),
 			(void *)ss_op_shmem, ss_op_shmem_dma);

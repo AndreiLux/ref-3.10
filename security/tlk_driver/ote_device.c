@@ -57,7 +57,8 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 	 * phys addresses are passed in do_smc).
 	 */
 	dev->req_param_buf = NULL;
-	use_reqbuf = !tlk_generic_smc(dev->tlk_info, TE_SMC_REGISTER_REQ_BUF, 0, 0);
+	use_reqbuf = !tlk_generic_smc(dev->tlk_info,
+					TE_SMC_REGISTER_REQ_BUF, 0, 0, 0);
 
 	if (use_reqbuf) {
 		dev->req_param_buf = kmalloc((2 * PAGE_SIZE), GFP_KERNEL);
@@ -73,12 +74,33 @@ static int te_create_free_cmd_list(struct tlk_device *dev)
 					(dev->req_param_buf + PAGE_SIZE);
 
 		tlk_generic_smc(dev->tlk_info, TE_SMC_REGISTER_REQ_BUF,
-				(uintptr_t)dev->req_addr, (2 * PAGE_SIZE));
+				(uintptr_t)dev->req_addr, (2 * PAGE_SIZE), 0);
 	} else {
 		dev->req_addr = dma_alloc_coherent(NULL, PAGE_SIZE,
 					&dev->req_addr_phys, GFP_KERNEL);
 		dev->param_addr = dma_alloc_coherent(NULL, PAGE_SIZE,
 					&dev->param_addr_phys, GFP_KERNEL);
+
+#ifdef CONFIG_TRUSTY
+		dev->param_pages = dma_alloc_coherent(NULL, PAGE_SIZE,
+					&dev->param_pages_phys, GFP_KERNEL);
+		if (!dev->param_pages) {
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		if (dev->param_pages_phys & 0xFFFFFFFF00000000) {
+			pr_err("Unsupported address range\n");
+			dma_free_coherent(NULL, PAGE_SIZE,
+					  dev->param_pages,
+					  dev->param_pages_phys);
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		dev->param_pages_size = PAGE_SIZE;
+		dev->param_pages_tail = 0;
+#endif
 	}
 
 	if (!dev->req_addr || !dev->param_addr) {
@@ -550,6 +572,13 @@ static int copy_params_from_user_compat(struct te_request_compat *req,
 		user_param = (struct te_oper_param_compat *)(uintptr_t)
 			param_array[i].next_ptr_user;
 	}
+
+	if (i != operation->list_count) {
+		pr_err("Malformed request: list_count=%d\n, params_num=%d\n",
+		       operation->list_count, i);
+		return 1;
+	}
+
 	return 0;
 }
 
