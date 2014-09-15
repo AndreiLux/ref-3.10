@@ -1527,6 +1527,7 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 
 	if (machine->bias_level != SND_SOC_BIAS_OFF &&
 		level == SND_SOC_BIAS_OFF && machine->clock_enabled) {
+		mclk_enable(machine, 0);
 		if (rt5677)
 		{
 			if (rt5677->vad_mode != RT5677_VAD_IDLE) {
@@ -1629,10 +1630,6 @@ void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop
 		}
 		status = true;
 	} else if (enable == false && status) {
-		if(machine->bias_level != SND_SOC_BIAS_OFF) {
-			pr_debug("mic bias level not off\n");
-			return;
-		}
 		pr_info("tegra_rt5677 power_off\n");
 
 		/*AUD_ALC5677_RESET#*/
@@ -1718,6 +1715,10 @@ static void trgra_do_power_work(struct work_struct *work)
 	struct snd_soc_card *card = &snd_soc_tegra_rt5677;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	mutex_lock(&machine->rt5677_lock);
+	if (machine->clock_enabled == 1) {
+		pr_info("%s to close MCLK\n", __func__);
+		mclk_enable(machine, 0);
+	}
 	__set_rt5677_power(machine, false, false);
 	mutex_unlock(&machine->rt5677_lock);
 }
