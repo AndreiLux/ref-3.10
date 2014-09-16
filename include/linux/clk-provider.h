@@ -28,6 +28,10 @@
 #define CLK_IS_BASIC		BIT(5) /* Basic clk, can't do a to_clk_foo() */
 #define CLK_GET_RATE_NOCACHE	BIT(6) /* do not use the cached clk rate */
 
+#ifdef CONFIG_SOC_EXYNOS5422
+#define CLK_DO_NOT_UPDATE_CHILD BIT(19) /* do not recalculate child */
+#endif
+
 struct clk_hw;
 
 /**
@@ -308,6 +312,9 @@ struct clk_mux {
 	u8		shift;
 	u8		flags;
 	spinlock_t	*lock;
+	void __iomem	*stat_reg;
+	u8		stat_shift;
+	u8		stat_width;
 };
 
 #define CLK_MUX_INDEX_ONE		BIT(0)
@@ -318,12 +325,14 @@ extern const struct clk_ops clk_mux_ops;
 struct clk *clk_register_mux(struct device *dev, const char *name,
 		const char **parent_names, u8 num_parents, unsigned long flags,
 		void __iomem *reg, u8 shift, u8 width,
-		u8 clk_mux_flags, spinlock_t *lock);
+		u8 clk_mux_flags, spinlock_t *lock,
+		void __iomem *stat_reg, u8 stat_shift, u8 stat_width);
 
 struct clk *clk_register_mux_table(struct device *dev, const char *name,
 		const char **parent_names, u8 num_parents, unsigned long flags,
 		void __iomem *reg, u8 shift, u32 mask,
-		u8 clk_mux_flags, u32 *table, spinlock_t *lock);
+		u8 clk_mux_flags, u32 *table, spinlock_t *lock,
+		void __iomem *stat_reg, u8 stat_shift, u8 stat_width);
 
 void of_fixed_factor_clk_setup(struct device_node *node);
 
@@ -438,6 +447,11 @@ struct clk *of_clk_src_onecell_get(struct of_phandle_args *clkspec, void *data);
 const char *of_clk_get_parent_name(struct device_node *np, int index);
 
 void of_clk_init(const struct of_device_id *matches);
+
+/*
+ * samsung specific clk_get API which uses register address and bit field
+ */
+extern struct clk *samsung_clk_get_by_reg(unsigned long offset, u8 bit_idx);
 
 #define CLK_OF_DECLARE(name, compat, fn)			\
 	static const struct of_device_id __clk_of_table_##name	\

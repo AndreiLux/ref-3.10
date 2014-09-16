@@ -263,7 +263,7 @@ restart:	adr	r0, LC0
 		 * area.  No GOT fixup has occurred yet, but none of the
 		 * code we're about to call uses any global variable.
 		*/
-		add	sp, sp, #0x10000
+		add	sp, sp, #0x20000
 		stmfd	sp!, {r0-r3, ip, lr}
 		mov	r0, r8
 		mov	r1, r6
@@ -283,7 +283,7 @@ restart:	adr	r0, LC0
 		bleq	atags_to_fdt
 
 		ldmfd	sp!, {r0-r3, ip, lr}
-		sub	sp, sp, #0x10000
+		sub	sp, sp, #0x20000
 #endif
 
 		mov	r8, r6			@ use the appended device tree
@@ -717,6 +717,8 @@ __armv7_mmu_cache_on:
 		bic     r6, r6, #1 << 31        @ 32-bit translation system
 		bic     r6, r6, #3 << 0         @ use only ttbr0
 		mcrne	p15, 0, r3, c2, c0, 0	@ load page table pointer
+		mcrne	p15, 0, r0, c8, c7, 0	@ flush I,D TLBs
+		mcr	p15, 0, r0, c7, c5, 4	@ ISB
 		mcrne	p15, 0, r1, c3, c0, 0	@ load domain access control
 		mcrne   p15, 0, r6, c2, c0, 2   @ load ttb control
 #endif
@@ -1270,5 +1272,5 @@ reloc_code_end:
 
 		.align
 		.section ".stack", "aw", %nobits
-.L_user_stack:	.space	4096
+.L_user_stack:	.space	8192
 .L_user_stack_end:

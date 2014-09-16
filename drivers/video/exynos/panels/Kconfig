@@ -1,0 +1,23 @@
+config DECON_LCD
+	depends on EXYNOS_DECON
+	bool "Select LCD panel driver"
+
+config DECON_MDNIE_LITE
+	depends on DECON_LCD && DECON_MIPI_DSI
+	tristate "Support MDNIE LITE"
+	default n
+
+config LCD_ALPM
+	depends on DECON_LCD
+	tristate "Support ALPM mode"
+	default n
+
+config LCD_PCD
+	depends on DECON_LCD
+	tristate "Support PCD detection"
+	default n
+
+config DECON_LCD_EA8064G
+	depends on DECON_LCD && DECON_MIPI_DSI
+	tristate "EA8064G AMOLED driver"
+

@@ -682,13 +682,12 @@ static int dapm_new_mux(struct snd_soc_dapm_widget *w)
 		return -EINVAL;
 	}
 
-	if (list_empty(&w->sources)) {
+	path = list_first_entry(&w->sources, struct snd_soc_dapm_path,
+				list_sink);
+	if (!path) {
 		dev_err(dapm->dev, "ASoC: mux %s has no paths\n", w->name);
 		return -EINVAL;
 	}
-
-	path = list_first_entry(&w->sources, struct snd_soc_dapm_path,
-				list_sink);
 
 	ret = dapm_create_or_share_mixmux_kcontrol(w, 0, path);
 	if (ret < 0)

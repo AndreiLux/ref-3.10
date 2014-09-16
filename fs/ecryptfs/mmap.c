@@ -35,6 +35,10 @@
 #include <linux/slab.h>
 #include <asm/unaligned.h>
 #include "ecryptfs_kernel.h"
+#ifdef CONFIG_SDP
+#include <linux/buffer_head.h>
+#include "ecryptfs_dek.h"
+#endif
 
 /**
  * ecryptfs_get_locked_page
@@ -66,6 +70,35 @@ static int ecryptfs_writepage(struct page *page, struct writeback_control *wbc)
 {
 	int rc;
 
+    // WTL_EDM_START
+    /* MDM 3.1 START */
+    struct inode *inode;
+    struct ecryptfs_crypt_stat *crypt_stat;
+
+    inode = page->mapping->host;
+    crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
+    if (!(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
+	    size_t size;
+	    loff_t file_size = i_size_read(inode);
+	    pgoff_t end_page_index = file_size >> PAGE_CACHE_SHIFT;
+		if (end_page_index < page->index)
+			size = 0;
+		else if (end_page_index == page->index)
+			size = file_size & ~PAGE_CACHE_MASK;
+		else
+			size = PAGE_CACHE_SIZE;
+
+		rc = ecryptfs_write_lower_page_segment(inode, page, 0, size);
+		if (unlikely(rc)) {
+			ecryptfs_printk(KERN_WARNING, "Error write ""page (upper index [0x%.16lx])\n", page->index);
+			ClearPageUptodate(page);
+		} else
+			SetPageUptodate(page);
+		goto out;
+    }
+    /* MDM 3.1 END */
+    // WTL_EDM_END
+
 	rc = ecryptfs_encrypt_page(page);
 	if (rc) {
 		ecryptfs_printk(KERN_WARNING, "Error encrypting "
@@ -74,6 +107,11 @@ static int ecryptfs_writepage(struct page *page, struct writeback_control *wbc)
 		goto out;
 	}
 	SetPageUptodate(page);
+
+#ifdef CONFIG_SDP
+	if(ecryptfs_is_valid_sdpid(crypt_stat->sdp_id))
+		SetPageSensitive(page);
+#endif
 out:
 	unlock_page(page);
 	return rc;
@@ -235,8 +273,13 @@ static int ecryptfs_readpage(struct file *file, struct page *page)
 out:
 	if (rc)
 		ClearPageUptodate(page);
-	else
+	else {
 		SetPageUptodate(page);
+#ifdef CONFIG_SDP
+	if(ecryptfs_is_valid_sdpid(crypt_stat->sdp_id))
+		SetPageSensitive(page);
+#endif
+	}
 	ecryptfs_printk(KERN_DEBUG, "Unlocking page with index = [0x%.16lx]\n",
 			page->index);
 	unlock_page(page);
@@ -538,6 +581,17 @@ out:
 	return rc;
 }
 
+#ifdef CONFIG_SDP
+static void ecryptfs_freepage (struct page *p) {
+	void *d;
+
+	//printk("%s : page [flag:0x%ld] freed\n", __func__, p->flags);
+	d = kmap_atomic(p);
+	clear_page(d);
+	kunmap_atomic(d);
+}
+#endif
+
 static sector_t ecryptfs_bmap(struct address_space *mapping, sector_t block)
 {
 	int rc = 0;
@@ -557,5 +611,8 @@ const struct address_space_operations ecryptfs_aops = {
 	.readpage = ecryptfs_readpage,
 	.write_begin = ecryptfs_write_begin,
 	.write_end = ecryptfs_write_end,
+#ifdef CONFIG_SDP
+	.freepage = ecryptfs_freepage,
+#endif
 	.bmap = ecryptfs_bmap,
 };

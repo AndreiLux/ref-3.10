@@ -19,12 +19,21 @@
 #include <linux/sched.h>
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
+#ifdef CONFIG_TIMA_RKP
+#include <linux/io.h>
+#include <linux/slab.h>
+#include <linux/spinlock_types.h>
+#endif
 
 #include <asm/exception.h>
 #include <asm/pgtable.h>
 #include <asm/system_misc.h>
 #include <asm/system_info.h>
 #include <asm/tlbflush.h>
+
+#if defined(CONFIG_SEC_DEBUG)
+#include <linux/sec_debug.h>
+#endif
 
 #include "fault.h"
 
@@ -110,10 +119,12 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 			break;
 
 		pte = pte_offset_map(pmd, addr);
+#ifndef CONFIG_TIMA_RKP
 		printk(", *pte=%08llx", (long long)pte_val(*pte));
 #ifndef CONFIG_ARM_LPAE
 		printk(", *ppte=%08llx",
 		       (long long)pte_val(pte[PTE_HWTABLE_PTRS]));
+#endif
 #endif
 		pte_unmap(pte);
 	} while(0);
@@ -124,6 +135,106 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 void show_pte(struct mm_struct *mm, unsigned long addr)
 { }
 #endif					/* CONFIG_MMU */
+#ifdef CONFIG_TIMA_RKP
+
+#ifdef CONFIG_TIMA_RKP_30
+extern unsigned long pgt_bit_array[];
+int tima_is_pg_protected(unsigned long va)
+{
+        unsigned long paddr = __pa(va);
+        unsigned long index = paddr >> PAGE_SHIFT;
+        unsigned long *p = (unsigned long *)pgt_bit_array;
+        unsigned long tmp = index>>5;
+        unsigned long rindex;
+        unsigned long val;
+
+        p += (tmp);
+        
+        rindex = index % 32;
+
+        val = (*p) & (1 << rindex)?1:0;
+        return val;
+}
+#else
+static DEFINE_RAW_SPINLOCK(par_lock);
+int tima_is_pg_protected(unsigned long va)
+{
+	unsigned long  par;
+	unsigned long flags;
+	raw_spin_lock_irqsave(&par_lock, flags);
+	__asm__ __volatile__ (
+		"mcr	p15, 0, %1, c7, c8, 1\n"
+		"dsb\n"
+		"isb\n"
+		"mrc 	p15, 0, %0, c7, c4, 0\n"
+		:"=r"(par):"r"(va));
+	raw_spin_unlock_irqrestore(&par_lock, flags);
+	if (par & 0x1) {
+		return 1;
+	}
+	return 0;
+}
+#endif /* CONFIG_TIMA_RKP_30 */
+
+
+#ifdef CONFIG_TIMA_RKP_30
+
+#define INS_STR_R1	0xe5801000
+#define INS_STR_R3	0xe5a03800
+extern void* cpu_v7_set_pte_ext_proc_end;
+unsigned int rkp_fixup(unsigned long addr, struct pt_regs *regs) {
+	
+	unsigned long inst = *((unsigned long*) regs->ARM_pc);
+	unsigned long reg_val = 0;
+	unsigned long emulate = 0;
+	
+	if (regs->ARM_pc <  (long) cpu_v7_set_pte_ext 
+		|| regs->ARM_pc > (long) &cpu_v7_set_pte_ext_proc_end) {
+		printk(KERN_ERR
+			"RKP -> Inst %lx out of cpu_v7_set_pte_ext range from %lx to %lx\n",
+			(unsigned long) regs->ARM_pc, (long) cpu_v7_set_pte_ext,
+			(long) &cpu_v7_set_pte_ext_proc_end);
+		return false;
+	}
+	if (inst == INS_STR_R1)
+	{
+		reg_val = regs->ARM_r1;
+		emulate = 1;
+	}
+	else if (inst == INS_STR_R3)
+	{
+		reg_val = regs->ARM_r3;
+		emulate = 1;
+	}
+	if (emulate) {
+		printk(KERN_ERR"Emulating RKP instruction %lx at %p\n", 
+		inst, (unsigned long*) regs->ARM_pc);
+
+#ifndef	CONFIG_TIMA_RKP_COHERENT_TT
+		asm volatile("mcr     p15, 0, %0, c7, c14, 1\n"
+		"dsb\n"
+        "isb\n"
+		: : "r" (addr));
+#endif
+		tima_send_cmd2(__pa(addr), reg_val, 0x08);
+
+#ifndef	CONFIG_TIMA_RKP_COHERENT_TT
+		asm volatile("mcr     p15, 0, %0, c7, c14, 1\n" 
+		"dsb\n"
+        "isb\n"
+		: : "r" (addr));
+#endif
+		regs->ARM_pc += 4;
+		return true;
+	}
+	printk(KERN_ERR"CANNOT Emulate RKP instruction %lx at %p\n", 
+		inst, (unsigned long*) regs->ARM_pc);
+	return false;		
+}
+#endif   /* CONFIG_TIMA_RKP_30 */
+#endif  /* CONFIG_TIMA_RKP */
+
+
 
 /*
  * Oops.  The kernel tried to access some page that wasn't present.
@@ -141,6 +252,14 @@ __do_kernel_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 	/*
 	 * No handler, we'll have to terminate things with extreme prejudice.
 	 */
+#ifdef CONFIG_TIMA_RKP_30
+	if (addr >= 0xc0000000 && (fsr & FSR_WRITE)) {
+		if (rkp_fixup(addr, regs)) {
+			return;
+		}
+	}
+#endif /* CONFIG_TIMA_RKP_30 */
+
 	bust_spinlocks(1);
 	printk(KERN_ALERT
 		"Unable to handle kernel %s at virtual address %08lx\n",
@@ -152,6 +271,26 @@ __do_kernel_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 	bust_spinlocks(0);
 	do_exit(SIGKILL);
 }
+
+#if defined(CONFIG_SEC_DEBUG_CHECK_TASKPTR_FAULT)
+static void
+__do_kernel_fault_safe(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
+		  struct pt_regs *regs)
+{
+	disable_printk_process();
+
+	printk(KERN_ALERT
+		"Unable to handle kernel %s at virtual address %08lx\n",
+		(addr < PAGE_SIZE) ? "NULL pointer dereference" :
+		"paging request", addr);
+
+	sec_debug_show_regs_simple(regs);
+
+	printk(KERN_ALERT "Call safe panic handler\n");
+
+	sec_debug_panic_handler_safe(regs);
+}
+#endif
 
 /*
  * Something tried to access memory that isn't in our memory map..
@@ -268,6 +407,12 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	if (notify_page_fault(regs, fsr))
 		return 0;
 
+#if defined(CONFIG_SEC_DEBUG_CHECK_TASKPTR_FAULT)
+	/* We may have invalid '*current' due to a stack overflow. */
+	if (!virt_addr_valid(current_thread_info()) || !virt_addr_valid(current))
+		__do_kernel_fault_safe(NULL, addr, fsr, regs);
+#endif
+
 	tsk = current;
 	mm  = tsk->mm;
 
@@ -276,10 +421,10 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		local_irq_enable();
 
 	/*
-	 * If we're in an interrupt or have no user
+	 * If we're in an interrupt, or have no irqs, or have no user
 	 * context, we must not take the fault..
 	 */
-	if (in_atomic() || !mm)
+	if (in_atomic() || irqs_disabled() || !mm)
 		goto no_context;
 
 	/*
@@ -446,16 +591,8 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 
 	if (pud_none(*pud_k))
 		goto bad_area;
-	if (!pud_present(*pud)) {
+	if (!pud_present(*pud))
 		set_pud(pud, *pud_k);
-		/*
-		 * There is a small window during free_pgtables() where the
-		 * user *pud entry is 0 but the TLB has not been invalidated
-		 * and we get a level 2 (pmd) translation fault caused by the
-		 * intermediate TLB caching of the old level 1 (pud) entry.
-		 */
-		flush_tlb_kernel_page(addr);
-	}
 
 	pmd = pmd_offset(pud, addr);
 	pmd_k = pmd_offset(pud_k, addr);
@@ -478,9 +615,8 @@ do_translation_fault(unsigned long addr, unsigned int fsr,
 #endif
 	if (pmd_none(pmd_k[index]))
 		goto bad_area;
-	if (!pmd_present(pmd[index]))
-		copy_pmd(pmd, pmd_k);
 
+	copy_pmd(pmd, pmd_k);
 	return 0;
 
 bad_area:
@@ -558,11 +694,19 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	printk(KERN_ALERT "Unhandled fault: %s (0x%03x) at 0x%08lx\n",
 		inf->name, fsr, addr);
 
+#ifdef CONFIG_SEC_DEBUG
+	show_pte(current->mm, addr);
+#endif
+
 	info.si_signo = inf->sig;
 	info.si_errno = 0;
 	info.si_code  = inf->code;
 	info.si_addr  = (void __user *)addr;
+#if defined(CONFIG_SEC_DEBUG_UNHANDLED_FAULT_SAFE)
+	arm_notify_die("Unhandled fault", regs, &info, fsr, 0);
+#else
 	arm_notify_die("", regs, &info, fsr, 0);
+#endif
 }
 
 void __init

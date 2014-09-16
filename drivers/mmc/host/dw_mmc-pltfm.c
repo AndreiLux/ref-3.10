@@ -105,12 +105,27 @@ static int dw_mci_pltfm_resume(struct device *dev)
 
 	return 0;
 }
+
+static int dw_mci_pltfm_early_resume(struct device *dev)
+{
+	int ret = 0;
+	struct dw_mci *host = dev_get_drvdata(dev);
+
+	ret = dw_mci_early_resume(host);
+
+	return ret;
+}
 #else
 #define dw_mci_pltfm_suspend	NULL
 #define dw_mci_pltfm_resume	NULL
+#define dw_mci_pltfm_early_resume NULL
 #endif /* CONFIG_PM_SLEEP */
 
-SIMPLE_DEV_PM_OPS(dw_mci_pltfm_pmops, dw_mci_pltfm_suspend, dw_mci_pltfm_resume);
+struct dev_pm_ops dw_mci_pltfm_pmops = {
+	.suspend   = dw_mci_pltfm_suspend,
+	.resume   = dw_mci_pltfm_resume,
+	.resume_early   = dw_mci_pltfm_early_resume,
+};
 EXPORT_SYMBOL_GPL(dw_mci_pltfm_pmops);
 
 static const struct of_device_id dw_mci_pltfm_match[] = {

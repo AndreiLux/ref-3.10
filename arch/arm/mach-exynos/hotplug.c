@@ -20,9 +20,14 @@
 #include <asm/smp_plat.h>
 
 #include <mach/regs-pmu.h>
+#include <mach/pmu.h>
+#include <mach/smc.h>
 #include <plat/cpu.h>
 
 #include "common.h"
+
+#define L2_CCI_OFF (1 << 1)
+#define CHECK_CCI_SNOOP (1 << 7)
 
 static inline void cpu_enter_lowpower_a9(void)
 {
@@ -63,6 +68,7 @@ static inline void cpu_enter_lowpower_a15(void)
 	/*
 	* Turn off coherency
 	*/
+	"       clrex\n"
 	"	mrc	p15, 0, %0, c1, c0, 1\n"
 	"	bic	%0, %0, %1\n"
 	"	mcr	p15, 0, %0, c1, c0, 1\n"
@@ -90,14 +96,36 @@ static inline void cpu_leave_lowpower(void)
 	  : "cc");
 }
 
+void exynos_power_down_cpu(unsigned int cpu)
+{
+	struct cpumask mask;
+	int type = !cpumask_and(&mask, cpu_online_mask, cpu_coregroup_mask(cpu));
+
+	set_boot_flag(cpu, HOTPLUG);
+	exynos_cpu.power_down(cpu);
+
+#ifdef CONFIG_EXYNOS_CLUSTER_POWER_DOWN
+	if (soc_is_exynos5422()) {
+		u32 cluster_id = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1);
+		if (type)
+			__raw_writel(0, EXYNOS_COMMON_CONFIGURATION(cluster_id));
+	}
+#endif
+#ifdef CONFIG_ARM_TRUSTZONE
+	exynos_smc(SMC_CMD_SHUTDOWN,
+		   OP_TYPE_CLUSTER & type,
+		   SMC_POWERSTATE_IDLE,
+		   0);
+#endif
+}
+
 static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 {
 	for (;;) {
 
-		/* make cpu1 to be turned off at next WFI command */
-		if (cpu == 1)
-			__raw_writel(0, S5P_ARM_CORE1_CONFIGURATION);
-
+		/* make secondary cpus to be turned off at next WFI command */
+		exynos_power_down_cpu(cpu);
+#ifndef CONFIG_ARM_TRUSTZONE
 		/*
 		 * here's the WFI
 		 */
@@ -105,7 +133,7 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 		    :
 		    :
 		    : "memory", "cc");
-
+#endif
 		if (pen_release == cpu_logical_map(cpu)) {
 			/*
 			 * OK, proper wakeup, we're done
@@ -132,6 +160,7 @@ static inline void platform_do_lowpower(unsigned int cpu, int *spurious)
 void __ref exynos_cpu_die(unsigned int cpu)
 {
 	int spurious = 0;
+#ifndef CONFIG_ARM_TRUSTZONE
 	int primary_part = 0;
 
 	/*
@@ -141,10 +170,12 @@ void __ref exynos_cpu_die(unsigned int cpu)
 	 * appropriate sequence for entering low power.
 	 */
 	asm("mrc p15, 0, %0, c0, c0, 0" : "=r"(primary_part) : : "cc");
-	if ((primary_part & 0xfff0) == 0xc0f0)
+	primary_part &= 0xfff0;
+	if ((primary_part == 0xc0f0) || (primary_part == 0xc070))
 		cpu_enter_lowpower_a15();
 	else
 		cpu_enter_lowpower_a9();
+#endif
 
 	platform_do_lowpower(cpu, &spurious);
 

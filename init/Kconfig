@@ -1251,6 +1251,12 @@ config HOTPLUG
 config HAVE_PCSPKR_PLATFORM
 	bool
 
+config PANIC_TIMEOUT
+	int "Default panic timeout"
+	default 0
+	help
+	  Set default panic timeout.
+
 menuconfig EXPERT
 	bool "Configure standard kernel features (expert users)"
 	# Unhide debug options, to make the on-by-default options visible
@@ -1580,6 +1586,12 @@ config MMAP_ALLOW_UNINITIALIZED
 	  it is normally safe to say Y here.
 
 	  See Documentation/nommu-mmap.txt for more information.
+
+config DEFERRED_INITCALLS
+	bool "Deferred initcalls support"
+	default n
+	help
+	  Say 'y' here to include support for deferred initcalls
 
 config PROFILING
 	bool "Profiling support"

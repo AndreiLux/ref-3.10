@@ -18,11 +18,15 @@
 #include <linux/regulator/consumer.h>
 #include <linux/mfd/arizona/pdata.h>
 
-#define ARIZONA_MAX_CORE_SUPPLIES 3
+#define ARIZONA_MAX_CORE_SUPPLIES 2
 
 enum arizona_type {
 	WM5102 = 1,
 	WM5110 = 2,
+	WM8997 = 3,
+	WM8280 = 4,
+	WM8998 = 5,
+	WM1814 = 6,
 };
 
 #define ARIZONA_IRQ_GP1                    0
@@ -80,6 +84,7 @@ enum arizona_type {
 
 #define ARIZONA_NUM_IRQ                   52
 
+#define ARIZONA_HP_SHORT_IMPEDANCE        4
 struct snd_soc_dapm_context;
 
 struct arizona {
@@ -95,6 +100,9 @@ struct arizona {
 
 	struct arizona_pdata pdata;
 
+	unsigned int external_dcvdd:1;
+
+	unsigned int irq_sem;
 	int irq;
 	struct irq_domain *virq;
 	struct regmap_irq_chip_data *aod_irq_chip;
@@ -103,14 +111,36 @@ struct arizona {
 	bool hpdet_magic;
 	unsigned int hp_ena;
 
+	unsigned int hp_impedance;
+
 	struct mutex clk_lock;
 	int clk32k_ref;
 
+	struct mutex subsys_max_lock;
+	unsigned int subsys_max_rq;
+
 	struct snd_soc_dapm_context *dapm;
+
+	struct mutex reg_setting_lock;
+
+	int tdm_width[ARIZONA_MAX_AIF];
+	int tdm_slots[ARIZONA_MAX_AIF];
+
+	uint16_t out_comp_coeff;
+	uint8_t out_comp_enabled;
 };
+
+#define ARIZONA_DVFS_SR1_RQ          0x00000001
+#define ARIZONA_DVFS_SR2_RQ          0x00000002
+#define ARIZONA_DVFS_SR3_RQ          0x00000004
+#define ARIZONA_DVFS_ASR1_RQ         0x00000010
+#define ARIZONA_DVFS_ASR2_RQ         0x00000020
+#define ARIZONA_DVFS_ADSP1_RQ        0x00010000
 
 int arizona_clk32k_enable(struct arizona *arizona);
 int arizona_clk32k_disable(struct arizona *arizona);
+int arizona_dvfs_up(struct arizona *arizona, unsigned int mask);
+int arizona_dvfs_down(struct arizona *arizona, unsigned int mask);
 
 int arizona_request_irq(struct arizona *arizona, int irq, char *name,
 			irq_handler_t handler, void *data);
@@ -118,6 +148,19 @@ void arizona_free_irq(struct arizona *arizona, int irq, void *data);
 int arizona_set_irq_wake(struct arizona *arizona, int irq, int on);
 
 int wm5102_patch(struct arizona *arizona);
-int wm5110_patch(struct arizona *arizona);
+int florida_patch(struct arizona *arizona);
+int wm8997_patch(struct arizona *arizona);
+int wm8998_patch(struct arizona *arizona);
+
+extern int arizona_of_get_named_gpio(struct arizona *arizona, const char *prop,
+				     bool mandatory);
+extern int arizona_of_read_u32_array(struct arizona *arizona, const char *prop,
+				     bool mandatory, u32 *data, size_t num);
+extern int arizona_of_read_u32(struct arizona *arizona, const char* prop,
+			       bool mandatory, u32 *data);
+
+extern void arizona_florida_mute_analog(struct arizona* arizona,
+					unsigned int mute);
+extern void arizona_florida_clear_input(struct arizona *arizona);
 
 #endif

@@ -419,4 +419,13 @@ config DA_CONSOLE
 	help
 	  This enables a console on a Dash channel.
 
+config TTY_WAITQUEUE_DOUBLE_CHECK
+	bool "prevent freed tty ldisc access"
+	default n
+	help
+		There is issue that ldisk freed by hangup before waitqueue_active.
+		In that case, wake_up executed with freed ldisc (lead kernel panic).
+		Becasue, waitqueue_active only is checking next list existence.
+		tty_ldisc_waitqueue_valid is checking waitqueue's next list validation.
+
 endif # TTY

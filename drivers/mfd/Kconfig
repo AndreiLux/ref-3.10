@@ -303,6 +303,71 @@ config MFD_MAX77693
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
 
+config MFD_MAX77804
+        bool "Maxim Semiconductor MAX77804 PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77804.
+          This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
+          MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
+config MFD_MAX77804K
+        bool "Maxim Semiconductor MAX77804K PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77804K.
+          This is a Power Management IC with RTC, Flash, Fuel Gauge, Haptic,
+          MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
+config MFD_MAX77823
+        bool "Maxim Semiconductor MAX77823 Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77823.
+          This is a Charger, Fuel Gauge controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
+config MFD_MAX77828
+        bool "Maxim Semiconductor MAX77828 PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77828.
+          This is a Power Management IC with RTC, Flash, SVC led, Haptic,
+          MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
+config MFD_MAX77843
+        bool "Maxim Semiconductor MAX77843 PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77843.
+          This is a Power Management IC with LDO, RGB(SVC led), Haptic,
+          MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
+config MFD_MAX77888
+        bool "Maxim Semiconductor MAX77888 PMIC Support"
+        depends on I2C=y && GENERIC_HARDIRQS
+        select MFD_CORE
+        help
+          Say yes here to support for Maxim Semiconductor MAX77888.
+          This is a Power Management IC with Charger, safe LDOs, Flash, Haptic
+          and MUIC controls on chip.
+          This driver provides common support for accessing the device;
+          additional drivers
+
 config MFD_MAX8907
 	tristate "Maxim Semiconductor MAX8907 PMIC Support"
 	select MFD_CORE
@@ -786,9 +851,6 @@ config MFD_TPS65217
 	  charger, wled and other features that are often used in portable
 	  devices.
 
-	  This driver can also be built as a module.  If so, the module
-	  will be called tps65217.
-
 config MFD_TPS6586X
 	bool "TI TPS6586x Power Management chips"
 	depends on I2C=y && GENERIC_HARDIRQS
@@ -1040,11 +1102,24 @@ config MFD_WM5102
 	help
 	  Support for Wolfson Microelectronics WM5102 low power audio SoC
 
-config MFD_WM5110
-	bool "Wolfson Microelectronics WM5110"
+config MFD_FLORIDA
+	bool "Wolfson Microelectronics Florida class codecs"
 	depends on MFD_ARIZONA
 	help
-	  Support for Wolfson Microelectronics WM5110 low power audio SoC
+	  Support for Wolfson Microelectronics Florida class low power audio SoC
+	  such as the WM8280
+
+config MFD_WM8998
+	bool "Support Wolfson Microelectronics WM8998"
+	depends on MFD_ARIZONA
+	help
+	  Support for Wolfson Microelectronics WM8998 low power audio SoC
+
+config MFD_WM8997
+	bool "Wolfson Microelectronics WM8997"
+	depends on MFD_ARIZONA
+	help
+	  Support for Wolfson Microelectronics WM8997 low power audio SoC
 
 config MFD_WM8400
 	bool "Wolfson Microelectronics WM8400"
@@ -1144,15 +1219,7 @@ config MCP_UCB1200_TS
 endmenu
 
 config VEXPRESS_CONFIG
-	bool "ARM Versatile Express platform infrastructure"
-	depends on ARM || ARM64
+	bool
 	help
 	  Platform configuration infrastructure for the ARM Ltd.
 	  Versatile Express.
-
-config VEXPRESS_SPC
-	bool "Versatile Express SPC driver support"
-	depends on ARM
-	depends on VEXPRESS_CONFIG
-	help
-	  Serial Power Controller driver for ARM Ltd. test chips.

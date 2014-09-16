@@ -254,10 +254,44 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 			ecryptfs_dentry->d_name.name, rc);
 		goto out;
 	}
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+	mutex_lock(&crypt_stat->cs_mutex);
+	if (crypt_stat->flags & ECRYPTFS_ENCRYPTED) {
+		struct dentry *fp_dentry =
+			ecryptfs_inode_to_private(ecryptfs_inode)
+			->lower_file->f_dentry;
+		struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+			&ecryptfs_superblock_to_private(ecryptfs_dentry->d_sb)
+			->mount_crypt_stat;
+		char filename[NAME_MAX+1] = {0};
+		if (fp_dentry->d_name.len <= NAME_MAX)
+			memcpy(filename, fp_dentry->d_name.name,
+					fp_dentry->d_name.len + 1);
+
+		if ((mount_crypt_stat->flags & ECRYPTFS_ENABLE_NEW_PASSTHROUGH)
+		|| ((mount_crypt_stat->flags & ECRYPTFS_ENABLE_FILTERING) &&
+			(is_file_name_match(mount_crypt_stat, fp_dentry) ||
+			is_file_ext_match(mount_crypt_stat, filename)))) {
+			crypt_stat->flags &= ~(ECRYPTFS_I_SIZE_INITIALIZED
+				| ECRYPTFS_ENCRYPTED);
+			ecryptfs_put_lower_file(ecryptfs_inode);
+		} else {
+			rc = ecryptfs_write_metadata(ecryptfs_dentry,
+				 ecryptfs_inode);
+			if (rc)
+				printk(
+				KERN_ERR "Error writing headers; rc = [%d]\n"
+				    , rc);
+			ecryptfs_put_lower_file(ecryptfs_inode);
+		}
+	}
+	mutex_unlock(&crypt_stat->cs_mutex);
+#else
 	rc = ecryptfs_write_metadata(ecryptfs_dentry, ecryptfs_inode);
 	if (rc)
 		printk(KERN_ERR "Error writing headers; rc = [%d]\n", rc);
 	ecryptfs_put_lower_file(ecryptfs_inode);
+#endif
 out:
 	return rc;
 }
@@ -1063,8 +1097,14 @@ ecryptfs_getxattr_lower(struct dentry *lower_dentry, const char *name,
 {
 	int rc = 0;
 
+	// need information of given lower_dentry
+	// 1. fs_type
+	// 1. file name
 	if (!lower_dentry->d_inode->i_op->getxattr) {
+		printk("%s: getxattr of lower_dentry failed : EOPNOTSUPP\n", __func__);
+#ifndef ECRYPT_FS_VIRTUAL_FAT_XATTR
 		rc = -EOPNOTSUPP;
+#endif
 		goto out;
 	}
 	mutex_lock(&lower_dentry->d_inode->i_mutex);

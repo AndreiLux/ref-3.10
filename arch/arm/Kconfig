@@ -265,6 +265,12 @@ config GENERIC_BUG
 	def_bool y
 	depends on BUG
 
+config SEC_FACTORY
+        bool "when it comes to sec factory mode"
+        default n
+        help
+          It will support a sec factory mode
+
 source "init/Kconfig"
 
 source "kernel/Kconfig.freezer"
@@ -784,8 +790,6 @@ config ARCH_S5PV210
 config ARCH_EXYNOS
 	bool "Samsung EXYNOS"
 	select ARCH_HAS_CPUFREQ
-	select ARCH_HAS_HOLES_MEMORYMODEL
-	select ARCH_SPARSEMEM_ENABLE
 	select CLKDEV_LOOKUP
 	select COMMON_CLK
 	select CPU_V7
@@ -796,6 +800,7 @@ config ARCH_EXYNOS
 	select HAVE_S3C_RTC if RTC_CLASS
 	select NEED_MACH_GPIO_H
 	select NEED_MACH_MEMORY_H
+	select SPARSE_IRQ
 	help
 	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
 
@@ -1062,7 +1067,7 @@ source arch/arm/mm/Kconfig
 
 config ARM_NR_BANKS
 	int
-	default 16 if ARCH_EP93XX
+	default 16 if ARCH_EP93XX || ARCH_EXYNOS
 	default 8
 
 config IWMMXT
@@ -1336,6 +1341,43 @@ config PL310_ERRATA_769419
 	  on systems with an outer cache, the store buffer is drained
 	  explicitly.
 
+config ARM_ERRATA_761320
+	bool "ARM errata: no direct eviction"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 761320 Cortex-A9 erratum.
+
+config ARM_ERRATA_766421
+	bool "ARM errata: Strongly-Ordered/Device load or NC LDREX could return incorrect data"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the 766421 Cortex-A15 erratum.
+	  In certain situations, a strongly ordered or device load instruction,
+	  or a non-cacheable normal memory load-exclusive instruction could
+	  match multiple fill buffers and return incorrect data.
+	  This workaround is add DMB instruction when making any change to the
+	  translation regime and before doing any new loads/stores/preloads
+	  in the new translation regime.
+
+config ARM_ERRATA_773022
+	bool "ARM errata: incorrect instructions may be executed from loop buffer"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the 773022 Cortex-A15 erratum.
+	  In certain rare sequences of code, the loop buffer may deliver
+	  incorrect instructions.
+	  This workaround is to disable loop buffer.
+
+config ARM_ERRATA_774769
+	bool "ARM errata: data corruption may occur with store streaming in a system"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the erratum 774769.
+	  External memory may be corrupted on erratum 774769.
+	  The workaround is to configure write streaming on versions of A15
+	  affected by this erratum such that no streaming-write ever allocates
+	  into the L2 cache.
+
 config ARM_ERRATA_775420
        bool "ARM errata: A data cache maintenance operation which aborts, might lead to deadlock"
        depends on CPU_V7
@@ -1417,6 +1459,7 @@ config PCI_HOST_ITE8152
 	select DMABOUNCE
 
 source "drivers/pci/Kconfig"
+source "drivers/pci/pcie/Kconfig"
 
 source "drivers/pcmcia/Kconfig"
 
@@ -1566,6 +1609,7 @@ config HMP_VARIABLE_SCALE
 config HMP_FREQUENCY_INVARIANT_SCALE
 	bool "(EXPERIMENTAL) Frequency-Invariant Tracked Load for HMP"
 	depends on HMP_VARIABLE_SCALE && CPU_FREQ
+	default y
 	help
 	  Scales the current load contribution in line with the frequency
 	  of the CPU that the task was executed on.
@@ -1577,6 +1621,22 @@ config HMP_FREQUENCY_INVARIANT_SCALE
 	  normal) and allows the HMP migration's simple threshold
 	  migration strategy to interact more predictably with CPUFreq's
 	  asynchronous compute capacity changes.
+
+config HMP_REAL_HEAVIEST_PICK
+	bool "Heaviest task searching change for HMP"
+	depends on SCHED_HMP
+	default n
+	help
+		Heaviest task search all of the cfs runqueues.
+		android basically 3 scheduling group.
+		previous checking only current se runqueue.
+
+config HMP_DEBUG
+	bool "Debug feature for HMP"
+	depends on SCHED_HMP
+	default n
+	help
+		Debug feature for HMP.
 
 config HAVE_ARM_SCU
 	bool
@@ -1604,31 +1664,6 @@ config MCPM
 	  This option provides the common power management infrastructure
 	  for (multi-)cluster based systems, such as big.LITTLE based
 	  systems.
-
-config BIG_LITTLE
-	bool "big.LITTLE support (Experimental)"
-	depends on CPU_V7 && SMP
-	select MCPM
-	help
-	  This option enables support for the big.LITTLE architecture.
-
-config BL_SWITCHER
-	bool "big.LITTLE switcher support"
-	depends on BIG_LITTLE && MCPM && HOTPLUG_CPU
-	select CPU_PM
-	select ARM_CPU_SUSPEND
-	help
-	  The big.LITTLE "switcher" provides the core functionality to
-	  transparently handle transition between a cluster of A15's
-	  and a cluster of A7's in a big.LITTLE system.
-
-config BL_SWITCHER_DUMMY_IF
-	tristate "Simple big.LITTLE switcher user interface"
-	depends on BL_SWITCHER && DEBUG_KERNEL
-	help
-	  This is a simple and dummy char dev interface to control
-	  the big.LITTLE switcher core code.  It is meant for
-	  debugging purposes only.
 
 choice
 	prompt "Memory split"
@@ -1708,7 +1743,7 @@ source kernel/Kconfig.preempt
 config HZ
 	int
 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
-		ARCH_S5PV210 || ARCH_EXYNOS4
+		ARCH_S5PV210 || ARCH_EXYNOS
 	default AT91_TIMER_HZ if ARCH_AT91
 	default SHMOBILE_TIMER_HZ if ARCH_SHMOBILE
 	default 100
@@ -1928,6 +1963,15 @@ config XEN
 	help
 	  Say Y if you want to run Linux in a Virtual Machine on Xen on ARM.
 
+config ARM_FLUSH_CONSOLE_ON_RESTART
+	bool "Force flush the console on restart"
+	help
+	  If the console is locked while the system is rebooted, the messages
+	  in the temporary logbuffer would not have propogated to all the
+	  console drivers. This option forces the console lock to be
+	  released if it failed to be acquired, which will cause all the
+	  pending messages to be flushed.
+
 endmenu
 
 menu "Boot options"
@@ -1956,6 +2000,21 @@ config DEPRECATED_PARAM_STRUCT
 	help
 	  This was deprecated in 2001 and announced to live on for 5 years.
 	  Some old boot loaders still use this way.
+
+config BUILD_ARM_APPENDED_DTB_IMAGE
+	bool "Build a concatenated zImage/dtb by default"
+	depends on OF
+	help
+	  Enabling this option will cause a concatenated zImage and list of
+	  DTBs to be built by default (instead of a standalone zImage.)
+	  The image will built in arch/arm/boot/zImage-dtb
+
+config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
+	string "Default dtb names"
+	depends on BUILD_ARM_APPENDED_DTB_IMAGE
+	help
+	  Space separated list of names of dtbs to append when
+	  building a concatenated zImage-dtb.
 
 # Compressed boot loader in ROM.  Yes, we really want to ask about
 # TEXT and BSS so we preserve their values in the config files.

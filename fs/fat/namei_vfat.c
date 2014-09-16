@@ -1034,6 +1034,13 @@ error_inode:
 	goto out;
 }
 
+#ifdef FAT_FS_VIRTUAL_XATTR
+extern int fat_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags);
+extern ssize_t fat_getxattr(struct dentry *dentry, const char *name, void *value, size_t size);
+extern ssize_t fat_listxattr(struct dentry *dentry, char *list, size_t size);
+extern int fat_removexattr(struct dentry *dentry, const char *name);
+#endif
+
 static const struct inode_operations vfat_dir_inode_operations = {
 	.create		= vfat_create,
 	.lookup		= vfat_lookup,
@@ -1043,6 +1050,12 @@ static const struct inode_operations vfat_dir_inode_operations = {
 	.rename		= vfat_rename,
 	.setattr	= fat_setattr,
 	.getattr	= fat_getattr,
+#ifdef FAT_FS_VIRTUAL_XATTR
+	.setxattr	= fat_setxattr,
+	.getxattr	= fat_getxattr,
+	.listxattr	= fat_listxattr,
+	.removexattr	= fat_removexattr,
+#endif
 };
 
 static void setup(struct super_block *sb)

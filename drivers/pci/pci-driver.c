@@ -339,6 +339,9 @@ static int pci_device_probe(struct device * dev)
 	return error;
 }
 
+extern void exynos_pcie_set_l1_exit(void);
+extern void exynos_pcie_clear_l1_exit(void);
+
 static int pci_device_remove(struct device * dev)
 {
 	struct pci_dev * pci_dev = to_pci_dev(dev);
@@ -347,7 +350,9 @@ static int pci_device_remove(struct device * dev)
 	if (drv) {
 		if (drv->remove) {
 			pm_runtime_get_sync(dev);
+			exynos_pcie_set_l1_exit();
 			drv->remove(pci_dev);
+			exynos_pcie_clear_l1_exit();
 			pm_runtime_put_noidle(dev);
 		}
 		pci_dev->driver = NULL;
@@ -376,6 +381,8 @@ static int pci_device_remove(struct device * dev)
 	return 0;
 }
 
+extern int check_rev(void);
+extern int poweronoff_flag;
 static void pci_device_shutdown(struct device *dev)
 {
 	struct pci_dev *pci_dev = to_pci_dev(dev);
@@ -388,12 +395,19 @@ static void pci_device_shutdown(struct device *dev)
 	pci_msi_shutdown(pci_dev);
 	pci_msix_shutdown(pci_dev);
 
+	if (!check_rev()) {
+		if (!poweronoff_flag)
+			return;
+	}
 	/*
 	 * Turn off Bus Master bit on the device to tell it to not
 	 * continue to do DMA. Don't touch devices in D3cold or unknown states.
 	 */
+
+	exynos_pcie_set_l1_exit();
 	if (pci_dev->current_state <= PCI_D3hot)
 		pci_clear_master(pci_dev);
+	exynos_pcie_clear_l1_exit();
 }
 
 #ifdef CONFIG_PM
@@ -1150,6 +1164,7 @@ int __pci_register_driver(struct pci_driver *drv, struct module *owner,
 void
 pci_unregister_driver(struct pci_driver *drv)
 {
+	printk(KERN_EMERG "\n\n%s: Enter\n", __func__);
 	driver_unregister(&drv->driver);
 	pci_free_dynids(drv);
 }

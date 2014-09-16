@@ -135,6 +135,9 @@ void mnt_release_group_id(struct mount *mnt)
 static inline void mnt_add_count(struct mount *mnt, int n)
 {
 #ifdef CONFIG_SMP
+	if (!mnt->mnt_pcp)
+		return;
+
 	this_cpu_add(mnt->mnt_pcp->mnt_count, n);
 #else
 	preempt_disable();

@@ -34,7 +34,11 @@ struct map_desc {
 #define MT_MEMORY_ITCM		13
 #define MT_MEMORY_SO		14
 #define MT_MEMORY_DMA_READY	15
-
+#ifdef CONFIG_STRICT_MEMORY_RWX
+#define MT_MEMORY_R		16
+#define MT_MEMORY_RW		17
+#define MT_MEMORY_RX		18
+#endif
 #ifdef CONFIG_MMU
 extern void iotable_init(struct map_desc *, int);
 extern void vm_reserve_area_early(unsigned long addr, unsigned long size,

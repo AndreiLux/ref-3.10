@@ -133,12 +133,24 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 		kfree(data);
 	}
 	snd_card_unref(compr->card);
-	return 0;
+	return ret;
 }
 
 static int snd_compr_free(struct inode *inode, struct file *f)
 {
 	struct snd_compr_file *data = f->private_data;
+	struct snd_compr_runtime *runtime = data->stream.runtime;
+
+	switch (runtime->state) {
+	case SNDRV_PCM_STATE_RUNNING:
+	case SNDRV_PCM_STATE_DRAINING:
+	case SNDRV_PCM_STATE_PAUSED:
+		data->stream.ops->trigger(&data->stream, SNDRV_PCM_TRIGGER_STOP);
+		break;
+	default:
+		break;
+	}
+
 	data->stream.ops->free(&data->stream);
 	kfree(data->stream.runtime->buffer);
 	kfree(data->stream.runtime);
@@ -490,9 +502,6 @@ static int snd_compress_check_input(struct snd_compr_params *params)
 	if (params->codec.ch_in == 0 || params->codec.ch_out == 0)
 		return -EINVAL;
 
-	if (!(params->codec.sample_rate & SNDRV_PCM_RATE_8000_192000))
-		return -EINVAL;
-
 	return 0;
 }
 
@@ -837,7 +846,8 @@ static int snd_compress_dev_disconnect(struct snd_device *device)
 	struct snd_compr *compr;
 
 	compr = device->device_data;
-	snd_unregister_device(compr->direction, compr->card, compr->device);
+	snd_unregister_device(SNDRV_DEVICE_TYPE_COMPRESS, compr->card,
+		compr->device);
 	return 0;
 }
 

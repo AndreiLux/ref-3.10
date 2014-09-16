@@ -28,14 +28,7 @@
 #include <linux/workqueue.h>
 
 #include "cpufreq_governor.h"
-
-static struct kobject *get_governor_parent_kobj(struct cpufreq_policy *policy)
-{
-	if (have_governor_per_policy())
-		return &policy->kobj;
-	else
-		return cpufreq_global_kobject;
-}
+#include "cpu_load_metric.h"
 
 static struct attribute_group *get_sysfs_attr(struct dbs_data *dbs_data)
 {
@@ -158,6 +151,8 @@ void dbs_check_cpu(struct dbs_data *dbs_data, int cpu)
 
 		if (load > max_load)
 			max_load = load;
+
+		update_cpu_metric(j, cur_wall_time, idle_time, wall_time, policy);
 	}
 
 	dbs_data->cdata->gov_check_cpu(cpu, max_load);
@@ -401,6 +396,7 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 
 		mutex_lock(&dbs_data->mutex);
 		mutex_destroy(&cpu_cdbs->timer_mutex);
+		cpu_cdbs->cur_policy = NULL;
 
 		mutex_unlock(&dbs_data->mutex);
 

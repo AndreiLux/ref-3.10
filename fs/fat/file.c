@@ -448,7 +448,20 @@ out:
 }
 EXPORT_SYMBOL_GPL(fat_setattr);
 
+#ifdef FAT_FS_VIRTUAL_XATTR
+extern int fat_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags);
+extern ssize_t fat_getxattr(struct dentry *dentry, const char *name, void *value, size_t size);
+extern ssize_t fat_listxattr(struct dentry *dentry, char *list, size_t size);
+extern int fat_removexattr(struct dentry *dentry, const char *name);
+#endif
+
 const struct inode_operations fat_file_inode_operations = {
 	.setattr	= fat_setattr,
 	.getattr	= fat_getattr,
+#ifdef FAT_FS_VIRTUAL_XATTR
+	.setxattr	= fat_setxattr,
+	.getxattr	= fat_getxattr,
+	.listxattr	= fat_listxattr,
+	.removexattr	= fat_removexattr,
+#endif
 };

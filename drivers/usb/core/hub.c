@@ -33,6 +33,10 @@
 
 #include "hub.h"
 
+#ifdef CONFIG_USB_HOST_NOTIFY
+#include "sec-dock.h"
+#endif
+
 /* if we are in debug mode, always announce new devices */
 #ifdef DEBUG
 #ifndef CONFIG_USB_ANNOUNCE_NEW_DEVICES
@@ -853,7 +857,7 @@ static int hub_hub_status(struct usb_hub *hub,
 				"%s failed (err = %d)\n", __func__, ret);
 	} else {
 		*status = le16_to_cpu(hub->status->hub.wHubStatus);
-		*change = le16_to_cpu(hub->status->hub.wHubChange); 
+		*change = le16_to_cpu(hub->status->hub.wHubChange);
 		ret = 0;
 	}
 	mutex_unlock(&hub->status_mutex);
@@ -1187,7 +1191,11 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 	 * If any port-status changes do occur during this delay, khubd
 	 * will see them later and handle them normally.
 	 */
+#if defined(CONFIG_LINK_DEVICE_HSIC)
+	if (need_debounce_delay && type != HUB_RESET_RESUME) {
+#else
 	if (need_debounce_delay) {
+#endif
 		delay = HUB_DEBOUNCE_STABLE;
 
 		/* Don't do a long sleep inside a workqueue routine */
@@ -1588,7 +1596,7 @@ static void hub_disconnect(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
 	struct usb_device *hdev = interface_to_usbdev(intf);
-	int i;
+	int port1;
 
 	/* Take the hub off the event list and don't let it be added again */
 	spin_lock_irq(&hub_event_lock);
@@ -1603,11 +1611,15 @@ static void hub_disconnect(struct usb_interface *intf)
 	hub->error = 0;
 	hub_quiesce(hub, HUB_DISCONNECT);
 
-	usb_set_intfdata (intf, NULL);
+	/* Avoid races with recursively_mark_NOTATTACHED() */
+	spin_lock_irq(&device_state_lock);
+	port1 = hdev->maxchild;
+	hdev->maxchild = 0;
+	usb_set_intfdata(intf, NULL);
+	spin_unlock_irq(&device_state_lock);
 
-	for (i = 0; i < hdev->maxchild; i++)
-		usb_hub_remove_port_device(hub, i + 1);
-	hub->hdev->maxchild = 0;
+	for (; port1 > 0; --port1)
+		usb_hub_remove_port_device(hub, port1);
 
 	if (hub->hdev->speed == USB_SPEED_HIGH)
 		highspeed_hubs--;
@@ -1729,8 +1741,12 @@ descriptor_error:
 	if (id->driver_info & HUB_QUIRK_CHECK_PORT_AUTOSUSPEND)
 		hub->quirk_check_port_auto_suspend = 1;
 
-	if (hub_configure(hub, endpoint) >= 0)
+	if (hub_configure(hub, endpoint) >= 0) {
+#if defined(CONFIG_LINK_DEVICE_HSIC)
+		usb_detect_quirks(hdev);
+#endif
 		return 0;
+	}
 
 	hub_disconnect (intf);
 	return -ENODEV;
@@ -2026,6 +2042,9 @@ void usb_disconnect(struct usb_device **pdev)
 	dev_info(&udev->dev, "USB disconnect, device number %d\n",
 			udev->devnum);
 
+#ifdef CONFIG_USB_HOST_NOTIFY
+	call_battery_notify(udev, 0);
+#endif
 	usb_lock_device(udev);
 
 	/* Free up all the children before we remove this device */
@@ -2327,7 +2346,9 @@ int usb_new_device(struct usb_device *udev)
 	if (udev->manufacturer)
 		add_device_randomness(udev->manufacturer,
 				      strlen(udev->manufacturer));
-
+#ifdef CONFIG_USB_HOST_NOTIFY
+	call_battery_notify(udev, 1);
+#endif
 	device_enable_async_suspend(&udev->dev);
 
 	/*
@@ -2988,6 +3009,7 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	 * Therefore we will turn on the suspend feature if udev or any of its
 	 * descendants is enabled for remote wakeup.
 	 */
+#ifndef CONFIG_LTE_MODEM_SHANNON
 	else if (PMSG_IS_AUTO(msg) || wakeup_enabled_descendants(udev) > 0)
 		status = set_port_feature(hub->hdev, port1,
 				USB_PORT_FEAT_SUSPEND);
@@ -2995,6 +3017,10 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 		really_suspend = false;
 		status = 0;
 	}
+#else
+	/* Shannon modem needs legacy suspend signaling after dpm suspend */
+	status = set_port_feature(hub->hdev, port1, USB_PORT_FEAT_SUSPEND);
+#endif
 	if (status) {
 		dev_dbg(hub->intfdev, "can't suspend port %d, status %d\n",
 				port1, status);
@@ -3093,6 +3119,9 @@ static int finish_port_resume(struct usb_device *udev)
  retry_reset_resume:
 		status = usb_reset_and_verify_device(udev);
 
+	if (udev->quirks & USB_QUIRK_NO_GET_STATUS)
+		goto done;
+
  	/* 10.5.4.5 says be sure devices in the tree are still there.
  	 * For now let's assume the device didn't go crazy on resume,
 	 * and device drivers will know about any resume quirks.
@@ -3147,6 +3176,7 @@ static int finish_port_resume(struct usb_device *udev)
 				status);
 		status = 0;
 	}
+done:
 	return status;
 }
 
@@ -3224,7 +3254,11 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 		/* drive resume for at least 20 msec */
 		dev_dbg(&udev->dev, "usb %sresume\n",
 				(PMSG_IS_AUTO(msg) ? "auto-" : ""));
-		msleep(25);
+		/* Add the 5msec delay for Shannon300 resume fail case */
+		if (udev->quirks & USB_QUIRK_HSIC_TUNE)
+			msleep(30);
+		else
+			msleep(25);
 
 		/* Virtual root hubs can trigger on GET_PORT_STATUS to
 		 * stop resume signaling.  Then finish the resume
@@ -3234,9 +3268,21 @@ int usb_port_resume(struct usb_device *udev, pm_message_t msg)
 
 		/* TRSMRCY = 10 msec */
 		msleep(10);
+
+		/* If portstatus is still resuming, retry GET_PORT_STATUS */
+		if (udev->quirks & USB_QUIRK_HSIC_TUNE) {
+			if (portstatus & USB_PORT_STAT_SUSPEND) {
+				usleep_range(5000, 10000);
+				status = hub_port_status(hub, port1,
+						&portstatus, &portchange);
+			}
+		}
 	}
 
  SuspendCleared:
+#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_MDM_HSIC_PM)
+	pr_info("mif: %s: %d, %d, status = %d\n", __func__, portstatus, portchange, status);
+#endif
 	if (status == 0) {
 		udev->port_is_suspended = 0;
 		if (hub_is_superspeed(hub->hdev)) {
@@ -3281,6 +3327,13 @@ int usb_remote_wakeup(struct usb_device *udev)
 {
 	int	status = 0;
 
+#if defined(CONFIG_LINK_DEVICE_HSIC)
+	if (udev->quirks & USB_QUIRK_NO_REMOTE_WAKEUP) {
+		dev_dbg(&udev->dev, "%s: skip, state %d, rpm %d\n",
+			__func__, udev->state, udev->dev.power.runtime_status);
+		return 0;
+	}
+#endif
 	if (udev->state == USB_STATE_SUSPENDED) {
 		dev_dbg(&udev->dev, "usb %sresume\n", "wakeup-");
 		status = usb_autoresume_device(udev);
@@ -3849,7 +3902,7 @@ EXPORT_SYMBOL_GPL(usb_enable_ltm);
  * Between connect detection and reset signaling there must be a delay
  * of 100ms at least for debounce and power-settling.  The corresponding
  * timer shall restart whenever the downstream port detects a disconnect.
- * 
+ *
  * Apparently there are some bluetooth and irda-dongles and a number of
  * low-speed devices for which this debounce period may last over a second.
  * Not covered by the spec - but easy to deal with.
@@ -4049,7 +4102,7 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 		udev->tt = &hub->tt;
 		udev->ttport = port1;
 	}
- 
+
 	/* Why interleave GET_DESCRIPTOR and SET_ADDRESS this way?
 	 * Because device hardware and firmware is sometimes buggy in
 	 * this area, and this is how Linux has done it for ages.
@@ -4105,9 +4158,11 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 					buf->bMaxPacketSize0;
 			kfree(buf);
 
-			retval = hub_port_reset(hub, port1, udev, delay, false);
-			if (retval < 0)		/* error or disconnect */
-				goto fail;
+			if(!(udev->quirks & USB_QUIRK_HSIC_TUNE)) {
+				retval = hub_port_reset(hub, port1, udev, delay, false);
+				if (retval < 0)		/* error or disconnect */
+					goto fail;
+			}
 			if (oldspeed != udev->speed) {
 				dev_dbg(&udev->dev,
 					"device reset changed speed!\n");
@@ -4213,7 +4268,7 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 		udev->ep0.desc.wMaxPacketSize = cpu_to_le16(i);
 		usb_ep0_reinit(udev);
 	}
-  
+
 	retval = usb_get_device_descriptor(udev, USB_DT_DEVICE_SIZE);
 	if (retval < (signed)sizeof(udev->descriptor)) {
 		if (retval != -ENODEV)
@@ -4367,9 +4422,23 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 			 * remote wakeup event.
 			 */
 			status = usb_remote_wakeup(udev);
+#if defined(CONFIG_LINK_DEVICE_HSIC) || defined(CONFIG_MDM_HSIC_PM)
+		} else if (udev->state == USB_STATE_CONFIGURED &&
+			udev->persist_enabled &&
+			udev->dev.power.runtime_status == RPM_RESUMING) {
+			/* usb 1-2 runtime resume was called by host wakeup
+			 * isr routine . Nothing to do */
+			pr_info("%s: aleady host-wakup resumed\n", __func__);
+			status = 0;
 #endif
-
+#endif
 		} else {
+#if defined(CONFIG_PM_RUNTIME) && (defined(CONFIG_LINK_DEVICE_HSIC) || \
+		defined(CONFIG_MDM_HSIC_PM))
+			pr_info("%s: ENODEV, udev->state=%d, rpm=%d\n",
+				__func__, udev->state,
+				udev->dev.power.runtime_status);
+#endif
 			status = -ENODEV;	/* Don't resuscitate */
 		}
 		usb_unlock_device(udev);
@@ -4499,7 +4568,7 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 				goto loop_disable;
 			}
 		}
- 
+
 		/* check for devices running slower than they could */
 		if (le16_to_cpu(udev->descriptor.bcdUSB) >= 0x0200
 				&& udev->speed == USB_SPEED_FULL
@@ -4559,7 +4628,7 @@ loop:
 			dev_err(hub_dev, "unable to enumerate USB device on port %d\n",
 					port1);
 	}
- 
+
 done:
 	hub_port_disable(hub, port1, 1);
 	if (hcd->driver->relinquish_port && !hub->hdev->parent)
@@ -4726,7 +4795,7 @@ static void hub_events(void)
 				 * EM interference sometimes causes badly
 				 * shielded USB devices to be shutdown by
 				 * the hub, this hack enables them again.
-				 * Works at least with mouse driver. 
+				 * Works at least with mouse driver.
 				 */
 				if (!(portstatus & USB_PORT_STAT_ENABLE)
 				    && !connect_change
@@ -5101,7 +5170,7 @@ static int usb_reset_and_verify_device(struct usb_device *udev)
 
 	if (ret < 0)
 		goto re_enumerate;
- 
+
 	/* Device might have changed firmware (DFU or similar) */
 	if (descriptors_changed(udev, &descriptor)) {
 		dev_info(&udev->dev, "device firmware changed\n");
@@ -5177,7 +5246,7 @@ done:
 	usb_unlocked_enable_lpm(udev);
 	usb_enable_ltm(udev);
 	return 0;
- 
+
 re_enumerate:
 	/* LPM state doesn't matter when we're about to destroy the device. */
 	hub_port_logical_disconnect(parent_hub, port1);

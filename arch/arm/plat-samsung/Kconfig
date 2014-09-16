@@ -33,6 +33,14 @@ config PLAT_S5P
 
 if PLAT_SAMSUNG
 
+comment "Base Address for SFR mapping"
+
+config S3C_ADDR_BASE
+	hex "S3C Base Address for SFR mapping"
+	default 0xF6000000
+	help
+	  This value will be base address for S3C SFR mapping
+
 # boot configurations
 
 comment "Boot options"
@@ -494,5 +502,11 @@ config DEBUG_S3C_UART
 	default "1" if DEBUG_S3C_UART1
 	default "2" if DEBUG_S3C_UART2
 	default "3" if DEBUG_S3C_UART3
+
+config SAMSUNG_CORE_TEST
+	tristate "core configuration debugging"
+	depends on ARCH_EXYNOS5
+	help
+	  Debug core configuration.
 
 endif

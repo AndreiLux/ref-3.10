@@ -94,6 +94,15 @@ config BT_HCIUART_3WIRE
 
 	  Say Y here to compile support for Three-wire UART protocol.
 
+config BT_UART_IN_AUDIO
+	bool "UART of audio block in Exynos 5430"
+	help
+	  If the BT UART port connected to UART port of audio block,
+	  the current floated about 4mA because of audio block alive.
+	  For audio block enter the sleep state, the uart go to suspend state.
+
+	  Say Y here to compile support for UART of audio block in Exynos 5430.
+
 config BT_HCIBCM203X
 	tristate "HCI BCM203x USB driver"
 	depends on USB
@@ -242,4 +251,32 @@ config BT_WILINK
 
 	  Say Y here to compile support for Texas Instrument's WiLink7 driver
 	  into the kernel or say M to compile it as module.
+
+config BT_BCM43457
+	bool "Enable BCM43457 driver"
+	default n
+	help
+	  Adds BCM43457 RFKILL driver for Broadcom BCM43457 chipset for exynos54xx.
+	  default is n.
+
+config BT_BCM4339
+	bool "Enable BCM4339 driver"
+	default n
+	help
+	  Adds BCM4339 RFKILL driver for Broadcom BCM4339 chipset for exynos54xx.
+	  default is n.
+
+config BT_BCM4354
+	bool "Enable BCM4354 driver"
+	default n
+	help
+	  Adds BCM4354 RFKILL driver for Broadcom BCM4354 chipset for exynos54xx.
+	  default is n.
+
+config BT_BCM4358
+	bool "Enable BCM4358 driver"
+	default n
+	help
+	  Adds BCM4358 RFKILL driver for Broadcom BCM4358 chipset for exynos54xx.
+	  default is n.
 endmenu
