@@ -466,6 +466,10 @@ int __init flounder_panel_init(void)
 	struct resource __maybe_unused *res;
 	struct platform_device *phost1x = NULL;
 
+#ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+	struct dma_declare_info vpr_dma_info;
+	struct dma_declare_info generic_dma_info;
+#endif
 	flounder_panel_select();
 
 #ifdef CONFIG_TEGRA_NVMAP
@@ -474,13 +478,43 @@ int __init flounder_panel_init(void)
 	flounder_carveouts[2].base = tegra_vpr_start;
 	flounder_carveouts[2].size = tegra_vpr_size;
 #ifdef CONFIG_NVMAP_USE_CMA_FOR_CARVEOUT
+	generic_dma_info.name = "generic";
+	generic_dma_info.base = tegra_carveout_start;
+	generic_dma_info.size = tegra_carveout_size;
+	generic_dma_info.resize = false;
+	generic_dma_info.cma_dev = NULL;
+
+	vpr_dma_info.name = "vpr";
+	vpr_dma_info.base = tegra_vpr_start;
+	vpr_dma_info.size = SZ_32M;
+	vpr_dma_info.resize = true;
+	vpr_dma_info.cma_dev = &tegra_vpr_cma_dev;
+	vpr_dma_info.notifier.ops = &vpr_dev_ops;
+
 	carveout_linear_set(&tegra_generic_cma_dev);
 	flounder_carveouts[1].cma_dev = &tegra_generic_cma_dev;
 	flounder_carveouts[1].resize = false;
 	carveout_linear_set(&tegra_vpr_cma_dev);
 	flounder_carveouts[2].cma_dev = &tegra_vpr_cma_dev;
 	flounder_carveouts[2].resize = true;
-	flounder_carveouts[2].cma_chunk_size = SZ_32M;
+
+
+	if (tegra_carveout_size) {
+		err = dma_declare_coherent_resizable_cma_memory(
+				&tegra_generic_dev, &generic_dma_info);
+		if (err) {
+			pr_err("Generic coherent memory declaration failed\n");
+			return err;
+		}
+	}
+	if (tegra_vpr_size) {
+		err = dma_declare_coherent_resizable_cma_memory(
+				&tegra_vpr_dev, &vpr_dma_info);
+		if (err) {
+			pr_err("VPR coherent memory declaration failed\n");
+			return err;
+		}
+	}
 #endif
 
 	err = platform_device_register(&flounder_nvmap_device);
