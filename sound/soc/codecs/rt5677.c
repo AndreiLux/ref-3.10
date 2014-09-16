@@ -904,7 +904,10 @@ static unsigned int rt5677_set_vad(
 		regcache_cache_only(rt5677->regmap, false);
 		regcache_cache_bypass(rt5677->regmap, true);
 		rt5677_set_vad_source(codec, rt5677->vad_source);
-		rt5677_dsp_mbist_test(codec);
+		if (!rt5677->mbist_test) {
+			rt5677_dsp_mbist_test(codec);
+			rt5677->mbist_test = true;
+		}
 
 		/* Reset the mic buffer read pointer. */
 		rt5677->mic_read_offset = 0;
@@ -4954,6 +4957,7 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 	if (NULL == rt5677)
 		return -ENOMEM;
 
+	rt5677->mbist_test = false;
 	rt5677->mic_buf_len = RT5677_PRIV_MIC_BUF_SIZE;
 	rt5677->mic_buf = kmalloc(rt5677->mic_buf_len, GFP_KERNEL);
 	if (NULL == rt5677->mic_buf) {

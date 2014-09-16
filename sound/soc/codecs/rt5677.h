@@ -1473,6 +1473,7 @@ struct rt5677_priv {
 	int vad_source;
 	unsigned int vad_clock_en;
 	int stream;
+	bool mbist_test;
 
 	u8 *model_buf;
 	u32 model_len;
