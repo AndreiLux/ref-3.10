@@ -2714,6 +2714,10 @@ static void sdhci_timeout_timer(unsigned long data)
 		pr_err("%s: Timeout waiting for hardware "
 			"interrupt.\n", mmc_hostname(host->mmc));
 		sdhci_dumpregs(host);
+		if (host->mmc->card)
+			pr_err("%s: card's cid is %x %x %x %x\n", __func__, host->mmc->card->raw_cid[0],
+				host->mmc->card->raw_cid[1], host->mmc->card->raw_cid[2],
+				host->mmc->card->raw_cid[3]);
 
 		if (host->data) {
 			host->data->error = -ETIMEDOUT;
