@@ -1306,6 +1306,20 @@ static int __init flounder_gps_init(void)
 }
 #undef PRJ_F
 
+static void __init flounder_force_recovery_gpio(void)
+{
+	int ret;
+
+	if(flounder_get_hw_revision() != FLOUNDER_REV_PVT)
+		return ;
+	ret = gpio_request(TEGRA_GPIO_PI1, "force_recovery");
+	if (ret < 0){
+		pr_err("force_recovery: gpio_request failed for force_recovery %s\n", "force_recovery");
+	}
+	gpio_direction_input(TEGRA_GPIO_PI1);
+	tegra_pinctrl_pg_set_pullupdown(TEGRA_PINGROUP_GPIO_PI1, TEGRA_PUPD_PULL_UP);
+}
+
 static void __init sysedp_init(void)
 {
 	flounder_new_sysedp_init();
@@ -1400,6 +1414,7 @@ static void __init tegra_flounder_late_init(void)
 
 	flounder_setup_bluedroid_pm();
 	sysedp_dynamic_capping_init();
+	flounder_force_recovery_gpio();
 }
 
 static void __init tegra_flounder_init_early(void)
