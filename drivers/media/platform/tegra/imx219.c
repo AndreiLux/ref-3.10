@@ -289,8 +289,8 @@ imx219_set_mode(struct imx219_info *info, struct imx219_mode *mode)
 
 	if (mode->xres == 3280 && mode->yres == 2460) {
 		sensor_mode = IMX219_MODE_3280x2460;
-	} else if (mode->xres == 1640 && mode->yres == 1232) {
-		sensor_mode = IMX219_MODE_1640x1232;
+	} else if (mode->xres == 1640 && mode->yres == 1230) {
+		sensor_mode = IMX219_MODE_1640x1230;
 	} else if (mode->xres == 3280 && mode->yres == 1846) {
 		sensor_mode = IMX219_MODE_3280x1846;
 	} else if (mode->xres == 1280 && mode->yres == 720) {
