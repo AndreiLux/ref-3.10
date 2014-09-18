@@ -645,6 +645,11 @@ void usb_kill_urb(struct urb *urb)
 	if (!(urb && urb->dev && urb->ep))
 		return;
 	atomic_inc(&urb->reject);
+	if (atomic_read(&urb->use_count) > 1 || atomic_read(&urb->use_count) < 0)
+	printk("usb_kill_urb: unexpected urb use_count: %d\n", atomic_read(&urb->use_count));
+
+	if (!(unlikely(atomic_read(&urb->reject))))
+	printk("usb_kill_urb: not going to wake up usb_kill_urb_queue \n");
 
 	usb_hcd_unlink_urb(urb, -ENOENT);
 	wait_event(usb_kill_urb_queue, atomic_read(&urb->use_count) == 0);
