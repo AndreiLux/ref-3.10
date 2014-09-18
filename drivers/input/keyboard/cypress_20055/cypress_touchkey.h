@@ -157,9 +157,9 @@ struct touchkey_i2c {
 	struct delayed_work open_work;
 #endif
 #ifdef CONFIG_GLOVE_TOUCH
-	struct delayed_work glove_change_work;
-	bool tsk_glove_lock_status;
-	bool tsk_glove_mode_status;
+	struct work_struct glove_change_work;
+	int ic_mode;
+	bool tsk_cmd_glove;
 	bool tsk_enable_glove_mode;
 	struct mutex tsk_glove_lock;
 #endif

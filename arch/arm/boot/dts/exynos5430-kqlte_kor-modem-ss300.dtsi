@@ -1,0 +1,129 @@
+/*
+ * SAMSUNG universal5422 board device tree source
+ *
+ * Copyright (c) 2013 Samsung Electronics Co., Ltd.
+ *             http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
+
+#include "modem-ss300-pdata.dtsi"
+
+/* modem_interface_driver: UMTS modem, 2G/3G/4G, Samsung Electronics Shannon300 (SS300) */
+
+/ {
+	mif_pdata {
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&cp_on &cp_off &cp_reset &pda_active &cp_wakeup &ap_status &phone_active &ap_wakeup &cp_status>;
+
+		mif,gpio_cp_on = <&gpg2 4 0x1>;
+		mif,gpio_cp_off = <&gpf4 7 0x1>;
+		mif,gpio_cp_wakeup = <&gpf4 6 0x1>;
+		mif,gpio_ap_status = <&gpf4 3 0x1>;
+
+		mif,gpio_cp_reset = <&gpa1 2 0x1>;
+		mif,gpio_pda_active = <&gpa1 1 0x1>;
+
+		mif,gpio_phone_active = <&gpa2 5 0xf>;
+		mif,gpio_ap_wakeup = <&gpa2 6 0xf>;
+		mif,gpio_cp_status = <&gpa2 3 0xf>;
+	};
+
+	pinctrl@14CC0000 {
+		cp_on: cp_on {
+			samsung,pins = "gpg2-4";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		cp_off: cp_off {
+			samsung,pins = "gpf4-7";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		cp_wakeup: cp_wakeup {
+			samsung,pins = "gpf4-6";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		ap_status: ap_status {
+			samsung,pins = "gpf4-3";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+	};
+
+	pinctrl@10580000 {
+		pda_active: pda_active {
+			samsung,pins = "gpa1-1";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		cp_reset: cp_reset {
+			samsung,pins = "gpa1-2";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+
+		cp_status: cp_status {
+			samsung,pins = "gpa2-3";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+
+		phone_active: phone_active {
+			samsung,pins = "gpa2-5";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+
+		ap_wakeup: ap_wakeup {
+			samsung,pins = "gpa2-6";
+			samsung,pin-function = <0xf>;
+			samsung,pin-pud = <0>;
+			samsung,pin-drv = <0>;
+		};
+	};
+
+	mipi-lli@10F24000 {
+		modem-name = "ss300";
+		modems {
+			ss300 {
+				/* shared memory size for IPC */
+				shdmem_size = <4>;
+				/* is the shdmem allocated by ion */
+				is_ion_alloc = <0>;
+				/* disable scrambler */
+				scrambler = <0>;
+				/* do not control automode by AP */
+				automode = <0>;
+			};
+		};
+		mphy {
+			modem-name = "ss300";
+			modems {
+				ss300 {
+					/* initial-gear is HS-G2 */
+					init-gear = <2 2 1>;
+					/* use shared reference clock for MPHY */
+					shd-refclk = <1>;
+				};
+			};
+		};
+	};
+};

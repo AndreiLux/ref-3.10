@@ -145,8 +145,23 @@ static int ss300_off(struct modem_ctl *mc)
 	int cp_active;
 	int cp_status;
 	unsigned long flags;
+	int i;
 
 	mif_err("+++\n");
+
+	if (mc->phone_state == STATE_OFFLINE)
+		goto exit;
+
+	mif_disable_irq(&mc->irq_cp_active);
+
+	if (gpio_get_value(mc->gpio_cp_on)) {
+		for (i=0;i<30;i++) {
+			mdelay(100);
+			if (gpio_get_value(mc->gpio_phone_active))
+				break;
+		}
+		mif_info("cp2ap xmit check done.\n");
+	}
 
 	spin_lock_irqsave(&ld->lock, flags);
 
@@ -158,15 +173,12 @@ static int ss300_off(struct modem_ctl *mc)
 	mif_err("state:%s cp_on:%d cp_reset:%d cp_active:%d cp_status:%d\n",
 		mc_state(mc), cp_on, cp_reset, cp_active, cp_status);
 
-	if (mc->phone_state == STATE_OFFLINE)
-		goto exit;
-
 	mc->phone_state = STATE_OFFLINE;
 
-	if (ld->off)
-		ld->off(ld);
-
 	if (gpio_get_value(mc->gpio_cp_on)) {
+		if (ld->off)
+			ld->off(ld);
+
 		if (gpio_get_value(mc->gpio_cp_reset)) {
 			mif_err("%s: cp_reset -> 0\n", mc->name);
 			gpio_set_value(mc->gpio_cp_reset, 0);
@@ -175,9 +187,9 @@ static int ss300_off(struct modem_ctl *mc)
 		mif_err("%s: cp_on == 0\n", mc->name);
 	}
 
-exit:
 	spin_unlock_irqrestore(&ld->lock, flags);
 
+exit:
 	mif_err("---\n");
 	return 0;
 }

@@ -148,5 +148,8 @@ config W1_SLAVE_DS28EL35
 
 	  If you are unsure, say N.
 
+if W1_SLAVE_DS28EL35
+source drivers/w1/slaves/w1_ds28el35/Kconfig
+endif # W1_SLAVE_DS28EL35
 
 endmenu

@@ -1,0 +1,87 @@
+/*
+ * SAMSUNG UNIVERSAL5430 board device tree source
+ *
+ * Copyright (c) 2013 Samsung Electronics Co., Ltd.
+ *		http://www.samsung.com
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+*/
+
+#include "modem-shannon_hsic-pdata.dtsi"
+
+/* modem_interface_driver: UMTS modem, 2G/3G/4G, Samsung Electronics Shannon300 with HSIC */
+
+/ {
+	mif_pdata {
+		status = "okay";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&cp_on &cp_off &cp_reset &pda_active &cp_dump_int &cp_pmic_pwr_hold>;
+
+		mif,gpio_cp_on = <&gpg2 4 0x1>;
+		mif,gpio_cp_off = <&gpf4 7 0x1>;
+		mif,gpio_cp_reset = <&gpa1 2 0x1>;
+		mif,gpio_cp_dump_int = <&gpa2 5 0xf>;
+		mif,gpio_ap_dump_int = <&gpf4 4 0x1>;
+		mif,gpio_pda_active = <&gpa1 1 0x1>;
+		mif,gpio_cp_pmic_pwr_hold = <&gpf4 2 0xf>;
+	};
+
+	linkpm_pdata {
+		compatible = "sec_modem,linkpm_pdata";
+		status = "okay";
+
+		reg = <0x12110000 0x100>,
+		      <0x12130000 0x100>;
+
+		linkpm,gpio_link_active = <&gpf4 3 0x1>;
+		linkpm,gpio_link_hostwake = <&gpa2 6 0xf>;
+		linkpm,gpio_link_slavewake = <&gpf4 6 0x1>;
+		linkpm,gpio_link_cp2ap_status = <&gpa2 3 0x01>;
+	};
+
+	pinctrl@10580000 {
+		pda_active: pda_active {
+			samsung,pins = "gpa1-1";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+		cp_reset: cp_reset {
+			samsung,pins = "gpa1-2";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+		cp_dump_int: cp_dump_int {
+			samsung,pins = "gpa2-5";
+			samsung,pin-function = <0>;
+			samsung,pin-pud = <0>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+		cp_pmic_pwr_hold: cp_pmic_pwr_hold {
+			samsung,pins = "gpf4-2";
+			samsung,pin-function = <0>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+	};
+
+	pinctrl@14CC0000 {
+		cp_on: cp_on {
+			samsung,pins = "gpg2-4";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+		cp_off: cp_off {
+			samsung,pins = "gpf4-7";
+			samsung,pin-function = <1>;
+			samsung,pin-con-pdn = <3>;
+			samsung,pin-pud-pdn = <0>;
+		};
+	};
+};

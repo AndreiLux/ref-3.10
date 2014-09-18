@@ -682,6 +682,13 @@ int fimc_is_companion_runtime_resume(struct device *dev)
 		return -EINVAL;
 	}
 
+	/* Sensor clock on */
+	ret = fimc_is_companion_mclk_on(device);
+	if (ret) {
+		err("fimc_is_companion_mclk_on is fail(%d)", ret);
+		goto p_err;
+	}
+
 	/* gpio init */
 	ret = fimc_is_companion_gpio_on(device);
 	if (ret) {
@@ -695,14 +702,6 @@ int fimc_is_companion_runtime_resume(struct device *dev)
 		err("fimc_is_companion_iclk_on is fail(%d)", ret);
 		goto p_err;
 	}
-
-	/* Sensor clock on */
-	ret = fimc_is_companion_mclk_on(device);
-	if (ret) {
-		err("fimc_is_companion_mclk_on is fail(%d)", ret);
-		goto p_err;
-	}
-
 #ifdef CONFIG_AF_HOST_CONTROL
 	core->is_camera_run = true;
 #endif

@@ -77,6 +77,10 @@ enum {
 	I_STATE_OFF_I2C,
 };
 
+#define MODE_NORMAL 0
+#define MODE_GLOVE 1
+#define MODE_FLIP 2
+
 static void cypress_config_gpio_i2c(struct touchkey_i2c *tkey_i2c, int onoff);
 static int touchkey_autocalibration(struct touchkey_i2c *tkey_i2c);
 
@@ -395,28 +399,24 @@ static void touchkey_glove_change_work(struct work_struct *work)
 	u8 glove_bit;
 	struct touchkey_i2c *tkey_i2c =
 			container_of(work, struct touchkey_i2c,
-			glove_change_work.work);
+			glove_change_work);
 
 #ifdef TKEY_FLIP_MODE
-	if (tkey_i2c->enabled_flip) {
+	if (tkey_i2c->ic_mode == MODE_FLIP) {
 		dev_info(&tkey_i2c->client->dev,"As flip cover mode enabled, skip glove mode set\n");
 		return;
 	}
 #endif
 
 	mutex_lock(&tkey_i2c->tsk_glove_lock);
-	value = tkey_i2c->tsk_glove_mode_status;
-	mutex_unlock(&tkey_i2c->tsk_glove_lock);
-
-	if (!tkey_i2c->enabled)
-		return;
+	value = tkey_i2c->tsk_cmd_glove;
 
 	while (retry < 3) {
 		ret = i2c_touchkey_read(tkey_i2c, KEYCODE_REG, data, 4);
 		if (ret < 0) {
 			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times\n",
 				__func__, retry);
-			return;
+			goto out_glove_change_work;
 		}
 
 		dev_dbg(&tkey_i2c->client->dev,
@@ -445,8 +445,9 @@ static void touchkey_glove_change_work(struct work_struct *work)
 		glove_bit = !!(data[5] & TK_BIT_GLOVE);
 
 		if (value == glove_bit) {
-			dev_dbg(&tkey_i2c->client->dev, "%s:Glove mode is %s\n",
+			dev_info(&tkey_i2c->client->dev, "%s:Glove mode is %s\n",
 				__func__, value ? "enabled" : "disabled");
+			tkey_i2c->ic_mode = value ? MODE_GLOVE : MODE_NORMAL;
 			break;
 		} else
 			dev_err(&tkey_i2c->client->dev, "%s:Error to set glove_mode val %d, bit %d, retry %d\n",
@@ -456,6 +457,9 @@ static void touchkey_glove_change_work(struct work_struct *work)
 	}
 	if (retry == 3)
 		dev_err(&tkey_i2c->client->dev, "%s: Failed to set the glove mode\n", __func__);
+
+out_glove_change_work:
+	mutex_unlock(&tkey_i2c->tsk_glove_lock);
 }
 
 static struct touchkey_i2c *tkey_i2c_global;
@@ -468,30 +472,36 @@ void touchkey_glovemode(int on)
 		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not probed\n", __func__);
 		return;
 	}
+	if (!tkey_i2c->enabled) {
+		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not enabled\n", __func__);
+		return ;
+	}
 	if (wake_lock_active(&tkey_i2c->fw_wakelock)) {
 		printk(KERN_DEBUG"touchkey:%s, wakelock active\n", __func__);
 		return ;
 	}
 
-	mutex_lock(&tkey_i2c->tsk_glove_lock);
+	cancel_work_sync(&tkey_i2c->glove_change_work);
 
 	/* protect duplicated execution */
-	if (on == tkey_i2c->tsk_glove_mode_status) {
-		dev_info(&tkey_i2c->client->dev, "%s pass. cmd %d, cur status %d\n",
-			__func__, on, tkey_i2c->tsk_glove_mode_status);
+	if (tkey_i2c->ic_mode == MODE_FLIP) {
+		dev_info(&tkey_i2c->client->dev, "%s pass. flip enabled\n",
+			__func__);
+		goto end_glovemode;
+	}
+	if (on == (tkey_i2c->ic_mode == MODE_GLOVE)) {
+		dev_info(&tkey_i2c->client->dev, "%s pass. cmd %d, cur mode %d\n",
+			__func__, on, tkey_i2c->ic_mode);
 		goto end_glovemode;
 	}
 
-	cancel_delayed_work(&tkey_i2c->glove_change_work);
-
-	tkey_i2c->tsk_glove_mode_status = on;
-	schedule_delayed_work(&tkey_i2c->glove_change_work,
-		msecs_to_jiffies(TK_GLOVE_DWORK_TIME));
+	tkey_i2c->tsk_cmd_glove = on;
+	schedule_work(&tkey_i2c->glove_change_work);
 
 	dev_info(&tkey_i2c->client->dev, "Touchkey glove %s\n", on ? "On" : "Off");
 
  end_glovemode:
-	mutex_unlock(&tkey_i2c->tsk_glove_lock);
+	return ;
 }
 #endif
 
@@ -510,9 +520,12 @@ void touchkey_flip_cover(int value)
 		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not probed\n", __func__);
 		return;
 	}
-
 	if (!tkey_i2c->enabled) {
 		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not enabled\n", __func__);
+		if (value)
+			tkey_i2c->ic_mode = MODE_FLIP;
+		else
+			tkey_i2c->ic_mode = MODE_NORMAL;
 		return;
 	}
 	if (wake_lock_active(&tkey_i2c->fw_wakelock)) {
@@ -528,13 +541,13 @@ void touchkey_flip_cover(int value)
 		return;
 	}
 #endif
-
+	mutex_lock(&tkey_i2c->tsk_glove_lock);
 	while (retry < 3) {
 		ret = i2c_touchkey_read(tkey_i2c, KEYCODE_REG, data, 4);
 		if (ret < 0) {
 			dev_err(&tkey_i2c->client->dev, "%s: Failed to read Keycode_reg %d times\n",
 				__func__, retry);
-			return;
+			goto out_flip_cover;
 		}
 
 		dev_dbg(&tkey_i2c->client->dev,
@@ -565,7 +578,8 @@ void touchkey_flip_cover(int value)
 				"data[5]=%x",data[5] & TK_BIT_FLIP);
 
 		if (value == flip_status) {
-			dev_dbg(&tkey_i2c->client->dev, "%s: Flip mode is %s\n", __func__, flip_status ? "enabled" : "disabled");
+			dev_info(&tkey_i2c->client->dev, "%s: Flip mode is %s\n", __func__, flip_status ? "enabled" : "disabled");
+			tkey_i2c->ic_mode = flip_status ? MODE_FLIP : MODE_NORMAL;
 			break;
 		} else
 			dev_err(&tkey_i2c->client->dev, "%s: Error to set Flip mode, val %d, flip bit %d, retry %d\n",
@@ -574,10 +588,19 @@ void touchkey_flip_cover(int value)
 		retry = retry + 1;
 	}
 
-	if (retry == 3)
+	if (retry == 3) {
 		dev_err(&tkey_i2c->client->dev, "%s: Failed to set the Flip mode\n", __func__);
+		if (value == 0) {
+			tkey_i2c->pdata->power_on(tkey_i2c, 0);
+			usleep_range(1000, 1000);
+			tkey_i2c->pdata->power_on(tkey_i2c, 1);
+			msleep(300);
+			printk(KERN_DEBUG"touchkey:%s, reset ic\n", __func__);
+		}
+	}
 
-	return;
+out_flip_cover:
+	mutex_unlock(&tkey_i2c->tsk_glove_lock);
 }
 #endif
 
@@ -1192,7 +1215,7 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 	int ret;
 	int ikey = 0;
 	int pressed = 0;
-	bool glove_mode_status;
+	bool ic_mode;
 
 	if (unlikely(!touchkey_probe)) {
 		dev_err(&tkey_i2c->client->dev, "%s: Touchkey is not probed\n", __func__);
@@ -1215,17 +1238,17 @@ static irqreturn_t touchkey_interrupt(int irq, void *dev_id)
 		tkey_code[ikey], pressed);
 	input_sync(tkey_i2c->input_dev);
 #ifdef CONFIG_GLOVE_TOUCH
-	glove_mode_status = tkey_i2c->tsk_glove_mode_status;
+	ic_mode = tkey_i2c->ic_mode;
 #else
-	glove_mode_status = 0;
+	ic_mode = 0;
 #endif
 
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	dev_info(&tkey_i2c->client->dev, "keycode:%d pressed:%d %d\n",
-		tkey_code[ikey], pressed, glove_mode_status);
+		tkey_code[ikey], pressed, ic_mode);
 #else
 	dev_info(&tkey_i2c->client->dev, "pressed:%d %d\n",
-		pressed, glove_mode_status);
+		pressed, ic_mode);
 #endif
 	return IRQ_HANDLED;
 }
@@ -1239,7 +1262,7 @@ static irqreturn_t touchkey_mt_interrupt(int irq, void *dev_id)
 	u8 data[3];
 	int ret;
 	int ikey = 0;
-	bool glove_mode_status;
+	bool ic_mode;
 	u8 press[TKEY_CNT] = {0, };
 	u8 changed[TKEY_CNT] = {0, };
 
@@ -1263,16 +1286,16 @@ static irqreturn_t touchkey_mt_interrupt(int irq, void *dev_id)
 	input_sync(tkey_i2c->input_dev);
 
 #ifdef CONFIG_GLOVE_TOUCH
-	glove_mode_status = tkey_i2c->tsk_glove_mode_status;
+	ic_mode = tkey_i2c->ic_mode;
 #else
-	glove_mode_status = 0;
+	ic_mode = 0;
 #endif
 #if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	dev_info(&tkey_i2c->client->dev, "m:%d b:%d %d\n",
-		press[1], press[2], glove_mode_status);
+		press[1], press[2], ic_mode);
 #else
 	dev_info(&tkey_i2c->client->dev, "pressed:%d %d\n",
-		key_menu | key_back, glove_mode_status);
+		key_menu | key_back, ic_mode);
 #endif
 	return IRQ_HANDLED;
 }
@@ -1305,12 +1328,17 @@ static int touchkey_stop(struct touchkey_i2c *tkey_i2c)
 
 #if defined(CONFIG_GLOVE_TOUCH)
 	/*cancel or waiting before pwr off*/
-	tkey_i2c->tsk_glove_mode_status = false;
+	cancel_work_sync(&tkey_i2c->glove_change_work);
 	if (false == tkey_i2c->pdata->glove_mode_keep_status)
 		tkey_i2c->tsk_enable_glove_mode = false;
-	cancel_delayed_work(&tkey_i2c->glove_change_work);
-#endif
+	/*if (tkey_i2c->ic_mode == MODE_FLIP)
+		touchkey_flip_cover(1);
+	else
+		tkey_i2c->ic_mode = MODE_NORMAL;*/
 
+	if (tkey_i2c->ic_mode != MODE_FLIP)
+		tkey_i2c->ic_mode = MODE_NORMAL;
+#endif
 	tkey_i2c->pdata->led_power_on(tkey_i2c, 0);
 	tkey_i2c->pdata->power_on(tkey_i2c, 0);
 
@@ -1368,6 +1396,10 @@ static int touchkey_start(struct touchkey_i2c *tkey_i2c)
 		touchkey_ta_setting(tkey_i2c);
 #endif
 
+	if (tkey_i2c->ic_mode == MODE_FLIP) {
+		tkey_i2c->ic_mode = MODE_NORMAL;
+		touchkey_flip_cover(1);
+	}
 #if defined(CONFIG_GLOVE_TOUCH)
 	if (tkey_i2c->tsk_enable_glove_mode)
 		touchkey_glovemode(1);
@@ -1443,7 +1475,7 @@ static void touchkey_input_close(struct input_dev *dev)
 	struct touchkey_i2c *data = input_get_drvdata(dev);
 
 #ifdef TK_USE_OPEN_DWORK
-	cancel_delayed_work(&data->open_work);
+	cancel_delayed_work_sync(&data->open_work);
 #endif
 	touchkey_stop(data);
 
@@ -1645,17 +1677,19 @@ static ssize_t flip_cover_mode_enable(struct device *dev,
 
 	sscanf(buf, "%d\n", &flip_mode_on);
 	dev_info(&tkey_i2c->client->dev, "%s %d\n", __func__, flip_mode_on);
-
-	touchkey_flip_cover(flip_mode_on);
-
 	/* glove mode control */
 	if (flip_mode_on) {
-		tkey_i2c->tsk_glove_mode_status = false;
+		touchkey_flip_cover(flip_mode_on);
+
 		if (false == tkey_i2c->pdata->glove_mode_keep_status)
 			tkey_i2c->tsk_enable_glove_mode = false;
 	} else {
-		if (tkey_i2c->tsk_enable_glove_mode)
+		if (tkey_i2c->tsk_enable_glove_mode) {
+			tkey_i2c->ic_mode = MODE_NORMAL;
 			touchkey_glovemode(1);
+		}
+		else
+			touchkey_flip_cover(0);
 	}
 
 	return size;
@@ -2297,8 +2331,7 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 
 #if defined(CONFIG_GLOVE_TOUCH)
 	mutex_init(&tkey_i2c->tsk_glove_lock);
-	INIT_DELAYED_WORK(&tkey_i2c->glove_change_work, touchkey_glove_change_work);
-	tkey_i2c->tsk_glove_mode_status = false;
+	INIT_WORK(&tkey_i2c->glove_change_work, touchkey_glove_change_work);
 #endif
 
 	ret =
