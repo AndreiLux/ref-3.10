@@ -62,7 +62,7 @@ enum aicl_phase {
 #define BQ2419X_IN_CURRENT_LIMIT_MIN_MA	(100)
 
 #define AICL_STEP_DELAY_MS		(200)
-#define AICL_STEP_RETRY_MS		(300000)
+#define AICL_STEP_RETRY_MS		(200)
 #define AICL_DETECT_INPUT_VOLTAGE	(4200)
 #define AICL_INPUT_CURRENT_TRIGGER_MA	(1500)
 #define AICL_INPUT_CURRENT_MIN_MA	(900)
@@ -70,8 +70,19 @@ enum aicl_phase {
 #define AICL_INPUT_CURRENT_INIT_MA	AICL_INPUT_CURRENT_MIN_MA
 #define AICL_CABLE_OUT_MAX_COUNT	(3)
 #define AICL_RECHECK_TIME_S		(300)
-#define AICL_MAX_RETRY_COUNT		(3)
+#define AICL_MAX_RETRY_COUNT		(2)
 #define AICL_DETECT_RESET_CHARGING_S	(2)
+/*
+ * If 1A adaptor OCP at 1.25A, it will hit DPM and cause
+ * vdiff2/vdiff1 drop larger than 1.5 times.
+ */
+#define AICL_VDIFF1_MULTIPLIER		(3)
+#define AICL_VDIFF2_MULTIPLIER		(2)
+#define AICL_VBUS_CHECK_TIMES		(3)
+#define AICL_VBUS_CHECK_CURRENT_NUM	(3)
+#define AICL_VBUS_CHECK_CURRENT1_MA	AICL_INPUT_CURRENT_MIN_MA
+#define AICL_VBUS_CHECK_CURRENT2_MA	(1200)
+#define AICL_VBUS_CHECK_CURRENT3_MA	(1500)
 
 #define INPUT_ADJUST_RETRY_TIMES_MAX	(2)
 #define INPUT_ADJUST_RETRY_DELAY_S	(300)
@@ -126,7 +137,6 @@ struct htc_battery_bq2419x_data {
 	struct delayed_work		aicl_wq;
 	int				aicl_input_current;
 	enum aicl_phase			aicl_current_phase;
-	int				aicl_dpm_found;
 	int				aicl_target_input;
 	int				aicl_cable_out_count_in_detect;
 	int				aicl_cable_out_found;
@@ -134,6 +144,7 @@ struct htc_battery_bq2419x_data {
 	bool				aicl_wake_lock_locked;
 	int				aicl_retry_count;
 	bool				aicl_disable_after_detect;
+	int				aicl_vbus[AICL_VBUS_CHECK_CURRENT_NUM];
 	struct iio_channel		*vbus_channel;
 	const char			*vbus_channel_name;
 	unsigned int			vbus_channel_max_voltage;
@@ -401,7 +412,8 @@ static void htc_battery_bq2419x_aicl_wq(struct work_struct *work)
 	enum aicl_phase current_phase;
 	int current_input_current;
 	ktime_t timeout, cur_boottime;
-
+	int vbus, vdiff1, vdiff2;
+	int i;
 
 	data = container_of(work, struct htc_battery_bq2419x_data,
 							aicl_wq.work);
@@ -422,11 +434,10 @@ static void htc_battery_bq2419x_aicl_wq(struct work_struct *work)
 		htc_battery_bq2419x_aicl_wakelock(data, true);
 		current_input_current = AICL_INPUT_CURRENT_INIT_MA;
 		current_phase = AICL_DETECT;
-		data->aicl_dpm_found = false;
 		data->aicl_cable_out_found = 0;
-
-		/* check once to clear old record */
-		cable_vbus_monitor_is_vbus_latched();
+		data->aicl_vbus[0] = 0;
+		data->aicl_vbus[1] = 0;
+		data->aicl_vbus[2] = 0;
 
 		--data->aicl_retry_count;
 		if (data->ops && data->ops->set_dpm_input_voltage) {
@@ -454,14 +465,7 @@ static void htc_battery_bq2419x_aicl_wq(struct work_struct *work)
 				current_phase = AICL_NOT_MATCH;
 			}
 		} else {
-			if (!data->aicl_dpm_found)
-				data->aicl_dpm_found =
-					cable_vbus_monitor_is_vbus_latched();
-
-			if (data->aicl_dpm_found) {
-				current_input_current -= AICL_CURRENT_STEP_MA;
-				current_phase = AICL_NOT_MATCH;
-			} else if (current_input_current <
+			if (current_input_current <
 						data->aicl_target_input)
 				current_input_current += AICL_CURRENT_STEP_MA;
 			else
@@ -485,9 +489,28 @@ static void htc_battery_bq2419x_aicl_wq(struct work_struct *work)
 				ret);
 			goto error;
 		}
+
+		if (current_input_current >= AICL_VBUS_CHECK_CURRENT1_MA &&
+				current_input_current <=
+						AICL_VBUS_CHECK_CURRENT3_MA) {
+			vbus = 0;
+			for (i = 0; i < AICL_VBUS_CHECK_TIMES; i++)
+				vbus += bq2419x_get_vbus(data);
+
+			vbus /= AICL_VBUS_CHECK_TIMES;
+
+			if (current_input_current ==
+						AICL_VBUS_CHECK_CURRENT1_MA)
+				data->aicl_vbus[0] = vbus;
+			else if (current_input_current ==
+						AICL_VBUS_CHECK_CURRENT2_MA)
+				data->aicl_vbus[1] = vbus;
+			else
+				data->aicl_vbus[2] = vbus;
+		}
+
 		data->aicl_current_phase = current_phase;
 		data->aicl_input_current = current_input_current;
-		data->aicl_dpm_found = cable_vbus_monitor_is_vbus_latched();
 		schedule_delayed_work(&data->aicl_wq,
 					msecs_to_jiffies(AICL_STEP_DELAY_MS));
 	} else {
@@ -522,6 +545,41 @@ static void htc_battery_bq2419x_aicl_wq(struct work_struct *work)
 			dev_info(data->dev, "limit aicl current to %d\n",
 						AICL_INPUT_CURRENT_MIN_MA);
 			current_input_current = AICL_INPUT_CURRENT_MIN_MA;
+		} else if (current_phase == AICL_MATCH &&
+						data->aicl_vbus[1] &&
+						data->aicl_vbus[2]) {
+			vdiff1 = data->aicl_vbus[0] - data->aicl_vbus[1];
+			vdiff2 = data->aicl_vbus[1] - data->aicl_vbus[2];
+			dev_dbg(data->dev, "vbus1=%d, vbus2=%d, vbus3=%d\n",
+						data->aicl_vbus[0],
+						data->aicl_vbus[1],
+						data->aicl_vbus[2]);
+			if (vdiff1 < 0 || vdiff2 < 0) {
+				if (data->aicl_retry_count > 0) {
+					current_phase = AICL_NOT_MATCH;
+					current_input_current =
+						AICL_INPUT_CURRENT_MIN_MA;
+					schedule_delayed_work(&data->aicl_wq,
+						msecs_to_jiffies(
+							AICL_STEP_RETRY_MS));
+				}
+			} else if (AICL_VDIFF2_MULTIPLIER * vdiff2 >
+					AICL_VDIFF1_MULTIPLIER * vdiff1) {
+				current_phase = AICL_NOT_MATCH;
+				current_input_current =
+						AICL_INPUT_CURRENT_MIN_MA;
+				dev_info(data->dev,
+						"vbus drop significantly, limit aicl current to %d\n",
+						AICL_INPUT_CURRENT_MIN_MA);
+
+				/* set input adjust to trigger redetect*/
+				data->input_adjust = true;
+				timeout = ktime_set(INPUT_ADJUST_RETRY_DELAY_S,
+							0);
+				data->input_adjust_retry_time =
+					ktime_add(ktime_get_boottime(),
+							timeout);
+			}
 		}
 
 		ret = htc_battery_bq2419x_configure_charging_current(data,
@@ -535,10 +593,6 @@ static void htc_battery_bq2419x_aicl_wq(struct work_struct *work)
 
 		data->aicl_current_phase = current_phase;
 		data->aicl_input_current = current_input_current;
-
-		if (current_phase == AICL_NOT_MATCH && data->aicl_retry_count > 0)
-			schedule_delayed_work(&data->aicl_wq,
-					msecs_to_jiffies(AICL_STEP_RETRY_MS));
 
 		htc_battery_bq2419x_aicl_wakelock(data, false);
 	}
@@ -706,7 +760,7 @@ static int __htc_battery_bq2419x_set_charging_current(
 			battery_charger_batt_status_start_monitoring(
 				data->bc_dev,
 				data->last_charging_current / 1000);
-		htc_battery_bq2419x_aicl_enable(data, false);
+		htc_battery_bq2419x_aicl_enable(data, true);
 	}
 	ret = htc_battery_bq2419x_aicl_configure_current(data,
 			in_current_limit);
@@ -1188,12 +1242,12 @@ static int htc_battery_bq2419x_input_control(
 					data->input_adjust_retry_time) >= 0) {
 			data->input_adjust = false;
 			data->input_adjust_retry_count--;
-			now_input = target_input;
 			dev_info(data->dev,
-					"reset input current to %d\n",
-					now_input);
-			htc_battery_bq2419x_configure_charging_current(data,
-					now_input);
+					"retry aicl by current %d\n",
+					target_input);
+			htc_battery_bq2419x_aicl_configure_current(data,
+					target_input);
+			goto done;
 		}
 
 		vbus = bq2419x_get_vbus(data);
