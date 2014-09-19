@@ -894,6 +894,9 @@ static unsigned int rt5677_set_vad(
 	int pri99 = 0;
 
 	if (on && !activity) {
+		/* Kill the DSP so that all the registers are clean. */
+		set_rt5677_power_extern(false);
+
 		pr_debug("rt5677_set_vad on\n");
 		set_rt5677_power_extern(true);
 
@@ -4142,10 +4145,6 @@ static int rt5677_set_dai_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 	unsigned int reg_val = 0;
 
-	if (codec->dapm.bias_level == SND_SOC_BIAS_OFF &&
-		rt5677->vad_mode == RT5677_VAD_IDLE)
-		rt5677_set_vad(codec, 0);
-
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
 	case SND_SOC_DAIFMT_CBM_CFM:
 		rt5677->master[dai->id] = 1;
@@ -4660,6 +4659,8 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_STANDBY:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+			rt5677_set_vad(codec, 0);
+			set_rt5677_power_extern(true);
 			regcache_cache_only(rt5677->regmap, false);
 			regcache_mark_dirty(rt5677->regmap);
 			for (i = 0; i < RT5677_VENDOR_ID2 + 1; i++)
