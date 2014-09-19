@@ -491,10 +491,6 @@ static void mdm_fatal(struct work_struct *ws)
 	}
 #endif
 
-	if (get_enable_ramdumps()) {
-		msleep(modem->pdata->ramdump_delay_ms);
-	}
-
 #ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 	subsystem_restart(EXTERNAL_MODEM);
 #endif
