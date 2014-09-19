@@ -72,6 +72,7 @@ EXPORT_SYMBOL(jbd2_journal_forget);
 EXPORT_SYMBOL(journal_sync_buffer);
 #endif
 EXPORT_SYMBOL(jbd2_journal_flush);
+EXPORT_SYMBOL(jbd2_journal_force_flush);
 EXPORT_SYMBOL(jbd2_journal_revoke);
 
 EXPORT_SYMBOL(jbd2_journal_init_dev);
@@ -1883,7 +1884,7 @@ EXPORT_SYMBOL(jbd2_journal_clear_features);
  * recovery does not need to happen on remount.
  */
 
-int jbd2_journal_flush(journal_t *journal)
+static int __jbd2_journal_flush(journal_t *journal, bool assert)
 {
 	int err = 0;
 	transaction_t *transaction = NULL;
@@ -1931,6 +1932,8 @@ int jbd2_journal_flush(journal_t *journal)
 	 * s_start value. */
 	jbd2_mark_journal_empty(journal);
 	mutex_unlock(&journal->j_checkpoint_mutex);
+	if (!assert)
+		return 0;
 	write_lock(&journal->j_state_lock);
 	J_ASSERT(!journal->j_running_transaction);
 	J_ASSERT(!journal->j_committing_transaction);
@@ -1939,6 +1942,16 @@ int jbd2_journal_flush(journal_t *journal)
 	J_ASSERT(journal->j_tail_sequence == journal->j_transaction_sequence);
 	write_unlock(&journal->j_state_lock);
 	return 0;
+}
+
+int jbd2_journal_flush(journal_t *journal)
+{
+	return __jbd2_journal_flush(journal, true);
+}
+
+int jbd2_journal_force_flush(journal_t *journal)
+{
+	return __jbd2_journal_flush(journal, false);
 }
 
 /**

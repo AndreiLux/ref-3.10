@@ -1750,8 +1750,12 @@ int journal_try_to_free_buffers(journal_t *journal,
 		__journal_try_to_free_buffer(journal, bh);
 		journal_put_journal_head(jh);
 		jbd_unlock_bh_state(bh);
-		if (buffer_jbd(bh))
+		if (buffer_jbd(bh)) {
+			unsigned mt = get_pageblock_migratetype(page);
+			if (mt == MIGRATE_ISOLATE || mt == MIGRATE_CMA)
+				journal_force_flush(journal);
 			goto busy;
+		}
 	} while ((bh = bh->b_this_page) != head);
 
 	ret = try_to_free_buffers(page);
