@@ -745,8 +745,8 @@ static int __init flounder_skin_init(void)
 {
 	if (of_machine_is_compatible("google,flounder") ||
 	    of_machine_is_compatible("google,flounder64")) {
-		/* turn on tskin only on XE (PVT) and later revision */
-		if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
+		/* turn on tskin only on XE (DVT2) and later revision */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_DVT2 ) {
 			skin_data.ndevs = ARRAY_SIZE(skin_devs_wifi);
 			skin_data.devs = skin_devs_wifi;
 			skin_data.toffset = -4746;
@@ -760,8 +760,8 @@ static int __init flounder_skin_init(void)
 	}
 	else if (of_machine_is_compatible("google,flounder_lte") ||
 	    of_machine_is_compatible("google,flounder64_lte")) {
-		/* turn on tskin only on LTE XD (DVT) and later revision  */
-		if (flounder_get_hw_revision() >= FLOUNDER_REV_DVT ) {
+		/* turn on tskin only on LTE XD (DVT1) and later revision  */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_DVT1 ) {
 			skin_data.ndevs = ARRAY_SIZE(skin_devs_lte);
 			skin_data.devs = skin_devs_lte;
 			skin_data.toffset = -1625;
