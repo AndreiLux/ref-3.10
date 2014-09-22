@@ -298,7 +298,7 @@ static int ov9760_write_reg(struct i2c_client *client, u16 addr, u8 val)
 
 	if (!client->adapter)
 		return -ENODEV;
-	dev_info(&client->dev, "%s\n", __func__);
+	dev_dbg(&client->dev, "%s\n", __func__);
 
 	data[0] = (u8) (addr >> 8);
 	data[1] = (u8) (addr & 0xff);
@@ -512,14 +512,18 @@ static int ov9760_get_sensor_id(struct ov9760_info *info)
 	if (info->sensor_data.fuse_id_size)
 		return 0;
 
+	usleep_range(1000, 1100);
 	ov9760_write_reg(info->i2c_client, 0x0100, 0x01);
+	usleep_range(2000, 2500);
 	/* select bank 31 */
 	ov9760_write_reg(info->i2c_client, 0x3d84, 0xc0 & 31);
+	usleep_range(2000, 2500);
 	ov9760_write_reg(info->i2c_client, 0x3d81, 0x01);
-	msleep(10);
+	usleep_range(2000, 2500);
 	for (i = 0; i < 8; i++) {
 		ret |= ov9760_read_reg(info->i2c_client, 0x3d00 + i, &bak);
 		info->sensor_data.fuse_id[i] = bak;
+		dev_info(&info->i2c_client->dev, "%s %x = %x\n", __func__, 0x3d00 + i ,bak);
 	}
 
 	if (!ret)
