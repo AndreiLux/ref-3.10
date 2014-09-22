@@ -630,8 +630,7 @@ static unsigned int rt5677_dsp_mbist_test(struct snd_soc_codec *codec)
 	unsigned int i, value;
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
-	rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_INDEX, 0x99);
-	rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_DATA, 0);
+	rt5677->mbist_test_passed = true;
 
 	for (i = 0; i < 0x40; i += 4) {
 		rt5677_dsp_mode_i2c_write_address(codec, 0x1801f010 + i, 0x20,
@@ -646,9 +645,7 @@ static unsigned int rt5677_dsp_mbist_test(struct snd_soc_codec *codec)
 		rt5677_dsp_mode_i2c_read_address(codec, 0x1801f010 + i, &value);
 		if (value != 0x101) {
 			pr_err("rt5677 MBIST test failed\n");
-			rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_INDEX,
-				0x99);
-			rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_DATA, 1);
+			rt5677->mbist_test_passed = false;
 			break;
 		}
 	}
@@ -894,6 +891,7 @@ static unsigned int rt5677_set_vad(
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 	static bool activity;
+	int pri99 = 0;
 
 	if (on && !activity) {
 		pr_debug("rt5677_set_vad on\n");
@@ -908,6 +906,15 @@ static unsigned int rt5677_set_vad(
 			rt5677_dsp_mbist_test(codec);
 			rt5677->mbist_test = true;
 		}
+
+		/* Set PRI-99 with any flags that are passed to the firmware. */
+		rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_INDEX, 0x99);
+		/* The firmware knows what power state to use given the result
+		 * of the MBIST test - if it passed, it will enter a low power
+		 * wake, otherwise it will run at full power. */
+		pri99 |= rt5677->mbist_test_passed ?
+			(RT5677_MBIST_TEST_PASSED) : (RT5677_MBIST_TEST_FAILED);
+		rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_DATA, pri99);
 
 		/* Reset the mic buffer read pointer. */
 		rt5677->mic_read_offset = 0;

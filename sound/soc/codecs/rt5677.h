@@ -1403,6 +1403,10 @@
 #define RT5677_HEADSET_DET	BIT(1)
 #define RT5677_HEADPHO_DET	BIT(2)
 
+/* Flags used for the VAD firmware */
+#define RT5677_MBIST_TEST_PASSED	0
+#define RT5677_MBIST_TEST_FAILED	BIT(0)
+
 /* System Clock Source */
 enum {
 	RT5677_SCLK_S_MCLK,
@@ -1474,6 +1478,7 @@ struct rt5677_priv {
 	unsigned int vad_clock_en;
 	int stream;
 	bool mbist_test;
+	bool mbist_test_passed;
 
 	u8 *model_buf;
 	u32 model_len;
