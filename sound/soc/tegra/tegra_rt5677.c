@@ -1525,15 +1525,6 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 			goto exit;
 	}
 
-	if (machine->bias_level != SND_SOC_BIAS_OFF &&
-		level == SND_SOC_BIAS_OFF && machine->clock_enabled) {
-		if (rt5677)
-		{
-			if (rt5677->vad_mode != RT5677_VAD_IDLE) {
-				schedule_delayed_work(&machine->power_work, msecs_to_jiffies(1000));
-			}
-		}
-	}
 	machine->bias_level = level;
 exit:
 	mutex_unlock(&machine->rt5677_lock);
