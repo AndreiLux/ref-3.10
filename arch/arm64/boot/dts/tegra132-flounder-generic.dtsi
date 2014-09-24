@@ -510,4 +510,19 @@
 			};
 		};
 	};
+
+	vdd_hv_3v: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_hv_3v";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		regulator-boot-on;
+		consumers {
+			c1 {
+				regulator-consumer-supply = "vdd";
+				regulator-consumer-device = "0-004c";
+			};
+		};
+	};
+
 };
