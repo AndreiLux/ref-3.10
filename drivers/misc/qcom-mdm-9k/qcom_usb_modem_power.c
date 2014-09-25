@@ -93,6 +93,7 @@
 
 #ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 extern int get_enable_ramdumps(void);
+extern void set_enable_ramdumps(int);
 #else
 static int get_enable_ramdumps(void)
 {
@@ -1471,7 +1472,18 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #endif
 
 	case TRIGGER_MODEM_FATAL:
+#ifdef CONFIG_MSM_SUBSYSTEM_RESTART
+		get_user(status, (unsigned long __user *)arg);
+		pr_info("%s: Trigger modem fatal!!(Ignore ramdump=%d)\n", __func__, status);
+
+		if(status)
+		{
+			modem->ramdump_save = get_enable_ramdumps();
+			set_enable_ramdumps(0);
+		}
+#else
 		pr_info("%s: Trigger modem fatal!!\n", __func__);
+#endif
 		if(modem->ops && modem->ops->fatal_trigger_cb)
 			modem->ops->fatal_trigger_cb(modem);
 		break;
@@ -1680,6 +1692,11 @@ static int mdm_subsys_powerup(const struct subsys_data *crashed_subsys)
 	gpio_direction_output(modem->pdata->ap2mdm_status_gpio, 1);
 
 	mutex_lock(&modem->lock);
+	if(modem->ramdump_save > 0)
+	{
+		set_enable_ramdumps(modem->ramdump_save);
+		modem->ramdump_save = -1;
+	}
 	modem->boot_type = CHARM_NORMAL_BOOT;
 	mutex_unlock(&modem->lock);
 	complete(&modem->mdm_needs_reload);
@@ -1870,6 +1887,7 @@ static int mdm_init(struct qcom_usb_modem *modem, struct platform_device *pdev)
 	modem->mdm_needs_reload = COMPLETION_INITIALIZER_ONSTACK(modem->mdm_needs_reload);
 	modem->mdm_boot = COMPLETION_INITIALIZER_ONSTACK(modem->mdm_boot);
 	modem->mdm_ram_dumps = COMPLETION_INITIALIZER_ONSTACK(modem->mdm_ram_dumps);
+	modem->ramdump_save = -1;
 #endif
 
 	/* Initialize other variable */
