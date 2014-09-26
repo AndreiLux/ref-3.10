@@ -133,6 +133,23 @@ static struct kernel_param_ops boost_enable_ops = {
 module_param_cb(boost_enable, &boost_enable_ops, &boost_enable, 0644);
 #endif
 
+static ssize_t set_current_limit(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct tegra_udc *udc = platform_get_drvdata(pdev);
+	int current_ma;
+
+	if (sscanf(buf, "%d", &current_ma) != 1 )
+		return -EINVAL;
+
+	regulator_set_current_limit(udc->vbus_reg, 0, current_ma*1000);
+
+	return count;
+}
+
+static DEVICE_ATTR(set_current, 0644, NULL, set_current_limit);
+
 static char *const tegra_udc_extcon_cable[] = {
 	[CONNECT_TYPE_NONE] = "",
 	[CONNECT_TYPE_SDP] = "USB",
@@ -2973,6 +2990,9 @@ static int __init tegra_udc_probe(struct platform_device *pdev)
 		err = -ENOMEM;
 		goto err_phy;
 	}
+
+	err = device_create_file(&pdev->dev, &dev_attr_set_current);
+
 
 	err = usb_add_gadget_udc_release(&pdev->dev, &udc->gadget,
 		tegra_udc_release);
