@@ -89,6 +89,7 @@ struct cy8c_i2c_sar_platform_data {
 	uint8_t ap_addr;
 	int	(*reset)(void);
 	void	(*gpio_init)(void);
+	int	(*powerdown)(int);
 };
 
 struct cy8c_sar_data {
