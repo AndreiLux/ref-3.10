@@ -51,6 +51,7 @@
 #include <media/soc_camera_platform.h>
 #include <media/tegra_v4l2_camera.h>
 #include <linux/generic_adc_thermal.h>
+#include <mach/board_htc.h>
 
 #include "cpu-tegra.h"
 #include "devices.h"
@@ -79,6 +80,33 @@ int cy8c_sar_reset(void)
 	return 0;
 }
 
+int cy8c_sar_powerdown(int activate)
+{
+	int gpio = TEGRA_GPIO_PO5;
+	int ret = 0;
+
+	if (!is_mdm_modem()) {
+		pr_debug("[SAR]%s:!is_mdm_modem()\n", __func__);
+		return ret;
+	}
+
+	if (activate) {
+		pr_debug("[SAR]:%s:gpio high,activate=%d\n",
+			__func__, activate);
+		ret = gpio_direction_output(gpio, 1);
+		if (ret < 0)
+			pr_debug("[SAR]%s: calling gpio_free(sar_modem)\n",
+				__func__);
+	} else {
+		pr_debug("[SAR]:%s:gpio low,activate=%d\n", __func__, activate);
+		ret = gpio_direction_output(gpio, 0);
+		if (ret < 0)
+			pr_debug("[SAR]%s: calling gpio_free(sar_modem)\n",
+				__func__);
+	}
+	return ret;
+}
+
 static struct i2c_board_info flounder_i2c_board_info_cm32181[] = {
 	{
 		I2C_BOARD_INFO("cm32181", 0x48),
@@ -92,6 +120,7 @@ struct cy8c_i2c_sar_platform_data sar1_cy8c_data[] = {
 		.position_id = 1,
 		.bl_addr = 0x61,
 		.ap_addr = 0x5d,
+		.powerdown    = cy8c_sar_powerdown,
 	},
 };
 
@@ -102,6 +131,7 @@ struct cy8c_i2c_sar_platform_data sar_cy8c_data[] = {
 		.position_id = 0,
 		.bl_addr = 0x60,
 		.ap_addr = 0x5c,
+		.powerdown    = cy8c_sar_powerdown,
 	},
 };
 
@@ -945,6 +975,30 @@ static int flounder_nct72_init(void)
 	return ret;
 }
 
+static int powerdown_gpio_init(void){
+	int ret = 0;
+	static int done;
+	if (!is_mdm_modem()) {
+		pr_debug("[SAR]%s:!is_mdm_modem()\n", __func__);
+		return ret;
+	}
+
+	if (done == 0) {
+		if (!gpio_request(TEGRA_GPIO_PO5, "sar_modem")) {
+			pr_debug("[SAR]%s:gpio_request success\n", __func__);
+			ret = gpio_direction_output(TEGRA_GPIO_PO5, 0);
+			if (ret < 0) {
+				pr_debug(
+					"[SAR]%s: calling gpio_free(sar_modem)",
+					__func__);
+				gpio_free(TEGRA_GPIO_PO5);
+			}
+			done = 1;
+		}
+	}
+	return ret;
+}
+
 static int flounder_sar_init(void){
 	int sar_intr = TEGRA_GPIO_PC7;
 	int ret;
@@ -958,6 +1012,7 @@ static int flounder_sar_init(void){
 		pr_info("%s: calling gpio_free(sar_intr)", __func__);
 		gpio_free(sar_intr);
 	}
+	powerdown_gpio_init();
 	i2c_register_board_info(1, flounder_i2c_board_info_cypress_sar,
 			ARRAY_SIZE(flounder_i2c_board_info_cypress_sar));
 	return 0;
@@ -976,6 +1031,7 @@ static int flounder_sar1_init(void){
 		pr_info("%s: calling gpio_free(sar1_intr)", __func__);
 		gpio_free(sar1_intr);
 	}
+	powerdown_gpio_init();
 	i2c_register_board_info(1, flounder_i2c_board_info_cypress_sar1,
 			ARRAY_SIZE(flounder_i2c_board_info_cypress_sar1));
 	return 0;
