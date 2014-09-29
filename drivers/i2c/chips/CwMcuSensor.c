@@ -3028,6 +3028,9 @@ static int cwmcu_suspend(struct device *dev)
 
 	D("[CWMCU] %s\n", __func__);
 
+	cancel_work_sync(&mcu_data->one_shot_work);
+	cancel_delayed_work_sync(&mcu_data->work);
+
 	disable_irq(mcu_data->IRQ);
 
 	/* Inform SensorHUB that CPU is going to suspend */
@@ -3071,6 +3074,12 @@ static int cwmcu_resume(struct device *dev)
 	  CW_CPU_STATUS_REG, data);
 
 	enable_irq(mcu_data->IRQ);
+
+	queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
+	if (mcu_data->enabled_list & IIO_SENSORS_MASK) {
+		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
+			msecs_to_jiffies(atomic_read(&mcu_data->delay)));
+	}
 
 	D("[CWMCU] %s--\n", __func__);
 	return 0;
@@ -4123,7 +4132,8 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Make firmware update more robust\n", __func__);
+	I("%s++: Fix potential Oops for IIO [Fine tune suspend/resume]\n",
+	  __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
