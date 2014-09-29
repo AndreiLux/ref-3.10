@@ -188,14 +188,14 @@ int ote_logger_init(struct tlk_info *tlk_info)
 	smc_args[1] = (uintptr_t)cb;
 
 	/* enable logging only if secure firmware supports it */
-	if (!tlk_generic_smc(tlk_info, smc_args[0], smc_args[1], 0))
+	if (!tlk_generic_smc(tlk_info, smc_args[0], smc_args[1], 0, 0))
 		ote_logging_enabled = 1;
 
 	ote_print_logs();
 #else
 	smc_args[0] = TE_SMC_INIT_LOGGER;
 	smc_args[1] = 0;
-	tlk_generic_smc(tlk_info, smc_args[0], smc_args[1], 0);
+	tlk_generic_smc(tlk_info, smc_args[0], smc_args[1], 0, 0);
 #endif
 
 	return 0;

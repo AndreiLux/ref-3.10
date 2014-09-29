@@ -301,6 +301,7 @@ static void sar_event_handler(struct work_struct *work)
 	struct cy8c_sar_data *sar;
 	int active = SAR_MISSING;
 	unsigned long spinlock_flags;
+	int (*fppowerdown)(int activate) = NULL;
 
 	pr_debug("[SAR] %s: enter\n", __func__);
 	spin_lock_irqsave(&sar_list_lock, spinlock_flags);
@@ -313,8 +314,12 @@ static void sar_event_handler(struct work_struct *work)
 			active |= 1 << pdata->position_id;
 		if (sar->dysfunctional)
 			active |= SAR_DYSFUNCTIONAL << pdata->position_id;
+		if (fppowerdown != pdata->powerdown)
+			fppowerdown = pdata->powerdown;
 	}
 	spin_unlock_irqrestore(&sar_list_lock, spinlock_flags);
+	if (fppowerdown)
+		fppowerdown(active & 0x03);
 	pr_info("[SAR] active=%x\n", active);
 	blocking_notifier_call_chain(&sar_notifier_list, active, NULL);
 }

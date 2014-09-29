@@ -298,7 +298,7 @@ static int ov9760_write_reg(struct i2c_client *client, u16 addr, u8 val)
 
 	if (!client->adapter)
 		return -ENODEV;
-	dev_info(&client->dev, "%s\n", __func__);
+	dev_dbg(&client->dev, "%s\n", __func__);
 
 	data[0] = (u8) (addr >> 8);
 	data[1] = (u8) (addr & 0xff);
@@ -512,14 +512,18 @@ static int ov9760_get_sensor_id(struct ov9760_info *info)
 	if (info->sensor_data.fuse_id_size)
 		return 0;
 
+	usleep_range(1000, 1100);
 	ov9760_write_reg(info->i2c_client, 0x0100, 0x01);
+	usleep_range(2000, 2500);
 	/* select bank 31 */
 	ov9760_write_reg(info->i2c_client, 0x3d84, 0xc0 & 31);
+	usleep_range(2000, 2500);
 	ov9760_write_reg(info->i2c_client, 0x3d81, 0x01);
-	msleep(10);
+	usleep_range(2000, 2500);
 	for (i = 0; i < 8; i++) {
 		ret |= ov9760_read_reg(info->i2c_client, 0x3d00 + i, &bak);
 		info->sensor_data.fuse_id[i] = bak;
+		dev_info(&info->i2c_client->dev, "%s %x = %x\n", __func__, 0x3d00 + i ,bak);
 	}
 
 	if (!ret)
@@ -660,36 +664,6 @@ static int ov9760_power_put(struct ov9760_power_rail *pw)
 
 	return 0;
 }
-
-static int ov9760_regulator_get(struct ov9760_info *info,
-	struct regulator **vreg, char vreg_name[])
-{
-	struct regulator *reg = NULL;
-	int err = 0;
-
-	reg = regulator_get(&info->i2c_client->dev, vreg_name);
-	if (unlikely(IS_ERR(reg))) {
-		dev_err(&info->i2c_client->dev, "%s %s ERR: %d\n",
-			__func__, vreg_name, (int)reg);
-		err = PTR_ERR(reg);
-		reg = NULL;
-	} else
-		dev_dbg(&info->i2c_client->dev, "%s: %s\n",
-			__func__, vreg_name);
-
-	*vreg = reg;
-	return err;
-}
-
-static int ov9760_power_get(struct ov9760_info *info)
-{
-	struct ov9760_power_rail *pw = &info->power;
-
-	ov9760_regulator_get(info, &pw->avdd, "vana"); /* ananlog 2.7v */
-	ov9760_regulator_get(info, &pw->iovdd, "vif"); /* interface 1.8v */
-	return 0;
-}
-
 
 static const struct file_operations ov9760_fileops = {
 	.owner = THIS_MODULE,
@@ -862,8 +836,6 @@ static int ov9760_probe(struct i2c_client *client,
 			__func__, mclk_name);
 		return PTR_ERR(info->mclk);
 	}
-
-	ov9760_power_get(info);
 
 	memcpy(&info->miscdev_info,
 		&ov9760_device,

@@ -55,6 +55,10 @@
 
 #define RETRY_TIMES 20
 #define LATCH_TIMES  1
+#define CHECK_FW_VER_TIMES  3
+#define UPDATE_FIRMWARE_RETRY_TIMES 5
+#define FW_ERASE_MIN 9000
+#define FW_ERASE_MAX 12000
 #define LATCH_ERROR_NO (-110)
 #define ACTIVE_RETRY_TIMES 10
 #define DPS_MAX			(1 << (16 - 1))
@@ -112,9 +116,35 @@ MODULE_PARM_DESC(DEBUG_DISABLE, "disable " CWMCU_I2C_NAME " driver") ;
 struct cwmcu_data {
 	struct i2c_client *client;
 	atomic_t delay;
+
+	/* mutex_lock protect:
+	 * mcu_data->suspended,
+	 * cw_set_pseudo_irq(indio_dev, state);
+	 * iio_push_to_buffers(mcu_data->indio_dev, event);
+	 */
 	struct mutex mutex_lock;
+
+	/* group_i2c_lock protect:
+	 * set_calibrator_en(),
+	 * set_k_value(),
+	 * get_light_polling(),
+	 * CWMCU_i2c_multi_write()
+	 */
 	struct mutex group_i2c_lock;
+
+	/* activated_i2c_lock protect:
+	 * CWMCU_i2c_write(),
+	 * CWMCU_i2c_read(),
+	 * reset_hub(),
+	 * mcu_data->i2c_total_retry,
+	 * mcu_data->i2c_latch_retry,
+	 * mcu_data->i2c_jiffies
+	 */
 	struct mutex activated_i2c_lock;
+
+	/* power_mode_lock protect:
+	 * mcu_data->power_on_counter
+	 */
 	struct mutex power_mode_lock;
 
 	struct iio_trigger  *trig;
@@ -197,6 +227,7 @@ struct cwmcu_data {
 	struct wake_lock report_wake_lock;
 
 	int fw_update_status;
+	u16 erase_fw_wait;
 };
 
 BLOCKING_NOTIFIER_HEAD(double_tap_notifier_list);
@@ -1322,41 +1353,66 @@ static int check_fw_version(struct cwmcu_data *mcu_data,
 		}
 
 	} else {
-		E("%s: fw version = %s, incorrect!\n", __func__,
-		  &fw->data[fw->size - FW_VER_INFO_LEN]);
+		E("%s: fw version incorrect!\n", __func__);
 		return -ESPIPE;
 	}
 	return 0;
 }
 
-static int i2c_rx_bytes(struct cwmcu_data *mcu_data, u8 *buf, u16 len)
+static int i2c_rx_bytes_locked(struct cwmcu_data *mcu_data, u8 *data,
+			 u16 length)
 {
-	int ret;
+	int retry;
 
-	do {
-		ret = i2c_master_recv(mcu_data->client, (char *)buf, (int)len);
-	} while (ret == -EAGAIN);
-	if (ret < 0) {
-		E("I2C RX fail (%d)", ret);
-		return ret;
+	struct i2c_msg msg[] = {
+		{
+			.addr = mcu_data->client->addr,
+			.flags = I2C_M_RD,
+			.len = length ,
+			.buf = data,
+		}
+	};
+
+	for (retry = 0; retry < UPDATE_FIRMWARE_RETRY_TIMES; retry++) {
+		if (__i2c_transfer(mcu_data->client->adapter, msg, 1) == 1)
+			break;
+		mdelay(10);
 	}
 
-	return ret;
+	if (retry == UPDATE_FIRMWARE_RETRY_TIMES) {
+		E("%s: Retry over %d\n", __func__,
+				UPDATE_FIRMWARE_RETRY_TIMES);
+		return -EIO;
+	}
+	return 0;
 }
 
-static int i2c_tx_bytes(struct cwmcu_data *mcu_data, u8 *buf, u16 len)
+static int i2c_tx_bytes_locked(struct cwmcu_data *mcu_data, u8 *data,
+			 u16 length)
 {
-	int ret;
+	int retry;
 
-	do {
-		ret = i2c_master_send(mcu_data->client, (char *)buf, (int)len);
-	} while (ret == -EAGAIN);
-	if (ret < 0) {
-		E("I2C TX fail (%d)", ret);
-		return ret;
+	struct i2c_msg msg[] = {
+		{
+			.addr = mcu_data->client->addr,
+			.flags = 0,
+			.len = length ,
+			.buf = data,
+		}
+	};
+
+	for (retry = 0; retry < UPDATE_FIRMWARE_RETRY_TIMES; retry++) {
+		if (__i2c_transfer(mcu_data->client->adapter, msg, 1) == 1)
+			break;
+		mdelay(10);
 	}
 
-	return ret;
+	if (retry == UPDATE_FIRMWARE_RETRY_TIMES) {
+		E("%s: Retry over %d\n", __func__,
+				UPDATE_FIRMWARE_RETRY_TIMES);
+		return -EIO;
+	}
+	return 0;
 }
 
 static int erase_mcu_flash_mem(struct cwmcu_data *mcu_data)
@@ -1366,14 +1422,14 @@ static int erase_mcu_flash_mem(struct cwmcu_data *mcu_data)
 
 	i2c_data[0] = 0x44;
 	i2c_data[1] = 0xBB;
-	rc = i2c_tx_bytes(mcu_data, i2c_data, 2);
-	if (rc != 2) {
+	rc = i2c_tx_bytes_locked(mcu_data, i2c_data, 2);
+	if (rc) {
 		E("%s: Failed to write 0xBB44, rc = %d\n", __func__, rc);
 		return rc;
 	}
 
-	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
-	if (rc != 1) {
+	rc = i2c_rx_bytes_locked(mcu_data, i2c_data, 1);
+	if (rc) {
 		E("%s: Failed to read, rc = %d\n", __func__, rc);
 		return rc;
 	}
@@ -1387,15 +1443,15 @@ static int erase_mcu_flash_mem(struct cwmcu_data *mcu_data)
 	i2c_data[0] = 0xFF;
 	i2c_data[1] = 0xFF;
 	i2c_data[2] = 0;
-	rc = i2c_tx_bytes(mcu_data, i2c_data, 3);
-	if (rc != 3) {
+	rc = i2c_tx_bytes_locked(mcu_data, i2c_data, 3);
+	if (rc) {
 		E("%s: Failed to write_2, rc = %d\n", __func__, rc);
 		return rc;
 	}
 
 	D("%s: Tx size = %d\n", __func__, 3);
 	/* Erase needs 9 sec in worst case */
-	msleep(9000);
+	msleep(mcu_data->erase_fw_wait + FW_ERASE_MIN);
 	D("%s: After delay, Tx size = %d\n", __func__, 3);
 
 	return 0;
@@ -1414,14 +1470,14 @@ static int update_mcu_flash_mem_block(struct cwmcu_data *mcu_data,
 
 	i2c_data[0] = 0x31;
 	i2c_data[1] = 0xCE;
-	rc = i2c_tx_bytes(mcu_data, i2c_data, 2);
-	if (rc != 2) {
+	rc = i2c_tx_bytes_locked(mcu_data, i2c_data, 2);
+	if (rc) {
 		E("%s: Failed to write 0xCE31, rc = %d\n", __func__, rc);
 		return rc;
 	}
 
-	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
-	if (rc != 1) {
+	rc = i2c_rx_bytes_locked(mcu_data, i2c_data, 1);
+	if (rc) {
 		E("%s: Failed to read, rc = %d\n", __func__, rc);
 		return rc;
 	}
@@ -1435,14 +1491,14 @@ static int update_mcu_flash_mem_block(struct cwmcu_data *mcu_data,
 	to_i2c_command = cpu_to_be32(start_address);
 	memcpy(i2c_data, &to_i2c_command, sizeof(__be32));
 	i2c_data[4] = i2c_data[0] ^ i2c_data[1] ^ i2c_data[2] ^ i2c_data[3];
-	rc = i2c_tx_bytes(mcu_data, i2c_data, 5);
-	if (rc != 5) {
+	rc = i2c_tx_bytes_locked(mcu_data, i2c_data, 5);
+	if (rc) {
 		E("%s: Failed to write_2, rc = %d\n", __func__, rc);
 		return rc;
 	}
 
-	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
-	if (rc != 1) {
+	rc = i2c_rx_bytes_locked(mcu_data, i2c_data, 1);
+	if (rc) {
 		E("%s: Failed to read_2, rc = %d\n", __func__, rc);
 		return rc;
 	}
@@ -1465,8 +1521,8 @@ static int update_mcu_flash_mem_block(struct cwmcu_data *mcu_data,
 		checksum ^= i2c_data[i];
 
 	i2c_data[i] = checksum;
-	rc = i2c_tx_bytes(mcu_data, i2c_data, data_len);
-	if (rc != data_len) {
+	rc = i2c_tx_bytes_locked(mcu_data, i2c_data, data_len);
+	if (rc) {
 		E("%s: Failed to write_3, rc = %d\n", __func__, rc);
 		return rc;
 	}
@@ -1474,8 +1530,8 @@ static int update_mcu_flash_mem_block(struct cwmcu_data *mcu_data,
 	i = numberofbyte * 35;
 	usleep_range(i, i + 1000);
 
-	rc = i2c_rx_bytes(mcu_data, i2c_data, 1);
-	if (rc != 1) {
+	rc = i2c_rx_bytes_locked(mcu_data, i2c_data, 1);
+	if (rc) {
 		E("%s: Failed to read_3, rc = %d\n", __func__, rc);
 		return rc;
 	}
@@ -1511,6 +1567,7 @@ static void update_firmware(const struct firmware *fw, void *context)
 	if (ret == 1) { /* Perform firmware update */
 
 		mutex_lock(&mcu_data->activated_i2c_lock);
+		i2c_lock_adapter(mcu_data->client->adapter);
 
 		mcu_data->client->addr = 0x39;
 
@@ -1524,7 +1581,7 @@ static void update_firmware(const struct firmware *fw, void *context)
 		mcu_data->fw_update_status |= FW_FLASH_FAILED;
 
 		ret = erase_mcu_flash_mem(mcu_data);
-		if (ret < 0) {
+		if (ret) {
 			E("%s: erase mcu flash memory fails, ret = %d\n",
 			  __func__, ret);
 			mcu_data->fw_update_status |= FW_ERASE_FAILED;
@@ -1576,10 +1633,13 @@ out:
 		gpio_direction_output(mcu_data->gpio_reset, 0);
 		mdelay(10);
 		gpio_direction_output(mcu_data->gpio_reset, 1);
-		mdelay(20);
+
+		/* HUB need at least 500ms to be ready */
+		usleep_range(500000, 1000000);
 
 		mcu_data->client->addr = 0x72;
 
+		i2c_unlock_adapter(mcu_data->client->adapter);
 		mutex_unlock(&mcu_data->activated_i2c_lock);
 
 	}
@@ -1594,6 +1654,9 @@ fast_exit:
 	mcu_data->fw_update_status &= ~FW_UPDATE_QUEUED;
 	D("%s: fw_update_status = 0x%x\n", __func__,
 	  mcu_data->fw_update_status);
+
+	if (mcu_data->erase_fw_wait <= (FW_ERASE_MAX - FW_ERASE_MIN - 1000))
+		mcu_data->erase_fw_wait += 1000;
 }
 
 /* Returns the number of read bytes on success */
@@ -2155,9 +2218,6 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 		    && !(mcu_data->enabled_list & STEP_COUNTER_MASK)) {
 			__le32 data[3];
 
-			mcu_data->w_clear_fifo = true;
-			queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
-
 			rc = CWMCU_i2c_read_power(mcu_data,
 					    CWSTM32_READ_STEP_COUNTER,
 					    data, sizeof(data));
@@ -2171,6 +2231,12 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 				  __func__, rc);
 			}
 		}
+
+		if (!enabled) {
+			mcu_data->w_clear_fifo = true;
+			queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
+		}
+
 	}
 
 	cwmcu_powermode_switch(mcu_data, 1);
@@ -3044,9 +3110,9 @@ void magic_cover_report_input(struct cwmcu_data *mcu_data, u8 val)
 	if ((data == 1) || (data == 2)) {
 		input_report_switch(mcu_data->input, SW_LID, (data - 1));
 		input_sync(mcu_data->input);
-	} else if (data == 3) {
-		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 1);
-		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER, 0);
+	} else if ((data == 3) || (data == 0)) {
+		input_report_switch(mcu_data->input, SW_CAMERA_LENS_COVER,
+				    !data);
 		input_sync(mcu_data->input);
 	}
 	return;
@@ -3203,42 +3269,39 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 			cwmcu_batch_read(mcu_data);
 
 		if (mcu_data->enabled_list & (1LL << CW_STEP_COUNTER)) {
-			if (mcu_data->batch_timeout[CW_STEP_COUNTER] == 0) {
-				__le64 data64[2];
-				u8 *data = (u8 *)data64;
-				__le32 step_fw;
+			__le64 data64[2];
+			u8 *data = (u8 *)data64;
+			__le32 step_fw;
 
-				ret = CWMCU_i2c_read(mcu_data,
-						     CWSTM32_READ_STEP_COUNTER,
-						     data, 12);
-				if (ret >= 0) {
-					step_fw = *(__le32 *)(data + 8);
-					D("%s: From Firmware, step = %u\n",
-					  __func__, le32_to_cpu(step_fw));
+			ret = CWMCU_i2c_read(mcu_data,
+					     CWSTM32_READ_STEP_COUNTER,
+					     data, 12);
+			if (ret >= 0) {
+				step_fw = *(__le32 *)(data + 8);
+				D("%s: From Firmware, step = %u\n",
+				  __func__, le32_to_cpu(step_fw));
 
-					mcu_data->sensors_time[CW_STEP_COUNTER]
-						= 0;
+				mcu_data->sensors_time[CW_STEP_COUNTER]
+					= 0;
 
-					report_step_counter(mcu_data,
-							    le32_to_cpu(step_fw)
-							    , le64_to_cpu(
-								data64[0])
-							    , false);
+				report_step_counter(mcu_data,
+						    le32_to_cpu(step_fw)
+						    , le64_to_cpu(
+							data64[0])
+						    , false);
 
-					D(
-					  "%s: Step Counter INT, step = %llu"
-					  ", timestamp = %llu\n"
-					  , __func__
-					  , mcu_data->step_counter_base
-					    + le32_to_cpu(step_fw)
-					  , le64_to_cpu(data64[0]));
-				} else {
-					E(
-					  "%s: Step Counter i2c read fails, "
-					  "ret = %d\n", __func__, ret);
-				}
-			} else
-				cwmcu_batch_read(mcu_data);
+				D(
+				  "%s: Step Counter INT, step = %llu"
+				  ", timestamp = %llu\n"
+				  , __func__
+				  , mcu_data->step_counter_base
+				    + le32_to_cpu(step_fw)
+				  , le64_to_cpu(data64[0]));
+			} else {
+				E(
+				  "%s: Step Counter i2c read fails, "
+				  "ret = %d\n", __func__, ret);
+			}
 		}
 		clear_intr = CW_MCU_INT_BIT_STEP_COUNTER;
 		CWMCU_i2c_write(mcu_data, CWSTM32_INT_ST3, &clear_intr, 1);
@@ -4060,7 +4123,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Pass correct timestamp for Step and Significant\n", __func__);
+	I("%s++: Make firmware update more robust\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");

@@ -684,6 +684,11 @@ struct dma_buf *__nvmap_dmabuf_export_from_ref(struct nvmap_handle_ref *ref)
 /*
  * Returns the nvmap handle ID associated with the passed dma_buf's fd. This
  * does not affect the ref count of the dma_buf.
+ * NOTE: Callers of this utility function must invoke nvmap_handle_put after
+ * using the returned nvmap_handle. Call to nvmap_handle_get is required in
+ * this utility function to avoid race conditions in code where nvmap_handle
+ * returned by this function is freed concurrently while the caller is still
+ * using it.
  */
 struct nvmap_handle *nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client,
 						 int fd)
@@ -698,6 +703,8 @@ struct nvmap_handle *nvmap_get_id_from_dmabuf_fd(struct nvmap_client *client,
 	if (dmabuf->ops == &nvmap_dma_buf_ops) {
 		info = dmabuf->priv;
 		handle = info->handle;
+		if (!nvmap_handle_get(handle))
+			handle = ERR_PTR(-EINVAL);
 	}
 	dma_buf_put(dmabuf);
 	return handle;
@@ -714,11 +721,12 @@ int nvmap_ioctl_share_dmabuf(struct file *filp, void __user *arg)
 	if (copy_from_user(&op, (void __user *)arg, sizeof(op)))
 		return -EFAULT;
 
-	handle = unmarshal_user_id(op.id);
+	handle = unmarshal_user_handle(op.id);
 	if (!handle)
 		return -EINVAL;
 
 	op.fd = nvmap_get_dmabuf_fd(client, handle);
+	nvmap_handle_put(handle);
 	if (op.fd < 0)
 		return op.fd;
 

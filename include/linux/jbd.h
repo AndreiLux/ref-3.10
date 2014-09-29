@@ -844,6 +844,7 @@ extern void	 journal_invalidatepage(journal_t *,
 extern int	 journal_try_to_free_buffers(journal_t *, struct page *, gfp_t);
 extern int	 journal_stop(handle_t *);
 extern int	 journal_flush (journal_t *);
+extern int	 journal_force_flush (journal_t *);
 extern void	 journal_lock_updates (journal_t *);
 extern void	 journal_unlock_updates (journal_t *);
 

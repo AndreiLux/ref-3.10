@@ -47,6 +47,8 @@ struct dvfs_rail *tegra_cpu_rail;
 struct dvfs_rail *tegra_core_rail;
 struct dvfs_rail *tegra_gpu_rail;
 
+static bool gpu_power_on;
+
 static LIST_HEAD(dvfs_rail_list);
 static DEFINE_MUTEX(dvfs_lock);
 static DEFINE_MUTEX(rail_disable_lock);
@@ -2065,6 +2067,38 @@ int tegra_dvfs_rail_get_thermal_floor(struct dvfs_rail *rail)
  */
 
 #ifdef CONFIG_TEGRA_DVFS_RAIL_CONNECT_ALL
+
+static ssize_t gpu_power_on_show(struct kobject *kobj,
+					struct kobj_attribute *attr,
+					char *buf)
+{
+	return scnprintf(buf, PAGE_SIZE, "%u\n", gpu_power_on);
+}
+
+static ssize_t gpu_power_on_store(struct kobject *kobj, struct kobj_attribute *attr,
+              const char *buf, size_t count)
+{
+	bool val;
+	int err;
+
+	err = strtobool(buf, &val);
+	if (err < 0)
+		return err;
+
+	if (val != gpu_power_on) {
+		if (!val)
+			return -EBUSY;
+
+		tegra_dvfs_rail_power_up(tegra_gpu_rail);
+		gpu_power_on = val;
+	}
+
+	return count;
+}
+
+static struct kobj_attribute gpu_poweron_attr =
+	__ATTR(gpu_power_on, 0644, gpu_power_on_show, gpu_power_on_store);
+
 /*
  * Enable voltage scaling only if all the rails connect successfully
  */
@@ -2095,6 +2129,13 @@ int __init tegra_dvfs_rail_connect_regulators(void)
 		pr_warn("tegra_dvfs: DVFS regulators connection failed\n"
 			"            !!!! voltage scaling is disabled !!!!\n");
 		return -ENODEV;
+	}
+
+	if (tegra_gpu_rail) {
+		int err;
+		tegra_dvfs_rail_power_down(tegra_gpu_rail);
+		err = sysfs_create_file(power_kobj, &gpu_poweron_attr.attr);
+		WARN_ON(err);
 	}
 
 	return 0;

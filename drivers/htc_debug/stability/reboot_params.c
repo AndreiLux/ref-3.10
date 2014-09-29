@@ -185,8 +185,9 @@ static struct notifier_block die_nb = {
 static int panic_event(struct notifier_block *this,
 		unsigned long event, void *ptr)
 {
+	char msg_buf[SZ_DIAG_ERR_MSG];
+
 	if (tombstone) { // tamper the panic message for Oops
-		char msg_buf[SZ_DIAG_ERR_MSG];
 		char pc_symn[KSYM_NAME_LEN] = "<unknown>";
 		char lr_symn[KSYM_NAME_LEN] = "<unknown>";
 
@@ -202,10 +203,12 @@ static int panic_event(struct notifier_block *this,
 				"KP: %s PC:%s LR:%s",
 				current->comm,
 				pc_symn, lr_symn);
-		set_restart_msg((const char*) msg_buf);
 	} else {
-		set_restart_msg((const char*) ptr);
+		snprintf(msg_buf, sizeof(msg_buf),
+				"KP: %s", (const char*) ptr);
 	}
+	set_restart_msg((const char*) msg_buf);
+
 	return NOTIFY_DONE;
 }
 

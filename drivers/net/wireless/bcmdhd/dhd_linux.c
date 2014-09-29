@@ -142,6 +142,12 @@ extern bool ap_cfg_running;
 extern bool ap_fw_loaded;
 #endif
 
+#ifdef SET_RANDOM_MAC_SOFTAP
+#ifndef CONFIG_DHD_SET_RANDOM_MAC_VAL
+#define CONFIG_DHD_SET_RANDOM_MAC_VAL	0x001A11
+#endif
+static u32 vendor_oui = CONFIG_DHD_SET_RANDOM_MAC_VAL;
+#endif
 
 #ifdef ENABLE_ADAPTIVE_SCHED
 #define DEFAULT_CPUFREQ_THRESH		1000000	/* threshold frequency : 1000000 = 1GHz */
@@ -372,6 +378,8 @@ typedef struct dhd_info {
 	htsf_t  htsf;
 #endif
 	wait_queue_head_t ioctl_resp_wait;
+	wait_queue_head_t d3ack_wait;
+
 	uint32	default_wd_interval;
 
 	struct timer_list timer;
@@ -446,6 +454,7 @@ typedef struct dhd_info {
 	struct notifier_block pm_notifier;
 #ifdef SAR_SUPPORT
 	struct notifier_block sar_notifier;
+	s32 sar_enable;
 #endif
 } dhd_info_t;
 
@@ -804,6 +813,9 @@ static int dhd_sar_callback(struct notifier_block *nfb, unsigned long action, vo
 	s32 txpower;
 	int ret;
 
+	if (dhd->pub.busstate == DHD_BUS_DOWN)
+		return NOTIFY_DONE;
+
 	if (data) {
 		/* if data != NULL then we expect that the notifier passed
 		 * the exact value of max tx power in quarters of dB.
@@ -821,14 +833,17 @@ static int dhd_sar_callback(struct notifier_block *nfb, unsigned long action, vo
 				iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
 			DHD_ERROR(("%s wl qtxpower failed %d\n", __FUNCTION__, ret));
 	} else {
-		/* '0' means activate sarlimit and '-1' means back to normal state (deactivate
-		 * sarlimit)
+		/* '1' means activate sarlimit and '0' means back to normal
+		 *  state (deactivate sarlimit)
 		 */
-		sar_enable = action ? 0 : -1;
-
+		sar_enable = action ? 1 : 0;
+		if (dhd->sar_enable == sar_enable)
+			return NOTIFY_DONE;
 		bcm_mkiovar("sar_enable", (char *)&sar_enable, 4, iovbuf, sizeof(iovbuf));
 		if ((ret = dhd_wl_ioctl_cmd(&dhd->pub, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
 			DHD_ERROR(("%s wl sar_enable %d failed %d\n", __FUNCTION__, sar_enable, ret));
+		else
+			dhd->sar_enable = sar_enable;
 	}
 
 	return NOTIFY_DONE;
@@ -1399,7 +1414,9 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 #endif
 				/* Kernel suspended */
 				DHD_ERROR(("%s: force extra Suspend setting \n", __FUNCTION__));
-
+#ifdef CUSTOM_SET_SHORT_DWELL_TIME
+				dhd_set_short_dwell_time(dhd, TRUE);
+#endif
 #ifndef SUPPORT_PM2_ONLY
 				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
 				                 sizeof(power_mode), TRUE, 0);
@@ -1442,7 +1459,9 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 #endif
 				/* Kernel resumed  */
 				DHD_ERROR(("%s: Remove extra suspend setting \n", __FUNCTION__));
-
+#ifdef CUSTOM_SET_SHORT_DWELL_TIME
+				dhd_set_short_dwell_time(dhd, FALSE);
+#endif
 #ifndef SUPPORT_PM2_ONLY
 				power_mode = PM_FAST;
 				dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)&power_mode,
@@ -3818,12 +3837,13 @@ exit:
 	dhd->pub.hang_was_sent = 0;
 
 	/* Clear country spec for for built-in type driver */
+#ifndef CUSTOM_COUNTRY_CODE
 	if (!dhd_download_fw_on_driverload) {
 		dhd->pub.dhd_cspec.country_abbrev[0] = 0x00;
 		dhd->pub.dhd_cspec.rev = 0;
 		dhd->pub.dhd_cspec.ccode[0] = 0x00;
 	}
-
+#endif
 	DHD_PERIM_UNLOCK(&dhd->pub);
 	DHD_OS_WAKE_UNLOCK(&dhd->pub);
 	return 0;
@@ -4418,11 +4438,18 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 #ifdef GET_CUSTOM_MAC_ENABLE
 	wifi_platform_get_mac_addr(dhd->adapter, dhd->pub.mac.octet);
 #endif /* GET_CUSTOM_MAC_ENABLE */
+#ifdef CUSTOM_FORCE_NODFS_FLAG
+	dhd->pub.dhd_cflags |= WLAN_PLAT_NODFS_FLAG;
+	dhd->pub.force_country_change = TRUE;
+#endif
 #ifdef CUSTOM_COUNTRY_CODE
 	get_customized_country_code(dhd->adapter,
 		dhd->pub.dhd_cspec.country_abbrev, &dhd->pub.dhd_cspec,
 		dhd->pub.dhd_cflags);
 #endif /* CUSTOM_COUNTRY_CODE */
+
+	dhd->pub.short_dwell_time = -1;
+
 	dhd->thr_dpc_ctl.thr_pid = DHD_PID_KT_TL_INVALID;
 	dhd->thr_wdt_ctl.thr_pid = DHD_PID_KT_INVALID;
 
@@ -4477,6 +4504,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 
 	/* Initialize other structure content */
 	init_waitqueue_head(&dhd->ioctl_resp_wait);
+	init_waitqueue_head(&dhd->d3ack_wait);
 	init_waitqueue_head(&dhd->ctrl_wait);
 
 	/* Initialize the spinlocks */
@@ -4594,6 +4622,7 @@ dhd_attach(osl_t *osh, struct dhd_bus *bus, uint bus_hdrlen)
 	dhd->sar_notifier.notifier_call = dhd_sar_callback;
 	if (!dhd_sar_notifier_registered) {
 		dhd_sar_notifier_registered = TRUE;
+		dhd->sar_enable = 1;		/* unknown state value */
 		register_notifier_by_sar(&dhd->sar_notifier);
 	}
 #endif /* SAR_SUPPORT */
@@ -5113,9 +5142,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #if defined(ARP_OFFLOAD_SUPPORT)
 	int arpoe = 1;
 #endif
-	int scan_assoc_time = DHD_SCAN_ASSOC_ACTIVE_TIME;
-	int scan_unassoc_time = DHD_SCAN_UNASSOC_ACTIVE_TIME;
-	int scan_passive_time = DHD_SCAN_PASSIVE_TIME;
 	char buf[WLC_IOCTL_SMLEN];
 	char *ptr;
 	uint32 listen_interval = CUSTOM_LISTEN_INTERVAL; /* Default Listen Interval in Beacons */
@@ -5245,9 +5271,9 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #ifdef SET_RANDOM_MAC_SOFTAP
 		SRANDOM32((uint)jiffies);
 		rand_mac = RANDOM32();
-		iovbuf[0] = 0x02;			   /* locally administered bit */
-		iovbuf[1] = 0x1A;
-		iovbuf[2] = 0x11;
+		iovbuf[0] = (unsigned char)(vendor_oui >> 16) | 0x02;	/* locally administered bit */
+		iovbuf[1] = (unsigned char)(vendor_oui >> 8);
+		iovbuf[2] = (unsigned char)vendor_oui;
 		iovbuf[3] = (unsigned char)(rand_mac & 0x0F) | 0xF0;
 		iovbuf[4] = (unsigned char)(rand_mac >> 8);
 		iovbuf[5] = (unsigned char)(rand_mac >> 16);
@@ -5654,12 +5680,7 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	} /* unsupported is ok */
 	kfree(eventmask_msg);
 
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_CHANNEL_TIME, (char *)&scan_assoc_time,
-		sizeof(scan_assoc_time), TRUE, 0);
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_UNASSOC_TIME, (char *)&scan_unassoc_time,
-		sizeof(scan_unassoc_time), TRUE, 0);
-	dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_PASSIVE_TIME, (char *)&scan_passive_time,
-		sizeof(scan_passive_time), TRUE, 0);
+	dhd_set_short_dwell_time(dhd, FALSE);
 
 #ifdef ARP_OFFLOAD_SUPPORT
 	/* Set and enable ARP offload feature for STA only  */
@@ -6655,6 +6676,36 @@ dhd_os_ioctl_resp_wake(dhd_pub_t *pub)
 	return 0;
 }
 
+int
+dhd_os_d3ack_wait(dhd_pub_t *pub, uint *condition, bool *pending)
+{
+	dhd_info_t * dhd = (dhd_info_t *)(pub->info);
+	int timeout;
+
+	/* Convert timeout in millsecond to jiffies */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27))
+	timeout = msecs_to_jiffies(dhd_ioctl_timeout_msec);
+#else
+	timeout = dhd_ioctl_timeout_msec * HZ / 1000;
+#endif
+
+	DHD_PERIM_UNLOCK(pub);
+	timeout = wait_event_timeout(dhd->d3ack_wait, (*condition), timeout);
+	DHD_PERIM_LOCK(pub);
+
+	return timeout;
+}
+
+int
+dhd_os_d3ack_wake(dhd_pub_t *pub)
+{
+	dhd_info_t *dhd = (dhd_info_t *)(pub->info);
+
+	wake_up(&dhd->d3ack_wait);
+	return 0;
+}
+
+
 void
 dhd_os_wd_timer_extend(void *bus, bool extend)
 {
@@ -7405,6 +7456,7 @@ dhd_dev_set_nodfs(struct net_device *dev, u32 nodfs)
 		dhd->pub.dhd_cflags |= WLAN_PLAT_NODFS_FLAG;
 	else
 		dhd->pub.dhd_cflags &= ~WLAN_PLAT_NODFS_FLAG;
+	dhd->pub.force_country_change = TRUE;
 	return 0;
 }
 
@@ -7694,6 +7746,15 @@ int dhd_net_wifi_platform_set_power(struct net_device *dev, bool on, unsigned lo
 	return wifi_platform_set_power(dhd->adapter, on, delay_msec);
 }
 
+bool dhd_force_country_change(struct net_device *dev)
+{
+	dhd_info_t *dhd = DHD_DEV_INFO(dev);
+
+	if (dhd && dhd->pub.up)
+		return dhd->pub.force_country_change;
+	return FALSE;
+}
+
 void dhd_get_customized_country_code(struct net_device *dev, char *country_iso_code,
 	wl_country_t *cspec)
 {
@@ -7707,6 +7768,7 @@ void dhd_bus_country_set(struct net_device *dev, wl_country_t *cspec, bool notif
 	dhd_info_t *dhd = DHD_DEV_INFO(dev);
 	if (dhd && dhd->pub.up) {
 		memcpy(&dhd->pub.dhd_cspec, cspec, sizeof(wl_country_t));
+		dhd->pub.force_country_change = FALSE;
 #ifdef WL_CFG80211
 		wl_update_wiphybands(NULL, notify);
 #endif
@@ -8308,6 +8370,40 @@ int dhd_get_instance(dhd_pub_t *dhdp)
 	return dhdp->info->unit;
 }
 
+void dhd_set_short_dwell_time(dhd_pub_t *dhd, int set)
+{
+	int scan_assoc_time = DHD_SCAN_ASSOC_ACTIVE_TIME;
+	int scan_unassoc_time = DHD_SCAN_UNASSOC_ACTIVE_TIME;
+	int scan_passive_time = DHD_SCAN_PASSIVE_TIME;
+
+	DHD_TRACE(("%s: Enter: %d\n", __FUNCTION__, set));
+	if (dhd->short_dwell_time != set) {
+		if (set) {
+			scan_unassoc_time = DHD_SCAN_UNASSOC_ACTIVE_TIME_PS;
+		}
+		dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_UNASSOC_TIME,
+				(char *)&scan_unassoc_time,
+				sizeof(scan_unassoc_time), TRUE, 0);
+		if (dhd->short_dwell_time == -1) {
+			dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_CHANNEL_TIME,
+					(char *)&scan_assoc_time,
+					sizeof(scan_assoc_time), TRUE, 0);
+			dhd_wl_ioctl_cmd(dhd, WLC_SET_SCAN_PASSIVE_TIME,
+					(char *)&scan_passive_time,
+					sizeof(scan_passive_time), TRUE, 0);
+		}
+		dhd->short_dwell_time = set;
+	}
+}
+
+#ifdef CUSTOM_SET_SHORT_DWELL_TIME
+void net_set_short_dwell_time(struct net_device *dev, int set)
+{
+	dhd_info_t *dhd = DHD_DEV_INFO(dev);
+
+	dhd_set_short_dwell_time(&dhd->pub, set);
+}
+#endif
 
 #ifdef PROP_TXSTATUS
 

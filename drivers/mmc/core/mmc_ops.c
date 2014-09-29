@@ -455,6 +455,14 @@ int __mmc_switch(struct mmc_card *card, u8 set, u8 index, u8 value,
 		if (time_after(jiffies, timeout)) {
 			pr_err("%s: Card stuck in programming state! %s\n",
 				mmc_hostname(card->host), __func__);
+			if (index == EXT_CSD_SANITIZE_START) {
+				unsigned long prg_wait;
+				pr_err("%s: Send HPI command due to Santitize command timeout\n", __func__);
+				err = mmc_interrupt_hpi(card);
+				if (err && (err != -EINVAL)) {
+					pr_err("%s Failed to send HPI command (err=%d)\n", __func__, err);
+				}
+			}
 			return -ETIMEDOUT;
 		}
 	} while (R1_CURRENT_STATE(status) == R1_STATE_PRG);

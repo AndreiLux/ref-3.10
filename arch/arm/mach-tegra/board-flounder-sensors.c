@@ -16,6 +16,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <asm/atomic.h>
 #include <linux/i2c.h>
 #include <linux/gpio.h>
 #include <linux/mpu.h>
@@ -50,6 +51,7 @@
 #include <media/soc_camera_platform.h>
 #include <media/tegra_v4l2_camera.h>
 #include <linux/generic_adc_thermal.h>
+#include <mach/board_htc.h>
 
 #include "cpu-tegra.h"
 #include "devices.h"
@@ -78,6 +80,33 @@ int cy8c_sar_reset(void)
 	return 0;
 }
 
+int cy8c_sar_powerdown(int activate)
+{
+	int gpio = TEGRA_GPIO_PO5;
+	int ret = 0;
+
+	if (!is_mdm_modem()) {
+		pr_debug("[SAR]%s:!is_mdm_modem()\n", __func__);
+		return ret;
+	}
+
+	if (activate) {
+		pr_debug("[SAR]:%s:gpio high,activate=%d\n",
+			__func__, activate);
+		ret = gpio_direction_output(gpio, 1);
+		if (ret < 0)
+			pr_debug("[SAR]%s: calling gpio_free(sar_modem)\n",
+				__func__);
+	} else {
+		pr_debug("[SAR]:%s:gpio low,activate=%d\n", __func__, activate);
+		ret = gpio_direction_output(gpio, 0);
+		if (ret < 0)
+			pr_debug("[SAR]%s: calling gpio_free(sar_modem)\n",
+				__func__);
+	}
+	return ret;
+}
+
 static struct i2c_board_info flounder_i2c_board_info_cm32181[] = {
 	{
 		I2C_BOARD_INFO("cm32181", 0x48),
@@ -91,6 +120,7 @@ struct cy8c_i2c_sar_platform_data sar1_cy8c_data[] = {
 		.position_id = 1,
 		.bl_addr = 0x61,
 		.ap_addr = 0x5d,
+		.powerdown    = cy8c_sar_powerdown,
 	},
 };
 
@@ -101,6 +131,7 @@ struct cy8c_i2c_sar_platform_data sar_cy8c_data[] = {
 		.position_id = 0,
 		.bl_addr = 0x60,
 		.ap_addr = 0x5c,
+		.powerdown    = cy8c_sar_powerdown,
 	},
 };
 
@@ -192,24 +223,6 @@ static struct platform_device flounder_soc_camera_device = {
 };
 #endif
 
-static struct regulator *flounder_vcmvdd;
-
-static int flounder_get_extra_regulators(void)
-{
-	if (!flounder_vcmvdd) {
-		flounder_vcmvdd = regulator_get(NULL, "avdd_af1_cam");
-		if (WARN_ON(IS_ERR(flounder_vcmvdd))) {
-			pr_err("%s: can't get regulator avdd_af1_cam: %ld\n",
-					__func__, PTR_ERR(flounder_vcmvdd));
-			regulator_put(flounder_vcmvdd);
-			flounder_vcmvdd = NULL;
-			return -ENODEV;
-		}
-	}
-
-	return 0;
-}
-
 static struct tegra_io_dpd csia_io = {
 	.name			= "CSIA",
 	.io_dpd_reg_index	= 0,
@@ -228,6 +241,31 @@ static struct tegra_io_dpd csie_io = {
 	.io_dpd_bit		= 12,
 };
 
+static atomic_t shared_gpios_refcnt = ATOMIC_INIT(0);
+
+static void flounder_enable_shared_gpios(void)
+{
+	if (1 == atomic_add_return(1, &shared_gpios_refcnt)) {
+		gpio_set_value(CAM_VCM2V85_EN, 1);
+		usleep_range(100, 120);
+		gpio_set_value(CAM_1V2_EN, 1);
+		gpio_set_value(CAM_A2V85_EN, 1);
+		gpio_set_value(CAM_1V8_EN, 1);
+		pr_debug("%s\n", __func__);
+	}
+}
+
+static void flounder_disable_shared_gpios(void)
+{
+	if (atomic_dec_and_test(&shared_gpios_refcnt)) {
+		gpio_set_value(CAM_1V8_EN, 0);
+		gpio_set_value(CAM_A2V85_EN, 0);
+		gpio_set_value(CAM_1V2_EN, 0);
+		gpio_set_value(CAM_VCM2V85_EN, 0);
+		pr_debug("%s\n", __func__);
+	}
+}
+
 static int flounder_imx219_power_on(struct imx219_power_rail *pw)
 {
 	/* disable CSIA/B IOs DPD mode to turn on camera for flounder */
@@ -236,17 +274,13 @@ static int flounder_imx219_power_on(struct imx219_power_rail *pw)
 
 	gpio_set_value(CAM_PWDN, 0);
 
-	gpio_set_value(CAM_VCM2V85_EN, 1);
-	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 1);
-	gpio_set_value(CAM_A2V85_EN, 1);
-	gpio_set_value(CAM_1V8_EN, 1);
+	flounder_enable_shared_gpios();
 
 	usleep_range(1, 2);
 	gpio_set_value(CAM_PWDN, 1);
 
 	usleep_range(300, 310);
-
+	pr_debug("%s\n", __func__);
 	return 1;
 }
 
@@ -254,10 +288,9 @@ static int flounder_imx219_power_off(struct imx219_power_rail *pw)
 {
 	gpio_set_value(CAM_PWDN, 0);
 	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 0);
-	gpio_set_value(CAM_A2V85_EN, 0);
-	gpio_set_value(CAM_1V8_EN, 0);
-	gpio_set_value(CAM_VCM2V85_EN, 0);
+	pr_debug("%s\n", __func__);
+
+	flounder_disable_shared_gpios();
 
 	/* put CSIA/B IOs into DPD mode to save additional power for flounder */
 	tegra_io_dpd_enable(&csia_io);
@@ -276,16 +309,12 @@ static int flounder_ov9760_power_on(struct ov9760_power_rail *pw)
 	tegra_io_dpd_disable(&csie_io);
 
 	gpio_set_value(CAM2_RST, 0);
-	gpio_set_value(CAM_PWDN, 0);
 
-	gpio_set_value(CAM_VCM2V85_EN, 1);
-	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 1);
-	gpio_set_value(CAM_A2V85_EN, 1);
-	gpio_set_value(CAM_1V8_EN, 1);
+	flounder_enable_shared_gpios();
 
 	usleep_range(100, 120);
 	gpio_set_value(CAM2_RST, 1);
+	pr_debug("%s\n", __func__);
 
 	return 1;
 }
@@ -294,10 +323,10 @@ static int flounder_ov9760_power_off(struct ov9760_power_rail *pw)
 {
 	gpio_set_value(CAM2_RST, 0);
 	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 0);
-	gpio_set_value(CAM_A2V85_EN, 0);
-	gpio_set_value(CAM_1V8_EN, 0);
-	gpio_set_value(CAM_VCM2V85_EN, 0);
+	pr_debug("%s\n", __func__);
+
+	flounder_disable_shared_gpios();
+
 	/* put CSIE IOs into DPD mode to save additional power for flounder */
 	tegra_io_dpd_enable(&csie_io);
 
@@ -312,33 +341,24 @@ static struct ov9760_platform_data flounder_ov9760_pdata = {
 
 static int flounder_drv201_power_on(struct drv201_power_rail *pw)
 {
-	int err;
-	pr_info("%s\n", __func__);
+	gpio_set_value(CAM_VCM_PWDN, 0);
 
-	gpio_set_value(CAM_VCM2V85_EN, 1);
-	usleep_range(100, 120);
-	gpio_set_value(CAM_A2V85_EN, 1);
-	gpio_set_value(CAM_1V2_EN, 1);
-	gpio_set_value(CAM_1V8_EN, 1);
+	flounder_enable_shared_gpios();
 
 	gpio_set_value(CAM_VCM_PWDN, 1);
 	usleep_range(100, 120);
+	pr_debug("%s\n", __func__);
 
-	/* return 1 to skip the in-driver power_on sequence */
-	pr_debug("%s --\n", __func__);
 	return 1;
 }
 
 static int flounder_drv201_power_off(struct drv201_power_rail *pw)
 {
-	pr_info("%s\n", __func__);
-
 	gpio_set_value(CAM_VCM_PWDN, 0);
 	usleep_range(100, 120);
-	gpio_set_value(CAM_1V2_EN, 0);
-	gpio_set_value(CAM_A2V85_EN, 0);
-	gpio_set_value(CAM_1V8_EN, 0);
-	gpio_set_value(CAM_VCM2V85_EN, 0);
+	pr_debug("%s\n", __func__);
+
+	flounder_disable_shared_gpios();
 
 	return 1;
 }
@@ -639,28 +659,52 @@ static struct thermal_trip_info skin_trips[] = {
 	}
 };
 
-static struct therm_est_subdevice skin_devs[] = {
+static struct therm_est_subdevice skin_devs_wifi[] = {
 	{
 		.dev_data = "Tdiode_tegra",
 		.coeffs = {
-			3, 0, 0, -1,
-			-1, -1, -1, -1,
-			-1, 0, -1, 0,
+			3, 0, 0, 0,
+			-1, 0, 0, 0,
 			0, 0, 0, 0,
-			0, -1, -2, -11
+			0, 0, 0, 0,
+			0, 0, 0, -1
 		},
 	},
 	{
 		.dev_data = "Tboard_tegra",
 		.coeffs = {
-			19, 13, 7, 5,
-			3, 2, 2, 3,
-			4, 4, 5, 5,
-			3, 3, 3, 4,
-			5, 6, 9, 13
+			7, 6, 5, 3,
+			3, 4, 4, 4,
+			4, 4, 4, 4,
+			3, 4, 3, 3,
+			4, 6, 9, 15
 		},
 	},
 };
+
+static struct therm_est_subdevice skin_devs_lte[] = {
+	{
+		.dev_data = "Tdiode_tegra",
+		.coeffs = {
+			2, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, 0, 0,
+			0, 0, -1, -2
+		},
+	},
+	{
+		.dev_data = "Tboard_tegra",
+		.coeffs = {
+			7, 5, 4, 3,
+			3, 3, 4, 4,
+			3, 3, 3, 3,
+			4, 4, 3, 3,
+			3, 5, 10, 16
+		},
+	},
+};
+
 
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
@@ -730,14 +774,12 @@ static struct balanced_throttle skin_throttle = {
 static int __init flounder_skin_init(void)
 {
 	if (of_machine_is_compatible("google,flounder") ||
-	    of_machine_is_compatible("google,flounder_lte") ||
-	    of_machine_is_compatible("google,flounder64") ||
-	    of_machine_is_compatible("google,flounder64_lte")) {
-		/* turn on tskin only on XE (PVT) device */
-		if (flounder_get_hw_revision() >= FLOUNDER_REV_PVT ) {
-			skin_data.ndevs = ARRAY_SIZE(skin_devs);
-			skin_data.devs = skin_devs;
-			skin_data.toffset = -2932;
+	    of_machine_is_compatible("google,flounder64")) {
+		/* turn on tskin only on XE (DVT2) and later revision */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_DVT2 ) {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs_wifi);
+			skin_data.devs = skin_devs_wifi;
+			skin_data.toffset = -4746;
 
 			balanced_throttle_register(&skin_throttle,
 							"skin-balanced");
@@ -745,6 +787,22 @@ static int __init flounder_skin_init(void)
 							&skin_data;
 			platform_device_register(&tegra_skin_therm_est_device);
 		}
+	}
+	else if (of_machine_is_compatible("google,flounder_lte") ||
+	    of_machine_is_compatible("google,flounder64_lte")) {
+		/* turn on tskin only on LTE XD (DVT1) and later revision  */
+		if (flounder_get_hw_revision() >= FLOUNDER_REV_DVT1 ) {
+			skin_data.ndevs = ARRAY_SIZE(skin_devs_lte);
+			skin_data.devs = skin_devs_lte;
+			skin_data.toffset = -1625;
+
+			balanced_throttle_register(&skin_throttle,
+							"skin-balanced");
+			tegra_skin_therm_est_device.dev.platform_data =
+							&skin_data;
+			platform_device_register(&tegra_skin_therm_est_device);
+		}
+
 	}
 	return 0;
 }
@@ -917,6 +975,30 @@ static int flounder_nct72_init(void)
 	return ret;
 }
 
+static int powerdown_gpio_init(void){
+	int ret = 0;
+	static int done;
+	if (!is_mdm_modem()) {
+		pr_debug("[SAR]%s:!is_mdm_modem()\n", __func__);
+		return ret;
+	}
+
+	if (done == 0) {
+		if (!gpio_request(TEGRA_GPIO_PO5, "sar_modem")) {
+			pr_debug("[SAR]%s:gpio_request success\n", __func__);
+			ret = gpio_direction_output(TEGRA_GPIO_PO5, 0);
+			if (ret < 0) {
+				pr_debug(
+					"[SAR]%s: calling gpio_free(sar_modem)",
+					__func__);
+				gpio_free(TEGRA_GPIO_PO5);
+			}
+			done = 1;
+		}
+	}
+	return ret;
+}
+
 static int flounder_sar_init(void){
 	int sar_intr = TEGRA_GPIO_PC7;
 	int ret;
@@ -930,6 +1012,7 @@ static int flounder_sar_init(void){
 		pr_info("%s: calling gpio_free(sar_intr)", __func__);
 		gpio_free(sar_intr);
 	}
+	powerdown_gpio_init();
 	i2c_register_board_info(1, flounder_i2c_board_info_cypress_sar,
 			ARRAY_SIZE(flounder_i2c_board_info_cypress_sar));
 	return 0;
@@ -948,6 +1031,7 @@ static int flounder_sar1_init(void){
 		pr_info("%s: calling gpio_free(sar1_intr)", __func__);
 		gpio_free(sar1_intr);
 	}
+	powerdown_gpio_init();
 	i2c_register_board_info(1, flounder_i2c_board_info_cypress_sar1,
 			ARRAY_SIZE(flounder_i2c_board_info_cypress_sar1));
 	return 0;

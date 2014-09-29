@@ -102,6 +102,7 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 			first_chunk_len =
 				RT5677_MIC_BUF_SIZE - rt5677->mic_read_offset;
 			if (first_chunk_len > size) {
+				first_chunk_len = size;
 				second_chunk_start = 0;
 				second_chunk_len = 0;
 			} else {

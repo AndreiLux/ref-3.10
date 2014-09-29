@@ -160,6 +160,25 @@
 		max17050@36 {
 			compatible = "maxim,max17050";
 			reg = <0x36>;
+			battery-id-channel-name = "batt-id-channel";
+			param_adjust_map_by_id {
+				id0 {
+					id-number = <0>;
+					id-range = <0 524>;
+					temperature-normal-to-low-threshold = <(-50)>;
+					temperature-low-to-normal-threshold = <(-30)>;
+					temperature-normal-parameters = <0x964C 0x0068 0x0000>;
+					temperature-low-parameters = <0xAF59 0x4D84 0x2484>;
+				};
+				id1 {
+					id-number = <1>;
+					id-range = <525 1343>;
+					temperature-normal-to-low-threshold = <(-80)>;
+					temperature-low-to-normal-threshold = <(-50)>;
+					temperature-normal-parameters = <0x964C 0x1032 0x0000>;
+					temperature-low-parameters = <0xAF59 0x5F86 0x2790>;
+				};
+			};
 		};
 
 		bq2419x: bq2419x@6b {
@@ -491,4 +510,19 @@
 			};
 		};
 	};
+
+	vdd_hv_3v: fixedregulator@0 {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_hv_3v";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		regulator-boot-on;
+		consumers {
+			c1 {
+				regulator-consumer-supply = "vdd";
+				regulator-consumer-device = "0-004c";
+			};
+		};
+	};
+
 };

@@ -81,7 +81,7 @@ void __init flounder_new_sysedp_init(void)
 }
 
 static struct tegra_sysedp_platform_data flounder_sysedp_dynamic_capping_platdata = {
-	.core_gain = 100,
+	.core_gain = 125,
 	.init_req_watts = 20000,
 	.pthrot_ratio = 75,
 	.cap_method = TEGRA_SYSEDP_CAP_METHOD_DIRECT,

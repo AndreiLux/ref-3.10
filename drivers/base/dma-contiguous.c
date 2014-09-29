@@ -22,6 +22,7 @@
 #include <asm/page.h>
 #include <asm/dma-contiguous.h>
 
+#include <linux/buffer_head.h>
 #include <linux/memblock.h>
 #include <linux/err.h>
 #include <linux/mm.h>
@@ -32,6 +33,11 @@
 #include <linux/swap.h>
 #include <linux/mm_types.h>
 #include <linux/dma-contiguous.h>
+#include <linux/dma-mapping.h>
+
+#include <asm/tlbflush.h>
+#include <asm/cacheflush.h>
+#include <asm/outercache.h>
 
 struct cma {
 	unsigned long	base_pfn;
@@ -292,6 +298,46 @@ err:
 	return base;
 }
 
+static int __dma_update_pte(pte_t *pte, pgtable_t token, unsigned long addr,
+			    void *data)
+{
+	struct page *page = virt_to_page(addr);
+	pgprot_t prot = *(pgprot_t *)data;
+
+	set_pte(pte, mk_pte(page, prot));
+	return 0;
+}
+
+static void __dma_remap(struct page *page, size_t size, pgprot_t prot)
+{
+	unsigned long start = (unsigned long) page_address(page);
+	unsigned end = start + size;
+	int err;
+
+	err = apply_to_page_range(&init_mm, start,
+		size, __dma_update_pte, &prot);
+	if (err)
+		pr_err("***%s: error=%d, pfn=%lx\n", __func__,
+			err, page_to_pfn(page));
+	dsb();
+	flush_tlb_kernel_range(start, end);
+}
+
+static void __dma_clear_buffer(struct page *page, size_t size)
+{
+	void *ptr;
+	/*
+	 * Ensure that the allocated pages are zeroed, and that any data
+	 * lurking in the kernel direct-mapped region is invalidated.
+	 */
+	ptr = page_address(page);
+	if (ptr) {
+		memset(ptr, 0, size);
+		dmac_flush_range(ptr, ptr + size);
+		outer_flush_range(__pa(ptr), __pa(ptr) + size);
+	}
+}
+
 struct page *dma_alloc_at_from_contiguous(struct device *dev, int count,
 				       unsigned int align, phys_addr_t at_addr)
 {
@@ -322,17 +368,24 @@ struct page *dma_alloc_at_from_contiguous(struct device *dev, int count,
 	mutex_lock(&cma_mutex);
 
 	for (;;) {
+		unsigned long timeout = jiffies + msecs_to_jiffies(8000);
+
 		pageno = bitmap_find_next_zero_area(cma->bitmap, cma->count,
 						    start, count, mask);
 		if (pageno >= cma->count || (start && start != pageno))
 			break;
 
 		pfn = cma->base_pfn + pageno;
+retry:
 		ret = alloc_contig_range(pfn, pfn + count, MIGRATE_CMA);
 		if (ret == 0) {
 			bitmap_set(cma->bitmap, pageno, count);
 			page = pfn_to_page(pfn);
 			break;
+		} else if (start && time_before(jiffies, timeout)) {
+			cond_resched();
+			invalidate_bh_lrus();
+			goto retry;
 		} else if (ret != -EBUSY || start) {
 			break;
 		}
@@ -344,6 +397,11 @@ struct page *dma_alloc_at_from_contiguous(struct device *dev, int count,
 
 	mutex_unlock(&cma_mutex);
 	pr_debug("%s(): returned %p\n", __func__, page);
+	if (page) {
+		__dma_remap(page, count << PAGE_SHIFT,
+			pgprot_dmacoherent(PAGE_KERNEL));
+		__dma_clear_buffer(page, count << PAGE_SHIFT);
+	}
 	return page;
 }
 
@@ -391,6 +449,8 @@ bool dma_release_from_contiguous(struct device *dev, struct page *pages,
 		return false;
 
 	VM_BUG_ON(pfn + count > cma->base_pfn + cma->count);
+
+	__dma_remap(pages, count << PAGE_SHIFT, PAGE_KERNEL_EXEC);
 
 	mutex_lock(&cma_mutex);
 	bitmap_clear(cma->bitmap, pfn - cma->base_pfn, count);

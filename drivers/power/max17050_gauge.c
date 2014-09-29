@@ -24,6 +24,10 @@
 #include <linux/debugfs.h>
 #include <linux/kernel.h>
 #include <linux/power_supply.h>
+#include <linux/of.h>
+#include <linux/iio/consumer.h>
+#include <linux/iio/types.h>
+#include <linux/iio/iio.h>
 
 #define MAX17050_I2C_RETRY_TIMES (5)
 
@@ -135,6 +139,12 @@ struct max17050_chip {
 	struct dentry			*dentry;
 	struct device			*dev;
 	struct power_supply		battery;
+	bool				adjust_present;
+	bool				is_low_temp;
+	int				temp_normal2low_thr;
+	int				temp_low2normal_thr;
+	unsigned int	temp_normal_params[FLOUNDER_BATTERY_PARAMS_SIZE];
+	unsigned int	temp_low_params[FLOUNDER_BATTERY_PARAMS_SIZE];
 };
 static struct max17050_chip *max17050_data;
 
@@ -340,9 +350,53 @@ static int max17050_get_charge_ext(struct i2c_client *client, int64_t *batt_char
 		dev_err(&client->dev, "%s: err %d\n", __func__, charge_msb);
 		ret = -EINVAL;
 	} else
-		*batt_charge_ext = ((int16_t) charge_msb <<16 | (int16_t) charge_lsb) * 8;
+		*batt_charge_ext = (int64_t)((int16_t) charge_msb << 16 |
+						(uint16_t) charge_lsb) * 8LL;
 
 	return ret;
+}
+
+static int max17050_set_parameter_by_temp(struct i2c_client *client,
+						bool is_low_temp)
+{
+	int ret = 0;
+	int temp_params[FLOUNDER_BATTERY_PARAMS_SIZE];
+
+	struct max17050_chip *chip = i2c_get_clientdata(client);
+
+	if (is_low_temp)
+		memcpy(temp_params, chip->temp_normal_params,
+						sizeof(temp_params));
+	else
+		memcpy(temp_params, chip->temp_low_params,
+						sizeof(temp_params));
+
+	ret = max17050_write_word(client, MAX17050_FG_V_empty,
+						temp_params[0]);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: write V_empty fail, err %d\n"
+				, __func__, ret);
+		return ret;
+	}
+
+	ret = max17050_write_word(client, MAX17050_FG_QRtable00,
+						temp_params[1]);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: write QRtable00 fail, err %d\n"
+				, __func__, ret);
+		return ret;
+	}
+
+	ret = max17050_write_word(client, MAX17050_FG_QRtable10,
+						temp_params[2]);
+	if (ret < 0) {
+		dev_err(&client->dev, "%s: write QRtable10 fail, err %d\n"
+				, __func__, ret);
+		return ret;
+	}
+
+	return 0;
+
 }
 
 static int __max17050_get_temperature(struct i2c_client *client, int *batt_temp)
@@ -402,6 +456,18 @@ static int max17050_get_temperature(struct i2c_client *client, int *batt_temp)
 		goto error;
 
 	*batt_temp = temp;
+	if (max17050_data->adjust_present) {
+		if (!max17050_data->is_low_temp &&
+				temp <= max17050_data->temp_normal2low_thr) {
+			max17050_set_parameter_by_temp(client, true);
+			max17050_data->is_low_temp = true;
+		} else if (max17050_data->is_low_temp &&
+				temp >= max17050_data->temp_low2normal_thr) {
+			max17050_set_parameter_by_temp(client, false);
+			max17050_data->is_low_temp = false;
+		}
+	}
+
 	return 0;
 error:
 	dev_err(&client->dev, "%s: temperature reading fail, err %d\n"
@@ -643,11 +709,167 @@ static int max17050_get_property(struct power_supply *psy,
 	return ret;
 }
 
+static struct flounder_battery_platform_data
+		*flounder_battery_dt_parse(struct i2c_client *client)
+{
+	struct device_node *np = client->dev.of_node;
+	struct flounder_battery_platform_data *pdata;
+	struct device_node *map_node;
+	struct device_node *child;
+	int params_num = 0;
+	int ret;
+	u32 pval;
+	u32 id_range[FLOUNDER_BATTERY_ID_RANGE_SIZE];
+	u32 params[FLOUNDER_BATTERY_PARAMS_SIZE];
+	struct flounder_battery_adjust_by_id *param;
+
+	pdata = devm_kzalloc(&client->dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata)
+		return ERR_PTR(-ENOMEM);
+
+	pdata->batt_id_channel_name =
+		of_get_property(np, "battery-id-channel-name", NULL);
+
+	map_node = of_get_child_by_name(np, "param_adjust_map_by_id");
+	if (!map_node) {
+		dev_warn(&client->dev,
+				"parameter adjust map table not found\n");
+		goto done;
+	}
+
+	for_each_child_of_node(map_node, child) {
+		param = &pdata->batt_params[params_num];
+
+		ret = of_property_read_u32(child, "id-number", &pval);
+		if (!ret)
+			param->id = pval;
+
+		ret = of_property_read_u32_array(child, "id-range", id_range,
+					FLOUNDER_BATTERY_ID_RANGE_SIZE);
+		if (!ret)
+			memcpy(param->id_range, id_range,
+					sizeof(params) *
+					FLOUNDER_BATTERY_ID_RANGE_SIZE);
+
+		ret = of_property_read_u32(child,
+					"temperature-normal-to-low-threshold",
+					&pval);
+		if (!ret)
+			param->temp_normal2low_thr = pval;
+
+		ret = of_property_read_u32(child,
+					"temperature-low-to-normal-threshold",
+					&pval);
+		if (!ret)
+			param->temp_low2normal_thr = pval;
+
+		ret = of_property_read_u32_array(child,
+					"temperature-normal-parameters",
+					params,
+					FLOUNDER_BATTERY_PARAMS_SIZE);
+		if (!ret)
+			memcpy(param->temp_normal_params, params,
+					sizeof(params) *
+					FLOUNDER_BATTERY_PARAMS_SIZE);
+
+		ret = of_property_read_u32_array(child,
+					"temperature-low-parameters",
+					params,
+					FLOUNDER_BATTERY_PARAMS_SIZE);
+		if (!ret)
+			memcpy(param->temp_low_params, params,
+					sizeof(params) *
+					FLOUNDER_BATTERY_PARAMS_SIZE);
+
+		if (++params_num >= FLOUNDER_BATTERY_ID_MAX)
+			break;
+	}
+
+done:
+	pdata->batt_params_num = params_num;
+	return pdata;
+}
+
+static int flounder_battery_id_check(
+		struct flounder_battery_platform_data *pdata,
+		struct max17050_chip *data)
+{
+	int batt_id = 0;
+	struct iio_channel *batt_id_channel;
+	int ret;
+	int i;
+
+	if (!pdata->batt_id_channel_name || pdata->batt_params_num == 0)
+		return -EINVAL;
+
+	batt_id_channel = iio_channel_get(NULL, pdata->batt_id_channel_name);
+	if (IS_ERR(batt_id_channel)) {
+		dev_err(data->dev,
+				"Failed to get iio channel %s, %ld\n",
+				pdata->batt_id_channel_name,
+				PTR_ERR(batt_id_channel));
+		return -EINVAL;
+	}
+
+	ret = iio_read_channel_processed(batt_id_channel, &batt_id);
+	if (ret < 0)
+		ret = iio_read_channel_raw(batt_id_channel, &batt_id);
+
+	if (ret < 0) {
+		dev_err(data->dev,
+				"Failed to read batt id, ret=%d\n",
+				ret);
+		return -EFAULT;
+	}
+
+	dev_dbg(data->dev, "Battery id adc value is %d\n", batt_id);
+
+	for (i = 0; i < pdata->batt_params_num; i++) {
+		if (batt_id >= pdata->batt_params[i].id_range[0] &&
+				batt_id <= pdata->batt_params[i].id_range[1]) {
+			data->temp_normal2low_thr =
+				pdata->batt_params[i].temp_normal2low_thr;
+			data->temp_low2normal_thr =
+				pdata->batt_params[i].temp_low2normal_thr;
+			memcpy(data->temp_normal_params,
+				pdata->batt_params[i].temp_normal_params,
+				sizeof(data->temp_normal_params) *
+				FLOUNDER_BATTERY_PARAMS_SIZE);
+			memcpy(data->temp_low_params,
+				pdata->batt_params[i].temp_low_params,
+				sizeof(data->temp_low_params) *
+				FLOUNDER_BATTERY_PARAMS_SIZE);
+
+			data->adjust_present = true;
+			max17050_set_parameter_by_temp(data->client, false);
+			data->is_low_temp = false;
+			return 0;
+		}
+	}
+
+	return -ENODATA;
+}
+
 static int max17050_probe(struct i2c_client *client,
 			const struct i2c_device_id *id)
 {
 	struct max17050_chip *chip;
+	struct flounder_battery_platform_data *pdata = NULL;
 	int ret;
+	bool ignore_param_adjust = false;
+
+	if (client->dev.platform_data)
+		pdata = client->dev.platform_data;
+
+	if (!pdata && client->dev.of_node) {
+		pdata = flounder_battery_dt_parse(client);
+		if (IS_ERR(pdata)) {
+			ret = PTR_ERR(pdata);
+			dev_err(&client->dev, "Parsing of node failed, %d\n",
+				ret);
+			ignore_param_adjust = true;
+		}
+	}
 
 	chip = devm_kzalloc(&client->dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -657,6 +879,10 @@ static int max17050_probe(struct i2c_client *client,
 	mutex_init(&chip->mutex);
 	chip->shutdown_complete = 0;
 	i2c_set_clientdata(client, chip);
+
+	if (!ignore_param_adjust)
+		flounder_battery_id_check(pdata, chip);
+
 	max17050_data = chip;
 
 	chip->battery.name		= "battery";

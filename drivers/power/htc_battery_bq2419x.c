@@ -729,6 +729,7 @@ static int __htc_battery_bq2419x_set_charging_current(
 	}
 
 	battery_charging_status_update(data->bc_dev, data->chg_status);
+	power_supply_changed(&data->charger);
 
 	if (data->disable_suspend_during_charging && !data->battery_unknown) {
 		if (data->cable_connected &&
@@ -867,6 +868,7 @@ void htc_battery_bq2419x_notify(enum htc_battery_bq2419x_notify_event event)
 						htc_battery_data->bc_dev);
 			battery_charging_status_update(htc_battery_data->bc_dev,
 						htc_battery_data->chg_status);
+			power_supply_changed(&htc_battery_data->charger);
 
 			if (htc_battery_data->disable_suspend_during_charging
 					&& htc_battery_data->cable_connected
@@ -1084,12 +1086,14 @@ static int htc_battery_bq2419x_charger_charging_full_configure(
 				data->chg_status = BATTERY_CHARGING_DONE;
 				battery_charging_status_update(data->bc_dev,
 						data->chg_status);
+				power_supply_changed(&data->charger);
 			} else
 				dev_info(data->dev, "OTP charging completed\n");
 		} else {
 			data->chg_status = BATTERY_CHARGING;
 			battery_charging_status_update(data->bc_dev,
 					data->chg_status);
+			power_supply_changed(&data->charger);
 		}
 	}
 
@@ -1249,6 +1253,7 @@ static int htc_battery_bq2419x_unknown_battery_handle(
 	battery_charger_batt_status_stop_monitoring(data->bc_dev);
 
 	battery_charging_status_update(data->bc_dev, data->chg_status);
+	power_supply_changed(&data->charger);
 
 	if (data->disable_suspend_during_charging
 			&& data->cable_connected

@@ -37,6 +37,7 @@
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/tegra-soc.h>
+#include <linux/se_access.h>
 #include <crypto/scatterwalk.h>
 #include <crypto/algapi.h>
 #include <crypto/aes.h>
@@ -45,28 +46,13 @@
 #include <crypto/sha.h>
 #include <linux/pm_runtime.h>
 #include <linux/tegra_pm_domains.h>
+#include <linux/device.h>
 
 #include "tegra-se.h"
 
 #define DRIVER_NAME	"tegra-se"
 
 static struct device *save_se_device;
-
-/* Security Engine operation modes */
-enum tegra_se_aes_op_mode {
-	SE_AES_OP_MODE_CBC,	/* Cipher Block Chaining (CBC) mode */
-	SE_AES_OP_MODE_ECB,	/* Electronic Codebook (ECB) mode */
-	SE_AES_OP_MODE_CTR,	/* Counter (CTR) mode */
-	SE_AES_OP_MODE_OFB,	/* Output feedback (CFB) mode */
-	SE_AES_OP_MODE_RNG_X931,	/* Random number generator (RNG) mode */
-	SE_AES_OP_MODE_RNG_DRBG,	/* Deterministic Random Bit Generator */
-	SE_AES_OP_MODE_CMAC,	/* Cipher-based MAC (CMAC) mode */
-	SE_AES_OP_MODE_SHA1,	/* Secure Hash Algorithm-1 (SHA1) mode */
-	SE_AES_OP_MODE_SHA224,	/* Secure Hash Algorithm-224  (SHA224) mode */
-	SE_AES_OP_MODE_SHA256,	/* Secure Hash Algorithm-256  (SHA256) mode */
-	SE_AES_OP_MODE_SHA384,	/* Secure Hash Algorithm-384  (SHA384) mode */
-	SE_AES_OP_MODE_SHA512	/* Secure Hash Algorithm-512  (SHA512) mode */
-};
 
 /* Security Engine key table type */
 enum tegra_se_key_table_type {
@@ -120,6 +106,7 @@ struct tegra_se_dev {
 	bool work_q_busy;	/* Work queue busy status */
 	bool polling;
 	struct tegra_se_chipdata *chipdata; /* chip specific data */
+	struct wakeup_source ws;
 };
 
 static struct tegra_se_dev *sg_tegra_se_dev;
@@ -295,9 +282,8 @@ static int tegra_init_key_slot(struct tegra_se_dev *se_dev)
 	return 0;
 }
 
-static void tegra_se_key_read_disable(u8 slot_num)
+static void tegra_se_key_read_disable(struct tegra_se_dev *se_dev, u8 slot_num)
 {
-	struct tegra_se_dev *se_dev = sg_tegra_se_dev;
 	u32 val;
 
 	val = se_readl(se_dev,
@@ -307,16 +293,15 @@ static void tegra_se_key_read_disable(u8 slot_num)
 		val, (SE_KEY_TABLE_ACCESS_REG_OFFSET + (slot_num * 4)));
 }
 
-static void tegra_se_key_read_disable_all(void)
+static void tegra_se_key_read_disable_all(struct tegra_se_dev *se_dev)
 {
-	struct tegra_se_dev *se_dev = sg_tegra_se_dev;
 	u8 slot_num;
 
 	mutex_lock(&se_hw_lock);
 	pm_runtime_get_sync(se_dev->dev);
 
 	for (slot_num = 0; slot_num < TEGRA_SE_KEYSLOT_COUNT; slot_num++)
-		tegra_se_key_read_disable(slot_num);
+		tegra_se_key_read_disable(se_dev, slot_num);
 
 	pm_runtime_put(se_dev->dev);
 	mutex_unlock(&se_hw_lock);
@@ -2751,10 +2736,9 @@ static int tegra_se_probe(struct platform_device *pdev)
 		goto clean;
 	}
 
-	sg_tegra_se_dev = se_dev;
 	tegra_pd_add_device(se_dev->dev);
 	pm_runtime_enable(se_dev->dev);
-	tegra_se_key_read_disable_all();
+	tegra_se_key_read_disable_all(se_dev);
 
 	err = request_irq(se_dev->irq, tegra_se_irq, IRQF_DISABLED,
 			DRIVER_NAME, se_dev);
@@ -2818,6 +2802,11 @@ static int tegra_se_probe(struct platform_device *pdev)
 		}
 	}
 
+	mutex_lock(&se_hw_lock);
+	wakeup_source_init(&se_dev->ws, "tegra-se");
+	sg_tegra_se_dev = se_dev;
+	mutex_unlock(&se_hw_lock);
+
 	dev_info(se_dev->dev, "%s: complete", __func__);
 	return 0;
 
@@ -2845,7 +2834,6 @@ err_pmc:
 fail:
 	platform_set_drvdata(pdev, NULL);
 	kfree(se_dev);
-	sg_tegra_se_dev = NULL;
 
 	return err;
 }
@@ -2885,8 +2873,13 @@ static int tegra_se_remove(struct platform_device *pdev)
 	}
 	iounmap(se_dev->io_reg);
 	iounmap(se_dev->pmc_io_reg);
-	kfree(se_dev);
+
+	mutex_lock(&se_hw_lock);
+	wakeup_source_trash(&se_dev->ws);
 	sg_tegra_se_dev = NULL;
+	mutex_unlock(&se_hw_lock);
+
+	kfree(se_dev);
 
 	return 0;
 }
@@ -3345,6 +3338,12 @@ int se_suspend(struct device *dev, bool polling)
 	if (!se_dev)
 		return -ENODEV;
 
+	err = mutex_trylock(&se_hw_lock);
+	if (!err)
+		return -EBUSY;
+
+	mutex_unlock(&se_hw_lock);
+
 	save_se_device = dev;
 
 	se_dev->polling = polling;
@@ -3475,7 +3474,7 @@ static int tegra_se_suspend(struct device *dev)
 
 static int tegra_se_resume(struct device *dev)
 {
-	struct tegra_se_dev *se_dev = sg_tegra_se_dev;
+	struct tegra_se_dev *se_dev = dev_get_drvdata(dev);
 
 	/* pair with tegra_se_suspend, no need to actually enable clock */
 	pm_runtime_get_noresume(dev);
@@ -3503,19 +3502,21 @@ static int tegra_se_resume(struct device *dev)
 #if defined(CONFIG_PM_RUNTIME)
 static int tegra_se_runtime_suspend(struct device *dev)
 {
+	struct tegra_se_dev *se_dev = dev_get_drvdata(dev);
 	/*
 	 * do a dummy read, to avoid scenarios where you have unposted writes
 	 * still on the bus, before disabling clocks
 	 */
-	se_readl(sg_tegra_se_dev, SE_CONFIG_REG_OFFSET);
+	se_readl(se_dev, SE_CONFIG_REG_OFFSET);
 
-	clk_disable_unprepare(sg_tegra_se_dev->pclk);
+	clk_disable_unprepare(se_dev->pclk);
 	return 0;
 }
 
 static int tegra_se_runtime_resume(struct device *dev)
 {
-	clk_prepare_enable(sg_tegra_se_dev->pclk);
+	struct tegra_se_dev *se_dev = dev_get_drvdata(dev);
+	clk_prepare_enable(se_dev->pclk);
 	return 0;
 }
 
@@ -3568,23 +3569,64 @@ static void __exit tegra_se_module_exit(void)
 	platform_driver_unregister(&tegra_se_driver);
 }
 
-void tegra_se_acquire(void)
+int tegra_se_acquire(enum tegra_se_aes_op_mode mode)
 {
+	int ret = 0;
+	unsigned long freq = 0;
+
+
+	if (mode == SE_AES_OP_MODE_RNG_DRBG) {
+		freq = sg_tegra_se_dev->chipdata->rng_freq;
+	} else {
+		dev_err(sg_tegra_se_dev->dev, "Unknown mode.\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&se_hw_lock);
 
-	BUG_ON(!sg_tegra_se_dev->pclk);
+	if (!sg_tegra_se_dev) {
+		ret = -ENODEV;
+		goto err_nodev;
+	}
 
-	clk_prepare_enable(sg_tegra_se_dev->pclk);
+	/* Prevent device entering suspend */
+	__pm_stay_awake(&sg_tegra_se_dev->ws);
+
+	/* Set SE clk freq and enable clk */
+	BUG_ON(!sg_tegra_se_dev->pclk);
+	ret = clk_set_rate(sg_tegra_se_dev->pclk, freq);
+	if (ret) {
+		dev_err(sg_tegra_se_dev->dev, "clk_set_rate failed.\n");
+		goto err_clk;
+	}
+
+	ret = clk_prepare_enable(sg_tegra_se_dev->pclk);
+	if (ret) {
+		dev_err(sg_tegra_se_dev->dev, "clk_prepare_enable failed.\n");
+		goto err_clk;
+	}
+
+	return 0;
+
+err_clk:
+	__pm_relax(&sg_tegra_se_dev->ws);
+err_nodev:
+	mutex_unlock(&se_hw_lock);
+	return ret;
 }
 EXPORT_SYMBOL(tegra_se_acquire);
 
-void tegra_se_release(void)
+int tegra_se_release(void)
 {
-	BUG_ON(!sg_tegra_se_dev->pclk);
+	if (!sg_tegra_se_dev || !sg_tegra_se_dev->pclk)
+		return -ENODEV;
 
 	clk_disable_unprepare(sg_tegra_se_dev->pclk);
 
+	__pm_relax(&sg_tegra_se_dev->ws);
 	mutex_unlock(&se_hw_lock);
+
+	return 0;
 }
 EXPORT_SYMBOL(tegra_se_release);
 

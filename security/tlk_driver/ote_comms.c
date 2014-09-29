@@ -33,6 +33,7 @@
 #include <linux/trusty/trusty.h>
 #endif
 #include <linux/completion.h>
+#include <linux/se_access.h>
 #include <asm/smp_plat.h>
 
 #include "ote_protocol.h"
@@ -79,9 +80,55 @@ err_pin_pages:
 	return ret;
 }
 
+#ifdef CONFIG_TRUSTY
+static void te_unpin_user_pages(struct page **pages,
+				unsigned long nrpages)
+{
+	unsigned long i;
+
+	for (i = 0; i < nrpages; i++)
+		put_page(pages[i]);
+}
+
+static int te_prep_page_list(unsigned long start,
+			     unsigned long nrpages,
+			     struct page **pages,
+			     struct tlk_context *context)
+{
+	size_t cb;
+	unsigned long i;
+	struct te_oper_param_page_info *pg_inf;
+	struct tlk_device *dev = context->dev;
+
+	BUG_ON(!dev->param_pages);
+
+	/* check if we have enough room to fit this buffer */
+	cb = nrpages * sizeof(struct te_oper_param_page_info);
+	if ((dev->param_pages_tail + cb) > dev->param_pages_size) {
+		pr_err("%s: no space to build page list\n", __func__);
+		return OTE_ERROR_EXCESS_DATA;
+	}
+
+	pg_inf = (struct te_oper_param_page_info *)
+			((uintptr_t)dev->param_pages + dev->param_pages_tail);
+	for (i = 0; i < nrpages; i++, pg_inf++, start += PAGE_SIZE) {
+		if (te_fill_page_info(pg_inf, start, pages[i])) {
+			pr_err("%s: failed to fill page info for addr 0x%p\n",
+			       __func__, (void *)start);
+			return OTE_ERROR_ACCESS_DENIED;
+		}
+	}
+
+	dev->param_pages_tail += (uint32_t)cb;
+
+	return OTE_SUCCESS;
+}
+#endif
+
 static int te_prep_mem_buffer(uint32_t session_id,
 		void *buffer, size_t size, uint32_t buf_type,
-		struct tlk_context *context)
+		struct tlk_context *context,
+		bool need_page_list)
 {
 	struct te_shmem_desc *shmem_desc = NULL;
 	int ret = 0;
@@ -100,12 +147,27 @@ static int te_prep_mem_buffer(uint32_t session_id,
 	}
 
 	/* pin pages */
-	if (te_pin_user_pages(buffer, size, shmem_desc->pages,
-			      nrpages, buf_type) != OTE_SUCCESS) {
-		pr_err("%s: te_pin_user_pages failed\n", __func__);
-		ret = OTE_ERROR_OUT_OF_MEMORY;
+	ret = te_pin_user_pages(buffer, size, shmem_desc->pages,
+			      nrpages, buf_type);
+	if (ret != OTE_SUCCESS) {
+		pr_err("%s: te_pin_user_pages failed (%d)\n",
+		       __func__, ret);
 		goto err_pin_pages;
 	}
+
+#ifdef CONFIG_TRUSTY
+	if (need_page_list) {
+		/* build page list */
+		ret = te_prep_page_list((unsigned long)buffer, nrpages,
+					shmem_desc->pages,
+					context);
+		if (ret != OTE_SUCCESS) {
+			pr_err("%s: te_prep_page_list failed (%d)\n",
+			       __func__, ret);
+			goto err_build_page_list;
+		}
+	}
+#endif
 
 	/* initialize rest of shmem descriptor */
 	INIT_LIST_HEAD(&(shmem_desc->list));
@@ -124,9 +186,12 @@ static int te_prep_mem_buffer(uint32_t session_id,
 
 	return OTE_SUCCESS;
 
+#ifdef CONFIG_TRUSTY
+err_build_page_list:
+	te_unpin_user_pages(shmem_desc->pages, nrpages);
+#endif
 err_pin_pages:
 	kfree(shmem_desc);
-	ret = OTE_ERROR_BAD_PARAMETERS;
 err_shmem:
 	return ret;
 }
@@ -152,7 +217,8 @@ static int te_prep_mem_buffers(struct te_request *request,
 				params[i].u.Mem.base,
 				params[i].u.Mem.len,
 				params[i].type,
-				context);
+				context,
+				false);
 			if (ret < 0) {
 				pr_err("%s failed with err (%d)\n",
 					__func__, ret);
@@ -175,7 +241,10 @@ static int te_prep_mem_buffers_compat(struct te_request_compat *request,
 	uint32_t i;
 	int ret = OTE_SUCCESS;
 	struct te_oper_param_compat *params;
-	bool write = true;
+	struct te_oper_param_page_info *pages = context->dev->param_pages;
+
+	/* reset page_info allocator */
+	context->dev->param_pages_tail = 0;
 
 	params = (struct te_oper_param_compat *)(uintptr_t)request->params;
 	for (i = 0; i < request->params_size; i++) {
@@ -185,7 +254,6 @@ static int te_prep_mem_buffers_compat(struct te_request_compat *request,
 		case TE_PARAM_TYPE_INT_RW:
 			break;
 		case TE_PARAM_TYPE_MEM_RO:
-			write = false;
 		case TE_PARAM_TYPE_MEM_RW:
 		case TE_PARAM_TYPE_PERSIST_MEM_RO:
 		case TE_PARAM_TYPE_PERSIST_MEM_RW:
@@ -193,7 +261,8 @@ static int te_prep_mem_buffers_compat(struct te_request_compat *request,
 				(void *)(uintptr_t)params[i].u.Mem.base,
 				params[i].u.Mem.len,
 				params[i].type,
-				context);
+				context,
+				pages != NULL);
 			if (ret < 0) {
 				pr_err("%s failed with err (%d)\n",
 					__func__, ret);
@@ -277,7 +346,8 @@ static inline void restore_cpumask(void) {};
 #endif
 
 uint32_t tlk_generic_smc(struct tlk_info *info,
-			 uint32_t arg0, uintptr_t arg1, uintptr_t arg2)
+			 uint32_t arg0, uintptr_t arg1, uintptr_t arg2,
+			 uintptr_t arg3)
 {
 	uint32_t retval;
 
@@ -297,7 +367,8 @@ uint32_t tlk_generic_smc(struct tlk_info *info,
 
 	restore_cpumask();
 #else
-	retval = trusty_std_call32(tlk_info->trusty_dev, arg0, arg1, arg2, 0);
+	retval = trusty_std_call32(tlk_info->trusty_dev,
+					arg0, arg1, arg2, arg3);
 #endif
 
 	/* Print TLK logs if any */
@@ -347,7 +418,7 @@ static void do_smc(struct te_request *request, struct tlk_device *dev)
 			smc_params = (uint32_t)virt_to_phys(request->params);
 	}
 
-	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params);
+	tlk_generic_smc(tlk_info, request->type, smc_args, smc_params, 0);
 }
 
 #ifdef CONFIG_TRUSTY
@@ -377,11 +448,42 @@ static uint32_t ote_ns_cb_retry(void)
 	return OTE_SUCCESS;
 }
 
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
+static uint32_t errno_to_ote_err(int err)
+{
+	switch (err) {
+	case 0:
+		return OTE_SUCCESS;
+	case -EINVAL:
+		return OTE_ERROR_BAD_PARAMETERS;
+	case -EBUSY:
+		return OTE_ERROR_BUSY;
+	default:
+		return OTE_ERROR_BAD_STATE;
+	}
+}
+
+static uint32_t ote_ns_cb_se_acquire(void)
+{
+	int err = tegra_se_acquire(SE_AES_OP_MODE_RNG_DRBG);
+	return errno_to_ote_err(err);
+}
+
+static uint32_t ote_ns_cb_se_release(void)
+{
+	int err = tegra_se_release();
+	return errno_to_ote_err(err);
+}
+#endif
+
 typedef uint32_t (*ote_ns_cb_t)(void);
 
 ote_ns_cb_t cb_table[] = {
 	[OTE_NS_CB_RETRY] = ote_ns_cb_retry,
-
+#if defined(CONFIG_CRYPTO_DEV_TEGRA_SE)
+	[OTE_NS_CB_SE_ACQUIRE] = ote_ns_cb_se_acquire,
+	[OTE_NS_CB_SE_RELEASE] = ote_ns_cb_se_release,
+#endif
 	[OTE_NS_CB_SS] = tlk_ss_op,
 };
 
@@ -393,6 +495,7 @@ static void do_smc_compat(struct te_request_compat *request,
 {
 	uint32_t smc_args;
 	uint32_t smc_params = 0;
+	uint32_t smc_pages = 0;
 	uint32_t smc_nr = request->type;
 	uint32_t cb_code;
 
@@ -412,10 +515,13 @@ static void do_smc_compat(struct te_request_compat *request,
 	}
 
 #ifdef CONFIG_TRUSTY
+	smc_pages = (uint32_t)dev->param_pages_phys;
+
 	while (true) {
 		INIT_COMPLETION(tlk_info->smc_retry);
 		atomic_set(&tlk_info->smc_count, 2);
-		tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+		tlk_generic_smc(tlk_info, smc_nr,
+				smc_args, smc_params, smc_pages);
 		if ((request->result & OTE_ERROR_NS_CB_MASK) != OTE_ERROR_NS_CB)
 			break;
 
@@ -430,7 +536,7 @@ static void do_smc_compat(struct te_request_compat *request,
 		smc_nr = TE_SMC_NS_CB_COMPLETE;
 	}
 #else
-	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params);
+	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params, smc_pages);
 #endif
 }
 
@@ -449,9 +555,10 @@ static long tlk_generic_smc_on_cpu0(void *args)
 	BUG_ON(cpu != 0);
 
 	work = (struct tlk_smc_work_args *)args;
-	retval = tlk_generic_smc(tlk_info, work->arg0, work->arg1, work->arg2);
+	retval = tlk_generic_smc(tlk_info,
+				work->arg0, work->arg1, work->arg2, 0);
 	while (retval == 0xFFFFFFFD)
-		retval = tlk_generic_smc(tlk_info, (60 << 24), 0, 0);
+		retval = tlk_generic_smc(tlk_info, (60 << 24), 0, 0, 0);
 	return retval;
 }
 
@@ -491,7 +598,7 @@ int te_set_vpr_params(void *vpr_base, size_t vpr_size)
 					tlk_generic_smc_on_cpu0, &work_args);
 	} else {
 		retval = tlk_generic_smc(tlk_info, TE_SMC_PROGRAM_VPR,
-					(uintptr_t)vpr_base, vpr_size);
+					(uintptr_t)vpr_base, vpr_size, 0);
 	}
 
 	mutex_unlock(&smc_lock);
@@ -813,7 +920,7 @@ static void tlk_ote_init(struct tlk_info *info)
 static int __init tlk_register_irq_handler(void)
 {
 	tlk_generic_smc(tlk_info, TE_SMC_REGISTER_IRQ_HANDLER,
-		(uintptr_t)tlk_irq_handler, 0);
+		(uintptr_t)tlk_irq_handler, 0, 0);
 	tlk_ote_init(NULL);
 	return 0;
 }

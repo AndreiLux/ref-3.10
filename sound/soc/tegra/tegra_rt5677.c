@@ -28,6 +28,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/delay.h>
 #include <linux/pm_runtime.h>
+#include <linux/cpufreq.h>
 #include <mach/tegra_asoc_pdata.h>
 #include <mach/gpio-tegra.h>
 #include <linux/sysedp.h>
@@ -61,6 +62,9 @@
 #define DAI_LINK_FAST_FE	9
 #define NUM_DAI_LINKS		10
 
+#define HOTWORD_CPU_FREQ_BOOST_MIN 2000000
+#define HOTWORD_CPU_FREQ_BOOST_DURATION_MS 400
+
 const char *tegra_rt5677_i2s_dai_name[TEGRA30_NR_I2S_IFC] = {
 	"tegra30-i2s.0",
 	"tegra30-i2s.1",
@@ -75,12 +79,56 @@ static struct sysedp_consumer *sysedpc;
 void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop);
 void set_rt5677_power_locked(struct tegra_rt5677 *machine, bool enable, bool hp_depop);
 
+static int hotword_cpufreq_notifier(struct notifier_block* nb,
+				    unsigned long event, void* data)
+{
+	struct cpufreq_policy *policy = data;
+
+	if (policy == NULL || event != CPUFREQ_ADJUST)
+		return 0;
+
+	pr_debug("%s: adjusting cpu%d min freq to %d for hotword (currently "
+		 "at %d)\n", __func__, policy->cpu, HOTWORD_CPU_FREQ_BOOST_MIN,
+		 policy->cur);
+
+	/* Make sure that the policy makes sense overall. */
+	cpufreq_verify_within_limits(policy, HOTWORD_CPU_FREQ_BOOST_MIN,
+				     policy->cpuinfo.max_freq);
+	return 0;
+}
+
+static struct notifier_block hotword_cpufreq_notifier_block = {
+	.notifier_call = hotword_cpufreq_notifier
+};
+
 static void tegra_do_hotword_work(struct work_struct *work)
 {
 	struct tegra_rt5677 *machine = container_of(work, struct tegra_rt5677, hotword_work);
 	char *hot_event[] = { "ACTION=HOTWORD", NULL };
+	int ret, i;
+
+	/* Register a CPU policy change listener that will bump up the min
+	 * frequency while we're processing the hotword. */
+	ret = cpufreq_register_notifier(&hotword_cpufreq_notifier_block,
+					CPUFREQ_POLICY_NOTIFIER);
+	if (!ret) {
+		for_each_online_cpu(i)
+			cpufreq_update_policy(i);
+	}
 
 	kobject_uevent_env(&machine->pcard->dev->kobj, KOBJ_CHANGE, hot_event);
+
+	/* If we registered the notifier, we can wait the specified duration
+	 * before reseting the CPUs back to what they were. */
+	if (!ret) {
+		msleep(HOTWORD_CPU_FREQ_BOOST_DURATION_MS);
+		cpufreq_unregister_notifier(&hotword_cpufreq_notifier_block,
+					    CPUFREQ_POLICY_NOTIFIER);
+		for_each_online_cpu(i)
+			cpufreq_update_policy(i);
+	}
+
+	return;
 }
 
 static irqreturn_t detect_rt5677_irq_handler(int irq, void *dev_id)
@@ -533,7 +581,8 @@ static void tegra_rt5677_shutdown(struct snd_pcm_substream *substream)
 	if (machine->codec && machine->codec->active)
 		return;
 
-	__set_rt5677_power(machine, false, false);
+	schedule_delayed_work(&machine->power_work,
+			msecs_to_jiffies(500));
 }
 
 static int tegra_rt5677_hw_params(struct snd_pcm_substream *substream,
@@ -1359,13 +1408,13 @@ void mclk_enable(struct tegra_rt5677 *machine, bool on)
 {
 	struct tegra_asoc_platform_data *pdata = machine->pdata;
 	int ret;
-	if (on) {
+	if (on && !machine->clock_enabled) {
 		gpio_free(pdata->codec_mclk.id);
 		pr_debug("%s: gpio_free for gpio[%d] %s\n",
 				__func__, pdata->codec_mclk.id, pdata->codec_mclk.name);
 		machine->clock_enabled = 1;
 		tegra_asoc_utils_clk_enable(&machine->util_data);
-	} else {
+	} else if (!on && machine->clock_enabled){
 		machine->clock_enabled = 0;
 		tegra_asoc_utils_clk_disable(&machine->util_data);
 		ret = gpio_request(pdata->codec_mclk.id,
@@ -1476,16 +1525,6 @@ static int tegra_rt5677_set_bias_level_post(struct snd_soc_card *card,
 			goto exit;
 	}
 
-	if (machine->bias_level != SND_SOC_BIAS_OFF &&
-		level == SND_SOC_BIAS_OFF && machine->clock_enabled) {
-		mclk_enable(machine, 0);
-		if (rt5677)
-		{
-			if (rt5677->vad_mode != RT5677_VAD_IDLE) {
-				schedule_delayed_work(&machine->power_work, msecs_to_jiffies(1000));
-			}
-		}
-	}
 	machine->bias_level = level;
 exit:
 	mutex_unlock(&machine->rt5677_lock);
@@ -1522,7 +1561,10 @@ void __set_rt5677_power(struct tegra_rt5677 *machine, bool enable, bool hp_depop
 		if (hp_depop)
 			set_rt5506_hp_en(1);
 		pr_info("tegra_rt5677 power_on\n");
-
+		if (!machine->clock_enabled) {
+			pr_debug("%s: call mclk_enable(true)\n", __func__);
+			mclk_enable(machine, 1);
+		}
 		/*V_IO_1V8*/
 		if (gpio_is_valid(pdata->gpio_ldo1_en)) {
 			pr_debug("gpio_ldo1_en %d is valid\n", pdata->gpio_ldo1_en);
@@ -1666,10 +1708,7 @@ static void trgra_do_power_work(struct work_struct *work)
 	struct snd_soc_card *card = &snd_soc_tegra_rt5677;
 	struct tegra_rt5677 *machine = snd_soc_card_get_drvdata(card);
 	mutex_lock(&machine->rt5677_lock);
-	if (machine->clock_enabled == 1) {
-		pr_info("%s to close MCLK\n", __func__);
-		mclk_enable(machine, 0);
-	}
+	__set_rt5677_power(machine, false, false);
 	mutex_unlock(&machine->rt5677_lock);
 }
 
@@ -1809,15 +1848,13 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 	mutex_init(&machine->rt5677_lock);
 	mutex_init(&machine->spk_amp_lock);
 
-	set_rt5677_power_locked(machine, true, false);
-
-	usleep_range(500, 1500);
-
 	machine->clock_enabled = 1;
 	ret = tegra_asoc_utils_init(&machine->util_data, &pdev->dev, card);
 	if (ret)
 		goto err_free_machine;
+	usleep_range(500, 1500);
 
+	set_rt5677_power_locked(machine, true, false);
 	usleep_range(500, 1500);
 
 	if (gpio_is_valid(pdata->gpio_irq1)) {
@@ -1924,8 +1961,7 @@ static int tegra_rt5677_driver_probe(struct platform_device *pdev)
 		pr_info("%s to close MCLK\n", __func__);
 		mclk_enable(machine, 0);
 	}
-	schedule_delayed_work(&machine->power_work,
-		msecs_to_jiffies(1000));
+
 	machine->bias_level = SND_SOC_BIAS_OFF;
 
 	sysedpc = sysedp_create_consumer("speaker", "speaker");

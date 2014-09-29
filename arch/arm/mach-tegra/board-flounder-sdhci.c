@@ -376,7 +376,7 @@ struct cntry_locales_custom country_code_custom_table[] = {
 	{"PT", "PT", 4},
 	{"PY", "PY", 2},
 	{"RO", "RO", 4},
-	{"RU", "RU", 5},
+	{"RU", "RU", 13},
 	{"SE", "SE", 4},
 	{"SG", "SG", 4},
 	{"SI", "SI", 4},
@@ -394,11 +394,68 @@ struct cntry_locales_custom country_code_custom_table[] = {
 	{"MH", "XZ", 11},	/* Universal if Country code is MARSHALL ISLANDS */
 };
 
+struct cntry_locales_custom country_code_nodfs_table[] = {
+	{"",   "XZ", 40},  /* Universal if Country code is unknown or empty */
+	{"US", "US", 172},
+	{"AU", "AU", 37},
+	{"BR", "BR", 18},
+	{"CA", "US", 172},
+	{"CH", "E0", 26},
+	{"CY", "E0", 26},
+	{"CZ", "E0", 26},
+	{"DE", "E0", 26},
+	{"DK", "E0", 26},
+	{"EE", "E0", 26},
+	{"ES", "E0", 26},
+	{"EU", "E0", 26},
+	{"FI", "E0", 26},
+	{"FR", "E0", 26},
+	{"GB", "E0", 26},
+	{"GR", "E0", 26},
+	{"HK", "SG", 17},
+	{"HR", "E0", 26},
+	{"HU", "E0", 26},
+	{"IE", "E0", 26},
+	{"IN", "IN", 27},
+	{"IS", "E0", 26},
+	{"IT", "E0", 26},
+	{"JP", "JP", 83},
+	{"KR", "KR", 79},
+	{"KW", "KW", 5},
+	{"LI", "E0", 26},
+	{"LT", "E0", 26},
+	{"LU", "E0", 26},
+	{"LV", "LV", 4},
+	{"MA", "MA", 2},
+	{"MT", "E0", 26},
+	{"MY", "MY", 15},
+	{"MX", "US", 172},
+	{"NL", "E0", 26},
+	{"NO", "E0", 26},
+	{"PL", "E0", 26},
+	{"PT", "E0", 26},
+	{"RO", "E0", 26},
+	{"SE", "E0", 26},
+	{"SG", "SG", 17},
+	{"SI", "E0", 26},
+	{"SK", "E0", 26},
+	{"SZ", "E0", 26},
+	{"TH", "TH", 9},
+	{"TW", "TW", 60},
+};
+
 static void* flounder_wifi_get_country_code(char *country_iso_code, u32 flags)
 {
+	struct cntry_locales_custom *locales;
 	int size, i;
 
-	size = ARRAY_SIZE(country_code_custom_table);
+	if (flags & WLAN_PLAT_NODFS_FLAG) {
+		locales = country_code_nodfs_table;
+		size = ARRAY_SIZE(country_code_nodfs_table);
+	} else {
+		locales = country_code_custom_table;
+		size = ARRAY_SIZE(country_code_custom_table);
+	}
 
 	if (size == 0)
 		 return NULL;
@@ -407,11 +464,11 @@ static void* flounder_wifi_get_country_code(char *country_iso_code, u32 flags)
 		country_iso_code = flounder_country_code;
 
 	for (i = 0; i < size; i++) {
-		if (strcmp(country_iso_code, country_code_custom_table[i].iso_abbrev) == 0)
-			return &country_code_custom_table[i];
+		if (strcmp(country_iso_code, locales[i].iso_abbrev) == 0)
+			return &locales[i];
 	}
 	/* if no country code matched return first universal code */
-	return &country_code_custom_table[0];
+	return &locales[0];
 }
 
 static int __init flounder_wifi_init(void)
