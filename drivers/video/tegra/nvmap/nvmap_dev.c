@@ -522,7 +522,7 @@ static long nvmap_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 
 	case NVMAP_IOC_FROM_ID:
 	case NVMAP_IOC_GET_ID:
-		BUG();
+		pr_warn_once("nvmap: unsupported FROM_ID/GET_ID IOCTLs used.\n");
 		return -ENOTTY;
 
 	case NVMAP_IOC_GET_FD:
