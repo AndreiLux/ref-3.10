@@ -138,7 +138,8 @@ int ctrl_bridge_set_cbits(unsigned int id, unsigned int cbits)
 }
 EXPORT_SYMBOL(ctrl_bridge_set_cbits);
 
-static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags)
+static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags,
+				bool resubmit_inturb)
 {
 	int	retval = 0;
 	unsigned long flags;
@@ -148,11 +149,20 @@ static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags)
 		return -ENODEV;
 	}
 
-	retval = usb_submit_urb(dev->inturb, gfp_flags);
-	if (retval < 0 && retval != -EPERM) {
-		dev_err(&dev->intf->dev,
-			"%s error submitting int urb %d\n",
-			__func__, retval);
+	/* FIXME: Add a workaround to prevent inturb from being submitted more than once */
+	if(!atomic_read(&dev->inturb->use_count) || resubmit_inturb)
+	{
+		retval = usb_submit_urb(dev->inturb, gfp_flags);
+		if (retval < 0 && retval != -EPERM) {
+			dev_err(&dev->intf->dev,
+				"%s error submitting int urb %d\n",
+				__func__, retval);
+		}
+	}
+	else
+	{
+		printk("===START TO DUMP STACK===\n");
+		dump_stack();
 	}
 
 	spin_lock_irqsave(&dev->lock, flags);
@@ -202,7 +212,7 @@ static void resp_avail_cb(struct urb *urb)
 
 	if (resubmit_urb) {
 		/*re- submit int urb to check response available*/
-		ctrl_bridge_start_read(dev, GFP_ATOMIC);
+		ctrl_bridge_start_read(dev, GFP_ATOMIC, false);
 	} else {
 		spin_lock_irqsave(&dev->lock, flags);
 		dev->rx_state = RX_IDLE;
@@ -297,7 +307,7 @@ static void notification_available_cb(struct urb *urb)
 	}
 
 resubmit_int_urb:
-	ctrl_bridge_start_read(dev, GFP_ATOMIC);
+	ctrl_bridge_start_read(dev, GFP_ATOMIC, true);
 }
 
 int ctrl_bridge_open(struct bridge *brdg)
@@ -510,7 +520,7 @@ int ctrl_bridge_suspend(unsigned int id)
 	}
 	if (!usb_anchor_empty(&dev->tx_submitted)) {
 		spin_unlock_irqrestore(&dev->lock, flags);
-		ctrl_bridge_start_read(dev, GFP_KERNEL);
+		ctrl_bridge_start_read(dev, GFP_KERNEL, false);
 		return -EBUSY;
 	}
 	set_bit(SUSPENDED, &dev->flags);
@@ -561,7 +571,7 @@ int ctrl_bridge_resume(unsigned int id)
 	clear_bit(SUSPENDED, &dev->flags);
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	return ctrl_bridge_start_read(dev, GFP_KERNEL);
+	return ctrl_bridge_start_read(dev, GFP_KERNEL, false);
 }
 
 #if defined(CONFIG_DEBUG_FS)
@@ -763,7 +773,7 @@ ctrl_bridge_probe(struct usb_interface *ifc, struct usb_host_endpoint *int_in,
 		goto free_ctrlreq;
 	}
 
-	retval = ctrl_bridge_start_read(dev, GFP_KERNEL);
+	retval = ctrl_bridge_start_read(dev, GFP_KERNEL, false);
 	if (retval) {
 		dev_err(&ifc->dev, "%s:fail to start reading\n", __func__);
 		goto pdev_del;
