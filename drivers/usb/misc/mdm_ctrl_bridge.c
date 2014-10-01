@@ -148,20 +148,11 @@ static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags)
 		return -ENODEV;
 	}
 
-	/* FIXME: Add a workaround to prevent inturb from being submitted more than once */
-	if(atomic_read(&dev->inturb->use_count) == 0)
-	{
-		retval = usb_submit_urb(dev->inturb, gfp_flags);
-		if (retval < 0 && retval != -EPERM) {
-			dev_err(&dev->intf->dev,
-				"%s error submitting int urb %d\n",
-				__func__, retval);
-		}
-	}
-	else
-	{
-		printk("===START TO DUMP STACK===\n");
-		dump_stack();
+	retval = usb_submit_urb(dev->inturb, gfp_flags);
+	if (retval < 0 && retval != -EPERM) {
+		dev_err(&dev->intf->dev,
+			"%s error submitting int urb %d\n",
+			__func__, retval);
 	}
 
 	printk("inturb submitted\n");
