@@ -155,8 +155,6 @@ static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags)
 			__func__, retval);
 	}
 
-	printk("inturb submitted\n");
-	dump_stack();
 	spin_lock_irqsave(&dev->lock, flags);
 	if (retval)
 		dev->rx_state = RX_IDLE;
@@ -225,19 +223,12 @@ static void notification_available_cb(struct urb *urb)
 	unsigned long			flags;
 
 	/*usb device disconnect*/
-
-
-	printk("%s start\n", __func__);
-	if (urb->dev->state == USB_STATE_NOTATTACHED) {
-                printk("%s %d  end\n", __func__, __LINE__);
+	if (urb->dev->state == USB_STATE_NOTATTACHED)
 		return;
-	}
 
 	spin_lock_irqsave(&dev->lock, flags);
 	dev->rx_state = RX_IDLE;
 	spin_unlock_irqrestore(&dev->lock, flags);
-
-	printk("%s %d  \n", __func__, __LINE__);
 
 	switch (urb->status) {
 	case 0:
@@ -248,7 +239,6 @@ static void notification_available_cb(struct urb *urb)
 	case -ECONNRESET:
 	case -EPROTO:
 		 /* unplug */
-		printk("%s %d  end\n", __func__, __LINE__);
 		 return;
 	case -EPIPE:
 		dev_err(&dev->intf->dev,
@@ -266,7 +256,6 @@ static void notification_available_cb(struct urb *urb)
 
 	switch (ctrl->bNotificationType) {
 	case USB_CDC_NOTIFY_RESPONSE_AVAILABLE:
-		printk("%s %d  \n", __func__, __LINE__);
 		spin_lock_irqsave(&dev->lock, flags);
 		dev->rx_state = RX_BUSY;
 		spin_unlock_irqrestore(&dev->lock, flags);
@@ -287,14 +276,12 @@ static void notification_available_cb(struct urb *urb)
 			usb_autopm_put_interface_async(dev->intf);
 			goto resubmit_int_urb;
 		}
-		printk("%s %d  end\n", __func__, __LINE__);
 		return;
 	case USB_CDC_NOTIFY_NETWORK_CONNECTION:
 		dev_dbg(&dev->intf->dev, "%s network\n", ctrl->wValue ?
 					"connected to" : "disconnected from");
 		break;
 	case USB_CDC_NOTIFY_SERIAL_STATE:
-		printk("%s %d  end\n", __func__, __LINE__);
 		dev->notify_ser_state++;
 		ctrl_bits = get_unaligned_le16(data);
 		dev_dbg(&dev->intf->dev, "serial state: %d\n", ctrl_bits);
@@ -311,7 +298,6 @@ static void notification_available_cb(struct urb *urb)
 
 resubmit_int_urb:
 	ctrl_bridge_start_read(dev, GFP_ATOMIC);
-                printk("%s %d  end\n", __func__, __LINE__);
 }
 
 int ctrl_bridge_open(struct bridge *brdg)
@@ -515,10 +501,7 @@ int ctrl_bridge_suspend(unsigned int id)
 	}
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	printk("start to kill urb\n");
-
 	usb_kill_urb(dev->inturb);
-	printk("urb killed\n");
 
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->rx_state != RX_IDLE) {
