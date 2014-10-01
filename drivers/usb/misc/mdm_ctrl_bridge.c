@@ -156,6 +156,7 @@ static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags)
 	}
 
 	printk("inturb submitted\n");
+	dump_stack();
 	spin_lock_irqsave(&dev->lock, flags);
 	if (retval)
 		dev->rx_state = RX_IDLE;
