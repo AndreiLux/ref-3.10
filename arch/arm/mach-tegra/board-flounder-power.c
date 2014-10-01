@@ -417,7 +417,7 @@ static struct soctherm_platform_data t132ref_v2_soctherm_data = {
 				},
 				{
 					.cdev_type = "cpu-balanced",
-					.trip_temp = 92000,
+					.trip_temp = 85000,
 					.trip_type = THERMAL_TRIP_PASSIVE,
 					.upper = THERMAL_NO_LIMIT,
 					.lower = THERMAL_NO_LIMIT,
