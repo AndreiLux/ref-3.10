@@ -544,10 +544,13 @@ int ctrl_bridge_resume(unsigned int id)
 		return -ENODEV;
 	if (!dev->int_pipe)
 		return 0;
-	if (!test_bit(SUSPENDED, &dev->flags))
-		return 0;
 
 	spin_lock_irqsave(&dev->lock, flags);
+	if (!test_bit(SUSPENDED, &dev->flags)) {
+		spin_unlock_irqrestore(&dev->lock, flags);
+		return 0;
+	}
+
 	/* submit pending write requests */
 	while ((urb = usb_get_from_anchor(&dev->tx_deferred))) {
 		spin_unlock_irqrestore(&dev->lock, flags);
