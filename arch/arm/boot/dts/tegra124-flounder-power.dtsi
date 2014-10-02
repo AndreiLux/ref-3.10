@@ -542,6 +542,9 @@ palmas: tps65913 {
 				ti,roof-floor = <3>;
 
 				consumers {
+                                      c1 {
+                                              regulator-consumer-supply = "pwrdet_hv";
+                                      };
 				};
 			};
 
