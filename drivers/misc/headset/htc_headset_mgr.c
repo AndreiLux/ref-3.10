@@ -122,7 +122,7 @@ int hs_hpin_stable(void)
 	return 1;
 }
 
-static int get_mic_state(void)
+int get_mic_state(void)
 {
 	HS_DBG();
 
@@ -138,6 +138,7 @@ static int get_mic_state(void)
 
 	return 0;
 }
+EXPORT_SYMBOL(get_mic_state);
 
 static void update_mic_status(int count)
 {
