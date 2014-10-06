@@ -369,7 +369,7 @@ int tegra12x_powergate_mc_flush(int id)
 
 	return 0;
 }
-
+static int count=0;
 int tegra12x_powergate_mc_flush_done(int id)
 {
 	u32 idx, rst_ctrl, rst_ctrl_reg;
@@ -391,10 +391,16 @@ int tegra12x_powergate_mc_flush_done(int id)
 
 		spin_lock_irqsave(&tegra12x_powergate_lock, flags);
 
-		rst_ctrl = mc_read(rst_ctrl_reg);
-		rst_ctrl &= ~(1 << mcClientBit);
-		mc_write(rst_ctrl, rst_ctrl_reg);
-		mc_read(rst_ctrl_reg);
+		if (id == TEGRA_POWERGATE_VENC && idx==2 && ++count==1){ // idx 2 = vi
+			pr_warn("Skip first mc flush-disabled operation on vi client  : %d \n", count);
+		}else{
+			rst_ctrl = mc_read(rst_ctrl_reg);
+			rst_ctrl &= ~(1 << mcClientBit);
+			mc_write(rst_ctrl, rst_ctrl_reg);
+			mc_read(rst_ctrl_reg);
+			if ( count > 10000 )
+				count = 2;
+		}
 
 		spin_unlock_irqrestore(&tegra12x_powergate_lock, flags);
 	}
