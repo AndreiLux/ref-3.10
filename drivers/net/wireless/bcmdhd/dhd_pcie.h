@@ -30,6 +30,9 @@
 
 #include <bcmpcie.h>
 #include <hnd_cons.h>
+#ifdef MSM_PCIE_LINKDOWN_RECOVERY
+#include <mach/msm_pcie.h>
+#endif /* MSM_PCIE_LINKDOWN_RECOVERY */
 
 /* defines */
 
@@ -157,6 +160,10 @@ typedef struct dhd_bus {
 	uint32 max_sub_queues;
 	bool	db1_for_mb;
 	bool	suspended;
+#ifdef MSM_PCIE_LINKDOWN_RECOVERY
+	struct msm_pcie_register_event pcie_event;
+	bool islinkdown;
+#endif /* MSM_PCIE_LINKDOWN_RECOVERY */
 } dhd_bus_t;
 
 /* function declarations */
@@ -179,6 +186,8 @@ extern int dhdpcie_start_host_pcieclock(dhd_bus_t *bus);
 extern int dhdpcie_stop_host_pcieclock(dhd_bus_t *bus);
 extern int dhdpcie_disable_device(dhd_bus_t *bus);
 extern int dhdpcie_enable_device(dhd_bus_t *bus);
-
+extern int dhdpcie_alloc_resource(dhd_bus_t *bus);
+extern void dhdpcie_free_resource(dhd_bus_t *bus);
+extern int dhdpcie_bus_request_irq(struct dhd_bus *bus);
 extern int dhd_buzzz_dump_dngl(dhd_bus_t *bus);
 #endif /* dhd_pcie_h */
