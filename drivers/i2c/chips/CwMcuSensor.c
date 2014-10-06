@@ -171,11 +171,13 @@ struct cwmcu_data {
 	int	IRQ;
 	struct delayed_work	work;
 	struct work_struct	one_shot_work;
+	/* Remember to add flag in cwmcu_resume() when add new flag */
 	bool w_activated_i2c;
 	bool w_re_init;
 	bool w_facedown_set;
 	bool w_flush_fifo;
 	bool w_clear_fifo;
+	bool w_clear_fifo_running;
 
 	bool suspended;
 	bool probe_success;
@@ -311,7 +313,14 @@ static int cw_send_event(struct cwmcu_data *mcu_data, u8 id, u16 *data,
 	    (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
 			   mcu_data->indio_dev->masklength))) {
 		mutex_lock(&mcu_data->mutex_lock);
-		iio_push_to_buffers(mcu_data->indio_dev, event);
+		if (!mcu_data->w_clear_fifo_running)
+			iio_push_to_buffers(mcu_data->indio_dev, event);
+		else {
+			D(
+			  "%s: Drop data(0, 1, 2, 3) = "
+			  "(0x%x, 0x%x, 0x%x, 0x%x)\n", __func__,
+			  data[0], data[1], data[2], data[3]);
+		}
 		mutex_unlock(&mcu_data->mutex_lock);
 		return 0;
 	} else if (mcu_data->indio_dev->active_scan_mask == NULL)
@@ -337,7 +346,14 @@ static int cw_send_event_special(struct cwmcu_data *mcu_data, u8 id, u16 *data,
 	    (!bitmap_empty(mcu_data->indio_dev->active_scan_mask,
 			   mcu_data->indio_dev->masklength))) {
 		mutex_lock(&mcu_data->mutex_lock);
-		iio_push_to_buffers(mcu_data->indio_dev, event);
+		if (!mcu_data->w_clear_fifo_running)
+			iio_push_to_buffers(mcu_data->indio_dev, event);
+		else {
+			D(
+			  "%s: Drop data(0, 1, 2, 3) = "
+			  "(0x%x, 0x%x, 0x%x, 0x%x)\n", __func__,
+			  data[0], data[1], data[2], data[3]);
+		}
 		mutex_unlock(&mcu_data->mutex_lock);
 		return 0;
 	} else if (mcu_data->indio_dev->active_scan_mask == NULL)
@@ -2232,8 +2248,12 @@ static ssize_t active_set(struct device *dev, struct device_attribute *attr,
 			}
 		}
 
-		if (!enabled) {
+		if (!enabled
+		    && (!(mcu_data->enabled_list & IIO_CONTINUOUS_MASK))) {
+			mutex_lock(&mcu_data->mutex_lock);
+			mcu_data->w_clear_fifo_running = true;
 			mcu_data->w_clear_fifo = true;
+			mutex_unlock(&mcu_data->mutex_lock);
 			queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 		}
 
@@ -3075,7 +3095,13 @@ static int cwmcu_resume(struct device *dev)
 
 	enable_irq(mcu_data->IRQ);
 
-	queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
+	if (mcu_data->w_activated_i2c
+	    || mcu_data->w_re_init
+	    || mcu_data->w_facedown_set
+	    || mcu_data->w_clear_fifo
+	    || mcu_data->w_flush_fifo)
+		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
+
 	if (mcu_data->enabled_list & IIO_SENSORS_MASK) {
 		queue_delayed_work(mcu_data->mcu_wq, &mcu_data->work,
 			msecs_to_jiffies(atomic_read(&mcu_data->delay)));
@@ -4068,10 +4094,12 @@ static void cwmcu_one_shot(struct work_struct *work)
 		}
 	}
 
+	mutex_lock(&mcu_data->mutex_lock);
 	if (mcu_data->w_clear_fifo == true) {
 		int j;
 
 		mcu_data->w_clear_fifo = false;
+		mutex_unlock(&mcu_data->mutex_lock);
 
 		cwmcu_powermode_switch(mcu_data, 1);
 
@@ -4079,7 +4107,13 @@ static void cwmcu_one_shot(struct work_struct *work)
 			cwmcu_batch_fifo_read(mcu_data, j);
 
 		cwmcu_powermode_switch(mcu_data, 0);
-	}
+
+		mutex_lock(&mcu_data->mutex_lock);
+		if (!mcu_data->w_clear_fifo)
+			mcu_data->w_clear_fifo_running = false;
+	} else
+		mcu_data->w_clear_fifo_running = false;
+	mutex_unlock(&mcu_data->mutex_lock);
 }
 
 
@@ -4132,8 +4166,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Fix potential Oops for IIO [Fine tune suspend/resume]\n",
-	  __func__);
+	I("%s++: Fix Oops for IIO when clear FIFO\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
