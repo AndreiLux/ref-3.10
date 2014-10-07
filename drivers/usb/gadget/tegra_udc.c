@@ -1425,10 +1425,7 @@ static int tegra_usb_set_charging_current(struct tegra_udc *udc, bool charger_de
 	case CONNECT_TYPE_NONE:
 		dev_info(dev, "USB cable/charger disconnected\n");
 		max_ua = 0;
-		/* Notify if HOST(SDP/CDP) is connected */
-		if ((udc->prev_connect_type == CONNECT_TYPE_SDP) ||
-			(udc->prev_connect_type == CONNECT_TYPE_CDP))
-			tegra_udc_notify_event(udc, USB_EVENT_NONE);
+		tegra_udc_notify_event(udc, USB_EVENT_NONE);
 		break;
 	case CONNECT_TYPE_SDP:
 		if (udc->current_limit > 2)
