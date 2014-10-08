@@ -29,6 +29,7 @@
 #include <sound/soc-dapm.h>
 #include <sound/initval.h>
 #include <sound/tlv.h>
+#include <linux/htc_headset_mgr.h>
 
 #define RTK_IOCTL
 #define RT5677_DMIC_CLK_MAX 2400000
@@ -52,6 +53,8 @@ module_param(dmic_depop_time, int, 0644);
 static int amic_depop_time = 150;
 module_param(amic_depop_time, int, 0644);
 
+static struct rt5677_priv *rt5677_global;
+
 struct rt5677_init_reg {
 	u8 reg;
 	u16 val;
@@ -62,6 +65,7 @@ module_param(dsp_vad_suffix, charp, S_IRUSR | S_IWUSR);
 MODULE_PARM_DESC(dsp_vad_suffix, "DSP VAD Firmware Suffix");
 
 extern void set_rt5677_power_extern(bool enable);
+extern int get_mic_state(void);
 
 static struct rt5677_init_reg init_list[] = {
 	{RT5677_DIG_MISC		, 0x0021},
@@ -584,7 +588,7 @@ static unsigned int rt5677_dsp_mode_i2c_read(
 
 	rt5677_dsp_mode_i2c_read_address(codec, 0x18020000 + reg * 2,
 		&value);
-	return value;
+	return value & 0xffff;
 }
 /**
  * rt5677_dsp_mode_i2c_update_bits - update register on DSP mode.
@@ -686,7 +690,6 @@ static unsigned int rt5677_set_vad_source(
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0a00);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x017f);
 		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
-		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
 		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL2, 0x7777);
 		regmap_write(rt5677->regmap, RT5677_MONO_ADC_MIXER, 0x54d1);
 		regmap_update_bits(rt5677->regmap, RT5677_MONO_ADC_DIG_VOL, RT5677_L_MUTE, 0);
@@ -715,7 +718,6 @@ static unsigned int rt5677_set_vad_source(
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0a00);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x017f);
 		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
-		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
 		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL2, 0x7777);
 		regmap_write(rt5677->regmap, RT5677_MONO_ADC_MIXER, 0x55d1);
 		regmap_update_bits(rt5677->regmap, RT5677_MONO_ADC_DIG_VOL, RT5677_L_MUTE, 0);
@@ -745,9 +747,8 @@ static unsigned int rt5677_set_vad_source(
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0a00);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x027f);
-		regmap_write(rt5677->regmap, RT5677_IN1, 0x00c0);
+		regmap_write(rt5677->regmap, RT5677_IN1, 0x01c0);
 		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
-		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
 		regmap_write(rt5677->regmap, RT5677_CLK_TREE_CTRL2, 0x7777);
 		regmap_write(rt5677->regmap, RT5677_MONO_ADC_MIXER, 0xd451);
 		regmap_update_bits(rt5677->regmap, RT5677_MONO_ADC_DIG_VOL, RT5677_R_MUTE, 0);
@@ -765,11 +766,12 @@ static unsigned int rt5677_set_vad_source(
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG1, 0xa927);
 		msleep(20);
 		regmap_write(rt5677->regmap, RT5677_PWR_ANLG1, 0xe9a7);
-		regmap_write(rt5677->regmap, RT5677_PWR_DIG1, 0x001e);
+		regmap_write(rt5677->regmap, RT5677_PWR_DIG1, 0x0012);
 		rt5677_index_write(codec, RT5677_CHOP_DAC_ADC, 0x364e);
-		regmap_write(rt5677->regmap, RT5677_PWR_DIG2, 0x6000);
+		rt5677_index_write(codec, RT5677_ANA_ADC_GAIN_CTRL, 0x0000);
+		regmap_write(rt5677->regmap, RT5677_PWR_DIG2, 0x2000);
 		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL2, 0x6000);
-		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0xecf1);
+		regmap_write(rt5677->regmap, RT5677_PWR_ANLG2, 0x4091);
 		regmap_write(rt5677->regmap, RT5677_PWR_DSP2, 0x07ff);
 		regmap_write(rt5677->regmap, RT5677_PWR_DSP1, 0x07ff);
 		break;
@@ -887,24 +889,32 @@ static int rt5677_load_dsp_from_file(struct snd_soc_codec *codec)
 }
 
 static unsigned int rt5677_set_vad(
-	struct snd_soc_codec *codec, unsigned int on)
+	struct snd_soc_codec *codec, unsigned int on, bool use_lock)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 	static bool activity;
 	int pri99 = 0;
 
+	if (use_lock)
+		mutex_lock(&rt5677_global->vad_lock);
+
 	if (on && !activity) {
 		/* Kill the DSP so that all the registers are clean. */
 		set_rt5677_power_extern(false);
 
-		pr_debug("rt5677_set_vad on\n");
+		pr_info("rt5677_set_vad on, mic_state = %d\n", rt5677_global->mic_state);
 		set_rt5677_power_extern(true);
 
 		gpio_direction_output(rt5677->vad_clock_en, 1);
 		activity = true;
 		regcache_cache_only(rt5677->regmap, false);
 		regcache_cache_bypass(rt5677->regmap, true);
-		rt5677_set_vad_source(codec, rt5677->vad_source);
+
+		if (rt5677_global->mic_state == RT5677_VAD_ENABLE_AMIC)
+			rt5677_set_vad_source(codec, RT5677_VAD_IDLE_AMIC);
+		else
+			rt5677_set_vad_source(codec, RT5677_VAD_IDLE_DMIC1);
+
 		if (!rt5677->mbist_test) {
 			rt5677_dsp_mbist_test(codec);
 			rt5677->mbist_test = true;
@@ -940,7 +950,7 @@ static unsigned int rt5677_set_vad(
 		regcache_cache_bypass(rt5677->regmap, false);
 		regcache_cache_only(rt5677->regmap, true);
 	} else if (!on && activity) {
-		pr_debug("rt5677_set_vad off\n");
+		pr_info("rt5677_set_vad off\n");
 		activity = false;
 		regcache_cache_only(rt5677->regmap, false);
 		regcache_cache_bypass(rt5677->regmap, true);
@@ -961,7 +971,44 @@ static unsigned int rt5677_set_vad(
 		set_rt5677_power_extern(false);
 	}
 
+	if (use_lock)
+		mutex_unlock(&rt5677_global->vad_lock);
 	return 0;
+}
+
+static void rt5677_check_hp_mic(struct work_struct *work)
+{
+	int state;
+	mutex_lock(&rt5677_global->vad_lock);
+	state = get_mic_state();
+	pr_debug("%s mic %d, rt5677_global->vad_mode %d\n",
+			 __func__, state, rt5677_global->vad_mode);
+	if (rt5677_global->mic_state != state) {
+		rt5677_global->mic_state = state;
+		if ((rt5677_global->codec->dapm.bias_level == SND_SOC_BIAS_OFF) &&
+			(rt5677_global->vad_mode == RT5677_VAD_IDLE)) {
+			rt5677_set_vad(rt5677_global->codec, 0, false);
+			rt5677_set_vad(rt5677_global->codec, 1, false);
+		}
+	}
+	mutex_unlock(&rt5677_global->vad_lock);
+}
+
+int rt5677_headset_detect(int on)
+{
+	pr_debug("%s on = %d\n", __func__, on);
+	cancel_delayed_work_sync(&rt5677_global->check_hp_mic_work);
+	queue_delayed_work(rt5677_global->check_mic_wq, &rt5677_global->check_hp_mic_work,
+						msecs_to_jiffies(1100));
+	return on;
+}
+
+static void rt5677_register_hs_notification(void)
+{
+	struct headset_notifier notifier;
+	notifier.id = HEADSET_REG_HS_INSERT;
+	notifier.func = rt5677_headset_detect;
+	headset_notifier_register(&notifier);
 }
 
 static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
@@ -1293,9 +1340,9 @@ static int rt5677_vad_put(struct snd_kcontrol *kcontrol,
 	if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
 		pr_debug("codec->dapm.bias_level = SND_SOC_BIAS_OFF\n");
 		if (rt5677->vad_mode == RT5677_VAD_IDLE)
-			rt5677_set_vad(codec, 1);
+			rt5677_set_vad(codec, 1, true);
 		else if (rt5677->vad_mode == RT5677_VAD_OFF)
-			rt5677_set_vad(codec, 0);
+			rt5677_set_vad(codec, 0, true);
 	}
 	return 0;
 }
@@ -4662,7 +4709,7 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_STANDBY:
 		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
-			rt5677_set_vad(codec, 0);
+			rt5677_set_vad(codec, 0, true);
 			set_rt5677_power_extern(true);
 			regcache_cache_only(rt5677->regmap, false);
 			regcache_mark_dirty(rt5677->regmap);
@@ -4682,7 +4729,7 @@ static int rt5677_set_bias_level(struct snd_soc_codec *codec,
 			RT5677_BIAS_CUR4, 0x0f00, 0x0000);
 
 		if (rt5677->vad_mode == RT5677_VAD_IDLE)
-			rt5677_set_vad(codec, 1);
+			rt5677_set_vad(codec, 1, true);
 		if (rt5677->vad_mode == RT5677_VAD_OFF)
 			regcache_cache_only(rt5677->regmap, true);
 		break;
@@ -4739,6 +4786,7 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 	rt5677->codec = codec;
 
 	mutex_init(&rt5677->index_lock);
+	mutex_init(&rt5677->vad_lock);
 
 #ifdef RTK_IOCTL
 #if defined(CONFIG_SND_HWDEP) || defined(CONFIG_SND_HWDEP_MODULE)
@@ -4773,6 +4821,12 @@ static int rt5677_probe(struct snd_soc_codec *codec)
 
 	rt5677_set_bias_level(codec, SND_SOC_BIAS_OFF);
 
+	rt5677_register_hs_notification();
+	rt5677->check_mic_wq = create_workqueue("check_hp_mic");
+	INIT_DELAYED_WORK(&rt5677->check_hp_mic_work, rt5677_check_hp_mic);
+	rt5677->mic_state = HEADSET_UNPLUG;
+	rt5677_global = rt5677;
+
 	return 0;
 }
 
@@ -4788,7 +4842,7 @@ static int rt5677_suspend(struct snd_soc_codec *codec)
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	if (rt5677->vad_mode == RT5677_VAD_SUSPEND)
-		rt5677_set_vad(codec, 1);
+		rt5677_set_vad(codec, 1, true);
 
 	return 0;
 }
@@ -4798,7 +4852,7 @@ static int rt5677_resume(struct snd_soc_codec *codec)
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	if (rt5677->vad_mode == RT5677_VAD_SUSPEND)
-		rt5677_set_vad(codec, 0);
+		rt5677_set_vad(codec, 0, true);
 
 	return 0;
 }

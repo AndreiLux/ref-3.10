@@ -1409,6 +1409,9 @@
 #define RT5677_VAD_SLEEP		0
 #define RT5677_VAD_NO_SLEEP		BIT(1)
 
+/* Flag used for VAD AMIC/DMIC switch */
+#define RT5677_VAD_ENABLE_AMIC 1
+
 /* System Clock Source */
 enum {
 	RT5677_SCLK_S_MCLK,
@@ -1465,6 +1468,9 @@ struct rt5677_priv {
 	*/
 	struct regmap *regmap;
 	struct mutex index_lock;
+	struct mutex vad_lock;
+	struct workqueue_struct *check_mic_wq;
+	struct delayed_work check_hp_mic_work;
 
 	int aif_pu;
 	int sysclk;
@@ -1488,6 +1494,8 @@ struct rt5677_priv {
 	u32 mic_read_offset;
 	u8 *mic_buf;
 	u32 mic_buf_len;
+
+	int mic_state;
 };
 
 #endif /* __RT5677_H__ */
