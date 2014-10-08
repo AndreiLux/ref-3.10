@@ -498,6 +498,7 @@ static void do_smc_compat(struct te_request_compat *request,
 	uint32_t smc_pages = 0;
 	uint32_t smc_nr = request->type;
 	uint32_t cb_code;
+	uint32_t smc_result;
 
 	BUG_ON(!mutex_is_locked(&smc_lock));
 
@@ -520,8 +521,13 @@ static void do_smc_compat(struct te_request_compat *request,
 	while (true) {
 		INIT_COMPLETION(tlk_info->smc_retry);
 		atomic_set(&tlk_info->smc_count, 2);
-		tlk_generic_smc(tlk_info, smc_nr,
-				smc_args, smc_params, smc_pages);
+		smc_result = tlk_generic_smc(tlk_info, smc_nr,
+					     smc_args, smc_params, smc_pages);
+		if (smc_result) {
+			pr_err("%s: SMC failed: 0x%x\n", __func__, smc_result);
+			request->result = OTE_ERROR_COMMUNICATION;
+			break;
+		}
 		if ((request->result & OTE_ERROR_NS_CB_MASK) != OTE_ERROR_NS_CB)
 			break;
 
