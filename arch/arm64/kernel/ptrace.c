@@ -45,6 +45,9 @@
 #include <asm/traps.h>
 #include <asm/system_misc.h>
 
+#define CREATE_TRACE_POINTS
+#include <trace/events/syscalls.h>
+
 /*
  * TODO: does not yet catch signals sent when the child dies.
  * in exit.c or in signal.c.
@@ -1142,6 +1145,9 @@ asmlinkage int syscall_trace_enter(struct pt_regs *regs)
 			regs->regs[0] = -ENOSYS;
 	}
 
+	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
+		trace_sys_enter(regs, regs->syscallno);
+
 	audit_syscall_entry(syscall_get_arch(), regs->syscallno,
 		regs->orig_x0, regs->regs[1], regs->regs[2], regs->regs[3]);
 
@@ -1151,6 +1157,9 @@ asmlinkage int syscall_trace_enter(struct pt_regs *regs)
 asmlinkage void syscall_trace_exit(struct pt_regs *regs)
 {
 	audit_syscall_exit(regs);
+
+	if (test_thread_flag(TIF_SYSCALL_TRACEPOINT))
+		trace_sys_exit(regs, regs_return_value(regs));
 
 	if (test_thread_flag(TIF_SYSCALL_TRACE))
 		tracehook_report_syscall(regs, PTRACE_SYSCALL_EXIT);

@@ -20,8 +20,8 @@
 
 #define pr_fmt(fmt) "hw-breakpoint: " fmt
 
-#include <linux/cpu_pm.h>
 #include <linux/compat.h>
+#include <linux/cpu_pm.h>
 #include <linux/errno.h>
 #include <linux/hw_breakpoint.h>
 #include <linux/perf_event.h>
