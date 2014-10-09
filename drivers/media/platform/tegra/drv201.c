@@ -85,6 +85,8 @@
 #include <linux/regulator/consumer.h>
 #include <linux/gpio.h>
 #include <linux/module.h>
+
+#include "t124/t124.h"
 #include <media/drv201.h>
 #include <media/camera.h>
 
@@ -119,6 +121,8 @@ struct drv201_info {
 	int pwr_dev;
 	s32 pos;
 	u16 dev_id;
+	struct camera_sync_dev *csync_dev;
+	struct regmap *regmap;
 };
 
 /**
@@ -203,11 +207,21 @@ void drv201_set_arc_mode(struct drv201_info *info)
 
 static int drv201_position_wr(struct drv201_info *info, u16 position)
 {
+	int err;
+
+	position &= DRV201_POS_CLAMP;
+#ifdef TEGRA_12X_OR_HIGHER_CONFIG
+	err = camera_dev_sync_clear(info->csync_dev);
+	err = camera_dev_sync_wr_add(info->csync_dev,
+				VCM_CODE_MSB, position);
+	info->pos = position;
+#else
 	int err = drv201_i2c_wr16(
-		info, VCM_CODE_MSB, position & DRV201_POS_CLAMP);
+		info, VCM_CODE_MSB, position);
 
 	if (!err)
-		info->pos = position & DRV201_POS_CLAMP;
+		info->pos = position;
+#endif
 	return err;
 }
 
@@ -735,6 +749,10 @@ static int drv201_probe(
 	struct drv201_info *info;
 	char dname[16];
 	int err = 0;
+	static struct regmap_config drv201_regmap_config = {
+			.reg_bits = 8,
+			.val_bits = 16,
+	};
 
 	dev_dbg(&client->dev, "%s\n", __func__);
 	pr_info("drv201: probing focuser.\n");
@@ -752,6 +770,15 @@ static int drv201_probe(
 		info->pdata = &drv201_default_pdata;
 		dev_dbg(info->dev, "%s No platform data. Using defaults.\n",
 			__func__);
+	}
+
+	info->regmap = devm_regmap_init_i2c(client, &drv201_regmap_config);
+	if (IS_ERR(info->regmap)) {
+		err = PTR_ERR(info->regmap);
+		dev_err(info->dev,
+			"Failed to allocate register map: %d\n", err);
+		drv201_del(info);
+		return -EIO;
 	}
 
 	i2c_set_clientdata(client, info);
@@ -803,6 +830,15 @@ static int drv201_probe(
 		drv201_del(info);
 		return -ENODEV;
 	}
+
+#ifdef TEGRA_12X_OR_HIGHER_CONFIG
+	err = camera_dev_add_regmap(&info->csync_dev, "drv201", info->regmap);
+	if (err < 0) {
+		dev_err(info->dev, "%s unable i2c frame sync\n", __func__);
+		drv201_del(info);
+		return -ENODEV;
+	}
+#endif
 
 	return 0;
 }
