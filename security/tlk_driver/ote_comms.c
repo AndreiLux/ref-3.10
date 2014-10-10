@@ -45,6 +45,7 @@ struct tlk_info {
 	struct device *trusty_dev;
 	atomic_t smc_count;
 	struct completion smc_retry;
+	bool smc_retry_timed_out;
 	struct notifier_block smc_notifier;
 };
 
@@ -444,7 +445,13 @@ static int tlk_smc_notify(struct notifier_block *nb,
 
 static uint32_t ote_ns_cb_retry(void)
 {
-	wait_for_completion(&tlk_info->smc_retry);
+	int ret;
+	ret = wait_for_completion_timeout(&tlk_info->smc_retry, HZ * 10);
+	if (!ret && !tlk_info->smc_retry_timed_out) {
+		tlk_info->smc_retry_timed_out = true;
+		pr_warn("%s: timed out waiting for event, retry anyway\n",
+			__func__);
+	}
 	return OTE_SUCCESS;
 }
 
@@ -541,6 +548,13 @@ static void do_smc_compat(struct te_request_compat *request,
 		request->type = cb_code;
 		smc_nr = TE_SMC_NS_CB_COMPLETE;
 	}
+
+	if (tlk_info->smc_retry_timed_out) {
+		tlk_info->smc_retry_timed_out = false;
+		pr_warn("%s: return after timeout retry, result=%x\n",
+			__func__, request->result);
+	}
+
 #else
 	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params, smc_pages);
 #endif
