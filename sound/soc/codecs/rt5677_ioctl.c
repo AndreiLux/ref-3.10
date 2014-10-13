@@ -150,11 +150,12 @@ int rt5677_ioctl_common(struct snd_hwdep *hw, struct file *file,
 
 	case RT_WRITE_CODEC_DSP_IOCTL:
 	case RT_WRITE_CODEC_DSP_IOCTL_COMPAT:
-		kfree(rt5677->model_buf);
-		rt5677->model_len = 0;
-		rt5677->model_buf = kzalloc(size, GFP_KERNEL);
-		if (!rt5677->model_buf) {
-			return -ENOMEM;
+		if (!rt5677->model_buf || rt5677->model_len < size) {
+			kfree(rt5677->model_buf);
+			rt5677->model_len = 0;
+			rt5677->model_buf = kzalloc(size, GFP_KERNEL);
+			if (!rt5677->model_buf)
+				return -ENOMEM;
 		}
 		if (copy_from_user(rt5677->model_buf, rt_codec.buf, size))
 			return -EFAULT;
