@@ -164,6 +164,7 @@ struct qcom_usb_modem {
 	struct completion mdm_needs_reload;
 	struct completion mdm_boot;
 	struct completion mdm_ram_dumps;
+	int ramdump_save;
 #endif
 
 	/* hsic wakeup */

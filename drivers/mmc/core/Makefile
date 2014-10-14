@@ -11,3 +11,5 @@ mmc_core-y			:= core.o bus.o host.o \
 				   quirks.o slot-gpio.o
 
 mmc_core-$(CONFIG_DEBUG_FS)	+= debugfs.o
+
+mmc_core-$(CONFIG_ENABLE_MMC_USER_CONTROL)	+= mmc_user_control.o

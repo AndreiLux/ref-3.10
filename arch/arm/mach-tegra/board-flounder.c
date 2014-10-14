@@ -1446,9 +1446,9 @@ static void __init tegra_flounder_reserve(void)
 #if defined(CONFIG_NVMAP_CONVERT_CARVEOUT_TO_IOVMM) || \
 		defined(CONFIG_TEGRA_NO_CARVEOUT)
 	/* 1536*2048*4*2 = 25165824 bytes */
-	tegra_reserve4( 0,SZ_16M + SZ_8M, 0, (186 * SZ_1M) );
+	tegra_reserve4( 0,SZ_16M + SZ_8M, 0, (100 * SZ_1M) );
 #else
-	tegra_reserve4(SZ_1G, SZ_16M + SZ_8M, fb2_enabled ? SZ_4M : 0, 186 * SZ_1M);
+	tegra_reserve4(SZ_1G, SZ_16M + SZ_8M, fb2_enabled ? SZ_4M : 0, 100 * SZ_1M);
 #endif
 }
 

@@ -683,7 +683,7 @@ static unsigned int rt5677_set_vad_source(
 	case RT5677_VAD_IDLE_DMIC1:
 	case RT5677_VAD_SUSPEND_DMIC1:
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
-		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0ae5);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0a00);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x017f);
 		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
 		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
@@ -712,7 +712,7 @@ static unsigned int rt5677_set_vad_source(
 	case RT5677_VAD_IDLE_DMIC2:
 	case RT5677_VAD_SUSPEND_DMIC2:
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
-		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0ae5);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0a00);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x017f);
 		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);
 		regmap_write(rt5677->regmap, RT5677_GPIO_CTRL1, 0x8000);
@@ -743,7 +743,7 @@ static unsigned int rt5677_set_vad_source(
 	case RT5677_VAD_IDLE_AMIC:
 	case RT5677_VAD_SUSPEND_AMIC:
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL2, 0x013f);
-		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0ae5);
+		regmap_write(rt5677->regmap, RT5677_VAD_CTRL3, 0x0a00);
 		regmap_write(rt5677->regmap, RT5677_VAD_CTRL4, 0x027f);
 		regmap_write(rt5677->regmap, RT5677_IN1, 0x00c0);
 		regmap_write(rt5677->regmap, RT5677_ADC_BST_CTRL2, 0xa000);

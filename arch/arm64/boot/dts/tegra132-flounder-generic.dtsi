@@ -476,7 +476,7 @@
 	htc_battery_bq2419x {
 		compatible = "htc,bq2419x_battery";
 		regulator-name = "batt_regulator";
-		regulator-max-microamp = <3000000>;
+		regulator-max-microamp = <1500000>;
 		auto-recharge-time = <30>;
 		input-voltage-limit-millivolt = <4440>;
 		fast-charge-current-limit-milliamp = <2944>;

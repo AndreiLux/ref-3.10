@@ -144,6 +144,35 @@ typedef enum {
 #define STEP_COUNTER_MASK ((1ULL << CW_STEP_COUNTER) | \
 			   (1ULL << CW_STEP_COUNTER_W))
 
+#define IIO_CONTINUOUS_MASK ((1ULL << CW_ACCELERATION) | \
+			     (1ULL << CW_MAGNETIC) | \
+			     (1ULL << CW_GYRO) | \
+			     (1ULL << CW_PRESSURE) | \
+			     (1ULL << CW_ORIENTATION) | \
+			     (1ULL << CW_ROTATIONVECTOR) | \
+			     (1ULL << CW_LINEARACCELERATION) | \
+			     (1ULL << CW_GRAVITY) | \
+			     (1ULL << CW_MAGNETIC_UNCALIBRATED) | \
+			     (1ULL << CW_GYROSCOPE_UNCALIBRATED) | \
+			     (1ULL << CW_GAME_ROTATION_VECTOR) | \
+			     (1ULL << CW_GEOMAGNETIC_ROTATION_VECTOR) | \
+			     (1ULL << CW_STEP_DETECTOR) | \
+			     (1ULL << CW_STEP_COUNTER) | \
+			     (1ULL << CW_ACCELERATION_W) | \
+			     (1ULL << CW_MAGNETIC_W) | \
+			     (1ULL << CW_GYRO_W) | \
+			     (1ULL << CW_PRESSURE_W) | \
+			     (1ULL << CW_ORIENTATION_W) | \
+			     (1ULL << CW_ROTATIONVECTOR_W) | \
+			     (1ULL << CW_LINEARACCELERATION_W) | \
+			     (1ULL << CW_GRAVITY_W) | \
+			     (1ULL << CW_MAGNETIC_UNCALIBRATED_W) | \
+			     (1ULL << CW_GYROSCOPE_UNCALIBRATED_W) | \
+			     (1ULL << CW_GAME_ROTATION_VECTOR_W) | \
+			     (1ULL << CW_GEOMAGNETIC_ROTATION_VECTOR_W) | \
+			     (1ULL << CW_STEP_DETECTOR_W) | \
+			     (1ULL << CW_STEP_COUNTER_W))
+
 #define CW_I2C_REG_WATCHDOG_STATUS                              0xE6
 #define WATCHDOG_STATUS_LEN                                     12
 

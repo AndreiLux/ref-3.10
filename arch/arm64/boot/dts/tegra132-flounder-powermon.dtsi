@@ -20,7 +20,7 @@
 			compatible = "ti,ina230x";
 			reg = <0x40>;
 			ti,trigger-config = <0x7203>;
-			ti,continuous-config = <0x7c07>;
+			ti,continuous-config = <0x7207>;
 			ti,current-threshold = <9000>;
 			ti,rail-name = "VDD_BAT";
 			ti,resistor = <10>;

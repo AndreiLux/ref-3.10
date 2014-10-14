@@ -651,7 +651,7 @@ late_initcall(flounder_tj_throttle_init);
 static struct thermal_trip_info skin_trips[] = {
 	{
 		.cdev_type = "skin-balanced",
-		.trip_temp = 48000,
+		.trip_temp = 45000,
 		.trip_type = THERMAL_TRIP_PASSIVE,
 		.upper = THERMAL_NO_LIMIT,
 		.lower = THERMAL_NO_LIMIT,

@@ -584,6 +584,8 @@ extern int dhd_register_if(dhd_pub_t *dhdp, int idx, bool need_rtnl_lock);
 /* Indication from bus module regarding removal/absence of dongle */
 extern void dhd_detach(dhd_pub_t *dhdp);
 extern void dhd_free(dhd_pub_t *dhdp);
+extern void dhd_clear(dhd_pub_t *dhdp);
+
 
 /* Indication from bus module to change flow-control state */
 extern void dhd_txflowcontrol(dhd_pub_t *dhdp, int ifidx, bool on);
@@ -858,6 +860,13 @@ extern uint dhd_sdiod_drive_strength;
 
 /* Override to force tx queueing all the time */
 extern uint dhd_force_tx_queueing;
+
+/* Default bcn_timeout value is 4 */
+#define DEFAULT_BCN_TIMEOUT_VALUE        4
+#ifndef CUSTOM_BCN_TIMEOUT_SETTING
+#define CUSTOM_BCN_TIMEOUT_SETTING	DEFAULT_BCN_TIMEOUT_VALUE
+#endif
+
 /* Default KEEP_ALIVE Period is 55 sec to prevent AP from sending Keep Alive probe frame */
 #define DEFAULT_KEEP_ALIVE_VALUE 	55000 /* msec */
 #ifndef CUSTOM_KEEP_ALIVE_SETTING
