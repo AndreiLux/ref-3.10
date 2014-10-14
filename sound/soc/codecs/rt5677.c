@@ -917,6 +917,9 @@ static unsigned int rt5677_set_vad(
 		 * wake, otherwise it will run at full power. */
 		pri99 |= rt5677->mbist_test_passed ?
 			(RT5677_MBIST_TEST_PASSED) : (RT5677_MBIST_TEST_FAILED);
+		/* Inform the firmware if it should go to sleep or not. */
+		pri99 |= rt5677->vad_sleep ?
+			(RT5677_VAD_SLEEP) : (RT5677_VAD_NO_SLEEP);
 		rt5677_dsp_mode_i2c_write(codec, RT5677_PRIV_DATA, pri99);
 
 		/* Reset the mic buffer read pointer. */
@@ -4966,6 +4969,7 @@ static int rt5677_i2c_probe(struct i2c_client *i2c,
 		return -ENOMEM;
 
 	rt5677->mbist_test = false;
+	rt5677->vad_sleep = true;
 	rt5677->mic_buf_len = RT5677_PRIV_MIC_BUF_SIZE;
 	rt5677->mic_buf = kmalloc(rt5677->mic_buf_len, GFP_KERNEL);
 	if (NULL == rt5677->mic_buf) {

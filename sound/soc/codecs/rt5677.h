@@ -1406,6 +1406,8 @@
 /* Flags used for the VAD firmware */
 #define RT5677_MBIST_TEST_PASSED	0
 #define RT5677_MBIST_TEST_FAILED	BIT(0)
+#define RT5677_VAD_SLEEP		0
+#define RT5677_VAD_NO_SLEEP		BIT(1)
 
 /* System Clock Source */
 enum {
@@ -1475,6 +1477,7 @@ struct rt5677_priv {
 	int pll_out;
 	int vad_mode;
 	int vad_source;
+	int vad_sleep;
 	unsigned int vad_clock_en;
 	int stream;
 	bool mbist_test;
