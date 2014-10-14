@@ -1064,7 +1064,7 @@ struct pmu_gk20a {
 };
 
 int gk20a_init_pmu_support(struct gk20a *g);
-int gk20a_init_pmu_bind_fecs(struct gk20a *g);
+int gk20a_init_pmu_load_fecs(struct gk20a *g);
 
 void gk20a_pmu_isr(struct gk20a *g);
 
