@@ -261,7 +261,6 @@ int nvhost_channel_map(struct nvhost_device_data *pdata,
 	ch->chid = index;
 	nvhost_channel_assign(pdata, ch);
 	nvhost_set_chanops(ch);
-	set_bit(ch->chid, &host->allocated_channels);
 	ch->refcount = 1;
 
 	/* Initialize channel */
@@ -272,6 +271,8 @@ int nvhost_channel_map(struct nvhost_device_data *pdata,
 		mutex_unlock(&host->chlist_mutex);
 		return err;
 	}
+
+	set_bit(ch->chid, &host->allocated_channels);
 
 	/* set next free channel */
 	if (index >= (max_channels - 1))
