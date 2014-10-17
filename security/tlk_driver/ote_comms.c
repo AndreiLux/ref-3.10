@@ -45,6 +45,7 @@ struct tlk_info {
 	struct device *trusty_dev;
 	atomic_t smc_count;
 	struct completion smc_retry;
+	bool smc_retry_timed_out;
 	struct notifier_block smc_notifier;
 };
 
@@ -422,8 +423,8 @@ static void do_smc(struct te_request *request, struct tlk_device *dev)
 }
 
 #ifdef CONFIG_TRUSTY
-static int tlk_smc_notify(struct notifier_block *nb,
-			unsigned long action, void *data)
+static int tlk_smc_notify_old(struct notifier_block *nb,
+			      unsigned long action, void *data)
 {
 	struct tlk_info *info = container_of(nb, struct tlk_info, smc_notifier);
 
@@ -440,11 +441,35 @@ static int tlk_smc_notify(struct notifier_block *nb,
 
 	return NOTIFY_OK;
 }
+
+static int tlk_smc_notify(struct notifier_block *nb,
+			  unsigned long action, void *data)
+{
+	int ret;
+	struct tlk_info *info = container_of(nb, struct tlk_info, smc_notifier);
+
+	if (action != TRUSTY_CALL_RETURNED)
+		return NOTIFY_DONE;
+
+	ret = trusty_fast_call32(info->trusty_dev,
+				 TE_SMC_FC_HAS_NS_WORK, 0, 0, 0);
+	pr_debug("%s: has response %d\n", __func__, ret);
+	if (ret > 0)
+		complete(&info->smc_retry);
+
+	return NOTIFY_OK;
+}
 #endif
 
 static uint32_t ote_ns_cb_retry(void)
 {
-	wait_for_completion(&tlk_info->smc_retry);
+	int ret;
+	ret = wait_for_completion_timeout(&tlk_info->smc_retry, HZ * 10);
+	if (!ret && !tlk_info->smc_retry_timed_out) {
+		tlk_info->smc_retry_timed_out = true;
+		pr_warn("%s: timed out waiting for event, retry anyway\n",
+			__func__);
+	}
 	return OTE_SUCCESS;
 }
 
@@ -541,6 +566,13 @@ static void do_smc_compat(struct te_request_compat *request,
 		request->type = cb_code;
 		smc_nr = TE_SMC_NS_CB_COMPLETE;
 	}
+
+	if (tlk_info->smc_retry_timed_out) {
+		tlk_info->smc_retry_timed_out = false;
+		pr_warn("%s: return after timeout retry, result=%x\n",
+			__func__, request->result);
+	}
+
 #else
 	tlk_generic_smc(tlk_info, smc_nr, smc_args, smc_params, smc_pages);
 #endif
@@ -935,6 +967,7 @@ arch_initcall(tlk_register_irq_handler);
 #else
 static int trusty_ote_probe(struct platform_device *pdev)
 {
+	int ret;
 	struct tlk_info *info;
 
 	info = kzalloc(sizeof(struct tlk_info), GFP_KERNEL);
@@ -945,7 +978,15 @@ static int trusty_ote_probe(struct platform_device *pdev)
 	init_completion(&info->smc_retry);
 	platform_set_drvdata(pdev, info);
 
-	info->smc_notifier.notifier_call = tlk_smc_notify;
+	ret = trusty_fast_call32(info->trusty_dev,
+				 TE_SMC_FC_HAS_NS_WORK, 0, 0, 0);
+	if (ret >= 0) {
+		info->smc_notifier.notifier_call = tlk_smc_notify;
+	} else {
+		dev_warn(&pdev->dev, "TE_SMC_FC_HAS_NS_WORK not supported\n");
+		info->smc_notifier.notifier_call = tlk_smc_notify_old;
+	}
+
 	trusty_call_notifier_register(info->trusty_dev, &info->smc_notifier);
 
 	tlk_info = info;
