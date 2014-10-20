@@ -154,7 +154,12 @@ void tegra30_i2s_free_gpio(struct snd_pcm_substream *substream, int i2s_id)
 		return;
 	}
 	if (pdata->first_time_free[i2s_id]) {
+		mutex_init(&pdata->i2s_gpio_lock[i2s_id]);
+		mutex_lock(&pdata->i2s_gpio_lock[i2s_id]);
 		pr_debug("%s: Skip gpio_free if not allocated\n", __func__);
+		pdata->first_time_free[i2s_id] = false;
+		pdata->gpio_free_count[i2s_id]++;
+		mutex_unlock(&pdata->i2s_gpio_lock[i2s_id]);
 		return;
 	}
 
