@@ -97,7 +97,7 @@ static void palmas_power_off(void *drv_data)
 	unsigned int val;
 	int i;
 	int ret;
-	unsigned int vbus_line_state;
+	unsigned int vbus_line_state, ldo_short_status2;
 
 	palmas_allow_atomic_xfer(palmas);
 
@@ -182,6 +182,12 @@ static void palmas_power_off(void *drv_data)
 	}
 
 poweroff_direct:
+	/* Errata
+	 * clear VANA short status before switch-off
+	 */
+	palmas_read(palmas, PALMAS_LDO_BASE, PALMAS_LDO_SHORT_STATUS2,
+				&ldo_short_status2);
+
 	/* Power off the device */
 	palmas_update_bits(palmas, PALMAS_PMU_CONTROL_BASE,
 				PALMAS_DEV_CTRL, 1, 0);

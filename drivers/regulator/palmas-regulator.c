@@ -1862,6 +1862,7 @@ static int palmas_suspend(struct device *dev)
 	struct palmas *palmas = dev_get_drvdata(dev->parent);
 	struct palmas_pmic *pmic = dev_get_drvdata(dev);
 	int id;
+	unsigned int ldo_short_status2;
 
 	for (id = 0; id < PALMAS_NUM_REGS; id++) {
 		unsigned int cf = pmic->config_flags[id];
@@ -1887,6 +1888,11 @@ static int palmas_suspend(struct device *dev)
 		/* disable SMPS10 in suspend*/
 		palmas_smps_write(palmas, PALMAS_SMPS10_CTRL, 0);
 	}
+
+	/* Errata
+	 * clear VANA short status before suspend
+	 */
+	palmas_ldo_read(palmas, PALMAS_LDO_SHORT_STATUS2, &ldo_short_status2);
 
 	return 0;
 }
