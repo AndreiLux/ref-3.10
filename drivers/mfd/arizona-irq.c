@@ -144,18 +144,17 @@ static irqreturn_t arizona_irq_thread(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static void arizona_irq_enable(struct irq_data *data)
-{
-}
-
-static void arizona_irq_disable(struct irq_data *data)
+static void arizona_irq_dummy(struct irq_data *data)
 {
 }
 
 static struct irq_chip arizona_irq_chip = {
 	.name			= "arizona",
-	.irq_disable		= arizona_irq_disable,
-	.irq_enable		= arizona_irq_enable,
+	.irq_disable		= arizona_irq_dummy,
+	.irq_enable		= arizona_irq_dummy,
+	.irq_ack		= arizona_irq_dummy,
+	.irq_mask		= arizona_irq_dummy,
+	.irq_unmask		= arizona_irq_dummy,
 };
 
 static int arizona_irq_map(struct irq_domain *h, unsigned int virq,
@@ -200,10 +199,36 @@ int arizona_irq_init(struct arizona *arizona)
 		ctrlif_error = false;
 		break;
 #endif
-#ifdef CONFIG_MFD_WM5110
+#ifdef CONFIG_MFD_FLORIDA
+	case WM8280:
 	case WM5110:
-		aod = &wm5110_aod;
-		irq = &wm5110_irq;
+		aod = &florida_aod;
+
+		switch (arizona->rev) {
+		case 0 ... 2:
+			irq = &florida_irq;
+			break;
+		default:
+			irq = &florida_revd_irq;
+			break;
+		}
+
+		ctrlif_error = false;
+		break;
+#endif
+#ifdef CONFIG_MFD_WM8997
+	case WM8997:
+		aod = &wm8997_aod;
+		irq = &wm8997_irq;
+
+		ctrlif_error = false;
+		break;
+#endif
+#ifdef CONFIG_MFD_WM8998
+	case WM8998:
+	case WM1814:
+		aod = &wm8998_aod;
+		irq = &wm8998_irq;
 
 		ctrlif_error = false;
 		break;
@@ -277,7 +302,7 @@ int arizona_irq_init(struct arizona *arizona)
 				  IRQF_ONESHOT, -1, irq,
 				  &arizona->irq_chip);
 	if (ret != 0) {
-		dev_err(arizona->dev, "Failed to add AOD IRQs: %d\n", ret);
+		dev_err(arizona->dev, "Failed to add main IRQs: %d\n", ret);
 		goto err_aod;
 	}
 

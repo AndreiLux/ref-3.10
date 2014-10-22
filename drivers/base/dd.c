@@ -74,6 +74,8 @@ static void deferred_probe_work_func(struct work_struct *work)
 	 */
 	mutex_lock(&deferred_probe_mutex);
 	while (!list_empty(&deferred_probe_active_list)) {
+		ktime_t calltime, delta, rettime;
+		unsigned long long duration;
 		private = list_first_entry(&deferred_probe_active_list,
 					typeof(*dev->p), deferred_probe);
 		dev = private->device;
@@ -98,7 +100,17 @@ static void deferred_probe_work_func(struct work_struct *work)
 		device_pm_unlock();
 
 		dev_dbg(dev, "Retrying from deferred list\n");
+		if (initcall_debug) {
+			dev_info(dev, "deferred probing\n");
+			calltime = ktime_get();
+		}
 		bus_probe_device(dev);
+		if (initcall_debug) {
+			rettime = ktime_get();
+			delta = ktime_sub(rettime, calltime);
+			duration = (unsigned long long) ktime_to_ns(delta) >> 10;
+			dev_info(dev, "deferred probing returned after %lld usecs\n", duration);
+		}
 
 		mutex_lock(&deferred_probe_mutex);
 

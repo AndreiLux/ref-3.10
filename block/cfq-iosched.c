@@ -4083,8 +4083,10 @@ static void cfq_completed_request(struct request_queue *q, struct request *rq)
 		}
 	}
 
+	/* Disable uplug_work at blk_end_request
 	if (!cfqd->rq_in_driver)
 		cfq_schedule_dispatch(cfqd);
+	*/
 }
 
 static inline int __cfq_may_queue(struct cfq_queue *cfqq)

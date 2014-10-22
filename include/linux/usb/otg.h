@@ -15,6 +15,7 @@ struct usb_otg {
 	u8			default_a;
 
 	struct usb_phy		*phy;
+	struct usb_phy		*phy3;
 	struct usb_bus		*host;
 	struct usb_gadget	*gadget;
 
@@ -91,5 +92,12 @@ otg_start_srp(struct usb_otg *otg)
 
 /* for OTG controller drivers (and maybe other stuff) */
 extern int usb_bus_start_enum(struct usb_bus *bus, unsigned port_num);
+
+enum usb_dr_mode {
+	USB_DR_MODE_UNKNOWN,
+	USB_DR_MODE_HOST,
+	USB_DR_MODE_PERIPHERAL,
+	USB_DR_MODE_OTG,
+};
 
 #endif /* __LINUX_USB_OTG_H */

@@ -1,6 +1,6 @@
 /*
  *  linux/mm/oom_kill.c
- * 
+ *
  *  Copyright (C)  1998,2000  Rik van Riel
  *	Thanks go out to Claus Fischer for some serious inspiration and
  *	for goading me into coding this file...
@@ -39,7 +39,11 @@
 #define CREATE_TRACE_POINTS
 #include <trace/events/oom.h>
 
+#ifdef CONFIG_SEC_DEBUG_MIF_OOM
+int sysctl_panic_on_oom = 1;
+#else
 int sysctl_panic_on_oom;
+#endif
 int sysctl_oom_kill_allocating_task;
 int sysctl_oom_dump_tasks = 1;
 static DEFINE_SPINLOCK(zone_scan_lock);
@@ -109,6 +113,7 @@ struct task_struct *find_lock_task_mm(struct task_struct *p)
 	return NULL;
 }
 
+
 /* return true if the task is not adequate as candidate victim task. */
 static bool oom_unkillable_task(struct task_struct *p,
 		const struct mem_cgroup *memcg, const nodemask_t *nodemask)
@@ -128,7 +133,60 @@ static bool oom_unkillable_task(struct task_struct *p,
 
 	return false;
 }
+#ifdef CONFIG_ZOOM_KILLER
+static inline long CM(long test)
+{
+       if (test < 0)
+               return 0;
+       else
+               return test;
+}
+unsigned long oom_badness_low(struct task_struct *p, struct mem_cgroup *memcg,
+			  const nodemask_t *nodemask, unsigned long totalpages)
+{
+	long points;
+	long adj;
 
+	if (oom_unkillable_task(p, memcg, nodemask))
+		return 0;
+
+	p = find_lock_task_mm(p);
+	if (!p)
+		return 0;
+
+	adj = (long)p->signal->oom_score_adj;
+	if (adj == OOM_SCORE_ADJ_MIN) {
+		task_unlock(p);
+		return 0;
+	}
+
+	/*
+	 * The baseline for the badness score is the proportion of RAM that each
+	 * task's rss, pagetable and swap space use.
+	 */
+	points = CM(get_mm_counter(p->mm, MM_LOW_FILEPAGES)) +
+		CM(get_mm_counter(p->mm, MM_LOW_ANONPAGES)) +
+		p->mm->nr_ptes;
+	task_unlock(p);
+
+	/*
+	 * Root processes get 3% bonus, just like the __vm_enough_memory()
+	 * implementation used by LSMs.
+	 */
+	if (has_capability_noaudit(p, CAP_SYS_ADMIN))
+		adj -= 30;
+
+	/* Normalize to oom_score_adj units */
+	adj *= totalpages / 1000;
+	points += adj;
+
+	/*
+	 * Never return 0 for an eligible task regardless of the root bonus and
+	 * oom_score_adj (oom_score_adj can't be OOM_SCORE_ADJ_MIN here).
+	 */
+	return points > 0 ? points : 1;
+}
+#endif
 /**
  * oom_badness - heuristic function to determine which candidate task to kill
  * @p: task struct of which task we should calculate
@@ -163,6 +221,7 @@ unsigned long oom_badness(struct task_struct *p, struct mem_cgroup *memcg,
 	 */
 	points = get_mm_rss(p->mm) + p->mm->nr_ptes +
 		 get_mm_counter(p->mm, MM_SWAPENTS);
+
 	task_unlock(p);
 
 	/*
@@ -250,8 +309,13 @@ enum oom_scan_t oom_scan_process_thread(struct task_struct *task,
 		unsigned long totalpages, const nodemask_t *nodemask,
 		bool force_kill)
 {
-	if (task->exit_state)
+	if (task->exit_state) {
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		if (task->pid == task->tgid)
+			return OOM_SCAN_SKIP_SEARCH_THREAD;
+#endif
 		return OOM_SCAN_CONTINUE;
+	}
 	if (oom_unkillable_task(task, NULL, nodemask))
 		return OOM_SCAN_CONTINUE;
 
@@ -285,7 +349,80 @@ enum oom_scan_t oom_scan_process_thread(struct task_struct *task,
 	}
 	return OOM_SCAN_OK;
 }
+#ifdef CONFIG_ZOOM_KILLER
+/*
+ * Simple selection loop. We chose the process with the highest
+ * number of 'points'.
+ *
+ * (not docbooked, we don't want this one cluttering up the manual)
+ */
+static struct task_struct *select_bad_process_low(unsigned int *ppoints,
+		unsigned long totalpages, const nodemask_t *nodemask,
+		bool force_kill)
+{
+	struct task_struct *g, *p;
+	struct task_struct *chosen = NULL;
+	unsigned long chosen_points = 0;
 
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+	bool skip_search_thread = false;
+#endif
+
+	rcu_read_lock();
+	do_each_thread(g, p) {
+		unsigned int points;
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		skip_search_thread = false;
+#endif
+		switch (oom_scan_process_thread(p, totalpages, nodemask,
+						force_kill)) {
+		case OOM_SCAN_SELECT:
+			chosen = p;
+			chosen_points = ULONG_MAX;
+			/* fall through */
+		case OOM_SCAN_CONTINUE:
+			continue;
+		case OOM_SCAN_ABORT:
+			rcu_read_unlock();
+			return ERR_PTR(-1UL);
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		case OOM_SCAN_SKIP_SEARCH_THREAD:
+			skip_search_thread = true;
+			/* fall through */
+#endif
+		case OOM_SCAN_OK:
+			break;
+		};
+
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		if(skip_search_thread)
+			break;
+#endif
+		points = oom_badness_low(p, NULL, nodemask, totalpages);
+		if (points > chosen_points) {
+			chosen = p;
+			chosen_points = points;
+		}
+	} while_each_thread(g, p);
+
+	if (chosen)
+	{
+#ifdef CONFIG_OOM_SCAN_SKIP_SEARCH_THREAD
+		if(chosen->pid != chosen->tgid ) {
+			pr_warning("%s is selected: pid=%d, tgid=%d, "
+				"oom_score_adj=%hd\n",
+				chosen->comm, chosen->pid, chosen->tgid,
+				chosen->signal->oom_score_adj);
+		}
+#endif
+		get_task_struct(chosen);
+	}
+	rcu_read_unlock();
+
+	*ppoints = chosen_points * 1000 / totalpages;
+	return chosen;
+}
+#endif
 /*
  * Simple selection loop. We chose the process with the highest
  * number of 'points'.
@@ -300,10 +437,16 @@ static struct task_struct *select_bad_process(unsigned int *ppoints,
 	struct task_struct *chosen = NULL;
 	unsigned long chosen_points = 0;
 
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+	bool skip_search_thread = false;
+#endif
+
 	rcu_read_lock();
 	do_each_thread(g, p) {
 		unsigned int points;
-
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		skip_search_thread = false;
+#endif
 		switch (oom_scan_process_thread(p, totalpages, nodemask,
 						force_kill)) {
 		case OOM_SCAN_SELECT:
@@ -315,17 +458,38 @@ static struct task_struct *select_bad_process(unsigned int *ppoints,
 		case OOM_SCAN_ABORT:
 			rcu_read_unlock();
 			return ERR_PTR(-1UL);
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		case OOM_SCAN_SKIP_SEARCH_THREAD:
+			skip_search_thread = true;
+			/* fall through */
+#endif
 		case OOM_SCAN_OK:
 			break;
 		};
+
+#ifdef CONFIG_OOM_SCAN_WA_PREVENT_WRONG_SEARCH
+		if(skip_search_thread)
+			break;
+#endif
 		points = oom_badness(p, NULL, nodemask, totalpages);
 		if (points > chosen_points) {
 			chosen = p;
 			chosen_points = points;
 		}
 	} while_each_thread(g, p);
+
 	if (chosen)
+	{
+#ifdef CONFIG_OOM_SCAN_SKIP_SEARCH_THREAD
+		if(chosen->pid != chosen->tgid ) {
+			pr_warning("%s is selected: pid=%d, tgid=%d, "
+				"oom_score_adj=%hd\n",
+				chosen->comm, chosen->pid, chosen->tgid,
+				chosen->signal->oom_score_adj);
+		}
+#endif
 		get_task_struct(chosen);
+	}
 	rcu_read_unlock();
 
 	*ppoints = chosen_points * 1000 / totalpages;
@@ -348,7 +512,11 @@ static void dump_tasks(const struct mem_cgroup *memcg, const nodemask_t *nodemas
 	struct task_struct *p;
 	struct task_struct *task;
 
+#ifdef CONFIG_ZOOM_KILLER
+	pr_info("[ pid ]   uid  tgid total_vm      rss nr_ptes swapents file-rss anon-rss-low file-rss-low oom_score_adj name\n");
+#else
 	pr_info("[ pid ]   uid  tgid total_vm      rss nr_ptes swapents oom_score_adj name\n");
+#endif
 	rcu_read_lock();
 	for_each_process(p) {
 		if (oom_unkillable_task(p, memcg, nodemask))
@@ -364,12 +532,23 @@ static void dump_tasks(const struct mem_cgroup *memcg, const nodemask_t *nodemas
 			continue;
 		}
 
+#ifdef CONFIG_ZOOM_KILLER
+		pr_info("[%5d] %5d %5d %8lu %8lu %7lu %8lu %7lu     %7lu     %7lu         %5hd %s\n",
+#else
 		pr_info("[%5d] %5d %5d %8lu %8lu %7lu %8lu         %5hd %s\n",
+#endif
+
 			task->pid, from_kuid(&init_user_ns, task_uid(task)),
 			task->tgid, task->mm->total_vm, get_mm_rss(task->mm),
 			task->mm->nr_ptes,
 			get_mm_counter(task->mm, MM_SWAPENTS),
-			task->signal->oom_score_adj, task->comm);
+#ifdef CONFIG_ZOOM_KILLER
+			get_mm_counter(task->mm, MM_FILEPAGES),
+			get_mm_counter(task->mm, MM_LOW_ANONPAGES),
+			get_mm_counter(task->mm, MM_LOW_FILEPAGES),
+#endif
+			task->signal->oom_score_adj,
+			task->comm);
 		task_unlock(task);
 	}
 	rcu_read_unlock();
@@ -446,8 +625,14 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 			/*
 			 * oom_badness() returns 0 if the thread is unkillable
 			 */
-			child_points = oom_badness(child, memcg, nodemask,
-								totalpages);
+#ifdef CONFIG_ZOOM_KILLER
+			if (gfp_mask & (__GFP_HIGHMEM | __GFP_MOVABLE))
+				child_points = oom_badness(child, memcg, nodemask, totalpages);
+			else
+				child_points = oom_badness_low(child, memcg, nodemask, totalpages);
+#else
+			child_points = oom_badness(child, memcg, nodemask, totalpages);
+#endif
 			if (child_points > victim_points) {
 				put_task_struct(victim);
 				victim = child;
@@ -472,10 +657,20 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 
 	/* mm cannot safely be dereferenced after task_unlock(victim) */
 	mm = victim->mm;
+#ifdef CONFIG_ZOOM_KILLER
+	pr_err("Killed process %d (%s) total-vm:%lukB, anon-rss:%lukB, file-rss:%lukB, anon-rss-low:%lukB, file-rss-low:%lukB\n",
+		task_pid_nr(victim), victim->comm, K(victim->mm->total_vm),
+		K(get_mm_counter(victim->mm, MM_ANONPAGES)),
+		K(get_mm_counter(victim->mm, MM_FILEPAGES)),
+		K(get_mm_counter(victim->mm, MM_LOW_ANONPAGES)),
+		K(get_mm_counter(victim->mm, MM_LOW_FILEPAGES)));
+#else
 	pr_err("Killed process %d (%s) total-vm:%lukB, anon-rss:%lukB, file-rss:%lukB\n",
 		task_pid_nr(victim), victim->comm, K(victim->mm->total_vm),
 		K(get_mm_counter(victim->mm, MM_ANONPAGES)),
 		K(get_mm_counter(victim->mm, MM_FILEPAGES)));
+#endif
+
 	task_unlock(victim);
 
 	/*
@@ -650,8 +845,15 @@ void out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 				 "Out of memory (oom_kill_allocating_task)");
 		goto out;
 	}
-
+#ifdef CONFIG_ZOOM_KILLER
+	if (gfp_mask & (__GFP_HIGHMEM | __GFP_MOVABLE))
+		p = select_bad_process(&points, totalpages, mpol_mask, force_kill);
+	else
+		p = select_bad_process_low(&points, totalpages, mpol_mask, force_kill);
+#else
 	p = select_bad_process(&points, totalpages, mpol_mask, force_kill);
+#endif
+
 	/* Found nothing?!?! Either we hang forever, or we panic. */
 	if (!p) {
 		dump_header(NULL, gfp_mask, order, NULL, mpol_mask);

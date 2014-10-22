@@ -304,7 +304,11 @@ static int rpm_idle(struct device *dev, int rpmflags)
 		dev->power.request = RPM_REQ_IDLE;
 		if (!dev->power.request_pending) {
 			dev->power.request_pending = true;
+#if defined(CONFIG_SCHED_HMP)
+			queue_work_on(0, pm_wq, &dev->power.work);
+#else
 			queue_work(pm_wq, &dev->power.work);
+#endif
 		}
 		goto out;
 	}
@@ -433,7 +437,11 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 			if (!(dev->power.timer_expires && time_before_eq(
 			    dev->power.timer_expires, expires))) {
 				dev->power.timer_expires = expires;
+#if defined(CONFIG_SCHED_HMP)
+				mod_timer_on(&dev->power.suspend_timer, 0, expires);
+#else
 				mod_timer(&dev->power.suspend_timer, expires);
+#endif
 			}
 			dev->power.timer_autosuspends = 1;
 			goto out;
@@ -486,7 +494,11 @@ static int rpm_suspend(struct device *dev, int rpmflags)
 		    RPM_REQ_AUTOSUSPEND : RPM_REQ_SUSPEND;
 		if (!dev->power.request_pending) {
 			dev->power.request_pending = true;
+#if defined(CONFIG_SCHED_HMP)
+			queue_work_on(0, pm_wq, &dev->power.work);
+#else
 			queue_work(pm_wq, &dev->power.work);
+#endif
 		}
 		goto out;
 	}
@@ -681,7 +693,11 @@ static int rpm_resume(struct device *dev, int rpmflags)
 		dev->power.request = RPM_REQ_RESUME;
 		if (!dev->power.request_pending) {
 			dev->power.request_pending = true;
+#if defined(CONFIG_SCHED_HMP)
+			queue_work_on(0, pm_wq, &dev->power.work);
+#else
 			queue_work(pm_wq, &dev->power.work);
+#endif
 		}
 		retval = 0;
 		goto out;
@@ -862,7 +878,11 @@ int pm_schedule_suspend(struct device *dev, unsigned int delay)
 	dev->power.timer_expires = jiffies + msecs_to_jiffies(delay);
 	dev->power.timer_expires += !dev->power.timer_expires;
 	dev->power.timer_autosuspends = 0;
+#if defined(CONFIG_SCHED_HMP)
+	mod_timer_on(&dev->power.suspend_timer, 0, dev->power.timer_expires);
+#else
 	mod_timer(&dev->power.suspend_timer, dev->power.timer_expires);
+#endif
 
  out:
 	spin_unlock_irqrestore(&dev->power.lock, flags);

@@ -1528,6 +1528,15 @@ config SENSORS_MC13783_ADC
         help
           Support for the A/D converter on MC13783 and MC13892 PMIC.
 
+config SENSORS_SEC_THERMISTOR
+	tristate "SEC Thermistor support"
+	depends on EXYNOS_ADC
+	default n
+	help
+	  This driver supports SEC Thermistor sensor reading and its
+	  interpretation. The driver uses s3c adc driver and needs
+	  adc-temperature mapping table for conversion.
+
 if ACPI
 
 comment "ACPI drivers"

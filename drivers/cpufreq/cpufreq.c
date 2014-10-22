@@ -33,7 +33,9 @@
 #include <linux/syscore_ops.h>
 
 #include <trace/events/power.h>
-
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+#include <linux/sec_debug.h>
+#endif
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
  * level driver of CPUFreq support, and its spinlock. This lock
@@ -132,6 +134,16 @@ bool have_governor_per_policy(void)
 {
 	return cpufreq_driver->have_governor_per_policy;
 }
+EXPORT_SYMBOL_GPL(have_governor_per_policy);
+
+struct kobject *get_governor_parent_kobj(struct cpufreq_policy *policy)
+{
+	if (have_governor_per_policy())
+		return &policy->kobj;
+	else
+		return cpufreq_global_kobject;
+}
+EXPORT_SYMBOL_GPL(get_governor_parent_kobj);
 
 static struct cpufreq_policy *__cpufreq_cpu_get(unsigned int cpu, bool sysfs)
 {
@@ -305,6 +317,11 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 void cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
+	if (!policy) {
+		pr_debug("have not policy for transition notify");
+		return;
+	}
+
 	for_each_cpu(freqs->cpu, policy->cpus)
 		__cpufreq_notify_transition(policy, freqs, state);
 }
@@ -1682,7 +1699,8 @@ static int __cpufreq_set_policy(struct cpufreq_policy *data,
 	memcpy(&policy->cpuinfo, &data->cpuinfo,
 				sizeof(struct cpufreq_cpuinfo));
 
-	if (policy->min > data->max || policy->max < data->min) {
+	if ((policy->min > data->max || policy->max < data->min) &&
+		(policy->max < policy->min)) {
 		ret = -EINVAL;
 		goto error_out;
 	}
@@ -1785,10 +1803,17 @@ int cpufreq_update_policy(unsigned int cpu)
 	struct cpufreq_policy *data = cpufreq_cpu_get(cpu);
 	struct cpufreq_policy policy;
 	int ret;
+	int policy_cpu;
 
 	if (!data) {
 		ret = -ENODEV;
 		goto no_policy;
+	}
+
+	policy_cpu = per_cpu(cpufreq_policy_cpu, cpu);
+	if (policy_cpu == -1) {
+		ret = -ENODEV;
+		goto fail;
 	}
 
 	if (unlikely(lock_policy_rwsem_write(cpu))) {
@@ -1982,3 +2007,26 @@ static int __init cpufreq_core_init(void)
 	return 0;
 }
 core_initcall(cpufreq_core_init);
+
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+int sec_debug_set_cpu_info(struct sec_debug_subsys *subsys_info, char *subsys_log_buf)
+{
+	struct cpufreq_policy *data;
+	int i,val,size=0;
+
+	subsys_info->kernel.cpu_info.cpu_offset_paddr = virt_to_phys(&__per_cpu_offset[0]);
+	subsys_info->kernel.cpu_info.cpufreq_policy.paddr = virt_to_phys(subsys_log_buf);
+
+	for(i=0;i<nr_cpu_ids;++i) {
+		data = per_cpu(cpufreq_cpu_data, i);
+		val = virt_to_phys(data);
+		memcpy(subsys_log_buf+size,&val,sizeof(int)); size += sizeof(int);
+	}
+	subsys_info->kernel.cpu_info.cpufreq_policy.name_length = CPUFREQ_NAME_LEN;
+	subsys_info->kernel.cpu_info.cpufreq_policy.min_offset = offsetof(struct cpufreq_policy, min);
+	subsys_info->kernel.cpu_info.cpufreq_policy.max_offset = offsetof(struct cpufreq_policy, max);
+	subsys_info->kernel.cpu_info.cpufreq_policy.cur_offset = offsetof(struct cpufreq_policy, cur);
+
+	return size;
+}
+#endif

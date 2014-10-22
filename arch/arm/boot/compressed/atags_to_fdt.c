@@ -178,6 +178,18 @@ int atags_to_fdt(void *atag_list, void *fdt, int total_space)
 			setprop_cell(fdt, "/chosen", "linux,initrd-end",
 					initrd_start + initrd_size);
 		}
+		else if (atag->hdr.tag == ATAG_REVISION) {
+			uint32_t revision;
+			revision = atag->u.revision.rev;
+			setprop_cell(fdt, "/chosen", "revision", revision);
+		}
+		else if (atag->hdr.tag == ATAG_SERIAL) {
+			uint32_t serial_property[2];
+			serial_property[0] = cpu_to_fdt32(atag->u.serialnr.low);
+			serial_property[1] = cpu_to_fdt32(atag->u.serialnr.high);
+			setprop(fdt, "/chosen", "serial", serial_property, 4 * 2);
+		}
+
 	}
 
 	if (memcount) {

@@ -30,6 +30,8 @@
 #include <trace/events/irq.h>
 
 #include <asm/irq.h>
+
+#include <linux/sec_debug.h>
 /*
    - No shared variables, all the data are CPU local.
    - If a softirq needs serialization, let it serialize itself
@@ -246,12 +248,24 @@ restart:
 		if (pending & 1) {
 			unsigned int vec_nr = h - softirq_vec;
 			int prev_count = preempt_count();
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+			unsigned long long start_time, end_time;
 
+			start_time = sec_debug_clock();
+#endif
 			kstat_incr_softirqs_this_cpu(vec_nr);
 
 			trace_softirq_entry(vec_nr);
+			sec_debug_softirq_log(9999, h->action, 7);
 			h->action(h);
+			sec_debug_softirq_log(9999, h->action, 8);
 			trace_softirq_exit(vec_nr);
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+			end_time = sec_debug_clock();
+			if (start_time + 950000000 < end_time) {
+				sec_debug_aux_log(SEC_DEBUG_AUXLOG_IRQ, "S:%llu %pf", start_time, h->action);
+			}
+#endif
 			if (unlikely(prev_count != preempt_count())) {
 				printk(KERN_ERR "huh, entered softirq %u %s %p"
 				       "with preempt_count %08x,"
@@ -478,9 +492,22 @@ static void tasklet_action(struct softirq_action *a)
 
 		if (tasklet_trylock(t)) {
 			if (!atomic_read(&t->count)) {
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+				unsigned long long start_time, end_time;
+
+				start_time = sec_debug_clock();
+#endif
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
+				sec_debug_softirq_log(9997, t->func, 7);
 				t->func(t->data);
+				sec_debug_softirq_log(9997, t->func, 8);
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+				end_time = sec_debug_clock();
+				if (start_time + 950000000 < end_time) {
+					sec_debug_aux_log(SEC_DEBUG_AUXLOG_IRQ, "T:%llu %pf", start_time, t->func);
+				}
+#endif
 				tasklet_unlock(t);
 				continue;
 			}
@@ -513,9 +540,22 @@ static void tasklet_hi_action(struct softirq_action *a)
 
 		if (tasklet_trylock(t)) {
 			if (!atomic_read(&t->count)) {
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+				unsigned long long start_time, end_time;
+
+				start_time = sec_debug_clock();
+#endif
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
+				sec_debug_softirq_log(9998, t->func, 7);
 				t->func(t->data);
+				sec_debug_softirq_log(9998, t->func, 8);
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+				end_time = sec_debug_clock();
+				if (start_time + 950000000 < end_time) {
+					sec_debug_aux_log(SEC_DEBUG_AUXLOG_IRQ, "TH:%llu %pf", start_time, t->func);
+				}
+#endif
 				tasklet_unlock(t);
 				continue;
 			}

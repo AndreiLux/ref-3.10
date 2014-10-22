@@ -183,6 +183,7 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	unsigned int score, mdesc_score = ~1;
 	unsigned long dt_root;
 	const char *model;
+	const char *cpu_model_name;
 
 #ifdef CONFIG_ARCH_MULTIPLATFORM
 	DT_MACHINE_START(GENERIC_DT, "Generic DT based system")
@@ -233,6 +234,11 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 		model = of_get_flat_dt_prop(dt_root, "compatible", NULL);
 	if (!model)
 		model = "<unknown>";
+
+	cpu_model_name = of_get_flat_dt_prop(dt_root, "cpu_vendor_model_name", NULL);
+	if (cpu_model_name)
+		mdesc_best->name = cpu_model_name;
+
 	pr_info("Machine: %s, model: %s\n", mdesc_best->name, model);
 
 	/* Retrieve various information from the /chosen node */

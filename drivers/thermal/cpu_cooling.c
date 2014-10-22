@@ -112,7 +112,7 @@ static int is_cpufreq_valid(int cpu)
 {
 	struct cpufreq_policy policy;
 
-	return !cpufreq_get_policy(&policy, cpu);
+	return (!cpufreq_get_policy(&policy, cpu) && policy.user_policy.governor);
 }
 
 enum cpufreq_cooling_property {
@@ -167,7 +167,7 @@ static int get_property(unsigned int cpu, unsigned long input,
 			continue;
 
 		/* get the frequency order */
-		if (freq != CPUFREQ_ENTRY_INVALID && descend != -1)
+		if (freq != CPUFREQ_ENTRY_INVALID && descend == -1)
 			descend = !!(freq > table[i].frequency);
 
 		freq = table[i].frequency;

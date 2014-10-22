@@ -17,6 +17,11 @@ config SECURITY_DMESG_RESTRICT
 	  unless the dmesg_restrict sysctl is explicitly set to (1).
 
 	  If you are unsure how to answer this question, answer N.
+	  
+config LKM_USED_TRUE
+	bool "Lkm enable"
+	help
+	   This will be used to enable lkmauth
 
 config SECURITY
 	bool "Enable different security models"

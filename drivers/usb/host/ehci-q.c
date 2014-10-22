@@ -382,8 +382,16 @@ qh_completions (struct ehci_hcd *ehci, struct ehci_qh *qh)
 						QTD_CERR(token) == 0 &&
 						++qh->xacterrs < QH_XACTERR_MAX &&
 						!urb->unlinked) {
+
+					__u8 bRequest = 0;
+					struct usb_ctrlrequest *cmd = 
+						(struct usb_ctrlrequest *)urb->setup_packet;
+
+					if (cmd)
+						bRequest = cmd->bRequest;
+
 					ehci_dbg(ehci,
-	"detected XactErr len %zu/%zu retry %d\n",
+	"detected XactErr(cmd:%d) len %zu/%zu retry %d\n", bRequest,
 	qtd->length - QTD_LENGTH(token), qtd->length, qh->xacterrs);
 
 					/* reset the token in the qtd and the

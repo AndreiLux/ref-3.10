@@ -392,6 +392,7 @@ static void pci_device_shutdown(struct device *dev)
 	 * Turn off Bus Master bit on the device to tell it to not
 	 * continue to do DMA. Don't touch devices in D3cold or unknown states.
 	 */
+
 	if (pci_dev->current_state <= PCI_D3hot)
 		pci_clear_master(pci_dev);
 }
@@ -1150,6 +1151,7 @@ int __pci_register_driver(struct pci_driver *drv, struct module *owner,
 void
 pci_unregister_driver(struct pci_driver *drv)
 {
+	printk(KERN_EMERG "\n\n%s: Enter\n", __func__);
 	driver_unregister(&drv->driver);
 	pci_free_dynids(drv);
 }

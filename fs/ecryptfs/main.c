@@ -39,6 +39,10 @@
 #include <linux/magic.h>
 #include "ecryptfs_kernel.h"
 
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+#include <linux/ctype.h>
+#endif
+
 /**
  * Module parameter that defines the ecryptfs_verbosity level.
  */
@@ -177,6 +181,15 @@ enum { ecryptfs_opt_sig, ecryptfs_opt_ecryptfs_sig,
        ecryptfs_opt_fn_cipher, ecryptfs_opt_fn_cipher_key_bytes,
        ecryptfs_opt_unlink_sigs, ecryptfs_opt_mount_auth_tok_only,
        ecryptfs_opt_check_dev_ruid,
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+       ecryptfs_opt_enable_filtering,
+#endif
+#ifdef CONFIG_CRYPTO_FIPS
+	ecryptfs_opt_enable_cc,
+#endif
+#ifdef CONFIG_SDP
+	ecryptfs_opt_userid, ecryptfs_opt_sdp,
+#endif
        ecryptfs_opt_err };
 
 static const match_table_t tokens = {
@@ -194,6 +207,16 @@ static const match_table_t tokens = {
 	{ecryptfs_opt_unlink_sigs, "ecryptfs_unlink_sigs"},
 	{ecryptfs_opt_mount_auth_tok_only, "ecryptfs_mount_auth_tok_only"},
 	{ecryptfs_opt_check_dev_ruid, "ecryptfs_check_dev_ruid"},
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+	{ecryptfs_opt_enable_filtering, "ecryptfs_enable_filtering=%s"},
+#endif
+#ifdef CONFIG_CRYPTO_FIPS
+	{ecryptfs_opt_enable_cc, "ecryptfs_enable_cc"},
+#endif
+#ifdef CONFIG_SDP
+	{ecryptfs_opt_userid, "userid=%s"},
+	{ecryptfs_opt_sdp, "sdp_enabled"},
+#endif
 	{ecryptfs_opt_err, NULL}
 };
 
@@ -234,7 +257,56 @@ static void ecryptfs_init_mount_crypt_stat(
 	mutex_init(&mount_crypt_stat->global_auth_tok_list_mutex);
 	mount_crypt_stat->flags |= ECRYPTFS_MOUNT_CRYPT_STAT_INITIALIZED;
 }
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
 
+static int parse_enc_file_filter_parms(
+	struct ecryptfs_mount_crypt_stat *mcs, char *str)
+{
+	char *token = NULL;
+	int count = 0;
+	mcs->max_name_filter_len = 0;
+	while ((token = strsep(&str, "|")) != NULL) {
+		if (count >= ENC_NAME_FILTER_MAX_INSTANCE)
+			return -1;
+		strncpy(mcs->enc_filter_name[count++],
+			token, ENC_NAME_FILTER_MAX_LEN);
+		if (mcs->max_name_filter_len < strlen(token))
+			mcs->max_name_filter_len = strlen(token);
+	}
+	return 0;
+}
+
+static int parse_enc_ext_filter_parms(
+	struct ecryptfs_mount_crypt_stat *mcs, char *str)
+{
+	char *token = NULL;
+	int count = 0;
+	while ((token = strsep(&str, "|")) != NULL) {
+		if (count >= ENC_EXT_FILTER_MAX_INSTANCE)
+			return -1;
+		strncpy(mcs->enc_filter_ext[count++],
+			token, ENC_EXT_FILTER_MAX_LEN);
+	}
+	return 0;
+}
+
+static int parse_enc_filter_parms(
+	struct ecryptfs_mount_crypt_stat *mcs, char *str)
+{
+	char *token = NULL;
+	if (!strcmp("*", str)) {
+		mcs->flags |= ECRYPTFS_ENABLE_NEW_PASSTHROUGH;
+		return 0;
+	}
+	token = strsep(&str, ":");
+	if (token != NULL)
+		parse_enc_file_filter_parms(mcs, token);
+	token = strsep(&str, ":");
+	if (token != NULL)
+		parse_enc_ext_filter_parms(mcs, token);
+	return 0;
+}
+#endif
 /**
  * ecryptfs_parse_options
  * @sb: The ecryptfs super block
@@ -391,6 +463,42 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		case ecryptfs_opt_check_dev_ruid:
 			*check_ruid = 1;
 			break;
+#ifdef CONFIG_WTL_ENCRYPTION_FILTER
+		case ecryptfs_opt_enable_filtering:
+			rc = parse_enc_filter_parms(mount_crypt_stat,
+							 args[0].from);
+			if (rc) {
+				printk(KERN_ERR "Error attempting to parse encryption "
+							"filtering parameters.\n");
+				rc = -EINVAL;
+				goto out;
+			}
+			mount_crypt_stat->flags |= ECRYPTFS_ENABLE_FILTERING;
+			break;
+#endif
+#ifdef CONFIG_CRYPTO_FIPS
+		case ecryptfs_opt_enable_cc:
+            mount_crypt_stat->flags |= ECRYPTFS_ENABLE_CC;
+			break;
+#endif
+#ifdef CONFIG_SDP
+		case ecryptfs_opt_userid: {
+			char *userid_src = args[0].from;
+			int userid =
+				(int)simple_strtol(userid_src,
+						&userid_src, 0);
+			sbi->userid = userid;
+			mount_crypt_stat->userid = userid;
+			/*
+			 * Enabling SDP by default for Knox container.
+			 */
+			mount_crypt_stat->flags |= ECRYPTFS_MOUNT_SDP_ENABLED;
+			}
+			break;
+		case ecryptfs_opt_sdp:
+			mount_crypt_stat->flags |= ECRYPTFS_MOUNT_SDP_ENABLED;
+			break;
+#endif
 		case ecryptfs_opt_err:
 		default:
 			printk(KERN_WARNING
@@ -437,9 +545,16 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 	mutex_lock(&key_tfm_list_mutex);
 	if (!ecryptfs_tfm_exists(mount_crypt_stat->global_default_cipher_name,
 				 NULL)) {
+#ifdef CONFIG_CRYPTO_FIPS
+		rc = ecryptfs_add_new_key_tfm(
+			NULL, mount_crypt_stat->global_default_cipher_name,
+			mount_crypt_stat->global_default_cipher_key_size,
+			mount_crypt_stat->flags);
+#else
 		rc = ecryptfs_add_new_key_tfm(
 			NULL, mount_crypt_stat->global_default_cipher_name,
 			mount_crypt_stat->global_default_cipher_key_size);
+#endif
 		if (rc) {
 			printk(KERN_ERR "Error attempting to initialize "
 			       "cipher with name = [%s] and key size = [%td]; "
@@ -455,9 +570,16 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 	if ((mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)
 	    && !ecryptfs_tfm_exists(
 		    mount_crypt_stat->global_default_fn_cipher_name, NULL)) {
+#ifdef CONFIG_CRYPTO_FIPS
+		rc = ecryptfs_add_new_key_tfm(
+			NULL, mount_crypt_stat->global_default_fn_cipher_name,
+			mount_crypt_stat->global_default_fn_cipher_key_bytes,
+			mount_crypt_stat->flags);
+#else
 		rc = ecryptfs_add_new_key_tfm(
 			NULL, mount_crypt_stat->global_default_fn_cipher_name,
 			mount_crypt_stat->global_default_fn_cipher_key_bytes);
+#endif
 		if (rc) {
 			printk(KERN_ERR "Error attempting to initialize "
 			       "cipher with name = [%s] and key size = [%td]; "
@@ -506,6 +628,10 @@ static struct dentry *ecryptfs_mount(struct file_system_type *fs_type, int flags
 		rc = -ENOMEM;
 		goto out;
 	}
+
+#ifdef CONFIG_SDP
+	sbi->userid = -1;
+#endif
 
 	rc = ecryptfs_parse_options(sbi, raw_data, &check_ruid);
 	if (rc) {

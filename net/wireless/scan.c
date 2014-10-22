@@ -55,7 +55,7 @@
  * also linked into the probe response struct.
  */
 
-#define IEEE80211_SCAN_RESULT_EXPIRE	(30 * HZ)
+#define IEEE80211_SCAN_RESULT_EXPIRE	(6 * HZ)
 
 static void bss_free(struct cfg80211_internal_bss *bss)
 {
@@ -427,8 +427,14 @@ static int cmp_bss(struct cfg80211_bss *a,
 	const u8 *ie2 = NULL;
 	int i, r;
 
+#if !(defined(CONFIG_BCM4335) || defined(CONFIG_BCM4335_MODULE) \
+        || defined(CONFIG_BCM4339) || defined(CONFIG_BCM4339_MODULE) \
+        || defined(CONFIG_BCM4354) || defined(CONFIG_BCM4354_MODULE) \
+        || defined(CONFIG_BCM4356) || defined(CONFIG_BCM4356_MODULE) \
+        || defined(CONFIG_BCM4358) || defined(CONFIG_BCM4358_MODULE))
 	if (a->channel != b->channel)
 		return b->channel->center_freq - a->channel->center_freq;
+#endif /* CONFIG_BCM43xx */
 
 	a_ies = rcu_access_pointer(a->ies);
 	if (!a_ies)
@@ -471,6 +477,14 @@ static int cmp_bss(struct cfg80211_bss *a,
 	r = memcmp(a->bssid, b->bssid, sizeof(a->bssid));
 	if (r)
 		return r;
+#if (defined(CONFIG_BCM4339) || defined(CONFIG_BCM4339_MODULE) \
+        || defined(CONFIG_BCM4339) || defined(CONFIG_BCM4339_MODULE) \
+        || defined(CONFIG_BCM4354) || defined(CONFIG_BCM4354_MODULE) \
+        || defined(CONFIG_BCM4356) || defined(CONFIG_BCM4356_MODULE) \
+        || defined(CONFIG_BCM4358) || defined(CONFIG_BCM4358_MODULE))
+	if (a->channel != b->channel)
+		return b->channel->center_freq - a->channel->center_freq;
+#endif /* CONFIG_BCM43xx */
 
 	ie1 = cfg80211_find_ie(WLAN_EID_SSID, a_ies->data, a_ies->len);
 	ie2 = cfg80211_find_ie(WLAN_EID_SSID, b_ies->data, b_ies->len);

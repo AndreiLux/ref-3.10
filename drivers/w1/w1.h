@@ -56,6 +56,9 @@ struct w1_reg_num
 #define W1_READ_PSUPPLY		0xB4
 #define W1_MATCH_ROM		0x55
 #define W1_RESUME_CMD		0xA5
+#ifdef CONFIG_W1_CF
+#define W1_OVSKIP_ROM		0x3C
+#endif	/* CONFIG_W1_CF */
 
 #define W1_SLAVE_ACTIVE		0
 
@@ -89,6 +92,7 @@ typedef void (*w1_slave_found_callback)(struct w1_master *, u64);
  */
 struct w1_bus_master
 {
+	bool		irq_mode;
 	/** the first parameter in all the functions below */
 	void		*data;
 
@@ -153,6 +157,12 @@ struct w1_bus_master
 	 */
 	void		(*search)(void *, struct w1_master *,
 		u8, w1_slave_found_callback);
+
+	/* add for sending uevent */
+	struct input_dev *input;
+	struct work_struct irqwork;
+	struct delayed_work w1_irqwork;
+
 };
 
 struct w1_master
@@ -188,10 +198,17 @@ struct w1_master
 	struct w1_bus_master	*bus_master;
 
 	u32			seq;
+
+#ifdef CONFIG_W1_WORKQUEUE
+	struct work_struct	work;
+	struct delayed_work	w1_dwork;
+#endif
 };
 
 int w1_create_master_attributes(struct w1_master *);
 void w1_destroy_master_attributes(struct w1_master *master);
+int w1_create_additional_attributes(struct w1_master *master);
+void w1_destroy_additional_attributes(struct w1_master *master);
 void w1_search(struct w1_master *dev, u8 search_type, w1_slave_found_callback cb);
 void w1_search_devices(struct w1_master *dev, u8 search_type, w1_slave_found_callback cb);
 struct w1_slave *w1_search_slave(struct w1_reg_num *id);
@@ -207,6 +224,7 @@ struct w1_master *w1_search_master_id(u32 id);
  */
 void w1_reconnect_slaves(struct w1_family *f, int attach);
 void w1_slave_detach(struct w1_slave *sl);
+void w1_master_search(void);
 
 u8 w1_triplet(struct w1_master *dev, int bdir);
 void w1_write_8(struct w1_master *, u8);
@@ -217,6 +235,9 @@ void w1_write_block(struct w1_master *, const u8 *, int);
 void w1_touch_block(struct w1_master *, u8 *, int);
 u8 w1_read_block(struct w1_master *, u8 *, int);
 int w1_reset_select_slave(struct w1_slave *sl);
+#ifdef CONFIG_W1_CF
+int w1_reset_overdrive_select_slave(struct w1_slave *sl);
+#endif	/* CONFIG_W1_CF */
 int w1_reset_resume_command(struct w1_master *);
 void w1_next_pullup(struct w1_master *, int);
 
@@ -241,8 +262,17 @@ extern int w1_max_slave_count;
 extern int w1_max_slave_ttl;
 extern struct list_head w1_masters;
 extern struct mutex w1_mlock;
+extern int w1_read_detect_state(void);
+int w1_ds28el35_verifyecdsa(struct w1_slave *sl);
 
 extern int w1_process(void *);
+
+
+#ifdef CONFIG_W1_WORKQUEUE
+extern void w1_work(struct work_struct *work);
+extern void w1_irqwork(struct work_struct *irqwork);
+#endif
+extern struct w1_master *w1_gdev;
 
 #endif /* __KERNEL__ */
 

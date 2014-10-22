@@ -35,7 +35,16 @@
 #include <asm/tls.h>
 #include <asm/system_misc.h>
 
-static const char *handler[]= { "prefetch abort", "data abort", "address exception", "interrupt" };
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
+static const char *handler[]= {
+	"prefetch abort",
+	"data abort",
+	"address exception",
+	"interrupt",
+	"undefined instruction",
+};
 
 void *vectors_page;
 
@@ -239,7 +248,14 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		return 1;
 
 	print_modules();
+#if defined(CONFIG_SEC_DEBUG_UNHANDLED_FAULT_SAFE)
+	if (!strcmp("Unhandled fault", str))
+		__show_regs_without_extra(regs);
+	else
+		__show_regs(regs);
+#else
 	__show_regs(regs);
+#endif
 	printk(KERN_EMERG "Process %.*s (pid: %d, stack limit = 0x%p)\n",
 		TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), end_of_stack(tsk));
 
@@ -295,10 +311,19 @@ static void oops_end(unsigned long flags, struct pt_regs *regs, int signr)
 	raw_local_irq_restore(flags);
 	oops_exit();
 
+#if defined(CONFIG_SEC_DEBUG)
+	if (in_interrupt())
+		panic("%-51s\nPC is at %-42pS\nLR is at %-42pS",
+				"Fatal exception in interrupt", (void *)regs->ARM_pc, (void *)regs->ARM_lr);
+	if (panic_on_oops)
+		panic("%-51s\nPC is at %-42pS\nLR is at %-42pS",
+				"Fatal exception", (void *)regs->ARM_pc, (void *)regs->ARM_lr);
+#else
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
 	if (panic_on_oops)
 		panic("Fatal exception");
+#endif
 	if (signr)
 		do_exit(signr);
 }
@@ -319,6 +344,10 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	if (__die(str, err, regs))
 		sig = 0;
+
+#ifdef CONFIG_SEC_DEBUG_SUBSYS
+	sec_debug_save_die_info(str, regs);
+#endif
 
 	oops_end(flags, regs, sig);
 }

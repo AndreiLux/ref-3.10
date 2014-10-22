@@ -18,6 +18,8 @@
 
 #include <trace/events/irq.h>
 
+#include <linux/sec_debug.h>
+
 #include "internals.h"
 
 /**
@@ -137,10 +139,22 @@ handle_irq_event_percpu(struct irq_desc *desc, struct irqaction *action)
 
 	do {
 		irqreturn_t res;
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+		unsigned long long start_time, end_time;
 
+		start_time = sec_debug_clock();
+#endif
+		sec_debug_irq_log(irq, (void *)action->handler, 1);
 		trace_irq_handler_entry(irq, action);
 		res = action->handler(irq, action->dev_id);
 		trace_irq_handler_exit(irq, action, res);
+		sec_debug_irq_log(irq, (void *)action->handler, 2);
+#ifdef CONFIG_SEC_DEBUG_RT_THROTTLE_ACTIVE
+		end_time = sec_debug_clock();
+		if (start_time + 950000000 < end_time) {
+			sec_debug_aux_log(SEC_DEBUG_AUXLOG_IRQ, "I:%llu %pf", start_time, action->handler);
+		}
+#endif
 
 		if (WARN_ONCE(!irqs_disabled(),"irq %u handler %pF enabled interrupts\n",
 			      irq, action->handler))

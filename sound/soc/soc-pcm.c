@@ -383,12 +383,14 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 	/* Muting the DAC suppresses artifacts caused during digital
 	 * shutdown, for example from stopping clocks.
 	 */
-	snd_soc_dai_digital_mute(codec_dai, 1, substream->stream);
+	if (!codec_dai->playback_active)
+		snd_soc_dai_digital_mute(codec_dai, 1, substream->stream);
 
 	if (cpu_dai->driver->ops->shutdown)
 		cpu_dai->driver->ops->shutdown(substream, cpu_dai);
 
-	if (codec_dai->driver->ops->shutdown)
+	if (codec_dai->driver->ops->shutdown
+			&& !codec_dai->playback_active)
 		codec_dai->driver->ops->shutdown(substream, codec_dai);
 
 	if (rtd->dai_link->ops && rtd->dai_link->ops->shutdown)
@@ -399,6 +401,9 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 	cpu_dai->runtime = NULL;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		if (codec_dai->playback_active)
+			goto out;
+
 		if (!rtd->pmdown_time || codec->ignore_pmdown_time ||
 		    rtd->dai_link->ignore_pmdown_time) {
 			/* powered down playback stream now */
@@ -412,11 +417,15 @@ static int soc_pcm_close(struct snd_pcm_substream *substream)
 				msecs_to_jiffies(rtd->pmdown_time));
 		}
 	} else {
+		if (codec_dai->capture_active)
+			goto out;
+
 		/* capture streams can be powered down now */
 		snd_soc_dapm_stream_event(rtd, SNDRV_PCM_STREAM_CAPTURE,
 					  SND_SOC_DAPM_STREAM_STOP);
 	}
 
+out:
 	mutex_unlock(&rtd->pcm_mutex);
 
 	pm_runtime_put(platform->dev);

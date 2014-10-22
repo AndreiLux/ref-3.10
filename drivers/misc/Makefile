@@ -36,6 +36,7 @@ obj-$(CONFIG_SENSORS_TSL2550)	+= tsl2550.o
 obj-$(CONFIG_EP93XX_PWM)	+= ep93xx_pwm.o
 obj-$(CONFIG_DS1682)		+= ds1682.o
 obj-$(CONFIG_TI_DAC7512)	+= ti_dac7512.o
+obj-$(CONFIG_UID_STAT)		+= uid_stat.o
 obj-$(CONFIG_C2PORT)		+= c2port/
 obj-$(CONFIG_HMC6352)		+= hmc6352.o
 obj-y				+= eeprom/
@@ -47,9 +48,23 @@ obj-$(CONFIG_PCH_PHUB)		+= pch_phub.o
 obj-y				+= ti-st/
 obj-y				+= lis3lv02d/
 obj-y				+= carma/
-obj-$(CONFIG_USB_SWITCH_FSA9480) += fsa9480.o
 obj-$(CONFIG_ALTERA_STAPL)	+=altera-stapl/
 obj-$(CONFIG_INTEL_MEI)		+= mei/
 obj-$(CONFIG_VMWARE_VMCI)	+= vmw_vmci/
 obj-$(CONFIG_LATTICE_ECP3_CONFIG)	+= lattice-ecp3-config.o
 obj-$(CONFIG_SRAM)		+= sram.o
+obj-$(CONFIG_SCHED_HMP)		+= cci400.o
+obj-$(CONFIG_MIPI_LLI)		+= mipi-lli/
+obj-$(CONFIG_SEC_MODEM_V1)	+= modem_v1/
+obj-$(CONFIG_SEC_MODEM_V2)	+= modem_v2/
+obj-$(CONFIG_QC_MODEM)		+= mdm_if/
+obj-$(CONFIG_LED_COVER)		+= led_cover_pwr.o
+
+# Secure OS Mobicore Interface
+obj-$(CONFIG_MOBICORE_DRIVER)  += tzic.o
+
+ifeq ($(TIMA_ENABLED),1)
+obj-$(CONFIG_TIMA_LOG)		+= tima_debug_log.o
+endif
+
+obj-$(CONFIG_DM_VERITY)		+= dmverity_query.o

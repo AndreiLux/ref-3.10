@@ -135,3 +135,14 @@ struct page *kmap_atomic_to_page(const void *ptr)
 
 	return pte_page(get_top_pte(vaddr));
 }
+
+#ifdef CONFIG_TIMA_RKP
+#ifdef CONFIG_TIMA_KMAP_OPT
+static int __init tima_init_kmap_atomic(void)
+{
+	tima_send_cmd(__fix_to_virt(FIX_KMAP_BEGIN), 0x10);
+	return 1;
+}
+early_initcall(tima_init_kmap_atomic);
+#endif
+#endif 

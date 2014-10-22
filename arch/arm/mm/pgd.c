@@ -87,7 +87,8 @@ pgd_t *pgd_alloc(struct mm_struct *mm)
 		init_pud = pud_offset(init_pgd, 0);
 		init_pmd = pmd_offset(init_pud, 0);
 		init_pte = pte_offset_map(init_pmd, 0);
-		set_pte_ext(new_pte, *init_pte, 0);
+		set_pte_ext(new_pte + 0, init_pte[0], 0);
+		set_pte_ext(new_pte + 1, init_pte[1], 0);
 		pte_unmap(init_pte);
 		pte_unmap(new_pte);
 	}
@@ -110,6 +111,13 @@ void pgd_free(struct mm_struct *mm, pgd_t *pgd_base)
 	pud_t *pud;
 	pmd_t *pmd;
 	pgtable_t pte;
+#ifdef  CONFIG_TIMA_RKP_L1_TABLES
+	unsigned long cmd_id = 0x8380b000;
+
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        __asm__ __volatile__(".arch_extension sec\n");
+#endif
+#endif
 
 	if (!pgd_base)
 		return;
@@ -154,6 +162,20 @@ no_pgd:
 		pgd_clear(pgd);
 		pud_free(mm, pud);
 	}
+#endif
+#ifdef  CONFIG_TIMA_RKP_L1_TABLES
+	__asm__ __volatile__ (
+		"stmfd  sp!,{r0-r2}\n"
+		"mov   	r2, r0\n"  /*mcr_val in r2 in fastcall */
+		"mov    r0, %0\n"
+		"mov    r1, %1\n"
+		"smc    #11\n"
+		"mov    r0, #0\n"
+		"mcr    p15, 0, r0, c8, c3, 0\n"
+       	"dsb\n"
+       	"isb\n"
+		"pop    {r0-r2}\n"
+		::"r"(cmd_id),"r"(pgd):"r0","r1","r2","cc");
 #endif
 	__pgd_free(pgd_base);
 }

@@ -1226,10 +1226,19 @@ int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 
 	if (PageHWPoison(page) && !(flags & TTU_IGNORE_HWPOISON)) {
 		if (!PageHuge(page)) {
-			if (PageAnon(page))
+			if (PageAnon(page)) {
 				dec_mm_counter(mm, MM_ANONPAGES);
-			else
+#ifdef CONFIG_ZOOM_KILLER
+				if (!PageHighMem(page))
+					dec_mm_counter(mm, MM_LOW_ANONPAGES);
+#endif
+			} else {
 				dec_mm_counter(mm, MM_FILEPAGES);
+#ifdef CONFIG_ZOOM_KILLER
+				if (!PageHighMem(page))
+					dec_mm_counter(mm, MM_LOW_FILEPAGES);
+#endif
+			}
 		}
 		set_pte_at(mm, address, pte,
 			   swp_entry_to_pte(make_hwpoison_entry(page)));
@@ -1253,6 +1262,10 @@ int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 				spin_unlock(&mmlist_lock);
 			}
 			dec_mm_counter(mm, MM_ANONPAGES);
+#ifdef CONFIG_ZOOM_KILLER
+			if (!PageHighMem(page))
+				dec_mm_counter(mm, MM_LOW_ANONPAGES);
+#endif
 			inc_mm_counter(mm, MM_SWAPENTS);
 		} else if (IS_ENABLED(CONFIG_MIGRATION)) {
 			/*
@@ -1271,8 +1284,13 @@ int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		swp_entry_t entry;
 		entry = make_migration_entry(page, pte_write(pteval));
 		set_pte_at(mm, address, pte, swp_entry_to_pte(entry));
-	} else
+	} else {
 		dec_mm_counter(mm, MM_FILEPAGES);
+#ifdef CONFIG_ZOOM_KILLER
+		if (!PageHighMem(page))
+			dec_mm_counter(mm, MM_LOW_FILEPAGES);
+#endif
+	}
 
 	page_remove_rmap(page);
 	page_cache_release(page);
@@ -1410,6 +1428,10 @@ static int try_to_unmap_cluster(unsigned long cursor, unsigned int *mapcount,
 		page_remove_rmap(page);
 		page_cache_release(page);
 		dec_mm_counter(mm, MM_FILEPAGES);
+#ifdef CONFIG_ZOOM_KILLER
+		if (!PageHighMem(page))
+			dec_mm_counter(mm, MM_LOW_FILEPAGES);
+#endif
 		(*mapcount)--;
 	}
 	pte_unmap_unlock(pte - 1, ptl);

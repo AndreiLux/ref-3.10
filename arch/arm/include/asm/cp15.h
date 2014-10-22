@@ -61,20 +61,6 @@ static inline void set_cr(unsigned int val)
 	isb();
 }
 
-static inline unsigned int get_auxcr(void)
-{
-	unsigned int val;
-	asm("mrc p15, 0, %0, c1, c0, 1	@ get AUXCR" : "=r" (val));
-	return val;
-}
-
-static inline void set_auxcr(unsigned int val)
-{
-	asm volatile("mcr p15, 0, %0, c1, c0, 1	@ set AUXCR"
-	  : : "r" (val));
-	isb();
-}
-
 #ifndef CONFIG_SMP
 extern void adjust_cr(unsigned long mask, unsigned long set);
 #endif
@@ -109,6 +95,79 @@ static inline void set_copro_access(unsigned int val)
 #define cr_alignment	UL(0)
 
 #endif /* ifdef CONFIG_CPU_CP15 / else */
+
+#ifdef CONFIG_TIMA_RKP
+#define FC_ID 		0x83800000
+#define BUILD_CMD_ID(cmdid)	(FC_ID | (((cmdid) & 0x3ff) << 12))
+int tima_is_pg_protected(unsigned long va);
+static inline void tima_send_cmd (unsigned int p1, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension sec\n"
+#endif	
+		"stmfd   sp!, {r0-r4}\n"   
+		"mov     r2, %0\n" /* r2 carry mcr_val */
+		"mov     r0, %1\n"
+		"smc     #1\n" 
+        "ldmfd   sp!, {r0-r4}" 
+		::"r"(p1), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
+}
+
+/* p1 --> r2, p2 --> r3s */
+static inline void tima_send_cmd2 (unsigned int p1, unsigned int p2, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension sec\n"
+#endif	
+	"stmfd   sp!, {r0-r4}\n"
+    "mov     r2, %0\n"
+	"mov     r3, %1\n"  
+	"mov     r0, %2\n"
+	"smc     #2\n" 
+	"ldmfd   sp!, {r0-r4}" : : "r" (p1), "r" (p2), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
+}
+static inline void tima_send_cmd4 (unsigned int p1, unsigned int p2, unsigned int p3, unsigned int p4, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension sec\n"
+#endif	
+		"stmfd   sp!, {r0-r5}\n"
+		"mov     r2, %0\n"
+		"mov     r3, %1\n"  
+		"mov     r4, %2\n"  
+		"mov     r5, %3\n"  
+		"mov     r0, %4\n"
+		"smc     #1\n" 
+        "ldmfd   sp!, {r0-r5}" : : "r" (p1), "r" (p2), "r" (p3), "r" (p4), "r" (tima_cmdid) : "r0","r2","r3","r4","r5","cc");
+}
+static inline void tima_send_cmd5 (unsigned int p1, unsigned int p2, unsigned int p3, unsigned int p4, unsigned int p5, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension sec\n"
+#endif	
+		"stmfd   sp!, {r0-r5}\n"
+		"mov     r2, %0\n"
+		"mov     r3, %1\n"  
+		"mov     r4, %2\n"  
+		"mov     r5, %3\n" 
+		"mov     r1, %4\n" 
+		"mov     r0, %5\n"
+		"smc     #1\n" 
+        "ldmfd   sp!, {r0-r5}" : : "r" (p1), "r" (p2), "r" (p3), "r" (p4), "r" (p5), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","r5","cc");
+}
+#endif
+
+
+
 
 #endif /* ifndef __ASSEMBLY__ */
 

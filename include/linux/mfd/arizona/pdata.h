@@ -8,6 +8,8 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/kernel.h>
+
 #ifndef _ARIZONA_PDATA_H
 #define _ARIZONA_PDATA_H
 
@@ -71,13 +73,20 @@
 
 #define ARIZONA_MAX_PDM_SPK 2
 
+/* Treat INT_MAX impedance as open circuit */
+#define ARIZONA_HP_Z_OPEN INT_MAX
+
+#define ARIZONA_MAX_DSP	4
+
 struct regulator_init_data;
+
+struct arizona_jd_state;
 
 struct arizona_micbias {
 	int mV;                    /** Regulated voltage */
 	unsigned int ext_cap:1;    /** External capacitor fitted */
 	unsigned int discharge:1;  /** Actively discharge */
-	unsigned int fast_start:1; /** Enable aggressive startup ramp rate */
+	unsigned int soft_start:1; /** Disable aggressive startup ramp rate */
 	unsigned int bypass:1;     /** Use bypass mode */
 };
 
@@ -121,11 +130,20 @@ struct arizona_pdata {
 	 */
 	int max_channels_clocked[ARIZONA_MAX_AIF];
 
+	/** Time in milliseconds to keep wake lock during jack detection */
+	int jd_wake_time;
+
 	/** GPIO5 is used for jack detection */
 	bool jd_gpio5;
 
 	/** Internal pull on GPIO5 is disabled when used for jack detection */
 	bool jd_gpio5_nopull;
+
+	/** set to true if jackdet contact opens on insert */
+	bool jd_invert;
+
+	/** If non-zero don't run headphone detection, report this value */
+	int fixed_hpdet_imp;
 
 	/** Use the headphone detect circuit to identify the accessory */
 	bool hpdet_acc_id;
@@ -135,6 +153,32 @@ struct arizona_pdata {
 
 	/** GPIO used for mic isolation with HPDET */
 	int hpdet_id_gpio;
+
+	/** Callback notifying HPDET result */
+	void (*hpdet_cb)(unsigned int measurement);
+
+	/** Callback notifying mic presence */
+	void (*micd_cb)(bool mic);
+
+	/** If non-zero, specifies the maximum impedance in ohms
+	 * that will be considered as a short circuit.
+	 */
+	int hpdet_short_circuit_imp;
+
+	/** Use HPDETL to check for moisture, this value specifies the
+	 * threshold impedance in ohms above which it will be considered
+	 * a false detection
+	 */
+	int hpdet_moisture_imp;
+
+	/**
+	 * Channel to use for headphone detection, valid values are 0 for
+	 * left and 1 for right
+	 */
+	int hpdet_channel;
+
+	/** Use software comparison to determine mic presence */
+	bool micd_software_compare;
 
 	/** Extra debounce timeout used during initial mic detection (ms) */
 	int micd_detect_debounce;
@@ -157,6 +201,15 @@ struct arizona_pdata {
 	/** Force MICBIAS on for mic detect */
 	bool micd_force_micbias;
 
+	/** Force MICBIAS on for initial mic detect only, not button detect */
+	bool micd_force_micbias_initial;
+
+	/** Declare an open circuit as a 4 pole jack */
+	bool micd_open_circuit_declare;
+
+	/** Delay between jack detection and MICBIAS ramp */
+	int init_mic_delay;
+
 	/** Mic detect level parameters */
 	const struct arizona_micd_range *micd_ranges;
 	int num_micd_ranges;
@@ -171,7 +224,10 @@ struct arizona_pdata {
 	/** MICBIAS configurations */
 	struct arizona_micbias micbias[ARIZONA_MAX_MICBIAS];
 
-	/** Mode of input structures */
+	/**
+	 * Mode of input structures
+	 * One of the ARIZONA_INMODE_xxx values
+	 */
 	int inmode[ARIZONA_MAX_INPUT];
 
 	/** Mode for outputs */
@@ -188,6 +244,24 @@ struct arizona_pdata {
 
 	/** GPIO for primary IRQ (used for edge triggered emulation) */
 	int irq_gpio;
+
+	/** General purpose switch control */
+	int gpsw;
+
+	/** Callback which is called when the trigger phrase is detected */
+	void (*ez2ctrl_trigger)(void);
+
+	/** wm5102t output power */
+	unsigned int wm5102t_output_pwr;
+
+	/** Override the normal jack detection */
+	const struct arizona_jd_state *custom_jd;
+
+	struct wm_adsp_fw_defs *fw_defs[ARIZONA_MAX_DSP];
+	int num_fw_defs[ARIZONA_MAX_DSP];
+
+	/** Some platforms add a series resistor for hpdet to suppress pops */
+	int hpdet_ext_res;
 };
 
 #endif

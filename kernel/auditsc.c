@@ -80,7 +80,7 @@
 #define MAX_EXECVE_AUDIT_LEN 7500
 
 /* number of audit rules */
-int audit_n_rules;
+int audit_n_rules = 1;
 
 /* determines whether we collect data for signals sent */
 int audit_signals;
@@ -1293,29 +1293,31 @@ static void audit_log_exit(struct audit_context *context, struct task_struct *ts
 	/* tsk == current */
 	context->personality = tsk->personality;
 
-	ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
-	if (!ab)
-		return;		/* audit_panic has been called */
-	audit_log_format(ab, "arch=%x syscall=%d",
-			 context->arch, context->major);
-	if (context->personality != PER_LINUX)
-		audit_log_format(ab, " per=%lx", context->personality);
-	if (context->return_valid)
-		audit_log_format(ab, " success=%s exit=%ld",
-				 (context->return_valid==AUDITSC_SUCCESS)?"yes":"no",
-				 context->return_code);
+	if (context->major != 294) { /* __NR_setsockopt */
+		ab = audit_log_start(context, GFP_KERNEL, AUDIT_SYSCALL);
+		if (!ab)
+			return;		/* audit_panic has been called */
+		audit_log_format(ab, "arch=%x syscall=%d",
+				 context->arch, context->major);
+		if (context->personality != PER_LINUX)
+			audit_log_format(ab, " per=%lx", context->personality);
+		if (context->return_valid)
+			audit_log_format(ab, " success=%s exit=%ld",
+					 (context->return_valid==AUDITSC_SUCCESS)?"yes":"no",
+					 context->return_code);
 
-	audit_log_format(ab,
-			 " a0=%lx a1=%lx a2=%lx a3=%lx items=%d",
-			 context->argv[0],
-			 context->argv[1],
-			 context->argv[2],
-			 context->argv[3],
-			 context->name_count);
+		audit_log_format(ab,
+				 " a0=%lx a1=%lx a2=%lx a3=%lx items=%d",
+				 context->argv[0],
+				 context->argv[1],
+				 context->argv[2],
+				 context->argv[3],
+				 context->name_count);
 
-	audit_log_task_info(ab, tsk);
-	audit_log_key(ab, context->filterkey);
-	audit_log_end(ab);
+		audit_log_task_info(ab, tsk);
+		audit_log_key(ab, context->filterkey);
+		audit_log_end(ab);
+	}
 
 	for (aux = context->aux; aux; aux = aux->next) {
 

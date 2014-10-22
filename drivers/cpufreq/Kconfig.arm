@@ -4,7 +4,7 @@
 
 config ARM_BIG_LITTLE_CPUFREQ
 	tristate "Generic ARM big LITTLE CPUfreq driver"
-	depends on ARM_CPU_TOPOLOGY && PM_OPP && HAVE_CLK && BIG_LITTLE
+	depends on ARM_CPU_TOPOLOGY && PM_OPP && HAVE_CLK
 	help
 	  This enables the Generic CPUfreq driver for ARM big.LITTLE platforms.
 
@@ -15,20 +15,21 @@ config ARM_DT_BL_CPUFREQ
 	  This enables probing via DT for Generic CPUfreq driver for ARM
 	  big.LITTLE platform. This gets frequency tables from DT.
 
-config ARM_VEXPRESS_BL_CPUFREQ
-	tristate "ARM Vexpress big LITTLE CPUfreq driver"
-	select ARM_BIG_LITTLE_CPUFREQ
-	depends on VEXPRESS_SPC
-	help
-	  This enables the CPUfreq driver for ARM Vexpress big.LITTLE platform.
-	  If in doubt, say N.
-
 config ARM_EXYNOS_CPUFREQ
 	bool "SAMSUNG EXYNOS SoCs"
 	depends on ARCH_EXYNOS
-	default y
 	help
 	  This adds the CPUFreq driver common part for Samsung
+	  EXYNOS SoCs.
+
+	  If in doubt, say N.
+
+config ARM_EXYNOS_MP_CPUFREQ
+	bool "SAMSUNG EXYNOS SoCs for MP"
+	depends on ARCH_EXYNOS
+	depends on SCHED_HMP
+	help
+	  This adds the MP CPUFreq driver common part for Samsung
 	  EXYNOS SoCs.
 
 	  If in doubt, say N.
@@ -49,6 +50,24 @@ config ARM_EXYNOS5250_CPUFREQ
 	def_bool SOC_EXYNOS5250
 	help
 	  This adds the CPUFreq driver for Samsung EXYNOS5250
+	  SoC.
+
+config ARM_EXYNOS5430_CPUFREQ
+	def_bool SOC_EXYNOS5430
+	help
+	  This adds the CPUFreq driver for Samsung EXYNOS5430
+	  SoC.
+
+config ARM_EXYNOS5422_CPUFREQ
+	def_bool SOC_EXYNOS5422
+	help
+	  This adds the CPUFreq driver for Samsung EXYNOS5422
+	  SoC.
+
+config ARM_EXYNOS5433_CPUFREQ
+	def_bool SOC_EXYNOS5433
+	help
+	  This adds the CPUFreq driver for Samsung EXYNOS5433
 	  SoC.
 
 config ARM_EXYNOS5440_CPUFREQ

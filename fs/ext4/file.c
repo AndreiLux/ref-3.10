@@ -211,6 +211,14 @@ static int ext4_file_mmap(struct file *file, struct vm_area_struct *vma)
 	if (!mapping->a_ops->readpage)
 		return -ENOEXEC;
 	file_accessed(file);
+#ifdef CONFIG_TIMA_IOMMU_OPT
+	if (vma->vm_end - vma->vm_start) {
+		/* iommu optimization- needs to be turned ON from
+		* the tz side.
+		*/
+		cpu_v7_tima_iommu_opt(vma->vm_start, vma->vm_end, (unsigned long)vma->vm_mm->pgd);
+	}
+#endif /* CONFIG_TIMA_IOMMU_OPT */
 	vma->vm_ops = &ext4_file_vm_ops;
 	return 0;
 }

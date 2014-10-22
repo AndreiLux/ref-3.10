@@ -22,7 +22,7 @@
  * an single MOVS instruction (ie, only 8 bits of set data)
  */
 
-#define S3C_ADDR_BASE	0xF6000000
+#define S3C_ADDR_BASE CONFIG_S3C_ADDR_BASE
 
 #ifndef __ASSEMBLY__
 #define S3C_ADDR(x)	((void __iomem __force *)S3C_ADDR_BASE + (x))
@@ -36,6 +36,10 @@
 #define S3C_VA_TIMER	S3C_ADDR(0x00300000)	/* timer block */
 #define S3C_VA_WATCHDOG	S3C_ADDR(0x00400000)	/* watchdog */
 #define S3C_VA_UART	S3C_ADDR(0x01000000)	/* UART */
+
+#define S3C_VA_KLOG_BUF	S3C_ADDR(0x01100000)	/* non-cached log buf */
+#define S3C_VA_SLOG_BUF	S3C_ADDR(0x01400000)	/* non-cached sched log buf */
+#define S3C_VA_AUXLOG_BUF	S3C_ADDR(0x01600000)	/* auxiliary log buf */
 
 /* This is used for the CPU specific mappings that may be needed, so that
  * they do not need to directly used S3C_ADDR() and thus make it easier to

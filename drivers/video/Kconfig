@@ -23,6 +23,10 @@ source "drivers/gpu/drm/Kconfig"
 
 source "drivers/gpu/host1x/Kconfig"
 
+source "drivers/gpu/ion/Kconfig"
+
+source "drivers/gpu/arm/Kconfig"
+
 config VGASTATE
        tristate
        default n
@@ -38,11 +42,6 @@ config VIDEOMODE_HELPERS
 
 config HDMI
 	bool
-
-config VEXPRESS_DVI_CONTROL
-	bool "Versatile Express DVI control"
-	depends on FB && VEXPRESS_CONFIG
-	default y
 
 menuconfig FB
 	tristate "Support for frame buffer devices"
@@ -330,21 +329,6 @@ config FB_ARMCLCD
 	  inserted into and removed from the running kernel), say M
 	  here and read <file:Documentation/kbuild/modules.txt>.  The module
 	  will be called amba-clcd.
-
-config FB_ARMHDLCD
-	tristate "ARM High Definition LCD support"
-	depends on FB && ARM
-	select FB_CFB_FILLRECT
-	select FB_CFB_COPYAREA
-	select FB_CFB_IMAGEBLIT
-	help
-	  This framebuffer device driver is for the ARM High Definition
-	  Colour LCD controller.
-
-	  If you want to compile this as a module (=code which can be
-	  inserted into and removed from the running kernel), say M
-	  here and read <file:Documentation/kbuild/modules.txt>.  The module
-	  will be called arm-hdlcd.
 
 config FB_ACORN
 	bool "Acorn VIDC support"
@@ -2056,6 +2040,9 @@ config FB_TMIO_ACCELL
 	depends on FB_TMIO
 	default y
 
+source "drivers/video/decon_display/Kconfig"
+source "drivers/video/mhl/Kconfig"
+
 config FB_S3C
 	tristate "Samsung S3C framebuffer support"
 	depends on FB && (CPU_S3C2416 || ARCH_S3C64XX || ARCH_S5P64X0 || \
@@ -2318,6 +2305,16 @@ config FB_MB862XX
 	select FB_CFB_IMAGEBLIT
 	---help---
 	  Frame buffer driver for Fujitsu Carmine/Coral-P(A)/Lime controllers.
+
+config S5P_LCD_INIT
+	bool "LCD init in kernel"
+	depends on EXYNOS_DECON || DECON
+	default y
+
+config S5P_LCD_EXT_INIT
+	bool "LCD_EXT init in kernel"
+	depends on EXYNOS_DECON_DUAL_DISPLAY && (EXYNOS_DECON || DECON)
+	default n
 
 choice
 	prompt "GDC variant"
