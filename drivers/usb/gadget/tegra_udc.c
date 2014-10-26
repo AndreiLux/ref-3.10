@@ -3157,8 +3157,11 @@ static int tegra_udc_suspend(struct platform_device *pdev, pm_message_t state)
 	udc->connect_type_lp0 = udc->connect_type;
 
 	/* If the controller is in otg mode, return */
-	if (udc->transceiver)
+	if (udc->transceiver) {
+		if (udc->vbus_active)
+			tegra_usb_phy_power_off(udc->phy);
 		return 0;
+	}
 
 	if (udc->irq) {
 		err = enable_irq_wake(udc->irq);
@@ -3217,8 +3220,11 @@ static int tegra_udc_resume(struct platform_device *pdev)
 		}
 	}
 
-	if (udc->transceiver)
+	if (udc->transceiver) {
+		if (udc->vbus_active)
+			tegra_usb_phy_power_on(udc->phy);
 		return 0;
+	}
 
 	if (udc->irq) {
 		err = disable_irq_wake(udc->irq);
