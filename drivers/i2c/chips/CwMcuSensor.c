@@ -3032,7 +3032,8 @@ static void cwmcu_read(struct cwmcu_data *mcu_data, struct iio_poll_func *pf)
 			    (mcu_data->update_list & (1LL<<id_check)) &&
 			    (mcu_data->batch_timeout[id_check] == 0)) {
 				cwmcu_powermode_switch(mcu_data, 1);
-				cwmcu_batch_read(mcu_data);
+				cwmcu_batch_fifo_read(mcu_data,
+						id_check > CW_SENSORS_ID_FW);
 				cwmcu_powermode_switch(mcu_data, 0);
 			}
 		}
