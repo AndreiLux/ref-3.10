@@ -4188,7 +4188,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	indio_dev->info = &cw_info;
 	indio_dev->channels = cw_channels;
 	indio_dev->num_channels = ARRAY_SIZE(cw_channels);
-	indio_dev->modes |= INDIO_BUFFER_TRIGGERED;
+	indio_dev->modes |= INDIO_BUFFER_TRIGGERED | INDIO_KFIFO_USE_VMALLOC;
 
 	mcu_data = iio_priv(indio_dev);
 	mcu_data->client = client;
