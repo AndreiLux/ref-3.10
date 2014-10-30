@@ -57,6 +57,7 @@ struct iio_buffer_access_funcs {
  *			control method is used
  * @scan_mask:		[INTERN] bitmask used in masking scan mode elements
  * @scan_timestamp:	[INTERN] does the scan mode include a timestamp
+ * @kfifo_use_vmalloc:  [INTERN] kfifo buffer uses vmalloc instead of kmalloc
  * @access:		[DRIVER] buffer access functions associated with the
  *			implementation.
  * @scan_el_dev_attr_list:[INTERN] list of scan element related attributes.
@@ -74,6 +75,7 @@ struct iio_buffer {
 	struct attribute_group			*scan_el_attrs;
 	long					*scan_mask;
 	bool					scan_timestamp;
+	bool					kfifo_use_vmalloc;
 	const struct iio_buffer_access_funcs	*access;
 	struct list_head			scan_el_dev_attr_list;
 	struct attribute_group			scan_el_group;
