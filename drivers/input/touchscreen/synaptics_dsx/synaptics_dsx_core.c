@@ -2889,6 +2889,7 @@ static int synaptics_rmi4_probe(struct platform_device *pdev)
 				__func__);
 		return retval;
 	}
+	disable_irq(rmi4_data->irq);
 
 	irq_set_irq_wake(rmi4_data->irq, 1);
 
