@@ -774,7 +774,7 @@ int nvhost_module_disable_clk(struct device *dev)
 
 	for (index = 0; index < pdata->num_channels; index++)
 		if (pdata->channels[index] &&
-			test_bit(index, &host->allocated_channels))
+			test_bit(pdata->channels[index]->chid, &host->allocated_channels))
 			nvhost_channel_suspend(pdata->channels[index]);
 
 	for (index = 0; index < pdata->num_clks; index++)
