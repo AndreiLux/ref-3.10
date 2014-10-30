@@ -790,6 +790,9 @@ __kfifo_uint_must_check_helper( \
 extern int __kfifo_alloc(struct __kfifo *fifo, unsigned int size,
 	size_t esize, gfp_t gfp_mask);
 
+extern int __kfifo_valloc(struct __kfifo *fifo, unsigned int size,
+	size_t esize);
+
 extern void __kfifo_free(struct __kfifo *fifo);
 
 extern int __kfifo_init(struct __kfifo *fifo, void *buffer,
