@@ -985,6 +985,8 @@ static ssize_t get_light_polling(struct device *dev,
 
 	light_adc = (data[2] << 8) | data[1];
 
+	I("poll light[%x]=%u\n", light_adc, data[0]);
+
 	return scnprintf(buf, PAGE_SIZE, "ADC[0x%04X] => level %u\n", light_adc,
 					 data[0]);
 }
@@ -3205,12 +3207,14 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 					data[0], light_adc,
 					mcu_data->ls_calibrated);
 			} else {
+				light_adc = (data[2] << 8) | data[1];
 				D(
 				  "light interrupt occur value is %u, adc is"
 				  " %x ls_calibration is %u (message only)\n",
 					data[0], light_adc,
 					mcu_data->ls_calibrated);
 			}
+			I("intr light[%x]=%u\n", light_adc, data[0]);
 		}
 		if (data[0] < 11) {
 			clear_intr = CW_MCU_INT_BIT_LIGHT;
