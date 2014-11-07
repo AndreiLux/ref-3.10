@@ -1,0 +1,10 @@
+#
+# ODIN DWC USB Host driver
+#
+
+config ODIN_DWC_USB_HOST
+	tristate "ODIN DWC USB Host Driver"
+	depends on ARCH_ODIN
+	help
+	  Enable this to support the USB Host transceiver on ODIN.
+

@@ -25,6 +25,7 @@
 #include <linux/async.h>
 #include <linux/pm_runtime.h>
 #include <linux/pinctrl/devinfo.h>
+#include <linux/board_lge.h>
 
 #include "base.h"
 #include "power/power.h"
@@ -332,9 +333,15 @@ probe_failed:
 		printk(KERN_WARNING
 		       "%s: probe of %s failed with error %d\n",
 		       drv->name, dev_name(dev), ret);
+#if defined(CONFIG_PRE_SELF_DIAGNOSIS)
+		lge_pre_self_diagnosis((char *) drv->bus->name,4,(char *) dev_name(dev),(char *) drv->name, ret);
+#endif
 	} else {
 		pr_debug("%s: probe of %s rejects match %d\n",
 		       drv->name, dev_name(dev), ret);
+#if defined(CONFIG_PRE_SELF_DIAGNOSIS)
+		lge_pre_self_diagnosis((char *) drv->bus->name,0,(char *) dev_name(dev),(char *) drv->name, ret);
+#endif
 	}
 	/*
 	 * Ignore errors returned by ->probe so that the next driver can try
@@ -453,6 +460,7 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(device_attach);
 
+#ifndef CONFIG_ODIN_ION_SMMU
 static int __driver_attach(struct device *dev, void *data)
 {
 	struct device_driver *drv = data;
@@ -481,6 +489,41 @@ static int __driver_attach(struct device *dev, void *data)
 
 	return 0;
 }
+#else
+static int __driver_attach(struct device *dev, void *data)
+{
+	struct device_driver *drv = data;
+	atomic_t have_parent;
+
+	/*
+	 * Lock device and try to bind to it. We drop the error
+	 * here and always return 0, because we need to keep trying
+	 * to bind to devices and some drivers will return an error
+	 * simply if it didn't support the device.
+	 *
+	 * driver_probe_device() will spit a warning if there
+	 * is an error.
+	 */
+
+	if (!driver_match_device(drv, dev))
+		return 0;
+
+	atomic_set(&have_parent, 0);
+
+	if (dev->parent){	/* Needed for USB */
+		device_lock(dev->parent);
+		atomic_set(&have_parent, 1);
+	}
+	device_lock(dev);
+	if (!dev->driver)
+		driver_probe_device(drv, dev);
+	device_unlock(dev);
+	if ( (dev->parent) && (atomic_read(&have_parent)==1) )
+		device_unlock(dev->parent);
+
+	return 0;
+}
+#endif
 
 /**
  * driver_attach - try to bind driver to devices.

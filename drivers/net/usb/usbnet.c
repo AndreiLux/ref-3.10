@@ -46,6 +46,8 @@
 #include <linux/slab.h>
 #include <linux/kernel.h>
 #include <linux/pm_runtime.h>
+#include <linux/device.h>
+#include <linux/timer.h>
 
 #define DRIVER_VERSION		"22-Aug-2005"
 
@@ -79,6 +81,14 @@
 // between wakeups
 #define UNLINK_TIMEOUT_MS	3
 
+#define ENABLE_NCM_TPUT
+#ifdef ENABLE_NCM_TPUT
+#define ENABLE_RX_TPUT
+#define ENABLE_TX_TPUT
+
+#define BYTE_TO_BIT         8
+#define BPS_TO_MBPS         1000 * 1000
+#endif
 /*-------------------------------------------------------------------------*/
 
 // randomly generated ethernet address
@@ -91,6 +101,22 @@ static int msg_level = -1;
 module_param (msg_level, int, 0);
 MODULE_PARM_DESC (msg_level, "Override default message level");
 
+#ifdef ENABLE_TX_TPUT
+static long sum_tx_packets = 0;
+static long sum_tx_bytes = 0;
+static int tx_interval;
+struct timer_list tx_timer;
+static void print_usbnet_tx_throughput(int tx_interval);
+void register_usbnet_tx_timer(int tx_interval);
+#endif
+#ifdef ENABLE_RX_TPUT
+static long sum_rx_packets = 0;
+static long sum_rx_bytes = 0;
+static int rx_interval;
+struct timer_list rx_timer;
+static void print_usbnet_rx_throughput(int rx_interval);
+void register_usbnet_rx_timer(int rx_interval);
+#endif
 /*-------------------------------------------------------------------------*/
 
 /* handles CDC Ethernet and many other network "bulk data" interfaces */
@@ -205,6 +231,14 @@ static void intr_complete (struct urb *urb)
 		netdev_dbg(dev->net, "intr status %d\n", status);
 		break;
 	}
+
+/*             
+                                              
+                                                      
+ */
+	if (!netif_running (dev->net))
+		return;
+/*              */
 
 	status = usb_submit_urb (urb, GFP_ATOMIC);
 	if (status != 0)
@@ -329,7 +363,10 @@ void usbnet_skb_return (struct usbnet *dev, struct sk_buff *skb)
 	skb->protocol = eth_type_trans (skb, dev->net);
 	dev->net->stats.rx_packets++;
 	dev->net->stats.rx_bytes += skb->len;
-
+#ifdef ENABLE_RX_TPUT
+    sum_rx_packets++;
+    sum_rx_bytes += skb->len;
+#endif
 	netif_dbg(dev, rx_status, dev->net, "< rx, len %zu, type 0x%x\n",
 		  skb->len + sizeof (struct ethhdr), skb->protocol);
 	memset (skb->cb, 0, sizeof (struct skb_data));
@@ -433,6 +470,25 @@ EXPORT_SYMBOL_GPL(usbnet_defer_kevent);
 
 static void rx_complete (struct urb *urb);
 
+#if defined(CONFIG_ODIN_DWC_USB_HOST)
+/* The starting DMA address must be DWORD-aligned(32bit) in the
+ * internal DMA mode. 2 byte offset is added more in skb_reserve
+ * because the address of socket data buffer is WORD-aligned
+ * (16bit) by NET_IP_ALIGN.
+ */
+static inline struct sk_buff *__netdev_alloc_skb_ip_align_local
+				(struct net_device *dev, unsigned int length, gfp_t gfp)
+{
+	struct sk_buff *skb =
+		__netdev_alloc_skb(dev, length + (NET_IP_ALIGN + 2), gfp);
+
+	if (NET_IP_ALIGN && skb)
+		skb_reserve(skb, (NET_IP_ALIGN + 2));
+
+	return skb;
+}
+#endif
+
 static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 {
 	struct sk_buff		*skb;
@@ -447,7 +503,11 @@ static int rx_submit (struct usbnet *dev, struct urb *urb, gfp_t flags)
 		return -ENOLINK;
 	}
 
+#if defined(CONFIG_ODIN_DWC_USB_HOST)
+	skb = __netdev_alloc_skb_ip_align_local(dev->net, size, flags);
+#else
 	skb = __netdev_alloc_skb_ip_align(dev->net, size, flags);
+#endif
 	if (!skb) {
 		netif_dbg(dev, rx_err, dev->net, "no rx skb\n");
 		usbnet_defer_kevent (dev, EVENT_RX_MEMORY);
@@ -815,6 +875,10 @@ int usbnet_open (struct net_device *net)
 	struct usbnet		*dev = netdev_priv(net);
 	int			retval;
 	struct driver_info	*info = dev->driver_info;
+#if defined(CONFIG_IMC_MODEM) || defined(CONFIG_IMC_DRV)
+	struct usb_device *udev = dev->udev;
+	const struct usb_device_descriptor *desc = &udev->descriptor;
+#endif
 
 	if ((retval = usb_autopm_get_interface(dev->intf)) < 0) {
 		netif_info(dev, ifup, dev->net,
@@ -874,7 +938,20 @@ int usbnet_open (struct net_device *net)
 	// delay posting reads until we're fully open
 	tasklet_schedule (&dev->bh);
 	if (info->manage_power) {
-		retval = info->manage_power(dev, 1);
+/* In case of IMC modem, NCM should turn off remote_wakeup function,
+ * because CP doesn't support remote_wakeup.
+ */
+#if defined(CONFIG_IMC_MODEM) || defined(CONFIG_IMC_DRV)
+		if (desc->idProduct == 0x0443 || desc->idProduct == 0x0452) {
+			netif_info(dev, ifup, dev->net,
+				"%s. [NCM] disable remote wakeup.\n", __func__);
+			retval = info->manage_power(dev, 0);
+		}
+		else
+#endif
+		{
+			retval = info->manage_power(dev, 1);
+		}
 		if (retval < 0) {
 			retval = 0;
 			set_bit(EVENT_NO_RUNTIME_PM, &dev->flags);
@@ -1135,9 +1212,18 @@ static void tx_complete (struct urb *urb)
 	struct usbnet		*dev = entry->dev;
 
 	if (urb->status == 0) {
+#ifdef ENABLE_TX_TPUT
+        if (!(dev->driver_info->flags & FLAG_MULTI_PACKET)){
+			dev->net->stats.tx_packets++;
+            sum_tx_packets++;
+        }
+		dev->net->stats.tx_bytes += entry->length;
+        sum_tx_bytes += entry->length;
+#else
 		if (!(dev->driver_info->flags & FLAG_MULTI_PACKET))
 			dev->net->stats.tx_packets++;
 		dev->net->stats.tx_bytes += entry->length;
+#endif
 	} else {
 		dev->net->stats.tx_errors++;
 
@@ -1457,6 +1543,62 @@ static struct device_type wlan_type = {
 static struct device_type wwan_type = {
 	.name	= "wwan",
 };
+
+#ifdef ENABLE_TX_TPUT
+static void print_usbnet_tx_throughput(int sec)
+{
+    printk(KERN_DEBUG "[TX] Num pkts = %d, Num bytes = %d, time = %d sec, throughput = %d Mbps\n",
+                         sum_tx_packets, sum_tx_bytes, tx_interval,
+                         tx_interval? (sum_tx_bytes * BYTE_TO_BIT) / tx_interval / (BPS_TO_MBPS) : 0);
+    sum_tx_packets = 0;
+    sum_tx_bytes = 0;
+    register_usbnet_tx_timer(tx_interval);
+}
+
+void register_usbnet_tx_timer(int sec)
+{
+    tx_interval = sec;
+    init_timer(&tx_timer);
+    tx_timer.expires = get_jiffies_64() + (HZ * tx_interval);
+    tx_timer.function = print_usbnet_tx_throughput;
+    add_timer(&tx_timer);
+}
+EXPORT_SYMBOL(register_usbnet_tx_timer);
+
+void unregister_usbnet_tx_timer()
+{
+    try_to_del_timer_sync(&tx_timer);
+}
+EXPORT_SYMBOL(unregister_usbnet_tx_timer);
+#endif
+
+#ifdef ENABLE_RX_TPUT
+static void print_usbnet_rx_throughput(int sec)
+{
+    printk(KERN_DEBUG "[RX] Num pkts = %d, Num bytes = %d, time = %d sec, throughput = %d Mbps\n",
+                         sum_rx_packets, sum_rx_bytes, rx_interval,
+                         rx_interval? (sum_rx_bytes * BYTE_TO_BIT) / rx_interval / (BPS_TO_MBPS) : 0);
+    sum_rx_packets = 0;
+    sum_rx_bytes = 0;
+    register_usbnet_rx_timer(rx_interval);
+}
+
+void register_usbnet_rx_timer(int sec)
+{
+    rx_interval = sec;
+    init_timer(&rx_timer);
+    rx_timer.expires = get_jiffies_64() + (HZ * rx_interval);
+    rx_timer.function = print_usbnet_rx_throughput;
+    add_timer(&rx_timer);
+}
+EXPORT_SYMBOL(register_usbnet_rx_timer);
+
+void unregister_usbnet_rx_timer()
+{
+    try_to_del_timer_sync(&rx_timer);
+}
+EXPORT_SYMBOL(unregister_usbnet_rx_timer);
+#endif
 
 int
 usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)

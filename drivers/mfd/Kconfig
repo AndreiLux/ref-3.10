@@ -27,6 +27,36 @@ config MFD_AS3711
 	help
 	  Support for the AS3711 PMIC from AMS
 
+config MFD_D2260
+	tristate "Dialog D2260 Multifunction DEvice"
+	select I2C
+	select REGMAP
+	select REGMAP_I2C
+	select REGMAP_IRQ
+	select MFD_CORE
+	select RTC_CLASS
+	select REGULATOR
+	select MISC_DEVICES
+	select INPUT_MISC
+	select INPUT_D2260_ONKEY
+	select REGULATOR_D2260
+	select REGULATOR_D2260_ALL_LDO
+	select RTC_DRV_D2260
+	select SENSORS_D2260
+	select MFD_D2260_BRINGUP_RECHECK
+	help
+	  This supports the Dialog D2260 Multifunction Device
+
+config D2260_GPO_ENABLE
+	bool "D2260 GPO Support"
+	depends on MFD_D2260
+	help
+	 say yes here to add support D2260 GPO function
+
+config MFD_D2260_BRINGUP_RECHECK
+	tristate "BringUp recheck"
+	depends on MFD_D2260
+
 config PMIC_ADP5520
 	bool "Analog Devices ADP5520/01 MFD PMIC Core Support"
 	depends on I2C=y
@@ -138,6 +168,35 @@ config MFD_DA9055
 
 	  This driver can be built as a module. If built as a module it will be
 	  called "da9055"
+
+config MFD_DA906X
+    bool "Dialog Semiconductor DA906X PMIC Support"
+    select REGMAP_IPC
+	select REGMAP_I2C
+	select REGMAP_IRQ
+	select MFD_CORE
+    help
+      Say yes here to support for Dialog Semiconductor DA906x,
+      these are Power Management. This includes
+      the IPC driver and the core APIs _only_, you have to select
+      individual components like LCD backlight, voltage regulators,
+      LEDs and battery-charger under the corresponding menus.
+
+config MFD_DA906X_IRQ_DISABLE
+	bool "disable DA906X PMIC interrupt"
+	depends on MFD_DA906X
+	help
+	  Say yes here to support for Dialog DA906X PMIC IRQ Disable.
+
+config MFD_DA9066
+	tristate "Dialog DA9066 PMIC Multifunction Device"
+	select REGMAP_IPC
+	select REGMAP_IRQ
+	select MFD_CORE
+	select REGULATOR
+	select REGULATOR_DA9066
+	help
+	  This supports the Dialog DA9066 Multifunction Device
 
 config MFD_MC13783
 	tristate
@@ -277,6 +336,51 @@ config MFD_88PM860X
 	  select individual components like voltage regulators, RTC and
 	  battery-charger under the corresponding menus.
 
+config MFD_MAX77235
+	bool "Maxim Semiconductor MAX77235 PMIC Support"
+	depends on GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_IPC
+	select REGMAP_IRQ
+	select IRQ_DOMAIN
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77235.
+	  This is a Power Management IC with RTC on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
+
+config MFD_MAX77525
+	bool "Maxim Semiconductor MAX77525 PMIC Support"
+	depends on GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_IPC
+	select REGMAP_IRQ
+	select IRQ_DOMAIN
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77525.
+	  This is a Power Management IC with RTC on chip.
+	  This driver provides common support for accessing the device;
+	  additional drivers must be enabled in order to use the functionality
+	  of the device.
+
+config MFD_MAX77235_IRQ_DISABLE
+	bool "disable MAX77235 PMIC interrupt"
+	depends on MFD_MAX77235
+	help
+	  Say yes here to support for MAX77235 IRQ Disable.
+
+config MFD_MAX77665
+	bool "Maxim Semiconductor MAX77665 Sub-PMIC Support"
+	depends on GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_I2C
+	select REGMAP_IRQ
+	select IRQ_DOMAIN
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77665.
+	  Charger, LDO(SFO), LED Flash
+
 config MFD_MAX77686
 	bool "Maxim Semiconductor MAX77686 PMIC Support"
 	depends on I2C=y && GENERIC_HARDIRQS
@@ -302,6 +406,53 @@ config MFD_MAX77693
 	  This driver provides common support for accessing the device;
 	  additional drivers must be enabled in order to use the functionality
 	  of the device.
+
+# LGE_CHANGE_S
+config MFD_LM3631
+	tristate "TI LM3631 Backlight and Bias Power Driver"
+	depends on I2C
+	select MFD_CORE
+	select REGMAP_I2C
+	help
+	  Say yes here to enable support for TI LM3631 chip.
+	  LM3631 has 2 strings for backlight with 4 regulators for LCD bias.
+# LGE_CHANGE_E
+
+config MFD_MAX77819
+	bool "Maxim Semiconductor MAX77819 Sub-PMIC Support"
+	depends on GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_IPC
+	select REGMAP_IRQ
+	select IRQ_DOMAIN
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77819.
+	  Backlight, Charger, LDO(SFO), LED Flash, Vibrator
+	  This driver has to be used regmap ipc funtion.
+config MFD_MAX77807
+	bool "Maxim Semiconductor MAX77807 Sub-PMIC Support"
+	depends on GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_IPC
+	select REGMAP_IRQ
+	select IRQ_DOMAIN
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77807.
+	  Backlight, Charger, LDO(SFO), LED Flash, Vibrator
+	  This driver has to be used regmap ipc funtion.
+
+config MFD_MAX77807
+	bool "Maxim Semiconductor MAX77807 Sub-PMIC Support"
+	depends on GENERIC_HARDIRQS
+	select MFD_CORE
+	select REGMAP_IPC
+	select REGMAP_IRQ
+	select IRQ_DOMAIN
+	help
+	  Say yes here to support for Maxim Semiconductor MAX77807.
+	  Backlight, Charger, LDO(SFO), LED Flash, Vibrator
+	  This driver has to be used regmap ipc funtion.
+
 
 config MFD_MAX8907
 	tristate "Maxim Semiconductor MAX8907 PMIC Support"
@@ -947,6 +1098,15 @@ config MFD_LM3533
 	  This driver provides common support for accessing the device;
 	  additional drivers must be enabled in order to use the LED,
 	  backlight or ambient-light-sensor functionality of the device.
+
+config MFD_LM3631
+	tristate "TI LM3631 Backlight and Bias Power Driver"
+	depends on I2C
+	select MFD_CORE
+	select REGMAP_I2C
+	help
+	  Say yes here to enable support for TI LM3631 chip.
+	  LM3631 has 2 strings for backlight with 5 regulators for LCD bias.
 
 config MFD_TIMBERDALE
 	tristate "Timberdale FPGA"

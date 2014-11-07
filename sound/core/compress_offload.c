@@ -102,15 +102,12 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 
 	if (dirn != compr->direction) {
 		pr_err("this device doesn't support this direction\n");
-		snd_card_unref(compr->card);
 		return -EINVAL;
 	}
 
 	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data) {
-		snd_card_unref(compr->card);
+	if (!data)
 		return -ENOMEM;
-	}
 	data->stream.ops = compr->ops;
 	data->stream.direction = dirn;
 	data->stream.private_data = compr->private_data;
@@ -118,7 +115,6 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 	runtime = kzalloc(sizeof(*runtime), GFP_KERNEL);
 	if (!runtime) {
 		kfree(data);
-		snd_card_unref(compr->card);
 		return -ENOMEM;
 	}
 	runtime->state = SNDRV_PCM_STATE_OPEN;
@@ -132,7 +128,6 @@ static int snd_compr_open(struct inode *inode, struct file *f)
 		kfree(runtime);
 		kfree(data);
 	}
-	snd_card_unref(compr->card);
 	return ret;
 }
 
@@ -668,7 +663,8 @@ static int snd_compr_stop(struct snd_compr_stream *stream)
 		return -EPERM;
 	retval = stream->ops->trigger(stream, SNDRV_PCM_TRIGGER_STOP);
 	if (!retval) {
-		snd_compr_drain_notify(stream);
+		stream->runtime->state = SNDRV_PCM_STATE_SETUP;
+		wake_up(&stream->runtime->sleep);
 		stream->runtime->total_bytes_available = 0;
 		stream->runtime->total_bytes_transferred = 0;
 	}
@@ -714,18 +710,22 @@ static int snd_compr_drain(struct snd_compr_stream *stream)
 {
 	int retval;
 
+	mutex_lock(&stream->device->lock);
 	if (stream->runtime->state == SNDRV_PCM_STATE_PREPARED ||
-			stream->runtime->state == SNDRV_PCM_STATE_SETUP)
-		return -EPERM;
-
-	retval = stream->ops->trigger(stream, SND_COMPR_TRIGGER_DRAIN);
-	if (retval) {
-		pr_debug("SND_COMPR_TRIGGER_DRAIN failed %d\n", retval);
-		wake_up(&stream->runtime->sleep);
-		return retval;
+			stream->runtime->state == SNDRV_PCM_STATE_SETUP) {
+		retval = -EPERM;
+		goto ret;
 	}
-
-	return snd_compress_wait_for_drain(stream);
+	mutex_unlock(&stream->device->lock);
+	retval = stream->ops->trigger(stream, SND_COMPR_TRIGGER_DRAIN);
+	mutex_lock(&stream->device->lock);
+	if (!retval) {
+		stream->runtime->state = SNDRV_PCM_STATE_DRAINING;
+		wake_up(&stream->runtime->sleep);
+	}
+ret:
+	mutex_unlock(&stream->device->lock);
+	return retval;
 }
 
 static int snd_compr_next_track(struct snd_compr_stream *stream)
@@ -753,22 +753,47 @@ static int snd_compr_next_track(struct snd_compr_stream *stream)
 static int snd_compr_partial_drain(struct snd_compr_stream *stream)
 {
 	int retval;
+
+	mutex_lock(&stream->device->lock);
 	if (stream->runtime->state == SNDRV_PCM_STATE_PREPARED ||
-			stream->runtime->state == SNDRV_PCM_STATE_SETUP)
+			stream->runtime->state == SNDRV_PCM_STATE_SETUP) {
+		mutex_unlock(&stream->device->lock);
 		return -EPERM;
+	}
+	mutex_unlock(&stream->device->lock);
 	/* stream can be drained only when next track has been signalled */
 	if (stream->next_track == false)
 		return -EPERM;
 
 	retval = stream->ops->trigger(stream, SND_COMPR_TRIGGER_PARTIAL_DRAIN);
-	if (retval) {
-		pr_debug("Partial drain returned failure\n");
-		wake_up(&stream->runtime->sleep);
-		return retval;
-	}
 
 	stream->next_track = false;
-	return snd_compress_wait_for_drain(stream);
+	return retval;
+}
+
+static int snd_compress_simple_ioctls(struct file *file,
+				struct snd_compr_stream *stream,
+				unsigned int cmd, unsigned long arg)
+{
+	int retval = -ENOTTY;
+
+	switch (_IOC_NR(cmd)) {
+
+		/* drain and partial drain need special handling
+	 * we need to drop the locks here as the streams would get blocked on the
+	 * dsp to get drained. The locking would be handled in respective
+	 * function here
+	 */
+	case _IOC_NR(SNDRV_COMPRESS_DRAIN):
+		retval = snd_compr_drain(stream);
+		break;
+
+	case _IOC_NR(SNDRV_COMPRESS_PARTIAL_DRAIN):
+		retval = snd_compr_partial_drain(stream);
+		break;
+	}
+
+	return retval;
 }
 
 static long snd_compr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
@@ -824,15 +849,14 @@ static long snd_compr_ioctl(struct file *f, unsigned int cmd, unsigned long arg)
 	case _IOC_NR(SNDRV_COMPRESS_STOP):
 		retval = snd_compr_stop(stream);
 		break;
-	case _IOC_NR(SNDRV_COMPRESS_DRAIN):
-		retval = snd_compr_drain(stream);
-		break;
-	case _IOC_NR(SNDRV_COMPRESS_PARTIAL_DRAIN):
-		retval = snd_compr_partial_drain(stream);
-		break;
+
 	case _IOC_NR(SNDRV_COMPRESS_NEXT_TRACK):
 		retval = snd_compr_next_track(stream);
 		break;
+
+	default:
+		mutex_unlock(&stream->device->lock);
+		return snd_compress_simple_ioctls(f, stream, cmd, arg);
 
 	}
 	mutex_unlock(&stream->device->lock);

@@ -31,6 +31,8 @@ ifneq ($(GATOR_WITH_MALI_SUPPORT),)
   endif
 endif
 
+gator-$(CONFIG_ARCH_ODIN) += gator_events_clock.o gator_events_thermal.o
+
 ifeq ($(CONFIG_GATOR_WITH_MALI_SUPPORT),y)
   ifeq ($(CONFIG_GATOR_MALI_T6XX),y)
     gator-y +=	gator_events_mali_t6xx.o \
@@ -46,6 +48,20 @@ ifeq ($(CONFIG_GATOR_WITH_MALI_SUPPORT),y)
   endif
   ccflags-$(CONFIG_GATOR_MALI_4XXMP) += -DMALI_SUPPORT=MALI_4xx
   ccflags-$(CONFIG_GATOR_MALI_T6XX) += -DMALI_SUPPORT=MALI_T6xx
+endif
+
+ifeq ($(CONFIG_GATOR_WITH_POWERVR_SUPPORT),y)
+  ifeq ($(CONFIG_GATOR_POWERVR_SERIES6),y)
+    gator-y +=  gator_events_series6.o
+    ccflags-y += -DPOWERVR_SUPPORT=SERIES_6
+  endif
+ccflags-y += -I$(CONFIG_GATOR_RGX_KM_PATH)
+ccflags-y += -I$(CONFIG_GATOR_RGX_KM_INCLUDE_PATH)
+ccflags-y += -I$(CONFIG_GATOR_RGX_KM_SERVICE_PATH)
+ccflags-y += -I$(CONFIG_GATOR_RGX_KM_HWDEFS_PATH)
+ccflags-y += -I$(CONFIG_GATOR_RGX_UM_PATH)
+ccflags-y += -DSUPPORT_KERNEL_HWPERF=1
+#ccflags-y += -DPRINTK_DEBUG
 endif
 
 # GATOR_TEST controls whether to include (=1) or exclude (=0) test code. 

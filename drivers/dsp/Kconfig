@@ -1,0 +1,22 @@
+menuconfig DSP
+	bool "Audio DSP Driver Support"
+	help
+	  Audio DSP Driver supports tensilica DSP as LPA(Low Power Audio), OMX(OpenMAX), 
+	  and ALSA(Advanced Linux Sound Architecture)-DSP interface.
+	  Say Y if you want for Audio DSP Driver.
+
+if DSP
+
+config WODEN_DSP
+	bool "Audio DSP Driver for the Woden"
+	depends on ARCH_WODEN
+    help
+      Say Y or M here if you want support for DSP Driver on Woden.
+
+config ODIN_DSP
+	bool "Audio DSP Driver for the Odin"
+	depends on ARCH_ODIN
+	help
+      Say Y or M here if you want support for DSP Driver on Odin.
+
+endif	

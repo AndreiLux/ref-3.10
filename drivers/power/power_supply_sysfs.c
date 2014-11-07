@@ -16,6 +16,7 @@
 #include <linux/power_supply.h>
 #include <linux/slab.h>
 #include <linux/stat.h>
+#include <linux/board_lge.h>
 
 #include "power_supply.h"
 
@@ -31,6 +32,15 @@
  * (as a macro let's say).
  */
 
+/* [START] Test code for Thermal Engine */
+#define PSEUDO_THERMAL_CURR_CTRL_ATTR(_name)				    \
+	{									\
+		.attr = { .name = #_name, .mode = 0777},			\
+		.show = pseudo_thermal_curr_ctrl_show_property,				\
+		.store = pseudo_thermal_curr_ctrl_store_property,				\
+	}
+/* [END] */
+
 #define POWER_SUPPLY_ATTR(_name)					\
 {									\
 	.attr = { .name = #_name },					\
@@ -45,7 +55,16 @@ static ssize_t power_supply_show_property(struct device *dev,
 					  char *buf) {
 	static char *type_text[] = {
 		"Unknown", "Battery", "UPS", "Mains", "USB",
-		"USB_DCP", "USB_CDP", "USB_ACA"
+		"USB_DCP", "USB_CDP", "USB_ACA",
+/*
+               
+                                          
+                                  
+ */
+#ifdef CONFIG_WIRELESS_CHARGER
+		"Wireless"
+#endif
+/*              */
 	};
 	static char *status_text[] = {
 		"Unknown", "Charging", "Discharging", "Not charging", "Full"
@@ -102,10 +121,17 @@ static ssize_t power_supply_show_property(struct device *dev,
 		return sprintf(buf, "%s\n", type_text[value.intval]);
 	else if (off == POWER_SUPPLY_PROP_SCOPE)
 		return sprintf(buf, "%s\n", scope_text[value.intval]);
+	else if (off == POWER_SUPPLY_PROP_BATT_TEMP_STATE)
+		return sprintf(buf, "%d\n", value.intval);
+	else if (off == POWER_SUPPLY_PROP_THERMAL_MITIGATION)
+		return sprintf(buf, "%d\n", value.intval);
 	else if (off >= POWER_SUPPLY_PROP_MODEL_NAME)
 		return sprintf(buf, "%s\n", value.strval);
 
-	return sprintf(buf, "%d\n", value.intval);
+	if (off == POWER_SUPPLY_PROP_CHARGE_COUNTER_EXT)
+		return sprintf(buf, "%lld\n", value.int64val);
+	else
+		return sprintf(buf, "%d\n", value.intval);
 }
 
 static ssize_t power_supply_store_property(struct device *dev,
@@ -130,6 +156,49 @@ static ssize_t power_supply_store_property(struct device *dev,
 
 	return count;
 }
+
+/* [START] Test code for Thermal Engine */
+extern int pseudo_thermal_curr_ctrl_set(struct pseudo_thermal_curr_ctrl_info_type*);
+
+static ssize_t pseudo_thermal_curr_ctrl_show_property(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	ssize_t ret;
+	struct power_supply *psy = dev_get_drvdata(dev);
+	const ptrdiff_t off = attr - power_supply_attrs;
+	union power_supply_propval value;
+
+	ret = psy->get_property(psy, off, &value);
+
+	if (ret < 0) {
+		if (ret != -ENODEV)
+			dev_err(dev, "driver failed to report `%s' property\n",
+					attr->attr.name);
+		return ret;
+	}
+
+	if (off == POWER_SUPPLY_PROP_THERMAL_CURRENT_CTRL)
+		return sprintf(buf, "%d\n",value.intval);
+
+}
+
+static ssize_t pseudo_thermal_curr_ctrl_store_property(struct device *dev,
+		struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	int ret = -EINVAL;
+	struct pseudo_thermal_curr_ctrl_info_type info;
+
+	sscanf(buf, "%d", &info.current_mA);
+	pseudo_thermal_curr_ctrl_set(&info);
+	ret = count;
+out:
+	return ret;
+}
+
+/* [END] */
+
 
 /* Must be in the same order as POWER_SUPPLY_PROP_* */
 static struct device_attribute power_supply_attrs[] = {
@@ -178,6 +247,7 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(capacity_alert_max),
 	POWER_SUPPLY_ATTR(capacity_level),
 	POWER_SUPPLY_ATTR(temp),
+	POWER_SUPPLY_ATTR(pcb_therm),
 	POWER_SUPPLY_ATTR(temp_alert_min),
 	POWER_SUPPLY_ATTR(temp_alert_max),
 	POWER_SUPPLY_ATTR(temp_ambient),
@@ -189,6 +259,21 @@ static struct device_attribute power_supply_attrs[] = {
 	POWER_SUPPLY_ATTR(time_to_full_avg),
 	POWER_SUPPLY_ATTR(type),
 	POWER_SUPPLY_ATTR(scope),
+	/* Local extensions */
+	POWER_SUPPLY_ATTR(usb_hc),
+	POWER_SUPPLY_ATTR(usb_otg),
+	POWER_SUPPLY_ATTR(charge_enabled),
+	PSEUDO_THERMAL_CURR_CTRL_ATTR(thermal_curr_ctrl),
+	POWER_SUPPLY_ATTR(bat_id_check),
+	POWER_SUPPLY_ATTR(valid_batt_id),
+	POWER_SUPPLY_ATTR(alignment),
+	POWER_SUPPLY_ATTR(off_mode),
+	POWER_SUPPLY_ATTR(batt_temp_state),
+	POWER_SUPPLY_ATTR(thermal_miti),
+	POWER_SUPPLY_ATTR(usb_suspend),
+	POWER_SUPPLY_ATTR(chrg_enable),
+	/* Local extensions of type int64_t */
+	POWER_SUPPLY_ATTR(charge_counter_ext),
 	/* Properties of type `const char *' */
 	POWER_SUPPLY_ATTR(model_name),
 	POWER_SUPPLY_ATTR(manufacturer),

@@ -22,9 +22,18 @@
 #include <linux/sysrq.h>
 #include <linux/init.h>
 #include <linux/nmi.h>
+#if defined(CONFIG_LGE_CRASH_HANDLER)
+#include <linux/mdm_ctrl.h>
+#endif
+#ifdef CONFIG_MACH_ODIN
+#include <linux/odin_panic.h>
+#endif
 
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
+
+/* Machine specific panic information string */
+char *mach_panic_string;
 
 int panic_on_oops = CONFIG_PANIC_ON_OOPS_VALUE;
 static unsigned long tainted_mask;
@@ -32,7 +41,10 @@ static int pause_on_oops;
 static int pause_on_oops_flag;
 static DEFINE_SPINLOCK(pause_on_oops_lock);
 
-int panic_timeout;
+#ifndef CONFIG_PANIC_TIMEOUT
+#define CONFIG_PANIC_TIMEOUT 0
+#endif
+int panic_timeout = CONFIG_PANIC_TIMEOUT;
 EXPORT_SYMBOL_GPL(panic_timeout);
 
 ATOMIC_NOTIFIER_HEAD(panic_notifier_list);
@@ -72,6 +84,9 @@ void panic(const char *fmt, ...)
 	va_list args;
 	long i, i_next = 0;
 	int state = 0;
+#if defined(CONFIG_LGE_CRASH_HANDLER)
+	trap_info_t* modem_trap_info=NULL;
+#endif
 
 	/*
 	 * Disable local interrupts. This will prevent panic_smp_self_stop
@@ -100,12 +115,61 @@ void panic(const char *fmt, ...)
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
 	printk(KERN_EMERG "Kernel panic - not syncing: %s\n",buf);
+#if defined(CONFIG_LGE_CRASH_HANDLER)
+	if (get_modem_crash_status()) {
+		modem_trap_info = get_trap_info_data();
+		printk(KERN_EMERG "===========================================\n");
+		printk(KERN_EMERG "modem trap information\n");
+		printk(KERN_EMERG "mdm version: %s\n",modem_trap_info->mdm_version);
+		printk(KERN_EMERG "coredump file: %s\n",modem_trap_info->coredump_file_name);
+
+		printk(KERN_EMERG "abort class: %s\n",modem_trap_info->abort_class_str);
+		printk(KERN_EMERG "sw trap id: %s\n",modem_trap_info->sw_trap_id);
+		printk(KERN_EMERG "file name: %s\n",modem_trap_info->file_name);
+		printk(KERN_EMERG "file line: %s\n",modem_trap_info->file_line_str);
+#if 0
+		printk(KERN_EMERG "cpu_core: %s\n",(modem_trap_info == 0) ? "cpu0" : "cpu1");
+		switch(modem_trap_info->abort_class) {
+			case SAH_ABORT_SW_TRAP:
+				printk(KERN_EMERG "abort class: S/W generated trap\n");
+				break;
+			case SAH_ABORT_DATA_ABORT:
+				printk(KERN_EMERG "abort class: Data Abort\n");
+				break;
+			case SAH_ABORT_PREFETCH_ABORT:
+				printk(KERN_EMERG "abort class: Prefetch Abort\n");
+				break;
+			case SAH_ABORT_UNDEFINED_INSTRUCTION:
+				printk(KERN_EMERG "abort class: Undefined Instruction\n");
+				break;
+			case SAH_ABORT_NONE_CRITICAL_EXCEPTION:
+				printk(KERN_EMERG "abort class: SW none-critical exceptions\n");
+				break;
+			case SAH_ABORT_UNDEFINED:
+				default:
+				printk(KERN_EMERG "abort class: Unknown abort class\n");
+		}
+		printk(KERN_EMERG "task: %s\n",modem_trap_info->task_name);
+		printk(KERN_EMERG "file: %s(@%d)\n",modem_trap_info->file_name,modem_trap_info->file_line);
+		printk(KERN_EMERG "logs:\n");
+#endif
+		printk(KERN_EMERG "===========================================\n");
+	}
+#endif
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 	/*
 	 * Avoid nested stack-dumping if a panic occurs during oops processing
 	 */
 	if (!test_taint(TAINT_DIE) && oops_in_progress <= 1)
 		dump_stack();
+#endif
+
+#ifdef CONFIG_MACH_ODIN
+	odin_mmu_ureg_backup();
+	odin_panic_save_core();
+#ifdef CONFIG_KEXEC
+	crash_kexec_odin(NULL);
+#endif
 #endif
 
 	/*
@@ -375,6 +439,11 @@ late_initcall(init_oops_id);
 void print_oops_end_marker(void)
 {
 	init_oops_id();
+
+	if (mach_panic_string)
+		printk(KERN_WARNING "Board Information: %s\n",
+		       mach_panic_string);
+
 	printk(KERN_WARNING "---[ end trace %016llx ]---\n",
 		(unsigned long long)oops_id);
 }

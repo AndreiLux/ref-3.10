@@ -48,17 +48,127 @@
 #include <asm/unaligned.h>
 #include <linux/list.h>
 
+#define DUMP_ACM_PACKET
+#ifdef DUMP_ACM_PACKET
+#include <linux/slab.h>
+#endif
+
 #include "cdc-acm.h"
 
 
 #define DRIVER_AUTHOR "Armin Fuerst, Pavel Machek, Johannes Erdfelt, Vojtech Pavlik, David Kubicek, Johan Hovold"
 #define DRIVER_DESC "USB Abstract Control Model driver for USB modems and ISDN adapters"
 
+#define ACM_BOOSTUP
+#if defined(ACM_BOOSTUP)
+#include <linux/pm_qos.h>
+
+static int acm_attached_ch_cnt;
+static int acm_suspend_cnt;
+static struct pm_qos_request acm_cci_qos_req;
+static struct pm_qos_request acm_mem_qos_req;
+
+#define ACM_MAX_CH (2)
+#define ACM_CCI_FREQ (400000)
+#define ACM_MEM_FREQ (800000)
+#endif
+
 static struct usb_driver acm_driver;
 static struct tty_driver *acm_tty_driver;
 static struct acm *acm_table[ACM_TTY_MINORS];
 
 static DEFINE_MUTEX(acm_table_lock);
+
+
+#define FLUSH_PENDING_WORK
+#if defined(FLUSH_PENDING_WORK)
+typedef struct pending_wb_info {
+	int idx;
+	int len;
+} pending_wb_info_t;
+static struct pending_wb_info pending_wb[ACM_NW];
+static int pending_wb_cnt = 0;
+#endif
+
+extern int acm_tx_dump_enable;
+extern int acm_rx_dump_enable;
+
+#define LGE_ACM_DUMP_ENABLE
+#define ODIN_XMM_ADAPTAION
+
+#ifdef ODIN_XMM_ADAPTAION
+extern int hsic_status;
+#endif
+
+#if defined(LGE_ACM_DUMP_ENABLE) || defined(ODIN_XMM_ADAPTAION)
+extern int xmm7260_core_dump;
+extern int acm_dump_enable;
+#endif
+
+#ifdef ODIN_XMM_ADAPTAION
+static int max_acm_packet;
+#endif
+
+
+#ifdef DUMP_ACM_PACKET
+#define CONTROL_ACM_PACKET_LEN    20
+#define PRINT_ACM_PACKET_LEN	  20
+#define MAX_ACM_DUMP_LEN		  50
+typedef struct
+{
+    u8 buf[CONTROL_ACM_PACKET_LEN];
+    u32 len;
+    int msec;
+}
+acm_dump_struct;
+
+static acm_dump_struct acm_tx_dump[MAX_ACM_DUMP_LEN];
+static acm_dump_struct acm_rx_dump[MAX_ACM_DUMP_LEN];
+
+void copy_acm_tx_packet(u8* data, int len);
+void copy_acm_rx_packet(u8* data, int len);
+#endif
+
+
+
+/*             
+                                              
+                                                      
+ */
+#if defined(LGE_ACM_DUMP_ENABLE) || defined(ODIN_XMM_ADAPTAION)
+#define COL_SIZE 50
+static void dump_acm_buffer(const unsigned char *txt, const unsigned char *buf, int count)
+{
+	char dump_buf_str[COL_SIZE+1];
+
+	if (buf != NULL)
+	{
+		int j = 0;
+		char *cur_str = dump_buf_str;
+		unsigned char ch;
+		while((j < COL_SIZE) && (j	< count))
+		{
+			ch = buf[j];
+			if ((ch < 32) || (ch > 126))
+			{
+				*cur_str = '.';
+			} else
+			{
+				*cur_str = ch;
+			}
+			cur_str++;
+			j++;
+		}
+		*cur_str = 0;
+		printk(KERN_CRIT"%s:count:%d [%s]\n", txt, count, dump_buf_str);
+	}
+	else
+	{
+		printk(KERN_CRIT"%s: buffer is NULL\n", txt);
+	}
+}
+#endif
+/*              */
 
 /*
  * acm_table accessors
@@ -222,6 +332,12 @@ static int acm_write_start(struct acm *acm, int wbn)
 	struct acm_wb *wb = &acm->wb[wbn];
 	int rc;
 
+#if defined(FLUSH_PENDING_WORK)
+	int cnt = 0;
+	int cur_idx = 0;
+	char tmp_buf[20] = "";
+#endif
+
 	spin_lock_irqsave(&acm->write_lock, flags);
 	if (!acm->dev) {
 		wb->use = 0;
@@ -229,8 +345,8 @@ static int acm_write_start(struct acm *acm, int wbn)
 		return -ENODEV;
 	}
 
-	dev_vdbg(&acm->data->dev, "%s - susp_count %d\n", __func__,
-							acm->susp_count);
+//	dev_vdbg(&acm->data->dev, "%s. wbn = %d. len = %d. trans=%d.\n",__func__, wbn, wb->len, acm->transmitting);
+
 	usb_autopm_get_interface_async(acm->control);
 	if (acm->susp_count) {
 		if (!acm->delayed_wb)
@@ -238,6 +354,28 @@ static int acm_write_start(struct acm *acm, int wbn)
 		else
 			usb_autopm_put_interface_async(acm->control);
 		spin_unlock_irqrestore(&acm->write_lock, flags);
+
+#if defined(FLUSH_PENDING_WORK)
+		if (pending_wb_cnt < ACM_NW) {
+			if (wb->use) {
+				pending_wb[pending_wb_cnt].len = wb->len;
+				pending_wb[pending_wb_cnt++].idx = wbn;
+			}
+		} else {
+			dev_err(&acm->control->dev,
+				"%s. pending_wb is FULL.\n", __func__);
+
+			for (cnt = 0; cnt < ACM_NW; cnt++) {
+				cur_idx = pending_wb[cnt].idx;
+				if (acm->wb[cur_idx].use) {
+					sprintf(tmp_buf, "pd_w[%d]", cur_idx);
+					dump_acm_buffer(tmp_buf, acm->wb[cur_idx].buf,
+						acm->wb[cur_idx].len);
+				}
+			}
+		}
+#endif
+
 		return 0;	/* A white lie */
 	}
 	usb_mark_last_busy(acm->dev);
@@ -331,7 +469,11 @@ static void acm_ctrl_irq(struct urb *urb)
 		if (!acm->clocal && (acm->ctrlin & ~newctrl & ACM_CTRL_DCD)) {
 			dev_dbg(&acm->control->dev, "%s - calling hangup\n",
 					__func__);
+#ifndef ODIN_XMM_ADAPTAION
 			tty_port_tty_hangup(&acm->port, false);
+#else
+			tty_port_tty_hangup(&acm->port, true);
+#endif
 		}
 
 		acm->ctrlin = newctrl;
@@ -404,12 +546,43 @@ static int acm_submit_read_urbs(struct acm *acm, gfp_t mem_flags)
 
 static void acm_process_read_urb(struct acm *acm, struct urb *urb)
 {
+#ifdef ODIN_XMM_ADAPTAION
+	int copied = 0;
+#endif
 	if (!urb->actual_length)
 		return;
 
+/*             
+                                              
+                                                      
+ */
+#if defined(LGE_ACM_DUMP_ENABLE) || defined(ODIN_XMM_ADAPTAION)
+	if(acm_rx_dump_enable == 1 && !acm->minor && !xmm7260_core_dump){
+		dump_acm_buffer("ACM[R]", (unsigned char *) urb->transfer_buffer, urb->actual_length);
+	}
+#endif
+/*              */
+
+#ifdef ODIN_XMM_ADAPTAION
+	if(!hsic_status && !xmm7260_core_dump)
+		return;
+#endif
+
+#ifdef ODIN_XMM_ADAPTAION
+	copied = tty_insert_flip_string(&acm->port, urb->transfer_buffer,
+				urb->actual_length);
+#ifdef DUMP_ACM_PACKET
+    if(acm->minor == 0 && !xmm7260_core_dump)
+        copy_acm_rx_packet((unsigned char *) urb->transfer_buffer, urb->actual_length);
+#endif
+	if(copied){
+		tty_flip_buffer_push(&acm->port);
+	}
+#else
 	tty_insert_flip_string(&acm->port, urb->transfer_buffer,
 			urb->actual_length);
 	tty_flip_buffer_push(&acm->port);
+#endif
 }
 
 static void acm_read_bulk_callback(struct urb *urb)
@@ -516,6 +689,10 @@ static int acm_port_activate(struct tty_port *port, struct tty_struct *tty)
 {
 	struct acm *acm = container_of(port, struct acm, port);
 	int retval = -ENODEV;
+#if defined(CONFIG_IMC_MODEM) || defined(CONFIG_IMC_DRV)
+	struct usb_device *udev = acm->dev;
+	const struct usb_device_descriptor *desc = &udev->descriptor;
+#endif
 
 	dev_dbg(&acm->control->dev, "%s\n", __func__);
 
@@ -532,7 +709,20 @@ static int acm_port_activate(struct tty_port *port, struct tty_struct *tty)
 	 * memory is really nasty...
 	 */
 	set_bit(TTY_NO_WRITE_SPLIT, &tty->flags);
-	acm->control->needs_remote_wakeup = 1;
+
+	/* In case of IMC modem, ACM should turn off remote_wakeup function,
+	 * because CP doesn't support remote_wakeup.
+	 */
+#if defined(CONFIG_IMC_MODEM) || defined(CONFIG_IMC_DRV)
+	if (desc->idProduct == 0x0443 || desc->idProduct == 0x0452) {
+		dev_dbg(&acm->control->dev, "%s. disable remote wakeup.\n", __func__);
+		acm->control->needs_remote_wakeup = 0;
+	} else
+#endif
+	{
+		acm->control->needs_remote_wakeup = 1;
+	}
+
 
 	acm->ctrlurb->dev = acm->dev;
 	if (usb_submit_urb(acm->ctrlurb, GFP_KERNEL)) {
@@ -640,28 +830,53 @@ static int acm_tty_write(struct tty_struct *tty,
 	int wbn;
 	struct acm_wb *wb;
 
-	if (!count)
+	if (!count){
+		printk("%s] - count = %d\n",__func__, count);
 		return 0;
-
+	}
 	dev_vdbg(&acm->data->dev, "%s - count %d\n", __func__, count);
+
+/*             
+                                              
+                                                      
+ */
+#if defined(LGE_ACM_DUMP_ENABLE) || defined(ODIN_XMM_ADAPTAION)
+	if(acm_tx_dump_enable == 1 && !xmm7260_core_dump){
+		dump_acm_buffer("ACM[W]", buf, count);
+	}
+#endif
+#ifdef DUMP_ACM_PACKET
+    if(acm->minor == 0)
+        copy_acm_tx_packet(buf, count);
+#endif
+/*              */
 
 	spin_lock_irqsave(&acm->write_lock, flags);
 	wbn = acm_wb_alloc(acm);
 	if (wbn < 0) {
+		dev_err(&acm->data->dev,"%s - wbn alloc fail[%d]\n", __func__, wbn);
 		spin_unlock_irqrestore(&acm->write_lock, flags);
 		return 0;
 	}
 	wb = &acm->wb[wbn];
 
 	count = (count > acm->writesize) ? acm->writesize : count;
+#ifdef ODIN_XMM_ADAPTAION
+	if(count % max_acm_packet == 0)
+		wb->urb->transfer_flags |= URB_ZERO_PACKET;
+#endif
 	dev_vdbg(&acm->data->dev, "%s - write %d\n", __func__, count);
 	memcpy(wb->buf, buf, count);
 	wb->len = count;
 	spin_unlock_irqrestore(&acm->write_lock, flags);
 
 	stat = acm_write_start(acm, wbn);
-	if (stat < 0)
+
+	if (stat < 0){
+		printk("%s] - stat = %d\n",__func__, stat);
+		dump_acm_buffer("ACM[W]", buf, count);
 		return stat;
+	}
 	return count;
 }
 
@@ -1170,6 +1385,9 @@ made_compressed_probe:
 				(quirks == SINGLE_RX_URB ? 1 : 2);
 	acm->combined_interfaces = combined_interfaces;
 	acm->writesize = usb_endpoint_maxp(epwrite) * 20;
+#ifdef ODIN_XMM_ADAPTAION
+	max_acm_packet = usb_endpoint_maxp(epwrite);
+#endif
 	acm->control = control_interface;
 	acm->data = data_interface;
 	acm->minor = minor;
@@ -1332,6 +1550,22 @@ skip_countries:
 		goto alloc_fail8;
 	}
 
+#if defined(ACM_BOOSTUP)
+	if (!acm_attached_ch_cnt++) {
+		pm_qos_add_request(&acm_cci_qos_req, PM_QOS_ODIN_CCI_MIN_FREQ, 0);
+		pm_qos_add_request(&acm_mem_qos_req, PM_QOS_ODIN_MEM_MIN_FREQ, 0);
+
+		pm_qos_update_request(&acm_cci_qos_req, ACM_CCI_FREQ);
+		pm_qos_update_request(&acm_mem_qos_req, ACM_MEM_FREQ);
+		printk("[e2sh] %s boostup requested \n", __func__);
+	}
+
+	if (acm_attached_ch_cnt > ACM_MAX_CH) {
+		printk(KERN_ERR "%s : acm_attached_ch_cnt is exceeded (%d > %d)\n",
+			__func__, acm_attached_ch_cnt, ACM_MAX_CH);
+	}
+#endif
+
 	return 0;
 alloc_fail8:
 	if (acm->country_codes) {
@@ -1389,6 +1623,11 @@ static void acm_disconnect(struct usb_interface *intf)
 	if (!acm)
 		return;
 
+    if (acm_tty_driver == NULL){
+        printk("%s] acm_tty_driver is already NULL !! \n",__func__);
+        return 0;
+    }
+
 	mutex_lock(&acm->mutex);
 	acm->disconnected = true;
 	if (acm->country_codes) {
@@ -1408,6 +1647,11 @@ static void acm_disconnect(struct usb_interface *intf)
 		tty_kref_put(tty);
 	}
 
+#if defined(FLUSH_PENDING_WORK)
+	memset(pending_wb, NULL, sizeof(pending_wb));
+	pending_wb_cnt = 0;
+#endif
+
 	stop_data_traffic(acm);
 
 	tty_unregister_device(acm_tty_driver, acm->minor);
@@ -1426,6 +1670,17 @@ static void acm_disconnect(struct usb_interface *intf)
 					acm->data : acm->control);
 
 	tty_port_put(&acm->port);
+#if defined(ACM_BOOSTUP)
+	if (!acm_attached_ch_cnt)
+		printk(KERN_ERR "%s : acm_attached_ch_cnt is already zero\n", __func__);
+	else if (!--acm_attached_ch_cnt) {
+		pm_qos_remove_request(&acm_cci_qos_req);
+		pm_qos_remove_request(&acm_mem_qos_req);
+		printk("[e2sh] %s boostup cancled \n", __func__);
+	}
+
+	acm_suspend_cnt = 0;
+#endif
 }
 
 #ifdef CONFIG_PM
@@ -1450,6 +1705,19 @@ static int acm_suspend(struct usb_interface *intf, pm_message_t message)
 	spin_unlock(&acm->write_lock);
 	spin_unlock_irq(&acm->read_lock);
 
+#if defined(ACM_BOOSTUP)
+	if (acm->susp_count == 1) {
+		if (++acm_suspend_cnt == acm_attached_ch_cnt) {
+			pm_qos_update_request(&acm_cci_qos_req, 0);
+			pm_qos_update_request(&acm_mem_qos_req, 0);
+			printk("[e2sh] %s boostup cancled \n", __func__);
+		} else if (acm_suspend_cnt > acm_attached_ch_cnt) {
+			printk(KERN_ERR "%s : invalid acm_suspend_cnt (%d > %d)\n",
+				__func__, acm_suspend_cnt, acm_attached_ch_cnt);
+		}
+	}
+#endif
+
 	if (cnt)
 		return 0;
 
@@ -1465,6 +1733,22 @@ static int acm_resume(struct usb_interface *intf)
 	struct acm_wb *wb;
 	int rv = 0;
 	int cnt;
+#if defined(FLUSH_PENDING_WORK)
+	int count = 0;
+#endif
+    int stat = 0;
+
+#if defined(ACM_BOOSTUP)
+	if (acm->susp_count == 1) {
+		if (!acm_suspend_cnt) {
+			printk(KERN_ERR "%s : acm_suspend_cnt is already zero\n", __func__);
+		} else if (acm_suspend_cnt-- == acm_attached_ch_cnt) {
+			pm_qos_update_request(&acm_cci_qos_req, ACM_CCI_FREQ);
+			pm_qos_update_request(&acm_mem_qos_req, ACM_MEM_FREQ);
+			printk("[e2sh] %s boostup requested \n", __func__);
+		}
+	}
+#endif
 
 	spin_lock_irq(&acm->read_lock);
 	acm->susp_count -= 1;
@@ -1477,12 +1761,38 @@ static int acm_resume(struct usb_interface *intf)
 	if (test_bit(ASYNCB_INITIALIZED, &acm->port.flags)) {
 		rv = usb_submit_urb(acm->ctrlurb, GFP_NOIO);
 
+
 		spin_lock_irq(&acm->write_lock);
 		if (acm->delayed_wb) {
 			wb = acm->delayed_wb;
 			acm->delayed_wb = NULL;
 			spin_unlock_irq(&acm->write_lock);
+
+#if defined(FLUSH_PENDING_WORK)
+			if ((pending_wb_cnt <= ACM_NW) && (pending_wb_cnt > 0)) {
+				for(count = 0; count < pending_wb_cnt; count++) {
+
+					dev_info(&acm->control->dev,
+						"%s] pending_wb[%d] = %d, len = %d, use = %d.\n",
+						__func__, count,
+						pending_wb[count].idx,
+						pending_wb[count].len,
+						acm->wb[pending_wb[count].idx].use);
+
+					if (acm->wb[pending_wb[count].idx].use){
+						stat = acm_start_wb(acm, &acm->wb[pending_wb[count].idx]);
+                        if(stat < 0)
+                            printk(KERN_ERR "%s pending_wb[%d] length(%d) is not sent!!\n",
+                            __func__, count, pending_wb[count].len);
+                    }
+					udelay(5);
+				}
+				memset(pending_wb, NULL, sizeof(pending_wb));
+				pending_wb_cnt = 0;
+			}
+#else
 			acm_start_wb(acm, wb);
+#endif
 		} else {
 			spin_unlock_irq(&acm->write_lock);
 		}
@@ -1506,7 +1816,11 @@ static int acm_reset_resume(struct usb_interface *intf)
 	struct acm *acm = usb_get_intfdata(intf);
 
 	if (test_bit(ASYNCB_INITIALIZED, &acm->port.flags))
+#ifndef ODIN_XMM_ADAPTAION
 		tty_port_tty_hangup(&acm->port, false);
+#else
+        tty_port_tty_hangup(&acm->port, true);
+#endif
 
 	return acm_resume(intf);
 }
@@ -1529,8 +1843,6 @@ static int acm_reset_resume(struct usb_interface *intf)
 
 static const struct usb_device_id acm_ids[] = {
 	/* quirky and broken devices */
-	{ USB_DEVICE(0x17ef, 0x7000), /* Lenovo USB modem */
-	.driver_info = NO_UNION_NORMAL, },/* has no union descriptor */
 	{ USB_DEVICE(0x0870, 0x0001), /* Metricom GS Modem */
 	.driver_info = NO_UNION_NORMAL, /* has no union descriptor */
 	},
@@ -1615,6 +1927,12 @@ static const struct usb_device_id acm_ids[] = {
 	{ USB_DEVICE(0x1576, 0x03b1), /* Maretron USB100 */
 	.driver_info = NO_UNION_NORMAL, /* reports zero length descriptor */
 	},
+/*             
+                                              
+                                                      
+ */
+	{ USB_DEVICE(0x1519, 0x0452) }, /* XMM7260- Should check PID & VID & driver_info */
+/*              */
 
 	/* Nokia S60 phones expose two ACM channels. The first is
 	 * a modem and is picked up by the standard AT-command
@@ -1785,6 +2103,7 @@ static int __init acm_init(void)
 	acm_tty_driver->init_termios = tty_std_termios;
 	acm_tty_driver->init_termios.c_cflag = B9600 | CS8 | CREAD |
 								HUPCL | CLOCAL;
+
 	tty_set_operations(acm_tty_driver, &acm_ops);
 
 	retval = tty_register_driver(acm_tty_driver);
@@ -1807,10 +2126,126 @@ static int __init acm_init(void)
 
 static void __exit acm_exit(void)
 {
+
+    if (acm_tty_driver == NULL){
+        printk("%s] acm_tty_driver is already NULL !! \n",__func__);
+        return 0;
+    }
+
 	usb_deregister(&acm_driver);
 	tty_unregister_driver(acm_tty_driver);
 	put_tty_driver(acm_tty_driver);
 }
+
+#ifdef DUMP_ACM_PACKET
+static int get_current_time()
+{
+	ktime_t calltime;
+	u64 msecs64;
+	int msecs;
+
+	calltime = ktime_get();
+	msecs64 = ktime_to_us(calltime);
+	do_div(msecs64, MSEC_PER_SEC);
+	msecs = msecs64;
+	return msecs;
+}
+
+static int acm_tx_index = 0;
+static int acm_rx_index = 0;
+void copy_acm_tx_packet(u8* data, int len)
+{
+	int copy_len = 0;
+	copy_len = (len > PRINT_ACM_PACKET_LEN)? PRINT_ACM_PACKET_LEN: len;
+    acm_tx_dump[acm_tx_index].len = len;
+    memcpy(&acm_tx_dump[acm_tx_index].buf, data, copy_len);
+    acm_tx_dump[acm_tx_index].msec = get_current_time();
+    acm_tx_index = ++acm_tx_index % MAX_ACM_DUMP_LEN;
+}
+//EXPORT_SYMBOL(copy_acm_tx_packet);
+
+void copy_acm_rx_packet(u8* data, int len)
+{
+    int copy_len = 0;
+    copy_len = (len > PRINT_ACM_PACKET_LEN)? PRINT_ACM_PACKET_LEN: len;
+    acm_rx_dump[acm_rx_index].len = len;
+    memcpy(&acm_rx_dump[acm_rx_index].buf, data, copy_len);
+    acm_rx_dump[acm_rx_index].msec = get_current_time();
+    acm_rx_index = ++acm_rx_index % MAX_ACM_DUMP_LEN;
+}
+//EXPORT_SYMBOL(copy_acm_rx_packet);
+
+#define COL_DUMP_SIZE PRINT_ACM_PACKET_LEN
+static void print_acm_dump_char(const unsigned char *buf, int count)
+{
+	char dump_buf_str[COL_DUMP_SIZE+1];
+
+	if (buf != NULL)
+	{
+		int j = 0;
+		char *cur_str = dump_buf_str;
+		unsigned char ch;
+		while((j < COL_DUMP_SIZE) && (j	< count))
+		{
+			ch = buf[j];
+			if ((ch < 32) || (ch > 126))
+			{
+				*cur_str = '.';
+			} else
+			{
+				*cur_str = ch;
+			}
+			cur_str++;
+			j++;
+		}
+		*cur_str = 0;
+		printk("text = [%s]\n", dump_buf_str);
+	}
+	else
+	{
+		printk("[buffer is NULL]\n");
+	}
+}
+
+void print_acm_dump_packet()
+{
+    int i,j,len;
+
+    printk("*************************** ACM TX PACKET DUMP[S] ***************************************\n");
+    printk("Last TX index = %d\n", acm_tx_index);
+    for(i=0; i < MAX_ACM_DUMP_LEN; i++){
+//        if(acm_tx_dump[i] == NULL)
+//            continue;
+        len = (acm_tx_dump[i].len > PRINT_ACM_PACKET_LEN)? PRINT_ACM_PACKET_LEN:acm_tx_dump[i].len;
+        printk("PACKET %02d th, length = %d, timestamp = %d.%d(sec), data = ",
+                   i, acm_tx_dump[i].len, acm_tx_dump[i].msec / 1000L, acm_tx_dump[i].msec % 1000L);
+        for(j=0; j < len; j++){
+            printk("%02x ", acm_tx_dump[i].buf[j]);
+        }
+        print_acm_dump_char(&acm_tx_dump[i].buf, acm_tx_dump[i].len);
+    }
+    acm_tx_index = 0;
+    printk("*************************** ACM TX PACKET DUMP[E] ***************************************\n\n");
+
+    printk("*************************** ACM RX PACKET DUMP[S] ***************************************\n");
+    printk("Last RX index = %d\n", acm_rx_index);
+    for(i=0; i < MAX_ACM_DUMP_LEN; i++){
+//        if(acm_rx_dump[i] == NULL)
+//            continue;
+        len = (acm_rx_dump[i].len > PRINT_ACM_PACKET_LEN)? PRINT_ACM_PACKET_LEN:acm_rx_dump[i].len;
+        printk("PACKET %02d th, length = %d, timestamp = %d.%d(sec), data = ",
+                   i, acm_rx_dump[i].len,  acm_rx_dump[i].msec / 1000L, acm_rx_dump[i].msec % 1000L);
+        for(j=0; j < len; j++){
+            printk("%02x ", acm_rx_dump[i].buf[j]);
+        }
+        print_acm_dump_char(&acm_rx_dump[i].buf, acm_rx_dump[i].len);
+    }
+    acm_rx_index = 0;
+    printk("*************************** ACM RX PACKET DUMP[E] ***************************************\n");
+}
+EXPORT_SYMBOL(print_acm_dump_packet);
+#endif
+
 
 module_init(acm_init);
 module_exit(acm_exit);

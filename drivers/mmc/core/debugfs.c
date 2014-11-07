@@ -126,6 +126,11 @@ static int mmc_ios_show(struct seq_file *s, void *data)
 	case MMC_TIMING_SD_HS:
 		str = "sd high-speed";
 		break;
+#ifdef CONFIG_ARCH_ODIN
+	case MMC_TIMING_UHS_SDR12:
+		str = "sd uhs SDR12";
+		break;
+#endif
 	case MMC_TIMING_UHS_SDR50:
 		str = "sd uhs SDR50";
 		break;

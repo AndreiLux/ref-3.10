@@ -1,0 +1,7 @@
+config VIDEO_ODIN_JPEG_ENCODER
+	tristate "ODIN JPEG encoder platform"
+	default y
+	depends on VIDEO_ODIN
+	---help---
+	  ODIN JPEG ENCODER interface 
+

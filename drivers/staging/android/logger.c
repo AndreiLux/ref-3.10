@@ -752,7 +752,7 @@ static int __init create_log(char *log_name, int size)
 	struct logger_log *log;
 	unsigned char *buffer;
 
-	buffer = vmalloc(size);
+	buffer = kmalloc(size, GFP_KERNEL);
 	if (buffer == NULL)
 		return -ENOMEM;
 

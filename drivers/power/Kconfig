@@ -204,6 +204,47 @@ config BATTERY_MAX17042
 	  with MAX17042. This driver also supports max17047/50 chips which are
 	  improved version of max17042.
 
+config BATTERY_MAX77665
+	tristate "Maxim MAX77665 Battery for REGMAP-IPC"
+	depends on REGMAP_IPC
+	help
+	  MAX77665 is fuel-gauge systems which is based on MAX17047 code.
+	  And this is fuel-gauge systems for lithium-ion (Li+) batteries
+	  in handheld and portable equipment. The MAX77665 is configured
+	  to operate with a single lithium cell
+
+config BATTERY_MAX77819
+	tristate "Maxim MAX77819 Battery for REGMAP-IPC"
+	depends on REGMAP_IPC
+	help
+	  MAX77819 is fuel-gauge systems which is based on MAX17047 code.
+	  And this is fuel-gauge systems for lithium-ion (Li+) batteries
+	  in handheld and portable equipment. The MAX77819 is configured
+	  to operate with a single lithium cell
+
+config WLC_IDT9025
+	tristate "IDT wireless charger receiver for REGMAP-IPC"
+	depends on REGMAP_IPC
+	help
+	  wireless charging driver receiver
+
+config BATTERY_TEMP_CONTROL
+	default n
+	bool "Battery Temperature Control Configuration"
+	help
+		say Y to enable battery temperature control for safty.
+		It controls charging current depending on battery temperature.
+
+config BATTERY_ANDROID
+	tristate "Battery driver for Android"
+	help
+	  Say Y to enable generic support for battery charging according
+	  to common Android policies.
+	  This driver adds periodic battery level and health monitoring,
+	  kernel log reporting and other debugging features, common board
+	  battery file glue logic for battery/case temperature sensors,
+	  etc.
+
 config BATTERY_Z2
 	tristate "Z2 battery driver"
 	depends on I2C && MACH_ZIPIT2
@@ -323,6 +364,38 @@ config CHARGER_MAX8998
 	help
 	  Say Y to enable support for the battery charger control sysfs and
 	  platform data of MAX8998/LP3974 PMICs.
+
+config CHARGER_MAX77819
+	bool "Maxim MAX77819 Sub-PMIC battery charger driver"
+	depends on MFD_MAX77819
+	help
+	  MAX77819 charger driver. It need MFD_MAX77819
+
+config CHARGER_MAX77807
+	bool "Maxim MAX77807 Sub-PMIC battery charger driver"
+	depends on MFD_MAX77807
+	help
+	  MAX77807 charger driver. It need MFD_MAX77807
+
+
+# LGE_CHANGE_S
+config WIRELESS_CHARGER
+	bool "Maxim MAX14670 wireless charger add wireless_charger MAX14670 driver"
+	help
+	  Say Y to enable wireless_charger driver MAX14670.
+# LGE_CHANGE_E
+
+config FLASH_EN_SET
+	bool "Flash enable is set"
+	depends on CHARGER_MAX77819
+	help
+		This function is temporary added
+
+config CHARGER_MAX77665
+	bool "Maxim MAX77665 Sub-PMIC battery charger driver"
+	depends on MFD_MAX77665
+	help
+	  MAX77665 charger driver. It need MFD_MAX77665
 
 config CHARGER_BQ2415X
 	tristate "TI BQ2415x battery charger driver"

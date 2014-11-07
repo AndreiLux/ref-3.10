@@ -1,0 +1,1 @@
+obj-y += dtd.o edid.o halEdid.o hdmivsdb.o monitorRangeLimits.o shortVideoDesc.o shortAudioDesc.o speakerAllocationDataBlock.o videoCapabilityDataBlock.o colorimetryDataBlock.o

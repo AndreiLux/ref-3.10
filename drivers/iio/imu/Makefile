@@ -12,4 +12,6 @@ adis_lib-$(CONFIG_IIO_ADIS_LIB_BUFFER) += adis_trigger.o
 adis_lib-$(CONFIG_IIO_ADIS_LIB_BUFFER) += adis_buffer.o
 obj-$(CONFIG_IIO_ADIS_LIB) += adis_lib.o
 
+ifneq ($(CONFIG_MACH_ODIN), y)
 obj-y += inv_mpu6050/
+endif

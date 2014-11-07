@@ -9,7 +9,6 @@
  * manipulate wakelocks on Android.
  */
 
-#include <linux/capability.h>
 #include <linux/ctype.h>
 #include <linux/device.h>
 #include <linux/err.h>
@@ -17,6 +16,9 @@
 #include <linux/list.h>
 #include <linux/rbtree.h>
 #include <linux/slab.h>
+#if defined(CONFIG_LGE_AUTO_SUSPEND_TEST)
+#include <linux/wakelock.h>
+#endif
 
 static DEFINE_MUTEX(wakelocks_lock);
 
@@ -189,9 +191,6 @@ int pm_wake_lock(const char *buf)
 	size_t len;
 	int ret = 0;
 
-	if (!capable(CAP_BLOCK_SUSPEND))
-		return -EPERM;
-
 	while (*str && !isspace(*str))
 		str++;
 
@@ -235,9 +234,6 @@ int pm_wake_unlock(const char *buf)
 	size_t len;
 	int ret = 0;
 
-	if (!capable(CAP_BLOCK_SUSPEND))
-		return -EPERM;
-
 	len = strlen(buf);
 	if (!len)
 		return -EINVAL;
@@ -264,3 +260,20 @@ int pm_wake_unlock(const char *buf)
 	mutex_unlock(&wakelocks_lock);
 	return ret;
 }
+
+#if defined(CONFIG_LGE_AUTO_SUSPEND_TEST)
+int wake_lock_active_name(char *name)
+{
+	struct wakelock *wl, *aux;
+
+	if (!name)
+		return 0;
+
+	list_for_each_entry_safe_reverse(wl, aux, &wakelocks_lru_list, lru) {
+		if (!strncmp(wl->name, name, strlen(name))) {
+			pr_info("%s: %s is activated\n", __func__, wl->name);
+			return wake_lock_active(wl);
+		}
+	}
+}
+#endif

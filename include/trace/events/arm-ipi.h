@@ -94,6 +94,26 @@ TRACE_EVENT(arm_ipi_send,
 			__entry->ipi, show_arm_ipi_name(__entry->ipi))
 );
 
+TRACE_EVENT(arm_ipi_send_map,
+
+	TP_PROTO(unsigned int ipi_nr, unsigned long map),
+
+	TP_ARGS(ipi_nr, map),
+
+	TP_STRUCT__entry(
+		__field(	unsigned int,	ipi	)
+		__field(	unsigned long		,	map )
+	),
+
+	TP_fast_assign(
+		__entry->ipi = ipi_nr;
+		__entry->map = map;
+	),
+
+	TP_printk("map=%08lx ipi=%u [action=%s]", __entry->map,
+			__entry->ipi, show_arm_ipi_name(__entry->ipi))
+);
+
 #endif /*  _TRACE_ARM_IPI_H */
 
 /* This part must be outside protection */

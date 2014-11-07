@@ -1,0 +1,672 @@
+./fs/squashfs/lzo_wrapper.c:5: * Chan Jeong <chan.jeong@lge.com>
+./sound/soc/codecs/tpa2028d.c:414:MODULE_AUTHOR("Kim EunHye <ehgrace.kim@lge.com>");
+./sound/soc/odin/dsp/odin_dsp_driver.c:1519:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./sound/soc/odin/woden_pcm.h:4: * Author: Hyunhee Jeon <hhjeon@lge.com>
+./sound/soc/odin/woden_pcm.c:5: *		http://www.lge.com
+./sound/soc/odin/woden_pcm.c:8: *	Hyunhee Jeon <hyunhee.jeon@lge.com>
+./sound/soc/odin/woden_pcm.c:412:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./sound/soc/odin/odin_compress.c:797:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./sound/soc/odin/odin_dsp.h:6: * Author: Jongho Kim <m4jongho.kim@lge.com>
+./sound/soc/odin/woden_i2s.c:4: * Author: Hyunhee Jeon <hyunhee.jeon@lge.com>
+./sound/soc/odin/woden_i2s.c:999:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./sound/soc/odin/ama_debugfs.h:5: * Younghyun Jo <younghyun.jo@lge.com>
+./sound/soc/odin/woden_fpga_wm8580.c:217:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./sound/soc/odin/ama.c:5: * Younghyun Jo <younghyun.jo@lge.com>
+./sound/soc/odin/odin_si2s.c:1064:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./sound/soc/odin/woden_hdk_wm5102.c:385:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./sound/soc/odin/odin_madk_wm5102.c:549:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./sound/soc/odin/ama_debugfs.c:5: * Younghyun Jo <younghyun.jo@lge.com>
+./sound/soc/odin/woden_dif.c:8: * Author:      Hyunhee Jeon,  <hyunhee.jeon@lge.com>
+./sound/soc/odin/woden_dif.c:72:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./sound/soc/odin/odin_platform.h:6: * Author: Jongho Kim <m4jongho.kim@lge.com>
+./sound/soc/odin/odin_pcm.c:445:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./sound/soc/odin/odin_fpga_wm5102.c:296:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./sound/soc/odin/odin_rt5671.c:1423:MODULE_AUTHOR("Hyunsoo Yoon, hyunsoo.yoon@lge.com");
+./sound/soc/odin/odin_dsp_wm5102.c:292:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./drivers/dsp/tensilica/dsp_drv.c:472:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./drivers/input/touchscreen/touch_synaptics_proximity.c:5: * Author: daehyun.gil@lge.com
+./drivers/input/touchscreen/touch_synaptics_proximity.c:658:MODULE_AUTHOR("daehyun.gil@lge.com");
+./drivers/input/touchscreen/touch_synaptics.c:5: * Author: yehan.ahn@lge.com, hyesung.shin@lge.com
+./drivers/input/touchscreen/touch_synaptics.c:4041:MODULE_AUTHOR("yehan.ahn@lge.com, hyesung.shin@lge.com");
+./drivers/input/touchscreen/lge_touch_core.c:5: * Author: yehan.ahn@lge.com, hyesung.shin@lge.com
+./drivers/input/misc/odin-pwrkey.c:200:MODULE_AUTHOR("In Hyuk Kang <hugh.kang@lge.com>");
+./drivers/mmc/host/sdhci-odin.c:1103:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./drivers/hwmon/d2260-hwmon.c:939:MODULE_AUTHOR("In Hyuk Kang <hugh.kang@lge.com>");
+./drivers/hwmon/energy_meter.c:458:MODULE_AUTHOR("DongMin Shin<alexia.shin@lge.com>");
+./drivers/mfd/da9066-ipc.c:175:MODULE_AUTHOR("LG Electronics <hugh.kang@lge.com >");
+./drivers/usb/dwc3/odin_drd.c:5: *  Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/dwc3/odin_drd.c:1788:MODULE_AUTHOR("Wonsuk Chang <wonsuk.chang@lge.com>");
+./drivers/usb/dwc3/odin_drd.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/gadget/odin_udc.c:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/gadget/odin_udc.c:2794:MODULE_AUTHOR("Wonsuk Chang <wonsuk.chang@lge.com>");
+./drivers/usb/gadget/odin_udc.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/gadget/odin_udc_core.c:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/gadget/u_lgeusb.c:4: * Author : Hyeon H. Park <hyunhui.park@lge.com>
+./drivers/usb/gadget/u_lgeusb.h:4: * Author : Hyeon H. Park <hyunhui.park@lge.com>
+./drivers/usb/gadget/f_laf.c:5: * Author: DH, kang <deunghyung.kang@lge.com>
+./drivers/usb/gadget/f_charge_only.c:5: * Author: Hyeon H. Park <hyunhui.park@lge.com>
+./drivers/usb/phy/phy-lge-usb3.c:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/phy/phy-lge-usb3.c:786:MODULE_AUTHOR("Wonsuk Chang <wonsuk.chang@lge.com>");
+./drivers/usb/phy/phy-lge-usb3.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./drivers/usb/host/odin_hsusb/odin_dwc/odin_dwc_host.c:490:MODULE_AUTHOR("Jinjong Lee <jinjong.lee@lge.com>");
+./drivers/memory/odin-memc.c:382:MODULE_AUTHOR("Jesse Jung  <jesse.jung@lge.com>");
+./drivers/power/battery_temp_ctrl.c:676:MODULE_AUTHOR("ChoongRyeol Lee <choongryeol.lee@lge.com>");
+./drivers/power/max14670.c:406:MODULE_AUTHOR("Kyungtae Oh <kyungtae.oh@lge.com>");
+./drivers/switch/usb_switch_class.c:178:MODULE_AUTHOR("Jaesung Woo <jaesung.woo@lge.com>");
+./drivers/switch/usb_switch_gpio.c:328:MODULE_AUTHOR("Jaesung Woo <jaesung.woo@lge.com>");
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:8: * Inpyo Cho <inpyo.cho@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:8: * Inpyo Cho <inpyo.cho@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_rate.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_rate.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_rate.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_rate.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_rate.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_rate.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:7: * Jonghun Yoo <jonghun.yoo@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_vcore.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_vcore.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_vcore.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vppu/vppu_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vppu/vppu_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vppu/vppu_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_vcore.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_vcore.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_vcore.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_io.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_io.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_io.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdec_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdec_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdec_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdec_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdec_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vdec/vdec_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vnl/vnl.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vnl/vnl.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vnl/vnl.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vnl/vnl.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vnl/vnl.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/misc/vnl/vnl.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_io.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_io.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/vcodec_io.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/venc_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/venc_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/venc_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/venc_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/venc_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/venc_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/misc/pm8xxx-cradle.c:4: * Author: Fred Cho <fred.cho@lge.com>
+./drivers/misc/slimport_anx7808/slimport7808.c:1793:MODULE_AUTHOR("ChoongRyeol Lee <choongryeol.lee@lge.com>");
+./drivers/tty/serial/odin-uart.c:8: *	Wonchul Choi  <wonchul.choi@lge.com>
+./drivers/base/regmap/regmap-ipc.c:360:MODULE_AUTHOR("In Hyuk Kang <hugh.kang@lge.com>");
+./drivers/gpio/gpio-odin-sms.c:470:MODULE_AUTHOR("Hyogi Gim <hyogi.gim@lge.com>");
+./drivers/gpio/gpio-odin-smsgic.c:660:MODULE_AUTHOR("Hyogi Gim <hyogi.gim@lge.com>");
+./drivers/gpio/gpio-odin.c:829:MODULE_AUTHOR("Hyogi Gim <hyogi.gim@lge.com>");
+./drivers/thermal/odin_thermal.c:529:MODULE_AUTHOR("Changwon Lee <changwon.lee@lge.com>");
+./drivers/thermal/odin_thermal_monitor.c:437:MODULE_AUTHOR("Changwon Lee <changwon.lee@lge.com>");
+./drivers/video/odin-dss/panel/lcd-panel-lglh520wf1.c:5: * choongryeol.lee@lge.com
+./drivers/video/odin-dss/dss_comp_types.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/ovl_rsc.h:4: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/video/odin-dss/ovl_rsc.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/rot_rsc_drv.h:4: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/video/odin-dss/rot_rsc_drv.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/mipi_dsi_drv.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_irq.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_irq.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/sync_src.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/sync_src.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_comp.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/mipi_dsi_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/sync_hal.c:4: * Sungwon Son <sungwon.son@lge.com>
+./drivers/video/odin-dss/hal/sync_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/mipi_dsi_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/ovl_hal.c:4: * Sungwon Son <sungwon.son@lge.com>
+./drivers/video/odin-dss/hal/ovl_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/sync_hal.h:4: * Sungwon Son <sungwon.son@lge.com>
+./drivers/video/odin-dss/hal/sync_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/dss_hal_ch_id.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/mipi_dsi_common.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/du_hal.c:4: * Sungwon Son <sungwon.son@lge.com>
+./drivers/video/odin-dss/hal/du_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/crg_hal.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/hal/crg_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/cabc_hal.h:4: * Jooyeon Lee <jylee256.lee@lge.com>
+./drivers/video/odin-dss/hal/cabc_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/crg_hal.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/hal/crg_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/ovl_hal.h:4: * Sungwon Son <sungwon.son@lge.com>
+./drivers/video/odin-dss/hal/ovl_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/hal/du_hal.h:4: * Sungwon Son <sungwon.son@lge.com>
+./drivers/video/odin-dss/hal/du_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dip_mipi.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_buf.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_buf.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_buf.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_buf.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_comp.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/du_rsc.c:4: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/video/odin-dss/du_rsc.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_fb.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_fb.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/du_rsc.h:4: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/video/odin-dss/du_rsc.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/du_ovl_drv.h:4: * Cheolhyun park <cheolhyun.park@lge.com>
+./drivers/video/odin-dss/du_ovl_drv.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dip_mipi.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_irq.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_irq.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/mipi_dsi_drv.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/ovl_rsc.c:4: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/video/odin-dss/ovl_rsc.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_drv.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_drv.c:5: * Cheolhyun park <cheolhyun.park@lge.com>
+./drivers/video/odin-dss/dss_drv.c:6: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/rot_rsc_drv.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/rot_rsc_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./drivers/video/odin-dss/rot_rsc_drv.c:6: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/dss_fb.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/dss_fb.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/sync_src.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./drivers/video/odin-dss/sync_src.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin-dss/du_ovl_drv.c:4: * Cheolhyun park <cheolhyun.park@lge.com>
+./drivers/video/odin-dss/du_ovl_drv.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./drivers/video/odin/dss/cabc/cabc.c:5: * Author: suhwa.kim <suhwa.kim@lge.com>
+./drivers/video/odin/dss/dss-core.c:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./drivers/video/odin/dss/display.c:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./drivers/video/odin/dss/dipc.h:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./drivers/video/odin/dss/crg.c:5: * Author: Jaeky Oh <jaeky.oh@lge.com>
+./drivers/video/odin/dss/writeback.c:5: * Author: Jaeky Oh <jaeky.oh@lge.com>
+./drivers/video/odin/dss/core.h:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./drivers/video/odin/dsscomp/dsscomp.c:5: * by Jaeky Oh(jaeky.oh@lge.com)
+./drivers/video/odin/dsscomp/dsscomp.h:5: * by Jaeky Oh(jaeky.oh@lge.com)
+./drivers/video/odin/gfx/gfx_proc.c:496:			ret = sprintf( buffer, "%s\n", "raxis.lim (raxis.lim@lge.com)" );
+./drivers/video/odin/display/lcd-panel-sample0.c:5: * choongryeol.lee@lge.com
+./drivers/video/odin/display/slimport_hdmi.c:768:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./drivers/video/odin/display/lcd-panel-lglh520wf1.c:5: * choongryeol.lee@lge.com
+./drivers/video/odin/display/lcd-panel-lms480.c:6: * jaeky.oh@lge.com
+./drivers/video/odin/display/slimport_dsi.c:791:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./drivers/video/odin/display/lcd-panel-xxxxxxxx.c:5: * choongryeol.lee@lge.com
+./drivers/video/odin/display/lcd-panel-sample1.c:5: * choongryeol.lee@lge.com
+./drivers/video/odin/display/lcd-slimport-sample.c:338:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./drivers/video/odin/display/lcd-panel-innolux-at070tn94.c:6: * jaeky.oh@lge.com
+./drivers/video/odin/odinfb/odinfb.c:2364:MODULE_AUTHOR("Seungwon Shin <m4seungwon.shin@lge.com");
+./drivers/iommu/odin_iommu.c:1260:MODULE_AUTHOR("Hyunsun Hong <hyunsun.hong@lge.com>");
+./drivers/iommu/odin_mem_debug.c:371:MODULE_AUTHOR("Hyunsun Hong <hyunsun.hong@lge.com>");
+./drivers/iommu/odin_iommu_dev.c:842:MODULE_AUTHOR("Hyunsun Hong <hyunsun.hong@lge.com>");
+./grep_lge.log:1:./fs/squashfs/lzo_wrapper.c:5: * Chan Jeong <chan.jeong@lge.com>
+./grep_lge.log:2:./sound/soc/codecs/tpa2028d.c:414:MODULE_AUTHOR("Kim EunHye <ehgrace.kim@lge.com>");
+./grep_lge.log:3:./sound/soc/odin/dsp/odin_dsp_driver.c:1519:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./grep_lge.log:4:./sound/soc/odin/woden_pcm.h:4: * Author: Hyunhee Jeon <hhjeon@lge.com>
+./grep_lge.log:5:./sound/soc/odin/woden_pcm.c:5: *		http://www.lge.com
+./grep_lge.log:6:./sound/soc/odin/woden_pcm.c:8: *	Hyunhee Jeon <hyunhee.jeon@lge.com>
+./grep_lge.log:7:./sound/soc/odin/woden_pcm.c:412:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:8:./sound/soc/odin/odin_compress.c:797:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./grep_lge.log:9:./sound/soc/odin/odin_dsp.h:6: * Author: Jongho Kim <m4jongho.kim@lge.com>
+./grep_lge.log:10:./sound/soc/odin/woden_i2s.c:4: * Author: Hyunhee Jeon <hyunhee.jeon@lge.com>
+./grep_lge.log:11:./sound/soc/odin/woden_i2s.c:999:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:12:./sound/soc/odin/ama_debugfs.h:5: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:13:./sound/soc/odin/woden_fpga_wm8580.c:217:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./grep_lge.log:14:./sound/soc/odin/ama.c:5: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:15:./sound/soc/odin/odin_si2s.c:1064:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:16:./sound/soc/odin/woden_hdk_wm5102.c:385:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./grep_lge.log:17:./sound/soc/odin/odin_madk_wm5102.c:549:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./grep_lge.log:18:./sound/soc/odin/ama_debugfs.c:5: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:19:./sound/soc/odin/woden_dif.c:8: * Author:      Hyunhee Jeon,  <hyunhee.jeon@lge.com>
+./grep_lge.log:20:./sound/soc/odin/woden_dif.c:72:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:21:./sound/soc/odin/odin_platform.h:6: * Author: Jongho Kim <m4jongho.kim@lge.com>
+./grep_lge.log:22:./sound/soc/odin/odin_pcm.c:445:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:23:./sound/soc/odin/odin_fpga_wm5102.c:296:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:24:./sound/soc/odin/odin_rt5671.c:1423:MODULE_AUTHOR("Hyunsoo Yoon, hyunsoo.yoon@lge.com");
+./grep_lge.log:25:./sound/soc/odin/odin_dsp_wm5102.c:292:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:26:./drivers/dsp/tensilica/dsp_drv.c:472:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./grep_lge.log:27:./drivers/input/touchscreen/touch_synaptics_proximity.c:5: * Author: daehyun.gil@lge.com
+./grep_lge.log:28:./drivers/input/touchscreen/touch_synaptics_proximity.c:658:MODULE_AUTHOR("daehyun.gil@lge.com");
+./grep_lge.log:29:./drivers/input/touchscreen/touch_synaptics.c:5: * Author: yehan.ahn@lge.com, hyesung.shin@lge.com
+./grep_lge.log:30:./drivers/input/touchscreen/touch_synaptics.c:4041:MODULE_AUTHOR("yehan.ahn@lge.com, hyesung.shin@lge.com");
+./grep_lge.log:31:./drivers/input/touchscreen/lge_touch_core.c:5: * Author: yehan.ahn@lge.com, hyesung.shin@lge.com
+./grep_lge.log:32:./drivers/input/misc/odin-pwrkey.c:200:MODULE_AUTHOR("In Hyuk Kang <hugh.kang@lge.com>");
+./grep_lge.log:33:./drivers/mmc/host/sdhci-odin.c:1103:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./grep_lge.log:34:./drivers/hwmon/d2260-hwmon.c:939:MODULE_AUTHOR("In Hyuk Kang <hugh.kang@lge.com>");
+./grep_lge.log:35:./drivers/hwmon/energy_meter.c:458:MODULE_AUTHOR("DongMin Shin<alexia.shin@lge.com>");
+./grep_lge.log:36:./drivers/mfd/da9066-ipc.c:175:MODULE_AUTHOR("LG Electronics <hugh.kang@lge.com >");
+./grep_lge.log:37:./drivers/usb/dwc3/odin_drd.c:5: *  Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:38:./drivers/usb/dwc3/odin_drd.c:1788:MODULE_AUTHOR("Wonsuk Chang <wonsuk.chang@lge.com>");
+./grep_lge.log:39:./drivers/usb/dwc3/odin_drd.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:40:./drivers/usb/gadget/odin_udc.c:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:41:./drivers/usb/gadget/odin_udc.c:2794:MODULE_AUTHOR("Wonsuk Chang <wonsuk.chang@lge.com>");
+./grep_lge.log:42:./drivers/usb/gadget/odin_udc.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:43:./drivers/usb/gadget/odin_udc_core.c:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:44:./drivers/usb/gadget/u_lgeusb.c:4: * Author : Hyeon H. Park <hyunhui.park@lge.com>
+./grep_lge.log:45:./drivers/usb/gadget/u_lgeusb.h:4: * Author : Hyeon H. Park <hyunhui.park@lge.com>
+./grep_lge.log:46:./drivers/usb/gadget/f_laf.c:5: * Author: DH, kang <deunghyung.kang@lge.com>
+./grep_lge.log:47:./drivers/usb/gadget/f_charge_only.c:5: * Author: Hyeon H. Park <hyunhui.park@lge.com>
+./grep_lge.log:48:./drivers/usb/phy/phy-lge-usb3.c:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:49:./drivers/usb/phy/phy-lge-usb3.c:786:MODULE_AUTHOR("Wonsuk Chang <wonsuk.chang@lge.com>");
+./grep_lge.log:50:./drivers/usb/phy/phy-lge-usb3.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./grep_lge.log:51:./drivers/usb/host/odin_hsusb/odin_dwc/odin_dwc_host.c:490:MODULE_AUTHOR("Jinjong Lee <jinjong.lee@lge.com>");
+./grep_lge.log:52:./drivers/memory/odin-memc.c:382:MODULE_AUTHOR("Jesse Jung  <jesse.jung@lge.com>");
+./grep_lge.log:53:./drivers/power/battery_temp_ctrl.c:676:MODULE_AUTHOR("ChoongRyeol Lee <choongryeol.lee@lge.com>");
+./grep_lge.log:54:./drivers/power/max14670.c:406:MODULE_AUTHOR("Kyungtae Oh <kyungtae.oh@lge.com>");
+./grep_lge.log:55:./drivers/switch/usb_switch_class.c:178:MODULE_AUTHOR("Jaesung Woo <jaesung.woo@lge.com>");
+./grep_lge.log:56:./drivers/switch/usb_switch_gpio.c:328:MODULE_AUTHOR("Jaesung Woo <jaesung.woo@lge.com>");
+./grep_lge.log:57:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:58:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:59:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:60:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.h:8: * Inpyo Cho <inpyo.cho@lge.com>
+./grep_lge.log:61:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:62:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:63:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:64:./drivers/media/platform/odin-vcodec/common/vcodec_dpb.c:8: * Inpyo Cho <inpyo.cho@lge.com>
+./grep_lge.log:65:./drivers/media/platform/odin-vcodec/common/vcodec_rate.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:66:./drivers/media/platform/odin-vcodec/common/vcodec_rate.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:67:./drivers/media/platform/odin-vcodec/common/vcodec_rate.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:68:./drivers/media/platform/odin-vcodec/common/vcodec_rate.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:69:./drivers/media/platform/odin-vcodec/common/vcodec_rate.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:70:./drivers/media/platform/odin-vcodec/common/vcodec_rate.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:71:./drivers/media/platform/odin-vcodec/common/vcodec_timer.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:72:./drivers/media/platform/odin-vcodec/common/vcodec_timer.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:73:./drivers/media/platform/odin-vcodec/common/vcodec_timer.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:74:./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:75:./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:76:./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:77:./drivers/media/platform/odin-vcodec/common/vcodec_timer.c:7: * Jonghun Yoo <jonghun.yoo@lge.com>
+./grep_lge.log:78:./drivers/media/platform/odin-vcodec/vcodec_vcore.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:79:./drivers/media/platform/odin-vcodec/vcodec_vcore.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:80:./drivers/media/platform/odin-vcodec/vcodec_vcore.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:81:./drivers/media/platform/odin-vcodec/vppu/vppu_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:82:./drivers/media/platform/odin-vcodec/vppu/vppu_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:83:./drivers/media/platform/odin-vcodec/vppu/vppu_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:84:./drivers/media/platform/odin-vcodec/vcodec_vcore.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:85:./drivers/media/platform/odin-vcodec/vcodec_vcore.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:86:./drivers/media/platform/odin-vcodec/vcodec_vcore.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:87:./drivers/media/platform/odin-vcodec/vcodec_io.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:88:./drivers/media/platform/odin-vcodec/vcodec_io.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:89:./drivers/media/platform/odin-vcodec/vcodec_io.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:90:./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:91:./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:92:./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:93:./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:94:./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:95:./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:96:./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:97:./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:98:./drivers/media/platform/odin-vcodec/vdec/ves/ves_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:99:./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:100:./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:101:./drivers/media/platform/odin-vcodec/vdec/ves/ves_cpb.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:102:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:103:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:104:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:105:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:106:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:107:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:108:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:109:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:110:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:111:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:112:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:113:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:114:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:115:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:116:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_auq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:117:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:118:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:119:./drivers/media/platform/odin-vcodec/vdec/vdc/vdc_dq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:120:./drivers/media/platform/odin-vcodec/vdec/vdec_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:121:./drivers/media/platform/odin-vcodec/vdec/vdec_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:122:./drivers/media/platform/odin-vcodec/vdec/vdec_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:123:./drivers/media/platform/odin-vcodec/vdec/vdec_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:124:./drivers/media/platform/odin-vcodec/vdec/vdec_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:125:./drivers/media/platform/odin-vcodec/vdec/vdec_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:126:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:127:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:128:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:129:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:130:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:131:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:132:./drivers/media/platform/odin-vcodec/misc/vlog/vlog.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:133:./drivers/media/platform/odin-vcodec/misc/vlog/vlog.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:134:./drivers/media/platform/odin-vcodec/misc/vlog/vlog.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:135:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:136:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:137:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_libvlog.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:138:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:139:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:140:./drivers/media/platform/odin-vcodec/misc/vlog/vlog_sysfs.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:141:./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:142:./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:143:./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:144:./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:145:./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:146:./drivers/media/platform/odin-vcodec/misc/vbuf/vbuf.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:147:./drivers/media/platform/odin-vcodec/misc/vevent/vevent.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:148:./drivers/media/platform/odin-vcodec/misc/vevent/vevent.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:149:./drivers/media/platform/odin-vcodec/misc/vevent/vevent.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:150:./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:151:./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:152:./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:153:./drivers/media/platform/odin-vcodec/misc/vevent/vevent.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:154:./drivers/media/platform/odin-vcodec/misc/vevent/vevent.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:155:./drivers/media/platform/odin-vcodec/misc/vevent/vevent.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:156:./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:157:./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:158:./drivers/media/platform/odin-vcodec/misc/vevent/vevent_eq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:159:./drivers/media/platform/odin-vcodec/misc/vnl/vnl.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:160:./drivers/media/platform/odin-vcodec/misc/vnl/vnl.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:161:./drivers/media/platform/odin-vcodec/misc/vnl/vnl.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:162:./drivers/media/platform/odin-vcodec/misc/vnl/vnl.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:163:./drivers/media/platform/odin-vcodec/misc/vnl/vnl.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:164:./drivers/media/platform/odin-vcodec/misc/vnl/vnl.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:165:./drivers/media/platform/odin-vcodec/vcodec.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:166:./drivers/media/platform/odin-vcodec/vcodec.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:167:./drivers/media/platform/odin-vcodec/vcodec.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:168:./drivers/media/platform/odin-vcodec/vcodec_io.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:169:./drivers/media/platform/odin-vcodec/vcodec_io.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:170:./drivers/media/platform/odin-vcodec/vcodec_io.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:171:./drivers/media/platform/odin-vcodec/venc/venc_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:172:./drivers/media/platform/odin-vcodec/venc/venc_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:173:./drivers/media/platform/odin-vcodec/venc/venc_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:174:./drivers/media/platform/odin-vcodec/venc/venc_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:175:./drivers/media/platform/odin-vcodec/venc/venc_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:176:./drivers/media/platform/odin-vcodec/venc/venc_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:177:./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:178:./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:179:./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:180:./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:181:./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:182:./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:183:./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:184:./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:185:./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:186:./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:187:./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:188:./drivers/media/platform/odin-vcodec/venc/vec/vec_picq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:189:./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:190:./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:191:./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:192:./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:193:./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:194:./drivers/media/platform/odin-vcodec/venc/vec/vec_esq.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:195:./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:196:./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:197:./drivers/media/platform/odin-vcodec/venc/vec/vec_epb.c:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:198:./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:199:./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:200:./drivers/media/platform/odin-vcodec/venc/vec/vec_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:201:./drivers/misc/pm8xxx-cradle.c:4: * Author: Fred Cho <fred.cho@lge.com>
+./grep_lge.log:202:./drivers/misc/slimport_anx7808/slimport7808.c:1793:MODULE_AUTHOR("ChoongRyeol Lee <choongryeol.lee@lge.com>");
+./grep_lge.log:203:./drivers/tty/serial/odin-uart.c:8: *	Wonchul Choi  <wonchul.choi@lge.com>
+./grep_lge.log:204:./drivers/base/regmap/regmap-ipc.c:360:MODULE_AUTHOR("In Hyuk Kang <hugh.kang@lge.com>");
+./grep_lge.log:205:./drivers/gpio/gpio-odin-sms.c:470:MODULE_AUTHOR("Hyogi Gim <hyogi.gim@lge.com>");
+./grep_lge.log:206:./drivers/gpio/gpio-odin-smsgic.c:660:MODULE_AUTHOR("Hyogi Gim <hyogi.gim@lge.com>");
+./grep_lge.log:207:./drivers/gpio/gpio-odin.c:829:MODULE_AUTHOR("Hyogi Gim <hyogi.gim@lge.com>");
+./grep_lge.log:208:./drivers/thermal/odin_thermal.c:529:MODULE_AUTHOR("Changwon Lee <changwon.lee@lge.com>");
+./grep_lge.log:209:./drivers/thermal/odin_thermal_monitor.c:437:MODULE_AUTHOR("Changwon Lee <changwon.lee@lge.com>");
+./grep_lge.log:210:./drivers/video/odin-dss/panel/lcd-panel-lglh520wf1.c:5: * choongryeol.lee@lge.com
+./grep_lge.log:211:./drivers/video/odin-dss/dss_comp_types.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:212:./drivers/video/odin-dss/ovl_rsc.h:4: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:213:./drivers/video/odin-dss/ovl_rsc.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:214:./drivers/video/odin-dss/rot_rsc_drv.h:4: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:215:./drivers/video/odin-dss/rot_rsc_drv.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:216:./drivers/video/odin-dss/mipi_dsi_drv.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:217:./drivers/video/odin-dss/dss_irq.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:218:./drivers/video/odin-dss/dss_irq.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:219:./drivers/video/odin-dss/sync_src.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:220:./drivers/video/odin-dss/sync_src.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:221:./drivers/video/odin-dss/dss_comp.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:222:./drivers/video/odin-dss/hal/mipi_dsi_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:223:./drivers/video/odin-dss/hal/sync_hal.c:4: * Sungwon Son <sungwon.son@lge.com>
+./grep_lge.log:224:./drivers/video/odin-dss/hal/sync_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:225:./drivers/video/odin-dss/hal/mipi_dsi_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:226:./drivers/video/odin-dss/hal/ovl_hal.c:4: * Sungwon Son <sungwon.son@lge.com>
+./grep_lge.log:227:./drivers/video/odin-dss/hal/ovl_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:228:./drivers/video/odin-dss/hal/sync_hal.h:4: * Sungwon Son <sungwon.son@lge.com>
+./grep_lge.log:229:./drivers/video/odin-dss/hal/sync_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:230:./drivers/video/odin-dss/hal/dss_hal_ch_id.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:231:./drivers/video/odin-dss/hal/mipi_dsi_common.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:232:./drivers/video/odin-dss/hal/du_hal.c:4: * Sungwon Son <sungwon.son@lge.com>
+./grep_lge.log:233:./drivers/video/odin-dss/hal/du_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:234:./drivers/video/odin-dss/hal/crg_hal.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:235:./drivers/video/odin-dss/hal/crg_hal.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:236:./drivers/video/odin-dss/hal/cabc_hal.h:4: * Jooyeon Lee <jylee256.lee@lge.com>
+./grep_lge.log:237:./drivers/video/odin-dss/hal/cabc_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:238:./drivers/video/odin-dss/hal/crg_hal.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:239:./drivers/video/odin-dss/hal/crg_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:240:./drivers/video/odin-dss/hal/ovl_hal.h:4: * Sungwon Son <sungwon.son@lge.com>
+./grep_lge.log:241:./drivers/video/odin-dss/hal/ovl_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:242:./drivers/video/odin-dss/hal/du_hal.h:4: * Sungwon Son <sungwon.son@lge.com>
+./grep_lge.log:243:./drivers/video/odin-dss/hal/du_hal.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:244:./drivers/video/odin-dss/dip_mipi.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:245:./drivers/video/odin-dss/dss_buf.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:246:./drivers/video/odin-dss/dss_buf.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:247:./drivers/video/odin-dss/dss_buf.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:248:./drivers/video/odin-dss/dss_buf.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:249:./drivers/video/odin-dss/dss_comp.c:4: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:250:./drivers/video/odin-dss/du_rsc.c:4: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:251:./drivers/video/odin-dss/du_rsc.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:252:./drivers/video/odin-dss/dss_fb.h:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:253:./drivers/video/odin-dss/dss_fb.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:254:./drivers/video/odin-dss/du_rsc.h:4: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:255:./drivers/video/odin-dss/du_rsc.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:256:./drivers/video/odin-dss/du_ovl_drv.h:4: * Cheolhyun park <cheolhyun.park@lge.com>
+./grep_lge.log:257:./drivers/video/odin-dss/du_ovl_drv.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:258:./drivers/video/odin-dss/dip_mipi.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:259:./drivers/video/odin-dss/dss_irq.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:260:./drivers/video/odin-dss/dss_irq.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:261:./drivers/video/odin-dss/mipi_dsi_drv.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:262:./drivers/video/odin-dss/ovl_rsc.c:4: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:263:./drivers/video/odin-dss/ovl_rsc.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:264:./drivers/video/odin-dss/dss_drv.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:265:./drivers/video/odin-dss/dss_drv.c:5: * Cheolhyun park <cheolhyun.park@lge.com>
+./grep_lge.log:266:./drivers/video/odin-dss/dss_drv.c:6: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:267:./drivers/video/odin-dss/rot_rsc_drv.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:268:./drivers/video/odin-dss/rot_rsc_drv.c:5: * Jungmin Park <jungmin016.park@lge.com>
+./grep_lge.log:269:./drivers/video/odin-dss/rot_rsc_drv.c:6: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:270:./drivers/video/odin-dss/dss_fb.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:271:./drivers/video/odin-dss/dss_fb.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:272:./drivers/video/odin-dss/sync_src.c:4: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:273:./drivers/video/odin-dss/sync_src.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:274:./drivers/video/odin-dss/du_ovl_drv.c:4: * Cheolhyun park <cheolhyun.park@lge.com>
+./grep_lge.log:275:./drivers/video/odin-dss/du_ovl_drv.c:5: * Youngki Lyu <youngki.lyu@lge.com>
+./grep_lge.log:276:./drivers/video/odin/dss/cabc/cabc.c:5: * Author: suhwa.kim <suhwa.kim@lge.com>
+./grep_lge.log:277:./drivers/video/odin/dss/dss-core.c:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./grep_lge.log:278:./drivers/video/odin/dss/display.c:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./grep_lge.log:279:./drivers/video/odin/dss/dipc.h:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./grep_lge.log:280:./drivers/video/odin/dss/crg.c:5: * Author: Jaeky Oh <jaeky.oh@lge.com>
+./grep_lge.log:281:./drivers/video/odin/dss/writeback.c:5: * Author: Jaeky Oh <jaeky.oh@lge.com>
+./grep_lge.log:282:./drivers/video/odin/dss/core.h:5: * Author: Seungwon Shin <m4seungwon.shin@lge.com>
+./grep_lge.log:283:./drivers/video/odin/dsscomp/dsscomp.c:5: * by Jaeky Oh(jaeky.oh@lge.com)
+./grep_lge.log:284:./drivers/video/odin/dsscomp/dsscomp.h:5: * by Jaeky Oh(jaeky.oh@lge.com)
+./grep_lge.log:285:./drivers/video/odin/gfx/gfx_proc.c:496:			ret = sprintf( buffer, "%s\n", "raxis.lim (raxis.lim@lge.com)" );
+./grep_lge.log:286:./drivers/video/odin/display/lcd-panel-sample0.c:5: * choongryeol.lee@lge.com
+./grep_lge.log:287:./drivers/video/odin/display/slimport_hdmi.c:768:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./grep_lge.log:288:./drivers/video/odin/display/lcd-panel-lglh520wf1.c:5: * choongryeol.lee@lge.com
+./grep_lge.log:289:./drivers/video/odin/display/lcd-panel-lms480.c:6: * jaeky.oh@lge.com
+./grep_lge.log:290:./drivers/video/odin/display/slimport_dsi.c:791:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./grep_lge.log:291:./drivers/video/odin/display/lcd-panel-xxxxxxxx.c:5: * choongryeol.lee@lge.com
+./grep_lge.log:292:./drivers/video/odin/display/lcd-panel-sample1.c:5: * choongryeol.lee@lge.com
+./grep_lge.log:293:./drivers/video/odin/display/lcd-slimport-sample.c:338:MODULE_AUTHOR("Jongmyung Park <jongmyung.park@lge.com>");
+./grep_lge.log:294:./drivers/video/odin/display/lcd-panel-innolux-at070tn94.c:6: * jaeky.oh@lge.com
+./grep_lge.log:295:./drivers/video/odin/odinfb/odinfb.c:2364:MODULE_AUTHOR("Seungwon Shin <m4seungwon.shin@lge.com");
+./grep_lge.log:296:./drivers/iommu/odin_iommu.c:1260:MODULE_AUTHOR("Hyunsun Hong <hyunsun.hong@lge.com>");
+./grep_lge.log:297:./drivers/iommu/odin_mem_debug.c:371:MODULE_AUTHOR("Hyunsun Hong <hyunsun.hong@lge.com>");
+./grep_lge.log:298:./drivers/iommu/odin_iommu_dev.c:842:MODULE_AUTHOR("Hyunsun Hong <hyunsun.hong@lge.com>");
+./grep_lge.log:299:./grep_lge.log:1:./fs/squashfs/lzo_wrapper.c:5: * Chan Jeong <chan.jeong@lge.com>
+./grep_lge.log:300:./grep_lge.log:2:./sound/soc/codecs/tpa2028d.c:414:MODULE_AUTHOR("Kim EunHye <ehgrace.kim@lge.com>");
+./grep_lge.log:301:./grep_lge.log:3:./sound/soc/odin/dsp/odin_dsp_driver.c:1519:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./grep_lge.log:302:./grep_lge.log:4:./sound/soc/odin/woden_pcm.h:4: * Author: Hyunhee Jeon <hhjeon@lge.com>
+./grep_lge.log:303:./grep_lge.log:5:./sound/soc/odin/woden_pcm.c:5: *		http://www.lge.com
+./grep_lge.log:304:./grep_lge.log:6:./sound/soc/odin/woden_pcm.c:8: *	Hyunhee Jeon <hyunhee.jeon@lge.com>
+./grep_lge.log:305:./grep_lge.log:7:./sound/soc/odin/woden_pcm.c:412:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:306:./grep_lge.log:8:./sound/soc/odin/odin_compress.c:797:MODULE_AUTHOR("Heewan Park <heewan.park@lge.com>");
+./grep_lge.log:307:./grep_lge.log:9:./sound/soc/odin/odin_dsp.h:6: * Author: Jongho Kim <m4jongho.kim@lge.com>
+./grep_lge.log:308:./grep_lge.log:10:./sound/soc/odin/woden_i2s.c:4: * Author: Hyunhee Jeon <hyunhee.jeon@lge.com>
+./grep_lge.log:309:./grep_lge.log:11:./sound/soc/odin/woden_i2s.c:999:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:310:./grep_lge.log:12:./sound/soc/odin/ama_debugfs.h:5: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:311:./grep_lge.log:13:./sound/soc/odin/woden_fpga_wm8580.c:217:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./grep_lge.log:312:./grep_lge.log:14:./sound/soc/odin/ama.c:5: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:313:./grep_lge.log:15:./sound/soc/odin/odin_si2s.c:1064:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./grep_lge.log:314:./grep_lge.log:16:./sound/soc/odin/woden_hdk_wm5102.c:385:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./grep_lge.log:315:./grep_lge.log:17:./sound/soc/odin/odin_madk_wm5102.c:549:MODULE_AUTHOR("Hyunhee Jeon, hyunhee.jeon@lge.com");
+./grep_lge.log:316:./grep_lge.log:18:./sound/soc/odin/ama_debugfs.c:5: * Younghyun Jo <younghyun.jo@lge.com>
+./grep_lge.log:317:./grep_lge.log:19:./sound/soc/odin/woden_dif.c:8: * Author:      Hyunhee Jeon,  <hyunhee.jeon@lge.com>
+./grep_lge.log:318:./grep_lge.log:20:./sound/soc/odin/woden_dif.c:72:MODULE_AUTHOR("Hyunhee Jeon <hyunhee.jeon@lge.com>");
+./tools/perf/util/target.c:4: * Copyright (C) 2012, LG Electronics, Namhyung Kim <namhyung.kim@lge.com>
+./lib/decompress_unlz4.c:4: * Copyright (C) 2013, LG Electronics, Kyungsik Lee <kyungsik.lee@lge.com>
+./lib/lz4/lz4defs.h:4: * Copyright (C) 2013, LG Electronics, Kyungsik Lee <kyungsik.lee@lge.com>
+./lib/lz4/lz4_decompress.c:4: * Copyright (C) 2013, LG Electronics, Kyungsik Lee <kyungsik.lee@lge.com>
+./lib/lz4/lz4hc_compress.c:34: *  Chanho Min <chanho.min@lge.com>
+./lib/lz4/lz4_compress.c:34: *  Chanho Min <chanho.min@lge.com>
+./arch/arm/mach-odin/odin_usb3.c:5: *  Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./arch/arm/mach-odin/lge_boot_time_checker.c:97:MODULE_AUTHOR("Fred Cho <fred.cho@lge.com>");
+./arch/arm/mach-odin/odin_sysfs.c:102:MODULE_AUTHOR("IN HYUK KANG <hugh.kang@lge.com>");
+./arch/arm/mach-odin/lge_suspend_autotest.c:6: * SungEun Kim <cleaneye.kim@lge.com>
+./arch/arm/mach-odin/odin_pm_domain.c:1257:MODULE_AUTHOR("Changwon Lee <changwon.lee@lge.com>");
+./include/sound/ama.h:5: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vppu_io.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vppu_io.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vppu_io.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vcore/ppu.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vcore/ppu.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vcore/ppu.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vcore/device.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vcore/device.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vcore/device.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vcore/decoder.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vcore/decoder.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vcore/decoder.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vcore/decoder.h:8: * Inpyo Cho <inpyo.cho@lge.com>
+./include/media/odin/vcodec/vcore/encoder.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vcore/encoder.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vcore/encoder.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vcore/encoder.h:8: * Inpyo Cho <inpyo.cho@lge.com>
+./include/media/odin/vcodec/vppu_drv.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vppu_drv.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vppu_drv.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vdec_io.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vdec_io.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vdec_io.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vevent_io.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vevent_io.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vevent_io.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/venc_io.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/venc_io.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/venc_io.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/media/odin/vcodec/vlog.h:4: * Youngki Lyu <youngki.lyu@lge.com>
+./include/media/odin/vcodec/vlog.h:5: * Jungmin Park <jungmin016.park@lge.com>
+./include/media/odin/vcodec/vlog.h:6: * Younghyun Jo <younghyun.jo@lge.com>
+./include/video/odin-dss/mipi_device.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./include/video/odin-dss/dss_io.h:4: * Dae-Jong Seo <daejong.seo@lge.com>
+./include/video/odin-dss/dss_io.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./include/video/odin-dss/dss_types.h:4: * Dae-Jong Seo <daejong.seo@lge.com>
+./include/video/odin-dss/dss_types.h:5: * Youngki Lyu <youngki.lyu@lge.com>
+./include/linux/input/lge_touch_core.h:5: * Author: yehan.ahn@lge.com, hyesung.shin@lge.com
+./include/linux/input/touch_synaptics.h:5: * Writer: yehan.ahn@lge.com, 	hyesung.shin@lge.com
+./include/linux/mfd/pm8xxx/cradle.h:4: * Author: Fred Cho <fred.cho@lge.com>
+./include/linux/usb/odin_usb3.h:5: * Author: Wonsuk Chang <wonsuk.chang@lge.com>
+./include/linux/power/max14670.h:2: * Copyright (C) 2013, Kyungtae Oh <kyungtae.oh@lge.com>
+./include/linux/platform_data/lge_android_usb.h:4: * Author : Hyeon H. Park <hyunhui.park@lge.com>
+./include/linux/lz4.h:6: * Copyright (C) 2013, LG Electronics, Kyungsik Lee <kyungsik.lee@lge.com>

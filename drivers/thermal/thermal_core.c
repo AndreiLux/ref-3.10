@@ -535,6 +535,61 @@ mode_store(struct device *dev, struct device_attribute *attr,
 }
 
 static ssize_t
+therm_miti_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int thermal_mitigation_status;
+	int result;
+
+	if (!tz->ops->get_therm_miti)
+		return -EPERM;
+
+	result = tz->ops->get_therm_miti(tz, &thermal_mitigation_status);
+	if (result)
+		return result;
+
+	return sprintf(buf, "%d\n", thermal_mitigation_status);
+}
+
+static ssize_t
+therm_miti_store(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int thermal_mitigation_status;
+	int result;
+
+	if (!tz->ops->set_therm_miti)
+		return -EPERM;
+
+	if (kstrtoul(buf, 10, &thermal_mitigation_status))
+		return -EINVAL;
+
+	result = tz->ops->set_therm_miti(tz, &thermal_mitigation_status);
+	if (result)
+		return result;
+
+	return count;
+}
+
+static ssize_t
+shutdown_store(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct thermal_zone_device *tz = to_thermal_zone(dev);
+	int result;
+
+	if (!tz->ops->set_shutdown)
+		return -EPERM;
+
+	result = tz->ops->set_shutdown(tz);
+	if (result)
+		return result;
+
+	return count;
+}
+
+static ssize_t
 trip_point_type_show(struct device *dev, struct device_attribute *attr,
 		     char *buf)
 {
@@ -773,6 +828,8 @@ static DEVICE_ATTR(emul_temp, S_IWUSR, NULL, emul_temp_store);
 static DEVICE_ATTR(type, 0444, type_show, NULL);
 static DEVICE_ATTR(temp, 0444, temp_show, NULL);
 static DEVICE_ATTR(mode, 0644, mode_show, mode_store);
+static DEVICE_ATTR(therm_miti, 0644, therm_miti_show, therm_miti_store);
+static DEVICE_ATTR(shutdown, 0220, NULL, shutdown_store);
 static DEVICE_ATTR(passive, S_IRUGO | S_IWUSR, passive_show, passive_store);
 static DEVICE_ATTR(policy, S_IRUGO | S_IWUSR, policy_show, policy_store);
 
@@ -1481,6 +1538,16 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 			goto unregister;
 	}
 
+	if (tz->id == 0) {
+		result = device_create_file(&tz->device, &dev_attr_therm_miti);
+		if (result)
+			goto unregister;
+
+		result = device_create_file(&tz->device, &dev_attr_shutdown);
+		if (result)
+			goto unregister;
+	}
+
 	result = create_trip_attrs(tz, mask);
 	if (result)
 		goto unregister;
@@ -1601,6 +1668,8 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	device_remove_file(&tz->device, &dev_attr_temp);
 	if (tz->ops->get_mode)
 		device_remove_file(&tz->device, &dev_attr_mode);
+	device_remove_file(&tz->device, &dev_attr_therm_miti);
+	device_remove_file(&tz->device, &dev_attr_shutdown);
 	device_remove_file(&tz->device, &dev_attr_policy);
 	remove_trip_attrs(tz);
 	tz->governor = NULL;

@@ -90,7 +90,13 @@ static inline struct f_acm *port_to_acm(struct gserial *p)
 /* notification endpoint uses smallish and infrequent fixed-size messages */
 
 #define GS_NOTIFY_INTERVAL_MS		32
+#ifdef CONFIG_USB_G_LGE_ANDROID
+/* Apply CDC ACM function fixup for LG Android USB */
+#define GS_NOTIFY_MAXPACKET		16	/* For LG host driver */
+#define GS_DESC_NOTIFY_MAXPACKET	64	/* For acm_hs_notify_desc */
+#else
 #define GS_NOTIFY_MAXPACKET		10	/* notification + 2 bytes */
+#endif
 
 /* interface and class descriptors: */
 
@@ -206,7 +212,11 @@ static struct usb_endpoint_descriptor acm_hs_notify_desc = {
 	.bDescriptorType =	USB_DT_ENDPOINT,
 	.bEndpointAddress =	USB_DIR_IN,
 	.bmAttributes =		USB_ENDPOINT_XFER_INT,
+#ifdef CONFIG_USB_G_LGE_ANDROID
+	.wMaxPacketSize =	cpu_to_le16(GS_DESC_NOTIFY_MAXPACKET),
+#else
 	.wMaxPacketSize =	cpu_to_le16(GS_NOTIFY_MAXPACKET),
+#endif
 	.bInterval =		USB_MS_TO_HS_INTERVAL(GS_NOTIFY_INTERVAL_MS),
 };
 
@@ -495,15 +505,27 @@ static int acm_cdc_notify(struct f_acm *acm, u8 type, u16 value,
 	struct usb_ep			*ep = acm->notify;
 	struct usb_request		*req;
 	struct usb_cdc_notification	*notify;
+#ifndef CONFIG_USB_G_LGE_ANDROID
 	const unsigned			len = sizeof(*notify) + length;
+#endif
 	void				*buf;
 	int				status;
+
+#ifdef CONFIG_USB_G_LGE_ANDROID
+	unsigned char noti_buf[GS_NOTIFY_MAXPACKET];
+
+	memset(noti_buf, 0, GS_NOTIFY_MAXPACKET);
+#endif
 
 	req = acm->notify_req;
 	acm->notify_req = NULL;
 	acm->pending = false;
 
+#ifdef CONFIG_USB_G_LGE_ANDROID
+	req->length = GS_NOTIFY_MAXPACKET;
+#else
 	req->length = len;
+#endif
 	notify = req->buf;
 	buf = notify + 1;
 
@@ -513,7 +535,12 @@ static int acm_cdc_notify(struct f_acm *acm, u8 type, u16 value,
 	notify->wValue = cpu_to_le16(value);
 	notify->wIndex = cpu_to_le16(acm->ctrl_id);
 	notify->wLength = cpu_to_le16(length);
+#ifdef CONFIG_USB_G_LGE_ANDROID
+	memcpy(noti_buf, data, length);
+	memcpy(buf, noti_buf, GS_NOTIFY_MAXPACKET);
+#else
 	memcpy(buf, data, length);
+#endif
 
 	/* ep_queue() can complete immediately if it fills the fifo... */
 	spin_unlock(&acm->lock);
@@ -733,6 +760,48 @@ static void acm_free_func(struct usb_function *f)
 	kfree(acm);
 }
 
+#ifdef CONFIG_USB_G_LGE_MULTICONFIG_ATF_WA
+/*
+                     
+                                     
+                                                        
+                                                              
+ */
+static int lge_acm_desc_change(struct usb_function *f, bool is_mac)
+{
+	struct usb_gadget *g = f->config->cdev->gadget;
+	u8 interface_class = USB_CLASS_COMM;
+
+	if (is_mac) {
+		interface_class = USB_CLASS_VENDOR_SPEC;
+		pr_info("MAC ACM bInterfaceClass change to %u\n", interface_class);
+	}
+	else {
+		interface_class = USB_CLASS_COMM;
+	}
+
+	if (f->fs_descriptors) {
+		struct usb_interface_descriptor *fs = ((struct usb_interface_descriptor *)f->fs_descriptors[1]);
+		if(fs)
+			fs->bInterfaceClass = interface_class;
+	}
+
+	if (f->hs_descriptors && gadget_is_dualspeed(g)) {
+		struct usb_interface_descriptor *hs = ((struct usb_interface_descriptor *)f->hs_descriptors[1]);
+		if(hs)
+			hs->bInterfaceClass = interface_class;
+	}
+
+	if (f->ss_descriptors && gadget_is_superspeed(g)) {
+		struct usb_interface_descriptor *ss = ((struct usb_interface_descriptor *)f->ss_descriptors[1]);
+		if(ss)
+			ss->bInterfaceClass = interface_class;
+	}
+
+	return 0;
+}
+#endif
+
 static struct usb_function *acm_alloc_func(struct usb_function_instance *fi)
 {
 	struct f_serial_opts *opts;
@@ -760,6 +829,9 @@ static struct usb_function *acm_alloc_func(struct usb_function_instance *fi)
 	acm->port_num = opts->port_num;
 	acm->port.func.unbind = acm_unbind;
 	acm->port.func.free_func = acm_free_func;
+#ifdef CONFIG_USB_G_LGE_MULTICONFIG_ATF_WA
+	acm->port.func.desc_change = lge_acm_desc_change;
+#endif
 
 	return &acm->port.func;
 }

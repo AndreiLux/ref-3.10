@@ -15,3 +15,4 @@ obj-$(CONFIG_TEGRA_IOMMU_SMMU) += tegra-smmu.o
 obj-$(CONFIG_EXYNOS_IOMMU) += exynos-iommu.o
 obj-$(CONFIG_SHMOBILE_IOMMU) += shmobile-iommu.o
 obj-$(CONFIG_SHMOBILE_IPMMU) += shmobile-ipmmu.o
+obj-$(CONFIG_ODIN_ION_SMMU) += odin_iommu.o odin_iommu_dev.o odin_iommu_domains.o odin_iommu_subsys_map.o odin_mem_debug.o

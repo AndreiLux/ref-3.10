@@ -1,0 +1,32 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+	soc {
+		spi_tdmb: spi@34640000 {
+			compatible = "octasic,odin-spi";
+			reg = <0 0x34640000 0 0x1000>;
+			interrupts = <0 52 0x4>;
+			clocks = <&pclk_dsp>;
+			pclk_name = "pclk_dsp";
+                        enable_rpm = <0>;
+			id = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+		};
+	};
+};
+
+&spi_tdmb {
+	tdmb-fc8080@0 {
+		compatible = "lge,tdmb";
+		spi-max-frequency = <15000000>;
+		reg = <0>;
+		spi-cpha;
+                spi-cpol;
+
+		irq-gpio = <204>;
+		en-gpio = <205>;
+	};
+};

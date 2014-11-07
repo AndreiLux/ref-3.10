@@ -65,3 +65,10 @@ int drop_caches_sysctl_handler(ctl_table *table, int write,
 	}
 	return 0;
 }
+
+#ifdef CONFIG_ODIN_ION_SMMU
+void odin_ion_drop_cached_mem(void)
+{
+	iterate_supers(drop_pagecache_sb, NULL);
+}
+#endif

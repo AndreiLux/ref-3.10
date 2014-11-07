@@ -57,4 +57,13 @@ static inline int cpu_to_cluster(int cpu)
 int bL_cpufreq_register(struct cpufreq_arm_bL_ops *ops);
 void bL_cpufreq_unregister(struct cpufreq_arm_bL_ops *ops);
 
+#ifdef CONFIG_ODIN_THERMAL_MONITOR
+extern int bL_cpufreq_set_limit(int cpu, u32 freq);
+#else
+static inline int bL_cpufreq_set_limit(int cpu, u32 freq)
+{
+	return -ENOSYS;
+}
+#endif
+
 #endif /* CPUFREQ_ARM_BIG_LITTLE_H */

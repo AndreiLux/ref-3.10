@@ -1,0 +1,291 @@
+/*
+ * LG Electronics Odin SoC
+ */
+
+/ {
+	compatible = "lge,odin";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	clusters {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cluster0: cluster@0 {
+			reg = <0>;
+			freqs = <800000 900000 1000000 1100000 1200000 1300000 1400000>;
+			cores {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				core0: core@0 {
+					reg = <0>;
+				};
+
+				core1: core@1 {
+					reg = <1>;
+				};
+
+				core2: core@2 {
+					reg = <2>;
+				};
+
+				core3: core@3 {
+					reg = <3>;
+				};
+
+			};
+		};
+
+		cluster1: cluster@1 {
+			reg = <1>;
+			freqs = <600000 700000 800000 900000 1000000 1100000 1200000>;
+			cores {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				core4: core@0 {
+					reg = <0>;
+				};
+
+				core5: core@1 {
+					reg = <1>;
+				};
+
+				core6: core@2 {
+					reg = <2>;
+				};
+
+				core7: core@3 {
+					reg = <3>;
+				};
+			};
+		};
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+/*
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <0x000100>;
+			clock-frequency = <800000000>;
+		};
+*/
+		cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a15";
+			reg = <0>;
+			cluster = <&cluster0>;
+			core = <&core0>;
+			clock-frequency = <1400000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				800000  950000
+				900000  950000
+				1000000 970000
+				1100000 970000
+				1200000 1020000
+				1300000 1020000
+				1400000 1020000
+			>;
+		};
+		cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a15";
+			reg = <0x000001>;
+			cluster = <&cluster0>;
+			core = <&core1>;
+			clock-frequency = <1400000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				800000  950000
+				900000  950000
+				1000000 970000
+				1100000 970000
+				1200000 1020000
+				1300000 1020000
+				1400000 1020000
+			>;
+		};
+		cpu@2 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a15";
+			reg = <0x000002>;
+			cluster = <&cluster0>;
+			core = <&core2>;
+			clock-frequency = <1400000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				800000  950000
+				900000  950000
+				1000000 970000
+				1100000 970000
+				1200000 1020000
+				1300000 1020000
+				1400000 1020000
+			>;
+		};
+		cpu@3 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a15";
+			reg = <0x000003>;
+			cluster = <&cluster0>;
+			core = <&core3>;
+			clock-frequency = <1400000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				800000  950000
+				900000  950000
+				1000000 970000
+				1100000 970000
+				1200000 1020000
+				1300000 1020000
+				1400000 1020000
+			>;
+		};
+		cpu@4 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <0x000100>;
+			cluster = <&cluster1>;
+			core = <&core4>;
+			clock-frequency = <1200000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				600000  940000
+				700000  940000
+				800000  970000
+				900000  970000
+				1000000 1050000
+				1100000 1050000
+				1200000 1050000
+			>;
+		};
+		cpu@5 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <0x000101>;
+			cluster = <&cluster1>;
+			core = <&core5>;
+			clock-frequency = <1200000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				600000  940000
+				700000  940000
+				800000  970000
+				900000  970000
+				1000000 1050000
+				1100000 1050000
+				1200000 1050000
+			>;
+		};
+		cpu@6 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <0x000102>;
+			cluster = <&cluster1>;
+			core = <&core6>;
+			clock-frequency = <1200000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				600000  940000
+				700000  940000
+				800000  970000
+				900000  970000
+				1000000 1050000
+				1100000 1050000
+				1200000 1050000
+			>;
+		};
+		cpu@7 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a7";
+			reg = <0x000103>;
+			cluster = <&cluster1>;
+			core = <&core7>;
+			clock-frequency = <1200000000>;
+			clock-latency = <1000000>;
+			operating-points = <
+				/* kHz    uV */
+				600000  940000
+				700000  940000
+				800000  970000
+				900000  970000
+				1000000 1050000
+				1100000 1050000
+				1200000 1050000
+			>;
+		};
+	};
+
+	timer {
+		compatible = "arm,armv7-timer";
+		interrupts = <1 13 0xf08>,
+			     <1 14 0xf08>,
+			     <1 11 0xf08>,
+			     <1 10 0xf08>;
+		clock-frequency = <100000000>;
+	};
+
+	syscnt@0c200000 {
+		compatible = "LG,odin-syscnt";
+		reg = <0 0x0c200000 0 0x10>;
+	};
+
+	gic: interrupt-controller@39801000 {
+		compatible = "arm,cortex-a15-gic";
+		interrupt-controller;
+		#interrupt-cells = <3>;
+		#address-cells = <0>;
+		reg = <0 0x39801000 0 0x1000>,
+		      <0 0x39802000 0 0x1000>,
+		      <0 0x39804000 0 0x2000>,
+		      <0 0x39806000 0 0x2000>;
+		interrupts = <1 9 0xf04>;
+	};
+	cci@39090000 {
+		compatible = "arm,cci";
+		reg = <0 0x39090000 0 0x10000>;
+		interrupts = <0 17 4>,
+				<0 18 4>,
+				<0 19 4>,
+				<0 20 4>,
+				<0 21 4>;
+	};
+
+	cbr: cbr@2009ff00 {
+		compatible = "lge,cbr";
+		reg = <0x2009ff00 0x1000>;
+	};
+
+	pmu_a15 {
+		compatible = "arm,cortex-a15-pmu";
+		cluster  = <&cluster0>;
+		interrupts = <0 216 4>,
+			     <0 217 4>,
+			     <0 218 4>,
+			     <0 219 4>;
+	};
+
+	pmu_a7 {
+		compatible = "arm,cortex-a7-pmu";
+		cluster  = <&cluster1>;
+		interrupts = <0 220 4>,
+			     <0 221 4>,
+			     <0 222 4>,
+			     <0 223 4>;
+	};
+
+};

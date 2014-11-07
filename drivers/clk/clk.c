@@ -20,6 +20,7 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/sched.h>
+#include <trace/events/power.h>
 
 static DEFINE_SPINLOCK(enable_lock);
 static DEFINE_MUTEX(prepare_lock);
@@ -33,6 +34,10 @@ static int enable_refcnt;
 static HLIST_HEAD(clk_root_list);
 static HLIST_HEAD(clk_orphan_list);
 static LIST_HEAD(clk_notifier_list);
+#ifdef CONFIG_PM_SLEEP_DEBUG
+extern u32 debug_suspend;
+#endif
+
 
 /***           locking             ***/
 static void clk_prepare_lock(void)
@@ -412,6 +417,14 @@ static int __init clk_debug_init(void)
 	if (!orphandir)
 		return -ENOMEM;
 
+#ifdef CONFIG_PM_SLEEP_DEBUG
+	if (!debugfs_create_u32("debug_suspend", S_IRUGO | S_IWUSR,
+		rootdir, &debug_suspend)) {
+
+		return -ENOMEM;
+	}
+#endif
+
 	clk_prepare_lock();
 
 	hlist_for_each_entry(clk, &clk_root_list, child_node)
@@ -534,7 +547,7 @@ static int clk_disable_unused(void)
 
 	return 0;
 }
-late_initcall(clk_disable_unused);
+//late_initcall(clk_disable_unused);
 
 /***    helper functions   ***/
 
@@ -1246,6 +1259,7 @@ int clk_set_rate(struct clk *clk, unsigned long rate)
 
 out:
 	clk_prepare_unlock();
+	trace_clock_set_rate(clk->name, rate, 0);
 
 	return ret;
 }
@@ -1464,6 +1478,17 @@ int clk_set_parent(struct clk *clk, struct clk *parent)
 
 	if (!clk || !clk->ops)
 		return -EINVAL;
+
+#if defined(CONFIG_ARCH_WODEN) || defined(CONFIG_ARCH_ODIN)
+	/*For odin plateform only*/
+	if (!clk->ops->set_parent){
+        clk_set_parent(clk->parent, parent);
+	}
+
+	if(clk->parent->ops->set_parent){
+        clk_set_parent(clk->parent, parent);
+	}
+#endif
 
 	/* verify ops for for multi-parent clks */
 	if ((clk->num_parents > 1) && (!clk->ops->set_parent))
@@ -2133,5 +2158,9 @@ void __init of_clk_init(const struct of_device_id *matches)
 		of_clk_init_cb_t clk_init_cb = match->data;
 		clk_init_cb(np);
 	}
+}
+
+struct hlist_head get_clk_list(void){
+	return clk_root_list;
 }
 #endif

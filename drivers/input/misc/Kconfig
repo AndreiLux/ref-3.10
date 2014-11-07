@@ -144,6 +144,16 @@ config INPUT_M68K_BEEP
 	tristate "M68k Beeper support"
 	depends on M68K
 
+config INPUT_MAX77525_ONKEY
+	tristate "MAX77525 ONKEY support"
+	depends on MFD_MAX77525
+	help
+	  Support the ONKEY of MAX77525 PMICs as an input device
+	  reporting power button status.
+
+	  To compile this driver as a module, choose M here: the module
+	  will be called max8925_onkey.
+
 config INPUT_MAX8925_ONKEY
 	tristate "MAX8925 ONKEY support"
 	depends on MFD_MAX8925
@@ -299,6 +309,17 @@ config INPUT_ATI_REMOTE2
 	  To compile this driver as a module, choose M here: the module will be
 	  called ati_remote2.
 
+config INPUT_KEYCHORD
+	tristate "Key chord input driver support"
+	help
+	  Say Y here if you want to enable the key chord driver
+	  accessible at /dev/keychord.  This driver can be used
+	  for receiving notifications when client specified key
+	  combinations are pressed.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called keychord.
+
 config INPUT_KEYSPAN_REMOTE
 	tristate "Keyspan DMR USB remote control"
 	depends on USB_ARCH_HAS_HCD
@@ -434,6 +455,11 @@ config INPUT_SGI_BTNS
 	  To compile this driver as a module, choose M here: the
 	  module will be called sgi_btns.
 
+config INPUT_GPIO
+	tristate "GPIO driver support"
+	help
+	  Say Y here if you want to support gpio based keys, wheels etc...
+
 config HP_SDC_RTC
 	tristate "HP SDC Real Time Clock"
 	depends on (GSC || HP300) && SERIO
@@ -493,6 +519,16 @@ config INPUT_RB532_BUTTON
 	  To compile this driver as a module, choose M here: the
 	  module will be called rb532_button.
 
+config INPUT_D2260_ONKEY
+	tristate "Dialog D2260 Onkey"
+	depends on MFD_D2260
+	help
+	  Support the ONKEY of Dialog D2260 PMICs as an input device
+	  reporting power button status.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called d2260_onkey.
+
 config INPUT_DA9052_ONKEY
 	tristate "Dialog DA9052/DA9053 Onkey"
 	depends on PMIC_DA9052
@@ -512,6 +548,15 @@ config INPUT_DA9055_ONKEY
 
 	  To compile this driver as a module, choose M here: the module
 	  will be called da9055_onkey.
+
+config INPUT_DA906X_ONKEY
+    tristate "Dialog DA906X Onkey"
+    depends on MFD_DA906X
+    help
+      Support the ONKEY of Dialog DA906X PMICs as an input device
+      reporting power button status.
+      To compile this driver as a module, choose M here: the
+      module will be called da906X_onkey.
 
 config INPUT_DM355EVM
 	tristate "TI DaVinci DM355 EVM Keypad and IR Remote"
@@ -636,5 +681,12 @@ config INPUT_XEN_KBDDEV_FRONTEND
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
+
+config INPUT_ODIN
+	tristate "ODIN On Key"
+	depends on ARCH_ODIN
+	help
+		This driver is linked with power onkey for Odin System
+		This function will be replaced when the PMIC driver is supported
 
 endif

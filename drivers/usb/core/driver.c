@@ -1414,6 +1414,18 @@ int usb_resume(struct device *dev, pm_message_t msg)
 	 * (This can't be done in usb_resume_interface()
 	 * above because it doesn't own the right set of locks.)
 	 */
+	/* This is workaround for error code(-113).
+	 * Check whether or not Device's parent of power state is
+	 * runtime suspended*/
+
+	if(udev->parent){
+		if(udev->parent->state == USB_STATE_SUSPENDED &&
+				!strcmp(udev->parent->dev.kobj.name, "usb1")){
+			printk("workaround for error code(-113) %s \n", __func__);
+			return 0;
+		}
+	}
+
 	status = usb_resume_both(udev, msg);
 	if (status == 0) {
 		pm_runtime_disable(dev);

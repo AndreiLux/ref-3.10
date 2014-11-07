@@ -233,6 +233,33 @@ config PL330_DMA
 	  You need to provide platform specific settings via
 	  platform_data for a dma-pl330 device.
 
+config ODIN_SDMA
+	tristate "SDMA(PL330) for ODIN Platform"
+	select DMA_ENGINE
+	depends on ARM_AMBA
+	help
+	  Select if your platform use ODIN SDMA DMACs.
+	  You need to provide platform specific settings via
+	  platform_data for a sdma device.
+
+config ODIN_PDMA
+	bool "PDMA(PL080) for ODIN Platform"
+	depends on ARM_AMBA
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Platform has a PL08x DMAC device
+	  which can provide DMA engine support
+
+config ODIN_ADMA
+	bool "ADMA(PL080) for ODIN Platform"
+	depends on ARM_AMBA
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Platform has a PL08x DMAC device
+	  which can provide DMA engine support
+
 config PCH_DMA
 	tristate "Intel EG20T PCH / LAPIS Semicon IOH(ML7213/ML7223/ML7831) DMA"
 	depends on PCI && X86

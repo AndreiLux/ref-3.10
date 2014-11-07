@@ -88,6 +88,40 @@ static ssize_t __ref store_online(struct device *dev,
 }
 static DEVICE_ATTR(online, 0644, show_online, store_online);
 
+
+int cpu_down_for_LPA(int cpu_id)
+{
+	int ret;
+	if(cpu_id < 0 || cpu_id > 7) return -1;
+
+	cpu_hotplug_driver_lock();
+
+	ret = cpu_down(cpu_id);
+
+	cpu_hotplug_driver_unlock();
+
+	if(ret >= 0)
+		ret = cpu_id;
+	return ret;
+}
+
+
+int cpu_up_for_LPA(int cpu_id)
+{
+	int ret;
+	if(cpu_id < 0 || cpu_id > 7) return -1;
+
+	cpu_hotplug_driver_lock();
+
+	ret = cpu_up(cpu_id);
+
+	cpu_hotplug_driver_unlock();
+
+	if(ret >= 0)
+		ret = cpu_id;
+	return ret;
+}
+
 static void __cpuinit register_cpu_control(struct cpu *cpu)
 {
 	device_create_file(&cpu->dev, &dev_attr_online);

@@ -159,3 +159,10 @@ config ARM_SPEAR_CPUFREQ
 	default y
 	help
 	  This adds the CPUFreq driver support for SPEAr SOCs.
+
+config ODIN_CPUFREQ
+	bool "Odin CPUFreq support"
+	depends on MACH_ODIN
+	default y
+	help
+	  This adds the CPUFreq driver support for Odin SOCs.

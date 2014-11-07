@@ -37,6 +37,9 @@
 #include <asm/uaccess.h>
 #include <asm/io.h>
 #include <asm/sections.h>
+#ifdef CONFIG_MACH_ODIN
+#include <linux/odin_panic.h>
+#endif
 
 /* Per cpu memory for storing cpu states in case of system crash. */
 note_buf_t __percpu *crash_notes;

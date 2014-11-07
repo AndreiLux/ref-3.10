@@ -1,0 +1,6 @@
+config ODIN_DUAL_GFX
+        bool "Enable ODIN Dual GFX ODIN GFX"
+        default y
+        depends on ODIN_GFX
+        help
+          Support for Dual GFX operation.

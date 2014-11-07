@@ -204,7 +204,6 @@ config LEDS_LP55XX_COMMON
 config LEDS_LP5521
 	tristate "LED Support for N.S. LP5521 LED driver chip"
 	depends on LEDS_CLASS && I2C
-	select LEDS_LP55XX_COMMON
 	help
 	  If you say yes here you get support for the National Semiconductor
 	  LP5521 LED driver. It is 3 channel chip with programmable engines.
@@ -449,6 +448,14 @@ config LEDS_TCA6507
 	  LED driver chips accessed via the I2C bus.
 	  Driver support brightness control and hardware-assisted blinking.
 
+config LEDS_MAX77819
+	tristate "LCD Backlight driver for MAX77819"
+	depends on LEDS_CLASS
+	depends on REGMAP_IPC
+	help
+	  This option enables support for the LCD backlight using
+	  MAX77819 with regmap-ipc.
+
 config LEDS_MAX8997
 	tristate "LED support for MAX8997 PMIC"
 	depends on LEDS_CLASS && MFD_MAX8997
@@ -463,6 +470,14 @@ config LEDS_LM355x
 	help
 	  This option enables support for LEDs connected to LM355x.
 	  LM355x includes Torch, Flash and Indicator functions.
+
+config LEDS_LM3646
+	tristate "LED support for LM3646 Chip"
+	depends on LEDS_CLASS && I2C
+	select REGMAP_I2C
+	help
+	  This option enables support for LEDs connected to LM3646.
+	  LM3646 includes dual Torch and Flash functions.
 
 config LEDS_OT200
 	tristate "LED support for the Bachmann OT200"

@@ -397,6 +397,15 @@ config I2C_DAVINCI
 	  Please note that this driver might be needed to bring up other
 	  devices such as DaVinci NIC.
 	  For details please see http://www.ti.com/davinci
+config I2C_ODIN_PLATFORM
+	tristate "Odin I2C Platfrom"
+	depends on ARCH_WODEN || ARCH_ODIN
+	help
+	  If you say yes to this option, support will be included for the
+	  Odin I2C adapter. Only master mode is supported.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called i2c-odin-platform.
 
 config I2C_DESIGNWARE_CORE
 	tristate
@@ -956,4 +965,9 @@ config SCx200_ACB
 	  This support is also available as a module.  If so, the module
 	  will be called scx200_acb.
 
+config I2C_ODIN_CSS
+   	tristate "I2C controller drvier for camera subsystem"
+    depends on ARCH_ODIN && I2C
+    help
+      This is the I2C controller driver for camera subsystem.
 endmenu

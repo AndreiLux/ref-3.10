@@ -17,6 +17,46 @@ config OF_IOMMU
        def_bool y
        depends on OF
 
+# Odin Ion driver with sMMU support
+config ODIN_ION_SMMU_4K
+	bool
+
+config ODIN_ION_SMMU
+	bool "Support for Ion driver with sMMU"
+	depends on ARCH_ODIN
+	select IOMMU_API
+	select ODIN_ION_SMMU_4K
+
+config ODIN_SMMU_DMA
+	bool "Support ARM DMA sMMU operations"
+	select ARM_DMA_USE_IOMMU
+
+config ODIN_SMMU_SES
+	bool "Support sMMU for SES"
+	depends on ARCH_ODIN
+
+config ODIN_SMMU_ICS
+	bool "Support sMMU for ICS"
+	depends on ARCH_ODIN
+
+config ODIN_SMMU_PERI
+	bool "Support sMMU for PERI"
+	depends on ARCH_ODIN
+
+config ODIN_SMMU_AUD
+	bool "Support sMMU for AUD"
+	depends on ARCH_ODIN
+
+config ODIN_GRAPHIC_SMMU_OFF
+	bool "off sMMU for graphic subsystems"
+	depends on ARCH_ODIN
+
+config ODIN_ION_I_TUNER
+	def_bool n
+
+config ODIN_OOM_KILLER
+	def_bool n
+
 # MSM IOMMU support
 config MSM_IOMMU
 	bool "MSM IOMMU Support"

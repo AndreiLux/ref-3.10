@@ -1,0 +1,55 @@
+/*
+ * LG Electronics Odin
+ */
+
+/dts-v1/;
+
+/include/ "odin-madk-es2.dtsi"
+
+/ {
+	model = "LG Electronics ODIN";
+	compatible = "lge,odin";
+	revision = <0x10 0x3>;
+	option = "DEFAULT";
+
+	memory@80000000 {
+		device_type = "memory";
+		/* 3G DRAM, enable MEMC #0 & #1 both, interleaving on */
+		reg = <0x0 0x80000000 0x0 0x5C000000 0x0 0xDE600000 0x0 0x01A00000 0x1 0x00000000 0x0 0x20000000>;
+		/* (for I-tuner only) 3G DRAM, enable MEMC #0 & #1 both, interleaving on */
+		/* reg = <0x0 0x80000000 0x0 0x55000000 0x0 0xDF000000 0x0 0x01000000 0x1 0x00000000 0x0 0x20000000>; */
+	};
+
+	aliases {
+		odin,sys_timer = &s_timer;
+		serial0 = &s_uart;
+		serial1 = &bluetooth;
+		serial2 = &gps;
+		serial3 = &uart3;
+		si2s0 = &si2s_0;
+		si2s1 = &si2s_1;
+		si2s2 = &si2s_2;
+		si2s3 = &si2s_3;
+	};
+
+	chosen {
+		bootargs = "init=/init vmalloc=512M rootdelay=5 rootfstype=ext4  console=ttyS0,115200n8 androidboot.hardware=arabica no_console_suspend earlyprintk";
+		linux,initrd-start = <0x83000000>;
+		linux,initrd-end = <0x84000000>;
+	};
+
+};
+
+/include/ "./odin/clocks.dtsi"
+/include/ "./odin/i2c_uart_gpio_spi.dtsi"
+/include/ "./odin/audio.dtsi"
+/include/ "./odin/css.dtsi"
+/include/ "./odin/iommu_dma_3g.dtsi"
+/include/ "./odin/display.dtsi"
+/include/ "./odin/storage_es2.dtsi"
+/include/ "./odin/connectivity.dtsi"
+/include/ "./odin/power_etc_r1v3.dtsi"
+/include/ "./odin/arabica-rev_2v0.dtsi"
+/include/ "./odin/arabica-rev_2v1.dtsi"
+/include/ "./odin/d2260.dtsi"
+/include/ "./odin/usb.dtsi"

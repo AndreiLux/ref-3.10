@@ -239,6 +239,74 @@ config MMC_SDHCI_SPEAR
 
 	  If unsure, say N.
 
+config MMC_SDHCI_ODIN
+	tristate "SDHCI platform support for the Odin SD/MMC Controller"
+	depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI
+	help
+	  This selects the Woden/Odin SD/MMC controller. If you have a Woden/Odin 
+	  platform with SD or MMC devices, say Y or M here.
+
+	  If unsure, say N.
+
+config MMC_SDHCI_ODIN_HUINS
+	tristate "SDHCI platform support for Odin HUINS FPGA"
+	depends on ARCH_ODIN && MMC_SDHCI_ODIN
+	help
+	  This selects the Odin HUINS FPGA specific operations in the Odin SD/MMC controller.
+	  Only should be Y when you use the Odin HUIS FPGA.
+
+	  If unsure, say N.
+
+config MMC_SDHCI_ODIN_PIO_SDIO
+    bool "[SDIO]PIO mode support for MMC Controller"
+    depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI && MMC_SDHCI_ODIN
+    help
+      This selects the PIO mode for MMC Controller instead of ADMA mode. IF you have a Woden or Odin 
+      platform with MMC devices, say Y or M here.
+
+config MMC_SDHCI_ODIN_PIO_EMMC
+    bool "[EMMC]PIO mode support for MMC Controller"
+    depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI && MMC_SDHCI_ODIN
+    help
+      This selects the PIO mode for MMC Controller instead of ADMA mode. IF you have a Woden or Odin 
+      platform with MMC devices, say Y or M here.
+
+config MMC_SDHCI_ODIN_DDR
+    bool "Dual data rate(DDR) mode support for MMC Controller"
+    depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI && MMC_SDHCI_ODIN
+    help
+      This selects the dual data rate for MMC Controller. IF you have a Woden or Odin 
+      platform with MMC devices, say Y or M here.
+
+config MMC_SDHCI_ODIN_HS200
+    bool "HS200 mode support for MMC Controller"
+    depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI && MMC_SDHCI_ODIN
+	depends on !MMC_SDHCI_ODIN_DDR
+    help
+      This selects the HS200 mode for MMC Controller. IF you have a Woden or Odin
+      platform with MMC devices, say Y or M here.
+
+config MMC_SDHCI_ODIN_CACHE 
+    bool "Enable Cache Contol for MMC Controller"
+    depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI && MMC_SDHCI_ODIN
+    help
+      This selects the volatile-memory(cache) for MMC Controller. IF you have a Woden or Odin
+      platform with MMC devices, say Y or M here.
+
+config MMC_SDHCI_ODIN_PACKED 
+    bool "Packed command support for MMC Controller"
+    depends on ARCH_WODEN || ARCH_ODIN
+	depends on MMC_SDHCI && MMC_SDHCI_ODIN
+    help
+      This selects the packed command for MMC Controller. IF you have a Woden or Odin
+      platform with MMC devices, say Y or M here.
+
 config MMC_SDHCI_S3C_DMA
 	bool "DMA support on S3C SDHCI"
 	depends on MMC_SDHCI_S3C

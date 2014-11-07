@@ -1120,6 +1120,12 @@ __setup_irq(unsigned int irq, struct irq_desc *desc, struct irqaction *new)
 			irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
 		}
 
+#if defined(CONFIG_ARCH_WODEN) || defined(CONFIG_ARCH_ODIN)
+		if (new->flags & IRQF_GIC_BALANCING) {
+			irqd_set(&desc->irq_data, IRQD_GIC_BALANCING);
+		}
+#endif
+
 		/* Set default affinity mask once everything is setup */
 		setup_affinity(irq, desc, mask);
 

@@ -386,4 +386,11 @@ config CRYPTO_DEV_ATMEL_SHA
 	  To compile this driver as a module, choose M here: the module
 	  will be called atmel-sha.
 
+config CRYPTO_DEV_ODIN_PE
+	bool "Driver Odin PacketEngine crypto accelerator"
+	depends on ARCH_ODIN
+	help
+	  Enable Discretix PacketEngine to use HW acceleration for cryptography.
+	  It used for DMCrypt or VPN packet generation.
+
 endif # CRYPTO_HW

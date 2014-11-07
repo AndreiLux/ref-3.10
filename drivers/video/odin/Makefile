@@ -1,0 +1,9 @@
+obj-$(CONFIG_ODIN_DSS)		+= dss/
+obj-$(CONFIG_ODIN_S3D)		+= s3d/
+obj-$(CONFIG_ODIN_HDMI)		+= hdmi/
+obj-$(CONFIG_ODIN_XDENGINE)	+= xdengine/
+obj-$(CONFIG_ODIN_FB)		+= odinfb/
+obj-$(CONFIG_ODIN_DSSCOMP)	+= dsscomp/
+obj-$(CONFIG_ODIN_GFX)		+= gfx/
+obj-$(CONFIG_ODIN_DUAL_GFX)	+= gfx/dualgfx/
+obj-y				+= display/

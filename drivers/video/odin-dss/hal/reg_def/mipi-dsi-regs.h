@@ -1,0 +1,548 @@
+/*
+ * SIC LABORATORY, LG ELECTRONICS INC., SEOUL, KOREA
+ * Copyright(c) 2013 by LG Electronics Inc.
+ * 
+ * This program is free software; you can redistribute it and/or 
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ * GNU General Public License for more details.
+ */
+
+#include "reg_types.h"
+
+#ifndef DSI_BASE_ADDR
+#define DSI_BASE_ADDR 0
+
+
+#define ADDR_DSI_INTERRUPT_SOURCE0      ( DSI_BASE_ADDR + 0x00 )
+#define ADDR_DSI_INTERRUPT_MASK0        ( DSI_BASE_ADDR + 0x04 )
+#define ADDR_DSI_INTERRUPT_CLEAR0       ( DSI_BASE_ADDR + 0x08 )
+#define ADDR_DSI_CONFIGURATION0         ( DSI_BASE_ADDR + 0x0C )
+#define ADDR_DSI_HS_PACKET          ( DSI_BASE_ADDR + 0x10 )
+#define ADDR_DSI_ESCAPE_MODE_PACKET     ( DSI_BASE_ADDR + 0x14 )
+#define ADDR_DSI_ESCAPE_MODE_TRIGGER        ( DSI_BASE_ADDR + 0x18 )
+#define ADDR_DSI_ACTION             ( DSI_BASE_ADDR + 0x1C )
+#define ADDR_DSI_COMMAND_CONFIG         ( DSI_BASE_ADDR + 0x20 )
+#define ADDR_DSI_VIDEO_TIMING1          ( DSI_BASE_ADDR + 0x24 )
+#define ADDR_DSI_VIDEO_TIMING2          ( DSI_BASE_ADDR + 0x28 )
+#define ADDR_DSI_VIDEO_CONFIG1          ( DSI_BASE_ADDR + 0x2C )
+#define ADDR_DSI_VIDEO_CONFIG2          ( DSI_BASE_ADDR + 0x30 )
+#define ADDR_DSI_RX_PACKET_HEADER0      ( DSI_BASE_ADDR + 0x34 ) /* Lane0 */
+#define ADDR_DSI_STATUS             ( DSI_BASE_ADDR + 0x38 )
+#define ADDR_DSI_FIFO_BYTE_COUNT        ( DSI_BASE_ADDR + 0x3C )
+#define ADDR_DSI_CONFIGURATION1         ( DSI_BASE_ADDR + 0x40 )
+#define ADDR_DSI_CONFIGURATION2         ( DSI_BASE_ADDR + 0x44 )
+#define ADDR_DSI_PHY_PLL_SET            ( DSI_BASE_ADDR + 0x48 )/* Only FPGA */
+#define ADDR_DSI_PHY_REGISTER_SET       ( DSI_BASE_ADDR + 0x4C )/* Only FPGA */
+#define ADDR_DSI_INTERRUPT_SOURCE1      ( DSI_BASE_ADDR + 0x50 )
+#define ADDR_DSI_INTERRUPT_MASK1        ( DSI_BASE_ADDR + 0x54 )
+#define ADDR_DSI_INTERRUPT_CLEAR1       ( DSI_BASE_ADDR + 0x58 )
+#define ADDR_DSI_INTERRUPT_SOURCE2      ( DSI_BASE_ADDR + 0x60 )
+#define ADDR_DSI_INTERRUPT_MASK2        ( DSI_BASE_ADDR + 0x64 )
+#define ADDR_DSI_INTERRUPT_CLEAR2       ( DSI_BASE_ADDR + 0x68 )
+#ifdef CONFIG_ODIN_DSS_FPGA
+#define ADDR_DSI_PACKET_PAYLOAD         ( DSI_BASE_ADDR + 0x6C )
+#endif
+#define ADDR_DSI_TEST_CLEAR         ( DSI_BASE_ADDR + 0x70 )
+#define ADDR_DSI_TEST_CLOCK         ( DSI_BASE_ADDR + 0x74 )
+#define ADDR_DSI_TEST_DATA_IN           ( DSI_BASE_ADDR + 0x78 )
+#define ADDR_DSI_TEST_DATA_ENABLE       ( DSI_BASE_ADDR + 0x7C )
+#define ADDR_DSI_TEST_DATA_OUT          ( DSI_BASE_ADDR + 0x80 )
+#define ADDR_DSI_RX_PACKET_HEADER1      ( DSI_BASE_ADDR + 0x90 )
+#define ADDR_DSI_RX_PACKET_HEADER2      ( DSI_BASE_ADDR + 0x94 )
+#define ADDR_DSI_RX_PACKET_HEADER3      ( DSI_BASE_ADDR + 0x98 )
+#define ADDR_DSI_TX_CFG_FIFO            ( DSI_BASE_ADDR + 0x1000)/* 0x1000 - 0x1FFF */
+
+
+/****************************************************************/
+/*  interrupt0 0x00, 04, 08 */
+#define DSI_INT0_PHY_ERR_CONT_LP1_L1_START  (30)
+#define DSI_INT0_PHY_ERR_CONT_LP1_L1_END        (30)
+#define DSI_INT0_PHY_ERR_CONT_LP0_L1_START  (29)
+#define DSI_INT0_PHY_ERR_CONT_LP0_L1_END        (29)
+#define DSI_INT0_PHY_ERR_CONTROL_L1_START   (28)
+#define DSI_INT0_PHY_ERR_CONTROL_L1_END         (28)
+#define DSI_INT0_PHY_SYNCERR_ESC_L1_START   (27)
+#define DSI_INT0_PHY_SYNCERR_ESC_L1_END         (27)
+#define DSI_INT0_PHY_ERR_ESC_L1_START       (26)
+#define DSI_INT0_PHY_ERR_ESC_L1_END         (26)
+#define DSI_INT0_RX_CHKSUM_ERR_L1_START     (25)
+#define DSI_INT0_RX_CHKSUM_ERR_L1_END           (25)
+#define DSI_INT0_RX_ECC_ERR2_L1_START       (24)
+#define DSI_INT0_RX_ECC_ERR2_L1_END         (24)
+#define DSI_INT0_RX_ECC_ERR1_L1_START       (23)
+#define DSI_INT0_RX_ECC_ERR1_L1_END         (23)
+#define DSI_INT0_CLK_LANE_EXIT_HS_START     (22)
+#define DSI_INT0_CLK_LANE_EXIT_HS_END           (22)
+#define DSI_INT0_CLK_LANE_ENTER_HS_START    (21)
+#define DSI_INT0_CLK_LANE_ENTER_HS_END          (21)
+#define DSI_INT0_PHY_ERR_CONT_LP1_START     (20)
+#define DSI_INT0_PHY_ERR_CONT_LP1_END           (20)
+#define DSI_INT0_PHY_ERR_CONT_LP0_START     (19)
+#define DSI_INT0_PHY_ERR_CONT_LP0_END           (19)
+#define DSI_INT0_PHY_ERR_CONTROL_START      (18)
+#define DSI_INT0_PHY_ERR_CONTROL_END            (18)
+#define DSI_INT0_PHY_SYNCERR_ESC_START      (17)
+#define DSI_INT0_PHY_SYNCERR_ESC_END            (17)
+#define DSI_INT0_PHY_ERR_ESC_START      (16)
+#define DSI_INT0_PHY_ERR_ESC_END            (16)
+#define DSI_INT0_RX_CHKSUM_ERR_START        (15)
+#define DSI_INT0_RX_CHKSUM_ERR_END          (15)
+#define DSI_INT0_RX_ECC_ERR2_START      (14)
+#define DSI_INT0_RX_ECC_ERR2_END            (14)
+#define DSI_INT0_RX_ECC_ERR1_START      (13)
+#define DSI_INT0_RX_ECC_ERR1_END            (13)
+#define DSI_INT0_RXDATA_FIFO_ERR_START      (12)
+#define DSI_INT0_RXDATA_FIFO_ERR_END            (12)
+#define DSI_INT0_TXDATA_FIFO_ERR_START      (11)
+#define DSI_INT0_TXDATA_FIFO_ERR_END            (11)
+#define DSI_INT0_TXCFG_FIFO_ERR_START       (10)
+#define DSI_INT0_TXCFG_FIFO_ERR_END         (10)
+#define DSI_INT0_RXTRIGGER3_START       (9)
+#define DSI_INT0_RXTRIGGER3_END             (9)
+#define DSI_INT0_RXTRIGGER2_START       (8)
+#define DSI_INT0_RXTRIGGER2_END             (8)
+#define DSI_INT0_RXTRIGGER1_START       (7)
+#define DSI_INT0_RXTRIGGER1_END             (7)
+#define DSI_INT0_RXTRIGGER0_START       (6)
+#define DSI_INT0_RXTRIGGER0_END             (6)
+#define DSI_INT0_RXDATA_COMPLETE_START      (5)
+#define DSI_INT0_RXDATA_COMPLETE_END            (5)
+#define DSI_INT0_RX_COMPLETE_START      (4)
+#define DSI_INT0_RX_COMPLETE_END            (4)
+#define DSI_INT0_FRAME_COMPLETE_START       (3)
+#define DSI_INT0_FRAME_COMPLETE_END         (3)
+#define DSI_INT0_HS_DATA_COMPLETE_START     (2)
+#define DSI_INT0_HS_DATA_COMPLETE_END           (2)
+#define DSI_INT0_ESC_COMPLETE_START     (1)
+#define DSI_INT0_ESC_COMPLETE_END           (1)
+#define DSI_INT0_HS_CFG_COMPLETE_START      (0)
+#define DSI_INT0_HS_CFG_COMPLETE_END            (0)
+
+enum dsi_int_src0_index{
+    DSI_INT0_PHY_ERR_CONT_LP1_L1    = (0x01 << 30),
+    DSI_INT0_PHY_ERR_CONT_LP0_L1    = (0x01 << 29),
+    DSI_INT0_PHY_ERR_CONTROL_L1 = (0x01 << 28),
+    DSI_INT0_PHY_SYNCERR_ESC_L1 = (0x01 << 27),
+    DSI_INT0_PHY_ERR_ESC_L1     = (0x01 << 26),
+    DSI_INT0_RX_CHKSUM_ERR_L1   = (0x01 << 25),
+    DSI_INT0_RX_ECC_ERR2_L1     = (0x01 << 24),
+    DSI_INT0_RX_ECC_ERR1_L1     = (0x01 << 23),
+    DSI_INT0_CLK_LANE_EXIT_HS   = (0x01 << 22),
+    DSI_INT0_CLK_LANE_ENTER_HS  = (0x01 << 21),
+    DSI_INT0_PHY_ERR_CONT_LP1   = (0x01 << 20),
+    DSI_INT0_PHY_ERR_CONT_LP0   = (0x01 << 19),
+    DSI_INT0_PHY_ERR_CONTROL    = (0x01 << 18),
+    DSI_INT0_PHY_SYNCERR_ESC    = (0x01 << 17),
+    DSI_INT0_PHY_ERR_ESC        = (0x01 << 16),
+    DSI_INT0_RX_CHKSUM_ERR      = (0x01 << 15),
+    DSI_INT0_RX_ECC_ERR2        = (0x01 << 14),
+    DSI_INT0_RX_ECC_ERR1        = (0x01 << 13),
+    DSI_INT0_RXDATA_FIFO_ERR    = (0x01 << 12),
+    DSI_INT0_TXDATA_FIFO_ERR    = (0x01 << 11),
+    DSI_INT0_TXCFG_FIFO_ERR     = (0x01 << 10),
+    DSI_INT0_RXTRIGGER3     = (0x01 << 9),
+    DSI_INT0_RXTRIGGER2     = (0x01 << 8),
+    DSI_INT0_RXTRIGGER1     = (0x01 << 7),
+    DSI_INT0_RXTRIGGER0     = (0x01 << 6),
+    DSI_INT0_RXDATA_COMPLETE    = (0x01 << 5),
+    DSI_INT0_RX_COMPLETE        = (0x01 << 4),
+    DSI_INT0_FRAME_COMPLETE     = (0x01 << 3),
+    DSI_INT0_HS_DATA_COMPLETE   = (0x01 << 2),
+    DSI_INT0_ESC_COMPLETE       = (0x01 << 1),
+    DSI_INT0_HS_CFG_COMPLETE    = (0x01 << 0),
+};
+
+
+/* configuration0*/
+#define DSI_CON0_RX_LONG_ENA0_START     (31)
+#define DSI_CON0_RX_LONG_ENA0_END           (31)
+#define DSI_CON0_RX_LONG_ENA1_START     (30)
+#define DSI_CON0_RX_LONG_ENA1_END           (30)
+#define DSI_CON0_RX_LONG_ENA2_START     (29)
+#define DSI_CON0_RX_LONG_ENA2_END           (29)
+#define DSI_CON0_RX_LONG_ENA3_START     (28)
+#define DSI_CON0_RX_LONG_ENA3_END           (28)
+#define DSI_CON0_TURNDISABLE3_START     (23)
+#define DSI_CON0_TURNDISABLE3_END           (23)
+#define DSI_CON0_TURNDISABLE2_START     (22)
+#define DSI_CON0_TURNDISABLE2_END           (22)
+#define DSI_CON0_TURNDISABLE1_START     (21)
+#define DSI_CON0_TURNDISABLE1_END           (21)
+#define DSI_CON0_TURNDISABLE0_START     (20)
+#define DSI_CON0_TURNDISABLE0_END           (20)
+#define DSI_CON0_PHY_DATA_LANE_SWAP3_START  (19)
+#define DSI_CON0_PHY_DATA_LANE_SWAP3_END        (19)
+#define DSI_CON0_PHY_DATA_LANE_ENA3_START   (18)
+#define DSI_CON0_PHY_DATA_LANE_ENA3_END         (18)
+#define DSI_CON0_PHY_DATA_LANE_SWAP2_START  (17)
+#define DSI_CON0_PHY_DATA_LANE_SWAP2_END        (17)
+#define DSI_CON0_PHY_DATA_LANE_ENA2_START   (16)
+#define DSI_CON0_PHY_DATA_LANE_ENA2_END         (16)
+#define DSI_CON0_PHY_DATA_LANE_SWAP1_START  (15)
+#define DSI_CON0_PHY_DATA_LANE_SWAP1_END        (15)
+#define DSI_CON0_PHY_DATA_LANE_ENA1_START   (14)
+#define DSI_CON0_PHY_DATA_LANE_ENA1_END         (14)
+#define DSI_CON0_PHY_DATA_LANE_SWAP0_START  (13)
+#define DSI_CON0_PHY_DATA_LANE_SWAP0_END        (13)
+#define DSI_CON0_PHY_DATA_LANE_ENA0_START   (12)
+#define DSI_CON0_PHY_DATA_LANE_ENA0_END         (12)
+#define DSI_CON0_PHY_CLK_LANE_SWAP_START    (11)
+#define DSI_CON0_PHY_CLK_LANE_SWAP_END          (11)
+#define DSI_CON0_PHY_CLK_LANE_ENA_START     (10)
+#define DSI_CON0_PHY_CLK_LANE_ENA_END           (10)
+#define DSI_CON0_PHY_RESETN_START       (9)
+#define DSI_CON0_PHY_RESETN_END             (9)
+#define DSI_CON0_DATAPATH_MODE_START        (7)
+#define DSI_CON0_DATAPATH_MODE_END          (7)
+#define DSI_CON0_LONG_PACKET_ESCAPE_START   (6)
+#define DSI_CON0_LONG_PACKET_ESCAPE_END         (6)
+#define DSI_CON0_SWAP_INPUT_START       (5)
+#define DSI_CON0_SWAP_INPUT_END             (5)
+#define DSI_CON0_OUTPUT_FORMAT_START        (4)
+#define DSI_CON0_OUTPUT_FORMAT_END          (2)
+#define DSI_CON0_INPUT_FORMAT_START     (1)
+#define DSI_CON0_INPUT_FORMAT_END           (0)
+
+/* hs_packet 0x10*/
+#define DSI_HSPACKET_PACKET_TYPE_START      (31)
+#define DSI_HSPACKET_PACKET_TYPE_END            (31)
+#define DSI_HSPACKET_MODE_START         (30)
+#define DSI_HSPACKET_MODE_END               (30)
+#define DSI_HSPACKET_ENABLE_EOTP_START      (29)
+#define DSI_HSPACKET_ENABLE_EOTP_END            (29)
+#define DSI_HSPACKET_HS_ENTER_BTA_SKIP_START    (24)
+#define DSI_HSPACKET_HS_ENTER_BTA_SKIP_END      (24)
+#define DSI_HSPACKET_DATA_START         (23)
+#define DSI_HSPACKET_DATA_END               (8)
+#define DSI_HSPACKET_DATA_ID_START      (7)
+#define DSI_HSPACKET_DATA_ID_END            (0)
+
+/* escape mode packet*/
+#define DSI_ESC_MODE_PACKET_DATA_START      (31)
+#define DSI_ESC_MODE_PACKET_DATA_END            (24)
+#define DSI_ESC_MODE_PACKET_DATA1_START     (23)
+#define DSI_ESC_MODE_PACKET_DATA1_END           (16)
+#define DSI_ESC_MODE_PACKET_DATA0_START     (15)
+#define DSI_ESC_MODE_PACKET_DATA0_END           (8)
+#define DSI_ESC_MODE_PACKET_DATAID_START    (7)
+#define DSI_ESC_MODE_PACKET_DATAID_END          (0)
+
+/* escape mode trigger*/
+#define DSI_ESC_MODE_TRIGGER_START      (3)
+#define DSI_ESC_MODE_TRIGGER_END            (0)
+
+/*MIPI_DSI_ACTION*/
+#define DSI_ACTION_PACKET_HEADER_CLR0_START (31)
+#define DSI_ACTION_PACKET_HEADER_CLR0_END       (31)
+#define DSI_ACTION_PACKET_HEADER_CLR1_START (30)
+#define DSI_ACTION_PACKET_HEADER_CLR1_END       (30)
+#define DSI_ACTION_PACKET_HEADER_CLR2_START (29)
+#define DSI_ACTION_PACKET_HEADER_CLR2_END       (29)
+#define DSI_ACTION_PACKET_HEADER_CLR3_START (28)
+#define DSI_ACTION_PACKET_HEADER_CLR3_END       (28)
+#define DSI_ACTION_FLUSH_RX_FIFO3_START     (14)
+#define DSI_ACTION_FLUSH_RX_FIFO3_END           (14)
+#define DSI_ACTION_FLUSH_RX_FIFO2_START     (13)
+#define DSI_ACTION_FLUSH_RX_FIFO2_END           (13)
+#define DSI_ACTION_FLUSH_RX_FIFO1_START     (12)
+#define DSI_ACTION_FLUSH_RX_FIFO1_END           (12)
+#define DSI_ACTION_STOP_VIDEO_DATA_START    (11)
+#define DSI_ACTION_STOP_VIDEO_DATA_END          (11)
+#define DSI_ACTION_FLUSH_DATA_FIFO_START        (10)
+#define DSI_ACTION_FLUSH_DATA_FIFO_END              (10)
+#define DSI_ACTION_FLUSH_CFG_FIFO_START         (9)
+#define DSI_ACTION_FLUSH_CFG_FIFO_END               (9)
+#define DSI_ACTION_FLUSH_RX_FIFO0_START         (8)
+#define DSI_ACTION_FLUSH_RX_FIFO0_END               (8)
+#define DSI_ACTION_TURN_REQUEST_START           (7)
+#define DSI_ACTION_TURN_REQUEST_END                 (7)
+#define DSI_ACTION_FORCE_DATA_LANE_STOP_START   (6)
+#define DSI_ACTION_FORCE_DATA_LANE_STOP_END         (6)
+#define DSI_ACTION_DATA_LANE_EXIT_ULP_START     (5)
+#define DSI_ACTION_DATA_LANE_EXIT_ULP_END           (5)
+#define DSI_ACTION_DATA_LANE_ENTER_ULP_START    (4)
+#define DSI_ACTION_DATA_LANE_ENTER_ULP_END          (4)
+#define DSI_ACTION_CLK_LANE_EXIT_HS_START       (3)
+#define DSI_ACTION_CLK_LANE_EXIT_HS_END             (3)
+#define DSI_ACTION_CLK_LANE_ENTER_HS_START      (2)
+#define DSI_ACTION_CLK_LANE_ENTER_HS_END            (2)
+#define DSI_ACTION_CLK_LANE_EXIT_ULP_START      (1)
+#define DSI_ACTION_CLK_LANE_EXIT_ULP_END            (1)
+#define DSI_ACTION_CLK_LANE_ENTER_ULP_START     (0)
+#define DSI_ACTION_CLK_LANE_ENTER_ULP_END           (0)
+
+/* command config 0x20*/
+#define DSI_CMD_CFG_HS_CMD_FORCE_DATA_EN_START  (28)
+#define DSI_CMD_CFG_HS_CMD_FORCE_DATA_EN_END        (28)
+#define DSI_CMD_CFG_HS_CMD_FORCE_DATA_START (27)
+#define DSI_CMD_CFG_HS_CMD_FORCE_DATA_END       (20)
+#define DSI_CMD_CFG_WAIT_FIFO_START     (16)
+#define DSI_CMD_CFG_WAIT_FIFO_END           (16)
+#define DSI_CMD_CFG_NUM_BYTES_START     (15)
+#define DSI_CMD_CFG_NUM_BYTES_END           (0)
+
+/* video timming1*/
+#define DSI_VIDEO_TIMMING1_BLLP_COUNT_START (31)
+#define DSI_VIDEO_TIMMING1_BLLP_COUNT_END       (16)
+#define DSI_VIDEO_TIMMING1_HSA_COUNT_START  (15)
+#define DSI_VIDEO_TIMMING1_HSA_COUNT_END        (0)
+
+/* video timming2*/
+#define DSI_VIDEO_TIMMING2_HFP_COUNT_START  (31)
+#define DSI_VIDEO_TIMMING2_HFP_COUNT_END        (16)
+#define DSI_VIDEO_TIMMING2_HBP_COUNT_START  (15)
+#define DSI_VIDEO_TIMMING2_HBP_COUNT_END        (0)
+
+/* video config1*/
+#define DSI_VIDEO_CONFIG1_FULL_SYNC_START   (31)
+#define DSI_VIDEO_CONFIG1_FULL_SYNC_END         (31)
+#define DSI_VIDEO_CONFIG1_NUM_VFP_LINES_START   (23)
+#define DSI_VIDEO_CONFIG1_NUM_VFP_LINES_END     (16)
+#define DSI_VIDEO_CONFIG1_NUM_VBP_LINES_START   (15)
+#define DSI_VIDEO_CONFIG1_NUM_VBP_LINES_END     (8)
+#define DSI_VIDEO_CONFIG1_NUM_VSA_LINES_START   (7)
+#define DSI_VIDEO_CONFIG1_NUM_VSA_LINES_END     (0)
+
+
+/* video config2    0x30*/
+#define DSI_VIDEO_CONFIG2_NUM_BYTES_LINES_START (31)
+#define DSI_VIDEO_CONFIG2_NUM_BYTES_LINES_END       (16)
+#define DSI_VIDEO_CONFIG2_NUM_VACT_LINES_START  (15)
+#define DSI_VIDEO_CONFIG2_NUM_VACT_LINES_END        (0)
+
+/* Rx packet header 0x34, 90, 94, 98*/
+#define DSI_RX_PACKET_HEADER_DATA1      (0xFF << 16)
+#define DSI_RX_PACKET_HEADER_DATA0      (0xFF << 8)
+#define DSI_RX_PACKET_HEADER_DATAID     (0xFF << 0)
+
+/* status*/
+enum dsi_status_index{
+    DSI_STATUS_MIPI_PLL_LOCK        = (1 << 31),
+    DSI_STATUS_TX_STOP_STATUS_DATA3     = (1 << 30),
+    DSI_STATUS_LOCAL_RX_LONG_ENA3       = (1 << 28),
+    DSI_STATUS_RX_ULP_ESC3          = (1 << 27),
+    DSI_STATUS_PHY_DIRECTION3       = (1 << 26),
+    DSI_STATUS_LOCAL_RX_LONG_ENA2       = (1 << 25),
+    DSI_STATUS_RX_ULP_ESC2          = (1 << 24),
+    DSI_STATUS_PHY_DIRECTION2       = (1 << 23),
+    DSI_STATUS_TX_STOP_STATUS_DATA2     = (1 << 22),
+    DSI_STATUS_LOCAL_RX_LONG_ENA1       = (1 << 19),
+    DSI_STATUS_RX_ULP_ESC1          = (1 << 18),
+    DSI_STATUS_PHY_DIRECTION1       = (1 << 17),
+    DSI_STATUS_TX_STOP_STATUS_DATA1     = (1 << 16),
+    DSI_STATUS_LOCAL_RX_LONG_ENA0       = (1 << 15),
+    DSI_STATUS_TX_STOP_STATUS_DATA0     = (1 << 14),
+    DSI_STATUS_HS_DATA_SM           = (0x1F << 9),
+    DSI_STATUS_PHY_DATA_STATUS      = (0x03 << 7),
+    DSI_STATUS_PHY_CLK_STATUS       = (0x03 << 5),
+    DSI_STATUS_HS_CFG_READY         = (1 << 4),
+    DSI_STATUS_HS_DATA_READY        = (1 << 3),
+    DSI_STATUS_ESCAPE_READY         = (1 << 2),
+    DSI_STATUS_RX_ULP_ESC0          = (1 << 1),
+    DSI_STATUS_PHY_DIRECTION0       = (1 << 0),
+};
+#if 0
+#define DSI_STATUS_MIPI_PLL_LOCK        (1 << 31)
+#define DSI_STATUS_TX_STOP_STATUS_DATA3     (1 << 30)
+#define DSI_STATUS_LOCAL_RX_LONG_ENA3       (1 << 28)
+#define DSI_STATUS_RX_ULP_ESC3          (1 << 27)
+#define DSI_STATUS_PHY_DIRECTION3       (1 << 26)
+#define DSI_STATUS_LOCAL_RX_LONG_ENA2       (1 << 25)
+#define DSI_STATUS_RX_ULP_ESC2          (1 << 24)
+#define DSI_STATUS_PHY_DIRECTION2       (1 << 23)
+#define DSI_STATUS_TX_STOP_STATUS_DATA2     (1 << 22)
+#define DSI_STATUS_LOCAL_RX_LONG_ENA1       (1 << 19)
+#define DSI_STATUS_RX_ULP_ESC1          (1 << 18)
+#define DSI_STATUS_PHY_DIRECTION1       (1 << 17)
+#define DSI_STATUS_TX_STOP_STATUS_DATA1     (1 << 16)
+#define DSI_STATUS_LOCAL_RX_LONG_ENA0       (1 << 15)
+#define DSI_STATUS_TX_STOP_STATUS_DATA0     (1 << 14)
+#define DSI_STATUS_HS_DATA_SM           (0x1F << 9)
+#define DSI_STATUS_PHY_DATA_STATUS      (0x03 << 7)
+#define DSI_STATUS_PHY_CLK_STATUS       (0x03 << 5)
+#define DSI_STATUS_HS_CFG_READY         (1 << 4)
+#define DSI_STATUS_HS_DATA_READY        (1 << 3)
+#define DSI_STATUS_ESCAPE_READY         (1 << 2)
+#define DSI_STATUS_RX_ULP_ESC0          (1 << 1)
+#define DSI_STATUS_PHY_DIRECTION0       (1 << 0)
+#endif
+
+/*  fifo byte count */
+#define DSI_TX_DATA_FIFO            (0xFFF << 20)
+#define DSI_TX_CFG_FIFO             (0x1FF << 8)
+#define DSI_RX_FIFO                 (0x03F << 0)
+
+/* configuration1   0x40 */
+#define DSI_CON1_TX_DATA_ESC1_WEN_START     (28)
+#define DSI_CON1_TX_DATA_ESC1_WEN_END           (28)
+#define DSI_CON1_TX_DATA_ESC1_WDATA_START   (27)
+#define DSI_CON1_TX_DATA_ESC1_WDATA_END         (20)
+#define DSI_CON1_TX_DATA_ESC0_WEN_START     (16)
+#define DSI_CON1_TX_DATA_ESC0_WEN_END           (16)
+#define DSI_CON1_TX_DATA_ESC0_WDATA_START   (15)
+#define DSI_CON1_TX_DATA_ESC0_WDATA_END         (8)
+#define DSI_CON1_HS_LANE_SEL_START      (7)
+#define DSI_CON1_HS_LANE_SEL_END            (4)
+#define DSI_CON1_LP_LANE_SEL_START      (3)
+#define DSI_CON1_LP_LANE_SEL_END            (0)
+
+/* configuration2 */
+#define DSI_CON2_TX_DATA_ESC3_WEN_START     (28)
+#define DSI_CON2_TX_DATA_ESC3_WEN_END           (28)
+#define DSI_CON2_TX_DATA_ESC3_WDATA_START   (27)
+#define DSI_CON2_TX_DATA_ESC3_WDATA_END         (20)
+#define DSI_CON2_TX_DATA_ESC2_WEN_START     (16)
+#define DSI_CON2_TX_DATA_ESC2_WEN_END           (16)
+#define DSI_CON2_TX_DATA_ESC2_WDATA_START   (15)
+#define DSI_CON2_TX_DATA_ESC2_WDATA_END         (8)
+#define DSI_CON2_PDN_TX_DATA3_START     (6)
+#define DSI_CON2_PDN_TX_DATA3_END           (6)
+#define DSI_CON2_PDN_TX_DATA2_START     (5)
+#define DSI_CON2_PDN_TX_DATA2_END           (5)
+#define DSI_CON2_PDN_TX_CLK1_START      (4)
+#define DSI_CON2_PDN_TX_CLK1_END            (4)
+#define DSI_CON2_PDN_TX_DATA1_START     (2)
+#define DSI_CON2_PDN_TX_DATA1_END           (2)
+#define DSI_CON2_PDN_TX_DATA0_START     (1)
+#define DSI_CON2_PDN_TX_DATA0_END           (1)
+#define DSI_CON2_PDN_TX_CLK0_START      (0)
+#define DSI_CON2_PDN_TX_CLK0_END            (0)
+
+/* interrupt1 0x50, 54, 58 */
+#define DSI_INT1_TXDATA_FIFO_OR_ERR_START   (22)
+#define DSI_INT1_TXDATA_FIFO_OR_ERR_END         (22)
+#define DSI_INT1_TXCFG_FIFO_OR_ERR_START    (21)
+#define DSI_INT1_TXCFG_FIFO_OR_ERR_END          (21)
+#define DSI_INT1_RXDATA_FIFO_ERR_L3_START   (20)
+#define DSI_INT1_RXDATA_FIFO_ERR_L3_END         (20)
+#define DSI_INT1_RXTRIGGER3_L3_START        (19)
+#define DSI_INT1_RXTRIGGER3_L3_END          (19)
+#define DSI_INT1_RXTRIGGER2_L3_START        (18)
+#define DSI_INT1_RXTRIGGER2_L3_END          (18)
+#define DSI_INT1_RXTRIGGER1_L3_START        (17)
+#define DSI_INT1_RXTRIGGER1_L3_END          (17)
+#define DSI_INT1_RXTRIGGER0_L3_START        (16)
+#define DSI_INT1_RXTRIGGER0_L3_END          (16)
+#define DSI_INT1_RXDATA_COMPLETE_L3_START   (15)
+#define DSI_INT1_RXDATA_COMPLETE_L3_END         (15)
+#define DSI_INT1_RX_COMPLETE_L3_START       (14)
+#define DSI_INT1_RX_COMPLETE_L3_END         (14)
+#define DSI_INT1_RXDATA_FIFO_ERR_L2_START   (13)
+#define DSI_INT1_RXDATA_FIFO_ERR_L2_END         (13)
+#define DSI_INT1_RXTRIGGER3_L2_START        (12)
+#define DSI_INT1_RXTRIGGER3_L2_END          (12)
+#define DSI_INT1_RXTRIGGER2_L2_START        (11)
+#define DSI_INT1_RXTRIGGER2_L2_END          (11)
+#define DSI_INT1_RXTRIGGER1_L2_START        (10)
+#define DSI_INT1_RXTRIGGER1_L2_END          (10)
+#define DSI_INT1_RXTRIGGER0_L2_START        (9)
+#define DSI_INT1_RXTRIGGER0_L2_END          (9)
+#define DSI_INT1_RXDATA_COMPLETE_L2_START   (8)
+#define DSI_INT1_RXDATA_COMPLETE_L2_END         (8)
+#define DSI_INT1_RX_COMPLETE_L2_START       (7)
+#define DSI_INT1_RX_COMPLETE_L2_END         (7)
+#define DSI_INT1_RXDATA_FIFO_ERR_L1_START   (6)
+#define DSI_INT1_RXDATA_FIFO_ERR_L1_END         (6)
+#define DSI_INT1_RXTRIGGER3_L1_START        (5)
+#define DSI_INT1_RXTRIGGER3_L1_END          (5)
+#define DSI_INT1_RXTRIGGER2_L1_START        (4)
+#define DSI_INT1_RXTRIGGER2_L1_END          (4)
+#define DSI_INT1_RXTRIGGER1_L1_START        (3)
+#define DSI_INT1_RXTRIGGER1_L1_END          (3)
+#define DSI_INT1_RXTRIGGER0_L1_START        (2)
+#define DSI_INT1_RXTRIGGER0_L1_END          (2)
+#define DSI_INT1_RXDATA_COMPLETE_L1_START   (1)
+#define DSI_INT1_RXDATA_COMPLETE_L1_END         (1)
+#define DSI_INT1_RX_COMPLETE_L1_START       (0)
+#define DSI_INT1_RX_COMPLETE_L1_END         (0)
+
+enum dsi_int_src1_index{
+    DSI_INT1_TXDATA_FIFO_OR_ERR = (1 << 22),
+    DSI_INT1_TXCFG_FIFO_OR_ERR  = (1 << 21),
+    DSI_INT1_RXDATA_FIFO_ERR_L3 = (1 << 20),
+    DSI_INT1_RXTRIGGER3_L3      = (1 << 19),
+    DSI_INT1_RXTRIGGER2_L3      = (1 << 18),
+    DSI_INT1_RXTRIGGER1_L3      = (1 << 17),
+    DSI_INT1_RXTRIGGER0_L3      = (1 << 16),
+    DSI_INT1_RXDATA_COMPLETE_L3 = (1 << 15),
+    DSI_INT1_RX_COMPLETE_L3     = (1 << 14),
+    DSI_INT1_RXDATA_FIFO_ERR_L2 = (1 << 13),
+    DSI_INT1_RXTRIGGER3_L2      = (1 << 12),
+    DSI_INT1_RXTRIGGER2_L2      = (1 << 11),
+    DSI_INT1_RXTRIGGER1_L2      = (1 << 10),
+    DSI_INT1_RXTRIGGER0_L2      = (1 << 9),
+    DSI_INT1_RXDATA_COMPLETE_L2 = (1 << 8),
+    DSI_INT1_RX_COMPLETE_L2     = (1 << 7),
+    DSI_INT1_RXDATA_FIFO_ERR_L1 = (1 << 6),
+    DSI_INT1_RXTRIGGER3_L1      = (1 << 5),
+    DSI_INT1_RXTRIGGER2_L1      = (1 << 4),
+    DSI_INT1_RXTRIGGER1_L1      = (1 << 3),
+    DSI_INT1_RXTRIGGER0_L1      = (1 << 2),
+    DSI_INT1_RXDATA_COMPLETE_L1 = (1 << 1),
+    DSI_INT1_RX_COMPLETE_L1     = (1 << 0),
+};
+
+/*  interrupt source2 0x60, 64, 68 */
+#define DSI_INT2_PHY_ERR_CONT_LP1_L3_START  (15)
+#define DSI_INT2_PHY_ERR_CONT_LP1_L3_END        (15)
+#define DSI_INT2_PHY_ERR_CONT_LP0_L3_START  (14)
+#define DSI_INT2_PHY_ERR_CONT_LP0_L3_END        (14)
+#define DSI_INT2_PHY_ERR_CONTROL_L3_START   (13)
+#define DSI_INT2_PHY_ERR_CONTROL_L3_END         (13)
+#define DSI_INT2_PHY_SYNC_ERR_ESC_L3_START  (12)
+#define DSI_INT2_PHY_SYNC_ERR_ESC_L3_END        (12)
+#define DSI_INT2_PHY_ERR_ESC_L3_START       (11)
+#define DSI_INT2_PHY_ERR_ESC_L3_END         (11)
+#define DSI_INT2_RX_CHKSUM_ERR_L3_START     (10)
+#define DSI_INT2_RX_CHKSUM_ERR_L3_END           (10)
+#define DSI_INT2_RX_ECC_ERR2_L3_START       (9)
+#define DSI_INT2_RX_ECC_ERR2_L3_END         (9)
+#define DSI_INT2_RX_ECC_ERR1_L3_START       (8)
+#define DSI_INT2_RX_ECC_ERR1_L3_END         (8)
+#define DSI_INT2_PHY_ERR_CONT_LP1_L2_START  (7)
+#define DSI_INT2_PHY_ERR_CONT_LP1_L2_END        (7)
+#define DSI_INT2_PHY_ERR_CONT_LP0_L2_START  (6)
+#define DSI_INT2_PHY_ERR_CONT_LP0_L2_END        (6)
+#define DSI_INT2_PHY_ERR_CONTROL_L2_START   (5)
+#define DSI_INT2_PHY_ERR_CONTROL_L2_END         (5)
+#define DSI_INT2_PHY_SYNC_ERR_ESC_L2_START  (4)
+#define DSI_INT2_PHY_SYNC_ERR_ESC_L2_END        (4)
+#define DSI_INT2_PHY_ERR_ESC_L2_START       (3)
+#define DSI_INT2_PHY_ERR_ESC_L2_END         (3)
+#define DSI_INT2_RX_CHKSUM_ERR_L2_START     (2)
+#define DSI_INT2_RX_CHKSUM_ERR_L2_END           (2)
+#define DSI_INT2_RX_ECC_ERR2_L2_START       (1)
+#define DSI_INT2_RX_ECC_ERR2_L2_END         (1)
+#define DSI_INT2_RX_ECC_ERR1_L2_START       (0)
+#define DSI_INT2_RX_ECC_ERR1_L2_END         (0)
+
+enum dsi_int_src2_num{
+    DSI_INT2_PHY_ERR_CONT_LP1_L3    = (1 << 15),
+    DSI_INT2_PHY_ERR_CONT_LP0_L3    = (1 << 14),
+    DSI_INT2_PHY_ERR_CONTROL_L3 = (1 << 13),
+    DSI_INT2_PHY_SYNC_ERR_ESC_L3    = (1 << 12),
+    DSI_INT2_PHY_ERR_ESC_L3     = (1 << 11),
+    DSI_INT2_RX_CHKSUM_ERR_L3   = (1 << 10),
+    DSI_INT2_RX_ECC_ERR2_L3     = (1 << 9),
+    DSI_INT2_RX_ECC_ERR1_L3     = (1 << 8),
+    DSI_INT2_PHY_ERR_CONT_LP1_L2    = (1 << 7),
+    DSI_INT2_PHY_ERR_CONT_LP0_L2    = (1 << 6),
+    DSI_INT2_PHY_ERR_CONTROL_L2 = (1 << 5),
+    DSI_INT2_PHY_SYNC_ERR_ESC_L2    = (1 << 4),
+    DSI_INT2_PHY_ERR_ESC_L2     = (1 << 3),
+    DSI_INT2_RX_CHKSUM_ERR_L2   = (1 << 2),
+    DSI_INT2_RX_ECC_ERR2_L2     = (1 << 1),
+    DSI_INT2_RX_ECC_ERR1_L2     = (1 << 0),
+};
+
+
+/* TX CFG FIFO                  0x1000 - 0x1FFF */
+/*  RX Packet Payload Fifo          0x2000 - 0x2FFF */
+
+#endif  /* __ADDR_DSI_REGS_H__*/
+

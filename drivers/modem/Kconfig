@@ -1,0 +1,27 @@
+#
+# ST-Ericsson Modem driver configuration
+#
+menuconfig STE
+	tristate "ST-Ericsson Modem support"
+	---help---
+
+#
+# Intel Modem driver configuration
+#
+menuconfig IMC
+	tristate "Intel Mobile Communications Modem support"
+	---help---
+
+
+if STE
+
+source "drivers/modem/m7450/Kconfig"
+
+endif # STE
+
+if IMC
+
+source "drivers/modem/XMM7260/Kconfig"
+
+endif # IMC
+

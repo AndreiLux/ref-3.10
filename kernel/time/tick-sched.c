@@ -891,6 +891,7 @@ static void tick_nohz_restart_sched_tick(struct tick_sched *ts, ktime_t now)
 	ts->idle_exittime = now;
 
 	tick_nohz_restart(ts, now);
+	trace_tick_stop(0, " ");
 }
 
 static void tick_nohz_account_idle_ticks(struct tick_sched *ts)

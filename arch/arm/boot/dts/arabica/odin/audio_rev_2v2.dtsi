@@ -1,0 +1,256 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+	audio{
+		compatible = "simple-bus";
+		interrupt-parent = <&gic>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		audio_power_clock@0 {
+			compatible = "lge,odin-aud-powclk";
+		};
+
+		/* audio  */
+		i2c@34620000 {
+			compatible = "snps,odin-i2c";
+			reg = <0 0x34620000 0 0x800>;
+			interrupts = <0 50 0x4>;
+			clocks = <&pclk_dsp>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			enable_rpm = <0>;
+
+			rt5671@1c{
+				compatible = "realtek,rt5671";
+				reg = <0x1c>;
+				interrupts = <0 1 0x4>;
+				revision = "RevA";
+			};
+		};
+
+		i2c@34621000 {
+			compatible = "snps,odin-i2c";
+			reg = <0 0x34621000 0 0x800>;
+			interrupts = <0 51 0x4>;
+			clocks = <&pclk_dsp>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+			enable_rpm = <0>;
+
+			tpa2028d@58{
+				compatible = "ti,tpa2028d";
+				reg = <0x58>;
+				agc_compression_rate = <0x00>;
+				agc_output_limiter_disable = <0x01>;
+				agc_fixed_gain = <0x07>;
+				aud_amp_en_gpio = <130>; /* 112+SMS_GPIO_18 */
+				revision = "RevA";
+			};
+
+			maxim_max14688@15{
+				compatible = "maxim,max14688";
+				reg = <0x15>;
+				max14688,gpio_detect = <82>; /* 56+PERI_G1_GPIO_26_EINT */
+				max14688,gpio_int = <113>; /* 112+SMS_GPIO_1 */
+			};
+		};
+
+		pcm_dram: pcm@0 {
+			compatible = "lge,odin-pcm";
+			dma-device = <&adma>;
+		};
+
+		pcm_sram: pcm@1 {
+			compatible = "lge,odin-pcm-sram";
+			dma-device = <&adma>;
+		};
+
+		compress_0: compress@0 {
+			compatible = "lge,odin-compress-dsp";
+		};
+
+		mi2s_0: i2s@34610000 {
+			compatible = "lge,odin-multi-i2s";
+			reg = <0 0x34610000 0 0x1000>;
+			interrupts = <0 41 0x4>;
+			tx-dma-channel = <8>;
+			rx-dma-channel = <0>;
+			playback_lock = "ARM Multi I2S Playback 0";
+			capture_lock = "ARM Multi I2S Capture 0";
+			dsp_playback_lock = "DSP Multi I2S Playback 0";
+			dsp_capture_lock = "DSP Multi I2S Capture 0";
+		};
+
+		si2s_0: i2s@34611000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34611000 0 0x1000>;
+			interrupts = <0 42 0x4>;
+			tx-dma-channel = <9>;
+			rx-dma-channel = <1>;
+			i2s-mode = <1>;
+			playback_lock = "ARM Single I2S Playback 0";
+			capture_lock = "ARM Single I2S Capture 0";
+			dsp_playback_lock = "DSP Single I2S Playback 0";
+			dsp_capture_lock = "DSP Single I2S Capture 0";
+		};
+
+		si2s_1: i2s@34612000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34612000 0 0x1000>;
+			interrupts = <0 43 0x4>;
+			tx-dma-channel = <10>;
+			rx-dma-channel = <2>;
+			i2s-mode = <2>;
+			playback_lock = "ARM Single I2S Playback 1";
+			capture_lock = "ARM Single I2S Capture 1";
+			dsp_playback_lock = "DSP Single I2S Playback 1";
+			dsp_capture_lock = "DSP Single I2S Capture 1";
+		};
+
+		si2s_2: i2s@34613000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34613000 0 0x1000>;
+			interrupts = <0 44 0x4>;
+			tx-dma-channel = <11>;
+			rx-dma-channel = <3>;
+			i2s-mode = <1>;
+			playback_lock = "ARM Single I2S Playback 2";
+			capture_lock = "ARM Single I2S Capture 2";
+			dsp_playback_lock = "DSP Single I2S Playback 2";
+			dsp_capture_lock = "DSP Single I2S Capture 2";
+		};
+
+		si2s_3: i2s@34614000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34614000 0 0x1000>;
+			interrupts = <0 45 0x4>;
+			tx-dma-channel = <12>;
+			rx-dma-channel = <4>;
+			i2s-mode = <2>;
+			playback_lock = "ARM Single I2S Playback 3";
+			capture_lock = "ARM Single I2S Capture 3";
+			dsp_playback_lock = "DSP Single I2S Playback 3";
+			dsp_capture_lock = "DSP Single I2S Capture 3";
+		};
+
+		hw_semaphore@34650000 {
+			compatible = "lge,odin-audio-semaphore";
+			reg = <0 0x34650000 0 0x1000>;
+			interrupts = <0 40 0x4>;
+			semaphore-list =
+					"ARM Multi I2S Playback 0",       /* 00 */
+					"ARM Single I2S Playback 0",      /* 01 */
+					"ARM Single I2S Playback 1",      /* 02 */
+					"ARM Single I2S Playback 2",      /* 03 */
+					"ARM Single I2S Playback 3",      /* 04 */
+					"DSP Multi I2S Playback 0",       /* 05 */
+					"DSP Single I2S Playback 0",      /* 06 */
+					"DSP Single I2S Playback 1",      /* 07 */
+					"DSP Single I2S Playback 2",      /* 08 */
+					"DSP Single I2S Playback 3",      /* 09 */
+					"semaphore10",                    /* 10 */
+					"semaphore11",                    /* 11 */
+					"semaphore12",                    /* 12 */
+					"semaphore13",                    /* 13 */
+					"semaphore14",                    /* 14 */
+					"semaphore15",                    /* 15 */
+					"ARM Multi I2S Capture 0",        /* 16 */
+					"ARM Single I2S Capture 0",       /* 17 */
+					"ARM Single I2S Capture 1",       /* 18 */
+					"ARM Single I2S Capture 2",       /* 19 */
+					"ARM Single I2S Capture 3",       /* 20 */
+					"DSP Multi I2S Capture 0",        /* 21 */
+					"DSP Single I2S Capture 0",       /* 22 */
+					"DSP Single I2S Capture 1",       /* 23 */
+					"DSP Single I2S Capture 2",       /* 24 */
+					"DSP Single I2S Capture 3",       /* 25 */
+					"semaphore26",                    /* 26 */
+					"semaphore27",                    /* 27 */
+					"semaphore28",                    /* 28 */
+					"semaphore29",                    /* 29 */
+					"semaphore30",                    /* 30 */
+					"semaphore31";                    /* 31 */
+
+		};
+
+		hdmi_codec: hdmi_codec@0 {
+			compatible = "lge,odin-hdmi-codec";
+		};
+
+		hdmi_audio_sample@0 {
+			compatible = "lge,odin-hdmi-asample";
+		};
+
+		sound_card@0 {
+			compatible = "lge,odin-audio";
+			dai-link0-cpu-dai = <&si2s_0>;
+			/* dai-link0-platform = <&pcm_dram>; */
+			dai-link0-platform = <&pcm_sram>;
+			dai-link1-cpu-dai = <&si2s_1>;
+			dai-link1-platform = <&pcm_dram>;
+			dai-link2-cpu-dai = <&si2s_2>;
+			dai-link2-platform = <&pcm_dram>;
+			dai-link3-cpu-dai = <&si2s_3>;
+			dai-link3-platform = <&pcm_sram>;
+			dai-link7-cpu-dai = <&si2s_2>;
+			/* dai-link7-platform = <&pcm_dram>; */
+			dai-link7-platform = <&pcm_sram>;
+			aud-gpio-base = <&aud_gpio0>;
+			/* aud_ldo_en = <120>; */
+			/* aud_irq = <139>; */
+			/* ao_mic_off = <150>; */
+			hph_aud_sw_int = <153>; /* 112+SMS_GPIO_41 */
+			aud_osc_en = <128>; /* 112+SMS_GPIO_16 */
+			ext_osc = <12288000>;
+			pll_control = <0>;
+			revision = "RevA";
+		};
+
+		sound_card@1 {
+			compatible = "lge,odin-hdmi-audio";
+			dai-link0-cpu-dai = <&mi2s_0>;
+			dai-link0-platform = <&pcm_dram>;
+			dai-link0-codec = <&hdmi_codec>;
+			aud-gpio-base = <&aud_gpio0>;
+		};
+
+		asoc_platform_0:odin-platform {
+			compatible = "lge,odin-platform";
+		};
+
+		dsp-ext {
+			compatible = "lge,odin-dsp-ext";
+		};
+
+		sound {
+			compatible = "lge,odin-dsp-audio";
+			dai-link0-platform = <&asoc_platform_0>;
+		};
+
+		/* Odin ASoC Compress DSP Driver start */
+		odin-dsp {
+			compatible = "tensilica,odin-dsp-compress";
+			reg = <0 0x34000000 0 0x200000>,			// ODIN_DSP_BASE
+				<0 0x34200000 0 0x10000>,               // ODIN_DSP_AUD_SRAM
+				<0 0x34210000 0 0x10000>,               // ODIN_DSP_MEM_DRAM0
+				<0 0x34220000 0 0x8000>,                // ODIN_DSP_MEM_DRAM1
+				<0 0x34228000 0 0x10000>,               // ODIN_DSP_MEM_IRAM0
+				<0 0x34238000 0 0x8000>,                // ODIN_DSP_MEM_IRAM1
+				<0 0x34400000 0 0x800>,                 // ODIN_DSP_MEM_MAILBOX
+				<0 0x34400800 0 0x8>,                   // ODIN_DSP_AUD_INERRUPT
+				<0 0x34660000 0 0x48>;                  // ODIN_DSP_AUD_CTR
+			interrupts = <0 35 4>;
+		};
+		/* Odin ASoC Compress DSP Driver end */
+		//aud-mailbox {
+		//	compatible = "arm,pl320-aud";
+		//	reg = <0 0x34400000 0 0x1000>;
+		//	interrupts = <0 35 4>;
+		//};
+	};
+};
+

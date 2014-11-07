@@ -101,11 +101,41 @@ static struct pm_qos_object network_throughput_pm_qos = {
 };
 
 
+static BLOCKING_NOTIFIER_HEAD(odin_mem_min_freq_notifier);
+static struct pm_qos_constraints odin_mem_min_freq_constraints = {
+	.list = PLIST_HEAD_INIT(odin_mem_min_freq_constraints.list),
+	.target_value = PM_QOS_ODIN_MEM_MIN_FREQ_DEFAULT_VALUE,
+	.default_value = PM_QOS_ODIN_MEM_MIN_FREQ_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &odin_mem_min_freq_notifier,
+};
+static struct pm_qos_object odin_mem_min_freq_pm_qos = {
+	.constraints = &odin_mem_min_freq_constraints,
+	.name = "odin_mem_min_freq",
+};
+
+
+static BLOCKING_NOTIFIER_HEAD(odin_cci_min_freq_notifier);
+static struct pm_qos_constraints odin_cci_min_freq_constraints = {
+	.list = PLIST_HEAD_INIT(odin_cci_min_freq_constraints.list),
+	.target_value = PM_QOS_ODIN_CCI_MIN_FREQ_DEFAULT_VALUE,
+	.default_value = PM_QOS_ODIN_CCI_MIN_FREQ_DEFAULT_VALUE,
+	.type = PM_QOS_MAX,
+	.notifiers = &odin_cci_min_freq_notifier,
+};
+static struct pm_qos_object odin_cci_min_freq_pm_qos = {
+	.constraints = &odin_cci_min_freq_constraints,
+	.name = "odin_cci_min_freq",
+};
+
+
 static struct pm_qos_object *pm_qos_array[] = {
 	&null_pm_qos,
 	&cpu_dma_pm_qos,
 	&network_lat_pm_qos,
-	&network_throughput_pm_qos
+	&network_throughput_pm_qos,
+	&odin_mem_min_freq_pm_qos,
+	&odin_cci_min_freq_pm_qos
 };
 
 static ssize_t pm_qos_power_write(struct file *filp, const char __user *buf,
@@ -164,11 +194,20 @@ static inline void pm_qos_set_value(struct pm_qos_constraints *c, s32 value)
  * This function returns 1 if the aggregated constraint value has changed, 0
  *  otherwise.
  */
+
 int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 			 enum pm_qos_req_action action, int value)
 {
 	unsigned long flags;
 	int prev_value, curr_value, new_value;
+
+	if (unlikely(c->initialized != 1))
+	{
+		mutex_init(&c->lock);
+		c->initialized =1;
+	}
+
+	mutex_lock(&c->lock);
 
 	spin_lock_irqsave(&pm_qos_lock, flags);
 	prev_value = pm_qos_get_value(c);
@@ -196,18 +235,18 @@ int pm_qos_update_target(struct pm_qos_constraints *c, struct plist_node *node,
 		/* no action */
 		;
 	}
-
 	curr_value = pm_qos_get_value(c);
 	pm_qos_set_value(c, curr_value);
-
 	spin_unlock_irqrestore(&pm_qos_lock, flags);
 
 	if (prev_value != curr_value) {
 		blocking_notifier_call_chain(c->notifiers,
 					     (unsigned long)curr_value,
 					     NULL);
+		mutex_unlock(&c->lock);
 		return 1;
 	} else {
+		mutex_unlock(&c->lock);
 		return 0;
 	}
 }
@@ -371,9 +410,10 @@ void pm_qos_update_request(struct pm_qos_request *req,
 	cancel_delayed_work_sync(&req->work);
 
 	if (new_value != req->node.prio)
-		pm_qos_update_target(
+		 pm_qos_update_target(
 			pm_qos_array[req->pm_qos_class]->constraints,
 			&req->node, PM_QOS_UPDATE_REQ, new_value);
+
 
 	__pm_qos_update_request(req, new_value);
 }

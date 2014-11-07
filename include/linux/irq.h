@@ -179,6 +179,7 @@ enum {
 	IRQD_IRQ_DISABLED		= (1 << 16),
 	IRQD_IRQ_MASKED			= (1 << 17),
 	IRQD_IRQ_INPROGRESS		= (1 << 18),
+	IRQD_GIC_BALANCING		= (1 << 23),
 };
 
 static inline bool irqd_is_setaffinity_pending(struct irq_data *d)

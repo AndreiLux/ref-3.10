@@ -1866,8 +1866,9 @@ void device_shutdown(void)
 		spin_unlock(&devices_kset->list_lock);
 
 		/* hold lock to avoid race with probe/release */
-		if (parent)
+		if (parent) {
 			device_lock(parent);
+		}
 		device_lock(dev);
 
 		/* Don't allow any more runtime suspends */

@@ -30,6 +30,13 @@
 #include <linux/of_gpio.h>
 #include <linux/spinlock.h>
 
+#include <linux/platform_data/gpio-odin.h>
+
+
+#define KEY_STATUS_RESUME	0
+#define KEY_STATUS_SUSPEND	1
+#define KEY_STATUS_QUEUE_WORK	2
+
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
 	struct input_dev *input;
@@ -40,6 +47,7 @@ struct gpio_button_data {
 	spinlock_t lock;
 	bool disabled;
 	bool key_pressed;
+	atomic_t status;
 };
 
 struct gpio_keys_drvdata {
@@ -329,6 +337,8 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 	unsigned int type = button->type ?: EV_KEY;
 	int state = (gpio_get_value_cansleep(button->gpio) ? 1 : 0) ^ button->active_low;
 
+	printk("[Key] Key event! code : %d, state - %d\n", button->code, state);
+
 	if (type == EV_ABS) {
 		if (state)
 			input_event(input, type, button->code, button->value);
@@ -362,13 +372,17 @@ static irqreturn_t gpio_keys_gpio_isr(int irq, void *dev_id)
 
 	BUG_ON(irq != bdata->irq);
 
-	if (bdata->button->wakeup)
-		pm_stay_awake(bdata->input->dev.parent);
-	if (bdata->timer_debounce)
-		mod_timer(&bdata->timer,
-			jiffies + msecs_to_jiffies(bdata->timer_debounce));
-	else
-		schedule_work(&bdata->work);
+	if (atomic_read(&bdata->status) == KEY_STATUS_SUSPEND) {
+		atomic_set(&bdata->status, KEY_STATUS_QUEUE_WORK);
+	} else {
+		if (bdata->button->wakeup)
+			pm_stay_awake(bdata->input->dev.parent);
+		if (bdata->timer_debounce)
+			mod_timer(&bdata->timer,
+					jiffies + msecs_to_jiffies(bdata->timer_debounce));
+		else
+			schedule_work(&bdata->work);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -451,9 +465,15 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 			error = gpio_set_debounce(button->gpio,
 					button->debounce_interval * 1000);
 			/* use timer if gpiolib doesn't provide debounce */
-			if (error < 0)
+			/*             
+                                                                  
+                                                   
+                           
+    */
+			//if (error < 0)
 				bdata->timer_debounce =
 						button->debounce_interval;
+			/*              */
 		}
 
 		irq = gpio_to_irq(button->gpio);
@@ -471,7 +491,9 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 			    gpio_keys_gpio_timer, (unsigned long)bdata);
 
 		isr = gpio_keys_gpio_isr;
-		irqflags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
+		irqflags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING | IRQF_NO_SUSPEND;
+
+		atomic_set(&bdata->status, KEY_STATUS_RESUME);
 
 	} else {
 		if (!button->irq) {
@@ -502,7 +524,14 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 	if (!button->can_disable)
 		irqflags |= IRQF_SHARED;
 
-	error = request_any_context_irq(bdata->irq, isr, irqflags, desc, bdata);
+	if (is_gic_direct_irq(bdata->irq) == 1) {
+		error = odin_gpio_sms_request_any_context_irq(bdata->irq,
+				isr, irqflags, desc, bdata);
+	}
+	else {
+		error = request_any_context_irq(bdata->irq, isr, irqflags, desc, bdata);
+	}
+
 	if (error < 0) {
 		dev_err(dev, "Unable to claim irq %d; error %d\n",
 			bdata->irq, error);
@@ -812,6 +841,7 @@ static int gpio_keys_suspend(struct device *dev)
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
+			atomic_set(&bdata->status, KEY_STATUS_SUSPEND);
 			if (bdata->button->wakeup)
 				enable_irq_wake(bdata->irq);
 		}
@@ -835,6 +865,16 @@ static int gpio_keys_resume(struct device *dev)
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
 			struct gpio_button_data *bdata = &ddata->data[i];
+			if (atomic_read(&bdata->status) == KEY_STATUS_QUEUE_WORK) {
+				if (bdata->button->wakeup)
+					pm_stay_awake(bdata->input->dev.parent);
+				if (bdata->timer_debounce)
+					mod_timer(&bdata->timer,
+							jiffies + msecs_to_jiffies(bdata->timer_debounce));
+				else
+					schedule_work(&bdata->work);
+			}
+			atomic_set(&bdata->status, KEY_STATUS_RESUME);
 			if (bdata->button->wakeup)
 				disable_irq_wake(bdata->irq);
 		}

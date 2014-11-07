@@ -1,0 +1,4 @@
+#LGE_KERNEL_MUX START
+ccflags-y	+= -DLGE_TS0710_MUX
+obj-$(CONFIG_LGE_KERNEL_MUX)     += ts0710_mux.o 
+#LGE_KERNEL_MUX END

@@ -1,0 +1,174 @@
+/*
+ * This file is for MADK v2.1
+ */
+
+/ {
+	connectivity {
+		wlan@0{
+			power_gpio = <120>;
+		};
+/* sdio start */
+		sdhci@0x20006000{
+			sdclk = <200>;			/* 200Mhz, UHS104*/
+		};
+/* sdio end */
+	};
+
+	gpio-keys {
+		button@1 {
+			gpios = <&gpio2 1 1>;
+		};
+		button@2 {
+			gpios = <&gpio2 2 1>;
+		};
+	};
+
+	soc {
+
+		spi@20011000{
+			ethernet@1{
+				irq_gpio = <5>;
+			};
+		};
+
+		max77807_pmic {
+			compatible = "maxim,max77807-pmic";
+			status = "disable";
+
+			charger {
+				compatible = "maxim,max77807-charger";
+				status = "disable";
+			};
+		};
+
+		max77807_peri {
+			compatible = "maxim,max77807-periph";
+			status = "disable";
+
+			vibrator {
+				compatible = "maxim,max77807-motor";
+				status = "disable";
+			};
+		};
+
+		 pmic1: d2260@48 {
+			regulators {
+				D2260_GPIOCTRL_1 {
+					regulator-name = "+1.8V_VT_CAM_IO";
+					regulator-enable-gpio = <173>;
+				};
+			};
+		};
+
+		i2c@20021000 {
+
+/* LGE_CHANGE_S
+ */
+			anx7808@72{
+				compatible = "analogix,anx7808";
+				status = "ok";
+				reg = <0x72>;
+				analogix,reset-gpio = <52>; /* PERI_G0_GPIO_BASE(0)+52 */
+				analogix,irq-gpio = <51>;   /* PERI_G0_GPIO_BASE(0)+51 */
+				analogix,p-dwn-gpio = <53>; /* PERI_G0_GPIO_BASE(0)+53 */
+				analogix,v10-ctrl-gpio = <31>;  /* PERI_G0_GPIO_BASE(0)+31 */
+				analogix,cbl-det-gpio = <142>;  /* SMS_GPIO_BASE(112)+30 */
+				lge,external-ldo-control = <0>; 
+			};  
+		};
+
+
+		i2c@20022800{
+/* LGE_CHANGE_S
+ */
+			lm3631@29 {
+				compatible = "ti,lm3631";
+				status = "ok";
+				reg = <0x29>;
+				ti,en-gpio = <30>;
+				ti,bl-en-gpio = <29>;
+
+                        regulators {
+                            compatible = "ti,lm3631-regulator";
+
+                            vboost {
+                                regulator-name = "lcd_boost";
+                                regulator-min-microvolt = <4500000>;
+                                regulator-max-microvolt = <6350000>;
+                                regulator-always-on;
+                            };
+
+                            vcont {
+                                regulator-name = "lcd_cont";
+                                regulator-min-microvolt = <1800000>;
+                                regulator-max-microvolt = <3300000>;
+                            };
+
+                            voref {
+                                regulator-compatible = "voref";
+                                regulator-name = "lcd_oref";
+                                regulator-min-microvolt = <4000000>;
+                                regulator-max-microvolt = <6000000>;
+                            };
+
+                            vpos {
+                                regulator-name = "lcd_vpos";
+                                regulator-min-microvolt = <4000000>;
+                                regulator-max-microvolt = <6000000>;
+                                regulator-always-on;
+                            };
+
+                            vneg {
+                                regulator-name = "lcd_vneg";
+                                regulator-min-microvolt = <4000000>;
+                                regulator-max-microvolt = <6000000>;
+                                regulator-always-on;
+                            };
+                        };
+
+				backlight {
+					compatible = "ti,lm3631-backlight";
+					bl-name = "lcd-backlight";
+					blmap_size = <256>;
+					initial-brightness = <1619>;
+					blmap = <
+						1 2 2 3 3 4 5 5 6 6 7 8 8 9 9 10 11 11 12 12 13 14 14
+						15 15 16 17 17 18 18 19 20 20 21 21 22 23 23 24 24 25 26
+						26 27 27 28 29 29 30 30 31 31 31 32 32 32 32 32 32 33 33
+						33 33 34 35 36 37 38 39 40 41 42 43 44 45 46 47 49 50 51
+						52 53 54 56 58 59 61 63 65 67 68 70 72 75 77 80 83 86 88
+						91 94 96 99 102 105 108 111 114 118 121 124 127 130 133 138
+						142 147 152 156 161 166 170 175 179 183 187 191 195 199 203
+						207 211 215 219 223 230 237 244 251 257 264 271 278 285 291
+						297 303 309 315 320 326 332 338 344 350 357 364 371 378 385
+						392 399 406 413 420 428 436 445 453 461 469 477 485 494 502
+						510 521 532 543 554 566 577 588 599 610 620 630 640 650 660
+						670 680 690 700 710 721 732 743 754 765 775 786 797 808 819
+						830 842 854 865 877 889 901 913 925 936 948 960 975 990 1005
+						1020 1035 1050 1065 1080 1095 1110 1124 1138 1152 1166 1180
+						1194 1208 1222 1236 1250 1268 1285 1303 1320 1338 1355 1373
+						1390 1408 1425 1447 1468 1490 1511 1533 1554 1576 1597 1619>;
+					full-strings-used;
+				};
+			};
+/* LGE_CHANGE_E */
+                    atmel_s540@4a{
+                        atmel,reset-gpio = <147>;
+                    };
+		};
+
+		max77819_peri {
+			compatible = "maxim,max77819-periph";
+
+			backlight {
+				compatible = "maxim,max77819-wled";
+				status = "disable";
+			};
+		};
+	};
+
+	sdhci@0x2000A000{
+		sdc_cd_gpio = <146>;
+	};
+
+};

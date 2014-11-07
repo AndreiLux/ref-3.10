@@ -94,18 +94,34 @@ obj-$(CONFIG_UCB1400_CORE)	+= ucb1400_core.o
 
 obj-$(CONFIG_PMIC_DA903X)	+= da903x.o
 
+obj-$(CONFIG_MFD_D2260)		+= d2260-core.o d2260-ipc.o d2260-irq.o
 obj-$(CONFIG_PMIC_DA9052)	+= da9052-irq.o
 obj-$(CONFIG_PMIC_DA9052)	+= da9052-core.o
 obj-$(CONFIG_MFD_DA9052_SPI)	+= da9052-spi.o
 obj-$(CONFIG_MFD_DA9052_I2C)	+= da9052-i2c.o
+
+obj-$(CONFIG_MFD_DA906X)   += da906x-core.o da906x-irq.o da906x-ipc.o
+obj-$(CONFIG_MFD_DA9066)   += da9066-core.o da9066-irq.o da9066-ipc.o
 
 obj-$(CONFIG_MFD_LP8788)	+= lp8788.o lp8788-irq.o
 
 da9055-objs			:= da9055-core.o da9055-i2c.o
 obj-$(CONFIG_MFD_DA9055)	+= da9055.o
 
+obj-$(CONFIG_MFD_MAX77235)	+= max77235.o
+obj-$(CONFIG_MFD_MAX77525)	+= max77525.o
+obj-$(CONFIG_MFD_MAX77665)  += max77665.o
+EXTRA_CFLAGS    += -DCONFIG_MACH_ODIN_HDK
+
 obj-$(CONFIG_MFD_MAX77686)	+= max77686.o max77686-irq.o
 obj-$(CONFIG_MFD_MAX77693)	+= max77693.o max77693-irq.o
+
+# LGE_CHANGE_S
+obj-$(CONFIG_MFD_LM3631)	+= lm3631.o
+# LGE_CHANGE_E
+
+obj-$(CONFIG_MFD_MAX77819)	+= max77819.o
+obj-$(CONFIG_MFD_MAX77807)	+= max77807.o
 obj-$(CONFIG_MFD_MAX8907)	+= max8907.o
 max8925-objs			:= max8925-core.o max8925-i2c.o
 obj-$(CONFIG_MFD_MAX8925)	+= max8925.o
@@ -156,3 +172,4 @@ obj-$(CONFIG_VEXPRESS_CONFIG)	+= vexpress-config.o vexpress-sysreg.o
 obj-$(CONFIG_VEXPRESS_SPC)	+= vexpress-spc.o
 obj-$(CONFIG_MFD_RETU)		+= retu-mfd.o
 obj-$(CONFIG_MFD_AS3711)	+= as3711.o
+obj-$(CONFIG_MFD_LM3631)	+= lm3631.o

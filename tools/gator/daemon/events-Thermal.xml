@@ -1,0 +1,9 @@
+  <category name="OdinThermal">
+	<event counter="Thermal_temp0" title="Odin Thermal" name="Temperature0: TS0" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor0"/>
+	<event counter="Thermal_temp1" title="Odin Thermal" name="Temperature1: TS1" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor1"/>
+	<event counter="Thermal_temp2" title="Odin Thermal" name="Temperature2: TS2" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor2"/>
+	<event counter="Thermal_temp3" title="Odin Thermal" name="Temperature3: TS3" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor3"/>
+	<event counter="Thermal_temp4" title="Odin Thermal" name="Temperature4: TS4" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor4"/>
+	<event counter="Thermal_temp5" title="Odin Thermal" name="Temperature5: TS5" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor5"/>
+	<event counter="Thermal_temp6" title="Odin Thermal" name="Temperature6: TS6" display="maximum" units="°C" average_selection="yes" description="Temperature of the Thermal Sensor6"/>
+  </category>

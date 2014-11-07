@@ -239,6 +239,12 @@ int __mcpm_cluster_state(unsigned int cluster)
 	return mcpm_sync.clusters[cluster].cluster;
 }
 
+int __mcpm_cpu_state(unsigned int cpu, unsigned int cluster)
+{
+	sync_cache_r(&mcpm_sync.clusters[cluster].cpus[cpu].cpu);
+	return mcpm_sync.clusters[cluster].cpus[cpu].cpu;
+}
+
 extern unsigned long mcpm_power_up_setup_phys;
 
 int __init mcpm_sync_init(

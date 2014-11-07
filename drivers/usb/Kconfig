@@ -11,6 +11,7 @@ config USB_ARCH_HAS_EHCI
 
 config USB_ARCH_HAS_XHCI
 	bool
+	default y if ARCH_ODIN
 
 menuconfig USB_SUPPORT
 	bool "USB support"
@@ -29,6 +30,7 @@ config USB_COMMON
 
 config USB_ARCH_HAS_HCD
 	def_bool y
+	default y if ARCH_ODIN
 
 # ARM SA1111 chips have a non-PCI based "OHCI-compatible" USB host interface.
 config USB
@@ -137,5 +139,7 @@ endif # USB
 source "drivers/usb/phy/Kconfig"
 
 source "drivers/usb/gadget/Kconfig"
+
+source "drivers/usb/host/odin_hsusb/Kconfig"
 
 endif # USB_SUPPORT

@@ -1,0 +1,157 @@
+config SND_SOC_ODIN_AUDIO_POWER_CLOCK
+    tristate "SoC Audio of power and clock driver for the Odin System-on-Chip"
+    depends on ARCH_ODIN
+
+config SND_SOC_ODIN_HDMI_ASAMPLE
+    tristate "Odin HDMI alink driver sample"
+
+config SND_SOC_ODIN_UTILS
+    bool "Odin ASoC utils"
+
+config SND_SOC_ODIN_HW_SEMAPHORE_DRIVER
+    bool "Odin HW Semaphore driver"
+
+config SND_SOC_ODIN_AUDIO_SEMAPHORE_MODULE
+    tristate "Audio Semaphore Mudule device driver"
+    select SND_SOC_ODIN_HW_SEMAPHORE_DRIVER
+
+config SND_SOC_ODIN_PCM_DRAM
+    tristate "Pcm buffers are located to main ram"
+
+config SND_SOC_ODIN_PCM_SRAM
+    tristate "Pcm buffers are located to audio static ram(=dsp ram)"
+
+config SND_SOC_WODEN
+    tristate "SoC Audio for the Woden System-on-Chip"
+    depends on ARCH_WODEN && WODEN_DMA
+    help
+      Say Y or M here if you want support for SoC audio on Woden.
+
+config SND_SOC_ODIN
+    tristate "SoC Audio for the Odin System-on-Chip"
+    depends on ARCH_ODIN
+    select SND_SOC_DMAENGINE_PCM
+    select SND_SOC_ODIN_PCM_DRAM
+    select SND_SOC_ODIN_PCM_SRAM
+    select SND_SOC_ODIN_AUDIO_POWER_CLOCK
+    help
+      Say Y or M here if you want support for SoC audio on Odin.
+
+config SND_SOC_WODEN_I2S
+    tristate "Woden I2S driver"
+    depends on SND_SOC_WODEN
+    help
+      Say Y or M if you want to add support for codecs attached to the
+      Woden I2S interface. You will also need to select the individual
+      machine drivers to support below.
+
+config SND_SOC_ODIN_MI2S
+    tristate "Odin Multi I2S driver"
+    depends on SND_SOC_ODIN
+    help
+      Say Y or M if you want to add support for codecs attached to the
+      Odin I2S interface. You will also need to select the individual
+      machine drivers to support below.
+
+config SND_SOC_ODIN_SI2S
+    tristate "Odin Single I2S driver"
+    depends on SND_SOC_ODIN
+    help
+      Say Y or M if you want to add support for codecs attached to the
+      Odin I2S interface. You will also need to select the individual
+      machine drivers to support below.
+
+config SND_SOC_ODIN_ALSA_DSP
+    tristate "SoC Audio for the Odin System-on-Chip with DSP"
+    help
+      Say Y or M here if you want support for SoC audio on ODIN with DSP
+
+config SND_SOC_ODIN_ALSA_DSP_EXT
+    tristate "Odin DSP external driver"
+    depends on SND_SOC_ODIN_ALSA_DSP
+    help
+      Say Y or M here if you want support for DSP external driver
+
+config SND_SOC_WODEN_WM8580
+    tristate "SoC Audio support for Woden fpga boards using a WM8580 codec"
+    depends on SND_SOC_WODEN && I2C
+    select SND_SOC_WODEN_I2S
+    select SND_SOC_WM8580
+    help
+      Say Y or M here if you want to add support for SoC audio on Woden
+      boards using the WM8580 codec. Currently, the supported boards are
+      EVB, HDK.
+
+config SND_SOC_WODEN_WM5102
+    tristate "SoC Audio support for Woden hdk boards using a WM5102 codec"
+    depends on SND_SOC_WODEN && I2C
+    select SND_SOC_WODEN_I2S
+    select SND_SOC_WM5102
+    help
+      Say Y or M here if you want to add support for SoC audio on Woden
+      boards using the WM8580 codec. Currently, the supported boards are
+      EVB, HDK.
+
+config SND_SOC_ODIN_FPGA_WM5102
+    tristate "SoC Audio support for Odin FPGA board using a WM5102 codec"
+    depends on SND_SOC_ODIN && I2C
+    select SND_SOC_ODIN_UTILS
+    select SND_SOC_ODIN_SI2S
+    select SND_SOC_WM5102
+    help
+      Say Y or M here if you want to add support for SoC audio on Odin
+      fpga board using the WM5102 codec.
+
+config SND_SOC_ODIN_MADK_WM5102
+    tristate "SoC Audio support for Odin MADK board using a WM5102 codec"
+    depends on SND_SOC_ODIN && I2C
+    select SND_SOC_ODIN_UTILS
+    select SND_SOC_ODIN_SI2S
+    select SND_SOC_WM5102
+    help
+      Say Y or M here if you want to add support for SoC audio on Odin
+      madk board using the WM5102 codec.
+
+config SND_SOC_ODIN_DSP_WM5102
+    tristate "SoC Audio support for Odin board using a WM5102 codec with DSP"
+    depends on I2C
+    depends on SND_SOC_ODIN_ALSA_DSP
+    select SND_SOC_ODIN_UTILS
+    select SND_SOC_WM5102
+    help
+      Say Y or M here if you want to add support for SoC audio on Odin
+      board using the WM5102 codec with DSP.
+
+config SND_SOC_ODIN_RT5671
+    tristate "SoC Audio support for odin hdk boards using a alc5671 codec"
+    depends on SND_SOC_ODIN && I2C
+    select SND_SOC_ODIN_UTILS
+    select SND_SOC_ODIN_SI2S
+    select SND_SOC_RT5671
+    help
+      Say Y or M here if you want to add support for SoC audio on Odin hdk
+      boards using the rt5671 codec. Currently, the supported boards are
+      EVB, HDK.
+
+config SND_SOC_ODIN_MADK_HDMI
+    tristate "SoC Audio support for Odin MADK board using the HDMI"
+    depends on SND_SOC_ODIN
+    select SND_SOC_ODIN_UTILS
+    select SND_SOC_ODIN_MI2S
+    select SND_SOC_ODIN_HDMI_CODEC
+    help
+      Say Y or M here if you want to add support for SoC audio on Odin
+      madk board using the external HDMI chip or the inner HDMI IP.
+
+config SND_SOC_SI2S_TO_MI2S_IO
+    bool "SI2S I/O funcs can change to MI2S"
+    depends on SND_SOC_ODIN_MADK_HDMI
+
+config SND_SOC_ODIN_COMPR
+	tristate "SoC Compress ALSA audio driver for DSP"
+    help
+     To add support for Odin Soc Compress Audio.
+     This will enable sound soc platform specific
+     audio drivers. This includes tensilica DSP
+	 to DSP using apr.
+

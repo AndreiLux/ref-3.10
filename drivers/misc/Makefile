@@ -36,6 +36,7 @@ obj-$(CONFIG_SENSORS_TSL2550)	+= tsl2550.o
 obj-$(CONFIG_EP93XX_PWM)	+= ep93xx_pwm.o
 obj-$(CONFIG_DS1682)		+= ds1682.o
 obj-$(CONFIG_TI_DAC7512)	+= ti_dac7512.o
+obj-$(CONFIG_UID_STAT)		+= uid_stat.o
 obj-$(CONFIG_C2PORT)		+= c2port/
 obj-$(CONFIG_HMC6352)		+= hmc6352.o
 obj-y				+= eeprom/
@@ -53,3 +54,30 @@ obj-$(CONFIG_INTEL_MEI)		+= mei/
 obj-$(CONFIG_VMWARE_VMCI)	+= vmw_vmci/
 obj-$(CONFIG_LATTICE_ECP3_CONFIG)	+= lattice-ecp3-config.o
 obj-$(CONFIG_SRAM)		+= sram.o
+# LGE_CHANGE_S
+obj-$(CONFIG_SLIMPORT_ANX7808)	+= slimport_anx7808/
+obj-$(CONFIG_SLIMPORT_ANX7812)	+= slimport_anx7812/
+# LGE_CHANGE_E
+
+# LGE_CHANGE_S
+obj-$(CONFIG_MUIC_MAX77665)	+= max77665-muic.o
+EXTRA_CFLAGS	+= -DCONFIG_MACH_ODIN_HDK
+# LGE_CHANGE_E
+obj-$(CONFIG_MACH_ODIN) += odin_panic.o
+
+obj-$(CONFIG_BU52031NVX) += pm8xxx-cradle.o
+
+# LGE_CHANGE_S
+obj-$(CONFIG_LGE_KERNEL_MUX)	+= ts0710mux/
+# LGE_CHANGE_E
+# LGE_CHANGE_S
+obj-$(CONFIG_LGE_IRRC)	+= lge_uei_irrc.o
+# LGE_CHANGE_E
+# LGE_CHANGE_S
+obj-$(CONFIG_MFD_MAX77807)	+= max77807-muic.o
+#LGE_CHANGE_E
+obj-$(CONFIG_MACH_ODIN_LIGER)	+= devices_lge.o
+obj-$(CONFIG_SENSORS_HSPPAD030)	+= hsppad030.o
+obj-$(CONFIG_SENSORS_APDS993X)	+= apds993x.o
+
+obj-$(CONFIG_TSPDRV) +=tspdrv/

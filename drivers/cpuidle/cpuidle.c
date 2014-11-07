@@ -314,6 +314,13 @@ int cpuidle_enable_device(struct cpuidle_device *dev)
 	for (i = 0; i < dev->state_count; i++) {
 		dev->states_usage[i].usage = 0;
 		dev->states_usage[i].time = 0;
+#if defined(CONFIG_ODIN_OPTIMIZE_BOOTING_TIME)
+#ifdef CONFIG_CPU_IDLE_ODIN_WORKAROUND
+		dev->states_usage[i].disable++;
+#else
+		dev->states_usage[i].disable = 1;
+#endif
+#endif
 	}
 	dev->last_residency = 0;
 
@@ -466,7 +473,7 @@ void cpuidle_unregister(struct cpuidle_driver *drv)
 	int cpu;
 	struct cpuidle_device *device;
 
-	for_each_possible_cpu(cpu) {
+	for_each_cpu(cpu, drv->cpumask) {
 		device = &per_cpu(cpuidle_dev, cpu);
 		cpuidle_unregister_device(device);
 	}
@@ -498,7 +505,7 @@ int cpuidle_register(struct cpuidle_driver *drv,
 		return ret;
 	}
 
-	for_each_possible_cpu(cpu) {
+	for_each_cpu(cpu, drv->cpumask) {
 		device = &per_cpu(cpuidle_dev, cpu);
 		device->cpu = cpu;
 

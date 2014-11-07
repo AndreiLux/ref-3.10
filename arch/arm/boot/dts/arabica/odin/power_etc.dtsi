@@ -1,0 +1,615 @@
+/*
+ * LG Electronics Odin
+ */
+
+/{
+    soc {
+        compatible = "simple-bus";
+  		interrupt-parent = <&gic>;
+   	    #address-cells = <2>;
+   	    #size-cells = <2>;
+		ranges;
+
+		ipc@200FF000{
+			compatible = "arm,pl320","arm,primecell";
+			reg = <0 0x200FF000 0 0x1000>;
+			interrupts = <0 157 0x4>;
+			arm,primecell-periphid = <0x000BB320>;
+		};
+
+		/* thermal start */
+		thermal@200F5000{
+			compatible = "LG,odin-tmu";
+			reg = <0 0x200F5000 0 0x1000>;
+		};
+		/* thermal end */
+
+		dx_pe@36000000 {
+			compatible = "dx,pe";
+			reg = <0 0x36040000 0 0x4000>;
+			interrupts = <0 71 0x004>;
+		};
+
+		/* Power key */
+		powerkey@200f4030 {
+			compatible = "LG,odin-pwrkey";
+			reg = <0 0x200F4030 0 0x8>;
+		};
+
+		/* Battery Max17047 start */
+		max77665_fg {
+			compatible = "maxim,max77665_fg_ipc";
+			num_gpio = <116>;
+			capacity = <0x1068>;
+			vf-fullcap = <0x1068>;
+		};
+
+		/* PMIC DIALOG DA9063/DA9210 Start */
+		da906x {
+			compatible = "LG,odin-da906x-pmic";
+			num_gpio = <117>;
+			da9210 = <0>;
+
+			regulators {
+				vbuck1_da906x: DA9063_BCORE1 {
+					regulator-name = "+1.2V_VDD_LPDDRIO";
+					regulator-max-microvolt = <1570000>;
+					regulator-min-microvolt = <300000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck2_da906x: DA9063_BCORE2 {
+					regulator-name = "+0.9V_VDD_CORE";
+					regulator-max-microvolt = <1570000>;
+					regulator-min-microvolt = <300000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck3_da906x: DA9063_BPRO {
+					regulator-name = "+1.2V_VDD_LPDDR_AO";
+					regulator-max-microvolt = <1800000>;
+					regulator-min-microvolt = <530000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck4_da906x: DA9063_BMEM {
+					regulator-name = "+1.8V_VDD_SYS";
+					regulator-max-microvolt = <3340000>;
+					regulator-min-microvolt = <800000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck5_da906x: DA9063_BIO {
+					regulator-name = "+1.8V_VDDIO_AO";
+					regulator-max-microvolt = <3340000>;
+					regulator-min-microvolt = <800000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck6_da906x: DA9063_BPERI {
+					regulator-name = "+0.9V_VDD_CA7_CACHE";
+					regulator-max-microvolt = <3340000>;
+					regulator-min-microvolt = <800000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				ldo1_da906x: DA9063_LDO1 {
+					regulator-name = "+1.8V_VDD_LPDDR_CORE";
+					regulator-max-microvolt = <1860000>;
+					regulator-min-microvolt = <600000>;
+					regulator-always-on;
+				};
+				ldo2_da906x: DA9063_LDO2 {
+					regulator-name = "+0.9V_VDD_NAND";
+					regulator-max-microvolt = <1860000>;
+					regulator-min-microvolt = <600000>;
+					regulator-always-on;
+				};
+				ldo3_da906x: DA9063_LDO3 {
+					regulator-name = "+1.8V_AVDDPLL_SMS";
+					regulator-max-microvolt = <3440000>;
+					regulator-min-microvolt = <900000>;
+					regulator-always-on;
+				};
+				ldo4_da906x: DA9063_LDO4 {
+					regulator-name = "+0.9V_HDMI_VP";
+					regulator-max-microvolt = <3440000>;
+					regulator-min-microvolt = <900000>;
+				};
+				ldo5_da906x: DA9063_LDO5 {
+					regulator-name = "+0.9V_VDD_SMS";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+					regulator-always-on;
+				};
+				ldo6_da906x: DA9063_LDO6 {
+					regulator-name = "+3.0V_VDDIO_SDIO";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+				};
+				ldo7_da906x: DA9063_LDO7 {
+					regulator-name = "+3.3V_AVDD_USBPHYIO";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+					regulator-always-on;
+				};
+				ldo8_da906x: DA9063_LDO8 {
+					regulator-name = "+0.9V_AVDD_USBPHY";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+					regulator-always-on;
+				};
+				ldo9_da906x: DA9063_LDO9 {
+					regulator-name = "+1.8V_AVDDPLL_CORE_TS";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+					regulator-always-on;
+				};
+				ldo10_da906x: DA9063_LDO10 {
+					regulator-name = "+3.0V_VDDF_NAND";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+					regulator-always-on;
+				};
+				ldo11_da906x: DA9063_LDO11 {
+					regulator-name = "+0.9V_AVDD_MPHY_LLI";
+					regulator-max-microvolt = <3660000>;
+					regulator-min-microvolt = <900000>;
+				};
+/*
+				vbuck_da906x: DA9210_BUCK {
+					regulator-name = "+0.9V_VDD_CA15";
+					regulator-max-microvolt = <1570000>;
+					regulator-min-microvolt = <300000>;
+					regulator-always-on;
+				};
+*/
+			};
+		};
+		/* PMIC DIALOG DA9063/DA9210 END */
+
+		/* PMIC DIALOG DA9066 START */
+		da9066 {
+			compatible = "LG,odin-da9066-pmic";
+			num_gpio = <151>;
+
+			regulators {
+				vbuck1_da9066: DA9066_BUCK_1 {
+					regulator-name = "+0.9V_VDD_GPU";
+					regulator-max-microvolt = <1393750>;
+					regulator-min-microvolt = <600000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck2_da9066: DA9066_BUCK_2 {
+					regulator-name = "+0.9V_VDD_AV";
+					regulator-max-microvolt = <2075000>;
+					regulator-min-microvolt = <500000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck3_da9066: DA9066_BUCK_3 {
+					regulator-name = "+0.9V_VDD_CSS";
+					regulator-max-microvolt = <2075000>;
+					regulator-min-microvolt = <500000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck4_da9066: DA9066_BUCK_4 {
+					regulator-name = "+1.8V_VDD_CSS_CAM_IO";
+					regulator-max-microvolt = <2075000>;
+					regulator-min-microvolt = <500000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck5_da9066: DA9066_BUCK_5 {
+					regulator-name = "+1.05V_CAM_DVDD";
+					regulator-max-microvolt = <2075000>;
+					regulator-min-microvolt = <500000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vbuck6_da9066: DA9066_BUCK_6 {
+					regulator-name = "+2.5V_PRE_REG";
+					regulator-max-microvolt = <2075000>;
+					regulator-min-microvolt = <500000>;
+					regulator-boot-on;
+					regulator-always-on;
+				};
+				vldo1_da9066: DA9066_LDO_1 {
+					regulator-name = "LDO1_DNI";
+					regulator-max-microvolt = <3100000>;
+					regulator-min-microvolt = <1000000>;
+				};
+				vldo2_da9066: DA9066_LDO_2 {
+					regulator-name = "+1.2V_VTCAM_DVDD";
+					regulator-max-microvolt = <3100000>;
+					regulator-min-microvolt = <1000000>;
+					regulator-always-on;
+				};
+				vldo3_da9066: DA9066_LDO_3 {
+					regulator-name = "+1.8V_LCD_IOVCC";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo4_da9066: DA9066_LDO_4 {
+					regulator-name = "+1.8V_AVDD_MPHY_LLI";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+				vldo5_da9066: DA9066_LDO_5 {
+					regulator-name = "+3.0V_VDD_uSD";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo6_da9066: DA9066_LDO_6 {
+					regulator-name = "+3.0V_SENSOR_AVDD";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo7_da9066: DA9066_LDO_7 {
+					regulator-name = "+1.8V_SENSOR_DVDD";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo8_da9066: DA9066_LDO_8 {
+					regulator-name = "+3.0V_VDD_MOTOR";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+				vldo9_da9066: DA9066_LDO_9 {
+					regulator-name = "+1.8V_AVDD_DPHY";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo10_da9066: DA9066_LDO_10 {
+					regulator-name = "+1.8V_TOUCH_IOVCC";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo11_da9066: DA9066_LDO_11 {
+					regulator-name = "+1.2V_VDDIO_USBHSIC";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+				vldo12_da9066: DA9066_LDO_12 {
+					regulator-name = "+1.8V_MAIN_CAM_AVDD";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo13_da9066: DA9066_LDO_13 {
+					regulator-name = "+3.3V_TOUCH_AVCC";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo14_da9066: DA9066_LDO_14 {
+					regulator-name = "+1.2V_TO_1V8_TEMP1";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo15_da9066: DA9066_LDO_15 {
+					regulator-name = "+2.8V_CAM_AVDD";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo16_da9066: DA9066_LDO_16 {
+					regulator-name = "LDO16_DNI";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+				vldo17_da9066: DA9066_LDO_17 {
+					regulator-name = "+2.8V_VTCAM_AVDD";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+					regulator-always-on;
+				};
+				vldo18_da9066: DA9066_LDO_18 {
+					regulator-name = "+3.3V_USB_REDRIVER";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+				vldo19_da9066: DA9066_LDO_19 {
+					regulator-name = "+1.2V_TO_3V3_TEMP2";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+				vldo20_da9066: DA9066_LDO_20 {
+					regulator-name = "+1.2V_TO_3V3_TEMP3";
+					regulator-max-microvolt = <3300000>;
+					regulator-min-microvolt = <1200000>;
+				};
+			};
+		};
+
+		/* PMIC MAXIM Start */
+		max77235 {
+			compatible = "LG,odin-max77235-pmic";
+			gpio_num = <117>;
+
+			max77235,pmic-buck2-uses-gpio-dvs;
+			max77235,pmic-buck3-uses-gpio-dvs;
+			max77235,pmic-buck4-uses-gpio-dvs;
+
+			//max77235,pmic-buck234-default-dvs-gpio-idx = <1>;
+
+			regulators{
+				vldo_reg: LDO1 {
+					regulator-name = "+1.2V_VDDIO_USBHSIC";
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <1200000>;
+					opmode = "on";
+					};
+				vldo2_reg: LDO2 {
+					regulator-name = "+1.3V_VDD_LPDDRIO";
+					regulator-min-microvolt = <1300000>;
+					regulator-max-microvolt = <1300000>;
+					on-by-pwrreq;
+					};
+				vldo3_reg: LDO3 {
+					regulator-name = "+1.8V_AVDDPLL_SMS";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo4_reg: LDO4 {
+					regulator-name = "+3.0V_VDDF_NAND";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					opmode = "on";
+					};
+				vldo5_reg: LDO5 {
+					regulator-name = "+1.8V_LPDDR_CORE";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo6_reg: LDO6 {
+					regulator-name = "+1.8V_AVDDPLL_CORE_TS";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					};
+				vldo7_reg: LDO7 {
+					regulator-name = "+1.8V_VDDIO_SMS";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo8_reg: LDO8 {
+					regulator-name = "+1.2V_CAM_DVDD";
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <1200000>;
+					opmode = "on";
+					};
+				vldo9_reg: LDO9 {
+					regulator-name = "+0.9V_VDD_SMS";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <900000>;
+					on-by-pwrreq;
+					};
+				vldo10_reg: LDO10 {
+					regulator-name = "+1.8V_VDD_DPHY_DSS";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo11_reg: LDO11 {
+					regulator-name = "+1.8V_AVDD_MPHY_LLI";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo12_reg: LDO12 {
+					regulator-name = "+3.0V_VDDIO_SDIO";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					on-by-pwrreq;
+					};
+				vldo13_reg: LDO13 {
+					regulator-name = "+1.8V_CAM_VDDIO";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo14_reg: LDO14 {
+					regulator-name = "+1.8V_AVDDPLL_AUD";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					opmode = "on";
+					};
+				vldo15_reg: LDO15 {
+					regulator-name = "+1.2V_VTCAM_DVDD";
+					regulator-min-microvolt = <1200000>;
+					regulator-max-microvolt = <1200000>;
+					opmode = "on";
+					};
+				vldo17_reg: LDO17 {
+					regulator-name = "+0.9V_VDD_NAND";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <900000>;
+					on-by-pwrreq;
+					};
+				vldo18_reg: LDO18 {
+					regulator-name = "+1.8V_TOUCH_IOVCC";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo19_reg: LDO19 {
+					regulator-name = "+0.9V_AVDDPLL_AUD";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <900000>;
+					opmode = "on";
+					};
+				vldo20_reg: LDO20 {
+					regulator-name = "+1.8V_SENSOR_DVDD";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					opmode = "on";
+					};
+				vldo21_reg: LDO21 {
+					regulator-name = "+3.3V_TOUCH_AVCC";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					on-by-pwrreq;
+					};
+				vldo23_reg: LDO23 {
+					regulator-name = "+2.8V_CAM_AVDD";
+					regulator-min-microvolt = <2800000>;
+					regulator-max-microvolt = <2800000>;
+					opmode = "on";
+					};
+				vldo24_reg: LDO24 {
+					regulator-name = "+3.3V_AVDD_USB30PHYIO";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					on-by-pwrreq;
+					};
+				vldo25_reg: LDO25 {
+					regulator-name = "+3.0V_SENSOR_AVDD";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					opmode = "on";
+					};
+				vldo26_reg: LDO26 {
+					regulator-name = "+3.3V_VDD_RGB_LCD";
+					regulator-min-microvolt = <3300000>;
+					regulator-max-microvolt = <3300000>;
+					on-by-pwrreq;
+					};
+				vldo27_reg: LDO27 {
+					regulator-name = "+0.9V_HDMI_VP";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <900000>;
+					on-by-pwrreq;
+					};
+				vldo28_reg: LDO28 {
+					regulator-name = "+1.8V_LCD_IOVCC";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					on-by-pwrreq;
+					};
+				vldo29_reg: LDO29 {
+					regulator-name = "+1.8V_MAIN_CAM_VCM";
+					regulator-min-microvolt = <1800000>;
+					regulator-max-microvolt = <1800000>;
+					opmode = "on";
+					};
+				vldo30_reg: LDO30 {
+					regulator-name = "+0.9V_AVDD_USB30PHY";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <900000>;
+					on-by-pwrreq;
+					};
+				vldo32_reg: LDO32 {
+					regulator-name = "+3.0V_VDD_uSD";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					on-by-pwrreq;
+					};
+				vldo33_reg: LDO33 {
+					regulator-name = "+3.0V_VDD_MOTOR";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					opmode = "on";
+					};
+				vldo34_reg: LDO34 {
+					regulator-name = "+2.8V_VTCAM_AVDD";
+					regulator-min-microvolt = <3000000>;
+					regulator-max-microvolt = <3000000>;
+					opmode = "on";
+					};
+				vldo35_reg: LDO35 {
+					regulator-name = "+0.9V_AVDD_MPHY_LLI";
+					regulator-min-microvolt = <900000>;
+					regulator-max-microvolt = <900000>;
+					opmode = "off";
+					};
+				vbuck1_reg: BUCK1DVS1 {
+					regulator-name = "+0.9V_VDD_CA7";
+					regulator-max-microvolt = <900000>;
+					regulator-min-microvolt = <900000>;
+					regulator-sense = "remote-output-voltage-sense";
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				vbuck2_reg: BUCK2DVS1 {
+					regulator-name = "+0.9V_VDD_CA15";
+					regulator-max-microvolt = <900000>;
+					regulator-min-microvolt = <900000>;
+					regulator-sense = "remote-output-voltage-sense";
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				vbuck3_reg: BUCK3DVS1 {
+					regulator-name = "+0.9V_VDD_CORE";
+					regulator-max-microvolt = <900000>;
+					regulator-min-microvolt = <900000>;
+					regulator-sense = "remote-output-voltage-sense";
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				vbuck4_reg: BUCK4DVS1 {
+					regulator-name = "+0.8V_VDD_GPU";
+					regulator-max-microvolt = <800000>;
+					regulator-min-microvolt = <800000>;
+					regulator-sense = "remote-output-voltage-sense";
+					regulator-always-on;
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				vbuck5_reg: BUCK5DVS1 {
+					regulator-name = "+1.2V_VDD_LPDDRIO_AO";
+					regulator-max-microvolt = <1300000>;
+					regulator-min-microvolt = <1300000>;
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				vbuck6_reg: BUCK6DVS1 {
+					regulator-name = "+1.8V_VDD_SYS";
+					regulator-max-microvolt = <1800000>;
+					regulator-min-microvolt = <1800000>;
+					regulator-always-on;
+					opmode = "on";
+					};
+				vbuck7_reg: BUCK7DVS1 {
+					regulator-name = "+0.9V_VDD_CSS";
+					regulator-max-microvolt = <900000>;
+					regulator-min-microvolt = <900000>;
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				vbuck8_reg: BUCK8DVS1 {
+					regulator-name = "+0.9V_VDD_AV";
+					regulator-max-microvolt = <900000>;
+					regulator-min-microvolt = <900000>;
+					regulator-pwm = "forced-pwm";
+					opmode = "on";
+					};
+				};
+			clock {
+				low-jitter-mode;
+				};
+			rtc {
+				smpl = <500>;
+				wtsr = <500>;
+				};
+			misc {
+				power-hold-time = <500>;
+				manual-reset-time = <5>;
+				backup-battery-resistor = <3>;
+				backup-battery-voltage = <3500>;
+				backup-battery-current = <800>;
+			};
+		};
+	};
+};

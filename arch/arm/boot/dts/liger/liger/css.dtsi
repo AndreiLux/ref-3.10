@@ -1,0 +1,149 @@
+/*
+ * LG Electronics Odin
+ */
+/ {
+    css {
+        compatible = "simple-bus";
+  		interrupt-parent = <&gic>;
+   	    #address-cells = <2>;
+   	    #size-cells = <2>;
+        ranges;
+		lm3646,camera-led-flash {
+			status = "ok";
+			cell-index = <0>;
+			compatible = "lm3646,camera-led-flash-controller";
+			lm3646,flash-type = <1>;
+			lm3646,flash-source = <&lm3646_flash>;
+			lm3646,torch-source = <&lm3646_torch>;
+		};
+		vl6180@52 {
+			compatible = "lge,ldaf-vl6180";
+			reg = <0x52>;
+		};
+        camera {
+            status = "okay";
+       		name = "camera";
+            compatible = "mtekvision,camera";
+        };
+        system@330F0000 {
+            status = "okay";
+            compatible = "mtekvision,css-crg";
+            reg = <0 0x330F0000 0 0x900>;
+        };
+		i2c@330F5000 {
+			status = "okay";
+			compatible = "mtekvision,css-i2c";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0 0x330F5000 0 0x80>;
+			interrupts = <0 132 0x4>;
+			id = <10>;
+			y432a@34{
+				compatible = "lgit,y432a";
+				reg = <0x34>;
+			};
+		};
+		i2c@330F5080 {
+			status = "okay";
+			compatible = "mtekvision,css-i2c";
+			reg = <0 0x330F5080 0 0x80>;
+			interrupts = <0 133 0x4>;
+			id = <11>;
+		};
+		i2c@330F5100 {
+			status = "okay";
+			compatible = "mtekvision,css-i2c";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			reg = <0 0x330F5100 0 0x80>;
+			interrupts = <0 134 0x4>;
+			id = <12>;
+			y445a@6c{
+				compatible = "lgit,y445a";
+				reg = <0x6c>;
+			};
+		};
+        mipicsi2@330F2000 {
+            status = "okay";
+            compatible = "mtekvision,mipi-csi2";
+            reg = <0 0x330F2000 0 0x1000
+                   0 0x330F3000 0 0x1000
+                   0 0x330F4000 0 0x1000>;
+		    interrupts = <0 142 0x4>,<0 143 0x4>,<0 144 0x4>; 
+        };
+        frgb@330F7000 {
+            status = "okay";
+            compatible = "mtekvision,scaler";
+            reg = <0 0x330F7000 0 0x1000>;
+            interrupts = <0 139 0x4>;
+        };
+        isp@33000000 {
+            status = "okay";
+            compatible = "mtekvision,isp";
+            reg = <0 0x33000000 0 0x60000>;
+            interrupts = <0 145 0x4>,<0 146 0x4>,<0 147 0x4>;
+            id = <0>;
+        };
+        isp@33080000 {
+            status = "okay";
+            compatible = "mtekvision,isp";
+            reg = <0 0x33080000 0 0x60000>;
+            interrupts = <0 148 0x4>,<0 149 0x4>,<0 150 0x4>;
+            id = <1>;
+        };
+        ispwarp@330FA000 {
+            status = "okay";
+            compatible = "mtekvision,isp-wrap";
+            reg = <0 0x330FA000 0 0x1000>;
+            id = <0>;
+        };
+        ispwarp@330FB000 {
+            status = "okay";
+            compatible = "mtekvision,isp-wrap";
+            reg = <0 0x330FB000 0 0x1000>;
+            id = <1>;
+        };
+        mdis@330F8000 {
+            status = "okay";
+            compatible = "mtekvision,mdis";
+            reg = <0 0x330F8000 0 0x1000>;
+            interrupts = <0 140 0x4>;
+        };
+        fpd@33060000 {
+            status = "okay";
+            compatible = "mtekvision,facial-part-detection";
+            reg = <0 0x33060000 0 0x10000>;
+            interrupts = <0 137 0x4>;
+        };
+        fd@33070000 {
+            status = "okay";
+            compatible = "mtekvision,facedetection";
+            reg = <0 0x33070000 0 0x10000>;
+            interrupts = <0 136 0x4>;
+        };
+        jpgenc@330F6000 {
+            status = "okay";
+            compatible = "mtekvision,jpeg-encoder";
+            reg = <0 0x330F6000 0 0x1000>;
+            interrupts = <0 138 0x4>;
+        };
+        s3dc@330E0000 {
+            status = "disabled";
+            compatible = "mtekvision,s3d-creator";
+            reg = <0 0x330E0000 0 0x10000>;
+            interrupts = <0 141 0x4>;
+        };
+        tunner@330F9000 {
+            status = "disabled";
+            compatible = "mtekvision,tunner";
+            reg = <0 0x330F9000 0 0x1000>;
+        };
+    };
+
+    3dnr@330F1000 {
+        status = "okay";
+        compatible = "mtekvision,3dnr";
+        reg = <0 0x330F1000 0 0x1000>;
+        interrupts = <0 151 0x4>;
+    };
+};

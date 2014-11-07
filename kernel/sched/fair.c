@@ -1234,7 +1234,7 @@ struct hmp_global_attr {
 	ssize_t (*to_sysfs_text)(char *buf, int buf_size);
 };
 
-#define HMP_DATA_SYSFS_MAX 8
+#define HMP_DATA_SYSFS_MAX 14
 
 struct hmp_data_struct {
 #ifdef CONFIG_HMP_FREQUENCY_INVARIANT_SCALE
@@ -3587,10 +3587,12 @@ static enum hrtimer_restart hmp_cpu_keepalive_notify(struct hrtimer *hrtimer)
  * If there are any, set ns_delay to
  * ('target_residency of state with shortest too-big latency' - 1) * 1000.
  */
-static void hmp_keepalive_delay(unsigned int *ns_delay)
+static void hmp_keepalive_delay(int cpu, unsigned int *ns_delay)
 {
+	struct cpuidle_device *dev = per_cpu(cpuidle_devices, cpu);
 	struct cpuidle_driver *drv;
-	drv = cpuidle_driver_ref();
+
+	drv = cpuidle_get_cpu_driver(dev);
 	if (drv) {
 		unsigned int us_delay = UINT_MAX;
 		unsigned int us_max_delay = *ns_delay / 1000;
@@ -3609,7 +3611,6 @@ static void hmp_keepalive_delay(unsigned int *ns_delay)
 		else
 			*ns_delay = 1000 * (us_delay - 1);
 	}
-	cpuidle_driver_unref();
 }
 
 static void hmp_cpu_keepalive_trigger(void)
@@ -3623,7 +3624,7 @@ static void hmp_cpu_keepalive_trigger(void)
 				CLOCK_MONOTONIC, HRTIMER_MODE_REL_PINNED);
 		keepalive->timer.function = hmp_cpu_keepalive_notify;
 
-		hmp_keepalive_delay(&ns_delay);
+		hmp_keepalive_delay(cpu, &ns_delay);
 		keepalive->delay = ns_to_ktime(ns_delay);
 		keepalive->init = true;
 	}
@@ -3809,13 +3810,79 @@ static struct sched_entity *hmp_get_lightest_task(
  * hmp_packing_enabled: runtime control over pack/spread
  * hmp_full_threshold: Consider a CPU with this much unweighted load full
  */
-unsigned int hmp_up_threshold = 700;
-unsigned int hmp_down_threshold = 512;
+#define CONFIG_HMP_BOOST
+#define CONFIG_HMP_THERMAL
+#define CONFIG_HMP_DOWNBOOST
+#ifdef CONFIG_HMP_BOOST
+int hmp_boost_count;
+unsigned int hmp_boost_up_threshold = 1;
+unsigned int hmp_boost_down_threshold = 0;
+static DEFINE_RAW_SPINLOCK(hmp_boost_lock);
+#endif
+#ifdef CONFIG_HMP_THERMAL
+int hmp_thermal_count;
+unsigned int hmp_thermal_up_threshold = 870;
+unsigned int hmp_thermal_down_threshold = 600;
+static DEFINE_RAW_SPINLOCK(hmp_thermal_lock);
+#endif
+#ifdef CONFIG_HMP_DOWNBOOST
+int hmp_downboost_duration = 40000;
+#endif
+unsigned int hmp_up_threshold = 870;
+unsigned int hmp_down_threshold = 600;
+#ifdef CONFIG_MACH_ODIN_LIGER
+unsigned int hmp_force_fork = 1;
+#endif
 #ifdef CONFIG_SCHED_HMP_PRIO_FILTER
 unsigned int hmp_up_prio = NICE_TO_PRIO(CONFIG_SCHED_HMP_PRIO_FILTER_VAL);
 #endif
 unsigned int hmp_next_up_threshold = 4096;
 unsigned int hmp_next_down_threshold = 4096;
+
+#ifdef CONFIG_HMP_THERMAL
+int set_hmp_thermal(unsigned int value)
+{
+	unsigned int flags;
+
+	raw_spin_lock_irqsave(&hmp_thermal_lock, flags);
+
+	if (value > 1)
+		return -1;
+
+	if (value == 1) {
+		hmp_thermal_count++;
+	} else {
+		hmp_thermal_count--;
+		if (hmp_thermal_count < 0) {
+			hmp_thermal_count = 0;
+		}
+	}
+
+	raw_spin_unlock_irqrestore(&hmp_thermal_lock, flags);
+
+	return hmp_thermal_count;
+}
+
+int set_hmp_thermal_up_threshold(unsigned int value)
+{
+	if (value > 1024)
+		return -1;
+
+	hmp_thermal_up_threshold = value;
+
+	return value;
+}
+
+int set_hmp_thermal_down_threshold(unsigned int value)
+{
+	if (value > 1024)
+		return -1;
+
+	hmp_thermal_down_threshold = value;
+
+	return value;
+}
+#endif
 
 #ifdef CONFIG_SCHED_HMP_LITTLE_PACKING
 /*
@@ -3839,7 +3906,7 @@ unsigned int hmp_next_down_threshold = 4096;
  * packing, so this feature can also be disabled at runtime
  * with /sys/kernel/hmp/packing_enable
  */
-unsigned int hmp_packing_enabled = 1;
+unsigned int hmp_packing_enabled = 0;
 unsigned int hmp_full_threshold = 650;
 #endif
 
@@ -4115,6 +4182,14 @@ static int hmp_theshold_from_sysfs(int value)
 		return -1;
 	return value;
 }
+#ifdef CONFIG_HMP_DOWNBOOST
+static int hmp_duration_from_sysfs(int value)
+{
+	if (value < 0)
+		return -1;
+	return value;
+}
+#endif
 #if defined(CONFIG_SCHED_HMP_LITTLE_PACKING) || \
 		defined(CONFIG_HMP_FREQUENCY_INVARIANT_SCALE)
 /* toggle control is only 0,1 off/on */
@@ -4134,6 +4209,57 @@ static int hmp_packing_from_sysfs(int value)
 	return value;
 }
 #endif
+
+#ifdef CONFIG_HMP_THERMAL
+static int hmp_thermal_from_sysfs(int value)
+{
+	unsigned int flags;
+
+	raw_spin_lock_irqsave(&hmp_thermal_lock, flags);
+
+	if (value < 0 || value > 1)
+		return -1;
+
+	if (value == 1) {
+		hmp_thermal_count++;
+	} else {
+		hmp_thermal_count--;
+		if (hmp_thermal_count < 0) {
+			hmp_thermal_count = 0;
+		}
+	}
+
+	raw_spin_unlock_irqrestore(&hmp_thermal_lock, flags);
+
+	return hmp_thermal_count;
+}
+#endif
+
+#ifdef CONFIG_HMP_BOOST
+static int hmp_boost_from_sysfs(int value)
+{
+	unsigned int flags;
+
+	raw_spin_lock_irqsave(&hmp_boost_lock, flags);
+
+	if (value < 0 || value > 1)
+		return -1;
+
+	if (value == 1) {
+		hmp_boost_count++;
+	} else {
+		hmp_boost_count--;
+		if (hmp_boost_count < 0) {
+			hmp_boost_count = 0;
+		}
+	}
+
+	raw_spin_unlock_irqrestore(&hmp_boost_lock, flags);
+
+	return hmp_boost_count;
+}
+#endif
+
 static void hmp_attr_add(
 	const char *name,
 	int *value,
@@ -4173,6 +4299,62 @@ static int hmp_attr_init(void)
 		NULL,
 		hmp_print_domains,
 		0444);
+#ifdef CONFIG_HMP_BOOST
+	hmp_attr_add("boost",
+		&hmp_boost_count,
+		NULL,
+		hmp_boost_from_sysfs,
+		NULL,
+		0);
+	hmp_attr_add("boost_up_threshold",
+		&hmp_boost_up_threshold,
+		NULL,
+		hmp_theshold_from_sysfs,
+		NULL,
+		0);
+	hmp_attr_add("boost_down_threshold",
+		&hmp_boost_down_threshold,
+		NULL,
+		hmp_theshold_from_sysfs,
+		NULL,
+		0);
+#ifdef CONFIG_MACH_ODIN_LIGER
+	hmp_attr_add("hmp_force_fork",
+		&hmp_force_fork,
+		NULL,
+		hmp_theshold_from_sysfs,
+		NULL,
+		0);
+#endif
+#endif
+#ifdef CONFIG_HMP_THERMAL
+	hmp_attr_add("thermal",
+		&hmp_thermal_count,
+		NULL,
+		hmp_thermal_from_sysfs,
+		NULL,
+		0);
+	hmp_attr_add("thermal_up_threshold",
+		&hmp_thermal_up_threshold,
+		NULL,
+		hmp_theshold_from_sysfs,
+		NULL,
+		0);
+	hmp_attr_add("thermal_down_threshold",
+		&hmp_thermal_down_threshold,
+		NULL,
+		hmp_theshold_from_sysfs,
+		NULL,
+		0);
+#endif
+#ifdef CONFIG_HMP_DOWNBOOST
+	hmp_attr_add("downboost_duration",
+		&hmp_downboost_duration,
+		NULL,
+		hmp_duration_from_sysfs,
+		NULL,
+		0);
+#endif
 	hmp_attr_add("up_threshold",
 		&hmp_up_threshold,
 		NULL,
@@ -4358,6 +4540,11 @@ static inline unsigned int hmp_offload_down(int cpu, struct sched_entity *se)
 }
 #endif /* CONFIG_SCHED_HMP */
 
+#if defined(CONFIG_SCHED_HMP) && defined(CONFIG_MACH_ODIN) \
+	&& defined(CONFIG_HMP_DOWNBOOST)
+extern int set_boostpulse(int duration);
+#endif
+
 /*
  * sched_balance_self: balance the current task (running on cpu) in domains
  * that have the 'flag' flag set. In practice, this is SD_BALANCE_FORK and
@@ -4384,7 +4571,11 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 
 #ifdef CONFIG_SCHED_HMP
 	/* always put non-kernel forking tasks on a big domain */
-	if (p->mm && (sd_flag & SD_BALANCE_FORK)) {
+#ifdef CONFIG_MACH_ODIN_LIGER
+	if (unlikely(sd_flag & SD_BALANCE_FORK) && (hmp_task_should_forkboost(p) || hmp_force_fork) && (hmp_thermal_count == 0 || hmp_thermal_up_threshold < 1024)){
+#else
+	if (unlikely(sd_flag & SD_BALANCE_FORK) && hmp_task_should_forkboost(p)) {
+#endif
 		new_cpu = hmp_select_faster_cpu(p, prev_cpu);
 		if (new_cpu != NR_CPUS) {
 			hmp_next_up_delay(&p->se, new_cpu);
@@ -4483,9 +4674,16 @@ unlock:
 #else
 		new_cpu = hmp_select_slower_cpu(p, prev_cpu);
 #endif
-		if (new_cpu != prev_cpu) {
+		/*
+		  * we might have no suitable CPU
+		  * in which case new_cpu == NR_CPUS
+		  */
+		if (new_cpu < NR_CPUS && new_cpu != prev_cpu) {
 			hmp_next_down_delay(&p->se, new_cpu);
 			trace_sched_hmp_migrate(p, new_cpu, HMP_MIGRATE_WAKEUP);
+#if defined(CONFIG_MACH_ODIN) && defined(CONFIG_HMP_DOWNBOOST)
+			set_boostpulse(hmp_downboost_duration);
+#endif
 			return new_cpu;
 		}
 	}
@@ -4877,7 +5075,7 @@ static bool yield_to_task_fair(struct rq *rq, struct task_struct *p, bool preemp
  *
  * The adjacency matrix of the resulting graph is given by:
  *
- *             log_2 n     
+ *             log_2 n
  *   A_i,j = \Union     (i % 2^k == 0) && i / 2^(k+1) == j / 2^(k+1)  (6)
  *             k = 0
  *
@@ -4923,7 +5121,7 @@ static bool yield_to_task_fair(struct rq *rq, struct task_struct *p, bool preemp
  *
  * [XXX write more on how we solve this.. _after_ merging pjt's patches that
  *      rewrite all of this once again.]
- */ 
+ */
 
 static unsigned long __read_mostly max_load_balance_interval = HZ/10;
 
@@ -5493,7 +5691,7 @@ void update_group_power(struct sched_domain *sd, int cpu)
 		/*
 		 * !SD_OVERLAP domains can assume that child groups
 		 * span the current group.
-		 */ 
+		 */
 
 		group = child->groups;
 		do {
@@ -6897,8 +7095,26 @@ static void nohz_idle_balance(int this_cpu, enum cpu_idle_type idle) { }
 #ifdef CONFIG_SCHED_HMP
 static unsigned int hmp_task_eligible_for_up_migration(struct sched_entity *se)
 {
+#if defined(CONFIG_HMP_BOOST) || defined(CONFIG_HMP_THERMAL)
+	unsigned int up_threshold;
+	up_threshold = hmp_up_threshold;
+#ifdef CONFIG_HMP_BOOST
+	if (unlikely(hmp_boost_count > 0)) {
+		up_threshold = hmp_boost_up_threshold;
+	}
+#endif
+#ifdef CONFIG_HMP_THERMAL
+	if (unlikely(hmp_thermal_count > 0)) {
+		up_threshold = hmp_thermal_up_threshold;
+	}
+#endif
+#endif
 	/* below hmp_up_threshold, never eligible */
-	if (se->avg.load_avg_ratio < hmp_up_threshold)
+#if defined(CONFIG_HMP_BOOST) || defined(CONFIG_HMP_THERMAL)
+       if (se->avg.load_avg_ratio < up_threshold)
+#else
+       if (se->avg.load_avg_ratio < hmp_up_threshold)
+#endif
 		return 0;
 	return 1;
 }
@@ -6947,6 +7163,21 @@ static unsigned int hmp_down_migration(int cpu, struct sched_entity *se)
 	struct task_struct *p = task_of(se);
 	u64 now;
 
+#if defined(CONFIG_HMP_BOOST) || defined(CONFIG_HMP_THERMAL)
+	unsigned int down_threshold;
+	down_threshold = hmp_down_threshold;
+#ifdef CONFIG_HMP_BOOST
+	if (unlikely(hmp_boost_count > 0)) {
+		down_threshold = hmp_boost_down_threshold;
+	}
+#endif
+#ifdef CONFIG_HMP_THERMAL
+	if (unlikely(hmp_thermal_count > 0)) {
+		down_threshold = hmp_thermal_down_threshold;
+	}
+#endif
+#endif
+
 	if (hmp_cpu_is_slowest(cpu)) {
 #ifdef CONFIG_SCHED_HMP_LITTLE_PACKING
 		if(hmp_packing_enabled)
@@ -6974,7 +7205,11 @@ static unsigned int hmp_down_migration(int cpu, struct sched_entity *se)
 
 	if (cpumask_intersects(&hmp_slower_domain(cpu)->cpus,
 					tsk_cpus_allowed(p))
+#if defined(CONFIG_HMP_BOOST) || defined(CONFIG_HMP_THERMAL)
+		&& se->avg.load_avg_ratio < down_threshold) {
+#else
 		&& se->avg.load_avg_ratio < hmp_down_threshold) {
+#endif
 		return 1;
 	}
 	return 0;
@@ -7220,6 +7455,11 @@ static void hmp_force_up_migration(int this_cpu)
 
 		raw_spin_unlock_irqrestore(&target->lock, flags);
 
+#if defined(CONFIG_MACH_ODIN) && defined(CONFIG_HMP_DOWNBOOST)
+		if (got_target) {
+			set_boostpulse(hmp_downboost_duration);
+		}
+#endif
 		if (force)
 			stop_one_cpu_nowait(cpu_of(target),
 				hmp_active_task_migration_cpu_stop,
@@ -7317,7 +7557,8 @@ static unsigned int hmp_idle_pull(int this_cpu)
 
 	if (force) {
 		/* start timer to keep us awake */
-		hmp_cpu_keepalive_trigger();
+		if (current != __this_cpu_read(ksoftirqd))
+			hmp_cpu_keepalive_trigger();
 		stop_one_cpu_nowait(cpu_of(target),
 			hmp_active_task_migration_cpu_stop,
 			target, &target->active_balance_work);
@@ -7995,6 +8236,15 @@ static int __init register_sched_cpufreq_notifier(void)
 	if (ret != -EINVAL)
 		ret = cpufreq_register_notifier(&cpufreq_notifier,
 			CPUFREQ_TRANSITION_NOTIFIER);
+
+#ifdef CONFIG_MACH_ODIN_LIGER
+extern unsigned long lge_get_ca15_maxfreq(void);
+		if(lge_get_ca15_maxfreq() < 1500000)
+		{
+			hmp_up_threshold = 1023;
+			hmp_down_threshold = 1022;
+		}
+#endif
 
 	return ret;
 }

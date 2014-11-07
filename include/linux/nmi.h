@@ -7,6 +7,10 @@
 #include <linux/sched.h>
 #include <asm/irq.h>
 
+#if defined(CONFIG_ARCH_WODEN) || defined(CONFIG_ARCH_ODIN)
+extern void odin_touch_softlockup_watchdog(void);
+#endif
+
 /**
  * touch_nmi_watchdog - restart NMI watchdog timeout.
  * 
@@ -14,13 +18,20 @@
  * may be used to reset the timeout - for code which intentionally
  * disables interrupts for a long time. This call is stateless.
  */
-#if defined(CONFIG_HAVE_NMI_WATCHDOG) || defined(CONFIG_HARDLOCKUP_DETECTOR)
+#if defined(CONFIG_HAVE_NMI_WATCHDOG) || defined(CONFIG_HARDLOCKUP_DETECTOR_NMI)
 #include <asm/nmi.h>
+#endif
+
+#if defined(CONFIG_HAVE_NMI_WATCHDOG) || defined(CONFIG_HARDLOCKUP_DETECTOR)
 extern void touch_nmi_watchdog(void);
 #else
 static inline void touch_nmi_watchdog(void)
 {
 	touch_softlockup_watchdog();
+
+#if defined(CONFIG_ARCH_WODEN) || defined(CONFIG_ARCH_ODIN)
+	odin_touch_softlockup_watchdog();
+#endif
 }
 #endif
 

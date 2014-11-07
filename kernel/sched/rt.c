@@ -887,12 +887,22 @@ static int sched_rt_runtime_exceeded(struct rt_rq *rt_rq)
 		 */
 		if (likely(rt_b->rt_runtime)) {
 			static bool once = false;
+#ifdef CONFIG_PSTORE_FTRACE
+			int cpu = cpu_of(rq_of_rt_rq(rt_rq));
+			struct task_struct *curr = rq_of_rt_rq(rt_rq)->curr;
+#endif
 
 			rt_rq->rt_throttled = 1;
 
 			if (!once) {
 				once = true;
+#ifdef CONFIG_PSTORE_FTRACE
+				printk_sched("sched: RT throttling activated(%d): curr(%s): %s, rt_rq->rt_time: %llu\n",
+					       cpu, (curr->sched_class == &rt_sched_class) ?
+						"RT":"nRT", curr->comm, rt_rq->rt_time);
+#else
 				printk_sched("sched: RT throttling activated\n");
+#endif
 			}
 		} else {
 			/*

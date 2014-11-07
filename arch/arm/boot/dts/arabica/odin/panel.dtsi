@@ -1,0 +1,33 @@
+/ {
+	/* MADK 1.1*/
+	lglh500wfi{
+		compatible = "lglh500wfi";
+
+		port = "lcd0";
+
+		gpio_intr = <54>;
+		gpio_reset = <2>;
+		gpio_dsv_enable = <29>;
+	};
+
+	/* MADK 1.2*/
+	lglh520wfi{
+		compatible = "lglh520wfi";
+
+		port = "lcd0";
+
+		gpio_intr = <54>;
+		gpio_reset = <2>;
+		gpio_dsv_enable = <29>;
+	};
+     /* MADK 2.0*/
+     lglh600wf2{
+        compatible = "lglh600wf2";
+
+        port = "lcd0";
+
+        gpio_intr = <54>;
+        gpio_reset = <2>;
+        gpio_dsv_enable = <29>;
+    };
+};

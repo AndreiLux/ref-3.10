@@ -306,6 +306,14 @@ void note_interrupt(unsigned int irq, struct irq_desc *desc,
 
 	desc->irq_count = 0;
 	if (unlikely(desc->irqs_unhandled > 99900)) {
+#ifdef CONFIG_DSP_LPA_ENABLE
+		if(irq == 69){
+			printk(KERN_EMERG " *** nobody  handle %d*** \n", irq);
+			irq_handler_t adma_handle = desc->action->handler;
+			if(adma_handle(irq, desc->action->dev_id) == IRQ_NONE)
+				goto out;
+		}
+#endif
 		/*
 		 * The interrupt is stuck
 		 */
@@ -321,6 +329,9 @@ void note_interrupt(unsigned int irq, struct irq_desc *desc,
 		mod_timer(&poll_spurious_irq_timer,
 			  jiffies + POLL_SPURIOUS_IRQ_INTERVAL);
 	}
+#ifdef CONFIG_DSP_LPA_ENABLE
+out:
+#endif
 	desc->irqs_unhandled = 0;
 }
 

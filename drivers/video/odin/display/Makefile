@@ -1,0 +1,12 @@
+obj-$(CONFIG_PANEL_XXXXXXXX) := lcd-panel-xxxxxxxx.o
+obj-$(CONFIG_PANEL_SAMPLE0) += lcd-panel-sample0.o
+obj-$(CONFIG_PANEL_SAMPLE1) += lcd-panel-sample1.o
+obj-$(CONFIG_PANEL_LGLH500WF1) += lcd-panel-lglh500wf1.o
+obj-$(CONFIG_PANEL_LGLH520WF1) += lcd-panel-lglh520wf1.o
+obj-$(CONFIG_PANEL_LGLH600WF2) += lcd-panel-lglh600wf2.o
+obj-$(CONFIG_PANEL_AT070TN94) += lcd-panel-innolux-at070tn94.o
+obj-$(CONFIG_PANEL_LMS480) += lcd-panel-lms480.o
+obj-$(CONFIG_SLIMPORT_ANX7805)	+= slimport_dsi.o
+obj-$(CONFIG_SLIMPORT_ANX7808)	+= hdmi-panel.o
+obj-$(CONFIG_SLIMPORT_ANX7812)	+= hdmi-panel.o
+obj-y				+= panel_device.o

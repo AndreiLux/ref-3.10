@@ -25,9 +25,13 @@
 #include <linux/suspend.h>
 #include <linux/syscore_ops.h>
 #include <linux/ftrace.h>
+#include <linux/rtc.h>
 #include <trace/events/power.h>
 
 #include "power.h"
+
+#include <linux/odin_mailbox.h>
+int gic_disabled = 0;
 
 const char *const pm_states[PM_SUSPEND_MAX] = {
 	[PM_SUSPEND_FREEZE]	= "freeze",
@@ -177,6 +181,7 @@ void __attribute__ ((weak)) arch_suspend_enable_irqs(void)
 static int suspend_enter(suspend_state_t state, bool *wakeup)
 {
 	int error;
+	unsigned int mb_data[7] = {0,};
 
 	if (need_suspend_ops(state) && suspend_ops->prepare) {
 		error = suspend_ops->prepare();
@@ -184,10 +189,20 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 			goto Platform_finish;
 	}
 
+	mb_data[0] = GPIO_CMD_TYPE;
+	mb_data[1] = 0x30000f00;
+	mb_data[2] = 0x0;
+	error = ipc_call_fast(mb_data);
+	if (error < 0) {
+		pr_err("%s: failed to send a mail (%d)\n", __func__, error);
+		goto Platform_finish;
+	}
+	gic_disabled = 1;
+
 	error = dpm_suspend_end(PMSG_SUSPEND);
 	if (error) {
 		printk(KERN_ERR "PM: Some devices failed to power down\n");
-		goto Platform_finish;
+		goto Gic_disabled;
 	}
 
 	if (need_suspend_ops(state) && suspend_ops->prepare_late) {
@@ -239,6 +254,17 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 
 	dpm_resume_start(PMSG_RESUME);
 
+ Gic_disabled:
+	mb_data[0] = GPIO_CMD_TYPE;
+	mb_data[1] = 0x30000f00;
+	mb_data[2] = 0x1;
+	error = ipc_call_fast(mb_data);
+	if (error < 0) {
+		pr_err("%s: failed to send a mail (%d)\n", __func__, error);
+		goto Platform_finish;
+	}
+	gic_disabled = 0;
+
  Platform_finish:
 	if (need_suspend_ops(state) && suspend_ops->finish)
 		suspend_ops->finish();
@@ -254,6 +280,7 @@ int suspend_devices_and_enter(suspend_state_t state)
 {
 	int error;
 	bool wakeup = false;
+	unsigned int mb_data[7] = {0,};
 
 	if (need_suspend_ops(state) && !suspend_ops)
 		return -ENOSYS;
@@ -358,6 +385,18 @@ static int enter_state(suspend_state_t state)
 	return error;
 }
 
+static void pm_suspend_marker(char *annotation)
+{
+	struct timespec ts;
+	struct rtc_time tm;
+
+	getnstimeofday(&ts);
+	rtc_time_to_tm(ts.tv_sec, &tm);
+	pr_info("PM: suspend %s %d-%02d-%02d %02d:%02d:%02d.%09lu UTC\n",
+		annotation, tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, ts.tv_nsec);
+}
+
 /**
  * pm_suspend - Externally visible function for suspending the system.
  * @state: System sleep state to enter.
@@ -372,6 +411,7 @@ int pm_suspend(suspend_state_t state)
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 
+	pm_suspend_marker("entry");
 	error = enter_state(state);
 	if (error) {
 		suspend_stats.fail++;
@@ -379,6 +419,7 @@ int pm_suspend(suspend_state_t state)
 	} else {
 		suspend_stats.success++;
 	}
+	pm_suspend_marker("exit");
 	return error;
 }
 EXPORT_SYMBOL(pm_suspend);

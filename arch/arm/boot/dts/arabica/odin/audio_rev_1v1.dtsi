@@ -1,0 +1,183 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+	audio{
+		compatible = "simple-bus";
+  		interrupt-parent = <&gic>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+	/* audio  */
+		i2c@34620000 {
+			compatible = "snps,odin-i2c";
+			reg = <0 0x34620000 0 0x800>;
+			interrupts = <0 50 0x4>;
+			clocks = <&pclk_dsp>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			tpa2028d@58{
+				compatible = "ti,tpa2028d";
+				reg = <0x58>;
+				agc_compression_rate = <0x00>;
+				agc_output_limiter_disable = <0x01>;
+				agc_fixed_gain = <0x07>;
+				aud_amp_en = <0>;
+			};
+			rt5671@1c{
+				compatible = "realtek,rt5671";
+				reg = <0x1c>;
+				interrupts = <0 1 0x4>;
+				use_dmic = <0>;
+			};
+		};
+			
+		pcm_0: pcm@0 {
+			compatible = "lge,odin-pcm";
+			dma-device = <&adma>;
+		};
+
+		pcm_1: pcm@1 {
+			compatible = "lge,odin-pcm-lpa";
+			dma-device = <&adma>;
+		};
+
+		mi2s_0: i2s@34610000 {
+			compatible = "lge,odin-multi-i2s";
+			reg = <0 0x34610000 0 0x1000>;
+			tx-dma-channel = <8>;
+			rx-dma-channel = <0>;
+			clocks = <&mclk_i2s5>;
+		};
+
+		si2s_0: i2s@34611000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34611000 0 0x1000>;
+			tx-dma-channel = <9>;
+			rx-dma-channel = <1>;
+			i2s-mode = <1>;
+			clocks = <&mclk_i2s0>;
+		};
+
+		si2s_1: i2s@34612000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34612000 0 0x1000>;
+			tx-dma-channel = <10>;
+			rx-dma-channel = <2>;
+			i2s-mode = <2>;
+			clocks = <&mclk_i2s1>;
+		};
+
+		si2s_2: i2s@34613000 {
+			compatible = "lge,odin-single-i2s";
+			reg = <0 0x34613000 0 0x1000>;
+			tx-dma-channel = <11>;
+			rx-dma-channel = <3>;
+			i2s-mode = <1>;
+			clocks = <&mclk_i2s2>;
+		};
+		
+		hdmi_codec: hdmi_codec@0 {
+			compatible = "lge,odin-hdmi-codec";
+		};
+
+		hdmi_audio_sample@0 {
+			compatible = "lge,odin-hdmi-asample";
+		};
+
+		sound_card@0 {
+			compatible = "lge,odin-audio";
+			dai-link0-cpu-dai = <&si2s_0>;
+			dai-link0-platform = <&pcm_0>;
+			dai-link1-cpu-dai = <&si2s_1>;
+			dai-link1-platform = <&pcm_0>;
+			dai-link4-cpu-dai = <&si2s_2>;
+			dai-link4-platform = <&pcm_1>;
+			aud-gpio-base = <&aud_gpio0>;
+			aud_ldo_en = <225>;
+			aud_irq = <139>;
+			ao_mic_off = <0>;
+			hph_aud_sw_int = <0>;
+			board_use_dmic = <0>;
+			ext_osc = <19200000>;
+			pll_control = <1>;
+			revision = "RevD";
+		};
+
+		sound_card@1 {
+			compatible = "lge,odin-hdmi-audio";
+			dai-link0-cpu-dai = <&mi2s_0>;
+			dai-link0-platform = <&pcm_0>;
+			dai-link0-codec = <&hdmi_codec>;
+			aud-gpio-base = <&aud_gpio0>;
+		};
+
+		asoc_platform_0:odin-platform {
+			compatible = "lge,odin-platform";
+			clocks = <&mclk_i2s0>;
+		};
+
+		dsp-ext {
+			compatible = "lge,odin-dsp-ext";
+		};
+
+		sound {
+			compatible = "lge,odin-dsp-audio";
+			dai-link0-platform = <&asoc_platform_0>;
+		};
+
+	/* Odin Audio DSP Driver start */
+		dsp@34000000 {
+			compatible = "tensilica,odin-dsp";
+			reg = <0 0x34000000 0 0x200000>,			// ODIN_DSP_BASE
+				<0 0x34200000 0 0x10000>,               // ODIN_DSP_AUD_SRAM
+				<0 0x34210000 0 0x10000>,               // ODIN_DSP_MEM_DRAM0
+				<0 0x34220000 0 0x8000>,                // ODIN_DSP_MEM_DRAM1
+				<0 0x34228000 0 0x10000>,               // ODIN_DSP_MEM_IRAM0
+				<0 0x34238000 0 0x8000>,                // ODIN_DSP_MEM_IRAM1
+				<0 0x34400000 0 0x800>,                 // ODIN_DSP_MEM_MAILBOX
+				<0 0x34400800 0 0x8>,                   // ODIN_DSP_AUD_INERRUPT
+				<0 0x34660000 0 0x48>;                  // ODIN_DSP_AUD_CTR
+			interrupts = <0 35 4>;
+		};
+	/* Odin Audio DSP Driver end */
+
+	aud_gpio0: gpio-controller@34700000{
+		compatible = "LG,odin-gpio";
+		reg = <0 0x34700000 0 0x100>;
+		bank_num = <184>;
+	};
+	aud_gpio1: gpio-controller@34701000{
+		compatible = "LG,odin-gpio";
+		reg = <0 0x34701000 0 0x100>;
+		interrupts = <0 53 0x04>;
+		bank_num = <192>;
+	};
+	aud_gpio2: gpio-controller@34702000{
+		compatible = "LG,odin-gpio";
+		reg = <0 0x34702000 0 0x100>;
+		bank_num = <200>;
+	};
+	aud_gpio3: gpio-controller@34703000{
+		compatible = "LG,odin-gpio";
+		reg = <0 0x34703000 0 0x100>;
+		bank_num = <208>;
+	};
+	aud_gpio4: gpio-controller@34704000{
+		compatible = "LG,odin-gpio";
+		reg = <0 0x34704000 0 0x100>;
+		bank_num = <216>;
+	};
+	aud_gpio5: gpio-controller@34705000{
+		compatible = "LG,odin-gpio";
+		reg = <0 0x34705000 0 0x100>;
+		bank_num = <224>;
+	};
+
+
+	};
+};
+

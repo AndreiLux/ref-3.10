@@ -43,7 +43,7 @@ DriverSource::DriverSource(sem_t *senderSem, sem_t *startProfile) : mFifo(NULL),
 			handleException();
 		} else {
 			// Release version mismatch
-			logg->logError(__FILE__, __LINE__, 
+			logg->logError(__FILE__, __LINE__,
 				"gator driver version \"%d\" is different than gator daemon version \"%d\".\n"
 				">> Please upgrade the driver and daemon to the latest versions.", driver_version, PROTOCOL_VERSION);
 			handleException();

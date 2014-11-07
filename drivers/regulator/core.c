@@ -993,7 +993,8 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 		}
 	}
 
-	print_constraints(rdev);
+	/* Skip D2260 Debug FS & GPO for Booting Time... */
+	//print_constraints(rdev);
 	return 0;
 out:
 	kfree(rdev->constraints);
@@ -1345,6 +1346,7 @@ out:
  */
 struct regulator *regulator_get(struct device *dev, const char *id)
 {
+	printk("[%s] id[%s]\n", __func__, id); // test
 	return _regulator_get(dev, id, 0);
 }
 EXPORT_SYMBOL_GPL(regulator_get);

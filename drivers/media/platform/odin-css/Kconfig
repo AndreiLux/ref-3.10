@@ -1,0 +1,74 @@
+menuconfig VIDEO_ODIN
+	bool "Mtekvision ODIN platform CSS"
+	depends on VIDEO_V4L2
+	default y
+	---help---
+	  Say Y here to enable ODIN Camera Sub-System(CSS) Interface
+
+config VIDEO_ISP_MISC_DRIVER
+	depends on VIDEO_ODIN
+	bool "support isp misc driver"
+	default y
+	---help---
+	  Say Y here to use isp misc driver
+
+config VIDEO_ODIN_S3DC
+	depends on VIDEO_ODIN
+	bool "Stereoscopic 3d creator"
+	---help---
+	  Say Y here to use s3dc h/w driver
+
+config VIDEO_ODIN_SYSFS
+	depends on VIDEO_ODIN
+	bool "Use sysfs for verification"
+	default n
+	---help---
+	  Say Y here to use sysfs functional test
+
+config VIDEO_ODIN_MIPI
+	tristate "MIPI Sensor Logic Interface"
+	depends on VIDEO_ODIN
+
+config VIDEO_ODIN_FLASH
+	tristate "Odin flash"
+	depends on VIDEO_ODIN
+
+config VIDEO_ODIN_OIS_ONE_FPS_TEST
+	tristate "OIS Test - One FPS"
+	depends on VIDEO_ODIN
+	default n
+
+config VIDEO_ODIN_SENSOR_A
+	depends on VIDEO_ODIN_MIPI
+	bool "Sensor A Module - MIPI Bayer"
+
+config VIDEO_ODIN_SENSOR_IMX132
+	depends on VIDEO_ODIN_MIPI
+	bool "IMX032 Sensor Module - MIPI Bayer"
+
+config VIDEO_ODIN_SENSOR_IMX111
+	depends on VIDEO_ODIN_MIPI
+	bool "IMX111 Sensor Module - MIPI Bayer"
+
+config VIDEO_ODIN_SENSOR_IMX091
+	depends on VIDEO_ODIN_MIPI
+	bool "IMX091 Sensor Module - MIPI Bayer"
+
+config VIDEO_ODIN_SENSOR_IMX135
+	depends on VIDEO_ODIN_MIPI
+	bool "IMX135 Sensor Module - MIPI Bayer"
+
+config VIDEO_ODIN_SENSOR_IMX208
+	depends on VIDEO_ODIN_MIPI
+	bool "IMX208 Sensor Module - MIPI Bayer"
+
+config VIDEO_ODIN_SENSOR_DUMMY
+	depends on VIDEO_ODIN_MIPI
+	bool "Dummy Sensor - FAKE Driver"
+
+config VIDEO_ODIN_LASER_VL6180
+	bool "VL6180 Proximity sensing module"
+	depends on VIDEO_ODIN
+
+source "drivers/media/platform/odin-css/jpegenc/Kconfig"
+

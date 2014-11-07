@@ -137,6 +137,9 @@ struct usb_ep_ops {
 
 	int (*fifo_status) (struct usb_ep *ep);
 	void (*fifo_flush) (struct usb_ep *ep);
+#ifdef CONFIG_USB_G_LGE_MULTIPLE_CONFIGURATION
+	void (*yield_request) (struct usb_ep *ep, struct usb_request *req);
+#endif
 };
 
 /**
@@ -179,6 +182,19 @@ struct usb_ep {
 };
 
 /*-------------------------------------------------------------------------*/
+#ifdef CONFIG_USB_G_LGE_MULTIPLE_CONFIGURATION
+/*                  
+                                             
+                            
+                                                              
+ */
+static inline void lge_usb_ep_yield_request(struct usb_ep *ep,
+				       struct usb_request *req)
+{
+	if (ep->ops->yield_request)
+		ep->ops->yield_request(ep, req);
+}
+#endif
 
 /**
  * usb_ep_enable - configure endpoint, making it usable

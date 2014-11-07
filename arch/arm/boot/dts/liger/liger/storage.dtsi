@@ -1,0 +1,27 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+		sdhci@0x20004000{
+			compatible = "odin,emmc";
+			reg = <0 0x20004000 0 0x2000>;
+			clocks = <&emmc_sclk>;
+			interrupts = <0 3 0x4>;
+			id = <0>;
+		};
+		sdhci@0x2000A000{
+			compatible = "odin,sd";
+			reg = <0 0x2000A000 0 0x2000>;
+			clocks = <&sdc_sclk>;
+			interrupts = <0 6 0x4>;
+			id = <2>;
+			/*
+			LGE_CHANGE_S
+			*/
+			sdc_cd_gpio = <5>;
+			/* LGE_CHANGE_E */
+			sdc_cd_inverted;
+		};
+};
+

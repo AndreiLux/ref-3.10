@@ -15,9 +15,17 @@
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
 #include <trace/events/power.h>
-
 #include "power.h"
 
+#include <linux/cpu.h>
+#include <linux/cpufreq.h>
+#include <linux/odin_dfs.h>
+#include <linux/devfreq.h>
+#include <linux/delay.h>
+
+#ifdef CONFIG_DSP_LPA_ENABLE
+#include <linux/odin_lpa.h>
+#endif
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
  * if wakeup events are registered during or immediately before the transition.
@@ -142,6 +150,44 @@ void wakeup_source_add(struct wakeup_source *ws)
 	spin_unlock_irqrestore(&events_lock, flags);
 }
 EXPORT_SYMBOL_GPL(wakeup_source_add);
+
+//HDH
+static int list_check_rcu(struct wakeup_source *head, unsigned char *name)
+{
+	struct wakeup_source *List;
+	struct wakeup_source *temp;
+
+	List = head;
+	printk("wake_lock_name: %s\n",name);
+	for(;;)
+	{
+		if(List->name == name){return 1; }
+		printk("wake_lock_name: %s\n",List->name);
+		if(List->entry.next == NULL){break;}
+		temp = List->entry.next;
+		List = temp;
+	}
+	return 0;
+}
+
+int wakeup_source_search(unsigned char *name)
+{
+	struct wakeup_source *ws;
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
+	{
+		if(strcmp(ws->name,name) == 0){
+			if (ws->active){
+				rcu_read_unlock();
+				return 1;
+			}
+		}
+	}
+
+	rcu_read_unlock();
+	return 0;
+}
 
 /**
  * wakeup_source_remove - Remove given object from the wakeup sources list.
@@ -738,14 +784,23 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 			split_counters(&cnt, &inpr);
 			if (inpr == 0 || signal_pending(current))
 				break;
-
+			printk("before schedule\n");
 			schedule();
+			printk("after schedule\n");
 		}
+#if CONFIG_DSP_LPA_ENABLE
+		if (get_lpa_state() ==1)
+		{
+			printk("lpa_disable\n");
+			lpa_disable();
+		}
+#endif
 		finish_wait(&wakeup_count_wait_queue, &wait);
 	}
 
 	split_counters(&cnt, &inpr);
 	*count = cnt;
+
 	return !inpr;
 }
 
@@ -855,6 +910,54 @@ static int print_wakeup_source_stats(struct seq_file *m,
 	return ret;
 }
 
+#ifdef CONFIG_PM_DEBUG
+static int print_wakeup_source_active_stats(struct seq_file *m,
+					    struct wakeup_source *ws)
+{
+	unsigned long flags;
+	ktime_t total_time;
+	ktime_t max_time;
+	unsigned long active_count;
+	ktime_t active_time;
+	ktime_t prevent_sleep_time;
+	int ret;
+
+	spin_lock_irqsave(&ws->lock, flags);
+
+	total_time = ws->total_time;
+	max_time = ws->max_time;
+	prevent_sleep_time = ws->prevent_sleep_time;
+	active_count = ws->active_count;
+	if (ws->active) {
+		ktime_t now = ktime_get();
+
+		active_time = ktime_sub(now, ws->last_time);
+		total_time = ktime_add(total_time, active_time);
+		if (active_time.tv64 > max_time.tv64)
+			max_time = active_time;
+
+		if (ws->autosleep_enabled)
+			prevent_sleep_time = ktime_add(prevent_sleep_time,
+				ktime_sub(now, ws->start_prevent_time));
+	} else {
+		active_time = ktime_set(0, 0);
+	}
+
+	if (ktime_to_ms(active_time) > 0)
+		ret = seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t"
+				"%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
+				ws->name, active_count, ws->event_count,
+				ws->wakeup_count, ws->expire_count,
+				ktime_to_ms(active_time), ktime_to_ms(total_time),
+				ktime_to_ms(max_time), ktime_to_ms(ws->last_time),
+				ktime_to_ms(prevent_sleep_time));
+
+	spin_unlock_irqrestore(&ws->lock, flags);
+
+	return ret;
+}
+#endif
+
 /**
  * wakeup_sources_stats_show - Print wakeup sources statistics information.
  * @m: seq_file to print the statistics into.
@@ -875,10 +978,35 @@ static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 	return 0;
 }
 
+#ifdef CONFIG_PM_DEBUG
+static int wakeup_sources_active_stats_show(struct seq_file *m, void *unused)
+{
+	struct wakeup_source *ws;
+
+	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
+		"expire_count\tactive_since\ttotal_time\tmax_time\t"
+		"last_change\tprevent_suspend_time\n");
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
+		print_wakeup_source_active_stats(m, ws);
+	rcu_read_unlock();
+
+	return 0;
+}
+#endif
+
 static int wakeup_sources_stats_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, wakeup_sources_stats_show, NULL);
 }
+
+#ifdef CONFIG_PM_DEBUG
+static int wakeup_sources_active_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, wakeup_sources_active_stats_show, NULL);
+}
+#endif
 
 static const struct file_operations wakeup_sources_stats_fops = {
 	.owner = THIS_MODULE,
@@ -888,10 +1016,26 @@ static const struct file_operations wakeup_sources_stats_fops = {
 	.release = single_release,
 };
 
+#ifdef CONFIG_PM_DEBUG
+static const struct file_operations wakeup_sources_active_stats_fops = {
+	.owner = THIS_MODULE,
+	.open = wakeup_sources_active_stats_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+#endif
+
 static int __init wakeup_sources_debugfs_init(void)
 {
 	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
+
+#ifdef CONFIG_PM_DEBUG
+	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources_active",
+			S_IRUGO, NULL, NULL, &wakeup_sources_active_stats_fops);
+#endif
+
 	return 0;
 }
 

@@ -51,7 +51,7 @@
 #define USB_GADGET_DELAYED_STATUS       0x7fff	/* Impossibly large value */
 
 /* big enough to hold our biggest descriptor */
-#define USB_COMP_EP0_BUFSIZ	1024
+#define USB_COMP_EP0_BUFSIZ	4096
 
 #define USB_MS_TO_HS_INTERVAL(x)	(ilog2((x * 1000 / 125)) + 1)
 struct usb_configuration;
@@ -158,6 +158,9 @@ struct usb_function {
 	int			(*get_status)(struct usb_function *);
 	int			(*func_suspend)(struct usb_function *,
 						u8 suspend_opt);
+#ifdef CONFIG_USB_G_LGE_MULTIPLE_CONFIGURATION
+	int			(*desc_change)(struct usb_function *, bool is_mac);
+#endif
 	/* private: */
 	/* internals */
 	struct list_head		list;
@@ -335,6 +338,13 @@ static inline struct usb_composite_driver *to_cdriver(
 	return container_of(gdrv, struct usb_composite_driver, gadget_driver);
 }
 
+#ifdef CONFIG_USB_ODIN_UDC_WA
+enum usb_audio_state{
+	AUDIO_STATE_READY = 0,
+	AUDIO_STATE_BUSY,
+	AUDIO_STATE_CONFIG_START,
+};
+#endif
 /**
  * struct usb_composite_device - represents one composite usb gadget
  * @gadget: read-only, abstracts the gadget's usb peripheral controller
@@ -394,6 +404,9 @@ struct usb_composite_dev {
 
 	/* protects deactivations and delayed_status counts*/
 	spinlock_t			lock;
+#ifdef CONFIG_USB_ODIN_UDC_WA
+	enum usb_audio_state	audio_status;
+#endif
 };
 
 extern int usb_string_id(struct usb_composite_dev *c);

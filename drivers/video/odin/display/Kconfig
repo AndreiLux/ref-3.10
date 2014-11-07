@@ -1,0 +1,67 @@
+menu "ODIN Display Device Drivers"
+        depends on ODIN_DSS
+
+config PANEL_XXXXXXXX
+        tristate "XXXXXXXX LCD Panel"
+	depends on ODIN_DSS
+        help
+	  XXXXXXXX panel driver
+	  
+config PANEL_SAMPLE0
+	tristate "SAMPLE0 LCD Panel"
+	depends on ODIN_DSS
+	help
+	  SAMPLE0 panel driver
+	  
+config PANEL_SAMPLE1
+        tristate "SAMPLE1 LCD Panel"
+        depends on ODIN_DSS
+        help
+	  SAMPLE1 panel driver
+
+config PANEL_LGLH500WF1
+	tristate "LGLH500WF1 mipi panel"
+	depends on ODIN_DSS
+	help
+	  MIPI LHLH500WF1 panel driver
+
+# LGE_CHANGE_S
+config PANEL_LGLH600WF2
+	tristate "LGLH600WF2 mipi panel"
+	depends on ODIN_DSS
+	help
+	  MIPI LHLH600WF2 panel driver
+# LGE_CHANGE_E
+
+
+config PANEL_LGLH520WF1
+	tristate "LGLH520WF1 mipi panel"
+	depends on ODIN_DSS
+	help
+	  MIPI LHLH520WF1 panel driver
+
+config PANEL_AT070TN94
+        tristate "Innolux AT070TN94 LCD Panel"
+        depends on ODIN_DSS
+        help
+          AT070TN94 panel driver
+
+config PANEL_LMS480
+        tristate "LMS480 LCD Panel"
+        depends on ODIN_DSS
+        help
+          LMS480 panel driver
+
+config PANEL_SLT_DSI
+        tristate "SLT DSI Panel"
+        depends on ODIN_DSS
+        help
+          SLT DSI panel driver
+
+config PANEL_SLT_HDMI
+        tristate "SLT HDMI Panel"
+        depends on ODIN_DSS
+        help
+          SLT HDMI panel driver
+
+endmenu

@@ -10,7 +10,7 @@ menuconfig INPUT_TOUCHSCREEN
 	  If unsure, say Y.
 
 if INPUT_TOUCHSCREEN
-
+source "drivers/input/touchscreen/synaptics_dsx/Kconfig"
 config TOUCHSCREEN_88PM860X
 	tristate "Marvell 88PM860x touchscreen"
 	depends on MFD_88PM860X
@@ -97,7 +97,19 @@ config TOUCHSCREEN_ATMEL_MXT
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called atmel_mxt_ts.
+# LGE_CHANGE_S
+config TOUCHSCREEN_ATMEL_S540
+	tristate "Atmel mXT S540 I2C Touchscreen"
+	depends on I2C
+	help
+	  Say Y here if you have Atmel mXT series I2C touchscreen,
+	  such as AT42QT602240/ATMXT224, connected to your system.
 
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called atmel_s540.
+# LGE_CHANGE_E
 config TOUCHSCREEN_AUO_PIXCIR
 	tristate "AUO in-cell touchscreen using Pixcir ICs"
 	depends on I2C
@@ -493,6 +505,11 @@ config TOUCHSCREEN_TNETV107X
 	  To compile this driver as a module, choose M here: the
 	  module will be called tnetv107x-ts.
 
+config TOUCHSCREEN_SYNAPTICS_I2C_RMI
+	tristate "Synaptics i2c touchscreen"
+	depends on I2C
+	help
+	  This enables support for Synaptics RMI over I2C based touchscreens.
 config TOUCHSCREEN_TOUCHRIGHT
 	tristate "Touchright serial touchscreen"
 	select SERIO
@@ -887,5 +904,29 @@ config TOUCHSCREEN_TPS6507X
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called tps6507x_ts.
+# LGE_CHANGE_S
+config TOUCHSCREEN_SYNAPTICS_I2C_RMI4
+	tristate "[liger]Synaptics DSX I2C touchscreen"
+	depends on I2C
+	help
+	  Say Y here if you have a Synaptics DSX I2C touchscreen
+	  connected to your system.
 
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called synaptics_i2c_rmi4.
+
+config TOUCHSCREEN_SYNAPTICS_I2C_RMI4_A
+ 	tristate "Synaptics RMI4 protocol based I2C interface s3404 Touchscreen Driver"
+        depends on I2C
+	help
+	  Say Y here if you want to support RMI4 devices connect
+	  to an I2C bus.
+
+	  If unsure, say Y.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called rmi-spi.
+# LGE_CHANGE_E
 endif

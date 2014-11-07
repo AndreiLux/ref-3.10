@@ -146,6 +146,58 @@ DEFINE_EVENT(clock, clock_set_rate,
 	TP_ARGS(name, state, cpu_id)
 );
 
+TRACE_EVENT(clock_set_parent,
+
+	TP_PROTO(const char *name, const char *parent_name),
+
+	TP_ARGS(name, parent_name),
+
+	TP_STRUCT__entry(
+		__string(       name,           name            )
+		__string(       parent_name,    parent_name     )
+	),
+
+	TP_fast_assign(
+		__assign_str(name, name);
+		__assign_str(parent_name, parent_name);
+	),
+
+	TP_printk("%s parent=%s", __get_str(name), __get_str(parent_name))
+);
+
+DECLARE_EVENT_CLASS(odin_bus,
+
+	TP_PROTO(const char *name, unsigned long val0),
+
+	TP_ARGS(name, val0),
+
+	TP_STRUCT__entry(
+		__string(       name,           name            )
+		__field(        unsigned long,  val0            )
+	),
+
+	TP_fast_assign(
+		__assign_str(name, name);
+		__entry->val0 = val0;
+	),
+
+	TP_printk("%s val0=%lu", __get_str(name), __entry->val0)
+);
+
+DEFINE_EVENT(odin_bus, odin_bus_qos,
+
+	TP_PROTO(const char *name, unsigned long val0),
+
+	TP_ARGS(name, val0)
+);
+
+DEFINE_EVENT(odin_bus, odin_bus_bandwidth,
+
+	TP_PROTO(const char *name, unsigned long val0),
+
+	TP_ARGS(name, val0)
+);
+
 /*
  * The power domain events are used for power domains transitions
  */
@@ -176,6 +228,36 @@ DEFINE_EVENT(power_domain, power_domain_target,
 	TP_PROTO(const char *name, unsigned int state, unsigned int cpu_id),
 
 	TP_ARGS(name, state, cpu_id)
+);
+
+/* trace event of Thermal Sensor Temperature */
+DECLARE_EVENT_CLASS(odin_thermal,
+
+	TP_PROTO(const char *name, u32 id, unsigned long temp),
+
+	TP_ARGS(name, id, temp),
+
+	TP_STRUCT__entry(
+		__string(       name,           name            )
+		__field(        u32,            id              )
+		__field(        unsigned long,  temp            )
+	),
+
+	TP_fast_assign(
+		__assign_str(name, name);
+		__entry->id = id;
+		__entry->temp = temp;
+	),
+
+	TP_printk("%s id=%lu temp=%lu", __get_str(name),
+			  __entry->id, __entry->temp)
+);
+
+DEFINE_EVENT(odin_thermal, odin_ts_temp,
+
+	TP_PROTO(const char *name, u32 id, unsigned long temp),
+
+	TP_ARGS(name, id, temp)
 );
 #endif /* _TRACE_POWER_H */
 

@@ -1,0 +1,620 @@
+/*
+ * SIC LABORATORY, LG ELECTRONICS INC., SEOUL, KOREA
+ * Copyright(c) 2013 by LG Electronics Inc.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#ifndef __ODIN_SI2S_H__
+#define __ODIN_SI2S_H__
+
+/* Special Function Registers offset */
+#define ODIN_SI2S_CTRL                   0x0
+#define ODIN_SI2S_CTRL_FDR               0x4
+#define ODIN_SI2S_SRES                   0x8
+#define ODIN_SI2S_SRES_FDR               0xC
+#define ODIN_SI2S_SRATE                  0x10
+#define ODIN_SI2S_STAT                   0x14
+#define ODIN_SI2S_FIFO_LEVEL             0x18
+#define ODIN_SI2S_FIFO_AEMPTY            0x1C
+#define ODIN_SI2S_FIFO_AFULL             0x20
+#define ODIN_SI2S_FIFO_LEVEL_FDR         0x24
+#define ODIN_SI2S_FIFO_AEMPTY_FDR        0x28
+#define ODIN_SI2S_FIFO_AFULL_FDR         0x2C
+#define ODIN_SI2S_TDM_CTRL               0x30
+#define ODIN_SI2S_TDM_FD_DIR             0x34
+#define ODIN_SI2S_FIFO                   0x40
+#define ODIN_SI2S_FIFO_FDR               0x44
+
+/* I2S Control Register bit [0] default b0 */
+#define ODIN_SI2S_CTRL_ENABLE_SHIFT      0
+#define ODIN_SI2S_CTRL_ENABLE_WIDTH      0x1
+#define ODIN_SI2S_CTRL_ENABLE_MASK       (ODIN_SI2S_CTRL_ENABLE_WIDTH \
+					<< ODIN_SI2S_CTRL_ENABLE_SHIFT)
+#define ODIN_SI2S_CTRL_ENABLE(x)         ((x & ODIN_SI2S_CTRL_ENABLE_WIDTH) \
+					<< ODIN_SI2S_CTRL_ENABLE_SHIFT)
+#define I2S_DISABLE                     0
+#define I2S_ENABLE                      1
+
+/* I2S Control Register bit [1] default b0 */
+#define ODIN_SI2S_CTRL_DIR_CFG_SHIFT     1
+#define ODIN_SI2S_CTRL_DIR_CFG_WIDTH     0x1
+#define ODIN_SI2S_CTRL_DIR_CFG_MASK      (ODIN_SI2S_CTRL_DIR_CFG_WIDTH \
+					<< ODIN_SI2S_CTRL_DIR_CFG_SHIFT)
+#define ODIN_SI2S_CTRL_DIR_CFG(x)        ((x & ODIN_SI2S_CTRL_DIR_CFG_WIDTH) \
+					<< ODIN_SI2S_CTRL_DIR_CFG_SHIFT)
+#define I2S_RECEIVER                    0
+#define I2S_TRANSMITTER                 1
+
+/* I2S Control Register bit [2] default b0 */
+#define ODIN_SI2S_CTRL_MS_CFG_SHIFT      2
+#define ODIN_SI2S_CTRL_MS_CFG_WIDTH      0x1
+#define ODIN_SI2S_CTRL_MS_CFG_MASK       (ODIN_SI2S_CTRL_MS_CFG_WIDTH \
+					<< ODIN_SI2S_CTRL_MS_CFG_SHIFT)
+#define ODIN_SI2S_CTRL_MS_CFG(x)         ((x & ODIN_SI2S_CTRL_MS_CFG_WIDTH) \
+					<< ODIN_SI2S_CTRL_MS_CFG_SHIFT)
+#define I2S_SLAVE                       0
+#define I2S_MASTER                      1
+
+/* I2S Control Register bit [3] default b1 */
+#define ODIN_SI2S_CTRL_SFR_RST_SHIFT     3
+#define ODIN_SI2S_CTRL_SFR_RST_WIDTH     0x1
+#define ODIN_SI2S_CTRL_SFR_RST_MASK      (ODIN_SI2S_CTRL_SFR_RST_WIDTH \
+					<< ODIN_SI2S_CTRL_SFR_RST_SHIFT)
+#define ODIN_SI2S_CTRL_SFR_RST(x)        ((x & ODIN_SI2S_CTRL_SFR_RST_WIDTH) \
+					<< ODIN_SI2S_CTRL_SFR_RST_SHIFT)
+#define I2S_SFR_CTRL_RESET              0
+
+/* I2S Control Register bit [4] default b1 */
+#define ODIN_SI2S_CTRL_FIFO_RST_SHIFT    4
+#define ODIN_SI2S_CTRL_FIFO_RST_WIDTH    0x1
+#define ODIN_SI2S_CTRL_FIFO_RST_MASK     (ODIN_SI2S_CTRL_FIFO_RST_WIDTH \
+					<< ODIN_SI2S_CTRL_FIFO_RST_SHIFT)
+#define ODIN_SI2S_CTRL_FIFO_RST(x)       ((x & ODIN_SI2S_CTRL_FIFO_RST_WIDTH) \
+					<< ODIN_SI2S_CTRL_FIFO_RST_SHIFT)
+#define I2S_FIFO_RESET                  0
+#define I2S_TRANS_FIFO_RESET_IN_FD      0
+
+/* I2S Control Register bit [5-7] default b101 */
+#define ODIN_SI2S_CTRL_CHN_WIDTH_SHIFT   5
+#define ODIN_SI2S_CTRL_CHN_WIDTH_WIDTH   0x7
+#define ODIN_SI2S_CTRL_CHN_WIDTH_MASK    (ODIN_SI2S_CTRL_CHN_WIDTH_WIDTH \
+					<< ODIN_SI2S_CTRL_CHN_WIDTH_SHIFT)
+#define ODIN_SI2S_CTRL_CHN_WIDTH(x)      ((x & ODIN_SI2S_CTRL_CHN_WIDTH_WIDTH)\
+					<< ODIN_SI2S_CTRL_CHN_WIDTH_SHIFT)
+#define I2S_08SCK_PER_CHANNEL           0
+#define I2S_12SCK_PER_CHANNEL           1
+#define I2S_16SCK_PER_CHANNEL           2
+#define I2S_18SCK_PER_CHANNEL           3
+#define I2S_20SCK_PER_CHANNEL           4
+#define I2S_24SCK_PER_CHANNEL           5
+#define I2S_28SCK_PER_CHANNEL           6
+#define I2S_32SCK_PER_CHANNEL           7
+
+/* I2S Control Register bit [8-11] default b0 */
+#define ODIN_SI2S_CTRL_WS_MODE_SHIFT     8
+#define ODIN_SI2S_CTRL_WS_MODE_WIDTH     0xF
+#define ODIN_SI2S_CTRL_WS_MODE_MASK      (ODIN_SI2S_CTRL_WS_MODE_WIDTH \
+					<< ODIN_SI2S_CTRL_WS_MODE_SHIFT)
+#define ODIN_SI2S_CTRL_WS_MODE(x)        ((x & ODIN_SI2S_CTRL_WS_MODE_WIDTH) \
+					<< ODIN_SI2S_CTRL_WS_MODE_SHIFT)
+#define I2S_WS_MODE_DSP                 0
+#define I2S_WS_MODE_I2S                 1
+#define I2S_WS_TDM_MODE_CH(x)           (x)
+
+/* I2S Control Register bit [12] default b0 */
+#define ODIN_SI2S_CTRL_MONO_MODE_SHIFT   12
+#define ODIN_SI2S_CTRL_MONO_MODE_WIDTH   0x1
+#define ODIN_SI2S_CTRL_MONO_MODE_MASK    (ODIN_SI2S_CTRL_MONO_MODE_WIDTH \
+					<< ODIN_SI2S_CTRL_MONO_MODE_SHIFT)
+#define ODIN_SI2S_CTRL_MONO_MODE(x)      \
+					((x & ODIN_SI2S_CTRL_MONO_MODE_WIDTH)\
+					<< ODIN_SI2S_CTRL_MONO_MODE_SHIFT)
+#define I2S_MONO_LEFT                   0
+#define I2S_MONO_RIGHT                  1
+
+/* I2S Control Register bit [13] default b0 */
+#define ODIN_SI2S_CTRL_AUDIO_MODE_SHIFT  13
+#define ODIN_SI2S_CTRL_AUDIO_MODE_WIDTH  0x1
+#define ODIN_SI2S_CTRL_AUDIO_MODE_MASK   (ODIN_SI2S_CTRL_AUDIO_MODE_WIDTH \
+					<< ODIN_SI2S_CTRL_AUDIO_MODE_SHIFT)
+#define ODIN_SI2S_CTRL_AUDIO_MODE(x)     \
+					((x & ODIN_SI2S_CTRL_AUDIO_MODE_WIDTH) \
+					<< ODIN_SI2S_CTRL_AUDIO_MODE_SHIFT)
+
+#define I2S_AUDIO_STEREO                0
+#define I2S_AUDIO_MONO                  1
+
+/* I2S Control Register bit [14] default b0 */
+#define ODIN_SI2S_CTRL_SCK_POLAR_SHIFT   14
+#define ODIN_SI2S_CTRL_SCK_POLAR_WIDTH   0x1
+#define ODIN_SI2S_CTRL_SCK_POLAR_MASK    (ODIN_SI2S_CTRL_SCK_POLAR_WIDTH \
+					<< ODIN_SI2S_CTRL_SCK_POLAR_SHIFT)
+#define ODIN_SI2S_CTRL_SCK_POLAR(x)      \
+					((x & ODIN_SI2S_CTRL_SCK_POLAR_WIDTH) \
+					<< ODIN_SI2S_CTRL_SCK_POLAR_SHIFT)
+#define I2S_SDATA_UPDATED_FALLING       0
+#define I2S_SDATA_UPDATED_RISING        1
+
+/* I2S Control Register bit [15] default b0 */
+#define ODIN_SI2S_CTRL_WS_POLAR_SHIFT    15
+#define ODIN_SI2S_CTRL_WS_POLAR_WIDTH    0x1
+#define ODIN_SI2S_CTRL_WS_POLAR_MASK     (ODIN_SI2S_CTRL_WS_POLAR_WIDTH \
+					<< ODIN_SI2S_CTRL_WS_POLAR_SHIFT)
+#define ODIN_SI2S_CTRL_WS_POLAR(x)       \
+					((x & ODIN_SI2S_CTRL_WS_POLAR_WIDTH) \
+					<< ODIN_SI2S_CTRL_WS_POLAR_SHIFT)
+#define I2S_WS_POLAR_L0R1_IN_I2S        0
+#define I2S_WS_POLAR_L1R0_IN_I2S        1
+#define I2S_WS_POLAR_NEGATIVE_EDGE      0
+#define I2S_WS_POLAR_POSITIVE_EDGE      1
+
+/* I2S Control Register bit [16-20] default b0 */
+#define ODIN_SI2S_CTRL_DATA_WSDEL_SHIFT  16
+#define ODIN_SI2S_CTRL_DATA_WSDEL_WIDTH  0x1F
+#define ODIN_SI2S_CTRL_DATA_WSDEL_MASK   (ODIN_SI2S_CTRL_DATA_WSDEL_WIDTH \
+					<< ODIN_SI2S_CTRL_DATA_WSDEL_SHIFT)
+#define ODIN_SI2S_CTRL_DATA_WSDEL(x)     \
+					((x & ODIN_SI2S_CTRL_DATA_WSDEL_WIDTH) \
+					<< ODIN_SI2S_CTRL_DATA_WSDEL_SHIFT)
+#define ODIN_SI2S_DATA_DELAY_IN_LINE(x)  (x)
+
+/* I2S Control Register bit [21] default b0 */
+#define ODIN_SI2S_CTRL_DATA_ALIGN_SHIFT  21
+#define ODIN_SI2S_CTRL_DATA_ALIGN_WIDTH  0x1
+#define ODIN_SI2S_CTRL_DATA_ALIGN_MASK   (ODIN_SI2S_CTRL_DATA_ALIGN_WIDTH \
+					<< ODIN_SI2S_CTRL_DATA_ALIGN_SHIFT)
+#define ODIN_SI2S_CTRL_DATA_ALIGN(x) ((x & ODIN_SI2S_CTRL_DATA_ALIGN_WIDTH) \
+					<< ODIN_SI2S_CTRL_DATA_ALIGN_SHIFT)
+#define I2S_DATA_ALIGN_LEFT             0
+#define I2S_DATA_ALIGN_RIGHT            1
+
+/* I2S Control Register bit [22] default b0 */
+#define ODIN_SI2S_CTRL_DATA_ORDER_SHIFT  22
+#define ODIN_SI2S_CTRL_DATA_ORDER_WIDTH  0x1
+#define ODIN_SI2S_CTRL_DATA_ORDER_MASK   (ODIN_SI2S_CTRL_DATA_ORDER_WIDTH \
+					<< ODIN_SI2S_CTRL_DATA_ORDER_SHIFT)
+#define ODIN_SI2S_CTRL_DATA_ORDER(x)     \
+					((x & ODIN_SI2S_CTRL_DATA_ORDER_WIDTH) \
+					<< ODIN_SI2S_CTRL_DATA_ORDER_SHIFT)
+#define I2S_DATA_ORDER_MSB_FIRST        0
+#define I2S_DATA_ORDER_LSB_FIRST        1
+
+/* I2S Control Register bit [23] default b0 */
+#define ODIN_SI2S_CTRL_HDATA_ALIGN_SHIFT 23
+#define ODIN_SI2S_CTRL_HDATA_ALIGN_WIDTH 0x1
+#define ODIN_SI2S_CTRL_HDATA_ALIGN_MASK  (ODIN_SI2S_CTRL_HDATA_ALIGN_WIDTH \
+					<< ODIN_SI2S_CTRL_HDATA_ALIGN_SHIFT)
+#define ODIN_SI2S_CTRL_HDATA_ALIGN(x)    \
+					((x & ODIN_SI2S_CTRL_HDATA_ALIGN_WIDTH) \
+					<< ODIN_SI2S_CTRL_HDATA_ALIGN_SHIFT)
+#define OI2S_HDATA_ALIGN_LSB            0
+#define OI2S_HDATA_ALIGN_MSB            1
+
+/* I2S Control Register bit [24] default b0 */
+#define ODIN_SI2S_CTRL_STB_SHIFT         24
+#define ODIN_SI2S_CTRL_STB_WIDTH         0x1
+#define ODIN_SI2S_CTRL_STB_MASK          (ODIN_SI2S_CTRL_STB_WIDTH \
+					<< ODIN_SI2S_CTRL_STB_SHIFT)
+#define ODIN_SI2S_CTRL_STB(x)            ((x & ODIN_SI2S_CTRL_STB_WIDTH) \
+					<< ODIN_SI2S_CTRL_STB_SHIFT)
+#define I2S_TNR_CLOCK_DISABLE           0
+#define I2S_TNR_CLOCK_ENABEL            1
+
+/* I2S Control Register bit [25] default b0 */
+#define ODIN_SI2S_CTRL_INTREQ_M_SHIFT    25
+#define ODIN_SI2S_CTRL_INTREQ_M_WIDTH    0x1
+#define ODIN_SI2S_CTRL_INTREQ_M_MASK     (ODIN_SI2S_CTRL_INTREQ_M_WIDTH \
+					<< ODIN_SI2S_CTRL_INTREQ_M_SHIFT)
+#define ODIN_SI2S_CTRL_INTREQ_M(x)       \
+					((x & ODIN_SI2S_CTRL_INTREQ_M_WIDTH) \
+					<< ODIN_SI2S_CTRL_INTREQ_M_SHIFT)
+#define I2S_INTREQ_ALL_MASK             0
+#define I2S_INTREQ_INDIVIDUAL_MASK      1
+
+/* I2S Control Register bit [26] default b0 */
+#define ODIN_SI2S_CTRL_SI2S_M_SHIFT       26
+#define ODIN_SI2S_CTRL_SI2S_M_WIDTH       0x1
+#define ODIN_SI2S_CTRL_SI2S_M_MASK        (ODIN_SI2S_CTRL_SI2S_M_WIDTH \
+					<< ODIN_SI2S_CTRL_SI2S_M_SHIFT)
+#define ODIN_SI2S_CTRL_SI2S_M(x)          ((x & ODIN_SI2S_CTRL_SI2S_M_WIDTH) \
+					<< ODIN_SI2S_CTRL_SI2S_M_SHIFT)
+#define I2S_UNDER_OVER_RUN_MASK         0
+#define I2S_UNDER_OVER_RUN_UNMASK       1
+#define I2S_FD_TRANS_UNDER_RUN_MASK     0
+#define I2S_FD_TRANS_UNDER_RUN_UNMASK   1
+
+/* I2S Control Register bit [27] default b0 */
+#define ODIN_SI2S_CTRL_FIFO_EMPTY_SHIFT  27
+#define ODIN_SI2S_CTRL_FIFO_EMPTY_WIDTH  0x1
+#define ODIN_SI2S_CTRL_FIFO_EMPTY_MASK   (ODIN_SI2S_CTRL_FIFO_EMPTY_WIDTH \
+					<< ODIN_SI2S_CTRL_FIFO_EMPTY_SHIFT)
+#define ODIN_SI2S_CTRL_FIFO_EMPTY(x)     \
+					((x & ODIN_SI2S_CTRL_FIFO_EMPTY_WIDTH) \
+					<< ODIN_SI2S_CTRL_FIFO_EMPTY_SHIFT)
+#define I2S_FIFO_EMPTY_MASK             0
+#define I2S_FIFO_EMPTY_UNMASK           1
+#define I2S_FD_TRANS_FIFO_EMPTY_MASK    0
+#define I2S_FD_TRANS_FIFO_EMPTY_UNMASK  1
+
+/* I2S Control Register bit [28] default b0 */
+#define ODIN_SI2S_CTRL_FIFO_AEMPTY_SHIFT 28
+#define ODIN_SI2S_CTRL_FIFO_AEMPTY_WIDTH 0x1
+#define ODIN_SI2S_CTRL_FIFO_AEMPTY_MASK  (ODIN_SI2S_CTRL_FIFO_AEMPTY_WIDTH \
+					<< ODIN_SI2S_CTRL_FIFO_AEMPTY_SHIFT)
+#define ODIN_SI2S_CTRL_FIFO_AEMPTY(x)    \
+					((x & ODIN_SI2S_CTRL_FIFO_AEMPTY_WIDTH) \
+					<< ODIN_SI2S_CTRL_FIFO_AEMPTY_SHIFT)
+#define I2S_FIFO_AEMPTY_MASK            0
+#define I2S_FIFO_AEMPTY_UNMASK          1
+#define I2S_FD_TRANS_FIFO_AEMPTY_MASK   0
+#define I2S_FD_TRANS_FIFO_AEMPTY_UNMASK 1
+
+/* I2S Control Register bit [29] default b0 */
+#define ODIN_SI2S_CTRL_FIFO_FULL_SHIFT   29
+#define ODIN_SI2S_CTRL_FIFO_FULL_WIDTH   0x1
+#define ODIN_SI2S_CTRL_FIFO_FULL_MASK    (ODIN_SI2S_CTRL_FIFO_FULL_WIDTH \
+					<< ODIN_SI2S_CTRL_FIFO_FULL_SHIFT)
+#define ODIN_SI2S_CTRL_FIFO_FULL(x)      \
+					((x & ODIN_SI2S_CTRL_FIFO_FULL_WIDTH) \
+					<< ODIN_SI2S_CTRL_FIFO_FULL_SHIFT)
+#define I2S_FIFO_FULL_MASK              0
+#define I2S_FIFO_FULL_UNMASK            1
+#define I2S_FD_TRANS_FIFO_FULL_MASK     0
+#define I2S_FD_TRANS_FIFO_FULL_UNMASK   1
+
+/* I2S Control Register bit [30] default b0 */
+#define ODIN_SI2S_CTRL_FIFO_AFULL_SHIFT  30
+#define ODIN_SI2S_CTRL_FIFO_AFULL_WIDTH  0x1
+#define ODIN_SI2S_CTRL_FIFO_AFULL_MASK   (ODIN_SI2S_CTRL_FIFO_AFULL_WIDTH \
+					<< ODIN_SI2S_CTRL_FIFO_AFULL_SHIFT)
+#define ODIN_SI2S_CTRL_FIFO_AFULL(x)     \
+					((x & ODIN_SI2S_CTRL_FIFO_AFULL_WIDTH) \
+					<< ODIN_SI2S_CTRL_FIFO_AFULL_SHIFT)
+#define I2S_FIFO_AFULL_MASK             0
+#define I2S_FIFO_AFULL_UNMASK           1
+#define I2S_FD_TRANS_FIFO_AFULL_MASK    0
+#define I2S_FD_TRANS_FIFO_AFULL_UNMASK  1
+
+/* I2S Control Register bit [31] default b0 */
+#define ODIN_SI2S_CTRL_FULL_DUPLEX_SHIFT 31
+#define ODIN_SI2S_CTRL_FULL_DUPLEX_WIDTH 0x1
+#define ODIN_SI2S_CTRL_FULL_DUPLEX_MASK  (ODIN_SI2S_CTRL_FULL_DUPLEX_WIDTH \
+					<< ODIN_SI2S_CTRL_FULL_DUPLEX_SHIFT)
+#define ODIN_SI2S_CTRL_FULL_DUPLEX(x)    \
+					((x & ODIN_SI2S_CTRL_FULL_DUPLEX_WIDTH) \
+					<< ODIN_SI2S_CTRL_FULL_DUPLEX_SHIFT)
+#define I2S_FULL_DUPLEX_MODE_DISABLE    0
+#define I2S_FULL_DUPLEX_MODE_ENABLE     1
+
+/* The I2S Full-Duplex Mode Receiver Control Register bit [4] default b0 */
+#define ODIN_SI2S_CTRL_FD_FIFO_RST_SHIFT 4
+#define ODIN_SI2S_CTRL_FD_FIFO_RST_WIDTH 0x1
+#define ODIN_SI2S_CTRL_FD_FIFO_RST_MASK  (ODIN_SI2S_CTRL_FD_FIFO_RST_WIDTH \
+					<< ODIN_SI2S_CTRL_FD_FIFO_RST_SHIFT)
+#define ODIN_SI2S_CTRL_FD_FIFO_RST(x)    \
+					((x & ODIN_SI2S_CTRL_FD_FIFO_RST_WIDTH) \
+					<< ODIN_SI2S_CTRL_FD_FIFO_RST_SHIFT)
+#define I2S_FD_RECEIVE_FIFO_RESET       0
+
+/* The I2S Full-Duplex Mode Receiver Control Register bit [26] default b0 */
+#define ODIN_SI2S_CTRL_FD_RI2S_M_SHIFT   26
+#define ODIN_SI2S_CTRL_FD_RI2S_M_WIDTH   0x1
+#define ODIN_SI2S_CTRL_FD_RI2S_M_MASK    (ODIN_SI2S_CTRL_FD_RI2S_M_WIDTH \
+					<< ODIN_SI2S_CTRL_FD_RI2S_M_SHIFT)
+#define ODIN_SI2S_CTRL_FD_RI2S_M(x)      \
+					((x & ODIN_SI2S_CTRL_FD_RI2S_M_WIDTH) \
+					<< ODIN_SI2S_CTRL_FD_RI2S_M_SHIFT)
+#define I2S_FD_RCV_OVER_RUN_MASK        0
+#define I2S_FD_RCV_OVER_RUN_UNMASK      1
+
+/* The I2S Full-Duplex Mode Receiver Control Register bit [27] default b0 */
+#define ODIN_SI2S_CTRL_RFIFO_EMPTY_SHIFT 27
+#define ODIN_SI2S_CTRL_RFIFO_EMPTY_WIDTH 0x1
+#define ODIN_SI2S_CTRL_RFIFO_EMPTY_MASK  (ODIN_SI2S_CTRL_RFIFO_EMPTY_WIDTH \
+					<< ODIN_SI2S_CTRL_RFIFO_EMPTY_SHIFT)
+#define ODIN_SI2S_CTRL_RFIFO_EMPTY(x)    \
+					((x & ODIN_SI2S_CTRL_RFIFO_EMPTY_WIDTH) \
+					<< ODIN_SI2S_CTRL_RFIFO_EMPTY_SHIFT)
+#define I2S_FD_RCV_FIFO_EMPTY_MASK      0
+#define I2S_FD_RCV_FIFO_EMPTY_UNMASK    1
+
+/* The I2S Full-Duplex Mode Receiver Control Register bit [28] default b0 */
+#define ODIN_SI2S_CTRL_RFIFO_AEMT_SHIFT  28
+#define ODIN_SI2S_CTRL_RFIFO_AEMT_WIDTH  0x1
+#define ODIN_SI2S_CTRL_RFIFO_AEMT_MASK   (ODIN_SI2S_CTRL_RFIFO_AEMT_WIDTH \
+					<< ODIN_SI2S_CTRL_RFIFO_AEMT_SHIFT)
+#define ODIN_SI2S_CTRL_RFIFO_AEMT(x)     \
+					((x & ODIN_SI2S_CTRL_RFIFO_AEMT_WIDTH) \
+					<< ODIN_SI2S_CTRL_RFIFO_AEMT_SHIFT)
+#define I2S_FD_RCV_FIFO_AEMPTY_MASK     0
+#define I2S_FD_RCV_FIFO_AEMPTY_UNMASK   1
+
+/* The I2S Full-Duplex Mode Receiver Control Register bit [29] default b0 */
+#define ODIN_SI2S_CTRL_RFIFO_FULL_SHIFT  29
+#define ODIN_SI2S_CTRL_RFIFO_FULL_WIDTH  0x1
+#define ODIN_SI2S_CTRL_RFIFO_FULL_MASK   (ODIN_SI2S_CTRL_RFIFO_FULL_WIDTH \
+					<< ODIN_SI2S_CTRL_RFIFO_FULL_SHIFT)
+#define ODIN_SI2S_CTRL_RFIFO_FULL(x)     \
+					((x & ODIN_SI2S_CTRL_RFIFO_FULL_WIDTH) \
+					<< ODIN_SI2S_CTRL_RFIFO_FULL_SHIFT)
+#define I2S_FD_RCV_FIFO_FULL_MASK       0
+#define I2S_FD_RCV_FIFO_FULL_UNMASK     1
+
+/* The I2S FULL-Duplex Mode Receiver Control Register bit [30] default b0 */
+#define ODIN_SI2S_CTRL_RFIFO_AFULL_SHIFT 30
+#define ODIN_SI2S_CTRL_RFIFO_AFULL_WIDTH 0x1
+#define ODIN_SI2S_CTRL_RFIFO_AFULL_MASK  (ODIN_SI2S_CTRL_RFIFO_AFULL_WIDTH \
+					<< ODIN_SI2S_CTRL_RFIFO_AFULL_SHIFT)
+#define ODIN_SI2S_CTRL_RFIFO_AFULL(x)    \
+					((x & ODIN_SI2S_CTRL_RFIFO_AFULL_WIDTH) \
+					<< ODIN_SI2S_CTRL_RFIFO_AFULL_SHIFT)
+#define I2S_FD_RCV_FIFO_AFULL_MASK      0
+#define I2S_FD_RCV_FIFO_AFULL_UNMASK    1
+
+/* The I2S Sample Resolution Register bit [0-31] default b0 */
+#define ODIN_SI2S_SAMPLE_RES_SHIFT       0
+#define ODIN_SI2S_SAMPLE_RES_WIDTH       0xFFFF
+#define ODIN_SI2S_SAMPLE_RES_MASK        (ODIN_SI2S_SAMPLE_RES_WIDTH \
+					<< ODIN_SI2S_SAMPLE_RES_SHIFT)
+#define ODIN_SI2S_SAMPLE_RES(x)          ((x & ODIN_SI2S_SAMPLE_RES_WIDTH) \
+					<< ODIN_SI2S_SAMPLE_RES_SHIFT)
+#define I2S_SAMPLE_RESOLUTION(x)        ((x)-1)
+#define I2S_FD_TRANS_SAMPLE_RES(x)      ((x)-1)
+
+/* The I2S Full-Duplex Mode Receive Samples Resolution bit [0-31] default b0 */
+#define ODIN_SI2S_RCV_RSAMPLE_RES_SHIFT  0
+#define ODIN_SI2S_RCV_RSAMPLE_RES_WIDTH  0xFFFF
+#define ODIN_SI2S_RCV_RSAMPLE_RES_MASK   (ODIN_SI2S_RCV_RSAMPLE_RES_WIDTH \
+					<< ODIN_SI2S_RCV_RSAMPLE_RES_SHIFT)
+#define ODIN_SI2S_RCV_SAMPLE_RES(x)      \
+					((x & ODIN_SI2S_RCV_RSAMPLE_RES_WIDTH) \
+					<< ODIN_SI2S_RCV_RSAMPLE_RES_SHIFT)
+#define I2S_FD_RCV_SAMPLE_RES(x)        (x)
+
+/* The I2S Sample Rate Register bit [0-31] default b0 */
+#define ODIN_SI2S_SAMPLE_RATE_SHIFT      0
+#define ODIN_SI2S_SAMPLE_RATE_WIDTH      0xFFFF
+#define ODIN_SI2S_SAMPLE_RATE_MASK       (ODIN_SI2S_SAMPLE_RATE_WIDTH \
+					<< ODIN_SI2S_SAMPLE_RATE_SHIFT)
+#define ODIN_SI2S_SAMPLE_RATE(x)         ((x & ODIN_SI2S_SAMPLE_RATE_WIDTH) \
+					<< ODIN_SI2S_SAMPLE_RATE_SHIFT)
+#define I2S_SAMPLE_RATE(x)              (x)
+
+/* The I2S Status Register bit [0] default b0 */
+#define ODIN_SI2S_STAT_UNDER_RUN_SHIFT   0
+#define ODIN_SI2S_STAT_UNDER_RUN_WIDTH   0x1
+#define ODIN_SI2S_STAT_UNDER_RUN_MASK    (ODIN_SI2S_STAT_UNDER_RUN_WIDTH \
+					<< ODIN_SI2S_STAT_UNDER_RUN_SHIFT)
+#define ODIN_SI2S_STAT_UNDER_RUN(x)      \
+					((x & ODIN_SI2S_STAT_UNDER_RUN_WIDTH) \
+					<< ODIN_SI2S_STAT_UNDER_RUN_SHIFT)
+#define I2S_UNDER_RUN_CLEAR             0
+
+/* The I2S Status Register bit [1] default b0 */
+#define ODIN_SI2S_STAT_OVER_RUN_SHIFT    1
+#define ODIN_SI2S_STAT_OVER_RUN_WIDTH    0x1
+#define ODIN_SI2S_STAT_OVER_RUN_MASK     (ODIN_SI2S_STAT_OVER_RUN_WIDTH \
+					<< ODIN_SI2S_STAT_OVER_RUN_SHIFT)
+#define ODIN_SI2S_STAT_OVER_RUN(x)       \
+					((x & ODIN_SI2S_STAT_OVER_RUN_WIDTH) \
+					<< ODIN_SI2S_STAT_OVER_RUN_SHIFT)
+#define I2S_OVER_RUN_CLEAR              0
+
+/* The I2S Status Register bit [2] default b0 */
+#define ODIN_SI2S_STAT_FIFO_EMPTY_SHIFT  2
+#define ODIN_SI2S_STAT_FIFO_EMPTY_WIDTH  0x1
+#define ODIN_SI2S_STAT_FIFO_EMPTY_MASK   (ODIN_SI2S_STAT_FIFO_EMPTY_WIDTH \
+					<< ODIN_SI2S_STAT_FIFO_EMPTY_SHIFT)
+#define ODIN_SI2S_STAT_FIFO_EMPTY(x)     \
+					((x & ODIN_SI2S_STAT_FIFO_EMPTY_WIDTH) \
+					<< ODIN_SI2S_STAT_FIFO_EMPTY_SHIFT)
+#define I2S_FIFO_EMPTY_CLEAR            0
+#define I2S_FD_TRANS_FIFO_EMPTY_CLEAR   0
+
+/* The I2S Status Register bit [3] default b0 */
+#define ODIN_SI2S_STAT_FIFO_AEMPTY_SHIFT 3
+#define ODIN_SI2S_STAT_FIFO_AEMPTY_WIDTH 0x1
+#define ODIN_SI2S_STAT_FIFO_AEMPTY_MASK  (ODIN_SI2S_STAT_FIFO_AEMPTY_WIDTH \
+					<< ODIN_SI2S_STAT_FIFO_AEMPTY_SHIFT)
+#define ODIN_SI2S_STAT_FIFO_AEMPTY(x)    \
+					((x & ODIN_SI2S_STAT_FIFO_AEMPTY_WIDTH) \
+					<< ODIN_SI2S_STAT_FIFO_AEMPTY_SHIFT)
+#define I2S_FIFO_AEMPTY_CLEAR           0
+#define I2S_FD_TRANS_FIFO_AEMPTY_CLEAR  0
+
+/* The I2S Status Register bit [4] default b0 */
+#define ODIN_SI2S_STAT_FIFO_FULL_SHIFT   4
+#define ODIN_SI2S_STAT_FIFO_FULL_WIDTH   0x1
+#define ODIN_SI2S_STAT_FIFO_FULL_MASK    (ODIN_SI2S_STAT_FIFO_FULL_WIDTH \
+					<< ODIN_SI2S_STAT_FIFO_FULL_SHIFT)
+#define ODIN_SI2S_STAT_FIFO_FULL(x)      \
+					((x & ODIN_SI2S_STAT_FIFO_FULL_WIDTH) \
+					<< ODIN_SI2S_STAT_FIFO_FULL_SHIFT)
+#define I2S_FIFO_FULL_CLEAR             0
+#define I2S_FD_TRANS_FIFO_FULL_CLEAR    0
+
+/* The I2S Status Register bit [5] default b0 */
+#define ODIN_SI2S_STAT_FIFO_AFULL_SHIFT  5
+#define ODIN_SI2S_STAT_FIFO_AFULL_WIDTH  0x1
+#define ODIN_SI2S_STAT_FIFO_AFULL_MASK   (ODIN_SI2S_STAT_FIFO_AFULL_WIDTH \
+					<< ODIN_SI2S_STAT_FIFO_AFULL_SHIFT)
+#define ODIN_SI2S_STAT_FIFO_AFULL(x)     \
+					((x & ODIN_SI2S_STAT_FIFO_AFULL_WIDTH) \
+					<< ODIN_SI2S_STAT_FIFO_AFULL_SHIFT)
+#define I2S_FIFO_AFULL_CLEAR            0
+#define I2S_FD_TRANS_FIFO_AFULL_CLEAR   0
+
+/* The I2S Status Register bit [16] default b0 */
+#define ODIN_SI2S_STAT_RFIFO_EMPTY_SHIFT 16
+#define ODIN_SI2S_STAT_RFIFO_EMPTY_WIDTH 0x1
+#define ODIN_SI2S_STAT_RFIFO_EMPTY_MASK  (ODIN_SI2S_STAT_RFIFO_EMPTY_WIDTH \
+					<< ODIN_SI2S_STAT_RFIFO_EMPTY_SHIFT)
+#define ODIN_SI2S_STAT_RFIFO_EMPTY(x)    \
+					((x & ODIN_SI2S_STAT_RFIFO_EMPTY_WIDTH) \
+					<< ODIN_SI2S_STAT_RFIFO_EMPTY_SHIFT)
+#define I2S_FD_RCV_RFIFO_EMPTY_CLEAR    0
+
+/* The I2S Status Register bit [17] default b0 */
+#define ODIN_SI2S_STAT_RFIFO_AEMPTY_SHIFT 17
+#define ODIN_SI2S_STAT_RFIFO_AEMPTY_WIDTH 0x1
+#define ODIN_SI2S_STAT_RFIFO_AEMPTY_MASK  (ODIN_SI2S_STAT_RFIFO_AEMPTY_WIDTH \
+					<< ODIN_SI2S_STAT_RFIFO_AEMPTY_SHIFT)
+#define ODIN_SI2S_STAT_RFIFO_AEMPTY(x)  \
+					((x & ODIN_SI2S_STAT_RFIFO_AEMPTY_WIDTH) \
+					<< ODIN_SI2S_STAT_RFIFO_AEMPTY_SHIFT)
+#define I2S_FD_RCV_RFIFO_AEMPTY_CLEAR    0
+
+/* The I2S Status Register bit [18] default b0 */
+#define ODIN_SI2S_STAT_RFIFO_FULL_SHIFT  18
+#define ODIN_SI2S_STAT_RFIFO_FULL_WIDTH  0x1
+#define ODIN_SI2S_STAT_RFIFO_FULL_MASK   (ODIN_SI2S_STAT_RFIFO_FULL_WIDTH \
+					<< ODIN_SI2S_STAT_RFIFO_FULL_SHIFT)
+#define ODIN_SI2S_STAT_RFIFO_FULL(x)     \
+					((x & ODIN_SI2S_STAT_RFIFO_FULL_WIDTH) \
+					<< ODIN_SI2S_STAT_RFIFO_FULL_SHIFT)
+#define I2S_FD_RCV_RFIFO_FULL_CLEAR     0
+
+/* The I2S Status Register bit [19] default b0 */
+#define ODIN_SI2S_STAT_RFIFO_AFULL_SHIFT 19
+#define ODIN_SI2S_STAT_RFIFO_AFULL_WIDTH 0x1
+#define ODIN_SI2S_STAT_RFIFO_AFULL_MASK  (ODIN_SI2S_STAT_RFIFO_AFULL_WIDTH \
+					<< ODIN_SI2S_STAT_RFIFO_AFULL_SHIFT)
+#define ODIN_SI2S_STAT_RFIFO_AFULL(x)    \
+					((x & ODIN_SI2S_STAT_RFIFO_AFULL_WIDTH) \
+					<< ODIN_SI2S_STAT_RFIFO_AFULL_SHIFT)
+#define I2S_FD_RCV_RFIFO_AFULL_CLEAR    0
+
+/* The FIFO Level Register bit [0-31] default b0 */
+#define ODIN_SI2S_RO_FIFO_LEVEL_SHIFT    0
+#define ODIN_SI2S_RO_FIFO_LEVEL_WIDTH    0xFFFF
+#define ODIN_SI2S_RO_FIFO_LEVEL_MASK     (ODIN_SI2S_RO_FIFO_LEVEL_WIDTH \
+					<< ODIN_SI2S_RO_FIFO_LEVEL_SHIFT)
+#define I2S_RO_FIFO_LEVEL               ODIN_SI2S_RO_FIFO_LEVEL_MASK
+#define I2S_RO_FD_TRANS_FIFO_LEVEL      ODIN_SI2S_RO_FIFO_LEVEL_MASK
+
+/* The FIFO Almost Empty Register bit [0-31] default b0 */
+#define ODIN_SI2S_AEMPTY_THRES_SHIFT     0
+#define ODIN_SI2S_AEMPTY_THRES_WIDTH     0xFFFF
+#define ODIN_SI2S_AEMPTY_THRES_MASK      (ODIN_SI2S_AEMPTY_THRES_WIDTH \
+					<< ODIN_SI2S_AEMPTY_THRES_SHIFT)
+#define ODIN_SI2S_AEMPTY_THRES(x)        \
+					((x & ODIN_SI2S_AEMPTY_THRES_WIDTH) \
+					<< ODIN_SI2S_AEMPTY_THRES_SHIFT)
+#define I2S_FIFO_AEMPTY_THRES(x)        (x)
+#define I2S_FD_TRANS_AEMPTY_THRES(x)    (x)
+
+/* The FIFO Almost Full Register bit [0-31] default b0 */
+#define ODIN_SI2S_AFULL_THRES_SHIFT      0
+#define ODIN_SI2S_AFULL_THRES_WIDTH      0xFFFF
+#define ODIN_SI2S_AFULL_THRES_MASK       (ODIN_SI2S_AFULL_THRES_WIDTH \
+					<< ODIN_SI2S_AFULL_THRES_SHIFT)
+#define ODIN_SI2S_AFULL_THRES(x)         ((x & ODIN_SI2S_AFULL_THRES_WIDTH) \
+					<< ODIN_SI2S_AFULL_THRES_SHIFT)
+#define I2S_FIFO_AFULL_THRES(x)         (x)
+#define I2S_FD_TRANS_AFULL_THRES(x)     (x)
+
+/* The Full-Duplex Mode Receive FIFO Level Register bit [0-31] default b0 */
+#define ODIN_SI2S_RO_FD_FIFO_LEVEL_SHIFT 0
+#define ODIN_SI2S_RO_FD_FIFO_LEVEL_WIDTH 0xFFFF
+#define ODIN_SI2S_RO_FD_FIFO_LEVEL_MASK  (ODIN_SI2S_RO_FD_FIFO_LEVEL_WIDTH \
+					<< ODIN_SI2S_RO_FD_FIFO_LEVEL_SHIFT)
+#define I2S_RO_FD_FIFO_LEVEL            ODIN_SI2S_RO_FD_FIFO_LEVEL_MASK
+#define I2S_RO_FD_RCV_FIFO_LEVEL        ODIN_SI2S_RO_FD_FIFO_LEVEL_MASK
+
+/* The Full-Duplex Mode Receive FIFO Almost Empty Reg bit [0-31] default b0 */
+#define ODIN_SI2S_FD_AEMPTY_THRES_SHIFT  0
+#define ODIN_SI2S_FD_AEMPTY_THRES_WIDTH  0xFFFF
+#define ODIN_SI2S_FD_AEMPTY_THRES_MASK   (ODIN_SI2S_FD_AEMPTY_THRES_WIDTH \
+					<< ODIN_SI2S_FD_AEMPTY_THRES_SHIFT)
+#define ODIN_SI2S_FD_AEMPTY_THRES(x)     \
+					((x & ODIN_SI2S_FD_AEMPTY_THRES_WIDTH) \
+					<< ODIN_SI2S_FD_AEMPTY_THRES_SHIFT)
+#define I2S_FD_RCV_AEMPTY_THRES(x)      (x)
+
+/* The Full-Duplex Mode Receive FIFO Almost Full Reg bit [0-31] default b0 */
+#define ODIN_SI2S_FD_AFULL_THRES_SHIFT   0
+#define ODIN_SI2S_FD_AFULL_THRES_WIDTH   0xFFFF
+#define ODIN_SI2S_FD_AFULL_THRES_MASK    (ODIN_SI2S_FD_AFULL_THRES_WIDTH \
+					<< ODIN_SI2S_FD_AFULL_THRES_SHIFT)
+#define ODIN_SI2S_FD_AFULL_THRES(x)      \
+					((x & ODIN_SI2S_FD_AFULL_THRES_WIDTH) \
+					<< ODIN_SI2S_FD_AFULL_THRES_SHIFT)
+#define I2S_FD_RCV_AFULL_THRES(x)       (x)
+
+/* The Time Division Multiplexing Control Register bit [0] default b0 */
+#define ODIN_SI2S_TDM_CTRL_ENABLE_SHIFT  0
+#define ODIN_SI2S_TDM_CTRL_ENABLE_WIDTH  0x1
+#define ODIN_SI2S_TDM_CTRL_ENABLE_MASK   (ODIN_SI2S_TDM_CTRL_ENABLE_WIDTH \
+					<< ODIN_SI2S_TDM_CTRL_ENABLE_SHIFT)
+#define ODIN_SI2S_TDM_CTRL_ENABLE_(x)    \
+					((x & ODIN_SI2S_TDM_CTRL_ENABLE_WIDTH) \
+					<< ODIN_SI2S_TDM_CTRL_ENABLE_SHIFT)
+#define I2S_TDM_MODE_DISABLE            0
+#define I2S_TDM_MODE_ENABEL             1
+
+/* The Time Division Multiplexing Control Register bit [1-4] default b0 */
+#define ODIN_SI2S_TDM_CTRL_CHN_NO_SHIFT  1
+#define ODIN_SI2S_TDM_CTRL_CHN_NO_WIDTH  0xF
+#define ODIN_SI2S_TDM_CTRL_CHN_NO_MASK   (ODIN_SI2S_TDM_CTRL_CHN_NO_WIDTH \
+					<< ODIN_SI2S_TDM_CTRL_CHN_NO_SHIFT)
+#define ODIN_SI2S_TDM_CTRL_CHN_NO(x)     \
+					((x & ODIN_SI2S_TDM_CTRL_CHN_NO_WIDTH) \
+					<< ODIN_SI2S_TDM_CTRL_CHN_NO_SHIFT)
+#define I2S_TMD_CHANNEL_NUMBER(x)       (x)
+
+/* The Time Division Multiplexing Control Register bit [16-31] default b0 */
+#define ODIN_SI2S_TDM_CTRL_CH_EN_SHIFT   16
+#define ODIN_SI2S_TDM_CTRL_CH_EN_WIDTH   0x1
+#define ODIN_SI2S_TDM_CTRL_CH_EN_MASK(x) (ODIN_SI2S_TDM_CTRL_CH_EN_WIDTH \
+					<< (ODIN_SI2S_TDM_CTRL_CH_EN_SHIFT+(x)))
+#define ODIN_SI2S_TDM_CTRL_CH_ENABLE(x)  \
+					((0x1 & ODIN_SI2S_TDM_CTRL_CH_EN_WIDTH) \
+					<< (ODIN_SI2S_TDM_CTRL_CH_EN_SHIFT+(x)))
+#define ODIN_SI2S_TDM_CTRL_CH_DISABLE(x) \
+					((0x0 & ODIN_SI2S_TDM_CTRL_CH_EN_WIDTH) \
+					<< (ODIN_SI2S_TDM_CTRL_CH_EN_SHIFT+(x)))
+#define I2S_TMD_ENABLE_CH_NUMBER(x)     (x)
+
+/* The Time Division Multiplexing Full-Duplex Mode Channels Direction Reg */
+#define ODIN_SI2S_FD_TDM_CH_TX_SHIFT     0
+#define ODIN_SI2S_FD_TDM_CH_TX_WIDTH     0x1
+#define ODIN_SI2S_FD_TDM_CH_TX_MASK(x)   (ODIN_SI2S_FD_TDM_CH_TX_WIDTH \
+					<< (ODIN_SI2S_FD_TDM_CH_TX_SHIFT+(x)))
+#define ODIN_SI2S_FD_TDM_CH_TX_SET(x)    \
+					((0x1 & ODIN_SI2S_FD_TDM_CH_TX_WIDTH) \
+					<< (ODIN_SI2S_FD_TDM_CH_TX_SHIFT+(x)))
+#define ODIN_SI2S_FD_TDM_CH_TX_CLEAR(x)  \
+					((0x0 & ODIN_SI2S_FD_TDM_CH_TX_WIDTH) \
+					<< (ODIN_SI2S_FD_TDM_CH_TX_SHIFT+(x)))
+#define I2S_FD_TMD_TX_CH_NUMBER(x)      (x)
+
+#define ODIN_SI2S_FD_TDM_CH_RX_SHIFT     16
+#define ODIN_SI2S_FD_TDM_CH_RX_WIDTH     0x1
+#define ODIN_SI2S_FD_TDM_CH_RX_MASK(x)   (ODIN_SI2S_FD_TDM_CH_RX_WIDTH \
+					<< (ODIN_SI2S_FD_TDM_CH_RX_SHIFT+(x)))
+#define ODIN_SI2S_FD_TDM_CH_RX_SET(x)    \
+					((0x1 & ODIN_SI2S_FD_TDM_CH_RX_WIDTH) \
+					<< (ODIN_SI2S_FD_TDM_CH_RX_SHIFT+(x)))
+#define ODIN_SI2S_FD_TDM_CH_RX_CLEAR(x)  \
+					((0x0 & ODIN_SI2S_FD_TDM_CH_RX_WIDTH) \
+					<< (ODIN_SI2S_FD_TDM_CH_RX_SHIFT+(x)))
+#define I2S_FD_TMD_RX_CH_NUMBER(x)      (x)
+
+#define ODIN_SI2S_MAX	5
+
+#define ODIN_SI2S_NONE		0
+#define ODIN_SI2S_PLAYBACK	1
+#define ODIN_SI2S_CAPTURE	2
+
+struct odin_si2s_platform_data {
+	int mode;
+};
+#endif

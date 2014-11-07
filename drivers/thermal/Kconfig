@@ -192,4 +192,25 @@ config INTEL_POWERCLAMP
 	  enforce idle time which results in more package C-state residency. The
 	  user interface is exposed via generic thermal framework.
 
+config ODIN_THERMAL
+	bool "ODIN thermal sensor driver"
+	depends on ARCH_ODIN
+	depends on THERMAL
+	help
+	  Enables thermal sensor driver and registers thermal sensors to
+	  generic thermal sysfs driver as thermal zones.
+	  Userspace thermal manager uses these thermal zones to control
+	  the temperature of AP by throttling max frequencies of cores.
+
+config ODIN_THERMAL_MONITOR
+	bool "ODIN thermal monitor"
+	depends on ARCH_ODIN
+	depends on THERMAL
+	depends on ODIN_THERMAL
+	help
+	  Enables thermal monitor which controls the temperature of AP
+	  by throttling max frequencies of cores.
+	  Thermal monitor starts thermal mitigation just after cpufreq driver is
+	  initialized, and hands it's role over to userspace thermal manager.
+
 endif

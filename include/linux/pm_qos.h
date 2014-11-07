@@ -9,12 +9,15 @@
 #include <linux/miscdevice.h>
 #include <linux/device.h>
 #include <linux/workqueue.h>
+#include <linux/mutex.h>
 
 enum {
 	PM_QOS_RESERVED = 0,
 	PM_QOS_CPU_DMA_LATENCY,
 	PM_QOS_NETWORK_LATENCY,
 	PM_QOS_NETWORK_THROUGHPUT,
+	PM_QOS_ODIN_MEM_MIN_FREQ,
+	PM_QOS_ODIN_CCI_MIN_FREQ,
 
 	/* insert new class ID */
 	PM_QOS_NUM_CLASSES,
@@ -33,6 +36,8 @@ enum pm_qos_flags_status {
 #define PM_QOS_NETWORK_LAT_DEFAULT_VALUE	(2000 * USEC_PER_SEC)
 #define PM_QOS_NETWORK_THROUGHPUT_DEFAULT_VALUE	0
 #define PM_QOS_DEV_LAT_DEFAULT_VALUE		0
+#define PM_QOS_ODIN_MEM_MIN_FREQ_DEFAULT_VALUE  0
+#define PM_QOS_ODIN_CCI_MIN_FREQ_DEFAULT_VALUE	0
 
 #define PM_QOS_FLAG_NO_POWER_OFF	(1 << 0)
 #define PM_QOS_FLAG_REMOTE_WAKEUP	(1 << 1)
@@ -77,8 +82,10 @@ struct pm_qos_constraints {
 	struct plist_head list;
 	s32 target_value;	/* Do not change to 64 bit */
 	s32 default_value;
+	s32 initialized;
 	enum pm_qos_type type;
 	struct blocking_notifier_head *notifiers;
+	struct mutex lock;
 };
 
 struct pm_qos_flags {

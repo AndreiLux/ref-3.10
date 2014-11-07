@@ -50,4 +50,8 @@ obj-y	+= davinci/
 
 obj-$(CONFIG_ARCH_OMAP)	+= omap/
 
+obj-$(CONFIG_VIDEO_ODIN) += odin-css/
+
+obj-$(CONFIG_VIDEO_ODIN_VCODEC)   += odin-vcodec/
+
 ccflags-y += -I$(srctree)/drivers/media/i2c

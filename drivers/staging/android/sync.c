@@ -25,7 +25,6 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/anon_inodes.h>
-
 #include "sync.h"
 
 #define CREATE_TRACE_POINTS
@@ -79,12 +78,12 @@ static void sync_timeline_free(struct kref *kref)
 		container_of(kref, struct sync_timeline, kref);
 	unsigned long flags;
 
-	if (obj->ops->release_obj)
-		obj->ops->release_obj(obj);
-
 	spin_lock_irqsave(&sync_timeline_list_lock, flags);
 	list_del(&obj->sync_timeline_list);
 	spin_unlock_irqrestore(&sync_timeline_list_lock, flags);
+
+	if (obj->ops->release_obj)
+		obj->ops->release_obj(obj);
 
 	kfree(obj);
 }
@@ -92,14 +91,14 @@ static void sync_timeline_free(struct kref *kref)
 void sync_timeline_destroy(struct sync_timeline *obj)
 {
 	obj->destroyed = true;
+	smp_wmb();
 
 	/*
-	 * If this is not the last reference, signal any children
-	 * that their parent is going away.
+	 * signal any children that their parent is going away.
 	 */
+	sync_timeline_signal(obj);
 
-	if (!kref_put(&obj->kref, sync_timeline_free))
-		sync_timeline_signal(obj);
+	kref_put(&obj->kref, sync_timeline_free);
 }
 EXPORT_SYMBOL(sync_timeline_destroy);
 
@@ -402,8 +401,10 @@ struct sync_fence *sync_fence_fdget(int fd)
 {
 	struct file *file = fget(fd);
 
-	if (file == NULL)
+	if (file == NULL) {
+		pr_err("file of fd(%d) is NULL\n", fd);
 		return NULL;
+	}
 
 	if (file->f_op != &sync_fence_fops)
 		goto err;
@@ -411,6 +412,8 @@ struct sync_fence *sync_fence_fdget(int fd)
 	return file->private_data;
 
 err:
+	pr_err("file->f_op(%x) of fd(%d) is not sync_fence_fops(%x)\n",
+			file->f_op, fd, &sync_fence_fops);
 	fput(file);
 	return NULL;
 }
@@ -588,6 +591,7 @@ static bool sync_fence_check(struct sync_fence *fence)
 	return fence->status != 0;
 }
 
+#define DSSCOMP_FENCE_SYNC
 int sync_fence_wait(struct sync_fence *fence, long timeout)
 {
 	int err = 0;
@@ -613,7 +617,7 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 
 	if (fence->status < 0) {
 		pr_info("fence error %d on [%p]\n", fence->status, fence);
-		sync_dump();
+	//HARDLINE	sync_dump();
 		return fence->status;
 	}
 
@@ -621,7 +625,12 @@ int sync_fence_wait(struct sync_fence *fence, long timeout)
 		if (timeout > 0) {
 			pr_info("fence timeout on [%p] after %dms\n", fence,
 				jiffies_to_msecs(timeout));
-			sync_dump();
+#ifdef DSSCOMP_FENCE_SYNC
+/*            if (jiffies_to_msecs(timeout) != 1000)*/
+	//HARDLINE	sync_dump();
+#else
+	//HARDLINE	sync_dump();
+#endif
 		}
 		return -ETIME;
 	}

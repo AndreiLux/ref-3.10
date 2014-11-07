@@ -1,0 +1,98 @@
+/*
+ * LG Electronics I2C for ODIN/Woden
+ */
+
+/ {
+
+  connectivity {
+        compatible = "simple-bus";
+  		interrupt-parent = <&gic>;
+   	    #address-cells = <2>;
+   	    #size-cells = <2>;
+		ranges;
+
+/* sdio start */
+		sdhci@0x20006000{
+			compatible = "odin,sdio";
+			reg = <0 0x20006000 0 0x2000>;
+			clocks = <&sdio_sclk0>;
+			interrupts = <0 4 0x4>;	/* 36 - 32 */
+			sdclk = <100>;			/* 200Mhz, UHS104*/
+			tuning_mode = <1>;		/* 0 : mode-1, 1 : mode-2, 2 : mode-3 */
+		};
+/* sdio end */
+
+/* BCM4339 Wi-Fi Driver start */
+		wlan@0{
+			compatible = "odin,broadcom,bcm4339-wlan";
+			power_gpio = <154>;		/* 112 + SMS_GPIO_42_EINT */
+		};
+/* BCM4339 Wi-Fi Driver end */
+
+		bt@0{
+			compatible ="odin,broadcom,bcm4339-bt";
+			reset_gpio = <132>;		/* 112 + SMS_GPIO_20 */
+			wakeup_gpio = <3>;		/* 0 + PERI_G0_GPIO_03_EINT */
+			hostwake_gpio = <140>;	/* 112 + SMS_GPIO_28 */
+		};
+	};
+	soc{
+		compatible = "simple-bus";
+  		interrupt-parent = <&gic>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		spi@20011000 {
+			compatible = "octasic,odin-spi";
+			reg = <0 0x20011000 0 0x1000>;
+			interrupts = <0 9 0x4>;
+			clocks = <&spi_sclk0>;
+			id = <0>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			spidev@0{
+				compatible = "spidev";
+				spi-max-frequency = <1000000>;
+				reg = <2>;
+				spi-cpha;
+				spi-cpol;
+			};
+
+			ethernet@1{
+				status = "disabled";
+			};
+
+			energy_meter@2{
+				compatible = "lge,energy_meter";
+				spi-max-frequency = <1000000>;
+				reg = <0>;
+			};
+		};
+		i2c@20021000 {
+			compatible = "snps,odin-i2c";
+			reg = <0 0x20021000 0 0x800>;
+			interrupts = <0 15 0x4>;
+			clocks = <&i2c_sclk0>;
+
+			max77665: max77665@66{
+				status = "disabled";
+			};
+
+            max77665-muic@25{
+				status = "disabled";
+			};
+		};
+		i2c@20021800 {
+			compatible = "snps,odin-i2c";
+			reg = <0 0x20021800 0 0x800>;
+			interrupts = <0 16 0x4>;
+			clocks = <&i2c_sclk1>;
+
+			lm3630@38{
+				compatible = "backlight,lm3630_odin";
+				status = "disabled";
+			};
+		};
+	};
+};

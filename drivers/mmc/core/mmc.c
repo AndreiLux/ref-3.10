@@ -293,7 +293,14 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
-	if (card->ext_csd.rev > 6) {
+/*
+               
+                                                                
+                                 
+ */
+	//if (card->ext_csd.rev > 6) {
+	if (card->ext_csd.rev > 8) {
+/*              */
 		pr_err("%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
@@ -470,6 +477,18 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 			card->ext_csd.bkops_en = ext_csd[EXT_CSD_BKOPS_EN];
 			card->ext_csd.raw_bkops_status =
 				ext_csd[EXT_CSD_BKOPS_STATUS];
+#if defined(CONFIG_ARCH_ODIN)
+			if (!card->ext_csd.bkops_en &&
+					card->host->caps2 & MMC_CAP2_ENABLE_BKOPS) {
+				err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+						EXT_CSD_BKOPS_EN, 1, 0);
+				if (err)
+					pr_warn("%s: Enabling BKOPS failed\n",
+							mmc_hostname(card->host));
+				else
+					card->ext_csd.bkops_en = 1;
+			}
+#endif
 			if (!card->ext_csd.bkops_en)
 				pr_info("%s: BKOPS_EN bit is not set\n",
 					mmc_hostname(card->host));
@@ -515,8 +534,13 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	if (card->ext_csd.rev >= 6) {
 		card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
 
+#if defined(CONFIG_ARCH_WODEN) || defined(CONFIG_ARCH_ODIN)
+		card->ext_csd.generic_cmd6_time = (ext_csd[EXT_CSD_GENERIC_CMD6_TIME] < 0xF)?(10 * 0xF):
+										  (10 * ext_csd[EXT_CSD_GENERIC_CMD6_TIME]);
+#else
 		card->ext_csd.generic_cmd6_time = 10 *
 			ext_csd[EXT_CSD_GENERIC_CMD6_TIME];
+#endif 
 		card->ext_csd.power_off_longtime = 10 *
 			ext_csd[EXT_CSD_POWER_OFF_LONG_TIME];
 
@@ -548,9 +572,29 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		card->ext_csd.data_sector_size = 512;
 	}
 
+#if defined(CONFIG_MMC_FFU)
+	card->ext_csd.firmware_version =
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 0] << 0 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 1] << 8 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 2] << 16 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 3] << 24 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 4] << 32 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 5] << 40 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 6] << 48 |
+		ext_csd[EXT_CSD_FIRMWARE_VERSION + 7] << 56;
+#endif
+
 out:
 	return err;
 }
+
+#if defined(CONFIG_MMC_FFU)
+unsigned long long get_mmc_firmware_version(struct mmc_card *card)
+{
+	return card->ext_csd.firmware_version;
+}
+EXPORT_SYMBOL(get_mmc_firmware_version);
+#endif
 
 static inline void mmc_free_ext_csd(u8 *ext_csd)
 {

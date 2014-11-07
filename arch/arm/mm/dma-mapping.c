@@ -25,6 +25,9 @@
 #include <linux/io.h>
 #include <linux/vmalloc.h>
 #include <linux/sizes.h>
+#ifdef CONFIG_ODIN_SMMU_DMA
+#include <linux/odin_iommu.h>
+#endif
 
 #include <asm/memory.h>
 #include <asm/highmem.h>
@@ -1023,6 +1026,7 @@ fs_initcall(dma_debug_do_init);
 
 /* IOMMU */
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 static inline dma_addr_t __alloc_iova(struct dma_iommu_mapping *mapping,
 				      size_t size)
 {
@@ -1053,7 +1057,17 @@ static inline dma_addr_t __alloc_iova(struct dma_iommu_mapping *mapping,
 
 	return mapping->base + (start << (mapping->order + PAGE_SHIFT));
 }
+#else
+static inline dma_addr_t __alloc_iova(phys_addr_t pa)
+{
+	if (pa < (phys_addr_t)ODIN_IOMMU_SECOND_BANK_BASE)
+		return (dma_addr_t)(pa-ODIN_IOMMU_FIRST_BANK_OFFSET);
+	else
+		return (dma_addr_t)(pa-ODIN_IOMMU_SECOND_BANK_OFFSET);
+}
+#endif
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 static inline void __free_iova(struct dma_iommu_mapping *mapping,
 			       dma_addr_t addr, size_t size)
 {
@@ -1067,7 +1081,15 @@ static inline void __free_iova(struct dma_iommu_mapping *mapping,
 	bitmap_clear(mapping->bitmap, start, count);
 	spin_unlock_irqrestore(&mapping->lock, flags);
 }
+#else
+static inline void __free_iova(struct dma_iommu_mapping *mapping,
+			       dma_addr_t addr, size_t size)
+{
+	return;
+}
+#endif
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 static struct page **__iommu_alloc_buffer(struct device *dev, size_t size,
 					  gfp_t gfp, struct dma_attrs *attrs)
 {
@@ -1231,6 +1253,7 @@ fail:
 	__free_iova(mapping, dma_addr, size);
 	return DMA_ERROR_CODE;
 }
+#endif
 
 static int __iommu_remove_mapping(struct device *dev, dma_addr_t iova, size_t size)
 {
@@ -1273,6 +1296,7 @@ static struct page **__iommu_get_pages(void *cpu_addr, struct dma_attrs *attrs)
 	return NULL;
 }
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 static void *__iommu_alloc_atomic(struct device *dev, size_t size,
 				  dma_addr_t *handle)
 {
@@ -1338,6 +1362,7 @@ err_buffer:
 	__iommu_free_buffer(dev, pages, size, attrs);
 	return NULL;
 }
+#endif
 
 static int arm_iommu_mmap_attrs(struct device *dev, struct vm_area_struct *vma,
 		    void *cpu_addr, dma_addr_t dma_addr, size_t size,
@@ -1365,6 +1390,7 @@ static int arm_iommu_mmap_attrs(struct device *dev, struct vm_area_struct *vma,
 	return 0;
 }
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 /*
  * free a page as defined by the above mapping.
  * Must not be called with IRQs disabled.
@@ -1393,6 +1419,7 @@ void arm_iommu_free_attrs(struct device *dev, size_t size, void *cpu_addr,
 	__iommu_remove_mapping(dev, handle, size);
 	__iommu_free_buffer(dev, pages, size, attrs);
 }
+#endif
 
 static int arm_iommu_get_sgtable(struct device *dev, struct sg_table *sgt,
 				 void *cpu_addr, dma_addr_t dma_addr,
@@ -1408,6 +1435,7 @@ static int arm_iommu_get_sgtable(struct device *dev, struct sg_table *sgt,
 					 GFP_KERNEL);
 }
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 /*
  * Map a part of the scatter-gather list into contiguous io address space
  */
@@ -1515,6 +1543,7 @@ int arm_coherent_iommu_map_sg(struct device *dev, struct scatterlist *sg,
 {
 	return __iommu_map_sg(dev, sg, nents, dir, attrs, true);
 }
+#endif
 
 /**
  * arm_iommu_map_sg - map a set of SG buffers for streaming mode DMA
@@ -1528,11 +1557,39 @@ int arm_coherent_iommu_map_sg(struct device *dev, struct scatterlist *sg,
  * tagged with the appropriate dma address and length. They are obtained via
  * sg_dma_{address,length}.
  */
+#ifndef CONFIG_ODIN_SMMU_DMA
 int arm_iommu_map_sg(struct device *dev, struct scatterlist *sg,
 		int nents, enum dma_data_direction dir, struct dma_attrs *attrs)
 {
 	return __iommu_map_sg(dev, sg, nents, dir, attrs, false);
 }
+#else
+int arm_iommu_map_sg(struct device *dev, struct scatterlist *sg,
+		int nents, enum dma_data_direction dir, struct dma_attrs *attrs)
+{
+
+	struct dma_map_ops *ops = get_dma_ops(dev);
+	struct scatterlist *s;
+	int i, j;
+
+	for_each_sg(sg, s, nents, i) {
+#ifdef CONFIG_NEED_SG_DMA_LENGTH
+		s->dma_length = s->length;
+#endif
+		s->dma_address = ops->map_page(dev, sg_page(s), s->offset,
+						s->length, dir, attrs);
+		if (dma_mapping_error(dev, s->dma_address))
+			goto bad_mapping;
+	}
+	return nents;
+
+ bad_mapping:
+	for_each_sg(sg, s, i, j)
+		ops->unmap_page(dev, sg_dma_address(s), sg_dma_len(s), dir, attrs);
+	return 0;
+
+}
+#endif
 
 static void __iommu_unmap_sg(struct device *dev, struct scatterlist *sg,
 		int nents, enum dma_data_direction dir, struct dma_attrs *attrs,
@@ -1638,7 +1695,11 @@ static dma_addr_t arm_coherent_iommu_map_page(struct device *dev, struct page *p
 	dma_addr_t dma_addr;
 	int ret, len = PAGE_ALIGN(size + offset);
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 	dma_addr = __alloc_iova(mapping, len);
+#else
+	dma_addr = __alloc_iova(page_to_phys(page));
+#endif
 	if (dma_addr == DMA_ERROR_CODE)
 		return dma_addr;
 
@@ -1755,8 +1816,13 @@ static void arm_iommu_sync_single_for_device(struct device *dev,
 }
 
 struct dma_map_ops iommu_ops = {
+#ifndef CONFIG_ODIN_SMMU_DMA
 	.alloc		= arm_iommu_alloc_attrs,
 	.free		= arm_iommu_free_attrs,
+#else
+	.alloc		= NULL,
+	.free		= NULL,
+#endif
 	.mmap		= arm_iommu_mmap_attrs,
 	.get_sgtable	= arm_iommu_get_sgtable,
 
@@ -1774,15 +1840,24 @@ struct dma_map_ops iommu_ops = {
 };
 
 struct dma_map_ops iommu_coherent_ops = {
+#ifndef CONFIG_ODIN_SMMU_DMA
 	.alloc		= arm_iommu_alloc_attrs,
 	.free		= arm_iommu_free_attrs,
+#else
+	.alloc		= NULL,
+	.free		= NULL,
+#endif
 	.mmap		= arm_iommu_mmap_attrs,
 	.get_sgtable	= arm_iommu_get_sgtable,
 
 	.map_page	= arm_coherent_iommu_map_page,
 	.unmap_page	= arm_coherent_iommu_unmap_page,
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 	.map_sg		= arm_coherent_iommu_map_sg,
+#else
+	.map_sg		= arm_iommu_map_sg,
+#endif
 	.unmap_sg	= arm_coherent_iommu_unmap_sg,
 
 	.set_dma_mask	= arm_dma_set_mask,
@@ -1818,24 +1893,33 @@ arm_iommu_create_mapping(struct bus_type *bus, dma_addr_t base, size_t size,
 	if (!mapping)
 		goto err;
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 	mapping->bitmap = kzalloc(bitmap_size, GFP_KERNEL);
 	if (!mapping->bitmap)
 		goto err2;
+#endif
 
 	mapping->base = base;
 	mapping->bits = BITS_PER_BYTE * bitmap_size;
 	mapping->order = order;
 	spin_lock_init(&mapping->lock);
 
+#ifndef CONFIG_ODIN_SMMU_DMA
 	mapping->domain = iommu_domain_alloc(bus);
 	if (!mapping->domain)
 		goto err3;
+#else
+	/* We need this for every non-graphic subsystems */
+	mapping->domain = odin_get_iommu_domain(PERI_DOMAIN);
+#endif
 
 	kref_init(&mapping->kref);
 	return mapping;
+#ifndef CONFIG_ODIN_SMMU_DMA
 err3:
 	kfree(mapping->bitmap);
 err2:
+#endif
 	kfree(mapping);
 err:
 	return ERR_PTR(err);
@@ -1848,7 +1932,9 @@ static void release_iommu_mapping(struct kref *kref)
 		container_of(kref, struct dma_iommu_mapping, kref);
 
 	iommu_domain_free(mapping->domain);
+#ifndef CONFIG_ODIN_SMMU_DMA
 	kfree(mapping->bitmap);
+#endif
 	kfree(mapping);
 }
 
@@ -1873,11 +1959,13 @@ EXPORT_SYMBOL_GPL(arm_iommu_release_mapping);
 int arm_iommu_attach_device(struct device *dev,
 			    struct dma_iommu_mapping *mapping)
 {
+#ifndef CONFIG_ODIN_SMMU_DMA
 	int err;
 
 	err = iommu_attach_device(mapping->domain, dev);
 	if (err)
 		return err;
+#endif
 
 	kref_get(&mapping->kref);
 	dev->archdata.mapping = mapping;

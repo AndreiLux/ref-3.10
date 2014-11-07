@@ -26,13 +26,7 @@
 
 #include <clocksource/arm_arch_timer.h>
 
-/*
- * These register accessors are marked inline so the compiler can
- * nicely work out which register we want, and chuck away the rest of
- * the code.
- */
-static __always_inline
-void arch_timer_reg_write_cp15(int access, enum arch_timer_reg reg, u32 val)
+static inline void arch_timer_reg_write(int access, int reg, u32 val)
 {
 	if (access == ARCH_TIMER_PHYS_ACCESS) {
 		switch (reg) {
@@ -42,6 +36,8 @@ void arch_timer_reg_write_cp15(int access, enum arch_timer_reg reg, u32 val)
 		case ARCH_TIMER_REG_TVAL:
 			asm volatile("msr cntp_tval_el0, %0" : : "r" (val));
 			break;
+		default:
+			BUILD_BUG();
 		}
 	} else if (access == ARCH_TIMER_VIRT_ACCESS) {
 		switch (reg) {
@@ -51,14 +47,17 @@ void arch_timer_reg_write_cp15(int access, enum arch_timer_reg reg, u32 val)
 		case ARCH_TIMER_REG_TVAL:
 			asm volatile("msr cntv_tval_el0, %0" : : "r" (val));
 			break;
+		default:
+			BUILD_BUG();
 		}
+	} else {
+		BUILD_BUG();
 	}
 
 	isb();
 }
 
-static __always_inline
-u32 arch_timer_reg_read_cp15(int access, enum arch_timer_reg reg)
+static inline u32 arch_timer_reg_read(int access, int reg)
 {
 	u32 val;
 
@@ -70,6 +69,8 @@ u32 arch_timer_reg_read_cp15(int access, enum arch_timer_reg reg)
 		case ARCH_TIMER_REG_TVAL:
 			asm volatile("mrs %0, cntp_tval_el0" : "=r" (val));
 			break;
+		default:
+			BUILD_BUG();
 		}
 	} else if (access == ARCH_TIMER_VIRT_ACCESS) {
 		switch (reg) {
@@ -79,7 +80,11 @@ u32 arch_timer_reg_read_cp15(int access, enum arch_timer_reg reg)
 		case ARCH_TIMER_REG_TVAL:
 			asm volatile("mrs %0, cntv_tval_el0" : "=r" (val));
 			break;
+		default:
+			BUILD_BUG();
 		}
+	} else {
+		BUILD_BUG();
 	}
 
 	return val;
@@ -133,6 +138,16 @@ static inline void arch_timer_evtstrm_enable(int divider)
 #ifdef CONFIG_COMPAT
 	compat_elf_hwcap |= COMPAT_HWCAP_EVTSTRM;
 #endif
+}
+
+static inline u64 arch_counter_get_cntpct(void)
+{
+	u64 cval;
+
+	isb();
+	asm volatile("mrs %0, cntpct_el0" : "=r" (cval));
+
+	return cval;
 }
 
 static inline u64 arch_counter_get_cntvct(void)

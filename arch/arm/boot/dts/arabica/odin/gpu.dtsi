@@ -1,0 +1,13 @@
+/*
+ * LG Electronics I2C for ODIN/Woden
+ */
+
+/ {
+/* Odin GPU platform device start */
+    gpu_rgx@3A000000{
+        compatible = "odin,imgtec,rgx";
+        reg = <0 0x3A000000 0 0x7FFFFF>;
+        interrupts = <0 188 0x4>;
+    };
+/* Odin GPU platform device end */
+};

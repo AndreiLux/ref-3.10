@@ -1,0 +1,5 @@
+  <category name="OdinClock">
+	<event counter="Clock_memory_freq" title="Odin Clock" name="Frequency1: Memory" display="maximum" units="Hz" average_selection="yes" description="Frequency setting of the Memory"/>
+	<event counter="Clock_cci_freq" title="Odin Clock" name="Frequency2: CCI-400" display="maximum" units="Hz" average_selection="yes" description="Frequency setting of the CCI-400"/>
+	<event counter="Clock_gpu_freq" title="Odin Clock" name="Frequency3: GPU" display="maximum" units="Hz" average_selection="yes" description="Frequency setting of the Odin GPU"/>
+  </category>

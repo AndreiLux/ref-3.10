@@ -1,0 +1,28 @@
+#menu "BROADCAST_DEVICE"
+
+#
+# Broadcast Device Driver Support
+#
+
+#menu "BROADCAST_DEVICE"
+
+config LGE_BROADCAST_TDMB_T3A00
+	bool "LGE broacast TDMB T3A00 device"
+	depends on (LGE_BROADCAST_TDMB && MACH_MSM8974_VU3_KR)||(LGE_BROADCAST_TDMB && MACH_MSM8974_Z_KR)
+	default y
+	help
+	  Select this if you want to use broadcast service
+
+config LGE_BROADCAST_TDMB_FC8050
+	bool "LGE broacast TDMB FC8050 device"
+	depends on (LGE_BROADCAST_TDMB && MACH_MSM8974_G2_KR)
+	default y
+	help
+	  Select this if you want to use broadcast service
+
+config LGE_BROADCAST_TDMB_FC8080
+	bool "LGE broacast TDMB FC8080 device"
+	depends on (LGE_BROADCAST_TDMB && MACH_MSM8974_B1_KR)||(LGE_BROADCAST_TDMB && MACH_ODIN_LIGER)
+	default y
+	help
+	  Select this if you want to use broadcast service

@@ -10,6 +10,11 @@ menuconfig RFKILL
 	  To compile this driver as a module, choose M here: the
 	  module will be called rfkill.
 
+config RFKILL_PM
+	bool "Power off on suspend"
+	depends on RFKILL && PM
+	default y
+
 # LED trigger support
 config RFKILL_LEDS
 	bool
@@ -42,3 +47,14 @@ config RFKILL_GPIO
 	  If you say yes here you get support of a generic gpio RFKILL
 	  driver. The platform should fill in the appropriate fields in the
 	  rfkill_gpio_platform_data structure and pass that to the driver.
+
+config BT_LGE_RFKILL
+	tristate "LGE Bluetooth RFKILL driver support"
+	depends on RFKILL
+	help
+	  The rfkill BT driver to support LGE Application Processor external Bluetooth devices.
+
+	  Say Y here to compile LGE BT rfkill driver into the kernel.
+	  net/wireless/rfkill should be Y (CONFIG_RFKILL).
+
+

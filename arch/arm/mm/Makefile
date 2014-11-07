@@ -7,6 +7,10 @@ obj-y				:= dma-mapping.o extable.o fault.o init.o \
 
 obj-$(CONFIG_MMU)		+= fault-armv.o flush.o idmap.o ioremap.o \
 				   mmap.o pgd.o mmu.o
+obj-$(CONFIG_DEBUG_RODATA)	+= rodata.o
+ifneq ($(CONFIG_DEBUG_RODATA),y)
+obj-$(CONFIG_DEBUG_PAGEALLOC)	+= rodata.o
+endif
 
 ifneq ($(CONFIG_MMU),y)
 obj-y				+= nommu.o

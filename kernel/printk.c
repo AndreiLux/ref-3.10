@@ -81,6 +81,10 @@ static DEFINE_SEMAPHORE(console_sem);
 struct console *console_drivers;
 EXPORT_SYMBOL_GPL(console_drivers);
 
+#if defined(CONFIG_MACH_ODIN_LIGER)
+static size_t print_time(u64 ts, char *buf);
+#endif
+
 #ifdef CONFIG_LOCKDEP
 static struct lockdep_map console_lock_dep_map = {
 	.name = "console_lock"
@@ -241,7 +245,7 @@ static enum log_flags console_prev;
 static u64 clear_seq;
 static u32 clear_idx;
 
-#define PREFIX_MAX		32
+#define PREFIX_MAX	    40
 #define LOG_LINE_MAX		1024 - PREFIX_MAX
 
 /* record buffer */
@@ -535,9 +539,15 @@ static ssize_t devkmsg_read(struct file *file, char __user *buf,
 		 ((user->prev & LOG_CONT) && !(msg->flags & LOG_PREFIX)))
 		cont = '+';
 
+#if defined(CONFIG_MACH_ODIN_LIGER)
+    len = sprintf(user->buf, "<%u>", (msg->facility << 3) | msg->level);
+    len += print_time(msg->ts_nsec, user->buf + len);
+#else
+
 	len = sprintf(user->buf, "%u,%llu,%llu,%c;",
 		      (msg->facility << 3) | msg->level,
 		      user->seq, ts_usec, cont);
+#endif
 	user->prev = msg->flags;
 
 	/* escape non-printable characters */
@@ -868,6 +878,44 @@ static bool printk_time;
 #endif
 module_param_named(time, printk_time, bool, S_IRUGO | S_IWUSR);
 
+/*
+               
+                                                      
+                                    
+ */
+#if defined(CONFIG_MACH_ODIN_LIGER)
+static size_t print_time(u64 ts, char *buf)
+{
+	unsigned long rem_nsec;
+	unsigned int tlen;
+	struct timespec time;
+	struct tm tmresult;
+
+	if (!printk_time)
+		return 0;
+
+
+	if (!buf)
+		return snprintf(NULL, 0, "[%5lu.000000 / 00-00 00:00:00.000] ", (unsigned long)ts);
+
+	time = __current_kernel_time();
+	time_to_tm(time.tv_sec,sys_tz.tz_minuteswest * 60* (-1),&tmresult);
+
+	rem_nsec = do_div(ts, 1000000000);
+
+	tlen = sprintf(buf, "[%5lu.%06lu / %02d-%02d %02d:%02d:%02d.%03lu] ",
+					(unsigned long) ts,
+					rem_nsec / 1000,
+					tmresult.tm_mon+1,
+					tmresult.tm_mday,
+					tmresult.tm_hour,
+					tmresult.tm_min,
+					tmresult.tm_sec,
+					(unsigned long) time.tv_nsec/1000000);
+	return tlen;
+
+}
+#else
 static size_t print_time(u64 ts, char *buf)
 {
 	unsigned long rem_nsec;
@@ -882,7 +930,11 @@ static size_t print_time(u64 ts, char *buf)
 
 	return sprintf(buf, "[%5lu.%06lu] ",
 		       (unsigned long)ts, rem_nsec / 1000);
+
 }
+
+#endif
+/*              */
 
 static size_t print_prefix(const struct log *msg, bool syslog, char *buf)
 {
@@ -1096,6 +1148,10 @@ static int syslog_print_all(char __user *buf, int size, bool clear)
 				len = textlen;
 				break;
 			}
+
+			if (len+textlen > size)
+				break;
+
 			idx = log_next(idx);
 			seq++;
 			prev = msg->flags;

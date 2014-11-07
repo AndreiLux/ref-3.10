@@ -116,6 +116,9 @@ struct thermal_zone_device_ops {
 			 enum thermal_device_mode *);
 	int (*set_mode) (struct thermal_zone_device *,
 		enum thermal_device_mode);
+	int (*get_therm_miti) (struct thermal_zone_device *, int *);
+	int (*set_therm_miti) (struct thermal_zone_device *, int *);
+	int (*set_shutdown) (struct thermal_zone_device *);
 	int (*get_trip_type) (struct thermal_zone_device *, int,
 		enum thermal_trip_type *);
 	int (*get_trip_temp) (struct thermal_zone_device *, int,
@@ -294,5 +297,9 @@ static inline int thermal_generate_netlink_event(struct thermal_zone_device *tz,
 	return 0;
 }
 #endif
+
+int get_pcb_therm_top_temp(unsigned long *temp);
+int get_pcb_therm_bot_temp(unsigned long *temp);
+int voltage_to_degree(int voltage);
 
 #endif /* __THERMAL_H__ */

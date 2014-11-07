@@ -55,6 +55,10 @@ static DEFINE_PER_CPU(unsigned int, cpu_last_req_freq);
 
 static struct mutex cluster_lock[MAX_CLUSTERS];
 
+#ifdef CONFIG_ODIN_THERMAL_MONITOR
+static u32 cpufreq_limit[MAX_CLUSTERS];
+#endif
+
 static unsigned int find_cluster_maxfreq(int cluster)
 {
 	int j;
@@ -102,9 +106,10 @@ static unsigned int bL_cpufreq_get_rate(unsigned int cpu)
 }
 
 static unsigned int
-bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate)
+bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate, struct cpufreq_policy *policy)
 {
 	u32 new_rate, prev_rate;
+	u32 i;
 	int ret;
 	bool bLs = is_bL_switching_enabled();
 
@@ -112,7 +117,9 @@ bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate)
 
 	if (bLs) {
 		prev_rate = per_cpu(cpu_last_req_freq, cpu);
-		per_cpu(cpu_last_req_freq, cpu) = rate;
+		for_each_cpu(i, policy->related_cpus) {
+			per_cpu(cpu_last_req_freq, i) = rate;
+		}
 		per_cpu(physical_cluster, cpu) = new_cluster;
 
 		new_rate = find_cluster_maxfreq(new_cluster);
@@ -176,6 +183,15 @@ static int bL_cpufreq_verify_policy(struct cpufreq_policy *policy)
 	return cpufreq_frequency_table_verify(policy, freq_table[cur_cluster]);
 }
 
+#ifdef CONFIG_ODIN_THERMAL_MONITOR
+int bL_cpufreq_set_limit(int cpu, u32 freq)
+{
+	u32 cur_cluster = cpu_to_cluster(cpu);
+	cpufreq_limit[cur_cluster] = freq;
+	return 0;
+}
+#endif
+
 /* Set clock frequency */
 static int bL_cpufreq_set_target(struct cpufreq_policy *policy,
 		unsigned int target_freq, unsigned int relation)
@@ -187,6 +203,14 @@ static int bL_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	cur_cluster = cpu_to_cluster(cpu);
 	new_cluster = actual_cluster = per_cpu(physical_cluster, cpu);
+
+#ifdef CONFIG_ODIN_THERMAL_MONITOR
+	if (target_freq > cpufreq_limit[cur_cluster]) {
+		target_freq = cpufreq_limit[cur_cluster];
+		pr_debug("%s: throttle cpu%u max freq to %u\n", __func__,
+			cpu, target_freq);
+	}
+#endif
 
 	freqs.old = bL_cpufreq_get_rate(cpu);
 
@@ -214,7 +238,7 @@ static int bL_cpufreq_set_target(struct cpufreq_policy *policy,
 
 	cpufreq_notify_transition(policy, &freqs, CPUFREQ_PRECHANGE);
 
-	ret = bL_cpufreq_set_rate(cpu, actual_cluster, new_cluster, freqs.new);
+	ret = bL_cpufreq_set_rate(cpu, actual_cluster, new_cluster, freqs.new, policy);
 	if (ret)
 		return ret;
 
@@ -330,7 +354,7 @@ static void put_cluster_clk_and_freq_table(struct device *cpu_dev)
 static int _get_cluster_clk_and_freq_table(struct device *cpu_dev)
 {
 	u32 cluster = cpu_to_cluster(cpu_dev->id);
-	char name[14] = "cpu-cluster.X";
+	char name[14] = "clusterX";
 	int ret;
 
 	if (atomic_inc_return(&cluster_usage[cluster]) != 1)
@@ -350,8 +374,8 @@ static int _get_cluster_clk_and_freq_table(struct device *cpu_dev)
 		goto atomic_dec;
 	}
 
-	name[12] = cluster + '0';
-	clk[cluster] = clk_get_sys(name, NULL);
+	name[7] = cluster + '0';
+	clk[cluster] = clk_get_sys(NULL, name);
 	if (!IS_ERR(clk[cluster])) {
 		dev_dbg(cpu_dev, "%s: clk: %p & freq table: %p, cluster: %d\n",
 				__func__, clk[cluster], freq_table[cluster],
@@ -427,6 +451,30 @@ put_clusters:
 	return ret;
 }
 
+#ifdef CONFIG_MACH_ODIN
+static unsigned int saved_max[MAX_CLUSTERS] = {0, };
+static unsigned int saved_min[MAX_CLUSTERS] = {0, };
+static inline void bL_save_min_max(struct cpufreq_policy *policy)
+{
+	u32 cur_cluster = cpu_to_cluster(policy->cpu);
+	saved_max[cur_cluster] = policy->max;
+	saved_min[cur_cluster] = policy->min;
+}
+
+static inline void bL_restore_min_max(struct cpufreq_policy *policy)
+{
+	u32 cur_cluster = cpu_to_cluster(policy->cpu);
+	if (saved_max[cur_cluster] != 0 && saved_max[cur_cluster] != policy->max) {
+		policy->max = saved_max[cur_cluster];
+		printk("%s: Restoring CPU%d max=%d\n", __func__, policy->cpu, policy->max);
+	}
+	if (saved_min[cur_cluster] != 0 && saved_min[cur_cluster] != policy->min) {
+		policy->min = saved_min[cur_cluster];
+		printk("%s: Restoring CPU%d min=%d\n", __func__, policy->cpu, policy->min);
+	}
+}
+#endif
+
 /* Per-CPU initialization */
 static int bL_cpufreq_init(struct cpufreq_policy *policy)
 {
@@ -475,7 +523,33 @@ static int bL_cpufreq_init(struct cpufreq_policy *policy)
 	if (is_bL_switching_enabled())
 		per_cpu(cpu_last_req_freq, policy->cpu) = policy->cur;
 
+#ifdef CONFIG_ODIN_THERMAL_MONITOR
+#ifdef CONFIG_MACH_ODIN_LIGER
+extern unsigned long lge_get_ca15_maxfreq(void);
+	if(cur_cluster == A15_CLUSTER && lge_get_ca15_maxfreq() < get_table_max(freq_table[cur_cluster]))
+	{
+		cpufreq_limit[cur_cluster] = get_table_min(freq_table[cur_cluster]);
+	}
+	else
+#endif
+	{
+		cpufreq_limit[cur_cluster] = get_table_max(freq_table[cur_cluster]);
+	}
+#endif
+
+#ifdef CONFIG_MACH_ODIN
+	bL_restore_min_max(policy);
+#endif
+
 	dev_info(cpu_dev, "%s: CPU %d initialized\n", __func__, policy->cpu);
+	return 0;
+}
+
+static int bL_cpufreq_exit(struct cpufreq_policy *policy)
+{
+#ifdef CONFIG_MACH_ODIN
+	bL_save_min_max(policy);
+#endif
 	return 0;
 }
 
@@ -494,6 +568,7 @@ static struct cpufreq_driver bL_cpufreq_driver = {
 	.init			= bL_cpufreq_init,
 	.have_governor_per_policy = true,
 	.attr			= bL_cpufreq_attr,
+	.exit           = bL_cpufreq_exit,
 };
 
 static int bL_cpufreq_switcher_notifier(struct notifier_block *nfb,

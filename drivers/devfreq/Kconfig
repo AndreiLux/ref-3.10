@@ -78,4 +78,20 @@ config ARM_EXYNOS4_BUS_DEVFREQ
 	  To operate with optimal voltages, ASV support is required
 	  (CONFIG_EXYNOS_ASV).
 
+config ARM_ODIN_BUS_DEVFREQ
+	bool "ARM ODIN Memory & Bus DVFS Driver"
+	depends on ARCH_ODIN
+	select ARCH_HAS_OPP
+	select DEVFREQ_GOV_PERFORMANCE
+	select DEVFREQ_GOV_POWERSAVE
+	help
+	  ARM ODIN Memory & Bus DVFS Driver
+
+config ARM_ODIN_BUS_DEVFREQ_DEBUG
+	bool "ARM ODIN Memory & Bus DVFS Driver Debug"
+	depends on ARM_ODIN_BUS_DEVFREQ
+	default n
+	help
+	  ARM ODIN Memory & Bus DVFS Driver Debug
+
 endif # PM_DEVFREQ

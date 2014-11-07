@@ -1841,10 +1841,9 @@ void snd_pcm_period_elapsed(struct snd_pcm_substream *substream)
 
 	if (PCM_RUNTIME_CHECK(substream))
 		return;
-	runtime = substream->runtime;
 
-	if (runtime->transfer_ack_begin)
-		runtime->transfer_ack_begin(substream);
+	if (substream->runtime && substream->runtime->transfer_ack_begin)
+		substream->runtime->transfer_ack_begin(substream);
 
 	snd_pcm_stream_lock_irqsave(substream, flags);
 	if (!snd_pcm_running(substream) ||
@@ -1855,9 +1854,11 @@ void snd_pcm_period_elapsed(struct snd_pcm_substream *substream)
 		snd_timer_interrupt(substream->timer, 1);
  _end:
 	snd_pcm_stream_unlock_irqrestore(substream, flags);
-	if (runtime->transfer_ack_end)
-		runtime->transfer_ack_end(substream);
-	kill_fasync(&runtime->fasync, SIGIO, POLL_IN);
+	if (substream->runtime && substream->runtime->transfer_ack_end)
+		substream->runtime->transfer_ack_end(substream);
+
+	if (substream->runtime)
+		kill_fasync(&substream->runtime->fasync, SIGIO, POLL_IN);
 }
 
 EXPORT_SYMBOL(snd_pcm_period_elapsed);
@@ -1916,6 +1917,14 @@ static int wait_for_avail(struct snd_pcm_substream *substream,
 
 		tout = schedule_timeout(wait_time);
 
+		if (PCM_RUNTIME_CHECK(substream)) {
+			set_current_state(TASK_RUNNING);
+			*availp = avail;
+			printk(KERN_ERR "THIS IS IMPOSSIBLE SITUATION! pid: %i\n",
+					task_pid_nr(current));
+			return -ENXIO;
+		}
+
 		snd_pcm_stream_lock_irq(substream);
 		set_current_state(TASK_INTERRUPTIBLE);
 		switch (runtime->status->state) {
@@ -1940,9 +1949,13 @@ static int wait_for_avail(struct snd_pcm_substream *substream,
 			continue;
 		}
 		if (!tout) {
-			snd_printd("%s write error (DMA or IRQ trouble?)\n",
+			snd_printd("d%i:%s write error (DMA or IRQ trouble?)\n",
+				   substream->pcm->device,
 				   is_playback ? "playback" : "capture");
 			err = -EIO;
+			snd_pcm_stream_unlock_irq(substream);
+			snd_pcm_hw_dump(substream);
+			snd_pcm_stream_lock_irq(substream);
 			break;
 		}
 	}

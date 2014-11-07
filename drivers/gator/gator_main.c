@@ -226,6 +226,8 @@ static DEFINE_PER_CPU(u64, gator_buffer_commit_time);
 	GATOR_EVENT(gator_events_perf_pmu_init) \
 	GATOR_EVENT(gator_events_sched_init) \
 	GATOR_EVENT(gator_events_scorpion_init) \
+	GATOR_EVENT(gator_events_clock_init) \
+	GATOR_EVENT(gator_events_thermal_init) \
 
 #define GATOR_EVENT(EVENT_INIT) __weak int EVENT_INIT(void);
 GATOR_EVENTS_LIST

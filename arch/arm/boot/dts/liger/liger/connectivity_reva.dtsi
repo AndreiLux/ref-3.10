@@ -1,0 +1,140 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+    connectivity {
+	compatible = "simple-bus";
+	interrupt-parent = <&gic>;
+	#address-cells = <2>;
+	#size-cells = <2>;
+	ranges;
+/* sdio start */
+	sdhci@0x20006000{
+		compatible = "odin,sdio";
+		reg = <0 0x20006000 0 0x2000>;
+		clocks = <&sdio_sclk0>;
+		interrupts = <0 4 0x4>;	/* 36 - 32 */
+		bus-width = <4>;
+		sdclk = <200>;			/* 200Mhz, UHS104 */
+		tuning_mode = <1>;		/* 0 : mode-1, 1 : mode-2, 2 : mode-3 */
+		wifi;
+/*
+ * LGE_CHANGE_S
+ */
+		power_gpio = <120>;		/* 112 + SMS_GPIO_08_EINT */
+/* LGE_CHANGE_E */
+		wakeup_gpio = <141>;	/* 112 + SMS_GPIO_29_EINT */
+		cmd_timeout = <1>;
+		keep-power-in-suspend;
+		enable-sdio-wakeup;
+		cap2-no-rescan-start;
+		quirk-cap-clock-base-broken;
+		quirk2-preset-value-broken;
+		quirk2-host-off-card-on;
+	};
+/* sdio end */
+/* sdio start */
+	/*
+	sdhci@10x20008000{
+		compatible = "odin,sdio1";
+		reg = <0 0x20008000 0 0x2000>;
+		clocks = <&sdio_sclk1>;
+		interrupts = <0 5 0x4>;
+		bus-width = <4>;
+		sdclk = <100>;
+		keep-power-in-suspend;
+		enable-sdio-wakeup;
+		quirk-cap-clock-base-broken;
+		quirk2-preset-value-broken;
+		quirk2-host-off-card-on;
+	};
+	*/
+/* sdio end */
+/* BCM4339 Wi-Fi Driver start */
+	wlan@0{
+		compatible = "odin,broadcom,bcm4339-wlan";
+
+		/* GPIO # might have to be changed after mailbox interface is enabled by Jongmyung Park 20130531 */
+/*
+ * LGE_CHANGE_S
+ */
+		power_gpio = <120>; 	 /* 112 + SMS_GPIO_08_EINT */
+/* LGE_CHANGE_E */
+		wakeup_gpio = <141>;	 /* 112 + SMS_GPIO_29_EINT */
+	};
+/* LGE_CHANGE_E */
+/* BCM4339 Wi-Fi Driver end */
+
+/* USB SWITCH */
+	usb_switch{
+		compatible = "lg,usb-switch";
+		lge,usb_switch,product_name = "fsusb104";
+		usb_sw_sel = <121>; /* 112 + SMS_GPIO_09 */
+	};
+
+/* DWC HSUSB-HSIC driver start */
+	hsusb_host{
+		compatible = "odin_dwc_host";
+		reg = <0 0x3F100000 0 0x400000>,
+			<0 0x3FF00000 0 0x100>;
+		interrupts = <0 76 0x4>;
+		reset_offset = <0x9C>;
+		reset_mask = <0x3C>;
+		phy_rst_val = <0x30>;
+		core_rst_val = <0x8>;
+		bus_rst_val = <0x4>;
+	};
+/* DWC HSUSB-HSIC driver end */
+
+/* woden-bluetooth driver start */
+	bt@0{
+		compatible ="odin,broadcom,bcm4339-bt";
+		/* GPIO # might have to be changed after mailbox interface is enabled by Jongmyung Park 20130531 */
+/*
+ * LGE_CHANGE_S
+ */
+		reset_gpio = <132>;		/* 112 + SMS_GPIO_20 */
+		wakeup_gpio = <3>;	/* 0 + PERI_G0_GPIO_03_EINT */
+		hostwake_gpio = <140>;	/* 112 + SMS_GPIO_28_EINT */
+/* LGE_CHANGE_E */
+	};
+
+/* LGE_CHANGE_S
+ */
+/*
+/* m7450 HSIC PM driver start */
+/*
+/*	m7450-hsic{
+/*		compatible = "ste,m7450-hsic";
+/*		onsw_gpio = <148>; /* 112 + SMS_GPIO_36_EINT */
+/*		pwrrst_gpio = <157>; /* 112 + SMS_GPIO_45_EINT */
+/*		resout2_gpio = <118>; /* 112 + SMS_GPIO_06_EINT from MADK1.3, SMS_GPIO_32 until MADK1.2 */
+/*		cwr_gpio = <98>; /* PERI_G1_PAD42_EINT  */
+/*		awr_gpio = <145>; /* 112 + SMS_GPIO_33_EINT */
+/*		arr_gpio = <156>; /* 112 + SMS_GPIO_44_EINT */
+/*	};
+*/
+/* m7450 HSIC PM end */
+
+/* xmm7260 HSIC PM driver start */
+	xmm7260-hsic{
+		compatible = "imc,xmm7260-hsic";
+		modem_pwr_down_gpio = <144>; 	/* 112 + SMS_GPIO_32_EINT,	CP_RST_PWRDWN_N, AP to CP */
+		pwr_on_gpio = <148>; 			/* 112 + SMS_GPIO_36_EINT,	CP_PWR_ON, AP to CP */
+		modem_reset_gpio = <156>; 		/* 112 + SMS_GPIO_44_EINT,	AP_RESET_BB_N, AP to CP */
+		slave_wakeup_gpio = <152>; 		/* 112 + SMS_GPIO_40_EINT,	CP_SLAVE_WAKEUP, AP to CP */
+		host_wakeup_gpio = <118>; 		/* 112 + SMS_GPIO_6_EINT,	CP_HOST_WAKEUP, CP to AP */
+		host_active_gpio = <157>; 		/* 112 + SMS_GPIO_45_EINT,	CP_HOST_ACTIVE, AP to CP */
+		force_crash_gpio = <98>; 		/* 56 + PERI_G1_GPIO_42_EINT,	CP_FORCE_CRASH, AP to CP */
+		rst_out_gpio = <145>; 		    /* 112 + SMS_GPIO_33_EINT,	CP_RST_OUT_N, CP to AP */
+                core_dump_gpio = <119>;          /* 112 + SMS_GPIO_7_EINT, CP_CORE_DUMP, CP to AP */
+	};
+	/* suspend_req_gpio = <142>; */		/* 112 + SMS_GPIO_30_EINT,	CP_SUSPEND_REQUEST, CP to AP */
+/* xmm7260 HSIC PM end */
+
+	};
+/* LGE_CHANGE_E */
+};
+
+

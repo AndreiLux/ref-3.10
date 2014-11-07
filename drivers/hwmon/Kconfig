@@ -357,6 +357,17 @@ config SENSORS_DS1621
 	  This driver can also be built as a module.  If so, the module
 	  will be called ds1621.
 
+config SENSORS_D2260
+	tristate "Dialog Semiconductor D2260 PMIC HW monitoring component"
+	depends on I2C && MFD_D2260
+	default y
+	help
+	  If you say yes here you get support for the hardware monitoring
+	  features of the Dialog D2260 MultiFunction chip.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called d22200-hwmon.
+
 config SENSORS_DA9052_ADC
 	tristate "Dialog DA9052/DA9053 ADC"
 	depends on PMIC_DA9052
@@ -376,6 +387,15 @@ config SENSORS_DA9055
 
 	  This driver can also be built as a module.  If so, the module
 	  will be called da9055-hwmon.
+
+config SENSORS_DA906X
+    tristate "Dialog DA906xADC"
+    depends on MFD_DA906X
+    help
+      Say y here to support the ADC found on Dialog Semiconductor
+      DA906x PMICs.
+      This driver can also be built as module. If so, the module
+      will be called da906x-hwmon.
 
 config SENSORS_I5K_AMB
 	tristate "FB-DIMM AMB temperature sensor on Intel 5000 series chipsets"
@@ -918,6 +938,15 @@ config SENSORS_MAX6697
 	  This driver can also be built as a module.  If so, the module
 	  will be called max6697.
 
+config SENSORS_MAX77525_ADC
+	tristate "Maxim MAX77525 PMIC ADC"
+	depends on I2C
+	help
+	  If you say yes here you get support for the MAX77525 ADC.
+
+	  This driver can also be built as a module.  If so, the module
+	  will be called max77525.
+
 config SENSORS_MCP3021
 	tristate "Microchip MCP3021 and compatibles"
 	depends on I2C
@@ -1213,9 +1242,20 @@ config SENSORS_ADS7871
 	  This driver can also be built as a module.  If so, the module
 	  will be called ads7871.
 
+config SENSORS_SHTC1
+	 tristate "SHTC1 combined temperature and humidity sensors"
+	 depends on I2C
+	 default n
+	 ---help---
+	   Say Y here if you want to build a driver for SENSIRION SHTC1
+	   combined ambient temperature and relative humidity sensor chip.
+
+	   To compile this driver as a module, choose M here: the
+	   module will be called SHTC1. If unsure, say N here
+
 config SENSORS_AMC6821
 	tristate "Texas Instruments AMC6821"
-	depends on I2C 
+	depends on I2C
 	help
 	  If you say yes here you get support for the Texas Instruments
 	  AMC6821 hardware monitoring chips.
@@ -1555,5 +1595,12 @@ config SENSORS_ATK0110
 	  will be called asus_atk0110.
 
 endif # ACPI
+
+config SENSORS_ENERGY_METER
+	tristate "Energy Meter"
+	depends on SPI_MASTER
+	default n
+	help
+          Support for the Energy Meter SPI Driver.
 
 endif # HWMON

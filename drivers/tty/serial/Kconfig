@@ -1491,6 +1491,15 @@ config SERIAL_RP2_NR_UARTS
 	  If multiple cards are present, the default limit of 32 ports may
 	  need to be increased.
 
+config SERIAL_ODIN_UART
+	bool "ODIN serial driver support"
+	select SERIAL_CORE
+
+config SERIAL_ODIN_UART_CONSOLE
+	bool "ODIN serial console support"
+	depends on SERIAL_ODIN_UART=y
+	select SERIAL_CORE_CONSOLE
+
 endmenu
 
 endif # TTY

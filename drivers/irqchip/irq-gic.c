@@ -49,6 +49,8 @@
 
 #include "irqchip.h"
 
+#define irq_data_to_desc(data)	container_of(data, struct irq_desc, irq_data)
+
 union gic_base {
 	void __iomem *common_base;
 	void __percpu __iomem **percpu_base;
@@ -99,6 +101,8 @@ struct irq_chip gic_arch_extn = {
 #endif
 
 static struct gic_chip_data gic_data[MAX_GIC_NR] __read_mostly;
+
+u32 saved_irqnr;
 
 #ifdef CONFIG_GIC_NON_BANKED
 static void __iomem *gic_get_percpu_base(union gic_base *base)
@@ -247,23 +251,45 @@ static int gic_set_affinity(struct irq_data *d, const struct cpumask *mask_val,
 			    bool force)
 {
 	void __iomem *reg = gic_dist_base(d) + GIC_DIST_TARGET + (gic_irq(d) & ~3);
-	unsigned int cpu, shift = (gic_irq(d) % 4) * 8;
-	u32 val, mask, bit;
-
-	if (!force)
-		cpu = cpumask_any_and(mask_val, cpu_online_mask);
-	else
-		cpu = cpumask_first(mask_val);
+	unsigned int shift = (gic_irq(d) % 4) * 8;
+	unsigned int cpu = cpumask_any_and(mask_val, cpu_online_mask);
+	struct irq_desc *desc = irq_data_to_desc(d);
+	cpumask_t cpu_mask;
+	u32 bit = 0;
+	u32 mask, val;
 
 	if (cpu >= NR_GIC_CPU_IF || cpu >= nr_cpu_ids)
 		return -EINVAL;
 
+#if defined(CONFIG_ARCH_WODEN) || defined(CONFIG_ARCH_ODIN)
+	if((d->state_use_accessors) & IRQD_GIC_BALANCING) {
+		cpumask_and(&cpu_mask, mask_val, cpu_online_mask);
+
+		raw_spin_lock(&irq_controller_lock);
+		for_each_cpu(cpu, &cpu_mask) {
+			mask = 0xff << shift;
+			bit |= gic_cpu_map[cpu] << shift;
+			val = readl_relaxed(reg) & ~mask;
+			printk("GIC_BALNCING - irq: %d\n", gic_irq(d));
+		}
+		writel_relaxed(val | bit, reg);
+		raw_spin_unlock(&irq_controller_lock);
+	} else {
+		raw_spin_lock(&irq_controller_lock);
+		mask = 0xff << shift;
+		bit = gic_cpu_map[cpu] << shift;
+		val = readl_relaxed(reg) & ~mask;
+		writel_relaxed(val | bit, reg);
+		raw_spin_unlock(&irq_controller_lock);
+	}
+#else
 	raw_spin_lock(&irq_controller_lock);
 	mask = 0xff << shift;
 	bit = gic_cpu_map[cpu] << shift;
 	val = readl_relaxed(reg) & ~mask;
 	writel_relaxed(val | bit, reg);
 	raw_spin_unlock(&irq_controller_lock);
+#endif
 
 	return IRQ_SET_MASK_OK;
 }
@@ -283,7 +309,6 @@ static int gic_set_wake(struct irq_data *d, unsigned int on)
 #else
 #define gic_set_wake	NULL
 #endif
-
 static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs)
 {
 	u32 irqstat, irqnr;
@@ -296,7 +321,9 @@ static asmlinkage void __exception_irq_entry gic_handle_irq(struct pt_regs *regs
 
 		if (likely(irqnr > 15 && irqnr < 1021)) {
 			irqnr = irq_find_mapping(gic->domain, irqnr);
+			saved_irqnr = irqnr;
 			handle_IRQ(irqnr, regs);
+			saved_irqnr = 0;
 			continue;
 		}
 		if (irqnr < 16) {
@@ -671,6 +698,8 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq)
 	 * other CPUs before issuing the IPI.
 	 */
 	dsb();
+
+	trace_arm_ipi_send_map(irq, map);
 
 	/* this always happens on GIC0 */
 	writel_relaxed(map << 16 | irq, gic_data_dist_base(&gic_data[0]) + GIC_DIST_SOFTINT);

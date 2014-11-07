@@ -1,0 +1,116 @@
+/*
+ * LG Electronics I2C for ODIN/Woden
+ */
+
+/ {
+/* Odin DSS platform devices start */
+	dsscomp {
+		compatible = "dsscomp";
+	};
+
+	// crg
+	crg@31400000 {
+		compatible = "odindss-crg";
+		reg = <0 0x31400000 0 0x10000>;
+		interrupts = <0 129 0x4>;
+	};
+
+	// du
+	du@31000000 {
+		compatible = "odindss-du";
+		reg = <0 0x31000000 0 0x1000>, <0 0x31010000 0 0x1000>, <0 0x31020000 0 0x1000>,
+			<0 0x31200000 0 0x1000>, <0 0x31210000 0 0x1000>, <0 0x31220000 0 0x1000>,
+			<0 0x31250000 0 0x1000>, <0 0x31230000 0 0x1000>, <0 0x31240000 0 0x1000>, <0 0x31270000 0 0x1000>;
+		//interrupts = <0 65 0x4>;
+	};
+
+
+	// dip
+	dip@31280000 {
+		compatible = "odindss-dip";
+		reg = <0 0x31280000 0 0x1000>, <0 0x312A0000 0 0x1000>, <0 0x312C0000 0 0x1000>;
+		//interrupts = <0 65 0x4>;
+	};
+
+	// dsi
+	dsi@31290000 {
+		compatible = "odindss-dsi";
+		reg = <0 0x31290000 0 0x3000>, <0 0x312B0000 0 0x3000>;
+	};
+
+	// mxd
+	mxd@31100000 {
+		compatible = "odindss-mxdhw";
+		reg = <0 0x31100000 0 0x1000>, <0 0x31100400 0 0x1000>, <0 0x31100800 0 0x1000>, <0 0x31100C00 0 0x1000>;
+	};
+
+	// formatter
+	formatter@31030000 {
+		compatible = "odindss-formatter";
+		reg = <0 0x31030000 0 0x3000>;
+		//interrupts = <0 128 0x4>;
+	};
+
+	// hdmi
+	hdmi {
+		compatible = "odindss-hdmi";
+		reg = <0 0x312d0000 0 0xa120>, <0 0x312d0000 0 0xa120>;
+	};
+
+	// cabc
+	cabc {
+                compatible = "odindss-cabc";
+		reg = <0 0x31240000 0 0x200>;
+		pwms = <&pwm 0 20480 0>;
+		pwm-names = "odin-pwm";
+    };
+	// gfx
+	gfx@31300000 {
+		compatible = "odin-gfx0";
+		reg = <0 0x31300000 0 0x200>;
+		//interrupts = <0 54 0x4>;
+	};
+
+	odin_dss_devices {	/* odin dss device (panel) */
+		compatible = "odindss";
+	};
+
+
+/* Odin GPU platform device start */
+    gpu_rgx@3A000000{
+        compatible = "odin,imgtec,rgx";
+        reg = <0 0x3A000000 0 0x7FFFFF>;
+        interrupts = <0 188 0x4>;
+    };
+/* Odin GPU platform device end */
+
+/* Odin VSP platform devices start */
+	coda980@32000000{
+		compatible = "odin,coda980";
+		reg = <0 0x32000000 0 0x1900>;
+		interrupts = <0 109 0x004 >;
+    	};
+
+	boda950@32100000{
+		compatible = "odin,boda950";
+	    	reg = <0 0x32100000 0 0x191C>;
+	    	interrupts = <0 117 0x004 >;
+    	};
+
+	coda8550j@32110000 {
+		compatible = "odin,coda8550j";
+		  reg = <0 0x32110000 0 0x1000>;
+		  interrupts = <0 115 4>;
+		  clocks = <&pclk>;
+		  clock-names = "apb_pclk";
+	};
+	png@32120000 {
+		compatible = "odin,png";
+		 reg = <0 0x32120000 0 0x1000>;
+		 interrupts = <0 113 4>;
+		 clocks = <&pclk>;
+		 clock-names = "apb_pclk";
+	 };
+
+    /* Odin VSP platform device end */
+};

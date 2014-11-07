@@ -1,0 +1,1 @@
+obj-y += access.o board.o mutex.o system.o

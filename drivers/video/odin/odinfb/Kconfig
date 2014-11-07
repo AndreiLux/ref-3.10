@@ -1,0 +1,26 @@
+menuconfig ODIN_FB
+        tristate "ODIN frame buffer support"
+        depends on FB 
+
+        select FB_CFB_FILLRECT
+        select FB_CFB_COPYAREA
+        select FB_CFB_IMAGEBLIT
+        help
+	  Frame buffer driver for ODIN based boards.
+
+config ODIN_FB_DEBUG_SUPPORT
+        bool "Debug support for ODIN FB"
+	default y
+	depends on ODIN_FB
+	help
+	  Support for debug output. You have to enable the actual printing
+	  with 'debug' module parameter.
+
+config ODIN_FB_NUM_FBS
+	int "Number of framebuffers"
+	range 1 10
+	default 2
+	depends on ODIN_FB
+	help
+	  Select the number of framebuffers created. ODIN has 3 overlays
+	  so normally this would be 3.

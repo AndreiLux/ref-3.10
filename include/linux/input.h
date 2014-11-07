@@ -24,6 +24,20 @@
 #include <linux/timer.h>
 #include <linux/mod_devicetable.h>
 
+/*
+            
+                                                          
+                              
+*/
+/*
+ * MT_TOOL types
+ */
+#define MT_TOOL_FINGER		0
+#define MT_TOOL_PEN		1
+#define MT_TOOL_PALM		2
+#define MT_TOOL_LARGEPALM	3
+#define MT_TOOL_MAX		3
+/*              */
 /**
  * struct input_value - input value representation
  * @type: type of value (EV_KEY, EV_ABS, etc)

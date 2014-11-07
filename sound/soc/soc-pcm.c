@@ -7,7 +7,7 @@
  * Copyright (C) 2010 Texas Instruments Inc.
  *
  * Authors: Liam Girdwood <lrg@ti.com>
- *          Mark Brown <broonie@opensource.wolfsonmicro.com>       
+ *          Mark Brown <broonie@opensource.wolfsonmicro.com>
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
@@ -615,23 +615,55 @@ static int soc_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	int ret;
 
-	if (codec_dai->driver->ops->trigger) {
-		ret = codec_dai->driver->ops->trigger(substream, cmd, codec_dai);
-		if (ret < 0)
-			return ret;
+	switch (cmd) {
+	case SNDRV_PCM_TRIGGER_START:
+	case SNDRV_PCM_TRIGGER_RESUME:
+	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (codec_dai->driver->ops->trigger) {
+			ret = codec_dai->driver->ops->trigger(substream, cmd, codec_dai);
+			if (ret < 0)
+				return ret;
+		}
+
+		if (platform->driver->ops && platform->driver->ops->trigger) {
+			ret = platform->driver->ops->trigger(substream, cmd);
+			if (ret < 0)
+				return ret;
+		}
+
+		if (cpu_dai->driver->ops->trigger) {
+			ret = cpu_dai->driver->ops->trigger(substream, cmd, cpu_dai);
+			if (ret < 0)
+				return ret;
+		}
+		break;
+	case SNDRV_PCM_TRIGGER_SUSPEND:
+	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
+	case SNDRV_PCM_TRIGGER_STOP:
+		if (codec_dai->driver->ops->trigger) {
+			ret = codec_dai->driver->ops->trigger(substream, cmd, codec_dai);
+			if (ret < 0)
+				return ret;
+		}
+
+		if (cpu_dai->driver->ops->trigger) {
+			ret = cpu_dai->driver->ops->trigger(substream, cmd, cpu_dai);
+			if (ret < 0)
+				return ret;
+		}
+
+		if (platform->driver->ops && platform->driver->ops->trigger) {
+			ret = platform->driver->ops->trigger(substream, cmd);
+			if (ret < 0)
+				return ret;
+		}
+		break;
+	default:
+		return -EINVAL;
 	}
 
-	if (platform->driver->ops && platform->driver->ops->trigger) {
-		ret = platform->driver->ops->trigger(substream, cmd);
-		if (ret < 0)
-			return ret;
-	}
 
-	if (cpu_dai->driver->ops->trigger) {
-		ret = cpu_dai->driver->ops->trigger(substream, cmd, cpu_dai);
-		if (ret < 0)
-			return ret;
-	}
+
 	return 0;
 }
 
@@ -693,6 +725,30 @@ static snd_pcm_uframes_t soc_pcm_pointer(struct snd_pcm_substream *substream)
 	runtime->delay = delay;
 
 	return offset;
+}
+
+static void soc_pcm_hw_dump(struct snd_pcm_substream *substream)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct snd_soc_platform *platform = rtd->platform;
+	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+
+	mutex_lock_nested(&rtd->pcm_mutex, rtd->pcm_subclass);
+	/* hw_dump the audio subsystem */
+	if (rtd->dai_link->ops && rtd->dai_link->ops->hw_dump)
+		rtd->dai_link->ops->hw_dump(substream);
+
+	if (cpu_dai->driver->ops->hw_dump)
+		cpu_dai->driver->ops->hw_dump(substream, cpu_dai);
+
+	if (platform->driver->ops && platform->driver->ops->hw_dump)
+		platform->driver->ops->hw_dump(substream);
+
+	if (codec_dai->driver->ops->hw_dump)
+		codec_dai->driver->ops->hw_dump(substream, codec_dai);
+
+	mutex_unlock(&rtd->pcm_mutex);
 }
 
 /* connect a FE and BE */
@@ -2069,6 +2125,7 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 		rtd->ops.close		= dpcm_fe_dai_close;
 		rtd->ops.pointer	= soc_pcm_pointer;
 		rtd->ops.ioctl		= soc_pcm_ioctl;
+		rtd->ops.hw_dump	= soc_pcm_hw_dump;
 	} else {
 		rtd->ops.open		= soc_pcm_open;
 		rtd->ops.hw_params	= soc_pcm_hw_params;
@@ -2078,6 +2135,7 @@ int soc_new_pcm(struct snd_soc_pcm_runtime *rtd, int num)
 		rtd->ops.close		= soc_pcm_close;
 		rtd->ops.pointer	= soc_pcm_pointer;
 		rtd->ops.ioctl		= soc_pcm_ioctl;
+		rtd->ops.hw_dump	= soc_pcm_hw_dump;
 	}
 
 	if (platform->driver->ops) {

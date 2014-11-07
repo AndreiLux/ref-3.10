@@ -27,7 +27,7 @@ config USB_XHCI_HCD
 if USB_XHCI_HCD
 
 config USB_XHCI_PLATFORM
-	tristate
+	tristate "xHCI Platform support"
 
 config USB_XHCI_HCD_DEBUGGING
 	bool "Debugging for the xHCI host controller"
@@ -37,7 +37,6 @@ config USB_XHCI_HCD_DEBUGGING
 	  This should only be used for debugging xHCI driver bugs.
 
 	  If unsure, say N.
-
 endif # USB_XHCI_HCD
 
 config USB_EHCI_HCD
@@ -592,7 +591,7 @@ config USB_SL811_HCD
 	help
 	  The SL811HS is a single-port USB controller that supports either
 	  host side or peripheral side roles.  Enable this option if your
-	  board has this chip, and you want to use it as a host controller. 
+	  board has this chip, and you want to use it as a host controller.
 	  If unsure, say N.
 
 	  To compile this driver as a module, choose M here: the

@@ -21,6 +21,7 @@
 struct module;
 struct device;
 struct i2c_client;
+struct ipc_client;
 struct irq_domain;
 struct spi_device;
 struct regmap;
@@ -315,6 +316,8 @@ struct regmap *regmap_init(struct device *dev,
 			   const struct regmap_config *config);
 struct regmap *regmap_init_i2c(struct i2c_client *i2c,
 			       const struct regmap_config *config);
+struct regmap *regmap_init_ipc(struct ipc_client *ipc,
+					const struct regmap_config *config);
 struct regmap *regmap_init_spi(struct spi_device *dev,
 			       const struct regmap_config *config);
 struct regmap *regmap_init_mmio_clk(struct device *dev, const char *clk_id,
@@ -327,6 +330,8 @@ struct regmap *devm_regmap_init(struct device *dev,
 				const struct regmap_config *config);
 struct regmap *devm_regmap_init_i2c(struct i2c_client *i2c,
 				    const struct regmap_config *config);
+struct regmap *devm_regmap_init_ipc(struct ipc_client *ipc,
+					const struct regmap_config *config);
 struct regmap *devm_regmap_init_spi(struct spi_device *dev,
 				    const struct regmap_config *config);
 struct regmap *devm_regmap_init_mmio_clk(struct device *dev, const char *clk_id,

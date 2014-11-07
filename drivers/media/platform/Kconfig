@@ -124,6 +124,7 @@ config VIDEO_S3C_CAMIF
 source "drivers/media/platform/soc_camera/Kconfig"
 source "drivers/media/platform/exynos4-is/Kconfig"
 source "drivers/media/platform/s5p-tv/Kconfig"
+source "drivers/media/platform/odin-css/Kconfig"
 
 endif # V4L_PLATFORM_DRIVERS
 
@@ -241,3 +242,33 @@ config VIDEO_MEM2MEM_TESTDEV
 	  This is a virtual test device for the memory-to-memory driver
 	  framework.
 endif #V4L_TEST_DRIVERS
+
+menuconfig ODIN_VIDEO_DRIVERS
+	bool "ODIN Video Drivers"
+	default y
+
+if ODIN_VIDEO_DRIVERS
+config VIDEO_ODIN_PNG 
+	tristate "ODIN PNG Codec Driver"
+	depends on VIDEO_DEV 
+	default n
+	---help---
+	  Odin png codec ip driver
+
+config VIDEO_ODIN_JPEG 
+	tristate "ODIN JPEG Codec Driver"
+	depends on VIDEO_DEV 
+	default n
+	---help---
+	  Odin jpeg codec ip driver
+
+config VIDEO_ODIN_VCODEC 
+	tristate "ODIN VCodec Driver"
+	depends on VIDEO_DEV 
+	default y
+	---help---
+	  Odin vcodec ip driver
+
+endif #ODIN_VIDEO_DRIVERS
+
+

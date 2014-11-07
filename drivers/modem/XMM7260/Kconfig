@@ -1,0 +1,34 @@
+# Flashed [START]
+# IMC Modem Control driver
+
+comment "Intel Mobile Communications Modem Device Driver"
+
+config IMC_MODEM
+	tristate "IMC device driver"
+	depends on IMC
+	---help---
+
+config TEGRA_BB_XMM_POWER
+	tristate "IMC device power driver"
+	depends on IMC_MODEM
+# Flashed [END]
+
+# Flashless [START]
+# Flashless Modem Control Driver.
+# Perform power on/reset/power off on IMC modems
+
+config IMC_DRV
+	tristate "Modem control driver"
+	depends on IMC
+	---help---
+	  The modem control driver for IMC modems. This driver will perform any
+	  power request on IMC modems. It will create /dev/mdm_ctrl char device
+	  by default.
+	  Verified for XMM6260, XMM7160, XMM6360 and XMM 6263 modems.
+
+config IMC_LOG_OFF
+	tristate "Disable logging for Modem control driver"
+	depends on IMC
+	---help---
+	  Disable logging for Modem control driver and Host controller driver.
+# Flashless [END]

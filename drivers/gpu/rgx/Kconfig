@@ -1,0 +1,69 @@
+menu "Graphics Processing Unit"
+config POWERVR_RGX
+	bool "Imagination PowerVR Series6 Rogue"
+	default n
+	select FB
+	help
+	  Choose this option if you wish to use PowerVR GPU.
+
+choice
+    prompt "Target for Imagination PowerVR Series6 Rogue"
+	depends on POWERVR_RGX
+
+config RGX_WODEN
+	bool "Woden"
+	select FB
+	depends on !ARCH_ODIN
+	help
+	  Choose this option if you wish to use PowerVR Serise6 HOOD.
+
+config RGX_ODIN
+	bool "Odin"
+	depends on (ARCH_ODIN_REVISION=0) || (ARCH_ODIN_REVISION=1)
+	select FB
+	help
+	  Choose this option if you wish to use PowerVR Serise6 HOOD.
+
+config RGX_ODIN_ES2
+	bool "Odin_ES2"
+	depends on ARCH_ODIN_REVISION=2
+	select FB
+	help
+	  Choose this option if you wish to use PowerVR Serise6 HOOD.
+endchoice
+
+config RGX_ION
+	bool "Enable RGX HOOD support ION memory driver"
+	depends on ION && POWERVR_RGX
+	default y
+	help
+	  Choose this option if you wish to use ION memory driver support.
+
+config RGX_APM_RASCALDUST
+	bool "RGX HOOD Active Power Management for RD"
+	depends on PM && POWERVR_RGX
+	default n
+	help
+	  Choose this option if you wish to use Active Power Management Phase RASCAL and DUST.
+
+config RGX_APM_TLA
+	bool "RGX HOOD Active Power Management for TLA"
+	depends on PM && POWERVR_RGX
+	default n
+	help
+	  Choose this option if you wish to use Active Power Management Phase TLA.
+
+config RGX_DVFS
+	bool "RGX HOOD Dynamic Voltage Frequency Scaling"
+	depends on PM && POWERVR_RGX
+	default n
+	help
+	  Choose this option if you wish to use Dynamic Voltage Frequency Scaling.
+
+config AVOID_LOCKDEP_FALSE_POSITIVE_WARN
+	bool "RGX HOOD avoid LOCKDEP false positive warning"
+	depends on DEBUG_LOCKDEP && POWERVR_RGX
+	default y
+	help
+	  Prevent CONFIG_LOCKDEP false positive detection.
+endmenu

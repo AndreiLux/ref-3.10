@@ -1,0 +1,153 @@
+/*
+ * LG Electronics DSS for ODIN
+ */
+
+/ {
+	dss@31000000{
+		compatible = "odin,dss";
+		reg = <0 0x31000000 0 0x400000>;
+		interrupts = <0 129 0x4>;
+
+		vid0{
+			compatible = "odin,dss,vid0";
+			offset = <0x00000>;
+			size = <0x10000>;
+			clocks = <&vacl0_clk>;
+		};
+		vid1{
+			compatible = "odin,dss,vid1";
+			offset = <0x10000>;
+			size = <0x10000>;
+			clocks = <&vacl1_clk>;
+		};
+		vid2{
+			compatible = "odin,dss,vid2";
+			offset = <0x20000>;
+			size = <0x10000>;
+			clocks = <&vdma_clk>;
+		};
+		gra0{
+			compatible = "odin,dss,gra0";
+			offset = <0x200000>;
+			size = <0x10000>;
+			clocks = <&gdma0_clk>;
+		};
+		gra1{
+			compatible = "odin,dss,gra1";
+			offset = <0x210000>;
+			size = <0x10000>;
+			clocks = <&gdma1_clk>;
+		};
+		gra2{
+			compatible = "odin,dss,gra2";
+			offset = <0x220000>;
+			size = <0x10000>;
+			clocks = <&gdma2_clk>;
+		};
+		gscl{
+			compatible = "odin,dss,gscl";
+			offset = <0x250000>;
+			size = <0x10000>;
+			clocks = <&gscl_clk>;
+		};
+
+		ovl0{
+			compatible = "odin,dss,ovl0";
+			offset = <0x230000>;
+			size = <0x10000>;
+			clocks = <&overlay_clk>;
+		};
+		/* ovl1 , ovl2 is fake device */
+		ovl1{
+			compatible = "odin,dss,ovl1";
+			clocks = <&overlay_clk>;
+		};
+		ovl2{
+			compatible = "odin,dss,ovl2";
+			clocks = <&overlay_clk>;
+		};
+
+		cabc{
+			compatible = "odin,dss,cabc";
+			offset = <0x240000>;
+			size = <0x10000>;
+			clocks = <&cabc_clk>;
+		};
+
+		formatter{
+			compatible = "odin,dss,formaterr";
+			offset = <0x30000>;
+			size = <0x10000>;
+			clocks = <&formatter_clk>;
+		};
+
+		xd{
+			compatible = "odin,dss,xd";
+			offset = <0x100000>;
+			size = <0x10000>;
+			clocks = <&mxd_clk>;
+		};
+
+		crg{
+			compatible = "odin,dss,crg";
+			offset = <0x400000>;
+			size = <0x10000>;
+		};
+
+		sync0{
+			compatible = "odin,dss,sync0";
+			offset = <0x270000>;
+			size = <0x10000>;
+			clocks = <&sysncgen_clk>;
+		};
+
+		sync1{
+			compatible = "odin,dss,sync1";
+			clocks = <&sysncgen_clk>;
+		};
+
+		sync2{
+			compatible = "odin,dss,sync2";
+			clocks = <&sysncgen_clk>;
+		};
+
+		dip0_lcd{
+			compatible = "odin,dss,dip0_lcd";
+			offset = <0x280000>;
+			size = <0x10000>;
+			clocks = <&dip0_clk>;
+		};
+		mipi0_lcd{
+			compatible = "odin,dss,mipi0_lcd";
+			offset = <0x290000>;
+			size = <0x10000>;
+			clocks = <&dss_mipi0_clk>;
+		};
+
+		dip1_lcd{
+			compatible = "odin,dss,dip1_lcd";
+			offset = <0x2A0000>;
+			size = <0x10000>;
+			clocks = <&dip1_clk>;
+		};
+		mipi1_lcd{
+			compatible = "odin,dss,mipi1_lcd";
+			offset = <0x2B0000>;
+			size = <0x10000>;
+			clocks = <&dss_mipi1_clk>;
+		};
+
+		dip_hdmi{
+			compatible = "odin,dss,dip_hdmi";
+			offset = <0x2C0000>;
+			size = <0x10000>;
+			clocks = <&dip2_clk>;
+		};
+		hdmi_tx{
+			compatible = "odin,dss,hdmi_tx";
+			offset = <0x2D0000>;
+			size = <0x10000>;
+			clocks = <&hdmi_clk>;
+		};
+	};
+};

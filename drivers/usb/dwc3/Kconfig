@@ -52,3 +52,22 @@ config USB_DWC3_VERBOSE
 	  Say Y here to enable verbose debugging messages on DWC3 Driver.
 
 endif
+
+config USB_ODIN_DRD
+        boolean "Use ODIN DRD Controller"
+        default n
+		help
+			Enable ODIN DRD(Dual Role Driver) Controller.
+
+config ODIN_USB3_DBG_SYSFS
+		boolean "Use ODIN DRD Debugging SYSFS"
+        depends on USB_ODIN_DRD
+		help
+			Enable ODIN USB 3.0 DRD debugging using sysfs
+
+config USB_ODIN_ATD
+        boolean "Use ODIN ATD"
+        depends on USB_ODIN_DRD
+		help
+			Enable ODIN ATD
+

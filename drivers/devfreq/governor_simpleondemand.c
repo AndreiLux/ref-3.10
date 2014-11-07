@@ -16,8 +16,9 @@
 #include "governor.h"
 
 /* Default constants for DevFreq-Simple-Ondemand (DFSO) */
+#define DFSO_HITHRESHOLD	(95)
 #define DFSO_UPTHRESHOLD	(90)
-#define DFSO_DOWNDIFFERENCTIAL	(5)
+#define DFSO_DOWNDIFFERENCTIAL	(10)
 static int devfreq_simple_ondemand_func(struct devfreq *df,
 					unsigned long *freq)
 {
@@ -26,6 +27,7 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 	unsigned long long a, b;
 	unsigned int dfso_upthreshold = DFSO_UPTHRESHOLD;
 	unsigned int dfso_downdifferential = DFSO_DOWNDIFFERENCTIAL;
+	unsigned int dfso_hithreshold = DFSO_HITHRESHOLD;
 	struct devfreq_simple_ondemand_data *data = df->data;
 	unsigned long max = (df->max_freq) ? df->max_freq : UINT_MAX;
 
@@ -54,10 +56,23 @@ static int devfreq_simple_ondemand_func(struct devfreq *df,
 		stat.total_time >>= 7;
 	}
 
+	/* "high-speed" */
+	if (stat.busy_time * 100 >
+	    stat.total_time * dfso_hithreshold) {
+		/* TODO: make this tunable later */
+		if (stat.current_frequency < 100000)
+			*freq = 100000;
+		else if (stat.current_frequency < 400000)
+			*freq = 400000;
+		else
+			*freq = max;
+		return 0;
+	}
+
 	/* Set MAX if it's busy enough */
 	if (stat.busy_time * 100 >
 	    stat.total_time * dfso_upthreshold) {
-		*freq = max;
+		*freq = stat.current_frequency * 2;
 		return 0;
 	}
 

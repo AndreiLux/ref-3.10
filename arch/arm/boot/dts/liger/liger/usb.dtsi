@@ -1,0 +1,39 @@
+/*
+ * LG Electronics USB for Odin
+ */
+
+/ {
+	usb3_drd@0x3F000000 {
+		compatible = "odin_usb3_drd";
+		reg = <0 0x3F000000 0 0x10000>,
+			<0 0x3FF00100 0 0x400>;
+		interrupts = <0 72 0x4>;
+		id_gpio = <112>;
+		otg_en_gpio = <14>;
+		redriver_gpio = <27>;
+		/*
+		*   [usb mode]
+		*       1 - DRD
+		*       2 - Device only(No Runtime PM)
+		*/
+		usb_mode = <1>;
+		/*
+		*   [speed_mode]
+		*       1 - Super Speed
+		*	2 - High Speed
+		*/
+		speed_mode = <1>;
+		/*
+		*   [tuning_mode]
+		*	1 - Normal mode (using [tv_base, tv_otg])
+		*	2 - Setting mode
+		*
+		*/
+		tuning_mode = <1>;
+		tv_base = <0x000f179b>;
+		tv_otg = <0x0003539b>;
+		log_level = <0>;
+		ss_redriver = <0>;
+		id = <0>;
+	};
+};

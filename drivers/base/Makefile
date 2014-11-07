@@ -23,5 +23,10 @@ obj-$(CONFIG_REGMAP)	+= regmap/
 obj-$(CONFIG_SOC_BUS) += soc.o
 obj-$(CONFIG_PINCTRL) += pinctrl.o
 
+
+# LGE_CHANGE_S
+obj-$(CONFIG_TOUCHSCREEN_ATMEL_S540)  +=sys.o
+# LGE_CHANGE_E
+obj-$(CONFIG_TOUCHSCREEN_SYNAPTICS_I2C_RMI4)  +=sys.o
 ccflags-$(CONFIG_DEBUG_DRIVER) := -DDEBUG
 

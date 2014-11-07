@@ -1,0 +1,203 @@
+config ARCH_ODIN
+	bool "LG Electronics Odin" if ARCH_MULTI_V7
+    select ARCH_HAS_CPUFREQ
+    select ARCH_HAS_OPP
+	select HAVE_SCHED_CLOCK
+	select CPU_V7
+	select ARM_AMBA
+	select ARM_GIC
+	select ARM_CCI
+	select COMMON_CLK
+	select GENERIC_CLOCKEVENTS
+	select PM_GENERIC_DOMAINS if PM_RUNTIME
+	select ARM_TIMER_SP804
+	select HAVE_SMP
+	select ARCH_REQUIRE_GPIOLIB
+	select MAILBOX
+	select ODIN_PL320_MBOX
+
+config ARCH_ODIN_REVISION
+	int "Odin revision number"
+	range 0 2
+	depends on ARCH_ODIN
+	default 1
+	help
+		Odin SoC revision number
+
+menu "Odin Platform Type"
+	depends on ARCH_ODIN
+
+config MACH_ODIN
+	bool "Odin Platform Board"
+	depends on ARCH_ODIN
+	help
+		Odin Platform Board in official.
+
+config MACH_ODIN_FPGA
+	bool "Odin FPGA Board"
+	depends on ARCH_ODIN
+	help
+		Evaluation Odin Board.
+
+# LGE_CHANGE_S
+config MACH_ODIN_LIGER
+	bool "Odin MC Board"
+	depends on ARCH_ODIN
+	help
+		Evaluation Odin Board for MC Lab.
+# LGE_CHANGE_E
+
+choice
+	prompt "Odin FPGA type"
+	default MACH_CLAIR_FPAG
+	depends on MACH_ODIN_FPGA
+
+config MACH_CLAIR_FPGA
+	bool "Odin Clair"
+
+config MACH_HUINS_FPGA
+	bool "Odin Huins"
+
+endchoice
+
+config PRE_SELF_DIAGNOSIS
+	tristate "Support LGE self diagnosis for factory"
+	default n
+	depends on MACH_ODIN
+	help
+	  LGE self diagnosis
+
+endmenu
+
+config ODIN_BL_POWEROPS
+	bool "Odin big.LITTLE Power Ops support"
+	depends on ARCH_ODIN && MCPM
+	default y
+	help
+		Support for big.LITTLE Power Ops.
+
+config ODIN_BL_POWEROPS_WORKAROUND
+	bool "Odin big.LITTLE Power Ops workaround"
+	depends on ODIN_BL_POWEROPS && ARCH_ODIN_REVISION=2
+	default y
+	help
+		In case of CA7, do not control cluster PM.
+
+config ODIN_OPTIMIZE_BOOTING_TIME
+	bool "Odin booting time optimization"
+	depends on ARCH_ODIN
+	default n
+	help
+		Optimize booting time on Odin.
+
+config DSP_LPA_ENABLE
+	bool "Odin DSP Development"
+	depends on ARCH_ODIN
+	default n
+	help
+		Say yes here to support odin Low Power Audio(LPA) control
+
+config CPU_IDLE_ODIN_WORKAROUND
+	boolean "CPU idle disable when some devices try to reduce system latency"
+	depends on CPU_IDLE_ODIN
+	default y
+	help
+		CPU idle disable when some devices try to reduce system latency
+
+config ARABICA_CHECK_REV
+	depends on ARCH_ODIN
+	bool "Arabica revision check"
+	help
+		Say yes here to support arabica revision check.
+
+config ODIN_PD_OPS
+	depends on ARCH_ODIN
+    bool "Odin power domain control ops support"
+    help
+      Say yes here to support odin power domain control.
+
+config ODIN_LPA_OPS
+	depends on ARCH_ODIN && DSP_LPA_ENABLE
+	default y
+    bool "Odin Low Power Audio(LPA) control ops support"
+    help
+      Say yes here to support odin Low Power Audio(LPA) control.
+
+config ODIN_PMIC_OPS
+	depends on ARCH_ODIN
+    bool "Odin pmic control ops support"
+    help
+      Say yes here to support odin pmic control.
+
+config ARCH_NR_GPIO
+	int "Odin ARCH_NR_GPIOS"
+	default 512 if ARCH_ODIN
+	default 0
+
+# LGE_CHANGE_S
+config LGE_CRASH_HANDLER
+	tristate "Support LGE Kernel Panic Handler"
+	default n
+	depends on PSTORE_RAM
+	help
+	  LGE crash handler
+
+ config LGE_LAST_KMSG
+	bool "Support /proc/last_kmsg for backward compatibility"
+	default n
+	depends on PSTORE_RAM
+	depends on LGE_CRASH_HANDLER
+	help
+	  LGE crash handler
+# LGE_CHANGE_E
+
+config ODIN_TEE
+	bool "Odin TrustZone Configuration"
+	depends on ARCH_ODIN
+	select MOBICORE_DRIVER
+	select MOBICORE_API
+	help
+		Enable TrustZone and independent Secure OS.
+		Linux Kernel cannot access Secure hardware resources.
+
+config ODIN_SECURE_SMMU
+	bool "Odin SMMU Secure Init"
+	depends on ODIN_TEE
+	help
+		Enable SMMU Initialization in Secure Domain.
+
+config LGE_BOOT_TIME_CHECK
+	tristate "Support LGE BOOT TIME CHECK"
+	default y
+	depends on MACH_ODIN
+	help
+		LGE bootloader Time Checker.
+
+config ODIN_PSTORE
+	bool "Support Pstore for Odin"
+	depends on ARCH_ODIN
+	select PSTORE_CONSOLE
+	select PSTORE_RAM
+	default y
+	help
+		Enable pstore for Odin
+
+config LGE_AUTO_SUSPEND_TEST
+	bool "Support Auto Suspend Test"
+	depends on ARCH_ODIN
+	default y
+	help
+		Enable pstore for Odin
+
+config ODIN_SYS_FS
+	depends on ARCH_ODIN
+    bool "Odin sysfs information"
+    help
+      Say yes here to support odin information view.
+
+config LGE_KSWITCH
+    tristate "Support LGE Kill Switch"
+    default n
+    depends on MACH_ODIN
+    help
+      LGE Kill Switch

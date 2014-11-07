@@ -12,6 +12,7 @@ fb-y                              := fbmem.o fbmon.o fbcmap.o fbsysfs.o \
                                      modedb.o fbcvt.o
 fb-objs                           := $(fb-y)
 
+obj-$(CONFIG_ADF)		  += adf/
 obj-$(CONFIG_VT)		  += console/
 obj-$(CONFIG_LOGO)		  += logo/
 obj-y				  += backlight/
@@ -181,3 +182,5 @@ endif
 
 # platform specific output drivers
 obj-$(CONFIG_VEXPRESS_DVI_CONTROL) += vexpress-dvi.o
+obj-$(CONFIG_ODIN_DSS)		+= odin/
+obj-$(CONFIG_ODIN_DSS_NEW)	+= odin-dss/

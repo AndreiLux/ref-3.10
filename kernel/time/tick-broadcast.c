@@ -23,6 +23,8 @@
 
 #include "tick-internal.h"
 
+#include <trace/events/timer.h>
+
 /*
  * Broadcast support for broken x86 hardware, where the local apic
  * timer stops in C3 state.
@@ -157,7 +159,10 @@ int tick_device_uses_broadcast(struct clock_event_device *dev, int cpu)
 		dev->event_handler = tick_handle_periodic;
 		tick_device_setup_broadcast_func(dev);
 		cpumask_set_cpu(cpu, tick_broadcast_mask);
-		tick_broadcast_start_periodic(bc);
+		if (tick_broadcast_device.mode == TICKDEV_MODE_PERIODIC)
+			tick_broadcast_start_periodic(bc);
+		else
+			tick_broadcast_setup_oneshot(bc);
 		ret = 1;
 	} else {
 		/*
@@ -559,9 +564,11 @@ static void tick_handle_oneshot_broadcast(struct clock_event_device *dev)
 	struct tick_device *td;
 	ktime_t now, next_event;
 	int cpu, next_cpu = 0;
+	ktime_t bc_expired;
 
 	raw_spin_lock(&tick_broadcast_lock);
 again:
+	bc_expired = dev->next_event;
 	dev->next_event.tv64 = KTIME_MAX;
 	next_event.tv64 = KTIME_MAX;
 	cpumask_clear(tmpmask);
@@ -569,6 +576,8 @@ again:
 	/* Find all expired events */
 	for_each_cpu(cpu, tick_broadcast_oneshot_mask) {
 		td = &per_cpu(tick_cpu_device, cpu);
+		trace_tick_handle_oneshot_broadcast(cpu, &bc_expired, &now, &td->evtdev->next_event);
+
 		if (td->evtdev->next_event.tv64 <= now.tv64) {
 			cpumask_set_cpu(cpu, tmpmask);
 			/*

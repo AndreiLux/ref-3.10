@@ -2898,8 +2898,21 @@ static bool __cancel_work_timer(struct work_struct *work, bool is_dwork)
 		 * If someone else is canceling, wait for the same event it
 		 * would be waiting for before retrying.
 		 */
-		if (unlikely(ret == -ENOENT))
-			flush_work(work);
+		if (unlikely(ret == -ENOENT)) {
+			if (!flush_work(work) &&
+			    current->policy == SCHED_FIFO &&
+			    work_is_canceling(work)) {
+				struct sched_param old, new;
+
+				WARN_ON(1);
+
+				old.sched_priority = current->rt_priority;
+				new.sched_priority = 0;
+				sched_setscheduler(current, SCHED_NORMAL, &new);
+				schedule();
+				sched_setscheduler(current, SCHED_FIFO, &old);
+			}
+		}
 	} while (unlikely(ret < 0));
 
 	/* tell other tasks trying to grab @work to back off */

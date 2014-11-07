@@ -42,6 +42,7 @@ __setup("hlt", cpu_idle_nopoll_setup);
 static inline int cpu_idle_poll(void)
 {
 	rcu_idle_enter();
+	trace_cpu_idle_rcuidle(9999, smp_processor_id());
 	trace_cpu_idle_rcuidle(0, smp_processor_id());
 	local_irq_enable();
 	while (!tif_need_resched())

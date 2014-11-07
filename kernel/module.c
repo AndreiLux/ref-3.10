@@ -2155,7 +2155,7 @@ static void set_license(struct module *mod, const char *license)
 			printk(KERN_WARNING "%s: module license '%s' taints "
 				"kernel.\n", mod->name, license);
 		add_taint_module(mod, TAINT_PROPRIETARY_MODULE,
-				 LOCKDEP_NOW_UNRELIABLE);
+				 LOCKDEP_STILL_OK);
 	}
 }
 
@@ -2751,7 +2751,7 @@ static void find_module_sections(struct module *mod, struct load_info *info)
 	mod->unused_gpl_crcs = section_addr(info, "__kcrctab_unused_gpl");
 #endif
 #ifdef CONFIG_CONSTRUCTORS
-	mod->ctors = section_objs(info, ".ctors",
+	mod->ctors = section_objs(info, CONFIG_GCOV_CTORS,
 				  sizeof(*mod->ctors), &mod->num_ctors);
 #endif
 

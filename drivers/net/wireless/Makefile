@@ -55,5 +55,10 @@ obj-$(CONFIG_WL_TI)	+= ti/
 
 obj-$(CONFIG_MWIFIEX)	+= mwifiex/
 
+#obj-$(CONFIG_BCMDHD)	+= bcmdhd_1_107_3_1/
+obj-$(CONFIG_BCMDHD)	+= bcmdhd/
+
+#obj-$(CONFIG_BROADCOM_WIFI_RESERVED_MEM)	+= wifi_bcm_lge_odin.o
+
 obj-$(CONFIG_BRCMFMAC)	+= brcm80211/
 obj-$(CONFIG_BRCMSMAC)	+= brcm80211/

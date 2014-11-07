@@ -1,0 +1,358 @@
+/*
+ * LG Electronics Odin
+ */
+
+/{
+	soc {
+		/* MAXIM PMIC MAX77525 Start */
+		max77525 {
+			compatible = "LG,odin-max77525-pmic";
+			irq_gpio = <117>;
+
+			regulators {
+				compatible = "maxim,max77525-regulator";
+				maxim,dvs-enable = <0 0 0 0 0 0 0 0 0>; /* Disable DVS */
+				/* sms-gpio base (112) + sms-gpio (14) = 126 */
+				maxim,dvs-gpio = <126>;
+
+				buck1a_reg: BUCK1A {
+					regulator-name = "+0.9V_VDD_CA15_CACHE";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <1500000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,falling-slew-rate-ad-enable = <1>;
+					max77525,remote-output-voltage-sense-enable = <1>;
+					max77525,buck-ramp-rate = <1>;
+				};
+				buck2a_reg: BUCK2A {
+					regulator-name = "+0.9V_VDD_GPU";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <1500000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,falling-slew-rate-ad-enable = <1>;
+					max77525,remote-output-voltage-sense-enable = <1>;
+					max77525,buck-ramp-rate = <1>;
+				};
+				buck2c_reg: BUCK2C {
+					regulator-name = "+1.2V_VDD_LPDDRIO";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <1500000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,falling-slew-rate-ad-enable = <1>;
+					max77525,buck-ramp-rate = <1>;
+				};
+				buck2d_reg: BUCK2D {
+					regulator-name = "+0.9V_VDD_CA7_CACHE";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <1500000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,falling-slew-rate-ad-enable = <1>;
+					max77525,buck-ramp-rate = <1>;
+				};
+				buck3_reg: BUCK3 {
+					regulator-name = "+1.2V_VDD_LPDDRIO_AO";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <1500000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,falling-slew-rate-ad-enable = <1>;
+					max77525,buck-ramp-rate = <1>;
+				};
+				buck4_reg: BUCK4 {
+					regulator-name = "+0.9V_VDD_AV";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <3650000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,forced-pwm-enable = <1>;
+
+				};
+				buck5_reg: BUCK5 {
+					regulator-name = "+1.8V_VDDIO_SYS";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <3650000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				buck6_reg: BUCK6 {
+					regulator-name = "+0.9V_VDD_CSS";
+					regulator-min-microvolt = <500000>;
+					regulator-max-microvolt = <3650000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+
+
+				ldo1_reg: LDO1 {
+					regulator-name = "+1.2V_VT_CAM_DVDD";
+					regulator-min-microvolt = <600000>;
+					regulator-max-microvolt = <2175000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo2_reg: LDO2 {
+					regulator-name = "+1.8V_VDDIO_EXT";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+					max77525,pull-down-enable = <1>;
+				};
+				ldo3_reg: LDO3 {
+					regulator-name = "+0.9V_VDD_SMS";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo4_reg: LDO4 {
+					regulator-name = "+1.05V_CAM_DVDD";
+					regulator-min-microvolt = <600000>;
+					regulator-max-microvolt = <2175000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo5_reg: LDO5 {
+					regulator-name = "+0.9V_HDMI_VP";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo6_reg: LDO6 {
+					regulator-name = "+1.8V_AVDDPLL_CORE_TS";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo7_reg: LDO7 {
+					regulator-name = "+1.2V_VDDIO_USBHSIC";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo8_reg: LDO8 {
+					regulator-name = "+1.8V_TOUCH_IOVCC";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo9_reg: LDO9 {
+					regulator-name = "+3.0V_VDDIO_SDIO";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo10_reg: LDO10 {
+					regulator-name = "+3.3V_AVDD_USBPHYIO";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo11_reg: LDO11 {
+					regulator-name = "+1.8V_VDDIO_AP";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo12_reg: LDO12 {
+					regulator-name = "+0.9V_AVDD_USBPHY";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo13_reg: LDO13 {
+					regulator-name = "+2.8V_VT_CAM_AVDD";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					enable-mode,enable-mode = <2>; /* Dynamic LPM */
+				};
+				ldo14_reg: LDO14 {
+					regulator-name = "+1.8V_VDD_LPDDR_CORE";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo15_reg: LDO15 {
+					regulator-name = "+1.8V_VDDIO_AO_SMS";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo16_reg: LDO16 {
+					regulator-name = "+1.8V_SENSOR_DVDD";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo17_reg: LDO17 {
+					regulator-name = "+3.0V_TOUCH_AVCC";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo18_reg: LDO18 {
+					regulator-name = "+1.8V_13M_VCM";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo19_reg: LDO19 {
+					regulator-name = "+1.8V_AVDD_DPHY_DSS_VCCA";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo20_reg: LDO20 {
+					regulator-name = "+1.8V_VDD_CSS_MAIN_CAM_IO";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo21_reg: LDO21 {
+					regulator-name = "+3.0V_VDD_uSD";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo22_reg: LDO22 {
+					regulator-name = "+3.0V_VDDF_NAND";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo23_reg: LDO23 {
+					regulator-name = "+2.7V_13M_ANA";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo24_reg: LDO24 {
+					regulator-name = "+1.8V_VT_CAM_IO";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+				ldo25_reg: LDO25 {
+					regulator-name = "+1V8_VDDIO_NAND";
+					regulator-min-microvolt = <800000>;
+					regulator-max-microvolt = <3950000>;
+					regulator-always-on;
+					max77525,enable-mode = <3>; /* Normal Mode */
+				};
+			};
+
+			rtc {
+				compatible = "maxim,max77525-rtc";
+				maxim,max77525-rtc-write = <1>;
+				maxim,max77525-rtc-alarm-pwrup = <1>;
+				maxim,max77525-rtc-enable-smpl = <0>;
+			};
+
+			adc {
+				compatible = "maxim,max77525-adc";
+				maxim,adc-avg-sample = <0>;
+				maxim,adc-delay = <0>;
+
+				/* Channel Node */
+				channel@7 {
+					label = "pcb_rev";
+					channel = <7>;
+					scale-function = <0>;
+				};
+
+				channel@9 {
+					label = "usb_in";
+				    channel = <9>;
+				    scale-function = <0>;
+			    };
+			};
+
+			led {
+			};
+
+			gpios {
+				compatible = "maxim,max77525-gpio";
+
+				gpio@0 {
+					maxim,gpio-num = <0>;
+					maxim,pull-up = <1>;
+					maxim,pull-down = <0>;
+					maxim,alternative-mode = <0>;
+					maxim,output-type = <0>;
+					maxim,io-mode = <1>;
+					maxim,int-config = <0>; /* no IRQ */
+					maxim,debounce = <0>;
+				};
+				gpio@3 {
+					maxim,gpio-num = <3>;
+					maxim,pull-up = <1>;                /* GPIO pull-up */
+					maxim,pull-down = <0>;              /* GPIO pull-down */
+					maxim,alternative-mode = <1>;       /* GPIO alternative mode */
+					maxim,output-type = <0>;            /* push-pull(1) or open(0) */
+					maxim,io-mode = <0>;                /* output(0) or intput(1) */
+					maxim,int-config = <0>; /* no IRQ */
+					maxim,debounce = <0>;
+				};
+				gpio@4 {
+					maxim,gpio-num = <4>;
+					maxim,pull-up = <0>;                /* GPIO pull-up */
+					maxim,pull-down = <0>;              /* GPIO pull-down */
+					maxim,alternative-mode = <0>;       /* GPIO alternative mode */
+					maxim,output-type = <1>;            /* push-pull(1) or open(0) */
+					maxim,io-mode = <0>;                /* output(0) or intput(1) */
+					maxim,int-config = <0>; /* no IRQ */
+					maxim,debounce = <0>;
+				};
+				gpio@5 {
+					maxim,gpio-num = <5>;
+					maxim,pull-up = <0>;
+					maxim,pull-down = <0>;
+					maxim,alternative-mode = <0>;
+					maxim,output-type = <1>;
+					maxim,io-mode = <0>;
+					maxim,int-config = <0>; // no IRQ
+					maxim,debounce = <0>;
+				};
+				gpio@9 {
+					maxim,gpio-num = <9>;
+					maxim,pull-up = <1>;
+					maxim,pull-down = <0>;
+					maxim,alternative-mode = <0>;
+					maxim,output-type = <1>;
+					maxim,io-mode = <0>;
+					maxim,int-config = <0>; // no IRQ
+					maxim,debounce = <0>;
+				};
+				gpio@10 {
+					maxim,gpio-num = <10>;
+					maxim,pull-up = <0>;
+					maxim,pull-down = <0>;
+					maxim,alternative-mode = <1>;
+					maxim,output-type = <1>;
+					maxim,io-mode = <0>;
+					maxim,int-config = <1>;
+					maxim,debounce = <0>;
+				};
+			};
+
+			clock {
+			};
+
+			power-key {
+				compatible = "maxim,max77525-power-key";
+				/* maxim,manual-reset-timer = <5>;*/ /* 5sec */
+			};
+		};
+	};
+};
+

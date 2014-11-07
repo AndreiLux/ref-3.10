@@ -1,0 +1,142 @@
+/*
+ * LG Electronics Odin
+ */
+
+/{
+    soc {
+		compatible = "simple-bus";
+		interrupt-parent = <&gic>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		ipc@200FF000{
+			compatible = "arm,pl320","arm,primecell";
+			reg = <0 0x200FF000 0 0x1000>;
+			interrupts = <0 157 0x4>;
+			arm,primecell-periphid = <0x000BB320>;
+		};
+
+		odin-thermal {
+			compatible = "lge,odin-thermal";
+			num-sensors = <7>;
+		};
+
+		odin-thermal-monitor {
+			compatible = "lge,odin-thermal-monitor";
+			tsens-id = <0>;
+			sampling-period = <200>;
+			threshold-hi = <65000>;
+			threshold-lo = <55000>;
+			freq-step = <1>;
+		};
+
+		dx_pe@36000000 {
+			compatible = "dx,pe";
+			reg = <0 0x36040000 0 0x4000>;
+			interrupts = <0 71 0x004>;
+		};
+
+		/* Power key */
+		powerkey@200f4030 {
+			compatible = "LG,odin-pwrkey";
+			reg = <0 0x200F4030 0 0x8>;
+		};
+
+		/* Battery Max77819 start */
+		max77819_fg {
+			compatible = "maxim,max77819_fg_ipc";
+			num_gpio = <116>;
+			rcomp = <40>;
+			rcomp-co-hot = <700>;
+			rcomp-co-cold = <5225>;
+			max-mvolt = <4350>;
+			min-mvolt = <3200>;
+			full-soc = <970>;
+			empty-soc = <10>;
+			fcc-mah = <2300>;
+			uvlo-thr-mv = <3050>;
+		};
+		/* Battery Max77819 end */
+
+		idtp9025a_wireless_power_receiver {
+			compatible = "idt,idt9025_wlc";
+		};
+
+		battery_temp_ctrl {
+			compatible = "battery_temp_ctrl";
+			update_time = <10000>;
+		};
+
+		/* MAXIM PMIC MAX77807 Start */
+		max77807_pmic {
+			compatible = "maxim,max77807-pmic";
+			irq_gpio = <136>;
+
+			charger {
+				compatible = "maxim,max77807-charger";
+				psy_name = "max77807-charger";
+				supplied_to = "battery";
+				/* This option is only for AC adaptor */
+				fast_charge_current = <1500000>;		/* 1500mA */
+				charge_termination_voltage = <4350000>;		/* 4.35V */
+				topoff_timer = <0>;				/* 0min */
+				topoff_current = <100000>;			/* 100mA */
+				charger_restart_threshold = <100000>;		/* 100mV */
+				enable_aicl;
+				aicl_detection_voltage = <4500000>;		/* 4500mV */
+				aicl_reset_threshold = <100000>;		/* 100mV */
+				current_limit_usb = <500000>;
+				current_limit_Ac = <1500000>;
+			};
+		};
+
+		max77807_peri {
+			compatible = "maxim,max77807-periph";
+			/*
+			 *LGE_CHANGE_S
+			 */
+		        vibrator{
+				compatible = "maxim,max77807-motor";
+				initial-vibrate-ms = <1000>;
+				max-timeout-ms = <30000>;
+				pwm-value = <170>;
+				regulator-name = "+3.0V_VDD_MOTOR";
+				pwms = <&pwm 1 1024 0>;
+				pwm-names = "pwm-vib";
+				mode = <0>;
+				htype = <0>;
+	                        pdiv = <2>;
+	                        warmup-delay = <10>;
+                                braking-ms = <10>;
+                                driving-ms = <20>;
+	                };
+	         };
+
+		max77807_muic {
+
+			compatible = "maxim,max77807-muic";
+			usbsw{
+				compatible = "maxim,max77807-usbsw";
+
+	            };
+	    };
+
+
+			/* LGE_CHANGE_E */
+
+		/* MAXIM PMIC MAX77807 END */
+	};
+
+	keyreset {
+		compatible = "keyreset";
+		down-time-ms = <20000>;
+		enable-boot-mode = "charger";
+
+		power_key {
+			linux,code = <116>;
+		};
+	};
+};
+
+/include/ "./d2260_revi.dtsi"

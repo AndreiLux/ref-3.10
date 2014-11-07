@@ -30,6 +30,7 @@
 #include <sound/compress_offload.h>
 #include <sound/asound.h>
 #include <sound/pcm.h>
+#include <sound/core.h>
 
 struct snd_compr_ops;
 

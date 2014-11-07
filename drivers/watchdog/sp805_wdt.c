@@ -302,7 +302,7 @@ static SIMPLE_DEV_PM_OPS(sp805_wdt_dev_pm_ops, sp805_wdt_suspend,
 
 static struct amba_id sp805_wdt_ids[] = {
 	{
-		.id	= 0x00141805,
+		.id	= 0x00bb824,
 		.mask	= 0x00ffffff,
 	},
 	{ 0, 0 },

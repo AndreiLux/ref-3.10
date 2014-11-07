@@ -1,0 +1,36 @@
+menuconfig ODIN_DSS
+        tristate "ODIN Display SubSystem Support"
+        depends on ARCH_ODIN
+        help
+	  display subsystem driver for ODIN based boards.
+
+if ODIN_DSS
+config ODIN_DSS_DEBUG_SUPPORT
+        bool "Debug support for ODIN Display SubSystem"
+	default y
+	depends on ODIN_DSS
+	help
+	  Support for debug output. You have to enable the actual printing
+	  with 'debug' module parameter.
+	  
+config ODIN_DSS_FPGA
+        bool "ODIN DSS FPGA"
+	default y
+	depends on MACH_ODIN_FPGA
+	help
+	  Support for odin dss fpga board only. 	  
+
+	  
+config LCD_KCAL 
+        bool "LCD KCAL"
+	default y
+	help
+	  Support for lcd kcal. 	  
+
+config LCD_MIPI_SPEED_SET
+        bool "LCD_MIPI_SPEED_SET"
+	default y
+	help
+	  Support for LCD MIPI speed setting
+
+endif

@@ -171,6 +171,7 @@ void __mcpm_cpu_down(unsigned int cpu, unsigned int cluster);
 void __mcpm_outbound_leave_critical(unsigned int cluster, int state);
 bool __mcpm_outbound_enter_critical(unsigned int this_cpu, unsigned int cluster);
 int __mcpm_cluster_state(unsigned int cluster);
+int __mcpm_cpu_state(unsigned int cpu, unsigned int cluster);
 
 int __init mcpm_sync_init(
 	void (*power_up_setup)(unsigned int affinity_level));

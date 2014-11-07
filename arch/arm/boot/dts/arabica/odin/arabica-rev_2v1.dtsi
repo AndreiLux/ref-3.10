@@ -1,0 +1,101 @@
+/*
+ * This file is for MADK v2.1
+ */
+
+/ {
+	connectivity {
+		wlan@0{
+			power_gpio = <120>;
+		};
+/* sdio start */
+		sdhci@0x20006000{
+			sdclk = <200>;			/* 200Mhz, UHS104*/
+		};
+/* sdio end */
+	};
+
+	gpio-keys {
+		button@1 {
+			gpios = <&gpio2 1 1>;
+		};
+		button@2 {
+			gpios = <&gpio2 2 1>;
+		};
+	};
+
+	soc {
+
+		spi@20011000{
+			ethernet@1{
+				irq_gpio = <5>;
+			};
+		};
+
+		max77819_pmic {
+			irq_gpio = <136>;
+		};
+
+		 pmic1: d2260@48 {
+			regulators {
+				D2260_GPIOCTRL_1 {
+					regulator-name = "+1.8V_VT_CAM_IO";
+					regulator-enable-gpio = <173>;
+				};
+			};
+				};
+
+		i2c@20021000 {
+
+			/* LGE_CHANGE_S
+			 */
+			anx7808@72{
+				compatible = "analogix,anx7808";
+				status = "ok";
+				reg = <0x72>;
+				analogix,reset-gpio = <52>; /* PERI_G0_GPIO_BASE(0)+52 */
+				analogix,irq-gpio = <51>;   /* PERI_G0_GPIO_BASE(0)+51 */
+				analogix,p-dwn-gpio = <53>; /* PERI_G0_GPIO_BASE(0)+53 */
+				analogix,v10-ctrl-gpio = <31>;  /* PERI_G0_GPIO_BASE(0)+31 */
+				analogix,cbl-det-gpio = <146>;  /* SMS_GPIO_BASE(112)+34 */
+				lge,external-ldo-control = <0>;
+			};
+			anx7812@72{
+				compatible = "analogix,anx7812";
+				status = "disable";
+				reg = <0x72>;
+				analogix,reset-gpio = <52>; /* PERI_G0_GPIO_BASE(0)+52 */
+				analogix,irq-gpio = <51>;   /* PERI_G0_GPIO_BASE(0)+51 */
+				analogix,p-dwn-gpio = <53>; /* PERI_G0_GPIO_BASE(0)+53 */
+				analogix,v10-ctrl-gpio = <31>;  /* PERI_G0_GPIO_BASE(0)+31 */
+				analogix,cbl-det-gpio = <142>;  /* SMS_GPIO_BASE(112)+30 */
+				lge,external-ldo-control = <0>;
+			};
+		};
+
+		max77807_pmic {
+			compatible = "maxim,max77807-pmic";
+			status = "disable";
+
+			charger {
+				compatible = "maxim,max77807-charger";
+				status = "disable";
+			};
+		};
+		max77807_peri {
+			compatible = "maxim,max77807-periph";
+			status = "disable";
+
+			vibrator {
+				compatible = "maxim,max77807-motor";
+				status = "disable";
+			};
+		};
+
+	};
+
+
+	sdhci@0x2000A000{
+		sdc_cd_gpio = <149>;
+	};
+
+};

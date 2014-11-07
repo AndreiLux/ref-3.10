@@ -59,8 +59,8 @@
  * when processing onlcr, so we only need 2 buffers. These values must be
  * powers of 2.
  */
-#define ACM_NW  16
-#define ACM_NR  16
+#define ACM_NW  32
+#define ACM_NR  32
 
 struct acm_wb {
 	unsigned char *buf;

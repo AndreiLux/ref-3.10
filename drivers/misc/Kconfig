@@ -374,6 +374,17 @@ config SENSORS_APDS990X
 	   To compile this driver as a module, choose M here: the
 	   module will be called apds990x. If unsure, say N here.
 
+config SENSORS_APDS993X
+	 tristate "APDS993X combined als and proximity sensors"
+	 depends on I2C
+	 default n
+	 ---help---
+	   Say Y here if you want to build a driver for Avago APDS993x
+	   combined ambient light and proximity sensor chip.
+
+	   To compile this driver as a module, choose M here: the
+	   module will be called apds990x. If unsure, say N here.
+
 config HMC6352
 	tristate "Honeywell HMC6352 compass"
 	depends on I2C
@@ -423,6 +434,10 @@ config TI_DAC7512
 
 	  This driver can also be built as a module. If so, the module
 	  will be called ti_dac7512.
+
+config UID_STAT
+	bool "UID based statistics tracking exported to /proc/uid_stat"
+	default n
 
 config VMWARE_BALLOON
 	tristate "VMware Balloon Driver"
@@ -527,11 +542,64 @@ config SRAM
 	  the genalloc API. It is supposed to be used for small on-chip SRAM
 	  areas found on many SoCs.
 
+config EXTERNAL_DEBUG_V7_1
+	bool "External debugger support for ARM debug v7.1(Power down debug)"
+	depends on ARM
+
+# LGE_CHANGE_S
+config MUIC_MAX77665
+	bool "Maxim MAX77665 Sub-PMIC muic driver"
+	depends on MFD_MAX77665
+	help
+		MAX77665 muic driver. It depends on MFD_MAX77665
+# LGE_CHANGE_E
+
+config BU52031NVX
+	tristate "Hall Sensor"
+	default y
+	help
+		BU52031NVX Sensor driver.
+
+# LGE_CHANGE_S
+config LGE_IRRC
+    tristate "LGE_IRRC"
+    default n
+    help
+        If you say yes here you get support for IrRC
+# LGE_CHANGE_E
+# LGE_CHANGE_S
+config TSPDRV
+    bool "Immersion haptic tspdrv"
+    default y
+    help
+	Immersion haptic driver
+# LGE_CHANGE_E
+
+config SENSORS_HSPPAD030
+	 tristate "HSPPAD030 pressure sensors"
+	 depends on I2C
+	 default n
+	 ---help---
+	   Say Y here if you want to build a driver for ALPS HSPPAD030
+	   pressure sensor chip.
+
+	   To compile this driver as a module, choose M here: the
+	   module will be called HSPPAD030. If unsure, say N here
+
+# LGE_CHANGE_S
+source "drivers/misc/slimport_anx7808/Kconfig"
+source "drivers/misc/slimport_anx7812/Kconfig"
+# LGE_CHANGE_E
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
 source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
+
+# LGE_CHANGE_S
+source "drivers/misc/ts0710mux/Kconfig"
+# LGE_CHANGE_E
+
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"

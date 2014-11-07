@@ -25,6 +25,9 @@
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/sched.h>
+#ifdef CONFIG_MACH_ODIN
+#include <linux/odin_panic.h>
+#endif
 
 #include <linux/atomic.h>
 #include <asm/cacheflush.h>
@@ -284,6 +287,7 @@ static unsigned long oops_begin(void)
 	die_owner = cpu;
 	console_verbose();
 	bust_spinlocks(1);
+
 	return flags;
 }
 
@@ -318,6 +322,10 @@ void die(const char *str, struct pt_regs *regs, int err)
 	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
 	unsigned long flags = oops_begin();
 	int sig = SIGSEGV;
+
+#ifdef CONFIG_MACH_ODIN
+	odin_mmu_ureg_save(die_owner, regs);
+#endif
 
 	if (!user_mode(regs))
 		bug_type = report_bug(regs->ARM_pc, regs);

@@ -1,0 +1,341 @@
+/*
+ * LG Electronics Odin
+ */
+
+/{
+    soc {
+
+	pmic0: da9210@d0 {
+		compatible = "dlg,da9210";
+		/*
+		DA9210-supply = <&DA9210_BUCK>;
+		*/
+		regulators {
+
+			DA9210_BUCK: DA9210_BUCK0 {
+				regulator-name = "+0.9V_VDD_CA15_CACHE";
+				regulator-min-microvolt = < 300000>;
+				regulator-max-microvolt = <1570000>;
+				regulator-min-microamp = <1600000>;
+				regulator-max-microamp = <4600000>;
+				regulator-always-on;
+			};
+		};
+	};
+	pmic1: d2260@48 {
+		compatible = "dlg,d2200-aa", "dlg,d2260-aa", "dlg,d2260";
+		num_gpio = <117>;
+		regulators {
+			D2260_BUCK_0 {
+				regulator-name = "+0.9V_VDD_CORE";
+				regulator-min-microvolt = < 600000>;
+				regulator-max-microvolt = <1400000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_BUCK_1 {
+				regulator-name = "+1.2V_VDD_LPDDRIO_AO";
+				regulator-min-microvolt = < 600000>;
+				regulator-max-microvolt = <1400000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x06>;
+			};
+
+			D2260_BUCK_2 {
+				regulator-name = "+0.9V_VDD_CA7_CACHE";
+				regulator-min-microvolt = < 600000>;
+				regulator-max-microvolt = <1400000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_BUCK_3 {
+				regulator-name = "+1.2V_VDD_LPDDRIO";
+				regulator-min-microvolt = < 600000>;
+				regulator-max-microvolt = <1400000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x06>;
+			};
+
+			D2260_BUCK_4 {
+				regulator-name = "+1.8V_VDDIO_AO_SMS";
+				regulator-min-microvolt = <1400000>;
+				regulator-max-microvolt = <2200000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x06>;
+			};
+
+			D2260_BUCK_5 {
+				regulator-name = "+1.8V_VDDIO_AP";
+				regulator-min-microvolt = <1400000>;
+				regulator-max-microvolt = <2200000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_BUCK_6 {
+				regulator-name = "+1.8V_VDDIO_NAND";
+				regulator-min-microvolt = <1400000>;
+				regulator-max-microvolt = <2200000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_BUCK_7 {
+				regulator-name = "+0.9V_VDD_CSS";
+				regulator-min-microvolt = <1400000>;
+				regulator-max-microvolt = <2200000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_1 {
+				regulator-name = "+0.9V_VDD_SMS";
+				regulator-min-microvolt = < 650000>;
+				regulator-max-microvolt = <2225000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x06>;
+			};
+
+			D2260_LDO_2 {
+				regulator-name = "+0.9V_HDMI_VP";
+				regulator-min-microvolt = < 650000>;
+				regulator-max-microvolt = <2225000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_3 {
+				regulator-name = "+3.3V_AVDD_USBPHYIO";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_4 {
+				regulator-name = "+0.9V_AVDD_USBPHY";
+				regulator-min-microvolt = < 650000>;
+				regulator-max-microvolt = <2225000>;
+				regulator-boot-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_5 {
+				regulator-name = "+3.0V_VDDIO_SDIO";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_6 {
+				regulator-name = "+1.8V_AVDDPLL_SMS";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_7 {
+				regulator-name = "+1.8V_VDDIO_AV";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_8 {
+				regulator-name = "+3.0V_TOUCH_AVCC";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x05>;
+			};
+
+			D2260_LDO_9 {
+				regulator-name = "+1.8V_VDD_LPDDR_CORE";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x06>;
+			};
+
+			D2260_LDO_10 {
+				regulator-name = "+1.8V_AVDDPLL_CORE_TS";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_11 {
+				regulator-name = "+3.0V_VDDF_NAND";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_12 {
+				regulator-name = "+1.8V_SENSOR_DVDD";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_13 {
+				regulator-name = "+1.2V_VDDIO_USBHSIC";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_14 {
+				regulator-name = "+1.8V_LCD_IOVCC";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_15 {
+				regulator-name = "+3.0V_VDD_uSD";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-always-on;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_16 {
+				regulator-name = "+3.0V_SENSOR_AVDD";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+/* LGE_CHANGE_S
+*/
+				regulator-always-on;
+/* LGE_CHANGE_E */
+			};
+
+			D2260_LDO_17 {
+				regulator-name = "+1.2V_VT_CAM_DVDD";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_18 {
+				regulator-name = "+1.8V_13M_VCM";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_19 {
+				regulator-name = "+3.0V_VDD_MOTOR";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_20 {
+				regulator-name = "+2.7V_13M_ANA";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_21 {
+				regulator-name = "+1.8V_AVDD_DPHY_DSS_VCCA";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x04>;
+			};
+
+			D2260_LDO_22 {
+				regulator-name = "+1.8V_TOUCH_IOVCC";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x05>;
+			};
+
+			D2260_LDO_23 {
+				regulator-name = "+2.8V_VT_CAM_AVDD";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_24 {
+				regulator-name = "+1.05V_CAM_DVDD";
+				regulator-min-microvolt = <1000000>;
+				regulator-max-microvolt = <3100000>;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_LDO_25 {
+				regulator-name = "+1.8V_VDD_CSS_MAIN_CAM_IO";
+				regulator-min-microvolt = <1200000>;
+				regulator-max-microvolt = <3300000>;
+				regulator-boot-on;
+				regulator-always-on;
+				regulator-dsm-mode = <0x00>;
+			};
+
+			D2260_GPIOCTRL_0 {
+				regulator-name = "+1.8V_VDDIO_EXT";
+				regulator-enable-gpio = <511>;
+			};
+
+			D2260_GPIOCTRL_1 {
+				regulator-name = "+1.8V_VT_CAM_IO";
+				regulator-enable-gpio = <28>;
+			};
+
+			D2260_GPOCTRL_0 {
+				regulator-name = "+0.9V_VDD_CA15";
+				regulator-enable-gpo = <0>;
+				regulator-always-on;
+				regulator-boot-on;
+			};
+
+			D2260_GPOCTRL_1 {
+				regulator-name = "+0.9V_VDD_GPU";
+				regulator-enable-gpo = <1>;
+				regulator-always-on;
+				regulator-boot-on;
+			};
+
+			D2260_GPOCTRL_2 {
+				regulator-name = "+0.9V_VDD_AV";
+				regulator-enable-gpo = <2>;
+				regulator-boot-on;
+				regulator-always-on;
+			};
+		};
+	};
+	};
+};

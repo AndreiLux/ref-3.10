@@ -1,0 +1,37 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+		sdhci@0x20004000{
+			compatible = "odin,emmc";
+			reg = <0 0x20004000 0 0x2000>;
+			clocks = <&emmc_sclk>;
+			interrupts = <0 3 0x4>;
+			id = <0>;
+			bus-width = <8>;
+			cmd_timeout = <5>;
+			non-removable;
+			cap2-hs200;
+			cap2-cache-ctrl;
+			cap2-poweroff-notify;
+			cap2-enable-bkops;
+			quirk-cap-clock-base-broken;
+			quirk2-preset-value-broken;
+			quirk2-use-max-discard-size;
+		};
+		sdhci@0x2000A000{
+			compatible = "odin,sd";
+			reg = <0 0x2000A000 0 0x2000>;
+			clocks = <&sdc_sclk>;
+			interrupts = <0 6 0x4>;
+			id = <2>;
+			bus-width = <4>;
+			cmd_timeout = <10>;
+			sdc_cd_gpio = <146>;
+			sdc_cd_inverted;
+			quirk-cap-clock-base-broken;
+			quirk2-preset-value-broken;
+		};
+};
+

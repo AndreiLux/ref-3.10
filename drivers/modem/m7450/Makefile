@@ -1,0 +1,3 @@
+ccflags-$(CONFIG_M7450_HSIC_DEBUG)	:= -DDEBUG
+
+obj-$(CONFIG_M7450_HSIC)	+= m7450_hsic.o

@@ -1,0 +1,35 @@
+/*
+ * LG Electronics I2C for ODIN/Woden
+ */
+
+/ {
+/* Odin VSP platform devices start */
+    	coda980@32000000{
+		compatible = "odin,coda980";
+		reg = <0 0x32000000 0 0x1900>;
+		interrupts = <0 109 0x004 >;
+    	};
+
+	boda950@32100000{
+		compatible = "odin,boda950";
+	    	reg = <0 0x32100000 0 0x191C>;
+	    	interrupts = <0 117 0x004 >;
+    	};
+
+	coda8550j@32110000 {
+		  compatible = "odin,coda8550j";
+		  reg = <0 0x32110000 0 0x1000>;
+		  interrupts = <0 115 4>;
+		  clocks = <&pclk>;
+		  clock-names = "apb_pclk";
+	};
+	png@32120000 {
+		 compatible = "odin,png";
+		 reg = <0 0x32120000 0 0x1000>;
+		 interrupts = <0 113 4>;
+		 clocks = <&pclk>;
+		 clock-names = "apb_pclk";
+	 };
+
+    /* Odin VSP platform device end */
+};

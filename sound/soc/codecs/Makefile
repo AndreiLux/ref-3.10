@@ -47,6 +47,7 @@ snd-soc-rt5631-objs := rt5631.o
 snd-soc-sgtl5000-objs := sgtl5000.o
 snd-soc-alc5623-objs := alc5623.o
 snd-soc-alc5632-objs := alc5632.o
+snd-soc-rt5671-objs := rt5671.o rt5671-dsp.o rt5671_ioctl.o rt_codec_ioctl.o
 snd-soc-sigmadsp-objs := sigmadsp.o
 snd-soc-si476x-objs := si476x.o
 snd-soc-sn95031-objs := sn95031.o
@@ -123,6 +124,9 @@ snd-soc-wm-hubs-objs := wm_hubs.o
 snd-soc-max9877-objs := max9877.o
 snd-soc-tpa6130a2-objs := tpa6130a2.o
 
+snd-soc-odin-hdmi-codec-objs := odin-hdmi-codec.o
+snd-soc-tpa2028d-objs := tpa2028d.o
+
 obj-$(CONFIG_SND_SOC_88PM860X)	+= snd-soc-88pm860x.o
 obj-$(CONFIG_SND_SOC_AB8500_CODEC)	+= snd-soc-ab8500-codec.o
 obj-$(CONFIG_SND_SOC_AC97_CODEC)	+= snd-soc-ac97.o
@@ -171,6 +175,7 @@ obj-$(CONFIG_SND_SOC_ML26124)	+= snd-soc-ml26124.o
 obj-$(CONFIG_SND_SOC_OMAP_HDMI_CODEC) += snd-soc-omap-hdmi-codec.o
 obj-$(CONFIG_SND_SOC_PCM3008)	+= snd-soc-pcm3008.o
 obj-$(CONFIG_SND_SOC_RT5631)	+= snd-soc-rt5631.o
+obj-$(CONFIG_SND_SOC_RT5671)	+= snd-soc-rt5671.o
 obj-$(CONFIG_SND_SOC_SGTL5000)  += snd-soc-sgtl5000.o
 obj-$(CONFIG_SND_SOC_SIGMADSP)	+= snd-soc-sigmadsp.o
 obj-$(CONFIG_SND_SOC_SI476X)	+= snd-soc-si476x.o
@@ -246,3 +251,6 @@ obj-$(CONFIG_SND_SOC_WM_HUBS)	+= snd-soc-wm-hubs.o
 # Amp
 obj-$(CONFIG_SND_SOC_MAX9877)	+= snd-soc-max9877.o
 obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
+
+obj-$(CONFIG_SND_SOC_ODIN_HDMI_CODEC)	+= snd-soc-odin-hdmi-codec.o
+obj-$(CONFIG_SND_SOC_TPA2028D)	+= snd-soc-tpa2028d.o

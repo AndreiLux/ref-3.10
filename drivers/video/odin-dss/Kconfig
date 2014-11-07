@@ -1,0 +1,3 @@
+menuconfig ODIN_DSS_NEW
+	bool "ODIN NEW VERSION ON DSS DRIVER"
+	default n

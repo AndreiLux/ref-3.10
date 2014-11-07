@@ -279,6 +279,29 @@ config BACKLIGHT_DA9052
 	help
 	  Enable the Backlight Driver for DA9052-BC and DA9053-AA/Bx PMICs.
 
+config BACKLIGHT_MAX77819
+	tristate "Backlight driver for MAX77819"
+	depends on MFD_MAX77819
+	help
+	  If you have a LCD backlight connected to the WLED output of MAX77819
+	  WLED output, say Y here to enable this driver.
+
+# LGE_CHANGE_S
+config BACKLIGHT_LM3631
+	tristate "Backlight driver for TI LM3631"
+	depends on BACKLIGHT_CLASS_DEVICE && MFD_LM3631
+	help
+	  Say Y to enable the backlight driver for TI LM3631.
+# LGE_CHANGE_E
+
+config BACKLIGHT_LM3697
+	tristate "Backlight driver for TI LM3697"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	help
+	  Say Y to enable the backlight driver for TI LM3697.
+	  Up to 3 backlight strings and 11 bit dimming is supported.
+	  PWM brightness control is also supported.
+
 config BACKLIGHT_MAX8925
 	tristate "Backlight driver for MAX8925"
 	depends on MFD_MAX8925
@@ -374,6 +397,21 @@ config BACKLIGHT_LM3630
 	select REGMAP_I2C
 	help
 	  This supports TI LM3630 Backlight Driver
+
+config BACKLIGHT_LM3631
+	tristate "Backlight driver for TI LM3631"
+	depends on BACKLIGHT_CLASS_DEVICE && MFD_LM3631
+	help
+	  Say Y to enable the backlight driver for TI LM3631.
+
+config BACKLIGHT_LM3697
+	tristate "Backlight driver for TI LM3697"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	help
+	  Say Y to enable the backlight driver for TI LM3697.
+	  Up to 3 backlight strings and 11 bit dimming is supported.
+	  PWM brightness control is also supported.
+
 
 config BACKLIGHT_LM3639
 	tristate "Backlight Driver for LM3639"

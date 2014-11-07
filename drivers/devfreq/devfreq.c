@@ -27,7 +27,7 @@
 #include <linux/hrtimer.h>
 #include "governor.h"
 
-static struct class *devfreq_class;
+struct class *devfreq_class;
 
 /*
  * devfreq core provides delayed work based load monitoring helper
@@ -463,7 +463,8 @@ struct devfreq *devfreq_add_device(struct device *dev,
 	devfreq->dev.class = devfreq_class;
 	devfreq->dev.release = devfreq_dev_release;
 	devfreq->profile = profile;
-	strncpy(devfreq->governor_name, governor_name, DEVFREQ_NAME_LEN);
+	strncpy(devfreq->governor_name, governor_name, DEVFREQ_NAME_LEN - 1);
+	devfreq->governor_name[DEVFREQ_NAME_LEN - 1] = '\0';
 	devfreq->previous_freq = profile->initial_freq;
 	devfreq->data = data;
 	devfreq->nb.notifier_call = devfreq_notifier_call;
@@ -723,7 +724,8 @@ static ssize_t store_governor(struct device *dev, struct device_attribute *attr,
 		}
 	}
 	df->governor = governor;
-	strncpy(df->governor_name, governor->name, DEVFREQ_NAME_LEN);
+	strncpy(df->governor_name, governor->name, DEVFREQ_NAME_LEN - 1);
+	df->governor_name[DEVFREQ_NAME_LEN - 1] = '\0';
 	ret = df->governor->event_handler(df, DEVFREQ_GOV_START, NULL);
 	if (ret)
 		dev_warn(dev, "%s: Governor %s not started(%d)\n",
@@ -735,6 +737,52 @@ out:
 		ret = count;
 	return ret;
 }
+
+
+int set_devfreq_governor(const char *buf)
+{
+	struct devfreq *tempdevfreq;
+	int ret;
+	char str_governor[DEVFREQ_NAME_LEN + 1];
+	struct devfreq_governor *governor;
+
+	ret = sscanf(buf, "%" __stringify(DEVFREQ_NAME_LEN) "s", str_governor);
+	if (ret != 1)
+		return -EINVAL;
+
+	mutex_lock(&devfreq_list_lock);
+	governor = find_devfreq_governor(str_governor);
+	if (IS_ERR(governor)) {
+		ret = PTR_ERR(governor);
+		goto out;
+	}
+
+	list_for_each_entry(tempdevfreq, &devfreq_list, node) {
+		ret = tempdevfreq->governor->event_handler(tempdevfreq, DEVFREQ_GOV_STOP, NULL);
+		if (ret) {
+		/*	dev_warn(dev, "%s: Governor %s not stopped(%d)\n",
+			 __func__, tempdevfreq->governor->name, ret);*/
+			goto out;
+			}
+
+		tempdevfreq->governor = governor;
+		strncpy(tempdevfreq->governor_name, governor->name, DEVFREQ_NAME_LEN - 1);
+		tempdevfreq->governor_name[DEVFREQ_NAME_LEN - 1] = '\0';
+		ret = tempdevfreq->governor->event_handler(tempdevfreq, DEVFREQ_GOV_START, NULL);
+		if (ret){
+			goto out;
+		/*	dev_warn(tempdev, "%s: Governor %s not started(%d)\n",
+			 __func__, df->governor->name, ret);*/}
+	}
+out:
+	mutex_unlock(&devfreq_list_lock);
+
+/*	if (!ret)
+		ret = count;*/
+	return ret;
+}
+
+
 static ssize_t show_available_governors(struct device *d,
 				    struct device_attribute *attr,
 				    char *buf)

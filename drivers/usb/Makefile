@@ -7,6 +7,7 @@
 obj-$(CONFIG_USB)		+= core/
 
 obj-$(CONFIG_USB_DWC3)		+= dwc3/
+obj-$(CONFIG_USB_ODIN_DRD)	+= dwc3/
 
 obj-$(CONFIG_USB_MON)		+= mon/
 
@@ -25,6 +26,7 @@ obj-$(CONFIG_USB_HWA_HCD)	+= host/
 obj-$(CONFIG_USB_ISP1760_HCD)	+= host/
 obj-$(CONFIG_USB_IMX21_HCD)	+= host/
 obj-$(CONFIG_USB_FSL_MPH_DR_OF)	+= host/
+obj-$(CONFIG_ODIN_DWC_USB_HOST)	+= host/
 
 obj-$(CONFIG_USB_C67X00_HCD)	+= c67x00/
 

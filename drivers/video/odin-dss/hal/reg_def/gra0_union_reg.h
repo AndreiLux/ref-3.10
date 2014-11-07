@@ -1,0 +1,184 @@
+/*
+ * SIC LABORATORY, LG ELECTRONICS INC., SEOUL, KOREA
+ * Copyright(c) 2013 by LG Electronics Inc.
+ * 
+ * This program is free software; you can redistribute it and/or 
+ * modify it under the terms of the GNU General Public License 
+ * version 2 as published by the Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of 
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the 
+ * GNU General Public License for more details.
+ */
+
+#include "reg_types.h"
+
+#ifndef __GRA0_UNION_REG_H
+#define __GRA0_UNION_REG_H
+
+/*----------------------------------------------------------------------------
+	0x31200000 gra0_rd_cfg0
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_en                                           : 1; /* 0 */
+		u32 src_dst_sel                                      : 1; /* 1 */
+		u32 reserved2                                        : 2; /* 3:2 */
+		u32 src_buf_sel                                      : 2; /* 5:4 */
+		u32 src_trans_num                                    : 2; /* 7:6 */
+		u32 src_sync_sel                                     : 2; /* 9:8 */
+		u32 dma_index_rd_start                               : 1; /* 10 */
+		u32 reserved7                                        : 1; /* 11 */
+		u32 src_reg_sw_update                                : 1; /* 12 */
+		u32 reserved9                                        :19; /* 31:13 */
+	} af;
+	u32 a32;
+} gra0_rd_cfg0;
+
+/*----------------------------------------------------------------------------
+	0x31200004 gra0_rd_cfg1
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_format                                       : 3; /* 2:0 */
+		u32 reserved1                                        : 1; /* 3 */
+		u32 src_byte_swap                                    : 2; /* 5:4 */
+		u32 src_word_swap                                    : 1; /* 6 */
+		u32 src_alpha_swap                                   : 1; /* 7 */
+		u32 src_rgb_swap                                     : 3; /* 10:8 */
+		u32 reserved6                                        : 3; /* 13:11 */
+		u32 src_lsb_sel                                      : 1; /* 14 */
+		u32 reserved8                                        : 5; /* 19:15 */
+		u32 src_flip_mode                                    : 2; /* 21:20 */
+		u32 reserved10                                       :10; /* 31:22 */
+	} af;
+	u32 a32;
+} gra0_rd_cfg1;
+
+/*----------------------------------------------------------------------------
+	0x31200028 gra0_rd_width_height
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_width                                        :13; /* 12:0 */
+		u32 reserved1                                        : 3; /* 15:13 */
+		u32 src_height                                       :13; /* 28:16 */
+		u32 reserved3                                        : 3; /* 31:29 */
+	} af;
+	u32 a32;
+} gra0_rd_width_height;
+
+/*----------------------------------------------------------------------------
+	0x3120002c gra0_rd_startxy
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_sx                                           :13; /* 12:0 */
+		u32 reserved1                                        : 3; /* 15:13 */
+		u32 src_sy                                           :13; /* 28:16 */
+		u32 reserved3                                        : 3; /* 31:29 */
+	} af;
+	u32 a32;
+} gra0_rd_startxy;
+
+/*----------------------------------------------------------------------------
+	0x31200030 gra0_rd_sizexy
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_sizex                                        :13; /* 12:0 */
+		u32 reserved1                                        : 3; /* 15:13 */
+		u32 src_sizey                                        :13; /* 28:16 */
+		u32 reserved3                                        : 3; /* 31:29 */
+	} af;
+	u32 a32;
+} gra0_rd_sizexy;
+
+/*----------------------------------------------------------------------------
+	0x31200040 gra0_rd_dss_base_y_addr0
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_st_addr_y0                                   :32; /* 31:0 */
+	} af;
+	u32 a32;
+} gra0_rd_dss_base_y_addr0;
+
+/*----------------------------------------------------------------------------
+	0x3120004c gra0_rd_dss_base_y_addr1
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_st_addr_y1                                   :32; /* 31:0 */
+	} af;
+	u32 a32;
+} gra0_rd_dss_base_y_addr1;
+
+/*----------------------------------------------------------------------------
+	0x31200058 gra0_rd_dss_base_y_addr2
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 src_st_addr_y2                                   :32; /* 31:0 */
+	} af;
+	u32 a32;
+} gra0_rd_dss_base_y_addr2;
+
+/*----------------------------------------------------------------------------
+	0x31200064 gra0_rd_status
+----------------------------------------------------------------------------*/
+typedef union {
+	struct {
+		u32 rdmif_full_cmdfifo                               : 1; /* 0 */
+		u32 rdmif_full_datfifo                               : 1; /* 1 */
+		u32 reserved2                                        : 2; /* 3:2 */
+		u32 rdmif_empty_cmdfifo                              : 1; /* 4 */
+		u32 rdmif_empty_datfifo                              : 1; /* 5 */
+		u32 reserved5                                        : 2; /* 7:6 */
+		u32 rdbif_full_datfifo_y                             : 1; /* 8 */
+		u32 reserved7                                        : 3; /* 11:9 */
+		u32 rdbif_empty_datfifo_y                            : 1; /* 12 */
+		u32 reserved9                                        : 3; /* 15:13 */
+		u32 rdbif_con_state                                  : 1; /* 16 */
+		u32 rdbif_con_sync_state                             : 1; /* 17 */
+		u32 reserved12                                       : 2; /* 19:18 */
+		u32 rdbif_fmc_y_state                                : 1; /* 20 */
+		u32 reserved14                                       : 1; /* 21 */
+		u32 rdbif_fmc_sync_state                             : 1; /* 22 */
+		u32 reserved16                                       : 9; /* 31:23 */
+	} af;
+	u32 a32;
+} gra0_rd_status;
+
+typedef struct {
+	gra0_rd_cfg0                  	i0_rd_cfg0;		/* 0x0 */
+	gra0_rd_cfg1                  	i0_rd_cfg1;
+	unsigned int			reserved_x08;
+	unsigned int			reserved_x0C;
+	unsigned int			reserved_x10;
+	unsigned int			reserved_x14;
+	unsigned int			reserved_x18;
+	unsigned int			reserved_x1C;
+	unsigned int			reserved_x20;
+	unsigned int			reserved_x24;
+	gra0_rd_width_height          	i0_rd_width_height;	/* 0x28 */
+	gra0_rd_startxy               	i0_rd_startxy;		/* 0x2C */
+	gra0_rd_sizexy                	i0_rd_sizexy;		/* 0x30 */
+	unsigned int			reserved_x34;
+	unsigned int			reserved_x38;
+	unsigned int			reserved_x3C;
+	gra0_rd_dss_base_y_addr0      	i0_rd_dss_base_y_addr0;	/* 0x40 */
+	unsigned int			reserved_x44;
+	unsigned int			reserved_x48;
+	gra0_rd_dss_base_y_addr1      	i0_rd_dss_base_y_addr1;	/* 0x4C */
+	unsigned int			reserved_x50;
+	unsigned int			reserved_x54;
+	gra0_rd_dss_base_y_addr2      	i0_rd_dss_base_y_addr2;	/* 0x58 */
+	unsigned int			reserved_x5C;
+	unsigned int			reserved_x60;
+	gra0_rd_status                	i0_rd_status;
+} DSS_DU_GRA0_REG_T;
+
+#endif
+

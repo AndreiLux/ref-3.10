@@ -50,6 +50,7 @@
 #include <linux/uaccess.h>
 #include <linux/module.h>
 #include <linux/ratelimit.h>
+#include <linux/io.h>
 
 
 /* number of characters left in xmit buffer before select has we have room */
@@ -73,6 +74,31 @@
 #define ECHO_OP_MOVE_BACK_COL 0x80
 #define ECHO_OP_SET_CANON_COL 0x81
 #define ECHO_OP_ERASE_TAB 0x82
+
+#define ODIN_XMM7260_ADAPTATION
+
+/*
+ * For specific channel, it need more buffer
+ * So that channel use boot loader address (static address)
+ */
+// Address will be neated later when static memory area is fixed
+#define NVM_TTY_READBUF_OFFSET     0xDD380000
+#define NVM_TTY_ECHOBUF_OFFSET  NVM_TTY_READBUF_OFFSET   \
+                                       + N_TTY_256K_BUF_SIZE
+#define GPS_TTY_READBUF_OFFSET     0xDD37E000  // 8KB
+#define GPS_TTY_ECHOBUF_OFFSET     0xDD37C000  // 8KB
+#define NET_TTY_READBUF_OFFSET     0xDD378000  // 16KB
+#define NET_TTY_ECHOBUF_OFFSET     0xDD374000  // 16KB
+#define USO_TTY_READBUF_OFFSET     0xDD370000  // 16KB
+#define USO_TTY_ECHOBUF_OFFSET     0xDD36C000  // 16KB
+
+/**
+ * This array only use for NVM!
+ */
+static DECLARE_BITMAP(read_nvm_flags, N_TTY_256K_BUF_SIZE);
+static DECLARE_BITMAP(read_gps_flags, N_TTY_8K_BUF_SIZE);
+static DECLARE_BITMAP(read_net_flags, N_TTY_16K_BUF_SIZE);
+static DECLARE_BITMAP(read_uso_flags, N_TTY_16K_BUF_SIZE);
 
 struct n_tty_data {
 	unsigned int column;
@@ -102,6 +128,10 @@ struct n_tty_data {
 	struct mutex output_lock;
 	struct mutex echo_lock;
 	raw_spinlock_t read_lock;
+
+	/* for dynamic memory allocation in each channel */
+	unsigned int buf_size;
+	int tty_channel;
 };
 
 static inline int tty_put_user(struct tty_struct *tty, unsigned char x,
@@ -128,15 +158,23 @@ static void n_tty_set_room(struct tty_struct *tty)
 	struct n_tty_data *ldata = tty->disc_data;
 	int left;
 	int old_left;
+    char buf[64];
+
+#ifdef ODIN_XMM7260_ADAPTATION
+        if(ldata == NULL || tty == NULL){
+            printk("%s] NULL ldata = %u, tty = %u \n", __func__,ldata,tty);
+            return;
+        }
+#endif
 
 	/* ldata->read_cnt is not read locked ? */
 	if (I_PARMRK(tty)) {
 		/* Multiply read_cnt by 3, since each byte might take up to
 		 * three times as many spaces when PARMRK is set (depending on
 		 * its flags, e.g. parity error). */
-		left = N_TTY_BUF_SIZE - ldata->read_cnt * 3 - 1;
+		left = /*_TTY_BUF_SIZE*/ ldata->buf_size - ldata->read_cnt * 3 - 1;
 	} else
-		left = N_TTY_BUF_SIZE - ldata->read_cnt - 1;
+		left = /*N_TTY_BUF_SIZE*/ ldata->buf_size - ldata->read_cnt - 1;
 
 	/*
 	 * If we are doing input canonicalization, and there are no
@@ -165,9 +203,9 @@ static void n_tty_set_room(struct tty_struct *tty)
 
 static void put_tty_queue_nolock(unsigned char c, struct n_tty_data *ldata)
 {
-	if (ldata->read_cnt < N_TTY_BUF_SIZE) {
+	if (ldata->read_cnt < /*N_TTY_BUF_SIZE*/ ldata->buf_size) {
 		ldata->read_buf[ldata->read_head] = c;
-		ldata->read_head = (ldata->read_head + 1) & (N_TTY_BUF_SIZE-1);
+		ldata->read_head = (ldata->read_head + 1) & (/*N_TTY_BUF_SIZE*/ ldata->buf_size-1);
 		ldata->read_cnt++;
 	}
 }
@@ -217,7 +255,22 @@ static void reset_buffer_flags(struct n_tty_data *ldata)
 	mutex_unlock(&ldata->echo_lock);
 
 	ldata->canon_head = ldata->canon_data = ldata->erasing = 0;
-	bitmap_zero(ldata->read_flags, N_TTY_BUF_SIZE);
+	switch(ldata->tty_channel){
+		case TTY_CHN_NVM:
+			bitmap_zero(read_nvm_flags, N_TTY_256K_BUF_SIZE);
+			break;
+		case TTY_CHN_GPS:
+			bitmap_zero(read_gps_flags, N_TTY_8K_BUF_SIZE);
+			break;
+        case TTY_CHN_NET:
+            bitmap_zero(read_net_flags, N_TTY_16K_BUF_SIZE);
+            break;
+        case TTY_CHN_USO:
+            bitmap_zero(read_uso_flags, N_TTY_16K_BUF_SIZE);
+            break;
+		default:
+			bitmap_zero(ldata->read_flags, N_TTY_BUF_SIZE);
+	}
 }
 
 static void n_tty_packet_mode_flush(struct tty_struct *tty)
@@ -274,7 +327,7 @@ static ssize_t n_tty_chars_in_buffer(struct tty_struct *tty)
 	} else if (ldata->canon_data) {
 		n = (ldata->canon_head > ldata->read_tail) ?
 			ldata->canon_head - ldata->read_tail :
-			ldata->canon_head + (N_TTY_BUF_SIZE - ldata->read_tail);
+			ldata->canon_head + (/*N_TTY_BUF_SIZE*/ldata->buf_size - ldata->read_tail);
 	}
 	raw_spin_unlock_irqrestore(&ldata->read_lock, flags);
 	return n;
@@ -540,7 +593,7 @@ static void process_echoes(struct tty_struct *tty)
 
 	space = tty_write_room(tty);
 
-	buf_end = ldata->echo_buf + N_TTY_BUF_SIZE;
+	buf_end = ldata->echo_buf + /*N_TTY_BUF_SIZE*/ldata->buf_size;
 	cp = ldata->echo_buf + ldata->echo_pos;
 	nr = ldata->echo_cnt;
 	while (nr > 0) {
@@ -557,7 +610,7 @@ static void process_echoes(struct tty_struct *tty)
 			 */
 			opp = cp + 1;
 			if (opp == buf_end)
-				opp -= N_TTY_BUF_SIZE;
+				opp -= /*N_TTY_BUF_SIZE*/ldata->buf_size;
 			op = *opp;
 
 			switch (op) {
@@ -565,7 +618,7 @@ static void process_echoes(struct tty_struct *tty)
 
 			case ECHO_OP_ERASE_TAB:
 				if (++opp == buf_end)
-					opp -= N_TTY_BUF_SIZE;
+					opp -= /*N_TTY_BUF_SIZE*/ldata->buf_size;
 				num_chars = *opp;
 
 				/*
@@ -665,7 +718,7 @@ static void process_echoes(struct tty_struct *tty)
 
 		/* When end of circular buffer reached, wrap around */
 		if (cp >= buf_end)
-			cp -= N_TTY_BUF_SIZE;
+			cp -= /*N_TTY_BUF_SIZE*/ldata->buf_size;
 	}
 
 	if (nr == 0) {
@@ -675,7 +728,7 @@ static void process_echoes(struct tty_struct *tty)
 	} else {
 		int num_processed = ldata->echo_cnt - nr;
 		ldata->echo_pos += num_processed;
-		ldata->echo_pos &= N_TTY_BUF_SIZE - 1;
+		ldata->echo_pos &= /*N_TTY_BUF_SIZE*/ldata->buf_size - 1;
 		ldata->echo_cnt = nr;
 		if (num_processed > 0)
 			ldata->echo_overrun = 0;
@@ -702,7 +755,7 @@ static void add_echo_byte(unsigned char c, struct n_tty_data *ldata)
 {
 	int	new_byte_pos;
 
-	if (ldata->echo_cnt == N_TTY_BUF_SIZE) {
+	if (ldata->echo_cnt == /*N_TTY_BUF_SIZE*/ldata->buf_size) {
 		/* Circular buffer is already at capacity */
 		new_byte_pos = ldata->echo_pos;
 
@@ -712,7 +765,7 @@ static void add_echo_byte(unsigned char c, struct n_tty_data *ldata)
 		 */
 		if (ldata->echo_buf[ldata->echo_pos] == ECHO_OP_START) {
 			if (ldata->echo_buf[(ldata->echo_pos + 1) &
-					  (N_TTY_BUF_SIZE - 1)] ==
+					  (/*N_TTY_BUF_SIZE*/ldata->buf_size - 1)] ==
 						ECHO_OP_ERASE_TAB) {
 				ldata->echo_pos += 3;
 				ldata->echo_cnt -= 2;
@@ -723,12 +776,12 @@ static void add_echo_byte(unsigned char c, struct n_tty_data *ldata)
 		} else {
 			ldata->echo_pos++;
 		}
-		ldata->echo_pos &= N_TTY_BUF_SIZE - 1;
+		ldata->echo_pos &= /*N_TTY_BUF_SIZE*/ldata->buf_size - 1;
 
 		ldata->echo_overrun = 1;
 	} else {
 		new_byte_pos = ldata->echo_pos + ldata->echo_cnt;
-		new_byte_pos &= N_TTY_BUF_SIZE - 1;
+		new_byte_pos &= /*N_TTY_BUF_SIZE*/ldata->buf_size - 1;
 		ldata->echo_cnt++;
 	}
 
@@ -909,7 +962,7 @@ static void eraser(unsigned char c, struct tty_struct *tty)
 		if (!L_ECHO(tty)) {
 			raw_spin_lock_irqsave(&ldata->read_lock, flags);
 			ldata->read_cnt -= ((ldata->read_head - ldata->canon_head) &
-					  (N_TTY_BUF_SIZE - 1));
+					  (/*N_TTY_BUF_SIZE*/ldata->buf_size - 1));
 			ldata->read_head = ldata->canon_head;
 			raw_spin_unlock_irqrestore(&ldata->read_lock, flags);
 			return;
@@ -917,7 +970,7 @@ static void eraser(unsigned char c, struct tty_struct *tty)
 		if (!L_ECHOK(tty) || !L_ECHOKE(tty) || !L_ECHOE(tty)) {
 			raw_spin_lock_irqsave(&ldata->read_lock, flags);
 			ldata->read_cnt -= ((ldata->read_head - ldata->canon_head) &
-					  (N_TTY_BUF_SIZE - 1));
+					  (/*N_TTY_BUF_SIZE*/ldata->buf_size - 1));
 			ldata->read_head = ldata->canon_head;
 			raw_spin_unlock_irqrestore(&ldata->read_lock, flags);
 			finish_erasing(ldata);
@@ -937,7 +990,7 @@ static void eraser(unsigned char c, struct tty_struct *tty)
 
 		/* erase a single possibly multibyte character */
 		do {
-			head = (head - 1) & (N_TTY_BUF_SIZE-1);
+			head = (head - 1) & (/*N_TTY_BUF_SIZE*/ldata->buf_size -1);
 			c = ldata->read_buf[head];
 		} while (is_continuation(c, tty) && head != ldata->canon_head);
 
@@ -952,7 +1005,7 @@ static void eraser(unsigned char c, struct tty_struct *tty)
 			else if (seen_alnums)
 				break;
 		}
-		cnt = (ldata->read_head - head) & (N_TTY_BUF_SIZE-1);
+		cnt = (ldata->read_head - head) & (/*N_TTY_BUF_SIZE*/ldata->buf_size -1);
 		raw_spin_lock_irqsave(&ldata->read_lock, flags);
 		ldata->read_head = head;
 		ldata->read_cnt -= cnt;
@@ -966,7 +1019,7 @@ static void eraser(unsigned char c, struct tty_struct *tty)
 				/* if cnt > 1, output a multi-byte character */
 				echo_char(c, tty);
 				while (--cnt > 0) {
-					head = (head+1) & (N_TTY_BUF_SIZE-1);
+					head = (head+1) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 					echo_char_raw(ldata->read_buf[head],
 							ldata);
 					echo_move_back_col(ldata);
@@ -986,7 +1039,7 @@ static void eraser(unsigned char c, struct tty_struct *tty)
 				 * number of columns.
 				 */
 				while (tail != ldata->canon_head) {
-					tail = (tail-1) & (N_TTY_BUF_SIZE-1);
+					tail = (tail-1) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 					c = ldata->read_buf[tail];
 					if (c == '\t') {
 						after_tab = 1;
@@ -1184,7 +1237,7 @@ static inline void n_tty_receive_char(struct tty_struct *tty, unsigned char c)
 	if (!test_bit(c, ldata->process_char_map) || ldata->lnext) {
 		ldata->lnext = 0;
 		parmrk = (c == (unsigned char) '\377' && I_PARMRK(tty)) ? 1 : 0;
-		if (ldata->read_cnt >= (N_TTY_BUF_SIZE - parmrk - 1)) {
+		if (ldata->read_cnt >= (/*N_TTY_BUF_SIZE*/ldata->buf_size - parmrk - 1)) {
 			/* beep if no space */
 			if (L_ECHO(tty))
 				process_output('\a', tty);
@@ -1278,13 +1331,13 @@ send_signal:
 			echo_char_raw('\n', ldata);
 			while (tail != ldata->read_head) {
 				echo_char(ldata->read_buf[tail], tty);
-				tail = (tail+1) & (N_TTY_BUF_SIZE-1);
+				tail = (tail+1) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 			}
 			process_echoes(tty);
 			return;
 		}
 		if (c == '\n') {
-			if (ldata->read_cnt >= N_TTY_BUF_SIZE) {
+			if (ldata->read_cnt >= /*N_TTY_BUF_SIZE*/ldata->buf_size) {
 				if (L_ECHO(tty))
 					process_output('\a', tty);
 				return;
@@ -1296,7 +1349,7 @@ send_signal:
 			goto handle_newline;
 		}
 		if (c == EOF_CHAR(tty)) {
-			if (ldata->read_cnt >= N_TTY_BUF_SIZE)
+			if (ldata->read_cnt >= /*N_TTY_BUF_SIZE*/ldata->buf_size)
 				return;
 			if (ldata->canon_head != ldata->read_head)
 				set_bit(TTY_PUSH, &tty->flags);
@@ -1307,7 +1360,7 @@ send_signal:
 		    (c == EOL2_CHAR(tty) && L_IEXTEN(tty))) {
 			parmrk = (c == (unsigned char) '\377' && I_PARMRK(tty))
 				 ? 1 : 0;
-			if (ldata->read_cnt >= (N_TTY_BUF_SIZE - parmrk)) {
+			if (ldata->read_cnt >= (/*N_TTY_BUF_SIZE*/ldata->buf_size - parmrk)) {
 				if (L_ECHO(tty))
 					process_output('\a', tty);
 				return;
@@ -1331,7 +1384,22 @@ send_signal:
 
 handle_newline:
 			raw_spin_lock_irqsave(&ldata->read_lock, flags);
-			set_bit(ldata->read_head, ldata->read_flags);
+			switch(ldata->tty_channel){
+				case TTY_CHN_NVM:
+					set_bit(ldata->read_head, read_nvm_flags);
+					break;
+				case TTY_CHN_GPS:
+					set_bit(ldata->read_head, read_gps_flags);
+					break;
+                case TTY_CHN_NET:
+					set_bit(ldata->read_head, read_net_flags);
+					break;
+				case TTY_CHN_USO:
+					set_bit(ldata->read_head, read_uso_flags);
+					break;
+				default:
+					set_bit(ldata->read_head, ldata->read_flags);
+			}
 			put_tty_queue_nolock(c, ldata);
 			ldata->canon_head = ldata->read_head;
 			ldata->canon_data++;
@@ -1344,7 +1412,7 @@ handle_newline:
 	}
 
 	parmrk = (c == (unsigned char) '\377' && I_PARMRK(tty)) ? 1 : 0;
-	if (ldata->read_cnt >= (N_TTY_BUF_SIZE - parmrk - 1)) {
+	if (ldata->read_cnt >= (/*N_TTY_BUF_SIZE*/ldata->buf_size - parmrk - 1)) {
 		/* beep if no space */
 		if (L_ECHO(tty))
 			process_output('\a', tty);
@@ -1398,6 +1466,7 @@ static void n_tty_write_wakeup(struct tty_struct *tty)
  *	calls one at a time and in order (or using flush_to_ldisc)
  */
 
+static struct n_tty_data * data;  /* for debugging */
 static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 			      char *fp, int count)
 {
@@ -1408,23 +1477,31 @@ static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 	char	buf[64];
 	unsigned long cpuflags;
 
+#ifdef ODIN_XMM7260_ADAPTATION
+        if(ldata == NULL || tty == NULL){
+            printk("%s] NULL ldata = %u, tty = %u \n", __func__,ldata,tty);
+            return;
+        }
+#endif
+
 	if (ldata->real_raw) {
 		raw_spin_lock_irqsave(&ldata->read_lock, cpuflags);
-		i = min(N_TTY_BUF_SIZE - ldata->read_cnt,
-			N_TTY_BUF_SIZE - ldata->read_head);
+		i = min(/*N_TTY_BUF_SIZE*/ldata->buf_size - ldata->read_cnt,
+			/*N_TTY_BUF_SIZE*/ldata->buf_size - ldata->read_head);
 		i = min(count, i);
 		memcpy(ldata->read_buf + ldata->read_head, cp, i);
-		ldata->read_head = (ldata->read_head + i) & (N_TTY_BUF_SIZE-1);
+		ldata->read_head = (ldata->read_head + i) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 		ldata->read_cnt += i;
 		cp += i;
 		count -= i;
 
-		i = min(N_TTY_BUF_SIZE - ldata->read_cnt,
-			N_TTY_BUF_SIZE - ldata->read_head);
+		i = min(/*N_TTY_BUF_SIZE*/ldata->buf_size - ldata->read_cnt,
+			/*N_TTY_BUF_SIZE*/ldata->buf_size - ldata->read_head);
 		i = min(count, i);
 		memcpy(ldata->read_buf + ldata->read_head, cp, i);
-		ldata->read_head = (ldata->read_head + i) & (N_TTY_BUF_SIZE-1);
+		ldata->read_head = (ldata->read_head + i) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 		ldata->read_cnt += i;
+
 		raw_spin_unlock_irqrestore(&ldata->read_lock, cpuflags);
 	} else {
 		for (i = count, p = cp, f = fp; i; i--, p++) {
@@ -1455,6 +1532,15 @@ static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 	}
 
 	n_tty_set_room(tty);
+
+    data = ldata;
+
+#ifdef ODIN_XMM7260_ADAPTATION
+        if(ldata == NULL || tty == NULL){
+            printk("%s] NULL ldata = %u, tty = %u \n", __func__,ldata,tty);
+            return;
+        }
+#endif
 
 	if ((!ldata->icanon && (ldata->read_cnt >= tty->minimum_to_wake)) ||
 		L_EXTPROC(tty)) {
@@ -1506,7 +1592,22 @@ static void n_tty_set_termios(struct tty_struct *tty, struct ktermios *old)
 	if (old)
 		canon_change = (old->c_lflag ^ tty->termios.c_lflag) & ICANON;
 	if (canon_change) {
-		bitmap_zero(ldata->read_flags, N_TTY_BUF_SIZE);
+		switch(ldata->tty_channel){
+			case TTY_CHN_NVM:
+				bitmap_zero(read_nvm_flags, N_TTY_256K_BUF_SIZE);
+				break;
+			case TTY_CHN_GPS:
+				bitmap_zero(read_gps_flags, N_TTY_8K_BUF_SIZE);
+				break;
+            case TTY_CHN_NET:
+				bitmap_zero(read_net_flags, N_TTY_16K_BUF_SIZE);
+				break;
+			case TTY_CHN_USO:
+				bitmap_zero(read_uso_flags, N_TTY_16K_BUF_SIZE);
+				break;
+			default:
+				bitmap_zero(ldata->read_flags, N_TTY_BUF_SIZE);
+		}
 		ldata->canon_head = ldata->read_tail;
 		ldata->canon_data = 0;
 		ldata->erasing = 0;
@@ -1603,10 +1704,23 @@ static void n_tty_close(struct tty_struct *tty)
 	if (tty->link)
 		n_tty_packet_mode_flush(tty);
 
-	kfree(ldata->read_buf);
-	kfree(ldata->echo_buf);
+	if(ldata == NULL) {
+		printk(KERN_CRIT" %s fail memory allocation or already free disc_data!!\n"
+					,__func__);
+		return ;
+	}
+
+	if(ldata->tty_channel) {  // NVM or GPS channel
+		iounmap((void* )ldata->read_buf);
+		iounmap((void* )ldata->echo_buf);
+	} else {				  // Normal TTY
+		kfree(ldata->read_buf);
+		kfree(ldata->echo_buf);
+	}
+
 	kfree(ldata);
 	tty->disc_data = NULL;
+
 }
 
 /**
@@ -1622,10 +1736,14 @@ static void n_tty_close(struct tty_struct *tty)
 static int n_tty_open(struct tty_struct *tty)
 {
 	struct n_tty_data *ldata;
+       char buf[64];
 
 	ldata = kzalloc(sizeof(*ldata), GFP_KERNEL);
-	if (!ldata)
+	if (!ldata) {
+		printk(KERN_CRIT" %s ldata mem allocation fail size : 0x%x in %s\n"
+					, __func__, sizeof(ldata), current->comm);
 		goto err;
+	}
 
 	ldata->overrun_time = jiffies;
 	mutex_init(&ldata->atomic_read_lock);
@@ -1633,11 +1751,60 @@ static int n_tty_open(struct tty_struct *tty)
 	mutex_init(&ldata->echo_lock);
 	raw_spin_lock_init(&ldata->read_lock);
 
-	/* These are ugly. Currently a malloc failure here can panic */
-	ldata->read_buf = kzalloc(N_TTY_BUF_SIZE, GFP_KERNEL);
-	ldata->echo_buf = kzalloc(N_TTY_BUF_SIZE, GFP_KERNEL);
-	if (!ldata->read_buf || !ldata->echo_buf)
+	ldata->tty_channel = get_current_tty_channel(tty);
+
+    set_tty_buf_size(tty);
+
+	//printk("[e2sh] ldata->tty_channel = %d, tty->buf_size = %d,     \
+						tty->name = %s, tty->driver->name = %s \n",    \
+					 ldata->tty_channel, tty->buf_size, tty->name, tty->driver->name);
+	/* use buf_size of the n_tty_data in n_tty.c */
+	/* but tty_io.c should be use buf_size of the tty_struct */
+    ldata->buf_size = tty->buf_size;
+
+	switch(ldata->tty_channel){
+		case TTY_CHN_NVM:
+			ldata->read_buf = (char* )ioremap(NVM_TTY_READBUF_OFFSET
+                                                     ,N_TTY_256K_BUF_SIZE);
+			ldata->echo_buf = (unsigned char* )ioremap(NVM_TTY_ECHOBUF_OFFSET
+                                                      ,N_TTY_256K_BUF_SIZE);
+			break;
+		case TTY_CHN_GPS:
+			ldata->read_buf = (char* )ioremap(GPS_TTY_READBUF_OFFSET
+														,N_TTY_8K_BUF_SIZE);
+			ldata->echo_buf = (unsigned char* )ioremap(GPS_TTY_ECHOBUF_OFFSET
+														, N_TTY_8K_BUF_SIZE);
+			break;
+        case TTY_CHN_NET:
+			ldata->read_buf = (char* )ioremap(NET_TTY_READBUF_OFFSET
+														,N_TTY_16K_BUF_SIZE);
+			ldata->echo_buf = (unsigned char* )ioremap(NET_TTY_ECHOBUF_OFFSET
+														, N_TTY_16K_BUF_SIZE);
+			break;
+        case TTY_CHN_USO:
+			ldata->read_buf = (char* )ioremap(USO_TTY_READBUF_OFFSET
+														,N_TTY_16K_BUF_SIZE);
+			ldata->echo_buf = (unsigned char* )ioremap(USO_TTY_ECHOBUF_OFFSET
+														, N_TTY_16K_BUF_SIZE);
+			break;
+		default:
+			ldata->read_buf = kzalloc(/*N_TTY_BUF_SIZE*/ldata->buf_size, GFP_KERNEL);
+			ldata->echo_buf = kzalloc(/*N_TTY_BUF_SIZE*/ldata->buf_size, GFP_KERNEL);
+	}
+
+	if(!ldata->tty_channel && ldata->buf_size != N_TTY_BUF_SIZE) {
+		printk("%s] This buffer allocated wrong!! should be N_TTY_BUF_SIZE ", __func__);
+	}
+
+	if (!ldata->read_buf || !ldata->echo_buf) {
+		if(!ldata->read_buf)
+			printk(KERN_CRIT "[e2sh] read_buf alloc failure!!\n");
+		if(!ldata->echo_buf)
+			printk(KERN_CRIT "[e2sh] echo_buf alloc failure!!\n");
+		printk(KERN_CRIT" %s data buf mem allocation fail size : 0x%x in %s\n"
+					, __func__, sizeof(ldata), current->comm);
 		goto err_free_bufs;
+	}
 
 	tty->disc_data = ldata;
 	reset_buffer_flags(tty->disc_data);
@@ -1650,9 +1817,16 @@ static int n_tty_open(struct tty_struct *tty)
 	tty_unthrottle(tty);
 
 	return 0;
+
 err_free_bufs:
-	kfree(ldata->read_buf);
-	kfree(ldata->echo_buf);
+	if(ldata->tty_channel){
+		iounmap((void* )ldata->read_buf);
+        iounmap((void* )ldata->echo_buf);
+    } else {
+		kfree(ldata->read_buf);
+        kfree(ldata->echo_buf);
+	}
+
 	kfree(ldata);
 err:
 	return -ENOMEM;
@@ -1702,7 +1876,7 @@ static int copy_from_read_buf(struct tty_struct *tty,
 
 	retval = 0;
 	raw_spin_lock_irqsave(&ldata->read_lock, flags);
-	n = min(ldata->read_cnt, N_TTY_BUF_SIZE - ldata->read_tail);
+	n = min(ldata->read_cnt, /*N_TTY_BUF_SIZE*/ldata->buf_size - ldata->read_tail);
 	n = min(*nr, n);
 	raw_spin_unlock_irqrestore(&ldata->read_lock, flags);
 	if (n) {
@@ -1713,7 +1887,7 @@ static int copy_from_read_buf(struct tty_struct *tty,
 		tty_audit_add_data(tty, &ldata->read_buf[ldata->read_tail], n,
 				ldata->icanon);
 		raw_spin_lock_irqsave(&ldata->read_lock, flags);
-		ldata->read_tail = (ldata->read_tail + n) & (N_TTY_BUF_SIZE-1);
+		ldata->read_tail = (ldata->read_tail + n) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 		ldata->read_cnt -= n;
 		/* Turn single EOF into zero-length read */
 		if (L_EXTPROC(tty) && ldata->icanon && is_eof && !ldata->read_cnt)
@@ -1903,12 +2077,30 @@ do_it_again:
 			raw_spin_lock_irqsave(&ldata->read_lock, flags);
 			while (nr && ldata->read_cnt) {
 				int eol;
-
-				eol = test_and_clear_bit(ldata->read_tail,
-						ldata->read_flags);
+				switch(ldata->tty_channel){
+					case TTY_CHN_NVM:
+						eol = test_and_clear_bit(ldata->read_tail,
+													read_nvm_flags);
+						break;
+					case TTY_CHN_GPS:
+						eol = test_and_clear_bit(ldata->read_tail,
+													read_gps_flags);
+						break;
+                    case TTY_CHN_NET:
+						eol = test_and_clear_bit(ldata->read_tail,
+													read_net_flags);
+						break;
+					case TTY_CHN_USO:
+						eol = test_and_clear_bit(ldata->read_tail,
+													read_uso_flags);
+						break;
+					default:
+						eol = test_and_clear_bit(ldata->read_tail,
+													ldata->read_flags);
+                }
 				c = ldata->read_buf[ldata->read_tail];
 				ldata->read_tail = ((ldata->read_tail+1) &
-						  (N_TTY_BUF_SIZE-1));
+						  (/*N_TTY_BUF_SIZE*/ldata->buf_size-1));
 				ldata->read_cnt--;
 				if (eol) {
 					/* this test should be redundant:
@@ -2143,18 +2335,37 @@ static unsigned int n_tty_poll(struct tty_struct *tty, struct file *file,
 static unsigned long inq_canon(struct n_tty_data *ldata)
 {
 	int nr, head, tail;
+	int result_test_bit;
 
 	if (!ldata->canon_data)
 		return 0;
 	head = ldata->canon_head;
 	tail = ldata->read_tail;
-	nr = (head - tail) & (N_TTY_BUF_SIZE-1);
+	nr = (head - tail) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 	/* Skip EOF-chars.. */
 	while (head != tail) {
-		if (test_bit(tail, ldata->read_flags) &&
-		    ldata->read_buf[tail] == __DISABLED_CHAR)
+		switch(ldata->tty_channel){
+			case TTY_CHN_NVM:
+				result_test_bit= test_bit(tail, read_nvm_flags);
+				break;
+			case TTY_CHN_GPS:
+				result_test_bit= test_bit(tail, read_gps_flags);
+				break;
+            case TTY_CHN_NET:
+				result_test_bit= test_bit(tail, read_net_flags);
+				break;
+			case TTY_CHN_USO:
+				result_test_bit= test_bit(tail, read_uso_flags);
+				break;
+			default:
+				result_test_bit = test_bit(tail, ldata->read_flags);
+		}
+
+		if (/*test_bit(tail, ldata->read_flags)*/result_test_bit &&
+                              ldata->read_buf[tail] == __DISABLED_CHAR)
 			nr--;
-		tail = (tail+1) & (N_TTY_BUF_SIZE-1);
+
+		tail = (tail+1) & (/*N_TTY_BUF_SIZE*/ldata->buf_size-1);
 	}
 	return nr;
 }

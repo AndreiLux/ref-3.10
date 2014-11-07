@@ -4065,6 +4065,9 @@ no_journal:
 cantfind_ext4:
 	if (!silent)
 		ext4_msg(sb, KERN_ERR, "VFS: Can't find ext4 filesystem");
+#if defined(CONFIG_MACH_ODIN)
+	ret = -ESUPER;
+#endif
 	goto failed_mount;
 
 #ifdef CONFIG_QUOTA
@@ -4102,6 +4105,9 @@ failed_mount3:
 	if (sbi->s_mmp_tsk)
 		kthread_stop(sbi->s_mmp_tsk);
 failed_mount2:
+#if defined(CONFIG_MACH_ODIN)
+	ret = -ESUPER;
+#endif
 	for (i = 0; i < db_count; i++)
 		brelse(sbi->s_group_desc[i]);
 	ext4_kvfree(sbi->s_group_desc);

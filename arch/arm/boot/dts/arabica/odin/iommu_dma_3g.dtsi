@@ -1,0 +1,362 @@
+/*
+ * LG Electronics Odin
+ */
+
+/ {
+    //soc {
+        //compatible = "simple-bus";
+  		//interrupt-parent = <&gic>;
+   	    //#address-cells = <2>;
+   	    //#size-cells = <2>;
+
+		pdma: pdma@20000000 {
+			compatible = "odin-pdma", "arm,primecell";
+			reg = <0 0x20000000 0 0x2000>;
+			interrupts = <0 0 4>, <0 1 4>;
+			clocks = <&pdma_hclk>;
+			clock-names = "apb_pclk";
+		};
+
+		adma: adma@34500000 {
+			compatible = "odin-adma", "arm,primecell";
+			reg = <0 0x34500000 0 0x2000>;
+			interrupts = <0 37 4>;
+			clocks = <&aclk_dsp>;
+			clock-names = "apb_pclk";
+		};
+
+		sdma: sdma@0D010000 {
+			compatible = "arm,dma-pl330", "arm,primecell";
+			reg = <0 0x0D010000 0 0x1000>;
+			interrupts = <0 203 4>;
+			clocks = <&hclk_clk>;
+			clock-names = "apb_pclk";
+		};
+
+		s_timer: timer@20026000 {
+			compatible = "arm,sp804", "arm,primecell";
+			reg = <0 0x20026000 0 0x1000>;
+			interrupts = <0 21 0x004>, <0 22 0x004>;
+			clocks = <&tmr_pclk0>;
+			clock-names = "tmr_pclk0";
+		};
+
+		watchdog@20002000 {
+			compatible = "arm,sp805", "arm,primecell";
+			reg = <0 0x20025000 0 0x1000>;
+			interrupts = <0 20 4>;
+			odin,timeout = <180>;
+			odin,pet-time = <30000>;
+			odin,ipi-ping;
+			odin,bark-panic;
+			clocks = <&wdt_pclk>;
+			clock-names = "apb_pclk";
+		};
+
+/* ===== iommu root device ====================================================== */
+
+		odin_iommu {
+			compatible = "arm,odin_iommu";
+			name = "odin_iommu";
+			id = <0xFFFFFFFF>;
+		};
+
+/* ===== 15 iommu devices ===== It should be changed.. parent.. child.. sibling.. */
+
+		odin_iommu@33800000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x33800000 0 0x10000>;
+			interrupts = <0 152 0x004>;
+			name = "odin_iommu";
+			id = <0>;
+			dev_platform_data_name = "css_0";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@33900000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x33900000 0 0x10000>;
+			interrupts = <0 154 0x004>;
+			name = "odin_iommu";
+			id = <1>;
+			dev_platform_data_name = "css_1";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@320E0000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x320E0000 0 0x10000>;
+			interrupts = <0 111 0x004>;
+			name = "odin_iommu";
+			id = <2>;
+			dev_platform_data_name = "vsp_0";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@321E0000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x321E0000 0 0x10000>;
+			interrupts = <0 119 0x004>;
+			name = "odin_iommu";
+			id = <3>;
+			dev_platform_data_name = "vsp_1";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@31C00000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x31C00000 0 0x10000>;
+			interrupts = <0 121 0x004>;
+			name = "odin_iommu";
+			id = <4>;
+			dev_platform_data_name = "dss_0";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@31D00000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x31D00000 0 0x10000>;
+			interrupts = <0 123 0x004>;
+			name = "odin_iommu";
+			id = <5>;
+			dev_platform_data_name = "dss_1";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@31E00000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x31E00000 0 0x10000>;
+			interrupts = <0 125 0x004>;
+			name = "odin_iommu";
+			id = <6>;
+			dev_platform_data_name = "dss_2";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@31F00000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x31F00000 0 0x10000>;
+			interrupts = <0 127 0x004>;
+			name = "odin_iommu";
+			id = <7>;
+			dev_platform_data_name = "dss_3";
+			dev_platform_data_ncb = <1>;
+		};
+	/*
+		odin_iommu@3FF40000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x3FF40000 0 0x10000>;
+			interrupts = <0 80 0x004>;
+			name = "odin_iommu";
+			id = <8>;
+			dev_platform_data_name = "ics";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@34800000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x34800000 0 0x10000>;
+			interrupts = <0 55 0x004>;
+			name = "odin_iommu";
+			id = <9>;
+			dev_platform_data_name = "aud";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@20040000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x20040000 0 0x10000>;
+			interrupts = <0 7 0x004>;
+			name = "odin_iommu";
+			id = <10>;
+			dev_platform_data_name = "peri";
+			dev_platform_data_ncb = <1>;
+		};
+	*/
+		odin_iommu@0D020000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x0D020000 0 0x10000>;
+			interrupts = <0 204 0x004>;
+			name = "odin_iommu";
+			id = <11>;
+			dev_platform_data_name = "sdma";
+			dev_platform_data_ncb = <1>;
+		};
+	/*
+		odin_iommu@3A840000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x3A840000 0 0x10000>;
+			interrupts = <0 211 0x004>;
+			name = "odin_iommu";
+			id = <12>;
+			dev_platform_data_name = "gpu_0";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@3A850000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x3A850000 0 0x10000>;
+			interrupts = <0 237 0x004>;
+			name = "odin_iommu";
+			id = <13>;
+			dev_platform_data_name = "gpu_1";
+			dev_platform_data_ncb = <1>;
+		};
+
+		odin_iommu@360E0000 {
+			compatible = "arm,odin_iommu";
+			reg = <0 0x360E0000 0 0x10000>;
+			interrupts = <0 68 0x004>;
+			name = "odin_iommu";
+			id = <14>;
+			dev_platform_data_name = "ses";
+			dev_platform_data_ncb = <1>;
+		};
+	*/
+	/* ===== 15 iommu ctx devices ===== It should be changed.. parent.. child.. sibling.. */
+
+		odin_iommu_ctx@0 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <0>;
+			parent_name = "css_0";
+			dev_platform_data_name = "css_0_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@1 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <1>;
+			parent_name = "css_1";
+			dev_platform_data_name = "css_1_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@2 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <2>;
+			parent_name = "vsp_0";
+			dev_platform_data_name = "vsp_0_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@3 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <3>;
+			parent_name = "vsp_1";
+			dev_platform_data_name = "vsp_1_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@4 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <4>;
+			parent_name = "dss_0";
+			dev_platform_data_name = "dss_0_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@5 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <5>;
+			parent_name = "dss_1";
+			dev_platform_data_name = "dss_1_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@6 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <6>;
+			parent_name = "dss_2";
+			dev_platform_data_name = "dss_2_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@7 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <7>;
+			parent_name = "dss_3";
+			dev_platform_data_name = "dss_3_ns";
+			dev_platform_data_num = <0>;
+		};
+	/*
+		odin_iommu_ctx@8 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <8>;
+			parent_name = "ics";
+			dev_platform_data_name = "ics_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@9 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <9>;
+			parent_name = "aud";
+			dev_platform_data_name = "aud_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@10 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <10>;
+			parent_name = "peri";
+			dev_platform_data_name = "peri_ns";
+			dev_platform_data_num = <0>;
+		};
+	*/
+		odin_iommu_ctx@11 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <11>;
+			parent_name = "sdma";
+			dev_platform_data_name = "sdma_ns";
+			dev_platform_data_num = <0>;
+		};
+	/*
+		odin_iommu_ctx@12 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <12>;
+			parent_name = "gpu_0";
+			dev_platform_data_name = "gpu_0_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@13 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <13>;
+			parent_name = "gpu_1";
+			dev_platform_data_name = "gpu_1_ns";
+			dev_platform_data_num = <0>;
+		};
+
+		odin_iommu_ctx@14 {
+			compatible = "arm,odin_iommu_ctx";
+			name = "odin_iommu_ctx";
+			id = <14>;
+			parent_name = "ses";
+			dev_platform_data_name = "ses_ns";
+			dev_platform_data_num = <0>;
+		};
+	*/
+	/* ===== ion heap device ======================================================== */
+
+		ion_smmu_heap {
+			compatible = "google,ion_smmu_heap";
+			name = "ion_smmu_heap";
+			id = <0xFFFFFFFF>;
+		};
+
+	//};
+};

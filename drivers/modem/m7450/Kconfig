@@ -1,0 +1,10 @@
+#
+# M7400 Modem HPM driver
+#
+
+comment "M7450 HSIC PM Device Driver"
+
+config M7450_HSIC
+	tristate "M7450 HPM device driver"
+	depends on STE
+	---help---

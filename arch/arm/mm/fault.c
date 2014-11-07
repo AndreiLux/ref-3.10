@@ -28,6 +28,9 @@
 
 #include "fault.h"
 
+#ifdef CONFIG_LGE_CRASH_HANDLER
+#define LGE_CRASH_MSG_HDR "START LGE_CRASH_HANDLER"
+#endif
 #ifdef CONFIG_MMU
 
 #ifdef CONFIG_KPROBES
@@ -115,6 +118,10 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 		printk(", *ppte=%08llx",
 		       (long long)pte_val(pte[PTE_HWTABLE_PTRS]));
 #endif
+#ifdef CONFIG_DEBUG_PAGEALLOC
+		if (pte_val(*pte) && !(pte_val(*pte) & L_PTE_PRESENT))
+			printk(", !!! DEBUG_PAGEALLOC !!!");
+#endif
 		pte_unmap(pte);
 	} while(0);
 
@@ -142,6 +149,9 @@ __do_kernel_fault(struct mm_struct *mm, unsigned long addr, unsigned int fsr,
 	 * No handler, we'll have to terminate things with extreme prejudice.
 	 */
 	bust_spinlocks(1);
+#ifdef CONFIG_LGE_CRASH_HANDLER
+	printk(KERN_ALERT "%s\n", LGE_CRASH_MSG_HDR);
+#endif
 	printk(KERN_ALERT
 		"Unable to handle kernel %s at virtual address %08lx\n",
 		(addr < PAGE_SIZE) ? "NULL pointer dereference" :
@@ -276,10 +286,10 @@ do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 		local_irq_enable();
 
 	/*
-	 * If we're in an interrupt or have no user
+	 * If we're in an interrupt, or have no irqs, or have no user
 	 * context, we must not take the fault..
 	 */
-	if (in_atomic() || !mm)
+	if (in_atomic() || irqs_disabled() || !mm)
 		goto no_context;
 
 	/*
@@ -555,6 +565,9 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 	if (!inf->fn(addr, fsr & ~FSR_LNX_PF, regs))
 		return;
 
+#ifdef CONFIG_LGE_CRASH_HANDLER
+	printk(KERN_ALERT "%s\n", LGE_CRASH_MSG_HDR);
+#endif
 	printk(KERN_ALERT "Unhandled fault: %s (0x%03x) at 0x%08lx\n",
 		inf->name, fsr, addr);
 
@@ -587,6 +600,9 @@ do_PrefetchAbort(unsigned long addr, unsigned int ifsr, struct pt_regs *regs)
 	if (!inf->fn(addr, ifsr | FSR_LNX_PF, regs))
 		return;
 
+#ifdef CONFIG_LGE_CRASH_HANDLER
+	printk(KERN_ALERT "%s\n", LGE_CRASH_MSG_HDR);
+#endif
 	printk(KERN_ALERT "Unhandled prefetch abort: %s (0x%03x) at 0x%08lx\n",
 		inf->name, ifsr, addr);
 

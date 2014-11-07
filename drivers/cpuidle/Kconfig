@@ -53,4 +53,19 @@ depends on ARM64
 source "drivers/cpuidle/Kconfig.arm64"
 endmenu
 
+config CPU_IDLE_ODIN
+	bool "CPU Idle Driver for Odin processors"
+	depends on ARCH_ODIN
+	select ARM_CPU_SUSPEND
+	select CPU_IDLE_MULTIPLE_DRIVERS
+	help
+	  Select this to enable cpuidle on Odin processors.
+
+config CPU_IDLE_ODIN_SW_WORKAROUND
+	bool "SW Workaround for Odin's cpuidle"
+	depends on ARCH_ODIN_REVISION=0 || ARCH_ODIN_REVISION=1
+	default y
+	help
+	  ES1 of Odin needs SW workaround for cpuidle.
+
 endif

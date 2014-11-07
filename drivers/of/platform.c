@@ -214,7 +214,12 @@ struct platform_device *of_platform_device_create_pdata(
 #if defined(CONFIG_MICROBLAZE)
 	dev->archdata.dma_mask = 0xffffffffUL;
 #endif
+
+#ifdef CONFIG_ARM_LPAE
+	dev->dev.coherent_dma_mask = DMA_BIT_MASK(64);
+#else
 	dev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+#endif
 	dev->dev.bus = &platform_bus_type;
 	dev->dev.platform_data = platform_data;
 

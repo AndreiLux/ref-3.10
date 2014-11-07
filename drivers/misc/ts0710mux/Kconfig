@@ -1,0 +1,12 @@
+config TS0710_MUX
+	bool "TS0710 multiplexer"
+	default n
+	help
+	  Say 'Y' to enable TS0710 multiplexer
+
+config LGE_KERNEL_MUX
+	bool "LGE KERNEL MUX"
+	depends on TS0710_MUX
+	default n
+	help
+	  Say 'Y' to enable LGE KERNEL MUX (?)

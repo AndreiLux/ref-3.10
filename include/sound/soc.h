@@ -646,6 +646,7 @@ struct snd_soc_ops {
 	int (*hw_free)(struct snd_pcm_substream *);
 	int (*prepare)(struct snd_pcm_substream *);
 	int (*trigger)(struct snd_pcm_substream *, int);
+	void (*hw_dump)(struct snd_pcm_substream *);
 };
 
 struct snd_soc_compr_ops {

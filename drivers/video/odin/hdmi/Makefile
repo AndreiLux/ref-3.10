@@ -1,0 +1,10 @@
+obj-$(CONFIG_ODIN_HDMI) += hdmi.o compliance.o
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/api/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/bsp/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/core/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/edid/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/core/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/edid/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/hdcp/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/phy/
+obj-$(CONFIG_ODIN_HDMI) += ../hdmi_api_tx/util/

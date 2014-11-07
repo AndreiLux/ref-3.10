@@ -36,6 +36,8 @@ obj-$(CONFIG_I2C_BLACKFIN_TWI)	+= i2c-bfin-twi.o
 obj-$(CONFIG_I2C_CBUS_GPIO)	+= i2c-cbus-gpio.o
 obj-$(CONFIG_I2C_CPM)		+= i2c-cpm.o
 obj-$(CONFIG_I2C_DAVINCI)	+= i2c-davinci.o
+obj-$(CONFIG_I2C_ODIN_PLATFORM)	+= i2c-odin-platform.o
+i2c-odin-platform-objs := i2c-odin-platdrv.o i2c-odin-core.o
 obj-$(CONFIG_I2C_DESIGNWARE_CORE)	+= i2c-designware-core.o
 obj-$(CONFIG_I2C_DESIGNWARE_PLATFORM)	+= i2c-designware-platform.o
 i2c-designware-platform-objs := i2c-designware-platdrv.o
@@ -76,6 +78,10 @@ obj-$(CONFIG_I2C_XILINX)	+= i2c-xiic.o
 obj-$(CONFIG_I2C_XLR)		+= i2c-xlr.o
 obj-$(CONFIG_I2C_RCAR)		+= i2c-rcar.o
 
+# ODIN CSS I/C drivers
+##/* LGE_CHANGE_S */
+obj-$(CONFIG_I2C_ODIN_CSS)    += i2c-odin-css.o	i2c-odin-css-gpio.o
+##/* LGE_CHANGE_E */
 # External I2C/SMBus adapter drivers
 obj-$(CONFIG_I2C_DIOLAN_U2C)	+= i2c-diolan-u2c.o
 obj-$(CONFIG_I2C_PARPORT)	+= i2c-parport.o

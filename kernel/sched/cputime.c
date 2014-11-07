@@ -6,6 +6,38 @@
 #include <linux/context_tracking.h>
 #include "sched.h"
 
+struct irqtime_check {
+		u32 irq_num;
+		s64 irq_start_time;
+};
+
+static DEFINE_PER_CPU(struct irqtime_check, irqtime_get);
+
+void irqtime_enter(u32 irq)
+{
+	s64 delta;
+	int cpu;
+
+	cpu = smp_processor_id();
+	delta = sched_clock_cpu(cpu);
+	__this_cpu_write(irqtime_get.irq_start_time, delta);
+	__this_cpu_write(irqtime_get.irq_num, irq);
+}
+EXPORT_SYMBOL_GPL(irqtime_enter);
+
+s64 irqtime_exit(void)
+{
+	s64 delta;
+	int cpu;
+
+	cpu = smp_processor_id();
+	delta = sched_clock_cpu(cpu) - __this_cpu_read(irqtime_get.irq_start_time);
+	__this_cpu_write(irqtime_get.irq_start_time, (s64)0);
+	__this_cpu_write(irqtime_get.irq_num, 0);
+
+	return delta;
+}
+EXPORT_SYMBOL_GPL(irqtime_exit);
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 
@@ -23,7 +55,6 @@
 DEFINE_PER_CPU(u64, cpu_hardirq_time);
 DEFINE_PER_CPU(u64, cpu_softirq_time);
 
-static DEFINE_PER_CPU(u64, irq_start_time);
 static int sched_clock_irqtime;
 
 void enable_sched_clock_irqtime(void)

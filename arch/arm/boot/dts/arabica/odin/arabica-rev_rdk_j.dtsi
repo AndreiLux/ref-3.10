@@ -1,0 +1,197 @@
+/*
+ * This file is for MADK v2.1
+ */
+
+/ {
+	connectivity {
+		wlan@0{
+			power_gpio = <120>;
+		};
+/* sdio start */
+		sdhci@0x20006000{
+			sdclk = <200>;			/* 200Mhz, UHS104*/
+		};
+/* sdio end */
+	};
+
+	gpio-keys {
+		button@1 {
+			gpios = <&gpio2 1 1>;
+		};
+		button@2 {
+			gpios = <&gpio2 2 1>;
+		};
+	};
+
+	soc {
+
+		spi@20011000{
+			ethernet@1{
+				irq_gpio = <5>;
+			};
+		};
+
+		max77819_pmic {
+			irq_gpio = <136>;
+		};
+
+		 pmic1: d2260@48 {
+			regulators {
+				D2260_GPIOCTRL_1 {
+					regulator-name = "+1.8V_VT_CAM_IO";
+					regulator-enable-gpio = <173>;
+				};
+			};
+		};
+
+		i2c@20021000 {
+
+/* LGE_CHANGE_S
+ */
+			anx7808@72{
+				compatible = "analogix,anx7808";
+				status = "ok";
+				reg = <0x72>;
+				analogix,reset-gpio = <52>; /* PERI_G0_GPIO_BASE(0)+52 */
+				analogix,irq-gpio = <51>;   /* PERI_G0_GPIO_BASE(0)+51 */
+				analogix,p-dwn-gpio = <53>; /* PERI_G0_GPIO_BASE(0)+53 */
+				analogix,v10-ctrl-gpio = <31>;  /* PERI_G0_GPIO_BASE(0)+31 */
+				analogix,cbl-det-gpio = <142>;  /* SMS_GPIO_BASE(112)+30 */
+				lge,external-ldo-control = <0>;
+			};
+			anx7812@72{
+				compatible = "analogix,anx7812";
+				status = "disable";
+				reg = <0x72>;
+				analogix,reset-gpio = <52>; /* PERI_G0_GPIO_BASE(0)+52 */
+				analogix,irq-gpio = <51>;   /* PERI_G0_GPIO_BASE(0)+51 */
+				analogix,p-dwn-gpio = <53>; /* PERI_G0_GPIO_BASE(0)+53 */
+				analogix,v10-ctrl-gpio = <31>;  /* PERI_G0_GPIO_BASE(0)+31 */
+				analogix,cbl-det-gpio = <142>;  /* SMS_GPIO_BASE(112)+30 */
+				lge,external-ldo-control = <0>;
+			};
+
+			lm3646_flash_driver: lm3646@67 {
+				compatible = "lm3646,camera-led-flash-driver";
+				status = "ok";
+				reg = <0x67>;
+				lm3646,gpio-enable = <71>; /*<&pm8941_gpios 6 0>; */
+				lm3646,tx-pin-enable = <0>;
+				lm3646,torch-pin-enable = <0>;
+				lm3646,strobe-pin-enable =<0>;
+
+				lm3646_flash: lm3646,flash {
+					lm3646,flash-trigger = "lm3646:flash";
+					lm3646,flash-max-current = <0x0A>;
+					lm3646,flash-op-current = <0x3F>;
+//				lm3646,flash-ramp-time = <0x0>;
+					lm3646,flash-time-out = <0x07>;
+				};
+
+				lm3646_torch: lm3646,torch {
+					lm3646,torch-trigger = "lm3646:torch";
+					lm3646,torch-max-current = <0x07>;
+					lm3646,torch-op-current = <0x3F>;
+				};
+			};
+		};
+		i2c@20021800 {
+			compatible = "snps,odin-i2c";
+			reg = <0 0x20021800 0 0x800>;
+			interrupts = <0 16 0x4>;
+			clocks = <&i2c_sclk1>;
+			pclk_name = "i2c_pclk1";
+			enable_rpm = <1>;
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			lm3697@36 {
+				compatible = "ti,lm3697";
+				reg = <0x36>;
+
+				/* GPIO for HWEN pin */
+				ti,enable-gpio = <29>;
+
+				lcd_bl {
+					backlight-name = "lcd-backlight";
+					hvled1-used;
+					hvled2-used;
+					max-current-milliamp = <20>;
+					initial-brightness = <171>;
+					/* mapping-mode, 0:exp, 1:linear */
+					mapping-mode = <1>;
+					blmap_size = <256>;
+					blmap = <
+							17	17	17	17	17	17	17	17	17	17	17	17	17	17	17	17
+							17	17	17	17	17	17	17	17	17	17	17	17	17	17	17	17
+							17	17	17	17	17	17	26	26	26	26	26	26	26	26	26	26
+							35	35	35	35	35	35	35	35	35	35	35	35	35	35	35	35
+							43	43	43	43	43	43	43	52	52	52	52	52	52	52	52	60
+							60	60	60	60	60	60	69	69	69	69	78	78	95	95	95	104
+							104	104	104	112	112	112	112	121	121	121	130	130	138	138	147	147
+							164	173	173	181	190	199	207	216	216	233	233	242	242	250	250	259
+							259	268	268	276	285	294	294	302	311	320	328	345	354	363	371	380
+							389	397	406	415	423	423	432	440	458	466	484	501	518	527	536	544
+							553	561	570	579	579	587	596	605	613	622	631	639	648	656	665	674
+							674	682	691	700	717	734	751	769	777	786	795	803	812	829	829	846
+							864	881	907	916	933	950	967	985	1002	1019	1036	1054	1062
+							1071	1080	1088	1097	1123	1140	1157	1175	1192
+							1201	1209	1226	1244	1261	1278	1296	1321	1347
+							1373	1399	1416	1434	1451	1468	1486	1503	1520
+							1537	1572	1598	1615	1632	1650	1667	1684	1693
+							1719	1745	1762	1788	1814	1840	1866	1892	1900
+							1917	1943	1969	1995	2021	2047
+							>;
+
+					pwm-period = <1>;
+				};
+			};
+		};
+		i2c@20022000 {
+			mpu6515@68{
+				negate_y = <1>;
+				negate_z = <1>;
+				inven,secondary_reg = <0x0F>;
+			};
+		};
+		i2c@20022800{
+
+                    atmel_s540@4a{
+                        atmel,reset-gpio = <147>;
+                    };
+		};
+
+		lm3646_flash_controller: lm3646,camera-led-flash {
+			status = "ok";
+			cell-index = <0>;
+			compatible = "lm3646,camera-led-flash-controller";
+			lm3646,flash-type = <1>;
+			lm3646,flash-source = <&lm3646_flash>;
+			lm3646,torch-source = <&lm3646_torch>;
+		};
+
+		max77819_pmic {
+			compatible = "maxim,max77819-pmic";
+			status = "disable";
+
+			charger {
+				compatible = "maxim,max77819-charger";
+				status = "disable";
+			};
+		};
+		max77819_peri {
+			compatible = "maxim,max77819-periph";
+			status = "disable";
+
+			backlight {
+				compatible = "maxim,max77819-wled";
+				status = "disable";
+			};
+		};
+	};
+
+	sdhci@0x2000A000{
+		sdc_cd_gpio = <146>;
+	};
+
+};

@@ -38,6 +38,8 @@ source "drivers/message/i2o/Kconfig"
 
 source "drivers/macintosh/Kconfig"
 
+source "drivers/modem/Kconfig"
+
 source "drivers/net/Kconfig"
 
 source "drivers/isdn/Kconfig"
@@ -66,9 +68,9 @@ source "drivers/gpio/Kconfig"
 
 source "drivers/w1/Kconfig"
 
-source "drivers/power/Kconfig"
-
 source "drivers/hwmon/Kconfig"
+
+source "drivers/power/Kconfig"
 
 source "drivers/thermal/Kconfig"
 
@@ -99,6 +101,8 @@ source "drivers/mmc/Kconfig"
 source "drivers/memstick/Kconfig"
 
 source "drivers/leds/Kconfig"
+
+source "drivers/switch/Kconfig"
 
 source "drivers/accessibility/Kconfig"
 
@@ -146,6 +150,8 @@ source "drivers/remoteproc/Kconfig"
 
 source "drivers/rpmsg/Kconfig"
 
+source "drivers/broadcast/Kconfig"
+
 source "drivers/devfreq/Kconfig"
 
 source "drivers/extcon/Kconfig"
@@ -166,6 +172,10 @@ source "drivers/ipack/Kconfig"
 
 source "drivers/reset/Kconfig"
 
+source "drivers/dsp/Kconfig"
+
 source "drivers/gator/Kconfig"
+
+source "drivers/gud/Kconfig"
 
 endmenu
