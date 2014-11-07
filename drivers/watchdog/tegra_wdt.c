@@ -44,6 +44,7 @@
 /* minimum and maximum watchdog trigger periods, in seconds */
 #define MIN_WDT_PERIOD	5
 #define MAX_WDT_PERIOD	1000
+#define MIN_WDT_TIMER_FIQ	10000
 
 enum tegra_wdt_status {
 	WDT_DISABLED = 1 << 0,
@@ -61,6 +62,7 @@ struct tegra_wdt {
 	int			tmrsrc;
 	int			status;
 	struct fiq_glue_handler	fiq_handler;
+	struct notifier_block	panic_notifier;
 };
 
 /*
@@ -156,6 +158,11 @@ static int __tegra_wdt_enable(struct tegra_wdt *tegra_wdt)
 
 	writel(TIMER_PCR_INTR, tegra_wdt->wdt_timer + TIMER_PCR);
 	val = (tegra_wdt->wdt.timeout * USEC_PER_SEC) / period;
+
+	/* give the fiq handler a chance to run */
+	if (val < MIN_WDT_TIMER_FIQ && tegra_wdt->useirq)
+		val = MIN_WDT_TIMER_FIQ;
+
 	val |= (TIMER_EN | TIMER_PERIODIC);
 	writel(val, tegra_wdt->wdt_timer + TIMER_PTV);
 
@@ -248,6 +255,23 @@ static void tegra_wdt_fiq(struct fiq_glue_handler *h,
 		;
 }
 
+static int tegra_wdt_panic_handler(struct notifier_block *this,
+				   unsigned long event, void *unused)
+{
+	struct tegra_wdt *tegra_wdt;
+
+	tegra_wdt = container_of(this, struct tegra_wdt, panic_notifier);
+
+	if (panic_timeout) {
+		/* trigger watchdog fiq 1 second before panic reboots */
+		tegra_wdt->wdt.timeout = panic_timeout - 1;
+		pr_info("%s: set watchdog timeout to %d\n",
+		        __func__, tegra_wdt->wdt.timeout);
+		__tegra_wdt_enable(tegra_wdt);
+	}
+	return 0;
+}
+
 static void tegra_wdt_fiq_setup(struct platform_device *pdev,
 				struct tegra_wdt *tegra_wdt, int fiq)
 {
@@ -267,13 +291,39 @@ static void tegra_wdt_fiq_setup(struct platform_device *pdev,
 		dev_err(&pdev->dev, "request fiq failed, %d\n", ret);
 		return;
 	}
+
+	tegra_wdt->panic_notifier.notifier_call = tegra_wdt_panic_handler;
+	ret = atomic_notifier_chain_register(&panic_notifier_list,
+					     &tegra_wdt->panic_notifier);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to register panic notifier, %d\n",
+			ret);
+		return;
+	}
+
 	tegra_wdt->useirq = true;
 }
+
+static void tegra_wdt_fiq_cleanup(struct platform_device *pdev,
+				  struct tegra_wdt *tegra_wdt)
+{
+	if (!tegra_wdt->useirq)
+		return;
+
+	atomic_notifier_chain_unregister(&panic_notifier_list,
+					 &tegra_wdt->panic_notifier);
+}
+
 #else
 static void tegra_wdt_fiq_setup(struct platform_device *pdev,
 				struct tegra_wdt *tegra_wdt, int fiq)
 {
 	dev_err(&pdev->dev, "tegra watchdog fiq config option not enabled\n");
+}
+
+static void tegra_wdt_fiq_cleanup(struct platform_device *pdev,
+				  struct tegra_wdt *tegra_wdt)
+{
 }
 #endif
 
@@ -360,6 +410,7 @@ static int tegra_wdt_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "%s done\n", __func__);
 	return 0;
 fail:
+	tegra_wdt_fiq_cleanup(pdev, tegra_wdt);
 	if (tegra_wdt->wdt_source)
 		iounmap(tegra_wdt->wdt_source);
 	if (tegra_wdt->wdt_timer)
@@ -379,6 +430,7 @@ static int tegra_wdt_remove(struct platform_device *pdev)
 	tegra_wdt_disable(&tegra_wdt->wdt);
 
 	watchdog_unregister_device(&tegra_wdt->wdt);
+	tegra_wdt_fiq_cleanup(pdev, tegra_wdt);
 	iounmap(tegra_wdt->wdt_source);
 	iounmap(tegra_wdt->wdt_timer);
 	release_mem_region(tegra_wdt->res_src->start, resource_size(tegra_wdt->res_src));

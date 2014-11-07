@@ -184,8 +184,11 @@ struct snd_compr_codec_caps tegra30_avp_compr_codec_caps[] = {
 		.descriptor = {
 			[0] = {
 				.max_ch = 2,
-				.sample_rates = SNDRV_PCM_RATE_44100 |
-						SNDRV_PCM_RATE_48000,
+				.sample_rates = {
+					[0] = 44100,
+					[1] = 48000,
+				},
+				.num_sample_rates = 2,
 				.bit_rate = {
 					[0] = 32000,
 					[1] = 64000,
@@ -210,8 +213,11 @@ struct snd_compr_codec_caps tegra30_avp_compr_codec_caps[] = {
 		.descriptor = {
 			[0] = {
 				.max_ch = 2,
-				.sample_rates = SNDRV_PCM_RATE_44100 |
-						SNDRV_PCM_RATE_48000,
+                                .sample_rates = {
+                                        [0] = 44100,
+                                        [1] = 48000,
+                                },
+                                .num_sample_rates = 2,
 				.bit_rate = {
 					[0] = 32000,
 					[1] = 64000,
