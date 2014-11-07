@@ -38,7 +38,7 @@
 #include <linux/usb/ch9.h>
 #include <linux/usb/f_mtp.h>
 
-#define MTP_BULK_BUFFER_SIZE       32768
+#define MTP_BULK_BUFFER_SIZE       16384
 #define INTR_BUFFER_SIZE           28
 
 /* String IDs */
@@ -770,7 +770,6 @@ static void receive_file_work(struct work_struct *data)
 	int64_t count;
 	int ret, cur_buf = 0;
 	int r = 0;
-	int first_packet = 0;
 
 	/* read our parameters */
 	smp_rmb();
@@ -786,14 +785,8 @@ static void receive_file_work(struct work_struct *data)
 			read_req = dev->rx_req[cur_buf];
 			cur_buf = (cur_buf + 1) % RX_REQ_MAX;
 
-			if (first_packet == 0) {
-				read_req->length = 16384;
-				first_packet = 1;
-			} else {
-				read_req->length = (count > MTP_BULK_BUFFER_SIZE
+			read_req->length = (count > MTP_BULK_BUFFER_SIZE
 					? MTP_BULK_BUFFER_SIZE : count);
-			}
-
 			dev->rx_done = 0;
 			ret = usb_ep_queue(dev->ep_out, read_req, GFP_KERNEL);
 			if (ret < 0) {
