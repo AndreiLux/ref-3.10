@@ -714,6 +714,42 @@ static enum page_references page_check_references(struct page *page,
 	return PAGEREF_RECLAIM;
 }
 
+static void shrink_page_list_cull_mlocked(struct page *page)
+{
+	if (PageSwapCache(page))
+		try_to_free_swap(page);
+	unlock_page(page);
+	putback_lru_page(page);
+}
+
+enum shrink_page_list_label {
+	ACTIVATE_LOCKED,
+	KEEP_LOCKED,
+	KEEP
+};
+
+static void shrink_page_list_activate_locked(struct page *page,
+		int *pgactivate, struct list_head *ret_pages,
+		enum shrink_page_list_label label)
+{
+	if (label <= ACTIVATE_LOCKED) {
+		/* Not a candidate for swapping, so reclaim swap space. */
+		if (PageSwapCache(page) && vm_swap_full())
+			try_to_free_swap(page);
+		VM_BUG_ON(PageActive(page));
+		SetPageActive(page);
+		(*pgactivate)++;
+	}
+
+	if (label <= KEEP_LOCKED)
+		unlock_page(page);
+
+	if (label <= KEEP) {
+		list_add(&page->lru, ret_pages);
+		VM_BUG_ON(PageLRU(page) || PageUnevictable(page));
+	}
+}
+
 /*
  * shrink_page_list() returns the number of reclaimed pages
  */
@@ -727,46 +763,54 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 {
 	LIST_HEAD(ret_pages);
 	LIST_HEAD(free_pages);
+	LIST_HEAD(cull_mlocked_list);
+	LIST_HEAD(activate_locked_list);
+	LIST_HEAD(keep_locked_list);
+	LIST_HEAD(free_list);
 	int pgactivate = 0;
 	unsigned long nr_dirty = 0;
 	unsigned long nr_congested = 0;
 	unsigned long nr_reclaimed = 0;
 	unsigned long nr_writeback = 0;
+	struct address_space *mapping;
+	struct page *page;
+	int may_enter_fs;
+	enum page_references references = PAGEREF_RECLAIM_CLEAN;
 
 	cond_resched();
 
 	mem_cgroup_uncharge_start();
 	while (!list_empty(page_list)) {
-		struct address_space *mapping;
-		struct page *page;
-		int may_enter_fs;
-		enum page_references references = PAGEREF_RECLAIM_CLEAN;
 
 		cond_resched();
 
 		page = lru_to_page(page_list);
 		list_del(&page->lru);
 
-		if (!trylock_page(page))
-			goto keep;
-
+		if (!trylock_page(page)) {
+			shrink_page_list_activate_locked(page, &pgactivate,
+					&ret_pages, KEEP);
+			continue;
+		}
 		VM_BUG_ON(PageActive(page));
 		VM_BUG_ON(page_zone(page) != zone);
 
 		sc->nr_scanned++;
 
-		if (unlikely(!page_evictable(page)))
-			goto cull_mlocked;
+		if (unlikely(!page_evictable(page))) {
+			shrink_page_list_cull_mlocked(page);
+			continue;
+		}
 
-		if (!sc->may_unmap && page_mapped(page))
-			goto keep_locked;
+		if (!sc->may_unmap && page_mapped(page)) {
+			shrink_page_list_activate_locked(page, &pgactivate,
+					&ret_pages, KEEP_LOCKED);
+			continue;
+		}
 
 		/* Double the slab pressure for mapped and swapcache pages */
 		if (page_mapped(page) || PageSwapCache(page))
 			sc->nr_scanned++;
-
-		may_enter_fs = (sc->gfp_mask & __GFP_FS) ||
-			(PageSwapCache(page) && (sc->gfp_mask & __GFP_IO));
 
 		if (PageWriteback(page)) {
 			/*
@@ -801,7 +845,10 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 				 */
 				SetPageReclaim(page);
 				nr_writeback++;
-				goto keep_locked;
+				shrink_page_list_activate_locked(page,
+						&pgactivate, &ret_pages,
+						KEEP_LOCKED);
+				continue;
 			}
 			wait_on_page_writeback(page);
 		}
@@ -811,9 +858,11 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 
 		switch (references) {
 		case PAGEREF_ACTIVATE:
-			goto activate_locked;
+			list_add(&page->lru, &activate_locked_list);
+			continue;
 		case PAGEREF_KEEP:
-			goto keep_locked;
+			list_add(&page->lru, &keep_locked_list);
+			continue;
 		case PAGEREF_RECLAIM:
 		case PAGEREF_RECLAIM_CLEAN:
 			; /* try to reclaim the page below */
@@ -824,11 +873,14 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 * Try to allocate it some swap space here.
 		 */
 		if (PageAnon(page) && !PageSwapCache(page)) {
-			if (!(sc->gfp_mask & __GFP_IO))
-				goto keep_locked;
-			if (!add_to_swap(page, page_list))
-				goto activate_locked;
-			may_enter_fs = 1;
+			if (!(sc->gfp_mask & __GFP_IO)) {
+				list_add(&page->lru, &keep_locked_list);
+				continue;
+			}
+			if (!add_to_swap(page, page_list)) {
+				list_add(&page->lru, &activate_locked_list);
+				continue;
+			}
 		}
 
 		mapping = page_mapping(page);
@@ -840,16 +892,49 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		if (page_mapped(page) && mapping) {
 			switch (try_to_unmap(page, ttu_flags)) {
 			case SWAP_FAIL:
-				goto activate_locked;
+				list_add(&page->lru, &activate_locked_list);
+				continue;
 			case SWAP_AGAIN:
-				goto keep_locked;
+				list_add(&page->lru, &keep_locked_list);
+				continue;
 			case SWAP_MLOCK:
-				goto cull_mlocked;
+				list_add(&page->lru, &cull_mlocked_list);
+				continue;
 			case SWAP_SUCCESS:
-				; /* try to free the page below */
+				list_add(&page->lru, &free_list);
+				continue;
 			}
 		}
 
+		list_add(&page->lru, &free_list);
+	}
+
+	while (!list_empty(&cull_mlocked_list)) {
+		page = lru_to_page(&cull_mlocked_list);
+		list_del(&page->lru);
+		shrink_page_list_cull_mlocked(page);
+	}
+	while (!list_empty(&activate_locked_list)) {
+		page = lru_to_page(&activate_locked_list);
+		list_del(&page->lru);
+		shrink_page_list_activate_locked(page, &pgactivate,
+				&ret_pages, ACTIVATE_LOCKED);
+	}
+	while (!list_empty(&keep_locked_list)) {
+		page = lru_to_page(&keep_locked_list);
+		list_del(&page->lru);
+		shrink_page_list_activate_locked(page, &pgactivate,
+				&ret_pages, KEEP_LOCKED);
+	}
+
+	references = PAGEREF_RECLAIM_CLEAN;
+	while (!list_empty(&free_list)) {
+		page = lru_to_page(&free_list);
+		list_del(&page->lru);
+
+		mapping = page_mapping(page);
+
+		/* try to free the page below */
 		if (PageDirty(page)) {
 			nr_dirty++;
 
@@ -870,37 +955,58 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 				inc_zone_page_state(page, NR_VMSCAN_IMMEDIATE);
 				SetPageReclaim(page);
 
-				goto keep_locked;
+				shrink_page_list_activate_locked(page,
+						&pgactivate, &ret_pages,
+						KEEP_LOCKED);
+				continue;
 			}
 
-			if (references == PAGEREF_RECLAIM_CLEAN)
-				goto keep_locked;
-			if (!may_enter_fs)
-				goto keep_locked;
-			if (!sc->may_writepage)
-				goto keep_locked;
+			if (!force_reclaim)
+				references = page_check_references(page, sc);
+
+			may_enter_fs = (sc->gfp_mask & __GFP_FS) ||
+			(PageSwapCache(page) && (sc->gfp_mask & __GFP_IO));
+			if (PageAnon(page) && !PageSwapCache(page))
+				may_enter_fs = 1;
+
+			if (references == PAGEREF_RECLAIM_CLEAN ||
+					!may_enter_fs || !sc->may_writepage) {
+				shrink_page_list_activate_locked(page,
+						&pgactivate, &ret_pages,
+						KEEP_LOCKED);
+				continue;
+			}
 
 			/* Page is dirty, try to write it out here */
 			switch (pageout(page, mapping, sc)) {
 			case PAGE_KEEP:
 				nr_congested++;
-				goto keep_locked;
+				shrink_page_list_activate_locked(page,
+						&pgactivate, &ret_pages,
+						KEEP_LOCKED);
+				continue;
 			case PAGE_ACTIVATE:
-				goto activate_locked;
+				shrink_page_list_activate_locked(page,
+						&pgactivate, &ret_pages,
+						ACTIVATE_LOCKED);
+				continue;
 			case PAGE_SUCCESS:
-				if (PageWriteback(page))
-					goto keep;
-				if (PageDirty(page))
-					goto keep;
-
 				/*
 				 * A synchronous write - probably a ramdisk.  Go
 				 * ahead and try to reclaim the page.
 				 */
-				if (!trylock_page(page))
-					goto keep;
-				if (PageDirty(page) || PageWriteback(page))
-					goto keep_locked;
+				if (PageWriteback(page) || PageDirty(page) ||
+						!trylock_page(page)) {
+					shrink_page_list_activate_locked(page,
+				&pgactivate, &ret_pages, KEEP);
+					continue;
+				}
+
+				if (PageDirty(page) || PageWriteback(page)) {
+					shrink_page_list_activate_locked(page,
+				&pgactivate, &ret_pages, KEEP_LOCKED);
+					continue;
+				}
 				mapping = page_mapping(page);
 			case PAGE_CLEAN:
 				; /* try to free the page below */
@@ -929,8 +1035,12 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 * Otherwise, leave the page on the LRU so it is swappable.
 		 */
 		if (page_has_private(page)) {
-			if (!try_to_release_page(page, sc->gfp_mask))
-				goto activate_locked;
+			if (!try_to_release_page(page, sc->gfp_mask)) {
+				shrink_page_list_activate_locked(page,
+						&pgactivate, &ret_pages,
+						ACTIVATE_LOCKED);
+				continue;
+			}
 			if (!mapping && page_count(page) == 1) {
 				unlock_page(page);
 				if (put_page_testzero(page))
@@ -949,8 +1059,11 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 			}
 		}
 
-		if (!mapping || !__remove_mapping(mapping, page))
-			goto keep_locked;
+		if (!mapping || !__remove_mapping(mapping, page)) {
+			shrink_page_list_activate_locked(page,
+				&pgactivate, &ret_pages, KEEP_LOCKED);
+			continue;
+		}
 
 		/*
 		 * At this point, we have no other references and there is
@@ -968,27 +1081,6 @@ free_it:
 		 * appear not as the counts should be low
 		 */
 		list_add(&page->lru, &free_pages);
-		continue;
-
-cull_mlocked:
-		if (PageSwapCache(page))
-			try_to_free_swap(page);
-		unlock_page(page);
-		putback_lru_page(page);
-		continue;
-
-activate_locked:
-		/* Not a candidate for swapping, so reclaim swap space. */
-		if (PageSwapCache(page) && vm_swap_full())
-			try_to_free_swap(page);
-		VM_BUG_ON(PageActive(page));
-		SetPageActive(page);
-		pgactivate++;
-keep_locked:
-		unlock_page(page);
-keep:
-		list_add(&page->lru, &ret_pages);
-		VM_BUG_ON(PageLRU(page) || PageUnevictable(page));
 	}
 
 	/*
