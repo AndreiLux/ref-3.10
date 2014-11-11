@@ -9,6 +9,7 @@
 #include <linux/mm.h>
 #include <linux/rwsem.h>
 #include <linux/memcontrol.h>
+#include <asm/tlb.h>
 
 /*
  * The anon_vma heads a list of private "related" vmas, to scan if
@@ -185,12 +186,23 @@ int page_referenced(struct page *, int is_locked,
 			struct mem_cgroup *memcg, unsigned long *vm_flags);
 int page_referenced_one(struct page *, struct vm_area_struct *,
 	unsigned long address, unsigned int *mapcount, unsigned long *vm_flags);
+int page_referenced_batch(struct page *, int is_locked,
+			struct mem_cgroup *memcg, unsigned long *vm_flags,
+			struct mmu_batch *mmu_batch);
+int page_referenced_one_batch(struct page *, struct vm_area_struct *,
+	unsigned long address, unsigned int *mapcount, unsigned long *vm_flags,
+	struct mmu_batch *mmu_batch);
 
 #define TTU_ACTION(x) ((x) & TTU_ACTION_MASK)
 
 int try_to_unmap(struct page *, enum ttu_flags flags);
 int try_to_unmap_one(struct page *, struct vm_area_struct *,
 			unsigned long address, enum ttu_flags flags);
+int try_to_unmap_batch(struct page *, enum ttu_flags flags,
+		struct mmu_batch *mmu_batch);
+int try_to_unmap_one_batch(struct page *, struct vm_area_struct *,
+			unsigned long address, enum ttu_flags flags,
+			struct mmu_batch *mmu_batch);
 
 /*
  * Called from mm/filemap_xip.c to unmap empty zero page

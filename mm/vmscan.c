@@ -660,13 +660,14 @@ enum page_references {
 };
 
 static enum page_references page_check_references(struct page *page,
-						  struct scan_control *sc)
+					struct scan_control *sc,
+					struct mmu_batch *mmu_batch)
 {
 	int referenced_ptes, referenced_page;
 	unsigned long vm_flags;
 
-	referenced_ptes = page_referenced(page, 1, sc->target_mem_cgroup,
-					  &vm_flags);
+	referenced_ptes = page_referenced_batch(page, 1, sc->target_mem_cgroup,
+					  &vm_flags, mmu_batch);
 	referenced_page = TestClearPageReferenced(page);
 
 	/*
@@ -772,10 +773,13 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 	unsigned long nr_congested = 0;
 	unsigned long nr_reclaimed = 0;
 	unsigned long nr_writeback = 0;
+	struct mmu_batch mmu_batch;
 	struct address_space *mapping;
 	struct page *page;
 	int may_enter_fs;
 	enum page_references references = PAGEREF_RECLAIM_CLEAN;
+
+	mmu_batch_init(&mmu_batch);
 
 	cond_resched();
 
@@ -854,7 +858,8 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		}
 
 		if (!force_reclaim)
-			references = page_check_references(page, sc);
+			references = page_check_references(page, sc,
+					&mmu_batch);
 
 		switch (references) {
 		case PAGEREF_ACTIVATE:
@@ -890,7 +895,8 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 		 * processes. Try to unmap it here.
 		 */
 		if (page_mapped(page) && mapping) {
-			switch (try_to_unmap(page, ttu_flags)) {
+			switch (try_to_unmap_batch(page, ttu_flags,
+						&mmu_batch)) {
 			case SWAP_FAIL:
 				list_add(&page->lru, &activate_locked_list);
 				continue;
@@ -908,6 +914,10 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 
 		list_add(&page->lru, &free_list);
 	}
+
+	/* flush TLB for all batched pages together for efficiency */
+	mmu_batch_flush(&mmu_batch);
+	mmu_batch_destroy(&mmu_batch);
 
 	while (!list_empty(&cull_mlocked_list)) {
 		page = lru_to_page(&cull_mlocked_list);
@@ -962,7 +972,8 @@ static unsigned long shrink_page_list(struct list_head *page_list,
 			}
 
 			if (!force_reclaim)
-				references = page_check_references(page, sc);
+				references = page_check_references(page,
+						sc, NULL);
 
 			may_enter_fs = (sc->gfp_mask & __GFP_FS) ||
 			(PageSwapCache(page) && (sc->gfp_mask & __GFP_IO));

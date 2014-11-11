@@ -1892,7 +1892,7 @@ struct page *ksm_might_need_to_copy(struct page *page,
 }
 
 int page_referenced_ksm(struct page *page, struct mem_cgroup *memcg,
-			unsigned long *vm_flags)
+			unsigned long *vm_flags, struct mmu_batch *mmu_batch)
 {
 	struct stable_node *stable_node;
 	struct rmap_item *rmap_item;
@@ -1931,8 +1931,9 @@ again:
 			if (memcg && !mm_match_cgroup(vma->vm_mm, memcg))
 				continue;
 
-			referenced += page_referenced_one(page, vma,
-				rmap_item->address, &mapcount, vm_flags);
+			referenced += page_referenced_one_batch(page, vma,
+				rmap_item->address, &mapcount, vm_flags,
+				mmu_batch);
 			if (!search_new_forks || !mapcount)
 				break;
 		}
@@ -1946,7 +1947,8 @@ out:
 	return referenced;
 }
 
-int try_to_unmap_ksm(struct page *page, enum ttu_flags flags)
+int try_to_unmap_ksm(struct page *page, enum ttu_flags flags,
+		struct mmu_batch *mmu_batch)
 {
 	struct stable_node *stable_node;
 	struct rmap_item *rmap_item;
@@ -1981,8 +1983,8 @@ again:
 			if ((rmap_item->mm == vma->vm_mm) == search_new_forks)
 				continue;
 
-			ret = try_to_unmap_one(page, vma,
-					rmap_item->address, flags);
+			ret = try_to_unmap_one_batch(page, vma,
+					rmap_item->address, flags, mmu_batch);
 			if (ret != SWAP_AGAIN || !page_mapped(page)) {
 				anon_vma_unlock_read(anon_vma);
 				goto out;
