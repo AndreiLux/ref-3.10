@@ -1605,6 +1605,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	isolate_mode_t isolate_mode = 0;
 	int file = is_file_lru(lru);
 	struct zone *zone = lruvec_zone(lruvec);
+	struct mmu_batch mmu_batch;
 
 	lru_add_drain();
 
@@ -1627,6 +1628,7 @@ static void shrink_active_list(unsigned long nr_to_scan,
 	__mod_zone_page_state(zone, NR_ISOLATED_ANON + file, nr_taken);
 	spin_unlock_irq(&zone->lru_lock);
 
+	mmu_batch_init(&mmu_batch);
 	while (!list_empty(&l_hold)) {
 		cond_resched();
 		page = lru_to_page(&l_hold);
@@ -1645,8 +1647,8 @@ static void shrink_active_list(unsigned long nr_to_scan,
 			}
 		}
 
-		if (page_referenced(page, 0, sc->target_mem_cgroup,
-				    &vm_flags)) {
+		if (page_referenced_batch(page, 0, sc->target_mem_cgroup,
+				    &vm_flags, &mmu_batch)) {
 			nr_rotated += hpage_nr_pages(page);
 			/*
 			 * Identify referenced, file-backed active pages and
@@ -1666,6 +1668,8 @@ static void shrink_active_list(unsigned long nr_to_scan,
 		ClearPageActive(page);	/* we are de-activating */
 		list_add(&page->lru, &l_inactive);
 	}
+	mmu_batch_flush(&mmu_batch);
+	mmu_batch_destroy(&mmu_batch);
 
 	/*
 	 * Move pages back to the lru list.
