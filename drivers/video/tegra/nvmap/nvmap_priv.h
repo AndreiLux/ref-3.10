@@ -226,7 +226,9 @@ struct nvmap_device {
 	struct nvmap_page_pool pool;
 #endif
 	struct list_head clients;
+	struct rb_root pids;
 	struct mutex	clients_lock;
+	struct dentry *handles_by_pid;
 };
 
 enum nvmap_stats_t {

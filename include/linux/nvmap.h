@@ -239,6 +239,18 @@ struct nvmap_cache_op_list {
 	__s32 op;		/* wb/wb_inv/inv */
 };
 
+struct nvmap_debugfs_handles_header {
+	__u8 version;
+};
+
+struct nvmap_debugfs_handles_entry {
+	__u64 base;
+	__u64 size;
+	__u32 flags;
+	__u32 share_count;
+	__u64 mapped_size;
+};
+
 #define NVMAP_IOC_MAGIC 'N'
 
 /* Creates a new memory handle. On input, the argument is the size of the new
