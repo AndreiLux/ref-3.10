@@ -59,6 +59,9 @@
 #include "board-common.h"
 #include "board-flounder.h"
 #include "tegra-board-id.h"
+#ifdef CONFIG_THERMAL_GOV_ADAPTIVE_SKIN
+#include <linux/adaptive_skin.h>
+#endif
 
 int cy8c_sar1_reset(void)
 {
@@ -705,6 +708,23 @@ static struct therm_est_subdevice skin_devs_lte[] = {
 	},
 };
 
+#ifdef CONFIG_THERMAL_GOV_ADAPTIVE_SKIN
+static struct adaptive_skin_thermal_gov_params skin_astg_params = {
+	.tj_tran_threshold = 2000,
+	.tj_std_threshold = 3000,
+	.tj_std_fup_threshold = 5000,
+
+	.tskin_tran_threshold = 500,
+	.tskin_std_threshold = 1000,
+
+	.target_state_tdp = 12,
+};
+
+static struct thermal_zone_params skin_astg_tzp = {
+	.governor_name = "adaptive_skin",
+	.governor_params = &skin_astg_params,
+};
+#endif
 
 static struct pid_thermal_gov_params skin_pid_params = {
 	.max_err_temp = 4000,
@@ -780,6 +800,10 @@ static int __init flounder_skin_init(void)
 			skin_data.ndevs = ARRAY_SIZE(skin_devs_wifi);
 			skin_data.devs = skin_devs_wifi;
 			skin_data.toffset = -4746;
+#ifdef CONFIG_THERMAL_GOV_ADAPTIVE_SKIN
+			skin_data.tzp = &skin_astg_tzp;
+			skin_data.passive_delay = 6000;
+#endif
 
 			balanced_throttle_register(&skin_throttle,
 							"skin-balanced");
@@ -795,6 +819,10 @@ static int __init flounder_skin_init(void)
 			skin_data.ndevs = ARRAY_SIZE(skin_devs_lte);
 			skin_data.devs = skin_devs_lte;
 			skin_data.toffset = -1625;
+#ifdef CONFIG_THERMAL_GOV_ADAPTIVE_SKIN
+			skin_data.tzp = &skin_astg_tzp;
+			skin_data.passive_delay = 6000;
+#endif
 
 			balanced_throttle_register(&skin_throttle,
 							"skin-balanced");
