@@ -397,9 +397,6 @@ int nvhost_flcn_init(struct platform_device *dev)
 	err = nvhost_flcn_boot(dev);
 	nvhost_module_idle(dev);
 
-	if (pdata->scaling_init)
-		nvhost_scale_hw_init(dev);
-
 	return 0;
 
  clean_up:
@@ -410,16 +407,12 @@ int nvhost_flcn_init(struct platform_device *dev)
 void nvhost_flcn_deinit(struct platform_device *dev)
 {
 	struct flcn *v = get_flcn(dev);
-	struct nvhost_device_data *pdata = nvhost_get_devdata(dev);
 
 	DEFINE_DMA_ATTRS(attrs);
 	dma_set_attr(DMA_ATTR_READ_ONLY, &attrs);
 
 	if (!v)
 		return;
-
-	if (pdata->scaling_init)
-		nvhost_scale_hw_deinit(dev);
 
 	if (v->mapped) {
 		dma_free_attrs(&dev->dev,
@@ -575,6 +568,9 @@ struct nvhost_hwctx_handler *nvhost_vic03_alloc_hwctx_handler(u32 syncpt,
 
 int nvhost_vic_finalize_poweron(struct platform_device *pdev)
 {
+	struct nvhost_device_data *pdata = nvhost_get_devdata(pdev);
+	int err;
+
 	nvhost_dbg_fn("");
 
 	host1x_writel(pdev, flcn_slcg_override_high_a_r(), 0);
@@ -582,7 +578,19 @@ int nvhost_vic_finalize_poweron(struct platform_device *pdev)
 		     flcn_cg_idle_cg_dly_cnt_f(4) |
 		     flcn_cg_idle_cg_en_f(1) |
 		     flcn_cg_wakeup_dly_cnt_f(4));
-	return nvhost_flcn_boot(pdev);
+
+	err = nvhost_flcn_boot(pdev);
+	if (err)
+		return err;
+
+	if (pdata->scaling_init) {
+		err = nvhost_scale_hw_init(pdev);
+		if (err)
+			dev_warn(&pdev->dev, "failed to initialize scaling (%d)",
+				 err);
+	}
+
+	return 0;
 }
 
 int nvhost_vic_prepare_poweroff(struct platform_device *dev)
@@ -592,6 +600,9 @@ int nvhost_vic_prepare_poweroff(struct platform_device *dev)
 	struct nvhost_channel *ch = pdata->channels[0];
 
 	nvhost_dbg_fn("");
+
+	if (pdata->scaling_deinit)
+		nvhost_scale_hw_deinit(dev);
 
 	if (ch && ch->dev) {
 		mutex_lock(&ch->submitlock);
