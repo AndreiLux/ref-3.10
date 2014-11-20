@@ -178,6 +178,7 @@ struct cwmcu_data {
 	bool w_flush_fifo;
 	bool w_clear_fifo;
 	bool w_clear_fifo_running;
+	bool w_report_meta;
 
 	bool suspended;
 	bool probe_success;
@@ -2737,17 +2738,16 @@ static bool report_iio(struct cwmcu_data *mcu_data, int *i, u8 *data,
 				: CW_STEP_DETECTOR
 			      , data_event
 			      , timestamp_event + *handle_time_base);
-		if (DEBUG_FLAG_GSENSOR == 1) {
-			I(
-			  "Batch data: total count = %u, current count = %d, "
-			  "STEP_DETECTOR%s, timediff = %d, time_base = %llu,"
-			  " r_time = %llu\n"
-			  , *event_count, *i, (is_wake) ? "_W" : ""
-			  , timestamp_event
-			  , *handle_time_base
-			  , *handle_time_base + timestamp_event
-			  );
-		}
+
+		D(
+		  "Batch data: total count = %u, current count = %d, "
+		  "STEP_DETECTOR%s, timediff = %d, time_base = %llu,"
+		  " r_time = %llu\n"
+		  , *event_count, *i, (is_wake) ? "_W" : ""
+		  , timestamp_event
+		  , *handle_time_base
+		  , *handle_time_base + timestamp_event
+		  );
 
 	} else if (data[0] == CW_STEP_COUNTER) {
 		__le16 *data16 = (__le16 *)(data + 1);
@@ -2762,18 +2762,17 @@ static bool report_iio(struct cwmcu_data *mcu_data, int *i, u8 *data,
 				    le32_to_cpu(*data32),
 				    timestamp_event + *handle_time_base,
 				    is_wake);
-		if (DEBUG_FLAG_GSENSOR == 1) {
-			I(
-			  "Batch data: total count = %u, current count = %d, "
-			  "STEP_COUNTER%s, step = %d, "
-			  "timediff = %d, time_base = %llu, r_time = %llu\n"
-			  , *event_count, *i, (is_wake) ? "_W" : ""
-			  , le32_to_cpu(*data32)
-			  , timestamp_event
-			  , *handle_time_base
-			  , *handle_time_base + timestamp_event
-			  );
-		}
+
+		D(
+		  "Batch data: total count = %u, current count = %d, "
+		  "STEP_COUNTER%s, step = %d, "
+		  "timediff = %d, time_base = %llu, r_time = %llu\n"
+		  , *event_count, *i, (is_wake) ? "_W" : ""
+		  , le32_to_cpu(*data32)
+		  , timestamp_event
+		  , *handle_time_base
+		  , *handle_time_base + timestamp_event
+		  );
 
 	} else if ((data[0] == CW_MAGNETIC_UNCALIBRATED_BIAS) ||
 		   (data[0] == CW_GYROSCOPE_UNCALIBRATED_BIAS)) {
@@ -2799,17 +2798,15 @@ static bool report_iio(struct cwmcu_data *mcu_data, int *i, u8 *data,
 			data_event[1] = le16_to_cpup(data16 + 2);
 			data_event[2] = le16_to_cpup(data16 + 3);
 
-			if (DEBUG_FLAG_GSENSOR == 1) {
-				I(
-				  "Batch data: total count = %u, current "
-				  "count = %d, event_id = %d, data(x, y, z) = "
-				  "(%d, %d, %d), bias(x, y,  z) = "
-				  "(%d, %d, %d)\n"
-				  , *event_count, *i, data_buff
-				  , data_event[0], data_event[1], data_event[2]
-				  , bias_event[0], bias_event[1]
-				  , bias_event[2]);
-			}
+			D(
+			  "Batch data: total count = %u, current "
+			  "count = %d, event_id = %d, data(x, y, z) = "
+			  "(%d, %d, %d), bias(x, y,  z) = "
+			  "(%d, %d, %d)\n"
+			  , *event_count, *i, data_buff
+			  , data_event[0], data_event[1], data_event[2]
+			  , bias_event[0], bias_event[1]
+			  , bias_event[2]);
 
 			handle_time_base = (is_wake) ?
 						&mcu_data->wake_fifo_time_base :
@@ -2836,18 +2833,16 @@ static bool report_iio(struct cwmcu_data *mcu_data, int *i, u8 *data,
 					&mcu_data->wake_fifo_time_base :
 					&mcu_data->time_base;
 
-		if (DEBUG_FLAG_GSENSOR == 1) {
-			I(
-			  "Batch data: total count = %u, current count = %d, "
-			  "event_id = %d, data(x, y, z) = (%d, %d, %d), "
-			  "timediff = %d, time_base = %llu, r_time = %llu\n"
-			  , *event_count, *i, data[0]
-			  , data_event[0], data_event[1], data_event[2]
-			  , timestamp_event
-			  , *handle_time_base
-			  , *handle_time_base + timestamp_event
-			  );
-		}
+		D(
+		  "Batch data: total count = %u, current count = %d, "
+		  "event_id = %d, data(x, y, z) = (%d, %d, %d), "
+		  "timediff = %d, time_base = %llu, r_time = %llu\n"
+		  , *event_count, *i, data[0]
+		  , data_event[0], data_event[1], data_event[2]
+		  , timestamp_event
+		  , *handle_time_base
+		  , *handle_time_base + timestamp_event
+		  );
 
 		if ((data[0] == CW_MAGNETIC) || (data[0] == CW_ORIENTATION)) {
 			int rc;
@@ -2908,10 +2903,8 @@ static bool cwmcu_batch_fifo_read(struct cwmcu_data *mcu_data, int queue_id)
 		*event_count = 0;
 	}
 
-	if (DEBUG_FLAG_GSENSOR == 1) {
-		I("%s: event_count = %u, queue_id = %d\n", __func__,
-		  *event_count, queue_id);
-	}
+	D("%s: event_count = %u, queue_id = %d\n", __func__,
+	  *event_count, queue_id);
 
 	reg_addr = (queue_id) ? CWSTM32_WAKE_UP_BATCH_MODE_DATA_QUEUE :
 		 CWSTM32_BATCH_MODE_DATA_QUEUE;
@@ -3100,7 +3093,8 @@ static int cwmcu_resume(struct device *dev)
 	    || mcu_data->w_re_init
 	    || mcu_data->w_facedown_set
 	    || mcu_data->w_clear_fifo
-	    || mcu_data->w_flush_fifo)
+	    || mcu_data->w_flush_fifo
+	    || mcu_data->w_report_meta)
 		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 	if (mcu_data->enabled_list & IIO_SENSORS_MASK) {
@@ -3275,10 +3269,8 @@ static irqreturn_t cwmcu_irq_handler(int irq, void *handle)
 				cw_send_event(mcu_data, CW_SIGNIFICANT_MOTION,
 					      data_buff, timestamp_event);
 
-				if (DEBUG_FLAG_GSENSOR == 1) {
-					I("%s: Significant timestamp = %llu\n"
+				D("%s: Significant timestamp = %llu\n"
 					  , __func__, timestamp_event);
-				}
 			} else {
 				E(
 				  "Read CWSTM32_READ_SIGNIFICANT_MOTION fails,"
@@ -3448,6 +3440,7 @@ exception_end:
 
 		if (reset_done) {
 			mcu_data->w_re_init = true;
+			mcu_data->w_report_meta = true;
 			queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 			E("%s: reset after exception done\n", __func__);
 		}
@@ -3478,6 +3471,7 @@ exception_end:
 		}
 
 		mcu_data->w_re_init = true;
+		mcu_data->w_report_meta = true;
 		queue_work(mcu_data->mcu_wq, &mcu_data->one_shot_work);
 
 		clear_intr = CW_MCU_INT_BIT_ERROR_WATCHDOG_RESET;
@@ -4115,6 +4109,26 @@ static void cwmcu_one_shot(struct work_struct *work)
 	} else
 		mcu_data->w_clear_fifo_running = false;
 	mutex_unlock(&mcu_data->mutex_lock);
+
+	if (mcu_data->w_report_meta == true) {
+		int j;
+		u16 data_event[REPORT_EVENT_COMMON_LEN];
+
+		mcu_data->w_report_meta = false;
+
+		for (j = 0;
+		     (j < CW_SENSORS_ID_TOTAL) && mcu_data->pending_flush;
+		     j++) {
+			if (mcu_data->enabled_list & (1LL << j)) {
+				data_event[0] = j;
+				cw_send_event(mcu_data, CW_META_DATA,
+					      data_event, 0);
+				I("%s: Reported META = %d from driver\n",
+				  __func__, j);
+			}
+			mcu_data->pending_flush &= ~(1LL << j);
+		}
+	}
 }
 
 
@@ -4167,7 +4181,7 @@ static int CWMCU_i2c_probe(struct i2c_client *client,
 	int error;
 	int i;
 
-	I("%s++: Fix Oops for IIO when clear FIFO\n", __func__);
+	I("%s++: Report pending META when FW exceptions\n", __func__);
 
 	if (!i2c_check_functionality(client->adapter, I2C_FUNC_I2C)) {
 		dev_err(&client->dev, "i2c_check_functionality error\n");
