@@ -297,7 +297,7 @@ static int tegra_offload_compr_set_params(struct snd_compr_stream *stream,
 
 	offl_params.codec_type = params->codec.id;
 	offl_params.bits_per_sample = 16;
-	offl_params.rate = snd_pcm_rate_bit_to_rate(params->codec.sample_rate);
+	offl_params.rate = params->codec.sample_rate;
 	offl_params.channels = params->codec.ch_in;
 	offl_params.fragment_size = params->buffer.fragment_size;
 	offl_params.fragments = params->buffer.fragments;
