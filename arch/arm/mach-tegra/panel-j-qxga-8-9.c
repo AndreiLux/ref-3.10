@@ -110,7 +110,19 @@ static struct tegra_dc_sd_settings dsi_j_qxga_8_9_sd_settings = {
         .use_vpulse2 = true,
 };
 
+static u8 ce[] = {0xCE, 0x5D, 0x40, 0x48, 0x56, 0x67, 0x78,
+				  0x88, 0x98, 0xA7, 0xB5, 0xC3, 0xD1, 0xDE,
+				  0xE9, 0xF2, 0xFA, 0xFF, 0x05, 0x00, 0x04,
+				  0x04, 0x00, 0x20};
+
 static struct tegra_dsi_cmd dsi_j_qxga_8_9_init_cmd[] = {
+	DSI_CMD_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB0, 0x04),
+
+	DSI_CMD_LONG(DSI_GENERIC_LONG_WRITE, ce),
+
+	DSI_CMD_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xD6, 0x01),
+	DSI_CMD_SHORT(DSI_GENERIC_SHORT_WRITE_2_PARAMS, 0xB0, 0x03),
+
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_0_PARAM, DSI_DCS_EXIT_SLEEP_MODE, 0x0, CMD_NOT_CLUBBED),
 	DSI_DLY_MS(120),
 	DSI_CMD_VBLANK_SHORT(DSI_DCS_WRITE_1_PARAM, 0x53, 0x24, CMD_CLUBBED),
