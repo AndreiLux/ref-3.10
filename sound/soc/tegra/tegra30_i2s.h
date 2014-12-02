@@ -300,6 +300,8 @@ struct tegra30_i2s {
 	int is_call_mode_rec;
 	struct dsp_config_t dsp_config;
 	int i2s_bit_clk;
+	spinlock_t pb_lock;
+	int tx_enable;
 };
 
 int tegra30_make_voice_call_connections(struct codec_config *codec_info,
