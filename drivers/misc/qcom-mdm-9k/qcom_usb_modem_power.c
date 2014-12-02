@@ -1476,7 +1476,7 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 		get_user(status, (unsigned long __user *)arg);
 		pr_info("%s: Trigger modem fatal!!(Ignore ramdump=%d)\n", __func__, status);
 
-		if(status)
+		if(status && !(modem->mdm_status & MDM_STATUS_RESET))
 		{
 			modem->ramdump_save = get_enable_ramdumps();
 			set_enable_ramdumps(0);
@@ -1484,8 +1484,13 @@ long mdm_modem_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 #else
 		pr_info("%s: Trigger modem fatal!!\n", __func__);
 #endif
-		if(modem->ops && modem->ops->fatal_trigger_cb)
-			modem->ops->fatal_trigger_cb(modem);
+		if(!(modem->mdm_status & MDM_STATUS_RESET))
+		{
+			if(modem->ops && modem->ops->fatal_trigger_cb)
+				modem->ops->fatal_trigger_cb(modem);
+		}
+		else
+			pr_info("%s: modem reset is in progress!\n", __func__);
 		break;
 
 	case EFS_SYNC_DONE:
