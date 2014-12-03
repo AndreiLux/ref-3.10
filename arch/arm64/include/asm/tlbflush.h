@@ -103,19 +103,6 @@ static inline void flush_tlb_mm(struct mm_struct *mm)
 	preempt_enable();
 }
 
-static inline void flush_tlb_page_lazy(struct mm_struct *mm,
-				  unsigned long uaddr)
-{
-	unsigned long addr = uaddr >> 12 | ((unsigned long)ASID(mm) << 48);
-
-	BUG_ON(!preempt_count());
-
-	if (cpumask_equal(mm_cpumask(mm), cpumask_of(smp_processor_id())))
-		asm("tlbi	vae1, %0" : : "r" (addr));
-	else
-		asm("tlbi	vae1is, %0" : : "r" (addr));
-}
-
 static inline void flush_tlb_page(struct vm_area_struct *vma,
 				  unsigned long uaddr)
 {

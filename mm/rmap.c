@@ -668,15 +668,6 @@ int page_referenced_one(struct page *page, struct vm_area_struct *vma,
 			unsigned long address, unsigned int *mapcount,
 			unsigned long *vm_flags)
 {
-	return page_referenced_one_batch(page, vma, address, mapcount,
-			vm_flags, NULL);
-}
-
-int page_referenced_one_batch(struct page *page, struct vm_area_struct *vma,
-			unsigned long address, unsigned int *mapcount,
-			unsigned long *vm_flags,
-			struct mmu_batch *mmu_batch)
-{
 	struct mm_struct *mm = vma->vm_mm;
 	int referenced = 0;
 
@@ -725,12 +716,7 @@ int page_referenced_one_batch(struct page *page, struct vm_area_struct *vma,
 			goto out;
 		}
 
-		if (ptep_test_and_clear_young(vma, address, pte)) {
-
-			if (mmu_batch)
-				mmu_batch_add(mmu_batch, NULL, mm, address);
-			else
-				flush_tlb_page(vma, address);
+		if (ptep_clear_flush_young_notify(vma, address, pte)) {
 			/*
 			 * Don't treat a reference through a sequentially read
 			 * mapping as such.  If the page has been used in
@@ -754,8 +740,7 @@ out:
 
 static int page_referenced_anon(struct page *page,
 				struct mem_cgroup *memcg,
-				unsigned long *vm_flags,
-				struct mmu_batch *mmu_batch)
+				unsigned long *vm_flags)
 {
 	unsigned int mapcount;
 	struct anon_vma *anon_vma;
@@ -779,9 +764,8 @@ static int page_referenced_anon(struct page *page,
 		 */
 		if (memcg && !mm_match_cgroup(vma->vm_mm, memcg))
 			continue;
-		referenced += page_referenced_one_batch(page, vma, address,
-						  &mapcount, vm_flags,
-						  mmu_batch);
+		referenced += page_referenced_one(page, vma, address,
+						  &mapcount, vm_flags);
 		if (!mapcount)
 			break;
 	}
@@ -805,8 +789,7 @@ static int page_referenced_anon(struct page *page,
  */
 static int page_referenced_file(struct page *page,
 				struct mem_cgroup *memcg,
-				unsigned long *vm_flags,
-				struct mmu_batch *mmu_batch)
+				unsigned long *vm_flags)
 {
 	unsigned int mapcount;
 	struct address_space *mapping = page->mapping;
@@ -846,9 +829,8 @@ static int page_referenced_file(struct page *page,
 		 */
 		if (memcg && !mm_match_cgroup(vma->vm_mm, memcg))
 			continue;
-		referenced += page_referenced_one_batch(page, vma, address,
-						  &mapcount, vm_flags,
-						  mmu_batch);
+		referenced += page_referenced_one(page, vma, address,
+						  &mapcount, vm_flags);
 		if (!mapcount)
 			break;
 	}
@@ -872,15 +854,6 @@ int page_referenced(struct page *page,
 		    struct mem_cgroup *memcg,
 		    unsigned long *vm_flags)
 {
-	return page_referenced_batch(page, is_locked, memcg, vm_flags, NULL);
-}
-
-int page_referenced_batch(struct page *page,
-		    int is_locked,
-		    struct mem_cgroup *memcg,
-		    unsigned long *vm_flags,
-		    struct mmu_batch *mmu_batch)
-{
 	int referenced = 0;
 	int we_locked = 0;
 
@@ -895,16 +868,13 @@ int page_referenced_batch(struct page *page,
 		}
 		if (unlikely(PageKsm(page)))
 			referenced += page_referenced_ksm(page, memcg,
-								vm_flags,
-								mmu_batch);
+								vm_flags);
 		else if (PageAnon(page))
 			referenced += page_referenced_anon(page, memcg,
-								vm_flags,
-								mmu_batch);
+								vm_flags);
 		else if (page->mapping)
 			referenced += page_referenced_file(page, memcg,
-								vm_flags,
-								mmu_batch);
+								vm_flags);
 		if (we_locked)
 			unlock_page(page);
 
@@ -1218,19 +1188,11 @@ out:
 int try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		     unsigned long address, enum ttu_flags flags)
 {
-	return try_to_unmap_one_batch(page, vma, address, flags, NULL);
-}
-
-int try_to_unmap_one_batch(struct page *page, struct vm_area_struct *vma,
-		     unsigned long address, enum ttu_flags flags,
-		     struct mmu_batch *mmu_batch)
-{
 	struct mm_struct *mm = vma->vm_mm;
 	pte_t *pte;
 	pte_t pteval;
 	spinlock_t *ptl;
 	int ret = SWAP_AGAIN;
-	bool lazy_flush;
 
 	pte = page_check_address(page, mm, address, &ptl, 0);
 	if (!pte)
@@ -1256,15 +1218,8 @@ int try_to_unmap_one_batch(struct page *page, struct vm_area_struct *vma,
   	}
 
 	/* Nuke the page table entry. */
-	if (mmu_batch) {
-		mmu_batch_add(mmu_batch, page, mm, address);
-		lazy_flush = true;
-		pteval = ptep_get_and_clear(mm, address, pte);
-	} else {
-		lazy_flush = false;
-		flush_cache_page(vma, address, page_to_pfn(page));
-		pteval = ptep_clear_flush(vma, address, pte);
-	}
+	flush_cache_page(vma, address, page_to_pfn(page));
+	pteval = ptep_clear_flush(vma, address, pte);
 
 	/* Move the dirty bit to the physical page now the pte is gone. */
 	if (pte_dirty(pteval))
@@ -1324,8 +1279,7 @@ int try_to_unmap_one_batch(struct page *page, struct vm_area_struct *vma,
 		dec_mm_counter(mm, MM_FILEPAGES);
 
 	page_remove_rmap(page);
-	if (!lazy_flush)
-		page_cache_release(page);
+	page_cache_release(page);
 
 out_unmap:
 	pte_unmap_unlock(pte, ptl);
@@ -1509,8 +1463,7 @@ bool is_vma_temporary_stack(struct vm_area_struct *vma)
  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
  * 'LOCKED.
  */
-static int try_to_unmap_anon(struct page *page, enum ttu_flags flags,
-	struct mmu_batch *mmu_batch)
+static int try_to_unmap_anon(struct page *page, enum ttu_flags flags)
 {
 	struct anon_vma *anon_vma;
 	pgoff_t pgoff;
@@ -1539,8 +1492,7 @@ static int try_to_unmap_anon(struct page *page, enum ttu_flags flags,
 			continue;
 
 		address = vma_address(page, vma);
-		ret = try_to_unmap_one_batch(page, vma, address, flags,
-				mmu_batch);
+		ret = try_to_unmap_one(page, vma, address, flags);
 		if (ret != SWAP_AGAIN || !page_mapped(page))
 			break;
 	}
@@ -1564,8 +1516,7 @@ static int try_to_unmap_anon(struct page *page, enum ttu_flags flags,
  * vm_flags for that VMA.  That should be OK, because that vma shouldn't be
  * 'LOCKED.
  */
-static int try_to_unmap_file(struct page *page, enum ttu_flags flags,
-	struct mmu_batch *mmu_batch)
+static int try_to_unmap_file(struct page *page, enum ttu_flags flags)
 {
 	struct address_space *mapping = page->mapping;
 	pgoff_t pgoff = page->index << (PAGE_CACHE_SHIFT - PAGE_SHIFT);
@@ -1582,8 +1533,7 @@ static int try_to_unmap_file(struct page *page, enum ttu_flags flags,
 	mutex_lock(&mapping->i_mmap_mutex);
 	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
 		unsigned long address = vma_address(page, vma);
-		ret = try_to_unmap_one_batch(page, vma, address, flags,
-				mmu_batch);
+		ret = try_to_unmap_one(page, vma, address, flags);
 		if (ret != SWAP_AGAIN || !page_mapped(page))
 			goto out;
 	}
@@ -1678,23 +1628,17 @@ out:
  */
 int try_to_unmap(struct page *page, enum ttu_flags flags)
 {
-	return try_to_unmap_batch(page, flags, NULL);
-}
-
-int try_to_unmap_batch(struct page *page, enum ttu_flags flags,
-	struct mmu_batch *mmu_batch)
-{
 	int ret;
 
 	BUG_ON(!PageLocked(page));
 	VM_BUG_ON(!PageHuge(page) && PageTransHuge(page));
 
 	if (unlikely(PageKsm(page)))
-		ret = try_to_unmap_ksm(page, flags, mmu_batch);
+		ret = try_to_unmap_ksm(page, flags);
 	else if (PageAnon(page))
-		ret = try_to_unmap_anon(page, flags, mmu_batch);
+		ret = try_to_unmap_anon(page, flags);
 	else
-		ret = try_to_unmap_file(page, flags, mmu_batch);
+		ret = try_to_unmap_file(page, flags);
 	if (ret != SWAP_MLOCK && !page_mapped(page))
 		ret = SWAP_SUCCESS;
 	return ret;
@@ -1720,11 +1664,11 @@ int try_to_munlock(struct page *page)
 	VM_BUG_ON(!PageLocked(page) || PageLRU(page));
 
 	if (unlikely(PageKsm(page)))
-		return try_to_unmap_ksm(page, TTU_MUNLOCK, NULL);
+		return try_to_unmap_ksm(page, TTU_MUNLOCK);
 	else if (PageAnon(page))
-		return try_to_unmap_anon(page, TTU_MUNLOCK, NULL);
+		return try_to_unmap_anon(page, TTU_MUNLOCK);
 	else
-		return try_to_unmap_file(page, TTU_MUNLOCK, NULL);
+		return try_to_unmap_file(page, TTU_MUNLOCK);
 }
 
 void __put_anon_vma(struct anon_vma *anon_vma)
