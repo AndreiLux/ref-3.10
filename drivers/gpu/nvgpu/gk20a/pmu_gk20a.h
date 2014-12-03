@@ -988,11 +988,14 @@ struct pmu_pg_stats {
 
 /* Choices for pmu_state */
 #define PMU_STATE_OFF			0 /* PMU is off */
-#define PMU_STATE_STARTING		1 /* PMU is booting */
-#define PMU_STATE_ELPG_BOOTED		2 /* ELPG is initialized */
-#define PMU_STATE_LOADING_PG_BUF	3 /* Loading PG buf */
-#define PMU_STATE_LOADING_ZBC		4 /* Loading ZBC buf */
-#define PMU_STATE_STARTED		5 /* Fully unitialized */
+#define PMU_STATE_STARTING		1 /* PMU is on, but not booted */
+#define PMU_STATE_INIT_RECEIVED		2 /* PMU init message received */
+#define PMU_STATE_ELPG_BOOTING		3 /* PMU is booting */
+#define PMU_STATE_ELPG_BOOTED		4 /* ELPG is initialized */
+#define PMU_STATE_LOADING_PG_BUF	5 /* Loading PG buf */
+#define PMU_STATE_LOADING_ZBC		6 /* Loading ZBC buf */
+#define PMU_STATE_STARTED		7 /* Fully unitialized */
+
 
 struct pmu_gk20a {
 
@@ -1062,7 +1065,7 @@ struct pmu_gk20a {
 };
 
 int gk20a_init_pmu_support(struct gk20a *g);
-int gk20a_init_pmu_bind_fecs(struct gk20a *g);
+int gk20a_init_pmu_load_fecs(struct gk20a *g);
 
 void gk20a_pmu_isr(struct gk20a *g);
 
