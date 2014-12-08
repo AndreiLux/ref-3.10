@@ -120,7 +120,13 @@
 
 #ifdef CONFIG_PSTORE_RAM
 #define RAMOOPS_MEM_SIZE SZ_2M
+#ifdef CONFIG_PSTORE_PMSG
+#define FTRACE_MEM_SIZE SZ_512K
+#define PMSG_MEM_SIZE SZ_512K
+#else
 #define FTRACE_MEM_SIZE SZ_1M
+#define PMSG_MEM_SIZE 0
+#endif
 #endif
 
 phys_addr_t tegra_bootloader_fb_start;
@@ -1900,8 +1906,10 @@ static void __init tegra_reserve_ramoops_memory(unsigned long reserve_size)
 {
 	ramoops_data.mem_size = reserve_size;
 	ramoops_data.mem_address = memblock_end_of_4G(reserve_size);
-	ramoops_data.console_size = reserve_size - FTRACE_MEM_SIZE;
+	ramoops_data.console_size = reserve_size - FTRACE_MEM_SIZE
+						 - PMSG_MEM_SIZE;
 	ramoops_data.ftrace_size = FTRACE_MEM_SIZE;
+	ramoops_data.pmsg_size = PMSG_MEM_SIZE;
 	ramoops_data.dump_oops = 1;
 	memblock_remove(ramoops_data.mem_address, ramoops_data.mem_size);
 }
