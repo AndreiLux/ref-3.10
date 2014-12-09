@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 NVIDIA Corporation. All rights reserved.
+ * Copyright (c) 2013-2015 NVIDIA Corporation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,5 +20,6 @@
 #define __OTE_PROTOCOL_H__
 
 int te_set_vpr_params(void *vpr_base, size_t vpr_size);
+void te_restore_keyslots(void);
 
 #endif
