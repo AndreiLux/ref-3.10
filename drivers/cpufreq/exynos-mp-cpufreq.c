@@ -47,9 +47,16 @@
 #ifdef CONFIG_SOC_EXYNOS5422_REV_0
 #define POWER_COEFF_15P		57 /* percore param */
 #define POWER_COEFF_7P		11 /* percore  param */
-#else
+#endif
+
+#ifdef CONFIG_SOC_EXYNOS5430
 #define POWER_COEFF_15P		48 /* percore param */
 #define POWER_COEFF_7P		9 /* percore  param */
+#endif
+
+#ifdef CONFIG_SOC_EXYNOS5433
+#define POWER_COEFF_15P		55 /* percore param */
+#define POWER_COEFF_7P		13 /* percore  param */
 #endif
 
 #define VOLT_RANGE_STEP		25000
