@@ -307,7 +307,7 @@ static void __init set_volt_table_CA7(void)
 				exynos5433_abb_table_CA7[i]);
 	}
 
-	max_support_idx_CA7 = L7;	/* 1.3GHz */
+	max_support_idx_CA7 = L2;	/* 1.8GHz */
 	min_support_idx_CA7 = L16;	/* 400MHz */
 	pr_info("CPUFREQ of CA7 max_freq : L%d %u khz\n", max_support_idx_CA7,
 		exynos5433_freq_table_CA7[max_support_idx_CA7].frequency);
