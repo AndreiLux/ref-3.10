@@ -292,6 +292,7 @@ static ssize_t set_volt_table(struct device *dev, struct device_attribute *attr,
 		}
 	}
 
+	ipa_update();
 	spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
 
 	return count;
