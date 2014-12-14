@@ -70,7 +70,11 @@ struct cpu_efficiency {
  * use the default SCHED_POWER_SCALE value for cpu_scale.
  */
 struct cpu_efficiency table_efficiency[] = {
+#ifdef CONFIG_SOC_EXYNOS5433
+	{"arm,cortex-a15", 3575},
+#else
 	{"arm,cortex-a15", 3891},
+#endif
 	{"arm,cortex-a7",  2048},
 	{NULL, },
 };
