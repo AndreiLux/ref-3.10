@@ -1444,6 +1444,7 @@ static ssize_t store_volt_table(struct kobject *kobj, struct attribute *attr,
 	mutex_lock(&cpufreq_lock);
 
 	if (tokens == 2 && target > 0) {
+		if ((rest = t[1] % 6250) != 0) t[1] += 6250-rest;
 		sanitize_min_max(t[1], 600000, (cluster == CA7 ? KFC_MAX_VOLT : EGL_MAX_VOLT));
 		exynos_info[cluster]->volt_table[target] = t[1];
 	} else {
@@ -1451,11 +1452,8 @@ static ssize_t store_volt_table(struct kobject *kobj, struct attribute *attr,
 			while (freq_table[i + invalid_offset].frequency == CPUFREQ_ENTRY_INVALID)
 				++invalid_offset;
 
-			if ((rest = t[i] % 6250) != 0)
-				t[i] += 6250 - rest;
-
+			if ((rest = t[i] % 6250) != 0) t[i] += 6250-rest;
 			sanitize_min_max(t[i], 600000, (cluster == CA7 ? KFC_MAX_VOLT : EGL_MAX_VOLT));
-
 			exynos_info[cluster]->volt_table[i + invalid_offset] = t[i];
 		}
 	}
