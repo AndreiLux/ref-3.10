@@ -393,19 +393,9 @@ static unsigned int hp_callback(struct arizona_control *ctl)
 	return ctl->value;
 }
 
-/*
-static unsigned int sp_volume(struct arizona_control *ctl)
-{
-	if (!ctls[EQ_SP].value)
-		return __delta(ctl);
-	else
-		return _delta(ctl, ctl->ctlval, ctl->value - 7);
-}
-*/
-
 static unsigned int sp_path(struct arizona_control *ctl)
 {
-	return ctl->ctlval == 128 ? (ctls[EQ_SP].value ? 82 : ctl->ctlval) : ctl->ctlval;
+	return ctl->ctlval == 128 ? (ctls[EQ_SP].value ? (!!&ctls[SP_DSP].value ? 128 : 83) : ctl->ctlval) : ctl->ctlval;
 }
 
 static unsigned int sp_power(struct arizona_control *ctl)
@@ -432,22 +422,12 @@ static unsigned int sp_callback(struct arizona_control *ctl)
 	}
 
 	if (eq_bridge != eq_bridge_live || dsp_bridge != dsp_bridge_live) {
-		if (dsp_bridge) {
-			if (eq_bridge) {
-				_ctl_set(&ctls[EQ3MIX1], 128);
-				_ctl_set(&ctls[EQ4MIX1], 82);
-				_ctl_set(&ctls[SPOUT2L1], 83);
-			} else {
-				_ctl_set(&ctls[SPOUT2L1], 128);
-			}
+		if (eq_bridge) {
+			_ctl_set(&ctls[EQ3MIX1], dsp_bridge ? 128 : 32);
+			_ctl_set(&ctls[EQ4MIX1], 82);
+			_ctl_set(&ctls[SPOUT2L1], 83);
 		} else {
-			if (eq_bridge) {
-				_ctl_set(&ctls[EQ3MIX1], 32);
-				_ctl_set(&ctls[EQ4MIX1], 82);
-				_ctl_set(&ctls[SPOUT2L1], 83);
-			} else {
-				_ctl_set(&ctls[SPOUT2L1], 32);
-			}
+			_ctl_set(&ctls[SPOUT2L1], dsp_bridge ? 128 : 32);
 		}
 
 		_ctl_set(&ctls[EQ3ENA], eq_bridge);
@@ -558,36 +538,16 @@ static unsigned int _eq_freq_show(unsigned int reg, char *buf)
 	return len;
 }
 
-static unsigned int eq_hp_freq_store(const char *buf, size_t count)
-{
-	return _eq_freq_store(ARIZONA_EQ1_3, true, buf, count);
-}
-
-static unsigned int eq_hp_freq_show(char *buf)
-{
-	return _eq_freq_show(ARIZONA_EQ1_3, buf);
-}
-
-static unsigned int eq_sp_freq_store(const char *buf, size_t count)
-{
-	return _eq_freq_store(ARIZONA_EQ3_3, true, buf, count);
-}
-
-static unsigned int eq_sp_freq_show(char *buf)
-{
-	return _eq_freq_show(ARIZONA_EQ3_3, buf);
-}
-
 static ssize_t show_arizona_property(struct device *dev,
 				    struct device_attribute *attr, char *buf)
 {
 	struct arizona_control *ctl = (struct arizona_control*)(attr);
 
 	if (ctl == &ctls[HPEQFREQS])
-		return eq_hp_freq_show(buf);
+		return _eq_freq_show(ARIZONA_EQ1_3, buf);
 
 	if (ctl == &ctls[SPEQFREQS])
-		return eq_sp_freq_show(buf);
+		return _eq_freq_show(ARIZONA_EQ3_3, buf);
 
 	if (ctl->value == NOT_INIT) {
 		ctl->ctlval = (_read(ctl->reg) & ctl->mask) >> ctl->shift;
@@ -613,10 +573,10 @@ static ssize_t store_arizona_property(struct device *dev,
 	int val;
 
 	if (ctl == &ctls[HPEQFREQS])
-		return eq_hp_freq_store(buf, count);
+		return _eq_freq_store(ARIZONA_EQ1_3, true, buf, count);
 
 	if (ctl == &ctls[SPEQFREQS])
-		return eq_sp_freq_store(buf, count);
+		return _eq_freq_store(ARIZONA_EQ3_3, true, buf, count);
 	
 	if (sscanf(buf, "%d", &val) != 1)
 		return -EINVAL;
