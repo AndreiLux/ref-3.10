@@ -138,17 +138,19 @@ static unsigned int hp_power(struct arizona_control *ctl);
 static unsigned int sp_callback(struct arizona_control *ctl);
 static unsigned int sp_power(struct arizona_control *ctl);
 static unsigned int sp_path(struct arizona_control *ctl);
-static unsigned int sp_volume(struct arizona_control *ctl);
 
 /* Sound controls */
 
 enum sound_control {
-	HPLVOL = 0, HPRVOL, DCKLVOL, DCKRVOL, EPVOL, SPKVOL,
-	EQ_HP, DRC_HP, EQ_SP, HP_MONO, SP_PRIV,
-	EQ1ENA, EQ2ENA, EQ3ENA, DRC1LENA, DRC1RENA,
-	POUT1L, POUT4L,
-	EQ1MIX1, EQ1MIX2, EQ2MIX1, EQ3MIX1, EQ3MIX2, DRC1L1, DRC1R1,
-	HPOUT1L1, HPOUT1L2, HPOUT1R1, HPOUT1R2, SPOUT1L1, SPOUT1L2,
+	HPLVOL = 0, HPRVOL, EPVOL, SPKVOL,
+	EQ_HP, DRC_HP, EQ_SP, HP_MONO, SP_PRIV, SP_DSP,
+	EQ1ENA, EQ2ENA, EQ3ENA, EQ4ENA, DRC1LENA, DRC1RENA,
+	POUT1L, POUT2L, POUT3L, POUT4L,
+	EQ1MIX1, EQ1MIX2, EQ2MIX1, EQ2MIX2, EQ3MIX1, EQ3MIX2, EQ4MIX1, EQ4MIX2,
+	DRC1L1, DRC1R1,
+	HPOUT1L1, HPOUT1L2, HPOUT1R1, HPOUT1R2,
+	SPOUT2L1, SPOUT2L2, SPOUT2R1, SPOUT2R2,
+	DSP4L,
 	HPEQFREQS, SPEQFREQS,
 	HPEQB1G, HPEQB2G, HPEQB3G, HPEQB4G, HPEQB5G,
 	SPEQB1G, SPEQB2G, SPEQB3G, SPEQB4G, SPEQB5G,
@@ -162,16 +164,11 @@ static struct arizona_control ctls[] = {
 	_ctl("headphone_right", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_1R, 
 		ARIZONA_OUT1R_VOL_MASK, ARIZONA_OUT1R_VOL_SHIFT, __hp_volume),
 
-	_ctl("dock_left", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_2L, 
-		ARIZONA_OUT2L_VOL_MASK, ARIZONA_OUT2L_VOL_SHIFT, __simple),
-	_ctl("dock_right", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_2R,
-		ARIZONA_OUT2R_VOL_MASK, ARIZONA_OUT2R_VOL_SHIFT, __simple),
-
 	_ctl("earpiece_volume", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_3L,
 		ARIZONA_OUT3L_VOL_MASK, ARIZONA_OUT3L_VOL_SHIFT, __delta),
 
-	_ctl("speaker_volume", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_4L,
-		ARIZONA_OUT4L_VOL_MASK, ARIZONA_OUT4L_VOL_SHIFT, sp_volume),
+	_ctl("speaker_volume", CTL_ACTIVE, ARIZONA_DAC_DIGITAL_VOLUME_2L,
+		ARIZONA_OUT2L_VOL_MASK, ARIZONA_OUT2L_VOL_SHIFT, __delta),
 
 	/* Master switches */
 
@@ -180,6 +177,7 @@ static struct arizona_control ctls[] = {
 	_ctl("switch_eq_speaker", CTL_VIRTUAL, 0, 0, 0, sp_callback),
 	_ctl("switch_hp_mono", CTL_VIRTUAL, 0, 0, 0, hp_callback),
 	_ctl("switch_sp_privacy", CTL_VIRTUAL, 0, 0, 0, sp_power),
+	_ctl("switch_sp_dsp", CTL_VIRTUAL, 0, 0, 0, sp_callback),
 
 	/* Internal switches */
 
@@ -189,6 +187,8 @@ static struct arizona_control ctls[] = {
 		ARIZONA_EQ2_ENA_SHIFT, __simple),
 	_ctl("eq3_switch", CTL_INERT, ARIZONA_EQ3_1, ARIZONA_EQ3_ENA_MASK,
 		ARIZONA_EQ3_ENA_SHIFT, __simple),
+	_ctl("eq4_switch", CTL_INERT, ARIZONA_EQ4_1, ARIZONA_EQ4_ENA_MASK,
+		ARIZONA_EQ4_ENA_SHIFT, __simple),
 
 	_ctl("drc1l_switch", CTL_INERT, ARIZONA_DRC1_CTRL1, ARIZONA_DRC1L_ENA_MASK,
 		ARIZONA_DRC1L_ENA_SHIFT, __simple),
@@ -199,8 +199,12 @@ static struct arizona_control ctls[] = {
 
 	_ctl("out1l_output_switch", CTL_MONITOR, ARIZONA_OUTPUT_ENABLES_1,
 		ARIZONA_OUT1L_ENA_MASK, ARIZONA_OUT1L_ENA_SHIFT, hp_power),
-	_ctl("out4l_output_switch", CTL_HIDDEN, ARIZONA_OUTPUT_ENABLES_1,
-		ARIZONA_OUT4L_ENA_MASK, ARIZONA_OUT4L_ENA_SHIFT, sp_power),
+	_ctl("out2l_output_switch", CTL_MONITOR, ARIZONA_OUTPUT_ENABLES_1,
+		ARIZONA_OUT2L_ENA_MASK, ARIZONA_OUT2L_ENA_SHIFT, sp_power),
+	_ctl("out3l_output_switch", CTL_INERT, ARIZONA_OUTPUT_ENABLES_1,
+		ARIZONA_OUT3L_ENA_MASK, ARIZONA_OUT3L_ENA_SHIFT, __simple),
+	_ctl("out4l_output_switch", CTL_INERT, ARIZONA_OUTPUT_ENABLES_1,
+		ARIZONA_OUT4L_ENA_MASK, ARIZONA_OUT4L_ENA_SHIFT, __simple),
 
 	/* Mixers */
 
@@ -210,10 +214,16 @@ static struct arizona_control ctls[] = {
 		CTL_INERT, ARIZONA_EQ1MIX_INPUT_2_SOURCE, 0xff, 0, __simple),
 	_ctl("eq2_input1_source",
 		CTL_INERT, ARIZONA_EQ2MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+	_ctl("eq2_input2_source",
+		CTL_INERT, ARIZONA_EQ2MIX_INPUT_2_SOURCE, 0xff, 0, __simple),
 	_ctl("eq3_input1_source",
 		CTL_INERT, ARIZONA_EQ3MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("eq3_input2_source",
 		CTL_INERT, ARIZONA_EQ3MIX_INPUT_2_SOURCE, 0xff, 0, __simple),
+	_ctl("eq4_input1_source",
+		CTL_INERT, ARIZONA_EQ4MIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+	_ctl("eq4_input2_source",
+		CTL_INERT, ARIZONA_EQ4MIX_INPUT_2_SOURCE, 0xff, 0, __simple),
 	_ctl("drc1l_input1_source",
 		CTL_INERT, ARIZONA_DRC1LMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("drc1r_input1_source",
@@ -226,10 +236,17 @@ static struct arizona_control ctls[] = {
 		CTL_INERT, ARIZONA_OUT1RMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
 	_ctl("hpout1r_input2_source",
 		CTL_INERT, ARIZONA_OUT1RMIX_INPUT_2_SOURCE, 0xff, 0, __simple),
-	_ctl("spout1l_input1_source",
-		CTL_HIDDEN, ARIZONA_OUT4LMIX_INPUT_1_SOURCE, 0xff, 0, sp_path),
-	_ctl("spout1l_input2_source",
-		CTL_INERT, ARIZONA_OUT4LMIX_INPUT_2_SOURCE, 0xff, 0, __simple),
+	_ctl("spout2l_input1_source",
+		CTL_HIDDEN, ARIZONA_OUT2LMIX_INPUT_1_SOURCE, 0xff, 0, sp_path),
+	_ctl("spout2l_input2_source",
+		CTL_INERT, ARIZONA_OUT2LMIX_INPUT_2_SOURCE, 0xff, 0, __simple),
+	_ctl("spout2r_input1_source",
+		CTL_INERT, ARIZONA_OUT2RMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+	_ctl("spout2r_input2_source",
+		CTL_INERT, ARIZONA_OUT2RMIX_INPUT_2_SOURCE, 0xff, 0, __simple),
+	_ctl("dsp4l_input1_source",
+		CTL_INERT, ARIZONA_DSP4LMIX_INPUT_1_SOURCE, 0xff, 0, __simple),
+
 
 	/* EQ Configurables */
 
@@ -248,15 +265,15 @@ static struct arizona_control ctls[] = {
 		ARIZONA_EQ1_B5_GAIN_SHIFT, __eq_hp_gain),
 
 	_ctl("eq_sp_gain_1", CTL_ACTIVE, ARIZONA_EQ3_1, ARIZONA_EQ3_B1_GAIN_MASK,
-		ARIZONA_EQ3_B1_GAIN_SHIFT, __eq_sp_gain),
+		ARIZONA_EQ3_B1_GAIN_SHIFT, __eq_hp_gain),
 	_ctl("eq_sp_gain_2", CTL_ACTIVE, ARIZONA_EQ3_1, ARIZONA_EQ3_B2_GAIN_MASK,
-		ARIZONA_EQ3_B2_GAIN_SHIFT, __eq_sp_gain),
+		ARIZONA_EQ3_B2_GAIN_SHIFT, __eq_hp_gain),
 	_ctl("eq_sp_gain_3", CTL_ACTIVE, ARIZONA_EQ3_1, ARIZONA_EQ3_B3_GAIN_MASK,
-		ARIZONA_EQ3_B3_GAIN_SHIFT, __eq_sp_gain),
+		ARIZONA_EQ3_B3_GAIN_SHIFT, __eq_hp_gain),
 	_ctl("eq_sp_gain_4", CTL_ACTIVE, ARIZONA_EQ3_2, ARIZONA_EQ3_B4_GAIN_MASK,
-		ARIZONA_EQ3_B4_GAIN_SHIFT, __eq_sp_gain),
+		ARIZONA_EQ3_B4_GAIN_SHIFT, __eq_hp_gain),
 	_ctl("eq_sp_gain_5", CTL_ACTIVE, ARIZONA_EQ3_2, ARIZONA_EQ3_B5_GAIN_MASK,
-		ARIZONA_EQ3_B5_GAIN_SHIFT, __eq_sp_gain),
+		ARIZONA_EQ3_B5_GAIN_SHIFT, __eq_hp_gain),
 
 	/* DRC Configurables */
 
@@ -376,6 +393,7 @@ static unsigned int hp_callback(struct arizona_control *ctl)
 	return ctl->value;
 }
 
+/*
 static unsigned int sp_volume(struct arizona_control *ctl)
 {
 	if (!ctls[EQ_SP].value)
@@ -383,15 +401,17 @@ static unsigned int sp_volume(struct arizona_control *ctl)
 	else
 		return _delta(ctl, ctl->ctlval, ctl->value - 7);
 }
+*/
 
 static unsigned int sp_path(struct arizona_control *ctl)
 {
-	return ctl->ctlval == 32 ? (ctls[EQ_SP].value ? 82 : ctl->ctlval) : ctl->ctlval;
+	return ctl->ctlval == 128 ? (ctls[EQ_SP].value ? 82 : ctl->ctlval) : ctl->ctlval;
 }
 
 static unsigned int sp_power(struct arizona_control *ctl)
 {
 	_ctl_set(&ctls[EQ3ENA], ctl->ctlval && ctls[EQ_SP].value);
+	_ctl_set(&ctls[EQ4ENA], ctl->ctlval && ctls[EQ_SP].value);
 
 	return ctl->ctlval && !(ctls[SP_PRIV].value && ctls[POUT1L].ctlval);
 }
@@ -400,27 +420,42 @@ static unsigned int sp_callback(struct arizona_control *ctl)
 {
 	static bool eq_bridge = false;
 	static bool eq_bridge_live = false;
+	static bool dsp_bridge = false;
+	static bool dsp_bridge_live = false;
 
 	if (ctl->type == CTL_VIRTUAL) {
 		if (ctl == &ctls[EQ_SP])
 			eq_bridge = !!ctl->value;
+
+		if (ctl == &ctls[SP_DSP])
+			dsp_bridge = !!ctl->value;
 	}
 
-	if (eq_bridge != eq_bridge_live) {
-		if (eq_bridge) {
-			_ctl_set(&ctls[EQ3MIX1], 32);
-			_ctl_set(&ctls[EQ3MIX2], 33);
-			_ctl_set(&ctls[SPOUT1L1], 82);
-			_ctl_set(&ctls[SPOUT1L2], 0);
+	if (eq_bridge != eq_bridge_live || dsp_bridge != dsp_bridge_live) {
+		if (dsp_bridge) {
+			if (eq_bridge) {
+				_ctl_set(&ctls[EQ3MIX1], 128);
+				_ctl_set(&ctls[EQ4MIX1], 82);
+				_ctl_set(&ctls[SPOUT2L1], 83);
+			} else {
+				_ctl_set(&ctls[SPOUT2L1], 128);
+			}
 		} else {
-			_ctl_set(&ctls[SPOUT1L1], 32);
-			_ctl_set(&ctls[SPOUT1L2], 33);
+			if (eq_bridge) {
+				_ctl_set(&ctls[EQ3MIX1], 32);
+				_ctl_set(&ctls[EQ4MIX1], 82);
+				_ctl_set(&ctls[SPOUT2L1], 83);
+			} else {
+				_ctl_set(&ctls[SPOUT2L1], 32);
+			}
 		}
 
 		_ctl_set(&ctls[EQ3ENA], eq_bridge);
+		_ctl_set(&ctls[EQ4ENA], eq_bridge);
 		_ctl_set(&ctls[SPKVOL], ctls[SPKVOL].value);
 
 		eq_bridge_live = eq_bridge;
+		dsp_bridge_live = dsp_bridge;
 	}
 
 	return ctl->value;
@@ -430,8 +465,7 @@ static bool is_delta(struct arizona_control *ctl)
 {
 	if (ctl->hook == __delta	||
 	    ctl->hook == __eq_hp_gain	||  
-	    ctl->hook == __eq_sp_gain	||  
-	    ctl->hook == sp_volume	  )
+	    ctl->hook == __eq_sp_gain	  )
 		return true;
 
 	return false;
@@ -536,7 +570,7 @@ static unsigned int eq_hp_freq_show(char *buf)
 
 static unsigned int eq_sp_freq_store(const char *buf, size_t count)
 {
-	return _eq_freq_store(ARIZONA_EQ3_3, false, buf, count);
+	return _eq_freq_store(ARIZONA_EQ3_3, true, buf, count);
 }
 
 static unsigned int eq_sp_freq_show(char *buf)
