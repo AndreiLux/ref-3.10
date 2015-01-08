@@ -925,6 +925,9 @@ static void dhd_sta_pool_clear(dhd_pub_t *dhdp, int max_sta);
 static inline dhd_if_t *dhd_get_ifp(dhd_pub_t *dhdp, uint32 ifidx)
 {
 	ASSERT(ifidx < DHD_MAX_IFS);
+	if (ifidx >= DHD_MAX_IFS) {
+		return NULL;
+	}
 	return dhdp->info->iflist[ifidx];
 }
 
@@ -1144,16 +1147,18 @@ dhd_sta_pool_clear(dhd_pub_t *dhdp, int max_sta)
 dhd_sta_t *
 dhd_find_sta(void *pub, int ifidx, void *ea)
 {
-	dhd_sta_t *sta;
+	dhd_sta_t *sta, *next;
 	dhd_if_t *ifp;
 	unsigned long flags;
 
 	ASSERT(ea != NULL);
 	ifp = dhd_get_ifp((dhd_pub_t *)pub, ifidx);
+	if (ifp == NULL)
+		return DHD_STA_NULL;
 
 	DHD_IF_STA_LIST_LOCK(ifp, flags);
 
-	list_for_each_entry(sta, &ifp->sta_list, list) {
+	list_for_each_entry_safe(sta, next, &ifp->sta_list, list) {
 		if (!memcmp(sta->ea.octet, ea, ETHER_ADDR_LEN)) {
 			DHD_IF_STA_LIST_UNLOCK(ifp, flags);
 			return sta;
@@ -1175,6 +1180,8 @@ dhd_add_sta(void *pub, int ifidx, void *ea)
 
 	ASSERT(ea != NULL);
 	ifp = dhd_get_ifp((dhd_pub_t *)pub, ifidx);
+	if (ifp == NULL)
+		return DHD_STA_NULL;
 
 	sta = dhd_sta_alloc((dhd_pub_t *)pub);
 	if (sta == DHD_STA_NULL) {
@@ -1216,6 +1223,8 @@ dhd_del_sta(void *pub, int ifidx, void *ea)
 
 	ASSERT(ea != NULL);
 	ifp = dhd_get_ifp((dhd_pub_t *)pub, ifidx);
+	if (ifp == NULL)
+		return;
 
 	DHD_IF_STA_LIST_LOCK(ifp, flags);
 
@@ -3863,10 +3872,21 @@ dhd_stop(struct net_device *net)
 			if ((dhd->dhd_state & DHD_ATTACH_STATE_ADD_IF) &&
 				(dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)) {
 				int i;
+				dhd_if_t *ifp;
 
 				dhd_net_if_lock_local(dhd);
 				for (i = 1; i < DHD_MAX_IFS; i++)
 					dhd_remove_if(&dhd->pub, i, FALSE);
+
+				/* remove sta list for primary interface */
+				ifp = dhd->iflist[0];
+				if (ifp && ifp->net) {
+					dhd_if_del_sta_list(ifp);
+				}
+#ifdef PCIE_FULL_DONGLE
+				/* Initialize STA info list */
+				INIT_LIST_HEAD(&ifp->sta_list);
+#endif
 				dhd_net_if_unlock_local(dhd);
 			}
 		}
@@ -7378,7 +7398,9 @@ int dhd_dev_get_feature_set(struct net_device *dev)
 #ifdef RTT_SUPPORT
 	feature_set |= WIFI_FEATURE_D2AP_RTT;
 #endif /* RTT_SUPPORT */
-
+#ifdef LINKSTAT_SUPPORT
+	feature_set |= WIFI_FEATURE_LINKSTAT;
+#endif /* LINKSTAT_SUPPORT */
 	/* Supports STA + STA always */
 	feature_set |= WIFI_FEATURE_ADDITIONAL_STA;
 #ifdef PNO_SUPPORT
@@ -7637,8 +7659,8 @@ int dhd_dev_retrieve_batch_scan(struct net_device *dev)
 
 	return (dhd_retreive_batch_scan_results(&dhd->pub));
 }
-
 #endif /* GSCAN_SUPPORT */
+
 #ifdef RTT_SUPPORT
 /* Linux wrapper to call common dhd_pno_set_cfg_gscan */
 int
