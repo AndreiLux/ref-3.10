@@ -178,4 +178,6 @@ source "drivers/gpu/nvgpu/Kconfig"
 
 source "drivers/htc_debug/stability/Kconfig"
 
+source "drivers/android/Kconfig"
+
 endmenu

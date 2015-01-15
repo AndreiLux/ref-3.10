@@ -162,3 +162,4 @@ obj-$(CONFIG_MIPI_BIF)		+= mipi_bif/
 
 # HTC stability files
 obj-y += htc_debug/stability/
+obj-$(CONFIG_ANDROID)		+= android/
