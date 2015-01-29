@@ -2224,6 +2224,7 @@ nvavp_channel_open(struct file *filp, struct nvavp_channel_open_args *arg)
 	return err;
 }
 
+extern struct device tegra_vpr_dev;
 static long tegra_nvavp_ioctl(struct file *filp, unsigned int cmd,
 			    unsigned long arg)
 {
@@ -2231,6 +2232,7 @@ static long tegra_nvavp_ioctl(struct file *filp, unsigned int cmd,
 	struct nvavp_clock_args config;
 	int ret = 0;
 	u8 buf[NVAVP_IOCTL_CHANNEL_MAX_ARG_SIZE];
+	u32 floor_size;
 
 	if (_IOC_TYPE(cmd) != NVAVP_IOCTL_MAGIC ||
 	    _IOC_NR(cmd) < NVAVP_IOCTL_MIN_NR ||
@@ -2288,6 +2290,15 @@ static long tegra_nvavp_ioctl(struct file *filp, unsigned int cmd,
 		if (ret == 0)
 			ret = copy_to_user((void __user *)arg, buf,
 			_IOC_SIZE(cmd));
+		break;
+	case NVAVP_IOCTL_VPR_FLOOR_SIZE:
+		if (copy_from_user(&floor_size, (void __user *)arg,
+			sizeof(floor_size))) {
+			ret = -EFAULT;
+			break;
+		}
+		ret = dma_set_resizable_heap_floor_size(&tegra_vpr_dev,
+				floor_size);
 		break;
 	default:
 		ret = -EINVAL;
