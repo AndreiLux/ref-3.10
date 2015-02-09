@@ -1164,12 +1164,12 @@ static int nvmap_debug_handles_by_pid_show(struct seq_file *s, void *unused)
 	struct nvmap_pid_data *p = s->private;
 	struct nvmap_client *client;
 	struct nvmap_debugfs_handles_header header;
-	int ret;
+	int err;
 
 	header.version = 1;
-	ret = seq_write(s, &header, sizeof(header));
-	if (ret < 0)
-		return ret;
+	err = seq_write(s, &header, sizeof(header));
+	if (err < 0)
+		return 0;
 
 	mutex_lock(&nvmap_dev->clients_lock);
 
@@ -1177,13 +1177,13 @@ static int nvmap_debug_handles_by_pid_show(struct seq_file *s, void *unused)
 		if (nvmap_client_pid(client) != p->pid)
 			continue;
 
-		ret = nvmap_debug_handles_by_pid_show_client(s, client);
-		if (ret < 0)
+		err = nvmap_debug_handles_by_pid_show_client(s, client);
+		if (err < 0)
 			break;
 	}
 
 	mutex_unlock(&nvmap_dev->clients_lock);
-	return ret;
+	return 0;
 }
 
 DEBUGFS_OPEN_FOPS(handles_by_pid);
