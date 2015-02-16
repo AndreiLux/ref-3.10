@@ -49,27 +49,27 @@ sr  r0,[ARC_REG_TLBINDEX]
 ;  Slower in thrash case (where it matters) because more code is executed
 ;  Inefficient due to two-register paradigm of this miss handler
 ;
-/* r1 = data TLBPD0 at this point */
-lr      r0,[eret]               /* instruction address */
-xor     r0,r0,r1                /* compare set #       */
-and.f   r0,r0,0x000fe000        /* 2-way MMU mask      */
-bne     88f                     /* not in same set - no need to probe */
 
-lr      r0,[eret]               /* instruction address */
-and     r0,r0,PAGE_MASK         /* VPN of instruction address */
-; lr  r1,[ARC_REG_TLBPD0]     /* Data VPN+ASID - already in r1 from TLB_RELOAD*/
-and     r1,r1,0xff              /* Data ASID */
-or      r0,r0,r1                /* Instruction address + Data ASID */
+lr      r0,[eret]               
+xor     r0,r0,r1                
+and.f   r0,r0,0x000fe000        
+bne     88f                     
 
-lr      r1,[ARC_REG_TLBPD0]     /* save TLBPD0 containing data TLB*/
-sr      r0,[ARC_REG_TLBPD0]     /* write instruction address to TLBPD0 */
-sr      TLBProbe, [ARC_REG_TLBCOMMAND] /* Look for instruction */
-lr      r0,[ARC_REG_TLBINDEX]   /* r0 = index where instruction is, if at all */
-sr      r1,[ARC_REG_TLBPD0]     /* restore TLBPD0 */
+lr      r0,[eret]               
+and     r0,r0,PAGE_MASK         
+; lr  r1,[ARC_REG_TLBPD0]     
+and     r1,r1,0xff              
+or      r0,r0,r1                
 
-xor     r0,r0,1                 /* flip bottom bit of data index */
+lr      r1,[ARC_REG_TLBPD0]     
+sr      r0,[ARC_REG_TLBPD0]     
+sr      TLBProbe, [ARC_REG_TLBCOMMAND] 
+lr      r0,[ARC_REG_TLBINDEX]   
+sr      r1,[ARC_REG_TLBPD0]     
+
+xor     r0,r0,1                 
 b.d     89f
-sr      r0,[ARC_REG_TLBINDEX]   /* and put it back */
+sr      r0,[ARC_REG_TLBINDEX]   
 88:
 sr  TLBGetIndex, [ARC_REG_TLBCOMMAND]
 89:
@@ -80,21 +80,21 @@ sr  TLBGetIndex, [ARC_REG_TLBCOMMAND]
 ; Always checks whether instruction will be kicked out by dtlb miss
 ;
 mov_s   r3, r1                  ; save PD0 prepared by TLB_RELOAD in r3
-lr      r0,[eret]               /* instruction address */
-and     r0,r0,PAGE_MASK         /* VPN of instruction address */
-bmsk    r1,r3,7                 /* Data ASID, bits 7-0 */
-or_s    r0,r0,r1                /* Instruction address + Data ASID */
+lr      r0,[eret]               
+and     r0,r0,PAGE_MASK         
+bmsk    r1,r3,7                 
+or_s    r0,r0,r1                
 
-sr      r0,[ARC_REG_TLBPD0]     /* write instruction address to TLBPD0 */
-sr      TLBProbe, [ARC_REG_TLBCOMMAND] /* Look for instruction */
-lr      r0,[ARC_REG_TLBINDEX]   /* r0 = index where instruction is, if at all */
-sr      r3,[ARC_REG_TLBPD0]     /* restore TLBPD0 */
+sr      r0,[ARC_REG_TLBPD0]     
+sr      TLBProbe, [ARC_REG_TLBCOMMAND] 
+lr      r0,[ARC_REG_TLBINDEX]   
+sr      r3,[ARC_REG_TLBPD0]     
 
 sr      TLBGetIndex, [ARC_REG_TLBCOMMAND]
-lr      r1,[ARC_REG_TLBINDEX]   /* r1 = index where MMU wants to put data */
-cmp     r0,r1                   /* if no match on indices, go around */
-xor.eq  r1,r1,1                 /* flip bottom bit of data index */
-sr      r1,[ARC_REG_TLBINDEX]   /* and put it back */
+lr      r1,[ARC_REG_TLBINDEX]   
+cmp     r0,r1                   
+xor.eq  r1,r1,1   
+sr      r1,[ARC_REG_TLBINDEX]
 #endif
 
 .endm

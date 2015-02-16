@@ -42,7 +42,7 @@
 /**
  * Module parameter that defines the ecryptfs_verbosity level.
  */
-int ecryptfs_verbosity = 0;
+int ecryptfs_verbosity;
 
 module_param(ecryptfs_verbosity, int, 0);
 MODULE_PARM_DESC(ecryptfs_verbosity,
@@ -177,6 +177,7 @@ enum { ecryptfs_opt_sig, ecryptfs_opt_ecryptfs_sig,
        ecryptfs_opt_fn_cipher, ecryptfs_opt_fn_cipher_key_bytes,
        ecryptfs_opt_unlink_sigs, ecryptfs_opt_mount_auth_tok_only,
        ecryptfs_opt_check_dev_ruid,
+       ecryptfs_opt_decryption_only, /* FEATURE_SDCARD_ENCRYPTION */
        ecryptfs_opt_err };
 
 static const match_table_t tokens = {
@@ -194,6 +195,7 @@ static const match_table_t tokens = {
 	{ecryptfs_opt_unlink_sigs, "ecryptfs_unlink_sigs"},
 	{ecryptfs_opt_mount_auth_tok_only, "ecryptfs_mount_auth_tok_only"},
 	{ecryptfs_opt_check_dev_ruid, "ecryptfs_check_dev_ruid"},
+	{ecryptfs_opt_decryption_only, "decryption_only"}, /* FEATURE_SDCARD_ENCRYPTION */
 	{ecryptfs_opt_err, NULL}
 };
 
@@ -312,7 +314,7 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			cipher_name_dst =
 				mount_crypt_stat->
 				global_default_cipher_name;
-			strncpy(cipher_name_dst, cipher_name_src,
+			strlcpy(cipher_name_dst, cipher_name_src,
 				ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 			cipher_name_dst[ECRYPTFS_MAX_CIPHER_NAME_SIZE] = '\0';
 			cipher_name_set = 1;
@@ -344,7 +346,7 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			fnek_src = args[0].from;
 			fnek_dst =
 				mount_crypt_stat->global_default_fnek_sig;
-			strncpy(fnek_dst, fnek_src, ECRYPTFS_SIG_SIZE_HEX);
+			strlcpy(fnek_dst, fnek_src, ECRYPTFS_SIG_SIZE_HEX);
 			mount_crypt_stat->global_default_fnek_sig[
 				ECRYPTFS_SIG_SIZE_HEX] = '\0';
 			rc = ecryptfs_add_global_auth_tok(
@@ -366,7 +368,7 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			fn_cipher_name_src = args[0].from;
 			fn_cipher_name_dst =
 				mount_crypt_stat->global_default_fn_cipher_name;
-			strncpy(fn_cipher_name_dst, fn_cipher_name_src,
+			strlcpy(fn_cipher_name_dst, fn_cipher_name_src,
 				ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 			mount_crypt_stat->global_default_fn_cipher_name[
 				ECRYPTFS_MAX_CIPHER_NAME_SIZE] = '\0';
@@ -387,6 +389,9 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		case ecryptfs_opt_mount_auth_tok_only:
 			mount_crypt_stat->flags |=
 				ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY;
+			break;
+		case ecryptfs_opt_decryption_only: /* FEATURE_SDCARD_ENCRYPTION */
+			mount_crypt_stat->flags |= ECRYPTFS_DECRYPTION_ONLY;
 			break;
 		case ecryptfs_opt_check_dev_ruid:
 			*check_ruid = 1;
@@ -409,13 +414,13 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		int cipher_name_len = strlen(ECRYPTFS_DEFAULT_CIPHER);
 
 		BUG_ON(cipher_name_len >= ECRYPTFS_MAX_CIPHER_NAME_SIZE);
-		strcpy(mount_crypt_stat->global_default_cipher_name,
-		       ECRYPTFS_DEFAULT_CIPHER);
+		strlcpy(mount_crypt_stat->global_default_cipher_name,
+		       ECRYPTFS_DEFAULT_CIPHER, ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 	}
 	if ((mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)
 	    && !fn_cipher_name_set)
-		strcpy(mount_crypt_stat->global_default_fn_cipher_name,
-		       mount_crypt_stat->global_default_cipher_name);
+		strlcpy(mount_crypt_stat->global_default_fn_cipher_name,
+		       mount_crypt_stat->global_default_cipher_name, ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 	if (!cipher_key_bytes_set)
 		mount_crypt_stat->global_default_cipher_key_size = 0;
 	if ((mount_crypt_stat->flags & ECRYPTFS_GLOBAL_ENCRYPT_FILENAMES)

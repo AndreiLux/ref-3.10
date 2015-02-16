@@ -1,0 +1,31 @@
+menuconfig SWITCH
+	tristate "Switch class support"
+	help
+	  Say Y here to enable switch class support. This allows
+	  monitoring switches by userspace via sysfs and uevent.
+
+if SWITCH
+
+config SWITCH_GPIO
+	tristate "GPIO Swith support"
+	depends on GPIOLIB
+	help
+	  Say Y here to enable GPIO based switch support.
+
+endif # SWITCH
+
+config INPUT_MAX14688
+	tristate "MAXIM MAX14688 headset jack detector support"
+	depends on MACH_LGE
+	help
+	  This option enables device driver support for MAX14688, a headset jack
+	  detection IC.
+
+	  To compile this driver as module, choose M here: the
+	  module will be called max14688.
+
+config EARJACK_DEBUGGER
+    bool "Earjack UART debugger support"
+    default n
+    help
+      Support earjack type UART debugger cable

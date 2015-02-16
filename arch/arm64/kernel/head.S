@@ -26,6 +26,7 @@
 #include <asm/assembler.h>
 #include <asm/ptrace.h>
 #include <asm/asm-offsets.h>
+#include <asm/cache.h>
 #include <asm/cputype.h>
 #include <asm/memory.h>
 #include <asm/thread_info.h>
@@ -107,23 +108,146 @@
 	/*
 	 * DO NOT MODIFY. Image header expected by Linux boot-loaders.
 	 */
+#ifdef CONFIG_EFI
+efi_head:
+	/*
+	 * This add instruction has no meaningful effect except that
+	 * its opcode forms the magic "MZ" signature required by UEFI.
+	 */
+	add	x13, x18, #0x16
+	b	stext
+#else
 	b	stext				// branch to kernel start, magic
 	.long	0				// reserved
+#endif
 	.quad	TEXT_OFFSET			// Image load offset from start of RAM
 	.quad	0				// reserved
 	.quad	0				// reserved
+	.quad	0				// reserved
+	.quad	0				// reserved
+	.quad	0				// reserved
+	.byte	0x41				// Magic number, "ARM\x64"
+	.byte	0x52
+	.byte	0x4d
+	.byte	0x64
+#ifdef CONFIG_EFI
+	.long	pe_header - efi_head		// Offset to the PE header.
+#else
+	.word	0				// reserved
+#endif
+
+#ifdef CONFIG_EFI
+	.align 3
+pe_header:
+	.ascii	"PE"
+	.short 	0
+coff_header:
+	.short	0xaa64				// AArch64
+	.short	2				// nr_sections
+	.long	0 				// TimeDateStamp
+	.long	0				// PointerToSymbolTable
+	.long	1				// NumberOfSymbols
+	.short	section_table - optional_header	// SizeOfOptionalHeader
+	.short	0x206				// Characteristics.
+						// IMAGE_FILE_DEBUG_STRIPPED |
+						// IMAGE_FILE_EXECUTABLE_IMAGE |
+						// IMAGE_FILE_LINE_NUMS_STRIPPED
+optional_header:
+	.short	0x20b				// PE32+ format
+	.byte	0x02				// MajorLinkerVersion
+	.byte	0x14				// MinorLinkerVersion
+	.long	_edata - stext			// SizeOfCode
+	.long	0				// SizeOfInitializedData
+	.long	0				// SizeOfUninitializedData
+	.long	efi_stub_entry - efi_head	// AddressOfEntryPoint
+	.long	stext - efi_head		// BaseOfCode
+
+extra_header_fields:
+	.quad	0				// ImageBase
+	.long	0x20				// SectionAlignment
+	.long	0x8				// FileAlignment
+	.short	0				// MajorOperatingSystemVersion
+	.short	0				// MinorOperatingSystemVersion
+	.short	0				// MajorImageVersion
+	.short	0				// MinorImageVersion
+	.short	0				// MajorSubsystemVersion
+	.short	0				// MinorSubsystemVersion
+	.long	0				// Win32VersionValue
+
+	.long	_edata - efi_head		// SizeOfImage
+
+	// Everything before the kernel image is considered part of the header
+	.long	stext - efi_head		// SizeOfHeaders
+	.long	0				// CheckSum
+	.short	0xa				// Subsystem (EFI application)
+	.short	0				// DllCharacteristics
+	.quad	0				// SizeOfStackReserve
+	.quad	0				// SizeOfStackCommit
+	.quad	0				// SizeOfHeapReserve
+	.quad	0				// SizeOfHeapCommit
+	.long	0				// LoaderFlags
+	.long	0x6				// NumberOfRvaAndSizes
+
+	.quad	0				// ExportTable
+	.quad	0				// ImportTable
+	.quad	0				// ResourceTable
+	.quad	0				// ExceptionTable
+	.quad	0				// CertificationTable
+	.quad	0				// BaseRelocationTable
+
+	// Section table
+section_table:
+
+	/*
+	 * The EFI application loader requires a relocation section
+	 * because EFI applications must be relocatable.  This is a
+	 * dummy section as far as we are concerned.
+	 */
+	.ascii	".reloc"
+	.byte	0
+	.byte	0			// end of 0 padding of section name
+	.long	0
+	.long	0
+	.long	0			// SizeOfRawData
+	.long	0			// PointerToRawData
+	.long	0			// PointerToRelocations
+	.long	0			// PointerToLineNumbers
+	.short	0			// NumberOfRelocations
+	.short	0			// NumberOfLineNumbers
+	.long	0x42100040		// Characteristics (section flags)
+
+
+	.ascii	".text"
+	.byte	0
+	.byte	0
+	.byte	0        		// end of 0 padding of section name
+	.long	_edata - stext		// VirtualSize
+	.long	stext - efi_head	// VirtualAddress
+	.long	_edata - stext		// SizeOfRawData
+	.long	stext - efi_head	// PointerToRawData
+
+	.long	0		// PointerToRelocations (0 for executables)
+	.long	0		// PointerToLineNumbers (0 for executables)
+	.short	0		// NumberOfRelocations  (0 for executables)
+	.short	0		// NumberOfLineNumbers  (0 for executables)
+	.long	0xe0500020	// Characteristics (section flags)
+	.align 5
+#endif
 
 ENTRY(stext)
 	mov	x21, x0				// x21=FDT
+	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
 	bl	__calc_phys_offset		// x24=PHYS_OFFSET, x28=PHYS_OFFSET-PAGE_OFFSET
-	bl	el2_setup			// Drop to EL1
+	bl	set_cpu_boot_mode_flag
 	mrs	x22, midr_el1			// x22=cpuid
 	mov	x0, x22
 	bl	lookup_processor_type
 	mov	x23, x0				// x23=current cpu_table
-	cbz	x23, __error_p			// invalid processor (x23=0)?
+	cbz	x23, __h_error_p		// invalid processor (x23=0)?
 	bl	__vet_fdt
 	bl	__create_page_tables		// x25=TTBR0, x26=TTBR1
+
+
 	/*
 	 * The following calls CPU specific code in a position independent
 	 * manner. See arch/arm64/mm/proc.S for details. x23 = base of
@@ -133,191 +257,92 @@ ENTRY(stext)
 	 */
 	ldr	x27, __switch_data		// address to jump to after
 						// MMU has been enabled
-	adr	lr, __enable_mmu		// return (PIC) address
+	adr	lr, __h_enable_mmu		// return (PIC) address
 	ldr	x12, [x23, #CPU_INFO_SETUP]
 	add	x12, x12, x28			// __virt_to_phys
 	br	x12				// initialise processor
 ENDPROC(stext)
 
-/*
- * If we're fortunate enough to boot at EL2, ensure that the world is
- * sane before dropping to EL1.
- */
-ENTRY(el2_setup)
-	mrs	x0, CurrentEL
-	cmp	x0, #PSR_MODE_EL2t
-	ccmp	x0, #PSR_MODE_EL2h, #0x4, ne
-	ldr	x0, =__boot_cpu_mode		// Compute __boot_cpu_mode
-	add	x0, x0, x28
-	b.eq	1f
-	str	wzr, [x0]			// Remember we don't have EL2...
-	ret
+__h_error_p:
+ENDPROC(__h_error_p)
 
-	/* Hyp configuration. */
-1:	ldr	w1, =BOOT_CPU_MODE_EL2
-	str	w1, [x0, #4]			// This CPU has EL2
-	mov	x0, #(1 << 31)			// 64-bit EL1
-	msr	hcr_el2, x0
+__h_error:
+1:	nop
+	b	1b
+ENDPROC(__h_error)
 
-	/* Generic timers. */
-	mrs	x0, cnthctl_el2
-	orr	x0, x0, #3			// Enable EL1 physical timers
-	msr	cnthctl_el2, x0
-	msr	cntvoff_el2, xzr		// Clear virtual offset
-
-	/* Populate ID registers. */
-	mrs	x0, midr_el1
-	mrs	x1, mpidr_el1
-	msr	vpidr_el2, x0
-	msr	vmpidr_el2, x1
-
-	/* sctlr_el1 */
-	mov	x0, #0x0800			// Set/clear RES{1,0} bits
-	movk	x0, #0x30d0, lsl #16
-	msr	sctlr_el1, x0
-
-	/* Coprocessor traps. */
-	mov	x0, #0x33ff
-	msr	cptr_el2, x0			// Disable copro. traps to EL2
-
-#ifdef CONFIG_COMPAT
-	msr	hstr_el2, xzr			// Disable CP15 traps to EL2
-#endif
-
-	/* Stage-2 translation */
-	msr	vttbr_el2, xzr
-
-	/* Hypervisor stub */
-	adr	x0, __hyp_stub_vectors
-	msr	vbar_el2, x0
-
-	/* spsr */
-	mov	x0, #(PSR_F_BIT | PSR_I_BIT | PSR_A_BIT | PSR_D_BIT |\
-		      PSR_MODE_EL1h)
-	msr	spsr_el2, x0
-	msr	elr_el2, lr
-	eret
-ENDPROC(el2_setup)
-
-/*
- * We need to find out the CPU boot mode long after boot, so we need to
- * store it in a writable variable.
- *
- * This is not in .bss, because we set it sufficiently early that the boot-time
- * zeroing of .bss would clobber it.
- */
-	.pushsection	.data
-ENTRY(__boot_cpu_mode)
-	.long	BOOT_CPU_MODE_EL2
-	.long	0
-	.popsection
-
-	.align	3
-2:	.quad	.
-	.quad	PAGE_OFFSET
-
-#ifdef CONFIG_SMP
-	.pushsection    .smp.pen.text, "ax"
-	.align	3
-1:	.quad	.
-	.quad	secondary_holding_pen_release
-
-	/*
-	 * This provides a "holding pen" for platforms to hold all secondary
-	 * cores are held until we're ready for them to initialise.
-	 */
-ENTRY(secondary_holding_pen)
-	bl	__calc_phys_offset		// x24=phys offset
-	bl	el2_setup			// Drop to EL1
-	mrs	x0, mpidr_el1
-	ldr     x1, =MPIDR_HWID_BITMASK
-	and	x0, x0, x1
-	adr	x1, 1b
-	ldp	x2, x3, [x1]
-	sub	x1, x1, x2
-	add	x3, x3, x1
-pen:	ldr	x4, [x3]
-	cmp	x4, x0
-	b.eq	secondary_startup
-	wfe
-	b	pen
-ENDPROC(secondary_holding_pen)
-	.popsection
-
-ENTRY(secondary_startup)
-	/*
-	 * Common entry point for secondary CPUs.
-	 */
-	mrs	x22, midr_el1			// x22=cpuid
-	mov	x0, x22
-	bl	lookup_processor_type
-	mov	x23, x0				// x23=current cpu_table
-	cbz	x23, __error_p			// invalid processor (x23=0)?
-
-	pgtbl	x25, x26, x24			// x25=TTBR0, x26=TTBR1
-	ldr	x12, [x23, #CPU_INFO_SETUP]
-	add	x12, x12, x28			// __virt_to_phys
-	blr	x12				// initialise processor
-
-	ldr	x21, =secondary_data
-	ldr	x27, =__secondary_switched	// address to jump to after enabling the MMU
-	b	__enable_mmu
-ENDPROC(secondary_startup)
-
-ENTRY(__secondary_switched)
-	ldr	x0, [x21]			// get secondary_data.stack
-	mov	sp, x0
-	mov	x29, #0
-	b	secondary_start_kernel
-ENDPROC(__secondary_switched)
-#endif	/* CONFIG_SMP */
-
-/*
- * Setup common bits before finally enabling the MMU. Essentially this is just
- * loading the page table pointer and vector base registers.
- *
- * On entry to this code, x0 must contain the SCTLR_EL1 value for turning on
- * the MMU.
- */
-__enable_mmu:
+	.align	6
+__h_enable_mmu:
 	ldr	x5, =vectors
 	msr	vbar_el1, x5
 	msr	ttbr0_el1, x25			// load TTBR0
 	msr	ttbr1_el1, x26			// load TTBR1
 	isb
-	b	__turn_mmu_on
-ENDPROC(__enable_mmu)
+	b	__h_turn_mmu_on
+ENDPROC(__h_enable_mmu)
 
-/*
- * Enable the MMU. This completely changes the structure of the visible memory
- * space. You will not be able to trace execution through this.
- *
- *  x0  = system control register
- *  x27 = *virtual* address to jump to upon completion
- *
- * other registers depend on the function called upon completion
- */
-	.align	6
-__turn_mmu_on:
+
+
+__h_turn_mmu_on:
 	msr	sctlr_el1, x0
 	isb
 	br	x27
-ENDPROC(__turn_mmu_on)
+ENDPROC(__h_turn_mmu_on)
+
 
 /*
- * Calculate the start of physical memory.
+ * Determine validity of the x21 FDT pointer.
+ * The dtb must be 8-byte aligned and live in the first 512M of memory.
  */
-__calc_phys_offset:
-	adr	x0, 1f
-	ldp	x1, x2, [x0]
-	sub	x28, x0, x1			// x28 = PHYS_OFFSET - PAGE_OFFSET
-	add	x24, x2, x28			// x24 = PHYS_OFFSET
+__vet_fdt:
+	tst	x21, #0x7
+	b.ne	1f
+	cmp	x21, x24
+	b.lt	1f
+	mov	x0, #(1 << 29)
+	add	x0, x0, x24
+	cmp	x21, x0
+	b.ge	1f
 	ret
-ENDPROC(__calc_phys_offset)
+1:
+	mov	x21, #0
+	ret
+ENDPROC(__vet_fdt)
 
-	.align 3
-1:	.quad	.
-	.quad	PAGE_OFFSET
+	.align	3
+	.type	__switch_data, %object
+__switch_data:
+	.quad	__mmap_switched
+	.quad	__bss_start			// x6
+	.quad	_end				// x7
+	.quad	processor_id			// x4
+	.quad	__fdt_pointer			// x5
+	.quad	memstart_addr			// x6
+	.quad	init_thread_union + THREAD_START_SP // sp
+
+/*
+ * The following fragment of code is executed with the MMU on in MMU mode, and
+ * uses absolute addresses; this is not position independent.
+ */
+__mmap_switched:
+	adr	x3, __switch_data + 8
+
+	ldp	x6, x7, [x3], #16
+1:	cmp	x6, x7
+	b.hs	2f
+	str	xzr, [x6], #8			// Clear BSS
+	b	1b
+2:
+	ldp	x4, x5, [x3], #16
+	ldr	x6, [x3], #8
+	ldr	x16, [x3]
+	mov	sp, x16
+	str	x22, [x4]			// Save processor ID
+	str	x21, [x5]			// Save FDT pointer
+	str	x24, [x6]			// Save PHYS_OFFSET
+	mov	x29, #0
+	b	start_kernel
+ENDPROC(__mmap_switched)
 
 /*
  * Macro to populate the PGD for the corresponding block entry in the next
@@ -368,10 +393,19 @@ ENDPROC(__calc_phys_offset)
  *   - identity mapping to enable the MMU (low address, TTBR0)
  *   - first few MB of the kernel linear mapping to jump to once the MMU has
  *     been enabled, including the FDT blob (TTBR1)
- *   - UART mapping if CONFIG_EARLY_PRINTK is enabled (TTBR1)
+ *   - pgd entry for fixed mappings (TTBR1)
  */
 __create_page_tables:
 	pgtbl	x25, x26, x24			// idmap_pg_dir and swapper_pg_dir addresses
+	mov	x27, lr
+
+	/*
+	 * Invalidate the idmap and swapper page tables to avoid potential
+	 * dirty cache lines being evicted.
+	 */
+	mov	x0, x25
+	add	x1, x26, #SWAPPER_DIR_SIZE
+	bl	__inval_cache_range
 
 	/*
 	 * Clear the idmap and swapper page tables.
@@ -391,7 +425,14 @@ __create_page_tables:
 	 * Create the identity mapping.
 	 */
 	add	x0, x25, #PAGE_SIZE		// section table address
-	adr	x3, __turn_mmu_on		// virtual/physical address
+	adr	x3, __h_turn_mmu_on		// virtual/physical address
+	create_pgd_entry x25, x0, x3, x5, x6
+	create_block_map x0, x7, x3, x5, x5, idmap=1
+
+	/*
+	 * adrp is fine here, we don't really care about the lower order bits
+	 */
+	adrp	x3, cpu_resume_mmu
 	create_pgd_entry x25, x0, x3, x5, x6
 	create_block_map x0, x7, x3, x5, x5, idmap=1
 
@@ -421,63 +462,272 @@ __create_page_tables:
 	sub	x6, x6, #1			// inclusive range
 	create_block_map x0, x7, x3, x5, x6
 1:
-#ifdef CONFIG_EARLY_PRINTK
 	/*
-	 * Create the pgd entry for the UART mapping. The full mapping is done
-	 * later based earlyprintk kernel parameter.
+	 * Create the pgd entry for the fixed mappings.
 	 */
-	ldr	x5, =EARLYCON_IOBASE		// UART virtual address
+	ldr	x5, =FIXADDR_TOP		// Fixed mapping virtual address
 	add	x0, x26, #2 * PAGE_SIZE		// section table address
 	create_pgd_entry x26, x0, x5, x6, x7
-#endif
+
+	/*
+	 * Since the page tables have been populated with non-cacheable
+	 * accesses (MMU disabled), invalidate the idmap and swapper page
+	 * tables again to remove any speculatively loaded cache lines.
+	 */
+	mov	x0, x25
+	add	x1, x26, #SWAPPER_DIR_SIZE
+	bl	__inval_cache_range
+
+	mov	lr, x27
 	ret
 ENDPROC(__create_page_tables)
 	.ltorg
 
-	.align	3
-	.type	__switch_data, %object
-__switch_data:
-	.quad	__mmap_switched
-	.quad	__data_loc			// x4
-	.quad	_data				// x5
-	.quad	__bss_start			// x6
-	.quad	_end				// x7
-	.quad	processor_id			// x4
-	.quad	__fdt_pointer			// x5
-	.quad	memstart_addr			// x6
-	.quad	init_thread_union + THREAD_START_SP // sp
+
+	.section ".latehead.text","ax"
+/*
+ * If we're fortunate enough to boot at EL2, ensure that the world is
+ * sane before dropping to EL1.
+ *
+ * Returns either BOOT_CPU_MODE_EL1 or BOOT_CPU_MODE_EL2 in x20 if
+ * booted in EL1 or EL2 respectively.
+ */
+ENTRY(el2_setup)
+	mrs	x0, CurrentEL
+	cmp	x0, #CurrentEL_EL2
+	b.ne	1f
+	mrs	x0, sctlr_el2
+CPU_BE(	orr	x0, x0, #(1 << 25)	)	// Set the EE bit for EL2
+CPU_LE(	bic	x0, x0, #(1 << 25)	)	// Clear the EE bit for EL2
+	msr	sctlr_el2, x0
+	b	2f
+1:	mrs	x0, sctlr_el1
+CPU_BE(	orr	x0, x0, #(3 << 24)	)	// Set the EE and E0E bits for EL1
+CPU_LE(	bic	x0, x0, #(3 << 24)	)	// Clear the EE and E0E bits for EL1
+	msr	sctlr_el1, x0
+	mov	w20, #BOOT_CPU_MODE_EL1		// This cpu booted in EL1
+	isb
+	ret
+
+	/* Hyp configuration. */
+2:	mov	x0, #(1 << 31)			// 64-bit EL1
+	msr	hcr_el2, x0
+
+	/* Generic timers. */
+	mrs	x0, cnthctl_el2
+	orr	x0, x0, #3			// Enable EL1 physical timers
+	msr	cnthctl_el2, x0
+	msr	cntvoff_el2, xzr		// Clear virtual offset
+
+	/* Populate ID registers. */
+	mrs	x0, midr_el1
+	mrs	x1, mpidr_el1
+	msr	vpidr_el2, x0
+	msr	vmpidr_el2, x1
+
+	/* sctlr_el1 */
+	mov	x0, #0x0800			// Set/clear RES{1,0} bits
+CPU_BE(	movk	x0, #0x33d0, lsl #16	)	// Set EE and E0E on BE systems
+CPU_LE(	movk	x0, #0x30d0, lsl #16	)	// Clear EE and E0E on LE systems
+	msr	sctlr_el1, x0
+
+	/* Coprocessor traps. */
+	mov	x0, #0x33ff
+	msr	cptr_el2, x0			// Disable copro. traps to EL2
+
+#ifdef CONFIG_COMPAT
+	msr	hstr_el2, xzr			// Disable CP15 traps to EL2
+#endif
+
+	/* Stage-2 translation */
+	msr	vttbr_el2, xzr
+
+	/* Hypervisor stub */
+#ifndef CONFIG_STRICT_MEMORY_RWX
+	adr	x0, __hyp_stub_vectors
+#else
+	ldr	x0, =__hyp_stub_vectors
+#endif
+	msr	vbar_el2, x0
+
+	/* spsr */
+	mov	x0, #(PSR_F_BIT | PSR_I_BIT | PSR_A_BIT | PSR_D_BIT |\
+		      PSR_MODE_EL1h)
+	msr	spsr_el2, x0
+	msr	elr_el2, lr
+	mov	w20, #BOOT_CPU_MODE_EL2		// This CPU booted in EL2
+	eret
+ENDPROC(el2_setup)
 
 /*
- * The following fragment of code is executed with the MMU on in MMU mode, and
- * uses absolute addresses; this is not position independent.
+ * Sets the __boot_cpu_mode flag depending on the CPU boot mode passed
+ * in x20. See arch/arm64/include/asm/virt.h for more info.
  */
-__mmap_switched:
-	adr	x3, __switch_data + 8
+ENTRY(set_cpu_boot_mode_flag)
+	ldr	x1, =__boot_cpu_mode		// Compute __boot_cpu_mode
+	add	x1, x1, x28
+	cmp	w20, #BOOT_CPU_MODE_EL2
+	b.ne	1f
+	add	x1, x1, #4
+1:	str	w20, [x1]			// This CPU has booted in EL1
+	dmb	sy
+	dc	ivac, x1			// Invalidate potentially stale cache line
+	ret
+ENDPROC(set_cpu_boot_mode_flag)
 
-	ldp	x4, x5, [x3], #16
-	ldp	x6, x7, [x3], #16
-	cmp	x4, x5				// Copy data segment if needed
-1:	ccmp	x5, x6, #4, ne
-	b.eq	2f
-	ldr	x16, [x4], #8
-	str	x16, [x5], #8
-	b	1b
-2:
-1:	cmp	x6, x7
-	b.hs	2f
-	str	xzr, [x6], #8			// Clear BSS
-	b	1b
-2:
-	ldp	x4, x5, [x3], #16
-	ldr	x6, [x3], #8
-	ldr	x16, [x3]
-	mov	sp, x16
-	str	x22, [x4]			// Save processor ID
-	str	x21, [x5]			// Save FDT pointer
-	str	x24, [x6]			// Save PHYS_OFFSET
+/*
+ * We need to find out the CPU boot mode long after boot, so we need to
+ * store it in a writable variable.
+ *
+ * This is not in .bss, because we set it sufficiently early that the boot-time
+ * zeroing of .bss would clobber it.
+ */
+	.pushsection	.data..cacheline_aligned
+ENTRY(__boot_cpu_mode)
+	.align	L1_CACHE_SHIFT
+	.long	BOOT_CPU_MODE_EL2
+	.long	0
+	.popsection
+
+	.align	3
+2:	.quad	.
+	.quad	PAGE_OFFSET
+
+#ifdef CONFIG_SMP
+	.align	3
+1:	.quad	.
+	.quad	secondary_holding_pen_release
+
+	/*
+	 * This provides a "holding pen" for platforms to hold all secondary
+	 * cores are held until we're ready for them to initialise.
+	 */
+ENTRY(secondary_holding_pen)
+	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
+	bl	__calc_phys_offset		// x24=PHYS_OFFSET, x28=PHYS_OFFSET-PAGE_OFFSET
+	bl	set_cpu_boot_mode_flag
+	mrs	x0, mpidr_el1
+	ldr     x1, =MPIDR_HWID_BITMASK
+	and	x0, x0, x1
+	adr	x1, 1b
+	ldp	x2, x3, [x1]
+	sub	x1, x1, x2
+	add	x3, x3, x1
+pen:	ldr	x4, [x3]
+	cmp	x4, x0
+	b.eq	secondary_startup
+	b	pen
+ENDPROC(secondary_holding_pen)
+
+	/*
+	 * Secondary entry point that jumps straight into the kernel. Only to
+	 * be used where CPUs are brought online dynamically by the kernel.
+	 */
+ENTRY(secondary_entry)
+	bl	el2_setup			// Drop to EL1
+	bl	__calc_phys_offset		// x24=PHYS_OFFSET, x28=PHYS_OFFSET-PAGE_OFFSET
+	bl	set_cpu_boot_mode_flag
+	b	secondary_startup
+ENDPROC(secondary_entry)
+
+ENTRY(secondary_startup)
+	/*
+	 * Common entry point for secondary CPUs.
+	 */
+	mrs	x22, midr_el1			// x22=cpuid
+	mov	x0, x22
+	bl	lookup_processor_type
+	mov	x23, x0				// x23=current cpu_table
+	cbz	x23, __error_p			// invalid processor (x23=0)?
+
+	pgtbl	x25, x26, x24			// x25=TTBR0, x26=TTBR1
+	ldr	x12, [x23, #CPU_INFO_SETUP]
+	add	x12, x12, x28			// __virt_to_phys
+	blr	x12				// initialise processor
+
+	ldr	x21, =secondary_data
+	ldr	x27, =__secondary_switched	// address to jump to after enabling the MMU
+	b	__enable_mmu
+ENDPROC(secondary_startup)
+
+ENTRY(__secondary_switched)
+	ldr	x0, [x21]			// get secondary_data.stack
+	mov	sp, x0
 	mov	x29, #0
-	b	start_kernel
-ENDPROC(__mmap_switched)
+	b	secondary_start_kernel
+ENDPROC(__secondary_switched)
+#endif	/* CONFIG_SMP */
+
+	.align 3
+ENTRY(cpu_resume_mmu)
+	ldr	x3, =cpu_resume_after_mmu
+	msr	sctlr_el1, x0		// restore sctlr_el1
+	isb
+	br	x3			// global jump to virtual address
+ENDPROC(cpu_resume_mmu)
+
+/*
+ * x0 must contain the sctlr value retrieved from restored context
+ */
+cpu_resume_after_mmu:
+	mov	x0, #0			// return zero on success
+	ldp	x19, x20, [sp, #16]
+	ldp	x21, x22, [sp, #32]
+	ldp	x23, x24, [sp, #48]
+	ldp	x25, x26, [sp, #64]
+	ldp	x27, x28, [sp, #80]
+	ldp	x29, lr, [sp], #96
+	ret
+ENDPROC(cpu_resume_after_mmu)
+
+
+/*
+ * Setup common bits before finally enabling the MMU. Essentially this is just
+ * loading the page table pointer and vector base registers.
+ *
+ * On entry to this code, x0 must contain the SCTLR_EL1 value for turning on
+ * the MMU.
+ */
+__enable_mmu:
+	ldr	x5, =vectors
+	msr	vbar_el1, x5
+	msr	ttbr0_el1, x25			// load TTBR0
+	msr	ttbr1_el1, x26			// load TTBR1
+	isb
+	b	__turn_mmu_on
+ENDPROC(__enable_mmu)
+
+/*
+ * Enable the MMU. This completely changes the structure of the visible memory
+ * space. You will not be able to trace execution through this.
+ *
+ *  x0  = system control register
+ *  x27 = *virtual* address to jump to upon completion
+ *
+ * other registers depend on the function called upon completion
+ */
+	.align	6
+__turn_mmu_on:
+	msr	sctlr_el1, x0
+	isb
+	br	x27
+ENDPROC(__turn_mmu_on)
+
+/*
+ * Calculate the start of physical memory.
+ */
+__calc_phys_offset:
+	adr	x0, 1f
+	ldp	x1, x2, [x0]
+	sub	x28, x0, x1			// x28 = PHYS_OFFSET - PAGE_OFFSET
+	add	x24, x2, x28			// x24 = PHYS_OFFSET
+	ret
+ENDPROC(__calc_phys_offset)
+
+	.align 3
+1:	.quad	.
+	.quad	PAGE_OFFSET
+
 
 /*
  * Exception handling. Something went wrong and we can't proceed. We ought to
@@ -527,21 +777,3 @@ __lookup_processor_type_data:
 	.quad	cpu_table
 	.size	__lookup_processor_type_data, . - __lookup_processor_type_data
 
-/*
- * Determine validity of the x21 FDT pointer.
- * The dtb must be 8-byte aligned and live in the first 512M of memory.
- */
-__vet_fdt:
-	tst	x21, #0x7
-	b.ne	1f
-	cmp	x21, x24
-	b.lt	1f
-	mov	x0, #(1 << 29)
-	add	x0, x0, x24
-	cmp	x21, x0
-	b.ge	1f
-	ret
-1:
-	mov	x21, #0
-	ret
-ENDPROC(__vet_fdt)

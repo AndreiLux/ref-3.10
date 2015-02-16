@@ -27,6 +27,8 @@ int sysctl_nr_open __read_mostly = 1024*1024;
 int sysctl_nr_open_min = BITS_PER_LONG;
 int sysctl_nr_open_max = 1024 * 1024; /* raised later */
 
+#define DEBUG_FOR_EMFILE //                                                                                             
+
 static void *alloc_fdmem(size_t size)
 {
 	/*
@@ -512,7 +514,35 @@ repeat:
 #endif
 
 out:
-	spin_unlock(&files->file_lock);
+
+#ifdef DEBUG_FOR_EMFILE
+        if (error == -EMFILE) {
+            int i = 0;
+            char *cwd;
+            char *buf;
+
+            buf = ( char*) kmalloc(PATH_MAX*sizeof(char), GFP_KERNEL);
+            if ( buf != NULL ) {
+                while( i < end ) {
+                    if( fdt->fd[i] != NULL ) {
+                        cwd = d_path(&(fdt->fd[i]->f_path), buf, PATH_MAX*sizeof(char));
+                        if(IS_ERR(cwd)) {
+                            printk("[DBG_EMFILE_PID %d] d_path return error %ld\n", current->pid, PTR_ERR(cwd));
+                            break;
+                        }
+                        printk("[DEBUG_EMFILE_PID %d] Open file with fd %d %s\n", current->pid, i , cwd);
+                    }
+                    i++;
+                }
+                kfree(buf);
+            }
+            else {
+                printk("[DEBUG_EMFILE_PID %d] Buf allocation Fail!!\n",current->pid);
+            }
+        }
+#endif// temp
+
+        spin_unlock(&files->file_lock);
 	return error;
 }
 
@@ -520,6 +550,7 @@ static int alloc_fd(unsigned start, unsigned flags)
 {
 	return __alloc_fd(current->files, start, rlimit(RLIMIT_NOFILE), flags);
 }
+EXPORT_SYMBOL(alloc_fd);
 
 int get_unused_fd_flags(unsigned flags)
 {

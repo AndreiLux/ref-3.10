@@ -399,9 +399,14 @@ __SYSCALL(374, compat_sys_sendmmsg)
 __SYSCALL(375, sys_setns)
 __SYSCALL(376, compat_sys_process_vm_readv)
 __SYSCALL(377, compat_sys_process_vm_writev)
-__SYSCALL(378, sys_ni_syscall)			/* 378 for kcmp */
+__SYSCALL(378, sys_kcmp)
+__SYSCALL(379, sys_finit_module)
+__SYSCALL(380, sys_sched_setattr)
+__SYSCALL(381, sys_sched_getattr)
+__SYSCALL(382, sys_set_media_property)
+__SYSCALL(383, sys_set_media_ext)
 
-#define __NR_compat_syscalls		379
+#define __NR_compat_syscalls		384
 
 /*
  * Compat syscall numbers used by the AArch64 kernel.

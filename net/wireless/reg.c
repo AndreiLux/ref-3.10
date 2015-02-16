@@ -338,6 +338,11 @@ static bool is_user_regdom_saved(void)
 	return true;
 }
 
+static bool is_cfg80211_regdom_intersected(void)
+{
+	return is_intersected_alpha2(get_cfg80211_regdom()->alpha2);
+}
+
 static const struct ieee80211_regdomain *
 reg_copy_regd(const struct ieee80211_regdomain *src_regd)
 {
@@ -856,6 +861,18 @@ static void handle_channel(struct wiphy *wiphy,
 
 		REG_DBG_PRINT("Disabling freq %d MHz\n", chan->center_freq);
 		chan->flags |= IEEE80211_CHAN_DISABLED;
+		if (lr->initiator == NL80211_REGDOM_SET_BY_DRIVER &&
+		    request_wiphy && request_wiphy == wiphy &&
+		    request_wiphy->flags & WIPHY_FLAG_STRICT_REGULATORY) {
+			REG_DBG_PRINT("Disabling freq %d MHz for good\n",
+				      chan->center_freq);
+			chan->orig_flags |= IEEE80211_CHAN_DISABLED;
+			chan->flags = chan->orig_flags;
+		} else {
+			REG_DBG_PRINT("Disabling freq %d MHz\n",
+				      chan->center_freq);
+			chan->flags |= IEEE80211_CHAN_DISABLED;
+			}
 		return;
 	}
 
@@ -899,13 +916,11 @@ static void handle_channel(struct wiphy *wiphy,
 	chan->max_reg_power = (int) MBM_TO_DBM(power_rule->max_eirp);
 	if (chan->orig_mpwr) {
 		/*
-		 * Devices that have their own custom regulatory domain
-		 * but also use WIPHY_FLAG_STRICT_REGULATORY will follow the
-		 * passed country IE power settings.
+		 * Devices that use NL80211_COUNTRY_IE_FOLLOW_POWER will always
+		 * follow the passed country IE power settings.
 		 */
 		if (initiator == NL80211_REGDOM_SET_BY_COUNTRY_IE &&
-		    wiphy->flags & WIPHY_FLAG_CUSTOM_REGULATORY &&
-		    wiphy->flags & WIPHY_FLAG_STRICT_REGULATORY)
+		    wiphy->country_ie_pref & NL80211_COUNTRY_IE_FOLLOW_POWER)
 			chan->max_power = chan->max_reg_power;
 		else
 			chan->max_power = min(chan->orig_mpwr,
@@ -1257,7 +1272,9 @@ static void handle_channel_custom(struct wiphy *wiphy,
 	if (IS_ERR(reg_rule)) {
 		REG_DBG_PRINT("Disabling freq %d MHz as custom regd has no rule that fits it\n",
 			      chan->center_freq);
-		chan->flags = IEEE80211_CHAN_DISABLED;
+		chan->orig_flags |= IEEE80211_CHAN_DISABLED;
+		chan->flags = chan->orig_flags;
+
 		return;
 	}
 
@@ -1331,6 +1348,9 @@ get_reg_request_treatment(struct wiphy *wiphy,
 	case NL80211_REGDOM_SET_BY_CORE:
 		return REG_REQ_OK;
 	case NL80211_REGDOM_SET_BY_COUNTRY_IE:
+		if (wiphy->country_ie_pref & NL80211_COUNTRY_IE_IGNORE_CORE)
+			return REG_REQ_IGNORE;
+
 		if (reg_request_cell_base(lr)) {
 			/* Trust a Cell base station over the AP's country IE */
 			if (regdom_changes(pending_request->alpha2))
@@ -1402,9 +1422,14 @@ get_reg_request_treatment(struct wiphy *wiphy,
 		 */
 		if ((lr->initiator == NL80211_REGDOM_SET_BY_CORE ||
 		     lr->initiator == NL80211_REGDOM_SET_BY_DRIVER ||
-		     lr->initiator == NL80211_REGDOM_SET_BY_USER) &&
-		    regdom_changes(lr->alpha2))
-			return REG_REQ_IGNORE;
+		     lr->initiator == NL80211_REGDOM_SET_BY_USER)) {
+			if (lr->intersect) {
+				if (!is_cfg80211_regdom_intersected())
+					return REG_REQ_IGNORE;
+			} else if (regdom_changes(lr->alpha2)) {
+				return REG_REQ_IGNORE;
+			}
+		}
 
 		if (!regdom_changes(pending_request->alpha2))
 			return REG_REQ_ALREADY_SET;
@@ -1542,7 +1567,8 @@ static void reg_process_hint(struct regulatory_request *reg_request,
 	if (reg_request->wiphy_idx != WIPHY_IDX_INVALID)
 		wiphy = wiphy_idx_to_wiphy(reg_request->wiphy_idx);
 
-	if (reg_initiator == NL80211_REGDOM_SET_BY_DRIVER && !wiphy) {
+	if ((reg_initiator == NL80211_REGDOM_SET_BY_DRIVER ||
+	     reg_initiator == NL80211_REGDOM_SET_BY_COUNTRY_IE) && !wiphy) {
 		kfree(reg_request);
 		return;
 	}
@@ -1692,6 +1718,7 @@ int regulatory_hint_user(const char *alpha2,
 
 	return 0;
 }
+EXPORT_SYMBOL(regulatory_hint_user);
 
 /* Driver hints */
 int regulatory_hint(struct wiphy *wiphy, const char *alpha2)
@@ -2287,12 +2314,15 @@ int reg_device_uevent(struct device *dev, struct kobj_uevent_env *env)
 
 void wiphy_regulatory_register(struct wiphy *wiphy)
 {
+	struct regulatory_request *lr;
+
 	mutex_lock(&reg_mutex);
 
 	if (!reg_dev_ignore_cell_hint(wiphy))
 		reg_num_devs_support_basehint++;
 
-	wiphy_update_regulatory(wiphy, NL80211_REGDOM_SET_BY_CORE);
+	lr = get_last_request();
+	wiphy_update_regulatory(wiphy, lr->initiator);
 
 	mutex_unlock(&reg_mutex);
 }

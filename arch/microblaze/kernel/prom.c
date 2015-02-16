@@ -41,24 +41,14 @@
 #include <asm/sections.h>
 #include <asm/pci-bridge.h>
 
-void __init early_init_dt_add_memory_arch(u64 base, u64 size)
-{
-	memblock_add(base, size);
-}
-
-void * __init early_init_dt_alloc_memory_arch(u64 size, u64 align)
-{
-	return __va(memblock_alloc(size, align));
-}
-
 #ifdef CONFIG_EARLY_PRINTK
-static char *stdout;
+static const char *stdout;
 
 static int __init early_init_dt_scan_chosen_serial(unsigned long node,
 				const char *uname, int depth, void *data)
 {
-	unsigned long l;
-	char *p;
+	int l;
+	const char *p;
 
 	pr_debug("%s: depth: %d, uname: %s\n", __func__, depth, uname);
 
@@ -89,7 +79,7 @@ static int __init early_init_dt_scan_chosen_serial(unsigned long node,
 				(strncmp(p, "xlnx,opb-uartlite", 17) == 0) ||
 				(strncmp(p, "xlnx,axi-uartlite", 17) == 0) ||
 				(strncmp(p, "xlnx,mdm", 8) == 0)) {
-			unsigned int *addrp;
+			const unsigned int *addrp;
 
 			*(u32 *)data = UARTLITE;
 
@@ -136,8 +126,7 @@ void __init early_init_devtree(void *params)
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
-void __init early_init_dt_setup_initrd_arch(unsigned long start,
-		unsigned long end)
+void __init early_init_dt_setup_initrd_arch(u64 start, u64 end)
 {
 	initrd_start = (unsigned long)__va(start);
 	initrd_end = (unsigned long)__va(end);
@@ -174,4 +163,3 @@ static int __init export_flat_device_tree(void)
 	return 0;
 }
 device_initcall(export_flat_device_tree);
-#endif

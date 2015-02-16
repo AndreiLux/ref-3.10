@@ -63,6 +63,9 @@ struct rtc_class_ops {
 	int (*set_mmss)(struct device *, unsigned long secs);
 	int (*read_callback)(struct device *, int data);
 	int (*alarm_irq_enable)(struct device *, unsigned int enabled);
+#ifdef CONFIG_LGE_PM_RTC_PWROFF_ALARM
+	int (*set_po_alarm)(struct device *, struct rtc_wkalrm *);
+#endif
 };
 
 #define RTC_DEVICE_NAME_SIZE 20
@@ -185,6 +188,10 @@ int rtc_timer_start(struct rtc_device *rtc, struct rtc_timer* timer,
 			ktime_t expires, ktime_t period);
 int rtc_timer_cancel(struct rtc_device *rtc, struct rtc_timer* timer);
 void rtc_timer_do_work(struct work_struct *work);
+
+#ifdef CONFIG_LGE_PM_RTC_PWROFF_ALARM
+extern int rtc_set_po_alarm(struct rtc_device *rtc, struct rtc_wkalrm *alarm);
+#endif
 
 static inline bool is_leap_year(unsigned int year)
 {

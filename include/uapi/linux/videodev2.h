@@ -155,6 +155,9 @@ enum v4l2_buf_type {
 	 || (type) == V4L2_BUF_TYPE_VBI_OUTPUT			\
 	 || (type) == V4L2_BUF_TYPE_SLICED_VBI_OUTPUT)
 
+#define V4L2_TYPE_IS_PRIVATE(type)				\
+	((type) == V4L2_BUF_TYPE_PRIVATE)
+
 enum v4l2_tuner_type {
 	V4L2_TUNER_RADIO	     = 1,
 	V4L2_TUNER_ANALOG_TV	     = 2,
@@ -399,7 +402,11 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_XVID     v4l2_fourcc('X', 'V', 'I', 'D') /* Xvid           */
 #define V4L2_PIX_FMT_VC1_ANNEX_G v4l2_fourcc('V', 'C', '1', 'G') /* SMPTE 421M Annex G compliant stream */
 #define V4L2_PIX_FMT_VC1_ANNEX_L v4l2_fourcc('V', 'C', '1', 'L') /* SMPTE 421M Annex L compliant stream */
+#define V4L2_PIX_FMT_DIVX_311  v4l2_fourcc('D', 'I', 'V', '3') /* DIVX311     */
+#define V4L2_PIX_FMT_DIVX      v4l2_fourcc('D', 'I', 'V', 'X') /* DIVX        */
 #define V4L2_PIX_FMT_VP8      v4l2_fourcc('V', 'P', '8', '0') /* VP8 */
+#define V4L2_PIX_FMT_HEVC v4l2_fourcc('H', 'E', 'V', 'C') /* for HEVC stream */
+#define V4L2_PIX_FMT_HEVC_HYBRID v4l2_fourcc('H', 'V', 'C', 'H')
 
 /*  Vendor-specific formats   */
 #define V4L2_PIX_FMT_CPIA1    v4l2_fourcc('C', 'P', 'I', 'A') /* cpia1 YUV */
@@ -428,6 +435,17 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_JPGL	v4l2_fourcc('J', 'P', 'G', 'L') /* JPEG-Lite */
 #define V4L2_PIX_FMT_SE401      v4l2_fourcc('S', '4', '0', '1') /* se401 janggu compressed rgb */
 #define V4L2_PIX_FMT_S5C_UYVY_JPG v4l2_fourcc('S', '5', 'C', 'I') /* S5C73M3 interleaved UYVY/JPEG */
+#define V4L2_PIX_FMT_STATS_COMB v4l2_fourcc('S', 'T', 'C', 'M') /* Composite stats */
+
+#define V4L2_PIX_FMT_STATS_AE   v4l2_fourcc('S', 'T', 'A', 'E') /* AEC stats */
+#define V4L2_PIX_FMT_STATS_AF   v4l2_fourcc('S', 'T', 'A', 'F') /* AF stats */
+#define V4L2_PIX_FMT_STATS_AWB  v4l2_fourcc('S', 'T', 'W', 'B') /* AWB stats */
+#define V4L2_PIX_FMT_STATS_IHST v4l2_fourcc('I', 'H', 'S', 'T') /* IHIST stats */
+#define V4L2_PIX_FMT_STATS_CS   v4l2_fourcc('S', 'T', 'C', 'S') /* Column count stats */
+#define V4L2_PIX_FMT_STATS_RS   v4l2_fourcc('S', 'T', 'R', 'S') /* Row count stats */
+#define V4L2_PIX_FMT_STATS_BG   v4l2_fourcc('S', 'T', 'B', 'G') /* Bayer Grid stats */
+#define V4L2_PIX_FMT_STATS_BF   v4l2_fourcc('S', 'T', 'B', 'F') /* Bayer focus stats */
+#define V4L2_PIX_FMT_STATS_BHST v4l2_fourcc('B', 'H', 'S', 'T') /* Bayer hist stats */
 
 /*
  *	F O R M A T   E N U M E R A T I O N
@@ -685,6 +703,22 @@ struct v4l2_buffer {
 #define V4L2_BUF_FLAG_TIMESTAMP_UNKNOWN		0x0000
 #define V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC	0x2000
 #define V4L2_BUF_FLAG_TIMESTAMP_COPY		0x4000
+/* Vendor extensions */
+#define V4L2_QCOM_BUF_FLAG_CODECCONFIG		0x10000
+#define V4L2_QCOM_BUF_FLAG_EOSEQ		0x20000
+#define V4L2_QCOM_BUF_TIMESTAMP_INVALID		0x40000
+#define V4L2_QCOM_BUF_FLAG_IDRFRAME		0x80000	/*Image is a IDR-frame*/
+#define V4L2_QCOM_BUF_FLAG_DECODEONLY		0x100000
+#define V4L2_QCOM_BUF_DATA_CORRUPT		0x200000
+#define V4L2_QCOM_BUF_DROP_FRAME		0x400000
+#define V4L2_QCOM_BUF_INPUT_UNSUPPORTED		0x800000
+#define V4L2_QCOM_BUF_FLAG_EOS			0x1000000
+#define V4L2_QCOM_BUF_TS_DISCONTINUITY		0x2000000
+#define V4L2_QCOM_BUF_TS_ERROR			0x4000000
+#define V4L2_QCOM_BUF_FLAG_READONLY		0x8000000
+#define V4L2_MSM_VIDC_BUF_START_CODE_NOT_FOUND	0x10000000
+#define V4L2_MSM_BUF_FLAG_YUV_601_709_CLAMP	0x20000000
+#define V4L2_MSM_BUF_FLAG_MBAFF			0x40000000
 
 /**
  * struct v4l2_exportbuffer - export of video buffer as DMABUF file descriptor
@@ -772,6 +806,12 @@ struct v4l2_captureparm {
 /*  Flags for 'capability' and 'capturemode' fields */
 #define V4L2_MODE_HIGHQUALITY	0x0001	/*  High quality imaging mode */
 #define V4L2_CAP_TIMEPERFRAME	0x1000	/*  timeperframe field is supported */
+#define V4L2_CAP_QCOM_FRAMESKIP	0x2000	/*  frame skipping is supported */
+
+struct v4l2_qcom_frameskip {
+	__u64		   maxframeinterval;
+	__u8		   fpsvariance;
+};
 
 struct v4l2_outputparm {
 	__u32		   capability;	 /*  Supported modes */
@@ -1456,6 +1496,7 @@ struct v4l2_enc_idx {
 #define V4L2_ENC_CMD_STOP       (1)
 #define V4L2_ENC_CMD_PAUSE      (2)
 #define V4L2_ENC_CMD_RESUME     (3)
+#define V4L2_ENC_QCOM_CMD_FLUSH  (4)
 
 /* Flags for V4L2_ENC_CMD_STOP */
 #define V4L2_ENC_CMD_STOP_AT_GOP_END    (1 << 0)
@@ -1475,6 +1516,7 @@ struct v4l2_encoder_cmd {
 #define V4L2_DEC_CMD_STOP        (1)
 #define V4L2_DEC_CMD_PAUSE       (2)
 #define V4L2_DEC_CMD_RESUME      (3)
+#define V4L2_DEC_QCOM_CMD_FLUSH  (4)
 
 /* Flags for V4L2_DEC_CMD_START */
 #define V4L2_DEC_CMD_START_MUTE_AUDIO	(1 << 0)
@@ -1485,6 +1527,13 @@ struct v4l2_encoder_cmd {
 /* Flags for V4L2_DEC_CMD_STOP */
 #define V4L2_DEC_CMD_STOP_TO_BLACK	(1 << 0)
 #define V4L2_DEC_CMD_STOP_IMMEDIATELY	(1 << 1)
+
+/* Flags for V4L2_DEC_QCOM_CMD_FLUSH */
+#define V4L2_DEC_QCOM_CMD_FLUSH_OUTPUT  (1 << 0)
+#define V4L2_DEC_QCOM_CMD_FLUSH_CAPTURE (1 << 1)
+
+#define V4L2_QCOM_CMD_FLUSH_OUTPUT  (1 << 0)
+#define V4L2_QCOM_CMD_FLUSH_CAPTURE (1 << 1)
 
 /* Play format requirements (returned by the driver): */
 
@@ -1722,6 +1771,22 @@ struct v4l2_streamparm {
 #define V4L2_EVENT_CTRL				3
 #define V4L2_EVENT_FRAME_SYNC			4
 #define V4L2_EVENT_PRIVATE_START		0x08000000
+
+#define V4L2_EVENT_MSM_VIDC_START	(V4L2_EVENT_PRIVATE_START + 0x00001000)
+#define V4L2_EVENT_MSM_VIDC_FLUSH_DONE	(V4L2_EVENT_MSM_VIDC_START + 1)
+#define V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_SUFFICIENT	\
+		(V4L2_EVENT_MSM_VIDC_START + 2)
+#define V4L2_EVENT_MSM_VIDC_PORT_SETTINGS_CHANGED_INSUFFICIENT	\
+		(V4L2_EVENT_MSM_VIDC_START + 3)
+#define V4L2_EVENT_MSM_VIDC_CLOSE_DONE	(V4L2_EVENT_MSM_VIDC_START + 4)
+#define V4L2_EVENT_MSM_VIDC_SYS_ERROR	(V4L2_EVENT_MSM_VIDC_START + 5)
+#define V4L2_EVENT_MSM_VIDC_RELEASE_BUFFER_REFERENCE \
+		(V4L2_EVENT_MSM_VIDC_START + 6)
+#define V4L2_EVENT_MSM_VIDC_RELEASE_UNQUEUED_BUFFER \
+		(V4L2_EVENT_MSM_VIDC_START + 7)
+#define V4L2_EVENT_MSM_VIDC_HW_OVERLOAD (V4L2_EVENT_MSM_VIDC_START + 8)
+#define V4L2_EVENT_MSM_VIDC_MAX_CLIENTS (V4L2_EVENT_MSM_VIDC_START + 9)
+#define V4L2_EVENT_MSM_VIDC_HW_UNSUPPORTED (V4L2_EVENT_MSM_VIDC_START + 10)
 
 /* Payload for V4L2_EVENT_VSYNC */
 struct v4l2_event_vsync {

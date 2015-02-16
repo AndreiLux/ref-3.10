@@ -52,7 +52,7 @@ config KEXEC
 config AUDIT_ARCH
 	def_bool y
 
-config NO_IOPORT
+config NO_IOPORT_MAP
 	def_bool y
 
 config PCI_QUIRKS
@@ -141,7 +141,6 @@ config S390
 	select OLD_SIGSUSPEND3
 	select OLD_SIGACTION
 	select SYSCTL_EXCEPTION_TRACE
-	select USE_GENERIC_SMP_HELPERS if SMP
 	select VIRT_CPU_ACCOUNTING
 
 config SCHED_OMIT_FRAME_POINTER

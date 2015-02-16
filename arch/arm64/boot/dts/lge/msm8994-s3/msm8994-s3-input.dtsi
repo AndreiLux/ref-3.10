@@ -1,0 +1,174 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&soc {
+	gen-vkeys {
+		status = "diabled";
+		compatible = "qcom,gen-vkeys";
+		label = "synaptics_dsx";
+		qcom,disp-maxx = <1439>;
+		qcom,disp-maxy = <2559>;
+		qcom,panel-maxx = <1439>;
+		qcom,panel-maxy = <2559>;
+		qcom,key-codes = <158 139 102 217>;
+	};
+
+	gpio_keys {
+		compatible = "gpio-keys";
+		input-name = "gpio-keys";
+
+		vol_down {
+			label = "volume_down";
+			gpios = <&pm8994_gpios 2 0x1>;
+			linux,input-type = <1>;
+			linux,code = <114>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+
+		vol_up {
+			label = "volume_up";
+			gpios = <&pm8994_gpios 3 0x1>;
+			linux,input-type = <1>;
+			linux,code = <115>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+
+		cam_snapshot {
+			label = "cam_snapshot";
+			gpios = <&pm8994_gpios 4 0x1>;
+			linux,input-type = <1>;
+			linux,code = <766>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+
+		cam_focus {
+			label = "cam_focus";
+			gpios = <&pm8994_gpios 5 0x1>;
+			linux,input-type = <1>;
+			linux,code = <528>;
+			gpio-key,wakeup;
+			debounce-interval = <15>;
+		};
+
+
+	};
+};
+
+&i2c_2 {
+	synaptics@20 {
+		status = "ok";
+		compatible = "synaptics,s3528";
+		reg = <0x20>;
+		interrupt-parent = <&msm_gpio>;
+		interrupts = <61 0x2008>;
+		vcc_i2c-supply = <&pm8994_l14>;
+		vdd_ana-supply = <&pm8994_l22>;
+		pinctrl-names = "pmx_ts_active", "pmx_ts_suspend";
+		pinctrl-0 = <&ts_active>;
+		pinctrl-1 = <&ts_suspend>;
+		synaptics,display-coords = <0 0 1079 1919>;
+		synaptics,panel-coords = <0 0 1079 1919>;
+		reset-gpio = <&msm_gpio 8 0x00>;
+		irq-gpio = <&msm_gpio 61 0x2008>;
+		synaptics,disable-gpios;
+
+		/*Caps*/
+		button_support = <0>;
+		number_of_button = <4>;
+		button_name = [9e 8b 66 d9];
+		max_x = <1079>;
+		max_y = <1919>;
+		max_pressure = <0xff>;
+		max_width = <15>;
+		max_orientation = <1>;
+		max_id = <10>;
+
+		/*role*/
+		protocol_type = <1>;
+		report_mode = <0>;
+		delta_pos_threshold = <1>;
+		report_period = <10000000>;
+		booting_delay = <80>;
+		reset_delay = <10>;
+		wake_up_by_touch = <1>;
+		use_sleep_mode = <1>;
+		thermal_check = <1>;
+		palm_ctrl_mode = <0>;
+		use_hover_finger = <0>;
+		use_rmi_dev = <0>;
+		mini_os_finger_amplitude = <41>;
+		irqflags = <0x00000002>;
+		bouncing.enable = <0>;
+		grip.enable = <0>;
+		grip.edge_region = <5>;
+		grip.max_delta = <10>;
+		grip.width_ratio = <2>;
+		accuracy.enable = <0>;
+		accuracy.min_delta = <3>;
+		accuracy.curr_ratio = <5>;
+		accuracy.min_pressure = <50>;
+		jitter.enable = <0>;
+		jitter.curr_ratio = <115>;
+		quickcover.enable = <1>;
+		quickcover.X1 = <148>;
+		quickcover.X2 = <1292>;
+		quickcover.Y1 = <0>;
+		quickcover.Y2 = <1101>;
+		crack.enable = <1>;
+		crack.min.cap = <300>;
+
+		/*ghost_detection -S*/
+		ghost_detection_enable = <1>;
+		ghost_detection_chk_cnt = <3>;
+		jitter_value = <20>;
+		ta_noise_chk = <0>;
+		incoming_call_chk = <0>;
+		first_finger_chk = <1>;
+		first_finger_time = <200>;
+		pressure_zero_chk = <1>;
+		ta_debouncing_chk = <0>;
+		ta_debouncing_cnt = <2>;
+		ta_debouncing_finger_num = <2>;
+		press_interval_chk = <1>;
+		press_interval = <29>;
+		diff_fingers_chk = <1>;
+		diff_finger_num = <5>;
+		subtraction_finger_chk = <0>;
+		subtraction_time = <11>;
+		subtraction_finger_cnt = <5>;
+		long_press_chk = <1>;
+		long_press_chk_time = <10>;
+		long_press_cnt = <700>;
+		button_chk = <0>;
+		button_int_num = <6>;
+		button_duration = <100>;
+		rebase_repetition_chk = <1>;
+		rebase_since_init = <3>;
+		rebase_since_rebase = <5>;
+		use_lpwg_all = <1>;
+		use_security_mode = <1>;
+		/*ghost_detection -E*/
+
+		/*pwr*/
+		use_regulator = <1>;
+		vdd = "vdd_ana";
+		vdd_voltage = <3000000>;
+		vio = "vcc_i2c";
+		vio_voltage = <1800000>;
+
+		/*firmware*/
+		need_upgrade = <1>;
+	};
+};

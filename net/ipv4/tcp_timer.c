@@ -32,6 +32,42 @@ int sysctl_tcp_retries2 __read_mostly = TCP_RETR2;
 int sysctl_tcp_orphan_retries __read_mostly;
 int sysctl_tcp_thin_linear_timeouts __read_mostly;
 
+static void tcp_write_timer(unsigned long);
+static void tcp_delack_timer(unsigned long);
+static void tcp_keepalive_timer(unsigned long data);
+
+/*Function to reset tcp_ack related sysctl on resetting master control */
+void set_tcp_default(void)
+{
+	sysctl_tcp_delack_seg	= TCP_DELACK_SEG;
+}
+
+/*sysctl handler for tcp_ack realted master control */
+int tcp_proc_delayed_ack_control(ctl_table *table, int write,
+			void __user *buffer, size_t *length, loff_t *ppos)
+{
+	int ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+
+	/* The ret value will be 0 if the input validation is successful
+	 * and the values are written to sysctl table. If not, the stack
+	 * will continue to work with currently configured values
+	 */
+	return ret;
+}
+
+/*sysctl handler for tcp_ack realted master control */
+int tcp_use_userconfig_sysctl_handler(ctl_table *table, int write,
+			void __user *buffer, size_t *length, loff_t *ppos)
+{
+	int ret = proc_dointvec_minmax(table, write, buffer, length, ppos);
+
+	if (write && ret == 0) {
+		if (!sysctl_tcp_use_userconfig)
+			set_tcp_default();
+	}
+	return ret;
+}
+
 static void tcp_write_err(struct sock *sk)
 {
 	sk->sk_err = sk->sk_err_soft ? : ETIMEDOUT;
@@ -164,6 +200,19 @@ static int tcp_write_timeout(struct sock *sk)
 			dst_negative_advice(sk);
 		retry_until = icsk->icsk_syn_retries ? : sysctl_tcp_syn_retries;
 		syn_set = true;
+/*                                                                   */
+	} else if ((1 << sk->sk_state) & (TCPF_TIME_WAIT)) {
+		// printk(KERN_INFO "tcp_write_timeout: TCP sk=%p, TIME_WAIT State, retry_timer is set to %d, DataScheduler 1.4\n", sk, sysctl_tcp_retries1);
+		// printk(KERN_INFO "tcp_write_timeout: TCP sk=%p, timeout %lu, last rto %d, retransmit %d, backoff %d",
+        //        sk, icsk->icsk_timeout, icsk->icsk_rto, icsk->icsk_retransmits, icsk->icsk_backoff);
+		retry_until = sysctl_tcp_retries1;
+	} else if ((1 << sk->sk_state) & (TCPF_LAST_ACK)) {
+		// printk(KERN_INFO "tcp_write_timeout: TCP sk=%p, LAST_ACK State, retry_timer is set to %d, DataScheduler 1.4\n", sk, sysctl_tcp_retries1);
+		// printk(KERN_INFO "tcp_write_timeout: TCP sk=%p, timeout %lu, last rto %d, retransmit %d, backoff %d",
+        //        sk, icsk->icsk_timeout, icsk->icsk_rto, icsk->icsk_retransmits, icsk->icsk_backoff);
+		do_reset = true;
+		retry_until = sysctl_tcp_retries1;
+/*                                                                 */
 	} else {
 		if (retransmits_timed_out(sk, sysctl_tcp_retries1, 0, 0)) {
 			/* Black hole detection */
@@ -187,6 +236,12 @@ static int tcp_write_timeout(struct sock *sk)
 
 	if (retransmits_timed_out(sk, retry_until,
 				  syn_set ? 0 : icsk->icsk_user_timeout, syn_set)) {
+/*                                                                   */
+		if (do_reset) {
+			// printk(KERN_INFO "tcp_write_timeout: TCP sk=%p, Reset Connection, DataScheduler 1.4\n", sk);
+			tcp_send_active_reset(sk, GFP_ATOMIC);
+		}
+/*                                                                 */
 		/* Has it gone just too far? */
 		tcp_write_err(sk);
 		return 1;

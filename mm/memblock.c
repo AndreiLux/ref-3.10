@@ -936,6 +936,12 @@ int __init_memblock memblock_is_region_memory(phys_addr_t base, phys_addr_t size
 		 memblock.memory.regions[idx].size) >= end;
 }
 
+int __init_memblock memblock_overlaps_memory(phys_addr_t base, phys_addr_t size)
+{
+	memblock_cap_size(base, &size);
+	return memblock_overlaps_region(&memblock.memory, base, size) >= 0;
+}
+
 /**
  * memblock_is_region_reserved - check if a region intersects reserved memory
  * @base: base of region to check
@@ -980,6 +986,11 @@ void __init_memblock memblock_trim_memory(phys_addr_t align)
 void __init_memblock memblock_set_current_limit(phys_addr_t limit)
 {
 	memblock.current_limit = limit;
+}
+
+phys_addr_t __init_memblock memblock_get_current_limit(void)
+{
+	return memblock.current_limit;
 }
 
 static void __init_memblock memblock_dump(struct memblock_type *type, char *name)

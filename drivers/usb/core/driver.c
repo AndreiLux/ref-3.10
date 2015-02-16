@@ -1346,6 +1346,57 @@ static int usb_resume_both(struct usb_device *udev, pm_message_t msg)
 	return status;
 }
 
+#ifdef CONFIG_USB_OTG
+void usb_hnp_polling_work(struct work_struct *work)
+{
+	int ret;
+	struct usb_bus *bus =
+		container_of(work, struct usb_bus, hnp_polling.work);
+	struct usb_device *udev = bus->root_hub->children[bus->otg_port - 1];
+	u8 *status = NULL;
+
+	/*
+	 * The OTG-B device must hand back the host role to OTG PET
+	 * within 100 msec irrespective of host_request flag.
+	 */
+	if (bus->quick_hnp) {
+		bus->quick_hnp = 0;
+		goto start_hnp;
+	}
+
+	status = kmalloc(sizeof(*status), GFP_KERNEL);
+	if (!status)
+		goto reschedule;
+
+	ret = usb_control_msg(udev, usb_rcvctrlpipe(udev, 0),
+		USB_REQ_GET_STATUS, USB_DIR_IN | USB_RECIP_DEVICE,
+		0, OTG_STATUS_SELECTOR, status, sizeof(*status),
+		USB_CTRL_GET_TIMEOUT);
+	if (ret < 0) {
+		/* Peripheral may not be supporting HNP polling */
+		dev_info(&udev->dev, "HNP polling failed. status %d\n", ret);
+		goto out;
+	}
+
+	if (!(*status & (1 << HOST_REQUEST_FLAG)))
+		goto reschedule;
+
+start_hnp:
+	do_unbind_rebind(udev, DO_UNBIND);
+	udev->do_remote_wakeup = device_may_wakeup(&udev->dev);
+	ret = usb_suspend_both(udev, PMSG_USER_SUSPEND);
+	if (ret)
+		dev_info(&udev->dev, "suspend failed\n");
+	goto out;
+
+reschedule:
+	schedule_delayed_work(&bus->hnp_polling,
+		msecs_to_jiffies(THOST_REQ_POLL));
+out:
+	kfree(status);
+}
+#endif
+
 static void choose_wakeup(struct usb_device *udev, pm_message_t msg)
 {
 	int	w;
@@ -1378,6 +1429,15 @@ int usb_suspend(struct device *dev, pm_message_t msg)
 {
 	struct usb_device	*udev = to_usb_device(dev);
 
+	if (udev->bus->skip_resume) {
+		if (udev->state == USB_STATE_SUSPENDED) {
+			return 0;
+		} else {
+			dev_err(dev, "abort suspend\n");
+			return -EBUSY;
+		}
+	}
+
 	unbind_no_pm_drivers_interfaces(udev);
 
 	/* From now on we are sure all drivers support suspend/resume
@@ -1406,6 +1466,15 @@ int usb_resume(struct device *dev, pm_message_t msg)
 {
 	struct usb_device	*udev = to_usb_device(dev);
 	int			status;
+
+	/*
+	 * Some buses would like to keep their devices in suspend
+	 * state after system resume.  Their resume happen when
+	 * a remote wakeup is detected or interface driver start
+	 * I/O.
+	 */
+	if (udev->bus->skip_resume)
+		return 0;
 
 	/* For all calls, take the device back to full power and
 	 * tell the PM core in case it was autosuspended previously.

@@ -1,0 +1,31 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&usb3 {
+	status = "ok";
+	qcom,dwc-vadc = <&pm8994_vadc>;
+	qcom,dwc-adc_tm = <&pm8994_adc_tm>;
+	qcom,usbin-vadc = <&pmi8994_vadc>;
+};
+
+&hsphy0 {
+	status = "ok";
+	qcom,hsphy-init = <0x00D1DDA4>;
+};
+
+&ssphy0 {
+	status = "ok";
+};
+
+&usb_ehci {
+	status = "ok";
+};

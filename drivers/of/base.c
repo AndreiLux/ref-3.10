@@ -18,6 +18,7 @@
  *      2 of the License, or (at your option) any later version.
  */
 #include <linux/ctype.h>
+#include <linux/cpu.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/spinlock.h>
@@ -25,6 +26,10 @@
 #include <linux/proc_fs.h>
 
 #include "of_private.h"
+
+#ifdef CONFIG_MACH_LGE
+#include <soc/qcom/lge/board_lge.h>
+#endif
 
 LIST_HEAD(aliases_lookup);
 
@@ -230,6 +235,100 @@ const void *of_get_property(const struct device_node *np, const char *name,
 }
 EXPORT_SYMBOL(of_get_property);
 
+/*
+ * arch_match_cpu_phys_id - Match the given logical CPU and physical id
+ *
+ * @cpu: logical cpu index of a core/thread
+ * @phys_id: physical identifier of a core/thread
+ *
+ * CPU logical to physical index mapping is architecture specific.
+ * However this __weak function provides a default match of physical
+ * id to logical cpu index. phys_id provided here is usually values read
+ * from the device tree which must match the hardware internal registers.
+ *
+ * Returns true if the physical identifier and the logical cpu index
+ * correspond to the same core/thread, false otherwise.
+ */
+bool __weak arch_match_cpu_phys_id(int cpu, u64 phys_id)
+{
+	return (u32)phys_id == cpu;
+}
+
+/**
+ * Checks if the given "prop_name" property holds the physical id of the
+ * core/thread corresponding to the logical cpu 'cpu'. If 'thread' is not
+ * NULL, local thread number within the core is returned in it.
+ */
+static bool __of_find_n_match_cpu_property(struct device_node *cpun,
+			const char *prop_name, int cpu, unsigned int *thread)
+{
+	const __be32 *cell;
+	int ac, prop_len, tid;
+	u64 hwid;
+
+	ac = of_n_addr_cells(cpun);
+	cell = of_get_property(cpun, prop_name, &prop_len);
+	if (!cell)
+		return false;
+	prop_len /= sizeof(*cell);
+	for (tid = 0; tid < prop_len; tid++) {
+		hwid = of_read_number(cell, ac);
+		if (arch_match_cpu_phys_id(cpu, hwid)) {
+			if (thread)
+				*thread = tid;
+			return true;
+		}
+		cell += ac;
+	}
+	return false;
+}
+
+/**
+ * of_get_cpu_node - Get device node associated with the given logical CPU
+ *
+ * @cpu: CPU number(logical index) for which device node is required
+ * @thread: if not NULL, local thread number within the physical core is
+ *          returned
+ *
+ * The main purpose of this function is to retrieve the device node for the
+ * given logical CPU index. It should be used to initialize the of_node in
+ * cpu device. Once of_node in cpu device is populated, all the further
+ * references can use that instead.
+ *
+ * CPU logical to physical index mapping is architecture specific and is built
+ * before booting secondary cores. This function uses arch_match_cpu_phys_id
+ * which can be overridden by architecture specific implementation.
+ *
+ * Returns a node pointer for the logical cpu if found, else NULL.
+ */
+struct device_node *of_get_cpu_node(int cpu, unsigned int *thread)
+{
+	struct device_node *cpun, *cpus;
+
+	cpus = of_find_node_by_path("/cpus");
+	if (!cpus) {
+		pr_warn("Missing cpus node, bailing out\n");
+		return NULL;
+	}
+
+	for_each_child_of_node(cpus, cpun) {
+		if (of_node_cmp(cpun->type, "cpu"))
+			continue;
+		/* Check for non-standard "ibm,ppc-interrupt-server#s" property
+		 * for thread ids on PowerPC. If it doesn't exist fallback to
+		 * standard "reg" property.
+		 */
+		if (IS_ENABLED(CONFIG_PPC) &&
+			__of_find_n_match_cpu_property(cpun,
+				"ibm,ppc-interrupt-server#s", cpu, thread))
+			return cpun;
+		if (__of_find_n_match_cpu_property(cpun, "reg", cpu, thread))
+			return cpun;
+	}
+	return NULL;
+}
+EXPORT_SYMBOL(of_get_cpu_node);
+
 /** Checks if the given "compat" string matches one of the strings in
  * the device's "compatible" property
  */
@@ -335,6 +434,118 @@ int of_device_is_available(const struct device_node *device)
 
 }
 EXPORT_SYMBOL(of_device_is_available);
+
+#ifdef CONFIG_MACH_LGE
+int compare_revision(const char *revision)
+{
+	char range = 0;
+	char min_rev_str[16];
+	char max_rev_str[16];
+	char min_rev_no = 0;
+	char max_rev_no = 0;
+	int i = 0, j = 0;
+
+	memset(min_rev_str, 0x0, sizeof(min_rev_str));
+	memset(max_rev_str, 0x0, sizeof(min_rev_str));
+
+	if (revision[0] != '.') {
+		while (revision[i] != 0 && revision[i] != '.')
+			min_rev_str[j++] = revision[i++];
+
+		if (revision[i] == '.' && revision[i + 1] == '.' &&
+				revision[i + 2] == '.') {
+			range = 1;
+			i += 3;
+			j = 0;
+			while (revision[i] != 0)
+				max_rev_str[j++] = revision[i++];
+		}
+	} else {
+		if (revision[i] == '.' && revision[i + 1] == '.' &&
+				revision[i + 2] == '.') {
+			range = 1;
+			i += 3;
+			while (revision[i] != 0)
+				max_rev_str[j++] = revision[i++];
+		}
+	}
+
+	if (!min_rev_str[0]) {
+		min_rev_no = HW_REV_0;
+	} else {
+		for (i = 0; i < HW_REV_MAX; ++i) {
+			if (!strcmp(rev_str[i], min_rev_str)) {
+				min_rev_no = i;
+				break;
+			}
+		}
+
+		if (i == HW_REV_MAX) {
+			pr_err("wrong min revision string = %s\n", min_rev_str);
+			return 0;
+		}
+	}
+
+	if (!max_rev_str[0]) {
+		max_rev_no = HW_REV_MAX - 1;
+	} else {
+		for (i = 0; i < HW_REV_MAX; ++i) {
+			if (!strcmp(rev_str[i], max_rev_str)) {
+				max_rev_no = i;
+				break;
+			}
+		}
+
+		if (i == HW_REV_MAX) {
+			pr_err("wrong max revision string = %s\n", max_rev_str);
+			return 0;
+		}
+	}
+
+	if (range) {
+		if (min_rev_no <= lge_get_board_revno() &&
+				lge_get_board_revno() <= max_rev_no)
+			return 1;
+		else
+			return 0;
+	} else {
+		if (min_rev_no == lge_get_board_revno())
+			return 1;
+		else
+			return 0;
+	}
+}
+
+/**
+ *  of_device_is_available_revision
+ *  check if a device is available for use in specific revision
+ *
+ *  @device: Node to check for availability in specific revision
+ *
+ *  Returns 1 if the status property is absent or equal to present revision.
+ *  0 otherwise
+ */
+int of_device_is_available_revision(struct device_node *device)
+{
+	int count;
+	int i;
+	const char *revision = NULL;
+
+	count = of_property_count_strings(device, "revision");
+	if (count < 0)
+		return 1;
+
+	for (i = 0; i < count; i++) {
+		of_property_read_string_index(device, "revision", i, &revision);
+
+		if (compare_revision(revision))
+			return 1;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(of_device_is_available_revision);
+#endif
 
 /**
  *	of_get_parent - Get a node's parent if any

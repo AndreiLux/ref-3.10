@@ -91,7 +91,8 @@ void __init add_static_vm_early(struct static_vm *svm)
 	void *vaddr;
 
 	vm = &svm->vm;
-	vm_area_add_early(vm);
+	if (!vm_area_check_early(vm))
+		vm_area_add_early(vm);
 	vaddr = vm->addr;
 
 	list_for_each_entry(curr_svm, &static_vmlist, list) {
@@ -110,6 +111,14 @@ int ioremap_page(unsigned long virt, unsigned long phys,
 				  __pgprot(mtype->prot_pte));
 }
 EXPORT_SYMBOL(ioremap_page);
+
+int ioremap_pages(unsigned long virt, unsigned long phys, unsigned long size,
+		 const struct mem_type *mtype)
+{
+	return ioremap_page_range(virt, virt + size, phys,
+				  __pgprot(mtype->prot_pte));
+}
+EXPORT_SYMBOL(ioremap_pages);
 
 void __check_vmalloc_seq(struct mm_struct *mm)
 {
@@ -335,7 +344,7 @@ void __iomem *__arm_ioremap_caller(phys_addr_t phys_addr, size_t size,
 	unsigned int mtype, void *caller)
 {
 	phys_addr_t last_addr;
- 	unsigned long offset = phys_addr & ~PAGE_MASK;
+	unsigned long offset = phys_addr & ~PAGE_MASK;
  	unsigned long pfn = __phys_to_pfn(phys_addr);
 
  	/*

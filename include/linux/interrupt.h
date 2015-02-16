@@ -120,7 +120,6 @@ struct irqaction {
 
 extern irqreturn_t no_action(int cpl, void *dev_id);
 
-#ifdef CONFIG_GENERIC_HARDIRQS
 extern int __must_check
 request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		     irq_handler_t thread_fn,
@@ -140,40 +139,6 @@ request_any_context_irq(unsigned int irq, irq_handler_t handler,
 extern int __must_check
 request_percpu_irq(unsigned int irq, irq_handler_t handler,
 		   const char *devname, void __percpu *percpu_dev_id);
-#else
-
-extern int __must_check
-request_irq(unsigned int irq, irq_handler_t handler, unsigned long flags,
-	    const char *name, void *dev);
-
-/*
- * Special function to avoid ifdeffery in kernel/irq/devres.c which
- * gets magically built by GENERIC_HARDIRQS=n architectures (sparc,
- * m68k). I really love these $@%#!* obvious Makefile references:
- * ../../../kernel/irq/devres.o
- */
-static inline int __must_check
-request_threaded_irq(unsigned int irq, irq_handler_t handler,
-		     irq_handler_t thread_fn,
-		     unsigned long flags, const char *name, void *dev)
-{
-	return request_irq(irq, handler, flags, name, dev);
-}
-
-static inline int __must_check
-request_any_context_irq(unsigned int irq, irq_handler_t handler,
-			unsigned long flags, const char *name, void *dev_id)
-{
-	return request_irq(irq, handler, flags, name, dev_id);
-}
-
-static inline int __must_check
-request_percpu_irq(unsigned int irq, irq_handler_t handler,
-		   const char *devname, void __percpu *percpu_dev_id)
-{
-	return request_irq(irq, handler, 0, devname, percpu_dev_id);
-}
-#endif
 
 extern void free_irq(unsigned int, void *);
 extern void free_percpu_irq(unsigned int, void __percpu *);
@@ -221,7 +186,6 @@ extern void enable_irq(unsigned int irq);
 extern void enable_percpu_irq(unsigned int irq, unsigned int type);
 
 /* The following three functions are for the core kernel use only. */
-#ifdef CONFIG_GENERIC_HARDIRQS
 extern void suspend_device_irqs(void);
 extern void resume_device_irqs(void);
 #ifdef CONFIG_PM_SLEEP
@@ -229,13 +193,8 @@ extern int check_wakeup_irqs(void);
 #else
 static inline int check_wakeup_irqs(void) { return 0; }
 #endif
-#else
-static inline void suspend_device_irqs(void) { };
-static inline void resume_device_irqs(void) { };
-static inline int check_wakeup_irqs(void) { return 0; }
-#endif
 
-#if defined(CONFIG_SMP) && defined(CONFIG_GENERIC_HARDIRQS)
+#if defined(CONFIG_SMP)
 
 extern cpumask_var_t irq_default_affinity;
 
@@ -282,7 +241,7 @@ extern int irq_set_affinity_hint(unsigned int irq, const struct cpumask *m);
  * struct irq_affinity_notify - context for notification of IRQ affinity changes
  * @irq:		Interrupt to which notification applies
  * @kref:		Reference count, for internal use
- * @work:		Work item, for internal use
+ * @list:		Add to the notifier list, for internal use
  * @notify:		Function to be called on change.  This will be
  *			called in process context.
  * @release:		Function to be called on release.  This will be
@@ -293,7 +252,7 @@ extern int irq_set_affinity_hint(unsigned int irq, const struct cpumask *m);
 struct irq_affinity_notify {
 	unsigned int irq;
 	struct kref kref;
-	struct work_struct work;
+	struct list_head list;
 	void (*notify)(struct irq_affinity_notify *, const cpumask_t *mask);
 	void (*release)(struct kref *ref);
 };
@@ -301,6 +260,8 @@ struct irq_affinity_notify {
 extern int
 irq_set_affinity_notifier(unsigned int irq, struct irq_affinity_notify *notify);
 
+extern int
+irq_release_affinity_notifier(struct irq_affinity_notify *notify);
 #else /* CONFIG_SMP */
 
 static inline int irq_set_affinity(unsigned int irq, const struct cpumask *m)
@@ -325,9 +286,8 @@ static inline int irq_set_affinity_hint(unsigned int irq,
 {
 	return -EINVAL;
 }
-#endif /* CONFIG_SMP && CONFIG_GENERIC_HARDIRQS */
+#endif /* CONFIG_SMP */
 
-#ifdef CONFIG_GENERIC_HARDIRQS
 /*
  * Special lockdep variants of irq disabling/enabling.
  * These should be used for locking constructs that
@@ -381,6 +341,7 @@ static inline void enable_irq_lockdep_irqrestore(unsigned int irq, unsigned long
 
 /* IRQ wakeup (PM) control: */
 extern int irq_set_irq_wake(unsigned int irq, unsigned int on);
+extern int irq_read_line(unsigned int irq);
 
 static inline int enable_irq_wake(unsigned int irq)
 {
@@ -391,33 +352,6 @@ static inline int disable_irq_wake(unsigned int irq)
 {
 	return irq_set_irq_wake(irq, 0);
 }
-
-#else /* !CONFIG_GENERIC_HARDIRQS */
-/*
- * NOTE: non-genirq architectures, if they want to support the lock
- * validator need to define the methods below in their asm/irq.h
- * files, under an #ifdef CONFIG_LOCKDEP section.
- */
-#ifndef CONFIG_LOCKDEP
-#  define disable_irq_nosync_lockdep(irq)	disable_irq_nosync(irq)
-#  define disable_irq_nosync_lockdep_irqsave(irq, flags) \
-						disable_irq_nosync(irq)
-#  define disable_irq_lockdep(irq)		disable_irq(irq)
-#  define enable_irq_lockdep(irq)		enable_irq(irq)
-#  define enable_irq_lockdep_irqrestore(irq, flags) \
-						enable_irq(irq)
-# endif
-
-static inline int enable_irq_wake(unsigned int irq)
-{
-	return 0;
-}
-
-static inline int disable_irq_wake(unsigned int irq)
-{
-	return 0;
-}
-#endif /* CONFIG_GENERIC_HARDIRQS */
 
 
 #ifdef CONFIG_IRQ_FORCED_THREADING
@@ -565,7 +499,7 @@ static inline int tasklet_trylock(struct tasklet_struct *t)
 
 static inline void tasklet_unlock(struct tasklet_struct *t)
 {
-	smp_mb__before_clear_bit(); 
+	smp_mb__before_atomic();
 	clear_bit(TASKLET_STATE_RUN, &(t)->state);
 }
 
@@ -613,7 +547,7 @@ static inline void tasklet_hi_schedule_first(struct tasklet_struct *t)
 static inline void tasklet_disable_nosync(struct tasklet_struct *t)
 {
 	atomic_inc(&t->count);
-	smp_mb__after_atomic_inc();
+	smp_mb__after_atomic();
 }
 
 static inline void tasklet_disable(struct tasklet_struct *t)
@@ -625,13 +559,13 @@ static inline void tasklet_disable(struct tasklet_struct *t)
 
 static inline void tasklet_enable(struct tasklet_struct *t)
 {
-	smp_mb__before_atomic_dec();
+	smp_mb__before_atomic();
 	atomic_dec(&t->count);
 }
 
 static inline void tasklet_hi_enable(struct tasklet_struct *t)
 {
-	smp_mb__before_atomic_dec();
+	smp_mb__before_atomic();
 	atomic_dec(&t->count);
 }
 
@@ -693,7 +627,7 @@ void tasklet_hrtimer_cancel(struct tasklet_hrtimer *ttimer)
  * if more than one irq occurred.
  */
 
-#if defined(CONFIG_GENERIC_HARDIRQS) && !defined(CONFIG_GENERIC_IRQ_PROBE) 
+#if !defined(CONFIG_GENERIC_IRQ_PROBE) 
 static inline unsigned long probe_irq_on(void)
 {
 	return 0;
@@ -728,5 +662,5 @@ int arch_show_interrupts(struct seq_file *p, int prec);
 extern int early_irq_init(void);
 extern int arch_probe_nr_irqs(void);
 extern int arch_early_irq_init(void);
-
+extern void irq_set_pending(unsigned int irq);
 #endif

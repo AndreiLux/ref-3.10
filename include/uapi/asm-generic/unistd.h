@@ -191,6 +191,7 @@ __SYSCALL(__NR_quotactl, sys_quotactl)
 
 /* fs/readdir.c */
 #define __NR_getdents64 61
+#define __ARCH_WANT_COMPAT_SYS_GETDENTS64
 __SC_COMP(__NR_getdents64, sys_getdents64, compat_sys_getdents64)
 
 /* fs/read_write.c */
@@ -693,8 +694,14 @@ __SYSCALL(__NR_kcmp, sys_kcmp)
 #define __NR_finit_module 273
 __SYSCALL(__NR_finit_module, sys_finit_module)
 
+#define __NR_set_media_property 382
+__SYSCALL(__NR_set_media_property, sys_set_media_property)
+
+#define __NR_set_media_ext 383
+__SYSCALL(__NR_set_media_ext, sys_set_media_ext)
+
 #undef __NR_syscalls
-#define __NR_syscalls 274
+#define __NR_syscalls 384
 
 /*
  * All syscalls below here should go away really,

@@ -1,0 +1,76 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../msm8994-g4_common/msm8994-common-panel.dtsi"
+
+//copy from msm8994-cdp.dtsi and modify.
+
+
+&mdss_mdp {
+
+};
+
+&pmx_mdss {
+	qcom,num-grp-pins = <4>;
+	qcom,pins = <&gp 78>, <&gp 89>, <&gp 90>, <&gp 110>;
+};
+
+&mdss_dsi0 {
+	qcom,platform-avee-gpio = <&msm_gpio 90 0>;
+
+	lge,vdd_ldo = < // 1:LDO19 2:LDO25 3:NONE
+		1 1  // rev_0 = 1 ; rev_a = 1
+		1 2  // rev_b = 1 ; rev_c = 2
+		3 3  // rev_d = 2 ; rev_e = 2
+		3 3  // rev_f = 2 ; rev_g = 2
+		3 3  // rev_10 = 2 ; rev_11 = 2
+		3    // rev_12 = 2;
+		>;
+};
+
+&mdss_fb0 {
+
+};
+
+&mdss_dsi1 {
+	lge,vdd_ldo = < // 1:LDO19 2:LDO25 3:NONE
+		1 1  // rev_0 = 1 ; rev_a = 1
+		1 2  // rev_b = 1 ; rev_c = 2
+		3 3  // rev_d = 2 ; rev_e = 2
+		3 3  // rev_f = 2 ; rev_g = 2
+		3 3  // rev_10 = 2 ; rev_11 = 2
+		3    // rev_12 = 2;
+		>;
+};
+
+&dsi_dual_jdi_cmd_0{
+
+};
+
+/* RPM controlled regulators: */
+
+&rpm_bus {
+	rpm-regulator-ldoa25 {
+		revision = "...rev_c";
+		pm8994_l25: regulator-l25 {
+			revision = "...rev_c";
+		};
+	};
+};
+
+&i2c_5 {
+    lion_dsv@3e {
+        status = "ok";
+        revision = "rev_b...";
+
+    };
+};

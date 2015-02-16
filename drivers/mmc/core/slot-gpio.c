@@ -17,22 +17,75 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 
+#if defined(CONFIG_LGE_MMC_DYNAMIC_LOG)
+#include <linux/mmc/debug_log.h>
+#endif
+
 struct mmc_gpio {
 	int ro_gpio;
 	int cd_gpio;
 	char *ro_label;
-	char cd_label[0];
+	bool status;
+	char cd_label[0]; /* Must be last entry */
 };
+
+static int mmc_gpio_get_status(struct mmc_host *host)
+{
+	int ret = -ENOSYS;
+	struct mmc_gpio *ctx = host->slot.handler_priv;
+
+	if (!ctx || !gpio_is_valid(ctx->cd_gpio))
+		goto out;
+
+	ret = !gpio_get_value_cansleep(ctx->cd_gpio) ^
+		!!(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH);
+out:
+	return ret;
+}
+
 
 static irqreturn_t mmc_gpio_cd_irqt(int irq, void *dev_id)
 {
 	/* Schedule a card detection after a debounce timeout */
 	struct mmc_host *host = dev_id;
+	struct mmc_gpio *ctx = host->slot.handler_priv;
+	int status;
+
+	/*
+	 * In case host->ops are not yet initialized return immediately.
+	 * The card will get detected later when host driver calls
+	 * mmc_add_host() after host->ops are initialized.
+	 */
+	if (!host->ops)
+		goto out;
 
 	if (host->ops->card_event)
 		host->ops->card_event(host);
 
-	mmc_detect_change(host, msecs_to_jiffies(200));
+	status = mmc_gpio_get_status(host);
+	if (unlikely(status < 0))
+		goto out;
+
+	if (status ^ ctx->status) {
+		pr_info("%s: slot status change detected (%d -> %d), GPIO_ACTIVE_%s\n",
+				mmc_hostname(host), ctx->status, status,
+				(host->caps2 & MMC_CAP2_CD_ACTIVE_HIGH) ?
+				"HIGH" : "LOW");
+		ctx->status = status;
+
+		/* Schedule a card detection after a debounce timeout */
+
+		#ifdef CONFIG_MACH_LGE
+		/*           
+                                                  
+                                        
+  */
+		mmc_detect_change(host, 0);
+		#else
+		mmc_detect_change(host, msecs_to_jiffies(200));
+		#endif
+	}
+out:
 
 	return IRQ_HANDLED;
 }
@@ -175,6 +228,15 @@ int mmc_gpio_request_cd(struct mmc_host *host, unsigned int gpio)
 	if (irq >= 0 && host->caps & MMC_CAP_NEEDS_POLL)
 		irq = -EINVAL;
 
+	ctx->cd_gpio = gpio;
+	host->slot.cd_irq = irq;
+
+	ret = mmc_gpio_get_status(host);
+	if (ret < 0)
+		return ret;
+
+	ctx->status = ret;
+
 	if (irq >= 0) {
 		ret = devm_request_threaded_irq(&host->class_dev, irq,
 			NULL, mmc_gpio_cd_irqt,
@@ -184,12 +246,8 @@ int mmc_gpio_request_cd(struct mmc_host *host, unsigned int gpio)
 			irq = ret;
 	}
 
-	host->slot.cd_irq = irq;
-
 	if (irq < 0)
 		host->caps |= MMC_CAP_NEEDS_POLL;
-
-	ctx->cd_gpio = gpio;
 
 	return 0;
 }

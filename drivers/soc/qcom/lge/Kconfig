@@ -1,0 +1,309 @@
+config MACH_LGE
+	bool
+
+menu "LGE Board Selection"
+
+config MACH_MSM8994_S3
+	bool "MSM8994 S3"
+	depends on ARCH_MSM8994
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 S3 device.
+
+config MACH_MSM8994_Z2
+	bool "MSM8994 Z2"
+	depends on ARCH_MSM8994
+	select MACH_LGE
+	help
+		Support for the Qualcomm MSM8994 Z2 device.
+
+config MACH_MSM8994_G4
+	bool "MSM8994 G4"
+	depends on ARCH_MSM8994
+	select MACH_LGE
+	help
+		Support for the Qualcomm MSM8994 G4 device.
+
+config MACH_MSM8994_Z2_SPR_US
+	bool "MSM8994 Z2_SPR_US"
+	depends on MACH_MSM8994_Z2
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 Z2 SPR US device.
+
+config MACH_MSM8994_Z2_KR
+	bool "MSM8994 Z2_KR"
+	depends on MACH_MSM8994_Z2
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 Z2 KR device.
+	  
+config MACH_MSM8994_Z2_GLOBAL_COM
+	bool "MSM8994 Z2_GLOBAL_COM"
+	depends on MACH_MSM8994_Z2
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 Z2 GLOBAL COM device.
+
+config MACH_MSM8994_Z2_GLOBAL_ESA
+	bool "MSM8994 Z2_GLOBAL_ESA"
+	depends on MACH_MSM8994_Z2
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 Z2 GLOBAL ESA device.
+
+config MACH_MSM8994_Z2_USC_US
+	bool "MSM8994 Z2_USC_US"
+	depends on MACH_MSM8994_Z2
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 Z2 USC US device.
+	  
+config MACH_MSM8994_Z2_ATT_US
+	bool "MSM8994 Z2_ATT_US"
+	depends on MACH_MSM8994_Z2
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 Z2 ATT US device.
+
+config MACH_MSM8994_G4_KR
+    bool "MSM8994 G4_KR"
+    depends on MACH_MSM8994_G4
+    select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 KR device.
+
+config MACH_MSM8994_G4_LGU_KR
+    bool "MSM8994 G4_LGU_KR"
+    depends on MACH_MSM8994_G4_KR
+    help
+      Support for the Qualcomm MSM8994 G4 LGU KR device.
+
+config MACH_MSM8994_G4_SKT_KR
+    bool "MSM8994 G4_SKT_KR"
+    depends on MACH_MSM8994_G4_KR
+    help
+      Support for the Qualcomm MSM8994 G4 SKT KR device.
+
+config MACH_MSM8994_G4_KT_KR
+    bool "MSM8994 G4_KT_KR"
+    depends on MACH_MSM8994_G4_KR
+    help
+      Support for the Qualcomm MSM8994 G4 KT KR device.
+
+config MACH_MSM8994_G4_ATT_US
+    bool "MSM8994 G4_ATT_US"
+    depends on MACH_MSM8994_G4
+	select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 ATT US device.
+
+config MACH_MSM8994_G4_GLOBAL_COM
+	bool "MSM8994 G4_GLOBAL_COM"
+	depends on MACH_MSM8994_G4
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 G4 GLOBAL COM device.
+
+config MACH_MSM8994_G4_VZW
+	bool "MSM8994 G4_VZW"
+	depends on MACH_MSM8994_G4
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 G4 VZW device.
+
+config MACH_MSM8994_G4_SPR_US
+	bool "MSM8994 G4_SPR_US"
+	depends on MACH_MSM8994_G4
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 G4 SPR US device.
+
+config MACH_MSM8994_G4_USC_US
+	bool "MSM8994 G4_USC_US"
+	depends on MACH_MSM8994_G4
+	select MACH_LGE
+	help
+	  Support for the Qualcomm MSM8994 G4 USC US device.
+
+config MACH_MSM8994_G4_TMO_US
+    bool "MSM8994 G4_TMO_US"
+    depends on MACH_MSM8994_G4
+	select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 TMO US device.
+
+config MACH_MSM8994_G4_CN
+    bool "MSM8994 G4_CN"
+    depends on MACH_MSM8994_G4
+    select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 CN device.
+
+config MACH_MSM8994_G4_CMO_CN
+    bool "MSM8994 G4_CMO_CN"
+    depends on MACH_MSM8994_G4_CN
+    select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 CMO CN device.
+
+config MACH_MSM8994_G4_CTO_CN
+    bool "MSM8994 G4_CTO_CN"
+    depends on MACH_MSM8994_G4_CN
+    select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 CTO CN device
+
+config MACH_MSM8994_G4_KDDI_JP
+    bool "MSM8994 G4_KDDI_JP"
+    depends on MACH_MSM8994_G4
+    select MACH_LGE
+    help
+      Support for the Qualcomm MSM8994 G4 KDDI JP device
+
+endmenu
+
+menu "LGE Specific Patches"
+
+config LGE_PM
+	tristate "Support LGE power-management"
+	default n
+	depends on MACH_LGE
+	help
+	  Global feature of LGE power-management
+
+config LGE_PM_BCL
+	tristate "Support LGE BCL Interface"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM BCL Interface
+
+config LGE_PM_USB_ID
+	tristate "Support LGE PM USB ID feature"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM USB ID about cable detection, etc
+
+config LGE_PM_DEBUG
+	tristate "Support LGE PM Debug Feature"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM Debug Feature
+
+config LGE_BOOTLOADER_LOG
+	tristate "Support LGE bootloader log"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE bootloader log
+
+config LGE_PM_COMMON
+	tristate "Support LGE PM common code"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM common codes and temporary implementation codes
+
+config LGE_PM_CHARGING_TEMP_SCENARIO
+	tristate "Support LGE PM Charging temperature Scenario"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM Charging temperature Scenario
+
+config LGE_PM_SPR_OTP_SCENARIO
+        tristate "Support Sprint OTP Scenario"
+        default n
+        depends on MACH_LGE
+        help
+          Support Sprint OTP(Over Temperature Proctection) Scenario
+
+config LGE_PM_FACTORY_PSEUDO_BATTERY
+	tristate "Support LGE PM pseudo battery mode"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM pseudo battery mode
+
+config LGE_PM_FACTORY_TESTMODE
+	tristate "Support LGE PM pseudo battery mode"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE PM pseudo battery mode
+
+config LGE_HANDLE_PANIC
+	tristate "Support LGE Kernel Panic Handler"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE Crash Handler
+
+config LGE_EARJACK_DEBUGGER
+    bool "Earjack UART debugger support"
+    default n
+    help
+      Support earjack type UART debugger cable
+
+config LGE_KSWITCH
+	bool "Support LGE Kill Switch"
+	default n
+	depends on MAC_LGE
+	help
+		LGE Kill Switch
+
+config PRE_SELF_DIAGNOSIS
+	tristate "Support LGE self diagnosis for factory"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE self diagnosis
+
+config LGE_BOOTLOADER_TIME_CHECKER
+	bool "Show bootloader(LK, SBL) time"
+	default n
+	depends on MACH_LGE
+	help
+	  This shows the lk and sbl1 booting time in MSM8974.
+	  If this feature is enabled, it should be check by adb shell.
+	  Device Node : sys/module/lge_bootloader_time_checker/
+
+config LGE_QSDL_SUPPORT
+    tristate "Support for Quality Statistics Data Logging"
+    default n
+    depends on MACH_LGE
+    help
+       QSDL is a feature which notify infomation for quality statistics
+       data logging of device.
+
+config LGE_USER_MODE
+    bool "User mode only"
+    default n
+	depends on MACH_LGE
+    help
+      Support for user mode only.
+      If you need feature for user, use this.
+
+endmenu
+
+menu "LGE QFPROM Values"
+
+config LGE_QFPROM_INTERFACE
+	bool "Support qfprom interface"
+	default n
+	depends on MACH_LGE
+	help
+	  LGE QFPROM DRIVER.
+
+config LGE_QFPROM_SECHASH
+	string "Support qfprom sec hash"
+	default 0x0
+	depends on LGE_QFPROM_INTERFACE
+	help
+	  LGE QFPROM DRIVER-SEC partition's hash value.
+
+endmenu
+

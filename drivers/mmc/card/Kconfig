@@ -50,6 +50,15 @@ config MMC_BLOCK_BOUNCE
 
 	  If unsure, say Y here.
 
+config MMC_BLOCK_DEFERRED_RESUME
+	bool "Deferr MMC layer resume until I/O is requested"
+	depends on MMC_BLOCK
+	default n
+	help
+	  Say Y here to enable deferred MMC resume until I/O
+	  is requested. This will reduce overall resume latency and
+	  save power when theres an SD card inserted but not being used.
+
 config SDIO_UART
 	tristate "SDIO UART/GPS class support"
 	depends on TTY
@@ -68,3 +77,27 @@ config MMC_TEST
 
 	  This driver is only of interest to those developing or
 	  testing a host driver. Most people should say N here.
+
+config LGE_MMC_RESET_IF_HANG
+	bool "MMC Reset if eMMC is hang."
+	default n
+	help
+		Reset eMMC if eMMC is unaccessible. continuously error on r/w cmd.
+
+config MMC_BLOCK_TEST
+	tristate "MMC block test"
+	depends on MMC_BLOCK && IOSCHED_TEST
+	help
+	  MMC block test can be used with test iosched to test the MMC block
+	  device.
+	  Currently used to test eMMC 4.5 features (packed commands, sanitize,
+	  BKOPs).
+
+config MMC_FFU
+	bool "FFU SUPPORT"
+	default y
+	help
+	  This is an option to run firmware update on eMMC 5.0.
+	  Field firmware updates (FFU) enables features enhancement
+	  in the field.
+

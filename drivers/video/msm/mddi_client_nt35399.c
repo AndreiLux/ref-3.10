@@ -21,8 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/gpio.h>
-#include <linux/slab.h>
-#include <linux/platform_data/video-msm_fb.h>
+#include <mach/msm_fb.h>
 
 static DECLARE_WAIT_QUEUE_HEAD(nt35399_vsync_wait);
 
@@ -189,9 +188,8 @@ static int mddi_nt35399_probe(struct platform_device *pdev)
 
 	int ret;
 
-	struct panel_info *panel = devm_kzalloc(&pdev->dev,
-						sizeof(struct panel_info),
-						GFP_KERNEL);
+	struct panel_info *panel = kzalloc(sizeof(struct panel_info),
+					   GFP_KERNEL);
 
 	printk(KERN_DEBUG "%s: enter.\n", __func__);
 
@@ -234,6 +232,7 @@ static int mddi_nt35399_remove(struct platform_device *pdev)
 	struct panel_info *panel = platform_get_drvdata(pdev);
 
 	setup_vsync(panel, 0);
+	kfree(panel);
 	return 0;
 }
 

@@ -58,6 +58,13 @@ struct ci13xxx_ep {
 	struct ci13xxx				*ci;
 	spinlock_t				*lock;
 	struct dma_pool				*td_pool;
+	struct ci13xxx_td			*last_zptr;
+	dma_addr_t				last_zdma;
+	unsigned long dTD_update_fail_count;
+	unsigned long			      prime_fail_count;
+	int				      prime_timer_count;
+	struct timer_list		      prime_timer;
+	bool                                  multi_req;
 };
 
 enum ci_role {
@@ -78,6 +85,20 @@ struct ci_role_driver {
 	void		(*stop)(struct ci13xxx *);
 	irqreturn_t	(*irq)(struct ci13xxx *);
 	const char	*name;
+};
+
+struct ci13xxx_ebi_err_entry {
+	u32 *usb_req_buf;
+	u32 usb_req_length;
+	u32 ep_info;
+	struct ci13xxx_ebi_err_entry *next;
+};
+
+struct ci13xxx_ebi_err_data {
+	u32 ebi_err_addr;
+	u32 apkt0;
+	u32 apkt1;
+	struct ci13xxx_ebi_err_entry *ebi_err_entry;
 };
 
 /**
@@ -154,19 +175,24 @@ struct ci13xxx {
 	struct ci13xxx_ep		*ep0out, *ep0in;
 
 	struct usb_request		*status;
+	void				*status_buf;/* GET_STATUS buffer */
 	bool				setaddr;
 	u8				address;
 	u8				remote_wakeup;
 	u8				suspended;
+	u8				configured; /* is device configured */
 	u8				test_mode;
 
+	struct delayed_work		rw_work; /* remote wakeup */
 	struct ci13xxx_platform_data	*platdata;
 	int				vbus_active;
 	/* FIXME: some day, we'll not use global phy */
 	bool				global_phy;
+	unsigned long dTD_update_fail_count;
 	struct usb_phy			*transceiver;
 	struct usb_hcd			*hcd;
 	struct dentry			*debugfs;
+	bool                      skip_flush; /* skip flushing remaining EP */
 };
 
 static inline struct ci_role_driver *ci_role(struct ci13xxx *ci)
@@ -230,6 +256,7 @@ enum ci13xxx_regs {
 	OP_ENDPTFLUSH,
 	OP_ENDPTSTAT,
 	OP_ENDPTCOMPLETE,
+	OP_ENDPTPIPEID,
 	OP_ENDPTCTRL,
 	/* endptctrl1..15 follow */
 	OP_LAST = OP_ENDPTCTRL + ENDPT_MAX / 2,
@@ -301,5 +328,7 @@ int hw_device_reset(struct ci13xxx *ci, u32 mode);
 int hw_port_test_set(struct ci13xxx *ci, u8 mode);
 
 u8 hw_port_test_get(struct ci13xxx *ci);
+
+int ci13xxx_wakeup(struct usb_gadget *_gadget);
 
 #endif	/* __DRIVERS_USB_CHIPIDEA_CI_H */

@@ -1,0 +1,96 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&spmi_bus {
+	qcom,pm8994@0 {
+		qcom,power-on@800 {
+			qcom,pon_1 { /* KPD_PWR_N reset */
+				status = "ok";
+				qcom,support-reset = <0>;
+			};
+
+			qcom,pon_2 { /* RESIN_N reset   */
+				status = "ok";
+				qcom,support-reset = <0>;
+			};
+
+			qcom,pon_3 { /* KPD_PWR_N AND RESIN_N reset */
+				status = "ok";
+				qcom,support-reset = <1>;
+				qcom,s1-timer = <6720>;
+				qcom,s2-timer = <2000>;
+				qcom,s2-type = <7>;
+			};
+		};
+	};
+};
+
+&pmi8994_charger {
+	status = "ok";
+
+	lge,jeita-disabled;
+
+	lge,no-init-cable = <0 0 0>;
+	lge,cable-mhl-1k = <5000 500 500>;
+	lge,cable-u-28p7k = <5500 1500 500>;
+	lge,cable-28p7k = <6000 1500 500>;
+	lge,cable-56k = <200000 1500 1500>;
+	lge,cable-100k = <239000 1500 500>;
+	lge,cable-130k = <340000 500 500>;
+	lge,cable-180k = <400000 1500 500>;
+	lge,cable-200k = <410000 1500 500>;
+	lge,cable-220k = <485000 1500 500>;
+	lge,cable-270k = <560000 1500 500>;
+	lge,cable-330k = <735000 1500 500>;
+	lge,cable-620k = <955000 1500 500>;
+	lge,cable-910k = <1140000 1500 1500>;
+	lge,cable-none = <1900000 1500  500>;
+
+	qcom,chg-vadc = <&pmi8994_vadc>;
+};
+
+/{
+	mtp_batterydata: qcom,battery-data {
+		#include "../qcom/batterydata-mtp-3020mah.dtsi"
+	};
+};
+
+&pmi8994_fg {
+	qcom,battery-data = <&mtp_batterydata>;
+};
+
+&pmi8994_haptics {
+        status = "okay";
+};
+
+&pmi8994_charger {
+        qcom,dc-psy-type = "Wireless";
+};
+
+&soc {
+	i2c@f9928000 { /* BLSP1 QUP6 */
+		max17048@36 {
+			status = "ok";
+			compatible = "maxim,max17048";
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <0x4c 0x0>;
+			max17048,alert_gpio = <&msm_gpio 0x4c 0x0>;
+			max17048,rcomp = <103>;
+			max17048,temp_co_hot = <375>;
+			max17048,temp_co_cold = <6650>;
+			max17048,alert_threshold = <0x2>;
+			max17048,full_design = <0xbb8>;
+			max17048,empty = <0>;
+			reg = <0x36>;
+		};
+	};
+};

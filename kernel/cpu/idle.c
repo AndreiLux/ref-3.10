@@ -6,12 +6,13 @@
 #include <linux/tick.h>
 #include <linux/mm.h>
 #include <linux/stackprotector.h>
+#include <linux/percpu.h>
 
 #include <asm/tlb.h>
 
 #include <trace/events/power.h>
 
-static int __read_mostly cpu_idle_force_poll;
+int __read_mostly cpu_idle_force_poll;
 
 void cpu_idle_poll_ctrl(bool enable)
 {
@@ -21,6 +22,27 @@ void cpu_idle_poll_ctrl(bool enable)
 		cpu_idle_force_poll--;
 		WARN_ON_ONCE(cpu_idle_force_poll < 0);
 	}
+
+	/* Make sure poll mode is entered on all CPUs after the flag is set */
+	mb();
+}
+
+static DEFINE_PER_CPU(int, idle_force_poll);
+
+void per_cpu_idle_poll_ctrl(int cpu, bool enable)
+{
+	if (enable) {
+		per_cpu(idle_force_poll, cpu)++;
+	} else {
+		per_cpu(idle_force_poll, cpu)--;
+		WARN_ON_ONCE(per_cpu(idle_force_poll, cpu) < 0);
+	}
+
+	/*
+	 * Make sure poll mode is entered on the relevant CPU after the flag is
+	 * set
+	 */
+	mb();
 }
 
 #ifdef CONFIG_GENERIC_IDLE_POLL_SETUP
@@ -44,7 +66,8 @@ static inline int cpu_idle_poll(void)
 	rcu_idle_enter();
 	trace_cpu_idle_rcuidle(0, smp_processor_id());
 	local_irq_enable();
-	while (!tif_need_resched())
+	while (!tif_need_resched() && (cpu_idle_force_poll ||
+		__get_cpu_var(idle_force_poll)))
 		cpu_relax();
 	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
 	rcu_idle_exit();
@@ -74,9 +97,6 @@ static void cpu_idle_loop(void)
 			check_pgt_cache();
 			rmb();
 
-			if (cpu_is_offline(smp_processor_id()))
-				arch_cpu_idle_dead();
-
 			local_irq_disable();
 			arch_cpu_idle_enter();
 
@@ -89,7 +109,9 @@ static void cpu_idle_loop(void)
 			 * know that the IPI is going to arrive right
 			 * away
 			 */
-			if (cpu_idle_force_poll || tick_check_broadcast_expired()) {
+			if (cpu_idle_force_poll ||
+			    tick_check_broadcast_expired() ||
+			    __get_cpu_var(idle_force_poll)) {
 				cpu_idle_poll();
 			} else {
 				if (!current_clr_polling_and_test()) {
@@ -108,6 +130,9 @@ static void cpu_idle_loop(void)
 		}
 		tick_nohz_idle_exit();
 		schedule_preempt_disabled();
+		if (cpu_is_offline(smp_processor_id()))
+			arch_cpu_idle_dead();
+
 	}
 }
 
@@ -130,5 +155,6 @@ void cpu_startup_entry(enum cpuhp_state state)
 #endif
 	__current_set_polling();
 	arch_cpu_idle_prepare();
+	per_cpu(idle_force_poll, smp_processor_id()) = 0;
 	cpu_idle_loop();
 }

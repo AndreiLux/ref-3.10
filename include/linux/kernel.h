@@ -193,13 +193,10 @@ extern int _cond_resched(void);
 		(__x < 0) ? -__x : __x;		\
 	})
 
-#ifdef CONFIG_PROVE_LOCKING
+#if defined(CONFIG_PROVE_LOCKING) || defined(CONFIG_DEBUG_ATOMIC_SLEEP)
 void might_fault(void);
 #else
-static inline void might_fault(void)
-{
-	might_sleep();
-}
+static inline void might_fault(void) { }
 #endif
 
 extern struct atomic_notifier_head panic_notifier_list;
@@ -551,7 +548,7 @@ do {									\
 	__trace_printk_check_format(fmt, ##args);			\
 									\
 	if (__builtin_constant_p(fmt))					\
-		__trace_bprintk(_THIS_IP_, trace_printk_fmt, ##args);	\
+		__trace_printk(_THIS_IP_, trace_printk_fmt, ##args);	\
 	else								\
 		__trace_printk(_THIS_IP_, fmt, ##args);			\
 } while (0)
@@ -791,5 +788,8 @@ static inline void ftrace_dump(enum ftrace_dump_mode oops_dump_mode) { }
 #ifdef CONFIG_FTRACE_MCOUNT_RECORD
 # define REBUILD_DUE_TO_FTRACE_MCOUNT_RECORD
 #endif
+
+/* To identify board information in panic logs, set this */
+extern char *mach_panic_string;
 
 #endif

@@ -1,0 +1,50 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+#include "../msm8994-z2_common/msm8994-common-misc.dtsi"
+
+&spmi_bus {
+	qcom,pmi8994@3 {
+		qcom,leds@d000 {
+			status = "okay";
+			qcom,rgb_0 {
+				qcom,pwm-us = <1000>;
+				qcom,max-current = <12>;
+				qcom,default-state = "off";
+			};
+			qcom,rgb_1 {
+				qcom,pwm-us = <1000>;
+				qcom,max-current = <12>;
+				qcom,default-state = "off";
+			};
+			qcom,rgb_2 {
+				qcom,pwm-us = <1000>;
+				qcom,max-current = <12>;
+				qcom,default-state = "off";
+			};
+		};
+	};
+};
+
+&soc {
+	serial@f9961000 {
+		status = "ok";
+		pinctrl-names = "default";
+		pinctrl-0 = <&irrc_uart_tx_default &irrc_uart_rx_default>;
+	};
+
+	uei_irrc {
+		status = "ok";
+		pinctrl-names = "default";
+		pinctrl-0 = <&irrc_rst_default>;
+	};
+};

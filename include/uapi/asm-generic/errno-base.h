@@ -36,4 +36,10 @@
 #define	EDOM		33	/* Math argument out of domain of func */
 #define	ERANGE		34	/* Math result not representable */
 
+#ifdef CONFIG_MACH_LGE
+/*
+add ext4 fs errno type for ext4 superblock
+*/
+#define ESUPER      50 /*ext4 superblock is damaged */
+#endif
 #endif

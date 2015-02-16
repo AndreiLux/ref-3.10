@@ -155,21 +155,14 @@ config GPIO_MPC8XXX
 	  Say Y here if you're going to use hardware that connects to the
 	  MPC512x/831x/834x/837x/8572/8610 GPIOs.
 
-config GPIO_MSM_V1
-	tristate "Qualcomm MSM GPIO v1"
-	depends on GPIOLIB && ARCH_MSM && (ARCH_MSM7X00A || ARCH_MSM7X30 || ARCH_QSD8X50)
-	help
-	  Say yes here to support the GPIO interface on ARM v6 based
-	  Qualcomm MSM chips.  Most of the pins on the MSM can be
-	  selected for GPIO, and are controlled by this driver.
-
-config GPIO_MSM_V2
-	tristate "Qualcomm MSM GPIO v2"
+config GPIO_MSM_V3
+	tristate "Qualcomm MSM GPIO v3"
 	depends on GPIOLIB && ARCH_MSM
 	help
 	  Say yes here to support the GPIO interface on ARM v7 based
-	  Qualcomm MSM chips.  Most of the pins on the MSM can be
-	  selected for GPIO, and are controlled by this driver.
+	  Qualcomm MSM chips for v3 version of the interface. Most of
+	  the pins on the MSM can be selected for GPIO, and are
+	  controlled by this driver.
 
 config GPIO_MVEBU
 	def_bool y
@@ -279,7 +272,7 @@ config GPIO_ICH
 
 config GPIO_VX855
 	tristate "VIA VX855/VX875 GPIO"
-	depends on PCI && GENERIC_HARDIRQS
+	depends on PCI
 	select MFD_CORE
 	select MFD_VX855
 	help
@@ -353,7 +346,7 @@ config GPIO_MAX732X
 
 config GPIO_MAX732X_IRQ
 	bool "Interrupt controller support for MAX732x"
-	depends on GPIO_MAX732X=y && GENERIC_HARDIRQS
+	depends on GPIO_MAX732X=y
 	help
 	  Say yes here to enable the max732x to be used as an interrupt
 	  controller. It requires the driver to be built in the kernel.
@@ -618,7 +611,7 @@ config GPIO_TIMBERDALE
 
 config GPIO_RDC321X
 	tristate "RDC R-321x GPIO support"
-	depends on PCI && GENERIC_HARDIRQS
+	depends on PCI
 	select MFD_CORE
 	select MFD_RDC321X
 	help
@@ -703,6 +696,26 @@ config GPIO_MSIC
 	help
 	  Enable support for GPIO on intel MSIC controllers found in
 	  intel MID devices
+
+config GPIO_QPNP_PIN
+	depends on SPMI
+	depends on OF_SPMI
+	depends on MSM_QPNP_INT
+	tristate "Qualcomm QPNP gpio support"
+	help
+	  Say 'y' here to include support for the Qualcomm QPNP gpio
+	  driver. This driver supports Device Tree and allows a
+	  device_node to be registered as a gpio-controller. It
+	  does not handle gpio interrupts directly. That work is handled
+	  by CONFIG_MSM_QPNP_INT.
+
+config GPIO_QPNP_PIN_DEBUG
+	depends on GPIO_QPNP_PIN
+	depends on DEBUG_FS
+	bool "Qualcomm QPNP GPIO debug support"
+	help
+	  Say 'y' here to include debug support for the Qualcomm
+	  QPNP gpio driver.
 
 comment "USB GPIO expanders:"
 

@@ -364,6 +364,17 @@ static inline int hstate_index(struct hstate *h)
 	return h - hstates;
 }
 
+int pmd_huge_support(void);
+/*
+ * Currently hugepage migration is enabled only for pmd-based hugepage.
+ * This function will be updated when hugepage migration is more widely
+ * supported.
+ */
+static inline int hugepage_migration_support(struct hstate *h)
+{
+	return pmd_huge_support() && (huge_page_shift(h) == PMD_SHIFT);
+}
+
 pgoff_t __basepage_index(struct page *page);
 
 /* Return page->index in PAGE_SIZE units */
@@ -395,11 +406,14 @@ static inline unsigned int pages_per_huge_page(struct hstate *h)
 }
 #define hstate_index_to_shift(index) 0
 #define hstate_index(h) 0
+#define pmd_huge_support()	0
+#define hugepage_migration_support(h)	0
 
 static inline pgoff_t basepage_index(struct page *page)
 {
 	return page->index;
 }
+
 #endif	/* CONFIG_HUGETLB_PAGE */
 
 #endif /* _LINUX_HUGETLB_H */

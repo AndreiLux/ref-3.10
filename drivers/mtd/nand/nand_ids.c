@@ -31,6 +31,18 @@ struct nand_flash_dev nand_flash_ids[] = {
 	 * listed by full ID. We list them first so that we can easily identify
 	 * the most specific match.
 	 */
+	{"TC58NYG1S3H 2G 1.8V 8-bit",
+		{ .id = {0x98, 0xaa, 0x90, 0x15, 0x00, 0x00, 0x00, 0x00} },
+		  SZ_2K, SZ_256, SZ_128K, 0, 4, 128, 8},
+	{"MT29F4G08ABBDAHC 4G 3.3V 8-bit",
+		{ .id = {0x2c, 0xac, 0x90, 0x15, 0x00, 0x00, 0x00, 0x00} },
+		  SZ_2K, SZ_512, SZ_128K, 0, 4, 64, 4},
+	{"MT29F8G08ABBCAH4 8G 3.3V 8-bit",
+		{ .id = {0x2c, 0xa3, 0x90, 0x26, 0x00, 0x00, 0x00, 0x00} },
+		  SZ_4K, SZ_1K, SZ_256K, 0, 4, 224, 8},
+	{"MT29RZ4B2DZZHGSK 4G 3.3V 8-bit",
+		{ .id = {0x2c, 0xac, 0x90, 0x26, 0x00, 0x00, 0x00, 0x00} },
+		  SZ_4K, SZ_512, SZ_256K, 0, 4, 224, 8},
 	{"TC58NVG2S0F 4G 3.3V 8-bit",
 		{ .id = {0x98, 0xdc, 0x90, 0x26, 0x76, 0x15, 0x01, 0x08} },
 		  SZ_4K, SZ_512, SZ_256K, 0, 8, 224},
@@ -153,6 +165,7 @@ struct nand_flash_dev nand_flash_ids[] = {
 	EXTENDED_ID_NAND("NAND 64GiB 1,8V 16-bit", 0x2E, 65536, LP_OPTIONS16),
 	EXTENDED_ID_NAND("NAND 64GiB 3,3V 16-bit", 0x4E, 65536, LP_OPTIONS16),
 
+	{"NAND 4GiB 1,8V 8-bit", {{ 0xAC }} , 2048, 4096, 0x20000, 0 },
 	{NULL}
 };
 
@@ -169,6 +182,7 @@ struct nand_manufacturers nand_manuf_ids[] = {
 	{NAND_MFR_AMD, "AMD/Spansion"},
 	{NAND_MFR_MACRONIX, "Macronix"},
 	{NAND_MFR_EON, "Eon"},
+	{NAND_MFR_ESMT, "Elite Semiconductor"},
 	{0x0, "Unknown"}
 };
 

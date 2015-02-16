@@ -15,13 +15,22 @@ struct ci13xxx_platform_data {
 	unsigned	 power_budget;
 	struct usb_phy	*phy;
 	unsigned long	 flags;
+	unsigned int	nz_itc;
 #define CI13XXX_REGS_SHARED		BIT(0)
 #define CI13XXX_REQUIRE_TRANSCEIVER	BIT(1)
 #define CI13XXX_PULLUP_ON_VBUS		BIT(2)
 #define CI13XXX_DISABLE_STREAMING	BIT(3)
+#define CI13XXX_ZERO_ITC		BIT(4)
+#define CI13XXX_IS_OTG			BIT(5)
+	bool		l1_supported;
 
 #define CI13XXX_CONTROLLER_RESET_EVENT		0
-#define CI13XXX_CONTROLLER_STOPPED_EVENT	1
+#define CI13XXX_CONTROLLER_CONNECT_EVENT	1
+#define CI13XXX_CONTROLLER_SUSPEND_EVENT		2
+#define CI13XXX_CONTROLLER_REMOTE_WAKEUP_EVENT	3
+#define CI13XXX_CONTROLLER_RESUME_EVENT		4
+#define CI13XXX_CONTROLLER_DISCONNECT_EVENT	5
+#define CI13XXX_CONTROLLER_UDC_STARTED_EVENT	6
 	void	(*notify_event) (struct ci13xxx *ci, unsigned event);
 };
 

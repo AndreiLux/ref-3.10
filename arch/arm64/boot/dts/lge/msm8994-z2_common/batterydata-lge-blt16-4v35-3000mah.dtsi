@@ -1,0 +1,53 @@
+/* Copyright (c) 2013-2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+qcom,LGE-BLT16-3000mah {
+	qcom,fcc-mah = <3000>;
+	qcom,max-voltage-uv = <4350000>;
+	qcom,chg-term-ua = <100000>;
+	qcom,batt-id-kohm = <0>;
+	qcom,battery-type = "LGE_BLT16_3000mah";
+	qcom,fg-profile-data = [
+		 E4 83 E2 7C
+		 EC 80 FA 76
+		 4C 83 B8 38
+		 1A 82 A9 8D
+		 12 82 2E 99
+		 08 B7 5E C2
+		 58 19 09 83
+		 64 71 2C 55
+		 D2 61 2B 83
+		 D8 79 C6 86
+		 E1 81 A2 82
+		 F7 90 85 AD
+		 29 B8 70 16
+		 DA 0B B4 59
+		 CE 6E 71 FD
+		 2E 44 44 3D
+		 FE 3A 00 00
+		 D4 23 1E 3D
+		 97 4F 00 00
+		 00 00 00 00
+		 00 00 00 00
+		 A7 71 F3 71
+		 9D 68 CF 88
+		 F5 67 21 5F
+		 4F 69 44 80
+		 94 6F 81 58
+		 00 00 00 00
+		 0A A3 58 6E
+		 43 A0 71 0C
+		 28 00 FF 36
+		 F0 11 30 03
+		 00 00 00 00
+	];
+};

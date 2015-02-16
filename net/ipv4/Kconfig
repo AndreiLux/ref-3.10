@@ -639,3 +639,6 @@ config TCP_MD5SIG
 	  on the Internet.
 
 	  If unsure, say N.
+
+config LGP_DATA_TCPIP_TCP_SYN_RETRY_CONFIG_UPLUS
+    bool "TCP sync retry count : LGU+ requirement"

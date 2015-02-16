@@ -60,7 +60,7 @@ void ecryptfs_to_hex(char *dst, char *src, size_t src_size)
 	int x;
 
 	for (x = 0; x < src_size; x++)
-		sprintf(&dst[x * 2], "%.2x", (unsigned char)src[x]);
+		snprintf(&dst[x * 2], 3, "%.2x", (unsigned char)src[x]);
 }
 
 /**
@@ -976,7 +976,7 @@ static void ecryptfs_set_default_crypt_stat_vals(
 	ecryptfs_copy_mount_wide_flags_to_inode_flags(crypt_stat,
 						      mount_crypt_stat);
 	ecryptfs_set_default_sizes(crypt_stat);
-	strcpy(crypt_stat->cipher, ECRYPTFS_DEFAULT_CIPHER);
+	strlcpy(crypt_stat->cipher, ECRYPTFS_DEFAULT_CIPHER, ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 	crypt_stat->key_size = ECRYPTFS_DEFAULT_KEY_BYTES;
 	crypt_stat->flags &= ~(ECRYPTFS_KEY_VALID);
 	crypt_stat->file_version = ECRYPTFS_FILE_VERSION;
@@ -1014,6 +1014,12 @@ int ecryptfs_new_file_context(struct inode *ecryptfs_inode)
 
 	ecryptfs_set_default_crypt_stat_vals(crypt_stat, mount_crypt_stat);
 	crypt_stat->flags |= (ECRYPTFS_ENCRYPTED | ECRYPTFS_KEY_VALID);
+#if 1 /* FEATURE_SDCARD_ENCRYPTION  DEBUG */
+	if (mount_crypt_stat && (mount_crypt_stat->flags & ECRYPTFS_DECRYPTION_ONLY)) {
+		printk(KERN_ERR "%s:%d::CHECK decryption_only set, try encryption disable\n", __FUNCTION__, __LINE__);
+	/*	crypt_stat->flags &= ~(ECRYPTFS_ENCRYPTED); */
+	}
+#endif
 	ecryptfs_copy_mount_wide_flags_to_inode_flags(crypt_stat,
 						      mount_crypt_stat);
 	rc = ecryptfs_copy_mount_wide_sigs_to_inode_sigs(crypt_stat,
@@ -1210,7 +1216,8 @@ int ecryptfs_cipher_code_to_string(char *str, u8 cipher_code)
 	str[0] = '\0';
 	for (i = 0; i < ARRAY_SIZE(ecryptfs_cipher_code_str_map); i++)
 		if (cipher_code == ecryptfs_cipher_code_str_map[i].cipher_code)
-			strcpy(str, ecryptfs_cipher_code_str_map[i].cipher_str);
+			strlcpy(str, ecryptfs_cipher_code_str_map[i].cipher_str,
+					ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 	if (str[0] == '\0') {
 		ecryptfs_printk(KERN_WARNING, "Cipher code not recognized: "
 				"[%d]\n", cipher_code);
@@ -1372,12 +1379,23 @@ int ecryptfs_write_metadata(struct dentry *ecryptfs_dentry,
 {
 	struct ecryptfs_crypt_stat *crypt_stat =
 		&ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat;
+#if 1 /* FEATURE_SDCARD_ENCRYPTION DEBUG */
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+		&ecryptfs_superblock_to_private(
+				ecryptfs_dentry->d_sb)->mount_crypt_stat;
+#endif
 	unsigned int order;
 	char *virt;
 	size_t virt_len;
 	size_t size = 0;
 	int rc = 0;
 
+#if 1 /* FEATURE_SDCARD_ENCRYPTION DEBUG */
+	if (mount_crypt_stat && (mount_crypt_stat->flags
+				& ECRYPTFS_DECRYPTION_ONLY)) {
+		ecryptfs_printk(KERN_ERR, "%s:%d:: Error decryption_only set \n", __FUNCTION__, __LINE__);
+}
+#endif
 	if (likely(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
 		if (!(crypt_stat->flags & ECRYPTFS_KEY_VALID)) {
 			printk(KERN_ERR "Key is invalid; bailing out\n");
@@ -1873,7 +1891,7 @@ ecryptfs_add_new_key_tfm(struct ecryptfs_key_tfm **key_tfm, char *cipher_name,
 		goto out;
 	}
 	mutex_init(&tmp_tfm->key_tfm_mutex);
-	strncpy(tmp_tfm->cipher_name, cipher_name,
+	strlcpy(tmp_tfm->cipher_name, cipher_name,
 		ECRYPTFS_MAX_CIPHER_NAME_SIZE);
 	tmp_tfm->cipher_name[ECRYPTFS_MAX_CIPHER_NAME_SIZE] = '\0';
 	tmp_tfm->key_size = key_size;

@@ -110,6 +110,18 @@ config IP_NF_TARGET_REJECT
 
 	  To compile it as a module, choose M here.  If unsure, say N.
 
+config IP_NF_TARGET_REJECT_SKERR
+	bool "Force socket error when rejecting with icmp*"
+	depends on IP_NF_TARGET_REJECT
+	default n
+	help
+          This option enables turning a "--reject-with icmp*" into a matching
+          socket error also.
+	  The REJECT target normally allows sending an ICMP message. But it
+          leaves the local socket unaware of any ingress rejects.
+
+	  If unsure, say N.
+
 config IP_NF_TARGET_ULOG
 	tristate "ULOG target support"
 	default m if NETFILTER_ADVANCED=n
@@ -153,6 +165,17 @@ config IP_NF_TARGET_MASQUERADE
 	  if the interface goes down, those connections are lost.  This is
 	  only useful for dialup accounts with dynamic IP address (ie. your IP
 	  address will be different on next dialup).
+
+	  To compile it as a module, choose M here.  If unsure, say N.
+
+config IP_NF_TARGET_NATTYPE_MODULE
+	tristate "NATTYPE target support"
+	depends on NF_NAT
+	default m if NETFILTER_ADVANCED=n
+	help
+	  NATTYPE is a special case of NAT: used to support FULL Cone NAT
+	  and ADDRESS Restricted Cone NAT. All incoming connections are
+	  allowed if there is an outgoing connection using that port.
 
 	  To compile it as a module, choose M here.  If unsure, say N.
 

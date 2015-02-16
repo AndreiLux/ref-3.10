@@ -2,6 +2,7 @@
  *  include/linux/irqchip/arm-gic.h
  *
  *  Copyright (C) 2002 ARM Limited, All Rights Reserved.
+ *  Copyright (c) 2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -66,13 +67,19 @@ extern struct irq_chip gic_arch_extn;
 void gic_init_bases(unsigned int, int, void __iomem *, void __iomem *,
 		    u32 offset, struct device_node *);
 void gic_cascade_irq(unsigned int gic_nr, unsigned int irq);
-
+bool gic_is_irq_pending(unsigned int irq);
+void gic_clear_irq_pending(unsigned int irq);
+#ifdef CONFIG_ARM_GIC
+void gic_set_irq_secure(unsigned int irq);
+#else
+static inline void gic_set_irq_secure(unsigned int irq) { }
+#endif
 static inline void gic_init(unsigned int nr, int start,
 			    void __iomem *dist , void __iomem *cpu)
 {
 	gic_init_bases(nr, start, dist, cpu, 0, NULL);
 }
 
+void gic_show_pending_irq(void);
 #endif /* __ASSEMBLY */
-
 #endif

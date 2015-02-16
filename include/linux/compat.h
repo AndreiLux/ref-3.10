@@ -361,7 +361,7 @@ long compat_get_bitmap(unsigned long *mask, const compat_ulong_t __user *umask,
 long compat_put_bitmap(compat_ulong_t __user *umask, unsigned long *mask,
 		       unsigned long bitmap_size);
 int copy_siginfo_from_user32(siginfo_t *to, struct compat_siginfo __user *from);
-int copy_siginfo_to_user32(struct compat_siginfo __user *to, siginfo_t *from);
+int copy_siginfo_to_user32(struct compat_siginfo __user *to, const siginfo_t *from);
 int get_compat_sigevent(struct sigevent *event,
 		const struct compat_sigevent __user *u_event);
 long compat_sys_rt_tgsigqueueinfo(compat_pid_t tgid, compat_pid_t pid, int sig,
@@ -501,9 +501,11 @@ asmlinkage long compat_sys_old_readdir(unsigned int fd,
 asmlinkage long compat_sys_getdents(unsigned int fd,
 				    struct compat_linux_dirent __user *dirent,
 				    unsigned int count);
+#ifdef __ARCH_WANT_COMPAT_SYS_GETDENTS64
 asmlinkage long compat_sys_getdents64(unsigned int fd,
 				      struct linux_dirent64 __user *dirent,
 				      unsigned int count);
+#endif
 asmlinkage long compat_sys_vmsplice(int fd, const struct compat_iovec __user *,
 				    unsigned int nr_segs, unsigned int flags);
 asmlinkage long compat_sys_open(const char __user *filename, int flags,

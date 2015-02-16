@@ -4,6 +4,7 @@ config ARM
 	select ARCH_BINFMT_ELF_RANDOMIZE_PIE
 	select ARCH_HAS_ATOMIC64_DEC_IF_POSITIVE
 	select ARCH_HAVE_CUSTOM_GPIO_H
+	select ARCH_SUPPORTS_ATOMIC_RMW
 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
 	select ARCH_WANT_IPC_PARSE_VERSION
 	select BUILDTIME_EXTABLE_SORT if MMU
@@ -14,6 +15,7 @@ config ARM
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
 	select GENERIC_PCI_IOMAP
+	select GENERIC_SCHED_CLOCK
 	select GENERIC_SMP_IDLE_THREAD
 	select GENERIC_IDLE_POLL_SETUP
 	select GENERIC_STRNCPY_FROM_USER
@@ -25,6 +27,7 @@ config ARM
 	select HAVE_ARCH_TRACEHOOK
 	select HAVE_BPF_JIT
 	select HAVE_C_RECORDMCOUNT
+	select HAVE_CC_STACKPROTECTOR
 	select HAVE_DEBUG_KMEMLEAK
 	select HAVE_DMA_API_DEBUG
 	select HAVE_DMA_ATTRS
@@ -34,7 +37,6 @@ config ARM
 	select HAVE_FUNCTION_GRAPH_TRACER if (!THUMB2_KERNEL)
 	select HAVE_FUNCTION_TRACER if (!XIP_KERNEL)
 	select HAVE_GENERIC_DMA_COHERENT
-	select HAVE_GENERIC_HARDIRQS
 	select HAVE_HW_BREAKPOINT if (PERF_EVENTS && (CPU_V6 || CPU_V6K || CPU_V7))
 	select HAVE_IDE if PCI || ISA || PCMCIA
 	select HAVE_IRQ_TIME_ACCOUNTING
@@ -116,7 +118,7 @@ config HAVE_TCM
 config HAVE_PROC_CPU
 	bool
 
-config NO_IOPORT
+config NO_IOPORT_MAP
 	bool
 
 config EISA
@@ -206,6 +208,9 @@ config NEED_RET_TO_USER
 config ARCH_MTD_XIP
 	bool
 
+config ARCH_WANT_KMAP_ATOMIC_FLUSH
+	bool
+
 config VECTORS_BASE
 	hex
 	default 0xffff0000 if MMU || CPU_HIGH_VECTOR
@@ -264,6 +269,24 @@ config PHYS_OFFSET
 config GENERIC_BUG
 	def_bool y
 	depends on BUG
+
+config ARM_USER_ACCESSIBLE_TIMER_BASE
+	hex "Base address of user-accessible timer counter page"
+	default 0xfffef000
+	depends on ARM_USE_USER_ACCESSIBLE_TIMERS
+	help
+	 Specify the base user-space virtual address where the user-accessible
+	 timer counter page should be mapped by the kernel.  User-space apps
+	 will read directly from the page at this address.
+
+config ARCH_RANDOM
+	bool "SOC specific random number generation"
+	help
+	 Allow the kernel to use an architecture specific implementation for
+	 random number generation
+
+	 If unsure, say N
+
 
 source "init/Kconfig"
 
@@ -391,7 +414,7 @@ config ARCH_EBSA110
 	select ISA
 	select NEED_MACH_IO_H
 	select NEED_MACH_MEMORY_H
-	select NO_IOPORT
+	select NO_IOPORT_MAP
 	help
 	  This is an evaluation board for the StrongARM processor available
 	  from Digital. It has limited hardware on-board, including an
@@ -621,10 +644,23 @@ config ARCH_PXA
 
 config ARCH_MSM
 	bool "Qualcomm MSM"
+	select ARCH_HAS_CPUFREQ
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKDEV_LOOKUP
 	select GENERIC_CLOCKEVENTS
+	select GENERIC_GPIO
+	select GENERIC_TIME
+	select GENERIC_ALLOCATOR
 	select HAVE_CLK
+	select HAVE_CLK_PREPARE
+	select ARCH_HAS_OPP
+	select NEED_MACH_MEMORY_H
+	select NEED_MACH_IO_H
+	select NEED_MACH_GPIO_H
+	select SOC_BUS
+	select MULTI_IRQ_HANDLER
+	select SPARSE_IRQ
+	select USE_OF
 	help
 	  Support for Qualcomm MSM/QSD based systems.  This runs on the
 	  apps processor of the MSM/QSD and depends on a shared memory
@@ -644,7 +680,7 @@ config ARCH_SHMOBILE
 	select MIGHT_HAVE_CACHE_L2X0
 	select MULTI_IRQ_HANDLER
 	select NEED_MACH_MEMORY_H
-	select NO_IOPORT
+	select NO_IOPORT_MAP
 	select PINCTRL if ARCH_WANT_OPTIONAL_GPIOLIB
 	select PM_GENERIC_DOMAINS if PM
 	select SPARSE_IRQ
@@ -663,7 +699,7 @@ config ARCH_RPC
 	select ISA_DMA_API
 	select NEED_MACH_IO_H
 	select NEED_MACH_MEMORY_H
-	select NO_IOPORT
+	select NO_IOPORT_MAP
 	select VIRT_TO_BUS
 	help
 	  On the Acorn Risc-PC, Linux can support the internal IDE disk and
@@ -722,7 +758,7 @@ config ARCH_S3C64XX
 	select HAVE_S3C2410_WATCHDOG if WATCHDOG
 	select HAVE_TCM
 	select NEED_MACH_GPIO_H
-	select NO_IOPORT
+	select NO_IOPORT_MAP
 	select PLAT_SAMSUNG
 	select S3C_DEV_NAND
 	select S3C_GPIO_TRACK
@@ -1356,6 +1392,12 @@ config ARM_ERRATA_798181
 	  which sends an IPI to the CPUs that are running the same ASID
 	  as the one being invalidated.
 
+config PERFMAP
+        tristate "Perfmap support (EXPERIMENTAL)"
+	depends on ARCH_MSM_KRAIT
+        help
+          Perfmap: memory mapped interface for performance monitors.
+
 endmenu
 
 source "arch/arm/common/Kconfig"
@@ -1439,7 +1481,6 @@ config SMP
 	depends on GENERIC_CLOCKEVENTS
 	depends on HAVE_SMP
 	depends on MMU
-	select USE_GENERIC_SMP_HELPERS
 	help
 	  This enables support for systems with more than one CPU. If you have
 	  a system with only one CPU, like most personal computers, say N. If
@@ -1673,7 +1714,7 @@ config AEABI
 config OABI_COMPAT
 	bool "Allow old ABI binaries to run with this kernel (EXPERIMENTAL)"
 	depends on AEABI && !THUMB2_KERNEL
-	default y
+	default y if !SMP
 	help
 	  This option preserves the old syscall interface along with the
 	  new (ARM EABI) one. It also provides a compatibility layer to
@@ -1731,7 +1772,54 @@ config HW_PERF_EVENTS
 	  Enable hardware performance counter support for perf events. If
 	  disabled, perf events will use software events only.
 
+config PERF_EVENTS_USERMODE
+	bool "Enable usermode access for perf events"
+	depends on PERF_EVENTS
+	help
+	  Enable user-mode access to performance counters for perf events.
+	  If enabled, the access permissions allowing CPU performance
+	  counters to be accessed from user-mode are set.
+
+config HAVE_ARCH_TRANSPARENT_HUGEPAGE
+       def_bool y
+       depends on ARM_LPAE
+
+config PERF_EVENTS_RESET_PMU_DEBUGFS
+	bool "Reset PMU via debugfs node"
+	depends on PERF_EVENTS
+	help
+		Enable the debugfs node that can be used to reset PMUs and all
+		state variables associated with PMUs. If enabled, PMU and internal
+		state variable are cleared.
+
 source "mm/Kconfig"
+
+choice
+	prompt "Virtual Memory Reclaim"
+	default NO_VM_RECLAIM
+	help
+	  Select the method of reclaiming virtual memory
+
+config ENABLE_VMALLOC_SAVING
+	bool "Reclaim memory for each subsystem"
+	help
+	  Enable this config to reclaim the virtual space belonging
+	  to any subsystem which is expected to have a lifetime of
+	  the entire system. This feature allows lowmem to be non-
+	  contiguous.
+
+config NO_VM_RECLAIM
+	bool "Do not reclaim memory"
+	help
+	  Do not reclaim any memory. This might result in less lowmem
+	  and wasting virtual memory space which could otherwise be
+	  reclaimed by using any of the other two config options.
+
+endchoice
+
+config HOLES_IN_ZONE
+	def_bool n
+	depends on SPARSEMEM
 
 config FORCE_MAX_ZONEORDER
 	int "Maximum zone order" if ARCH_SHMOBILE
@@ -1816,8 +1904,29 @@ config XEN
 	depends on CPU_V7 && !CPU_V6
 	depends on !GENERIC_ATOMIC64
 	select ARM_PSCI
+	select SWIOTLB_XEN
 	help
 	  Say Y if you want to run Linux in a Virtual Machine on Xen on ARM.
+
+config CP_ACCESS
+	tristate "CP register access tool"
+	default m
+	help
+	  Provide support for Coprocessor register access using /sys
+	  interface. Read and write to CP registers from userspace
+	  through sysfs interface. A sys file (cp_rw) will be created under
+	  /sys/devices/cpaccess/cpaccess0.
+
+	  If unsure, say N.
+
+config ARM_FLUSH_CONSOLE_ON_RESTART
+	bool "Force flush the console on restart"
+	help
+	  If the console is locked while the system is rebooted, the messages
+	  in the temporary logbuffer would not have propogated to all the
+	  console drivers. This option forces the console lock to be
+	  released if it failed to be acquired, which will cause all the
+	  pending messages to be flushed.
 
 endmenu
 
@@ -1828,6 +1937,7 @@ config USE_OF
 	select IRQ_DOMAIN
 	select OF
 	select OF_EARLY_FLATTREE
+	select OF_RESERVED_MEM
 	help
 	  Include support for flattened device tree machine descriptions.
 
@@ -1847,6 +1957,21 @@ config DEPRECATED_PARAM_STRUCT
 	help
 	  This was deprecated in 2001 and announced to live on for 5 years.
 	  Some old boot loaders still use this way.
+
+config BUILD_ARM_APPENDED_DTB_IMAGE
+	bool "Build a concatenated zImage/dtb by default"
+	depends on OF
+	help
+	  Enabling this option will cause a concatenated zImage and list of
+	  DTBs to be built by default (instead of a standalone zImage.)
+	  The image will built in arch/arm/boot/zImage-dtb
+
+config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
+	string "Default dtb names"
+	depends on BUILD_ARM_APPENDED_DTB_IMAGE
+	help
+	  Space separated list of names of dtbs to append when
+	  building a concatenated zImage-dtb.
 
 # Compressed boot loader in ROM.  Yes, we really want to ask about
 # TEXT and BSS so we preserve their values in the config files.
@@ -2071,6 +2196,17 @@ config AUTO_ZRELADDR
 	  will be determined at run-time by masking the current IP with
 	  0xf8000000. This assumes the zImage being placed in the first 128MB
 	  from start of memory.
+
+config ARM_DECOMPRESSOR_LIMIT
+	hex "Limit the decompressor memory area"
+	default 0x10000000
+	help
+	  Allows overriding of the memory size that decompressor maps with
+	  read, write and execute permissions to avoid speculative prefetch.
+
+	  By default ARM_DECOMPRESSOR_LIMIT maps first 1GB of memory
+	  with read, write and execute permissions and reset of the memory
+	  as strongly ordered.
 
 endmenu
 

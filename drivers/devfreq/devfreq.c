@@ -18,7 +18,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/stat.h>
-#include <linux/opp.h>
+#include <linux/pm_opp.h>
 #include <linux/devfreq.h>
 #include <linux/workqueue.h>
 #include <linux/platform_device.h>
@@ -69,11 +69,34 @@ static struct devfreq *find_device_devfreq(struct device *dev)
 }
 
 /**
+ * devfreq_set_freq_limits() - Set min and max frequency from freq_table
+ * @devfreq:	the devfreq instance
+ */
+static void devfreq_set_freq_limits(struct devfreq *devfreq)
+{
+	int idx;
+	unsigned long min = ~0, max = 0;
+
+	if (!devfreq->profile->freq_table)
+		return;
+
+	for (idx = 0; idx < devfreq->profile->max_state; idx++) {
+		if (min > devfreq->profile->freq_table[idx])
+			min = devfreq->profile->freq_table[idx];
+		if (max < devfreq->profile->freq_table[idx])
+			max = devfreq->profile->freq_table[idx];
+	}
+
+	devfreq->min_freq = min;
+	devfreq->max_freq = max;
+}
+
+/**
  * devfreq_get_freq_level() - Lookup freq_table for the frequency
  * @devfreq:	the devfreq instance
  * @freq:	the target frequency
  */
-static int devfreq_get_freq_level(struct devfreq *devfreq, unsigned long freq)
+int devfreq_get_freq_level(struct devfreq *devfreq, unsigned long freq)
 {
 	int lev;
 
@@ -83,6 +106,7 @@ static int devfreq_get_freq_level(struct devfreq *devfreq, unsigned long freq)
 
 	return -EINVAL;
 }
+EXPORT_SYMBOL(devfreq_get_freq_level);
 
 /**
  * devfreq_update_status() - Update statistics of devfreq behavior
@@ -91,26 +115,35 @@ static int devfreq_get_freq_level(struct devfreq *devfreq, unsigned long freq)
  */
 static int devfreq_update_status(struct devfreq *devfreq, unsigned long freq)
 {
-	int lev, prev_lev;
+	int lev, prev_lev, ret = 0;
 	unsigned long cur_time;
 
-	lev = devfreq_get_freq_level(devfreq, freq);
-	if (lev < 0)
-		return lev;
-
 	cur_time = jiffies;
-	devfreq->time_in_state[lev] +=
+
+	prev_lev = devfreq_get_freq_level(devfreq, devfreq->previous_freq);
+	if (prev_lev < 0) {
+		ret = prev_lev;
+		goto out;
+	}
+
+	devfreq->time_in_state[prev_lev] +=
 			 cur_time - devfreq->last_stat_updated;
-	if (freq != devfreq->previous_freq) {
-		prev_lev = devfreq_get_freq_level(devfreq,
-						devfreq->previous_freq);
+
+	lev = devfreq_get_freq_level(devfreq, freq);
+	if (lev < 0) {
+		ret = lev;
+		goto out;
+	}
+
+	if (lev != prev_lev) {
 		devfreq->trans_table[(prev_lev *
 				devfreq->profile->max_state) + lev]++;
 		devfreq->total_trans++;
 	}
-	devfreq->last_stat_updated = cur_time;
 
-	return 0;
+out:
+	devfreq->last_stat_updated = cur_time;
+	return ret;
 }
 
 /**
@@ -163,7 +196,7 @@ int update_devfreq(struct devfreq *devfreq)
 		return -EINVAL;
 
 	/* Reevaluate the proper frequency */
-	err = devfreq->governor->get_target_freq(devfreq, &freq);
+	err = devfreq->governor->get_target_freq(devfreq, &freq, &flags);
 	if (err)
 		return err;
 
@@ -185,8 +218,10 @@ int update_devfreq(struct devfreq *devfreq)
 	}
 
 	err = devfreq->profile->target(devfreq->dev.parent, &freq, flags);
+#ifndef CONFIG_LGE_DEVFREQ_DFPS
 	if (err)
 		return err;
+#endif
 
 	if (devfreq->profile->freq_table)
 		if (devfreq_update_status(devfreq, freq))
@@ -211,9 +246,10 @@ static void devfreq_monitor(struct work_struct *work)
 
 	mutex_lock(&devfreq->lock);
 	err = update_devfreq(devfreq);
+#ifndef CONFIG_LGE_DEVFREQ_DFPS
 	if (err)
 		dev_err(&devfreq->dev, "dvfs failed with (%d) error\n", err);
-
+#endif
 	queue_delayed_work(devfreq_wq, &devfreq->work,
 				msecs_to_jiffies(devfreq->profile->polling_ms));
 	mutex_unlock(&devfreq->lock);
@@ -472,10 +508,12 @@ struct devfreq *devfreq_add_device(struct device *dev,
 						devfreq->profile->max_state *
 						devfreq->profile->max_state,
 						GFP_KERNEL);
-	devfreq->time_in_state = devm_kzalloc(dev, sizeof(unsigned int) *
-						devfreq->profile->max_state,
-						GFP_KERNEL);
+	devfreq->time_in_state = devm_kzalloc(dev,
+					sizeof(*(devfreq->time_in_state)) *
+					devfreq->profile->max_state,
+					GFP_KERNEL);
 	devfreq->last_stat_updated = jiffies;
+	devfreq_set_freq_limits(devfreq);
 
 	dev_set_name(&devfreq->dev, dev_name(dev));
 	err = device_register(&devfreq->dev);
@@ -494,6 +532,10 @@ struct devfreq *devfreq_add_device(struct device *dev,
 	if (!IS_ERR(governor))
 		devfreq->governor = governor;
 	if (devfreq->governor)
+#ifdef CONFIG_LGE_DEVFREQ_DFPS
+		if (governor->init)
+			err = governor->init(devfreq);
+#endif
 		err = devfreq->governor->event_handler(devfreq,
 					DEVFREQ_GOV_START, NULL);
 	mutex_unlock(&devfreq_list_lock);
@@ -769,6 +811,47 @@ static ssize_t show_freq(struct device *dev,
 
 	return sprintf(buf, "%lu\n", devfreq->previous_freq);
 }
+#ifdef CONFIG_LGE_DEVFREQ_DFPS
+static ssize_t store_freq(struct device *dev,
+			 struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct devfreq *df = to_devfreq(dev);
+	unsigned long value;
+	u32 flags = 0;
+	int ret;
+
+	ret = sscanf(buf, "%lu", &value);
+	if (ret != 1)
+		return -EINVAL;
+
+	if(!df) {
+		dev_err(dev,"Can't find devfreq device.\n");
+		return -ENODEV;
+	}
+	mutex_lock(&df->lock);
+
+	if (df->min_freq && value < df->min_freq) {
+		value = df->min_freq;
+		flags &= ~DEVFREQ_FLAG_LEAST_UPPER_BOUND; /* Use GLB */
+	}
+	if (df->max_freq && value > df->max_freq) {
+		value = df->max_freq;
+		flags |= DEVFREQ_FLAG_LEAST_UPPER_BOUND; /* Use LUB */
+	}
+
+	df->profile->target(df->dev.parent, &value, flags);
+	if (df->profile->freq_table)
+		if (devfreq_update_status(df, value))
+			dev_err(&df->dev,
+				"Couldn't update frequency transition information.\n");
+
+	df->previous_freq = value;
+	ret = count;
+
+	mutex_unlock(&df->lock);
+	return ret;
+}
+#endif
 
 static ssize_t show_target_freq(struct device *dev,
 			struct device_attribute *attr, char *buf)
@@ -876,19 +959,26 @@ static ssize_t show_available_freqs(struct device *d,
 	struct devfreq *df = to_devfreq(d);
 	struct device *dev = df->dev.parent;
 	struct opp *opp;
+	unsigned int i = 0, max_state = df->profile->max_state;
+	bool use_opp;
 	ssize_t count = 0;
 	unsigned long freq = 0;
 
 	rcu_read_lock();
-	do {
-		opp = opp_find_freq_ceil(dev, &freq);
-		if (IS_ERR(opp))
-			break;
+	use_opp = dev_pm_opp_get_opp_count(dev) > 0;
+	while (use_opp || (!use_opp && i < max_state)) {
+		if (use_opp) {
+			opp = dev_pm_opp_find_freq_ceil(dev, &freq);
+			if (IS_ERR(opp))
+				break;
+		} else {
+			freq = df->profile->freq_table[i++];
+		}
 
 		count += scnprintf(&buf[count], (PAGE_SIZE - count - 2),
 				   "%lu ", freq);
 		freq++;
-	} while (1);
+	}
 	rcu_read_unlock();
 
 	/* Truncate the trailing space */
@@ -944,7 +1034,11 @@ static ssize_t show_trans_table(struct device *dev, struct device_attribute *att
 static struct device_attribute devfreq_attrs[] = {
 	__ATTR(governor, S_IRUGO | S_IWUSR, show_governor, store_governor),
 	__ATTR(available_governors, S_IRUGO, show_available_governors, NULL),
+#ifdef CONFIG_LGE_DEVFREQ_DFPS
+	__ATTR(cur_freq, S_IRUGO | S_IWUSR, show_freq, store_freq),
+#else
 	__ATTR(cur_freq, S_IRUGO, show_freq, NULL),
+#endif
 	__ATTR(available_frequencies, S_IRUGO, show_available_freqs, NULL),
 	__ATTR(target_freq, S_IRUGO, show_target_freq, NULL),
 	__ATTR(polling_interval, S_IRUGO | S_IWUSR, show_polling_interval,
@@ -1007,18 +1101,18 @@ struct opp *devfreq_recommended_opp(struct device *dev, unsigned long *freq,
 
 	if (flags & DEVFREQ_FLAG_LEAST_UPPER_BOUND) {
 		/* The freq is an upper bound. opp should be lower */
-		opp = opp_find_freq_floor(dev, freq);
+		opp = dev_pm_opp_find_freq_floor(dev, freq);
 
 		/* If not available, use the closest opp */
 		if (opp == ERR_PTR(-ERANGE))
-			opp = opp_find_freq_ceil(dev, freq);
+			opp = dev_pm_opp_find_freq_ceil(dev, freq);
 	} else {
 		/* The freq is an lower bound. opp should be higher */
-		opp = opp_find_freq_ceil(dev, freq);
+		opp = dev_pm_opp_find_freq_ceil(dev, freq);
 
 		/* If not available, use the closest opp */
 		if (opp == ERR_PTR(-ERANGE))
-			opp = opp_find_freq_floor(dev, freq);
+			opp = dev_pm_opp_find_freq_floor(dev, freq);
 	}
 
 	return opp;
@@ -1037,7 +1131,7 @@ int devfreq_register_opp_notifier(struct device *dev, struct devfreq *devfreq)
 	int ret = 0;
 
 	rcu_read_lock();
-	nh = opp_get_notifier(dev);
+	nh = dev_pm_opp_get_notifier(dev);
 	if (IS_ERR(nh))
 		ret = PTR_ERR(nh);
 	rcu_read_unlock();
@@ -1063,7 +1157,7 @@ int devfreq_unregister_opp_notifier(struct device *dev, struct devfreq *devfreq)
 	int ret = 0;
 
 	rcu_read_lock();
-	nh = opp_get_notifier(dev);
+	nh = dev_pm_opp_get_notifier(dev);
 	if (IS_ERR(nh))
 		ret = PTR_ERR(nh);
 	rcu_read_unlock();

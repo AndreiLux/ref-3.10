@@ -47,10 +47,27 @@ module_param(sip_direct_signalling, int, 0600);
 MODULE_PARM_DESC(sip_direct_signalling, "expect incoming calls from registrar "
 					"only (default 1)");
 
-static int sip_direct_media __read_mostly = 1;
-module_param(sip_direct_media, int, 0600);
-MODULE_PARM_DESC(sip_direct_media, "Expect Media streams between signalling "
-				   "endpoints only (default 1)");
+static struct ctl_table_header *sip_sysctl_header;
+static unsigned nf_ct_disable_sip_alg;
+static int sip_direct_media = 1;
+
+static ctl_table sip_sysctl_tbl[] = {
+	{
+		.procname     = "nf_conntrack_disable_sip_alg",
+		.data         = &nf_ct_disable_sip_alg,
+		.maxlen       = sizeof(unsigned int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+	},
+	{
+		.procname     = "nf_conntrack_sip_direct_media",
+		.data         = &sip_direct_media,
+		.maxlen       = sizeof(int),
+		.mode         = 0644,
+		.proc_handler = proc_dointvec,
+	},
+	{}
+};
 
 unsigned int (*nf_nat_sip_hook)(struct sk_buff *skb, unsigned int protoff,
 				unsigned int dataoff, const char **dptr,
@@ -1548,6 +1565,9 @@ static int sip_help_tcp(struct sk_buff *skb, unsigned int protoff,
 	bool term;
 	typeof(nf_nat_sip_seq_adjust_hook) nf_nat_sip_seq_adjust;
 
+	if (nf_ct_disable_sip_alg)
+		return NF_ACCEPT;
+
 	if (ctinfo != IP_CT_ESTABLISHED &&
 	    ctinfo != IP_CT_ESTABLISHED_REPLY)
 		return NF_ACCEPT;
@@ -1624,6 +1644,9 @@ static int sip_help_udp(struct sk_buff *skb, unsigned int protoff,
 	unsigned int dataoff, datalen;
 	const char *dptr;
 
+	if (nf_ct_disable_sip_alg)
+		return NF_ACCEPT;
+
 	/* No Data ? */
 	dataoff = protoff + sizeof(struct udphdr);
 	if (dataoff >= skb->len)
@@ -1683,6 +1706,16 @@ static void nf_conntrack_sip_fini(void)
 static int __init nf_conntrack_sip_init(void)
 {
 	int i, j, ret;
+
+	sip_sysctl_header = register_net_sysctl(&init_net, "net/netfilter",
+						sip_sysctl_tbl);
+	if (!sip_sysctl_header)
+		pr_debug("nf_ct_sip:Unable to register SIP systbl\n");
+
+	if (nf_ct_disable_sip_alg)
+		pr_debug("nf_ct_sip: SIP ALG disabled\n");
+	else
+		pr_debug("nf_ct_sip: SIP ALG enabled\n");
 
 	if (ports_c == 0)
 		ports[ports_c++] = SIP_PORT;

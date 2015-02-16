@@ -1,0 +1,244 @@
+/* Copyright (c) 2014, Code Aurora Forum. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&mdss_mdp {
+	/delete-property/ qcom,mdss-ad-off;
+	qcom,mdss-dram-channels = <1>;
+	qcom,mdss-pref-prim-intf = "dsi";
+	dsi_lgd_poled_1080_vid: qcom,mdss_dsi_lgd_poled_1080p_video {
+		compatible = "qcom,mdss-dsi-panel";
+		qcom,mdss-dsi-panel-name = "LGD POLED 1080p video mode dsi panel";
+		qcom,mdss-dsi-panel-controller = <&mdss_dsi0>;
+		qcom,mdss-dsi-panel-type = "dsi_video_mode";
+		qcom,mdss-dsi-panel-destination = "display_1";
+		qcom,mdss-dsi-panel-framerate = <58>;
+		qcom,mdss-dsi-pan-enable-dynamic-fps;
+		qcom,mdss-dsi-pan-fps-update = "dfps_immediate_porch_mode_lut";
+        qcom,mdss-dsi-pan-fps-entry = <58 52 6 52 50 8 50>, <48 52 6 248 50 8 125>;
+		qcom,mdss-dsi-min-refresh-rate = <48>;
+		qcom,mdss-dsi-max-refresh-rate = <58>;
+		qcom,mdss-dsi-virtual-channel-id = <0>;
+		qcom,mdss-dsi-stream = <0>;
+		qcom,mdss-dsi-panel-width = <1080>;
+		qcom,mdss-dsi-panel-height = <1920>;
+		qcom,mdss-dsi-h-front-porch = <52>;
+		qcom,mdss-dsi-h-back-porch = <52>;
+		qcom,mdss-dsi-h-pulse-width = <6>;
+		qcom,mdss-dsi-h-sync-skew = <0>;
+		qcom,mdss-dsi-v-back-porch = <50>;
+		qcom,mdss-dsi-v-front-porch = <50>;
+		qcom,mdss-dsi-v-pulse-width = <8>;
+		qcom,mdss-dsi-h-left-border = <0>;
+		qcom,mdss-dsi-h-right-border = <0>;
+		qcom,mdss-dsi-v-top-border = <0>;
+		qcom,mdss-dsi-v-bottom-border = <0>;
+		qcom,mdss-dsi-bpp = <24>;
+		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
+		qcom,mdss-dsi-underflow-color = <0x00>;
+		qcom,mdss-dsi-border-color = <0>;
+		qcom,mdss-dsi-on-command = [
+			/* Sleep out, delay 10ms */
+			05 01 00 00 0A 00 01 11
+			/* Manufacturer command protection */
+			15 01 00 00 00 00 02 B0 5A
+			/* Write brightness level */
+			15 01 00 00 00 00 02 51 2C
+			/* Write control display1*/
+			15 01 00 00 00 00 02 53 28
+			/* Improve to control signals(VDD Regulator) */
+			15 01 00 00 00 00 02 E3 01
+			/* dimming frame control */
+                        39 01 00 00 00 00 0A F5 00 00 00 00 00 8A 00 00 00
+			/* Step-up control */
+			39 01 00 00 00 00 09 E5 04 81 54 0A 81 82 82 82
+			/* Temp. sensor control off, delay 7-frames */
+			39 01 00 00 0A 00 03 F9 08 00
+			/* Display on */
+			05 01 00 00 00 00 01 29
+			];
+		qcom,mdss-dsi-off-command = [
+			/* Display off */
+			05 01 00 00 00 00 01 28
+			/* Sleep in, delay 7-frames*/
+			05 01 00 00 7B 00 01 10
+			];
+		qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+		qcom,mdss-dsi-off-command-state = "dsi_hs_mode";
+		qcom,mdss-dsi-h-sync-pulse = <0>;
+
+		/* Image tuning cmds set */
+		qcom,img-tune-on-dsi-state = "dsi_hs_mode";
+		lgd,img-tune-cmds-cm0 = [
+			15 01 00 00 00 00 02 53 28
+			15 01 00 00 00 00 02 55 40
+		];
+		lgd,img-tune-cmds-cm0-plc60 = [
+			15 01 00 00 00 00 02 53 28
+			15 01 00 00 00 00 02 55 43
+		];
+		lgd,img-tune-cmds-cm1 = [
+			15 01 00 00 00 00 02 53 2C
+			15 01 00 00 00 00 02 55 40
+		];
+		lgd,img-tune-cmds-cm1-plc60 = [
+			15 01 00 00 00 00 02 53 2C
+			15 01 00 00 00 00 02 55 43
+		];
+		lgd,img-tune-cmds-cm2 = [
+			15 01 00 00 00 00 02 53 AD
+			15 01 00 00 00 00 02 55 40
+		];
+		lgd,img-tune-cmds-cm2-plc60 = [
+			15 01 00 00 00 00 02 53 AD
+			15 01 00 00 00 00 02 55 43
+		];
+		lgd,img-tune-cmds-cm3 = [
+			15 01 00 00 00 00 02 53 26
+			15 01 00 00 00 00 02 55 40
+		];
+		lgd,img-tune-cmds-cm3-plc60 = [
+			15 01 00 00 00 00 02 53 26
+			15 01 00 00 00 00 02 55 43
+		];
+		lgd,img-tune-cmds-cm4 = [
+			15 01 00 00 00 00 02 53 A7
+			15 01 00 00 00 00 02 55 40
+		];
+		lgd,img-tune-cmds-cm4-plc60 = [
+			15 01 00 00 00 00 02 53 A7
+			15 01 00 00 00 00 02 55 43
+		];
+		lgd,img-tune-cmds-plc-set = [
+			15 01 00 00 00 00 02 55 43
+		];
+		lgd,img-tune-cmds-plc-unset = [
+			15 01 00 00 00 00 02 55 40
+		];
+		qcom,img-tune-off-dsi-state = "dsi_hs_mode";
+
+		qcom,mdss-dsi-traffic-mode = "non_burst_sync_event";
+
+		qcom,mdss-dsi-lane-map = "lane_map_0123";
+		qcom,mdss-dsi-lane-hs = <1>;
+		qcom,mdss-dsi-bllp-eof-power-mode;
+		qcom,mdss-dsi-bllp-power-mode;
+		qcom,mdss-dsi-lane-0-state;
+		qcom,mdss-dsi-lane-1-state;
+		qcom,mdss-dsi-lane-2-state;
+		qcom,mdss-dsi-lane-3-state;
+		qcom,mdss-dsi-panel-timings = [DB 34 22 00 64 8A
+			38 38 2B 03 04 00];
+		qcom,mdss-dsi-reset-sequence = <1 10>, <0 1>, <1 10>;
+		qcom,mdss-dsi-t-clk-post = <0x03>;
+		qcom,mdss-dsi-t-clk-pre = <0x29>;
+		qcom,mdss-dsi-dma-trigger = "trigger_sw";
+		qcom,mdss-dsi-mdp-trigger = "none";
+		qcom,mdss-dsi-bl-pmic-control-type = "bl_ctrl_dcs";
+		qcom,mdss-dsi-bl-min-level = <1>;
+		qcom,mdss-dsi-bl-max-level = <255>;
+		qcom,cont-splash-enabled;
+		qcom,mdss-dsi-lp11-init;
+		qcom,blmap-size = <256>;
+		qcom,blmap = <
+			  0
+			 44  44  44  44  44  44  44  44  44							// 001-009
+			 44  44  44  44  44  44  45  45  45  45  45  45  45  45  46  46  46  46  46  46		// 010-029
+			 46  46  47  47  47  47  47  47  47  48  48  48  48  48  48  48  48  49  49  49		// 030-049
+			 49  49  49  49  49  50  50  50  50  50  50  50  51  51  52  52  53  53  54  54		// 050-069
+			 55  55  56  57  57  58  58  59  59  60  60  61  61  62  63  63  64  64  65  65		// 070-089
+			 66  66  67  67  68  68  69  70  70  71  71  72  72  73  73  74  74  75  75  75		// 090-109
+			 75  76  77  78  78  79  80  81  82  83  84  85  85  86  87  88  89  90  91  92		// 110-129
+			 92  93  94  95  96  97  98  98  99 100 101 102 103 104 105 107 107 107 108 109		// 130-149
+			110 111 112 112 113 114 114 115 115 115 116 118 119 120 121 123 124 125 127 128		// 150-169
+			129 130 132 133 134 136 137 138 139 141 142 143 145 146 147 148 150 151 152 153		// 170-189
+			155 156 157 159 160 161 162 164 165 166 168 169 170 171 173 174 174 174 174 176		// 190-209
+			178 179 181 183 185 186 188 190 192 193 195 197 199 200 202 204 206 207 209 211		// 210-229
+			213 215 216 218 220 222 223 225 227 229 230 232 234 236 237 239 241 243 244 246		// 230-249
+			248 250 251 253 254 255									// 250-255
+		>;
+		qcom,plc-blmap-size = <256>;
+		qcom,plc-blmap = <
+			  0
+			 44  44  44  44  44  44  44  44  44							// 001-009
+			 44  44  44  44  44  44  44  44  44  44  44  44  45  45  45  45  45  45  45  45		// 010-029
+			 45  46  46  46  46  46  46  46  46  46  47  47  47  47  47  47  47  47  47  48		// 030-049
+			 48  48  48  48  48  48  48  48  49  49  49  49  49  49  49  49  50  50  50  50		// 050-069
+			 50  50  50  50  51  51  51  51  51  51  51  51  52  52  52  52  52  52  52  52		// 070-089
+			 53  53  53  53  53  53  53  54  54  54  54  54  54  54  55  55  55  55  55  55		// 090-109
+			 55  56  56  56  56  56  56  57  57  57  57  57  57  58  58  58  58  58  59  59		// 110-129
+			 59  59  59  60 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255		// 130-149
+			255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255		// 150-169
+			255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255		// 170-189
+			255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255		// 190-209
+			255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255		// 210-229
+			255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255 255		// 230-249
+			255 255 255 255 255 255									// 250-255
+		>;
+		qcom,mdss-pan-physical-width-dimension = <68>;
+		qcom,mdss-pan-physical-height-dimension = <121>;
+	};
+};
+
+&pmx_mdss {
+	qcom,num-grp-pins = <1>;
+	qcom,pins = <&gp 78>;
+};
+
+&mdss_dsi0 {
+	qcom,dsi-pref-prim-pan = <&dsi_lgd_poled_1080_vid>;
+	qcom,timing-db-mode;
+	pinctrl-names = "mdss_default", "mdss_sleep";
+	pinctrl-0 = <&mdss_dsi_active>;
+	pinctrl-1 = <&mdss_dsi_suspend>;
+	/*qcom,dsi-panel-bias-vreg;*/
+	qcom,platform-reset-gpio = <&msm_gpio 78 0>;
+	lge,reset-low-hold = <10>;
+
+	vpnl-supply = <&pm8994_l10>;
+		qcom,panel-supply-entries {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			qcom,panel-supply-entry@0 {
+				reg = <0>;
+				qcom,supply-name = "vpnl";
+				qcom,supply-min-voltage = <3000000>;
+				qcom,supply-max-voltage = <3000000>;
+				qcom,supply-enable-load = <100000>;
+				qcom,supply-disable-load = <100>;
+				qcom,supply-post-on-sleep = <20>;
+			};
+
+			qcom,panel-supply-entry@1 {
+				reg = <1>;
+				qcom,supply-name = "vdd";
+				qcom,supply-min-voltage = <1800000>;
+				qcom,supply-max-voltage = <1800000>;
+				qcom,supply-enable-load = <100000>;
+				qcom,supply-disable-load = <100>;
+				qcom,supply-post-on-sleep = <0>;
+			};
+		};
+};
+
+&rpm_bus {
+	rpm-regulator-ldoa10 {
+		status = "okay";
+		pm8994_l10: regulator-l10 {
+			/* Power supply for POLED , 3.0V */
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			qcom,init-voltage = <3000000>;
+			status = "okay";
+		};
+	};
+};

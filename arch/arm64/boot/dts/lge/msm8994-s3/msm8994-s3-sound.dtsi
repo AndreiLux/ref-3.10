@@ -1,0 +1,69 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&soc {
+	sound {
+		compatible = "qcom,msm8994-asoc-snd";
+		qcom,model = "msm8994-tomtom-snd-card";
+		reg = <0xfe034000 0x4>,
+		      <0xfe035000 0x4>,
+		      <0xfe036000 0x4>,
+		      <0xfe037000 0x4>;
+		reg-names = "lpaif_pri_mode_muxsel",
+			    "lpaif_sec_mode_muxsel",
+			    "lpaif_tert_mode_muxsel",
+			    "lpaif_quat_mode_muxsel";
+
+		qcom,audio-routing =
+			"RX_BIAS", "MCLK",
+			"LDO_H", "MCLK",
+			"AIF4 MAD", "MCLK",
+			"AMIC2", "MIC BIAS2 External",
+			"MIC BIAS2 External", "Headset Mic",
+			"AMIC3", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Handset Mic",
+			"AMIC4", "MIC BIAS4 External",
+			"MIC BIAS4 External", "Handset SubMic";
+
+		clock-names = "osr_clk";
+		clocks = <&clock_rpm clk_div_clk1>;
+		qcom,cdc-mclk-gpios = <&pm8994_gpios 15 0>;
+		qcom,tomtom-mclk-clk-freq = <9600000>;
+		pinctrl-names = "mi2s-sleep",
+				"mi2s-active",
+				"auxpcm-sleep",
+				"auxpcm-active";
+		pinctrl-0 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>;
+		pinctrl-1 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>;
+		pinctrl-2 = <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+		pinctrl-3 = <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+
+		qcom,cdc-micbias2-headset-only;
+/*		qcom,us-euro-gpios = <&pm8994_mpps 2 0>;   */
+/*		qcom,mbhc-audio-jack-type = "4-pole-jack"; */
+	};
+	i2c_1: i2c@f9923000 {
+		max14688@15 { /* MAX_DETECT_IC */
+			compatible = "maxim,max14688";
+			status = "ok";
+			reg = <0x15>;
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <74 0x3>;
+			max14688,gpio_detect = <&msm_gpio 74 0x00>; 	 /* EAR_SENSE */
+			max14688,gpio_int = <&pm8994_gpios 14 0x00>;	 /* EAR_KEY */
+			qcom,switch-vadc = <&pm8994_vadc>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&hs_max14688_det_active>;
+			pinctrl-1 = <&hs_max14688_det_sleep>;
+		};
+	};
+};

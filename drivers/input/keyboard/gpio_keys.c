@@ -29,6 +29,15 @@
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/spinlock.h>
+#include <linux/pinctrl/consumer.h>
+
+#define CONFIG_LGE_HALL_IC
+#ifdef CONFIG_LGE_HALL_IC
+#include <linux/switch.h>
+struct switch_dev hallic_sdev = {
+	.name = "smartcover",
+};
+#endif
 
 struct gpio_button_data {
 	const struct gpio_keys_button *button;
@@ -44,6 +53,7 @@ struct gpio_button_data {
 
 struct gpio_keys_drvdata {
 	const struct gpio_keys_platform_data *pdata;
+	struct pinctrl *key_pinctrl;
 	struct input_dev *input;
 	struct mutex disable_lock;
 	struct gpio_button_data data[0];
@@ -334,6 +344,15 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 			input_event(input, type, button->code, button->value);
 	} else {
 		input_event(input, type, button->code, !!state);
+
+#ifdef CONFIG_LGE_HALL_IC
+		if (!strncmp(bdata->button->desc, "hall_ic", 7)){
+			if (hallic_sdev.state != state){
+				switch_set_state(&hallic_sdev, state);
+				pr_err("hall_ic state switched to %d \n", state);
+			}
+		}
+#endif
 	}
 	input_sync(input);
 }
@@ -456,6 +475,15 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 						button->debounce_interval;
 		}
 
+#ifdef CONFIG_LGE_HALL_IC
+		if (!strncmp(bdata->button->desc, "hall_ic", 7)){
+			if (switch_dev_register(&hallic_sdev) < 0) {
+				pr_err("hallic_dev switch registration failed\n");
+				switch_dev_unregister(&hallic_sdev);
+			}
+			pr_err("hallic_dev switch registration success\n");
+		}
+#endif
 		irq = gpio_to_irq(button->gpio);
 		if (irq < 0) {
 			error = irq;
@@ -531,6 +559,41 @@ static void gpio_keys_report_state(struct gpio_keys_drvdata *ddata)
 	input_sync(input);
 }
 
+static int gpio_keys_pinctrl_configure(struct gpio_keys_drvdata *ddata,
+							bool active)
+{
+	struct pinctrl_state *set_state;
+	int retval;
+
+	if (active) {
+		set_state =
+			pinctrl_lookup_state(ddata->key_pinctrl,
+						"tlmm_gpio_key_active");
+		if (IS_ERR(set_state)) {
+			dev_err(&ddata->input->dev,
+				"cannot get ts pinctrl active state\n");
+			return PTR_ERR(set_state);
+		}
+	} else {
+		set_state =
+			pinctrl_lookup_state(ddata->key_pinctrl,
+						"tlmm_gpio_key_suspend");
+		if (IS_ERR(set_state)) {
+			dev_err(&ddata->input->dev,
+				"cannot get gpiokey pinctrl sleep state\n");
+			return PTR_ERR(set_state);
+		}
+	}
+	retval = pinctrl_select_state(ddata->key_pinctrl, set_state);
+	if (retval) {
+		dev_err(&ddata->input->dev,
+				"cannot set ts pinctrl active state\n");
+		return retval;
+	}
+
+	return 0;
+}
+
 static int gpio_keys_open(struct input_dev *input)
 {
 	struct gpio_keys_drvdata *ddata = input_get_drvdata(input);
@@ -599,6 +662,7 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 	pdata->nbuttons = nbuttons;
 
 	pdata->rep = !!of_get_property(node, "autorepeat", NULL);
+	pdata->name = of_get_property(node, "input-name", NULL);
 
 	i = 0;
 	for_each_child_of_node(node, pp) {
@@ -690,8 +754,9 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	const struct gpio_keys_platform_data *pdata = dev_get_platdata(dev);
 	struct gpio_keys_drvdata *ddata;
 	struct input_dev *input;
-	int i, error;
+	int i = 0, error;
 	int wakeup = 0;
+	struct pinctrl_state *set_state;
 
 	if (!pdata) {
 		pdata = gpio_keys_get_devtree_pdata(dev);
@@ -731,13 +796,31 @@ static int gpio_keys_probe(struct platform_device *pdev)
 	if (pdata->rep)
 		__set_bit(EV_REP, input->evbit);
 
+	/* Get pinctrl if target uses pinctrl */
+	ddata->key_pinctrl = devm_pinctrl_get(dev);
+	if (IS_ERR(ddata->key_pinctrl)) {
+		if (PTR_ERR(ddata->key_pinctrl) == -EPROBE_DEFER)
+			return -EPROBE_DEFER;
+
+		pr_debug("Target does not use pinctrl\n");
+		ddata->key_pinctrl = NULL;
+	}
+
+	if (ddata->key_pinctrl) {
+		error = gpio_keys_pinctrl_configure(ddata, true);
+		if (error) {
+			dev_err(dev, "cannot set ts pinctrl active state\n");
+			goto fail2;
+		}
+	}
+
 	for (i = 0; i < pdata->nbuttons; i++) {
 		const struct gpio_keys_button *button = &pdata->buttons[i];
 		struct gpio_button_data *bdata = &ddata->data[i];
 
 		error = gpio_keys_setup_key(pdev, input, bdata, button);
 		if (error)
-			goto fail2;
+			goto err_pinctrl;
 
 		if (button->wakeup)
 			wakeup = 1;
@@ -763,6 +846,16 @@ static int gpio_keys_probe(struct platform_device *pdev)
 
  fail3:
 	sysfs_remove_group(&pdev->dev.kobj, &gpio_keys_attr_group);
+ err_pinctrl:
+	if (ddata->key_pinctrl) {
+		set_state =
+		pinctrl_lookup_state(ddata->key_pinctrl,
+						"tlmm_gpio_key_suspend");
+		if (IS_ERR(set_state))
+			dev_err(dev, "cannot get gpiokey pinctrl sleep state\n");
+		else
+			pinctrl_select_state(ddata->key_pinctrl, set_state);
+	}
  fail2:
 	while (--i >= 0)
 		gpio_remove_key(&ddata->data[i]);
@@ -807,7 +900,15 @@ static int gpio_keys_suspend(struct device *dev)
 {
 	struct gpio_keys_drvdata *ddata = dev_get_drvdata(dev);
 	struct input_dev *input = ddata->input;
-	int i;
+	int i, ret;
+
+	if (ddata->key_pinctrl) {
+		ret = gpio_keys_pinctrl_configure(ddata, false);
+		if (ret) {
+			dev_err(dev, "failed to put the pin in suspend state\n");
+			return ret;
+		}
+	}
 
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {
@@ -831,6 +932,14 @@ static int gpio_keys_resume(struct device *dev)
 	struct input_dev *input = ddata->input;
 	int error = 0;
 	int i;
+
+	if (ddata->key_pinctrl) {
+		error = gpio_keys_pinctrl_configure(ddata, true);
+		if (error) {
+			dev_err(dev, "failed to put the pin in resume state\n");
+			return error;
+		}
+	}
 
 	if (device_may_wakeup(dev)) {
 		for (i = 0; i < ddata->pdata->nbuttons; i++) {

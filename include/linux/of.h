@@ -136,7 +136,9 @@ static inline unsigned long of_read_ulong(const __be32 *cell, int size)
 	return of_read_number(cell, size);
 }
 
+#if defined(CONFIG_SPARC)
 #include <asm/prom.h>
+#endif
 
 /* Default #address and #size cells.  Allow arch asm/prom.h to override */
 #if !defined(OF_ROOT_NODE_ADDR_CELLS_DEFAULT)
@@ -263,9 +265,14 @@ extern int of_property_count_strings(struct device_node *np,
 extern int of_device_is_compatible(const struct device_node *device,
 				   const char *);
 extern int of_device_is_available(const struct device_node *device);
+#ifdef CONFIG_MACH_LGE
+extern int of_device_is_available_revision(struct device_node *device);
+#endif
+
 extern const void *of_get_property(const struct device_node *node,
 				const char *name,
 				int *lenp);
+extern struct device_node *of_get_cpu_node(int cpu, unsigned int *thread);
 #define for_each_property_of_node(dn, pp) \
 	for (pp = dn->properties; pp != NULL; pp = pp->next)
 
@@ -459,6 +466,12 @@ static inline const void *of_get_property(const struct device_node *node,
 	return NULL;
 }
 
+static inline struct device_node *of_get_cpu_node(int cpu,
+					unsigned int *thread)
+{
+	return NULL;
+}
+
 static inline int of_property_read_u64(const struct device_node *np,
 				       const char *propname, u64 *out_value)
 {
@@ -534,6 +547,16 @@ static inline bool of_property_read_bool(const struct device_node *np,
 					 const char *propname)
 {
 	struct property *prop = of_find_property(np, propname, NULL);
+
+	/*
+	 * Boolean properties have no value cells. The "value" of a boolean
+	 * property is determined by the presence or absence of the property
+	 * itself, and value cells are disregarded entirely. Declaring a
+	 * boolean property with a nonzero number of value cells is a common
+	 * configuration error, since even a boolean property having a value of
+	 * 0 will be treated as "true" by the DT framework.
+	 */
+	WARN_ON(prop && prop->length);
 
 	return prop ? true : false;
 }

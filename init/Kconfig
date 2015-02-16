@@ -741,7 +741,7 @@ config IKCONFIG_PROC
 config LOG_BUF_SHIFT
 	int "Kernel log buffer size (16 => 64KB, 17 => 128KB)"
 	range 12 21
-	default 17
+	default 19
 	help
 	  Select kernel log buffer size as a power of 2.
 	  Examples:
@@ -756,6 +756,9 @@ config LOG_BUF_SHIFT
 # Architectures with an unreliable sched_clock() should select this:
 #
 config HAVE_UNSTABLE_SCHED_CLOCK
+	bool
+
+config GENERIC_SCHED_CLOCK
 	bool
 
 #
@@ -1027,6 +1030,15 @@ config DEBUG_BLK_CGROUP
 
 endif # CGROUPS
 
+config SCHED_HMP
+	bool "Scheduler support for heterogenous multi-processor systems"
+	depends on SMP && FAIR_GROUP_SCHED
+	help
+	  This feature will let the scheduler optimize task placement on
+	  systems made of heterogeneous cpus i.e cpus that differ either
+	  in their instructions per-cycle capability or the maximum
+	  frequency they can attain.
+
 config CHECKPOINT_RESTORE
 	bool "Checkpoint/restore support" if EXPERT
 	default n
@@ -1250,6 +1262,12 @@ config HOTPLUG
 
 config HAVE_PCSPKR_PLATFORM
 	bool
+
+config PANIC_TIMEOUT
+	int "Default panic timeout"
+	default 0
+	help
+	  Set default panic timeout.
 
 menuconfig EXPERT
 	bool "Configure standard kernel features (expert users)"

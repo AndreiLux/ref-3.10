@@ -965,6 +965,10 @@ static void timekeeping_resume(void)
 
 	/* Resume hrtimers */
 	hrtimers_resume();
+#if defined(CONFIG_MACH_LGE)
+	pr_debug("TIME suspended for %lu.%03lu seconds\n", ts_delta.tv_sec,
+		ts_delta.tv_nsec / NSEC_PER_MSEC);
+#endif
 }
 
 static int timekeeping_suspend(void)

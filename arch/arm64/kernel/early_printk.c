@@ -26,6 +26,8 @@
 #include <linux/amba/serial.h>
 #include <linux/serial_reg.h>
 
+#include <asm/fixmap.h>
+
 static void __iomem *early_base;
 static void (*printch)(char ch);
 
@@ -72,6 +74,28 @@ static void uart8250_32bit_printch(char ch)
 	writel_relaxed(ch, early_base + (UART_TX << 2));
 }
 
+#define MSM_HSL_UART_SR			0xa4
+#define MSM_HSL_UART_ISR		0xb4
+#define MSM_HSL_UART_TF			0x100
+#define MSM_HSL_UART_CR			0xa8
+#define MSM_HSL_UART_NCF_TX		0x40
+#define MSM_HSL_UART_SR_TXEMT		BIT(3)
+#define MSM_HSL_UART_ISR_TXREADY	BIT(7)
+
+void msm_hsl_uart_printch(char ch)
+{
+	while (!(readl_relaxed(early_base + MSM_HSL_UART_SR) &
+						       MSM_HSL_UART_SR_TXEMT) &&
+	       !(readl_relaxed(early_base + MSM_HSL_UART_ISR) &
+						     MSM_HSL_UART_ISR_TXREADY))
+		;
+
+	writel_relaxed(0x300, early_base + MSM_HSL_UART_CR);
+	writel_relaxed(1, early_base + MSM_HSL_UART_NCF_TX);
+	readl_relaxed(early_base + MSM_HSL_UART_NCF_TX);
+	writel_relaxed(ch, early_base + MSM_HSL_UART_TF);
+}
+
 struct earlycon_match {
 	const char *name;
 	void (*printch)(char ch);
@@ -82,6 +106,7 @@ static const struct earlycon_match earlycon_match[] __initconst = {
 	{ .name = "smh", .printch = smh_printch, },
 	{ .name = "uart8250-8bit", .printch = uart8250_8bit_printch, },
 	{ .name = "uart8250-32bit", .printch = uart8250_32bit_printch, },
+	{ .name = "msm_hsl_uart", .printch = msm_hsl_uart_printch, },
 	{}
 };
 
@@ -142,7 +167,7 @@ static int __init setup_early_printk(char *buf)
 	/* no options parsing yet */
 
 	if (paddr)
-		early_base = early_io_map(paddr, EARLYCON_IOBASE);
+		early_base = (void __iomem *)set_fixmap_offset_io(FIX_EARLYCON_MEM_BASE, paddr);
 
 	printch = match->printch;
 	early_console = &early_console_dev;

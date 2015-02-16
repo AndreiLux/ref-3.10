@@ -1,0 +1,77 @@
+&spmi_bus {
+
+	qcom,pmi8994@3 {
+		qcom,haptic@c000 {
+			status = "okay";
+			compatible = "qcom,qpnp-haptic";
+			reg = <0xc000 0x100>;
+			interrupts = <0x3 0xc0 0x0>,
+				<0x3 0xc0 0x1>;
+			interrupt-names = "sc-irq", "play-irq";
+			qcom,play-mode = "direct";
+			qcom,wave-play-rate-us = <5263>;
+			qcom,actuator-type = "erm";
+			qcom,wave-shape = "square";
+			qcom,vmax-mv = <2400>;
+			qcom,ilim-ma = <150>;
+			qcom,sc-deb-cycles = <8>;
+			qcom,int-pwm-freq-khz = <505>;
+			qcom,brake-pattern = [03 03 03 03];
+			qcom,use-play-irq;
+			qcom,use-sc-irq;
+			qcom,wave-samples = [3e 3e 3e 3e 3e 3e 3e 3e];
+			qcom,wave-rep-cnt = <1>;
+			qcom,wave-samp-rep-cnt = <1>;
+		};
+
+		qcom,leds@d000 {
+			status = "okay";
+			qcom,rgb_0 {
+				qcom,mode = "lpg";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <24>;
+				qcom,duty-pcts = [
+					 01 02 03 04 05 06 07 08
+					 09 0A 0B 0C 0D 0E 0F 10
+					 11 12 13 14 15 16 17 18
+					 ];
+				linux,default-trigger = "none";
+			};
+
+			qcom,rgb_1 {
+				qcom,mode = "lpg";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <24>;
+				qcom,duty-pcts = [
+					 01 02 03 04 05 06 07 08
+					 09 0A 0B 0C 0D 0E 0F 10
+					 11 12 13 14 15 16 17 18
+					 ];
+				linux,default-trigger = "none";
+			};
+
+			qcom,rgb_2 {
+				qcom,mode = "lpg";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <24>;
+				qcom,duty-pcts = [
+					 01 02 03 04 05 06 07 08
+					 09 0A 0B 0C 0D 0E 0F 10
+					 11 12 13 14 15 16 17 18
+					 ];
+				linux,default-trigger = "none";
+			};
+		};
+	};
+};
+
+&soc {
+	appsport {
+		status = "okay";
+		compatible = "lge,appsport";
+		interrupt-parent = <&msm_gpio>;
+		interrupts = <36 0>;
+		interrupt-names = "ext_det_irq";
+		appsport,ext-det-gpio = <&msm_gpio 36 0>;
+    };
+};
