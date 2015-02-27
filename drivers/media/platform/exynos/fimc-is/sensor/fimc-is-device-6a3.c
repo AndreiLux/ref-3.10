@@ -110,6 +110,8 @@ int sensor_6a3_probe(struct i2c_client *client,
 	module->position = SENSOR_POSITION_FRONT;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_1;
+	module->sensor_maker = "SLSI";
+	module->sensor_name = "S5K6A3";
 	module->setfile_name = "setfile_6a3.bin";
 	module->cfgs = ARRAY_SIZE(config_6a3);
 	module->cfg = config_6a3;

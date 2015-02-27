@@ -48,6 +48,11 @@ int bbd_alloc_count(void)
 void* bbd_alloc(size_t size)
 {
     void* p = kmalloc(size, GFP_KERNEL);
+    if (!p) {
+	    printk("%s failed to alloc %u\n", __func__, size);
+	    return p;
+    }
+
     memset(p, 0, size);
     ++nAlloc;
 #ifdef  DEBUG_MEMORY

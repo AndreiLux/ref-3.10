@@ -50,6 +50,10 @@
 #include <linux/debugfs.h>
 #endif				/* CONFIG_DEBUG_FS */
 
+#ifdef CONFIG_PM_DEVFREQ
+#include <linux/devfreq.h>
+#endif /* CONFIG_DEVFREQ */
+
 /** Enable SW tracing when set */
 #ifdef CONFIG_MALI_ENABLE_TRACE
 #define KBASE_TRACE_ENABLE 1
@@ -139,7 +143,6 @@
 #endif
 
 #define GROWABLE_FLAGS_REQUIRED (KBASE_REG_PF_GROW)
-#define GROWABLE_FLAGS_MASK     (GROWABLE_FLAGS_REQUIRED | KBASE_REG_FREE)
 
 /** setting in kbase_context::as_nr that indicates it's invalid */
 #define KBASEP_AS_NR_INVALID     (-1)
@@ -173,56 +176,6 @@
 #define CTX_NAME_SIZE 32
 #endif
 
-/**
- * @brief States to model state machine processed by kbasep_js_job_check_ref_cores(), which
- * handles retaining cores for power management and affinity management.
- *
- * The state @ref KBASE_ATOM_COREREF_STATE_RECHECK_AFFINITY prevents an attack
- * where lots of atoms could be submitted before powerup, and each has an
- * affinity chosen that causes other atoms to have an affinity
- * violation. Whilst the affinity was not causing violations at the time it
- * was chosen, it could cause violations thereafter. For example, 1000 jobs
- * could have had their affinity chosen during the powerup time, so any of
- * those 1000 jobs could cause an affinity violation later on.
- *
- * The attack would otherwise occur because other atoms/contexts have to wait for:
- * -# the currently running atoms (which are causing the violation) to
- * finish
- * -# and, the atoms that had their affinity chosen during powerup to
- * finish. These are run preferrentially because they don't cause a
- * violation, but instead continue to cause the violation in others.
- * -# or, the attacker is scheduled out (which might not happen for just 2
- * contexts)
- *
- * By re-choosing the affinity (which is designed to avoid violations at the
- * time it's chosen), we break condition (2) of the wait, which minimizes the
- * problem to just waiting for current jobs to finish (which can be bounded if
- * the Job Scheduling Policy has a timer).
- */
-enum kbase_atom_coreref_state {
-	/** Starting state: No affinity chosen, and cores must be requested. kbase_jd_atom::affinity==0 */
-	KBASE_ATOM_COREREF_STATE_NO_CORES_REQUESTED,
-	/** Cores requested, but waiting for them to be powered. Requested cores given by kbase_jd_atom::affinity */
-	KBASE_ATOM_COREREF_STATE_WAITING_FOR_REQUESTED_CORES,
-	/** Cores given by kbase_jd_atom::affinity are powered, but affinity might be out-of-date, so must recheck */
-	KBASE_ATOM_COREREF_STATE_RECHECK_AFFINITY,
-	/** Cores given by kbase_jd_atom::affinity are powered, and affinity is up-to-date, but must check for violations */
-	KBASE_ATOM_COREREF_STATE_CHECK_AFFINITY_VIOLATIONS,
-	/** Cores are powered, kbase_jd_atom::affinity up-to-date, no affinity violations: atom can be submitted to HW */
-	KBASE_ATOM_COREREF_STATE_READY
-};
-
-enum kbase_jd_atom_state {
-	/** Atom is not used */
-	KBASE_JD_ATOM_STATE_UNUSED,
-	/** Atom is queued in JD */
-	KBASE_JD_ATOM_STATE_QUEUED,
-	/** Atom has been given to JS (is runnable/running) */
-	KBASE_JD_ATOM_STATE_IN_JS,
-	/** Atom has been completed, but not yet handed back to userspace */
-	KBASE_JD_ATOM_STATE_COMPLETED
-};
-
 /** Atom has been previously soft-stoppped */
 #define KBASE_KATOM_FLAG_BEEN_SOFT_STOPPPED (1<<1)
 /** Atom has been previously retried to execute */
@@ -230,26 +183,27 @@ enum kbase_jd_atom_state {
 #define KBASE_KATOM_FLAGS_JOBCHAIN (1<<3)
 /** Atom has been previously hard-stopped. */
 #define KBASE_KATOM_FLAG_BEEN_HARD_STOPPED (1<<4)
+
 /** Atom has caused us to enter disjoint state */
 #define KBASE_KATOM_FLAG_IN_DISJOINT (1<<5)
 
-/* SW related flags about types of JSn_COMMAND action
- * NOTE: These must be masked off by JSn_COMMAND_MASK */
+/* SW related flags about types of JS_COMMAND action
+ * NOTE: These must be masked off by JS_COMMAND_MASK */
 
 /** This command causes a disjoint event */
-#define JSn_COMMAND_SW_CAUSES_DISJOINT 0x100
+#define JS_COMMAND_SW_CAUSES_DISJOINT 0x100
 
 /** Bitmask of all SW related flags */
-#define JSn_COMMAND_SW_BITS  (JSn_COMMAND_SW_CAUSES_DISJOINT)
+#define JS_COMMAND_SW_BITS  (JS_COMMAND_SW_CAUSES_DISJOINT)
 
-#if (JSn_COMMAND_SW_BITS & JSn_COMMAND_MASK)
-#error JSn_COMMAND_SW_BITS not masked off by JSn_COMMAND_MASK. Must update JSn_COMMAND_SW_<..> bitmasks
+#if (JS_COMMAND_SW_BITS & JS_COMMAND_MASK)
+#error JS_COMMAND_SW_BITS not masked off by JS_COMMAND_MASK. Must update JS_COMMAND_SW_<..> bitmasks
 #endif
 
 /** Soft-stop command that causes a Disjoint event. This of course isn't
- *  entirely masked off by JSn_COMMAND_MASK */
-#define JSn_COMMAND_SOFT_STOP_WITH_SW_DISJOINT \
-		(JSn_COMMAND_SW_CAUSES_DISJOINT | JSn_COMMAND_SOFT_STOP)
+ *  entirely masked off by JS_COMMAND_MASK */
+#define JS_COMMAND_SOFT_STOP_WITH_SW_DISJOINT \
+		(JS_COMMAND_SW_CAUSES_DISJOINT | JS_COMMAND_SOFT_STOP)
 
 struct kbase_jd_atom_dependency
 {
@@ -258,7 +212,7 @@ struct kbase_jd_atom_dependency
 };
 
 /**
- * @brief The function retrieves a read-only reference to the atom field from 
+ * @brief The function retrieves a read-only reference to the atom field from
  * the  kbase_jd_atom_dependency structure
  *
  * @param[in] dep kbase jd atom dependency.
@@ -268,12 +222,12 @@ struct kbase_jd_atom_dependency
 static INLINE const struct kbase_jd_atom* const kbase_jd_katom_dep_atom(const struct kbase_jd_atom_dependency* dep)
 {
 	LOCAL_ASSERT(dep != NULL);
-	
+
 	return (const struct kbase_jd_atom* const )(dep->atom);
 }
- 
+
 /**
- * @brief The function retrieves a read-only reference to the dependency type field from 
+ * @brief The function retrieves a read-only reference to the dependency type field from
  * the  kbase_jd_atom_dependency structure
  *
  * @param[in] dep kbase jd atom dependency.
@@ -295,18 +249,18 @@ static INLINE const u8 kbase_jd_katom_dep_type(const struct kbase_jd_atom_depend
  * @param     type   The ATOM dependency type to be set.
  *
  */
-static INLINE void kbase_jd_katom_dep_set(const struct kbase_jd_atom_dependency* const_dep, 
+static INLINE void kbase_jd_katom_dep_set(const struct kbase_jd_atom_dependency* const_dep,
 	struct kbase_jd_atom * a,
 	u8 type)
 {
 	struct kbase_jd_atom_dependency* dep;
-	
+
 	LOCAL_ASSERT(const_dep != NULL);
 
 	dep = (REINTERPRET_CAST(struct kbase_jd_atom_dependency* )const_dep);
 
 	dep->atom = a;
-	dep->dep_type = type; 
+	dep->dep_type = type;
 }
 
 /**
@@ -324,7 +278,7 @@ static INLINE void kbase_jd_katom_dep_clear(const struct kbase_jd_atom_dependenc
 	dep = (REINTERPRET_CAST(struct kbase_jd_atom_dependency* )const_dep);
 
 	dep->atom = NULL;
-	dep->dep_type = BASE_JD_DEP_TYPE_INVALID; 
+	dep->dep_type = BASE_JD_DEP_TYPE_INVALID;
 }
 
 struct kbase_ext_res
@@ -336,6 +290,7 @@ struct kbase_ext_res
 struct kbase_jd_atom {
 	struct work_struct work;
 	ktime_t start_timestamp;
+	u64 time_spent_us; /**< Total time spent on the GPU in microseconds */
 
 	struct base_jd_udata udata;
 	struct kbase_context *kctx;
@@ -549,6 +504,9 @@ enum kbase_instr_state {
 	KBASE_INSTR_STATE_FAULT
 };
 
+void kbasep_reset_timeout_worker(struct work_struct *data);
+enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer *data);
+
 struct kbasep_mem_device {
 	atomic_t used_pages;   /* Tracks usage of OS shared memory. Updated
 				   when OS memory is allocated/freed. */
@@ -715,6 +673,9 @@ struct kbase_device {
 		int irq;
 		int flags;
 	} irqs[3];
+#ifdef CONFIG_HAVE_CLK
+	struct clk *clock;
+#endif
 	char devname[DEVNAME_SIZE];
 
 #ifdef CONFIG_MALI_NO_MALI
@@ -906,6 +867,18 @@ struct kbase_device {
 	struct delayed_work runtime_pm_workqueue;
 #endif
 
+#ifdef CONFIG_PM_DEVFREQ
+	struct devfreq_dev_profile devfreq_profile;
+	struct devfreq *devfreq;
+	unsigned long freq;
+#ifdef CONFIG_DEVFREQ_THERMAL
+	struct devfreq_cooling_device *devfreq_cooling;
+#ifdef CONFIG_MALI_POWER_ACTOR
+	struct power_actor *power_actor;
+#endif
+#endif
+#endif
+
 #ifdef CONFIG_MALI_TRACE_TIMELINE
 	struct kbase_trace_kbdev_timeline timeline;
 #endif
@@ -919,10 +892,8 @@ struct kbase_device {
 	struct dentry *trace_dentry;
 	/* directory for per-ctx memory profiling data */
 	struct dentry *memory_profile_directory;
-	/* memory profiling enable switch file */
-	struct dentry *memory_profile_switch_file;
-	/* memory profiling enable switch value (on/off) */
-	u32 memory_profile_switch_val;
+	/* Root directory for job dispatcher data */
+	struct dentry *jd_directory;
 #endif /* CONFIG_DEBUG_FS */
 
 	/* fbdump profiling controls set by gator */
@@ -960,6 +931,7 @@ struct kbase_context {
 	struct workqueue_struct *event_workq;
 
 	u64 mem_attrs;
+	bool is_compat;
 
 	atomic_t                setup_complete;
 	atomic_t                setup_in_progress;
@@ -975,7 +947,7 @@ struct kbase_context {
 
 	unsigned long    cookies;
 	struct kbase_va_region *pending_regions[BITS_PER_LONG];
-	
+
 	wait_queue_head_t event_queue;
 	pid_t tgid;
 	pid_t pid;
@@ -1025,13 +997,13 @@ struct kbase_context {
 	size_t mem_profile_size;
 	/* Spinlock guarding data */
 	spinlock_t mem_profile_lock;
+	/* Per-context directory for JD data */
+	struct dentry *jd_ctx_dir;
 #endif /* CONFIG_DEBUG_FS */
 #if SLSI_INTEGRATION
 	int ctx_status;
 	mali_bool ctx_need_qos;
 #endif
-
-	int legacy_app;
 
 #if SLSI_INTEGRATION
 	atomic_t used_pmem_pages;

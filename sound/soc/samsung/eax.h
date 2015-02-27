@@ -16,7 +16,9 @@
 extern int eax_dev_register(struct device *dev, const char *name,
 			struct s3c_dma_params *dma, int ch);
 extern int eax_dai_register(struct snd_soc_dai *dai,
-			const struct snd_soc_dai_ops *dai_ops);
+			const struct snd_soc_dai_ops *dai_ops,
+			int (*dai_suspend)(struct snd_soc_dai *dai),
+			int (*dai_resume)(struct snd_soc_dai *dai));
 extern int eax_dma_dai_register(struct snd_soc_dai *dai);
 extern int eax_dma_params_register(struct s3c_dma_params *dma);
 extern int eax_asoc_platform_register(struct device *dev);

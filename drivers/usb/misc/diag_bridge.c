@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,11 +27,6 @@
 #include <linux/debugfs.h>
 #include <mach/diag_bridge.h>
 
-#ifdef CONFIG_MDM_HSIC_PM
-#include <linux/mdm_hsic_pm.h>
-static const char rmnet_pm_dev[] = "15510000.mdmpm_pdata";
-#endif
-
 #define DRIVER_DESC	"USB host diag bridge driver"
 #define DRIVER_VERSION	"1.0"
 
@@ -52,11 +47,16 @@ struct diag_bridge {
 	unsigned		default_autosusp_delay;
 	int			id;
 
+	/* Support INT IN instead of BULK IN */
+	bool			use_int_in_pipe;
+	unsigned int		period;
+
 	/* debugging counters */
 	unsigned long		bytes_to_host;
 	unsigned long		bytes_to_mdm;
 	unsigned		pending_reads;
 	unsigned		pending_writes;
+	unsigned		drop_count;
 };
 struct diag_bridge *__dev[MAX_DIAG_BRIDGE_DEVS];
 
@@ -166,7 +166,6 @@ int diag_bridge_read(int id, char *data, int size)
 	unsigned int		pipe;
 	struct diag_bridge	*dev;
 	int			ret;
-	int			spin = 50;
 
 	if (id < 0 || id >= MAX_DIAG_BRIDGE_DEVS) {
 		pr_err("Invalid device ID");
@@ -193,17 +192,9 @@ int diag_bridge_read(int id, char *data, int size)
 		goto error;
 	}
 
-	while (check_request_blocked(rmnet_pm_dev) && spin--) {
-		pr_debug("%s: wake up wait loop\n", __func__);
-		msleep(20);
-	}
-
-	if (check_request_blocked(rmnet_pm_dev)) {
-		pr_err("%s: in lpa wakeup, return EAGAIN\n", __func__);
-		return -EAGAIN;
-	}
 	if (!size) {
-		dev_err(&dev->ifc->dev, "invalid size:%d\n", size);
+		dev_dbg(&dev->ifc->dev, "invalid size:%d\n", size);
+		dev->drop_count++;
 		ret = -EINVAL;
 		goto error;
 	}
@@ -218,7 +209,7 @@ int diag_bridge_read(int id, char *data, int size)
 
 	urb = usb_alloc_urb(0, GFP_KERNEL);
 	if (!urb) {
-		dev_err(&dev->ifc->dev, "unable to allocate urb\n");
+		dev_dbg(&dev->ifc->dev, "unable to allocate urb\n");
 		ret = -ENOMEM;
 		goto put_error;
 	}
@@ -229,9 +220,16 @@ int diag_bridge_read(int id, char *data, int size)
 		goto free_error;
 	}
 
-	pipe = usb_rcvbulkpipe(dev->udev, dev->in_epAddr);
-	usb_fill_bulk_urb(urb, dev->udev, pipe, data, size,
+	if (dev->use_int_in_pipe) {
+		pipe = usb_rcvintpipe(dev->udev, dev->in_epAddr);
+		usb_fill_int_urb(urb, dev->udev, pipe, data, size,
+		diag_bridge_read_cb, dev, dev->period);
+	} else {
+		pipe = usb_rcvbulkpipe(dev->udev, dev->in_epAddr);
+		usb_fill_bulk_urb(urb, dev->udev, pipe, data, size,
 				diag_bridge_read_cb, dev);
+	}
+
 	usb_anchor_urb(urb, &dev->submitted);
 	dev->pending_reads++;
 
@@ -387,10 +385,12 @@ static ssize_t diag_read_stats(struct file *file, char __user *ubuf,
 				"bytes to mdm: %lu\n"
 				"pending reads: %u\n"
 				"pending writes: %u\n"
+				"drop count:%u\n"
 				"last error: %d\n",
 				dev->in_epAddr, dev->out_epAddr,
 				dev->bytes_to_host, dev->bytes_to_mdm,
 				dev->pending_reads, dev->pending_writes,
+				dev->drop_count,
 				dev->err);
 	}
 
@@ -409,6 +409,7 @@ static ssize_t diag_reset_stats(struct file *file, const char __user *buf,
 		if (dev) {
 			dev->bytes_to_host = dev->bytes_to_mdm = 0;
 			dev->pending_reads = dev->pending_writes = 0;
+			dev->drop_count = 0;
 		}
 	}
 
@@ -454,17 +455,10 @@ diag_bridge_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 	struct usb_host_interface	*ifc_desc;
 	struct usb_endpoint_descriptor	*ep_desc;
 	int				i, devid, ret = -ENOMEM;
-	__u8				ifc_num;
 
 	pr_debug("id:%lu", id->driver_info);
 
-	ifc_num = ifc->cur_altsetting->desc.bInterfaceNumber;
-
-	/* is this interface supported ? */
-	if (ifc_num != (id->driver_info & 0xFF))
-		return -ENODEV;
-
-	devid = (id->driver_info >> 8) & 0xFF;
+	devid = id->driver_info & 0xFF;
 	if (devid < 0 || devid >= MAX_DIAG_BRIDGE_DEVS)
 		return -ENODEV;
 
@@ -479,12 +473,7 @@ diag_bridge_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 		pr_err("unable to allocate dev");
 		return -ENOMEM;
 	}
-	dev->pdev = platform_device_alloc("diag_bridge", devid);
-	if (!dev->pdev) {
-		pr_err("unable to allocate platform device");
-		kfree(dev);
-		return -ENOMEM;
-	}
+
 	__dev[devid] = dev;
 	dev->id = devid;
 
@@ -497,10 +486,14 @@ diag_bridge_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 	ifc_desc = ifc->cur_altsetting;
 	for (i = 0; i < ifc_desc->desc.bNumEndpoints; i++) {
 		ep_desc = &ifc_desc->endpoint[i].desc;
-
-		if (!dev->in_epAddr && usb_endpoint_is_bulk_in(ep_desc))
+		if (!dev->in_epAddr && (usb_endpoint_is_bulk_in(ep_desc) ||
+			usb_endpoint_is_int_in(ep_desc))) {
 			dev->in_epAddr = ep_desc->bEndpointAddress;
-
+			if (usb_endpoint_is_int_in(ep_desc)) {
+				dev->use_int_in_pipe = 1;
+				dev->period = ep_desc->bInterval;
+			}
+		}
 		if (!dev->out_epAddr && usb_endpoint_is_bulk_out(ep_desc))
 			dev->out_epAddr = ep_desc->bEndpointAddress;
 	}
@@ -513,7 +506,13 @@ diag_bridge_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 
 	usb_set_intfdata(ifc, dev);
 	diag_bridge_debugfs_init();
-	platform_device_add(dev->pdev);
+	dev->pdev = platform_device_register_simple("diag_bridge", devid,
+						    NULL, 0);
+	if (IS_ERR(dev->pdev)) {
+		pr_err("unable to allocate platform device");
+		ret = PTR_ERR(dev->pdev);
+		goto error;
+	}
 
 	dev_dbg(&dev->ifc->dev, "%s: complete\n", __func__);
 
@@ -569,30 +568,50 @@ static int diag_bridge_resume(struct usb_interface *ifc)
 
 	if (cbs && cbs->resume)
 		cbs->resume(cbs->ctxt);
-	else
-		pr_info("default\n");
 
 	return 0;
 }
 
-#define VALID_INTERFACE_NUM	0
-#define DEV_ID(n)		((n)<<8)
+#define DEV_ID(n)		(n)
 
 static const struct usb_device_id diag_bridge_ids[] = {
-	{ USB_DEVICE(0x5c6, 0x9001),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
-	{ USB_DEVICE(0x5c6, 0x9034),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
-	{ USB_DEVICE(0x5c6, 0x9048),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
-	{ USB_DEVICE(0x5c6, 0x904C),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
-	{ USB_DEVICE(0x5c6, 0x9075),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
-	{ USB_DEVICE(0x5c6, 0x9079),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(1), },
-	{ USB_DEVICE(0x5c6, 0x908A),
-	.driver_info = VALID_INTERFACE_NUM | DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x9001, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x9034, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x9048, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x904C, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x9075, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x9079, 0),
+	.driver_info =  DEV_ID(1), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x908A, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x908E, 0),
+	.driver_info =  DEV_ID(0), },
+	/* 908E, ifc#1 refers to diag client interface */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x908E, 1),
+	.driver_info =  DEV_ID(1), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909C, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909D, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909E, 0),
+	.driver_info =  DEV_ID(0), },
+	/* 909E, ifc#1 refers to diag client interface */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909E, 1),
+	.driver_info =  DEV_ID(1), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x909F, 0),
+	.driver_info =	DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x90A0, 0),
+	.driver_info =  DEV_ID(0), },
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x90A4, 0),
+	.driver_info =	DEV_ID(0), },
+	/* 909E, ifc#1 refers to diag client interface */
+	{ USB_DEVICE_INTERFACE_NUMBER(0x5c6, 0x90A4, 1),
+	.driver_info =	DEV_ID(1), },
 
 	{} /* terminating entry */
 };

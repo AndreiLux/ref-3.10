@@ -73,6 +73,8 @@ EXPORT_SYMBOL(dsim_for_decon);
 #ifdef CONFIG_FB_HIBERNATION_DISPLAY
 int s5p_mipi_dsi_hibernation_power_on(struct display_driver *dispdrv);
 int s5p_mipi_dsi_hibernation_power_off(struct display_driver *dispdrv);
+int s5p_mipi_dsi_ulps_handling(u32 en, u32 lanes);
+
 #endif
 
 
@@ -526,9 +528,6 @@ int s5p_mipi_dsi_partial_area_command(struct mipi_dsim_device *dsim,
 		}
 		dev_dbg(dsim->dev, "%s: y = %d,  h = %d\n", __func__, y, h);
 	}
-#if defined(CONFIG_SOC_EXYNOS5433) /* workaround code */
-	s5p_mipi_dsi_wr_data(dsim, MIPI_DSI_DCS_SHORT_WRITE, MIPI_DCS_WRITE_MEMORY_START, 0);
-#endif
 
 	dsim->lcd_win.x = x;
 	dsim->lcd_win.y = y;
@@ -807,6 +806,12 @@ int s5p_mipi_dsi_enable(struct mipi_dsim_device *dsim)
 	clks_to_dsim_device(&clks, dsim);
 
 	dsim_reg_set_lanes(DSIM_LANE_CLOCK | dsim->data_lane, 1);
+#if defined(CONFIG_LCD_ALPM) && defined(CONFIG_FB_HIBERNATION_DISPLAY)
+		if(dsim->lcd_alpm) {
+			/* Exit ULPS mode clk & data */
+			s5p_mipi_dsi_ulps_handling(0, dsim->data_lane);
+		}
+#endif
 
 	dsim->state = DSIM_STATE_STOP;
 
@@ -871,6 +876,13 @@ int s5p_mipi_dsi_disable(struct mipi_dsim_device *dsim)
 
 	/* disable HS clock */
 	dsim_reg_set_hs_clock(0);
+#if defined(CONFIG_LCD_ALPM) && defined(CONFIG_FB_HIBERNATION_DISPLAY)
+		if(dsim->lcd_alpm) {
+			/* Enter ULPS mode clk & data */
+			if (!s5p_mipi_dsi_ulps_handling(1, dsim->data_lane))
+				dsim->state = DSIM_STATE_ULPS;
+		}
+#endif
 
 	/* make CLK/DATA Lane as LP00 */
 	dsim_reg_set_lanes(DSIM_LANE_CLOCK | dsim->data_lane, 0);

@@ -624,9 +624,6 @@ struct bcm_cfg80211 {
 #ifdef WLFBT
 	uint8 fbt_key[FBT_KEYLEN];
 #endif
-#if defined(CUSTOMER_HW4) && defined(WL_CFG80211_P2P_DEV_IF)
-	bool down_disc_if;
-#endif /* CUSTOMER_HW4 && WL_CFG80211_P2P_DEV_IF */
 };
 
 
@@ -1038,9 +1035,5 @@ struct net_device *wl_cfg80211_get_remain_on_channel_ndev(struct bcm_cfg80211 *c
 #endif /* WL_CFG80211_VSDB_PRIORITIZE_SCAN_REQUEST */
 
 extern int wl_cfg80211_get_ioctl_version(void);
-
-#if defined(CUSTOMER_HW4) && defined(WL_CFG80211_P2P_DEV_IF)
-extern void wl_cfg80211_del_p2p_wdev(void);
-#endif /* WL_CFG80211_P2P_DEV_IF */
 
 #endif				/* _wl_cfg80211_h_ */

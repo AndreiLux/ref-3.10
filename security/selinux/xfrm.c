@@ -82,6 +82,10 @@ int selinux_xfrm_policy_lookup(struct xfrm_sec_ctx *ctx, u32 fl_secid, u8 dir)
 	int rc;
 	u32 sel_sid;
 
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 	/* Context sid is either set to label or ANY_ASSOC */
 	if (ctx) {
 		if (!selinux_authorizable_ctx(ctx))
@@ -117,6 +121,10 @@ int selinux_xfrm_state_pol_flow_match(struct xfrm_state *x, struct xfrm_policy *
 	u32 state_sid;
 	int rc;
 
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 	if (!xp->security)
 		if (x->security)
 			/* unlabeled policy and labeled SA can't match */
@@ -160,6 +168,11 @@ int selinux_xfrm_state_pol_flow_match(struct xfrm_state *x, struct xfrm_policy *
 int selinux_xfrm_decode_session(struct sk_buff *skb, u32 *sid, int ckall)
 {
 	struct sec_path *sp;
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	int rc;
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 
 	*sid = SECSID_NULL;
 
@@ -288,7 +301,11 @@ int selinux_xfrm_policy_alloc(struct xfrm_sec_ctx **ctxp,
 			      struct xfrm_user_sec_ctx *uctx)
 {
 	int err;
-
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	int rc;
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 	BUG_ON(!uctx);
 
 	err = selinux_xfrm_sec_ctx_alloc(ctxp, uctx, 0);
@@ -307,6 +324,11 @@ int selinux_xfrm_policy_clone(struct xfrm_sec_ctx *old_ctx,
 			      struct xfrm_sec_ctx **new_ctxp)
 {
 	struct xfrm_sec_ctx *new_ctx;
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	int rc;
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 
 	if (old_ctx) {
 		new_ctx = kmalloc(sizeof(*old_ctx) + old_ctx->ctx_len,
@@ -337,6 +359,12 @@ void selinux_xfrm_policy_free(struct xfrm_sec_ctx *ctx)
 int selinux_xfrm_policy_delete(struct xfrm_sec_ctx *ctx)
 {
 	const struct task_security_struct *tsec = current_security();
+	int rc = 0;
+
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 
 	if (!ctx)
 		return 0;
@@ -354,6 +382,11 @@ int selinux_xfrm_state_alloc(struct xfrm_state *x, struct xfrm_user_sec_ctx *uct
 		u32 secid)
 {
 	int err;
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	int rc;
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 
 	BUG_ON(!x);
 
@@ -379,7 +412,12 @@ int selinux_xfrm_state_delete(struct xfrm_state *x)
 {
 	const struct task_security_struct *tsec = current_security();
 	struct xfrm_sec_ctx *ctx = x->security;
+	int rc = 0;
 
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	if ((rc = security_integrity_current()))
+		return rc;
+#endif
 	if (!ctx)
 		return 0;
 

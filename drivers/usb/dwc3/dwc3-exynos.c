@@ -35,10 +35,6 @@
 
 #include "../phy/phy-fsm-usb.h"
 
-#ifdef CONFIG_USB_HOST_NOTIFY
-#include <linux/usb_notify.h>
-#endif
-
 
 struct dwc3_exynos_rsw {
 	struct otg_fsm		*fsm;
@@ -71,29 +67,12 @@ MODULE_DEVICE_TABLE(of, exynos_dwc3_match);
 
 static int dwc3_exynos_get_id_state(struct dwc3_exynos_rsw *rsw)
 {
-	if (gpio_is_valid(rsw->id_gpio))
-		return gpio_get_value(rsw->id_gpio);
-	else
-		/* B-device by default */
-		return 1;
+	return gpio_get_value(rsw->id_gpio);
 }
 
 static int dwc3_exynos_get_b_sess_state(struct dwc3_exynos_rsw *rsw)
 {
-    /*
-	Samsung Mobile: For now always return 0.
-	Becuase This function called  once, when device turns on.
-	After booting, b_sess_state can be updated cable states by muic callback func.
-
-    */
-    return 0;
-#if 0
-	if (gpio_is_valid(rsw->b_sess_gpio))
-		return gpio_get_value(rsw->b_sess_gpio);
-	else
-		/* B-Session is active by default */
-		return 1;
-#endif
+	return gpio_get_value(rsw->b_sess_gpio);
 }
 
 static irqreturn_t dwc3_exynos_rsw_thread_interrupt(int irq, void *_rsw)
@@ -231,12 +210,9 @@ int dwc3_exynos_rsw_start(struct device *dev)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	if (get_usb_mode() == NOTIFY_NONE_MODE) {
-		rsw->fsm->id = dwc3_exynos_get_id_state(rsw);
-		rsw->fsm->b_sess_vld = dwc3_exynos_get_b_sess_state(rsw);
-	}
-
 	if (gpio_is_valid(rsw->id_gpio)) {
+		rsw->fsm->id = dwc3_exynos_get_id_state(rsw);
+
 		irq = gpio_to_irq(rsw->id_gpio);
 		ret = devm_request_threaded_irq(exynos->dev, irq,
 					dwc3_exynos_id_interrupt,
@@ -250,6 +226,8 @@ int dwc3_exynos_rsw_start(struct device *dev)
 	}
 
 	if (gpio_is_valid(rsw->b_sess_gpio)) {
+		rsw->fsm->b_sess_vld = dwc3_exynos_get_b_sess_state(rsw);
+
 		irq = gpio_to_irq(rsw->b_sess_gpio);
 		ret = devm_request_threaded_irq(exynos->dev, irq,
 					dwc3_exynos_b_sess_interrupt,
@@ -310,6 +288,11 @@ int dwc3_exynos_rsw_setup(struct device *dev, struct otg_fsm *fsm)
 	}
 
 	INIT_WORK(&rsw->work, dwc3_exynos_rsw_work);
+
+	/* B-device by default */
+	fsm->id = 1;
+	/* Not connected by default */
+	fsm->b_sess_vld = 0;
 
 	rsw->fsm = fsm;
 

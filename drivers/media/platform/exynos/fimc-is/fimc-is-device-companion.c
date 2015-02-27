@@ -346,8 +346,10 @@ int fimc_is_companion_open(struct fimc_is_device_companion *device)
 	static char companion_fw_name[100];
 	static char master_setf_name[100];
 	static char mode_setf_name[100];
+#if !defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
 	static char fw_name[100];
 	static char setf_name[100];
+#endif
 
 	BUG_ON(!device);
 
@@ -367,13 +369,14 @@ int fimc_is_companion_open(struct fimc_is_device_companion *device)
 #else
 	fimc_is_companion_runtime_resume(&device->pdev->dev);
 #endif
-	ret = fimc_is_sec_fw_sel(core, &device->pdev->dev, fw_name, setf_name, 0);
+#if !defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
+	ret = fimc_is_sec_fw_sel(core, &device->pdev->dev, fw_name, setf_name, false);
 	if (ret < 0) {
 		err("failed to select firmware (%d)", ret);
 		goto p_err_pm;
 	}
-
-	ret = fimc_is_sec_concord_fw_sel(core, &device->pdev->dev, companion_fw_name, master_setf_name, mode_setf_name, 0);
+#endif
+	ret = fimc_is_sec_concord_fw_sel(core, &device->pdev->dev, companion_fw_name, master_setf_name, mode_setf_name);
 
 	/* TODO: loading firmware */
 	fimc_is_s_int_comb_isp(core, false, INTMR2_INTMCIS22);

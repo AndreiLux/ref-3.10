@@ -13,6 +13,7 @@
 #define FIMC_IS_RESOURCE_MGR_H
 
 #include "fimc-is-groupmgr.h"
+#include "fimc-is-interface.h"
 
 #define RESOURCE_TYPE_SENSOR0	0
 #define RESOURCE_TYPE_SENSOR1	1
@@ -72,6 +73,8 @@ int fimc_is_resource_probe(struct fimc_is_resourcemgr *resourcemgr,
 	void *private_data);
 int fimc_is_resource_get(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type);
 int fimc_is_resource_put(struct fimc_is_resourcemgr *resourcemgr, u32 rsc_type);
+int fimc_is_logsync(struct fimc_is_interface *itf, u32 sync_id, u32 msg_test_id);
+
 
 #define GET_RESOURCE(resourcemgr, type) \
 	((type == RESOURCE_TYPE_SENSOR0) ? &resourcemgr->resource_sensor0 : \

@@ -917,6 +917,9 @@ void dhd_arp_offload_add_ip(dhd_pub_t *dhd, uint32 ipaddr, int idx);
 #endif /* ARP_OFFLOAD_SUPPORT */
 #ifdef WLTDLS
 int dhd_tdls_enable(struct net_device *dev, bool tdls_on, bool auto_on, struct ether_addr *mac);
+#ifdef CUSTOMER_HW4
+int dhd_tdls_reset_manual(dhd_pub_t *dhd, struct net_device *dev);
+#endif /* CUSTOMER_HW4 */
 #endif
 /* Neighbor Discovery Offload Support */
 int dhd_ndo_enable(dhd_pub_t * dhd, int ndo_enable);

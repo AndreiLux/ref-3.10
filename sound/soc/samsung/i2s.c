@@ -1177,9 +1177,31 @@ static int i2s_resume(struct snd_soc_dai *dai)
 
 	return 0;
 }
+
+static int i2s_suspend_force(struct snd_soc_dai *dai)
+{
+	struct i2s_dai *i2s = to_info(dai);
+
+	i2s_cfg_gpio(i2s, "idle");
+	i2s_reg_save(i2s);
+
+	return 0;
+}
+
+static int i2s_resume_force(struct snd_soc_dai *dai)
+{
+	struct i2s_dai *i2s = to_info(dai);
+
+	i2s_reg_restore(i2s);
+	i2s_cfg_gpio(i2s, "default");
+
+	return 0;
+}
 #else
 #define i2s_suspend NULL
 #define i2s_resume  NULL
+#define i2s_suspend_force NULL
+#define i2s_resume_force  NULL
 #endif
 
 static const struct snd_soc_dai_ops samsung_i2s_dai_ops;
@@ -1215,7 +1237,8 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 					i2s->sec_dai->idma_playback.dma_addr);
 #endif
 	if (i2s->amixer)
-		eax_dai_register(dai, &samsung_i2s_dai_ops);
+		eax_dai_register(dai, &samsung_i2s_dai_ops,
+					i2s_suspend_force, i2s_resume_force);
 
 probe_exit:
 	clk_prepare_enable(i2s->clk);

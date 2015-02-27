@@ -2611,7 +2611,7 @@ struct samsung_gate_clock exynos5433_gate_clks[] __initdata = {
 	CGTE(gate_gpio_fsys, "gate_gpio_fsys", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 11, CLK_IGNORE_UNUSED, 0),
 	CGTE(gate_tsi, "gate_tsi", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 10, 0, 0),
 	CGTE(gate_mmc2, "gate_mmc2", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 8, CLK_IGNORE_UNUSED, 0),
-	CGTE(gate_mmc1, "gate_mmc1", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 7, 0, 0),
+	CGTE(gate_mmc1, "gate_mmc1", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 7, CLK_IGNORE_UNUSED, 0),
 	CGTE(gate_mmc0, "gate_mmc0", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 6, CLK_IGNORE_UNUSED, 0),
 	CGTE(gate_ufs, "gate_ufs", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 5, 0, 0),
 	CGTE(gate_sromc, "gate_sromc", NULL, EXYNOS5430_ENABLE_IP_FSYS0, 4, 0, 0),
@@ -2689,7 +2689,11 @@ struct samsung_gate_clock exynos5433_gate_clks[] __initdata = {
 	CGTE(gate_dsd_clk, "gate_dsd_clk", NULL, EXYNOS5430_ENABLE_IP_MIF3, 8, CLK_IGNORE_UNUSED, 0),
 #else
 	CGTE(gate_decontv_eclk, "gate_decontv_eclk", NULL, EXYNOS5430_ENABLE_IP_MIF3, 7, 0, 0),
+#ifdef CONFIG_DECON_LCD_S6TNMR7
+	CGTE(gate_dsd_clk, "gate_dsd_clk", NULL, EXYNOS5430_ENABLE_IP_MIF3, 8, CLK_IGNORE_UNUSED, 0),
+#else
 	CGTE(gate_dsd_clk, "gate_dsd_clk", NULL, EXYNOS5430_ENABLE_IP_MIF3, 8, 0, 0),
+#endif
 #endif
 	CGTE(gate_dsim0_clk, "gate_dsim0_clk", NULL, EXYNOS5430_ENABLE_IP_MIF3, 9, CLK_IGNORE_UNUSED, 0),
 
@@ -3279,6 +3283,7 @@ struct samsung_pll_rate_table pll_disp_rate_table[] = {
 	/* rate		p	m	s	k */
 	{ 278000000U,	3,	278,	3,	0},
 	{ 250000000U,	3,	250,	3,	0},
+	{ 214000000U,	3,	214,	3,	0},
 	{ 142000000U,	3,	142,	3,	0},
 	{  67000000U,	3,	67,	3,	0},
 };

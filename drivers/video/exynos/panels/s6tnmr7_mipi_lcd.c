@@ -267,19 +267,6 @@ static int s6tnmr7_read_id(struct lcd_info *lcd, u8 *buf)
 	return ret;
 }
 
-static void s6tnmr7_update_seq(struct lcd_info *lcd)
-{
-	pELVSS_TABLE = ELVSS_TABLE_RevF;
-
-	/* Dynamic AID parameta */
-	paor_cmd = aor_cmd;
-	pbrightness_base_table = brightness_base_table;
-	pvregout_voltage_table = vregout_voltage_table;
-	poffset_gradation = offset_gradation;
-	poffset_color = offset_color;
-}
-
-
 static void s6tnmr7_read_coordinate(struct lcd_info *lcd)
 {
 	u8 coordinate_offset[2] = {0xB0, };
@@ -1379,15 +1366,26 @@ static ssize_t temperature_store(struct device *dev,
 	struct device_attribute *attr, const char *buf, size_t size)
 {
 	struct lcd_info *lcd = dev_get_drvdata(dev);
-	int value, rc;
+	int value, rc, temperature = 0 ;
 
 	rc = kstrtoint(buf, 10, &value);
 
 	if (rc < 0)
 		return rc;
 	else {
+		switch (value) {
+		case 1:
+		case 0:
+		case -19:
+			temperature = value;
+			break;
+		case -20:
+			temperature = value;
+			break;
+		}
+
 		mutex_lock(&lcd->bl_lock);
-		lcd->temperature = value;
+		lcd->temperature = temperature;
 		mutex_unlock(&lcd->bl_lock);
 
 		if (lcd->ldi_enable)
@@ -1588,7 +1586,7 @@ static int s6tnmr7_probe(struct mipi_dsim_device *dsim)
 	lcd->auto_brightness = 0;
 	lcd->connected = 1;
 	lcd->siop_enable = 0;
-	lcd->temperature = NORMAL_TEMPERATURE;
+	lcd->temperature = 1;
 	lcd->width = dsim->lcd_info->xres;
 	lcd->height = dsim->lcd_info->yres;
 #ifdef CONFIG_LCD_ALPM
@@ -1659,7 +1657,6 @@ static int s6tnmr7_probe(struct mipi_dsim_device *dsim)
 
 	dev_info(&lcd->ld->dev, "ID: %x, %x, %x\n", lcd->id[0], lcd->id[1], lcd->id[2]);
 
-	s6tnmr7_update_seq(lcd);
 	ret = init_backlight_level_from_brightness(lcd);
 	if(ret < 0)
 		dev_info(&lcd->ld->dev, "gamma level generation is failed\n");

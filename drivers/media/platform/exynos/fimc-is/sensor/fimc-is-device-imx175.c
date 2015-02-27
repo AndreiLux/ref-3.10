@@ -118,6 +118,8 @@ int sensor_imx175_probe(struct i2c_client *client,
 	module->max_framerate = 120;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_4;
+	module->sensor_maker = "SONY";
+	module->sensor_name = "IMX175";
 	module->setfile_name = "setfile_imx175.bin";
 	module->cfgs = ARRAY_SIZE(config_imx175);
 	module->cfg = config_imx175;

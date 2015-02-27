@@ -484,6 +484,44 @@ static int gsc_capture_ctrls_create(struct gsc_dev *gsc)
 	return 0;
 }
 
+static int gsc_clk_enable_for_wb(struct gsc_dev *gsc)
+{
+	struct clk *gsd;
+	int ret = 0;
+
+	gsd = devm_clk_get(&gsc->pdev->dev, "gate_gsd");
+	if (IS_ERR(gsd)) {
+		gsc_err("fail to get gsd clock");
+		return PTR_ERR(gsd);
+	}
+
+	ret = clk_prepare_enable(gsd);
+	if (ret) {
+		gsc_err("fail to enable gsd");
+		return -EINVAL;
+	}
+
+	clk_put(gsd);
+
+	return 0;
+}
+
+static int gsc_clk_disable_for_wb(struct gsc_dev *gsc)
+{
+	struct clk *gsd;
+
+	gsd = devm_clk_get(&gsc->pdev->dev, "gate_gsd");
+	if (IS_ERR(gsd)) {
+		gsc_err("fail to get gsd clock");
+		return PTR_ERR(gsd);
+	}
+
+	clk_disable_unprepare(gsd);
+	clk_put(gsd);
+
+	return 0;
+}
+
 static int gsc_capture_open(struct file *file)
 {
 	struct gsc_dev *gsc = video_drvdata(file);
@@ -507,6 +545,10 @@ static int gsc_capture_open(struct file *file)
 			gsc_err("failed to create controls\n");
 			goto err;
 		}
+
+		ret = gsc_clk_enable_for_wb(gsc);
+		if (ret)
+			return ret;
 	}
 
 	gsc->isr_cnt = 0;
@@ -525,6 +567,7 @@ static int gsc_capture_close(struct file *file)
 {
 	struct gsc_dev *gsc = video_drvdata(file);
 	struct vb2_queue *q = &gsc->cap.vbq;
+	int ret = 0;
 
 	gsc_dbg("pid: %d, state: 0x%lx", task_pid_nr(current), gsc->state);
 
@@ -537,6 +580,9 @@ static int gsc_capture_close(struct file *file)
 		clear_bit(ST_CAPT_RUN, &gsc->state);
 		vb2_queue_release(&gsc->cap.vbq);
 		gsc_ctrls_delete(gsc->cap.ctx);
+		ret = gsc_clk_disable_for_wb(gsc);
+		if (ret)
+			return ret;
 	}
 
 	pm_runtime_put_sync(&gsc->pdev->dev);
@@ -946,68 +992,15 @@ static const struct v4l2_subdev_internal_ops gsc_cap_v4l2_internal_ops = {
 	.unregistered = gsc_capture_subdev_unregistered,
 };
 
-static int gsc_clk_enable_for_wb(struct gsc_dev *gsc)
-{
-	struct clk *gsd;
-	int ret = 0;
-
-	gsd = devm_clk_get(&gsc->pdev->dev, "gate_gsd");
-	if (IS_ERR(gsd)) {
-		gsc_err("fail to get gsd clock");
-		return PTR_ERR(gsd);
-	}
-
-	ret = clk_prepare_enable(gsd);
-	if (ret) {
-		gsc_err("fail to enable gsd");
-		return -EINVAL;
-	}
-
-	clk_put(gsd);
-
-	return 0;
-}
-
-static int gsc_clk_disable_for_wb(struct gsc_dev *gsc)
-{
-	struct clk *gsd;
-
-	gsd = devm_clk_get(&gsc->pdev->dev, "gate_gsd");
-	if (IS_ERR(gsd)) {
-		gsc_err("fail to get gsd clock");
-		return PTR_ERR(gsd);
-	}
-
-	clk_disable_unprepare(gsd);
-	clk_put(gsd);
-
-	return 0;
-}
-
 static int gsc_capture_link_setup(struct media_entity *entity,
 				  const struct media_pad *local,
 				  const struct media_pad *remote, u32 flags)
 {
-	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(entity);
-	struct gsc_dev *gsc = v4l2_get_subdevdata(sd);
-	int ret = 0;
-
 	if (local->flags == MEDIA_PAD_FL_SINK) {
-		if (flags & MEDIA_LNK_FL_ENABLED) {
+		if (flags & MEDIA_LNK_FL_ENABLED)
 			gsc_info("gsc-wb link enable");
-			gsc->pipeline.disp =
-				media_entity_to_v4l2_subdev(remote->entity);
-
-			ret = gsc_clk_enable_for_wb(gsc);
-			if (ret)
-				return ret;
-		} else {
+		else
 			gsc_info("gsc-wb link disable");
-			gsc->pipeline.disp = NULL;
-			ret = gsc_clk_disable_for_wb(gsc);
-			if (ret)
-				return ret;
-		}
 	}
 
 	return 0;

@@ -33,6 +33,7 @@
 #include <mach/regs-clock.h>
 #include <plat/cpu.h>
 #include <mach/cpufreq.h>
+#include <mach/smc.h>
 
 #include "regs-decon.h"
 
@@ -122,6 +123,10 @@ int decon_hibernation_power_on(struct display_driver *dispdrv);
 int decon_hibernation_power_off(struct display_driver *dispdrv);
 #endif
 
+#if defined(CONFIG_FB_WINDOW_UPDATE) && defined(CONFIG_TRUSTONIC_TRUSTED_UI)
+static void decon_set_win_update_full(struct s3c_fb *sfb);
+#endif
+
 #define UNDERRUN_FILTER_INTERVAL_MS	100
 #define UNDERRUN_FILTER_INIT		0
 #define UNDERRUN_FILTER_IDLE		1
@@ -159,6 +164,8 @@ static atomic_t extra_vsync_wait;
 void debug_function(struct display_driver *dispdrv, const char *buf);
 static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 timeout);
 static int gsc_subdev_wait_stop(struct s3c_fb *sfb, int i);
+static u32 s3c_fb_rgborder(int format);
+static u32 s3c_fb_get_pixel_format(struct fb_var_screeninfo *var);
 
 #if defined(CONFIG_FB_I80_COMMAND_MODE) && defined(CONFIG_LCD_PCD)
 #if 0
@@ -285,7 +292,6 @@ static int pcd_detection_init(struct s3c_fb *sfb)
 	INIT_DELAYED_WORK(&sfb->pcd_work, pcd_detection_work);
 
 	sfb->pcd = of_get_named_gpio(dev->of_node, "oled-pcd-gpio", 0);
-
 	if (sfb->pcd < 0) {
 		dev_err(dev, "failed to get proper gpio number\n");
 		return -EINVAL;
@@ -387,9 +393,9 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 	case 8:
 		if (sfb->variant.palette[win->index] != 0) {
 			/* non palletised, A:1,R:2,G:3,B:2 mode */
-			var->red.offset		= 4;
+			var->red.offset		= 0;
 			var->green.offset	= 2;
-			var->blue.offset	= 0;
+			var->blue.offset	= 4;
 			var->red.length		= 5;
 			var->green.length	= 3;
 			var->blue.length	= 2;
@@ -411,9 +417,9 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 		var->bits_per_pixel	= 32;
 
 		/* 666 format */
-		var->red.offset		= 12;
+		var->red.offset		= 0;
 		var->green.offset	= 6;
-		var->blue.offset	= 0;
+		var->blue.offset	= 12;
 		var->red.length		= 6;
 		var->green.length	= 6;
 		var->blue.length	= 6;
@@ -421,9 +427,9 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 
 	case 16:
 		/* 16 bpp, 565 format */
-		var->red.offset		= 11;
+		var->red.offset		= 0;
 		var->green.offset	= 5;
-		var->blue.offset	= 0;
+		var->blue.offset	= 11;
 		var->red.length		= 5;
 		var->green.length	= 6;
 		var->blue.length	= 5;
@@ -438,11 +444,11 @@ static int s3c_fb_check_var(struct fb_var_screeninfo *var,
 	case 24:
 		/* our 24bpp is unpacked, so 32bpp */
 		var->bits_per_pixel	= 32;
-		var->red.offset		= 16;
+		var->red.offset		= 0;
 		var->red.length		= 8;
 		var->green.offset	= 8;
 		var->green.length	= 8;
-		var->blue.offset	= 0;
+		var->blue.offset	= 16;
 		var->blue.length	= 8;
 		break;
 
@@ -674,8 +680,9 @@ static int s3c_fb_get_overlap_cnt(struct s3c_fb *sfb, struct s3c_fb_win_config *
 	int overlaps3_cnt = 0;
 	int overlaps4_cnt = 0;
 	int i, j;
-
 	int overlap_max_cnt = 1;
+	/* For optimizing power consumuption */
+	unsigned long update_area = win_config[0].w * win_config[0].h;
 
 	for (i = 1; i < sfb->variant.nr_windows; i++) {
 		win_cfg1 = &win_config[i];
@@ -685,6 +692,9 @@ static int s3c_fb_get_overlap_cnt(struct s3c_fb *sfb, struct s3c_fb_win_config *
 		r1.top = win_cfg1->y;
 		r1.right = r1.left + win_cfg1->w - 1;
 		r1.bottom = r1.top + win_cfg1->h - 1;
+		/* accumulation update area */
+		update_area += (win_cfg1->w * win_cfg1->h);
+
 		for (j = 0; j < overlaps4_cnt; j++) {
 			/* 5 window overlaps */
 			if (s3c_fb_intersect(&r1, &overlaps4[j])) {
@@ -729,6 +739,13 @@ static int s3c_fb_get_overlap_cnt(struct s3c_fb *sfb, struct s3c_fb_win_config *
 	else if (overlaps2_cnt > 0)
 		overlap_max_cnt = max(overlap_max_cnt, 2);
 
+#define OPTIMIZED_BOOST_BTS_THRESHOLD	8601600
+	/* For optimizing power consumuption */
+	if (overlap_max_cnt==3 && update_area>OPTIMIZED_BOOST_BTS_THRESHOLD &&
+		sfb->lcd_info->xres*sfb->lcd_info->yres==2560*1600)
+		overlap_max_cnt++;
+#undef OPTIMIZED_BOOST_BTS_THRESHOLD
+
 	return overlap_max_cnt;
 }
 #endif
@@ -757,6 +774,7 @@ static int s3c_fb_set_par(struct fb_info *info)
 	struct decon_regs_data win_regs;
 	int win_no = win->index;
 	struct display_driver *dispdrv;
+	int format;
 
 	dispdrv = get_display_driver();
 
@@ -782,6 +800,9 @@ static int s3c_fb_set_par(struct fb_info *info)
 		win_regs.wincon = WINCONx_ENWIN;
 	else
 		win_regs.wincon = 0;
+
+	format = s3c_fb_get_pixel_format(var);
+	win_regs.wincon |= s3c_fb_rgborder(format);
 
 	win_regs.wincon |= wincon(var->bits_per_pixel, var->transp.length,
 			var->red.length);
@@ -1007,6 +1028,9 @@ static int s3c_fb_blank(int blank_mode, struct fb_info *info)
 				disp_pm_gate_lock(dispdrv, true);
 #endif
 				ret = s3c_fb_disable(sfb);
+#ifdef CONFIG_FB_WINDOW_UPDATE
+				decon_set_win_update_full(sfb);
+#endif
 			}
 		}
 #endif
@@ -1259,7 +1283,6 @@ static irqreturn_t decon_fb_isr_for_eint(int irq, void *dev_id)
 	if (sfb->output_on && sfb->power_state == POWER_ON && sfb->blank_mode == FB_BLANK_UNBLANK)
 		disp_pm_te_triggered(get_display_driver());
 #endif
-
 	return IRQ_HANDLED;
 }
 #endif
@@ -1315,6 +1338,7 @@ static irqreturn_t s3c_fb_irq(int irq, void *dev_id)
  * @sfb: main hardware state
  * @timeout: timeout in msecs, or 0 to wait indefinitely.
  */
+
 static int s3c_fb_wait_for_vsync(struct s3c_fb *sfb, u32 timeout)
 {
 	ktime_t timestamp;
@@ -1557,6 +1581,40 @@ static void s3c_fb_free_dma_buf(struct s3c_fb *sfb,
 	dma_buf_put(dma->dma_buf);
 	ion_free(sfb->fb_ion_client, dma->ion_handle);
 	memset(dma, 0, sizeof(struct s3c_dma_buf_data));
+}
+
+static u32 s3c_fb_get_pixel_format(struct fb_var_screeninfo *var)
+{
+	u32 format = S3C_FB_PIXEL_FORMAT_RGBA_8888;
+
+	switch (var->bits_per_pixel) {
+	case 16:
+		if (var->red.offset == 0) {
+			if (var->transp.length == 1)
+				format = S3C_FB_PIXEL_FORMAT_RGBA_5551;
+			else
+				format = S3C_FB_PIXEL_FORMAT_RGB_565;
+		}
+		break;
+	case 32:
+		if (var->red.offset == 0) {
+			if (var->transp.length == 0)
+				format = S3C_FB_PIXEL_FORMAT_RGBX_8888;
+			else
+				format = S3C_FB_PIXEL_FORMAT_RGBA_8888;
+		}
+		else {
+			if (var->transp.length == 0)
+				format = S3C_FB_PIXEL_FORMAT_BGRX_8888;
+			else
+				format = S3C_FB_PIXEL_FORMAT_BGRA_8888;
+		}
+		break;
+	default:
+		break;
+	}
+
+	return format;
 }
 
 static u32 s3c_fb_red_length(int format)
@@ -1897,10 +1955,11 @@ static int s3c_fb_set_win_buffer(struct s3c_fb *sfb, struct s3c_fb_win *win,
 			win->fbinfo->fix.line_length,
 			win->fbinfo->var.bits_per_pixel);
 
-
 	regs->vidosd_a[win_no] = vidosd_a(win_config->x, win_config->y);
 	regs->vidosd_b[win_no] = vidosd_b(win_config->x, win_config->y,
 			win_config->w, win_config->h);
+
+	regs->protection[win_no] = win_config->protection;
 
 	if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
 		alpha0 = win_config->plane_alpha;
@@ -1981,6 +2040,17 @@ static void s3c_set_win_update_config(struct s3c_fb *sfb,
 	struct s3c_fb_win_config temp_config;
 	struct s3c_fb_rect r1, r2;
 	int offset = 0;
+
+#ifdef CONFIG_LCD_ALPM
+	if(dsim_for_decon->lcd_alpm) {
+			memset(update_config, 0, sizeof(struct s3c_fb_win_config));
+#ifdef WINDOW_UPDATE_DEBUG
+			pr_info("[WIN_UPDATE]alpm full update: [%d %d %d %d]\n",
+				update_config->x, update_config->y, update_config->w, update_config->h);
+#endif
+	}
+#endif
+
 
 	if (sfb->full_update && (update_config->state == S3C_FB_WIN_STATE_UPDATE)) {
 #ifdef WINDOW_UPDATE_DEBUG
@@ -2468,6 +2538,32 @@ static void s3c_fb_vidout_start(struct decon_psr_info *psr)
 }
 
 #ifdef CONFIG_FB_WINDOW_UPDATE
+#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
+static void decon_set_win_update_full(struct s3c_fb *sfb)
+{
+	int dsim_mpkt;
+	struct decon_lcd *lcd_info_org = decon_get_lcd_info();
+
+	dsim_mpkt = dsim_reg_get_pkt_go_status();
+#ifdef CONFIG_DECON_MIPI_DSI_PKTGO
+	if (dsim_mpkt)
+		dsim_reg_set_pkt_go_enable(false);
+#endif
+	s5p_mipi_dsi_partial_area_command(dsim_for_decon,
+			0, 0, lcd_info_org->xres, lcd_info_org->yres);
+#ifdef CONFIG_DECON_MIPI_DSI_PKTGO
+	if (dsim_mpkt)
+		dsim_reg_set_pkt_go_enable(true);
+#endif
+	dsim_reg_set_win_update_conf(lcd_info_org->xres,
+			lcd_info_org->yres, lcd_info_org);
+#ifdef CONFIG_DECON_MIC
+	mic_reg_set_win_update_conf(lcd_info_org->xres, lcd_info_org->yres, mic_for_decon);
+#endif
+	decon_reg_set_porch(lcd_info_org);
+}
+#endif
+
 static void decon_reg_set_win_update_config(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 {
 	int dsim_mpkt;
@@ -2505,6 +2601,11 @@ static void decon_reg_set_win_update_config(struct s3c_fb *sfb, struct s3c_reg_d
 		/* Partial Command */
 		s5p_mipi_dsi_partial_area_command(dsim_for_decon,
 			x, y, w, h);
+
+#ifdef WINDOW_UPDATE_DEBUG
+		pr_info("[WIN_UPDATE] send patial command = %d,%d,%d,%dn",x,y,w,h);
+#endif
+
 #ifdef CONFIG_FB_DSU
 	if(sfb->need_DSU_update) {
 		pr_info("[WIN_UPDATE] DSU = %d\n", sfb->DSU_mode);
@@ -2675,6 +2776,22 @@ static void __s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	}
 }
 
+static void decon_set_protected_content(struct s3c_fb *sfb, bool enable)
+{
+	int  ret;
+
+	if (sfb->protected_content == enable)
+		return;
+
+	ret = exynos_smc(SMC_PROTECTION_SET, 0, DEV_DECON, enable);
+	if (ret)
+		dev_warn(sfb->dev, "decon protection Enable failed. ret(%d)\n", ret);
+	else
+		dev_dbg(sfb->dev, "DRM %s\n", enable ? "enabled" : "disabled");
+
+	sfb->protected_content = enable;
+}
+
 static void s3c_fd_fence_wait(struct s3c_fb *sfb, struct sync_fence *fence)
 {
 	int err = sync_fence_wait(fence, 900);
@@ -2692,6 +2809,7 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	int count = 10;
 	int local_cnt = 0;
 	int i;
+	int protection = 0;
 	struct display_driver *dispdrv;
 
 	dispdrv = get_display_driver();
@@ -2707,12 +2825,14 @@ static void s3c_fb_update_regs(struct s3c_fb *sfb, struct s3c_reg_data *regs)
 	for (i = 0; i < sfb->variant.nr_windows; i++) {
 		old_dma_bufs[i] = sfb->windows[i]->dma_buf_data;
 		if (WIN_CONFIG_DMA(i)) {
+			protection += regs->protection[i];
 			if (regs->dma_buf_data[i].fence)
 				s3c_fd_fence_wait(sfb,
 			regs->dma_buf_data[i].fence);
 		} else
 			local_cnt++;
 	}
+	decon_set_protected_content(sfb, !!protection);
 #if defined(CONFIG_DECON_DEVFREQ)
 	if (prev_overlap_cnt < regs->win_overlap_cnt)
 		exynos5_update_media_layers(TYPE_DECON, regs->win_overlap_cnt);
@@ -4671,18 +4791,31 @@ static int s3c_fb_enable(struct s3c_fb *sfb)
 	decon_reg_init(&p);
 
 	s3c_fb_to_psr_info(sfb, &psr);
+#ifdef CONFIG_LCD_ALPM
+	if(!dsim_for_decon->lcd_alpm)
+#endif
 	s3c_fb_vidout_start(&psr);
 
 	/* dispdrv->dsi_driver.dsim->dsim_lcd_drv->displayon(dispdrv->dsi_driver.dsim); */
 
 	sfb->output_on = true;
 #ifdef CONFIG_FB_WINDOW_UPDATE
-	sfb->update_win.x = 0;
-	sfb->update_win.y = 0;
-	sfb->update_win.w = 0;
-	sfb->update_win.h = 0;
-	sfb->need_update = false;
-	sfb->full_update = true;
+#ifdef CONFIG_LCD_ALPM
+		if(dsim_for_decon->lcd_alpm) {
+			sfb->need_update = true;
+			sfb->full_update = false;
+		} else
+#endif
+		{
+			sfb->update_win.x = 0;
+			sfb->update_win.y = 0;
+			sfb->update_win.w = 0;
+			sfb->update_win.h = 0;
+			sfb->need_update = false;
+			sfb->full_update = true;
+		}
+
+
 #ifdef CONFIG_FB_DSU
 	sfb->DSU_mode = 0;
 	sfb->need_DSU_update = 0;

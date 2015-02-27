@@ -97,7 +97,6 @@ typedef enum {
 	ADC_ERROR		= 0xff, /* ADC value read error */
 } muic_adc_t;
 
-
 /* MUIC attached device type */
 typedef enum {
 	ATTACHED_DEV_NONE_MUIC = 0,
@@ -164,9 +163,14 @@ typedef enum {
 struct muic_platform_data {
 	int irq_gpio;
 
+	int switch_sel;
+
 	/* muic current USB/UART path */
 	int usb_path;
 	int uart_path;
+
+	/* muic path status value (suspend/resume) for rustproof */
+	u8 path_status;
 
 	bool rustproof_on;
 	bool afc_disable;
@@ -181,9 +185,11 @@ struct muic_platform_data {
 	int (*set_gpio_uart_sel) (int uart_path);
 	int (*set_safeout) (int safeout_path);
 
-	/* muic path switch function for waterproof */
+	/* muic path switch function for rustproof */
 	void (*set_path_switch_suspend) (struct device *dev);
 	void (*set_path_switch_resume) (struct device *dev);
 };
+
+int get_switch_sel(void);
 
 #endif /* __MUIC_H__ */

@@ -547,10 +547,10 @@ void pm_qos_add_request(struct pm_qos_request *req,
 		return;
 	}
 	req->caller = (unsigned long)__builtin_return_address(0);
-	req->pm_qos_class = pm_qos_class;
 	INIT_DELAYED_WORK(&req->work, pm_qos_work_fn);
 	pm_qos_update_target(pm_qos_array[pm_qos_class]->constraints,
 			     &req->node, PM_QOS_ADD_REQ, value);
+	req->pm_qos_class = pm_qos_class;
 }
 EXPORT_SYMBOL_GPL(pm_qos_add_request);
 

@@ -176,7 +176,7 @@ static struct v4l2_queryctrl controls[] = {
 		.type = V4L2_CTRL_TYPE_INTEGER,
 		.name = "Display status",
 		.minimum = 0,
-		.maximum = 3,
+		.maximum = 4,
 		.step = 1,
 		.default_value = 0,
 	},
@@ -457,7 +457,8 @@ int hevc_dec_ctx_ready(struct hevc_ctx *ctx)
 		return 1;
 	/* Context is to set buffers */
 	if (ctx->state == HEVCINST_HEAD_PARSED &&
-		((dec->is_dynamic_dpb && ctx->dst_queue_cnt >= 1) ||
+		((dec->is_dynamic_dpb && ctx->dst_queue_cnt >= 1 &&
+		  ctx->wait_state == WAIT_NONE) ||
 		(!dec->is_dynamic_dpb &&
 				ctx->capture_state == QUEUE_BUFS_MMAPED)))
 		return 1;
@@ -1614,6 +1615,8 @@ static int dec_ext_info(struct hevc_ctx *ctx)
 
 	if (FW_HAS_DYNAMIC_DPB(dev))
 		val |= DEC_SET_DYNAMIC_DPB;
+	if (FW_HAS_LAST_DISP_INFO(dev))
+		val |= DEC_SET_LAST_FRAME_INFO;
 
 	return val;
 }
@@ -2496,7 +2499,8 @@ static int hevc_stop_streaming(struct vb2_queue *q)
 				__dec_reset_buf_ctrls(&ctx->dst_ctrls[index]);
 			index++;
 		}
-		if (ctx->wait_state == WAIT_INITBUF_DONE) {
+		if (ctx->wait_state == WAIT_INITBUF_DONE ||
+					ctx->wait_state == WAIT_DECODING) {
 			ctx->wait_state = WAIT_NONE;
 			hevc_debug(2, "Decoding can be started now\n");
 		}
@@ -2730,6 +2734,8 @@ int hevc_init_dec_ctx(struct hevc_ctx *ctx)
 		hevc_err("failed to allocate decoder information data\n");
 		return -ENOMEM;
 	}
+	for (i = 0; i < HEVC_MAX_BUFFERS; i++)
+		dec->ref_info[i].dpb[0].fd[0] = HEVC_INFO_INIT_FD;
 
 	/* Init videobuf2 queue for OUTPUT */
 	ctx->vq_src.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;

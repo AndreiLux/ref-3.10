@@ -610,64 +610,6 @@ static ssize_t magnetic_check_cntl(struct device *dev,
 		(bSuccess ? "OK" : "NG"), (bSuccess ? 1 : 0), 0, 0);
 }
 
-#ifdef SAVE_MAG_LOG
-static ssize_t raw_data_logging_show(struct device *dev,
-	struct device_attribute *attr, char *buf)
-{
-	struct ssp_data *data = dev_get_drvdata(dev);
-
-	if (data->bGeomagneticLogged == false) {
-		data->buf[GEOMAGNETIC_SENSOR].x = -1;
-		data->buf[GEOMAGNETIC_SENSOR].y = -1;
-		data->buf[GEOMAGNETIC_SENSOR].z = -1;
-	}
-
-	return snprintf(buf, PAGE_SIZE, "%d,%d,%d\n",
-		data->buf[GEOMAGNETIC_SENSOR].x,
-		data->buf[GEOMAGNETIC_SENSOR].y,
-		data->buf[GEOMAGNETIC_SENSOR].z);
-}
-
-static ssize_t raw_data_logging_store(struct device *dev,
-	struct device_attribute *attr, const char *buf, size_t size)
-{
-	u8 uBuf[4] = {0, };
-	int iRet;
-	int64_t dEnable;
-	struct ssp_data *data = dev_get_drvdata(dev);
-	s32 dMsDelay = 10;
-	memcpy(&uBuf[0], &dMsDelay, 4);
-
-	iRet = kstrtoll(buf, 10, &dEnable);
-	if (iRet < 0)
-		return iRet;
-
-	if (dEnable) {
-		ssp_dbg("[SSP]: %s - add %u, New = %dns\n",
-			 __func__, 1 << GEOMAGNETIC_SENSOR, SENSOR_NS_DELAY_FASTEST);
-
-		iRet = send_instruction(data, GET_LOGGING, GEOMAGNETIC_SENSOR, uBuf, 4);
-		if (iRet == SUCCESS) {
-			pr_info("[SSP] %s - success\n", __func__);
-			data->bGeomagneticLogged = true;
-		} else {
-			pr_err("[SSP] %s - failed, %d\n", __func__, iRet);
-			data->bGeomagneticLogged = false;
-		}
-	} else {
-		iRet = send_instruction(data, REMOVE_SENSOR, GEOMAGNETIC_SENSOR, uBuf, 4);
-		if (iRet == SUCCESS) {
-			pr_info("[SSP] %s - success\n", __func__);
-			data->bGeomagneticLogged = false;
-		}
-		ssp_dbg("[SSP]: %s - remove sensor = %d\n",
-			__func__, (1 << GEOMAGNETIC_SENSOR));
-	}
-
-	return size;
-}
-#endif
-
 static DEVICE_ATTR(name, S_IRUGO, magnetic_name_show, NULL);
 static DEVICE_ATTR(vendor, S_IRUGO, magnetic_vendor_show, NULL);
 static DEVICE_ATTR(raw_data, S_IRUGO | S_IWUSR | S_IWGRP,
@@ -678,10 +620,6 @@ static DEVICE_ATTR(hw_offset, S_IRUGO, hw_offset_show, NULL);
 static DEVICE_ATTR(status, S_IRUGO,  magnetic_get_status, NULL);
 static DEVICE_ATTR(dac, S_IRUGO, magnetic_check_cntl, NULL);
 static DEVICE_ATTR(ak09911_asa, S_IRUGO, magnetic_get_asa, NULL);
-#ifdef SAVE_MAG_LOG
-static DEVICE_ATTR(logging_data, S_IRUGO | S_IWUSR | S_IWGRP,
-		raw_data_logging_show, raw_data_logging_store);
-#endif
 
 static struct device_attribute *mag_attrs[] = {
 	&dev_attr_name,
@@ -692,9 +630,6 @@ static struct device_attribute *mag_attrs[] = {
 	&dev_attr_selftest,
 	&dev_attr_status,
 	&dev_attr_ak09911_asa,
-#ifdef SAVE_MAG_LOG
-	&dev_attr_logging_data,
-#endif
 	NULL,
 };
 

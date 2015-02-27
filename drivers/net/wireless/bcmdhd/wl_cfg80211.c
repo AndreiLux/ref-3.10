@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfg80211.c 488257 2014-06-30 08:53:47Z $
+ * $Id: wl_cfg80211.c 514182 2014-11-10 09:16:50Z $
  */
 /* */
 #include <typedefs.h>
@@ -149,6 +149,8 @@ u32 wl_dbg_level = WL_DBG_ERR;
 #else
 #define WL_DRV_STATUS_SENDING_AF_FRM_EXT(cfg) wl_get_drv_status_all(cfg, SENDING_ACT_FRM)
 #endif /* WL_CFG80211_SYNC_GON */
+#define WL_IS_P2P_DEV_EVENT(e) ((e->emsg.ifidx == 0) && \
+		(e->emsg.bsscfgidx == P2PAPI_BSSCFG_DEVICE))
 
 #define DNGL_FUNC(func, parameters) func parameters
 #define COEX_DHCP
@@ -299,6 +301,8 @@ common_iface_combinations[] = {
 #ifdef MFP
 #define WL_AKM_SUITE_MFP_1X  0x000FAC05
 #define WL_AKM_SUITE_MFP_PSK 0x000FAC06
+#define WL_MFP_CAPABLE 		0x1
+#define WL_MFP_REQUIRED		0x2
 #endif /* MFP */
 
 #ifndef IBSS_COALESCE_ALLOWED
@@ -1557,16 +1561,7 @@ wl_cfg80211_del_virtual_iface(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev)
 #endif /* CUSTOM_SET_CPUCORE */
 #if defined(WL_CFG80211_P2P_DEV_IF)
 	if (cfgdev->iftype == NL80211_IFTYPE_P2P_DEVICE) {
-#ifdef CUSTOMER_HW4
-		if (dhd_download_fw_on_driverload) {
-			return wl_cfgp2p_del_p2p_disc_if(cfgdev, cfg);
-		} else {
-			cfg->down_disc_if = TRUE;
-			return 0;
-		}
-#else
 		return wl_cfgp2p_del_p2p_disc_if(cfgdev, cfg);
-#endif /* CUSTOMER_HW4 */
 	}
 #endif /* WL_CFG80211_P2P_DEV_IF */
 	dev = cfgdev_to_wlc_ndev(cfgdev, cfg);
@@ -3349,7 +3344,8 @@ wl_set_set_cipher(struct net_device *dev, struct cfg80211_connect_params *sme)
 				if (((wpa2_ie = bcm_parse_tlvs((u8 *)sme->ie, sme->ie_len,
 					DOT11_MNG_RSN_ID)) != NULL) &&
 					(wl_cfg80211_get_rsn_capa(wpa2_ie, rsn_cap) == 0)) {
-
+					
+						WL_ERR(("MFP is enabled \n"));
 					if (rsn_cap[0] & RSN_CAP_MFPC) {
 						/* MFP Capability advertised by supplicant. Check
 						 * whether MFP is supported in the firmware
@@ -3375,6 +3371,13 @@ wl_set_set_cipher(struct net_device *dev, struct cfg80211_connect_params *sme)
 						wsec_val |= MFP_CAPABLE;
 						if (rsn_cap[0] & RSN_CAP_MFPR)
 							wsec_val |= MFP_REQUIRED;
+
+						if (rsn_cap[0] & RSN_CAP_MFPR)
+							mfp = WL_MFP_REQUIRED;
+						else
+							mfp = WL_MFP_CAPABLE;
+						err = wldev_iovar_setint_bsscfg(dev, "mfp",
+							mfp, bssidx);
 					}
 				}
 			}
@@ -4485,7 +4488,7 @@ wl_cfg80211_get_key(struct wiphy *wiphy, struct net_device *dev,
 		WL_ERR(("WLC_GET_WSEC error (%d)\n", err));
 		return err;
 	}
-	switch (wsec & ~SES_OW_ENABLED) {
+	switch (WSEC_ENABLED(wsec)) {
 		case WEP_ENABLED:
 			sec = wl_read_prof(cfg, dev, WL_PROF_SEC);
 			if (sec->cipher_pairwise & WLAN_CIPHER_SUITE_WEP40) {
@@ -4523,8 +4526,12 @@ static s32
 wl_cfg80211_config_default_mgmt_key(struct wiphy *wiphy,
 	struct net_device *dev, u8 key_idx)
 {
+#ifdef MFP
+	return 0;
+#else
 	WL_INFO(("Not supported\n"));
 	return -EOPNOTSUPP;
+#endif /* MFP */
 }
 
 static s32
@@ -5108,6 +5115,7 @@ static s32
 wl_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 	bcm_struct_cfgdev *cfgdev, u64 cookie)
 {
+	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
 	s32 err = 0;
 
 #if defined(WL_CFG80211_P2P_DEV_IF)
@@ -5117,6 +5125,15 @@ wl_cfg80211_cancel_remain_on_channel(struct wiphy *wiphy,
 #else
 	WL_DBG((" enter ) netdev_ifidx: %d \n", cfgdev->ifindex));
 #endif /* WL_CFG80211_P2P_DEV_IF */
+
+	if (cfg->last_roc_id == cookie) {
+		wl_cfgp2p_set_p2p_mode(cfg, WL_P2P_DISC_ST_SCAN, 0, 0,
+			wl_to_p2p_bss_bssidx(cfg, P2PAPI_BSSCFG_DEVICE));
+	} else {
+		WL_ERR(("%s : ignore, request cookie(%llu) is not matched. (cur : %llu)\n",
+			__FUNCTION__, cookie, cfg->last_roc_id));
+	}
+
 	return err;
 }
 
@@ -5564,6 +5581,18 @@ wl_cfg80211_send_action_frame(struct wiphy *wiphy, struct net_device *dev,
 
 	/* save af_params for rx process */
 	cfg->afx_hdl->pending_tx_act_frm = af_params;
+
+#ifdef CUSTOMER_HW4
+	if (cfg->afx_hdl->pending_tx_act_frm) {
+		wl_action_frame_t *action_frame;
+		action_frame = &(cfg->afx_hdl->pending_tx_act_frm->action_frame);
+	if (wl_cfgp2p_is_p2p_gas_action(action_frame->data, action_frame->len)) {
+			WL_ERR(("Set GAS action frame config.\n"));
+		config_af_params.search_channel = false;
+		config_af_params.max_tx_retry = 1;
+	}
+	}
+#endif /* CUSTOMER_HW4 */
 
 	/* search peer's channel */
 	if (config_af_params.search_channel) {
@@ -6092,6 +6121,12 @@ wl_validate_wpa2ie(struct net_device *dev, bcm_tlv_t *wpa2ie, s32 bssidx)
 	wpa_suite_mcast_t *mcast;
 	wpa_suite_ucast_t *ucast;
 	wpa_suite_auth_key_mgmt_t *mgmt;
+	wpa_pmkid_list_t *pmkid;
+	int cnt = 0;
+#ifdef MFP
+	int mfp = 0;
+	struct bcm_cfg80211 *cfg = g_bcm_cfg;
+#endif /* MFP */
 
 	u16 suite_count;
 	u8 rsn_cap[2];
@@ -6101,7 +6136,7 @@ wl_validate_wpa2ie(struct net_device *dev, bcm_tlv_t *wpa2ie, s32 bssidx)
 		goto exit;
 
 	WL_DBG(("Enter \n"));
-	len =  wpa2ie->len;
+	len =  wpa2ie->len - WPA2_VERSION_LEN;
 	/* check the mcast cipher */
 	mcast = (wpa_suite_mcast_t *)&wpa2ie->data[WPA2_VERSION_LEN];
 	switch (mcast->type) {
@@ -6162,19 +6197,31 @@ wl_validate_wpa2ie(struct net_device *dev, bcm_tlv_t *wpa2ie, s32 bssidx)
 	wsec = (pval | gval | SES_OW_ENABLED);
 	/* check the AKM */
 	mgmt = (wpa_suite_auth_key_mgmt_t *)&ucast->list[suite_count];
-	suite_count = ltoh16_ua(&mgmt->count);
-	switch (mgmt->list[0].type) {
-		case RSN_AKM_NONE:
-			wpa_auth = WPA_AUTH_NONE;
-			break;
-		case RSN_AKM_UNSPECIFIED:
-			wpa_auth = WPA2_AUTH_UNSPECIFIED;
-			break;
-		case RSN_AKM_PSK:
-			wpa_auth = WPA2_AUTH_PSK;
-			break;
-		default:
-			WL_ERR(("No Key Mgmt Info\n"));
+	suite_count = cnt = ltoh16_ua(&mgmt->count);
+	while (cnt--) {
+		switch (mgmt->list[cnt].type) {
+			case RSN_AKM_NONE:
+				wpa_auth = WPA_AUTH_NONE;
+				break;
+			case RSN_AKM_UNSPECIFIED:
+				wpa_auth = WPA2_AUTH_UNSPECIFIED;
+				break;
+			case RSN_AKM_PSK:
+				wpa_auth = WPA2_AUTH_PSK;
+				break;
+#ifdef MFP
+			case RSN_AKM_MFP_PSK:
+				wpa_auth |= WPA2_AUTH_PSK;
+				wsec |= MFP_SHA256;
+				break;
+			case RSN_AKM_MFP_1X:
+				wpa_auth |= WPA2_AUTH_UNSPECIFIED;
+				wsec |= MFP_SHA256;
+				break;
+#endif /* MFP */
+			default:
+				WL_ERR(("No Key Mgmt Info\n"));
+		}
 	}
 
 	if ((len -= (WPA_IE_SUITE_COUNT_LEN + (WPA_SUITE_LEN * suite_count))) >= RSN_CAP_LEN) {
@@ -6187,6 +6234,16 @@ wl_validate_wpa2ie(struct net_device *dev, bcm_tlv_t *wpa2ie, s32 bssidx)
 			wme_bss_disable = 1;
 		}
 
+#ifdef MFP
+		if (rsn_cap[0] & RSN_CAP_MFPR) {
+			WL_ERR(("MFP Required \n"));
+			mfp = WL_MFP_REQUIRED;
+		} else if (rsn_cap[0] & RSN_CAP_MFPC) {
+			WL_ERR(("MFP Capable \n"));
+			mfp = WL_MFP_CAPABLE;
+		}
+#endif /* MFP */
+
 		/* set wme_bss_disable to sync RSN Capabilities */
 		err = wldev_iovar_setint_bsscfg(dev, "wme_bss_disable", wme_bss_disable, bssidx);
 		if (err < 0) {
@@ -6194,8 +6251,32 @@ wl_validate_wpa2ie(struct net_device *dev, bcm_tlv_t *wpa2ie, s32 bssidx)
 			return BCME_ERROR;
 		}
 	} else {
-		WL_DBG(("There is no RSN Capabilities. remained len %d\n", len));
+		WL_ERR(("There is no RSN Capabilities. remained len %d\n", len));
 	}
+
+	if ((len -= RSN_CAP_LEN) >= WPA2_PMKID_COUNT_LEN) {
+		pmkid = (wpa_pmkid_list_t *)((u8 *)&mgmt->list[suite_count] + RSN_CAP_LEN);
+		cnt = ltoh16_ua(&pmkid->count);
+		if (cnt != 0) {
+			WL_ERR(("AP has non-zero PMKID count. Wrong!\n"));
+			return BCME_ERROR;
+		}
+		/* since PMKID cnt is known to be 0 for AP, */
+		/* so don't bother to send down this info to firmware */
+	}
+
+#ifdef MFP
+	if ((len -= WPA2_PMKID_COUNT_LEN) >= RSN_GROUPMANAGE_CIPHER_LEN) {
+		err = wldev_iovar_setbuf_bsscfg(dev, "bip",
+		(void *)((u8 *)&mgmt->list[suite_count] + RSN_CAP_LEN + WPA2_PMKID_COUNT_LEN),
+		RSN_GROUPMANAGE_CIPHER_LEN,
+		cfg->ioctl_buf, WLC_IOCTL_SMLEN, bssidx, &cfg->ioctl_buf_sync);
+		if (err < 0) {
+			WL_ERR(("bip set error %d\n", err));
+			return BCME_ERROR;
+		}
+	}
+#endif
 
 	/* set auth */
 	err = wldev_iovar_setint_bsscfg(dev, "auth", auth, bssidx);
@@ -6209,6 +6290,19 @@ wl_validate_wpa2ie(struct net_device *dev, bcm_tlv_t *wpa2ie, s32 bssidx)
 		WL_ERR(("wsec error %d\n", err));
 		return BCME_ERROR;
 	}
+
+#ifdef MFP
+	if (mfp) {
+		/* This needs to go after wsec otherwise the wsec command will
+		 * overwrite the values set by MFP
+		 */
+		if ((err = wldev_iovar_setint_bsscfg(dev, "mfp", mfp, bssidx)) < 0) {
+			WL_ERR(("MFP Setting failed. ret = %d \n", err));
+			return err;
+		}
+	}
+#endif /* MFP */
+
 	/* set upper-layer auth */
 	err = wldev_iovar_setint_bsscfg(dev, "wpa_auth", wpa_auth, bssidx);
 	if (err < 0) {
@@ -6385,6 +6479,12 @@ wl_cfg80211_bcn_validate_sec(
 
 		WL_DBG(("SoftAP: validating security"));
 		/* If wpa2_ie or wpa_ie is present validate it */
+
+        WL_ERR(("%s ap_info Null check!\n", __FUNCTION__));
+        if(!cfg->ap_info) {
+            WL_ERR(("%s ap_info is Null!\n", __FUNCTION__));
+            return BCME_ERROR;
+        }
 
 		if ((ies->wpa2_ie || ies->wpa_ie) &&
 			((wl_validate_wpa2ie(dev, ies->wpa2_ie, bssidx)  < 0 ||
@@ -9063,10 +9163,6 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			}
 			(void) sd_act_frm;
 		} else {
-			/*
-			 *  if we got normal action frame and ndev is p2p0,
-			 *  we have to change ndev from p2p0 to wlan0
-			 */
 #if defined(CUSTOMER_HW4) && defined(WES_SUPPORT)
 			if (wl_cfg80211_is_wes(&mgmt_frame[DOT11_MGMT_HDR_LEN],
 			mgmt_frame_len - DOT11_MGMT_HDR_LEN) && wes_mode == 0) {
@@ -9074,10 +9170,6 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 			goto exit;
 			}
 #endif /* WES_SUPPORT */
-
-			/* use primary device instead of p2p's */
-			if (discover_cfgdev(cfgdev, cfg))
-				cfgdev = bcmcfg_to_prmry_cfgdev(cfgdev, cfg);
 
 			if (cfg->next_af_subtype != P2P_PAF_SUBTYPE_INVALID) {
 				u8 action = 0;
@@ -10601,51 +10693,6 @@ static void wl_wakeup_event(struct bcm_cfg80211 *cfg)
 	}
 }
 
-#if (defined(WL_CFG80211_P2P_DEV_IF) || defined(WL_ENABLE_P2P_IF))
-static int wl_is_p2p_event(struct wl_event_q *e)
-{
-	switch (e->etype) {
-	/* We have to seperate out the P2P events received
-	 * on primary interface so that it can be send up
-	 * via p2p0 interface.
-	*/
-	case WLC_E_P2P_PROBREQ_MSG:
-	case WLC_E_P2P_DISC_LISTEN_COMPLETE:
-	case WLC_E_ACTION_FRAME_RX:
-	case WLC_E_ACTION_FRAME_OFF_CHAN_COMPLETE:
-	case WLC_E_ACTION_FRAME_COMPLETE:
-
-		if (e->emsg.ifidx != 0) {
-			WL_TRACE(("P2P event(%d) on virtual interface(ifidx:%d)\n",
-				e->etype, e->emsg.ifidx));
-			/* We are only bothered about the P2P events received
-			 * on primary interface. For rest of them return false
-			 * so that it is sent over the interface corresponding
-			 * to the ifidx.
-			 */
-			return FALSE;
-#if defined(WL_CFG80211_P2P_DEV_IF)
-		} else if (e->emsg.bsscfgidx == P2PAPI_BSSCFG_PRIMARY) {
-			WL_TRACE(("P2P event(%d) on STA interface\n",
-				e->etype));
-			return FALSE;
-#endif
-		}
-		else {
-			WL_TRACE(("P2P event(%d) on interface(ifidx:%d)\n",
-				e->etype, e->emsg.ifidx));
-			return TRUE;
-		}
-		break;
-
-	default:
-		WL_TRACE(("NON-P2P event(%d) on interface(ifidx:%d)\n",
-			e->etype, e->emsg.ifidx));
-		return FALSE;
-	}
-}
-#endif /* BCMDONGLEHOST && (WL_CFG80211_P2P_DEV_IF || WL_ENABLE_P2P_IF) */
-
 static s32 wl_event_handler(void *data)
 {
 	struct bcm_cfg80211 *cfg = NULL;
@@ -10668,7 +10715,7 @@ static s32 wl_event_handler(void *data)
 			 * interface.
 			 */
 #if defined(WL_CFG80211_P2P_DEV_IF)
-			if ((wl_is_p2p_event(e) == TRUE) && (cfg->p2p_wdev)) {
+			if (WL_IS_P2P_DEV_EVENT(e) && (cfg->p2p_wdev)) {
 				cfgdev = bcmcfg_to_p2p_wdev(cfg);
 			} else {
 				struct net_device *ndev = NULL;
@@ -10678,7 +10725,7 @@ static s32 wl_event_handler(void *data)
 					cfgdev = ndev_to_wdev(ndev);
 			}
 #elif defined(WL_ENABLE_P2P_IF)
-			if ((wl_is_p2p_event(e) == TRUE) && (cfg->p2p_net)) {
+			if (WL_IS_P2P_DEV_EVENT(e) && (cfg->p2p_net)) {
 				cfgdev = cfg->p2p_net;
 			} else {
 				cfgdev = dhd_idx2net((struct dhd_pub *)(cfg->pub),
@@ -11466,10 +11513,17 @@ s32 wl_cfg80211_up(void *para)
 int wl_cfg80211_hang(struct net_device *dev, u16 reason)
 {
 	struct bcm_cfg80211 *cfg;
+	uint8 hang_mac[ETHER_ADDR_LEN] = {0x11, 0x11, 0x11, 0x11, 0x11, 0x11};
+	dhd_pub_t *dhd;
 	cfg = g_bcm_cfg;
 
 	WL_ERR(("In : chip crash eventing\n"));
 	wl_add_remove_pm_enable_work(cfg, FALSE, WL_HANDLER_DEL);
+	dhd = (dhd_pub_t *)(cfg->pub);
+	if (dhd->op_mode & DHD_FLAG_HOSTAP_MODE) {
+		WL_ERR(("send HANG event to host for SoftAP!\n"));
+		cfg80211_del_sta(dev, hang_mac, GFP_ATOMIC);
+	} else
 	cfg80211_disconnected(dev, reason, NULL, 0, GFP_KERNEL);
 	if (cfg != NULL) {
 		wl_link_down(cfg);
@@ -11798,6 +11852,10 @@ wl_tdls_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 	struct net_device *ndev = NULL;
 	u32 reason = ntoh32(e->reason);
 	s8 *msg = NULL;
+#ifdef CUSTOMER_HW4
+	s32 ret = 0;
+	bool auto_on = true;
+#endif /* CUSTOMER_HW4 */
 
 	ndev = cfgdev_to_wlc_ndev(cfgdev, cfg);
 
@@ -11806,16 +11864,33 @@ wl_tdls_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 		msg = " TDLS PEER DISCOVERD ";
 		break;
 	case WLC_E_TDLS_PEER_CONNECTED :
+#ifdef PCIE_FULL_DONGLE
+		dhd_tdls_update_peer_info(ndev, TRUE, (uint8 *)&e->addr.octet[0]);
+#endif /* PCIE_FULL_DONGLE */
 		msg = " TDLS PEER CONNECTED ";
 		break;
 	case WLC_E_TDLS_PEER_DISCONNECTED :
+#ifdef PCIE_FULL_DONGLE
+		dhd_tdls_update_peer_info(ndev, FALSE, (uint8 *)&e->addr.octet[0]);
+#endif /* PCIE_FULL_DONGLE */
 		msg = "TDLS PEER DISCONNECTED ";
 		break;
+#ifdef CUSTOMER_HW4
+	default :
+		auto_on = false;
+#endif /* CUSTOMER_HW4 */
 	}
 	if (msg) {
 		WL_ERR(("%s: " MACDBG " on %s ndev\n", msg, MAC2STRDBG((u8*)(&e->addr)),
 			(bcmcfg_to_prmry_ndev(cfg) == ndev) ? "primary" : "secondary"));
 	}
+#ifdef CUSTOMER_HW4
+	if (auto_on) {
+		ret = dhd_tdls_enable(ndev, true, true, NULL);
+		if (ret < 0)
+			WL_ERR(("enable tdls_auto_op failed. %d\n", ret));
+	}
+#endif /* CUSTOMER_HW4 */
 	return 0;
 
 }
@@ -11836,15 +11911,24 @@ wl_cfg80211_tdls_oper(struct wiphy *wiphy, struct net_device *dev,
 		memcpy(&info.ea, peer, ETHER_ADDR_LEN);
 	switch (oper) {
 	case NL80211_TDLS_DISCOVERY_REQ:
+#ifdef CUSTOMER_HW4
+		ret = dhd_tdls_reset_manual((dhd_pub_t *)(cfg->pub), dev);
+#else /* !CUSTOMER_HW4 */
 		/* turn on TDLS */
 		ret = dhd_tdls_enable(dev, true, false, NULL);
+#endif /* CUSTOMER_HW4 */
 		if (ret < 0)
 			return ret;
 		info.mode = TDLS_MANUAL_EP_DISCOVERY;
 		break;
 	case NL80211_TDLS_SETUP:
 		/* auto mode on */
+#ifdef CUSTOMER_HW4
+		ret = dhd_tdls_reset_manual((dhd_pub_t *)(cfg->pub), dev);
+		info.mode = TDLS_MANUAL_EP_CREATE;
+#else /* !CUSTOMER_HW4 */
 		ret = dhd_tdls_enable(dev, true, true, (struct ether_addr *)peer);
+#endif /* CUSTOMER_HW4 */
 		if (ret < 0)
 			return ret;
 		break;
@@ -12827,24 +12911,3 @@ wl_cfg80211_set_mac_acl(struct wiphy *wiphy, bcm_struct_cfgdev *cfgdev,
 	return ret;
 }
 #endif /* WL_CFG80211_ACL */
-
-#if defined(CUSTOMER_HW4) && defined(WL_CFG80211_P2P_DEV_IF)
-void wl_cfg80211_del_p2p_wdev(void)
-{
-	struct bcm_cfg80211 *cfg = g_bcm_cfg;
-	struct wireless_dev *wdev = NULL;
-
-	WL_DBG(("Enter \n"));
-	if (!cfg) {
-		WL_ERR(("Invalid Ptr\n"));
-		return;
-	} else {
-		wdev = cfg->p2p_wdev;
-	}
-
-	if (wdev && cfg->down_disc_if) {
-		wl_cfgp2p_del_p2p_disc_if(wdev, cfg);
-		cfg->down_disc_if = FALSE;
-	}
-}
-#endif /* CUSTOMER_HW4 && WL_CFG80211_P2P_DEV_IF */

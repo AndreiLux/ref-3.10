@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_android.c 488219 2014-06-30 06:40:09Z $
+ * $Id: wl_android.c 503959 2014-09-22 13:53:48Z $
  */
 
 #include <linux/module.h>
@@ -114,7 +114,12 @@
 #define CMD_TEST_SET_TX_POWER		"TEST_SET_TX_POWER"
 #define CMD_TEST_GET_TX_POWER		"TEST_GET_TX_POWER"
 #endif /* TEST_TX_POWER_CONTROL */
+#ifdef TX_POWER_CONTROL_CALLING
+#define CMD_SET_TX_POWER_CALLING		"SET_TX_POWER_CALLING"
+#endif /* TX_POWER_CONTROL_CALLING */
+#ifdef SARLIMIT_TX_CONTROL_NVRAM
 #define CMD_SARLIMIT_TX_CONTROL		"SET_TX_POWER_CALLING"
+#endif /* SARLIMIT_TX_CONTROL_NVRAM */
 #endif /* CUSTOMER_HW4 */
 #ifdef WLFBT
 #define CMD_GET_FTKEY      "GET_FTKEY"
@@ -171,6 +176,8 @@
 #define CMD_SETSCANHOMEAWAYTIME "SETSCANHOMEAWAYTIME"
 #define CMD_GETSCANNPROBES "GETSCANNPROBES"
 #define CMD_SETSCANNPROBES "SETSCANNPROBES"
+#define CMD_GETDFSSCANMODE "GETDFSSCANMODE"
+#define CMD_SETDFSSCANMODE "SETDFSSCANMODE"
 
 #define CMD_SENDACTIONFRAME "SENDACTIONFRAME"
 #define CMD_REASSOC "REASSOC"
@@ -953,6 +960,61 @@ int wl_android_set_scan_nprobes(struct net_device *dev, char *command, int total
 	return 0;
 }
 
+int wl_android_get_scan_dfs_channel_mode(struct net_device *dev, char *command, int total_len)
+{
+	int error = 0;
+	int bytes_written = 0;
+	int mode = 0;
+	int scan_passive_time = 0;
+
+	error = wldev_iovar_getint(dev, "scan_passive_time", &scan_passive_time);
+	if (error) {
+		DHD_ERROR(("%s: Failed to get Passive Time, error = %d\n", __FUNCTION__, error));
+		return -1;
+	}
+
+	if (scan_passive_time == 0) {
+		mode = 0;
+	} else {
+		mode = 1;
+	}
+
+	bytes_written = snprintf(command, total_len, "%s %d", CMD_GETDFSSCANMODE, mode);
+
+	return bytes_written;
+}
+
+int wl_android_set_scan_dfs_channel_mode(struct net_device *dev, char *command, int total_len)
+{
+	int error = 0;
+	int mode = 0;
+	int scan_passive_time = 0;
+
+	if (sscanf(command, "%*s %d", &mode) != 1) {
+		DHD_ERROR(("%s: Failed to get Parameter\n", __FUNCTION__));
+		return -1;
+	}
+
+	if (mode == 1) {
+		scan_passive_time = DHD_SCAN_PASSIVE_TIME;
+	} else if (mode == 0) {
+		scan_passive_time = 0;
+	} else {
+		DHD_ERROR(("%s: Failed to set Scan DFS channel mode %d, error = %d\n",
+		 __FUNCTION__, mode, error));
+		return -1;
+	}
+	error = wldev_iovar_setint(dev, "scan_passive_time", scan_passive_time);
+	if (error) {
+		DHD_ERROR(("%s: Failed to set Scan Passive Time %d, error = %d\n",
+		__FUNCTION__, scan_passive_time, error));
+		return -1;
+	}
+
+	return 0;
+}
+
+
 int wl_android_send_action_frame(struct net_device *dev, char *command, int total_len)
 {
 	int error = -1;
@@ -1644,6 +1706,10 @@ int wl_android_wifi_on(struct net_device *dev)
 			if (dhd_dev_init_ioctl(dev) < 0)
 				ret = -EFAULT;
 		}
+#if defined(ENABLE_4335BT_WAR) && defined(CUSTOMER_HW4)
+		bcm_bt_unlock(lock_cookie_wifi);
+		DHD_ERROR(("%s() bcm_bt_unlock\n", __FUNCTION__));
+#endif
 		g_wifi_on = TRUE;
 	}
 
@@ -2228,7 +2294,7 @@ int wl_android_set_singlecore_scan(struct net_device *dev, char *command, int to
 
 	return error;
 }
-#ifdef TEST_TX_POWER_CONTROL
+#if defined(TEST_TX_POWER_CONTROL) || defined(TX_POWER_CONTROL_CALLING)
 static int
 wl_android_set_tx_power(struct net_device *dev, const char* string_num)
 {
@@ -2248,6 +2314,12 @@ wl_android_set_tx_power(struct net_device *dev, const char* string_num)
 	else
 		type = NL80211_TX_POWER_FIXED;
 
+#ifdef TX_POWER_CONTROL_CALLING
+	if (dbm == 0) {
+		dbm = TX_CALLING_POWER;
+	}
+#endif
+
 	err = wl_set_tx_power(dev, type, dbm);
 	if (unlikely(err)) {
 		DHD_ERROR(("%s: error (%d)\n", __FUNCTION__, err));
@@ -2256,7 +2328,9 @@ wl_android_set_tx_power(struct net_device *dev, const char* string_num)
 
 	return 1;
 }
+#endif /* TEST_TX_POWER_CONTROL || TX_POWER_CONTROL_CALLING */
 
+#ifdef TEST_TX_POWER_CONTROL
 static int
 wl_android_get_tx_power(struct net_device *dev, char *command, int total_len)
 {
@@ -2279,6 +2353,7 @@ wl_android_get_tx_power(struct net_device *dev, char *command, int total_len)
 }
 #endif /* TEST_TX_POWER_CONTROL */
 
+#ifdef SARLIMIT_TX_CONTROL_NVRAM
 static int
 wl_android_set_sarlimit_txctrl(struct net_device *dev, const char* string_num)
 {
@@ -2306,6 +2381,8 @@ wl_android_set_sarlimit_txctrl(struct net_device *dev, const char* string_num)
 	}
 	return 1;
 }
+#endif /* SARLIMIT_TX_CONTROL_NVRAM */
+
 #endif /* CUSTOMER_HW4 */
 
 int wl_android_set_roam_mode(struct net_device *dev, char *command, int total_len)
@@ -3419,6 +3496,14 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 	else if (strnicmp(command, CMD_SETSCANNPROBES, strlen(CMD_SETSCANNPROBES)) == 0) {
 		bytes_written = wl_android_set_scan_nprobes(net, command, priv_cmd.total_len);
 	}
+	else if (strnicmp(command, CMD_GETDFSSCANMODE, strlen(CMD_GETDFSSCANMODE)) == 0) {
+		bytes_written = wl_android_get_scan_dfs_channel_mode(net, command,
+			priv_cmd.total_len);
+	}
+	else if (strnicmp(command, CMD_SETDFSSCANMODE, strlen(CMD_SETDFSSCANMODE)) == 0) {
+		bytes_written = wl_android_set_scan_dfs_channel_mode(net, command,
+			priv_cmd.total_len);
+	}
 	else if (strnicmp(command, CMD_GETWESMODE, strlen(CMD_GETWESMODE)) == 0) {
 		bytes_written = wl_android_get_wes_mode(net, command, priv_cmd.total_len);
 	}
@@ -3612,11 +3697,20 @@ int wl_android_priv_cmd(struct net_device *net, struct ifreq *ifr, int cmd)
 		wl_android_get_tx_power(net, command, priv_cmd.total_len);
 	}
 #endif /* TEST_TX_POWER_CONTROL */
+#ifdef TX_POWER_CONTROL_CALLING
+	else if (strnicmp(command, CMD_SET_TX_POWER_CALLING,
+		strlen(CMD_SET_TX_POWER_CALLING)) == 0) {
+		int skip = strlen(CMD_SET_TX_POWER_CALLING) + 1;
+		wl_android_set_tx_power(net, (const char*)command+skip);
+	}
+#endif /* TX_POWER_CONTROL_CALLING */
+#ifdef SARLIMIT_TX_CONTROL_NVRAM
 	else if (strnicmp(command, CMD_SARLIMIT_TX_CONTROL,
 		strlen(CMD_SARLIMIT_TX_CONTROL)) == 0) {
 		int skip = strlen(CMD_SARLIMIT_TX_CONTROL) + 1;
 		wl_android_set_sarlimit_txctrl(net, (const char*)command+skip);
 	}
+#endif /* SARLIMIT_TX_CONTROL_NVRAM */
 #endif /* CUSTOMER_HW4 */
 	else if (strnicmp(command, CMD_HAPD_MAC_FILTER, strlen(CMD_HAPD_MAC_FILTER)) == 0) {
 		int skip = strlen(CMD_HAPD_MAC_FILTER) + 1;

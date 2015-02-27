@@ -48,6 +48,7 @@
 
 /* Configuration register */
 #define DSIM_CONFIG				(0x18)
+#define DSIM_CONFIG_MDCLK			(1 << 31)
 #define DSIM_CONFIG_CLKLANE_STOP_START		(1 << 30)
 #define DSIM_CONFIG_MFLUSH_VS			(1 << 29)
 #define DSIM_CONFIG_EOT_R03_DISABLE		(1 << 28)	/* disable EoT packet generation for V1.01r03 */

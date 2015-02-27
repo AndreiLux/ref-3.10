@@ -40,6 +40,10 @@ static DEFINE_SPINLOCK(list_lock);
 
 static int ovr_major;
 static struct cdev ovr_cdev;
+static unsigned int count_array[15] = {0,};
+static unsigned long old_jiffy_array[15] = {0,};
+static int ovr_index = 0;
+static int opens = 0;
 
 
 static ssize_t ovr_hidraw_read(struct file *file, char __user *buffer, size_t count, loff_t *ppos)
@@ -92,6 +96,19 @@ static ssize_t ovr_hidraw_read(struct file *file, char __user *buffer, size_t co
 				goto out;
 			}
 			ret = len;
+			if (opens > 0 && ovr_index < 15)
+			{
+				if (++count_array[ovr_index] >= 1000) {
+					unsigned long cur_jiffy = jiffies;
+					printk("OVR: %d Hz, read(%d) (%d:%s)\n", (int)(1000 * HZ / (cur_jiffy - old_jiffy_array[ovr_index])), ovr_index, current->pid, current->comm);
+					count_array[ovr_index] = 0;
+					old_jiffy_array[ovr_index] = cur_jiffy;
+				}
+				if (++ovr_index >= opens)
+					ovr_index = 0;
+			} else {
+				ovr_index = 0;
+			}
 		}
 
 		kfree(list->buffer[list->tail].value);
@@ -255,6 +272,7 @@ static int ovr_hidraw_open(struct inode *inode, struct file *file)
 	struct hidraw_list *list;
 	int err = 0;
 
+	printk("OVR: open (%d:%s) >>>\n", current->pid, current->comm);
 	if (!(list = kzalloc(sizeof(struct hidraw_list), GFP_KERNEL))) {
 		err = -ENOMEM;
 		goto out;
@@ -291,6 +309,8 @@ static int ovr_hidraw_open(struct inode *inode, struct file *file)
 		}
 	}
 
+	opens = dev->open;
+	printk("OVR: open(%d) err %d <<<\n", opens, err);
 out_unlock:
 	mutex_unlock(&minors_lock);
 out:
@@ -315,6 +335,7 @@ static int ovr_hidraw_release(struct inode * inode, struct file * file)
 	int i;
 	unsigned long flags;
 
+	printk("OVR: release (%d:%s) >>>\n", current->pid, current->comm);
 	mutex_lock(&minors_lock);
 	if (!ovr_hidraw_table[minor]) {
 		ret = -ENODEV;
@@ -339,6 +360,8 @@ static int ovr_hidraw_release(struct inode * inode, struct file * file)
 		kfree(list->buffer[i].value);
 	kfree(list);
 	ret = 0;
+	opens = dev->open;
+	printk("OVR: release(%d) <<<\n", (opens<=0?0:opens));
 unlock:
 	mutex_unlock(&minors_lock);
 
@@ -562,6 +585,9 @@ static const struct file_operations ovr_ops = {
 	.open = ovr_hidraw_open,
 	.release = ovr_hidraw_release,
 	.unlocked_ioctl = ovr_hidraw_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl   = ovr_hidraw_ioctl,
+#endif
 	.fasync = ovr_hidraw_fasync,
 	.llseek = noop_llseek,
 };
@@ -621,6 +647,8 @@ static void ovr_remove(struct hid_device *hdev)
 static int ovr_raw_event(struct hid_device *hdev, struct hid_report *report, u8 *data, int size)
 {
 	int retval = 0;
+	static unsigned int count = 0;
+	static unsigned long old_jiffy = 0;
 
 	struct usb_interface *intf = to_usb_interface(hdev->dev.parent);
 	if (intf->cur_altsetting->desc.bInterfaceProtocol
@@ -628,8 +656,17 @@ static int ovr_raw_event(struct hid_device *hdev, struct hid_report *report, u8 
 		return 0;
 	}
 
+	if (++count >= 1000) {
+		unsigned long cur_jiffy = jiffies;
+		printk("OVR: %d Hz, hidovr %d\n", (int)(1000 * HZ / (cur_jiffy - old_jiffy)), (hdev->hidovr?1:0));
+		count = 0;
+		old_jiffy = cur_jiffy;
+	}
+
 	if (hdev->hidovr) {
 		retval = ovr_report_event(hdev, data, size);
+		if (retval < 0)
+			printk("OVR: raw event err %d\n", retval);
 	}
 
 	return retval;

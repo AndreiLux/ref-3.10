@@ -752,6 +752,10 @@ irqreturn_t hdmi_irq_handler_ext(int irq, void *dev_data)
 	return IRQ_HANDLED;
 }
 
+#if defined(CONFIG_SEC_MHL_EDID) && defined(CONFIG_SEC_MHL_SII8620)
+extern int cea861f_hev_resolution;
+#endif
+
 static void hdmi_hpd_changed(struct hdmi_device *hdev, int state)
 {
 	int ret;
@@ -787,6 +791,9 @@ static void hdmi_hpd_changed(struct hdmi_device *hdev, int state)
 
 	} else {
 		switch_set_state(&hdev->audio_ch_switch, -1);
+#if defined(CONFIG_SEC_MHL_EDID) && defined(CONFIG_SEC_MHL_SII8620)
+		cea861f_hev_resolution = -1;
+#endif
 	}
 #endif
 }

@@ -15,7 +15,7 @@ menu "DIAG traffic over USB"
 config DIAG_OVER_USB
 	bool "Enable DIAG traffic to go over USB"
 #        depends on ARCH_MSM
-	default n
+	default y
 	help
 	 This feature helps segregate code required for DIAG traffic to go over USB.
 endmenu

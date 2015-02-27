@@ -38,6 +38,7 @@ extern int wacom_i2c_recv(struct wacom_i2c *wac_i2c,
 extern int wacom_i2c_test(struct wacom_i2c *wac_i2c);
 extern int wacom_i2c_coord(struct wacom_i2c *wac_i2c);
 extern int wacom_i2c_query(struct wacom_i2c *wac_i2c);
+extern int wacom_i2c_modecheck(struct wacom_i2c *wac_i2c);
 extern int wacom_checksum(struct wacom_i2c *wac_i2c);
 extern void forced_release(struct wacom_i2c *wac_i2c);
 #ifdef WACOM_PDCT_WORK_AROUND

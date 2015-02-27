@@ -45,6 +45,7 @@
 #ifndef MFG_IOCTL_RESP_TIMEOUT
 #define MFG_IOCTL_RESP_TIMEOUT  20000  /* In milli second default value for MFG FW */
 #endif /* MFG_IOCTL_RESP_TIMEOUT */
+#define IOCTL_DISABLE_TIMEOUT 0
 
 /*
  * Exported from the dhd protocol module (dhd_cdc, dhd_rndis)

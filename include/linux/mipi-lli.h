@@ -165,12 +165,7 @@ extern void mipi_lli_enable_irq(void);
 
 struct link_pm_svc *mipi_lli_get_pm_svc(void);
 
-#ifdef CONFIG_SEC_MODEM_V1
-#define lli_err(dev, fmt, ...)	evt_log(0, "mipi-lli: " fmt, ##__VA_ARGS__)
-#define lli_info(dev, fmt, ...)	evt_log(0, "mipi-lli: " fmt, ##__VA_ARGS__)
-#else
 #define lli_err(dev, fmt, ...)	dev_err(dev, fmt, ##__VA_ARGS__)
 #define lli_info(dev, fmt, ...)	dev_info(dev, fmt, ##__VA_ARGS__)
-#endif
 
 #endif /* __MIPI_LLI_H */

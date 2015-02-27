@@ -371,9 +371,39 @@ out:
 	return false;
 }
 
+static unsigned char fts_get_sync_register(struct fts_ts_info *info)
+{
+    unsigned char regAdd[4] = { 0xb2, 0x07, 0x0a, 0x04 };
+    unsigned char data[FTS_EVENT_SIZE];
+    int retry = 0;
+    unsigned char var = 0;
+
+    info->fts_write_reg(info, &regAdd[0], 4);
+    memset(data, 0x0, FTS_EVENT_SIZE);
+    regAdd[0] = READ_ONE_EVENT;
+
+    while (info->fts_read_reg(info, &regAdd[0], 1, (unsigned char *)data,
+                                           FTS_EVENT_SIZE)) {
+                if ((data[0] == 0x12) && (data[1] == regAdd[1])
+                            && (data[2] == regAdd[2])) {
+                            var = data[3];
+                            tsp_debug_info(true, info->dev,
+                                        "%s: Sync Register : 0x%02x\n",
+                            __func__, var);
+                            break;
+                }
+                if (retry++ > FTS_RETRY_COUNT) {
+                            tsp_debug_err(true, info->dev,
+                                        "%s: Time Over\n", __func__);
+                            break;
+                }
+    }
+    return var;
+}
+
 int fts_fw_update_on_probe(struct fts_ts_info *info)
 {
-	int retval;
+	int retval = 0;
 	const struct firmware *fw_entry = NULL;
 	unsigned char *fw_data = NULL;
 	char fw_path[FTS_MAX_FW_PATH];
@@ -457,7 +487,12 @@ int fts_fw_update_on_probe(struct fts_ts_info *info)
 	if ((info->fw_main_version_of_ic < info->fw_main_version_of_bin)
 		|| ((info->config_version_of_ic < info->config_version_of_bin))
 		|| ((info->fw_version_of_ic < info->fw_version_of_bin)))
+	{
 		retval = fts_fw_updater(info, fw_data);
+	}
+	else if ((strncmp(info->board->project_name, "TB", 2) == 0) && (fts_get_sync_register(info)!=0x51)) {
+		retval = fts_fw_updater(info, fw_data);
+	}
 	else
 		retval = FTS_NOT_ERROR;
 

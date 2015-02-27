@@ -300,4 +300,13 @@ static const int lli_debug_info[] = {
 	EXYNOS_DL_DBG_SIGNAL_STATUS,
 	/* END OF LLI_NON_PA_ATTRIBUTES */
 };
+
+#undef dev_info
+#undef dev_err
+#undef dev_dbg
+
+#define dev_err(dev, fmt, arg...) pr_err("lli: "fmt, ##arg)
+#define dev_info(dev, fmt, arg...) pr_info("lli: "fmt, ##arg)
+#define dev_dbg(dev, fmt, arg...) pr_debug("lli: "fmt, ##arg)
+
 #endif /* __DRIVERS_EXYNOS_MIPI_LLI_H */

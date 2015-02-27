@@ -788,6 +788,10 @@ void clear_zonelist_oom(struct zonelist *zonelist, gfp_t gfp_mask)
 	spin_unlock(&zone_scan_lock);
 }
 
+#if defined(CONFIG_SEC_SLOWPATH)
+extern unsigned int oomk_state; /* 0 none, bit_0 time's up, bit_1 OOMK */
+#endif
+
 /**
  * out_of_memory - kill the "best" process when we run out of memory
  * @zonelist: zonelist pointer
@@ -811,6 +815,10 @@ void out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 	unsigned int uninitialized_var(points);
 	enum oom_constraint constraint = CONSTRAINT_NONE;
 	int killed = 0;
+
+#if defined(CONFIG_SEC_SLOWPATH)
+	oomk_state |= 0x02;
+#endif
 
 	blocking_notifier_call_chain(&oom_notify_list, 0, &freed);
 	if (freed > 0)

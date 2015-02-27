@@ -359,16 +359,15 @@ static u8 w1_gpio_read_block(void *data, u8 *buf, int len)
  */
 static u8 w1_gpio_reset_bus(void *data)
 {
-	int result;
+	int result = 0;
 	struct w1_gpio_platform_data *pdata = data;
 	void	(*write_bit)(void *, u8);
 	unsigned long irq_flags;
 
-	if (pdata->is_open_drain) {
+	if (pdata->is_open_drain)
 		write_bit = w1_gpio_write_bit_val;
-	} else {
+	else
 		write_bit = w1_gpio_write_bit_dir;
-	}
 
 	spin_lock_irqsave(&w1_gpio_lock, irq_flags);
 	write_bit(data, 0);
@@ -379,26 +378,30 @@ static u8 w1_gpio_reset_bus(void *data)
 		 * cpu for such a short amount of time AND get it back in
 		 * the maximum amount of time.
 		 */
-	(pdata->slave_speed == 0)? w1_delay(480) : w1_delay(48);
+	w1_delay(48);
 	write_bit(data, 1);
 
-//    originally overdriver mode need 8us delay
-	(pdata->slave_speed == 0)? w1_delay(70) : w1_delay(7);
+	w1_delay(7);
 
-//	result = w1_gpio_read_bit_val(data) & 0x1;
-
-	/* below codes same as w1_gpio_read_bit_val(data) & 0x1 */
 	tmp = __raw_readl(g_addr + 0x4);
 	result = (tmp >> 1) & 0x1;
+
+	/* re-check */
+	w1_delay(5);
+
+	tmp = __raw_readl(g_addr + 0x4);
+	if (result)
+		result = (tmp >> 1) & 0x1;
 
 	/* minmum 70 (above) + 410 = 480 us
 	 * There aren't any timing requirements between a reset and
 	 * the following transactions.  Sleeping is safe here.
 	 */
 	/* w1_delay(410); min required time */
-	(pdata->slave_speed == 0)? msleep(1) : w1_delay(40);
+	w1_delay(40);
 
 	spin_unlock_irqrestore(&w1_gpio_lock, irq_flags);
+
 	return result;
 }
 
@@ -586,8 +589,6 @@ static int w1_gpio_suspend(struct platform_device *pdev, pm_message_t state)
 	return 0;
 }
 
-bool w1_is_suspended;
-
 static int w1_gpio_resume(struct platform_device *pdev)
 {
 	struct w1_gpio_platform_data *pdata = pdev->dev.platform_data;
@@ -597,7 +598,6 @@ static int w1_gpio_resume(struct platform_device *pdev)
 
 	gpio_direction_output(pdata->pin, 1);
 
-	w1_is_suspended = true;
 #ifdef CONFIG_W1_WORKQUEUE
 	schedule_delayed_work(&w1_gdev->w1_dwork, HZ * 2);
 #endif

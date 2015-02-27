@@ -207,6 +207,10 @@ struct max77888_dev {
 	int irq;
 	int irq_base;
 	int irq_gpio;
+	/* WA for MUIC RESET */
+	int mr_irq;
+	int muic_reset_irq;
+	/* WA for MUIC RESET */
 	int irqf_trigger;
 	bool wakeup;
 	struct mutex irqlock;
@@ -225,6 +229,9 @@ struct max77888_dev {
 	u8 pmic_ver;	/* pmic version */
 
 	struct max77888_platform_data *pdata;
+
+	/* WA for MUIC RESET */
+	struct delayed_work muic_reset_dwork;
 };
 
 enum max77888_types {
@@ -250,6 +257,11 @@ extern bool is_muic_usb_path_cp_usb(void);
 
 /* MAX77888 Debug. ft */
 extern void max77888_muic_read_register(struct i2c_client *i2c);
+
+/* WA for MUIC RESET */
+extern u8 max77888_restore_last_snapshot(u8 reg);
+extern void max77888_muic_reg_restore(struct work_struct *work);
+/* WA for MUIC RESET */
 
 #endif /* __LINUX_MFD_MAX77888_PRIV_H */
 

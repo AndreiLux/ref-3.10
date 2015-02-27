@@ -80,6 +80,93 @@
 #define is_factory_port(port) (CONFIG_SERIAL_SEC_FACTORY_PORT == (port)->line)
 #endif
 
+
+#define DUALWAVE_ENABLE
+
+#ifdef DUALWAVE_ENABLE
+#define MAX_DW_MESSAGE_SIZE 128
+
+#include <linux/syscalls.h>
+#include <asm/uaccess.h>
+
+#define DW_INACTIVE	0
+#define DW_PLAYBACK	1
+#define DW_CAPTURE	2
+
+extern int send_uevent_wh_ble_info(char *prEnvInfoLists[3]);
+extern int checkDualWaveStatus(void);
+
+static char rx_buf_t[256];
+static int rx_buf_count_t;
+
+#define GET_CUR_TIME_ON(tCurTimespec)											\
+	do {																		\
+		long int llErrTime = 0;													\
+		struct timespec tMyTime;												\
+		mm_segment_t tOldfs;													\
+		tOldfs = get_fs();														\
+		set_fs(KERNEL_DS);														\
+																				\
+		llErrTime = sys_clock_gettime(CLOCK_REALTIME, &tMyTime);				\
+		set_fs(tOldfs);															\
+																				\
+		tCurTimespec = tMyTime;													\
+	}while(0)
+
+char *g_szSysTime;
+char *g_szRefTime;
+
+inline void UpdateTime(char *pchBuffer, int iLen)
+{
+	struct timespec tSysTimespec;
+	char *pEnv[3];
+
+	int iRead = 0;
+	int iEventLength = 0;
+	int iNumHciCmdPackets = 0;
+	unsigned short *psCmdOpCode =NULL;
+	int iStatus = 0;
+	unsigned int *puiBtClock;
+
+	GET_CUR_TIME_ON(tSysTimespec);
+
+	g_szSysTime = kzalloc(MAX_DW_MESSAGE_SIZE, GFP_KERNEL);
+	g_szRefTime = kzalloc(MAX_DW_MESSAGE_SIZE, GFP_KERNEL);
+
+	pEnv[0] = g_szSysTime;
+	pEnv[1] = g_szRefTime;
+	pEnv[2] = NULL;
+
+	switch (pchBuffer[iRead++])
+	{
+		case 0x04:
+		{
+			if(pchBuffer[iRead++] == 0x0E)
+			{
+				iEventLength = pchBuffer[iRead++];
+				iNumHciCmdPackets = pchBuffer[iRead++];
+				psCmdOpCode = (short*) (pchBuffer+iRead); iRead += 2;
+				iStatus = pchBuffer[iRead++];
+				puiBtClock = (unsigned int*)(pchBuffer+iRead); iRead +=4;
+				if ( *psCmdOpCode == (unsigned short)0xFCEE && iStatus == 0x00)
+				{
+					sprintf(g_szSysTime,"SYS_TIME=%ld.%09ld",tSysTimespec.tv_sec,tSysTimespec.tv_nsec);
+					sprintf(g_szRefTime,"BT_CLK=%d",*puiBtClock);
+					send_uevent_wh_ble_info(pEnv);
+				}
+			}
+		}
+		break;
+		default:
+		break;
+	}
+
+	kfree(g_szSysTime);
+	kfree(g_szRefTime);
+}
+
+#endif
+
 #if defined(DUMP_UART_PACKET)
 static char rx_buf[16];
 static char tx_buf[16];
@@ -553,6 +640,14 @@ s3c24xx_serial_rx_chars(int irq, void *dev_id)
 	unsigned int ufcon, ch, flag, ufstat, uerstat;
 	int max_count = 64;
 
+#ifdef DUALWAVE_ENABLE
+	if (checkDualWaveStatus() != DW_INACTIVE) {
+		if (rx_buf_count_t == 0) {
+			memset(rx_buf_t, 0xFF, 16);
+		}
+	}
+#endif
+
 #if defined(DUMP_UART_PACKET)
 	if (is_factory_port(port)) {
 		if (rx_buf_count == 0) {
@@ -668,6 +763,14 @@ rx_use_cpu:
 
 		uart_insert_char(port, uerstat, S3C2410_UERSTAT_OVERRUN,
 				 ch, flag);
+
+#ifdef DUALWAVE_ENABLE
+	if (checkDualWaveStatus() != DW_INACTIVE) {
+		memcpy(rx_buf_t + rx_buf_count_t, &ch, 1);
+		rx_buf_count_t++;
+	}
+#endif
+
 #if defined(DUMP_UART_PACKET)
 		if (is_factory_port(port)) {
 			memcpy(rx_buf + rx_buf_count, &ch, 1);
@@ -696,6 +799,13 @@ rx_use_cpu:
 			rx_buf_count = 0;
 			memset(rx_buf, 0xFF, 16);
 		}
+	}
+#endif
+
+#ifdef DUALWAVE_ENABLE
+	if (checkDualWaveStatus() != DW_INACTIVE) {
+		UpdateTime(rx_buf_t, rx_buf_count_t);
+		rx_buf_count_t=0;
 	}
 #endif
 

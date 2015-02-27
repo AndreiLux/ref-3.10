@@ -271,3 +271,14 @@ config SAMSUNG_LPM_MODE
 	  Before enable this feature,
 	  implemet power off charging in the bootloader.
 
+config EN_OOPS
+	bool "enable oops filter"
+	default n
+	help
+	  Say Y to enable oops filter
+
+config FAKE_CAPACITY
+	bool "Fake capacity"
+	default n
+	help
+	  fake battery level to 50%

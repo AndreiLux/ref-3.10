@@ -125,6 +125,7 @@
 
 #define FTS_CMD_MSKEY_AUTOTUNE		0x96
 
+#define FTS_CMD_KEY_SENSE_OFF		0x9A
 #define FTS_CMD_KEY_SENSE_ON		0x9B
 #define FTS_CMD_SET_FAST_GLOVE_MODE	0x9D
 
@@ -234,13 +235,26 @@ enum tsp_power_mode {
 	FTS_POWER_STATE_DEEPSLEEP,
 };
 
+enum fts_cover_id {
+	FTS_FLIP_WALLET = 0,
+	FTS_VIEW_COVER,
+	FTS_COVER_NOTHING1,
+	FTS_VIEW_WIRELESS,
+	FTS_COVER_NOTHING2,
+	FTS_CHARGER_COVER,
+	FTS_VIEW_WALLET,
+	FTS_LED_COVER,
+	FTS_MONTBLANC_COVER = 100,
+};
+
 enum fts_customer_feature {
 	FTS_FEATURE_ORIENTATION_GESTURE = 1,
 	FTS_FEATURE_STYLUS,
 	FTS_FEATURE_QUICK_SHORT_CAMERA_ACCESS,
 	FTS_FEATURE_SIDE_GUSTURE,
 	FTS_FEATURE_COVER_GLASS,
-	FTS_FEATURE_FAST_GLOVE_MODE,
+	FTS_FEATURE_COVER_WALLET,
+	FTS_FEATURE_COVER_LED,
 };
 
 struct fts_ts_info {
@@ -277,6 +291,8 @@ struct fts_ts_info {
 	int ForceChannelLength;
 	short *pFrame;
 	unsigned char *cx_data;
+	struct delayed_work cover_cmd_work;
+	int delayed_cmd_param[2];
 #endif
 
 	bool hover_ready;
@@ -284,13 +300,18 @@ struct fts_ts_info {
 	bool mshover_enabled;
 	bool fast_mshover_enabled;
 	bool flip_enable;
+	bool run_autotune;
+	bool mainscr_disable;
+	unsigned int cover_type;
+	bool edge_grip_mode;
 
 	unsigned char lowpower_flag;
 	bool lowpower_mode;
 	bool deepsleep_mode;
 	int fts_power_state;
+#ifdef FTS_SUPPORT_STRINGLIB
 	unsigned char fts_mode;
-
+#endif
 #ifdef FTS_SUPPORT_TA_MODE
 	bool TA_Pluged;
 #endif
@@ -332,11 +353,13 @@ struct fts_ts_info {
 	struct fts_noise_param noise_param;
 	int (*fts_get_noise_param_address) (struct fts_ts_info *info);
 #endif
-
-	struct delayed_work cam_work;
 	unsigned int delay_time;
 	unsigned int debug_string;
 	struct delayed_work reset_work;
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+	struct delayed_work debug_work;
+	bool rawdata_read_lock;
+#endif
 
 	unsigned int scrub_id;
 	unsigned int scrub_x;
@@ -362,8 +385,10 @@ struct fts_ts_info {
 	void (*fts_command)(struct fts_ts_info *info, unsigned char cmd);
 	void (*fts_enable_feature)(struct fts_ts_info *info, unsigned char cmd, int enable);
 	int (*fts_get_version_info)(struct fts_ts_info *info);
+#ifdef FTS_SUPPORT_STRINGLIB
 	int (*fts_read_from_string)(struct fts_ts_info *info, unsigned short *reg, unsigned char *data, int length);
 	int (*fts_write_to_string)(struct fts_ts_info *info, unsigned short *reg, unsigned char *data, int length);
+#endif
 };
 
 int fts_fw_update_on_probe(struct fts_ts_info *info);

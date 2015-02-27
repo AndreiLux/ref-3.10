@@ -890,6 +890,18 @@ static enum hotplug_cmd diagnose_condition(void)
 		(!lcd_is_on || forced_hotplug))
 		ret = CMD_LOW_POWER;
 
+#ifdef CONFIG_SCHED_HMP
+	if (little_hotplug_in || little_in_by_nr_running) {
+		int i;
+		for (i = 1; i < NR_CA7; i++) {
+			if (!cpu_online(i) && cur_load_freq <= normal_min_freq) {
+				ret = CMD_LITTLE_ONE_IN;
+				break;
+			}
+		}
+	}
+#endif
+
 	return ret;
 }
 

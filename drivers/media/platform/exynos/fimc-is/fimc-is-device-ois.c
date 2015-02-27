@@ -40,6 +40,9 @@
 #include "fimc-is-device-ischain.h"
 #include "fimc-is-dt.h"
 #include "fimc-is-device-ois.h"
+#ifdef CONFIG_AF_HOST_CONTROL
+#include "fimc-is-device-af.h"
+#endif
 
 #define FIMC_IS_OIS_SDCARD_PATH		"/data/media/0/"
 #define FIMC_IS_OIS_DEV_NAME		"exynos-fimc-is-ois"
@@ -180,6 +183,79 @@ int fimc_is_ois_i2c_write(struct i2c_client *client ,u16 addr, u8 data)
         }
 
         return 0;
+}
+
+int fimc_is_ois_i2c_write_multi(struct i2c_client *client ,u16 addr, u8 *data, size_t size)
+{
+	int retries = I2C_RETRY_COUNT;
+	int ret = 0, err = 0, i = 0;
+	u8 buf[258] = {0,};
+	struct i2c_msg msg = {
+                .addr   = client->addr,
+                .flags  = 0,
+                .len    = size,
+                .buf    = buf,
+	};
+
+	buf[0] = (addr & 0xFF00) >> 8;
+	buf[1] = addr & 0xFF;
+
+	for (i = 0; i < size - 2; i++) {
+	        buf[i + 2] = *(data + i);
+	}
+#if 0
+        pr_info("OISLOG %s : W(0x%02X%02X%02X)\n", __func__, buf[0], buf[1], buf[2]);
+#endif
+        do {
+                ret = i2c_transfer(client->adapter, &msg, 1);
+                if (likely(ret == 1))
+                        break;
+
+                usleep_range(10000,11000);
+                err = ret;
+        } while (--retries > 0);
+
+        /* Retry occured */
+        if (unlikely(retries < I2C_RETRY_COUNT)) {
+                err("i2c_write: error %d, write (%04X, %04X), retry %d\n",
+                        err, addr, *data, I2C_RETRY_COUNT - retries);
+        }
+
+        if (unlikely(ret != 1)) {
+                err("I2C does not work\n\n");
+                return -EIO;
+	}
+
+        return 0;
+}
+
+static int fimc_is_ois_i2c_read_multi(struct i2c_client *client, u16 addr, u8 *data, size_t size)
+{
+	int err;
+	u8 rxbuf[256], txbuf[2];
+	struct i2c_msg msg[2];
+
+	txbuf[0] = (addr & 0xff00) >> 8;
+	txbuf[1] = (addr & 0xff);
+
+	msg[0].addr = client->addr;
+	msg[0].flags = 0;
+	msg[0].len = 2;
+	msg[0].buf = txbuf;
+
+	msg[1].addr = client->addr;
+	msg[1].flags = I2C_M_RD;
+	msg[1].len = size;
+	msg[1].buf = rxbuf;
+
+	err = i2c_transfer(client->adapter, msg, 2);
+	if (unlikely(err != 2)) {
+		pr_err("%s: register read fail\n", __func__);
+		return -EIO;
+	}
+
+	memcpy(data, rxbuf, size);
+	return 0;
 }
 
 int fimc_is_ois_gpio_on(struct fimc_is_device_companion *device)
@@ -504,11 +580,32 @@ bool fimc_is_ois_diff_test(struct fimc_is_core *core, int *x_diff, int *y_diff)
 	u8 val = 0, x = 0, y = 0;
 	u16 x_min = 0, y_min = 0, x_max = 0, y_max = 0;
 	int retries = 20, default_diff = 1100;
+	u8 read_x[2], read_y[2];
 
 	pr_info("(%s) : E\n", __FUNCTION__);
 	if (core->use_ois_hsi2c) {
 		fimc_is_ois_i2c_config(core->client1, true);
 	}
+
+#ifdef CONFIG_AF_HOST_CONTROL
+	fimc_is_af_move_lens(core);
+	msleep(30);
+#endif
+	ret = fimc_is_ois_i2c_read_multi(core->client1, 0x021A, read_x, 2);
+	ret |= fimc_is_ois_i2c_read_multi(core->client1, 0x021C, read_y, 2);
+	if (ret) {
+		err("i2c read fail\n");
+	}
+
+	ret = fimc_is_ois_i2c_write_multi(core->client1, 0x0022, read_x, 4);
+	ret |= fimc_is_ois_i2c_write_multi(core->client1, 0x0024, read_y, 4);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0002, 0x02);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0000, 0x01);
+	if (ret) {
+		err("i2c write fail\n");
+	}
+	msleep(400);
+	pr_info("(%s) : OIS Position = Center\n", __FUNCTION__);
 
 	ret = fimc_is_ois_i2c_write(core->client1, 0x0000, 0x00);
 	if (ret) {
@@ -525,7 +622,7 @@ bool fimc_is_ois_diff_test(struct fimc_is_core *core, int *x_diff, int *y_diff)
 			err("Read register failed!!!!, data = 0x%04x\n", val);
 			break;
 		}
-	} while (val);
+	} while (val != 1);
 
 	ret = fimc_is_ois_i2c_write(core->client1, 0x0034, 0x64);
 	ret |= fimc_is_ois_i2c_write(core->client1, 0x0230, 0x64);
@@ -615,15 +712,31 @@ bool fimc_is_ois_diff_test(struct fimc_is_core *core, int *x_diff, int *y_diff)
 	fimc_is_ois_i2c_read(core->client1, 0x0219, &val);
 	y_min = (val << 8) | y;
 
-	if (core->use_ois_hsi2c) {
-		fimc_is_ois_i2c_config(core->client1, false);
-	}
-
 	*x_diff = abs(x_max - x_min);
 	*y_diff = abs(y_max - y_min);
 
 	pr_info("(%s) : X (default_diff:%d)(%d,%d)\n", __FUNCTION__,
 			default_diff, *x_diff, *y_diff);
+
+	ret = fimc_is_ois_i2c_read_multi(core->client1, 0x021A, read_x, 2);
+	ret |= fimc_is_ois_i2c_read_multi(core->client1, 0x021C, read_y, 2);
+	if (ret) {
+		err("i2c read fail\n");
+	}
+
+	ret = fimc_is_ois_i2c_write_multi(core->client1, 0x0022, read_x, 4);
+	ret |= fimc_is_ois_i2c_write_multi(core->client1, 0x0024, read_y, 4);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0002, 0x02);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0000, 0x01);
+	msleep(400);
+	ret |= fimc_is_ois_i2c_write(core->client1, 0x0000, 0x00);
+	if (ret) {
+		err("i2c write fail\n");
+	}
+
+	if (core->use_ois_hsi2c) {
+		fimc_is_ois_i2c_config(core->client1, false);
+	}
 
 	if (*x_diff > default_diff  && *y_diff > default_diff) {
 		return true;
@@ -642,79 +755,6 @@ u16 fimc_is_ois_calc_checksum(u8 *data, int size)
 	}
 
 	return result;
-}
-
-int fimc_is_ois_i2c_write_multi(struct i2c_client *client ,u16 addr, u8 *data, size_t size)
-{
-	int retries = I2C_RETRY_COUNT;
-	int ret = 0, err = 0, i = 0;
-	u8 buf[258] = {0,};
-	struct i2c_msg msg = {
-                .addr   = client->addr,
-                .flags  = 0,
-                .len    = size,
-                .buf    = buf,
-	};
-
-	buf[0] = (addr & 0xFF00) >> 8;
-	buf[1] = addr & 0xFF;
-
-	for (i = 0; i < size - 2; i++) {
-	        buf[i + 2] = *(data + i);
-	}
-#if 0
-        pr_info("OISLOG %s : W(0x%02X%02X%02X)\n", __func__, buf[0], buf[1], buf[2]);
-#endif
-        do {
-                ret = i2c_transfer(client->adapter, &msg, 1);
-                if (likely(ret == 1))
-                        break;
-
-                usleep_range(10000,11000);
-                err = ret;
-        } while (--retries > 0);
-
-        /* Retry occured */
-        if (unlikely(retries < I2C_RETRY_COUNT)) {
-                err("i2c_write: error %d, write (%04X, %04X), retry %d\n",
-                        err, addr, *data, I2C_RETRY_COUNT - retries);
-        }
-
-        if (unlikely(ret != 1)) {
-                err("I2C does not work\n\n");
-                return -EIO;
-	}
-
-        return 0;
-}
-
-static int fimc_is_ois_i2c_read_multi(struct i2c_client *client, u16 addr, u8 *data, size_t size)
-{
-	int err;
-	u8 rxbuf[256], txbuf[2];
-	struct i2c_msg msg[2];
-
-	txbuf[0] = (addr & 0xff00) >> 8;
-	txbuf[1] = (addr & 0xff);
-
-	msg[0].addr = client->addr;
-	msg[0].flags = 0;
-	msg[0].len = 2;
-	msg[0].buf = txbuf;
-
-	msg[1].addr = client->addr;
-	msg[1].flags = I2C_M_RD;
-	msg[1].len = size;
-	msg[1].buf = rxbuf;
-
-	err = i2c_transfer(client->adapter, msg, 2);
-	if (unlikely(err != 2)) {
-		pr_err("%s: register read fail\n", __func__);
-		return -EIO;
-	}
-
-	memcpy(data, rxbuf, size);
-	return 0;
 }
 
 void fimc_is_ois_exif_data(struct fimc_is_core *core)

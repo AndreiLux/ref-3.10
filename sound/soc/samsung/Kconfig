@@ -317,7 +317,7 @@ config SND_SOC_SAMSUNG_ARIZONA
 	select GPIO_ARIZONA
 	select SWITCH
 	select SWITCH_ARIZONA
-	select SND_SOC_SAMSUNG_PACIFIC_EAX if SOC_EXYNOS5433
+	select SND_DYNAMIC_MINORS
 	help
 		Say Y if you want to add support for Arizona Platform on the Exynos54XX.
 
@@ -380,13 +380,6 @@ config SND_USE_3MICS
 config SND_SAMSUNG_COMPENSATE_EXT_RES
 	bool "use compensate table for external resistance"
 	default n
-
-config SND_SOC_SAMSUNG_PACIFIC_EAX
-	tristate "Support Extra Audio Mixer on the Pacific"
-	depends on SND_SOC_SAMSUNG
-	default n
-	help
-	  Say Y if you want to use Extra Audio Mixer on the Pacific.
 
 # For support SEIREN audio
 source "sound/soc/samsung/seiren/Kconfig"

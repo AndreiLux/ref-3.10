@@ -28,6 +28,7 @@
 #include <linux/gpio.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
+#include <linux/netdevice.h>
 
 #include <linux/platform_data/modem_debug.h>
 #include <linux/platform_data/modem_v1.h>
@@ -38,6 +39,7 @@
 
 #ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
 #define DEBUG_MODEM_IF
+#include <trace/events/modem_if.h>
 #endif
 
 #ifdef DEBUG_MODEM_IF
@@ -53,21 +55,11 @@
 
 #if 0
 #define DEBUG_MODEM_IF_IODEV_TX
-#endif
-#if 1
 #define DEBUG_MODEM_IF_IODEV_RX
-#endif
-
-#if 1
-#define DEBUG_MODEM_IF_FLOW_CTRL
-#endif
-
-#if 0
 #define DEBUG_MODEM_IF_PS_DATA
-#endif
-#if 0
 #define DEBUG_MODEM_IF_IP_DATA
 #endif
+#define DEBUG_MODEM_IF_FLOW_CTRL
 #endif
 
 /*
@@ -126,6 +118,12 @@ Definitions for IO devices
 #define IPv6			6
 #define SOURCE_MAC_ADDR		{0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC}
 
+/**
+@addtogroup group_mem_cp_crash
+@{
+*/
+#define FORCE_CRASH_ACK_TIMEOUT		(10 * HZ)
+
 /* Loopback */
 #define CP2AP_LOOPBACK_CHANNEL	30
 #define DATA_LOOPBACK_CHANNEL	31
@@ -165,6 +163,13 @@ struct modem_firmware {
 	u32 size;
 };
 
+#ifdef CONFIG_COMPAT
+struct modem_firmware_64 {
+	char *binary;
+	unsigned long size;
+};
+#endif
+
 #define SIPC_MULTI_FRAME_MORE_BIT	(0b10000000)	/* 0x80 */
 #define SIPC_MULTI_FRAME_ID_MASK	(0b01111111)	/* 0x7F */
 #define SIPC_MULTI_FRAME_ID_BITS	7
@@ -200,6 +205,18 @@ static inline bool sipc_ps_ch(u8 ch)
 		true : false;
 }
 
+static inline bool sipc_major_ch(u8 ch)
+{
+	switch (ch) {
+	case SIPC_CH_ID_PDP_0:
+	case SIPC_CH_ID_PDP_1:
+	case SIPC5_CH_ID_FMT_0:
+	case SIPC5_CH_ID_RFS_0:
+		return true;
+	}
+	return false;
+}
+
 /**
 @brief		return true if the channel ID is for CP LOG channel
 @param ch	channel ID
@@ -222,6 +239,7 @@ static inline bool sipc_log_ch(u8 ch)
 
 struct vnet {
 	struct io_device *iod;
+	struct link_device *ld;
 };
 
 /* for fragmented data from link devices */
@@ -239,19 +257,11 @@ struct fragmented_data {
 struct skbuff_private {
 	struct io_device *iod;
 	struct link_device *ld;
-	struct io_device *real_iod; /* for rx multipdp */
-
-	/* for time-stamping */
-	struct timespec ts;
 
 	u32 sipc_ch:8,	/* SIPC Channel Number			*/
 	    frm_ctrl:8,	/* Multi-framing control		*/
 	    reserved:15,
 	    lnk_hdr:1;	/* Existence of a link-layer header	*/
-
-	/* USB/HSIC specific */
-	struct urb *urb; /* TX urb*/
-	bool nzlp; /* Non-Zero Length packet*/
 } __packed;
 
 static inline struct skbuff_private *skbpriv(struct sk_buff *skb)
@@ -304,6 +314,7 @@ struct io_device {
 	/* Misc and net device structures for the IO device */
 	struct miscdevice  miscdev;
 	struct net_device *ndev;
+	struct napi_struct napi;
 
 	/* ID and Format for channel on the link */
 	unsigned int id;
@@ -520,6 +531,8 @@ struct link_device {
 
 	/* Close (stop) TX with physical link (on CP crash, etc.) */
 	void (*close_tx)(struct link_device *ld);
+
+	int (*netdev_poll)(struct napi_struct *napi, int budget);
 
 	/* Above are common methods to all memory-type link devices           */
 	/*====================================================================*/
@@ -810,5 +823,6 @@ static inline bool rx_possible(struct modem_ctl *mc)
 }
 
 int sipc5_init_io_device(struct io_device *iod);
+int mem_netdev_poll(struct napi_struct *napi, int budget);
 
 #endif

@@ -33,6 +33,8 @@
 
 #include <asm/ioctls.h>
 #include <linux/sec_debug.h>
+#include <linux/sec_bsp.h>
+
 
 /**
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
@@ -467,9 +469,15 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 				    log->buffer[logger_offset \
 						(log, log->w_off + i)];
 			tmp[i] = '\0';
+
 			printk(KERN_INFO"%s\n", tmp);
 #ifdef CONFIG_SEC_DEBUG_TSP_LOG
 			sec_debug_tsp_log("%s\n", tmp);
+#endif
+#ifdef CONFIG_SEC_BSP
+			if (strncmp(tmp, "!@Boot", 6) == 0) {
+				sec_boot_stat_add(tmp);
+			}
 #endif
 		}
 	}

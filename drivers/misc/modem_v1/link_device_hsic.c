@@ -23,17 +23,6 @@
 #include "modem_utils.h"
 #include "link_device_hsic.h"
 
-static int usb_init_communication(struct link_device *ld, struct io_device *iod)
-{
-	return 0;
-}
-
-static void usb_terminate_communication(struct link_device *ld,
-			struct io_device *iod)
-{
-	return;
-}
-
 static void usb_free_urbs(struct usb_link_device *usb_ld,
 		struct if_usb_devdata *pipe)
 {
@@ -187,13 +176,11 @@ int usb_tx_skb(struct if_usb_devdata *pipe, struct sk_buff *skb)
 		goto done;
 	}
 
-	if (!skbpriv(skb)->nzlp)
+	if (!(pipe->info->flags & FLAG_SEND_NZLP))
 		urb->transfer_flags = URB_ZERO_PACKET;
 
 	usb_fill_bulk_urb(urb, pipe->usbdev, pipe->tx_pipe, skb->data,
 			skb->len, usb_tx_complete, (void *)skb);
-
-	skbpriv(skb)->urb = urb;
 
 	ret = usb_submit_urb(urb, mem_flags);
 	if (ret < 0) {
@@ -216,7 +203,6 @@ static void if_usb_disconnect(struct usb_interface *intf)
 	if (!pipe || pipe->disconnected)
 		return;
 
-	mif_com_log(pipe->iod->msd, "Called %s func\n", __func__);
 	pipe->usb_ld->if_usb_connected = 0;
 
 	if (pipe->info->unbind) {
@@ -233,7 +219,7 @@ static void if_usb_disconnect(struct usb_interface *intf)
 	return;
 }
 
-static int xmm626x_acm_bind(struct if_usb_devdata *pipe,
+static int xmm72xx_acm_bind(struct if_usb_devdata *pipe,
 		struct usb_interface *intf, struct usb_link_device *usb_ld)
 {
 	int ret;
@@ -348,7 +334,7 @@ found_data_desc:
 	return 0;
 }
 
-static void xmm626x_acm_unbind(struct if_usb_devdata *pipe,
+static void xmm72xx_acm_unbind(struct if_usb_devdata *pipe,
 	struct usb_interface *intf)
 {
 	usb_driver_release_interface(to_usb_driver(intf->dev.driver), intf);
@@ -445,7 +431,6 @@ static int if_usb_probe(struct usb_interface *intf,
 	switch (info->intf_id) {
 	case BOOT_DOWN:
 		usb_ld->if_usb_connected = 1;
-		mif_com_log(pipe->iod->msd, "<%s> BOOT_DOWN\n", __func__);
 		break;
 	default:
 		mif_err("undefined interface value(0x%x)\n", info->intf_id);
@@ -463,9 +448,10 @@ error_exit:
 
 static struct usb_id_info hsic_boot_down_info = {
 	.description = "HSIC boot",
+	.flags = FLAG_SEND_NZLP,
 	.intf_id = BOOT_DOWN,
-	.bind = xmm626x_acm_bind,
-	.unbind = xmm626x_acm_unbind,
+	.bind = xmm72xx_acm_bind,
+	.unbind = xmm72xx_acm_unbind,
 };
 static struct usb_device_id if_usb_ids[] = {
 	{ USB_DEVICE_AND_INTERFACE_INFO(0x8087, 0x07ef, USB_CLASS_CDC_DATA,
@@ -548,8 +534,6 @@ struct link_device *hsic_create_link_device(void *data)
 	ld = &usb_ld->ld;
 
 	ld->name = "hsic";
-	ld->init_comm = usb_init_communication;
-	ld->terminate_comm = usb_terminate_communication;
 	ld->send = usb_send;
 
 	ret = if_usb_init(ld);

@@ -312,12 +312,12 @@ static int fimc_is_3aa_video_set_format_mplane(struct file *file, void *fh,
 	}
 
 	if (V4L2_TYPE_IS_OUTPUT(format->type)) {
-		queue = &vctx->q_src;
+		queue = vctx->q_src;
 		fimc_is_ischain_3aa_s_format(device,
 			queue->framecfg.width,
 			queue->framecfg.height);
 	} else {
-		queue = &vctx->q_dst;
+		queue = vctx->q_dst;
 		fimc_is_subdev_s_format(leader,
 			queue->framecfg.width,
 			queue->framecfg.height);
@@ -937,10 +937,10 @@ static int fimc_is_3aa_buffer_finish(struct vb2_buffer *vb)
 #endif
 
 	if (V4L2_TYPE_IS_OUTPUT(vb->v4l2_buf.type)) {
-		queue = &vctx->q_src;
+		queue = vctx->q_src;
 		fimc_is_ischain_3aa_buffer_finish(device, index);
 	} else {
-		queue = &vctx->q_dst;
+		queue = vctx->q_dst;
 		fimc_is_subdev_buffer_finish(subdev, index);
 	}
 

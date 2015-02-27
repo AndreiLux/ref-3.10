@@ -150,6 +150,12 @@ static inline void ptep_set_wrprotect(struct mm_struct *mm, unsigned long addres
 }
 #endif
 
+static inline void ptep_set_nxprotect(struct mm_struct *mm, unsigned long address, pte_t *ptep)
+{
+	pte_t old_pte = *ptep;
+	set_pte_at(mm, address, ptep, pte_mknoexec(old_pte));
+}
+
 #ifndef __HAVE_ARCH_PMDP_SET_WRPROTECT
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 static inline void pmdp_set_wrprotect(struct mm_struct *mm,

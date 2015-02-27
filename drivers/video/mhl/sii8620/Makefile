@@ -75,6 +75,11 @@ ccflags-y += -DMANUAL_EDID_FETCH
 # Enable only if you must for debugging.
 #ccflags-y += -DPRINT_DDC_ABORTS
 
+# CoC_FSM_MONITORING exports CoC state machine to GPIO pins
+# Enable only if you must for debugging.
+#ccflags-y += -DCoC_FSM_MONITORING
+#ccflags-y += -DGPIO_OSCILLOSCOPE_DEBUG
+
 # For si_emsc_hid-mt.c
 ccflags-y += -Idrivers/hid
 

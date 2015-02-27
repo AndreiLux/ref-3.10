@@ -1363,7 +1363,7 @@ static int bcm4773_spi_probe( struct spi_device *spi )
 		}
 	}	
 
-#ifdef SUPORT_MCU_HOST_WAKE
+#ifdef SUPPORT_MCU_HOST_WAKE
 	if (of_property_read_u32(spi->dev.of_node, "[SSPBBD]: ssp-hw-rev", &gpbbd_dev->hw_rev)) {
 		/* default value is zero(open) for old hw */
 		gpbbd_dev->hw_rev = 0;
@@ -1388,6 +1388,11 @@ static int bcm4773_spi_probe( struct spi_device *spi )
 		 *  - gpio_export(pdata->mcu_int1,1);
 		 *  - gpio_direction_input(pdata->mcu_int1);
 		 */
+
+	if (pdata->mcu_int1<0) {
+		pr_err(PFX "[SSPBBD]: Failed to get mcu_ap_int1 from DT, err %d\n",pdata->mcu_int1);
+		return -1;
+	}
 
 	spi->irq = gpio_to_irq(pdata->mcu_int1);
 	if ( spi->irq < 0 ) {
@@ -1755,6 +1760,8 @@ static int bcm4773_resume( struct spi_device *spi )
 		enable_irq(bport->port.irq);
 	}
 	spin_unlock_irqrestore( &bport->irq_lock, flags);
+
+	wake_lock_timeout(&g_bport->bcm4773_wake_lock, HZ/2);
 
 	return 0;
 }

@@ -167,36 +167,9 @@ void dsim_reg_sw_reset(void)
 	dsim_write_mask(DSIM_SWRST, ~0, DSIM_SWRST_RESET);
 }
 
-static int dsim_reg_is_sw_reset_release(void)
+void dsim_reg_function_reset(void)
 {
-	u32 val;
-
-	val = dsim_read(DSIM_STATUS);
-	if (val & DSIM_STATUS_SWRST_RLS)
-		return 1;
-
-	return 0;
-}
-
-int dsim_reg_function_reset(void)
-{
-	u32 state;
-	u32 cnt = 1000;
-
 	dsim_write_mask(DSIM_SWRST, ~0, DSIM_SWRST_FUNCRST);
-
-	do {
-		state = dsim_reg_is_sw_reset_release();
-		cnt--;
-		udelay(10);
-	} while (!state && cnt);
-
-	if (!cnt) {
-		dsim_err("DSI software reset status is not release state.\n");
-		return -EBUSY;
-	}
-
-	return 0;
 }
 
 void dsim_reg_dp_dn_swap(u32 en)
@@ -253,12 +226,11 @@ void dsim_reg_set_dphy_timing_values(struct dphy_timing_value *t)
 	dsim_write(DSIM_PHYTIMING2, val);
 
 	val = DSIM_PHYCTRL_B_DPHYCTL(t->b_dphyctl) |
-		DSIM_PHYCTRL_B_DPHYCTL_VREG_LP;
-	mask = DSIM_PHYCTRL_B_DPHYCTL_MASK | DSIM_PHYCTRL_B_DPHYCTL_VREG_LP;
-#if defined(CONFIG_DECON_LCD_EA8064G) && !defined(CONFIG_SEC_FACTORY)	/* Should be removed */
-	val |= DSIM_PHYCTRL_B_DPHYCTL_SLEW_UP;
-	mask |= DSIM_PHYCTRL_B_DPHYCTL_SLEW_UP;
-#endif
+		DSIM_PHYCTRL_B_DPHYCTL_VREG_LP |
+		DSIM_PHYCTRL_B_DPHYCTL_SLEW_UP;
+	mask = DSIM_PHYCTRL_B_DPHYCTL_MASK |
+		DSIM_PHYCTRL_B_DPHYCTL_VREG_LP |
+		DSIM_PHYCTRL_B_DPHYCTL_SLEW_UP;
 	dsim_write_mask(DSIM_B_DPHYCTRL, val, mask);
 
 	val = DSIM_PHYCTRL_M_DPHYCTL_VREG_HS;
@@ -891,6 +863,22 @@ int dsim_reg_set_lanes(u32 lanes, u32 en)
 	return 0;
 }
 
+void dsim_reg_set_mdclk(u32 enbyteclk)
+{
+	/* 0:External CLK, 1:BYTECLK */
+	u32 val = enbyteclk ? ~0 : 0;
+	dsim_write_mask(DSIM_CONFIG, val, DSIM_CONFIG_MDCLK);
+}
+
+void dsim_reg_set_link_standby(void)
+{
+	dsim_reg_set_mdclk(1);
+	/* reset ip state_machine */
+	dsim_reg_function_reset();
+	dsim_reg_set_standby(1);
+	dsim_reg_set_mdclk(0);
+}
+
 int dsim_reg_set_hs_clock(u32 en)
 {
 	int ret;
@@ -904,8 +892,8 @@ int dsim_reg_set_hs_clock(u32 en)
 		ret = dsim_reg_wait_hs_clk_ready();
 		if (ret)
 			return ret;
-		/* MD standby on */
-		dsim_reg_set_standby(1);
+
+		dsim_reg_set_link_standby();
 	} else {
 		/* MD stand_by off */
 		dsim_reg_set_standby(0);

@@ -105,6 +105,8 @@ no_pgd:
 	return NULL;
 }
 
+
+
 void pgd_free(struct mm_struct *mm, pgd_t *pgd_base)
 {
 	pgd_t *pgd;
@@ -114,10 +116,17 @@ void pgd_free(struct mm_struct *mm, pgd_t *pgd_base)
 #ifdef  CONFIG_TIMA_RKP_L1_TABLES
 	unsigned long cmd_id = 0x8380b000;
 
-#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
-        __asm__ __volatile__(".arch_extension sec\n");
+#ifndef rkp_call
+#ifdef CONFIG_HYP_RKP 
+#define rkp_call "hvc #11\n"
+ __asm__ __volatile__(".arch_extension virt\n");
+#else  //!CONFIG_HYP_RKP
+#define rkp_call "smc #11\n" 
+ __asm__ __volatile__(".arch_extension sec\n");
+#endif	//CONFIG_HYP_RKP
 #endif
-#endif
+
+#endif //CONFIG_TIMA_RKP_L1_TABLES
 
 	if (!pgd_base)
 		return;
@@ -169,11 +178,11 @@ no_pgd:
 		"mov   	r2, r0\n"  /*mcr_val in r2 in fastcall */
 		"mov    r0, %0\n"
 		"mov    r1, %1\n"
-		"smc    #11\n"
+		rkp_call
 		"mov    r0, #0\n"
 		"mcr    p15, 0, r0, c8, c3, 0\n"
-       	"dsb\n"
-       	"isb\n"
+		"dsb\n"
+		"isb\n"
 		"pop    {r0-r2}\n"
 		::"r"(cmd_id),"r"(pgd):"r0","r1","r2","cc");
 #endif

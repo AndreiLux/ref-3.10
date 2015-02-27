@@ -984,6 +984,18 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	}
 	temp = max(max, gpu_temp);
 
+#ifdef CONFIG_SOC_EXYNOS5433
+	if (alltemp[3] > 80 && alltemp[3] < 86 && max < 101) {
+		max = 98;
+		if (alltemp[2] < 96)
+			gpu_temp = 98;
+	}
+	else if (alltemp[3] > 85) {
+		max = 112;
+		gpu_temp = 112;
+	}
+#endif
+
 #ifdef CONFIG_EXYNOS_SWTRIP
 	if (max >= SWTRIP_TEMP)
 		swtrip_counter++;

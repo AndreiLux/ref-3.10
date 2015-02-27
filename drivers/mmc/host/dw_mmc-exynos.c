@@ -1095,11 +1095,9 @@ static int find_median_of_16bits(struct dw_mci *host, unsigned int map, bool for
 
 	orig_bits = map | (map << 16);
 
-	if (divratio == 1) {
+	if (divratio == 1)
 		if (!(priv->ctrl_flag & DW_MMC_EXYNOS_ENABLE_SHIFT))
 			orig_bits = orig_bits & (orig_bits >> 8);
-		i = 3;
-	}
 
 	for (i = 0; i < NUM_OF_MASK; i++) {
 		sel = __find_median_of_16bits(orig_bits, mask[i], NUM_OF_MASK-i);

@@ -156,12 +156,12 @@ struct vfsspi_device_data {
 };
 
 enum {
-	SENSOR_VIPER = 0,
+	SENSOR_FAILED = 0,
+	SENSOR_VIPER,
 	SENSOR_RAPTOR,
-	SENSOR_FAILED,
 };
 
-char sensor_status[3][7] = {"viper", "raptor", "failed"};
+char sensor_status[3][7] = {"failed", "viper", "raptor"};
 
 struct vfsspi_device_data *g_data;
 

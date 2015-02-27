@@ -862,6 +862,7 @@ static int print_wakeup_source_stats(struct seq_file *m,
 static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 {
 	struct wakeup_source *ws;
+	unsigned int cnt, inpr;
 
 	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
 		"expire_count\tactive_since\ttotal_time\tmax_time\t"
@@ -872,6 +873,9 @@ static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 		print_wakeup_source_stats(m, ws);
 	rcu_read_unlock();
 
+	split_counters(&cnt, &inpr);
+	seq_printf(m, "\nRegistered wakeup events: %u\n"
+			"Wakeup events in progress: %u\n", cnt, inpr);
 	return 0;
 }
 

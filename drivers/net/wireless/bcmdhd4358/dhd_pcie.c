@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_pcie.c 501162 2014-09-08 03:52:30Z $
+ * $Id: dhd_pcie.c 503125 2014-09-17 11:56:12Z $
  */
 
 
@@ -552,6 +552,7 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 
 	bus->wait_for_d3_ack = 1;
 	bus->suspended = FALSE;
+	bus->force_suspend = 0;
 	DHD_TRACE(("%s: EXIT: SUCCESS\n",
 		__FUNCTION__));
 	return 0;
@@ -781,6 +782,7 @@ void dhd_bus_stop(struct dhd_bus *bus, bool enforce_mutex)
 
 	/* Clear rx control and wake any waiters */
 	bus->rxlen = 0;
+	dhd_os_set_ioctl_resp_timeout(IOCTL_DISABLE_TIMEOUT);
 	dhd_os_ioctl_resp_wake(bus->dhd);
 
 done:
@@ -1374,11 +1376,23 @@ int dhd_bus_rxctl(struct dhd_bus *bus, uchar *msg, uint msglen)
 	else
 		bus->dhd->rx_ctlerrs++;
 
-	if (bus->dhd->rxcnt_timeout >= MAX_CNTL_TX_TIMEOUT)
+	if (bus->dhd->rxcnt_timeout >= MAX_CNTL_RX_TIMEOUT) {
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+		bus->islinkdown = TRUE;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 		return -ETIMEDOUT;
+	}
 
-	if (bus->dhd->dongle_trap_occured)
+	if (bus->dhd->dongle_trap_occured) {
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+		bus->islinkdown = TRUE;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
 		return -EREMOTEIO;
+	}
 
 	return rxlen ? (int)rxlen : -EIO;
 
@@ -1813,7 +1827,9 @@ dhd_bus_schedule_queue(struct dhd_bus  *bus, uint16 flow_id, bool txs)
 			PKTORPHAN(txp);
 
 #ifdef DHDTCPACK_SUPPRESS
-		dhd_tcpack_check_xmit(bus->dhd, txp);
+		if (bus->dhd->tcpack_sup_mode != TCPACK_SUP_HOLD) {
+			dhd_tcpack_check_xmit(bus->dhd, txp);
+		}
 #endif /* DHDTCPACK_SUPPRESS */
 			/* Attempt to transfer packet over flow ring */
 
@@ -1865,7 +1881,7 @@ dhd_bus_txdata(struct dhd_bus *bus, void *txp, uint8 ifidx)
 		if ((flowid >= bus->dhd->num_flow_rings) ||
 			(!flow_ring_node->active) ||
 			(flow_ring_node->status == FLOW_RING_STATUS_DELETE_PENDING)) {
-			DHD_INFO(("%s: Dropping pkt flowid %d, status %d active %d\n",
+			DHD_ERROR(("%s: Dropping pkt flowid %d, status %d active %d\n",
 				__FUNCTION__, flowid, flow_ring_node->status,
 				flow_ring_node->active));
 			ret = BCME_ERROR;
@@ -1937,10 +1953,10 @@ void
 dhd_bus_update_retlen(dhd_bus_t *bus, uint32 retlen, uint32 pkt_id, uint16 status,
 	uint32 resp_len)
 {
-	bus->rxlen = retlen;
 	bus->ioct_resp.cmn_hdr.request_id = pkt_id;
 	bus->ioct_resp.compl_hdr.status = status;
 	bus->ioct_resp.resp_len = (uint16)resp_len;
+	 bus->rxlen = retlen;
 }
 
 #if defined(DHD_DEBUG)
@@ -2815,7 +2831,7 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 			int_val);
 		int_val = si_corereg(bus->sih, bus->sih->buscoreidx,
 			OFFSETOF(sbpcieregs_t, configdata), 0, 0);
-		bcopy(&int_val, arg, val_size);
+		bcopy(&int_val, arg, sizeof(int_val));
 		break;
 
 	case IOV_GVAL(IOV_BAR0_SECWIN_REG):
@@ -2916,7 +2932,7 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		break;
 	case IOV_GVAL(IOV_PCIECOREREG):
 		int_val = si_corereg(bus->sih, bus->sih->buscoreidx, int_val, 0, 0);
-		bcopy(&int_val, arg, val_size);
+		bcopy(&int_val, arg, sizeof(int_val));
 		break;
 
 	case IOV_SVAL(IOV_PCIECFGREG):
@@ -2925,7 +2941,7 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 
 	case IOV_GVAL(IOV_PCIECFGREG):
 		int_val = OSL_PCI_READ_CONFIG(bus->osh, int_val, 4);
-		bcopy(&int_val, arg, val_size);
+		bcopy(&int_val, arg, sizeof(int_val));
 		break;
 
 	case IOV_SVAL(IOV_PCIE_LPBK):
@@ -2942,7 +2958,9 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		break;
 
 	case IOV_SVAL(IOV_PCIE_SUSPEND):
+		bus->force_suspend = 1;
 		dhdpcie_bus_suspend(bus, bool_val);
+		bus->force_suspend = 0;
 		break;
 
 	case IOV_GVAL(IOV_MEMSIZE):
@@ -3104,7 +3122,7 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 		d2h_support = DMA_INDX_ENAB(bus->dhd->dma_d2h_ring_upd_support) ? 1 : 0;
 		h2d_support = DMA_INDX_ENAB(bus->dhd->dma_h2d_ring_upd_support) ? 1 : 0;
 		int_val = d2h_support | (h2d_support << 1);
-		bcopy(&int_val, arg, val_size);
+		bcopy(&int_val, arg, sizeof(int_val));
 		break;
 	}
 	case IOV_SVAL(IOV_DMA_RINGINDICES):
@@ -3246,6 +3264,7 @@ dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state)
 
 	int timeleft;
 	bool pending;
+	unsigned long flags;
 	int rc = 0;
 
 	if (bus->dhd == NULL) {
@@ -3256,10 +3275,13 @@ dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state)
 		DHD_ERROR(("prot is not inited\n"));
 		return BCME_ERROR;
 	}
+	DHD_GENERAL_LOCK(bus->dhd, flags);
 	if (bus->dhd->busstate != DHD_BUS_DATA && bus->dhd->busstate != DHD_BUS_SUSPEND) {
 		DHD_ERROR(("not in a readystate to LPBK  is not inited\n"));
+		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 		return BCME_ERROR;
 	}
+	DHD_GENERAL_UNLOCK(bus->dhd, flags);
 	if (bus->dhd->dongle_reset)
 		return -EIO;
 
@@ -3269,7 +3291,16 @@ dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state)
 	if (state) {
 		bus->wait_for_d3_ack = 0;
 		bus->suspended = TRUE;
+		DHD_GENERAL_LOCK(bus->dhd, flags);
 		bus->dhd->busstate = DHD_BUS_SUSPEND;
+		if (bus->dhd->tx_in_progress) {
+			DHD_ERROR(("Tx Request is not ended\n"));
+			bus->dhd->busstate = DHD_BUS_DATA;
+			DHD_GENERAL_UNLOCK(bus->dhd, flags);
+			bus->suspended = FALSE;
+			return -EBUSY;
+		}
+		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 		DHD_OS_WAKE_LOCK_WAIVE(bus->dhd);
 		dhd_os_set_ioctl_resp_timeout(DEFAULT_IOCTL_RESP_TIMEOUT);
 		dhdpcie_send_mb_data(bus, H2D_HOST_D3_INFORM);
@@ -3278,41 +3309,42 @@ dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state)
 		DHD_OS_WAKE_LOCK_RESTORE(bus->dhd);
 		if (bus->wait_for_d3_ack) {
 			/* Got D3 Ack. Suspend the bus */
-			if (dhd_os_check_wakelock_all(bus->dhd)) {
+			if (!bus->force_suspend && dhd_os_check_wakelock_all(bus->dhd)) {
 				DHD_ERROR(("Suspend failed because of wakelock\n"));
-				bus->dev->current_state = PCI_D3hot;
-				pci_set_master(bus->dev);
-				rc = pci_set_power_state(bus->dev, PCI_D0);
-				if (rc) {
-					DHD_ERROR(("%s: pci_set_power_state failed:"
-						" current_state[%d], ret[%d]\n",
-						__FUNCTION__, bus->dev->current_state, rc));
-				}
 				bus->suspended = FALSE;
+				DHD_GENERAL_LOCK(bus->dhd, flags);
 				bus->dhd->busstate = DHD_BUS_DATA;
+				DHD_GENERAL_UNLOCK(bus->dhd, flags);
 				rc = BCME_ERROR;
 			} else {
 				dhdpcie_bus_intr_disable(bus);
-				rc = dhdpcie_pci_suspend_resume(bus->dev, state);
+				rc = dhdpcie_pci_suspend_resume(bus, state);
 			}
+			bus->dhd->d3ackcnt_timeout = 0;
 		} else if (timeleft == 0) {
-			DHD_ERROR(("%s: resumed on timeout for D3 ACK\n", __FUNCTION__));
+			bus->dhd->d3ackcnt_timeout++;
+			DHD_ERROR(("%s: resumed on timeout for D3 ACK d3_inform_cnt %d \n",
+				__FUNCTION__, bus->dhd->d3ackcnt_timeout));
 #if defined(DHD_DEBUG) && defined(CUSTOMER_HW4)
 			if (bus->dhd->memdump_enabled) {
 				/* write core dump to file */
 				dhdpcie_mem_dump(bus);
 			}
 #endif /* DHD_DEBUG && CUSTOMER_HW4 */
-			bus->dev->current_state = PCI_D3hot;
-			pci_set_master(bus->dev);
-			rc = pci_set_power_state(bus->dev, PCI_D0);
-			if (rc) {
-				DHD_ERROR(("%s: pci_set_power_state failed:"
-					" current_state[%d], ret[%d]\n",
-					__FUNCTION__, bus->dev->current_state, rc));
-			}
 			bus->suspended = FALSE;
+			DHD_GENERAL_LOCK(bus->dhd, flags);
 			bus->dhd->busstate = DHD_BUS_DATA;
+			DHD_GENERAL_UNLOCK(bus->dhd, flags);
+			if (bus->dhd->d3ackcnt_timeout >= MAX_CNTL_D3ACK_TIMEOUT) {
+				DHD_ERROR(("%s: Event HANG send up "
+						"due to PCIe linkdown\n", __FUNCTION__));
+#ifdef SUPPORT_LINKDOWN_RECOVERY
+#ifdef CONFIG_ARCH_MSM
+				bus->islinkdown = TRUE;
+#endif /* CONFIG_ARCH_MSM */
+#endif /* SUPPORT_LINKDOWN_RECOVERY */
+				dhd_os_check_hang(bus->dhd, 0, -ETIMEDOUT);
+			}
 			rc = -ETIMEDOUT;
 		}
 		bus->wait_for_d3_ack = 1;
@@ -3321,9 +3353,11 @@ dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state)
 #ifdef BCMPCIE_OOB_HOST_WAKE
 		DHD_OS_OOB_IRQ_WAKE_UNLOCK(bus->dhd);
 #endif /* BCMPCIE_OOB_HOST_WAKE */
-		rc = dhdpcie_pci_suspend_resume(bus->dev, state);
+		rc = dhdpcie_pci_suspend_resume(bus, state);
 		bus->suspended = FALSE;
+		DHD_GENERAL_LOCK(bus->dhd, flags);
 		bus->dhd->busstate = DHD_BUS_DATA;
+		DHD_GENERAL_UNLOCK(bus->dhd, flags);
 		dhdpcie_bus_intr_enable(bus);
 	}
 	return rc;
@@ -3600,6 +3634,10 @@ int
 dhdpcie_downloadvars(dhd_bus_t *bus, void *arg, int len)
 {
 	int bcmerror = BCME_OK;
+#ifdef KEEP_JP_REGREV
+	char *tmpbuf;
+	uint tmpidx;
+#endif /* KEEP_JP_REGREV */
 
 	DHD_TRACE(("%s: Enter\n", __FUNCTION__));
 
@@ -3626,10 +3664,81 @@ dhdpcie_downloadvars(dhd_bus_t *bus, void *arg, int len)
 
 	/* Copy the passed variables, which should include the terminating double-null */
 	bcopy(arg, bus->vars, bus->varsz);
+#ifdef KEEP_JP_REGREV
+	if (bus->vars != NULL && bus->varsz > 0) {
+		tmpbuf = MALLOCZ(bus->dhd->osh, bus->varsz + 1);
+		if (tmpbuf == NULL) {
+			goto err;
+		}
+		memcpy(tmpbuf, bus->vars, bus->varsz);
+		for (tmpidx = 0; tmpidx < bus->varsz; tmpidx++) {
+			if (tmpbuf[tmpidx] == 0) {
+				tmpbuf[tmpidx] = '\n';
+			}
+		}
+		bus->dhd->vars_ccode[0] = 0;
+		bus->dhd->vars_regrev = 0;
+		sscanf(strstr(tmpbuf, "ccode"), "ccode=%s\n", bus->dhd->vars_ccode);
+		sscanf(strstr(tmpbuf, "regrev"), "regrev=%u\n", &(bus->dhd->vars_regrev));
+		MFREE(bus->dhd->osh, tmpbuf, bus->varsz + 1);
+	}
+#endif /* KEEP_JP_REGREV */
 err:
 	return bcmerror;
 }
 
+#ifndef BCMPCIE_OOB_HOST_WAKE
+uint8
+dhdpcie_find_pci_capability(osl_t *osh, uint8 req_cap_id)
+{
+	uint8 cap_id;
+	uint8 cap_ptr = 0;
+	uint8 byte_val;
+	byte_val = read_pci_cfg_byte(PCI_CFG_HDR);
+	if ((byte_val & 0x7f) != PCI_HEADER_NORMAL) {
+		DHD_ERROR(("%s : PCI config header not normal.\n", __FUNCTION__));
+		goto end;
+	}
+	byte_val = read_pci_cfg_byte(PCI_CFG_STAT);
+	if (!(byte_val & PCI_CAPPTR_PRESENT)) {
+		DHD_ERROR(("%s : PCI CAP pointer not present.\n", __FUNCTION__));
+		goto end;
+	}
+	cap_ptr = read_pci_cfg_byte(PCI_CFG_CAPPTR);
+	if (cap_ptr == 0x00) {
+		DHD_ERROR(("%s : PCI CAP pointer is 0x00.\n", __FUNCTION__));
+		goto end;
+	}
+	cap_id = read_pci_cfg_byte(cap_ptr);
+	while (cap_id != req_cap_id) {
+		cap_ptr = read_pci_cfg_byte((cap_ptr + 1));
+		if (cap_ptr == 0x00) break;
+		cap_id = read_pci_cfg_byte(cap_ptr);
+	}
+end:
+	return cap_ptr;
+}
+void
+dhdpcie_pme_active(osl_t *osh, bool enable)
+{
+	uint8 cap_ptr;
+	uint32 pme_csr;
+	cap_ptr = dhdpcie_find_pci_capability(osh, PCI_CAP_POWERMGMTCAP_ID);
+	if (!cap_ptr) {
+		DHD_ERROR(("%s : Power Management Capability not present\n", __FUNCTION__));
+		return;
+	}
+	pme_csr = OSL_PCI_READ_CONFIG(osh, cap_ptr + PME_CSR_OFFSET, sizeof(uint32));
+	DHD_ERROR(("%s : pme_sts_ctrl 0x%x\n", __FUNCTION__, pme_csr));
+	pme_csr |= PME_CSR_PME_STAT;
+	if (enable) {
+		pme_csr |= PME_CSR_PME_EN;
+	} else {
+		pme_csr &= ~PME_CSR_PME_EN;
+	}
+	OSL_PCI_WRITE_CONFIG(osh, cap_ptr + PME_CSR_OFFSET, sizeof(uint32), pme_csr);
+}
+#endif /* BCMPCIE_OOB_HOST_WAKE */
 /* Add bus dump output to a buffer */
 void dhd_bus_dump(dhd_pub_t *dhdp, struct bcmstrbuf *strbuf)
 {

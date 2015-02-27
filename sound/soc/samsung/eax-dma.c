@@ -736,6 +736,8 @@ static int eax_mixer_remove(struct runtime_data *prtd)
 
 	list_del(&bi->node);
 	spin_unlock_irqrestore(&mi.lock, flags);
+
+	kfree(bi);
 	pr_debug("%s: prtd %p removed\n", __func__, prtd);
 
 	return 0;

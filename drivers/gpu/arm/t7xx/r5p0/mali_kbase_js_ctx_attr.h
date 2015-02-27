@@ -40,9 +40,6 @@
  * @{
  */
 
-/** NOTE: Must be kept in sync with BASE_JD_PRIO_<...> definitions */
-extern const enum kbasep_js_ctx_attr kbasep_js_ctx_attr_prio_table[BASE_JD_NR_PRIO_LEVELS];
-
 /**
  * Set the initial attributes of a context (when context create flags are set)
  *
@@ -181,7 +178,8 @@ static INLINE mali_bool kbasep_js_ctx_attr_is_attr_on_ctx(struct kbase_context *
  * Convert an atom priority to Context Attribute
  */
 static INLINE enum kbasep_js_ctx_attr
-kbasep_js_ctx_attr_sched_prio_to_attr(int sched_priority)
+kbasep_js_ctx_attr_sched_prio_to_attr(base_jd_core_req core_req,
+                                      int sched_priority)
 {
 	int idx;
 	int ret;
@@ -189,8 +187,18 @@ kbasep_js_ctx_attr_sched_prio_to_attr(int sched_priority)
 			   && sched_priority <= KBASE_JS_ATOM_SCHED_PRIO_MAX);
 	/* Map to 0-based index */
 	idx = sched_priority - KBASE_JS_ATOM_SCHED_PRIO_MIN;
-	/* Map to enum */
-	ret = idx + KBASEP_JS_CTX_ATTR_ATOM_PRIORITY_FIRST;
+
+	if (!DEFAULT_ATOM_PRIORITY_BLOCKS_ENTIRE_GPU) {
+		/* Map to frag/non-frag enum */
+		if (core_req & BASE_JD_REQ_FS)
+			ret = idx + KBASEP_JS_CTX_ATTR_FRAG_PRIORITY_FIRST;
+		else
+			ret = idx + KBASEP_JS_CTX_ATTR_NONFRAG_PRIORITY_FIRST;
+	} else {
+		/* Map everything to the non-fragment enum */
+		ret = idx + KBASEP_JS_CTX_ATTR_NONFRAG_PRIORITY_FIRST;
+	}
+
 	return (enum kbasep_js_ctx_attr)ret;
 }
 

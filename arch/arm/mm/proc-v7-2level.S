@@ -8,6 +8,16 @@
  * published by the Free Software Foundation.
  */
 
+#ifdef CONFIG_TIMA_RKP
+#ifdef CONFIG_HYP_RKP 
+#define rkp_call hvc
+.arch_extension virt
+#else
+#define rkp_call smc
+.arch_extension sec
+#endif	//CONFIG_HYP_RKP
+#endif //CONFIG_TIMA_RKP
+		
 #define TTB_S		(1 << 1)
 #define TTB_RGN_NC	(0 << 3)
 #define TTB_RGN_OC_WBWA	(1 << 3)
@@ -67,8 +77,9 @@ ENTRY(cpu_v7_switch_mm)
         mov     r2,  r0
        /* r0: command */
         ldr     r0, =0x83803000
-        smc     #1
+        rkp_call     #1
        /* Restore r0 and r2 */
+	
         ldmfd   sp!, {r0-r4}
 	/* Invalidate all  TLB */
 	mcr    p15, 0, r0, c8, c3, 0  /*if the L2 monitoring 2 is enable, then we need to flush the TLB right here for HA3G otherwise, it is not necessary*/ 
@@ -90,7 +101,7 @@ ENTRY(cpu_v7_tima_iommu_opt)
 	mov		r1, r0
 	stmfd   sp!,{r0}
 	ldr     r0, =0x83820000        @cmd_id=0x20
-	smc     #1
+	rkp_call     #1
 	pop		{r0}
 	/* Invalidate entire unified TLB */
 	mcr     p15, 0, r0, c8, c3, 0
@@ -165,7 +176,7 @@ ENTRY(cpu_v7_tima_set_pte_ext)
 //	dsb
 //	isb
 	ldr     r0, =0x83807000
-	smc     #2
+	rkp_call     #2
 	pop	{r0}
 	/** Cache invalidate again to ensure no 
 	 *  values re-cached by speculative fetching
@@ -179,7 +190,7 @@ ENTRY(cpu_v7_tima_set_pte_ext)
 	beq	2f     
 	stmfd	sp!, {r0}
 	ldr		r0, =0x8380f000		@cmd_id=0x0f
-	smc		#2	
+	rkp_call		#2	
 	pop	{r0}
 2:
 #endif
@@ -193,7 +204,7 @@ ENTRY(cpu_v7_tima_set_pte_ext)
 	beq	3f
 	stmfd	sp!, {r0}
 	ldr	r0, =0x8380f000		@cmd_id=0x0f
-	smc	#2
+	rkp_call	#2
 	pop	{r0}
 3:
 #endif

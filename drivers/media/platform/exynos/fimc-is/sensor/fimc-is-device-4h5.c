@@ -114,6 +114,8 @@ int sensor_4h5_probe(struct i2c_client *client,
 	module->position = SENSOR_POSITION_REAR;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_4;
+	module->sensor_maker = "SLSI";
+	module->sensor_name = "S5K4H5";
 	module->setfile_name = "setfile_4h5.bin";
 	module->cfgs = ARRAY_SIZE(config_4h5);
 	module->cfg = config_4h5;

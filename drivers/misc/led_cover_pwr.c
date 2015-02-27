@@ -70,8 +70,6 @@ static int __init cover_pwr_init(void)
 		return -EINVAL;
 	}
 
-	gpio_direction_output(gpio, 0);
-
 	cover_dev = sec_device_create(NULL, "ledcover");
 	if (IS_ERR(cover_dev)) {
 		pr_info("%s: Failed to create device for\

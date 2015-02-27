@@ -242,10 +242,8 @@ extern bool
 wl_cfgp2p_is_gas_action(void *frame, u32 frame_len);
 extern bool
 wl_cfgp2p_find_gas_subtype(u8 subtype, u8* data, u32 len);
-#ifdef CUSTOMER_HW4
 extern bool
 wl_cfgp2p_is_p2p_gas_action(void *frame, u32 frame_len);
-#endif /* CUSTOMER_HW4 */
 extern void
 wl_cfgp2p_print_actframe(bool tx, void *frame, u32 frame_len, u32 channel);
 extern s32
@@ -389,6 +387,10 @@ extern int
 wl_cfgp2p_del_p2p_disc_if(struct wireless_dev *wdev, struct bcm_cfg80211 *cfg);
 #endif /* WL_CFG80211_P2P_DEV_IF */
 
+extern void
+wl_cfgp2p_need_wait_actfrmae(struct bcm_cfg80211 *cfg, void *frame, u32 frame_len, bool tx);
+extern int
+wl_cfgp2p_is_p2p_specific_scan(struct cfg80211_scan_request *request);
 /* WiFi Direct */
 #define SOCIAL_CHAN_1 1
 #define SOCIAL_CHAN_2 6
@@ -402,6 +404,7 @@ wl_cfgp2p_del_p2p_disc_if(struct wireless_dev *wdev, struct bcm_cfg80211 *cfg);
 #define WL_P2P_WILDCARD_SSID_LEN 7
 #define WL_P2P_INTERFACE_PREFIX "p2p"
 #define WL_P2P_TEMP_CHAN 11
+#define WL_P2P_AF_STATUS_OFFSET 9
 
 /* If the provision discovery is for JOIN operations,
  * or the device discoverablity frame is destined to GO

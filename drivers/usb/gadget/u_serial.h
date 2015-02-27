@@ -46,6 +46,17 @@ struct gserial {
 	/* REVISIT avoid this CDC-ACM support harder ... */
 	struct usb_cdc_line_coding port_line_coding;	/* 9600-8-N-1 etc */
 
+	u16				serial_state;
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_DIAG_BRIDGE
+	/* control signal callbacks*/
+	unsigned int (*get_dtr)(struct gserial *p);
+	unsigned int (*get_rts)(struct gserial *p);
+	unsigned int (*send_carrier_detect)(struct gserial *p, unsigned int);
+	unsigned int (*send_ring_indicator)(struct gserial *p, unsigned int);
+	int (*send_modem_ctrl_bits)(struct gserial *p, int ctrl_bits);
+	/* notification changes to modem */
+	void (*notify_modem)(void *gser, u8 portno, int ctrl_bits);
+#endif
 	/* notification callbacks */
 	void (*connect)(struct gserial *p);
 	void (*disconnect)(struct gserial *p);

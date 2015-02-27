@@ -881,6 +881,23 @@ void sec_debug_check_crash_key(unsigned int code, int value)
 				}
 			}
 		}
+
+#if defined(CONFIG_SEC_DEBUG_TSP_LOG) && defined(CONFIG_TOUCHSCREEN_FTS)
+		/* dump TSP rawdata
+		 *	Hold volume up key first
+		 *	and then press home key twice
+		 *	and volume down key should not be pressed
+		 */
+		if (volup_p && !voldown_p) {
+			if (code == KEY_HOMEPAGE) {
+				pr_info
+				    ("%s: count to dump tsp rawdata : %d\n",
+				     __func__, ++loopcount);
+				if (loopcount == 2)
+					tsp_dump();
+			}
+		}
+#endif
 	} else {
 		if (code == VOLUME_UP)
 			volup_p = false;

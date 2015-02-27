@@ -116,6 +116,11 @@
 #define SOFTKEY_BLOCK_DURATION (HZ / 10)
 
 /* LCD freq sync */
+#ifdef CONFIG_WACOM_LCD_FREQ_COMPENSATE
+/* NOISE from LDI. read Vsync at wacom firmware. */
+#define LCD_FREQ_SYNC
+#endif
+
 #ifdef LCD_FREQ_SYNC
 #define LCD_FREQ_BOTTOM 60100
 #define LCD_FREQ_TOP 60500

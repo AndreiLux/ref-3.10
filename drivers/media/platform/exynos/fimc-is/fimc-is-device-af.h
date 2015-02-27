@@ -27,3 +27,4 @@ struct remove_af_noise {
 int fimc_is_af_i2c_read(struct i2c_client *client, u16 addr, u16 *data);
 int fimc_is_af_i2c_write(struct i2c_client *client ,u16 addr, u16 data);
 int16_t fimc_is_af_enable(void *device, bool onoff);
+int16_t fimc_is_af_move_lens(struct fimc_is_core *core);

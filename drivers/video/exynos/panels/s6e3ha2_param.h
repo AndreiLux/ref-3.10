@@ -444,112 +444,67 @@ static struct lcd_seq_info SEQ_ALPM_OFF_SET[] = {
 #endif
 
 #ifdef CONFIG_LCD_HMT
-static const unsigned char SEQ_HMT_SINGLE1[] = {	/* G.Param */
-	0xB0, 0x03
+
+static const unsigned char SEQ_HMT_SINGLE1[] = { /* Display Setting. Porch Setting*/
+	0xF2,
+	0x67, 0x41, 0xC5, 0x0A, 0x06
 };
 
-static const unsigned char SEQ_HMT_SINGLE2[] = { /* Display Setting. Porch Setting*/
-	0xF2, 0x0A, 0x06
+static const unsigned char SEQ_HMT_SINGLE2[] = {	/* AID Setting AID 1-Cycle */
+	0xB2,
+	0x03, 0x10, 0x00, 0x0A, 0x0A, 0x00
 };
 
-static const unsigned char SEQ_HMT_SINGLE3[] = {	/* G.Param */
-	0xB0, 0x05
+static const unsigned char SEQ_HMT_SINGLE3[] = {		/* Display Setting. Porch Data Setting*/
+	0xF3,
+	0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x10
 };
 
-static const unsigned char SEQ_HMT_SINGLE4[] = {	/* AID Setting AID 1-Cycle */
-	0xB2, 0x00
-};
-
-static const unsigned char SEQ_HMT_SINGLE5[] = {		/* G.Param */
-	0xB0, 0x06
-};
-
-static const unsigned char SEQ_HMT_SINGLE6[] = {		/* Display Setting. Porch Data Setting*/
-	0xF3, 0x10
-};
-
-static const unsigned char SEQ_HMT_SINGLE7[] = {		/* PASET Setting  */
+static const unsigned char SEQ_HMT_SINGLE4[] = {		/* PASET Setting  */
 	0x2B,
 	0x00, 0x00, 0x09, 0xFF
 };
 
-static const unsigned char SEQ_HMT_OFF1[] = {	/* G.Param */
-	0xB0, 0x03
-};
-static const unsigned char SEQ_HMT_OFF2[] = {	/* Display setting. porch setting */
-	0xF2, 0x06, 0x0A
-};
-static const unsigned char SEQ_HMT_OFF3[] = {	/* G.Param */
-	0xB0, 0x05
-};
-static const unsigned char SEQ_HMT_OFF4[] = {	/* AID Setting AID 4-Cycle */
-	0xB2, 0x40
-};
 
-static const unsigned char SEQ_HMT_AID_FORWARD1[] = {	/* G.Param */
-	0xB0, 0x09
+static const unsigned char SEQ_HMT_OFF1[] = {	/* Display setting. porch setting */
+	0xF2,
+	0x67, 0x41, 0xC5, 0x06, 0x0A
 };
-static const unsigned char SEQ_HMT_AID_FORWARD2[] = {	/*LTPS Setting */
-	0xCB, 0x09
-};
-static const unsigned char SEQ_HMT_AID_FORWARD3[] = {	/* G.Param */
-	0xB0, 0x0F
-};
-static const unsigned char SEQ_HMT_AID_FORWARD4[] = {	/*LTPS Setting */
-	0xCB, 0x05
-};
-static const unsigned char SEQ_HMT_AID_FORWARD5[] = {	/* G.Param */
-	0xB0, 0x3D
-};
-static const unsigned char SEQ_HMT_AID_FORWARD6[] = {	/* LTPS Setting  */
-	0xCB, 0x0B
+static const unsigned char SEQ_HMT_OFF2[] = {	/* AID Setting AID 4-Cycle */
+	0xB2,
+	0x03, 0x10, 0x00, 0x0A, 0x0A, 0x40
 };
 
 
-static const unsigned char SEQ_HMT_AID_REVERSE1[] = {	/* G.Param */
-	0xB0, 0x09
-};
-static const unsigned char SEQ_HMT_AID_REVERSE2[] = {	/*LTPS Setting */
-	0xCB, 0x0B
-};
-static const unsigned char SEQ_HMT_AID_REVERSE3[] = {	/* G.Param */
-	0xB0, 0x0F
-};
-static const unsigned char SEQ_HMT_AID_REVERSE4[] = {	/*LTPS Setting */
-	0xCB, 0x09
-};
-static const unsigned char SEQ_HMT_AID_REVERSE5[] = {	/* G.Param */
-	0xB0, 0x1D
-};
-static const unsigned char SEQ_HMT_AID_REVERSE6[] = {	/*LTPS Setting */
-	0xCB, 0x10
-};
-static const unsigned char SEQ_HMT_AID_REVERSE7[] = {	/* G.Param */
-	0xB0, 0x3D
-};
-static const unsigned char SEQ_HMT_AID_REVERSE8[] = {	/* LTPS Setting  */
-	0xCB, 0x0C
+static const unsigned char SEQ_HMT_AID_FORWARD1[] = {	/* LTPS */
+	0xCB,
+	0x18,0x11,0x01,0x00,0x00,0x24,0x00,0x00,0xe1,0x09,
+	0x01,0x00,0x00,0x00,0x02,0x05,0x00,0x15,0x98,0x15,
+	0x98,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+	0x00,0x12,0x8c,0x00,0x00,0xca,0x0a,0x0a,0x0a,0xca,
+	0x8a,0xca,0x0a,0x0a,0x0a,0xc0,0xc1,0xc4,0xc5,0x42,
+	0xc3,0xca,0xca,0x0a,0x0a,0x0a,0x0a,0x0a,0x0a,0x0a,
+	0x0a,0x0b,
 };
 
+
+static const unsigned char SEQ_HMT_AID_REVERSE1[] = {	/* LTPS */
+	0xCB,
+	0x18,0x11,0x01,0x00,0x00,0x24,0x00,0x00,0xe1,0x0B,
+	0x01,0x00,0x00,0x00,0x02,0x09,0x00,0x15,0x98,0x15,
+	0x98,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x10,
+	0x00,0x12,0x8c,0x00,0x00,0xca,0x0a,0x0a,0x0a,0xca,
+	0x8a,0xca,0x0a,0x0a,0x0a,0xc0,0xc1,0xc4,0xc5,0x42,
+	0xc3,0xca,0xca,0x0a,0x0a,0x0a,0x0a,0x0a,0x0a,0x0a,
+	0x0a,0x0c,
+};
 
 static struct lcd_seq_info SEQ_HMT_AID_FORWARD_SET[] = {
 	{(u8 *)SEQ_HMT_AID_FORWARD1, ARRAY_SIZE(SEQ_HMT_AID_FORWARD1), 0},
-	{(u8 *)SEQ_HMT_AID_FORWARD2, ARRAY_SIZE(SEQ_HMT_AID_FORWARD2), 0},
-	{(u8 *)SEQ_HMT_AID_FORWARD3, ARRAY_SIZE(SEQ_HMT_AID_FORWARD3), 0},
-	{(u8 *)SEQ_HMT_AID_FORWARD4, ARRAY_SIZE(SEQ_HMT_AID_FORWARD4), 0},
-	{(u8 *)SEQ_HMT_AID_FORWARD5, ARRAY_SIZE(SEQ_HMT_AID_FORWARD5), 0},
-	{(u8 *)SEQ_HMT_AID_FORWARD6, ARRAY_SIZE(SEQ_HMT_AID_FORWARD6), 0},
 };
 
 static struct lcd_seq_info SEQ_HMT_REVERSE_SET[] = {
 	{(u8 *)SEQ_HMT_AID_REVERSE1, ARRAY_SIZE(SEQ_HMT_AID_REVERSE1), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE2, ARRAY_SIZE(SEQ_HMT_AID_REVERSE2), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE3, ARRAY_SIZE(SEQ_HMT_AID_REVERSE3), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE4, ARRAY_SIZE(SEQ_HMT_AID_REVERSE4), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE5, ARRAY_SIZE(SEQ_HMT_AID_REVERSE5), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE6, ARRAY_SIZE(SEQ_HMT_AID_REVERSE6), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE7, ARRAY_SIZE(SEQ_HMT_AID_REVERSE7), 0},
-	{(u8 *)SEQ_HMT_AID_REVERSE8, ARRAY_SIZE(SEQ_HMT_AID_REVERSE8), 0},
 };
 
 static struct lcd_seq_info SEQ_HMT_SINGLE_SET[] = {
@@ -557,16 +512,11 @@ static struct lcd_seq_info SEQ_HMT_SINGLE_SET[] = {
 	{(u8 *)SEQ_HMT_SINGLE2, ARRAY_SIZE(SEQ_HMT_SINGLE2), 0},
 	{(u8 *)SEQ_HMT_SINGLE3, ARRAY_SIZE(SEQ_HMT_SINGLE3), 0},
 	{(u8 *)SEQ_HMT_SINGLE4, ARRAY_SIZE(SEQ_HMT_SINGLE4), 0},
-	{(u8 *)SEQ_HMT_SINGLE5, ARRAY_SIZE(SEQ_HMT_SINGLE5), 0},
-	{(u8 *)SEQ_HMT_SINGLE6, ARRAY_SIZE(SEQ_HMT_SINGLE6), 0},
-	{(u8 *)SEQ_HMT_SINGLE7, ARRAY_SIZE(SEQ_HMT_SINGLE7), 0},
 };
 
 static struct lcd_seq_info SEQ_HMT_OFF_SET[] = {
 	{(u8 *)SEQ_HMT_OFF1, ARRAY_SIZE(SEQ_HMT_OFF1), 0},
 	{(u8 *)SEQ_HMT_OFF2, ARRAY_SIZE(SEQ_HMT_OFF2), 0},
-	{(u8 *)SEQ_HMT_OFF3, ARRAY_SIZE(SEQ_HMT_OFF3), 0},
-	{(u8 *)SEQ_HMT_OFF4, ARRAY_SIZE(SEQ_HMT_OFF4), 0},
 };
 
 static const unsigned char HMT_ELVSS_TABLE[ACL_STATUS_MAX][3] = {

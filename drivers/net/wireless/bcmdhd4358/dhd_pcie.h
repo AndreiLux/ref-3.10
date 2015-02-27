@@ -169,6 +169,7 @@ typedef struct dhd_bus {
 #endif /* CONFIG_ARCH_MSM */
 #endif /* SUPPORT_LINKDOWN_RECOVERY */
 	uint32 d3_inform_cnt;
+	uint8 force_suspend;
 } dhd_bus_t;
 
 /* function declarations */
@@ -186,7 +187,10 @@ extern void dhdpcie_bus_release(struct dhd_bus *bus);
 extern int32 dhdpcie_bus_isr(struct dhd_bus *bus);
 extern void dhdpcie_free_irq(dhd_bus_t *bus);
 extern int dhdpcie_bus_suspend(struct  dhd_bus *bus, bool state);
-extern int dhdpcie_pci_suspend_resume(struct pci_dev *dev, bool state);
+extern int dhdpcie_pci_suspend_resume(struct dhd_bus *bus, bool state);
+#ifndef BCMPCIE_OOB_HOST_WAKE
+extern void dhdpcie_pme_active(osl_t *osh, bool enable);
+#endif /* !BCMPCIE_OOB_HOST_WAKE */
 extern int dhdpcie_start_host_pcieclock(dhd_bus_t *bus);
 extern int dhdpcie_stop_host_pcieclock(dhd_bus_t *bus);
 extern int dhdpcie_disable_device(dhd_bus_t *bus);
@@ -201,7 +205,4 @@ extern void dhdpcie_oob_intr_set(dhd_bus_t *bus, bool enable);
 #endif /* BCMPCIE_OOB_HOST_WAKE */
 
 extern int dhd_buzzz_dump_dngl(dhd_bus_t *bus);
-#ifdef CUSTOMER_HW4
-void dhdpcie_l1ss_set(osl_t *osh);
-#endif /* CUSTOMER_HW4 */
 #endif /* dhd_pcie_h */

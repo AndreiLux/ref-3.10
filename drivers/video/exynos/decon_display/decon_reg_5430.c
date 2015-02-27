@@ -362,6 +362,8 @@ void decon_reg_init_probe(struct decon_init_param *p)
 
 	if (psr->psr_mode == S3C_FB_MIPI_COMMAND_MODE)
 		decon_reg_configure_trigger(psr->trig_mode);
+
+	decon_reg_set_sys_reg();
 }
 
 void decon_reg_start(struct decon_psr_info *psr)

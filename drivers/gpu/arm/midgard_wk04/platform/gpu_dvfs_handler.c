@@ -100,10 +100,13 @@ static int gpu_get_target_freq(void)
 #endif
 
 #ifdef CONFIG_MALI_T6XX_DVFS
-	if ((platform->max_lock > 0) && (freq > platform->max_lock))
-		freq = platform->max_lock;
-	else if ((platform->min_lock > 0) && (freq < platform->min_lock))
+	if ((platform->min_lock > 0) &&
+		((freq < platform->min_lock) || (platform->cur_clock < platform->min_lock)))
 		freq = platform->min_lock;
+
+	if ((platform->max_lock > 0) &&
+		((freq > platform->max_lock) || (platform->cur_clock > platform->max_lock)))
+		freq = platform->max_lock;
 #endif /* CONFIG_MALI_T6XX_DVFS */
 
 	return freq;
@@ -313,9 +316,9 @@ int gpu_dvfs_handler_control(struct kbase_device *kbdev, gpu_dvfs_handler_comman
 		break;
 	case GPU_HANDLER_DVFS_MAX_LOCK:
 		spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
-		if ((platform->min_lock >= 0) && (param < platform->min_lock)) {
+		if (gpu_dvfs_get_level(platform, param) < 0) {
 			spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
-			GPU_LOG(DVFS_WARNING, "[G3D] max lock Error: lock is smaller than min lock\n");
+			GPU_LOG(DVFS_WARNING, "[G3D] max lock Error: invalid clock value %d\n", param);
 			return -1;
 		}
 
@@ -338,7 +341,7 @@ int gpu_dvfs_handler_control(struct kbase_device *kbdev, gpu_dvfs_handler_comman
 
 		spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
 
-		if ((platform->max_lock > 0) && (platform->cur_clock > platform->max_lock))
+		if ((platform->max_lock > 0) && (platform->cur_clock >= platform->max_lock))
 			gpu_control_state_set(kbdev, GPU_CONTROL_CHANGE_CLK_VOL, platform->max_lock);
 
 		GPU_LOG(DVFS_DEBUG, "[G3D] Lock max clk[%d], user lock[%d], current clk[%d]\n", platform->max_lock,
@@ -348,9 +351,9 @@ int gpu_dvfs_handler_control(struct kbase_device *kbdev, gpu_dvfs_handler_comman
 		break;
 	case GPU_HANDLER_DVFS_MIN_LOCK:
 		spin_lock_irqsave(&platform->gpu_dvfs_spinlock, flags);
-		if ((platform->max_lock > 0) && (param > platform->max_lock)) {
+		if (gpu_dvfs_get_level(platform, param) < 0) {
 			spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
-			GPU_LOG(DVFS_WARNING, "min lock Error: the lock is larger than max lock\n");
+			GPU_LOG(DVFS_WARNING, "min lock Error: invalid clock value %d\n", param);
 			return -1;
 		}
 
@@ -373,7 +376,8 @@ int gpu_dvfs_handler_control(struct kbase_device *kbdev, gpu_dvfs_handler_comman
 
 		spin_unlock_irqrestore(&platform->gpu_dvfs_spinlock, flags);
 
-		if ((platform->min_lock > 0) && (platform->cur_clock < platform->min_lock))
+		if ((platform->min_lock > 0) && (platform->cur_clock < platform->min_lock)
+						&& (platform->min_lock <= platform->max_lock))
 			gpu_control_state_set(kbdev, GPU_CONTROL_CHANGE_CLK_VOL, platform->min_lock);
 
 		GPU_LOG(DVFS_DEBUG, "[G3D] Lock min clk[%d], user lock[%d], current clk[%d]\n", platform->min_lock,

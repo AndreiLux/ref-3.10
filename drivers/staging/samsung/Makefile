@@ -24,3 +24,5 @@ obj-$(CONFIG_SEC_MISC)		+= sec_misc.o
 # Samsung sec sysfs Feature
 obj-$(CONFIG_SEC_SYSFS)		+= sec_sysfs.o
 obj-$(CONFIG_SEC_SLOW_MODE)	+= sec_slow.o
+# Samsung sec bsp Feature
+obj-$(CONFIG_SEC_BSP)		+= sec_bsp.o

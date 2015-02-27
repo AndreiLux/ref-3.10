@@ -23,6 +23,9 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
+#ifdef CONFIG_OF
+#include <linux/of_gpio.h>
+#endif
 #include <mach/regs-gpio.h>
 #include <mach/regs-clock.h>
 #include <plat/clock.h>
@@ -603,6 +606,101 @@ struct fimc_is_sensor_ops module_8b1_ops = {
 	.g_max_dgain	= sensor_8b1_g_max_dgain
 };
 
+#ifdef CONFIG_OF
+static int sensor_8b1_power_setpin(struct device *dev)
+{
+	int gpio_none = 0, gpio_reset = 0, gpio_standby = 0;
+	struct exynos_platform_fimc_is_sensor *pdata;
+	struct device_node *dnode;
+	int gpios_cam_en = 0;
+
+	BUG_ON(!dev);
+	BUG_ON(!dev->platform_data);
+
+	dnode = dev->of_node;
+	pdata = dev->platform_data;
+
+	gpio_reset = of_get_named_gpio(dnode, "gpio_reset", 0);
+	if (!gpio_is_valid(gpio_reset)) {
+		dev_err(dev, "failed to get PIN_RESET\n");
+		return -EINVAL;
+	} else {
+		gpio_request_one(gpio_reset, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_reset);
+	}
+
+	gpios_cam_en = of_get_named_gpio(dnode, "gpios_cam_en", 0);
+	if (!gpio_is_valid(gpios_cam_en)) {
+		dev_err(dev, "failed to get main/front cam en gpio\n");
+	} else {
+		gpio_request_one(gpios_cam_en, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpios_cam_en);
+	}
+
+	gpio_standby = of_get_named_gpio(dnode, "gpio_standby", 0);
+	if (!gpio_is_valid(gpio_standby)) {
+		dev_err(dev, "failed to get gpio_standby\n");
+	} else {
+		gpio_request_one(gpio_standby, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_standby);
+	}
+
+	/* FRONT CAMERA  - POWER ON */
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 0, gpio_standby, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 1, gpio_none, 0, "VT_CAM_1.8V", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 2, gpio_none, 0, "VT_CAM_2.8V", 0, PIN_REGULATOR_ON);
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 3, gpios_cam_en, 0, NULL, 1000, PIN_OUTPUT_HIGH);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 3, gpio_none, 0, "VT_CAM_1.2V", 1000, PIN_REGULATOR_ON);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 4, gpio_reset, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 5, gpio_none, 0, "ch", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 6, gpio_none, 0, NULL, 0, PIN_END);
+
+	/* FRONT CAMERA  - POWER OFF */
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 0, gpio_standby, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 1, gpio_none, 0, "off", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 2, gpio_reset, 0, NULL, 0, PIN_OUTPUT_LOW);
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 3, gpios_cam_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 3, gpio_none, 0, "VT_CAM_1.2V", 0, PIN_REGULATOR_OFF);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 4, gpio_none, 0, "VT_CAM_2.8V", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 5, gpio_none, 0, "VT_CAM_1.8V", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 6, gpio_none, 0, NULL, 0, PIN_END);
+
+	/* VISION CAMERA  - POWER ON */
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 0, gpio_reset, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 1, gpio_none, 0, "VT_CAM_1.8V", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 2, gpio_none, 0, "VT_CAM_2.8V", 0, PIN_REGULATOR_ON);
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 3, gpios_cam_en, 0, NULL, 1000, PIN_OUTPUT_HIGH);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 3, gpio_none, 0, "VT_CAM_1.2V", 1000, PIN_REGULATOR_ON);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 4, gpio_standby, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 5, gpio_none, 0, "ch", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_ON, 6, gpio_none, 0, NULL, 0, PIN_END);
+
+	/* VISION CAMERA  - POWER OFF */
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 0, gpio_reset, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 1, gpio_none, 0, "off", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 2, gpio_standby, 0, NULL, 0, PIN_OUTPUT_LOW);
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 3, gpios_cam_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 3, gpio_none, 0, "VT_CAM_1.2V", 0, PIN_REGULATOR_OFF);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 4, gpio_none, 0, "VT_CAM_2.8V", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 5, gpio_none, 0, "VT_CAM_1.8V", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_VISION, GPIO_SCENARIO_OFF, 6, gpio_none, 0, NULL, 0, PIN_END);
+
+	return 0;
+}
+#endif /* CONFIG_OF */
+
 int sensor_8b1_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
@@ -648,6 +746,8 @@ int sensor_8b1_probe(struct i2c_client *client,
 	module->position = SENSOR_POSITION_FRONT;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_1;
+	module->sensor_maker = "SLSI";
+	module->sensor_name = "S5K8B1";
 	module->setfile_name = "setfile_8b1.bin";
 	module->cfgs = ARRAY_SIZE(config_8b1);
 	module->cfg = config_8b1;
@@ -658,7 +758,9 @@ int sensor_8b1_probe(struct i2c_client *client,
 		kfree(subdev_module);
 		goto p_err;
 	}
-
+#ifdef CONFIG_OF
+	module->power_setpin = sensor_8b1_power_setpin;
+#endif
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;
 	ext->I2CSclk = I2C_L0;

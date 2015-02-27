@@ -48,6 +48,10 @@ struct if_usb_devdata;
 struct usb_id_info {
 	int intf_id;
 	int urb_cnt;
+	int flags;
+#define FLAG_BOOT_DOWN          0x0001  /* USB/HSIC BOOTROM interface */
+#define FLAG_IPC_CHANNEL        0x0002  /* normal packet rx/tx interface */
+#define FLAG_SEND_NZLP          0x0004  /* hw doesn't require ZLP for tx */
 	unsigned int rx_buf_size;
 	struct usb_link_device *usb_ld;
 

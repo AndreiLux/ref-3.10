@@ -72,11 +72,11 @@ struct max77888_platform_data {
 	/* IRQ */
 	int irq_base;
 	int irq_gpio;
-	int irqf_trigger;
+	/* WA for MUIC RESET */
+	int muic_reset_irq;
 	bool wakeup;
-#if 0	//temp
+
 	struct muic_platform_data *muic_pdata;
-#endif
 
 	int num_regulators;
 	struct max77888_regulator_data *regulators;

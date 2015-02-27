@@ -100,6 +100,103 @@ static inline void set_copro_access(unsigned int val)
 #define FC_ID 		0x83800000
 #define BUILD_CMD_ID(cmdid)	(FC_ID | (((cmdid) & 0x3ff) << 12))
 int tima_is_pg_protected(unsigned long va);
+
+#define tima_cache_flush(x)		\
+	__asm__ __volatile__(	"mcr     p15, 0, %0, c7, c14, 1\n"	\
+							"dsb\n"								\
+							"isb\n"								\
+                			: : "r" (x))
+#define tima_cache_inval(x)		\
+	__asm__ __volatile__(	"mcr     p15, 0, %0, c7, c6, 1\n"	\
+							"dsb\n"								\
+							"isb\n"								\
+                			: : "r" (x))
+
+#ifdef CONFIG_HYP_RKP 
+static inline void tima_send_cmd (unsigned int p1, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension virt\n"
+#endif	
+		"stmfd   sp!, {r0-r4}\n"   
+		"mov     r2, %0\n" /* r2 carry mcr_val */
+		"mov     r0, %1\n"
+		"hvc     #1\n" 
+        "ldmfd   sp!, {r0-r4}" 
+		::"r"(p1), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
+}
+
+/* p1 --> r2, p2 --> r3s */
+static inline void tima_send_cmd2 (unsigned int p1, unsigned int p2, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension virt\n"
+#endif	
+	"stmfd   sp!, {r0-r4}\n"
+    "mov     r2, %0\n"
+	"mov     r3, %1\n"  
+	"mov     r0, %2\n"
+	"hvc     #2\n" 
+	"ldmfd   sp!, {r0-r4}" : : "r" (p1), "r" (p2), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
+}
+
+/* p1 --> r2, p2 --> r3 ,p3 --> r4*/
+static inline void tima_send_cmd3 (unsigned int p1, unsigned int p2,unsigned int p3, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension virt\n"
+#endif	
+	"stmfd   sp!, {r0-r4}\n"
+    "mov     r2, %0\n"
+	"mov     r3, %1\n"  
+	"mov     r4, %2\n"  
+	"mov     r0, %3\n"
+	"hvc     #2\n" 
+	"ldmfd   sp!, {r0-r4}" : : "r" (p1), "r" (p2), "r" (p3),"r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
+}
+static inline void tima_send_cmd4 (unsigned int p1, unsigned int p2, unsigned int p3, unsigned int p4, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension virt\n"
+#endif	
+		"stmfd   sp!, {r0-r5}\n"
+		"mov     r2, %0\n"
+		"mov     r3, %1\n"  
+		"mov     r4, %2\n"  
+		"mov     r5, %3\n"  
+		"mov     r0, %4\n"
+		"hvc     #1\n" 
+        "ldmfd   sp!, {r0-r5}" : : "r" (p1), "r" (p2), "r" (p3), "r" (p4), "r" (tima_cmdid) : "r0","r2","r3","r4","r5","cc");
+}
+static inline void tima_send_cmd5 (unsigned int p1, unsigned int p2, unsigned int p3, unsigned int p4, unsigned int p5, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension virt\n"
+#endif	
+		"stmfd   sp!, {r0-r5}\n"
+		"mov     r2, %0\n"
+		"mov     r3, %1\n"  
+		"mov     r4, %2\n"  
+		"mov     r5, %3\n" 
+		"mov     r1, %4\n" 
+		"mov     r0, %5\n"
+		"hvc     #1\n" 
+        "ldmfd   sp!, {r0-r5}" : : "r" (p1), "r" (p2), "r" (p3), "r" (p4), "r" (p5), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","r5","cc");
+}
+#else /* !CONFIG_HYP_RKP */
+
 static inline void tima_send_cmd (unsigned int p1, unsigned int cmdid)
 {
 	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
@@ -130,6 +227,24 @@ static inline void tima_send_cmd2 (unsigned int p1, unsigned int p2, unsigned in
 	"mov     r0, %2\n"
 	"smc     #2\n" 
 	"ldmfd   sp!, {r0-r4}" : : "r" (p1), "r" (p2), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
+}
+
+/* p1 --> r2, p2 --> r3 ,p3 --> r4*/
+static inline void tima_send_cmd3 (unsigned int p1, unsigned int p2,unsigned int p3, unsigned int cmdid)
+{
+	volatile uint32_t tima_cmdid = BUILD_CMD_ID(cmdid); 
+
+	asm volatile (
+#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
+        ".arch_extension virt\n"
+#endif	
+	"stmfd   sp!, {r0-r4}\n"
+    "mov     r2, %0\n"
+	"mov     r3, %1\n"  
+	"mov     r4, %2\n"  
+	"mov     r0, %3\n"
+	"smc     #2\n" 
+	"ldmfd   sp!, {r0-r4}" : : "r" (p1), "r" (p2), "r" (p3),"r" (tima_cmdid) : "r0","r1","r2","r3","r4","cc");
 }
 static inline void tima_send_cmd4 (unsigned int p1, unsigned int p2, unsigned int p3, unsigned int p4, unsigned int cmdid)
 {
@@ -164,10 +279,8 @@ static inline void tima_send_cmd5 (unsigned int p1, unsigned int p2, unsigned in
 		"smc     #1\n" 
         "ldmfd   sp!, {r0-r5}" : : "r" (p1), "r" (p2), "r" (p3), "r" (p4), "r" (p5), "r" (tima_cmdid) : "r0","r1","r2","r3","r4","r5","cc");
 }
-#endif
-
-
-
+#endif /* CONFIG_HYP_RKP */
+#endif /* CONFIG_TIMA_RKP */
 
 #endif /* ifndef __ASSEMBLY__ */
 

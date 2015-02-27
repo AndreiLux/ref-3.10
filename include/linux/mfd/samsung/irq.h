@@ -193,4 +193,6 @@ enum s5m8763_irq {
 
 #define S5M8763_ENRAMP                  (1 << 4)
 
+extern int sec_pmic_get_irq_base(void);
+
 #endif /*  __LINUX_MFD_SEC_IRQ_H */

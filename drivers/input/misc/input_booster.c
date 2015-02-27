@@ -51,7 +51,7 @@ static void input_booster_set_hmp_boost(struct input_booster *data, enum booster
 		return;
 	}
 
-	retval = set_hmp_semiboost(enable);
+	retval = set_hmp_boost(enable);
 	if (retval < 0) {
 		dev_err(data->dev, "%s : Fail to %s HMP[%d] for %s.\n",
 			__func__, enable ? "Enabled" : "Disabled", retval, booster_device_name[device_type]);

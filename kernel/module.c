@@ -64,8 +64,15 @@
 #include <uapi/linux/module.h>
 #include "module-internal.h"
 
+#ifdef	CONFIG_TIMA_LKMAUTH_CODE_PROT
+#include <asm/tlbflush.h>
+#endif/*CONFIG_TIMA_LKMAUTH_CODE_PROT*/
 #define CREATE_TRACE_POINTS
 #include <trace/events/module.h>
+#ifdef	CONFIG_TIMA_LKMAUTH_CODE_PROT
+#define TIMA_SET_PTE_RO 1
+#define TIMA_SET_PTE_NX 2
+#endif/*CONFIG_TIMA_LKMAUTH_CODE_PROT*/
 
 #ifndef ARCH_SHF_SMALL
 #define ARCH_SHF_SMALL 0
@@ -220,6 +227,9 @@ typedef struct {
  * to ensure complete separation of code and data, but
  * only when CONFIG_DEBUG_SET_MODULE_RONX=y
  */
+#ifdef	CONFIG_TIMA_LKMAUTH_CODE_PROT
+# define debug_align(X) ALIGN(X, PAGE_SIZE)
+#else
 #ifdef	TIMA_LKM_SET_PAGE_ATTRIB
 #define debug_align(X) ALIGN(X, PAGE_SIZE)
 #else
@@ -229,7 +239,7 @@ typedef struct {
 #define debug_align(X) (X)
 #endif
 #endif
-
+#endif
 /*
  * Given BASE and SIZE this macro calculates the number of pages the
  * memory regions occupies
@@ -3641,6 +3651,99 @@ static void do_mod_ctors(struct module *mod)
 #endif
 }
 
+#ifdef	CONFIG_TIMA_LKMAUTH_CODE_PROT
+
+#ifndef TIMA_KERNEL_L1_MANAGE
+static inline pmd_t *tima_pmd_off_k(unsigned long virt)
+{
+		return pmd_offset(pud_offset(pgd_offset_k(virt), virt), virt);
+}
+
+void tima_set_pte_val(unsigned long virt,int numpages,int flags)
+{
+        unsigned long start = virt;
+        unsigned long end   = virt + (numpages << PAGE_SHIFT);
+        unsigned long pmd_end;
+        pmd_t *pmd;
+        pte_t *pte;
+
+        while (virt < end) 
+        {
+                pmd =tima_pmd_off_k(virt);
+                pmd_end = min(ALIGN(virt + 1, PMD_SIZE), end);
+
+                if ((pmd_val(*pmd) & PMD_TYPE_MASK) != PMD_TYPE_TABLE) {
+                        //printk("Not a pagetable\n");
+                        virt = pmd_end;
+                        continue;
+                }
+
+                while (virt < pmd_end) 
+                {
+                        pte = pte_offset_kernel(pmd, virt);
+                        if(flags == TIMA_SET_PTE_RO)
+                        {
+                                /*Make pages readonly*/
+                                ptep_set_wrprotect(current->mm, virt,pte);
+                        }
+                        if(flags == TIMA_SET_PTE_NX)
+                        { 
+                                /*Make pages Non Executable*/
+                                ptep_set_nxprotect(current->mm, virt,pte);
+                        }
+                        virt += PAGE_SIZE;
+                }
+        }
+
+        flush_tlb_kernel_range(start, end);
+        
+}
+#endif
+
+/**
+ *    tima_mod_page_change_access  - Wrapper function to change access control permissions of pages 
+ *
+ *     It sends code and data pages to secure side to  make code pages readonly and data pages non executable
+ * 
+ */
+
+void tima_mod_page_change_access(struct module *mod)
+{
+        unsigned int    *vatext,*vadata;/* base virtual address of text and data regions*/
+        unsigned int    text_count,data_count;/* Number of text and data pages present in core section */
+     
+     /*Lets first pickup core section */
+        vatext      = mod->module_core;
+        vadata      = (int *)((char *)(mod->module_core) + mod->core_ro_size);
+        text_count  = ((char *)vadata - (char *)vatext);
+        data_count  = debug_align(mod->core_size) - text_count;
+        text_count  = text_count / PAGE_SIZE;
+        data_count  = data_count / PAGE_SIZE;
+
+        /*Should be atleast a page */
+        if(!text_count)
+                text_count = 1;
+        if(!data_count)
+                data_count = 1;
+ /* Change permissive bits for core section and making Code read only, Data Non Executable*/
+        tima_set_pte_val( (unsigned long)vatext,text_count,TIMA_SET_PTE_RO);
+        tima_set_pte_val( (unsigned long)vadata,data_count,TIMA_SET_PTE_NX); 
+
+     /*Lets pickup init section */
+        vatext      = mod->module_init;
+        vadata      = (int *)((char *)(mod->module_init) + mod->init_ro_size);
+        text_count  = ((char *)vadata - (char *)vatext);
+        data_count  = debug_align(mod->init_size) - text_count;
+        text_count  = text_count / PAGE_SIZE;
+        data_count  = data_count / PAGE_SIZE;
+
+/* Change permissive bits for init section and making Code read only,Data Non Executable*/
+        tima_set_pte_val( (unsigned long)vatext,text_count,TIMA_SET_PTE_RO);
+        tima_set_pte_val( (unsigned long)vadata,data_count,TIMA_SET_PTE_NX);
+}
+
+#endif/*CONFIG_TIMA_LKMAUTH_CODE_PROT*/
+
 #ifdef	TIMA_LKM_SET_PAGE_ATTRIB
 void tima_mod_send_smc_instruction(unsigned int *vatext, unsigned int *vadata,
 				   unsigned int text_count,
@@ -3725,7 +3828,9 @@ static int do_init_module(struct module *mod)
 
 	blocking_notifier_call_chain(&module_notify_list,
 			MODULE_STATE_COMING, mod);
-
+#ifdef	CONFIG_TIMA_LKMAUTH_CODE_PROT
+	tima_mod_page_change_access(mod);
+#endif/*CONFIG_TIMA_LKMAUTH_CODE_PROT*/
 	/* Set RO and NX regions for core */
 	set_section_ro_nx(mod->module_core,
 				mod->core_text_size,

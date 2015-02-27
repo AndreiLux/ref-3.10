@@ -72,15 +72,8 @@
 #include <dhd_wlfc.h>
 #endif
 
-#ifdef DHD_WMF
-#include <dhd_linux.h>
-#include <dhd_wmf_linux.h>
-#endif /* DHD_WMF */
 
 
-#ifdef WLMEDIA_HTSF
-extern void htsf_update(struct dhd_info *dhd, void *data);
-#endif
 int dhd_msg_level = DHD_ERROR_VAL;
 
 
@@ -162,24 +155,10 @@ enum {
 	IOV_PROPTXSTATUS_RXPKT_CHK,
 #endif /* PROP_TXSTATUS */
 	IOV_BUS_TYPE,
-#ifdef WLMEDIA_HTSF
-	IOV_WLPKTDLYSTAT_SZ,
-#endif
 	IOV_CHANGEMTU,
 	IOV_HOSTREORDER_FLOWS,
 #ifdef DHDTCPACK_SUPPRESS
 	IOV_TCPACK_SUPPRESS,
-#endif /* DHDTCPACK_SUPPRESS */
-#ifdef DHD_WMF
-	IOV_WMF_BSS_ENAB,
-	IOV_WMF_UCAST_IGMP,
-	IOV_WMF_MCAST_DATA_SENDUP,
-#ifdef WL_IGMP_UCQUERY
-	IOV_WMF_UCAST_IGMP_QUERY,
-#endif /* WL_IGMP_UCQUERY */
-#ifdef DHD_UCAST_UPNP
-	IOV_WMF_UCAST_UPNP,
-#endif /* DHD_UCAST_UPNP */
 #endif /* DHD_WMF */
 	IOV_AP_ISOLATE,
 #ifdef DHD_UNICAST_DHCP
@@ -227,25 +206,11 @@ const bcm_iovar_t dhd_iovars[] = {
 	{"rxpkt_chk", IOV_PROPTXSTATUS_RXPKT_CHK, 0, IOVT_BOOL, 0 },
 #endif /* PROP_TXSTATUS */
 	{"bustype", IOV_BUS_TYPE, 0, IOVT_UINT32, 0},
-#ifdef WLMEDIA_HTSF
-	{"pktdlystatsz", IOV_WLPKTDLYSTAT_SZ, 0, IOVT_UINT8, 0 },
-#endif
 	{"changemtu", IOV_CHANGEMTU, 0, IOVT_UINT32, 0 },
 	{"host_reorder_flows", IOV_HOSTREORDER_FLOWS, 0, IOVT_BUFFER,
 	(WLHOST_REORDERDATA_MAXFLOWS + 1) },
 #ifdef DHDTCPACK_SUPPRESS
 	{"tcpack_suppress",	IOV_TCPACK_SUPPRESS,	0,	IOVT_UINT8,	0 },
-#endif /* DHDTCPACK_SUPPRESS */
-#ifdef DHD_WMF
-	{"wmf_bss_enable", IOV_WMF_BSS_ENAB,	0,	IOVT_BOOL,	0 },
-	{"wmf_ucast_igmp", IOV_WMF_UCAST_IGMP,	0,	IOVT_BOOL,	0 },
-	{"wmf_mcast_data_sendup", IOV_WMF_MCAST_DATA_SENDUP,	0,	IOVT_BOOL,	0 },
-#ifdef WL_IGMP_UCQUERY
-	{"wmf_ucast_igmp_query", IOV_WMF_UCAST_IGMP_QUERY, (0), IOVT_BOOL, 0 },
-#endif /* WL_IGMP_UCQUERY */
-#ifdef DHD_UCAST_UPNP
-	{"wmf_ucast_upnp", IOV_WMF_UCAST_UPNP, (0), IOVT_BOOL, 0 },
-#endif /* DHD_UCAST_UPNP */
 #endif /* DHD_WMF */
 #ifdef DHD_UNICAST_DHCP
 	{"dhcp_unicast", IOV_DHCP_UNICAST, (0), IOVT_BOOL, 0 },
@@ -368,20 +333,9 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 
 	if (dhd_os_proto_block(dhd_pub))
 	{
-#if defined(WL_WLC_SHIM)
-		wl_info_t *wl = dhd_pub_wlinfo(dhd_pub);
 
-		wl_io_pport_t io_pport;
-		io_pport.dhd_pub = dhd_pub;
-		io_pport.ifidx = ifidx;
 
-		ret = wl_shim_ioctl(wl->shim, ioc, &io_pport);
-		if (ret != BCME_OK) {
-			DHD_ERROR(("%s: wl_shim_ioctl(%d) ERR %d\n", __FUNCTION__, ioc->cmd, ret));
-		}
-#else
 		ret = dhd_prot_ioctl(dhd_pub, ifidx, ioc, buf, len);
-#endif /* defined(WL_WLC_SHIM) */
 
 		if (ret && dhd_pub->up) {
 			/* Send hang event only if dhd_open() was success */
@@ -397,19 +351,33 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 
 		dhd_os_proto_unblock(dhd_pub);
 
-#if defined(CUSTOMER_HW4)
 		if (ret < 0) {
-			if (ioc->cmd == WLC_GET_VAR)
-				DHD_ERROR(("%s: WLC_GET_VAR: %s, ret = %d\n",
-					__FUNCTION__, (char *)ioc->buf, ret));
-			else if (ioc->cmd == WLC_SET_VAR)
-				DHD_ERROR(("%s: WLC_SET_VAR: %s, ret = %d\n",
-					__FUNCTION__, (char *)ioc->buf, ret));
-			else
+			if (ioc->cmd == WLC_GET_VAR || ioc->cmd == WLC_SET_VAR) {
+				if (ret == BCME_UNSUPPORTED || ret == BCME_NOTASSOCIATED) {
+					DHD_ERROR(("%s: %s: %s, %s\n",
+						__FUNCTION__, ioc->cmd == WLC_GET_VAR ?
+						"WLC_GET_VAR" : "WLC_SET_VAR",
+						(char *)ioc->buf,
+						ret == BCME_UNSUPPORTED ? "UNSUPPORTED"
+						: "NOT ASSOCIATED"));
+				} else {
+					DHD_ERROR(("%s: %s: %s, ret = %d\n",
+						__FUNCTION__, ioc->cmd == WLC_GET_VAR ?
+						"WLC_GET_VAR" : "WLC_SET_VAR",
+						(char *)ioc->buf, ret));
+				}
+			} else {
+				if (ret == BCME_UNSUPPORTED || ret == BCME_NOTASSOCIATED) {
+					DHD_ERROR(("%s: WLC_IOCTL: cmd: %d, %s\n",
+						__FUNCTION__, ioc->cmd,
+						ret == BCME_UNSUPPORTED ? "UNSUPPORTED" :
+						"NOT ASSOCIATED"));
+				} else {
 				DHD_ERROR(("%s: WLC_IOCTL: cmd: %d, ret = %d\n",
 					__FUNCTION__, ioc->cmd, ret));
 		}
-#endif /* OEM_ANDROID && CUSTOMER_HW4 */
+			}
+		}
 	}
 
 	return ret;
@@ -707,17 +675,7 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		break;
 
 
-#ifdef WLMEDIA_HTSF
-	case IOV_GVAL(IOV_WLPKTDLYSTAT_SZ):
-		int_val = dhd_pub->htsfdlystat_sz;
-		bcopy(&int_val, arg, val_size);
-		break;
 
-	case IOV_SVAL(IOV_WLPKTDLYSTAT_SZ):
-		dhd_pub->htsfdlystat_sz = int_val & 0xff;
-		printf("Setting tsfdlystat_sz:%d\n", dhd_pub->htsfdlystat_sz);
-		break;
-#endif
 	case IOV_SVAL(IOV_CHANGEMTU):
 		int_val &= 0xffff;
 		bcmerror = dhd_change_mtu(dhd_pub, int_val, 0);
@@ -751,112 +709,17 @@ dhd_doiovar(dhd_pub_t *dhd_pub, const bcm_iovar_t *vi, uint32 actionid, const ch
 		bcmerror = dhd_tcpack_suppress_set(dhd_pub, (uint8)int_val);
 		break;
 	}
-#endif /* DHDTCPACK_SUPPRESS */
-#ifdef DHD_WMF
-	case IOV_GVAL(IOV_WMF_BSS_ENAB): {
-		uint32	bssidx;
-		dhd_wmf_t *wmf;
-		char *val;
 
-		if (dhd_iovar_parse_bssidx(dhd_pub, (char *)name, &bssidx, &val) != BCME_OK) {
-			DHD_ERROR(("%s: wmf_bss_enable: bad parameter\n", __FUNCTION__));
-			bcmerror = BCME_BADARG;
-			break;
-		}
 
-		wmf = dhd_wmf_conf(dhd_pub, bssidx);
-		int_val = wmf->wmf_enable ? 1 :0;
-		bcopy(&int_val, arg, val_size);
-		break;
-	}
-	case IOV_SVAL(IOV_WMF_BSS_ENAB): {
 		/* Enable/Disable WMF */
-		uint32	bssidx;
-		dhd_wmf_t *wmf;
-		char *val;
 
-		if (dhd_iovar_parse_bssidx(dhd_pub, (char *)name, &bssidx, &val) != BCME_OK) {
-			DHD_ERROR(("%s: wmf_bss_enable: bad parameter\n", __FUNCTION__));
-			bcmerror = BCME_BADARG;
-			break;
-		}
 
-		ASSERT(val);
-		bcopy(val, &int_val, sizeof(uint32));
-		wmf = dhd_wmf_conf(dhd_pub, bssidx);
-		if (wmf->wmf_enable == int_val)
-			break;
-		if (int_val) {
 			/* Enable WMF */
-			if (dhd_wmf_instance_add(dhd_pub, bssidx) != BCME_OK) {
-				DHD_ERROR(("%s: Error in creating WMF instance\n",
-				__FUNCTION__));
-				break;
-			}
-			if (dhd_wmf_start(dhd_pub, bssidx) != BCME_OK) {
-				DHD_ERROR(("%s: Failed to start WMF\n", __FUNCTION__));
-				break;
-			}
-			wmf->wmf_enable = TRUE;
-		} else {
 			/* Disable WMF */
-			wmf->wmf_enable = FALSE;
-			dhd_wmf_stop(dhd_pub, bssidx);
-			dhd_wmf_instance_del(dhd_pub, bssidx);
-		}
-		break;
-	}
-	case IOV_GVAL(IOV_WMF_UCAST_IGMP):
-		int_val = dhd_pub->wmf_ucast_igmp ? 1 : 0;
-		bcopy(&int_val, arg, val_size);
-		break;
-	case IOV_SVAL(IOV_WMF_UCAST_IGMP):
-		if (dhd_pub->wmf_ucast_igmp == int_val)
-			break;
 
-		if (int_val >= OFF && int_val <= ON)
-			dhd_pub->wmf_ucast_igmp = int_val;
-		else
-			bcmerror = BCME_RANGE;
-		break;
-	case IOV_GVAL(IOV_WMF_MCAST_DATA_SENDUP):
-		int_val = dhd_wmf_mcast_data_sendup(dhd_pub, 0, FALSE, FALSE);
-		bcopy(&int_val, arg, val_size);
-		break;
-	case IOV_SVAL(IOV_WMF_MCAST_DATA_SENDUP):
-		dhd_wmf_mcast_data_sendup(dhd_pub, 0, TRUE, int_val);
-		break;
 
-#ifdef WL_IGMP_UCQUERY
-	case IOV_GVAL(IOV_WMF_UCAST_IGMP_QUERY):
-		int_val = dhd_pub->wmf_ucast_igmp_query ? 1 : 0;
-		bcopy(&int_val, arg, val_size);
-		break;
-	case IOV_SVAL(IOV_WMF_UCAST_IGMP_QUERY):
-		if (dhd_pub->wmf_ucast_igmp_query == int_val)
-			break;
 
-		if (int_val >= OFF && int_val <= ON)
-			dhd_pub->wmf_ucast_igmp_query = int_val;
-		else
-			bcmerror = BCME_RANGE;
-		break;
-#endif /* WL_IGMP_UCQUERY */
-#ifdef DHD_UCAST_UPNP
-	case IOV_GVAL(IOV_WMF_UCAST_UPNP):
-		int_val = dhd_pub->wmf_ucast_upnp ? 1 : 0;
-		bcopy(&int_val, arg, val_size);
-		break;
-	case IOV_SVAL(IOV_WMF_UCAST_UPNP):
-		if (dhd_pub->wmf_ucast_upnp == int_val)
-			break;
 
-		if (int_val >= OFF && int_val <= ON)
-			dhd_pub->wmf_ucast_upnp = int_val;
-		else
-			bcmerror = BCME_RANGE;
-		break;
-#endif /* DHD_UCAST_UPNP */
 #endif /* DHD_WMF */
 
 
@@ -1799,11 +1662,6 @@ wl_host_event(dhd_pub_t *dhd_pub, int *ifidx, void *pktdata,
 		break;
 	}
 
-#ifdef WLMEDIA_HTSF
-	case WLC_E_HTSFSYNC:
-		htsf_update(dhd_pub->info, event_data);
-		break;
-#endif /* WLMEDIA_HTSF */
 	case WLC_E_NDIS_LINK: {
 		uint32 temp = hton32(WLC_E_LINK);
 

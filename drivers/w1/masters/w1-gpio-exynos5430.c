@@ -615,8 +615,6 @@ static int w1_gpio_suspend(struct platform_device *pdev, pm_message_t state)
 	return 0;
 }
 
-bool w1_is_suspended;
-
 static int w1_gpio_resume(struct platform_device *pdev)
 {
 	struct w1_gpio_platform_data *pdata = pdev->dev.platform_data;
@@ -626,7 +624,6 @@ static int w1_gpio_resume(struct platform_device *pdev)
 
 	gpio_direction_output(pdata->pin, 1);
 
-	w1_is_suspended = true;
 #ifdef CONFIG_W1_WORKQUEUE
 	schedule_delayed_work(&w1_gdev->w1_dwork, HZ * 2);
 #endif

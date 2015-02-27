@@ -33,6 +33,8 @@ struct touchkey_platform_data {
 	bool boot_on_ldo;
 	bool led_by_ldo;
 	bool glove_mode_keep_status;
+	u8 fw_crc_check;
+	u8 tk_use_lcdtype_check;
 	char *fw_path;
 	void (*init_platform_hw)(void);
 	int (*suspend) (void);

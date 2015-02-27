@@ -999,7 +999,6 @@ static void dw_mci_translate_sglist(struct dw_mci *host, struct mmc_data *data,
 				DW_MMC_SECTOR_SIZE : DW_MMC_MAX_TRANSFER_SIZE;
 			sector_key = (mq_rq->req->bio->bi_sensitive_data == 1) ?
 				DW_MMC_ENCRYPTION_SECTOR_BEGIN : DW_MMC_BYPASS_SECTOR_BEGIN;
-			mq_rq->req->bio->bi_sensitive_data = 0;
 		}
 	}
 #endif

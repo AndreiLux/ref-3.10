@@ -108,6 +108,8 @@ int sensor_3h7_sunny_probe(struct i2c_client *client,
 	module->position = SENSOR_POSITION_REAR;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_4;
+	module->sensor_maker = "SLSI";
+	module->sensor_name = "S5K3H7";
 	module->setfile_name = "setfile_3h7_sunny.bin";
 	module->cfgs = ARRAY_SIZE(config_3h7_sunny);
 	module->cfg = config_3h7_sunny;

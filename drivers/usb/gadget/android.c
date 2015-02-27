@@ -45,7 +45,11 @@
 #include "rndis.c"
 #include "f_diag.c"
 #include "f_dm.c"
-
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_DIAG_BRIDGE
+#include "u_ctrl_hsic.c"
+#include "u_data_hsic.c"
+#include "f_qc_acm.c"
+#endif
 #include <plat/cpu.h>
 
 MODULE_AUTHOR("Mike Lockwood");
@@ -465,43 +469,6 @@ static struct android_usb_function adb_function = {
 	.bind_config	= adb_function_bind_config,
 };
 
-#ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
-struct conn_gadget_data {
-	bool opened;
-	bool enabled;
-};
-
-static int
-conn_gadget_function_init(struct android_usb_function *f,
-		struct usb_composite_dev *cdev)
-{
-	f->config = kzalloc(sizeof(struct conn_gadget_data), GFP_KERNEL);
-	if (!f->config)
-		return -ENOMEM;
-
-	return conn_gadget_setup();
-}
-
-static void conn_gadget_function_cleanup(struct android_usb_function *f)
-{
-	conn_gadget_cleanup();
-	kfree(f->config);
-}
-
-static int
-conn_gadget_function_bind_config(struct android_usb_function *f,
-		struct usb_configuration *c)
-{
-	return conn_gadget_bind_config(c);
-}
-
-static struct android_usb_function conn_gadget_function = {
-	.name = "conn_gadget",
-	.init = conn_gadget_function_init,
-	.cleanup = conn_gadget_function_cleanup,
-	.bind_config = conn_gadget_function_bind_config,
-};
-#endif /* CONFIG_USB_ANDROID_SAMSUNG_SIDESYNC */
 static void adb_ready_callback(void)
 {
 	struct android_dev *dev = _android_dev;
@@ -1132,6 +1099,161 @@ static struct android_usb_function dm_function = {
 };
 
 #endif
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_DIAG_BRIDGE
+/* SERIAL */
+static char serial_transports[32]="HSIC";	/*enabled ACM ports - "tty[,sdio]"*/
+#define MAX_SERIAL_INSTANCES 4
+struct serial_function_config {
+	int instances;
+	int instances_on;
+	struct usb_function *f_serial[MAX_SERIAL_INSTANCES];
+	struct usb_function_instance *f_serial_inst[MAX_SERIAL_INSTANCES];
+};
+
+static int
+serial_function_init(struct android_usb_function *f,
+		struct usb_composite_dev *cdev)
+{
+	struct serial_function_config *config;
+
+	config = kzalloc(sizeof(struct serial_function_config), GFP_KERNEL);
+	if (!config)
+		return -ENOMEM;
+	f->config = config;
+
+	return 0;
+}
+
+static void serial_function_cleanup(struct android_usb_function *f)
+{
+	int i;
+	struct serial_function_config *config = f->config;
+
+	serial_port_cleanup();
+	for (i = 0; i < config->instances_on; i++) {
+		usb_put_function(config->f_serial[i]);
+		usb_put_function_instance(config->f_serial_inst[i]);
+	}
+	kfree(f->config);
+	f->config = NULL;
+}
+
+static int
+serial_function_bind_config(struct android_usb_function *f,
+		struct usb_configuration *c)
+{
+	char *name;
+	char buf[32], *b;
+	int err = -1, i;
+	static int serial_initialized, ports;
+	struct serial_function_config *config = f->config;
+
+	if (serial_initialized)
+		goto bind_config;
+
+	serial_initialized = 1;
+	strlcpy(buf, serial_transports, sizeof(buf));
+	b = strim(buf);
+
+	while (b) {
+		name = strsep(&b, ",");
+
+		if (name) {
+			err = serial_init_port(ports, name);
+			if (err) {
+				pr_err("serial: Cannot open port '%s'", name);
+				goto out;
+			}
+			ports++;
+			if (ports >= MAX_SERIAL_INSTANCES) {
+				pr_err("serial: max ports reached '%s'", name);
+				goto out;
+			}
+		}
+	}
+	err = serial_port_setup(c);
+	if (err) {
+		pr_err("serial: Cannot setup transports");
+		goto out;
+	}
+	for (i = 0; i < ports; i++) {
+		config->f_serial_inst[i] = usb_get_function_instance("serial");
+		if (IS_ERR(config->f_serial_inst[i])) {
+			err = PTR_ERR(config->f_serial_inst[i]);
+			goto err_usb_get_function_instance;
+		}
+		config->f_serial[i] = usb_get_function(config->f_serial_inst[i]);
+		if (IS_ERR(config->f_serial[i])) {
+			err = PTR_ERR(config->f_serial[i]);
+			goto err_usb_get_function;
+		}
+	}
+	config->instances_on = ports;
+
+bind_config:
+	for (i = 0; i < ports; i++) {
+		err = usb_add_function(c, config->f_serial[i]);
+		if (err) {
+			pr_err("Could not bind serial%u config\n", i);
+			goto err_usb_add_function;
+		}
+	}
+
+	return 0;
+
+err_usb_add_function:
+	while (i-- > 0)
+		usb_remove_function(c, config->f_serial[i]);
+
+	return err;
+
+err_usb_get_function_instance:
+	while (i-- > 0) {
+		usb_put_function(config->f_serial[i]);
+err_usb_get_function:
+		usb_put_function_instance(config->f_serial_inst[i]);
+	}
+
+out:
+	return err;
+}
+static ssize_t serial_transports_store(
+		struct device *device, struct device_attribute *attr,
+		const char *buff, size_t size)
+{
+	strlcpy(serial_transports, buff, sizeof(serial_transports));
+
+	return size;
+}
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+static void serial_function_unbind_config(struct android_usb_function *f,
+				       struct usb_configuration *c)
+{
+	int i;
+	struct serial_function_config *config = f->config;
+
+	for (i = 0; i < config->instances_on; i++)
+		usb_remove_function(c, config->f_serial[i]);
+}
+#endif
+static DEVICE_ATTR(serial_transports, S_IWUSR, NULL, serial_transports_store);
+static struct device_attribute *serial_function_attributes[] = {
+	&dev_attr_serial_transports,
+	NULL
+};
+
+static struct android_usb_function serial_function = {
+	.name		= "serial",
+	.init		= serial_function_init,
+	.cleanup	= serial_function_cleanup,
+	.bind_config	= serial_function_bind_config,
+#ifndef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
+	.unbind_config	= serial_function_unbind_config,
+#endif
+	.attributes	= serial_function_attributes,
+};
+
+#endif
 
 static int audio_source_function_init(struct android_usb_function *f,
 			struct usb_composite_dev *cdev)
@@ -1212,6 +1334,9 @@ static struct android_usb_function *supported_functions[] = {
 	&diag_function,
 	&dm_function,
 	&conn_gadget_function,
+#endif
+#ifdef CONFIG_USB_ANDROID_SAMSUNG_DIAG_BRIDGE
+	&serial_function,
 #endif
 	NULL
 };

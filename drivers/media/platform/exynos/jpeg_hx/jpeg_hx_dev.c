@@ -509,6 +509,47 @@ static int jpeg_hx_m2m_mmap(struct file *file, struct vm_area_struct *vma)
 	return v4l2_m2m_mmap(file, ctx->m2m_ctx, vma);
 }
 
+static void jpeg_hx_re_compress(struct jpeg_ctx *ctx)
+{
+	struct jpeg_dev *jpeg = ctx->jpeg_dev;
+	struct jpeg_enc_param enc_param;
+	struct vb2_buffer *vb = NULL;
+
+	if (ctx->param.enc_param.quality >= QUALITY_LEVEL_1 ||
+		ctx->param.enc_param.quality < QUALITY_LEVEL_6)
+		ctx->param.enc_param.quality++;
+
+	enc_param = ctx->param.enc_param;
+
+	jpeg_hx_sw_reset(jpeg->reg_base);
+	jpeg_hx_set_enc_dec_mode(jpeg->reg_base, ENCODING);
+	jpeg_hx_set_dma_num(jpeg->reg_base);
+	jpeg_hx_clk_on(jpeg->reg_base);
+	jpeg_hx_clk_set(jpeg->reg_base, 1);
+	jpeg_hx_set_interrupt(jpeg->reg_base);
+	jpeg_hx_coef(jpeg->reg_base, ENCODING, jpeg);
+	jpeg_hx_set_enc_tbl(jpeg->reg_base, enc_param.quality);
+	jpeg_hx_set_encode_tbl_select(jpeg->reg_base, enc_param.quality);
+	jpeg_hx_set_stream_size(jpeg->reg_base,
+		enc_param.in_width, enc_param.in_height);
+
+	vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
+	jpeg_hx_set_stream_buf_address(jpeg->reg_base, jpeg->vb2->plane_addr(vb, 0));
+	vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
+	jpeg_hx_set_frame_buf_address(jpeg->reg_base,
+	enc_param.in_fmt, jpeg->vb2->plane_addr(vb, 0), enc_param.in_width, enc_param.in_height);
+
+	jpeg_hx_set_enc_out_fmt(jpeg->reg_base, enc_param.out_fmt);
+	jpeg_hx_set_enc_in_fmt(jpeg->reg_base, enc_param.in_fmt);
+	jpeg_hx_set_luma_stride(jpeg->reg_base, enc_param.in_width, enc_param.in_depth[0]);
+	jpeg_hx_set_cbcr_stride(jpeg->reg_base, enc_param.in_width, enc_param.in_depth[0]);
+	if (enc_param.in_fmt == RGB_565 || ARGB_8888)
+		jpeg_hx_set_y16(jpeg->reg_base);
+
+	jpeg_hx_set_timer(jpeg->reg_base, 0x10000000);
+	jpeg_hx_start(jpeg->reg_base);
+}
+
 static const struct v4l2_file_operations jpeg_hx_fops = {
 	.owner		= THIS_MODULE,
 	.open		= jpeg_hx_m2m_open,
@@ -731,16 +772,16 @@ static irqreturn_t jpeg_hx_irq(int irq, void *priv)
 		return IRQ_HANDLED;
 	}
 
-	clear_bit(DEV_RUN, &jpeg->state);
-	clear_bit(CTX_RUN, &ctx->flags);
-	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
-	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
-
 	if (int_status) {
 		switch (int_status & 0xfff) {
 		case 0xe20:
 			jpeg->irq_ret = OK_ENC_OR_DEC;
 			break;
+		case 0x100:
+			jpeg->irq_ret = ERR_COMP_SIZE;
+			jpeg_hx_re_compress(ctx);
+			spin_unlock(&ctx->slock);
+			return IRQ_HANDLED;
 		default:
 			jpeg->irq_ret = ERR_UNKNOWN;
 			break;
@@ -748,6 +789,12 @@ static irqreturn_t jpeg_hx_irq(int irq, void *priv)
 	} else {
 		jpeg->irq_ret = ERR_UNKNOWN;
 	}
+
+	clear_bit(DEV_RUN, &jpeg->state);
+	clear_bit(CTX_RUN, &ctx->flags);
+
+	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
+	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 	if (src_vb && dst_vb) {
 		if (jpeg->irq_ret == OK_ENC_OR_DEC) {
 			if (jpeg->mode == ENCODING) {

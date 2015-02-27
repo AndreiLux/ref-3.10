@@ -111,8 +111,8 @@ struct fimc_is_queue {
 };
 
 struct fimc_is_video_ctx {
-	struct fimc_is_queue		q_src;
-	struct fimc_is_queue		q_dst;
+	struct fimc_is_queue		*q_src;
+	struct fimc_is_queue		*q_dst;
 	struct mutex			lock;
 	u32				type;
 	u32				instance;
@@ -220,14 +220,14 @@ int buffer_done(struct fimc_is_video_ctx *vctx, u32 index);
 long video_ioctl3(struct file *file, unsigned int cmd, unsigned long arg);
 
 #define GET_QUEUE(vctx, type) \
-	(V4L2_TYPE_IS_OUTPUT((type)) ? &vctx->q_src : &vctx->q_dst)
+	(V4L2_TYPE_IS_OUTPUT((type)) ? vctx->q_src : vctx->q_dst)
 #define GET_VCTX_QUEUE(vctx, vbq) (GET_QUEUE(vctx, vbq->type))
 
-#define GET_SRC_QUEUE(vctx) (&vctx->q_src)
-#define GET_DST_QUEUE(vctx) (&vctx->q_dst)
+#define GET_SRC_QUEUE(vctx) (vctx->q_src)
+#define GET_DST_QUEUE(vctx) (vctx->q_dst)
 
-#define GET_SRC_FRAMEMGR(vctx) (&vctx->q_src.framemgr)
-#define GET_DST_FRAMEMGR(vctx) (&vctx->q_dst.framemgr)
+#define GET_SRC_FRAMEMGR(vctx) (&vctx->q_src->framemgr)
+#define GET_DST_FRAMEMGR(vctx) (&vctx->q_dst->framemgr)
 
 #define CALL_QOPS(q, op, args...) (((q)->qops->op) ? ((q)->qops->op(args)) : 0)
 

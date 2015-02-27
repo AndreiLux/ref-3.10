@@ -23,6 +23,9 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
+#ifdef CONFIG_OF
+#include <linux/of_gpio.h>
+#endif
 #include <mach/regs-gpio.h>
 #include <mach/regs-clock.h>
 #include <plat/clock.h>
@@ -83,6 +86,146 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops
 };
 
+#ifdef CONFIG_OF
+#ifdef CONFIG_COMPANION_USE
+static int sensor_2p2_12m_power_setpin(struct device *dev)
+{
+	struct exynos_platform_fimc_is_sensor *pdata;
+	struct device_node *dnode;
+	int gpio_comp_en = 0, gpio_comp_rst = 0;
+	int gpio_none = 0;
+	int gpio_reset = 0;
+	int gpios_cam_en = -EINVAL;
+#ifdef CONFIG_OIS_USE
+	int gpios_ois_en = 0;
+#endif
+	BUG_ON(!dev);
+	BUG_ON(!dev->platform_data);
+
+	dnode = dev->of_node;
+	pdata = dev->platform_data;
+
+	gpio_comp_en = of_get_named_gpio(dnode, "gpios_comp_en", 0);
+	if (!gpio_is_valid(gpio_comp_en)) {
+		dev_err(dev, "failed to get main comp en gpio\n");
+	} else {
+		gpio_request_one(gpio_comp_en, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_comp_en);
+	}
+
+	gpio_comp_rst = of_get_named_gpio(dnode, "gpios_comp_reset", 0);
+	if (!gpio_is_valid(gpio_comp_rst)) {
+		dev_err(dev, "failed to get main comp reset gpio\n");
+	} else {
+		gpio_request_one(gpio_comp_rst, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_comp_rst);
+	}
+
+	gpio_reset = of_get_named_gpio(dnode, "gpio_reset", 0);
+	if (!gpio_is_valid(gpio_reset)) {
+		dev_err(dev, "failed to get PIN_RESET\n");
+		return -EINVAL;
+	} else {
+		gpio_request_one(gpio_reset, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_reset);
+	}
+
+	if (of_get_property(dnode, "gpios_cam_en", NULL)) {
+		gpios_cam_en = of_get_named_gpio(dnode, "gpios_cam_en", 0);
+		if (!gpio_is_valid(gpios_cam_en)) {
+			dev_err(dev, "failed to get main cam en gpio\n");
+		} else {
+			gpio_request_one(gpios_cam_en, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+			gpio_free(gpios_cam_en);
+		}
+	}
+
+#ifdef CONFIG_OIS_USE
+	gpios_ois_en = of_get_named_gpio(dnode, "gpios_ois_en", 0);
+	pdata->pin_ois_en = gpios_ois_en;
+	if (!gpio_is_valid(gpios_ois_en)) {
+		dev_err(dev, "failed to get ois en gpio\n");
+	} else {
+		gpio_request_one(gpios_ois_en, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpios_ois_en);
+	}
+#endif
+
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 0, gpios_cam_en, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 0, gpio_none, 0, "CAM_SEN_A2.8V_AP", 0, PIN_REGULATOR_ON);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 1, gpio_none, 0, "CAM_SEN_CORE_1.2V_AP", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 2, gpio_none, 0, "CAM_AF_2.8V_AP", 2000, PIN_REGULATOR_ON);
+#ifdef CONFIG_OIS_USE
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 3, gpios_ois_en, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 4, gpio_none, 0, "OIS_VM_2.8V", 0, PIN_REGULATOR_ON);
+#endif
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 5, gpio_none, 0, "CAM_IO_1.8V_AP", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 6, gpio_none, 0, "VDDA_1.8V_COMP", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 7, gpio_comp_en, 0, NULL, 150, PIN_OUTPUT_HIGH);
+	if (pdata->companion_use_pmic) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 8, gpio_none, 0, "VDD_MIPI_1.0V_COMP", 0, PIN_REGULATOR_ON);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 9, gpio_comp_rst, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 10, gpio_none, 0, "ch", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 11, gpio_none, 0, "af", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 12, gpio_reset, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 13, gpio_none, 0, NULL, 0, PIN_END);
+
+	/* BACK CAMERA  - POWER OFF */
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 0, gpio_none, 0, "CAM_AF_2.8V_AP", 2000, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 1, gpio_none, 0, "off", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 2, gpio_reset, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 3, gpio_comp_rst, 0, NULL, 0, PIN_OUTPUT_LOW);
+	if (pdata->companion_use_pmic) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 4, gpio_none, 0, "VDD_MIPI_1.0V_COMP", 0, PIN_REGULATOR_OFF);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 5, gpio_comp_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 6, gpio_none, 0, "VDDA_1.8V_COMP", 0, PIN_REGULATOR_OFF);
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 7, gpios_cam_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 7, gpio_none, 0, "CAM_SEN_A2.8V_AP", 0, PIN_REGULATOR_OFF);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 8, gpio_none, 0, "CAM_SEN_CORE_1.2V_AP", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 9, gpio_none, 0, "CAM_IO_1.8V_AP", 0, PIN_REGULATOR_OFF);
+#ifdef CONFIG_OIS_USE
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 10, gpios_ois_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 11, gpio_none, 0, "OIS_VM_2.8V", 0, PIN_REGULATOR_OFF);
+#endif
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 12, gpio_none, 0, NULL, 0, PIN_END);
+
+#ifdef CONFIG_OIS_USE
+	/* OIS_FACTORY  - POWER ON */
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON, 0, gpio_none, 0, "CAM_AF_2.8V_AP", 2000, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON, 1, gpios_ois_en, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON, 2, gpio_none, 0, "OIS_VM_2.8V", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON, 3, gpio_none, 0, "CAM_IO_1.8V_AP", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON, 4, gpio_reset, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_ON, 5, gpio_none, 0, NULL, 0, PIN_END);
+
+	/* OIS_FACTORY  - POWER OFF */
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF, 0, gpio_none, 0, "CAM_AF_2.8V_AP", 2000, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF, 1, gpio_reset, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF, 2, gpio_none, 0, "CAM_IO_1.8V_AP", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF, 3, gpios_ois_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF, 4, gpio_none, 0, "OIS_VM_2.8V", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_OIS_FACTORY, GPIO_SCENARIO_OFF, 5, gpio_none, 0, NULL, 0, PIN_END);
+#endif
+
+	return 0;
+}
+#else
+static int sensor_2p2_12m_power_setpin(struct device *dev)
+{
+	return 0;
+}
+#endif /* CONFIG_COMPANION_USE */
+#endif /* CONFIG_OF */
+
+
 int sensor_2p2_12m_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
@@ -124,12 +267,16 @@ int sensor_2p2_12m_probe(struct i2c_client *client,
 	module->position = SENSOR_POSITION_REAR;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_4;
+	module->sensor_maker = "SLSI";
+	module->sensor_name = "S5K2P2";
 	module->setfile_name = "setfile_2p2_12m.bin";
 	module->cfgs = ARRAY_SIZE(config_2p2_12m);
 	module->cfg = config_2p2_12m;
 	module->ops = NULL;
 	module->private_data = NULL;
-
+#ifdef CONFIG_OF
+	module->power_setpin = sensor_2p2_12m_power_setpin;
+#endif
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;
 	ext->I2CSclk = I2C_L0;

@@ -431,8 +431,8 @@ static void exynos_pcie_assert_phy_reset(struct pcie_port *pp)
 		writel(0x11, phy_base + 0x03*4);
 
 		/* band gap reference on */
-		//	writel(0x0, phy_base + 0x20*4);
-		//	writel(0x0, phy_base + 0x4b*4);
+		writel(0x0, phy_base + 0x20*4);
+		writel(0x0, phy_base + 0x4b*4);
 
 		/* jitter tunning */
 		writel(0x34, phy_base + 0x04*4);
@@ -1147,28 +1147,7 @@ static int exynos_pcie_prepare(struct device *dev)
 
 static void exynos_pcie_complete(struct device *dev)
 {
-	struct pcie_port *pp = &g_pcie->pp;
-	void __iomem *ep_dbi_base = pp->va_cfg0_base;
-	u32 val=0;
-	if (!check_rev()) {
-		writel(0x0, g_pcie->elbi_base + PCIE_APP_REQ_EXIT_L1);
-		printk("+ %s\n", __func__);
-	}
-	else {
-		if(poweronoff_flag) {
-			val = readl(ep_dbi_base + 0xbc);
-			val &= ~0x3;
-			val |= 0x142;
-			writel(val, ep_dbi_base + 0xBC);
-			val = readl(ep_dbi_base + 0x248);
-			writel(val | 0xa0f, ep_dbi_base + 0x248);
-			writel(0x69, ep_dbi_base + 0x24C);
-			writel(0x10031003, ep_dbi_base + 0x1B4);
-			val = readl(ep_dbi_base + 0xD4);
-			writel(val | (1 << 10), ep_dbi_base + 0xD4);
-		}
-	}
-	printk("- %s\n", __func__);
+	return;
 }
 
 static int exynos_pcie_suspend_noirq(struct device *dev)
@@ -1252,8 +1231,11 @@ static int exynos_pcie_resume_noirq(struct device *dev)
 	writel(readl(g_pcie->gpio_base + 0x8) | (0x3 << 12), g_pcie->gpio_base + 0x8);
 
 	gpio_set_value(g_pcie->perst_gpio, 1);
-	msleep(80);
 	exynos_pcie_host_init(&g_pcie->pp);
+
+	/* setup ATU for cfg/mem outbound */
+	dw_pcie_prog_viewport_cfg0(&g_pcie->pp, 0x1000000);
+	dw_pcie_prog_viewport_mem_outbound(&g_pcie->pp);
 
 	/* L1.2 ASPM enable */
 	dw_pcie_config_l1ss(&g_pcie->pp);

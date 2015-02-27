@@ -23,6 +23,9 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/platform_device.h>
+#ifdef CONFIG_OF
+#include <linux/of_gpio.h>
+#endif
 #include <mach/regs-gpio.h>
 #include <mach/regs-clock.h>
 #include <plat/clock.h>
@@ -87,6 +90,76 @@ static const struct v4l2_subdev_ops subdev_ops = {
 	.core = &core_ops
 };
 
+#ifdef CONFIG_OF
+#ifdef CONFIG_COMPANION_USE
+static int sensor_imx134_power_setpin(struct device *dev)
+{
+	return 0;
+}
+#else
+static int sensor_imx134_power_setpin(struct device *dev)
+{
+	struct exynos_platform_fimc_is_sensor *pdata;
+	struct device_node *dnode;
+	int gpio_none = 0;
+	int gpio_reset = 0, gpios_cam_en = 0;
+
+	BUG_ON(!dev);
+	BUG_ON(!dev->platform_data);
+
+	dnode = dev->of_node;
+	pdata = dev->platform_data;
+
+	gpio_reset = of_get_named_gpio(dnode, "gpio_reset", 0);
+	if (!gpio_is_valid(gpio_reset)) {
+		err("failed to get PIN_RESET");
+		return -EINVAL;
+	} else {
+		gpio_request_one(gpio_reset, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_reset);
+	}
+
+	gpios_cam_en = of_get_named_gpio(dnode, "gpios_cam_en", 0);
+	if (!gpio_is_valid(gpios_cam_en)) {
+		err("failed to get main cam en gpio");
+	} else {
+		gpio_request_one(gpios_cam_en, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpios_cam_en);
+	}
+
+	/* BACK CAMERA	- POWER ON */
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 0, gpios_cam_en, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 0, gpio_none, 0, "CAM_SEN_A2.8V_AP", 0, PIN_REGULATOR_ON);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 1, gpio_none, 0, "CAM_SEN_CORE_1.2V_AP", 0, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 2, gpio_none, 0, "CAM_AF_2.8V_AP", 2000, PIN_REGULATOR_ON);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 3, gpio_none, 0, "CAM_IO_1.8V_AP", 2000, PIN_REGULATOR_ON);
+
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 4, gpio_none, 0, "ch", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 5, gpio_reset, 0, NULL, 0, PIN_OUTPUT_HIGH);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 6, gpio_none, 0, "af", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_ON, 7, gpio_none, 0, NULL, 0, PIN_END);
+
+	/* BACK CAMERA	- POWER OFF */
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 0, gpio_none, 0, "CAM_AF_2.8V_AP", 2000, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 1, gpio_none, 0, "off", 0, PIN_FUNCTION);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 2, gpio_reset, 0, NULL, 0, PIN_OUTPUT_LOW);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 3, gpio_none, 0, "CAM_IO_1.8V_AP", 0, PIN_REGULATOR_OFF);
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 4, gpio_none, 0, "CAM_SEN_CORE_1.2V_AP", 0, PIN_REGULATOR_OFF);
+	if (gpio_is_valid(gpios_cam_en)) {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 5, gpios_cam_en, 0, NULL, 0, PIN_OUTPUT_LOW);
+	} else {
+		SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 5, gpio_none, 0, "CAM_SEN_A2.8V_AP", 0, PIN_REGULATOR_OFF);
+	}
+	SET_PIN(pdata, SENSOR_SCENARIO_NORMAL, GPIO_SCENARIO_OFF, 6, gpio_none, 0, NULL, 0, PIN_END);
+
+	return 0;
+}
+#endif /* CONFIG_COMPANION_USE */
+#endif /* CONFIG_OF */
+
 int sensor_imx134_probe(struct i2c_client *client,
 	const struct i2c_device_id *id)
 {
@@ -129,11 +202,16 @@ int sensor_imx134_probe(struct i2c_client *client,
 	module->position = SENSOR_POSITION_REAR;
 	module->mode = CSI_MODE_CH0_ONLY;
 	module->lanes = CSI_DATA_LANES_4;
+	module->sensor_maker = "SONY";
+	module->sensor_name = "IMX134";
 	module->setfile_name = "setfile_imx134.bin";
 	module->cfgs = ARRAY_SIZE(config_imx134);
 	module->cfg = config_imx134;
 	module->ops = NULL;
 	module->private_data = NULL;
+#ifdef CONFIG_OF
+	module->power_setpin = sensor_imx134_power_setpin;
+#endif
 
 	ext = &module->ext;
 	ext->mipi_lane_num = module->lanes;

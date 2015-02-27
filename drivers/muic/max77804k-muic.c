@@ -85,32 +85,6 @@ struct max77804k_muic_data {
 	u8				status2;
 };
 
-/* don't access this variable directly!! except get_switch_sel_value function.
- * you must get switch_sel value by using get_switch_sel function. */
-static int switch_sel;
-
-/* func : set_switch_sel
- * switch_sel value get from bootloader comand line
- * switch_sel data consist 8 bits (xxxxzzzz)
- * first 4bits(zzzz) mean path infomation.
- * next 4bits(xxxx) mean if pmic version info
- */
-static int set_switch_sel(char *str)
-{
-	get_option(&str, &switch_sel);
-	switch_sel = switch_sel & 0x0f;
-	pr_info("%s:%s switch_sel: 0x%x\n", MUIC_DEV_NAME, __func__,
-			switch_sel);
-
-	return switch_sel;
-}
-__setup("pmic_info=", set_switch_sel);
-
-static int get_switch_sel(void)
-{
-	return switch_sel;
-}
-
 struct max77804k_muic_vps_data {
 	u8				adc1k;
 	u8				adcerr;
@@ -195,7 +169,7 @@ static const struct max77804k_muic_vps_data muic_vps_table[] = {
 		.adcerr		= 0x00,
 		.adc		= ADC_JIG_UART_OFF,
 		.vbvolt		= VB_HIGH,
-		.chgdetrun	= CHGDETRUN_FALSE,
+		.chgdetrun	= CHGDETRUN_DONTCARE,
 		.chgtyp		= CHGTYP_NO_VOLTAGE,
 		.control1	= CTRL1_UART,
 		.vps_name	= "Jig UART Off + VB",
@@ -1318,7 +1292,7 @@ static int max77804k_muic_handle_detach(struct max77804k_muic_data *muic_data)
 	if (muic_data->attached_dev == ATTACHED_DEV_NONE_MUIC) {
 		pr_info("%s:%s Duplicated(%d), just ignore\n", MUIC_DEV_NAME,
 				__func__, muic_data->attached_dev);
-		return ret;
+		goto out_without_noti;
 	}
 
 	/* Enable Factory Accessory Detection State Machine */
@@ -1676,6 +1650,7 @@ static bool muic_check_vps_chgtyp
 		case CHGTYP_DEDICATED_CHARGER:
 		case CHGTYP_500MA:
 		case CHGTYP_1A:
+		case CHGTYP_SPECIAL_3_3V_CHARGER:
 			ret = true;
 			goto out;
 		default:

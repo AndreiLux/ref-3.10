@@ -646,7 +646,7 @@ static void fimc_is_scc_buffer_queue(struct vb2_buffer *vb)
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = vb->vb2_queue->drv_priv;
-	struct fimc_is_queue *queue = &vctx->q_dst;
+	struct fimc_is_queue *queue = vctx->q_dst;
 	struct fimc_is_video *video = vctx->video;
 	struct fimc_is_device_ischain *ischain = vctx->device;
 	struct fimc_is_subdev *scc = &ischain->scc;

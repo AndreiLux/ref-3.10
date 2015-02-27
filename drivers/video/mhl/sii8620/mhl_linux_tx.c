@@ -4026,6 +4026,7 @@ static int sii8620_electrical_eye_verification(struct mhl_dev_context *dev_conte
 }
 #endif /* CONFIG_TESTONLY_SYSFS_SW_REG_TUNING */
 
+extern int devtype_ssdongle_v4;
 
 /* DEFAULT BEHAVIOR MODE */
 int sii8620_detection_start(unsigned long event)
@@ -4057,6 +4058,7 @@ int sii8620_detection_start(unsigned long event)
 		/* MHL version reset for Factory test */
 		dev_context->dev_cap_cache.mdc.mhl_version = 0;
 		dev_context->peer_mhl3_version = 0;
+		devtype_ssdongle_v4 = 0;
 #ifdef CONFIG_MHL3_DVI_WR
 		if(force_ocbus_for_ects == 2) {
 			force_ocbus_for_ects = 0;
@@ -4243,6 +4245,38 @@ static ssize_t sii8620_swing_v3_test_store(struct class *dev,
 static CLASS_ATTR(swing_v3, 0664,
 		sii8620_swing_v3_test_show, sii8620_swing_v3_test_store);
 
+
+static ssize_t sii8620_ref_current_test_show(struct class *dev,
+		struct class_attribute *attr, char *buf)
+{
+	struct mhl_dev_context *sii8620 = dev_get_drvdata(sii8620_dev);
+	char str_buf[] = "ex) echo 0x08 > ref_current\n";
+
+	sprintf(buf, str_buf);
+	sprintf(str_buf, "current value : 0x%02x\n",
+			sii8620->pdata->ref_current);
+	buf = strcat(buf, str_buf);
+
+	return strlen(buf) + 1;
+}
+static ssize_t sii8620_ref_current_test_store(struct class *dev,
+		struct class_attribute *attr,
+		const char *buf, size_t size)
+{
+	struct mhl_dev_context *sii8620 = dev_get_drvdata(sii8620_dev);
+	int numbers[2];
+
+	get_options(buf, 2, numbers);
+	if (numbers[0] == 1 && numbers[1] >=0 && numbers[1] <= 0xff)
+		sii8620->pdata->ref_current = numbers[1];
+	else
+		sii8620->pdata->ref_current = 0x08;
+
+	return size;
+}
+
+static CLASS_ATTR(ref_current, 0664,
+		sii8620_ref_current_test_show, sii8620_ref_current_test_store);
 
 
 extern int hdmi_forced_resolution;
@@ -4578,6 +4612,11 @@ int mhl_tx_init(struct mhl_drv_info const *drv_info, struct device *parent_dev)
 		ret = class_create_file(mhl_class, &class_attr_swing_v3);
 		if (ret)
 			pr_err("sii8620:%s:%d: failed to create swing_3 sysfs file\n",
+				__func__, __LINE__);
+
+		ret = class_create_file(mhl_class, &class_attr_ref_current);
+		if (ret)
+			pr_err("sii8620:%s:%d: failed to create ref_current sysfs file\n",
 				__func__, __LINE__);
 
 		ret = class_create_file(mhl_class, &class_attr_timing);

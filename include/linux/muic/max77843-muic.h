@@ -32,6 +32,7 @@ struct max77843_muic_data {
 	struct device			*dev;
 	struct i2c_client		*i2c; /* i2c addr: 0x4A; MUIC */
 	struct mutex			muic_mutex;
+	struct mutex			reset_mutex;
 
 	/* model dependant mfd platform data */
 	struct max77843_platform_data	*mfd_pdata;
@@ -46,6 +47,8 @@ struct max77843_muic_data {
 	int				irq_mpnack;
 	int				irq_vbadc;
 
+	int				irq_reset_acokbf;
+
 	/* model dependant muic platform data */
 	struct muic_platform_data	*pdata;
 
@@ -56,6 +59,9 @@ struct max77843_muic_data {
 	bool muic_support_list[ATTACHED_DEV_NUM];
 
 	bool				is_muic_ready;
+	bool				is_muic_reset;
+
+	bool				ignore_adcerr;
 
 	/* check is otg test for jig uart off + vb */
 	bool				is_otg_test;
@@ -85,7 +91,6 @@ struct max77843_muic_data {
 	u8				hvcontrol1;
 	u8				hvcontrol2;
 
-	struct work_struct		muic_reset_work;
 };
 
 /* max77843 muic register read/write related information defines. */

@@ -832,9 +832,9 @@ dhd_tcpdata_info_get(dhd_pub_t *dhdp, void *pkt)
 
 		/* If both IP address and TCP port number match, we found it so break. */
 		if (memcmp(&ip_hdr[IPV4_SRC_IP_OFFSET],
-			tdata_info_tmp->src_ip_addr, IPV4_ADDR_LEN * 2) == 0 &&
+			(void *)tdata_info_tmp->src_ip_addr, IPV4_ADDR_LEN * 2) == 0 &&
 			memcmp(&tcp_hdr[TCP_SRC_PORT_OFFSET],
-			tdata_info_tmp->src_tcp_port, TCP_PORT_LEN * 2) == 0) {
+			(void *)tdata_info_tmp->src_tcp_port, TCP_PORT_LEN * 2) == 0) {
 			tcpdata_info = tdata_info_tmp;
 			tcpdata_info->last_used_time = now_in_ms;
 			break;
@@ -902,9 +902,9 @@ dhd_tcpdata_info_get(dhd_pub_t *dhdp, void *pkt)
 			ntoh16_ua(&tcp_hdr[TCP_SRC_PORT_OFFSET]),
 			ntoh16_ua(&tcp_hdr[TCP_DEST_PORT_OFFSET])));
 
-		bcopy(&ip_hdr[IPV4_SRC_IP_OFFSET], tcpdata_info->src_ip_addr,
+		bcopy(&ip_hdr[IPV4_SRC_IP_OFFSET], (void *)tcpdata_info->src_ip_addr,
 			IPV4_ADDR_LEN * 2);
-		bcopy(&tcp_hdr[TCP_SRC_PORT_OFFSET], tcpdata_info->src_tcp_port,
+		bcopy(&tcp_hdr[TCP_SRC_PORT_OFFSET], (void *)tcpdata_info->src_tcp_port,
 			TCP_PORT_LEN * 2);
 
 		tcpdata_info->last_used_time = OSL_SYSUPTIME();

@@ -1138,6 +1138,14 @@ static void posix_cpu_timers_init(struct task_struct *tsk)
 	INIT_LIST_HEAD(&tsk->cpu_timers[2]);
 }
 
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+void rkp_assign_pgd(struct task_struct *p)
+{
+	unsigned int pgd;
+	pgd = (unsigned int)(p->mm ? p->mm->pgd :swapper_pg_dir);
+	tima_send_cmd2((unsigned int)p->cred, (unsigned int)pgd, 0x43);
+}
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 /*
  * This creates a new process as a copy of the old one,
  * but does not actually start it yet.
@@ -1502,6 +1510,9 @@ static struct task_struct *copy_process(unsigned long clone_flags,
 	perf_event_fork(p);
 
 	trace_task_newtask(p, clone_flags);
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	rkp_assign_pgd(p);
+#endif/*CONFIG_TIMA_RKP_RO_CRED*/
 
 	return p;
 

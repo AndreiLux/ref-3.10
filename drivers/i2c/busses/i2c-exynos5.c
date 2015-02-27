@@ -432,6 +432,8 @@ static void exynos5_i2c_reset(struct exynos5_i2c *i2c)
 {
 	u32 i2c_ctl;
 
+	dev_err(i2c->dev, "exynos5_i2c_reset\n");
+
 	/* Set and clear the bit for reset */
 	i2c_ctl = readl(i2c->regs + HSI2C_CTL);
 	i2c_ctl |= HSI2C_SW_RST;
@@ -661,7 +663,7 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c, struct i2c_msg *msgs, i
 			if (ret == -EAGAIN) {
 				dump_i2c_register(i2c);
 				exynos5_i2c_reset(i2c);
-				dev_warn(i2c->dev, "rx timeout\n");
+				dev_err(i2c->dev, "rx timeout\n");
 				return ret;
 			}
 		} else {
@@ -670,6 +672,21 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c, struct i2c_msg *msgs, i
 
 			ret = 0;
 			if (i2c->check_transdone_int) {
+				if (i2c->scl_clk_stretch) {
+					unsigned long timeout = jiffies + msecs_to_jiffies(100);
+
+					do {
+						trans_status = readl(i2c->regs + HSI2C_TRANS_STATUS);
+						if ((!(trans_status & HSI2C_MAST_ST_MASK)) ||
+						   ((stop == 0) && (trans_status & HSI2C_MASTER_BUSY))){
+							timeout = 0;
+							break;
+						}
+					} while(time_before(jiffies, timeout));
+
+					if (timeout)
+						dev_err(i2c->dev, "SDA check timeout!!! = 0x%8lx\n",trans_status);
+				}
 				disable_irq(i2c->irq);
 
 				if (i2c->trans_done < 0) {
@@ -682,7 +699,7 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c, struct i2c_msg *msgs, i
 			if (timeout == 0) {
 				dump_i2c_register(i2c);
 				exynos5_i2c_reset(i2c);
-				dev_warn(i2c->dev, "rx timeout\n");
+				dev_err(i2c->dev, "rx timeout\n");
 				ret = -EAGAIN;
 				return ret;
 			}
@@ -710,7 +727,7 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c, struct i2c_msg *msgs, i
 			if (timeout == 0) {
 				dump_i2c_register(i2c);
 				exynos5_i2c_reset(i2c);
-				dev_warn(i2c->dev, "tx timeout\n");
+				dev_err(i2c->dev, "tx timeout\n");
 				return ret;
 			}
 
@@ -731,7 +748,7 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c, struct i2c_msg *msgs, i
 				if (ret == -EAGAIN) {
 					dump_i2c_register(i2c);
 					exynos5_i2c_reset(i2c);
-					dev_warn(i2c->dev, "tx timeout\n");
+					dev_err(i2c->dev, "tx timeout\n");
 					return ret;
 				}
 			} else {
@@ -777,7 +794,7 @@ static int exynos5_i2c_xfer_msg(struct exynos5_i2c *i2c, struct i2c_msg *msgs, i
 		if (ret == -EAGAIN) {
 			dump_i2c_register(i2c);
 			exynos5_i2c_reset(i2c);
-			dev_warn(i2c->dev, "tx timeout\n");
+			dev_err(i2c->dev, "tx timeout\n");
 			return ret;
 		}
 	}
@@ -800,9 +817,10 @@ static int exynos5_i2c_xfer(struct i2c_adapter *adap,
 	}
 
 	clk_prepare_enable(i2c->clk);
-	if (i2c->need_hw_init)
+	if (i2c->need_hw_init){
+		dev_err(i2c->dev, "exynos5_i2c_xfer call exynos5_i2c_reset\n");
 		exynos5_i2c_reset(i2c);
-
+	}
 	for (retry = 0; retry < adap->retries; retry++) {
 		for (i = 0; i < num; i++) {
 			stop = (i == num - 1);

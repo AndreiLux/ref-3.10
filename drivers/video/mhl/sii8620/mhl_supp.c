@@ -2409,6 +2409,34 @@ static void sii8620_setup_charging(struct mhl_dev_context *dev_context)
 				version);
 	}
 }
+
+static void si_mhl_tx_show_devcap(struct mhl_dev_context *dev_context)
+{
+	if (dev_context == NULL)
+		return;
+
+	MHL_TX_DBG_INFO("-------------------------------------\n");
+	MHL_TX_DBG_INFO("state(0x%02x)\n",dev_context->dev_cap_cache.mdc.state);
+	MHL_TX_DBG_INFO("mhl_version(0x%02x)\n",dev_context->dev_cap_cache.mdc.mhl_version);
+	MHL_TX_DBG_INFO("deviceCategory(0x%02x)\n",dev_context->dev_cap_cache.mdc.deviceCategory);
+	MHL_TX_DBG_INFO("adopterIdHigh(0x%02x)\n",dev_context->dev_cap_cache.mdc.adopterIdHigh);
+	MHL_TX_DBG_INFO("adopterIdLow(0x%02x)\n",dev_context->dev_cap_cache.mdc.adopterIdLow);
+	MHL_TX_DBG_INFO("vid_link_mode(0x%02x)\n",dev_context->dev_cap_cache.mdc.vid_link_mode);
+	MHL_TX_DBG_INFO("audLinkMode(0x%02x)\n",dev_context->dev_cap_cache.mdc.audLinkMode);
+	MHL_TX_DBG_INFO("videoType(0x%02x)\n",dev_context->dev_cap_cache.mdc.videoType);
+	MHL_TX_DBG_INFO("logicalDeviceMap(0x%02x)\n",dev_context->dev_cap_cache.mdc.logicalDeviceMap);
+	MHL_TX_DBG_INFO("bandWidth(0x%02x)\n",dev_context->dev_cap_cache.mdc.bandWidth);
+	MHL_TX_DBG_INFO("featureFlag(0x%02x)\n",dev_context->dev_cap_cache.mdc.featureFlag);
+	MHL_TX_DBG_INFO("deviceIdHigh(0x%02x)\n",dev_context->dev_cap_cache.mdc.deviceIdHigh);
+	MHL_TX_DBG_INFO("deviceIdLow(0x%02x)\n",dev_context->dev_cap_cache.mdc.deviceIdLow);
+	MHL_TX_DBG_INFO("scratchPadSize(0x%02x)\n",dev_context->dev_cap_cache.mdc.scratchPadSize);
+	MHL_TX_DBG_INFO("int_state_size(0x%02x)\n",dev_context->dev_cap_cache.mdc.int_state_size);
+	MHL_TX_DBG_INFO("reserved(0x%02x)\n",dev_context->dev_cap_cache.mdc.reserved);
+	MHL_TX_DBG_INFO("-------------------------------------\n");
+}
+
+extern int devtype_ssdongle_v4;
+
 #endif /* CONFIG_MHL3_SEC_FEATURE */
 
 /*
@@ -2570,6 +2598,7 @@ void si_mhl_tx_msc_command_done(struct mhl_dev_context *dev_context,
 		union MHLDevCap_u old_devcap, devcap_changes;
 #ifdef CONFIG_MHL3_SEC_FEATURE
 		u16 dev_type;
+		u16 adopter_id;
 #endif
 		old_devcap = dev_context->dev_cap_cache;
 		si_mhl_tx_read_devcap_fifo((struct drv_hw_context *)
@@ -2583,14 +2612,29 @@ void si_mhl_tx_msc_command_done(struct mhl_dev_context *dev_context,
 		 */
 		dev_type = 0x0F & dev_context->dev_cap_cache.mdc.
 			deviceCategory;
-		if (dev_type == 0x01 &&	dev_context->dev_cap_cache.mdc.mhl_version == 0x30) {
-			u16 adopter_id = dev_context->dev_cap_cache.mdc.adopterIdLow |
-				dev_context->dev_cap_cache.mdc.adopterIdHigh << 8;
-			if (adopter_id == 321) {
+		adopter_id = dev_context->dev_cap_cache.mdc.adopterIdLow |
+			dev_context->dev_cap_cache.mdc.adopterIdHigh << 8;
+		if (dev_type == MHL_DEV_CAT_SINK &&
+			dev_context->dev_cap_cache.mdc.mhl_version == 0x30) {
+			if (adopter_id == SAMSUNG_ADOPTER_ID) {
 				dev_context->dev_cap_cache.mdc.vid_link_mode |=
 					MHL_DEV_VID_LINK_SUPP_16BPP;
 			}
 		}
+
+		/* SS MHL3 dongle ver.4 or less sends 4K resolution at
+		 * both EDID and write burst packets. It's now fixed with latest SIMG
+		 * dongle firmware. In order to avoid malfunction with ver.4 or less,
+		 * Tx driver will ignore 4K resolution in write burst pkt.
+		 */
+		if (adopter_id == SAMSUNG_ADOPTER_ID &&
+			((dev_context->dev_cap_cache.mdc.mhl_version < 0x30) ||
+			(dev_context->dev_cap_cache.mdc.mhl_version >= 0x30 &&
+			dev_context->dev_cap_cache.mdc.reserved <= 4))) {
+			devtype_ssdongle_v4 = 1;
+		}
+		MHL_TX_DBG_INFO("devtype_ssdongle_v4: %d\n", devtype_ssdongle_v4);
+		si_mhl_tx_show_devcap(dev_context);
 #endif
 #ifdef CONFIG_MHL3_DVI_WR
 		if (force_ocbus_for_ects == 2) {
@@ -2630,8 +2674,9 @@ void si_mhl_tx_msc_command_done(struct mhl_dev_context *dev_context,
 #endif
 		}
 
-		MHL_TX_DBG_WARN("DEVCAP->MHL_VER = %02x\n",
-			       dev_context->peer_mhl3_version);
+		MHL_TX_DBG_ERR("DEVCAP->MHL_VER = %02x, reserved = %02x\n",
+			       dev_context->peer_mhl3_version,
+				   dev_context->dev_cap_cache.mdc.reserved);
 		/*
 		 *  Generate a change mask between the old and new devcaps
 		 */

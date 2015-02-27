@@ -183,6 +183,7 @@ extern void max77843_hv_muic_init_check_dpdnvden (struct max77843_muic_data *mui
 extern void max77843_hv_muic_init_detect(struct max77843_muic_data *muic_data);
 extern void max77843_hv_muic_initialize(struct max77843_muic_data *muic_data);
 extern void max77843_hv_muic_remove(struct max77843_muic_data *muic_data);
+extern void max77843_hv_muic_remove_wo_free_irq(struct max77843_muic_data *muic_data);
 
 extern void max77843_muic_set_adcmode_always(struct max77843_muic_data *muic_data);
 #if !defined(CONFIG_SEC_FACTORY)

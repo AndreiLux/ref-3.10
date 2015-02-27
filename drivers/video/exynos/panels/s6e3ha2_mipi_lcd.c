@@ -32,6 +32,11 @@
 #include "dynamic_aid_s6e3ha2.h"
 #include <linux/syscalls.h>
 
+#if defined(CONFIG_LCD_HMT) && defined(CONFIG_DECON_MIPI_DSI_PKTGO)
+#include "../decon_display/decon_reg.h"
+#include "../decon_display/dsim_reg.h"
+#endif
+
 #if defined(CONFIG_DECON_MDNIE_LITE)
 #include "mdnie.h"
 #endif
@@ -159,6 +164,7 @@ struct lcd_info {
 	unsigned char			hmt_current_acl;
 
 	unsigned char			**hmt_gamma_table;
+
 #endif
 #if defined(CONFIG_ESD_FG)
 	unsigned int			esd_fg_irq;
@@ -177,6 +183,8 @@ struct lcd_info {
 
 #ifdef CONFIG_LCD_HMT
 static int s6e3ha2_hmt_update(struct lcd_info *lcd, u8 forced);
+static int hmt_brightness_update(struct lcd_info *lcd, u8 forced);
+
 #endif
 
 #if defined(CONFIG_ESD_FG)
@@ -959,35 +967,33 @@ static int init_aid_dimming_table(struct lcd_info *lcd)
 
 static int init_elvss_table(struct lcd_info *lcd, u8* elvss_data)
 {
-	int i, temp, acl, caps, ret;
+	int i, temp, caps, ret;
 
 	for (caps = 0; caps < CAPS_MAX; caps++) {
-		for (acl = 0; acl < ACL_STATUS_MAX; acl++) {
-			for (temp = 0; temp < TEMP_MAX; temp++) {
-				lcd->elvss_table[caps][temp] = kzalloc(ELVSS_STATUS_MAX * sizeof(u8 *), GFP_KERNEL);
+		for (temp = 0; temp < TEMP_MAX; temp++) {
+			lcd->elvss_table[caps][temp] = kzalloc(ELVSS_STATUS_MAX * sizeof(u8 *), GFP_KERNEL);
 
-				if (IS_ERR_OR_NULL(lcd->elvss_table[caps][temp])) {
-					pr_err("failed to allocate elvss table\n");
+			if (IS_ERR_OR_NULL(lcd->elvss_table[caps][temp])) {
+				pr_err("failed to allocate elvss table\n");
+				ret = -ENOMEM;
+				goto err_alloc_elvss_table;
+			}
+
+			for (i = 0; i < ELVSS_STATUS_MAX; i++) {
+				lcd->elvss_table[caps][temp][i] = kzalloc(ELVSS_PARAM_SIZE * sizeof(u8), GFP_KERNEL);
+				if (IS_ERR_OR_NULL(lcd->elvss_table[caps][temp][i])) {
+					pr_err("failed to allocate elvss\n");
 					ret = -ENOMEM;
-					goto err_alloc_elvss_table;
+					goto err_alloc_elvss;
 				}
 
-				for (i = 0; i < ELVSS_STATUS_MAX; i++) {
-					lcd->elvss_table[caps][temp][i] = kzalloc(ELVSS_PARAM_SIZE * sizeof(u8), GFP_KERNEL);
-					if (IS_ERR_OR_NULL(lcd->elvss_table[caps][temp][i])) {
-						pr_err("failed to allocate elvss\n");
-						ret = -ENOMEM;
-						goto err_alloc_elvss;
-					}
+				/* Duplicate with reading value from DDI */
+				memcpy(&lcd->elvss_table[caps][temp][i][1], elvss_data, LDI_ELVSS_LEN);
 
-					/* Duplicate with reading value from DDI */
-					memcpy(&lcd->elvss_table[caps][temp][i][1], elvss_data, LDI_ELVSS_LEN);
-
-					lcd->elvss_table[caps][temp][i][0] = LDI_ELVSS_REG;
-					lcd->elvss_table[caps][temp][i][1] = MPS_TABLE[caps];
-					lcd->elvss_table[caps][temp][i][2] = ELVSS_TABLE[i];
-					lcd->elvss_table[caps][temp][i][22] = temp ? (elvss_data[21] - 3) : elvss_data[21];
-				}
+				lcd->elvss_table[caps][temp][i][0] = LDI_ELVSS_REG;
+				lcd->elvss_table[caps][temp][i][1] = MPS_TABLE[caps];
+				lcd->elvss_table[caps][temp][i][2] = ELVSS_TABLE[i];
+				lcd->elvss_table[caps][temp][i][22] = temp ? (elvss_data[21] - 3) : elvss_data[21];
 			}
 		}
 	}
@@ -1483,8 +1489,11 @@ static ssize_t power_reduce_store(struct device *dev,
 			if (lcd->ldi_enable) {
 				if (!lcd->hmt_on)
 					update_brightness(lcd, 1);
-				else
-					s6e3ha2_hmt_update(lcd, 1);
+				else {
+					mutex_lock(&lcd->bl_lock);
+					hmt_brightness_update(lcd, 1);
+					mutex_unlock(&lcd->bl_lock);
+				}
 			}
 #else
 			if (lcd->ldi_enable)
@@ -1993,22 +2002,13 @@ static int hmt_set_selected_gamma(struct lcd_info *lcd, int ibrightness_index)
 	return ret;
 }
 
-
-static int s6e3ha2_hmt_update(struct lcd_info *lcd, u8 forced)
+static int hmt_brightness_update(struct lcd_info *lcd, u8 forced)
 {
-	s6e3ha2_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
-	s6e3ha2_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
-	s6e3ha2_write(lcd, SEQ_TE_OFF, ARRAY_SIZE(SEQ_TE_OFF));
-
-	msleep(20);
-
-	mutex_lock(&lcd->bl_lock);
-
-	hmt_on_set(lcd, forced);
-
+	int ret = 0;
 	lcd->hmt_bl = get_hmt_level_from_brightness(lcd->hmt_brightness);
-
-	if (lcd->hmt_on && (forced || (lcd->hmt_current_bl != lcd->hmt_bl))) {
+	if(forced || (lcd->hmt_current_bl != lcd->hmt_bl)) {
+		s6e3ha2_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
+		s6e3ha2_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
 		hmt_gamma_ctl(lcd);
 		hmt_aid_parameter_ctl(lcd, forced);
 		hmt_set_elvss(lcd, forced);
@@ -2017,18 +2017,35 @@ static int s6e3ha2_hmt_update(struct lcd_info *lcd, u8 forced)
 
 		dev_info(&lcd->ld->dev, "brightness=%d, bl=%d, candela=%d\n",
 			lcd->hmt_brightness, lcd->hmt_bl, hmt_index_brightness_table[lcd->hmt_bl]);
+		s6e3ha2_write(lcd, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
+		s6e3ha2_write(lcd, SEQ_GAMMA_UPDATE_L, ARRAY_SIZE(SEQ_GAMMA_UPDATE_L));
+		s6e3ha2_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
+		s6e3ha2_write(lcd, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+	} else {
+		dev_info(&lcd->ld->dev, "unchange current=%d, input=%d\n",
+					lcd->hmt_current_bl, lcd->hmt_bl);
+	}
+	return ret;
+}
 
+static int s6e3ha2_hmt_update(struct lcd_info *lcd, u8 forced)
+{
+	mutex_lock(&lcd->bl_lock);
+	s6e3ha2_write(lcd, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
+	s6e3ha2_write(lcd, SEQ_TEST_KEY_ON_FC, ARRAY_SIZE(SEQ_TEST_KEY_ON_FC));
+
+	hmt_on_set(lcd, forced);
+
+	s6e3ha2_write(lcd, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+	s6e3ha2_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
+
+	if (lcd->hmt_on) {
+		hmt_brightness_update(lcd, forced);
 		mutex_unlock(&lcd->bl_lock);
 	} else {
 		mutex_unlock(&lcd->bl_lock);
 		update_brightness(lcd, 1);
 	}
-
-	s6e3ha2_write(lcd, SEQ_TE_ON, ARRAY_SIZE(SEQ_TE_ON));
-	s6e3ha2_write(lcd, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
-	s6e3ha2_write(lcd, SEQ_GAMMA_UPDATE_L, ARRAY_SIZE(SEQ_GAMMA_UPDATE_L));
-	s6e3ha2_write(lcd, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
-	s6e3ha2_write(lcd, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
 
 	return 0;
 }
@@ -2169,6 +2186,7 @@ static ssize_t hmt_brightness_store(struct device *dev,
 	if (rc < 0)
 		return rc;
 	else {
+		dev_info(dev, "++%s: %d\n", __func__, value);
 		if (!lcd->ldi_enable) {
 			dev_info(dev, "%s: panel is off\n", __func__);
 			return -EINVAL;
@@ -2182,11 +2200,10 @@ static ssize_t hmt_brightness_store(struct device *dev,
 		if (lcd->hmt_brightness != value) {
 			mutex_lock(&lcd->bl_lock);
 			lcd->hmt_brightness = value;
+			hmt_brightness_update(lcd, 0);
 			mutex_unlock(&lcd->bl_lock);
-			s6e3ha2_hmt_update(lcd, 0);
 		}
-
-		dev_info(dev, "%s: %d\n", __func__, value);
+		dev_info(dev, "--%s: %d\n", __func__, value);
 	}
 	return size;
 }
@@ -2223,9 +2240,9 @@ static ssize_t hmt_on_store(struct device *dev,
 		lcd->hmt_on = value;
 		mutex_unlock(&lcd->bl_lock);
 		s6e3ha2_hmt_update(lcd, 1);
+		dev_info(dev, "%s: finish\n", __func__);
 	} else
 		dev_info(dev, "%s: hmt already %s\n", __func__, value ? "single" : "off");
-
 	return size;
 }
 

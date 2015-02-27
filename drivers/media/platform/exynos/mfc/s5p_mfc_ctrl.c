@@ -446,10 +446,13 @@ int mfc_init_hw(struct s5p_mfc_dev *dev, enum mfc_buf_usage_type buf_type)
 			goto err_init_hw;
 		}
 
-		if (buf_type == MFCBUF_DRM && !curr_ctx_backup)
-			s5p_mfc_init_memctrl(dev, MFCBUF_NORMAL);
-		else if (buf_type == MFCBUF_NORMAL && curr_ctx_backup)
+		if (buf_type == MFCBUF_DRM && !curr_ctx_backup) {
+			s5p_mfc_clock_off(dev);
+			dev->curr_ctx_drm = curr_ctx_backup;
+			s5p_mfc_clock_on_with_base(dev, MFCBUF_NORMAL);
+		} else if (buf_type == MFCBUF_NORMAL && curr_ctx_backup) {
 			s5p_mfc_init_memctrl(dev, MFCBUF_DRM);
+		}
 	}
 #endif
 

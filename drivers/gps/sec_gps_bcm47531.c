@@ -22,7 +22,7 @@
 
 #include <plat/gpio-cfg.h>
 
-#ifdef CONFIG_SENSORS_SSP_BBD
+#if 0 //def CONFIG_SENSORS_SSP_BBD
 #include <linux/suspend.h>
 #include <linux/notifier.h>
 #endif
@@ -32,7 +32,7 @@ static wait_queue_head_t *p_geofence_wait;
 static unsigned int gps_host_wake_up = 0;
 static unsigned int gps_pwr_on = 0;
 
-#ifdef CONFIG_SENSORS_SSP_BBD
+#if 0 //def CONFIG_SENSORS_SSP_BBD
 static struct pinctrl *host_wake_pinctrl;
 static struct pinctrl_state *host_wake_input;
 static struct pinctrl_state *host_wake_irq;
@@ -185,7 +185,7 @@ int check_gps_op(void)
 }
 EXPORT_SYMBOL(check_gps_op);
 
-#ifdef CONFIG_SENSORS_SSP_BBD
+#if 0 //def CONFIG_SENSORS_SSP_BBD
 static int bcm477x_notifier(struct notifier_block *nb, unsigned long event, void * data)
 {
 	int ret = 0;
@@ -272,7 +272,7 @@ static int __init gps_bcm47531_init(void)
 	gpio_export(gps_host_wake_up, 1);
 	gpio_export_link(gps_dev, "GPS_HOST_WAKE", gps_host_wake_up);
 
-#ifdef CONFIG_SENSORS_SSP_BBD
+#if 0 //def CONFIG_SENSORS_SSP_BBD
 	gps_dev->of_node = root_node;
 	host_wake_pinctrl = devm_pinctrl_get(gps_dev);
 
@@ -316,7 +316,7 @@ static int __init gps_bcm47531_init(void)
 		goto err_free_irq;
 	}
 
-#ifdef CONFIG_SENSORS_SSP_BBD
+#if 0 //def CONFIG_SENSORS_SSP_BBD
     ret = register_pm_notifier(&bcm477x_notifier_block);
     if (ret) {
         pr_err("[GPS] register_pm_notifier failed.\n");

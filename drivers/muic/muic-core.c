@@ -243,6 +243,29 @@ static void muic_cleanup_switch_dev_cb(void)
 
 extern struct muic_platform_data muic_pdata;
 
+/* func : set_switch_sel
+ * switch_sel value get from bootloader comand line
+ * switch_sel data consist 8 bits (xxxxyyyyzzzz)
+ * first 4bits(zzzz) mean path infomation.
+ * next 4bits(yyyy) mean if pmic version info
+ * next 4bits(xxxx) mean afc disable info
+ */
+static int set_switch_sel(char *str)
+{
+	get_option(&str, &muic_pdata.switch_sel);
+	muic_pdata.switch_sel = (muic_pdata.switch_sel) & 0xfff;
+	pr_info("%s: switch_sel: 0x%03x\n", __func__,
+			muic_pdata.switch_sel);
+
+	return muic_pdata.switch_sel;
+}
+__setup("pmic_info=", set_switch_sel);
+
+int get_switch_sel(void)
+{
+	return muic_pdata.switch_sel;
+}
+
 bool is_muic_usb_path_ap_usb(void)
 {
 	if (MUIC_PATH_USB_AP == muic_pdata.usb_path) {

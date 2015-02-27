@@ -414,8 +414,8 @@ static int __init iosm_init(void)
 	}
 	mutex_init(&iosm_mtx);
 	atomic_set(&mdm_ready, 0);
-	mif_info("iosm_msg size = %d, num of iosm elements = %d\n",
-			sizeof(struct iosm_msg), IOSM_NUM_ELEMENTS);
+	mif_info("iosm_msg size = %ld, num of iosm elements = %ld\n",
+			(long)sizeof(struct iosm_msg), (long)IOSM_NUM_ELEMENTS);
 	return 0;
 }
 module_init(iosm_init);

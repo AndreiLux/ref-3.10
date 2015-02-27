@@ -57,7 +57,9 @@ static DECLARE_BITMAP(minors, N_SPI_MINORS);
 #define NUM_BUFF	14
 #define MAX_BUFF	(NUM_BUFF*TRANS_BUFF)
 
-u8 t_buff[MAX_BUFF], rx_snd_buff[MAX_BUFF];
+#if defined(SUPPORT_READ_MSG)
+u8 t_buff[MAX_BUFF];
+#endif
 
 struct peelir_data {
 	dev_t			devt;
@@ -75,10 +77,12 @@ static LIST_HEAD(device_list);
 static DEFINE_MUTEX(device_list_lock);
 
 static int peelir_major;
-static unsigned bufsiz = 170 * 1024;		/* Default buffer size */
-static int mode = 0, bpw = 32, spi_clk_freq = 1520000;
+static unsigned bufsiz = 260 * 1024;		/* Default buffer size */
+static int mode = 0, bpw = 32, spi_clk_freq = 960000;
 static int prev_tx_status;			/* Status of previous transaction */
 static unsigned int field;
+
+static u8 *peelir_buffer;
 
 #if defined(SUPPORT_READ_MSG)
 static int code_rcv;
@@ -186,36 +190,6 @@ done:
 }
 
 #if defined(SUPPORT_READ_MSG)
-static u8 *process(u8 *buffer)
-{
-	int i = 0, byte_num = 0;
-
-	pr_info("%s:%s\n", IRLED_DEV, __func__);
-
-	flag = 0;
-	while (1) {
-		if (buffer[byte_num] == 0)
-			flag = 1;
-		else
-			byte_num++;
-
-		if (flag)
-			break;
-	}
-
-	if (byte_num < (MAX_BUFF - TRANS_BUFF)) {
-		code_rcv = byte_num;
-		pr_info("%s:%s received(0x%02x)\n", IRLED_DEV, __func__, byte_num);
-		for (i = 0; i < MAX_BUFF; i++, byte_num++)
-			rx_snd_buff[i] = ~buffer[byte_num];
-	} else {
-		pr_info("%s:%s receive error\n", IRLED_DEV, __func__);
-		flag = 0;
-	}
-
-	return rx_snd_buff;
-}
-
 static int peelir_read_message(struct peelir_data *peelir,
 		struct spi_ioc_transfer *u_xfers)
 {
@@ -225,27 +199,27 @@ static int peelir_read_message(struct peelir_data *peelir,
 	struct spi_ioc_transfer *u_tmp;
 	unsigned total;
 	u8 *buf;
-	u8 *rx_usr_buf;
 	char *tx_data;
 	int status = -EFAULT;
-	int i = 0, m = 0, l = 0;
+	int i;
 
 	pr_info("%s:%s\n", IRLED_DEV, __func__);
 
 	spi_message_init(&msg);
 	k_xfers = kzalloc(sizeof(*k_tmp), GFP_KERNEL);
-	rx_usr_buf = kmalloc(MAX_BUFF, GFP_KERNEL);
-	tx_data = kmalloc(TRANS_BUFF, GFP_KERNEL);
-	if (k_xfers == NULL || rx_usr_buf == NULL || tx_data == NULL) {
-		status = -ENOMEM;
-		goto done;
-	}
+	if (k_xfers == NULL)
+		return -ENOMEM;
 
 	/* Accept Pattern from the user and generate the SPI message */
 
-	memset(tx_data, 0, TRANS_BUFF);	/* Transmit buffer */
-	memset(t_buff, 0xff, MAX_BUFF);	/* Receive buffer */
-	memset(rx_usr_buf, 0, MAX_BUFF);	/* Processed Receive Buffer */
+	tx_data = (char *)kmalloc(MAX_BUFF,GFP_KERNEL);
+	if (tx_data == NULL) {
+		free(k_xfers);
+		return -ENOMEM;
+	}
+
+	memset(tx_data, 0, MAX_BUFF);	/* Transmit buffer */
+	memset(t_buff, 0xff, MAX_BUFF);	/* Receive Buffer */
 
 	u_xfers->tx_buf = (unsigned long)tx_data;
 
@@ -286,28 +260,11 @@ static int peelir_read_message(struct peelir_data *peelir,
 
 	pr_info("%s:%s Waitint for IR data\n", IRLED_DEV, __func__);
 	pr_info("%s:%s Press the Key\n", IRLED_DEV, __func__);
-	for (i = 0; i < NUM_BUFF; i++) {
-		status = peelir_sync(peelir, &msg);
 
-		buf = peelir->buffer;
-		m = 0;
-
-		if (i == 0) {
-			for (l = 0; l < byte_delay; l++)
-				t_buff[l] = 0xff;
-			m = byte_delay;
-
-			for (l = byte_delay; l < TRANS_BUFF; l++) {
-				t_buff[l] = buf[m];
-				m++;
-			}
-		} else {
-			for (l = (i*TRANS_BUFF); l < ((i+1)*TRANS_BUFF); l++) {
-				t_buff[l] = buf[m];
-				m++;
-			}
-		}
-	}
+	status = peelir_sync(peelir, &msg);
+	buf = peelir->buffer;
+	for (i=0; i < MAX_BUFF; i++)
+		t_buff[i] = buf[i];
 
 	u_tmp = u_xfers;
 	u_tmp->len = MAX_BUFF;
@@ -315,28 +272,23 @@ static int peelir_read_message(struct peelir_data *peelir,
 
 	/* copy any rx data to user space */
 	if (u_tmp->rx_buf) {
-		rx_usr_buf = process(t_buff);
-		u_tmp->len = MAX_BUFF - code_rcv;
-
-		if (flag) {
-			pr_info("%s:%s Copying data to user space\n", IRLED_DEV, __func__);
-			if (__copy_to_user((u8 __user *)
-					(uintptr_t) u_tmp->rx_buf, rx_usr_buf, u_tmp->len)) {
-				pr_info("%s:%s Copy to user space failed !!!\n", IRLED_DEV, __func__);
-				status = -EFAULT;
-				goto done;
-			}
+		pr_info("%s:%s Copying data to user space\n", IRLED_DEV, __func__);
+		if (__copy_to_user((u8 __user *)
+			(uintptr_t) u_tmp->rx_buf, k_tmp->rx_buf, k_tmp->len))
+		{
+			pr_info("%s:%s Copy to user space failed !!!\n", IRLED_DEV, __func__);
+			status = -EFAULT;
+			goto done;
 		}
 	}
 
 	status = total;
 
 done:
-	kfree(k_xfers);
 	kfree(tx_data);
-	kfree(rx_usr_buf);
+	kfree(k_xfers);
 
-	return flag;
+	return 0;
 }
 #endif
 
@@ -479,8 +431,11 @@ static int peelir_open(struct inode *inode, struct file *filp)
 	}
 
 	if (status == 0) {
+		/*
+			We can share buffer because there is no case that one more device driver are opened
+		 */
 		if (!peelir->buffer) {
-			peelir->buffer = kmalloc(bufsiz, GFP_KERNEL);
+			peelir->buffer = peelir_buffer;
 			if (!peelir->buffer) {
 				pr_info("%s:%s buffer nomem\n", IRLED_DEV, __func__);
 				status = -ENOMEM;
@@ -511,15 +466,17 @@ static int peelir_release(struct inode *inode, struct file *filp)
 	if (!peelir->users) {
 		int dofree;
 
-		kfree(peelir->buffer);
 		peelir->buffer = NULL;
 
 		spin_lock_irq(&peelir->spi_lock);
 		dofree = (peelir->spi == NULL);
 		spin_unlock_irq(&peelir->spi_lock);
 
-		if (dofree)
+		if (dofree) {
+			kfree(peelir_buffer);
+			peelir_buffer = NULL;
 			kfree(peelir);
+		}
 	}
 	mutex_unlock(&device_list_lock);
 
@@ -659,9 +616,18 @@ static int peelir_probe(struct spi_device *spi)
 	if (status)
 		goto err;
 
+	peelir_buffer = kmalloc(bufsiz, GFP_KERNEL);
+	if (!peelir_buffer) {
+		pr_info("%s:%s allocate buffer error\n", IRLED_DEV, __func__);
+		status = -ENOMEM;
+		goto err;
+	}
+
 	dev = sec_device_create(NULL, "sec_ir");
 	if (IS_ERR(dev)) {
 		pr_info("%s:%s create sec_ir error\n", IRLED_DEV, __func__);
+		kfree(peelir_buffer);
+		peelir_buffer = NULL;
 		status = -EFAULT;
 		goto err;
 	}
@@ -669,6 +635,8 @@ static int peelir_probe(struct spi_device *spi)
 	status = sysfs_create_file(&dev->kobj, sec_ir_attributes);
 	if (status) {
 		pr_info("%s:%s create sysfs file for samsung ir\n", IRLED_DEV, __func__);
+		kfree(peelir_buffer);
+		peelir_buffer = NULL;
 		sec_device_destroy(dev->devt);
 		goto err;
 	}
@@ -676,6 +644,8 @@ static int peelir_probe(struct spi_device *spi)
 	status = sysfs_create_group(&spi->dev.kobj, &attr_group);
 	if (status) {
 		pr_info("%s:%s create sysfs file for peel ir\n", IRLED_DEV, __func__);
+		kfree(peelir_buffer);
+		peelir_buffer = NULL;
 		sysfs_remove_file(&dev->kobj, sec_ir_attributes);
 		sec_device_destroy(dev->devt);
 		goto err;
@@ -708,7 +678,7 @@ static int peelir_remove(struct spi_device *spi)
 	spi_set_drvdata(spi, NULL);
 	spin_unlock_irq(&peelir->spi_lock);
 
-	/* prevent opening a new instance of the device
+	/* prevent opening new instance of the device
 	   during the removal of the device
 	 */
 	mutex_lock(&device_list_lock);
@@ -716,8 +686,14 @@ static int peelir_remove(struct spi_device *spi)
 	device_destroy(peelir_class, peelir->devt);
 	unregister_chrdev(peelir_major, "peel_ir");
 	clear_bit(MINOR(peelir->devt), minors);
-	if (peelir->users == 0)
+	if (peelir->users == 0) {
+		if (peelir_buffer != NULL) {
+			kfree(peelir_buffer);
+			peelir_buffer = NULL;
+		}
 		kfree(peelir);
+	}
+
 	mutex_unlock(&device_list_lock);
 
 	return 0;

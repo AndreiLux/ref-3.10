@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmmsgbuf.h 501099 2014-09-07 02:24:42Z $
+ * $Id: bcmmsgbuf.h 509367 2014-10-20 12:43:00Z $
  */
 #ifndef _bcmmsgbuf_h_
 #define	_bcmmsgbuf_h_
@@ -46,10 +46,10 @@
 
 #define H2DRING_TXPOST_MAX_ITEM			512
 #define H2DRING_RXPOST_MAX_ITEM			256
-#define H2DRING_CTRL_SUB_MAX_ITEM		20
+#define H2DRING_CTRL_SUB_MAX_ITEM		64
 #define D2HRING_TXCMPLT_MAX_ITEM		1024
 #define D2HRING_RXCMPLT_MAX_ITEM		256
-#define D2HRING_CTRL_CMPLT_MAX_ITEM		20
+#define D2HRING_CTRL_CMPLT_MAX_ITEM		64
 enum {
 	DNGL_TO_HOST_MSGBUF,
 	HOST_TO_DNGL_MSGBUF
@@ -515,6 +515,7 @@ typedef struct host_txbuf_post {
 #define BCMPCIE_TXPOST_FLAGS_FRAME_802_11	BCMPCIE_PKT_FLAGS_FRAME_802_11
 #define BCMPCIE_TXPOST_FLAGS_PRIO_SHIFT		BCMPCIE_PKT_FLAGS_PRIO_SHIFT
 #define BCMPCIE_TXPOST_FLAGS_PRIO_MASK		BCMPCIE_PKT_FLAGS_PRIO_MASK
+
 
 /* H2D Txpost ring work items */
 typedef union txbuf_submit_item {

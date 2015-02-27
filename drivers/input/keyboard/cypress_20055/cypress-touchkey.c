@@ -1072,13 +1072,18 @@ int touchkey_fw_update(struct touchkey_i2c *tkey_i2c, u8 fw_path, bool bforced)
 	if (unlikely(bforced))
 		goto run_fw_update;
 
-	ret = tkey_crc_check(tkey_i2c);
-	if (ret == false) {
-		dev_info(&tkey_i2c->client->dev, "crc error, run fw update\n");
-		goto run_fw_update;
+	if (tkey_i2c->pdata->fw_crc_check) {
+		ret = tkey_crc_check(tkey_i2c);
+		if (ret == false) {
+			dev_info(&tkey_i2c->client->dev, "crc error, run fw update\n");
+			goto run_fw_update;
+		}
+	} else {
+		dev_info(&tkey_i2c->client->dev, "skip crc check\n");
 	}
 
 	ret = check_update_condition(tkey_i2c);
+
 	if (ret == TK_EXIT_UPDATE) {
 		dev_info(&tkey_i2c->client->dev, "pass fw update\n");
 		touchkey_unload_fw(tkey_i2c);
@@ -2052,6 +2057,20 @@ static struct touchkey_platform_data *cypress_parse_dt(struct i2c_client *client
 		0, &pdata->irq_gpio_flags);
 	pdata->i2c_gpio = of_property_read_bool(np, "cypress,i2c-gpio");
 
+	if(of_property_read_u8(np, "cypress,fw_crc_check", &pdata->fw_crc_check)){
+		printk(KERN_ERR"touchkey:Can't find cypress,fw_crc_check!\n");
+		pdata->fw_crc_check = 1;
+	}
+	printk(KERN_INFO"touchkey:Check FW CRC status %s\n",
+						pdata->fw_crc_check ? "ON" : "OFF");
+
+	if(of_property_read_u8(np, "cypress,tk_use_lcdtype_check", &pdata->tk_use_lcdtype_check)){
+		printk(KERN_ERR"touchkey:Can't find cypress,tk_use_lcdtype_check!\n");
+		pdata->tk_use_lcdtype_check = 1;
+	}
+	printk(KERN_INFO"touchkey:Check lcd type for conneter status %s\n",
+						pdata->tk_use_lcdtype_check ? "ON" : "OFF");
+
 	ret = of_property_read_u32(np, "cypress,ic_type", &pdata->ic_type);
 	if (ret) {
 		printk(KERN_ERR"touchkey:failed to read ic_type %d\n", ret);
@@ -2234,23 +2253,23 @@ static int i2c_touchkey_probe(struct i2c_client *client,
 		goto err_create_fw_wq;
 	}
 
-#if defined(TK_USE_LCDTYPE_CHECK)
-	dev_err(&client->dev, "LCD type Print : 0x%06X\n", lcdtype);
-	if (lcdtype == 0) {
-		dev_err(&client->dev, "Device wasn't connected to board\n");
-		ret = -ENODEV;
-		goto err_i2c_check;
+	if (tkey_i2c->pdata->tk_use_lcdtype_check) {
+		dev_err(&client->dev, "LCD type Print : 0x%06X\n", lcdtype);
+		if (lcdtype == 0) {
+			dev_err(&client->dev, "Device wasn't connected to board\n");
+			ret = -ENODEV;
+			goto err_i2c_check;
+		}
 	}
-#endif
 
 	ret = touchkey_i2c_check(tkey_i2c);
 	if (ret < 0) {
 		dev_err(&client->dev, "i2c_check failed\n");
-#if defined(TK_USE_LCDTYPE_CHECK)
-		bforced = true;
-#else
-		goto err_i2c_check;
-#endif
+
+		if (tkey_i2c->pdata->tk_use_lcdtype_check)
+			bforced = true;
+		else
+			goto err_i2c_check;
 	}
 
 	cypress_config_gpio_i2c(tkey_i2c, 1);

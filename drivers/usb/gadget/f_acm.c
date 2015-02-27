@@ -757,7 +757,6 @@ fail:
 static void acm_unbind(struct usb_configuration *c, struct usb_function *f)
 {
 	struct f_acm		*acm = func_to_acm(f);
-
 	/* acm_string_defs[].id is limited to 256
 	if id is cleared on disconneting, The increased number is allocated on connecting.
 	ACM driver can't connect to host when id is over 256 */

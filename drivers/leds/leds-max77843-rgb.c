@@ -494,6 +494,7 @@ static ssize_t store_max77843_rgb_blink(struct device *dev,
 
 	/*Reset led*/
 	max77843_rgb_reset(dev);
+	max77843_rgb_blink(dev, 0, 0);
 
 	led_r_brightness = (led_brightness & LED_R_MASK) >> 16;
 	led_g_brightness = (led_brightness & LED_G_MASK) >> 8;

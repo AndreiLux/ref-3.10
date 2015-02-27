@@ -46,6 +46,7 @@ static void get_chip_vendor(void *device_data);
 static void get_chip_name(void *device_data);
 static void get_x_num(void *device_data);
 static void get_y_num(void *device_data);
+static void get_checksum_data(void *device_data);
 static void run_reference_read(void *device_data);
 static void get_reference(void *device_data);
 static void run_rawcap_read(void *device_data);
@@ -57,6 +58,9 @@ static void run_absdelta_read(void *device_data);
 static void run_trx_short_test(void *device_data);
 static void get_cx_data(void *device_data);
 static void run_cx_data_read(void *device_data);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+static void run_key_cx_data_read(void *device_data);
+#endif
 static void set_tsp_test_result(void *device_data);
 static void get_tsp_test_result(void *device_data);
 static void hover_enable(void *device_data);
@@ -76,15 +80,24 @@ static void boost_level(void *device_data);
 static void set_lowpower_mode(void *device_data);
 static void set_deepsleep_mode(void *device_data);
 static void active_sleep_enable(void *device_data);
-static void quick_shot_enable(void *device_data);
 static void second_screen_enable(void *device_data);
 static void set_longpress_enable(void *device_data);
+static void set_grip_detection(void *device_data);
+static void set_sidescreen_x_length(void *device_data);
 static void set_dead_zone(void *device_data);
+#ifdef FTS_SUPPORT_STRINGLIB
+static void quick_shot_enable(void *device_data);
 static void scrub_enable(void *device_data);
 static void quick_app_access_enable(void *device_data);
 static void direct_indicator_enable(void *device_data);
+#endif
 static void delay(void *device_data);
 static void debug(void *device_data);
+static void run_autotune_enable(void *device_data);
+static void run_autotune(void *device_data);
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
+static void set_mainscreen_disable(void *device_data);
+#endif
 static void not_support_cmd(void *device_data);
 
 static ssize_t store_cmd(struct device *dev, struct device_attribute *devattr,
@@ -124,6 +137,7 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("get_chip_name", get_chip_name),},
 	{FT_CMD("get_x_num", get_x_num),},
 	{FT_CMD("get_y_num", get_y_num),},
+	{FT_CMD("get_checksum_data", get_checksum_data),},
 	{FT_CMD("run_reference_read", run_reference_read),},
 	{FT_CMD("get_reference", get_reference),},
 	{FT_CMD("run_rawcap_read", run_rawcap_read),},
@@ -135,6 +149,9 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("run_trx_short_test", run_trx_short_test),},
 	{FT_CMD("get_cx_data", get_cx_data),},
 	{FT_CMD("run_cx_data_read", run_cx_data_read),},
+#ifdef FTS_SUPPORT_TOUCH_KEY
+	{FT_CMD("run_key_cx_data_read", run_key_cx_data_read),},
+#endif
 	{FT_CMD("set_tsp_test_result", set_tsp_test_result),},
 	{FT_CMD("get_tsp_test_result", get_tsp_test_result),},
 	{FT_CMD("hover_enable", hover_enable),},
@@ -153,15 +170,24 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("set_lowpower_mode", set_lowpower_mode),},
 	{FT_CMD("set_deepsleep_mode", set_deepsleep_mode),},
 	{FT_CMD("active_sleep_enable", active_sleep_enable),},
-	{FT_CMD("quick_shot_enable", quick_shot_enable),},
 	{FT_CMD("second_screen_enable", second_screen_enable),},
 	{FT_CMD("set_longpress_enable", set_longpress_enable),},
+	{FT_CMD("set_grip_detection", set_grip_detection),},
+	{FT_CMD("set_sidescreen_x_length", set_sidescreen_x_length),},
 	{FT_CMD("set_dead_zone", set_dead_zone),},
+#ifdef FTS_SUPPORT_STRINGLIB
+	{FT_CMD("quick_shot_enable", quick_shot_enable),},
 	{FT_CMD("scrub_enable", scrub_enable),},
 	{FT_CMD("quick_app_access_enable", quick_app_access_enable),},
 	{FT_CMD("direct_indicator_enable", direct_indicator_enable),},
+#endif
 	{FT_CMD("delay", delay),},
 	{FT_CMD("debug", debug),},
+	{FT_CMD("run_autotune_enable", run_autotune_enable),},
+	{FT_CMD("run_autotune", run_autotune),},
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
+	{FT_CMD("set_mainscreen_disable", set_mainscreen_disable),},
+#endif
 	{FT_CMD("not_support_cmd", not_support_cmd),},
 };
 
@@ -243,7 +269,7 @@ static ssize_t fts_edge_x_position(struct device *dev,
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 	char buff[CMD_STR_LEN] = { 0 };
-	int edge_start_position;
+	int edge_position_left, edge_position_right;
 
 	if (!info) {
 		printk(KERN_ERR "%s: No platform data found\n",
@@ -257,13 +283,39 @@ static ssize_t fts_edge_x_position(struct device *dev,
 		return -EINVAL;
 	}
 
-	edge_start_position = info->board->max_x + 1;
+	edge_position_left = -1;
+	edge_position_right = info->board->max_x + 1 - info->board->grip_area;
 
-	tsp_debug_info(true, &info->client->dev, "%s: %d\n", __func__, edge_start_position);
-	snprintf(buff, sizeof(buff), "%d", edge_start_position);
+	tsp_debug_info(true, &info->client->dev, "%s: %d,%d\n", __func__, edge_position_left, edge_position_right);
+	snprintf(buff, sizeof(buff), "%d,%d", edge_position_left, edge_position_right);
 
 	return snprintf(buf, TSP_BUF_SIZE, "%s\n", buff);
+}
 
+static void clear_cover_cmd_work(struct work_struct *work)
+{
+	struct fts_ts_info *info = container_of(work, struct fts_ts_info,
+						cover_cmd_work.work);
+
+	if (info->cmd_is_running) {
+		schedule_delayed_work(&info->cover_cmd_work, msecs_to_jiffies(5));
+	} else {
+		/* check lock   */
+		mutex_lock(&info->cmd_lock);
+		info->cmd_is_running = true;
+		mutex_unlock(&info->cmd_lock);
+
+		info->cmd_state = CMD_STATUS_RUNNING;
+		tsp_debug_err(true, &info->client->dev,
+			"%s param = %d, %d\n", __func__,
+			info->delayed_cmd_param[0], info->delayed_cmd_param[1]);
+
+		info->cmd_param[0] = info->delayed_cmd_param[0];
+		if (info->delayed_cmd_param[0] > 1)
+			info->cmd_param[1] = info->delayed_cmd_param[1];
+		strcpy(info->cmd, "clear_cover_mode");
+		clear_cover_mode(info);
+	}
 }
 
 static ssize_t store_cmd(struct device *dev, struct device_attribute *devattr,
@@ -292,7 +344,17 @@ static ssize_t store_cmd(struct device *dev, struct device_attribute *devattr,
 
 	if (info->cmd_is_running == true) {
 		tsp_debug_err(true, &info->client->dev, "ft_cmd: other cmd is running.\n");
-		goto err_out;
+		if (strncmp("clear_cover_mode", buf, 16) == 0) {
+			cancel_delayed_work(&info->cover_cmd_work);
+			tsp_debug_err(true, &info->client->dev,
+				"[cmd is delayed] %d, param = %d, %d\n", __LINE__, buf[17]-'0', buf[19]-'0');
+			info->delayed_cmd_param[0] = buf[17]-'0';
+			if (info->delayed_cmd_param[0] > 1)
+				info->delayed_cmd_param[1] = buf[19]-'0';
+
+			schedule_delayed_work(&info->cover_cmd_work, msecs_to_jiffies(10));
+		}
+		return -EBUSY;
 	}
 
 	/* check lock   */
@@ -439,10 +501,10 @@ static ssize_t cmd_list_show(struct device *dev,
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 	int ii = 0;
-	char buffer[info->cmd_buffer_size];
+	char buffer[info->cmd_buffer_size+CMD_STR_LEN];
 	char buffer_name[CMD_STR_LEN];
 
-	snprintf(buffer, 30, "++factory command list++\n");
+	snprintf(buffer, CMD_STR_LEN, "++factory command list++\n");
 	while (strncmp(ft_commands[ii].cmd_name, "not_support_cmd", 16) != 0) {
 		snprintf(buffer_name, CMD_STR_LEN, "%s\n", ft_commands[ii].cmd_name);
 		strcat(buffer, buffer_name);
@@ -451,7 +513,8 @@ static ssize_t cmd_list_show(struct device *dev,
 
 	tsp_debug_info(true, &info->client->dev,
 		"%s: length : %u / %d\n", __func__,
-		strlen(buffer), info->cmd_buffer_size);
+		(unsigned int)strlen(buffer), info->cmd_buffer_size+CMD_STR_LEN);
+
 	return snprintf(buf, TSP_BUF_SIZE, "%s\n", buffer);
 }
 
@@ -480,8 +543,7 @@ static void tui_mode_cmd(struct fts_ts_info *info)
 	mutex_unlock(&info->cmd_lock);
 
 	info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 #endif
 
@@ -498,8 +560,7 @@ static void not_support_cmd(void *device_data)
 	mutex_unlock(&info->cmd_lock);
 
 	info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
-	tsp_debug_info(true, &info->client->dev, "%s: \"%s(%d)\"\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: \"%s\"\n", __func__, buff);
 }
 
 static void fw_update(void *device_data)
@@ -538,10 +599,15 @@ static void fw_update(void *device_data)
 static int fts_get_channel_info(struct fts_ts_info *info)
 {
 	int rc;
-	unsigned char cmd[4] =
-		{ 0xB2, 0x00, 0x14, 0x02 };
+	unsigned char cmd[4] = { 0xB2, 0x00, 0x14, 0x02 };
+	unsigned char int_disable_cmd[4] = { 0xB6, 0x00, 0x1C, 0x00 };
+	unsigned char int_enable_cmd[4] =  { 0xB6, 0x00, 0x1C, 0x41 };
 	unsigned char data[FTS_EVENT_SIZE];
 	int retry = 0;
+
+	/* Rx/Tx channel information routine is using shared buffer with touch event block.
+	 * So, when get Rx/Tx channel information, disable/enable interrupt(event block) */
+	fts_write_reg(info, &int_disable_cmd[0], 4);/* Disable interrupt*/
 
 	memset(data, 0x0, FTS_EVENT_SIZE);
 
@@ -570,6 +636,11 @@ static int fts_get_channel_info(struct fts_ts_info *info)
 		mdelay(5);
 	}
 
+	fts_write_reg(info, &int_enable_cmd[0], 4);/* Enable interrupt*/
+
+	dev_info(&info->client->dev, "%s: SenseChannel: %02d, Force Channel: %02d\n",
+			__func__, info->SenseChannelLength, info->ForceChannelLength);
+
 	return rc;
 }
 
@@ -581,8 +652,7 @@ static void procedure_cmd_event(struct fts_ts_info *info, unsigned char *data)
 	{
 		snprintf(buff, sizeof(buff), "%d",
 					*(unsigned short *)&data[3]);
-		tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", "get_threshold", buff,
-					strnlen(buff, sizeof(buff)));
+		tsp_debug_info(true, &info->client->dev, "%s: %s\n", "get_threshold", buff);
 		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 		info->cmd_state = CMD_STATUS_OK;
 
@@ -591,8 +661,7 @@ static void procedure_cmd_event(struct fts_ts_info *info, unsigned char *data)
 	{
 		snprintf(buff, sizeof(buff), "%d",
 					*(unsigned short *)&data[3]);
-		tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", "get_glove_sensitivity", buff,
-					strnlen(buff, sizeof(buff)));
+		tsp_debug_info(true, &info->client->dev, "%s: %s\n", "get_glove_sensitivity", buff);
 		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 		info->cmd_state = CMD_STATUS_OK;
 
@@ -615,10 +684,9 @@ static void procedure_cmd_event(struct fts_ts_info *info, unsigned char *data)
 			snprintf(buff, sizeof(buff), "%s", "NG");
 			set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 			info->cmd_state = CMD_STATUS_FAIL;
-			tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n",
+			tsp_debug_info(true, &info->client->dev, "%s: %s\n",
 							"get_tsp_test_result",
-							buff,
-							strnlen(buff, sizeof(buff)));
+							buff);
 		}
 
 	}
@@ -882,7 +950,7 @@ static int fts_panel_ito_test(struct fts_ts_info *info)
 		fts_command(info, FTS_CMD_HOVER_ON);
 
 	if (info->flip_enable) {
-		fts_enable_feature(info, FTS_FEATURE_COVER_GLASS, true);
+		fts_set_cover_type(info, true);
 	} else {
 		if (info->mshover_enabled)
 			fts_command(info, FTS_CMD_MSHOVER_ON);
@@ -911,8 +979,7 @@ static void get_fw_ver_bin(void *device_data)
 			info->fw_main_version_of_bin);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void get_fw_ver_ic(void *device_data)
@@ -926,8 +993,7 @@ static void get_fw_ver_ic(void *device_data)
 			info->fw_main_version_of_ic);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void get_config_ver(void *device_data)
@@ -942,8 +1008,7 @@ static void get_config_ver(void *device_data)
 	set_default_result(info);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void get_threshold(void *device_data)
@@ -1049,8 +1114,7 @@ static void get_chip_vendor(void *device_data)
 	set_default_result(info);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void get_chip_name(void *device_data)
@@ -1066,8 +1130,7 @@ static void get_chip_name(void *device_data)
 	set_default_result(info);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void get_x_num(void *device_data)
@@ -1079,8 +1142,7 @@ static void get_x_num(void *device_data)
 	snprintf(buff, sizeof(buff), "%d", info->SenseChannelLength);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = 2;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void get_y_num(void *device_data)
@@ -1092,8 +1154,34 @@ static void get_y_num(void *device_data)
 	snprintf(buff, sizeof(buff), "%d", info->ForceChannelLength);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		  strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void get_checksum_data(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[16] = { 0 };
+	int rc;
+	unsigned char regAdd[3];
+	unsigned char buf[5];
+
+	set_default_result(info);
+
+	regAdd[0] = 0xb3;
+	regAdd[1] = 0x00;
+	regAdd[2] = 0x01;
+	info->fts_write_reg(info, regAdd, 3);
+	fts_delay(1);
+
+	regAdd[0] = 0xb1;
+	regAdd[1] = 0xEF;
+	regAdd[2] = 0xFC;
+	rc = info->fts_read_reg(info, regAdd, 3, buf, 5);
+
+	snprintf(buff, sizeof(buff), "%02X%02X%02X%02X", buf[1], buf[2], buf[3], buf[4]);
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	info->cmd_state = CMD_STATUS_OK;
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void run_reference_read(void *device_data)
@@ -1146,8 +1234,7 @@ static void get_reference(void *device_data)
 	snprintf(buff, sizeof(buff), "%d", val);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		   strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void run_rawcap_read(void *device_data)
@@ -1167,6 +1254,11 @@ static void run_rawcap_read(void *device_data)
 		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
 		return;
 	}
+
+	if (!info->run_autotune && (info->digital_rev == FTS_DIGITAL_REV_2))
+		goto rawcap_read;
+	else
+		tsp_debug_info(true, &info->client->dev, "%s: set autotune\n\n", __func__);
 
 	if (info->digital_rev == FTS_DIGITAL_REV_1) {
 		unsigned char data[FTS_EVENT_SIZE];
@@ -1191,9 +1283,71 @@ static void run_rawcap_read(void *device_data)
 			fts_delay(10);
 		}
 		fts_interrupt_set(info, INT_ENABLE);
+	} else if ((info->digital_rev == FTS_DIGITAL_REV_2)
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+	&& !info->rawdata_read_lock
+#endif
+	) {
+		unsigned char data[FTS_EVENT_SIZE];
+		unsigned char regAdd;
+		int fail_retry = 0;
+
+		fts_interrupt_set(info, INT_DISABLE);
+		fts_release_all_finger(info);
+		fts_command(info, SENSEOFF);
+		fts_delay(50);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+		if (info->board->support_mskey) {
+			fts_command(info, FTS_CMD_KEY_SENSE_OFF); // Key Sensor OFF
+		}
+#endif
+
+		fts_command(info, FLUSHBUFFER);
+		fts_command(info, CX_TUNNING);
+		fts_delay(300);
+
+		regAdd = READ_ONE_EVENT;
+		while (fts_read_reg(info, &regAdd, 1, (unsigned char *)data, FTS_EVENT_SIZE)) {
+			if ((data[0] == EVENTID_STATUS_EVENT) &&
+				(data[1] == STATUS_EVENT_MUTUAL_AUTOTUNE_DONE)) {
+				break;
+			}
+
+			if (fail_retry++ > FTS_RETRY_COUNT * 15) {
+				tsp_debug_info(true, info->dev, "%s: Raw data read Time Over\n", __func__);
+				break;
+			}
+			fts_delay(20);
+		}
+#ifdef FTS_SUPPORT_TOUCH_KEY
+		if (info->board->support_mskey) {
+			info->fts_command(info, FTS_CMD_MSKEY_AUTOTUNE);
+			fts_delay(100);
+		}
+#endif
+#ifdef FTS_SUPPORT_SIDE_GESTURE
+		if (info->board->support_sidegesture)
+			fts_command(info, FTS_CMD_LOWPOWER_MODE);
+#endif
+
+		fts_command(info, FTS_CMD_SAVE_CX_TUNING);
+		fts_delay(400);
+
+		fts_systemreset(info);
+		fts_delay(200);
+
+		fts_command(info, SLEEPOUT);
+		fts_command(info, SENSEON);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+		if (info->board->support_mskey)
+			fts_command(info, FTS_CMD_KEY_SENSE_ON);
+#endif
+
+		fts_interrupt_set(info, INT_ENABLE);
 	}
 
-	fts_delay(500);
+rawcap_read:
+	fts_delay(50);
 	fts_read_frame(info, TYPE_FILTERED_DATA, &min, &max);
 
 	snprintf(buff, sizeof(buff), "%d,%d", min, max);
@@ -1227,8 +1381,7 @@ static void get_rawcap(void *device_data)
 	snprintf(buff, sizeof(buff), "%d", val);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		   strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 static void run_delta_read(void *device_data)
@@ -1281,8 +1434,7 @@ static void get_delta(void *device_data)
 	snprintf(buff, sizeof(buff), "%d", val);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		   strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
 void fts_read_self_frame(struct fts_ts_info *info, unsigned short oAddr)
@@ -1481,8 +1633,7 @@ static void get_cx_data(void *device_data)
 	snprintf(buff, sizeof(buff), "%d", val);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
-	tsp_debug_info(true, &info->client->dev, "%s: %s(%d)\n", __func__, buff,
-		   strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 
 }
 
@@ -1496,6 +1647,8 @@ static void run_cx_data_read(void *device_data)
 	unsigned char r_addr = READ_ONE_EVENT;
 	unsigned int addr, rx_num, tx_num;
 	int i, j, cx_rx_length, max_tx_length, max_rx_length, address_offset = 0, start_tx_offset = 0, retry = 0;
+	unsigned char *pStr = NULL;
+	unsigned char pTmp[16] = { 0 };
 
 	set_default_result(info);
 
@@ -1508,8 +1661,23 @@ static void run_cx_data_read(void *device_data)
 		return;
 	}
 
+	pStr = kzalloc(4 * (info->SenseChannelLength + 1), GFP_KERNEL);
+	if (pStr == NULL) {
+		tsp_debug_info(true, &info->client->dev, "FTS pStr kzalloc failed\n");
+		return;
+	}
+
+	tsp_debug_info(true, &info->client->dev, "%s: start \n", __func__);
+
 	fts_command(info, SENSEOFF);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+	if (info->board->support_mskey) {
+		fts_command(info, FTS_CMD_KEY_SENSE_OFF); // Key Sensor OFF
+	}
+#endif
 	disable_irq(info->irq);
+	fts_command(info, FLUSHBUFFER);
+	fts_delay(50);
 
 	tx_num = info->ForceChannelLength;
 	rx_num = info->SenseChannelLength;
@@ -1526,6 +1694,10 @@ static void run_cx_data_read(void *device_data)
 	address_offset = max_rx_length /FTS_CX2_READ_LENGTH;
 
 	for(j = 0; j < tx_num; j++) {
+		memset(pStr, 0x0, 4 * (rx_num + 1));
+		snprintf(pTmp, sizeof(pTmp), "Tx%02d | ", j);
+		strncat(pStr, pTmp, 4 * rx_num);
+
 		addr = FTS_CX2_BASE_ADDR + (j * address_offset * FTS_CX2_ADDR_OFFSET) + start_tx_offset;
 
 		if(rx_num % FTS_CX2_READ_LENGTH != 0)
@@ -1558,9 +1730,12 @@ static void run_cx_data_read(void *device_data)
 			ReadData[j][i * 4 + 3] = buf[5] >> 2;
 			addr = addr + 3;
 
-			tsp_debug_info(true, &info->client->dev, "%s: [Tx:%d][Rx:%d] :[%d][%d][%d][%d]\n", __func__,
-				i, j, ReadData[j][i*4], ReadData[j][i*4+1], ReadData[j][i*4+2], ReadData[j][i*4+3]);
+			snprintf(pTmp, sizeof(pTmp), "%3d%3d%3d%3d ",
+		        ReadData[j][i*4], ReadData[j][i*4+1], ReadData[j][i*4+2], ReadData[j][i*4+3]);
+			strncat(pStr, pTmp, 4 *rx_num);
 		}
+
+		tsp_debug_info(true, &info->client->dev, "FTS %s\n", pStr);
 	}
 
 	if (info->cx_data) {
@@ -1570,14 +1745,89 @@ static void run_cx_data_read(void *device_data)
 		}
 	}
 
+	kfree(pStr);
+
 	snprintf(buff, sizeof(buff), "%s", "OK");
 	enable_irq(info->irq);
 	fts_command(info, SENSEON);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+	if (info->board->support_mskey) {
+		fts_command(info, FTS_CMD_KEY_SENSE_ON);
+	}
+#endif
+	info->cmd_state = CMD_STATUS_OK;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+#ifdef FTS_SUPPORT_TOUCH_KEY
+#define USE_KEY_NUM 2
+static void run_key_cx_data_read(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	unsigned char key_cx2_data[2];
+	unsigned char ReadData[USE_KEY_NUM * FTS_CX2_READ_LENGTH];
+	unsigned char regAdd[8];
+	unsigned char buf[8];
+	unsigned char r_addr = READ_ONE_EVENT;
+	unsigned int addr;
+	int i = 0, retry = 0;
+
+	set_default_result(info);
+
+	if (info->touch_stopped) {
+		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
+		            __func__);
+		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
+		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
+		return;
+	}
+
+	disable_irq(info->irq);
+
+	addr = FTS_CX2_BASE_ADDR;
+	            
+	regAdd[0] = 0xB2;
+	regAdd[1] = (addr >> 8) & 0xff;
+	regAdd[2] = (addr & 0xff);
+	regAdd[3] = 0x04;
+
+	fts_write_reg(info, &regAdd[0], 4);
+	fts_delay(1);
+
+	retry = FTS_RETRY_COUNT * 10;
+	do {
+		if (retry < 0) {
+			tsp_debug_info(true, &info->client->dev,"%s: failed to compare buf, break!\n", __func__);
+			break;
+		}
+
+		fts_read_reg(info, &r_addr, 1, &buf[0], FTS_EVENT_SIZE);
+		retry--;
+	} while (buf[1] != regAdd[1] || buf[2] != regAdd[2]);
+
+
+	ReadData[i * 4] = buf[3] & 0x3F;
+	ReadData[i * 4 + 1] = (buf[3] & 0xC0) >> 6 | (buf[4] & 0x0F) << 2;
+	ReadData[i * 4 + 2] = ((buf[4] & 0xF0)>> 4) | ((buf[5] & 0x03) << 4);
+	ReadData[i * 4 + 3] = buf[5] >> 2;
+
+	key_cx2_data[0] = ReadData[2]; key_cx2_data[1] = ReadData[3]; 
+
+	tsp_debug_info(true, &info->client->dev, "%s: [Key 1:%d][Key 2:%d]\n", __func__,
+	            key_cx2_data[0], key_cx2_data[1]);
+
+	//snprintf(buff, sizeof(buff), "%s", "OK");
+	snprintf(buff, sizeof(buff), "%d,%d", key_cx2_data[0], key_cx2_data[1]);
+	enable_irq(info->irq);
 
 	info->cmd_state = CMD_STATUS_OK;
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
+#endif
 
 static void set_tsp_test_result(void *device_data)
 {
@@ -1664,7 +1914,7 @@ static void hover_enable(void *device_data)
 			info->retry_hover_enable_after_wakeup = 1;
 			tsp_debug_info(true, &info->client->dev, "%s: retry_hover_on_after_wakeup \n", __func__);
 		}
-			
+
 		goto out;
 	}
 
@@ -1819,19 +2069,22 @@ static void clear_cover_mode(void *device_data)
 		snprintf(buff, sizeof(buff), "%s", "NG");
 		info->cmd_state = CMD_STATUS_FAIL;
 	} else {
-		if (info->cmd_param[0] > 1)
+		if (info->cmd_param[0] > 1) {
 			info->flip_enable = true;
-		else
+			info->cover_type = info->cmd_param[1];
+		} else {
 			info->flip_enable = false;
+		}
 
 		if (!info->touch_stopped && info->reinit_done) {
 			if (info->flip_enable) {
-				if (info->mshover_enabled)
+				if (info->mshover_enabled
+					&& (strncmp(info->board->project_name, "TB", 2) != 0))
 					fts_command(info, FTS_CMD_MSHOVER_OFF);
 
-				fts_enable_feature(info, FTS_FEATURE_COVER_GLASS, true);
+				fts_set_cover_type(info, true);
 			} else {
-				fts_enable_feature(info, FTS_FEATURE_COVER_GLASS, false);
+				fts_set_cover_type(info, false);
 
 				if (info->fast_mshover_enabled)
 					fts_command(info, FTS_CMD_SET_FAST_GLOVE_MODE);
@@ -2116,6 +2369,269 @@ static void active_sleep_enable(void *device_data)
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 };
 
+
+static void second_screen_enable(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+
+	set_default_result(info);
+
+	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
+	        snprintf(buff, sizeof(buff), "%s", "NG");
+	        info->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		if(info->cmd_param[0])
+			info->lowpower_flag = info->lowpower_flag | FTS_LOWP_FLAG_2ND_SCREEN;
+		else
+			info->lowpower_flag = info->lowpower_flag & ~(FTS_LOWP_FLAG_2ND_SCREEN);
+
+		info->lowpower_mode = check_lowpower_mode(info);
+
+		snprintf(buff, sizeof(buff), "%s", "OK");
+		info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+void longpress_grip_enable_mode (struct fts_ts_info *info, bool on)
+{
+	int ret;
+	unsigned char regAdd[4] = {0xB0, 0x07, 0x10, 0x03};
+
+	if (on){
+		regAdd[3] = 0x03;	// default
+	}else{
+		regAdd[3] = 0x02;	// can long press
+	}
+
+	ret = fts_write_reg(info, regAdd, 4);
+	if (ret < 0)
+		dev_err(&info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+	else
+		dev_info(&info->client->dev, "%s: reg:%d, ret: %d\n", __func__, on, ret);
+	fts_delay(1);
+}
+
+static void set_longpress_enable(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+
+	set_default_result(info);
+
+	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
+		snprintf(buff, sizeof(buff), "%s", "NG");
+		info->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		if (info->cmd_param[0])
+			longpress_grip_enable_mode(info, 1);
+		else
+			longpress_grip_enable_mode(info, 0);
+
+			snprintf(buff, sizeof(buff), "%s", "OK");
+			info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+};
+
+
+void grip_check_enable_mode (struct fts_ts_info *info, bool on)
+{
+	int ret;
+    unsigned char regAdd[4] = {0xB0, 0x07, 0x11, 0x7F};
+	if (on){
+		regAdd[3] = 0x7F;//  default
+		info->edge_grip_mode = true;
+	}else{
+		regAdd[3] = 0x7E;// don't check grip
+		info->edge_grip_mode = false;
+	}
+
+		ret = fts_write_reg(info, regAdd, 4);
+
+		if (ret < 0)
+		dev_err(&info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+		else
+		dev_info(&info->client->dev, "%s: reg:%d, ret: %d\n", __func__, on, ret);
+		fts_delay(1);
+}
+
+static void set_grip_detection (void *device_data)
+{
+    struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+    char buff[CMD_STR_LEN] = { 0 };
+
+    set_default_result(info);
+    if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
+        snprintf(buff, sizeof(buff), "%s", "NG");
+        info->cmd_state = CMD_STATUS_FAIL;
+    } else {
+        if (info->cmd_param[0]){
+			longpress_grip_enable_mode(info, 1);		// default
+			grip_check_enable_mode(info, 1);			// default
+        }else{
+			longpress_grip_enable_mode(info, 0);
+			grip_check_enable_mode(info, 0);
+        }
+
+		snprintf(buff, sizeof(buff), "%s", "OK");
+		info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void set_sidescreen_x_length(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	/* TB Side screen area length  */
+	unsigned char regAdd[4] = {0xB0, 0x07, 0x1C, 0xA0}; //default Side screen x length setting
+	int ret;
+
+	set_default_result(info);
+
+	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 0xA0) {
+		snprintf(buff, sizeof(buff), "%s", "NG");
+		info->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		regAdd[3] = info->cmd_param[0]; // Change Side screen x length
+
+		ret = fts_write_reg(info, regAdd, 4);
+		if (ret < 0)
+			tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+		else
+			tsp_debug_info(true, &info->client->dev, "%s: x length:%d, ret: %d\n", __func__, regAdd[3], ret);
+		fts_delay(1);
+
+		snprintf(buff, sizeof(buff), "%s", "OK");
+		info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void set_dead_zone(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	unsigned char regAdd[2] = {0xC4, 0x00};
+	int ret;
+
+	set_default_result(info);
+
+	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 2) {
+		snprintf(buff, sizeof(buff), "%s", "NG");
+		info->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		if (info->cmd_param[0]==1)
+			regAdd[1] = 0x01;	/* side edge top */
+		else if (info->cmd_param[0]==2)
+			regAdd[1] = 0x02;	/* side edge bottom */
+		else
+			regAdd[1] = 0x0;	/* none	*/
+
+		ret = fts_write_reg(info, regAdd, 2);
+
+		if (ret < 0)
+			tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+		else
+			tsp_debug_info(true, &info->client->dev, "%s: reg:%d, ret: %d\n", __func__, info->cmd_param[0], ret);
+
+		fts_delay(1);
+
+		snprintf(buff, sizeof(buff), "%s", "OK");
+		info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+#ifdef FTS_SUPPORT_MAINSCREEN_DISBLE
+void set_mainscreen_disable_cmd(struct fts_ts_info *info, bool on)
+{
+	int ret;
+	unsigned char regAdd[2] = {0xC2, 0x07};
+
+	if (on){
+		regAdd[0] = 0xC1;				// main screen disable
+		info->mainscr_disable = true;
+	}else{
+		regAdd[0] = 0xC2;				// enable like normal
+		info->mainscr_disable = false;
+	}
+
+	ret = fts_write_reg(info, regAdd, 2);
+	if (ret < 0)
+		tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+	else
+		tsp_debug_info(true, &info->client->dev, "%s: reg:%d, ret: %d\n", __func__, info->cmd_param[0], ret);
+	fts_delay(1);
+}
+
+static void set_mainscreen_disable(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+
+	set_default_result(info);
+
+	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 2) {
+		snprintf(buff, sizeof(buff), "%s", "NG");
+		info->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		if (info->cmd_param[0]==1){
+			set_mainscreen_disable_cmd(info, 1);
+		}else{ 
+			set_mainscreen_disable_cmd(info, 0);
+		}
+		snprintf(buff, sizeof(buff), "%s", "OK");
+		info->cmd_state = CMD_STATUS_OK;			
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+#endif
+
+#ifdef FTS_SUPPORT_STRINGLIB
 static void quick_shot_enable(void *device_data)
 {
 	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
@@ -2158,125 +2674,6 @@ static void quick_shot_enable(void *device_data)
 
 out:
 	info->lowpower_mode = check_lowpower_mode(info);
-	mutex_lock(&info->cmd_lock);
-	info->cmd_is_running = false;
-	mutex_unlock(&info->cmd_lock);
-	info->cmd_state = CMD_STATUS_WAITING;
-
-	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
-}
-
-static void second_screen_enable(void *device_data)
-{
-	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
-	char buff[CMD_STR_LEN] = { 0 };
-
-	set_default_result(info);
-
-	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
-	        snprintf(buff, sizeof(buff), "%s", "NG");
-	        info->cmd_state = CMD_STATUS_FAIL;
-	} else {
-		if(info->cmd_param[0])
-			info->lowpower_flag = info->lowpower_flag | FTS_LOWP_FLAG_2ND_SCREEN;
-		else
-			info->lowpower_flag = info->lowpower_flag & ~(FTS_LOWP_FLAG_2ND_SCREEN);
-
-		info->lowpower_mode = check_lowpower_mode(info);
-
-		snprintf(buff, sizeof(buff), "%s", "OK");
-		info->cmd_state = CMD_STATUS_OK;
-	}
-	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-
-	mutex_lock(&info->cmd_lock);
-	info->cmd_is_running = false;
-	mutex_unlock(&info->cmd_lock);
-	info->cmd_state = CMD_STATUS_WAITING;
-
-	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
-}
-
-static void set_longpress_enable(void *device_data)
-{
-	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
-	char buff[CMD_STR_LEN] = { 0 };
-	unsigned char regAdd[4] = {0xB0, 0x07, 0x10, 0x03};
-	int ret;
-	int bflag = 0;
-
-	set_default_result(info);
-
-	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
-		snprintf(buff, sizeof(buff), "%s", "NG");
-		info->cmd_state = CMD_STATUS_FAIL;
-	} else {
-		if (info->cmd_param[0])
-			bflag = 1;
-		else
-			bflag = 0;
-
-		if (bflag)
-			regAdd[3] = 0x03;
-		else
-			regAdd[3] = 0x02;
-
-		ret = fts_write_reg(info, regAdd, 4);
-
-		if (ret < 0)
-			tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
-		else
-			tsp_debug_info(true, &info->client->dev, "%s: on/off:%d, ret: %d\n", __func__, bflag, ret);
-
-		fts_delay(10);
-
-		snprintf(buff, sizeof(buff), "%s", "OK");
-		info->cmd_state = CMD_STATUS_OK;
-	}
-	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-
-	mutex_lock(&info->cmd_lock);
-	info->cmd_is_running = false;
-	mutex_unlock(&info->cmd_lock);
-	info->cmd_state = CMD_STATUS_WAITING;
-
-	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
-}
-
-static void set_dead_zone(void *device_data)
-{
-	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
-	char buff[CMD_STR_LEN] = { 0 };
-	unsigned char regAdd[2] = {0xC4, 0x00};
-	int ret;
-
-	set_default_result(info);
-
-	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 2) {
-		snprintf(buff, sizeof(buff), "%s", "NG");
-		info->cmd_state = CMD_STATUS_FAIL;
-	} else {
-		if (info->cmd_param[0]==1)
-			regAdd[1] = 0x01;	/* side edge top */
-		else if (info->cmd_param[0]==2)
-			regAdd[1] = 0x02;	/* side edge bottom */
-		else
-			regAdd[1] = 0x0;	/* none	*/
-
-		ret = fts_write_reg(info, regAdd, 2);
-
-		if (ret < 0)
-			tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
-		else
-			tsp_debug_info(true, &info->client->dev, "%s: reg:%d, ret: %d\n", __func__, info->cmd_param[0], ret);
-
-		fts_delay(10);
-
-		snprintf(buff, sizeof(buff), "%s", "OK");
-		info->cmd_state = CMD_STATUS_OK;
-	}
-	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
-
 	mutex_lock(&info->cmd_lock);
 	info->cmd_is_running = false;
 	mutex_unlock(&info->cmd_lock);
@@ -2443,6 +2840,7 @@ out:
 
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
+#endif
 
 static void delay(void *device_data)
 {
@@ -2487,6 +2885,144 @@ static void debug(void *device_data)
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
+static void run_autotune_enable(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+
+	set_default_result(info);
+
+	info->run_autotune = info->cmd_param[0];
+
+	tsp_debug_info(true, &info->client->dev, "%s: command is %s\n",
+			__func__, info->run_autotune ? "ENABLE" : "DISABLE");
+
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void run_autotune(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+
+	set_default_result(info);
+
+	if (info->touch_stopped) {
+		dev_info(&info->client->dev, "%s: [ERROR] Touch is stopped\n", __func__);
+	}
+
+	if (info->touch_stopped) {
+		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
+			__func__);
+		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
+		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
+		return;
+	}
+
+	if (!info->run_autotune){
+		tsp_debug_info(true, &info->client->dev, "%s: autotune is disabled, %d\n", __func__, info->run_autotune);
+		goto autotune_fail;
+	}
+
+#ifdef CONFIG_SEC_DEBUG_TSP_LOG
+	if(info->rawdata_read_lock == 1){
+		tsp_debug_info(true, &info->client->dev, "%s: ramump mode is runing, %d\n", __func__, info->rawdata_read_lock);
+		goto autotune_fail;
+	}
+#endif
+
+	if (info->digital_rev == FTS_DIGITAL_REV_2) {
+		unsigned char data[FTS_EVENT_SIZE];
+		unsigned char regAdd;
+		int fail_retry = 0;
+
+		fts_interrupt_set(info, INT_DISABLE);
+
+		fts_release_all_finger(info);
+		fts_command(info, SENSEOFF);
+		fts_delay(50);
+
+#ifdef FTS_SUPPORT_TOUCH_KEY
+		if (info->board->support_mskey) {
+			fts_command(info, FTS_CMD_KEY_SENSE_OFF);
+		}
+#endif
+		fts_command(info, FLUSHBUFFER);
+		fts_command(info, CX_TUNNING);
+		fts_delay(300);
+
+		regAdd = READ_ONE_EVENT;
+		while (fts_read_reg(info, &regAdd, 1, (unsigned char *)data, FTS_EVENT_SIZE)) {
+			if ((data[0] == EVENTID_STATUS_EVENT) &&
+				(data[1] == STATUS_EVENT_MUTUAL_AUTOTUNE_DONE)) {
+				break;
+			}
+
+			if (fail_retry++ > FTS_RETRY_COUNT * 15) {
+				tsp_debug_info(true, info->dev, "%s: Raw data read Time Over\n", __func__);
+				break;
+			}
+			fts_delay(20);
+		}
+
+#ifdef FTS_SUPPORT_TOUCH_KEY
+		if (info->board->support_mskey) {
+			info->fts_command(info, FTS_CMD_MSKEY_AUTOTUNE);
+			fts_delay(100);
+		}
+#endif
+
+		fts_command(info, FTS_CMD_SAVE_CX_TUNING);
+		fts_delay(400);
+
+		fts_systemreset(info);
+		fts_delay(200);
+
+		fts_command(info, SLEEPOUT);
+		fts_command(info, SENSEON);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+		if (info->board->support_mskey)
+			fts_command(info, FTS_CMD_KEY_SENSE_ON);
+#endif
+
+		fts_interrupt_set(info, INT_ENABLE);
+	}else {
+		tsp_debug_info(true, &info->client->dev, "%s: digital_rev not matched, %d\n", __func__, info->digital_rev);
+		goto autotune_fail;
+	}
+
+	snprintf(buff, sizeof(buff), "%s", "OK");
+	info->cmd_state = CMD_STATUS_OK;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+	return;
+
+autotune_fail:
+	snprintf(buff, sizeof(buff), "%s", "NG");
+	info->cmd_state = CMD_STATUS_FAIL;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+	return;
+}
+
 #ifdef FTS_SUPPORT_TOUCH_KEY
 int read_touchkey_data(struct fts_ts_info *info, unsigned char type, unsigned int keycode)
 {
@@ -2517,9 +3053,9 @@ int read_touchkey_data(struct fts_ts_info *info, unsigned char type, unsigned in
 	for (i = 0 ; i < info->board->num_touchkey ; i++)
 		if (info->board->touchkey[i].keycode == keycode) {
 			if (info->digital_rev == FTS_DIGITAL_REV_1)
-				return *(unsigned short *)&buf[(info->board->touchkey[i].value - 1) * 2];
+				return *(short *)&buf[(info->board->touchkey[i].value - 1) * 2];
 			else
-				return *(unsigned short *)&buf[(info->board->touchkey[i].value - 1) * 2 + 1];
+				return *(short *)&buf[(info->board->touchkey[i].value - 1) * 2 + 1];
 		}
 
 	return -3;

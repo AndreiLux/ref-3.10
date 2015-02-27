@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: bcmutils.h 501162 2014-09-08 03:52:30Z $
+ * $Id: bcmutils.h 504038 2014-09-22 19:05:19Z $
  */
 
 #ifndef	_bcmutils_h_
@@ -1084,7 +1084,7 @@ dll_next_p(dll_t *node_p)
 static INLINE dll_t *
 dll_prev_p(dll_t *node_p)
 {
-	return (node_p)->next_p;
+	return (node_p)->prev_p;
 }
 
 

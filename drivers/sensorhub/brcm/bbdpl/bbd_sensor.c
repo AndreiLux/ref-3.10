@@ -285,7 +285,7 @@ ssize_t bbd_sensor_write(struct file        *filp,
         struct bbd_sensor_device* ps = bbd_sensor_ptr();
         struct bbd_base*          p  = bbd_sensor_ptr_base();
 
-	if (!p)
+	if (!p || !ps)
 		return -EINVAL;
 
 	dprint("%s[%d]\n", __func__, (int) size);
@@ -316,7 +316,7 @@ ssize_t bbd_sensor_write_internal(const char *sensorData, size_t size)
         struct bbd_sensor_device* ps = bbd_sensor_ptr();
         struct bbd_base*          p  = bbd_sensor_ptr_base();
 
-	if (!p)
+	if (!p || !ps)
 		return -EINVAL;
 
 	dprint("%s[%d]\n", __func__, (int) size);

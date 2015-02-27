@@ -59,9 +59,8 @@
 #define WLAN_STATIC_DHD_INFO_BUF	7
 #define WLAN_STATIC_DHD_WLFC_BUF        8
 #define WLAN_STATIC_DHD_IF_FLOW_LKUP    9
-#define WLAN_STATIC_DHD_FLOWRING	10
-#define WLAN_STATIC_DHD_MEMDUMP_BUF	11
-#define WLAN_STATIC_DHD_MEMDUMP_RAM	12
+#define WLAN_STATIC_DHD_MEMDUMP_BUF	10
+#define WLAN_STATIC_DHD_MEMDUMP_RAM	11
 
 #define WLAN_SCAN_BUF_SIZE		(64 * 1024)
 #define WLAN_DHD_INFO_BUF_SIZE		(16 * 1024)
@@ -73,23 +72,25 @@
 #define PREALLOC_WLAN_BUF_NUM		160
 #define PREALLOC_WLAN_SECTION_HEADER	24
 
-#define DHD_SKB_HDRSIZE			336
-#define DHD_SKB_1PAGE_BUFSIZE	((PAGE_SIZE*1)-DHD_SKB_HDRSIZE)
-#define DHD_SKB_2PAGE_BUFSIZE	((PAGE_SIZE*2)-DHD_SKB_HDRSIZE)
-#define DHD_SKB_4PAGE_BUFSIZE	((PAGE_SIZE*4)-DHD_SKB_HDRSIZE)
 
 #ifdef CONFIG_BCMDHD_PCIE
+#define DHD_SKB_1PAGE_BUFSIZE	(PAGE_SIZE*1)
+#define DHD_SKB_2PAGE_BUFSIZE	(PAGE_SIZE*2)
+#define DHD_SKB_4PAGE_BUFSIZE	(PAGE_SIZE*4)
 #define WLAN_SECTION_SIZE_0	(PREALLOC_WLAN_BUF_NUM * 128)
 #define WLAN_SECTION_SIZE_1	0
 #define WLAN_SECTION_SIZE_2	0
 #define WLAN_SECTION_SIZE_3	(PREALLOC_WLAN_BUF_NUM * 1024)
 
-#define DHD_SKB_1PAGE_RESERVED_BUF_NUM	4
-#define DHD_SKB_1PAGE_BUF_NUM	((32) + (DHD_SKB_1PAGE_RESERVED_BUF_NUM))
-#define DHD_SKB_2PAGE_BUF_NUM	0
+#define DHD_SKB_1PAGE_BUF_NUM	0
+#define DHD_SKB_2PAGE_BUF_NUM	64
 #define DHD_SKB_4PAGE_BUF_NUM	0
 
 #else
+#define DHD_SKB_HDRSIZE                  336
+#define DHD_SKB_1PAGE_BUFSIZE     ((PAGE_SIZE*1)-DHD_SKB_HDRSIZE)
+#define DHD_SKB_2PAGE_BUFSIZE     ((PAGE_SIZE*2)-DHD_SKB_HDRSIZE)
+#define DHD_SKB_4PAGE_BUFSIZE     ((PAGE_SIZE*4)-DHD_SKB_HDRSIZE)
 
 #define WLAN_SECTION_SIZE_0	(PREALLOC_WLAN_BUF_NUM * 128)
 #define WLAN_SECTION_SIZE_1	(PREALLOC_WLAN_BUF_NUM * 128)
@@ -106,16 +107,6 @@
 #define WLAN_SKB_BUF_NUM	((WLAN_SKB_1_2PAGE_BUF_NUM) + \
 	(DHD_SKB_4PAGE_BUF_NUM))
 
-#define PREALLOC_TX_FLOWS		40
-#define PREALLOC_COMMON_MSGRINGS	2
-#define WLAN_FLOWRING_NUM \
-	((PREALLOC_TX_FLOWS) + (PREALLOC_COMMON_MSGRINGS))
-#define WLAN_DHD_FLOWRING_SIZE	((PAGE_SIZE) * (7))
-#ifdef CONFIG_BCMDHD_PCIE
-static void *wlan_static_flowring[WLAN_FLOWRING_NUM];
-#else
-void *wlan_static_flowring = NULL;
-#endif /* CONFIG_BCMDHD_PCIE */
 
 #if defined(CONFIG_ARGOS)
 extern int argos_irq_affinity_setup_label(unsigned int irq, const char *label,
@@ -186,8 +177,6 @@ static void *dhd_wlan_mem_prealloc(int section, unsigned long size)
 		return wlan_static_if_flow_lkup;
 	}
 
-	if (section == WLAN_STATIC_DHD_FLOWRING)
-		return wlan_static_flowring;
 
 	if (section == WLAN_STATIC_DHD_MEMDUMP_BUF) {
 		if (size > WLAN_DHD_MEMDUMP_SIZE) {
@@ -229,13 +218,13 @@ static int dhd_init_wlan_mem(void)
 			goto err_skb_alloc;
 	}
 
-#if !defined(CONFIG_BCMDHD_PCIE)
 	for (i = DHD_SKB_1PAGE_BUF_NUM; i < WLAN_SKB_1_2PAGE_BUF_NUM; i++) {
 		wlan_static_skb[i] = dev_alloc_skb(DHD_SKB_2PAGE_BUFSIZE);
 		if (!wlan_static_skb[i])
 			goto err_skb_alloc;
 	}
 
+#if !defined(CONFIG_BCMDHD_PCIE)
 	wlan_static_skb[i] = dev_alloc_skb(DHD_SKB_4PAGE_BUFSIZE);
 	if (!wlan_static_skb[i])
 		goto err_skb_alloc;
@@ -277,14 +266,7 @@ static int dhd_init_wlan_mem(void)
 		goto err_mem_alloc;
 	}
 
-	memset(wlan_static_flowring, 0, sizeof(wlan_static_flowring));
-	for (j = 0; j < WLAN_FLOWRING_NUM; j++) {
-		wlan_static_flowring[j] =
-			kmalloc(WLAN_DHD_FLOWRING_SIZE, GFP_KERNEL | __GFP_ZERO);
 
-		if (!wlan_static_flowring[j])
-			goto err_mem_alloc;
-	}
 #else
 	wlan_static_dhd_wlfc_buf = kmalloc(WLAN_DHD_WLFC_BUF_SIZE,
 		GFP_KERNEL);
@@ -321,10 +303,6 @@ err_mem_alloc:
 #endif /* CONFIG_BCMDHD_DEBUG_PAGEALLOC */
 
 #ifdef CONFIG_BCMDHD_PCIE
-	for (j = 0; j < WLAN_FLOWRING_NUM; j++) {
-		if (wlan_static_flowring[j])
-			kfree(wlan_static_flowring[j]);
-	}
 
 	if (wlan_static_if_flow_lkup)
 		kfree(wlan_static_if_flow_lkup);

@@ -53,7 +53,7 @@ static void kbasep_instr_hwcnt_cacheclean(struct kbase_device *kbdev)
 		} else
 #endif
 		wait_event(kbdev->hwcnt.cache_clean_wait,
-		           kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING);
+				kbdev->hwcnt.state != KBASE_INSTR_STATE_RESETTING);
 		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	}
 	KBASE_DEBUG_ASSERT(kbdev->hwcnt.state == KBASE_INSTR_STATE_REQUEST_CLEAN);
@@ -181,7 +181,7 @@ STATIC mali_error kbase_instr_hwcnt_enable_internal(struct kbase_device *kbdev, 
 	/* If HW has PRLAM-8186 we can now re-enable the tiler HW counters dump */
 	if (kbase_hw_has_issue(kbdev, BASE_HW_ISSUE_8186))
 		kbase_reg_write(kbdev, GPU_CONTROL_REG(PRFCNT_TILER_EN), setup->tiler_bm, kctx);
-	
+
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING) {
@@ -234,6 +234,7 @@ mali_error kbase_instr_hwcnt_enable(struct kbase_context *kctx, struct kbase_uk_
 {
 	struct kbase_device *kbdev;
 	mali_bool access_allowed;
+
 	kbdev = kctx->kbdev;
 
 	KBASE_DEBUG_ASSERT(NULL != kctx);
@@ -261,6 +262,9 @@ mali_error kbase_instr_hwcnt_disable(struct kbase_context *kctx)
 	KBASE_DEBUG_ASSERT(NULL != kctx);
 	kbdev = kctx->kbdev;
 	KBASE_DEBUG_ASSERT(NULL != kbdev);
+
+	/* S.LSI 140925 */
+	flush_work(&kbdev->hwcnt.cache_clean_work);
 
 	while (1) {
 		spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
@@ -291,7 +295,6 @@ mali_error kbase_instr_hwcnt_disable(struct kbase_context *kctx)
 		} else
 #endif
 		wait_event(kbdev->hwcnt.wait, kbdev->hwcnt.triggered != 0);
-
 	}
 
 	kbdev->hwcnt.state = KBASE_INSTR_STATE_DISABLED;
@@ -878,8 +881,8 @@ void kbasep_cache_clean_worker(struct work_struct *data)
 
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 	/* Wait for our condition, and any reset to complete */
-	while (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING
-		   || kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANING) {
+	while (kbdev->hwcnt.state == KBASE_INSTR_STATE_RESETTING ||
+			kbdev->hwcnt.state == KBASE_INSTR_STATE_CLEANING) {
 		spin_unlock_irqrestore(&kbdev->hwcnt.lock, flags);
 #if SLSI_INTEGRATION
 		if (kbdev->hwcnt.prev_mm) {
@@ -912,6 +915,7 @@ void kbasep_cache_clean_worker(struct work_struct *data)
 void kbase_instr_hwcnt_sample_done(struct kbase_device *kbdev)
 {
 	unsigned long flags;
+
 	spin_lock_irqsave(&kbdev->hwcnt.lock, flags);
 
 	if (kbdev->hwcnt.state == KBASE_INSTR_STATE_FAULT) {
@@ -970,6 +974,7 @@ void kbase_clean_caches_done(struct kbase_device *kbdev)
 void kbase_instr_hwcnt_suspend(struct kbase_device *kbdev)
 {
 	struct kbase_context *kctx;
+
 	KBASE_DEBUG_ASSERT(kbdev);
 	KBASE_DEBUG_ASSERT(!kbdev->hwcnt.suspended_kctx);
 
@@ -979,8 +984,7 @@ void kbase_instr_hwcnt_suspend(struct kbase_device *kbdev)
 	/* Relevant state was saved into hwcnt.suspended_state when enabling the
 	 * counters */
 
-	if (kctx)
-	{
+	if (kctx) {
 		KBASE_DEBUG_ASSERT(kctx->jctx.sched_info.ctx.flags & KBASE_CTX_FLAG_PRIVILEGED);
 		kbase_instr_hwcnt_disable(kctx);
 	}
@@ -989,13 +993,13 @@ void kbase_instr_hwcnt_suspend(struct kbase_device *kbdev)
 void kbase_instr_hwcnt_resume(struct kbase_device *kbdev)
 {
 	struct kbase_context *kctx;
+
 	KBASE_DEBUG_ASSERT(kbdev);
 
 	kctx = kbdev->hwcnt.suspended_kctx;
 	kbdev->hwcnt.suspended_kctx = NULL;
 
-	if (kctx)
-	{
+	if (kctx) {
 		mali_error err;
 		err = kbase_instr_hwcnt_enable_internal(kbdev, kctx, &kbdev->hwcnt.suspended_state);
 		WARN(err != MALI_ERROR_NONE,

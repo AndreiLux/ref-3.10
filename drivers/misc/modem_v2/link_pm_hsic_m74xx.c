@@ -387,7 +387,7 @@ static int wait_hostwake_value(struct link_pm_data *pmdata, int val)
 
 		usb_mark_last_busy(pmdata->hdev);
 
-		if (ret)
+		if (ret && ret != -ERESTARTSYS)
 			return 0;
 
 		mif_info("hostwake: %d\n",
@@ -423,7 +423,7 @@ static int wait_cp2ap_status_value(struct link_pm_data *pmdata,
 		if (udev->state == USB_STATE_NOTATTACHED)
 			return 0;
 
-		if (ret)
+		if (ret && ret != -ERESTARTSYS)
 			return 0;
 
 		mif_info("cp2ap_status: %d\n",
@@ -787,12 +787,13 @@ static void link_pm_wait_runtime_status_finish(struct usb_device *udev)
 
 static void link_pm_clear_udev_runtime_error(struct usb_device *udev)
 {
+	unsigned long flags;
 	struct device *dev = &udev->dev;
 
-	spin_lock(&dev->power.lock);
+	spin_lock_irqsave(&dev->power.lock, flags);
 	link_pm_wait_runtime_status_finish(udev);
 	dev->power.runtime_error = 0;
-	spin_unlock(&dev->power.lock);
+	spin_unlock_irqrestore(&dev->power.lock, flags);
 }
 
 static int link_pm_notify(struct notifier_block *nfb,

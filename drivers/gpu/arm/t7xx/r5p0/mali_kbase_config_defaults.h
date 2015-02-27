@@ -25,9 +25,6 @@
 #ifndef _KBASE_CONFIG_DEFAULTS_H_
 #define _KBASE_CONFIG_DEFAULTS_H_
 
-/* Include mandatory definitions per platform */
-#include <platform/mali_kbase_platform.h>
-
 /**
  * Irq throttle. It is the minimum desired time in between two
  * consecutive gpu interrupts (given in 'us'). The irq throttle
@@ -187,6 +184,27 @@
 * MALI_TRUE.
 */
 #define DEFAULT_SECURE_BUT_LOSS_OF_PERFORMANCE MALI_FALSE
+
+/**
+ * Boolean indicating whether atom priority blocks the entire GPU rather than
+ * just acting on atoms of the same 'type'.
+ *
+ * When set to 0, Fragment atoms are scheduled independently of non-fragment
+ * atoms with respect to priority. Hence, a High Priority Fragment atom does
+ * not prevent a lower priority non-fragment atom from running (and vice
+ * versa). This allows lower priority non-fragment atoms to run in parallel,
+ * reducing serializaition/latency but with a risk that both will run more
+ * slowly.
+ *
+ * When set to 1, Atom Priority scheduling considers both Fragment and
+ * non-fragment atoms. Hence, a high priority atom prevents all atoms of lower
+ * priority from running on the GPU, regardless of their type. This serializes
+ * the atoms of different priorities, which might lead to high
+ * latency. However, it helps prevent low priority atoms from stealing
+ * resources from higher priority atoms. For example, a low priority
+ * vertex/compute job cannot steal threads from high priority Fragment jobs
+ */
+#define DEFAULT_ATOM_PRIORITY_BLOCKS_ENTIRE_GPU 0
 
 enum {
 	/**

@@ -119,6 +119,8 @@
 #define ID_DEFAULT  1
 #define CO_DEFAULT  1
 #define MD_DEFAULT  1
+#define TB_ID_DEFAULT  1
+#define TB_MD_DEFAULT  3
 #define ID_INDEX    0
 #define CO_INDEX    1
 #define MD_INDEX    3
@@ -1571,11 +1573,11 @@ static void w1_ds28el35_update_slave_info(struct w1_slave *sl)
 			continue;
 		}
 
-		if (rdbuf[CO_INDEX] < CO_MIN || rdbuf[CO_INDEX] > CO_MAX)
+		if (rdbuf[CO_INDEX] > CO_MAX)
 			continue;
 		if (rdbuf[MD_INDEX] < MD_MIN || rdbuf[MD_INDEX] > MD_MAX)
 			continue;
-		if ((rdbuf[ID_INDEX] >= ID_MIN && rdbuf[ID_INDEX] <= ID_MAX)
+		if ((rdbuf[ID_INDEX] <= ID_MAX)
 				|| (rdbuf[ID_INDEX] >= ID_MIN2 && rdbuf[ID_INDEX] <= ID_MAX2)) {
 
 			w1_model = rdbuf[MD_INDEX];
@@ -1591,9 +1593,15 @@ static void w1_ds28el35_update_slave_info(struct w1_slave *sl)
 	if (!success) {
 		pr_info("%s Before change ID(%d) & Color(%d) & Model(%d)\n"
 				, __func__, w1_id, w1_color, w1_model);
+#ifdef CONFIG_TB_DS28EL35
+		w1_id = TB_ID_DEFAULT;
+		w1_color = CO_DEFAULT;
+		w1_model = TB_MD_DEFAULT;
+#else
 		w1_id = ID_DEFAULT;
 		w1_color = CO_DEFAULT;
 		w1_model = MD_DEFAULT;
+#endif
 	}
 
 	w1_attached = true;

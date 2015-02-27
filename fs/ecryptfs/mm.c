@@ -201,7 +201,7 @@ unsigned long set_sensitive_mapping_pages(struct address_space *mapping,
 		for (i = 0; i < pagevec_count(&pvec); i++) {
 			struct page *page = pvec.pages[i];
 			DEK_LOGD("%s : page [flag:0x%ld] freed\n", __func__, page->flags);
-			DEK_LOGD("mapping->nrpages:%lu(now index:%d) page count:%d, _mapcount:%d\n",
+			DEK_LOGD("mapping->nrpages:%lu(now index:%lu) page count:%d, _mapcount:%d\n",
 					mapping->nrpages, index,
 					atomic_read(&page->_count), atomic_read(&(page)->_mapcount));
 			//page_dump(page);

@@ -33,6 +33,10 @@
 
 #include <linux/muic/max77888-muic.h>
 
+#if !defined(CONFIG_SEC_FACTORY)
+#include <linux/muic/muic.h>
+#endif /* CONFIG_SEC_FACTORY */
+
 #if defined (CONFIG_OF)
 #include <linux/of_device.h>
 #include <linux/of_gpio.h>
@@ -56,6 +60,21 @@ static struct mfd_cell max77888_devs[] = {
 	{ .name = "max77888-haptic", },
 #endif /* CONFIG_MAX77888_HAPTIC */
 };
+
+/* WA for MUIC RESET */
+static u8 muic_reg_snapshot[MAX77888_MUIC_REG_END];
+
+static void max77888_reg_snapshot(u8 reg, u8 value)
+{
+	if (reg < MAX77888_MUIC_REG_END)
+		muic_reg_snapshot[reg] = value;
+}
+
+u8 max77888_restore_last_snapshot(u8 reg)
+{
+	return muic_reg_snapshot[reg];
+}
+/* WA for MUIC RESET */
 
 int max77888_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 {
@@ -97,6 +116,10 @@ int max77888_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	int ret;
 
 	mutex_lock(&max77888->i2c_lock);
+/* WA for MUIC RESET */
+	if (i2c->addr == I2C_ADDR_MUIC)
+		max77888_reg_snapshot(reg, value);
+/* WA for MUIC RESET */
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&max77888->i2c_lock);
 	if (ret < 0)
@@ -132,6 +155,10 @@ int max77888_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 	if (ret >= 0) {
 		u8 old_val = ret & 0xff;
 		u8 new_val = (val & mask) | (old_val & (~mask));
+/* WA for MUIC RESET */
+		if (i2c->addr == I2C_ADDR_MUIC)
+			max77888_reg_snapshot(reg, new_val);
+/* WA for MUIC RESET */
 		ret = i2c_smbus_write_byte_data(i2c, reg, new_val);
 	}
 	mutex_unlock(&max77888->i2c_lock);
@@ -143,24 +170,16 @@ EXPORT_SYMBOL_GPL(max77888_update_reg);
 static int of_max77888_dt(struct device *dev, struct max77888_platform_data *pdata)
 {
 	struct device_node *np_max77888 = dev->of_node;
-	int ret;
 
 	if(!np_max77888)
 		return -EINVAL;
 
 	pdata->irq_gpio = of_get_named_gpio(np_max77888, "max77888,irq-gpio", 0);
+	/* WA for MUIC RESET */
+	pdata->muic_reset_irq = of_get_named_gpio(np_max77888, "max77888,muic-reset-int", 0);
 	pdata->wakeup = of_property_read_bool(np_max77888, "max77888,wakeup");
 
-	ret = of_property_read_u32(np_max77888, "max77888,irqf-trigger",
-		&pdata->irqf_trigger);
-	if (ret < 0) {
-		pr_err("%s: not found irqf_trigger(%d)\n", __func__, ret);
-		pdata->irqf_trigger = -1;
-		return ret;
-	}
-
-	pr_info("%s: irq-gpio: %u irqf-trigger:0x%08x)\n", __func__, pdata->irq_gpio,
-						pdata->irqf_trigger);
+	pr_info("%s: irq-gpio: %u \n", __func__, pdata->irq_gpio);
 
 	return 0;
 }
@@ -223,7 +242,8 @@ static int max77888_i2c_probe(struct i2c_client *i2c,
 			max77888->irq_base = pdata->irq_base;
 
 		max77888->irq_gpio = pdata->irq_gpio;
-		max77888->irqf_trigger = pdata->irqf_trigger;
+		/* WA for MUIC RESET */
+		max77888->muic_reset_irq = pdata->muic_reset_irq;
 		max77888->wakeup = pdata->wakeup;
 	} else {
 		ret = -EINVAL;
@@ -234,8 +254,8 @@ static int max77888_i2c_probe(struct i2c_client *i2c,
 	i2c_set_clientdata(i2c, max77888);
 
 	if (max77888_read_reg(i2c, MAX77888_PMIC_REG_PMIC_ID2, &reg_data) < 0) {
-		dev_err(max77888->dev,
-			"device not found on this channel (this is not an error)\n");
+		pr_err("%s:%s device not found on this channel (this is not an error)\n",
+			MFD_DEV_NAME, __func__);
 		ret = -ENODEV;
 		goto err_w_lock;
 	} else {
@@ -314,6 +334,11 @@ static int max77888_suspend(struct device *dev)
 	struct i2c_client *i2c = container_of(dev, struct i2c_client, dev);
 	struct max77888_dev *max77888 = i2c_get_clientdata(i2c);
 
+#if !defined(CONFIG_SEC_FACTORY)
+	if (max77888->pdata->muic_pdata->set_path_switch_suspend)
+		max77888->pdata->muic_pdata->set_path_switch_suspend(dev);
+#endif /* !CONFIG_SEC_FACTORY */
+
 	if (device_may_wakeup(dev))
 		enable_irq_wake(max77888->irq);
 
@@ -331,12 +356,17 @@ static int max77888_resume(struct device *dev)
 	pr_info("%s:%s\n", MFD_DEV_NAME, __func__);
 #endif /* CONFIG_SAMSUNG_PRODUCT_SHIP */
 
+#if !defined(CONFIG_SEC_FACTORY)
+	if (max77888->pdata->muic_pdata->set_path_switch_resume)
+		max77888->pdata->muic_pdata->set_path_switch_resume(dev);
+#endif /* !CONFIG_SEC_FACTORY */
+
 	if (device_may_wakeup(dev))
 		disable_irq_wake(max77888->irq);
 
 	enable_irq(max77888->irq);
 
-	return max77888_irq_resume(max77888);
+	return 0;
 }
 #else
 #define max77888_suspend	NULL

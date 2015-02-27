@@ -118,14 +118,16 @@ static int fimg2d_check_address_range(unsigned long addr, size_t size)
 	} else {
 		nvma = vma->vm_next;
 
-		while ((vma->vm_end < (addr + size)) &&
-				(vma != NULL) && (nvma != NULL) &&
+		while ((vma != NULL) && (nvma != NULL) &&
+				(vma->vm_end < (addr + size)) &&
 				(vma->vm_end == nvma->vm_start)) {
 			vma = vma->vm_next;
 			nvma = nvma->vm_next;
 		}
 
-		if (vma->vm_end < (addr + size)) {
+		if (vma == NULL) {
+			ret = -EFAULT;
+		} else if (vma->vm_end < (addr + size)) {
 			fimg2d_err("addr : %#lx, size : %#x - out of vma[%#lx, %#lx] range\n",
 					addr, size, vma->vm_start, vma->vm_end);
 			ret =  -EFAULT;
@@ -645,7 +647,7 @@ int fimg2d_check_pgd(struct mm_struct *mm, struct fimg2d_bltcmd *cmd)
 		if (!c->size)
 			continue;
 
-		pt = fimg2d_check_pagetable(mm, c->addr, c->size);
+		pt = fimg2d_check_pagetable(mm, c->addr, c->size, i == IDST);
 		if (pt == PT_FAULT) {
 			ret = -EFAULT;
 			goto err_pgtable;
@@ -662,7 +664,7 @@ int fimg2d_check_pgd(struct mm_struct *mm, struct fimg2d_bltcmd *cmd)
 		if (!c->size)
 			continue;
 
-		pt = fimg2d_check_pagetable(mm, c->addr, c->size);
+		pt = fimg2d_check_pagetable(mm, c->addr, c->size, i == IDST);
 		if (pt == PT_FAULT) {
 			ret = -EFAULT;
 			goto err_pgtable;

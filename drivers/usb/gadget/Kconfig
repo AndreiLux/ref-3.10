@@ -909,6 +909,13 @@ config USB_SUPER_HIGH_SPEED_SWITCH_CHANGE
 	  Default connection to USB 2.0.
 	  Dynamic switching between usb 2.0 to usb 3.0.
 
+config USB_ANDROID_SAMSUNG_DIAG_BRIDGE
+	boolean "Samsung USB DIAG Bridge Functionality"
+	depends on USB_G_ANDROID
+	help
+	  Support for DIAG Bridge functionality.
+	  If you enable this option,
+	  In rndis,acm,dm port the rndis,serial and dm is enabled.
 if TTY
 
 config USB_CDC_COMPOSITE

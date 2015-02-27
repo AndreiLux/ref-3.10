@@ -149,9 +149,6 @@ int arizona_dvfs_down(struct arizona *arizona, unsigned int flags)
 
 	mutex_lock(&arizona->subsys_max_lock);
 
-	if ((arizona->subsys_max_rq & flags) != flags)
-		dev_warn(arizona->dev, "Unbalanced DVFS down: %x\n", flags);
-
 	arizona->subsys_max_rq &= ~flags;
 
 	if (arizona->subsys_max_rq == 0) {
@@ -240,7 +237,7 @@ static irqreturn_t arizona_overclocked(int irq, void *data)
 	struct arizona *arizona = data;
 	unsigned int val[3];
 	int ret;
-	
+
 	ret = regmap_bulk_read(arizona->regmap, ARIZONA_INTERRUPT_RAW_STATUS_6,
 			       &val[0], 3);
 	if (ret != 0) {
@@ -588,10 +585,51 @@ static int arizona_runtime_resume(struct device *dev)
 		break;
 	}
 
+	switch (arizona->type) {
+	case WM5110:
+	case WM8280:
+		ret = regulator_set_voltage(arizona->dcvdd, 1200000, 1200000);
+		if (ret < 0) {
+			dev_err(arizona->dev,
+				"Failed to set resume voltage: %d\n",
+				ret);
+			goto err;
+		}
+		break;
+	default:
+		break;
+	}
+
 	ret = regcache_sync(arizona->regmap);
 	if (ret != 0) {
 		dev_err(arizona->dev, "Failed to restore register cache\n");
 		goto err;
+	}
+
+	switch(arizona->type) {
+	case WM5102:
+	case WM8997:
+	case WM8998:
+	case WM1814:
+		/* Restore DVFS setting */
+		ret = 0;
+		mutex_lock(&arizona->subsys_max_lock);
+		if (arizona->subsys_max_rq != 0) {
+			ret = regmap_update_bits(arizona->regmap,
+				ARIZONA_DYNAMIC_FREQUENCY_SCALING_1,
+				ARIZONA_SUBSYS_MAX_FREQ, 1);
+		}
+		mutex_unlock(&arizona->subsys_max_lock);
+
+		if (ret != 0) {
+			dev_err(arizona->dev,
+				"Failed to enable subsys max: %d\n",
+				ret);
+			goto err;
+		}
+		break;
+	default:
+		break;
 	}
 
 	return 0;
@@ -609,6 +647,20 @@ static int arizona_runtime_suspend(struct device *dev)
 
 	dev_dbg(arizona->dev, "Entering AoD mode\n");
 
+	switch(arizona->type) {
+	case WM5102:
+	case WM8997:
+	case WM8998:
+	case WM1814:
+		/* Must disable DVFS boost before powering down DCVDD */
+		regmap_update_bits(arizona->regmap,
+			ARIZONA_DYNAMIC_FREQUENCY_SCALING_1,
+			ARIZONA_SUBSYS_MAX_FREQ, 0);
+		break;
+	default:
+		break;
+	}
+
 	if (arizona->external_dcvdd) {
 		ret = regmap_update_bits(arizona->regmap,
 					 ARIZONA_ISOLATION_CONTROL,
@@ -624,15 +676,10 @@ static int arizona_runtime_suspend(struct device *dev)
 	switch (arizona->type) {
 	case WM5110:
 	case WM8280:
-		regcache_cache_bypass(arizona->regmap, true);
-		ret = regmap_update_bits(arizona->regmap,
-					 ARIZONA_LDO1_CONTROL_1,
-					 ARIZONA_LDO1_VSEL_MASK,
-					 0x0b << ARIZONA_LDO1_VSEL_SHIFT);
-		regcache_cache_bypass(arizona->regmap, false);
-		if (ret != 0) {
+		ret = regulator_set_voltage(arizona->dcvdd, 1175000, 1175000);
+		if (ret < 0) {
 			dev_err(arizona->dev,
-				"Failed to prepare for sleep %d\n",
+				"Failed to set suspend voltage: %d\n",
 				ret);
 			return ret;
 		}
@@ -688,12 +735,12 @@ const struct dev_pm_ops arizona_pm_ops = {
 EXPORT_SYMBOL_GPL(arizona_pm_ops);
 
 #ifdef CONFIG_OF
-int arizona_of_get_type(struct device *dev)
+unsigned long arizona_of_get_type(struct device *dev)
 {
 	const struct of_device_id *id = of_match_device(arizona_of_match, dev);
 
 	if (id)
-		return (int)id->data;
+		return (unsigned long)id->data;
 	else
 		return 0;
 }
@@ -1508,6 +1555,7 @@ int arizona_dev_init(struct arizona *arizona)
 		regmap_update_bits(arizona->regmap,
 				   ARIZONA_MIC_BIAS_CTRL_1 + i,
 				   ARIZONA_MICB1_LVL_MASK |
+				   ARIZONA_MICB1_EXT_CAP |
 				   ARIZONA_MICB1_DISCH |
 				   ARIZONA_MICB1_BYPASS |
 				   ARIZONA_MICB1_RATE, val);

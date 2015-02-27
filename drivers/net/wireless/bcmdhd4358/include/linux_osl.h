@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: linux_osl.h 501098 2014-09-07 02:16:48Z $
+ * $Id: linux_osl.h 498511 2014-08-24 09:17:44Z $
  */
 
 #ifndef _linux_osl_h_
@@ -40,11 +40,7 @@ extern int osl_os_image_size(void *image);
 #ifdef BCMDRIVER
 
 /* OSL initialization */
-#ifdef SHARED_OSL_CMN
-extern osl_t *osl_attach(void *pdev, uint bustype, bool pkttag, void **osh_cmn);
-#else
 extern osl_t *osl_attach(void *pdev, uint bustype, bool pkttag);
-#endif /* SHARED_OSL_CMN */
 
 extern void osl_detach(osl_t *osh);
 extern int osl_static_mem_init(osl_t *osh, void *adapter);
@@ -160,19 +156,7 @@ extern uint osl_malloc_failed(osl_t *osh);
 #define	DMA_FREE_CONSISTENT_FORCE32(osh, va, size, pa, dmah) \
 	osl_dma_free_consistent((osh), (void*)(va), (size), (pa))
 
-#if defined(BCMPCIE)
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_FLOWRING)
-#define	DMA_ALLOC_CONSISTENT_STATIC(osh, size, align, tot, pap, dmah, idx) \
-	osl_dma_alloc_consistent_static((osh), (size), (align), (tot), (pap), (idx))
-#define	DMA_FREE_CONSISTENT_STATIC(osh, va, size, pa, dmah, idx) \
-	osl_dma_free_consistent_static((osh), (void*)(va), (size), (pa), (idx))
 
-extern void *osl_dma_alloc_consistent_static(osl_t *osh, uint size, uint16 align,
-	uint *tot, dmaaddr_t *pap, uint16 idx);
-extern void osl_dma_free_consistent_static(osl_t *osh, void *va, uint size, dmaaddr_t pa,
-	uint16 idx);
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_FLOWRING */
-#endif /* BCMPCIE */
 
 extern uint osl_dma_consistent_align(void);
 extern void *osl_dma_alloc_consistent(osl_t *osh, uint size, uint16 align,
@@ -344,12 +328,10 @@ extern int osl_error(int bcmerror);
 #define	PKTGET_STATIC(osh, len, send)		osl_pktget_static((osh), (len))
 #define	PKTFREE_STATIC(osh, skb, send)		osl_pktfree_static((osh), (skb), (send))
 #define PKTCLEAR_STATIC(osh)		osl_pktclear_static((osh))
-#define PKTVALID_STATIC(osh, pkt)	osl_pktvalid_static((osh), (pkt))
 #else
 #define	PKTGET_STATIC	PKTGET
 #define	PKTFREE_STATIC	PKTFREE
 #define PKTCLEAR_STATIC(osh)
-#define PKTVALID_STATIC(osh, pkt)
 #endif /* CONFIG_DHD_USE_STATIC_BUF */
 #define	PKTDATA(osh, skb)		({BCM_REFERENCE(osh); (((struct sk_buff*)(skb))->data);})
 #define	PKTLEN(osh, skb)		({BCM_REFERENCE(osh); (((struct sk_buff*)(skb))->len);})
@@ -500,120 +482,18 @@ extern void osl_ctfpool_stats(osl_t *osh, void *b);
 #define	PKTCLRCTF(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
 #define	PKTISCTF(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb); FALSE;})
 
-#ifdef HNDCTF
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
-#define	SKIPCT	(1 << 2)
-#define	CHAINED	(1 << 3)
-#define	PKTSETSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags |= SKIPCT); \
-	 })
-#define	PKTCLRSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags &= (~SKIPCT)); \
-	 })
-#define	PKTSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags & SKIPCT); \
-	 })
-#define	PKTSETCHAINED(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags |= CHAINED); \
-	 })
-#define	PKTCLRCHAINED(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags &= (~CHAINED)); \
-	 })
-#define	PKTISCHAINED(skb)	(((struct sk_buff*)(skb))->pktc_flags & CHAINED)
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 22)
-#define	SKIPCT	(1 << 18)
-#define	CHAINED	(1 << 19)
-#define	PKTSETSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len |= SKIPCT); \
-	 })
-#define	PKTCLRSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len &= (~SKIPCT)); \
-	 })
-#define	PKTSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len & SKIPCT); \
-	 })
-#define	PKTSETCHAINED(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len |= CHAINED); \
-	 })
-#define	PKTCLRCHAINED(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len &= (~CHAINED)); \
-	 })
-#define	PKTISCHAINED(skb)	(((struct sk_buff*)(skb))->mac_len & CHAINED)
-#else /* 2.6.22 */
-#define	SKIPCT	(1 << 2)
-#define	CHAINED	(1 << 3)
-#define	PKTSETSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused |= SKIPCT); \
-	 })
-#define	PKTCLRSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused &= (~SKIPCT)); \
-	 })
-#define	PKTSKIPCT(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused & SKIPCT); \
-	 })
-#define	PKTSETCHAINED(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused |= CHAINED); \
-	 })
-#define	PKTCLRCHAINED(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused &= (~CHAINED)); \
-	 })
-#define	PKTISCHAINED(skb)	(((struct sk_buff*)(skb))->__unused & CHAINED)
-#endif /* 2.6.22 */
-typedef struct ctf_mark {
-	uint32	value;
-}	ctf_mark_t;
-#define CTF_MARK(m)				(m.value)
-#else /* HNDCTF */
 #define	PKTSETSKIPCT(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
 #define	PKTCLRSKIPCT(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
 #define	PKTSKIPCT(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
 #define CTF_MARK(m)		({BCM_REFERENCE(m); 0;})
-#endif /* HNDCTF */
 
-#if defined(BCM_GMAC3)
 
 /** pktalloced accounting in devices using GMAC Bulk Forwarding to DHD */
 
 /* Account for packets delivered to downstream forwarder by GMAC interface. */
-extern void osl_pkt_tofwder(osl_t *osh, void *skbs, int skb_cnt);
-#define PKTTOFWDER(osh, skbs, skb_cnt)  \
-	osl_pkt_tofwder(((osl_t *)osh), (void *)(skbs), (skb_cnt))
 
 /* Account for packets received from downstream forwarder. */
-extern void osl_pkt_frmfwder(osl_t *osh, void *skbs, int skb_cnt);
-#define PKTFRMFWDER(osh, skbs, skb_cnt) \
-	osl_pkt_frmfwder(((osl_t *)osh), (void *)(skbs), (skb_cnt))
 
 
 /** GMAC Forwarded packet tagging for reduced cache flush/invalidate.
@@ -627,116 +507,32 @@ extern void osl_pkt_frmfwder(osl_t *osh, void *skbs, int skb_cnt);
  */
 
 /** Forwarded packets, have a HWRXOFF sized rx header (etc.h) */
-#define FWDER_HWRXOFF       (30)
 
 /** Maximum amount of a pktadat that a downstream forwarder (GMAC) may have
  * read into the L1 cache (not dirty). This may be used in reduced cache ops.
  *
  * Max 56: ET HWRXOFF[30] + BRCMHdr[4] + EtherHdr[14] + VlanHdr[4] + IP[4]
  */
-#define FWDER_PKTMAPSZ      (FWDER_HWRXOFF + 4 + 14 + 4 + 4)
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
 
-#define FWDERBUF            (1 << 4)
-#define PKTSETFWDERBUF(osh, skb) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags |= FWDERBUF); \
-	 })
-#define PKTCLRFWDERBUF(osh, skb) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags &= (~FWDERBUF)); \
-	 })
-#define PKTISFWDERBUF(osh, skb) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags & FWDERBUF); \
-	 })
 
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 22)
 
-#define FWDERBUF	        (1 << 20)
-#define PKTSETFWDERBUF(osh, skb) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len |= FWDERBUF); \
-	 })
-#define PKTCLRFWDERBUF(osh, skb)  \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len &= (~FWDERBUF)); \
-	 })
-#define PKTISFWDERBUF(osh, skb) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->mac_len & FWDERBUF); \
-	 })
 
-#else /* 2.6.22 */
 
-#define FWDERBUF            (1 << 4)
-#define PKTSETFWDERBUF(osh, skb)  \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused |= FWDERBUF); \
-	 })
-#define PKTCLRFWDERBUF(osh, skb)  \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused &= (~FWDERBUF)); \
-	 })
-#define PKTISFWDERBUF(osh, skb) \
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->__unused & FWDERBUF); \
-	 })
 
-#endif /* 2.6.22 */
 
-#else  /* ! BCM_GMAC3 */
 
 #define PKTSETFWDERBUF(osh, skb)  ({ BCM_REFERENCE(osh); BCM_REFERENCE(skb); })
 #define PKTCLRFWDERBUF(osh, skb)  ({ BCM_REFERENCE(osh); BCM_REFERENCE(skb); })
 #define PKTISFWDERBUF(osh, skb)   ({ BCM_REFERENCE(osh); BCM_REFERENCE(skb); FALSE;})
 
-#endif /* ! BCM_GMAC3 */
 
 
-#ifdef HNDCTF
 /* For broadstream iqos */
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)
-#define	TOBR		(1 << 5)
-#define	PKTSETTOBR(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags |= TOBR); \
-	 })
-#define	PKTCLRTOBR(osh, skb)	\
-	({ \
-	 BCM_REFERENCE(osh); \
-	 (((struct sk_buff*)(skb))->pktc_flags &= (~TOBR)); \
-	 })
-#define	PKTISTOBR(skb)	(((struct sk_buff*)(skb))->pktc_flags & TOBR)
-#define	PKTSETCTFIPCTXIF(skb, ifp)	(((struct sk_buff*)(skb))->ctf_ipc_txif = ifp)
-#elif LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 22)
 #define	PKTSETTOBR(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
 #define	PKTCLRTOBR(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
 #define	PKTISTOBR(skb)	({BCM_REFERENCE(skb); FALSE;})
-#define	PKTSETCTFIPCTXIF(skb, ifp)	({BCM_REFERENCE(skb); BCM_REFERENCE(ifp);})
-#else /* 2.6.22 */
-#define	PKTSETTOBR(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
-#define	PKTCLRTOBR(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
-#define	PKTISTOBR(skb)	({BCM_REFERENCE(skb); FALSE;})
-#define	PKTSETCTFIPCTXIF(skb, ifp)	({BCM_REFERENCE(skb); BCM_REFERENCE(ifp);})
-#endif /* 2.6.22 */
-#else /* HNDCTF */
-#define	PKTSETTOBR(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
-#define	PKTCLRTOBR(osh, skb)	({BCM_REFERENCE(osh); BCM_REFERENCE(skb);})
-#define	PKTISTOBR(skb)	({BCM_REFERENCE(skb); FALSE;})
-#endif /* HNDCTF */
 
 
 #ifdef BCMFA
@@ -772,7 +568,6 @@ extern void osl_pktfree(osl_t *osh, void *skb, bool send);
 extern void *osl_pktget_static(osl_t *osh, uint len);
 extern void osl_pktfree_static(osl_t *osh, void *skb, bool send);
 extern void osl_pktclear_static(osl_t *osh);
-extern bool osl_pktvalid_static(osl_t *osh, void *pkt);
 extern void osl_pktclone(osl_t *osh, void **pkt);
 
 extern void *osl_pkt_frmnative(osl_t *osh, void *skb);
@@ -814,60 +609,9 @@ extern uint32 osl_rand(void);
 #define	DMA_MAP(osh, va, size, direction, p, dmah) \
 	osl_dma_map((osh), (va), (size), (direction), (p), (dmah))
 
-#ifdef PKTC
 /* Use 8 bytes of skb tstamp field to store below info */
-struct chain_node {
-	struct sk_buff	*link;
-	unsigned int	flags:3, pkts:9, bytes:20;
-};
 
-#define CHAIN_NODE(skb)		((struct chain_node*)(((struct sk_buff*)skb)->pktc_cb))
 
-#define	PKTCSETATTR(s, f, p, b)	({CHAIN_NODE(s)->flags = (f); CHAIN_NODE(s)->pkts = (p); \
-	                         CHAIN_NODE(s)->bytes = (b);})
-#define	PKTCCLRATTR(s)		({CHAIN_NODE(s)->flags = CHAIN_NODE(s)->pkts = \
-	                         CHAIN_NODE(s)->bytes = 0;})
-#define	PKTCGETATTR(s)		(CHAIN_NODE(s)->flags << 29 | CHAIN_NODE(s)->pkts << 20 | \
-	                         CHAIN_NODE(s)->bytes)
-#define	PKTCCNT(skb)		(CHAIN_NODE(skb)->pkts)
-#define	PKTCLEN(skb)		(CHAIN_NODE(skb)->bytes)
-#define	PKTCGETFLAGS(skb)	(CHAIN_NODE(skb)->flags)
-#define	PKTCSETFLAGS(skb, f)	(CHAIN_NODE(skb)->flags = (f))
-#define	PKTCCLRFLAGS(skb)	(CHAIN_NODE(skb)->flags = 0)
-#define	PKTCFLAGS(skb)		(CHAIN_NODE(skb)->flags)
-#define	PKTCSETCNT(skb, c)	(CHAIN_NODE(skb)->pkts = (c))
-#define	PKTCINCRCNT(skb)	(CHAIN_NODE(skb)->pkts++)
-#define	PKTCADDCNT(skb, c)	(CHAIN_NODE(skb)->pkts += (c))
-#define	PKTCSETLEN(skb, l)	(CHAIN_NODE(skb)->bytes = (l))
-#define	PKTCADDLEN(skb, l)	(CHAIN_NODE(skb)->bytes += (l))
-#define	PKTCSETFLAG(skb, fb)	(CHAIN_NODE(skb)->flags |= (fb))
-#define	PKTCCLRFLAG(skb, fb)	(CHAIN_NODE(skb)->flags &= ~(fb))
-#define	PKTCLINK(skb)		(CHAIN_NODE(skb)->link)
-#define	PKTSETCLINK(skb, x)	(CHAIN_NODE(skb)->link = (struct sk_buff*)(x))
-#define FOREACH_CHAINED_PKT(skb, nskb) \
-	for (; (skb) != NULL; (skb) = (nskb)) \
-		if ((nskb) = (PKTISCHAINED(skb) ? PKTCLINK(skb) : NULL), \
-		    PKTSETCLINK((skb), NULL), 1)
-#define	PKTCFREE(osh, skb, send) \
-do { \
-	void *nskb; \
-	ASSERT((skb) != NULL); \
-	FOREACH_CHAINED_PKT((skb), nskb) { \
-		PKTCLRCHAINED((osh), (skb)); \
-		PKTCCLRFLAGS((skb)); \
-		PKTFREE((osh), (skb), (send)); \
-	} \
-} while (0)
-#define PKTCENQTAIL(h, t, p) \
-do { \
-	if ((t) == NULL) { \
-		(h) = (t) = (p); \
-	} else { \
-		PKTSETCLINK((t), (p)); \
-		(t) = (p); \
-	} \
-} while (0)
-#endif /* PKTC */
 
 #else /* ! BCMDRIVER */
 

@@ -4,7 +4,11 @@
 #include <linux/dcache.h>
 #include "fat.h"
 
-static const char default_xattr[] = "u:object_r:sdcard_external:s0";
+#ifndef CONFIG_FAT_VIRTUAL_XATTR_SELINUX_LABEL
+#define CONFIG_FAT_VIRTUAL_XATTR_SELINUX_LABEL	("undefined")
+#endif
+
+static const char default_xattr[] = CONFIG_FAT_VIRTUAL_XATTR_SELINUX_LABEL;
 
 int fat_setxattr(struct dentry *dentry, const char *name, const void *value, size_t size, int flags) {
 	return 0;

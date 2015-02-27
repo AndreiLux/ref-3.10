@@ -192,6 +192,10 @@
 #define GET_3AA_ID(video) ((video->id < 14) ? 0 : 1)
 #define GET_3AAC_ID(video) ((video->id < FIMC_IS_VIDEO_3A1_NUM) ? 0 : 1)
 
+/* sync log with HAL, FW */
+#define log_sync(sync_id) \
+	pr_info("[@]FIMC_IS_SYNC %d\n", sync_id)
+
 #ifdef err
 #undef err
 #endif
@@ -206,6 +210,10 @@
 #define mrerr(fmt, object, frame, args...) \
 	pr_err("[@][%d:F%d][ERR]%s:%d: " fmt "\n", object->instance, frame->fcount, __func__, __LINE__, ##args)
 
+/* multi-stream & group error */
+#define mgerr(fmt, object, group, args...) \
+        pr_err("[@][%d][GP%d][ERR]%s:%d:" fmt "\n", object->instance, group->id, __func__, __LINE__, ##args)
+
 #ifdef warn
 #undef warn
 #endif
@@ -214,6 +222,9 @@
 
 #define mwarn(fmt, this, args...) \
 	pr_warning("[@][%d][WRN] " fmt "\n", this->instance, ##args)
+
+#define mgwarn(fmt, object, group, args...) \
+        pr_warning("[@][%d][GP%d][WRN]" fmt "\n", object->instance, group->id, ##args)
 
 #define info(fmt, args...) \
 	pr_info("[@]" fmt, ##args)

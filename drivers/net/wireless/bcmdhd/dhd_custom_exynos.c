@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_custom_exynos.c 487900 2014-06-27 10:26:47Z $
+ * $Id: dhd_custom_exynos.c 489763 2014-07-08 02:05:45Z $
  */
 #include <linux/device.h>
 #include <linux/gpio.h>
@@ -293,7 +293,7 @@ void set_cpucore_for_interrupt(cpumask_var_t default_cpu_mask,
 	argos_irq_affinity_setup_label(IRQ_SPI(2), "WIFI", affinity_cpu_mask, default_cpu_mask);
 #endif
 }
-#endif /* CONFIG_ARGOS  */
+#endif /* CONFIG_ARGOS */
 
 void interrupt_set_cpucore(int set)
 {

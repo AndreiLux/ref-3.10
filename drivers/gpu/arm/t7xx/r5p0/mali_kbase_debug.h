@@ -113,7 +113,7 @@ typedef struct kbasep_debug_assert_cb {
 	 */
 #define KBASE_DEBUG_ASSERT_MSG(expr, ...) \
 		do { \
-			if (MALI_FALSE == (expr)) { \
+			if (!(expr)) { \
 				KBASEP_DEBUG_ASSERT_OUT(KBASEP_DEBUG_PRINT_TRACE, KBASEP_DEBUG_PRINT_FUNCTION, __VA_ARGS__);\
 				KBASE_CALL_ASSERT_HOOK();\
 				BUG();\

@@ -23,5 +23,6 @@ obj-$(CONFIG_BOOT_DEVICE_SPI) += boot_device_spi.o
 
 obj-$(CONFIG_UMTS_MODEM_SS222) += modem_ctrl_ss222.o
 obj-$(CONFIG_UMTS_MODEM_SS300) += modem_ctrl_ss300.o
+obj-$(CONFIG_UMTS_MODEM_SS333) += modem_ctrl_ss333.o
 obj-$(CONFIG_UMTS_MODEM_SH222AP) += modem_ctrl_sh222ap.o
 obj-$(CONFIG_LTE_MODEM_XMM7260) += modem_ctrl_xmm7260.o

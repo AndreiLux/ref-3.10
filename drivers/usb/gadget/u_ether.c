@@ -580,7 +580,7 @@ process_frame:
 	}
 
 	if (netif_running(dev->net))
-		rx_fill(dev, GFP_KERNEL);
+		rx_fill(dev, GFP_ATOMIC);
 }
 static inline void process_rx_task(unsigned long data)
 {

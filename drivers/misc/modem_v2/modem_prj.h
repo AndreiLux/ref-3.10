@@ -525,6 +525,7 @@ struct modem_ctl {
 
 	int irq_phone_active;
 	int irq_sim_detect;
+	int irq_cp_dump_int;
 
 #ifdef CONFIG_LTE_MODEM_CMC221
 	const struct attribute_group *group;

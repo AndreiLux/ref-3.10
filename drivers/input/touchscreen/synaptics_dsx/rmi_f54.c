@@ -2441,6 +2441,7 @@ static void run_rawcap_read(void *dev_data)
 	struct factory_data *data = f54->factory_data;
 
 	unsigned char cmd_state = CMD_STATUS_RUNNING;
+	unsigned char no_sleep = 0;
 	int retry = DO_PREPATION_RETRY_COUNT;
 
 	set_default_result(data);
@@ -2455,6 +2456,32 @@ static void run_rawcap_read(void *dev_data)
 	}
 
 	do {
+		retval = rmi4_data->i2c_read(rmi4_data,
+		rmi4_data->f01_ctrl_base_addr, &no_sleep, sizeof(no_sleep));
+		if (retval <= 0) {
+			tsp_debug_err(true, &rmi4_data->i2c_client->dev,
+				"%s: fail to read no_sleep[ret:%d]\n",
+				__func__, retval);
+			snprintf(data->cmd_buff, CMD_RESULT_STR_LEN,
+				"%s", "Error read of f01_ctrl00");
+			cmd_state = CMD_STATUS_FAIL;
+			goto out;
+		}
+
+		no_sleep |= NO_SLEEP_ON;
+
+		retval = rmi4_data->i2c_write(rmi4_data,
+			rmi4_data->f01_ctrl_base_addr, &no_sleep, sizeof(no_sleep));
+		if (retval <= 0) {
+			tsp_debug_err(true, &rmi4_data->i2c_client->dev,
+				"%s: fail to write no_sleep[ret:%d]\n",
+				__func__, retval);
+			snprintf(data->cmd_buff, CMD_RESULT_STR_LEN,
+				"%s", "Error write to f01_ctrl00");
+			cmd_state = CMD_STATUS_FAIL;
+			goto out;
+		}
+
 		retval = do_preparation(rmi4_data);
 		if (retval >= 0)
 			break;

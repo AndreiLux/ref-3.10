@@ -61,7 +61,7 @@ static void print_pm_status(struct mem_link_device *mld)
 	/*
 	** PM {ap_wakeup:cp_wakeup:cp_status:ap_status:magic} <CALLER>
 	*/
-	evt_log(0, "%s: PM {%d:%d:%d:%d:%X} <%pf>\n", ld->name,
+	mif_info("%s: PM {%d:%d:%d:%d:%X} <%pf>\n", ld->name,
 		ap_wakeup, cp_wakeup, cp_status, ap_status, magic, CALLER);
 #endif
 }

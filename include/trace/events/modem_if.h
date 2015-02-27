@@ -29,6 +29,25 @@ TRACE_EVENT(mif_event,
 		__entry->size,
 		__entry->function)
 );
+
+TRACE_EVENT(send_sig,
+
+	TP_PROTO(u16 mask, int value),
+
+	TP_ARGS(mask, value),
+
+	TP_STRUCT__entry(
+		__field(u16, mask)
+		__field(int, value)
+	),
+
+	TP_fast_assign(
+		__entry->mask = mask;
+		__entry->value = value;
+	),
+
+	TP_printk("mif: mask=%x, value=%d", __entry->mask, __entry->value)
+);
 #endif
 
 /* This part must be outside protection */

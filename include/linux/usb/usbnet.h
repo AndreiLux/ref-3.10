@@ -250,7 +250,7 @@ extern void usbnet_set_msglevel(struct net_device *, u32);
 extern void usbnet_get_drvinfo(struct net_device *, struct ethtool_drvinfo *);
 extern int usbnet_nway_reset(struct net_device *net);
 extern void usbnet_terminate_urbs(struct usbnet *dev);
-extern void rx_complete(struct urb *urb);
+/* extern void rx_complete(struct urb *urb); */
 
 extern int usbnet_manage_power(struct usbnet *, int);
 extern void usbnet_link_change(struct usbnet *, bool, bool);

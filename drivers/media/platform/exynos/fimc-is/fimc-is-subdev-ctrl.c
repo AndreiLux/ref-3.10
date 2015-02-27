@@ -113,7 +113,7 @@ int fimc_is_subdev_stop(struct fimc_is_device_ischain *device,
 
 	framemgr_x_barrier_irqr(framemgr, FMGR_IDX_4, flags);
 
-//	clear_bit(FIMC_IS_SUBDEV_START, &subdev->state);
+	clear_bit(FIMC_IS_SUBDEV_START, &subdev->state);
 
 p_err:
 	return ret;

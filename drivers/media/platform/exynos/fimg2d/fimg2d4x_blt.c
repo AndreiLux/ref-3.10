@@ -180,6 +180,27 @@ static int fimg2d4x_get_clk_cnt(struct clk *clk)
 }
 #endif
 
+#ifdef CONFIG_EXYNOS7_IOMMU
+static void fimg2d4x_cleanup_pgtable(struct fimg2d_control *ctrl,
+					struct fimg2d_bltcmd *cmd,
+					enum image_object idx,
+					bool plane2)
+{
+	if (cmd->dma[idx].base.size > 0) {
+		exynos_sysmmu_unmap_user_pages(ctrl->dev,
+				cmd->ctx->mm, cmd->dma[idx].base.addr,
+				cmd->dma[idx].base.size);
+	}
+
+	if (plane2 && cmd->dma[idx].plane2.size > 0) {
+		exynos_sysmmu_unmap_user_pages(ctrl->dev,
+				cmd->ctx->mm, cmd->dma[idx].plane2.addr,
+				cmd->dma[idx].plane2.size);
+	}
+}
+#else
+#define fimg2d4x_cleanup_pgtable(ctrl, cmd, idx, plane2)	do { } while (0)
+#endif
 static int fimg2d4x_blit_wait(struct fimg2d_control *ctrl,
 		struct fimg2d_bltcmd *cmd)
 {
@@ -194,7 +215,7 @@ static int fimg2d4x_blit_wait(struct fimg2d_control *ctrl,
 		if (!fimg2d4x_blit_done_status(ctrl))
 			fimg2d_err("blit not finished\n");
 
-		fimg2d_dump_command(cmd);
+		fimg2d_debug_command(cmd);
 		fimg2d4x_reset(ctrl);
 
 		return -1;
@@ -273,7 +294,7 @@ int fimg2d4x_bitblt(struct fimg2d_control *ctrl)
 
 		if (fimg2d_check_pgd(ctx->mm, cmd)) {
 			ret = -EFAULT;
-			goto fail_n_del;
+			goto fail_n_unmap;
 		}
 
 		if (addr_type == ADDR_USER || addr_type == ADDR_USER_CONTIG) {
@@ -283,21 +304,21 @@ int fimg2d4x_bitblt(struct fimg2d_control *ctrl)
 					       ctx->mm,
 					       (ctx->mm) ? ctx->mm->pgd : NULL);
 				ret = -EPERM;
-				goto fail_n_del;
+				goto fail_n_unmap;
 			}
 			pgd = (unsigned long *)ctx->mm->pgd;
 #ifdef CONFIG_EXYNOS7_IOMMU
 			if (iovmm_activate(ctrl->dev)) {
 				fimg2d_err("failed to iovmm activate\n");
 				ret = -EPERM;
-				goto fail_n_del;
+				goto fail_n_unmap;
 			}
 #else
 			if (exynos_sysmmu_enable(ctrl->dev,
 					(unsigned long)virt_to_phys(pgd))) {
 				fimg2d_err("failed to sysmme enable\n");
 				ret = -EPERM;
-				goto fail_n_del;
+				goto fail_n_unmap;
 			}
 #endif
 			fimg2d_debug("%s : sysmmu enable: pgd %p ctx %p seq_no(%u)\n",
@@ -316,47 +337,24 @@ int fimg2d4x_bitblt(struct fimg2d_control *ctrl)
 		ret = fimg2d4x_blit_wait(ctrl, cmd);
 		perf_end(cmd, PERF_BLIT);
 
-fail_n_del:
-		perf_start(cmd, PERF_UNMAP);
-		if (addr_type == ADDR_USER || addr_type == ADDR_USER_CONTIG) {
 #ifdef CONFIG_EXYNOS7_IOMMU
+		if (addr_type == ADDR_USER || addr_type == ADDR_USER_CONTIG)
 			iovmm_deactivate(ctrl->dev);
-
-			if (cmd->dma[ISRC].base.size > 0) {
-				exynos_sysmmu_unmap_user_pages(ctrl->dev,
-					ctx->mm, cmd->dma[ISRC].base.addr,
-					cmd->dma[ISRC].base.size);
-			}
-
-			if (cmd->dma[ISRC].plane2.size > 0) {
-				exynos_sysmmu_unmap_user_pages(ctrl->dev,
-					ctx->mm, cmd->dma[ISRC].plane2.addr,
-					cmd->dma[ISRC].plane2.size);
-			}
-
-			if (cmd->dma[IMSK].base.size > 0) {
-				exynos_sysmmu_unmap_user_pages(ctrl->dev,
-					ctx->mm, cmd->dma[IMSK].base.addr,
-					cmd->dma[IMSK].base.size);
-			}
-
-			if (cmd->dma[IDST].base.size > 0) {
-				exynos_sysmmu_unmap_user_pages(ctrl->dev,
-					ctx->mm, cmd->dma[IDST].base.addr,
-					cmd->dma[IDST].base.size);
-			}
-
-			if (cmd->dma[IDST].plane2.size > 0) {
-				exynos_sysmmu_unmap_user_pages(ctrl->dev,
-					ctx->mm, cmd->dma[IDST].plane2.addr,
-					cmd->dma[IDST].plane2.size);
-			}
 #else
+		if (addr_type == ADDR_USER || addr_type == ADDR_USER_CONTIG)
 			exynos_sysmmu_disable(ctrl->dev);
 #endif
+
+fail_n_unmap:
+		perf_start(cmd, PERF_UNMAP);
+		if (addr_type == ADDR_USER || addr_type == ADDR_USER_CONTIG) {
+			fimg2d4x_cleanup_pgtable(ctrl, cmd, ISRC, true);
+			fimg2d4x_cleanup_pgtable(ctrl, cmd, IMSK, false);
+			fimg2d4x_cleanup_pgtable(ctrl, cmd, IDST, true);
 			fimg2d_debug("sysmmu disable\n");
 		}
 		perf_end(cmd, PERF_UNMAP);
+fail_n_del:
 		vma_unlock_mapping(ctx->vma_lock);
 		fimg2d_del_command(ctrl, cmd);
 	}
@@ -554,6 +552,7 @@ static int fimg2d4x_configure(struct fimg2d_control *ctrl,
 					cmd->dma[ISRC].plane2.size, 0);
 			if (IS_ERR_VALUE(ret)) {
 				fimg2d_err("s/w fallback (%d-1:%d)\n", ISRC, ret);
+				fimg2d4x_cleanup_pgtable(ctrl, cmd, ISRC, false);
 				return ret;
 			}
 		}
@@ -583,6 +582,7 @@ static int fimg2d4x_configure(struct fimg2d_control *ctrl,
 				cmd->dma[IMSK].base.size, 0);
 		if (IS_ERR_VALUE(ret)) {
 			fimg2d_err("s/w fallback (%d:%d)\n", IMSK, ret);
+			fimg2d4x_cleanup_pgtable(ctrl, cmd, ISRC, true);
 			return ret;
 		}
 #endif
@@ -613,9 +613,11 @@ static int fimg2d4x_configure(struct fimg2d_control *ctrl,
 		ret = exynos_sysmmu_map_user_pages(
 				ctrl->dev, cmd->ctx->mm,
 				cmd->dma[IDST].base.addr,
-				cmd->dma[IDST].base.size, 0);
+				cmd->dma[IDST].base.size, 1);
 		if (IS_ERR_VALUE(ret)) {
 			fimg2d_err("s/w fallback (%d-0:%d)\n", IDST, ret);
+			fimg2d4x_cleanup_pgtable(ctrl, cmd, ISRC, true);
+			fimg2d4x_cleanup_pgtable(ctrl, cmd, IMSK, false);
 			return ret;
 		}
 
@@ -623,9 +625,12 @@ static int fimg2d4x_configure(struct fimg2d_control *ctrl,
 			ret = exynos_sysmmu_map_user_pages(
 					ctrl->dev, cmd->ctx->mm,
 					cmd->dma[IDST].plane2.addr,
-					cmd->dma[IDST].plane2.size, 0);
+					cmd->dma[IDST].plane2.size, 1);
 			if (IS_ERR_VALUE(ret)) {
 				fimg2d_err("s/w fallback (%d-1:%d)\n", IDST, ret);
+				fimg2d4x_cleanup_pgtable(ctrl, cmd, ISRC, true);
+				fimg2d4x_cleanup_pgtable(ctrl, cmd, IMSK, false);
+				fimg2d4x_cleanup_pgtable(ctrl, cmd, IDST, false);
 				return ret;
 			}
 		}

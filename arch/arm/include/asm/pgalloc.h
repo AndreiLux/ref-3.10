@@ -133,9 +133,18 @@ static inline void __pmd_populate(pmd_t *pmdp, phys_addr_t pte,
 #ifdef	CONFIG_TIMA_RKP_L1_TABLES
 	unsigned long cmd_id = 0x83809000;
 	unsigned long tima_wr_out;
-#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
-        __asm__ __volatile__(".arch_extension sec");
-#endif
+
+#ifndef rkp_call
+#ifdef CONFIG_HYP_RKP 
+#define rkp_call "hvc #9\n"
+ __asm__ __volatile__(".arch_extension virt");
+#else
+#define rkp_call "smc #9\n" 
+ __asm__ __volatile__(".arch_extension sec");
+#endif //CONFIG_HYP_RKP
+#endif	
+
+
 	clean_dcache_area(pmdp, 8);
 	__asm__ __volatile__ (
 		"stmfd  sp!,{r0-r4}\n"
@@ -148,9 +157,13 @@ static inline void __pmd_populate(pmd_t *pmdp, phys_addr_t pte,
 		"add    r1, r1, #4\n"
 		"mcr    p15, 0, r1, c7, c14, 1\n"
 		"dsb\n"
-		"smc    #9\n"
+		rkp_call
+//		"hvc    #9\n"
+//		"mcr    p15, 0, r1, c7, c10, 1\n"
+//		"sub    r1, r1, #4\n"
+//		"mcr    p15, 0, r1, c7, c10, 1\n"
 		"mov    r0, #0\n"
-		"mcr    p15, 0, r0, c8, c3, 0\n"  /* cache is OK for HA3G, but still need to flush the whole TLB is the L2 Monitoring is ON */ 
+		"mcr    p15, 0, r0, c8, c3, 0\n"  /* cache is OK, but still need to flush the whole TLB is the L2 Monitoring is ON */ 
 		"dsb\n"
 		"isb\n"
 		"ldmfd  sp!,  {r0-r4}\n"

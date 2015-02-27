@@ -495,6 +495,8 @@ static void hevc_handle_frame_copy_timestamp(struct hevc_ctx *ctx)
 
 }
 
+#define on_res_change(ctx)	((ctx)->state >= HEVCINST_RES_CHANGE_INIT &&	\
+				 (ctx)->state <= HEVCINST_RES_CHANGE_END)
 static void hevc_handle_frame_new(struct hevc_ctx *ctx, unsigned int err)
 {
 	struct hevc_dec *dec;
@@ -504,7 +506,7 @@ static void hevc_handle_frame_new(struct hevc_ctx *ctx, unsigned int err)
 	dma_addr_t dspl_y_addr;
 	unsigned int index;
 	unsigned int frame_type;
-	unsigned int dst_frame_status;
+	unsigned int dst_frame_status, last_frame_status;
 	struct list_head *dst_queue_addr;
 	unsigned int prev_flag, released_flag = 0;
 	int i;
@@ -529,7 +531,13 @@ static void hevc_handle_frame_new(struct hevc_ctx *ctx, unsigned int err)
 	raw = &ctx->raw_buf;
 	frame_type = hevc_get_disp_frame_type();
 
+	if (FW_HAS_LAST_DISP_INFO(dev))
+		last_frame_status = hevc_get_last_disp_info();
+	else
+		last_frame_status = 0;
+
 	hevc_debug(2, "frame_type : %d\n", frame_type);
+	hevc_debug(2, "last_frame_status : %d\n", last_frame_status);
 
 	ctx->sequence++;
 
@@ -651,6 +659,14 @@ static void hevc_handle_frame_new(struct hevc_ctx *ctx, unsigned int err)
 					V4L2_CID_MPEG_MFC51_VIDEO_FRAME_TAG,
 					dec->stored_tag);
 				dec->y_addr_for_pb = 0;
+			}
+
+			if (last_frame_status &&
+					!on_res_change(ctx)) {
+				call_cop(ctx, get_buf_update_val, ctx,
+					&ctx->dst_ctrls[index],
+					V4L2_CID_MPEG_MFC51_VIDEO_DISPLAY_STATUS,
+					HEVC_DEC_STATUS_LAST_DISP);
 			}
 
 			if (!dec->is_dts_mode) {
@@ -864,6 +880,7 @@ static void hevc_handle_frame(struct hevc_ctx *ctx,
 		ctx->is_dpb_realloc = 1;
 		ctx->state = HEVCINST_HEAD_PARSED;
 		ctx->capture_state = QUEUE_FREE;
+		ctx->wait_state = WAIT_DECODING;
 		hevc_handle_frame_all_extracted(ctx);
 		goto leave_handle_frame;
 	}
@@ -883,7 +900,7 @@ static void hevc_handle_frame(struct hevc_ctx *ctx,
 	if (dec->is_dynamic_dpb) {
 		switch (dst_frame_status) {
 		case HEVC_DEC_STATUS_DECODING_ONLY:
-			dec->dynamic_used = hevc_get_dec_used_flag();
+			dec->dynamic_used |= hevc_get_dec_used_flag();
 			/* Fall through */
 		case HEVC_DEC_STATUS_DECODING_DISPLAY:
 			hevc_handle_ref_frame(ctx);
@@ -1627,6 +1644,7 @@ static int hevc_release(struct file *file)
 
 	if (ctx->type == HEVCINST_DECODER){
 		hevc_dec_cleanup_user_shared_handle(ctx);
+		kfree(ctx->dec_priv->ref_info);
 		kfree(ctx->dec_priv);
 	}
 

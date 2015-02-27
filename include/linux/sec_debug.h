@@ -391,6 +391,9 @@ extern void sec_debug_avc_log(char *fmt, ...);
 #endif
 #ifdef CONFIG_SEC_DEBUG_TSP_LOG
 extern void sec_debug_tsp_log(char *fmt, ...);
+#ifdef CONFIG_TOUCHSCREEN_FTS
+extern void tsp_dump(void);
+#endif
 #endif
 
 #ifdef CONFIG_SEC_DEBUG_CHECK_TASKPTR_FAULT

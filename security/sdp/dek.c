@@ -15,6 +15,16 @@
 #include <sdp/dek_ioctl.h>
 #include <sdp/dek_aes.h>
 
+/*
+ * Need to move this to defconfig
+ */
+#define CONFIG_PUB_CRYPTO
+//#define CONFIG_SDP_IOCTL_PRIV
+
+#ifdef CONFIG_PUB_CRYPTO
+#include <sdp/pub_crypto_emul.h>
+#endif
+
 #define DEK_USER_ID_OFFSET	100
 
 #define DEK_LOG_COUNT		100
@@ -85,19 +95,24 @@ static int is_system_server(void) {
 static int is_container_app(void) {
 	uid_t uid = current_uid();
 
-	switch(uid) {
-#if 0
-	case 0: //root
-		DEK_LOGD("allowing root to access SDP device files\n");
-		return 1;
-#endif
-	default:
-	{
-		int userid = uid / PER_USER_RANGE;
+	int userid = uid / PER_USER_RANGE;
 
-		if(userid >= 100)
-			return 1;
-	}
+	if(userid >= 100)
+		return 1;
+
+
+	return 0;
+}
+
+static int is_root(void) {
+	uid_t uid = current_uid();
+
+	switch(uid) {
+	case 0: //root
+		//DEK_LOGD("allowing root to access SDP device files\n");
+		return 1;
+	default:
+		;
 	}
 
 	return 0;
@@ -267,7 +282,7 @@ static int dek_encrypt_dek(int userid, dek_t *plainDek, dek_t *encDek) {
 		 * Do an asymmetric crypto
 		 */
 		if(SDPK_Dpub[key_arr_idx].len > 0) {
-			//dh_encryptDEK(userid, plainDek, encDek, &SDPK_Dpub[key_arr_idx]);
+			ret = dh_encryptDEK(plainDek, encDek, &SDPK_Dpub[key_arr_idx]);
 		}else{
 			DEK_LOGE("SDPK_Dpub for id: %d\n", userid);
 			dek_add_to_log(userid, "encrypt failed, no SDPK_Dpub");
@@ -276,7 +291,7 @@ static int dek_encrypt_dek(int userid, dek_t *plainDek, dek_t *encDek) {
 #else
 		DEK_LOGE("pub crypto not supported : %d\n", userid);
 		dek_add_to_log(userid, "encrypt failed, no key");
-		return -EIO;
+		return -EOPNOTSUPP;
 #endif
 	}
 
@@ -332,7 +347,10 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
 	} else if (encDek->type == DEK_TYPE_DH_ENC) {
 #ifdef CONFIG_PUB_CRYPTO
 		if(SDPK_Dpri[key_arr_idx].len > 0) {
-			//dh_decryptEDEK(userid, encDek, plainDek, &SDPK_Dpri[key_arr_idx]);
+			if(dh_decryptEDEK(encDek, plainDek, &SDPK_Dpri[key_arr_idx])){
+			    DEK_LOGE("dh_decryptEDEK failed");
+				return -1;
+			}
 		}else{
 			DEK_LOGE("SDPK_Dpri for id: %d\n", userid);
 			dek_add_to_log(userid, "encrypt failed, no SDPK_Dpri");
@@ -341,7 +359,7 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
 #else
 		DEK_LOGE("Not supported key type: %d\n", encDek->type);
 		dek_add_to_log(userid, "decrypt failed, DH type not supported");
-		return -EFAULT;
+		return -EOPNOTSUPP;
 #endif
 	} else {
 		DEK_LOGE("Unsupported decrypt key type: %d\n", encDek->type);
@@ -910,6 +928,7 @@ static long dek_do_ioctl_kek(unsigned int minor, unsigned int cmd,
 			}
 			break;
 		case KEK_TYPE_RSA_PRIV:
+#ifdef CONFIG_SDP_IOCTL_PRIV
 			if (SDPK_Rpri[key_arr_idx].len > 0) {
 				memcpy(req.key.buf, SDPK_Rpri[key_arr_idx].buf, SDPK_Rpri[key_arr_idx].len);
 				req.key.len = SDPK_Rpri[key_arr_idx].len;
@@ -920,6 +939,11 @@ static long dek_do_ioctl_kek(unsigned int minor, unsigned int cmd,
 				ret = -EIO;
 				goto err;
 			}
+#else
+			DEK_LOGE("SDPK_Rpri not exposed\n");
+			ret = -EOPNOTSUPP;
+			goto err;
+#endif
 			break;
 		case KEK_TYPE_DH_PUB:
 			if (SDPK_Dpub[key_arr_idx].len > 0) {
@@ -932,8 +956,10 @@ static long dek_do_ioctl_kek(unsigned int minor, unsigned int cmd,
 				ret = -EIO;
 				goto err;
 			}
+
 			break;
 		case KEK_TYPE_DH_PRIV:
+#ifdef CONFIG_SDP_IOCTL_PRIV
 			if (SDPK_Dpri[key_arr_idx].len > 0) {
 				memcpy(req.key.buf, SDPK_Dpri[key_arr_idx].buf, SDPK_Dpri[key_arr_idx].len);
 				req.key.len = SDPK_Dpri[key_arr_idx].len;
@@ -944,6 +970,11 @@ static long dek_do_ioctl_kek(unsigned int minor, unsigned int cmd,
 				ret = -EIO;
 				goto err;
 			}
+#else
+			DEK_LOGE("SDPK_Dpri not exposed\n");
+			ret = -EOPNOTSUPP;
+			goto err;
+#endif
 			break;
 		default:
 			DEK_LOGE("invalid key type\n");
@@ -972,7 +1003,6 @@ err:
 	return ret;
 }
 
-
 static long dek_ioctl_evt(struct file *file,
 		unsigned int cmd, unsigned long arg)
 {
@@ -997,7 +1027,7 @@ static long dek_ioctl_req(struct file *file,
 		unsigned int cmd, unsigned long arg)
 {
 	unsigned int minor;
-	if(!is_container_app()) {
+	if(!is_container_app() && !is_root()) {
 		DEK_LOGE("Current process can't access req device\n");
 		DEK_LOGE("Current process info :: "
 				"uid=%u gid=%u euid=%u egid=%u suid=%u sgid=%u "
@@ -1017,7 +1047,7 @@ static long dek_ioctl_kek(struct file *file,
 		unsigned int cmd, unsigned long arg)
 {
 	unsigned int minor;
-	if(!is_container_app()) {
+	if(!is_container_app() && !is_root()) {
 		DEK_LOGE("Current process can't access kek device\n");
 		DEK_LOGE("Current process info :: "
 				"uid=%u gid=%u euid=%u egid=%u suid=%u sgid=%u "

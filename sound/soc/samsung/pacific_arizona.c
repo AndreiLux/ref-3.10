@@ -49,6 +49,9 @@
 #define PACIFIC_DEFAULT_MCLK1	24000000
 #define PACIFIC_DEFAULT_MCLK2	32768
 
+#define PACIFIC_RUN_MAINMIC	2
+#define PACIFIC_RUN_EARMIC	1
+
 static DECLARE_TLV_DB_SCALE(digital_tlv, -6400, 50, 0);
 
 enum {
@@ -1027,48 +1030,6 @@ static struct snd_soc_ops pacific_aif3_ops = {
 	.hw_params = pacific_aif3_hw_params,
 };
 
-static struct snd_soc_dai_driver pacific_ext_dai[] = {
-	{
-		.name = "pacific-ext voice call",
-		.playback = {
-			.channels_min = 1,
-			.channels_max = 4,
-			.rate_min = 8000,
-			.rate_max = 48000,
-			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-					SNDRV_PCM_RATE_48000),
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		},
-		.capture = {
-			.channels_min = 1,
-			.channels_max = 4,
-			.rate_min = 8000,
-			.rate_max = 48000,
-			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
-					SNDRV_PCM_RATE_48000),
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		},
-	},
-	{
-		.name = "pacific-ext bluetooth sco",
-		.playback = {
-			.channels_min = 1,
-			.channels_max = 4,
-			.rate_min = 8000,
-			.rate_max = 16000,
-			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		},
-		.capture = {
-			.channels_min = 1,
-			.channels_max = 2,
-			.rate_min = 8000,
-			.rate_max = 16000,
-			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
-			.formats = SNDRV_PCM_FMTBIT_S16_LE,
-		},
-	},
-};
 
 static struct snd_soc_dai_link pacific_wm5102_dai[] = {
 	{ /* playback & recording */
@@ -1103,39 +1064,35 @@ static struct snd_soc_dai_link pacific_wm5102_dai[] = {
 		.codec_dai_name = "wm5102-aif1",
 		.ops = &pacific_aif1_ops,
 	},
-#ifdef CONFIG_SND_SOC_SAMSUNG_PACIFIC_EAX
 	{ /* eax0 playback */
 		.name = "playback-eax0",
 		.stream_name = "eax0",
-		.codec_dai_name = "florida-aif1",
 		.cpu_dai_name = "samsung-eax.0",
 		.platform_name = "samsung-eax.0",
-		.codec_dai_name = "florida-aif1",
+		.codec_dai_name = "wm5102-aif1",
 		.ops = &pacific_aif1_ops,
 	},
 	{ /* eax1 playback */
 		.name = "playback-eax1",
 		.stream_name = "eax1",
-		.codec_dai_name = "florida-aif1",
 		.cpu_dai_name = "samsung-eax.1",
 		.platform_name = "samsung-eax.1",
-		.codec_dai_name = "florida-aif1",
+		.codec_dai_name = "wm5102-aif1",
 		.ops = &pacific_aif1_ops,
 	},
-#endif
 };
 
 static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 	{ /* playback & recording */
 		.name = "playback-pri",
-		.stream_name = "i2s0-pri",
+		.stream_name = "playback-pri",
 		.codec_dai_name = "florida-aif1",
 		.ops = &pacific_aif1_ops,
 	},
 	{ /* voice call */
 		.name = "baseband",
-		.stream_name = "pacific-ext voice call",
-		.cpu_dai_name = "pacific-ext voice call",
+		.stream_name = "baseband",
+		.cpu_dai_name = "snd-soc-dummy-dai",
 		.platform_name = "snd-soc-dummy",
 		.codec_dai_name = "florida-aif2",
 		.ops = &pacific_aif2_ops,
@@ -1143,8 +1100,8 @@ static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 	},
 	{ /* bluetooth sco */
 		.name = "bluetooth sco",
-		.stream_name = "pacific-ext bluetooth sco",
-		.cpu_dai_name = "pacific-ext bluetooth sco",
+		.stream_name = "bluetooth sco",
+		.cpu_dai_name = "snd-soc-dummy-dai",
 		.platform_name = "snd-soc-dummy",
 		.codec_dai_name = "florida-aif3",
 		.ops = &pacific_aif3_ops,
@@ -1152,7 +1109,7 @@ static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 	},
 	{ /* deep buffer playback */
 		.name = "playback-sec",
-		.stream_name = "i2s0-sec",
+		.stream_name = "playback-sec",
 		.cpu_dai_name = "samsung-i2s-sec",
 		.platform_name = "samsung-i2s-sec",
 		.codec_dai_name = "florida-aif1",
@@ -1164,7 +1121,6 @@ static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 		.cpu_dai_name = "florida-cpu-voicectrl",
 		.platform_name = "florida-codec",
 		.codec_dai_name = "florida-dsp-voicectrl",
-		.codec_name = "florida-codec",
 	},
 	{ /* pcm dump interface */
 		.name = "CPU-DSP trace",
@@ -1172,13 +1128,10 @@ static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 		.cpu_dai_name = "florida-cpu-trace",
 		.platform_name = "florida-codec",
 		.codec_dai_name = "florida-dsp-trace",
-		.codec_name = "florida-codec",
 	},
-#ifdef CONFIG_SND_SOC_SAMSUNG_PACIFIC_EAX
 	{ /* eax0 playback */
 		.name = "playback-eax0",
-		.stream_name = "eax0",
-		.codec_dai_name = "florida-aif1",
+		.stream_name = "playback-eax0",
 		.cpu_dai_name = "samsung-eax.0",
 		.platform_name = "samsung-eax.0",
 		.codec_dai_name = "florida-aif1",
@@ -1186,18 +1139,15 @@ static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 	},
 	{ /* eax1 playback */
 		.name = "playback-eax1",
-		.stream_name = "eax1",
-		.codec_dai_name = "florida-aif1",
+		.stream_name = "playback-eax1",
 		.cpu_dai_name = "samsung-eax.1",
 		.platform_name = "samsung-eax.1",
 		.codec_dai_name = "florida-aif1",
 		.ops = &pacific_aif1_ops,
 	},
-#if 0
 	{ /* eax2 playback */
 		.name = "playback-eax2",
-		.stream_name = "eax2",
-		.codec_dai_name = "florida-aif1",
+		.stream_name = "playback-eax2",
 		.cpu_dai_name = "samsung-eax.2",
 		.platform_name = "samsung-eax.2",
 		.codec_dai_name = "florida-aif1",
@@ -1205,15 +1155,12 @@ static struct snd_soc_dai_link pacific_wm5110_dai[] = {
 	},
 	{ /* eax3 playback */
 		.name = "playback-eax3",
-		.stream_name = "eax3",
-		.codec_dai_name = "florida-aif1",
+		.stream_name = "playback-eax3",
 		.cpu_dai_name = "samsung-eax.3",
 		.platform_name = "samsung-eax.3",
 		.codec_dai_name = "florida-aif1",
 		.ops = &pacific_aif1_ops,
 	},
-#endif
-#endif
 };
 
 static int pacific_of_get_pdata(struct snd_soc_card *card)
@@ -1293,7 +1240,7 @@ static void ez2ctrl_voicewakeup_cb(void)
 		return;
 
 	if (priv->voice_uevent == 0) {
-		keyword_type = snd_soc_read(the_codec, 0x39007b);
+		keyword_type = snd_soc_read(the_codec, 0x39007d);
 		snprintf(keyword_buf, sizeof(keyword_buf),
 			"VOICE_WAKEUP_WORD_ID=%x", keyword_type);
 	} else if (priv->voice_uevent == 1) {
@@ -1418,6 +1365,7 @@ static int pacific_late_probe(struct snd_soc_card *card)
 	snd_soc_dapm_ignore_suspend(&codec->dapm, "AIF3 Playback");
 	snd_soc_dapm_ignore_suspend(&codec->dapm, "AIF3 Capture");
 	snd_soc_dapm_ignore_suspend(&codec->dapm, "DSP Virtual Output");
+	snd_soc_dapm_ignore_suspend(&codec->dapm, "DRC2 Signal Activity");
 	snd_soc_dapm_sync(&codec->dapm);
 
 	ret = snd_soc_codec_set_sysclk(codec,
@@ -1551,6 +1499,51 @@ static int pacific_start_sysclk(struct snd_soc_card *card)
 	return ret;
 }
 
+static int pacific_change_sysclk(struct snd_soc_card *card, int source)
+{
+	struct arizona_machine_priv *priv = card->drvdata;
+	struct snd_soc_codec *codec = priv->codec;
+	int ret;
+
+	dev_info(card->dev, "%s: source = %d\n", __func__, source);
+
+	if (source) {
+		/* uses MCLK1 when the source is 1 */
+		if (priv->mclk) {
+			clk_enable(priv->mclk);
+			dev_info(card->dev, "mclk enabled\n");
+		} else
+			exynos5_audio_set_mclk(true, 0);
+
+		ret = snd_soc_codec_set_pll(codec, FLORIDA_FLL1,
+					ARIZONA_FLL_SRC_MCLK1,
+					PACIFIC_DEFAULT_MCLK1,
+					priv->sysclk_rate);
+		if (ret != 0) {
+			dev_err(card->dev, "Failed to start FLL1: %d\n", ret);
+			return ret;
+		}
+	} else {
+		/* uses MCLK2 when the source is not 1 */
+		ret = snd_soc_codec_set_pll(codec, FLORIDA_FLL1,
+					ARIZONA_FLL_SRC_MCLK2,
+					PACIFIC_DEFAULT_MCLK2,
+					priv->sysclk_rate);
+		if (ret != 0) {
+			dev_err(card->dev, "Failed to change FLL1: %d\n", ret);
+			return ret;
+		}
+
+		if (priv->mclk) {
+			clk_disable(priv->mclk);
+			dev_info(card->dev, "mclk disbled\n");
+		} else
+			exynos5_audio_set_mclk(false, 0);
+	}
+
+	return ret;
+}
+
 static int pacific_stop_sysclk(struct snd_soc_card *card)
 {
 	struct arizona_machine_priv *priv = card->drvdata;
@@ -1620,34 +1613,46 @@ static int pacific_check_clock_conditions(struct snd_soc_card *card)
 	struct snd_soc_codec *codec = card->rtd[0].codec;
 	struct arizona_machine_priv *priv = card->drvdata;
 	int mainmic_state = 0;
-	int ret;
 
 #ifdef CONFIG_MFD_FLORIDA
 	/* Check status of the Main Mic for ez2control
-	 * Because when the phone enters suspend mode,
+	 * Because when the phone goes to suspend mode,
 	 * Enabling case of Main mic is only ez2control mode */
 	mainmic_state = snd_soc_dapm_get_pin_status(&card->dapm, "Main Mic");
 #endif
 
-	dev_info(card->dev, "codec->active = %d, ear_mic = %d, mainmic_state = %d\n",
-			codec->active, priv->ear_mic, mainmic_state);
-	ret = (!codec->active && priv->ear_mic && !mainmic_state);
+	if (!codec->active && mainmic_state) {
+		dev_info(card->dev, "MAIN_MIC is running without input stream\n");
+		return PACIFIC_RUN_MAINMIC;
+	}
 
-	return ret;
+	if (!codec->active && priv->ear_mic && !mainmic_state) {
+		dev_info(card->dev, "EAR_MIC is running without input stream\n");
+		return PACIFIC_RUN_EARMIC;
+	}
+
+	return 0;
 }
 
 static int pacific_suspend_post(struct snd_soc_card *card)
 {
 	struct arizona_machine_priv *priv = card->drvdata;
+	int ret;
 
-	/* When the card enters suspend state, If codec is not active,
+	/* When the card goes to suspend state, If codec is not active,
 	 * the micbias of headset is enable and the ez2control is not running,
 	 * The MCLK and the FLL1 should be disable to reduce the sleep current.
 	 * In the other cases, these should keep previous status */
-	if (pacific_check_clock_conditions(card)) {
+	ret = pacific_check_clock_conditions(card);
+
+	if (ret == PACIFIC_RUN_EARMIC) {
 		pacific_stop_sysclk(card);
-		dev_info(card->dev, "%s\n", __func__);
+		dev_info(card->dev, "%s: stop_sysclk\n", __func__);
+	} else if (ret == PACIFIC_RUN_MAINMIC) {
+		pacific_change_sysclk(card, 0);
+		dev_info(card->dev, "%s: change_sysclk\n", __func__);
 	}
+
 	if (!priv->codec->active) {
 		dev_info(card->dev, "%s : set AIF1 port slave\n", __func__);
 		snd_soc_update_bits(priv->codec, ARIZONA_AIF1_BCLK_CTRL,
@@ -1657,19 +1662,28 @@ static int pacific_suspend_post(struct snd_soc_card *card)
 		snd_soc_update_bits(priv->codec, ARIZONA_AIF1_RX_PIN_CTRL,
 				ARIZONA_AIF1RX_LRCLK_MSTR_MASK, 0);
 	}
+
 	return 0;
 }
 
 static int pacific_resume_pre(struct snd_soc_card *card)
 {
-	/* When the card enters resume state, If codec is not active,
+	int ret;
+
+	/* When the card goes to resume state, If codec is not active,
 	 * the micbias of headset is enable and the ez2control is not running,
 	 * The MCLK and the FLL1 should be enable.
 	 * In the other cases, these should keep previous status */
-	if (pacific_check_clock_conditions(card)) {
+	ret = pacific_check_clock_conditions(card);
+
+	if (ret == PACIFIC_RUN_EARMIC) {
 		pacific_start_sysclk(card);
-		dev_info(card->dev, "%s\n", __func__);
+		dev_info(card->dev, "%s: start_sysclk\n", __func__);
+	} else if (ret == PACIFIC_RUN_MAINMIC) {
+		pacific_change_sysclk(card, 1);
+		dev_info(card->dev, "%s: change_sysclk\n", __func__);
 	}
+
 	return 0;
 }
 
@@ -1760,65 +1774,32 @@ static int pacific_audio_probe(struct platform_device *pdev)
 	} else
 		clk_prepare(priv->mclk);
 
-	ret = snd_soc_register_component(card->dev, &pacific_cmpnt,
-				pacific_ext_dai, ARRAY_SIZE(pacific_ext_dai));
-	if (ret != 0)
-		dev_err(&pdev->dev, "Failed to register component: %d\n", ret);
-
-	if (np) {
-		for (n = 0; n < card->num_links; n++) {
-
-			/* Skip parsing DT for fully formed dai links */
-			if (dai_link[n].platform_name &&
-			    dai_link[n].codec_name) {
-				dev_dbg(card->dev,
-					"Skipping dt for populated dai link %s\n",
-					dai_link[n].name);
-				continue;
-			}
-
-			cpu_np = of_parse_phandle(np,
-					"samsung,audio-cpu", n);
-			if (!cpu_np) {
-				dev_err(&pdev->dev,
-					"Property 'samsung,audio-cpu'"
-					" missing or invalid\n");
-				ret = -EINVAL;
-				goto out;
-			}
-
-			codec_np = of_parse_phandle(np,
-					"samsung,audio-codec", n);
-			if (!codec_np) {
-				dev_err(&pdev->dev,
-					"Property 'samsung,audio-codec'"
-					" missing or invalid\n");
-				ret = -EINVAL;
-				goto out;
-			}
-
-			if (!dai_link[n].cpu_dai_name)
+	for (n = 0; n < card->num_links; n++) {
+		if (!dai_link[n].cpu_name && !dai_link[n].cpu_dai_name) {
+			cpu_np = of_parse_phandle(np, "samsung,audio-cpu", n);
+			if (cpu_np) {
 				dai_link[n].cpu_of_node = cpu_np;
-
-			if (!dai_link[n].platform_name)
 				dai_link[n].platform_of_node = cpu_np;
-
-			dai_link[n].codec_of_node = codec_np;
+			} else
+				dev_err(&pdev->dev, "Property 'samsung,audio-cpu'"
+						": dai_link[%d] missing or invalid\n",n);
 		}
-	} else
-		dev_err(&pdev->dev, "Failed to get device node\n");
-
-	ret = snd_soc_register_card(card);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to register card:%d\n", ret);
-		goto out;
+		if (!dai_link[n].codec_name) {
+			codec_np = of_parse_phandle(np, "samsung,audio-codec", n);
+			if (codec_np)
+				dai_link[n].codec_of_node = codec_np;
+			else
+				dev_err(&pdev->dev, "Property 'samsung,audio-codec'"
+						": dai_link[%d] missing or invalid\n", n);
+		}
 	}
 
+	ret = snd_soc_register_card(card);
+	if (ret)
+		dev_err(&pdev->dev, "Failed to register card:%d\n", ret);
+
 	return ret;
 
-out:
-	snd_soc_unregister_component(card->dev);
-	return ret;
 }
 
 static int pacific_audio_remove(struct platform_device *pdev)

@@ -136,10 +136,11 @@ fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH) += cypress/cypress_ha_m07.fw cypress/cypress_ha_m09.fw
-fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20055) += cypress/cypress_slte.fw
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20055) += cypress/cypress_slte.fw cypress/cypress_klimt.fw
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_20075) += \
 						cypress/cypress_20075_k_m06.fw	\
 						cypress/cypress_20075_l_m06.fw
+fw-shipped-$(CONFIG_KEYBOARD_ABOV_TOUCH) += abov/abov_tk.fw
 fw-shipped-$(CONFIG_KEYBOARD_TC300K) += coreriver/tc300k_chagall.fw
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_MBR31X5) += cypress/cypress_t.fw
 fw-shipped-$(or $(CONFIG_EPEN_WACOM_G10PM), \

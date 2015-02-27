@@ -214,6 +214,18 @@ static inline u32 exynos_smc(u32 cmd, u32 arg1, u32 arg2, u32 arg3)
 	return reg1;
 }
 
+static ssize_t sii8240_hdcp_status(struct class *dev,
+		struct class_attribute *attr, char *buf)
+{
+	int size;
+	struct sii8240_data *sii8240 = g_sii8240;
+
+	size = snprintf(buf, 10,"%d", sii8240->monitor_cmd);
+	return size;
+}
+
+static CLASS_ATTR(hdcp_status, 0444, sii8240_hdcp_status, NULL);
+
 static void sii8240_link_monitor_timer(unsigned long data)
 {
 	struct sii8240_data *sii8240 = (struct sii8240_data *) data;
@@ -1742,13 +1754,13 @@ static int cbus_handle_write_state(struct sii8240_data *sii8240,
 static bool check_vbus_present(void)
 {
 	bool ret = true;
-/*	union power_supply_propval value;
+	union power_supply_propval value;
 	psy_do_property("sec-charger", get, POWER_SUPPLY_PROP_ONLINE, value);
 	pr_info("sec-charger : %d\n", value.intval);
 	if (value.intval == POWER_SUPPLY_TYPE_BATTERY
-			|| value.intval == POWER_SUPPLY_TYPE_WPC)
+			/*|| value.intval == POWER_SUPPLY_TYPE_WPC*/)
 		ret = false;
-	pr_info("VBUS : %s in %s\n", ret ? "IN" : "OUT", __func__); */
+	pr_info("VBUS : %s in %s\n", ret ? "IN" : "OUT", __func__);
 	return ret;
 }
 
@@ -3992,6 +4004,13 @@ static int __devinit sii8240_tmds_i2c_probe(struct i2c_client *client,
 	if (ret)
 		pr_err("failed to create timing sysfs file\n");
 #endif
+
+#ifdef SII8240_CHECK_MONITOR
+		ret = class_create_file(sec_mhl, &class_attr_hdcp_status);
+		if (ret)
+			pr_err("failed to create hdcp_status sysfs file\n");
+#endif
+
 	ret = sii8240_register_input_device(sii8240);
 	if (ret) {
 		dev_err(&client->dev, "failed to register input device\n");

@@ -720,10 +720,6 @@ got_group:
 		if (!gdp)
 			goto out;
 
-		if (inode_bitmap_bh) {
-//			ext4_handle_release_buffer(handle, inode_bitmap_bh);
-			brelse(inode_bitmap_bh);
-		}
 		/*
 		 * Check free inodes count before loading bitmap.
 		 */
@@ -732,12 +728,10 @@ got_group:
 				group = 0;
 			continue;
 		}
+
+		brelse(inode_bitmap_bh);
 		inode_bitmap_bh = ext4_read_inode_bitmap(sb, group);
 		if (!inode_bitmap_bh)
-			goto out;
-		BUFFER_TRACE(inode_bitmap_bh, "get_write_access");
-		err = ext4_journal_get_write_access(handle, inode_bitmap_bh);
-		if (err)
 			goto out;
 
 repeat_in_this_group:
@@ -779,13 +773,19 @@ next_group:
 		if (++group == ngroups)
 			group = 0;
 	}
-//	ext4_handle_release_buffer(handle, inode_bitmap_bh);
 	err = -ENOSPC;
 	goto out;
 
 got:
 	BUFFER_TRACE(inode_bitmap_bh, "call ext4_handle_dirty_metadata");
 	err = ext4_handle_dirty_metadata(handle, NULL, inode_bitmap_bh);
+	if (err) {
+		ext4_std_error(sb, err);
+		goto out;
+	}
+
+	BUFFER_TRACE(group_desc_bh, "get_write_access");
+	err = ext4_journal_get_write_access(handle, group_desc_bh);
 	if (err) {
 		ext4_std_error(sb, err);
 		goto out;
@@ -825,13 +825,6 @@ got:
 			ext4_std_error(sb, err);
 			goto out;
 		}
-	}
-
-	BUFFER_TRACE(group_desc_bh, "get_write_access");
-	err = ext4_journal_get_write_access(handle, group_desc_bh);
-	if (err) {
-		ext4_std_error(sb, err);
-		goto out;
 	}
 
 	/* Update the relevant bg descriptor fields */
