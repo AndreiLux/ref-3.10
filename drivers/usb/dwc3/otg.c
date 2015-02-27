@@ -24,6 +24,8 @@
 #include <linux/pm_runtime.h>
 #include <linux/delay.h>
 
+#include <mach/cpufreq.h>
+
 #include "core.h"
 #include "otg.h"
 #include "io.h"
@@ -214,6 +216,8 @@ static int dwc3_otg_start_host(struct otg_fsm *fsm, int on)
 
 	if (on) {
 		wake_lock(&dotg->wakelock);
+		dev_err(dwc->dev, "%s: lock hotplug out Core1\n", __func__);
+		little_core1_hotplug_in(true);
 		pm_runtime_get_sync(dev);
 		ret = dwc3_core_init(dwc);
 		if (ret) {
@@ -233,6 +237,8 @@ err2:
 		dwc3_core_exit(dwc);
 err1:
 		pm_runtime_put_sync(dev);
+		dev_err(dwc->dev, "%s: unlock hotplug out Core1\n", __func__);
+		little_core1_hotplug_in(false);
 		wake_unlock(&dotg->wakelock);
 	}
 

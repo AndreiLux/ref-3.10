@@ -62,6 +62,8 @@ static struct eax_info {
 	bool				master;
 	struct snd_soc_dai		*master_dai;
 	const struct snd_soc_dai_ops	*master_dai_ops;
+	int (*master_dai_suspend)(struct snd_soc_dai *dai);
+	int (*master_dai_resume)(struct snd_soc_dai *dai);
 } ei;
 
 struct ch_info {
@@ -81,6 +83,8 @@ static DECLARE_WAIT_QUEUE_HEAD(eax_wq);
 
 static int eax_dai_probe(struct snd_soc_dai *dai);
 static int eax_dai_remove(struct snd_soc_dai *dai);
+static int eax_dai_suspend(struct snd_soc_dai *dai);
+static int eax_dai_resume(struct snd_soc_dai *dai);
 static const struct snd_soc_dai_ops eax_dai_ops;
 
 int eax_dev_register(struct device *dev_master, const char *name,
@@ -115,8 +119,8 @@ int eax_dev_register(struct device *dev_master, const char *name,
 		ci->dai_drv.probe = eax_dai_probe;
 		ci->dai_drv.remove = eax_dai_remove;
 		ci->dai_drv.ops = &eax_dai_ops;
-		ci->dai_drv.suspend = NULL;
-		ci->dai_drv.resume = NULL;
+		ci->dai_drv.suspend = eax_dai_suspend;
+		ci->dai_drv.resume = eax_dai_resume;
 		ci->dai_drv.playback.channels_min = 2;
 		ci->dai_drv.playback.channels_max = 2;
 		ci->dai_drv.playback.rates = EAX_RATES;
@@ -140,13 +144,17 @@ int eax_dev_register(struct device *dev_master, const char *name,
 }
 
 int eax_dai_register(struct snd_soc_dai *dai,
-		const struct snd_soc_dai_ops *dai_ops)
+		const struct snd_soc_dai_ops *dai_ops,
+		int (*dai_suspend)(struct snd_soc_dai *dai),
+		int (*dai_resume)(struct snd_soc_dai *dai))
 {
 	pr_debug("%s: dai %p, dai_ops %p\n", __func__, dai, dai_ops);
 
 	ei.master = true;
 	ei.master_dai = dai;
 	ei.master_dai_ops = dai_ops;
+	ei.master_dai_suspend = dai_suspend;
+	ei.master_dai_resume = dai_resume;
 
 	eax_dma_dai_register(dai);
 
@@ -332,6 +340,22 @@ static int eax_dai_probe(struct snd_soc_dai *dai)
 static int eax_dai_remove(struct snd_soc_dai *dai)
 {
 	pr_debug("%s\n", __func__);
+
+	return 0;
+}
+
+static int eax_dai_suspend(struct snd_soc_dai *dai)
+{
+	if (dai->active && ei.master_dai_suspend)
+		return (*ei.master_dai_suspend)(ei.master_dai);
+
+	return 0;
+}
+
+static int eax_dai_resume(struct snd_soc_dai *dai)
+{
+	if (dai->active && ei.master_dai_resume)
+		return (*ei.master_dai_resume)(ei.master_dai);
 
 	return 0;
 }

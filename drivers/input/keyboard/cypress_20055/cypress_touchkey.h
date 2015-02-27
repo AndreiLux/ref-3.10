@@ -86,11 +86,6 @@
 
 /*#define TK_USE_2KEY_TYPE_M0*/
 
-/* LCD Type check*/
-#if defined(CONFIG_HA) || defined(CONFIG_KLIMT)
-#define TK_USE_LCDTYPE_CHECK
-#endif
-#define TK_USE_LCDTYPE_CHECK
 #define TK_USE_RECENT
 
 #if defined(TK_USE_4KEY_TYPE_ATT)\

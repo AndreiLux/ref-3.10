@@ -142,6 +142,10 @@ enum is_system_control_cmd {
 	SYS_CONTROL_ENABLE	= 1,
 };
 
+enum is_msg_test_id {
+	IS_MSG_TEST_SYNC_LOG = 1,
+};
+
 struct is_setfile_header_element {
 	u32 binary_addr;
 	u32 binary_size;

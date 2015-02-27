@@ -64,11 +64,12 @@ updates and generates duplicate page faults as the page table information used b
 typedef struct kbase_cpu_mapping {
 	struct   list_head mappings_list;
 	struct   kbase_mem_phy_alloc *alloc;
-	struct   vm_area_struct *vma;
 	struct   kbase_context *kctx;
 	struct   kbase_va_region *region;
 	pgoff_t  page_off;
 	int      count;
+	unsigned long vm_start;
+	unsigned long vm_end;
 } kbase_cpu_mapping;
 
 enum kbase_memory_type {
@@ -88,12 +89,11 @@ struct kbase_aliased {
 	u64 length; /* in pages */
 };
 
-/*
+/**
  * @brief Physical pages tracking object properties
- */
+  */
 #define KBASE_MEM_PHY_ALLOC_ACCESSED_CACHED  (1ul << 0)
 #define KBASE_MEM_PHY_ALLOC_LARGE            (1ul << 1)
-
 
 /* physical pages tracking object.
  * Set up to track N pages.
@@ -105,7 +105,6 @@ struct kbase_aliased {
  */
 struct kbase_mem_phy_alloc
 {
-	mali_bool             large_allocation; /* whether this alloc was made with vmalloc */
 	struct kref           kref; /* number of users of this alloc */
 	atomic_t              gpu_mappings;
 	size_t                nents; /* 0..N */
@@ -288,6 +287,7 @@ static INLINE size_t kbase_reg_current_backed_size(struct kbase_va_region * reg)
 }
 
 #define KBASE_MEM_PHY_ALLOC_LARGE_THRESHOLD ((size_t)(4*1024)) /* size above which vmalloc is used over kmalloc */
+
 static INLINE struct kbase_mem_phy_alloc * kbase_alloc_create(size_t nr_pages, enum kbase_memory_type type)
 {
 	struct kbase_mem_phy_alloc *alloc;
@@ -300,17 +300,17 @@ static INLINE struct kbase_mem_phy_alloc * kbase_alloc_create(size_t nr_pages, e
 		return ERR_PTR(-ENOMEM);
 
 	/* Allocate based on the size to reduce internal fragmentation of vmem */
-	if (alloc_size > KBASE_MEM_PHY_ALLOC_LARGE_THRESHOLD) {
+	if (alloc_size > KBASE_MEM_PHY_ALLOC_LARGE_THRESHOLD)
 		alloc = vzalloc(alloc_size);
-	} else {
+	else
 		alloc = kzalloc(alloc_size, GFP_KERNEL);
-	}
 
 	if (!alloc)
 		return ERR_PTR(-ENOMEM);
 
 	/* Store allocation method */
-	alloc->large_allocation = (alloc_size > KBASE_MEM_PHY_ALLOC_LARGE_THRESHOLD);
+	if (alloc_size > KBASE_MEM_PHY_ALLOC_LARGE_THRESHOLD)
+		alloc->properties |= KBASE_MEM_PHY_ALLOC_LARGE;
 
 	kref_init(&alloc->kref);
 	atomic_set(&alloc->gpu_mappings, 0);
@@ -520,6 +520,8 @@ void kbase_mmu_interrupt(struct kbase_device *kbdev, u32 irq_stat);
 void *kbase_mmu_dump(struct kbase_context *kctx, int nr_pages);
 
 mali_error kbase_sync_now(struct kbase_context *kctx, struct base_syncset *syncset);
+void kbase_sync_single(struct kbase_context *kctx, phys_addr_t pa,
+		size_t size, kbase_sync_kmem_fn sync_fn);
 void kbase_pre_job_sync(struct kbase_context *kctx, struct base_syncset *syncsets, size_t nr);
 void kbase_post_job_sync(struct kbase_context *kctx, struct base_syncset *syncsets, size_t nr);
 
@@ -665,6 +667,29 @@ static inline void kbase_wait_write_flush(struct kbase_context *kctx)
 #else
 void kbase_wait_write_flush(struct kbase_context *kctx);
 #endif
+
+static inline void kbase_set_dma_addr(struct page *p, dma_addr_t dma_addr)
+{
+	SetPagePrivate(p);
+	if (sizeof(dma_addr_t) > sizeof(p->private)) {
+		/* on 32-bit ARM with LPAE dma_addr_t becomes larger, but the
+		 * private filed stays the same. So we have to be clever and
+		 * use the fact that we only store DMA addresses of whole pages,
+		 * so the low bits should be zero */
+		KBASE_DEBUG_ASSERT(!(dma_addr & (PAGE_SIZE - 1)));
+		set_page_private(p, dma_addr >> PAGE_SHIFT);
+	} else {
+		set_page_private(p, dma_addr);
+	}
+}
+
+static inline dma_addr_t kbase_dma_addr(struct page *p)
+{
+	if (sizeof(dma_addr_t) > sizeof(p->private))
+		return ((dma_addr_t)page_private(p)) << PAGE_SHIFT;
+
+	return (dma_addr_t)page_private(p);
+}
 
 /**
 * @brief Process a bus or page fault.

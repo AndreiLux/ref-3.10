@@ -64,6 +64,10 @@ void ssp_enable(struct ssp_data *data, bool enable)
 static irqreturn_t sensordata_irq_thread_fn(int iIrq, void *dev_id)
 {
 	struct ssp_data *data = dev_id;
+	struct timespec ts;
+
+	ts = ktime_to_timespec(ktime_get_boottime());
+	data->timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 
 #if defined SSP_IRQ_EDGE_PROTECT
 	if (prevent_irq != 0) {
@@ -93,6 +97,8 @@ static void initialize_variable(struct ssp_data *data)
 		data->batchLatencyBuf[iSensorIndex] = 0;
 		data->batchOptBuf[iSensorIndex] = 0;
 		data->aiCheckStatus[iSensorIndex] = INITIALIZATION_STATE;
+		data->lastTimestamp[iSensorIndex] = 0;
+		data->reportedData[iSensorIndex] = false;
 	}
 
 	atomic_set(&data->aSensorEnable, 0);
@@ -207,11 +213,11 @@ static int initialize_irq(struct ssp_data *data)
 	int iRet, iIrq;
 	iIrq = gpio_to_irq(data->mcu_int1);
 
-	pr_info("[SSP] requesting IRQ %d\n", iIrq);
+	pr_info("[SSP]: requesting IRQ %d\n", iIrq);
 	iRet = request_threaded_irq(iIrq, NULL, sensordata_irq_thread_fn,
 				    IRQF_TRIGGER_FALLING|IRQF_ONESHOT, "SSP_Int", data);
 	if (iRet < 0) {
-		pr_err("[SSP] %s, request_irq(%d) failed for gpio %d (%d)\n",
+		pr_err("[SSP]: %s - request_irq(%d) failed for gpio %d (%d)\n",
 		       __func__, iIrq, iIrq, iRet);
 		goto err_request_irq;
 	}

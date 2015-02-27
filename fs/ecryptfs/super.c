@@ -187,7 +187,7 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 	if (mount_crypt_stat->flags & ECRYPTFS_ENABLE_FILTERING)
 		seq_printf(m, ",ecryptfs_enable_filtering");
 #endif
-#ifdef CONFIG_CRYPTO_FIPS
+#if defined(CONFIG_CRYPTO_FIPS) && !defined(CONFIG_FORCE_DISABLE_FIPS)
 	if (mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)
 		seq_printf(m, ",ecryptfs_enable_cc");
 #endif
@@ -204,18 +204,6 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 
 	return 0;
 }
-#ifdef CONFIG_SDP
-static int ecryptfs_drop_inode(struct inode *inode) {
-	struct ecryptfs_crypt_stat *crypt_stat =
-		    &ecryptfs_inode_to_private(inode)->crypt_stat;
-
-	if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
-		ecryptfs_printk(KERN_INFO, "dropping sensitive inode\n");
-		return 1;
-	}
-	return generic_drop_inode(inode);
-}
-#endif
 
 const struct super_operations ecryptfs_sops = {
 	.alloc_inode = ecryptfs_alloc_inode,
@@ -224,7 +212,4 @@ const struct super_operations ecryptfs_sops = {
 	.remount_fs = NULL,
 	.evict_inode = ecryptfs_evict_inode,
 	.show_options = ecryptfs_show_options,
-#ifdef CONFIG_SDP
-	.drop_inode = ecryptfs_drop_inode,
-#endif
 };

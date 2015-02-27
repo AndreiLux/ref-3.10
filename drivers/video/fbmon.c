@@ -1157,6 +1157,11 @@ static u8 fb_edid_get_cea_bit_rates(u8 cea_bit_rates)
 	return rates;
 }
 
+#if defined(CONFIG_SEC_MHL_EDID) && defined(CONFIG_SEC_MHL_SII8620)
+extern int devtype_ssdongle_v4;
+extern void convert_hev_861F_to_861D(uint8_t vic);
+#endif
+
 /**
  * fb_edid_add_monspecs() - add monitor video modes from E-EDID data
  * @edid:	128 byte array with an E-EDID block
@@ -1319,6 +1324,10 @@ int fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 		int idx = svd[i - specs->modedb_len - num];
 		if (!idx || idx > (CEA_MODEDB_SIZE - 1)) {
 			pr_warning("Reserved SVD code %d\n", idx);
+#if defined(CONFIG_SEC_MHL_EDID) && defined(CONFIG_SEC_MHL_SII8620)
+			if (devtype_ssdongle_v4 == 0)
+				convert_hev_861F_to_861D(idx);
+#endif
 		} else {
 			memcpy(&m[i], cea_modes + idx, sizeof(m[i]));
 			pr_debug("Adding SVD #%d: %ux%u@%u\n", idx,

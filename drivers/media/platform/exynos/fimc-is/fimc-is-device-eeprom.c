@@ -25,7 +25,13 @@
 #include "fimc-is-device-sensor.h"
 #include "fimc-is-resourcemgr.h"
 #include "fimc-is-hw.h"
-#define SENSOR_NAME "fimc_is_eeprom_i2c"
+
+#define DRIVER_NAME "fimc_is_eeprom_i2c"
+#define DRIVER_NAME_REAR "rear-eeprom-i2c"
+#define DRIVER_NAME_FRONT "front-eeprom-i2c"
+#define REAR_DATA 0
+#define FRONT_DATA 1
+
 
 /*
  * Samsung Exynos5 SoC series FIMC-IS driver
@@ -52,10 +58,16 @@ int sensor_eeprom_probe(struct i2c_client *client,
 	if (!core)
 		goto probe_defer;
 
-	core->client0 = client;
+	if (id->driver_data == REAR_DATA) {
+		core->eeprom_client0 = client;
+	} else if (id->driver_data == FRONT_DATA) {
+		core->eeprom_client1 = client;
+	} else {
+		err("rear eeprom device is failed!");
+	}
 
-	pr_info("%s %s: fimc_is_sensor_eeprom probed!\n",
-		dev_driver_string(&client->dev), dev_name(&client->dev));
+	pr_info("%s %s[%ld]: fimc_is_sensor_eeprom probed!\n",
+		dev_driver_string(&client->dev), dev_name(&client->dev), id->driver_data);
 
 	return 0;
 
@@ -79,19 +91,23 @@ static int sensor_eeprom_remove(struct i2c_client *client)
 #ifdef CONFIG_OF
 static const struct of_device_id exynos_fimc_is_sensor_eeprom_match[] = {
 	{
-		.compatible = "samsung,exynos5-fimc-is-sensor-eeprom",
+		.compatible = "samsung,rear-eeprom-i2c", .data = (void *)REAR_DATA
+	},
+	{
+		.compatible = "samsung,front-eeprom-i2c", .data = (void *)FRONT_DATA
 	},
 	{},
 };
 #endif
 
 static const struct i2c_device_id sensor_eeprom_idt[] = {
-	{ SENSOR_NAME, 0 },
+	{ DRIVER_NAME_REAR, REAR_DATA },
+	{ DRIVER_NAME_FRONT, FRONT_DATA },
 };
 
 static struct i2c_driver sensor_eeprom_driver = {
 	.driver = {
-		.name	= SENSOR_NAME,
+		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
 #ifdef CONFIG_OF
 		.of_match_table = exynos_fimc_is_sensor_eeprom_match
@@ -115,8 +131,8 @@ static void __exit sensor_eeprom_unload(void)
 module_init(sensor_eeprom_load);
 module_exit(sensor_eeprom_unload);
 
-MODULE_AUTHOR("Gilyeon lim");
-MODULE_DESCRIPTION("Sensor 6B2 driver");
+MODULE_AUTHOR("Kyoungho Yun");
+MODULE_DESCRIPTION("Camera eeprom driver");
 MODULE_LICENSE("GPL v2");
 
 

@@ -17,6 +17,8 @@ int s5p_mfc_init_pm(struct s5p_mfc_dev *dev);
 void s5p_mfc_final_pm(struct s5p_mfc_dev *dev);
 
 int s5p_mfc_clock_on(struct s5p_mfc_dev *dev);
+int s5p_mfc_clock_on_with_base(struct s5p_mfc_dev *dev,
+                       enum mfc_buf_usage_type buf_type);
 void s5p_mfc_clock_off(struct s5p_mfc_dev *dev);
 int s5p_mfc_power_on(struct s5p_mfc_dev *dev);
 int s5p_mfc_power_off(struct s5p_mfc_dev *dev);

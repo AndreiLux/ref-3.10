@@ -84,15 +84,16 @@ static inline int spi_send(struct modem_boot_spi *boot, const char *buff,
 }
 
 static int spi_boot_write(struct modem_boot_spi *boot, const char *addr,
-			  const long len)
+			  const u32 len)
 {
 	int ret = 0;
 	char *buff = NULL;
+
 	mif_err("+++\n");
 
 	buff = kzalloc(len, GFP_KERNEL);
 	if (!buff) {
-		mif_err("ERR! kzalloc(%ld) fail\n", len);
+		mif_err("ERR! kzalloc(%d) fail\n", len);
 		ret = -ENOMEM;
 		goto exit;
 	}
@@ -109,7 +110,6 @@ static int spi_boot_write(struct modem_boot_spi *boot, const char *addr,
 		mif_err("ERR! spi_send fail (err %d)\n", ret);
 		goto exit;
 	}
-
 exit:
 	if (buff)
 		kfree(buff);
@@ -138,6 +138,7 @@ static long spi_boot_ioctl(struct file *filp, unsigned int cmd,
 	mutex_lock(&boot->lock);
 	switch (cmd) {
 	case IOCTL_MODEM_XMIT_BOOT:
+
 		ret = copy_from_user(&img, (const void __user *)arg,
 					sizeof(struct modem_firmware));
 		if (ret) {
@@ -145,6 +146,7 @@ static long spi_boot_ioctl(struct file *filp, unsigned int cmd,
 			ret = -EFAULT;
 			goto exit_err;
 		}
+
 		mif_info("IOCTL_MODEM_XMIT_BOOT (size %d)\n", img.size);
 
 		ret = spi_boot_write(boot, img.binary, img.size);
@@ -189,10 +191,18 @@ exit_err:
 	return ret;
 }
 
+#ifdef CONFIG_COMPAT
+/* all compatible */
+#define compat_spi_boot_ioctl	spi_boot_ioctl
+#else
+#define compat_spi_boot_ioctl	NULL
+#endif
+
 static const struct file_operations modem_spi_boot_fops = {
 	.owner = THIS_MODULE,
 	.open = spi_boot_open,
 	.unlocked_ioctl = spi_boot_ioctl,
+	.compat_ioctl = spi_boot_ioctl,
 };
 
 static int modem_spi_boot_probe(struct spi_device *spi)

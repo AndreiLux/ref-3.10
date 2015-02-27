@@ -308,7 +308,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"UZ", "MA", 2},
 	{"ZA", "ZA", 6},
 	{"EG", "EG", 13},
-	{"TN", "TV", 0},
+	{"TN", "TN", 1},
 #endif /* default ccode/regrev */
 };
 
@@ -978,7 +978,7 @@ int dhd_check_module_cid(dhd_pub_t *dhd)
 	ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, cis_buf,
 		sizeof(cis_buf), 0, 0);
 	if (ret < 0) {
-		DHD_ERROR(("[WIFI_SEC] %s: CIS reading failed, ret=%d\n",
+		DHD_INFO(("[WIFI_SEC] %s: CIS reading failed, ret=%d\n",
 			__FUNCTION__, ret));
 		return ret;
 	}
@@ -1131,8 +1131,9 @@ int dhd_check_module_mac(dhd_pub_t *dhd, struct ether_addr *mac)
 	ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, cis_buf,
 		sizeof(cis_buf), 0, 0);
 	if (ret < 0) {
-		DHD_TRACE(("[WIFI_SEC] %s: CIS reading failed, ret=%d\n", __func__,
-			ret));
+		DHD_INFO(("[WIFI_SEC] %s: CIS reading failed, ret=%d\n",
+			__FUNCTION__, ret));
+
 		sprintf(otp_mac_buf, "%02X:%02X:%02X:%02X:%02X:%02X\n",
 			mac->octet[0], mac->octet[1], mac->octet[2],
 			mac->octet[3], mac->octet[4], mac->octet[5]);
@@ -1305,7 +1306,7 @@ void sec_control_pm(dhd_pub_t *dhd, uint *power_mode)
 		/* Enable PowerSave Mode */
 		dhd_wl_ioctl_cmd(dhd, WLC_SET_PM, (char *)power_mode,
 			sizeof(uint), TRUE, 0);
-		DHD_ERROR(("[WIFI_SEC] %s: /data/.psm.info open failed,"
+		DHD_ERROR(("[WIFI_SEC] %s: /data/.psm.info doesn't exist"
 			" so set PM to %d\n",
 			__FUNCTION__, *power_mode));
 		return;
@@ -1380,7 +1381,7 @@ int dhd_sel_ant_from_file(dhd_pub_t *dhd)
 	/* Read antenna settings from the file */
 	fp = filp_open(filepath, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		DHD_ERROR(("[WIFI_SEC] %s: File [%s] open error\n", __FUNCTION__, filepath));
+		DHD_ERROR(("[WIFI_SEC] %s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 		return ret;
 	} else {
 		ret = kernel_read(fp, 0, (char *)&ant_val, 4);
@@ -1668,7 +1669,7 @@ void dhd_get_memdump_info(dhd_pub_t *dhd)
 	/* Read memdump info from the file */
 	fp = filp_open(filepath, O_RDONLY, 0);
 	if (IS_ERR(fp)) {
-		DHD_ERROR(("[WIFI_SEC] %s: File [%s] open error\n", __FUNCTION__, filepath));
+		DHD_ERROR(("[WIFI_SEC] %s: File [%s] doesn't exist\n", __FUNCTION__, filepath));
 		goto done;
 	} else {
 		ret = kernel_read(fp, 0, (char *)&mem_val, 4);
@@ -1685,6 +1686,6 @@ void dhd_get_memdump_info(dhd_pub_t *dhd)
 	}
 
 done:
-	dhd->memdump_enabled = (mem_val > 0) ? TRUE : FALSE;
+	dhd->memdump_enabled = (mem_val > DUMP_MEMFILE) ? DUMP_DISABLED : mem_val;
 }
 #endif /* CUSTOMER_HW4 */

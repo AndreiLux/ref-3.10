@@ -613,6 +613,9 @@ static int s5p_ehci_remove(struct platform_device *pdev)
 		s5p_ehci->pdata->phy_exit(pdev, USB_PHY_TYPE_HOST);
 	}
 	clk_disable_unprepare(s5p_ehci->clk);
+#if defined(CONFIG_MDM_HSIC_PM)
+	s5p_ehci->otg->host = NULL;
+#endif
 #if defined(CONFIG_LINK_DEVICE_HSIC)
 	unregister_reboot_notifier(&s5p_ehci->reboot_nb);
 #endif

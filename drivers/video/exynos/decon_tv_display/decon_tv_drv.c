@@ -25,6 +25,7 @@
 
 #include <plat/fb.h>
 
+#include <mach/smc.h>
 #include <mach/videonode-exynos5.h>
 #include <media/exynos_mc.h>
 
@@ -49,6 +50,7 @@ struct pm_qos_request exynos5_decon_tv_int_qos;
 static int prev_overlap_bw = 0;
 #endif
 
+static bool dex_streaming;
 int dex_log_level = 6;
 module_param(dex_log_level, int, 0644);
 
@@ -186,6 +188,7 @@ static int dex_enable(struct dex_device *dex)
 	}
 
 	dex->n_streamer++;
+	dex_streaming = true;
 	mutex_unlock(&dex->s_mutex);
 	dex_info("enabled decon_tv successfully\n");
 	return 0;
@@ -246,6 +249,7 @@ static int dex_disable(struct dex_device *dex)
 	}
 
 	dex->n_streamer--;
+	dex_streaming = false;
 	mutex_unlock(&dex->s_mutex);
 	dex_info("diabled decon_tv successfully\n");
 
@@ -723,6 +727,22 @@ static bool dex_validate_x_alignment(struct dex_device *dex, int x, u32 w,
 	return 1;
 }
 
+static void dex_set_protected_content(struct dex_device *dex, bool enable)
+{
+	int  ret;
+
+	if (dex->protected_content == enable)
+		return;
+
+	ret = exynos_smc(SMC_PROTECTION_SET, 0, DEV_DECON_TV, enable);
+	if (ret)
+		WARN(1, "decon-tv protection Enable failed. ret(%d)\n", ret);
+	else
+		dex_dbg("DRM %s\n", enable ? "enabled" : "disabled");
+
+	dex->protected_content = enable;
+}
+
 #if defined(CONFIG_DECONTV_USE_BUS_DEVFREQ)
 static int dex_get_overlap_bw(struct dex_device *dex,
 			struct s3c_fb_win_config *win_config)
@@ -828,16 +848,19 @@ static void dex_update(struct dex_device *dex, struct dex_reg_data *regs)
 	bool wait_for_vsync;
 	int count = 100;
 	int i, ret = 0;
+	int protection = 0;
 
 	memset(&old_dma_bufs, 0, sizeof(old_dma_bufs));
 
 	for (i = 1; i < DEX_MAX_WINDOWS; i++) {
 		if (!dex->windows[i]->local) {
+			protection += regs->protection[i];
 			old_dma_bufs[i] = dex->windows[i]->dma_buf_data;
 			if (regs->dma_buf_data[i].fence)
 				dex_fence_wait(regs->dma_buf_data[i].fence);
 		}
 	}
+	dex_set_protected_content(dex, !!protection);
 
 #if defined(CONFIG_DECONTV_USE_BUS_DEVFREQ)
 	if (prev_overlap_bw < regs->win_overlap_bw) {
@@ -1102,6 +1125,7 @@ static int dex_set_win_buffer(struct dex_device *dex, struct dex_win *win,
 	regs->buf_end[idx] = regs->buf_start[idx] + window_size;
 	regs->buf_size[idx] = VIDW_BUF_SIZE_OFFSET(win_config->stride - pagewidth) |
 				VIDW_BUF_SIZE_PAGEWIDTH(pagewidth);
+	regs->protection[idx] = win_config->protection;
 
 	if (idx > 1) {
 		if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
@@ -1930,6 +1954,7 @@ static int dex_probe(struct platform_device *pdev)
 
 	/* setup pointer to master device */
 	dex->dev = dev;
+	dex_streaming = false;
 
 	/* store platform data ptr to decon_tv context */
 	of_property_read_u32(dev->of_node, "ip_ver", &dex->ip_ver);
@@ -2167,6 +2192,12 @@ static int dex_remove(struct platform_device *pdev)
 	dev_info(dev, "remove sucessful\n");
 	return 0;
 }
+
+int check_decon_tv_op(void)
+{
+	return dex_streaming;
+}
+EXPORT_SYMBOL(check_decon_tv_op);
 
 static struct platform_driver dex_driver __refdata = {
 	.probe		= dex_probe,

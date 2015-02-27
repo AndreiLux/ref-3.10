@@ -29,7 +29,6 @@ enum {
 };
 
 #define PS_DATA_CH_01	0xa
-#define RX_POOL_SIZE 5
 #define MULTI_URB 4
 
 enum {
@@ -67,8 +66,6 @@ struct usb_id_info {
 			struct sk_buff *skb, gfp_t flags);
 	void (*intr_complete)(struct urb *urb);
 };
-
-struct mif_skb_pool;
 
 #define MIF_NET_SUSPEND_RF_STOP         (0x1<<0)
 #define MIF_NET_SUSPEND_LINK_WAKE	(0x1<<1)
@@ -111,11 +108,6 @@ struct if_usb_devdata {
 	int net_suspend;
 	bool net_connected;
 
-	bool defered_rx;
-	struct delayed_work rx_defered_work;
-
-	struct mif_skb_pool *ntb_pool;
-
 	atomic_t kill_urb;
 };
 
@@ -129,11 +121,11 @@ struct usb_link_device {
 	int max_acm_ch;
 	int acm_cnt;
 	int ncm_cnt;
-	struct if_usb_devdata *devdata;
-	unsigned int		suspended;
+	struct if_usb_devdata *acm_data;
+	struct if_usb_devdata *ncm_data;
+	unsigned int suspended;
 	int if_usb_connected;
 
-	struct mif_skb_pool skb_pool;
 	struct delayed_work link_event;
 	unsigned long events;
 
@@ -159,6 +151,11 @@ enum bit_link_events {
 /* converts from struct link_device* to struct xxx_link_device* */
 #define to_usb_link_device(linkdev) \
 			container_of(linkdev, struct usb_link_device, ld)
+
+#define get_pipedata_with_idx(usb_ld, idx) \
+	((idx < usb_ld->max_acm_ch) ? \
+	 &usb_ld->acm_data[idx] : \
+	 &usb_ld->ncm_data[idx - usb_ld->max_acm_ch])
 
 #ifdef FOR_TEGRA
 extern void tegra_ehci_txfilltuning(void);

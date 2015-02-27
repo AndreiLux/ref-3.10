@@ -986,6 +986,9 @@ SYSCALL_DEFINE3(setresuid, uid_t, ruid, uid_t, euid, uid_t, suid)
 	if (retval < 0)
 		goto error;
 
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	tima_send_cmd3((unsigned int)ruid, (unsigned int)euid,(unsigned int)suid,0x48);
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 	return commit_creds(new);
 
 error:

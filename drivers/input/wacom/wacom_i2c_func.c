@@ -237,6 +237,25 @@ int wacom_i2c_query(struct wacom_i2c *wac_i2c)
 	return ret;
 }
 
+
+int wacom_i2c_modecheck(struct wacom_i2c *wac_i2c)
+{
+	u8 buf = COM_QUERY;
+	int ret;
+	int mode = WACOM_I2C_MODE_NORMAL;
+
+	ret = wacom_i2c_send(wac_i2c, &buf, 1, false);
+	if (ret < 0) {
+		mode = WACOM_I2C_MODE_BOOT;
+	}
+	else{
+		mode = WACOM_I2C_MODE_NORMAL;
+	}
+	printk(KERN_DEBUG "epen:I2C send at usermode(%d)\n", ret);
+	return mode;
+}
+
+
 #ifdef WACOM_IMPORT_FW_ALGO
 #ifdef WACOM_USE_OFFSET_TABLE
 void wacom_i2c_coord_offset(u16 *coordX, u16 *coordY)
@@ -670,7 +689,7 @@ int wacom_i2c_coord(struct wacom_i2c *wac_i2c)
 	rdy = data[0] & 0x80;
 
 #ifdef LCD_FREQ_SYNC
-	if (!rdy) {
+	if (!rdy && !data[1] && !data[2] && !data[3] && !data[4]) {
 		if (likely(wac_i2c->use_lcd_freq_sync)) {
 			if (unlikely(!wac_i2c->pen_prox)) {
 				wacom_i2c_lcd_freq_check(wac_i2c, data);

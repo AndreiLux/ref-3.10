@@ -43,6 +43,7 @@ enum fimc_is_group_state {
 	FIMC_IS_GROUP_READY,
 	FIMC_IS_GROUP_ACTIVE,
 	FIMC_IS_GROUP_RUN,
+	FIMC_IS_GROUP_SHOT,
 	FIMC_IS_GROUP_REQUEST_FSTOP,
 	FIMC_IS_GROUP_FORCE_STOP,
 	FIMC_IS_GROUP_OTF_INPUT
@@ -172,6 +173,6 @@ int fimc_is_gframe_cancel(struct fimc_is_groupmgr *groupmgr,
 #define PROGRAM_COUNT(count) (group->pcount = count)
 
 #define GET_GROUP_FRAMEMGR(group) \
-	(((group) && (group)->leader.vctx) ? (&(group)->leader.vctx->q_src.framemgr) : NULL)
+	(((group) && (group)->leader.vctx) ? (&(group)->leader.vctx->q_src->framemgr) : NULL)
 
 #endif

@@ -85,9 +85,6 @@ obj-$(CONFIG_MACH_UNIVERSAL5430)	+= mach-universal5430.o
 obj-$(CONFIG_MACH_ESPRESSO5433)		+= mach-espresso5433.o
 obj-$(CONFIG_MACH_UNIVERSAL5433)	+= mach-universal5433.o
 
-# BRCM
-obj-$(CONFIG_MACH_UNIVERSAL5433)	+= ../../../drivers/net/wireless/bcmdhd4358/dhd_custom_exynos.o
-
 obj-$(CONFIG_VIDEO_EXYNOS_FIMC_IS)    += setup-fimc-is.o
 obj-$(CONFIG_VIDEO_EXYNOS_FIMC_IS)    += setup-fimc-is-sensor.o
 obj-$(CONFIG_VIDEO_EXYNOS_FIMC_IS)    += setup-fimc-is-companion.o
@@ -118,6 +115,9 @@ obj-$(CONFIG_EXYNOS_SETUP_SPI)		+= setup-spi.o
 obj-$(CONFIG_EXYNOS5_SETUP_MIPIPHY)	+= setup-exynos5-mipiphy.o
 obj-$(CONFIG_EXYNOS_CONTENT_PATH_PROTECTION) += secmem.o
 
+obj-$(CONFIG_MSM_HSIC_SYSMON) += hsic_sysmon.o
+obj-$(CONFIG_MSM_HSIC_SYSMON_TEST) += hsic_sysmon_test.o
+
 # HMP
 obj-$(CONFIG_SCHED_HMP)			+= core_sysfs.o
 
@@ -125,3 +125,4 @@ ifdef CONFIG_MSM_SUBSYSTEM_RESTART
 	obj-y += subsystem_notif.o
 	obj-y += subsystem_restart.o
 endif
+obj-$(CONFIG_EXYNOS_RUN_QUEUE_STATS) += exynos_rq_stats.o

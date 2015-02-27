@@ -197,7 +197,6 @@ void ssp_temp_task(struct work_struct *work) {
 /*************************************************************************/
 /* SSP Debug timer function                                              */
 /*************************************************************************/
-
 int print_mcu_debug(char *pchRcvDataFrame, int *pDataIdx,
 		int iRcvDataFrameLength)
 {

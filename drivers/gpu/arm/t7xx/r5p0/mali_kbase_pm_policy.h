@@ -221,7 +221,7 @@ void kbase_pm_unrequest_cores(struct kbase_device *kbdev, mali_bool tiler_requir
  *
  * @return MALI_TRUE if the job can be submitted to the hardware or MALI_FALSE if the job is not ready to run.
  */
-mali_bool kbase_pm_register_inuse_cores(struct kbase_device *kbdev, mali_bool tiler_required, u64 shader_cores);
+enum kbase_pm_cores_ready kbase_pm_register_inuse_cores(struct kbase_device *kbdev, mali_bool tiler_required, u64 shader_cores);
 
 /** Release cores after a job has run.
  *
@@ -251,6 +251,14 @@ void kbase_pm_release_cores(struct kbase_device *kbdev, mali_bool tiler_required
  * @param kbdev    The kbase device structure for the device (must be a valid pointer)
  */
 void kbase_pm_request_l2_caches(struct kbase_device *kbdev);
+
+/** Increment the count of l2 users but do not attempt to power on the l2
+ *  It is the callers responsibility to ensure that the l2 is already powered up
+ *  and to eventually  call @ref kbase_pm_release_l2_caches 
+ *
+ * @param kbdev    The kbase device structure for the device (must be a valid pointer)
+ */
+void kbase_pm_request_l2_caches_l2_is_on(struct kbase_device *kbdev);
 
 /** Release the use of l2 caches for all core groups and allow the power manager to
  *  power them down when necessary.

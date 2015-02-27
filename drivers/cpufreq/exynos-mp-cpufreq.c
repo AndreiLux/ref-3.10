@@ -1404,7 +1404,7 @@ static ssize_t store_cpu_min_freq(struct kobject *kobj, struct attribute *attr,
 	if (input > 0)
 		input = min(input, (int)freq_max[CA15]);
 
-	if (pm_qos_request_active(&min_cpu_qos))
+	if (pm_qos_request_active(&min_cpu_qos_real))
 		pm_qos_update_request(&min_cpu_qos_real, input);
 
 	return count;
@@ -1421,7 +1421,7 @@ static ssize_t store_cpu_max_freq(struct kobject *kobj, struct attribute *attr,
 	if (input > 0)
 		input = max(input, (int)freq_min[CA15]);
 
-	if (pm_qos_request_active(&max_cpu_qos))
+	if (pm_qos_request_active(&max_cpu_qos_real))
 		pm_qos_update_request(&max_cpu_qos_real, input);
 
 	return count;
@@ -1485,7 +1485,7 @@ static ssize_t store_kfc_min_freq(struct kobject *kobj, struct attribute *attr,
 	if (input > 0)
 		input = min(input, (int)freq_max[CA7]);
 
-	if (pm_qos_request_active(&min_kfc_qos))
+	if (pm_qos_request_active(&min_kfc_qos_real))
 		pm_qos_update_request(&min_kfc_qos_real, input);
 
 	return count;
@@ -1502,7 +1502,7 @@ static ssize_t store_kfc_max_freq(struct kobject *kobj, struct attribute *attr,
 	if (input > 0)
 		input = max(input, (int)freq_min[CA7]);
 
-	if (pm_qos_request_active(&max_kfc_qos))
+	if (pm_qos_request_active(&max_kfc_qos_real))
 		pm_qos_update_request(&max_kfc_qos_real, input);
 
 	return count;

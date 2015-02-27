@@ -37,9 +37,6 @@
 #include <linux/fs.h>
 #include <dngl_stats.h>
 #include <dhd.h>
-#ifdef DHD_WMF
-#include <dhd_wmf_linux.h>
-#endif
 /* Linux wireless extension support */
 #if defined(WL_WIRELESS_EXT)
 #include <wl_iw.h>
@@ -93,7 +90,4 @@ void* wifi_platform_get_prealloc_func_ptr(wifi_adapter_info_t *adapter);
 int dhd_get_fw_mode(struct dhd_info *dhdinfo);
 bool dhd_update_fw_nv_path(struct dhd_info *dhdinfo);
 
-#ifdef DHD_WMF
-dhd_wmf_t* dhd_wmf_conf(dhd_pub_t *dhdp, uint32 idx);
-#endif /* DHD_WMF */
 #endif /* __DHD_LINUX_H__ */

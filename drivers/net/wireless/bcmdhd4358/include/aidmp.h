@@ -58,6 +58,7 @@
 #define	ER_ADD			4
 #define	ER_END			0xe
 #define	ER_BAD			0xffffffff
+#define	ER_SZ_MAX		4096 /* 4KB */
 
 /* EROM CompIdentA */
 #define	CIA_MFG_MASK		0xfff00000

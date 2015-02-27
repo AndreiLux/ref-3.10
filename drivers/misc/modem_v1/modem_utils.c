@@ -56,23 +56,16 @@ enum bit_debug_flags {
 	DEBUG_FLAG_FMT,
 	DEBUG_FLAG_RFS,
 	DEBUG_FLAG_PS,
+	DEBUG_FLAG_IOD,
+	DEBUG_FLAG_CSVT,
 	DEBUG_FLAG_BOOT,
 	DEBUG_FLAG_DUMP,
-	DEBUG_FLAG_CSVT,
 	DEBUG_FLAG_LOG
 };
 
-#ifdef DEBUG_MODEM_IF_PS_DATA
-static unsigned long dflags = (1 << DEBUG_FLAG_FMT | 1 << DEBUG_FLAG_PS);
-#else
 static unsigned long dflags = (1 << DEBUG_FLAG_FMT);
-#endif
 module_param(dflags, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(dflags, "modem_v1 debug flags");
-
-static unsigned long log_with_work;
-module_param(log_with_work, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
-MODULE_PARM_DESC(log_with_work, "modem_v1 log with work");
 
 /* ipc_log_level: 0 is the highest level */
 static unsigned long ipc_log_level;
@@ -239,12 +232,6 @@ void _mif_time_log(enum mif_log_id id, struct modem_shared *msd,
 			(len > MAX_IRQ_LOG_SIZE) ? MAX_IRQ_LOG_SIZE : len);
 }
 
-static struct log_buff_circ_queue mif_log_queue = {
-	.lock = __SPIN_LOCK_UNLOCKED(mif_log_queue.lock),
-	.in = 0,
-	.out = 0,
-};
-
 /* dump2hex
  * dump data to hex as fast as possible.
  * the length of @buff must be greater than "@len * 3"
@@ -275,137 +262,26 @@ static inline void dump2hex(char *buff, size_t buff_size,
 	*dest = 0;
 }
 
-static struct log_buff *get_free_logb(void)
+static inline bool log_enabled(u8 ch, enum ipc_layer layer)
 {
-	struct log_buff_circ_queue *q = &mif_log_queue;
-	struct log_buff *logb = NULL;
-	int in;
-	int out;
-	unsigned long flags;
+	if (unlikely(layer == IOD_RX || layer == IOD_TX))
+		if (unlikely(!test_bit(DEBUG_FLAG_IOD, &dflags)))
+			return false;
 
-	spin_lock_irqsave(&q->lock, flags);
-
-	in = q->in;
-	out = q->out;
-
-	/*
-	If the queue is full, the oldest slot should be dropped for the new log.
-	*/
-	if (circ_get_space(MAX_TRACE_SIZE, in, out) < 1) {
-		if (!q->full)
-			q->full = true;
-		q->out = circ_new_ptr(MAX_TRACE_SIZE, out, 1);
-	}
-
-	/* Get a free slot and make it occupied */
-	logb = &q->logb[in];
-	q->in = circ_new_ptr(MAX_TRACE_SIZE, in, 1);
-
-	getnstimeofday(&logb->ts);
-
-	spin_unlock_irqrestore(&q->lock, flags);
-
-	logb->data[0] = 0;
-
-	return logb;
-}
-
-static struct log_buff *get_data_logb(void)
-{
-	struct log_buff_circ_queue *q = &mif_log_queue;
-	struct log_buff *logb = NULL;
-	int in;
-	int out;
-	unsigned long flags;
-
-	spin_lock_irqsave(&q->lock, flags);
-
-	in = q->in;
-	out = q->out;
-
-	if (circ_get_usage(MAX_TRACE_SIZE, in, out) > 0) {
-		/* Get a data slot and make it empty */
-		logb = &q->logb[out];
-		q->out = circ_new_ptr(MAX_TRACE_SIZE, out, 1);
-	}
-
-	spin_unlock_irqrestore(&q->lock, flags);
-
-	return logb;
-}
-
-static inline void print_logb(struct log_buff *logb)
-{
-	struct utc_time t;
-
-	ts2utc(&logb->ts, &t);
-
-	if (logb->level == 0)
-		pr_err(LOG_TAG "[%02d:%02d:%02d.%06d] %s",
-			t.hour, t.min, t.sec, t.us, logb->data);
-	else
-		pr_info(LOG_TAG "[%02d:%02d:%02d.%06d] %s",
-			t.hour, t.min, t.sec, t.us, logb->data);
-}
-
-static void evt_log_work_func(struct work_struct *ws)
-{
-	while (1) {
-		struct log_buff *logb;
-
-		logb = get_data_logb();
-		if (!logb)
-			break;
-
-		print_logb(logb);
-	}
-}
-
-static DECLARE_WORK(evt_log_work, evt_log_work_func);
-
-static inline void print_evt_log(struct log_buff *logb)
-{
-#ifdef DEBUG_MODEM_IF
-	if (log_with_work) {
-		if (!work_pending(&evt_log_work))
-			schedule_work(&evt_log_work);
-	} else {
-		print_logb(logb);
-	}
-#endif
-}
-
-void evt_log(int level, const char *fmt, ...)
-{
-	struct log_buff *logb = get_free_logb();
-	va_list args;
-
-	logb->level = level;
-
-	va_start(args, fmt);
-	vsnprintf(logb->data, MAX_LOG_LEN, fmt, args);
-	va_end(args);
-
-	print_evt_log(logb);
-}
-EXPORT_SYMBOL(evt_log);
-
-static inline bool log_enabled(u8 ch)
-{
 	if (sipc5_fmt_ch(ch))
 		return test_bit(DEBUG_FLAG_FMT, &dflags);
-	else if (sipc5_boot_ch(ch))
-		return test_bit(DEBUG_FLAG_BOOT, &dflags);
-	else if (sipc5_dump_ch(ch))
-		return test_bit(DEBUG_FLAG_DUMP, &dflags);
+	else if (sipc_ps_ch(ch))
+		return test_bit(DEBUG_FLAG_PS, &dflags);
 	else if (sipc5_rfs_ch(ch))
 		return test_bit(DEBUG_FLAG_RFS, &dflags);
 	else if (sipc_csd_ch(ch))
 		return test_bit(DEBUG_FLAG_CSVT, &dflags);
 	else if (sipc_log_ch(ch))
 		return test_bit(DEBUG_FLAG_LOG, &dflags);
-	else if (sipc_ps_ch(ch))
-		return test_bit(DEBUG_FLAG_PS, &dflags);
+	else if (sipc5_boot_ch(ch))
+		return test_bit(DEBUG_FLAG_BOOT, &dflags);
+	else if (sipc5_dump_ch(ch))
+		return test_bit(DEBUG_FLAG_DUMP, &dflags);
 	else
 		return false;
 }
@@ -413,89 +289,23 @@ static inline bool log_enabled(u8 ch)
 /**
 @brief		print an IPC data @b WITH a @b LINK header
 
-@param ch	the SIPC channel ID
 @param layer	the layer in the Samsung IPC
-@param dir	the direction of communication (TX or RX)
+@param ch	the SIPC channel ID
 @param skb	the pointer to a sk_buff instance
-@param hdr	the pointer to the SIPC5 link header
 */
-void log_ipc_pkt(u8 ch, enum ipc_layer layer, enum direction dir,
-		 struct sk_buff *skb, u8 *hdr)
+inline void log_ipc_pkt(enum ipc_layer layer, u8 ch, struct sk_buff *skb)
 {
-	struct io_device *iod;
-	struct link_device *ld;
-	struct modem_ctl *mc;
-	struct log_buff *logb;
-	unsigned int hdr_len;
-	u8 *msg;
-	unsigned int msg_len;
-	struct utc_time t;
-	char *buff;
-	size_t offset;
-
-	if (!log_enabled(ch))
-		return;
+	/*struct io_device *iod;*/
 
 	if (unlikely(!skb)) {
 		mif_err("ERR! NO skb!!!\n");
 		return;
 	}
 
-	iod = skbpriv(skb)->iod;
-	ld = skbpriv(skb)->ld;
-	mc = iod->mc;
+	/*iod = skbpriv(skb)->iod;*/
 
-	hdr_len = hdr ? sipc5_get_hdr_len(hdr) : 0;
-	msg = skb->data + hdr_len;
-	msg_len = (skb->len - hdr_len);
-
-	/*
-	If @ch is for BOOT or DUMP, only UDL command without any payload should
-	be printed.
-	*/
-	if (sipc5_udl_ch(ch)) {
-		u32 udl_cmd = *((u32 *)msg);
-		if (std_udl_with_payload(udl_cmd))
-			return;
-	}
-
-	/* Get a free log buffer and set the log level */
-	logb = get_free_logb();
-	logb->level = ipc_log_level;
-
-	buff = logb->data;
-	offset = 0;
-
-	/* Make a string of the route and the timestamp */
-	ts2utc(&skbpriv(skb)->ts, &t);
-	snprintf(buff, MAX_LOG_LEN, "%s %s: %s: %s%s%s: [%02d:%02d:%02d.%06d] ",
-		 layer_str(layer), dir_str(dir), ld->name, iod->name,
-		 arrow(dir), mc->name, t.hour, t.min, t.sec, t.us);
-
-#ifdef DEBUG_MODEM_IF_LINK_HEADER
-	/* Append a string of the link header */
-	if (hdr_len > 0) {
-		char *separation = " | ";
-		offset = strlen(buff);
-		dump2hex((buff + offset), (MAX_LOG_LEN - offset), hdr, hdr_len);
-		strncat(buff, separation, (MAX_LOG_LEN - strlen(buff)));
-	}
-#endif
-
-	/* Append a string of the payload */
-	offset = strlen(buff);
-	dump2hex((buff + offset), (MAX_LOG_LEN - offset), msg,
-		 (msg_len > MAX_DUMP_LEN ? MAX_DUMP_LEN : msg_len));
-
-	/* Append a new-line character */
-	offset = strlen(buff);
-	*(buff + offset) = '\n';
-
-	/* Append a NULL (terminator) character */
-	offset = strlen(buff);
-	*(buff + offset) = 0;
-
-	print_evt_log(logb);
+	if (log_enabled(ch, layer))
+		pr_skb(layer_str(layer), skb);
 }
 
 /* print buffer as hex string */
@@ -507,7 +317,7 @@ int pr_buffer(const char *tag, const char *data, size_t data_len,
 	dump2hex(str, (len ? len * 3 : 1), data, len);
 
 	/* don't change this printk to mif_debug for print this as level7 */
-	return pr_info("%s: %s(%u): %s%s\n", MIF_TAG, tag, data_len,
+	return pr_info("%s: %s(%ld): %s%s\n", MIF_TAG, tag, (long)data_len,
 			str, (len == data_len) ? "" : " ...");
 }
 
@@ -517,7 +327,7 @@ int link_rx_flowctl_cmd(struct link_device *ld, const char *data, size_t len)
 	struct modem_shared *msd = ld->msd;
 	unsigned short *cmd, *end = (unsigned short *)(data + len);
 
-	mif_debug("flow control cmd: size=%d\n", len);
+	mif_debug("flow control cmd: size=%ld\n", (long)len);
 
 	for (cmd = (unsigned short *)data; cmd < end; cmd++) {
 		switch (*cmd) {
@@ -727,20 +537,33 @@ exit:
 __be32 ipv4str_to_be32(const char *ipv4str, size_t count)
 {
 	unsigned char ip[4];
-	char ipstr[16]; /* == strlen("xxx.xxx.xxx.xxx") + 1 */
-	char *next = ipstr;
+	char *ipstr; /* == strlen("xxx.xxx.xxx.xxx") + 1 */
+	char *next;
 	int i;
+	int size;
 
-	strncpy(ipstr, ipv4str, ARRAY_SIZE(ipstr));
+	if (!ipv4str)
+		return 0;
+
+	if ((size = strlen(ipv4str)) > 16)
+		return 0;
+
+	ipstr = kzalloc(size, GFP_ATOMIC);
+	next = ipstr;
+
+	strncpy(ipstr, ipv4str, size);
 
 	for (i = 0; i < 4; i++) {
 		char *p;
 
 		p = strsep(&next, ".");
-		if (kstrtou8(p, 10, &ip[i]) < 0)
+		if (kstrtou8(p, 10, &ip[i]) < 0) {
+			kfree(ipstr);
 			return 0; /* == 0.0.0.0 */
+		}
 	}
 
+	kfree(ipstr);
 	return *((__be32 *)ip);
 }
 
@@ -1197,7 +1020,7 @@ void mif_init_irq(struct modem_irq *irq, unsigned int num, const char *name,
 	irq->num = num;
 	strncpy(irq->name, name, (MAX_NAME_LEN - 1));
 	irq->flags = flags;
-	evt_log(1, "%s: name:%s num:%d flags:0x%08lX\n",
+	mif_info("%s: name:%s num:%d flags:0x%08lX\n",
 		FUNC, name, num, flags);
 }
 
@@ -1207,7 +1030,7 @@ int mif_request_irq(struct modem_irq *irq, irq_handler_t isr, void *data)
 
 	ret = request_irq(irq->num, isr, irq->flags, irq->name, data);
 	if (ret) {
-		evt_log(0, "%s: %s: ERR! request_irq fail (%d)\n",
+		mif_err("%s: %s: ERR! request_irq fail (%d)\n",
 			FUNC, irq->name, ret);
 		return ret;
 	}
@@ -1216,11 +1039,11 @@ int mif_request_irq(struct modem_irq *irq, irq_handler_t isr, void *data)
 
 	ret = enable_irq_wake(irq->num);
 	if (ret) {
-		evt_log(0, "%s: %s: ERR! enable_irq_wake fail (%d)\n",
+		mif_err("%s: %s: ERR! enable_irq_wake fail (%d)\n",
 			FUNC, irq->name, ret);
 	}
 
-	evt_log(1, "%s: %s(#%d) handler registered (flags:0x%08lX)\n",
+	mif_info("%s: %s(#%d) handler registered (flags:0x%08lX)\n",
 		FUNC, irq->name, irq->num, irq->flags);
 
 	return 0;
@@ -1233,7 +1056,7 @@ void mif_enable_irq(struct modem_irq *irq)
 	spin_lock_irqsave(&irq->lock, flags);
 
 	if (irq->active) {
-		evt_log(0, "%s: %s(#%d) is already active <%pf>\n",
+		mif_err("%s: %s(#%d) is already active <%pf>\n",
 			FUNC, irq->name, irq->num, CALLER);
 		goto exit;
 	}
@@ -1242,7 +1065,7 @@ void mif_enable_irq(struct modem_irq *irq)
 
 	irq->active = true;
 
-	evt_log(1, "%s: %s(#%d) is enabled <pf>\n",
+	mif_info("%s: %s(#%d) is enabled <%pf>\n",
 		FUNC, irq->name, irq->num, CALLER);
 
 exit:
@@ -1256,7 +1079,7 @@ void mif_disable_irq(struct modem_irq *irq)
 	spin_lock_irqsave(&irq->lock, flags);
 
 	if (!irq->active) {
-		evt_log(0, "%s: %s(#%d) is not active <%pf>\n",
+		mif_err("%s: %s(#%d) is not active <%pf>\n",
 			FUNC, irq->name, irq->num, CALLER);
 		goto exit;
 	}
@@ -1265,7 +1088,7 @@ void mif_disable_irq(struct modem_irq *irq)
 
 	irq->active = false;
 
-	evt_log(1, "%s: %s(#%d) is disabled <%pf>\n",
+	mif_info("%s: %s(#%d) is disabled <%pf>\n",
 		FUNC, irq->name, irq->num, CALLER);
 
 exit:

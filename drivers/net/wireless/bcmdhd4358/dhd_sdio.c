@@ -646,10 +646,6 @@ static int dhdsdio_bussleep(dhd_bus_t *bus, bool sleep);
 static int dhdsdio_clkctl(dhd_bus_t *bus, uint target, bool pendok);
 static uint8 dhdsdio_sleepcsr_get(dhd_bus_t *bus);
 
-#ifdef WLMEDIA_HTSF
-#include <htsf.h>
-extern uint32 dhd_get_htsf(void *dhd, int ifidx);
-#endif /* WLMEDIA_HTSF */
 
 static void
 dhdsdio_tune_fifoparam(struct dhd_bus *bus)
@@ -1875,16 +1871,6 @@ static int dhdsdio_txpkt_preprocess(dhd_bus_t *bus, void *pkt, int chan, int txs
 	frame = (uint8*)PKTDATA(osh, pkt);
 	pkt_len = (uint16)PKTLEN(osh, pkt);
 
-#ifdef WLMEDIA_HTSF
-	frame = (uint8*)PKTDATA(osh, pkt);
-	if (PKTLEN(osh, pkt) >= 100) {
-		htsf_ts = (htsfts_t*) (frame + HTSF_HOSTOFFSET + 12);
-		if (htsf_ts->magic == HTSFMAGIC) {
-			htsf_ts->c20 = get_cycles();
-			htsf_ts->t20 = dhd_get_htsf(bus->dhd->info, 0);
-		}
-	}
-#endif /* WLMEDIA_HTSF */
 #ifdef DHD_DEBUG
 	if (PKTPRIO(pkt) < ARRAYSIZE(tx_packets))
 		tx_packets[PKTPRIO(pkt)]++;

@@ -118,6 +118,9 @@ SECTIONS
 		*(.got)			/* Global offset table		*/
 			ARM_CPU_KEEP(PROC_INFO)
 	}
+#ifdef CONFIG_RKP_TEST_INFRA
+	_end_stext = .;			/* End of text */
+#endif /*CONFIG_RKP_TEST_INFRA*/
 #ifdef CONFIG_STRICT_MEMORY_RWX
 	. = ALIGN(1<<SECTION_SHIFT);
 #endif
@@ -274,6 +277,19 @@ SECTIONS
 		_edata = .;
 	}
 	_edata_loc = __data_loc + SIZEOF(.data);
+
+#ifdef	CONFIG_TIMA_RKP_RO_CRED
+	 /* Creating a new section to store task credentials */
+	. = ALIGN(1<<SECTION_SHIFT);
+	.tima.rkp.initcred : {
+		__rkp_ro_start = .;
+	}
+	.tima.rkp.ro : {
+		. = __rkp_ro_start + 0x400000;
+		__rkp_ro_end = .;
+	}
+	. = ALIGN(1<<PAGE_SHIFT);
+#endif /* TIMA_RKP_RO_CRED */
 
 #ifdef CONFIG_HAVE_TCM
         /*

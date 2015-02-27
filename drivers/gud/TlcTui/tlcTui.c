@@ -59,6 +59,7 @@ static struct sec_tui_mempool g_sec_tuiMemPool;
 
 /* Functions */
 static int tsp_irq_num = 718; // default value
+static int pwr_irq_num = 740; // default value
 
 void trustedui_set_tsp_irq(int irq_num){
 	tsp_irq_num = irq_num;
@@ -150,6 +151,10 @@ static uint32_t sendCmdToUser(uint32_t commandId)
 	gCmdId = commandId;
 	gUserRsp.id = TLC_TUI_CMD_NONE;
 	gUserRsp.returnCode = TLC_TUI_ERR_UNKNOWN_CMD;
+
+	/* S.LSI : Clean up previous response. */
+	complete_all(&ioComp);
+	INIT_COMPLETION(ioComp);
 
 	/* Give way to ioctl thread */
 	complete(&dciComp);
@@ -266,11 +271,13 @@ static void tlcProcessCmd(void)
 	case CMD_TUI_SW_CLOSE_SESSION:
 		printk(KERN_ERR "tlcProcessCmd: CMD_TUI_SW_CLOSE_SESSION & enable_irq(%d).\n", tsp_irq_num);
 
+		disable_irq(pwr_irq_num);
 		/* Activate linux UI drivers */
 		ret = hal_tui_activate();
 		tui_i2c_reset();
 		enable_irq(tsp_irq_num);
 		hal_tui_free();
+		enable_irq(pwr_irq_num);
 
 		/* Stop android TUI activity */
 		ret = sendCmdToUser(TLC_TUI_CMD_STOP_ACTIVITY);

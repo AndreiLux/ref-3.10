@@ -510,6 +510,21 @@ static int fimc_is_isp_video_s_ctrl(struct file *file, void *priv,
 		i2c_clk = I2C_L1;
 
 	switch (ctrl->id) {
+	case V4L2_CID_IS_DEBUG_DUMP:
+		info("Print fimc-is info dump by HAL");
+		if (device != NULL) {
+			fimc_is_hw_logdump(device->interface);
+			fimc_is_hw_regdump(device->interface);
+			CALL_POPS(device, print_clk, device->pdev);
+		}
+		if (ctrl->value) {
+			err("BUG_ON from HAL");
+			BUG();
+		}
+		break;
+	case V4L2_CID_IS_DEBUG_SYNC_LOG:
+		fimc_is_logsync(device->interface, ctrl->value, IS_MSG_TEST_SYNC_LOG);
+		break;
 	case V4L2_CID_IS_G_CAPABILITY:
 		ret = fimc_is_ischain_g_capability(device, ctrl->value);
 		dbg_isp("V4L2_CID_IS_G_CAPABILITY : %X\n", ctrl->value);
@@ -762,14 +777,6 @@ static int fimc_is_isp_video_g_ext_ctrl(struct file *file, void *priv,
 	ctrl = ctrls->controls;
 
 	switch (ctrl->id) {
-	case V4L2_CID_CAM_SENSOR_FW_VER:
-		if (sysfs_pinfo != NULL) {
-			strncpy(ctrl->string, sysfs_pinfo->header_ver,
-						strlen(ctrl->string) - 1);
-			ctrl->string[strlen(ctrl->string) - 1] = '\0';
-		}
-		break;
-
 	default:
 		err("unsupported ioctl(%d)\n", ctrl->id);
 		ret = -EINVAL;

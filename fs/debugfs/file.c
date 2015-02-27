@@ -21,9 +21,7 @@
 #include <linux/debugfs.h>
 #include <linux/io.h>
 #include <linux/slab.h>
-#ifdef CONFIG_ZSWAP
 #include <linux/atomic.h>
-#endif
 
 static ssize_t default_read_file(struct file *file, char __user *buf,
 				 size_t count, loff_t *ppos)
@@ -406,7 +404,6 @@ struct dentry *debugfs_create_size_t(const char *name, umode_t mode,
 }
 EXPORT_SYMBOL_GPL(debugfs_create_size_t);
 
-#ifdef CONFIG_ZSWAP
 static int debugfs_atomic_t_set(void *data, u64 val)
 {
 	atomic_set((atomic_t *)data, val);
@@ -418,9 +415,9 @@ static int debugfs_atomic_t_get(void *data, u64 *val)
 	return 0;
 }
 DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t, debugfs_atomic_t_get,
-			debugfs_atomic_t_set, "%llu\n");
-DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_ro, debugfs_atomic_t_get, NULL, "%llu\n");
-DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_wo, NULL, debugfs_atomic_t_set, "%llu\n");
+			debugfs_atomic_t_set, "%lld\n");
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_ro, debugfs_atomic_t_get, NULL, "%lld\n");
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_wo, NULL, debugfs_atomic_t_set, "%lld\n");
 
 /**
  * debugfs_create_atomic_t - create a debugfs file that is used to read and
@@ -448,7 +445,6 @@ struct dentry *debugfs_create_atomic_t(const char *name, umode_t mode,
 	return debugfs_create_file(name, mode, parent, value, &fops_atomic_t);
 }
 EXPORT_SYMBOL_GPL(debugfs_create_atomic_t);
-#endif /* CONFIG_ZSWAP */
 
 static ssize_t read_file_bool(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos)

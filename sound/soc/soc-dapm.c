@@ -849,6 +849,13 @@ static int is_connected_output_ep(struct snd_soc_dapm_widget *widget,
 		}
 	}
 
+	if (list_empty(&widget->sinks)) {
+		dev_err(widget->dapm->dev,"ASoC: widget->sinks is empty %s\n",
+						widget->name);
+		widget->outputs = con;
+		return con;
+	}
+
 	list_for_each_entry(path, &widget->sinks, list_source) {
 		DAPM_UPDATE_STAT(widget, neighbour_checks);
 

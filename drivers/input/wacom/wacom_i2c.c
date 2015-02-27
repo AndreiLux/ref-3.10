@@ -51,6 +51,7 @@ extern unsigned int system_rev;
 struct i2c_client *g_client_boot;
 
 extern int wacom_i2c_flash(struct wacom_i2c *wac_i2c);
+extern int wacom_i2c_usermode(struct wacom_i2c *wac_i2c);
 
 #ifdef CONFIG_OF
 char *gpios_name[] = {
@@ -138,7 +139,7 @@ int wacom_power(bool on)
 	struct wacom_g5_platform_data *pdata = wac_i2c->pdata;
 	static bool wacom_power_enabled = false;
 	int ret = 0;
-	struct regulator *regulator_vdd;
+	struct regulator *regulator_vdd = NULL;
 	static struct timeval off_time = {0, 0};
 	struct timeval cur_time = {0, 0};
 
@@ -168,9 +169,10 @@ int wacom_power(bool on)
 	}
 
 	regulator_vdd = regulator_get(NULL, "wacom_3.3v");
-	if (IS_ERR(regulator_vdd)) {
+	if (IS_ERR_OR_NULL(regulator_vdd)) {
 		printk(KERN_ERR"epen: %s reg get err\n", __func__);
-		return PTR_ERR(regulator_vdd);
+		regulator_vdd = NULL;
+		return -EINVAL;
 	}
 
 	if (on) {
@@ -235,7 +237,7 @@ static void wacom_compulsory_flash_mode(bool en)
 #endif
 	if (likely(pdata->boot_on_ldo)) {
 		static bool is_enabled = false;
-		struct regulator *reg_fwe;
+		struct regulator *reg_fwe = NULL;
 		int ret = 0;
 
 		if (is_enabled == en) {
@@ -244,8 +246,9 @@ static void wacom_compulsory_flash_mode(bool en)
 		}
 
 		reg_fwe = regulator_get(NULL, "wacom_fwe_1.8v");
-		if (IS_ERR(reg_fwe)) {
+		if (IS_ERR_OR_NULL(reg_fwe)) {
 			printk(KERN_ERR"epen: %s reg get err\n", __func__);
+			reg_fwe = NULL;
 			return ;
 		}
 
@@ -349,6 +352,9 @@ static void wacom_power_on(struct wacom_i2c *wac_i2c)
 	/* power on */
 	wac_i2c->pdata->resume_platform_hw();
 	wac_i2c->power_enable = true;
+
+	wac_i2c->pdata->compulsory_flash_mode(false); /* compensation to protect from flash mode  */
+
 	cancel_delayed_work_sync(&wac_i2c->resume_work);
 	schedule_delayed_work(&wac_i2c->resume_work, msecs_to_jiffies(EPEN_RESUME_DELAY));
 
@@ -396,6 +402,8 @@ static void wacom_power_off(struct wacom_i2c *wac_i2c)
 	/* power off */
 	wac_i2c->power_enable = false;
 	wac_i2c->pdata->suspend_platform_hw();
+
+	wac_i2c->pdata->compulsory_flash_mode(false); /* compensation to protect from flash mode  */
 
 	printk(KERN_DEBUG"epen:%s\n", __func__);
  out_power_off:
@@ -624,6 +632,10 @@ static void wacom_i2c_resume_work(struct work_struct *work)
 				__LINE__);
 		}
 	}
+
+	ret = wacom_i2c_modecheck(wac_i2c);
+	if(ret) wacom_i2c_usermode(wac_i2c);
+
 #if defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
 	printk(KERN_DEBUG "epen:%s\n", __func__);
 #else

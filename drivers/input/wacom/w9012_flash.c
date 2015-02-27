@@ -708,3 +708,35 @@ int wacom_i2c_flash(struct wacom_i2c *wac_i2c)
 
 	return ret;
 }
+
+int wacom_i2c_usermode(struct wacom_i2c *wac_i2c)
+{
+	int ret;
+	bool bRet = false;
+
+	wac_i2c->pdata->compulsory_flash_mode(true);
+
+	ret = wacom_flash_cmd(wac_i2c);
+	if (ret < 0) {
+		printk(KERN_DEBUG"epen:%s cannot send flash command at user-mode \n", __func__);
+		return ret;
+	}
+
+	/*Return to the user mode */
+	printk(KERN_DEBUG"epen:%s closing the boot mode \n", __func__);
+	bRet = flash_end(wac_i2c);
+	if (!bRet) {
+		printk(KERN_DEBUG"epen:%s closing boot mode failed  \n", __func__);
+		ret = -EXIT_FAIL_WRITING_MARK_NOT_SET;
+		goto end_usermode;
+	}
+
+	wac_i2c->pdata->compulsory_flash_mode(false);
+
+	printk(KERN_DEBUG"epen:%s making user-mode completed \n", __func__);
+	ret = EXIT_OK;
+
+
+ end_usermode:
+	return ret;
+}

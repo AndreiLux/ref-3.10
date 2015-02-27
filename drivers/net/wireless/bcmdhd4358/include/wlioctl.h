@@ -2934,23 +2934,15 @@ typedef enum wl_pkt_filter_type {
 	{ "MAGIC",   WL_PKT_FILTER_TYPE_MAGIC_PATTERN_MATCH }, \
 	{ "PATLIST", WL_PKT_FILTER_TYPE_PATTERN_LIST_MATCH }
 
-/* Secured WOWL packet was encrypted, need decrypted before check filter match */
-typedef struct wl_pkt_decrypter {
-		uint8* (*dec_cb)(void* dec_ctx, const void *sdu, int sending);
-		void*  dec_ctx;
-} wl_pkt_decrypter_t;
 
 /* Pattern matching filter. Specifies an offset within received packets to
  * start matching, the pattern to match, the size of the pattern, and a bitmask
  * that indicates which bits within the pattern should be matched.
  */
 typedef struct wl_pkt_filter_pattern {
-	union {
 		uint32	offset;		/* Offset within received packet to start pattern matching.
 				 * Offset '0' is the first byte of the ethernet header.
 				 */
-		wl_pkt_decrypter_t*	decrypt_ctx;	/* Decrypt context */
-	};
 	uint32	size_bytes;	/* Size of the pattern.  Bitmask must be the same size. */
 	uint8   mask_and_pattern[1]; /* Variable length mask and pattern data.  mask starts
 				      * at offset 0.  Pattern immediately follows mask.

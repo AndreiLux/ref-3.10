@@ -270,6 +270,26 @@ static inline int sec_i2c_get_driver_data(struct i2c_client *i2c,
 	return (int)id->driver_data;
 }
 
+static struct sec_pmic_dev *g_sec_pmic;
+
+int sec_pmic_get_irq_base(void)
+{
+	int irq_base;
+
+	if (!g_sec_pmic) {
+		pr_err("%s: Failed to get irq base: sec_pmic is null\n", __func__);
+		return -ENODEV;
+	}
+
+	irq_base = regmap_irq_chip_get_base(g_sec_pmic->irq_data);
+	if (!irq_base) {
+		pr_err("%s: Failed to get irq base %d\n", __func__, irq_base);
+		return -ENODEV;
+	}
+
+	return irq_base;
+}
+
 static int sec_pmic_probe(struct i2c_client *i2c,
 			    const struct i2c_device_id *id)
 {
@@ -359,6 +379,8 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 
 	if (ret < 0)
 		goto err;
+
+	g_sec_pmic = sec_pmic;
 
 	return ret;
 

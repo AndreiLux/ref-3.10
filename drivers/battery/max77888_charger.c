@@ -12,6 +12,7 @@
 
 #include <linux/mfd/max77888.h>
 #include <linux/mfd/max77888-private.h>
+#include <linux/muic/max77888-muic.h>
 #ifdef CONFIG_USB_HOST_NOTIFY
 #include <linux/usb_notify.h>
 #endif
@@ -25,6 +26,9 @@
 #define SIOP_INPUT_LIMIT_CURRENT 1200
 #define SIOP_CHARGING_LIMIT_CURRENT 1000
 #define SLOW_CHARGING_CURRENT_STANDARD 400
+
+/* For restore charger interrupt states */
+static u8 chg_int_state;
 
 struct max77888_charger_data {
 	struct max77888_dev	*max77888;
@@ -87,7 +91,6 @@ static enum power_supply_property max77888_charger_props[] = {
 	POWER_SUPPLY_PROP_CURRENT_AVG,
 	POWER_SUPPLY_PROP_CURRENT_NOW,
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
-	POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL,
 };
 
 static void max77888_charger_initialize(struct max77888_charger_data *charger);
@@ -660,6 +663,159 @@ static int max77888_get_health_state(struct max77888_charger_data *charger)
 	return state;
 }
 
+void max77888_otg_control(struct max77888_charger_data *charger, int enable)
+{
+	u8 int_mask,en_chg_cnfg_00 = 0;
+#ifndef CONFIG_SEC_FACTORY
+	u8 int_mask2 = 0;
+#endif
+	u8 ctrl2_val;
+	pr_info("%s: enable(%d)\n", __func__, enable);
+
+	if (enable) {
+		max77888_update_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_CTRL2,
+			0 << CTRL2_ACCDET_SHIFT,
+			CTRL2_ACCDET_MASK);
+		max77888_read_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_CTRL2, &ctrl2_val);
+		pr_info("[%s], REG_CTRL2=0x%x\n", __func__, ctrl2_val);
+
+		/* disable charger interrupt */
+		max77888_read_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_INT_MASK, &int_mask);
+		chg_int_state = int_mask;
+		int_mask |= (1 << 4);	/* disable chgin intr */
+		int_mask |= (1 << 6);	/* disable chg */
+		int_mask &= ~(1 << 0);	/* enable byp intr */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_INT_MASK, int_mask);
+
+#ifndef CONFIG_SEC_FACTORY
+		/* VB voltage interrupt Mask */
+		max77888_read_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_INTMASK2, &int_mask2);
+		int_mask2 &= ~(1 << 4);
+		max77888_write_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_INTMASK2, int_mask2);
+#endif
+
+		en_chg_cnfg_00 &= ~(CHG_CNFG_00_CHG_MASK
+				| CHG_CNFG_00_BUCK_MASK);
+		en_chg_cnfg_00 |= (CHG_CNFG_00_OTG_MASK
+				| CHG_CNFG_00_BOOST_MASK
+				| CHG_CNFG_00_DIS_MUIC_CTRL_MASK);
+		max77888_update_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_00,
+			en_chg_cnfg_00,
+			(CHG_CNFG_00_CHG_MASK
+			| CHG_CNFG_00_OTG_MASK
+			| CHG_CNFG_00_BUCK_MASK
+			| CHG_CNFG_00_BOOST_MASK
+			| CHG_CNFG_00_DIS_MUIC_CTRL_MASK));
+
+		/* Update CHG_CNFG_11 to 0x50(5V) */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_11, 0x50);
+
+#if defined (CONFIG_SEC_FACTORY)
+		/* JIGSet High Impedance */
+		max77888_write_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_CTRL3, 0x3);
+#endif /* CONFIG_SEC_FACTORY */
+	} else {
+		/* OTG off, boost off, (buck on),
+		   DIS_MUIC_CTRL = 0 unless CHG_ENA = 1 */
+		en_chg_cnfg_00 = ~(CHG_CNFG_00_OTG_MASK
+				| CHG_CNFG_00_BOOST_MASK
+				| CHG_CNFG_00_DIS_MUIC_CTRL_MASK);
+		en_chg_cnfg_00 |= CHG_CNFG_00_BUCK_MASK;
+		max77888_update_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_00,
+			en_chg_cnfg_00,
+			(CHG_CNFG_00_OTG_MASK
+			| CHG_CNFG_00_BUCK_MASK
+			| CHG_CNFG_00_BOOST_MASK
+			| CHG_CNFG_00_DIS_MUIC_CTRL_MASK));
+
+		/* Update CHG_CNFG_11 to 0x00(3V) */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_11, 0x00);
+
+		mdelay(50);
+
+#ifndef CONFIG_SEC_FACTORY
+		/* VB voltage interrupt Unmask */
+		max77888_read_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_INTMASK2, &int_mask2);
+		int_mask2 |= (1 << 4);
+		max77888_write_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_INTMASK2, int_mask2);
+#endif
+
+		max77888_update_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_CTRL2,
+			1 << CTRL2_ACCDET_SHIFT,
+			CTRL2_ACCDET_MASK);
+		max77888_read_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_CTRL2, &ctrl2_val);
+		pr_info("[%s], REG_CTRL2=0x%x\n", __func__, ctrl2_val);
+		/* enable charger interrupt */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_INT_MASK, chg_int_state);
+		max77888_read_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_INT_MASK, &int_mask);
+
+#if defined (CONFIG_SEC_FACTORY)
+		/* JIGSet Auto detection */
+		max77888_write_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_CTRL3, 0x0);
+#endif /* CONFIG_SEC_FACTORY */
+	}
+}
+
+void max77888_powered_otg_control(struct max77888_charger_data *charger, int enable)
+{
+	u8 int_mask, int_mask2, en_chg_cnfg_00 = 0;
+	pr_info("%s: powered otg(%d)\n", __func__, enable);
+
+	en_chg_cnfg_00 &= ~(CHG_CNFG_00_OTG_MASK
+			| CHG_CNFG_00_BOOST_MASK
+			| CHG_CNFG_00_DIS_MUIC_CTRL_MASK);
+	max77888_update_reg(charger->max77888->i2c,
+		MAX77888_CHG_REG_CHG_CNFG_00,
+		en_chg_cnfg_00,
+		(CHG_CNFG_00_OTG_MASK
+		| CHG_CNFG_00_BOOST_MASK
+		| CHG_CNFG_00_DIS_MUIC_CTRL_MASK));
+
+	if (enable) {
+		/* VB voltage interrupt Unmask */
+		max77888_read_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_INTMASK2, &int_mask2);
+		int_mask2 |= (1 << 4);
+		max77888_write_reg(charger->max77888->muic,
+			MAX77888_MUIC_REG_INTMASK2, int_mask2);
+
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_00, 0x05);
+
+		/* enable charger interrupt */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_INT_MASK, chg_int_state);
+		max77888_read_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_INT_MASK, &int_mask);
+
+		/* Update CHG_CNFG_11 to 0x50(5V) */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_11, 0x50);
+	} else {
+		/* Update CHG_CNFG_11 to 0x00(3V) */
+		max77888_write_reg(charger->max77888->i2c,
+			MAX77888_CHG_REG_CHG_CNFG_11, 0x00);
+	}
+}
+
 static int max77888_chg_get_property(struct power_supply *psy,
 		enum power_supply_property psp,
 		union power_supply_propval *val)
@@ -708,8 +864,6 @@ static int max77888_chg_get_property(struct power_supply *psy,
 		val->intval = max77888_get_battery_present(charger);
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
-		break;
-	case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
 		break;
 	default:
 		return -EINVAL;
@@ -916,43 +1070,10 @@ static int max77888_chg_set_property(struct power_supply *psy,
 		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
-		if (val->intval) {
-			en_chg_cnfg_00 &= ~(CHG_CNFG_00_CHG_MASK
-					 | CHG_CNFG_00_BUCK_MASK);
-			en_chg_cnfg_00 |= (CHG_CNFG_00_OTG_MASK
-					| CHG_CNFG_00_BOOST_MASK
-					| CHG_CNFG_00_DIS_MUIC_CTRL_MASK);
-			max77888_update_reg(charger->max77888->i2c,
-					    MAX77888_CHG_REG_CHG_CNFG_00,
-					    en_chg_cnfg_00,
-					    (CHG_CNFG_00_CHG_MASK
-					     | CHG_CNFG_00_OTG_MASK
-					     | CHG_CNFG_00_BUCK_MASK
-					     | CHG_CNFG_00_BOOST_MASK
-					     | CHG_CNFG_00_DIS_MUIC_CTRL_MASK));
-#if defined (CONFIG_SEC_FACTORY)
-			/* JIGSet High Impedance */
-			max77888_write_reg(charger->max77888->muic,
-				MAX77888_MUIC_REG_CTRL3, 0x3);
-#endif /* CONFIG_SEC_FACTORY */
-		} else {
-			en_chg_cnfg_00 = ~(CHG_CNFG_00_OTG_MASK
-					| CHG_CNFG_00_BOOST_MASK
-					| CHG_CNFG_00_DIS_MUIC_CTRL_MASK);
-			en_chg_cnfg_00 |= CHG_CNFG_00_BUCK_MASK;
-			max77888_update_reg(charger->max77888->i2c,
-					    MAX77888_CHG_REG_CHG_CNFG_00,
-					    en_chg_cnfg_00,
-					    (CHG_CNFG_00_OTG_MASK
-					     | CHG_CNFG_00_BUCK_MASK
-					     | CHG_CNFG_00_BOOST_MASK
-					     | CHG_CNFG_00_DIS_MUIC_CTRL_MASK));
-#if defined (CONFIG_SEC_FACTORY)
-			/* JIGSet Auto detection */
-			max77888_write_reg(charger->max77888->muic,
-				MAX77888_MUIC_REG_CTRL3, 0x0);
-#endif /* CONFIG_SEC_FACTORY */
-		}
+		max77888_otg_control(charger, val->intval);
+		break;
+	case POWER_SUPPLY_PROP_CHARGE_POWERED_OTG_CONTROL:
+		max77888_powered_otg_control(charger, val->intval);
 		break;
 #if defined(CONFIG_SAMSUNG_BATTERY_ENG_TEST)
 	case POWER_SUPPLY_PROP_CHARGE_TYPE:
@@ -992,9 +1113,9 @@ static void max77888_charger_initialize(struct max77888_charger_data *charger)
 	u8 reg_data;
 	pr_debug("%s\n", __func__);
 
-	/* unmasked: CHGIN_I, WCIN_I, BATP_I, BYP_I	*/
+	/* unmasked: CHGIN_I, BATP_I, BYP_I	*/
 	max77888_write_reg(charger->max77888->i2c,
-		MAX77888_CHG_REG_CHG_INT_MASK, 0x9a);
+		MAX77888_CHG_REG_CHG_INT_MASK, 0xa2);
 
 	/* unlock charger setting protect */
 	reg_data = (0x03 << 2);

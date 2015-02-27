@@ -190,6 +190,7 @@ static int usb_handle_notification(struct notifier_block *nb,
 			pr_err("usb notifier: %s - ACTION Error!\n", __func__);
 		break;
 	case ATTACHED_DEV_OTG_MUIC:
+	case ATTACHED_DEV_USB_LANHUB_MUIC:
 	case ATTACHED_DEV_HMT_MUIC:
 		if( action == MUIC_NOTIFY_CMD_DETACH)
 			send_otg_notify(o_notify, NOTIFY_EVENT_HOST, 0);

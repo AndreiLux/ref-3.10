@@ -106,6 +106,13 @@ config FAT_VIRTUAL_XATTR
 	help
 	  Modification of FAT filesystem for virtual xattr
 
+config FAT_VIRTUAL_XATTR_SELINUX_LABEL
+	string "Default string for SELinux label"
+	depends on FAT_FS && FAT_VIRTUAL_XATTR
+	default "u:object_r:sdcard_external:s0"
+	help
+	  Set this to the default string for SELinux label.
+
 config FAT_SUPPORT_STLOG
 	bool "Enable storage log"
 	default y

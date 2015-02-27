@@ -44,8 +44,5 @@ s32 dhd_cfg80211_down(struct bcm_cfg80211 *cfg);
 s32 dhd_cfg80211_set_p2p_info(struct bcm_cfg80211 *cfg, int val);
 s32 dhd_cfg80211_clean_p2p_info(struct bcm_cfg80211 *cfg);
 s32 dhd_config_dongle(struct bcm_cfg80211 *cfg);
-#ifdef PCIE_FULL_DONGLE
-void wl_roam_flowring_cleanup(struct bcm_cfg80211 *cfg);
-#endif
 
 #endif /* __DHD_CFG80211__ */

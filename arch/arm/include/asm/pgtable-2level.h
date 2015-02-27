@@ -167,10 +167,17 @@ static inline pmd_t *pmd_offset(pud_t *pud, unsigned long addr)
 #define pmd_bad(pmd)		(pmd_val(pmd) & 2)
 
 #ifdef  CONFIG_TIMA_RKP_L1_TABLES
-#if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
-        asm(".arch_extension sec");
-#endif
-#endif
+#ifndef rkp_call
+#ifdef CONFIG_HYP_RKP 
+#define rkp_call "hvc #10\n"
+asm(".arch_extension virt");
+#else
+#define rkp_call "smc #10\n" 
+asm(".arch_extension sec\n");
+#endif 
+#endif	//CONFIG_HYP_RKP
+#endif 
+
 #ifdef	CONFIG_TIMA_RKP_L1_TABLES
 static inline void copy_pmd(pmd_t *pmdpd, pmd_t *pmdps)
 {
@@ -189,27 +196,18 @@ static inline void copy_pmd(pmd_t *pmdpd, pmd_t *pmdps)
 		"add    r1, r1, #4\n"
 		"mcr    p15, 0, r1, c7, c14, 1\n"
 		"dsb\n"
-		"smc    #9\n"
-		//"sub    r1, r1, #4\n"
-		//"mcr    p15, 0, r1, c7, c6,  1\n"
-		//"dsb\n"
-		//"mov    %0, r4\n"
-		//"add    r1, r1, #4\n"
-		//"mcr    p15, 0, r1, c7, c6,  1\n"
-		//"dsb\n"
+		rkp_call
+//		"mcr    p15, 0, r1, c7, c10,  1\n"
+//		"sub    r1, r1, #4\n"
+//		"mcr    p15, 0, r1, c7, c10,  1\n"
+//		"dsb\n"
 		"mov    r0, #0\n"
 		"mcr    p15, 0, r0, c8, c3, 0\n"
 		"dsb\n"
 		"isb\n"
 		"ldmfd   sp!, {r0-r4}\n"
 		:"=r"(tima_wr_out):"r"(cmd_id),"r"((unsigned long)pmdpd),"r"(pmdps[0]),"r"(pmdps[1]):"r0","r1","r2","r3","r4","cc");
-#if 0 
-		if (pmdpd[0] != pmdps[0] || pmdpd[1] != pmdps[1]) {
-			printk(KERN_ERR"TIMA: pmdpd[0] %lx != pmdps[0] %lx -- pmdpd[1] %lx != pmdps[1] %lx in tima_wr_out = %lx\n",
-					(unsigned long) pmdpd[0], (unsigned long) pmdps[0], (unsigned long) pmdpd[1], (unsigned long) pmdps[1], tima_wr_out);
-			tima_send_cmd((unsigned long) pmdpd[0], 0x3f810221);
-		}
-#endif 
+
 		flush_pmd_entry(pmdpd);
 }
 #else
@@ -223,7 +221,7 @@ static inline void copy_pmd(pmd_t *pmdpd, pmd_t *pmdps)
 
 #ifdef  CONFIG_TIMA_RKP_L1_TABLES
 #if __GNUC__ >= 4 && __GNUC_MINOR__ >= 6
-        asm(".arch_extension sec");
+        asm(".arch_extension virt");
 #endif
 #endif
 
@@ -247,12 +245,11 @@ static inline void pmd_clear(pmd_t *pmdp)
 		"add    r1, r1, #4\n"
 		"mcr    p15, 0, r1, c7, c14, 1\n"
 		"dsb\n"
-		"smc    #10\n"
-		//"mcr    p15, 0, r1, c7, c6,  1\n"
-		//"dsb\n"
-		//"sub    r1, r1, #4\n"
-		//"mcr    p15, 0, r1, c7, c6,  1\n"
-		//"dsb\n"
+		rkp_call
+//		"mcr    p15, 0, r1, c7, c10,  1\n"
+//		"sub    r1, r1, #4\n"
+//		"mcr    p15, 0, r1, c7, c10,  1\n"
+//		"dsb\n"
 		"mov    r0, #0\n" 
 		"mov    %0, r0\n"
 		"mcr    p15, 0, r0, c8, c3, 0\n"

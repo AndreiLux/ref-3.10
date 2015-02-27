@@ -116,6 +116,8 @@ int sensor_imx135_probe(struct i2c_client *client,
 	module->pixel_width = module->active_width + 16;
 	module->pixel_height = module->active_height + 10;
 	module->max_framerate = 120;
+	module->sensor_maker = "SONY";
+	module->sensor_name = "IMX135";
 	module->setfile_name = "setfile_imx135.bin";
 	module->cfgs = ARRAY_SIZE(config_imx135);
 	module->cfg = config_imx135;

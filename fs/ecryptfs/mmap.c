@@ -276,8 +276,8 @@ out:
 	else {
 		SetPageUptodate(page);
 #ifdef CONFIG_SDP
-	if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
-		SetPageSensitive(page);
+		if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
+			SetPageSensitive(page);
 #endif
 	}
 	ecryptfs_printk(KERN_DEBUG, "Unlocking page with index = [0x%.16lx]\n",

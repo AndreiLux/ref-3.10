@@ -194,11 +194,18 @@ STATIC void atom_prio_fast_start_callback(struct kbase_device *kbdev,
 		struct kbase_jd_atom *enumerated_katom, int slot, void *private)
 {
 	struct kbase_jd_atom *target_katom = (struct kbase_jd_atom *)private;
+	base_jd_core_req target_frag_bit = target_katom->core_req & BASE_JD_REQ_FS;
+	base_jd_core_req enumerated_frag_bit = enumerated_katom->core_req & BASE_JD_REQ_FS;
 
 	KBASE_DEBUG_ASSERT(target_katom);
 
 	/* Only stopping atoms from the same context as the target */
 	if (target_katom->kctx != enumerated_katom->kctx)
+		return;
+
+	/* Only stopping atoms of the same type */
+	if (!DEFAULT_ATOM_PRIORITY_BLOCKS_ENTIRE_GPU &&
+			target_frag_bit != enumerated_frag_bit)
 		return;
 
 	/* Check target has higher prio than enumerated */
@@ -232,12 +239,14 @@ STATIC void kbasep_js_ctx_attr_try_fast_start_atom(struct kbase_device *kbdev,
 	if (!js_kctx_info->ctx.is_scheduled)
 		return;
 
-	priority_ctx_attr = kbasep_js_ctx_attr_sched_prio_to_attr(katom->sched_priority);
+	priority_ctx_attr = kbasep_js_ctx_attr_sched_prio_to_attr(katom->core_req,
+			katom->sched_priority);
 
-	/* We only need to soft-stop atoms at a lower priority level when the
-	 * first new higher priority atom is added. This is because we can then
-	 * guarantee future atoms of this higher priority level will always run
-	 * next until they're all complete.
+	/* We only need to soft-stop atoms (of this type) at a lower priority
+	 * level when the first new higher priority atom (of this type) is
+	 * added. This is because we can then guarantee future atoms (of this
+	 * type) of this higher priority level will always run next until
+	 * they're all complete.
 	 *
 	 * If an atom with an even higher priority level occurs later, it might
 	 * need to soft-stop running atoms, but again, only when the first new
@@ -245,20 +254,22 @@ STATIC void kbasep_js_ctx_attr_try_fast_start_atom(struct kbase_device *kbdev,
 	if (kbasep_js_ctx_attr_count_on_ctx(kctx, priority_ctx_attr) != 1)
 		return;
 
-	/* Check priorities highest to lowest, starting at the next lowest
-	 * level after this atom's priority */
+	/* Check priorities highest to lowest for this atom type, starting at
+	 * the next lowest level after this atom's priority */
 	for (prio_test_level = katom->sched_priority + 1;
 	     prio_test_level <= KBASE_JS_ATOM_SCHED_PRIO_MAX;
 	     ++prio_test_level) {
-		enum kbasep_js_ctx_attr ctx_attr_test_level = kbasep_js_ctx_attr_sched_prio_to_attr(prio_test_level);
+		enum kbasep_js_ctx_attr ctx_attr_test_level = kbasep_js_ctx_attr_sched_prio_to_attr(katom->core_req,
+				prio_test_level);
 
-		/* Try next priority level if no atoms at the test level */
+		/* Try next priority level if no atoms of this type at the test level */
 		if (!kbasep_js_ctx_attr_is_attr_on_ctx(kctx, ctx_attr_test_level))
 			continue;
 
 		/* Sweep the currently running atoms for those:
 		 * a) from this context
-		 * b) that are lower priority than the current atom */
+		 * b) of this type (frag vs non-frag)
+		 * c) that are lower priority than the current atom */
 		kbase_jm_enumerate_running_atoms_locked(kbdev,
 				&atom_prio_fast_start_callback, katom);
 
@@ -358,6 +369,7 @@ void kbasep_js_ctx_attr_ctx_retain_atom(struct kbase_device *kbdev, struct kbase
 {
 	mali_bool runpool_state_changed = MALI_FALSE;
 	base_jd_core_req core_req;
+	enum kbasep_js_ctx_attr prio_attr;
 
 	KBASE_DEBUG_ASSERT(kbdev != NULL);
 	KBASE_DEBUG_ASSERT(kctx != NULL);
@@ -379,9 +391,11 @@ void kbasep_js_ctx_attr_ctx_retain_atom(struct kbase_device *kbdev, struct kbase
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_retain_attr(kbdev, kctx, KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES);
 	}
 
-	/* Atom priority propagated to ctx attr */
+	/* Atom priority for frag/non-frag propagated to ctx attr */
+	prio_attr = kbasep_js_ctx_attr_sched_prio_to_attr(core_req,
+			katom->sched_priority);
 	runpool_state_changed |= kbasep_js_ctx_attr_ctx_retain_attr(kbdev, kctx,
-			kbasep_js_ctx_attr_sched_prio_to_attr(katom->sched_priority));
+			prio_attr);
 
 	/* Attempt fast start when this atom is higher priority than others */
 	kbasep_js_ctx_attr_try_fast_start_atom(kbdev, kctx, katom);
@@ -443,7 +457,8 @@ mali_bool kbasep_js_ctx_attr_ctx_release_atom(struct kbase_device *kbdev, struct
 	/* Atom priority removed from ctx attr */
 	{
 		enum kbasep_js_ctx_attr priority_attr;
-		priority_attr = kbasep_js_ctx_attr_sched_prio_to_attr(katom_retained_state->sched_priority);
+		priority_attr = kbasep_js_ctx_attr_sched_prio_to_attr(katom_retained_state->core_req,
+				katom_retained_state->sched_priority );
 		runpool_state_changed |= kbasep_js_ctx_attr_ctx_release_attr(kbdev, kctx,
 				priority_attr);
 

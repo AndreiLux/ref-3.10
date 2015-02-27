@@ -212,6 +212,7 @@ struct max86900_device_data
 	struct i2c_client *client;          // represents the slave device
 	struct device *dev;
 	struct input_dev *hrm_input_dev;
+	struct input_dev *hrmled_input_dev;
 	struct input_dev *uv_input_dev;
 	struct mutex i2clock;
 	struct mutex activelock;
@@ -236,6 +237,7 @@ struct max86900_device_data
 	u8 look_mode_red;
 	u8 eol_test_is_enable;
 	u8 uv_eol_test_is_enable;
+	u8 isEnable_led;
 	u8 part_type;
 	u8 default_current;
 	u8 default_current1;

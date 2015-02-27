@@ -30,6 +30,14 @@ config LINK_DEVICE_WITH_SBD_ARCH
 	depends on SEC_MODEM_V1
 	default n
 
+config LINK_DEVICE_NAPI
+	bool "Use Rx polling (NAPI)"
+	depends on SEC_MODEM_V1
+	default n
+	help
+	NAPI is a new driver API designed to reduce CPU and interrupt load
+	when the driver is receiving lots of packets.
+
 config LINK_DEVICE_C2C
 	bool "Pseudo shared-memory with chip-to-chip (C2C) interface"
 	depends on SEC_MODEM_V1
@@ -79,6 +87,12 @@ config UMTS_MODEM_SH222AP
 
 config UMTS_MODEM_SS300
 	bool "Samsung SS300 modem"
+	select BOOT_DEVICE_SPI
+	select LINK_DEVICE_LLI
+	select LINK_POWER_MANAGEMENT_WITH_FSM
+
+config UMTS_MODEM_SS333
+	bool "Samsung SS333 modem"
 	select BOOT_DEVICE_SPI
 	select LINK_DEVICE_LLI
 	select LINK_POWER_MANAGEMENT_WITH_FSM

@@ -130,16 +130,22 @@ ssize_t ktd2692_store(struct device *dev,
 	global_ktd2692data->sysfs_input_data = value;
 
 	if (value <= 0) {
-		LED_INFO("KTD2692-TORCH OFF.(%d)\n", value);
+		ret = gpio_request(global_ktd2692data->flash_control, "ktd2692_led_control");
+		if (ret) {
+			LED_ERROR("Failed to requeset ktd2692_led_control\n");
+		} else {
+			LED_INFO("KTD2692-TORCH OFF. : E(%d)\n", value);
 
-		global_ktd2692data->mode_status = KTD2692_DISABLES_MOVIE_FLASH_MODE;
-		spin_lock_irqsave(&global_ktd2692data->int_lock, flags);
-		ktd2692_write_data(global_ktd2692data->mode_status|
-							KTD2692_ADDR_MOVIE_FLASHMODE_CONTROL);
-		spin_unlock_irqrestore(&global_ktd2692data->int_lock, flags);
+			global_ktd2692data->mode_status = KTD2692_DISABLES_MOVIE_FLASH_MODE;
+			spin_lock_irqsave(&global_ktd2692data->int_lock, flags);
+			ktd2692_write_data(global_ktd2692data->mode_status|
+								KTD2692_ADDR_MOVIE_FLASHMODE_CONTROL);
+			spin_unlock_irqrestore(&global_ktd2692data->int_lock, flags);
 
-		ktd2692_setGpio(0);
-		gpio_free(global_ktd2692data->flash_control);
+			ktd2692_setGpio(0);
+			gpio_free(global_ktd2692data->flash_control);
+			LED_INFO("KTD2692-TORCH OFF. : X(%d)\n", value);
+		}
 
 		pinctrl = devm_pinctrl_get_select(global_dev, "is");
 		if (IS_ERR(pinctrl))
@@ -154,22 +160,25 @@ ssize_t ktd2692_store(struct device *dev,
 		if (ret) {
 			LED_ERROR("Failed to requeset ktd2692_led_control\n");
 		} else {
-			LED_INFO("KTD2692-TORCH ON.(%d)\n", value);
-		}
+			LED_INFO("KTD2692-TORCH ON. : E(%d)\n", value);
 
-		global_ktd2692data->mode_status = KTD2692_ENABLE_MOVIE_MODE;
-		spin_lock_irqsave(&global_ktd2692data->int_lock, flags);
-		ktd2692_write_data(global_ktd2692data->LVP_Voltage|
-							KTD2692_ADDR_LVP_SETTING);
+			global_ktd2692data->mode_status = KTD2692_ENABLE_MOVIE_MODE;
+			spin_lock_irqsave(&global_ktd2692data->int_lock, flags);
+			ktd2692_write_data(global_ktd2692data->LVP_Voltage|
+								KTD2692_ADDR_LVP_SETTING);
 #if 0	/* use the internel defualt setting */
-		ktd2692_write_data(global_ktd2692data->flash_timeout|
-							KTD2692_ADDR_FLASH_TIMEOUT_SETTING);
+			ktd2692_write_data(global_ktd2692data->flash_timeout|
+								KTD2692_ADDR_FLASH_TIMEOUT_SETTING);
 #endif
-		ktd2692_write_data(global_ktd2692data->movie_current_value|
-							KTD2692_ADDR_MOVIE_CURRENT_SETTING);
-		ktd2692_write_data(global_ktd2692data->mode_status|
-							KTD2692_ADDR_MOVIE_FLASHMODE_CONTROL);
-		spin_unlock_irqrestore(&global_ktd2692data->int_lock, flags);
+			ktd2692_write_data(global_ktd2692data->movie_current_value|
+								KTD2692_ADDR_MOVIE_CURRENT_SETTING);
+			ktd2692_write_data(global_ktd2692data->mode_status|
+								KTD2692_ADDR_MOVIE_FLASHMODE_CONTROL);
+			spin_unlock_irqrestore(&global_ktd2692data->int_lock, flags);
+
+			gpio_free(global_ktd2692data->flash_control);
+			LED_INFO("KTD2692-TORCH ON. : X(%d)\n", value);
+		}
 	}
 
 	if (!IS_ERR(pinctrl))

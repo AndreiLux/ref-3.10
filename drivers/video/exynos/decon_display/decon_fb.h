@@ -26,6 +26,7 @@
  */
 #define S3C_FB_MAX_WIN	(5)
 #define S3C_WIN_UPDATE_IDX      (5)
+#define DEV_DECON	6
 #ifdef CONFIG_FB_EXYNOS_FIMD_MC
 #define SYSREG_MIXER0_VALID	(1 << 7)
 #define SYSREG_MIXER1_VALID	(1 << 4)
@@ -251,6 +252,7 @@ struct s3c_reg_data {
 	u32 		w[S3C_FB_MAX_WIN + 1];
 	u32 		h[S3C_FB_MAX_WIN + 1];
 	bool		need_update;
+	bool		protection[S3C_FB_MAX_WIN];
 };
 #endif
 
@@ -328,6 +330,7 @@ struct s3c_fb_win_rect {
 	int	y;
 	__u32	w;
 	__u32	h;
+	bool	protection;
 };
 
 
@@ -420,6 +423,7 @@ struct s3c_fb {
 	unsigned int		pcd_detected;
 	struct notifier_block	pcd_reboot_noti;
 #endif
+	bool	protected_content;
 };
 
 struct s3c_fb_rect {
@@ -510,6 +514,7 @@ struct s3c_fb_win_config {
 	int	y;
 	__u32	w;
 	__u32	h;
+	bool	protection;
 };
 
 #define WIN_CONFIG_DMA(x) (regs->otf_state[x] != S3C_FB_WIN_STATE_OTF)

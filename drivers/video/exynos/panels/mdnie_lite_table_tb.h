@@ -1,7 +1,7 @@
 #ifndef __MDNIE_TABLE_H__
 #define __MDNIE_TABLE_H__
 
-/* 2014.09.01 */
+/* 2014.12.26 */
 
 /* SCR Position can be different each panel */
 #define MDNIE_RED_R		133		/* ASCR_WIDE_CR[7:0] */
@@ -7739,7 +7739,7 @@ static unsigned char LOCAL_CE_1[] = {
 	0x01, //cs_gain 10
 	0x40,
 	0x00, //curve_1_b
-	0x7b, //curve_1_a
+	0x6b, //curve_1_a
 	0x03, //curve_2_b
 	0x48, //curve_2_a
 	0x08, //curve_3_b
@@ -7764,26 +7764,26 @@ static unsigned char LOCAL_CE_1[] = {
 	0x28, //curve12_a
 	0x19, //curve13_b
 	0x22, //curve13_a
-	0x70, //curve14_b
-	0xf7, //curve14_a
-	0x70, //curve15_b
-	0xf7, //curve15_a
-	0x70, //curve16_b
-	0xf7, //curve16_a
-	0x70, //curve17_b
-	0xf7, //curve17_a
-	0x66, //curve18_b
-	0x1a, //curve18_a
-	0x76, //curve19_b
-	0x14, //curve19_a
-	0x82, //curve20_b
-	0x11, //curve20_a
-	0x92, //curve21_b
-	0x0e, //curve21_a
-	0x98, //curve22_b
-	0x0d, //curve22_a
-	0x9f, //curve23_b
-	0x0c, //curve23_a
+	0x03, //curve14_b
+	0xb3, //curve14_a
+	0x03, //curve15_b
+	0xb3, //curve15_a
+	0x03, //curve16_b
+	0xb3, //curve16_a
+	0x03, //curve17_b
+	0xb3, //curve17_a
+	0x27, //curve18_b
+	0x21, //curve18_a
+	0x34, //curve19_b
+	0x1c, //curve19_a
+	0x40, //curve20_b
+	0x19, //curve20_a
+	0x45, //curve21_b
+	0x18, //curve21_a
+	0x58, //curve22_b
+	0x15, //curve22_a
+	0x58, //curve23_b
+	0x15, //curve23_a
 	0x00, //curve24_b
 	0xFF, //curve24_a
 	0x30, //linear_on ascr_skin_on strength 0 0 00000
@@ -7806,8 +7806,8 @@ static unsigned char LOCAL_CE_1[] = {
 	0x34,
 	0x83,
 	0xff, //ascr_skin_Rr
-	0x50, //ascr_skin_Rg
-	0x60, //ascr_skin_Rb
+	0x30, //ascr_skin_Rg
+	0x30, //ascr_skin_Rb
 	0xff, //ascr_skin_Yr
 	0xff, //ascr_skin_Yg
 	0x00, //ascr_skin_Yb

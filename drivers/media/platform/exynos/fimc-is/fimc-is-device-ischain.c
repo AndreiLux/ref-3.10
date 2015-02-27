@@ -76,8 +76,10 @@
 #define FIMC_IS_SETFILE_VER_SIZE		52
 
 #define FIMC_IS_CAL_SDCARD			"/data/cal_data.bin"
+#define FIMC_IS_CAL_SDCARD_FRONT			"/data/cal_data_front.bin"
 #define FIMC_IS_MAX_FW_SIZE			(2048 * 1024)
 #define FIMC_IS_CAL_START_ADDR			(0x013D0000)
+#define FIMC_IS_CAL_START_ADDR_FRONT			(0x013E0000)
 #define FIMC_IS_CAL_RETRY_CNT			(2)
 #define FIMC_IS_FW_RETRY_CNT			(2)
 #endif
@@ -109,14 +111,18 @@ static struct dentry		*debugfs_file;
 static char fw_name[100];
 //static char setf_name[100];
 
-#if defined(CONFIG_CAMERA_EEPROM_SUPPORT)
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
 #define FIMC_IS_MAX_CAL_SIZE	(8 * 1024)
 #else
 #define FIMC_IS_MAX_CAL_SIZE	(64 * 1024)
 #endif
+#define FIMC_IS_MAX_CAL_SIZE_FRONT	(8 * 1024)
+
 #define FIMC_IS_DEFAULT_CAL_SIZE	(20 * 1024)
 extern bool crc32_check;
 extern bool crc32_header_check;
+extern bool crc32_check_front;
+extern bool crc32_header_check_front;
 
 static int cam_id;
 #ifdef CONFIG_USE_VENDER_FEATURE
@@ -1199,99 +1205,83 @@ out:
 	return ret;
 }
 
-#if defined(CONFIG_CAMERA_EEPROM_SUPPORT)
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR) || defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
 static int fimc_is_ischain_loadcalb_eeprom(struct fimc_is_device_ischain *device,
-	struct fimc_is_module_enum *active_sensor)
+	struct fimc_is_module_enum *active_sensor, int id)
 	{
 		int ret = 0;
 #ifdef CONFIG_USE_VENDER_FEATURE
 		char *cal_ptr;
 		char *cal_buf = NULL;
-		struct file *fp = NULL;
-		mm_segment_t old_fs;
-		long fsize, nread;
-		char calfile_path[256];
+		u32 start_addr = 0;
+		int cal_size = 0;
+		struct fimc_is_from_info *finfo;
 
 		mdbgd_ischain("%s\n", device, __func__);
 
-		cal_ptr = (char *)(device->imemory.kvaddr + FIMC_IS_CAL_START_ADDR);
-
-		old_fs = get_fs();
-		set_fs(KERNEL_DS);
-		memset(calfile_path, 0x00, sizeof(calfile_path));
-		snprintf(calfile_path, sizeof(calfile_path), "%s", FIMC_IS_CAL_SDCARD);
-		fp = filp_open(calfile_path, O_RDONLY, 0);
-		if (IS_ERR(fp)) {
-			mwarn("failed to filp_open", device);
-			memset((void *)cal_ptr, 0xCC, FIMC_IS_MAX_CAL_SIZE);
-			fp = NULL;
-			ret = -EIO;
-			goto out;
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
+		if (id == SENSOR_POSITION_FRONT) {
+			start_addr = FIMC_IS_CAL_START_ADDR_FRONT;
+			cal_size = FIMC_IS_MAX_CAL_SIZE_FRONT;
+			fimc_is_sec_get_sysfs_finfo_front(&finfo);
+			fimc_is_sec_get_front_cal_buf(&cal_buf);
+		} else
+#endif
+		{
+			start_addr = FIMC_IS_CAL_START_ADDR;
+			cal_size = FIMC_IS_MAX_CAL_SIZE;
+			fimc_is_sec_get_sysfs_finfo(&finfo);
+			fimc_is_sec_get_cal_buf(&cal_buf);
 		}
 
-		fsize = fp->f_path.dentry->d_inode->i_size;
-		if (fsize != FIMC_IS_MAX_CAL_SIZE) {
-			merr("cal_data.bin file size is invalid(%ld size)",
-				device, fsize);
-			memset((void *)cal_ptr, 0xAC, FIMC_IS_MAX_CAL_SIZE);
-			ret = -EINVAL;
-			goto out;
-		}
-
-		info("start, file path %s, size %ld Bytes\n",
-			calfile_path, fsize);
-		cal_buf = vmalloc(fsize);
-		if (!cal_buf) {
-			dev_err(&device->pdev->dev,
-				"failed to allocate memory\n");
-			ret = -ENOMEM;
-			goto out;
-		}
-		nread = vfs_read(fp, (char __user *)cal_buf, fsize, &fp->f_pos);
-		if (nread != fsize) {
-			dev_err(&device->pdev->dev,
-				"failed to read firmware file, %ld Bytes\n", nread);
-			ret = -EIO;
-			goto out;
-		}
+		cal_ptr = (char *)(device->imemory.kvaddr + start_addr);
 
 		info("CAL DATA : MAP ver : %c%c%c%c\n", cal_buf[0x30], cal_buf[0x31],
 			cal_buf[0x32], cal_buf[0x33]);
 
 		/* CRC check */
-		if (crc32_check == true) {
-			memcpy((void *)(cal_ptr) ,(void *)cal_buf, FIMC_IS_MAX_CAL_SIZE);
-			info("Camera : the dumped Cal. data was applied successfully.\n");
-		} else {
-			if (crc32_header_check == true) {
-				pr_err("Camera : CRC32 error but only header section is no problem.\n");
-				memset((void *)(cal_ptr + 0x1000), 0xFF, FIMC_IS_MAX_CAL_SIZE - 0x1000);
+		if (id == SENSOR_POSITION_FRONT) {
+			if (crc32_check_front == true) {
+				memcpy((void *)(cal_ptr) ,(void *)cal_buf, cal_size);
+				info("Front Camera : the dumped Cal. data was applied successfully.\n");
 			} else {
-				pr_err("Camera : CRC32 error for all section.\n");
-				memset((void *)(cal_ptr), 0xFF, FIMC_IS_MAX_CAL_SIZE);
-				ret = -EIO;
+				if (crc32_header_check_front == true) {
+					pr_err("Front Camera : CRC32 error but only header section is no problem.\n");
+					memset((void *)(cal_ptr + 0x1000), 0xFF, cal_size - 0x1000);
+				} else {
+					pr_err("Front Camera : CRC32 error for all section.\n");
+					memset((void *)(cal_ptr), 0xFF, cal_size);
+					ret = -EIO;
+				}
+			}
+		} else {
+			if (crc32_check == true) {
+				memcpy((void *)(cal_ptr) ,(void *)cal_buf, cal_size);
+				info("Rear Camera : the dumped Cal. data was applied successfully.\n");
+			} else {
+				if (crc32_header_check == true) {
+					pr_err("Rear Camera : CRC32 error but only header section is no problem.\n");
+					memset((void *)(cal_ptr + 0x1000), 0xFF, cal_size - 0x1000);
+				} else {
+					pr_err("Rear Camera : CRC32 error for all section.\n");
+					memset((void *)(cal_ptr), 0xFF, cal_size);
+					ret = -EIO;
+				}
 			}
 		}
 
-out:
-		fimc_is_ischain_cache_flush(device, FIMC_IS_CAL_START_ADDR,
-			FIMC_IS_MAX_CAL_SIZE);
+		fimc_is_ischain_cache_flush(device, start_addr, cal_size);
 		if (ret)
 			mwarn("calibration loading is fail", device);
 		else
 			mwarn("calibration loading is success", device);
 
-		if (cal_buf)
-			vfree(cal_buf);
-		if (fp)
-			filp_close(fp, current->files);
-
-		set_fs(old_fs);
-
 #endif
 		return ret;
 	}
-#else
+#endif
+
+#if !defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
 static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *device,
 	struct fimc_is_module_enum *active_sensor)
 {
@@ -1413,7 +1403,6 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *device, int on)
 	int i;
 #endif
 	int ret = 0;
-	u32 timeout;
 	u32 debug;
 #if defined(CONFIG_PM_RUNTIME)
 	int rpm_ret;
@@ -1440,23 +1429,50 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *device, int on)
 		fimc_is_runtime_resume(dev);
 		info("%s(%d) - fimc_is runtime resume complete\n", __func__, on);
 #endif
-		fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
 
-		if (!sysfs_finfo->is_caldata_read) {
-#if defined(CONFIG_CAMERA_EEPROM_SUPPORT)
-			ret = fimc_is_sec_fw_sel_eeprom(dev, fw_name, setf_name, 0);
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
+		if (core->id == SENSOR_POSITION_FRONT) {
+			fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+			if (!sysfs_finfo->is_caldata_read) {
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
+				ret = fimc_is_sec_fw_sel_eeprom(dev, fw_name, setf_name, SENSOR_POSITION_REAR, true);
 #else
-			ret = fimc_is_sec_fw_sel(core, dev, fw_name, setf_name, 0);
+				ret = fimc_is_sec_fw_sel(core, dev, fw_name, setf_name, true);
 #endif
-			if (ret < 0) {
-				err("failed to select firmware (%d)", ret);
-				clear_bit(FIMC_IS_ISCHAIN_LOADED, &device->state);
-				goto p_err_pm;
+			} else {
+				snprintf(fw_name, sizeof(fw_name), "%s", sysfs_finfo->load_fw_name);
+			}
+			fimc_is_sec_get_sysfs_finfo_front(&sysfs_finfo);
+			if (!sysfs_finfo->is_caldata_read) {
+				ret = fimc_is_sec_fw_sel_eeprom(dev, fw_name, setf_name, SENSOR_POSITION_FRONT, false);
+				if (ret < 0) {
+					err("failed to select firmware (%d)", ret);
+					clear_bit(FIMC_IS_ISCHAIN_LOADED, &device->state);
+					goto p_err_pm;
+				}
+			}
+		} else
+#endif
+		{
+			fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+			if (!sysfs_finfo->is_caldata_read) {
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
+				ret = fimc_is_sec_fw_sel_eeprom(dev, fw_name, setf_name, SENSOR_POSITION_REAR, false);
+#else
+				ret = fimc_is_sec_fw_sel(core, dev, fw_name, setf_name, false);
+#endif
+				if (ret < 0) {
+					err("failed to select firmware (%d)", ret);
+					clear_bit(FIMC_IS_ISCHAIN_LOADED, &device->state);
+					goto p_err_pm;
+				}
+			} else {
+				snprintf(fw_name, sizeof(fw_name), "%s", sysfs_finfo->load_fw_name);
 			}
 		}
-		snprintf(fw_name, sizeof(fw_name), "%s", sysfs_finfo->load_fw_name);
+
 #ifdef CONFIG_COMPANION_USE
-//		ret = fimc_is_sec_concord_fw_sel(core, dev, device->pdata, companion_fw_name, master_setf_name, mode_setf_name, 0);
+//		ret = fimc_is_sec_concord_fw_sel(core, dev, device->pdata, companion_fw_name, master_setf_name, mode_setf_name);
 		/*if (ret < 0) {
 			err("failed to select companion firmware (%d)", ret);
 			clear_bit(FIMC_IS_ISCHAIN_LOADED, &device->state);
@@ -1533,55 +1549,6 @@ int fimc_is_ischain_power(struct fimc_is_device_ischain *device, int on)
 
 			fimc_is_a5_power(dev, 0);
 		}
-#if !defined(CONFIG_SOC_EXYNOS4415)
-		timeout = 2000;
-		while ((readl(PMUREG_ISP_STATUS) & 0x1) && timeout) {
-			timeout--;
-			usleep_range(1000, 1000);
-		}
-		if (timeout == 0)
-			err("ISP power down failed(0x%08x)\n",
-				readl(PMUREG_ISP_STATUS));
-#endif
-#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5433)
-		timeout = 1000;
-		while ((readl(PMUREG_CAM0_STATUS) & 0x1) && timeout) {
-			timeout--;
-			usleep_range(1000, 1000);
-		}
-		if (timeout == 0)
-			err("CAM0 power down failed(0x%08x)\n",
-				readl(PMUREG_CAM0_STATUS));
-
-		timeout = 2000;
-		while ((readl(PMUREG_CAM1_STATUS) & 0x1) && timeout) {
-			timeout--;
-			usleep_range(1000, 1000);
-		}
-		if (timeout == 0)
-			err("CAM1 power down failed(CAM1:0x%08x, A5:0x%08x)\n",
-				readl(PMUREG_CAM1_STATUS), readl(PMUREG_ISP_ARM_STATUS));
-#endif /* defined(CONFIG_SOC_EXYNOS5430) */
-#if defined(CONFIG_SOC_EXYNOS4415)
-		timeout = 1000;
-		while ((readl(PMUREG_ISP0_STATUS) & 0x1) && timeout) {
-			timeout--;
-			usleep_range(1000, 1000);
-		}
-		if (timeout == 0)
-			err("ISP0 power down failed(0x%08x)\n", readl(PMUREG_ISP0_STATUS));
-
-		timeout = 1000;
-		while ((readl(PMUREG_ISP1_STATUS) & 0x1) && timeout) {
-			timeout--;
-			usleep_range(1000, 1000);
-		}
-		if (timeout == 0)
-			err("ISP0 power down failed(0x%08x)\n", readl(PMUREG_ISP1_STATUS));
-
-#endif /* defined(CONFIG_SOC_EXYNOS5430) */
-#if defined(CONFIG_SOC_EXYNOS5422)
-#endif /* defined(CONFIG_SOC_EXYNOS5422) */
 #else
 		fimc_is_a5_power(dev, 0);
 
@@ -3017,7 +2984,6 @@ static int fimc_is_ischain_init(struct fimc_is_device_ischain *device,
 		merr("fimc_is_sensor_g_module is fail(%d)", device, ret);
 		goto p_err;
 	}
-
 	if (module->id != module_id) {
 		merr("module id is invalid(%d != %d)", device, module->id, module_id);
 		ret = -EINVAL;
@@ -3026,16 +2992,27 @@ static int fimc_is_ischain_init(struct fimc_is_device_ischain *device,
 
 	if (!test_bit(FIMC_IS_ISCHAIN_REPROCESSING, &device->state)) {
 		/* sensor instance means flite channel */
-		if(sensor->instance == 0){
+		if(sensor->instance == 0) {
 			/* Load calibration data from sensor */
-#if defined(CONFIG_CAMERA_EEPROM_SUPPORT)
-			ret = fimc_is_ischain_loadcalb_eeprom(device, NULL);
+			module->ext.sensor_con.cal_address = FIMC_IS_CAL_START_ADDR;
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_REAR)
+			ret = fimc_is_ischain_loadcalb_eeprom(device, NULL, SENSOR_POSITION_REAR);
 #else
 			ret = fimc_is_ischain_loadcalb(device, NULL);
 #endif
 			if (ret) {
 				err("loadcalb fail, load default caldata\n");
 			}
+		} else {
+#if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
+			module->ext.sensor_con.cal_address = FIMC_IS_CAL_START_ADDR_FRONT;
+			ret = fimc_is_ischain_loadcalb_eeprom(device, NULL, SENSOR_POSITION_FRONT);
+			if (ret) {
+				err("loadcalb fail, load default caldata\n");
+			}
+#else
+			module->ext.sensor_con.cal_address = 0;
+#endif
 		}
 	}
 
@@ -3869,7 +3846,7 @@ static int fimc_is_ischain_s_chain3_size(struct fimc_is_device_ischain *device,
 	fimc_is_ischain_scp_adjust_crop(device, scp_param, &width, &height);
 
 	vctx = device->scp.vctx;
-	queue = &vctx->q_dst;
+	queue = vctx->q_dst;
 
 	chain2_width = device->chain2_width;
 	chain2_height = device->chain2_height;

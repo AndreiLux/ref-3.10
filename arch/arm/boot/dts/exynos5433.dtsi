@@ -2043,17 +2043,17 @@
 			throttle_tab_3 {
 				temp = <95>;
 				freq_clip_max = <900000>;
-				freq_clip_max_kfc = <1300000>;
+				freq_clip_max_kfc = <1000000>;
 			};
 			throttle_tab_4 {
 				temp = <100>;
 				freq_clip_max = <800000>;
-				freq_clip_max_kfc = <1200000>;
+				freq_clip_max_kfc = <400000>;
 			};
 			throttle_tab_5 {
 				temp = <110>;
 				freq_clip_max = <800000>;
-				freq_clip_max_kfc = <800000>;
+				freq_clip_max_kfc = <400000>;
 			};
 		};
 	};
@@ -2182,8 +2182,8 @@
 			};
 			mfc_qos_variant_3 {
 				thrd_mb = <367200>;
-				freq_mfc = <200000>;
-				freq_int = <200000>;
+				freq_mfc = <267000>;
+				freq_int = <267000>;
 				freq_mif = <413000>;
 				freq_cpu = <0>;
 				freq_kfc = <400000>;

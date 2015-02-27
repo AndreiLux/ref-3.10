@@ -30,6 +30,7 @@
 			sii8620,gpio_mhl_sda = <&gpd2 6 0>;
 			sii8620,swing_level_v2 = <0xBB>;
 			sii8620,swing_level_v3 = <0xA2>;
+			sii8620,ref_current = <0x03>;
 
 			clocks = <&clock 4300>;
 			clock-names = "mhl_clkout";

@@ -653,6 +653,7 @@ struct bcm_cfg80211 {
 #if defined(CUSTOMER_HW4) && defined(WL_CFG80211_P2P_DEV_IF)
 	bool down_disc_if;
 #endif /* CUSTOMER_HW4 && WL_CFG80211_P2P_DEV_IF */
+	bool need_wait_afrx;
 };
 
 

@@ -28,6 +28,9 @@
 #include "modem_prj.h"
 #include "modem_utils.h"
 
+static int napi_weight = 64;
+module_param(napi_weight, int, S_IRUGO);
+
 static u8 sipc5_build_config(struct io_device *iod, struct link_device *ld,
 			     unsigned int count);
 
@@ -332,14 +335,16 @@ static int rx_multi_pdp(struct sk_buff *skb)
 #ifdef DEBUG_MODEM_IF_IP_DATA
 	print_ipv4_packet(skb->data, RX);
 #endif
-#if defined(DEBUG_MODEM_IF_IODEV_RX) && defined(DEBUG_MODEM_IF_PS_DATA)
-	log_ipc_pkt(iod->id, IODEV, RX, skb, NULL);
-#endif
+	log_ipc_pkt(PS_RX, iod->id, skb);
 
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	ret = netif_receive_skb(skb);
+#else
 	if (in_interrupt())
 		ret = netif_rx(skb);
 	else
 		ret = netif_rx_ni(skb);
+#endif
 
 	if (ret != NET_RX_SUCCESS) {
 		mif_err_limited("%s: %s<-%s: ERR! netif_rx fail\n",
@@ -380,6 +385,7 @@ static int rx_demux(struct link_device *ld, struct sk_buff *skb)
 	if (atomic_read(&iod->opened) <= 0) {
 		mif_err_limited("%s: ERR! %s is not opened\n",
 				ld->name, iod->name);
+		modemctl_notify_event(MDM_EVENT_CP_ABNORMAL_RX);
 		return -ENODEV;
 	}
 
@@ -916,6 +922,7 @@ static int io_dev_recv_net_skb_from_link_dev(struct io_device *iod,
 		struct modem_ctl *mc = iod->mc;
 		mif_err_limited("%s: %s<-%s: ERR! %s is not opened\n",
 				ld->name, iod->name, mc->name, iod->name);
+		modemctl_notify_event(MDM_EVENT_CP_ABNORMAL_RX);
 		return -ENODEV;
 	}
 
@@ -1383,8 +1390,8 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	/* Copy an IPC message from the user space to the skb */
 	buff = skb_put(skb, count);
 	if (copy_from_user(buff, data, count)) {
-		mif_err("%s->%s: ERR! copy_from_user fail (count %d)\n",
-			iod->name, ld->name, count);
+		mif_err("%s->%s: ERR! copy_from_user fail (count %ld)\n",
+			iod->name, ld->name, (long)count);
 		dev_kfree_skb_any(skb);
 		return -EFAULT;
 	}
@@ -1396,13 +1403,7 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	skbpriv(skb)->lnk_hdr = iod->link_header;
 	skbpriv(skb)->sipc_ch = iod->id;
 
-#ifdef DEBUG_MODEM_IF
-	/* Copy the timestamp to the skb */
-	memcpy(&skbpriv(skb)->ts, &ts, sizeof(struct timespec));
-#endif
-#ifdef DEBUG_MODEM_IF_IODEV_TX
-	log_ipc_pkt(iod->id, IODEV, TX, skb, NULL);
-#endif
+	log_ipc_pkt(IOD_TX, iod->id, skb);
 
 	/* Build SIPC5 link header*/
 	if (cfg) {
@@ -1417,18 +1418,22 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	/**
 	 * Send the skb with a link device
 	 */
+
+#ifdef DEBUG_MODEM_IF
 	trace_mif_event(skb, tx_bytes, FUNC);
+#endif
+
 	ret = ld->send(ld, iod, skb);
 	if (ret < 0) {
-		mif_err("%s->%s: ERR! %s->send fail:%d (tx_bytes:%d len:%d)\n",
-			iod->name, mc->name, ld->name, ret, tx_bytes, count);
+		mif_err("%s->%s: ERR! %s->send fail:%d (tx_bytes:%d len:%ld)\n",
+			iod->name, mc->name, ld->name, ret, tx_bytes, (long)count);
 		dev_kfree_skb_any(skb);
 		return ret;
 	}
 
 	if (ret != tx_bytes) {
-		mif_info("%s->%s: WARN! %s->send ret:%d (tx_bytes:%d len:%d)\n",
-			iod->name, mc->name, ld->name, ret, tx_bytes, count);
+		mif_info("%s->%s: WARN! %s->send ret:%d (tx_bytes:%d len:%ld)\n",
+			iod->name, mc->name, ld->name, ret, tx_bytes, (long)count);
 	}
 
 	return count;
@@ -1461,9 +1466,8 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 		return -EFAULT;
 	}
 
-#ifdef DEBUG_MODEM_IF_IODEV_RX
-	log_ipc_pkt(iod->id, IODEV, RX, skb, NULL);
-#endif
+	log_ipc_pkt(IOD_RX, iod->id, skb);
+
 	mif_debug("%s: data:%d copied:%d qlen:%d\n",
 		iod->name, skb->len, copied, rxq->qlen);
 
@@ -1477,12 +1481,20 @@ static ssize_t misc_read(struct file *filp, char *buf, size_t count,
 	return copied;
 }
 
+#ifdef CONFIG_COMPAT
+/* all compatible */
+#define compat_misc_ioctl	misc_ioctl
+#else
+#define compat_misc_ioctl	NULL
+#endif
+
 static const struct file_operations misc_io_fops = {
 	.owner = THIS_MODULE,
 	.open = misc_open,
 	.release = misc_release,
 	.poll = misc_poll,
 	.unlocked_ioctl = misc_ioctl,
+	.compat_ioctl = misc_ioctl,
 	.write = misc_write,
 	.read = misc_read,
 };
@@ -1499,6 +1511,7 @@ static int vnet_open(struct net_device *ndev)
 
 	list_for_each_entry(ld, &msd->link_dev_list, list) {
 		if (IS_CONNECTED(iod, ld) && ld->init_comm) {
+			vnet->ld = ld;
 			ret = ld->init_comm(ld, iod);
 			if (ret < 0) {
 				mif_err("%s<->%s: ERR! init_comm fail(%d)\n",
@@ -1510,6 +1523,9 @@ static int vnet_open(struct net_device *ndev)
 	}
 
 	netif_start_queue(ndev);
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	napi_enable(&iod->napi);
+#endif
 
 	mif_err("%s (opened %d) by %s\n",
 		iod->name, atomic_read(&iod->opened), current->comm);
@@ -1533,6 +1549,9 @@ static int vnet_stop(struct net_device *ndev)
 	}
 
 	netif_stop_queue(ndev);
+#ifdef CONFIG_LINK_DEVICE_NAPI
+	napi_disable(&iod->napi);
+#endif
 
 	mif_err("%s (opened %d) by %s\n",
 		iod->name, atomic_read(&iod->opened), current->comm);
@@ -1611,13 +1630,7 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	skbpriv(skb_new)->lnk_hdr = iod->link_header;
 	skbpriv(skb_new)->sipc_ch = iod->id;
 
-#ifdef DEBUG_MODEM_IF
-	/* Copy the timestamp to the skb */
-	memcpy(&skbpriv(skb_new)->ts, &ts, sizeof(struct timespec));
-#endif
-#if defined(DEBUG_MODEM_IF_IODEV_TX) && defined(DEBUG_MODEM_IF_PS_DATA)
-	log_ipc_pkt(iod->id, IODEV, TX, skb_new, NULL);
-#endif
+	log_ipc_pkt(PS_TX, iod->id, skb_new);
 
 	/* Build SIPC5 link header*/
 	buff = skb_push(skb_new, headroom);
@@ -1666,13 +1679,6 @@ static int vnet_xmit(struct sk_buff *skb, struct net_device *ndev)
 	return NETDEV_TX_OK;
 
 retry:
-	/*
-	If @skb has been expanded to $skb_new, only $skb_new must be freed here
-	because @skb will be reused by NET_TX.
-	*/
-	if (skb_new && skb_new != skb)
-		dev_kfree_skb_any(skb_new);
-
 	return NETDEV_TX_BUSY;
 
 drop:
@@ -1838,6 +1844,11 @@ int sipc5_init_io_device(struct io_device *iod)
 			return -ENOMEM;
 		}
 
+#ifdef CONFIG_LINK_DEVICE_NAPI
+		netif_napi_add(iod->ndev, &iod->napi,
+				mem_netdev_poll, napi_weight);
+#endif
+
 		ret = register_netdev(iod->ndev);
 		if (ret) {
 			mif_info("%s: ERR! register_netdev fail\n", iod->name);
@@ -1891,4 +1902,5 @@ int sipc5_init_io_device(struct io_device *iod)
 
 	return ret;
 }
+
 

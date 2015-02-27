@@ -41,8 +41,8 @@ static void print_sbd_config(struct sbd_link_device *sl)
 #ifdef DEBUG_MODEM_IF
 	int i;
 
-	pr_err("mif: SBD_IPC {shmem_base:0x%08X shmem_size:%d}\n",
-		(int)sl->shmem, sl->shmem_size);
+	pr_err("mif: SBD_IPC {shmem_base:0x%lX shmem_size:%d}\n",
+		(unsigned long)sl->shmem, sl->shmem_size);
 
 	pr_err("mif: SBD_IPC {version:%d num_channels:%d rbps_offset:%d}\n",
 		sl->g_desc->version, sl->g_desc->num_channels,
@@ -547,11 +547,6 @@ static inline struct sk_buff *recv_data(struct sbd_ring_buffer *rb, u16 out)
 	src = rb->buff[out] + rb->payload_offset;
 	skb_put(skb, len);
 	skb_copy_to_linear_data(skb, src, len);
-
-#ifdef DEBUG_MODEM_IF
-	/* Record the time-stamp */
-	getnstimeofday(&skbpriv(skb)->ts);
-#endif
 
 	return skb;
 }

@@ -53,8 +53,9 @@
 #include "mali_kbase_mem.h"
 #include "mali_kbase_security.h"
 #include "mali_kbase_utility.h"
-#include <mali_kbase_gpu_memory_debugfs.h>
-#include <mali_kbase_mem_profile_debugfs.h>
+#include "mali_kbase_gpu_memory_debugfs.h"
+#include "mali_kbase_mem_profile_debugfs.h"
+#include "mali_kbase_jd_debugfs.h"
 #include "mali_kbase_cpuprops.h"
 #include "mali_kbase_gpuprops.h"
 #ifdef CONFIG_GPU_TRACEPOINTS
@@ -90,6 +91,7 @@ void kbase_device_term(struct kbase_device *kbdev);
 void kbase_device_free(struct kbase_device *kbdev);
 int kbase_device_has_feature(struct kbase_device *kbdev, u32 feature);
 struct kbase_device *kbase_find_device(int minor);	/* Only needed for gator integration */
+void kbase_release_device(struct kbase_device *kbdev);
 
 void kbase_set_profiling_control(struct kbase_device *kbdev, u32 control, u32 value);
 
@@ -103,7 +105,8 @@ u32 kbase_get_profiling_control(struct kbase_device *kbdev, u32 control);
 void kbase_synchronize_irqs(struct kbase_device *kbdev);
 void kbase_synchronize_irqs(struct kbase_device *kbdev);
 
-struct kbase_context *kbase_create_context(struct kbase_device *kbdev);
+struct kbase_context *
+kbase_create_context(struct kbase_device *kbdev, bool is_compat);
 void kbase_destroy_context(struct kbase_context *kctx);
 mali_error kbase_context_set_create_flags(struct kbase_context *kctx, u32 flags);
 
@@ -134,7 +137,14 @@ void kbase_instr_hwcnt_sample_done(struct kbase_device *kbdev);
 
 mali_error kbase_jd_init(struct kbase_context *kctx);
 void kbase_jd_exit(struct kbase_context *kctx);
-mali_error kbase_jd_submit(struct kbase_context *kctx, const struct kbase_uk_job_submit *user_bag);
+#ifdef BASE_LEGACY_UK6_SUPPORT
+mali_error kbase_jd_submit(struct kbase_context *kctx,
+		const struct kbase_uk_job_submit *submit_data,
+		int uk6_atom);
+#else
+mali_error kbase_jd_submit(struct kbase_context *kctx,
+		const struct kbase_uk_job_submit *submit_data);
+#endif
 void kbase_jd_done(struct kbase_jd_atom *katom, int slot_nr, ktime_t *end_timestamp,
                    kbasep_js_atom_done_code done_code);
 void kbase_jd_cancel(struct kbase_device *kbdev, struct kbase_jd_atom *katom);
@@ -188,6 +198,8 @@ void kbase_device_trace_buffer_uninstall(struct kbase_context *kctx);
 /* api to be ported per OS, only need to do the raw register access */
 void kbase_os_reg_write(struct kbase_device *kbdev, u16 offset, u32 value);
 u32 kbase_os_reg_read(struct kbase_device *kbdev, u16 offset);
+
+void kbasep_as_do_poke(struct work_struct *work);
 
 /** Report a GPU fault.
  *
@@ -379,6 +391,7 @@ void kbase_disjoint_state_down(struct kbase_device *kbdev);
 #define KBASE_DISJOINT_STATE_INTERLEAVED_CONTEXT_COUNT_THRESHOLD 2
 
 #if KBASE_TRACE_ENABLE
+#ifndef CONFIG_MALI_SYSTEM_TRACE
 /** Add trace values about a job-slot
  *
  * @note Any functions called through this macro will still be evaluated in
@@ -454,8 +467,7 @@ void kbase_disjoint_state_down(struct kbase_device *kbdev);
 void kbasep_trace_add(struct kbase_device *kbdev, enum kbase_trace_code code, void *ctx, struct kbase_jd_atom *katom, u64 gpu_addr, u8 flags, int refcount, int jobslot, unsigned long info_val);
 /** PRIVATE - do not use directly. Use KBASE_TRACE_CLEAR() instead */
 void kbasep_trace_clear(struct kbase_device *kbdev);
-#else
-#ifdef CONFIG_MALI_SYSTEM_TRACE
+#else /* #ifndef CONFIG_MALI_SYSTEM_TRACE */
 /* Dispatch kbase trace events as system trace events */
 #include <mali_linux_kbase_trace.h>
 #define KBASE_TRACE_ADD_SLOT(kbdev, code, ctx, katom, gpu_addr, jobslot)\
@@ -484,7 +496,8 @@ void kbasep_trace_clear(struct kbase_device *kbdev);
 		CSTD_NOP(0);\
 	} while (0)
 
-#else /* CONFIG_MALI_SYSTEM_TRACE */
+#endif /* #ifndef CONFIG_MALI_SYSTEM_TRACE */
+#else
 #define KBASE_TRACE_ADD_SLOT(kbdev, code, ctx, katom, gpu_addr, jobslot)\
 	do {\
 		CSTD_UNUSED(kbdev);\
@@ -561,8 +574,7 @@ void kbasep_trace_clear(struct kbase_device *kbdev);
 		CSTD_UNUSED(kbdev);\
 		CSTD_NOP(0);\
 	} while (0)
-#endif /* CONFIG_MALI_SYSTEM_TRACE */
-#endif
+#endif /* KBASE_TRACE_ENABLE */
 /** PRIVATE - do not use directly. Use KBASE_TRACE_DUMP() instead */
 void kbasep_trace_dump(struct kbase_device *kbdev);
 

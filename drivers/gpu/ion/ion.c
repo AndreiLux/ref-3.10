@@ -766,6 +766,10 @@ int ion_phys(struct ion_client *client, struct ion_handle *handle,
 		mutex_unlock(&client->lock);
 		return -ENODEV;
 	}
+
+	mutex_lock(&buffer->lock);
+	ion_buffer_make_ready(buffer);
+	mutex_unlock(&buffer->lock);
 	mutex_unlock(&client->lock);
 	ret = buffer->heap->ops->phys(buffer->heap, buffer, addr, len);
 	return ret;
@@ -1015,6 +1019,9 @@ struct sg_table *ion_sg_table(struct ion_client *client,
 	}
 	buffer = handle->buffer;
 	table = buffer->sg_table;
+	mutex_lock(&buffer->lock);
+	ion_buffer_make_ready(buffer);
+	mutex_unlock(&buffer->lock);
 	mutex_unlock(&client->lock);
 	return table;
 }
@@ -1184,6 +1191,10 @@ static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 		return -EINVAL;
 	}
 
+	mutex_lock(&buffer->lock);
+	ion_buffer_make_ready(buffer);
+	mutex_unlock(&buffer->lock);
+
 	if (ion_buffer_fault_user_mappings(buffer)) {
 		vma->vm_private_data = buffer;
 		vma->vm_ops = &ion_vma_ops;
@@ -1201,7 +1212,6 @@ static int ion_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 	mutex_lock(&buffer->lock);
 	/* now map it to userspace */
 	ret = buffer->heap->ops->map_user(buffer->heap, buffer, vma);
-	ion_buffer_make_ready(buffer);
 	mutex_unlock(&buffer->lock);
 
 	if (ret)
@@ -1790,21 +1800,13 @@ static void ion_device_sync_and_unmap(unsigned long vaddr,
 					enum dma_data_direction dir,
 					ion_device_sync_func sync, bool memzero)
 {
-	int i;
-
-	flush_cache_vmap(vaddr, vaddr + size);
+	flush_tlb_kernel_range(vaddr, vaddr + size);
 
 	if (memzero)
 		memset((void *) vaddr, 0, size);
 
 	if (sync)
 		sync((void *) vaddr, size, dir);
-
-	for (i = 0; i < (size / PAGE_SIZE); i++)
-		pte_clear(&init_mm, (void *) vaddr + (i * PAGE_SIZE), ptep + i);
-
-	flush_cache_vunmap(vaddr, vaddr + size);
-	flush_tlb_kernel_range(vaddr, vaddr + size);
 }
 
 void ion_device_sync(struct ion_device *dev, struct sg_table *sgt,

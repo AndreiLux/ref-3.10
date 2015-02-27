@@ -23,6 +23,7 @@
 #include <linux/irq_work.h>
 #include <linux/posix-timers.h>
 #include <linux/perf_event.h>
+#include <linux/rq_stats.h>
 
 #include <asm/irq_regs.h>
 
@@ -35,6 +36,12 @@
  */
 DEFINE_PER_CPU(struct tick_sched, tick_cpu_sched);
 
+struct rq_data rq_info;
+struct workqueue_struct *rq_wq;
+spinlock_t rq_lock;
+
+static void update_rq_stats(void);
+static void wakeup_user(void);
 /*
  * The time, when the last jiffy update happened. Protected by jiffies_lock.
  */
@@ -128,6 +135,8 @@ static void tick_sched_do_timer(ktime_t now)
 
 static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 {
+
+	int cpu = smp_processor_id();
 #ifdef CONFIG_NO_HZ_COMMON
 	/*
 	 * When we are idle and the tick is stopped, we have to touch
@@ -145,6 +154,19 @@ static void tick_sched_handle(struct tick_sched *ts, struct pt_regs *regs)
 #endif
 	update_process_times(user_mode(regs));
 	profile_tick(CPU_PROFILING);
+
+	if ((rq_info.init == 1) && (tick_do_timer_cpu == cpu)) {
+
+		/*
+		 * update run queue statistics
+		 */
+		update_rq_stats();
+
+		/*
+		 * wakeup user if needed
+		 */
+		wakeup_user();
+	}
 }
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -1077,6 +1099,50 @@ void tick_check_idle(int cpu)
  * High resolution timer specific code
  */
 #ifdef CONFIG_HIGH_RES_TIMERS
+static void update_rq_stats(void)
+{
+	unsigned long jiffy_gap = 0;
+	unsigned int rq_avg = 0;
+	unsigned long flags = 0;
+
+	jiffy_gap = jiffies - rq_info.rq_poll_last_jiffy;
+
+	if (jiffy_gap >= rq_info.rq_poll_jiffies) {
+
+		spin_lock_irqsave(&rq_lock, flags);
+
+		if (!rq_info.rq_avg)
+			rq_info.rq_poll_total_jiffies = 0;
+
+		rq_avg = nr_running() * 10;
+
+		if (rq_info.rq_poll_total_jiffies) {
+			rq_avg = (rq_avg * jiffy_gap) +
+				(rq_info.rq_avg *
+				 rq_info.rq_poll_total_jiffies);
+			do_div(rq_avg,
+			       rq_info.rq_poll_total_jiffies + jiffy_gap);
+		}
+
+		rq_info.rq_avg =  rq_avg;
+		rq_info.rq_poll_total_jiffies += jiffy_gap;
+		rq_info.rq_poll_last_jiffy = jiffies;
+
+		spin_unlock_irqrestore(&rq_lock, flags);
+	}
+}
+
+static void wakeup_user(void)
+{
+	unsigned long jiffy_gap;
+
+	jiffy_gap = jiffies - rq_info.def_timer_last_jiffy;
+
+	if (jiffy_gap >= rq_info.def_timer_jiffies) {
+		rq_info.def_timer_last_jiffy = jiffies;
+		queue_work(rq_wq, &rq_info.def_timer_work);
+	}
+}
 /*
  * We rearm the timer until we get disabled by the idle code.
  * Called with interrupts disabled.

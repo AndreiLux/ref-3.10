@@ -69,7 +69,7 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 #define OSL_SYSUPTIME_SUPPORT TRUE
 #endif /* OSL_SYSUPTIME */
 
-#if !defined(PKTC) && !defined(PKTC_DONGLE)
+#if !defined(PKTC_DONGLE)
 #define	PKTCGETATTR(skb)	(0)
 #define	PKTCSETATTR(skb, f, p, b) BCM_REFERENCE(skb)
 #define	PKTCCLRATTR(skb)	BCM_REFERENCE(skb)
@@ -92,11 +92,6 @@ typedef void  (*osl_wreg_fn_t)(void *ctx, volatile void *reg, unsigned int val, 
 	for ((nskb) = NULL; (skb) != NULL; (skb) = (nskb))
 #define	PKTCFREE		PKTFREE
 
-#ifdef BCMPCIE
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_EVENTBUF)
-#define	PKTCFREE_STATIC		PKTFREE_STATIC
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_EVENTBUF */
-#endif /* BCMPCIE */
 
 #define PKTCENQTAIL(h, t, p) \
 do { \
@@ -106,11 +101,9 @@ do { \
 } while (0)
 #endif /* !linux || !PKTC */
 
-#if !defined(HNDCTF) && !defined(PKTC_TX_DONGLE)
 #define PKTSETCHAINED(osh, skb)		BCM_REFERENCE(osh)
 #define PKTCLRCHAINED(osh, skb)		BCM_REFERENCE(osh)
 #define PKTISCHAINED(skb)		FALSE
-#endif
 
 /* Lbuf with fraglist */
 #define PKTFRAGPKTID(osh, lb)		(0)

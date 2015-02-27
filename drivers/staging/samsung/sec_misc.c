@@ -97,11 +97,41 @@ static DEVICE_ATTR(drop_caches, S_IRUGO | S_IWUSR | S_IWGRP,\
  * End Drop Caches
  */
 
+#if defined(CONFIG_SEC_SLOWPATH)
+extern unsigned int get_and_reset_timeup(void);
+extern unsigned int get_and_reset_slowtime(void);
+static ssize_t timeup_show
+	(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	bool time_up;
+
+	time_up = get_and_reset_timeup();
+	return sprintf(buf, "%d\n", time_up);
+}
+
+static DEVICE_ATTR(timeup, S_IRUGO, timeup_show, NULL);
+
+static ssize_t slowpath_show
+	(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	unsigned int slowtime;
+
+	slowtime = get_and_reset_slowtime();
+	return sprintf(buf, "%u\n", slowtime);
+}
+
+static DEVICE_ATTR(slowpath, S_IRUGO, slowpath_show, NULL);
+#endif
+
 
 struct device *sec_misc_dev;
 
 static struct device_attribute *sec_misc_attrs[] = {
 	&dev_attr_drop_caches,
+#if defined(CONFIG_SEC_SLOWPATH)
+	&dev_attr_timeup,
+	&dev_attr_slowpath,
+#endif
 };
 
 static int __init sec_misc_init(void)

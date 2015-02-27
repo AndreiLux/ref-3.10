@@ -40,6 +40,9 @@
 #elif defined(CONFIG_SOC_EXYNOS5430)
 #include <mach/regs-clock-exynos5430.h>
 #include <mach/regs-pmu.h>
+#elif defined(CONFIG_SOC_EXYNOS5433)
+#include <mach/regs-clock-exynos5433.h>
+#include <mach/regs-pmu.h>
 #endif
 
 #include "s5p_mfc_common.h"
@@ -62,7 +65,14 @@
 int debug;
 module_param(debug, int, S_IRUGO | S_IWUSR);
 
+int debug_ts;
+module_param(debug_ts, int, S_IRUGO | S_IWUSR);
+
+int no_order;
+module_param(no_order, int, S_IRUGO | S_IWUSR);
+
 struct _mfc_trace g_mfc_trace[MFC_DEV_NUM_MAX][MFC_TRACE_COUNT_MAX];
+struct s5p_mfc_dev *g_mfc_dev[MFC_DEV_NUM_MAX];
 
 #ifdef CONFIG_EXYNOS_CONTENT_PATH_PROTECTION
 static struct proc_dir_entry *mfc_proc_entry;
@@ -153,10 +163,10 @@ int exynos_mfc_sysmmu_fault_handler(struct iommu_domain *iodmn, struct device *d
 /*
  * A framerate table determines framerate by the interval(us) of each frame.
  * Framerate is not accurate, just rough value to seperate overload section.
- * Base line of each section are selected from 25fps(40000us), 48fps(20833us)
+ * Base line of each section are selected from 25fps(40000us), 45fps(22222us)
  * and 100fps(10000us).
  *
- * interval(us) | 0           10000         20833         40000           |
+ * interval(us) | 0           10000         22222         40000           |
  * framerate    |     120fps    |    60fps    |    30fps    |    25fps    |
  */
 
@@ -164,7 +174,7 @@ int exynos_mfc_sysmmu_fault_handler(struct iommu_domain *iodmn, struct device *d
 #define COL_FRAME_INTERVAL	1
 static unsigned long framerate_table[][2] = {
 	{ 25000, 40000 },
-	{ 30000, 20833 },
+	{ 30000, 22222 },
 	{ 60000, 10000 },
 	{ 120000, 0 },
 };
@@ -176,18 +186,12 @@ static inline unsigned long timeval_diff(struct timeval *to,
 		- (from->tv_sec * USEC_PER_SEC + from->tv_usec);
 }
 
-int get_framerate(struct timeval *to, struct timeval *from)
+int get_framerate_by_interval(int interval)
 {
 	int i;
-	unsigned long interval;
-
-	if (timeval_compare(to, from) <= 0)
-		return 0;
-
-	interval = timeval_diff(to, from);
 
 	/* if the interval is too big (2sec), framerate set to 0 */
-	if (interval > (2 * USEC_PER_SEC))
+	if (interval > MFC_MAX_INTERVAL)
 		return 0;
 
 	for (i = 0; i < ARRAY_SIZE(framerate_table); i++) {
@@ -196,6 +200,134 @@ int get_framerate(struct timeval *to, struct timeval *from)
 	}
 
 	return 0;
+}
+
+int get_framerate(struct timeval *to, struct timeval *from)
+{
+	unsigned long interval;
+
+	if (timeval_compare(to, from) <= 0)
+		return 0;
+
+	interval = timeval_diff(to, from);
+
+	return get_framerate_by_interval(interval);
+}
+
+/* Return the minimum interval between previous and next entry */
+int get_interval(struct list_head *head, struct list_head *entry)
+{
+	int prev_interval = MFC_MAX_INTERVAL, next_interval = MFC_MAX_INTERVAL;
+	struct mfc_timestamp *prev_ts, *next_ts, *curr_ts;
+
+	curr_ts = list_entry(entry, struct mfc_timestamp, list);
+
+	if (entry->prev != head) {
+		prev_ts = list_entry(entry->prev, struct mfc_timestamp, list);
+		prev_interval = timeval_diff(&curr_ts->timestamp, &prev_ts->timestamp);
+	}
+
+	if (entry->next != head) {
+		next_ts = list_entry(entry->next, struct mfc_timestamp, list);
+		next_interval = timeval_diff(&next_ts->timestamp, &curr_ts->timestamp);
+	}
+
+	return (prev_interval < next_interval ? prev_interval : next_interval);
+}
+
+static inline int dec_add_timestamp(struct s5p_mfc_ctx *ctx,
+			struct v4l2_buffer *buf, struct list_head *entry)
+{
+	int replace_entry = 0;
+	struct mfc_timestamp *curr_ts = &ctx->ts_array[ctx->ts_count];
+
+	if (ctx->ts_is_full) {
+		/* Replace the entry if list of array[ts_count] is same as entry */
+		if (&curr_ts->list == entry)
+			replace_entry = 1;
+		else
+			list_del(&curr_ts->list);
+	}
+
+	memcpy(&curr_ts->timestamp, &buf->timestamp, sizeof(struct timeval));
+	if (!replace_entry)
+		list_add(&curr_ts->list, entry);
+	curr_ts->interval =
+		get_interval(&ctx->ts_list, &curr_ts->list);
+	curr_ts->index = ctx->ts_count;
+	ctx->ts_count++;
+
+	if (ctx->ts_count == MFC_TIME_INDEX) {
+		ctx->ts_is_full = 1;
+		ctx->ts_count %= MFC_TIME_INDEX;
+	}
+
+	return 0;
+}
+
+int get_framerate_by_timestamp(struct s5p_mfc_ctx *ctx, struct v4l2_buffer *buf)
+{
+	struct mfc_timestamp *temp_ts;
+	int found;
+	int index = 0;
+	int min_interval = MFC_MAX_INTERVAL;
+	int max_framerate;
+	int timeval_diff;
+
+	if (debug_ts == 1) {
+		/* Debug info */
+		mfc_info_ctx("======================================\n");
+		mfc_info_ctx("New timestamp = %ld.%06ld, count = %d \n",
+			buf->timestamp.tv_sec, buf->timestamp.tv_usec, ctx->ts_count);
+	}
+
+	if (list_empty(&ctx->ts_list)) {
+		dec_add_timestamp(ctx, buf, &ctx->ts_list);
+	} else {
+		found = 0;
+		list_for_each_entry_reverse(temp_ts, &ctx->ts_list, list) {
+			timeval_diff = timeval_compare(&buf->timestamp, &temp_ts->timestamp);
+			if (timeval_diff == 0) {
+				/* Do not add if same timestamp already exists */
+				found = 1;
+				break;
+			} else if (timeval_diff > 0) {
+				/* Add this after temp_ts */
+				dec_add_timestamp(ctx, buf, &temp_ts->list);
+				found = 1;
+				break;
+			}
+		}
+
+		if (!found)	/* Add this at first entry */
+			dec_add_timestamp(ctx, buf, &ctx->ts_list);
+	}
+
+	list_for_each_entry(temp_ts, &ctx->ts_list, list) {
+		if (temp_ts->interval < min_interval)
+			min_interval = temp_ts->interval;
+	}
+
+	max_framerate = get_framerate_by_interval(min_interval);
+
+	if (debug_ts == 1) {
+		/* Debug info */
+		index = 0;
+		list_for_each_entry(temp_ts, &ctx->ts_list, list) {
+			mfc_info_ctx("[%d] timestamp [i:%d]: %ld.%06ld\n",
+					index, temp_ts->index,
+					temp_ts->timestamp.tv_sec,
+					temp_ts->timestamp.tv_usec);
+			index++;
+		}
+		mfc_info_ctx("Min interval = %d, It is %d fps\n",
+				min_interval, max_framerate);
+	} else if (debug_ts == 2) {
+		mfc_info_ctx("Min interval = %d, It is %d fps\n",
+				min_interval, max_framerate);
+	}
+
+	return max_framerate;
 }
 
 void mfc_sched_worker(struct work_struct *work)
@@ -386,6 +518,73 @@ static int mfc_check_clock_state(struct s5p_mfc_dev *dev)
 	return ref_val;
 }
 
+static int s5p_mfc_check_hw_state(struct s5p_mfc_dev *dev)
+{
+	int ret;
+
+	if (mfc_check_power_state(dev)) {
+		ret = mfc_check_clock_state(dev);
+		if (ret)
+			s5p_mfc_dump_regs(dev);
+	}
+	mfc_disp_dev_state(dev);
+
+	return 0;
+}
+#elif defined(CONFIG_SOC_EXYNOS5433)
+static int mfc_check_power_state(struct s5p_mfc_dev *dev)
+{
+	int reg_val, ref_val;
+
+	ref_val = s5p_mfc_get_power_ref_cnt(dev);
+	reg_val = readl(EXYNOS5433_MFC_CONFIGURATION);
+	mfc_err("* MFC power state = 0x%x, ref cnt = %d\n", reg_val, ref_val);
+
+	if (reg_val)
+		return 1;
+
+	return 0;
+}
+
+#define MFC_CMU_INFO_CNT	6
+static int mfc_check_clock_state(struct s5p_mfc_dev *dev)
+{
+	int i, ref_val, is_enabled = 0;
+	int reg_val[MFC_CMU_INFO_CNT];
+	char *reg_desc[MFC_CMU_INFO_CNT] = {
+		"CLK_SRC_TOP1",
+		"CLK_SRC_TOP4",
+		"CLK_DIV_TOP1",
+		"CLK_SRC_SEL_MFC",
+		"CLK_ENABLE_ACLK_MFC",
+		"CLK_ENABLE_IP_MFC0",
+	};
+	int reg_offset[MFC_CMU_INFO_CNT] = {
+		(int)EXYNOS5430_SRC_SEL_TOP1,
+		(int)EXYNOS5430_SRC_SEL_TOP4,
+		(int)EXYNOS5430_DIV_TOP1,
+		(int)EXYNOS5430_SRC_SEL_MFC0,
+		(int)EXYNOS5430_ENABLE_ACLK_MFC0,
+		(int)EXYNOS5430_ENABLE_IP_MFC00,
+	};
+
+
+	ref_val = s5p_mfc_get_clk_ref_cnt(dev);
+	mfc_err("** CMU ref cnt = %d\n", ref_val);
+
+	for (i = 0; i < MFC_CMU_INFO_CNT; i++) {
+		reg_val[i] = readl((int *)reg_offset[i]);
+		mfc_err("** CMU %s = 0x%x\n", reg_desc[i], reg_val[i]);
+		if (reg_offset[i] == (int)EXYNOS5430_ENABLE_ACLK_MFC0) {
+			is_enabled = (reg_val[i] >> 0) & 0x1;
+		}
+	}
+
+	if (is_enabled)
+		return 1;
+
+	return 0;
+}
 static int s5p_mfc_check_hw_state(struct s5p_mfc_dev *dev)
 {
 	int ret;
@@ -750,6 +949,8 @@ static void s5p_mfc_handle_frame_copy_timestamp(struct s5p_mfc_ctx *ctx)
 	}
 }
 
+#define on_res_change(ctx)	((ctx)->state >= MFCINST_RES_CHANGE_INIT &&	\
+				 (ctx)->state <= MFCINST_RES_CHANGE_END)
 static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 {
 	struct s5p_mfc_dec *dec;
@@ -760,7 +961,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	unsigned int index;
 	unsigned int frame_type;
 	int mvc_view_id;
-	unsigned int dst_frame_status;
+	unsigned int dst_frame_status, last_frame_status;
 	struct list_head *dst_queue_addr;
 	unsigned int prev_flag, released_flag = 0;
 	int i;
@@ -786,7 +987,13 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	frame_type = s5p_mfc_get_disp_frame_type();
 	mvc_view_id = s5p_mfc_get_mvc_disp_view_id();
 
+	if (FW_HAS_LAST_DISP_INFO(dev))
+		last_frame_status = mfc_get_last_disp_info();
+	else
+		last_frame_status = 0;
+
 	mfc_debug(2, "frame_type : %d\n", frame_type);
+	mfc_debug(2, "last_frame_status : %d\n", last_frame_status);
 
 	if (IS_MFCV6(dev) && ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) {
 		if (mvc_view_id == 0)
@@ -919,7 +1126,15 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 				dec->y_addr_for_pb = 0;
 			}
 
-			if (!dec->is_dts_mode) {
+			if (last_frame_status &&
+					!on_res_change(ctx)) {
+				call_cop(ctx, get_buf_update_val, ctx,
+					&ctx->dst_ctrls[index],
+					V4L2_CID_MPEG_MFC51_VIDEO_DISPLAY_STATUS,
+					S5P_FIMV_DEC_STATUS_LAST_DISP);
+			}
+
+			if (no_order && !dec->is_dts_mode) {
 				mfc_debug(7, "timestamp: %ld %ld\n",
 					dst_buf->vb.v4l2_buf.timestamp.tv_sec,
 					dst_buf->vb.v4l2_buf.timestamp.tv_usec);
@@ -933,6 +1148,11 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 					&dst_buf->vb.v4l2_buf.timestamp,
 					sizeof(struct timeval));
 			}
+
+			if (!no_order)
+				ctx->last_framerate =
+					get_framerate_by_timestamp(
+						ctx, &dst_buf->vb.v4l2_buf);
 
 			vb2_buffer_done(&dst_buf->vb,
 				s5p_mfc_err_dspl(err) ?
@@ -997,6 +1217,19 @@ static void s5p_mfc_handle_frame_error(struct s5p_mfc_ctx *ctx,
 		return;
 	}
 
+	if (ctx->type == MFCINST_ENCODER) {
+		mfc_err_ctx("Encoder Interrupt Error: %d\n", err);
+
+		s5p_mfc_clear_int_flags();
+		if (clear_hw_bit(ctx) == 0)
+			BUG();
+		wake_up_ctx(ctx, reason, err);
+		s5p_mfc_clock_off(dev);
+
+		queue_work(dev->sched_wq, &dev->sched_work);
+		return;
+	}
+
 	dec = ctx->dec_priv;
 	if (!dec) {
 		mfc_err("no mfc decoder to run\n");
@@ -1037,7 +1270,11 @@ static void s5p_mfc_handle_frame_error(struct s5p_mfc_ctx *ctx,
 	s5p_mfc_clear_int_flags();
 	if (clear_hw_bit(ctx) == 0)
 		BUG();
-	wake_up_ctx(ctx, reason, err);
+	/* Sleeping thread is waiting for FRAME_DONE in stop_streaming  */
+	if (ctx->state == MFCINST_ABORT)
+		wake_up_ctx(ctx, S5P_FIMV_R2H_CMD_FRAME_DONE_RET, err);
+	else
+		wake_up_ctx(ctx, reason, err);
 
 	spin_unlock_irqrestore(&dev->irqlock, flags);
 
@@ -1457,7 +1694,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 	switch (reason) {
 	case S5P_FIMV_R2H_CMD_ERR_RET:
 		/* An error has occured */
-		if (ctx->state == MFCINST_RUNNING) {
+		if (ctx->state == MFCINST_RUNNING || ctx->state == MFCINST_ABORT) {
 			if ((s5p_mfc_err_dec(err) >= S5P_FIMV_ERR_WARNINGS_START) &&
 				(s5p_mfc_err_dec(err) <= S5P_FIMV_ERR_WARNINGS_END))
 				s5p_mfc_handle_frame(ctx, reason, err);
@@ -1537,8 +1774,10 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 						s5p_mfc_get_consumed_stream(),
 						src_buf->vb.v4l2_planes[0].bytesused);
 				if (s5p_mfc_get_consumed_stream() <
-						src_buf->vb.v4l2_planes[0].bytesused)
+						src_buf->vb.v4l2_planes[0].bytesused) {
 					dec->remained = 1;
+					src_buf->consumed += s5p_mfc_get_consumed_stream();
+				}
 			}
 		}
 
@@ -2259,6 +2498,7 @@ static int s5p_mfc_release(struct file *file)
 		kfree(ctx->dec_priv->ref_info);
 		kfree(ctx->dec_priv);
 	} else if (ctx->type == MFCINST_ENCODER) {
+		enc_cleanup_user_shared_handle(ctx);
 		kfree(ctx->enc_priv);
 	}
 	dev->ctx[ctx->num] = 0;
@@ -2817,6 +3057,8 @@ static int s5p_mfc_probe(struct platform_device *pdev)
 
 	iovmm_set_fault_handler(dev->device,
 		exynos_mfc_sysmmu_fault_handler, dev);
+
+	g_mfc_dev[dev->id] = dev;
 
 	pr_debug("%s--\n", __func__);
 	return 0;

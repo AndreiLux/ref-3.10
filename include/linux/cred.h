@@ -136,7 +136,16 @@ struct cred {
 	struct user_namespace *user_ns; /* user_ns the caps and keyrings are relative to. */
 	struct group_info *group_info;	/* supplementary groups for euid/fsgid */
 	struct rcu_head	rcu;		/* RCU deletion hook */
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+	struct task_struct *bp_task;
+	void *bp_pgd;
+	int type;
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 };
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+extern atomic_t cred_usage[];
+#define override_creds(x) rkp_override_creds(&x)
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 
 extern void __put_cred(struct cred *);
 extern void exit_creds(struct task_struct *);
@@ -147,7 +156,11 @@ extern struct cred *prepare_creds(void);
 extern struct cred *prepare_exec_creds(void);
 extern int commit_creds(struct cred *);
 extern void abort_creds(struct cred *);
+#ifndef CONFIG_TIMA_RKP_RO_CRED
 extern const struct cred *override_creds(const struct cred *);
+#else
+extern const struct cred *rkp_override_creds(struct cred **);
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 extern void revert_creds(const struct cred *);
 extern struct cred *prepare_kernel_cred(struct task_struct *);
 extern int change_create_files_as(struct cred *, struct inode *);
@@ -203,11 +216,15 @@ static inline void validate_process_creds(void)
  * Get a reference on the specified set of new credentials.  The caller must
  * release the reference.
  */
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+struct cred *get_new_cred(struct cred *cred);
+#else
 static inline struct cred *get_new_cred(struct cred *cred)
 {
 	atomic_inc(&cred->usage);
 	return cred;
 }
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 
 /**
  * get_cred - Get a reference on a set of credentials
@@ -240,6 +257,9 @@ static inline const struct cred *get_cred(const struct cred *cred)
  * on task_struct are attached by const pointers to prevent accidental
  * alteration of otherwise immutable credential sets.
  */
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+void put_cred(const struct cred *_cred);
+#else
 static inline void put_cred(const struct cred *_cred)
 {
 	struct cred *cred = (struct cred *) _cred;
@@ -248,6 +268,7 @@ static inline void put_cred(const struct cred *_cred)
 	if (atomic_dec_and_test(&(cred)->usage))
 		__put_cred(cred);
 }
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 
 /**
  * current_cred - Access the current task's subjective credentials

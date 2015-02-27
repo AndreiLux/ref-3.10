@@ -115,7 +115,7 @@ int gpu_control_state_set(struct kbase_device *kbdev, gpu_control_state state, i
 
 		if (platform->min_lock > 0)
 			platform->cur_clock = MAX(platform->min_lock, platform->cur_clock);
-		else if (platform->max_lock > 0)
+		if (platform->max_lock > 0)
 			platform->cur_clock = MIN(platform->max_lock, platform->cur_clock);
 
 		platform->down_requirement = platform->table[platform->step].stay_count;

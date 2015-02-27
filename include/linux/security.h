@@ -53,6 +53,11 @@ struct xattr;
 struct xfrm_sec_ctx;
 struct mm_struct;
 
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+/* For understand size of struct cred*/
+#include <linux/cred.h>
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
+
 /* Maximum number of letters for an LSM name string */
 #define SECURITY_NAME_MAX	10
 
@@ -64,6 +69,35 @@ struct ctl_table;
 struct audit_krule;
 struct user_namespace;
 struct timezone;
+
+#ifdef CONFIG_TIMA_RKP_RO_CRED
+#define cred_usage_length ((1 << (RO_PAGES_ORDER + PAGE_SHIFT)) / (sizeof(struct cred) + 4) ) + 1
+#define cred_usage_offset(addr) ((unsigned long) addr - (unsigned long) __rkp_ro_start) / (cred_align_size)
+
+#define rocred_uc_read(x) atomic_read(&cred_usage[cred_usage_offset(x)])
+#define rocred_uc_inc(x)  atomic_inc(&cred_usage[cred_usage_offset(x)])
+#define rocred_uc_dec_and_test(x) atomic_dec_and_test(&cred_usage[cred_usage_offset(x)])
+#define rocred_uc_inc_not_zero(x) atomic_inc_not_zero(&cred_usage[cred_usage_offset(x)])
+#define rocred_uc_set(x,v) atomic_set(&cred_usage[cred_usage_offset(x)],v)
+
+#define CRED_RO_AREA __attribute__((section (".tima.rkp.initcred")))
+#define RO_PAGES_ORDER   9
+#define cred_align_size (*((unsigned long *)((unsigned long)__rkp_ro_start+sizeof(struct cred))))
+
+extern char __rkp_ro_start[], __rkp_ro_end[];
+/*Check whether the address belong to Cred Area*/
+static inline int tima_ro_page(unsigned long addr)
+{
+	return (addr >= ((unsigned long) __rkp_ro_start) 
+		&& addr < ((unsigned long) __rkp_ro_end));
+		/*&& (addr+cred_align_size <= ((unsigned long)__rkp_ro_end)));*/
+}
+extern int security_integrity_current(void);
+
+#else
+#define CRED_RO_AREA   
+#define security_integrity_current()  0
+#endif /*CONFIG_TIMA_RKP_RO_CRED*/
 
 /*
  * These functions are in security/capability.c and are used

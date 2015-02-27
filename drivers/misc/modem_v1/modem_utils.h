@@ -102,16 +102,22 @@ struct mif_time_block {
 };
 
 enum ipc_layer {
-	LINK,
-	IODEV,
-	APP,
+	LNK_RX,
+	LNK_TX,
+	IOD_RX,
+	IOD_TX,
+	PS_RX,
+	PS_TX,
 	MAX_SIPC_LAYER
 };
 
-static const char const *sipc_layer_string[] = {
-	[LINK] = "LNK",
-	[IODEV] = "IOD",
-	[APP] = "APP",
+static const char const *sipc_layer_str[] = {
+	[LNK_RX] = "LNK-RX",
+	[LNK_TX] = "LNK-TX",
+	[IOD_RX] = "IOD-RX",
+	[IOD_TX] = "IOD-TX",
+	[PS_RX] = "PS-RX",
+	[PS_TX] = "PS-TX",
 	[MAX_SIPC_LAYER] = "INVALID"
 };
 
@@ -120,7 +126,7 @@ static const inline char *layer_str(enum ipc_layer layer)
 	if (unlikely(layer >= MAX_SIPC_LAYER))
 		return "INVALID";
 	else
-		return sipc_layer_string[layer];
+		return sipc_layer_str[layer];
 }
 
 static const char const *dev_format_string[] = {
@@ -286,7 +292,7 @@ void get_utc_time(struct utc_time *utc);
 */
 static inline unsigned int calc_offset(void *target, void *base)
 {
-	return (unsigned int)target - (unsigned int)base;
+	return (unsigned long)target - (unsigned long)base;
 }
 
 int mif_dump_log(struct modem_shared *, struct io_device *);
@@ -352,17 +358,13 @@ static inline bool count_flood(int cnt, int mask)
 /**
 @brief		print an IPC data @b WITH a @b LINK header
 
-@param ch	the SIPC channel ID
 @param layer	the layer in the Samsung IPC
-@param dir	the direction of communication (TX or RX)
+@param ch	the SIPC channel ID
 @param skb	the pointer to a sk_buff instance
-@param hd_exist	whether or not there is a link header in a message frame
-@param hd_print	whether or not a link header will be logged
 
 @remark		if @e @@hd_exist is false, @e @@hd_print is ignored.
 */
-void log_ipc_pkt(u8 ch, enum ipc_layer layer, enum direction dir,
-		 struct sk_buff *skb, u8 *hdr);
+void log_ipc_pkt(enum ipc_layer layer, u8 ch, struct sk_buff *skb);
 
 /* print buffer as hex string */
 int pr_buffer(const char *tag, const char *data, size_t data_len,

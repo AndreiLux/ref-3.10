@@ -283,10 +283,11 @@ static int max77843_get_charging_health(struct max77843_charger_data *charger)
 				} else
 					state = POWER_SUPPLY_HEALTH_GOOD;
 			}
-		} else if (((vbus_state == 0x0) || (vbus_state == 0x01)) &&(chg_dtls & 0x08) && \
-				(chg_cnfg_00 & MAX77843_MODE_BUCK) && \
-				(chg_cnfg_00 & MAX77843_MODE_CHGR) && \
-				(charger->cable_type != POWER_SUPPLY_TYPE_WIRELESS)) {
+		} else if (((vbus_state == 0x0) || (vbus_state == 0x01)) || \
+			   ((chg_dtls & 0x08) &&			\
+			    (chg_cnfg_00 & MAX77843_MODE_BUCK) &&	\
+			    (chg_cnfg_00 & MAX77843_MODE_CHGR) &&	\
+			    (charger->cable_type != POWER_SUPPLY_TYPE_WIRELESS))) {
 			pr_info("%s: vbus is under\n", __func__);
 			state = POWER_SUPPLY_HEALTH_UNDERVOLTAGE;
 		}
@@ -550,6 +551,7 @@ static void max77843_charger_function_control(
 	int set_charging_current, set_charging_current_max;
 	u8 chg_cnfg_00 = 0, chg_cnfg_01 = 0;
 	union power_supply_propval value;
+	union power_supply_propval chg_mode;
 
 	psy_do_property("battery", get,
 			POWER_SUPPLY_PROP_HEALTH, value);
@@ -654,6 +656,31 @@ static void max77843_charger_function_control(
 		}
 	}
 
+	if (charger->pdata->full_check_type_2nd == SEC_BATTERY_FULLCHARGED_CHGPSY) {
+		psy_do_property("battery", get,
+				POWER_SUPPLY_PROP_CHARGE_NOW,
+				chg_mode);
+
+		if (chg_mode.intval == SEC_BATTERY_CHARGING_2ND) {
+			max77843_set_charger_state(charger, 0);
+			max77843_set_topoff_current(charger,
+						    charger->pdata->charging_current[
+							    charger->cable_type].full_check_current_2nd,
+						    (70 * 60));
+		} else {
+			max77843_set_topoff_current(charger,
+						    charger->pdata->charging_current[
+							    charger->cable_type].full_check_current_1st,
+						    (70 * 60));
+		}
+	} else {
+		max77843_set_topoff_current(charger,
+					    charger->pdata->charging_current[
+						    charger->cable_type].full_check_current_1st,
+					    charger->pdata->charging_current[
+						    charger->cable_type].full_check_current_2nd);
+	}
+
 	max77843_set_charger_state(charger, charger->is_charging);
 
 	/* if battery full, only disable charging  */
@@ -679,11 +706,6 @@ static void max77843_charger_function_control(
 			max77843_set_input_current(charger,
 						   set_charging_current_max);
 		}
-		max77843_set_topoff_current(charger,
-					    charger->pdata->charging_current[
-						    charger->cable_type].full_check_current_1st,
-					    charger->pdata->charging_current[
-						    charger->cable_type].full_check_current_2nd);
 	}
 
 	max77843_read_reg(charger->i2c, MAX77843_CHG_REG_CHG_CNFG_01, &chg_cnfg_01);
@@ -1517,6 +1539,11 @@ static int max77843_charger_parse_dt(struct max77843_charger_data *charger)
 	if (!np) {
 		pr_err("%s np NULL\n", __func__);
 	} else {
+		ret = of_property_read_u32(np, "battery,full_check_type_2nd",
+					&pdata->full_check_type_2nd);
+		if (ret)
+			pr_info("%s : Full check type 2nd is Empty\n", __func__);
+
 		p = of_get_property(np, "battery,input_current_limit", &len);
 		if (!p)
 			return 1;

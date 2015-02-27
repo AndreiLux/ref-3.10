@@ -9,6 +9,7 @@ obj-$(CONFIG_DECON_LCD_EA8064G)		+= ea8064g_mipi_lcd.o dynamic_aid.o
 obj-$(CONFIG_DECON_LCD_S6E3HA2)		+= s6e3ha2_mipi_lcd.o dynamic_aid.o
 obj-$(CONFIG_DECON_LCD_S6E3HF2)		+= s6e3hf2_mipi_lcd.o dynamic_aid.o
 obj-$(CONFIG_DECON_LCD_S6TNMR7)		+= s6tnmr7_mipi_lcd.o dynamic_aid.o
+obj-$(CONFIG_DECON_LCD_S6E3HA1)		+= s6e3ha1_mipi_lcd.o dynamic_aid.o
 
 ifeq ($(CONFIG_EXYNOS_DECON_DUAL_DISPLAY),y)
 obj-$(CONFIG_DECON_MDNIE_LITE)		+= mdnie_lite_ext.o

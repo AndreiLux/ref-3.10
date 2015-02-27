@@ -144,6 +144,34 @@ static u8 exynos_hdmi_edid[EDID_MAX_LENGTH];
 static enum MHL_MAX_RESOLUTION mhl_max_res = MHL_1080P_30;
 
 int hdmi_forced_resolution = -1;
+#ifdef CONFIG_SEC_MHL_SII8620
+int cea861f_hev_resolution = -1;	/* 3.8.2.3 writeburst/EDID method */
+int devtype_ssdongle_v4 = 0;
+
+/** CTS 3.8.2.3 write burst method
+ *  need to convert it to CEA-861D VIC code for HDMI 1.x
+ */
+void convert_hev_861F_to_861D(uint8_t vic)
+{
+	switch(vic) {
+	case 93:
+		pr_info("%s: [CEA-861F] 3840x2160p24_16_9\n", __func__);
+		cea861f_hev_resolution = 9;
+		break;
+	case 94:
+		pr_info("%s: [CEA-861F] 3840x2160p25_16_9\n", __func__);
+		cea861f_hev_resolution = 10;
+		break;
+	case 95:
+		pr_info("%s: [CEA-861F] 3840x2160p30_16_9\n", __func__);
+		cea861f_hev_resolution = 11;
+		break;
+	default:
+		pr_info("%s: not supported HEV VIC(%d) with DUT\n", __func__, vic);
+		break;
+	}
+}
+#endif/*CONFIG_SEC_MHL_SII8620*/
 
 int hdmi_get_datablock_offset(u8 *edid, enum extension_edid_db datablock,
 							int *offset)
@@ -795,6 +823,15 @@ struct v4l2_dv_timings edid_preferred_preset(struct hdmi_device *hdev)
 			hdmi_forced_resolution < hdmi_pre_cnt)
 		return
 			edid_presets[hdmi_forced_resolution].dv_timings;
+#ifdef CONFIG_SEC_MHL_SII8620
+	else if(cea861f_hev_resolution >= 0 &&
+			cea861f_hev_resolution < hdmi_pre_cnt &&
+			devtype_ssdongle_v4 == 0) {
+		pr_info("%s cea861f_hev_resolution\n", __func__);
+		return
+			edid_presets[cea861f_hev_resolution].dv_timings;
+	}
+#endif/*CONFIG_SEC_MHL_SII8620*/
 	else
 #endif
 	return preferred_preset;

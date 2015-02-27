@@ -14,4 +14,3 @@ if SOC_EXYNOS5433
 source "drivers/gud/gud-exynos5433/Kconfig"
 endif
 
-source "drivers/gud/sec-os-ctrl/Kconfig"

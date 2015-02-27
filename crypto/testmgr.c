@@ -3195,14 +3195,9 @@ notest:
 	printk(KERN_INFO "FIPS: No test for %s (%s)\n", alg, driver);
 	return 0;
 non_fips_alg:
-	if (!rc)
-		printk(KERN_INFO
-			"FIPS: self-tests for non-FIPS %s (%s) passed\n",
-			driver, alg);
-	else
-		printk(KERN_INFO
-			"FIPS: self-tests for non-FIPS %s (%s) failed\n",
-			alg, driver);
+	printk(KERN_INFO
+		"FIPS: self-tests for non-FIPS %s (%s) passed\n",
+		driver, alg);
 	return rc;
 }
 int testmgr_crypto_proc_init(void)

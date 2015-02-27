@@ -217,21 +217,6 @@ struct mem_ipc_device {
 
 /*============================================================================*/
 
-#ifdef GROUP_MEM_CP_CRASH
-/**
-@addtogroup group_mem_cp_crash
-@{
-*/
-
-#define FORCE_CRASH_ACK_TIMEOUT		(10 * HZ)
-
-/**
-@}
-*/
-#endif
-
-/*============================================================================*/
-
 #ifdef GROUP_MEM_LINK_SNAPSHOT
 /**
 @addtogroup group_mem_link_snapshot
@@ -438,8 +423,13 @@ struct mem_link_device {
 	struct delayed_work cp_sleep_dwork;	/* to hold ap2cp_wakeup */
 
 	spinlock_t pm_lock;
+
+	unsigned long long last_cp2ap_intr;
 #endif
 	atomic_t ref_cnt;
+
+	unsigned int gpio_ipc_int2cp;		/* AP-to-CP send signal GPIO */
+	spinlock_t sig_lock;
 
 	void (*start_pm)(struct mem_link_device *mld);
 	void (*stop_pm)(struct mem_link_device *mld);
@@ -449,7 +439,9 @@ struct mem_link_device {
 #endif
 
 #ifdef DEBUG_MODEM_IF
+	struct dentry *dbgfs_dir;
 	struct debugfs_blob_wrapper mem_dump_blob;
+	struct dentry *dbgfs_frame;
 #endif
 };
 
@@ -1013,7 +1005,6 @@ void send_res_ack(struct mem_link_device *mld, struct mem_ipc_device *dev);
 @{
 */
 
-void mem_handle_cp_crash(struct mem_link_device *mld, enum modem_state state);
 void mem_forced_cp_crash(struct mem_link_device *mld);
 
 /**

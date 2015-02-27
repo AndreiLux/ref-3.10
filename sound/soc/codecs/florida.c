@@ -215,6 +215,8 @@ static int florida_sysclk_ev(struct snd_soc_dapm_widget *w,
 		break;
 	}
 
+	udelay(1000);
+
 	return 0;
 }
 
@@ -443,6 +445,8 @@ SOC_ENUM("LHPF4 Mode", arizona_lhpf4_mode),
 ARIZONA_SAMPLE_RATE_CONTROL("Sample Rate 2", 2),
 ARIZONA_SAMPLE_RATE_CONTROL("Sample Rate 3", 3),
 
+SOC_VALUE_ENUM("FX Rate", arizona_fx_rate),
+
 SOC_VALUE_ENUM("ISRC1 FSL", arizona_isrc_fsl[0]),
 SOC_VALUE_ENUM("ISRC2 FSL", arizona_isrc_fsl[1]),
 SOC_VALUE_ENUM("ISRC3 FSL", arizona_isrc_fsl[2]),
@@ -528,12 +532,15 @@ SOC_DOUBLE("SPKDAT1 Switch", ARIZONA_PDM_SPK1_CTRL_1, ARIZONA_SPK1L_MUTE_SHIFT,
 SOC_DOUBLE("SPKDAT2 Switch", ARIZONA_PDM_SPK2_CTRL_1, ARIZONA_SPK2L_MUTE_SHIFT,
 	   ARIZONA_SPK2R_MUTE_SHIFT, 1, 1),
 
-SOC_DOUBLE("HPOUT1 DRE Switch", ARIZONA_DRE_ENABLE,
-	   ARIZONA_DRE1L_ENA_SHIFT, ARIZONA_DRE1R_ENA_SHIFT, 1, 0),
-SOC_DOUBLE("HPOUT2 DRE Switch", ARIZONA_DRE_ENABLE,
-	   ARIZONA_DRE2L_ENA_SHIFT, ARIZONA_DRE2R_ENA_SHIFT, 1, 0),
-SOC_DOUBLE("HPOUT3 DRE Switch", ARIZONA_DRE_ENABLE,
-	   ARIZONA_DRE3L_ENA_SHIFT, ARIZONA_DRE3R_ENA_SHIFT, 1, 0),
+SOC_DOUBLE_EXT("HPOUT1 DRE Switch", ARIZONA_DRE_ENABLE,
+	   ARIZONA_DRE1L_ENA_SHIFT, ARIZONA_DRE1R_ENA_SHIFT, 1, 0,
+	   snd_soc_get_volsw, arizona_put_dre),
+SOC_DOUBLE_EXT("HPOUT2 DRE Switch", ARIZONA_DRE_ENABLE,
+	   ARIZONA_DRE2L_ENA_SHIFT, ARIZONA_DRE2R_ENA_SHIFT, 1, 0,
+	   snd_soc_get_volsw, arizona_put_dre),
+SOC_DOUBLE_EXT("HPOUT3 DRE Switch", ARIZONA_DRE_ENABLE,
+	   ARIZONA_DRE3L_ENA_SHIFT, ARIZONA_DRE3R_ENA_SHIFT, 1, 0,
+	   snd_soc_get_volsw, arizona_put_dre),
 
 SOC_ENUM("Output Ramp Up", arizona_out_vi_ramp),
 SOC_ENUM("Output Ramp Down", arizona_out_vd_ramp),
@@ -545,6 +552,7 @@ SOC_SINGLE_TLV("Noise Gate Threshold Volume", ARIZONA_NOISE_GATE_CONTROL,
 SOC_ENUM("Noise Gate Hold", arizona_ng_hold),
 
 SOC_VALUE_ENUM("Output Rate 1", arizona_output_rate),
+SOC_VALUE_ENUM("In Rate", arizona_input_rate),
 
 FLORIDA_NG_SRC("HPOUT1L", ARIZONA_NOISE_GATE_SELECT_1L),
 FLORIDA_NG_SRC("HPOUT1R", ARIZONA_NOISE_GATE_SELECT_1R),
@@ -1890,7 +1898,8 @@ static irqreturn_t adsp2_irq(int irq, void *data)
 	mutex_lock(&florida->compr_info.lock);
 
 	if (!florida->compr_info.trig &&
-	    florida->core.adsp[2].fw_id == 0x4000d &&
+	    (florida->core.adsp[2].fw_id == 0x4000d ||
+	    florida->core.adsp[2].fw_id == 0x40036) &&
 	    florida->core.adsp[2].running) {
 		if (florida->core.arizona->pdata.ez2ctrl_trigger)
 			florida->core.arizona->pdata.ez2ctrl_trigger();

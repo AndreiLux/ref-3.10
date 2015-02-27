@@ -4,7 +4,7 @@
 // ==== kernel configs
 #include <linux/limits.h>
 #include <linux/ioctl.h>
-#define PER_USER_RANGE 100000
+#include <sdp/common.h>
 
 // ==== common configs
 #define SDPK_DEFAULT_ALGOTYPE (SDPK_ALGOTYPE_ASYMM_DH)
@@ -31,13 +31,6 @@
 #define EFEK_MAXLEN				(FEK_MAXLEN+1)
 
 #define AES_BLOCK_SIZE 			16
-
-#define KNOX_PERSONA_BASE_ID 100
-
-#define BASE_ID KNOX_PERSONA_BASE_ID
-#define GET_ARR_IDX(__userid) (__userid - BASE_ID)
-#define KEK_MAX_LEN KEK_MAXLEN
-#define SDP_MAX_USERS 5
 
 // DEK types
 #define DEK_TYPE_PLAIN 		0

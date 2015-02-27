@@ -103,6 +103,30 @@ inline static void fimc_is_set_qos_init(struct fimc_is_core *core, bool on)
 
 
 #if (FIMC_IS_VERSION == FIMC_IS_VERSION_250)
+int fimc_is_runtime_suspend_post(struct device *dev)
+{
+	int ret = 0;
+	u32 timeout;
+
+	timeout = 1000;
+	while ((readl(PMUREG_ISP0_STATUS) & 0x1) && timeout) {
+		timeout--;
+		usleep_range(1000, 1000);
+	}
+	if (timeout == 0)
+		err("ISP0 power down failed(0x%08x)\n", readl(PMUREG_ISP0_STATUS));
+
+	timeout = 1000;
+	while ((readl(PMUREG_ISP1_STATUS) & 0x1) && timeout) {
+		timeout--;
+		usleep_range(1000, 1000);
+	}
+	if (timeout == 0)
+		err("ISP0 power down failed(0x%08x)\n", readl(PMUREG_ISP1_STATUS));
+
+	return ret;
+}
+
 int fimc_is_runtime_suspend(struct device *dev)
 {
 #ifndef CONFIG_PM_RUNTIME
@@ -290,6 +314,46 @@ p_err:
 }
 
 #else
+int fimc_is_runtime_suspend_post(struct device *dev)
+{
+	int ret = 0;
+	u32 timeout;
+
+	timeout = 2000;
+	while ((readl(PMUREG_ISP_STATUS) & 0x1) && timeout) {
+		timeout--;
+		usleep_range(1000, 1000);
+	}
+	if (timeout == 0)
+		err("ISP power down failed(0x%08x)\n",
+			readl(PMUREG_ISP_STATUS));
+
+#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5433)
+	timeout = 1000;
+	while ((readl(PMUREG_CAM0_STATUS) & 0x1) && timeout) {
+		timeout--;
+		usleep_range(1000, 1000);
+	}
+	if (timeout == 0)
+		err("CAM0 power down failed(0x%08x)\n",
+			readl(PMUREG_CAM0_STATUS));
+
+	timeout = 2000;
+	while ((readl(PMUREG_CAM1_STATUS) & 0x1) && timeout) {
+		timeout--;
+		usleep_range(1000, 1000);
+	}
+	if (timeout == 0)
+		err("CAM1 power down failed(CAM1:0x%08x, A5:0x%08x)\n",
+			readl(PMUREG_CAM1_STATUS), readl(PMUREG_ISP_ARM_STATUS));
+#endif /* defined(CONFIG_SOC_EXYNOS5430) */
+
+#if defined(CONFIG_SOC_EXYNOS5422)
+#endif /* defined(CONFIG_SOC_EXYNOS5422) */
+
+	return ret;
+}
+
 int fimc_is_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);

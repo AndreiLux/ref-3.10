@@ -1372,6 +1372,15 @@ static int of_sii8620_parse_dt(struct sii8620_platform_data *pdata, struct i2c_c
 		pr_info("sii8620 : %s:%d: swing_level_v3 = 0x%X\n", __func__, __LINE__,
 				pdata->swing_level_v3);
 
+	/* [pre-emphasis] reference current */
+	ret = of_property_read_u32(np, "sii8620,ref_current", &pdata->ref_current);
+	if (ret) {
+		/* set default it as TRE's 0x03 */
+		pdata->ref_current = 0x03;
+	}
+	pr_info("sii8620 : %s:%d: ref_current = 0x%X\n", __func__, __LINE__,
+			pdata->ref_current);
+
 	/* xtal_mhl */
 	ret = of_property_read_string(np, "clock-names", &temp_string);
 	if (ret) {

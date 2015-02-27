@@ -121,6 +121,11 @@ enum dhd_op_flags {
 #define MAX_CNTL_RX_TIMEOUT 1
 #endif /* MAX_CNTL_RX_TIMEOUT */
 
+#ifdef BCMPCIE
+#ifndef MAX_CNTL_D3ACK_TIMEOUT
+#define MAX_CNTL_D3ACK_TIMEOUT 2
+#endif /* MAX_CNTL_D3ACK_TIMEOUT */
+#endif /* BCMPCIE */
 #define DHD_SCAN_ASSOC_ACTIVE_TIME	40 /* ms: Embedded default Active setting from DHD */
 #define DHD_SCAN_UNASSOC_ACTIVE_TIME 80 /* ms: Embedded def. Unassoc Active setting from DHD */
 #define DHD_SCAN_PASSIVE_TIME		130 /* ms: Embedded default Passive setting from DHD */
@@ -162,11 +167,15 @@ enum dhd_prealloc_index {
 	DHD_PREALLOC_DHD_INFO = 7,
 	DHD_PREALLOC_DHD_WLFC_INFO = 8,
 	DHD_PREALLOC_IF_FLOW_LKUP = 9,
-	DHD_PREALLOC_FLOWRING = 10,
-	DHD_PREALLOC_MEMDUMP_BUF = 11,
-	DHD_PREALLOC_MEMDUMP_RAM = 12
+	DHD_PREALLOC_MEMDUMP_BUF = 10,
+	DHD_PREALLOC_MEMDUMP_RAM = 11
 };
 
+enum dhd_dongledump_mode {
+	DUMP_DISABLED = 0,
+	DUMP_MEMONLY,
+	DUMP_MEMFILE
+};
 /* Packet alignment for most efficient SDIO (can change based on platform) */
 #ifndef DHD_SDALIGN
 #define DHD_SDALIGN	32
@@ -196,6 +205,7 @@ enum {
 	 * 2. TCPACKs that don't need to hurry delivered remains longer in TXQ so can be suppressed.
 	 */
 	TCPACK_SUP_DELAYTX,
+	TCPACK_SUP_HOLD,
 	TCPACK_SUP_LAST_MODE
 };
 #endif /* DHDTCPACK_SUPPRESS */
@@ -357,10 +367,10 @@ typedef struct dhd_pub {
 	int   hang_was_sent;
 	int   rxcnt_timeout;		/* counter rxcnt timeout to send HANG */
 	int   txcnt_timeout;		/* counter txcnt timeout to send HANG */
+#ifdef BCMPCIE
+	int   d3ackcnt_timeout;		/* counter d3ack timeout to send HANG */
+#endif /* BCMPCIE */
 	bool hang_report;		/* enable hang report by default */
-#ifdef WLMEDIA_HTSF
-	uint8 htsfdlystat_sz; /* Size of delay stats, max 255B */
-#endif
 #ifdef WLTDLS
 	bool tdls_enable;
 #endif
@@ -373,6 +383,8 @@ typedef struct dhd_pub {
 #ifdef DHDTCPACK_SUPPRESS
 	uint8 tcpack_sup_mode;		/* TCPACK suppress mode */
 	void *tcpack_sup_module;	/* TCPACK suppress module */
+	uint32 tcpack_sup_ratio;
+	uint32 tcpack_sup_delay;
 #endif /* DHDTCPACK_SUPPRESS */
 #if defined(ARP_OFFLOAD_SUPPORT)
 	uint32 arp_version;
@@ -412,15 +424,6 @@ typedef struct dhd_pub {
 	char enable_log[MAX_EVENT];
 	bool dma_d2h_ring_upd_support;
 	bool dma_h2d_ring_upd_support;
-#ifdef DHD_WMF
-	bool wmf_ucast_igmp;
-#ifdef DHD_IGMP_UCQUERY
-	bool wmf_ucast_igmp_query;
-#endif
-#ifdef DHD_UCAST_UPNP
-	bool wmf_ucast_upnp;
-#endif
-#endif /* DHD_WMF */
 #ifdef DHD_UNICAST_DHCP
 	bool dhcp_unicast;
 #endif /* DHD_UNICAST_DHCP */
@@ -432,9 +435,12 @@ typedef struct dhd_pub {
 #endif /* defined(WLTDLS) && defined(PCIE_FULL_DONGLE) */
 	uint8 *soc_ram;
 	uint32 soc_ram_length;
-#if defined(CUSTOMER_HW4)
-	bool memdump_enabled;
-#endif /* CUSTOMER_HW4 */
+	uint32 memdump_enabled;
+	bool tx_in_progress;
+#ifdef KEEP_JP_REGREV
+	char vars_ccode[WLC_CNTRY_BUF_SZ];
+	uint vars_regrev;
+#endif /* KEEP_JP_REGREV */
 } dhd_pub_t;
 #if defined(CUSTOMER_HW4)
 #define MAX_RESCHED_CNT 600
@@ -1178,6 +1184,8 @@ extern int check_rev(void);
 int dhd_rps_cpus_enable(struct net_device *net, int enable);
 int custom_rps_map_set(struct netdev_rx_queue *queue, char *buf, size_t len);
 void custom_rps_map_clear(struct netdev_rx_queue *queue);
+#define PRIMARY_INF 0
+#define VIRTUAL_INF 1
 #ifdef CONFIG_MACH_UNIVERSAL5433
 #define RPS_CPUS_MASK "10"
 #define RPS_CPUS_MASK_P2P "10"
@@ -1185,8 +1193,8 @@ void custom_rps_map_clear(struct netdev_rx_queue *queue);
 #define RPS_CPUS_WLAN_CORE_ID 4
 #else
 #define RPS_CPUS_MASK "6"
-#define RPS_CPUS_MASK_P2P "1"
-#define RPS_CPUS_MASK_IBSS "1"
+#define RPS_CPUS_MASK_P2P "6"
+#define RPS_CPUS_MASK_IBSS "6"
 #endif /* CONFIG_MACH_UNIVERSAL5433 */
 #endif /* (SET_RPS_CPUS || ARGOS_RPS_CPU_CTL) && CUSTOMER_HW4 */
 

@@ -673,7 +673,8 @@ late_initcall(sec_log_last_kmsg_late_init);
 
 #ifdef CONFIG_SEC_DEBUG_TIMA_LOG
 #ifdef   CONFIG_TIMA_RKP
-#ifdef CONFIG_SOC_EXYNOS5430
+#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5433)
+
 #define   TIMA_DEBUG_LOG_START  0x30300000
 #define   TIMA_DEBUG_LOG_SIZE   1<<20
 

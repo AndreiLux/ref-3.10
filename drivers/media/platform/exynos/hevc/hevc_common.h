@@ -591,11 +591,17 @@ static inline unsigned int hevc_version(struct hevc_dev *dev)
 #define NUM_OF_ALLOC_CTX(dev)	(NUM_OF_PORT(dev) + 1)
 
 #define FW_HAS_DYNAMIC_DPB(dev)		(dev->fw.date >= 0x131030)
+#if 0		/* Do not use last frame info */
+#define FW_HAS_LAST_DISP_INFO(dev)	(dev->fw.date >= 0x141211)
+#else
+#define FW_HAS_LAST_DISP_INFO(dev)	0
+#endif
 
 #define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
 
 /* Extra information for Decoder */
 #define	DEC_SET_DYNAMIC_DPB		(1 << 1)
+#define	DEC_SET_LAST_FRAME_INFO		(1 << 2)
 
 struct hevc_fmt {
 	char *name;

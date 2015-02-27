@@ -53,6 +53,7 @@
 #define MAX86902_RE_ENABLE		200/*ms*/
 
 #define MODULE_NAME_HRM			"hrm_sensor"
+#define MODULE_NAME_HRM_LED		"hrmled_sensor"
 #define MODULE_NAME_UV			"uv_sensor"
 #define CHIP_NAME				"MAX86902"
 #define MAX86900_CHIP_NAME		"MAX86900"
@@ -170,6 +171,11 @@ static int max86900_regulator_onoff(struct max86900_device_data *data, int onoff
 	struct regulator *regulator_led_3p3;
 #endif
 	struct regulator *regulator_vdd_1p8;
+
+	if (data->regulator_is_enable == onoff) {
+		pr_err("%s - duplicate regulator : %d\n", __func__, onoff);
+		return 0;
+	}
 
 	regulator_vdd_1p8 = regulator_get(NULL, data->vdd_1p8);
 	if (IS_ERR(regulator_vdd_1p8) || regulator_vdd_1p8 == NULL) {
@@ -1960,7 +1966,7 @@ static int max86902_uv_read_data_uv(struct max86900_device_data *device, int *da
 
 static int max86902_uv_eol_read_data_vb(struct max86900_device_data *device, int *data)
 {
-	u8 err;
+	int err;
 	int ret = MAX86902_ENHANCED_UV_NONE_MODE;
 	u8 status;
 	u8 recvData[MAX_LED_NUM * NUM_BYTES_PER_SAMPLE] = { 0x00, };
@@ -2014,7 +2020,7 @@ static int max86902_uv_eol_read_data_vb(struct max86900_device_data *device, int
 
 static int max86902_uv_eol_read_data_sum(struct max86900_device_data *device, int *data)
 {
-	u8 err;
+	int err;
 	int ret = MAX86902_ENHANCED_UV_NONE_MODE;
 	u8 status;
 	u8 recvData[NUM_BYTES_PER_SAMPLE] = { 0x00, };
@@ -2067,7 +2073,7 @@ static int max86902_uv_eol_read_data_sum(struct max86900_device_data *device, in
 
 static int max86902_uv_eol_read_data_hr(struct max86900_device_data *device, int *data)
 {
-	u8 err;
+	int err;
 	int ret = MAX86902_ENHANCED_UV_NONE_MODE;
 	u8 status;
 	u8 recvData[20 * NUM_BYTES_PER_SAMPLE] = { 0x00, };
@@ -2352,6 +2358,83 @@ static struct attribute *hrm_sysfs_attrs[] = {
 
 static struct attribute_group hrm_attribute_group = {
 	.attrs = hrm_sysfs_attrs,
+};
+
+/* hrm led sysfs */
+static ssize_t max86900_hrmled_enable_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+
+	return sprintf(buf, "%d\n", atomic_read(&data->hrm_is_enable));
+}
+
+static ssize_t max86900_hrmled_enable_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+	int new_value;
+
+	if (sysfs_streq(buf, "1")) {
+		new_value = 1;
+		data->isEnable_led = 1;
+	} else if (sysfs_streq(buf, "0")) {
+		new_value = 0;
+		data->isEnable_led = 0;
+	} else {
+		pr_err("%s - invalid value %d\n", __func__, *buf);
+		return -EINVAL;
+	}
+
+	pr_info("%s - start en : %d\n", __func__, new_value);
+
+	if (data->part_type < PART_TYPE_MAX86902A) {
+		if (atomic_read(&data->uv_is_enable))
+			max86900_uv_mode_enable(data, 0);
+
+		max86900_hrm_mode_enable(data, new_value);
+	} else {
+		if (atomic_read(&data->uv_is_enable))
+			max86902_uv_mode_enable(data, 0);
+
+		max86902_hrm_mode_enable(data, new_value);
+	}
+	return count;
+}
+
+static ssize_t max86900_hrmled_poll_delay_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%lld\n", 10000000LL);
+}
+
+static ssize_t max86900_hrmled_poll_delay_store(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t size)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+
+	pr_info("%s - hrm sensor delay was fixed as 10ms:%d:%d\n",
+		__func__, atomic_read(&data->hrm_is_enable), data->reenable_set);
+	return size;
+}
+
+static struct device_attribute dev_attr_hrmled_enable =
+	__ATTR(enable, S_IRUGO|S_IWUSR|S_IWGRP,
+	max86900_hrmled_enable_show, max86900_hrmled_enable_store);
+
+static struct device_attribute dev_attr_hrmled_poll_delay =
+	__ATTR(poll_delay, S_IRUGO|S_IWUSR|S_IWGRP,
+	max86900_hrmled_poll_delay_show, max86900_hrmled_poll_delay_store);
+
+static struct attribute *hrmled_sysfs_attrs[] = {
+	&dev_attr_hrmled_enable.attr,
+	&dev_attr_hrmled_poll_delay.attr,
+	NULL
+};
+
+static struct attribute_group hrmled_attribute_group = {
+	.attrs = hrmled_sysfs_attrs,
 };
 
 /* uv sysfs */
@@ -3467,6 +3550,27 @@ static ssize_t device_id_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%lld\n", device_id);
 }
 
+static ssize_t max86900_hrm_flush_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+	u8 handle = 0;
+
+	if (sysfs_streq(buf, "16")) /* ID_SAM_HRM */
+		handle = 16;
+	else if (sysfs_streq(buf, "17")) /* ID_AOSP_HRM */
+		handle = 17;
+	else if (sysfs_streq(buf, "18")) /* ID_HRM_RAW */
+		handle = 18;
+	else {
+		pr_info("%s: invalid value %d\n", __func__, *buf);
+		return -EINVAL;
+	}
+
+	input_report_rel(data->hrm_input_dev, REL_MISC, handle);
+	return size;
+}
+
 static struct device_attribute dev_attr_hrm_name =
 		__ATTR(name, S_IRUGO, max86900_hrm_name_show, NULL);
 static struct device_attribute dev_attr_hrm_vendor =
@@ -3502,6 +3606,8 @@ static DEVICE_ATTR(regulator, S_IRUGO | S_IWUSR | S_IWGRP,
 	regulator_show, regulator_store);
 static DEVICE_ATTR(part_type, S_IRUGO, part_type_show, NULL);
 static DEVICE_ATTR(device_id, S_IRUGO, device_id_show, NULL);
+static DEVICE_ATTR(hrm_flush, S_IWUSR | S_IWGRP,
+	NULL, max86900_hrm_flush_store);
 
 static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_hrm_name,
@@ -3523,6 +3629,61 @@ static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_regulator,
 	&dev_attr_part_type,
 	&dev_attr_device_id,
+	&dev_attr_hrm_flush,
+	NULL,
+};
+
+static ssize_t max86900_hrmled_name_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+
+	if (data->part_type < PART_TYPE_MAX86902A)
+		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86900_CHIP_NAME);
+	else
+		return snprintf(buf, PAGE_SIZE, "%s\n", MAX86902_CHIP_NAME);
+}
+
+static ssize_t max86900_hrmled_vendor_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "%s\n", VENDOR);
+}
+
+static ssize_t max86900_hrmled_flush_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+	u8 handle = 0;
+
+	if (sysfs_streq(buf, "19")) /* HRM LED IR */
+		handle = 19;
+	else if (sysfs_streq(buf, "20")) /* HRM LED RED */
+		handle = 20;
+	else if (sysfs_streq(buf, "21")) /* HRM LED GREEN */
+		handle = 21;
+	else if (sysfs_streq(buf, "22")) /* HRM LED VIOLET */
+		handle = 22;
+	else {
+		pr_info("%s: invalid value %d\n", __func__, *buf);
+		return -EINVAL;
+	}
+
+	input_report_rel(data->hrmled_input_dev, REL_MISC, handle);
+	return size;
+}
+
+static struct device_attribute dev_attr_hrmled_name =
+		__ATTR(name, S_IRUGO, max86900_hrmled_name_show, NULL);
+static struct device_attribute dev_attr_hrmled_vendor =
+		__ATTR(vendor, S_IRUGO, max86900_hrmled_vendor_show, NULL);
+static DEVICE_ATTR(hrmled_flush, S_IWUSR | S_IWGRP,
+	NULL, max86900_hrmled_flush_store);
+
+static struct device_attribute *hrmled_sensor_attrs[] = {
+	&dev_attr_hrmled_name,
+	&dev_attr_hrmled_vendor,
+	&dev_attr_hrmled_flush,
 	NULL,
 };
 
@@ -3668,7 +3829,24 @@ static ssize_t uv_eol_test_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
-	return snprintf(buf, PAGE_SIZE, "%u\n", data->eol_test_is_enable);
+	return snprintf(buf, PAGE_SIZE, "%u\n", data->uv_eol_test_is_enable);
+}
+
+static ssize_t max86900_uv_flush_store(struct device *dev,
+	struct device_attribute *attr, const char *buf, size_t size)
+{
+	struct max86900_device_data *data = dev_get_drvdata(dev);
+	u8 handle = 0;
+
+	if (sysfs_streq(buf, "23")) /* ID_UV */
+		handle = 23;
+	else {
+		pr_info("%s: invalid value %d\n", __func__, *buf);
+		return -EINVAL;
+	}
+
+	input_report_rel(data->hrm_input_dev, REL_MISC, handle);
+	return size;
 }
 
 static struct device_attribute dev_attr_uv_name =
@@ -3681,6 +3859,8 @@ static DEVICE_ATTR(uv_sr_interval, S_IRUGO | S_IWUSR | S_IWGRP,
 	max86900_uv_sr_interval_show, max86900_uv_sr_interval_store);
 static DEVICE_ATTR(uv_eol_test, S_IRUGO | S_IWUSR | S_IWGRP,
 	uv_eol_test_show, uv_eol_test_store);
+static DEVICE_ATTR(uv_flush, S_IWUSR | S_IWGRP,
+	NULL, max86900_uv_flush_store);
 
 static struct device_attribute *uv_sensor_attrs[] = {
 	&dev_attr_uv_name,
@@ -3688,6 +3868,7 @@ static struct device_attribute *uv_sensor_attrs[] = {
 	&dev_attr_uv_lib_ver,
 	&dev_attr_uv_sr_interval,
 	&dev_attr_uv_eol_test,
+	&dev_attr_uv_flush,
 	NULL,
 };
 
@@ -3720,12 +3901,18 @@ static void max86902_hrm_irq_handler(struct max86900_device_data *data)
 		pr_err("max86902_hrm_read_data err : %d\n", err);
 
 	if (err == 0) {
-		input_report_rel(data->hrm_input_dev, REL_X,  raw_data[0] + 1); /* LED1 */
-		input_report_rel(data->hrm_input_dev, REL_Y,  raw_data[1] + 1); /* LED2 */
-		input_report_rel(data->hrm_input_dev, REL_Z,  data->hrm_temp + 1);  /* Temperature */
-		input_report_rel(data->hrm_input_dev, REL_RX, raw_data[2] + 1);  /* LED3 */
-		input_report_rel(data->hrm_input_dev, REL_RY, raw_data[3] + 1); /* LED4 */
-		input_sync(data->hrm_input_dev);
+		if (data->isEnable_led) {
+			input_report_rel(data->hrmled_input_dev, REL_X,  raw_data[0] + 1); /* IR */
+			input_report_rel(data->hrmled_input_dev, REL_Y,  raw_data[1] + 1); /* RED */
+			input_sync(data->hrmled_input_dev);
+		} else {
+			input_report_rel(data->hrm_input_dev, REL_X,  raw_data[0] + 1); /* IR */
+			input_report_rel(data->hrm_input_dev, REL_Y,  raw_data[1] + 1); /* RED */
+			input_report_rel(data->hrm_input_dev, REL_Z,  data->hrm_temp + 1);  /* Temperature */
+			input_report_rel(data->hrm_input_dev, REL_RX, raw_data[2] + 1);  /* VIOLET */
+			input_report_rel(data->hrm_input_dev, REL_RY, raw_data[3] + 1); /* LED4 */
+			input_sync(data->hrm_input_dev);
+		}
 	}
 
 	return;
@@ -4029,6 +4216,7 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	data->irq_state = 0;
 	data->hr_range = 0;
 	data->skip_i2c_msleep = 1;
+	data->regulator_is_enable = 0;
 
 	err = max86900_parse_dt(data, &client->dev);
 	if (err < 0) {
@@ -4148,10 +4336,10 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	input_set_capability(data->hrm_input_dev, EV_REL, REL_Z);
 	input_set_capability(data->hrm_input_dev, EV_REL, REL_RX);
 	input_set_capability(data->hrm_input_dev, EV_REL, REL_RY);
+	input_set_capability(data->hrm_input_dev, EV_REL, REL_MISC);
 
 	err = input_register_device(data->hrm_input_dev);
 	if (err < 0) {
-		input_free_device(data->hrm_input_dev);
 		pr_err("%s - could not register input device\n", __func__);
 		goto err_hrm_input_register_device;
 	}
@@ -4179,6 +4367,50 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id)
 		goto hrm_sensor_register_failed;
 	}
 
+	/* allocate input device for HRM*/
+	data->hrmled_input_dev = input_allocate_device();
+	if (!data->hrmled_input_dev) {
+		pr_err("%s - could not allocate input device\n",
+			__func__);
+		goto err_hrm_input_allocate_device;
+	}
+
+	input_set_drvdata(data->hrmled_input_dev, data);
+	data->hrmled_input_dev->name = MODULE_NAME_HRM_LED;
+	input_set_capability(data->hrmled_input_dev, EV_REL, REL_X);
+	input_set_capability(data->hrmled_input_dev, EV_REL, REL_Y);
+	input_set_capability(data->hrmled_input_dev, EV_REL, REL_MISC);
+
+	err = input_register_device(data->hrmled_input_dev);
+	if (err < 0) {
+		input_free_device(data->hrmled_input_dev);
+		pr_err("%s - could not register input device\n", __func__);
+		goto err_hrm_input_register_device;
+	}
+
+	err = sensors_create_symlink(data->hrmled_input_dev);
+	if (err < 0) {
+		pr_err("%s - create_symlink error\n", __func__);
+		goto err_hrm_sensors_create_symlink;
+	}
+
+	err = sysfs_create_group(&data->hrmled_input_dev->dev.kobj,
+				 &hrmled_attribute_group);
+	if (err) {
+		pr_err("[SENSOR] %s - could not create sysfs group\n",
+			__func__);
+		goto err_hrm_sysfs_create_group;
+	}
+
+	/* set sysfs for hrm led sensor */
+	err = sensors_register(data->dev, data, hrmled_sensor_attrs,
+			MODULE_NAME_HRM_LED);
+	if (err) {
+		pr_err("[SENSOR] %s - cound not register hrm_sensor(%d).\n",
+			__func__, err);
+		goto hrm_sensor_register_failed;
+	}
+
 	/* allocate input device for UV*/
 	data->uv_input_dev = input_allocate_device();
 	if (!data->uv_input_dev) {
@@ -4194,7 +4426,6 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	err = input_register_device(data->uv_input_dev);
 	if (err < 0) {
-		input_free_device(data->uv_input_dev);
 		pr_err("%s - could not register input device\n", __func__);
 		goto err_uv_input_register_device;
 	}
@@ -4269,6 +4500,7 @@ err_uv_sysfs_create_group:
 err_uv_sensors_create_symlink:
 	input_unregister_device(data->uv_input_dev);
 err_uv_input_register_device:
+	input_free_device(data->uv_input_dev);
 err_uv_input_allocate_device:
 	sensors_unregister(data->dev, hrm_sensor_attrs);
 hrm_sensor_register_failed:
@@ -4277,6 +4509,7 @@ err_hrm_sysfs_create_group:
 err_hrm_sensors_create_symlink:
 	input_unregister_device(data->hrm_input_dev);
 err_hrm_input_register_device:
+	input_free_device(data->hrm_input_dev);
 err_hrm_input_allocate_device:
 err_of_read_chipid:
 	max86900_regulator_onoff(data, HRM_LDO_OFF);

@@ -118,8 +118,11 @@ struct fimc_is_module_enum {
 	struct i2c_client		*client;
 	struct sensor_open_extended	ext;
 	struct fimc_is_sensor_ops	*ops;
+	char				*sensor_maker;
+	char				*sensor_name;
 	char				*setfile_name;
 	void				*private_data;
+	int				(*power_setpin)(struct device *);
 };
 
 enum fimc_is_sensor_state {

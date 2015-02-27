@@ -98,8 +98,8 @@ int gpu_set_target_clk_vol(int clk, bool pending_is_allowed)
 		return -1;
 	}
 
-#ifdef CONFIG_MALI_DVFS
 	mutex_lock(&platform->gpu_clock_lock);
+#ifdef CONFIG_MALI_DVFS
 	if (pending_is_allowed && platform->dvs_is_enabled) {
 		if (!platform->dvfs_pending && clk < platform->cur_clock) {
 			platform->dvfs_pending = clk;
@@ -112,11 +112,11 @@ int gpu_set_target_clk_vol(int clk, bool pending_is_allowed)
 	} else {
 		platform->dvfs_pending = 0;
 	}
-	mutex_unlock(&platform->gpu_clock_lock);
 #endif /* CONFIG_MALI_DVFS */
 
 	target_clk = gpu_check_target_clock(platform, clk);
 	if (target_clk < 0) {
+		mutex_unlock(&platform->gpu_clock_lock);
 		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u,
 				"%s: mismatch clock error (source %d, target %d)\n", __func__, clk, target_clk);
 		return -1;
@@ -126,14 +126,13 @@ int gpu_set_target_clk_vol(int clk, bool pending_is_allowed)
 
 	prev_clk = gpu_get_cur_clock(platform);
 
-	mutex_lock(&platform->gpu_clock_lock);
 	GPU_SET_CLK_VOL(kbdev, prev_clk, target_clk, target_vol);
+	ret = gpu_update_cur_level(platform);
+
 	mutex_unlock(&platform->gpu_clock_lock);
 
 	GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "clk[%d -> %d], vol[%d (margin : %d)]\n",
 		prev_clk, gpu_get_cur_clock(platform), gpu_get_cur_voltage(platform), platform->voltage_margin);
-
-	ret = gpu_update_cur_level(platform);
 
 	return ret;
 }

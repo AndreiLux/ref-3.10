@@ -44,14 +44,14 @@ struct fimc_is_subdev {
 };
 
 #define GET_LEADER_FRAMEMGR(leader) \
-	(((leader) && (leader)->vctx) ? (&(leader)->vctx->q_src.framemgr) : NULL)
+	(((leader) && (leader)->vctx) ? (&(leader)->vctx->q_src->framemgr) : NULL)
 #define GET_SUBDEV_FRAMEMGR(subdev) \
-	(((subdev) && (subdev)->vctx) ? (&(subdev)->vctx->q_dst.framemgr) : NULL)
+	(((subdev) && (subdev)->vctx) ? (&(subdev)->vctx->q_dst->framemgr) : NULL)
 
 #define GET_LEADER_QUEUE(leader) \
-	(((leader) && (leader)->vctx) ? (&(leader)->vctx->q_src) : NULL)
+	(((leader) && (leader)->vctx) ? ((leader)->vctx->q_src) : NULL)
 #define GET_SUBDEV_QUEUE(subdev) \
-	(((subdev) && (subdev)->vctx) ? (&(subdev)->vctx->q_dst) : NULL)
+	(((subdev) && (subdev)->vctx) ? ((subdev)->vctx->q_dst) : NULL)
 
 /*common subdev*/
 int fimc_is_subdev_open(struct fimc_is_subdev *subdev,

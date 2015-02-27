@@ -63,6 +63,7 @@ enum exynos_sensor_id {
 	SENSOR_NAME_S5K4H5		 = 13,
 	SENSOR_NAME_S5K2P2_12M		 = 15,
 	SENSOR_NAME_S5K6D1		 = 16,
+	SENSOR_NAME_S5K2P3		 = 19,
 	SENSOR_NAME_S5K4EC		 = 57,
 	SENSOR_NAME_SR352		 = 57,
 	SENSOR_NAME_SR030		 = 57,
@@ -71,6 +72,7 @@ enum exynos_sensor_id {
 	SENSOR_NAME_IMX134		 = 102,
 	SENSOR_NAME_IMX175		 = 103,
 	SENSOR_NAME_IMX240		 = 104,
+	SENSOR_NAME_IMX219		 = 107,
 
 	SENSOR_NAME_SR261		 = 201, /* 201 ~ 300 Other vendor sensors */
 
@@ -164,7 +166,9 @@ struct sensor_protocol {
 	u32 product_name;
 	enum sensor_peri_type peri_type;
 	union sensor_peri_format peri_setting;
-	u32 reserved[4];
+	u32 csi_ch;
+	u32 cal_address;
+	u32 reserved[2];
 };
 
 struct sensor_peri_info {

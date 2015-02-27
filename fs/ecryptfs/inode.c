@@ -36,6 +36,10 @@
 #include <asm/unaligned.h>
 #include "ecryptfs_kernel.h"
 
+#ifdef CONFIG_SDP
+#include "ecryptfs_sdp_chamber.h"
+#endif
+
 static struct dentry *lock_parent(struct dentry *dentry)
 {
 	struct dentry *dir;
@@ -139,6 +143,31 @@ static int ecryptfs_interpose(struct dentry *lower_dentry,
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 	d_instantiate(dentry, inode);
+
+#ifdef CONFIG_SDP
+	if(S_ISDIR(inode->i_mode) && dentry) {
+	    if(IS_UNDER_ROOT(dentry)) {
+	        struct ecryptfs_mount_crypt_stat *mount_crypt_stat  =
+	                &ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+	        printk("Creating a directoy under root directory of current partition.\n");
+
+	        if(is_chamber_directory(mount_crypt_stat, (char *)dentry->d_name.name)) {
+	            printk("This is a chamber directory\n");
+	            set_chamber_flag(inode);
+	        }
+	    } else if(IS_SENSITIVE_DENTRY(dentry->d_parent)) {
+	        /*
+	         * When parent directory is sensitive
+	         */
+	        struct ecryptfs_crypt_stat *crypt_stat =
+	                &ecryptfs_inode_to_private(inode)->crypt_stat;
+
+	        printk("Parent %s is sensitive. so this directory is sensitive too\n",
+	                dentry->d_parent->d_name.name);
+	        crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
+	    }
+	}
+#endif
 
 	return 0;
 }
@@ -417,6 +446,35 @@ static int ecryptfs_lookup_interpose(struct dentry *dentry,
 		}
 	}
 
+#ifdef CONFIG_SDP
+	if (S_ISDIR(inode->i_mode) && dentry) {
+	    if(IS_UNDER_ROOT(dentry)) {
+	        struct ecryptfs_mount_crypt_stat *mount_crypt_stat  =
+	                &ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+	        printk("Lookup a directoy under root directory of current partition.\n");
+
+	        if(is_chamber_directory(mount_crypt_stat, (char *)dentry->d_name.name)) {
+	            /*
+	             * When this directory is under ROOT directory and the name is registered
+	             * as Chamber.
+	             */
+	            printk("This is a chamber directory\n");
+	            set_chamber_flag(inode);
+	        }
+	    } else if(IS_SENSITIVE_DENTRY(dentry->d_parent)) {
+	        /*
+	         * When parent directory is sensitive
+	         */
+	        struct ecryptfs_crypt_stat *crypt_stat =
+	                &ecryptfs_inode_to_private(inode)->crypt_stat;
+
+	        printk("Parent %s is sensitive. so this directory is sensitive too\n",
+	                dentry->d_parent->d_name.name);
+	        crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
+	    }
+	}
+#endif
+
 	if (inode->i_state & I_NEW)
 		unlock_new_inode(inode);
 	d_add(dentry, inode);
@@ -602,6 +660,13 @@ static int ecryptfs_rmdir(struct inode *dir, struct dentry *dentry)
 	struct dentry *lower_dir_dentry;
 	int rc;
 
+#ifdef CONFIG_SDP
+	if(IS_CHAMBER_DENTRY(dentry)) {
+		printk("You're removing chamber directory. I/O error\n");
+		return -EIO;
+	}
+#endif
+
 	lower_dentry = ecryptfs_dentry_to_lower(dentry);
 	dget(dentry);
 	lower_dir_dentry = lock_parent(lower_dentry);
@@ -654,6 +719,13 @@ ecryptfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 	struct dentry *lower_new_dir_dentry;
 	struct dentry *trap = NULL;
 	struct inode *target_inode;
+
+#ifdef CONFIG_SDP
+	if(IS_CHAMBER_DENTRY(old_dentry)) {
+		printk("You're renaming chamber directory. I/O error\n");
+		return -EIO;
+	}
+#endif
 
 	lower_old_dentry = ecryptfs_dentry_to_lower(old_dentry);
 	lower_new_dentry = ecryptfs_dentry_to_lower(new_dentry);
@@ -1097,11 +1169,7 @@ ecryptfs_getxattr_lower(struct dentry *lower_dentry, const char *name,
 {
 	int rc = 0;
 
-	// need information of given lower_dentry
-	// 1. fs_type
-	// 1. file name
 	if (!lower_dentry->d_inode->i_op->getxattr) {
-		printk("%s: getxattr of lower_dentry failed : EOPNOTSUPP\n", __func__);
 #ifndef ECRYPT_FS_VIRTUAL_FAT_XATTR
 		rc = -EOPNOTSUPP;
 #endif

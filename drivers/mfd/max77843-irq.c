@@ -21,8 +21,6 @@
  * This driver is based on max77843-irq.c
  */
 
-/* #define BATTERY_LOG_MESSAGE */
-
 #include <linux/err.h>
 #include <linux/irq.h>
 #include <linux/interrupt.h>
@@ -194,9 +192,7 @@ static irqreturn_t max77843_irq_thread(int irq, void *data)
 		return IRQ_NONE;
 	}
 
-#ifdef BATTERY_LOG_MESSAGE
 	pr_info("%s: interrupt source(0x%02x)\n", __func__, irq_src);
-#endif
 
 	if (irq_src & MAX77843_IRQSRC_CHG) {
 		/* CHG_INT */

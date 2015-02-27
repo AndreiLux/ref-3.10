@@ -160,6 +160,8 @@ obj-$(CONFIG_VME_BUS)		+= vme/
 obj-$(CONFIG_IPACK_BUS)		+= ipack/
 obj-$(CONFIG_NTB)		+= ntb/
 
+obj-$(CONFIG_ESOC)		+= esoc/
+
 # irled driver
 obj-$(CONFIG_IRLED)		+= irled/
 obj-$(CONFIG_ICE40LM_FPGA)	+= ice40lm/

@@ -874,7 +874,7 @@ static int s2mps13_pmic_probe(struct platform_device *pdev)
 		sec_reg_update(iodev, S2MPS13_REG_B8CTRL1, 0x02, 0x02);  /* Buck8 AVP On */
 		sec_reg_update(iodev, S2MPS13_REG_B9CTRL1, 0x02, 0x02);  /* Buck9 AVP On */
 	}
-	sec_reg_update(iodev, S2MPS13_REG_CTRL2, pdata->smpl_warn_vth, 0xe0);
+	sec_reg_update(iodev, S2MPS13_REG_CTRL2, pdata->smpl_warn_vth, 0xf8);
 	pr_info("%s: smpl_warn vthreshold is 0x%x\n", __func__, pdata->smpl_warn_vth);
 
 	return 0;

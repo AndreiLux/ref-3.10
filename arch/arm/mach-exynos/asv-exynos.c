@@ -202,11 +202,39 @@ static void set_asv_info(struct asv_common *exynos_asv_common, bool show_volt)
 #ifdef CONFIG_SEC_PM_DEBUG
 static int asv_debug_show(struct seq_file *s, void *d)
 {
-	struct asv_info *exynos_asv_info;
+	struct asv_info *ai;
+	int fused_asv_group;
+	int i;
+	bool useABB = false;
 
-	list_for_each_entry(exynos_asv_info, &asv_list, node) {
-		seq_printf(s, "%s ASV group is %d\n", exynos_asv_info->name,
-					exynos_asv_info->result_asv_grp);
+	list_for_each_entry(ai, &asv_list, node) {
+		seq_printf(s, "%s ASV group is %d\n", ai->name, ai->result_asv_grp);
+
+		if (ai->ops_cal && ai->ops_cal->get_use_abb && ai->ops_cal->get_abb)
+			useABB = ai->ops_cal->get_use_abb(ai->asv_type);
+
+		for (i = 0; i < ai->dvfs_level_nr; i++) {
+			if (ai->ops_cal && ai->ops_cal->get_fused_grp)
+				fused_asv_group = ai->ops_cal->get_fused_grp(ai->asv_type, i);
+			else
+				fused_asv_group = -1;
+
+			if (useABB)
+				seq_printf(s, "%s LV%d freq : %d volt : %d"
+						" abb : %d, fused_gr :%d\n",
+						ai->name, i,
+						ai->asv_volt[i].asv_freq,
+						ai->asv_volt[i].asv_value,
+						ai->asv_abb[i].asv_value,
+						fused_asv_group);
+			else
+				seq_printf(s, "%s LV%d freq : %d volt : %d,"
+						" fused_gr : %d\n",
+						ai->name, i,
+						ai->asv_volt[i].asv_freq,
+						ai->asv_volt[i].asv_value,
+						fused_asv_group);
+		}
 	}
 
 	return 0;
@@ -277,7 +305,7 @@ static int __init asv_init(void)
 
 	set_asv_info(exynos_asv_common, true);
 #ifdef CONFIG_SEC_PM_DEBUG
-	debugfs_create_file("asv_group", S_IRUGO, NULL, NULL, &asv_debug_fops);
+	debugfs_create_file("asv_group", S_IRUSR, NULL, NULL, &asv_debug_fops);
 #endif
 
 out2:

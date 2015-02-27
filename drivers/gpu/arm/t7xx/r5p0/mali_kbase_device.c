@@ -75,10 +75,6 @@ STATIC void kbasep_trace_debugfs_term(struct kbase_device *kbdev);
 #endif /* MALI_SEC */
 #endif
 
-void kbasep_as_do_poke(struct work_struct *work);
-enum hrtimer_restart kbasep_reset_timer_callback(struct hrtimer *data);
-void kbasep_reset_timeout_worker(struct work_struct *data);
-
 struct kbase_device *kbase_device_alloc(void)
 {
 	return kzalloc(sizeof(struct kbase_device), GFP_KERNEL);
@@ -263,7 +259,7 @@ free_reset_workq:
 	destroy_workqueue(kbdev->reset_workq);
 #endif /* KBASE_GPU_RESET_EN */
 #endif /* MALI_SEC */
-free_cache_clean_workq :
+free_cache_clean_workq:
 	destroy_workqueue(kbdev->hwcnt.cache_clean_wq);
  free_workqs:
 	while (i > 0) {
@@ -528,6 +524,7 @@ STATIC void kbasep_trace_term(struct kbase_device *kbdev)
 #endif
 }
 
+/* SLSI */
 void kbasep_trace_format_msg(struct kbase_trace *trace_msg, char *buffer, int len)
 {
 	s32 written = 0;
@@ -559,7 +556,7 @@ void kbasep_trace_format_msg(struct kbase_trace *trace_msg, char *buffer, int le
 
 }
 
-void kbasep_trace_dump_msg(struct kbase_device *kbdev, struct kbase_trace *trace_msg)
+static void kbasep_trace_dump_msg(struct kbase_device *kbdev, struct kbase_trace *trace_msg)
 {
 	char buffer[DEBUG_MESSAGE_SIZE];
 
@@ -711,7 +708,7 @@ struct trace_seq_state {
 	u32 end;
 };
 
-void *kbasep_trace_seq_start(struct seq_file *s, loff_t *pos)
+static void *kbasep_trace_seq_start(struct seq_file *s, loff_t *pos)
 {
 	struct trace_seq_state *state = s->private;
 	int i;
@@ -728,11 +725,11 @@ void *kbasep_trace_seq_start(struct seq_file *s, loff_t *pos)
 	return &state->trace_buf[i];
 }
 
-void kbasep_trace_seq_stop(struct seq_file *s, void *data)
+static void kbasep_trace_seq_stop(struct seq_file *s, void *data)
 {
 }
 
-void *kbasep_trace_seq_next(struct seq_file *s, void *data, loff_t *pos)
+static void *kbasep_trace_seq_next(struct seq_file *s, void *data, loff_t *pos)
 {
 	struct trace_seq_state *state = s->private;
 	int i;
@@ -746,7 +743,7 @@ void *kbasep_trace_seq_next(struct seq_file *s, void *data, loff_t *pos)
 	return &state->trace_buf[i];
 }
 
-int kbasep_trace_seq_show(struct seq_file *s, void *data)
+static int kbasep_trace_seq_show(struct seq_file *s, void *data)
 {
 	struct kbase_trace *trace_msg = data;
 	char buffer[DEBUG_MESSAGE_SIZE];

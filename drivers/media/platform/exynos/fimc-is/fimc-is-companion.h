@@ -19,7 +19,6 @@
 #include "fimc-is-companion_address.h"
 #include "fimc-is-interface.h"
 
-#define I2C_RETRY_COUNT         5
 #define CRC_RETRY_COUNT         40
 
 #define FIMC_IS_ISP_CV	"/data/ISP_CV"

@@ -373,8 +373,8 @@
 	haptic {
 		status = "okay";
 		haptic,max_timeout = <10000>;
-		haptic,duty = <30500>;
-		haptic,period = <33670>;
+		haptic,duty = <32448>;
+		haptic,period = <33814>;
 		haptic,reg2 = <0x82>;
 		haptic,pwm_id = <0>;
 		haptic,regulator_name = "VCC_3.0V_MOTOR_AP";
@@ -413,18 +413,8 @@
 		w1,gpio = <&gpd2 5 0>;
 	};
 
-	pinctrl@14CC0000 {
-		cover_en: cover-en {
-			samsung,pins = "gpd4-1";
-			samsung,pin-function = <0x0>;
-		};
-	};
-
 	led_cover {
-		status = "okay";
 		compatible = "led_cover";
-		pinctrl-names = "default";
-		pinctrl-0 = <&cover_en>;
 		ledcover_en,gpio = <&gpd4 1 0>;
 	};
 
@@ -615,6 +605,13 @@
 		};
 	};
 
+	hsi2c@14ED0000 {
+		status = "okay";
+		touchscreen@20 {
+			stm,grip_area = <160>;
+		};
+	};
+
 	ion {
 		compatible = "samsung,exynos5430-ion";
 
@@ -627,7 +624,7 @@
 			       "mfc_nfw",
 			       "secdma";
 
-		contig = <0 0x400000 0x0>,
+		contig = <0 0x600000 0x0>,
 		         <2 0x100000 0x0>,
 		         <10 0x800000 0x0>,
 		         <11 0xA800000 0x0>,
@@ -839,6 +836,13 @@
 			timing,dsi-escape-clk = <16>;
 			timing,hsync-2h-cycle = <1>;
 			mic = <1>;
+		};
+	};
+
+	spi_0: spi@14d20000 {
+		BCM4773@0 {
+			ssp,prox-cal_hi_thresh = <120>;
+			ssp,prox-cal_low_thresh = <55>;
 		};
 	};
 
@@ -1083,6 +1087,8 @@
 
 		scenario = <0>;
 		mclk_ch = <0>;
+		sensor_id = <104>;
+
 		gpios_cam_en = <&gpf4 7 0x1>;
 		gpio_reset = <&gpc0 4 0x1>;
 		gpios_comp_en = <&gpf1 7 0x1>; /* COMP_EN */
@@ -1399,6 +1405,7 @@
 		dwc3 {
 			maximum-speed = "high-speed";
 			dr_mode = "otg";
+			adj-sof-accuracy;
 		};
 	};
 
@@ -1493,7 +1500,7 @@
 	};
 
 	i2s_dummy: dummy-i2s {
-		compatible = "samsung,dummy-i2s";
+		compatible = "snd-soc-dummy";
 		status = "okay";
 	};
 
@@ -1504,22 +1511,13 @@
 
 	sound {
 		compatible = "samsung,pacific-arizona";
-		samsung,audio-cpu = <&i2s0		/* primary */
-				     &i2s_dummy
-				     &i2s_dummy
-				     &i2s0		/* secondary */
-				     &i2s_dummy		/* voice wakeup */
-				     &i2s_dummy		/* dsp trace */
-				     &eax		/* eax0 ~ 3 */
-				     &eax
-				     &eax
-				     &eax>;
+		samsung,audio-cpu = <&i2s0>;
 		samsung,audio-codec = <&audio_codec
+				       &audio_codec /* NULL */
+				       &audio_codec /* NULL */
 				       &audio_codec
 				       &audio_codec
 				       &audio_codec
-				       &codec_dummy
-				       &codec_dummy
 				       &audio_codec
 				       &audio_codec
 				       &audio_codec
@@ -1618,17 +1616,17 @@
 			net_boost,label="IPC";
 			net_boost,node="rmnet0 rmnet1 rmnet2 rmnet3 rmnet4 rmnet5 rmnet6 rmnet7";
 			net_boost,table_size = <2>;
-			net_boost,table= <100 0 0 1100000 0 825000 100000 0 1
-					  130 0 0 1300000 0 825000 100000 0 1>;
+			net_boost,table= <100 0 0 1100000 0 825000 100000 0 1 0
+					  130 0 0 1300000 0 825000 100000 0 1 0>;
 		};
 		/* Example
 		   boot_device@2 {
 			net_boost,label="WIFI";
 			net_boost,node="wlan0";
 			net_boost,table_size = <2>;
-					 <Throughput(Mbps) ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq>
-			net_boost,table= <100 1000000 1000000 800000 800000 512000 256000 0 0
-					  300 1500000 1500000 1000000 1000000 826000 413000 1 0>;
+					 <Throughput(Mbps) ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq HMPBoost>
+			net_boost,table= <100 1000000 1000000 800000 800000 512000 256000 0 0 0
+					  300 1500000 1500000 1000000 1000000 826000 413000 1 0 0>;
 		};
 		*/
 		boot_device@2 {
@@ -1636,35 +1634,35 @@
 			net_boost,node="";
 			net_boost,sysnode="/sys/class/mmc_host/mmc0/trans_count";
 			net_boost,table_size = <1>;
- 			/*               <Throughput(Mbps) ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq> */
-			net_boost,table= <64 0 0 1300000 0 825000 400000 0 0>;
+ 			/*               <Throughput(Mbps) ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq HMPBoost> */
+			net_boost,table= <64 0 0 1300000 0 825000 400000 0 0 0>;
 		};
 		boot_device@3 {
 			net_boost,label="WIFI";
 			net_boost,node="wlan0";
 			net_boost,table_size = <3>;
-			/*		 <Throughput ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq> */
-			net_boost,table= <60 1000000 0 800000 0 0 200000 0 0
-					  100 1200000 0 1000000 0 0 200000 0 0
-					  180 1700000 0 1100000 0 543000 267000 0 0>;
+			/*		 <Throughput ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq HMPBoost> */
+			net_boost,table= <60 1000000 0 800000 0 0 200000 0 0 0
+					  100 1200000 0 1000000 0 0 200000 0 0 1
+					  180 1700000 0 1100000 0 543000 267000 0 0 1>;
 		};
 		boot_device@4 {
 			net_boost,label="P2P";
 			net_boost,node="p2p-wlan0-0";
 			net_boost,table_size = <3>;
-			/*		 <Throughput ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq> */
-			net_boost,table= <30 1000000 0 800000 0 0 200000 0 0
-					  50 1200000 0 1000000 0 0 200000 0 0
-					  90 1700000 0 1100000 0 543000 267000 0 0>;
+			/*		 <Throughput ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq HMPBoost> */
+			net_boost,table= <30 1000000 0 800000 0 0 200000 0 0 0
+					  50 1200000 0 1000000 0 0 200000 0 0 0
+					  90 1700000 0 1100000 0 543000 267000 0 0 1>;
 		};
 		boot_device@5 {
 			net_boost,label="CLAT";
 			net_boost,node="clat clat4";
 			net_boost,table_size = <3>;
-			/*		 <Throughput ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq> */
-			net_boost,table= <120 1400000 0 0 0 825000 0 0 0
-					  130 1500000 0 0 0 825000 0 0 0
-					  150 1600000 0 0 0 825000 0 0 0>;
+			/*		 <Throughput ARM_min ARM_max KFC_min KFC_max MIF INT Task Irq HMPBoost> */
+			net_boost,table= <120 1400000 0 0 0 825000 0 0 0 0
+					  130 1500000 0 0 0 825000 0 0 0 0
+					  150 1600000 0 0 0 825000 0 0 0 0>;
 		};
 	};
 
@@ -1682,16 +1680,16 @@
 
 			/* Frequency table */
 			/* for level	:		1_Head, 2_Tail, 3_Head, 4_Head/Tail, 5_Head, 9_Head, 9_Tail */
-			input_booster,cpu_freqs = <1600000 0 0 0 1200000 1900000 1500000>;
+			input_booster,cpu_freqs = <1200000 0 0 0 1000000 1900000 1500000>;
 			input_booster,hmp_boost = <1 0 0 0 1 1 1>;
 			input_booster,kfc_freqs = <1000000 1300000 1300000 1300000 800000 1300000 1300000>;
 			input_booster,mif_freqs = <667000 413000 413000 667000 667000 825000 825000>;
 			input_booster,int_freqs = <334000 133000 133000 133000 334000 400000 400000>;
 
 			/* Time table */
-			input_booster,head_times = <130 130 130 130 100 500 0>;
+			input_booster,head_times = <130 130 130 130 120 500 0>;
 			input_booster,tail_times = <500 500 500 200 500 1000 0>;
-			input_booster,phase_times = <0 0 0 0 40 0 0>;
+			input_booster,phase_times = <0 0 0 0 20 0 0>;
 		};
 		booster_key@2 {
 			input_booster,label = "PEN";
@@ -1701,16 +1699,16 @@
 
 			/* Frequency table */
 			/* for level	:		1_Head, 2_Tail, 3_Head, 4_Head/Tail, 5_Head, 9_Head, 9_Tail */
-			input_booster,cpu_freqs = <1600000 0 0 0 1200000 1900000 1500000>;
+			input_booster,cpu_freqs = <1200000 0 0 0 1000000 1900000 1500000>;
 			input_booster,hmp_boost = <1 0 0 0 1 1 1>;
 			input_booster,kfc_freqs = <1000000 1300000 1300000 1300000 800000 1300000 1300000>;
 			input_booster,mif_freqs = <667000 413000 413000 667000 667000 825000 825000>;
 			input_booster,int_freqs = <334000 133000 133000 133000 334000 400000 400000>;
 
 			/* Time table */
-			input_booster,head_times = <130 130 130 130 100 500 0>;
+			input_booster,head_times = <130 130 130 130 120 500 0>;
 			input_booster,tail_times = <500 500 500 200 500 1000 0>;
-			input_booster,phase_times = <0 0 0 0 40 0 0>;
+			input_booster,phase_times = <0 0 0 0 20 0 0>;
 		};
 		/* If you need to add new key type, add it this position */
 	};

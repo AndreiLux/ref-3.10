@@ -237,7 +237,7 @@ static int fimc_is_vdc_video_set_format_mplane(struct file *file, void *fh,
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
-	struct fimc_is_queue *queue = &vctx->q_dst;
+	struct fimc_is_queue *queue = vctx->q_dst;
 	struct fimc_is_device_ischain *ischain = vctx->device;
 
 	mdbgv_vdc("%s\n", vctx, __func__);
@@ -418,7 +418,7 @@ static int fimc_is_vdc_video_g_ctrl(struct file *file, void *priv,
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
-	struct fimc_is_framemgr *framemgr = &vctx->q_dst.framemgr;
+	struct fimc_is_framemgr *framemgr = &vctx->q_dst->framemgr;
 
 	dbg_vdisc("%s\n", __func__);
 
@@ -625,7 +625,7 @@ static void fimc_is_vdc_buffer_queue(struct vb2_buffer *vb)
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = vb->vb2_queue->drv_priv;
-	struct fimc_is_queue *queue = &vctx->q_dst;
+	struct fimc_is_queue *queue = vctx->q_dst;
 	struct fimc_is_video *video = vctx->video;
 	struct fimc_is_device_ischain *ischain = vctx->device;
 	struct fimc_is_subdev *subdev = &ischain->dis;

@@ -27,7 +27,6 @@
 #include <linux/gpio.h>
 #include <linux/mfd/max77888.h>
 #include <linux/mfd/max77888-private.h>
-#include <plat/gpio-cfg.h>
 
 static const u8 max77888_mask_reg[] = {
 	[TOPSYS_INT] = MAX77888_PMIC_REG_TOPSYS_INT_MASK,
@@ -150,6 +149,19 @@ static struct irq_chip max77888_irq_chip = {
 	.irq_unmask		= max77888_irq_unmask,
 };
 
+/* WA for MUIC RESET */
+static irqreturn_t muic_reset_irq_thread(int irq, void *data)
+{
+	struct max77888_dev *max77888 = data;
+
+	pr_info("%s: MUIC chip was RESET, I will unmask the REG\n", __func__);
+	cancel_delayed_work_sync(&max77888->muic_reset_dwork);
+	schedule_delayed_work(&max77888->muic_reset_dwork, HZ);
+
+	return IRQ_HANDLED;
+}
+/* WA for MUIC RESET */
+
 static irqreturn_t max77888_irq_thread(int irq, void *data)
 {
 	struct max77888_dev *max77888 = data;
@@ -162,7 +174,6 @@ static irqreturn_t max77888_irq_thread(int irq, void *data)
 	pr_debug("%s: irq gpio pre-state(0x%02x)\n", __func__,
 				gpio_get_value(max77888->irq_gpio));
 
-clear_retry:
 	ret = max77888_read_reg(max77888->i2c,
 					MAX77888_PMIC_REG_INTSRC, &irq_src);
 	if (ret < 0) {
@@ -214,29 +225,17 @@ clear_retry:
 		pr_info("%s: muic interrupt(0x%02x, 0x%02x)\n", __func__,
 			irq_reg[MUIC_INT1], irq_reg[MUIC_INT2]);
 
-		if (max77888->irqf_trigger & IRQF_TRIGGER_LOW) {
-			/* for debug */
-			if ((irq_reg[MUIC_INT1] == 0) && (irq_reg[MUIC_INT2] == 0)) {
-				pr_info("%s: irq gpio post-state(0x%02x)\n", __func__,
-					gpio_get_value(max77888->irq_gpio));
-				if (check_num >= 15) {
-					max77888_muic_read_register(max77888->muic);
-					panic("max77828 muic interrupt gpio Err!\n");
-				}
-				check_num++;
-			} else
-				check_num = 0;
-		}
-	}
-
-	pr_debug("%s: irq gpio post-state(0x%02x)\n", __func__,
-		gpio_get_value(max77888->irq_gpio));
-
-	if (max77888->irqf_trigger & IRQF_TRIGGER_FALLING) {
-		if (gpio_get_value(max77888->irq_gpio) == 0) {
-			pr_warn("%s: irq_gpio is not High!\n", __func__);
-			goto clear_retry;
-		}
+		/* for debug */
+		if ((irq_reg[MUIC_INT1] == 0) && (irq_reg[MUIC_INT2] == 0)) {
+			pr_info("%s: irq gpio post-state(0x%02x)\n", __func__,
+				gpio_get_value(max77888->irq_gpio));
+			if (check_num >= 15) {
+				max77888_muic_read_register(max77888->muic);
+				panic("max77888 muic interrupt gpio Err!\n");
+			}
+			check_num++;
+		} else
+			check_num = 0;
 	}
 
 	/* Apply masking */
@@ -254,25 +253,6 @@ clear_retry:
 	}
 
 	return IRQ_HANDLED;
-}
-
-int max77888_irq_resume(struct max77888_dev *max77888)
-{
-	if (max77888->irqf_trigger & IRQF_TRIGGER_LOW)
-		return 0;
-	else if (max77888->irqf_trigger & IRQF_TRIGGER_FALLING) {
-		int ret = 0;
-		if (max77888->irq && max77888->irq_base)
-			ret = max77888_irq_thread(max77888->irq_base, max77888);
-
-		dev_info(max77888->dev, "%s: irq_resume ret=%d", __func__, ret);
-
-		return ret >= 0 ? 0 : ret;
-	} else {
-		pr_err("%s:%s Err irqf_trigger(%d)\n", MFD_DEV_NAME, __func__,
-			max77888->irqf_trigger);
-		return -EINVAL;
-	}
 }
 
 int max77888_irq_init(struct max77888_dev *max77888)
@@ -333,19 +313,11 @@ int max77888_irq_init(struct max77888_dev *max77888)
 
 	/* Register with genirq */
 	for (i = 0; i < MAX77888_IRQ_NR; i++) {
-		int cur_irq = i + max77888->irq_base;
+		int cur_irq;
+		cur_irq = i + max77888->irq_base;
 		irq_set_chip_data(cur_irq, max77888);
-		if (max77888->irqf_trigger & IRQF_TRIGGER_LOW)
-			irq_set_chip_and_handler(cur_irq, &max77888_irq_chip,
-						 handle_level_irq);
-		else if (max77888->irqf_trigger & IRQF_TRIGGER_FALLING)
-			irq_set_chip_and_handler(cur_irq, &max77888_irq_chip,
-						 handle_edge_irq);
-		else {
-			pr_err("%s:%s Err irqf_trigger(%d)\n", MFD_DEV_NAME,
-				__func__, max77888->irqf_trigger);
-			return -EINVAL;
-		}
+		irq_set_chip_and_handler(cur_irq, &max77888_irq_chip,
+					 handle_level_irq);
 		irq_set_nested_thread(cur_irq, 1);
 #ifdef CONFIG_ARM
 		set_irq_flags(cur_irq, IRQF_VALID);
@@ -358,7 +330,7 @@ int max77888_irq_init(struct max77888_dev *max77888)
 	ret = max77888_read_reg(max77888->i2c, MAX77888_PMIC_REG_INTSRC_MASK,
 			  &i2c_data);
 	if (ret) {
-		dev_err(max77888->dev, "%s: fail to read muic reg\n", __func__);
+		pr_err("%s:%s fail to read muic reg\n", MFD_DEV_NAME, __func__);
 		return ret;
 	}
 
@@ -371,21 +343,41 @@ int max77888_irq_init(struct max77888_dev *max77888)
 	pr_info("%s:%s max77888_PMIC_REG_INTSRC_MASK=0x%02x\n",
 			MFD_DEV_NAME, __func__, i2c_data);
 
-	if (max77888->irqf_trigger) {
-		ret = request_threaded_irq(max77888->irq, NULL, max77888_irq_thread,
-			max77888->irqf_trigger, "max77888-irq", max77888);
-	}
-	else {
-		pr_err("%s:%s Err irqf_trigger(%d)\n", MFD_DEV_NAME, __func__,
-			max77888->irqf_trigger);
-		return -EINVAL;
-	}
-
+	ret = request_threaded_irq(max77888->irq, NULL, max77888_irq_thread,
+				   IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+				   "max77888-irq", max77888);
 	if (ret) {
-		dev_err(max77888->dev, "Failed to request IRQ %d: %d\n",
-			max77888->irq, ret);
+		pr_err("%s:%s Failed to request IRQ %d: %d\n",
+			MFD_DEV_NAME, __func__, max77888->irq, ret);
 		return ret;
 	}
+
+	/* IRQ THREAD WILL RUN */
+	/* WA for MUIC RESET */
+	INIT_DELAYED_WORK(&max77888->muic_reset_dwork, max77888_muic_reg_restore);
+
+	if (max77888->muic_reset_irq == -1) {
+		pr_info("%s : muic reset pin is NOT allocated\n", __func__);
+	} else {
+		max77888->mr_irq = -1;
+		max77888->mr_irq = gpio_to_irq(max77888->muic_reset_irq);
+		pr_info("%s:%s mr_irq=%d, muic_reset_irq=%d\n", MFD_DEV_NAME, __func__,
+			max77888->mr_irq, max77888->muic_reset_irq);
+		if (max77888->mr_irq < 0) {
+			dev_err(max77888->dev, "Failed to request gpio to IRQ %d\n",
+				max77888->mr_irq);
+			return max77888->mr_irq;
+		}
+		ret = request_threaded_irq(max77888->mr_irq, NULL, muic_reset_irq_thread,
+					   IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+					   "max77888-reset-irq", max77888);
+		if (ret) {
+			dev_err(max77888->dev, "Failed to request reset IRQ %d: %d\n",
+				max77888->mr_irq, ret);
+			return ret;
+		}
+	}
+	/* WA for MUIC RESET */  	
 
 	return 0;
 }

@@ -174,27 +174,27 @@ int fimc_is_af_ldo_enable(char *name, bool on)
 	if (on) {
 		if (regulator_is_enabled(regulator)) {
 			pr_info("%s: regulator is already enabled\n", name);
-			goto exit;
-		}
-
-		ret = regulator_enable(regulator);
-		if (ret) {
-			err("%s : regulator_enable(%s) fail\n", __func__, name);
-			goto exit;
+			ret = 0;
+		} else {
+			ret = regulator_enable(regulator);
+			if (ret) {
+				err("%s : regulator_enable(%s) fail\n", __func__, name);
+				ret = -EINVAL;
+			}
 		}
 	} else {
 		if (!regulator_is_enabled(regulator)) {
 			pr_info("%s: regulator is already disabled\n", name);
-			goto exit;
-		}
-
-		ret = regulator_disable(regulator);
-		if (ret) {
-			err("%s : regulator_disable(%s) fail\n", __func__, name);
-			goto exit;
+			ret = 0;
+		} else {
+			ret = regulator_disable(regulator);
+			if (ret) {
+				err("%s : regulator_disable(%s) fail\n", __func__, name);
+				ret = -EINVAL;
+			}
 		}
 	}
-exit:
+
 	regulator_put(regulator);
 
 	return ret;
@@ -348,6 +348,32 @@ power_off:
 			pr_info("already power off.(%d)\n", __LINE__);
 		}
 	}
+	return ret;
+}
+
+int16_t fimc_is_af_move_lens(struct fimc_is_core *core)
+{
+	int ret = 0;
+	struct i2c_client *client = core->client2;
+
+	pr_info("fimc_is_af_move_lens : running_rear_camera = %d\n", core->running_rear_camera);
+	if (!core->running_rear_camera) {
+		ret = fimc_is_af_i2c_write(client, 0x00, 0x80);
+		if (ret) {
+			err("i2c write fail\n");
+		}
+
+		ret = fimc_is_af_i2c_write(client, 0x01, 0x00);
+		if (ret) {
+			err("i2c write fail\n");
+		}
+
+		ret = fimc_is_af_i2c_write(client, 0x02, 0x00);
+		if (ret) {
+			err("i2c write fail\n");
+		}
+	}
+
 	return ret;
 }
 

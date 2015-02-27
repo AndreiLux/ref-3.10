@@ -572,6 +572,9 @@ struct sec_battery_platform_data {
 	 * only for scaling
 	 */
 	int capacity_max;
+#if defined(CONFIG_AFC_CHARGER_MODE)
+	int capacity_max_hv;
+#endif
 	int capacity_max_margin;
 	int capacity_min;
 

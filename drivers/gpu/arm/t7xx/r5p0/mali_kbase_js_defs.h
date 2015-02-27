@@ -192,35 +192,66 @@ enum kbasep_js_ctx_attr {
 	KBASEP_JS_CTX_ATTR_COMPUTE_ALL_CORES,
 
 	/**
-	 * First Ctx attr about atom priority. Ctx Attrs about atom priorities
-	 * must start at this value and decrease in priority as their enum
-	 * value increases
+	 * First Ctx attr about fragment atom priority. Ctx Attrs about frag
+	 * atom priorities must start at this value and decrease in priority as
+	 * their enum value increases
 	 */
-	KBASEP_JS_CTX_ATTR_ATOM_PRIORITY_FIRST,
+	KBASEP_JS_CTX_ATTR_FRAG_PRIORITY_FIRST,
 
 	/**
-	 * Context has high priority atoms. This only affects scheduling within
-	 * a context. It is not to be confused with context priority (e.g. RT
-	 * priority).
+	 * Context has high priority fragment atoms. This only affects
+	 * scheduling within a context and against other fragment atoms. It is
+	 * not to be confused with context priority (e.g. RT priority).
 	 */
-	KBASEP_JS_CTX_ATTR_HIGH_PRIORITY_ATOMS = KBASEP_JS_CTX_ATTR_ATOM_PRIORITY_FIRST,
+	KBASEP_JS_CTX_ATTR_HIGH_PRIORITY_FRAG = KBASEP_JS_CTX_ATTR_FRAG_PRIORITY_FIRST,
 
 	/**
-	 * Context has medium priority atoms. This only affects scheduling
-	 * within a context. It is not to be confused with context priority
-	 * (e.g. RT priority).
+	 * Context has medium priority fragment atoms. This only affects
+	 * scheduling within a context and against other fragment atoms. It is
+	 * not to be confused with context priority (e.g. RT priority).
 	 */
-	KBASEP_JS_CTX_ATTR_MEDIUM_PRIORITY_ATOMS,
+	KBASEP_JS_CTX_ATTR_MEDIUM_PRIORITY_FRAG,
 
 	/**
-	 * Context has low priority atoms. This only affects scheduling within
-	 * a context. It is not to be confused with context priority (e.g. RT
-	 * priority).
+	 * Context has low priority fragment atoms. This only affects
+	 * scheduling within a context and against other fragment atoms. It is
+	 * not to be confused with context priority (e.g. RT priority).
 	 */
-	KBASEP_JS_CTX_ATTR_LOW_PRIORITY_ATOMS,
+	KBASEP_JS_CTX_ATTR_LOW_PRIORITY_FRAG,
 
-	/** Last ctx attr about atom priority */
-	KBASEP_JS_CTX_ATTR_ATOM_PRIORITY_LAST = KBASEP_JS_CTX_ATTR_LOW_PRIORITY_ATOMS,
+	/** Last ctx attr about fragment atom priority */
+	KBASEP_JS_CTX_ATTR_FRAG_PRIORITY_LAST = KBASEP_JS_CTX_ATTR_LOW_PRIORITY_FRAG,
+
+	/**
+	 * First Ctx attr about non-fragment atom priority. Ctx Attrs about
+	 * frag atom priorities must start at this value and decrease in
+	 * priority as their enum value increases
+	 */
+	KBASEP_JS_CTX_ATTR_NONFRAG_PRIORITY_FIRST,
+
+	/**
+	 * Context has high priority non-fragment atoms. This only affects
+	 * scheduling within a context and against other non-fragment atoms. It
+	 * is not to be confused with context priority (e.g. RT priority).
+	 */
+	KBASEP_JS_CTX_ATTR_HIGH_PRIORITY_NONFRAG = KBASEP_JS_CTX_ATTR_NONFRAG_PRIORITY_FIRST,
+
+	/**
+	 * Context has medium priority non-fragment atoms. This only affects
+	 * scheduling within a context and against other non-fragment atoms. It
+	 * is not to be confused with context priority (e.g. RT priority).
+	 */
+	KBASEP_JS_CTX_ATTR_MEDIUM_PRIORITY_NONFRAG,
+
+	/**
+	 * Context has low priority non-fragment atoms. This only affects
+	 * scheduling within a context and against other non-fragment atoms. It
+	 * is not to be confused with context priority (e.g. RT priority).
+	 */
+	KBASEP_JS_CTX_ATTR_LOW_PRIORITY_NONFRAG,
+
+	/** Last ctx attr about non-fragment atom priority */
+	KBASEP_JS_CTX_ATTR_NONFRAG_PRIORITY_LAST = KBASEP_JS_CTX_ATTR_LOW_PRIORITY_NONFRAG,
 
 	/** Must be the last in the enum */
 	KBASEP_JS_CTX_ATTR_COUNT
@@ -229,7 +260,7 @@ enum kbasep_js_ctx_attr {
 enum {
 	/** Bit indicating that new atom should be started because this atom completed */
 	KBASE_JS_ATOM_DONE_START_NEW_ATOMS = (1u << 0),
-	/** Bit indicating that the atom was evicted from the JSn_NEXT registers */
+	/** Bit indicating that the atom was evicted from the JS_NEXT registers */
 	KBASE_JS_ATOM_DONE_EVICTED_FROM_NEXT = (1u << 1)
 };
 

@@ -53,6 +53,39 @@ void crypto_init_clock(void)
 	exynos_set_rate("dout_aclk_imem_200", 160 * 1000000);
 }
 
+static void mmc_init_clock(void)
+{
+	/* eMMC clock init */
+	exynos_set_parent("mout_sclk_mmc0_a", "mout_bus_pll_user");
+	exynos_set_parent("mout_sclk_mmc0_b", "mout_sclk_mmc0_a");
+	exynos_set_parent("mout_sclk_mmc0_c", "mout_sclk_mmc0_b");
+	exynos_set_parent("mout_sclk_mmc0_d", "mout_sclk_mmc0_c");
+	exynos_set_parent("dout_mmc0_a", "mout_sclk_mmc0_d");
+	exynos_set_parent("dout_mmc0_b", "dout_mmc0_a");
+	exynos_set_parent("sclk_mmc0_fsys", "dout_mmc0_b");
+	exynos_set_parent("mout_sclk_mmc0_user", "sclk_mmc0_fsys");
+	exynos_set_rate("dout_mmc0_b", 800 * 1000000);
+
+	/* SDIO clock init */
+	exynos_set_parent("mout_sclk_mmc1_a", "mout_bus_pll_user");
+	exynos_set_parent("mout_sclk_mmc1_b", "mout_sclk_mmc1_a");
+	exynos_set_parent("dout_mmc1_a", "mout_sclk_mmc1_b");
+	exynos_set_parent("dout_mmc1_b", "dout_mmc1_a");
+	exynos_set_parent("sclk_mmc1_fsys", "dout_mmc1_b");
+	exynos_set_parent("mout_sclk_mmc1_user", "sclk_mmc1_fsys");
+	exynos_set_rate("dout_mmc1_b", 800 * 1000000);
+
+	/* SD card clock init */
+	exynos_set_parent("mout_sclk_mmc2_a", "mout_bus_pll_user");
+	exynos_set_parent("mout_sclk_mmc2_b", "mout_sclk_mmc2_a");
+	exynos_set_parent("dout_mmc2_a", "mout_sclk_mmc2_b");
+	exynos_set_parent("dout_mmc2_b", "dout_mmc2_a");
+	exynos_set_parent("sclk_mmc2_fsys", "dout_mmc2_b");
+	exynos_set_parent("mout_sclk_mmc2_user", "sclk_mmc2_fsys");
+	exynos_set_rate("dout_mmc2_b", 800 * 1000000);
+}
+
+
 static void pcie_init_clock(void)
 {
 	exynos_set_parent("mout_sclk_pcie_100", "mout_bus_pll_user");
@@ -230,6 +263,7 @@ void __init exynos5433_clock_init(void)
 	adma_init_clock();
 	usb_init_clock();
 	crypto_init_clock();
+	mmc_init_clock();
 	pcie_init_clock();
 	g2d_init_clock();
 	jpeg_init_clock();

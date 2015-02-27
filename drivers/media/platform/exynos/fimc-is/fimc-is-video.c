@@ -313,7 +313,7 @@ static int queue_init(void *priv, struct vb2_queue *vbq_src,
 			err("vb2_queue_init fail");
 			goto p_err;
 		}
-		vctx->q_src.vbq = vbq_src;
+		vctx->q_src->vbq = vbq_src;
 	} else if (vctx->type == FIMC_IS_VIDEO_TYPE_CAPTURE) {
 		BUG_ON(!vbq_dst);
 
@@ -330,7 +330,7 @@ static int queue_init(void *priv, struct vb2_queue *vbq_src,
 			err("vb2_queue_init fail");
 			goto p_err;
 		}
-		vctx->q_dst.vbq = vbq_dst;
+		vctx->q_dst->vbq = vbq_dst;
 	} else if (vctx->type == FIMC_IS_VIDEO_TYPE_M2M) {
 		BUG_ON(!vbq_src);
 		BUG_ON(!vbq_dst);
@@ -348,7 +348,7 @@ static int queue_init(void *priv, struct vb2_queue *vbq_src,
 			err("vb2_queue_init fail");
 			goto p_err;
 		}
-		vctx->q_src.vbq = vbq_src;
+		vctx->q_src->vbq = vbq_src;
 
 		vbq_dst->type		= V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 		vbq_dst->io_modes	= VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
@@ -363,7 +363,7 @@ static int queue_init(void *priv, struct vb2_queue *vbq_src,
 			err("vb2_queue_init fail");
 			goto p_err;
 		}
-		vctx->q_dst.vbq = vbq_dst;
+		vctx->q_dst->vbq = vbq_dst;
 	} else {
 		merr("video type is invalid(%d)", vctx, vctx->type);
 		ret = -EINVAL;
@@ -379,6 +379,8 @@ int open_vctx(struct file *file,
 	u32 id_src, u32 id_dst)
 {
 	int ret = 0;
+	struct fimc_is_queue *q_src = NULL;
+	struct fimc_is_queue *q_dst = NULL;
 
 	BUG_ON(!file);
 	BUG_ON(!video);
@@ -397,9 +399,30 @@ int open_vctx(struct file *file,
 		goto exit;
 	}
 
+	q_src = kzalloc(sizeof(struct fimc_is_queue), GFP_KERNEL);
+	if (q_src == NULL) {
+		err("kzalloc is fail(q_src)");
+		ret = -ENOMEM;
+		kfree(*vctx);
+		*vctx = NULL;
+		goto exit;
+	}
+
+	q_dst = kzalloc(sizeof(struct fimc_is_queue), GFP_KERNEL);
+	if (q_dst == NULL) {
+		err("kzalloc is fail(q_dst)");
+		ret = -ENOMEM;
+		kfree(*vctx);
+		kfree(q_src);
+		*vctx = NULL;
+		goto exit;
+	}
+
 	(*vctx)->instance = vref_get(video);
-	(*vctx)->q_src.id = id_src;
-	(*vctx)->q_dst.id = id_dst;
+	(*vctx)->q_src = q_src;
+	(*vctx)->q_dst = q_dst;
+	(*vctx)->q_src->id = id_src;
+	(*vctx)->q_dst->id = id_dst;
 
 	file->private_data = *vctx;
 
@@ -413,6 +436,8 @@ int close_vctx(struct file *file,
 {
 	int ret = 0;
 
+	kfree(vctx->q_src);
+	kfree(vctx->q_dst);
 	kfree(vctx);
 	file->private_data = NULL;
 	ret = vref_put(video, NULL);
@@ -803,8 +828,8 @@ int fimc_is_video_open(struct fimc_is_video_ctx *vctx,
 	BUG_ON(!video->vb2);
 	BUG_ON(!vb2_ops);
 
-	q_src = &vctx->q_src;
-	q_dst = &vctx->q_dst;
+	q_src = vctx->q_src;
+	q_dst = vctx->q_dst;
 	q_src->vbq = NULL;
 	q_dst->vbq = NULL;
 	q_src->qops = src_qops;
@@ -892,13 +917,15 @@ p_err:
 int fimc_is_video_close(struct fimc_is_video_ctx *vctx)
 {
 	int ret = 0;
-	u32 video_type = vctx->type;
+	u32 video_type;
 	struct fimc_is_queue *q_src, *q_dst;
 
 	BUG_ON(!vctx);
 
-	q_src = &vctx->q_src;
-	q_dst = &vctx->q_dst;
+	video_type = vctx->type;
+
+	q_src = vctx->q_src;
+	q_dst = vctx->q_dst;
 
 	switch (video_type) {
 	case FIMC_IS_VIDEO_TYPE_OUTPUT:
@@ -947,10 +974,10 @@ u32 fimc_is_video_poll(struct file *file,
 
 	switch (video_type) {
 	case FIMC_IS_VIDEO_TYPE_OUTPUT:
-		ret = vb2_poll(vctx->q_src.vbq, file, wait);
+		ret = vb2_poll(vctx->q_src->vbq, file, wait);
 		break;
 	case FIMC_IS_VIDEO_TYPE_CAPTURE:
-		ret = vb2_poll(vctx->q_dst.vbq, file, wait);
+		ret = vb2_poll(vctx->q_dst->vbq, file, wait);
 		break;
 	case FIMC_IS_VIDEO_TYPE_M2M:
 		merr("video poll is not supported", vctx);
@@ -973,10 +1000,10 @@ int fimc_is_video_mmap(struct file *file,
 
 	switch (video_type) {
 	case FIMC_IS_VIDEO_TYPE_OUTPUT:
-		ret = vb2_mmap(vctx->q_src.vbq, vma);
+		ret = vb2_mmap(vctx->q_src->vbq, vma);
 		break;
 	case FIMC_IS_VIDEO_TYPE_CAPTURE:
-		ret = vb2_mmap(vctx->q_dst.vbq, vma);
+		ret = vb2_mmap(vctx->q_dst->vbq, vma);
 		break;
 	case FIMC_IS_VIDEO_TYPE_M2M:
 		merr("video mmap is not supported", vctx);

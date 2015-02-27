@@ -135,7 +135,7 @@ int create_decon_mic(struct platform_device *pdev)
 
 	mic->mic_config = dispdrv->dt_ops.get_display_mic_config();
 
-	mic->decon_mic_on = false;
+	mic->decon_mic_on = true;
 
 	res = dispdrv->mic_driver.regs;
 	if (!res) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -27,12 +27,7 @@
 #include <mach/usb_bridge.h>
 #ifdef CONFIG_MDM_HSIC_PM
 #include <linux/mdm_hsic_pm.h>
-static const char rmnet_pm_dev[] = "15510000_mdmpm_pdata";
 #endif
-
-/* polling interval for Interrupt ep */
-#define HS_INTERVAL		7
-#define FS_LS_INTERVAL		3
 
 #define ACM_CTRL_DTR		(1 << 0)
 #define DEFAULT_READ_URB_LENGTH	4096
@@ -149,8 +144,8 @@ EXPORT_SYMBOL(ctrl_bridge_set_cbits);
 static int ctrl_bridge_start_read(struct ctrl_bridge *dev, gfp_t gfp_flags)
 {
 	int	retval = 0;
-	unsigned long flags;
-	unsigned int		iface_num;
+	unsigned long 	flags;
+	unsigned int	iface_num;
 
 	iface_num = dev->intf->cur_altsetting->desc.bInterfaceNumber;
 	if (!dev->inturb) {
@@ -235,7 +230,7 @@ static void notification_available_cb(struct urb *urb)
 	unsigned int			ctrl_bits;
 	unsigned char			*data;
 	unsigned long			flags;
-	unsigned int		iface_num;
+	unsigned int			iface_num;
 
 	iface_num = dev->intf->cur_altsetting->desc.bInterfaceNumber;
 	/*usb device disconnect*/
@@ -277,7 +272,11 @@ static void notification_available_cb(struct urb *urb)
 		dev->rx_state = RX_BUSY;
 		spin_unlock_irqrestore(&dev->lock, flags);
 		dev->resp_avail++;
+#if defined (CONFIG_SEC_TRLTE_CHNDUOS)
+		usb_autopm_get_interface_async(dev->intf);
+#else
 		usb_autopm_get_interface_no_resume(dev->intf);
+#endif
 		usb_fill_control_urb(dev->readurb, dev->udev,
 					usb_rcvctrlpipe(dev->udev, 0),
 					(unsigned char *)dev->in_ctlreq,
@@ -513,6 +512,8 @@ int ctrl_bridge_suspend(unsigned int id)
 	dev = __dev[id];
 	if (!dev)
 		return -ENODEV;
+	if (!dev->int_pipe)
+		return 0;
 
 	spin_lock_irqsave(&dev->lock, flags);
 	if (!usb_anchor_empty(&dev->tx_submitted) || dev->rx_state == RX_BUSY) {
@@ -552,7 +553,8 @@ int ctrl_bridge_resume(unsigned int id)
 	dev = __dev[id];
 	if (!dev)
 		return -ENODEV;
-
+	if (!dev->int_pipe)
+		return 0;
 	if (!test_bit(SUSPENDED, &dev->flags))
 		return 0;
 
@@ -580,17 +582,7 @@ int ctrl_bridge_resume(unsigned int id)
 	clear_bit(SUSPENDED, &dev->flags);
 	spin_unlock_irqrestore(&dev->lock, flags);
 
-	/* if the bridge is open, resume reading */
-#ifndef CONFIG_MDM_HSIC_PM
-	if (dev->brdg)
-		return ctrl_bridge_start_read(dev, GFP_KERNEL);
-#else
-	/* if the bridge is open or not, resume to consume mdm request
-	 * because this link is not dead, it's alive
-	 */
 	return ctrl_bridge_start_read(dev, GFP_KERNEL);
-#endif
-	return 0;
 }
 
 #if defined(CONFIG_DEBUG_FS)
@@ -710,7 +702,8 @@ ctrl_bridge_probe(struct usb_interface *ifc, struct usb_host_endpoint *int_in,
 		pr_err("%s:device not found\n", __func__);
 		return -ENODEV;
 	}
-
+	if (!int_in)
+		return 0;
 	dev->name = name;
 
 	dev->pdev = platform_device_alloc(name, -1);
@@ -747,8 +740,7 @@ ctrl_bridge_probe(struct usb_interface *ifc, struct usb_host_endpoint *int_in,
 		goto free_inturb;
 	}
 
-	interval =
-		(udev->speed == USB_SPEED_HIGH) ? HS_INTERVAL : FS_LS_INTERVAL;
+	interval = int_in->desc.bInterval;
 
 	usb_fill_int_urb(dev->inturb, udev, dev->int_pipe,
 				dev->intbuf, wMaxPacketSize,
@@ -824,6 +816,8 @@ void ctrl_bridge_disconnect(unsigned int id)
 {
 	struct ctrl_bridge	*dev = __dev[id];
 
+	if (!dev->int_pipe)
+		return;
 	dev_dbg(&dev->intf->dev, "%s:\n", __func__);
 
 	/*set device name to none to get correct channel id

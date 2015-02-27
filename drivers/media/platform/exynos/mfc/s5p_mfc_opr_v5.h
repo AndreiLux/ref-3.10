@@ -110,6 +110,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 
 #define mfc_get_disp_first_addr()	-1
 #define mfc_get_dec_first_addr()	-1
+#define mfc_get_last_disp_info()	0
 
 #define s5p_mfc_get_enc_strm_size()	readl(dev->regs_base + \
 						S5P_FIMV_ENC_SI_STRM_SIZE)

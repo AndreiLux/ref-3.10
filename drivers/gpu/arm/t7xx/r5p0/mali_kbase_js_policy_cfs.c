@@ -252,14 +252,6 @@ static const u32 variants_supported_ss_state_8987[] = {
 	    | (1u << CORE_REQ_VARIANT_ONLY_COMPUTE_8987_SPECIFIC_COHERENT_1)
 };
 
-/** Ordering of priorities from highest to lowest
- * NOTE: Must be kept in sync with BASE_JD_PRIO_<...> definitions */
-static const base_jd_prio priority_ordering[BASE_JD_NR_PRIO_LEVELS] = {
-	BASE_JD_PRIO_HIGH,
-	BASE_JD_PRIO_MEDIUM,
-	BASE_JD_PRIO_LOW
-};
-
 /* Defines for easy asserts 'is scheduled'/'is queued'/'is neither queued norscheduled' */
 #define KBASEP_JS_CHECKFLAG_QUEUED       (1u << 0) /**< Check the queued state */
 #define KBASEP_JS_CHECKFLAG_SCHEDULED    (1u << 1) /**< Check the scheduled state */
@@ -393,7 +385,11 @@ STATIC void kbasep_js_debug_check(struct kbasep_js_policy_cfs *policy_info, stru
 	if (check_flag & KBASEP_JS_CHECKFLAG_QUEUED) {
 		mali_bool is_queued;
 		mali_bool expect_queued;
-		is_queued = (kbasep_list_member_of(&policy_info->ctx_queue_head, &kctx->jctx.sched_info.runpool.policy_ctx.cfs.list)) ? MALI_TRUE : MALI_FALSE;
+
+		is_queued = (kbasep_list_member_of(
+				&policy_info->ctx_queue_head,
+				&kctx->jctx.sched_info.runpool.policy_ctx.cfs.list)) ?
+				MALI_TRUE : MALI_FALSE;
 
 		if (!is_queued)
 			is_queued = (kbasep_list_member_of(&policy_info->ctx_rt_queue_head, &kctx->jctx.sched_info.runpool.policy_ctx.cfs.list)) ? MALI_TRUE : MALI_FALSE;
@@ -407,11 +403,14 @@ STATIC void kbasep_js_debug_check(struct kbasep_js_policy_cfs *policy_info, stru
 	if (check_flag & KBASEP_JS_CHECKFLAG_SCHEDULED) {
 		mali_bool is_scheduled;
 		mali_bool expect_scheduled;
-		is_scheduled = (kbasep_list_member_of(&policy_info->scheduled_ctxs_head, &kctx->jctx.sched_info.runpool.policy_ctx.cfs.list)) ? MALI_TRUE : MALI_FALSE;
+
+		is_scheduled = (kbasep_list_member_of(
+			&policy_info->scheduled_ctxs_head,
+			&kctx->jctx.sched_info.runpool.policy_ctx.cfs.list)) ?
+			MALI_TRUE : MALI_FALSE;
 
 		expect_scheduled = (check_flag & KBASEP_JS_CHECKFLAG_IS_SCHEDULED) ? MALI_TRUE : MALI_FALSE;
 		KBASE_DEBUG_ASSERT_MSG(expect_scheduled == is_scheduled, "Expected context %p to be %s but it was %s\n", kctx, (expect_scheduled) ? "scheduled" : "not scheduled", (is_scheduled) ? "scheduled" : "not scheduled");
-
 	}
 
 }
@@ -421,7 +420,6 @@ STATIC void kbasep_js_debug_check(struct kbasep_js_policy_cfs *policy_info, stru
 	CSTD_UNUSED(policy_info);
 	CSTD_UNUSED(kctx);
 	CSTD_UNUSED(check_flag);
-	return;
 }
 #endif				/* CONFIG_MALI_DEBUG */
 
@@ -476,6 +474,7 @@ STATIC void debug_check_core_req_variants(struct kbase_device *kbdev, struct kba
 		job_core_req = js_devdata->js_reqs[j];
 		for (i = 0; i < policy_info->num_core_req_variants; ++i) {
 			base_jd_core_req var_core_req;
+
 			var_core_req = policy_info->core_req_variants[i].core_req;
 
 			if ((var_core_req & job_core_req) == job_core_req) {
@@ -563,7 +562,7 @@ STATIC mali_error cached_variant_idx_init(const struct kbasep_js_policy_cfs *pol
 	/* Initial check for atoms targetting a specific coregroup */
 	if ((job_core_req & BASE_JD_REQ_SPECIFIC_COHERENT_GROUP) != MALI_FALSE && job_device_nr >= kbdev->gpu_props.num_core_groups) {
 		/* device_nr exceeds the number of coregroups - not allowed by
-		 * @ref struct base_jd_atom API contract */
+		 * @ref struct base_jd_atom_v2 API contract */
 		return MALI_ERROR_FUNCTION_FAILED;
 	}
 
@@ -593,28 +592,29 @@ STATIC mali_error cached_variant_idx_init(const struct kbasep_js_policy_cfs *pol
  * context's atoms
  */
 STATIC unsigned int get_ctx_priority_idx(struct kbase_device *kbdev,
-		struct kbase_context *kctx)
+		struct kbase_context *kctx, u32 variants_supported)
 {
 	int sched_prio;
+	/* Default slot_core_req = 0 doesn't assume this slot can run
+	 * BASE_JD_REQ_ONLY_COMPUTE and BASE_JD_REQ_CS. If we need to
+	 * distiguish those for priority in future, we'd need to add code for
+	 * that specially */
+	base_jd_core_req slot_core_req = 0u;
+	if ((variants_supported & (1u << CORE_REQ_VARIANT_FRAGMENT)))
+		slot_core_req = BASE_JD_REQ_FS;
 
 	for (sched_prio = KBASE_JS_ATOM_SCHED_PRIO_MIN;
 	     sched_prio <= KBASE_JS_ATOM_SCHED_PRIO_MAX;
 	     ++sched_prio) {
 		enum kbasep_js_ctx_attr ctx_attr;
-		ctx_attr = kbasep_js_ctx_attr_sched_prio_to_attr(sched_prio);
+		ctx_attr = kbasep_js_ctx_attr_sched_prio_to_attr(slot_core_req,
+				sched_prio);
 
 		if (kbasep_js_ctx_attr_is_attr_on_ctx(kctx, ctx_attr))
 			break;
 	}
 
-	/* There are cases where you can have contexts in the runpool without
-	 * jobs (hence no priority level ctx attr). In those cases, just use a
-	 * default 'medium' priority.
-	 *
-	 * Examples include:
-	 * - Privileged contexts that are collecting HW counters
-	 * - Page fault races where a page fault is being handled just as a job
-	 *   finishes */
+	/* Handle where we don't have atoms of this type on the context */
 	if (sched_prio > KBASE_JS_ATOM_SCHED_PRIO_MAX)
 		sched_prio = KBASE_JS_ATOM_SCHED_PRIO_DEFAULT;
 
@@ -640,10 +640,13 @@ STATIC mali_bool dequeue_job(struct kbase_device *kbdev,
 	policy_info = &js_devdata->policy.cfs;
 	ctx_info = &kctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
-	/* Restrict to highest priority level, even if no more jobs for that
-	 * level. In that case, we'd just be waiting for those jobs to
-	 * finish */
-	priority_idx = get_ctx_priority_idx(kbdev, kctx);
+	/* Restrict to highest priority level of the atoms that can run on this
+	 * slot, even if no more jobs for that level. In that case, we'd just
+	 * be waiting for those jobs to finish
+	 *
+	 * Slots that run atoms of different types (fragment vs non-fragment)
+	 * are unaffected by the priority level */
+	priority_idx = get_ctx_priority_idx(kbdev, kctx, variants_supported);
 	KBASE_DEBUG_ASSERT(priority_idx < (unsigned int)KBASE_JS_ATOM_SCHED_PRIO_RANGE);
 
 	/* Only submit jobs from contexts that are allowed */
@@ -652,13 +655,16 @@ STATIC mali_bool dequeue_job(struct kbase_device *kbdev,
 		while (variants_supported != 0) {
 			long variant_idx;
 			struct list_head *job_list;
+
 			variant_idx = ffs(variants_supported) - 1;
 			job_list = &ctx_info->job_list_head[priority_idx][variant_idx];
 
 			if (!list_empty(job_list)) {
 				/* Found a context with a matching job */
 				{
-					struct kbase_jd_atom *front_atom = list_entry(job_list->next, struct kbase_jd_atom, sched_info.cfs.list);
+					struct kbase_jd_atom *front_atom =
+							list_entry(job_list->next, struct kbase_jd_atom, sched_info.cfs.list);
+
 					KBASE_TRACE_ADD_SLOT(kbdev, JS_POLICY_DEQUEUE_JOB, front_atom->kctx, front_atom, front_atom->jc, job_slot_idx);
 				}
 				*katom_ptr = list_entry(job_list->next, struct kbase_jd_atom, sched_info.cfs.list);
@@ -799,7 +805,7 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 					 * that we observe the older value and register a disjoint
 					 * event when we try soft-stopping */
 					if (js_devdata->nr_user_contexts_running >= disjoint_threshold)
-						softstop_flags |= JSn_COMMAND_SW_CAUSES_DISJOINT;
+						softstop_flags |= JS_COMMAND_SW_CAUSES_DISJOINT;
 					kbase_job_slot_softstop_swflags(kbdev,
 							s, atom, softstop_flags);
 #endif
@@ -817,7 +823,7 @@ static enum hrtimer_restart timer_callback(struct hrtimer *timer)
 					 */
 					reset_needed = MALI_TRUE;
 				}
-#else 				/* !CINSTR_DUMPING_ENABLED */
+#else				/* !CINSTR_DUMPING_ENABLED */
 				/* NOTE: During CINSTR_DUMPING_ENABLED, we use the alternate timeouts, which
 				 * makes the hard-stop and GPU reset timeout much longer. We also ensure that
 				 * we don't soft-stop at all. */
@@ -903,6 +909,7 @@ mali_error kbasep_js_policy_init(struct kbase_device *kbdev)
 void kbasep_js_policy_term(union kbasep_js_policy *js_policy)
 {
 	struct kbasep_js_policy_cfs *policy_info;
+
 	KBASE_DEBUG_ASSERT(js_policy != NULL);
 	policy_info = &js_policy->cfs;
 
@@ -938,7 +945,7 @@ mali_error kbasep_js_policy_init_ctx(struct kbase_device *kbdev, struct kbase_co
 
 	KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_POLICY_INIT_CTX, kctx, NULL, 0u, kbasep_js_policy_trace_get_refcnt(kbdev, kctx));
 
-	for (j = 0; j < BASE_JD_NR_PRIO_LEVELS; ++j)
+	for (j = 0; j < KBASE_JS_ATOM_SCHED_PRIO_RANGE; ++j)
 		for (i = 0; i < policy_info->num_core_req_variants; ++i)
 			INIT_LIST_HEAD(&ctx_info->job_list_head[j][i]);
 
@@ -987,7 +994,7 @@ void kbasep_js_policy_term_ctx(union kbasep_js_policy *js_policy, struct kbase_c
 	}
 
 	/* ASSERT that no jobs are present */
-	for (j = 0; j < BASE_JD_NR_PRIO_LEVELS; ++j)
+	for (j = 0; j < KBASE_JS_ATOM_SCHED_PRIO_RANGE; ++j)
 		for (i = 0; i < policy_info->num_core_req_variants; ++i)
 			KBASE_DEBUG_ASSERT(list_empty(&ctx_info->job_list_head[j][i]));
 
@@ -1158,6 +1165,7 @@ mali_bool kbasep_js_policy_try_evict_ctx(union kbasep_js_policy *js_policy, stru
 
 	if (is_present != MALI_FALSE) {
 		struct kbase_context *head_ctx;
+
 		qhead = queue_head;
 
 		/* If dequeuing will empty the list, then set least_runtime_us prior to deletion */
@@ -1209,7 +1217,7 @@ void kbasep_js_policy_foreach_ctx_job(union kbasep_js_policy *js_policy, struct 
 
 	/* Invoke callback on jobs on each variant in turn
 	 * We ignore the priority order, it doesn't matter. */
-	for (j = 0; j < BASE_JD_NR_PRIO_LEVELS; ++j)
+	for (j = 0; j < KBASE_JS_ATOM_SCHED_PRIO_RANGE; ++j)
 		for (i = 0; i < policy_info->num_core_req_variants; ++i) {
 			struct list_head *job_list;
 			struct kbase_jd_atom *atom;
@@ -1269,6 +1277,7 @@ void kbasep_js_policy_runpool_remove_ctx(union kbasep_js_policy *js_policy, stru
 
 	{
 		struct kbase_device *kbdev = container_of(js_policy, struct kbase_device, js_data.policy);
+
 		KBASE_TRACE_ADD_REFCOUNT(kbdev, JS_POLICY_RUNPOOL_REMOVE_CTX, kctx, NULL, 0u, kbasep_js_policy_trace_get_refcnt_nolock(kbdev, kctx));
 	}
 
@@ -1277,7 +1286,6 @@ void kbasep_js_policy_runpool_remove_ctx(union kbasep_js_policy *js_policy, stru
 
 	/* No searching or significant list maintenance required to remove this context */
 	list_del(&kctx->jctx.sched_info.runpool.policy_ctx.cfs.list);
-
 }
 
 mali_bool kbasep_js_policy_should_remove_ctx(union kbasep_js_policy *js_policy, struct kbase_context *kctx)
@@ -1475,6 +1483,8 @@ void kbasep_js_policy_log_job_result(union kbasep_js_policy *js_policy, struct k
 	ctx_info = &parent_ctx->jctx.sched_info.runpool.policy_ctx.cfs;
 
 	ctx_info->runtime_us += priority_weight(ctx_info, time_spent_us);
+
+	katom->time_spent_us += time_spent_us;
 }
 
 mali_bool kbasep_js_policy_ctx_has_priority(union kbasep_js_policy *js_policy, struct kbase_context *current_ctx, struct kbase_context *new_ctx)

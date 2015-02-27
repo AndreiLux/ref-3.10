@@ -45,6 +45,7 @@ enum modem_t {
 	QC_QSC6085,
 	SPRD_SC8803,
 	IMC_XMM7260,
+	SEC_SS333,
 	DUMMY,
 	MAX_MODEM_TYPE
 };

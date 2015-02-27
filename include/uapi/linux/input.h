@@ -868,19 +868,15 @@ struct input_keymap_entry {
 #define ABS_MT_TOOL_X		0x3c	/* Center X tool position */
 #define ABS_MT_TOOL_Y		0x3d	/* Center Y tool position */
 
-/* Below codes are defined by samsung internally.
- * 0x3D valus is duplicated because ABS_MT_TOOL_Y valuse added in kernel 3.10.
- * But below event types are only treated when those event are reported from
- * internal samsung device.
- */
-#define ABS_MT_PALM		0x3d    /* palm touch */
-#define ABS_MT_COMPONENT	0x3e	/* touch component */
-#define ABS_MT_SUMSIZE		0x3f	/* touch sumsize */
-
 #ifdef CONFIG_INPUT_EXPANDED_ABS
-#define ABS_MT_GRIP		0x40
+#define ABS_MT_PALM		0x40	/* palm touch */
+#define ABS_MT_GRIP		0x41	/* grip touch */
+
 #define ABS_MAX			0x4f
 #else
+#define ABS_MT_PALM		0x3e	/* palm touch */
+#define ABS_MT_GRIP		0x3f	/* grip touch */
+
 #define ABS_MAX			0x3f
 #endif
 

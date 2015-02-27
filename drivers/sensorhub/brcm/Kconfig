@@ -238,5 +238,9 @@ config SENSORS_ADPD142
 	default n
 	help
 	  This option enables hrm sensors using adpd142 driver.
+	  
+config SENSORHUB_S333
+	bool "BROADCOM_SENSORHUB_S333"
+	default n
 
 source "drivers/sensorhub/brcm/max_notchfilter/Kconfig"

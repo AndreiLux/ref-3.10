@@ -80,6 +80,7 @@ config SOC_EXYNOS5422
 	select S5P_PM if PM
 	select S5P_SLEEP if SUSPEND
 	select SAMSUNG_DMADEV
+	select EXYNOS_RUN_QUEUE_STATS
 	help
 	  Enable EXYNOS5422 SoC support
 
@@ -792,12 +793,23 @@ config MACH_KALTE_KOR_LGT
 endchoice
 
 config TIMA
-        bool "Enable TIMA(Trustzone based Integrity Measurement Archtecture feature"
-        default n
+	bool "Enable TIMA(Trustzone based Integrity Measurement Archtecture feature"
+	default n
+
+config TIMA_LKMAUTH
+	bool "Enable LKM authentication by TIMA"
+	help
+	   TIMA authenticates loaded kernel modules. Disable it if you don't 
+	   want TIMA enabled.
 
 config TIMA_RKP
 	bool "Enable RKP (Realtime Kernel Protection) TIMA feature"
 	depends on TIMA
+	default n
+
+config HYP_RKP
+	bool "Enable Hypervisor RKP"
+	depends on TIMA_RKP
 	default n
 
 config TIMA_RKP_30
@@ -806,6 +818,12 @@ config TIMA_RKP_30
 	default y
 	help
 		TIMA RKP 30 features, including kernel fault fixup and optimized tima_pg_is_protected
+
+config KNOX_KAP
+       bool "Enable KNOX KAP mode"
+       default n
+       help 
+              Knox Active Protection mode
 
 config TIMA_RKP_L1_TABLES
 	bool
@@ -863,8 +881,62 @@ config TIMA_RKP_DEBUG
 	help
 	  not workable in  K3G right now, no code ported in for this part.TIMA debug infrastructure.
 
+config TIMA_RKP_KDATA_PROT
+	bool "Protection for kernel data"
+	depends on TIMA_RKP_30
+	depends on TIMA_RKP_L2_TABLES
+	default n
+	help
+		Detects double mapping of kernel data.
+
+config TIMA_RKP_RO_CRED
+	bool "Protection for cred structure"
+	depends on TIMA_RKP_30
+	depends on TIMA_RKP_L2_TABLES
+	default n
+	help
+		Prevents unauthorized cred modification.
+
+config TIMA_LKMAUTH_CODE_PROT
+	bool "Support Kernel Module"
+	depends on MODULES
+	default n
+	help
+	  Support Kernel Module
+
 config TIMA_TEST_INFRA
 	tristate "Testing infrastructure for TIMA"
 	default n
 	help
 	  Kernel bits of the TIMA test infrastructure
+
+config MSM_HSIC_SYSMON
+	tristate "MSM HSIC system monitor driver"
+	depends on USB
+	help
+	  Add support for bridging with the system monitor interface of MDM
+	  over HSIC. This driver allows the local system monitor to
+	  communicate with the remote system monitor interface.
+
+config MSM_HSIC_SYSMON_TEST
+	tristate "MSM HSIC system monitor bridge test"
+	depends on USB && MSM_HSIC_SYSMON && DEBUG_FS
+	help
+	  Enable the test hook for the Qualcomm system monitor HSIC driver.
+	  This will create a debugfs file entry named "hsic_sysmon_test" which
+	  can be read and written to send character data to the sysmon port of
+	  the modem over USB.
+
+config SEC_SMART_MGR_RUNQUEUE_AVG
+	default n
+	bool "Samsung added for read current run queue"
+	help
+	  Support for Smart MGR function.
+
+config EXYNOS_RUN_QUEUE_STATS
+	bool "Enable collection and exporting of exynos Run Queue stats to userspace"
+	default n
+	help
+	 This option enalbes statistics collection on Run Queue. A daemon
+         in user mode, called MPDecision will be using this data to decide
+         on when to switch off/on the other cores.

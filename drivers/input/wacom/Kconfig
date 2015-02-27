@@ -85,3 +85,13 @@ config EPEN_WACOM_W9012
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called wacom_W9012.
+
+config WACOM_LCD_FREQ_COMPENSATE
+	bool "Wacom LCD vsync/hsync frequency compensate rotuine"
+	help
+	  Say Y here if you have an Wacom lcd freq compensate config
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called wacom.

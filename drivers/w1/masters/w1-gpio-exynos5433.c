@@ -186,7 +186,7 @@ static void w1_gpio_write_bit(void *data, u8 bit)
 		__raw_writel(tmp_data_0, (g_addr_data));
 		(pdata->slave_speed == 0) ? w1_delay(60) : w1_delay(6);
 		__raw_writel(tmp_data_1, (g_addr_data));
-		(pdata->slave_speed == 0) ? w1_delay(10) : w1_delay(10);
+		w1_delay(10);
 	}
 	spin_unlock_irqrestore(&w1_gpio_lock, irq_flags);
 }
@@ -450,7 +450,7 @@ static int of_w1_gpio_dt(struct device *dev, struct w1_gpio_platform_data *pdata
 	pdata->pin = of_get_named_gpio(np, "w1,gpio", 0);
 	pdata->irq_gpio = of_get_named_gpio(np, "w1,irq-gpio", 0);
 	pr_info("%s : irq num (%d)\n", __func__,pdata->irq_gpio);
-	if(pdata->irq_gpio < 0)
+	if((int)pdata->irq_gpio < 0)
 		pdata->irq_gpio = -1;
 
 	/* not used, get it from dt? */
@@ -460,7 +460,6 @@ static int of_w1_gpio_dt(struct device *dev, struct w1_gpio_platform_data *pdata
 }
 #endif /* CONFIG_OF */
 
-#if !defined(CONFIG_SEC_FACTORY)
 void w1_irqwork(struct work_struct *irqwork)
 {
 	int i=0;
@@ -473,26 +472,16 @@ void w1_irqwork(struct work_struct *irqwork)
 			break;
 	}
 }
-#else
-void w1_irqwork(struct work_struct *irqwork)
-{
-	int i=0;
-
-	while(i<10) {
-		pr_info("%s : Inside W1 While Loop(%d)\n", __func__, ++i);
-		msleep(50);
-		w1_master_search();
-		if(w1_attached)
-			break;
-	}
-}
-#endif
 static irqreturn_t w1_detect_irq(int irq, void *dev_id)
 {
+#if !defined(CONFIG_SEC_FACTORY)
 	struct w1_bus_master *dev = dev_id;
 
 	pr_info("%s : Inside W1 IRQ Handler\n", __func__);
 	schedule_delayed_work(&dev->w1_irqwork, 100);
+#else
+	pr_info("%s : Factory mode Inside W1 IRQ Handler do nothing\n", __func__);
+#endif
 	return IRQ_HANDLED;
 }
 

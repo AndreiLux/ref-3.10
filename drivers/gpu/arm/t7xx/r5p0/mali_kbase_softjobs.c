@@ -97,7 +97,7 @@ static int kbase_dump_cpu_gpu_time(struct kbase_jd_atom *katom)
 	} while (hi1 != hi2);
 
 	/* Record the CPU's idea of current time */
-	getnstimeofday(&ts);
+	getrawmonotonic(&ts);
 
 	kbase_pm_release_gpu_cycle_counter(kctx->kbdev);
 
@@ -134,16 +134,14 @@ static int kbase_dump_cpu_gpu_time(struct kbase_jd_atom *katom)
 		return 0;
 
 	dma_sync_single_for_cpu(katom->kctx->kbdev->dev,
-				   page_private(pfn_to_page(PFN_DOWN(addr))) +
-				   offset,
-				   sizeof(data),
-				   DMA_BIDIRECTIONAL);
+			kbase_dma_addr(pfn_to_page(PFN_DOWN(addr))) +
+			offset, sizeof(data),
+			DMA_BIDIRECTIONAL);
 	memcpy(page + offset, &data, sizeof(data));
 	dma_sync_single_for_device(katom->kctx->kbdev->dev,
-				   page_private(pfn_to_page(PFN_DOWN(addr))) +
-				   offset,
-				   sizeof(data),
-				   DMA_BIDIRECTIONAL);
+			kbase_dma_addr(pfn_to_page(PFN_DOWN(addr))) +
+			offset, sizeof(data),
+			DMA_BIDIRECTIONAL);
 	kunmap(pfn_to_page(PFN_DOWN(addr)));
 
 	/* Atom was fine - mark it as done */
@@ -240,9 +238,7 @@ static void kbase_fence_wait_callback(struct sync_fence *fence, struct sync_fenc
 	 * If negative then cancel this atom and its dependencies.
 	 */
 	if (fence->status < 0)
-	{
 		katom->event_code = BASE_JD_EVENT_JOB_CANCELLED;
-	}
 
 	/* To prevent a potential deadlock we schedule the work onto the job_done_wq workqueue
 	 *
@@ -289,8 +285,7 @@ static int kbase_fence_wait(struct kbase_jd_atom *katom)
 
 static void kbase_fence_cancel_wait(struct kbase_jd_atom *katom)
 {
-	if (sync_fence_cancel_async(katom->fence, &katom->sync_waiter) != 0)
-	{
+	if (sync_fence_cancel_async(katom->fence, &katom->sync_waiter) != 0) {
 		/* The wait wasn't cancelled - leave the cleanup for kbase_fence_wait_callback */
 		return;
 	}
@@ -368,6 +363,7 @@ mali_error kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 		{
 			struct base_fence fence;
 			int fd;
+
 			if (0 != copy_from_user(&fence, (__user void *)(uintptr_t) katom->jc, sizeof(fence)))
 				return MALI_ERROR_FUNCTION_FAILED;
 
@@ -393,6 +389,7 @@ mali_error kbase_prepare_soft_job(struct kbase_jd_atom *katom)
 	case BASE_JD_REQ_SOFT_FENCE_WAIT:
 		{
 			struct base_fence fence;
+
 			if (0 != copy_from_user(&fence, (__user void *)(uintptr_t) katom->jc, sizeof(fence)))
 				return MALI_ERROR_FUNCTION_FAILED;
 
@@ -451,6 +448,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 	struct kbase_jd_atom *katom_iter;
 	struct kbasep_js_device_data *js_devdata;
 	mali_bool resched = MALI_FALSE;
+
 	KBASE_DEBUG_ASSERT(kbdev);
 
 	js_devdata = &kbdev->js_data;
@@ -465,6 +463,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 	list_for_each_entry_safe(katom_iter, tmp_iter, &local_suspended_soft_jobs, dep_item[1])
 	{
 		struct kbase_context *kctx = katom_iter->kctx;
+
 		mutex_lock(&kctx->jctx.lock);
 
 		/* Remove from the global list */
@@ -478,7 +477,7 @@ void kbase_resume_suspended_soft_jobs(struct kbase_device *kbdev)
 		} else {
 			/* The job has not completed */
 			KBASE_DEBUG_ASSERT((katom_iter->core_req & BASEP_JD_REQ_ATOM_TYPE)
-						  		!= BASE_JD_REQ_SOFT_REPLAY);
+					!= BASE_JD_REQ_SOFT_REPLAY);
 			list_add_tail(&katom_iter->dep_item[0], &kctx->waiting_soft_jobs);
 		}
 

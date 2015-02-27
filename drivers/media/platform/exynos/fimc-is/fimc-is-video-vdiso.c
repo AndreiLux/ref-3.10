@@ -255,8 +255,8 @@ static int fimc_is_vdo_video_set_format_mplane(struct file *file, void *fh,
 		merr("fimc_is_video_set_format_mplane is fail(%d)", vctx, ret);
 
 	dbg_vdiso("req w : %d req h : %d\n",
-		vctx->q_src.framecfg.width,
-		vctx->q_src.framecfg.height);
+		vctx->q_src->framecfg.width,
+		vctx->q_src->framecfg.height);
 
 	return ret;
 }

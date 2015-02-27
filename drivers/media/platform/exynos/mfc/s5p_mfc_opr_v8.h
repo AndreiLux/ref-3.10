@@ -118,6 +118,10 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 
 #define mfc_get_disp_first_addr()	-1
 #define mfc_get_dec_first_addr()	-1
+#define mfc_get_last_disp_info()	((readl(dev->regs_base + 			\
+						S5P_FIMV_D_DISPLAY_STATUS)		\
+						>> S5P_FIMV_DISPLAY_LAST_INFO_SHIFT)	\
+						& S5P_FIMV_DISPLAY_LAST_INFO_MASK)
 
 #define mb_width(x_size)		((x_size + 15) / 16)
 #define mb_height(y_size)		((y_size + 15) / 16)

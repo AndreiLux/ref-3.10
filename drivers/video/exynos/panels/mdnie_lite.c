@@ -29,8 +29,8 @@
 #include "mdnie_lite_table_tr.h"
 #elif defined(CONFIG_DECON_LCD_S6E3HF2)
 #include "mdnie_lite_table_tb.h"
-#elif defined(CONFIG_DECON_LCD_S6TNMR7)
-#include "mdnie_lite_table_ch.h"
+#elif defined(CONFIG_DECON_LCD_S6E3HA1)
+#include "mdnie_lite_table_klimt.h"
 #endif
 #if defined(CONFIG_TDMB)
 #include "mdnie_lite_table_dmb.h"
@@ -691,10 +691,8 @@ static int fb_notifier_callback(struct notifier_block *self,
 
 	dev_info(mdnie->dev, "%s: %d\n", __func__, fb_blank);
 
-#ifdef CONFIG_EXYNOS_DECON_DUAL_DISPLAY
 	if (evdata->info->node != 0)
 		return 0;
-#endif
 
 	if (fb_blank == FB_BLANK_UNBLANK) {
 		mutex_lock(&mdnie->lock);

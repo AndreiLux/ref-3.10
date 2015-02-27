@@ -1859,6 +1859,9 @@ int dhd_pno_init(dhd_pub_t *dhd)
 		_pno_state->wls_supported = FALSE;
 		DHD_INFO(("Current firmware doesn't support"
 			" Android Location Service\n"));
+	} else {
+		DHD_ERROR(("%s: Support Android Location Service\n",
+			__FUNCTION__));
 	}
 exit:
 	return err;

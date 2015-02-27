@@ -1698,3 +1698,10 @@ void max77843_hv_muic_remove(struct max77843_muic_data *muic_data)
 	max77843_hv_muic_free_irqs(muic_data);
 }
 
+void max77843_hv_muic_remove_wo_free_irq(struct max77843_muic_data *muic_data)
+{
+	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	cancel_work_sync(&afc_init_data.muic_afc_init_work);
+	cancel_delayed_work_sync(&muic_data->hv_muic_qc_vb_work);
+}
+

@@ -68,7 +68,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		pinctrl-names = "default";
-		pinctrl-0 = <&spi2_bus>;
+		pinctrl-0 = <&spi2_bus &spi2_cs>;
 
 		vfsspi-spi@0 {
 			compatible = "vfsspi,vfs61xx";

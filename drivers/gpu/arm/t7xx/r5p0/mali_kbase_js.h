@@ -32,6 +32,7 @@
 #include "mali_kbase_defs.h"
 #include "mali_kbase_debug.h"
 
+#include "mali_kbase_config_defaults.h"
 #include "mali_kbase_js_ctx_attr.h"
 
 /**
@@ -531,7 +532,7 @@ void kbasep_js_release_privileged_ctx(struct kbase_device *kbdev, struct kbase_c
  * Normally, the time calculated from end_timestamp is rounded up to the
  * minimum time precision. Therefore, to ensure the job is recorded as not
  * spending any time, then set end_timestamp to NULL. For example, this is necessary when
- * evicting jobs from JSn_HEAD_NEXT (because they didn't actually run).
+ * evicting jobs from JS_HEAD_NEXT (because they didn't actually run).
  *
  * NOTE: It's possible to move the steps (2) and (3) (inc calculating job's time
  * used) into the worker (outside of IRQ context), but this may allow a context
@@ -950,7 +951,6 @@ extern const base_jd_prio kbasep_js_relative_priority_to_atom[KBASE_JS_ATOM_SCHE
  */
 static INLINE int kbasep_js_atom_prio_to_sched_prio(base_jd_prio atom_prio)
 {
-	/* SLSI 140806 */
 	if (atom_prio >= BASE_JD_NR_PRIO_LEVELS)
 		return KBASE_JS_ATOM_SCHED_PRIO_INVALID;
 

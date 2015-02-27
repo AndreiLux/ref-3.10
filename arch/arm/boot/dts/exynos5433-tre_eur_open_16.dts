@@ -336,10 +336,8 @@
 	gps {
 		compatible = "samsung,exynos54xx-bcm4753";
 
-		pinctrl-names = "default", "host_wake", "host_wake_irq";
+		pinctrl-names = "default";
 		pinctrl-0 = <&ssp_gps_pwr_en &ssp_host_wake>;
-		pinctrl-1 = <&ssp_host_wake>;
-		pinctrl-2 = <&ssp_host_wake_irq>;
 
 		gpios = <&gpg2 0 0x1
 			      &gpa1 0 0xf
@@ -448,7 +446,7 @@
 			pinctrl-0 = <&pm_g3d_en &pm_dvs_en &pmic_irq &pm_wrsti &gpa3_pull_up>;
 			gpios = <&gpa3 7 0>, <&gpf0 1 0x1>, <&gpr3 0 0x1>;
 			g3d_en = <1>; /* 1 : enable , 0 : disable */
-			smpl_warn_vth = <0xc0>;
+			smpl_warn_vth = <0xd8>; /* LowBat_Level: 2.9V LowBat_Hys: 400mV */
 			regulators {
 				buck1_reg: BUCK1 {
 					regulator-name = "vdd_mif";

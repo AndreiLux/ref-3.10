@@ -642,6 +642,7 @@ int fimc_is_group_probe(struct fimc_is_groupmgr *groupmgr,
 
 	clear_bit(FIMC_IS_GROUP_REQUEST_FSTOP, &group->state);
 	clear_bit(FIMC_IS_GROUP_FORCE_STOP, &group->state);
+	clear_bit(FIMC_IS_GROUP_SHOT, &group->state);
 	clear_bit(FIMC_IS_GROUP_READY, &group->state);
 	clear_bit(FIMC_IS_GROUP_RUN, &group->state);
 	clear_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state);
@@ -710,6 +711,7 @@ int fimc_is_group_open(struct fimc_is_groupmgr *groupmgr,
 	/* 2. Init Group */
 	clear_bit(FIMC_IS_GROUP_REQUEST_FSTOP, &group->state);
 	clear_bit(FIMC_IS_GROUP_FORCE_STOP, &group->state);
+	clear_bit(FIMC_IS_GROUP_SHOT, &group->state);
 	clear_bit(FIMC_IS_GROUP_READY, &group->state);
 	clear_bit(FIMC_IS_GROUP_RUN, &group->state);
 	clear_bit(FIMC_IS_GROUP_OTF_INPUT, &group->state);
@@ -1313,6 +1315,17 @@ check_completion:
 		ret = -EINVAL;
 	}
 
+	retry = 100;
+	while (--retry && test_bit(FIMC_IS_GROUP_SHOT, &group->state)) {
+		mgwarn(" thread stop waiting...", device, group);
+		msleep(10);
+	}
+
+	if (!retry) {
+		mgerr(" waiting(until thread stop) is fail", device, group);
+		ret = -EINVAL;
+	}
+
 	fimc_is_gframe_flush(groupmgr, group);
 
 	clear_bit(FIMC_IS_GROUP_FORCE_STOP, &group->state);
@@ -1528,6 +1541,7 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 	BUG_ON(group->instance >= FIMC_IS_MAX_NODES);
 	BUG_ON(group->id >= GROUP_ID_MAX);
 
+	set_bit(FIMC_IS_GROUP_SHOT, &group->state);
 	atomic_dec(&group->rcount);
 
 	if (test_bit(FIMC_IS_GROUP_FORCE_STOP, &group->state)) {
@@ -1834,6 +1848,7 @@ int fimc_is_group_start(struct fimc_is_groupmgr *groupmgr,
 		atomic_inc(&group->scount);
 	}
 
+	clear_bit(FIMC_IS_GROUP_SHOT, &group->state);
 	PROGRAM_COUNT(7);
 	return ret;
 
@@ -1845,8 +1860,12 @@ p_err:
 		atomic_inc(&group->smp_shot_count);
 		up(&group->smp_shot);
 	}
+
 	if (try_rdown)
 		up(&groupmgr->group_smp_res[group->id]);
+
+	clear_bit(FIMC_IS_GROUP_SHOT, &group->state);
+	PROGRAM_COUNT(8);
 
 	return ret;
 }

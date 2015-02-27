@@ -392,7 +392,11 @@ static void decon_power_gating_handler(struct kthread_work *work)
 	struct display_driver *dispdrv = get_display_driver();
 
 	if (dispdrv->pm_status.pwr_idle_count > MAX_PWR_GATING_COUNT) {
+#ifdef CONFIG_LCD_ALPM
+		if (!check_camera_is_running() && !dispdrv->dsi_driver.dsim->lcd_alpm) {
+#else
 		if (!check_camera_is_running()) {
+#endif
 			display_hibernation_power_off(dispdrv);
 			init_gating_idle_count(dispdrv);
 		}

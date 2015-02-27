@@ -197,8 +197,8 @@ extern int arizona_mixer_values[ARIZONA_NUM_MIXER_INPUTS];
 			arizona_put_sample_rate_enum)
 
 #define ARIZONA_RATE_ENUM_SIZE 4
+#define ARIZONA_SYNC_RATE_ENUM_SIZE 3
 #define ARIZONA_SAMPLE_RATE_ENUM_SIZE 14
-#define ARIZONA_OUT_RATE_ENUM_SIZE 3
 
 extern const char *arizona_rate_text[ARIZONA_RATE_ENUM_SIZE];
 extern const int arizona_rate_val[ARIZONA_RATE_ENUM_SIZE];
@@ -209,7 +209,9 @@ extern const struct soc_enum arizona_sample_rate[];
 extern const struct soc_enum arizona_isrc_fsl[];
 extern const struct soc_enum arizona_isrc_fsh[];
 extern const struct soc_enum arizona_asrc_rate1;
+extern const struct soc_enum arizona_input_rate;
 extern const struct soc_enum arizona_output_rate;
+extern const struct soc_enum arizona_fx_rate;
 extern const struct soc_enum arizona_spdif_rate;
 
 extern const struct soc_enum arizona_in_vi_ramp;
@@ -264,6 +266,8 @@ struct arizona_fll {
 	unsigned int vco_mult;
 	struct completion ok;
 
+	unsigned int fvco;
+	int outdiv;
 	unsigned int fout;
 	int sync_src;
 	unsigned int sync_freq;
@@ -299,5 +303,11 @@ extern int arizona_set_ez2ctrl_cb(struct snd_soc_codec *codec,
 				  void (*ez2ctrl_trigger)(void));
 extern int arizona_set_custom_jd(struct snd_soc_codec *codec,
 				 const struct arizona_jd_state *custom_jd);
+
+extern int arizona_put_dre(struct snd_kcontrol *kcontrol,
+			   struct snd_ctl_elem_value *ucontrol);
+
+extern int arizona_enable_force_bypass(struct snd_soc_codec *codec);
+extern int arizona_disable_force_bypass(struct snd_soc_codec *codec);
 
 #endif

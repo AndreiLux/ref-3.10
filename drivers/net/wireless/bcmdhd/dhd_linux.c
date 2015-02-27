@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_linux.c 487900 2014-06-27 10:26:47Z $
+ * $Id: dhd_linux.c 510762 2014-10-27 12:22:32Z $
  */
 
 #include <typedefs.h>
@@ -1993,9 +1993,16 @@ done:
 		ifp->stats.tx_dropped++;
 	}
 	else {
-		dhd->pub.tx_packets++;
-		ifp->stats.tx_packets++;
-		ifp->stats.tx_bytes += datalen;
+
+#ifdef PROP_TXSTATUS
+		/* tx_packets counter can counted only when wlfc is disabled */
+		if (!dhd_wlfc_is_supported(&dhd->pub))
+#endif
+		{
+			dhd->pub.tx_packets++;
+			ifp->stats.tx_packets++;
+			ifp->stats.tx_bytes += datalen;
+		}
 	}
 
 	DHD_OS_WAKE_UNLOCK(&dhd->pub);
@@ -2362,6 +2369,20 @@ dhd_txcomplete(dhd_pub_t *dhdp, void *txp, bool success)
 		}
 	}
 #endif /* WLBTAMP */
+#ifdef PROP_TXSTATUS
+	if (dhdp->wlfc_state && (dhdp->proptxstatus_mode != WLFC_FCMODE_NONE)) {
+		dhd_if_t *ifp = dhd->iflist[DHD_PKTTAG_IF(PKTTAG(txp))];
+		uint datalen  = PKTLEN(dhd->pub.osh, txp);
+
+		if (success) {
+			dhd->pub.tx_packets++;
+			ifp->stats.tx_packets++;
+			ifp->stats.tx_bytes += datalen;
+		} else {
+			ifp->stats.tx_dropped++;
+		}
+	}
+#endif
 }
 
 static struct net_device_stats *
@@ -2546,7 +2567,7 @@ dhd_dpc_thread(void *data)
 					dhd->pub.dpc_affinity_cpu_mask, cpumask_of(DPC_CPUCORE));
 
 				flags = dhd_os_spin_lock(&dhd->pub);
-				if ((ret = argos_task_affinity_setup_label(current, "WIFI",
+					if ((ret = argos_task_affinity_setup_label(current, "WIFI",
 					dhd->pub.dpc_affinity_cpu_mask,
 					dhd->pub.default_cpu_mask)) < 0) {
 					DHD_ERROR(("Failed to add CPU affinity(dpc) error=%d\n",
@@ -3388,10 +3409,6 @@ dhd_stop(struct net_device *net)
 				(dhd->dhd_state & DHD_ATTACH_STATE_CFG80211)) {
 				int i;
 
-#if defined(CUSTOMER_HW4) && defined(WL_CFG80211_P2P_DEV_IF)
-				wl_cfg80211_del_p2p_wdev();
-#endif /* CUSTOMER_HW4 && WL_CFG80211_P2P_DEV_IF */
-
 				dhd_net_if_lock_local(dhd);
 				for (i = 1; i < DHD_MAX_IFS; i++)
 					dhd_remove_if(&dhd->pub, i, FALSE);
@@ -3459,12 +3476,14 @@ static int dhd_interworking_enable(dhd_pub_t *dhd)
 	}
 
 	if (ret == BCME_OK) {
-		/* basic capabilities for HS20 REL2 */
 		uint32 cap = WL_WNM_BSSTRANS | WL_WNM_NOTIF;
+
+		/* set WNM capabilities */
 		bcm_mkiovar("wnm", (char *)&cap, sizeof(cap), iovbuf, sizeof(iovbuf));
 		if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR,
 			iovbuf, sizeof(iovbuf), TRUE, 0)) < 0) {
-			DHD_ERROR(("%s: failed to set WNM info, ret=%d\n", __FUNCTION__, ret));
+			DHD_ERROR(("%s: failed to set WNM capabilities, ret=%d\n",
+				__FUNCTION__, ret));
 		}
 	}
 
@@ -4496,6 +4515,23 @@ auto_mode:
 exit:
 	return ret;
 }
+#ifdef CUSTOMER_HW4
+int dhd_tdls_reset_manual(dhd_pub_t *dhd, struct net_device *dev)
+{
+	int ret;
+
+	if (!FW_SUPPORTED(dhd, tdls))
+		return BCME_ERROR;
+
+	ret = dhd_tdls_enable(dev, false, false, NULL);
+	if (ret < 0)
+		return ret;
+	ret = dhd_tdls_enable(dev, true, false, NULL);
+	if (ret < 0)
+		return ret;
+	return BCME_OK;
+}
+#endif /* CUSTOMER_HW4 */
 int dhd_tdls_enable(struct net_device *dev, bool tdls_on, bool auto_on, struct ether_addr *mac)
 {
 	dhd_info_t *dhd = *(dhd_info_t **)netdev_priv(dev);
@@ -4586,7 +4622,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	char eventmask[WL_EVENTING_MASK_LEN];
 	char iovbuf[WL_EVENTING_MASK_LEN + 12];	/*  Room for "event_msgs" + '\0' + bitvec  */
 	uint32 buf_key_b4_m4 = 1;
-    uint32 wme_apsd = 0;
 #ifdef WLAIBSS
 	char iov_buf[WLC_IOCTL_SMLEN];
 	aibss_bcn_force_config_t bcn_config;
@@ -4623,7 +4658,9 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #if defined(CUSTOMER_HW2) && defined(USE_WL_CREDALL)
 	uint32 credall = 1;
 #endif
-#if defined(VSDB) || defined(ROAM_ENABLE)
+#if defined(CUSTOMER_HW4) && defined(CUSTOMER_BCN_TIMEOUT)
+	uint bcn_timeout = CUSTOMER_BCN_TIMEOUT_VALUE;
+#elif defined(CUSTOMER_HW4) && (defined(VSDB) || defined(ROAM_ENABLE))
 	uint bcn_timeout = 8;
 #else
 	uint bcn_timeout = 4;
@@ -4774,11 +4811,6 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 	}
 	if ((!op_mode && dhd_get_fw_mode(dhd->info) == DHD_FLAG_HOSTAP_MODE) ||
 		(op_mode == DHD_FLAG_HOSTAP_MODE)) {
-
-         bcm_mkiovar("wme_apsd", (char *)&wme_apsd, 4, iovbuf, sizeof(iovbuf));
-         if (( ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf, sizeof(iovbuf), TRUE, 0)) < 0)
-         DHD_ERROR(("%s: set wme_apsd 0 fail (error=%d)\n",__FUNCTION__, ret));
-
 #ifdef SET_RANDOM_MAC_SOFTAP
 		uint rand_mac;
 #endif

@@ -55,6 +55,7 @@ static int bt_wake_state = -1;
 
 struct bcm_bt_lpm {
 	int host_wake;
+	int dev_wake;
 
 	struct hrtimer enter_lpm_timer;
 	ktime_t enter_lpm_delay;
@@ -63,7 +64,6 @@ struct bcm_bt_lpm {
 
 	struct wake_lock host_wake_lock;
 	struct wake_lock bt_wake_lock;
-	char wake_lock_name[100];
 } bt_lpm;
 
 struct bcm_bt_gpio {
@@ -101,7 +101,7 @@ static int bcm4339_bt_rfkill_set_power(void *data, bool blocked)
 		pr_info("[BT] Bluetooth Power Off.\n");
 
 #ifdef BT_LPM_ENABLE
-		if (irq_set_irq_wake(bt_gpio.irq, 0)) {
+		if (gpio_get_value(bt_gpio.bt_en) && irq_set_irq_wake(bt_gpio.irq, 0)) {
 			pr_err("[BT] Release_irq_wake failed.\n");
 			return -1;
 		}
@@ -119,13 +119,29 @@ static const struct rfkill_ops bcm4339_bt_rfkill_ops = {
 #ifdef BT_LPM_ENABLE
 static void set_wake_locked(int wake)
 {
+#ifdef CONFIG_BT_UART_IN_AUDIO
+	struct uart_port *port = bt_lpm.uport;
+#endif
+
 	if (wake)
 		wake_lock(&bt_lpm.bt_wake_lock);
 
 	gpio_set_value(bt_gpio.bt_wake, wake);
+	bt_lpm.dev_wake = wake;
 
 	if (bt_wake_state != wake)
 	{
+#ifdef CONFIG_BT_UART_IN_AUDIO
+		if(bt_lpm.host_wake)
+		{
+			if(wake)
+				port->ops->set_wake(port, wake);
+		}
+		else
+		{
+			port->ops->set_wake(port, wake);
+		}
+#endif
 		pr_err("[BT] set_wake_locked value = %d\n", wake);
 		bt_wake_state = wake;
 	}
@@ -179,6 +195,9 @@ static void update_host_wake_locked(int host_wake)
 
 static irqreturn_t host_wake_isr(int irq, void *dev)
 {
+#ifdef CONFIG_BT_UART_IN_AUDIO
+	struct uart_port *port = bt_lpm.uport;
+#endif
 	int host_wake;
 
 	host_wake = gpio_get_value(bt_gpio.bt_hostwake);
@@ -190,6 +209,17 @@ static irqreturn_t host_wake_isr(int irq, void *dev)
 		return IRQ_HANDLED;
 	}
 
+#ifdef CONFIG_BT_UART_IN_AUDIO
+	if(bt_lpm.dev_wake)
+	{
+		if(host_wake)
+			port->ops->set_wake(port, host_wake);
+	}
+	else
+	{
+		port->ops->set_wake(port, host_wake);
+	}
+#endif
 	update_host_wake_locked(host_wake);
 
 	return IRQ_HANDLED;
@@ -206,15 +236,10 @@ static int bcm_bt_lpm_init(struct platform_device *pdev)
 
 	bt_lpm.host_wake = 0;
 
-	snprintf(bt_lpm.wake_lock_name, sizeof(bt_lpm.wake_lock_name),
-			"BT_host_wake");
 	wake_lock_init(&bt_lpm.host_wake_lock, WAKE_LOCK_SUSPEND,
-			 bt_lpm.wake_lock_name);
-
-	snprintf(bt_lpm.wake_lock_name, sizeof(bt_lpm.wake_lock_name),
-			"BT_bt_wake");
+			 "BT_host_wake");
 	wake_lock_init(&bt_lpm.bt_wake_lock, WAKE_LOCK_SUSPEND,
-			 bt_lpm.wake_lock_name);
+			 "BT_bt_wake");
 
 	s3c2410_serial_wake_peer[BT_UPORT] = (s3c_wake_peer_t) bcm_bt_lpm_exit_lpm_locked;
 
@@ -239,6 +264,11 @@ static int bcm4339_bluetooth_probe(struct platform_device *pdev)
 
 	bt_gpio.bt_en = of_get_gpio(pdev->dev.of_node, 0);
 
+	if (!gpio_is_valid(bt_gpio.bt_en)) {
+		pr_err("[BT] bt_gpio.bt_en get gpio failed.\n");
+		return -EINVAL;
+	}
+
 	rc = gpio_request(bt_gpio.bt_en, "bten_gpio");
 
 	if (unlikely(rc)) {
@@ -247,6 +277,11 @@ static int bcm4339_bluetooth_probe(struct platform_device *pdev)
 	}
 
 	bt_gpio.bt_wake =of_get_gpio(pdev->dev.of_node, 1);
+
+	if (!gpio_is_valid(bt_gpio.bt_wake)) {
+		pr_err("[BT] bt_gpio.bt_wake get gpio failed.\n");
+		return -EINVAL;
+	}
 
 	rc = gpio_request(bt_gpio.bt_wake, "btwake_gpio");
 
@@ -257,6 +292,11 @@ static int bcm4339_bluetooth_probe(struct platform_device *pdev)
 	}
 
 	bt_gpio.bt_hostwake =of_get_gpio(pdev->dev.of_node, 2);
+
+	if (!gpio_is_valid(bt_gpio.bt_hostwake)) {
+		pr_err("[BT] bt_gpio.bt_hostwake get gpio failed.\n");
+		return -EINVAL;
+	}
 
 	rc = gpio_request(bt_gpio.bt_hostwake,"bthostwake_gpio");
 

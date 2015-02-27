@@ -1086,8 +1086,10 @@ int si_mhl_tx_drv_switch_cbus_mode(struct drv_hw_context *hw_context,
 		break;
 
 	case CM_eCBUS_S:
+#ifdef CoC_FSM_MONITORING
 		mhl_tx_modify_reg(hw_context, REG_GPIO_CTRL1,
 				BIT_CTRL1_GPIO_I_6, BIT_CTRL1_GPIO_I_6);
+#endif
 		si_mhl_tx_initialize_block_transport(dev_context);
 		si_mhl_tx_drv_enable_emsc_block(hw_context);
 
@@ -1135,8 +1137,10 @@ int si_mhl_tx_drv_switch_cbus_mode(struct drv_hw_context *hw_context,
 		mhl_tx_write_reg(hw_context, TX_PAGE_3 | 0x52, 0x03);
 #define STATE_3_TRAP_LIMIT  6
 #define TRAP_WAIT_SLEEP 1
+#ifdef CoC_FSM_MONITORING
 		mhl_tx_modify_reg(hw_context, REG_GPIO_CTRL1,
 			BIT_CTRL1_GPIO_I_7, BIT_CTRL1_GPIO_I_7);
+#endif
 		for (i = 0; i < STATE_3_TRAP_LIMIT; ++i) {
 			int temp;
 			temp = mhl_tx_read_reg(hw_context, REG_EMSCINTR1);
@@ -1144,11 +1148,13 @@ int si_mhl_tx_drv_switch_cbus_mode(struct drv_hw_context *hw_context,
 				REG_COC_STAT_0);
 			if (0x03 == (BITS_ES0_0_COC_STAT_0_FSM_STATE_MASK &
 				coc_stat_0)) {
+#ifdef CoC_FSM_MONITORING
 				mhl_tx_modify_reg(hw_context, REG_GPIO_CTRL1,
 					BIT_CTRL1_GPIO_I_7, 0);
 				msleep(20);
 				mhl_tx_modify_reg(hw_context, REG_GPIO_CTRL1,
 					BIT_CTRL1_GPIO_I_7, BIT_CTRL1_GPIO_I_7);
+#endif
 				break;
 			}
 			if (!(BITS_ES1_0_COC_STAT_0_PLL_LOCKED & coc_stat_0)) {
@@ -1180,8 +1186,10 @@ int si_mhl_tx_drv_switch_cbus_mode(struct drv_hw_context *hw_context,
 			switch_to_d3(hw_context, false);
 			mode_sel = CM_NO_CONNECTION;
 		}
+#ifdef CoC_FSM_MONITORING
 		mhl_tx_modify_reg(hw_context, REG_GPIO_CTRL1,
 			BIT_CTRL1_GPIO_I_7 | BIT_CTRL1_GPIO_I_6, 0);
+#endif
 
 		break;
 
@@ -3206,7 +3214,11 @@ int si_mhl_tx_drv_set_display_mode(struct mhl_dev_context *dev_context,
 #define BIT_1_DISABLED	0x04
 #define BIT_1_HIGH	0x08
 
+#ifdef CoC_FSM_MONITORING
 #define BITS_GPIO_01_HPD_HIGH	(BIT_0_HIGH | BIT_1_HIGH)
+#else
+#define BITS_GPIO_01_HPD_HIGH	(BIT_1_DISABLED | BIT_0_DISABLED)
+#endif
 #define BITS_GPIO_01_HPD_LOW	0
 
 #define BITS_HPD_CTRL_OPEN_DRAIN_HIGH (BITS_GPIO_01_HPD_HIGH | 0x70)
@@ -5640,6 +5652,7 @@ static void cbus_reset(struct drv_hw_context *hw_context)
 	/* switch back to connector wires using 6051 */
 	set_pin(X02_USB_SW_CTRL, 1);
 #endif
+#ifdef CoC_FSM_MONITORING
 	/* Begin enable CoC FSM monitoring */
 	{
 #define	REG_COC_MISC_CTL0 (TX_PAGE_7 | 0x28)
@@ -5651,6 +5664,7 @@ static void cbus_reset(struct drv_hw_context *hw_context)
 
 	}
 	/* End enable CoC FSM monitoring */
+#endif
 }
 
 /*
@@ -5699,7 +5713,7 @@ static void disconnect_mhl(struct drv_hw_context *hw_context,
 	mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL5, 0x3F);
 	mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL2, 0x2F);
 	mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL6, 0x2A);
-	mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL7, 0x03);
+	mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL7, dev_context->pdata->ref_current);
 
 	hw_context->cbus_mode = CM_NO_CONNECTION;
 	hw_context->mhl_peer_version_stat = 0;
@@ -5906,7 +5920,7 @@ static int int_4_isr(struct drv_hw_context *hw_context, uint8_t int_4_status)
 			mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL3, 0x35);
 			mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL5, 0x02);
 			mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL6, 0x02);
-			mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL7, 0x03);
+			mhl_tx_write_reg(hw_context, REG_MHL_DP_CTL7, dev_context->pdata->ref_current);
 			mhl_tx_write_reg(hw_context, REG_COC_CTLC, 0xFF);
 			mhl_tx_write_reg(hw_context, REG_DPD,
 				BIT_DPD_PWRON_PLL |

@@ -262,8 +262,9 @@ inline static void fimc_is_sensor_set_qos_init(struct fimc_is_device_sensor *dev
 		(struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
 
 	cam_qos = fimc_is_get_qos(core, FIMC_IS_DVFS_CAM, START_DVFS_LEVEL);
+#if 0 /* For vision of L_version */
 	int_qos = fimc_is_get_qos(core, FIMC_IS_DVFS_INT, START_DVFS_LEVEL);
-
+#endif
 	if (on) {
 		/* DEVFREQ lock */
 		if (cam_qos > 0) {
@@ -1186,8 +1187,10 @@ int fimc_is_sensor_open(struct fimc_is_device_sensor *device,
 
 	if (pdata->id == 0) {
 		core->running_rear_camera = true;
+		core->id = SENSOR_POSITION_REAR;
 	} else {
 		core->running_front_camera = true;
+		core->id = SENSOR_POSITION_FRONT;
 	}
 
 	/* for mediaserver force close */
@@ -1386,8 +1389,8 @@ int fimc_is_sensor_s_input(struct fimc_is_device_sensor *device,
 #endif
 
 	/* send csi chennel to FW */
-	module->ext.sensor_con.reserved[0] = device->pdata->csi_ch;
-	module->ext.sensor_con.reserved[0] |= 0x0100;
+	module->ext.sensor_con.csi_ch = device->pdata->csi_ch;
+	module->ext.sensor_con.csi_ch |= 0x0100;
 
 	module->ext.flash_con.peri_setting.gpio.first_gpio_port_no = device->pdata->flash_first_gpio;
 	module->ext.flash_con.peri_setting.gpio.second_gpio_port_no = device->pdata->flash_second_gpio;
@@ -1928,7 +1931,7 @@ int fimc_is_sensor_buffer_queue(struct fimc_is_device_sensor *device,
 		goto p_err;
 	}
 
-	framemgr = &device->vctx->q_dst.framemgr;
+	framemgr = &device->vctx->q_dst->framemgr;
 	if (framemgr == NULL) {
 		err("framemgr is null\n");
 		ret = EINVAL;
@@ -1977,7 +1980,7 @@ int fimc_is_sensor_buffer_finish(struct fimc_is_device_sensor *device,
 		goto exit;
 	}
 
-	framemgr = &device->vctx->q_dst.framemgr;
+	framemgr = &device->vctx->q_dst->framemgr;
 	frame = &framemgr->frame[index];
 
 	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_3 + index, flags);

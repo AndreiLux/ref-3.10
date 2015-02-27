@@ -1831,14 +1831,9 @@ static const struct reg_default florida_reg_default[] = {
 	{ 0x00000FC3, 0x0000 },    /* R4035  - ANC Coefficient */
 	{ 0x00000FC4, 0x0000 },    /* R4036  - ANC Coefficient */
 	{ 0x00001100, 0x0010 },    /* R4352  - DSP1 Control 1 */
-	{ 0x00001101, 0x0000 },    /* R4353  - DSP1 Clocking 1 */
 	{ 0x00001200, 0x0010 },    /* R4608  - DSP2 Control 1 */
-	{ 0x00001201, 0x0000 },    /* R4609  - DSP2 Clocking 1 */
 	{ 0x00001300, 0x0010 },    /* R4864  - DSP3 Control 1 */
-	{ 0x00001301, 0x0000 },    /* R4865  - DSP3 Clocking 1 */
 	{ 0x00001400, 0x0010 },    /* R5120  - DSP4 Control 1 */
-	{ 0x00001401, 0x0000 },    /* R5121  - DSP4 Clocking 1 */
-	{ 0x00001404, 0x0000 },    /* R5124  - DSP4 Status 1 */
 };
 
 static bool florida_is_rev_b_adsp_memory(unsigned int reg)
@@ -1933,6 +1928,8 @@ static bool florida_readable_register(struct device *dev, unsigned int reg)
 	case ARIZONA_ALWAYS_ON_TRIGGERS_SEQUENCE_SELECT_5:
 	case ARIZONA_ALWAYS_ON_TRIGGERS_SEQUENCE_SELECT_6:
 	case ARIZONA_COMFORT_NOISE_GENERATOR:
+	case ARIZONA_HP_DETECT_CALIBRATION_1:
+	case ARIZONA_HP_DETECT_CALIBRATION_2:
 	case ARIZONA_HAPTICS_CONTROL_1:
 	case ARIZONA_HAPTICS_CONTROL_2:
 	case ARIZONA_HAPTICS_PHASE_1_INTENSITY:
@@ -2013,6 +2010,7 @@ static bool florida_readable_register(struct device *dev, unsigned int reg)
 	case ARIZONA_ACCESSORY_DETECT_MODE_1:
 	case ARIZONA_HEADPHONE_DETECT_1:
 	case ARIZONA_HEADPHONE_DETECT_2:
+	case ARIZONA_HEADPHONE_DETECT_3:
 	case ARIZONA_MICD_CLAMP_CONTROL:
 	case ARIZONA_MIC_DETECT_1:
 	case ARIZONA_MIC_DETECT_2:
@@ -2124,6 +2122,7 @@ static bool florida_readable_register(struct device *dev, unsigned int reg)
 	case ARIZONA_HP1_SHORT_CIRCUIT_CTRL:
 	case ARIZONA_HP2_SHORT_CIRCUIT_CTRL:
 	case ARIZONA_HP3_SHORT_CIRCUIT_CTRL:
+	case ARIZONA_HP_TEST_CTRL_1:
 	case ARIZONA_SPK_CTRL_3:
 	case ARIZONA_AIF1_BCLK_CTRL:
 	case ARIZONA_AIF1_TX_PIN_CTRL:
@@ -3052,6 +3051,8 @@ static bool florida_volatile_register(struct device *dev, unsigned int reg)
 	switch (reg) {
 	case ARIZONA_SOFTWARE_RESET:
 	case ARIZONA_DEVICE_REVISION:
+	case ARIZONA_HP_DETECT_CALIBRATION_1:
+	case ARIZONA_HP_DETECT_CALIBRATION_2:
 	case ARIZONA_HAPTICS_STATUS:
 	case ARIZONA_SAMPLE_RATE_1_STATUS:
 	case ARIZONA_SAMPLE_RATE_2_STATUS:
@@ -3062,7 +3063,12 @@ static bool florida_volatile_register(struct device *dev, unsigned int reg)
 	case ARIZONA_MIC_DETECT_4:
 	case ARIZONA_HP_CTRL_1L:
 	case ARIZONA_HP_CTRL_1R:
+	case ARIZONA_HP_CTRL_2L:
+	case ARIZONA_HP_CTRL_2R:
+	case ARIZONA_HP_CTRL_3L:
+	case ARIZONA_HP_CTRL_3R:
 	case ARIZONA_HEADPHONE_DETECT_2:
+	case ARIZONA_HEADPHONE_DETECT_3:
 	case ARIZONA_INPUT_ENABLES_STATUS:
 	case ARIZONA_OUTPUT_STATUS_1:
 	case ARIZONA_RAW_OUTPUT_STATUS_1:
@@ -3072,6 +3078,7 @@ static bool florida_volatile_register(struct device *dev, unsigned int reg)
 	case ARIZONA_ADC_VCO_CAL_7:
 	case ARIZONA_ADC_VCO_CAL_8:
 	case ARIZONA_ADC_VCO_CAL_9:
+	case ARIZONA_HP_TEST_CTRL_1:
 	case ARIZONA_SLIMBUS_RX_PORT_STATUS:
 	case ARIZONA_SLIMBUS_TX_PORT_STATUS:
 	case ARIZONA_INTERRUPT_STATUS_1:

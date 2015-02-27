@@ -57,6 +57,7 @@ int csi_hw_g_interrupt(unsigned long __iomem *base_reg);
 int csi_hw_enable(unsigned long __iomem *base_reg);
 int csi_hw_disable(unsigned long __iomem *base_reg);
 
+int fimc_is_runtime_suspend_post(struct device *dev);
 int fimc_is_runtime_suspend(struct device *dev);
 int fimc_is_runtime_resume(struct device *dev);
 #endif

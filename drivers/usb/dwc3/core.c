@@ -146,6 +146,10 @@ void dwc3_core_config(struct dwc3 *dwc)
 	 */
 	reg = dwc3_readl(dwc->regs, DWC3_GUCTL);
 	reg |= (DWC3_GUCTL_USBHSTINAUTORETRYEN);
+	if (dwc->adj_sof_accuracy) {
+		reg &= ~DWC3_GUCTL_REFCLKPER_MASK;
+		reg |= DWC3_GUCTL_REFCLKPER(0x29);
+	}
 	dwc3_writel(dwc->regs, DWC3_GUCTL, reg);
 	if (dwc->revision >= DWC3_REVISION_190A &&
 		dwc->revision <= DWC3_REVISION_210A) {
@@ -355,8 +359,6 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 
 		evt->lpos = 0;
 
-		dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(n), 0);
-		dwc3_writel(dwc->regs, DWC3_GEVNTADRHI(n), 0);
 		dwc3_writel(dwc->regs, DWC3_GEVNTSIZ(n), DWC3_GEVNTSIZ_INTMASK
 				| DWC3_GEVNTSIZ_SIZE(0));
 		dwc3_writel(dwc->regs, DWC3_GEVNTCOUNT(n), 0);
@@ -409,6 +411,10 @@ int dwc3_core_init(struct dwc3 *dwc)
 	}
 	dwc->revision = reg;
 
+	/* Adjust SOF accuracy only for revisions >= 2.50a */
+	if (dwc->revision < DWC3_REVISION_250A)
+		dwc->adj_sof_accuracy = 0;
+
 	/* issue device SoftReset too */
 	ret = dwc3_udc_reset(dwc);
 	if (ret < 0)
@@ -439,6 +445,11 @@ int dwc3_core_init(struct dwc3 *dwc)
 	if (dwc->revision < DWC3_REVISION_190A)
 		reg |= DWC3_GCTL_U2RSTECN;
 
+	if (dwc->adj_sof_accuracy) {
+		reg &= ~DWC3_GCTL_SOFITPSYNC;
+		reg |= DWC3_GCTL_DSBLCLKGTNG;
+	}
+
 	dwc3_core_num_eps(dwc);
 
 	dwc3_writel(dwc->regs, DWC3_GCTL, reg);
@@ -447,11 +458,24 @@ int dwc3_core_init(struct dwc3 *dwc)
 
 	reg = dwc3_readl(dwc->regs, DWC3_GUSB2PHYCFG(0));
 	reg |= DWC3_GUSB2PHYCFG_SUSPHY;
+	if (dwc->adj_sof_accuracy)
+		reg &= ~DWC3_GUSB2PHYCFG_U2_FREECLK_EXISTS;
 	dwc3_writel(dwc->regs, DWC3_GUSB2PHYCFG(0), reg);
 
 	reg = dwc3_readl(dwc->regs, DWC3_GUSB3PIPECTL(0));
 	reg |= DWC3_GUSB3PIPECTL_SUSPHY;
 	dwc3_writel(dwc->regs, DWC3_GUSB3PIPECTL(0), reg);
+
+	if (dwc->adj_sof_accuracy) {
+		reg = dwc3_readl(dwc->regs, DWC3_GFLADJ);
+		reg &= ~DWC3_GFLADJ_REFCLK_240MHZDECR_PLS1;
+		reg &= ~DWC3_GFLADJ_REFCLK_240MHZ_DECR_MASK;
+		reg |= DWC3_GFLADJ_REFCLK_240MHZ_DECR(0xA);
+		reg |= DWC3_GFLADJ_REFCLK_LPM_SEL;
+		reg &= ~DWC3_GFLADJ_REFCLK_FLADJ_MASK;
+		reg |= DWC3_GFLADJ_REFCLK_FLADJ(0x7F0);
+		dwc3_writel(dwc->regs, DWC3_GFLADJ, reg);
+	}
 
 	return 0;
 
@@ -511,6 +535,7 @@ static int dwc3_probe(struct platform_device *pdev)
 		dwc->usb3_phy = devm_usb_get_phy_by_phandle(dev, "usb-phy", 1);
 
 		dwc->needs_fifo_resize = of_property_read_bool(node, "tx-fifo-resize");
+		dwc->adj_sof_accuracy = of_property_read_bool(node, "adj-sof-accuracy");
 		dwc->dr_mode = of_usb_get_dr_mode(node);
 	} else if (pdata) {
 		dwc->maximum_speed = pdata->maximum_speed;
@@ -519,6 +544,7 @@ static int dwc3_probe(struct platform_device *pdev)
 		dwc->usb3_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB3);
 
 		dwc->needs_fifo_resize = pdata->tx_fifo_resize;
+		dwc->adj_sof_accuracy = pdata->adj_sof_accuracy;
 		dwc->dr_mode = pdata->dr_mode;
 	} else {
 		dwc->usb2_phy = devm_usb_get_phy(dev, USB_PHY_TYPE_USB2);

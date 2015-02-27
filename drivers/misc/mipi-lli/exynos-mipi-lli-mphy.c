@@ -60,13 +60,16 @@ int exynos_mphy_cmn_init(struct exynos_mphy *phy)
 		writel(0xF9, phy->loc_regs + (0x4f*4));
 
 	/* Basic tune for series-A */
-	writel(0x05, phy->loc_regs + (0x0A*4));
+#if defined(CONFIG_SOC_EXYNOS5433) && defined(CONFIG_UMTS_MODEM_SS333)
+	writel(0x06, phy->loc_regs + (0x0A*4));
+#else
+ 	writel(0x05, phy->loc_regs + (0x0A*4));
+#endif
 	writel(0x03, phy->loc_regs + (0x11*4));
 	writel(0x03, phy->loc_regs + (0x12*4));
 	writel(0x03, phy->loc_regs + (0x13*4));
 	writel(0x02, phy->loc_regs + (0x14*4));
 	writel(0x00, phy->loc_regs + (0x16*4));
-	writel(0x01, phy->loc_regs + (0x17*4));
 	writel(0xD6, phy->loc_regs + (0x19*4));
 	writel(0x00, phy->loc_regs + (0x44*4));
 	writel(0x01, phy->loc_regs + (0x4D*4));
@@ -140,7 +143,9 @@ int exynos_mphy_ovtm_init(struct exynos_mphy *phy)
 	}
 
 	/* PLL power off */
+#ifdef CONFIG_SOC_EXYNOS5430
 	writel(0x0, phy->loc_regs + (0x1A*4));
+#endif
 
 	return 0;
 }

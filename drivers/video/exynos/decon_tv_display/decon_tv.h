@@ -63,6 +63,7 @@ extern int dex_log_level;
 	} while (0)
 
 #define DEX_DRIVER_NAME		"decon-tv"
+#define DEV_DECON_TV		7
 #define DEX_MAX_WINDOWS		5
 #define DEX_BACKGROUND		0
 #define DEX_DEFAULT_WIN		1
@@ -131,6 +132,7 @@ struct dex_reg_data {
 	u32			buf_size[DEX_MAX_WINDOWS];
 	struct dex_dma_buf_data dma_buf_data[DEX_MAX_WINDOWS];
 	u32			win_overlap_bw;
+	bool			protection[DEX_MAX_WINDOWS];
 };
 
 struct dex_resources {
@@ -190,6 +192,7 @@ struct dex_device {
 	ktime_t           vsync_timestamp;
 	bool			wb_path;
 
+	bool			protected_content;
 	enum tv_ip_version	ip_ver;
 };
 

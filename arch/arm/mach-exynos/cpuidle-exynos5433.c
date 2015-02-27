@@ -209,6 +209,10 @@ extern void exynos_pci_lpa_resume(void);
 extern int check_bt_op(void);
 #endif
 
+#ifdef CONFIG_EXYNOS_DECON_TV_DISPLAY
+extern int check_decon_tv_op(void);
+#endif
+
 static int exynos_check_reg_status(struct check_reg_lpa *reg_list,
 				    unsigned int list_cnt)
 {
@@ -309,6 +313,11 @@ static int exynos_check_lpc(void)
 #ifdef CONFIG_PCI_EXYNOS
 	if (check_wifi_op())
 		return EXYNOS_CHECK_DIDLE;
+#endif
+
+#ifdef CONFIG_EXYNOS_DECON_TV_DISPLAY
+	if (check_decon_tv_op())
+		return 1;
 #endif
 
 #if 0

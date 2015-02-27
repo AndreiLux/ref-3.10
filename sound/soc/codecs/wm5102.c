@@ -877,6 +877,8 @@ SOC_ENUM("LHPF4 Mode", arizona_lhpf4_mode),
 ARIZONA_SAMPLE_RATE_CONTROL_DVFS("Sample Rate 2", 2),
 ARIZONA_SAMPLE_RATE_CONTROL_DVFS("Sample Rate 3", 3),
 
+SOC_VALUE_ENUM("FX Rate", arizona_fx_rate),
+
 SOC_VALUE_ENUM("ISRC1 FSL", arizona_isrc_fsl[0]),
 SOC_VALUE_ENUM("ISRC2 FSL", arizona_isrc_fsl[1]),
 
@@ -1956,6 +1958,13 @@ static int wm5102_codec_probe(struct snd_soc_codec *codec)
 static int wm5102_codec_remove(struct snd_soc_codec *codec)
 {
 	struct wm5102_priv *priv = snd_soc_codec_get_drvdata(codec);
+	struct arizona *arizona = priv->core.arizona;
+
+	irq_set_irq_wake(arizona->irq, 0);
+	arizona_free_irq(arizona, ARIZONA_IRQ_DSP_IRQ1, priv);
+	regmap_update_bits(arizona->regmap, ARIZONA_IRQ2_STATUS_3_MASK,
+				 ARIZONA_IM_DRC1_SIG_DET_EINT2,
+				 ARIZONA_IM_DRC1_SIG_DET_EINT2);
 
 	priv->core.arizona->dapm = NULL;
 

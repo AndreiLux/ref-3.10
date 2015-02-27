@@ -158,7 +158,7 @@ void kbase_pm_do_poweroff(struct kbase_device *kbdev, mali_bool is_suspend)
 	/* Force all cores off */
 	kbdev->pm.desired_shader_state = 0;
 
-	/* Force all cores to be unavailable, in the situation where 
+	/* Force all cores to be unavailable, in the situation where
 	 * transitions are in progress for some cores but not others,
 	 * and kbase_pm_check_transitions_nolock can not immediately
 	 * power off the cores */
@@ -214,7 +214,6 @@ mali_error kbase_pm_powerup(struct kbase_device *kbdev)
 	spin_lock_irqsave(&kbdev->pm.gpu_cycle_counter_requests_lock, flags);
 	/* Ensure cycle counter is off */
 	kbdev->pm.gpu_cycle_counter_requests = 0;
-	kbase_reg_write(kbdev, GPU_CONTROL_REG(GPU_COMMAND), GPU_COMMAND_CYCLE_COUNT_STOP, NULL);
 	spin_unlock_irqrestore(&kbdev->pm.gpu_cycle_counter_requests_lock, flags);
 
 	/* We are ready to receive IRQ's now as power policy is set up, so enable them now. */
@@ -243,7 +242,7 @@ void kbase_pm_context_active(struct kbase_device *kbdev)
 }
 
 int kbase_pm_context_active_handle_suspend(struct kbase_device *kbdev, enum kbase_pm_suspend_handler suspend_handler)
-{	
+{
 	int c;
 	int old_count;
 
@@ -258,8 +257,7 @@ int kbase_pm_context_active_handle_suspend(struct kbase_device *kbdev, enum kbas
 		kbase_timeline_pm_send_event(kbdev, KBASE_TIMELINE_PM_EVENT_GPU_ACTIVE);
 
 	mutex_lock(&kbdev->pm.lock);
-	if (kbase_pm_is_suspending(kbdev))
-	{
+	if (kbase_pm_is_suspending(kbdev)) {
 		switch (suspend_handler) {
 		case KBASE_PM_SUSPEND_HANDLER_DONT_REACTIVATE:
 			if (kbdev->pm.active_count != 0)
@@ -382,6 +380,7 @@ KBASE_EXPORT_TEST_API(kbase_pm_term)
 void kbase_pm_suspend(struct kbase_device *kbdev)
 {
 	int nr_keep_gpu_powered_ctxs;
+
 	KBASE_DEBUG_ASSERT(kbdev);
 
 #if SLSI_INTEGRATION

@@ -71,6 +71,7 @@
 #define MFC_BASE_MASK		((1 << 17) - 1)
 
 #define FLAG_LAST_FRAME		0x80000000
+#define MFC_MAX_INTERVAL	(2 * USEC_PER_SEC)
 
 /* Command ID for smc */
 #define SMC_PROTECTION_SET	0x81000000
@@ -84,6 +85,9 @@
 /* Parameter for smc */
 #define SMC_PROTECTION_ENABLE	1
 #define SMC_PROTECTION_DISABLE	0
+
+/* Maximum number of temporal layers */
+#define VIDEO_MAX_TEMPORAL_LAYERS 7
 
 /*
  *  MFC region id for smc
@@ -242,6 +246,7 @@ struct s5p_mfc_buf {
 	} planes;
 	int used;
 	int already;
+	int consumed;
 };
 
 #define vb_to_mfc_buf(x)	\
@@ -254,6 +259,7 @@ struct s5p_mfc_pm {
 	spinlock_t	clklock;
 
 	int clock_off_steps;
+	enum mfc_buf_usage_type base_type;
 };
 
 struct s5p_mfc_fw {
@@ -449,6 +455,7 @@ struct s5p_mfc_h264_enc_params {
 	enum v4l2_mpeg_video_h264_hierarchical_coding_type hier_qp_type;
 	u8 hier_qp_layer;
 	u8 hier_qp_layer_qp[7];
+	u32 hier_qp_layer_bit[7];
 	u8 sei_gen_enable;
 	u8 sei_fp_curr_frame_0;
 	enum v4l2_mpeg_video_h264_sei_fp_arrangement_type sei_fp_arrangement_type;
@@ -500,9 +507,8 @@ struct s5p_mfc_vp8_enc_params {
 	u8 vp8_goldenframesel;
 	u8 vp8_gfrefreshperiod;
 	u8 hierarchy_qp_enable;
-	u8 hierarchy_qp_layer0;
-	u8 hierarchy_qp_layer1;
-	u8 hierarchy_qp_layer2;
+	u8 hier_qp_layer_qp[3];
+	u32 hier_qp_layer_bit[3];
 	u8 num_refs_for_p;
 	u8 intra_4x4mode_disable;
 	u8 num_temporal_layer;
@@ -668,6 +674,11 @@ struct dec_dpb_ref_info {
 	struct stored_dpb_info dpb[MFC_MAX_DPBS];
 };
 
+struct temporal_layer_info {
+	unsigned int temporal_layer_count;
+	unsigned int temporal_layer_bitrate[VIDEO_MAX_TEMPORAL_LAYERS];
+};
+
 struct mfc_user_shared_handle {
 	int fd;
 	struct ion_handle *ion_handle;
@@ -678,6 +689,14 @@ struct s5p_mfc_raw_info {
 	int num_planes;
 	int stride[3];
 	int plane_size[3];
+};
+
+#define MFC_TIME_INDEX		8
+struct mfc_timestamp {
+	struct list_head list;
+	struct timeval timestamp;
+	int index;
+	int interval;
 };
 
 struct s5p_mfc_dec {
@@ -765,6 +784,7 @@ struct s5p_mfc_enc {
 	unsigned int in_slice;
 
 	int stored_tag;
+	struct mfc_user_shared_handle sh_handle;
 };
 
 /**
@@ -867,6 +887,11 @@ struct s5p_mfc_ctx {
 
 	int is_max_fps;
 	int buf_process_type;
+
+	struct mfc_timestamp ts_array[MFC_TIME_INDEX];
+	struct list_head ts_list;
+	int ts_count;
+	int ts_is_full;
 };
 
 #define fh_to_mfc_ctx(x)	\
@@ -980,7 +1005,15 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 					(dev->fw.date >= 0x131108))
 #define FW_HAS_BASE_CHANGE(dev)		((IS_MFCv7X(dev) || IS_MFCv8X(dev))&&	\
 					(dev->fw.date >= 0x131108))
+#define FW_HAS_TEMPORAL_SVC_CH(dev)	((IS_MFCv8X(dev) &&			\
+					 (dev->fw.date >= 0x140821)))
 #define FW_WAKEUP_AFTER_RISC_ON(dev)	(IS_MFCv8X(dev) || IS_MFCv78(dev))
+#if defined(CONFIG_SOC_EXYNOS5422)
+#define FW_HAS_LAST_DISP_INFO(dev)	(IS_MFCv8X(dev) &&			\
+					(dev->fw.date >= 0x141205))
+#else	/* Do not use last frame info */
+#define FW_HAS_LAST_DISP_INFO(dev)	0
+#endif
 
 #define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
 
@@ -992,9 +1025,11 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 /* Extra information for Decoder */
 #define	DEC_SET_DUAL_DPB		(1 << 0)
 #define	DEC_SET_DYNAMIC_DPB		(1 << 1)
+#define	DEC_SET_LAST_FRAME_INFO		(1 << 2)
 /* Extra information for Encoder */
 #define	ENC_SET_RGB_INPUT		(1 << 0)
 #define	ENC_SET_SPARE_SIZE		(1 << 1)
+#define	ENC_SET_TEMP_SVC_CH		(1 << 2)
 
 #define MFC_QOS_FLAG_NODATA		0xFFFFFFFF
 
@@ -1007,6 +1042,7 @@ struct s5p_mfc_fmt {
 };
 
 int get_framerate(struct timeval *to, struct timeval *from);
+int get_framerate_by_interval(int interval);
 static inline int clear_hw_bit(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;

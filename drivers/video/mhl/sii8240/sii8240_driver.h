@@ -953,7 +953,11 @@ struct mhl_timing {
 #ifdef SII8240_CHECK_MONITOR
 #define MC_FC_RET_OK 0
 #define MC_FC_RET_ERR_INVALID 1
+#if defined(CONFIG_SOC_EXYNOS5430) || defined(CONFIG_SOC_EXYNOS5433)
+#define MC_FC_HDCP_VALUE 0x81000060
+#else
 #define MC_FC_HDCP_VALUE 0x83000000
+#endif
 /* Use the arch_extension sec pseudo op before switching to secure world */
 #if defined(__GNUC__) && \
 defined(__GNUC_MINOR__) && \
