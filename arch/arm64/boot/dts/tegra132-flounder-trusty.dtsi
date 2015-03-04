@@ -35,5 +35,9 @@
 		ote {
 			compatible = "android,trusty-ote-v1";
 		};
+
+		log {
+			compatible = "android,trusty-log-v1";
+		};
 	};
 };
