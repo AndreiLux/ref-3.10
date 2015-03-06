@@ -687,7 +687,7 @@ static struct miscdevice ov9760_device = {
 #ifdef CONFIG_DEBUG_FS
 static int ov9760_stats_show(struct seq_file *s, void *data)
 {
-	static struct ov9760_info *info;
+	struct ov9760_info *info = (struct ov9760_info *)(s->private);
 
 	seq_printf(s, "%-20s : %-20s\n", "Name", "ov9760-debugfs-testing");
 	seq_printf(s, "%-20s : 0x%X\n", "Current i2c-offset Addr",
