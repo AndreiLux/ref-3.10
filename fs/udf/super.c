@@ -629,6 +629,7 @@ static int udf_remount_fs(struct super_block *sb, int *flags, char *options)
 	struct udf_options uopt;
 	struct udf_sb_info *sbi = UDF_SB(sb);
 	int error = 0;
+	sync_filesystem(sb);
 
 	sync_filesystem(sb);
 	if (sbi->s_lvid_bh) {
