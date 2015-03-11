@@ -18,54 +18,45 @@
 
 #include "ote_protocol.h"
 
-static pte_t *_get_pte(unsigned long addr)
-{
-	pgd_t *pgd;
-	pud_t *pud;
-	pmd_t *pmd;
-
-	struct mm_struct *mm = current->mm;
-
-	pgd = pgd_offset(mm, addr);
-	if (pgd_none(*pgd) || pgd_bad(*pgd))
-		return NULL;
-
-	pud = pud_offset(pgd, addr);
-	if (pud_none(*pud) || pud_bad(*pud))
-		return NULL;
-
-	pmd = pmd_offset(pud, addr);
-	if (pmd_none(*pmd) || pmd_bad(*pmd))
-		return NULL;
-
-	return pte_offset_map(pmd, addr);
-}
-
 int te_fill_page_info(struct te_oper_param_page_info *pg_inf,
-		      unsigned long start, struct page *page)
+		      unsigned long start, struct page *page,
+		      struct vm_area_struct *vma)
 {
-	pte_t *ppte;
-	uint64_t val;
+	uint64_t mair;
 	uint64_t pte;
-	uint attr_shift;
+	uint8_t memory_type;
+	uint64_t attr_index;
 
-	if (!page)
+	if (!page || !vma)
 		return -1;
 
-	ppte = _get_pte(start);
-	if (!ppte)
+	/* Only support normal memory types. */
+	if ((vma->vm_page_prot & PTE_ATTRINDX_MASK) !=
+	    PTE_ATTRINDX(MT_NORMAL)) {
+		pr_err("%s: unsupported memory type: %llx\n", __func__,
+		       vma->vm_page_prot & PTE_ATTRINDX_MASK);
 		return -1;
+	}
 
-	pte = pte_val(*ppte);
+	/*
+	 * Recreate the pte of the page - we can't access it
+	 * safely here race free.
+	 */
+	pte = page_to_phys(page);
+	pte |= pgprot_val(vma->vm_page_prot);
+	if (vma->vm_flags & VM_WRITE)
+		pte &= ~PTE_RDONLY;
 
-	if ((pte & 0x0000FFFFFFFFF000) !=
-	    (page_to_phys(page) & 0x0000FFFFFFFFF000))
-		return -1;
+	/* Pull the mt index out of the pte */
+	attr_index = (pte & PTE_ATTRINDX_MASK) >> 2;
 
-	asm (" mrs %0, mair_el1\n" : "=&r" (val));
-	attr_shift = ((pte >> 2) & 0x7) << 3;
-	pg_inf->attr = (pte & 0x0000FFFFFFFFFFFF)
-		     | (((val >> attr_shift) & 0xFF) << 48);
+	/* Pull the memory attributes out of the mair register. */
+	asm ("mrs %0, mair_el1\n" : "=&r" (mair));
+	memory_type = (mair >> (attr_index * 8)) & 0xff;
+
+	pg_inf->attr = (pte & 0x0000FFFFFFFFFFFFull) |
+		       ((uint64_t)memory_type << 48);
+
 	return 0;
 }
 
