@@ -415,6 +415,7 @@ uint32_t tlk_ss_op(void);
 void tlk_ss_close(void);
 
 int te_fill_page_info(struct te_oper_param_page_info *pg_inf,
-		unsigned long start, struct page *page);
+		unsigned long start, struct page *page,
+		struct vm_area_struct *vma);
 
 #endif
