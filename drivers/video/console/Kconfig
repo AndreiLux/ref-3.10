@@ -4,6 +4,7 @@
 
 menu "Console display driver support"
 
+if VT
 config VGA_CONSOLE
 	bool "VGA text console" if EXPERT || !X86
 	depends on !4xx && !8xx && !SPARC && !M68K && !PARISC && !FRV && !SUPERH && !BLACKFIN && !AVR32 && !MN10300 && (!ARM || ARCH_FOOTBRIDGE || ARCH_INTEGRATOR || ARCH_NETWINDER)
@@ -128,6 +129,7 @@ config STI_CONSOLE
           The STI console is the builtin display/keyboard on HP-PARISC
           machines.  Say Y here to build support for it into your kernel.
           The alternative is to use your primary serial port as a console.
+endif
 
 config FONTS
 	bool "Select compiled-in fonts"
@@ -158,7 +160,6 @@ config FONT_8x8
 
 config FONT_8x16
 	bool "VGA 8x16 font" if FONTS
-	depends on FRAMEBUFFER_CONSOLE || SGI_NEWPORT_CONSOLE || STI_CONSOLE || USB_SISUSBVGA_CON
 	default y if !SPARC && !FONTS
 	help
 	  This is the "high resolution" font for the VGA frame buffer (the one

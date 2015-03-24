@@ -512,14 +512,23 @@ void do_coredump(siginfo_t *siginfo)
 	audit_core_dumps(siginfo->si_signo);
 
 	binfmt = mm->binfmt;
-	if (!binfmt || !binfmt->core_dump)
+	if (!binfmt || !binfmt->core_dump) {
+		printk(KERN_WARNING "Skip process %d(%s) core dump(!binfmt?%s)\n",
+			task_tgid_vnr(current), current->comm, (!binfmt) ? "yes":"no");
 		goto fail;
-	if (!__get_dumpable(cprm.mm_flags))
+	}
+	if (!__get_dumpable(cprm.mm_flags)) {
+		printk(KERN_WARNING "Skip process %d(%s) core dump(mm_flags:%x)\n",
+			task_tgid_vnr(current), current->comm, (unsigned int)cprm.mm_flags);
 		goto fail;
+	}
 
 	cred = prepare_creds();
-	if (!cred)
+	if (!cred) {
+		printk(KERN_WARNING "Skip process %d(%s) core dump(prepare_creds failed)\n",
+			task_tgid_vnr(current), current->comm);
 		goto fail;
+	}
 	/*
 	 * We cannot trust fsuid as being the "true" uid of the process
 	 * nor do we know its entire history. We only know it was tainted

@@ -61,8 +61,8 @@ static struct tty_buffer *tty_buffer_alloc(struct tty_port *port, size_t size)
 {
 	struct tty_buffer *p;
 
-	if (port->buf.memory_used + size > 65536)
-		return NULL;
+	//if (port->buf.memory_used + size > 65536)
+	//	return NULL;
 	p = kmalloc(sizeof(struct tty_buffer) + 2 * size, GFP_ATOMIC);
 	if (p == NULL)
 		return NULL;

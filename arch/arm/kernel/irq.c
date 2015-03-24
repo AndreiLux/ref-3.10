@@ -42,6 +42,7 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
 
+#include <linux/mt_sched_mon.h>
 unsigned long irq_err_count;
 
 int arch_show_interrupts(struct seq_file *p, int prec)
@@ -56,6 +57,10 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 	return 0;
 }
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+#include <trace/events/mtk_events.h>
+#endif
+
 /*
  * handle_IRQ handles all hardware IRQ's.  Decoded IRQs should
  * not come via this function.  Instead, they should provide their
@@ -65,7 +70,7 @@ int arch_show_interrupts(struct seq_file *p, int prec)
 void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
-
+    mt_trace_ISR_start(irq);
 	irq_enter();
 
 	/*
@@ -76,10 +81,13 @@ void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 		if (printk_ratelimit())
 			printk(KERN_WARNING "Bad IRQ%u\n", irq);
 		ack_bad_irq(irq);
+#ifdef CONFIG_MTK_SCHED_TRACERS
+        trace_unnamed_irq(irq);
+#endif
 	} else {
 		generic_handle_irq(irq);
 	}
-
+    mt_trace_ISR_end(irq);
 	irq_exit();
 	set_irq_regs(old_regs);
 }

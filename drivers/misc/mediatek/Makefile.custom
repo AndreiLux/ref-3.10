@@ -1,0 +1,4 @@
+
+MTK_PLATFORM := $(subst ",,$(CONFIG_MTK_PLATFORM))
+ccflags-y += -I$(srctree)/arch/arm/mach-$(MTK_PLATFORM)/include/cust \
+             -I$(srctree)

@@ -1496,7 +1496,7 @@ static const struct file_operations proc_iface_stat_fmt_fops = {
 	.open		= proc_iface_stat_fmt_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= seq_release_private,
 };
 
 static int __init iface_stat_init(struct proc_dir_entry *parent_procdir)
@@ -1752,6 +1752,8 @@ static bool qtaguid_mt(const struct sk_buff *skb, struct xt_action_param *par)
 		account_for_uid(skb, sk, 0, par);
 		res = ((info->match ^ info->invert) &
 			(XT_QTAGUID_UID | XT_QTAGUID_GID)) == 0;
+		/*mtk_net: patch for duplicated account for uid 0*/
+		res = true;
 		atomic64_inc(&qtu_events.match_no_sk_file);
 		goto put_sock_ret_res;
 	}
@@ -2904,7 +2906,7 @@ static const struct file_operations proc_qtaguid_ctrl_fops = {
 	.read		= seq_read,
 	.write		= qtaguid_ctrl_proc_write,
 	.llseek		= seq_lseek,
-	.release	= seq_release,
+	.release	= seq_release_private,
 };
 
 static const struct seq_operations proc_qtaguid_stats_seqops = {

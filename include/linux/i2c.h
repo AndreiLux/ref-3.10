@@ -26,6 +26,7 @@
 #ifndef _LINUX_I2C_H
 #define _LINUX_I2C_H
 
+#include <linux/module.h>
 #include <linux/mod_devicetable.h>
 #include <linux/device.h>	/* for struct device */
 #include <linux/sched.h>	/* for completion */
@@ -61,6 +62,8 @@ extern int i2c_master_send(const struct i2c_client *client, const char *buf,
 			   int count);
 extern int i2c_master_recv(const struct i2c_client *client, char *buf,
 			   int count);
+
+
 
 /* Transfer num messages.
  */

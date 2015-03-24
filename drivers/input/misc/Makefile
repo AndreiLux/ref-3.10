@@ -62,3 +62,13 @@ obj-$(CONFIG_INPUT_WISTRON_BTNS)	+= wistron_btns.o
 obj-$(CONFIG_INPUT_WM831X_ON)		+= wm831x-on.o
 obj-$(CONFIG_INPUT_XEN_KBDDEV_FRONTEND)	+= xen-kbdfront.o
 obj-$(CONFIG_INPUT_YEALINK)		+= yealink.o
+
+#mediatek sensors drivers support
+obj-$(CONFIG_ACCELEROMETER_MTK_MC3210)	+= accelerometer/mc3210/
+obj-$(CONFIG_ALSPS_MTK_STK2203)		+= alsps/stk2203/
+obj-$(CONFIG_GYROSCOPE_MTK_MPU3050C)	+= gyroscope/mpu3050c/
+obj-$(CONFIG_MAGNETOMETER_MTK_AKM8963)	+= magnetometer/akm8963/
+obj-$(CONFIG_ACCELEROMETER_MTK_MPU6050)	+= accelerometer/mpu6050g/
+obj-$(CONFIG_GYROSCOPE_MTK_MPU6050)	+= gyroscope/mpu6050gy/
+obj-$(CONFIG_INPUT_HALL_BU520)		+= hall/
+obj-$(CONFIG_INPUT_TEMPERATURE_TMP103)	+= temperature/

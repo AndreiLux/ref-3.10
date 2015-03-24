@@ -10,6 +10,11 @@ endif
 obj-$(CONFIG_HID)		+= hid.o
 obj-$(CONFIG_UHID)		+= uhid.o
 
+#
+# Makefile for the BTHID driver
+#
+obj-$(CONFIG_KEYBOARD_HID) += hid_keyboard.o
+obj-$(CONFIG_HID_LAB126) += hid-magneto.o
 obj-$(CONFIG_HID_GENERIC)	+= hid-generic.o
 
 hid-$(CONFIG_HIDRAW)		+= hidraw.o

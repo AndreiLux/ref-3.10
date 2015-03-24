@@ -1,0 +1,15 @@
+# Makefile for the linux kernel.
+
+obj-y := UDVT.o
+obj-y   += UDVT_cmd.o
+obj-y   += UDVT_IF.o
+obj-y   += UDVT_fs_linux.o
+obj-y   += os_linux_util.o
+obj-y   += os_init.o
+obj-y   += os_linux_crit.o
+obj-y   += os_linux_ev_grp.o
+obj-y   += os_linux_mem.o
+obj-y   += os_linux_msg_q.o
+obj-y   += os_linux_sema.o
+obj-y   += os_linux_thread.o
+obj-y   += os_linux_timer.o

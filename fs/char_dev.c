@@ -24,6 +24,32 @@
 
 #include "internal.h"
 
+#include <linux/aee.h>
+
+/* -------------------------------------------------------------*/
+/* This is for central management of MTK char device number -- */
+#ifdef CONFIG_MT_CHRDEV_REG
+
+#define MTCHRDEV_REG(num, name) CHDEV_##name,
+
+#define MAKE_MTCHRDEV_ENUM
+#include <mach/mtchrdev_table.h>
+
+#undef MTCHRDEV_REG
+#define MTCHRDEV_REG(num, name) \
+    [CHDEV_##name] = {num, #name},
+
+struct{
+    const int dev_num;
+    const char *name;
+}mtchrdev_info[MTCHRDEV_COUNT] = {
+    [ DNY_CHRDEV ] = { 0, "dynamic" },
+#include <mach/mtchrdev_table.h>
+};
+#endif/* end of CONFIG_MT_CHRDEV_REG*/
+int dynamic_chardev_num = CHRDEV_MAJOR_HASH_SIZE;
+/* -------------------------------------------------------------*/
+
 /*
  * capabilities for /dev/mem, /dev/kmem and similar directly mappable character
  * devices
@@ -72,8 +98,21 @@ void chrdev_show(struct seq_file *f, off_t offset)
 
 	if (offset < CHRDEV_MAJOR_HASH_SIZE) {
 		mutex_lock(&chrdevs_lock);
-		for (cd = chrdevs[offset]; cd; cd = cd->next)
+		for (cd = chrdevs[offset]; cd; cd = cd->next){
+#ifdef CONFIG_MT_CHRDEV_REG
+            int i;
+            for (i = 0; i< dynamic_chardev_num; i++){
+                if(cd->major == mtchrdev_info[i].dev_num)
+                    break;
+            }
+            if(i == dynamic_chardev_num && cd->major < dynamic_chardev_num)
+                seq_printf(f, "%3d %s (not MT default dev)\n", cd->major, cd->name);
+            else
+                seq_printf(f, "%3d %s\n", cd->major, cd->name);
+#else
 			seq_printf(f, "%3d %s\n", cd->major, cd->name);
+#endif
+        }
 		mutex_unlock(&chrdevs_lock);
 	}
 }
@@ -98,13 +137,12 @@ __register_chrdev_region(unsigned int major, unsigned int baseminor,
 	struct char_device_struct *cd, **cp;
 	int ret = 0;
 	int i;
-
+    char aee_str[64];
 	cd = kzalloc(sizeof(struct char_device_struct), GFP_KERNEL);
 	if (cd == NULL)
 		return ERR_PTR(-ENOMEM);
 
 	mutex_lock(&chrdevs_lock);
-
 	/* temporary */
 	if (major == 0) {
 		for (i = ARRAY_SIZE(chrdevs)-1; i > 0; i--) {
@@ -113,10 +151,13 @@ __register_chrdev_region(unsigned int major, unsigned int baseminor,
 		}
 
 		if (i == 0) {
+            sprintf( aee_str, "[%s]reg cdev fail", name);
+            printk(KERN_ERR"No enough cdev number!!\n");
 			ret = -EBUSY;
 			goto out;
 		}
 		major = i;
+        dynamic_chardev_num = i;
 		ret = major;
 	}
 
@@ -143,12 +184,18 @@ __register_chrdev_region(unsigned int major, unsigned int baseminor,
 
 		/* New driver overlaps from the left.  */
 		if (new_max >= old_min && new_max <= old_max) {
+            sprintf( aee_str, "Driver:%s cdev reg fail", name);
+            printk(KERN_ERR"\n!!\n");
+            printk(KERN_ERR"[%s] register cdev error at MAJOR %d. Already used by [%s]\n!!\n\n",name, major, (*cp)->name);
 			ret = -EBUSY;
 			goto out;
 		}
 
 		/* New driver overlaps from the right.  */
 		if (new_min <= old_max && new_min >= old_min) {
+            sprintf( aee_str, "Driver:%s:cdev reg fail", name);
+            printk(KERN_ERR"\n!!\n");
+            printk(KERN_ERR"[%s] register cdev error at MAJOR %d. Already used by [%s]\n!!\n\n",name, major, (*cp)->name);
 			ret = -EBUSY;
 			goto out;
 		}
@@ -161,6 +208,7 @@ __register_chrdev_region(unsigned int major, unsigned int baseminor,
 out:
 	mutex_unlock(&chrdevs_lock);
 	kfree(cd);
+    aee_kernel_warning( aee_str,"cdev reg\n");
 	return ERR_PTR(ret);
 }
 

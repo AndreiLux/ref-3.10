@@ -105,6 +105,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 		"AnonHugePages:  %8lu kB\n"
 #endif
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		"InUse:          %8lu kB\n"
+#endif
+/* ACOS_MOD_END {internal_membo} */
 		,
 		K(i.totalram),
 		K(i.freeram),
@@ -165,6 +170,11 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		,K(global_page_state(NR_ANON_TRANSPARENT_HUGEPAGES) *
 		   HPAGE_PMD_NR)
 #endif
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		, K(global_page_state(NR_INUSE))
+#endif
+/* ACOS_MOD_END {internal_membo} */
 		);
 
 	hugetlb_report_meminfo(m);

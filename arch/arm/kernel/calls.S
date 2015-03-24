@@ -107,7 +107,7 @@
 /* 95 */	CALL(sys_fchown16)
 		CALL(sys_getpriority)
 		CALL(sys_setpriority)
-		CALL(sys_ni_syscall)		/* was sys_profil */
+		CALL(sys_trapz)	/* was sys_profil */
 		CALL(sys_statfs)
 /* 100 */	CALL(sys_fstatfs)
 		CALL(sys_ni_syscall)		/* sys_ioperm */

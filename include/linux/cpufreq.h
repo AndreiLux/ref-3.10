@@ -215,6 +215,8 @@ extern int __cpufreq_driver_target(struct cpufreq_policy *policy,
 extern int __cpufreq_driver_getavg(struct cpufreq_policy *policy,
 				   unsigned int cpu);
 
+extern int get_nonidle_power(unsigned int cpu, unsigned int freq);
+
 int cpufreq_register_governor(struct cpufreq_governor *governor);
 void cpufreq_unregister_governor(struct cpufreq_governor *governor);
 
@@ -262,6 +264,13 @@ struct cpufreq_driver {
 	int	(*suspend)	(struct cpufreq_policy *policy);
 	int	(*resume)	(struct cpufreq_policy *policy);
 	struct freq_attr	**attr;
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	/* return percpu frequency table */
+	struct cpufreq_frequency_table *
+		(*get_table)	(unsigned int cpu);
+
+#endif
 };
 
 /* flags */
@@ -368,6 +377,24 @@ static inline unsigned int cpufreq_quick_get_max(unsigned int cpu)
 }
 #endif
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+#ifdef CONFIG_CPU_FREQ
+/* query frequency index. If -1, cpufreq couldn't detect it  */
+unsigned int cpufreq_get_idx(unsigned int cpu, unsigned int freq);
+/* query the last known CPU freq (in kHz) even CPU is offline. If zero, cpufreq couldn't detect it */
+unsigned int cpufreq_latest_quick_get(unsigned int cpu);
+#else
+static inline unsigned int cpufreq_get_idx(unsigned int cpu, unsigned int freq)
+{
+	return -1;
+}
+static inline unsigned int cpufreq_latest_quick_get(unsigned int cpu)
+{
+	return 0;
+}
+#endif
+#endif
+
 
 /*********************************************************************
  *                       CPUFREQ DEFAULT GOVERNOR                    *
@@ -398,6 +425,9 @@ extern struct cpufreq_governor cpufreq_gov_conservative;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVE)
 extern struct cpufreq_governor cpufreq_gov_interactive;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactive)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_INTERACTIVEPLUS)
+extern struct cpufreq_governor cpufreq_gov_interactiveplus;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_interactiveplus)
 #endif
 
 
@@ -428,6 +458,11 @@ int cpufreq_frequency_table_target(struct cpufreq_policy *policy,
 
 /* the following 3 funtions are for cpufreq core use only */
 struct cpufreq_frequency_table *cpufreq_frequency_get_table(unsigned int cpu);
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+/* query cpufreq driver for table on specific core.
+   Driver should return frequency table even if core is offline */
+struct cpufreq_frequency_table *cpufreq_get_drivertable(unsigned int cpu);
+#endif
 
 /* the following are really really optional */
 extern struct freq_attr cpufreq_freq_attr_scaling_available_freqs;

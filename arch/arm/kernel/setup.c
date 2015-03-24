@@ -37,7 +37,6 @@
 #include <asm/cputype.h>
 #include <asm/elf.h>
 #include <asm/procinfo.h>
-#include <asm/psci.h>
 #include <asm/sections.h>
 #include <asm/setup.h>
 #include <asm/smp_plat.h>
@@ -85,6 +84,9 @@ unsigned int cacheid __read_mostly;
 EXPORT_SYMBOL(cacheid);
 
 unsigned int __atags_pointer __initdata;
+
+unsigned int system_type;
+EXPORT_SYMBOL(system_type);
 
 unsigned int system_rev;
 EXPORT_SYMBOL(system_rev);
@@ -414,6 +416,8 @@ void notrace cpu_init(void)
 		BUG();
 	}
 
+	erratum_a15_798181_init();
+
 	/*
 	 * This only works on resume and secondary cores. For booting on the
 	 * boot cpu, smp_prepare_boot_cpu is called after percpu area setup.
@@ -469,7 +473,12 @@ void __init smp_setup_processor_id(void)
 	cpu_logical_map(0) = cpu;
 	for (i = 1; i < nr_cpu_ids; ++i)
 		cpu_logical_map(i) = i == cpu ? 0 : i;
-
+	/*
+	 * clear __my_cpu_offset on boot CPU to avoid hang caused by
+	 * using percpu variable early, for example, lockdep will
+	 * access percpu variable inside lock_release
+	 */
+	set_my_cpu_offset(0);
 	printk(KERN_INFO "Booting Linux on physical CPU 0x%x\n", mpidr);
 }
 
@@ -810,15 +819,9 @@ void __init setup_arch(char **cmdline_p)
 	unflatten_device_tree();
 
 	arm_dt_init_cpu_maps();
-	psci_init();
 #ifdef CONFIG_SMP
 	if (is_smp()) {
-		if (!mdesc->smp_init || !mdesc->smp_init()) {
-			if (psci_smp_available())
-				smp_set_ops(&psci_smp_ops);
-			else if (mdesc->smp)
-				smp_set_ops(mdesc->smp);
-		}
+		smp_set_ops(mdesc->smp);
 		smp_init_cpus();
 	}
 #endif
@@ -895,10 +898,49 @@ static const char *hwcap_str[] = {
 	NULL
 };
 
+static void c_show_features(struct seq_file *m, u32 cpuid)
+{
+	int j;
+
+        /* dump out the processor features */
+        seq_puts(m, "Features\t: ");
+
+        for (j = 0; hwcap_str[j]; j++)
+                if (elf_hwcap & (1 << j))
+                        seq_printf(m, "%s ", hwcap_str[j]);
+
+        seq_printf(m, "\nCPU implementer\t: 0x%02x\n", cpuid >> 24);
+        seq_printf(m, "CPU architecture: %s\n",
+                   proc_arch[cpu_architecture()]);
+
+        if ((cpuid & 0x0008f000) == 0x00000000) {
+                /* pre-ARM7 */
+                seq_printf(m, "CPU part\t: %07x\n", cpuid >> 4);
+        } else {
+                if ((cpuid & 0x0008f000) == 0x00007000) {
+                        /* ARM7 */
+                        seq_printf(m, "CPU variant\t: 0x%02x\n",
+                                   (cpuid >> 16) & 127);
+                } else {
+                        /* post-ARM7 */
+                        seq_printf(m, "CPU variant\t: 0x%x\n",
+                                   (cpuid >> 20) & 15);
+                }
+                seq_printf(m, "CPU part\t: 0x%03x\n",
+                           (cpuid >> 4) & 0xfff);
+        }
+        seq_printf(m, "CPU revision\t: %d\n\n", cpuid & 15);
+}
+
 static int c_show(struct seq_file *m, void *v)
 {
-	int i, j;
+	int i;
 	u32 cpuid;
+	int compat = config_enabled(CONFIG_COMPAT_CPUINFO);
+
+	if (compat)
+		seq_printf(m, "Processor\t: %s rev %d (%s)\n",
+			   cpu_name, read_cpuid_id() & 15, elf_platform);
 
 	for_each_online_cpu(i) {
 		/*
@@ -906,10 +948,11 @@ static int c_show(struct seq_file *m, void *v)
 		 * online processors, looking for lines beginning with
 		 * "processor".  Give glibc what it expects.
 		 */
-		seq_printf(m, "processor\t: %d\n", i);
 		cpuid = is_smp() ? per_cpu(cpu_data, i).cpuid : read_cpuid_id();
-		seq_printf(m, "model name\t: %s rev %d (%s)\n",
-			   cpu_name, cpuid & 15, elf_platform);
+		if (!compat)
+			seq_printf(m, "Processor\t: %s rev %d (%s)\n",
+				   cpu_name, cpuid & 15, elf_platform);
+		seq_printf(m, "processor\t: %d\n", i);
 
 #if defined(CONFIG_SMP)
 		seq_printf(m, "BogoMIPS\t: %lu.%02lu\n",
@@ -920,38 +963,16 @@ static int c_show(struct seq_file *m, void *v)
 			   loops_per_jiffy / (500000/HZ),
 			   (loops_per_jiffy / (5000/HZ)) % 100);
 #endif
-		/* dump out the processor features */
-		seq_puts(m, "Features\t: ");
-
-		for (j = 0; hwcap_str[j]; j++)
-			if (elf_hwcap & (1 << j))
-				seq_printf(m, "%s ", hwcap_str[j]);
-
-		seq_printf(m, "\nCPU implementer\t: 0x%02x\n", cpuid >> 24);
-		seq_printf(m, "CPU architecture: %s\n",
-			   proc_arch[cpu_architecture()]);
-
-		if ((cpuid & 0x0008f000) == 0x00000000) {
-			/* pre-ARM7 */
-			seq_printf(m, "CPU part\t: %07x\n", cpuid >> 4);
-		} else {
-			if ((cpuid & 0x0008f000) == 0x00007000) {
-				/* ARM7 */
-				seq_printf(m, "CPU variant\t: 0x%02x\n",
-					   (cpuid >> 16) & 127);
-			} else {
-				/* post-ARM7 */
-				seq_printf(m, "CPU variant\t: 0x%x\n",
-					   (cpuid >> 20) & 15);
-			}
-			seq_printf(m, "CPU part\t: 0x%03x\n",
-				   (cpuid >> 4) & 0xfff);
-		}
-		seq_printf(m, "CPU revision\t: %d\n\n", cpuid & 15);
+		if (!compat)
+			c_show_features(m, cpuid);
+                else
+			seq_printf(m, "\n");
 	}
 
+	if (compat)
+		c_show_features(m, cpuid);
 	seq_printf(m, "Hardware\t: %s\n", machine_name);
-	seq_printf(m, "Revision\t: %04x\n", system_rev);
+	seq_printf(m, "Revision\t: %04x %04x\n", system_type, system_rev);
 	seq_printf(m, "Serial\t\t: %08x%08x\n",
 		   system_serial_high, system_serial_low);
 

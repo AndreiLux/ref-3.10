@@ -23,19 +23,18 @@
 ACPI_MODULE_NAME("cmos rtc");
 
 static const struct acpi_device_id acpi_cmos_rtc_ids[] = {
-	{ "PNP0B00" },
-	{ "PNP0B01" },
-	{ "PNP0B02" },
+	{"PNP0B00"},
+	{"PNP0B01"},
+	{"PNP0B02"},
 	{}
 };
 
 static acpi_status
 acpi_cmos_rtc_space_handler(u32 function, acpi_physical_address address,
-		      u32 bits, u64 *value64,
-		      void *handler_context, void *region_context)
+			    u32 bits, u64 *value64, void *handler_context, void *region_context)
 {
 	int i;
-	u8 *value = (u8 *)&value64;
+	u8 *value = (u8 *) &value64;
 
 	if (address > 0xff || !value64)
 		return AE_BAD_PARAMETER;
@@ -57,14 +56,13 @@ acpi_cmos_rtc_space_handler(u32 function, acpi_physical_address address,
 }
 
 static int acpi_install_cmos_rtc_space_handler(struct acpi_device *adev,
-		const struct acpi_device_id *id)
+					       const struct acpi_device_id *id)
 {
 	acpi_status status;
 
 	status = acpi_install_address_space_handler(adev->handle,
-			ACPI_ADR_SPACE_CMOS,
-			&acpi_cmos_rtc_space_handler,
-			NULL, NULL);
+						    ACPI_ADR_SPACE_CMOS,
+						    &acpi_cmos_rtc_space_handler, NULL, NULL);
 	if (ACPI_FAILURE(status)) {
 		pr_err(PREFIX "Error installing CMOS-RTC region handler\n");
 		return -ENODEV;
@@ -76,7 +74,8 @@ static int acpi_install_cmos_rtc_space_handler(struct acpi_device *adev,
 static void acpi_remove_cmos_rtc_space_handler(struct acpi_device *adev)
 {
 	if (ACPI_FAILURE(acpi_remove_address_space_handler(adev->handle,
-			ACPI_ADR_SPACE_CMOS, &acpi_cmos_rtc_space_handler)))
+							   ACPI_ADR_SPACE_CMOS,
+							   &acpi_cmos_rtc_space_handler)))
 		pr_err(PREFIX "Error removing CMOS-RTC region handler\n");
 }
 

@@ -185,6 +185,17 @@ __do_page_cache_readahead(struct address_space *mapping, struct file *filp,
 		page = page_cache_alloc_readahead(mapping);
 		if (!page)
 			break;
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		{
+			struct allocation_detail detail = page->detail;
+			detail.call_site
+				= (void *)
+				(((char *)mapping->a_ops->readpage) + 16);
+			page->detail = detail;
+		}
+#endif
+/* ACOS_MOD_END {internal_membo} */
 		page->index = page_offset;
 		list_add(&page->lru, &page_pool);
 		if (page_idx == nr_to_read - lookahead_size)

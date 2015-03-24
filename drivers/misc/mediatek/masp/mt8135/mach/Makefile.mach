@@ -1,0 +1,19 @@
+#######################################
+# Sepcify source files
+#######################################
+ifneq ($(CONFIG_MTK_IN_HOUSE_TEE_SUPPORT),)
+mach_obj += mach/mtee/hacc_lib.o
+mach_obj += mach/mtee/hacc_export.o
+mach_obj += mach/mtee/hacc_hk.o
+mach_obj += mach/mtee/hacc_sk.o
+
+EXTRA_CFLAGS += -I$(srctree)/include
+EXTRA_CFLAGS += -I$(srctree)/include/trustzone
+
+else
+#Nothing to do
+
+endif
+
+# HEADER FILE
+EXTRA_CFLAGS += -I$(src)/asf/asf_inc

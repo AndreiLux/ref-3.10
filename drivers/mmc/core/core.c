@@ -444,7 +444,7 @@ static void mmc_wait_for_req_done(struct mmc_host *host,
 		    mmc_card_removed(host->card))
 			break;
 
-		pr_debug("%s: req failed (CMD%u): %d, retrying...\n",
+		pr_err("%s: req failed (CMD%u): %d, retrying...\n",
 			 mmc_hostname(host), cmd->opcode, cmd->error);
 		cmd->retries--;
 		cmd->error = 0;
@@ -1687,6 +1687,7 @@ void mmc_detach_bus(struct mmc_host *host)
  */
 void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 {
+	int ret;
 #ifdef CONFIG_MMC_DEBUG
 	unsigned long flags;
 	spin_lock_irqsave(&host->lock, flags);
@@ -1696,7 +1697,8 @@ void mmc_detect_change(struct mmc_host *host, unsigned long delay)
 	host->detect_change = 1;
 
 	wake_lock(&host->detect_wake_lock);
-	mmc_schedule_delayed_work(&host->detect, delay);
+	ret = mmc_schedule_delayed_work(&host->detect, delay);
+	printk(KERN_INFO"msdc: %d,mmc_schedule_delayed_work ret= %d\n",host->index,ret);
 }
 
 EXPORT_SYMBOL(mmc_detect_change);
@@ -2404,10 +2406,16 @@ void mmc_rescan(struct work_struct *work)
 		return;
 
 	/* If there is a non-removable card registered, only scan once */
-	if ((host->caps & MMC_CAP_NONREMOVABLE) && host->rescan_entered)
-		return;
-	host->rescan_entered = 1;
+// [FIXME] VIA marks it wrong
+/*    if ((host->caps & MMC_CAP_NONREMOVABLE) && host->rescan_entered){
+        if (extend_wakelock)
+            wake_lock_timeout(&host->detect_wake_lock, HZ / 2);
+        else
+            wake_unlock(&host->detect_wake_lock);
 
+		return;
+    }
+*/
 	mmc_bus_get(host);
 
 	/*
@@ -2462,6 +2470,7 @@ void mmc_rescan(struct work_struct *work)
 			break;
 	}
 	mmc_release_host(host);
+	host->rescan_entered = 1;
 
  out:
 	if (extend_wakelock)
@@ -2571,52 +2580,6 @@ int mmc_power_restore_host(struct mmc_host *host)
 	return ret;
 }
 EXPORT_SYMBOL(mmc_power_restore_host);
-
-int mmc_card_awake(struct mmc_host *host)
-{
-	int err = -ENOSYS;
-
-	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD)
-		return 0;
-
-	mmc_bus_get(host);
-
-	if (host->bus_ops && !host->bus_dead && host->bus_ops->awake)
-		err = host->bus_ops->awake(host);
-
-	mmc_bus_put(host);
-
-	return err;
-}
-EXPORT_SYMBOL(mmc_card_awake);
-
-int mmc_card_sleep(struct mmc_host *host)
-{
-	int err = -ENOSYS;
-
-	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD)
-		return 0;
-
-	mmc_bus_get(host);
-
-	if (host->bus_ops && !host->bus_dead && host->bus_ops->sleep)
-		err = host->bus_ops->sleep(host);
-
-	mmc_bus_put(host);
-
-	return err;
-}
-EXPORT_SYMBOL(mmc_card_sleep);
-
-int mmc_card_can_sleep(struct mmc_host *host)
-{
-	struct mmc_card *card = host->card;
-
-	if (card && mmc_card_mmc(card) && card->ext_csd.rev >= 3)
-		return 1;
-	return 0;
-}
-EXPORT_SYMBOL(mmc_card_can_sleep);
 
 /*
  * Flush the cache to the non-volatile storage.

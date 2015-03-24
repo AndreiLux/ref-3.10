@@ -1,0 +1,208 @@
+menuconfig MEDIATEK_SOLUTION
+        bool "MediaTek Properitary Configuration"
+        help
+            Check this to enable MediaTek properity configuration.
+
+if MEDIATEK_SOLUTION
+
+config MTK_PLATFORM
+	string
+	default "mt8135" if ARCH_MT8135
+	default "mt6582" if ARCH_MT6582
+
+config ARCH_MTK_PROJECT
+	string "MTK project name"
+
+config MTK_INTERNAL
+	bool "Enable MTK internal debug feature"
+	help
+	   Identify if codebase is built with MTK internal debug
+	   (Don't modify this feature option setting.)
+
+config HAVE_AEE_FEATURE
+	bool "HAVE_AEE_FEATURE"
+	help
+	   AEE (Android Exception Engine) that designed by  Mediatek is an
+	   exception catching and debugging information generation mechanism.
+	   It can collect and dump information to filesystem
+	   (/sdcard/mtklog/aee_exp)  when fatel occur(E.g. kernel
+	   panic/android system server crash and ..) HAVE_AEE_FEATURE will
+	   decide this feature enable or not.
+
+config HAVE_XLOG_FEATURE
+	bool "HAVE_XLOG_FEATURE"
+	help
+	   It decide whether the system has XLOG mechanism. XLOG is a log
+	   filter mechanism which can filter the logs by tag before they are
+	   written to log buffer
+
+config HAVE_MTK_IN_HOUSE_TEE_SUPPORT
+	def_bool n
+
+config MTK_IN_HOUSE_TEE_SUPPORT
+	bool "Enable MTK In House TEE Support"
+	depends on HAVE_MTK_IN_HOUSE_TEE_SUPPORT
+	default n
+	help
+	  This enable MTK TEE support.
+
+config MTK_SEC_VIDEO_PATH_SUPPORT
+	bool "Enable MTK Secure Video Path Support"
+	depends on MTK_IN_HOUSE_TEE_SUPPORT
+	default n
+	help
+	  This enable MTK Secure Video Path Support. (depending on MTK In-House TEE Support)
+
+config MTK_OVERLAY_ENGINE_SUPPORT
+    bool "Enable MTK Overlay Engine Support"
+    default n
+    help
+      This enable MTK Video Path Overlay Engine Support.
+
+config MTK_SEC_WFD_VIDEO_PATH_SUPPORT
+    bool "Enable MTK Secure WFD Video Path Support"
+    depends on MTK_SEC_VIDEO_PATH_SUPPORT
+    depends on MTK_IN_HOUSE_TEE_SUPPORT
+    default n
+    help
+      This enable MTK WFD Secure Video Path Support.
+
+config MTK_SEC_HDMI_VIDEO_PATH_SUPPORT
+    bool "Enable MTK Secure HDMI Video Path Support"
+    depends on MTK_SEC_VIDEO_PATH_SUPPORT
+    depends on MTK_IN_HOUSE_TEE_SUPPORT
+    default n
+    help
+      This enable MTK HDMI Secure Video Path Support.
+
+config MTK_DRM_KEY_MNG_SUPPORT
+	bool "MTK_DRM_KEY_MNG_SUPPORT"
+	depends on MTK_IN_HOUSE_TEE_SUPPORT
+	default n
+	help
+	   support MTK DRM Key Management
+
+
+config MTK_MMPROFILE_SUPPORT
+	bool "Multimedia profiling mechanism"
+
+config MTK_SECURITY_SW_SUPPORT
+	bool "MTK_SECURITY_SW_SUPPORT"
+	help
+	   MTK_SECURITY_SW_SUPPORT=yes==> All security function in pre-
+	   loader/LK/kernel/android will be built into software images
+
+config MTK_EMMC_SUPPORT
+	bool "MTK_EMMC_SUPPORT"
+	help
+	   eMMC feature enable/disable
+
+config MTK_SHARED_SDCARD
+	bool "MTK_SHARED_SDCARD"
+	help
+	   sdcard will be a folder of /data
+
+config MTK_DT_SUPPORT
+	bool "MTK_DT_SUPPORT"
+	help
+	   support dual talk
+
+config EVDO_DT_SUPPORT
+	bool "EVDO_DT_SUPPORT"
+	help
+	   To support GSM+CDMA dual talk feature
+
+config MTK_SENSOR_SUPPORT
+	bool "MTK_SENSOR_SUPPORT"
+	help
+	   sensor config to sensor port sensor feature in project
+
+config MTK_AUTO_DETECT_ACCELEROMETER
+	bool "MTK_AUTO_DETECT_ACCELEROMETER"
+	depends on MTK_SENSOR_SUPPORT
+	help
+	   one load to support different accelerometer sensor
+
+config MTK_AUTO_DETECT_MAGNETOMETER
+	bool "MTK_AUTO_DETECT_MAGNETOMETER"
+	depends on MTK_SENSOR_SUPPORT
+	help
+	   one load to support different magnetometer sensor
+
+# Custom
+config CUSTOM_KERNEL_ACCELEROMETER
+	bool "CUSTOM_KERNEL_ACCELEROMETER"
+	help
+	   accelerometer sensor to detect accelerometer from x y z axis.
+
+config CUSTOM_KERNEL_ALSPS
+	bool "CUSTOM_KERNEL_ALSPS"
+	help
+	   ALSPS sensor driverto detect ambint light and the object is close
+	   or far awary from device
+
+config CUSTOM_KERNEL_EXTMD
+	string "CUSTOM_KERNEL_EXTMD"
+
+config CUSTOM_KERNEL_FLASHLIGHT
+	string "CUSTOM_KERNEL_FLASHLIGHT"
+	help
+	   Kernel space cameara flashlight driver. You can use this driver
+	   choose cameara flashlight type.
+
+config CUSTOM_KERNEL_GYROSCOPE
+	bool "CUSTOM_KERNEL_GYROSCOPE"
+	help
+	   gyro driver
+
+config CUSTOM_KERNEL_HDMI
+	string "CUSTOM_KERNEL_HDMI"
+	help
+	   Specify HDMI external IC type.
+
+config CUSTOM_KERNEL_IMGSENSOR
+	string "CUSTOM_KERNEL_IMGSENSOR"
+	help
+           Kernel space image sensor driver. Define  project used all image
+           sensors .The value is combination of CUSTOM_KERNEL_MAIN_IMGSENSOR,
+           CUSTOM_KERNEL_MAIN_BACKUP_IMGSENSOR, CUSTOM_KERNEL_SUB_IMGSENSOR,
+           and CUSTOM_KERNEL_SUB_BACKUP_IMGSENSOR
+
+config CUSTOM_KERNEL_LCM
+	string "CUSTOM_KERNEL_LCM"
+	help
+	   To choose kernel LCM driver name
+
+config CUSTOM_KERNEL_MAGNETOMETER
+	bool "CUSTOM_KERNEL_MAGNETOMETER"
+	help
+	   compass driver to detect compass raw data and report orientatino
+	   data
+
+config CUSTOM_KERNEL_OFN
+	bool "CUSTOM_KERNEL_OFN"
+
+config CUSTOM_KERNEL_TOUCHPANEL
+	string "CUSTOM_KERNEL_TOUCHPANEL"
+	help
+	   touch driver  need to report correct touch axes
+
+config CUSTOM_SEC_AUTH_SUPPORT
+	bool "CUSTOM_SEC_AUTH_SUPPORT"
+	help
+	   Support customer to implement and apply their own RSA security
+	   functions
+
+
+source "drivers/misc/mediatek/Kconfig.kernel"
+source "drivers/misc/mediatek/Kconfig.drivers"
+
+config MTK_THERMAL_STATUS_COLLECTION
+        bool "MTK Thermal Status Information Collection"
+        default n
+
+config MD32_SUPPORT
+	bool "Specifiy If Platform Support MD32"
+	default n
+
+endif

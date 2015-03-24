@@ -40,6 +40,7 @@
 #include <asm/thread_notify.h>
 #include <asm/stacktrace.h>
 #include <asm/mach/time.h>
+#include <mach/system.h>
 
 #ifdef CONFIG_CC_STACKPROTECTOR
 #include <linux/stackprotector.h>
@@ -106,6 +107,66 @@ void arm_machine_flush_console(void)
  * code.
  */
 static u64 soft_restart_stack[16];
+
+void arm_machine_restart(char mode, const char *cmd)
+{
+	/* add for mdump, begin */
+	/* We store important registers. mdump need them to backtrace */
+	unsigned int fp, sp, pc;
+	struct thread_info *pth = current_thread_info();
+
+	asm("mov %0, fp" : "=r" (fp) : : "cc");
+	asm("mov %0, sp" : "=r" (sp) : : "cc");
+	asm("mov %0, pc" : "=r" (pc) : : "cc");
+	pth->cpu_context.fp = fp;
+	pth->cpu_context.sp = sp;
+	pth->cpu_context.pc = pc;
+	/* add for mdump, end */
+
+	/* Flush the console to make sure all the relevant messages make it
+         * out to the console drivers */
+        arm_machine_flush_console();
+
+        /* Disable interrupts first */
+        local_irq_disable();
+        local_fiq_disable();
+
+        /*
+         * Tell the mm system that we are going to reboot -
+         * we may need it to insert some 1:1 mappings so that
+         * soft boot works.
+         */
+        setup_mm_for_reboot();
+
+        /* When l1 is disabled and l2 is enabled, the spinlock cannot get the lock,
+         * so we need to disable the l2 as well. by Chia-Hao Hsu
+         */
+        outer_flush_all();
+        outer_disable();
+        outer_flush_all();
+
+        /* Clean and invalidate caches */
+        flush_cache_all();
+#ifdef CONFIG_RESTART_DISABLE_CACHE
+        /* Turn off caching */
+        cpu_proc_fin();
+#endif
+        /* Push out any further dirty data, and ensure cache is empty */
+        flush_cache_all();
+
+        /*
+         * Now call the architecture specific reboot code.
+         */
+        arch_reset(mode, cmd);
+
+        /*
+         * Whoops - the architecture was unable to reboot.
+         * Tell the user!
+         */
+        mdelay(1000);
+        printk("Reboot failed -- System halted\n");
+        while (1);
+}
 
 static void __soft_restart(void *addr)
 {
@@ -243,9 +304,12 @@ void machine_shutdown(void)
 	 * thread that might wind up blocking on
 	 * one of the stopped CPUs.
 	 */
+    printk("machine_shutdown: start, Proess(%s:%d)\n", current->comm, current->pid);
+    dump_stack();
 	preempt_disable();
 #endif
 	disable_nonboot_cpus();
+    printk("machine_shutdown: done\n");
 }
 
 /*
@@ -255,9 +319,9 @@ void machine_shutdown(void)
  */
 void machine_halt(void)
 {
+	local_irq_disable();
 	smp_send_stop();
 
-	local_irq_disable();
 	while (1);
 }
 
@@ -269,6 +333,7 @@ void machine_halt(void)
  */
 void machine_power_off(void)
 {
+	local_irq_disable();
 	smp_send_stop();
 
 	if (pm_power_off)
@@ -288,6 +353,7 @@ void machine_power_off(void)
  */
 void machine_restart(char *cmd)
 {
+	local_irq_disable();
 	smp_send_stop();
 
 	/* Flush the console to make sure all the relevant messages make it

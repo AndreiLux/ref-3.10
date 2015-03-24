@@ -5,7 +5,9 @@
 #include <linux/static_key.h>
 #include <linux/context_tracking.h>
 #include "sched.h"
-
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+#include <linux/cpufreq.h>
+#endif
 
 #ifdef CONFIG_IRQ_TIME_ACCOUNTING
 
@@ -112,6 +114,79 @@ static int irqtime_account_si_update(void)
 
 #endif /* !CONFIG_IRQ_TIME_ACCOUNTING */
 
+#ifdef CONFIG_PERFSTATS_PERTASK
+/*
+ * Performance stats accounting function.
+ * Anything related to pertask performance should go here
+ */
+void account_perfstats_pertask(struct task_struct *p, int user,
+	cputime_t cputime, cputime_t cputime_scaled)
+{
+	unsigned int cpu = task_thread_info(p)->cpu;
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	struct perfstats_pertask_s *perf_stats = task_perfstats_info(p);
+#endif
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	unsigned int last_cpu = perf_stats->last_cpu;
+	unsigned int freq = cpufreq_latest_quick_get(cpu);
+	unsigned int freq_idx = perf_stats->last_freq_idx;
+#endif
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERCORE
+	if ((user != perf_stats->user) || (cpu != perf_stats->last_cpu)) {
+		if (user)
+			++perf_stats->percore[cpu].utrans;
+		else
+			++perf_stats->percore[cpu].strans;
+	}
+#endif
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	/** percore + perfreq stats **/
+
+	/* get freq, freq_idx */
+	freq = cpufreq_latest_quick_get(cpu);
+	if (unlikely(!freq))
+		goto done;
+
+	/* get freq_idx only if cpu or freq changes */
+	if ((cpu != last_cpu) || (freq != perf_stats->last_freq)) {
+		freq_idx = cpufreq_get_idx(cpu, freq);
+		if (unlikely(freq_idx < 0))
+			goto done;
+		if (freq_idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+			goto done;
+	}
+
+	/* track transitions */
+	if ((user != perf_stats->user)
+		|| (cpu != perf_stats->last_cpu)
+		|| (freq != perf_stats->last_freq)) {
+		if (user)
+			++perf_stats->percore[cpu].perfreq[freq_idx].utrans;
+		else
+			++perf_stats->percore[cpu].perfreq[freq_idx].strans;
+	}
+
+	/* track time */
+	if (user)
+		perf_stats->percore[cpu].perfreq[freq_idx].utime += cputime;
+	else
+		perf_stats->percore[cpu].perfreq[freq_idx].stime += cputime;
+
+	/* store referencies */
+	perf_stats->user = user;
+	perf_stats->last_cpu = cpu;
+	perf_stats->last_freq = freq;
+	perf_stats->last_freq_idx = freq_idx;
+done:
+#endif
+	return;
+}
+#endif
+
 static inline void task_group_account_field(struct task_struct *p, int index,
 					    u64 tmp)
 {
@@ -137,9 +212,19 @@ void account_user_time(struct task_struct *p, cputime_t cputime,
 {
 	int index;
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	struct perfstats_pertask_s *perf_stats = task_perfstats_info(p);
+#endif
+
 	/* Add user time to process. */
 	p->utime += cputime;
 	p->utimescaled += cputime_scaled;
+
+#ifdef CONFIG_PERFSTATS_PERTASK
+	if (perf_stats)
+		account_perfstats_pertask(p, 1, cputime, cputime_scaled);
+#endif
+
 	account_group_user_time(p, cputime);
 
 	index = (TASK_NICE(p) > 0) ? CPUTIME_NICE : CPUTIME_USER;
@@ -161,12 +246,20 @@ static void account_guest_time(struct task_struct *p, cputime_t cputime,
 			       cputime_t cputime_scaled)
 {
 	u64 *cpustat = kcpustat_this_cpu->cpustat;
+#ifdef CONFIG_PERFSTATS_PERTASK
+	struct perfstats_pertask_s *perf_stats = task_perfstats_info(p);
+#endif
 
 	/* Add guest time to process. */
 	p->utime += cputime;
 	p->utimescaled += cputime_scaled;
 	account_group_user_time(p, cputime);
 	p->gtime += cputime;
+
+#ifdef CONFIG_PERFSTATS_PERTASK
+	if (perf_stats)
+		account_perfstats_pertask(p, 1, cputime, cputime_scaled);
+#endif
 
 	/* Add guest time to cpustat. */
 	if (TASK_NICE(p) > 0) {
@@ -189,10 +282,17 @@ static inline
 void __account_system_time(struct task_struct *p, cputime_t cputime,
 			cputime_t cputime_scaled, int index)
 {
+#ifdef CONFIG_PERFSTATS_PERTASK
+	struct perfstats_pertask_s *perf_stats = task_perfstats_info(p);
+#endif
+
 	/* Add system time to process. */
 	p->stime += cputime;
 	p->stimescaled += cputime_scaled;
-	account_group_system_time(p, cputime);
+#ifdef CONFIG_PERFSTATS_PERTASK
+	if (perf_stats)
+		account_perfstats_pertask(p, 0, cputime, cputime_scaled);
+#endif
 
 	/* Add system time to cpustat. */
 	task_group_account_field(p, index, (__force u64) cputime);

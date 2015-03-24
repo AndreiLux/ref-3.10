@@ -15,35 +15,62 @@
 #include <linux/workqueue.h>
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
+#ifdef CONFIG_PM_STATS_SUPPORT
+#include <linux/time.h>
+#endif
 
 #include "power.h"
 
+#define HIB_PM_DEBUG 1
+#define _TAG_HIB_M "HIB/PM"
+#if (HIB_PM_DEBUG)
+#undef hib_log
+#define hib_log(fmt, ...)  pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__);
+#else
+#define hib_log(fmt, ...)
+#endif
+#undef hib_warn
+#define hib_warn(fmt, ...) pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__);
+
 DEFINE_MUTEX(pm_mutex);
+EXPORT_SYMBOL_GPL(pm_mutex);
 
 #ifdef CONFIG_PM_SLEEP
 
 /* Routines for PM-transition notifications */
 
-static BLOCKING_NOTIFIER_HEAD(pm_chain_head);
+BLOCKING_NOTIFIER_HEAD(pm_chain_head);
+EXPORT_SYMBOL_GPL(pm_chain_head);
+//<20130327> <marc.huang> add pm_notifier_count
+static unsigned int pm_notifier_count = 0;
 
 int register_pm_notifier(struct notifier_block *nb)
 {
+	//<20130327> <marc.huang> add pm_notifier_count
+	++pm_notifier_count;
 	return blocking_notifier_chain_register(&pm_chain_head, nb);
 }
 EXPORT_SYMBOL_GPL(register_pm_notifier);
 
 int unregister_pm_notifier(struct notifier_block *nb)
 {
+	//<20130327> <marc.huang> add pm_notifier_count
+	--pm_notifier_count;
 	return blocking_notifier_chain_unregister(&pm_chain_head, nb);
 }
 EXPORT_SYMBOL_GPL(unregister_pm_notifier);
 
 int pm_notifier_call_chain(unsigned long val)
 {
-	int ret = blocking_notifier_call_chain(&pm_chain_head, val, NULL);
+	//<20130327> <marc.huang> add pm_notifier_count
+	int ret;
+	pr_info("[%s] pm_notifier_count: %u, event = %lu\n", __func__, pm_notifier_count, val);
+
+	ret = blocking_notifier_call_chain(&pm_chain_head, val, NULL);
 
 	return notifier_to_errno(ret);
 }
+EXPORT_SYMBOL_GPL(pm_notifier_call_chain);
 
 /* If set, devices may be suspended and resumed asynchronously. */
 int pm_async_enabled = 1;
@@ -277,6 +304,15 @@ static inline void pm_print_times_init(void) {}
 #endif /* CONFIG_PM_SLEEP_DEBUG */
 
 struct kobject *power_kobj;
+EXPORT_SYMBOL_GPL(power_kobj);
+
+#ifdef CONFIG_PM_STATS_SUPPORT
+struct kobject *stats_kobj;
+EXPORT_SYMBOL_GPL(stats_kobj);
+#endif
+
+struct kobject *flag_kobj;
+EXPORT_SYMBOL_GPL(flag_kobj);
 
 /**
  *	state - control system power state.
@@ -335,6 +371,8 @@ static suspend_state_t decode_state(const char *buf, size_t n)
 	return PM_SUSPEND_ON;
 }
 
+//<20130327> <marc.huang> merge android kernel 3.0 state_store function
+#ifdef CONFIG_MTK_LDVT
 static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 			   const char *buf, size_t n)
 {
@@ -362,6 +400,53 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	pm_autosleep_unlock();
 	return error ? error : n;
 }
+#else //#ifdef CONFIG_MTK_LDVT
+static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
+			   const char *buf, size_t n)
+{
+#ifdef CONFIG_SUSPEND
+#ifdef CONFIG_EARLYSUSPEND
+	suspend_state_t state = PM_SUSPEND_ON;
+#else
+	suspend_state_t state = PM_SUSPEND_STANDBY;
+#endif
+	const char * const *s;
+#endif
+	char *p;
+	int len;
+	int error = -EINVAL;
+
+	p = memchr(buf, '\n', n);
+	len = p ? p - buf : n;
+
+	/* First, check if we are requested to hibernate */
+	if (len == 4 && !strncmp(buf, "disk", len)) {
+		error = hibernate();
+        goto Exit;
+	}
+
+#ifdef CONFIG_SUSPEND
+	for (s = &pm_states[state]; state < PM_SUSPEND_MAX; s++, state++) {
+		if (*s && len == strlen(*s) && !strncmp(buf, *s, len))
+			break;
+	}
+	if (state < PM_SUSPEND_MAX && *s) {
+#ifdef CONFIG_EARLYSUSPEND
+		if (state == PM_SUSPEND_ON || valid_state(state)) {
+			error = 0;
+			request_suspend_state(state);
+		} else
+            error = -EINVAL;
+#else
+		error = enter_state(state);
+#endif
+    }
+#endif
+
+ Exit:
+	return error ? error : n;
+}
+#endif
 
 power_attr(state);
 
@@ -462,6 +547,7 @@ static ssize_t autosleep_store(struct kobject *kobj,
 	suspend_state_t state = decode_state(buf, n);
 	int error;
 
+    hib_log("store autosleep_state(%d)\n", state);
 	if (state == PM_SUSPEND_ON
 	    && strcmp(buf, "off") && strcmp(buf, "off\n"))
 		return -EINVAL;
@@ -610,6 +696,125 @@ static struct attribute_group attr_group = {
 	.attrs = g,
 };
 
+#ifdef CONFIG_PM_STATS_SUPPORT
+static struct hrtimer pm_stats_update_timer;
+
+extern u64 pm_accumulate_time(ktime_t starttime);
+
+static ssize_t time_in_state_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+    char *s = buf;
+
+    if(pm_stats.suspending == 0)
+    {
+        pm_stats.normal += pm_accumulate_time(pm_stats.time);
+		pm_stats.time = ktime_get();
+    }
+	
+    s += sprintf(s,"normal        %lld\n", pm_stats.normal);
+    s += sprintf(s,"freeze        %lld\n", pm_stats.freeze);
+    s += sprintf(s,"prepare       %lld\n", pm_stats.prepare);
+    s += sprintf(s,"suspend       %lld\n", pm_stats.suspend);
+    s += sprintf(s,"suspend_late  %lld\n", pm_stats.suspend_late);
+    s += sprintf(s,"suspend_noirq %lld\n", pm_stats.suspend_noirq);
+    s += sprintf(s,"standby       %lld\n", pm_stats.standby);
+    s += sprintf(s,"mem           %lld\n", pm_stats.mem);
+    s += sprintf(s,"resume_noirq  %lld\n", pm_stats.resume_noirq);
+    s += sprintf(s,"resume_early  %lld\n", pm_stats.resume_early);
+    s += sprintf(s,"resume        %lld\n", pm_stats.resume);
+    s += sprintf(s,"complete      %lld\n", pm_stats.complete);
+
+    return (s - buf);
+}
+
+static ssize_t time_in_state_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+	return 0;
+}
+
+power_attr(time_in_state);
+
+static ssize_t trans_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+    char *s = buf;
+	
+    s += sprintf(s,"freeze        %d\n", pm_trans.freeze);
+    s += sprintf(s,"prepare       %d\n", pm_trans.prepare);
+    s += sprintf(s,"suspend       %d\n", pm_trans.suspend);
+    s += sprintf(s,"suspend_late  %d\n", pm_trans.suspend_late);
+    s += sprintf(s,"suspend_noirq %d\n", pm_trans.suspend_noirq);
+    s += sprintf(s,"standby       %d\n", pm_trans.standby);
+    s += sprintf(s,"mem           %d\n", pm_trans.mem);
+    s += sprintf(s,"resume_noirq  %d\n", pm_trans.resume_noirq);
+    s += sprintf(s,"resume_early  %d\n", pm_trans.resume_early);
+    s += sprintf(s,"resume        %d\n", pm_trans.resume);
+    s += sprintf(s,"complete      %d\n", pm_trans.complete);
+
+    return (s - buf);
+}
+
+static ssize_t trans_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+	return 0;
+}
+
+power_attr(trans);
+
+static struct attribute * g_stats[] = {
+	&time_in_state_attr.attr,
+	&trans_attr.attr,		
+	NULL,
+};
+
+static struct attribute_group attr_group_stats = {
+	.attrs = g_stats,
+};
+#endif
+
+bool suspend_callback_log_en = 0;
+
+static ssize_t cb_log_show(struct kobject *kobj, struct kobj_attribute *attr,
+			     char *buf)
+{
+    char *s = buf;
+	
+    s += sprintf(s,"cb_log = %d\n", suspend_callback_log_en);
+
+    return (s - buf);
+}
+
+static ssize_t cb_log_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t n)
+{
+    int value = 0;
+
+    if(buf[0]=='0' || buf[0]=='x')
+        sscanf(buf,"%x",&value);
+    else
+        sscanf(buf,"%d",&value);
+	  suspend_callback_log_en = value;
+	  
+	  return n;
+}
+
+power_attr(cb_log);
+
+static struct attribute * g_flag[] = {
+	&cb_log_attr.attr,		
+	NULL,
+};
+
+static struct attribute_group attr_group_flag = {
+	.attrs = g_flag,
+};
+
 #ifdef CONFIG_PM_RUNTIME
 struct workqueue_struct *pm_wq;
 EXPORT_SYMBOL_GPL(pm_wq);
@@ -624,8 +829,22 @@ static int __init pm_start_workqueue(void)
 static inline int pm_start_workqueue(void) { return 0; }
 #endif
 
+#ifdef CONFIG_PM_STATS_SUPPORT
+enum hrtimer_restart pm_stats_update_timer_func(struct hrtimer *timer)
+{
+    pm_stats.normal += pm_accumulate_time(pm_stats.time);
+	pm_stats.time = ktime_get();
+	
+    return HRTIMER_NORESTART;
+}
+#endif
+
 static int __init pm_init(void)
 {
+#ifdef CONFIG_PM_STATS_SUPPORT
+    ktime_t ktime;
+#endif
+
 	int error = pm_start_workqueue();
 	if (error)
 		return error;
@@ -637,6 +856,33 @@ static int __init pm_init(void)
 	error = sysfs_create_group(power_kobj, &attr_group);
 	if (error)
 		return error;
+
+#ifdef CONFIG_PM_STATS_SUPPORT
+	stats_kobj = kobject_create_and_add("stats", power_kobj);
+	if (!stats_kobj)
+		return -ENOMEM;
+	error = sysfs_create_group(stats_kobj, &attr_group_stats);
+	if (error)
+		return error;
+
+	memset(&pm_stats, 0, sizeof(pm_stats));
+	memset(&pm_trans, 0, sizeof(pm_trans));	
+
+	pm_stats.time = ktime_get();
+
+    ktime = ktime_set(60, 0);
+    hrtimer_init(&pm_stats_update_timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+    pm_stats_update_timer.function = pm_stats_update_timer_func;    
+    hrtimer_start(&pm_stats_update_timer, ktime, HRTIMER_MODE_REL);	
+#endif
+
+	flag_kobj = kobject_create_and_add("flag", power_kobj);
+	if (!flag_kobj)
+		return -ENOMEM;
+	error = sysfs_create_group(flag_kobj, &attr_group_flag);
+	if (error)
+		return error;
+			
 	pm_print_times_init();
 	return pm_autosleep_init();
 }

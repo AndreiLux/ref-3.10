@@ -22,12 +22,13 @@
 #include <sound/pcm.h>
 
 #define SAMPLE_RATE 44100
+#define BYTES_PER_FRAME 4
 #define FRAMES_PER_MSEC (SAMPLE_RATE / 1000)
 
-#define IN_EP_MAX_PACKET_SIZE 384
+#define IN_EP_MAX_PACKET_SIZE ((FRAMES_PER_MSEC + 1) * BYTES_PER_FRAME)
 
 /* Number of requests to allocate */
-#define IN_EP_REQ_COUNT 4
+#define IN_EP_REQ_COUNT 16
 
 #define AUDIO_AC_INTERFACE	0
 #define AUDIO_AS_INTERFACE	1
@@ -243,6 +244,7 @@ struct audio_dev {
 
 	struct list_head		idle_reqs;
 	struct usb_ep			*in_ep;
+	struct usb_endpoint_descriptor	*in_desc;
 
 	spinlock_t			lock;
 
@@ -340,6 +342,7 @@ static void audio_send(struct audio_dev *audio)
 	now = ktime_get();
 	msecs = ktime_to_ns(now) - ktime_to_ns(audio->start_time);
 	do_div(msecs, 1000000);
+	msecs += IN_EP_REQ_COUNT/2;
 	frames = msecs * SAMPLE_RATE;
 	do_div(frames, 1000);
 
@@ -347,14 +350,12 @@ static void audio_send(struct audio_dev *audio)
 	 * If we get too far behind it is better to drop some frames than
 	 * to keep sending data too fast in an attempt to catch up.
 	 */
-	if (frames - audio->frames_sent > 10 * FRAMES_PER_MSEC)
+	if (frames - audio->frames_sent > 2 * FRAMES_PER_MSEC * IN_EP_REQ_COUNT)
 		audio->frames_sent = frames - FRAMES_PER_MSEC;
 
 	frames -= audio->frames_sent;
 
 	/* We need to send something to keep the pipeline going */
-	if (frames <= 0)
-		frames = FRAMES_PER_MSEC;
 
 	while (frames > 0) {
 		req = audio_req_get(audio);

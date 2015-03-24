@@ -63,6 +63,41 @@ struct wakeup_source {
 	bool			autosleep_enabled:1;
 };
 
+/* Ordered from most occurences to least */
+typedef enum {
+	WEV_NONE = -1,
+	WEV_RTC,
+	WEV_WIFI,
+	WEV_WAN,
+	WEV_USB,
+	WEV_PWR,
+	WEV_HALL,
+	WEV_BT,
+	WEV_CHARGER,
+	WEV_MAX,
+	WEV_TOTAL = 20
+} wakeup_event_t;
+
+/**
+ * struct wakeup_event - Representation of a resume event
+ *
+ * @ev: Event responsible for pm_resume
+ * @irq: Irq responsible for pm_resume.
+ * @ev_count: Total number of times the event cause pm_resume.
+ * @last_time: Last time the event was reported
+ * @total_time: Total time between pm_resume triggered by this event to
+ *		the following successful pm_suspend
+ */
+
+struct wakeup_event {
+	const char *name;
+	wakeup_event_t event;
+	int irq;
+	unsigned long count;
+	ktime_t last_time;
+	ktime_t	total_time;
+};
+
 #ifdef CONFIG_PM_SLEEP
 
 /*
@@ -99,6 +134,10 @@ extern void __pm_relax(struct wakeup_source *ws);
 extern void pm_relax(struct device *dev);
 extern void __pm_wakeup_event(struct wakeup_source *ws, unsigned int msec);
 extern void pm_wakeup_event(struct device *dev, unsigned int msec);
+
+extern void pm_report_resume_irq(int irq);
+extern void pm_report_resume_ev(wakeup_event_t ev, int irq);
+extern wakeup_event_t pm_get_resume_ev(ktime_t *ts);
 
 #else /* !CONFIG_PM_SLEEP */
 
@@ -176,6 +215,10 @@ static inline void pm_relax(struct device *dev) {}
 static inline void __pm_wakeup_event(struct wakeup_source *ws, unsigned int msec) {}
 
 static inline void pm_wakeup_event(struct device *dev, unsigned int msec) {}
+
+static inline void pm_report_resume_irq(int irq) {}
+static inline void pm_report_resume_ev(wakeup_event_t ev, int irq) {}
+static inline wakeup_event_t pm_get_resume_ev(void) { return WEV_NONE; }
 
 #endif /* !CONFIG_PM_SLEEP */
 

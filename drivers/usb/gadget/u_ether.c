@@ -490,6 +490,11 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 	unsigned long		flags;
 	struct usb_ep		*in;
 	u16			cdc_filter;
+	
+	//ALPS00542120
+	static unsigned int okCnt = 0, busyCnt = 0;
+	static int firstShot = 1, diffSec;
+	static struct timeval tv_last, tv_cur;
 
 	spin_lock_irqsave(&dev->lock, flags);
 	if (dev->port_usb) {
@@ -535,9 +540,30 @@ static netdev_tx_t eth_start_xmit(struct sk_buff *skb,
 	 * network stack decided to xmit but before we got the spinlock.
 	 */
 	if (list_empty(&dev->tx_reqs)) {
+
+		busyCnt++;
+		do_gettimeofday(&tv_cur);
+
+		if(firstShot)
+		{
+			tv_last = tv_cur;
+			firstShot = 0;
+			printk(KERN_ERR "%s, NETDEV_TX_BUSY returned at firstShot , okCnt : %u, busyCnt : %u\n", __func__, okCnt, busyCnt);
+		}
+		else
+		{
+			diffSec = tv_cur.tv_sec - tv_last.tv_sec;
+			if(diffSec >=2 )
+			{
+				tv_last = tv_cur;
+				printk(KERN_ERR "%s, NETDEV_TX_BUSY returned, okCnt : %u, busyCnt : %u\n", __func__, okCnt, busyCnt);
+			}
+		}
+
 		spin_unlock_irqrestore(&dev->req_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
+	okCnt++;
 
 	req = container_of(dev->tx_reqs.next, struct usb_request, list);
 	list_del(&req->list);

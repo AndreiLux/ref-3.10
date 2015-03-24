@@ -1,0 +1,417 @@
+#include <linux/kernel.h>
+#include <linux/types.h>
+#include <linux/xlog.h>
+#include <mach/mt_clkmgr.h>
+
+#include "ddp_drv.h"
+#include "ddp_reg.h"
+#include "ddp_path.h"
+#include "ddp_tdshp.h"
+
+
+unsigned int sharpGain = 0;
+
+static DISPLAY_TDSHP_T g_TDSHP_Index;
+
+static unsigned int TDSHP_Param[SHARP_TUNING_INDEX][THSHP_PARAM_MAX] = {
+
+/* THSHP Param: Strong */
+	{
+	 0x0000,		/* 1500B000[30:30] TDS_BYPASS_MID */
+	 0x0000,		/* 1500B000[29:29] TDS_BYPASS_HIGH */
+	 0x0000,		/* 1500B000[21:21] TDS_BYPASS_LTI_H */
+	 0x0000,		/* 1500B000[20:20] TDS_BYPASS_LTI_V */
+	 0x0001,		/* 1500B000[31:31] TDS_EN */
+	 0x0001,		/* 1500B000[03:03] TDS_FLT_LTI_H */
+	 0x0001,		/* 1500B000[01:01] TDS_FLT_LTI_V */
+	 0x0000,		/* 1500B000[08:08] TDS_INK_ALL */
+	 0x0000,		/* 1500B000[07:07] TDS_INK_EQUAL_GAIN */
+	 0x0000,		/* 1500B000[19:19] TDS_INK_MID */
+	 0x0000,		/* 1500B000[18:18] TDS_INK_HIGH */
+	 0x0000,		/* 1500B000[11:11] TDS_INK_LTI_H */
+	 0x0000,		/* 1500B000[09:09] TDS_INK_LTI_V */
+	 0x0000,		/* 1500B000[06:04] TDS_INK_SEL */
+	 0x0001,		/* 1500B014[31:31] TDS_NEG_EN_H */
+	 0x00FF,		/* 1500B014[23:16] TDS_NEG_LIMIT_H */
+	 0x0008,		/* 1500B014[30:26] TDS_NEG_RATIO_H */
+	 0x0001,		/* 1500B020[31:24] TDS_COR_ZERO_MID */
+	 0x0001,		/* 1500B020[23:16] TDS_COR_ZERO_HIGH */
+	 0x0004,		/* 1500B02C[31:28] TDS_COR_RATIO_MID */
+	 0x0004,		/* 1500B02C[27:24] TDS_COR_RATIO_HIGH */
+	 0x0004,		/* 1500B034[31:24] TDS_COR_THR_MID */
+	 0x0004,		/* 1500B034[23:16] TDS_COR_THR_HIGH */
+	 0x000C,		/* 1500B040[31:24] TDS_GAIN_MID */
+	 0x0026,		/* 1500B040[23:16] TDS_GAIN_HIGH */
+	 0x001A,		/* 1500B04C[31:24] TDS_LIMIT_POS_MID */
+	 0x001C,		/* 1500B04C[23:16] TDS_LIMIT_POS_HIGH */
+	 0x001A,		/* 1500B058[31:24] TDS_LIMIT_NEG_MID */
+	 0x001C,		/* 1500B058[23:16] TDS_LIMIT_NEG_HIGH */
+	 0x0004,		/* 1500B064[31:28] TDS_LIMIT_RATIO_MID */
+	 0x0004,		/* 1500B064[27:24] TDS_LIMIT_RATIO_HIGH */
+	 0x0000,		/* 1500B068[10:10] TDS_COR_RATIO_MID_P16 */
+	 0x0000,		/* 1500B068[09:09] TDS_COR_RATIO_HIGH_P16 */
+	 0x0024,		/* 1500B06C[31:24] TDS_BOUND_POS_MID */
+	 0x0024,		/* 1500B06C[23:16] TDS_BOUND_POS_HIGH */
+	 0x0024,		/* 1500B078[31:24] TDS_BOUND_NEG_MID */
+	 0x0024,		/* 1500B078[23:16] TDS_BOUND_NEG_HIGH */
+	 0x0001,		/* 1500B028[23:16] TDS_COR_ZERO_LTI_H */
+	 0x0001,		/* 1500B028[15:08] TDS_COR_ZERO_LTI_V */
+	 0x0004,		/* 1500B030[27:24] TDS_COR_RATIO_LTI_H */
+	 0x0004,		/* 1500B030[23:20] TDS_COR_RATIO_LTI_V */
+	 0x0004,		/* 1500B03C[23:16] TDS_COR_THR_LTI_H */
+	 0x0004,		/* 1500B03C[15:08] TDS_COR_THR_LTI_V */
+	 0x0010,		/* 1500B048[23:16] TDS_GAIN_LTI_H */
+	 0x001C,		/* 1500B048[15:08] TDS_GAIN_LTI_V */
+	 0x001C,		/* 1500B054[23:16] TDS_LIMIT_POS_LTI_H */
+	 0x001C,		/* 1500B054[15:08] TDS_LIMIT_POS_LTI_V */
+	 0x001C,		/* 1500B060[23:16] TDS_LIMIT_NEG_LTI_H */
+	 0x001C,		/* 1500B060[15:08] TDS_LIMIT_NEG_LTI_V */
+	 0x0000,		/* 1500B068[01:01] TDS_COR_RATIO_LTI_H_P1 */
+	 0x0004,		/* 1500B068[27:24] TDS_LIMIT_RATIO_LTI_H */
+	 0x0000,		/* 1500B068[00:00] TDS_COR_RATIO_LTI_V_P1 */
+	 0x0004,		/* 1500B068[23:20] TDS_LIMIT_RATIO_LTI_V */
+	 0x0024,		/* 1500B074[23:16] TDS_BOUND_POS_LTI_H */
+	 0x0024,		/* 1500B074[15:08] TDS_BOUND_POS_LTI_V */
+	 0x0024,		/* 1500B080[23:16] TDS_BOUND_NEG_LTI_H */
+	 0x0024,		/* 1500B080[15:08] TDS_BOUND_NEG_LTI_V */
+	 0x0001,		/* 1500B084[31:31] TDS_CLIP_EN_MID */
+	 0x0002,		/* 1500B084[15:08] TDS_CLIP_NEG_MID */
+	 0x0002,		/* 1500B084[23:16] TDS_CLIP_POS_MID */
+	 0x0009,		/* 1500B084[28:24] TDS_CLIP_RATIO_MID */
+	 0x0001,		/* 1500B084[30:30] TDS_CLIP_TAP_MID */
+	 0x0001,		/* 1500B088[31:31] TDS_CLIP_EN_HIGH */
+	 0x0002,		/* 1500B088[15:08] TDS_CLIP_NEG_HIGH */
+	 0x0002,		/* 1500B088[23:16] TDS_CLIP_POS_HIGH */
+	 0x0008,		/* 1500B088[28:24] TDS_CLIP_RATIO_HIGH */
+	 0x0001,		/* 1500B088[30:30] TDS_CLIP_TAP_HIGH */
+	 0x0001,		/* 1500B094[31:31] TDS_CLIP_EN_LTI_H */
+	 0x0004,		/* 1500B094[15:08] TDS_CLIP_NEG_LTI_H */
+	 0x0004,		/* 1500B094[23:16] TDS_CLIP_POS_LTI_H */
+	 0x0010,		/* 1500B094[28:24] TDS_CLIP_RATIO_LTI_H */
+	 0x0000,		/* 1500B094[30:30] TDS_CLIP_TAP_LTI_H */
+	 0x0001,		/* 1500B098[31:31] TDS_CLIP_EN_LTI_V */
+	 0x0004,		/* 1500B098[15:08] TDS_CLIP_NEG_LTI_V */
+	 0x0004,		/* 1500B098[23:16] TDS_CLIP_POS_LTI_V */
+	 0x0010,		/* 1500B098[28:24] TDS_CLIP_RATIO_LTI_V */
+	 0x0000,		/* 1500B098[30:30] TDS_CLIP_TAP_LTI_V */
+	 0x0000,		/* 1500B09C[31:24] TDS_COR_THR */
+	 0x0000,		/* 1500B09C[23:16] TDS_COR_ZERO */
+	 0x0020,		/* 1500B09C[11:04] TDS_GAIN */
+	 0x0000,		/* 1500B09C[15:12] TDS_COR_RATIO */
+	 0x0008,		/* 1500B09C[03:00] TDS_LIMIT_RATIO */
+	 0x0040,		/* 1500B0A0[07:00] TDS_BOUND_NEG */
+	 0x0020,		/* 1500B0A0[23:16] TDS_LIMIT_NEG */
+	 0x0040,		/* 1500B0A0[15:08] TDS_BOUND_POS */
+	 0x0020,		/* 1500B0A0[31:24] TDS_LIMIT_POS */
+	 0x0001,		/* 1500B0A4[31:31] TDS_CLIP_EN */
+	 0x0032,		/* 1500B0A4[15:08] TDS_CLIP_NEG */
+	 0x0028,		/* 1500B0A4[23:16] TDS_CLIP_POS */
+	 0x0004,		/* 1500B0A4[28:24] TDS_CLIP_RATIO */
+	 0x0000,		/* 1500B0A4[30:30] TDS_CLIP_TAP */
+	 0x0002,		/* 1500B0A4[03:00] TDS_AC_LPF_COE */
+	 0x000A,		/* 1500B01C[05:00] TDS_SAT_PROC */
+	 0x0000,		/* 1500B0A8[31:24] TDS_YLEV_P000 */
+	 0x0030,		/* 1500B0A8[15:08] TDS_YLEV_P128 */
+	 0x0048,		/* 1500B0A8[07:00] TDS_YLEV_P192 */
+	 0x0058,		/* 1500B0A8[23:16] TDS_YLEV_P064 */
+	 0x0060,		/* 1500B0AC[31:24] TDS_YLEV_P256 */
+	 0x0068,		/* 1500B0AC[23:16] TDS_YLEV_P320 */
+	 0x0070,		/* 1500B0AC[15:08] TDS_YLEV_P384 */
+	 0x0078,		/* 1500B0AC[07:00] TDS_YLEV_P448 */
+	 0x0080,		/* 1500B0B0[31:24] TDS_YLEV_P512 */
+	 0x007B,		/* 1500B0B0[23:16] TDS_YLEV_P576 */
+	 0x0076,		/* 1500B0B0[15:08] TDS_YLEV_P640 */
+	 0x0070,		/* 1500B0B0[07:00] TDS_YLEV_P704 */
+	 0x006B,		/* 1500B0B4[31:24] TDS_YLEV_P768 */
+	 0x0066,		/* 1500B0B4[23:16] TDS_YLEV_P832 */
+	 0x0060,		/* 1500B0B4[15:08] TDS_YLEV_P896 */
+	 0x005B,		/* 1500B0B4[07:00] TDS_YLEV_P960 */
+	 0x000F,		/* 1500B0B8[21:16] TDS_YLEV_ALPHA */
+	 0x0001,		/* 1500B0B8[14:14] TDS_YLEV_EN */
+	 0x0056,		/* 1500B0B8[31:24] TDS_YLEV_P1024 */
+	 0x0000,		/* 1500B0B8[15:15] TDS_YLEV_SEL */
+	 0x0000,		/* 1500B278[03:03] PBC_LPF_SEL */
+	 0x0001,		/* 1500B200[31:31] PBC1_EN */
+	 0x0001,		/* 1500B228[31:31] PBC2_EN */
+	 0x0001,		/* 1500B250[31:31] PBC3_EN */
+	 0x0000,		/* 1500B208[19:19] PBC1_EDGE_EN */
+	 0x0020,		/* 1500B208[05:00] PBC1_EDGE_SLOPE */
+	 0x0032,		/* 1500B208[15:08] PBC1_EDGE_THR */
+	 0x0001,		/* 1500B20C[31:24] PBC1_CONF_GAIN */
+	 0x0000,		/* 1500B20C[15:15] PBC1_LPF_EN */
+	 0x0080,		/* 1500B20C[23:16] PBC1_LPF_LEVEL */
+	 0x0055,		/* 1500B200[27:16] PBC1_RSLOPE_1 */
+	 0x0030,		/* 1500B200[07:00] PBC1_RADIUS_R */
+	 0x0030,		/* 1500B200[15:08] PBC1_THETA_R */
+	 0x0055,		/* 1500B204[11:00] PBC1_TSLOPE */
+	 0x0068,		/* 1500B204[21:12] PBC1_RADIUS_C */
+	 0x01FC,		/* 1500B204[31:22] PBC1_THETA_C */
+	 0x0055,		/* 1500B208[31:20] PBC1_RSLOPE */
+	 0x007B,		/* 1500B218[31:24] PBC1_CORING_MID */
+	 0x007B,		/* 1500B218[23:16] PBC1_CORING_HIGH */
+	 0x00A0,		/* 1500B210[31:24] PBC1_GAIN_MID */
+	 0x00C0,		/* 1500B210[23:16] PBC1_GAIN_HIGH */
+	 0x0090,		/* 1500B220[31:24] PBC1_LIMIT_MID */
+	 0x0090,		/* 1500B220[23:16] PBC1_LIMIT_HIGH */
+	 0x0001,		/* 1500B230[19:19] PBC2_EDGE_EN */
+	 0x000C,		/* 1500B230[05:00] PBC2_EDGE_SLOPE */
+	 0x0020,		/* 1500B230[15:08] PBC2_EDGE_THR */
+	 0x0005,		/* 1500B234[31:24] PBC2_CONF_GAIN */
+	 0x0000,		/* 1500B234[15:15] PBC2_LPF_EN */
+	 0x0080,		/* 1500B234[23:16] PBC2_LPF_LEVEL */
+	 0x002A,		/* 1500B228[27:16] PBC2_RSLOPE_1 */
+	 0x0060,		/* 1500B228[07:00] PBC2_RADIUS_R */
+	 0x0060,		/* 1500B228[15:08] PBC2_THETA_R */
+	 0x002A,		/* 1500B22C[11:00] PBC2_TSLOPE */
+	 0x0080,		/* 1500B22C[21:12] PBC2_RADIUS_C */
+	 0x0180,		/* 1500B22C[31:22] PBC2_THETA_C */
+	 0x002A,		/* 1500B230[31:20] PBC2_RSLOPE */
+	 0x0080,		/* 1500B240[31:24] PBC2_CORING_MID */
+	 0x0080,		/* 1500B240[23:16] PBC2_CORING_HIGH */
+	 0x0080,		/* 1500B238[31:24] PBC2_GAIN_MID */
+	 0x0080,		/* 1500B238[23:16] PBC2_GAIN_HIGH */
+	 0x0080,		/* 1500B248[31:24] PBC2_LIMIT_MID */
+	 0x0080,		/* 1500B248[23:16] PBC2_LIMIT_HIGH */
+	 0x0000,		/* 1500B258[19:19] PBC3_EDGE_EN */
+	 0x0010,		/* 1500B258[05:00] PBC3_EDGE_SLOPE */
+	 0x0020,		/* 1500B258[15:08] PBC3_EDGE_THR */
+	 0x0001,		/* 1500B25C[31:24] PBC3_CONF_GAIN */
+	 0x0000,		/* 1500B25C[15:15] PBC3_LPF_EN */
+	 0x0080,		/* 1500B25C[23:16] PBC3_LPF_LEVEL */
+	 0x0020,		/* 1500B250[27:16] PBC3_RSLOPE_1 */
+	 0x0080,		/* 1500B250[07:00] PBC3_RADIUS_R */
+	 0x0040,		/* 1500B250[15:08] PBC3_THETA_R */
+	 0x0040,		/* 1500B254[11:00] PBC3_TSLOPE */
+	 0x00F0,		/* 1500B254[21:12] PBC3_RADIUS_C */
+	 0x0380,		/* 1500B254[31:22] PBC3_THETA_C */
+	 0x0020,		/* 1500B258[31:20] PBC3_RSLOPE */
+	 0x0085,		/* 1500B268[31:24] PBC3_CORING_MID */
+	 0x0085,		/* 1500B268[23:16] PBC3_CORING_HIGH */
+	 0x0040,		/* 1500B260[31:24] PBC3_GAIN_MID */
+	 0x0040,		/* 1500B260[23:16] PBC3_GAIN_HIGH */
+	 0x0070,		/* 1500B270[31:24] PBC3_LIMIT_MID */
+	 0x0070			/* 1500B270[23:16] PBC3_LIMIT_HIGH */
+	 }
+
+};
+
+DISPLAY_TDSHP_T *get_TDSHP_index(void)
+{
+	return &g_TDSHP_Index;
+}
+
+
+void DpEngine_SHARPonInit(void)
+{
+	/* XLOGD("init SHARP\n"); */
+
+
+
+	DISP_REG_SET((DISPSYS_TDSHP_BASE + 0xf00), 0x00000001);
+
+	/* wrapper color matrix index */
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + TDS_HSYNC_WIDTH, 0x00000040);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + TDS_ACTIVE_WIDTH_IN_VBLANK, 0x00000040);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C00, 0x00000132);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C01, 0x00000259);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C02, 0x00000075);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C10, 0x00001F53);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C11, 0x00001EAD);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C12, 0x00000200);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C20, 0x00000200);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C21, 0x00001E53);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_C22, 0x00001FAD);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_IN_OFFSET0, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_IN_OFFSET1, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_IN_OFFSET2, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_OUT_OFFSET0, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_OUT_OFFSET1, 0x00000080);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_IN_MTX_OUT_OFFSET2, 0x00000080);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C00, 0x00000400);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C01, 0x00001FFF);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C02, 0x0000059C);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C10, 0x00000400);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C11, 0x00001E9F);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C12, 0x00001D25);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C20, 0x00000400);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C21, 0x00000716);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_C22, 0x00000001);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_IN_OFFSET0, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_IN_OFFSET1, 0x00000180);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_IN_OFFSET2, 0x00000180);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_OUT_OFFSET0, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_OUT_OFFSET1, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_OUT_MTX_OUT_OFFSET2, 0x00000000);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x350, 0);	/* bypass off */
+
+}
+
+
+void DpEngine_SHARPonConfig(unsigned int srcWidth, unsigned int srcHeight)
+{
+	/* XLOGD("config SHARP %d %d\n",  srcWidth,  srcHeight); */
+	DISP_REG_SET((DISPSYS_TDSHP_BASE + 0xf40), srcWidth);
+	DISP_REG_SET((DISPSYS_TDSHP_BASE + 0xf44), srcHeight);
+
+	/* enable R2Y/Y2R in Color Wrapper */
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + DTDS_CONFIG, 0x00000006);
+
+	if (sharpGain >= SHARP_TUNING_INDEX) {
+		/* XLOGD("SHARP Tuning index range error !\n"); */
+		return;
+	}
+
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x000, 0);	/* turn off TDSHP */
+/*
+    DISP_REG_SET(DISPSYS_TDSHP_BASE+0x000 , TDSHP_Param[ sharpGain][0]<< 30
+				       | TDSHP_Param[ sharpGain][1]<< 29
+				       | TDSHP_Param[ sharpGain][2]<< 21
+				       | TDSHP_Param[ sharpGain][3]<< 20
+				       | 1 << 31
+				       | TDSHP_Param[ sharpGain][5]<< 3
+				       | TDSHP_Param[ sharpGain][6]<< 1
+				       | TDSHP_Param[ sharpGain][7]<< 8
+				       | TDSHP_Param[ sharpGain][8]<< 7
+				       | TDSHP_Param[ sharpGain][9]<< 19
+				       | TDSHP_Param[ sharpGain][10]<< 18
+				       | TDSHP_Param[ sharpGain][11]<< 11
+				       | TDSHP_Param[ sharpGain][12]<< 9
+				       | TDSHP_Param[ sharpGain][13]<< 4 );
+*/
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x014, TDSHP_Param[sharpGain][14] << 31
+		     | TDSHP_Param[sharpGain][15] << 16 | TDSHP_Param[sharpGain][16] << 26);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x020, TDSHP_Param[sharpGain][17] << 24
+		     | TDSHP_Param[sharpGain][18] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x02C, TDSHP_Param[sharpGain][19] << 28
+		     | TDSHP_Param[sharpGain][20] << 24);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x040, TDSHP_Param[sharpGain][23] << 24
+		     | TDSHP_Param[sharpGain][24] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x04C, TDSHP_Param[sharpGain][25] << 24
+		     | TDSHP_Param[sharpGain][26] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x058, TDSHP_Param[sharpGain][27] << 24
+		     | TDSHP_Param[sharpGain][28] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x064, TDSHP_Param[sharpGain][29] << 28
+		     | TDSHP_Param[sharpGain][30] << 24);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x068, TDSHP_Param[sharpGain][31] << 10
+		     | TDSHP_Param[sharpGain][32] << 9);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x06C, TDSHP_Param[sharpGain][33] << 24
+		     | TDSHP_Param[sharpGain][34] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x078, TDSHP_Param[sharpGain][35] << 24
+		     | TDSHP_Param[sharpGain][36] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x028, TDSHP_Param[sharpGain][37] << 16
+		     | TDSHP_Param[sharpGain][38] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x030, TDSHP_Param[sharpGain][39] << 24
+		     | TDSHP_Param[sharpGain][40] << 20);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x034, TDSHP_Param[sharpGain][21] << 16
+		     | TDSHP_Param[sharpGain][22] << 24);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x03C, TDSHP_Param[sharpGain][41] << 16
+		     | TDSHP_Param[sharpGain][42] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x048, TDSHP_Param[sharpGain][43] << 16
+		     | TDSHP_Param[sharpGain][44] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x054, TDSHP_Param[sharpGain][45] << 16
+		     | TDSHP_Param[sharpGain][46] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x060, TDSHP_Param[sharpGain][47] << 16
+		     | TDSHP_Param[sharpGain][48] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x068, TDSHP_Param[sharpGain][49] << 1
+		     | TDSHP_Param[sharpGain][50] << 24
+		     | TDSHP_Param[sharpGain][51] << 0 | TDSHP_Param[sharpGain][52] << 20);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x074, TDSHP_Param[sharpGain][53] << 16
+		     | TDSHP_Param[sharpGain][54] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x080, TDSHP_Param[sharpGain][55] << 16
+		     | TDSHP_Param[sharpGain][56] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x084, TDSHP_Param[sharpGain][57] << 31
+		     | TDSHP_Param[sharpGain][58] << 8
+		     | TDSHP_Param[sharpGain][59] << 16
+		     | TDSHP_Param[sharpGain][60] << 24 | TDSHP_Param[sharpGain][61] << 30);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x088, TDSHP_Param[sharpGain][62] << 31
+		     | TDSHP_Param[sharpGain][63] << 8
+		     | TDSHP_Param[sharpGain][64] << 16
+		     | TDSHP_Param[sharpGain][65] << 24 | TDSHP_Param[sharpGain][66] << 30);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x094, TDSHP_Param[sharpGain][67] << 31
+		     | TDSHP_Param[sharpGain][68] << 8
+		     | TDSHP_Param[sharpGain][69] << 16
+		     | TDSHP_Param[sharpGain][70] << 24 | TDSHP_Param[sharpGain][71] << 30);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x098, TDSHP_Param[sharpGain][72] << 31
+		     | TDSHP_Param[sharpGain][73] << 8
+		     | TDSHP_Param[sharpGain][74] << 16
+		     | TDSHP_Param[sharpGain][75] << 24 | TDSHP_Param[sharpGain][76] << 30);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x09C, TDSHP_Param[sharpGain][77] << 24
+		     | TDSHP_Param[sharpGain][78] << 16
+		     | TDSHP_Param[sharpGain][79] << 4
+		     | TDSHP_Param[sharpGain][80] << 12 | TDSHP_Param[sharpGain][81] << 00);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0A0, TDSHP_Param[sharpGain][82] << 0
+		     | TDSHP_Param[sharpGain][83] << 16
+		     | TDSHP_Param[sharpGain][84] << 8 | TDSHP_Param[sharpGain][85] << 24);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0A4, TDSHP_Param[sharpGain][86] << 31
+		     | TDSHP_Param[sharpGain][87] << 8
+		     | TDSHP_Param[sharpGain][88] << 16
+		     | TDSHP_Param[sharpGain][89] << 24
+		     | TDSHP_Param[sharpGain][90] << 30 | TDSHP_Param[sharpGain][91] << 0);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x01C, TDSHP_Param[sharpGain][92] << 0);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0A8, TDSHP_Param[sharpGain][93] << 24
+		     | TDSHP_Param[sharpGain][94] << 8
+		     | TDSHP_Param[sharpGain][95] << 0 | TDSHP_Param[sharpGain][96] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0AC, TDSHP_Param[sharpGain][97] << 24
+		     | TDSHP_Param[sharpGain][98] << 16
+		     | TDSHP_Param[sharpGain][99] << 8 | TDSHP_Param[sharpGain][100] << 00);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0B0, TDSHP_Param[sharpGain][101] << 24
+		     | TDSHP_Param[sharpGain][102] << 16
+		     | TDSHP_Param[sharpGain][103] << 8 | TDSHP_Param[sharpGain][104] << 00);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0B4, TDSHP_Param[sharpGain][105] << 24
+		     | TDSHP_Param[sharpGain][106] << 16
+		     | TDSHP_Param[sharpGain][107] << 8 | TDSHP_Param[sharpGain][108] << 0);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x0B8, TDSHP_Param[sharpGain][109] << 16
+		     | TDSHP_Param[sharpGain][110] << 14
+		     | TDSHP_Param[sharpGain][111] << 24 | TDSHP_Param[sharpGain][112] << 15);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x278, TDSHP_Param[sharpGain][113] << 3);
+
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x208, TDSHP_Param[sharpGain][129] << 20
+		     | TDSHP_Param[sharpGain][117] << 19
+		     | TDSHP_Param[sharpGain][118] << 0 | TDSHP_Param[sharpGain][119] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x20C, TDSHP_Param[sharpGain][120] << 24
+		     | TDSHP_Param[sharpGain][121] << 15 | TDSHP_Param[sharpGain][122] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x200, TDSHP_Param[sharpGain][114] << 31
+		     | TDSHP_Param[sharpGain][123] << 16
+		     | TDSHP_Param[sharpGain][124] << 0 | TDSHP_Param[sharpGain][125] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x204, TDSHP_Param[sharpGain][126] << 0
+		     | TDSHP_Param[sharpGain][127] << 12 | TDSHP_Param[sharpGain][128] << 22);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x218, TDSHP_Param[sharpGain][130] << 24
+		     | TDSHP_Param[sharpGain][131] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x210, TDSHP_Param[sharpGain][132] << 24
+		     | TDSHP_Param[sharpGain][133] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x220, TDSHP_Param[sharpGain][134] << 24
+		     | TDSHP_Param[sharpGain][135] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x230, TDSHP_Param[sharpGain][148] << 20
+		     | TDSHP_Param[sharpGain][136] << 19
+		     | TDSHP_Param[sharpGain][137] << 0 | TDSHP_Param[sharpGain][138] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x234, TDSHP_Param[sharpGain][139] << 24
+		     | TDSHP_Param[sharpGain][140] << 15 | TDSHP_Param[sharpGain][141] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x228, TDSHP_Param[sharpGain][115] << 31
+		     | TDSHP_Param[sharpGain][142] << 16
+		     | TDSHP_Param[sharpGain][143] << 0 | TDSHP_Param[sharpGain][144] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x22C, TDSHP_Param[sharpGain][145] << 0
+		     | TDSHP_Param[sharpGain][146] << 12 | TDSHP_Param[sharpGain][147] << 22);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x240, TDSHP_Param[sharpGain][149] << 24
+		     | TDSHP_Param[sharpGain][150] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x238, TDSHP_Param[sharpGain][151] << 24
+		     | TDSHP_Param[sharpGain][152] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x248, TDSHP_Param[sharpGain][153] << 24
+		     | TDSHP_Param[sharpGain][154] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x258, TDSHP_Param[sharpGain][167] << 20
+		     | TDSHP_Param[sharpGain][155] << 19
+		     | TDSHP_Param[sharpGain][156] << 0 | TDSHP_Param[sharpGain][157] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x25C, TDSHP_Param[sharpGain][158] << 24
+		     | TDSHP_Param[sharpGain][159] << 15 | TDSHP_Param[sharpGain][160] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x250, TDSHP_Param[sharpGain][116] << 31
+		     | TDSHP_Param[sharpGain][161] << 16
+		     | TDSHP_Param[sharpGain][162] << 0 | TDSHP_Param[sharpGain][163] << 8);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x254, TDSHP_Param[sharpGain][164] << 0
+		     | TDSHP_Param[sharpGain][165] << 12 | TDSHP_Param[sharpGain][166] << 22);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x268, TDSHP_Param[sharpGain][168] << 24
+		     | TDSHP_Param[sharpGain][169] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x260, TDSHP_Param[sharpGain][170] << 24
+		     | TDSHP_Param[sharpGain][171] << 16);
+	DISP_REG_SET(DISPSYS_TDSHP_BASE + 0x270, TDSHP_Param[sharpGain][172] << 24
+		     | TDSHP_Param[sharpGain][173] << 16);
+
+}

@@ -18,7 +18,7 @@
 #define _LINUX_ION_H
 
 #include <linux/types.h>
-
+struct ion_handle_debug;
 typedef int ion_user_handle_t;
 
 /**
@@ -41,7 +41,7 @@ enum ion_heap_type {
 	ION_HEAP_TYPE_DMA,
 	ION_HEAP_TYPE_CUSTOM, /* must be last so device specific heaps always
 				 are at the end of this enum */
-	ION_NUM_HEAPS = 16,
+	ION_NUM_HEAPS,
 };
 
 #define ION_HEAP_SYSTEM_MASK		(1 << ION_HEAP_TYPE_SYSTEM)
@@ -49,7 +49,6 @@ enum ion_heap_type {
 #define ION_HEAP_CARVEOUT_MASK		(1 << ION_HEAP_TYPE_CARVEOUT)
 #define ION_HEAP_TYPE_DMA_MASK		(1 << ION_HEAP_TYPE_DMA)
 
-#define ION_NUM_HEAP_IDS		sizeof(unsigned int) * 8
 
 /**
  * allocation flags - the lower 16 bits are used by core ion, the upper 16
@@ -148,7 +147,7 @@ void ion_client_destroy(struct ion_client *client);
  * @len:		size of the allocation
  * @align:		requested allocation alignment, lots of hardware blocks
  *			have alignment requirements of some kind
- * @heap_id_mask:	mask of heaps to allocate from, if multiple bits are set
+ * @heap_mask:	        mask of heaps to allocate from, if multiple bits are set
  *			heaps will be tried in order from highest to lowest
  *			id
  * @flags:		heap flags, the low 16 bits are consumed by ion, the
@@ -159,7 +158,7 @@ void ion_client_destroy(struct ion_client *client);
  * an opaque handle to it.
  */
 struct ion_handle *ion_alloc(struct ion_client *client, size_t len,
-			     size_t align, unsigned int heap_id_mask,
+			     size_t align, unsigned int heap_mask,
 			     unsigned int flags);
 
 /**
@@ -258,7 +257,7 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd);
  * struct ion_allocation_data - metadata passed from userspace for allocations
  * @len:		size of the allocation
  * @align:		required alignment of the allocation
- * @heap_id_mask:	mask of heap ids to allocate from
+ * @heap_mask:	        mask of heap ids to allocate from
  * @flags:		flags passed to heap
  * @handle:		pointer that will be populated with a cookie to use to 
  *			refer to this allocation
@@ -268,7 +267,7 @@ struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd);
 struct ion_allocation_data {
 	size_t len;
 	size_t align;
-	unsigned int heap_id_mask;
+	unsigned int heap_mask;
 	unsigned int flags;
 	ion_user_handle_t handle;
 };

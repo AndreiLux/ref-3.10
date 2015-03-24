@@ -43,11 +43,14 @@
 #include <linux/mmc/host.h>
 #include <linux/mmc/mmc.h>
 #include <linux/mmc/sd.h>
+#include <linux/mmc/ffu.h>
 
 #include <asm/uaccess.h>
 
 #include "queue.h"
 
+
+#include <linux/mmc/sd_misc.h>
 MODULE_ALIAS("mmc:block");
 #ifdef MODULE_PARAM_PREFIX
 #undef MODULE_PARAM_PREFIX
@@ -192,15 +195,13 @@ static ssize_t power_ro_lock_show(struct device *dev,
 	int ret;
 	struct mmc_blk_data *md = mmc_blk_get(dev_to_disk(dev));
 	struct mmc_card *card = md->queue.card;
+	int dev_idx = md->part_type - EXT_CSD_PART_CONFIG_ACC_BOOT0;
 	int locked = 0;
 
-	if (card->ext_csd.boot_ro_lock & EXT_CSD_BOOT_WP_B_PERM_WP_EN)
-		locked = 2;
-	else if (card->ext_csd.boot_ro_lock & EXT_CSD_BOOT_WP_B_PWR_WP_EN)
-		locked = 1;
+	if (dev_idx == 0 || dev_idx == 1)
+		locked = (card->ext_csd.boot_ro_lock_status >> (2 * dev_idx)) & 3;
 
 	ret = snprintf(buf, PAGE_SIZE, "%d\n", locked);
-
 	return ret;
 }
 
@@ -208,43 +209,70 @@ static ssize_t power_ro_lock_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	int ret;
-	struct mmc_blk_data *md, *part_md;
+	struct mmc_blk_data *md;
 	struct mmc_card *card;
 	unsigned long set;
+	u8 boot_wp_flags = 0;
+	int dev_idx;
+	bool permanent = false;
+	char *prot_level;
 
 	if (kstrtoul(buf, 0, &set))
 		return -EINVAL;
 
-	if (set != 1)
-		return count;
+	if (set != 1 && set != 2) {
+		dev_err(dev, "incorrect value: %d; use 1 for power lock, 2 for permanent\n", (int)set);
+		return -EINVAL;
+	}
+
+	permanent = set == 2;
+	prot_level = permanent ? "permanently" : "until next power on";
 
 	md = mmc_blk_get(dev_to_disk(dev));
 	card = md->queue.card;
+	dev_idx = md->part_type - EXT_CSD_PART_CONFIG_ACC_BOOT0;
+
+	if (dev_idx != 0 && dev_idx != 1) {
+		dev_err(dev, "device index out of bounds: %d\n", dev_idx);
+		return -EINVAL;
+	}
+
+	if (dev_idx == 1 && set == 2) {
+		dev_err(dev, "Boot partition 1 must not be permanently locked\n");
+		return -EPERM;
+	}
+
+	dev_err(dev, "%s: Locking boot partition [boot area %d] RO %s [set=%02X]\n",
+	       __func__, dev_idx, prot_level, (u32)set);
 
 	mmc_claim_host(card->host);
 
+	boot_wp_flags |= EXT_CSD_BOOT_WP_B_SEC_WP_SEL;
+
+	if (dev_idx)
+		boot_wp_flags |= permanent ?
+			EXT_CSD_BOOT_WP_B_PERM_WP_SEC_SEL :
+			EXT_CSD_BOOT_WP_B_PWR_WP_SEC_SEL;
+	boot_wp_flags |= permanent ?
+		EXT_CSD_BOOT_WP_B_PERM_WP_EN : EXT_CSD_BOOT_WP_B_PWR_WP_EN;
+
+	pr_err("%s: Locking boot%d partition RO %s [boot_wp=%02X]\n",
+	       md->disk->disk_name, dev_idx, prot_level, (u32)boot_wp_flags);
+
 	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_BOOT_WP,
-				card->ext_csd.boot_ro_lock |
-				EXT_CSD_BOOT_WP_B_PWR_WP_EN,
-				card->ext_csd.part_time);
+			 boot_wp_flags, card->ext_csd.part_time);
 	if (ret)
-		pr_err("%s: Locking boot partition ro until next power on failed: %d\n", md->disk->disk_name, ret);
-	else
-		card->ext_csd.boot_ro_lock |= EXT_CSD_BOOT_WP_B_PWR_WP_EN;
+		pr_err("%s: Locking boot partition RO %s: err=%d\n",
+		       md->disk->disk_name, prot_level, ret);
+	else {
+		card->ext_csd.boot_ro_lock |= boot_wp_flags;
+		card->ext_csd.boot_ro_lock_status |= (set << (dev_idx * 2));
+	}
 
 	mmc_release_host(card->host);
 
-	if (!ret) {
-		pr_info("%s: Locking boot partition ro until next power on\n",
-			md->disk->disk_name);
+	if (!ret)
 		set_disk_ro(md->disk, 1);
-
-		list_for_each_entry(part_md, &md->part, part)
-			if (part_md->area_type == MMC_BLK_DATA_AREA_BOOT) {
-				pr_info("%s: Locking boot partition ro until next power on\n", part_md->disk->disk_name);
-				set_disk_ro(part_md->disk, 1);
-			}
-	}
 
 	mmc_blk_put(md);
 	return count;
@@ -492,6 +520,17 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 
 	mmc_claim_host(card->host);
 
+	if (cmd.opcode == MMC_FFU_DOWNLOAD_OP) {
+		err = mmc_ffu_download(card, &cmd , idata->buf,
+				idata->buf_bytes);
+		goto cmd_rel_host;
+	}
+
+	if (cmd.opcode == MMC_FFU_INSTALL_OP) {
+		err = mmc_ffu_install(card);
+		goto cmd_rel_host;
+	}
+
 	err = mmc_blk_part_switch(card, md);
 	if (err)
 		goto cmd_rel_host;
@@ -677,6 +716,12 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 
 	return result;
 }
+
+u32 __mmc_sd_num_wr_blocks(struct mmc_card *card)
+{
+	return mmc_sd_num_wr_blocks(card);
+}
+EXPORT_SYMBOL(__mmc_sd_num_wr_blocks);
 
 static int send_stop(struct mmc_card *card, u32 *status)
 {
@@ -1118,35 +1163,58 @@ static int mmc_blk_err_check(struct mmc_card *card,
 	 * program mode, which we have to wait for it to complete.
 	 */
 	if (!mmc_host_is_spi(card->host) && rq_data_dir(req) != READ) {
-		u32 status;
-		unsigned long timeout;
+		int ckeck_retry;
+		u32 status = 0;
+		for (ckeck_retry = 0; ckeck_retry < 5; ckeck_retry++) {
+			unsigned long timeout = jiffies + msecs_to_jiffies(MMC_BLK_TIMEOUT_MS);
+			do {
+				int err = get_card_status(card, &status, 5);
+				if (err) {
+					pr_err("%s: error %d requesting status\n",
+					       req->rq_disk->disk_name, err);
+					return MMC_BLK_CMD_ERR;
+				}
 
-		timeout = jiffies + msecs_to_jiffies(MMC_BLK_TIMEOUT_MS);
-		do {
-			int err = get_card_status(card, &status, 5);
-			if (err) {
-				pr_err("%s: error %d requesting status\n",
-				       req->rq_disk->disk_name, err);
-				return MMC_BLK_CMD_ERR;
-			}
+				/* Timeout if the device never becomes ready for data
+				 * and never leaves the program state.
+				 */
+				if (time_after(jiffies, timeout)) {
+					pr_err("%s: Card stuck in programming state; %s %s\n",
+						mmc_hostname(card->host),
+						req->rq_disk->disk_name, __func__);
 
-			/* Timeout if the device never becomes ready for data
-			 * and never leaves the program state.
-			 */
-			if (time_after(jiffies, timeout)) {
-				pr_err("%s: Card stuck in programming state!"\
-					" %s %s\n", mmc_hostname(card->host),
-					req->rq_disk->disk_name, __func__);
+					return MMC_BLK_CMD_ERR;
+				}
+				/*
+				 * Some cards mishandle the status bits,
+				 * so make sure to check both the busy
+				 * indication and the card state.
+				 */
+			} while (!(status & R1_READY_FOR_DATA) ||
+				 (R1_CURRENT_STATE(status) == R1_STATE_PRG));
 
-				return MMC_BLK_CMD_ERR;
-			}
 			/*
-			 * Some cards mishandle the status bits,
-			 * so make sure to check both the busy
-			 * indication and the card state.
-			 */
-		} while (!(status & R1_READY_FOR_DATA) ||
-			 (R1_CURRENT_STATE(status) == R1_STATE_PRG));
+			 * write to protected areas of LBAs may set card status error during data
+			 * transfer, but complete successfully at host controller level.
+			 * In this case, MMC device will not get back to TRANS state, but instead,
+			 * stay in RCV state. We need to send CMD12 if we happen to be in RCV state */
+			if (R1_CURRENT_STATE(status) == R1_STATE_RCV ||
+			    R1_CURRENT_STATE(status) == R1_STATE_DATA) {
+				u32 stop_status = 0;
+				int err = send_stop(card, &stop_status);
+				if (err)
+					pr_err("%s: error %d sending stop command: status=%08X stop_status=%08X\n",
+						req->rq_disk->disk_name, err, status, stop_status);
+			} else
+				break;
+		}
+		if (R1_CURRENT_STATE(status) == R1_STATE_RCV ||
+		    R1_CURRENT_STATE(status) == R1_STATE_DATA) {
+			pr_err("%s: Card stuck in data transfer state: %08X; %s %s\n",
+				mmc_hostname(card->host), status,
+				req->rq_disk->disk_name, __func__);
+			return MMC_BLK_CMD_ERR;
+		}
 	}
 
 	if (brq->data.error) {
@@ -1897,6 +1965,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	struct mmc_blk_data *md = mq->data;
 	struct mmc_card *card = md->queue.card;
 	struct mmc_host *host = card->host;
+	unsigned int cmd_flags = req ? req->cmd_flags : 0;
 	unsigned long flags;
 
 #ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
@@ -1918,7 +1987,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	}
 
 	mq->flags &= ~MMC_QUEUE_NEW_REQUEST;
-	if (req && req->cmd_flags & REQ_DISCARD) {
+	if (cmd_flags & REQ_DISCARD) {
 		/* complete ongoing async transfer before issuing discard */
 		if (card->host->areq)
 			mmc_blk_issue_rw_rq(mq, NULL);
@@ -1927,7 +1996,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 			ret = mmc_blk_issue_secdiscard_rq(mq, req);
 		else
 			ret = mmc_blk_issue_discard_rq(mq, req);
-	} else if (req && req->cmd_flags & REQ_FLUSH) {
+	} else if (cmd_flags & REQ_FLUSH) {
 		/* complete ongoing async transfer before issuing flush */
 		if (card->host->areq)
 			mmc_blk_issue_rw_rq(mq, NULL);
@@ -1943,7 +2012,7 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 
 out:
 	if ((!req && !(mq->flags & MMC_QUEUE_NEW_REQUEST)) ||
-	     (req && (req->cmd_flags & MMC_REQ_SPECIAL_MASK)))
+	     (cmd_flags & MMC_REQ_SPECIAL_MASK))
 		/*
 		 * Release host when there are no more requests
 		 * and after special request(discard, flush) is done.
@@ -2223,7 +2292,8 @@ static int mmc_add_disk(struct mmc_blk_data *md)
 	     card->ext_csd.boot_ro_lockable) {
 		umode_t mode;
 
-		if (card->ext_csd.boot_ro_lock & EXT_CSD_BOOT_WP_B_PWR_WP_DIS)
+		if (card->ext_csd.boot_ro_lock &
+		    (EXT_CSD_BOOT_WP_B_PWR_WP_DIS | EXT_CSD_BOOT_WP_B_PERM_WP_DIS))
 			mode = S_IRUGO;
 		else
 			mode = S_IRUGO | S_IWUSR;
@@ -2232,8 +2302,7 @@ static int mmc_add_disk(struct mmc_blk_data *md)
 		md->power_ro_lock.store = power_ro_lock_store;
 		sysfs_attr_init(&md->power_ro_lock.attr);
 		md->power_ro_lock.attr.mode = mode;
-		md->power_ro_lock.attr.name =
-					"ro_lock_until_next_power_on";
+		md->power_ro_lock.attr.name = "ro_lock";
 		ret = device_create_file(disk_to_dev(md->disk),
 				&md->power_ro_lock);
 		if (ret)
@@ -2311,6 +2380,10 @@ static const struct mmc_fixup blk_fixups[] =
 	MMC_FIXUP("VZL00M", CID_MANFID_SAMSUNG, CID_OEMID_ANY, add_quirk_mmc,
 		  MMC_QUIRK_SEC_ERASE_TRIM_BROKEN),
 
+#ifdef CONFIG_MMC_SAMSUNG_SMART
+	MMC_FIXUP(CID_NAME_ANY, CID_MANFID_SAMSUNG, CID_OEMID_ANY,
+		      add_quirk_mmc, MMC_QUIRK_SAMSUNG_SMART),
+#endif /* CONFIG_MMC_SAMSUNG_SMART */
 	END_FIXUP
 };
 
@@ -2374,8 +2447,7 @@ static void mmc_blk_remove(struct mmc_card *card)
 #endif
 }
 
-#ifdef CONFIG_PM
-static int mmc_blk_suspend(struct mmc_card *card)
+static int _mmc_blk_suspend(struct mmc_card *card)
 {
 	struct mmc_blk_data *part_md;
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
@@ -2387,6 +2459,17 @@ static int mmc_blk_suspend(struct mmc_card *card)
 		}
 	}
 	return 0;
+}
+
+static void mmc_blk_shutdown(struct mmc_card *card)
+{
+	_mmc_blk_suspend(card);
+}
+
+#ifdef CONFIG_PM
+static int mmc_blk_suspend(struct mmc_card *card)
+{
+	return _mmc_blk_suspend(card);
 }
 
 static int mmc_blk_resume(struct mmc_card *card)
@@ -2420,6 +2503,7 @@ static struct mmc_driver mmc_driver = {
 	.remove		= mmc_blk_remove,
 	.suspend	= mmc_blk_suspend,
 	.resume		= mmc_blk_resume,
+	.shutdown	= mmc_blk_shutdown,
 };
 
 static int __init mmc_blk_init(void)

@@ -3760,6 +3760,39 @@ static int cgroup_write_notify_on_release(struct cgroup *cgrp,
 	return 0;
 }
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+void cgroup_load_tasks(struct cgroup *cgrp, struct cgroup_tasklist *ct)
+{
+	struct cgroup_pidlist *l;
+	int i;
+	int retval, length;
+
+	/* have the array populated */
+	retval = pidlist_array_load(cgrp, CGROUP_FILE_TASKS, &l);
+	if (retval)
+		goto error;
+
+	down_read(&l->mutex);
+	length = l->length;
+	ct->list = vmalloc(length * sizeof(pid_t));
+	if (!ct->list)
+		goto error;
+
+	for (i = 0; i < length; i++) {
+		if (l->list[i])
+			ct->list[i] = l->list[i];
+	}
+	up_read(&l->mutex);
+
+	ct->length = l->length;
+	ct->use_count = l->use_count;
+
+error:
+	if (l)
+		cgroup_release_pid_array(l);
+}
+#endif
+
 /*
  * When dput() is called asynchronously, if umount has been done and
  * then deactivate_super() in cgroup_free_fn() kills the superblock,

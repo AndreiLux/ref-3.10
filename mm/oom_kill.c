@@ -170,7 +170,7 @@ unsigned long oom_badness(struct task_struct *p, struct mem_cgroup *memcg,
 	 * implementation used by LSMs.
 	 */
 	if (has_capability_noaudit(p, CAP_SYS_ADMIN))
-		adj -= 30;
+		points -= (points * 3) / 100;
 
 	/* Normalize to oom_score_adj units */
 	adj *= totalpages / 1000;
@@ -412,16 +412,6 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 	static DEFINE_RATELIMIT_STATE(oom_rs, DEFAULT_RATELIMIT_INTERVAL,
 					      DEFAULT_RATELIMIT_BURST);
 
-	/*
-	 * If the task is already exiting, don't alarm the sysadmin or kill
-	 * its children or threads, just set TIF_MEMDIE so it can die quickly
-	 */
-	if (p->flags & PF_EXITING) {
-		set_tsk_thread_flag(p, TIF_MEMDIE);
-		put_task_struct(p);
-		return;
-	}
-
 	if (__ratelimit(&oom_rs))
 		dump_header(p, gfp_mask, order, memcg, nodemask);
 
@@ -431,12 +421,31 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 	task_unlock(p);
 
 	/*
+	 * while_each_thread is currently not RCU safe. Lets hold the
+	 * tasklist_lock across all invocations of while_each_thread (including
+	 * the one in find_lock_task_mm) in this function.
+	 */
+	read_lock(&tasklist_lock);
+
+	/*
+	 * If the task is already exiting, don't alarm the sysadmin or kill
+	 * its children or threads, just set TIF_MEMDIE so it can die quickly
+	 */
+	if (p->flags & PF_EXITING || !pid_alive(p)) {
+		pr_info("%s: Not killing process %d, just setting TIF_MEMDIE\n",
+			message, task_pid_nr(p));
+		set_tsk_thread_flag(p, TIF_MEMDIE);
+		put_task_struct(p);
+		read_unlock(&tasklist_lock);
+		return;
+	}
+
+	/*
 	 * If any of p's children has a different mm and is eligible for kill,
 	 * the one with the highest oom_badness() score is sacrificed for its
 	 * parent.  This attempts to lose the minimal amount of work done while
 	 * still freeing memory.
 	 */
-	read_lock(&tasklist_lock);
 	do {
 		list_for_each_entry(child, &t->children, sibling) {
 			unsigned int child_points;
@@ -456,12 +465,17 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 			}
 		}
 	} while_each_thread(p, t);
+
+	p = find_lock_task_mm(victim);
+
+	/*
+	 * Since while_each_thread is currently not RCU safe, this unlock of
+	 * tasklist_lock may need to be moved further down if any additional
+	 * while_each_thread loops get added to this function.
+	 */
 	read_unlock(&tasklist_lock);
 
-	rcu_read_lock();
-	p = find_lock_task_mm(victim);
 	if (!p) {
-		rcu_read_unlock();
 		put_task_struct(victim);
 		return;
 	} else if (victim != p) {
@@ -477,6 +491,8 @@ void oom_kill_process(struct task_struct *p, gfp_t gfp_mask, int order,
 		K(get_mm_counter(victim->mm, MM_ANONPAGES)),
 		K(get_mm_counter(victim->mm, MM_FILEPAGES)));
 	task_unlock(victim);
+
+	rcu_read_lock();
 
 	/*
 	 * Kill all user processes sharing victim->mm in other thread groups, if
@@ -616,6 +632,11 @@ void out_of_memory(struct zonelist *zonelist, gfp_t gfp_mask,
 	unsigned int uninitialized_var(points);
 	enum oom_constraint constraint = CONSTRAINT_NONE;
 	int killed = 0;
+
+#ifdef CONFIG_MT_ENG_BUILD
+	//void add_kmem_status_oom_counter(void);
+	//add_kmem_status_oom_counter();
+#endif
 
 	blocking_notifier_call_chain(&oom_notify_list, 0, &freed);
 	if (freed > 0)

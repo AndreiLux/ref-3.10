@@ -479,6 +479,12 @@ config LEDS_BLINKM
 	  This option enables support for the BlinkM RGB LED connected
 	  through I2C. Say Y to enable support for the BlinkM LED.
 
+config LEDS_LP855X
+       tristate "LED support for the TI LP855X Backlight Driver"
+       depends on LEDS_CLASS
+       help
+          This option enables support for the TI LP855X Backlight Driver .
+
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"
 

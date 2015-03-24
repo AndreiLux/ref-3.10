@@ -65,6 +65,14 @@
 #include <asm/div64.h>
 #include "internal.h"
 
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+#include <linux/hashtable.h>
+#include <linux/kallsyms.h>
+#include <linux/spinlock.h>
+#endif
+/* ACOS_MOD_END {internal_membo} */
+
 #ifdef CONFIG_USE_PERCPU_NUMA_NODE_ID
 DEFINE_PER_CPU(int, numa_node);
 EXPORT_PER_CPU_SYMBOL(numa_node);
@@ -153,6 +161,12 @@ bool pm_suspended_storage(void)
 #ifdef CONFIG_HUGETLB_PAGE_SIZE_VARIABLE
 int pageblock_order __read_mostly;
 #endif
+
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+static unsigned long select_call_site(void);
+#endif
+/* ACOS_MOD_END {internal_membo} */
 
 static void __free_pages_ok(struct page *page, unsigned int order);
 
@@ -738,6 +752,11 @@ static bool free_pages_prepare(struct page *page, unsigned int order)
 
 static void __free_pages_ok(struct page *page, unsigned int order)
 {
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+struct allocation_detail detail;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	unsigned long flags;
 	int migratetype;
 
@@ -745,6 +764,18 @@ static void __free_pages_ok(struct page *page, unsigned int order)
 		return;
 
 	local_irq_save(flags);
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	detail = page->detail;
+	if (likely(detail.call_site)) {
+		int i;
+		struct allocation_detail detail = { 0, };
+		for (i = 0; i < (1 << order); ++i)
+			page[i].detail = detail;
+		__mod_zone_page_state(page_zone(page), NR_INUSE, -(1 << order));
+	}
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	__count_vm_events(PGFREE, 1 << order);
 	migratetype = get_pageblock_migratetype(page);
 	set_freepage_migratetype(page, migratetype);
@@ -1328,6 +1359,11 @@ void mark_free_pages(struct zone *zone)
  */
 void free_hot_cold_page(struct page *page, int cold)
 {
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+struct allocation_detail detail;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	struct zone *zone = page_zone(page);
 	struct per_cpu_pages *pcp;
 	unsigned long flags;
@@ -1339,6 +1375,18 @@ void free_hot_cold_page(struct page *page, int cold)
 	migratetype = get_pageblock_migratetype(page);
 	set_freepage_migratetype(page, migratetype);
 	local_irq_save(flags);
+
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	detail = page->detail;
+	if (likely(detail.call_site)) {
+		struct allocation_detail detail = { 0, };
+		page->detail = detail;
+		__mod_zone_page_state(page_zone(page), NR_INUSE, -1);
+	}
+#endif
+/* ACOS_MOD_END {internal_membo} */
+
 	__count_vm_event(PGFREE);
 
 	/*
@@ -1395,7 +1443,11 @@ void free_hot_cold_page_list(struct list_head *list, int cold)
 void split_page(struct page *page, unsigned int order)
 {
 	int i;
-
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+struct allocation_detail detail;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	VM_BUG_ON(PageCompound(page));
 	VM_BUG_ON(!page_count(page));
 
@@ -1408,13 +1460,35 @@ void split_page(struct page *page, unsigned int order)
 		split_page(virt_to_page(page[0].shadow), order);
 #endif
 
-	for (i = 1; i < (1 << order); i++)
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	detail = page->detail;
+	if (!detail.call_site)
+		detail.call_site = (void *)0x0BA0BAB0;
+	detail.call_site = (void *)(((unsigned long)detail.call_site) & ~1);
+	page->detail = detail;
+#endif
+/* ACOS_MOD_END {internal_membo} */
+	for (i = 1; i < (1 << order); i++) {
 		set_page_refcounted(page + i);
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		page[i].detail = detail;
+#endif
+/* ACOS_MOD_END {internal_membo} */
+	}
 }
 EXPORT_SYMBOL_GPL(split_page);
 
 static int __isolate_free_page(struct page *page, unsigned int order)
 {
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	struct allocation_detail detail;
+	struct task_struct *cur_task;
+	unsigned long call_site;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	unsigned long watermark;
 	struct zone *zone;
 	int mt;
@@ -1437,6 +1511,28 @@ static int __isolate_free_page(struct page *page, unsigned int order)
 	list_del(&page->lru);
 	zone->free_area[order].nr_free--;
 	rmv_page_order(page);
+
+
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	__mod_zone_page_state(zone, NR_INUSE, (1 << order));
+
+	call_site = select_call_site();
+	if (!call_site)
+		call_site = 0xBADFEED0;
+	detail.call_site = (void *)((call_site & ~1) + (order ? 1 : 0));
+	detail.allocation_pid = 0;
+	detail.last_mapper_pid = 0;
+
+	cur_task = current;
+	if (cur_task)
+		detail.allocation_pid = cur_task->tgid;
+	page->detail = detail;
+	if (order)
+		page[1].detail.call_site = (void *)order;
+#endif
+/* ACOS_MOD_END {internal_membo} */
+
 
 	/* Set the pageblock if the isolated page is at least a pageblock */
 	if (order >= pageblock_order - 1) {
@@ -2400,6 +2496,19 @@ bool gfp_pfmemalloc_allowed(gfp_t gfp_mask)
 	return !!(gfp_to_alloc_flags(gfp_mask) & ALLOC_NO_WATERMARKS);
 }
 
+/* Add for kswapd need too much CPU ANR issue */
+#ifdef CONFIG_MT_ENG_BUILD
+#define WAKEUP_KSWAPD_TAG "WAKEUP_KSWAPD"
+static uint32_t wakeup_kswapd_count = 0;
+static unsigned long print_wakeup_kswapd_timeout = 0;
+
+static uint32_t wakeup_kswapd_dump_log_order = 1;
+static uint32_t wakeup_kswapd_dump_bt_order = 1000;
+
+module_param_named(dump_log_order, wakeup_kswapd_dump_log_order, uint, S_IRUGO | S_IWUSR);
+module_param_named(dump_bt_order, wakeup_kswapd_dump_bt_order, uint, S_IRUGO | S_IWUSR);
+#endif
+
 static inline struct page *
 __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 	struct zonelist *zonelist, enum zone_type high_zoneidx,
@@ -2439,10 +2548,33 @@ __alloc_pages_slowpath(gfp_t gfp_mask, unsigned int order,
 		goto nopage;
 
 restart:
-	if (!(gfp_mask & __GFP_NO_KSWAPD))
-		wake_all_kswapd(order, zonelist, high_zoneidx,
-						zone_idx(preferred_zone));
+	if (!(gfp_mask & __GFP_NO_KSWAPD)) {
+#ifdef CONFIG_MT_ENG_BUILD
+		int print_debug_info = 0;
+		wakeup_kswapd_count++;
 
+		if (time_after_eq(jiffies, print_wakeup_kswapd_timeout)) {
+			print_debug_info = 1;
+			print_wakeup_kswapd_timeout = jiffies + HZ;
+		}
+		if (print_debug_info) {
+			if (order >= wakeup_kswapd_dump_log_order) {
+				pr_info(WAKEUP_KSWAPD_TAG
+					"%s wakeup kswapd, order:%d, mode:0x%x, trigger_count:%d\n",
+					current->comm, order, gfp_mask,
+					wakeup_kswapd_count);
+			}
+
+			if (order >= wakeup_kswapd_dump_bt_order) {
+				pr_info(WAKEUP_KSWAPD_TAG "dump_stack\n");
+				dump_stack();
+			}
+			wakeup_kswapd_count = 0;	/*reset */
+		}
+#endif
+		wake_all_kswapd(order, zonelist, high_zoneidx,
+				zone_idx(preferred_zone));
+	}
 	/*
 	 * OK, we're below the kswapd watermark and have kicked background
 	 * reclaim. Now things get more complex, so set up alloc_flags according
@@ -2606,6 +2738,200 @@ got_pg:
 	return page;
 }
 
+
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+struct boring_name {
+	const char name[32];
+	struct hlist_node hlist;
+};
+
+static spinlock_t boring_table_lock;
+
+static DEFINE_HASHTABLE(boring_names, 6);
+static struct boring_name boring_name_nodes[] = {
+	{"__alloc_pages_nodemask", },
+	{"split_free_page", },
+	{"__get_user_pages", },
+	{"get_user_pages", },
+	{"get_arg_page", },
+	{"setup_arg_pages", },
+	{"insert_page", },
+	{"vm_insert_page", },
+	{"vm_insert_mixed", },
+	{"find_or_create_page", },
+	{"remap_pfn_range", },
+	{"__arm_ioremap_caller", },
+	{"__arm_ioremap_pfn_caller", },
+	{"ioremap_page_range", },
+	{"copy_page_range", },
+	{"__get_free_pages", },
+	{"get_zeroed_page", },
+	{"internal_get_zeroed_page", },
+	{"alloc_pages_exact", },
+	{"insert_pfn", },
+	{"__get_locked_pte", },
+	{"copy_pte_range", },
+	{"__dma_alloc", },
+	{"dma_alloc_coherent", },
+	{"dma_alloc_stronglyordered", },
+	{"dma_alloc_writecombine", },
+	{"__vmalloc_node_range", },
+	{"__vmalloc_node", },
+	{"__vmalloc", },
+	{"vmalloc", },
+	{"vzalloc", },
+	{"vmap_page_range_noflush", },
+	{"grab_cache_page_write_begin", },
+	{"grab_cache_page_nowait", },
+	{"pcpu_alloc", },
+	{"__alloc_cpu", },
+	{"__alloc_percpu", },
+	{"__getblk", },
+	{"mempool_alloc_pages", },
+	{"mempool_create_node", },
+	{"mempool_create", },
+	{"alloc_large_system_hash", },
+	{"__breadahead", },
+	{"__bread", },
+	{"jread", },
+	{"mm_init", },
+	{"mm_alloc", },
+	{"dup_mm", },
+	{"move_page_tables", },
+	{"copy_process", },
+	{"copy_strings", },
+	{"copy_strings_kernel", },
+	{"do_one_pass", },
+	{"__ext4_get_inode_loc", },
+	{"_VMallocWrapper", },
+	{"OSAllocMem_Impl", },
+	{"ReallocHandleArray", },
+	{"_Resize", },
+	{"AllocPages", },
+	{"NewVMallocLinuxMemArea", },
+	{"NewAllocPagesLinuxMemArea", },
+	{"OSAllocPages_Impl", },
+	{"ion_alloc", },
+	{"ion_system_heap_allocate", },
+	{"ion_iommu_heap_allocate", },
+	{"ion_page_pool_alloc", },
+	{"ion_mm_heap_allocate", },
+	{"_gpumem_alloc", },
+	{"_kgsl_sharedmem_page_alloc", },
+	{"kgsl_sharedmem_page_alloc", },
+	{"kgsl_sharedmem_page_alloc_user", },
+	{"kgsl_allocate", },
+	{"kgsl_allocate_user", },
+	{"kgsl_allocate_contiguous", },
+	{"kmem_cache_alloc_trace", },
+	{"kmem_cache_alloc", },
+	{"kmalloc_order_trace", },
+	{"kmalloc_order", },
+	{"kmalloc_large", },
+	{"kmalloc", },
+	{"__kmalloc_track_caller", },
+	{"__kmalloc", },
+	{"kmemdup", },
+};
+
+static void __init init_boring_names(void)
+{
+	int i;
+	unsigned long flags;
+
+	spin_lock_init(&boring_table_lock);
+
+	spin_lock_irqsave(&boring_table_lock, flags);
+	for (i = 0;
+	     i < sizeof(boring_name_nodes)/sizeof(struct boring_name);
+	     ++i) {
+		unsigned int namehash = boring_name_nodes[i].name[2];
+		INIT_HLIST_NODE(&boring_name_nodes[i].hlist);
+		hash_add(boring_names, &boring_name_nodes[i].hlist, namehash);
+	}
+	spin_unlock_irqrestore(&boring_table_lock, flags);
+}
+
+static int is_boring_name(const char *sym)
+{
+	struct boring_name *cand;
+	unsigned int symhash = sym[2];
+
+	hash_for_each_possible(boring_names, cand, hlist, symhash) {
+		if (!strcmp(cand->name, sym))
+			return 1;
+	}
+	return 0;
+}
+
+struct boring_call_site {
+	struct hlist_node hlist;
+	unsigned long call_site;
+};
+static DEFINE_HASHTABLE(boring_call_sites, 6);
+static DEFINE_HASHTABLE(nonboring_call_sites, 6);
+static struct boring_call_site bcs_pool[1024];
+static int next_bcs = 1023;
+
+static int is_boring(unsigned long call_site)
+{
+	struct boring_call_site *cand;
+	int boring = 0;
+	char buf[KSYM_NAME_LEN];
+	const char *sym;
+
+	hash_for_each_possible(boring_call_sites, cand,
+			       hlist, call_site) {
+		if (cand->call_site == call_site)
+			return 1;
+	}
+	hash_for_each_possible(nonboring_call_sites, cand,
+			       hlist, call_site) {
+		if (cand->call_site == call_site)
+			return 0;
+	}
+
+	sym = kallsyms_lookup(call_site, NULL, NULL, NULL, buf);
+	boring = (sym && is_boring_name(sym));
+
+	if (next_bcs >= 0)
+		cand = &bcs_pool[next_bcs--];
+	else
+		return boring;
+
+	INIT_HLIST_NODE(&cand->hlist);
+	cand->call_site = call_site;
+	if (boring)
+		hash_add(boring_call_sites, &cand->hlist, call_site);
+	else
+		hash_add(nonboring_call_sites, &cand->hlist, call_site);
+
+	return boring;
+}
+
+static unsigned long select_call_site()
+{
+	unsigned int depth = 1;
+	unsigned long call_site = (unsigned long)return_address(depth);
+	unsigned long flags;
+
+	spin_lock_irqsave(&boring_table_lock, flags);
+
+	while (call_site && is_boring(call_site) && (depth < 20))
+		call_site = (unsigned long)return_address(++depth);
+
+	spin_unlock(&boring_table_lock);
+	local_irq_restore(flags);
+
+	return call_site;
+}
+#endif /* CONFIG_TRAPZ_PVA */
+/* ACOS_MOD_END {internal_membo} */
+
+
+
+
 /*
  * This is the 'heart' of the zoned buddy allocator.
  */
@@ -2613,6 +2939,14 @@ struct page *
 __alloc_pages_nodemask(gfp_t gfp_mask, unsigned int order,
 			struct zonelist *zonelist, nodemask_t *nodemask)
 {
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	unsigned long flags;
+	unsigned long call_site;
+	struct allocation_detail detail;
+	struct task_struct *cur_task;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	enum zone_type high_zoneidx = gfp_zone(gfp_mask);
 	struct zone *preferred_zone;
 	struct page *page = NULL;
@@ -2670,13 +3004,46 @@ retry_cpuset:
 		 * complete.
 		 */
 		gfp_mask = memalloc_noio_flags(gfp_mask);
+                if (gfp_mask & __GFP_SLOWHIGHMEM) {
+                        // setup highmem flag for slowhighmem
+                        gfp_mask |= __GFP_HIGHMEM;
+                        high_zoneidx = gfp_zone(gfp_mask);
+                        first_zones_zonelist(zonelist, high_zoneidx,
+                                nodemask ? : &cpuset_current_mems_allowed,
+                                        &preferred_zone);
+                        if (!preferred_zone)
+                                goto out;
+                }
 		page = __alloc_pages_slowpath(gfp_mask, order,
 				zonelist, high_zoneidx, nodemask,
 				preferred_zone, migratetype);
 	}
 
 	trace_mm_page_alloc(page, order, gfp_mask, migratetype);
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	if (unlikely(!page))
+		goto out;
 
+	local_irq_save(flags);
+	__mod_zone_page_state(page_zone(page), NR_INUSE, (1 << order));
+
+	call_site = select_call_site();
+	if (!call_site)
+	call_site = 0xDEADBEEF;
+	detail.call_site = (void *)((call_site & ~1) + (order ? 1 : 0));
+	detail.allocation_pid = 0;
+	detail.last_mapper_pid = 0;
+
+	cur_task = current;
+	if (cur_task)
+		detail.allocation_pid = cur_task->tgid;
+	page->detail = detail;
+	if (order)
+		page[1].detail.call_site = (void *)order;
+	local_irq_restore(flags);
+#endif
+/* ACOS_MOD_END {internal_membo} */
 out:
 	/*
 	 * When updating a task's mems_allowed, it is possible to race with
@@ -3072,6 +3439,11 @@ void show_free_areas(unsigned int filter)
 			" bounce:%lukB"
 			" free_cma:%lukB"
 			" writeback_tmp:%lukB"
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		       " inuse:%lukB"
+#endif
+/* ACOS_MOD_END {internal_membo} */
 			" pages_scanned:%lu"
 			" all_unreclaimable? %s"
 			"\n",
@@ -3103,6 +3475,11 @@ void show_free_areas(unsigned int filter)
 			K(zone_page_state(zone, NR_BOUNCE)),
 			K(zone_page_state(zone, NR_FREE_CMA_PAGES)),
 			K(zone_page_state(zone, NR_WRITEBACK_TEMP)),
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		       K(zone_page_state(zone, NR_INUSE)),
+#endif
+/* ACOS_MOD_END {internal_membo} */
 			zone->pages_scanned,
 			(zone->all_unreclaimable ? "yes" : "no")
 			);
@@ -3150,6 +3527,97 @@ void show_free_areas(unsigned int filter)
 
 	show_swap_cache_info();
 }
+
+void show_free_areas_minimum(void)
+{
+    struct zone *zone;    
+	for_each_populated_zone(zone) {
+		if (skip_free_areas_node(SHOW_MEM_FILTER_NODES, zone_to_nid(zone)))
+			continue;
+		show_node(zone);
+		printk("%s"
+			" free:%lukB"
+			" min:%lukB"
+			" low:%lukB"
+			" high:%lukB"
+			" active_anon:%lukB"
+			" inactive_anon:%lukB"
+			" active_file:%lukB"
+			" inactive_file:%lukB"
+			" unevictable:%lukB"
+			" isolated(anon):%lukB"
+			" isolated(file):%lukB"
+			" present:%lukB"
+			" managed:%lukB"
+			" mlocked:%lukB"
+			" dirty:%lukB"
+			" writeback:%lukB"
+			" mapped:%lukB"
+			" shmem:%lukB"
+			" slab_reclaimable:%lukB"
+			" slab_unreclaimable:%lukB"
+			" kernel_stack:%lukB"
+			" pagetables:%lukB"
+			" unstable:%lukB"
+			" bounce:%lukB"
+			" free_cma:%lukB"
+			" writeback_tmp:%lukB"
+			" pages_scanned:%lu"
+			" all_unreclaimable? %s"
+			"\n",
+			zone->name,
+			K(zone_page_state(zone, NR_FREE_PAGES)),
+			K(min_wmark_pages(zone)),
+			K(low_wmark_pages(zone)),
+			K(high_wmark_pages(zone)),
+			K(zone_page_state(zone, NR_ACTIVE_ANON)),
+			K(zone_page_state(zone, NR_INACTIVE_ANON)),
+			K(zone_page_state(zone, NR_ACTIVE_FILE)),
+			K(zone_page_state(zone, NR_INACTIVE_FILE)),
+			K(zone_page_state(zone, NR_UNEVICTABLE)),
+			K(zone_page_state(zone, NR_ISOLATED_ANON)),
+			K(zone_page_state(zone, NR_ISOLATED_FILE)),
+			K(zone->present_pages),
+			K(zone->managed_pages),
+			K(zone_page_state(zone, NR_MLOCK)),
+			K(zone_page_state(zone, NR_FILE_DIRTY)),
+			K(zone_page_state(zone, NR_WRITEBACK)),
+			K(zone_page_state(zone, NR_FILE_MAPPED)),
+			K(zone_page_state(zone, NR_SHMEM)),
+			K(zone_page_state(zone, NR_SLAB_RECLAIMABLE)),
+			K(zone_page_state(zone, NR_SLAB_UNRECLAIMABLE)),
+			zone_page_state(zone, NR_KERNEL_STACK) *
+				THREAD_SIZE / 1024,
+			K(zone_page_state(zone, NR_PAGETABLE)),
+			K(zone_page_state(zone, NR_UNSTABLE_NFS)),
+			K(zone_page_state(zone, NR_BOUNCE)),
+			K(zone_page_state(zone, NR_FREE_CMA_PAGES)),
+			K(zone_page_state(zone, NR_WRITEBACK_TEMP)),
+			zone->pages_scanned,
+			(zone->all_unreclaimable ? "yes" : "no")
+			);
+	}
+
+	for_each_populated_zone(zone) {
+ 		unsigned long nr[MAX_ORDER], flags, order, total = 0;
+
+		if (skip_free_areas_node(SHOW_MEM_FILTER_NODES, zone_to_nid(zone)))
+			continue;
+		show_node(zone);
+		printk("%s: ", zone->name);
+
+		spin_lock_irqsave(&zone->lock, flags);
+		for (order = 0; order < MAX_ORDER; order++) {
+			nr[order] = zone->free_area[order].nr_free;
+			total += nr[order] << order;
+		}
+		spin_unlock_irqrestore(&zone->lock, flags);
+		for (order = 0; order < MAX_ORDER; order++)
+			printk("%lu*%lukB ", nr[order], K(1UL) << order);
+		printk("= %lukB\n", K(total));
+	}
+}
+EXPORT_SYMBOL(show_free_areas_minimum);
 
 static void zoneref_set_zone(struct zone *zone, struct zoneref *zoneref)
 {
@@ -5245,6 +5713,11 @@ static int page_alloc_cpu_notify(struct notifier_block *self,
 
 void __init page_alloc_init(void)
 {
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	init_boring_names();
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	hotcpu_notifier(page_alloc_cpu_notify, 0);
 }
 
@@ -6231,6 +6704,9 @@ static const struct trace_print_flags pageflag_names[] = {
 #endif
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	{1UL << PG_compound_lock,	"compound_lock"	},
+#endif
+#ifdef CONFIG_KSM_CHECK_PAGE
+	{1UL << PG_ksm_scan0,		"ksm_scanned_0"},
 #endif
 };
 

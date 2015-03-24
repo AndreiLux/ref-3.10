@@ -74,6 +74,16 @@ config UHID
 	To compile this driver as a module, choose M here: the
 	module will be called uhid.
 
+config KEYBOARD_HID # TODO depends on ARCH_MT6516
+        tristate "MediaTek hid keyboard support"
+        depends on HID
+        default n
+        help
+          Say Y here if you want to use the hid keyboard.
+
+          To compile this driver as a module, choose M here: the
+          module will be called hid_keyboard.
+
 config HID_GENERIC
 	tristate "Generic HID driver"
 	depends on HID
@@ -757,6 +767,16 @@ config HID_SENSOR_HUB
 	  drivers can use the service provided by this driver to register
 	  for events and handle data streams. Each sensor driver can format
 	  data and present to user mode using input or IIO interface.
+
+config HID_LAB126
+	tristate "Lab126 keyboard"
+	depends on HID
+	default y
+	---help---
+	  Support for Lab126 keyboard.
+	  this will add magneto object to the build.
+	  Can be configured as module.
+	  Safe to say no
 
 endmenu
 

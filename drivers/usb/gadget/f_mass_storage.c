@@ -2082,7 +2082,8 @@ unknown_cmnd:
 		reply = check_command(common, common->cmnd_size,
 				      DATA_DIR_UNKNOWN, ~0, 0, unknown);
 		if (reply == 0) {
-			common->curlun->sense_data = SS_INVALID_COMMAND;
+			if (common->curlun)
+				common->curlun->sense_data = SS_INVALID_COMMAND;
 			reply = -EINVAL;
 		}
 		break;
@@ -2774,7 +2775,7 @@ buffhds_first_it:
 
 	/* Information */
 	INFO(common, FSG_DRIVER_DESC ", version: " FSG_DRIVER_VERSION "\n");
-	INFO(common, "Number of LUNs=%d\n", common->nluns);
+	/* INFO(common, "Number of LUNs=%d\n", common->nluns); */
 
 	pathbuf = kmalloc(PATH_MAX, GFP_KERNEL);
 	for (i = 0, nluns = common->nluns, curlun = common->luns;

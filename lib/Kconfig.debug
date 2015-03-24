@@ -491,7 +491,7 @@ config DEBUG_KMEMLEAK_EARLY_LOG_SIZE
 	int "Maximum kmemleak early log entries"
 	depends on DEBUG_KMEMLEAK
 	range 200 40000
-	default 400
+	default 1000
 	help
 	  Kmemleak must track all the memory allocations to avoid
 	  reporting false positives. Since memory may be allocated or
@@ -1487,6 +1487,44 @@ config ASYNC_RAID6_TEST
 	  engine if one is available.
 
 	  If unsure, say N.
+
+config PERFSTATS_PERTASK
+	bool "Extended performance statistics per task"
+	help
+	  This option enables accounting of performance statistics per task basis.
+	  with this option you can choose percore or percore_perfrequency performance
+	  statistics accounting per task.
+
+	  If unsure, say N.
+
+config PERFSTATS_PERTASK_PERCORE
+	bool "Extended performance statistics per task related to core transtitions"
+	depends on PERFSTATS_PERTASK
+	help
+	  This option enables accounting of performance statistics per task basis
+	  for separate core. It accounts only information which is not derived from
+	  per task per core per frequency statistics.
+
+	  If unsure, say N.
+
+config PERFSTATS_PERTASK_PERFREQ
+	bool "Extended performance statistics per task related to freq transtitions"
+	depends on PERFSTATS_PERTASK_PERCORE
+	help
+	  This option enables accounting of performance
+	  statistics per task basis for each frequency
+	  bin on separate core.
+
+	  If unsure, say N.
+
+config PERFSTATS_PERTASK_PERFREQ_FNUM
+	int "Max number of entries in cpufreq table"
+	depends on PERFSTATS_PERTASK_PERFREQ
+	range 5 30
+	default 10
+	help
+	  Current implementation statically allocates array big enough to fit
+	  cpu frequency related data.
 
 source "samples/Kconfig"
 

@@ -42,7 +42,7 @@ static inline bool freezing(struct task_struct *p)
 extern void __thaw_task(struct task_struct *t);
 
 extern bool __refrigerator(bool check_kthr_stop);
-extern int freeze_processes(void);
+extern int freeze_processes(int force);
 extern int freeze_kernel_threads(void);
 extern void thaw_processes(void);
 extern void thaw_kernel_threads(void);
@@ -91,6 +91,9 @@ static inline bool cgroup_freezing(struct task_struct *task)
  * waking up the parent.
  */
 
+extern unsigned int pf_freezer_skip;
+
+void freeze_remove_flag_freezer_skip(void);
 
 /**
  * freezer_do_not_count - tell freezer to ignore %current
@@ -105,7 +108,7 @@ static inline bool cgroup_freezing(struct task_struct *task)
  */
 static inline void freezer_do_not_count(void)
 {
-	current->flags |= PF_FREEZER_SKIP;
+	current->flags |= pf_freezer_skip;
 }
 
 /**
@@ -117,7 +120,7 @@ static inline void freezer_do_not_count(void)
  */
 static inline void freezer_count(void)
 {
-	current->flags &= ~PF_FREEZER_SKIP;
+	current->flags &= ~pf_freezer_skip;
 	/*
 	 * If freezing is in progress, the following paired with smp_mb()
 	 * in freezer_should_skip() ensures that either we see %true
@@ -130,7 +133,7 @@ static inline void freezer_count(void)
 /* DO NOT ADD ANY NEW CALLERS OF THIS FUNCTION */
 static inline void freezer_count_unsafe(void)
 {
-	current->flags &= ~PF_FREEZER_SKIP;
+	current->flags &= ~pf_freezer_skip;
 	smp_mb();
 	try_to_freeze_unsafe();
 }
@@ -155,7 +158,7 @@ static inline bool freezer_should_skip(struct task_struct *p)
 	 * clearing %PF_FREEZER_SKIP.
 	 */
 	smp_mb();
-	return p->flags & PF_FREEZER_SKIP;
+	return p->flags & pf_freezer_skip;
 }
 
 /*
@@ -300,7 +303,7 @@ static inline bool freezing(struct task_struct *p) { return false; }
 static inline void __thaw_task(struct task_struct *t) {}
 
 static inline bool __refrigerator(bool check_kthr_stop) { return false; }
-static inline int freeze_processes(void) { return -ENOSYS; }
+static inline int freeze_processes(int force) { return -ENOSYS; }
 static inline int freeze_kernel_threads(void) { return -ENOSYS; }
 static inline void thaw_processes(void) {}
 static inline void thaw_kernel_threads(void) {}

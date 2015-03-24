@@ -68,6 +68,8 @@ struct thread_info {
 	unsigned long		thumbee_state;	/* ThumbEE Handler Base register */
 #endif
 	struct restart_block	restart_block;
+	int			cpu_excp;
+	void			*regs_on_excp;
 };
 
 #define INIT_THREAD_INFO(tsk)						\
@@ -156,6 +158,10 @@ extern int vfp_restore_user_hwstate(struct user_vfp __user *,
 #define TIF_USING_IWMMXT	17
 #define TIF_MEMDIE		18	/* is terminating due to OOM killer */
 #define TIF_RESTORE_SIGMASK	20
+#define TIF_MM_RELEASED		23	/* task MM has been released */
+#if defined(CONFIG_MT_RT_SCHED) || defined(CONFIG_MT_RT_SCHED_LOG)
+#define TIF_NEED_RELEASED	31
+#endif
 
 #define _TIF_SIGPENDING		(1 << TIF_SIGPENDING)
 #define _TIF_NEED_RESCHED	(1 << TIF_NEED_RESCHED)

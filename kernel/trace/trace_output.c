@@ -11,6 +11,9 @@
 
 #include "trace_output.h"
 
+#ifdef CONFIG_MT65XX_TRACER
+#include <mach/mt_mon.h>
+#endif
 /* must be a power of 2 */
 #define EVENT_HASHSIZE	128
 
@@ -1599,6 +1602,39 @@ static struct trace_event trace_print_event = {
 };
 
 
+#ifdef CONFIG_MT65XX_TRACER
+extern enum print_line_t mt65xx_mon_print_entry(struct mt65xx_mon_entry *entry, struct trace_iterator *iter);
+
+static enum print_line_t trace_mt65xx_mon_print(struct trace_iterator *iter, 
+					   int flags, struct trace_event *event)
+{
+	struct mt65xx_mon_entry *field;
+
+	trace_assign_type(field, iter->ent);
+
+	if (!trace_seq_printf(&iter->seq, 
+		"log = %d, ", 
+		field->log))
+		goto partial;
+
+    mt65xx_mon_print_entry(field, iter);
+    //mt65xx_mon_print_log(field->log, iter);
+
+	return TRACE_TYPE_HANDLED;
+
+ partial:
+	return TRACE_TYPE_PARTIAL_LINE;
+}
+
+static struct trace_event_functions trace_mt65xx_print_funcs = {
+	.trace		= trace_mt65xx_mon_print,
+};
+
+static struct trace_event trace_mt65xx_mon_event = {
+	.type	 	= TRACE_MT65XX_MON_TYPE,
+	.funcs		= &trace_mt65xx_print_funcs,
+};
+#endif
 static struct trace_event *events[] __initdata = {
 	&trace_fn_event,
 	&trace_graph_ent_event,
@@ -1610,6 +1646,9 @@ static struct trace_event *events[] __initdata = {
 	&trace_bputs_event,
 	&trace_bprint_event,
 	&trace_print_event,
+#ifdef CONFIG_MT65XX_TRACER
+	&trace_mt65xx_mon_event,
+#endif
 	NULL
 };
 

@@ -41,6 +41,9 @@
 #include <linux/uaccess.h>
 #include <linux/slab.h>
 #include "kdb_private.h"
+#include "../../sched/sched.h"
+
+DEFINE_PER_CPU(int, kdb_in_use) = 0;
 
 #define GREP_LEN 256
 char kdb_grep_string[GREP_LEN];
@@ -1110,6 +1113,11 @@ void kdb_set_current_task(struct task_struct *p)
 	kdb_current_regs = NULL;
 }
 
+/* Check timeout and force kernel panic if no user input for KE_TIMEOUT_SEC */
+int check_timeout;
+int force_panic;
+unsigned long long enter_time;
+
 /*
  * kdb_local - The main code for kdb.  This routine is invoked on a
  *	specific processor, it is not global.  The main kdb() routine
@@ -1137,6 +1145,12 @@ static int kdb_local(kdb_reason_t reason, int error, struct pt_regs *regs,
 	struct task_struct *kdb_current =
 		kdb_curr_task(raw_smp_processor_id());
 
+	check_timeout = 1;
+	force_panic = 0;
+	enter_time = sched_clock();
+
+	get_cpu_var(kdb_in_use) = 1;
+	put_cpu_var(kdb_in_use);
 	KDB_DEBUG_STATE("kdb_local 1", reason);
 	kdb_go_count = 0;
 	if (reason == KDB_REASON_DEBUG) {
@@ -1295,6 +1309,9 @@ do_full_getstr:
 			kdb_cmderror(diag);
 	}
 	KDB_DEBUG_STATE("kdb_local 9", diag);
+	get_cpu_var(kdb_in_use) = 0;
+	put_cpu_var(kdb_in_use);
+	
 	return diag;
 }
 
@@ -2752,6 +2769,14 @@ int kdb_unregister(char *cmd)
 }
 EXPORT_SYMBOL_GPL(kdb_unregister);
 
+#ifdef CONFIG_SCHED_DEBUG
+static int kdb_sched_debug(int argc, const char **argv)
+{
+	sysrq_sched_debug_show();
+	return 0;
+}
+#endif
+
 /* Initialize the kdb command table. */
 static void __init kdb_inittab(void)
 {
@@ -2835,6 +2860,10 @@ static void __init kdb_inittab(void)
 	  "Display per_cpu variables", 3, KDB_REPEAT_NONE);
 	kdb_register_repeat("grephelp", kdb_grep_help, "",
 	  "Display help on | grep", 0, KDB_REPEAT_NONE);
+#ifdef CONFIG_SCHED_DEBUG
+	kdb_register_repeat("sched_debug", kdb_sched_debug, "",
+	  "Display sched_debug information", 0, KDB_REPEAT_NONE);
+#endif
 }
 
 /* Execute any commands defined in kdb_cmds.  */

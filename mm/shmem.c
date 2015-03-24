@@ -1815,7 +1815,9 @@ static long shmem_fallocate(struct file *file, int mode, loff_t offset,
 	pgoff_t start, index, end;
 	int error;
 
-	mutex_lock(&inode->i_mutex);
+	//To avoid nested lock
+	if (!mutex_trylock(&inode->i_mutex))
+		return -1;
 
 	if (mode & FALLOC_FL_PUNCH_HOLE) {
 		struct address_space *mapping = file->f_mapping;

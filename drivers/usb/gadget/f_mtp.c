@@ -445,7 +445,7 @@ static int mtp_create_bulk_endpoints(struct mtp_dev *dev,
 	return 0;
 
 fail:
-	printk(KERN_ERR "mtp_bind() could not allocate requests\n");
+	/*printk(KERN_ERR "mtp_bind() could not allocate requests\n");*/
 	return -1;
 }
 
@@ -495,9 +495,16 @@ requeue_req:
 	}
 
 	/* wait for a request to complete */
-	ret = wait_event_interruptible(dev->read_wq, dev->rx_done);
+	ret = wait_event_interruptible(dev->read_wq, dev->rx_done || dev->state != STATE_BUSY);
 	if (ret < 0) {
 		r = ret;
+		usb_ep_dequeue(dev->ep_out, req);
+		goto done;
+	}
+
+	if (!dev->rx_done) {
+		r = -ECANCELED;
+		dev->state = STATE_ERROR;
 		usb_ep_dequeue(dev->ep_out, req);
 		goto done;
 	}
@@ -732,6 +739,7 @@ static void receive_file_work(struct work_struct *data)
 	int64_t count;
 	int ret, cur_buf = 0;
 	int r = 0;
+	int64_t total_size = 0;
 
 	/* read our parameters */
 	smp_rmb();
@@ -749,6 +757,18 @@ static void receive_file_work(struct work_struct *data)
 
 			read_req->length = (count > MTP_BULK_BUFFER_SIZE
 					? MTP_BULK_BUFFER_SIZE : count);
+
+			//Add for RX mode 1
+			if (0 == (read_req->length % dev->ep_out->maxpacket  ))
+				read_req->short_not_ok = 1;
+			else
+				read_req->short_not_ok = 0;
+			DBG(cdev, "read_req->short_not_ok(%d), ep_out->maxpacket (%d)\n",
+				read_req->short_not_ok, dev->ep_out->maxpacket);
+			//Add for RX mode 1
+			if (total_size >= 0xFFFFFFFF)
+				read_req->short_not_ok = 0;
+
 			dev->rx_done = 0;
 			ret = usb_ep_queue(dev->ep_out, read_req, GFP_KERNEL);
 			if (ret < 0) {
@@ -786,15 +806,21 @@ static void receive_file_work(struct work_struct *data)
 			 */
 			if (count != 0xFFFFFFFF)
 				count -= read_req->actual;
+			total_size += read_req->actual;
 			if (read_req->actual < read_req->length) {
 				/*
 				 * short packet is used to signal EOF for
 				 * sizes > 4 gig
 				 */
+				if ((0 != count) && (0 == read_req->actual)) {
+					r = -ENODEV;
+					dev->state = STATE_OFFLINE;
+					break;
+				}
 				DBG(cdev, "got short packet\n");
 				count = 0;
 			}
-
+			read_req->short_not_ok = 0;
 			write_req = read_req;
 			read_req = NULL;
 		}
@@ -942,7 +968,7 @@ out:
 
 static int mtp_open(struct inode *ip, struct file *fp)
 {
-	printk(KERN_INFO "mtp_open\n");
+	/*printk(KERN_INFO "mtp_open\n");*/
 	if (mtp_lock(&_mtp_dev->open_excl))
 		return -EBUSY;
 
@@ -956,7 +982,7 @@ static int mtp_open(struct inode *ip, struct file *fp)
 
 static int mtp_release(struct inode *ip, struct file *fp)
 {
-	printk(KERN_INFO "mtp_release\n");
+	/*printk(KERN_INFO "mtp_release\n");*/
 
 	mtp_unlock(&_mtp_dev->open_excl);
 	return 0;
@@ -1188,7 +1214,7 @@ static int mtp_bind_config(struct usb_configuration *c, bool ptp_config)
 	struct mtp_dev *dev = _mtp_dev;
 	int ret = 0;
 
-	printk(KERN_INFO "mtp_bind_config\n");
+	/*printk(KERN_INFO "mtp_bind_config\n");*/
 
 	/* allocate a string ID for our interface */
 	if (mtp_string_defs[INTERFACE_STRING_INDEX].id == 0) {

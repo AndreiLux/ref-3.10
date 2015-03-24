@@ -43,6 +43,11 @@
 #include "trace.h"
 #include "trace_output.h"
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+#define CREATE_TRACE_POINTS
+#include <trace/events/mtk_events.h>
+#endif
+
 /*
  * On boot up, the ring buffer is set to the minimum size, so that
  * we do not waste memory on systems that are not using tracing.
@@ -285,6 +290,15 @@ int tracing_is_enabled(void)
 
 static unsigned long		trace_buf_size = TRACE_BUF_SIZE_DEFAULT;
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+#define CPUX_TRACE_BUF_SIZE_DEFAULT 4194304UL
+#define CPU0_to_CPUX_RATIO (1.2)
+extern unsigned int get_max_DRAM_size (void);
+static unsigned long        trace_buf_size_cpu0 = (CPUX_TRACE_BUF_SIZE_DEFAULT * CPU0_to_CPUX_RATIO);
+static unsigned long        trace_buf_size_cpuX = CPUX_TRACE_BUF_SIZE_DEFAULT;
+static unsigned int         trace_buf_size_updated_from_cmdline = 0;
+#endif
+
 /* trace_types holds a link list of available tracers. */
 static struct tracer		*trace_types __read_mostly;
 
@@ -376,10 +390,18 @@ static inline void trace_access_lock_init(void)
 #endif
 
 /* trace_flags holds trace_options default values */
+#ifdef CONFIG_MTK_SCHED_TRACERS
+unsigned long trace_flags = TRACE_ITER_PRINT_PARENT | TRACE_ITER_PRINTK |
+	TRACE_ITER_ANNOTATE | TRACE_ITER_CONTEXT_INFO | TRACE_ITER_SLEEP_TIME |
+	TRACE_ITER_GRAPH_TIME | TRACE_ITER_MARKERS;
+    //mtk04259: remove TRACE_ITER_OVERWRITE by default for boot-time ftrace
+    //          it will be resotred after collecting is done
+#else
 unsigned long trace_flags = TRACE_ITER_PRINT_PARENT | TRACE_ITER_PRINTK |
 	TRACE_ITER_ANNOTATE | TRACE_ITER_CONTEXT_INFO | TRACE_ITER_SLEEP_TIME |
 	TRACE_ITER_GRAPH_TIME | TRACE_ITER_RECORD_CMD | TRACE_ITER_OVERWRITE |
 	TRACE_ITER_IRQ_INFO | TRACE_ITER_MARKERS | TRACE_ITER_FUNCTION;
+#endif
 
 void tracer_tracing_on(struct trace_array *tr)
 {
@@ -664,6 +686,11 @@ static int __init set_buf_size(char *str)
 	if (buf_size == 0)
 		return 0;
 	trace_buf_size = buf_size;
+#ifdef CONFIG_MTK_SCHED_TRACERS
+    trace_buf_size_cpu0 = 
+        trace_buf_size_cpuX = buf_size ;
+    trace_buf_size_updated_from_cmdline = 1;
+#endif
 	return 1;
 }
 __setup("trace_buf_size=", set_buf_size);
@@ -1187,6 +1214,7 @@ void tracing_reset(struct trace_buffer *buf, int cpu)
 	synchronize_sched();
 	ring_buffer_reset_cpu(buffer, cpu);
 
+	pr_info("[ftrace]cpu %d trace reset\n", cpu);
 	ring_buffer_record_enable(buffer);
 }
 
@@ -1208,6 +1236,7 @@ void tracing_reset_online_cpus(struct trace_buffer *buf)
 	for_each_online_cpu(cpu)
 		ring_buffer_reset_cpu(buffer, cpu);
 
+	pr_info("[ftrace]all cpu trace reset\n");
 	ring_buffer_record_enable(buffer);
 }
 
@@ -1273,6 +1302,7 @@ void tracing_start(void)
 {
 	struct ring_buffer *buffer;
 	unsigned long flags;
+    int reset_ftrace = 0;
 
 	if (tracing_disabled)
 		return;
@@ -1283,9 +1313,12 @@ void tracing_start(void)
 			/* Someone screwed up their debugging */
 			WARN_ON_ONCE(1);
 			global_trace.stop_count = 0;
+            reset_ftrace = 1;
 		}
 		goto out;
-	}
+	}else
+        reset_ftrace = 1;
+
 
 	/* Prevent the buffers from switching */
 	arch_spin_lock(&ftrace_max_lock);
@@ -1305,6 +1338,9 @@ void tracing_start(void)
 	ftrace_start();
  out:
 	raw_spin_unlock_irqrestore(&global_trace.start_lock, flags);
+    // reset ring buffer when all readers left
+    if(reset_ftrace == 1 && global_trace.stop_count == 0)
+	    tracing_reset_online_cpus(&global_trace.trace_buffer);
 }
 
 static void tracing_start_tr(struct trace_array *tr)
@@ -2434,6 +2470,9 @@ static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
 	get_total_entries(buf, &total, &entries);
 	seq_printf(m, "# entries-in-buffer/entries-written: %lu/%lu   #P:%d\n",
 		   entries, total, num_online_cpus());
+#ifdef CONFIG_MTK_SCHED_TRACERS
+    print_enabled_events(m);
+#endif
 	seq_puts(m, "#\n");
 }
 
@@ -3049,6 +3088,7 @@ static int tracing_release(struct inode *inode, struct file *file)
 	if (iter->trace && iter->trace->close)
 		iter->trace->close(iter);
 
+	pr_info("[ftrace]end reading trace file\n");
 	if (!iter->snapshot)
 		/* reenable tracing if it was previously enabled */
 		tracing_start_tr(tr);
@@ -3103,6 +3143,7 @@ static int tracing_open(struct inode *inode, struct file *file)
 	}
 
 	if (file->f_mode & FMODE_READ) {
+		pr_info("[ftrace]start reading trace file\n");
 		iter = __tracing_open(inode, file, false);
 		if (IS_ERR(iter))
 			ret = PTR_ERR(iter);
@@ -3846,15 +3887,51 @@ out:
 int tracing_update_buffers(void)
 {
 	int ret = 0;
+    int i = 0;
 
 	mutex_lock(&trace_types_lock);
 	if (!ring_buffer_expanded)
+#ifdef CONFIG_MTK_SCHED_TRACERS
+    {
+		if (get_max_DRAM_size() >= 0x40000000 && !trace_buf_size_updated_from_cmdline) {
+			trace_buf_size_cpu0 = (CPUX_TRACE_BUF_SIZE_DEFAULT * CPU0_to_CPUX_RATIO * 1.25);
+			trace_buf_size_cpuX = (CPUX_TRACE_BUF_SIZE_DEFAULT * 1.25);
+		}
+		for_each_tracing_cpu(i)
+		{
+			ret = __tracing_resize_ring_buffer(&global_trace,
+				(i == 0 ? trace_buf_size_cpu0 : trace_buf_size_cpuX), i);
+			if (ret < 0) {
+				pr_info("[ftrace]fail to update cpu%d ring buffer to %lu KB\n",
+				i, (i == 0 ? (trace_buf_size_cpu0>>10) : (trace_buf_size_cpuX >> 10)));
+				break;
+			}
+		}
+    }
+#else
 		ret = __tracing_resize_ring_buffer(&global_trace, trace_buf_size,
 						RING_BUFFER_ALL_CPUS);
+#endif
 	mutex_unlock(&trace_types_lock);
 
 	return ret;
 }
+
+#if defined(CONFIG_MTK_SCHED_TRACERS) && defined(CONFIG_MTK_HIBERNATION)
+int resize_ring_buffer_for_hibernation(int enable)
+{
+	int ret = 0;
+
+	if (enable) {
+		ring_buffer_expanded = 0;
+		ret = tracing_update_buffers();
+	} else
+		ret = tracing_resize_ring_buffer(&global_trace, 0, RING_BUFFER_ALL_CPUS);
+
+return ret;
+}
+EXPORT_SYMBOL(resize_ring_buffer_for_hibernation);
+#endif
 
 struct trace_option_dentry;
 
@@ -3969,7 +4046,7 @@ tracing_set_trace_write(struct file *filp, const char __user *ubuf,
 	/* strip ending whitespace. */
 	for (i = cnt - 1; i > 0 && isspace(buf[i]); i--)
 		buf[i] = 0;
-
+		pr_info("[ftrace]set current_tracer to '%s'\n", buf);
 	err = tracing_set_tracer(buf);
 	if (err)
 		return err;
@@ -5920,12 +5997,20 @@ rb_simple_write(struct file *filp, const char __user *ubuf,
 		return ret;
 
 	if (buffer) {
+		if (ring_buffer_record_is_on(buffer) ^ val)
+			pr_info("[ftrace]tracing_on is toggled to %lu\n", val);
 		mutex_lock(&trace_types_lock);
 		if (val) {
 			tracer_tracing_on(tr);
+#ifdef CONFIG_MTK_SCHED_TRACERS
+            trace_tracing_on(val);
+#endif
 			if (tr->current_trace->start)
 				tr->current_trace->start(tr);
 		} else {
+#ifdef CONFIG_MTK_SCHED_TRACERS
+            trace_tracing_on(val);
+#endif
 			tracer_tracing_off(tr);
 			if (tr->current_trace->stop)
 				tr->current_trace->stop(tr);
@@ -5946,6 +6031,43 @@ static const struct file_operations rb_simple_fops = {
 	.llseek		= default_llseek,
 };
 
+#ifdef CONFIG_MTK_KERNEL_MARKER
+static int mt_kernel_marker_enabled = 1;
+static ssize_t
+mt_kernel_marker_enabled_simple_read(struct file *filp, char __user *ubuf,
+	       size_t cnt, loff_t *ppos)
+{
+	char buf[64];
+	int r;
+
+	r = sprintf(buf, "%d\n", mt_kernel_marker_enabled);
+
+	return simple_read_from_buffer(ubuf, cnt, ppos, buf, r);
+}
+static ssize_t
+mt_kernel_marker_enabled_simple_write(struct file *filp, const char __user *ubuf,
+		size_t cnt, loff_t *ppos)
+{
+	unsigned long val;
+	int ret;
+
+	ret = kstrtoul_from_user(ubuf, cnt, 10, &val);
+	if (ret)
+		return ret;
+
+    mt_kernel_marker_enabled = !!val;
+
+	(*ppos)++;
+
+	return cnt;
+}
+static const struct file_operations kernel_marker_simple_fops = {
+	.open		= tracing_open_generic,
+	.read		= mt_kernel_marker_enabled_simple_read,
+	.write		= mt_kernel_marker_enabled_simple_write,
+	.llseek		= default_llseek,
+};
+#endif
 struct dentry *trace_instance_dir;
 
 static void
@@ -6576,6 +6698,46 @@ __init static int clear_boot_tracer(void)
 
 	return 0;
 }
+
+#ifdef CONFIG_MTK_KERNEL_MARKER
+static unsigned long __read_mostly tracing_mark_write_addr = 0;
+static void inline __mt_update_tracing_mark_write_addr(void){
+    if(unlikely(tracing_mark_write_addr == 0))
+        tracing_mark_write_addr = kallsyms_lookup_name("tracing_mark_write");
+}
+
+void inline mt_kernel_trace_begin(char *name){
+    if(mt_kernel_marker_enabled){
+        __mt_update_tracing_mark_write_addr();
+        event_trace_printk(tracing_mark_write_addr,
+                "B|%d|%s\n", pid_vnr(task_tgid(current)), name);
+    }
+}
+EXPORT_SYMBOL(mt_kernel_trace_begin);
+
+void inline mt_kernel_trace_counter(char *name, int count){
+    if(mt_kernel_marker_enabled){
+        __mt_update_tracing_mark_write_addr();
+        event_trace_printk(tracing_mark_write_addr,
+                "C|%d|%s|%d\n", pid_vnr(task_tgid(current)), name, count);
+    }
+}
+EXPORT_SYMBOL(mt_kernel_trace_counter);
+
+void inline mt_kernel_trace_end(void){
+    if(mt_kernel_marker_enabled){
+        __mt_update_tracing_mark_write_addr();
+        event_trace_printk(tracing_mark_write_addr,
+                "E\n"); 
+    }
+}
+EXPORT_SYMBOL(mt_kernel_trace_end);
+#else
+void inline mt_kernel_trace_begin(char *name){}
+void inline mt_kernel_trace_end(void){}
+void inline mt_kernel_trace_counter(char *name, int count){}
+#endif
+
 
 early_initcall(tracer_alloc_buffers);
 fs_initcall(tracer_init_debugfs);

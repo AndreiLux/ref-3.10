@@ -1,0 +1,12 @@
+#######################################
+# Sepcify source files
+#######################################
+crypto_obj += $(asf_link)/crypto/rsa_lib.o
+crypto_obj += $(asf_link)/crypto/rsa_core.o
+crypto_obj += $(asf_link)/crypto/rsa_util.o
+crypto_obj += $(asf_link)/crypto/bgn_core.o
+crypto_obj += $(asf_link)/crypto/bgn_io.o
+crypto_obj += $(asf_link)/crypto/bgn_util.o
+
+# HEADER FILE
+EXTRA_CFLAGS += -I$(src)/$(asf_link)/asf_inc

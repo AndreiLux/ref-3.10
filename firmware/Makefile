@@ -135,6 +135,9 @@ fw-shipped-$(CONFIG_USB_SERIAL_XIRCOM) += keyspan_pda/xircom_pgs.fw
 fw-shipped-$(CONFIG_USB_VICAM) += vicam/firmware.fw
 fw-shipped-$(CONFIG_VIDEO_CPIA2) += cpia2/stv0672_vp4.bin
 fw-shipped-$(CONFIG_YAM) += yam/1200.bin yam/9600.bin
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_RMI4_FW_UPDATE) += Aston_PR1532162_S7301B_LENS_10080007.img
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_RMI4_FW_UPDATE) += Aston_PR1532162_S7301B_TPK_11080007.img
+fw-shipped-$(CONFIG_TOUCHSCREEN_SYNAPTICS_DSX_RMI4_FW_UPDATE) += Soho_PR1509905_S7301B_WTK_12070001.img
 
 fw-shipped-all := $(fw-shipped-y) $(fw-shipped-m) $(fw-shipped-)
 

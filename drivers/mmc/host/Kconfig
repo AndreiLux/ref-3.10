@@ -646,3 +646,23 @@ config MMC_REALTEK_PCI
 	help
 	  Say Y here to include driver code to support SD/MMC card interface
 	  of Realtek PCI-E card reader
+
+config MMC_MTK
+	tristate "MediaTek SD/MMC Card Interface support"
+	depends on ARCH_MT8135
+	default y
+	help
+		This selects the MediaTek(R) Secure digital and Multimedia card Interface.
+		If you have a machine with a integrated SD/MMC card reader, say Y or M here.
+		This is needed if support for any SD/SDIO/MMC devices is required.
+		If unsure, say N.
+
+config MMC_MTK_EMMC
+	bool "MediaTek EMMC support"
+	depends on MMC_MTK
+	default y
+	help
+		this enables support for MMC features of SD/MMC host controller driver.
+		if this is off, only basic SD & SDIO functionality would be available.
+		This is needed if support for MMC devices is required.
+		if unsure, say N.

@@ -10,7 +10,7 @@
 #include <linux/mutex.h>
 #include <linux/tty_flags.h>
 #include <uapi/linux/tty.h>
-
+#include <asm/system.h>
 
 
 /*
@@ -255,7 +255,8 @@ struct tty_struct {
 	int count;
 	struct winsize winsize;		/* termios mutex */
 	unsigned char stopped:1, hw_stopped:1, flow_stopped:1, packet:1;
-	unsigned char ctrl_status;	/* ctrl_lock */
+	unsigned char low_latency:1, warned:1, peer_stops:1;
+    unsigned char ctrl_status;	/* ctrl_lock */
 	unsigned int receive_room;	/* Bytes free for queue */
 	int flow_change;
 

@@ -23,6 +23,16 @@
 
 struct address_space;
 
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+struct allocation_detail {
+  void *call_site;
+  uint16_t allocation_pid;
+  uint16_t last_mapper_pid;
+};
+#endif
+/* ACOS_MOD_END {internal_membo} */
+
 #define USE_SPLIT_PTLOCKS	(NR_CPUS >= CONFIG_SPLIT_PTLOCK_CPUS)
 
 /*
@@ -177,6 +187,11 @@ struct page {
 #ifdef LAST_NID_NOT_IN_PAGE_FLAGS
 	int _last_nid;
 #endif
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+  struct allocation_detail detail;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 }
 /*
  * The struct page can be forced to be double word aligned so that atomic ops

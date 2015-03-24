@@ -712,3 +712,45 @@ struct timespec timespec_add_safe(const struct timespec lhs,
 
 	return res;
 }
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+/*
+ * Convert jiffies to milliseconds. used for performance test.
+ *
+ * Avoid unnecessary multiplications/divisions in the
+ * two most common HZ cases:
+ *
+ * 32 bits could only support msec about 1.65 months, so we need 64 bits mode.
+ */
+inline unsigned long long jiffies_to_msecs_64(const unsigned long j)
+{
+#if HZ <= MSEC_PER_SEC && !(MSEC_PER_SEC % HZ)
+	return (u64)(MSEC_PER_SEC / HZ) * j;
+#elif HZ > MSEC_PER_SEC && !(HZ % MSEC_PER_SEC)
+	return 1ULL;
+#else
+	return 1ULL;
+#endif
+}
+EXPORT_SYMBOL(jiffies_to_msecs_64);
+
+/*
+ * Convert jiffies to microseconds. used for performance test.
+ *
+ * 32 bits could only support usec about 1.19 hours, so we need 64 bits mode.
+ */
+
+inline unsigned long long jiffies_to_usecs_64(const unsigned long j)
+{
+#if HZ <= USEC_PER_SEC && !(USEC_PER_SEC % HZ)
+	return (u64)(USEC_PER_SEC / HZ) * j;
+#elif HZ > USEC_PER_SEC && !(HZ % USEC_PER_SEC)
+	return 1ULL;
+#else
+	return 1ULL;
+#endif
+}
+EXPORT_SYMBOL(jiffies_to_usecs_64);
+
+#endif
+

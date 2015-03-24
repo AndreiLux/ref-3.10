@@ -307,6 +307,10 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 	}
 	if (wbc->sync_mode == WB_SYNC_ALL)
 		rw |= REQ_SYNC;
+
+#ifdef CONFIG_ZRAM
+    current->swap_out++;
+#endif
 	count_vm_event(PSWPOUT);
 	set_page_writeback(page);
 	unlock_page(page);
@@ -334,8 +338,12 @@ int swap_readpage(struct page *page)
 		struct address_space *mapping = swap_file->f_mapping;
 
 		ret = mapping->a_ops->readpage(swap_file, page);
-		if (!ret)
+		if (!ret) {
+#ifdef CONFIG_ZRAM
+			current->swap_in++;
+#endif
 			count_vm_event(PSWPIN);
+		}
 		return ret;
 	}
 
@@ -345,6 +353,10 @@ int swap_readpage(struct page *page)
 		ret = -ENOMEM;
 		goto out;
 	}
+
+#ifdef CONFIG_ZRAM
+    current->swap_in++;
+#endif
 	count_vm_event(PSWPIN);
 	submit_bio(READ, bio);
 out:

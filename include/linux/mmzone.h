@@ -141,6 +141,11 @@ enum zone_stat_item {
 	NUMA_LOCAL,		/* allocation from local node */
 	NUMA_OTHER,		/* allocation from other node */
 #endif
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	NR_INUSE,		/* pages currently allocated from zone */
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	NR_ANON_TRANSPARENT_HUGEPAGES,
 	NR_FREE_CMA_PAGES,
 	NR_VM_ZONE_STAT_ITEMS };

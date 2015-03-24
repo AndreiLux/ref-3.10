@@ -20,6 +20,10 @@
 #include <linux/types.h>
 #include <linux/ioctl.h>
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
+
 /**
  * struct user_logger_entry_compat - defines a single entry that is given to a logger
  * @len:	The length of the payload
@@ -70,10 +74,80 @@ struct logger_entry {
 	char		msg[0];
 };
 
+/*
+  SMP porting, we double the android buffer 
+* and kernel buffer size for dual core
+*/
+#ifdef CONFIG_SMP
+/* mingjian, 20101208: define buffer size based on different products {*/
+#ifndef __MAIN_BUF_SIZE
+#define __MAIN_BUF_SIZE 256*1024
+#endif
+
+#ifndef __EVENTS_BUF_SIZE
+#define __EVENTS_BUF_SIZE 256*1024
+#endif
+
+#ifndef __RADIO_BUF_SIZE
+#define __RADIO_BUF_SIZE 256*1024
+#endif
+
+#ifndef __SYSTEM_BUF_SIZE
+#define __SYSTEM_BUF_SIZE 256*1024
+#endif
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#ifndef __METRICS_BUF_SIZE
+#define __METRICS_BUF_SIZE (128*1024)
+#endif
+
+#ifndef __VITALS_BUF_SIZE
+#define __VITALS_BUF_SIZE (16*1024)
+#endif
+#endif
+
+#else
+
+#ifndef __MAIN_BUF_SIZE
+#define __MAIN_BUF_SIZE 256*1024
+#endif
+
+#ifndef __EVENTS_BUF_SIZE
+#define __EVENTS_BUF_SIZE 256*1024 
+#endif
+
+#ifndef __RADIO_BUF_SIZE
+#define __RADIO_BUF_SIZE 64*1024
+#endif
+
+#ifndef __SYSTEM_BUF_SIZE
+#define __SYSTEM_BUF_SIZE 64*1024
+#endif
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#ifndef __METRICS_BUF_SIZE
+#define __METRICS_BUF_SIZE (128*1024)
+#endif
+
+#ifndef __VITALS_BUF_SIZE
+#define __VITALS_BUF_SIZE (16*1024)
+#endif
+#endif
+
+#endif
+
 #define LOGGER_LOG_RADIO	"log_radio"	/* radio-related messages */
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
+#ifdef CONFIG_AMAZON_LOG
+#define LOGGER_LOG_AMAZON_MAIN "log_amazon_main"       /* private buffer for amazon signed apk */
+#endif
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#define LOGGER_LOG_METRICS	"log_metrics"	/* metrics logs */
+#define LOGGER_LOG_AMAZON_VITALS "log_vitals"	/* vitals log */
+#endif
 
 #define LOGGER_ENTRY_MAX_PAYLOAD	4076
 

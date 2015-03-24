@@ -1,0 +1,27 @@
+
+header-y += user/
+
+header-y += bits_api.h
+header-y += hal_api.h
+header-y += hal_types_private.h
+header-y += hal_types_public.h
+header-y += hevcd_if.h
+header-y += val_api_private.h
+header-y += val_api_public.h
+header-y += val_oal.h
+header-y += val_types_private.h
+header-y += val_types_public.h
+header-y += vcodec_customization.h
+header-y += vcodec_dec_demuxer_if.h
+header-y += vcodec_if.h
+header-y += vcodec_log.h
+header-y += vdec_drv_base.h
+header-y += vdec_drv_if_dep.h
+header-y += vdec_drv_if_private.h
+header-y += vdec_drv_if_public.h
+header-y += venc_drv_base.h
+header-y += venc_drv_if_dep.h
+header-y += venc_drv_if_private.h
+header-y += venc_drv_if_public.h
+header-y += video_custom_sp.h
+header-y += videocodec_kernel_driver.h

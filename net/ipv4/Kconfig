@@ -1,6 +1,16 @@
 #
 # IP configuration
 #
+
+config IP_WOW
+	bool "IP: wake on wireless detector support"
+	help
+	  This is code for detecting wake-on-wireless packets that are tagged
+	  from the l2 layer driver using exported API. If this is disabled, packets
+	  will not get tagged and everything should work as is.
+	  If this is enabled, the module will try to reverse map incoming packet
+	  to a particular socket, and if possible, a particular process as well.
+
 config IP_MULTICAST
 	bool "IP: multicasting"
 	help

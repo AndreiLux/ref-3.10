@@ -45,6 +45,16 @@ config CPU_FREQ_STAT_DETAILS
 
 	  If in doubt, say N.
 
+config CPU_FREQ_STAT_PERSISTENT
+	bool "CPU frequency statistics that are *always* available"
+	depends on CPU_FREQ_STAT
+	default y
+	help
+	  This will always show detailed cpufreq stats under the cpufreq
+	  global sysfs object regardless of cpus being offline.
+
+	  If in doubt, say N.
+
 choice
 	prompt "Default CPUFreq governor"
 	default CPU_FREQ_DEFAULT_GOV_USERSPACE if ARM_SA1100_CPUFREQ || ARM_SA1110_CPUFREQ
@@ -91,6 +101,18 @@ config CPU_FREQ_DEFAULT_GOV_ONDEMAND
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.
 
+config CPU_FREQ_DEFAULT_GOV_INTERACTIVEPLUS
+        bool "interactiveplus"
+        select CPU_FREQ_GOV_INTERACTIVEPLUS
+        select CPU_FREQ_GOV_PERFORMANCE
+        help
+          Use the CPUFreq governor 'interactiveplus' as default. This allows
+          you to get a full dynamic cpu frequency capable system by simply
+          loading your cpufreq low-level hardware driver, using the
+          'adapative' governor for latency-sensitive workloads. If unsure
+          have a look at the help section of the driver. Fallback governor
+          will be the performance governor.
+	  
 config CPU_FREQ_DEFAULT_GOV_CONSERVATIVE
 	bool "conservative"
 	select CPU_FREQ_GOV_CONSERVATIVE
@@ -170,9 +192,27 @@ config CPU_FREQ_GOV_ONDEMAND
 
 	  If in doubt, say N.
 
+config CPU_FREQ_GOV_INTERACTIVEPLUS
+        tristate "'interactiveplus' cpufreq policy governor"
+	select CPU_FREQ_TABLE
+	select CPU_FREQ_GOV_COMMON
+        help
+          'interactiveplus' - This driver adds a dynamic cpufreq policy governor
+          designed for latency-sensitive workloads.
+
+          This governor attempts to reduce the latency of clock
+          increases so that the system is more responsive to
+          interactive workloads.
+
+          To compile this driver as a module, choose M here: the
+          module will be called cpufreq_adapative.
+
+          For details, take a look at linux/Documentation/cpu-freq.
+
+          If in doubt, say N.
+
 config CPU_FREQ_GOV_INTERACTIVE
 	tristate "'interactive' cpufreq policy governor"
-	default n
 	help
 	  'interactive' - This driver adds a dynamic cpufreq policy governor
 	  designed for latency-sensitive workloads.

@@ -665,15 +665,18 @@ EXPORT_SYMBOL(input_close_device);
  */
 static void input_dev_release_keys(struct input_dev *dev)
 {
-	int code;
+//	int code;
 
 	if (is_event_supported(EV_KEY, dev->evbit, EV_MAX)) {
+/* fixed long press key is interrupted */
+#if 0
 		for (code = 0; code <= KEY_MAX; code++) {
 			if (is_event_supported(code, dev->keybit, KEY_MAX) &&
 			    __test_and_clear_bit(code, dev->key)) {
 				input_pass_event(dev, EV_KEY, code, 0);
 			}
 		}
+#endif
 		input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
 	}
 }
@@ -2063,8 +2066,8 @@ int input_register_device(struct input_dev *dev)
 	if (!dev->rep[REP_DELAY] && !dev->rep[REP_PERIOD]) {
 		dev->timer.data = (long) dev;
 		dev->timer.function = input_repeat_key;
-		dev->rep[REP_DELAY] = 250;
-		dev->rep[REP_PERIOD] = 33;
+		dev->rep[REP_DELAY] = 750;
+		dev->rep[REP_PERIOD] = 99;
 	}
 
 	if (!dev->getkeycode)

@@ -953,4 +953,14 @@ config SCx200_ACB
 	  This support is also available as a module.  If so, the module
 	  will be called scx200_acb.
 
+# I2C Bus
+config MTK_I2C #I2C_MT6516 I2C_MT6573
+        tristate "MediaTek I2C adapter"
+        depends on I2C
+        default y
+        help
+          This selects the MediaTek(R) Integrated Inter Circuit bus driver.
+          If you want to use MediaTek(R) I2C interface, say Y or M here.
+          If unsure, say N.
+
 endmenu

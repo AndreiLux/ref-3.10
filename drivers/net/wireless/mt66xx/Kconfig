@@ -1,0 +1,41 @@
+menu "MediaTek WLAN Config"
+
+config MTK_COMBO_WIFI
+	tristate "MediaTek Combo Chip Wi-Fi support"
+	depends on MTK_COMBO
+	depends on MMC
+	depends on IPV6
+	depends on !mt592x
+	select WIRELESS_EXT
+	select WEXT_PRIV
+	select MTK_WLAN_SUPPORT
+	help
+	  This module adds support for wireless adapters based on
+	  MTK MT6620 chipset.
+
+	  This driver uses the kernel's wireless extensions subsystem.
+
+	  If you choose to build a module, it'll be called dhd. Say M if
+	  unsure.
+
+config MTK_WLAN_CHIP
+	string "MTK_WLAN_CHIP"
+	default "MT6620" if MTK_COMBO_CHIP_MT6620
+	default "MT6628" if MTK_COMBO_CHIP_MT6628
+	help
+	   Define the wlan chip type
+
+config MTK_WLAN_SUPPORT
+	bool
+	help
+	   The Wlan switch for the wlan feature in the Android(app,
+	   framework, native, kernel).
+
+config MTK_WAPI_SUPPORT
+	bool "MTK_WAPI_SUPPORT"
+	help
+	   if it is set to TRUE: Support WAPI (WLAN Authentication and
+	   Privacy Infrastructure) if it is set to FALSE: Does not Support
+	   WAPI (WLAN Authentication and Privacy Infrastructure)
+
+endmenu

@@ -180,11 +180,15 @@ extern const char *const pm_states[];
 
 extern bool valid_state(suspend_state_t state);
 extern int suspend_devices_and_enter(suspend_state_t state);
+//<20130327> <marc.huang> merge from android kernel 3.0 - add enter_state declarition when CONFIG_SUSPEND is defined
+extern int enter_state(suspend_state_t state);
 #else /* !CONFIG_SUSPEND */
 static inline int suspend_devices_and_enter(suspend_state_t state)
 {
 	return -ENOSYS;
 }
+//<20130327> <marc.huang> merge from android kernel 3.0 - add enter_state definition when CONFIG_SUSPEND is undefined
+static inline int enter_state(suspend_state_t state) { return -ENOSYS; }
 static inline bool valid_state(suspend_state_t state) { return false; }
 #endif /* !CONFIG_SUSPEND */
 
@@ -234,7 +238,7 @@ static inline int suspend_freeze_processes(void)
 {
 	int error;
 
-	error = freeze_processes();
+	error = freeze_processes(false);
 	/*
 	 * freeze_processes() automatically thaws every task if freezing
 	 * fails. So we need not do anything extra upon error.
@@ -294,3 +298,10 @@ extern int pm_wake_lock(const char *buf);
 extern int pm_wake_unlock(const char *buf);
 
 #endif /* !CONFIG_PM_WAKELOCKS */
+
+//<20130327> <marc.huang> merge from android kernel 3.0 - add request_suspend_state, get_suspend_state declarition when CONFIG_EARLYSUSPEND is defined
+#ifdef CONFIG_EARLYSUSPEND
+/* kernel/power/earlysuspend.c */
+void request_suspend_state(suspend_state_t state);
+suspend_state_t get_suspend_state(void);
+#endif

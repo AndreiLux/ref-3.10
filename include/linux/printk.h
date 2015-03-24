@@ -47,8 +47,10 @@ static inline void console_silent(void)
 
 static inline void console_verbose(void)
 {
+/* Do not change loglevel unexpectedly
 	if (console_loglevel)
 		console_loglevel = 15;
+*/
 }
 
 struct va_format {

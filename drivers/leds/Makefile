@@ -59,3 +59,4 @@ obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o
 
 # LED Triggers
 obj-$(CONFIG_LEDS_TRIGGERS)		+= trigger/
+obj-$(CONFIG_LEDS_LP855X)               += leds-lp855x_bl.o

@@ -104,6 +104,10 @@ static void alarm_clear(enum android_alarm_type alarm_type)
 		alarm_pending &= ~alarm_type_mask;
 		if (!alarm_pending && !wait_pending)
 			__pm_relax(&alarm_wake_lock);
+		if (alarm_type & ANDROID_ALARM_WAKEUP_MASK) {
+			alarm_pending &=
+				~ANDROID_ALARM_WAKEUP_TRIGGER_MASK;
+		}
 	}
 	alarm_enabled &= ~alarm_type_mask;
 	spin_unlock_irqrestore(&alarm_slock, flags);
@@ -333,6 +337,7 @@ static int alarm_release(struct inode *inode, struct file *file)
 					  !!(alarm_pending & alarm_type_mask));
 				alarm_enabled &= ~alarm_type_mask;
 			}
+			alarm_pending &= ~ANDROID_ALARM_WAKEUP_TRIGGER_MASK;
 			spin_unlock_irqrestore(&alarm_slock, flags);
 			devalarm_cancel(&alarms[i]);
 			spin_lock_irqsave(&alarm_slock, flags);
@@ -354,14 +359,20 @@ static int alarm_release(struct inode *inode, struct file *file)
 static void devalarm_triggered(struct devalarm *alarm)
 {
 	unsigned long flags;
-	uint32_t alarm_type_mask = 1U << alarm->type;
+	uint32_t alarm_type_mask = 1U << (alarm->type &
+					  ~(ANDROID_ALARM_WAKEUP_TRIGGER_MASK));
 
-	alarm_dbg(INT, "%s: type %d\n", __func__, alarm->type);
+	alarm_dbg(INT, "%s: type %d %d\n", __func__,
+		  (alarm->type & ~ANDROID_ALARM_WAKEUP_TRIGGER_MASK),
+		  alarm->type);
 	spin_lock_irqsave(&alarm_slock, flags);
 	if (alarm_enabled & alarm_type_mask) {
 		__pm_wakeup_event(&alarm_wake_lock, 5000); /* 5secs */
 		alarm_enabled &= ~alarm_type_mask;
 		alarm_pending |= alarm_type_mask;
+		alarm_pending |= (alarm->type &
+				  ANDROID_ALARM_WAKEUP_TRIGGER_MASK);
+		alarm->type &= ~(ANDROID_ALARM_WAKEUP_TRIGGER_MASK);
 		wake_up(&alarm_wait_queue);
 	}
 	spin_unlock_irqrestore(&alarm_slock, flags);

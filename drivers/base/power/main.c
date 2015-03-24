@@ -30,9 +30,26 @@
 #include <linux/suspend.h>
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
+#include <linux/aee.h>
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#endif
 #include "../base.h"
 #include "power.h"
+
+#define HIB_DPM_DEBUG 0
+#define _TAG_HIB_M "HIB/DPM"
+#if (HIB_DPM_DEBUG)
+#undef hib_log
+#define hib_log(fmt, ...)   pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__);
+#else
+#define hib_log(fmt, ...)
+#endif
+#undef hib_warn
+#define hib_warn(fmt, ...)  pr_warn("[%s][%s]" fmt, _TAG_HIB_M, __func__, ##__VA_ARGS__);
+
+extern bool suspend_callback_log_en;
 
 typedef int (*pm_callback_t)(struct device *);
 
@@ -53,6 +70,10 @@ static LIST_HEAD(dpm_late_early_list);
 static LIST_HEAD(dpm_noirq_list);
 
 struct suspend_stats suspend_stats;
+#ifdef MTK_PM_STATS_SUPPORT
+struct pm_stats pm_stats;
+struct pm_trans pm_trans;
+#endif
 static DEFINE_MUTEX(dpm_list_mtx);
 static pm_message_t pm_transition;
 
@@ -360,17 +381,44 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 	ktime_t calltime;
 	u64 usecs64;
 	int usecs;
-
+#ifdef CONFIG_AMAZON_METRICS_LOG
+	const char *verb;
+	char dpm_metrics_buf[128];
+#endif
 	calltime = ktime_get();
 	usecs64 = ktime_to_ns(ktime_sub(calltime, starttime));
 	do_div(usecs64, NSEC_PER_USEC);
 	usecs = usecs64;
 	if (usecs == 0)
 		usecs = 1;
-	pr_info("PM: %s%s%s of devices complete after %ld.%03ld msecs\n",
+	hib_log("PM: %s%s%s of devices complete after %ld.%03ld msecs\n",
 		info ?: "", info ? " " : "", pm_verb(state.event),
 		usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+	verb = pm_verb(state.event);
+	snprintf(dpm_metrics_buf, sizeof(dpm_metrics_buf),
+	"dpmst:dpmd%c:time_ms=%ld;TI;1,%s_dpm_complete=1;CT;1:NR",
+	info ? info[0] : verb[0], usecs / USEC_PER_MSEC, verb);
+	log_to_metrics(ANDROID_LOG_INFO, "dpm", dpm_metrics_buf);
+#endif
 }
+
+#ifdef CONFIG_PM_STATS_SUPPORT
+u64 pm_accumulate_time(ktime_t starttime)
+{
+	ktime_t calltime;
+	u64 usecs64;
+
+	calltime = ktime_get();
+	usecs64 = ktime_to_ns(ktime_sub(calltime, starttime));
+	do_div(usecs64, NSEC_PER_USEC);
+
+	return usecs64;
+}
+
+EXPORT_SYMBOL_GPL(pm_accumulate_time);
+#endif
 
 static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 			    pm_message_t state, char *info)
@@ -406,6 +454,9 @@ static void dpm_wd_handler(unsigned long data)
 	struct task_struct *tsk = wd->tsk;
 
 	dev_emerg(dev, "**** DPM device timeout ****\n");
+	aee_sram_printk("**** DPM device %s timeout in %s ****\n",
+			dev->driver->name,
+			dev->power.is_suspended ? "Resume" : "Suspend");
 	show_stack(tsk, NULL);
 
 	BUG();
@@ -500,6 +551,9 @@ static int device_resume_noirq(struct device *dev, pm_message_t state)
 static void dpm_resume_noirq(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
+#ifdef CONFIG_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	mutex_lock(&dpm_list_mtx);
 	while (!list_empty(&dpm_noirq_list)) {
@@ -523,6 +577,10 @@ static void dpm_resume_noirq(pm_message_t state)
 	}
 	mutex_unlock(&dpm_list_mtx);
 	dpm_show_time(starttime, state, "noirq");
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.resume_noirq++;
+    pm_stats.resume_noirq += pm_accumulate_time(time);
+#endif			
 	resume_device_irqs();
 	cpuidle_resume();
 }
@@ -581,6 +639,9 @@ static int device_resume_early(struct device *dev, pm_message_t state)
 static void dpm_resume_early(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
+#ifdef CONFIG_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	mutex_lock(&dpm_list_mtx);
 	while (!list_empty(&dpm_late_early_list)) {
@@ -604,6 +665,10 @@ static void dpm_resume_early(pm_message_t state)
 	}
 	mutex_unlock(&dpm_list_mtx);
 	dpm_show_time(starttime, state, "early");
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.resume_early++;
+    pm_stats.resume_early += pm_accumulate_time(time);
+#endif		
 }
 
 /**
@@ -650,12 +715,22 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 		goto Unlock;
 
 	if (dev->pm_domain) {
+		if (suspend_callback_log_en) {
+			if (dev->driver)
+				if (dev->driver->name)
+					pr_warn("dev->driver->name=%s\n", dev->driver->name);
+		}
 		info = "power domain ";
 		callback = pm_op(&dev->pm_domain->ops, state);
 		goto Driver;
 	}
 
 	if (dev->type && dev->type->pm) {
+		if (suspend_callback_log_en) {
+			if (dev->driver)
+				if (dev->driver->name)
+					pr_warn("dev->driver->name=%s\n", dev->driver->name);
+		}
 		info = "type ";
 		callback = pm_op(dev->type->pm, state);
 		goto Driver;
@@ -663,10 +738,20 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 
 	if (dev->class) {
 		if (dev->class->pm) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			info = "class ";
 			callback = pm_op(dev->class->pm, state);
 			goto Driver;
 		} else if (dev->class->resume) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			info = "legacy class ";
 			callback = dev->class->resume;
 			goto End;
@@ -675,9 +760,19 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 
 	if (dev->bus) {
 		if (dev->bus->pm) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			info = "bus ";
 			callback = pm_op(dev->bus->pm, state);
 		} else if (dev->bus->resume) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			info = "legacy bus ";
 			callback = dev->bus->resume;
 			goto End;
@@ -686,6 +781,11 @@ static int device_resume(struct device *dev, pm_message_t state, bool async)
 
  Driver:
 	if (!callback && dev->driver && dev->driver->pm) {
+		if (suspend_callback_log_en) {
+			if (dev->driver)
+				if (dev->driver->name)
+					pr_warn("dev->driver->name=%s\n", dev->driver->name);
+		}
 		info = "driver ";
 		callback = pm_op(dev->driver->pm, state);
 	}
@@ -734,6 +834,9 @@ void dpm_resume(pm_message_t state)
 {
 	struct device *dev;
 	ktime_t starttime = ktime_get();
+#ifdef CONFIG_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	might_sleep();
 
@@ -771,10 +874,16 @@ void dpm_resume(pm_message_t state)
 			list_move_tail(&dev->power.entry, &dpm_prepared_list);
 		put_device(dev);
 	}
+	
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, NULL);
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.resume++;
+    pm_stats.resume += pm_accumulate_time(time);
+#endif			
 }
+EXPORT_SYMBOL_GPL(dpm_resume);
 
 /**
  * device_complete - Complete a PM transition for given device.
@@ -830,6 +939,9 @@ static void device_complete(struct device *dev, pm_message_t state)
 void dpm_complete(pm_message_t state)
 {
 	struct list_head list;
+#ifdef MTK_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	might_sleep();
 
@@ -850,7 +962,15 @@ void dpm_complete(pm_message_t state)
 	}
 	list_splice(&list, &dpm_list);
 	mutex_unlock(&dpm_list_mtx);
+
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.complete++;
+    pm_stats.complete += pm_accumulate_time(time);
+    pm_stats.time = ktime_get();
+    pm_stats.suspending = 0;
+#endif		
 }
+EXPORT_SYMBOL_GPL(dpm_complete);
 
 /**
  * dpm_resume_end - Execute "resume" callbacks and complete system transition.
@@ -939,6 +1059,9 @@ static int dpm_suspend_noirq(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
 	int error = 0;
+#ifdef CONFIG_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	cpuidle_pause();
 	suspend_device_irqs();
@@ -974,6 +1097,12 @@ static int dpm_suspend_noirq(pm_message_t state)
 		dpm_resume_noirq(resume_event(state));
 	else
 		dpm_show_time(starttime, state, "noirq");
+
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.suspend_noirq++;
+    pm_stats.suspend_noirq += pm_accumulate_time(time);
+#endif		
+	
 	return error;
 }
 
@@ -1024,6 +1153,9 @@ static int dpm_suspend_late(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
 	int error = 0;
+#ifdef CONFIG_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	mutex_lock(&dpm_list_mtx);
 	while (!list_empty(&dpm_suspended_list)) {
@@ -1058,6 +1190,10 @@ static int dpm_suspend_late(pm_message_t state)
 	else
 		dpm_show_time(starttime, state, "late");
 
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.suspend_late++;
+    pm_stats.suspend_late += pm_accumulate_time(time);
+#endif	
 	return error;
 }
 
@@ -1132,6 +1268,7 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
 	if (pm_wakeup_pending()) {
 		async_error = -EBUSY;
+        hib_log("async_error(%d) not zero due pm_wakeup_pending return non zero!!\n", async_error);
 		goto Complete;
 	}
 
@@ -1143,12 +1280,22 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	device_lock(dev);
 
 	if (dev->pm_domain) {
+		if (suspend_callback_log_en) {
+			if (dev->driver)
+				if (dev->driver->name)
+					pr_warn("dev->driver->name=%s\n", dev->driver->name);
+		}
 		info = "power domain ";
 		callback = pm_op(&dev->pm_domain->ops, state);
 		goto Run;
 	}
 
 	if (dev->type && dev->type->pm) {
+		if (suspend_callback_log_en) {
+			if (dev->driver)
+				if (dev->driver->name)
+					pr_warn("dev->driver->name=%s\n", dev->driver->name);
+		}
 		info = "type ";
 		callback = pm_op(dev->type->pm, state);
 		goto Run;
@@ -1156,10 +1303,20 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
 	if (dev->class) {
 		if (dev->class->pm) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			info = "class ";
 			callback = pm_op(dev->class->pm, state);
 			goto Run;
 		} else if (dev->class->suspend) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			pm_dev_dbg(dev, state, "legacy class ");
 			error = legacy_suspend(dev, state, dev->class->suspend);
 			goto End;
@@ -1168,9 +1325,19 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
 	if (dev->bus) {
 		if (dev->bus->pm) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			info = "bus ";
 			callback = pm_op(dev->bus->pm, state);
 		} else if (dev->bus->suspend) {
+			if (suspend_callback_log_en) {
+				if (dev->driver)
+					if (dev->driver->name)
+						pr_warn("dev->driver->name=%s\n", dev->driver->name);
+			}
 			pm_dev_dbg(dev, state, "legacy bus ");
 			error = legacy_suspend(dev, state, dev->bus->suspend);
 			goto End;
@@ -1179,6 +1346,11 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 
  Run:
 	if (!callback && dev->driver && dev->driver->pm) {
+		if (suspend_callback_log_en) {
+			if (dev->driver)
+				if (dev->driver->name)
+					pr_warn("dev->driver->name=%s\n", dev->driver->name);
+		}
 		info = "driver ";
 		callback = pm_op(dev->driver->pm, state);
 	}
@@ -1225,6 +1397,7 @@ static int device_suspend(struct device *dev)
 
 	if (pm_async_enabled && dev->power.async_suspend) {
 		get_device(dev);
+        hib_log("using async mode (check value of \"/sys/power/pm_async\"\n");
 		async_schedule(async_suspend, dev);
 		return 0;
 	}
@@ -1240,6 +1413,9 @@ int dpm_suspend(pm_message_t state)
 {
 	ktime_t starttime = ktime_get();
 	int error = 0;
+#ifdef MTK_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	might_sleep();
 
@@ -1259,13 +1435,16 @@ int dpm_suspend(pm_message_t state)
 			pm_dev_err(dev, state, "", error);
 			dpm_save_failed_dev(dev_name(dev));
 			put_device(dev);
+			hib_log("Device %s failed to %s: error %d\n", dev_name(dev), pm_verb(state.event), error);
 			break;
 		}
 		if (!list_empty(&dev->power.entry))
 			list_move(&dev->power.entry, &dpm_suspended_list);
 		put_device(dev);
-		if (async_error)
+		if (async_error) {
+			hib_log("async_error(%d)\n", async_error);
 			break;
+		}
 	}
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
@@ -1276,8 +1455,16 @@ int dpm_suspend(pm_message_t state)
 		dpm_save_failed_step(SUSPEND_SUSPEND);
 	} else
 		dpm_show_time(starttime, state, NULL);
+
+	hib_log("return error(%d)\n", error);
+
+#ifdef CONFIG_PM_STATS_SUPPORT
+	pm_trans.suspend++;
+	pm_stats.suspend += pm_accumulate_time(time);
+#endif			
 	return error;
 }
+EXPORT_SYMBOL_GPL(dpm_suspend);
 
 /**
  * device_prepare - Prepare a device for system power transition.
@@ -1346,6 +1533,9 @@ static int device_prepare(struct device *dev, pm_message_t state)
 int dpm_prepare(pm_message_t state)
 {
 	int error = 0;
+#ifdef CONFIG_PM_STATS_SUPPORT
+	ktime_t time = ktime_get();
+#endif
 
 	might_sleep();
 
@@ -1377,8 +1567,13 @@ int dpm_prepare(pm_message_t state)
 		put_device(dev);
 	}
 	mutex_unlock(&dpm_list_mtx);
+#ifdef CONFIG_PM_STATS_SUPPORT
+    pm_trans.prepare++;
+    pm_stats.prepare += pm_accumulate_time(time);
+#endif			
 	return error;
 }
+EXPORT_SYMBOL_GPL(dpm_prepare);
 
 /**
  * dpm_suspend_start - Prepare devices for PM transition and suspend them.

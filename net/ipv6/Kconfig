@@ -264,4 +264,17 @@ config IPV6_PIMSM_V2
 	  Support for IPv6 PIM multicast routing protocol PIM-SMv2.
 	  If unsure, say N.
 
+config MTK_TETHERINGIPV6_SUPPORT
+	bool "MTK support tethering over ipv6"
+
+config MTK_IPV6_TETHER_NDP_MODE
+	bool "MTK_IPV6_TETHER_NDP_MODE"
+	help
+	   is NDP mode or RADVD mode during IPv6 tethering
+
+config MTK_DHCPV6C_WIFI
+	bool "MTK_DHCPV6C_WIFI"
+	help
+	   no: disable this feature
+
 endif # IPV6

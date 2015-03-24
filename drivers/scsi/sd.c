@@ -1754,16 +1754,22 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 			 * doesn't have any media in it, don't bother
 			 * with any more polling.
 			 */
+			/*
 			if (media_not_present(sdkp, &sshdr))
 				return;
+			 */
 
 			if (the_result)
 				sense_valid = scsi_sense_valid(&sshdr);
 			retries++;
-		} while (retries < 3 && 
-			 (!scsi_status_is_good(the_result) ||
+			if(!scsi_status_is_good(the_result) ||
 			  ((driver_byte(the_result) & DRIVER_SENSE) &&
-			  sense_valid && sshdr.sense_key == UNIT_ATTENTION)));
+			  sense_valid && sshdr.sense_key == UNIT_ATTENTION)) {
+				msleep(100);
+			} else {
+				break;
+			}
+		} while (retries < 5);
 
 		if ((driver_byte(the_result) & DRIVER_SENSE) == 0) {
 			/* no sense, TUR either succeeded or failed

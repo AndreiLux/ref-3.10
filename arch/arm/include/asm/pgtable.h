@@ -229,18 +229,13 @@ static inline void __sync_icache_dcache(pte_t pteval)
 extern void __sync_icache_dcache(pte_t pteval);
 #endif
 
-static inline void set_pte_at(struct mm_struct *mm, unsigned long addr,
-			      pte_t *ptep, pte_t pteval)
-{
-	unsigned long ext = 0;
-
-	if (addr < TASK_SIZE && pte_present_user(pteval)) {
-		__sync_icache_dcache(pteval);
-		ext |= PTE_EXT_NG;
-	}
-
-	set_pte_ext(ptep, pteval, ext);
-}
+/* ACOS_MOD_BEGIN {internal_membo} */
+/* this function was defined as a static inline here   */
+/* now it is only prototyped - the definition has been */
+/* placed in the file arch/arm/mm/mmu.c                */
+extern void set_pte_at(struct mm_struct *mm, unsigned long addr,
+                       pte_t *ptep, pte_t pteval);
+/* ACOS_MOD_END {internal_membo} */
 
 #define PTE_BIT_FUNC(fn,op) \
 static inline pte_t pte_##fn(pte_t pte) { pte_val(pte) op; return pte; }

@@ -312,8 +312,7 @@ probe_failed:
 		driver_deferred_probe_add(dev);
 	} else if (ret != -ENODEV && ret != -ENXIO) {
 		/* driver matched but the probe failed */
-		printk(KERN_WARNING
-		       "%s: probe of %s failed with error %d\n",
+		pr_warn("%s: probe of %s failed with error %d\n",
 		       drv->name, dev_name(dev), ret);
 	} else {
 		pr_debug("%s: probe of %s rejects match %d\n",

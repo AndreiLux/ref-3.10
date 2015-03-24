@@ -1,0 +1,11 @@
+header-y += cam_cal.h
+header-y += cam_cal_define.h
+header-y += kd_camera_feature.h
+header-y += kd_camera_feature_id.h
+header-y += kd_camera_feature_enum.h
+header-y += kd_imgsensor_define.h
+header-y += kd_imgsensor.h
+header-y += kd_flashlight.h
+header-y += eeprom.h
+header-y += eeprom_define.h
+header-y += FM50AF.h

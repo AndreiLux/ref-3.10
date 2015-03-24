@@ -1160,6 +1160,18 @@ static int sock_mmap(struct file *file, struct vm_area_struct *vma)
 
 static int sock_close(struct inode *inode, struct file *filp)
 {
+	/*
+	 *      It was possible the inode is NULL we were
+	 *      closing an unfinished socket.
+	 */
+
+	if (!inode) {
+		pr_debug("sock_close: NULL inode\n");
+		return 0;
+	}
+
+	pr_debug("socket_close[%lu]\n",inode->i_ino); 
+
 	sock_release(SOCKET_I(inode));
 	return 0;
 }
@@ -1356,7 +1368,9 @@ int sock_create_kern(int family, int type, int protocol, struct socket **res)
 	return __sock_create(&init_net, family, type, protocol, res, 1);
 }
 EXPORT_SYMBOL(sock_create_kern);
-
+#ifdef CONFIG_UNIX_SOCKET_TRACK_TOOL
+extern void unix_sock_track_socket_create(unsigned long ino, unsigned int socket_type);
+#endif/* CONFIG_UNIX_SOCKET_TRACK_TOOL */
 SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 {
 	int retval;
@@ -1387,17 +1401,31 @@ SYSCALL_DEFINE3(socket, int, family, int, type, int, protocol)
 
 out:
 	/* It may be already another descriptor 8) Not kernel problem. */
+
+#ifdef CONFIG_UNIX_SOCKET_TRACK_TOOL
+	if((retval >= 0)&& sock && SOCK_INODE(sock) )
+	{
+		pr_debug("socket_create[%lu]:fd=%d\n",SOCK_INODE(sock)->i_ino,retval);
+		if (family == PF_LOCAL)
+			unix_sock_track_socket_create(SOCK_INODE(sock)->i_ino, retval);
+	} else
+		pr_debug("socket_create:fd=%d\n",retval);
+#endif /* CONFIG_UNIX_SOCKET_TRACK_TOOL */                
+
 	return retval;
 
 out_release:
 	sock_release(sock);
+	pr_debug("sockdbg socket_create fail retval=%d\n",retval); 
 	return retval;
 }
 
 /*
  *	Create a pair of connected sockets.
  */
-
+#ifdef CONFIG_UNIX_SOCKET_TRACK_TOOL 
+extern void unix_sock_track_socket_pair_create(unsigned long ino, unsigned int socket_type, unsigned long ino1, unsigned int socket_type1);
+#endif/* CONFIG_UNIX_SOCKET_TRACK_TOOL */
 SYSCALL_DEFINE4(socketpair, int, family, int, type, int, protocol,
 		int __user *, usockvec)
 {
@@ -1471,18 +1499,30 @@ SYSCALL_DEFINE4(socketpair, int, family, int, type, int, protocol,
 	err = put_user(fd1, &usockvec[0]);
 	if (!err)
 		err = put_user(fd2, &usockvec[1]);
-	if (!err)
+	if (!err) {
+#ifdef CONFIG_UNIX_SOCKET_TRACK_TOOL
+		if(sock1 && SOCK_INODE(sock1) && sock2&& SOCK_INODE(sock2) ) {
+			pr_debug("socketpair:fd1[%lu]=%d, fd2[%lu]=%d\n", SOCK_INODE(sock1)->i_ino,fd1,SOCK_INODE(sock2)->i_ino,fd2);
+			if (family == PF_LOCAL)
+				unix_sock_track_socket_pair_create(SOCK_INODE(sock1)->i_ino, fd1, SOCK_INODE(sock2)->i_ino, fd2);
+		}
+#endif /* CONFIG_UNIX_SOCKET_TRACK_TOOL */
+
 		return 0;
+	}
 
 	sys_close(fd2);
 	sys_close(fd1);
+	pr_debug("socketpair fail1: %d\n", err);
 	return err;
 
 out_release_both:
 	sock_release(sock2);
 out_release_1:
 	sock_release(sock1);
+	pr_debug("sockdbg socketpair fail: %d\n", err);
 out:
+	pr_debug("socketpair fail2: %d\n", err);
 	return err;
 }
 
@@ -1555,7 +1595,9 @@ SYSCALL_DEFINE2(listen, int, fd, int, backlog)
  *	status to recvmsg. We need to add that support in a way thats
  *	clean when we restucture accept also.
  */
-
+#ifdef CONFIG_UNIX_SOCKET_TRACK_TOOL 
+extern int unix_sock_track_socket_check_unixsk(struct proto_ops *ops);
+#endif /* CONFIG_UNIX_SOCKET_TRACK_TOOL */
 SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 		int __user *, upeer_addrlen, int, flags)
 {
@@ -1630,6 +1672,14 @@ SYSCALL_DEFINE4(accept4, int, fd, struct sockaddr __user *, upeer_sockaddr,
 out_put:
 	fput_light(sock->file, fput_needed);
 out:
+#ifdef CONFIG_UNIX_SOCKET_TRACK_TOOL
+	if( (err>=0)&& newsock && SOCK_INODE(newsock) ) {
+		pr_debug( "socket_accept[%lu]:fd=%d\n",SOCK_INODE(newsock)->i_ino,err);
+		if (unix_sock_track_socket_check_unixsk(sock->ops))
+			unix_sock_track_socket_create(SOCK_INODE(newsock)->i_ino, err);
+	} else
+		pr_debug(KERN_INFO "socket_accept:fd=%d\n",err);
+#endif /* CONFIG_UNIX_SOCKET_TRACK_TOOL */
 	return err;
 out_fd:
 	fput(newfile);
@@ -1832,8 +1882,10 @@ SYSCALL_DEFINE6(recvfrom, int, fd, void __user *, ubuf, size_t, size,
 	msg.msg_iov = &iov;
 	iov.iov_len = size;
 	iov.iov_base = ubuf;
-	msg.msg_name = (struct sockaddr *)&address;
-	msg.msg_namelen = sizeof(address);
+	/* Save some cycles and don't copy the address if not needed */
+	msg.msg_name = addr ? (struct sockaddr *)&address : NULL;
+	/* We assume all kernel code knows the size of sockaddr_storage */
+	msg.msg_namelen = 0;
 	if (sock->file->f_flags & O_NONBLOCK)
 		flags |= MSG_DONTWAIT;
 	err = sock_recvmsg(sock, &msg, size, flags);
@@ -2213,16 +2265,14 @@ static int ___sys_recvmsg(struct socket *sock, struct msghdr __user *msg,
 			goto out;
 	}
 
-	/*
-	 *      Save the user-mode address (verify_iovec will change the
-	 *      kernel msghdr to use the kernel address space)
-	 */
-
+	/* Save the user-mode address (verify_iovec will change the
+	* kernel msghdr to use the kernel address space)
+	*/
 	uaddr = (__force void __user *)msg_sys->msg_name;
 	uaddr_len = COMPAT_NAMELEN(msg);
-	if (MSG_CMSG_COMPAT & flags) {
+	if (MSG_CMSG_COMPAT & flags)
 		err = verify_compat_iovec(msg_sys, iov, &addr, VERIFY_WRITE);
-	} else
+	else
 		err = verify_iovec(msg_sys, iov, &addr, VERIFY_WRITE);
 	if (err < 0)
 		goto out_freeiov;
@@ -2230,6 +2280,9 @@ static int ___sys_recvmsg(struct socket *sock, struct msghdr __user *msg,
 
 	cmsg_ptr = (unsigned long)msg_sys->msg_control;
 	msg_sys->msg_flags = flags & (MSG_CMSG_CLOEXEC|MSG_CMSG_COMPAT);
+
+	/* We assume all kernel code knows the size of sockaddr_storage */
+	msg_sys->msg_namelen = 0;
 
 	if (sock->file->f_flags & O_NONBLOCK)
 		flags |= MSG_DONTWAIT;

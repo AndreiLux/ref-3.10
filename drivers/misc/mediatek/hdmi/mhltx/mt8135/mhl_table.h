@@ -1,0 +1,334 @@
+#ifdef CONFIG_MTK_INTERNAL_MHL_SUPPORT
+
+#ifndef _MHL_TABLE_H_
+#define _MHL_TABLE_H_
+
+typedef enum {
+	HDMI_VIDEO_720x480p_60Hz = 0,	/* 0 */
+	HDMI_VIDEO_720x576p_50Hz,	/* 1 */
+	HDMI_VIDEO_1280x720p_60Hz,	/* 2 */
+	HDMI_VIDEO_1280x720p_50Hz,	/* 3 */
+	HDMI_VIDEO_1920x1080i_60Hz,	/* 4 */
+	HDMI_VIDEO_1920x1080i_50Hz,	/* 5 */
+	HDMI_VIDEO_1920x1080p_30Hz,	/* 6 */
+	HDMI_VIDEO_1920x1080p_25Hz,	/* 7 */
+	HDMI_VIDEO_1920x1080p_24Hz,	/* 8 */
+	HDMI_VIDEO_1920x1080p_23Hz,	/* 9 */
+	HDMI_VIDEO_1920x1080p_29Hz,	/* a */
+	HDMI_VIDEO_1920x1080p_60Hz,	/* b */
+	HDMI_VIDEO_1920x1080p_50Hz,	/* c */
+
+	HDMI_VIDEO_1280x720p3d_60Hz,	/* d */
+	HDMI_VIDEO_1280x720p3d_50Hz,	/* e */
+	HDMI_VIDEO_1920x1080i3d_60Hz,	/* f */
+	HDMI_VIDEO_1920x1080i3d_50Hz,	/* 10 */
+	HDMI_VIDEO_1920x1080p3d_24Hz,	/* 11 */
+	HDMI_VIDEO_1920x1080p3d_23Hz,	/* 12 */
+
+	HDMI_VIDEO_RESOLUTION_NUM
+} HDMI_VIDEO_RESOLUTION;
+
+typedef enum {
+	HDMI_DEEP_COLOR_AUTO = 0,
+	HDMI_NO_DEEP_COLOR,
+	HDMI_DEEP_COLOR_10_BIT,
+	HDMI_DEEP_COLOR_12_BIT,
+	HDMI_DEEP_COLOR_16_BIT
+} HDMI_DEEP_COLOR_T;
+
+typedef enum {
+	SV_I2S = 0,
+	SV_SPDIF
+} HDMI_AUDIO_INPUT_TYPE_T;
+
+typedef enum {
+	IEC_48K = 0,
+	IEC_96K,
+	IEC_192K,
+	IEC_768K,
+	IEC_44K,
+	IEC_88K,
+	IEC_176K,
+	IEC_705K,
+	IEC_16K,
+	IEC_22K,
+	IEC_24K,
+	IEC_32K,
+
+
+} IEC_FRAME_RATE_T;
+
+typedef enum			/* new add 2007/9/12 */
+{
+	FS_16K = 0x00,
+	FS_22K,
+	FS_24K,
+	FS_32K,
+	FS_44K,
+	FS_48K,
+	FS_64K,
+	FS_88K,
+	FS_96K,
+	FS_176K,
+	FS_192K,
+	FS512_44K,		/* for DSD */
+	FS_768K,
+	FS128_44k,
+	FS_128K,
+	FS_UNKOWN,
+	FS_48K_MAX_CH
+} AUDIO_SAMPLING_T;
+
+typedef enum {
+	HDMI_FS_32K = 0,
+	HDMI_FS_44K,
+	HDMI_FS_48K,
+	HDMI_FS_88K,
+	HDMI_FS_96K,
+	HDMI_FS_176K,
+	HDMI_FS_192K
+} HDMI_AUDIO_SAMPLING_T;
+
+typedef enum {
+	PCM_16BIT = 0,
+	PCM_20BIT,
+	PCM_24BIT
+} PCM_BIT_SIZE_T;
+
+typedef enum {
+	HDMI_RJT_24BIT = 0,
+	HDMI_RJT_16BIT,
+	HDMI_LJT_24BIT,
+	HDMI_LJT_16BIT,
+	HDMI_I2S_24BIT,
+	HDMI_I2S_16BIT
+} HDMI_AUDIO_I2S_FMT_T;
+
+typedef enum {
+	AUD_INPUT_1_0 = 0,
+	AUD_INPUT_1_1,
+	AUD_INPUT_2_0,
+	AUD_INPUT_2_1,
+	AUD_INPUT_3_0,		/* C,L,R */
+	AUD_INPUT_3_1,		/* C,L,R */
+	AUD_INPUT_4_0,		/* L,R,RR,RL */
+	AUD_INPUT_4_1,		/* L,R,RR,RL */
+	AUD_INPUT_5_0,
+	AUD_INPUT_5_1,
+	AUD_INPUT_6_0,
+	AUD_INPUT_6_1,
+	AUD_INPUT_7_0,
+	AUD_INPUT_7_1,
+	AUD_INPUT_3_0_LRS,	/* LRS */
+	AUD_INPUT_3_1_LRS,	/* LRS */
+	AUD_INPUT_4_0_CLRS,	/* C,L,R,S */
+	AUD_INPUT_4_1_CLRS,	/* C,L,R,S */
+	/* new layout added for DTS */
+	AUD_INPUT_6_1_Cs,
+	AUD_INPUT_6_1_Ch,
+	AUD_INPUT_6_1_Oh,
+	AUD_INPUT_6_1_Chr,
+	AUD_INPUT_7_1_Lh_Rh,
+	AUD_INPUT_7_1_Lsr_Rsr,
+	AUD_INPUT_7_1_Lc_Rc,
+	AUD_INPUT_7_1_Lw_Rw,
+	AUD_INPUT_7_1_Lsd_Rsd,
+	AUD_INPUT_7_1_Lss_Rss,
+	AUD_INPUT_7_1_Lhs_Rhs,
+	AUD_INPUT_7_1_Cs_Ch,
+	AUD_INPUT_7_1_Cs_Oh,
+	AUD_INPUT_7_1_Cs_Chr,
+	AUD_INPUT_7_1_Ch_Oh,
+	AUD_INPUT_7_1_Ch_Chr,
+	AUD_INPUT_7_1_Oh_Chr,
+	AUD_INPUT_7_1_Lss_Rss_Lsr_Rsr,
+	AUD_INPUT_6_0_Cs,
+	AUD_INPUT_6_0_Ch,
+	AUD_INPUT_6_0_Oh,
+	AUD_INPUT_6_0_Chr,
+	AUD_INPUT_7_0_Lh_Rh,
+	AUD_INPUT_7_0_Lsr_Rsr,
+	AUD_INPUT_7_0_Lc_Rc,
+	AUD_INPUT_7_0_Lw_Rw,
+	AUD_INPUT_7_0_Lsd_Rsd,
+	AUD_INPUT_7_0_Lss_Rss,
+	AUD_INPUT_7_0_Lhs_Rhs,
+	AUD_INPUT_7_0_Cs_Ch,
+	AUD_INPUT_7_0_Cs_Oh,
+	AUD_INPUT_7_0_Cs_Chr,
+	AUD_INPUT_7_0_Ch_Oh,
+	AUD_INPUT_7_0_Ch_Chr,
+	AUD_INPUT_7_0_Oh_Chr,
+	AUD_INPUT_7_0_Lss_Rss_Lsr_Rsr,
+	AUD_INPUT_8_0_Lh_Rh_Cs,
+	AUD_INPUT_UNKNOWN = 0xFF
+} AUD_CH_NUM_T;
+typedef enum {
+	MCLK_128FS,
+	MCLK_192FS,
+	MCLK_256FS,
+	MCLK_384FS,
+	MCLK_512FS,
+	MCLK_768FS,
+	MCLK_1152FS,
+} SAMPLE_FREQUENCY_T;
+
+typedef enum {
+	HDMI_RGB = 0,
+	HDMI_RGB_FULL,
+	HDMI_YCBCR_444,
+	HDMI_YCBCR_422,
+	HDMI_XV_YCC,
+	HDMI_YCBCR_444_FULL,
+	HDMI_YCBCR_422_FULL
+} HDMI_OUT_COLOR_SPACE_T;
+
+
+static const unsigned int HVSYNC_TOTAL_WIDTH_ACTIVE[HDMI_VIDEO_RESOLUTION_NUM][6] = {
+	{0x020d035a, 0x0006003E, 0x00250204, 0x00250204, 0x007c034b, 0x3},	/* 480p@27M */
+	{0x02710360, 0x00050040, 0x002d026c, 0x002d026c, 0x00860355, 0x3},	/* 576p@27M */
+	{0x02ee0672, 0x00050028, 0x001a02e9, 0x001a02e9, 0x01060605, 0x0},	/* 720p@60Hz */
+	{0x02ee07bc, 0x00050028, 0x001a02e9, 0x001a02e9, 0x01060605, 0x0},	/* 720p@50Hz */
+	{0x04650898, 0x0005002C, 0x02480463, 0x00150230, 0x01180897, 0x0},	/* 1080i@60Hz */
+	{0x04650a50, 0x0005002C, 0x02480463, 0x00150230, 0x018008ff, 0x0},	/* 1080i@50Hz */
+	{0x04650898, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@30Hz */
+	{0x04650a50, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@25Hz */
+	{0x04650abe, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@24Hz */
+	{0x04650abe, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@23.976Hz */
+	{0x04650898, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@29.97Hz */
+	{0x04650898, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@60Hz */
+	{0x04650a50, 0x0005002C, 0x002a0461, 0x002a0461, 0x00c20841, 0x0},	/* 1080p@50Hz */
+};
+
+static const unsigned int HVSYNC_DELAY[HDMI_VIDEO_RESOLUTION_NUM] = {
+	0x00130007,		/* 480p@27M */
+	0x000b0003,		/* 576p@27M */
+	0x000b0065,		/* 720p@60Hz */
+	0x000b01af,		/* 720p@50Hz */
+	0x000b01b0,		/* 1080i@60Hz */
+	0x000b01b0,		/* 1080i@50Hz */
+	0x0009004f,		/* 1080p@30Hz */
+	0x00090207,		/* 1080p@25Hz */
+	0x00090275,		/* 1080p@24Hz */
+	0x00090276,		/* 1080p@23.976Hz */
+	0x0009004f,		/* 1080p@29.97Hz */
+	0x000b01b0,		/* 1080p@60Hz */
+	0x000b01b0		/* 1080p@50Hz */
+};
+
+static const unsigned int CBCR_PRELOAD[HDMI_VIDEO_RESOLUTION_NUM] = {
+	0x0,			/* 480p@27M */
+	0x0,			/* 576p@27M */
+	0x0,			/* 720p@60Hz */
+	0x0,			/* 720p@50Hz */
+	0x0,			/* 1080i@60Hz */
+	0x0,			/* 1080i@50Hz */
+	0x0,			/* 1080p@30Hz */
+	0x0,			/* 1080p@25Hz */
+	0x0,			/* 1080p@24Hz */
+	0x0,			/* 1080p@23.976Hz */
+	0x0,			/* 1080p@29.97Hz */
+	0x0,			/* 1080p@60Hz */
+	0x0			/* 1080p@50Hz */
+};
+
+/*
+HDMI_VIDEO_720x480p_60Hz=0,  // 0
+HDMI_VIDEO_720x576p_50Hz,	 // 1
+HDMI_VIDEO_1280x720p_60Hz,	 // 2
+HDMI_VIDEO_1280x720p_50Hz,	 // 3
+HDMI_VIDEO_1920x1080i_60Hz,  // 4
+HDMI_VIDEO_1920x1080i_50Hz,  // 5
+HDMI_VIDEO_1920x1080p_30Hz,  // 6
+HDMI_VIDEO_1920x1080p_25Hz,  // 7
+HDMI_VIDEO_1920x1080p_24Hz,  // 8
+HDMI_VIDEO_1920x1080p_23Hz,  // 9
+HDMI_VIDEO_1920x1080p_29Hz,  // a
+HDMI_VIDEO_1920x1080p_60Hz,  // b
+HDMI_VIDEO_1920x1080p_50Hz,  // c
+
+HDMI_VIDEO_1280x720p3d_60Hz,   // d
+HDMI_VIDEO_1280x720p3d_50Hz,   // e
+HDMI_VIDEO_1920x1080i3d_60Hz,  // f
+HDMI_VIDEO_1920x1080i3d_50Hz,  // 10
+HDMI_VIDEO_1920x1080p3d_24Hz,  // 11
+HDMI_VIDEO_1920x1080p3d_23Hz,  // 12
+
+*/
+static const unsigned char HDMI_VIDEO_ID_CODE[HDMI_VIDEO_RESOLUTION_NUM] = { 2,	/* 480p,0 */
+	17,			/* 576p,1 */
+	4,			/* 720p60,2 */
+	19,			/* 720p50,3 */
+	5,			/* 1080i60,4 */
+	20,			/* 1080i50,5 */
+	34,			/* 1080p30,6 */
+	33,			/* 1080p25,7 */
+	32,			/* 1080p24,8 */
+	32,			/* 1080p23,9 */
+	34,			/* 1080p29,a */
+	16,			/* 1080p60,b */
+	31,			/* 1080p50,c */
+};
+
+#define NCTS_BYTES          0x07
+static const unsigned char HDMI_NCTS[7][7][NCTS_BYTES] = {
+	{{0x00, 0x00, 0x69, 0x78, 0x00, 0x10, 0x00},	/* 32K, 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xd2, 0xf0, 0x00, 0x10, 0x00},	/* 32K, 480p@54MHz/576p@54MHz */
+	 {0x00, 0x03, 0x37, 0xf9, 0x00, 0x2d, 0x80},	/* 32K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x22, 0x0a, 0x00, 0x10, 0x00},	/* 32K, 720p@50/1080i@50 */
+	 {0x00, 0x06, 0x6f, 0xf3, 0x00, 0x2d, 0x80},	/* 32K, 1080p@60 */
+	 {0x00, 0x02, 0x44, 0x14, 0x00, 0x10, 0x00},	/* 32K, 1080p@50 */
+	 {0x00, 0x01, 0xA5, 0xe0, 0x00, 0x10, 0x00}	/* 32K, 480p@108MHz/576p@108MHz */
+	 },
+	{{0x00, 0x00, 0x75, 0x30, 0x00, 0x18, 0x80},	/* 44K, 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xea, 0x60, 0x00, 0x18, 0x80},	/* 44K, 480p@54MHz/576p@54MHz */
+	 {0x00, 0x03, 0x93, 0x87, 0x00, 0x45, 0xac},	/* 44K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x42, 0x44, 0x00, 0x18, 0x80},	/* 44K, 720p@50/1080i@50 */
+	 {0x00, 0x03, 0x93, 0x87, 0x00, 0x22, 0xd6},	/* 44K, 1080p@60 */
+	 {0x00, 0x02, 0x84, 0x88, 0x00, 0x18, 0x80},	/* 44K, 1080p@50 */
+	 {0x00, 0x01, 0xd4, 0xc0, 0x00, 0x18, 0x80}	/* 44K, 480p@108MHz/576p@108MHz */
+	 },
+	{{0x00, 0x00, 0x69, 0x78, 0x00, 0x18, 0x00},	/* 48K, 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xd2, 0xf0, 0x00, 0x18, 0x00},	/* 48K, 480p@54MHz/576p@54MHz */
+	 {0x00, 0x02, 0x25, 0x51, 0x00, 0x2d, 0x80},	/* 48K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x22, 0x0a, 0x00, 0x18, 0x00},	/* 48K, 720p@50/1080i@50 */
+	 {0x00, 0x02, 0x25, 0x51, 0x00, 0x16, 0xc0},	/* 48K, 1080p@60 */
+	 {0x00, 0x02, 0x44, 0x14, 0x00, 0x18, 0x00},	/* 48K, 1080p@50 */
+	 {0x00, 0x01, 0xA5, 0xe0, 0x00, 0x18, 0x00}	/* 48K, 108p@54MHz/576p@108MHz */
+	 },
+	{{0x00, 0x00, 0x75, 0x30, 0x00, 0x31, 0x00},	/* 88K 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xea, 0x60, 0x00, 0x31, 0x00},	/* 88K 480p@54MHz/576p@54MHz */
+	 {0x00, 0x03, 0x93, 0x87, 0x00, 0x8b, 0x58},	/* 88K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x42, 0x44, 0x00, 0x31, 0x00},	/* 88K, 720p@50/1080i@50 */
+	 {0x00, 0x03, 0x93, 0x87, 0x00, 0x45, 0xac},	/* 88K, 1080p@60 */
+	 {0x00, 0x02, 0x84, 0x88, 0x00, 0x31, 0x00},	/* 88K, 1080p@50 */
+	 {0x00, 0x01, 0xd4, 0xc0, 0x00, 0x31, 0x00}	/* 88K 480p@108MHz/576p@108MHz */
+	 },
+	{{0x00, 0x00, 0x69, 0x78, 0x00, 0x30, 0x00},	/* 96K, 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xd2, 0xf0, 0x00, 0x30, 0x00},	/* 96K, 480p@54MHz/576p@54MHz */
+	 {0x00, 0x02, 0x25, 0x51, 0x00, 0x5b, 0x00},	/* 96K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x22, 0x0a, 0x00, 0x30, 0x00},	/* 96K, 720p@50/1080i@50 */
+	 {0x00, 0x02, 0x25, 0x51, 0x00, 0x2d, 0x80},	/* 96K, 1080p@60 */
+	 {0x00, 0x02, 0x44, 0x14, 0x00, 0x30, 0x00},	/* 96K, 1080p@50 */
+	 {0x00, 0x01, 0xA5, 0xe0, 0x00, 0x30, 0x00}	/* 96K, 480p@108MHz/576p@108MHz */
+	 },
+	{{0x00, 0x00, 0x75, 0x30, 0x00, 0x62, 0x00},	/* 176K, 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xea, 0x60, 0x00, 0x62, 0x00},	/* 176K, 480p@54MHz/576p@54MHz */
+	 {0x00, 0x03, 0x93, 0x87, 0x01, 0x16, 0xb0},	/* 176K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x42, 0x44, 0x00, 0x62, 0x00},	/* 176K, 720p@50/1080i@50 */
+	 {0x00, 0x03, 0x93, 0x87, 0x00, 0x8b, 0x58},	/* 176K, 1080p@60 */
+	 {0x00, 0x02, 0x84, 0x88, 0x00, 0x62, 0x00},	/* 176K, 1080p@50 */
+	 {0x00, 0x01, 0xd4, 0xc0, 0x00, 0x62, 0x00}	/* 176K, 480p@54MHz/576p@54MHz */
+	 },
+	{{0x00, 0x00, 0x69, 0x78, 0x00, 0x60, 0x00},	/* 192K, 480i/576i/480p@27MHz/576p@27MHz */
+	 {0x00, 0x00, 0xd2, 0xf0, 0x00, 0x60, 0x00},	/* 192K, 480p@54MHz/576p@54MHz */
+	 {0x00, 0x02, 0x25, 0x51, 0x00, 0xb6, 0x00},	/* 192K, 720p@60/1080i@60 */
+	 {0x00, 0x01, 0x22, 0x0a, 0x00, 0x60, 0x00},	/* 192K, 720p@50/1080i@50 */
+	 {0x00, 0x02, 0x25, 0x51, 0x00, 0x5b, 0x00},	/* 192K, 1080p@60 */
+	 {0x00, 0x02, 0x44, 0x14, 0x00, 0x60, 0x00},	/* 192K, 1080p@50 */
+	 {0x00, 0x01, 0xA5, 0xe0, 0x00, 0x60, 0x00}	/* 192K, 480p@108MHz/576p@108MHz */
+	 }
+};
+
+#endif
+#endif

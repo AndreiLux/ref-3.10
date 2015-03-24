@@ -1,0 +1,59 @@
+#ifndef __X_DRV_MAP_H__
+#define __X_DRV_MAP_H__
+
+typedef unsigned long DWRD;
+
+enum data_direction {
+	BIDIRECTIONAL = 0,
+	TO_DEVICE = 1,
+	FROM_DEVICE = 2
+};
+
+#define DRV_FS_RDONLY 0
+#define DRV_FS_W_C 1
+#define DRV_FS_RW_C 2
+
+#define MAX_FILENAME_SZ 50
+#define MAX_READ_BYTES  32*1024
+
+#define DRV_FSR_SUCCESS 0
+#define DRV_FSR_FAIL    -1
+#define DRV_FSR_NULL_POINT            -2
+#define DRV_FSR_BUF_ADDR_ALIGN_ERR    -3
+#define DRV_FSR_ONLY_SUPPORT_RDONLY   -4
+#define DRV_FSR_PARAMETER_ERR         -5
+
+
+extern INT32 DrvFSMount(UINT32 dwDriveNo, UINT32 *pu4DrvFSTag);
+
+extern INT32 DrvFSUnMount(void);
+
+extern INT32 DrvFSUSBMount(UINT32 dwDriveNo, UINT32 *pu4DrvFSTag);
+
+extern INT32 DrvFSUSBUnMount(void);
+
+extern unsigned long get_drvmem_mem(void);
+
+extern INT32 DrvFSOpenFile(char* pcDirFileName, UINT32 dwFlags, INT32* piFd);
+
+extern INT32 DrvFSGetFileSize(INT32 iFd, UINT32 *pu4FileSize);
+extern INT32 DrvFSSeekFile(INT32 iFd, INT64 iOffset, INT32 iOrigin);
+extern INT32 DrvFSReadFile(INT32 iFd, void* pbBuf, UINT32 u4Count);
+extern INT32 DrvFSWriteFile(INT32 iFd, const void *pbBuf, DWRD dwSize);
+extern INT32 DrvFSCloseFile(INT32 iFd);
+
+extern INT32 DrvFSUSBOpenFile(char* pcDirFileName, UINT32 dwFlags, INT32* piFd);
+
+extern INT32 DrvFSUSBGetFileSize(INT32 iFd, UINT32 *pu4FileSize);
+extern INT32 DrvFSUSBSeekFile(INT32 iFd, INT64 iOffset, INT32 iOrigin);
+extern INT32 DrvFSUSBReadFile(INT32 iFd, void* pbBuf, UINT32 u4Count);
+extern INT32 DrvFSUSBWriteFile(INT32 iFd, const void *pbBuf, DWRD dwSize);
+extern INT32 DrvFSUSBCloseFile(INT32 iFd);
+
+extern INT32 DrvFSMkDir(const char *pFolder, INT32 i4Mode);
+extern INT32 DrvFSRmDir(const char *pFolder);
+extern INT32 DrvFSSyncFile(void);
+extern INT32 DrvFSRmFile(const char *pFolder);
+#endif /* __X_DRV_MAP_H__*/
+
+//lint -restore

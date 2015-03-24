@@ -1,0 +1,12 @@
+
+menuconfig SND_SOC_MT8135
+    bool "SoC Audio support for MT8135"
+    depends on ARCH_MT8135
+    help
+        If you say Y, enable SND_SOC_MT8135.
+
+if SND_SOC_MT8135
+
+source "sound/soc/mediatek/mt8135/Kconfig"
+
+endif	# SND_SOC_MT8135

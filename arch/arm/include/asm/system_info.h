@@ -15,6 +15,7 @@
 #ifndef __ASSEMBLY__
 
 /* information about the system we're running on */
+extern unsigned int system_type;
 extern unsigned int system_rev;
 extern unsigned int system_serial_low;
 extern unsigned int system_serial_high;

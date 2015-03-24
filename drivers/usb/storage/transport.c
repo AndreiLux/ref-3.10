@@ -148,6 +148,9 @@ static int usb_stor_msg_common(struct us_data *us, int timeout)
 	 * transfer buffer has already been mapped. */
 	if (us->current_urb->transfer_buffer == us->iobuf)
 		us->current_urb->transfer_flags |= URB_NO_TRANSFER_DMA_MAP;
+	//Added for Rx DMA mode1, ReqMode1 enable
+	us->current_urb->transfer_flags |= URB_RX_REQ_MODE0_ENABLE;
+	//Added for Rx DMA mode1, ReqMode1 enable
 	us->current_urb->transfer_dma = us->iobuf_dma;
 
 	/* submit the URB */

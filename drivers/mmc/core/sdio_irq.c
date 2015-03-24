@@ -141,12 +141,12 @@ static int sdio_irq_thread(void *_host)
 		if (!(host->caps & MMC_CAP_SDIO_IRQ)) {
 			if (ret > 0)
 				period /= 2;
-			else {
+			else
 				period++;
-				if (period > idle_period)
-					period = idle_period;
-			}
-		}
+			if (period > idle_period)
+				period = idle_period;
+		} else
+			period = MAX_SCHEDULE_TIMEOUT;
 
 		set_current_state(TASK_INTERRUPTIBLE);
 		if (host->caps & MMC_CAP_SDIO_IRQ) {

@@ -260,6 +260,9 @@ static int __ftrace_event_enable_disable(struct ftrace_event_file *file,
 	int ret = 0;
 	int disable;
 
+    if(call->name && ((file->flags & FTRACE_EVENT_FL_ENABLED) ^ enable))
+        printk(KERN_INFO "[ftrace]event '%s' is %s\n", call->name, enable?"enabled":"disabled");
+
 	switch (enable) {
 	case 0:
 		/*
@@ -2389,6 +2392,35 @@ static __init int setup_trace_event(char *str)
 }
 __setup("trace_event=", setup_trace_event);
 
+#ifdef CONFIG_MTK_SCHED_TRACERS
+// collect boot time ftrace, disabled by default
+static int boot_time_ftrace = 0;
+
+static __init int setup_boot_time_ftrace(char *str)
+{
+    boot_time_ftrace = 1;
+    return 1;
+}
+__setup("boot_time_ftrace", setup_boot_time_ftrace);
+
+void print_enabled_events(struct seq_file *m){
+	struct ftrace_event_file *file;
+	struct trace_array *tr;
+	struct ftrace_event_call *call;
+
+    seq_puts(m, "# enabled events:");
+	//mutex_lock(&event_mutex);
+	do_for_each_event_file(tr, file) {
+        call = file->event_call;
+		if (file->flags & FTRACE_EVENT_FL_ENABLED)
+            seq_printf(m, " %s:%s", call->class->system,
+                    call->name);
+    } while_for_each_event_file();
+	//mutex_unlock(&event_mutex);
+    seq_puts(m, "\n");
+}
+#endif
+
 /* Expects to have event_mutex held when called */
 static int
 create_event_toplevel_files(struct dentry *parent, struct trace_array *tr)
@@ -2577,6 +2609,28 @@ static __init int event_trace_init(void)
 	ret = early_event_add_tracer(d_tracer, tr);
 	if (ret)
 		return ret;
+#ifdef CONFIG_MTK_SCHED_TRACERS
+    ftrace_set_clr_event(tr, "sched_switch", 1);
+    ftrace_set_clr_event(tr, "sched_wakeup", 1);
+    ftrace_set_clr_event(tr, "sched_wakeup_new", 1);
+#ifdef CONFIG_SMP
+    ftrace_set_clr_event(tr, "sched_migrate_task", 1);
+#endif
+    ftrace_set_clr_event(tr, "irq:", 1);
+    ftrace_set_clr_event(tr, "cpu_hotplug", 1);
+    ftrace_set_clr_event(tr, "tracing_on", 1);
+
+    // only update buffer eariler if we want to collect boot-time ftrace
+    // to avoid the boot time impacted by early-expanded ring buffer
+    if(boot_time_ftrace)
+        tracing_update_buffers();
+    else 
+        set_tracer_flag(tr, TRACE_ITER_OVERWRITE, 1);
+		// ring_buffer_change_overwrite(global_trace.buffer, 1);
+
+
+    printk(KERN_INFO "[ftrace]mtk ftrace ready...\n");
+#endif
 
 	ret = register_module_notifier(&trace_module_nb);
 	if (ret)
@@ -2587,6 +2641,17 @@ static __init int event_trace_init(void)
 early_initcall(event_trace_memsetup);
 core_initcall(event_trace_enable);
 fs_initcall(event_trace_init);
+
+#ifdef CONFIG_MTK_SCHED_TRACERS
+// delay the ring buffer expand until lat_initcall stage
+// to avoid impacting the boot time
+static __init int expand_ring_buffer_init(void){
+    if(!boot_time_ftrace)
+        tracing_update_buffers();
+    return 0;
+}
+late_initcall(expand_ring_buffer_init);
+#endif
 
 #ifdef CONFIG_FTRACE_STARTUP_TEST
 

@@ -48,9 +48,6 @@
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
 
-#define CREATE_TRACE_POINTS
-#include <trace/events/arm-ipi.h>
-
 /*
  * as from 2.5, kernels no longer have an init_tasks structure
  * so we need some other way of telling a new secondary core

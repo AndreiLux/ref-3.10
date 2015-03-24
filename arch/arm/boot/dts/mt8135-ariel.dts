@@ -1,0 +1,21 @@
+/*
+ * MediaTek MT8135
+ *
+ * Stingray DTS
+ */
+
+/dts-v1/;
+
+/memreserve/ 0xff000000 0x01000000;
+
+/include/ "mt8135-ca7x2-ca15x2.dtsi"
+
+/ {
+	model = "MT8135";
+	compatible = "mediatek,mt8135-ariel";
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0 0x80000000 0 0x80000000>;
+	};
+};

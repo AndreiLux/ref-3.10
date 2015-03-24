@@ -31,6 +31,12 @@
 
 #include "internal.h"
 
+#define FILE_OVER_MAX
+#ifdef FILE_OVER_MAX
+#define FS_TAG "FS_TAG"
+extern void fd_show_open_files(pid_t pid, struct files_struct *files, struct fdtable *fdt);
+#endif
+
 /* sysctl tunables... */
 struct files_stat_struct files_stat = {
 	.max_files = NR_FILE
@@ -145,6 +151,22 @@ struct file *get_empty_filp(void)
 over:
 	/* Ran out of filps - report that */
 	if (get_nr_files() > old_max) {
+#ifdef FILE_OVER_MAX
+		static int fd_dump_all_files;
+		if (!fd_dump_all_files) {
+			struct task_struct *p;
+			pr_info(FS_TAG "(PID:%d)files %ld over old_max:%ld",
+				current->pid, get_nr_files(), old_max);
+			for_each_process(p) {
+				pid_t pid = p->pid;
+				struct files_struct *files = p->files;
+				struct fdtable *fdt = files_fdtable(files);
+				if (files && fdt)
+					fd_show_open_files(pid, files, fdt);
+			}
+			fd_dump_all_files = 0x1;
+		}
+#endif
 		pr_info("VFS: file-max limit %lu reached\n", get_max_files());
 		old_max = get_nr_files();
 	}

@@ -54,6 +54,7 @@ struct sched_param {
 #include <linux/gfp.h>
 
 #include <asm/processor.h>
+#include <linux/rtpm_prio.h>
 
 struct exec_domain;
 struct futex_pi_state;
@@ -102,8 +103,10 @@ extern unsigned long nr_running(void);
 extern unsigned long nr_iowait(void);
 extern unsigned long nr_iowait_cpu(int cpu);
 extern unsigned long this_cpu_load(void);
-
-
+extern unsigned long get_cpu_load(int cpu);
+extern unsigned long long mt_get_thread_cputime(pid_t pid);
+extern unsigned long long mt_get_cpu_idle(int cpu);
+extern unsigned long long mt_sched_clock(void);
 extern void calc_global_load(unsigned long ticks);
 extern void update_cpu_load_nohz(void);
 
@@ -773,11 +776,22 @@ enum cpu_idle_type {
 #define SD_BALANCE_WAKE		0x0010  /* Balance on wakeup */
 #define SD_WAKE_AFFINE		0x0020	/* Wake task to waking CPU */
 #define SD_SHARE_CPUPOWER	0x0080	/* Domain members share cpu power */
+
+#ifdef CONFIG_HMP_PACK_SMALL_TASK
+#define SD_SHARE_POWERLINE	0x0100	/* Domain members share power domain */
+#endif /* CONFIG_HMP_PACK_SMALL_TASK */
+
 #define SD_SHARE_PKG_RESOURCES	0x0200	/* Domain members share cpu pkg resources */
 #define SD_SERIALIZE		0x0400	/* Only a single load balancing instance */
 #define SD_ASYM_PACKING		0x0800  /* Place busy groups earlier in the domain */
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
+#ifdef CONFIG_MTK_SCHED_CMP_TGS
+#define SD_BALANCE_TG		0x4000  /* Balance for thread group */
+#endif
+#ifdef CONFIG_MTK_SCHED_CMP_PACK_SMALL_TASK
+#define SD_SHARE_POWERLINE	0x8000	/* Domain members share power domain */
+#endif
 
 extern int __weak arch_sd_sibiling_asym_packing(void);
 
@@ -818,6 +832,9 @@ struct sched_domain {
 	unsigned long last_balance;	/* init to jiffies. units in jiffies */
 	unsigned int balance_interval;	/* initialise to 1. units in ms. */
 	unsigned int nr_balance_failed; /* initialise to 0 */
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER
+	unsigned int mt_lbprof_nr_balance_failed; /* initialise to 0 */
+#endif	
 
 	u64 last_update;
 
@@ -891,6 +908,35 @@ struct hmp_domain {
 	struct cpumask possible_cpus;
 	struct list_head hmp_domains;
 };
+
+#ifdef CONFIG_SCHED_HMP_ENHANCEMENT
+struct hmp_cluster {
+	int ncpu;                     /* The number of CPU */
+	int ntask;                    /* The number of tasks */
+	int load_avg;                 /* Arithmetic average of task load ratio */
+	int cpu_capacity;             /* Current CPU capacity */
+	int acap;                     /* Available CPU capacity */	
+	int scaled_acap;              /* Scaled available CPU capacity */		
+	int scaled_atask;             /* Scaled available task */
+	int threshold;                /* Dynamic threshold */
+#if defined(CONFIG_SCHED_HMP_PRIO_FILTER) || defined(CONFIG_SCHED_HMP_SCHED_IDLE_FILTER)
+	int nr_normal_prio_task;      /* The number of normal-prio tasks */
+#endif
+#ifdef CONFIG_SCHED_HMP_PRIO_FILTER
+	int nr_dequeuing_low_prio;    /* The number of dequeuing low-prio tasks */
+#endif
+#ifdef CONFIG_SCHED_HMP_SCHED_IDLE_FILTER
+	int nr_dequeuing_sched_idle;	/* The number of dequeuing sched_idle tasks */
+#endif
+};
+
+#ifdef CONFIG_HMP_TRACER
+struct hmp_statisic {
+	unsigned int nr_force_up;   /* The number of task force up-migration */
+	unsigned int nr_force_down; /* The number of task force down-migration */
+};
+#endif /* CONFIG_HMP_TRACER */
+#endif /* CONFIG_SCHED_HMP_ENHANCEMENT */
 #endif /* CONFIG_SCHED_HMP */
 #else /* CONFIG_SMP */
 
@@ -940,9 +986,22 @@ struct sched_avg {
 	unsigned long load_avg_contrib;
 	unsigned long load_avg_ratio;
 #ifdef CONFIG_SCHED_HMP
+#ifdef CONFIG_SCHED_HMP_ENHANCEMENT
+	unsigned long pending_load;
+	u32 nr_pending;
+#if defined(CONFIG_SCHED_HMP_PRIO_FILTER) || defined(CONFIG_SCHED_HMP_SCHED_IDLE_FILTER)
+	u32 nr_normal_prio;
+#endif
+#ifdef CONFIG_SCHED_HMP_PRIO_FILTER
+	u32 nr_dequeuing_low_prio;
+#endif
+#ifdef CONFIG_SCHED_HMP_SCHED_IDLE_FILTER
+	u32 nr_dequeuing_sched_idle;
+#endif
+#endif
 	u64 hmp_last_up_migration;
 	u64 hmp_last_down_migration;
-#endif
+#endif /* CONFIG_SCHED_HMP */
 	u32 usage_avg_sum;
 };
 
@@ -982,6 +1041,53 @@ struct sched_statistics {
 };
 #endif
 
+#ifdef CONFIG_PERFSTATS_PERTASK
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+/* per task frequency related transitions */
+struct perfstats_pertask_percore_perfreq_s {
+	/* data */
+	cputime_t utime, stime; /* time perfreq */
+	unsigned long strans;	/* core transitions */
+	unsigned long utrans;	/* core transitions */
+};
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERCORE
+/* per core time accounting */
+struct perfstats_pertask_percore_s {
+	unsigned long strans;	/* system transitions */
+	unsigned long utrans;	/* user transitions */
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	/* pertask percore perfrequency related transitions */
+	struct perfstats_pertask_percore_perfreq_s
+		perfreq[CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM];
+#endif
+};
+#endif
+
+struct perfstats_pertask_s {
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	/* helpers */
+	unsigned int last_cpu; /* keep track of cpu transitions */
+	unsigned int last_freq; /* keep track of freq transitions */
+	unsigned int last_freq_idx; /* last known idx */
+	unsigned char user; /* 0: system space, 1: user space */
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERCORE
+	struct perfstats_pertask_percore_s percore[NR_CPUS];
+#endif
+};
+
+#endif
+
+#ifdef CONFIG_MTPROF_CPUTIME
+struct mtk_isr_info{
+	int     isr_num;
+	int	 isr_count;
+	u64   isr_time;
+	char *isr_name;
+	struct mtk_isr_info *next;
+} ;
+#endif
 struct sched_entity {
 	struct load_weight	load;		/* for load-balancing */
 	struct rb_node		run_node;
@@ -1007,14 +1113,14 @@ struct sched_entity {
 	struct cfs_rq		*my_q;
 #endif
 
-/*
- * Load-tracking only depends on SMP, FAIR_GROUP_SCHED dependency below may be
- * removed when useful for applications beyond shares distribution (e.g.
- * load-balance).
- */
-#if defined(CONFIG_SMP) && defined(CONFIG_FAIR_GROUP_SCHED)
+#ifdef CONFIG_SMP
 	/* Per-entity load-tracking */
 	struct sched_avg	avg;
+#endif
+#ifdef CONFIG_MTPROF_CPUTIME
+	u64			mtk_isr_time;
+	int			mtk_isr_count;
+	struct mtk_isr_info  *mtk_isr;
 #endif
 };
 
@@ -1043,6 +1149,41 @@ enum perf_event_task_context {
 	perf_sw_context,
 	perf_nr_task_contexts,
 };
+
+#ifdef CONFIG_MTK_SCHED_CMP_TGS
+#define NUM_CLUSTER 2
+struct thread_group_info_t {
+	/* # of cfs threas in the thread group per cluster*/
+	unsigned long cfs_nr_running; 
+	/* # of threads in the thread group per cluster */
+	unsigned long nr_running;
+	/* runnable load of the thread group per cluster */
+	unsigned long load_avg_ratio;
+};
+
+#endif
+
+#ifdef CONFIG_MT_SCHED_NOTICE
+  #ifdef CONFIG_MT_SCHED_DEBUG
+#define mt_sched_printf(x...) \
+ do{                    \
+        char strings[128]="";  \
+        snprintf(strings, 128, x); \
+        printk(KERN_NOTICE x);          \
+        trace_sched_log(strings); \
+ }while (0)
+  #else
+#define mt_sched_printf(x...) \
+ do{                    \
+        char strings[128]="";  \
+        snprintf(strings, 128, x); \
+        trace_sched_log(strings); \
+ }while (0)
+  #endif
+  
+#else
+#define mt_sched_printf(x...) do {} while (0)
+#endif
 
 struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, >0 stopped */
@@ -1158,6 +1299,11 @@ struct task_struct {
 	struct list_head sibling;	/* linkage in my parent's children list */
 	struct task_struct *group_leader;	/* threadgroup leader */
 
+#ifdef CONFIG_MTK_SCHED_CMP_TGS
+	raw_spinlock_t thread_group_info_lock;
+	struct thread_group_info_t thread_group_info[NUM_CLUSTER];
+#endif
+
 	/*
 	 * ptraced is the list of tasks this task is using ptrace on.
 	 * This includes both natural children and PTRACE_ATTACH targets.
@@ -1193,6 +1339,10 @@ struct task_struct {
 	struct timespec real_start_time;	/* boot based time */
 /* mm fault and swap info: this can arguably be seen as either mm-specific or thread-specific */
 	unsigned long min_flt, maj_flt;
+/* for thrashing accounting */
+#ifdef CONFIG_ZRAM
+    unsigned long fm_flt, swap_in, swap_out;
+#endif
 
 	struct task_cputime cputime_expires;
 	struct list_head cpu_timers[3];
@@ -1429,8 +1579,14 @@ struct task_struct {
 	unsigned int	sequential_io;
 	unsigned int	sequential_io_avg;
 #endif
+#ifdef CONFIG_PERFSTATS_PERTASK
+	struct perfstats_pertask_s perfstats;
+#endif
 };
 
+#ifdef CONFIG_PERFSTATS_PERTASK
+#define task_perfstats_info(task)   ((struct perfstats_pertask_s *)&(task)->perfstats)
+#endif
 /* Future-safe accessor for struct task_struct's cpus_allowed. */
 #define tsk_cpus_allowed(tsk) (&(tsk)->cpus_allowed)
 
@@ -1915,6 +2071,15 @@ extern int sched_setscheduler(struct task_struct *, int,
 			      const struct sched_param *);
 extern int sched_setscheduler_nocheck(struct task_struct *, int,
 				      const struct sched_param *);
+
+#ifdef CONFIG_MT_PRIO_TRACER
+extern void set_user_nice_core(struct task_struct *p, long nice);
+extern int sched_setscheduler_core(struct task_struct *, int,
+				   const struct sched_param *);
+extern int sched_setscheduler_nocheck_core(struct task_struct *, int,
+					   const struct sched_param *);
+#endif
+
 extern struct task_struct *idle_task(int cpu);
 /**
  * is_idle_task - is the specified task an idle task?
@@ -2109,7 +2274,7 @@ static inline void mmdrop(struct mm_struct * mm)
 }
 
 /* mmput gets rid of the mappings and all user-space */
-extern void mmput(struct mm_struct *);
+extern int mmput(struct mm_struct *);
 /* Grab a reference to a task's mm, if it is not already going away */
 extern struct mm_struct *get_task_mm(struct task_struct *task);
 /*
@@ -2389,6 +2554,23 @@ static inline int test_tsk_need_resched(struct task_struct *tsk)
 {
 	return unlikely(test_tsk_thread_flag(tsk,TIF_NEED_RESCHED));
 }
+
+#if defined(CONFIG_MT_RT_SCHED) || defined(CONFIG_MT_RT_SCHED_LOG)
+static inline void set_tsk_need_released(struct task_struct *tsk)
+{
+	set_tsk_thread_flag(tsk, TIF_NEED_RELEASED);
+}
+
+static inline void clear_tsk_need_released(struct task_struct *tsk)
+{
+	clear_tsk_thread_flag(tsk,TIF_NEED_RELEASED);
+}
+
+static inline int test_tsk_need_released(struct task_struct *tsk)
+{
+	return unlikely(test_tsk_thread_flag(tsk,TIF_NEED_RELEASED));
+}
+#endif
 
 static inline int restart_syscall(void)
 {

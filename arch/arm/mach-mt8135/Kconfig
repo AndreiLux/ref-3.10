@@ -1,0 +1,89 @@
+if ARCH_MT8135
+
+menu "MT8135 Board Support Package"
+
+choice
+	bool "Board"
+
+config MT8135_FPGA
+	bool "MT8135 FPGA"
+	select ARM_GIC
+	select ARM_L1_CACHE_SHIFT_6
+	select MULTI_IRQ_HANDLER
+	help
+	  Select if you are using the FPGA board.
+
+config MT8135_EVB_GENERIC
+	bool "MT8135 generic EVB"
+	select MT8135_EVB_BOARD
+	help
+	  Select this is you are using mt8135_evb*, with MTK legacy
+	  customize methods.
+
+config MT8135_EVBP1_V2_WSVGA
+	bool "MT8135 evbp1_v2_wsvga EVB"
+	select MT8135_EVB_BOARD
+	help
+	  Select this is you are using mt8135_evbp1_v2_wsvga board
+
+config MT8135_EVBP1_V2_WUXGA_CPT
+	bool "MT8135 evbp1_v2_wuxga_cpt EVB"
+	select MT8135_EVB_BOARD
+	help
+	  Select this is you are using mt8135_evbp1_v2_wuxga_cpt board
+
+config MT8135_STINGRAY
+	bool "MT8135 Stingray board"
+	select MT8135_EVB_BOARD
+	help
+	  Select this for Stingray board
+
+config MT8135_ARIEL
+	bool "MT8135 Ariel board"
+	select MT8135_EVB_BOARD
+	help
+	  Select this for Ariel board
+
+config MT8135_ASTON
+	bool "MT8135 Aston board"
+	select MT8135_EVB_BOARD
+	help
+	  Select this for Aston board
+endchoice
+
+config MT8135_EVB_BOARD
+	bool
+	default n
+	select ARM_GIC
+	select ARM_L1_CACHE_SHIFT_6
+	select COMMON_CLK
+	help
+		Generic support for MT8135 chipset.
+		Select this for non-FPGA boards,
+		to select common options.
+		If you don't use MT8135, say no
+
+config MT8135_FPGA_CA7
+	tristate "MT8135 FPGA CA7"
+	depends on MT8135_FPGA
+	default n
+	help
+	    Select if you are using the CA7 FPGA board.
+
+config MAX_DRAM_SIZE_SUPPORT
+	hex "The maximum size of the DRAM can be supported in the kernel"
+	default 0x10000000
+	depends on ARCH_MT8135
+	help
+		Define the maximum size of the kernel can be supported.
+	        If will modify the memory size if it size is smaller than
+                the memory size passed by the boot loader to the MAX_DRAM_SIZE_SUPPORT.
+		Notice that the maximum DRAM size is including the memory size
+	        reserved for the modem and the PMEM.
+
+
+
+endmenu
+
+
+endif

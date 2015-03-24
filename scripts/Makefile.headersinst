@@ -60,6 +60,9 @@ input-files   := $(foreach hdr, $(header-y), \
 			$(error Missing generated UAPI file $(gendir)/$(hdr)) \
 		   ))
 
+relative-path-input-files :=  $(subst $(srctree),,$(input-files))
+
+
 # Work out what needs to be removed
 oldheaders    := $(patsubst $(installdir)/%,%,$(wildcard $(installdir)/*.h))
 unwanted      := $(filter-out $(all-files),$(oldheaders))
@@ -72,7 +75,13 @@ printdir = $(patsubst $(INSTALL_HDR_PATH)/%/,%,$(dir $@))
 quiet_cmd_install = INSTALL $(printdir) ($(words $(all-files))\
                             file$(if $(word 2, $(all-files)),s))
       cmd_install = \
-        $(CONFIG_SHELL) $< $(installdir) $(input-files); \
+        for f in $(relative-path-input-files);do                               \
+                if [ -e $(srctree)/$$f ]; then                                 \
+                          $(CONFIG_SHELL) $< $(installdir) $(srctree)/$$f;  \
+                else                                                           \
+                          $(CONFIG_SHELL) $< $(installdir) $$f;             \
+                fi;                                                            \
+        done;                                                                  \
         for F in $(wrapper-files); do                                   \
                 echo "\#include <asm-generic/$$F>" > $(installdir)/$$F;    \
         done;                                                           \

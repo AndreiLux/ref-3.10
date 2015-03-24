@@ -1,0 +1,5 @@
+config SLIMPORT_ANX3618
+	tristate  "Analogix slimport driver support"
+	default n
+	help
+	  This enables support for Slimport device.

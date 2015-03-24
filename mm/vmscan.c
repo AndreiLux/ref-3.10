@@ -1684,6 +1684,11 @@ enum scan_balance {
 	SCAN_FILE,
 };
 
+#ifdef CONFIG_ZRAM
+static int vmscan_swap_file_ratio = 1;
+module_param_named(swap_file_ratio, vmscan_swap_file_ratio, int, S_IRUGO | S_IWUSR);
+#endif // CONFIG_ZRAM
+
 /*
  * Determine how aggressively the anon and file LRU lists should be
  * scanned.  The relative value of each set of LRU lists is determined
@@ -1786,6 +1791,13 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	 */
 	anon_prio = vmscan_swappiness(sc);
 	file_prio = 200 - anon_prio;
+#ifdef CONFIG_ZRAM
+	if (vmscan_swap_file_ratio) {
+	    anon_prio = anon_prio * anon / (anon + file + 1);
+	    file_prio = file_prio * file / (anon + file + 1);
+	}
+#endif // CONFIG_ZRAM
+
 
 	/*
 	 * OK, so we have swap space and a fair amount of page cache

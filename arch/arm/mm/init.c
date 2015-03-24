@@ -33,6 +33,7 @@
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
+#include <mach/mtk_memcfg.h>
 
 #include "mm.h"
 
@@ -330,6 +331,12 @@ phys_addr_t __init arm_memblock_steal(phys_addr_t size, phys_addr_t align)
 	phys = memblock_alloc_base(size, align, MEMBLOCK_ALLOC_ANYWHERE);
 	memblock_free(phys, size);
 	memblock_remove(phys, size);
+	if (phys) {
+		MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT"[PHY layout]%ps   :   0x%08llx - 0x%08llx (0x%08llx)\n",
+			__builtin_return_address(0), (unsigned long long)phys, 
+		(unsigned long long)phys + size - 1,
+		(unsigned long long)size);
+	}
 
 	return phys;
 }
@@ -651,7 +658,7 @@ void __init mem_init(void)
 #define MLM(b, t) b, t, ((t) - (b)) >> 20
 #define MLK_ROUNDUP(b, t) b, t, DIV_ROUND_UP(((t) - (b)), SZ_1K)
 
-	printk(KERN_NOTICE "Virtual kernel memory layout:\n"
+	MTK_MEMCFG_LOG_AND_PRINTK(KERN_NOTICE "Virtual kernel memory layout:\n"
 			"    vector  : 0x%08lx - 0x%08lx   (%4ld kB)\n"
 #ifdef CONFIG_HAVE_TCM
 			"    DTCM    : 0x%08lx - 0x%08lx   (%4ld kB)\n"

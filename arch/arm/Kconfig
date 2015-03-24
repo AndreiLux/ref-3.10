@@ -6,6 +6,7 @@ config ARM
 	select ARCH_HAVE_CUSTOM_GPIO_H
 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
 	select ARCH_WANT_IPC_PARSE_VERSION
+	select ARM_HAS_SG_CHAIN if (ARCH_MT6589 || ARCH_MT6582 || ARCH_MT6572 || ARCH_MT8135 || ARCH_MT6595)
 	select BUILDTIME_EXTABLE_SORT if MMU
 	select CPU_PM if (SUSPEND || CPU_IDLE)
 	select DCACHE_WORD_ACCESS if (CPU_V6 || CPU_V6K || CPU_V7) && !CPU_BIG_ENDIAN && MMU
@@ -632,6 +633,23 @@ config ARCH_MSM
 	  stack and controls some vital subsystems
 	  (clock and power control, etc).
 
+config ARCH_MT8135
+	bool "MediaTek MT8135"
+	select ARCH_HAS_CPUFREQ
+	select ARM_AMBA
+	select ARM_GIC
+	select GENERIC_CLOCKEVENTS
+	select GENERIC_TIME
+	select CPU_V7
+	select FIQ_GLUE
+	select HAVE_SMP
+	select HAVE_MTK_IN_HOUSE_TEE_SUPPORT
+	select MEDIATEK_SOLUTION
+	select NEED_MACH_MEMORY_H
+        select ARCH_REQUIRE_GPIOLIB
+	help
+	  This enable support for MediaTek MT8135.
+
 config ARCH_SHMOBILE
 	bool "Renesas SH-Mobile / R-Mobile"
 	select CLKDEV_LOOKUP
@@ -953,6 +971,8 @@ source "arch/arm/mach-kirkwood/Kconfig"
 source "arch/arm/mach-ks8695/Kconfig"
 
 source "arch/arm/mach-msm/Kconfig"
+
+source "arch/arm/mach-mt8135/Kconfig"
 
 source "arch/arm/mach-mv78xx0/Kconfig"
 
@@ -1510,17 +1530,6 @@ config SCHED_HMP
 	  There is currently no support for migration of task groups, hence
 	  !SCHED_AUTOGROUP. Furthermore, normal load-balancing must be disabled
 	  between cpus of different type (DISABLE_CPU_SCHED_DOMAIN_BALANCE).
-	  When turned on, this option adds sys/kernel/hmp directory which
-	  contains the following files:
-	  up_threshold - the load average threshold used for up migration
-	                 (0 - 1023)
-	  down_threshold - the load average threshold used for down migration
-	                 (0 - 1023)
-	  hmp_domains - a list of cpumasks for the present HMP domains,
-	                starting with the 'biggest' and ending with the
-	                'smallest'.
-	  Note that both the threshold files can be written at runtime to
-	  control scheduler behaviour.
 
 config SCHED_HMP_PRIO_FILTER
 	bool "(EXPERIMENTAL) Filter HMP migrations by task priority"
@@ -1534,6 +1543,14 @@ config SCHED_HMP_PRIO_FILTER_VAL
 	int "NICE priority threshold"
 	default 5
 	depends on SCHED_HMP_PRIO_FILTER
+
+config SCHED_HMP_SCHED_IDLE_FILTER
+	bool "(EXPERIMENTAL) Filter HMP migrations by task policy"
+	depends on SCHED_HMP
+	help
+	  If a task apply sched_idle policy, should arrange to little
+	  cluster first or can be easily scheduled on little when there are
+	  SCHED_NORMAL tasks on little cluster.
 
 config HMP_FAST_CPU_MASK
 	string "HMP scheduler fast CPU mask"
@@ -1555,24 +1572,34 @@ config HMP_VARIABLE_SCALE
 	bool "Allows changing the load tracking scale through sysfs"
 	depends on SCHED_HMP
 	help
-	  When turned on, this option exports the load average period value
-	  for the load tracking patches through sysfs.
+	  When turned on, this option exports the thresholds and load average
+	  period value for the load tracking patches through sysfs.
 	  The values can be modified to change the rate of load accumulation
-	  used for HMP migration. 'load_avg_period_ms' is the time in ms to
-	  reach a load average of 0.5 for an idle task of 0 load average
-	  ratio which becomes 100% busy.
-	  For example, with load_avg_period_ms = 128 and up_threshold = 512,
+	  and the thresholds used for HMP migration.
+	  The load_avg_period_ms is the time in ms to reach a load average of
+	  0.5 for an idle task of 0 load average ratio that start a busy loop.
+	  The up_threshold and down_threshold is the value to go to a faster
+	  CPU or to go back to a slower cpu.
+	  The {up,down}_threshold are devided by 1024 before being compared
+	  to the load average.
+	  For examples, with load_avg_period_ms = 128 and up_threshold = 512,
 	  a running task with a load of 0 will be migrated to a bigger CPU after
 	  128ms, because after 128ms its load_avg_ratio is 0.5 and the real
 	  up_threshold is 0.5.
 	  This patch has the same behavior as changing the Y of the load
 	  average computation to
 	        (1002/1024)^(LOAD_AVG_PERIOD/load_avg_period_ms)
-	  but removes intermediate overflows in computation.
+	  but it remove intermadiate overflows in computation.
+
+config MET_SCHED_HMP
+	bool "(EXPERIMENTAL) MET SCHED HMP Info"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  MET SCHED HMP Info
 
 config HMP_FREQUENCY_INVARIANT_SCALE
 	bool "(EXPERIMENTAL) Frequency-Invariant Tracked Load for HMP"
-	depends on SCHED_HMP && CPU_FREQ
+	depends on HMP_VARIABLE_SCALE && CPU_FREQ
 	help
 	  Scales the current load contribution in line with the frequency
 	  of the CPU that the task was executed on.
@@ -1585,18 +1612,79 @@ config HMP_FREQUENCY_INVARIANT_SCALE
 	  migration strategy to interact more predictably with CPUFreq's
 	  asynchronous compute capacity changes.
 
-config SCHED_HMP_LITTLE_PACKING
-	bool "Small task packing for HMP"
+config SCHED_HMP_ENHANCEMENT
+	bool "(EXPERIMENTAL) HMP Ennhancement"
 	depends on SCHED_HMP
-	default n
 	help
-	  Allows the HMP Scheduler to pack small tasks into CPUs in the
-	  smallest HMP domain.
-	  Controlled by two sysfs files in sys/kernel/hmp.
-	  packing_enable: 1 to enable, 0 to disable packing. Default 1.
-	  packing_limit: runqueue load ratio where a RQ is considered
-	    to be full. Default is NICE_0_LOAD * 9/8.
+	  HMP Ennhancement
 
+config HMP_TRACER
+	bool "(EXPERIMENTAL) Profile HMP scheduler"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Profile HMP scheduler
+
+config HMP_DYNAMIC_THRESHOLD
+	bool "(EXPERIMENTAL) Dynamically adjust task migration threshold"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Dynamically adjust task migration threshold according to current system load
+
+config HMP_GLOBAL_BALANCE
+	bool "(EXPERIMENTAL) Enhance HMP global load balance"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Enhance HMP global load balance
+
+config HMP_TASK_ASSIGNMENT
+	bool "(EXPERIMENTAL) Enhance HMP task assignment"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Enhance HMP task assignment
+
+config HMP_DISCARD_CFS_SELECTION_RESULT
+	bool "(EXPERIMENTAL) Discard CFS runqueue selection result"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_TASK_ASSIGNMENT
+	help
+	  Discard CFS runqueue selection result even if only one cluster exists
+
+config HMP_PACK_SMALL_TASK
+	bool "(EXPERIMENTAL) Packing Small Tasks"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+		This option enables Packing Small Tasks
+
+config HMP_PACK_BUDDY_INFO
+	bool "(EXPERIMENTAL) Packing Small Tasks Buddy Information Log"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_PACK_SMALL_TASK
+	help
+		This option enables Packing Small Tasks Buddy Information Log
+    
+config HMP_LAZY_BALANCE
+	bool "(EXPERIMENTAL) Lazy Balance"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_PACK_SMALL_TASK
+	help
+		This option enables Lazy Balance
+    
+config HMP_POWER_AWARE_CONTROLLER
+	bool "(EXPERIMENTAL) Power-aware Scheduler for b.L MP Controller"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_PACK_SMALL_TASK && HMP_LAZY_BALANCE
+	help
+		Power-aware scheduler for b.L MP controller and status interface
+
+config TOUCH_BOOST
+	bool "(EXPERIMENTAL) Touch boost"
+	help
+		This option enables touch boost. It is implemented by registering an
+		input event handler. Once dynamic_boost driver receives a input event,
+		it will hotplug on 2 CA7s and set max frequency. Touch boost is a
+		one-time boost mechanism.
+
+config HEVTASK_INTERFACE
+	bool "task status interface"
+	help
+	  The option provide an interface to show task status
+	  
 config HAVE_ARM_SCU
 	bool
 	help
@@ -1623,31 +1711,6 @@ config MCPM
 	  This option provides the common power management infrastructure
 	  for (multi-)cluster based systems, such as big.LITTLE based
 	  systems.
-
-config BIG_LITTLE
-	bool "big.LITTLE support (Experimental)"
-	depends on CPU_V7 && SMP
-	select MCPM
-	help
-	  This option enables support for the big.LITTLE architecture.
-
-config BL_SWITCHER
-	bool "big.LITTLE switcher support"
-	depends on BIG_LITTLE && MCPM && HOTPLUG_CPU
-	select CPU_PM
-	select ARM_CPU_SUSPEND
-	help
-	  The big.LITTLE "switcher" provides the core functionality to
-	  transparently handle transition between a cluster of A15's
-	  and a cluster of A7's in a big.LITTLE system.
-
-config BL_SWITCHER_DUMMY_IF
-	tristate "Simple big.LITTLE switcher user interface"
-	depends on BL_SWITCHER && DEBUG_KERNEL
-	help
-	  This is a simple and dummy char dev interface to control
-	  the big.LITTLE switcher core code.  It is meant for
-	  debugging purposes only.
 
 choice
 	prompt "Memory split"
@@ -1699,6 +1762,7 @@ config LOCAL_TIMERS
 	bool "Use local timer interrupts"
 	depends on SMP
 	default y
+	select HAVE_ARM_TWD if (!ARCH_MSM_SCORPIONMP && !EXYNOS4_MCT && !ARCH_MT6589 && !ARCH_MT6582 && !ARCH_MT8135 && !ARCH_MT6592 && !ARCH_MT6595)
 	help
 	  Enable support for local timers on SMP platforms, rather then the
 	  legacy IPI broadcast method.  Local timers allows the system
@@ -1989,16 +2053,16 @@ config BUILD_ARM_APPENDED_DTB_IMAGE
 	bool "Build a concatenated zImage/dtb by default"
 	depends on OF
 	help
-	  Enabling this option will cause a concatenated zImage and DTB to
-	  be built by default (instead of a standalone zImage.)  The image
-	  will built in arch/arm/boot/zImage-dtb.<dtb name>
+	  Enabling this option will cause a concatenated zImage and list of
+	  DTBs to be built by default (instead of a standalone zImage.)
+	  The image will built in arch/arm/boot/zImage-dtb
 
-config BUILD_ARM_APPENDED_DTB_IMAGE_NAME
-	string "Default dtb name"
+config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
+	string "Default dtb names"
 	depends on BUILD_ARM_APPENDED_DTB_IMAGE
 	help
-	  name of the dtb to append when building a concatenated
-	  zImage/dtb.
+	  Space separated list of names of dtbs to append when
+	  building a concatenated zImage-dtb.
 
 # Compressed boot loader in ROM.  Yes, we really want to ask about
 # TEXT and BSS so we preserve their values in the config files.
@@ -2032,6 +2096,14 @@ config ZBOOT_ROM
 	help
 	  Say Y here if you intend to execute your compressed kernel image
 	  (zImage) directly from ROM or flash.  If unsure, say N.
+
+config COMPAT_CPUINFO
+	bool "Show /proc/cpuinfo in old form"
+	default n
+	help
+	  Show old style /proc/cpuinfo. Do not show cpu features with each
+	  cpu cores.
+	  If unsure, say N
 
 choice
 	prompt "Include SD/MMC loader in zImage (EXPERIMENTAL)"
@@ -2213,6 +2285,14 @@ config CRASH_DUMP
 	  memory address not used by the main kernel
 
 	  For more details see Documentation/kdump/kdump.txt
+
+config RESTART_DISABLE_CACHE
+        bool "Disable cache in arm_machine_restart"
+	default y
+        help
+          Whther to disable DCache in arm_machine_restart().
+          This is a temporary solution before MTK change to use new kernel
+          restart flow.
 
 config AUTO_ZRELADDR
 	bool "Auto calculation of the decompressed kernel image address"
@@ -2397,3 +2477,5 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "arch/arm/kvm/Kconfig"
+
+source "drivers/misc/mediatek/Kconfig"

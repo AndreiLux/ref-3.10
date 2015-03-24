@@ -26,6 +26,8 @@
 #include <asm/mach/arch.h>
 #include <asm/mach-types.h>
 
+extern char default_command_line[COMMAND_LINE_SIZE];
+
 void __init early_init_dt_add_memory_arch(u64 base, u64 size)
 {
 	arm_add_memory(base, size);
@@ -183,6 +185,7 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	unsigned int score, mdesc_score = ~1;
 	unsigned long dt_root;
 	const char *model;
+	char *from = default_command_line;
 
 #ifdef CONFIG_ARCH_MULTIPLATFORM
 	DT_MACHINE_START(GENERIC_DT, "Generic DT based system")
@@ -244,6 +247,10 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 
 	/* Change machine number to match the mdesc we're using */
 	__machine_arch_type = mdesc_best->nr;
+
+	if (mdesc_best->fixup) mdesc_best->fixup((void *)dt_root, &from, &meminfo);
+
+	strlcpy(boot_command_line, from, COMMAND_LINE_SIZE);
 
 	return mdesc_best;
 }

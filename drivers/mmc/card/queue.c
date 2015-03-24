@@ -19,7 +19,7 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include "queue.h"
-
+#include <linux/mmc/mmc.h>
 #define MMC_QUEUE_BOUNCESZ	65536
 
 /*
@@ -190,7 +190,7 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 		   spinlock_t *lock, const char *subname)
 {
 	struct mmc_host *host = card->host;
-	u64 limit = BLK_BOUNCE_HIGH;
+	u64 limit = BLK_BOUNCE_ANY;
 	int ret;
 	struct mmc_queue_req *mqrq_cur = &mq->mqrq[0];
 	struct mmc_queue_req *mqrq_prev = &mq->mqrq[1];
@@ -203,6 +203,12 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 	if (!mq->queue)
 		return -ENOMEM;
 
+#ifdef CONFIG_ZRAM    
+    if (mmc_card_mmc(card) &&
+        (totalram_pages << (PAGE_SHIFT - 10)) <= (256 * 1024))
+        mq->queue->backing_dev_info.ra_pages =
+    		(VM_MIN_READAHEAD * 1024) / PAGE_CACHE_SIZE;
+#endif // CONFIG_ZRAM
 	mq->mqrq_cur = mqrq_cur;
 	mq->mqrq_prev = mqrq_prev;
 	mq->queue->queuedata = mq;

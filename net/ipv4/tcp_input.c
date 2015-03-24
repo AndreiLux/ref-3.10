@@ -1868,6 +1868,7 @@ void tcp_clear_retrans(struct tcp_sock *tp)
 void tcp_enter_loss(struct sock *sk, int how)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
+	struct inet_connection_sock *icsk1 = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
 	bool new_recovery = false;
@@ -1881,7 +1882,37 @@ void tcp_enter_loss(struct sock *sk, int how)
 		tp->snd_ssthresh = icsk->icsk_ca_ops->ssthresh(sk);
 		tcp_ca_event(sk, CA_EVENT_LOSS);
 	}
+	if (icsk->icsk_MMSRB == 1)
+	{
+	    printk("[mmspb] tcp_enter_loss snd_cwnd=%u, snd_cwnd_cnt=%u\n", tp->snd_cwnd, tp->snd_cwnd_cnt);
+
+            if (tp->mss_cache != 0)
+                tp->snd_cwnd = (tp->rcv_wnd / tp->mss_cache);
+            else
+            {
+                tp->snd_cwnd = (tp->rcv_wnd / tp->advmss);
+            }
+		
+            if (tp->snd_ssthresh > 16)
+            {
+                tp->snd_cwnd = tp->snd_ssthresh / 2;//set snd_cwnd is half of default snd_ssthresh
+            }
+            else
+            {
+                tp->snd_cwnd = tp->snd_ssthresh / 2 + 4;
+            }
+
+            printk("[mmspb] tcp_enter_loss update snd_cwnd=%u\n", tp->snd_cwnd);
+
+            icsk1->icsk_MMSRB = 0;
+            printk("[mmspb] tcp_enter_loss set icsk_MMSRB=0\n");
+	}
+        else
+        {
 	tp->snd_cwnd	   = 1;
+        }	
+  
+	//tp->snd_cwnd	   = 1;
 	tp->snd_cwnd_cnt   = 0;
 	tp->snd_cwnd_stamp = tcp_time_stamp;
 

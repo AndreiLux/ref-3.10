@@ -30,6 +30,17 @@ struct cgroup;
 struct css_id;
 struct eventfd_ctx;
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+struct cgroup_tasklist {
+	/* array of xids */
+	pid_t *list;
+	/* how many elements the above list has */
+	int length;
+	/* how many files are using the current array */
+	int use_count;
+};
+#endif
+
 extern int cgroup_init_early(void);
 extern int cgroup_init(void);
 extern void cgroup_fork(struct task_struct *p);
@@ -39,6 +50,9 @@ extern int cgroupstats_build(struct cgroupstats *stats,
 				struct dentry *dentry);
 extern int cgroup_load_subsys(struct cgroup_subsys *ss);
 extern void cgroup_unload_subsys(struct cgroup_subsys *ss);
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+extern void cgroup_load_tasks(struct cgroup *cgrp, struct cgroup_tasklist *ct);
+#endif
 
 extern int proc_cgroup_show(struct seq_file *, void *);
 

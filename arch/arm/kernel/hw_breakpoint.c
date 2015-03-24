@@ -1034,6 +1034,7 @@ static struct notifier_block __cpuinitdata dbg_reset_nb = {
 };
 
 #ifdef CONFIG_CPU_PM
+#if 0
 static int dbg_cpu_pm_notify(struct notifier_block *self, unsigned long action,
 			     void *v)
 {
@@ -1042,16 +1043,29 @@ static int dbg_cpu_pm_notify(struct notifier_block *self, unsigned long action,
 
 	return NOTIFY_OK;
 }
-
 static struct notifier_block dbg_cpu_pm_nb = {
 	.notifier_call = dbg_cpu_pm_notify,
 };
+#endif
 
+/*  
+ In kernel 3.8, cpu0 will reset debug_sys through this notifier after
+ platform_restore_context(in mt_dorment.c).This way will cause watchpoint 
+and breakpoint data  be reset to zero. Watchpints and Breakpoints could not 
+be restore from original data correctly. So we decided to disable dbg_cpu_pm_nb 
+notifier block registration. Debug system only could be reset by SPM.
+ */
 static void __init pm_init(void)
 {
+
+#if 0
 	if (has_ossr)
 		cpu_pm_register_notifier(&dbg_cpu_pm_nb);
+
+#endif
 }
+
+
 #else
 static inline void pm_init(void)
 {

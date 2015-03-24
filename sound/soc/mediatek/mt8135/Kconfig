@@ -1,0 +1,19 @@
+
+choice
+    prompt "MT8135 ASOC platform"
+
+config SND_SOC_MT8135_GENERIC
+    bool "MT8135 GENERIC"
+	  help
+	    Say Y if you want to use the default
+	    Mediatek SoCs' Audio interfaces for MT8135.
+	    It is the turnkey solution.
+
+config SND_SOC_MT8135_ARIEL
+	  bool "MT8135 Ariel"
+	  select SND_SOC_MAX97236
+	  help
+	    Say Y if you want to use the Lab126 Ariel
+	    Audio interfaces for MT8135.
+	    It will also add codec support of MAX97236
+endchoice

@@ -15,12 +15,15 @@ struct request;
 struct mmc_data;
 struct mmc_request;
 
+//#define CONFIG_EMMC_50_FEATURE
+
 struct mmc_command {
 	u32			opcode;
 	u32			arg;
 #define MMC_CMD23_ARG_REL_WR	(1 << 31)
 #define MMC_CMD23_ARG_PACKED	((0 << 31) | (1 << 30))
 #define MMC_CMD23_ARG_TAG_REQ	(1 << 29)
+#define MMC_CMD23_ARG_SPECIAL (0xFFFF0000)
 	u32			resp[4];
 	unsigned int		flags;		/* expected response type */
 #define MMC_RSP_PRESENT	(1 << 0)

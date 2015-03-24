@@ -334,7 +334,6 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 				int trip, enum thermal_trip_type trip_type)
 {
 	long trip_temp;
-
 	tz->ops->get_trip_temp(tz, trip, &trip_temp);
 
 	/* If we have not crossed the trip_temp, we do not care. */
@@ -355,13 +354,13 @@ static void handle_critical_trips(struct thermal_zone_device *tz,
 static void handle_thermal_trip(struct thermal_zone_device *tz, int trip)
 {
 	enum thermal_trip_type type;
-
 	tz->ops->get_trip_type(tz, trip, &type);
 
 	if (type == THERMAL_TRIP_CRITICAL || type == THERMAL_TRIP_HOT)
 		handle_critical_trips(tz, trip, type);
 	else
 		handle_non_critical_trips(tz, trip, type);
+
 	/*
 	 * Alright, we handled this trip successfully.
 	 * So, start monitoring again.
@@ -1749,6 +1748,8 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	if (!tz)
 		return;
 
+    cancel_delayed_work_sync(&(tz->poll_queue)); // force stop pending/running delayed work
+
 	tzp = tz->tzp;
 
 	mutex_lock(&thermal_list_lock);
@@ -1782,7 +1783,8 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 
 	mutex_unlock(&thermal_list_lock);
 
-	thermal_zone_device_set_polling(tz, 0);
+    mutex_lock(&tz->lock); // avoid destroy a locked mutex
+	//thermal_zone_device_set_polling(tz, 0);
 
 	if (tz->type[0])
 		device_remove_file(&tz->device, &dev_attr_type);
@@ -1796,6 +1798,7 @@ void thermal_zone_device_unregister(struct thermal_zone_device *tz)
 	thermal_remove_hwmon_sysfs(tz);
 	release_idr(&thermal_tz_idr, &thermal_idr_lock, tz->id);
 	idr_destroy(&tz->idr);
+	mutex_unlock(&tz->lock); // avoid destroy a locked mutex
 	mutex_destroy(&tz->lock);
 	device_unregister(&tz->device);
 	return;

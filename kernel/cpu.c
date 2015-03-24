@@ -19,6 +19,9 @@
 #include <linux/mutex.h>
 #include <linux/gfp.h>
 #include <linux/suspend.h>
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER
+#include <mtlbprof/mtlbprof.h>
+#endif
 
 #include "smpboot.h"
 
@@ -329,6 +332,10 @@ static int __ref _cpu_down(unsigned int cpu, int tasks_frozen)
 	 */
 	while (!idle_cpu(cpu))
 		cpu_relax();
+
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER
+	mt_lbprof_update_state(cpu, MT_LBPROF_HOTPLUG_STATE);
+#endif
 
 	/* This actually kills the CPU. */
 	__cpu_die(cpu);

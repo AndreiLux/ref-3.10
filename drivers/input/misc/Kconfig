@@ -12,6 +12,116 @@ menuconfig INPUT_MISC
 
 if INPUT_MISC
 
+#
+#  Mediatek sensors driver support list 
+#
+
+menuconfig ACCELEROMETER_MTK_SUPPORT 
+        bool "Mediatek Accelerometer driver support"
+        help
+          Say Y here if you have MediaTek Accelerometer driver support.
+          If unsure, say N.
+
+if ACCELEROMETER_MTK_SUPPORT
+config ACCELEROMETER_MTK_MC3210
+	tristate "MC3210 Accelerometer"
+	help
+	  Say Y here if you have MC3210 Accelerometer,
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+
+config ACCELEROMETER_MTK_MPU6050
+	tristate "MPU6050/MPU6500 Accelerometer"
+	help
+	  Say Y here if you have MPU6050/MPU6500 Accelerometer,
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+endif
+
+menuconfig ALSPS_MTK_SUPPORT 
+        bool "Mediatek Alsps driver support"
+        help
+          Say Y here if you have MediaTek alsps driver support.
+          If unsure, say N.
+
+if ALSPS_MTK_SUPPORT
+config ALSPS_MTK_STK2203
+	tristate "STK2203 Alsps"
+	help
+	  Say Y here if you have STK2203 Alsps,
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+endif
+
+menuconfig GYROSCOPE_MTK_SUPPORT 
+        bool "Mediatek Gyroscope driver support"
+        help
+          Say Y here if you have MediaTek Gyroscope driver support.
+          If unsure, say N.
+
+if GYROSCOPE_MTK_SUPPORT
+config GYROSCOPE_MTK_MPU3050C
+	tristate "MPU3050C Gyroscope"
+	help
+	  Say Y here if you have MPU3050C Gyroscope,
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+
+config GYROSCOPE_MTK_MPU6050
+	tristate "MPU6050/MPU6500 Gyroscope"
+	help
+	  Say Y here if you have MPU6050/MPU6500 Gyroscope,
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+endif
+
+menuconfig MAGNETOMETER_MTK_SUPPORT 
+        bool "Mediatek Magnetometer driver support"
+        help
+          Say Y here if you have MediaTek Magnetometer driver support.
+          If unsure, say N.
+
+if MAGNETOMETER_MTK_SUPPORT
+config MAGNETOMETER_MTK_AKM8963
+	tristate "AKM8963 Magnetometer"
+	help
+	  Say Y here if you have AKM8963 Magnetometer,
+	  connected to your system.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here.
+endif
+
+# Hall sensors
+
+config INPUT_HALL_BU520
+	bool "BU520 hall sensor support"
+	help
+	  Support for ROHM BU520 hall sensor.
+
+# Temperature sensors
+
+config INPUT_TEMPERATURE_TMP103
+	bool "TMP103 temperature sensor support"
+	help
+	  Support for TI Digital Temperature Sensor TMP103
+
 config INPUT_88PM860X_ONKEY
 	tristate "88PM860x ONKEY support"
 	depends on MFD_88PM860X

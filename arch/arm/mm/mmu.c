@@ -32,6 +32,7 @@
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
 #include <asm/mach/pci.h>
+#include <mach/mtk_memcfg.h>
 
 #include "mm.h"
 #include "tcm.h"
@@ -64,6 +65,48 @@ pgprot_t pgprot_s2_device;
 
 EXPORT_SYMBOL(pgprot_user);
 EXPORT_SYMBOL(pgprot_kernel);
+
+/* ACOS_MOD_BEGIN {internal_membo} */
+/* this function has been moved here from arch/arm/include/asm/pgtable.h */
+void set_pte_at(struct mm_struct *mm, unsigned long addr,
+		pte_t *ptep, pte_t pteval)
+{
+	unsigned long ext = 0;
+
+#ifdef CONFIG_TRAPZ_PVA
+	unsigned long pfn = pte_pfn(pteval);
+	if (pfn && pfn_valid(pfn)) {
+		struct page *page = pfn_to_page(pfn);
+		struct task_struct *cur_task;
+		cur_task = current;
+		if (cur_task && cur_task->tgid &&
+		    !(cur_task->flags & PF_KTHREAD)) {
+			pid_t current_pid = cur_task->tgid;
+			struct allocation_detail detail;
+			detail = page->detail;
+			if (detail.last_mapper_pid == 0
+			    || page_mapcount(page) <= 1
+			    || current_pid != detail.allocation_pid) {
+				detail.last_mapper_pid = current_pid;
+				if (pte_exec(pteval))
+					detail.last_mapper_pid |= 0x8000;
+				if (page_mapcount(page) <= 1)
+					detail.allocation_pid = current_pid;
+				page->detail = detail;
+			}
+		}
+	}
+#endif
+
+	if (addr < TASK_SIZE && pte_present_user(pteval)) {
+		__sync_icache_dcache(pteval);
+		ext |= PTE_EXT_NG;
+	}
+
+	set_pte_ext(ptep, pteval, ext);
+}
+EXPORT_SYMBOL(set_pte_at);
+/* ACOS_MOD_END {internal_membo} */
 
 struct cachepolicy {
 	const char	policy[16];
@@ -1326,6 +1369,10 @@ static void __init map_lowmem(void)
 	for_each_memblock(memory, reg) {
 		start = reg->base;
 		end = start + reg->size;
+                MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT"[PHY layout]kernel   :   0x%08llx - 0x%08llx (0x%08llx)\n",
+                      (unsigned long long)start,
+                      (unsigned long long)end - 1,
+                      (unsigned long long)reg->size);
 
 		if (end > arm_lowmem_limit)
 			end = arm_lowmem_limit;
@@ -1337,6 +1384,10 @@ static void __init map_lowmem(void)
 		map.length = end - start;
 		map.type = MT_MEMORY;
 
+                printk(KERN_ALERT"creating mapping start pa: 0x%08llx @ 0x%08llx "
+                        ", end pa: 0x%08llx @ 0x%08llx\n",
+                       (unsigned long long)start, (unsigned long long)map.virtual,
+                       (unsigned long long)end, (unsigned long long)__phys_to_virt(end));
 		create_mapping(&map, false);
 	}
 

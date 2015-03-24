@@ -832,6 +832,13 @@ extern enum ftrace_dump_mode ftrace_dump_on_oops;
 #define INIT_TRACE_RECURSION		.trace_recursion = 0,
 #endif
 
+// ftrace's switch function for MTK solution
+void mt_ftrace_enable_disable(int enable);
+
+#if defined(CONFIG_MTK_SCHED_TRACERS) && defined(CONFIG_MTK_HIBERNATION)
+int resize_ring_buffer_for_hibernation(int enable);
+#endif
+
 #endif /* CONFIG_TRACING */
 
 #ifndef INIT_TRACE_RECURSION

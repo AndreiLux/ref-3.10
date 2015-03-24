@@ -73,6 +73,43 @@ struct suspend_stats {
 
 extern struct suspend_stats suspend_stats;
 
+#ifdef CONFIG_PM_STATS_SUPPORT
+struct pm_stats {
+	u64	normal;
+	u64	freeze;
+	u64	prepare;
+	u64	suspend;
+	u64	suspend_late;
+	u64	suspend_noirq;
+	u64	standby;
+	u64	mem;
+	u64	resume_noirq;
+	u64	resume_early;
+	u64	resume;
+	u64	complete;
+	ktime_t time;
+	bool suspending;
+};
+
+extern struct pm_stats pm_stats;
+
+struct pm_trans {
+	int	freeze;
+	int	prepare;
+	int	suspend;
+	int	suspend_late;
+	int	suspend_noirq;
+	int	standby;
+	int	mem;
+	int	resume_noirq;
+	int	resume_early;
+	int	resume;
+	int	complete;
+};
+
+extern struct pm_trans pm_trans;
+#endif
+
 static inline void dpm_save_failed_dev(const char *name)
 {
 	strlcpy(suspend_stats.failed_devs[suspend_stats.last_failed_dev],

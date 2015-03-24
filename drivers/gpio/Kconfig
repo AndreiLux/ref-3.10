@@ -103,6 +103,17 @@ config GPIO_DA9055
 
 	  If driver is built as a module it will be called gpio-da9055.
 
+config GPIO_MT8135
+	tristate "Mediatek MT8135 and MT6397 GPIO"
+	depends on ARCH_MT8135
+	help
+	  Say yes here to enable the GPIO driver for the MT8135 chip.
+	  It also has support for MT6397 companion (PMIC) chip.
+
+	  If driver is built as a module it will be called gpio-mtk.
+	  If using MT8135-based board, you mostlikely need this,
+	  otherwise it is safe to say no here
+
 config GPIO_MAX730X
 	tristate
 

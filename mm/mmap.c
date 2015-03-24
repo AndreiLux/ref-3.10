@@ -1347,7 +1347,14 @@ unsigned long do_mmap_pgoff(struct file *file, unsigned long addr,
 			vm_flags |= VM_NORESERVE;
 	}
 
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	addr = mmap_region(file, addr, len, vm_flags, pgoff, flags);
+#else
 	addr = mmap_region(file, addr, len, vm_flags, pgoff);
+#endif
+/* ACOS_MOD_END {internal_membo} */
+
 	if (!IS_ERR_VALUE(addr) &&
 	    ((vm_flags & VM_LOCKED) ||
 	     (flags & (MAP_POPULATE | MAP_NONBLOCK)) == MAP_POPULATE))
@@ -1475,8 +1482,28 @@ static inline int accountable_mapping(struct file *file, vm_flags_t vm_flags)
 	return (vm_flags & (VM_NORESERVE | VM_SHARED | VM_WRITE)) == VM_WRITE;
 }
 
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+static int pageinfo_stack_mapping[4];
+static int pageinfo_fixed_32bit_mapping[4];
+static int pageinfo_32bit_mapping[4];
+static int pageinfo_fixed_mapping[4];
+#endif
+/* ACOS_MOD_END {internal_membo} */
+
+
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
 unsigned long mmap_region(struct file *file, unsigned long addr,
-		unsigned long len, vm_flags_t vm_flags, unsigned long pgoff)
+			  unsigned long len, vm_flags_t vm_flags,
+			  unsigned long pgoff,
+			  unsigned long flags)
+#else
+unsigned long mmap_region(struct file *file, unsigned long addr,
+			  unsigned long len, vm_flags_t vm_flags,
+			  unsigned long pgoff)
+#endif
+/* ACOS_MOD_END {internal_membo} */
 {
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma, *prev;
@@ -1583,6 +1610,18 @@ munmap_back:
 		error = shmem_zero_setup(vma);
 		if (error)
 			goto free_vma;
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+	} else if (flags & MAP_STACK) {
+		vma->vm_private_data = (void *)pageinfo_stack_mapping;
+	} else if (flags & 0x40 && flags & MAP_FIXED) {
+		vma->vm_private_data = (void *)pageinfo_fixed_32bit_mapping;
+	} else if (flags & 0x40) {
+		vma->vm_private_data = (void *)pageinfo_32bit_mapping;
+	} else if (flags & MAP_FIXED) {
+		vma->vm_private_data = (void *)pageinfo_fixed_mapping;
+#endif
+/* ACOS_MOD_END {internal_membo} */
 	}
 
 	if (vma_wants_writenotify(vma)) {

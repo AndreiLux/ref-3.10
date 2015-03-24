@@ -210,7 +210,11 @@ extern void			ndisc_send_redirect(struct sk_buff *skb,
 
 extern int			ndisc_mc_map(const struct in6_addr *addr, char *buf,
 					     struct net_device *dev, int dir);
-
+					     
+/* MTK_NET_CHANGES */
+#ifdef CONFIG_MTK_IPV6_TETHER_NDP_MODE
+extern int 			ndp_forward(struct sk_buff *skb);
+#endif
 
 /*
  *	IGMP

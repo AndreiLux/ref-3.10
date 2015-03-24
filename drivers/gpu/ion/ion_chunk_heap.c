@@ -180,16 +180,15 @@ struct ion_heap *ion_chunk_heap_create(struct ion_platform_heap *heap_data)
 		unmap_kernel_range((unsigned long)vm_struct->addr, PAGE_SIZE);
 	}
 	free_vm_area(vm_struct);
-
 	arm_dma_ops.sync_single_for_device(NULL,
 		pfn_to_dma(NULL, page_to_pfn(phys_to_page(heap_data->base))),
 		heap_data->size, DMA_BIDIRECTIONAL);
 	gen_pool_add(chunk_heap->pool, chunk_heap->base, heap_data->size, -1);
 	chunk_heap->heap.ops = &chunk_heap_ops;
 	chunk_heap->heap.type = ION_HEAP_TYPE_CHUNK;
-	chunk_heap->heap.flags = ION_HEAP_FLAG_DEFER_FREE;
-	pr_info("%s: base %lu size %zu align %ld\n", __func__,
-			  chunk_heap->base, heap_data->size, heap_data->align);
+	chunk_heap->heap.flags = 0;
+	pr_info("%s: base %lu size %u align %ld\n", __func__, chunk_heap->base,
+		heap_data->size, heap_data->align);
 
 	return &chunk_heap->heap;
 

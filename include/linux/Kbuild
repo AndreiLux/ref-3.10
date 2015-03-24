@@ -1,2 +1,26 @@
+
+header-y += vcodec/
+header-y += dpframework/
+header-y += camera/
+
 header-y += if_pppolac.h
 header-y += if_pppopns.h
+header-y += hwmsensor.h
+header-y += ion_debugger.h
+header-y += ion_drv.h
+header-y += mmprofile.h
+header-y += mmprofile_internal.h
+header-y += mmprofile_static_event.h
+header-y += mtgpio.h
+header-y += mt_sched.h
+header-y += mt_sched_ioctl.h
+header-y += rtpm_prio.h
+header-y += sensors_io.h
+header-y += hdmitx.h
+header-y += kpd.h
+header-y += fm.h
+header-y += mtkfb.h
+header-y += mtk_ion.h
+header-y += camera_isp.h
+header-y += camera_pipe_mgr.h
+header-y += camera_sysram.h

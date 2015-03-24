@@ -1292,6 +1292,17 @@ no_cached_page:
 			desc->error = -ENOMEM;
 			goto out;
 		}
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		{
+			struct allocation_detail detail = page->detail;
+			detail.call_site =
+				(void *)(((char *)mapping->a_ops->readpage)
+					 + 4);
+			page->detail = detail;
+		}
+#endif
+/* ACOS_MOD_END {internal_membo} */
 		error = add_to_page_cache_lru(page, mapping,
 						index, GFP_KERNEL);
 		if (error) {
@@ -1510,6 +1521,17 @@ static int page_cache_read(struct file *file, pgoff_t offset)
 		page = page_cache_alloc_cold(mapping);
 		if (!page)
 			return -ENOMEM;
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		{
+			struct allocation_detail detail = page->detail;
+			detail.call_site =
+				(void *)(((char *)mapping->a_ops->readpage)
+					 + 8);
+			page->detail = detail;
+		}
+#endif
+/* ACOS_MOD_END {internal_membo} */
 
 		ret = add_to_page_cache_lru(page, mapping, offset, GFP_KERNEL);
 		if (ret == 0)
@@ -1634,6 +1656,10 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	} else if (!page) {
 		/* No page in the page cache at all */
 		do_sync_mmap_readahead(vma, ra, file, offset);
+#ifdef CONFIG_ZRAM
+        current->fm_flt++;
+#endif
+		count_vm_event(PGFMFAULT);
 		count_vm_event(PGMAJFAULT);
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
@@ -1809,6 +1835,15 @@ repeat:
 		page = __page_cache_alloc(gfp | __GFP_COLD);
 		if (!page)
 			return ERR_PTR(-ENOMEM);
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
+		{
+			struct allocation_detail detail = page->detail;
+			detail.call_site = (void *)(((char *)filler) + 12);
+			page->detail = detail;
+		}
+#endif
+/* ACOS_MOD_END {internal_membo} */
 		err = add_to_page_cache_lru(page, mapping, index, gfp);
 		if (unlikely(err)) {
 			page_cache_release(page);

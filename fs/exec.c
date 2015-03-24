@@ -55,6 +55,7 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
+#include <linux/trapz.h>   /* ACOS_MOD_ONELINE */
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1043,6 +1044,20 @@ void set_task_comm(struct task_struct *tsk, char *buf)
 	strlcpy(tsk->comm, buf, sizeof(tsk->comm));
 	task_unlock(tsk);
 	perf_event_comm(tsk);
+	/* ACOS_MOD_BEGIN */
+#ifdef CONFIG_TRAPZ_TP
+	if (TASK_COMM_LEN >= 8) {
+		int tc0 = ((int *)tsk->comm)[0];
+		int tc1 = ((int *)tsk->comm)[1];
+		int tc2 = ((int *)tsk->comm)[2];
+		int tc3 = ((int *)tsk->comm)[3];
+		TRAPZ_DESCRIBE(TRAPZ_KERN_SCHED, TaskComm,
+			"bytes 0..15 of tsk->comm");
+		TRAPZ_LOG(TRAPZ_LOG_DEBUG, 0, TRAPZ_KERN_SCHED, TaskComm,
+			tc0, tc1, tc2, tc3);
+	}
+#endif
+	/* ACOS_MOD_END */
 }
 
 static void filename_to_taskname(char *tcomm, const char *fn, unsigned int len)

@@ -23,6 +23,14 @@
 #include <linux/init.h>
 #include <linux/nmi.h>
 
+#ifdef CONFIG_RTC_DRV_MTK
+#include <mach/mtk_rtc.h>
+#endif
+#ifdef CONFIG_MDUMP
+#include <linux/mdump.h>
+int g_kernel_panic;
+#endif
+
 #define PANIC_TIMER_STEP 100
 #define PANIC_BLINK_SPD 18
 
@@ -105,6 +113,15 @@ void panic(const char *fmt, ...)
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
+
+#ifdef CONFIG_RTC_DRV_MTK
+	if (rtc_get_reboot_reason() != RTC_REBOOT_REASON_SW_WDT)
+		rtc_mark_reboot_reason(RTC_REBOOT_REASON_PANIC);
+#endif
+#ifdef CONFIG_MDUMP
+	mdump_mark_reboot_reason(MDUMP_REBOOT_PANIC);
+	g_kernel_panic = 1;
+#endif
 	printk(KERN_EMERG "Kernel panic - not syncing: %s\n",buf);
 #ifdef CONFIG_DEBUG_BUGVERBOSE
 	/*
@@ -142,7 +159,7 @@ void panic(const char *fmt, ...)
 		 * Delay timeout seconds before rebooting the machine.
 		 * We can't use the "normal" timers since we just panicked.
 		 */
-		printk(KERN_EMERG "Rebooting in %d seconds..", panic_timeout);
+		printk(KERN_EMERG "Rebooting in %d seconds..\n", panic_timeout);
 
 		for (i = 0; i < panic_timeout * 1000; i += PANIC_TIMER_STEP) {
 			touch_nmi_watchdog();
@@ -464,7 +481,12 @@ EXPORT_SYMBOL(warn_slowpath_null);
  */
 void __stack_chk_fail(void)
 {
+/*
 	panic("stack-protector: Kernel stack is corrupted in: %p\n",
+		__builtin_return_address(0));
+*/
+    BUG();
+    printk(KERN_ERR "stack-protector: Kernel stack is corrupted in: %p\n",
 		__builtin_return_address(0));
 }
 EXPORT_SYMBOL(__stack_chk_fail);

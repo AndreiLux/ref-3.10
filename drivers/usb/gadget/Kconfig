@@ -990,4 +990,25 @@ config USB_G_WEBCAM
 
 endchoice
 
+config MTK_MULTI_STORAGE_SUPPORT
+	bool "MTK_MULTI_STORAGE_SUPPORT"
+	help
+	   Support more than 1 SD card Path is  \Sdcard and \Sdcard\Sdcard2
+	   One card must be always exist \sdcard,  Some write app can save to
+	   one of cards storage. Camera,recorder,browser,BT,ATV,CMMB Mount
+	   service  can mount multi-storage Media scan will scan all media in
+	   both cards File manager can view all cards Usb mass storage for
+	   two card is the same behavior mount/umount at same time Setting
+	   provide user to select which card want to write
+
+config MTK_OWNER_SDCARD_ONLY_SUPPORT
+	bool "MTK_OWNER_SDCARD_ONLY_SUPPORT"
+	help
+	   MTK_OWNER_SDCARD_ONLY_SUPPORT =yes, means it will enable MTK
+	   Multiuser for External SDcard solution.
+
+config MTK_BICR_SUPPORT
+	bool "MTK_BICR_SUPPORT"
+	help
+
 endif # USB_GADGET

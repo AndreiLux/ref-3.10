@@ -423,11 +423,18 @@ nocache:
 		if (addr + size < addr)
 			goto overflow;
 
+		/*
 		if (list_is_last(&first->list, &vmap_area_list))
 			goto found;
 
 		first = list_entry(first->list.next,
 				struct vmap_area, list);
+		*/
+		n = rb_next(&first->rb_node);
+		if (n)
+			first = rb_entry(n, struct vmap_area, rb_node);
+		else
+			goto found;
 	}
 
 found:

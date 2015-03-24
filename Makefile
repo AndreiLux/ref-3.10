@@ -192,8 +192,10 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # "make" in the configured kernel build directory always uses that.
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
-ARCH		?= $(SUBARCH)
-CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
+#ARCH		?= $(SUBARCH)
+#CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
+ARCH		?= arm
+CROSS_COMPILE	?= arm-eabi-
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -366,6 +368,13 @@ LINUXINCLUDE    := \
 		$(if $(KBUILD_SRC), -I$(srctree)/include) \
 		-Iinclude \
 		$(USERINCLUDE)
+
+# ACOS_MOD_BEGIN
+ifeq ($(USE_TRAPZ), true)
+CFLAGS_KERNEL += -DENABLE_TRAPZ
+CFLAGS_MODULE += -DENABLE_TRAPZ
+endif
+# ACOS_MOD_END
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
@@ -849,7 +858,8 @@ define filechk_utsrelease.h
 	  echo '"$(KERNELRELEASE)" exceeds $(uts_len) characters' >&2;    \
 	  exit 1;                                                         \
 	fi;                                                               \
-	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";)
+	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";                  \
+	echo \#define BUILD_FINGERPRINT \"$(TARGET_PRODUCT)\";)
 endef
 
 define filechk_version.h
@@ -984,6 +994,29 @@ PHONY += _modinst_post
 _modinst_post: _modinst_
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=firmware __fw_modinst
 	$(call cmd,depmod)
+
+# MTK {
+# Target to install android modules
+
+AMODLIB = $(INSTALL_MOD_PATH)/lib/modules
+export AMODLIB
+AMODSYMLIB = $(INSTALL_MOD_PATH)/../symbols/system/lib/modules
+export AMODSYMLIB
+
+PHONY += android_modules_install
+android_modules_install: _android_modinst_
+
+PHONY += _android_modinst_
+_android_modinst_:
+	@if [ ! -d $(AMODLIB) ]; then \
+		mkdir -p $(AMODLIB); \
+	fi
+	@if [ ! -d $(AMODSYMLIB) ]; then \
+		mkdir -p $(AMODSYMLIB); \
+	fi
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.android.modinst
+# MTK }
+
 
 ifeq ($(CONFIG_MODULE_SIG), y)
 PHONY += modules_sign

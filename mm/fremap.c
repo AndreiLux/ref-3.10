@@ -204,8 +204,15 @@ get_write_lock:
 			unsigned long addr;
 			struct file *file = get_file(vma->vm_file);
 
+/* ACOS_MOD_BEGIN {internal_membo} */
+#ifdef CONFIG_TRAPZ_PVA
 			addr = mmap_region(file, start, size,
-					vma->vm_flags, pgoff);
+					   vma->vm_flags, pgoff, flags);
+#else
+			addr = mmap_region(file, start, size,
+					   vma->vm_flags, pgoff);
+#endif
+/* ACOS_MOD_END {internal_membo} */
 			fput(file);
 			if (IS_ERR_VALUE(addr)) {
 				err = addr;

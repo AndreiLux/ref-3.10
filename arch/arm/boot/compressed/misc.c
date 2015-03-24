@@ -106,10 +106,28 @@ unsigned char *output_data;
 
 unsigned long free_mem_ptr;
 unsigned long free_mem_end_ptr;
+char s_hexbuf[sizeof(unsigned long)*2+1];
 
 #ifndef arch_error
 #define arch_error(x)
 #endif
+
+void out_hexstr(const char *head, unsigned long val)
+{
+	int idx = sizeof(s_hexbuf)-1;
+	putstr(head);
+	while (idx--) {
+		unsigned int num = (val & 0x0F);
+		if (num < 10)
+			s_hexbuf[idx] = num + '0';
+		else
+			s_hexbuf[idx] = num - 10 + 'A';
+		val = val >> 4;
+	}
+	s_hexbuf[sizeof(s_hexbuf)-1] = 0;
+	putstr(s_hexbuf);
+	putstr("\r\n");
+}
 
 void error(char *x)
 {
@@ -144,6 +162,10 @@ decompress_kernel(unsigned long output_start, unsigned long free_mem_ptr_p,
 
 	arch_decomp_setup();
 
+	out_hexstr("TargetStart=", output_start);
+	out_hexstr("FreeStart=", free_mem_ptr_p);
+	out_hexstr("FreeEnd=", free_mem_ptr_end_p);
+	out_hexstr("DataStart=", (unsigned long)input_data);
 	putstr("Uncompressing Linux...");
 	ret = do_decompress(input_data, input_data_end - input_data,
 			    output_data, error);

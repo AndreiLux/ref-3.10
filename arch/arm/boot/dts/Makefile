@@ -91,6 +91,13 @@ dtb-$(CONFIG_ARCH_KIRKWOOD) += kirkwood-cloudbox.dtb \
 dtb-$(CONFIG_ARCH_MARCO) += marco-evb.dtb
 dtb-$(CONFIG_ARCH_MSM) += msm8660-surf.dtb \
 	msm8960-cdp.dtb
+dtb-$(CONFIG_ARCH_MT8135) += mt8135-ca7x2-ca15x2.dtb \
+	mt8135-ca7x2-ca15x1.dtb \
+	mt8135-ca7x1-ca15x1.dtb \
+	mt8135-ca7x1.dtb \
+	mt8135-ca7x2.dtb \
+	mt8135-stingray.dtb \
+	mt8135-ariel.dtb
 dtb-$(CONFIG_ARCH_MVEBU) += armada-370-db.dtb \
 	armada-370-mirabox.dtb \
 	armada-370-rd.dtb \
@@ -202,14 +209,7 @@ dtb-$(CONFIG_ARCH_VERSATILE) += versatile-ab.dtb \
 dtb-$(CONFIG_ARCH_VEXPRESS) += vexpress-v2p-ca5s.dtb \
 	vexpress-v2p-ca9.dtb \
 	vexpress-v2p-ca15-tc1.dtb \
-	vexpress-v2p-ca15_a7.dtb \
-	rtsm_ve-cortex_a9x2.dtb \
-	rtsm_ve-cortex_a9x4.dtb \
-	rtsm_ve-cortex_a15x1.dtb \
-	rtsm_ve-cortex_a15x2.dtb \
-	rtsm_ve-cortex_a15x4.dtb \
-	rtsm_ve-v2p-ca15x1-ca7x1.dtb \
-	rtsm_ve-v2p-ca15x4-ca7x4.dtb
+	vexpress-v2p-ca15_a7.dtb
 dtb-$(CONFIG_ARCH_VIRT) += xenvm-4.2.dtb
 dtb-$(CONFIG_ARCH_VT8500) += vt8500-bv07.dtb \
 	wm8505-ref.dtb \
@@ -217,13 +217,20 @@ dtb-$(CONFIG_ARCH_VT8500) += vt8500-bv07.dtb \
 	wm8850-w70v2.dtb
 dtb-$(CONFIG_ARCH_ZYNQ) += zynq-zc702.dtb
 
+DTB_NAMES := $(subst $\",,$(CONFIG_BUILD_ARM_APPENDED_DTB_IMAGE_NAMES))
+ifneq ($(DTB_NAMES),)
+DTB_LIST := $(addsuffix .dtb,$(DTB_NAMES))
+else
+DTB_LIST := $(dtb-y)
+endif
+
 targets += dtbs
-targets += $(dtb-y)
+targets += $(DTB_LIST)
 endif
 
 # *.dtb used to be generated in the directory above. Clean out the
 # old build results so people don't accidentally use them.
-dtbs: $(addprefix $(obj)/, $(dtb-y))
+dtbs: $(addprefix $(obj)/, $(DTB_LIST))
 	$(Q)rm -f $(obj)/../*.dtb
 
 clean-files := *.dtb

@@ -1,0 +1,15 @@
+#ifndef _KD_FLASHLIGHTLIST_H_
+#define _KD_FLASHLIGHTLIST_H_
+
+/* export funtions */
+MUINT32 defaultFlashlightInit(PFLASHLIGHT_FUNCTION_STRUCT *pfFunc);
+MUINT32 dummyFlashlightInit(PFLASHLIGHT_FUNCTION_STRUCT *pfFunc);
+MUINT32 peakFlashlightInit(PFLASHLIGHT_FUNCTION_STRUCT *pfFunc);
+MUINT32 torchFlashlightInit(PFLASHLIGHT_FUNCTION_STRUCT *pfFunc);
+MUINT32 constantFlashlightInit(PFLASHLIGHT_FUNCTION_STRUCT *pfFunc);
+
+#ifdef MTK_SUB_STROBE_SUPPORT
+MUINT32 subStrobeInit(PFLASHLIGHT_FUNCTION_STRUCT *pfFunc);
+#endif
+
+#endif

@@ -83,7 +83,7 @@ unsigned int _parse_integer(const char *s, unsigned int base, unsigned long long
 	return rv;
 }
 
-static int _kstrtoull(const char *s, unsigned int base, unsigned long long *res)
+static int _kstrtoull(const char *s, unsigned int base, unsigned long long *res, bool maybe_incomplete)
 {
 	unsigned long long _res;
 	unsigned int rv;
@@ -98,7 +98,7 @@ static int _kstrtoull(const char *s, unsigned int base, unsigned long long *res)
 	s += rv;
 	if (*s == '\n')
 		s++;
-	if (*s)
+	if (!maybe_incomplete && *s)
 		return -EINVAL;
 	*res = _res;
 	return 0;
@@ -124,9 +124,17 @@ int kstrtoull(const char *s, unsigned int base, unsigned long long *res)
 {
 	if (s[0] == '+')
 		s++;
-	return _kstrtoull(s, base, res);
+	return _kstrtoull(s, base, res, false);
 }
 EXPORT_SYMBOL(kstrtoull);
+
+int kstrtoull_chk(const char *s, unsigned int base, unsigned long long *res, bool maybe_incomplete)
+{
+	if (s[0] == '+')
+		s++;
+	return _kstrtoull(s, base, res, maybe_incomplete);
+}
+EXPORT_SYMBOL(kstrtoull_chk);
 
 /**
  * kstrtoll - convert a string to a long long
@@ -150,7 +158,7 @@ int kstrtoll(const char *s, unsigned int base, long long *res)
 	int rv;
 
 	if (s[0] == '-') {
-		rv = _kstrtoull(s + 1, base, &tmp);
+		rv = _kstrtoull(s + 1, base, &tmp, false);
 		if (rv < 0)
 			return rv;
 		if ((long long)(-tmp) >= 0)

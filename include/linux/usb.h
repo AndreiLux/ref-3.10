@@ -1176,6 +1176,11 @@ extern int usb_disabled(void);
 #define URB_DMA_SG_COMBINED	0x00400000	/* S-G entries were combined */
 #define URB_ALIGNED_TEMP_BUFFER	0x00800000	/* Temp buffer was alloc'd */
 
+//Added for DMA Mode1 ReqMode0/1 for unknown/known size class driver
+#define URB_RX_REQ_MODE0_ENABLE	0x01000000	/* Enable DMA Rx ReqMode1 with the URB */
+#define URB_RX_REQ_MODE1_ENABLE	0x02000000	/* Enable DMA Rx ReqMode1 with the URB */
+//Added for DMA Mode1 ReqMode0/1 for unknown/known size class driver
+
 struct usb_iso_packet_descriptor {
 	unsigned int offset;
 	unsigned int length;		/* expected length */

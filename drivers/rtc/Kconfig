@@ -1248,5 +1248,10 @@ config RTC_DRV_HID_SENSOR_TIME
 	  If this driver is compiled as a module, it will be named
 	  rtc-hid-sensor-time.
 
+config RTC_DRV_MTK
+	bool "RTC function support for MT8135/MT6397"
+	depends on ARCH_MT8135
+	default y
+
 
 endif # RTC_CLASS

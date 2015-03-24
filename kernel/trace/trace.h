@@ -12,6 +12,9 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/trace_seq.h>
 #include <linux/ftrace_event.h>
+#ifdef CONFIG_MT65XX_TRACER
+#include <mach/mt_mon.h>
+#endif
 
 #ifdef CONFIG_FTRACE_SYSCALLS
 #include <asm/unistd.h>		/* For NR_SYSCALLS	     */
@@ -35,6 +38,7 @@ enum trace_type {
 	TRACE_USER_STACK,
 	TRACE_BLK,
 	TRACE_BPUTS,
+    TRACE_MT65XX_MON_TYPE,
 
 	__TRACE_LAST_TYPE,
 };
@@ -288,6 +292,8 @@ extern void __ftrace_bad_type(void);
 			  TRACE_GRAPH_ENT);		\
 		IF_ASSIGN(var, ent, struct ftrace_graph_ret_entry,	\
 			  TRACE_GRAPH_RET);		\
+        IF_ASSIGN(var, ent, struct mt65xx_mon_entry, \
+                TRACE_MT65XX_MON_TYPE); \
 		__ftrace_bad_type();					\
 	} while (0)
 
@@ -1065,6 +1071,10 @@ int perf_ftrace_event_register(struct ftrace_event_call *call,
 			       enum trace_reg type, void *data);
 #else
 #define perf_ftrace_event_register NULL
+#endif
+
+#ifdef CONFIG_MTK_SCHED_TRACERS
+void print_enabled_events(struct seq_file *m);
 #endif
 
 #endif /* _LINUX_KERNEL_TRACE_H */

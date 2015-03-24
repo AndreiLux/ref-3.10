@@ -531,6 +531,39 @@ config SRAM
 	  the genalloc API. It is supposed to be used for small on-chip SRAM
 	  areas found on many SoCs.
 
+config MDUMP
+	bool "Generic memory dump"
+	default	n
+	help
+	  The module allow support mdump feature, It need bootloader's support. when
+	  panic, it will do a mark, and bootloader can store all memory to analyze.
+
+	  If unsure, say N.
+
+config MDUMP_BUFFER_ADDRESS
+	hex "MDUMP Memory Buffer Address"
+	default 0x81FC0000
+	depends on MDUMP
+	help
+	  Set mdump buffer address for mdump module. This address will share with bootloader
+	  Make sure you also changed this value on bootloader config code
+
+config MDUMP_MESSAGE_SIZE
+	hex "MDUMP Memory Buffer Message Size"
+	default 0x10000
+	depends on MDUMP
+	help
+	  Set mdump buffer size for mdump module. This size will share with bootloader
+	  Make sure you also changed this value on bootloader config code
+	  There are two stage messages. So mdump buffer's real size is MDUMP_MESSAGE_SIZE * 2
+
+config IDME
+	bool "IDME support"
+	depends on PROC_FS
+	help
+	  Select Y here to enable IDME support to read the data
+	  via userspace (i.e. /proc/idme/* entries)
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -540,4 +573,5 @@ source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
 source "drivers/misc/vmw_vmci/Kconfig"
+source "drivers/misc/analogix/Kconfig"
 endmenu

@@ -311,6 +311,11 @@ extern u64 nsec_to_clock_t(u64 x);
 extern u64 nsecs_to_jiffies64(u64 n);
 extern unsigned long nsecs_to_jiffies(u64 n);
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+extern unsigned long long jiffies_to_msecs_64(const unsigned long j);
+extern unsigned long long jiffies_to_usecs_64(const unsigned long j);
+#endif
+
 #define TIMESTAMP_SIZE	30
 
 #endif

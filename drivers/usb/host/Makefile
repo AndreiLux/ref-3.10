@@ -20,6 +20,7 @@ ifneq ($(CONFIG_USB_XHCI_PLATFORM), )
 endif
 
 obj-$(CONFIG_USB_WHCI_HCD)	+= whci/
+obj-$(CONFIG_MEDIATEK_SOLUTION) += usb20/
 
 obj-$(CONFIG_PCI)		+= pci-quirks.o
 

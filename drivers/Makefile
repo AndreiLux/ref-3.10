@@ -5,6 +5,9 @@
 # Rewritten to use lists instead of if-statements.
 #
 
+# Enable warning to error in all drivers
+subdir-ccflags-y += -Werror
+
 obj-y				+= irqchip/
 obj-y				+= bus/
 
@@ -153,5 +156,3 @@ obj-$(CONFIG_IIO)		+= iio/
 obj-$(CONFIG_VME_BUS)		+= vme/
 obj-$(CONFIG_IPACK_BUS)		+= ipack/
 obj-$(CONFIG_NTB)		+= ntb/
-
-obj-$(CONFIG_GATOR)		+= gator/

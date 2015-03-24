@@ -104,8 +104,6 @@ source "drivers/staging/speakup/Kconfig"
 
 source "drivers/staging/cptm1217/Kconfig"
 
-source "drivers/staging/ste_rmi4/Kconfig"
-
 source "drivers/staging/nvec/Kconfig"
 
 source "drivers/staging/media/Kconfig"
@@ -139,5 +137,7 @@ source "drivers/staging/goldfish/Kconfig"
 source "drivers/staging/netlogic/Kconfig"
 
 source "drivers/staging/dwc2/Kconfig"
+
+source "drivers/staging/trapz/Kconfig"
 
 endif # STAGING

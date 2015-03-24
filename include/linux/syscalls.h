@@ -64,6 +64,7 @@ struct old_linux_dirent;
 struct perf_event_attr;
 struct file_handle;
 struct sigaltstack;
+struct trapz_info;
 
 #include <linux/types.h>
 #include <linux/aio_abi.h>
@@ -842,8 +843,10 @@ asmlinkage long sys_process_vm_writev(pid_t pid,
 				      const struct iovec __user *rvec,
 				      unsigned long riovcnt,
 				      unsigned long flags);
-
 asmlinkage long sys_kcmp(pid_t pid1, pid_t pid2, int type,
 			 unsigned long idx1, unsigned long idx2);
 asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
+asmlinkage long sys_trapz(unsigned int ctrl, unsigned int extra1,
+	unsigned int extra2, unsigned int extra3, unsigned int extra4,
+	struct trapz_info __user *ti);
 #endif

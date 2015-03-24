@@ -36,6 +36,7 @@
 #include <linux/syscore_ops.h>
 
 #include <trace/events/power.h>
+#include <linux/trapz.h>   /* ACOS_MOD_ONELINE */
 
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
@@ -49,6 +50,10 @@ static DEFINE_PER_CPU(struct cpufreq_policy *, cpufreq_cpu_data);
 static DEFINE_PER_CPU(char[CPUFREQ_NAME_LEN], cpufreq_cpu_governor);
 #endif
 static DEFINE_RWLOCK(cpufreq_driver_lock);
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+static unsigned int a_ret_freq[NR_CPUS];
+#endif
 
 /*
  * cpu_policy_rwsem is a per CPU reader-writer semaphore designed to cure
@@ -335,10 +340,19 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 		pr_debug("FREQ: %lu - CPU: %lu", (unsigned long)freqs->new,
 			(unsigned long)freqs->cpu);
 		trace_cpu_frequency(freqs->new, freqs->cpu);
+
+		TRAPZ_DESCRIBE(TRAPZ_KERN_CPU, CPUFreq, "CPU Frequency Change");
+		TRAPZ_LOG_PRINTF(TRAPZ_LOG_DEBUG, 0, TRAPZ_KERN_CPU, CPUFreq,
+			"cpu freq=%d", freqs->new, 0, 0, 0);
+
 		srcu_notifier_call_chain(&cpufreq_transition_notifier_list,
 				CPUFREQ_POSTCHANGE, freqs);
 		if (likely(policy) && likely(policy->cpu == freqs->cpu))
 			policy->cur = freqs->new;
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+		a_ret_freq[freqs->cpu] = freqs->new;
+#endif
 		break;
 	}
 }
@@ -1261,6 +1275,74 @@ unsigned int cpufreq_quick_get_max(unsigned int cpu)
 }
 EXPORT_SYMBOL(cpufreq_quick_get_max);
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+/**
+ * cpufreq_get_idx - get frequency idx within frequency table
+ * @cpu: CPU number
+ * @freq: CPU frequency
+ *
+ * returns index within freq table, -1 otherwise.
+ */
+unsigned int cpufreq_get_idx(unsigned int cpu, unsigned int freq)
+{
+	unsigned int ret_idx = -1;
+	struct cpufreq_frequency_table *table = NULL;
+	int i;
+
+	table = cpufreq_get_drivertable(cpu);
+
+	if (!table)
+		goto done;
+
+	for (i = 0; (table[i].frequency != CPUFREQ_TABLE_END); i++) {
+		if (table[i].frequency == freq) {
+			ret_idx = i;
+			break;
+		}
+	}
+done:
+	return ret_idx;
+}
+
+/**
+ * cpufreq_frequency_get_drivetable - get cpufreq frequency table from cpufreq driver for this CPU
+ * @cpu: CPU number
+ *
+ * Just return the max possible frequency for a given CPU.
+ */
+struct cpufreq_frequency_table *cpufreq_get_drivertable(unsigned int cpu)
+{
+	if (!cpufreq_driver || !cpufreq_driver->get_table)
+		return NULL;
+	else
+		return cpufreq_driver->get_table(cpu);
+}
+EXPORT_SYMBOL(cpufreq_get_drivertable);
+
+/**
+ * cpufreq_latest_quick_get - get the CPU frequency (in kHz) from a_ret_freq
+ * array which keep the latest frequency for every CPUs. We can get the
+ * frequency even the CPU is offline.
+ *
+ * @cpu: CPU number
+ *
+ * This is the last known freq, without actually getting it from the driver.
+ * Return value will be same as what is shown in scaling_cur_freq in sysfs.
+ */
+unsigned int cpufreq_latest_quick_get(unsigned int cpu)
+{
+	unsigned int latest_freq = 0;
+
+	/* policy maybe NULL if CPU offline at this moment,
+	 * we return last frequency.
+	 */
+	latest_freq = a_ret_freq[cpu];
+	return latest_freq;
+}
+EXPORT_SYMBOL(cpufreq_latest_quick_get);
+
+#endif
+
 
 static unsigned int __cpufreq_get(unsigned int cpu)
 {
@@ -1971,6 +2053,10 @@ int cpufreq_register_driver(struct cpufreq_driver *driver_data)
 	register_hotcpu_notifier(&cpufreq_cpu_notifier);
 	pr_debug("driver %s up and running\n", driver_data->name);
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	memset(a_ret_freq, 0, sizeof(int)*num_possible_cpus());
+#endif
+
 	return 0;
 err_if_unreg:
 	subsys_interface_unregister(&cpufreq_interface);
@@ -2006,6 +2092,10 @@ int cpufreq_unregister_driver(struct cpufreq_driver *driver)
 	write_lock_irqsave(&cpufreq_driver_lock, flags);
 	cpufreq_driver = NULL;
 	write_unlock_irqrestore(&cpufreq_driver_lock, flags);
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	memset(a_ret_freq, 0, sizeof(int)*num_possible_cpus());
+#endif
 
 	return 0;
 }

@@ -93,6 +93,12 @@
 #include <trace/events/oom.h>
 #include "internal.h"
 #include "fd.h"
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+#include <linux/cpufreq.h>
+#include <linux/jiffies.h>
+#include <asm/div64.h>
+#endif
+
 
 /* NOTE:
  *	Implementing inode permission operations in /proc is almost
@@ -920,8 +926,8 @@ static ssize_t oom_adj_read(struct file *file, char __user *buf, size_t count,
 		if (task->signal->oom_score_adj == OOM_SCORE_ADJ_MAX)
 			oom_adj = OOM_ADJUST_MAX;
 		else
-			oom_adj = (task->signal->oom_score_adj * -OOM_DISABLE) /
-				  OOM_SCORE_ADJ_MAX;
+			oom_adj = ((task->signal->oom_score_adj * -OOM_DISABLE * 10)/OOM_SCORE_ADJ_MAX+5)
+			             /10; //modify for oom_score_adj->oom_adj round
 		unlock_task_sighand(task, &flags);
 	}
 	put_task_struct(task);
@@ -979,7 +985,7 @@ static ssize_t oom_adj_write(struct file *file, const char __user *buf,
 	if (oom_adj == OOM_ADJUST_MAX)
 		oom_adj = OOM_SCORE_ADJ_MAX;
 	else
-		oom_adj = (oom_adj * OOM_SCORE_ADJ_MAX) / -OOM_DISABLE;
+		oom_adj = ((oom_adj * OOM_SCORE_ADJ_MAX * 10) / -OOM_DISABLE + 5)/10;  //modify for oom_adj->oom_score_adj round
 
 	if (oom_adj < task->signal->oom_score_adj &&
 	    !capable(CAP_SYS_RESOURCE)) {
@@ -2567,6 +2573,621 @@ static int proc_tgid_io_accounting(struct task_struct *task, char *buffer)
 }
 #endif /* CONFIG_TASK_IO_ACCOUNTING */
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERCORE
+/* core_time_stat */
+static int do_perfstats_percore_stat(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task, int whole)
+{
+	int i;
+	unsigned long flags;
+	unsigned long utrans, strans;
+	struct perfstats_pertask_s *perf_stats = NULL;
+
+	/* print the file header */
+	seq_printf(m, "perfstats percore, tgid %d\n", whole);
+
+	/* print per cpu transition info */
+	seq_puts(m, "transition info\n   cpu    utrans   strans\n");
+	for_each_possible_cpu(i) {
+
+		utrans = 0;
+		strans = 0;
+
+		if (whole && lock_task_sighand(task, &flags)) {
+			struct task_struct *t;
+
+			rcu_read_lock();
+			/* make sure we can trust tsk->thread_group list */
+			if (likely(pid_alive(task))) {
+				t = task;
+				do {
+					perf_stats = task_perfstats_info(t);
+					utrans += perf_stats->percore[i].utrans;
+					strans += perf_stats->percore[i].strans;
+				} while_each_thread(task, t);
+
+
+
+
+
+			}
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		} else {
+			perf_stats = task_perfstats_info(task);
+			utrans = perf_stats->percore[i].utrans;
+			strans = perf_stats->percore[i].strans;
+		}
+
+		seq_printf(m, "cpu%2d: %8lu %8lu\n", i, utrans, strans);
+	}
+	return 0;
+}
+
+int proc_tid_perfstats_percore(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_perfstats_percore_stat(m, ns, pid, task, 0);
+}
+
+int proc_tgid_perfstats_percore(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_perfstats_percore_stat(m, ns, pid, task, 1);
+}
+#endif /* CONFIG_PERFSTATS_PERTASK_PERCORE */
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+/* freq_trans */
+static inline void _detail_freq_stat_add(struct task_struct *task,
+			unsigned int cpu,
+			unsigned int frq_idx,
+			struct perfstats_pertask_percore_perfreq_s *perfreq)
+{
+	struct perfstats_pertask_s *perf_stats = task_perfstats_info(task);
+
+	perfreq->utime += perf_stats->percore[cpu].perfreq[frq_idx].utime;
+	perfreq->stime += perf_stats->percore[cpu].perfreq[frq_idx].stime;
+	perfreq->utrans += perf_stats->percore[cpu].perfreq[frq_idx].utrans;
+	perfreq->strans += perf_stats->percore[cpu].perfreq[frq_idx].strans;
+}
+
+/* copy logic from cputime.c */
+static cputime_t scale_time(cputime_t bintime, cputime_t total_adj, cputime_t total)
+{
+	u64 temp = (__force u64) total_adj;
+
+	if (!total)
+		return (__force cputime_t) total;
+
+	temp *= (__force u64) bintime;
+
+	if (sizeof(cputime_t) == 4)
+		temp = div_u64(temp, (__force u32) total);
+	else
+		temp = div64_u64(temp, (__force u64) total);
+
+	return (__force cputime_t) temp;
+}
+
+static u64 scale_time64(u64 bintime, cputime_t total_adj, cputime_t total)
+{
+	u64 temp = (__force u64) total_adj;
+
+	if (!total)
+		return (__force cputime_t) total;
+
+	temp *= bintime;
+
+	if (sizeof(cputime_t) == 4)
+		temp = div_u64(temp, (__force u32) total);
+	else
+		temp = div64_u64(temp, (__force u64) total);
+
+	return temp;
+}
+
+static int do_perfstats_perfreq_stat(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task, int whole)
+{
+	int i;
+	unsigned long flags;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	/* print the file header */
+	seq_printf(m, "perfstats perfreq, tgid: %d\n", whole);
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print summary */
+	seq_printf(m, "cpu:  %10u %10u      [adjusted]\n",
+	cputime_to_usecs(utime), cputime_to_usecs(stime));
+	seq_printf(m, "cpu:  %10u %10u      [task]\n",
+	cputime_to_usecs(cputime.utime), cputime_to_usecs(cputime.stime));
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		seq_printf(m, "core%3d|   freq       utime       ", i);
+		seq_puts(m, "stime    utrans    strans\n");
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+			seq_printf(m, "       %8u  %10u  %10u  %8lu  %8lu\n",
+				table[idx].frequency,
+				cputime_to_usecs(frq.utime),
+				cputime_to_usecs(frq.stime),
+				frq.utrans,
+				frq.strans);
+			frq.utime = scale_time(frq.utime, utime, cputime.utime);
+			frq.stime = scale_time(frq.stime, stime, cputime.stime);
+			seq_printf(m, "[adj]  %8u  %10u  %10u  %8lu  %8lu\n",
+				table[idx].frequency,
+				cputime_to_usecs(frq.utime),
+				cputime_to_usecs(frq.stime),
+				frq.utrans,
+				frq.strans);
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	return 0;
+}
+
+int proc_tid_perfstats_perfreq(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_perfstats_perfreq_stat(m, ns, pid, task, 0);
+}
+
+int proc_tgid_perfstats_perfreq(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_perfstats_perfreq_stat(m, ns, pid, task, 1);
+}
+
+static int do_status_scaled(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task, int whole)
+{
+	int i;
+	unsigned long flags;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	u64 utime_tmp = 0, stime_tmp = 0;
+	u64 utime_scaled = 0, stime_scaled = 0;
+	u64 utime_scaled_total = 0, stime_scaled_total = 0;
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			/* micro-second unit, avoid data missing */
+			utime_scaled = scale_time64(cputime_to_usecs_64(frq.utime), utime, cputime.utime);
+
+			/* us * kHz */
+			utime_tmp = utime_scaled * table[idx].frequency;
+			utime_scaled_total += utime_tmp;
+
+			/* micro-second unit, avoid data missing */
+			stime_scaled = scale_time64(cputime_to_usecs_64(frq.stime), stime, cputime.stime);
+
+			/* us*kHz */
+			stime_tmp = stime_scaled * table[idx].frequency;
+			stime_scaled_total += stime_tmp;
+
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	/* s*kHz */
+	seq_printf(m, "utimescaled:  %llu\n", div_u64(utime_scaled_total, 1000000));
+	seq_printf(m, "stimescaled:  %llu\n", div_u64(stime_scaled_total, 1000000));
+
+	return 0;
+}
+
+int proc_tid_status_scaled(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_status_scaled(m, ns, pid, task, 0);
+}
+
+int proc_tgid_status_scaled(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_status_scaled(m, ns, pid, task, 1);
+}
+
+static int do_detail_trans(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task, int whole)
+{
+	int i;
+	unsigned long flags;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	/* print the file header */
+	seq_printf(m, "Per task detailed transitions to frequency x core, tgid: %d\n", whole);
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		seq_printf(m, "core%3d|   freq    utrans    strans\n", i);
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			seq_printf(m, "        %7u  %8lu  %8lu\n",
+			table[idx].frequency,
+			frq.utrans,
+			frq.strans);
+
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	return 0;
+}
+
+int proc_tid_detail_trans(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_detail_trans(m, ns, pid, task, 0);
+}
+
+int proc_tgid_detail_trans(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_detail_trans(m, ns, pid, task, 1);
+}
+
+static int do_freq_time_stat(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task, int whole)
+{
+	int i;
+	unsigned long flags;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+	u64 utime64, stime64;
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		seq_printf(m, "core%3d|   freq       utime       stime\n", i);
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			/* change to micro-second then scale, it is more precise. */
+			utime64 = scale_time64(cputime_to_usecs_64(frq.utime), utime, cputime.utime);
+			stime64 = scale_time64(cputime_to_usecs_64(frq.stime), stime, cputime.stime);
+
+			seq_printf(m, "        %7u  %10llu  %10llu\n",
+				table[idx].frequency,
+				utime64,
+				stime64);
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	return 0;
+}
+
+int proc_tid_freq_time_stat(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_freq_time_stat(m, ns, pid, task, 0);
+}
+
+int proc_tgid_freq_time_stat(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	return do_freq_time_stat(m, ns, pid, task, 1);
+}
+
+static unsigned long long do_power_consumption(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task, int is_user, int whole)
+{
+	int i;
+	unsigned long flags;
+	unsigned long long total_pc = 0;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			if (is_user)
+				total_pc += jiffies_to_msecs(frq.utime) * get_nonidle_power(i, table[idx].frequency);
+			else
+				total_pc += jiffies_to_msecs(frq.stime) * get_nonidle_power(i, table[idx].frequency);
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	return total_pc;
+}
+
+int proc_tid_power_consumption(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	unsigned long long u_pc, s_pc;
+
+	/* user power, not whole */
+	u_pc = do_power_consumption(m, ns, pid, task, 1, 0);
+	/* system power, not whole */
+	s_pc = do_power_consumption(m, ns, pid, task, 0, 0);
+
+	/* convert from mW to mWh */
+	do_div(u_pc, 3600);
+	do_div(s_pc, 3600);
+
+	seq_printf(m, "%lld ", u_pc);
+	seq_printf(m, "%lld\n", s_pc);
+	return 0;
+}
+
+int proc_tgid_power_consumption(struct seq_file *m, struct pid_namespace *ns,
+			struct pid *pid, struct task_struct *task)
+{
+	unsigned long long u_pc, s_pc;
+
+	/* user power, whole */
+	u_pc = do_power_consumption(m, ns, pid, task, 1, 1);
+	/* system power, whole */
+	s_pc = do_power_consumption(m, ns, pid, task, 0, 1);
+
+	/* convert from mW to mWh */
+	do_div(u_pc, 3600);
+	do_div(s_pc, 3600);
+
+	seq_printf(m, "%lld ", u_pc);
+	seq_printf(m, "%lld\n", s_pc);
+	return 0;
+}
+
+#endif /* CONFIG_PERFSTATS_PERTASK_PERFREQ */
+
 #ifdef CONFIG_USER_NS
 static int proc_id_map_open(struct inode *inode, struct file *file,
 	struct seq_operations *seq_ops)
@@ -2757,6 +3378,19 @@ static const struct pid_entry tgid_base_stuff[] = {
 #endif
 #ifdef CONFIG_CHECKPOINT_RESTORE
 	REG("timers",	  S_IRUGO, proc_timers_operations),
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	ONE("status_scaled",    S_IRUGO, proc_tgid_status_scaled),
+	ONE("detail_trans",	    S_IRUGO, proc_tgid_detail_trans),
+	ONE("freq_time_stat",   S_IRUGO, proc_tgid_freq_time_stat),
+	ONE("power_consumption", S_IRUGO, proc_tgid_power_consumption),
+#endif
+
+#ifdef CONFIG_PERFSTATS_PERTASK_PERCORE
+	ONE("perfstats_percore",       S_IRUGO, proc_tgid_perfstats_percore),
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	ONE("perfstats_perfreq", S_IRUGO, proc_tgid_perfstats_perfreq),
 #endif
 };
 
@@ -3107,6 +3741,18 @@ static const struct pid_entry tid_base_stuff[] = {
 	REG("uid_map",    S_IRUGO|S_IWUSR, proc_uid_map_operations),
 	REG("gid_map",    S_IRUGO|S_IWUSR, proc_gid_map_operations),
 	REG("projid_map", S_IRUGO|S_IWUSR, proc_projid_map_operations),
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	ONE("status_scaled",    S_IRUGO, proc_tid_status_scaled),
+	ONE("detail_trans",	    S_IRUGO, proc_tid_detail_trans),
+	ONE("freq_time_stat",   S_IRUGO, proc_tid_freq_time_stat),
+	ONE("power_consumption", S_IRUGO, proc_tid_power_consumption),
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERCORE
+	ONE("perfstats_percore",       S_IRUGO, proc_tid_perfstats_percore),
+#endif
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	ONE("perfstats_perfreq", S_IRUGO, proc_tid_perfstats_perfreq),
 #endif
 };
 

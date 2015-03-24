@@ -50,5 +50,13 @@ obj-$(CONFIG_MTD_NAND_JZ4740)		+= jz4740_nand.o
 obj-$(CONFIG_MTD_NAND_GPMI_NAND)	+= gpmi-nand/
 obj-$(CONFIG_MTD_NAND_XWAY)		+= xway_nand.o
 obj-$(CONFIG_MTD_NAND_BCM47XXNFLASH)	+= bcm47xxnflash/
+ifneq ($(CONFIG_MTK_EMMC_SUPPORT),y)
+    ifneq ($(CONFIG_MTK_PLATFORM),)
+        MTK_PLATFORM := $(subst \",,$(CONFIG_MTK_PLATFORM))
+		obj-$(CONFIG_MTK_MTD_NAND)	+= mediatek/$(MTK_PLATFORM)/
+	else
+		obj-$(CONFIG_MTK_MTD_NAND)	+= mediatek/mt8135/
+	endif
+endif
 
 nand-objs := nand_base.o nand_bbt.o

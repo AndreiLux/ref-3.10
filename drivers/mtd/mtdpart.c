@@ -33,6 +33,21 @@
 
 #include "mtdcore.h"
 
+#define DYNAMIC_CHANGE_MTD_WRITEABLE
+#ifdef DYNAMIC_CHANGE_MTD_WRITEABLE //wschen 2011-01-05
+#include <linux/proc_fs.h>
+#include <asm/uaccess.h>
+static struct mtd_info *my_mtd = NULL;
+int mtd_writeable_proc_write(struct file *file, const char __user *buffer, size_t count, loff_t *data);
+
+struct mtd_change {
+    uint64_t size;
+    uint64_t offset;
+};
+int mtd_change_proc_write(struct file *file, const char __user *buffer, size_t count, loff_t *data);
+#endif
+
+
 /* Our partition linked list */
 static LIST_HEAD(mtd_partitions);
 static DEFINE_MUTEX(mtd_partitions_mutex);
@@ -326,6 +341,10 @@ int del_mtd_partitions(struct mtd_info *master)
 	mutex_lock(&mtd_partitions_mutex);
 	list_for_each_entry_safe(slave, next, &mtd_partitions, list)
 		if (slave->master == master) {
+#ifdef DYNAMIC_CHANGE_MTD_WRITEABLE //wschen 2011-01-05
+                        my_mtd = NULL;
+#endif
+
 			ret = del_mtd_device(&slave->mtd);
 			if (ret < 0) {
 				err = ret;
@@ -645,7 +664,9 @@ int add_mtd_partitions(struct mtd_info *master,
 
 		cur_offset = slave->offset + slave->mtd.size;
 	}
-
+#ifdef DYNAMIC_CHANGE_MTD_WRITEABLE //wschen 2011-01-05
+        my_mtd = master;
+#endif
 	return 0;
 }
 
@@ -773,3 +794,88 @@ uint64_t mtd_get_device_size(const struct mtd_info *mtd)
 	return PART(mtd)->master->size;
 }
 EXPORT_SYMBOL_GPL(mtd_get_device_size);
+
+#ifdef DYNAMIC_CHANGE_MTD_WRITEABLE //wschen 2011-01-05
+int mtd_writeable_proc_write(struct file *file, const char __user *buffer, size_t count, loff_t *data)
+{
+    char buf[3];
+
+    if (count != 3) {
+        return -EFAULT;
+    }
+
+    if (copy_from_user(buf, buffer, 3)) {
+        return -EFAULT;
+    }
+
+    if ((buf[0] != 0) || (buf[1] != 0) || (buf[2] != 0)) {
+        return -EFAULT;
+    }
+
+    if (my_mtd) {
+
+        struct mtd_part *slave, *next;
+
+        list_for_each_entry_safe(slave, next, &mtd_partitions, list)
+            if (slave->master == my_mtd) {
+                slave->mtd.flags |= MTD_WRITEABLE;
+            }
+    }
+
+    return count;
+}
+
+#define MTD_CHANGE_NUM 4
+int mtd_change_proc_write(struct file *file, const char __user *buffer, size_t count, loff_t *data)
+{
+    struct mtd_change mtd_change[MTD_CHANGE_NUM];
+    int write_3 = 0;
+
+    if (count == (sizeof(struct mtd_change) * (MTD_CHANGE_NUM - 1))) {
+        write_3 = 1;
+    } else if (count != (sizeof(struct mtd_change) * MTD_CHANGE_NUM)) {
+        return -EFAULT;
+    }
+
+    if (copy_from_user(mtd_change, buffer, count)) {
+        return -EFAULT;
+    }
+
+    if (my_mtd) {
+        struct mtd_part *slave, *next;
+        
+        list_for_each_entry_safe(slave, next, &mtd_partitions, list)
+            if (slave->master == my_mtd) {
+                if (write_3 == 1) {
+                    if (strncmp(slave->mtd.name, "system", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[0].size;
+                        slave->offset = mtd_change[0].offset;
+                    } else if (strncmp(slave->mtd.name, "cache", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[1].size;
+                        slave->offset = mtd_change[1].offset;
+                    } else if (strncmp(slave->mtd.name, "userdata", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[2].size;
+                        slave->offset = mtd_change[2].offset;
+                    }
+                } else {
+                    //4 arguments
+                    if (strncmp(slave->mtd.name, "expdb", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[0].size;
+                        slave->offset = mtd_change[0].offset;
+                    } else if (strncmp(slave->mtd.name, "system", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[1].size;
+                        slave->offset = mtd_change[1].offset;
+                    } else if (strncmp(slave->mtd.name, "cache", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[2].size;
+                        slave->offset = mtd_change[2].offset;
+                    } else if (strncmp(slave->mtd.name, "userdata", strlen(slave->mtd.name)) == 0) {
+                        slave->mtd.size = mtd_change[3].size;
+                        slave->offset = mtd_change[3].offset;
+                    }
+                }
+            }
+    }
+
+    return count;
+}
+#endif

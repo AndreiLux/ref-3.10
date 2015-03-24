@@ -1238,7 +1238,8 @@ static int functionfs_init(void)
 
 	ret = register_filesystem(&ffs_fs_type);
 	if (likely(!ret))
-		pr_info("file system registered\n");
+		/* pr_info("file system registered\n"); */
+	    return ret;
 	else
 		pr_err("failed registering file system (%d)\n", ret);
 

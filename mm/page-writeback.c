@@ -193,13 +193,21 @@ static unsigned long highmem_dirtyable_memory(unsigned long total)
 #ifdef CONFIG_HIGHMEM
 	int node;
 	unsigned long x = 0;
+	unsigned long tmp = 0;
 
 	for_each_node_state(node, N_HIGH_MEMORY) {
 		struct zone *z =
 			&NODE_DATA(node)->node_zones[ZONE_HIGHMEM];
 
-		x += zone_page_state(z, NR_FREE_PAGES) +
-		     zone_reclaimable_pages(z) - z->dirty_balance_reserve;
+		// fix overflow issue
+		tmp = zone_page_state(z, NR_FREE_PAGES) +
+			zone_reclaimable_pages(z);
+		if (tmp > z->dirty_balance_reserve)
+			x += tmp - z->dirty_balance_reserve;
+		else
+			continue;
+		//x += zone_page_state(z, NR_FREE_PAGES) +
+		//     zone_reclaimable_pages(z) - z->dirty_balance_reserve;
 	}
 	/*
 	 * Unreclaimable memory (kernel memory or anonymous memory

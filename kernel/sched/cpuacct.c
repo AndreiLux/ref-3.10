@@ -10,6 +10,15 @@
 
 #include "sched.h"
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+#include <linux/cpufreq.h>
+#include <linux/cgroup.h>
+#include <asm/div64.h>
+#include <linux/jiffies.h>
+#include <linux/pid.h>
+#include <linux/vmalloc.h>
+#endif
+
 /*
  * CPU accounting code for task groups.
  *
@@ -221,6 +230,371 @@ static int cpuacct_stats_show(struct cgroup *cgrp, struct cftype *cft,
 	return 0;
 }
 
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+/* freq_trans */
+static inline void _detail_freq_stat_add(struct task_struct *task,
+			unsigned int cpu,
+			unsigned int frq_idx,
+			struct perfstats_pertask_percore_perfreq_s *perfreq)
+{
+	struct perfstats_pertask_s *perf_stats = task_perfstats_info(task);
+
+	perfreq->utime += perf_stats->percore[cpu].perfreq[frq_idx].utime;
+	perfreq->stime += perf_stats->percore[cpu].perfreq[frq_idx].stime;
+	perfreq->utrans += perf_stats->percore[cpu].perfreq[frq_idx].utrans;
+	perfreq->strans += perf_stats->percore[cpu].perfreq[frq_idx].strans;
+}
+
+static inline u64 scale_time64(u64 bintime, cputime_t total_adj, cputime_t total)
+{
+	u64 temp = (__force u64) total_adj;
+
+	if (!total)
+		return (__force cputime_t) total;
+
+	temp *= bintime;
+
+	if (sizeof(cputime_t) == 4)
+		temp = div_u64(temp, (__force u32) total);
+	else
+		temp = div64_u64(temp, (__force u64) total);
+
+	return temp;
+}
+
+static unsigned long long do_power_consumption(struct task_struct *task, int is_user, int whole)
+{
+	int i;
+	unsigned long flags;
+	unsigned long long total_pc = 0;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			if (is_user)
+				total_pc += jiffies_to_msecs(frq.utime) * get_nonidle_power(i, table[idx].frequency);
+			else
+				total_pc += jiffies_to_msecs(frq.stime) * get_nonidle_power(i, table[idx].frequency);
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	return total_pc;
+}
+
+static unsigned long long do_cpufreq_usage(struct task_struct *task, int is_user, int whole)
+{
+	int i;
+	unsigned long flags;
+	unsigned long long total_time = 0;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+				_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			/* change to micro-second then scale, it is more precise. */
+			if (is_user)
+				total_time += scale_time64(cputime_to_usecs_64(frq.utime), utime, cputime.utime);
+			else
+				total_time += scale_time64(cputime_to_usecs_64(frq.stime), stime, cputime.stime);
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	return total_time;
+}
+
+static int do_scaled_usage(struct task_struct *task, int is_user, int whole)
+{
+	int i;
+	unsigned long flags;
+	unsigned long long total_scaled_time = 0;
+	cputime_t utime, stime;
+	struct task_cputime cputime;
+
+	u64 utime_tmp = 0, stime_tmp = 0;
+	u64 utime_scaled = 0, stime_scaled = 0;
+	u64 utime_scaled_total = 0, stime_scaled_total = 0;
+
+	/* task time */
+	if (whole && lock_task_sighand(task, &flags)) {
+		thread_group_cputime(task, &cputime);
+		thread_group_cputime_adjusted(task, &utime, &stime);
+		unlock_task_sighand(task, &flags);
+	} else  {
+		cputime.utime = task->utime;
+		cputime.stime = task->stime;
+		task_cputime_adjusted(task, &utime, &stime);
+	}
+
+	/* print per cpu cputime info */
+	for_each_possible_cpu(i) {
+		struct cpufreq_frequency_table *table;
+		struct perfstats_pertask_percore_perfreq_s frq;
+		int idx;
+
+		table = cpufreq_get_drivertable(i);
+		if (!table)
+			continue;
+
+		if (whole) {
+			if (!lock_task_sighand(task, &flags))
+				continue;
+			rcu_read_lock();
+			if (!likely(pid_alive(task)))
+				goto done;
+		}
+
+		/* cover all freq table entries */
+		for (idx = 0; table[idx].frequency != CPUFREQ_TABLE_END; idx++) {
+
+			if (table[idx].frequency == CPUFREQ_ENTRY_INVALID)
+				continue;
+
+			/* clear first */
+			memset(&frq, 0, sizeof(frq));
+			/* check for size */
+			if (idx >= CONFIG_PERFSTATS_PERTASK_PERFREQ_FNUM)
+				break;
+			/* thread stats */
+			_detail_freq_stat_add(task, i, idx, &frq);
+			/* add group if present */
+			if (whole) {
+				struct task_struct *t = task;
+				while_each_thread(task, t)
+					_detail_freq_stat_add(t, i, idx, &frq);
+			}
+
+			if (is_user) {
+				/* micro-second unit, avoid data missing */
+				utime_scaled = scale_time64(cputime_to_usecs_64(frq.utime), utime, cputime.utime);
+				/* us*kHz */
+				utime_tmp = utime_scaled * table[idx].frequency;
+				utime_scaled_total += utime_tmp;
+			} else {
+				/* micro-second unit, avoid data missing */
+				stime_scaled = scale_time64(cputime_to_usecs_64(frq.stime), stime, cputime.stime);
+				/* us*kHz */
+				stime_tmp = stime_scaled * table[idx].frequency;
+				stime_scaled_total += stime_tmp;
+			}
+		}
+done:
+		if (whole) {
+			rcu_read_unlock();
+			unlock_task_sighand(task, &flags);
+		}
+	}
+
+	if (is_user)
+		total_scaled_time = utime_scaled_total;
+	else
+		total_scaled_time = stime_scaled_total;
+
+	/* s*kHz */
+	do_div(total_scaled_time, 1000000);
+
+	return total_scaled_time;
+}
+
+static int cpuacct_scaled_usage(struct cgroup *cgrp, struct cftype *cft,
+			struct seq_file *m)
+{
+	int i;
+	struct cgroup_tasklist ct;
+	struct pid *t_pid;
+	unsigned long long u_scaled_time = 0, s_scaled_time = 0;
+
+	cgroup_load_tasks(cgrp, &ct);
+
+	/* pidList stores PID instead of TGID, therefore, third param. is 0 */
+	for (i = 0; i < ct.length; i++) {
+		t_pid = find_get_pid(ct.list[i]);
+		/* user time */
+		u_scaled_time += do_scaled_usage(pid_task(t_pid, PIDTYPE_PID), 1, 0);
+		/* system time */
+		s_scaled_time += do_scaled_usage(pid_task(t_pid, PIDTYPE_PID), 0, 0);
+	}
+
+	/* s*kHz */
+	seq_printf(m, "utimescaled:  %lld\n", u_scaled_time);
+	/* s*kHz */
+	seq_printf(m, "stimescaled:  %lld\n", s_scaled_time);
+
+	if (ct.list)
+		vfree(ct.list);
+
+	return 0;
+}
+
+static int cpuacct_cpufreq_usage(struct cgroup *cgrp, struct cftype *cft,
+			struct seq_file *m)
+{
+	int i;
+	struct cgroup_tasklist ct;
+	struct pid *t_pid;
+	unsigned long long u_time = 0, s_time = 0;
+
+	cgroup_load_tasks(cgrp, &ct);
+
+	/* pidList stores PID instead of TGID, therefore, third param. is 0 */
+	for (i = 0; i < ct.length; i++) {
+		t_pid = find_get_pid(ct.list[i]);
+		/* user time */
+		u_time += do_cpufreq_usage(pid_task(t_pid, PIDTYPE_PID), 1, 0);
+		/* system time */
+		s_time += do_cpufreq_usage(pid_task(t_pid, PIDTYPE_PID), 0, 0);
+	}
+
+	/* format is from microsecond to nanosecond */
+	seq_printf(m, "%lld000 ", u_time);
+	/* format is from microsecond to nanosecond */
+	seq_printf(m, "%lld000\n", s_time);
+
+	if (ct.list)
+		vfree(ct.list);
+
+	return 0;
+}
+
+static int cpuacct_power_consumption(struct cgroup *cgrp, struct cftype *cft,
+			struct seq_file *m)
+{
+	int i;
+	struct cgroup_tasklist ct;
+	struct pid *t_pid;
+	unsigned long long u_pc = 0, s_pc = 0;
+
+	cgroup_load_tasks(cgrp, &ct);
+
+	/* pidList stores PID instead of TGID, therefore, third param. is 0 */
+	for (i = 0; i < ct.length; i++) {
+
+		t_pid = find_get_pid(ct.list[i]);
+		u_pc += do_power_consumption(pid_task(t_pid, PIDTYPE_PID), 1, 0);
+		s_pc += do_power_consumption(pid_task(t_pid, PIDTYPE_PID), 0, 0);
+	}
+
+	/* convert from mW to mWh */
+	do_div(u_pc, 3600);
+	do_div(s_pc, 3600);
+
+	/* User */
+	seq_printf(m, "%lld ", u_pc);
+	/* System */
+	seq_printf(m, "%lld\n", s_pc);
+
+	if (ct.list)
+		vfree(ct.list);
+
+	return 0;
+}
+
+#endif
+
 static struct cftype files[] = {
 	{
 		.name = "usage",
@@ -235,6 +609,20 @@ static struct cftype files[] = {
 		.name = "stat",
 		.read_map = cpuacct_stats_show,
 	},
+#ifdef CONFIG_PERFSTATS_PERTASK_PERFREQ
+	{
+		.name = "power_consumption",
+		.read_seq_string = cpuacct_power_consumption,
+	},
+	{
+		.name = "cpufreq_usage",
+		.read_seq_string = cpuacct_cpufreq_usage,
+	},
+	{
+		.name = "scaled_usage",
+		.read_seq_string = cpuacct_scaled_usage,
+	},
+#endif
 	{ }	/* terminate */
 };
 

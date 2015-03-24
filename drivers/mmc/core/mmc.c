@@ -23,6 +23,12 @@
 #include "mmc_ops.h"
 #include "sd_ops.h"
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+#include <linux/metricslog.h>
+#define LMK_METRIC_TAG "kernel"
+#define METRICS_samsung_data_LEN 128
+#endif /* CONFIG_AMAZON_METRICS_LOG */
+
 static const unsigned int tran_exp[] = {
 	10000,		100000,		1000000,	10000000,
 	0,		0,		0,		0
@@ -257,11 +263,17 @@ static void mmc_select_card_type(struct mmc_card *card)
 		hs_max_dtr = MMC_HIGH_DDR_MAX_DTR;
 
 	if ((caps2 & MMC_CAP2_HS200_1_8V_SDR &&
-			card_type & EXT_CSD_CARD_TYPE_SDR_1_8V) ||
+			card_type & EXT_CSD_CARD_TYPE_HS200_1_8V) ||
 	    (caps2 & MMC_CAP2_HS200_1_2V_SDR &&
-			card_type & EXT_CSD_CARD_TYPE_SDR_1_2V))
+			card_type & EXT_CSD_CARD_TYPE_HS200_1_2V))
 		hs_max_dtr = MMC_HS200_MAX_DTR;
-
+#ifdef CONFIG_EMMC_50_FEATURE
+	if ((caps2 & MMC_CAP2_HS400_1_8V_DDR &&
+			card_type & EXT_CSD_CARD_TYPE_HS400_1_8V) ||
+	    (caps2 & MMC_CAP2_HS400_1_2V_DDR &&
+			card_type & EXT_CSD_CARD_TYPE_HS400_1_2V))
+		hs_max_dtr = MMC_HS400_MAX_DTR;
+#endif
 	card->ext_csd.hs_max_dtr = hs_max_dtr;
 	card->ext_csd.card_type = card_type;
 }
@@ -269,6 +281,7 @@ static void mmc_select_card_type(struct mmc_card *card)
 /*
  * Decode extended CSD.
  */
+#define VENDOR_SAMSUNG  (0x15)
 static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 {
 	int err = 0, idx;
@@ -293,7 +306,7 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	card->ext_csd.rev = ext_csd[EXT_CSD_REV];
-	if (card->ext_csd.rev > 6) {
+	if (card->ext_csd.rev > 7) {
 		pr_err("%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
 		err = -EINVAL;
@@ -460,7 +473,9 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 		 * take into account the value of boot_locked below.
 		 */
 		card->ext_csd.boot_ro_lock = ext_csd[EXT_CSD_BOOT_WP];
+		card->ext_csd.boot_ro_lock_status = ext_csd[EXT_CSD_BOOT_WP_STATUS];
 		card->ext_csd.boot_ro_lockable = true;
+		card->ext_csd.raw_user_wp = ext_csd[EXT_CSD_USER_WP];
 	}
 
 	if (card->ext_csd.rev >= 5) {
@@ -511,9 +526,24 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	else
 		card->erased_byte = 0x0;
 
+        /* for samsung emmc4.41 plus spec */
+        if ((card->cid.manfid == VENDOR_SAMSUNG) && 
+            (card->ext_csd.rev == 5)             && 
+            (1 == (0x1 & ext_csd[EXT_CSD_SAMSUNG_FEATURE]))){
+            printk("set to support discard\n");
+            card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
+        }
+
 	/* eMMC v4.5 or later */
 	if (card->ext_csd.rev >= 6) {
 		card->ext_csd.feature_support |= MMC_DISCARD_FEATURE;
+
+		/*eMMC 5.0 and later */
+		if (card->ext_csd.rev >= 7) {
+			u8 val = ext_csd[EXT_CSD_SLEEP_NOTIFICATION_TIME];
+			card->ext_csd.sleep_notification_time =
+				(val > 0 && val <= 0x17) ? ((1 << val) + 99) / 100 : 0;
+		}
 
 		card->ext_csd.generic_cmd6_time = 10 *
 			ext_csd[EXT_CSD_GENERIC_CMD6_TIME];
@@ -616,6 +646,21 @@ out:
 	return err;
 }
 
+#ifdef CONFIG_MMC_SAMSUNG_SMART
+static ssize_t mmc_samsung_smart(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct mmc_card *card = mmc_dev_to_card(dev);
+
+	if (card->quirks & MMC_QUIRK_SAMSUNG_SMART)
+		return mmc_samsung_smart_handle(card, buf);
+
+	/* There is no information available for this card. */
+	return 0;
+}
+static DEVICE_ATTR(samsung_smart, S_IRUGO, mmc_samsung_smart, NULL);
+#endif /* CONFIG_MMC_SAMSUNG_SMART */
+
 MMC_DEV_ATTR(cid, "%08x%08x%08x%08x\n", card->raw_cid[0], card->raw_cid[1],
 	card->raw_cid[2], card->raw_cid[3]);
 MMC_DEV_ATTR(csd, "%08x%08x%08x%08x\n", card->raw_csd[0], card->raw_csd[1],
@@ -653,6 +698,9 @@ static struct attribute *mmc_std_attrs[] = {
 	&dev_attr_enhanced_area_size.attr,
 	&dev_attr_raw_rpmb_size_mult.attr,
 	&dev_attr_rel_sectors.attr,
+#ifdef CONFIG_MMC_SAMSUNG_SMART
+	&dev_attr_samsung_smart.attr,
+#endif /* CONFIG_MMC_SAMSUNG_SMART */
 	NULL,
 };
 
@@ -668,6 +716,51 @@ static const struct attribute_group *mmc_attr_groups[] = {
 static struct device_type mmc_type = {
 	.groups = mmc_attr_groups,
 };
+#if 1
+static ssize_t card_lock_disable_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	int ret;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	int dis = 0;
+
+	if (card->ext_csd.raw_user_wp & EXT_CSD_USER_WP_PERM_PSW_DIS)
+		dis = 1;
+	ret = snprintf(buf, PAGE_SIZE, "%d\n", dis);
+
+	return ret;
+}
+
+static ssize_t card_lock_disable_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret;
+	struct mmc_card *card = mmc_dev_to_card(dev);
+	unsigned long set;
+
+	if (kstrtoul(buf, 0, &set))
+		return -EINVAL;
+
+	if (set != 1)
+		return count;
+
+	mmc_claim_host(card->host);
+
+	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_USER_WP,
+				card->ext_csd.raw_user_wp |
+				EXT_CSD_USER_WP_PERM_PSW_DIS,
+				card->ext_csd.part_time);
+	if (ret)
+		pr_err("Disable password protection features falied: %d\n", ret);
+	else
+		card->ext_csd.raw_user_wp |= EXT_CSD_USER_WP_PERM_PSW_DIS;
+
+	mmc_release_host(card->host);
+
+	return count;
+}
+
+#endif
 
 /*
  * Select the PowerClass for the current bus width
@@ -753,6 +846,58 @@ static int mmc_select_powerclass(struct mmc_card *card,
 
 	return err;
 }
+#ifdef CONFIG_EMMC_50_FEATURE
+/*
+ * Selects the desired buswidth and switch to the HS400 mode
+ * if bus width set without error
+ */
+static int mmc_select_hs400(struct mmc_card *card)
+{
+	int idx, err = -EINVAL;
+	struct mmc_host *host;
+
+	BUG_ON(!card);
+
+	host = card->host;
+
+	if (card->ext_csd.card_type & EXT_CSD_CARD_TYPE_HS400_1_2V &&
+			host->caps2 & MMC_CAP2_HS400_1_2V_DDR)
+		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_120, 0);
+
+	if (err && card->ext_csd.card_type & EXT_CSD_CARD_TYPE_HS400_1_8V &&
+			host->caps2 & MMC_CAP2_HS400_1_8V_DDR)
+		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180, 0);
+
+	/* If fails try again during next card power cycle */
+	if (err)
+		goto err;
+
+	/* switch to High speed mode  */
+	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_HS_TIMING, 1, 0);
+
+	if(err)
+		goto err;
+
+	/* switch to DDR50 mode */
+	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_BUS_WIDTH,
+                 EXT_CSD_DDR_BUS_WIDTH_8,
+				 card->ext_csd.generic_cmd6_time);
+	if (err)
+		goto err;
+
+	mmc_set_bus_width(card->host, MMC_BUS_WIDTH_8);
+
+	
+	/* switch to HS400 mode if bus width set successfully */
+	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_HS_TIMING, 3, 0);
+err:
+    printk("[%s]: switch to HS400 speed mode, err=%d\n", __func__, err); 
+	return err;
+}
+#endif
 
 /*
  * Selects the desired buswidth and switch to the HS200 mode
@@ -775,18 +920,28 @@ static int mmc_select_hs200(struct mmc_card *card)
 
 	host = card->host;
 
-	if (card->ext_csd.card_type & EXT_CSD_CARD_TYPE_SDR_1_2V &&
+	if (card->ext_csd.card_type & EXT_CSD_CARD_TYPE_HS200_1_2V &&
 			host->caps2 & MMC_CAP2_HS200_1_2V_SDR)
 		err = __mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_120);
 
-	if (err && card->ext_csd.card_type & EXT_CSD_CARD_TYPE_SDR_1_8V &&
+	if (err && card->ext_csd.card_type & EXT_CSD_CARD_TYPE_HS200_1_8V &&
 			host->caps2 & MMC_CAP2_HS200_1_8V_SDR)
 		err = __mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
 
 	/* If fails try again during next card power cycle */
 	if (err)
 		goto err;
+#ifdef CONFIG_EMMC_50_FEATURE
+	/* switch to High speed mode  */
+	if (card->ext_csd.card_type & EXT_CSD_CARD_TYPE_HS400_1_2V ||
+        card->ext_csd.card_type & EXT_CSD_CARD_TYPE_HS400_1_8V){
+	    err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_HS_TIMING, 1, 0);
 
+	    if(err)
+		     goto err;
+    }
+#endif
 	idx = (host->caps & MMC_CAP_8_BIT_DATA) ? 1 : 0;
 
 	/*
@@ -826,8 +981,203 @@ static int mmc_select_hs200(struct mmc_card *card)
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_HS_TIMING, 2, 0);
 err:
+    printk("[%s]: switch to HS200 speed mode, err=%d\n", __func__, err); 
 	return err;
 }
+
+#ifdef CONFIG_AMAZON_METRICS_LOG
+static int emmcmetrics_read(struct mmc_host *host)
+{
+	int ret = 0;
+#ifdef CONFIG_MMC_SAMSUNG_SMART
+	int err = -1;
+	char logcatsamsung_data[METRICS_samsung_data_LEN];
+	u32 *emmc_report;
+	unsigned int *samsung_data;
+	struct mmc_card *card;
+	unsigned int minReservedBlocks;
+	unsigned int minReservedBlocksQuantified;
+	unsigned int maxEraseCountMLC;
+	unsigned int maxEraseCountMLCQuantified;
+	unsigned int avgEraseCountMLC;
+	unsigned int avgEraseCountMLCQuantified;
+	unsigned int maxEraseCountSLC;
+	unsigned int maxEraseCountSLCQuantified;
+	unsigned int avgEraseCountSLC;
+	unsigned int avgEraseCountSLCQuantified;
+
+	card = host->card;
+
+	emmc_report = kmalloc(512, GFP_KERNEL);
+	if (!emmc_report) {
+		pr_err("Failed to alloc memory for Smart Report\n");
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	/* check if Toshiba eMMC?? */
+	if (card->cid.manfid == TOSHIBA_EMMC_MFID) {
+		struct tsb_wear_info *hbblk;
+
+		pr_info("Trying to read Toshiba eMMC health stats\n");
+		ret = mmc_toshiba_report(card, (u8 *)emmc_report);
+		hbblk = (struct tsb_wear_info *)emmc_report;
+		/* report max-avg write/erase cnt as metrics */
+		if (hbblk->status == 0xa0) {
+			snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
+				"emmc:def:max=%d;CT;1,avg=%d;CT;1:NR",
+				__swab32(hbblk->mlc_wr_max),
+				__swab32(hbblk->mlc_wr_avg));
+
+			log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG,
+					logcatsamsung_data);
+		}
+		goto done;
+	}
+
+	pr_info("Trying to read Samsung eMMC stats\n");
+
+	if (card->quirks & MMC_QUIRK_SAMSUNG_SMART)
+		err = mmc_samsung_report(card, (u8 *)emmc_report);
+
+	if (!err) {
+		int i;
+
+		samsung_data = (unsigned int *)emmc_report;
+		pr_info("Samsung data [20 dwords]:");
+		for (i = 0; i < 10; ++i)
+			pr_info(" %08X", samsung_data[i]);
+		pr_info("\n");
+		for (i = 10; i < 20; ++i)
+			pr_info(" %08X", samsung_data[i]);
+		pr_info("\n");
+		for (i = 20; i < 30; ++i)
+			pr_info(" %08X", samsung_data[i]);
+		pr_info("\n");
+		for (i = 30; i < 36; ++i)
+			pr_info(" %08X", samsung_data[i]);
+		pr_info("\n");
+
+	} else {
+		pr_info("...Read Samsung eMMC stats failed...");
+		ret = -1;
+		goto fail_read;
+	}
+
+	minReservedBlocks = samsung_data[7];          /*bank0*/
+	if (minReservedBlocks > samsung_data[10] && samsung_data[10] > 0)
+		minReservedBlocks = samsung_data[10]; /*bank1*/
+	if (minReservedBlocks > samsung_data[13] && samsung_data[13] > 0)
+		minReservedBlocks = samsung_data[13]; /*bank2*/
+	if (minReservedBlocks > samsung_data[16] && samsung_data[16] > 0)
+		minReservedBlocks = samsung_data[16]; /*bank3*/
+
+	minReservedBlocksQuantified =     /*6 bands with 2^n gap*/
+	(minReservedBlocks >= 32) ? 5 :
+	(minReservedBlocks >= 16) ? 4 :
+	(minReservedBlocks >=  8) ? 3 :
+	(minReservedBlocks >=  4) ? 2 :
+	(minReservedBlocks >=  2) ? 1 : 0;
+
+	/*report minReservedBlocksQuantified as metrics*/
+	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
+		"emmc:info:minReservedBlocksQuantified_%d=1;CT;1:NR",
+		minReservedBlocksQuantified);
+	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
+
+	card->minReservedBlocks = minReservedBlocks;
+
+	maxEraseCountMLC = samsung_data[33];
+	maxEraseCountMLCQuantified =     /*6 bands in linear gap*/
+	(maxEraseCountMLC >= 3000) ? 5 :
+	(maxEraseCountMLC >= 2500) ? 4 :
+	(maxEraseCountMLC >= 2000) ? 3 :
+	(maxEraseCountMLC >= 1500) ? 2 :
+	(maxEraseCountMLC >= 100) ? 1 : 0;
+
+	/*report maxEraseCountMLCQuantified as metrics*/
+	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
+		"emmc:info:maxEraseCountMLCQuantified_%d=1;CT;1:NR",
+		maxEraseCountMLCQuantified);
+	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
+
+	card->maxEraseCountMLC = maxEraseCountMLC;
+
+	avgEraseCountMLC = samsung_data[35];
+	avgEraseCountMLCQuantified =    /*6 bands in linear gap*/
+	(avgEraseCountMLC >= 1500) ? 5 :
+	(avgEraseCountMLC >= 1250) ? 4 :
+	(avgEraseCountMLC >= 1000) ? 3 :
+	(avgEraseCountMLC >= 750) ? 2 :
+	(avgEraseCountMLC >= 50) ? 1 : 0;
+
+	/*report avgEraseCountMLCQuantified as metrics*/
+	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
+		"emmc:info:avgEraseCountMLCQuantified_%d=1;CT;1:NR",
+		avgEraseCountMLCQuantified);
+	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
+
+	card->avgEraseCountMLC = avgEraseCountMLC;
+
+	maxEraseCountSLC = samsung_data[30];
+	maxEraseCountSLCQuantified =     /*6 bands in linear gap*/
+	(maxEraseCountSLC >= 2100) ? 5 :
+	(maxEraseCountSLC >= 1750) ? 4 :
+	(maxEraseCountSLC >= 1400) ? 3 :
+	(maxEraseCountSLC >= 1050) ? 2 :
+	(maxEraseCountSLC >= 70) ? 1 : 0;
+
+	/*report maxEraseCountSLCQuantified as metrics*/
+	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
+		"emmc:info:maxEraseCountSLCQuantified_%d=1;CT;1:NR",
+		maxEraseCountSLCQuantified);
+	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
+
+	card->maxEraseCountSLC = maxEraseCountSLC;
+
+	avgEraseCountSLC = samsung_data[32];
+	avgEraseCountSLCQuantified =     /*6 bands in linear gap*/
+	(avgEraseCountSLC >= 1050) ? 5 :
+	(avgEraseCountSLC >= 875) ? 4 :
+	(avgEraseCountSLC >= 700) ? 3 :
+	(avgEraseCountSLC >= 525) ? 2 :
+	(avgEraseCountSLC >= 35) ? 1 : 0;
+
+	/*report avgEraseCountSLCQuantified as metrics*/
+	snprintf(logcatsamsung_data, METRICS_samsung_data_LEN,
+		"emmc:info:avgEraseCountSLCQuantified_%d=1;CT;1:NR",
+		avgEraseCountSLCQuantified);
+	log_to_metrics(ANDROID_LOG_INFO, LMK_METRIC_TAG, logcatsamsung_data);
+
+	card->avgEraseCountSLC = avgEraseCountSLC;
+
+done:
+
+fail_read:
+	kfree(emmc_report);
+
+fail:
+#endif /* CONFIG_MMC_SAMSUNG_SMART */
+	return ret;
+}
+
+/*
+ * Internal work. Work to output metrics at some later point.
+ */
+void mmc_host_metrics_work(struct work_struct *work)
+{
+	struct mmc_host *host = container_of(work, struct mmc_host,
+						metrics_delay_work.work);
+	emmcmetrics_read(host);
+}
+
+static void metrics_delaywork_queue(struct mmc_host *host)
+{
+	/* delay 5 seconds to output metrics */
+	queue_delayed_work(system_nrt_wq, &host->metrics_delay_work,
+				msecs_to_jiffies(5000));
+}
+#endif /* CONFIG_AMAZON_METRICS_LOG */
 
 /*
  * Handle the detection and initialisation of a card.
@@ -965,6 +1315,10 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 
 		/* Erase size depends on CSD and Extended CSD */
 		mmc_set_erase_size(card);
+		/* "early preview" of card object to host controller,
+		 * after we loaded all the card configuration, but before
+		 * we applied it. */
+		host->card = card;
 	}
 
 	/*
@@ -1013,11 +1367,9 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	}
 
 	/*
-	 * If the host supports the power_off_notify capability then
-	 * set the notification byte in the ext_csd register of device
+	 * Enable power_off_notification byte in the ext_csd register
 	 */
-	if ((host->caps2 & MMC_CAP2_POWEROFF_NOTIFY) &&
-	    (card->ext_csd.rev >= 6)) {
+	if (card->ext_csd.rev >= 6) {
 		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 				 EXT_CSD_POWER_OFF_NOTIFICATION,
 				 EXT_CSD_POWER_ON,
@@ -1038,6 +1390,12 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 */
 	if (card->ext_csd.hs_max_dtr != 0) {
 		err = 0;
+#ifdef CONFIG_EMMC_50_FEATURE
+        if(card->ext_csd.hs_max_dtr >200000000 &&
+           host->caps2 & MMC_CAP2_HS400)
+           err = mmc_select_hs400(card); 
+		else
+#endif
 		if (card->ext_csd.hs_max_dtr > 52000000 &&
 		    host->caps2 & MMC_CAP2_HS200)
 			err = mmc_select_hs200(card);
@@ -1054,6 +1412,14 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 			       mmc_hostname(card->host));
 			err = 0;
 		} else {
+#ifdef CONFIG_EMMC_50_FEATURE
+			if(card->ext_csd.hs_max_dtr >200000000 &&
+			    host->caps2 & MMC_CAP2_HS400){
+			    mmc_card_set_hs400(card); 
+				mmc_set_timing(card->host, MMC_TIMING_MMC_HS400); 
+			}else
+#endif
+
 			if (card->ext_csd.hs_max_dtr > 52000000 &&
 			    host->caps2 & MMC_CAP2_HS200) {
 				mmc_card_set_hs200(card);
@@ -1070,8 +1436,11 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 * Compute bus speed.
 	 */
 	max_dtr = (unsigned int)-1;
-
-	if (mmc_card_highspeed(card) || mmc_card_hs200(card)) {
+	if (mmc_card_highspeed(card) || 
+#ifdef CONFIG_EMMC_50_FEATURE
+        mmc_card_hs400(card) || 
+#endif
+        mmc_card_hs200(card)) {
 		if (max_dtr > card->ext_csd.hs_max_dtr)
 			max_dtr = card->ext_csd.hs_max_dtr;
 		if (mmc_card_highspeed(card) && (max_dtr > 52000000))
@@ -1098,6 +1467,18 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 				ddr = MMC_1_2V_DDR_MODE;
 	}
 
+#ifdef CONFIG_EMMC_50_FEATURE
+	/*
+	 * Indicate HS400 SDR mode (if supported).
+	 */
+
+    if(mmc_card_hs400(card)){
+        err = mmc_select_powerclass(card, EXT_CSD_DDR_BUS_WIDTH_8, ext_csd); 
+		if (err)
+			pr_warning("%s: power class selection to 8bit DDR failed\n", mmc_hostname(card->host));
+        
+    }
+#endif
 	/*
 	 * Indicate HS200 SDR mode (if supported).
 	 */
@@ -1142,6 +1523,9 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 	 * Activate wide bus and DDR (if supported).
 	 */
 	if (!mmc_card_hs200(card) &&
+#ifdef CONFIG_EMMC_50_FEATURE
+        !mmc_card_hs400(card) &&
+#endif
 	    (card->csd.mmca_vsn >= CSD_SPEC_VER_4) &&
 	    (host->caps & (MMC_CAP_4_BIT_DATA | MMC_CAP_8_BIT_DATA))) {
 		static unsigned ext_csd_bits[][2] = {
@@ -1306,17 +1690,55 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		}
 	}
 
-	if (!oldcard)
-		host->card = card;
-
 	mmc_free_ext_csd(ext_csd);
 	return 0;
 
 free_card:
-	if (!oldcard)
+	if (!oldcard) {
+		host->card = NULL;
 		mmc_remove_card(card);
+	}
 err:
 	mmc_free_ext_csd(ext_csd);
+
+	return err;
+}
+
+static int mmc_can_sleep(struct mmc_card *card)
+{
+	return card && card->ext_csd.rev >= 3;
+}
+
+static int mmc_sleep(struct mmc_host *host)
+{
+	struct mmc_command cmd = {0};
+	struct mmc_card *card = host->card;
+	int err;
+
+	if (host->caps2 & MMC_CAP2_NO_SLEEP_CMD)
+		return 0;
+
+	err = mmc_deselect_cards(host);
+	if (err)
+		return err;
+
+	cmd.opcode = MMC_SLEEP_AWAKE;
+	cmd.arg = card->rca << 16;
+	cmd.arg |= 1 << 15;
+
+	cmd.flags = MMC_RSP_R1B | MMC_CMD_AC;
+	err = mmc_wait_for_cmd(host, &cmd, 0);
+	if (err)
+		return err;
+
+	/*
+	 * If the host does not wait while the card signals busy, then we will
+	 * will have to wait the sleep/awake timeout.  Note, we cannot use the
+	 * SEND_STATUS command to poll the status because that command (and most
+	 * others) is invalid while the card sleeps.
+	 */
+	if (!(host->caps & MMC_CAP_WAIT_WHILE_BUSY))
+		mmc_delay(DIV_ROUND_UP(card->ext_csd.sa_timeout, 10000));
 
 	return err;
 }
@@ -1336,6 +1758,9 @@ static int mmc_poweroff_notify(struct mmc_card *card, unsigned int notify_type)
 	/* Use EXT_CSD_POWER_OFF_SHORT as default notification type. */
 	if (notify_type == EXT_CSD_POWER_OFF_LONG)
 		timeout = card->ext_csd.power_off_longtime;
+
+	if (notify_type == EXT_CSD_SLEEP_NOTIFICATION)
+		timeout = card->ext_csd.sleep_notification_time;
 
 	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
 			 EXT_CSD_POWER_OFF_NOTIFICATION,
@@ -1402,30 +1827,62 @@ static void mmc_detect(struct mmc_host *host)
 /*
  * Suspend callback from host.
  */
-static int mmc_suspend(struct mmc_host *host)
+static int _mmc_suspend(struct mmc_host *host, bool is_suspend)
 {
 	int err = 0;
+	bool can_sleep_notify = false;
+	unsigned int notify_type;
 
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
+	can_sleep_notify =  host->card->ext_csd.sleep_notification_time > 0;
+
+	notify_type =  is_suspend ?
+		(can_sleep_notify ? EXT_CSD_SLEEP_NOTIFICATION : EXT_CSD_POWER_OFF_SHORT) :
+		EXT_CSD_POWER_OFF_LONG;
 
 	err = mmc_cache_ctrl(host, 0);
 	if (err)
 		goto out;
 
-	if (mmc_can_poweroff_notify(host->card))
-		err = mmc_poweroff_notify(host->card, EXT_CSD_POWER_OFF_SHORT);
-	else if (mmc_card_can_sleep(host))
-		err = mmc_card_sleep(host);
-	else if (!mmc_host_is_spi(host))
-		err = mmc_deselect_cards(host);
+	if (mmc_can_poweroff_notify(host->card)) {
+		if (!is_suspend || (host->caps2 & MMC_CAP2_POWEROFF_NOTIFY))
+			err = mmc_poweroff_notify(host->card, notify_type);
+		/* for 4.5 devices, we send POWEROFF_SHORT, CMD7/CMD5.
+		 * CMD7 cancels effect of POWEROFF_SHORT, and CMD5 enters low-power
+		 * state.
+		 * for 5.0 it will issue SLEEP_NOTIFY, CMD7/CMD5 as per spec */
+		if (!err && is_suspend)
+			err = mmc_sleep(host);
+	} else {
+		if (mmc_can_sleep(host->card))
+			err = mmc_sleep(host);
+		else if (!mmc_host_is_spi(host))
+			err = mmc_deselect_cards(host);
+	}
 	host->card->state &= ~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
 
 out:
 	mmc_release_host(host);
 	return err;
+}
+
+/*
+ * Suspend callback from host.
+ */
+static int mmc_suspend(struct mmc_host *host)
+{
+	return _mmc_suspend(host, true);
+}
+
+/*
+ * Shutdown callback
+ */
+static int mmc_shutdown(struct mmc_host *host)
+{
+	return _mmc_suspend(host, false);
 }
 
 /*
@@ -1444,7 +1901,14 @@ static int mmc_resume(struct mmc_host *host)
 	mmc_claim_host(host);
 	err = mmc_init_card(host, host->ocr, host->card);
 	mmc_release_host(host);
-
+	/* 
+	 * emmc resume fail is a critical issue, and kernel info should better be dump out
+	 */
+	if(err){
+		printk(KERN_ERR "[%s]: fatal error, emmc resume failed, err=%d\n", __func__, err);
+		BUG_ON(err);
+	}
+	
 	return err;
 }
 
@@ -1460,56 +1924,24 @@ static int mmc_power_restore(struct mmc_host *host)
 	return ret;
 }
 
-static int mmc_sleep(struct mmc_host *host)
-{
-	struct mmc_card *card = host->card;
-	int err = -ENOSYS;
-
-	if (card && card->ext_csd.rev >= 3) {
-		err = mmc_card_sleepawake(host, 1);
-		if (err < 0)
-			pr_debug("%s: Error %d while putting card into sleep",
-				 mmc_hostname(host), err);
-	}
-
-	return err;
-}
-
-static int mmc_awake(struct mmc_host *host)
-{
-	struct mmc_card *card = host->card;
-	int err = -ENOSYS;
-
-	if (card && card->ext_csd.rev >= 3) {
-		err = mmc_card_sleepawake(host, 0);
-		if (err < 0)
-			pr_debug("%s: Error %d while awaking sleeping card",
-				 mmc_hostname(host), err);
-	}
-
-	return err;
-}
-
 static const struct mmc_bus_ops mmc_ops = {
-	.awake = mmc_awake,
-	.sleep = mmc_sleep,
 	.remove = mmc_remove,
 	.detect = mmc_detect,
 	.suspend = NULL,
 	.resume = NULL,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
+	.shutdown = mmc_shutdown,
 };
 
 static const struct mmc_bus_ops mmc_ops_unsafe = {
-	.awake = mmc_awake,
-	.sleep = mmc_sleep,
 	.remove = mmc_remove,
 	.detect = mmc_detect,
 	.suspend = mmc_suspend,
 	.resume = mmc_resume,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
+	.shutdown = mmc_shutdown,
 };
 
 static void mmc_attach_bus_ops(struct mmc_host *host)
@@ -1583,8 +2015,22 @@ int mmc_attach_mmc(struct mmc_host *host)
 	if (err)
 		goto err;
 
+#ifdef CONFIG_AMAZON_METRICS_LOG
+	metrics_delaywork_queue(host);
+#endif /* CONFIG_AMAZON_METRICS_LOG */
+
 	mmc_release_host(host);
 	err = mmc_add_card(host->card);
+#if 1
+		host->card->card_lock_disable.show = card_lock_disable_show;
+		host->card->card_lock_disable.store = card_lock_disable_store;
+		sysfs_attr_init(&host->card->card_lock_disable.attr);
+		host->card->card_lock_disable.attr.mode =  S_IRUGO | S_IWUSR;
+		host->card->card_lock_disable.attr.name = "card_lock_disable";
+		device_create_file(&host->card->dev, &host->card->card_lock_disable);
+#endif
+
+	host->card_init_complete(host);
 	mmc_claim_host(host);
 	if (err)
 		goto remove_card;

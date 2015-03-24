@@ -1006,7 +1006,7 @@ out:
 	 * not count toward the nr_batch_requests limit. There will always
 	 * be some limit enforced by BLK_BATCH_TIME.
 	 */
-	if (ioc_batching(q, ioc))
+	if (ioc_batching(q, ioc) && ioc)
 		ioc->nr_batch_requests--;
 
 	trace_block_getrq(q, bio, rw_flags & 1);
@@ -3180,8 +3180,7 @@ int __init blk_dev_init(void)
 
 	/* used for unplugging and affects IO latency/throughput - HIGHPRI */
 	kblockd_workqueue = alloc_workqueue("kblockd",
-					    WQ_MEM_RECLAIM | WQ_HIGHPRI |
-					    WQ_POWER_EFFICIENT, 0);
+					    WQ_MEM_RECLAIM | WQ_HIGHPRI, 0);
 	if (!kblockd_workqueue)
 		panic("Failed to create kblockd\n");
 
