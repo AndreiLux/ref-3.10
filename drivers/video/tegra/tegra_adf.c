@@ -1030,6 +1030,7 @@ static int tegra_adf_intf_alloc_simple_buffer(struct adf_interface *intf,
 	const struct vb2_mem_ops *mem_ops = &vb2_dma_contig_memops;
 	void *vb2_buf;
 	bool format_valid = false;
+	struct dma_buf *ret;
 
 	for (i = 0; i < ARRAY_SIZE(tegra_adf_formats); i++) {
 		if (tegra_adf_formats[i] == format) {
@@ -1049,10 +1050,12 @@ static int tegra_adf_intf_alloc_simple_buffer(struct adf_interface *intf,
 	if (IS_ERR(vb2_buf))
 		return PTR_ERR(vb2_buf);
 
-	*dma_buf = mem_ops->get_dmabuf(vb2_buf);
+	ret = mem_ops->get_dmabuf(vb2_buf);
 	mem_ops->put(vb2_buf);
-	if (!*dma_buf)
+	if (!ret)
 		return -ENOMEM;
+	ret->file->f_mode |= FMODE_WRITE;
+	*dma_buf = ret;
 
 	return 0;
 }
