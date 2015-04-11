@@ -118,6 +118,12 @@ int set_memory_rw(unsigned long virt, int numpages)
 }
 EXPORT_SYMBOL(set_memory_rw);
 
+int set_memory_xn(unsigned long virt, int numpages)
+{
+	return set_page_attributes(virt, numpages, pte_mknoexec);
+}
+EXPORT_SYMBOL(set_memory_xn);
+
 void set_kernel_text_rw(void)
 {
 	unsigned long start = PAGE_ALIGN((unsigned long)_text);
@@ -156,4 +162,6 @@ void mark_rodata_ro(void)
 	set_kernel_text_ro();
 
 	rodata_test();
+
+	mark_data_noexec();
 }

@@ -28,8 +28,6 @@
 #include <linux/sched.h>
 #include <linux/async.h>
 #include <linux/suspend.h>
-#include <trace/events/power.h>
-#include <linux/cpufreq.h>
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
 #include <linux/wakeup_reason.h>
@@ -58,6 +56,9 @@ static LIST_HEAD(dpm_noirq_list);
 struct suspend_stats suspend_stats;
 static DEFINE_MUTEX(dpm_list_mtx);
 static pm_message_t pm_transition;
+#if defined(CONFIG_MDM_HSIC_PM)
+static atomic_t ehci_area;
+#endif
 
 struct dpm_watchdog {
 	struct device		*dev;
@@ -387,7 +388,9 @@ static int dpm_run_callback(pm_callback_t cb, struct device *dev,
 	calltime = initcall_debug_start(dev);
 
 	pm_dev_dbg(dev, state, info);
+	exynos_ss_suspend(cb, dev, ESS_FLAG_IN);
 	error = cb(dev);
+	exynos_ss_suspend(cb, dev, ESS_FLAG_OUT);
 	suspend_report_result(cb, error);
 
 	initcall_debug_report(dev, calltime, error);
@@ -777,8 +780,6 @@ void dpm_resume(pm_message_t state)
 	mutex_unlock(&dpm_list_mtx);
 	async_synchronize_full();
 	dpm_show_time(starttime, state, NULL);
-
-	cpufreq_resume();
 }
 
 /**
@@ -1130,10 +1131,29 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	struct dpm_watchdog wd;
 	char suspend_abort[MAX_SUSPEND_ABORT_LEN];
 
+#if defined(CONFIG_MDM_HSIC_PM)
+	if (!strcmp(dev_name(dev), "1-2"))
+		atomic_inc(&ehci_area);
+#endif
 	dpm_wait_for_children(dev, async);
 
-	if (async_error)
+#if defined(CONFIG_MDM_HSIC_PM)
+	/* if usb1 device fail to suspend, ap wakeup without ehci resume.
+	 * so -113 error happend. in case of usb1 device, skip this condition.
+	 * and pm_wakeup_pending will be checked next device_suspend.
+	 * this code is temporary code. and it should be removed next version. */
+	if (!atomic_read(&ehci_area) && async_error) {
+		if (dev->parent)
+			dev_info(dev, "async_error!!, area : %d, parent = %s\n",
+					atomic_read(&ehci_area), dev_name(dev->parent));
+		else
+			dev_info(dev, "async_error!!, area : %d\n",
+					atomic_read(&ehci_area));
+#else
+	if (async_error) {
+#endif
 		goto Complete;
+	}
 
 	/*
 	 * If a device configured to wake up the system from sleep states
@@ -1144,7 +1164,17 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	if (pm_runtime_barrier(dev) && device_may_wakeup(dev))
 		pm_wakeup_event(dev, 0);
 
+#if defined(CONFIG_MDM_HSIC_PM)
+	if (!atomic_read(&ehci_area) && pm_wakeup_pending()) {
+		if (dev->parent)
+			dev_info(dev, "pm_wakeup_pending!!, area : %d, parent = %s\n",
+					atomic_read(&ehci_area), dev_name(dev->parent));
+		else
+			dev_info(dev, "pm_wakeup_pending!!, area : %d\n",
+					atomic_read(&ehci_area));
+#else
 	if (pm_wakeup_pending()) {
+#endif
 		pm_get_active_wakeup_sources(suspend_abort,
 			MAX_SUSPEND_ABORT_LEN);
 		log_suspend_abort_reason(suspend_abort);
@@ -1155,6 +1185,10 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	if (dev->power.syscore)
 		goto Complete;
 	
+#if defined(CONFIG_MDM_HSIC_PM)
+	if (!strcmp(dev_name(dev), "usb1"))
+		atomic_dec(&ehci_area);
+#endif
 	dpm_wd_set(&wd, dev);
 
 	device_lock(dev);
@@ -1260,8 +1294,6 @@ int dpm_suspend(pm_message_t state)
 
 	might_sleep();
 
-	cpufreq_suspend();
-
 	mutex_lock(&dpm_list_mtx);
 	pm_transition = state;
 	async_error = 0;
@@ -1352,6 +1384,9 @@ static int device_prepare(struct device *dev, pm_message_t state)
 	}
 
 	device_unlock(dev);
+
+	if (error)
+		pm_runtime_put(dev);
 
 	return error;
 }

@@ -1394,6 +1394,30 @@ struct device *device_find_child(struct device *parent, void *data,
 	return child;
 }
 
+/**
+ * device_find_child2 - break when child is bus type device.
+ */
+struct device *device_find_child2(struct device *parent, void *data,
+				 int (*match)(struct device *dev, void *data))
+{
+	struct klist_iter i;
+	struct device *child;
+
+	if (!parent)
+		return NULL;
+
+	klist_iter_init(&parent->p->klist_children, &i);
+	while ((child = next_device(&i))) {
+		if (child->bus)
+			break;
+
+		if (match(child, data) && get_device(child))
+			break;
+	}
+	klist_iter_exit(&i);
+	return child;
+}
+
 int __init devices_init(void)
 {
 	devices_kset = kset_create_and_add("devices", &device_uevent_ops, NULL);
@@ -1422,6 +1446,7 @@ int __init devices_init(void)
 
 EXPORT_SYMBOL_GPL(device_for_each_child);
 EXPORT_SYMBOL_GPL(device_find_child);
+EXPORT_SYMBOL_GPL(device_find_child2);
 
 EXPORT_SYMBOL_GPL(device_initialize);
 EXPORT_SYMBOL_GPL(device_add);

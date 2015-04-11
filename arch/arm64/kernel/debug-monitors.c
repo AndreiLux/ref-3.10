@@ -19,6 +19,7 @@
  */
 
 #include <linux/cpu.h>
+#include <linux/cpu_pm.h>
 #include <linux/debugfs.h>
 #include <linux/hardirq.h>
 #include <linux/init.h>
@@ -30,6 +31,15 @@
 #include <asm/local.h>
 #include <asm/cputype.h>
 #include <asm/system_misc.h>
+
+/* Low-level stepping controls. */
+#define DBG_MDSCR_SS		(1 << 0)
+#define DBG_SPSR_SS		(1 << 21)
+
+/* MDSCR_EL1 enabling bits */
+#define DBG_MDSCR_KDE		(1 << 13)
+#define DBG_MDSCR_MDE		(1 << 15)
+#define DBG_MDSCR_MASK		~(DBG_MDSCR_KDE | DBG_MDSCR_MDE)
 
 /* Determine debug architecture. */
 u8 debug_monitors_arch(void)
@@ -144,6 +154,42 @@ static struct notifier_block __cpuinitdata os_lock_nb = {
 	.notifier_call = os_lock_notify,
 };
 
+#ifdef CONFIG_CPU_PM
+static DEFINE_PER_CPU(u32, mdscr);
+
+static int dm_cpu_pm_notify(struct notifier_block *self, unsigned long action,
+			    void *v)
+{
+	switch (action) {
+	case CPU_PM_ENTER:
+		__get_cpu_var(mdscr) = mdscr_read();
+		break;
+	case CPU_PM_EXIT:
+		clear_os_lock(NULL);
+		mdscr_write(__get_cpu_var(mdscr));
+		break;
+	case CPU_PM_ENTER_FAILED:
+	default:
+		return NOTIFY_DONE;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block dm_cpu_pm_nb = {
+	.notifier_call = dm_cpu_pm_notify,
+};
+
+static void __init debug_monitors_pm_init(void)
+{
+	cpu_pm_register_notifier(&dm_cpu_pm_nb);
+}
+#else
+static inline void debug_monitors_pm_init(void)
+{
+}
+#endif
+
 static int __cpuinit debug_monitors_init(void)
 {
 	/* Clear the OS lock. */
@@ -153,6 +199,7 @@ static int __cpuinit debug_monitors_init(void)
 
 	/* Register hotplug handler. */
 	register_cpu_notifier(&os_lock_nb);
+	debug_monitors_pm_init();
 	return 0;
 }
 postcore_initcall(debug_monitors_init);

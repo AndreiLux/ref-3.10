@@ -75,6 +75,7 @@
 #include <linux/blkdev.h>
 #include <linux/elevator.h>
 #include <linux/random.h>
+#include <linux/sched_clock.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -85,6 +86,11 @@
 #ifdef CONFIG_X86_LOCAL_APIC
 #include <asm/smp.h>
 #endif
+
+#ifdef CONFIG_TIMA_RKP
+#include <linux/vmm.h>
+#include <linux/rkp_entry.h> 
+#endif //CONFIG_TIMA_RKP
 
 static int kernel_init(void *);
 
@@ -99,6 +105,11 @@ static inline void mark_rodata_ro(void) { }
 
 #ifdef CONFIG_TC
 extern void tc_init(void);
+#endif
+
+#ifdef CONFIG_KNOX_KAP
+int boot_mode_security;
+EXPORT_SYMBOL(boot_mode_security);
 #endif
 
 /*
@@ -405,6 +416,18 @@ static int __init do_early_param(char *param, char *val, const char *unused)
 		}
 	}
 	/* We accept everything at this stage. */
+#ifdef CONFIG_KNOX_KAP
+	if ((strncmp(param, "androidboot.security_mode", 26) == 0)) {
+		pr_warn("val = %d\n",*val);
+	        if ((strncmp(val, "1526595585", 10) == 0)) {
+				pr_info("Security Boot Mode \n");
+				boot_mode_security = 1;
+#ifdef CONFIG_RKP_KDP
+				rkp_cred_enable = 1;
+#endif /*CONFIG_RKP_KDP*/
+			}
+	}
+#endif
 	return 0;
 }
 
@@ -468,6 +491,62 @@ static void __init mm_init(void)
 	pgtable_cache_init();
 	vmalloc_init();
 }
+#ifdef	CONFIG_TIMA_RKP
+extern void* vmm_extra_mem;
+u8 rkp_started = 0;
+static void rkp_init(void)
+{
+	rkp_init_t init;
+	init.magic = RKP_INIT_MAGIC;
+	init.vmalloc_start = VMALLOC_START;
+	init.vmalloc_end = (u64)high_memory;
+	init.init_mm_pgd = (u64)__pa(swapper_pg_dir);
+	init.id_map_pgd = (u64)__pa(idmap_pg_dir);
+	init.rkp_pgt_bitmap = (u64)__pa(rkp_pgt_bitmap);
+	init.rkp_pgt_bitmap_size = RKP_PGT_BITMAP_LEN;
+	init.zero_pg_addr = page_to_phys(empty_zero_page);
+	init._text = (u64) _text;
+	init._etext = (u64) _etext;
+	if (!vmm_extra_mem) {
+		printk(KERN_ERR"Disable RKP: Failed to allocate extra mem\n");
+		return;
+	}
+	init.extra_memory_addr = __pa(vmm_extra_mem);
+	init.extra_memory_size = 0x600000;
+	init._srodata = (u64) __start_rodata;
+	init._erodata =(u64) __end_rodata;
+	rkp_started = 1;
+	rkp_call(RKP_INIT, (u64)&init, 0, 0, 0, 0);
+	return;
+}
+#endif
+#ifdef CONFIG_RKP_KDP
+
+void kdp_init(void)
+{
+	kdp_init_t cred;
+
+	cred.credSize 	= sizeof(struct cred);
+	cred.pgd_mm 	= offsetof(struct mm_struct,pgd);
+	cred.uid_cred	= offsetof(struct cred,uid);
+	cred.euid_cred	= offsetof(struct cred,euid);
+
+	cred.bp_pgd_cred 	= offsetof(struct cred,bp_pgd);
+	cred.bp_task_cred 	= offsetof(struct cred,bp_task);
+	cred.type_cred 		= offsetof(struct cred,type);
+	cred.security_cred 	= offsetof(struct cred,security);
+	cred.usage_cred 	= offsetof(struct cred,use_cnt);
+
+	cred.cred_task  	= offsetof(struct task_struct,cred);
+	cred.mm_task 		= offsetof(struct task_struct,mm);
+	cred.pid_task		= offsetof(struct task_struct,pid);
+	cred.rp_task		= offsetof(struct task_struct,real_parent);
+	cred.comm_task 		= offsetof(struct task_struct,comm);
+	
+	cred.task_threadinfo = offsetof(struct thread_info,task);
+	rkp_call(RKP_CMDID(0x40),(u64)&cred,0,0,0,0);
+}
+#endif /*CONFIG_RKP_KDP*/
 
 asmlinkage void __init start_kernel(void)
 {
@@ -515,7 +594,14 @@ asmlinkage void __init start_kernel(void)
 	parse_args("Booting kernel", static_command_line, __start___param,
 		   __stop___param - __start___param,
 		   -1, -1, &unknown_bootoption);
-
+#ifdef CONFIG_TIMA_RKP
+#ifdef CONFIG_KNOX_KAP
+	if (boot_mode_security)
+		vmm_init();
+	else
+		vmm_disable();
+#endif //CONFIG_KNOX_KAP
+#endif //CONFIG_TIMA_RKP
 	jump_label_init();
 
 	/*
@@ -556,6 +642,7 @@ asmlinkage void __init start_kernel(void)
 	softirq_init();
 	timekeeping_init();
 	time_init();
+	sched_clock_postinit();
 	profile_init();
 	call_function_init();
 	WARN(!irqs_disabled(), "Interrupts were enabled early\n");
@@ -611,12 +698,27 @@ asmlinkage void __init start_kernel(void)
 	init_espfix_bsp();
 #endif
 	thread_info_cache_init();
+#ifdef CONFIG_TIMA_RKP
+
+#ifdef CONFIG_KNOX_KAP
+	if (boot_mode_security) 
+#endif
+		rkp_init();
+#ifdef CONFIG_RKP_KDP
+	if (rkp_cred_enable) 
+		kdp_init();
+#endif /*CONFIG_RKP_KDP*/
+#endif /* CONFIG_TIMA_RKP */
 	cred_init();
 	fork_init(totalram_pages);
 	proc_caches_init();
 	buffer_init();
 	key_init();
 	security_init();
+#ifdef CONFIG_RKP_KDP
+	if (rkp_cred_enable) 
+		rkp_call(RKP_CMDID(0x51),(u64)__rkp_ro_start,0,0,0,0);
+#endif /*CONFIG_RKP_KDP*/
 	dbg_late_init();
 	vfs_caches_init(totalram_pages);
 	signals_init();
@@ -812,14 +914,57 @@ static int run_init_process(const char *init_filename)
 		(const char __user *const __user *)envp_init);
 }
 
+#ifdef CONFIG_DEFERRED_INITCALLS
+extern initcall_t __deferred_initcall_start[], __deferred_initcall_end[];
+
+/* call deferred init routines */
+void __ref do_deferred_initcalls(void)
+{
+	initcall_t *call;
+	static int already_run=0;
+
+	if (already_run) {
+		printk("do_deferred_initcalls() has already run\n");
+		return;
+	}
+
+	already_run=1;
+
+	printk("Running do_deferred_initcalls()\n");
+
+	for(call = __deferred_initcall_start;
+		call < __deferred_initcall_end; call++)
+		do_one_initcall(*call);
+
+	flush_scheduled_work();
+
+	free_initmem();
+}
+#endif
+
+#ifdef CONFIG_SEC_GPIO_DVS
+extern void gpio_dvs_check_initgpio(void);
+#endif
+
 static noinline void __init kernel_init_freeable(void);
 
 static int __ref kernel_init(void *unused)
 {
 	kernel_init_freeable();
+#ifdef CONFIG_SEC_GPIO_DVS
+	/************************ Caution !!! ****************************/
+	/* This function must be located in appropriate INIT position
+	 * in accordance with the specification of each BB vendor.
+	 */
+	/************************ Caution !!! ****************************/
+	pr_info("%s: GPIO DVS: check init gpio\n", __func__);
+	gpio_dvs_check_initgpio();
+#endif
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
+#ifndef CONFIG_DEFERRED_INITCALLS
 	free_initmem();
+#endif
 	mark_rodata_ro();
 	system_state = SYSTEM_RUNNING;
 	numa_default_policy();

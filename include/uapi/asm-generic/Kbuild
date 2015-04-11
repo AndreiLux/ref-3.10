@@ -3,7 +3,8 @@ header-y += auxvec.h
 header-y += bitsperlong.h
 header-y += errno-base.h
 header-y += errno.h
-header-y += fcntl.h
+# remove fcntl.h for zero_MDM9x35
+#header-y += fcntl.h
 header-y += int-l64.h
 header-y += int-ll64.h
 header-y += ioctl.h

@@ -9,6 +9,15 @@
  * published by the Free Software Foundation.
 */
 
+#include <linux/pm_qos.h>
+
+#define S3C24XX_UART_PORT_RESUME		0x0
+#define S3C24XX_UART_PORT_SUSPEND		0x3
+#define S3C24XX_UART_PORT_LPM			0x5
+
+#define S3C24XX_SERIAL_CTRL_NUM			0x4
+#define S3C24XX_SERIAL_BUAD_NUM			0x2
+
 struct s3c24xx_uart_info {
 	char			*name;
 	unsigned int		type;
@@ -32,33 +41,90 @@ struct s3c24xx_uart_info {
 	int (*reset_port)(struct uart_port *, struct s3c2410_uartcfg *);
 };
 
+#ifdef CONFIG_SERIAL_SAMSUNG_DMA
+struct uart_dma_data {
+	unsigned ch;
+	unsigned int busy;
+	unsigned int req_size;
+	unsigned long fifo_base;
+	enum dma_ch req_ch;
+	enum dma_transfer_direction direction;
+};
+
+struct exynos_uart_dma {
+	unsigned int use_dma;
+
+	dma_addr_t tx_src_addr;
+	dma_addr_t rx_dst_addr;
+
+	struct uart_dma_data tx;
+	struct uart_dma_data rx;
+
+	struct samsung_dma_ops *ops;
+	struct platform_device *pdev;
+
+	char *rx_buff;
+};
+#endif
+
 struct s3c24xx_serial_drv_data {
 	struct s3c24xx_uart_info	*info;
 	struct s3c2410_uartcfg		*def_cfg;
 	unsigned int			fifosize[CONFIG_SERIAL_SAMSUNG_UARTS];
 };
 
+
+struct local_buf {
+	char *buffer;
+	int size;
+	int index;
+};
+
 struct s3c24xx_uart_port {
+	struct list_head		node;
 	unsigned char			rx_claimed;
 	unsigned char			tx_claimed;
-	unsigned int			pm_level;
 	unsigned long			baudclk_rate;
 
 	unsigned int			rx_irq;
 	unsigned int			tx_irq;
 
+#ifdef CONFIG_SERIAL_SAMSUNG_DMA
+	unsigned int                    err_irq;
+	unsigned int                    err_occurred;
+#endif
+	int				check_separated_clk;
 	struct s3c24xx_uart_info	*info;
 	struct clk			*clk;
+	struct clk			*separated_clk;
 	struct clk			*baudclk;
+	unsigned long			sclk_clk_rate;
 	struct uart_port		port;
+#ifdef CONFIG_SERIAL_SAMSUNG_DMA
+	struct exynos_uart_dma          uart_dma;
+#endif
 	struct s3c24xx_serial_drv_data	*drv_data;
+
+	u32				uart_irq_affinity;
+	s32				mif_qos_val;
+	s32				cpu_qos_val;
+	u32				use_default_irq;
+	unsigned long			qos_timeout;
+
+#define DOMAIN_TOP	0
+#define DOMAIN_AUD	1
+	u32				domain;
 
 	/* reference to platform data */
 	struct s3c2410_uartcfg		*cfg;
 
-#ifdef CONFIG_CPU_FREQ
-	struct notifier_block		freq_transition;
-#endif
+	struct platform_device		*pdev;
+
+	struct pm_qos_request		s3c24xx_uart_mif_qos;
+	struct pm_qos_request		s3c24xx_uart_cpu_qos;
+	struct delayed_work		qos_work;
+
+	struct local_buf local_buf;
 };
 
 /* conversion functions */

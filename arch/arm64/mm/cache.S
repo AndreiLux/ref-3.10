@@ -96,6 +96,26 @@ ENTRY(flush_cache_all)
 	ret	x12
 ENDPROC(flush_cache_all)
 
+ENTRY(__flush_dcache_louis)
+	dmb	ish
+	mrs	x0, clidr_el1
+	ands	x3, x0, #(7 << 21)
+	lsr	x3, x3, #20			// w3 = LoUIS * 2
+	b.eq	level_is_zero
+	mov	x10, #0
+	b	loop1				// start flushing cache
+level_is_zero:
+	ret
+ENDPROC(__flush_dcache_louis)
+
+ENTRY(flush_cache_louis)
+	mov	x12, lr
+	bl	__flush_dcache_louis
+	mov	x0, #0
+	ic	ialluis
+	ret	x12
+ENDPROC(flush_cache_louis)
+
 /*
  *	flush_icache_range(start,end)
  *
@@ -168,14 +188,6 @@ ENTRY(__flush_dcache_area)
 ENDPROC(__flush_dcache_area)
 
 /*
- *	__inval_cache_range(start, end)
- *	- start   - start address of region
- *	- end     - end address of region
- */
-ENTRY(__inval_cache_range)
-	/* FALLTHROUGH */
-
-/*
  *	__dma_inv_range(start, end)
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region
@@ -198,7 +210,6 @@ __dma_inv_range:
 	b.lo	2b
 	dsb	sy
 	ret
-ENDPROC(__inval_cache_range)
 ENDPROC(__dma_inv_range)
 
 /*

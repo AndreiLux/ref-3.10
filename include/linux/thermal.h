@@ -132,6 +132,7 @@ struct thermal_zone_device_ops {
 			  enum thermal_trend *);
 	int (*notify) (struct thermal_zone_device *, int,
 		       enum thermal_trip_type);
+	int (*throttle_cpu_hotplug) (struct thermal_zone_device *);
 };
 
 struct thermal_cooling_device_ops {
@@ -173,6 +174,7 @@ struct thermal_zone_device {
 	int last_temperature;
 	int emul_temperature;
 	int passive;
+	bool cooling_dev_en;
 	unsigned int forced_passive;
 	struct thermal_zone_device_ops *ops;
 	const struct thermal_zone_params *tzp;
@@ -182,6 +184,9 @@ struct thermal_zone_device {
 	struct mutex lock; /* protect thermal_instances list */
 	struct list_head node;
 	struct delayed_work poll_queue;
+#ifdef CONFIG_SCHED_HMP
+	unsigned int poll_queue_cpu;
+#endif
 };
 
 /* Structure that holds thermal governor information */
@@ -209,6 +214,16 @@ struct thermal_bind_params {
 	 * See Documentation/thermal/sysfs-api.txt for more information.
 	 */
 	int trip_mask;
+
+	/*
+	 * This is an array of cooling state limits. Must have exactly
+	 * 2 * thermal_zone.number_of_trip_points. It is an array consisting
+	 * of tuples <lower-state upper-state> of state limits. Each trip
+	 * will be associated with one state limit tuple when binding.
+	 * A NULL pointer means <THERMAL_NO_LIMITS THERMAL_NO_LIMITS>
+	 * on all trips.
+	 */
+	unsigned long *binding_limits;
 	int (*match) (struct thermal_zone_device *tz,
 			struct thermal_cooling_device *cdev);
 };

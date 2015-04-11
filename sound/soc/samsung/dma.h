@@ -17,9 +17,14 @@ struct s3c_dma_params {
 	int channel;				/* Channel ID */
 	dma_addr_t dma_addr;
 	int dma_size;			/* Size of the DMA transfer */
+#ifdef CONFIG_ARM64
+	unsigned long ch;
+#else
 	unsigned ch;
+#endif
 	struct samsung_dma_ops *ops;
 	char *ch_name;
+	bool esa_dma;
 };
 
 int asoc_dma_platform_register(struct device *dev);

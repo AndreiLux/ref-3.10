@@ -5,6 +5,8 @@
 #include <linux/rcupdate.h>
 #include <linux/vmalloc.h>
 #include <linux/reboot.h>
+#include <linux/suspend.h>
+#include <linux/exynos-ss.h>
 
 /*
  *	Notifier list for kernel code which wants to be called
@@ -90,7 +92,15 @@ static int __kprobes notifier_call_chain(struct notifier_block **nl,
 			continue;
 		}
 #endif
+#ifdef CONFIG_EXYNOS_SNAPSHOT
+		if (val == PM_SUSPEND_PREPARE || val == PM_POST_SUSPEND)
+			exynos_ss_suspend(nb->notifier_call, NULL, ESS_FLAG_IN);
+#endif
 		ret = nb->notifier_call(nb, val, v);
+#ifdef CONFIG_EXYNOS_SNAPSHOT
+		if (val == PM_SUSPEND_PREPARE || val == PM_POST_SUSPEND)
+			exynos_ss_suspend(nb->notifier_call, NULL, ESS_FLAG_OUT);
+#endif
 
 		if (nr_calls)
 			(*nr_calls)++;

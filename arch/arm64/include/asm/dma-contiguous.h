@@ -15,12 +15,11 @@
 #define _ASM_DMA_CONTIGUOUS_H
 
 #ifdef __KERNEL__
-#ifdef CONFIG_DMA_CMA
+#if defined(CONFIG_DMA_CMA) || defined(CONFIG_CMA)
 
 #include <linux/types.h>
 
-static inline void
-dma_contiguous_early_fixup(phys_addr_t base, unsigned long size) { }
+#define dma_contiguous_early_fixup(base, size) do { } while (0)
 
 #endif
 #endif

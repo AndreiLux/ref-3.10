@@ -15,6 +15,7 @@ config ARM
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
 	select GENERIC_PCI_IOMAP
+	select GENERIC_SCHED_CLOCK
 	select GENERIC_SMP_IDLE_THREAD
 	select GENERIC_IDLE_POLL_SETUP
 	select GENERIC_STRNCPY_FROM_USER
@@ -786,8 +787,6 @@ config ARCH_S5PV210
 config ARCH_EXYNOS
 	bool "Samsung EXYNOS"
 	select ARCH_HAS_CPUFREQ
-	select ARCH_HAS_HOLES_MEMORYMODEL
-	select ARCH_SPARSEMEM_ENABLE
 	select CLKDEV_LOOKUP
 	select COMMON_CLK
 	select CPU_V7
@@ -798,6 +797,7 @@ config ARCH_EXYNOS
 	select HAVE_S3C_RTC if RTC_CLASS
 	select NEED_MACH_GPIO_H
 	select NEED_MACH_MEMORY_H
+	select SPARSE_IRQ
 	help
 	  Support for SAMSUNG's EXYNOS SoCs (EXYNOS4/5)
 
@@ -1064,7 +1064,7 @@ source arch/arm/mm/Kconfig
 
 config ARM_NR_BANKS
 	int
-	default 16 if ARCH_EP93XX
+	default 16 if ARCH_EP93XX || ARCH_EXYNOS
 	default 8
 
 config IWMMXT
@@ -1338,6 +1338,43 @@ config PL310_ERRATA_769419
 	  on systems with an outer cache, the store buffer is drained
 	  explicitly.
 
+config ARM_ERRATA_761320
+	bool "ARM errata: no direct eviction"
+	depends on CPU_V7 && SMP
+	help
+	  This option enables the workaround for the 761320 Cortex-A9 erratum.
+
+config ARM_ERRATA_766421
+	bool "ARM errata: Strongly-Ordered/Device load or NC LDREX could return incorrect data"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the 766421 Cortex-A15 erratum.
+	  In certain situations, a strongly ordered or device load instruction,
+	  or a non-cacheable normal memory load-exclusive instruction could
+	  match multiple fill buffers and return incorrect data.
+	  This workaround is add DMB instruction when making any change to the
+	  translation regime and before doing any new loads/stores/preloads
+	  in the new translation regime.
+
+config ARM_ERRATA_773022
+	bool "ARM errata: incorrect instructions may be executed from loop buffer"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the 773022 Cortex-A15 erratum.
+	  In certain rare sequences of code, the loop buffer may deliver
+	  incorrect instructions.
+	  This workaround is to disable loop buffer.
+
+config ARM_ERRATA_774769
+	bool "ARM errata: data corruption may occur with store streaming in a system"
+	depends on CPU_V7
+	help
+	  This option enables the workaround for the erratum 774769.
+	  External memory may be corrupted on erratum 774769.
+	  The workaround is to configure write streaming on versions of A15
+	  affected by this erratum such that no streaming-write ever allocates
+	  into the L2 cache.
+
 config ARM_ERRATA_775420
        bool "ARM errata: A data cache maintenance operation which aborts, might lead to deadlock"
        depends on CPU_V7
@@ -1419,6 +1456,7 @@ config PCI_HOST_ITE8152
 	select DMABOUNCE
 
 source "drivers/pci/Kconfig"
+source "drivers/pci/pcie/Kconfig"
 
 source "drivers/pcmcia/Kconfig"
 
@@ -1512,17 +1550,6 @@ config SCHED_HMP
 	  There is currently no support for migration of task groups, hence
 	  !SCHED_AUTOGROUP. Furthermore, normal load-balancing must be disabled
 	  between cpus of different type (DISABLE_CPU_SCHED_DOMAIN_BALANCE).
-	  When turned on, this option adds sys/kernel/hmp directory which
-	  contains the following files:
-	  up_threshold - the load average threshold used for up migration
-	                 (0 - 1023)
-	  down_threshold - the load average threshold used for down migration
-	                 (0 - 1023)
-	  hmp_domains - a list of cpumasks for the present HMP domains,
-	                starting with the 'biggest' and ending with the
-	                'smallest'.
-	  Note that both the threshold files can be written at runtime to
-	  control scheduler behaviour.
 
 config SCHED_HMP_PRIO_FILTER
 	bool "(EXPERIMENTAL) Filter HMP migrations by task priority"
@@ -1557,24 +1584,29 @@ config HMP_VARIABLE_SCALE
 	bool "Allows changing the load tracking scale through sysfs"
 	depends on SCHED_HMP
 	help
-	  When turned on, this option exports the load average period value
-	  for the load tracking patches through sysfs.
+	  When turned on, this option exports the thresholds and load average
+	  period value for the load tracking patches through sysfs.
 	  The values can be modified to change the rate of load accumulation
-	  used for HMP migration. 'load_avg_period_ms' is the time in ms to
-	  reach a load average of 0.5 for an idle task of 0 load average
-	  ratio which becomes 100% busy.
-	  For example, with load_avg_period_ms = 128 and up_threshold = 512,
+	  and the thresholds used for HMP migration.
+	  The load_avg_period_ms is the time in ms to reach a load average of
+	  0.5 for an idle task of 0 load average ratio that start a busy loop.
+	  The up_threshold and down_threshold is the value to go to a faster
+	  CPU or to go back to a slower cpu.
+	  The {up,down}_threshold are devided by 1024 before being compared
+	  to the load average.
+	  For examples, with load_avg_period_ms = 128 and up_threshold = 512,
 	  a running task with a load of 0 will be migrated to a bigger CPU after
 	  128ms, because after 128ms its load_avg_ratio is 0.5 and the real
 	  up_threshold is 0.5.
 	  This patch has the same behavior as changing the Y of the load
 	  average computation to
 	        (1002/1024)^(LOAD_AVG_PERIOD/load_avg_period_ms)
-	  but removes intermediate overflows in computation.
+	  but it remove intermadiate overflows in computation.
 
 config HMP_FREQUENCY_INVARIANT_SCALE
 	bool "(EXPERIMENTAL) Frequency-Invariant Tracked Load for HMP"
-	depends on SCHED_HMP && CPU_FREQ
+	depends on HMP_VARIABLE_SCALE && CPU_FREQ
+	default y
 	help
 	  Scales the current load contribution in line with the frequency
 	  of the CPU that the task was executed on.
@@ -1586,18 +1618,6 @@ config HMP_FREQUENCY_INVARIANT_SCALE
 	  normal) and allows the HMP migration's simple threshold
 	  migration strategy to interact more predictably with CPUFreq's
 	  asynchronous compute capacity changes.
-
-config SCHED_HMP_LITTLE_PACKING
-	bool "Small task packing for HMP"
-	depends on SCHED_HMP
-	default n
-	help
-	  Allows the HMP Scheduler to pack small tasks into CPUs in the
-	  smallest HMP domain.
-	  Controlled by two sysfs files in sys/kernel/hmp.
-	  packing_enable: 1 to enable, 0 to disable packing. Default 1.
-	  packing_limit: runqueue load ratio where a RQ is considered
-	    to be full. Default is NICE_0_LOAD * 9/8.
 
 config HAVE_ARM_SCU
 	bool
@@ -1729,7 +1749,7 @@ source kernel/Kconfig.preempt
 config HZ
 	int
 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
-		ARCH_S5PV210 || ARCH_EXYNOS4
+		ARCH_S5PV210 || ARCH_EXYNOS
 	default AT91_TIMER_HZ if ARCH_AT91
 	default SHMOBILE_TIMER_HZ if ARCH_SHMOBILE
 	default 100
@@ -1861,14 +1881,6 @@ config HW_PERF_EVENTS
 	  Enable hardware performance counter support for perf events. If
 	  disabled, perf events will use software events only.
 
-config SYS_SUPPORTS_HUGETLBFS
-       def_bool y
-       depends on ARM_LPAE
-
-config HAVE_ARCH_TRANSPARENT_HUGEPAGE
-       def_bool y
-       depends on ARM_LPAE
-
 source "mm/Kconfig"
 
 config FORCE_MAX_ZONEORDER
@@ -1975,6 +1987,7 @@ config USE_OF
 	select IRQ_DOMAIN
 	select OF
 	select OF_EARLY_FLATTREE
+	select OF_RESERVED_MEM
 	help
 	  Include support for flattened device tree machine descriptions.
 
@@ -1999,16 +2012,16 @@ config BUILD_ARM_APPENDED_DTB_IMAGE
 	bool "Build a concatenated zImage/dtb by default"
 	depends on OF
 	help
-	  Enabling this option will cause a concatenated zImage and DTB to
-	  be built by default (instead of a standalone zImage.)  The image
-	  will built in arch/arm/boot/zImage-dtb.<dtb name>
+	  Enabling this option will cause a concatenated zImage and list of
+	  DTBs to be built by default (instead of a standalone zImage.)
+	  The image will built in arch/arm/boot/zImage-dtb
 
-config BUILD_ARM_APPENDED_DTB_IMAGE_NAME
-	string "Default dtb name"
+config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
+	string "Default dtb names"
 	depends on BUILD_ARM_APPENDED_DTB_IMAGE
 	help
-	  name of the dtb to append when building a concatenated
-	  zImage/dtb.
+	  Space separated list of names of dtbs to append when
+	  building a concatenated zImage-dtb.
 
 # Compressed boot loader in ROM.  Yes, we really want to ask about
 # TEXT and BSS so we preserve their values in the config files.

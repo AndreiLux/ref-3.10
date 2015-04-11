@@ -203,7 +203,11 @@ int kvm_assign_device(struct kvm *kvm,
 
 	pdev->dev_flags |= PCI_DEV_FLAGS_ASSIGNED;
 
-	dev_info(&pdev->dev, "kvm assign device\n");
+	printk(KERN_DEBUG "assign device %x:%x:%x.%x\n",
+		assigned_dev->host_segnr,
+		assigned_dev->host_busnr,
+		PCI_SLOT(assigned_dev->host_devfn),
+		PCI_FUNC(assigned_dev->host_devfn));
 
 	return 0;
 out_unmap:
@@ -229,7 +233,11 @@ int kvm_deassign_device(struct kvm *kvm,
 
 	pdev->dev_flags &= ~PCI_DEV_FLAGS_ASSIGNED;
 
-	dev_info(&pdev->dev, "kvm deassign device\n");
+	printk(KERN_DEBUG "deassign device %x:%x:%x.%x\n",
+		assigned_dev->host_segnr,
+		assigned_dev->host_busnr,
+		PCI_SLOT(assigned_dev->host_devfn),
+		PCI_FUNC(assigned_dev->host_devfn));
 
 	return 0;
 }

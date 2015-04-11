@@ -549,8 +549,8 @@ TRACE_EVENT(sched_rq_nr_running,
 	),
 
 	TP_printk("cpu=%d nr_running=%u nr_iowait=%d",
-			__entry->cpu,
-			__entry->nr_running, __entry->nr_iowait)
+		__entry->cpu,
+		__entry->nr_running, __entry->nr_iowait)
 );
 
 /*
@@ -580,61 +580,12 @@ TRACE_EVENT(sched_task_usage_ratio,
 );
 
 /*
- * Tracepoint for HMP (CONFIG_SCHED_HMP) task migrations,
- * marking the forced transition of runnable or running tasks.
- */
-TRACE_EVENT(sched_hmp_migrate_force_running,
-
-	TP_PROTO(struct task_struct *tsk, int running),
-
-	TP_ARGS(tsk, running),
-
-	TP_STRUCT__entry(
-		__array(char, comm, TASK_COMM_LEN)
-		__field(int, running)
-	),
-
-	TP_fast_assign(
-		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->running = running;
-	),
-
-	TP_printk("running=%d comm=%s",
-		__entry->running, __entry->comm)
-);
-
-/*
- * Tracepoint for HMP (CONFIG_SCHED_HMP) task migrations,
- * marking the forced transition of runnable or running
- * tasks when a task is about to go idle.
- */
-TRACE_EVENT(sched_hmp_migrate_idle_running,
-
-	TP_PROTO(struct task_struct *tsk, int running),
-
-	TP_ARGS(tsk, running),
-
-	TP_STRUCT__entry(
-		__array(char, comm, TASK_COMM_LEN)
-		__field(int, running)
-	),
-
-	TP_fast_assign(
-		memcpy(__entry->comm, tsk->comm, TASK_COMM_LEN);
-		__entry->running = running;
-	),
-
-	TP_printk("running=%d comm=%s",
-		__entry->running, __entry->comm)
-);
-
-/*
  * Tracepoint for HMP (CONFIG_SCHED_HMP) task migrations.
  */
-#define HMP_MIGRATE_WAKEUP 0
-#define HMP_MIGRATE_FORCE  1
-#define HMP_MIGRATE_OFFLOAD 2
-#define HMP_MIGRATE_IDLE_PULL 3
+#define HMP_MIGRATE_WAKEUP	0
+#define HMP_MIGRATE_FORCE	1
+#define HMP_MIGRATE_OFFLOAD	2
+#define HMP_MIGRATE_IDLE_PULL	3
 TRACE_EVENT(sched_hmp_migrate,
 
 	TP_PROTO(struct task_struct *tsk, int dest, int force),
@@ -673,14 +624,14 @@ TRACE_EVENT(sched_hmp_offload_abort,
 	),
 
 	TP_fast_assign(
-		strncpy(__entry->label, label, 64);
+		strlcpy(__entry->label, label, 64);
 		__entry->cpu   = cpu;
 		__entry->data = data;
 	),
 
 	TP_printk("cpu=%d data=%d label=%63s",
-			__entry->cpu, __entry->data,
-			__entry->label)
+		__entry->cpu, __entry->data,
+		__entry->label)
 );
 
 TRACE_EVENT(sched_hmp_offload_succeed,
@@ -700,8 +651,8 @@ TRACE_EVENT(sched_hmp_offload_succeed,
 	),
 
 	TP_printk("cpu=%d dest=%d",
-			__entry->cpu,
-			__entry->dest_cpu)
+		__entry->cpu,
+		__entry->dest_cpu)
 );
 
 #endif /* _TRACE_SCHED_H */

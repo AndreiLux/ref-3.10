@@ -52,8 +52,8 @@ int default_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 	 * If an architecture wants to support multiple MSI, it needs to
 	 * override arch_setup_msi_irqs()
 	 */
-	if (type == PCI_CAP_ID_MSI && nvec > 1)
-		return 1;
+//	if (type == PCI_CAP_ID_MSI && nvec > 1)
+//		return 1;
 
 	list_for_each_entry(entry, &dev->msi_list, list) {
 		ret = arch_setup_msi_irq(dev, entry);
@@ -595,7 +595,8 @@ static int msi_capability_init(struct pci_dev *dev, int nvec)
 	msi_set_enable(dev, 1);
 	dev->msi_enabled = 1;
 
-	dev->irq = entry->irq;
+	dev->irq = 750;
+
 	return 0;
 }
 

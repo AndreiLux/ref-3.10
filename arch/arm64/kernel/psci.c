@@ -31,6 +31,8 @@
 #define PSCI_POWER_STATE_TYPE_STANDBY		0
 #define PSCI_POWER_STATE_TYPE_POWER_DOWN	1
 
+#define PSCI_INDEX_SLEEP	0x8
+
 struct psci_power_state {
 	u16	id;
 	u8	type;
@@ -370,6 +372,14 @@ static void cpu_psci_cpu_die(unsigned int cpu)
 static int cpu_psci_cpu_suspend(unsigned long index)
 {
 	struct psci_power_state *state = __get_cpu_var(psci_power_state);
+
+	if (index == PSCI_INDEX_SLEEP) {
+		struct psci_power_state s = {
+			.affinity_level = 3,
+		};
+
+		return psci_ops.cpu_suspend(s, virt_to_phys(cpu_resume));
+	}
 
 	if (!state)
 		return -EOPNOTSUPP;

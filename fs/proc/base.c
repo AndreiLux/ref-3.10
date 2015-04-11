@@ -373,7 +373,7 @@ static int lstats_show_proc(struct seq_file *m, void *v)
 					break;
 				if (bt == ULONG_MAX)
 					break;
-				seq_printf(m, " %ps", (void *)bt);
+				seq_printf(m, " %pF", (void *)bt);
 			}
 			seq_putc(m, '\n');
 		}

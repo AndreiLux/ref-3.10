@@ -35,6 +35,7 @@
 #include <linux/init.h>
 #include <linux/cpu.h>
 #include <linux/cpuidle.h>
+#include <linux/leds.h>
 #include <linux/elfcore.h>
 #include <linux/pm.h>
 #include <linux/tick.h>
@@ -44,6 +45,7 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/personality.h>
 #include <linux/notifier.h>
+#include <linux/exynos-ss.h>
 
 #include <asm/compat.h>
 #include <asm/cacheflush.h>
@@ -51,6 +53,12 @@
 #include <asm/mmu_context.h>
 #include <asm/processor.h>
 #include <asm/stacktrace.h>
+
+#ifdef CONFIG_CC_STACKPROTECTOR
+#include <linux/stackprotector.h>
+unsigned long __stack_chk_guard __read_mostly;
+EXPORT_SYMBOL(__stack_chk_guard);
+#endif
 
 static void setup_restart(void)
 {
@@ -95,11 +103,6 @@ EXPORT_SYMBOL_GPL(pm_power_off);
 void (*arm_pm_restart)(char str, const char *cmd);
 EXPORT_SYMBOL_GPL(arm_pm_restart);
 
-void arch_cpu_idle_prepare(void)
-{
-	local_fiq_enable();
-}
-
 /*
  * This is our default idle handler.
  */
@@ -115,6 +118,18 @@ void arch_cpu_idle(void)
 	}
 }
 
+void arch_cpu_idle_enter(void)
+{
+	idle_notifier_call_chain(IDLE_START);
+	ledtrig_cpu(CPU_LED_IDLE_START);
+}
+
+void arch_cpu_idle_exit(void)
+{
+	ledtrig_cpu(CPU_LED_IDLE_END);
+	idle_notifier_call_chain(IDLE_END);
+}
+
 #ifdef CONFIG_HOTPLUG_CPU
 void arch_cpu_idle_dead(void)
 {
@@ -122,35 +137,66 @@ void arch_cpu_idle_dead(void)
 }
 #endif
 
+/*
+ * Called by kexec, immediately prior to machine_kexec().
+ *
+ * This must completely disable all secondary CPUs; simply causing those CPUs
+ * to execute e.g. a RAM-based pin loop is not sufficient. This allows the
+ * kexec'd kernel to use any and all RAM as it sees fit, without having to
+ * avoid any code or data used by any SW CPU pin loop. The CPU hotplug
+ * functionality embodied in disable_nonboot_cpus() to achieve this.
+ */
 void machine_shutdown(void)
 {
-#ifdef CONFIG_SMP
-	smp_send_stop();
-#endif
+	disable_nonboot_cpus();
 }
 
+/*
+ * Halting simply requires that the secondary CPUs stop performing any
+ * activity (executing tasks, handling interrupts). smp_send_stop()
+ * achieves this.
+ */
 void machine_halt(void)
 {
-	machine_shutdown();
+	local_irq_disable();
+	smp_send_stop();
 	while (1);
 }
 
+/*
+ * Power-off simply requires that the secondary CPUs stop performing any
+ * activity (executing tasks, handling interrupts). smp_send_stop()
+ * achieves this. When the system power is turned off, it will take all CPUs
+ * with it.
+ */
 void machine_power_off(void)
 {
-	machine_shutdown();
+	local_irq_disable();
+	smp_send_stop();
 	if (pm_power_off)
 		pm_power_off();
 }
 
+/*
+ * Restart requires that the secondary CPUs stop performing any activity
+ * while the primary CPU resets the system. Systems with a single CPU can
+ * use soft_restart() as their machine descriptor's .restart hook, since that
+ * will cause the only available CPU to reset. Systems with multiple CPUs must
+ * provide a HW restart implementation, to ensure that all CPUs reset at once.
+ * This is required so that any code running after reset on the primary CPU
+ * doesn't have to co-ordinate with other CPUs to ensure they aren't still
+ * executing pre-reset code, and using RAM that the primary CPU's code wishes
+ * to use. Implementing such co-ordination would be essentially impossible.
+ */
 void machine_restart(char *cmd)
 {
-	machine_shutdown();
-
 	/* Disable interrupts first */
 	local_irq_disable();
-	local_fiq_disable();
+	smp_send_stop();
 
 	/* Now call the architecture specific reboot code. */
+	exynos_ss_post_reboot();
+
 	if (arm_pm_restart)
 		arm_pm_restart('h', cmd);
 
@@ -209,17 +255,19 @@ static void show_data(unsigned long addr, int nbytes, const char *name)
 
 static void show_extra_register_data(struct pt_regs *regs, int nbytes)
 {
+	int i;
+	char name[4];
 	mm_segment_t fs;
-	unsigned int i;
 
 	fs = get_fs();
 	set_fs(KERNEL_DS);
+
 	show_data(regs->pc - nbytes, nbytes * 2, "PC");
 	show_data(regs->regs[30] - nbytes, nbytes * 2, "LR");
 	show_data(regs->sp - nbytes, nbytes * 2, "SP");
-	for (i = 0; i < 30; i++) {
-		char name[4];
-		snprintf(name, sizeof(name), "X%u", i);
+
+	for (i = 0; i < ARRAY_SIZE(regs->regs) - 1; i++) {
+		snprintf(name,ARRAY_SIZE(name), "X%d", i);
 		show_data(regs->regs[i] - nbytes, nbytes * 2, name);
 	}
 	set_fs(fs);
@@ -238,6 +286,16 @@ void __show_regs(struct pt_regs *regs)
 		lr = regs->regs[30];
 		sp = regs->sp;
 		top_reg = 29;
+
+	}
+	if (!user_mode(regs)) {
+		exynos_ss_save_context(regs);
+		/*
+		 *  If you want to see more kernel events after panic,
+		 *  you should modify exynos_ss_set_enable's function 2nd parameter
+		 *  to true.
+		 */
+		exynos_ss_set_enable("log_kevents", false);
 	}
 
 	show_regs_print_info(KERN_DEFAULT);
@@ -251,6 +309,7 @@ void __show_regs(struct pt_regs *regs)
 		if (i % 2 == 0)
 			printk("\n");
 	}
+
 	if (!user_mode(regs))
 		show_extra_register_data(regs, 128);
 	printk("\n");
@@ -299,7 +358,7 @@ void release_thread(struct task_struct *dead_task)
 
 int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
 {
-	fpsimd_preserve_current_state();
+	fpsimd_save_state(&current->thread.fpsimd_state);
 	*dst = *src;
 	return 0;
 }
@@ -380,8 +439,8 @@ static void tls_thread_switch(struct task_struct *next)
 /*
  * Thread switching.
  */
-struct task_struct *__switch_to(struct task_struct *prev,
-				struct task_struct *next)
+struct task_struct *__sched
+__switch_to(struct task_struct *prev, struct task_struct *next)
 {
 	struct task_struct *last;
 

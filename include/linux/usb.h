@@ -1637,7 +1637,12 @@ extern int usb_driver_set_configuration(struct usb_device *udev, int config);
  * USB identifies 5 second timeouts, maybe more in a few cases, and a few
  * slow devices (like some MGE Ellipse UPSes) actually push that limit.
  */
+#ifdef CONFIG_MDM_HSIC_PM
+#define USB_CTRL_GET_TIMEOUT	2000
+#else
 #define USB_CTRL_GET_TIMEOUT	5000
+#endif
+
 #define USB_CTRL_SET_TIMEOUT	5000
 
 
@@ -1659,7 +1664,7 @@ extern int usb_driver_set_configuration(struct usb_device *udev, int config);
  */
 struct usb_sg_request {
 	int			status;
-	size_t			bytes;
+	unsigned int			bytes;	/* prevent CID112752 */
 
 	/* private:
 	 * members below are private to usbcore,

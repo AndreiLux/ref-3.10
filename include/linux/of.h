@@ -226,6 +226,8 @@ static inline int of_get_child_count(const struct device_node *np)
 	return num;
 }
 
+/* cache lookup */
+extern struct device_node *of_find_next_cache_node(const struct device_node *);
 extern struct device_node *of_find_node_with_property(
 	struct device_node *from, const char *prop_name);
 #define for_each_node_with_property(dn, prop_name) \
@@ -273,11 +275,15 @@ extern int of_n_size_cells(struct device_node *np);
 extern const struct of_device_id *of_match_node(
 	const struct of_device_id *matches, const struct device_node *node);
 extern int of_modalias_node(struct device_node *node, char *modalias, int len);
+extern void of_print_phandle_args(const char *msg, const struct of_phandle_args *args);
 extern struct device_node *of_parse_phandle(const struct device_node *np,
 					    const char *phandle_name,
 					    int index);
 extern int of_parse_phandle_with_args(const struct device_node *np,
 	const char *list_name, const char *cells_name, int index,
+	struct of_phandle_args *out_args);
+extern int of_parse_phandle_with_fixed_args(const struct device_node *np,
+	const char *list_name, int cells_count, int index,
 	struct of_phandle_args *out_args);
 extern int of_count_phandle_with_args(const struct device_node *np,
 	const char *list_name, const char *cells_name);
@@ -489,6 +495,13 @@ static inline int of_parse_phandle_with_args(struct device_node *np,
 	return -ENOSYS;
 }
 
+static inline int of_parse_phandle_with_fixed_args(const struct device_node *np,
+	const char *list_name, int cells_count, int index,
+	struct of_phandle_args *out_args)
+{
+	return -ENOSYS;
+}
+
 static inline int of_count_phandle_with_args(struct device_node *np,
 					     const char *list_name,
 					     const char *cells_name)
@@ -519,13 +532,10 @@ static inline int of_device_is_stdout_path(struct device_node *dn)
 	while (0)
 #endif /* CONFIG_OF */
 
-#ifndef of_node_to_nid
-static inline int of_node_to_nid(struct device_node *np)
-{
-	return numa_node_id();
-}
-
-#define of_node_to_nid of_node_to_nid
+#if defined(CONFIG_OF) && defined(CONFIG_NUMA)
+extern int of_node_to_nid(struct device_node *np);
+#else
+static inline int of_node_to_nid(struct device_node *device) { return 0; }
 #endif
 
 /**

@@ -359,6 +359,14 @@ config LEDS_INTEL_SS4200
 	  drive or power LEDs on the front panel.  Using this driver
 	  can stop the front LED from blinking after startup.
 
+config LEDS_S2MU003
+	tristate "LED driver for S2MU003 controllers"
+	depends on LEDS_CLASS
+	depends on MFD_S2MU003
+	help
+	  This option enables support for LEDs driven by Samsung Electronics
+	  S2MU003 controller. This controller uses a FLED & TORCH
+
 config LEDS_LT3593
 	tristate "LED driver for LT3593 controllers"
 	depends on LEDS_CLASS
@@ -478,6 +486,38 @@ config LEDS_BLINKM
 	help
 	  This option enables support for the BlinkM RGB LED connected
 	  through I2C. Say Y to enable support for the BlinkM LED.
+
+config LEDS_MAX77833_RGB
+    tristate "Led max77843 rgb"
+    depends on MFD_MAX77833 && LEDS_CLASS && I2C
+    help
+      If you say yes here you will get support for
+      for the MAX77833 RGB led chip.
+
+config LEDS_MAX77843_RGB
+	tristate "Led max77843 rgb"
+	depends on MFD_MAX77843 && LEDS_CLASS && I2C
+	help
+	  If you say yes here you will get support for
+	  for the MAX77843 RGB led chip.
+
+config LEDS_S2MPB02
+	bool "LED support for the S2MPB02"
+	depends on LEDS_CLASS
+	help
+	  This option enables support for the LEDs on the S2MPB02.
+
+config LEDS_KTD2692
+	bool "LED support for the KTD2692"
+	help
+	  If you say yes here you will get support for
+	  for the KTD2692 FLASH led chip.
+
+config LEDS_USE_ED28
+	bool "LED support for ED28_concept"
+	depends on SEC_FACTORY
+	help
+	  This option enables support for ED28_concept
 
 comment "LED Triggers"
 source "drivers/leds/trigger/Kconfig"

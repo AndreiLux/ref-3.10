@@ -41,6 +41,7 @@ static struct list_head *mountpoint_hashtable __read_mostly;
 static struct kmem_cache *mnt_cache __read_mostly;
 static struct rw_semaphore namespace_sem;
 
+void touch_mnt_namespace(struct mnt_namespace *ns);
 /* /sys/fs */
 struct kobject *fs_kobj;
 EXPORT_SYMBOL_GPL(fs_kobj);
@@ -135,6 +136,9 @@ void mnt_release_group_id(struct mount *mnt)
 static inline void mnt_add_count(struct mount *mnt, int n)
 {
 #ifdef CONFIG_SMP
+	if (!mnt->mnt_pcp)
+		return;
+
 	this_cpu_add(mnt->mnt_pcp->mnt_count, n);
 #else
 	preempt_disable();
@@ -660,7 +664,7 @@ static inline int check_mnt(struct mount *mnt)
 /*
  * vfsmount lock must be held for write
  */
-static void touch_mnt_namespace(struct mnt_namespace *ns)
+void touch_mnt_namespace(struct mnt_namespace *ns)
 {
 	if (ns) {
 		ns->event = ++event;

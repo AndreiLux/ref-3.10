@@ -204,6 +204,17 @@ config BATTERY_MAX17042
 	  with MAX17042. This driver also supports max17047/50 chips which are
 	  improved version of max17042.
 
+config BATTERY_ANDROID
+        tristate "Battery driver for Android"
+        help
+          Say Y to enable generic support for battery charging according
+          to common Android policies.
+          This driver adds periodic battery level and health monitoring,
+          kernel log reporting and other debugging features, common board
+          battery file glue logic for battery/case temperature sensors,
+          etc.
+
+
 config BATTERY_Z2
 	tristate "Z2 battery driver"
 	depends on I2C && MACH_ZIPIT2
@@ -333,6 +344,31 @@ config CHARGER_BQ2415X
 
 	  You'll need this driver to charge batteries on e.g. Nokia
 	  RX-51/N900.
+
+config CHARGER_BQ24190
+	tristate "TI BQ24190 battery charger driver"
+	depends on I2C && GPIOLIB
+	help
+	  Say Y to enable support for the TI BQ24190 battery charger.
+
+config CHARGER_BQ24160
+	tristate "TI BQ24160 battery charger driver"
+	depends on I2C
+	help
+	  Say Y to enable support for the TI BQ24160 battery charger
+	  PMICs.
+
+	  You'll need this driver to charge batteries on Xyref5430 board.
+
+config FUELGAUGE_S2MG001
+	tristate "S2MG001 fuel gauge driver"
+	default n
+	depends on I2C
+	help
+	 Say Y to include support
+	 for S2MG001 fuel gauge driver.
+	 This fuel-gauge can be used
+	 only in voltage-tracking mode.
 
 config CHARGER_SMB347
 	tristate "Summit Microelectronics SMB347 Battery Charger"

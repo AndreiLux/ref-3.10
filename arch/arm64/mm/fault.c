@@ -36,6 +36,10 @@
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 
+#ifdef CONFIG_SEC_DEBUG
+#include <linux/sec_debug.h>
+#endif
+
 static const char *fault_name(unsigned int esr);
 
 /*
@@ -198,6 +202,15 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	int fault, sig, code;
 	unsigned long vm_flags = VM_READ | VM_WRITE | VM_EXEC;
 	unsigned int mm_flags = FAULT_FLAG_ALLOW_RETRY | FAULT_FLAG_KILLABLE;
+
+#ifdef CONFIG_SEC_DEBUG
+	/* We may have invalid 'current' due to stack overflow */
+	if (!virt_addr_valid(current_thread_info()) || !virt_addr_valid(current)) {
+		sec_debug_disable_printk_process();
+		pr_emerg("sec_debug: safe panic handler due to invalid 'current' \n");
+		sec_debug_panic_handler(NULL, false);
+	}
+#endif
 
 	tsk = current;
 	mm  = tsk->mm;

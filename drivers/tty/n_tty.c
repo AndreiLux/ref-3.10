@@ -128,6 +128,9 @@ static void n_tty_set_room(struct tty_struct *tty)
 	struct n_tty_data *ldata = tty->disc_data;
 	int left;
 	int old_left;
+	unsigned long flags;
+
+	raw_spin_lock_irqsave(&ldata->read_lock, flags);
 
 	/* ldata->read_cnt is not read locked ? */
 	if (I_PARMRK(tty)) {
@@ -148,6 +151,8 @@ static void n_tty_set_room(struct tty_struct *tty)
 		left = ldata->icanon && !ldata->canon_data;
 	old_left = tty->receive_room;
 	tty->receive_room = left;
+
+	raw_spin_unlock_irqrestore(&ldata->read_lock, flags);
 
 	/* Did this open up the receive buffer? We may need to flip */
 	if (left && !old_left) {

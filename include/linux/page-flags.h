@@ -109,6 +109,16 @@ enum pageflags {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	PG_compound_lock,
 #endif
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_DM_CRYPT)
+	PG_sensitive_data,	/* This page has sensitive data. */
+#endif
+#ifdef CONFIG_SCFS_LOWER_PAGECACHE_INVALIDATION
+	PG_scfslower,
+	PG_nocache,
+#endif
+#ifdef CONFIG_SDP
+	PG_sensitive,
+#endif
 	__NR_PAGEFLAGS,
 
 	/* Filesystems */
@@ -275,7 +285,30 @@ PAGEFLAG_FALSE(HWPoison)
 #define __PG_HWPOISON 0
 #endif
 
+#ifdef CONFIG_SCFS_LOWER_PAGECACHE_INVALIDATION
+PAGEFLAG(Scfslower, scfslower)
+PAGEFLAG(Nocache, nocache)
+#endif
+
 u64 stable_page_flags(struct page *page);
+#ifdef CONFIG_SDP
+static inline int PageSensitive(struct page *page)
+{
+	int ret = test_bit(PG_sensitive, &(page)->flags);
+	if (ret)
+		smp_rmb();
+
+	return ret;
+}
+
+static inline void SetPageSensitive(struct page *page)
+{
+	smp_wmb();
+	__set_bit(PG_sensitive, &(page)->flags);
+}
+
+CLEARPAGEFLAG(Sensitive, sensitive)
+#endif
 
 static inline int PageUptodate(struct page *page)
 {

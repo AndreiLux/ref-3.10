@@ -682,13 +682,12 @@ static int dapm_new_mux(struct snd_soc_dapm_widget *w)
 		return -EINVAL;
 	}
 
-	if (list_empty(&w->sources)) {
+	path = list_first_entry(&w->sources, struct snd_soc_dapm_path,
+				list_sink);
+	if (!path) {
 		dev_err(dapm->dev, "ASoC: mux %s has no paths\n", w->name);
 		return -EINVAL;
 	}
-
-	path = list_first_entry(&w->sources, struct snd_soc_dapm_path,
-				list_sink);
 
 	ret = dapm_create_or_share_mixmux_kcontrol(w, 0, path);
 	if (ret < 0)
@@ -850,6 +849,13 @@ static int is_connected_output_ep(struct snd_soc_dapm_widget *widget,
 		}
 	}
 
+	if (list_empty(&widget->sinks)) {
+		dev_err(widget->dapm->dev,"ASoC: widget->sinks is empty %s\n",
+						widget->name);
+		widget->outputs = con;
+		return con;
+	}
+
 	list_for_each_entry(path, &widget->sinks, list_source) {
 		DAPM_UPDATE_STAT(widget, neighbour_checks);
 
@@ -955,6 +961,13 @@ static int is_connected_input_ep(struct snd_soc_dapm_widget *widget,
 			widget->inputs = snd_soc_dapm_suspend_check(widget);
 			return widget->inputs;
 		}
+	}
+
+	if (list_empty(&widget->sources)) {
+		dev_err(widget->dapm->dev,"ASoC: widget->sources is empty %s\n",
+						widget->name);
+		widget->inputs = con;
+		return con;
 	}
 
 	list_for_each_entry(path, &widget->sources, list_sink) {
@@ -1797,7 +1810,7 @@ static ssize_t dapm_widget_power_read_file(struct file *file,
 				w->active ? "active" : "inactive");
 
 	list_for_each_entry(p, &w->sources, list_sink) {
-		if (p->connected && !p->connected(w, p->source))
+		if (p->connected && !p->connected(w, p->sink))
 			continue;
 
 		if (p->connect)

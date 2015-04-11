@@ -386,6 +386,43 @@ void pinmux_free_setting(struct pinctrl_setting const *setting)
 	/* This function is currently unused */
 }
 
+void pinmux_free_setting2(struct pinctrl_setting const *setting)
+{
+	struct pinctrl_dev *pctldev = setting->pctldev;
+	const struct pinctrl_ops *pctlops = pctldev->desc->pctlops;
+	int ret;
+	const unsigned *pins;
+	unsigned num_pins;
+	int i;
+	struct pin_desc *desc;
+
+	ret = pctlops->get_group_pins(pctldev, setting->data.mux.group,
+				      &pins, &num_pins);
+	if (ret) {
+		/* errors only affect debug data, so just warn */
+		dev_warn(pctldev->dev,
+			 "could not get pins for group selector %d\n",
+			 setting->data.mux.group);
+		num_pins = 0;
+	}
+
+	/* Flag the descs that no setting is active */
+	for (i = 0; i < num_pins; i++) {
+		desc = pin_desc_get(pctldev, pins[i]);
+		if (desc == NULL) {
+			dev_warn(pctldev->dev,
+				 "could not get pin desc for pin %d\n",
+				 pins[i]);
+			continue;
+		}
+		desc->mux_setting = NULL;
+	}
+
+	/* And release the pins */
+	for (i = 0; i < num_pins; i++)
+		pin_free(pctldev, pins[i], NULL);
+}
+
 int pinmux_enable_setting(struct pinctrl_setting const *setting)
 {
 	struct pinctrl_dev *pctldev = setting->pctldev;

@@ -14,8 +14,17 @@
 struct s5p_ehci_platdata {
 	int (*phy_init)(struct platform_device *pdev, int type);
 	int (*phy_exit)(struct platform_device *pdev, int type);
+	int (*phy_suspend)(struct platform_device *pdev, int type);
+	int (*phy_resume)(struct platform_device *pdev, int type);
+
+	unsigned long hsic_ports;	/* bit vector (one bit per port) */
+	unsigned has_synopsys_hsic_bug:1;	/* Synopsys HSIC port */
 };
 
 extern void s5p_ehci_set_platdata(struct s5p_ehci_platdata *pd);
+#if defined(CONFIG_MDM_HSIC_PM)
+extern int usb_phy_prepare_shutdown(void);
+extern int usb_phy_prepare_wakeup(void);
+#endif
 
 #endif /* __PLAT_SAMSUNG_EHCI_H */

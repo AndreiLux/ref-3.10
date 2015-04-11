@@ -22,9 +22,9 @@
 #include <mach/regs-pmu.h>
 
 #ifdef CONFIG_PINCTRL_EXYNOS
-extern u32 exynos_get_eint_wake_mask(void);
+extern u64 exynos_get_eint_wake_mask(void);
 #else
-static inline u32 exynos_get_eint_wake_mask(void) { return 0xffffffff; }
+static inline u64 exynos_get_eint_wake_mask(void) { return 0xffffffffffffffff; }
 #endif
 
 static inline void s3c_pm_debug_init_uart(void)
@@ -34,13 +34,34 @@ static inline void s3c_pm_debug_init_uart(void)
 
 static inline void s3c_pm_arch_prepare_irqs(void)
 {
-	u32 eintmask = s3c_irqwake_eintmask;
+	u32 intmask;
+	u64 eintmask;
+
+	intmask = s3c_irqwake_intmask & ~(1 << 31);
 
 	if (of_have_populated_dt())
 		eintmask = exynos_get_eint_wake_mask();
+	else
+		eintmask = (u64)s3c_irqwake_eintmask;
 
-	__raw_writel(eintmask, S5P_EINT_WAKEUP_MASK);
-	__raw_writel(s3c_irqwake_intmask & ~(1 << 31), S5P_WAKEUP_MASK);
+	S3C_PMDBG("sleep: irq wakeup masks: intmask(%08x), eintmask(%llx)\n",
+			intmask, eintmask);
+
+	if (soc_is_exynos5430() || soc_is_exynos5433()) {
+		__raw_writel((u32)eintmask, EXYNOS5430_EINT_WAKEUP_MASK);
+		__raw_writel(intmask, EXYNOS5430_WAKEUP_MASK);
+		__raw_writel(0xFFFF0000, EXYNOS5430_WAKEUP_MASK1);
+		__raw_writel(0xFFFF0000, EXYNOS5430_WAKEUP_MASK2);
+#if defined (CONFIG_SOC_EXYNOS5433)
+		/* upper 32bit [64:32] eint mask */
+		__raw_writel((u32)(eintmask >> 32), EXYNOS5433_EINT_WAKEUP_MASK1);
+#endif
+	} else {
+#if !defined(CONFIG_SOC_EXYNOS7420)
+		__raw_writel((u32)eintmask, EXYNOS_EINT_WAKEUP_MASK);
+		__raw_writel(intmask, EXYNOS_WAKEUP_MASK);
+#endif
+	}
 }
 
 static inline void s3c_pm_arch_stop_clocks(void)

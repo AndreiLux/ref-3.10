@@ -14,6 +14,9 @@
 #include <linux/suspend.h>
 #include <linux/seq_file.h>
 #include <linux/debugfs.h>
+#ifdef CONFIG_SEC_PM_DEBUG
+#include <linux/fb.h>
+#endif
 #include <trace/events/power.h>
 
 #include "power.h"
@@ -394,6 +397,10 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	if (ws->autosleep_enabled)
 		ws->start_prevent_time = ws->last_time;
 
+#ifdef CONFIG_SEC_PM_DEBUG
+	if (ws->is_screen_off)
+		ws->start_screen_off = ws->last_time;
+#endif
 	/* Increment the counter of events in progress. */
 	cec = atomic_inc_return(&combined_event_count);
 
@@ -473,6 +480,73 @@ static inline void update_prevent_sleep_time(struct wakeup_source *ws,
 					     ktime_t now) {}
 #endif
 
+#ifdef CONFIG_SEC_PM_DEBUG
+static void update_time_while_screen_off(struct wakeup_source *ws, ktime_t now)
+{
+	ktime_t delta = ktime_sub(now, ws->start_screen_off);
+	ws->time_while_screen_off = ktime_add(ws->time_while_screen_off, delta);
+}
+
+static int fb_state_change(struct notifier_block *nb, unsigned long val,
+			   void *data)
+{
+	struct fb_event *evdata = data;
+	struct fb_info *info = evdata->info;
+	unsigned int blank;
+	struct wakeup_source *ws;
+	ktime_t now;
+	bool is_screen_off;
+	unsigned long flags;
+
+	if (val != FB_EVENT_BLANK && val != FB_R_EARLY_EVENT_BLANK)
+		return 0;
+
+	/*
+	 * If FBNODE is not zero, it is not primary display(LCD)
+	 * and don't need to process these scheduling.
+	 */
+	if (info->node)
+		return NOTIFY_OK;
+
+	blank = *(int *)evdata->data;
+
+	switch (blank) {
+	case FB_BLANK_POWERDOWN:
+		is_screen_off = true;
+		break;
+	case FB_BLANK_UNBLANK:
+		is_screen_off = false;
+		break;
+	default:
+		return NOTIFY_OK;
+	}
+
+	now = ktime_get();
+
+	rcu_read_lock();
+	list_for_each_entry_rcu(ws, &wakeup_sources, entry) {
+		spin_lock_irqsave(&ws->lock, flags);
+		if (ws->is_screen_off != is_screen_off) {
+			ws->is_screen_off = is_screen_off;
+			if (ws->active) {
+				if (is_screen_off)
+					ws->start_screen_off = now;
+				else
+					update_time_while_screen_off(ws, now);
+			}
+		}
+		spin_unlock_irqrestore(&ws->lock, flags);
+	}
+	rcu_read_unlock();
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block fb_block = {
+	.notifier_call = fb_state_change,
+};
+#endif
+
 /**
  * wakup_source_deactivate - Mark given wakeup source as inactive.
  * @ws: Wakeup source to handle.
@@ -517,6 +591,10 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 	if (ws->autosleep_enabled)
 		update_prevent_sleep_time(ws, now);
 
+#ifdef CONFIG_SEC_PM_DEBUG
+	if (ws->is_screen_off)
+		update_time_while_screen_off(ws, now);
+#endif
 	/*
 	 * Increment the counter of registered wakeup events and decrement the
 	 * couter of wakeup events in progress simultaneously.
@@ -835,6 +913,9 @@ static int print_wakeup_source_stats(struct seq_file *m,
 	unsigned long active_count;
 	ktime_t active_time;
 	ktime_t prevent_sleep_time;
+#ifdef CONFIG_SEC_PM_DEBUG
+	ktime_t time_while_screen_off;
+#endif
 	int ret;
 
 	spin_lock_irqsave(&ws->lock, flags);
@@ -842,6 +923,9 @@ static int print_wakeup_source_stats(struct seq_file *m,
 	total_time = ws->total_time;
 	max_time = ws->max_time;
 	prevent_sleep_time = ws->prevent_sleep_time;
+#ifdef CONFIG_SEC_PM_DEBUG
+	time_while_screen_off = ws->time_while_screen_off;
+#endif
 	active_count = ws->active_count;
 	if (ws->active) {
 		ktime_t now = ktime_get();
@@ -854,10 +938,25 @@ static int print_wakeup_source_stats(struct seq_file *m,
 		if (ws->autosleep_enabled)
 			prevent_sleep_time = ktime_add(prevent_sleep_time,
 				ktime_sub(now, ws->start_prevent_time));
+#ifdef CONFIG_SEC_PM_DEBUG
+		if (ws->is_screen_off)
+			time_while_screen_off = ktime_add(time_while_screen_off,
+				ktime_sub(now, ws->start_screen_off));
+#endif
 	} else {
 		active_time = ktime_set(0, 0);
 	}
 
+#ifdef CONFIG_SEC_PM_DEBUG
+	ret = seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t"
+			"%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t%lld\n",
+			ws->name, active_count, ws->event_count,
+			ws->wakeup_count, ws->expire_count,
+			ktime_to_ms(active_time), ktime_to_ms(total_time),
+			ktime_to_ms(max_time), ktime_to_ms(ws->last_time),
+			ktime_to_ms(prevent_sleep_time),
+			ktime_to_ms(time_while_screen_off));
+#else
 	ret = seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t"
 			"%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
 			ws->name, active_count, ws->event_count,
@@ -865,6 +964,7 @@ static int print_wakeup_source_stats(struct seq_file *m,
 			ktime_to_ms(active_time), ktime_to_ms(total_time),
 			ktime_to_ms(max_time), ktime_to_ms(ws->last_time),
 			ktime_to_ms(prevent_sleep_time));
+#endif
 
 	spin_unlock_irqrestore(&ws->lock, flags);
 
@@ -878,16 +978,26 @@ static int print_wakeup_source_stats(struct seq_file *m,
 static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 {
 	struct wakeup_source *ws;
+	unsigned int cnt, inpr;
 
+#ifdef CONFIG_SEC_PM_DEBUG
+	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
+		"expire_count\tactive_since\ttotal_time\tmax_time\t"
+		"last_change\tprevent_suspend_time\ttime_while_screen_off\n");
+#else
 	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
 		"expire_count\tactive_since\ttotal_time\tmax_time\t"
 		"last_change\tprevent_suspend_time\n");
+#endif
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry)
 		print_wakeup_source_stats(m, ws);
 	rcu_read_unlock();
 
+	split_counters(&cnt, &inpr);
+	seq_printf(m, "\nRegistered wakeup events: %u\n"
+			"Wakeup events in progress: %u\n", cnt, inpr);
 	return 0;
 }
 
@@ -908,6 +1018,9 @@ static int __init wakeup_sources_debugfs_init(void)
 {
 	wakeup_sources_stats_dentry = debugfs_create_file("wakeup_sources",
 			S_IRUGO, NULL, NULL, &wakeup_sources_stats_fops);
+#ifdef CONFIG_SEC_PM_DEBUG
+	fb_register_client(&fb_block);
+#endif
 	return 0;
 }
 

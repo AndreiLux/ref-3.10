@@ -1582,7 +1582,9 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 	struct super_block *sb;
 	struct cgroupfs_root *new_root;
 	struct inode *inode;
-
+#ifdef CONFIG_RKP_KDP
+	struct cred *root_cred = &init_cred;
+#endif  /* CONFIG_RKP_KDP */
 	/* First find the desired set of subsystems */
 	mutex_lock(&cgroup_mutex);
 	ret = parse_cgroupfs_options(data, &opts);
@@ -1681,7 +1683,11 @@ static struct dentry *cgroup_mount(struct file_system_type *fs_type,
 		BUG_ON(!list_empty(&root_cgrp->children));
 		BUG_ON(root->number_of_cgroups != 1);
 
+#ifdef CONFIG_RKP_KDP
+		cred = override_creds(root_cred);
+#else
 		cred = override_creds(&init_cred);
+#endif  /* CONFIG_RKP_KDP */
 		cgroup_populate_dir(root_cgrp, true, root->subsys_mask);
 		revert_creds(cred);
 		mutex_unlock(&cgroup_root_mutex);

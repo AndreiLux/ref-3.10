@@ -14,6 +14,10 @@
 
 /* This file is part of ehci-hcd.c */
 
+#ifdef CONFIG_MDM_HSIC_PM
+#include <mach/bts.h>
+#endif
+
 /*-------------------------------------------------------------------------*/
 
 /* Set a bit in the USBCMD register */
@@ -73,7 +77,7 @@ static unsigned event_delays_ns[] = {
 	1125 * NSEC_PER_USEC,	/* EHCI_HRTIMER_UNLINK_INTR */
 	2 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_FREE_ITDS */
 	6 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_ASYNC_UNLINKS */
-	10 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_IAA_WATCHDOG */
+	50 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_IAA_WATCHDOG */
 	10 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_DISABLE_PERIODIC */
 	15 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_DISABLE_ASYNC */
 	100 * NSEC_PER_MSEC,	/* EHCI_HRTIMER_IO_WATCHDOG */
@@ -292,6 +296,21 @@ static void end_free_itds(struct ehci_hcd *ehci)
 		start_free_itds(ehci);
 }
 
+#if 1 /* for IAA_watchdog */
+extern void print_all_registers(void);
+unsigned int watchdog_count;
+extern void __iomem *usb_base;
+
+void print_gic_registers(void)
+{
+	printk("\n%s\n", __func__);
+
+	printk("gic enable  reg = %08x\n", readl(usb_base + 0x120));
+	printk("gic pending reg = %08x\n", readl(usb_base + 0x220));
+
+	printk("\n");
+}
+#endif
 
 /* Handle lost (or very late) IAA interrupts */
 static void ehci_iaa_watchdog(struct ehci_hcd *ehci)
@@ -322,6 +341,14 @@ static void ehci_iaa_watchdog(struct ehci_hcd *ehci)
 	 * - VIA seems to set IAA without triggering the IRQ;
 	 * - IAAD potentially cleared without setting IAA.
 	 */
+#if 1 /* for IAA_watchdog */
+	watchdog_count++;
+	if (watchdog_count == 10) {
+		watchdog_count = 0;
+		print_all_registers();
+		print_gic_registers();
+	}
+#endif
 	status = ehci_readl(ehci, &ehci->regs->status);
 	if ((status & STS_IAA) || !(cmd & CMD_IAAD)) {
 		COUNT(ehci->stats.lost_iaa);
@@ -329,6 +356,9 @@ static void ehci_iaa_watchdog(struct ehci_hcd *ehci)
 	}
 
 	ehci_dbg(ehci, "IAA watchdog: status %x cmd %x\n", status, cmd);
+#ifdef CONFIG_MDM_HSIC_PM
+	exynos7_bts_show_mo_status();
+#endif
 	end_unlink_async(ehci);
 }
 

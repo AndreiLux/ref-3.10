@@ -2225,12 +2225,16 @@ irqreturn_t usb_hcd_irq (int irq, void *__hcd)
 	 */
 	local_irq_save(flags);
 
-	if (unlikely(HCD_DEAD(hcd) || !HCD_HW_ACCESSIBLE(hcd)))
+	if (unlikely(HCD_DEAD(hcd) || !HCD_HW_ACCESSIBLE(hcd))) {
+		dev_dbg(hcd->self.controller, "%s: HCD_DEAD(hcd): %lu HCD_HW_ACCESSIBLE(hcd): %lu\n",
+			__func__, HCD_DEAD(hcd), HCD_HW_ACCESSIBLE(hcd));
 		rc = IRQ_NONE;
-	else if (hcd->driver->irq(hcd) == IRQ_NONE)
+	} else if (hcd->driver->irq(hcd) == IRQ_NONE) {
+		dev_dbg(hcd->self.controller, "%s: IRQ_NONE\n", __func__);
 		rc = IRQ_NONE;
-	else
+	} else {
 		rc = IRQ_HANDLED;
+	}
 
 	local_irq_restore(flags);
 	return rc;

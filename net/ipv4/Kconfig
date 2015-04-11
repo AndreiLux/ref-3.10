@@ -639,3 +639,7 @@ config TCP_MD5SIG
 	  on the Internet.
 
 	  If unsure, say N.
+
+ config SEC_LOCALE_CHN
+  default n
+  bool "Samsung model CHN"

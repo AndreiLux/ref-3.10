@@ -19,6 +19,8 @@
 #include <linux/ktime.h>
 #include <linux/hrtimer.h>
 #include <linux/module.h>
+#include <linux/exynos-ss.h>
+
 #include <trace/events/power.h>
 
 #include "cpuidle.h"
@@ -81,11 +83,14 @@ int cpuidle_enter_state(struct cpuidle_device *dev, struct cpuidle_driver *drv,
 	ktime_t time_start, time_end;
 	s64 diff;
 
+	exynos_ss_cpuidle(index, 0, 0, ESS_FLAG_IN);
 	time_start = ktime_get();
 
 	entered_state = target_state->enter(dev, drv, index);
 
 	time_end = ktime_get();
+	exynos_ss_cpuidle(index, entered_state,
+		(int)ktime_to_us(ktime_sub(time_end, time_start)), ESS_FLAG_OUT);
 
 	local_irq_enable();
 
@@ -466,7 +471,7 @@ void cpuidle_unregister(struct cpuidle_driver *drv)
 	int cpu;
 	struct cpuidle_device *device;
 
-	for_each_possible_cpu(cpu) {
+	for_each_cpu(cpu, drv->cpumask) {
 		device = &per_cpu(cpuidle_dev, cpu);
 		cpuidle_unregister_device(device);
 	}
@@ -498,7 +503,7 @@ int cpuidle_register(struct cpuidle_driver *drv,
 		return ret;
 	}
 
-	for_each_possible_cpu(cpu) {
+	for_each_cpu(cpu, drv->cpumask) {
 		device = &per_cpu(cpuidle_dev, cpu);
 		device->cpu = cpu;
 
@@ -516,6 +521,13 @@ int cpuidle_register(struct cpuidle_driver *drv,
 			continue;
 
 		pr_err("Failed to register cpuidle device for cpu%d\n", cpu);
+
+#if defined(CONFIG_SOC_EXYNOS5433) || defined(CONFIG_SOC_EXYNOS7420)
+		if (cpu & 0x4)
+			device->skip_idle_correlation = true;
+		else
+			device->skip_idle_correlation = false;
+#endif
 
 		cpuidle_unregister(drv);
 		break;

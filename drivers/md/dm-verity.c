@@ -379,8 +379,10 @@ test_block_hash:
 		if (unlikely(memcmp(result, io_want_digest(v, io), v->digest_size))) {
 			DMERR_LIMIT("data block %llu is corrupted",
 				(unsigned long long)(io->block + b));
-			v->hash_failed = 1;
-			return -EIO;
+			if (io->block != 0) {
+				v->hash_failed = 1;
+				return -EIO;
+			}
 		}
 	}
 	BUG_ON(vector != io->io_vec_size);
@@ -696,7 +698,7 @@ static int verity_ctr(struct dm_target *ti, unsigned argc, char **argv)
 	}
 
 	if (sscanf(argv[0], "%d%c", &num, &dummy) != 1 ||
-	    num < 0 || num > 1) {
+	    num > 1) {
 		ti->error = "Invalid version";
 		r = -EINVAL;
 		goto bad;

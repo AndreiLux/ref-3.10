@@ -17,15 +17,29 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/i2c.h>
+#include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#include <linux/irqnr.h>
 #include <linux/interrupt.h>
 #include <linux/pm_runtime.h>
 #include <linux/mutex.h>
+#include <linux/rtc.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/samsung/core.h>
 #include <linux/mfd/samsung/irq.h>
 #include <linux/mfd/samsung/rtc.h>
 #include <linux/regmap.h>
+
+#include <mach/apm-exynos.h>
+
+#ifdef CONFIG_EXYNOS_MBOX
+enum {
+	PMIC,
+	RTC,
+};
+unsigned int apm_status = 0;
+static DEFINE_MUTEX(sec_lock);
+#endif
 
 static struct mfd_cell s5m8751_devs[] = {
 	{
@@ -58,6 +72,32 @@ static struct mfd_cell s5m8767_devs[] = {
 static struct mfd_cell s2mps11_devs[] = {
 	{
 		.name = "s2mps11-pmic",
+	}, {
+		.name = "s2m-rtc",
+	},
+};
+
+static struct mfd_cell s2mps13_devs[] = {
+	{
+		.name = "s2mps13-pmic",
+	}, {
+		.name = "s2m-rtc",
+	},
+};
+
+static struct mfd_cell s2mps15_devs[] = {
+	{
+		.name = "s2mps15-pmic",
+	}, {
+		.name = "s2m-rtc",
+	},
+};
+
+static struct mfd_cell s2mpu03_devs[] = {
+	{
+		.name = "s2mpu03-pmic",
+	}, {
+		.name = "s2m-rtc",
 	},
 };
 
@@ -66,39 +106,307 @@ static struct of_device_id sec_dt_match[] = {
 	{	.compatible = "samsung,s5m8767-pmic",
 		.data = (void *)S5M8767X,
 	},
+	{	.compatible = "samsung,s2mps13-pmic",
+		.data = (void *)S2MPS13X,
+	},
+	{	.compatible = "samsung,s2mps11-pmic",
+		.data = (void *)S2MPS11X,
+	},
+	{	.compatible = "samsung,s2mps15-pmic",
+		.data = (void *)S2MPS15X,
+	},
+	{	.compatible = "samsung,s2mpu03-pmic",
+		.data = (void *)S2MPU03X,
+	},
 	{},
 };
 #endif
 
-int sec_reg_read(struct sec_pmic_dev *sec_pmic, u8 reg, void *dest)
+#ifdef CONFIG_EXYNOS_MBOX
+static int exynos_regulator_apm_notifier(struct notifier_block *notifier,
+						unsigned long pm_event, void *v)
 {
+	switch (pm_event) {
+		case APM_READY:
+			apm_status = true;
+			break;
+		case APM_SLEEP:
+		case APM_TIMEOUT:
+			apm_status = false;
+			break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block exynos_apm_notifier = {
+	.notifier_call = exynos_regulator_apm_notifier,
+};
+#endif
+
+int sec_reg_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest)
+{
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+
+	if (!apm_status) {
+		ret = regmap_read(sec_pmic->regmap, reg, dest);
+	} else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_read(PMIC, reg, dest);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0) {
+			ret = regmap_read(sec_pmic->regmap, reg, dest);
+		}
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
 	return regmap_read(sec_pmic->regmap, reg, dest);
+#endif
 }
 EXPORT_SYMBOL_GPL(sec_reg_read);
 
-int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u8 reg, int count, u8 *buf)
+int sec_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count, u8 *buf)
 {
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+
+	if (!apm_status)
+		ret = regmap_bulk_read(sec_pmic->regmap, reg, buf, count);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_bulk_read(PMIC, reg, buf, count);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0) {
+			ret = regmap_bulk_read(sec_pmic->regmap, reg, buf, count);
+		}
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
 	return regmap_bulk_read(sec_pmic->regmap, reg, buf, count);
+#endif
 }
 EXPORT_SYMBOL_GPL(sec_bulk_read);
 
-int sec_reg_write(struct sec_pmic_dev *sec_pmic, u8 reg, u8 value)
+int sec_reg_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value)
 {
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_write(sec_pmic->regmap, reg, value);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_write(PMIC, reg, value);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0) {
+			ret = regmap_write(sec_pmic->regmap, reg, value);
+		}
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
 	return regmap_write(sec_pmic->regmap, reg, value);
+#endif
 }
 EXPORT_SYMBOL_GPL(sec_reg_write);
 
-int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u8 reg, int count, u8 *buf)
+int sec_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count, u8 *buf)
 {
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_raw_write(sec_pmic->regmap, reg, buf, count);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_bulk_write(PMIC, reg, buf, count);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0) {
+			ret = regmap_raw_write(sec_pmic->regmap, reg, buf, count);
+		}
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
 	return regmap_raw_write(sec_pmic->regmap, reg, buf, count);
+#endif
 }
 EXPORT_SYMBOL_GPL(sec_bulk_write);
 
-int sec_reg_update(struct sec_pmic_dev *sec_pmic, u8 reg, u8 val, u8 mask)
+int sec_reg_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val, u32 mask)
 {
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_update_bits(sec_pmic->regmap, reg, mask, val);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_update_bits(PMIC, reg, mask, val);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0) {
+			ret = regmap_update_bits(sec_pmic->regmap, reg, mask, val);
+		}
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
 	return regmap_update_bits(sec_pmic->regmap, reg, mask, val);
+#endif
 }
 EXPORT_SYMBOL_GPL(sec_reg_update);
+
+int sec_rtc_read(struct sec_pmic_dev *sec_pmic, u32 reg, void *dest)
+{
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_read(sec_pmic->rtc_regmap, reg, dest);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_read(RTC, reg, dest);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0)
+			ret = regmap_read(sec_pmic->rtc_regmap, reg, dest);
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
+	return regmap_read(sec_pmic->rtc_regmap, reg, dest);
+#endif
+}
+EXPORT_SYMBOL_GPL(sec_rtc_read);
+
+int sec_rtc_bulk_read(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
+		u8 *buf)
+{
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_bulk_read(sec_pmic->rtc_regmap, reg, buf, count);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_bulk_read(RTC, reg, buf, count);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0)
+			ret = regmap_bulk_read(sec_pmic->rtc_regmap, reg, buf, count);
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
+	return regmap_bulk_read(sec_pmic->rtc_regmap, reg, buf, count);
+#endif
+}
+EXPORT_SYMBOL_GPL(sec_rtc_bulk_read);
+
+int sec_rtc_write(struct sec_pmic_dev *sec_pmic, u32 reg, u32 value)
+{
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_write(sec_pmic->rtc_regmap, reg, value);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_write(RTC, reg, value);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0)
+			ret = regmap_write(sec_pmic->rtc_regmap, reg, value);
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
+	return regmap_write(sec_pmic->rtc_regmap, reg, value);
+#endif
+}
+EXPORT_SYMBOL_GPL(sec_rtc_write);
+
+int sec_rtc_bulk_write(struct sec_pmic_dev *sec_pmic, u32 reg, int count,
+		u8 *buf)
+{
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_raw_write(sec_pmic->rtc_regmap, reg, buf, count);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_bulk_write(RTC, reg, buf, count);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0)
+			ret = regmap_raw_write(sec_pmic->rtc_regmap, reg, buf, count);
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
+	return regmap_raw_write(sec_pmic->rtc_regmap, reg, buf, count);
+#endif
+}
+EXPORT_SYMBOL_GPL(sec_rtc_bulk_write);
+
+int sec_rtc_update(struct sec_pmic_dev *sec_pmic, u32 reg, u32 val,
+		u32 mask)
+{
+#ifdef CONFIG_EXYNOS_MBOX
+	int ret;
+
+	mutex_lock(&sec_lock);
+	if (!apm_status)
+		ret = regmap_update_bits(sec_pmic->rtc_regmap, reg, mask, val);
+	else {
+		mutex_lock(&sec_pmic->iolock);
+		ret = sec_pmic->ops->apm_update_bits(RTC, reg, mask, val);
+		mutex_unlock(&sec_pmic->iolock);
+		if (ret < 0)
+			ret = regmap_update_bits(sec_pmic->rtc_regmap, reg, mask, val);
+	}
+	mutex_unlock(&sec_lock);
+
+	return ret;
+#else
+	return regmap_update_bits(sec_pmic->rtc_regmap, reg, mask, val);
+#endif
+}
+EXPORT_SYMBOL_GPL(sec_rtc_update);
+
+#ifdef CONFIG_EXYNOS_MBOX
+void sec_core_lock(void)
+{
+	mutex_lock(&sec_lock);
+}
+EXPORT_SYMBOL_GPL(sec_core_lock);
+
+void sec_core_unlock(void)
+{
+	mutex_unlock(&sec_lock);
+}
+EXPORT_SYMBOL_GPL(sec_core_unlock);
+#endif
 
 static struct regmap_config sec_regmap_config = {
 	.reg_bits = 8,
@@ -107,39 +415,104 @@ static struct regmap_config sec_regmap_config = {
 
 
 #ifdef CONFIG_OF
-/*
- * Only the common platform data elements for s5m8767 are parsed here from the
- * device tree. Other sub-modules of s5m8767 such as pmic, rtc , charger and
- * others have to parse their own platform data elements from device tree.
- *
- * The s5m8767 platform data structure is instantiated here and the drivers for
- * the sub-modules need not instantiate another instance while parsing their
- * platform data.
- */
 static struct sec_platform_data *sec_pmic_i2c_parse_dt_pdata(
 					struct device *dev)
 {
-	struct sec_platform_data *pd;
+	struct sec_platform_data *pdata;
+	struct device_node *np = dev->of_node;
+	int ret;
+	u32 val;
 
-	pd = devm_kzalloc(dev, sizeof(*pd), GFP_KERNEL);
-	if (!pd) {
-		dev_err(dev, "could not allocate memory for pdata\n");
+	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
+	if (!pdata) {
+		dev_err(dev, "failed to allocate platform data\n");
 		return ERR_PTR(-ENOMEM);
 	}
+	dev->platform_data = pdata;
+	pdata->irq_base = -1;
 
-	/*
-	 * ToDo: the 'wakeup' member in the platform data is more of a linux
-	 * specfic information. Hence, there is no binding for that yet and
-	 * not parsed here.
-	 */
+	/* WTSR, SMPL */
+	pdata->wtsr_smpl = devm_kzalloc(dev, sizeof(*pdata->wtsr_smpl),
+			GFP_KERNEL);
+	if (!pdata->wtsr_smpl)
+		return ERR_PTR(-ENOMEM);
 
-	return pd;
+	ret = of_property_read_u32(np, "wtsr_en", &val);
+	if (ret)
+		return ERR_PTR(ret);
+	pdata->wtsr_smpl->wtsr_en = !!val;
+
+	ret = of_property_read_u32(np, "smpl_en", &val);
+	if (ret)
+		return ERR_PTR(ret);
+	pdata->wtsr_smpl->smpl_en = !!val;
+
+	ret = of_property_read_u32(np, "wtsr_timer_val",
+			&pdata->wtsr_smpl->wtsr_timer_val);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "smpl_timer_val",
+			&pdata->wtsr_smpl->smpl_timer_val);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "check_jigon", &val);
+	if (ret)
+		return ERR_PTR(ret);
+	pdata->wtsr_smpl->check_jigon = !!val;
+
+	if (of_get_property(np, "ten-bit-address", NULL))
+		pdata->ten_bit_address = true;
+
+	/* init time */
+	pdata->init_time = devm_kzalloc(dev, sizeof(*pdata->init_time),
+			GFP_KERNEL);
+	if (!pdata->init_time)
+		return ERR_PTR(-ENOMEM);
+
+	ret = of_property_read_u32(np, "init_time,sec",
+			&pdata->init_time->tm_sec);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "init_time,min",
+			&pdata->init_time->tm_min);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "init_time,hour",
+			&pdata->init_time->tm_hour);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "init_time,mday",
+			&pdata->init_time->tm_mday);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "init_time,mon",
+			&pdata->init_time->tm_mon);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "init_time,year",
+			&pdata->init_time->tm_year);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = of_property_read_u32(np, "init_time,wday",
+			&pdata->init_time->tm_wday);
+	if (ret)
+		return ERR_PTR(ret);
+
+	return pdata;
 }
 #else
 static struct sec_platform_data *sec_pmic_i2c_parse_dt_pdata(
 					struct device *dev)
 {
-	return 0;
+	return NULL;
 }
 #endif
 
@@ -150,10 +523,30 @@ static inline int sec_i2c_get_driver_data(struct i2c_client *i2c,
 	if (i2c->dev.of_node) {
 		const struct of_device_id *match;
 		match = of_match_node(sec_dt_match, i2c->dev.of_node);
-		return (int)match->data;
+		return (unsigned long)match->data;
 	}
 #endif
 	return (int)id->driver_data;
+}
+
+static struct sec_pmic_dev *g_sec_pmic;
+
+int sec_pmic_get_irq_base(void)
+{
+	int irq_base;
+
+	if (!g_sec_pmic) {
+		pr_err("%s: Failed to get irq base: sec_pmic is null\n", __func__);
+		return -ENODEV;
+	}
+
+	irq_base = regmap_irq_chip_get_base(g_sec_pmic->irq_data);
+	if (!irq_base) {
+		pr_err("%s: Failed to get irq base %d\n", __func__, irq_base);
+		return -ENODEV;
+	}
+
+	return irq_base;
 }
 
 static int sec_pmic_probe(struct i2c_client *i2c,
@@ -174,20 +567,25 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 	sec_pmic->irq = i2c->irq;
 	sec_pmic->type = sec_i2c_get_driver_data(i2c, id);
 
+	mutex_init(&sec_pmic->iolock);
+
 	if (sec_pmic->dev->of_node) {
 		pdata = sec_pmic_i2c_parse_dt_pdata(sec_pmic->dev);
 		if (IS_ERR(pdata)) {
 			ret = PTR_ERR(pdata);
 			return ret;
-		}
+		} else if (!pdata)
+			return -ENODEV;
 		pdata->device_type = sec_pmic->type;
 	}
+
 	if (pdata) {
 		sec_pmic->device_type = pdata->device_type;
 		sec_pmic->ono = pdata->ono;
 		sec_pmic->irq_base = pdata->irq_base;
-		sec_pmic->wakeup = pdata->wakeup;
+		sec_pmic->wakeup = true;
 		sec_pmic->pdata = pdata;
+		sec_pmic->irq = i2c->irq;
 	}
 
 	sec_pmic->regmap = devm_regmap_init_i2c(i2c, &sec_regmap_config);
@@ -203,13 +601,28 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 		dev_err(&i2c->dev, "Failed to allocate I2C for RTC\n");
 		return -ENODEV;
 	}
+
+	if (pdata->ten_bit_address)
+		sec_pmic->rtc->flags |= I2C_CLIENT_TEN;
+
 	i2c_set_clientdata(sec_pmic->rtc, sec_pmic);
+	sec_pmic->rtc_regmap = devm_regmap_init_i2c(sec_pmic->rtc,
+						&sec_regmap_config);
+	if (IS_ERR(sec_pmic->rtc_regmap)) {
+		ret = PTR_ERR(sec_pmic->rtc_regmap);
+		dev_err(&sec_pmic->rtc->dev, "Failed to allocate register map: %d\n",
+			ret);
+		return ret;
+	}
 
 	if (pdata && pdata->cfg_pmic_irq)
 		pdata->cfg_pmic_irq();
 
 	sec_irq_init(sec_pmic);
-
+#ifdef CONFIG_EXYNOS_MBOX
+	sec_pmic->ops = &exynos_apm_function_ops;
+	register_apm_notifier(&exynos_apm_notifier);
+#endif
 	pm_runtime_set_active(sec_pmic->dev);
 
 	switch (sec_pmic->device_type) {
@@ -229,6 +642,18 @@ static int sec_pmic_probe(struct i2c_client *i2c,
 		ret = mfd_add_devices(sec_pmic->dev, -1, s2mps11_devs,
 				      ARRAY_SIZE(s2mps11_devs), NULL, 0, NULL);
 		break;
+	case S2MPS13X:
+		ret = mfd_add_devices(sec_pmic->dev, -1, s2mps13_devs,
+				      ARRAY_SIZE(s2mps13_devs), NULL, 0, NULL);
+		break;
+	case S2MPS15X:
+		ret = mfd_add_devices(sec_pmic->dev, -1, s2mps15_devs,
+				      ARRAY_SIZE(s2mps15_devs), NULL, 0, NULL);
+		break;
+	case S2MPU03X:
+		ret = mfd_add_devices(sec_pmic->dev, -1, s2mpu03_devs,
+				      ARRAY_SIZE(s2mpu03_devs), NULL, 0, NULL);
+		break;
 	default:
 		/* If this happens the probe function is problem */
 		BUG();
@@ -243,6 +668,9 @@ err:
 	mfd_remove_devices(sec_pmic->dev);
 	sec_irq_exit(sec_pmic);
 	i2c_unregister_device(sec_pmic->rtc);
+#ifdef CONFIG_EXYNOS_MBOX
+	unregister_apm_notifier(&exynos_apm_notifier);
+#endif
 	return ret;
 }
 
@@ -252,6 +680,8 @@ static int sec_pmic_remove(struct i2c_client *i2c)
 
 	mfd_remove_devices(sec_pmic->dev);
 	sec_irq_exit(sec_pmic);
+	regmap_exit(sec_pmic->rtc_regmap);
+	regmap_exit(sec_pmic->regmap);
 	i2c_unregister_device(sec_pmic->rtc);
 	return 0;
 }
@@ -262,11 +692,50 @@ static const struct i2c_device_id sec_pmic_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, sec_pmic_id);
 
+#ifdef CONFIG_PM
+static int sec_suspend(struct device *dev)
+{
+	struct i2c_client *i2c = container_of(dev, struct i2c_client, dev);
+	struct sec_pmic_dev *sec_pmic = i2c_get_clientdata(i2c);
+
+	if (sec_pmic->wakeup)
+		enable_irq_wake(sec_pmic->irq);
+
+	disable_irq(sec_pmic->irq);
+	if (sec_pmic->device_type == S2MPS15X && sec_pmic->adc_en)
+		sec_reg_write(sec_pmic, 0x5C, 0x00);
+	return 0;
+}
+
+static int sec_resume(struct device *dev)
+{
+	struct i2c_client *i2c = container_of(dev, struct i2c_client, dev);
+	struct sec_pmic_dev *sec_pmic = i2c_get_clientdata(i2c);
+
+	if (sec_pmic->wakeup)
+		disable_irq_wake(sec_pmic->irq);
+
+	enable_irq(sec_pmic->irq);
+	if (sec_pmic->device_type == S2MPS15X && sec_pmic->adc_en)
+		sec_reg_write(sec_pmic, 0x5C, 0x80);
+	return 0;
+}
+#else
+#define sec_suspend	NULL
+#define sec_resume	NULL
+#endif /* CONFIG_PM */
+
+const struct dev_pm_ops sec_pmic_apm = {
+	.suspend = sec_suspend,
+	.resume = sec_resume,
+};
+
 static struct i2c_driver sec_pmic_driver = {
 	.driver = {
 		   .name = "sec_pmic",
 		   .owner = THIS_MODULE,
 		   .of_match_table = of_match_ptr(sec_dt_match),
+		   .pm = &sec_pmic_apm,
 	},
 	.probe = sec_pmic_probe,
 	.remove = sec_pmic_remove,
@@ -287,5 +756,5 @@ static void __exit sec_pmic_exit(void)
 module_exit(sec_pmic_exit);
 
 MODULE_AUTHOR("Sangbeom Kim <sbkim73@samsung.com>");
-MODULE_DESCRIPTION("Core support for the S5M MFD");
+MODULE_DESCRIPTION("Core support for the SAMSUNG MFD");
 MODULE_LICENSE("GPL");

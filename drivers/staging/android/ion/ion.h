@@ -201,4 +201,12 @@ int ion_share_dma_buf_fd(struct ion_client *client, struct ion_handle *handle);
  */
 struct ion_handle *ion_import_dma_buf(struct ion_client *client, int fd);
 
+#include <linux/dma-direction.h>
+#include <linux/dma-buf.h>
+
+dma_addr_t ion_iovmm_map(struct dma_buf_attachment *attachment,
+			 off_t offset, size_t size,
+			 enum dma_data_direction direction, int id);
+void ion_iovmm_unmap(struct dma_buf_attachment *attachment, dma_addr_t iova);
+
 #endif /* _LINUX_ION_H */

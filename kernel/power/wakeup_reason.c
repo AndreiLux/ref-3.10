@@ -26,9 +26,13 @@
 #include <linux/spinlock.h>
 #include <linux/notifier.h>
 #include <linux/suspend.h>
+#include <linux/debugfs.h>
 
-
+#ifdef CONFIG_SOC_EXYNOS5433
+#define MAX_WAKEUP_REASON_IRQS 64
+#else
 #define MAX_WAKEUP_REASON_IRQS 32
+#endif
 static int irq_list[MAX_WAKEUP_REASON_IRQS];
 static int irqcount;
 static bool suspend_abort;
@@ -178,3 +182,73 @@ int __init wakeup_reason_init(void)
 }
 
 late_initcall(wakeup_reason_init);
+
+#ifdef CONFIG_ARCH_EXYNOS
+#ifdef CONFIG_SOC_EXYNOS5433
+#define NR_EINT		64
+#else
+#define NR_EINT		32
+#endif
+struct wakeup_reason_stats {
+	int irq;
+	unsigned int wakeup_count;
+};
+static struct wakeup_reason_stats wakeup_reason_stats[NR_EINT] = {{0,},};
+
+void update_wakeup_reason_stats(int irq, int eint)
+{
+	if (eint >= NR_EINT) {
+		pr_info("%s : can't update wakeup reason stat infomation\n", __func__);
+		return;
+	}
+
+	wakeup_reason_stats[eint].irq = irq;
+	wakeup_reason_stats[eint].wakeup_count++;
+}
+
+#ifdef CONFIG_DEBUG_FS
+static int wakeup_reason_stats_show(struct seq_file *s, void *unused)
+{
+	int i;
+
+	seq_puts(s, "eint_no\tirq\twakeup_count\tname\n");
+	for (i = 0; i < NR_EINT; i++) {
+		struct irq_desc *desc = irq_to_desc(wakeup_reason_stats[i].irq);
+		const char *irq_name = NULL;
+
+		if (!wakeup_reason_stats[i].irq)
+			continue;
+
+		if (desc && desc->action && desc->action->name)
+			irq_name = desc->action->name;
+
+		seq_printf(s, "%d\t%d\t%u\t\t%s\n", i,
+				wakeup_reason_stats[i].irq,
+				wakeup_reason_stats[i].wakeup_count, irq_name);
+	}
+
+	return 0;
+}
+
+static int wakeup_reason_stats_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, wakeup_reason_stats_show, NULL);
+}
+
+static const struct file_operations wakeup_reason_stats_ops = {
+	.open           = wakeup_reason_stats_open,
+	.read           = seq_read,
+	.llseek         = seq_lseek,
+	.release        = single_release,
+};
+
+static int __init wakeup_reason_debugfs_init(void)
+{
+	debugfs_create_file("wakeup_reason_stats", S_IFREG | S_IRUGO,
+			NULL, NULL, &wakeup_reason_stats_ops);
+	return 0;
+}
+
+late_initcall(wakeup_reason_debugfs_init);
+#endif /* CONFIG_DEBUG_FS */
+#endif /* CONFIG_ARCH_EXYNOS */

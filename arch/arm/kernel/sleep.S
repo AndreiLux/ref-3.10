@@ -31,8 +31,11 @@ ENTRY(__cpu_suspend)
 	mov	r2, r5			@ virtual SP
 	ldr	r3, =sleep_save_sp
 #ifdef CONFIG_SMP
-	get_thread_info	r5
-	ldr	lr, [r5, #TI_CPU] 	@ cpu logical index
+	ALT_SMP(mrc p15, 0, lr, c0, c0, 5)
+	ALT_SMP(ubfx r4, lr, #8, #4)
+	ALT_SMP(orr lr, lr, r4, lsl #2)
+	ALT_UP(mov lr, #0)
+	and	lr, lr, #15
 	add	r3, r3, lr, lsl #2
 #endif
 	bl	__cpu_suspend_save
@@ -90,6 +93,11 @@ ARM_BE8(setend be)			@ ensure we are in BE mode
 	bl	cpu_logical_index 	@ return logical index in r1
 1:
 	adr	r0, sleep_save_sp
+	ALT_SMP(mrc p15, 0, r1, c0, c0, 5)
+	ALT_SMP(ubfx r2, r1, #8, #4)
+	ALT_SMP(orr r1, r1, r2, lsl #2)
+	ALT_UP(mov r1, #0)
+	and	r1, r1, #15
 	ldr	r0, [r0, r1, lsl #2]	@ stack phys addr
 #else
 	ldr	r0, sleep_save_sp	@ stack phys addr

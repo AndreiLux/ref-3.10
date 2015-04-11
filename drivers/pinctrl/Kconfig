@@ -221,6 +221,12 @@ config PINCTRL_S3C64XX
 	depends on ARCH_S3C64XX
 	select PINCTRL_SAMSUNG
 
+config SEC_GPIO_DVS
+	tristate "setting Samsung GPIO debugging and verification system"
+
+config MST_SECURE_GPIO
+	bool "setting MST gpio as secure pin"
+
 source "drivers/pinctrl/mvebu/Kconfig"
 source "drivers/pinctrl/sh-pfc/Kconfig"
 source "drivers/pinctrl/spear/Kconfig"

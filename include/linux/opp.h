@@ -42,6 +42,8 @@ struct opp *opp_find_freq_ceil(struct device *dev, unsigned long *freq);
 
 int opp_add(struct device *dev, unsigned long freq, unsigned long u_volt);
 
+int opp_add_dec(struct device *dev, unsigned long freq, unsigned long u_volt);
+
 int opp_enable(struct device *dev, unsigned long freq);
 
 int opp_disable(struct device *dev, unsigned long freq);
@@ -82,6 +84,12 @@ static inline struct opp *opp_find_freq_ceil(struct device *dev,
 }
 
 static inline int opp_add(struct device *dev, unsigned long freq,
+					unsigned long u_volt)
+{
+	return -EINVAL;
+}
+
+static inline int opp_add_dec(struct device *dev, unsigned long freq,
 					unsigned long u_volt)
 {
 	return -EINVAL;

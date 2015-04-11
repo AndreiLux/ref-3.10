@@ -96,6 +96,9 @@
 /* Length of a SCSI Command Data Block */
 #define MAX_COMMAND_SIZE	16
 
+/* SCSI commands that we recognize */
+#define READ_CD					0xbe
+
 /* SCSI Sense Key/Additional Sense Code/ASC Qualifier values */
 #define SS_NO_SENSE				0
 #define SS_COMMUNICATION_FAILURE		0x040800
@@ -580,6 +583,9 @@ static ssize_t fsg_show_file(struct device *dev, struct device_attribute *attr,
 			rc = PTR_ERR(p);
 		else {
 			rc = strlen(p);
+			if (rc > PAGE_SIZE - 2)
+				rc = PAGE_SIZE - 2;
+
 			memmove(buf, p, rc);
 			buf[rc] = '\n';		/* Add a newline */
 			buf[++rc] = 0;

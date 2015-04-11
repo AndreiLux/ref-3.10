@@ -23,6 +23,9 @@
 #include <linux/fs.h>
 #include <linux/pagemap.h>
 #include "ecryptfs_kernel.h"
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+#include <linux/ecryptfs.h>
+#endif
 
 /**
  * ecryptfs_write_lower
@@ -41,10 +44,50 @@ int ecryptfs_write_lower(struct inode *ecryptfs_inode, char *data,
 {
 	struct file *lower_file;
 	ssize_t rc;
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	struct ecryptfs_crypt_stat *crypt_stat =
+			&ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat;
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+	    &ecryptfs_superblock_to_private(
+		    ecryptfs_inode->i_sb)->mount_crypt_stat;
+#endif
 
 	lower_file = ecryptfs_inode_to_private(ecryptfs_inode)->lower_file;
 	if (!lower_file)
 		return -EIO;
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	/* Override crypt setting if it is not AES_XTS */
+	if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
+		lower_file->f_mapping->iv = NULL;
+		lower_file->f_mapping->key = NULL;
+		lower_file->f_mapping->key_length = 0;
+		lower_file->f_mapping->sensitive_data_index = 0;
+		lower_file->f_mapping->alg = NULL;
+		lower_file->f_mapping->hash_tfm = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+		lower_file->f_mapping->cc_enable = 0;
+#endif
+		lower_file->f_mapping->use_fmp = 0;
+	} else {
+		lower_file->f_mapping->iv = crypt_stat->root_iv;
+		lower_file->f_mapping->key = crypt_stat->key;
+		lower_file->f_mapping->sensitive_data_index =
+			crypt_stat->metadata_size/4096;
+		if (mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256) {
+			lower_file->f_mapping->key_length = crypt_stat->key_size * 2;
+			lower_file->f_mapping->alg = "aesxts";
+		} else {
+			lower_file->f_mapping->key_length = crypt_stat->key_size;
+			lower_file->f_mapping->alg = crypt_stat->cipher;
+		}
+		lower_file->f_mapping->hash_tfm = crypt_stat->hash_tfm;
+#ifdef CONFIG_CRYPTO_FIPS
+		lower_file->f_mapping->cc_enable =
+			(mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)?1:0;
+#endif
+		lower_file->f_mapping->use_fmp = 1;
+	}
+#endif
 	rc = kernel_write(lower_file, data, size, offset);
 	mark_inode_dirty_sync(ecryptfs_inode);
 	return rc;
@@ -228,13 +271,64 @@ out:
  *
  * Returns bytes read on success; 0 on EOF; less than zero on error
  */
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+int ecryptfs_read_lower(char *data, loff_t offset, size_t size,
+			struct inode *ecryptfs_inode, unsigned int crypt)
+#else
 int ecryptfs_read_lower(char *data, loff_t offset, size_t size,
 			struct inode *ecryptfs_inode)
+#endif
 {
 	struct file *lower_file;
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	struct ecryptfs_crypt_stat *crypt_stat =
+			&ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat;
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+	    &ecryptfs_superblock_to_private(
+		    ecryptfs_inode->i_sb)->mount_crypt_stat;
+#endif
+
 	lower_file = ecryptfs_inode_to_private(ecryptfs_inode)->lower_file;
 	if (!lower_file)
 		return -EIO;
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	/* Override crypt setting if it is not AES_XTS */
+	if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
+		if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+			lower_file->f_ra.ra_pages = 0;
+		lower_file->f_mapping->iv = NULL;
+		lower_file->f_mapping->key = NULL;
+		lower_file->f_mapping->key_length = 0;
+		lower_file->f_mapping->sensitive_data_index = 0;
+		lower_file->f_mapping->alg = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+		lower_file->f_mapping->cc_enable = 0;
+#endif
+		lower_file->f_mapping->use_fmp = 0;
+	} else {
+		if (!crypt)
+			lower_file->f_ra.ra_pages = 0;
+		else
+			lower_file->f_ra.ra_pages = lower_file->f_mapping->backing_dev_info->ra_pages;
+		lower_file->f_mapping->iv = crypt_stat->root_iv;
+		lower_file->f_mapping->key = crypt_stat->key;
+		lower_file->f_mapping->sensitive_data_index =
+			crypt_stat->metadata_size/4096;
+		if (mount_crypt_stat->cipher_code == RFC2440_CIPHER_AES_XTS_256) {
+			lower_file->f_mapping->key_length = crypt_stat->key_size * 2;
+			lower_file->f_mapping->alg = "aesxts";
+		} else {
+			lower_file->f_mapping->key_length = crypt_stat->key_size;
+			lower_file->f_mapping->alg = crypt_stat->cipher;
+		}
+		lower_file->f_mapping->hash_tfm = crypt_stat->hash_tfm;
+#ifdef CONFIG_CRYPTO_FIPS
+		lower_file->f_mapping->cc_enable =
+			(mount_crypt_stat->flags & ECRYPTFS_ENABLE_CC)?1:0;
+#endif
+		lower_file->f_mapping->use_fmp = 1;
+	}
+#endif
 	return kernel_read(lower_file, offset, data, size);
 }
 
@@ -253,10 +347,18 @@ int ecryptfs_read_lower(char *data, loff_t offset, size_t size,
  *
  * Returns zero on success; non-zero otherwise
  */
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+int ecryptfs_read_lower_page_segment(struct page *page_for_ecryptfs,
+				     pgoff_t page_index,
+				     size_t offset_in_page, size_t size,
+				     struct inode *ecryptfs_inode,
+				     unsigned int crypt)
+#else
 int ecryptfs_read_lower_page_segment(struct page *page_for_ecryptfs,
 				     pgoff_t page_index,
 				     size_t offset_in_page, size_t size,
 				     struct inode *ecryptfs_inode)
+#endif
 {
 	char *virt;
 	loff_t offset;
@@ -264,7 +366,12 @@ int ecryptfs_read_lower_page_segment(struct page *page_for_ecryptfs,
 
 	offset = ((((loff_t)page_index) << PAGE_CACHE_SHIFT) + offset_in_page);
 	virt = kmap(page_for_ecryptfs);
+
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	rc = ecryptfs_read_lower(virt, offset, size, ecryptfs_inode, crypt);
+#else
 	rc = ecryptfs_read_lower(virt, offset, size, ecryptfs_inode);
+#endif
 	if (rc > 0)
 		rc = 0;
 	kunmap(page_for_ecryptfs);

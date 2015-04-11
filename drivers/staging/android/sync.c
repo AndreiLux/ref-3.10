@@ -995,6 +995,12 @@ void sync_dump(void)
 		.size = sizeof(sync_dump_buf) - 1,
 	};
 	int i;
+	static int is_first_ref = 0;
+
+	if (is_first_ref > 2)
+		return;
+
+	is_first_ref++;
 
 	sync_debugfs_show(&s, NULL);
 

@@ -40,6 +40,9 @@ struct sync_pt *sw_sync_pt_create(struct sw_sync_timeline *obj, u32 value)
 	pt = (struct sw_sync_pt *)
 		sync_pt_create(&obj->obj, sizeof(struct sw_sync_pt));
 
+	if (!pt)
+		return NULL;
+
 	pt->value = value;
 
 	return (struct sync_pt *)pt;

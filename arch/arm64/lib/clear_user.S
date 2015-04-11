@@ -26,10 +26,24 @@
  *          : sz   - number of bytes to clear
  * Returns  : number of bytes NOT cleared
  *
- * Alignment fixed up by hardware.
+ * Ensure alignment by software.
  */
 ENTRY(__clear_user)
 	mov	x2, x1			// save the size for fixup return
+	neg	x3, x0
+	ands	x3, x3, #7		// bytes to reach 64bit alignment
+	b.eq	.Laligned
+	sub	x1, x1, x3
+	tbz	x3, #0, 1f
+USER(9f, strb	wzr, [x0], #1	)
+1:
+	tbz	x3, #1, 2f
+USER(9f, strh	wzr, [x0], #2	)
+2:
+	tbz	x3, #2, .Laligned
+USER(9f, str	wzr, [x0], #4	)
+	
+.Laligned:
 	subs	x1, x1, #8
 	b.mi	2f
 1:

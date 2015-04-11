@@ -41,7 +41,6 @@
 #include <linux/scatterlist.h>
 #include <linux/mm.h>
 #include <linux/dma-mapping.h>
-
 #include "usb.h"
 
 

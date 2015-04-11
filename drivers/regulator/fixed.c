@@ -96,6 +96,10 @@ of_get_fixed_voltage_config(struct device *dev)
 	if (delay)
 		config->startup_delay = be32_to_cpu(*delay);
 
+	delay = of_get_property(np, "endup-delay-us", NULL);
+	if (delay)
+		config->endup_delay = be32_to_cpu(*delay);
+
 	if (of_find_property(np, "enable-active-high", NULL))
 		config->enable_high = true;
 
@@ -171,7 +175,7 @@ static int reg_fixed_voltage_probe(struct platform_device *pdev)
 	drvdata->desc.ops = &fixed_voltage_ops;
 
 	drvdata->desc.enable_time = config->startup_delay;
-
+	drvdata->desc.disable_time = config->endup_delay;
 	if (config->input_supply) {
 		drvdata->desc.supply_name = kstrdup(config->input_supply,
 							GFP_KERNEL);

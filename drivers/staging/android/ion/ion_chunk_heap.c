@@ -1,5 +1,5 @@
 /*
- * drivers/gpu/ion/ion_chunk_heap.c
+ * drivers/staging/android/ion/ion_chunk_heap.c
  *
  * Copyright (C) 2012 Google, Inc.
  *
@@ -17,11 +17,11 @@
 #include <linux/err.h>
 #include <linux/genalloc.h>
 #include <linux/io.h>
+#include <linux/ion.h>
 #include <linux/mm.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
-#include "ion.h"
 #include "ion_priv.h"
 
 struct ion_chunk_heap {
@@ -55,7 +55,7 @@ static int ion_chunk_heap_allocate(struct ion_heap *heap,
 	if (allocated_size > chunk_heap->size - chunk_heap->allocated)
 		return -ENOMEM;
 
-	table = kzalloc(sizeof(struct sg_table), GFP_KERNEL);
+	table = kmalloc(sizeof(struct sg_table), GFP_KERNEL);
 	if (!table)
 		return -ENOMEM;
 	ret = sg_alloc_table(table, num_chunks, GFP_KERNEL);

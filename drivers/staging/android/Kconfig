@@ -20,9 +20,9 @@ config ANDROID_BINDER_IPC
 	  between said processes.
 
 config ANDROID_BINDER_IPC_32BIT
-	bool
+	bool "Use old 32-bit binder api"
         default y
-	depends on !64BIT && ANDROID_BINDER_IPC
+	depends on !64BIT
 	---help---
 	  Enable to support an old 32-bit Android user-space. Breaks the new
 	  Android user-space.
@@ -115,6 +115,17 @@ config SW_SYNC_USER
 	  Provides a user space API to the sw sync object.
 	  *WARNING* improper use of this can result in deadlocking kernel
 	  drivers from userspace.
+
+config SEC_OOM_KILLER
+        bool "Android OOM Killer"
+        default n
+        help
+          klaatu@samsung
+          This enables 'Android-Style oom-killer'
+          The way to select victim by oom-killer provided by
+          linux kernel is totally different from android policy.
+          Hence, it makes more sense that we select the oom victim
+          as android does when LMK is invoked.
 
 source "drivers/staging/android/ion/Kconfig"
 

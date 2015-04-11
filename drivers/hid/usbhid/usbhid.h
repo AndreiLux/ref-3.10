@@ -95,6 +95,9 @@ struct usbhid_device {
 	int ledcount;							/* counting the number of active leds */
 
 	struct work_struct led_work;					/* Task context for setting LEDs */
+#ifdef CONFIG_USB_DEBUG_DETAILED_LOG
+	unsigned long in_err_isr;
+#endif
 };
 
 #define	hid_to_usb_dev(hid_dev) \

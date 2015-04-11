@@ -125,7 +125,7 @@ static int dump_tcp_header(struct sbuff *m, const struct sk_buff *skb,
 		u_int8_t _opt[60 - sizeof(struct tcphdr)];
 		const u_int8_t *op;
 		unsigned int i;
-		unsigned int optsize = th->doff*4 - sizeof(struct tcphdr);
+		unsigned int optsize = th->doff*4 - (unsigned int)sizeof(struct tcphdr);
 
 		op = skb_header_pointer(skb, offset + sizeof(struct tcphdr),
 					optsize, _opt);
@@ -210,7 +210,7 @@ static void dump_ipv4_packet(struct sbuff *m,
 		unsigned char _opt[4 * 15 - sizeof(struct iphdr)];
 		unsigned int i, optsize;
 
-		optsize = ih->ihl * 4 - sizeof(struct iphdr);
+		optsize = ih->ihl * 4 - (unsigned int)sizeof(struct iphdr);
 		op = skb_header_pointer(skb, iphoff+sizeof(_iph),
 					optsize, _opt);
 		if (op == NULL) {
@@ -533,7 +533,7 @@ static void dump_ipv6_packet(struct sbuff *m,
 	       (ntohl(*(__be32 *)ih) & 0x000fffff));
 
 	fragment = 0;
-	ptr = ip6hoff + sizeof(struct ipv6hdr);
+	ptr = ip6hoff + (unsigned int)sizeof(struct ipv6hdr);
 	currenthdr = ih->nexthdr;
 	while (currenthdr != NEXTHDR_NONE && ip6t_ext_hdr(currenthdr)) {
 		struct ipv6_opt_hdr _hdr;

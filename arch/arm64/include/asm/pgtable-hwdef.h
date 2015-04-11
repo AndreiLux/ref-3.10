@@ -80,29 +80,9 @@
 #define PTE_ATTRINDX_MASK	(_AT(pteval_t, 7) << 2)
 
 /*
- * 2nd stage PTE definitions
+ * 40-bit physical address supported.
  */
-#define PTE_S2_RDONLY		(_AT(pteval_t, 1) << 6)   /* HAP[2:1] */
-#define PTE_S2_RDWR		(_AT(pteval_t, 3) << 6)   /* HAP[2:1] */
-
-#define PMD_S2_RDWR		(_AT(pmdval_t, 3) << 6)   /* HAP[2:1] */
-
-/*
- * Memory Attribute override for Stage-2 (MemAttr[3:0])
- */
-#define PTE_S2_MEMATTR(t)	(_AT(pteval_t, (t)) << 2)
-#define PTE_S2_MEMATTR_MASK	(_AT(pteval_t, 0xf) << 2)
-
-/*
- * EL2/HYP PTE/PMD definitions
- */
-#define PMD_HYP			PMD_SECT_USER
-#define PTE_HYP			PTE_USER
-
-/*
- * Highest possible physical address supported.
- */
-#define PHYS_MASK_SHIFT		(48)
+#define PHYS_MASK_SHIFT		(40)
 #define PHYS_MASK		((UL(1) << PHYS_MASK_SHIFT) - 1)
 
 /*
@@ -122,6 +102,7 @@
 #define TCR_SHARED		((UL(3) << 12) | (UL(3) << 28))
 #define TCR_TG0_64K		(UL(1) << 14)
 #define TCR_TG1_64K		(UL(1) << 30)
+#define TCR_IPS_40BIT		(UL(2) << 32)
 #define TCR_ASID16		(UL(1) << 36)
 #define TCR_TBI0		(UL(1) << 37)
 

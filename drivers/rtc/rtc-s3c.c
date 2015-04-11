@@ -48,8 +48,8 @@ struct s3c_rtc_drv_data {
 
 static struct clk *rtc_clk;
 static void __iomem *s3c_rtc_base;
-static int s3c_rtc_alarmno = NO_IRQ;
-static int s3c_rtc_tickno  = NO_IRQ;
+static int s3c_rtc_alarmno;
+static int s3c_rtc_tickno;
 static enum s3c_cpu_type s3c_rtc_cpu_type;
 
 static DEFINE_SPINLOCK(s3c_rtc_pie_lock);
@@ -481,7 +481,7 @@ static int s3c_rtc_probe(struct platform_device *pdev)
 	if (IS_ERR(s3c_rtc_base))
 		return PTR_ERR(s3c_rtc_base);
 
-	rtc_clk = devm_clk_get(&pdev->dev, "rtc");
+	rtc_clk = devm_clk_get(&pdev->dev, "gate_rtc");
 	if (IS_ERR(rtc_clk)) {
 		dev_err(&pdev->dev, "failed to find rtc clock source\n");
 		ret = PTR_ERR(rtc_clk);

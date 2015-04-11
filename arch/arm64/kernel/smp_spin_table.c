@@ -26,6 +26,9 @@
 #include <asm/cputype.h>
 #include <asm/smp_plat.h>
 
+#include <asm/io.h>
+#include <mach/regs-pmu.h>
+
 extern void secondary_holding_pen(void);
 volatile unsigned long secondary_holding_pen_release = INVALID_HWID;
 
@@ -46,7 +49,24 @@ static void write_pen_release(u64 val)
 	__flush_dcache_area(start, size);
 }
 
+#if defined(CONFIG_SOC_EXYNOS7580)
+static void secondary_power_up(unsigned int cpu)
+{
+}
+#else
+static void secondary_power_up(unsigned int cpu)
+{
+	void __iomem *addr;
+	unsigned int val = 0x000f000f;
 
+	switch (cpu) {
+		case 1: addr = EXYNOS_PMU_APOLLO_CPU1_CONFIGURATION; break;
+		case 2: addr = EXYNOS_PMU_APOLLO_CPU2_CONFIGURATION; break;
+		case 3: addr = EXYNOS_PMU_APOLLO_CPU3_CONFIGURATION; break;
+	}
+	__raw_writel(val, addr);
+}
+#endif
 static int smp_spin_table_cpu_init(struct device_node *dn, unsigned int cpu)
 {
 	/*
@@ -65,12 +85,12 @@ static int smp_spin_table_cpu_init(struct device_node *dn, unsigned int cpu)
 
 static int smp_spin_table_cpu_prepare(unsigned int cpu)
 {
-	void **release_addr;
+	void __iomem *release_addr;
 
 	if (!cpu_release_addr[cpu])
 		return -ENODEV;
 
-	release_addr = __va(cpu_release_addr[cpu]);
+	release_addr = ioremap(cpu_release_addr[cpu], SZ_4K);
 
 	/*
 	 * We write the release address as LE regardless of the native
@@ -79,14 +99,18 @@ static int smp_spin_table_cpu_prepare(unsigned int cpu)
 	 * boot-loader's endianess before jumping. This is mandated by
 	 * the boot protocol.
 	 */
-	release_addr[0] = (void *) cpu_to_le64(__pa(secondary_holding_pen));
+	__raw_writel(cpu_to_le64(__pa(secondary_holding_pen)), release_addr);
 
-	__flush_dcache_area(release_addr, sizeof(release_addr[0]));
+	__flush_dcache_area(release_addr, SZ_4K);
+
+	secondary_power_up(cpu);
 
 	/*
 	 * Send an event to wake up the secondary CPU.
 	 */
 	sev();
+
+	iounmap(release_addr);
 
 	return 0;
 }

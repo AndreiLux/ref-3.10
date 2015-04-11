@@ -9,26 +9,18 @@
 #include <asm/memory.h>
 #include <asm/page.h>
 
+#if (defined(CONFIG_GENERIC_BUG))
+#define ARM_EXIT_KEEP(x)        x
+#define ARM_EXIT_DISCARD(x)
+#else
 #define ARM_EXIT_KEEP(x)
 #define ARM_EXIT_DISCARD(x)	x
+#endif
 
 OUTPUT_ARCH(aarch64)
 ENTRY(stext)
 
 jiffies = jiffies_64;
-
-#define HYPERVISOR_TEXT					\
-	/*						\
-	 * Force the alignment to be compatible with	\
-	 * the vectors requirements			\
-	 */						\
-	. = ALIGN(2048);				\
-	VMLINUX_SYMBOL(__hyp_idmap_text_start) = .;	\
-	*(.hyp.idmap.text)				\
-	VMLINUX_SYMBOL(__hyp_idmap_text_end) = .;	\
-	VMLINUX_SYMBOL(__hyp_text_start) = .;		\
-	*(.hyp.text)					\
-	VMLINUX_SYMBOL(__hyp_text_end) = .;
 
 SECTIONS
 {
@@ -61,7 +53,6 @@ SECTIONS
 			TEXT_TEXT
 			SCHED_TEXT
 			LOCK_TEXT
-			HYPERVISOR_TEXT
 			*(.fixup)
 			*(.gnu.warning)
 		. = ALIGN(16);
@@ -71,11 +62,39 @@ SECTIONS
 	RO_DATA(PAGE_SIZE)
 	EXCEPTION_TABLE(8)
 	NOTES
+#ifdef CONFIG_TIMA_RKP
+	. = ALIGN(PAGE_SIZE);
+	.rkp.bitmap : {
+		rkp_pgt_bitmap = .;
+		. = rkp_pgt_bitmap + 0x18000;
+	}
+#ifdef CONFIG_RKP_KDP
+	 /* Creating a new section to store task credentials */
+	. = ALIGN(PAGE_SIZE);
+	.tima.rkp.initcred : {
+		__rkp_ro_start = .;
+	}
+	.tima.rkp.ro : {
+		. = __rkp_ro_start + 0x500;
+		__rkp_ro_end = .;
+	}
+	. = __rkp_ro_end + 0x500;
+	. = ALIGN(PAGE_SIZE);
+	. = ALIGN(1 << 21);
+#endif /* CONFIG_RKP_KDP*/
+#endif
 	_etext = .;			/* End of text and rodata section */
 
 	. = ALIGN(PAGE_SIZE);
 	__init_begin = .;
-
+	.init.arch.info : {
+		__arch_info_begin = .;
+		*(.arch.info.init)
+		__arch_info_end = .;
+	}
+#ifdef CONFIG_TIMA_RKP
+	.vmm : { *(.vmm*) }
+#endif
 	INIT_TEXT_SECTION(8)
 	.exit.text : {
 		ARM_EXIT_KEEP(EXIT_TEXT)
@@ -104,21 +123,8 @@ SECTIONS
 	_edata = .;
 
 	BSS_SECTION(0, 0, 0)
-
-	. = ALIGN(PAGE_SIZE);
-	idmap_pg_dir = .;
-	. += IDMAP_DIR_SIZE;
-	swapper_pg_dir = .;
-	. += SWAPPER_DIR_SIZE;
-
 	_end = .;
 
 	STABS_DEBUG
 	.comment 0 : { *(.comment) }
 }
-
-/*
- * The HYP init code can't be more than a page long.
- */
-ASSERT(((__hyp_idmap_text_start + PAGE_SIZE) > __hyp_idmap_text_end),
-       "HYP init code too big")

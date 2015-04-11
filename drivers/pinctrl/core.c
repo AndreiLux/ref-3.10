@@ -1022,6 +1022,25 @@ unapply_new_state:
 }
 EXPORT_SYMBOL_GPL(pinctrl_select_state);
 
+int pinctrl_free_state(struct pinctrl *p)
+{
+	struct pinctrl_setting *setting;
+
+	if (p->state) {
+		list_for_each_entry(setting, &p->state->settings, node) {
+			if (setting->type != PIN_MAP_TYPE_MUX_GROUP)
+				continue;
+
+			pinmux_free_setting2(setting);
+		}
+	}
+
+	p->state = NULL;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(pinctrl_free_state);
+
 static void devm_pinctrl_release(struct device *dev, void *res)
 {
 	pinctrl_put(*(struct pinctrl **)res);
@@ -1175,6 +1194,7 @@ void pinctrl_unregister_map(struct pinctrl_map const *map)
 	list_for_each_entry(maps_node, &pinctrl_maps, node) {
 		if (maps_node->maps == map) {
 			list_del(&maps_node->node);
+			kfree(maps_node);
 			mutex_unlock(&pinctrl_maps_mutex);
 			return;
 		}

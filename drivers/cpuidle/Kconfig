@@ -48,6 +48,13 @@ config CPU_IDLE_CALXEDA
 	help
 	  Select this to enable cpuidle on Calxeda processors.
 
+config CPU_IDLE_EXYNOS
+	bool "CPU Idle Driver for Exynos processors"
+	depends on ARCH_EXYNOS && OF_IDLE_STATES
+	default n
+	help
+	  Select this to enable cpuidle on Exynos processors.
+
 menu "ARM64 CPU Idle Drivers"
 depends on ARM64
 source "drivers/cpuidle/Kconfig.arm64"

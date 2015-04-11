@@ -60,6 +60,10 @@
 #define HOST_CTRL0_FSEL_MASK			(0x7 << 16)
 #define HOST_CTRL0_FSEL(_x)			((_x) << 16)
 
+#define FSEL_CLKSEL_DIFF_100M			(0x27)
+#define FSEL_CLKSEL_DIFF_24M			(0x2a)
+#define FSEL_CLKSEL_DIFF_20M			(0x31)
+#define FSEL_CLKSEL_DIFF_19200K			(0x38)
 #define FSEL_CLKSEL_50M				(0x7)
 #define FSEL_CLKSEL_24M				(0x5)
 #define FSEL_CLKSEL_20M				(0x4)
@@ -82,8 +86,27 @@
 #define EXYNOS5_PHY_HOST_TUNE0			(0x04)
 
 #define EXYNOS5_PHY_HSIC_CTRL1			(0x10)
+#define HSIC_CTRL1_REFCLKSEL_MASK		(0x3 << 23)
+#define HSIC_CTRL1_REFCLKSEL(_x)		((_x) << 23)
+#define HSIC_CTRL1_REFCLKDIV_MASK		(0x7f << 16)
+#define HSIC_CTRL1_REFCLKDIV(_x)		((_x) << 16)
+#define HSIC_CTRL1_REFCLKDIV_20M		(0x14)
+#define HSIC_CTRL1_REFCLKDIV_19200K		(0x15)
+#define HSIC_CTRL1_REFCLKDIV_16M		(0x1A)
+#define HSIC_CTRL1_REFCLKDIV_15M		(0x1C)
+#define HSIC_CTRL1_REFCLKDIV_12M		(0x24)
+#define HSIC_CTRL1_SIDDQ			(0x1 << 6)
+#define HSIC_CTRL1_FORCESLEEP			(0x1 << 5)
+#define HSIC_CTRL1_FORCESUSPEND			(0x1 << 4)
+#define HSIC_CTRL1_PHYSWRST			(0x1 << 0)
 
 #define EXYNOS5_PHY_HSIC_TUNE1			(0x14)
+#define HSIC_TUNE1_TXSRTUNE_MASK		(0xf << 4)
+#define HSIC_TUNE1_TXSRTUNE(_x)			((_x) << 4)
+#define HSIC_TUNE1_TXPRDTUNE_MASK		(0x3 << 2)
+#define HSIC_TUNE1_TXPRDTUNE(_x)		((_x) << 2)
+#define HSIC_TUNE1_TXRPUTUNE_MASK		(0x3 << 0)
+#define HSIC_TUNE1_TXRPUTUNE(_x)		((_x) << 0)
 
 #define EXYNOS5_PHY_HSIC_CTRL2			(0x20)
 
@@ -145,6 +168,11 @@
 
 #define EXYNOS5_PHY_OTG_TUNE			(0x40)
 
+#define EXYNOS5_PHY_HOST_OVRCURCTL		(0x58)
+
+#define HOST_OVRCURCTL_OVERCUR_SEL		(0x1 << 1)
+#define HOST_OVRCURCTL_OVER_CURRENT		(0x1 << 0)
+
 /* EXYNOS5: USB 3.0 DRD */
 #define EXYNOS5_DRD_LINKSYSTEM			(0x04)
 
@@ -155,12 +183,20 @@
 #define EXYNOS5_DRD_PHYUTMI			(0x08)
 
 #define PHYUTMI_OTGDISABLE			(0x1 << 6)
+#define PHYUTMI_IDPULLUP			(0x1 << 5)
+#define PHYUTMI_DRVVBUS				(0x1 << 4)
+#define PHYUTMI_DPPULLDOWN			(0x1 << 3)
+#define PHYUTMI_DMPULLDOWN			(0x1 << 2)
 #define PHYUTMI_FORCESUSPEND			(0x1 << 1)
 #define PHYUTMI_FORCESLEEP			(0x1 << 0)
 
 #define EXYNOS5_DRD_PHYPIPE			(0x0c)
 
+#define PHY_CLOCK_SEL				(0x1 << 4)
+
 #define EXYNOS5_DRD_PHYCLKRST			(0x10)
+
+#define PHYCLKRST_EN_UTMISUSPEND		(0x1 << 31)
 
 #define PHYCLKRST_SSC_REFCLKSEL_MASK		(0xff << 23)
 #define PHYCLKRST_SSC_REFCLKSEL(_x)		((_x) << 23)
@@ -196,7 +232,15 @@
 #define PHYCLKRST_COMMONONN			(0x1 << 0)
 
 #define EXYNOS5_DRD_PHYREG0			(0x14)
+#define EXYNOS5_DRD_PHYREG0_CR_WRITE		(1 << 19)
+#define EXYNOS5_DRD_PHYREG0_CR_READ		(1 << 18)
+#define EXYNOS5_DRD_PHYREG0_CR_DATA_IN(_x)	((_x) << 2)
+#define EXYNOS5_DRD_PHYREG0_CR_CR_CAP_DATA	(1 << 1)
+#define EXYNOS5_DRD_PHYREG0_CR_CR_CAP_ADDR	(1 << 0)
+
 #define EXYNOS5_DRD_PHYREG1			(0x18)
+#define EXYNOS5_DRD_PHYREG1_CR_DATA_OUT(_x)	((_x) << 1)
+#define EXYNOS5_DRD_PHYREG1_CR_ACK		(1 << 0)
 
 #define EXYNOS5_DRD_PHYPARAM0			(0x1c)
 
@@ -204,14 +248,27 @@
 #define PHYPARAM0_REF_LOSLEVEL_MASK		(0x1f << 26)
 #define PHYPARAM0_REF_LOSLEVEL			(0x9 << 26)
 
+#define PHYPARAM0_SQRXTUNE_MASK			(0x7 << 6)
+#define PHYPARAM0_SQRXTUNE(_x)			((_x) << 6)
+
+#define PHYPARAM0_COMPDISTUNE_MASK		(0x7 << 0)
+#define PHYPARAM0_COMPDISTUNE(_x)		((_x) << 0)
+
 #define EXYNOS5_DRD_PHYPARAM1			(0x20)
 
-#define PHYPARAM1_PCS_TXDEEMPH_MASK		(0x1f << 0)
+#define PHYPARAM1_TX0_TERM_OFFSET_MASK		(0x1f << 26)
+#define PHYPARAM1_TX0_TERM_OFFSET(_x)		((_x) << 26)
+#define PHYPARAM1_PCS_TXSWING_FULL_MASK		(0x7f << 12)
+#define PHYPARAM1_PCS_TXSWING_FULL(_x)		((_x) << 12)
+#define PHYPARAM1_PCS_TXDEEMPH_3P5DB_MASK	(0x3f << 0)
+#define PHYPARAM1_PCS_TXDEEMPH_3P5DB(_x)	((_x) << 0)
+#define PHYPARAM1_PCS_TXDEEMPH_MASK		(0x3f << 0)
 #define PHYPARAM1_PCS_TXDEEMPH			(0x1c)
 
 #define EXYNOS5_DRD_PHYTERM			(0x24)
 
 #define EXYNOS5_DRD_PHYTEST			(0x28)
+#define EXYNOS5_DRD_PHYPOWERDOWN		(0x28)
 
 #define PHYTEST_POWERDOWN_SSP			(0x1 << 3)
 #define PHYTEST_POWERDOWN_HSP			(0x1 << 2)
@@ -223,7 +280,20 @@
 #define PHYBATCHG_UTMI_CLKSEL			(0x1 << 2)
 
 #define EXYNOS5_DRD_PHYRESUME			(0x34)
+
+#define EXYNOS5_DRD_PHYPCSVAL			(0x3c)
+#define PHYPCSVAL_PCS_RX_LOS_MASK_VAL_MASK	(0x3ff << 0)
+#define PHYPCSVAL_PCS_RX_LOS_MASK_VAL(_x)	((_x) << 0)
+
+#define EXYNOS5_DRD_LINKHCBELT			(0x40)
+
 #define EXYNOS5_DRD_LINKPORT			(0x44)
+
+#define EXYNOS5_DRD_PHYPARAM2			(0x50)
+#define PHYPARAM2_TX_VBOOST_LVL_MASK		(0x7 << 4)
+#define PHYPARAM2_TX_VBOOST_LVL(_x)		((_x) << 4)
+#define PHYPARAM2_LOS_BIAS_MASK			(0x7 << 0)
+#define PHYPARAM2_LOS_BIAS(_x)			((_x) << 0)
 
 #ifndef MHZ
 #define MHZ (1000*1000)
@@ -238,10 +308,32 @@
 #define EXYNOS_USBPHY_ENABLE			(0x1 << 0)
 #define EXYNOS_USB20PHY_CFG_HOST_LINK		(0x1 << 0)
 
+#define EXYNOS5_USB2PHY_CTRL_OFFSET		(0x8)
+
+/* USB 3.0 DRD SS Function Control Regs used to access by CR PORT */
+#define EXYNOS5_DRD_PHYSS_LOSLEVEL_OVRD_IN	(0x15)
+#define LOSLEVEL_OVRD_IN_LOS_BIAS_5420		(0x5 << 13)
+#define LOSLEVEL_OVRD_IN_LOS_BIAS_DEFAULT	(0x0 << 13)
+#define LOSLEVEL_OVRD_IN_EN			(0x1 << 10)
+#define LOSLEVEL_OVRD_IN_LOS_LEVEL_DEFAULT	(0x9 << 0)
+
+#define EXYNOS5_DRD_PHYSS_TX_VBOOSTLEVEL_OVRD_IN	(0x12)
+#define TX_VBOOSTLEVEL_OVRD_IN_VBOOST_5420		(0x5 << 13)
+#define TX_VBOOSTLEVEL_OVRD_IN_VBOOST_DEFAULT		(0x4 << 13)
+
+#define EXYNOS5_DRD_PHYSS_RXDET_MEAS_TIME	(0x1010)
+#define RXDET_MEAS_TIME_20M			(0x1 << 6)
+#define RXDET_MEAS_TIME_24M			(0x1 << 7)
+#define RXDET_MEAS_TIME_50M			(0x1 << 9)
+
 enum samsung_cpu_type {
 	TYPE_S3C64XX,
 	TYPE_EXYNOS4210,
 	TYPE_EXYNOS5250,
+	TYPE_EXYNOS5430,
+	TYPE_EXYNOS7420,
+	TYPE_EXYNOS7580,
+	TYPE_EXYNOS5,
 };
 
 /*
@@ -266,8 +358,11 @@ struct samsung_usbphy_drvdata {
 	int cpu_type;
 	int devphy_en_mask;
 	int hostphy_en_mask;
+	int hsicphy_en_mask;
 	u32 devphy_reg_offset;
 	u32 hostphy_reg_offset;
+	u32 hsicphy_reg_offset;
+	bool need_crport_tuning;
 };
 
 /*
@@ -276,10 +371,13 @@ struct samsung_usbphy_drvdata {
  * @plat: platform data
  * @dev: The parent device supplied to the probe function
  * @clk: usb phy clock
+ * @clocks: list of clocks for separate clock control
+ * @lpa_nb: notifier block for LPA events
  * @regs: usb phy controller registers memory base
  * @pmuregs: USB device PHY_CONTROL register memory base
  * @sysreg: USB2.0 PHY_CFG register memory base
  * @ref_clk_freq: reference clock frequency selection
+ * @usage_count: phy usage counter
  * @drv_data: driver data available for different SoCs
  * @phy_type: Samsung SoCs specific phy types:	#HOST
  *						#DEVICE
@@ -291,14 +389,20 @@ struct samsung_usbphy {
 	struct samsung_usbphy_data *plat;
 	struct device	*dev;
 	struct clk	*clk;
+	struct clk	**clocks;
+	struct clk	**phy_clocks;
+	struct notifier_block lpa_nb;
 	void __iomem	*regs;
 	void __iomem	*pmuregs;
 	void __iomem	*sysreg;
 	int		ref_clk_freq;
+	int		usage_count;
+	int		has_hsic_pmureg;
 	const struct samsung_usbphy_drvdata *drv_data;
 	enum samsung_usb_phy_type phy_type;
 	atomic_t	phy_usage;
 	spinlock_t	lock;
+	struct raw_notifier_head notifier;
 };
 
 #define phy_to_sphy(x)		container_of((x), struct samsung_usbphy, phy)
@@ -321,7 +425,16 @@ static inline const struct samsung_usbphy_drvdata
 
 extern int samsung_usbphy_parse_dt(struct samsung_usbphy *sphy);
 extern void samsung_usbphy_set_isolation(struct samsung_usbphy *sphy, bool on);
+extern void samsung_hsicphy_set_isolation(struct samsung_usbphy *sphy, bool on);
 extern void samsung_usbphy_cfg_sel(struct samsung_usbphy *sphy);
 extern int samsung_usbphy_set_type(struct usb_phy *phy,
 					enum samsung_usb_phy_type phy_type);
 extern int samsung_usbphy_get_refclk_freq(struct samsung_usbphy *sphy);
+void samsung_exynos5_cal_usb2phy_enable(void __iomem *regs_base);
+void samsung_exynos5_cal_usb2phy_disable(void __iomem *regs_base);
+void samsung_exynos5_cal_usb3phy_enable(void __iomem *regs_base,
+					u32 refclkfreq);
+void samsung_exynos5_cal_usb3phy_disable(void __iomem *regs_base);
+void samsung_exynos5_cal_usb3phy_set_cr_port(void __iomem *regs_base);
+void samsung_exynos5_cal_usb3phy_tune_host(void __iomem *regs_base);
+void samsung_exynos5_cal_usb3phy_tune_dev(void __iomem *regs_base);

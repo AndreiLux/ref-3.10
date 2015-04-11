@@ -16,10 +16,10 @@
 #include <linux/delay.h>
 #include <linux/clk.h>
 #include <linux/module.h>
+#include <linux/dma/dma-pl330.h>
 
 #include <sound/soc.h>
 
-#include <mach/dma.h>
 #include "regs-ac97.h"
 #include <linux/platform_data/asoc-s3c.h>
 

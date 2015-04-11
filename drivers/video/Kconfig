@@ -23,6 +23,8 @@ source "drivers/gpu/drm/Kconfig"
 
 source "drivers/gpu/host1x/Kconfig"
 
+source "drivers/gpu/arm/Kconfig"
+
 config VGASTATE
        tristate
        default n
@@ -2057,6 +2059,8 @@ config FB_TMIO_ACCELL
 	depends on FB_TMIO
 	default y
 
+source "drivers/video/decon_display/Kconfig"
+
 config FB_S3C
 	tristate "Samsung S3C framebuffer support"
 	depends on FB && (CPU_S3C2416 || ARCH_S3C64XX || ARCH_S5P64X0 || \
@@ -2320,6 +2324,11 @@ config FB_MB862XX
 	---help---
 	  Frame buffer driver for Fujitsu Carmine/Coral-P(A)/Lime controllers.
 
+config S5P_LCD_INIT
+	bool "LCD init in kernel"
+	depends on EXYNOS_VIDEO || DECON
+	default y
+
 choice
 	prompt "GDC variant"
 	depends on FB_MB862XX
@@ -2494,6 +2503,7 @@ config FB_SIMPLE
 source "drivers/video/omap/Kconfig"
 source "drivers/video/omap2/Kconfig"
 source "drivers/video/exynos/Kconfig"
+source "drivers/video/mhl/Kconfig"
 source "drivers/video/mmp/Kconfig"
 source "drivers/video/backlight/Kconfig"
 source "drivers/video/adf/Kconfig"

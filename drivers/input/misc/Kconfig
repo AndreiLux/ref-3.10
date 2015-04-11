@@ -653,4 +653,13 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+config INPUT_BOOSTER
+	tristate "Input booster device to support frequency min lock"
+	help
+	  Say Y here if you want to support input booster for the input device such
+	  as key, touch, pen, toucheky.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called input_booster.
+
 endif

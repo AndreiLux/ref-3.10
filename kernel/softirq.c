@@ -25,6 +25,7 @@
 #include <linux/smp.h>
 #include <linux/smpboot.h>
 #include <linux/tick.h>
+#include <linux/exynos-ss.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
@@ -250,7 +251,9 @@ restart:
 			kstat_incr_softirqs_this_cpu(vec_nr);
 
 			trace_softirq_entry(vec_nr);
+			exynos_ss_irq(ESS_FLAG_SOFTIRQ, h->action, irqs_disabled(), ESS_FLAG_IN);
 			h->action(h);
+			exynos_ss_irq(ESS_FLAG_SOFTIRQ, h->action, irqs_disabled(), ESS_FLAG_OUT);
 			trace_softirq_exit(vec_nr);
 			if (unlikely(prev_count != preempt_count())) {
 				printk(KERN_ERR "huh, entered softirq %u %s %p"
@@ -489,7 +492,11 @@ static void tasklet_action(struct softirq_action *a)
 			if (!atomic_read(&t->count)) {
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
+				exynos_ss_irq(ESS_FLAG_SOFTIRQ_TASKLET,
+							t->func, irqs_disabled(), ESS_FLAG_IN);
 				t->func(t->data);
+				exynos_ss_irq(ESS_FLAG_SOFTIRQ_TASKLET,
+							t->func, irqs_disabled(), ESS_FLAG_OUT);
 				tasklet_unlock(t);
 				continue;
 			}
@@ -524,7 +531,11 @@ static void tasklet_hi_action(struct softirq_action *a)
 			if (!atomic_read(&t->count)) {
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
+				exynos_ss_irq(ESS_FLAG_SOFTIRQ_HI_TASKLET,
+							t->func, irqs_disabled(), ESS_FLAG_IN);
 				t->func(t->data);
+				exynos_ss_irq(ESS_FLAG_SOFTIRQ_HI_TASKLET,
+							t->func, irqs_disabled(), ESS_FLAG_OUT);
 				tasklet_unlock(t);
 				continue;
 			}

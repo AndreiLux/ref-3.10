@@ -63,7 +63,15 @@ enum ion_heap_type {
 #define ION_FLAG_CACHED_NEEDS_SYNC 2	/* mappings of this buffer will created
 					   at mmap time, if this is set
 					   caches must be managed manually */
-
+#define ION_FLAG_PRESERVE_KMAP 4 	/* deprecated. ignored. */
+#define ION_FLAG_NOZEROED 8		/* Allocated buffer is not initialized
+					   with zero value and userspace is not
+					   able to access the buffer
+					 */
+#define ION_FLAG_PROTECTED 16		/* this buffer would be used in secure
+					   world. if this is set, all cpu accesses
+					   are prohibited.
+					 */
 /**
  * DOC: Ion Userspace API
  *
@@ -127,6 +135,27 @@ struct ion_custom_data {
 	unsigned long arg;
 };
 
+/**
+ * struct ion_preload_data - metadata for preload buffers
+ * @heap_id_mask:	mask of heap ids to allocate from
+ * @len:		size of the allocation
+ * @flags:		flags passed to heap
+ * @count:		number of buffers of the allocation
+ *
+ * Provided by userspace as an argument to the ioctl
+ */
+struct ion_preload_object {
+	size_t len;
+	unsigned int count;
+};
+
+struct ion_preload_data {
+	unsigned int heap_id_mask;
+	unsigned int flags;
+	unsigned int count;
+	struct ion_preload_object *obj;
+};
+
 #define ION_IOC_MAGIC		'I'
 
 /**
@@ -184,6 +213,11 @@ struct ion_custom_data {
  * this will make the buffer in memory coherent.
  */
 #define ION_IOC_SYNC		_IOWR(ION_IOC_MAGIC, 7, struct ion_fd_data)
+
+/**
+ * DOC: ION_IOC_PRELOAD_ALLOC - prefetches pages to page pool
+ */
+#define ION_IOC_PRELOAD_ALLOC	_IOW(ION_IOC_MAGIC, 8, struct ion_preload_data)
 
 /**
  * DOC: ION_IOC_CUSTOM - call architecture specific ion ioctl

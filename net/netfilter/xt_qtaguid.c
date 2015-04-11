@@ -702,7 +702,7 @@ static void pp_iface_stat_line(struct seq_file *m,
 }
 
 struct proc_iface_stat_fmt_info {
-	long fmt;
+	int fmt;
 };
 
 static void *iface_stat_fmt_proc_start(struct seq_file *m, loff_t *pos)

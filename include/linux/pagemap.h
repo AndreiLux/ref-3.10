@@ -555,6 +555,15 @@ static inline int add_to_page_cache(struct page *page,
 	error = add_to_page_cache_locked(page, mapping, offset, gfp_mask);
 	if (unlikely(error))
 		__clear_page_locked(page);
+
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	if ((mapping->key != NULL) && mapping->use_fmp) {
+		if(offset >= mapping->sensitive_data_index)
+			set_bit(PG_sensitive_data, &page->flags);
+		else
+			clear_bit(PG_sensitive_data, &page->flags);
+	}
+#endif
 	return error;
 }
 

@@ -10,6 +10,7 @@
  */
 #if __LINUX_ARM_ARCH__ >= 6
 
+#ifndef CONFIG_EXYNOS_SNAPSHOT_IRQ_DISABLED
 static inline unsigned long arch_local_irq_save(void)
 {
 	unsigned long flags;
@@ -38,6 +39,11 @@ static inline void arch_local_irq_disable(void)
 		:
 		: "memory", "cc");
 }
+#else
+extern unsigned long arch_local_irq_save(void);
+extern void arch_local_irq_disable(void);
+extern void arch_local_irq_enable(void);
+#endif
 
 #define local_fiq_enable()  __asm__("cpsie f	@ __stf" : : : "memory", "cc")
 #define local_fiq_disable() __asm__("cpsid f	@ __clf" : : : "memory", "cc")
@@ -137,6 +143,7 @@ static inline unsigned long arch_local_save_flags(void)
 /*
  * restore saved IRQ & FIQ state
  */
+#ifndef CONFIG_EXYNOS_SNAPSHOT_IRQ_DISABLED
 static inline void arch_local_irq_restore(unsigned long flags)
 {
 	asm volatile(
@@ -145,6 +152,9 @@ static inline void arch_local_irq_restore(unsigned long flags)
 		: "r" (flags)
 		: "memory", "cc");
 }
+#else
+void arch_local_irq_restore(unsigned long flags);
+#endif
 
 static inline int arch_irqs_disabled_flags(unsigned long flags)
 {

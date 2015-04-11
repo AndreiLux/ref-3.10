@@ -41,7 +41,6 @@
 #include <linux/memblock.h>
 #include <linux/of_fdt.h>
 #include <linux/of_platform.h>
-#include <linux/efi.h>
 
 #include <asm/fixmap.h>
 #include <asm/cputype.h>
@@ -53,10 +52,14 @@
 #include <asm/smp_plat.h>
 #include <asm/cacheflush.h>
 #include <asm/tlbflush.h>
+#include <asm/system_misc.h>
 #include <asm/traps.h>
 #include <asm/memblock.h>
 #include <asm/psci.h>
-#include <asm/efi.h>
+#include <asm/early_ioremap.h>
+
+#include <asm/mach/arch.h>
+extern void paging_init(struct machine_desc *);
 
 unsigned int processor_id;
 EXPORT_SYMBOL(processor_id);
@@ -280,10 +283,12 @@ static void __init setup_processor(void)
 #endif
 }
 
-static void __init setup_machine_fdt(phys_addr_t dt_phys)
+struct machine_desc * __init setup_machine_fdt(phys_addr_t dt_phys)
 {
 	struct boot_param_header *devtree;
 	unsigned long dt_root;
+	struct machine_desc *mdesc, *mdesc_best = NULL;
+	unsigned int score, mdesc_score = ~1;
 
 	/* Check we have a non-NULL DT pointer */
 	if (!dt_phys) {
@@ -314,6 +319,13 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 
 	initial_boot_params = devtree;
 	dt_root = of_get_flat_dt_root();
+	for_each_machine_desc(mdesc) {
+		score = of_flat_dt_match(dt_root, mdesc->dt_compat);
+		if (score > 0 && score < mdesc_score) {
+			mdesc_best = mdesc;
+			mdesc_score = score;
+		}
+	}
 
 	machine_name = of_get_flat_dt_prop(dt_root, "model", NULL);
 	if (!machine_name)
@@ -328,29 +340,8 @@ static void __init setup_machine_fdt(phys_addr_t dt_phys)
 	of_scan_flat_dt(early_init_dt_scan_root, NULL);
 	/* Setup memory, calling early_init_dt_add_memory_arch */
 	of_scan_flat_dt(early_init_dt_scan_memory, NULL);
-}
 
-void __init early_init_dt_add_memory_arch(u64 base, u64 size)
-{
-	base &= PAGE_MASK;
-	size &= PAGE_MASK;
-	if (base + size < PHYS_OFFSET) {
-		pr_warning("Ignoring memory block 0x%llx - 0x%llx\n",
-			   base, base + size);
-		return;
-	}
-	if (base < PHYS_OFFSET) {
-		pr_warning("Ignoring memory range 0x%llx - 0x%llx\n",
-			   base, PHYS_OFFSET);
-		size -= PHYS_OFFSET - base;
-		base = PHYS_OFFSET;
-	}
-	memblock_add(base, size);
-}
-
-void * __init early_init_dt_alloc_memory_arch(u64 size, u64 align)
-{
-	return __va(memblock_alloc(size, align));
+	return mdesc_best;
 }
 
 /*
@@ -400,13 +391,47 @@ static void __init request_standard_resources(void)
 	}
 }
 
+static int __init customize_machine(void)
+{
+	/*
+	 * customizes platform devices, or adds new ones
+	 * On DT based machines, we fall back to populating the
+	 * machine from the device tree, if no callback is provided,
+	 * otherwise we would always need an init_machine callback.
+	 */
+	if (machine_desc->init_machine)
+		machine_desc->init_machine();
+
+	return 0;
+}
+arch_initcall(customize_machine);
+
+static int __init init_machine_late(void)
+{
+	if (machine_desc->init_late)
+		machine_desc->init_late();
+	return 0;
+}
+late_initcall(init_machine_late);
+
 u64 __cpu_logical_map[NR_CPUS] = { [0 ... NR_CPUS-1] = INVALID_HWID };
+
+struct machine_desc *machine_desc __initdata;
 
 void __init setup_arch(char **cmdline_p)
 {
+	struct machine_desc *mdesc;
+
+	/*
+	 * Unmask asynchronous aborts early to catch possible system errors.
+	 */
+	local_async_enable();
+
 	setup_processor();
 
-	setup_machine_fdt(__fdt_pointer);
+	mdesc = setup_machine_fdt(__fdt_pointer);
+	machine_desc = mdesc;
+	machine_name = mdesc->name;
 
 	init_mm.start_code = (unsigned long) _text;
 	init_mm.end_code   = (unsigned long) _etext;
@@ -419,13 +444,15 @@ void __init setup_arch(char **cmdline_p)
 
 	parse_early_param();
 
-	efi_init();
 	arm64_memblock_init();
 
-	paging_init();
-	request_standard_resources();
+	if (mdesc->reserve)
+		mdesc->reserve();
 
-	efi_idmap_init();
+	paging_init(mdesc);
+	request_standard_resources();
+	if (mdesc->restart)
+		arm_pm_restart = mdesc->restart;
 
 	unflatten_device_tree();
 
@@ -445,11 +472,12 @@ void __init setup_arch(char **cmdline_p)
 	conswitchp = &dummy_con;
 #endif
 #endif
+	if (mdesc->init_early)
+		mdesc->init_early();
 }
 
 static int __init arm64_device_init(void)
 {
-	of_clk_init(NULL);
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
 	return 0;
 }

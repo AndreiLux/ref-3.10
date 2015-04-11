@@ -1586,7 +1586,7 @@ static void scsi_request_fn(struct request_queue *q)
 			blk_dump_rq_flags(req, "foo");
 			BUG();
 		}
-		spin_lock(shost->host_lock);
+		spin_lock_irq(shost->host_lock);
 
 		/*
 		 * We hit this when the driver is using a host wide

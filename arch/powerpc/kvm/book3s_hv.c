@@ -1258,7 +1258,7 @@ static void kvmppc_run_core(struct kvmppc_vcore *vc)
 	kvm_guest_exit();
 
 	preempt_enable();
-	cond_resched();
+	kvm_resched(vcpu);
 
 	spin_lock(&vc->lock);
 	now = get_tb();

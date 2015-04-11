@@ -95,7 +95,7 @@ void power_supply_changed(struct power_supply *psy)
 {
 	unsigned long flags;
 
-	dev_dbg(psy->dev, "%s\n", __func__);
+	dev_info(psy->dev, "%s\n", __func__);
 
 	spin_lock_irqsave(&psy->changed_lock, flags);
 	psy->changed = true;
@@ -126,8 +126,10 @@ static int __power_supply_populate_supplied_from(struct device *dev,
 				psy->name, epsy->name);
 			psy->supplied_from[i-1] = (char *)epsy->name;
 			psy->num_supplies++;
+			of_node_put(np);
 			break;
 		}
+		of_node_put(np);
 	} while (np);
 
 	return 0;
@@ -210,8 +212,10 @@ static int power_supply_check_supplies(struct power_supply *psy)
 		ret = power_supply_find_supply_from_node(np);
 		if (ret) {
 			dev_dbg(psy->dev, "Failed to find supply, defer!\n");
+			of_node_put(np);
 			return -EPROBE_DEFER;
 		}
+		of_node_put(np);
 	} while (np);
 
 	/* All supplies found, allocate char ** array for filling */
@@ -341,7 +345,7 @@ static void power_supply_dev_release(struct device *dev)
 	kfree(dev);
 }
 
-#ifdef CONFIG_THERMAL
+#if defined(CONFIG_THERMAL) && !defined(CONFIG_SOC_EXYNOS7580)
 static int power_supply_read_temp(struct thermal_zone_device *tzd,
 		unsigned long *temp)
 {

@@ -62,4 +62,7 @@ obj-$(CONFIG_PROBE_EVENTS) += trace_probe.o
 obj-$(CONFIG_UPROBE_EVENT) += trace_uprobe.o
 obj-$(CONFIG_GPU_TRACEPOINTS) += gpu-traces.o
 
+obj-$(CONFIG_MHI) += ipc_logging.o
+obj-$(CONFIG_MHI) += ipc_logging_debug.o
+
 libftrace-y := ftrace.o

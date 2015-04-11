@@ -42,15 +42,17 @@ static int gator_events_irq_create_files(struct super_block *sb, struct dentry *
 
 	/* irq */
 	dir = gatorfs_mkdir(sb, root, "Linux_irq_irq");
-	if (!dir)
+	if (!dir) {
 		return -1;
+	}
 	gatorfs_create_ulong(sb, dir, "enabled", &hardirq_enabled);
 	gatorfs_create_ro_ulong(sb, dir, "key", &hardirq_key);
 
 	/* soft irq */
 	dir = gatorfs_mkdir(sb, root, "Linux_irq_softirq");
-	if (!dir)
+	if (!dir) {
 		return -1;
+	}
 	gatorfs_create_ulong(sb, dir, "enabled", &softirq_enabled);
 	gatorfs_create_ro_ulong(sb, dir, "key", &softirq_key);
 
@@ -61,7 +63,7 @@ static int gator_events_irq_online(int **buffer, bool migrate)
 {
 	int len = 0, cpu = get_physical_cpu();
 
-	/* synchronization with the irq_exit functions is not necessary as the values are being reset */
+	// synchronization with the irq_exit functions is not necessary as the values are being reset
 	if (hardirq_enabled) {
 		atomic_set(&per_cpu(irqCnt, cpu)[HARDIRQ], 0);
 		per_cpu(irqGet, cpu)[len++] = hardirq_key;
@@ -82,7 +84,7 @@ static int gator_events_irq_online(int **buffer, bool migrate)
 
 static int gator_events_irq_start(void)
 {
-	/* register tracepoints */
+	// register tracepoints
 	if (hardirq_enabled)
 		if (GATOR_REGISTER_TRACE(irq_handler_exit))
 			goto fail_hardirq_exit;
@@ -93,7 +95,7 @@ static int gator_events_irq_start(void)
 
 	return 0;
 
-	/* unregister tracepoints on error */
+	// unregister tracepoints on error
 fail_softirq_exit:
 	if (hardirq_enabled)
 		GATOR_UNREGISTER_TRACE(irq_handler_exit);
@@ -115,7 +117,7 @@ static void gator_events_irq_stop(void)
 	softirq_enabled = 0;
 }
 
-static int gator_events_irq_read(int **buffer, bool sched_switch)
+static int gator_events_irq_read(int **buffer)
 {
 	int len, value;
 	int cpu = get_physical_cpu();

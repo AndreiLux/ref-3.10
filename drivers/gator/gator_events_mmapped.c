@@ -8,25 +8,21 @@
  * published by the Free Software Foundation.
  *
  * Similar entries to those below must be present in the events.xml file.
- * To add them to the events.xml, create an events-mmap.xml with the
+ * To add them to the events.xml, create an events-mmap.xml with the 
  * following contents and rebuild gatord:
  *
- * <category name="mmapped">
- *   <event counter="mmapped_cnt0" title="Simulated1" name="Sine" display="maximum" class="absolute" description="Sort-of-sine"/>
- *   <event counter="mmapped_cnt1" title="Simulated2" name="Triangle" display="maximum" class="absolute" description="Triangular wave"/>
- *   <event counter="mmapped_cnt2" title="Simulated3" name="PWM" display="maximum" class="absolute" description="PWM Signal"/>
+ * <counter_set name="mmapped_cnt" count="3"/>
+ * <category name="mmapped" counter_set="mmapped_cnt" per_cpu="no">
+ *   <event event="0x0" title="Simulated1" name="Sine" display="maximum" average_selection="yes" description="Sort-of-sine"/>
+ *   <event event="0x1" title="Simulated2" name="Triangle" display="maximum" average_selection="yes" description="Triangular wave"/>
+ *   <event event="0x2" title="Simulated3" name="PWM" display="maximum" average_selection="yes" description="PWM Signal"/>
  * </category>
  *
- * When adding custom events, be sure to do the following:
+ * When adding custom events, be sure do the following
  * - add any needed .c files to the gator driver Makefile
  * - call gator_events_install in the events init function
  * - add the init function to GATOR_EVENTS_LIST in gator_main.c
  * - add a new events-*.xml file to the gator daemon and rebuild
- *
- * Troubleshooting:
- * - verify the new events are part of events.xml, which is created when building the daemon
- * - verify the new events exist at /dev/gator/events/ once gatord is launched
- * - verify the counter name in the XML matches the name at /dev/gator/events
  */
 
 #include <linux/init.h>
@@ -41,6 +37,7 @@ static int mmapped_global_enabled;
 
 static struct {
 	unsigned long enabled;
+	unsigned long event;
 	unsigned long key;
 } mmapped_counters[MMAPPED_COUNTERS_NUM];
 
@@ -50,7 +47,7 @@ static s64 prev_time;
 
 /* Adds mmapped_cntX directories and enabled, event, and key files to /dev/gator/events */
 static int gator_events_mmapped_create_files(struct super_block *sb,
-					     struct dentry *root)
+					    struct dentry *root)
 {
 	int i;
 
@@ -64,6 +61,8 @@ static int gator_events_mmapped_create_files(struct super_block *sb,
 			return -1;
 		gatorfs_create_ulong(sb, dir, "enabled",
 				     &mmapped_counters[i].enabled);
+		gatorfs_create_ulong(sb, dir, "event",
+				     &mmapped_counters[i].event);
 		gatorfs_create_ro_ulong(sb, dir, "key",
 					&mmapped_counters[i].key);
 	}
@@ -103,7 +102,7 @@ static int mmapped_simulate(int counter, int delta_in_us)
 	switch (counter) {
 	case 0:		/* sort-of-sine */
 		{
-			static int t;
+			static int t = 0;
 			int x;
 
 			t += delta_in_us;
@@ -140,7 +139,7 @@ static int mmapped_simulate(int counter, int delta_in_us)
 		break;
 	case 2:		/* PWM signal */
 		{
-			static int dc, x, t;
+			static int dc, x, t = 0;
 
 			t += delta_in_us;
 			if (t > 1000000)
@@ -157,7 +156,7 @@ static int mmapped_simulate(int counter, int delta_in_us)
 	return result;
 }
 
-static int gator_events_mmapped_read(int **buffer, bool sched_switch)
+static int gator_events_mmapped_read(int **buffer)
 {
 	int i;
 	int len = 0;
@@ -178,7 +177,8 @@ static int gator_events_mmapped_read(int **buffer, bool sched_switch)
 		if (mmapped_counters[i].enabled) {
 			mmapped_buffer[len++] = mmapped_counters[i].key;
 			mmapped_buffer[len++] =
-			    mmapped_simulate(i, delta_in_us);
+			    mmapped_simulate(mmapped_counters[i].event,
+					    delta_in_us);
 		}
 	}
 

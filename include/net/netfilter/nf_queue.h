@@ -1,5 +1,6 @@
 #ifndef _NF_QUEUE_H
 #define _NF_QUEUE_H
+#define _NF_CHECK_REGISTER_NULL
 
 /* Each queued (to userspace) skbuff has one of these. */
 struct nf_queue_entry {
@@ -26,10 +27,12 @@ struct nf_queue_handler {
 					 unsigned int queuenum);
 };
 
+#ifdef _NF_CHECK_REGISTER_NULL
+bool nf_register_queue_handler_is_null(void);
+#endif
 void nf_register_queue_handler(const struct nf_queue_handler *qh);
 void nf_unregister_queue_handler(void);
 extern void nf_reinject(struct nf_queue_entry *entry, unsigned int verdict);
-
 bool nf_queue_entry_get_refs(struct nf_queue_entry *entry);
 void nf_queue_entry_release_refs(struct nf_queue_entry *entry);
 

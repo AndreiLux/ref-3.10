@@ -15,7 +15,7 @@ struct task_struct;
 #ifdef CONFIG_LATENCYTOP
 
 #define LT_SAVECOUNT		32
-#define LT_BACKTRACEDEPTH	12
+#define LT_BACKTRACEDEPTH	24
 
 struct latency_record {
 	unsigned long	backtrace[LT_BACKTRACEDEPTH];

@@ -461,6 +461,89 @@ int opp_add(struct device *dev, unsigned long freq, unsigned long u_volt)
 	return 0;
 }
 
+/* opp_add_dec()  - Add an OPP table from a table definitions
+ * @dev:	device for which we do this operation
+ * @freq:	Frequency in Hz for this OPP
+ * @u_volt:	Voltage in uVolts for this OPP
+ *
+ * This function adds an opp definition to the opp list and returns status.
+ * The opp is made available by default and it can be controlled using
+ * opp_enable/disable functions.
+ *
+ * Locking: The internal device_opp and opp structures are RCU protected.
+ * Hence this function internally uses RCU updater strategy with mutex locks
+ * to keep the integrity of the internal data structures. Callers should ensure
+ * that this function is *NOT* called under RCU protection or in contexts where
+ * mutex cannot be locked.
+ */
+int opp_add_dec(struct device *dev, unsigned long freq, unsigned long u_volt)
+{
+	struct device_opp *dev_opp = NULL;
+	struct opp *opp, *new_opp;
+	struct list_head *head;
+
+	/* allocate new OPP node */
+	new_opp = kzalloc(sizeof(struct opp), GFP_KERNEL);
+	if (!new_opp) {
+		dev_warn(dev, "%s: Unable to create new OPP node\n", __func__);
+		return -ENOMEM;
+	}
+
+	/* Hold our list modification lock here */
+	mutex_lock(&dev_opp_list_lock);
+
+	/* Check for existing list for 'dev' */
+	dev_opp = find_device_opp(dev);
+	if (IS_ERR(dev_opp)) {
+		/*
+		 * Allocate a new device OPP table. In the infrequent case
+		 * where a new device is needed to be added, we pay this
+		 * penalty.
+		 */
+		dev_opp = kzalloc(sizeof(struct device_opp), GFP_KERNEL);
+		if (!dev_opp) {
+			mutex_unlock(&dev_opp_list_lock);
+			kfree(new_opp);
+			dev_warn(dev,
+				"%s: Unable to create device OPP structure\n",
+				__func__);
+			return -ENOMEM;
+		}
+
+		dev_opp->dev = dev;
+		srcu_init_notifier_head(&dev_opp->head);
+		INIT_LIST_HEAD(&dev_opp->opp_list);
+
+		/* Secure the device list modification */
+		list_add_rcu(&dev_opp->node, &dev_opp_list);
+	}
+
+	/* populate the opp table */
+	new_opp->dev_opp = dev_opp;
+	new_opp->rate = freq;
+	new_opp->u_volt = u_volt;
+	new_opp->available = true;
+
+	/* Insert new OPP in order of decreasing frequency */
+	head = &dev_opp->opp_list;
+	list_for_each_entry_rcu(opp, &dev_opp->opp_list, node) {
+		if (new_opp->rate > opp->rate)
+			break;
+		else
+			head = &opp->node;
+	}
+
+	list_add_rcu(&new_opp->node, head);
+	mutex_unlock(&dev_opp_list_lock);
+
+	/*
+	 * Notify the changes in the availability of the operable
+	 * frequency/voltage list.
+	 */
+	srcu_notifier_call_chain(&dev_opp->head, OPP_EVENT_ADD, new_opp);
+	return 0;
+}
+
 /**
  * opp_set_availability() - helper to set the availability of an opp
  * @dev:		device for which we do this operation

@@ -368,10 +368,10 @@ void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
 }
 
 struct cpumask hmp_slow_cpu_mask;
+struct cpumask hmp_fast_cpu_mask;
 
 void __init arch_get_hmp_domains(struct list_head *hmp_domains_list)
 {
-	struct cpumask hmp_fast_cpu_mask;
 	struct hmp_domain *domain;
 
 	arch_get_fast_and_slow_cpus(&hmp_fast_cpu_mask, &hmp_slow_cpu_mask);
@@ -384,12 +384,14 @@ void __init arch_get_hmp_domains(struct list_head *hmp_domains_list)
 	if(!cpumask_empty(&hmp_slow_cpu_mask)) {
 		domain = (struct hmp_domain *)
 			kmalloc(sizeof(struct hmp_domain), GFP_KERNEL);
+		BUG_ON(ZERO_OR_NULL_PTR(domain));
 		cpumask_copy(&domain->possible_cpus, &hmp_slow_cpu_mask);
 		cpumask_and(&domain->cpus, cpu_online_mask, &domain->possible_cpus);
 		list_add(&domain->hmp_domains, hmp_domains_list);
 	}
 	domain = (struct hmp_domain *)
 		kmalloc(sizeof(struct hmp_domain), GFP_KERNEL);
+	BUG_ON(ZERO_OR_NULL_PTR(domain));
 	cpumask_copy(&domain->possible_cpus, &hmp_fast_cpu_mask);
 	cpumask_and(&domain->cpus, cpu_online_mask, &domain->possible_cpus);
 	list_add(&domain->hmp_domains, hmp_domains_list);

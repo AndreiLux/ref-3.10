@@ -30,6 +30,9 @@
    descriptor */
 #define USB_QUIRK_DELAY_INIT		0x00000040
 
+/* device needs hsic specific tunning */
+#define USB_QUIRK_HSIC_TUNE             0x00000100
+
 /* device generates spurious wakeup, ignore remote wakeup capability */
 #define USB_QUIRK_IGNORE_REMOTE_WAKEUP	0x00000200
 

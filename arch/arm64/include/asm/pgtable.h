@@ -21,6 +21,10 @@
 #include <asm/memory.h>
 #include <asm/pgtable-hwdef.h>
 
+#ifdef CONFIG_TIMA_RKP
+#include <linux/rkp_entry.h> 
+#endif /* CONFIG_TIMA_RKP */
+
 /*
  * Software defined PTE bits definition.
  */
@@ -65,6 +69,7 @@ extern void __pgd_error(const char *file, int line, unsigned long val);
 #define PROT_NORMAL		(PROT_DEFAULT | PTE_PXN | PTE_UXN | PTE_ATTRINDX(MT_NORMAL))
 
 #define PROT_SECT_DEVICE_nGnRE	(PROT_SECT_DEFAULT | PMD_SECT_PXN | PMD_SECT_UXN | PMD_ATTRINDX(MT_DEVICE_nGnRE))
+#define PROT_SECT_NORMAL_NC	(PROT_SECT_DEFAULT | PMD_SECT_PXN | PMD_SECT_UXN | PMD_ATTRINDX(MT_NORMAL_NC))
 #define PROT_SECT_NORMAL	(PROT_SECT_DEFAULT | PMD_SECT_PXN | PMD_SECT_UXN | PMD_ATTRINDX(MT_NORMAL))
 #define PROT_SECT_NORMAL_EXEC	(PROT_SECT_DEFAULT | PMD_SECT_UXN | PMD_ATTRINDX(MT_NORMAL))
 
@@ -138,8 +143,6 @@ extern struct page *empty_zero_page;
 
 #define pte_valid_user(pte) \
 	((pte_val(pte) & (PTE_VALID | PTE_USER)) == (PTE_VALID | PTE_USER))
-#define pte_valid_not_user(pte) \
-	((pte_val(pte) & (PTE_VALID | PTE_USER)) == PTE_VALID)
 
 static inline pte_t pte_wrprotect(pte_t pte)
 {
@@ -185,16 +188,21 @@ static inline pte_t pte_mkspecial(pte_t pte)
 
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
-	*ptep = pte;
-
-	/*
-	 * Only if the new pte is valid and kernel, otherwise TLB maintenance
-	 * or update_mmu_cache() have the necessary barriers.
-	 */
-	if (pte_valid_not_user(pte)) {
-		dsb(ishst);
-		isb();
+#ifdef CONFIG_TIMA_RKP
+	if (rkp_is_pg_protected((u64)ptep)) {
+		rkp_call(RKP_PTE_SET, (unsigned long)ptep, pte_val(pte), 0, 0, 0);
+	} else {
+		asm volatile("mov x1, %0\n"
+					  "mov x2, %1\n"
+ 					  "str x2, [x1]\n"
+		:
+		: "r" (ptep), "r" (pte)
+		: "x1", "x2", "memory" );
 	}
+#else
+	*ptep = pte;
+#endif /* CONFIG_TIMA_RKP */
+
 }
 
 extern void __sync_icache_dcache(pte_t pteval, unsigned long addr);
@@ -284,11 +292,13 @@ static inline int has_transparent_hugepage(void)
  * Mark the prot value as uncacheable and unbufferable.
  */
 #define pgprot_noncached(prot) \
-	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_DEVICE_nGnRnE) | PTE_PXN | PTE_UXN)
+	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_DEVICE_nGnRE) | PTE_PXN | PTE_UXN)
 #define pgprot_writecombine(prot) \
 	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_NORMAL_NC) | PTE_PXN | PTE_UXN)
 #define pgprot_dmacoherent(prot) \
 	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_NORMAL_NC) | PTE_PXN | PTE_UXN)
+#define pgprot_iotable_init(prot) \
+	__pgprot_modify(prot, PTE_ATTRINDX_MASK, PTE_ATTRINDX(MT_DEVICE_nGnRE) | PTE_PXN | PTE_UXN)
 #define __HAVE_PHYS_MEM_ACCESS_PROT
 struct file;
 extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
@@ -299,17 +309,27 @@ extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 
 #define pmd_bad(pmd)		(!(pmd_val(pmd) & 2))
 
-#define pmd_table(pmd)		((pmd_val(pmd) & PMD_TYPE_MASK) == \
-				 PMD_TYPE_TABLE)
-#define pmd_sect(pmd)		((pmd_val(pmd) & PMD_TYPE_MASK) == \
-				 PMD_TYPE_SECT)
-
+#ifdef CONFIG_TIMA_RKP
+#define pmd_block(pmd)      ((pmd_val(pmd) & 0x3)  == 1)
+#endif
 
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
+#ifdef CONFIG_TIMA_RKP
+	if (rkp_is_pg_protected((u64)pmdp)) {
+		rkp_call(RKP_PMD_SET, (unsigned long)pmdp, pmd_val(pmd), 0, 0, 0);
+	} else {
+		asm volatile("mov x1, %0\n"
+					  "mov x2, %1\n"
+ 					  "str x2, [x1]\n"
+		:
+		: "r" (pmdp), "r" (pmd)
+		: "x1", "x2", "memory" );
+	}
+#else 
 	*pmdp = pmd;
+#endif /* CONFIG_TIMA_RKP */
 	dsb(ishst);
-	isb();
 }
 
 static inline void pmd_clear(pmd_t *pmdp)
@@ -338,9 +358,21 @@ static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 
 static inline void set_pud(pud_t *pudp, pud_t pud)
 {
+#ifdef CONFIG_TIMA_RKP
+	if (rkp_is_pg_protected((u64)pudp)) {
+		rkp_call(RKP_PGD_SET, (unsigned long)pudp, pud_val(pud), 0, 0, 0);
+	} else {
+		asm volatile("mov x1, %0\n"
+					  "mov x2, %1\n"
+ 					  "str x2, [x1]\n"
+		:
+		: "r" (pudp), "r" (pud)
+		: "x1", "x2", "memory" );
+	}
+#else
 	*pudp = pud;
+#endif
 	dsb(ishst);
-	isb();
 }
 
 static inline void pud_clear(pud_t *pudp)
@@ -390,6 +422,9 @@ static inline pmd_t pmd_modify(pmd_t pmd, pgprot_t newprot)
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pgd_t idmap_pg_dir[PTRS_PER_PGD];
+
+#define SWAPPER_DIR_SIZE	(3 * PAGE_SIZE)
+#define IDMAP_DIR_SIZE		(2 * PAGE_SIZE)
 
 /*
  * Encode and decode a swap entry:

@@ -152,6 +152,18 @@ config PM_RUNTIME
 	  responsible for the actual handling of the autosuspend requests and
 	  wake-up events.
 
+config PM_RUNTIME_TEST_SYSFS
+	bool "Runtime PM test interface in sysfs" if PM_RUNTIME
+	depends on SYSFS
+	---help---
+	  Enable sysfs interface for RUNTIME PM test. /sys/class/runtime_pm/test/
+	  is created. When you read the file "control" you can get the active
+	  power domain in Exynos. When you write power domain name you can test
+	  the power domain.
+
+config PM_DOMAIN_DEBUG
+	bool "Runtime PM debug message" if PM_RUNTIME
+
 config PM
 	def_bool y
 	depends on PM_SLEEP || PM_RUNTIME

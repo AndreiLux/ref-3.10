@@ -19,6 +19,11 @@
 
 #include "usb.h"
 
+#if defined(CONFIG_MDM_HSIC_PM)
+#include <linux/mdm_hsic_pm.h>
+int ep0_timeout_cnt;
+#endif
+
 static void cancel_async_set_config(struct usb_device *udev);
 
 struct api_context {
@@ -66,6 +71,9 @@ static int usb_start_wait_urb(struct urb *urb, int timeout, int *actual_length)
 			usb_urb_dir_in(urb) ? "in" : "out",
 			urb->actual_length,
 			urb->transfer_buffer_length);
+#if defined(CONFIG_MDM_HSIC_PM)
+		ep0_timeout_cnt++;
+#endif
 	} else
 		retval = ctx.status;
 out:
@@ -1139,6 +1147,13 @@ void usb_disable_device(struct usb_device *dev, int skip_ep0)
 {
 	int i;
 	struct usb_hcd *hcd = bus_to_hcd(dev->bus);
+
+#ifdef CONFIG_USB_EXTERNAL_DETECT
+	for (i = skip_ep0; i < 16; ++i) {
+		usb_disable_endpoint(dev, i, false);
+		usb_disable_endpoint(dev, i + USB_DIR_IN, false);
+	}
+#endif
 
 	/* getting rid of interfaces will disconnect
 	 * any drivers bound to them (a key side effect)

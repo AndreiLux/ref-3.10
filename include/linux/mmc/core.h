@@ -112,6 +112,7 @@ struct mmc_data {
 #define MMC_DATA_WRITE	(1 << 8)
 #define MMC_DATA_READ	(1 << 9)
 #define MMC_DATA_STREAM	(1 << 10)
+#define MMC_DATA_DIRECT	(1 << 11)
 
 	unsigned int		bytes_xfered;
 
@@ -133,6 +134,10 @@ struct mmc_request {
 	struct completion	completion;
 	void			(*done)(struct mmc_request *);/* completion function */
 	struct mmc_host		*host;
+	struct mmc_async_req	*areq;
+	int			flags;
+	struct list_head	link;
+	struct list_head	hlist;
 };
 
 struct mmc_card;
@@ -140,6 +145,7 @@ struct mmc_async_req;
 
 extern int mmc_stop_bkops(struct mmc_card *);
 extern int mmc_read_bkops_status(struct mmc_card *);
+extern void mmc_wait_cmdq_empty(struct mmc_host *host);
 extern struct mmc_async_req *mmc_start_req(struct mmc_host *,
 					   struct mmc_async_req *, int *);
 extern int mmc_interrupt_hpi(struct mmc_card *);
@@ -189,6 +195,7 @@ extern void mmc_release_host(struct mmc_host *host);
 extern int mmc_try_claim_host(struct mmc_host *host);
 
 extern int mmc_flush_cache(struct mmc_card *);
+extern int mmc_bkops_enable(struct mmc_host *host, u8 value);
 
 extern int mmc_detect_card_removed(struct mmc_host *host);
 

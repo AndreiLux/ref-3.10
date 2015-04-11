@@ -323,6 +323,12 @@ config ISL29003
 	  This driver can also be built as a module.  If so, the module
 	  will be called isl29003.
 
+config KNOX_KAP
+       bool "Enable KNOX KAP mode"
+       default n
+       help 
+              Knox Active Protection mode
+
 config ISL29020
 	tristate "Intersil ISL29020 ambient light sensor"
 	depends on I2C
@@ -531,6 +537,25 @@ config SRAM
 	  the genalloc API. It is supposed to be used for small on-chip SRAM
 	  areas found on many SoCs.
 
+config CHECK_SIMSLOT_COUNT
+	bool "Dual/Single sim support"
+
+config TIMA_LOG
+	tristate "Support for dumping TIMA log"
+	depends on TIMA
+	default y
+	help
+		This option enables support for dumping TIMA log.
+
+config SEC_FPGA_ICE40XX
+        tristate "this feature allows FPGA_ICE40XX"
+        default n
+        help
+          This is a driver for IR LEd driver based on Lattice chip.
+          Lattice FPGA can support IR LED.
+          To compile this driver as a module, choose M here.
+          If unsure, say N.
+
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
@@ -540,4 +565,7 @@ source "drivers/misc/carma/Kconfig"
 source "drivers/misc/altera-stapl/Kconfig"
 source "drivers/misc/mei/Kconfig"
 source "drivers/misc/vmw_vmci/Kconfig"
+source "drivers/misc/mipi-lli/Kconfig"
+source "drivers/misc/modem_v1/Kconfig"
+source "drivers/misc/samsung/Kconfig"
 endmenu

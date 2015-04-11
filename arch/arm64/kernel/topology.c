@@ -486,10 +486,10 @@ void __init arch_get_fast_and_slow_cpus(struct cpumask *fast,
 }
 
 struct cpumask hmp_slow_cpu_mask;
+struct cpumask hmp_fast_cpu_mask;
 
 void __init arch_get_hmp_domains(struct list_head *hmp_domains_list)
 {
-	struct cpumask hmp_fast_cpu_mask;
 	struct hmp_domain *domain;
 
 	arch_get_fast_and_slow_cpus(&hmp_fast_cpu_mask, &hmp_slow_cpu_mask);
@@ -544,8 +544,50 @@ int cluster_to_logical_mask(unsigned int socket_id, cpumask_t *cluster_mask)
 
 void store_cpu_topology(unsigned int cpuid)
 {
+	struct cpu_topology *cpu_topo = &cpu_topology[cpuid];
+	unsigned int mpidr;
+
+	/* If the cpu topology has been already set, just return */
+	if (cpu_topo->core_id != -1)
+		return;
+
+	mpidr = read_cpuid_mpidr();
+
+	/* create cpu topology mapping */
+	if ((mpidr & MPIDR_SMP_BITMASK) == MPIDR_SMP_VALUE) {
+		/*
+		 * This is a multiprocessor system
+		 * multiprocessor format & multiprocessor mode field are set
+		 */
+		if (mpidr & MPIDR_MT_BITMASK) {
+			/* core performance interdependency */
+			cpu_topo->thread_id = MPIDR_AFFINITY_LEVEL(mpidr, 0);
+			cpu_topo->core_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+			cpu_topo->cluster_id = MPIDR_AFFINITY_LEVEL(mpidr, 2);
+		} else {
+			/* largely independent cores */
+			cpu_topo->thread_id = -1;
+			cpu_topo->core_id = MPIDR_AFFINITY_LEVEL(mpidr, 0);
+			cpu_topo->cluster_id = MPIDR_AFFINITY_LEVEL(mpidr, 1);
+		}
+	} else {
+		/*
+		 * This is an uniprocessor system
+		 * we are in multiprocessor format but uniprocessor system
+		 * or in the old uniprocessor format
+		 */
+		cpu_topo->thread_id = -1;
+		cpu_topo->core_id = 0;
+		cpu_topo->cluster_id = -1;
+	}
+
 	update_siblings_masks(cpuid);
 	update_cpu_power(cpuid);
+
+	pr_info("CPU%u: thread %d, cpu %d, cluster %d, mpidr %x\n",
+		cpuid, cpu_topology[cpuid].thread_id,
+		cpu_topology[cpuid].core_id,
+		cpu_topology[cpuid].cluster_id, mpidr);
 }
 
 static void __init reset_cpu_topology(void)
@@ -556,7 +598,7 @@ static void __init reset_cpu_topology(void)
 		struct cpu_topology *cpu_topo = &cpu_topology[cpu];
 
 		cpu_topo->thread_id = -1;
-		cpu_topo->core_id = 0;
+		cpu_topo->core_id = -1;
 		cpu_topo->cluster_id = -1;
 
 		cpumask_clear(&cpu_topo->core_sibling);

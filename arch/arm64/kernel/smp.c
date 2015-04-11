@@ -35,6 +35,7 @@
 #include <linux/clockchips.h>
 #include <linux/completion.h>
 #include <linux/of.h>
+#include <linux/exynos-ss.h>
 
 #include <asm/atomic.h>
 #include <asm/cacheflush.h>
@@ -48,6 +49,7 @@
 #include <asm/sections.h>
 #include <asm/tlbflush.h>
 #include <asm/ptrace.h>
+#include <asm/localtimer.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/arm-ipi.h>
@@ -122,6 +124,9 @@ static void __cpuinit smp_store_cpu_info(unsigned int cpuid)
 	store_cpu_topology(cpuid);
 }
 
+static void percpu_timer_setup(void);
+static void percpu_timer_stop(void);
+
 /*
  * This is the secondary CPU boot entry.  We're using this CPUs
  * idle thread stack, but a set of temporary page tables.
@@ -171,8 +176,13 @@ asmlinkage void __cpuinit secondary_start_kernel(void)
 	complete(&cpu_running);
 
 	local_dbg_enable();
+	/*
+	 * Setup the percpu timer for this CPU.
+	 */
+	percpu_timer_setup();
+
 	local_irq_enable();
-	local_fiq_enable();
+	local_async_enable();
 
 	/*
 	 * OK, it's off to the idle thread for us
@@ -222,6 +232,11 @@ int __cpu_disable(void)
 	 * OK - migrate IRQs away from this CPU
 	 */
 	migrate_irqs();
+
+	/*
+	 * Stop the local timer for this CPU.
+	 */
+	percpu_timer_stop();
 
 	/*
 	 * Remove this CPU from the vm mask set of all processes.
@@ -444,6 +459,7 @@ void __init smp_prepare_cpus(unsigned int max_cpus)
 		set_cpu_present(cpu, true);
 		max_cpus--;
 	}
+	percpu_timer_setup();
 }
 
 
@@ -501,7 +517,7 @@ static DEFINE_RAW_SPINLOCK(stop_lock);
 /*
  * ipi_cpu_stop - handle IPI from smp_send_stop()
  */
-static void ipi_cpu_stop(unsigned int cpu)
+static void ipi_cpu_stop(unsigned int cpu, struct pt_regs *regs)
 {
 	if (system_state == SYSTEM_BOOTING ||
 	    system_state == SYSTEM_RUNNING) {
@@ -513,8 +529,9 @@ static void ipi_cpu_stop(unsigned int cpu)
 
 	set_cpu_online(cpu, false);
 
-	local_fiq_disable();
 	local_irq_disable();
+
+	exynos_ss_save_context(regs);
 
 	while (1)
 		cpu_relax();
@@ -530,6 +547,8 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 
 	if (ipinr >= IPI_RESCHEDULE && ipinr < IPI_RESCHEDULE + NR_IPI)
 		__inc_irq_stat(cpu, ipi_irqs[ipinr - IPI_RESCHEDULE]);
+
+	exynos_ss_irq(ipinr, handle_IPI, irqs_disabled(), ESS_FLAG_IN);
 
 	switch (ipinr) {
 	case IPI_RESCHEDULE:
@@ -550,7 +569,7 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 
 	case IPI_CPU_STOP:
 		irq_enter();
-		ipi_cpu_stop(cpu);
+		ipi_cpu_stop(cpu, regs);
 		irq_exit();
 		break;
 
@@ -566,6 +585,8 @@ void handle_IPI(int ipinr, struct pt_regs *regs)
 		pr_crit("CPU%u: Unknown IPI message 0x%x\n", cpu, ipinr);
 		break;
 	}
+	exynos_ss_irq(ipinr, handle_IPI, irqs_disabled(), ESS_FLAG_OUT);
+
 	set_irq_regs(old_regs);
 }
 
@@ -574,10 +595,76 @@ void smp_send_reschedule(int cpu)
 	smp_cross_call(cpumask_of(cpu), IPI_RESCHEDULE);
 }
 
+/*
+ * Timer (local or broadcast) support
+ */
+static DEFINE_PER_CPU(struct clock_event_device, percpu_clockevent);
+
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
 void tick_broadcast(const struct cpumask *mask)
 {
 	smp_cross_call(mask, IPI_TIMER);
+}
+#endif
+
+static void broadcast_timer_set_mode(enum clock_event_mode mode,
+	struct clock_event_device *evt)
+{
+}
+
+static void __cpuinit broadcast_timer_setup(struct clock_event_device *evt)
+{
+	evt->name	= "dummy_timer";
+	evt->features	= CLOCK_EVT_FEAT_ONESHOT |
+			  CLOCK_EVT_FEAT_PERIODIC |
+			  CLOCK_EVT_FEAT_DUMMY;
+	evt->rating	= 100;
+	evt->mult	= 1;
+	evt->set_mode	= broadcast_timer_set_mode;
+
+	clockevents_register_device(evt);
+}
+
+static struct local_timer_ops *lt_ops;
+
+#ifdef CONFIG_LOCAL_TIMERS
+int local_timer_register(struct local_timer_ops *ops)
+{
+	if (!setup_max_cpus)
+		return -ENXIO;
+
+	if (lt_ops)
+		return -EBUSY;
+
+	lt_ops = ops;
+	return 0;
+}
+#endif
+
+static void __cpuinit percpu_timer_setup(void)
+{
+	unsigned int cpu = smp_processor_id();
+	struct clock_event_device *evt = &per_cpu(percpu_clockevent, cpu);
+
+	evt->cpumask = cpumask_of(cpu);
+
+	if (!lt_ops || lt_ops->setup(evt))
+		broadcast_timer_setup(evt);
+}
+
+#ifdef CONFIG_HOTPLUG_CPU
+/*
+ * The generic clock events code purposely does not stop the local timer
+ * on CPU_DEAD/CPU_DEAD_FROZEN hotplug events, so we have to do it
+ * manually here.
+ */
+static void percpu_timer_stop(void)
+{
+	unsigned int cpu = smp_processor_id();
+	struct clock_event_device *evt = &per_cpu(percpu_clockevent, cpu);
+
+	if (lt_ops)
+		lt_ops->stop(evt);
 }
 #endif
 
@@ -594,13 +681,15 @@ void smp_send_stop(void)
 		smp_cross_call(&mask, IPI_CPU_STOP);
 	}
 
-	/* Wait up to one second for other CPUs to stop */
-	timeout = USEC_PER_SEC;
+	/* Wait up to 3 seconds for other CPUs to stop */
+	timeout = USEC_PER_SEC * 3;
 	while (num_online_cpus() > 1 && timeout--)
 		udelay(1);
 
 	if (num_online_cpus() > 1)
 		pr_warning("SMP: failed to stop secondary CPUs\n");
+	else
+		pr_info("SMP: completed to stop secondary CPUS\n");
 }
 
 /*
@@ -610,3 +699,49 @@ int setup_profiling_timer(unsigned int multiplier)
 {
 	return -EINVAL;
 }
+
+static void flush_all_cpu_cache(void *info)
+{
+	flush_cache_louis();
+}
+
+#ifdef CONFIG_SCHED_HMP
+
+#include <asm/cputype.h>
+
+extern struct cpumask hmp_slow_cpu_mask;
+extern struct cpumask hmp_fast_cpu_mask;
+
+static void flush_all_cluster_cache(void *info)
+{
+	flush_cache_all();
+}
+
+void flush_all_cpu_caches(void)
+{
+        unsigned int cpu, cluster, target_cpu;
+
+	preempt_disable();
+	cpu = smp_processor_id();
+	cluster = MPIDR_AFFINITY_LEVEL(cpu_logical_map(cpu), 1);
+
+	if (!cluster)
+		target_cpu = first_cpu(hmp_slow_cpu_mask);
+	else
+		target_cpu = first_cpu(hmp_fast_cpu_mask);
+
+	smp_call_function(flush_all_cpu_cache, NULL, 1);
+	smp_call_function_single(target_cpu, flush_all_cluster_cache, NULL, 1);
+	flush_cache_all();
+
+	preempt_enable();
+}
+#else
+void flush_all_cpu_caches(void)
+{
+	preempt_disable();
+	smp_call_function(flush_all_cpu_cache, NULL, 1);
+	flush_cache_all();
+	preempt_enable();
+}
+#endif

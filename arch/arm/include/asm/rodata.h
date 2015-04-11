@@ -22,9 +22,11 @@ int set_memory_ro(unsigned long virt, int numpages);
 void mark_rodata_ro(void);
 void set_kernel_text_rw(void);
 void set_kernel_text_ro(void);
+int set_memory_xn(unsigned long virt, int numpages);
 #else
 static inline void set_kernel_text_rw(void) { }
 static inline void set_kernel_text_ro(void) { }
+static inline int set_memory_xn(unsigned long virt, int numpages) {return 0; }
 #endif
 
 #endif

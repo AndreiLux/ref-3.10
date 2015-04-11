@@ -110,6 +110,87 @@ MODULE_PARM_DESC (ignore_oc, "ignore bogus hardware overcurrent indications");
 #include "ehci.h"
 #include "pci-quirks.h"
 
+void print_ehci_registers(struct usb_hcd *hcd)
+{
+	u32 reg;
+	u32 __iomem *reg_ptr;
+	struct ehci_hcd *ehci = hcd_to_ehci(hcd);
+
+	printk("\n%s\n", __func__);
+
+	reg = ehci_readl(ehci, &ehci->caps->hc_capbase);
+	printk("hcd reg(HCCPBASE):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->caps->hcs_params);
+	printk("hcd reg(HCSPARAMS):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->caps->hcc_params);
+	printk("hcd reg(HCCPARAMS):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->command);
+	printk("hcd reg(USBCMD):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->status);
+	printk("hcd reg(USBSTS):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->intr_enable);
+	printk("hcd reg(USBINTR):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->frame_index);
+	printk("hcd reg(FRINDEX):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->segment);
+	printk("hcd reg(CTRLDSSEGMENT):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->frame_list);
+	printk("hcd reg(PERIODICLISTBASE):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->async_next);
+	printk("hcd reg(ASYNCLISTADDR):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->configured_flag);
+	printk("hcd reg(CONFIGFLAG):\t0x%08x\n", reg);
+
+	reg = ehci_readl(ehci, &ehci->regs->port_status[0]);
+	printk("hcd reg(PORT0 Status/Control):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x48);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(PORT1 Status/Control):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x80);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG00):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x84);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG01):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x88);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG02):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x8C);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG03):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x90);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG04):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x94);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG05):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x98);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG06):\t0x%08x\n", reg);
+
+	reg_ptr = (u32 __iomem *)(((u8 __iomem *)ehci->regs) + 0x9C);
+	reg = ehci_readl(ehci, reg_ptr);
+	printk("hcd reg(INSNREG07):\t0x%08x\n\n\n", reg);
+}
+
 /*
  * The MosChip MCS9990 controller updates its microframe counter
  * a little before the frame counter, and occasionally we will read
@@ -591,16 +672,11 @@ static int ehci_run (struct usb_hcd *hcd)
 	 */
 	hcc_params = ehci_readl(ehci, &ehci->caps->hcc_params);
 	if (HCC_64BIT_ADDR(hcc_params)) {
-#ifdef CONFIG_ARM64
-		ehci_writel(ehci, ehci->periodic_dma >> 32, &ehci->regs->segment);
-		/*
-		 * this is deeply broken on almost all architectures
-		 * but arm64 can use it so enable it
-		 */
+		ehci_writel(ehci, 0, &ehci->regs->segment);
+#if 0
+// this is deeply broken on almost all architectures
 		if (!dma_set_mask(hcd->self.controller, DMA_BIT_MASK(64)))
 			ehci_info(ehci, "enabled 64bit DMA\n");
-#else
-		ehci_writel(ehci, 0, &ehci->regs->segment);
 #endif
 	}
 
@@ -686,20 +762,16 @@ EXPORT_SYMBOL_GPL(ehci_setup);
 
 /*-------------------------------------------------------------------------*/
 
+#if 1 /* for IAA_watchdog */
+extern unsigned int watchdog_count;
+#endif
 static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 {
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
 	u32			status, masked_status, pcd_status = 0, cmd;
 	int			bh;
-	unsigned long		flags;
 
-	/*
-	 * For threadirqs option we use spin_lock_irqsave() variant to prevent
-	 * deadlock with ehci hrtimer callback, because hrtimer callbacks run
-	 * in interrupt context even when threadirqs is specified. We can go
-	 * back to spin_lock() variant when hrtimer callbacks become threaded.
-	 */
-	spin_lock_irqsave(&ehci->lock, flags);
+	spin_lock (&ehci->lock);
 
 	status = ehci_readl(ehci, &ehci->regs->status);
 
@@ -717,7 +789,9 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 
 	/* Shared IRQ? */
 	if (!masked_status || unlikely(ehci->rh_state == EHCI_RH_HALTED)) {
-		spin_unlock_irqrestore(&ehci->lock, flags);
+		spin_unlock(&ehci->lock);
+		ehci_dbg(ehci, "%s: masked_status: %d, ehci->rh_state: %d\n",
+				__func__, masked_status, ehci->rh_state);
 		return IRQ_NONE;
 	}
 
@@ -744,6 +818,9 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 
 	/* complete the unlinking of some qh [4.15.2.3] */
 	if (status & STS_IAA) {
+#if 1 /* for IAA_watchdog */
+		watchdog_count = 0;
+#endif
 
 		/* Turn off the IAA watchdog */
 		ehci->enabled_hrtimer_events &= ~BIT(EHCI_HRTIMER_IAA_WATCHDOG);
@@ -816,6 +893,9 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 	/* PCI errors [4.15.2.4] */
 	if (unlikely ((status & STS_FATAL) != 0)) {
 		ehci_err(ehci, "fatal error\n");
+#if 1 /* for IAA_watchdog */
+		print_ehci_registers(hcd);
+#endif
 		dbg_cmd(ehci, "fatal", cmd);
 		dbg_status(ehci, "fatal", status);
 dead:
@@ -835,7 +915,7 @@ dead:
 
 	if (bh)
 		ehci_work (ehci);
-	spin_unlock_irqrestore(&ehci->lock, flags);
+	spin_unlock (&ehci->lock);
 	if (pcd_status)
 		usb_hcd_poll_rh_status(hcd);
 	return IRQ_HANDLED;

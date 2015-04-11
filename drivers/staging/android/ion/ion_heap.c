@@ -1,5 +1,5 @@
 /*
- * drivers/gpu/ion/ion_heap.c
+ * drivers/staging/android/ion/ion_heap.c
  *
  * Copyright (C) 2011 Google, Inc.
  *
@@ -48,6 +48,7 @@ void *ion_heap_map_kernel(struct ion_heap *heap,
 	for_each_sg(table->sgl, sg, table->nents, i) {
 		int npages_this_entry = PAGE_ALIGN(sg->length) / PAGE_SIZE;
 		struct page *page = sg_page(sg);
+
 		BUG_ON(i >= npages);
 		for (j = 0; j < npages_this_entry; j++)
 			*(tmp++) = page++;
@@ -102,9 +103,31 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 	return 0;
 }
 
+#ifdef CONFIG_ARM64
+static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
+						pgprot_t pgprot)
+{
+	struct scatterlist *sg;
+	int i;
+
+	for_each_sg(sgl, sg, nents, i) {
+		struct page *p = sg_page(sg);
+		unsigned int len = sg->length;
+
+		do {
+			clear_page(page_address(p));
+			if (pgprot_writecombine(pgprot) == pgprot)
+				__flush_dcache_area(page_address(p), PAGE_SIZE);
+		} while (p++, len -= PAGE_SIZE, len > 0);
+	}
+
+	return 0;
+}
+#else
 static int ion_heap_clear_pages(struct page **pages, int num, pgprot_t pgprot)
 {
 	void *addr = vm_map_ram(pages, num, -1, pgprot);
+
 	if (!addr)
 		return -ENOMEM;
 	memset(addr, 0, PAGE_SIZE * num);
@@ -135,18 +158,26 @@ static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
 
 	return ret;
 }
+#endif
 
 int ion_heap_buffer_zero(struct ion_buffer *buffer)
 {
 	struct sg_table *table = buffer->sg_table;
 	pgprot_t pgprot;
+	int ret;
+
+	ION_EVENT_BEGIN();
 
 	if (buffer->flags & ION_FLAG_CACHED)
 		pgprot = PAGE_KERNEL;
 	else
 		pgprot = pgprot_writecombine(PAGE_KERNEL);
 
-	return ion_heap_sglist_zero(table->sgl, table->nents, pgprot);
+	ret = ion_heap_sglist_zero(table->sgl, table->nents, pgprot);
+
+	ION_EVENT_CLEAR(buffer, ION_EVENT_DONE());
+
+	return ret;
 }
 
 int ion_heap_pages_zero(struct page *page, size_t size, pgprot_t pgprot)
@@ -262,6 +293,7 @@ int ion_heap_init_deferred_free(struct ion_heap *heap)
 		       __func__);
 		return PTR_RET(heap->task);
 	}
+	sched_setscheduler(heap->task, SCHED_IDLE, &param);
 	return 0;
 }
 
@@ -292,6 +324,9 @@ out:
 	total = ion_heap_freelist_size(heap) / PAGE_SIZE;
 	if (heap->ops->shrink)
 		total += heap->ops->shrink(heap, sc->gfp_mask, to_scan);
+
+	trace_ion_shrink(sc->nr_to_scan, total);
+
 	return total;
 }
 

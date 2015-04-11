@@ -10,6 +10,8 @@
 #include <linux/mutex.h>
 #include <linux/module.h>
 #include <linux/interrupt.h>
+#include <linux/exynos-ss.h>
+
 #include <linux/wakeup_reason.h>
 
 static LIST_HEAD(syscore_ops_list);
@@ -64,7 +66,9 @@ int syscore_suspend(void)
 		if (ops->suspend) {
 			if (initcall_debug)
 				pr_info("PM: Calling %pF\n", ops->suspend);
+			exynos_ss_suspend(ops->suspend, NULL, ESS_FLAG_IN);
 			ret = ops->suspend();
+			exynos_ss_suspend(ops->suspend, NULL, ESS_FLAG_OUT);
 			if (ret)
 				goto err_out;
 			WARN_ONCE(!irqs_disabled(),
@@ -102,7 +106,9 @@ void syscore_resume(void)
 		if (ops->resume) {
 			if (initcall_debug)
 				pr_info("PM: Calling %pF\n", ops->resume);
+			exynos_ss_suspend(ops->resume, NULL, ESS_FLAG_IN);
 			ops->resume();
+			exynos_ss_suspend(ops->resume, NULL, ESS_FLAG_OUT);
 			WARN_ONCE(!irqs_disabled(),
 				"Interrupts enabled after %pF\n", ops->resume);
 		}

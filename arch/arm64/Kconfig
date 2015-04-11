@@ -1,30 +1,29 @@
 config ARM64
 	def_bool y
 	select ARCH_HAS_ATOMIC64_DEC_IF_POSITIVE
-	select ARCH_USE_CMPXCHG_LOCKREF
-	select ARCH_HAS_OPP
-	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
+#	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
 	select ARCH_SUPPORTS_ATOMIC_RMW
 	select ARCH_WANT_OPTIONAL_GPIOLIB
 	select ARCH_WANT_COMPAT_IPC_PARSE_VERSION
 	select ARCH_WANT_FRAME_POINTERS
+	select ARCH_HAVE_CUSTOM_GPIO_H
 	select ARM_AMBA
 	select ARM_ARCH_TIMER
 	select ARM_GIC
-	select ARM_GIC_V3
 	select BUILDTIME_EXTABLE_SORT
+	select ARM_HAS_SG_CHAIN
 	select AUDIT_ARCH_COMPAT_GENERIC
 	select CLONE_BACKWARDS
 	select COMMON_CLK
 	select CPU_PM if (SUSPEND || CPU_IDLE)
-	select DCACHE_WORD_ACCESS
+	select GENERIC_ALLOCATOR
 	select GENERIC_CLOCKEVENTS
-	select GENERIC_CLOCKEVENTS_BROADCAST if SMP
+#	select GENERIC_CLOCKEVENTS_BROADCAST if SMP
 	select GENERIC_CPU_AUTOPROBE
-	select GENERIC_EARLY_IOREMAP
 	select GENERIC_IOMAP
 	select GENERIC_IRQ_PROBE
 	select GENERIC_IRQ_SHOW
+	select GENERIC_SCHED_CLOCK
 	select GENERIC_SMP_IDLE_THREAD
 	select GENERIC_STRNCPY_FROM_USER
 	select GENERIC_STRNLEN_USER
@@ -40,12 +39,11 @@ config ARM64
 	select HAVE_DEBUG_KMEMLEAK
 	select HAVE_DMA_API_DEBUG
 	select HAVE_DMA_ATTRS
-	select HAVE_DMA_CONTIGUOUS
+	select HAVE_DMA_CONTIGUOUS if MMU
 	select HAVE_DYNAMIC_FTRACE
-	select HAVE_EFFICIENT_UNALIGNED_ACCESS
 	select HAVE_FTRACE_MCOUNT_RECORD
-	select HAVE_FUNCTION_TRACER
 	select HAVE_FUNCTION_GRAPH_TRACER
+	select HAVE_FUNCTION_TRACER
 	select HAVE_GENERIC_DMA_COHERENT
 	select HAVE_GENERIC_HARDIRQS
 	select HAVE_HW_BREAKPOINT if PERF_EVENTS
@@ -85,6 +83,9 @@ config NO_IOPORT
 config STACKTRACE_SUPPORT
 	def_bool y
 
+config HAVE_LATENCYTOP_SUPPORT
+	def_bool y
+
 config LOCKDEP_SUPPORT
 	def_bool y
 
@@ -93,6 +94,9 @@ config TRACE_IRQFLAGS_SUPPORT
 
 config RWSEM_XCHGADD_ALGORITHM
 	def_bool y
+
+config ARCH_HAS_BANDGAP
+	bool
 
 config GENERIC_HWEIGHT
 	def_bool y
@@ -104,7 +108,7 @@ config GENERIC_CALIBRATE_DELAY
 	def_bool y
 
 config ZONE_DMA
-	def_bool y
+	bool "Enable dma zone"
 
 config ARCH_DMA_ADDR_T_64BIT
 	def_bool y
@@ -113,7 +117,10 @@ config NEED_DMA_MAP_STATE
 	def_bool y
 
 config NEED_SG_DMA_LENGTH
-	def_bool y
+	def_bool n
+
+config ARM_HAS_SG_CHAIN
+	def_bool n
 
 config SWIOTLB
 	def_bool y
@@ -123,6 +130,29 @@ config IOMMU_HELPER
 
 config FIX_EARLYCON_MEM
 	def_bool y
+
+config KERNEL_MODE_NEON
+	def_bool y
+
+config MIGHT_HAVE_PCI
+	bool
+
+config ARCH_HAS_CPUFREQ
+	bool
+	help
+	  Internal node to signify that the ARCH has CPUFREQ support
+	  and that the relevant menu configurations are displayed for
+	  it.
+
+config GENERIC_BUG
+	def_bool y
+	depends on BUG
+
+config SEC_FACTORY
+	bool "Sec factory mode support"
+	default n
+	help
+	  It will support a sec factory mode
 
 source "init/Kconfig"
 
@@ -140,10 +170,43 @@ config ARCH_VEXPRESS
 	  This enables support for the ARMv8 software model (Versatile
 	  Express).
 
-config ARCH_XGENE
-	bool "AppliedMicro X-Gene SOC Family"
+config ARCH_EXYNOS
+	bool "Samsung EXYNOS"
+	select ARCH_HAS_CPUFREQ
+	select HAVE_S3C2410_I2C if I2C
+	select HAVE_S3C2410_WATCHDOG if WATCHDOG
+	select HAVE_S3C_RTC if RTC_CLASS
+	select ARCH_SUPPORTS_MSI
+
+config ARM_TRUSTZONE
+	bool "Support TrustZone-enabled Trusted Execution Environment"
+	default y
 	help
-	  This enables support for AppliedMicro X-Gene SOC Family
+	  Select if you want a kernel to be executed at non-secure world.
+	  This option should be used with related secure bootloader and
+	  TrustZone software.
+
+	  If you don't know about TrustZone, say 'N'.
+
+config ZONE_DMA_ALLOW_CUSTOM_SIZE
+	bool "Enable Platform-settable Custom Size for ZONE_DMA"
+	default n
+	depends on ZONE_DMA
+	help
+	  Select Y if you need to allow setting ZONE_DMA size for platform.
+
+config ZONE_DMA_SIZE_MBYTES
+	int "ZONE_DMA Size in MBytes"
+	range 16 4096
+	default 4096
+	depends on ZONE_DMA && ZONE_DMA_ALLOW_CUSTOM_SIZE
+	help
+	  Set DMA-able size based on bits shift value. DMA-able size
+	  must be less than total DRAM size. This value may be used
+	  to limit DMA-able address space for ZONE_DMA.
+
+source "arch/arm64/plat-samsung/Kconfig"
+source "arch/arm64/mach-exynos/Kconfig"
 
 endmenu
 
@@ -152,6 +215,23 @@ menu "Bus support"
 config ARM_AMBA
 	bool
 
+config PCI
+	bool "PCI support"
+	help
+	  Find out whether you have a PCI motherboard. PCI is the name of a
+	  bus system, i.e. the way the CPU talks to the other stuff inside
+	  your box. Other bus systems are ISA, EISA, MicroChannel (MCA) or
+	  VESA. If you have PCI, say Y, otherwise N.
+
+config PCI_DOMAINS
+	bool
+	depends on PCI
+
+config PCI_SYSCALL
+	def_bool PCI
+
+source "drivers/pci/Kconfig"
+source "drivers/pci/pcie/Kconfig"
 endmenu
 
 menu "Kernel Features"
@@ -271,6 +351,7 @@ config HMP_VARIABLE_SCALE
 config HMP_FREQUENCY_INVARIANT_SCALE
 	bool "(EXPERIMENTAL) Frequency-Invariant Tracked Load for HMP"
 	depends on HMP_VARIABLE_SCALE && CPU_FREQ
+	default y
 	help
 	  Scales the current load contribution in line with the frequency
 	  of the CPU that the task was executed on.
@@ -309,6 +390,16 @@ config HOTPLUG_CPU
 	  Say Y here to experiment with turning CPUs off and on.  CPUs
 	  can be controlled through /sys/devices/system/cpu.
 
+config LOCAL_TIMERS
+	bool "Use local timer interrupts"
+	depends on SMP
+	default y
+	help
+	  Enable support for local timers on SMP platforms, rather then the
+	  legacy IPI broadcast method.  Local timers allows the system
+	  accounting to be spread across the timer interval, preventing a
+	  "thundering herd" at every timer tick.
+
 config SWP_EMULATE
 	bool "Emulate SWP/SWPB instructions"
 	help
@@ -335,6 +426,15 @@ config SWP_EMULATE
 	  If unsure, say Y.
 
 source kernel/Kconfig.preempt
+
+config ARCH_NR_GPIO
+	int
+	default 1024 if ARCH_EXYNOS
+	default 0
+	help
+
+	  Maximum number of GPIOs in the system.
+	  If unsure, leave the default value.
 
 config HZ
 	int
@@ -376,6 +476,13 @@ config ARCH_WANT_HUGE_PMD_SHARE
 config HAVE_ARCH_TRANSPARENT_HUGEPAGE
 	def_bool y
 
+source "mm/Kconfig"
+
+config FORCE_MAX_ZONEORDER
+	int
+	default "14" if (ARM64_64K_PAGES && TRANSPARENT_HUGEPAGE)
+	default "11"
+
 config ARMV7_COMPAT
 	bool "Kernel support for ARMv7 applications"
 	depends on COMPAT
@@ -397,13 +504,6 @@ config ARMV7_COMPAT_CPUINFO
 
 	 If you want to execute ARMv7 applications, say Y
 
-source "mm/Kconfig"
-
-config FORCE_MAX_ZONEORDER
-	int
-	default "14" if (ARM64_64K_PAGES && TRANSPARENT_HUGEPAGE)
-	default "11"
-
 config SECCOMP
 	bool "Enable seccomp to safely compute untrusted bytecode"
 	---help---
@@ -416,6 +516,18 @@ config SECCOMP
 	  enabled via prctl(PR_SET_SECCOMP), it cannot be disabled
 	  and the task is only allowed to execute a few safe syscalls
 	  defined by each seccomp mode.
+
+config CC_STACKPROTECTOR
+	bool "Enable -fstack-protector buffer overflow detection (EXPERIMENTAL)"
+	help
+	  This option turns on the -fstack-protector GCC feature. This
+	  feature puts, at the beginning of functions, a canary value on
+	  the stack just before the return address, and validates
+	  the value just before actually returning.  Stack based buffer
+	  overflows (that need to overwrite this return address) now also
+	  overwrite the canary, which gets detected and the attack is then
+	  neutralized via a kernel panic.
+	  This feature requires gcc version 4.2 or above.
 
 endmenu
 
@@ -470,20 +582,6 @@ config BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES
 	  Space separated list of names of dtbs to append when
 	  building a concatenated Image.gz-dtb.
 
-config EFI
-	bool "UEFI runtime support"
-	depends on OF && !CPU_BIG_ENDIAN
-	select LIBFDT
-	select UCS2_STRING
-	select EFI_PARAMS_FROM_FDT
-	default y
-	help
-	  This option provides support for runtime services provided
-	  by UEFI firmware (such as non-volatile variables, realtime
-          clock, and platform reset). A UEFI stub is also provided to
-	  allow the kernel to be booted as an EFI application. This
-	  is only useful on systems that have UEFI firmware.
-
 endmenu
 
 menu "Userspace binary formats"
@@ -509,6 +607,11 @@ config SYSVIPC_COMPAT
 	def_bool y
 	depends on COMPAT && SYSVIPC
 
+config KEYS_COMPAT
+	def_bool y if COMPAT && KEYS
+	help
+	  This option enables support for a 32-bit keyctl syscall callback function under
+	  a 64-bit kernel.
 endmenu
 
 menu "Power management options"
@@ -516,12 +619,14 @@ menu "Power management options"
 source "kernel/power/Kconfig"
 
 source "drivers/cpufreq/Kconfig"
+
+source "drivers/mailbox/samsung/Kconfig"
+
 config ARCH_SUSPEND_POSSIBLE
 	def_bool y
 
 config ARM64_CPU_SUSPEND
 	def_bool PM_SLEEP
-
 endmenu
 
 menu "CPU Power Management"
@@ -534,11 +639,7 @@ source "net/Kconfig"
 
 source "drivers/Kconfig"
 
-source "drivers/firmware/Kconfig"
-
 source "fs/Kconfig"
-
-source "arch/arm64/kvm/Kconfig"
 
 source "arch/arm64/Kconfig.debug"
 

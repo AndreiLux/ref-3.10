@@ -55,5 +55,17 @@ obj-$(CONFIG_WL_TI)	+= ti/
 
 obj-$(CONFIG_MWIFIEX)	+= mwifiex/
 
+obj-$(CONFIG_BCM4358)   += bcmdhd4358/
+
+ifneq ($(CONFIG_BCM4358),)
+obj-$(CONFIG_MACH_UNIVERSAL7420) += bcmdhd4358/dhd_custom_memprealloc.o
+obj-$(CONFIG_MACH_UNIVERSAL7420) += bcmdhd4358/dhd_custom_exynos.o
+endif # CONFIG_BCM4358
+
 obj-$(CONFIG_BRCMFMAC)	+= brcm80211/
 obj-$(CONFIG_BRCMSMAC)	+= brcm80211/
+
+ifneq ($(CONFIG_DEBUG_LOCK_ALLOC),y)
+obj-$(CONFIG_LGUIWLAN)	+= mwlan_aarp/
+obj-$(CONFIG_LGUIWLAN)	+= ipsecdrvtl/
+endif

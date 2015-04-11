@@ -24,9 +24,9 @@
 #include <linux/libata.h>
 #include <linux/err.h>
 #include <linux/io.h>
+#include <linux/smc.h>
 
 #include <mach/board.h>
-#include <mach/smc.h>
 
 #define DRV_NAME "pata_at32"
 #define DRV_VERSION "0.0.3"

@@ -54,6 +54,14 @@ obj-$(CONFIG_LEDS_MAX8997)		+= leds-max8997.o
 obj-$(CONFIG_LEDS_LM355x)		+= leds-lm355x.o
 obj-$(CONFIG_LEDS_BLINKM)		+= leds-blinkm.o
 
+# SEC LED Platform Drivers
+obj-$(CONFIG_LEDS_USE_ED28)		+= leds-sec-common.o
+obj-$(CONFIG_LEDS_MAX77833_RGB)		+= leds-max77833-rgb.o
+obj-$(CONFIG_LEDS_MAX77843_RGB)		+= leds-max77843-rgb.o
+obj-$(CONFIG_LEDS_S2MU003)		+= leds-s2mu003.o
+obj-$(CONFIG_LEDS_KTD2692)		+= leds-ktd2692.o
+obj-$(CONFIG_LEDS_S2MPB02)		+= leds-s2mpb02.o
+
 # LED SPI Drivers
 obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o
 

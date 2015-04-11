@@ -41,17 +41,9 @@
 
 #include "mm.h"
 
-static unsigned long phys_initrd_start __initdata = 0;
-static unsigned long phys_initrd_size __initdata = 0;
-
 phys_addr_t memstart_addr __read_mostly = 0;
 
-void __init early_init_dt_setup_initrd_arch(u64 start, u64 end)
-{
-	phys_initrd_start = start;
-	phys_initrd_size = end - start;
-}
-
+#ifdef CONFIG_BLK_DEV_INITRD
 static int __init early_initrd(char *p)
 {
 	unsigned long start, size;
@@ -61,28 +53,42 @@ static int __init early_initrd(char *p)
 	if (*endp == ',') {
 		size = memparse(endp + 1, NULL);
 
-		phys_initrd_start = start;
-		phys_initrd_size = size;
+		initrd_start = (unsigned long)__va(start);
+		initrd_end = (unsigned long)__va(start + size);
 	}
 	return 0;
 }
 early_param("initrd", early_initrd);
+#endif
+
+#ifdef CONFIG_ZONE_DMA_ALLOW_CUSTOM_SIZE
+#ifndef CONFIG_ZONE_DMA_SIZE_MBYTES
+#define ZONE_DMA_SIZE_BYTES	((u32)-1)
+#else
+#define ZONE_DMA_SIZE_BYTES	((u32)((CONFIG_ZONE_DMA_SIZE_MBYTES << 20) - 1))
+#endif
+#endif
 
 static void __init zone_sizes_init(unsigned long min, unsigned long max)
 {
 	struct memblock_region *reg;
 	unsigned long zone_size[MAX_NR_ZONES], zhole_size[MAX_NR_ZONES];
 	unsigned long max_dma = min;
-
+#ifdef CONFIG_ZONE_DMA
+	unsigned long max_dma_phys, dma_end;
+#endif
 	memset(zone_size, 0, sizeof(zone_size));
 
-	/* 4GB maximum for 32-bit only capable devices */
-	if (IS_ENABLED(CONFIG_ZONE_DMA)) {
-		unsigned long max_dma_phys =
-			(unsigned long)dma_to_phys(NULL, DMA_BIT_MASK(32) + 1);
-		max_dma = max(min, min(max, max_dma_phys >> PAGE_SHIFT));
-		zone_size[ZONE_DMA] = max_dma - min;
-	}
+#ifdef CONFIG_ZONE_DMA
+#ifdef CONFIG_ZONE_DMA_ALLOW_CUSTOM_SIZE
+	max_dma_phys = (unsigned long)dma_to_phys(NULL,
+			(min << PAGE_SHIFT) + ZONE_DMA_SIZE_BYTES + 1);
+#else
+	max_dma_phys = (unsigned long)dma_to_phys(NULL, DMA_BIT_MASK(32) + 1);
+#endif /* CONFIG_ZONE_DMA_ALLOW_CUSTOM_SIZE */
+	max_dma = max(min, min(max, max_dma_phys >> PAGE_SHIFT));
+	zone_size[ZONE_DMA] = max_dma - min;
+#endif /* CONFIG_ZONE_DMA */
 	zone_size[ZONE_NORMAL] = max - max_dma;
 
 	memcpy(zhole_size, zone_size, sizeof(zhole_size));
@@ -94,11 +100,12 @@ static void __init zone_sizes_init(unsigned long min, unsigned long max)
 		if (start >= max)
 			continue;
 
-		if (IS_ENABLED(CONFIG_ZONE_DMA) && start < max_dma) {
-			unsigned long dma_end = min(end, max_dma);
+#ifdef CONFIG_ZONE_DMA
+		if (start < max_dma) {
+			dma_end = min(end, max_dma);
 			zhole_size[ZONE_DMA] -= dma_end - start;
 		}
-
+#endif
 		if (end > max_dma) {
 			unsigned long normal_end = min(end, max);
 			unsigned long normal_start = max(start, max_dma);
@@ -138,20 +145,19 @@ void __init arm64_memblock_init(void)
 {
 	u64 *reserve_map, base, size;
 
-	/*
-	 * Register the kernel text, kernel data, initrd, and initial
-	 * pagetables with memblock.
-	 */
+	/* Register the kernel text, kernel data and initrd with memblock */
 	memblock_reserve(__pa(_text), _end - _text);
 #ifdef CONFIG_BLK_DEV_INITRD
-	if (phys_initrd_size) {
-		memblock_reserve(phys_initrd_start, phys_initrd_size);
-
-		/* Now convert initrd to virtual addresses */
-		initrd_start = __phys_to_virt(phys_initrd_start);
-		initrd_end = initrd_start + phys_initrd_size;
-	}
+	if (initrd_start)
+		memblock_reserve(__virt_to_phys(initrd_start), initrd_end - initrd_start);
 #endif
+
+	/*
+	 * Reserve the page tables.  These are already in use,
+	 * and can only be in node 0.
+	 */
+	memblock_reserve(__pa(swapper_pg_dir), SWAPPER_DIR_SIZE);
+	memblock_reserve(__pa(idmap_pg_dir), IDMAP_DIR_SIZE);
 
 	/* Reserve the dtb region */
 	memblock_reserve(virt_to_phys(initial_boot_params),
@@ -388,6 +394,12 @@ void free_initmem(void)
 {
 	poison_init_mem(__init_begin, __init_end - __init_begin);
 	free_initmem_default(0);
+#ifdef CONFIG_TIMA_RKP
+#ifdef CONFIG_KNOX_KAP
+	if (boot_mode_security)
+#endif
+		rkp_call(RKP_DEF_INIT, 0, 0, 0, 0, 0);
+#endif
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD

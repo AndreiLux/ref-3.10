@@ -1364,7 +1364,7 @@ static void pci_bus_dump_resources(struct pci_bus *bus)
 	}
 }
 
-static int __init pci_bus_get_depth(struct pci_bus *bus)
+static int __init __maybe_unused pci_bus_get_depth(struct pci_bus *bus)
 {
 	int depth = 0;
 	struct pci_dev *dev;
@@ -1382,7 +1382,7 @@ static int __init pci_bus_get_depth(struct pci_bus *bus)
 
 	return depth;
 }
-static int __init pci_get_max_depth(void)
+static int __init __maybe_unused pci_get_max_depth(void)
 {
 	int depth = 0;
 	struct pci_bus *bus;
@@ -1413,7 +1413,7 @@ enum enable_type {
 	auto_enabled,
 };
 
-static enum enable_type pci_realloc_enable __initdata = undefined;
+static enum enable_type pci_realloc_enable = undefined;
 void __init pci_realloc_get_opt(char *str)
 {
 	if (!strncmp(str, "off", 3))
@@ -1421,12 +1421,12 @@ void __init pci_realloc_get_opt(char *str)
 	else if (!strncmp(str, "on", 2))
 		pci_realloc_enable = user_enabled;
 }
-static bool __init pci_realloc_enabled(void)
+static bool __init __maybe_unused pci_realloc_enabled(void)
 {
 	return pci_realloc_enable >= user_enabled;
 }
 
-static void __init pci_realloc_detect(void)
+static void __init __maybe_unused pci_realloc_detect(void)
 {
 #if defined(CONFIG_PCI_IOV) && defined(CONFIG_PCI_REALLOC_ENABLE_AUTO)
 	struct pci_dev *dev = NULL;
@@ -1456,7 +1456,7 @@ static void __init pci_realloc_detect(void)
  * second  and later try will clear small leaf bridge res
  * will stop till to the max  deepth if can not find good one
  */
-void __init
+void
 pci_assign_unassigned_resources(void)
 {
 	struct pci_bus *bus;
@@ -1470,16 +1470,6 @@ pci_assign_unassigned_resources(void)
 	unsigned long type_mask = IORESOURCE_IO | IORESOURCE_MEM |
 				  IORESOURCE_PREFETCH;
 	int pci_try_num = 1;
-
-	/* don't realloc if asked to do so */
-	pci_realloc_detect();
-	if (pci_realloc_enabled()) {
-		int max_depth = pci_get_max_depth();
-
-		pci_try_num = max_depth + 1;
-		printk(KERN_DEBUG "PCI: max bus depth: %d pci_try_num: %d\n",
-			 max_depth, pci_try_num);
-	}
 
 again:
 	/*

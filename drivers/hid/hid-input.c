@@ -912,6 +912,17 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		}
 		break;
 
+#ifdef CONFIG_USB_HMT_SAMSUNG_INPUT
+	case HID_UP_HMTVENDOR:
+		switch (usage->hid & HID_USAGE) {
+		case 0x001: map_key_clear(KEY_START_NOTA_CMD);		break;
+		case 0x002: map_key_clear(KEY_START_TA_CMD);		break;
+		case 0x003: map_key_clear(KEY_ONGOING_TA_CMD);		break;
+		default: goto ignore;
+		}
+		break;
+#endif
+
 	default:
 	unknown:
 		if (field->report_size == 1) {

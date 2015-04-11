@@ -22,6 +22,7 @@
 
 #include <linux/compiler.h>
 #include <linux/types.h>
+#include <linux/irqflags.h>
 
 #include <asm/barrier.h>
 #include <asm/cmpxchg.h>
@@ -143,6 +144,28 @@ static inline void atomic_clear_mask(unsigned long mask, unsigned long *addr)
 	: "cc");
 }
 
+
+static inline void atomic_push(atomic_t *v, int value, int width)
+{
+	unsigned long flags;
+
+	raw_local_irq_save(flags);
+	v->counter = (v->counter << width) | (value & ((1 << width) - 1));
+	raw_local_irq_restore(flags);
+}
+
+static inline int atomic_pop(atomic_t *v, int width)
+{
+	int result;
+	unsigned long flags;
+
+	raw_local_irq_save(flags);
+	result = v->counter;
+	v->counter >>= width;
+	raw_local_irq_restore(flags);
+
+	return result & ((1 << width) - 1);
+}
 #define atomic_xchg(v, new) (xchg(&((v)->counter), new))
 
 static inline int __atomic_add_unless(atomic_t *v, int a, int u)
