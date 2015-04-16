@@ -422,11 +422,15 @@ static int drop_partitions(struct gendisk *disk, struct block_device *bdev)
 	return 0;
 }
 
+struct emmc_partition g_emmc_partition[MAX_EMMC_PARTITION_NUM];
 int rescan_partitions(struct gendisk *disk, struct block_device *bdev)
 {
 	struct parsed_partitions *state = NULL;
 	struct hd_struct *part;
 	int p, highest, res;
+
+	struct emmc_partition *p_emmc_partition;
+	p_emmc_partition = g_emmc_partition;
 rescan:
 	if (state && !IS_ERR(state)) {
 		free_partitions(state);
@@ -531,12 +535,32 @@ rescan:
 			       disk->disk_name, p, -PTR_ERR(part));
 			continue;
 		}
+
+		strcpy(p_emmc_partition->name,  state->parts[p].info.volname);
+		p_emmc_partition->start = state->parts[p].from;
+		p_emmc_partition->size_sectors = state->parts[p].size;
+		p_emmc_partition->flags = 1;
+
+		p_emmc_partition++;
+
 #ifdef CONFIG_BLK_DEV_MD
 		if (state->parts[p].flags & ADDPART_FLAG_RAID)
 			md_autodetect_dev(part_to_dev(part)->devt);
 #endif
 	}
+
+	p_emmc_partition = &g_emmc_partition[0];
+	while(strcmp(p_emmc_partition->name, "") != 0){
+		if(strcmp(p_emmc_partition->name, "system") == 0){
+			pr_info("[HW]:%s, %d: partitionname = %s \n", __func__, __LINE__, p_emmc_partition->name);
+			pr_info("[HW]:%s, %d: partition start from = %lld \n", __func__, __LINE__, p_emmc_partition->start);
+			pr_info("[HW]:%s, %d: partition size = %lld \n", __func__, __LINE__, p_emmc_partition->size_sectors);
+		}
+		p_emmc_partition++;
+	}
+
 	free_partitions(state);
+
 	return 0;
 }
 

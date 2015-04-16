@@ -230,6 +230,11 @@ enum {
 extern int pm_test_level;
 
 #ifdef CONFIG_SUSPEND_FREEZER
+
+#ifdef CONFIG_ARCH_HI3630
+extern int hisi_sys_sync_wait(void);
+#endif
+
 static inline int suspend_freeze_processes(void)
 {
 	int error;
@@ -242,7 +247,21 @@ static inline int suspend_freeze_processes(void)
 	if (error)
 		return error;
 
+#ifdef CONFIG_ARCH_HI3630
+	error = hisi_sys_sync_wait();
+
+	if (error) {
+		printk("PM: sys_sync timeout.\n");
+		goto exit;
+	}
+#endif
+
 	error = freeze_kernel_threads();
+
+#ifdef CONFIG_ARCH_HI3630
+exit:
+#endif
+
 	/*
 	 * freeze_kernel_threads() thaws only kernel threads upon freezing
 	 * failure. So we have to thaw the userspace tasks ourselves.

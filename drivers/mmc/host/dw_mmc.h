@@ -53,6 +53,8 @@
 #define SDMMC_IDINTEN		0x090
 #define SDMMC_DSCADDR		0x094
 #define SDMMC_BUFADDR		0x098
+#define SDMMC_UHS_REG_EXT	0x108
+#define SDMMC_ENABLE_SHIFT	0x110
 #define SDMMC_DATA(x)		(x)
 
 /*
@@ -98,6 +100,7 @@
 #define SDMMC_INT_HLE			BIT(12)
 #define SDMMC_INT_FRUN			BIT(11)
 #define SDMMC_INT_HTO			BIT(10)
+#define SDMMC_INT_VOLT_SW		BIT(10)
 #define SDMMC_INT_DTO			BIT(9)
 #define SDMMC_INT_RTO			BIT(8)
 #define SDMMC_INT_DCRC			BIT(7)
@@ -111,6 +114,8 @@
 #define SDMMC_INT_ERROR			0xbfc2
 /* Command register defines */
 #define SDMMC_CMD_START			BIT(31)
+#define SDMMC_CMD_USE_HOLD_REG	BIT(29)
+#define SDMMC_VOLT_SWITCH		BIT(28)
 #define SDMMC_CMD_CCS_EXP		BIT(23)
 #define SDMMC_CMD_CEATA_RD		BIT(22)
 #define SDMMC_CMD_UPD_CLK		BIT(21)
@@ -125,8 +130,12 @@
 #define SDMMC_CMD_RESP_LONG		BIT(7)
 #define SDMMC_CMD_RESP_EXP		BIT(6)
 #define SDMMC_CMD_INDX(n)		((n) & 0x1F)
+#define SDMMC_CMD_ONLY_CLK		(SDMMC_CMD_START | SDMMC_CMD_UPD_CLK | \
+						SDMMC_CMD_PRV_DAT_WAIT)
 /* Status register defines */
+#define SDMMC_STATUS_DMA_REQ 	BIT(31)
 #define SDMMC_GET_FCNT(x)		(((x)>>17) & 0x1FFF)
+#define SDMMC_DATA_BUSY			BIT(9)
 /* Internal DMAC interrupt defines */
 #define SDMMC_IDMAC_INT_AI		BIT(9)
 #define SDMMC_IDMAC_INT_NI		BIT(8)
@@ -141,6 +150,19 @@
 #define SDMMC_IDMAC_SWRESET		BIT(0)
 /* Version ID register define */
 #define SDMMC_GET_VERID(x)		((x) & 0xFFFF)
+
+#define GPIO_CLK_ENABLE			(0x1 << 16)
+
+#define UHS_REG_EXT_SAMPLE_PHASE(x)	(((x) & 0x1f) << 16)
+#define UHS_REG_EXT_SAMPLE_DLY(x)	(((x) & 0x1f) << 23)
+#define SDMMC_UHS_REG_EXT_VALUE(x, y)	(UHS_REG_EXT_SAMPLE_PHASE(x) |	\
+					UHS_REG_EXT_SAMPLE_DLY(y))
+
+#define GPIO_CLK_DIV(x)	(((x) & 0xf) << 8)
+#define GPIO_USE_SAMPLE_DLY(x)	(((x) & 0x1) << 13)
+#define GPIO_DRIVE_SEL(x)	(((x) & 0x1) << 12)
+#define SDMMC_GPIO_VALUE(x, y, z)	(GPIO_CLK_DIV(x) |	\
+					GPIO_USE_SAMPLE_DLY(y) | GPIO_DRIVE_SEL(z))
 
 /* Register access macros */
 #define mci_readl(dev, reg)			\
@@ -177,6 +199,7 @@
 
 extern int dw_mci_probe(struct dw_mci *host);
 extern void dw_mci_remove(struct dw_mci *host);
+extern void dw_mci_set_cd(struct dw_mci *host);
 #ifdef CONFIG_PM
 extern int dw_mci_suspend(struct dw_mci *host);
 extern int dw_mci_resume(struct dw_mci *host);
@@ -202,5 +225,11 @@ struct dw_mci_drv_data {
 	void		(*prepare_command)(struct dw_mci *host, u32 *cmdr);
 	void		(*set_ios)(struct dw_mci *host, struct mmc_ios *ios);
 	int		(*parse_dt)(struct dw_mci *host);
+	int		(*cd_detect_init)(struct dw_mci *host);
+
+	int		(*tuning_find_condition)(struct dw_mci *host, int timing);
+	void	(*tuning_set_current_state)(struct dw_mci *host, int ok);
+	int		(*tuning_move)(struct dw_mci *host, int timing, int start);
+	int		(*slowdown_clk)(struct dw_mci *host, int timing);
 };
 #endif /* _DW_MMC_H_ */

@@ -1089,6 +1089,12 @@ static void pwq_activate_delayed_work(struct work_struct *work)
 {
 	struct pool_workqueue *pwq = get_work_pwq(work);
 
+	//DTS2014052207111 l00186420 20140528 begin
+	if(NULL == pwq) {
+		printk("warning: pool_workqueue is NULL\n");
+		return;
+	}
+	//DTS2014052207111 l00186420 20140528 end
 	trace_workqueue_activate_work(work);
 	move_linked_works(work, &pwq->pool->worklist, NULL);
 	__clear_bit(WORK_STRUCT_DELAYED_BIT, work_data_bits(work));

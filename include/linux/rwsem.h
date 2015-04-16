@@ -15,6 +15,9 @@
 #include <linux/spinlock.h>
 
 #include <linux/atomic.h>
+#ifdef CONFIG_ILOCKDEP
+#include <linux/ilockdep.h>
+#endif
 
 struct rw_semaphore;
 
@@ -28,6 +31,9 @@ struct rw_semaphore {
 	struct list_head	wait_list;
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
+#endif
+#ifdef CONFIG_ILOCKDEP
+	struct ilockdep_map idep_map;
 #endif
 };
 
@@ -55,11 +61,17 @@ static inline int rwsem_is_locked(struct rw_semaphore *sem)
 # define __RWSEM_DEP_MAP_INIT(lockname)
 #endif
 
+#ifdef CONFIG_ILOCKDEP
+# define __RWSEM_IDEP_MAP_INIT(lockname)  .idep_map = { .name = #lockname }
+#else
+# define __RWSEM_IDEP_MAP_INIT(lockname)
+#endif
 #define __RWSEM_INITIALIZER(name)			\
 	{ RWSEM_UNLOCKED_VALUE,				\
 	  __RAW_SPIN_LOCK_UNLOCKED(name.wait_lock),	\
 	  LIST_HEAD_INIT((name).wait_list)		\
-	  __RWSEM_DEP_MAP_INIT(name) }
+	  __RWSEM_DEP_MAP_INIT(name),	\
+	  __RWSEM_IDEP_MAP_INIT(name)}
 
 #define DECLARE_RWSEM(name) \
 	struct rw_semaphore name = __RWSEM_INITIALIZER(name)

@@ -10,6 +10,7 @@
 
 #include <linux/interrupt.h>
 #include <linux/completion.h>
+#include <linux/fs.h>
 
 struct request;
 struct mmc_data;
@@ -188,6 +189,9 @@ extern int __mmc_claim_host(struct mmc_host *host, atomic_t *abort);
 extern void mmc_release_host(struct mmc_host *host);
 extern int mmc_try_claim_host(struct mmc_host *host);
 
+extern void mmc_get_card(struct mmc_card *card);
+extern void mmc_put_card(struct mmc_card *card);
+
 extern int mmc_flush_cache(struct mmc_card *);
 
 extern int mmc_detect_card_removed(struct mmc_host *host);
@@ -205,4 +209,34 @@ static inline void mmc_claim_host(struct mmc_host *host)
 
 extern u32 mmc_vddrange_to_ocrmask(int vdd_min, int vdd_max);
 
+struct raw_hd_struct {
+	sector_t start_sect;
+	sector_t nr_sects;
+	int partno;
+	int major;
+	int first_minor;
+	/* index = first_minor >> MMC_SHIFT */
+};
+
+struct raw_mmc_panic_ops {
+	int type;	/* MMC, SD, SDIO on the fly */
+	int (*panic_probe)(struct raw_hd_struct *rhd, int type);
+	int (*panic_write)(struct raw_hd_struct *rhd, char *buf,
+			unsigned int offset, unsigned int len);
+	int (*panic_erase)(struct raw_hd_struct *rhd, unsigned int offset,
+			unsigned int len);
+};
+struct mmcpart_notifier {
+	void (*add)(struct raw_hd_struct *mmcpart,
+			struct raw_mmc_panic_ops *panic_ops);
+	void (*remove)(struct raw_hd_struct *mmcpart);
+	char partname[BDEVNAME_SIZE];
+	struct list_head list;
+};
+
+extern int get_mmcpart_by_name(char *part_name, char *dev_name);
+extern void get_mmcalias_by_id(char *buf, int major, int minor);
+
+extern void register_mmcpart_user(struct mmcpart_notifier *new);
+extern int unregister_mmcpart_user(struct mmcpart_notifier *old);
 #endif /* LINUX_MMC_CORE_H */

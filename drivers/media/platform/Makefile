@@ -50,4 +50,6 @@ obj-y	+= davinci/
 
 obj-$(CONFIG_ARCH_OMAP)	+= omap/
 
+obj-$(CONFIG_VIDEO_HISI_CAMERA) += hisi-cam/
+
 ccflags-y += -I$(srctree)/drivers/media/i2c

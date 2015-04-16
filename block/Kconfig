@@ -107,6 +107,11 @@ endmenu
 
 endif # BLOCK
 
+config HW_SYSTEM_WR_PROTECT
+	bool "write protection function of system partitions."
+	depends on BLOCK
+	default n
+
 config BLOCK_COMPAT
 	bool
 	depends on BLOCK && COMPAT

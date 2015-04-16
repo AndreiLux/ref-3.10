@@ -219,6 +219,7 @@
 #include <linux/usb/composite.h>
 
 #include "gadget_chips.h"
+#include <linux/huawei/usb/hw_rwswitch.h>
 
 
 /*------------------------------------------------------------------------*/
@@ -230,6 +231,7 @@ static const char fsg_string_interface[] = "Mass Storage";
 
 #include "storage_common.c"
 
+#define SC_REWIND_11                    0x11
 
 /*-------------------------------------------------------------------------*/
 
@@ -1815,6 +1817,13 @@ static int check_command(struct fsg_common *common, int cmnd_size,
 
 	return 0;
 }
+int get_suitestate(void);
+static int do_get_suitestate(struct fsg_common *common, struct fsg_buffhd *bh)
+{
+	u8 *buf = (u8* )bh->buf;
+	buf[0] = get_suitestate();
+	return 1;
+}
 
 /* wrapper of check_command for data size in blocks handling */
 static int check_command_size_in_blocks(struct fsg_common *common,
@@ -1859,6 +1868,11 @@ static int do_scsi_command(struct fsg_common *common)
 		if (reply == 0)
 			reply = do_inquiry(common, bh);
 		break;
+		case SEEK_6:
+				common->data_size_from_cmnd = 1;
+				if(common->cmnd[1] == 0x01 && common->curlun->cdrom == 1)
+				reply = do_get_suitestate(common, bh);
+				break;
 
 	case MODE_SELECT:
 		common->data_size_from_cmnd = common->cmnd[4];
@@ -2061,6 +2075,24 @@ static int do_scsi_command(struct fsg_common *common)
 				      "WRITE(12)");
 		if (reply == 0)
 			reply = do_write(common);
+		break;
+
+	 case SC_REWIND_11:
+		/* when rework in manufacture, if the phone is in google ports mode,
+		 * we need to switch it to multi-ports mode for using the diag.  */
+		{
+			u8 cmnd[MAX_COMMAND_SIZE];
+			memset(cmnd,0,sizeof(cmnd));
+			cmnd[0] = SC_REWIND_11;
+			cmnd[1] = 0x06;
+		        if(0 == memcmp(common->cmnd, cmnd, sizeof(cmnd))){
+		             usb_port_switch_request(INDEX_ENDUSER_SWITCH);//enduser pnp switch such as pc modem
+		        }
+			cmnd[9] = 0x11;
+			if(0 == memcmp(common->cmnd, cmnd, sizeof(cmnd))){
+		             usb_port_switch_request(INDEX_FACTORY_REWORK);//manufactory rework
+		        }
+	        }
 		break;
 
 	/*

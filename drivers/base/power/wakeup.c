@@ -467,6 +467,7 @@ static void update_prevent_sleep_time(struct wakeup_source *ws, ktime_t now)
 {
 	ktime_t delta = ktime_sub(now, ws->start_prevent_time);
 	ws->prevent_sleep_time = ktime_add(ws->prevent_sleep_time, delta);
+	ws->screen_off_time = ktime_add(ws->screen_off_time, delta);
 }
 #else
 static inline void update_prevent_sleep_time(struct wakeup_source *ws,
@@ -738,7 +739,7 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 			split_counters(&cnt, &inpr);
 			if (inpr == 0 || signal_pending(current))
 				break;
-
+			print_active_wakeup_sources();
 			schedule();
 		}
 		finish_wait(&wakeup_count_wait_queue, &wait);
@@ -796,6 +797,10 @@ void pm_wakep_autosleep_enabled(bool set)
 				else
 					update_prevent_sleep_time(ws, now);
 			}
+
+			if (set) { // screen off
+				ws->screen_off_time = ktime_set(0, 0);
+			}
 		}
 		spin_unlock_irq(&ws->lock);
 	}
@@ -819,6 +824,7 @@ static int print_wakeup_source_stats(struct seq_file *m,
 	unsigned long active_count;
 	ktime_t active_time;
 	ktime_t prevent_sleep_time;
+	ktime_t screen_off_time;
 	int ret;
 
 	spin_lock_irqsave(&ws->lock, flags);
@@ -826,6 +832,7 @@ static int print_wakeup_source_stats(struct seq_file *m,
 	total_time = ws->total_time;
 	max_time = ws->max_time;
 	prevent_sleep_time = ws->prevent_sleep_time;
+	screen_off_time = ws->screen_off_time;
 	active_count = ws->active_count;
 	if (ws->active) {
 		ktime_t now = ktime_get();
@@ -835,20 +842,24 @@ static int print_wakeup_source_stats(struct seq_file *m,
 		if (active_time.tv64 > max_time.tv64)
 			max_time = active_time;
 
-		if (ws->autosleep_enabled)
+		if (ws->autosleep_enabled) {
 			prevent_sleep_time = ktime_add(prevent_sleep_time,
 				ktime_sub(now, ws->start_prevent_time));
+			screen_off_time = ktime_add(screen_off_time,
+				ktime_sub(now, ws->start_prevent_time));
+		}
 	} else {
 		active_time = ktime_set(0, 0);
 	}
 
 	ret = seq_printf(m, "%-12s\t%lu\t\t%lu\t\t%lu\t\t%lu\t\t"
-			"%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
+			"%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\t\t%lld\n",
 			ws->name, active_count, ws->event_count,
 			ws->wakeup_count, ws->expire_count,
 			ktime_to_ms(active_time), ktime_to_ms(total_time),
 			ktime_to_ms(max_time), ktime_to_ms(ws->last_time),
-			ktime_to_ms(prevent_sleep_time));
+			ktime_to_ms(prevent_sleep_time),
+			ktime_to_ms(screen_off_time));
 
 	spin_unlock_irqrestore(&ws->lock, flags);
 
@@ -865,7 +876,7 @@ static int wakeup_sources_stats_show(struct seq_file *m, void *unused)
 
 	seq_puts(m, "name\t\tactive_count\tevent_count\twakeup_count\t"
 		"expire_count\tactive_since\ttotal_time\tmax_time\t"
-		"last_change\tprevent_suspend_time\n");
+		"last_change\tprevent_suspend_time\tscreen_off_time\n");
 
 	rcu_read_lock();
 	list_for_each_entry_rcu(ws, &wakeup_sources, entry)

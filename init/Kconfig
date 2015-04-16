@@ -739,18 +739,32 @@ config IKCONFIG_PROC
 	  through /proc/config.gz.
 
 config LOG_BUF_SHIFT
-	int "Kernel log buffer size (16 => 64KB, 17 => 128KB)"
-	range 12 21
-	default 17
+	int "Kernel log buffer size (16 => 64KB, 18 => 256KB)"
+	range 12 18
+	default 18
 	help
 	  Select kernel log buffer size as a power of 2.
 	  Examples:
+		     18 => 256 KB
 	  	     17 => 128 KB
 		     16 => 64 KB
 	             15 => 32 KB
 	             14 => 16 KB
 		     13 =>  8 KB
 		     12 =>  4 KB
+
+config KERNEL_LOG_FILE_LEN
+	int "Kernel log buffer size (18 => 256KB, 22 => 4MB)"
+	range 18 22
+	default 21
+	help
+	  Select kernel log file len
+	  Examples:
+                     18 => 256 KB
+                     19 => 512 KB
+                     20 =>  1  MB
+                     21 =>  2  MB
+                     22 =>  4  MB
 
 #
 # Architectures with an unreliable sched_clock() should select this:

@@ -231,7 +231,19 @@ static ssize_t ashmem_read(struct file *file, char __user *buf,
 		goto out_unlock;
 	}
 
+	if (!asma->file->f_op) {
+		pr_info("asma->file->f_op is NULL\n");
+		ret = -EBADF;
+		goto out_unlock;
+	}
+
+	if (!asma->file->f_op->read) {
+		pr_info("asma->file->f_op->read is NULL\n");
+		ret = -EBADF;
+		goto out_unlock;
+	}
 	mutex_unlock(&ashmem_mutex);
+
 
 	/*
 	 * asma and asma->file are used outside the lock here.  We assume
@@ -264,6 +276,18 @@ static loff_t ashmem_llseek(struct file *file, loff_t offset, int origin)
 	}
 
 	if (!asma->file) {
+		ret = -EBADF;
+		goto out;
+	}
+
+	if (!asma->file->f_op) {
+		pr_info("asma->file->f_op is NULL\n");
+		ret = -EBADF;
+		goto out;
+	}
+
+	if (!asma->file->f_op->llseek) {
+		pr_info("asma->file->f_op->llseek is NULL\n");
 		ret = -EBADF;
 		goto out;
 	}

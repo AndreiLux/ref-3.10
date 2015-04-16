@@ -1,0 +1,12 @@
+# DTS2013032504265 zhangxianfeng 00186749 20130322 create
+#
+# pppoesta device configuration
+#
+
+config PPPOESTA
+           tristate "pppoe status Driver"
+           default n
+           help
+           This is used to record the pppoe status.
+
+

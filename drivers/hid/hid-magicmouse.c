@@ -461,7 +461,8 @@ static int magicmouse_input_mapping(struct hid_device *hdev,
 	return 0;
 }
 
-static void magicmouse_input_configured(struct hid_device *hdev,
+/* DTS2014032809799 suhao 2014-05-09 begin */
+static int magicmouse_input_configured(struct hid_device *hdev,
 		struct hid_input *hi)
 
 {
@@ -473,7 +474,9 @@ static void magicmouse_input_configured(struct hid_device *hdev,
 		/* clean msc->input to notify probe() of the failure */
 		msc->input = NULL;
 	}
+    return ret;
 }
+/* DTS2014032809799 suhao 2014-05-09 end */
 
 
 static int magicmouse_probe(struct hid_device *hdev,

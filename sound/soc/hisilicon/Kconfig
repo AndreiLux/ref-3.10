@@ -1,0 +1,14 @@
+menu "SoC Audio support for HI3630"
+
+config SND_SOC_PCM_HI3630
+	tristate "SoC Audio support for HI3630"
+	help
+	  Say y to enable this option for HI3630 I2S audio support.
+
+config SND_HI3630_HI6401
+	tristate "Hi3630-Hi6401 sound support"
+	help
+	  Say y to enable sound support for Hi3630-Hi6401
+
+endmenu
+

@@ -227,11 +227,28 @@ static int clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 
 	return 0;
 }
+#ifdef CONFIG_HI3630_CLK_DEBUG
+static int k3_divreg_check(struct clk_hw *hw)
+{
+	unsigned long rate;
+	struct clk *clk = hw->clk;
+	struct clk *pclk = clk_get_parent(clk);
+
+	rate = clk_divider_recalc_rate(hw, clk_get_rate(pclk));
+	if (rate == clk_get_rate(clk))
+		return 1;
+	else
+		return 0;
+}
+#endif
 
 const struct clk_ops clk_divider_ops = {
 	.recalc_rate = clk_divider_recalc_rate,
 	.round_rate = clk_divider_round_rate,
 	.set_rate = clk_divider_set_rate,
+#ifdef CONFIG_HI3630_CLK_DEBUG
+	.check_divreg = k3_divreg_check,
+#endif
 };
 EXPORT_SYMBOL_GPL(clk_divider_ops);
 

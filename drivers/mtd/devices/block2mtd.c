@@ -182,6 +182,12 @@ static int block2mtd_write(struct mtd_info *mtd, loff_t to, size_t len,
 	return err;
 }
 
+#ifdef CONFIG_BALONG_MTD
+static int block2mtd_markbad(struct mtd_info *mtd, loff_t ofs)
+{
+	return 0;
+}
+#endif
 
 /* sync the device - wait until the write queue is empty */
 static void block2mtd_sync(struct mtd_info *mtd)
@@ -269,6 +275,9 @@ static struct block2mtd_dev *add_device(char *devname, int erase_size)
 	dev->mtd._write = block2mtd_write;
 	dev->mtd._sync = block2mtd_sync;
 	dev->mtd._read = block2mtd_read;
+#ifdef CONFIG_BALONG_MTD
+	dev->mtd._block_markbad = block2mtd_markbad;
+#endif
 	dev->mtd.priv = dev;
 	dev->mtd.owner = THIS_MODULE;
 
@@ -350,7 +359,7 @@ static char block2mtd_paramline[80 + 12]; /* 80 for device, 12 for erase size */
 #endif
 
 
-static int block2mtd_setup2(const char *val)
+int block2mtd_setup2(const char *val)
 {
 	char buf[80 + 12]; /* 80 for device, 12 for erase size */
 	char *str = buf;

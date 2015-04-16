@@ -1,0 +1,4 @@
+986d985
+< 	kbase_reg_write(kbdev, GPU_CONTROL_REG(L2_MMU_CONFIG), 0xa000000, NULL);
+1025d1023
+< 	kbase_reg_write(kbdev, GPU_CONTROL_REG(L2_MMU_CONFIG), 0xa000000, NULL);

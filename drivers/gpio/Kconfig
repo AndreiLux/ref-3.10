@@ -197,6 +197,17 @@ config GPIO_PL061
 	help
 	  Say yes here to support the PrimeCell PL061 GPIO device
 
+config GPIO_RECOURCE0_LOCK
+	tristate "GPIO RESOURCE LOCK"
+	help
+	  Say yes here to support this lock
+
+config GPIO_PM_SUPPORT
+	bool "GPIO PM SUPPORT"
+	default n
+	help
+	  Say yes here to support PM
+
 config GPIO_PXA
 	bool "PXA GPIO support"
 	depends on ARCH_PXA || ARCH_MMP

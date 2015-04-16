@@ -34,6 +34,10 @@
 #include <linux/delay.h>
 #include <linux/capability.h>
 #include <linux/compat.h>
+#include <linux/syscalls.h>
+
+#include <linux/mmc/core.h>
+#include <linux/pm_runtime.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/mmc.h>
@@ -54,13 +58,65 @@ MODULE_ALIAS("mmc:block");
 #endif
 #define MODULE_PARAM_PREFIX "mmcblk."
 
+#ifdef CONFIG_BALONG_MTD
+enum{
+	MODEMOM_PARTITION = 0,
+	MODEMNV_PARTITION,
+	MODEMNV_BACK_PARTITION,
+	MODEMNV_UPDATE_PARTITION,
+	MODEMNV_FACTORY_PARTITION,
+	MODEMNV_SYSTEM_PARTITION,
+	MODEM_PARTITION,
+	MODEMDSP_PARTITION,
+	MODEMVRL_P_PARTITION,
+	MODEMVRL_M_PARTITION,
+	MODEM_INVALID_PARTITION,
+};
+
+enum{
+	MODEMOM_MOUNT = 0,
+	MODEM_NV_MOUNT,
+	MODEM_INVALID_MOUNT,
+};
+
+struct modem_partition_info {
+	unsigned int  img_type;
+	char partion_name[32];
+};
+
+struct modem_mount_info {
+	unsigned int  partion_type;
+	char mount_name[32];
+};
+
+static struct modem_partition_info modem_partition_list[MODEM_INVALID_PARTITION] = {
+	{MODEMOM_PARTITION,			"modem_om"},
+	{MODEMNV_PARTITION,			"modemnvm_img"},
+	{MODEMNV_BACK_PARTITION,		"modemnvm_backup"},
+	{MODEMNV_UPDATE_PARTITION,		"modemnvm_update"},
+	{MODEMNV_FACTORY_PARTITION,		"modemnvm_factory"},
+	{MODEMNV_SYSTEM_PARTITION,		"modemnvm_system"},
+	{MODEM_PARTITION,			"modem"},
+	{MODEMDSP_PARTITION,			"modem_dsp"},
+	{MODEMVRL_P_PARTITION,			"vrl"},
+	{MODEMVRL_M_PARTITION,			"vrl_backup"},
+};
+
+
+static struct modem_mount_info modem_mount_list[MODEM_INVALID_MOUNT] = {
+	{MODEMOM_MOUNT,				"modem_log"},
+	{MODEM_NV_MOUNT,				"mnvm2:0"},
+};
+
+
+#endif
 #define INAND_CMD38_ARG_EXT_CSD  113
 #define INAND_CMD38_ARG_ERASE    0x00
 #define INAND_CMD38_ARG_TRIM     0x01
 #define INAND_CMD38_ARG_SECERASE 0x80
 #define INAND_CMD38_ARG_SECTRIM1 0x81
 #define INAND_CMD38_ARG_SECTRIM2 0x88
-#define MMC_BLK_TIMEOUT_MS  (10 * 60 * 1000)        /* 10 minute timeout */
+#define MMC_BLK_TIMEOUT_MS  (20 * 60 * 1000)        /* 20 minute timeout */
 
 #define mmc_req_rel_wr(req)	(((req->cmd_flags & REQ_FUA) || \
 				  (req->cmd_flags & REQ_META)) && \
@@ -71,11 +127,19 @@ MODULE_ALIAS("mmc:block");
 static DEFINE_MUTEX(block_mutex);
 
 /*
+ * max 32 partitions per card
+ */
+#define MMC_SHIFT	5
+#define MMC_NUM_MINORS	(256 >> MMC_SHIFT)
+
+/*
  * The defaults come from config options but can be overriden by module
  * or bootarg options.
  */
 static int perdev_minors = CONFIG_MMC_BLOCK_MINORS;
-
+#ifdef CONFIG_BALONG_MTD
+extern int block2mtd_setup2(const char *val);
+#endif
 /*
  * We've only got one major, so number of mmcblk devices is
  * limited to 256 / number of minors per device.
@@ -131,10 +195,193 @@ enum {
 
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
+static LIST_HEAD(mmcpart_notifiers);
 
+#define MAX_MMC_HOST 8
+/* mutex used to control both the table and the notifier list */
+DEFINE_MUTEX(mmcpart_table_mutex);
+struct mmcpart_alias {
+	struct raw_hd_struct hd;
+	char partname[BDEVNAME_SIZE];
+};
+static struct mmcpart_alias mmcpart_table[MAX_MMC_HOST][1 << MMC_SHIFT];
+static struct raw_mmc_panic_ops mmc_panic_ops_table[MAX_MMC_HOST];
 static inline int mmc_blk_part_switch(struct mmc_card *card,
 				      struct mmc_blk_data *md);
 static int get_card_status(struct mmc_card *card, u32 *status, int retries);
+
+void register_mmcpart_user(struct mmcpart_notifier *new)
+{
+	int i, j;
+
+	mutex_lock(&mmcpart_table_mutex);
+
+	list_add(&new->list, &mmcpart_notifiers);
+
+	__module_get(THIS_MODULE);
+
+	for (i = 0; i < MAX_MMC_HOST; i++)
+		for (j = 0; j < (1 << MMC_SHIFT); j++)
+			if (!strncmp(mmcpart_table[i][j].partname,
+					new->partname, BDEVNAME_SIZE) &&
+					mmcpart_table[i][j].hd.nr_sects) {
+				new->add(&mmcpart_table[i][j].hd,
+					&mmc_panic_ops_table[i]);
+				break;
+			}
+
+	mutex_unlock(&mmcpart_table_mutex);
+}
+
+int unregister_mmcpart_user(struct mmcpart_notifier *old)
+{
+	int i, j;
+
+	mutex_lock(&mmcpart_table_mutex);
+
+	module_put(THIS_MODULE);
+
+	for (i = 0; i < MAX_MMC_HOST; i++)
+		for (j = 0; j < (1 << MMC_SHIFT); j++)
+			if (!strncmp(mmcpart_table[i][j].partname,
+					old->partname, BDEVNAME_SIZE)) {
+				old->remove(&mmcpart_table[i][j].hd);
+				break;
+			}
+
+	list_del(&old->list);
+	mutex_unlock(&mmcpart_table_mutex);
+	return 0;
+}
+/*
+ * split string to substrings according to char pattern
+ * deal with multiple characters of pattern
+ * more parameters than max_param are ignored
+ * the input string is modified
+ * return value range from 1~max_param
+ */
+static int split(char *string, char **index_array, char pattern,
+		 int max_param)
+{
+	char *ptr;
+	int count;
+
+	/* thumb through the characters */
+	for (ptr = string, count = 0; count < max_param; count++, ptr++) {
+		/* find the start of substring */
+		while (*ptr == pattern)
+			ptr++;
+		if (*ptr == '\0')
+			break;
+		*(index_array + count) = ptr;
+		/* find the end of substring */
+		while (*ptr != pattern && *ptr != '\0')
+			ptr++;
+		if (*ptr != '\0')
+			*ptr = '\0';
+		else {
+			count++;
+			break;
+		}
+	}
+
+	return count;
+}
+/*
+ * mmcparts=mmcblk0:p1(name1),p2(name2)...;mmcblk1:p1(name7)
+ * build to gurantee no parts have the same name
+ */
+#define MMCPARTS_STR_LEN 512
+static int __init mmcpart_setup(char *arg)
+{
+	int host_num;
+	int part_num;
+	int i, j;
+	int host_index;
+	int part_index;
+	char mmcparts_str[MMCPARTS_STR_LEN];
+	char *mmcparts_str_trim[1] = {0};
+	char *subhost_index[MAX_MMC_HOST];
+	char *subhostname_index[3];
+	char *subpart_index[1 << MMC_SHIFT];
+	char *subpartstr_index[2];
+	char *subpartname_index[2];
+	int ret;
+
+	memset(mmcparts_str, 0, MMCPARTS_STR_LEN);
+	memset(mmcpart_table, 0, sizeof(mmcpart_table));
+	strncpy(mmcparts_str, arg, MMCPARTS_STR_LEN - 1);
+	split(mmcparts_str, mmcparts_str_trim, ' ', 1);
+	host_num = split(mmcparts_str_trim[0], subhost_index, ';',
+		MAX_MMC_HOST);
+	for (i = 0; i < host_num; i++) {
+		if (split(subhost_index[i], subhostname_index, ':', 3) != 2)
+			continue;
+		if ((strlen(subhostname_index[0]) != 7) ||
+			(strncmp(subhostname_index[0], "mmcblk", 6) != 0) ||
+			(subhostname_index[0][6] < '0') ||
+			(subhostname_index[0][6] > 0x30 + MAX_MMC_HOST - 1))
+			continue;
+		host_index = subhostname_index[0][6] - 0x30;
+		part_num = split(subhostname_index[1], subpart_index, ',',
+			1 << MMC_SHIFT);
+		for (j = 0; j < part_num; j++) {
+			if (split(subpart_index[j], subpartstr_index, ')', 2)
+					!= 1)
+				continue;
+			if (split(subpartstr_index[0], subpartname_index,
+					'(', 2) != 2)
+				continue;
+			if (strlen(subpartname_index[0]) < 2)
+				continue;
+			ret = strict_strtol(&subpartname_index[0][1], 0,
+				(long *)&part_index);
+			if ((subpartname_index[0][0] != 'p') || ret ||
+				part_index >= (1 << MMC_SHIFT))
+				continue;
+			strncpy(mmcpart_table[host_index][part_index].partname,
+				subpartname_index[1], BDEVNAME_SIZE - 1);
+		}
+	}
+	return 0;
+}
+early_param("mmcparts", mmcpart_setup);
+/*
+ * return alias name of mmc partition
+ * device may not be there
+ */
+void get_mmcalias_by_id(char *buf, int major, int minor)
+{
+	int host_index, partno;
+
+	buf[0] = '\0';
+	if (major != MMC_BLOCK_MAJOR)
+		return;
+
+	mutex_lock(&mmcpart_table_mutex);
+	host_index = minor / (1 << MMC_SHIFT);
+	partno = minor % (1 << MMC_SHIFT);
+	strncpy(buf, mmcpart_table[host_index][partno].partname, BDEVNAME_SIZE);
+	buf[BDEVNAME_SIZE - 1] = '\0';
+	mutex_unlock(&mmcpart_table_mutex);
+}
+int get_mmcpart_by_name(char *part_name, char *dev_name)
+{
+	int i, j;
+
+	mutex_lock(&mmcpart_table_mutex);
+	for (i = 0; i < MAX_MMC_HOST; i++)
+		for (j = 0; j < (1 << MMC_SHIFT); j++)
+			if (!strncmp(part_name, mmcpart_table[i][j].partname,
+					BDEVNAME_SIZE)) {
+				snprintf(dev_name, BDEVNAME_SIZE,
+					"mmcblk%dp%d", i, j);
+				mutex_unlock(&mmcpart_table_mutex);
+				return 0;
+			}
+	mutex_unlock(&mmcpart_table_mutex);
+	return -1;
+}
 
 static inline void mmc_blk_clear_packed(struct mmc_queue_req *mqrq)
 {
@@ -221,7 +468,7 @@ static ssize_t power_ro_lock_store(struct device *dev,
 	md = mmc_blk_get(dev_to_disk(dev));
 	card = md->queue.card;
 
-	mmc_claim_host(card->host);
+	mmc_get_card(card);
 
 	ret = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL, EXT_CSD_BOOT_WP,
 				card->ext_csd.boot_ro_lock |
@@ -232,7 +479,7 @@ static ssize_t power_ro_lock_store(struct device *dev,
 	else
 		card->ext_csd.boot_ro_lock |= EXT_CSD_BOOT_WP_B_PWR_WP_EN;
 
-	mmc_release_host(card->host);
+	mmc_put_card(card);
 
 	if (!ret) {
 		pr_info("%s: Locking boot partition ro until next power on\n",
@@ -490,7 +737,7 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 
 	mrq.cmd = &cmd;
 
-	mmc_claim_host(card->host);
+	mmc_get_card(card);
 
 	err = mmc_blk_part_switch(card, md);
 	if (err)
@@ -557,7 +804,7 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 	}
 
 cmd_rel_host:
-	mmc_release_host(card->host);
+	mmc_put_card(card);
 
 cmd_done:
 	mmc_blk_put(md);
@@ -573,6 +820,12 @@ static int mmc_blk_ioctl(struct block_device *bdev, fmode_t mode,
 	int ret = -EINVAL;
 	if (cmd == MMC_IOC_CMD)
 		ret = mmc_blk_ioctl_cmd(bdev, (struct mmc_ioc_cmd __user *)arg);
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+	if (cmd == MMC_IOC_WP_CMD) {
+		pr_debug("[HW]:%s.ioclt MMC_IOC_WP_CMD.\n", __func__);
+		ret = blk_set_ro_secure_debuggable(1);
+	}
+#endif
 	return ret;
 }
 
@@ -661,7 +914,7 @@ static u32 mmc_sd_num_wr_blocks(struct mmc_card *card)
 	mrq.cmd = &cmd;
 	mrq.data = &data;
 
-	blocks = kmalloc(4, GFP_KERNEL);
+	blocks = kmalloc(32, GFP_KERNEL);
 	if (!blocks)
 		return (u32)-1;
 
@@ -792,8 +1045,10 @@ static int mmc_blk_cmd_recovery(struct mmc_card *card, struct request *req,
 			break;
 
 		prev_cmd_status_valid = false;
+#if 0
 		pr_err("%s: error %d sending status command, %sing\n",
 		       req->rq_disk->disk_name, err, retry ? "retry" : "abort");
+#endif
 	}
 
 	/* We couldn't get a response from the card.  Give up. */
@@ -953,7 +1208,8 @@ out:
 
 	return err ? 0 : 1;
 }
-
+/*use normal_erase instead of sec_erase to make ext4,ota,resetfactory faster*/
+#if 0
 static int mmc_blk_issue_secdiscard_rq(struct mmc_queue *mq,
 				       struct request *req)
 {
@@ -1038,7 +1294,7 @@ out:
 
 	return err ? 0 : 1;
 }
-
+#endif
 static int mmc_blk_issue_flush(struct mmc_queue *mq, struct request *req)
 {
 	struct mmc_blk_data *md = mq->data;
@@ -1944,9 +2200,11 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		mmc_resume_bus(card->host);
 #endif
 
-	if (req && !mq->mqrq_prev->req)
+	if (req && !mq->mqrq_prev->req && !mq->tmp_get_card_flag) {
 		/* claim host only for the first request */
-		mmc_claim_host(card->host);
+		mmc_get_card(card);
+		mq->tmp_get_card_flag = 1;
+	}
 
 	ret = mmc_blk_part_switch(card, md);
 	if (ret) {
@@ -1962,10 +2220,13 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 		/* complete ongoing async transfer before issuing discard */
 		if (card->host->areq)
 			mmc_blk_issue_rw_rq(mq, NULL);
+/*use normal_erase instead of sec_erase to make ext4,ota,resetfactory faster*/
+#if 0
 		if (req->cmd_flags & REQ_SECURE &&
 			!(card->quirks & MMC_QUIRK_SEC_ERASE_TRIM_BROKEN))
 			ret = mmc_blk_issue_secdiscard_rq(mq, req);
 		else
+#endif
 			ret = mmc_blk_issue_discard_rq(mq, req);
 	} else if (cmd_flags & REQ_FLUSH) {
 		/* complete ongoing async transfer before issuing flush */
@@ -1982,15 +2243,17 @@ static int mmc_blk_issue_rq(struct mmc_queue *mq, struct request *req)
 	}
 
 out:
-	if ((!req && !(mq->flags & MMC_QUEUE_NEW_REQUEST)) ||
-	     (cmd_flags & MMC_REQ_SPECIAL_MASK))
+	if ((!req && !(mq->flags & MMC_QUEUE_NEW_REQUEST) && mq->tmp_get_card_flag) ||
+	    ((cmd_flags & MMC_REQ_SPECIAL_MASK) && mq->tmp_get_card_flag)) {
 		/*
 		 * Release host when there are no more requests
 		 * and after special request(discard, flush) is done.
 		 * In case sepecial request, there is no reentry to
 		 * the 'mmc_blk_issue_rq' with 'mqrq_prev->req'.
 		 */
-		mmc_release_host(card->host);
+		mmc_put_card(card);
+		mq->tmp_get_card_flag = 0;
+	}
 	return ret;
 }
 
@@ -2357,8 +2620,13 @@ static const struct mmc_fixup blk_fixups[] =
 static int mmc_blk_probe(struct mmc_card *card)
 {
 	struct mmc_blk_data *md, *part_md;
+	struct mmcpart_notifier *nt;
+	int i, index;
 	char cap_str[10];
-
+	int sequence;
+#ifdef CONFIG_BALONG_MTD
+	int err;
+#endif
 	/*
 	 * Check that the card supports the command class(es) we need.
 	 */
@@ -2391,6 +2659,102 @@ static int mmc_blk_probe(struct mmc_card *card)
 		if (mmc_add_disk(part_md))
 			goto out;
 	}
+	mutex_lock(&mmcpart_table_mutex);
+	index = md->disk->first_minor >> MMC_SHIFT;
+	if (md->queue.card) {
+		mmc_panic_ops_table[index].type = md->queue.card->type;
+		mmc_panic_ops_table[index].panic_probe =
+			md->queue.card->host->ops->panic_probe;
+		mmc_panic_ops_table[index].panic_write =
+			md->queue.card->host->ops->panic_write;
+		mmc_panic_ops_table[index].panic_erase =
+			md->queue.card->host->ops->panic_erase;
+	}
+	for (i = 0; i < md->disk->part_tbl->len; i++) {
+		if (!md->disk->part_tbl->part[i])
+			continue;
+		mmcpart_table[index][i].hd.start_sect =
+			md->disk->part_tbl->part[i]->start_sect;
+		mmcpart_table[index][i].hd.nr_sects =
+			md->disk->part_tbl->part[i]->nr_sects;
+		mmcpart_table[index][i].hd.partno = i;
+		mmcpart_table[index][i].hd.major = md->disk->major;
+		mmcpart_table[index][i].hd.first_minor = md->disk->first_minor;
+
+		list_for_each_entry(nt, &mmcpart_notifiers, list) {
+			if (strlen(nt->partname) && !strncmp(nt->partname,
+					mmcpart_table[index][i].partname,
+					BDEVNAME_SIZE)) {
+				printk(KERN_INFO "%s: adding mmcblk%dp%d:%s\n",
+					__func__, index, i,
+					mmcpart_table[index][i].partname);
+				nt->add(&mmcpart_table[index][i].hd,
+					&mmc_panic_ops_table[index]);
+			}
+		}
+	}
+
+#ifdef CONFIG_BALONG_MTD
+	for (i = 0; i < md->disk->part_tbl->len; i++) {
+		if (!md->disk->part_tbl->part[i])
+			continue;
+
+		for (sequence = 0; sequence < MODEM_INVALID_PARTITION; sequence++) {
+			if (0 == strcmp(mmcpart_table[index][i].partname, modem_partition_list[sequence].partion_name)) {
+				char str_dev[32];
+				char str_mountpoint[32];
+
+				memset(str_mountpoint, 0 , sizeof(str_mountpoint));
+				if (sequence < MODEM_INVALID_MOUNT) {
+					sprintf(str_mountpoint, "/%s", modem_mount_list[sequence].mount_name);
+					err = sys_mkdir(str_mountpoint, S_IRWXU | S_IRWXG | S_IRWXO);
+					if (err < 0)
+						printk("[%s]: sys_mkdir %s failed : %d\n", __func__, str_mountpoint, err);
+				}
+
+				memset(str_dev, 0 , sizeof(str_dev));
+				sprintf(str_dev, "/dev/block/mmcblk%dp%d", index, i);
+				if (sys_access((const char __user *)"/dev/block", 0) != 0) {
+					err = sys_mkdir("/dev/block", S_IRWXU | S_IRWXG | S_IRWXO);
+					if (err < 0)
+					printk("[%s]: sys_mkdir /dev/block failed : %d\n", __func__, err);
+				}
+
+				err = sys_mknod(str_dev, S_IFBLK | S_IRWXU | S_IRWXG | S_IRWXO,
+								(md->disk->major << 8) +  md->disk->first_minor + i);
+				if (err < 0)
+					printk("[%s]: sys_mknod %s [%d,%d] failed : %d\n", __func__, str_dev,
+							md->disk->major, md->disk->first_minor, err);
+
+				if (sequence < MODEM_INVALID_MOUNT) {
+					err = sys_mount(str_dev, str_mountpoint, "ext4", 0, NULL);
+					if (err)
+						printk("[%s]: mount %s to %s failed : %d\n", __func__, str_dev, str_mountpoint, err);
+					else
+						printk("[%s]: mount %s to %s ok\n", __func__, str_dev, str_mountpoint);
+				}else {
+					block2mtd_setup2(str_dev);
+				}
+
+			}
+		}
+	}
+#endif
+
+	mutex_unlock(&mmcpart_table_mutex);
+
+	pm_runtime_set_autosuspend_delay(&card->dev, 3000);
+	pm_runtime_use_autosuspend(&card->dev);
+
+	/*
+	 * Don't enable runtime PM for SD-combo cards here. Leave that
+	 * decision to be taken during the SDIO init sequence instead.
+	 */
+	if (card->type != MMC_TYPE_SD_COMBO) {
+		pm_runtime_set_active(&card->dev);
+		pm_runtime_enable(&card->dev);
+	}
+
 	return 0;
 
  out:
@@ -2401,17 +2765,62 @@ static int mmc_blk_probe(struct mmc_card *card)
 
 static void mmc_blk_remove(struct mmc_card *card)
 {
+	int i, index;
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
+	struct mmcpart_notifier *nt;
 
-	mmc_blk_remove_parts(card, md);
+	if (md) {
+		index = md->disk->first_minor >> MMC_SHIFT;
+		mutex_lock(&mmcpart_table_mutex);
+		for (i = 0; i < md->disk->part_tbl->len; i++) {
+			list_for_each_entry(nt, &mmcpart_notifiers, list)
+				if (strlen(nt->partname) &&
+				    !strncmp(nt->partname,
+				    mmcpart_table[index][i].partname,
+				    BDEVNAME_SIZE))
+					nt->remove(&mmcpart_table[index][i].hd);
+			memset(&mmcpart_table[index][i].hd, 0,
+				sizeof(struct raw_hd_struct));
+		}
+		memset(&mmc_panic_ops_table[index], 0,
+			sizeof(struct raw_mmc_panic_ops));
+		mutex_unlock(&mmcpart_table_mutex);
+	}
+	if (md)
+		mmc_blk_remove_parts(card, md);
+	pm_runtime_get_sync(&card->dev);
 	mmc_claim_host(card->host);
-	mmc_blk_part_switch(card, md);
+	if (md)
+		mmc_blk_part_switch(card, md);
 	mmc_release_host(card->host);
-	mmc_blk_remove_req(md);
+	if (card->type != MMC_TYPE_SD_COMBO)
+		pm_runtime_disable(&card->dev);
+	pm_runtime_put_noidle(&card->dev);
+	if (md)
+		mmc_blk_remove_req(md);
 	mmc_set_drvdata(card, NULL);
 #ifdef CONFIG_MMC_BLOCK_DEFERRED_RESUME
 	mmc_set_bus_resume_policy(card->host, 0);
 #endif
+}
+
+static int mmc_blk_shutdown(struct mmc_card *card)
+{
+	struct mmc_blk_data *part_md;
+	struct mmc_blk_data *md = mmc_get_drvdata(card);
+
+	printk("%s:%d ++\n", __func__, __LINE__);
+
+	if (md) {
+		pm_runtime_get_sync(&card->dev);
+		mmc_queue_suspend(&md->queue);
+		list_for_each_entry(part_md, &md->part, part) {
+			mmc_queue_suspend(&part_md->queue);
+		}
+	}
+
+	printk("%s:%d --\n", __func__, __LINE__);
+	return 0;
 }
 
 #ifdef CONFIG_PM
@@ -2421,6 +2830,7 @@ static int mmc_blk_suspend(struct mmc_card *card)
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
 
 	if (md) {
+		pm_runtime_get_sync(&card->dev);
 		mmc_queue_suspend(&md->queue);
 		list_for_each_entry(part_md, &md->part, part) {
 			mmc_queue_suspend(&part_md->queue);
@@ -2444,6 +2854,7 @@ static int mmc_blk_resume(struct mmc_card *card)
 		list_for_each_entry(part_md, &md->part, part) {
 			mmc_queue_resume(&part_md->queue);
 		}
+		pm_runtime_put(&card->dev);
 	}
 	return 0;
 }
@@ -2460,6 +2871,7 @@ static struct mmc_driver mmc_driver = {
 	.remove		= mmc_blk_remove,
 	.suspend	= mmc_blk_suspend,
 	.resume		= mmc_blk_resume,
+	.shutdown 	= mmc_blk_shutdown,
 };
 
 static int __init mmc_blk_init(void)

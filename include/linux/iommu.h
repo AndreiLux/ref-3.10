@@ -22,6 +22,7 @@
 #include <linux/errno.h>
 #include <linux/err.h>
 #include <linux/types.h>
+#include <linux/scatterlist.h>
 
 #define IOMMU_READ	(1)
 #define IOMMU_WRITE	(2)
@@ -65,6 +66,23 @@ enum iommu_attr {
 	DOMAIN_ATTR_MAX,
 };
 
+/* metadata for iommu mapping */
+struct iommu_map_format {
+	unsigned long iova_start;
+	unsigned long iova_size;
+	unsigned long iommu_ptb_base;
+	unsigned long iommu_iova_base;
+	unsigned long phys_page_line;
+	unsigned long virt_page_line;
+	unsigned long is_tile;
+};
+
+struct tile_format {
+	unsigned long is_tile;
+	unsigned long phys_page_line;
+	unsigned long virt_page_line;
+};
+
 #ifdef CONFIG_IOMMU_API
 
 /**
@@ -92,6 +110,17 @@ struct iommu_ops {
 		   phys_addr_t paddr, size_t size, int prot);
 	size_t (*unmap)(struct iommu_domain *domain, unsigned long iova,
 		     size_t size);
+
+	int (*map_range)(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot);
+	size_t (*unmap_range)(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+	int (*map_tile)(struct iommu_domain *domain, unsigned long iova,
+	   struct scatterlist *sg, size_t size, int prot,
+	   struct tile_format *format);
+	size_t (*unmap_tile)(struct iommu_domain *domain, unsigned long iova,
+	     size_t size);
+
 	phys_addr_t (*iova_to_phys)(struct iommu_domain *domain, dma_addr_t iova);
 	int (*domain_has_cap)(struct iommu_domain *domain,
 			      unsigned long cap);
@@ -135,6 +164,20 @@ extern int iommu_map(struct iommu_domain *domain, unsigned long iova,
 		     phys_addr_t paddr, size_t size, int prot);
 extern size_t iommu_unmap(struct iommu_domain *domain, unsigned long iova,
 		       size_t size);
+
+int iommu_map_range(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot);
+
+extern size_t iommu_unmap_range(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+
+int iommu_map_tile(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot,
+		    struct tile_format *format);
+
+int iommu_unmap_tile(struct iommu_domain *domain, unsigned long iova,
+		      size_t size);
+
 extern phys_addr_t iommu_iova_to_phys(struct iommu_domain *domain, dma_addr_t iova);
 extern int iommu_domain_has_cap(struct iommu_domain *domain,
 				unsigned long cap);

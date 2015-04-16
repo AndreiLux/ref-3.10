@@ -241,3 +241,16 @@ config VIDEO_MEM2MEM_TESTDEV
 	  This is a virtual test device for the memory-to-memory driver
 	  framework.
 endif #V4L_TEST_DRIVERS
+
+menuconfig VIDEO_HISI_CAMERA
+	bool "Hisilicon Camera multimedia devices"
+	depends on MEDIA_CONTROLLER
+	default n
+	---help---
+	  Say Y here to enable Hisilicon Camera/V4L2 Features support
+
+if VIDEO_HISI_CAMERA
+
+source "drivers/media/platform/hisi-cam/Kconfig"
+
+endif #VIDEO_HISI_CAMERA

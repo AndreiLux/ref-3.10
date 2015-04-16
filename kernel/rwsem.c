@@ -9,7 +9,9 @@
 #include <linux/sched.h>
 #include <linux/export.h>
 #include <linux/rwsem.h>
-
+#ifdef CONFIG_ILOCKDEP
+#include <linux/ilockdep.h>
+#endif
 #include <linux/atomic.h>
 
 /*
@@ -19,8 +21,13 @@ void __sched down_read(struct rw_semaphore *sem)
 {
 	might_sleep();
 	rwsem_acquire_read(&sem->dep_map, 0, 0, _RET_IP_);
-
+#ifndef CONFIG_ILOCKDEP
 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);
+#else
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+	ILOCKDEP_CONTENDED(sem, __down_read_trylock, __down_read);
+#endif
+
 }
 
 EXPORT_SYMBOL(down_read);
@@ -31,9 +38,15 @@ EXPORT_SYMBOL(down_read);
 int down_read_trylock(struct rw_semaphore *sem)
 {
 	int ret = __down_read_trylock(sem);
-
+#ifdef CONFIG_ILOCKDEP
+if (ret == 1) {
+	rwsem_acquire_read(&sem->dep_map, 0, 1, _RET_IP_);
+	ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+	}
+#else
 	if (ret == 1)
 		rwsem_acquire_read(&sem->dep_map, 0, 1, _RET_IP_);
+#endif
 	return ret;
 }
 
@@ -46,8 +59,13 @@ void __sched down_write(struct rw_semaphore *sem)
 {
 	might_sleep();
 	rwsem_acquire(&sem->dep_map, 0, 0, _RET_IP_);
-
+#ifndef CONFIG_ILOCKDEP
 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+#else
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+	ILOCKDEP_CONTENDED(sem, __down_write_trylock, __down_write);
+#endif
+
 }
 
 EXPORT_SYMBOL(down_write);
@@ -58,9 +76,15 @@ EXPORT_SYMBOL(down_write);
 int down_write_trylock(struct rw_semaphore *sem)
 {
 	int ret = __down_write_trylock(sem);
-
+#ifdef CONFIG_ILOCKDEP
+	if (ret == 1) {
+		rwsem_acquire(&sem->dep_map, 0, 1, _RET_IP_);
+		ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+	}
+#else
 	if (ret == 1)
 		rwsem_acquire(&sem->dep_map, 0, 1, _RET_IP_);
+#endif
 	return ret;
 }
 
@@ -72,7 +96,9 @@ EXPORT_SYMBOL(down_write_trylock);
 void up_read(struct rw_semaphore *sem)
 {
 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
-
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_release(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	__up_read(sem);
 }
 
@@ -84,6 +110,9 @@ EXPORT_SYMBOL(up_read);
 void up_write(struct rw_semaphore *sem)
 {
 	rwsem_release(&sem->dep_map, 1, _RET_IP_);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_release(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 
 	__up_write(sem);
 }
@@ -110,8 +139,13 @@ void down_read_nested(struct rw_semaphore *sem, int subclass)
 {
 	might_sleep();
 	rwsem_acquire_read(&sem->dep_map, subclass, 0, _RET_IP_);
-
+#ifndef CONFIG_ILOCKDEP
 	LOCK_CONTENDED(sem, __down_read_trylock, __down_read);
+#else
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+	ILOCKDEP_CONTENDED(sem, __down_read_trylock, __down_read);
+#endif
+
 }
 
 EXPORT_SYMBOL(down_read_nested);
@@ -139,8 +173,12 @@ void down_write_nested(struct rw_semaphore *sem, int subclass)
 {
 	might_sleep();
 	rwsem_acquire(&sem->dep_map, subclass, 0, _RET_IP_);
-
+#ifndef CONFIG_ILOCKDEP
 	LOCK_CONTENDED(sem, __down_write_trylock, __down_write);
+#else
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+	ILOCKDEP_CONTENDED(sem, __down_write_trylock, __down_write);
+#endif
 }
 
 EXPORT_SYMBOL(down_write_nested);

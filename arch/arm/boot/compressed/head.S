@@ -178,7 +178,9 @@ not_angel:
 		@ determine final kernel image address
 		mov	r4, pc
 		and	r4, r4, #0xf8000000
-		add	r4, r4, #TEXT_OFFSET
+	@	add	r4, r4, #TEXT_OFFSET
+		ldr	r5, =TEXT_OFFSET
+		add	r4, r4, r5
 #else
 		ldr	r4, =zreladdr
 #endif
@@ -276,7 +278,9 @@ restart:	adr	r0, LC0
 		 * of RAM and hope for the best.
 		 */
 		cmp	r0, #1
-		sub	r0, r4, #TEXT_OFFSET
+@		sub	r0, r4, #TEXT_OFFSET
+		ldr 	r0, =TEXT_OFFSET
+		sub	r0, r4, r0
 		add	r0, r0, #0x100
 		mov	r1, r6
 		sub	r2, sp, r6

@@ -6,6 +6,8 @@
 
 #include <linux/ktime.h>
 #include <linux/tracepoint.h>
+#include <linux/cpumask.h>
+#include <linux/cpufreq.h>
 
 DECLARE_EVENT_CLASS(cpu,
 
@@ -40,6 +42,30 @@ DEFINE_EVENT(cpu, cpu_idle,
 
 #define PWR_EVENT_EXIT -1
 #endif
+
+TRACE_EVENT(cpufreq,
+
+	TP_PROTO(cpumask_var_t cpumask, unsigned int freq_prev, unsigned int freq_new),
+
+	TP_ARGS(cpumask, freq_prev, freq_new),
+
+	TP_STRUCT__entry(
+		__field(u64, ts)
+		__field(unsigned int, freq_prev)
+		__field(unsigned int, freq_new)
+		__array(char, cpumaskstr, NR_CPUS + 1)
+	),
+
+	TP_fast_assign(
+		cpumask_scnprintf(__entry->cpumaskstr,
+				  sizeof(__entry->cpumaskstr), cpumask);
+		__entry->freq_prev = freq_prev;
+		__entry->freq_new = freq_new;
+	),
+
+	TP_printk("0x%s %u => %u", __entry->cpumaskstr, __entry->freq_prev,
+		__entry->freq_new)
+);
 
 DEFINE_EVENT(cpu, cpu_frequency,
 

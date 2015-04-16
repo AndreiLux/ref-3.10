@@ -16,6 +16,9 @@
 #include <linux/slab.h>
 #include <linux/io.h>
 #include <linux/err.h>
+#ifdef CONFIG_HI3630_CLK_DEBUG
+#include <linux/clk-private.h>
+#endif
 
 /*
  * DOC: basic adjustable multiplexer clock that cannot gate
@@ -51,7 +54,7 @@ static u8 clk_mux_get_parent(struct clk_hw *hw)
 		for (i = 0; i < num_parents; i++)
 			if (mux->table[i] == val)
 				return i;
-		return -EINVAL;
+		return 0;
 	}
 
 	if (val && (mux->flags & CLK_MUX_INDEX_BIT))
@@ -61,7 +64,7 @@ static u8 clk_mux_get_parent(struct clk_hw *hw)
 		val--;
 
 	if (val >= num_parents)
-		return -EINVAL;
+		return 0;
 
 	return val;
 }
@@ -70,6 +73,7 @@ static int clk_mux_set_parent(struct clk_hw *hw, u8 index)
 {
 	struct clk_mux *mux = to_clk_mux(hw);
 	u32 val;
+	u8 width = 0;
 	unsigned long flags = 0;
 
 	if (mux->table)
@@ -89,6 +93,13 @@ static int clk_mux_set_parent(struct clk_hw *hw, u8 index)
 	val = readl(mux->reg);
 	val &= ~(mux->mask << mux->shift);
 	val |= index << mux->shift;
+	if (mux->flags & CLK_MUX_HIWORD_MASK) {
+		width = fls(mux->mask) - ffs(mux->mask) + 1;
+		if (width + mux->shift > 16)
+			pr_warn("mux value exceeds LOWORD field\n");
+		else
+			val |= mux->mask << (mux->shift + 16);
+	}
 	writel(val, mux->reg);
 
 	if (mux->lock)
@@ -97,9 +108,35 @@ static int clk_mux_set_parent(struct clk_hw *hw, u8 index)
 	return 0;
 }
 
+#ifdef CONFIG_HI3630_CLK_DEBUG
+static int k3_selreg_check(struct clk_hw *hw)
+{
+	struct clk_mux *mux = to_clk_mux(hw);
+	struct clk *clk = hw->clk;
+	u32 val = 0;
+
+	val = readl(mux->reg) >> mux->shift;
+	val &= mux->mask;
+	if (val && (mux->flags & CLK_MUX_INDEX_BIT))
+		val = ffs(val) - 1;
+
+	if (val && (mux->flags & CLK_MUX_INDEX_ONE))
+		val--;
+
+	if (clk->parents[val] == clk_get_parent(clk))
+		return 1;
+	else
+		return 0;
+}
+#endif
+
 const struct clk_ops clk_mux_ops = {
 	.get_parent = clk_mux_get_parent,
 	.set_parent = clk_mux_set_parent,
+	.determine_rate = __clk_mux_determine_rate,
+#ifdef CONFIG_HI3630_CLK_DEBUG
+	.check_selreg = k3_selreg_check,
+#endif
 };
 EXPORT_SYMBOL_GPL(clk_mux_ops);
 

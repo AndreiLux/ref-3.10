@@ -15,8 +15,10 @@
 #define LINUX_MMC_DW_MMC_H
 
 #include <linux/scatterlist.h>
+#include <linux/mmc/core.h>
 
 #define MAX_MCI_SLOTS	2
+#define TUNING_INIT_CONFIG_NUM 7
 
 enum dw_mci_state {
 	STATE_IDLE = 0,
@@ -129,6 +131,9 @@ struct dw_mci {
 	struct mmc_request	*mrq;
 	struct mmc_command	*cmd;
 	struct mmc_data		*data;
+	struct mmc_command	stop;
+	bool			stop_snd;
+
 	struct workqueue_struct	*card_workqueue;
 
 	/* DMA interface members*/
@@ -166,6 +171,7 @@ struct dw_mci {
 	void			*priv;
 	struct clk		*biu_clk;
 	struct clk		*ciu_clk;
+	struct clk 		*parent_clk;
 	struct dw_mci_slot	*slot[MAX_MCI_SLOTS];
 
 	/* FIFO push and pull */
@@ -184,9 +190,36 @@ struct dw_mci {
 	/* Workaround flags */
 	u32			quirks;
 
+	/* S/W reset timer */
+	struct timer_list       timer;
+
+	/* pinctrl handles */
+	struct pinctrl		*pinctrl;
+	struct pinctrl_state	*pins_default;
+	struct pinctrl_state	*pins_idle;
+
 	struct regulator	*vmmc;	/* Power regulator */
+	struct regulator	*vqmmc;	/* Signaling regulator (vccq) */
 	unsigned long		irq_flags; /* IRQ flags */
 	int			irq;
+
+	int			flags;		/* Host attributes */
+#define DWMMC_IN_TUNING		(1 << 5)	/* Host is doing tuning */
+#define DWMMC_TUNING_DONE	(1 << 6)	/* Host initialization tuning done */
+
+	int						current_div;				/* record current div */
+	int						tuning_current_sample;		/* record current sample */
+	int						tuning_init_sample;			/* record the inital sample */
+	int						tuning_move_sample;			/* record the move sample */
+	int						tuning_move_count;			/* record the move count */
+	unsigned int			tuning_sample_flag;			/* record the sample OK or NOT */
+	int						tuning_move_start;			/* tuning move start flag */
+#define DWMMC_EMMC_ID		0
+#define DWMMC_SD_ID			1
+#define DWMMC_SDIO_ID		2
+	int						hw_mmc_id;					/* Hardware mmc id */
+	int						sd_reinit;
+
 };
 
 /* DMA ops for Internal/External DMAC interface */
@@ -196,6 +229,7 @@ struct dw_mci_dma_ops {
 	void (*start)(struct dw_mci *host, unsigned int sg_len);
 	void (*complete)(struct dw_mci *host);
 	void (*stop)(struct dw_mci *host);
+	void (*reset)(struct dw_mci *host);
 	void (*cleanup)(struct dw_mci *host);
 	void (*exit)(struct dw_mci *host);
 };
@@ -246,7 +280,7 @@ struct dw_mci_board {
 
 	int (*init)(u32 slot_id, irq_handler_t , void *);
 	int (*get_ro)(u32 slot_id);
-	int (*get_cd)(u32 slot_id);
+	int (*get_cd)(struct dw_mci *host, u32 slot_id);
 	int (*get_ocr)(u32 slot_id);
 	int (*get_bus_wd)(u32 slot_id);
 	/*

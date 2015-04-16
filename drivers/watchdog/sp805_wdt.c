@@ -1,5 +1,5 @@
 /*
- * drivers/char/watchdog/sp805-wdt.c
+ * drivers/watchdog/sp805-wdt.c
  *
  * Watchdog driver for ARM SP805 watchdog module
  *
@@ -28,9 +28,18 @@
 #include <linux/spinlock.h>
 #include <linux/types.h>
 #include <linux/watchdog.h>
-
+#ifdef CONFIG_ARCH_HISI
+#include <linux/interrupt.h>
+#include <linux/sched.h>
+#include <linux/of.h>
+#include <linux/of_irq.h>
+#endif
 /* default timeout in seconds */
+#ifdef CONFIG_ARCH_HISI
+#define DEFAULT_TIMEOUT		10
+#else
 #define DEFAULT_TIMEOUT		60
+#endif
 
 #define MODULE_NAME		"sp805-wdt"
 
@@ -58,6 +67,8 @@
  * @base: base address of wdt
  * @clk: clock structure of wdt
  * @adev: amba device structure of wdt
+ * @kick_time: kick dog time
+ * @hisi_wdt_delayed_work: kick dog work
  * @status: current status of wdt
  * @load_val: load value to be set for current timeout
  * @timeout: current programmed timeout
@@ -68,6 +79,11 @@ struct sp805_wdt {
 	void __iomem			*base;
 	struct clk			*clk;
 	struct amba_device		*adev;
+#ifdef CONFIG_ARCH_HISI
+	unsigned int			kick_time;
+	struct delayed_work		hisi_wdt_delayed_work;
+#endif
+	bool				active;
 	unsigned int			load_val;
 	unsigned int			timeout;
 };
@@ -91,6 +107,9 @@ static int wdt_setload(struct watchdog_device *wdd, unsigned int timeout)
 	 * interrupt already occurred then it resets the system. This is why
 	 * load is half of what should be required.
 	 */
+#ifdef CONFIG_ARCH_HISI
+	wdt->wdd.timeout = timeout;
+#endif
 	load = div_u64(rate, 2) * timeout - 1;
 
 	load = (load > LOAD_MAX) ? LOAD_MAX : load;
@@ -147,6 +166,7 @@ static int wdt_config(struct watchdog_device *wdd, bool ping)
 		writel_relaxed(INT_MASK, wdt->base + WDTINTCLR);
 		writel_relaxed(INT_ENABLE | RESET_ENABLE, wdt->base +
 				WDTCONTROL);
+		wdt->active = true;
 	}
 
 	writel_relaxed(LOCK, wdt->base + WDTLOCK);
@@ -182,6 +202,7 @@ static int wdt_disable(struct watchdog_device *wdd)
 
 	/* Flush posted writes. */
 	readl_relaxed(wdt->base + WDTLOCK);
+	wdt->active = false;
 	spin_unlock(&wdt->lock);
 
 	clk_disable_unprepare(wdt->clk);
@@ -203,11 +224,38 @@ static const struct watchdog_ops wdt_ops = {
 	.get_timeleft	= wdt_timeleft,
 };
 
+#ifdef CONFIG_ARCH_HISI
+static irqreturn_t hisi_wdt_interrupt(int irq, void *dev_id)
+{
+	struct sp805_wdt *wdt = dev_id;
+
+	dev_warn(wdt->wdd.dev, "****watchdog timer expired (irq)****\n");
+
+	return IRQ_HANDLED;
+}
+
+static void hisi_wdt_mond(struct work_struct *work)
+{
+	struct sp805_wdt *wdt = container_of(work, struct sp805_wdt,
+						hisi_wdt_delayed_work.work);
+
+	wdt_ping(&wdt->wdd);
+
+	schedule_delayed_work(&wdt->hisi_wdt_delayed_work,
+				msecs_to_jiffies(wdt->kick_time * 1000));
+}
+
+#endif
+
 static int
 sp805_wdt_probe(struct amba_device *adev, const struct amba_id *id)
 {
 	struct sp805_wdt *wdt;
 	int ret = 0;
+#ifdef CONFIG_ARCH_HISI
+	struct device_node *np;
+	unsigned int default_timeout;
+#endif
 
 	if (!devm_request_mem_region(&adev->dev, adev->res.start,
 				resource_size(&adev->res), "sp805_wdt")) {
@@ -231,7 +279,8 @@ sp805_wdt_probe(struct amba_device *adev, const struct amba_id *id)
 		goto err;
 	}
 
-	wdt->clk = clk_get(&adev->dev, NULL);
+	wdt->clk = devm_clk_get(&adev->dev, NULL);
+
 	if (IS_ERR(wdt->clk)) {
 		dev_warn(&adev->dev, "Clock not found\n");
 		ret = PTR_ERR(wdt->clk);
@@ -245,21 +294,53 @@ sp805_wdt_probe(struct amba_device *adev, const struct amba_id *id)
 	spin_lock_init(&wdt->lock);
 	watchdog_set_nowayout(&wdt->wdd, nowayout);
 	watchdog_set_drvdata(&wdt->wdd, wdt);
-	wdt_setload(&wdt->wdd, DEFAULT_TIMEOUT);
+#ifdef CONFIG_ARCH_HISI
+	np = of_find_compatible_node(NULL, NULL, "arm,sp805");
+	if (IS_ERR(np)) {
+		dev_err(&adev->dev, "Can not find sp805 node\n");
+		goto err;
+	}
 
+	ret = of_property_read_u32_index(np, "default-timeout", 0, &default_timeout);
+	if (ret) {
+		dev_warn(&adev->dev, "Can not find default-timeout property."
+			"Use the default value: %ds\n", DEFAULT_TIMEOUT);
+		default_timeout = DEFAULT_TIMEOUT;
+	}
+	wdt_setload(&wdt->wdd, default_timeout);
+
+	wdt->kick_time = (default_timeout >> 1) - 1;
+
+#else
+	wdt_setload(&wdt->wdd, DEFAULT_TIMEOUT);
+#endif
+
+#ifdef CONFIG_ARCH_HISI
+	if (devm_request_irq(&adev->dev, adev->irq[0], hisi_wdt_interrupt,
+		IRQF_TRIGGER_RISING, MODULE_NAME, wdt)) {
+		ret = -EIO;
+		goto err;
+	}
+
+	wdt_ping(&wdt->wdd);
+	INIT_DELAYED_WORK(&wdt->hisi_wdt_delayed_work, hisi_wdt_mond);
+#endif
 	ret = watchdog_register_device(&wdt->wdd);
 	if (ret) {
 		dev_err(&adev->dev, "watchdog_register_device() failed: %d\n",
 				ret);
-		goto err_register;
+		goto err;
 	}
+
+#ifdef CONFIG_ARCH_HISI
+	schedule_delayed_work(&wdt->hisi_wdt_delayed_work, 0);
+	wdt_enable(&wdt->wdd);
+#endif
 	amba_set_drvdata(adev, wdt);
 
 	dev_info(&adev->dev, "registration successful\n");
 	return 0;
 
-err_register:
-	clk_put(wdt->clk);
 err:
 	dev_err(&adev->dev, "Probe Failed!!!\n");
 	return ret;
@@ -269,10 +350,12 @@ static int sp805_wdt_remove(struct amba_device *adev)
 {
 	struct sp805_wdt *wdt = amba_get_drvdata(adev);
 
+#ifdef CONFIG_ARCH_HISI
+	cancel_delayed_work(&wdt->hisi_wdt_delayed_work);
+#endif
 	watchdog_unregister_device(&wdt->wdd);
 	amba_set_drvdata(adev, NULL);
 	watchdog_set_drvdata(&wdt->wdd, NULL);
-	clk_put(wdt->clk);
 
 	return 0;
 }
@@ -280,21 +363,39 @@ static int sp805_wdt_remove(struct amba_device *adev)
 static int __maybe_unused sp805_wdt_suspend(struct device *dev)
 {
 	struct sp805_wdt *wdt = dev_get_drvdata(dev);
+	int ret = 0;
 
-	if (watchdog_active(&wdt->wdd))
-		return wdt_disable(&wdt->wdd);
+	dev_info(dev, "%s+.\n",__func__);
 
-	return 0;
+	if (watchdog_active(&wdt->wdd) || wdt->active) {
+		ret = wdt_disable(&wdt->wdd);
+#ifdef CONFIG_ARCH_HISI
+		cancel_delayed_work(&wdt->hisi_wdt_delayed_work);
+#endif
+	}
+
+	dev_info(dev, "%s-.\n",__func__);
+
+	return ret;
 }
 
 static int __maybe_unused sp805_wdt_resume(struct device *dev)
 {
 	struct sp805_wdt *wdt = dev_get_drvdata(dev);
+	int ret = 0;
 
-	if (watchdog_active(&wdt->wdd))
-		return wdt_enable(&wdt->wdd);
+	dev_info(dev, "%s+.\n",__func__);
 
-	return 0;
+	if (watchdog_active(&wdt->wdd) || !wdt->active) {
+#ifdef CONFIG_ARCH_HISI
+		schedule_delayed_work(&wdt->hisi_wdt_delayed_work, 0);
+#endif
+		ret = wdt_enable(&wdt->wdd);
+	}
+
+	dev_info(dev, "%s-.\n",__func__);
+
+	return ret;
 }
 
 static SIMPLE_DEV_PM_OPS(sp805_wdt_dev_pm_ops, sp805_wdt_suspend,

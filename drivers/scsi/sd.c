@@ -1732,6 +1732,7 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 	unsigned int the_result;
 	struct scsi_sense_hdr sshdr;
 	int sense_valid = 0;
+	int wait_ready_time = 10;
 
 	spintime = 0;
 
@@ -1754,6 +1755,12 @@ sd_spinup_disk(struct scsi_disk *sdkp)
 			 * doesn't have any media in it, don't bother
 			 * with any more polling.
 			 */
+			if (NOT_READY == sshdr.sense_key && wait_ready_time > 0) {
+				msleep(1000);
+				wait_ready_time--;
+				continue;
+			}
+
 			if (media_not_present(sdkp, &sshdr))
 				return;
 

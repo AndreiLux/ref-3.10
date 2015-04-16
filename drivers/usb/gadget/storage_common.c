@@ -650,6 +650,7 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 	struct fsg_lun	*curlun = fsg_lun_from_dev(dev);
 	struct rw_semaphore	*filesem = dev_get_drvdata(dev);
 	int		rc = 0;
+	static int incdrom = 0;
 
 	if (curlun->prevent_medium_removal && fsg_lun_is_open(curlun)) {
 		LDBG(curlun, "eject attempt prevented\n");
@@ -664,13 +665,38 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 	down_write(filesem);
 	if (count > 0 && buf[0]) {
 		/* fsg_lun_open() will close existing file if any. */
+		pr_info("fsg_store_file: count=%d, buf=%p, curlun=%p\n", count, buf, curlun);
+		if( count>3 && 0==memcmp(&buf[count-4], ".iso",4) ){
+			pr_info("buf=%s, buf[count-4]=%s\n", buf, &buf[count-4]);
+			curlun->cdrom = 1;
+			curlun->ro = 1;
+			curlun->removable = 1;
+			curlun->nofua = 1;
+			incdrom = 1;
+		}else{
+			curlun->cdrom = 0;
+			curlun->ro = 0;
+			curlun->removable = 1;
+			curlun->nofua = 1;
+			incdrom = 0;
+		}
 		rc = fsg_lun_open(curlun, buf);
 		if (rc == 0)
 			curlun->unit_attention_data =
 					SS_NOT_READY_TO_READY_TRANSITION;
 	} else if (fsg_lun_is_open(curlun)) {
-		fsg_lun_close(curlun);
-		curlun->unit_attention_data = SS_MEDIUM_NOT_PRESENT;
+		int needclose = 1;
+		if (incdrom){
+			if ( count==4 && buf && 0==memcmp(buf, "none", 4))
+				needclose = 1;
+			else
+				needclose = 0;
+		}
+		if (needclose){
+			fsg_lun_close(curlun);
+			curlun->unit_attention_data = SS_MEDIUM_NOT_PRESENT;
+		}
+		pr_info("fsg_store_file: count=%d, buf=%p, needclose=%d\n", count, buf, needclose);
 	}
 	up_write(filesem);
 	return (rc < 0 ? rc : count);

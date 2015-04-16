@@ -52,6 +52,9 @@ obj-$(CONFIG_TELCLOCK)		+= tlclk.o
 obj-$(CONFIG_MWAVE)		+= mwave/
 obj-$(CONFIG_AGP)		+= agp/
 obj-$(CONFIG_PCMCIA)		+= pcmcia/
+#/*<DTS2013022804721 z00175632 20130327 beign */
+obj-$(CONFIG_PPPOESTA)          += pppoesta/
+#/*DTS2013022804721 z00175632 20130327 end> */
 
 obj-$(CONFIG_HANGCHECK_TIMER)	+= hangcheck-timer.o
 obj-$(CONFIG_TCG_TPM)		+= tpm/

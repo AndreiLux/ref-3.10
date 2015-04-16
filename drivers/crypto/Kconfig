@@ -386,4 +386,17 @@ config CRYPTO_DEV_ATMEL_SHA
 	  To compile this driver as a module, choose M here: the module
 	  will be called atmel-sha.
 
+config CRYPTO_DEV_DX_CC44P
+	tristate "Driver for Discretix dx_cc44p crypto hardwareacceleration"
+	depends on ARCH_HI3630
+	select CRYPTO_ALGAPI
+	default n
+	help
+	  This option allows you to have support for Discretix dx_cc44p
+	  acceleration.
+
+if CRYPTO_DEV_DX_CC44P
+	source "drivers/crypto/dx_ccp/Kconfig"
+endif # if CRYPTO_DEV_DX_CC44P
+
 endif # CRYPTO_HW

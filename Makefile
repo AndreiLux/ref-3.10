@@ -371,9 +371,11 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
+		   -Wimplicit-function-declaration \
 		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks
+		   -fno-delete-null-pointer-checks \
+		   
+
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
 KBUILD_AFLAGS   := -D__ASSEMBLY__
@@ -384,6 +386,31 @@ KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
 KERNELRELEASE = $(shell cat include/config/kernel.release 2> /dev/null)
 KERNELVERSION = $(VERSION)$(if $(PATCHLEVEL),.$(PATCHLEVEL)$(if $(SUBLEVEL),.$(SUBLEVEL)))$(EXTRAVERSION)
+
+# add hisilicon balong configs
+ifneq ($(BALONG_TOPDIR),)
+-include $(BALONG_TOPDIR)/config/product/$(OBB_PRODUCT_NAME)/config/balong_product_config.mk
+LINUXINCLUDE    += -I$(BALONG_TOPDIR)/config/product/$(OBB_PRODUCT_NAME)/config \
+				   -I$(BALONG_TOPDIR)/config/product/$(OBB_PRODUCT_NAME)/include_gu \
+				   -I$(BALONG_TOPDIR)/config/nvim/include/gu \
+				   -I$(BALONG_TOPDIR)/include/drv \
+				   -I$(BALONG_TOPDIR)/include/nv/tl/drv \
+				   -I$(BALONG_TOPDIR)/include/nv/tl/oam \
+				   -I$(BALONG_TOPDIR)/include/nv/tl/lps \
+				   -I$(BALONG_TOPDIR)/include/phy/lphy \
+				   -I$(BALONG_TOPDIR)/platform/$(CFG_PLATFORM) \
+				   -I$(BALONG_TOPDIR)/platform/$(CFG_PLATFORM)/soc \
+				   -I$(BALONG_TOPDIR)/modem/drv/common/include
+endif
+
+# build drv only config
+OBB_SEPARATE        ?=$(separate)
+ifeq ($(strip $(OBB_SEPARATE)),true)
+KBUILD_CFLAGS += -DDRV_BUILD_SEPARATE
+KBUILD_AFLAGS += -DDRV_BUILD_SEPARATE
+KBUILD_CPPFLAGS += -DDRV_BUILD_SEPARATE
+endif
+# add hisilicon balong configs end
 
 export VERSION PATCHLEVEL SUBLEVEL KERNELRELEASE KERNELVERSION
 export ARCH SRCARCH CONFIG_SHELL HOSTCC HOSTCFLAGS CROSS_COMPILE AS LD CC

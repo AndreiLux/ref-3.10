@@ -217,6 +217,9 @@ int usb_wwan_write(struct tty_struct *tty, struct usb_serial_port *port,
 			todo = OUT_BUFLEN;
 
 		this_urb = portdata->out_urbs[i];
+		// adapt to balong modem
+		this_urb->transfer_flags |= URB_ZERO_PACKET;
+
 		if (test_and_set_bit(i, &portdata->out_busy)) {
 			if (time_before(jiffies,
 					portdata->tx_start_time[i] + 10 * HZ))

@@ -1,0 +1,15 @@
+menu "huawei linux device driver support package"
+
+source "drivers/huawei/inputhub/Kconfig"
+source "drivers/huawei/nfc/Kconfig"
+source "drivers/huawei/log/Kconfig"
+source "drivers/huawei/gps/Kconfig"
+source "drivers/huawei/touchscreen/Kconfig"
+source "drivers/huawei/wifi/Kconfig"
+source "drivers/huawei/tp_color/Kconfig"
+source "drivers/huawei/sensor/Kconfig"
+source "drivers/huawei/irda/Kconfig"
+source "drivers/huawei/hw_kstate/Kconfig"
+source "drivers/huawei/dsm/Kconfig"
+source "drivers/huawei/ext_modem/Kconfig"
+endmenu

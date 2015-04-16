@@ -30,12 +30,19 @@ struct ion_page_pool_item {
 
 static void *ion_page_pool_alloc_pages(struct ion_page_pool *pool)
 {
+/* zero buffer later */
+#if 0
 	struct page *page = alloc_pages(pool->gfp_mask, pool->order);
+#else
+	struct page *page = alloc_pages(pool->gfp_mask & (~__GFP_ZERO), pool->order);
+#endif
 
 	if (!page)
 		return NULL;
+#if 0
 	ion_pages_sync_for_device(NULL, page, PAGE_SIZE << pool->order,
 						DMA_BIDIRECTIONAL);
+#endif
 	return page;
 }
 
@@ -93,7 +100,10 @@ void *ion_page_pool_alloc(struct ion_page_pool *pool)
 {
 	struct page *page = NULL;
 
-	BUG_ON(!pool);
+	if (!pool) {
+		BUG_ON(!pool);
+		return NULL;
+	}
 
 	mutex_lock(&pool->mutex);
 	if (pool->high_count)

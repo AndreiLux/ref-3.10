@@ -42,6 +42,38 @@
 #include <asm/mach/irq.h>
 #include <asm/mach/time.h>
 
+#include <linux/huawei/rdr_private.h>
+#ifdef CONFIG_HISI_RDR
+#ifndef CONFIG_HISI_RDR_SWITCH
+static unsigned int curr_int_num = 0xffffffff;
+#endif
+
+static rdr_funcptr_3 int_switch_hook;
+#ifndef CONFIG_HISI_RDR_SWITCH
+static unsigned int int_switch_flag;
+#endif
+
+void int_switch_hook_add(rdr_funcptr_3 p_hook_func)
+{
+	int_switch_hook = p_hook_func;
+}
+EXPORT_SYMBOL(int_switch_hook_add);
+
+void int_switch_hook_delete(void)
+{
+	int_switch_hook = NULL;
+}
+EXPORT_SYMBOL(int_switch_hook_delete);
+#else
+void int_switch_hook_add(rdr_funcptr_3 p_hook_func)
+{
+}
+
+void int_switch_hook_delete(void)
+{
+}
+#endif
+
 unsigned long irq_err_count;
 
 int arch_show_interrupts(struct seq_file *p, int prec)
@@ -66,6 +98,19 @@ void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
+#ifdef CONFIG_HISI_RDR
+#ifndef CONFIG_HISI_RDR_SWITCH
+	unsigned int old_int_num = curr_int_num;
+
+	curr_int_num = irq;
+
+	if (NULL != int_switch_hook) {/*exc int hook func*/
+		int_switch_hook(0, old_int_num, curr_int_num);
+		int_switch_flag = 1;
+	}
+#endif
+#endif
+
 	irq_enter();
 
 	/*
@@ -81,6 +126,15 @@ void handle_IRQ(unsigned int irq, struct pt_regs *regs)
 	}
 
 	irq_exit();
+
+#ifdef CONFIG_HISI_RDR
+#ifndef CONFIG_HISI_RDR_SWITCH
+	/*call exception interrupt hook func*/
+	if ((NULL != int_switch_hook) && (0 != int_switch_flag))
+		int_switch_hook(1, old_int_num, curr_int_num);
+#endif
+#endif
+
 	set_irq_regs(old_regs);
 }
 

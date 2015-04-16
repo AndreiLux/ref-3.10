@@ -1,0 +1,2 @@
+obj-$(CONFIG_BALONG_EXT_MODEM) += balong/
+obj-$(CONFIG_VIACBP82D_3RD_MODEM) += viacbp82d/

@@ -251,6 +251,11 @@ SECTIONS
 		CACHELINE_ALIGNED_DATA(L1_CACHE_BYTES)
 		READ_MOSTLY_DATA(L1_CACHE_BYTES)
 
+		. = ALIGN(32);
+		__start_hwlog_tag = .;
+		*(__hwlog_tag)
+		__stop_hwlog_tag = .;
+
 		/*
 		 * and the usual data section
 		 */

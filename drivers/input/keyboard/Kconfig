@@ -641,4 +641,11 @@ config KEYBOARD_CROS_EC
 	  To compile this driver as a module, choose M here: the
 	  module will be called cros_ec_keyb.
 
+config KEYBOARD_HI3630_GPIO_KEY
+	tristate "Hi3630 gpio key support,use gpio_203 and gpio_204 realize volumn-up and volumn-down"
+	help
+	  Say Y here to enable the power key support for k3v300 platform.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called hi3630_gpio_key.
 endif

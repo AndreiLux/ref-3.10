@@ -51,8 +51,6 @@ static ssize_t led_brightness_store(struct device *dev,
 	if (ret)
 		return ret;
 
-	if (state == LED_OFF)
-		led_trigger_remove(led_cdev);
 	__led_set_brightness(led_cdev, state);
 
 	return size;
@@ -152,6 +150,7 @@ EXPORT_SYMBOL_GPL(led_classdev_suspend);
 void led_classdev_resume(struct led_classdev *led_cdev)
 {
 	led_cdev->brightness_set(led_cdev, led_cdev->brightness);
+	led_cdev->blink_set(led_cdev, &led_cdev->blink_delay_on, &led_cdev->blink_delay_off);
 	led_cdev->flags &= ~LED_SUSPENDED;
 }
 EXPORT_SYMBOL_GPL(led_classdev_resume);

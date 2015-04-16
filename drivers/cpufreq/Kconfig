@@ -188,6 +188,15 @@ config CPU_FREQ_GOV_INTERACTIVE
 
 	  If in doubt, say N.
 
+config INPUT_PULSE_SUPPORT
+	bool "input pulse support"
+	depends on CPU_FREQ_GOV_INTERACTIVE
+	default n
+	help
+	  'INPUT_PULSE_SUPPORT' is used to enable 'interactive' governor to
+	  receive touch event, and set the cpu to high speed.
+
+
 config CPU_FREQ_GOV_CONSERVATIVE
 	tristate "'conservative' cpufreq governor"
 	depends on CPU_FREQ

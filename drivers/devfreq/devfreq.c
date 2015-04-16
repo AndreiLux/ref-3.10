@@ -189,9 +189,11 @@ int update_devfreq(struct devfreq *devfreq)
 		return err;
 
 	if (devfreq->profile->freq_table)
-		if (devfreq_update_status(devfreq, freq))
+		if ((err = devfreq_update_status(devfreq, freq))) {
 			dev_err(&devfreq->dev,
 				"Couldn't update frequency transition information.\n");
+			return err;
+		}
 
 	devfreq->previous_freq = freq;
 	return err;

@@ -191,6 +191,8 @@ static struct ion_heap_ops ion_cma_ops = {
 	.map_user = ion_cma_mmap,
 	.map_kernel = ion_cma_map_kernel,
 	.unmap_kernel = ion_cma_unmap_kernel,
+	.map_iommu = ion_heap_map_iommu,
+	.unmap_iommu = ion_heap_unmap_iommu,
 };
 
 struct ion_heap *ion_cma_heap_create(struct ion_platform_heap *data)
@@ -205,7 +207,11 @@ struct ion_heap *ion_cma_heap_create(struct ion_platform_heap *data)
 	cma_heap->heap.ops = &ion_cma_ops;
 	/* get device from private heaps data, later it will be
 	 * used to make the link with reserved CMA memory */
+#if 0
 	cma_heap->dev = data->priv;
+#else
+	cma_heap->dev = NULL;
+#endif
 	cma_heap->heap.type = ION_HEAP_TYPE_DMA;
 	return &cma_heap->heap;
 }

@@ -634,8 +634,13 @@ static int eth_open(struct net_device *net)
 	struct gether	*link;
 
 	DBG(dev, "%s\n", __func__);
+/* Modified by l00196665, for DTS2014022505607 */
+#if 0
 	if (netif_carrier_ok(dev->net))
 		eth_start(dev, GFP_KERNEL);
+#else
+	eth_start(dev, GFP_KERNEL);
+#endif
 
 	spin_lock_irq(&dev->lock);
 	link = dev->port_usb;
@@ -697,6 +702,9 @@ static int eth_stop(struct net_device *net)
 
 /*-------------------------------------------------------------------------*/
 
+/*DTS2014040802092 q84001822 20140513 begin*/
+static u8 host_ethaddr[ETH_ALEN];
+/*DTS2014040802092 q84001822 20140513 end*/
 /* initial value, changed by "ifconfig usb0 hw ether xx:xx:xx:xx:xx:xx" */
 static char *dev_addr;
 module_param(dev_addr, charp, S_IRUGO);
@@ -727,6 +735,18 @@ static int get_ether_addr(const char *str, u8 *dev_addr)
 	eth_random_addr(dev_addr);
 	return 1;
 }
+/*DTS2014040802092 q84001822 20140513 begin*/
+static int get_host_ether_addr(u8 *str, u8 *dev_addr)
+{
+    memcpy(dev_addr, str, ETH_ALEN);
+    if (is_valid_ether_addr(dev_addr))
+        return 0;
+
+    random_ether_addr(dev_addr);
+    memcpy(str, dev_addr, ETH_ALEN);
+    return 1;
+}
+/*DTS2014040802092 q84001822 20140513 end*/
 
 static const struct net_device_ops eth_netdev_ops = {
 	.ndo_open		= eth_open,
@@ -782,9 +802,12 @@ struct eth_dev *gether_setup_name(struct usb_gadget *g, u8 ethaddr[ETH_ALEN],
 	if (get_ether_addr(dev_addr, net->dev_addr))
 		dev_warn(&g->dev,
 			"using random %s ethernet address\n", "self");
-	if (get_ether_addr(host_addr, dev->host_mac))
-		dev_warn(&g->dev,
-			"using random %s ethernet address\n", "host");
+    /*DTS2014040802092 q84001822 20140513 begin*/
+    if (get_host_ether_addr(host_ethaddr, dev->host_mac))
+        dev_warn(&g->dev, "using random %s ethernet address\n", "host");
+    else
+        dev_warn(&g->dev, "using previous %s ethernet address\n", "host");
+    /*DTS2014040802092 q84001822 20140513 end*/
 
 	if (ethaddr)
 		memcpy(ethaddr, dev->host_mac, ETH_ALEN);

@@ -3,6 +3,13 @@
 #
 comment "USB Host Controller Drivers"
 
+config USB_EHCI_K3V3
+	bool "Support for K3V2 on-chip EHCI USB controller"
+	default y
+	---help---
+	  Enables support for the K3V2 USB EHCI controller
+
+
 config USB_C67X00_HCD
 	tristate "Cypress C67x00 HCD support"
 	help

@@ -38,6 +38,11 @@ config DEVFREQ_GOV_SIMPLE_ONDEMAND
 	  values that imply the usage rate. A device may provide tuned
 	  values to the governor with data field at devfreq_add_device().
 
+config DEVFREQ_GOV_MALI_ONDEMAND
+	tristate "Mali Ondemand"
+	help
+	  Base on simple ondemand governor.
+
 config DEVFREQ_GOV_PERFORMANCE
 	tristate "Performance"
 	help
@@ -63,6 +68,11 @@ config DEVFREQ_GOV_USERSPACE
 	  Otherwise, the governor does not change the frequnecy
 	  given at the initialization.
 
+config DEVFREQ_GOV_PM_QOS
+	bool "PM QOS"
+	help
+	  Sets the frequency based on pm_qos throughput constraints.
+
 comment "DEVFREQ Drivers"
 
 config ARM_EXYNOS4_BUS_DEVFREQ
@@ -77,5 +87,20 @@ config ARM_EXYNOS4_BUS_DEVFREQ
 	  the operating frequencies and voltages with OPP support.
 	  To operate with optimal voltages, ASV support is required
 	  (CONFIG_EXYNOS_ASV).
+
+config HISI_DDR_DEVFREQ
+	bool "Hisilicon ddr devfreq support"
+	depends on PM_DEVFREQ && PM_OPP
+	select DEVFREQ_GOV_PM_QOS
+	default n
+	help
+	  Scale ddr freqency down threshold for HISI K3V3 platform.
+
+config HISI_DDR_DEVFREQ_DEBUGFS
+	bool "Hisilicon ddr devfreq debugfs"
+	depends on HISI_DDR_DEVFREQ && DEBUG_FS
+	default n
+	help
+	  This is a testing driver for HISI ddr devfreq function.
 
 endif # PM_DEVFREQ

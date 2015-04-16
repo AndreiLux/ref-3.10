@@ -836,6 +836,15 @@ void do_exit(long code)
 	 * Make sure we are holding no locks:
 	 */
 	debug_check_no_locks_held();
+
+#ifdef CONFIG_ILOCKDEP
+	if (tsk->ilockdep_lock.depth > 0) {
+		pr_err("task %s[%d]exit with hold lock:\n",
+			tsk->comm, tsk->pid);
+		show_ilockdep_info(tsk);
+	}
+#endif
+
 	/*
 	 * We can do this unlocked here. The futex code uses this flag
 	 * just to verify whether the pi state cleanup has been done

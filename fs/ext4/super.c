@@ -43,6 +43,7 @@
 
 #include <linux/kthread.h>
 #include <linux/freezer.h>
+#include <linux/reboot.h>
 
 #include "ext4.h"
 #include "ext4_extents.h"	/* Needed for trace points definition */
@@ -53,6 +54,14 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/ext4.h>
+
+/* < DTS2013092906363 hanpeng 20131008 begin */
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+#include <asm/setup.h>
+extern unsigned int get_datamount_flag(void);
+extern unsigned int get_boot_into_recovery_flag(void);
+#endif
+/* DTS2013092906363 hanpeng 20131008 end > */
 
 static struct proc_dir_entry *ext4_proc_root;
 static struct kset *ext4_kset;
@@ -403,6 +412,23 @@ static void ext4_handle_error(struct super_block *sb)
 	if (test_opt(sb, ERRORS_PANIC))
 		panic("EXT4-fs (device %s): panic forced after error\n",
 			sb->s_id);
+    /* < DTS2013092906363 hanpeng 20131008 begin */
+#ifdef CONFIG_FEATURE_HUAWEI_EMERGENCY_DATA
+    /*
+     * if is factory mode, same to orignal.
+     * if flag equal to 0, this phone boot not caused by ext4_handle_error, so reboot.
+     * if flag equal to 1, this phone boot caused by ext4_handle_error, so not reboot again.
+     */
+#ifndef TARGET_VERSION_FACTORY
+    /* < DTS2014041103148  shenchenkai 20140411 begin */
+    if (get_datamount_flag() == 0 && get_boot_into_recovery_flag() == 0) {
+        printk(KERN_CRIT "ext4_handle_error reboot mountfail\n");
+        kernel_restart("mountfail");
+    }
+    /* DTS2014041103148 shenchenkai 20140411 end > */
+#endif
+#endif
+    /* DTS2013092906363 hanpeng 20131008 end > */
 }
 
 void __ext4_error(struct super_block *sb, const char *function,

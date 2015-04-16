@@ -72,6 +72,11 @@ config ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
 	  /sys/module/lowmemorykiller/parameters/adj and convert them
 	  to oom_score_adj values.
 
+config HI6421_VIBRATOR
+	bool "Android timed vibrator K3 driver"
+	depends on ANDROID_TIMED_OUTPUT
+	default n
+
 config ANDROID_INTF_ALARM_DEV
 	bool "Android alarm driver"
 	depends on RTC_CLASS

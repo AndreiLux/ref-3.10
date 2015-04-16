@@ -1,5 +1,7 @@
 menu "Device Drivers"
 
+source "drivers/tzdriver/Kconfig"
+
 source "drivers/base/Kconfig"
 
 source "drivers/bus/Kconfig"
@@ -84,6 +86,10 @@ source "drivers/regulator/Kconfig"
 
 source "drivers/media/Kconfig"
 
+source "drivers/vcodec/Kconfig"
+
+source "drivers/vpp/Kconfig"
+
 source "drivers/video/Kconfig"
 
 source "sound/Kconfig"
@@ -140,8 +146,6 @@ source "drivers/hwspinlock/Kconfig"
 
 source "drivers/clocksource/Kconfig"
 
-source "drivers/mailbox/Kconfig"
-
 source "drivers/iommu/Kconfig"
 
 source "drivers/remoteproc/Kconfig"
@@ -168,6 +172,21 @@ source "drivers/ipack/Kconfig"
 
 source "drivers/reset/Kconfig"
 
+source "drivers/gpu/arm/Kconfig"
+
+source "drivers/coresight/Kconfig"
+source "drivers/jpu/Kconfig"
+source "drivers/hisi/Kconfig"
+source "drivers/modem/Kconfig"
+source "drivers/devdetect/Kconfig"
+source "drivers/huawei/Kconfig"
+source "drivers/ddr/Kconfig"
 source "drivers/gator/Kconfig"
+
+source "drivers/tspdrv/Kconfig"
+
+# /* DTS2013031107868 qidechun 2013-03-11 begin */ 
+source "drivers/srecorder/Kconfig"
+# /* DTS2013031107868 qidechun 2013-03-11 end */ 
 
 endmenu

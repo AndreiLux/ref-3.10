@@ -1,0 +1,6 @@
+config MALI_PLATFORM_K3V3
+	bool "Enable k3v3 platform config"
+	depends on MALI_T6XX && MALI_EXPERT
+	default y
+	help
+	   You can config this for k3v3 chip.

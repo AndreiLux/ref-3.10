@@ -101,7 +101,7 @@ static unsigned int bL_cpufreq_get_rate(unsigned int cpu)
 	}
 }
 
-static unsigned int
+static int
 bL_cpufreq_set_rate(u32 cpu, u32 old_cluster, u32 new_cluster, u32 rate)
 {
 	u32 new_rate, prev_rate;
@@ -351,7 +351,8 @@ static int _get_cluster_clk_and_freq_table(struct device *cpu_dev)
 	}
 
 	name[12] = cluster + '0';
-	clk[cluster] = clk_get_sys(name, NULL);
+
+	clk[cluster] = clk_get_sys(NULL, name);
 	if (!IS_ERR(clk[cluster])) {
 		dev_dbg(cpu_dev, "%s: clk: %p & freq table: %p, cluster: %d\n",
 				__func__, clk[cluster], freq_table[cluster],

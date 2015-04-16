@@ -55,10 +55,16 @@ void down(struct semaphore *sem)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	if (likely(sem->count > 0))
 		sem->count--;
 	else
 		__down(sem);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 }
 EXPORT_SYMBOL(down);
@@ -78,10 +84,19 @@ int down_interruptible(struct semaphore *sem)
 	int result = 0;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	if (likely(sem->count > 0))
 		sem->count--;
 	else
 		result = __down_interruptible(sem);
+#ifdef CONFIG_ILOCKDEP
+	if (result)
+		ilockdep_clear_locking(current);
+	else
+		ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
@@ -104,10 +119,20 @@ int down_killable(struct semaphore *sem)
 	int result = 0;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	if (likely(sem->count > 0))
 		sem->count--;
 	else
 		result = __down_killable(sem);
+
+#ifdef CONFIG_ILOCKDEP
+	if (result)
+		ilockdep_clear_locking(current);
+	else
+		ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
@@ -134,8 +159,15 @@ int down_trylock(struct semaphore *sem)
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
 	count = sem->count - 1;
+#ifdef CONFIG_ILOCKDEP
+	if (likely(count >= 0)) {
+		sem->count = count;
+		ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+	}
+#else
 	if (likely(count >= 0))
 		sem->count = count;
+#endif
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return (count < 0);
@@ -158,10 +190,19 @@ int down_timeout(struct semaphore *sem, long jiffies)
 	int result = 0;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_acquire(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	if (likely(sem->count > 0))
 		sem->count--;
 	else
 		result = __down_timeout(sem, jiffies);
+#ifdef CONFIG_ILOCKDEP
+	if (result)
+		ilockdep_clear_locking(current);
+	else
+		ilockdep_acquired(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	raw_spin_unlock_irqrestore(&sem->lock, flags);
 
 	return result;
@@ -180,6 +221,9 @@ void up(struct semaphore *sem)
 	unsigned long flags;
 
 	raw_spin_lock_irqsave(&sem->lock, flags);
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_release(&sem->idep_map, _RET_IP_, (void *)sem);
+#endif
 	if (likely(list_empty(&sem->wait_list)))
 		sem->count++;
 	else

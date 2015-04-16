@@ -22,8 +22,11 @@
 #include <linux/sched.h>
 #include <linux/scatterlist.h>
 #include <linux/vmalloc.h>
+#include <linux/slab.h>
 #include "ion.h"
 #include "ion_priv.h"
+
+#include <linux/hisi-iommu.h>
 
 void *ion_heap_map_kernel(struct ion_heap *heap,
 			  struct ion_buffer *buffer)
@@ -102,6 +105,30 @@ int ion_heap_map_user(struct ion_heap *heap, struct ion_buffer *buffer,
 	return 0;
 }
 
+int ion_heap_map_iommu(struct ion_buffer *buffer,
+			struct ion_iommu_map *map_data)
+{
+	struct sg_table *table = buffer->sg_table;
+	int ret;
+
+	ret = hisi_iommu_map_domain(table->sgl, &map_data->format);
+	if (ret) {
+		pr_err("%s: iommu map failed, heap: %s\n", __func__,
+			buffer->heap->name);
+	}
+	return ret;
+}
+
+void ion_heap_unmap_iommu(struct ion_iommu_map *map_data)
+{
+	int ret;
+	ret = hisi_iommu_unmap_domain(&map_data->format);
+	if (ret) {
+		pr_err("%s: iommu unmap failed, heap: %s\n", __func__,
+			map_data->buffer->heap->name);
+	}
+}
+
 static int ion_heap_clear_pages(struct page **pages, int num, pgprot_t pgprot)
 {
 	void *addr = vm_map_ram(pages, num, -1, pgprot);
@@ -113,7 +140,10 @@ static int ion_heap_clear_pages(struct page **pages, int num, pgprot_t pgprot)
 	return 0;
 }
 
-static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
+/* modified by l00196665, for DTS2014060904376 */
+#if 0
+
+int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
 						pgprot_t pgprot)
 {
 	int p = 0;
@@ -136,17 +166,74 @@ static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
 	return ret;
 }
 
+#else
+
+static int ion_heap_clear_pages_for_large_buffer(struct page **pages, int num, pgprot_t pgprot)
+{
+	void *vaddr;
+
+	vaddr = vmap(pages, num, VM_MAP, pgprot);
+	if (!vaddr)
+		return -ENOMEM;
+	memset(vaddr, 0, PAGE_SIZE * num);
+	vunmap(vaddr);
+
+	return 0;
+}
+
+int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
+						pgprot_t pgprot)
+{
+	struct scatterlist *sg;
+	int i, j, k = 0;
+	int ret;
+	struct page **pages;
+	unsigned int max_npages = 1024;
+
+	pages = kzalloc(sizeof(struct page *) * max_npages, GFP_KERNEL);
+	if (!pages) {
+		pr_err("%s: allocate pages failed!\n", __func__);
+		return -ENOMEM;
+	}
+
+	for_each_sg(sgl, sg, nents, i) {
+		int npages_this_entry = PAGE_ALIGN(sg->length) / PAGE_SIZE;
+		struct page *page = sg_page(sg);
+
+		for (j = 0; j < npages_this_entry; j++) {
+			pages[k++] = page++;
+			if (k >= max_npages) {
+				ret = ion_heap_clear_pages_for_large_buffer(pages, k, pgprot);
+				if (ret) {
+					pr_err("%s: ion_heap_clear_pages failed!\n", __func__);
+					goto done;
+				}
+				k = 0;
+			}
+		}
+	}
+
+	if (k) {
+		if (k < BITS_PER_LONG)
+			ret = ion_heap_clear_pages(pages, k, pgprot);
+		else
+			ret = ion_heap_clear_pages_for_large_buffer(pages, k, pgprot);
+
+		if (ret)
+			pr_err("%s: failed! k: %d\n", __func__, k);
+	}
+
+done:
+	kfree(pages);
+	return ret;
+}
+#endif
+
 int ion_heap_buffer_zero(struct ion_buffer *buffer)
 {
 	struct sg_table *table = buffer->sg_table;
-	pgprot_t pgprot;
 
-	if (buffer->flags & ION_FLAG_CACHED)
-		pgprot = PAGE_KERNEL;
-	else
-		pgprot = pgprot_writecombine(PAGE_KERNEL);
-
-	return ion_heap_sglist_zero(table->sgl, table->nents, pgprot);
+	return ion_heap_sglist_zero(table->sgl, table->nents, PAGE_KERNEL);
 }
 
 int ion_heap_pages_zero(struct page *page, size_t size, pgprot_t pgprot)
@@ -323,6 +410,12 @@ struct ion_heap *ion_heap_create(struct ion_platform_heap *heap_data)
 	case ION_HEAP_TYPE_DMA:
 		heap = ion_cma_heap_create(heap_data);
 		break;
+	case ION_HEAP_TYPE_DMA_POOL:
+		heap = ion_cma_pool_heap_create(heap_data);
+		break;
+	case ION_HEAP_TYPE_CPUDRAW:
+		heap = ion_cpudraw_heap_create(heap_data);
+		break;
 	default:
 		pr_err("%s: Invalid heap type %d\n", __func__,
 		       heap_data->type);
@@ -361,6 +454,12 @@ void ion_heap_destroy(struct ion_heap *heap)
 		break;
 	case ION_HEAP_TYPE_DMA:
 		ion_cma_heap_destroy(heap);
+		break;
+	case ION_HEAP_TYPE_DMA_POOL:
+		ion_cma_pool_heap_destroy(heap);
+		break;
+	case ION_HEAP_TYPE_CPUDRAW:
+		ion_cpudraw_heap_destroy(heap);
 		break;
 	default:
 		pr_err("%s: Invalid heap type %d\n", __func__,

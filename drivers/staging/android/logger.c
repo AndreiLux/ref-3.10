@@ -32,6 +32,56 @@
 #include "logger.h"
 
 #include <asm/ioctls.h>
+#include <linux/log_switch.h>
+
+#include <linux/hw_log.h>
+#undef HWLOG_TAG
+#define HWLOG_TAG logger
+HWLOG_REGIST();
+
+
+extern struct huawei_log_tag __start_hwlog_tag, __stop_hwlog_tag;
+#define TAG_BUFF_SIZE 32*1024
+#define MAX_NAME_LEN 20
+#define LEVEL_LEN 2
+#define LEVEL_AND_CHAR_LEN LEVEL_LEN+3 /*LEVEL_LEN plus the len of " 0X"*/
+#define LEVEL_BUFF_LEN LEVEL_AND_CHAR_LEN+1/*LEVEL_AND_CHAR_LEN plus the len of "/n"*/
+#define MAX_NAME_AND_LEVEL_BUFF_SIZE MAX_NAME_LEN+LEVEL_BUFF_LEN+1
+#define MAX_LEVEL 0XFF
+
+#ifndef CONFIG_HISI_LOG
+#define HISI_1K (1024)
+#define EXCEPTION_LOG_BUF_LEN           (16*HISI_1K)
+#define POWER_LOG_BUF_LEN		(64*HISI_1K)
+#define JANK_LOG_BUF_LEN		(64*HISI_1K)
+
+#endif
+
+struct logger_log_tag {
+	unsigned char*		tag_save_buff;
+	struct mutex		mutex;
+};
+
+static struct logger_log_tag* log_tag;
+
+#ifdef CONFIG_HISI_LOG
+#include <linux/huawei/hilog.h>
+#endif
+
+typedef enum android_LogPriority {
+	ANDROID_LOG_UNKNOWN = 0,
+	ANDROID_LOG_DEFAULT,    /* only for SetMinPriority() */
+	ANDROID_LOG_VERBOSE,
+	ANDROID_LOG_DEBUG,
+	ANDROID_LOG_INFO,
+	ANDROID_LOG_WARN,
+	ANDROID_LOG_ERROR,
+	ANDROID_LOG_FATAL,
+	ANDROID_LOG_SILENT,     /* only for SetMinPriority(); must be last */
+} android_LogPriority;
+
+
+#define ANDROID_LOG_LEVEL               (ANDROID_LOG_INFO)
 
 /**
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
@@ -60,7 +110,6 @@ struct logger_log {
 	size_t			size;
 	struct list_head	logs;
 };
-
 static LIST_HEAD(log_list);
 
 
@@ -460,6 +509,27 @@ static ssize_t do_write_log_from_user(struct logger_log *log,
 	return count;
 }
 
+
+/*
+ * get_log_priority - get the log priority from iov structure
+ *
+ */
+static char get_log_priority(const struct iovec *iov)
+{
+    char priority=ANDROID_LOG_UNKNOWN;
+
+    if ((NULL == iov) || (NULL == iov->iov_base))
+        return -EINVAL;
+
+    if (1 != iov->iov_len)
+        return ANDROID_LOG_UNKNOWN;
+
+    if (copy_from_user(&priority, iov->iov_base, 1))
+        return -EFAULT;
+
+    return priority;
+}
+
 /*
  * logger_aio_write - our write method, implementing support for write(),
  * writev(), and aio_write(). Writes are our fast path, and we try to optimize
@@ -473,6 +543,29 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	struct logger_entry header;
 	struct timespec now;
 	ssize_t ret = 0;
+	int logctl_flag = 0;
+	char priority = 0;
+
+	logctl_flag = get_logctl_flag();
+
+	priority = get_log_priority(iov);
+	if (priority < 0) {
+		hwlog_err("%s: get_log_priority fail %d\n", __func__, priority);
+		priority = ANDROID_LOG_UNKNOWN;
+	}
+
+        /* if log device is events or main which its priority is more than ANDROID_LOG_INFO, we also pass it */
+	if ( (LOGCTL_OFF == logctl_flag)
+	  && strncmp(log->misc.name, LOGGER_LOG_EXCEPTION, strlen(LOGGER_LOG_EXCEPTION))
+	  && strncmp(log->misc.name, LOGGER_LOG_POWER, strlen(LOGGER_LOG_POWER))
+	  && strncmp(log->misc.name, LOGGER_LOG_JANK, strlen(LOGGER_LOG_JANK))
+	  && strncmp(log->misc.name, LOGGER_LOG_EVENTS, strlen(LOGGER_LOG_EVENTS))
+	  && (   strncmp(log->misc.name, LOGGER_LOG_MAIN, strlen(LOGGER_LOG_MAIN))
+	      || (priority < ANDROID_LOG_INFO)
+	     )
+	   ) {
+		return 0;
+	}
 
 	now = current_kernel_time();
 
@@ -724,6 +817,14 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		reader = file->private_data;
 		ret = logger_set_version(reader, argp);
 		break;
+	case FIONREAD:
+		if (!strncmp(log->misc.name, LOGGER_LOG_POWER, strlen(LOGGER_LOG_POWER))) {
+			ret = -ENOTTY;
+		}
+                if (!strncmp(log->misc.name, LOGGER_LOG_JANK, strlen(LOGGER_LOG_JANK))) {
+			ret = -ENOTTY;
+		}
+		break; 
 	}
 
 	mutex_unlock(&log->mutex);
@@ -742,6 +843,258 @@ static const struct file_operations logger_fops = {
 	.release = logger_release,
 };
 
+/*< DTS2014031103534 lixiang/00151177 20140218 begin */
+static struct logger_log *get_log_from_name(const char* name)
+{
+	struct logger_log *log;
+
+	list_for_each_entry(log, &log_list, logs)
+		if (!strncmp(log->misc.name, name, strlen(log->misc.name)))
+			return log;
+	return NULL;
+}
+
+static int calc_iovc_ki_left(struct iovec *iov, int nr_segs)
+{
+	int ret = 0;
+	int seg;
+	for (seg = 0; seg < nr_segs; seg++) {
+		ssize_t len = (ssize_t)iov[seg].iov_len;
+		ret += len;
+	}
+	return ret;
+}
+
+ssize_t write_log_to_exception(const char* category, char level, const char* msg)
+{
+	struct logger_log *log = get_log_from_name(LOGGER_LOG_EXCEPTION);
+
+	struct logger_entry header;
+	struct timespec now;
+	ssize_t ret = 0;
+	struct iovec vec[4];
+	struct iovec *iov = vec;
+	int nr_segs = sizeof(vec)/sizeof(vec[0]);
+
+	pr_info("%s:%s\n",__func__,msg);
+	/*according to the arguments, fill the iovec struct  */
+	vec[0].iov_base   = (unsigned char *) &level;
+	vec[0].iov_len    = 1;
+
+	vec[1].iov_base   = "message";
+	vec[1].iov_len    = strlen("message");  //here won't add \0
+
+	vec[2].iov_base   = (void *) category;
+	vec[2].iov_len    = strlen(category) + 1;
+
+	vec[3].iov_base   = (void *) msg;
+	vec[3].iov_len    = strlen(msg) + 1;
+
+	now = current_kernel_time();
+	header.pid = 0;
+	header.tid = 0;
+	header.sec = now.tv_sec;
+	header.nsec = now.tv_nsec;
+	header.euid = current_euid();
+	header.len = min(calc_iovc_ki_left(vec,nr_segs),LOGGER_ENTRY_MAX_PAYLOAD);
+	header.hdr_size = sizeof(struct logger_entry);
+
+	/* null writes succeed, return zero */
+	if (unlikely(!header.len))
+		return 0;
+
+	mutex_lock(&log->mutex);
+
+	/*
+	 * Fix up any readers, pulling them forward to the first readable
+	 * entry after (what will be) the new write offset. We do this now
+	 * because if we partially fail, we can end up with clobbered log
+	 * entries that encroach on readable buffer.
+	 */
+	fix_up_readers(log, sizeof(struct logger_entry) + header.len);
+
+	do_write_log(log, &header, sizeof(struct logger_entry));
+
+	while (nr_segs-- > 0) {
+		size_t len;
+		ssize_t nr;
+
+		/* figure out how much of this vector we can keep */
+		len = min_t(size_t, iov->iov_len, header.len - ret);
+
+		/* write out this segment's payload */
+		do_write_log(log, iov->iov_base, len);
+
+		iov++;
+		ret += nr;
+	}
+
+	mutex_unlock(&log->mutex);
+
+	/* wake up any blocked readers */
+	wake_up_interruptible(&log->wq);
+
+	return ret;
+}
+EXPORT_SYMBOL(write_log_to_exception);
+/* DTS2014031103534 lixiang/00151177 20140218 end >*/
+
+static int check_tag_level_to_show(char* srcbuff, const char* name, int level)
+{
+	char checkbuff[MAX_NAME_AND_LEVEL_BUFF_SIZE] = {0};
+	char* findstr = NULL;
+
+	if(srcbuff == NULL)
+	{
+		hwlog_err("buff is null\n");
+		return -2;
+	}
+
+	if(name == NULL)
+	{
+		hwlog_err("name is null\n");
+		return -2;
+	}
+
+	if(strlen(name) > MAX_NAME_LEN)
+	{
+		hwlog_warn("name: %s is lang than %d\n", name, MAX_NAME_LEN);
+	}
+
+	snprintf(checkbuff, MAX_NAME_LEN+1, "%s",name);
+	strcat(checkbuff," ");
+	findstr = strstr(srcbuff,checkbuff);
+	if(findstr!=NULL)
+	{
+		hwlog_debug("%s is 0X%0*X need not to show\n", name, LEVEL_LEN, level);
+		return -1;
+	}
+
+	hwlog_debug("%s is 0X%0*X need to show\n", name, LEVEL_LEN, level);
+	return 1;
+}
+
+
+static ssize_t log_tag_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
+{
+	struct huawei_log_tag *t;
+	unsigned char *str = NULL;
+	int checkresult=0;
+	int len = 0;
+	size_t readlen;
+
+	hwlog_info("log_tag_read enter,*pos=%lld,count=%d\n",*pos,count);
+
+	mutex_lock(&log_tag->mutex);
+	memset(log_tag->tag_save_buff,0,TAG_BUFF_SIZE);
+	str = log_tag->tag_save_buff;
+	for (t = &__start_hwlog_tag; t < &__stop_hwlog_tag; t++)
+	{
+		hwlog_debug("%s is %0*X\n", t->name, LEVEL_LEN, t->level);
+		checkresult = check_tag_level_to_show(log_tag->tag_save_buff,t->name,t->level);
+		if(checkresult == 1)
+		{
+			hwlog_debug("%s is %0*X to show\n", t->name, LEVEL_LEN, t->level);
+			if(&log_tag->tag_save_buff[TAG_BUFF_SIZE-1] - str <= MAX_NAME_AND_LEVEL_BUFF_SIZE  )
+			{
+				hwlog_warn("tag buffer is full.");
+				break;
+			}
+			len = snprintf(str,MAX_NAME_LEN+1, "%s", t->name);
+			str += min(len,MAX_NAME_LEN);
+			len = snprintf(str,LEVEL_AND_CHAR_LEN+1, " 0X%0*X", LEVEL_LEN, t->level);
+			str += min(len,LEVEL_AND_CHAR_LEN);
+			str += snprintf(str,MAX_NAME_AND_LEVEL_BUFF_SIZE-LEVEL_AND_CHAR_LEN-MAX_NAME_LEN+1, "\n");
+		}
+	}
+	str = NULL;
+	hwlog_debug("tag buff is: %s.\n",log_tag->tag_save_buff);
+
+	readlen = simple_read_from_buffer(buf, count, pos, (void*) log_tag->tag_save_buff, strlen(log_tag->tag_save_buff));
+	mutex_unlock(&log_tag->mutex);
+
+	hwlog_info("log_tag_read end,readlen=%d,*pos=%lld\n",readlen,*pos);
+	return readlen;
+}
+
+static ssize_t log_tag_write(struct file * file, const char __user * buf, size_t count, loff_t * pos)
+{
+	char name[MAX_NAME_AND_LEVEL_BUFF_SIZE] = {0};
+	char kernelbuf[MAX_NAME_AND_LEVEL_BUFF_SIZE] = {0};
+	u32 val=0;
+	struct huawei_log_tag *t=NULL;
+	int ret=0;
+	int find_tag_num = 0;
+
+	hwlog_info("log_tag_write enter,count=%d,*pos=%lld\n",count,*pos);
+
+	if(count >= MAX_NAME_AND_LEVEL_BUFF_SIZE)
+	{
+		hwlog_err("write count:%d is larger than %d.\n",count,MAX_NAME_AND_LEVEL_BUFF_SIZE);
+		return -EINVAL;
+	}
+
+	ret = copy_from_user(kernelbuf, buf, count);
+	if(0 != ret)
+	{
+		hwlog_err("copy %d to kernel buff failed,%d byty is not copied,return -EINVAL.",count,ret);
+		return -EINVAL;
+	}
+	hwlog_info("copy from user,kernelbuf=%s\n",kernelbuf);
+
+	ret = sscanf(kernelbuf, "%s 0X%X", name, &val);
+	if (ret != 2)
+	{
+		hwlog_err("read name and level from buff failed,ret =%d,return -EINVAL.",ret);
+		return -EINVAL;
+	}
+	if(strlen(name) > MAX_NAME_LEN)
+	{
+		hwlog_err("read name=%s,the length is larger than %d,return -EINVAL.",name,MAX_NAME_LEN);
+		return -EINVAL;
+	}
+	if(val > MAX_LEVEL)
+	{
+		hwlog_err("read val=0X%X,is larger than 0X%X,return -EINVAL.",val,MAX_LEVEL);
+		return -EINVAL;
+	}
+	hwlog_info("get from kernel buff,tag=%s,level=0X%0*X\n", name, LEVEL_LEN, val);
+	hwlog_debug("get from kernel buff,tag=%s,level=0X%08X\n", name, val);
+
+	mutex_lock(&log_tag->mutex);
+	for (t = &__start_hwlog_tag; t < &__stop_hwlog_tag; t++)
+	{
+		if (NULL != t->name && strncmp(name, t->name,MAX_NAME_LEN) == 0)
+		{
+			t->level = val;
+			hwlog_debug("%s set to 0X%0*X\n", name, LEVEL_LEN, val);
+			find_tag_num++;
+		}
+	}
+	mutex_unlock(&log_tag->mutex);
+
+	hwlog_debug("find %d times of tag:%s\n",find_tag_num, name);
+	if(0 == find_tag_num)
+	{
+		hwlog_warn("tag=%s,level=0X%0*X, is not set for can't find tag\n", name, LEVEL_LEN, val);
+	}
+	hwlog_info("log_tag_write end,return %d\n",count);
+	return count;
+}
+
+static const struct file_operations log_tag_fops = {
+	.owner = THIS_MODULE,
+	.read = log_tag_read,
+	.write = log_tag_write,
+};
+
+static struct miscdevice log_tag_misc_dev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = "hwlog_tag",
+	.fops = &log_tag_fops,
+	.parent = NULL,
+};
+
 /*
  * Log size must must be a power of two, and greater than
  * (LOGGER_ENTRY_MAX_PAYLOAD + sizeof(struct logger_entry)).
@@ -751,7 +1104,6 @@ static int __init create_log(char *log_name, int size)
 	int ret = 0;
 	struct logger_log *log;
 	unsigned char *buffer;
-
 	buffer = vmalloc(size);
 	if (buffer == NULL)
 		return -ENOMEM;
@@ -793,7 +1145,6 @@ static int __init create_log(char *log_name, int size)
 
 	pr_info("created %luK log '%s'\n",
 		(unsigned long) log->size >> 10, log->misc.name);
-
 	return 0;
 
 out_free_log:
@@ -816,13 +1167,50 @@ static int __init logger_init(void)
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_RADIO, 256*1024);
+	ret = create_log(LOGGER_LOG_RADIO, 512*1024);
 	if (unlikely(ret))
 		goto out;
 
 	ret = create_log(LOGGER_LOG_SYSTEM, 256*1024);
 	if (unlikely(ret))
 		goto out;
+
+	ret = create_log(LOGGER_LOG_EXCEPTION, EXCEPTION_LOG_BUF_LEN);	//must modified with EXCEPTION_LOG_BUF_LEN
+	if (unlikely(ret))
+		goto out;
+
+	ret = create_log(LOGGER_LOG_POWER, POWER_LOG_BUF_LEN);
+	if (unlikely(ret))
+		goto out;
+#if defined (CONFIG_LOG_JANK)
+	ret = create_log(LOGGER_LOG_JANK, JANK_LOG_BUF_LEN);
+	if (unlikely(ret))
+		goto out;
+#endif
+	log_tag = kzalloc(sizeof(struct logger_log_tag), GFP_KERNEL);
+	if (log_tag == NULL) {
+		pr_err("malloc buff for logger_log_tag struct failed.");
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	log_tag->tag_save_buff = (unsigned char*)vmalloc(TAG_BUFF_SIZE);
+	if (log_tag->tag_save_buff == NULL){
+		pr_err("malloc buff for log_tag->tag_save_buff struct failed.");
+		ret = -ENOMEM;
+		goto out;
+	}
+	memset(log_tag->tag_save_buff,0,TAG_BUFF_SIZE);
+
+	mutex_init(&log_tag->mutex);
+
+	ret = misc_register(&log_tag_misc_dev);
+	if (unlikely(ret))
+	{
+		pr_err("log_tag_misc_dev:%s  register failed.",log_tag_misc_dev.name);
+		goto out;
+	}
+	pr_info("log_tag_misc_dev:%s  register success.",log_tag_misc_dev.name);
 
 out:
 	return ret;
@@ -839,6 +1227,17 @@ static void __exit logger_exit(void)
 		kfree(current_log->misc.name);
 		list_del(&current_log->logs);
 		kfree(current_log);
+	}
+	misc_deregister(&log_tag_misc_dev);
+	if(log_tag->tag_save_buff != NULL)
+	{
+		vfree(log_tag->tag_save_buff);
+		log_tag->tag_save_buff = NULL;
+	}
+	if(log_tag != NULL)
+	{
+		kfree(log_tag);
+		log_tag = NULL;
 	}
 }
 

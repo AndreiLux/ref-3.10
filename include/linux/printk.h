@@ -397,4 +397,6 @@ static inline void print_hex_dump_bytes(const char *prefix_str, int prefix_type,
 		       groupsize, buf, len, ascii)
 #endif /* defined(CONFIG_DYNAMIC_DEBUG) */
 
+void hisi_getcurtime(long unsigned int *msec, long unsigned int *sec);
+
 #endif

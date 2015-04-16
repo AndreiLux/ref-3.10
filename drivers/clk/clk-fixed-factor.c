@@ -12,6 +12,9 @@
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <linux/of.h>
+#ifdef CONFIG_HI3630_CLK
+#include <linux/clkdev.h>
+#endif
 
 /*
  * DOC: basic fixed multiplier and divider clock that cannot gate
@@ -106,7 +109,8 @@ void __init of_fixed_factor_clk_setup(struct device_node *node)
 	struct clk *clk;
 	const char *clk_name = node->name;
 	const char *parent_name;
-	u32 div, mult;
+	u32 div = 0;
+	u32 mult = 0;
 
 	if (of_property_read_u32(node, "clock-div", &div)) {
 		pr_err("%s Fixed factor clock <%s> must have a clock-div property\n",
@@ -120,13 +124,21 @@ void __init of_fixed_factor_clk_setup(struct device_node *node)
 		return;
 	}
 
-	of_property_read_string(node, "clock-output-names", &clk_name);
+	if (of_property_read_string(node, "clock-output-names", &clk_name)) {
+		pr_err("%s Fixed factor clock <%s> must have a clock name property\n",
+			__func__, node->name);
+		return;
+	}
+
 	parent_name = of_clk_get_parent_name(node, 0);
 
 	clk = clk_register_fixed_factor(NULL, clk_name, parent_name, 0,
 					mult, div);
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+#ifdef CONFIG_HI3630_CLK
+	clk_register_clkdev(clk, clk_name, NULL);
+#endif
 }
 EXPORT_SYMBOL_GPL(of_fixed_factor_clk_setup);
 CLK_OF_DECLARE(fixed_factor_clk, "fixed-factor-clock",

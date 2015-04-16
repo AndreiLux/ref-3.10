@@ -27,6 +27,10 @@
 #include <asm/tlbflush.h>
 
 #include "fault.h"
+#ifdef CONFIG_HISI_RDR
+#include <linux/huawei/rdr.h>
+#include <linux/huawei/rdr_private.h>
+#endif
 
 #ifdef CONFIG_MMU
 
@@ -551,6 +555,9 @@ do_DataAbort(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	const struct fsr_info *inf = fsr_info + fsr_fs(fsr);
 	struct siginfo info;
+#ifdef CONFIG_HISI_RDR
+	arm_exc_type = DUMP_ARM_VEC_DATA;
+#endif
 
 	if (!inf->fn(addr, fsr & ~FSR_LNX_PF, regs))
 		return;
@@ -583,6 +590,9 @@ do_PrefetchAbort(unsigned long addr, unsigned int ifsr, struct pt_regs *regs)
 {
 	const struct fsr_info *inf = ifsr_info + fsr_fs(ifsr);
 	struct siginfo info;
+#ifdef CONFIG_HISI_RDR
+	arm_exc_type = DUMP_ARM_VEC_PREFETCH;
+#endif
 
 	if (!inf->fn(addr, ifsr | FSR_LNX_PF, regs))
 		return;

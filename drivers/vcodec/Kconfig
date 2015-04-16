@@ -1,0 +1,6 @@
+menu "vcodec support drivers"
+source "drivers/vcodec/imgvideo/Kconfig"
+source "drivers/vcodec/vdec/Kconfig"
+source "drivers/vcodec/venc/Kconfig"
+endmenu
+

@@ -27,6 +27,7 @@ obj-$(CONFIG_USB_SERIAL_FTDI_SIO)		+= ftdi_sio.o
 obj-$(CONFIG_USB_SERIAL_FUNSOFT)		+= funsoft.o
 obj-$(CONFIG_USB_SERIAL_GARMIN)			+= garmin_gps.o
 obj-$(CONFIG_USB_SERIAL_HP4X)			+= hp4x.o
+obj-$(CONFIG_USB_SERIAL_HISI)			+= hisi_serial.o
 obj-$(CONFIG_USB_SERIAL_IPAQ)			+= ipaq.o
 obj-$(CONFIG_USB_SERIAL_IPW)			+= ipw.o
 obj-$(CONFIG_USB_SERIAL_IR)			+= ir-usb.o

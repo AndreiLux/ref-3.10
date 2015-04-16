@@ -21,6 +21,7 @@
 #define __MTD_ABI_H__
 
 #include <linux/types.h>
+#include <linux/mtd/hisi_nve_interface.h>
 
 struct erase_info_user {
 	__u32 start;
@@ -115,12 +116,14 @@ struct mtd_write_req {
 #define MTD_NANDECC_PLACE	1	// Use the given placement in the structure (YAFFS1 legacy mode)
 #define MTD_NANDECC_AUTOPLACE	2	// Use the default placement scheme
 #define MTD_NANDECC_PLACEONLY	3	// Use the given placement in the structure (Do not store ecc result on read)
-#define MTD_NANDECC_AUTOPL_USR 	4	// Use the given autoplacement scheme rather than using the default
+#define MTD_NANDECC_AUTOPL_USR	4	// Use the given autoplacement scheme rather than using the default
 
 /* OTP mode selection */
 #define MTD_OTP_OFF		0
 #define MTD_OTP_FACTORY		1
 #define MTD_OTP_USER		2
+
+/*add end,used for NV.*/
 
 struct mtd_info_user {
 	__u8 type;
@@ -145,6 +148,7 @@ struct otp_info {
 	__u32 length;
 	__u32 locked;
 };
+
 
 /*
  * Note, the following ioctl existed in the past and was removed:
@@ -202,6 +206,9 @@ struct otp_info {
  * without OOB, e.g., NOR flash.
  */
 #define MEMWRITE		_IOWR('M', 24, struct mtd_write_req)
+/*add begin,used for NV.*/
+#define NVEACCESSDATA           _IOWR('M', 25, struct hisi_nve_info_user)
+/*add end,used for NV.*/
 
 /*
  * Obsolete legacy interface. Keep it in order not to break userspace

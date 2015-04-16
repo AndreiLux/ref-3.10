@@ -35,4 +35,5 @@
 #define N_TRACESINK	23	/* Trace data routing for MIPI P1149.7 */
 #define N_TRACEROUTER	24	/* Trace data routing for MIPI P1149.7 */
 
+#define N_GSM0710_BALONG    25  /*GSM 0710 Mux For Balong*/
 #endif /* _UAPI_LINUX_TTY_H */

@@ -46,6 +46,9 @@ struct mmc_ioc_cmd {
 #define mmc_ioc_cmd_set_data(ic, ptr) ic.data_ptr = (__u64)(unsigned long) ptr
 
 #define MMC_IOC_CMD _IOWR(MMC_BLOCK_MAJOR, 0, struct mmc_ioc_cmd)
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+#define MMC_IOC_WP_CMD _IOWR(MMC_BLOCK_MAJOR, 0, char)
+#endif
 
 /*
  * Since this ioctl is only meant to enhance (and not replace) normal access

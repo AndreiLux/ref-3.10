@@ -144,4 +144,35 @@ static inline int netlink_dump_start(struct sock *ssk, struct sk_buff *skb,
 	return __netlink_dump_start(ssk, skb, nlh, control);
 }
 
+
+typedef enum _DEVICE_ID
+{
+	DEVICE_ID_NULL_ID = 0,	  /*NULL_ID, as initialize value.*/
+	DEVICE_ID_USB = 1,	// USB device = 1
+	DEVICE_ID_KEY,		// Keyboard device = 2
+	DEVICE_ID_BATTERY,	// Battery device = 3
+	DEVICE_ID_CHARGER,	// Charger device = 4
+	DEVICE_ID_SD,		// SD card device =  5
+	DEVICE_ID_PROCESS,	// Used for monitored process = 6
+	DEVICE_ID_SCREEN,	// Screen device = 7
+	DEVICE_ID_WLAN,	// WLAN device = 8
+	DEVICE_ID_OM,	// OM module = 9
+	DEVICE_ID_TEMP,	// Temperature = 10
+	DEVICE_ID_WAN,	// WAN module = 11
+	DEVICE_ID_SIM,	//SIM device = 12
+	DEVICE_ID_UPDATEONLINE,  //Used for update online ;Add fansaihua
+	DEVICE_ID_MAX
+} DEVICE_ID;
+
+// Define the device event structure (driver => APP)
+typedef struct _DEVICE_EVENT
+{
+	DEVICE_ID device_id;
+	int event_code;
+	int len;
+	char data[0];
+} DEVICE_EVENT;
+
+#define device_event_report(data, len) (0)
+
 #endif	/* __LINUX_NETLINK_H */

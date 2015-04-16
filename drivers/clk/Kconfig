@@ -83,4 +83,5 @@ config COMMON_CLK_AXI_CLKGEN
 
 endmenu
 
+source "drivers/clk/hisilicon/Kconfig"
 source "drivers/clk/mvebu/Kconfig"

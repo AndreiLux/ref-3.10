@@ -21,7 +21,7 @@ config CPU_IDLE_MULTIPLE_DRIVERS
 config CPU_IDLE_GOV_LADDER
 	bool
 	depends on CPU_IDLE
-	default y
+	default n
 
 config CPU_IDLE_GOV_MENU
 	bool

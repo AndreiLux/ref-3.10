@@ -30,6 +30,7 @@
 #include <linux/suspend.h>
 #include <linux/cpuidle.h>
 #include <linux/timer.h>
+#include <linux/log_jank.h>
 
 #include "../base.h"
 #include "power.h"
@@ -370,6 +371,8 @@ static void dpm_show_time(ktime_t starttime, pm_message_t state, char *info)
 	pr_info("PM: %s%s%s of devices complete after %ld.%03ld msecs\n",
 		info ?: "", info ? " " : "", pm_verb(state.event),
 		usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
+    if (PM_EVENT_RESUME == state.event)
+        pr_jank(JL_KERNEL_PM_DEEPSLEEP_WAKEUP, "%s: %ld.%03ld msecs", "JL_KERNEL_PM_DEEPSLEEP_WAKEUP", usecs / USEC_PER_MSEC, usecs % USEC_PER_MSEC);
 }
 
 static int dpm_run_callback(pm_callback_t cb, struct device *dev,

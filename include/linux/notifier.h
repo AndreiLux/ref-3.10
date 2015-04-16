@@ -211,5 +211,15 @@ static inline int notifier_to_errno(int ret)
 
 extern struct blocking_notifier_head reboot_notifier_list;
 
+/* DTS2013031107868 qidechun 2013-03-11 begin */ 
+#ifdef CONFIG_SRECORDER
+#ifdef CONFIG_POWERCOLLAPSE
+#ifndef CONFIG_KPROBES
+extern struct raw_notifier_head emergency_reboot_notifier_list;
+#endif /* CONFIG_KPROBES */
+#endif /* CONFIG_POWERCOLLAPSE */
+#endif /* CONFIG_SRECORDER */
+/* DTS2013031107868 qidechun 2013-03-11 end */ 
+
 #endif /* __KERNEL__ */
 #endif /* _LINUX_NOTIFIER_H */

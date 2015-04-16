@@ -82,6 +82,9 @@ void hook_ifault_code(int nr, int (*fn)(unsigned long, unsigned int,
 		     int sig, int code, const char *name);
 
 extern asmlinkage void c_backtrace(unsigned long fp, int pmode);
+#ifdef CONFIG_HISI_RDR
+extern asmlinkage void c_backtrace_for_rdr(unsigned long fp, int pmode);
+#endif
 
 struct mm_struct;
 extern void show_pte(struct mm_struct *mm, unsigned long addr);

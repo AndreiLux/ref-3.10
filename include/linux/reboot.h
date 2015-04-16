@@ -13,6 +13,16 @@
 extern int register_reboot_notifier(struct notifier_block *);
 extern int unregister_reboot_notifier(struct notifier_block *);
 
+/* DTS2013031107868 qidechun 2013-03-11 begin */ 
+#ifdef CONFIG_SRECORDER
+#ifdef CONFIG_POWERCOLLAPSE
+#ifndef CONFIG_KPROBES
+extern int register_emergency_reboot_notifier(struct notifier_block *);
+extern int unregister_emergency_reboot_notifier(struct notifier_block *);
+#endif /* CONFIG_KPROBES */
+#endif /* CONFIG_POWERCOLLAPSE */
+#endif /* CONFIG_SRECORDER */
+/* DTS2013031107868 qidechun 2013-03-11 end */ 
 
 /*
  * Architecture-specific implementations of sys_reboot commands.

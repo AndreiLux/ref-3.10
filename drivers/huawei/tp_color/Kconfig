@@ -1,0 +1,10 @@
+#sensor unification for differ platform
+menu "huawei linux device driver support package"
+
+config HUAWEI_TP_COLOR_INFO
+	bool "huawei tp color info"
+	default n
+	help
+		get the huawei tp color information.
+endmenu
+

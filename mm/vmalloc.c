@@ -282,6 +282,22 @@ static unsigned long cached_align;
 
 static unsigned long vmap_area_pcpu_hole;
 
+/* DTS2013031107868 qidechun 2013-03-11 begin */ 
+#ifdef CONFIG_DUMP_SYS_INFO
+unsigned long get_vmap_area_lock(void)
+{
+    return (unsigned long)&vmap_area_lock;
+}
+EXPORT_SYMBOL(get_vmap_area_lock);
+
+unsigned long get_vmap_area_list(void)
+{
+    return (unsigned long)&vmap_area_list;
+}
+EXPORT_SYMBOL(get_vmap_area_list);
+#endif
+/* DTS2013031107868 qidechun 2013-03-11 end */ 
+
 static struct vmap_area *__find_vmap_area(unsigned long addr)
 {
 	struct rb_node *n = vmap_area_root.rb_node;
@@ -1561,6 +1577,54 @@ void vunmap(const void *addr)
 }
 EXPORT_SYMBOL(vunmap);
 
+#ifdef CONFIG_HISI_RDR
+#include <linux/syscalls.h>
+#include <linux/uaccess.h>
+#include <linux/unistd.h>
+void rdr_vm_tracer(unsigned long size)
+{
+	char c[32], x[32];
+	int i, fd, cnt = 1, j;
+	mm_segment_t old_fs;
+	pr_info("rdr:vmalloc %luM bytes failed, info:\n", size / SZ_1M);
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	fd = sys_open("/proc/vmallocinfo", O_RDONLY, 0);
+	if (fd < 0) {
+		pr_err("rdr:open vmalloc failed\n");
+		set_fs(old_fs);
+		return;
+	}
+	while (cnt > 0) {
+		memset(c, 0, sizeof(c));
+		cnt = sys_read(fd, c, 32);
+		if (cnt == 0) {
+			pr_info("\nrdr:read vmallocinfo end\n");
+			sys_close(fd);
+			set_fs(old_fs);
+			return;
+		}
+		memset(x, 0, sizeof(x));
+		i = 0;
+		j = 0;
+		while (i < (sizeof(c) - 3)) {
+			if ((c[i] == 0x68) && (c[i + 1] == 0x32) &&
+			(c[i + 2] == 0xd2) && (c[i + 3] == 0xc0)) {
+				i += 4;
+				continue;
+			} else {
+				x[j] = c[i];
+				i++;
+				j++;
+			}
+		}
+		printk(KERN_INFO "%s", x);
+	}
+	sys_close(fd);
+	set_fs(old_fs);
+}
+#endif
+
 /**
  *	vmap  -  map an array of pages into virtually contiguous space
  *	@pages:		array of page pointers
@@ -1579,19 +1643,24 @@ void *vmap(struct page **pages, unsigned int count,
 	might_sleep();
 
 	if (count > totalram_pages)
-		return NULL;
+		goto out;
 
 	area = get_vm_area_caller((count << PAGE_SHIFT), flags,
 					__builtin_return_address(0));
 	if (!area)
-		return NULL;
+		goto out;
 
 	if (map_vm_area(area, prot, &pages)) {
 		vunmap(area->addr);
-		return NULL;
+		goto out;
 	}
 
 	return area->addr;
+out:
+#ifdef CONFIG_HISI_RDR
+	rdr_vm_tracer(count * PAGE_SIZE);
+#endif
+	return NULL;
 }
 EXPORT_SYMBOL(vmap);
 
@@ -1760,8 +1829,14 @@ static inline void *__vmalloc_node_flags(unsigned long size,
  */
 void *vmalloc(unsigned long size)
 {
-	return __vmalloc_node_flags(size, NUMA_NO_NODE,
+	void *p = __vmalloc_node_flags(size, NUMA_NO_NODE,
 				    GFP_KERNEL | __GFP_HIGHMEM);
+#ifdef CONFIG_HISI_RDR
+	if (p == NULL)
+		rdr_vm_tracer(size);
+#endif
+
+	return p;
 }
 EXPORT_SYMBOL(vmalloc);
 

@@ -49,6 +49,7 @@ static DEFINE_PER_CPU(struct cpufreq_policy *, cpufreq_cpu_data);
 static DEFINE_PER_CPU(char[CPUFREQ_NAME_LEN], cpufreq_cpu_governor);
 #endif
 static DEFINE_RWLOCK(cpufreq_driver_lock);
+static DEFINE_MUTEX(cpufreq_governor_lock);
 
 /*
  * cpu_policy_rwsem is a per CPU reader-writer semaphore designed to cure
@@ -353,6 +354,9 @@ void __cpufreq_notify_transition(struct cpufreq_policy *policy,
 void cpufreq_notify_transition(struct cpufreq_policy *policy,
 		struct cpufreq_freqs *freqs, unsigned int state)
 {
+	if (state == CPUFREQ_POSTCHANGE) {
+		trace_cpufreq(policy->cpus, freqs->old,  freqs->new);
+	}
 	for_each_cpu(freqs->cpu, policy->cpus)
 		__cpufreq_notify_transition(policy, freqs, state);
 }
@@ -891,6 +895,30 @@ static int cpufreq_add_policy_cpu(unsigned int cpu, unsigned int sibling,
 }
 #endif
 
+#ifdef CONFIG_HISI_RDR
+typedef void (*rdr_funcptr_3)(u32, u32, u32);
+static rdr_funcptr_3 g_rdr_cpu_on_off_hook;
+
+void rdr_cpu_on_off_hook_add(rdr_funcptr_3 p_hook_func)
+{
+	g_rdr_cpu_on_off_hook = p_hook_func;
+}
+
+void rdr_cpu_on_off_hook_delete(void)
+{
+	g_rdr_cpu_on_off_hook = NULL;
+}
+#else
+typedef void (*rdr_funcptr_3)(u32, u32, u32);
+void rdr_cpu_on_off_hook_add(rdr_funcptr_3 p_hook_func)
+{
+}
+
+void rdr_cpu_on_off_hook_delete(void)
+{
+}
+#endif
+
 /**
  * cpufreq_add_dev - add a CPU device
  *
@@ -915,6 +943,11 @@ static int cpufreq_add_dev(struct device *dev, struct subsys_interface *sif)
 		return 0;
 
 	pr_debug("adding CPU %u\n", cpu);
+
+#ifdef CONFIG_HISI_RDR
+	if (g_rdr_cpu_on_off_hook != NULL)
+		g_rdr_cpu_on_off_hook(cpu, 0xff, 1);
+#endif
 
 #ifdef CONFIG_SMP
 	/* check whether a different CPU already registered this
@@ -1158,6 +1191,10 @@ static int __cpufreq_remove_dev(struct device *dev, struct subsys_interface *sif
 	}
 
 	per_cpu(cpufreq_policy_cpu, cpu) = -1;
+#ifdef CONFIG_HISI_RDR
+	if (g_rdr_cpu_on_off_hook != NULL)
+		g_rdr_cpu_on_off_hook(cpu, 0xff, 0);
+#endif
 	return 0;
 }
 
@@ -1611,6 +1648,21 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 
 	pr_debug("__cpufreq_governor for CPU %u, event %u\n",
 						policy->cpu, event);
+
+	mutex_lock(&cpufreq_governor_lock);
+	if ((!policy->governor_enabled && (event == CPUFREQ_GOV_STOP)) ||
+	    (policy->governor_enabled && (event == CPUFREQ_GOV_START))) {
+		mutex_unlock(&cpufreq_governor_lock);
+		return -EBUSY;
+	}
+
+	if (event == CPUFREQ_GOV_STOP)
+		policy->governor_enabled = false;
+	else if (event == CPUFREQ_GOV_START)
+		policy->governor_enabled = true;
+
+	mutex_unlock(&cpufreq_governor_lock);
+
 	ret = policy->governor->governor(policy, event);
 
 	if (!ret) {
@@ -1618,6 +1670,14 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 			policy->governor->initialized++;
 		else if (event == CPUFREQ_GOV_POLICY_EXIT)
 			policy->governor->initialized--;
+	} else {
+		/* Restore original values */
+		mutex_lock(&cpufreq_governor_lock);
+		if (event == CPUFREQ_GOV_STOP)
+			policy->governor_enabled = true;
+		else if (event == CPUFREQ_GOV_START)
+			policy->governor_enabled = false;
+		mutex_unlock(&cpufreq_governor_lock);
 	}
 
 	/* we keep one module reference alive for
@@ -1888,6 +1948,7 @@ static int __cpuinit cpufreq_cpu_callback(struct notifier_block *nfb,
 		case CPU_ONLINE:
 		case CPU_ONLINE_FROZEN:
 			cpufreq_add_dev(dev, NULL);
+			kobject_uevent(&dev->kobj, KOBJ_ADD);
 			break;
 		case CPU_DOWN_PREPARE:
 		case CPU_DOWN_PREPARE_FROZEN:

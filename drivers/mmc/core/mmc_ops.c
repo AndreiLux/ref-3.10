@@ -314,7 +314,7 @@ int mmc_send_csd(struct mmc_card *card, u32 *csd)
 		return mmc_send_cxd_native(card->host, card->rca << 16,
 				csd, MMC_SEND_CSD);
 
-	csd_tmp = kmalloc(16, GFP_KERNEL);
+	csd_tmp = kmalloc(DMA_DATA_SIZE_MIN, GFP_KERNEL);
 	if (!csd_tmp)
 		return -ENOMEM;
 
@@ -342,7 +342,7 @@ int mmc_send_cid(struct mmc_host *host, u32 *cid)
 				cid, MMC_SEND_CID);
 	}
 
-	cid_tmp = kmalloc(16, GFP_KERNEL);
+	cid_tmp = kmalloc(DMA_DATA_SIZE_MIN, GFP_KERNEL);
 	if (!cid_tmp)
 		return -ENOMEM;
 

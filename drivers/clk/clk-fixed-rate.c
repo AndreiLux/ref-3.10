@@ -15,6 +15,9 @@
 #include <linux/io.h>
 #include <linux/err.h>
 #include <linux/of.h>
+#ifdef CONFIG_HI3630_CLK
+#include <linux/clkdev.h>
+#endif
 
 /*
  * DOC: basic fixed-rate clock that cannot gate
@@ -89,16 +92,26 @@ void of_fixed_clk_setup(struct device_node *node)
 {
 	struct clk *clk;
 	const char *clk_name = node->name;
-	u32 rate;
+	u32 rate = 0;
 
-	if (of_property_read_u32(node, "clock-frequency", &rate))
+	if (of_property_read_u32(node, "clock-frequency", &rate)) {
+		pr_err("%s Fixed rate clock <%s> must have a clock rate property\n",
+			__func__, node->name);
 		return;
+	}
 
-	of_property_read_string(node, "clock-output-names", &clk_name);
+	if (of_property_read_string(node, "clock-output-names", &clk_name)) {
+		pr_err("%s Fixed rate clock <%s> must have a clock name property\n",
+			__func__, node->name);
+		return;
+	}
 
 	clk = clk_register_fixed_rate(NULL, clk_name, NULL, CLK_IS_ROOT, rate);
 	if (!IS_ERR(clk))
 		of_clk_add_provider(node, of_clk_src_simple_get, clk);
+#ifdef CONFIG_HI3630_CLK
+	clk_register_clkdev(clk, clk_name, NULL);
+#endif
 }
 EXPORT_SYMBOL_GPL(of_fixed_clk_setup);
 CLK_OF_DECLARE(fixed_clk, "fixed-clock", of_fixed_clk_setup);

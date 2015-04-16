@@ -1,0 +1,7 @@
+comment "kernel/driver/hisi/irq/irq_affinity_debugfs.c"
+config HISI_IRQ_AFFINITY_DEBUGFS
+	bool "Hisilicon irq affinity debugfs"
+	depends on HISI_IRQ_AFFINITY
+	default n
+	help
+	  Debug code for HISI irq affinity recovery in smp system

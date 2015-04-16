@@ -54,6 +54,9 @@ struct sched_param {
 #include <linux/gfp.h>
 
 #include <asm/processor.h>
+#ifdef CONFIG_ILOCKDEP
+#include <linux/ilockdep.h>
+#endif
 
 struct exec_domain;
 struct futex_pi_state;
@@ -293,6 +296,9 @@ static inline void lockup_detector_init(void)
 }
 #endif
 
+#ifdef CONFIG_ILOCKDEP
+extern unsigned long sysctl_hung_task_show_count;
+#endif
 /* Attach to any functions which should be ignored in wchan output. */
 #define __sched		__attribute__((__section__(".sched.text")))
 
@@ -1432,6 +1438,12 @@ struct task_struct {
 #if defined(CONFIG_BCACHE) || defined(CONFIG_BCACHE_MODULE)
 	unsigned int	sequential_io;
 	unsigned int	sequential_io_avg;
+#endif
+#ifdef CONFIG_HISI_RDR
+	int dump_magic;
+#endif
+#ifdef CONFIG_ILOCKDEP
+	struct ilockdep ilockdep_lock;
 #endif
 };
 

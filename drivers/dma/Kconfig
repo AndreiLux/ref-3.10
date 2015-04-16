@@ -312,6 +312,27 @@ config MMP_PDMA
 	help
 	  Support the MMP PDMA engine for PXA and MMP platfrom.
 
+config HISI_DMA
+	tristate "Hisilicon K3 DMA support"
+	depends on (ARCH_HISI || ARCH_HI3630FPGA || ARCH_HI3630)
+	select DMA_ENGINE
+	select DMA_VIRTUAL_CHANNELS
+	help
+	  Support the DMA engine for Hisilicon K3 platform
+	  devices.
+
+config HISI_DMA_PM_RUNTIME
+	bool "Hisilicon K3 DMA pm runtime support"
+	depends on (HISI_DMA && PM_RUNTIME)
+	help
+	  Hisilicon K3 DMA pm runtime switch.
+
+config DMA_NO_CCI
+	bool "Hisilicon K3 DMA CCI support"
+	depends on (HISI_DMA)
+	help
+	  Hisilicon K3 DMA CCI switch
+
 config DMA_ENGINE
 	bool
 

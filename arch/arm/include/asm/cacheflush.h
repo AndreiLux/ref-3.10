@@ -222,6 +222,16 @@ static inline void __flush_icache_all(void)
 
 #define flush_cache_all()		__cpuc_flush_kern_all()
 
+
+/*HI3630: flush all cpu all cache*/
+#ifndef CONFIG_SMP
+#define hi3630_fc_allcpu_allcache()		flush_cache_all()
+#else
+extern void hi3630_fc_allcpu_allcache(void);
+#endif
+/*HI3630: flush all cpu all cache*/
+
+
 static inline void vivt_flush_cache_mm(struct mm_struct *mm)
 {
 	if (cpumask_test_cpu(smp_processor_id(), mm_cpumask(mm)))

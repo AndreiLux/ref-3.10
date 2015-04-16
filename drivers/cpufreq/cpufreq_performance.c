@@ -17,18 +17,46 @@
 #include <linux/cpufreq.h>
 #include <linux/init.h>
 
+#ifdef CONFIG_ARCH_HISI
+extern int get_lowbatteryflag(void);
+extern void set_lowBatteryflag(int flag);
+#endif
 
 static int cpufreq_governor_performance(struct cpufreq_policy *policy,
 					unsigned int event)
 {
+#ifdef CONFIG_ARCH_HISI
+	unsigned int utarget = policy->max;
+#endif
+
 	switch (event) {
 	case CPUFREQ_GOV_START:
 	case CPUFREQ_GOV_LIMITS:
 		pr_debug("setting to %u kHz because of event %u\n",
 						policy->max, event);
+
+#ifdef CONFIG_ARCH_HISI
+		if ((get_lowbatteryflag() == 1) && (policy->cpu == 4))
+			utarget = policy->min;
+
+		pr_info("%s utarget=%d\n", __func__, utarget);
+
+		__cpufreq_driver_target(policy, utarget,
+						CPUFREQ_RELATION_H);
+#else
 		__cpufreq_driver_target(policy, policy->max,
 						CPUFREQ_RELATION_H);
+#endif
 		break;
+
+#ifdef CONFIG_ARCH_HISI
+	case CPUFREQ_GOV_POLICY_EXIT:
+
+		set_lowBatteryflag(0);
+
+		break;
+#endif
+
 	default:
 		break;
 	}

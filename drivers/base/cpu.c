@@ -13,6 +13,7 @@
 #include <linux/gfp.h>
 #include <linux/slab.h>
 #include <linux/percpu.h>
+#include <linux/cpuidle.h>
 
 #include "base.h"
 
@@ -43,6 +44,23 @@ static ssize_t show_online(struct device *dev,
 	return sprintf(buf, "%u\n", !!cpu_online(cpu->dev.id));
 }
 
+static DEFINE_MUTEX(hisi_cpu_hotplug_driver_mutex);
+
+void hisi_cpu_hotplug_lock(void)
+{
+	mutex_lock(&hisi_cpu_hotplug_driver_mutex);
+}
+EXPORT_SYMBOL(hisi_cpu_hotplug_lock);
+
+void hisi_cpu_hotplug_unlock(void)
+{
+	mutex_unlock(&hisi_cpu_hotplug_driver_mutex);
+}
+EXPORT_SYMBOL(hisi_cpu_hotplug_unlock);
+
+#ifdef CONFIG_HISI_BUS_SWITCH
+extern int hisi_bus_switch_hook(int cpuid, int online);
+#endif
 static ssize_t __ref store_online(struct device *dev,
 				  struct device_attribute *attr,
 				  const char *buf, size_t count)
@@ -52,15 +70,31 @@ static ssize_t __ref store_online(struct device *dev,
 	int from_nid, to_nid;
 	ssize_t ret;
 
+	hisi_cpu_hotplug_lock();
+
 	cpu_hotplug_driver_lock();
 	switch (buf[0]) {
 	case '0':
+		cpuidle_pause();
 		ret = cpu_down(cpuid);
+#ifdef CONFIG_HISI_BUS_SWITCH
+		if (!ret)
+			hisi_bus_switch_hook(cpuid, 0);
+#endif
+		cpuidle_resume();
+		kick_all_cpus_sync();
 		if (!ret)
 			kobject_uevent(&dev->kobj, KOBJ_OFFLINE);
 		break;
 	case '1':
 		from_nid = cpu_to_node(cpuid);
+#ifdef CONFIG_HISI_BUS_SWITCH
+		ret = hisi_bus_switch_hook(cpuid, 1);
+		if (ret) {
+			hisi_cpu_hotplug_unlock();
+			return ret;
+		}
+#endif
 		ret = cpu_up(cpuid);
 
 		/*
@@ -78,6 +112,9 @@ static ssize_t __ref store_online(struct device *dev,
 		ret = -EINVAL;
 	}
 	cpu_hotplug_driver_unlock();
+
+	hisi_cpu_hotplug_unlock();
+
 
 	if (ret >= 0)
 		ret = count;

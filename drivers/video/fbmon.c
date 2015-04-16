@@ -1398,6 +1398,7 @@ int fb_videomode_from_videomode(const struct videomode *vm,
 
 	fbmode->sync = 0;
 	fbmode->vmode = 0;
+	fbmode->flag = 0;
 	if (vm->flags & DISPLAY_FLAGS_HSYNC_HIGH)
 		fbmode->sync |= FB_SYNC_HOR_HIGH_ACT;
 	if (vm->flags & DISPLAY_FLAGS_VSYNC_HIGH)
@@ -1406,7 +1407,14 @@ int fb_videomode_from_videomode(const struct videomode *vm,
 		fbmode->vmode |= FB_VMODE_INTERLACED;
 	if (vm->flags & DISPLAY_FLAGS_DOUBLESCAN)
 		fbmode->vmode |= FB_VMODE_DOUBLE;
-	fbmode->flag = 0;
+	if (vm->flags & DISPLAY_FLAGS_DE_HIGH)
+		fbmode->flag |= FB_FLAG_DE_HIGH;
+	if (vm->flags & DISPLAY_FLAGS_DE_LOW)
+		fbmode->flag |= FB_FLAG_DE_LOW;
+	if (vm->flags & DISPLAY_FLAGS_PIXDATA_POSEDGE)
+		fbmode->flag |= FB_FLAG_PIXDATA_POSEDGE;
+	if (vm->flags & DISPLAY_FLAGS_PIXDATA_NEGEDGE)
+		fbmode->flag |= FB_FLAG_PIXDATA_NEGEDGE;
 
 	htotal = vm->hactive + vm->hfront_porch + vm->hback_porch +
 		 vm->hsync_len;

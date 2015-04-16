@@ -550,7 +550,7 @@ static int i2c_check_mux_children(struct device *dev, void *addrp)
 	return result;
 }
 
-static int i2c_check_addr_busy(struct i2c_adapter *adapter, int addr)
+int i2c_check_addr_busy(struct i2c_adapter *adapter, int addr)
 {
 	struct i2c_adapter *parent = i2c_parent_is_i2c_adapter(adapter);
 	int result = 0;
@@ -564,6 +564,7 @@ static int i2c_check_addr_busy(struct i2c_adapter *adapter, int addr)
 
 	return result;
 }
+EXPORT_SYMBOL_GPL(i2c_check_addr_busy);
 
 /**
  * i2c_lock_adapter - Get exclusive access to an I2C bus segment

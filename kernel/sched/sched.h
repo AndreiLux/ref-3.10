@@ -651,6 +651,21 @@ DECLARE_PER_CPU(struct hmp_domain *, hmp_cpu_domain);
 #define hmp_cpu_domain(cpu)	(per_cpu(hmp_cpu_domain, (cpu)))
 #endif /* CONFIG_SCHED_HMP */
 
+#ifdef CONFIG_HMP_FREQUENCY_INVARIANT_SCALE
+#ifdef CONFIG_HOTPLUG_CPU
+struct cpufreq_scale_cpu {
+	u32 fastcpu_max_freq;
+	u32 slowcpu_max_freq;
+	u32 dhry_scale;
+	u32 dhry_multi;
+	u32 freq_scale;
+	u32 freq_multi_bit;
+};
+extern struct cpufreq_scale_cpu cpu_freq_scale;
+
+#endif /* CONFIG_HOTPLUG_CPU */
+#endif /* CONFIG_HMP_FREQUENCY_INVARIANT_SCALE */
+
 #endif /* CONFIG_SMP */
 
 #include "stats.h"
@@ -1082,8 +1097,17 @@ static inline u64 steal_ticks(u64 steal)
 }
 #endif
 
+#ifdef CONFIG_SCHED_RQ_AVG_INFO
+extern void sched_update_nr_prod(int cpu, unsigned long nr, bool inc);
+extern void sched_get_nr_running_avg(int *avg, int *iowait_avg);
+#endif /* CONFIG_SCHED_RQ_AVG_INFO */
+
 static inline void inc_nr_running(struct rq *rq)
 {
+#ifdef CONFIG_SCHED_RQ_AVG_INFO
+	sched_update_nr_prod(cpu_of(rq), rq->nr_running, true);
+#endif /* CONFIG_SCHED_RQ_AVG_INFO */
+
 	rq->nr_running++;
 
 #ifdef CONFIG_NO_HZ_FULL
@@ -1099,6 +1123,10 @@ static inline void inc_nr_running(struct rq *rq)
 
 static inline void dec_nr_running(struct rq *rq)
 {
+#ifdef CONFIG_SCHED_RQ_AVG_INFO
+	sched_update_nr_prod(cpu_of(rq), rq->nr_running, false);
+#endif /* CONFIG_SCHED_RQ_AVG_INFO */
+
 	rq->nr_running--;
 }
 

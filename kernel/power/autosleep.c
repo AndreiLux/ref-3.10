@@ -26,10 +26,11 @@ static struct wakeup_source *autosleep_ws;
 static void try_to_suspend(struct work_struct *work)
 {
 	unsigned int initial_count, final_count;
+	printk("entry try_to_suspend");
 
 	if (!pm_get_wakeup_count(&initial_count, true))
 		goto out;
-
+	printk("PM: Now detect no wakeup_sources.\n");
 	mutex_lock(&autosleep_lock);
 
 	if (!pm_save_wakeup_count(initial_count) ||

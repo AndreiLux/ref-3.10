@@ -360,7 +360,8 @@ static void mtp_complete_in(struct usb_ep *ep, struct usb_request *req)
 {
 	struct mtp_dev *dev = _mtp_dev;
 
-	if (req->status != 0)
+	/* moified by l00196665, according to K3V2 */
+	if (req->status != 0 && dev->state != STATE_CANCELED)
 		dev->state = STATE_ERROR;
 
 	mtp_req_put(dev, &dev->tx_idle, req);
@@ -373,7 +374,8 @@ static void mtp_complete_out(struct usb_ep *ep, struct usb_request *req)
 	struct mtp_dev *dev = _mtp_dev;
 
 	dev->rx_done = 1;
-	if (req->status != 0)
+	/* moified by l00196665, according to K3V2 */
+	if (req->status != 0 && dev->state != STATE_CANCELED)
 		dev->state = STATE_ERROR;
 
 	wake_up(&dev->read_wq);
@@ -383,7 +385,8 @@ static void mtp_complete_intr(struct usb_ep *ep, struct usb_request *req)
 {
 	struct mtp_dev *dev = _mtp_dev;
 
-	if (req->status != 0)
+	/* moified by l00196665, according to K3V2 */
+	if (req->status != 0 && dev->state != STATE_CANCELED)
 		dev->state = STATE_ERROR;
 
 	mtp_req_put(dev, &dev->intr_idle, req);
@@ -1123,6 +1126,9 @@ mtp_function_unbind(struct usb_configuration *c, struct usb_function *f)
 	struct mtp_dev	*dev = func_to_mtp(f);
 	struct usb_request *req;
 	int i;
+
+	/* added by l00196665, according to K3V2 DTS2012062106405 */
+	flush_workqueue(dev->wq);
 
 	while ((req = mtp_req_get(dev, &dev->tx_idle)))
 		mtp_request_free(req, dev->ep_in);

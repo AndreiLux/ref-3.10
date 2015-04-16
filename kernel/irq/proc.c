@@ -411,6 +411,68 @@ int __weak arch_show_interrupts(struct seq_file *p, int prec)
 # define ACTUAL_NR_IRQS nr_irqs
 #endif
 
+#ifdef CONFIG_HISI_RDR
+int rdr_show_interrupts(char *buf, int siz)
+{
+#ifndef CONFIG_HISI_RDR_SWITCH
+	int i;
+	char *pbuf = buf;
+	char mem[32];
+	int len;
+	struct irqaction *action;
+	struct irq_desc *desc;
+	unsigned long flags;
+
+	if ((buf == NULL) || (siz == 0))
+		return -1;
+
+	for (i = 0; i < ACTUAL_NR_IRQS; i++) {
+		desc = irq_to_desc(i);
+		if (!desc)
+			continue;
+		raw_spin_lock_irqsave(&desc->lock, flags);
+		action = desc->action;
+
+		if (action) {
+			snprintf(mem, 32, "num:%d\tname:%s", i, action->name);
+			len = strlen(mem);
+			if (siz + buf - pbuf < len) {
+				raw_spin_unlock_irqrestore(&desc->lock, flags);
+				break;
+			}
+			strncpy(pbuf, mem, len);
+			pbuf += len;
+
+			while ((action = action->next) != NULL) {
+				snprintf(mem, 32, ",%s", action->name);
+				len = strlen(mem);
+				if (siz + buf - pbuf < len)
+					break;
+				strncpy(pbuf, mem, len);
+				pbuf += len;
+			}
+			snprintf(mem, 32, "\n");
+			len = strlen(mem);
+			if (siz + buf - pbuf < len) {
+				raw_spin_unlock_irqrestore(&desc->lock, flags);
+				break;
+			}
+			strncpy(pbuf, mem, len);
+			pbuf += len;
+		}
+		raw_spin_unlock_irqrestore(&desc->lock, flags);
+	}
+#endif
+
+	return 0;
+}
+#else
+int rdr_show_interrupts(char *buf, int siz)
+{
+	return -1;
+}
+#endif
+
 int show_interrupts(struct seq_file *p, void *v)
 {
 	static int prec;

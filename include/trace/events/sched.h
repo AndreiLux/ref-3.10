@@ -7,6 +7,117 @@
 #include <linux/sched.h>
 #include <linux/tracepoint.h>
 #include <linux/binfmts.h>
+#include <linux/threads.h>
+
+#if defined(CONFIG_SCHEDSTATS)
+#define pcount_from_ts(T) (T->sched_info.pcount)
+#else
+#define pcount_from_ts(T) (0)
+#endif /* CONFIG_SCHEDSTATS */
+
+TRACE_EVENT(sched_task_queued,
+
+	TP_PROTO(struct task_struct *t, unsigned int cpuinfo),
+
+	TP_ARGS(t, cpuinfo),
+
+	TP_STRUCT__entry(
+		__array(char, comm, TASK_COMM_LEN)
+		__field(pid_t, pid)
+		__field(unsigned long, pcount)
+		__field(unsigned int, cpuinfo)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, t->comm, TASK_COMM_LEN);
+		__entry->pid = t->pid;
+		__entry->pcount = pcount_from_ts(t);
+		__entry->cpuinfo = cpuinfo;
+	),
+
+	TP_printk("%u %lu %d %s",
+		  __entry->cpuinfo, __entry->pcount, __entry->pid,
+		  __entry->comm)
+);
+
+TRACE_EVENT(sched_task_dequeued,
+
+	TP_PROTO(struct task_struct *t, unsigned int cpuinfo),
+
+	TP_ARGS(t, cpuinfo),
+
+	TP_STRUCT__entry(
+		__array(char, comm, TASK_COMM_LEN)
+		__field(pid_t, pid)
+		__field(unsigned long, pcount)
+		__field(unsigned int, cpuinfo)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, t->comm, TASK_COMM_LEN);
+		__entry->pid = t->pid;
+		__entry->pcount = pcount_from_ts(t);
+		__entry->cpuinfo = cpuinfo;
+	),
+
+	TP_printk("%u %lu %d %s",
+		  __entry->cpuinfo, __entry->pcount, __entry->pid,
+		  __entry->comm)
+);
+
+TRACE_EVENT(sched_task_arrive,
+
+	TP_PROTO(struct task_struct *t, unsigned int cpuinfo),
+
+	TP_ARGS(t, cpuinfo),
+
+	TP_STRUCT__entry(
+		__array(char, comm, TASK_COMM_LEN)
+		__field(pid_t, pid)
+		__field(unsigned long, pcount)
+		__field(unsigned int, cpuinfo)
+		__field(long, state)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, t->comm, TASK_COMM_LEN);
+		__entry->pid = t->pid;
+		__entry->pcount = pcount_from_ts(t);
+		__entry->cpuinfo = cpuinfo;
+		__entry->state = t->state;
+	),
+
+	TP_printk("%u %lu %d %s %ld",
+		  __entry->cpuinfo, __entry->pcount, __entry->pid,
+		  __entry->comm, __entry->state)
+);
+
+TRACE_EVENT(sched_task_depart,
+
+	TP_PROTO(struct task_struct *t, unsigned int cpuinfo),
+
+	TP_ARGS(t, cpuinfo),
+
+	TP_STRUCT__entry(
+		__array(char, comm, TASK_COMM_LEN)
+		__field(pid_t, pid)
+		__field(unsigned long, pcount)
+		__field(unsigned int, cpuinfo)
+		__field(long, state)
+	),
+
+	TP_fast_assign(
+		memcpy(__entry->comm, t->comm, TASK_COMM_LEN);
+		__entry->pid = t->pid;
+		__entry->pcount = pcount_from_ts(t);
+		__entry->cpuinfo = cpuinfo;
+		__entry->state = t->state;
+	),
+
+	TP_printk("%u %lu %d %s %ld",
+		  __entry->cpuinfo, __entry->pcount, __entry->pid,
+		  __entry->comm, __entry->state)
+);
 
 /*
  * Tracepoint for calling kthread_stop, performed to end a kthread:

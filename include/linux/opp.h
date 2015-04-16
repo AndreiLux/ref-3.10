@@ -47,6 +47,15 @@ int opp_enable(struct device *dev, unsigned long freq);
 int opp_disable(struct device *dev, unsigned long freq);
 
 struct srcu_notifier_head *opp_get_notifier(struct device *dev);
+
+#ifdef CONFIG_OF
+int of_init_opp_table(struct device *dev);
+#else
+static inline int of_init_opp_table(struct device *dev)
+{
+	return -EINVAL;
+}
+#endif /* CONFIG_OF */
 #else
 static inline unsigned long opp_get_voltage(struct opp *opp)
 {
@@ -103,15 +112,6 @@ static inline struct srcu_notifier_head *opp_get_notifier(struct device *dev)
 }
 #endif		/* CONFIG_PM_OPP */
 
-#if defined(CONFIG_PM_OPP) && defined(CONFIG_OF)
-int of_init_opp_table(struct device *dev);
-#else
-static inline int of_init_opp_table(struct device *dev)
-{
-	return -EINVAL;
-}
-#endif
-
 #if defined(CONFIG_CPU_FREQ) && defined(CONFIG_PM_OPP)
 int opp_init_cpufreq_table(struct device *dev,
 			    struct cpufreq_frequency_table **table);
@@ -130,5 +130,20 @@ void opp_free_cpufreq_table(struct device *dev,
 {
 }
 #endif		/* CONFIG_CPU_FREQ */
+
+#if defined(CONFIG_PM_DEVFREQ) && defined(CONFIG_PM_OPP)
+int opp_init_devfreq_table(struct device *dev, unsigned int **table);
+void opp_free_devfreq_table(struct device *dev, unsigned int **table);
+#else
+static inline int opp_init_devfreq_table(struct device *dev, unsigned int **table)
+{
+	return -EINVAL;
+}
+
+static inline void opp_free_devfreq_table(struct device *dev, unsigned int **table)
+{
+}
+#endif		/* CONFIG_DEVFREQ */
+
 
 #endif		/* __LINUX_OPP_H__ */

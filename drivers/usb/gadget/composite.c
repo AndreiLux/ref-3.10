@@ -20,6 +20,7 @@
 
 #include <linux/usb/composite.h>
 #include <asm/unaligned.h>
+#include <linux/huawei/usb/hw_rwswitch.h>
 
 /*
  * The code in this file is utility code, used to build a gadget driver
@@ -593,6 +594,7 @@ static void reset_config(struct usb_composite_dev *cdev)
 		bitmap_zero(f->endpoints, 32);
 	}
 	cdev->config = NULL;
+
 	cdev->delayed_status = 0;
 }
 
@@ -852,8 +854,9 @@ void usb_remove_config(struct usb_composite_dev *cdev,
 
 	if (cdev->config == config)
 		reset_config(cdev);
-
-	list_del(&config->list);
+	/*Change due to DTS2014041608868*/
+	if (!list_empty(&cdev->configs))
+		list_del(&config->list);
 
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
@@ -961,15 +964,6 @@ static int get_string(struct usb_composite_dev *cdev,
 		return s->bLength;
 	}
 
-	list_for_each_entry(uc, &cdev->gstrings, list) {
-		struct usb_gadget_strings **sp;
-
-		sp = get_containers_gs(uc);
-		len = lookup_string(sp, buf, language, id);
-		if (len > 0)
-			return len;
-	}
-
 	/* String IDs are device-scoped, so we look up each string
 	 * table we're told about.  These lookups are infrequent;
 	 * simpler-is-better here.
@@ -979,6 +973,7 @@ static int get_string(struct usb_composite_dev *cdev,
 		if (len > 0)
 			return len;
 	}
+
 	list_for_each_entry(c, &cdev->configs, list) {
 		if (c->strings) {
 			len = lookup_string(c->strings, buf, language, id);
@@ -992,6 +987,16 @@ static int get_string(struct usb_composite_dev *cdev,
 			if (len > 0)
 				return len;
 		}
+	}
+
+	/*Change due to DTS2014041608868*/
+	list_for_each_entry(uc, &cdev->gstrings, list) {
+		struct usb_gadget_strings **sp;
+
+		sp = get_containers_gs(uc);
+		len = lookup_string(sp, buf, language, id);
+		if (len > 0)
+			return len;
 	}
 	return -EINVAL;
 }
@@ -1414,6 +1419,25 @@ composite_setup(struct usb_gadget *gadget, const struct usb_ctrlrequest *ctrl)
 			break;
 		}
 		break;
+        case USB_REQ_VENDOR_SWITCH_MODE: {
+		int mode = 0, state = 0;
+
+		if ((ctrl->bRequestType != (USB_DIR_IN|USB_TYPE_VENDOR|USB_RECIP_DEVICE))
+		     || (w_index != 0))
+			goto unknown;
+
+		 /* Handle vendor customized request */
+		INFO(cdev, "vendor request: %d index: %d value: %d length: %d\n",
+			ctrl->bRequest, w_index, w_value, w_length);
+
+		mode = usb_port_mode_get();
+		state = usb_port_switch_request(w_value);  //manual switch USB mode
+		value = min(w_length, (u16)(sizeof(mode)+sizeof(state)));
+		memcpy(req->buf, &state, value/2);
+		memcpy(req->buf+value/2, &mode, value/2);
+            }
+            break;
+
 	default:
 unknown:
 		VDBG(cdev,

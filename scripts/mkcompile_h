@@ -52,6 +52,10 @@ if test -z "$KBUILD_BUILD_HOST"; then
 else
 	LINUX_COMPILE_HOST=$KBUILD_BUILD_HOST
 fi
+if [ "$HIDE_PRODUCT_INFO" == "true" ]; then
+	LINUX_COMPILE_BY="android"
+	LINUX_COMPILE_HOST="localhost"
+fi
 
 UTS_VERSION="#$VERSION"
 CONFIG_FLAGS=""

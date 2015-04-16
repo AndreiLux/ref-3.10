@@ -1,0 +1,21 @@
+#
+# (C) COPYRIGHT 2012 ARM Limited. All rights reserved.
+#
+# This program is free software and is provided to you under the terms of the GNU General Public License version 2
+# as published by the Free Software Foundation, and any use by you of this program is subject to the terms of such GNU licence.
+#
+# A copy of the licence is included with the program, and can also be obtained from Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+#
+#
+
+KBASE_PATH = $(src)/../../../..
+KBASE_SRC_PATH = $(src)/../../..
+KBASE_PLATFORM_PATH = $(KBASE_SRC_PATH)/platform_dummy
+UMP_PATH = $(src)/../../../../../../../base
+
+ABCD := $(shell echo $(KBASE_PATH))
+
+ccflags-y += -I$(KBASE_PATH) -I$(KBASE_SRC_PATH) -I$(KBASE_PLATFORM_PATH) -I$(UMP_PATH)
+
+obj-y += mali_kbase_config_k3v3.o

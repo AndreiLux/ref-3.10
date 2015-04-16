@@ -94,7 +94,10 @@ static void hidp_copy_session(struct hidp_session *session, struct hidp_conninfo
 		ci->vendor  = session->hid->vendor;
 		ci->product = session->hid->product;
 		ci->version = session->hid->version;
-		strncpy(ci->name, session->hid->name, 128);
+                /* <DTS2014021808907 z00207811 2014/02/18 begin*/
+                strncpy(ci->name, session->hid->name, sizeof(ci->name));
+                /* DTS2014021808907 z00207811 2014/02/18 end>*/
+		//strncpy(ci->name, session->hid->name, 128);
 	}
 }
 
@@ -161,7 +164,10 @@ static int hidp_input_event(struct input_dev *dev, unsigned int type,
 		  (!!test_bit(LED_SCROLLL, dev->led) << 2) |
 		  (!!test_bit(LED_CAPSL,   dev->led) << 1) |
 		  (!!test_bit(LED_NUML,    dev->led));
-
+        /* <DTS2014021808907 z00207811 2014/02/18 begin*/
+        if(session == NULL)
+                return -1;
+        /* DTS2014021808907 z00207811 2014/02/18 end>*/
 	if (session->leds == newleds)
 		return 0;
 

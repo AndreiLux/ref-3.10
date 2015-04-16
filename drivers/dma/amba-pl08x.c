@@ -83,6 +83,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
+#include <linux/of.h>
 #include <linux/amba/pl080.h>
 
 #include "dmaengine.h"
@@ -1718,8 +1719,10 @@ static int pl08x_dma_init_virtual_channels(struct pl08x_driver_data *pl08x,
 		chan->signal = -1;
 
 		if (slave) {
-			chan->cd = &pl08x->pd->slave_channels[i];
-			pl08x_dma_slave_init(chan);
+			if (pl08x->pd->slave_channels) {
+				chan->cd = &pl08x->pd->slave_channels[i];
+				pl08x_dma_slave_init(chan);
+			}
 		} else {
 			chan->cd = &pl08x->pd->memcpy_channel;
 			chan->name = kasprintf(GFP_KERNEL, "memcpy%d", i);
@@ -1841,6 +1844,25 @@ static inline void init_pl08x_debugfs(struct pl08x_driver_data *pl08x)
 {
 }
 #endif
+static struct pl08x_platform_data *pl08x_get_pdata(struct device *dev)
+{
+	struct pl08x_platform_data *pd;
+	struct device_node *np = dev->of_node;
+
+	pd = devm_kzalloc(dev, sizeof(*pd), GFP_KERNEL);
+	if (!pd)
+		return NULL;
+	of_property_read_u32(np, "dma-requests", &pd->num_slave_channels);
+
+	pd->memcpy_channel.cctl_memcpy =
+			(PL080_BSIZE_16 << PL080_CONTROL_SB_SIZE_SHIFT |
+			PL080_BSIZE_16 << PL080_CONTROL_DB_SIZE_SHIFT |
+			PL080_WIDTH_32BIT << PL080_CONTROL_SWIDTH_SHIFT |
+			PL080_WIDTH_32BIT << PL080_CONTROL_DWIDTH_SHIFT |
+			PL080_CONTROL_PROT_BUFF | PL080_CONTROL_PROT_CACHE |
+			PL080_CONTROL_PROT_SYS);
+	return pd;
+}
 
 static int pl08x_probe(struct amba_device *adev, const struct amba_id *id)
 {
@@ -1883,7 +1905,10 @@ static int pl08x_probe(struct amba_device *adev, const struct amba_id *id)
 	pl08x->slave.device_control = pl08x_control;
 
 	/* Get the platform data */
-	pl08x->pd = dev_get_platdata(&adev->dev);
+	if ((&adev->dev)->of_node)
+		pl08x->pd = pl08x_get_pdata(&adev->dev);
+	else
+		pl08x->pd = dev_get_platdata(&adev->dev);
 	if (!pl08x->pd) {
 		dev_err(&adev->dev, "no platform data supplied\n");
 		ret = -EINVAL;

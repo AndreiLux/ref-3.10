@@ -74,6 +74,10 @@ struct logger_entry {
 #define LOGGER_LOG_EVENTS	"log_events"	/* system/hardware events */
 #define LOGGER_LOG_SYSTEM	"log_system"	/* system/framework messages */
 #define LOGGER_LOG_MAIN		"log_main"	/* everything else */
+#define LOGGER_LOG_EXCEPTION	"log_exception"	/* exception */
+#define LOGGER_LOG_POWER	"smart_power"	/* dev/smart/power */
+#define LOGGER_LOG_JANK	"log_jank"	/* dev/log/jank */
+
 
 #define LOGGER_ENTRY_MAX_PAYLOAD	4076
 

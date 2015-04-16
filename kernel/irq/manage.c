@@ -1318,6 +1318,29 @@ void remove_irq(unsigned int irq, struct irqaction *act)
 }
 EXPORT_SYMBOL_GPL(remove_irq);
 
+#include <linux/huawei/rdr_private.h>
+#ifdef CONFIG_HISI_RDR
+static rdr_funcptr_3 g_interrupts_list_hook;
+
+void interrupts_list_hook_add(rdr_funcptr_3 p_hook_func)
+{
+	g_interrupts_list_hook = p_hook_func;
+}
+
+void interrupts_list_hook_delete(void)
+{
+	g_interrupts_list_hook = NULL;
+}
+#else
+void interrupts_list_hook_add(rdr_funcptr_3 p_hook_func)
+{
+}
+
+void interrupts_list_hook_delete(void)
+{
+}
+#endif
+
 /**
  *	free_irq - free an interrupt allocated with request_irq
  *	@irq: Interrupt line to free
@@ -1342,6 +1365,13 @@ void free_irq(unsigned int irq, void *dev_id)
 #ifdef CONFIG_SMP
 	if (WARN_ON(desc->affinity_notify))
 		desc->affinity_notify = NULL;
+#endif
+
+#ifdef CONFIG_HISI_RDR
+#ifndef CONFIG_HISI_RDR_SWITCH
+	if (g_interrupts_list_hook)
+		g_interrupts_list_hook(0, (u32)irq, (u32)desc->name);
+#endif
 #endif
 
 	chip_bus_lock(desc);
@@ -1458,6 +1488,12 @@ int request_threaded_irq(unsigned int irq, irq_handler_t handler,
 		local_irq_restore(flags);
 		enable_irq(irq);
 	}
+#endif
+#ifdef CONFIG_HISI_RDR
+#ifndef CONFIG_HISI_RDR_SWITCH
+	if (!retval && g_interrupts_list_hook)
+		g_interrupts_list_hook(1, (int)irq, (int)devname);
+#endif
 #endif
 	return retval;
 }

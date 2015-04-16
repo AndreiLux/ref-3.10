@@ -79,10 +79,16 @@ extern void cpu_die(void);
 
 extern void arch_send_call_function_single_ipi(int cpu);
 extern void arch_send_call_function_ipi_mask(const struct cpumask *mask);
+#ifdef CONFIG_SECURE_EXTENSION
+typedef void (ipi_secure_notify_handler)(struct pt_regs *regs);
+int register_secure_notify_handler(ipi_secure_notify_handler handler);
+int unregister_secure_notify_handler(void);
+#endif
 extern void arch_send_wakeup_ipi_mask(const struct cpumask *mask);
 
 extern int register_ipi_completion(struct completion *completion, int cpu);
 extern void smp_send_all_cpu_backtrace(void);
+
 
 struct smp_operations {
 #ifdef CONFIG_SMP

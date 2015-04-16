@@ -1,0 +1,18 @@
+config POWER_HUAWEI
+        bool "security device module"
+        default y
+config BATTERY_HISI_HI6421V300
+	bool "hisi hi6421v300"
+	default y
+config BATTERY_HISI_COUL
+        bool "hisi coul"
+        default y
+config BATTERY_HISI_COUL_TEST
+        bool "hisi coul test"
+        default y
+config BQ_BCI_BATTERY
+        bool "bq bci bqttery"
+        default y
+config BQ2419X_CHARGER
+        bool "bq2419x charger"
+        default y

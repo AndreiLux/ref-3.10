@@ -22,6 +22,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <asm/cacheflush.h>
 #include "ion.h"
 #include "ion_priv.h"
 
@@ -29,6 +30,7 @@ struct ion_carveout_heap {
 	struct ion_heap heap;
 	struct gen_pool *pool;
 	ion_phys_addr_t base;
+	size_t size;
 };
 
 ion_phys_addr_t ion_carveout_allocate(struct ion_heap *heap,
@@ -112,12 +114,13 @@ static void ion_carveout_heap_free(struct ion_buffer *buffer)
 	struct sg_table *table = buffer->priv_virt;
 	struct page *page = sg_page(table->sgl);
 	ion_phys_addr_t paddr = PFN_PHYS(page_to_pfn(page));
-
+#if 0
 	ion_heap_buffer_zero(buffer);
 
 	if (ion_buffer_cached(buffer))
 		dma_sync_sg_for_device(NULL, table->sgl, table->nents,
 							DMA_BIDIRECTIONAL);
+#endif
 
 	ion_carveout_free(heap, paddr, buffer->size);
 	sg_free_table(table);
@@ -136,6 +139,15 @@ static void ion_carveout_heap_unmap_dma(struct ion_heap *heap,
 	return;
 }
 
+static void ion_carveout_heap_buffer_zero(struct ion_buffer *buffer)
+{
+	ion_heap_buffer_zero(buffer);
+
+	hi3630_fc_allcpu_allcache();
+
+	return;
+}
+
 static struct ion_heap_ops carveout_heap_ops = {
 	.allocate = ion_carveout_heap_allocate,
 	.free = ion_carveout_heap_free,
@@ -145,7 +157,21 @@ static struct ion_heap_ops carveout_heap_ops = {
 	.map_user = ion_heap_map_user,
 	.map_kernel = ion_heap_map_kernel,
 	.unmap_kernel = ion_heap_unmap_kernel,
+	.map_iommu = ion_heap_map_iommu,
+	.unmap_iommu = ion_heap_unmap_iommu,
+	.buffer_zero = ion_carveout_heap_buffer_zero,
 };
+
+static __kernel_ulong_t ion_carveout_heap_free_memory(struct ion_heap *heap)
+{
+	struct ion_carveout_heap *carveout_heap =
+			container_of(heap, struct ion_carveout_heap, heap);
+	__kernel_ulong_t free_memory = 0;
+
+	free_memory = (carveout_heap->size - ion_get_used_memory(heap)) / PAGE_SIZE;
+
+	return free_memory;
+}
 
 struct ion_heap *ion_carveout_heap_create(struct ion_platform_heap *heap_data)
 {
@@ -174,11 +200,14 @@ struct ion_heap *ion_carveout_heap_create(struct ion_platform_heap *heap_data)
 		return ERR_PTR(-ENOMEM);
 	}
 	carveout_heap->base = heap_data->base;
+	carveout_heap->size = size;
 	gen_pool_add(carveout_heap->pool, carveout_heap->base, heap_data->size,
 		     -1);
 	carveout_heap->heap.ops = &carveout_heap_ops;
 	carveout_heap->heap.type = ION_HEAP_TYPE_CARVEOUT;
 	carveout_heap->heap.flags = ION_HEAP_FLAG_DEFER_FREE;
+
+	carveout_heap->heap.free_memory = ion_carveout_heap_free_memory;
 
 	return &carveout_heap->heap;
 }

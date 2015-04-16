@@ -514,5 +514,25 @@ config REGULATOR_AS3711
 	  This driver provides support for the voltage regulators on the
 	  AS3711 PMIC
 
+config PMU_NOT_EXIST_FPGA
+	bool "FPGA exist pmu board"
+	default n
+	help
+	  Say 'Y' here if your FPGA board not exist PMU board.
+
+config REGULATOR_HI6421
+	tristate "HiSilicon Hi6421 PMIC regulators"
+	depends on MFD_HI6421_PMIC
+	help
+	  This driver provides support for the voltage regulators on the
+	  HiSilicon Hi6421 PMU / Codec IC.
+
+config REGULATOR_HI3630
+	tristate "HiSilicon system interior voltage PMIC"
+	depends on REGULATOR_HI3630_CORE
+	help
+	  This driver provides support for the voltage regulators on the
+	  HiSilicon system interior voltage / Codec IC.
+
 endif
 

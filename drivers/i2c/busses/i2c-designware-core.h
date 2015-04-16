@@ -25,15 +25,26 @@
  * ----------------------------------------------------------------------------
  *
  */
+#include <linux/dmaengine.h>
+#include <linux/dma-mapping.h>
+#include <linux/scatterlist.h>
 
 
 #define DW_IC_CON_MASTER		0x1
 #define DW_IC_CON_SPEED_STD		0x2
 #define DW_IC_CON_SPEED_FAST		0x4
+#define DW_IC_CON_SPEED_HIGH		0x6
 #define DW_IC_CON_10BITADDR_MASTER	0x10
 #define DW_IC_CON_RESTART_EN		0x20
 #define DW_IC_CON_SLAVE_DISABLE		0x40
 
+#define DW_IC_COMP_PARAM_1	        0xf4
+
+struct dw_i2c_dma_data {
+	struct dma_chan		*chan;
+	struct scatterlist	sg;
+	u8			*buf;
+};
 
 /**
  * struct dw_i2c_dev - private i2c-designware data
@@ -69,6 +80,7 @@ struct dw_i2c_dev {
 	struct mutex		lock;
 	struct clk		*clk;
 	u32			(*get_clk_rate_khz) (struct dw_i2c_dev *dev);
+	void			(*reset_controller) (struct dw_i2c_dev *dev);
 	struct dw_pci_controller *controller;
 	int			cmd_err;
 	struct i2c_msg		*msgs;
@@ -83,17 +95,41 @@ struct dw_i2c_dev {
 	unsigned int		status;
 	u32			abort_source;
 	int			irq;
+	volatile int		irq_is_run;
 	u32			accessor_flags;
 	struct i2c_adapter	adapter;
 	u32			functionality;
 	u32			master_cfg;
 	unsigned int		tx_fifo_depth;
 	unsigned int		rx_fifo_depth;
+	void			*priv;
 	int			rx_outstanding;
+
+	/* DMA stuff */
+	u32			dmacr;
+	bool			using_tx_dma;
+	bool			using_rx_dma;
+	struct dw_i2c_dma_data  dmarx;
+	struct dw_i2c_dma_data  dmatx;
+	int  			timeout_count;
+	struct completion	dma_complete;
+	bool			using_dma;
+
+	/* user defined*/
+	struct device           *platform_dev;
+	struct pinctrl          *pinctrl;
+	int                     pinctrl_flag;
+	resource_size_t         mapbase;
+#ifdef CONFIG_I2C_DESIGNWARE_HI3630
+	u32                     delay_off;
+	int                     gpio_scl;
+	int                     gpio_sda;
+#endif
 };
 
 #define ACCESS_SWAP		0x00000001
 #define ACCESS_16BIT		0x00000002
+#define ACCESS_32BIT		0x00000004
 
 extern u32 dw_readl(struct dw_i2c_dev *dev, int offset);
 extern void dw_writel(struct dw_i2c_dev *dev, u32 b, int offset);
@@ -108,3 +144,7 @@ extern void i2c_dw_disable(struct dw_i2c_dev *dev);
 extern void i2c_dw_clear_int(struct dw_i2c_dev *dev);
 extern void i2c_dw_disable_int(struct dw_i2c_dev *dev);
 extern u32 i2c_dw_read_comp_param(struct dw_i2c_dev *dev);
+extern int devm_pinctrl_state_select(struct dw_i2c_dev *dev,const char *name);
+extern void i2c_dw_dma_probe(struct dw_i2c_dev *dev);
+extern void i2c_dw_dma_remove(struct dw_i2c_dev *dev);
+extern void i2c_print_controller_reg(struct dw_i2c_dev *dev);

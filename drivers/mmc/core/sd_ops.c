@@ -264,7 +264,7 @@ int mmc_app_send_scr(struct mmc_card *card, u32 *scr)
 	/* dma onto stack is unsafe/nonportable, but callers to this
 	 * routine normally provide temporary on-stack buffers ...
 	 */
-	data_buf = kmalloc(sizeof(card->raw_scr), GFP_KERNEL);
+	data_buf = kmalloc(DMA_DATA_SIZE_MIN, GFP_KERNEL);
 	if (data_buf == NULL)
 		return -ENOMEM;
 

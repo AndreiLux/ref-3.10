@@ -1,0 +1,21 @@
+menu "Hifimisc driver serve HIFI dsp"
+
+config SND_HIFI_LPP
+     bool "hifi low power play device support"
+     default n
+     help
+          hifi lpp device provide service for HIFI and AP, in case of HIFI ultra-low power audio play.
+config SND_HIFI_LOAD
+     bool "hifi low power play device loae section in kernel"
+     default n
+     help
+          load hifi image in hifi driver.
+config SND_HIFI_SEC_LOAD
+     bool "hifi low power play device support"
+     default n
+     help
+          hifi lpp device provide service for HIFI and AP, in case of HIFI ultra-low power audio play.
+	  load hifi image in security os
+
+endmenu
+

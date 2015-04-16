@@ -53,6 +53,10 @@ static inline void sched_info_reset_dequeued(struct task_struct *t)
 	t->sched_info.last_queued = 0;
 }
 
+/* We can't include trace/events/sched.h here */
+extern void trace_sched_task_queued(struct task_struct *, unsigned int);
+extern void trace_sched_task_dequeued(struct task_struct *, unsigned int);
+
 /*
  * We are interested in knowing how long it was from the *first* time a
  * task was queued to the time that it finally hit a cpu, we call this routine
@@ -63,6 +67,7 @@ static inline void sched_info_dequeued(struct task_struct *t)
 {
 	unsigned long long now = task_rq(t)->clock, delta = 0;
 
+	trace_sched_task_dequeued(t, task_cpu(t));
 	if (unlikely(sched_info_on()))
 		if (t->sched_info.last_queued)
 			delta = now - t->sched_info.last_queued;
@@ -72,6 +77,9 @@ static inline void sched_info_dequeued(struct task_struct *t)
 	rq_sched_info_dequeued(task_rq(t), delta);
 }
 
+/* We can't include trace/events/sched.h here */
+extern void trace_sched_task_arrive(struct task_struct *, unsigned int);
+extern void trace_sched_task_depart(struct task_struct *, unsigned int);
 /*
  * Called when a task finally hits the cpu.  We can now calculate how
  * long it was waiting to run.  We also note when it began so that we
@@ -87,6 +95,7 @@ static void sched_info_arrive(struct task_struct *t)
 	t->sched_info.run_delay += delta;
 	t->sched_info.last_arrival = now;
 	t->sched_info.pcount++;
+	trace_sched_task_arrive(t, task_cpu(t));
 
 	rq_sched_info_arrive(task_rq(t), delta);
 }
@@ -98,6 +107,7 @@ static void sched_info_arrive(struct task_struct *t)
  */
 static inline void sched_info_queued(struct task_struct *t)
 {
+	trace_sched_task_queued(t, task_cpu(t));
 	if (unlikely(sched_info_on()))
 		if (!t->sched_info.last_queued)
 			t->sched_info.last_queued = task_rq(t)->clock;
@@ -115,6 +125,7 @@ static inline void sched_info_depart(struct task_struct *t)
 	unsigned long long delta = task_rq(t)->clock -
 					t->sched_info.last_arrival;
 
+	trace_sched_task_depart(t, task_cpu(t));
 	rq_sched_info_depart(task_rq(t), delta);
 
 	if (t->state == TASK_RUNNING)

@@ -266,6 +266,57 @@ static void mmc_select_card_type(struct mmc_card *card)
 	card->ext_csd.card_type = card_type;
 }
 
+static int mmc_system_partition_wr_prot_init(struct mmc_card *card, u8 *ext_csd)
+{
+	int err;
+	unsigned char tmp;
+// defined by supplier
+/*
+ *	err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+ *				 156, 0x01,
+ *				 card->ext_csd.generic_cmd6_time);
+ *	if (err){
+ *		err = -EINVAL;
+ *		pr_info("[HW]:%s, %d: setting PARTITIONS_ATTRIBUTE [156] error \n", __func__, __LINE__);
+ *	}
+ *	else
+ *		pr_info("[HW]:%s, %d: setting PARTITIONS_ATTRIBUTE [156] = 0x%02x \n", __func__, __LINE__, 0x01);
+*/
+
+	if( (ext_csd[EXT_CSD_USER_WP]  & (1<<6)) == 0 ||
+		(ext_csd[EXT_CSD_USER_WP]  & (1<<4)) == 0){
+		tmp = ext_csd[EXT_CSD_USER_WP];
+		tmp |= (1 << 4);
+		tmp |= (1 << 6);
+		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_USER_WP, tmp,
+				 card->ext_csd.generic_cmd6_time);
+		if (err){
+			err = -EINVAL;
+			pr_info("[HW]:%s, %d: setting ext_csd[171] error \n", __func__, __LINE__);
+		}else{
+			pr_info("[HW]:%s, %d: USER_WP[171] = 0x%02x \n", __func__, __LINE__, tmp);
+		}
+	}
+
+	if((ext_csd[EXT_CSD_ERASE_GROUP_DEF] & (1<<0)) == 0){
+		tmp = ext_csd[EXT_CSD_ERASE_GROUP_DEF];
+		tmp |= (1<<0);
+		err = mmc_switch(card, EXT_CSD_CMD_SET_NORMAL,
+				 EXT_CSD_ERASE_GROUP_DEF, tmp,
+				 card->ext_csd.generic_cmd6_time);
+		if (err){
+			err = -EINVAL;
+			pr_info("[HW]:%s, %d: setting ext_csd[EXT_CSD_ERASE_GROUP_DEF] error \n", __func__, __LINE__);
+		}else{
+			pr_info("[HW]:%s, %d: ERASE_GROUP_DEF [175] = 0x%02x \n", __func__, __LINE__, tmp);
+		}
+
+	}
+
+	return 0;
+}
+
 /*
  * Decode extended CSD.
  */
@@ -296,8 +347,8 @@ static int mmc_read_ext_csd(struct mmc_card *card, u8 *ext_csd)
 	if (card->ext_csd.rev > 6) {
 		pr_err("%s: unrecognised EXT_CSD revision %d\n",
 			mmc_hostname(card->host), card->ext_csd.rev);
-		err = -EINVAL;
-		goto out;
+		//err = -EINVAL;
+		//goto out;
 	}
 
 	card->ext_csd.raw_sectors[0] = ext_csd[EXT_CSD_SEC_CNT + 0];
@@ -955,6 +1006,19 @@ static int mmc_init_card(struct mmc_host *host, u32 ocr,
 		if (err)
 			goto free_card;
 
+		pr_info("[HW]:%s, %d: PARTITIONS_ATTRIBUTE [156] = 0x%02x \n", __func__, __LINE__, ext_csd[EXT_CSD_PARTITION_ATTRIBUTE]);
+		pr_info("[HW]:%s, %d: PARTITIONING_SUPPORT [160] = 0x%02x \n", __func__, __LINE__, ext_csd[EXT_CSD_PARTITION_SUPPORT]);
+		pr_info("[HW]:%s, %d: USER_WP[171] = 0x%02x \n", __func__, __LINE__, ext_csd[EXT_CSD_USER_WP]);
+		pr_info("[HW]:%s, %d: ERASE_GROUP_DEF [175] = 0x%02x \n", __func__, __LINE__, ext_csd[EXT_CSD_ERASE_GROUP_DEF]);
+		pr_info("[HW]:%s, %d: HC_WP_GRP_SIZE [221] = 0x%02x \n", __func__, __LINE__, ext_csd[EXT_CSD_HC_WP_GRP_SIZE]);
+		pr_info("[HW]:%s, %d: HC_ERASE_GRP_SIZE  [224] = 0x%02x \n", __func__, __LINE__, ext_csd[EXT_CSD_HC_ERASE_GRP_SIZE]);
+		pr_info("[HW]:%s, %d: ext_csd.raw_hc_erase_gap_size = 0x%02x \n", __func__, __LINE__, card->ext_csd.raw_hc_erase_gap_size);
+		pr_info("[HW]:%s, %d: ext_csd.raw_hc_erase_grp_size = 0x%02x \n", __func__, __LINE__, card->ext_csd.raw_hc_erase_grp_size);
+
+		err = mmc_system_partition_wr_prot_init(card, ext_csd);
+		if (err)
+			goto free_card;
+
 		/* If doing byte addressing, check if required to do sector
 		 * addressing.  Handle the case of <2GB cards needing sector
 		 * addressing.  See section 8.1 JEDEC Standard JED84-A441;
@@ -1321,14 +1385,15 @@ err:
 	return err;
 }
 
-static int mmc_can_poweroff_notify(const struct mmc_card *card)
+int mmc_can_poweroff_notify(const struct mmc_card *card)
 {
 	return card &&
 		mmc_card_mmc(card) &&
 		(card->ext_csd.power_off_notification == EXT_CSD_POWER_ON);
 }
+EXPORT_SYMBOL(mmc_can_poweroff_notify);
 
-static int mmc_poweroff_notify(struct mmc_card *card, unsigned int notify_type)
+int mmc_poweroff_notify(struct mmc_card *card, unsigned int notify_type)
 {
 	unsigned int timeout = card->ext_csd.generic_cmd6_time;
 	int err;
@@ -1349,7 +1414,7 @@ static int mmc_poweroff_notify(struct mmc_card *card, unsigned int notify_type)
 
 	return err;
 }
-
+EXPORT_SYMBOL(mmc_poweroff_notify);
 /*
  * Host is being removed. Free up the current card.
  */
@@ -1380,14 +1445,14 @@ static void mmc_detect(struct mmc_host *host)
 	BUG_ON(!host);
 	BUG_ON(!host->card);
 
-	mmc_claim_host(host);
+	mmc_get_card(host->card);
 
 	/*
 	 * Just check if our card has been removed.
 	 */
 	err = _mmc_detect_card_removed(host);
 
-	mmc_release_host(host);
+	mmc_put_card(host->card);
 
 	if (err) {
 		mmc_remove(host);
@@ -1411,21 +1476,40 @@ static int mmc_suspend(struct mmc_host *host)
 
 	mmc_claim_host(host);
 
+	if (mmc_card_doing_bkops(host->card)) {
+		err = mmc_stop_bkops(host->card);
+		if (err)
+			goto out;
+	}
+
 	err = mmc_cache_ctrl(host, 0);
 	if (err)
 		goto out;
 
-	if (mmc_can_poweroff_notify(host->card))
-		err = mmc_poweroff_notify(host->card, EXT_CSD_POWER_OFF_SHORT);
-	else if (mmc_card_can_sleep(host))
+	if (mmc_card_can_sleep(host)) {
 		err = mmc_card_sleep(host);
-	else if (!mmc_host_is_spi(host))
-		err = mmc_deselect_cards(host);
+		if (!err)
+			mmc_card_set_sleep(host->card);
+	} else if (!mmc_host_is_spi(host)) {
+		if (mmc_can_poweroff_notify(host->card))
+			err = mmc_poweroff_notify(host->card, EXT_CSD_POWER_OFF_SHORT);
+		else if (!mmc_host_is_spi(host))
+			err = mmc_deselect_cards(host);
+	}
 	host->card->state &= ~(MMC_STATE_HIGHSPEED | MMC_STATE_HIGHSPEED_200);
 
 out:
 	mmc_release_host(host);
 	return err;
+}
+
+/*
+ * Shutdown callback from host.
+ */
+static int mmc_shutdown(struct mmc_host *host)
+{
+
+	return mmc_suspend(host);
 }
 
 /*
@@ -1442,10 +1526,68 @@ static int mmc_resume(struct mmc_host *host)
 	BUG_ON(!host->card);
 
 	mmc_claim_host(host);
-	err = mmc_init_card(host, host->ocr, host->card);
+	if (mmc_card_is_sleep(host->card)) {
+		err = mmc_card_awake(host);
+		if (!err) {
+			mmc_card_clr_sleep(host->card);
+			err = mmc_cache_ctrl(host, 1);
+			if (err)
+				pr_err("%s: error %d cache on\n",
+					mmc_hostname(host), err);
+		}
+	} else
+		err = mmc_init_card(host, host->ocr, host->card);
 	mmc_release_host(host);
 
 	return err;
+}
+
+
+/*
+ * Callback for runtime_suspend.
+ */
+static int mmc_runtime_suspend(struct mmc_host *host)
+{
+	int err;
+
+	if (!(host->caps & MMC_CAP_AGGRESSIVE_PM))
+		return 0;
+
+	mmc_claim_host(host);
+
+	err = mmc_suspend(host);
+	if (err) {
+		pr_err("%s: error %d doing aggessive suspend\n",
+			mmc_hostname(host), err);
+		goto out;
+	}
+	mmc_power_off(host);
+
+out:
+	mmc_release_host(host);
+	return err;
+}
+
+/*
+ * Callback for runtime_resume.
+ */
+static int mmc_runtime_resume(struct mmc_host *host)
+{
+	int err;
+
+	if (!(host->caps & MMC_CAP_AGGRESSIVE_PM))
+		return 0;
+
+	mmc_claim_host(host);
+
+	mmc_power_up(host);
+	err = mmc_resume(host);
+	if (err)
+		pr_err("%s: error %d doing aggessive resume\n",
+			mmc_hostname(host), err);
+
+	mmc_release_host(host);
+	return 0;
 }
 
 static int mmc_power_restore(struct mmc_host *host)
@@ -1499,6 +1641,7 @@ static const struct mmc_bus_ops mmc_ops = {
 	.resume = NULL,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
+	.shutdown = mmc_shutdown,
 };
 
 static const struct mmc_bus_ops mmc_ops_unsafe = {
@@ -1508,8 +1651,11 @@ static const struct mmc_bus_ops mmc_ops_unsafe = {
 	.detect = mmc_detect,
 	.suspend = mmc_suspend,
 	.resume = mmc_resume,
+	.runtime_suspend = mmc_runtime_suspend,
+	.runtime_resume = mmc_runtime_resume,
 	.power_restore = mmc_power_restore,
 	.alive = mmc_alive,
+	.shutdown = mmc_shutdown,
 };
 
 static void mmc_attach_bus_ops(struct mmc_host *host)
@@ -1529,7 +1675,7 @@ static void mmc_attach_bus_ops(struct mmc_host *host)
 int mmc_attach_mmc(struct mmc_host *host)
 {
 	int err;
-	u32 ocr;
+	u32 ocr = 0;
 
 	BUG_ON(!host);
 	WARN_ON(!host->claimed);

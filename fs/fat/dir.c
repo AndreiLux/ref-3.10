@@ -103,8 +103,10 @@ next:
 
 	*bh = sb_bread(sb, phys);
 	if (*bh == NULL) {
+#if 0
 		fat_msg_ratelimit(sb, KERN_ERR,
 			"Directory bread(block %llu) failed", (llu)phys);
+#endif
 		/* skip this block */
 		*pos = (iblock + 1) << sb->s_blocksize_bits;
 		goto next;

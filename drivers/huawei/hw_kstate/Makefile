@@ -1,0 +1,1 @@
+obj-$(CONFIG_HUAWEI_KSTATE)          += hw_kstate.o

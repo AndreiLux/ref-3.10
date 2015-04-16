@@ -112,7 +112,11 @@ config USB_GADGET_STORAGE_NUM_BUFFERS
 	   If selecting USB_GADGET_DEBUG_FILES this value may be set by
 	   a module parameter as well.
 	   If unsure, say 2.
-
+ config K3V3_BALONG_MODEM
+    default y
+	tristate "K3V3 to balong modem  interface for usb"
+	help
+	   Add balong modem usb interface to k3v3
 #
 # USB Peripheral Controller Support
 #
@@ -607,7 +611,7 @@ config USB_ETH
 	help
 	  This driver implements Ethernet style communication, in one of
 	  several ways:
-	  
+
 	   - The "Communication Device Class" (CDC) Ethernet Control Model.
 	     That protocol is often avoided with pure Ethernet adapters, in
 	     favor of simpler vendor-specific hardware, but is widely
@@ -648,7 +652,7 @@ config USB_ETH_RNDIS
 	   If you say "y" here, the Ethernet gadget driver will try to provide
 	   a second device configuration, supporting RNDIS to talk to such
 	   Microsoft USB hosts.
-	   
+
 	   To make MS-Windows work with this, use Documentation/usb/linux.inf
 	   as the "driver info file".  For versions of MS-Windows older than
 	   XP, you'll need to download drivers from Microsoft's website; a URL

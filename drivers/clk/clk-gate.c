@@ -53,12 +53,18 @@ static void clk_gate_endisable(struct clk_hw *hw, int enable)
 	if (gate->lock)
 		spin_lock_irqsave(gate->lock, flags);
 
-	reg = readl(gate->reg);
+	if (gate->flags & CLK_GATE_HIWORD_MASK) {
+		reg = BIT(gate->bit_idx + 16);
+		if (set)
+			reg |= BIT(gate->bit_idx);
+	} else {
+		reg = readl(gate->reg);
 
-	if (set)
-		reg |= BIT(gate->bit_idx);
-	else
-		reg &= ~BIT(gate->bit_idx);
+		if (set)
+			reg |= BIT(gate->bit_idx);
+		else
+			reg &= ~BIT(gate->bit_idx);
+	}
 
 	writel(reg, gate->reg);
 
@@ -75,7 +81,9 @@ static int clk_gate_enable(struct clk_hw *hw)
 
 static void clk_gate_disable(struct clk_hw *hw)
 {
+#ifndef CONFIG_HI3630_CLK_ALWAYS_ON
 	clk_gate_endisable(hw, 0);
+#endif
 }
 
 static int clk_gate_is_enabled(struct clk_hw *hw)
@@ -120,6 +128,13 @@ struct clk *clk_register_gate(struct device *dev, const char *name,
 	struct clk_gate *gate;
 	struct clk *clk;
 	struct clk_init_data init;
+
+	if (clk_gate_flags & CLK_GATE_HIWORD_MASK) {
+		if (bit_idx > 16) {
+			pr_err("gate bit exceeds LOWORD field\n");
+			return ERR_PTR(-EINVAL);
+		}
+	}
 
 	/* allocate the gate */
 	gate = kzalloc(sizeof(struct clk_gate), GFP_KERNEL);

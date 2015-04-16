@@ -43,6 +43,7 @@
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/of_address.h>
 
 /*
  * This macro is used to define some register default values.
@@ -399,6 +400,9 @@ struct pl022 {
 	char				*dummypage;
 	bool				dma_running;
 #endif
+#ifdef CONFIG_SPI_HI3630_CS_USE_PCTRL
+	void __iomem *pctrl_base;
+#endif
 	int cur_cs;
 	int *chipselects;
 };
@@ -433,6 +437,36 @@ struct chip_data {
 	int xfer_type;
 };
 
+#if defined(CONFIG_ARCH_HI3630FPGA) || defined(CONFIG_ARCH_HI3630)
+#define SSP_TXFIFOCR(r)	(r + 0x028)
+#define SSP_RXFIFOCR(r)	(r + 0x02C)
+
+#define SSP_TXFIFOCR_MASK_DMA		(0x07UL << 0)
+#define SSP_TXFIFOCR_MASK_INT		(0x3UL << 3)
+/*
+ * SSP RX FIFO Register - SSP_TXFIFOCR
+ */
+#define SSP_RXFIFOCR_MASK_DMA		(0x07UL << 0)
+#define SSP_RXFIFOCR_MASK_INT		(0x3UL << 3)
+
+#define DEFAULT_SSP_REG_TXFIFOCR ( \
+	GEN_MASK_BITS(SSP_TX_64_OR_MORE_EMPTY_LOC, SSP_TXFIFOCR_MASK_DMA, 0) | \
+	GEN_MASK_BITS(SSP_TX_64_OR_MORE_EMPTY_LOC, SSP_TXFIFOCR_MASK_INT, 3) \
+)
+
+/*
+ * Default SSP Register Values
+ */
+#define DEFAULT_SSP_REG_RXFIFOCR ( \
+	GEN_MASK_BITS(SSP_RX_16_OR_MORE_ELEM, SSP_RXFIFOCR_MASK_DMA, 0) | \
+	GEN_MASK_BITS(SSP_RX_16_OR_MORE_ELEM, SSP_RXFIFOCR_MASK_INT, 3) \
+)
+#endif
+
+#ifdef CONFIG_SPI_HI3630_CS_USE_PCTRL
+#define SPI_PCTRL_CS_BASE_VALUE 0x00010001
+#endif
+
 /**
  * null_cs_control - Dummy chip select function
  * @command: select/delect the chip
@@ -445,10 +479,31 @@ static void null_cs_control(u32 command)
 	pr_debug("pl022: dummy chip select control, CS=0x%x\n", command);
 }
 
+#ifdef CONFIG_SPI_HI3630_CS_USE_PCTRL
+static inline bool pctrl_cs_is_valid(int cs)
+{
+	return (cs != ~0);
+}
+
+static void pl022_pctrl_cs_set(struct pl022 *pl022, u32 command)
+{
+	/*cmd bit0~3 mask bit16~19 cs0~3*/
+	if (SSP_CHIP_SELECT == command)
+		writel(pl022->cur_cs, pl022->pctrl_base + 0x04);
+	else
+		writel(pl022->cur_cs & 0xffff0000, pl022->pctrl_base + 0x04);
+}
+#endif
+
 static void pl022_cs_control(struct pl022 *pl022, u32 command)
 {
+#ifdef CONFIG_SPI_HI3630_CS_USE_PCTRL
+	if (pctrl_cs_is_valid(pl022->cur_cs))
+		pl022_pctrl_cs_set(pl022, command);
+#else
 	if (gpio_is_valid(pl022->cur_cs))
 		gpio_set_value(pl022->cur_cs, command);
+#endif
 	else
 		pl022->cur_chip->cs_control(command);
 }
@@ -508,12 +563,11 @@ static void giveback(struct pl022 *pl022)
 	pl022->cur_msg = NULL;
 	pl022->cur_transfer = NULL;
 	pl022->cur_chip = NULL;
-	spi_finalize_current_message(pl022->master);
-
 	/* disable the SPI/SSP operation */
 	writew((readw(SSP_CR1(pl022->virtbase)) &
 		(~SSP_CR1_MASK_SSE)), SSP_CR1(pl022->virtbase));
 
+	spi_finalize_current_message(pl022->master);
 }
 
 /**
@@ -552,6 +606,10 @@ static void restore_state(struct pl022 *pl022)
 	writew(chip->cpsr, SSP_CPSR(pl022->virtbase));
 	writew(DISABLE_ALL_INTERRUPTS, SSP_IMSC(pl022->virtbase));
 	writew(CLEAR_ALL_INTERRUPTS, SSP_ICR(pl022->virtbase));
+#if defined(CONFIG_ARCH_HI3630FPGA) || defined(CONFIG_ARCH_HI3630)
+	writew(DEFAULT_SSP_REG_TXFIFOCR, SSP_TXFIFOCR(pl022->virtbase));
+	writew(DEFAULT_SSP_REG_RXFIFOCR, SSP_RXFIFOCR(pl022->virtbase));
+#endif
 }
 
 /*
@@ -911,9 +969,12 @@ static int configure_dma(struct pl022 *pl022)
 		.direction = DMA_MEM_TO_DEV,
 		.device_fc = false,
 	};
-	unsigned int pages;
+	unsigned int tx_pages;
+	unsigned int rx_pages;
 	int ret;
 	int rx_sglen, tx_sglen;
+	int tx_order_data_len = 0;
+	int rx_order_data_len = 0;
 	struct dma_chan *rxchan = pl022->dma_rx_channel;
 	struct dma_chan *txchan = pl022->dma_tx_channel;
 	struct dma_async_tx_descriptor *rxdesc;
@@ -1014,14 +1075,25 @@ static int configure_dma(struct pl022 *pl022)
 	dmaengine_slave_config(txchan, &tx_conf);
 
 	/* Create sglists for the transfers */
-	pages = DIV_ROUND_UP(pl022->cur_transfer->len, PAGE_SIZE);
-	dev_dbg(&pl022->adev->dev, "using %d pages for transfer\n", pages);
+	rx_order_data_len =
+	pl022->cur_transfer->len - (PAGE_SIZE - offset_in_page(pl022->rx));
 
-	ret = sg_alloc_table(&pl022->sgt_rx, pages, GFP_ATOMIC);
+	tx_order_data_len =
+	pl022->cur_transfer->len - (PAGE_SIZE - offset_in_page(pl022->tx));
+
+	rx_pages = DIV_ROUND_UP(rx_order_data_len, PAGE_SIZE) + 1;
+	tx_pages = DIV_ROUND_UP(tx_order_data_len, PAGE_SIZE) + 1;
+
+	dev_dbg(&pl022->adev->dev,
+		"rx using %d pages for transfer\n", rx_pages);
+	dev_dbg(&pl022->adev->dev,
+		"tx using %d pages for transfer\n", tx_pages);
+
+	ret = sg_alloc_table(&pl022->sgt_rx, rx_pages, GFP_ATOMIC);
 	if (ret)
 		goto err_alloc_rx_sg;
 
-	ret = sg_alloc_table(&pl022->sgt_tx, pages, GFP_ATOMIC);
+	ret = sg_alloc_table(&pl022->sgt_tx, tx_pages, GFP_ATOMIC);
 	if (ret)
 		goto err_alloc_tx_sg;
 
@@ -1079,13 +1151,17 @@ err_rxdesc:
 	dma_unmap_sg(txchan->device->dev, pl022->sgt_tx.sgl,
 		     pl022->sgt_tx.nents, DMA_TO_DEVICE);
 err_tx_sgmap:
+	dev_dbg(&pl022->adev->dev, "err_tx_sgmap\n");
 	dma_unmap_sg(rxchan->device->dev, pl022->sgt_rx.sgl,
 		     pl022->sgt_tx.nents, DMA_FROM_DEVICE);
 err_rx_sgmap:
+	dev_dbg(&pl022->adev->dev, "err_rx_sgmap\n");
 	sg_free_table(&pl022->sgt_tx);
 err_alloc_tx_sg:
+	dev_dbg(&pl022->adev->dev, "tx sg_alloc_table error\n");
 	sg_free_table(&pl022->sgt_rx);
 err_alloc_rx_sg:
+	dev_dbg(&pl022->adev->dev, "rx sg_alloc_table error\n");
 	return -ENOMEM;
 }
 
@@ -1342,6 +1418,11 @@ static int set_up_next_transfer(struct pl022 *pl022,
 	pl022->write =
 	    pl022->tx ? pl022->cur_chip->write : WRITING_NULL;
 	pl022->read = pl022->rx ? pl022->cur_chip->read : READING_NULL;
+
+#ifdef CONFIG_ARCH_K3V3
+	dev_dbg(&pl022->adev->dev, "pl022->tx %08x\n", (u32)pl022->tx);
+	dev_dbg(&pl022->adev->dev, "pl022->rx %08x\n", (u32)pl022->rx);
+#endif
 	return 0;
 }
 
@@ -1867,6 +1948,9 @@ static int pl022_setup(struct spi_device *spi)
 				&chip_info_dt.wait_state);
 			of_property_read_u32(np, "pl022,duplex",
 				&chip_info_dt.duplex);
+#if defined(CONFIG_ARCH_HI3630FPGA) || defined(CONFIG_ARCH_HI3630)
+			chip_info_dt.slave_tx_disable = of_property_read_bool(np, "pl022,slave-tx-disable");
+#endif
 
 			chip_info = &chip_info_dt;
 		} else {
@@ -1917,9 +2001,11 @@ static int pl022_setup(struct spi_device *spi)
 	chip->xfer_type = chip_info->com_mode;
 	if (!chip_info->cs_control) {
 		chip->cs_control = null_cs_control;
+#ifndef CONFIG_SPI_HI3630_CS_USE_PCTRL
 		if (!gpio_is_valid(pl022->chipselects[spi->chip_select]))
 			dev_warn(&spi->dev,
 				 "invalid chip select\n");
+#endif
 	} else
 		chip->cs_control = chip_info->cs_control;
 
@@ -2082,7 +2168,14 @@ pl022_platform_data_dt_get(struct device *dev)
 		return NULL;
 	}
 
+#if defined(CONFIG_ARCH_HI3630FPGA) || defined(CONFIG_ARCH_HI3630)
+	of_property_read_u32(np, "bus-id", &tmp);
+	pd->bus_id = tmp;
+	of_property_read_u32(np, "enable-dma", &tmp);
+	pd->enable_dma = tmp;
+#else
 	pd->bus_id = -1;
+#endif
 	of_property_read_u32(np, "num-cs", &tmp);
 	pd->num_chipselect = tmp;
 	of_property_read_u32(np, "pl022,autosuspend-delay",
@@ -2174,6 +2267,25 @@ static int pl022_probe(struct amba_device *adev, const struct amba_id *id)
 	master->rt = platform_info->rt;
 	master->dev.of_node = dev->of_node;
 
+#ifdef CONFIG_SPI_HI3630_CS_USE_PCTRL
+	np = of_find_compatible_node(NULL, NULL, "hisilicon,pctrl");
+	pl022->pctrl_base = of_iomap(np, 0);
+	platform_info->chipselects = devm_kzalloc(dev, num_cs * sizeof(int),
+					  GFP_KERNEL);
+	for (i = 0; i < num_cs; i++)
+		platform_info->chipselects[i] = SPI_PCTRL_CS_BASE_VALUE << i;
+#endif
+
+#if defined(CONFIG_ARCH_HI3630FPGA) || defined(CONFIG_ARCH_HI3630)
+	if (1 == num_cs) {
+		#ifdef CONFIG_SPI_HI3630_CS_USE_PCTRL
+		platform_info->chipselects = devm_kzalloc(dev, num_cs * sizeof(int),
+					  GFP_KERNEL);
+		*platform_info->chipselects = ~0;
+		#endif
+	}
+#endif
+
 	if (platform_info->num_chipselect && platform_info->chipselects) {
 		for (i = 0; i < num_cs; i++)
 			pl022->chipselects[i] = platform_info->chipselects[i];
@@ -2222,8 +2334,8 @@ static int pl022_probe(struct amba_device *adev, const struct amba_id *id)
 		status = -ENOMEM;
 		goto err_no_ioremap;
 	}
-	printk(KERN_INFO "pl022: mapped registers from 0x%08x to %p\n",
-	       adev->res.start, pl022->virtbase);
+	dev_info(&adev->dev, "pl022: mapped registers from 0x%08x to %p\n",
+		adev->res.start, pl022->virtbase);
 
 	pl022->clk = devm_clk_get(&adev->dev, NULL);
 	if (IS_ERR(pl022->clk)) {
@@ -2236,6 +2348,12 @@ static int pl022_probe(struct amba_device *adev, const struct amba_id *id)
 	if (status) {
 		dev_err(&adev->dev, "could not prepare SSP/SPI bus clock\n");
 		goto  err_clk_prep;
+	}
+
+	status = clk_set_rate(pl022->clk,96000000);
+	if (status) {
+		dev_err(&adev->dev, "could not set SSP/SPI bus clock \n");
+		goto err_no_clk_en;
 	}
 
 	status = clk_enable(pl022->clk);
@@ -2280,7 +2398,7 @@ static int pl022_probe(struct amba_device *adev, const struct amba_id *id)
 			"probe - problem registering spi master\n");
 		goto err_spi_register;
 	}
-	dev_dbg(dev, "probe succeeded\n");
+	dev_info(dev, "probe succeeded\n");
 
 	/* let runtime pm put suspend */
 	if (platform_info->autosuspend_delay > 0) {
@@ -2397,6 +2515,7 @@ static int pl022_suspend(struct device *dev)
 	struct pl022 *pl022 = dev_get_drvdata(dev);
 	int ret;
 
+	dev_info(dev, "%s: +\n", __func__);
 	ret = spi_master_suspend(pl022->master);
 	if (ret) {
 		dev_warn(dev, "cannot suspend master\n");
@@ -2407,6 +2526,7 @@ static int pl022_suspend(struct device *dev)
 	pl022_suspend_resources(pl022, false);
 
 	dev_dbg(dev, "suspended\n");
+	dev_info(dev, "%s: -\n", __func__);
 	return 0;
 }
 
@@ -2415,6 +2535,7 @@ static int pl022_resume(struct device *dev)
 	struct pl022 *pl022 = dev_get_drvdata(dev);
 	int ret;
 
+	dev_info(dev, "%s: +\n", __func__);
 	pl022_resume_resources(pl022, false);
 	pm_runtime_put(dev);
 
@@ -2425,6 +2546,7 @@ static int pl022_resume(struct device *dev)
 	else
 		dev_dbg(dev, "resumed\n");
 
+	dev_info(dev, "%s: -\n", __func__);
 	return ret;
 }
 #endif	/* CONFIG_PM */
@@ -2434,7 +2556,11 @@ static int pl022_runtime_suspend(struct device *dev)
 {
 	struct pl022 *pl022 = dev_get_drvdata(dev);
 
+//	dev_info(dev, "%s: +\n", __func__);
+
 	pl022_suspend_resources(pl022, true);
+
+//	dev_info(dev, "%s: -\n", __func__);
 	return 0;
 }
 
@@ -2442,7 +2568,11 @@ static int pl022_runtime_resume(struct device *dev)
 {
 	struct pl022 *pl022 = dev_get_drvdata(dev);
 
+//	dev_info(dev, "%s: +\n", __func__);
+
 	pl022_resume_resources(pl022, true);
+
+//	dev_info(dev, "%s: -\n", __func__);
 	return 0;
 }
 #endif
@@ -2452,6 +2582,16 @@ static const struct dev_pm_ops pl022_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(pl022_runtime_suspend, pl022_runtime_resume, NULL)
 };
 
+#if defined(CONFIG_ARCH_HI3630FPGA) || defined(CONFIG_ARCH_HI3630)
+static struct vendor_data vendor_arm = {
+	.fifodepth = 256,
+	.max_bpw = 16,
+	.unidir = false,
+	.extended_cr = false,
+	.pl023 = false,
+	.loopback = true,
+};
+#else
 static struct vendor_data vendor_arm = {
 	.fifodepth = 8,
 	.max_bpw = 16,
@@ -2460,6 +2600,7 @@ static struct vendor_data vendor_arm = {
 	.pl023 = false,
 	.loopback = true,
 };
+#endif
 
 static struct vendor_data vendor_st = {
 	.fifodepth = 32,

@@ -730,4 +730,14 @@ static inline int blk_part_pack_uuid(const u8 *uuid_str, u8 *to)
 }
 #endif /* CONFIG_BLOCK */
 
+#define MAX_EMMC_PARTITION_NUM 50
+struct emmc_partition {
+	unsigned char name[128];
+	sector_t start;
+	sector_t size_sectors;
+	unsigned char flags;
+};
+
+extern struct emmc_partition g_emmc_partition[];
+
 #endif /* _LINUX_GENHD_H */

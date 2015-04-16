@@ -307,14 +307,28 @@ __alloc_pages(gfp_t gfp_mask, unsigned int order,
 	return __alloc_pages_nodemask(gfp_mask, order, zonelist, NULL);
 }
 
+#ifdef CONFIG_HISI_RDR
+void rdr_buddy_fail_hook(void);
+#endif
+
 static inline struct page *alloc_pages_node(int nid, gfp_t gfp_mask,
 						unsigned int order)
 {
+#ifdef CONFIG_HISI_RDR
+	struct page *ret_page;
+#endif
 	/* Unknown node is current node */
 	if (nid < 0)
 		nid = numa_node_id();
 
+#ifdef CONFIG_HISI_RDR
+	ret_page = __alloc_pages(gfp_mask, order, node_zonelist(nid, gfp_mask));
+	if (ret_page == NULL)
+		rdr_buddy_fail_hook();
+	return ret_page;
+#else
 	return __alloc_pages(gfp_mask, order, node_zonelist(nid, gfp_mask));
+#endif
 }
 
 static inline struct page *alloc_pages_exact_node(int nid, gfp_t gfp_mask,
@@ -331,7 +345,14 @@ extern struct page *alloc_pages_current(gfp_t gfp_mask, unsigned order);
 static inline struct page *
 alloc_pages(gfp_t gfp_mask, unsigned int order)
 {
+#ifdef CONFIG_HISI_RDR
+	struct page *ret_page = alloc_pages_current(gfp_mask, order);
+	if (ret_page == NULL)
+		rdr_buddy_fail_hook();
+	return ret_page;
+#else
 	return alloc_pages_current(gfp_mask, order);
+#endif
 }
 extern struct page *alloc_pages_vma(gfp_t gfp_mask, int order,
 			struct vm_area_struct *vma, unsigned long addr,

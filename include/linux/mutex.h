@@ -14,7 +14,9 @@
 #include <linux/spinlock_types.h>
 #include <linux/linkage.h>
 #include <linux/lockdep.h>
-
+#ifdef CONFIG_ILOCKDEP
+#include <linux/ilockdep.h>
+#endif
 #include <linux/atomic.h>
 
 /*
@@ -63,6 +65,9 @@ struct mutex {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map	dep_map;
 #endif
+#ifdef CONFIG_ILOCKDEP
+	struct ilockdep_map idep_map;
+#endif
 };
 
 /*
@@ -105,12 +110,20 @@ static inline void mutex_destroy(struct mutex *lock) {}
 # define __DEP_MAP_MUTEX_INITIALIZER(lockname)
 #endif
 
+#ifdef CONFIG_ILOCKDEP
+# define __IDEP_MAP_MUTEX_INITIALIZER(lockname) \
+		, .idep_map = { .name = #lockname }
+#else
+# define __IDEP_MAP_MUTEX_INITIALIZER(lockname)
+#endif
+
 #define __MUTEX_INITIALIZER(lockname) \
 		{ .count = ATOMIC_INIT(1) \
 		, .wait_lock = __SPIN_LOCK_UNLOCKED(lockname.wait_lock) \
 		, .wait_list = LIST_HEAD_INIT(lockname.wait_list) \
 		__DEBUG_MUTEX_INITIALIZER(lockname) \
-		__DEP_MAP_MUTEX_INITIALIZER(lockname) }
+		__DEP_MAP_MUTEX_INITIALIZER(lockname) \
+		__IDEP_MAP_MUTEX_INITIALIZER(mutex) }
 
 #define DEFINE_MUTEX(mutexname) \
 	struct mutex mutexname = __MUTEX_INITIALIZER(mutexname)

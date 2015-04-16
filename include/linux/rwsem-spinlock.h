@@ -13,6 +13,11 @@
 #endif
 
 #ifdef __KERNEL__
+
+#ifdef CONFIG_ILOCKDEP
+#include <linux/ilockdep.h>
+#endif
+
 /*
  * the rw-semaphore definition
  * - if activity is 0 then there are no active readers or writers
@@ -27,6 +32,10 @@ struct rw_semaphore {
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lockdep_map dep_map;
 #endif
+#ifdef CONFIG_ILOCKDEP
+	struct ilockdep_map idep_map;
+#endif
+
 };
 
 #define RWSEM_UNLOCKED_VALUE		0x00000000

@@ -29,4 +29,13 @@ config HSEM_U8500
 
 	  If unsure, say N.
 
+config HISI_HWLOCK
+	tristate "HISI Hardware Spinlock device"
+	select HWSPINLOCK
+	default n
+	help
+	  Say y here to support the HISI Hardware Spinlock device.
+
+	  If unsure, say N.
+
 endmenu

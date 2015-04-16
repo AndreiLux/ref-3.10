@@ -13,7 +13,7 @@ config VT
 	bool "Virtual terminal" if EXPERT
 	depends on !S390 && !UML
 	select INPUT
-	default y
+	default n
 	---help---
 	  If you say Y here, you will get support for terminal devices with
 	  display and keyboard devices. These are called "virtual" because you
@@ -327,6 +327,13 @@ config N_HDLC
 	  here.
 
 config N_GSM
+	tristate "GSM MUX line discipline support (EXPERIMENTAL)"
+	depends on NET
+	help
+	  This line discipline provides support for the GSM MUX protocol and
+	  presents the mux as a set of 61 individual tty devices.
+
+config N_GSM_BALONG_EXT_MODEM
 	tristate "GSM MUX line discipline support (EXPERIMENTAL)"
 	depends on NET
 	help

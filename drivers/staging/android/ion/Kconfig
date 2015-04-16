@@ -33,3 +33,9 @@ config ION_TEGRA
 	help
 	  Choose this option if you wish to use ion on an nVidia Tegra.
 
+config ION_HISI
+	tristate "Ion for HISI"
+	depends on ION
+	select ARM_HAS_SG_CHAIN
+	help
+	  Choose this option if you wish to use ion on an HISI target.

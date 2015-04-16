@@ -202,7 +202,7 @@ static void __init intel_remapping_check(int num, int slot, int func)
 	revision = read_pci_config_byte(num, slot, func, PCI_REVISION_ID);
 
 	/*
- 	 * Revision 13 of all triggering devices id in this quirk have
+	* Revision 13 of all triggering devices id in this quirk have
 	 * a problem draining interrupts when irq remapping is enabled,
 	 * and should be flagged as broken.  Additionally revisions 0x12
 	 * and 0x22 of device id 0x3405 has this problem.

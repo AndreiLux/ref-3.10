@@ -1,0 +1,7 @@
+config  TZDRIVER
+    tristate "Secure Execution Communicator driver"
+    default n
+    depends on SECURE_EXTENSION
+    help
+      Provides a communication interface between userspace and
+      TrustZone Operating Environment.

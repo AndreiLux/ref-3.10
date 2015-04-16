@@ -49,6 +49,16 @@ static inline int __cci_control_port_by_index(u32 port, bool enable)
 	return -ENODEV;
 }
 #endif
+
+#if defined(CONFIG_ARM_CCI) && defined(CONFIG_ARCH_HISI)
+extern void hisi_cci_enable_detect(u32 cluster);
+#else
+static inline void hisi_cci_enable_detect(u32 cluster)
+{
+	return;
+}
+#endif
+
 #define cci_disable_port_by_device(dev) \
 	__cci_control_port_by_device(dev, false)
 #define cci_enable_port_by_device(dev) \

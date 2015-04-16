@@ -1221,6 +1221,11 @@ MODULE_DESCRIPTION(DRIVER_DESC);
 MODULE_AUTHOR (DRIVER_AUTHOR);
 MODULE_LICENSE ("GPL");
 
+#ifdef CONFIG_USB_EHCI_K3V3
+#include "ehci-k3v3.c"
+#define	PLATFORM_DRIVER		ehci_k3v3_driver
+#endif
+
 #ifdef CONFIG_USB_EHCI_FSL
 #include "ehci-fsl.c"
 #define	PLATFORM_DRIVER		ehci_fsl_driver
@@ -1314,6 +1319,7 @@ static int __init ehci_hcd_init(void)
 #endif
 
 #ifdef PLATFORM_DRIVER
+	ehci_init_driver(&hisik3_ehci_hc_driver, &hisi_overrides);
 	retval = platform_driver_register(&PLATFORM_DRIVER);
 	if (retval < 0)
 		goto clean0;

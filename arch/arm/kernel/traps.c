@@ -56,6 +56,14 @@ static int __init user_debug_setup(char *str)
 __setup("user_debug=", user_debug_setup);
 #endif
 
+#ifdef CONFIG_DETECT_HUNG_TASK
+static funcptr2 hw_hung_task_hook;
+void add_hw_hungtask_hook(funcptr2 printhook)
+{
+	hw_hung_task_hook = printhook;
+}
+#endif
+
 static void dump_mem(const char *, const char *, unsigned long, unsigned long);
 
 void dump_backtrace_entry(unsigned long where, unsigned long from, unsigned long frame)
@@ -214,6 +222,86 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 	barrier();
 }
 
+#include <linux/huawei/rdr.h>
+#include <linux/huawei/rdr_private.h>
+#ifdef CONFIG_HISI_RDR
+void dump_backtrace_entry_for_rdr(unsigned long where,
+		unsigned long from, unsigned long frame)
+{
+#ifdef CONFIG_DETECT_HUNG_TASK
+	/* < DTS2013120902611 wangdedong 00204535 2013.12.9 begin */
+	if (hw_hung_task_hook != NULL)
+		hw_hung_task_hook(where, from);
+	/* DTS2013120902611 wangdedong 00204535 2013.12.9 end > */
+#endif
+}
+
+static void dump_backtrace_for_rdr(struct pt_regs *regs,
+		struct task_struct *tsk)
+{
+	unsigned int fp, mode;
+	int ok = 1;
+
+	if (!tsk)
+		tsk = current;
+
+	if (regs) {
+		fp = regs->ARM_fp;
+		mode = processor_mode(regs);
+	} else if (tsk != current) {
+		fp = thread_saved_fp(tsk);
+		mode = 0x10;
+	} else {
+		asm("mov %0, fp" : "=r" (fp) : : "cc");
+		mode = 0x10;
+	}
+
+	if (!fp)
+		ok = 0;
+	else if (verify_stack(fp))
+		ok = 0;
+
+	if (ok)
+		c_backtrace_for_rdr(fp, mode);
+}
+void show_stack_for_rdr(struct task_struct *tsk, unsigned long *sp)
+{
+	dump_backtrace_for_rdr(NULL, tsk);
+	barrier();
+}
+void dump_stack_bl(struct task_struct *tsk)
+{
+	show_stack_for_rdr(tsk, NULL);
+}
+
+static rdr_funcptr_3 p_exc_hook;
+unsigned int arm_exc_type = 0xffff;
+
+void exc_hook_add(rdr_funcptr_3 p_hook_func)
+{
+	p_exc_hook = p_hook_func;
+}
+EXPORT_SYMBOL(exc_hook_add);
+
+void exc_hook_delete(void)
+{
+	p_exc_hook = NULL;
+}
+EXPORT_SYMBOL(exc_hook_delete);
+#else
+void dump_stack_bl(struct task_struct *tsk)
+{
+}
+
+void exc_hook_add(rdr_funcptr_3 p_hook_func)
+{
+}
+
+void exc_hook_delete(void)
+{
+}
+#endif
+
 #ifdef CONFIG_PREEMPT
 #define S_PREEMPT " PREEMPT"
 #else
@@ -230,6 +318,10 @@ void show_stack(struct task_struct *tsk, unsigned long *sp)
 #define S_ISA " ARM"
 #endif
 
+static arch_spinlock_t die_lock = __ARCH_SPIN_LOCK_UNLOCKED;
+static int die_owner = -1;
+static unsigned int die_nest_count;
+
 static int __die(const char *str, int err, struct pt_regs *regs)
 {
 	struct task_struct *tsk = current;
@@ -245,7 +337,12 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		return 1;
 
 	print_modules();
-	__show_regs(regs);
+	if (die_nest_count < 4) {
+		__show_regs(regs);
+	} else {
+		printk(KERN_EMERG "die nest stopped ....");
+	}
+
 	printk(KERN_EMERG "Process %.*s (pid: %d, stack limit = 0x%p)\n",
 		TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), end_of_stack(tsk));
 
@@ -258,10 +355,6 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 
 	return 0;
 }
-
-static arch_spinlock_t die_lock = __ARCH_SPIN_LOCK_UNLOCKED;
-static int die_owner = -1;
-static unsigned int die_nest_count;
 
 static unsigned long oops_begin(void)
 {
@@ -325,6 +418,11 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	if (__die(str, err, regs))
 		sig = 0;
+
+#ifdef CONFIG_HISI_RDR
+	if (NULL != p_exc_hook) /*excute exc hook func*/
+		p_exc_hook((int)current, (int)arm_exc_type, (int)regs);
+#endif
 
 	oops_end(flags, regs, sig);
 }
@@ -447,6 +545,9 @@ die_sig:
 	info.si_code  = ILL_ILLOPC;
 	info.si_addr  = pc;
 
+#ifdef CONFIG_HISI_RDR
+	arm_exc_type = DUMP_ARM_VEC_UNDEF;
+#endif
 	arm_notify_die("Oops - undefined instruction", regs, &info, 0, 6);
 }
 
@@ -547,6 +648,9 @@ asmlinkage int arm_syscall(int no, struct pt_regs *regs)
 		info.si_code  = SEGV_MAPERR;
 		info.si_addr  = NULL;
 
+#ifdef CONFIG_HISI_RDR
+		arm_exc_type = DUMP_ARM_VEC_RESET;
+#endif
 		arm_notify_die("branch through zero", regs, &info, 0, 0);
 		return 0;
 

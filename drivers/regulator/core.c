@@ -2500,7 +2500,7 @@ int regulator_set_voltage(struct regulator *regulator, int min_uV, int max_uV)
 	ret = regulator_check_voltage(rdev, &min_uV, &max_uV);
 	if (ret < 0)
 		goto out;
-	
+
 	/* restore original values in case of error */
 	old_min_uV = regulator->min_uV;
 	old_max_uV = regulator->max_uV;
@@ -2514,7 +2514,7 @@ int regulator_set_voltage(struct regulator *regulator, int min_uV, int max_uV)
 	ret = _regulator_do_set_voltage(rdev, min_uV, max_uV);
 	if (ret < 0)
 		goto out2;
-	
+
 out:
 	mutex_unlock(&rdev->mutex);
 	return ret;
@@ -4036,4 +4036,80 @@ unlock:
 
 	return 0;
 }
+
 late_initcall(regulator_init_complete);
+
+#ifdef CONFIG_DEBUG_FS
+void get_current_regulator_dev(struct seq_file *s)
+{
+	struct regulator_dev *rdev;
+	struct regulator_ops *ops;
+	int enabled = 0;
+	list_for_each_entry(rdev, &regulator_list, list) {
+		if (NULL == rdev->constraints->name)
+			break;
+		seq_printf(s, "%-15s", rdev->constraints->name);
+		ops = rdev->desc->ops;
+		if (ops->is_enabled)
+			enabled = ops->is_enabled(rdev);
+
+		if (enabled) {
+			seq_printf(s, "%-20s", "ON");
+		} else {
+			seq_printf(s, "%-20s", "OFF");
+		}
+		seq_printf(s, "%d\t\t", rdev->use_count);
+		seq_printf(s, "%d\t\t", rdev->open_count);
+		if (rdev->constraints->always_on) {
+			seq_printf(s, "%-17s\n\r", "ON");
+		} else {
+			seq_printf(s, "%-17s\n\r", "OFF");
+		}
+	}
+}
+
+void set_regulator_state(char *ldo_name, int value)
+{
+	struct regulator_dev *rdev;
+	struct regulator_ops *ops;
+	pr_info("ldo_name=%s,value=%d\n\r", ldo_name, value);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		ops = rdev->desc->ops;
+
+		if (strcmp(rdev->constraints->name, "(null)") == 0) {
+			pr_info("Couldnot find your ldo name\n\r");
+			return;
+		}
+		if ((strcmp(rdev->constraints->name, ldo_name) == 0)) {
+			if (value == 0) {
+				pr_info("close the %s\n\r", ldo_name);
+				ops->disable(rdev);
+			} else {
+				pr_info("open the %s\n\r", ldo_name);
+				ops->enable(rdev);
+			}
+			return;
+		}
+	}
+}
+
+void get_regulator_state(char *ldo_name)
+{
+	struct regulator_dev *rdev;
+	struct regulator_ops *ops;
+	int voltage_value;
+	pr_info("ldo_name=%s\n\r", ldo_name);
+	list_for_each_entry(rdev, &regulator_list, list) {
+		ops = rdev->desc->ops;
+		if (strcmp(rdev->constraints->name, "(null)") == 0) {
+			pr_info("Couldnot find your ldo name\n\r");
+			return;
+		}
+		if ((strcmp(rdev->constraints->name, ldo_name) == 0)) {
+			voltage_value = ops->get_voltage(rdev);
+			pr_info("voltage_value the %d\n\r", voltage_value);
+			return;
+		}
+	}
+}
+#endif

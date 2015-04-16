@@ -1,0 +1,1 @@
+obj-$(CONFIG_HISI_ADC) += hisi_adc.o

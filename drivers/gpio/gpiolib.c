@@ -28,7 +28,6 @@
  * only an instruction or two per bit.
  */
 
-
 /* When debugging, extend minimal trust to callers and platform code.
  * Also emit diagnostic messages that may help initial bringup, when
  * board setup or driver bugs are most common.
@@ -187,15 +186,18 @@ struct gpio_chip *gpio_to_chip(unsigned gpio)
 static int gpiochip_find_base(int ngpio)
 {
 	struct gpio_chip *chip;
-	int base = ARCH_NR_GPIOS - ngpio;
 
+	int base = 0;
 	list_for_each_entry_reverse(chip, &gpio_chips, list) {
 		/* found a free space? */
 		if (chip->base + chip->ngpio <= base)
 			break;
-		else
+		else {
 			/* nope, check the space right before the chip */
-			base = chip->base - ngpio;
+			base = chip->base + ngpio;
+			if (base > ARCH_NR_GPIOS)
+				return -ENOSPC;
+		}
 	}
 
 	if (gpio_is_valid(base)) {

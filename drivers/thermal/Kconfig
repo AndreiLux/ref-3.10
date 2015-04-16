@@ -169,4 +169,17 @@ config INTEL_POWERCLAMP
 	  enforce idle time which results in more package C-state residency. The
 	  user interface is exposed via generic thermal framework.
 
+config THERMAL_TSENSOR
+	tristate "Hisi thermal sensor driver"
+	default n
+	help
+	  Enable this to plug the thermal sensor driver into the Linux
+	  thermal framework
+
+config THERMAL_PERIPHERAL
+	tristate "Hisi peripheral thermal driver"
+	default n
+	help
+	  Enable this to plug the peripheral thermal sensor driver into the Linux
+	  thermal framework
 endif

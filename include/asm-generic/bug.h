@@ -81,11 +81,19 @@ extern void warn_slowpath_null(const char *file, const int line);
 	do { printk(arg); __WARN_TAINT(taint); } while (0)
 #endif
 
+#ifdef CONFIG_HISI_RDR
+void rdr_warn_on_hook(void);
+#else
+#define rdr_warn_on_hook() do {} while (0)
+#endif
+
 #ifndef WARN_ON
 #define WARN_ON(condition) ({						\
 	int __ret_warn_on = !!(condition);				\
-	if (unlikely(__ret_warn_on))					\
+	if (unlikely(__ret_warn_on)) {					\
 		__WARN();						\
+		rdr_warn_on_hook();					\
+	}								\
 	unlikely(__ret_warn_on);					\
 })
 #endif

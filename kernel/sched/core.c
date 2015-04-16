@@ -81,13 +81,16 @@
 #ifdef CONFIG_PARAVIRT
 #include <asm/paravirt.h>
 #endif
+#ifdef CONFIG_ILOCKDEP
+#include <linux/ilockdep.h>
+#endif
+
+#define CREATE_TRACE_POINTS
+#include <trace/events/sched.h>
 
 #include "sched.h"
 #include "../workqueue_internal.h"
 #include "../smpboot.h"
-
-#define CREATE_TRACE_POINTS
-#include <trace/events/sched.h>
 
 void start_bandwidth_timer(struct hrtimer *period_timer, ktime_t period)
 {
@@ -1481,7 +1484,7 @@ static void ttwu_queue(struct task_struct *p, int cpu)
  * Returns %true if @p was woken up, %false if it was already running
  * or @state didn't match @p's state.
  */
-static int
+int
 try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 {
 	unsigned long flags;
@@ -1537,6 +1540,7 @@ out:
 
 	return success;
 }
+EXPORT_SYMBOL(try_to_wake_up);
 
 /**
  * try_to_wake_up_local - try to wake up a local task with rq lock held
@@ -1597,6 +1601,7 @@ int wake_up_state(struct task_struct *p, unsigned int state)
 	return try_to_wake_up(p, state, 0);
 }
 
+extern unsigned int task_fork_on_a15;
 /*
  * Perform scheduler related setup for a newly forked process p.
  * p is forked by current.
@@ -1626,16 +1631,26 @@ static void __sched_fork(struct task_struct *p)
 #ifdef CONFIG_SCHED_HMP
 	/* keep LOAD_AVG_MAX in sync with fair.c if load avg series is changed */
 #define LOAD_AVG_MAX 47742
-	if (p->mm) {
-		p->se.avg.hmp_last_up_migration = 0;
-		p->se.avg.hmp_last_down_migration = 0;
-		p->se.avg.load_avg_ratio = 1023;
-		p->se.avg.load_avg_contrib =
-				(1023 * scale_load_down(p->se.load.weight));
-		p->se.avg.runnable_avg_period = LOAD_AVG_MAX;
-		p->se.avg.runnable_avg_sum = LOAD_AVG_MAX;
-		p->se.avg.usage_avg_sum = LOAD_AVG_MAX;
-	}
+#define LOAD_AVG_MIN 0
+	p->se.avg.hmp_last_up_migration = 0;
+	p->se.avg.hmp_last_down_migration = 0;
+    if(p->mm){
+        if(!task_fork_on_a15){
+            p->se.avg.load_avg_ratio = 0;
+            p->se.avg.load_avg_contrib =
+                    (0 * scale_load_down(p->se.load.weight));
+            p->se.avg.runnable_avg_period = LOAD_AVG_MIN;
+            p->se.avg.runnable_avg_sum = LOAD_AVG_MIN;
+            p->se.avg.usage_avg_sum = LOAD_AVG_MIN;
+        }else{
+		    p->se.avg.load_avg_ratio = 1023;
+		    p->se.avg.load_avg_contrib =
+				    (1023 * scale_load_down(p->se.load.weight));
+		    p->se.avg.runnable_avg_period = LOAD_AVG_MAX;
+		    p->se.avg.runnable_avg_sum = LOAD_AVG_MAX;
+		    p->se.avg.usage_avg_sum = LOAD_AVG_MAX;
+	    }
+    }
 #endif
 #endif
 #ifdef CONFIG_SCHEDSTATS
@@ -1991,6 +2006,86 @@ asmlinkage void schedule_tail(struct task_struct *prev)
 		put_user(task_pid_vnr(current), current->set_child_tid);
 }
 
+#include <linux/huawei/rdr_private.h>
+#ifdef CONFIG_HISI_RDR
+#define MAX_TASK_SWITCH_RTN 3 /* max task switch callout routines */
+static rdr_funcptr_2 task_switch_ls[MAX_TASK_SWITCH_RTN] = { NULL };
+
+/**
+ * param1:hook:routine to be added to table
+ * param2:table:table which to add
+ * param3:max_entries:max entries in table
+*/
+int hook_add_to_tail(void *hook, void *table[], int max_entries)
+{
+	int ix;
+
+	if (table == NULL)
+		return -1;
+
+	preempt_disable(); /* disable task switching */
+
+	/* find a slot after last hook in table */
+	for (ix = 0; ix < max_entries; ++ix) {
+		if (table[ix] == NULL) {
+			table[ix] = hook;
+			preempt_enable(); /* re-enable task switching */
+			return 0;
+		}
+	}
+
+	/* no free slot found */
+	preempt_enable(); /* re-enable task switching */
+
+	return -1;
+}
+
+int task_switch_hook_add(rdr_funcptr_2 switch_hook)
+{
+	/* translate hookLib errno's to taskLib errno's */
+	return hook_add_to_tail(switch_hook, (void **)task_switch_ls,
+			MAX_TASK_SWITCH_RTN);
+}
+EXPORT_SYMBOL(task_switch_hook_add);
+
+int task_switch_hook_del(rdr_funcptr_2 switch_hook)
+{
+	int ix;
+
+	preempt_disable();/* disable task switching */
+
+	/* find a slot after last hook in table */
+	for (ix = 0; ix < MAX_TASK_SWITCH_RTN; ++ix) {
+		if (task_switch_ls[ix] == switch_hook) {
+			task_switch_ls[ix] = NULL;
+			preempt_enable(); /* re-enable task switching */
+			return 0;
+		}
+	}
+
+	/* no free slot found */
+	preempt_enable(); /* re-enable task switching */
+
+	return -1;
+}
+EXPORT_SYMBOL(task_switch_hook_del);
+#else
+int hook_add_to_tail(void *hook, void *table[], int max_entries)
+{
+	return -1;
+}
+
+int task_switch_hook_add(rdr_funcptr_2 switch_hook)
+{
+	return -1;
+}
+
+int task_switch_hook_del(rdr_funcptr_2 switch_hook)
+{
+	return -1;
+}
+#endif
+
 /*
  * context_switch - switch to the new MM and the new
  * thread's register state.
@@ -2034,6 +2129,19 @@ context_switch(struct rq *rq, struct task_struct *prev,
 #endif
 
 	context_tracking_task_switch(prev, next);
+
+#ifdef CONFIG_HISI_RDR
+#ifndef CONFIG_HISI_RDR_SWITCH
+	/* do switch hooks */
+	{
+		int ix;
+		for (ix = 0; (ix < MAX_TASK_SWITCH_RTN)
+				&& (task_switch_ls[ix]); ++ix)
+			(*task_switch_ls[ix])((int)prev, (int)next);
+	}
+#endif
+#endif
+
 	/* Here we just switch the register state and the stack. */
 	switch_to(prev, next, prev);
 
@@ -4704,6 +4812,9 @@ void sched_show_task(struct task_struct *p)
 		(unsigned long)task_thread_info(p)->flags);
 
 	print_worker_info(KERN_INFO, p);
+#ifdef CONFIG_ILOCKDEP
+	show_ilockdep_info(p);
+#endif
 	show_stack(p, NULL);
 }
 
@@ -4784,6 +4895,9 @@ void __cpuinit init_idle(struct task_struct *idle, int cpu)
 	rq->curr = rq->idle = idle;
 #if defined(CONFIG_SMP)
 	idle->on_cpu = 1;
+#endif
+#ifdef CONFIG_ILOCKDEP
+	ilockdep_init(&idle->ilockdep_lock);
 #endif
 	raw_spin_unlock_irqrestore(&rq->lock, flags);
 

@@ -938,6 +938,10 @@ source "arch/arm/mach-gemini/Kconfig"
 
 source "arch/arm/mach-highbank/Kconfig"
 
+source "arch/arm/mach-hs/Kconfig"
+
+source "arch/arm/mach-hisi/Kconfig"
+
 source "arch/arm/mach-integrator/Kconfig"
 
 source "arch/arm/mach-iop32x/Kconfig"
@@ -1727,7 +1731,7 @@ source kernel/Kconfig.preempt
 config HZ
 	int
 	default 200 if ARCH_EBSA110 || ARCH_S3C24XX || ARCH_S5P64X0 || \
-		ARCH_S5PV210 || ARCH_EXYNOS4
+		ARCH_S5PV210 || ARCH_EXYNOS4 || ARCH_HISI
 	default AT91_TIMER_HZ if ARCH_AT91
 	default SHMOBILE_TIMER_HZ if ARCH_SHMOBILE
 	default 100
@@ -2281,6 +2285,8 @@ endif
 
 source "drivers/cpuidle/Kconfig"
 
+source "drivers/cpuhotplug/Kconfig"
+
 endmenu
 
 menu "Floating point emulation"
@@ -2379,6 +2385,11 @@ config ARCH_SUSPEND_POSSIBLE
 
 config ARM_CPU_SUSPEND
 	def_bool PM_SLEEP
+
+endmenu
+menu "Device Drivers"
+
+source "drivers/tzdriver/Kconfig"
 
 endmenu
 

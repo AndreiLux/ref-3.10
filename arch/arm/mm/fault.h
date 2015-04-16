@@ -25,4 +25,8 @@ static inline int fsr_fs(unsigned int fsr)
 void do_bad_area(unsigned long addr, unsigned int fsr, struct pt_regs *regs);
 unsigned long search_exception_table(unsigned long addr);
 
+#ifdef CONFIG_HISI_RDR
+extern unsigned int arm_exc_type;
+#endif
+
 #endif	/* __ARCH_ARM_FAULT_H */

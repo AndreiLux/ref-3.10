@@ -2,6 +2,13 @@
 # Backlight & LCD drivers configuration
 #
 
+config LCD_TUNING_DEVICE
+	tristate "Lowlevel LCD display effect controls"
+	default y
+	help
+	  This framework adds support for low-level control of the LCD
+	  display effect. This includes support for gamma, color enhance, etc.
+
 menuconfig BACKLIGHT_LCD_SUPPORT
 	bool "Backlight & LCD device support"
 	help

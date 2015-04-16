@@ -15,6 +15,11 @@
 #include <asm/page.h>
 #include <asm/pgtable.h>
 #include "internal.h"
+#include <linux/hisi_ion.h>
+
+/* used memory of reserved */
+extern unsigned long hisi_used_reserved_memory_size;
+extern unsigned long hisi_total_reserved_memory_size;
 
 void __attribute__((weak)) arch_report_meminfo(struct seq_file *m)
 {
@@ -29,6 +34,7 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	long cached;
 	unsigned long pages[NR_LRU_LISTS];
 	int lru;
+	unsigned long used_reserve_memory;
 
 /*
  * display in kilobytes.
@@ -36,6 +42,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 #define K(x) ((x) << (PAGE_SHIFT - 10))
 	si_meminfo(&i);
 	si_swapinfo(&i);
+	//k3 add
+	hisi_ionsysinfo(&i);
+
 	committed = percpu_counter_read_positive(&vm_committed_as);
 	allowed = ((totalram_pages - hugetlb_total_pages())
 		* sysctl_overcommit_ratio / 100) + total_swap_pages;
@@ -50,6 +59,10 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 	for (lru = LRU_BASE; lru < NR_LRU_LISTS; lru++)
 		pages[lru] = global_page_state(NR_LRU_BASE + lru);
 
+	/* add reserved ram to /proc/meminfo */
+	i.totalram += hisi_total_reserved_memory_size >> (PAGE_SHIFT);
+	i.totalhigh += hisi_total_reserved_memory_size >> (PAGE_SHIFT);
+	used_reserve_memory = hisi_used_reserved_memory_size >> (PAGE_SHIFT);
 	/*
 	 * Tagged format, for easy grepping and expansion.
 	 */
@@ -84,6 +97,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		"Mapped:         %8lu kB\n"
 		"Shmem:          %8lu kB\n"
 		"Slab:           %8lu kB\n"
+#ifdef CONFIG_ARCH_HI3630
+		"Reservemem:     %8lu kB\n"
+#endif
 		"SReclaimable:   %8lu kB\n"
 		"SUnreclaim:     %8lu kB\n"
 		"KernelStack:    %8lu kB\n"
@@ -143,6 +159,9 @@ static int meminfo_proc_show(struct seq_file *m, void *v)
 		K(global_page_state(NR_SHMEM)),
 		K(global_page_state(NR_SLAB_RECLAIMABLE) +
 				global_page_state(NR_SLAB_UNRECLAIMABLE)),
+#ifdef CONFIG_ARCH_HI3630
+		K(used_reserve_memory),
+#endif
 		K(global_page_state(NR_SLAB_RECLAIMABLE)),
 		K(global_page_state(NR_SLAB_UNRECLAIMABLE)),
 		global_page_state(NR_KERNEL_STACK) * THREAD_SIZE / 1024,

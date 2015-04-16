@@ -24,9 +24,12 @@ static unsigned long arch_timer_read_counter_long(void)
 
 static u32 sched_clock_mult __read_mostly;
 
+/* as arch_timer is enabled in xloader, val is not zero now */
+static unsigned long long arch_timer_init_val __read_mostly;
+
 static unsigned long long notrace arch_timer_sched_clock(void)
 {
-	return arch_timer_read_counter() * sched_clock_mult;
+	return (arch_timer_read_counter() - arch_timer_init_val) * sched_clock_mult;
 }
 
 static struct delay_timer arch_delay_timer;
@@ -47,7 +50,8 @@ int __init arch_timer_arch_init(void)
 		return -ENXIO;
 
 	arch_timer_delay_timer_register();
-
+	/* as the arch_timer is enabled in xloader */
+	arch_timer_init_val = arch_timer_read_counter();
 	/* Cache the sched_clock multiplier to save a divide in the hot path. */
 	sched_clock_mult = NSEC_PER_SEC / arch_timer_rate;
 	sched_clock_func = arch_timer_sched_clock;

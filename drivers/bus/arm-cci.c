@@ -25,6 +25,7 @@
 #include <asm/irq_regs.h>
 #include <asm/pmu.h>
 #include <asm/smp_plat.h>
+#include <linux/syscore_ops.h>
 
 #define DRIVER_NAME		"CCI"
 
@@ -45,7 +46,61 @@ enum cci_ace_port_type {
 	ACE_PORT,
 	ACE_LITE_PORT,
 };
+#ifdef CONFIG_ARCH_HISI
 
+#define CCI400_SPECCTRL                  0x0004
+
+/* speculative fetches from a master interface */
+#define SPEC_FETCH_DISABLE_M0             (1 << 0)
+#define SPEC_FETCH_DISABLE_M1             (1 << 1)
+#define SPEC_FETCH_DISABLE_M2             (1 << 2)
+
+/* speculative fetches for transactions through a slave interface */
+#define SPEC_FETCH_DISABLE_S0             (1 << 16)
+#define SPEC_FETCH_DISABLE_S1             (1 << 17)
+#define SPEC_FETCH_DISABLE_S2             (1 << 18)
+#define SPEC_FETCH_DISABLE_S3             (1 << 19)
+#define SPEC_FETCH_DISABLE_S4             (1 << 20)
+
+#define CCI400_SLAVE2_BASE               0x3000
+#define CCI400_SLAVE3_BASE               0x4000
+#define CCI400_SLAVE4_BASE               0x5000
+
+#define CCI400_SLAVE_QCR_OFFSET          0x10C
+#define QCR_QOS_REG_EN                   (1 << 0)
+#define QCR_RD_S_EN                      (1 << 1)
+#define QCR_MODE_WR                      (1 << 16)
+#define QCR_MODE_RD                      (1 << 20)
+#define QCR_BANDWIDTH_REG                (1 << 21)
+
+#define CCI400_SLAVE_MOTR_OFFSET         0x110
+#define MOTR_FRA_AWADDR(X)               (X << 0)
+#define MOTR_INT_AWADDR(X)               (X << 8)
+#define MOTR_FRA_ARADDR(X)               (X << 16)
+#define MOTR_INT_ARADDR(X)               (X << 24)
+
+#define CCI400_SLAVE_RTR_OFFSET          0x130
+#define RTR_RT_AW(X)                     (X << 0)
+#define RTR_RT_AR(X)                     (X << 16)
+
+#define CCI400_SLAVE_QRSFR_OFFSET        0x134
+#define QRSFR_AWQOS_SF(X)                (X << 0)
+#define QRSFR_ARQOS_SF(X)                (X << 8)
+
+#define CCI400_SLAVE_QRR_OFFSET          0x138
+#define QRR_AWQOS_MIN(X)                 (X << 0)
+#define QRR_AWQOS_MAX(X)                 (X << 8)
+#define QRR_ARQOS_MIN(X)                 (X << 16)
+#define QRR_ARQOS_MAX(X)                 (X << 24)
+
+#define DETECT_EAG_OFFSET               (0x178)
+#define DETECT_KF_OFFSET                (0x1A8)
+#define DETECT_EAG_BITSHIFT             (1)
+#define DETECT_KF_BITSHIFT              (23)
+
+void __iomem *g_crgctrl_base;
+
+#endif
 struct cci_ace_port {
 	void __iomem *base;
 	unsigned long phys;
@@ -811,6 +866,78 @@ static const struct of_device_id arm_cci_ctrl_if_matches[] = {
 	{},
 };
 
+#ifdef CONFIG_ARCH_HISI
+
+void hisi_cci_enable_detect(u32 cluster)
+{
+	unsigned int val = 0;
+	unsigned int addr_offset = 0;
+	unsigned int bit_shift = 0;
+
+	addr_offset = cluster ? DETECT_EAG_OFFSET : DETECT_KF_OFFSET;
+	bit_shift = cluster ? DETECT_EAG_BITSHIFT : DETECT_KF_BITSHIFT;
+
+	val = readl(g_crgctrl_base + addr_offset) | (1 << bit_shift);
+	writel(val, g_crgctrl_base + addr_offset);
+	val = readl(g_crgctrl_base + addr_offset);
+	val &= ~(1 << bit_shift);
+	writel(val, g_crgctrl_base + addr_offset);
+}
+EXPORT_SYMBOL_GPL(hisi_cci_enable_detect);
+
+static void cci_init_speculation(void)
+{
+	writel_relaxed(SPEC_FETCH_DISABLE_M0 | SPEC_FETCH_DISABLE_S1 | SPEC_FETCH_DISABLE_S2,
+			cci_ctrl_base + CCI400_SPECCTRL);
+}
+
+static void cci_init_qos(void)
+{
+	u32 data = 0;
+
+	/* S2: GPU */
+	/* Bandwidth regulation: Normal mode
+	 * Mode of the QoS value regulator: Period mode
+	 */
+	data = QCR_QOS_REG_EN | QCR_RD_S_EN | QCR_MODE_WR | QCR_MODE_RD;
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE2_BASE + CCI400_SLAVE_QCR_OFFSET);
+	/* Banwidth: 10G */
+	data = RTR_RT_AW(0x3) | RTR_RT_AR(0x3);
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE2_BASE + CCI400_SLAVE_RTR_OFFSET);
+	/* QoS: [1~3] */
+	data = QRR_AWQOS_MIN(0x1) | QRR_AWQOS_MAX(0x3) | QRR_ARQOS_MIN(0x1) | QRR_ARQOS_MAX(0x3);
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE2_BASE + CCI400_SLAVE_QRR_OFFSET);
+
+	/* S3: A7 */
+	/* Bandwidth regulation: Quiesce High mode
+	 * Mode of the QoS value regulator: Period mode
+	 */
+	data = QCR_QOS_REG_EN | QCR_RD_S_EN | QCR_MODE_WR | QCR_MODE_RD | QCR_BANDWIDTH_REG;
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE3_BASE + CCI400_SLAVE_QCR_OFFSET);
+	/* Banwidth: 1.2G */
+	data = RTR_RT_AW(0x15) | RTR_RT_AR(0x15);
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE3_BASE + CCI400_SLAVE_RTR_OFFSET);
+	/* QoS: [2~4] */
+	data = QRR_AWQOS_MIN(0x2) | QRR_AWQOS_MAX(0x4) | QRR_ARQOS_MIN(0x2) | QRR_ARQOS_MAX(0x4);
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE3_BASE + CCI400_SLAVE_QRR_OFFSET);
+
+	/* S4: A15 */
+	/* Bandwidth regulation: Quiesce High mode
+	 * Mode of the QoS value regulator: Period mode
+	 */
+	data = QCR_QOS_REG_EN | QCR_RD_S_EN | QCR_MODE_WR | QCR_MODE_RD | QCR_BANDWIDTH_REG;
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE4_BASE + CCI400_SLAVE_QCR_OFFSET);
+	/* Banwidth: 1.2G */
+	data = RTR_RT_AW(0x15) | RTR_RT_AR(0x15);
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE4_BASE + CCI400_SLAVE_RTR_OFFSET);
+	/* QoS: [2~4] */
+	data = QRR_AWQOS_MIN(0x2) | QRR_AWQOS_MAX(0x4) | QRR_ARQOS_MIN(0x2) | QRR_ARQOS_MAX(0x4);
+	writel_relaxed(data, cci_ctrl_base + CCI400_SLAVE4_BASE + CCI400_SLAVE_QRR_OFFSET);
+
+}
+
+#endif
+
 static int __init cci_probe(void)
 {
 	struct cci_nb_ports const *cci_config;
@@ -903,6 +1030,25 @@ static int __init cci_probe(void)
 	sync_cache_w(&ports);
 	sync_cache_w(&cpu_port);
 	__sync_cache_range_w(ports, sizeof(*ports) * nb_cci_ports);
+
+#ifdef CONFIG_ARCH_HISI
+	cci_init_speculation();
+
+	cci_init_qos();
+
+	np = of_find_compatible_node(NULL, NULL, "hisilicon,crgctrl");
+	if (IS_ERR(np)) {
+                pr_err("cci_probe: crgctrl of_find_compatible_node failed!\n");
+                return -ENODEV;
+	}
+
+	g_crgctrl_base = of_iomap(np, 0);
+	if (!g_crgctrl_base) {
+                pr_err("cci_probe: crgctrl of_iomap failed!\n");
+                return -ENOMEM;
+	}
+#endif
+
 	pr_info("ARM CCI driver probed\n");
 	return 0;
 
@@ -911,6 +1057,31 @@ memalloc_err:
 	kfree(ports);
 	return ret;
 }
+
+#ifdef CONFIG_ARCH_HISI
+
+static int cci_suspend(void)
+{
+	return 0;
+}
+
+static void cci_resume(void)
+{
+	pr_info("%s+.\n",__func__);
+
+	cci_init_speculation();
+
+	cci_init_qos();
+
+	pr_info("%s-.\n",__func__);
+}
+
+static struct syscore_ops cci_syscore_ops = {
+	.suspend	= cci_suspend,
+	.resume		= cci_resume,
+};
+
+#endif
 
 static int cci_init_status = -EAGAIN;
 static DEFINE_MUTEX(cci_probing);
@@ -924,6 +1095,10 @@ static int __init cci_init(void)
 	if (cci_init_status == -EAGAIN)
 		cci_init_status = cci_probe();
 	mutex_unlock(&cci_probing);
+
+#ifdef CONFIG_ARCH_HISI
+       register_syscore_ops(&cci_syscore_ops);
+#endif
 	return cci_init_status;
 }
 

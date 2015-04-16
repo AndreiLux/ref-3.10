@@ -158,3 +158,15 @@ config ARM_SPEAR_CPUFREQ
 	default y
 	help
 	  This adds the CPUFreq driver support for SPEAr SOCs.
+
+config ARM_HI3620_CPUFREQ
+	bool "Hisilicon hi3620-based"
+	depends on ARCH_HS
+	select CPU_FREQ_TABLE
+	select SWITCH
+	default y
+	help
+	  This adds the CPUFreq driver for Hisilicon hi3620 SoC
+	  based boards.
+
+	  If in doubt, say N.

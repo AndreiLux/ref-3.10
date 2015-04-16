@@ -1,0 +1,148 @@
+/*!
+ *****************************************************************************
+ *
+ * @file	   ump_api_server.c
+ *
+ * ---------------------------------------------------------------------------
+ *
+ * Copyright (c) Imagination Technologies Ltd.
+ * 
+ * The contents of this file are subject to the MIT license as set out below.
+ * 
+ * Permission is hereby granted, free of charge, to any person obtaining a 
+ * copy of this software and associated documentation files (the "Software"), 
+ * to deal in the Software without restriction, including without limitation 
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, 
+ * and/or sell copies of the Software, and to permit persons to whom the 
+ * Software is furnished to do so, subject to the following conditions:
+ * 
+ * The above copyright notice and this permission notice shall be included in 
+ * all copies or substantial portions of the Software.
+ * 
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN 
+ * THE SOFTWARE.
+ * 
+ * Alternatively, the contents of this file may be used under the terms of the 
+ * GNU General Public License Version 2 ("GPL")in which case the provisions of
+ * GPL are applicable instead of those above. 
+ * 
+ * If you wish to allow use of your version of this file only under the terms 
+ * of GPL, and not to allow others to use your version of this file under the 
+ * terms of the MIT license, indicate your decision by deleting the provisions 
+ * above and replace them with the notice and other provisions required by GPL 
+ * as set out in the file called “GPLHEADER” included in this distribution. If 
+ * you do not delete the provisions above, a recipient may use your version of 
+ * this file under the terms of either the MIT license or GPL.
+ * 
+ * This License is also included in this distribution in the file called 
+ * "MIT_COPYING".
+ *
+ *****************************************************************************/
+
+#include "sysbrg_api.h"
+#include "sysbrg_api_km.h"
+#include "sysos_api_km.h"
+#include "ump_api.h"
+#include "ump_api_rpc.h"
+
+
+IMG_VOID UMP_dispatch(SYSBRG_sPacket __user *psPacket)
+{
+	SYSBRG_sPacket sPacket;
+	UMP_sCmdMsg sCommandMsg;
+	UMP_sRespMsg sResponseMsg;
+
+	if(SYSOSKM_CopyFromUser(&sPacket, psPacket, sizeof(sPacket)))
+		IMG_ASSERT(!"failed to copy from user");
+	if(SYSOSKM_CopyFromUser(&sCommandMsg, sPacket.pvCmdData, sizeof(sCommandMsg)))
+		IMG_ASSERT(!"failed to copy from user");
+
+	switch (sCommandMsg.eFuncId)
+	{
+	
+      case UMP_GetConfigData1_ID:
+      
+      
+		#ifdef WIN32
+		if(!SYSBRGKM_CheckParams((IMG_VOID __user *)&sCommandMsg.sCmd.sUMP_GetConfigData1Cmd.psConfigData, sizeof((SYSBRG_sPacket *)&sCommandMsg.sCmd.sUMP_GetConfigData1Cmd.psConfigData)))
+		    IMG_ASSERT(IMG_FALSE);
+		#else
+        // not required to check pointer access under linux, as SYSOSKM_Copy{To,From}User has to be used
+		#endif
+	      
+	sResponseMsg.sResp.sUMP_GetConfigData1Resp.xUMP_GetConfigData1Resp =
+      		UMP_GetConfigData1(
+      
+	  sCommandMsg.sCmd.sUMP_GetConfigData1Cmd.ui32ConnId,
+	  sCommandMsg.sCmd.sUMP_GetConfigData1Cmd.psConfigData
+      );
+      break;
+      
+    
+      case UMP_ReadBlock1_ID:
+      
+      
+		#ifdef WIN32
+		if(!SYSBRGKM_CheckParams((IMG_VOID __user *)&sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pvData, sizeof((SYSBRG_sPacket *)&sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pvData)))
+		    IMG_ASSERT(IMG_FALSE);
+		#else
+        // not required to check pointer access under linux, as SYSOSKM_Copy{To,From}User has to be used
+		#endif
+	      
+		#ifdef WIN32
+		if(!SYSBRGKM_CheckParams((IMG_VOID __user *)&sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pui32DataRead, sizeof((SYSBRG_sPacket *)&sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pui32DataRead)))
+		    IMG_ASSERT(IMG_FALSE);
+		#else
+        // not required to check pointer access under linux, as SYSOSKM_Copy{To,From}User has to be used
+		#endif
+	      
+		#ifdef WIN32
+		if(!SYSBRGKM_CheckParams((IMG_VOID __user *)&sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pbDataLost, sizeof((SYSBRG_sPacket *)&sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pbDataLost)))
+		    IMG_ASSERT(IMG_FALSE);
+		#else
+        // not required to check pointer access under linux, as SYSOSKM_Copy{To,From}User has to be used
+		#endif
+	      
+	sResponseMsg.sResp.sUMP_ReadBlock1Resp.xUMP_ReadBlock1Resp =
+      		UMP_ReadBlock1(
+      
+	  sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.ui32ConnId,
+	  sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.ui32BufferSize,
+	  sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pvData,
+	  sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pui32DataRead,
+	  sCommandMsg.sCmd.sUMP_ReadBlock1Cmd.pbDataLost
+      );
+      break;
+      
+    
+      case UMP_FlushPipe1_ID:
+      
+      
+	sResponseMsg.sResp.sUMP_FlushPipe1Resp.xUMP_FlushPipe1Resp =
+      		UMP_FlushPipe1(
+      
+	  sCommandMsg.sCmd.sUMP_FlushPipe1Cmd.ui32ConnId
+      );
+      break;
+      
+    
+      case UMP_PreemptRead1_ID:
+      
+      
+	sResponseMsg.sResp.sUMP_PreemptRead1Resp.xUMP_PreemptRead1Resp =
+      		UMP_PreemptRead1(
+      
+	  sCommandMsg.sCmd.sUMP_PreemptRead1Cmd.ui32ConnId
+      );
+      break;
+      
+    
+	}
+	if(SYSOSKM_CopyToUser(sPacket.pvRespData, &sResponseMsg, sizeof(sResponseMsg)))
+		IMG_ASSERT(!"failed to copy to user");
+}

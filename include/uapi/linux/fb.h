@@ -226,6 +226,11 @@ struct fb_bitfield {
 #define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
 #define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
 
+#define FB_FLAG_DE_HIGH		1	/* data enable high active */
+#define FB_FLAG_DE_LOW		2	/* data enable low active */
+#define FB_FLAG_PIXDATA_POSEDGE	4	/* pixdata postive edge */
+#define FB_FLAG_PIXDATA_NEGEDGE	8	/* pixdata negative edge */
+
 /*
  * Display rotation support
  */

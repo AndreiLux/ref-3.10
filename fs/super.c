@@ -796,9 +796,17 @@ static void do_emergency_remount(struct work_struct *work)
 	printk("Emergency Remount complete\n");
 }
 
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+extern int blk_set_ro_secure_debuggable(int state);
+#endif
+
 void emergency_remount(void)
 {
 	struct work_struct *work;
+
+#ifdef CONFIG_HW_SYSTEM_WR_PROTECT
+	blk_set_ro_secure_debuggable(0);
+#endif
 
 	work = kmalloc(sizeof(*work), GFP_ATOMIC);
 	if (work) {

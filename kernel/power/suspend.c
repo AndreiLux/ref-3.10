@@ -27,6 +27,7 @@
 #include <linux/ftrace.h>
 #include <linux/rtc.h>
 #include <trace/events/power.h>
+#include <linux/log_jank.h>
 
 #include "power.h"
 
@@ -37,6 +38,10 @@ const char *const pm_states[PM_SUSPEND_MAX] = {
 };
 
 static const struct platform_suspend_ops *suspend_ops;
+
+#ifdef CONFIG_ARCH_HI3630
+extern void hisi_sys_sync_queue(void);
+#endif
 
 static bool need_suspend_ops(suspend_state_t state)
 {
@@ -334,9 +339,17 @@ static int enter_state(suspend_state_t state)
 	if (state == PM_SUSPEND_FREEZE)
 		freeze_begin();
 
+#ifndef CONFIG_ARCH_HI3630
+
 	printk(KERN_INFO "PM: Syncing filesystems ... ");
 	sys_sync();
 	printk("done.\n");
+
+#else
+
+	hisi_sys_sync_queue();
+
+#endif
 
 	pr_debug("PM: Preparing system for %s sleep\n", pm_states[state]);
 	error = suspend_prepare(state);
@@ -382,6 +395,7 @@ int pm_suspend(suspend_state_t state)
 {
 	int error;
 
+    pr_jank(JL_KERNEL_PM_SUSPEND_WAKEUP, "%s, state=%d", "JL_KERNEL_PM_SUSPEND_WAKEUP", state);
 	if (state <= PM_SUSPEND_ON || state >= PM_SUSPEND_MAX)
 		return -EINVAL;
 

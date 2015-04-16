@@ -39,6 +39,18 @@ config VIDEOMODE_HELPERS
 config HDMI
 	bool
 
+config HDMI_K3
+        bool "K3 HDMI support"
+        depends on ARCH_HISI
+        default y
+config HDCP_ENABLE_K3
+        bool "HDCP enable in K3 HDMI module"
+        depends on HDMI_K3
+        default n
+config MHL_K3
+        bool "MHL mode enable"
+        depends on HDMI_K3
+        default y
 config VEXPRESS_DVI_CONTROL
 	bool "Versatile Express DVI control"
 	depends on FB && VEXPRESS_CONFIG
@@ -2491,9 +2503,44 @@ config FB_SIMPLE
 	  through device tree, or potentially plain old platform data in the
 	  future.
 
+config FB_FAKE
+	tristate "K3 Framebuffer Fake support"
+	depends on FB && ARM && ARM_AMBA && ARCH_HISI
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports K3 FB Fake.
+
+config FB_K3
+	tristate "K3 Framebuffer support"
+	depends on FB && ARM && ARM_AMBA && ARCH_HISI
+	select FB_CFB_FILLRECT
+	select FB_CFB_COPYAREA
+	select FB_CFB_IMAGEBLIT
+	help
+	  This framebuffer driver supports K3 FB.
+
+config FASTBOOT_DISP_ENABLE
+	tristate "K3 fastboot display enable support"
+	depends on FB && ARM && ARM_AMBA && ARCH_HISI
+	help
+	  Display system have already initialized in fastboot.
+
+config LCD_CHECK_REG
+	bool "Support register check fuction for LCD"
+	depends on FB_K3
+	default n
+
+config LCD_MIPI_DETECT
+	bool "Support mipi detect fuction for LCD"
+	depends on FB_K3
+	default n
+
 source "drivers/video/omap/Kconfig"
 source "drivers/video/omap2/Kconfig"
 source "drivers/video/exynos/Kconfig"
+source "drivers/video/hisilicon/Kconfig"
 source "drivers/video/mmp/Kconfig"
 source "drivers/video/backlight/Kconfig"
 source "drivers/video/adf/Kconfig"
@@ -2533,4 +2580,13 @@ config FB_SSD1307
 	  This driver implements support for the Solomon SSD1307
 	  OLED controller over I2C.
 
+config PARTIAL_UPDATES
+	tristate "partial updates support on K3 platform"
+	help
+	partial updates support on K3 platform.
+
+config REPORT_VSYNC
+	tristate "report vsync support on K3 platform"
+	help
+	report vsync support on K3 platform.
 endmenu

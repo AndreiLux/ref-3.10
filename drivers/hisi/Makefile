@@ -1,0 +1,9 @@
+obj-y += rproc/
+obj-$(CONFIG_HISI_RDR) += rdr/
+obj-$(CONFIG_HISI_ADC) += hkadc/
+obj-$(CONFIG_SND_HIFI_LPP) += hifidsp/
+obj-$(CONFIG_HIFI_IPC) += ipcm/
+obj-$(CONFIG_HIFI_MAILBOX) += mailbox/
+obj-$(CONFIG_HISI_SOCP) += socp/
+obj-$(CONFIG_HISI_HMPTH_SET) += hmpthresholds/
+obj-y += irq/

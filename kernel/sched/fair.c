@@ -42,6 +42,12 @@
 
 #include "sched.h"
 
+/* Add apportunity to config how to placement the task
+ * when task fork.
+ * Default: Task fork on A7
+ */
+unsigned int task_fork_on_a15 = 0;
+
 
 /*
  * Targeted preemption latency for CPU-bound tasks:
@@ -1132,7 +1138,7 @@ static inline void update_cfs_shares(struct cfs_rq *cfs_rq)
  * We choose a half-life close to 1 scheduling period.
  * Note: The tables below are dependent on this value.
  */
-#define LOAD_AVG_PERIOD 32
+#define LOAD_AVG_PERIOD 16
 #define LOAD_AVG_MAX 47742 /* maximum possible load avg */
 #define LOAD_AVG_MAX_N 345 /* number of full periods to produce LOAD_MAX_AVG */
 
@@ -1231,7 +1237,7 @@ struct hmp_global_attr {
 	ssize_t (*to_sysfs_text)(char *buf, int buf_size);
 };
 
-#define HMP_DATA_SYSFS_MAX 8
+#define HMP_DATA_SYSFS_MAX 9
 
 struct hmp_data_struct {
 #ifdef CONFIG_HMP_FREQUENCY_INVARIANT_SCALE
@@ -1298,6 +1304,11 @@ struct cpufreq_extents {
 #define SCHED_LOAD_FREQINVAR_SINGLEFREQ 0x01
 
 static struct cpufreq_extents freq_scale[CONFIG_NR_CPUS];
+
+#ifdef CONFIG_HOTPLUG_CPU
+struct cpufreq_scale_cpu cpu_freq_scale = {0};
+#endif /* CONFIG_HOTPLUG_CPU */
+
 #endif /* CONFIG_HMP_FREQUENCY_INVARIANT_SCALE */
 #endif /* CONFIG_SCHED_HMP */
 
@@ -3610,6 +3621,22 @@ static inline unsigned int hmp_cpu_is_slowest(int cpu);
 static inline struct hmp_domain *hmp_slower_domain(int cpu);
 static inline struct hmp_domain *hmp_faster_domain(int cpu);
 
+#ifdef CONFIG_ARCH_HI3630
+#ifdef CONFIG_CPU_FREQ_GOV_INTERACTIVE
+extern int hisi_little_cluster_boost(void);
+#endif /* CONFIG_CPU_FREQ_GOV_INTERACTIVE */
+#endif /* CONFIG_ARCH_HI3630 */
+
+void hmp_boost_little_cpu(int target_cpu)
+{
+#ifdef CONFIG_ARCH_HI3630
+#ifdef CONFIG_CPU_FREQ_GOV_INTERACTIVE
+	if (hmp_cpu_is_slowest(target_cpu))
+		hisi_little_cluster_boost();
+#endif /* CONFIG_CPU_FREQ_GOV_INTERACTIVE */
+#endif /* CONFIG_ARCH_HI3630 */
+}
+
 /* must hold runqueue lock for queue se is currently on */
 static struct sched_entity *hmp_get_heaviest_task(
 				struct sched_entity *se, int migrate_up)
@@ -3678,6 +3705,66 @@ static struct sched_entity *hmp_get_lightest_task(
 	return min_se;
 }
 
+#ifdef CONFIG_HOTPLUG_CPU
+/*
+ * get up_threshold threads num.
+ */
+int hmp_get_upthreshold_num(u32 threshold)
+{
+	int cpu;
+	struct sched_entity *curr, *se;
+	struct rq *target;
+	unsigned long flags;
+	struct hmp_domain *hmp;
+	int  num = 0;
+	int num_tasks = hmp_max_tasks;
+	const struct cpumask *hmp_target_mask = NULL;
+
+	for_each_online_cpu(cpu) {
+		target = cpu_rq(cpu);
+		raw_spin_lock_irqsave(&target->lock, flags);
+		curr = target->cfs.curr;
+		if (!curr) {
+			raw_spin_unlock_irqrestore(&target->lock, flags);
+			/* printk("ssj warn cpu %d not task\n", cpu); */
+			continue;
+		}
+		if (!entity_is_task(curr)) {
+			struct cfs_rq *cfs_rq;
+
+			cfs_rq = group_cfs_rq(curr);
+			while (cfs_rq) {
+				curr = cfs_rq->curr;
+				cfs_rq = group_cfs_rq(curr);
+			}
+		}
+
+		/* The currently running task is not on the runqueue */
+		se = __pick_first_entity(cfs_rq_of(curr));
+
+		hmp = hmp_faster_domain(cpu_of(se->cfs_rq->rq));
+		hmp_target_mask = &hmp->possible_cpus;
+
+		num_tasks = hmp_max_tasks;
+		while (num_tasks && se) {
+			if (entity_is_task(se) &&
+				((se->avg.load_avg_ratio >= threshold) &&
+				 hmp_target_mask &&
+				 cpumask_intersects(hmp_target_mask,
+					tsk_cpus_allowed(task_of(se))))) {
+				num++;
+			}
+			se = __pick_next_entity(se);
+			num_tasks--;
+		}
+
+		raw_spin_unlock_irqrestore(&target->lock, flags);
+	}
+
+	return num;
+}
+#endif /* CONFIG_HOTPLUG_CPU */
+
 /*
  * Migration thresholds should be in the range [0..1023]
  * hmp_up_threshold: min. load required for migrating tasks to a faster cpu
@@ -3694,8 +3781,8 @@ static struct sched_entity *hmp_get_lightest_task(
  * hmp_packing_enabled: runtime control over pack/spread
  * hmp_full_threshold: Consider a CPU with this much unweighted load full
  */
-unsigned int hmp_up_threshold = 700;
-unsigned int hmp_down_threshold = 512;
+unsigned int hmp_up_threshold = 512;
+unsigned int hmp_down_threshold = 256;
 #ifdef CONFIG_SCHED_HMP_PRIO_FILTER
 unsigned int hmp_up_prio = NICE_TO_PRIO(CONFIG_SCHED_HMP_PRIO_FILTER_VAL);
 #endif
@@ -3705,7 +3792,7 @@ unsigned int hmp_next_down_threshold = 4096;
 #ifdef CONFIG_SCHED_HMP_LITTLE_PACKING
 #ifndef CONFIG_ARCH_VEXPRESS_TC2
 unsigned int hmp_packing_enabled = 1;
-unsigned int hmp_full_threshold = (NICE_0_LOAD * 9) / 8;
+unsigned int hmp_full_threshold = 590; /* (NICE_0_LOAD * 9) / 8; */
 #else
 /* TC2 has a sharp consumption curve @ around 800Mhz, so
    we aim to spread the load around that frequency. */
@@ -3973,6 +4060,14 @@ static ssize_t hmp_print_domains(char *outbuf, int outbufsize)
 	return outpos+1;
 }
 
+/* param must be 0 or 1 */
+static int hmp_task_fork_from_sysfs(int value)
+{
+    if (value < 0 || value > 1)
+        return -1;
+    return value;
+}
+
 #ifdef CONFIG_HMP_VARIABLE_SCALE
 static int hmp_period_tofrom_sysfs(int value)
 {
@@ -4044,6 +4139,12 @@ static int hmp_attr_init(void)
 		NULL,
 		hmp_print_domains,
 		0444);
+	hmp_attr_add("task_fork_on_a15",
+		&task_fork_on_a15,
+		NULL,
+		hmp_task_fork_from_sysfs,
+		NULL,
+		0);
 	hmp_attr_add("up_threshold",
 		&hmp_up_threshold,
 		NULL,
@@ -4255,7 +4356,7 @@ select_task_rq_fair(struct task_struct *p, int sd_flag, int wake_flags)
 
 #ifdef CONFIG_SCHED_HMP
 	/* always put non-kernel forking tasks on a big domain */
-	if (p->mm && (sd_flag & SD_BALANCE_FORK)) {
+	if (p->mm && (sd_flag & SD_BALANCE_FORK) && task_fork_on_a15) {
 		new_cpu = hmp_select_faster_cpu(p, prev_cpu);
 		if (new_cpu != NR_CPUS) {
 			hmp_next_up_delay(&p->se, new_cpu);
@@ -4356,6 +4457,7 @@ unlock:
 #endif
 		if (new_cpu != prev_cpu) {
 			hmp_next_down_delay(&p->se, new_cpu);
+			hmp_boost_little_cpu(new_cpu);
 			trace_sched_hmp_migrate(p, new_cpu, HMP_MIGRATE_WAKEUP);
 			return new_cpu;
 		}
@@ -6734,12 +6836,25 @@ static void nohz_idle_balance(int this_cpu, enum cpu_idle_type idle) { }
 #endif
 
 #ifdef CONFIG_SCHED_HMP
+
+#ifdef CONFIG_HOTPLUG_CPU
+extern void sched_update_hmp_ratio(int fast_cpu, unsigned int hmp_ratio, struct sched_entity *se);
+#endif
+
 /* Check if task should migrate to a faster cpu */
 static unsigned int hmp_up_migration(int cpu, int *target_cpu, struct sched_entity *se)
 {
 	struct task_struct *p = task_of(se);
 	int temp_target_cpu;
-	u64 now;
+	u64 now, time_limit;
+
+	now = cpu_rq(cpumask_first(cpu_online_mask))->clock_task;
+	time_limit = (now - se->avg.hmp_last_up_migration) >> 10;
+
+#ifdef CONFIG_HOTPLUG_CPU
+	sched_update_hmp_ratio(hmp_cpu_is_fastest(cpu)
+		&& (time_limit >= hmp_next_up_threshold), se->avg.load_avg_ratio, se);
+#endif
 
 	if (hmp_cpu_is_fastest(cpu))
 		return 0;
@@ -6754,9 +6869,7 @@ static unsigned int hmp_up_migration(int cpu, int *target_cpu, struct sched_enti
 
 	/* Let the task load settle before doing another up migration */
 	/* hack - always use clock from first online CPU */
-	now = cpu_rq(cpumask_first(cpu_online_mask))->clock_task;
-	if (((now - se->avg.hmp_last_up_migration) >> 10)
-					< hmp_next_up_threshold)
+	if (time_limit < hmp_next_up_threshold)
 		return 0;
 
 	/* hmp_domain_min_load only returns 0 for an
@@ -7161,6 +7274,7 @@ static void hmp_force_up_migration(int this_cpu)
 				get_task_struct(p);
 				target->migrate_task = p;
 				got_target = 1;
+				hmp_boost_little_cpu(target->push_cpu);
 				trace_sched_hmp_migrate(p, target->push_cpu, HMP_MIGRATE_OFFLOAD);
 				hmp_next_down_delay(&p->se, target->push_cpu);
 			}
@@ -7243,6 +7357,10 @@ static unsigned int hmp_idle_pull(int this_cpu)
 			target = rq;
 			ratio = curr->avg.load_avg_ratio;
 		}
+#ifdef CONFIG_HOTPLUG_CPU
+		/* sched_update_hmp_ratio(hmp_cpu_is_fastest(cpu), curr->avg.load_avg_ratio, curr); */
+		sched_update_hmp_ratio(0, curr->avg.load_avg_ratio, curr);
+#endif
 		raw_spin_unlock_irqrestore(&rq->lock, flags);
 	}
 
@@ -7897,6 +8015,10 @@ static int cpufreq_policy_callback(struct notifier_block *nb,
 		extents = &freq_scale[cpu];
 		extents->max = policy->max >> SCHED_FREQSCALE_SHIFT;
 		extents->min = policy->min >> SCHED_FREQSCALE_SHIFT;
+		if (hmp_cpu_is_fastest(cpu))
+			cpu_freq_scale.fastcpu_max_freq = policy->max;
+		else
+			cpu_freq_scale.slowcpu_max_freq = policy->max;
 		if (!hmp_data.freqinvar_load_scale_enabled) {
 			extents->curr_scale = 1024;
 		} else if (singleFreq) {
@@ -7908,6 +8030,8 @@ static int cpufreq_policy_callback(struct notifier_block *nb,
 					extents->max, policy->cur);
 		}
 	}
+	cpu_freq_scale.freq_scale = cpu_freq_scale.fastcpu_max_freq
+		/ (cpu_freq_scale.slowcpu_max_freq >> cpu_freq_scale.freq_multi_bit);
 
 	return 0;
 }
@@ -7930,6 +8054,16 @@ static int __init register_sched_cpufreq_notifier(void)
 		freq_scale[ret].min = 1024;
 		freq_scale[ret].curr_scale = 1024;
 	}
+
+#ifdef CONFIG_HOTPLUG_CPU
+	cpu_freq_scale.fastcpu_max_freq = 500000000;
+	cpu_freq_scale.slowcpu_max_freq = 1000000000;
+	cpu_freq_scale.dhry_scale = 155;
+	cpu_freq_scale.dhry_multi = 100;
+	cpu_freq_scale.freq_multi_bit = 10;
+	cpu_freq_scale.freq_scale = cpu_freq_scale.fastcpu_max_freq
+		/ (cpu_freq_scale.slowcpu_max_freq >> cpu_freq_scale.freq_multi_bit);
+#endif /* CONFIG_HOTPLUG_CPU */
 
 	pr_info("sched: registering cpufreq notifiers for scale-invariant loads\n");
 	ret = cpufreq_register_notifier(&cpufreq_policy_notifier,

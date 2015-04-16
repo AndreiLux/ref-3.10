@@ -14,6 +14,14 @@ config PRINTK_TIME
 	  The behavior is also controlled by the kernel command line
 	  parameter printk.time=1. See Documentation/kernel-parameters.txt
 
+config PRINTK_EXTENSION
+	bool "Show current pid and name information on printks"
+	depends on PRINTK
+	default n
+	help
+	  Say Y here to show current->pid, smp_processor_id(), current->comm
+	  information on printks.
+
 config DEFAULT_MESSAGE_LOGLEVEL
 	int "Default message log level (1-7)"
 	range 1 7
@@ -191,26 +199,14 @@ config LOCKUP_DETECTOR
 	  The overhead should be minimal.  A periodic hrtimer runs to
 	  generate interrupts and kick the watchdog task every 4 seconds.
 	  An NMI is generated every 10 seconds or so to check for hardlockups.
-	  If NMIs are not available on the platform, every 12 seconds the
-	  hrtimer interrupt on one cpu will be used to check for hardlockups
-	  on the next cpu.
 
 	  The frequency of hrtimer and NMI events and the soft and hard lockup
 	  thresholds can be controlled through the sysctl watchdog_thresh.
 
-config HARDLOCKUP_DETECTOR_NMI
+config HARDLOCKUP_DETECTOR
 	def_bool y
 	depends on LOCKUP_DETECTOR && !HAVE_NMI_WATCHDOG
 	depends on PERF_EVENTS && HAVE_PERF_EVENTS_NMI
-
-config HARDLOCKUP_DETECTOR_OTHER_CPU
-	def_bool y
-	depends on LOCKUP_DETECTOR && SMP
-	depends on !HARDLOCKUP_DETECTOR_NMI && !HAVE_NMI_WATCHDOG
-
-config HARDLOCKUP_DETECTOR
-	def_bool y
-	depends on HARDLOCKUP_DETECTOR_NMI || HARDLOCKUP_DETECTOR_OTHER_CPU
 
 config BOOTPARAM_HARDLOCKUP_PANIC
 	bool "Panic (Reboot) On Hard Lockups"
@@ -273,6 +269,21 @@ config PANIC_ON_OOPS_VALUE
 	default 0 if !PANIC_ON_OOPS
 	default 1 if PANIC_ON_OOPS
 
+config ILOCKDEP
+	bool "Enable ilockdep to debug semphore rw_semphore mutex"
+	depends on DEBUG_KERNEL
+	default n
+	help
+	Say Y here if you want the ilockdep function enable
+
+config DEBUG_ILOCKDEP_NUM
+	int "Select task's ilockdep number will be recorded"
+	depends on ILOCKDEP
+	range 8 64
+	default 32
+	help
+	Select ilockdep number of tasks will be recorded
+
 config DETECT_HUNG_TASK
 	bool "Detect Hung Tasks"
 	depends on DEBUG_KERNEL
@@ -287,6 +298,17 @@ config DETECT_HUNG_TASK
 	  task will stay in uninterruptible state. If lockdep is
 	  enabled then all held locks will also be reported. This
 	  feature has negligible overhead.
+
+# /* < DTS2013100805232 weiyuan 20130926 begin */
+config HW_DETECT_HUNG_TASK
+	bool "Huawei Enhance DETECT_HUNG_TASK"
+	depends on DETECT_HUNG_TASK
+	default n
+	help
+	  Say Y here to enable the Huawei enhance hungtask,
+	  Enhanced by add function of Whitelist or Blacklist,
+	  that controls the processes be monitored by hungtask.
+# /* DTS2013100805232 weiyuan 20130926 end > */
 
 config DEFAULT_HUNG_TASK_TIMEOUT
 	int "Default timeout for hung task detection (in seconds)"
@@ -1499,3 +1521,7 @@ config TEST_STRING_HELPERS
 
 config TEST_KSTRTOX
 	tristate "Test kstrto*() family of functions at runtime"
+
+config HISI_TIME
+	bool "Show hisi asic time"
+	default y

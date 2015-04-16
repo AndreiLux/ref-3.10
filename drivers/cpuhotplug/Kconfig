@@ -1,0 +1,27 @@
+menu "CPU Hotplug governor"
+
+config SCHED_RQ_AVG_INFO
+	bool "rq average support"
+	default n
+	help
+	  'CONFIG_SCHED_RQ_AVG_INFO' is used to enable rq average.
+
+config CPU_HOTPLUG
+	bool "hotplug policy governor"
+	default n
+	help
+	  'hotplug' - This driver adds a dynamic cpu hotplug policy governor.
+	  The governor does a periodic polling and changes hotplug based on
+	  the CPU utilization.
+	  The support for this governor depends on CPU capability to do fast
+	  hotplug switching (i.e, very low latency hotplug transitions).
+
+config USE_BIG_CORE_DEPTH
+	bool "set down threshold when big core plug in"
+	depends on CPU_HOTPLUG
+	depends on SCHED_HMP
+	default n
+	help
+	  'USE_BIG_CORE_DEPTH' is used to set down threshold when big core online.
+
+endmenu

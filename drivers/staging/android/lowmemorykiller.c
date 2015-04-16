@@ -41,6 +41,10 @@
 #include <linux/rcupdate.h>
 #include <linux/notifier.h>
 
+#ifdef CONFIG_HUAWEI_KSTATE
+#include <linux/hw_kstate.h>
+#endif
+
 static uint32_t lowmem_debug_level = 1;
 static short lowmem_adj[6] = {
 	0,
@@ -161,6 +165,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			     min_score_adj,
 			     other_free * (long)(PAGE_SIZE / 1024));
 		lowmem_deathpending_timeout = jiffies + HZ;
+#ifdef CONFIG_HUAWEI_KSTATE
+        kstate(KSTATE_FREEZER_MASK, "[PID %d KILLED][SIG %d]", selected->tgid, SIGKILL);
+#endif
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		rem -= selected_tasksize;

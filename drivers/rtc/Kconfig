@@ -208,6 +208,17 @@ config RTC_DRV_LP8788
 	help
 	  Say Y to enable support for the LP8788 RTC/ALARM driver.
 
+config RTC_DRV_HI6421
+	tristate "Hisilicon Hi6421 RTC"
+	depends on MFD_HI6421_PMIC
+	help
+	  If you say yes here you get support for Hisilicon Hi6421 PMIC
+	  RTC functions. If an interrupt is associated with the device,
+	  the alarm functionality is supported.
+
+	  This driver can also be built as a module. If so, the module
+	  will be called rtc-hi6421.
+
 config RTC_DRV_MAX6900
 	tristate "Maxim MAX6900"
 	help
@@ -954,6 +965,15 @@ config RTC_DRV_PL031
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called rtc-pl031.
+
+config RTC_DRV_HI3630_PMU
+	tristate "HI3630 PMU RTC"
+	depends on RTC_DRV_PL031
+	default n
+	help
+	  HI6421 PMU RTC code for PL031 RTC Driver. It can be powered
+	  by the backup power supply (such as a small coin cell battery).
+
 
 config RTC_DRV_AT32AP700X
 	tristate "AT32AP700X series RTC"

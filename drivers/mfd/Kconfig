@@ -442,6 +442,12 @@ config MFD_PM8XXX_IRQ
 	  This is required to use certain other PM 8xxx features, such as GPIO
 	  and MPP.
 
+config MFD_R63306
+	tristate "Support R63306 Graphics Liquid Crystal Controller"
+	select MFD_CORE
+	help
+	  This supports for Renesas R63306 Graphics Liquid Crystal Controller.
+
 config MFD_RDC321X
 	tristate "RDC R-321x southbridge"
 	select MFD_CORE
@@ -1116,6 +1122,14 @@ config MFD_WM8994
 	  core support for the WM8994, in order to use the actual
 	  functionaltiy of the device other drivers must be enabled.
 
+config MFD_HI6421_PMIC
+	tristate "HiSilicon Hi6421 PMU/Codec IC"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi6421 power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
 endmenu
 endif
 
@@ -1156,3 +1170,29 @@ config VEXPRESS_SPC
 	depends on VEXPRESS_CONFIG
 	help
 	  Serial Power Controller driver for ARM Ltd. test chips.
+
+
+config REGULATOR_HI3630_CORE
+	tristate "Control HiSilicon system interior area voltage"
+	depends on OF
+	help
+	  This driver control HiSilicon system interior area voltage  power management and codec IC,
+	  including regulators, codec, ADCs, Coulomb counter, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config MFD_HI6401_IRQ
+	tristate "Support HiSilicon Hi6401 Codec IC"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi6401  codec IC,
+	  including codec, ADCs, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+
+config MFD_HI3630_ASP_IRQ
+	tristate "Support HiSilicon Hi3630 ASP"
+	depends on OF
+	help
+	  This driver supports HiSilicon Hi6401  codec IC,
+	  including codec, ADCs, etc. Memory
+	  mapped I/O ports are the way of communication with it.
+	  

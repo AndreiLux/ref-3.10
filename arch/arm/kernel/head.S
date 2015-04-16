@@ -52,7 +52,8 @@
 	.equ	swapper_pg_dir, KERNEL_RAM_VADDR - PG_DIR_SIZE
 
 	.macro	pgtbl, rd, phys
-	add	\rd, \phys, #TEXT_OFFSET - PG_DIR_SIZE
+	ldr	\rd, =(TEXT_OFFSET - PG_DIR_SIZE)
+	add	\rd, \rd, \phys
 	.endm
 
 /*
@@ -227,8 +228,31 @@ __create_page_tables:
 	 */
 	add	r0, r4, #PAGE_OFFSET >> (SECTION_SHIFT - PMD_ORDER)
 	ldr	r6, =(_end - 1)
-	orr	r3, r8, r7
+
+	/*
+         *  Solve the secure ddr access error,When SECURE_EXTENSION is set.
+         *  begin:
+         */
+        /*add     r0, r0, #8*/
+        add     r0, r0, #1 << PMD_ORDER
+        add     r0, r0, #1 << PMD_ORDER
+	/*
+         *  end.
+         */
+
+        orr	r3, r8, r7
 	add	r6, r4, r6, lsr #(SECTION_SHIFT - PMD_ORDER)
+
+	/*
+         *  Solve the secure ddr access error,When SECURE_EXTENSION is set.
+         *  begin:
+         */
+        add     r3, r3, #1 << SECTION_SHIFT
+        add     r3, r3, #1 << SECTION_SHIFT
+	/*
+         *  end.
+         */
+
 1:	str	r3, [r0], #1 << PMD_ORDER
 	add	r3, r3, #1 << SECTION_SHIFT
 	cmp	r0, r6

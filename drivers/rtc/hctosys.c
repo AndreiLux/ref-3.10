@@ -21,6 +21,17 @@
  * slow down the sync API. So here we have the truncated value and
  * the best guess is to add 0.5s.
  */
+static int hisi_rtc_init_ok;
+
+int inquiry_rtc_init_ok(void)
+{
+	if (hisi_rtc_init_ok ==1) {
+		return 1;
+	} else {
+		return 0;
+	}
+}
+EXPORT_SYMBOL(inquiry_rtc_init_ok);
 
 static int __init rtc_hctosys(void)
 {
@@ -62,6 +73,7 @@ static int __init rtc_hctosys(void)
 		tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
 		tm.tm_hour, tm.tm_min, tm.tm_sec,
 		(unsigned int) tv.tv_sec);
+	hisi_rtc_init_ok = 1;
 
 err_invalid:
 err_read:

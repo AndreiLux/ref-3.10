@@ -27,9 +27,11 @@
 #define NETLINK_ECRYPTFS	19
 #define NETLINK_RDMA		20
 #define NETLINK_CRYPTO		21	/* Crypto layer */
+#define NETLINK_BALONG_RIL  22
 
 #define NETLINK_INET_DIAG	NETLINK_SOCK_DIAG
 
+#define NETLINK_HW_KSTATE   30  /* kstate send event to user */
 #define MAX_LINKS 32		
 
 struct sockaddr_nl {

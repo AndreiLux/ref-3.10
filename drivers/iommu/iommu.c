@@ -880,6 +880,54 @@ size_t iommu_unmap(struct iommu_domain *domain, unsigned long iova, size_t size)
 }
 EXPORT_SYMBOL_GPL(iommu_unmap);
 
+int iommu_map_range(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot)
+{
+	if (unlikely(domain->ops->map_range == NULL))
+		return -ENODEV;
+
+	BUG_ON(iova & (~PAGE_MASK));
+
+	return domain->ops->map_range(domain, iova, sg, size, prot);
+}
+EXPORT_SYMBOL_GPL(iommu_map_range);
+
+size_t iommu_unmap_range(struct iommu_domain *domain, unsigned long iova,
+		      size_t size)
+{
+	if (unlikely(domain->ops->unmap_range == NULL))
+		return -ENODEV;
+
+	BUG_ON(iova & (~PAGE_MASK));
+
+	return domain->ops->unmap_range(domain, iova, size);
+}
+EXPORT_SYMBOL_GPL(iommu_unmap_range);
+
+int iommu_map_tile(struct iommu_domain *domain, unsigned long iova,
+		    struct scatterlist *sg, size_t size, int prot,
+		    struct tile_format *format)
+{
+	if (unlikely(domain->ops->map_tile == NULL))
+		return -ENODEV;
+
+	BUG_ON(iova & (~PAGE_MASK));
+
+	return domain->ops->map_tile(domain, iova, sg, size, prot, format);
+}
+EXPORT_SYMBOL_GPL(iommu_map_tile);
+
+int iommu_unmap_tile(struct iommu_domain *domain, unsigned long iova,
+		      size_t size)
+{
+	if (unlikely(domain->ops->unmap_tile == NULL))
+		return -ENODEV;
+
+	BUG_ON(iova & (~PAGE_MASK));
+
+	return domain->ops->unmap_tile(domain, iova, size);
+}
+EXPORT_SYMBOL_GPL(iommu_unmap_tile);
 
 int iommu_domain_window_enable(struct iommu_domain *domain, u32 wnd_nr,
 			       phys_addr_t paddr, u64 size, int prot)

@@ -1,0 +1,3 @@
+config TSPDRV
+	bool "Immersion TouchSense driver"
+	default y

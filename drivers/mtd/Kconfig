@@ -12,6 +12,12 @@ menuconfig MTD
 
 if MTD
 
+config BALONG_MTD
+        bool
+        tristate "MTD for balong modem"
+        ---help---
+          This option advance the block2mtd action for balong modem nv use
+
 config MTD_TESTS
 	tristate "MTD tests support (DANGEROUS)"
 	depends on m
@@ -156,6 +162,14 @@ config MTD_BCM47XX_PARTS
 	  boards.
 
 comment "User Modules And Translation Layers"
+config HISI_NVE
+        tristate "Direct char device access to NVE devices"
+        help
+          This provides a character device for NVE device present in
+          the system, allowing the user to read and write directly to the
+          memory chips, and also use ioctl() to obtain information about
+          the device, or to erase parts of it.
+
 
 config MTD_BLKDEVS
 	tristate "Common interface to block layer for MTD 'translation layers'"
