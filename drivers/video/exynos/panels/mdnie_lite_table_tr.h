@@ -897,11 +897,11 @@ static unsigned char MOVIE_UI_1[] = {
 	0x4b, //ascr_Yb
 	0xff, //ascr_Bb
 	0xff, //ascr_Wr
-	0x00, //ascr_Kr
+	0x06, //ascr_Kr
 	0xf8, //ascr_Wg
-	0x00, //ascr_Kg
+	0x06, //ascr_Kg
 	0xef, //ascr_Wb
-	0x00, //ascr_Kb
+	0x06, //ascr_Kb
 	/* end */
 };
 

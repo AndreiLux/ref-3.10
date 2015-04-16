@@ -480,7 +480,7 @@ int display_hibernation_power_on(struct display_driver *dispdrv)
 	int ret = 0;
 	struct s3c_fb *sfb = dispdrv->decon_driver.sfb;
 
-	pm_info("##### +");
+	//pm_info("##### +");
 	disp_pm_gate_lock(dispdrv, true);
 	mutex_lock(&dispdrv->pm_status.pm_lock);
 	if (sfb->power_state == POWER_ON) {
@@ -495,7 +495,7 @@ int display_hibernation_power_on(struct display_driver *dispdrv)
 done:
 	mutex_unlock(&dispdrv->pm_status.pm_lock);
 	disp_pm_gate_lock(dispdrv, false);
-	pm_info("##### -\n");
+	//pm_info("##### -\n");
 	return ret;
 }
 
@@ -524,13 +524,13 @@ int display_hibernation_power_off(struct display_driver *dispdrv)
 		goto done;
 	}
 
-	pm_info("##### +");
+	//pm_info("##### +");
 	sfb->power_state = POWER_HIBER_DOWN;
 	__display_hibernation_power_off(dispdrv);
 	disp_pm_runtime_put_sync(dispdrv);
 
 	request_dynamic_hotplug(true);
-	pm_info("##### -\n");
+	//pm_info("##### -\n");
 done:
 	mutex_unlock(&dispdrv->pm_status.pm_lock);
 	disp_pm_gate_lock(dispdrv, false);
