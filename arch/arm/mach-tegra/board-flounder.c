@@ -779,6 +779,7 @@ static struct tegra_usb_platform_data tegra_ehci1_utmi_pdata = {
 		.hot_plug = false,
 		.remote_wakeup_supported = true,
 		.power_off_on_suspend = true,
+		.support_y_cable = true,
 	},
 	.u_cfg.utmi = {
 		.hssync_start_delay = 0,
