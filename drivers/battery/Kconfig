@@ -346,3 +346,13 @@ config EN_OOPS
 	default n
 	help
 	  Say Y to enable oops filter
+
+config DISABLE_SAVE_CAPACITY_MAX
+	bool "Disable to save capacity max in efs"
+	default n
+	depends on BATTERY_SAMSUNG
+	help
+	  Say Y to include support to disable it
+	  capacity_max is saved in /efs/FactoryApp/batt_capacity_max
+	  capacity_max is restored after boot up
+	  You can find the code in healthd

@@ -145,6 +145,8 @@ struct panel_private {
 	unsigned int 	alpm;
 	unsigned int 	current_alpm;
 	struct mutex	alpm_lock;
+	unsigned char mtpForALPM[36];
+	unsigned char prev_VT[2];
 #endif
 	unsigned int interpolation;
 	char hbm_elvss_comp;

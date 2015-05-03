@@ -103,15 +103,8 @@ enum {
 #define CURRENT_RANGE_MAX_NUM	5
 
 struct battery_data_t {
-	u32 V_empty_cold;
-	u32 QResidual00_cold;
-	u32 QResidual10_cold;
-	u32 QResidual20_cold;
-	u32 QResidual30_cold;
-	u32 TempCo_cold;
 	u32 V_empty;
-	u32 QResidual00;
-	u32 QResidual10;
+	u32 V_empty_origin;
 	u32 QResidual20;
 	u32 QResidual30;
 	u32 TempCo;
@@ -199,6 +192,8 @@ struct max77843_fuelgauge_data {
 
 	bool using_temp_compensation;
 	bool low_temp_compensation_en;
+	bool using_hw_vempty;
+	bool hw_v_empty;
 	int sw_v_empty;
 
 	unsigned int low_temp_limit;

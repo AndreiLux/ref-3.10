@@ -12,11 +12,6 @@
  * published by the Free Software Foundation.
 */
 
-
-//#include <linux/kernel.h>
-//#include <linux/fs.h>
-//#include <asm/uaccess.h>
-
 #include <video/mipi_display.h>
 
 #include "../dsim.h"
@@ -1837,6 +1832,12 @@ static int s6e3hf2_wqhd_probe(struct dsim_device *dsim)
 		dsim_err("dsim : %s lcd was not connected\n", __func__);
 		goto probe_exit;
 	}
+#ifdef CONFIG_LCD_ALPM
+	panel->mtpForALPM[0] = 0xC8;
+	memcpy(&(panel->mtpForALPM[1]), mtp, ARRAY_SIZE(mtp));
+	panel->prev_VT[0] = panel->mtpForALPM[34];
+	panel->prev_VT[1] = panel->mtpForALPM[35];
+#endif
 #ifdef CONFIG_EXYNOS_DECON_MDNIE_LITE
 	panel->mdnie_support = 1;
 #endif

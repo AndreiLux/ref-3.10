@@ -3358,7 +3358,7 @@
 		freq-table-hz = <0 0>, <0 0>, <0 0>, <0 0>, <0 0>, <0 0>, <0 0>, <0 0>, <0 0>, <0 0>;
 		pclk-freq-avail-range = <70000000 133000000>;
 
-		ufs,pmd-local-l2-timer = <6680 23380 16700>;
+		ufs,pmd-local-l2-timer = <8000 28000 20000>;
 		ufs,pmd-remote-l2-timer = <12000 32000 16000>;
 
 		ufs-phy {

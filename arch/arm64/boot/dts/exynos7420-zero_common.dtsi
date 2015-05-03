@@ -1830,11 +1830,11 @@
 		ufs,pmd-attr-gear = /bits/ 8 <2>;
 		ufs,pmd-attr-hs-series = "HS_rate_b";
 		ufs-opts-skip-connection-estab;
-		ufs-rx-adv-fine-gran-sup_en = <1>;
-		ufs-rx-adv-fine-gran-step = <3>;
-		ufs-rx-adv-min-activate-time-cap = <14>;
+		ufs-rx-adv-fine-gran-sup_en = <0>;
+		ufs-rx-min-activate-time-cap = <7>;
+		ufs-rx-hibern8-time-cap = <5>;
 		ufs-pa-granularity = <6>;
-		ufs-pa-tacctivate = <3>;
+		ufs-pa-tacctivate = <6>;
 		ufs-pa-hibern8time = <20>;
 
 		vcc-supply = <&ufs_fixed_vcc>;

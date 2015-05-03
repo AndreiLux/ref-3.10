@@ -280,58 +280,34 @@ static DEVICE_ATTR(hmt_on, 0664, hmt_on_show, hmt_on_store);
 #endif
 
 #ifdef CONFIG_LCD_ALPM
-static struct lcd_seq_info SEQ_ALPM_ON_SET[] = {
-	{(u8 *)SEQ_DISPLAY_OFF, ARRAY_SIZE(SEQ_DISPLAY_OFF), 17},
-	{(u8 *)SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0), 0},
-	{(u8 *)SEQ_ALPM2NIT_MODE_ON, ARRAY_SIZE(SEQ_ALPM2NIT_MODE_ON), 0},
-	{(u8 *)SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE), 0},
-	{(u8 *)SEQ_GAMMA_UPDATE_L, ARRAY_SIZE(SEQ_GAMMA_UPDATE_L), 0},
-	{(u8 *)SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0), 17},
-	{(u8 *)SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON), 0},
-};
-
-static struct lcd_seq_info SEQ_ALPM_OFF_SET[] = {
-	{(u8 *)SEQ_DISPLAY_OFF, ARRAY_SIZE(SEQ_DISPLAY_OFF), 17},
-	{(u8 *)SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0), 0},
-	{(u8 *)SEQ_NORMAL_MODE_ON, ARRAY_SIZE(SEQ_NORMAL_MODE_ON), 0},
-	{(u8 *)SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE), 0},
-	{(u8 *)SEQ_GAMMA_UPDATE_L, ARRAY_SIZE(SEQ_GAMMA_UPDATE_L), 0},
-	{(u8 *)SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0), 17},
-	{(u8 *)SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON), 0},
-};
-
-static int alpm_write_set(struct dsim_device *dsim, struct lcd_seq_info *seq, u32 num)
-{
-	int ret = 0, i;
-
-	for (i = 0; i < num; i++) {
-		if (seq[i].cmd) {
-			ret = dsim_write_hl_data(dsim, seq[i].cmd, seq[i].len);
-			if (ret != 0) {
-				dsim_err("%s failed.\n", __func__);
-				return ret;
-			}
-		}
-		if (seq[i].sleep)
-			usleep_range(seq[i].sleep * 1000 , seq[i].sleep * 1000);
-	}
-	return ret;
-}
 
 int alpm_set_mode(struct dsim_device *dsim, int enable)
 {
 	struct panel_private *priv = &(dsim->priv);
-
-	if(enable== ALPM_ON) {
-		alpm_write_set(dsim, SEQ_ALPM_ON_SET, ARRAY_SIZE(SEQ_ALPM_ON_SET));
-
-		priv->current_alpm = dsim->alpm = 1;
-	} else if(enable == ALPM_OFF) {
-		alpm_write_set(dsim, SEQ_ALPM_OFF_SET, ARRAY_SIZE(SEQ_ALPM_OFF_SET));
-		priv->current_alpm = dsim->alpm = 0;
-	} else {
+	if((enable != ALPM_ON) && (enable != ALPM_OFF)) {
 		pr_info("alpm state is invalid %d !\n", priv->alpm);
+		return 0;
 	}
+	dsim_write_hl_data(dsim, SEQ_DISPLAY_OFF, ARRAY_SIZE(SEQ_DISPLAY_OFF));
+	usleep_range(17000, 17000);
+	dsim_write_hl_data(dsim, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
+	if(enable == ALPM_ON) {
+		priv->mtpForALPM[34] = priv->mtpForALPM[35]= 0;
+		dsim_write_hl_data(dsim, priv->mtpForALPM, ARRAY_SIZE(priv->mtpForALPM));
+		dsim_write_hl_data(dsim, SEQ_ALPM2NIT_MODE_ON, ARRAY_SIZE(SEQ_ALPM2NIT_MODE_ON));
+	} else if(enable == ALPM_OFF) {
+		priv->mtpForALPM[34] = priv->prev_VT[0];
+		priv->mtpForALPM[35] = priv->prev_VT[1];
+		dsim_write_hl_data(dsim, priv->mtpForALPM, ARRAY_SIZE(priv->mtpForALPM));
+		dsim_write_hl_data(dsim, SEQ_NORMAL_MODE_ON, ARRAY_SIZE(SEQ_NORMAL_MODE_ON));
+	}
+	dsim_write_hl_data(dsim, SEQ_GAMMA_UPDATE, ARRAY_SIZE(SEQ_GAMMA_UPDATE));
+	dsim_write_hl_data(dsim, SEQ_GAMMA_UPDATE_L, ARRAY_SIZE(SEQ_GAMMA_UPDATE_L));
+	dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0));
+	usleep_range(17000, 17000);
+	dsim_write_hl_data(dsim, SEQ_DISPLAY_ON, ARRAY_SIZE(SEQ_DISPLAY_ON));
+
+	priv->current_alpm = dsim->alpm = enable;
 
 	return 0;
 }

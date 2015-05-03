@@ -541,6 +541,8 @@ static inline unsigned int r2h_bits(int cmd)
 #define S5P_FIMV_E_HEVC_LF_TC_OFFSET_DIV2	-1
 #define S5P_FIMV_E_HEVC_NAL_CONTROL		-1
 
+/* for compatibility */
+#define S5P_FIMV_E_GOP_CONFIG2		-1
 
 /* Codec numbers  */
 #define MFC_FORMATS_NO_CODEC		-1

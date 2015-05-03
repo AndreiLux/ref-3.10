@@ -87,6 +87,9 @@
 /* MAX77843 AFC charger W/A Check NUM */
 #define AFC_CHARGER_WA_PING		3
 
+/* MAX77843 MPing miss SW Workaround - delay time */
+#define MPING_MISS_WA_TIME		2000
+
 typedef enum {
 	DPDNVDEN_DISABLE	= 0x00,
 	DPDNVDEN_ENABLE		= (0x1 << HVCONTROL1_DPDNVDEN_SHIFT),

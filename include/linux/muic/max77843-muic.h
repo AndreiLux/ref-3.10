@@ -81,6 +81,7 @@ struct max77843_muic_data {
 	muic_afc_data_t			afc_data;
 	u8				qc_hv;
 	struct delayed_work		hv_muic_qc_vb_work;
+	struct delayed_work		hv_muic_mping_miss_wa;
 
 	/* muic status value */
 	u8				status1;
