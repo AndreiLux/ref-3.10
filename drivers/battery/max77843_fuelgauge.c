@@ -191,7 +191,7 @@ static int max77843_fg_read_vcell(struct max77843_fuelgauge_data *fuelgauge)
 			__func__, vcell, (data[1]<<8) | data[0]);
 	}
 
-	if ((fuelgauge->sw_v_empty == MAX77843_VEMPTY_MODE) && vcell > 3600) {
+	if ((fuelgauge->sw_v_empty == MAX77843_VEMPTY_MODE) && vcell > 3550) {
 		fuelgauge->sw_v_empty = MAX77843_VEMPTY_RECOVERY_MODE;
 		max77843_fg_fuelalert_init(fuelgauge,
 					   fuelgauge->pdata->fuel_alert_soc);
@@ -1579,6 +1579,19 @@ static int calc_ttf(struct max77843_fuelgauge_data *fuelgauge, union power_suppl
                 return 60; //minimum 1minutes
 }
 
+static void max77843_fg_set_vempty(struct max77843_fuelgauge_data *fuelgauge, bool en)
+{
+	if (en) {
+		pr_info("%s : Low Capacity HW V EMPTY Enable\n", __func__);
+		max77843_write_word(fuelgauge->i2c, VEMPTY_REG, fuelgauge->battery_data->V_empty);
+		fuelgauge->sw_v_empty = MAX77843_NORMAL_MODE;
+		fuelgauge->hw_v_empty = true;
+	} else {
+		max77843_write_word(fuelgauge->i2c, VEMPTY_REG, fuelgauge->battery_data->V_empty_origin);
+		fuelgauge->hw_v_empty = false;
+	}
+}
+
 static int max77843_fg_get_property(struct power_supply *psy,
 			     enum power_supply_property psp,
 			     union power_supply_propval *val)
@@ -1702,7 +1715,18 @@ static int max77843_fg_get_property(struct power_supply *psy,
 			/* get only integer part */
 			val->intval /= 10;
 
-			if (!fuelgauge->is_charging && (fuelgauge->sw_v_empty == MAX77843_VEMPTY_MODE)) {
+			if (fuelgauge->using_hw_vempty) {
+				if ((fuelgauge->raw_capacity <= 50) &&
+				    !fuelgauge->hw_v_empty){
+					max77843_fg_set_vempty(fuelgauge, true);
+				} else if ((fuelgauge->raw_capacity > 50) &&
+					   fuelgauge->hw_v_empty){
+					max77843_fg_set_vempty(fuelgauge, false);
+				}
+			}
+
+			if (!fuelgauge->is_charging &&
+			    !fuelgauge->hw_v_empty && (fuelgauge->sw_v_empty == MAX77843_VEMPTY_MODE)) {
 				pr_info("%s : SW V EMPTY. Decrease SOC\n", __func__);
 				val->intval = 0;
 			} else if ((fuelgauge->sw_v_empty == MAX77843_VEMPTY_RECOVERY_MODE) &&
@@ -1978,91 +2002,47 @@ static int max77843_fuelgauge_parse_dt(struct max77843_fuelgauge_data *fuelgauge
 		fuelgauge->using_temp_compensation = of_property_read_bool(np,
 						   "fuelgauge,using_temp_compensation");
 		if (fuelgauge->using_temp_compensation) {
-			ret = of_property_read_u32(np, "fuelgauge,v_empty_cold",
-						   &fuelgauge->battery_data->V_empty_cold);
-			if (ret < 0)
-				pr_err("%s error reading v_empty %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable00_cold",
-						   &fuelgauge->battery_data->QResidual00_cold);
-			if (ret < 0)
-				pr_err("%s error reading qrtable00 %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable00_cold",
-						   &fuelgauge->battery_data->QResidual00_cold);
-			if (ret < 0)
-				pr_err("%s error reading qrtable00cold %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable10_cold",
-						   &fuelgauge->battery_data->QResidual10_cold);
-			if (ret < 0)
-				pr_err("%s error reading qrtable10 cold %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable20_cold",
-						   &fuelgauge->battery_data->QResidual20_cold);
-			if (ret < 0)
-				pr_err("%s error reading qrtable20 cold %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable30_cold",
-						   &fuelgauge->battery_data->QResidual30_cold);
-			if (ret < 0)
-				pr_err("%s error reading qrtable30 Cold %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable00",
-						   &fuelgauge->battery_data->QResidual00);
-			if (ret < 0)
-				pr_err("%s error reading qrtable00 %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable10",
-						   &fuelgauge->battery_data->QResidual10);
-			if (ret < 0)
-				pr_err("%s error reading qrtable1 %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable20",
-						   &fuelgauge->battery_data->QResidual20);
-			if (ret < 0)
-				pr_err("%s error reading qrtable20 %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,qrtable30",
-						   &fuelgauge->battery_data->QResidual30);
-			if (ret < 0)
-				pr_err("%s error reading qrtable30 %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,temp_cohot",
-						   &fuelgauge->battery_data->TempCo);
-			if (ret < 0)
-				pr_err("%s error reading TempCo %d\n", __func__, ret);
-
-			ret = of_property_read_u32(np, "fuelgauge,temp_cocold",
-						   &fuelgauge->battery_data->TempCo_cold);
-			if (ret < 0)
-				pr_err("%s error reading TempCo cold %d\n", __func__, ret);
-
 			ret = of_property_read_u32(np, "fuelgauge,low_temp_limit",
 						   &fuelgauge->low_temp_limit);
 			if (ret < 0)
-				pr_err("%s error reading TempCo %d\n", __func__, ret);
+				pr_err("%s error reading low temp limit %d\n", __func__, ret);
 
 			ret = of_property_read_u32(np, "fuelgauge,low_temp_recovery",
 						   &fuelgauge->low_temp_recovery);
 			if (ret < 0)
-				pr_err("%s error reading TempCo cold %d\n", __func__, ret);
+				pr_err("%s error reading low temp recovery %d\n", __func__, ret);
 
 			pr_info("%s : LOW TEMP LIMIT(%d) RECOVERY(%d)\n",
 				__func__, fuelgauge->low_temp_limit, fuelgauge->low_temp_recovery);
-		} else {
-			ret = of_property_read_u32(np, "fuelgauge,qrtable20",
-						   &fuelgauge->battery_data->QResidual20);
+		}
+
+		fuelgauge->using_hw_vempty = of_property_read_bool(np,
+								   "fuelgauge,using_hw_vempty");
+		if (fuelgauge->using_hw_vempty) {
+			ret = of_property_read_u32(np, "fuelgauge,v_empty",
+						   &fuelgauge->battery_data->V_empty);
 			if (ret < 0)
-				pr_err("%s error reading qrtable20 %d\n",
+				pr_err("%s error reading v_empty %d\n",
 				       __func__, ret);
 
-			ret = of_property_read_u32(np, "fuelgauge,qrtable30",
-						   &fuelgauge->battery_data->QResidual30);
-			if (ret < 0)
-				pr_err("%s error reading qrtabel30 %d\n",
+			ret = of_property_read_u32(np, "fuelgauge,v_empty_origin",
+						   &fuelgauge->battery_data->V_empty_origin);
+			if(ret < 0)
+				pr_err("%s error reading v_empty_origin %d\n",
 				       __func__, ret);
 		}
+
+		ret = of_property_read_u32(np, "fuelgauge,qrtable20",
+					   &fuelgauge->battery_data->QResidual20);
+		if (ret < 0)
+			pr_err("%s error reading qrtable20 %d\n",
+			       __func__, ret);
+
+		ret = of_property_read_u32(np, "fuelgauge,qrtable30",
+					   &fuelgauge->battery_data->QResidual30);
+		if (ret < 0)
+			pr_err("%s error reading qrtabel30 %d\n",
+			       __func__, ret);
 
 #if defined(CONFIG_EN_OOPS)
 		ret = of_property_read_u32(np, "fuelgauge,ichgterm",
@@ -2315,6 +2295,7 @@ static int __devinit max77843_fuelgauge_probe(struct platform_device *pdev)
 		}
 	}
 
+	fuelgauge->hw_v_empty = false;
 	fuelgauge->initial_update_of_soc = true;
 	fuelgauge->low_temp_compensation_en = false;
 	fuelgauge->sw_v_empty = MAX77843_NORMAL_MODE;
@@ -2364,6 +2345,9 @@ static int max77843_fuelgauge_resume(struct device *dev)
 
 static void max77843_fuelgauge_shutdown(struct device *dev)
 {
+	struct max77843_fuelgauge_data *fuelgauge = dev_get_drvdata(dev);
+
+	max77843_fg_set_vempty(fuelgauge, false);
 }
 
 static SIMPLE_DEV_PM_OPS(max77843_fuelgauge_pm_ops, max77843_fuelgauge_suspend,

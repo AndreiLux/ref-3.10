@@ -438,6 +438,9 @@ static int s2mpb02_led_probe(struct platform_device *pdev)
 		}
 
 		ret = s2mpb02_led_setup(led_data);
+		/* To prevent faint LED light, enable active discharge */
+		ret |= s2mpb02_update_reg(led_data->i2c, S2MPB02_REG_FLED_IRD2,
+			0x02, 0x02);
 		if (unlikely(ret)) {
 			pr_err("unable to register LED\n");
 			cancel_work_sync(&led_data->work);

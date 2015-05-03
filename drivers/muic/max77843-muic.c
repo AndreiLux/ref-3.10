@@ -1676,6 +1676,9 @@ static int max77843_muic_handle_detach(struct max77843_muic_data *muic_data)
 	muic_data->is_afc_muic_prepare = false;
 
 	cancel_delayed_work(&muic_data->hv_muic_qc_vb_work);
+	pr_info("%s:%s cancel_delayed_work, Mping missing wa\n",
+		MUIC_HV_DEV_NAME, __func__);
+	cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 #endif
 
 	muic_lookup_vps_table(muic_data->attached_dev);
@@ -1816,6 +1819,7 @@ static int max77843_muic_logically_detach(struct max77843_muic_data *muic_data,
 			muic_data->is_afc_muic_prepare = false;
 			max77843_hv_muic_reset_hvcontrol_reg(muic_data);
 			cancel_delayed_work(&muic_data->hv_muic_qc_vb_work);
+			cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		}
 #endif
 		break;

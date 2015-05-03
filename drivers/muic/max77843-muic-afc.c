@@ -871,8 +871,17 @@ static int max77843_hv_muic_handle_attach
 		max77843_hv_muic_set_afc_after_prepare(muic_data);
 		muic_data->afc_count = 0;
 		muic_data->is_afc_handshaking = false;
+		/* HW Issue(MPing miss)
+		 * check HV state values after 2000ms(2s) */
+		schedule_delayed_work(&muic_data->hv_muic_mping_miss_wa,
+				msecs_to_jiffies(MPING_MISS_WA_TIME));
 		break;
 	case FUNC_PREPARE_TO_PREPARE_DUPLI:
+		/* attached_dev is changed. MPING Missing did not happened
+		 * Cancel delayed work */
+		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+			MUIC_HV_DEV_NAME, __func__, new_dev);
+		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		muic_data->afc_count++;
 		max77843_hv_muic_set_afc_charger_handshaking(muic_data);
 		muic_data->is_afc_handshaking = true;
@@ -884,7 +893,6 @@ static int max77843_hv_muic_handle_attach
 		}
 		break;
 	case FUNC_PREPARE_TO_AFC_5V:
-		/* NEED ?? */
 		if (!muic_data->is_afc_handshaking) {
 			max77843_hv_muic_set_afc_charger_handshaking(muic_data);
 			muic_data->is_afc_handshaking = true;
@@ -897,6 +905,11 @@ static int max77843_hv_muic_handle_attach
 		}
 		break;
 	case FUNC_PREPARE_TO_QC_PREPARE:
+		/* attached_dev is changed. MPING Missing did not happened
+		 * Cancel delayed work */
+		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+			MUIC_HV_DEV_NAME, __func__, new_dev);
+		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		/* ping STOP */
 		ret = max77843_hv_muic_write_reg(muic_data->i2c, MAX77843_MUIC_REG_HVCONTROL2, 0x03);
 		if (ret) {
@@ -959,6 +972,11 @@ static int max77843_hv_muic_handle_attach
 		max77843_hv_muic_after_qc_prepare(muic_data);
 		break;
 	case FUNC_AFC_5V_TO_AFC_5V_DUPLI:
+		/* attached_dev is changed. MPING Missing did not happened
+		 * Cancel delayed work */
+		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+			MUIC_HV_DEV_NAME, __func__, new_dev);
+		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		muic_data->afc_count++;
 		if (muic_data->afc_count > AFC_CHARGER_WA_PING) {
 			max77843_hv_muic_afc_control_ping(muic_data, false);
@@ -969,6 +987,11 @@ static int max77843_hv_muic_handle_attach
 		}
 		break;
 	case FUNC_AFC_5V_TO_AFC_ERR_V:
+		/* attached_dev is changed. MPING Missing did not happened
+		 * Cancel delayed work */
+		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+			MUIC_HV_DEV_NAME, __func__, new_dev);
+		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		if (muic_data->afc_count > AFC_CHARGER_WA_PING) {
 			max77843_hv_muic_afc_control_ping(muic_data, false);
 		} else {
@@ -977,10 +1000,20 @@ static int max77843_hv_muic_handle_attach
 		}
 		break;
 	case FUNC_AFC_5V_TO_AFC_9V:
+		/* attached_dev is changed. MPING Missing did not happened
+		 * Cancel delayed work */
+		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+			MUIC_HV_DEV_NAME, __func__, new_dev);
+		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		max77843_hv_muic_afc_control_ping(muic_data, false);
 		max77843_hv_muic_adcmode_oneshot(muic_data);
 		break;
 	case FUNC_AFC_5V_TO_QC_PREPARE:
+		/* attached_dev is changed. MPING Missing did not happened
+		 * Cancel delayed work */
+		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+			MUIC_HV_DEV_NAME, __func__, new_dev);
+		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		max77843_hv_muic_qc_charger(muic_data);
 		max77843_hv_muic_after_qc_prepare(muic_data);
 		break;
@@ -1637,6 +1670,37 @@ out:
 	return;
 }
 
+static void max77843_hv_muic_check_mping_miss(struct work_struct *work)
+{
+	struct max77843_muic_data *muic_data =
+		container_of(work, struct max77843_muic_data, hv_muic_mping_miss_wa.work);
+
+	if (!muic_data) {
+		pr_err("%s:%s cannot read muic_data!\n", MUIC_HV_DEV_NAME, __func__);
+		return;
+	}
+
+	mutex_lock(&muic_data->muic_mutex);
+
+	/* Check the current device */
+	if (muic_data->attached_dev != ATTACHED_DEV_AFC_CHARGER_PREPARE_MUIC &&
+		muic_data->attached_dev != ATTACHED_DEV_AFC_CHARGER_5V_MUIC) {
+		pr_info("%s:%s MPing Missing did not happened "
+			"but AFC protocol did not success\n",
+			MUIC_HV_DEV_NAME, __func__);
+		goto out;
+	}
+
+	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+
+	/* We make MPING NACK interrupt virtually */
+	max77843_hv_muic_detect_dev(muic_data, muic_data->irq_mpnack);
+
+out:
+	mutex_unlock(&muic_data->muic_mutex);
+	return;
+}
+
 void max77843_hv_muic_init_detect(struct max77843_muic_data *muic_data)
 {
 	int ret;
@@ -1815,6 +1879,7 @@ void max77843_hv_muic_initialize(struct max77843_muic_data *muic_data)
 	INIT_WORK(&afc_init_data.muic_afc_init_work, max77843_hv_muic_detect_after_charger_init);
 
 	INIT_DELAYED_WORK(&muic_data->hv_muic_qc_vb_work, max77843_hv_muic_check_qc_vb);
+	INIT_DELAYED_WORK(&muic_data->hv_muic_mping_miss_wa, max77843_hv_muic_check_mping_miss);
 }
 
 void max77843_hv_muic_remove(struct max77843_muic_data *muic_data)
@@ -1822,6 +1887,7 @@ void max77843_hv_muic_remove(struct max77843_muic_data *muic_data)
 	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	cancel_work_sync(&afc_init_data.muic_afc_init_work);
 	cancel_delayed_work_sync(&muic_data->hv_muic_qc_vb_work);
+	cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 
 	max77843_hv_muic_free_irqs(muic_data);
 }
@@ -1831,5 +1897,6 @@ void max77843_hv_muic_remove_wo_free_irq(struct max77843_muic_data *muic_data)
 	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	cancel_work_sync(&afc_init_data.muic_afc_init_work);
 	cancel_delayed_work_sync(&muic_data->hv_muic_qc_vb_work);
+	cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 }
 

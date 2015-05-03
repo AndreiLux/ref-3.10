@@ -1435,9 +1435,14 @@ static int s5p_mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 
 	/* pictype : IDR period */
 	reg = 0;
-	reg &= ~(0xffff);
-	reg |= p->gop_size;
+	reg |= p->gop_size & 0xFFFF;
 	WRITEL(reg, S5P_FIMV_E_GOP_CONFIG);
+
+	if(FW_HAS_GOP2(dev)) {
+		reg = 0;
+		reg |= (p->gop_size >> 16) & 0x3FFF;
+		WRITEL(reg, S5P_FIMV_E_GOP_CONFIG2);
+	}
 
 	/* multi-slice control */
 	/* multi-slice MB number or bit size */

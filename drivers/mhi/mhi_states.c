@@ -13,6 +13,7 @@
 #include "mhi_sys.h"
 #include "mhi_hwio.h"
 
+extern void set_ap2mdm_errfatal(void);
 extern u32 m3_timer_val_ms;
 int mhi_state_change_thread(void *ctxt)
 {
@@ -590,8 +591,6 @@ MHI_STATUS process_RESET_transition(mhi_device_ctxt *mhi_dev_ctxt,
 		}
 	}
 
-	/* reset outbound_ack count */
-	atomic_set(&mhi_dev_ctxt->counters.outbound_acks, 0);
 	return ret_val;
 }
 MHI_STATUS process_SYSERR_transition(mhi_device_ctxt *mhi_dev_ctxt,
@@ -756,10 +755,18 @@ MHI_STATUS process_AMSS_transition(mhi_device_ctxt *mhi_dev_ctxt,
 }
 void delayed_m3(struct work_struct *work)
 {
+	int retry = 0;
 	struct delayed_work *del_work = to_delayed_work(work);
 	mhi_device_ctxt *mhi_dev_ctxt = container_of(del_work, mhi_device_ctxt, m3_work);
-	mhi_initiate_m3(mhi_dev_ctxt);
+	while (mhi_initiate_m3(mhi_dev_ctxt) == -EAGAIN)
+	{
+		retry++;
+		if (retry > 10)
+			set_ap2mdm_errfatal();
 
+		mhi_log(MHI_MSG_ERROR, "Call mhi_initiate_m3 again after 100 ms, retry %d\n", retry);
+		msleep(100);
+	}
 }
 void m0_work(struct work_struct *work)
 {
@@ -958,11 +965,23 @@ int mhi_initiate_m3(mhi_device_ctxt *mhi_dev_ctxt)
 			"MHI state %d, link state %d.\n",
 				mhi_dev_ctxt->mhi_state,
 				mhi_dev_ctxt->flags.link_up);
-		if (mhi_dev_ctxt->flags.link_up)
-			r = -EPERM;
-		else
+		if (mhi_dev_ctxt->flags.link_up) {
+			write_lock_irqsave(&mhi_dev_ctxt->xfer_lock, flags);
+			if (mhi_dev_ctxt->flags.pending_M0) {
+				write_unlock_irqrestore(&mhi_dev_ctxt->xfer_lock, flags);
+				mhi_log(MHI_MSG_INFO,
+						"Pending M0 detected, aborting M3 procedure\n");
+				r = -EPERM;
+				goto exit;
+			}
+			write_unlock_irqrestore(&mhi_dev_ctxt->xfer_lock, flags);
+			mhi_log(MHI_MSG_ERROR, "goto m3_pcie_off\n");
+			goto m3_pcie_off;
+		}
+		else {
 			r = 0;
-		goto exit;
+			goto exit;
+		}
 	case MHI_STATE_RESET:
 		mhi_log(MHI_MSG_INFO,
 				"MHI in RESET turning link off and quitting\n");
@@ -1035,6 +1054,7 @@ int mhi_initiate_m3(mhi_device_ctxt *mhi_dev_ctxt)
 					"M3 completion received\n");
 			break;
 	}
+m3_pcie_off:
 	mhi_deassert_device_wake(mhi_dev_ctxt);
 	/* Turn off PCIe link*/
 	mhi_turn_off_pcie_link(mhi_dev_ctxt);

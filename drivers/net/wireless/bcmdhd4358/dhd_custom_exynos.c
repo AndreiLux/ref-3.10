@@ -73,7 +73,7 @@ extern void exynos_pcie_poweroff(void);
 extern int check_rev(void);
 #endif /* CONFIG_MACH_UINVERSAL5433 */
 #if defined(CONFIG_MACH_UNIVERSAL7420)
-extern void exynos_pcie_poweron(int);
+extern int exynos_pcie_poweron(int);
 extern void exynos_pcie_poweroff(int);
 #endif /* CONFIG_MACH_UNIVERSAL7420 */
 
