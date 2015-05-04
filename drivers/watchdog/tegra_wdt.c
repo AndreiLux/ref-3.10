@@ -292,6 +292,7 @@ static void tegra_wdt_fiq_setup(struct platform_device *pdev,
 		return;
 	}
 
+	tegra_wdt->panic_notifier.priority = INT_MIN;
 	tegra_wdt->panic_notifier.notifier_call = tegra_wdt_panic_handler;
 	ret = atomic_notifier_chain_register(&panic_notifier_list,
 					     &tegra_wdt->panic_notifier);
