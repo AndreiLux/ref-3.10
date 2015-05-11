@@ -116,7 +116,7 @@ DHDCFLAGS += -DSOFTAP_SEND_HANGEVT
 DHDCFLAGS += -DCUSTOM_PNO_EVENT_LOCK_xTIME=10
 
 # For Passing all multicast packets to host when not in suspend mode.
-DHDCFLAGS += -DPASS_ALL_MCAST_PKTS
+# DHDCFLAGS += -DPASS_ALL_MCAST_PKTS
 
 # Early suspend
 DHDCFLAGS += -DDHD_USE_EARLYSUSPEND
