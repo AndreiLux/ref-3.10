@@ -362,7 +362,7 @@ DECLARE_DVFS_WORK_FUNC(SET, TOUCH)
 
 	mutex_lock(&dvfs->lock);
 
-	input_booster_sysfs_freqs(dvfs);
+	//input_booster_sysfs_freqs(dvfs);
 
 	if ((!dvfs->level)&&(!dvfs->lock_status)) {
 		dev_err(data->dev, "%s : Skip to set booster due to level 0\n", __func__);
@@ -812,7 +812,7 @@ static ssize_t input_booster_set_head(struct class *dev,
 	unsigned long cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost;
 	unsigned long head_time;
 
-	if (sscanf(buf, "%lu%lu%lu%lu%lu%lu",
+	if (sscanf(buf, "%lu %lu %lu %lu %lu %lu",
 		&head_time,&cpu_freq, &kfc_freq, &mif_freq, &int_freq, &hmp_boost) != 6) {
 		printk("### Keep this format : [head_time cpu_freq kfc_freq mif_freq int_freq hmp_boost] (Ex: 1600000 0 1500000 667000 333000 1###\n");
 		goto out;
@@ -843,7 +843,7 @@ static ssize_t input_booster_set_tail(struct class *dev,
 	unsigned long cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost;
 	unsigned long tail_time;
 
-	if (sscanf(buf, "%lu%lu%lu%lu%lu%lu",
+	if (sscanf(buf, "%lu %lu %lu %lu %lu %lu",
 		&tail_time,&cpu_freq, &kfc_freq, &mif_freq, &int_freq, &hmp_boost) != 6) {
 		printk("### Keep this format : [tail_time cpu_freq kfc_freq mif_freq int_freq hmp_boost] (Ex: 1600000 0 1500000 667000 333000 1###\n");
 		goto out;
@@ -923,10 +923,28 @@ static ssize_t input_booster_get_dvfs_freq(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct booster_dvfs *dvfs = dev_get_drvdata(dev);
+	ssize_t count = 0;
+	int i;
 
 	input_booster_lookup_freqs(dvfs);
+	
+	for (i = 0; i < BOOSTER_LEVEL_MAX; i++) {
+		if (!dvfs->freqs[i].cpu_freq
+			&& !dvfs->freqs[i].kfc_freq
+			&& !dvfs->freqs[i].mif_freq
+			&& !dvfs->freqs[i].int_freq
+			&& !dvfs->freqs[i].hmp_boost)
+			continue;
+		
+		count += sprintf(&buf[count], "%d %d %d %d %d %d\n", i,
+				dvfs->freqs[i].cpu_freq,
+				dvfs->freqs[i].kfc_freq,
+				dvfs->freqs[i].mif_freq,
+				dvfs->freqs[i].int_freq,
+				dvfs->freqs[i].hmp_boost);
+	}
 
-	return 0;
+	return count;
 }
 
 static ssize_t input_booster_set_dvfs_freq(struct device *dev,
@@ -937,8 +955,8 @@ static ssize_t input_booster_set_dvfs_freq(struct device *dev,
 	int level;
 	unsigned long cpu_freq, kfc_freq, mif_freq, int_freq, hmp_boost;
 
-	if (sscanf(buf, "%d%lu%lu%lu%lu%lu",
-		&level, &cpu_freq, &kfc_freq, &mif_freq, &int_freq, &hmp_boost) != 7) {
+	if (sscanf(buf, "%d %lu %lu %lu %lu %lu",
+		&level, &cpu_freq, &kfc_freq, &mif_freq, &int_freq, &hmp_boost) != 6) {
 		dev_err(data->dev, "### Keep this format : [level cpu_freq kfc_freq mif_freq int_freq hmp_boost] (Ex: 1 1600000 0 1500000 667000 333000 1###\n");
 		goto out;
 	}
@@ -964,10 +982,24 @@ static ssize_t input_booster_get_dvfs_time(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct booster_dvfs *dvfs = dev_get_drvdata(dev);
+	ssize_t count = 0;
+	int i;
 
 	input_booster_lookup_times(dvfs);
-
-	return 0;
+	
+	for (i = 0; i < BOOSTER_LEVEL_MAX; i++) {
+		if (!dvfs->times[i].head_time
+			&& !dvfs->times[i].tail_time
+			&& !dvfs->times[i].phase_time)
+			continue;
+		
+		count += sprintf(&buf[count], "%d %d %d %d\n", i,
+				dvfs->times[i].head_time,
+				dvfs->times[i].tail_time,
+				dvfs->times[i].phase_time);
+	}
+	
+	return count;
 }
 
 static ssize_t input_booster_set_dvfs_time(struct device *dev,
@@ -978,7 +1010,7 @@ static ssize_t input_booster_set_dvfs_time(struct device *dev,
 	int level;
 	unsigned long head_time, tail_time, phase_time;
 
-	if (sscanf(buf, "%d%lu%lu%lu",
+	if (sscanf(buf, "%d %lu %lu %lu",
 		&level, &head_time, &tail_time, &phase_time) != 4) {
 		dev_err(data->dev, "### Keep this format : [level head_time tail_time phase_time] (Ex: 1 130 500 50 ###\n");
 		goto out;
