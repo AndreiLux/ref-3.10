@@ -237,10 +237,6 @@ void sel_netport_flush(void)
 static __init int sel_netport_init(void)
 {
 	int iter;
-	
-#ifdef CONFIG_ALWAYS_ENFORCE
-	selinux_enabled = 1;
-#endif
 
 	if (!selinux_enabled)
 		return 0;
