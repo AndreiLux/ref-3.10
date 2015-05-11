@@ -95,6 +95,9 @@ static void __uart_start(struct tty_struct *tty)
 	struct uart_state *state = tty->driver_data;
 	struct uart_port *port = state->uart_port;
 
+	if (port->ops->wake_peer)
+		port->ops->wake_peer(port);
+
 	if (!uart_circ_empty(&state->xmit) && state->xmit.buf &&
 	    !tty->stopped && !tty->hw_stopped)
 		port->ops->start_tx(port);
@@ -1578,7 +1581,7 @@ static int uart_open(struct tty_struct *tty, struct file *filp)
 	/*
 	 * Make sure the device is in D0 state.
 	 */
-	if (port->count == 1)
+	if (port->count >= 1)
 		uart_change_pm(state, UART_PM_STATE_ON);
 
 	/*

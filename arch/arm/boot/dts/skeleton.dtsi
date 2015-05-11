@@ -7,7 +7,14 @@
 / {
 	#address-cells = <1>;
 	#size-cells = <1>;
+	cpus { };
+	soc { };
 	chosen { };
 	aliases { };
-	memory { device_type = "memory"; reg = <0 0>; };
+	memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		device_type = "memory";
+		reg = <0 0>;
+	};
 };

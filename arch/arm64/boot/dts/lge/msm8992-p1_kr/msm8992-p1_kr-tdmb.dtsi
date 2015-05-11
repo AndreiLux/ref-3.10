@@ -1,0 +1,74 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/ {
+    aliases {
+        spi1 = &spi_tdmb;
+    };
+    soc {
+        spi_tdmb: spi_tdmb@f9968000{    /*BLSP-2 QUP5 */
+            status = "ok";
+            compatible = "qcom,spi-qup-v2";
+
+            #address-cells = <1>;
+            #size-cells = <0>;
+
+            reg-names = "spi_physical", "spi_bam_physical";
+            reg = <0xf9968000 0x1000>, <0xf9944000 0x19000>;
+
+            interrupt-names = "spi_irq", "spi_bam_irq";
+            interrupts = <0 106 0>, <0 239 0>;
+
+            spi-max-frequency = <15000000>;
+
+            qcom,master-id = <84>; //Keep AHB clocks ON
+            clock-names = "iface_clk", "core_clk";
+            clocks = <&clock_gcc clk_gcc_blsp2_ahb_clk>,
+                <&clock_gcc clk_gcc_blsp2_qup6_spi_apps_clk>;
+
+            /* Assign runtime functions to pins */
+            qcom,use-pinctrl;
+            pinctrl-names = "spi_default","spi_sleep";
+            pinctrl-0 = <&spi_tdmb_active>;
+            pinctrl-1 = <&spi_tdmb_suspend>;
+
+            qcom,gpio-mosi = <&msm_gpio 85 0>;
+            qcom,gpio-miso = <&msm_gpio 86 0>;
+            qcom,gpio-cs0 = <&msm_gpio 87 0>;
+            qcom,gpio-clk = <&msm_gpio 88 0>;
+
+            qcom,infinite-mode = <0>;
+            qcom,use-bam;
+            qcom,ver-reg-exists;
+            qcom,bam-consumer-pipe-index = <22>;
+            qcom,bam-producer-pipe-index = <23>;
+        };
+    };
+};
+&spi_tdmb {
+    tdmb@0 {
+        compatible = "lge,tdmb";
+        reg = <0>;
+        interrupt-parent = <&msm_gpio>;
+        interrupts = <108 0x0>;
+        spi-max-frequency = <15000000>;
+
+        /* TDMB CLK */
+        clock-names = "tdmb_xo";
+        clocks = <&clock_rpm clk_div_clk3>;
+
+        pinctrl-names = "gpio_tdmb_suspend";
+        pinctrl-0 = <&tdmb_int &tdmb_ctrl>;
+        tdmb-fc8080,irq-gpio = <&msm_gpio 108 0x00>;
+        tdmb-fc8080,en-gpio = <&msm_gpio 109 0x00>;
+    };
+};

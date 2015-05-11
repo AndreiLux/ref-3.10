@@ -1401,7 +1401,7 @@ static void stop_data_traffic(struct acm *acm)
 	cancel_work_sync(&acm->work);
 }
 
-static void acm_disconnect(struct usb_interface *intf)
+static __attribute__ ((aligned(4096))) void noinline acm_disconnect(struct usb_interface *intf)
 {
 	struct acm *acm = usb_get_intfdata(intf);
 	struct usb_device *usb_dev = interface_to_usbdev(intf);

@@ -35,7 +35,7 @@
  *	ldp	x29, x30, [sp]
  *	add	sp, sp, #0x10
  */
-int unwind_frame(struct stackframe *frame)
+int notrace unwind_frame(struct stackframe *frame)
 {
 	unsigned long high, low;
 	unsigned long fp = frame->fp;
@@ -43,7 +43,7 @@ int unwind_frame(struct stackframe *frame)
 	low  = frame->sp;
 	high = ALIGN(low, THREAD_SIZE);
 
-	if (fp < low || fp > high || fp & 0xf)
+	if (fp < low || fp > high - 0x18 || fp & 0xf)
 		return -EINVAL;
 
 	frame->sp = fp + 0x10;

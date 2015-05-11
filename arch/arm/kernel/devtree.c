@@ -26,41 +26,9 @@
 #include <asm/mach/arch.h>
 #include <asm/mach-types.h>
 
-void __init early_init_dt_add_memory_arch(u64 base, u64 size)
-{
-	arm_add_memory(base, size);
-}
-
 void * __init early_init_dt_alloc_memory_arch(u64 size, u64 align)
 {
 	return alloc_bootmem_align(size, align);
-}
-
-void __init arm_dt_memblock_reserve(void)
-{
-	u64 *reserve_map, base, size;
-
-	if (!initial_boot_params)
-		return;
-
-	/* Reserve the dtb region */
-	memblock_reserve(virt_to_phys(initial_boot_params),
-			 be32_to_cpu(initial_boot_params->totalsize));
-
-	/*
-	 * Process the reserve map.  This will probably overlap the initrd
-	 * and dtb locations which are already reserved, but overlaping
-	 * doesn't hurt anything
-	 */
-	reserve_map = ((void*)initial_boot_params) +
-			be32_to_cpu(initial_boot_params->off_mem_rsvmap);
-	while (1) {
-		base = be64_to_cpup(reserve_map++);
-		size = be64_to_cpup(reserve_map++);
-		if (!size)
-			break;
-		memblock_reserve(base, size);
-	}
 }
 
 /*
@@ -162,11 +130,20 @@ void __init arm_dt_init_cpu_maps(void)
 	 * a reg property, the DT CPU list can be considered valid and the
 	 * logical map created in smp_setup_processor_id() can be overridden
 	 */
-	for (i = 0; i < cpuidx; i++) {
-		set_cpu_possible(i, true);
-		cpu_logical_map(i) = tmp_map[i];
-		pr_debug("cpu logical map 0x%x\n", cpu_logical_map(i));
+	for (i = 0; i < nr_cpu_ids; i++) {
+		if (i < cpuidx) {
+			set_cpu_possible(i, true);
+			cpu_logical_map(i) = tmp_map[i];
+			pr_debug("cpu logical map 0x%x\n", cpu_logical_map(i));
+		} else {
+			set_cpu_possible(i, false);
+		}
 	}
+}
+
+bool arch_match_cpu_phys_id(int cpu, u64 phys_id)
+{
+	return phys_id == cpu_logical_map(cpu);
 }
 
 /**
@@ -176,10 +153,10 @@ void __init arm_dt_init_cpu_maps(void)
  * If a dtb was passed to the kernel in r2, then use it to choose the
  * correct machine_desc and to setup the system.
  */
-struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
+const struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 {
 	struct boot_param_header *devtree;
-	struct machine_desc *mdesc, *mdesc_best = NULL;
+	const struct machine_desc *mdesc, *mdesc_best = NULL;
 	unsigned int score, mdesc_score = ~1;
 	unsigned long dt_root;
 	const char *model;
@@ -188,7 +165,7 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	DT_MACHINE_START(GENERIC_DT, "Generic DT based system")
 	MACHINE_END
 
-	mdesc_best = (struct machine_desc *)&__mach_desc_GENERIC_DT;
+	mdesc_best = &__mach_desc_GENERIC_DT;
 #endif
 
 	if (!dt_phys)
@@ -212,7 +189,7 @@ struct machine_desc * __init setup_machine_fdt(unsigned int dt_phys)
 	}
 	if (!mdesc_best) {
 		const char *prop;
-		long size;
+		int size;
 
 		early_print("\nError: unrecognized/unsupported "
 			    "device tree compatible list:\n[ ");

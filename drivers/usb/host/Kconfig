@@ -17,7 +17,6 @@ config USB_C67X00_HCD
 
 config USB_XHCI_HCD
 	tristate "xHCI HCD (USB 3.0) support"
-	depends on USB_ARCH_HAS_XHCI
 	---help---
 	  The eXtensible Host Controller Interface (xHCI) is standard for USB 3.0
 	  "SuperSpeed" host controller hardware.
@@ -29,6 +28,17 @@ if USB_XHCI_HCD
 
 config USB_XHCI_PLATFORM
 	tristate
+
+config USB_XHCI_MSM_HSIC
+	bool "Support for HSIC based MSM on-chip XHCI USB controller"
+	depends on USB_XHCI_HCD && ARCH_MSM
+	---help---
+	  Enables support for the HSIC (High Speed Inter-Chip) based
+	  USB Host controller present on the Qualcomm chipsets.
+
+	  HSIC is a supplement to USB 2.0 specification and is preferred
+	  for chip-to-chip interconnect (having maximum circuit length of
+	  10cm) as it removes the analog transceivers.
 
 config USB_XHCI_HCD_DEBUGGING
 	bool "Debugging for the xHCI host controller"
@@ -43,7 +53,6 @@ endif # USB_XHCI_HCD
 
 config USB_EHCI_HCD
 	tristate "EHCI HCD (USB 2.0) support"
-	depends on USB_ARCH_HAS_EHCI
 	---help---
 	  The Enhanced Host Controller Interface (EHCI) is standard for USB 2.0
 	  "high speed" (480 Mbit/sec, 60 Mbyte/sec) host controller hardware.
@@ -62,6 +71,19 @@ config USB_EHCI_HCD
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called ehci-hcd.
+
+config USB_EHCI_EHSET
+	bool "Embedded High-speed Host Electrical Test Support"
+	depends on USB_EHCI_HCD
+	---help---
+	  This option is required for EHSET Host Compliance Tests support on an
+	  embedded Hi-speed USB Host or OTG port.
+
+	  This enables the software support for the "Single Step Set Featue" test.
+	  Apart from this test, other EHSET tests TEST_SE0/J/K/PACKET are part
+	  of EHCI specification and their support already exists in the EHCI driver.
+
+	  If unsure, say N.
 
 config USB_EHCI_ROOT_HUB_TT
 	bool "Root Hub Transaction Translators"
@@ -199,6 +221,33 @@ config USB_EHCI_MSM
 	  This driver is not supported on boards like trout which
 	  has an external PHY.
 
+config USB_EHCI_MSM_HSIC
+	bool "Support for HSIC based MSM on-chip EHCI USB controller"
+	depends on USB_EHCI_HCD && ARCH_MSM
+	---help---
+	  Enables support for the HSIC (High Speed Inter-Chip) based
+	  USB Host controller present on the Qualcomm chipsets.
+
+	  HSIC is a supplement to USB 2.0 specification and is preferred
+	  for chip-to-chip interconnect (having maximum circuit length of
+	  10cm) as it removes the analog transceivers.
+
+config USB_EHCI_MSM_HOST4
+	bool "Support for MSM on-chip EHCI USB controller# 4"
+	depends on USB_EHCI_HCD && ARCH_MSM && ARCH_APQ8064
+	---help---
+	  Enables support for the EHCI Compliant USB Host controller# 4
+	  present on the Qualcomm chipsets.
+
+config USB_EHCI_MSM_UICC
+	tristate "Support for EHCI MSM UICC controller"
+	depends on USB_EHCI_HCD
+	---help---
+	  Enables support for the Full-Speed only EHCI controller that
+	  is used for UICC connectivity on MSM targets. The controller
+	  is configured in serial mode and TLMM block converts the
+	  controller serial lines into USB DP and DM signals.
+
 config USB_EHCI_TEGRA
        boolean "NVIDIA Tegra HCD support"
        depends on ARCH_TEGRA
@@ -298,7 +347,6 @@ endif # USB_EHCI_HCD
 
 config USB_OXU210HP_HCD
 	tristate "OXU210HP HCD support"
-	depends on GENERIC_HARDIRQS
 	---help---
 	  The OXU210HP is an USB host/OTG/device controller. Enable this
 	  option if your board has this chip. If unsure, say N.
@@ -308,6 +356,21 @@ config USB_OXU210HP_HCD
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called oxu210hp-hcd.
+
+config USB_EHCI_MSM_72K
+	bool "Support for Legacy Qualcomm on-chip EHCI USB controller"
+	depends on USB_EHCI_HCD && USB_MSM_OTG_72K && ARCH_MSM
+	---help---
+	  This driver enables support for USB host controller
+	  in pre 8660 qualcomm chipsets(8660, 7X30, 8X50 and 7X27).
+
+config USB_FS_HOST
+	bool "Support for Full Speed Host Mode"
+	depends on USB_EHCI_MSM_72K && ARCH_QSD8X50
+	default n
+	---help---
+	  Enables support for the full speed USB controller core present
+	  on the Qualcomm chipsets
 
 config USB_ISP116X_HCD
 	tristate "ISP116X HCD support"
@@ -347,7 +410,6 @@ config USB_ISP1362_HCD
 
 config USB_OHCI_HCD
 	tristate "OHCI HCD support"
-	depends on USB_ARCH_HAS_OHCI
 	select ISP1301_OMAP if MACH_OMAP_H2 || MACH_OMAP_H3
 	depends on USB_ISP1301 || !ARCH_LPC32XX
 	---help---
@@ -702,3 +764,16 @@ config USB_HCD_SSB
 	  for ehci and ohci.
 
 	  If unsure, say N.
+
+config USB_ICE40_HCD
+	tristate "ICE40 FPGA based SPI to Inter-Chip USB host controller"
+	depends on USB && SPI
+	help
+	  A driver for ICE40 FPGA based SPI to Inter-Chip USB host
+	  controller. This driver registers as a SPI protocol driver
+	  and interacts with the SPI subsystem on one side and interacts
+	  with the USB core on the other side. Control and Bulk transfers
+	  are supported.
+
+	  To compile this driver a module, choose M here: the module
+	  will be called "ice40-hcd".

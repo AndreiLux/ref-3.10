@@ -94,6 +94,17 @@ config BT_HCIUART_3WIRE
 
 	  Say Y here to compile support for Three-wire UART protocol.
 
+config BT_HCIUART_IBS
+	bool "HCI_IBS protocol support"
+	depends on BT_HCIUART
+	default n
+	help
+	  HCI_IBS (HCI In-Band Sleep) is a serial protocol for communication
+	  between Bluetooth device and host. This protocol is required for
+	  UART clock control for some Qualcomm Bluetooth devices.
+
+	  Say Y here to compile support for HCI_IBS protocol.
+
 config BT_HCIBCM203X
 	tristate "HCI BCM203x USB driver"
 	depends on USB
@@ -242,4 +253,22 @@ config BT_WILINK
 
 	  Say Y here to compile support for Texas Instrument's WiLink7 driver
 	  into the kernel or say M to compile it as module.
+
+config MSM_BT_POWER
+	tristate "MSM Bluetooth Power Control"
+	depends on ARCH_MSM && RFKILL
+	default m
+	help
+	  Provides a parameter to switch on/off power from PMIC
+	  to Bluetooth device.
+
+#[P1_BRINGUP_BT_S]
+config LGE_BLUETOOTH_PM
+	tristate "LGE Bluetooth Power & Sleep driver"
+	depends on RFKILL
+	default n
+	help
+		LGE Bluetooth Power & Sleep
+		This driver provides support for LGE BT Power & Sleep.
+#[P1_BRINGUP_BT_E]
 endmenu

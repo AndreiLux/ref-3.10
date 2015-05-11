@@ -1,0 +1,80 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&soc {
+	sound {
+		compatible = "qcom,msm8994-asoc-snd";
+		qcom,model = "msm8994-tomtom-snd-card";
+		reg = <0xfe034000 0x4>,
+		      <0xfe035000 0x4>,
+		      <0xfe036000 0x4>,
+		      <0xfe037000 0x4>;
+		reg-names = "lpaif_pri_mode_muxsel",
+			    "lpaif_sec_mode_muxsel",
+			    "lpaif_tert_mode_muxsel",
+			    "lpaif_quat_mode_muxsel";
+
+		qcom,audio-routing =
+			"AIF4 VI", "MCLK",
+			"RX_BIAS", "MCLK",
+			"LDO_H", "MCLK",
+			"MADINPUT", "MCLK",
+			"AMIC2", "MIC BIAS2 External",
+			"MIC BIAS2 External", "Headset Mic",
+			"AMIC3", "MIC BIAS3 External",
+			"MIC BIAS3 External", "Handset Mic",
+			"AMIC4", "MIC BIAS4 External",
+			"MIC BIAS4 External", "Handset SubMic";
+
+		clock-names = "osr_clk";
+		clocks = <&clock_rpm clk_div_clk1>;
+		qcom,cdc-mclk-gpios = <&pm8994_gpios 15 0>;
+		qcom,tomtom-mclk-clk-freq = <9600000>;
+        pinctrl-names = "pin_state_0",
+                "pin_state_1",
+                "pin_state_2",
+                "pin_state_3",
+                "pin_state_4",
+                "pin_state_5",
+                "pin_state_6",
+                "pin_state_7";
+                pinctrl-0 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>, <&quat_mi2s_sleep>, <&quat_mi2s_mclk_sleep>, <&quat_mi2s_sd0_sleep>, <&quat_mi2s_sd1_sleep>, <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+                pinctrl-1 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>, <&quat_mi2s_sleep>, <&quat_mi2s_mclk_sleep>, <&quat_mi2s_sd0_sleep>, <&quat_mi2s_sd1_sleep>, <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+                pinctrl-2 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>, <&quat_mi2s_sleep>, <&quat_mi2s_mclk_sleep>, <&quat_mi2s_sd0_sleep>, <&quat_mi2s_sd1_sleep>, <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+                pinctrl-3 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>, <&quat_mi2s_sleep>, <&quat_mi2s_mclk_sleep>, <&quat_mi2s_sd0_sleep>, <&quat_mi2s_sd1_sleep>, <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+                pinctrl-4 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>, <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active>, <&quat_mi2s_sd1_active>, <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+                pinctrl-5 = <&pri_mi2s_sleep>, <&pri_mi2s_sd0_sleep>, <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active>, <&quat_mi2s_sd1_active>, <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+                pinctrl-6 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>, <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active>, <&quat_mi2s_sd1_active>, <&sec_aux_pcm_sleep>, <&sec_aux_pcm_din_sleep>;
+                pinctrl-7 = <&pri_mi2s_active>, <&pri_mi2s_sd0_active>, <&quat_mi2s_active>, <&quat_mi2s_mclk_active>, <&quat_mi2s_sd0_active>, <&quat_mi2s_sd1_active>, <&sec_aux_pcm_active>, <&sec_aux_pcm_din_active>;
+		qcom,cdc-micbias2-headset-only;
+/*		qcom,us-euro-gpios = <&pm8994_mpps 2 0>;   */
+/*		qcom,mbhc-audio-jack-type = "4-pole-jack"; */
+		asoc-codec = <&stub_codec>;
+		asoc-codec-names = "msm-stub-codec.1";
+
+	};
+};
+
+&slim_msm {
+	tomtom_codec {
+		cdc-vdd-spkdrv-supply = <&pmi8994_boost_pin_ctrl>;
+		qcom,cdc-vdd-spkdrv-voltage = <5000000 5000000>;
+		qcom,cdc-vdd-spkdrv-current = <600000>;
+
+		cdc-vdd-spkdrv-2-supply = <&pmi8994_boost_pin_ctrl>;
+		qcom,cdc-vdd-spkdrv-2-voltage = <5000000 5000000>;
+		qcom,cdc-vdd-spkdrv-2-current = <600000>;
+
+		qcom,cdc-on-demand-supplies = "cdc-vdd-spkdrv",
+					      "cdc-vdd-spkdrv-2";
+	};
+};

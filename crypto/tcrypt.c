@@ -971,13 +971,17 @@ static int do_test(int m)
 	case 3:
 		ret += tcrypt_test("ecb(des)");
 		ret += tcrypt_test("cbc(des)");
+#ifdef CONFIG_CRYPTO_CTR
 		ret += tcrypt_test("ctr(des)");
+#endif
 		break;
 
 	case 4:
 		ret += tcrypt_test("ecb(des3_ede)");
 		ret += tcrypt_test("cbc(des3_ede)");
+#ifdef CONFIG_CRYPTO_CTR
 		ret += tcrypt_test("ctr(des3_ede)");
+#endif
 		break;
 
 	case 5:
@@ -1014,9 +1018,13 @@ static int do_test(int m)
 		ret += tcrypt_test("ecb(aes)");
 		ret += tcrypt_test("cbc(aes)");
 		ret += tcrypt_test("lrw(aes)");
+#ifdef CONFIG_CRYPTO_XTS
 		ret += tcrypt_test("xts(aes)");
+#endif
+#ifdef CONFIG_CRYPTO_CTR
 		ret += tcrypt_test("ctr(aes)");
 		ret += tcrypt_test("rfc3686(ctr(aes))");
+#endif
 		break;
 
 	case 11:
@@ -1034,15 +1042,21 @@ static int do_test(int m)
 	case 14:
 		ret += tcrypt_test("ecb(cast5)");
 		ret += tcrypt_test("cbc(cast5)");
+#ifdef CONFIG_CRYPTO_CTR
 		ret += tcrypt_test("ctr(cast5)");
+#endif
 		break;
 
 	case 15:
 		ret += tcrypt_test("ecb(cast6)");
 		ret += tcrypt_test("cbc(cast6)");
+#ifdef CONFIG_CRYPTO_CTR
 		ret += tcrypt_test("ctr(cast6)");
+#endif
 		ret += tcrypt_test("lrw(cast6)");
+#ifdef CONFIG_CRYPTO_XTS
 		ret += tcrypt_test("xts(cast6)");
+#endif
 		break;
 
 	case 16:
@@ -1113,9 +1127,13 @@ static int do_test(int m)
 	case 32:
 		ret += tcrypt_test("ecb(camellia)");
 		ret += tcrypt_test("cbc(camellia)");
+#ifdef CONFIG_CRYPTO_CTR
 		ret += tcrypt_test("ctr(camellia)");
+#endif
 		ret += tcrypt_test("lrw(camellia)");
+#ifdef CONFIG_CRYPTO_XTS
 		ret += tcrypt_test("xts(camellia)");
+#endif
 		break;
 
 	case 33:
@@ -1127,7 +1145,9 @@ static int do_test(int m)
 		break;
 
 	case 35:
+#ifdef CONFIG_CRYPTO_GCM
 		ret += tcrypt_test("gcm(aes)");
+#endif
 		break;
 
 	case 36:
@@ -1135,8 +1155,10 @@ static int do_test(int m)
 		break;
 
 	case 37:
+#ifdef CONFIG_CRYPTO_CCM
 		ret += tcrypt_test("ccm(aes)");
 		break;
+#endif
 
 	case 38:
 		ret += tcrypt_test("cts(cbc(aes))");
@@ -1167,7 +1189,9 @@ static int do_test(int m)
 		break;
 
 	case 45:
+#ifdef CONFIG_CRYPTO_CCM
 		ret += tcrypt_test("rfc4309(ccm(aes))");
+#endif
 		break;
 
 	case 46:
@@ -1223,7 +1247,9 @@ static int do_test(int m)
 		break;
 
 	case 151:
+#ifdef CONFIG_CRYPTO_GCM
 		ret += tcrypt_test("rfc4106(gcm(aes))");
+#endif
 		break;
 
 	case 152:
@@ -1390,10 +1416,12 @@ static int do_test(int m)
 				  speed_template_8_16);
 		test_cipher_speed("cbc(cast5)", DECRYPT, sec, NULL, 0,
 				  speed_template_8_16);
+#ifdef CONFIG_CRYPTO_CTR
 		test_cipher_speed("ctr(cast5)", ENCRYPT, sec, NULL, 0,
 				  speed_template_8_16);
 		test_cipher_speed("ctr(cast5)", DECRYPT, sec, NULL, 0,
 				  speed_template_8_16);
+#endif
 		break;
 
 	case 210:
@@ -1405,18 +1433,22 @@ static int do_test(int m)
 				  speed_template_16_32);
 		test_cipher_speed("cbc(cast6)", DECRYPT, sec, NULL, 0,
 				  speed_template_16_32);
+#ifdef CONFIG_CRYPTO_CTR
 		test_cipher_speed("ctr(cast6)", ENCRYPT, sec, NULL, 0,
 				  speed_template_16_32);
 		test_cipher_speed("ctr(cast6)", DECRYPT, sec, NULL, 0,
 				  speed_template_16_32);
+#endif
 		test_cipher_speed("lrw(cast6)", ENCRYPT, sec, NULL, 0,
 				  speed_template_32_48);
 		test_cipher_speed("lrw(cast6)", DECRYPT, sec, NULL, 0,
 				  speed_template_32_48);
+#ifdef CONFIG_CRYPTO_XTS
 		test_cipher_speed("xts(cast6)", ENCRYPT, sec, NULL, 0,
 				  speed_template_32_64);
 		test_cipher_speed("xts(cast6)", DECRYPT, sec, NULL, 0,
 				  speed_template_32_64);
+#endif
 		break;
 
 	case 300:
@@ -1688,18 +1720,22 @@ static int do_test(int m)
 				   speed_template_16_24_32);
 		test_acipher_speed("cbc(twofish)", DECRYPT, sec, NULL, 0,
 				   speed_template_16_24_32);
+#ifdef CONFIG_CRYPTO_CTR
 		test_acipher_speed("ctr(twofish)", ENCRYPT, sec, NULL, 0,
 				   speed_template_16_24_32);
 		test_acipher_speed("ctr(twofish)", DECRYPT, sec, NULL, 0,
+#endif
 				   speed_template_16_24_32);
 		test_acipher_speed("lrw(twofish)", ENCRYPT, sec, NULL, 0,
 				   speed_template_32_40_48);
 		test_acipher_speed("lrw(twofish)", DECRYPT, sec, NULL, 0,
 				   speed_template_32_40_48);
+#ifdef CONFIG_CRYPTO_XTS
 		test_acipher_speed("xts(twofish)", ENCRYPT, sec, NULL, 0,
 				   speed_template_32_48_64);
 		test_acipher_speed("xts(twofish)", DECRYPT, sec, NULL, 0,
 				   speed_template_32_48_64);
+#endif
 		break;
 
 	case 505:
@@ -1716,10 +1752,12 @@ static int do_test(int m)
 				   speed_template_8_16);
 		test_acipher_speed("cbc(cast5)", DECRYPT, sec, NULL, 0,
 				   speed_template_8_16);
+#ifdef CONFIG_CRYPTO_CTR
 		test_acipher_speed("ctr(cast5)", ENCRYPT, sec, NULL, 0,
 				   speed_template_8_16);
 		test_acipher_speed("ctr(cast5)", DECRYPT, sec, NULL, 0,
 				   speed_template_8_16);
+#endif
 		break;
 
 	case 507:
@@ -1731,18 +1769,22 @@ static int do_test(int m)
 				   speed_template_16_32);
 		test_acipher_speed("cbc(cast6)", DECRYPT, sec, NULL, 0,
 				   speed_template_16_32);
+#ifdef CONFIG_CRYPTO_CTR
 		test_acipher_speed("ctr(cast6)", ENCRYPT, sec, NULL, 0,
 				   speed_template_16_32);
 		test_acipher_speed("ctr(cast6)", DECRYPT, sec, NULL, 0,
 				   speed_template_16_32);
+#endif
 		test_acipher_speed("lrw(cast6)", ENCRYPT, sec, NULL, 0,
 				   speed_template_32_48);
 		test_acipher_speed("lrw(cast6)", DECRYPT, sec, NULL, 0,
 				   speed_template_32_48);
+#ifdef CONFIG_CRYPTO_XTS
 		test_acipher_speed("xts(cast6)", ENCRYPT, sec, NULL, 0,
 				   speed_template_32_64);
 		test_acipher_speed("xts(cast6)", DECRYPT, sec, NULL, 0,
 				   speed_template_32_64);
+#endif
 		break;
 
 	case 508:
@@ -1754,18 +1796,22 @@ static int do_test(int m)
 				   speed_template_16_32);
 		test_acipher_speed("cbc(camellia)", DECRYPT, sec, NULL, 0,
 				   speed_template_16_32);
+#ifdef CONFIG_CRYPTO_CTR
 		test_acipher_speed("ctr(camellia)", ENCRYPT, sec, NULL, 0,
 				   speed_template_16_32);
 		test_acipher_speed("ctr(camellia)", DECRYPT, sec, NULL, 0,
 				   speed_template_16_32);
+#endif
 		test_acipher_speed("lrw(camellia)", ENCRYPT, sec, NULL, 0,
 				   speed_template_32_48);
 		test_acipher_speed("lrw(camellia)", DECRYPT, sec, NULL, 0,
 				   speed_template_32_48);
+#ifdef CONFIG_CRYPTO_XTS
 		test_acipher_speed("xts(camellia)", ENCRYPT, sec, NULL, 0,
 				   speed_template_32_64);
 		test_acipher_speed("xts(camellia)", DECRYPT, sec, NULL, 0,
 				   speed_template_32_64);
+#endif
 		break;
 
 	case 509:
@@ -1777,10 +1823,12 @@ static int do_test(int m)
 				   speed_template_8_32);
 		test_acipher_speed("cbc(blowfish)", DECRYPT, sec, NULL, 0,
 				   speed_template_8_32);
+#ifdef CONFIG_CRYPTO_CTR
 		test_acipher_speed("ctr(blowfish)", ENCRYPT, sec, NULL, 0,
 				   speed_template_8_32);
 		test_acipher_speed("ctr(blowfish)", DECRYPT, sec, NULL, 0,
 				   speed_template_8_32);
+#endif
 		break;
 
 	case 1000:
@@ -1802,6 +1850,11 @@ static int __init tcrypt_mod_init(void)
 	int err = -ENOMEM;
 	int i;
 
+#ifdef CONFIG_CRYPTO_FIPS
+	fips_init_proc();
+	if (!fips_enabled)
+		return 0;
+#endif
 	for (i = 0; i < TVMEMSIZE; i++) {
 		tvmem[i] = (void *)__get_free_page(GFP_KERNEL);
 		if (!tvmem[i])

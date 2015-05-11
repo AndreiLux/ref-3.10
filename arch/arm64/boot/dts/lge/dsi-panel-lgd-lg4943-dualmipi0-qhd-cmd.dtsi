@@ -1,0 +1,433 @@
+/* Copyright (c) 2014, Code Aurora Forum. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&mdss_mdp {
+	dsi_dual_lgd_sic_cmd_0: qcom,mdss_dsi_lgd_lg4943_1440p_mipi0_cmd {
+		qcom,mdss-dsi-panel-name = "LGD SIC INCELL 1440p Dual 0 cmd mode dsi panel";
+		qcom,mdss-dsi-panel-controller = <&mdss_dsi0>;
+		qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
+		qcom,mdss-dsi-panel-destination = "display_1";
+		qcom,mdss-dsi-panel-framerate = <60>;
+		qcom,mdss-dsi-virtual-channel-id = <0>;
+		qcom,mdss-dsi-stream = <0>;
+		qcom,mdss-dsi-panel-width = <720>;
+		qcom,mdss-dsi-panel-height = <2560>;
+		qcom,mdss-dsi-h-front-porch = <180>;
+		qcom,mdss-dsi-h-back-porch = <120>;
+		qcom,mdss-dsi-h-pulse-width = <4>;
+		qcom,mdss-dsi-h-sync-skew = <0>;
+		qcom,mdss-dsi-v-back-porch = <7>;
+		qcom,mdss-dsi-v-front-porch = <8>;
+		qcom,mdss-dsi-v-pulse-width = <1>;
+		qcom,mdss-dsi-h-left-border = <0>;
+		qcom,mdss-dsi-h-right-border = <0>;
+		qcom,mdss-dsi-v-top-border = <0>;
+		qcom,mdss-dsi-v-bottom-border = <0>;
+		qcom,mdss-dsi-bpp = <24>;
+		qcom,mdss-dsi-color-order = "rgb_swap_rgb";
+		qcom,mdss-dsi-underflow-color = <0xff>;
+		qcom,mdss-dsi-border-color = <0>;
+		qcom,mdss-dsi-h-sync-pulse = <0>;
+		qcom,mdss-dsi-traffic-mode = "burst_mode";
+		qcom,mdss-dsi-lane-map = "lane_map_0123";
+		qcom,mdss-dsi-lane-hs = <1>;
+		qcom,mdss-dsi-bllp-eof-power-mode;
+		qcom,mdss-dsi-bllp-power-mode;
+		qcom,cmd-sync-wait-broadcast;
+
+		qcom,mdss-dsi-lane-0-state;
+		qcom,mdss-dsi-lane-1-state;
+		qcom,mdss-dsi-lane-2-state;
+		qcom,mdss-dsi-lane-3-state;
+		qcom,mdss-dsi-hor-line-idle = <0 40 256>,
+						<40 120 128>,
+						<120 240 64>;
+		qcom,mdss-dsi-panel-timings = [F7 3A 28 00 6E 72
+									2C 3E 31 03 04 00];
+		qcom,mdss-dsi-reset-sequence = <1 10>, <0 10>, <1 10>;
+		qcom,mdss-dsi-t-clk-post = <0x02>;
+		lge,mdss-dsi-t-clk-post_for_jdi_ab = <0x32>;
+		qcom,mdss-dsi-t-clk-pre = <0x2D>;
+		qcom,mdss-dsi-bl-max-level = <4095>;
+		qcom,mdss-dsi-dma-trigger = "trigger_sw";
+		qcom,mdss-dsi-mdp-trigger = "none";
+		qcom,mdss-dsi-te-pin-select = <1>;
+		qcom,mdss-dsi-wr-mem-start = <0x2c>;
+		qcom,mdss-dsi-wr-mem-continue = <0x3c>;
+		qcom,mdss-dsi-te-dcs-command = <1>;
+		qcom,mdss-dsi-te-check-enable;
+		qcom,mdss-dsi-te-using-te-pin;
+		qcom,suspend-ulps-enabled;
+		qcom,mdss-dsi-tx-eot-append;
+		/* Partial update */
+		//qcom,partial-update-enabled;
+		qcom,partial-update-roi-merge;
+		qcom,panel-roi-alignment = <8 8 4 4 32 32>;
+		lge,partial-update-max-left = <1439>;
+		lge,partial-update-min-right = <0>;
+		qcom,mdss-dsi-on-command = [
+			/* Manufacturer Command Protection */
+			15 01 00 00 00 00 02 B0 AC
+			/* MIPI DPI Configuration */
+			39 01 00 00 00 00 06 B1 07 00 80 00 00
+			/* Display Control 1 */
+			39 01 00 00 00 00 08 B3 0A 14 28 C8 12 94 02
+			/* Display Control 2 */
+			39 01 00 00 00 00 0B B4 97 B4 0A 0A 0A 0A 14 14 14 14
+			/* Display Control 3 */
+			39 01 00 00 00 00 0F B5 28 10 20 C8 22 09 09 09 09 D0 50 50 50 50
+			/* Display Control 4 */
+			39 01 00 00 00 00 05 B6 10 10 A0 00
+			/* Display Mode Setting */
+			39 01 00 00 00 00 03 B7 4C 00
+			/* Panel Setting */
+			39 01 00 00 00 00 04 B8 70 91 3F
+			/* Internal Oscillator Setting */
+			39 01 00 00 00 00 04 C0 10 10 19
+			/* Power Control 1 */
+			39 01 00 00 00 00 06 C1 01 87 F0 C2 CF
+			/* Power Control 2 */
+			39 01 00 00 00 00 02 C2 CC
+			/* Power Control 3 */
+			39 01 00 00 00 00 06 C3 30 74 22 26 21
+			/* Power Control 5 */
+			39 01 00 00 00 00 07 C5 22 20 A2 52 07 07
+			/* Positive Gamma Curve For Red */
+			39 01 00 00 00 00 0E D0 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Red */
+			39 01 00 00 00 00 0E D1 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Positive Gamma Curve For Green */
+			39 01 00 00 00 00 0E D2 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Green */
+			39 01 00 00 00 00 0E D3 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Positive Gamma Curve For Blue */
+			39 01 00 00 00 00 0E D4 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Blue */
+			39 01 00 00 00 00 0E D5 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Left Side GIP Pad Setting */
+			39 01 00 00 00 00 12 D6 00 60 00 6B 00 69 00 67 00 65 6C 6D 6E 00 00 00 71
+			/* Right Side GIP Pad Setting */
+			39 01 00 00 00 00 12 D7 71 00 00 00 6e 6d 6c 64 00 66 00 68 00 6a 00 61 00
+			/* Left Side MUX Pad Setting */
+			39 01 00 00 00 00 07 D8 78 77 76 75 74 73
+			/* Right Side MUX Pad Setting */
+			39 01 00 00 00 00 07 D9 73 74 75 76 77 78
+			/* LFD Control */
+			39 01 00 00 00 00 06 CA BD BD C6 C4 00
+			/* Touch Control */
+			39 01 00 00 00 00 0D CD D0 07 6E 81 9F 01 02 02 53 F8 05 04
+			/* Tearing Effect Line On */
+			15 01 00 00 00 00 02 35 00
+			/* Write Control Display */
+			15 01 00 00 00 00 02 53 24
+			/* Write Display Brightness */
+			15 01 00 00 00 00 02 51 FF
+			/* IE CONTROL */
+			15 01 00 00 00 00 02 FA FF
+			/* 80 ie on, 01 cabc on, 08 for digital gamma */
+			15 01 00 00 00 00 02 55 89
+			/* OTP control */
+			39 01 00 00 00 00 04 E8 00 00 00
+			/* Memory write timing */
+			39 01 00 00 00 00 07 E6 21 22 22 22 00 00
+			/* Abrrupt Power Off Control */
+			15 01 00 00 00 00 02 C9 9F
+			/* engine enable 1 */
+			39 01 00 00 00 00 02 F0 73
+			/* engine enable 2 */
+			39 01 00 00 00 00 0F F1 0F 1f 1F 00 00 00 00 00 00 00 00 00 FF 00
+			/* engine enable 3 */
+			39 01 00 00 00 00 05 F2 01 00 FF 00
+			/* engine enable 4 */
+			39 01 00 00 00 00 18 F3 00 40 80 C0 FF 73 00 40 80 C0 FF 00 00 40 80 C0 FF 00 00 40 80 C0 FF
+
+			/* IE setting starts */
+			15 01 00 00 00 00 02
+			F0 40	/* 40 all color up, 5~70 selective */
+
+			39 01 00 00 00 00 18
+			F3 00 43 83 C0 FF
+			25 00 50 80 C0 FF // only for SRE
+			00 00 40 80 C0 FF
+			00 00 40 80 C0 FF
+
+			/* for Wxy shift */
+			39 01 00 00 00 00 11
+			F7 40 40 40 40 40 40 40 40
+			00 00 00 00 00 00 00 00
+
+			39 01 00 00 00 00 11
+			F8 3C 3C 3C 3C 3C 3C 3C 3C
+			00 00 00 00 00 00 00 00
+
+			39 01 00 00 00 00 11
+			F9 3C 3C 3C 3C 3C 3C 3C 3C
+			00 00 00 00 00 00 00 00
+
+			/* CABC */
+			39 01 00 00 00 00 07
+			B9 13 00 00 78 7F 80
+			/* IE ends */
+
+			/* SRE setting START*/
+			39 01 00 00 00 00 19
+			FC 0F 60 75 87 A8
+			C0 E4 F0 00 40 70
+			90 A0 B0 C0 F0 00
+			20 40 60 80 A0 C0
+			E0
+			/* SRE setting END*/
+
+			/* Sleep Out  */
+			05 01 00 00 55 00 01 11 /* 85ms */
+			/* OSC setting */
+			39 01 00 00 00 00 04 C0 10 90 16
+			/* Display On */
+			05 01 00 00 14 00 01 29 /* 20ms */
+			];
+		lge,mdss-dsi-clk_on-command = [
+			/* Manufacturer Command Protection */
+			15 01 00 00 00 00 02 B0 AC
+			/* MIPI DPI Configuration */
+			39 01 00 00 00 00 06 B1 07 00 80 00 00
+			/* Display Control 1 */
+			39 01 00 00 00 00 08 B3 0A 14 28 C8 12 94 02
+			/* Display Control 2 */
+			39 01 00 00 00 00 0B B4 97 B4 0A 0A 0A 0A 14 14 14 14
+			/* Display Control 3 */
+			39 01 00 00 00 00 0F B5 28 10 20 C8 22 09 09 09 09 D0 50 50 50 50
+			/* Display Control 4 */
+			39 01 00 00 00 00 05 B6 10 10 A0 00
+			/* Display Mode Setting */
+			39 01 00 00 00 00 03 B7 4C 00
+			/* Panel Setting */
+			39 01 00 00 00 00 04 B8 70 91 3F
+			/* Internal Oscillator Setting */
+			39 01 00 00 00 00 04 C0 10 10 19
+			/* Power Control 1 */
+			39 01 00 00 00 00 06 C1 01 87 F0 C2 CF
+			/* Power Control 2 */
+			39 01 00 00 00 00 02 C2 CC
+			/* Power Control 3 */
+			39 01 00 00 00 00 06 C3 30 74 22 26 21
+			/* Power Control 5 */
+			39 01 00 00 00 00 07 C5 22 20 A2 52 07 07
+			/* Positive Gamma Curve For Red */
+			39 01 00 00 00 00 0E D0 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Red */
+			39 01 00 00 00 00 0E D1 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Positive Gamma Curve For Green */
+			39 01 00 00 00 00 0E D2 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Green */
+			39 01 00 00 00 00 0E D3 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Positive Gamma Curve For Blue */
+			39 01 00 00 00 00 0E D4 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Blue */
+			39 01 00 00 00 00 0E D5 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Left Side GIP Pad Setting */
+			39 01 00 00 00 00 12 D6 00 60 00 6B 00 69 00 67 00 65 6C 6D 6E 00 00 00 71
+			/* Right Side GIP Pad Setting */
+			39 01 00 00 00 00 12 D7 71 00 00 00 6e 6d 6c 64 00 66 00 68 00 6a 00 61 00
+			/* Left Side MUX Pad Setting */
+			39 01 00 00 00 00 07 D8 78 77 76 75 74 73
+			/* Right Side MUX Pad Setting */
+			39 01 00 00 00 00 07 D9 73 74 75 76 77 78
+			/* LFD Control */
+			39 01 00 00 00 00 06 CA BD BD C6 C4 00
+			/* Touch Control */
+			39 01 00 00 00 00 0D CD D0 07 6E 81 9F 01 02 02 53 F8 05 04
+			/* Tearing Effect Line On */
+			15 01 00 00 00 00 02 35 00
+			/* Write Control Display */
+			15 01 00 00 00 00 02 53 24
+			/* Write Display Brightness */
+			15 01 00 00 00 00 02 51 FF
+			/* OTP control */
+			39 01 00 00 00 00 04 E8 00 00 00
+			/* Memory write timing */
+			39 01 00 00 00 00 07 E6 21 22 22 22 00 00
+			/* Abrrupt Power Off Control */
+			15 01 00 00 64 00 02 C9 9F
+			/* OSC setting */
+			39 01 00 00 00 00 04 C0 10 90 16
+			];
+		lge,mdss-dsi-clk_off-command = [
+			/* Manufacturer Command Protection */
+			15 01 00 00 00 00 02 B0 AC
+			/* MIPI DPI Configuration */
+			39 01 00 00 00 00 06 B1 07 00 80 00 00
+			/* Display Control 1 */
+			39 01 00 00 00 00 08 B3 0A 14 28 C8 12 94 02
+			/* Display Control 2 */
+			39 01 00 00 00 00 0B B4 97 B4 0A 0A 0A 0A 14 14 14 14
+			/* Display Control 3 */
+			39 01 00 00 00 00 0F B5 28 10 20 C8 22 09 09 09 09 D0 50 50 50 50
+			/* Display Control 4 */
+			39 01 00 00 00 00 05 B6 10 10 A0 00
+			/* Display Mode Setting */
+			39 01 00 00 00 00 03 B7 4C 00
+			/* Panel Setting */
+			39 01 00 00 00 00 04 B8 70 91 3F
+			/* Internal Oscillator Setting */
+			39 01 00 00 00 00 04 C0 10 10 19
+			/* Power Control 1 */
+			39 01 00 00 00 00 06 C1 01 87 F0 C2 CF
+			/* Power Control 2 */
+			39 01 00 00 00 00 02 C2 CC
+			/* Power Control 3 */
+			39 01 00 00 00 00 06 C3 30 74 22 26 21
+			/* Power Control 5 */
+			39 01 00 00 00 00 07 C5 22 20 A2 52 07 07
+			/* Positive Gamma Curve For Red */
+			39 01 00 00 00 00 0E D0 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Red */
+			39 01 00 00 00 00 0E D1 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Positive Gamma Curve For Green */
+			39 01 00 00 00 00 0E D2 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Green */
+			39 01 00 00 00 00 0E D3 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Positive Gamma Curve For Blue */
+			39 01 00 00 00 00 0E D4 8B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Negative Gamma Curve For Blue */
+			39 01 00 00 00 00 0E D5 0B 10 25 36 44 4C 3F 36 27 19 06 01 03
+			/* Left Side GIP Pad Setting */
+			39 01 00 00 00 00 12 D6 00 60 00 6B 00 69 00 67 00 65 6C 6D 6E 00 00 00 71
+			/* Right Side GIP Pad Setting */
+			39 01 00 00 00 00 12 D7 71 00 00 00 6e 6d 6c 64 00 66 00 68 00 6a 00 61 00
+			/* Left Side MUX Pad Setting */
+			39 01 00 00 00 00 07 D8 78 77 76 75 74 73
+			/* Right Side MUX Pad Setting */
+			39 01 00 00 00 00 07 D9 73 74 75 76 77 78
+			/* LFD Control */
+			39 01 00 00 00 00 06 CA BD BD C6 C4 00
+			/* Touch Control */
+			39 01 00 00 00 00 0D CD D0 07 6E 81 9F 01 02 02 53 F8 05 04
+			/* Tearing Effect Line On */
+			15 01 00 00 00 00 02 35 00
+			/* Write Control Display */
+			15 01 00 00 00 00 02 53 24
+			/* Write Display Brightness */
+			15 01 00 00 00 00 02 51 FF
+			/* OTP control */
+			39 01 00 00 00 00 04 E8 00 00 00
+			/* Memory write timing */
+			39 01 00 00 00 00 07 E6 21 22 22 22 00 00
+			/* Abrrupt Power Off Control */
+			15 01 00 00 00 00 02 C9 9F
+			/* touch sensing clk down */
+			39 01 00 00 00 00 06 EB 38 00 00 E0 0E
+			];
+		qcom,mdss-dsi-on-command-state = "dsi_lp_mode";
+		lge,mdss-dsi-clk_on-command-state = "dsi_lp_mode";
+		lge,mdss-dsi-clk_off-command-state = "dsi_lp_mode";
+		qcom,mdss-dsi-off-command = [
+			05 01 00 00 14 00 02 28 00
+			05 01 00 00 64 00 02 10 00  /* 100ms */
+			/* Sleep In 1*/
+			39 01 00 00 00 00 07 D8 58 57 56 55 54 53
+			/* Sleep In 2*/
+			39 01 00 00 00 00 07 D9 53 54 55 56 57 58
+			/* Sleep In 3*/
+			39 01 00 00 00 00 06 EB 38 00 00 10 0E
+			];
+		qcom,mdss-dsi-off-command-state = "dsi_hs_mode";
+		qcom,cont-splash-enabled;
+		/* SRE cmds set START*/
+		qcom,sre-control-dsi-state = "dsi_lp_mode";
+		lge,sre-cmds-off = [
+			15 01 00 00 00 00 02 F0 40
+			15 01 00 00 00 00 02 55 89
+		];
+		lge,sre-cmds-on = [
+			15 01 00 00 00 00 02 F0 50
+			15 01 00 00 00 00 02 55 C8
+		];
+		/* SRE cmds set END*/
+		qcom,blmap-size = <256>;
+		qcom,blmap = <
+			  0
+			  29 29 29 29 29 29 29 29 29 29
+			  29 29 29 30 30 30 31 31 31 32
+			  32 32 33 34 35 37 38 39 41 42
+			  43 45 46 47 49 51 53 55 57 60
+			  62 64 66 68 71 73 75 77 80 84
+			  88 93 97 102 106 110 115 119 124 128
+			  132 136 141 145 149 154 158 162 166 171
+			  175 179 184 190 197 203 210 216 223 229
+			  236 242 249 255 262 269 276 283 290 297
+			  304 312 319 326 333 340 347 355 365 375
+			  385 395 405 415 425 435 445 455 465 475
+			  485 495 505 515 525 535 545 555 565 575
+			  585 595 607 620 632 645 657 670 683 695
+			  708 720 733 746 761 777 792 808 824 839
+			  855 871 886 902 920 932 947 962 977 991
+			  1006 1021 1036 1050 1065 1080 1095 1110 1127 1145
+			  1163 1181 1198 1216 1234 1252 1269 1287 1305 1323
+			  1341 1359 1377 1395 1413 1431 1449 1467 1485 1503
+			  1521 1539 1558 1580 1602 1624 1647 1669 1691 1713
+			  1736 1758 1780 1802 1825 1846 1868 1890 1912 1934
+			  1956 1978 2000 2022 2044 2066 2088 2110 2138 2166
+			  2194 2222 2250 2279 2307 2335 2363 2391 2420 2446
+			  2472 2498 2524 2550 2576 2602 2628 2654 2680 2706
+			  2732 2758 2788 2818 2848 2878 2908 2939 2969 2999
+			  3029 3059 3089 3120 3155 3190 3225 3260 3295 3330
+			  3365 3400 3435 3470 3505
+		>;
+		qcom,mdss-pan-physical-width-dimension = <68>;
+		qcom,mdss-pan-physical-height-dimension = <121>;
+	};
+};
+
+&mdss_dsi0 {
+	vdd_l19-supply = <&pm8994_l19>;
+
+	qcom,panel-supply-entries {
+			qcom,panel-supply-entry@2 {
+				reg = <2>;
+				qcom,supply-name = "vdd_l19";
+				qcom,supply-min-voltage = <3000000>;
+				qcom,supply-max-voltage = <3000000>;
+				qcom,supply-enable-load = <100000>;
+				qcom,supply-disable-load = <100>;
+				qcom,supply-post-on-sleep = <20>;
+			};
+		};
+};
+
+&mdss_dsi1 {
+	vdd_l19-supply = <&pm8994_l19>;
+
+	qcom,panel-supply-entries {
+			qcom,panel-supply-entry@2 {
+				reg = <2>;
+				qcom,supply-name = "vdd_l19";
+				qcom,supply-min-voltage = <3000000>;
+				qcom,supply-max-voltage = <3000000>;
+				qcom,supply-enable-load = <100000>;
+				qcom,supply-disable-load = <100>;
+				qcom,supply-post-on-sleep = <20>;
+			};
+		};
+};
+
+&rpm_bus {
+	rpm-regulator-ldoa19 {
+		status = "okay";
+		pm8994_l19: regulator-l19 {
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			qcom,init-voltage = <3000000>;
+			status = "okay";
+		};
+	};
+};
+

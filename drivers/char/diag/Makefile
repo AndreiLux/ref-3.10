@@ -1,0 +1,8 @@
+obj-$(CONFIG_DIAG_CHAR) := diagchar.o
+obj-$(CONFIG_DIAGFWD_BRIDGE_CODE) += diagfwd_bridge.o
+obj-$(CONFIG_DIAGFWD_BRIDGE_CODE) += diagfwd_hsic.o
+obj-$(CONFIG_DIAGFWD_BRIDGE_CODE) += diagfwd_smux.o
+obj-$(CONFIG_DIAGFWD_BRIDGE_CODE) += diagfwd_mhi.o
+diagchar-objs := diagchar_core.o diagchar_hdlc.o diagfwd.o diag_mux.o diag_memorydevice.o diag_usb.o diagmem.o diagfwd_cntl.o diag_dci.o diag_masks.o diag_debugfs.o
+obj-$(CONFIG_LGE_DIAG_BYPASS) += lg_diag_bypass.o
+obj-$(CONFIG_LGE_DM_APP) += lg_dm_tty.o

@@ -126,7 +126,11 @@ struct alg_test_desc {
 
 static unsigned int IDX[8] = { IDX1, IDX2, IDX3, IDX4, IDX5, IDX6, IDX7, IDX8 };
 
+#if FIPS_CRYPTO_TEST == 5
+void hexdump(unsigned char *buf, unsigned int len)
+#else
 static void hexdump(unsigned char *buf, unsigned int len)
+#endif
 {
 	print_hex_dump(KERN_CONT, "", DUMP_PREFIX_OFFSET,
 			16, 1,
@@ -2482,6 +2486,16 @@ static const struct alg_test_desc alg_test_descs[] = {
 			}
 		}
 	}, {
+		.alg = "fips_ansi_cprng",
+		.test = alg_test_cprng,
+		.fips_allowed = 1,
+		.suite = {
+			.cprng = {
+				.vecs = ansi_cprng_aes_tv_template,
+				.count = ANSI_CPRNG_AES_TEST_VECTORS
+			}
+		}
+	}, {
 		.alg = "gcm(aes)",
 		.test = alg_test_aead,
 		.fips_allowed = 1,
@@ -3097,7 +3111,13 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 {
 	int i;
 	int j;
-	int rc;
+	int rc = 0;
+	int fips_alg = 0;
+
+	if (get_cc_mode_state() == 0) {
+		/* Skip kernel self-test in normal mode */
+		return 0;
+	}
 
 	if ((type & CRYPTO_ALG_TYPE_MASK) == CRYPTO_ALG_TYPE_CIPHER) {
 		char nalg[CRYPTO_MAX_ALG_NAME];
@@ -3110,11 +3130,15 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 		if (i < 0)
 			goto notest;
 
-		if (fips_enabled && !alg_test_descs[i].fips_allowed)
-			goto non_fips_alg;
+		if (fips_enabled && !fips_allow_others && !alg_test_descs[i].fips_allowed)
+			goto disallowed;
 
 		rc = alg_test_cipher(alg_test_descs + i, driver, type, mask);
-		goto test_done;
+
+		if (alg_test_descs[i].fips_allowed)
+			goto test_done;
+		else
+			goto non_fips_alg;
 	}
 
 	i = alg_find_test(alg);
@@ -3122,32 +3146,77 @@ int alg_test(const char *driver, const char *alg, u32 type, u32 mask)
 	if (i < 0 && j < 0)
 		goto notest;
 
-	if (fips_enabled && ((i >= 0 && !alg_test_descs[i].fips_allowed) ||
-			     (j >= 0 && !alg_test_descs[j].fips_allowed)))
-		goto non_fips_alg;
+	if (fips_enabled && ((i >= 0 && alg_test_descs[i].fips_allowed) ||
+				(j >= 0 && alg_test_descs[j].fips_allowed)))
+		fips_alg = 1;
+
+	if (!fips_alg && !fips_allow_others)
+		goto disallowed;
+
+#if FIPS_CRYPTO_TEST == 4
+	if (fips_enabled) {
+		if (fips_alg)
+			printk(KERN_INFO "alg: self-tests for %s (%s) starting\n", driver, alg);
+		else
+			printk(KERN_INFO "alg(non-FIPS): self-tests for %s (%s) starting\n",
+					driver, alg);
+	}
+#endif
 
 	rc = 0;
 	if (i >= 0)
 		rc |= alg_test_descs[i].test(alg_test_descs + i, driver,
 					     type, mask);
-	if (j >= 0)
+	if (j >= 0 && j != i)
 		rc |= alg_test_descs[j].test(alg_test_descs + j, driver,
 					     type, mask);
 
+	if (!fips_alg)
+		goto non_fips_alg;
+
 test_done:
-	if (fips_enabled && rc)
-		panic("%s: %s alg self test failed in fips mode!\n", driver, alg);
-
-	if (fips_enabled && !rc)
-		printk(KERN_INFO "alg: self-tests for %s (%s) passed\n",
-		       driver, alg);
-
+	if (fips_enabled) {
+		if (rc == -ENOENT) { // algorithm not present
+			printk(KERN_INFO "alg: %s (%s) is not available\n", driver, alg);
+			return -EINVAL;
+		}
+		else if (rc) { // algorithm present but failed
+			printk(KERN_INFO "alg: self-tests for %s (%s) failed in FIPS mode\n",
+					driver, alg);
+			set_fips_error();
+			if (fips_panic){
+				panic("alg: self-tests for %s (%s) failed in FIPS mode\n",
+						driver, alg);
+			}
+		}
+		else // algorithm passed
+			printk(KERN_INFO "alg: self-tests for %s (%s) passed\n",
+					driver, alg);
+	}
 	return rc;
 
 notest:
-	printk(KERN_INFO "alg: No test for %s (%s)\n", alg, driver);
+	if (fips_enabled && !fips_allow_others)
+		goto disallowed;
+
+	printk(KERN_INFO "alg: no self-tests for %s (%s)\n", driver, alg);
 	return 0;
+
 non_fips_alg:
+	if (rc == -ENOENT) // algorithm not present
+		printk(KERN_INFO "alg(non-FIPS): %s (%s) is not available\n", driver, alg);
+	else if (rc) // algorithm present but failed
+		printk(KERN_INFO "alg(non-FIPS): self-tests for %s (%s) failed\n",
+				driver, alg);
+	else // algorithm passed
+		printk(KERN_INFO "alg(non-FIPS): self-tests for %s (%s) passed\n",
+				driver, alg);
+
+	return rc;
+
+disallowed:
+	printk(KERN_INFO "alg(non-FIPS): %s (%s) cannot be used in FIPS mode\n",
+			driver, alg);
 	return -EINVAL;
 }
 

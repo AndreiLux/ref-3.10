@@ -169,7 +169,7 @@ config CRYPTO_AUTHENC
 
 config CRYPTO_TEST
 	tristate "Testing module"
-	depends on m
+	default n
 	select CRYPTO_MANAGER
 	help
 	  Quick & dirty crypto test module.
@@ -177,6 +177,10 @@ config CRYPTO_TEST
 config CRYPTO_ABLK_HELPER_X86
 	tristate
 	depends on X86
+	select CRYPTO_CRYPTD
+
+config CRYPTO_ABLK_HELPER
+	tristate
 	select CRYPTO_CRYPTD
 
 config CRYPTO_GLUE_HELPER_X86

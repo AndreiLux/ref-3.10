@@ -1,0 +1,47 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+
+/dts-v1/;
+
+#include "../../qcom/msm8992.dtsi"
+#include "msm8992-p1_kddi_jp.dtsi"
+
+/ {
+	model = "Qualcomm Technologies, Inc. MSM8992 P1 KDDI JP";
+	compatible = "qcom,msm8992-cdp", "qcom,msm8992", "qcom,cdp";
+	qcom,board-id = <0xB64 0>;
+};
+
+//ADD HERE TO SUPPORT HW CHANGE
+
+&soc {
+
+// Change USB_ID pull-up register to 200k from 620k @ HW Rev. 1.0
+	charger_controller: charger_controller {
+		lge,no-init-cable = <0 0 0>;
+		lge,cable-mhl-1k = <5000 500 500>;
+		lge,cable-u-28p7k = <200000 1800 500>;
+		lge,cable-28p7k = <300000 1800 500>;
+		lge,cable-56k = <490000 1800 1800>;
+		lge,cable-100k = <650000 1800 500>;
+		lge,cable-130k = <780000 1800 1800>;
+		lge,cable-180k = <875000 1800 500>;
+		lge,cable-200k = <920000 1800 500>;
+		lge,cable-220k = <988000 1800 500>;
+		lge,cable-270k = <1077000 1800 500>;
+		lge,cable-330k = <1294000 1800 500>;
+		lge,cable-620k = <1418000 1800 500>;
+		lge,cable-910k = <1600000 1800 1800>;
+		lge,cable-none = <1900000 1800  500>;
+	};
+};

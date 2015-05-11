@@ -1,0 +1,9 @@
+#lg-security@lge.com 2015.02
+
+comment "LGE CryptoDev selection"
+
+config CRYPTODEV
+	bool "Crypto device"
+	default n
+	---help---
+	Kernel crypto API for userspace processes.

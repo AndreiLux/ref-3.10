@@ -1,0 +1,44 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&soc {
+	i2c_5: i2c@f9967000 {
+		ti-tas2552_40@40 {
+			compatible = "ti,tas2552";
+			status = "disable";
+			reg = <0x40>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&tas2552_active>;
+			pinctrl-1 = <&tas2552_sleep>;
+			ti,enable-gpio = <&msm_gpio 0 0>;
+			ti,label = "amplifier_l";
+			ti,gain = <0x1f>;
+			ti,idle-timeout-ms = <20>;
+			ti,max-runtime-ms = <15000>;
+		};
+
+		ti-tas2552_41@41 {
+			compatible = "ti,tas2552";
+			status = "disable";
+			reg = <0x41>;
+			pinctrl-names = "default", "sleep";
+			pinctrl-0 = <&tas2552_active>;
+			pinctrl-1 = <&tas2552_sleep>;
+			ti,enable-gpio = <&msm_gpio 0 0>;
+			ti,label = "amplifier_l";
+			ti,gain = <0x1f>;
+			ti,idle-timeout-ms = <20>;
+			ti,max-runtime-ms = <15000>;
+		};
+	};
+};
+

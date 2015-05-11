@@ -20,6 +20,7 @@
 #define __ARM_KVM_H__
 
 #include <linux/types.h>
+#include <linux/psci.h>
 #include <asm/ptrace.h>
 
 #define __KVM_HAVE_GUEST_DEBUG
@@ -82,6 +83,7 @@ struct kvm_regs {
 #define KVM_VGIC_V2_CPU_SIZE		0x2000
 
 #define KVM_ARM_VCPU_POWER_OFF		0 /* CPU is started in OFF state */
+#define KVM_ARM_VCPU_PSCI_0_2		1 /* CPU uses PSCI v0.2 */
 
 struct kvm_vcpu_init {
 	__u32 target;
@@ -117,6 +119,26 @@ struct kvm_arch_memory_slot {
 #define KVM_REG_ARM_CRM_SHIFT		7
 #define KVM_REG_ARM_32_CRN_MASK		0x0000000000007800
 #define KVM_REG_ARM_32_CRN_SHIFT	11
+
+#define ARM_CP15_REG_SHIFT_MASK(x,n) \
+	(((x) << KVM_REG_ARM_ ## n ## _SHIFT) & KVM_REG_ARM_ ## n ## _MASK)
+
+#define __ARM_CP15_REG(op1,crn,crm,op2) \
+	(KVM_REG_ARM | (15 << KVM_REG_ARM_COPROC_SHIFT) | \
+	ARM_CP15_REG_SHIFT_MASK(op1, OPC1) | \
+	ARM_CP15_REG_SHIFT_MASK(crn, 32_CRN) | \
+	ARM_CP15_REG_SHIFT_MASK(crm, CRM) | \
+	ARM_CP15_REG_SHIFT_MASK(op2, 32_OPC2))
+
+#define ARM_CP15_REG32(...) (__ARM_CP15_REG(__VA_ARGS__) | KVM_REG_SIZE_U32)
+
+#define __ARM_CP15_REG64(op1,crm) \
+	(__ARM_CP15_REG(op1, 0, crm, 0) | KVM_REG_SIZE_U64)
+#define ARM_CP15_REG64(...) __ARM_CP15_REG64(__VA_ARGS__)
+
+#define KVM_REG_ARM_TIMER_CTL		ARM_CP15_REG32(0, 14, 3, 1)
+#define KVM_REG_ARM_TIMER_CNT		ARM_CP15_REG64(1, 14) 
+#define KVM_REG_ARM_TIMER_CVAL		ARM_CP15_REG64(3, 14) 
 
 /* Normal registers are mapped as coprocessor 16. */
 #define KVM_REG_ARM_CORE		(0x0010 << KVM_REG_ARM_COPROC_SHIFT)
@@ -172,9 +194,9 @@ struct kvm_arch_memory_slot {
 #define KVM_PSCI_FN_CPU_ON		KVM_PSCI_FN(2)
 #define KVM_PSCI_FN_MIGRATE		KVM_PSCI_FN(3)
 
-#define KVM_PSCI_RET_SUCCESS		0
-#define KVM_PSCI_RET_NI			((unsigned long)-1)
-#define KVM_PSCI_RET_INVAL		((unsigned long)-2)
-#define KVM_PSCI_RET_DENIED		((unsigned long)-3)
+#define KVM_PSCI_RET_SUCCESS		PSCI_RET_SUCCESS
+#define KVM_PSCI_RET_NI			PSCI_RET_NOT_SUPPORTED
+#define KVM_PSCI_RET_INVAL		PSCI_RET_INVALID_PARAMS
+#define KVM_PSCI_RET_DENIED		PSCI_RET_DENIED
 
 #endif /* __ARM_KVM_H__ */

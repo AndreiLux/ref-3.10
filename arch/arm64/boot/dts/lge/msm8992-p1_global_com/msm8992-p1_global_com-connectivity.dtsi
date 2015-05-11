@@ -1,0 +1,43 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+&soc {
+
+	bcmdhd_wifi {
+		compatible = "lge,bcmdhd_wlan";
+
+		wlan-en-gpio = <&msm_gpio 113 0>;
+		wlan-hostwake-gpio = <&msm_gpio 64 0>;
+
+		pinctrl-name = "default";
+		pinctrl-0 = <&pmx_wlan_enable_default &pmx_wlan_hostwake_default>;
+	};
+
+/*[P1_BRINGUP_S] Add Pin CTRL */
+	bt_bluetooth_pm {
+		compatible = "lge,bluetooth_pm";
+		gpio-bt-reset = <&msm_gpio 25 0>;
+		gpio-bt-host-wake = <&msm_gpio 95 0>;
+		gpio-bt-ext-wake = <&msm_gpio 105 0>;
+		interrupt-parent = <&msm_gpio>;
+		interrupts = <95 0>;
+		interrupt-names = "host_wake_interrupt";
+
+		pinctrl-names = "bt_enable_active","bt_enable_suspend","bt_active","bt_suspend","bt_ext_active","bt_ext_suspend";
+		pinctrl-0 = <&bt_enable_active>;
+		pinctrl-1 = <&bt_enable_suspend>;
+		pinctrl-2 = <&bt_host_wake_active>;
+		pinctrl-3 = <&bt_host_wake_suspend>;
+		pinctrl-4 = <&bt_ext_wake_active>;
+		pinctrl-5 = <&bt_ext_wake_suspend>;
+     };
+/*[P1_BRINGUP_E] Add Pin CTRL */
+};

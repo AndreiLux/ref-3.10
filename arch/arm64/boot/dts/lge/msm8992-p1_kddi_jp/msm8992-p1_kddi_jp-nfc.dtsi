@@ -1,0 +1,77 @@
+/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/ {
+    aliases {
+        serial2 = &blsp2_uart5;  /* ttyHSL2 for NFC/Felica  */
+    };
+};
+
+&i2c_5 {
+        snfc_cen@2b {
+            compatible = "sony,snfc_cen";
+            status = "ok";
+            reg = <0x2b>;
+            sony,i2c-pull-up = <1>;
+            sony,cen-gpio = <&msm_gpio 30 0x00>;
+            pinctrl-names = "nfc_suspend";
+            pinctrl-0 = <&nfc_cen_suspend>;
+        };
+};
+
+&soc {
+        blsp2_uart5:serial@f9961000 {
+        compatible = "qcom,msm-lsuart-v14";
+        reg = <0xf9961000 0x1000>;
+        interrupts = <0 117 0>;
+        status = "ok";
+
+        clock-names = "core_clk", "iface_clk";
+        clocks = <&clock_gcc clk_gcc_blsp2_uart5_apps_clk>,
+               <&clock_gcc clk_gcc_blsp2_ahb_clk>;
+        pinctrl-names = "default";
+        pinctrl-0 = <&nfc_uart_tx_default &nfc_uart_rx_default>;
+    };
+
+     sony_uart {
+        compatible = "sony,driver";
+        status = "ok";
+        interrupt-parent = <&msm_gpio>;
+        interrupts = <37 0x2>;
+        sony,hsel-gpio = <&msm_gpio 35 0x00>;
+        sony,intu-gpio = <&msm_gpio 37 0x00>;
+        sony,rfs-gpio = <&msm_gpio 29 0x00>;
+        sony,uicc_con = <&msm_gpio 53 0x00>;
+        sony,hvdd-gpio = <&msm_gpio 38 0x00>;
+        sony,pon-gpio = <&msm_gpio 26 0x00>;
+        pinctrl-names = "nfc_suspend";
+        pinctrl-0 = < &nfc_intu_suspend &nfc_hsel_suspend &nfc_rfs_suspend &nfc_uicc_suspend &nfc_hvdd_suspend &nfc_pon_suspend>;
+    };
+
+    sony_int {
+        compatible = "sony,int";
+        interrupt-parent = <&msm_gpio>;
+        interrupts = <34 0x2>;
+        sony,int-gpio = <&msm_gpio 34 0x00>;
+        pinctrl-names = "nfc_suspend";
+        pinctrl-0 = <&nfc_int_suspend>;
+    };
+
+    sony_rfs {
+        compatible = "sony,rfs";
+        interrupt-parent = <&msm_gpio>;
+        interrupts = <29 0x3>;
+        sony,rfs-gpio = <&msm_gpio 29 0x00>;
+        pinctrl-names = "nfc_suspend";
+        pinctrl-0 = <&nfc_rfs_suspend>;
+    };
+};

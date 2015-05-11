@@ -1,0 +1,151 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+&spmi_bus {
+	qcom,pm8994@0 {
+		qcom,power-on@800 {
+			qcom,s3-debounce = <128>;
+			qcom,pon_1 { /* KPD_PWR_N reset */
+				status = "ok";
+				qcom,support-reset = <0>;
+			};
+			qcom,pon_2 { /* RESIN_N reset   */
+				status = "ok";
+				qcom,support-reset = <0>;
+			};
+			qcom,pon_3 { /* KPD_PWR_N AND RESIN_N reset */
+				status = "ok";
+				qcom,support-reset = <0>;
+			};
+		};
+	};
+};
+
+&pmi8994_charger {
+	status = "ok";
+};
+
+/{
+        lge_batterydata: qcom,battery-data {
+                #include "../LGE_BL51YF_LGC_3000mAh.dtsi"
+                #include "../LGE_BL51YF_Tocad_3000mAh.dtsi"
+                #include "../../qcom/batterydata-itech-3000mah.dtsi"
+        };
+};
+
+&pmi8994_fg {
+        status = "ok";
+
+        qcom,ext-sense-type;
+        qcom,battery-data = <&lge_batterydata>;
+        qcom,sw-rbias-control;
+        qcom,fg-iterm-ma = <400>;
+        qcom,fg-cutoff-voltage-mv = <3200>;
+        qcom,irq-volt-empty-mv = <2500>;
+        qcom,thermal-coefficients = [D2 85 0E 4A A5 35];
+};
+
+&spmi_bus {
+	qcom,pmi8994@2 {
+		qcom,power-on@800 {
+			qcom,s3-debounce = <128>;
+		};
+	};
+	qcom,pmi8994@3 {
+		qcom,leds@d000 {
+			qcom,rgb_0 {
+				qcom,mode = "lpg";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <24>;
+				qcom,duty-pcts = [
+					01 02 03 04 05 06 07 08
+					09 0A 0B 0C 0D 0E 0F 10
+					11 12 13 14 15 16 17 18];
+				linux,default-trigger = "none";
+			};
+
+			qcom,rgb_1 {
+				qcom,mode = "lpg";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <24>;
+				qcom,duty-pcts = [
+					01 02 03 04 05 06 07 08
+					09 0A 0B 0C 0D 0E 0F 10
+					11 12 13 14 15 16 17 18];
+				linux,default-trigger = "none";
+			};
+
+			qcom,rgb_2 {
+				qcom,mode = "lpg";
+				qcom,start-idx = <0>;
+				qcom,idx-len = <24>;
+				qcom,duty-pcts = [
+					01 02 03 04 05 06 07 08
+					09 0A 0B 0C 0D 0E 0F 10
+					11 12 13 14 15 16 17 18];
+				linux,default-trigger = "none";
+			};
+		};
+	};
+};
+
+&soc {
+	qcom,npa-dump@0xfc190020 {
+		compatible = "qcom,npa-dump";
+		reg = <0xfc190020 0x4>, <0xfc000000 0x1c00>;
+	};
+
+	lge,gpio-debug@fd510000 {
+		compatible = "lge,gpio-debug";
+		reg = <0xfd510000 0x4000>;
+		reg-names = "tlmm-base";
+		lge,n-msm-gpio = <0x91>;
+		lge,n-pm-gpio = <0x16>;
+		lge,n-pm-mpp = <0x08>;
+		lge,n-pmi-gpio = <0x0a>;
+		lge,n-pmi-mpp = <0x04>;
+	};
+
+	lge,battery-id{
+		compatible = "lge,battery-id";
+		lge,restrict-mode-enabled;
+	};
+
+	i2c@f9928000 { /* BLSP1 QUP6 */
+		status = "ok";
+		max17048@36 {
+			status = "ok";
+			compatible = "maxim,max17048";
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <0x4c 0x0>;
+			max17048,alert_gpio = <&msm_gpio 0x4c 0x0>;
+			max17048,rcomp = <48>;
+			max17048,temp_co_hot = <275>;
+			max17048,temp_co_cold = <4263>;
+			max17048,alert_threshold = <0x2>;
+			max17048,full_design = <0xbb8>;
+			max17048,empty = <0>;
+			reg = <0x36>;
+		};
+	};
+
+};
+
+&soc {
+	charger_controller: charger_controller {
+		status = "ok";
+	};
+
+	lge,unified_wlc{
+		status = "ok";
+	};
+};

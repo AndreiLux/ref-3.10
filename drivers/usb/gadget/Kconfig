@@ -83,7 +83,7 @@ config USB_GADGET_DEBUG_FS
 config USB_GADGET_VBUS_DRAW
 	int "Maximum VBUS Power usage (2-500 mA)"
 	range 2 500
-	default 2
+	default 500
 	help
 	   Some devices need to draw power from USB when they are
 	   configured, perhaps to operate circuitry or to recharge
@@ -318,7 +318,6 @@ config USB_S3C_HSUDC
 
 config USB_MV_UDC
 	tristate "Marvell USB2.0 Device Controller"
-	depends on GENERIC_HARDIRQS
 	help
 	  Marvell Socs (including PXA and MMP series) include a high speed
 	  USB2.0 OTG controller, which can be configured as high speed or
@@ -437,7 +436,7 @@ config USB_GOKU
 
 config USB_EG20T
 	tristate "Intel EG20T PCH/LAPIS Semiconductor IOH(ML7213/ML7831) UDC"
-	depends on PCI && GENERIC_HARDIRQS
+	depends on PCI
 	help
 	  This is a USB device driver for EG20T PCH.
 	  EG20T PCH is the platform controller hub that is used in Intel's
@@ -456,6 +455,60 @@ config USB_EG20T
 	  ML7831 is for general purpose use.
 	  ML7213/ML7831 is companion chip for Intel Atom E6xx series.
 	  ML7213/ML7831 is completely compatible for Intel EG20T PCH.
+
+config USB_CI13XXX_MSM
+	tristate "MIPS USB CI13xxx for MSM"
+	depends on ARCH_MSM
+	select USB_MSM_OTG
+	help
+	  MSM SoC has chipidea USB controller.  This driver uses
+	  ci13xxx_udc core.
+	  This driver depends on OTG driver for PHY initialization,
+	  clock management, powering up VBUS, and power management.
+	  This driver is not supported on boards like trout which
+	  has an external PHY.
+
+	  Say "y" to link the driver statically, or "m" to build a
+	  dynamically linked module called "ci13xxx_msm" and force all
+	  gadget drivers to also be dynamically linked.
+
+config USB_CI13XXX_MSM_HSIC
+	tristate "MIPS HSIC CI13xxx for MSM"
+	depends on ARCH_MSM
+	select USB_GADGET_DUALSPEED
+	help
+	  MSM SoC has chipidea USB controller.  This driver uses
+	  ci13xxx_udc core. Support USB-HSIC core.
+
+	  Say "y" to link the driver statically, or "m" to build a
+	  dynamically linked module called "ci13xxx_msm_hsic" and force all
+	  gadget drivers to also be dynamically linked.
+
+config USB_DWC3_MSM
+	tristate "DesignWare USB3.0 (DRD) Controller for MSM"
+	depends on ARCH_MSM
+	select USB_DWC3
+	select USB_GADGET_DUALSPEED
+	select USB_GADGET_SELECTED
+	help
+	  The DesignWare USB3.0 controller is a SuperSpeed USB3.0 Controller
+	  integrated into the Qualcomm MSM chipset series, supporting host,
+	  device and otg modes of operation. For more information please
+	  refer to http://www.qualcomm.com/chipsets.
+
+config USB_DWC3_OMAP
+	tristate "DesignWare USB3.0 (DRD) Controller for OMAP"
+	depends on ARCH_OMAP
+	select USB_DWC3
+	select USB_GADGET_DUALSPEED
+	select USB_GADGET_SUPERSPEED
+	select USB_GADGET_SELECTED
+	help
+	  DesignWare USB3.0 controller is a SuperSpeed USB3.0 Controller
+	  which can be configured for peripheral-only, host-only, hub-only
+	  and Dual-Role operation. This Controller was first integrated into
+	  the OMAP5 series of processors. More information about the OMAP5
+	  version of this controller, refer to http://www.ti.com/omap5.
 
 #
 # LAST -- dummy/emulated controller
@@ -818,6 +871,25 @@ config USB_G_PRINTER
 	  For more information, see Documentation/usb/gadget_printer.txt
 	  which includes sample code for accessing the device file.
 
+config USB_G_ANDROID
+	boolean "Android Composite Gadget"
+	select USB_F_ACM
+	select USB_F_SERIAL
+	select USB_LIBCOMPOSITE
+	select USB_U_SERIAL
+	help
+	  The Android Composite Gadget supports multiple USB
+	  functions: adb, acm, mass storage, mtp, accessory
+	  and rndis.
+	  Each function can be configured and enabled/disabled
+	  dynamically from userspace through a sysfs interface.
+
+config USB_ANDROID_RNDIS_DWORD_ALIGNED
+	boolean "Use double word aligned"
+	depends on USB_G_ANDROID
+	help
+		Provides dword aligned for DMA controller.
+
 if TTY
 
 config USB_CDC_COMPOSITE
@@ -972,4 +1044,285 @@ config USB_G_WEBCAM
 
 endchoice
 
+config USB_CSW_HACK
+	boolean "USB Mass storage csw hack Feature"
+	default y
+	help
+	 This csw hack feature is for increasing the performance of the mass
+	 storage
+
+config USB_MSC_PROFILING
+	bool "USB MSC performance profiling"
+	help
+	  If you say Y here, support will be added for collecting
+	  Mass-storage performance numbers at the VFS level.
+
+config MODEM_SUPPORT
+	boolean "modem support in generic serial function driver"
+	depends on USB_G_ANDROID
+	default y
+	help
+          This feature enables the modem functionality in the
+	  generic serial.
+	  adds interrupt endpoint support to send modem notifications
+	  to host.
+	  adds CDC descriptors to enumerate the generic serial as MODEM.
+	  adds CDC class requests to configure MODEM line settings.
+	  Say "y" to enable MODEM support in the generic serial driver.
+
+config RMNET_SMD_CTL_CHANNEL
+	string "RMNET control SMD channel name"
+	depends on USB_G_ANDROID && MSM_SMD
+	default ""
+	help
+	  Control SMD channel for transferring QMI messages
+
+config RMNET_SMD_DATA_CHANNEL
+	string "RMNET Data SMD channel name"
+	depends on USB_G_ANDROID && MSM_SMD
+	default ""
+	help
+	  Data SMD channel for transferring network data
+
+config RMNET_SDIO_CTL_CHANNEL
+       int "RMNET control SDIO channel id"
+       default 8
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       help
+         Control SDIO channel for transferring RMNET QMI messages
+
+config RMNET_SDIO_DATA_CHANNEL
+       int "RMNET Data SDIO channel id"
+       default 8
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       help
+         Data SDIO channel for transferring network data
+
+config RMNET_SMD_SDIO_CTL_CHANNEL
+       int "RMNET(sdio_smd) Control SDIO channel id"
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       default 8
+       help
+         Control SDIO channel for transferring QMI messages
+
+config RMNET_SMD_SDIO_DATA_CHANNEL
+       int "RMNET(sdio_smd) Data SDIO channel id"
+       default 8
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       help
+         Data SDIO channel for transferring network data
+
+config RMNET_SDIO_SMD_DATA_CHANNEL
+       string "RMNET(sdio_smd) Data SMD channel name"
+       depends on MSM_SDIO_CMUX && MSM_SDIO_DMUX
+       default "DATA40"
+       help
+	  Data SMD channel for transferring network data
+
+config USB_G_LGE_ANDROID
+	boolean "LGE Android Gadget for LG PC host Driver"
+	depends on USB_G_ANDROID
+	help
+	  Customized Android Gadget USB framework for
+	  LGE United PC host USB driver.
+
+	default n
+
+config USB_G_LGE_ANDROID_PFSC
+	boolean "Force full speed support if pif is connected in LGE Android"
+	depends on USB_G_LGE_ANDROID
+	help
+	   This feature is that USB set forcely full speed if pif cable is
+	   connected. It is only for PIF cable, not normal USB cable.
+
+	   Say y if this must be needed.
+
+	default n
+
+config USB_G_LGE_ANDROID_STORAGE_NAME
+	string "USB mass & cdrom storage device name for LGE Android"
+	depends on USB_G_LGE_ANDROID_AUTORUN
+	default "Android Platform"
+	help
+	   Name for USB mass & cdrom device name used in LGE Andoird Autorun.
+
+	   NOTE: default name is "Android Platform", need to change your
+	   board config to use other device name(e.g. in VZW devices)
+
+config USB_G_LGE_ANDROID_AUTORUN
+	boolean "Common autorun support in LGE Android"
+	depends on USB_G_LGE_ANDROID
+	help
+	  Autorun is LGE specific feature which is able to install PC host
+	  USB driver automatically on Autorun-enabled OS(Ex. Windows). For this,
+	  virtual-cdrom device is provided on LGE Android powered device.
+
+	default n
+
+config USB_G_LGE_ANDROID_AUTORUN_VZW
+	boolean "VZW specific autorun support in LGE Android"
+	depends on USB_G_LGE_ANDROID_AUTORUN
+	help
+	  It supports VZW specific autorun feature. note that this
+	  must be used in VZW devices.
+
+	  Say y if this must be needed.
+
+	default n
+config USB_G_LGE_ANDROID_AUTORUN_LGE
+	boolean "LGE specific autorun support in LGE Android"
+	depends on USB_G_LGE_ANDROID_AUTORUN
+	help
+	  It supports LGE specific autorun feature. note that this
+	  must be used in LGE(with non-VZW) devices.
+
+	  Say y if this must be needed.
+
+	default n
+config USB_G_LGE_ANDROID_VZWLAN
+	boolean "VZW USB LAN support in LGE Android"
+	depends on USB_G_LGE_ANDROID
+	help
+	  VZW's Mobile UC Application communicate with docking station
+	  via USB LAN. When device connect with docking station, it must
+	  configure usb mode to USB LAN only. This feature can configure
+	  USB LAN only mode when a device connect with docking station.
+
+	  Say y if this feature must be used.
+
+	default n
+
+config USB_G_LGE_ANDROID_CDROM_MAC_SUPPORT
+	boolean "USB CDROM support patch of LGE Android on Mac OS-X"
+	depends on USB_G_LGE_ANDROID
+	help
+	  This feature is based on Roger Quadros' patch as following;
+
+	  - usb:gadget:storage: Make CD-ROM emulation work with Mac OS-X
+	  - usb:gadget:f_mass_storage: Make CD-ROM emulation work with Mac OS-X
+
+	  ref: https://lkml.org/lkml/2011/4/5/190
+
+	  - Here is comment of committer:
+
+	  Mac OS-X expects CD-ROM TOC in raw format (i.e. format:2). It also
+	  sends the READ_TOC CDB in old style SFF8020i format. i.e. 2 format bits
+	  are encoded in MSBs of CDB byte 9.
+
+	  The first patch introduces a fsg_get_toc() helper which builds the
+	  Table of Contents (TOC) that can be used for the READ_TOC command.
+	  The remaining two patches simply make file_storage gadget and mass_storage
+	  gadget use the new helper function.
+
+	  Say y if this feature must be used.
+
+	default n
+
+config USB_G_LGE_ANDROID_NCM
+	boolean "LGE specific mirror link support in LGE Android"
+	depends on USB_G_LGE_ANDROID
+	help
+	 It supports LGE specific mirror link feature.
+
+	 Say y if this must be needed.
+
+	default n
+
+config USB_G_LGE_ANDROID_DIAG_OSP_SUPPORT
+	boolean "On Screen Phone patch for reducing packet loss on Diag"
+	depends on USB_G_LGE_ANDROID
+	help
+	 LG OSP(On Screen Phone) communicate by diag port in Qualcomm based model.
+	 But Diag port can't fully transmit OSP's packets, it often discard OSP packets
+	 when diagchar_read is operated continuously.
+	 This problem occur for only OSP packets, because OSP is implemented that
+	 OSP server and client can simultaneously transfer request/reply each other.
+	 Finally, this is read timing issue between usb and diag layer.
+
+	 Fix the issue using synchronization of read operation between usb and diag.
+	 This feature will be used in only Qualcomm based OSP supporting model.
+
+	 Say y if this must be needed.
+
+	default n
+
+config USB_DWC3_MSM_VZW_SUPPORT
+	bool "VZW specific DWC3_MSM support in LGE Android"
+	depends on USB_DWC3_MSM
+	help
+	  It supports VZW specific DWC3_MSM feature for USB BC 1.2 event.
+	  note that this must be used in VZW devices.
+
+	  Say y if this must be needed.
+
+	default n
+
+config DWC3_MSM_BC_12_VZW_SUPPORT
+	bool "Specific BC 1.2 Scenario for VZW"
+	depends on USB_G_LGE_ANDROID
+	help
+	  VZW wants that don't charging for open dcd and not configured situation.
+
+	  Say y if this must be needed.
+
+	default n
+
+config USB_G_LGE_MULTIPLE_CONFIGURATION
+	boolean "LGE Multiple Configuration"
+	help
+	  Support multiple mtp functions in multiple configuration.
+	  Add another descriptor for 2nd mtp function.
+
+	  Say y if this must be needed.
+
+	default n
+
+config USB_G_LGE_MULTIPLE_CONFIGURATION_VZW
+	boolean "LGE Multiple Configuration"
+	help
+	  Support multiple configuration for VZW.
+	  Added vzw specific SCSI cmd.
+
+	  Say y if this must be needed.
+
+	default n
+
+config USB_G_LGE_SERIALNO_REDIRECTION
+	boolean "LGE specific serial number support in LGE Android"
+	help
+	  if ro.serialno is not available, use sys device node
+
+	  Say y if this must be needed.
+
+	default n
+
+config LGE_DIAG_USB_ACCESS_LOCK
+	boolean "feature for usb diag access lock"
+	help
+	  this feature should be applied to meet usb diag lock requirement
+
+	  Say y if this must be needed.
+
+	default n
+
+config LGE_DIAG_SYNC_STATUS
+	boolean "feature for usb diag access lock"
+	help
+	  this feature should be applied to meet usb diag lock requirement
+
+	  Say y if this must be needed.
+
+	default n
+
+config USB_LGE_AUDIO_DOCK
+	boolean "Audio dock workaround"
+	help
+	  Suspend event is generated before disconnect event when disconnect cable.
+	  In that case, device makes watchdog bark before disconnect.
+	  It is maden by audio writing on blocked ep.
+	  To avoid this issue, disable ep and stop playback on suspend event.
+
+	  Say y if this must be needed.
+
+	default n
 endif # USB_GADGET

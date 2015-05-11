@@ -3,6 +3,7 @@
  *
  * Copyright (C) 1995-2009 Russell King
  * Copyright (C) 2012 ARM Ltd.
+ * Copyright (c) 2014, NVIDIA CORPORATION.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -32,10 +33,15 @@
 #include <linux/syscalls.h>
 
 #include <asm/atomic.h>
+#include <asm/debug-monitors.h>
 #include <asm/traps.h>
 #include <asm/stacktrace.h>
 #include <asm/exception.h>
 #include <asm/system_misc.h>
+#include <asm/esr.h>
+#include <asm/edac.h>
+
+#include <trace/events/exception.h>
 
 static const char *handler[]= {
 	"Synchronous Abort",
@@ -205,8 +211,6 @@ static int __die(const char *str, int err, struct thread_info *thread,
 		 TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), thread + 1);
 
 	if (!user_mode(regs) || in_interrupt()) {
-		dump_mem(KERN_EMERG, "Stack: ", regs->sp,
-			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
 		dump_backtrace(regs, tsk);
 		dump_instr(KERN_EMERG, regs);
 	}
@@ -214,7 +218,55 @@ static int __die(const char *str, int err, struct thread_info *thread,
 	return ret;
 }
 
-static DEFINE_RAW_SPINLOCK(die_lock);
+static arch_spinlock_t die_lock = __ARCH_SPIN_LOCK_UNLOCKED;
+static int die_owner = -1;
+static unsigned int die_nest_count;
+
+static unsigned long oops_begin(void)
+{
+	int cpu;
+	unsigned long flags;
+
+	oops_enter();
+
+	/* racy, but better than risking deadlock. */
+	raw_local_irq_save(flags);
+	cpu = smp_processor_id();
+	if (!arch_spin_trylock(&die_lock)) {
+		if (cpu == die_owner)
+			/* nested oops. should stop eventually */;
+		else
+			arch_spin_lock(&die_lock);
+	}
+	die_nest_count++;
+	die_owner = cpu;
+	console_verbose();
+	bust_spinlocks(1);
+	return flags;
+}
+
+static void oops_end(unsigned long flags, struct pt_regs *regs, int notify)
+{
+	if (regs && kexec_should_crash(current))
+		crash_kexec(regs);
+
+	bust_spinlocks(0);
+	die_owner = -1;
+	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
+	die_nest_count--;
+	if (!die_nest_count)
+		/* Nest count reaches zero, release the lock. */
+		arch_spin_unlock(&die_lock);
+	raw_local_irq_restore(flags);
+	oops_exit();
+
+	if (in_interrupt())
+		panic("Fatal exception in interrupt");
+	if (panic_on_oops)
+		panic("Fatal exception");
+	if (notify != NOTIFY_STOP)
+		do_exit(SIGSEGV);
+}
 
 /*
  * This function is protected against re-entrancy.
@@ -222,53 +274,100 @@ static DEFINE_RAW_SPINLOCK(die_lock);
 void die(const char *str, struct pt_regs *regs, int err)
 {
 	struct thread_info *thread = current_thread_info();
+	enum bug_trap_type bug_type = BUG_TRAP_TYPE_NONE;
+	unsigned long flags = oops_begin();
 	int ret;
 
-	oops_enter();
+	if (!user_mode(regs))
+		bug_type = report_bug(regs->pc, regs);
+	if (bug_type != BUG_TRAP_TYPE_NONE)
+		str = "Oops - BUG";
 
-	raw_spin_lock_irq(&die_lock);
-	console_verbose();
-	bust_spinlocks(1);
 	ret = __die(str, err, thread, regs);
 
-	if (regs && kexec_should_crash(thread->task))
-		crash_kexec(regs);
-
-	bust_spinlocks(0);
-	add_taint(TAINT_DIE, LOCKDEP_NOW_UNRELIABLE);
-	raw_spin_unlock_irq(&die_lock);
-	oops_exit();
-
-	if (in_interrupt())
-		panic("Fatal exception in interrupt");
-	if (panic_on_oops)
-		panic("Fatal exception");
-	if (ret != NOTIFY_STOP)
-		do_exit(SIGSEGV);
+	oops_end(flags, regs, ret);
 }
 
 void arm64_notify_die(const char *str, struct pt_regs *regs,
 		      struct siginfo *info, int err)
 {
-	if (user_mode(regs))
+	if (user_mode(regs)) {
+		current->thread.fault_address = 0;
+		current->thread.fault_code = err;
 		force_sig_info(info->si_signo, info, current);
-	else
+	} else {
 		die(str, regs, err);
+	}
+}
+
+#ifdef CONFIG_GENERIC_BUG
+int is_valid_bugaddr(unsigned long pc)
+{
+	u32 bkpt;
+
+	if (probe_kernel_address((void *)pc, bkpt))
+		return 0;
+
+	return bkpt == BUG_INSTR_VALUE;
+}
+#endif
+
+static LIST_HEAD(undef_hook);
+
+void register_undef_hook(struct undef_hook *hook)
+{
+	list_add(&hook->node, &undef_hook);
+}
+
+static int call_undef_hook(struct pt_regs *regs, unsigned int instr)
+{
+	struct undef_hook *hook;
+	int (*fn)(struct pt_regs *regs, unsigned int instr) = NULL;
+
+	list_for_each_entry(hook, &undef_hook, node)
+		if ((instr & hook->instr_mask) == hook->instr_val &&
+		    (regs->pstate & hook->pstate_mask) == hook->pstate_val)
+			fn = hook->fn;
+
+	return fn ? fn(regs, instr) : 1;
 }
 
 asmlinkage void __exception do_undefinstr(struct pt_regs *regs)
 {
+	u32 instr;
 	siginfo_t info;
 	void __user *pc = (void __user *)instruction_pointer(regs);
 
-#ifdef CONFIG_COMPAT
 	/* check for AArch32 breakpoint instructions */
-	if (compat_user_mode(regs) && aarch32_break_trap(regs) == 0)
+	if (!aarch32_break_handler(regs))
 		return;
-#endif
+	if (user_mode(regs)) {
+		if (compat_thumb_mode(regs)) {
+			if (get_user(instr, (u16 __user *)pc))
+				goto die_sig;
+			if (is_wide_instruction(instr)) {
+				u32 instr2;
+				if (get_user(instr2, (u16 __user *)pc+1))
+					goto die_sig;
+				instr <<= 16;
+				instr |= instr2;
+			}
+		} else if (get_user(instr, (u32 __user *)pc)) {
+			goto die_sig;
+		}
+	} else {
+		/* kernel mode */
+		instr = *((u32 *)pc);
+	}
 
-	if (show_unhandled_signals && unhandled_signal(current, SIGILL) &&
-	    printk_ratelimit()) {
+	if (call_undef_hook(regs, instr) == 0)
+		return;
+
+die_sig:
+	trace_undef_instr(regs, (void *)pc);
+
+	if (user_mode(regs) && show_unhandled_signals &&
+		unhandled_signal(current, SIGILL) && printk_ratelimit()) {
 		pr_info("%s[%d]: undefined instruction: pc=%p\n",
 			current->comm, task_pid_nr(current), pc);
 		dump_instr(KERN_INFO, regs);
@@ -323,6 +422,12 @@ asmlinkage void bad_mode(struct pt_regs *regs, int reason, unsigned int esr)
 	info.si_errno = 0;
 	info.si_code  = ILL_ILLOPC;
 	info.si_addr  = pc;
+
+	if (esr >> ESR_EL1_EC_SHIFT == ESR_EL1_EC_SERROR) {
+		pr_crit("System error detected. ESR.ISS = %08x\n",
+			esr & 0xffffff);
+		arm64_check_cache_ecc(NULL);
+	}
 
 	arm64_notify_die("Oops - bad mode", regs, &info, 0);
 }

@@ -94,6 +94,14 @@ static inline struct dwc3_request *next_request(struct list_head *list)
 	return list_first_entry(list, struct dwc3_request, list);
 }
 
+static inline void dwc3_gadget_move_request_list_front(struct dwc3_request *req)
+{
+	struct dwc3_ep		*dep = req->dep;
+
+	req->queued = false;
+	list_move(&req->list, &dep->request_list);
+}
+
 static inline void dwc3_gadget_move_request_queued(struct dwc3_request *req)
 {
 	struct dwc3_ep		*dep = req->dep;
@@ -118,6 +126,8 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value);
 int dwc3_send_gadget_ep_cmd(struct dwc3 *dwc, unsigned ep,
 		unsigned cmd, struct dwc3_gadget_ep_cmd_params *params);
 int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param);
+dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep,
+		struct dwc3_trb *trb);
 
 /**
  * dwc3_gadget_ep_get_transfer_index - Gets transfer index from HW

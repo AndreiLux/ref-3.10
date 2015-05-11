@@ -1,0 +1,110 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+/ {
+	aliases {
+		i2c12 = &i2c_12;
+	};
+	soc {
+		i2c_12:i2c@f9968000{ /* BLSP12, BLSP-2 QUP-5 */
+			compatible = "qcom,i2c-msm-v2";
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			reg-names = "qup_phys_addr";
+			reg = <0xf9968000 0x1000>;
+
+			interrupt-names = "qup_irq";
+			interrupts = <0 106 0>;
+
+			qcom,clk-freq-out = <100000>; // Output clock frequency (can be up to 3400000)
+			qcom,clk-freq-in = <50000000>;
+			clock-names = "iface_clk", "core_clk"; // Setup Fabric and core clocks
+			clocks = <&clock_gcc clk_gcc_blsp2_ahb_clk>, <&clock_gcc clk_gcc_blsp2_qup6_i2c_apps_clk>;
+
+			pinctrl-names = "i2c_active", "i2c_sleep"; // pin functions
+			pinctrl-0 = <&i2c_12_active>; // defined in msm8994-pinctrl.dtsi
+			pinctrl-1 = <&i2c_12_suspend>; // defined in msm8994-pinctrl.dtsi
+			qcom,noise-rjct-scl = <0>; // For noise dectection over SCL
+			qcom,noise-rjct-sda = <0>; // For noise dectection over SDC
+			dmas = <&dma_blsp2 22 64 0x20000020 0x20>, <&dma_blsp2 23 32 0x20000020 0x20>;
+			dma-names = "tx", "rx";
+			qcom,master-id = <84>;
+		};
+
+		tspp: msm_tspp@f99d8000 {
+			compatible = "qcom,msm_tspp";
+			reg = <0xf99d8000 0x1000>, /* MSM_TSIF0_PHYS */
+			      <0xf99d9000 0x1000>, /* MSM_TSIF1_PHYS */
+			      <0xf99da000 0x1000>, /* MSM_TSPP_PHYS  */
+			      <0xf99c4000 0x11000>; /* MSM_TSPP_BAM_PHYS */
+			reg-names = "MSM_TSIF0_PHYS",
+				"MSM_TSIF1_PHYS",
+				"MSM_TSPP_PHYS",
+				"MSM_TSPP_BAM_PHYS";
+			interrupts = <0 121 0>, /* TSIF_TSPP_IRQ */
+				<0 119 0>, /* TSIF0_IRQ */
+				<0 120 0>, /* TSIF1_IRQ */
+				<0 122 0>; /* TSIF_BAM_IRQ */
+			interrupt-names = "TSIF_TSPP_IRQ",
+				"TSIF0_IRQ",
+				"TSIF1_IRQ",
+				"TSIF_BAM_IRQ";
+
+			clock-names = "iface_clk", "ref_clk";
+			clocks = <&clock_gcc clk_gcc_tsif_ahb_clk>,
+				<&clock_gcc clk_gcc_tsif_ref_clk>;
+
+			qcom,msm-bus,name = "tsif";
+			qcom,msm-bus,num-cases = <2>;
+			qcom,msm-bus,num-paths = <1>;
+			qcom,msm-bus,vectors-KBps =
+					<82 512 0 0>, /* No vote */
+					<82 512 12288 24576>; /* Max. bandwidth, 2xTSIF, each max of 96Mbps */
+
+			pinctrl-names = "disabled",
+				"tsif0-mode1", "tsif0-mode2",
+				"tsif1-mode1", "tsif1-mode2",
+				"dual-tsif-mode1", "dual-tsif-mode2";
+
+			pinctrl-0 = <>;				/* disabled */
+			pinctrl-1 = <&tsif0_signals_active>;	/* tsif0-mode1 */
+			pinctrl-2 = <&tsif0_signals_active
+				&tsif0_sync_active>;		/* tsif0-mode2 */
+			pinctrl-3 = <&tsif1_signals_active>;	/* tsif1-mode1 */
+			pinctrl-4 = <&tsif1_signals_active
+				&tsif1_sync_active>;		/* tsif1-mode2 */
+			pinctrl-5 = <&tsif0_signals_active
+				&tsif1_signals_active>;		/* dual-tsif-mode1 */
+			pinctrl-6 = <&tsif0_signals_active
+				&tsif0_sync_active
+				&tsif1_signals_active
+				&tsif1_sync_active>;		/* dual-tsif-mode2 */
+		};
+	};
+};
+
+&i2c_12 {
+	tcc3535_i2c@58 {
+		compatible = "telechips,tcc3535-i2c";
+		reg = <0x58>;
+
+		clock-names = "isdbt_xo";
+		clocks = <&clock_rpm clk_div_clk3>;
+
+		isdbt_vdd_io-supply = <&pm8994_l13>;
+
+		pinctrl-names = "isdbt_gpio";
+		pinctrl-0 = <&isdbt_ctrl_pin>;
+		isdbt-fc8300,reset-gpio = <&msm_gpio 108 0x00>;
+		isdbt-fc8300,en-gpio = <&msm_gpio 109 0x00>;
+	};
+};

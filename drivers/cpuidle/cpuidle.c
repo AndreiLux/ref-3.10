@@ -19,7 +19,6 @@
 #include <linux/ktime.h>
 #include <linux/hrtimer.h>
 #include <linux/module.h>
-#include <trace/events/power.h>
 
 #include "cpuidle.h"
 
@@ -144,8 +143,6 @@ int cpuidle_idle_call(void)
 		return 0;
 	}
 
-	trace_cpu_idle_rcuidle(next_state, dev->cpu);
-
 	if (drv->states[next_state].flags & CPUIDLE_FLAG_TIMER_STOP)
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_ENTER,
 				   &dev->cpu);
@@ -159,8 +156,6 @@ int cpuidle_idle_call(void)
 	if (drv->states[next_state].flags & CPUIDLE_FLAG_TIMER_STOP)
 		clockevents_notify(CLOCK_EVT_NOTIFY_BROADCAST_EXIT,
 				   &dev->cpu);
-
-	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
 
 	/* give the governor an opportunity to reflect on the outcome */
 	if (cpuidle_curr_governor->reflect)
@@ -541,7 +536,14 @@ static void smp_callback(void *v)
 static int cpuidle_latency_notify(struct notifier_block *b,
 		unsigned long l, void *v)
 {
-	smp_call_function(smp_callback, NULL, 1);
+	const struct cpumask *cpus;
+
+	cpus = v ?: cpu_online_mask;
+
+	preempt_disable();
+	smp_call_function_many(cpus, smp_callback, NULL, 1);
+	preempt_enable();
+
 	return NOTIFY_OK;
 }
 

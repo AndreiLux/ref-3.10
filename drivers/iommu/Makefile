@@ -1,8 +1,23 @@
 obj-$(CONFIG_IOMMU_API) += iommu.o
 obj-$(CONFIG_OF_IOMMU)	+= of_iommu.o
-obj-$(CONFIG_MSM_IOMMU) += msm_iommu.o msm_iommu_dev.o
+obj-$(CONFIG_MSM_IOMMU) += msm_iommu.o msm_iommu_domains.o msm_iommu_mapping.o
+obj-$(CONFIG_MSM_IOMMU_V0) += msm_iommu-v0.o msm_iommu_dev-v0.o
+obj-$(CONFIG_MSM_IOMMU_V1) += msm_iommu-v1.o msm_iommu_dev-v1.o msm_iommu_sec.o
+obj-$(CONFIG_MSM_IOMMU_PMON) += msm_iommu_perfmon.o
+ifdef CONFIG_MSM_IOMMU_V0
+obj-$(CONFIG_MSM_IOMMU_PMON) += msm_iommu_perfmon-v0.o
+endif
+ifdef CONFIG_MSM_IOMMU_V1
+obj-$(CONFIG_MSM_IOMMU_PMON) += msm_iommu_perfmon-v1.o
+endif
+ifdef CONFIG_IOMMU_LPAE
+obj-$(CONFIG_MSM_IOMMU_V1) += msm_iommu_pagetable_lpae.o
+else
+obj-$(CONFIG_MSM_IOMMU_V1) += msm_iommu_pagetable.o
+endif
 obj-$(CONFIG_AMD_IOMMU) += amd_iommu.o amd_iommu_init.o
 obj-$(CONFIG_AMD_IOMMU_V2) += amd_iommu_v2.o
+obj-$(CONFIG_ARM_SMMU) += arm-smmu.o
 obj-$(CONFIG_DMAR_TABLE) += dmar.o
 obj-$(CONFIG_INTEL_IOMMU) += iova.o intel-iommu.o
 obj-$(CONFIG_IRQ_REMAP) += intel_irq_remapping.o irq_remapping.o

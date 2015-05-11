@@ -1,0 +1,38 @@
+/* Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+
+&i2c_5 {
+        qcom,clk-freq-out = <400000>;
+		pn547@28 {
+			compatible = "nxp,pn547";
+			reg = <0x28>;
+			status = "ok";
+			nxp,gpio_sda = <&msm_gpio 83 0x00>;
+			nxp,gpio_scl = <&msm_gpio 84 0x00>;
+			nxp,gpio_ven = <&msm_gpio 30 0x00>;
+			nxp,gpio_mode = <&msm_gpio 39 0x00>;
+			nxp,gpio_irq = <&msm_gpio 29 0x00>;
+			nxp,i2c-pull-up = <1>;
+			qcom,clk-src = "BBCLK2";
+			interrupt-parent = <&msm_gpio>;
+			interrupts = <29 0>;
+			interrupt-names = "nfc_irq";
+			pinctrl-names = "nfc_active","nfc_suspend";
+			pinctrl-0 = <&nfc_int_active &nfc_disable_active &nfc_mode_active>;
+			pinctrl-1 = <&nfc_int_suspend &nfc_disable_suspend &nfc_mode_suspend>;
+			qcom,clk-gpio = <&pm8994_gpios 10 0>;
+			clock-names = "pin_clk", "cont_clk";
+			clocks = <&clock_rpm clk_bb_clk2_pin>,
+				 <&clock_rpm clk_bb_clk2>;
+		};
+};

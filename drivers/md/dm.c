@@ -744,7 +744,7 @@ static void free_rq_clone(struct request *clone)
  * Complete the clone and the original request.
  * Must be called without queue lock.
  */
-static void dm_end_request(struct request *clone, int error)
+void dm_end_request(struct request *clone, int error)
 {
 	int rw = rq_data_dir(clone);
 	struct dm_rq_target_io *tio = clone->end_io_data;
@@ -1685,7 +1685,7 @@ static void dm_request_fn(struct request_queue *q)
 	while (!blk_queue_stopped(q)) {
 		rq = blk_peek_request(q);
 		if (!rq)
-			goto delay_and_out;
+			goto out;
 
 		/* always use block 0 to find the target for flushes for now */
 		pos = 0;
@@ -2443,7 +2443,7 @@ static void dm_wq_work(struct work_struct *work)
 static void dm_queue_flush(struct mapped_device *md)
 {
 	clear_bit(DMF_BLOCK_IO_FOR_SUSPEND, &md->flags);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 	queue_work(md->wq, &md->work);
 }
 

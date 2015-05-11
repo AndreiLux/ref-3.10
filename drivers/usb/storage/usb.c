@@ -86,6 +86,17 @@ static char quirks[128];
 module_param_string(quirks, quirks, sizeof(quirks), S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(quirks, "supplemental list of device IDs and their quirks");
 
+/*
+ * uicc_max_ratio is used to set max_ratio for uicc backing device and also
+ * used to enable strictlimit feature. If it's value is set to 0 then we do not
+ * enable strictlimit feature for UICC devices. Its default value is choosen
+ * as 20, as with this value we do not see any drop in UICC throughput
+ */
+
+#define UICC_MAX_RATIO 20
+static unsigned int uicc_max_ratio = UICC_MAX_RATIO;
+module_param(uicc_max_ratio, uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(uicc_max_ratio, "max ratio to be used with a UICC device");
 
 /*
  * The entries in this table correspond, line for line,
@@ -745,6 +756,50 @@ static int get_pipes(struct us_data *us)
 	return 0;
 }
 
+/* Initialize SCSI device auto-suspend timeout here */
+static void usb_stor_set_scsi_autosuspend(struct us_data *us)
+{
+	struct usb_device *udev = us->pusb_dev;
+	struct usb_host_config *config = udev->actconfig;
+	struct usb_host_interface *intf;
+	int i;
+
+	/*
+	 * Some USB UICC devices has Mass storage interface along
+	 * with CCID interface.  These cards are inserted all the
+	 * time.  Enable SCSI auto-suspend for such devices.
+	 */
+	for (i = 0; i < config->desc.bNumInterfaces; i++) {
+		intf = config->interface[i]->cur_altsetting;
+		if (intf->desc.bInterfaceClass == USB_CLASS_CSCID) {
+			us->sdev_autosuspend_delay = 2000; /* msec */
+			return;
+		}
+	}
+}
+
+/* Initialize SCSI block device max_ratio here */
+static void usb_stor_set_scsi_max_ratio(struct us_data *us)
+{
+	struct usb_device *udev = us->pusb_dev;
+	struct usb_host_config *config = udev->actconfig;
+	struct usb_host_interface *intf;
+	int i;
+
+	/*
+	 * Some USB UICC devices has Mass storage interface along
+	 * with CCID interface. These cards have very low througput.
+	 * Set SCSI block device max_ratio for such devices.
+	 */
+	for (i = 0; i < config->desc.bNumInterfaces; i++) {
+		intf = config->interface[i]->cur_altsetting;
+		if (intf->desc.bInterfaceClass == USB_CLASS_CSCID) {
+			us->sdev_max_ratio = uicc_max_ratio;
+			return;
+		}
+	}
+}
+
 /* Initialize all the dynamic resources we need */
 static int usb_stor_acquire_resources(struct us_data *us)
 {
@@ -820,6 +875,7 @@ static void quiesce_and_remove_host(struct us_data *us)
 
 	/* If the device is really gone, cut short reset delays */
 	if (us->pusb_dev->state == USB_STATE_NOTATTACHED) {
+		pm_suspend_ignore_children(&us->pusb_intf->dev, true);
 		set_bit(US_FLIDX_DISCONNECTING, &us->dflags);
 		wake_up(&us->delay_wait);
 	}
@@ -990,6 +1046,11 @@ int usb_stor_probe2(struct us_data *us)
 	result = usb_stor_acquire_resources(us);
 	if (result)
 		goto BadDevice;
+
+	us->sdev_autosuspend_delay = -1;
+	usb_stor_set_scsi_autosuspend(us);
+	usb_stor_set_scsi_max_ratio(us);
+
 	snprintf(us->scsi_name, sizeof(us->scsi_name), "usb-storage %s",
 					dev_name(&us->pusb_intf->dev));
 	result = scsi_add_host(us_to_host(us), dev);

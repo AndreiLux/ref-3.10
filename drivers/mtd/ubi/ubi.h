@@ -51,13 +51,14 @@
 #define UBI_NAME_STR "ubi"
 
 /* Normal UBI messages */
-#define ubi_msg(fmt, ...) pr_notice("UBI: " fmt "\n", ##__VA_ARGS__)
+#define ubi_msg(ubi_num, fmt, ...) pr_notice("UBI-%d: %s:" fmt "\n", ubi_num, \
+				__func__, ##__VA_ARGS__)
 /* UBI warning messages */
-#define ubi_warn(fmt, ...) pr_warn("UBI warning: %s: " fmt "\n",  \
-				   __func__, ##__VA_ARGS__)
+#define ubi_warn(ubi_num, fmt, ...) pr_warn("UBI-%d warning: %s: " fmt "\n",  \
+				   ubi_num, __func__, ##__VA_ARGS__)
 /* UBI error messages */
-#define ubi_err(fmt, ...) pr_err("UBI error: %s: " fmt "\n",      \
-				 __func__, ##__VA_ARGS__)
+#define ubi_err(ubi_num, fmt, ...) pr_err("UBI-%d error: %s: " fmt "\n",      \
+				 ubi_num, __func__, ##__VA_ARGS__)
 
 /* Background thread name pattern */
 #define UBI_BGT_NAME_PATTERN "ubi_bgt%dd"
@@ -90,6 +91,14 @@
  */
 #define UBI_DFS_DIR_NAME "ubi%d"
 #define UBI_DFS_DIR_LEN  (3 + 2 + 1)
+
+/*
+ * When scrub_all is triggered, all free PEBs will be scheduled for erasure.
+ * Until the bg thread performs the work, we are left with now free PEBs.
+ * To make sure we can flush the fm, UBI_FM_MAX_BLOCKS are erased synchroniusly
+ * before scrub_all is returning.
+ */
+#define NUM_PEBS_TO_SYNC_ERASE UBI_FM_MAX_BLOCKS
 
 /*
  * Error codes returned by the I/O sub-system.
@@ -452,6 +461,8 @@ struct ubi_debug_info {
  * @bgt_thread: background thread description object
  * @thread_enabled: if the background thread is enabled
  * @bgt_name: background thread name
+ * @scrub_in_progress: true while scheduling all device PEBs for scrub/erase
+ * is in progress
  *
  * @flash_size: underlying MTD device size (in bytes)
  * @peb_count: count of physical eraseblocks on the MTD device
@@ -554,6 +565,7 @@ struct ubi_device {
 	struct task_struct *bgt_thread;
 	int thread_enabled;
 	char bgt_name[sizeof(UBI_BGT_NAME_PATTERN)+2];
+	bool scrub_in_progress;
 
 	/* I/O sub-system's stuff */
 	long long flash_size;
@@ -675,6 +687,7 @@ struct ubi_ainf_volume {
  * @mean_ec: mean erase counter value
  * @ec_sum: a temporary variable used when calculating @mean_ec
  * @ec_count: a temporary variable used when calculating @mean_ec
+ * @failed_fm: set to true if fm faound invalid during attach
  * @aeb_slab_cache: slab cache for &struct ubi_ainf_peb objects
  *
  * This data structure contains the result of attaching an MTD device and may
@@ -701,6 +714,7 @@ struct ubi_attach_info {
 	int mean_ec;
 	uint64_t ec_sum;
 	int ec_count;
+	int failed_fm;
 	struct kmem_cache *aeb_slab_cache;
 };
 
@@ -817,6 +831,8 @@ int ubi_wl_put_fm_peb(struct ubi_device *ubi, struct ubi_wl_entry *used_e,
 int ubi_is_erase_work(struct ubi_work *wrk);
 void ubi_refill_pools(struct ubi_device *ubi);
 int ubi_ensure_anchor_pebs(struct ubi_device *ubi);
+int ubi_in_wl_tree(struct ubi_wl_entry *e, struct rb_root *root);
+int ubi_wl_scrub_all(struct ubi_device *ubi);
 
 /* io.c */
 int ubi_io_read(const struct ubi_device *ubi, void *buf, int pnum, int offset,
@@ -966,7 +982,7 @@ static inline void ubi_ro_mode(struct ubi_device *ubi)
 {
 	if (!ubi->ro_mode) {
 		ubi->ro_mode = 1;
-		ubi_warn("switch to read-only mode");
+		ubi_warn(ubi->ubi_num, "switch to read-only mode");
 		dump_stack();
 	}
 }

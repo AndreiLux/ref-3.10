@@ -1,0 +1,192 @@
+/* Copyright (c) 2014, The Linux Foundation. All rights reserved.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 and
+ * only version 2 as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ */
+
+/ {
+	memory {
+		ramoops_mem: ramoops_region@1ff00000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0 0x1ff00000 0 0x100000>;
+			label = "ramoops_mem";
+		};
+
+		dfps_data_mem: dfps_data_mem@0 {
+			status = "disabled";
+		};
+
+		cont_splash_mem: cont_splash_mem@0 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			reg = <0 0x03400000 0 0xc00000>;
+			label = "cont_splash_mem";
+		};
+
+		crash_fb_mem: crash_fb_mem@4000000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			reg = <0 0x04000000 0 0xc00000>;
+			label = "crash_fb_mem";
+		};
+	};
+};
+
+&soc {
+	ramoops {
+		compatible = "ramoops";
+		mem-size = <0x80000>;
+		mem-address = <0x1ff00000>;
+		record-size = <4096>;
+		console-size = <0x40000>;
+		ftrace-size = <0x40000>;
+		dump-oops = <1>;
+	};
+
+	crash_fb {
+		compatible = "crash_fb";
+		mem-addr = <0x04000000>;
+		mem-size = <0xc00000>;
+	};
+
+	bootlog {
+		compatible = "bootlog";
+	};
+
+	earjack-debugger {
+		compatible = "serial,earjack-debugger";
+		status = "ok";
+		interrupt-parent = <&msm_gpio>;
+		interrupts = <77 0x0>;
+		serial,irq-gpio = <&msm_gpio 77 0x00>;
+	};
+
+	qcom,wdt@f9017000 {
+		qcom,bark-time = <16000>;
+	};
+
+	spmi_bus: qcom,spmi@fc4c0000 {
+		compatible = "qcom,spmi-pmic-arb";
+		qcom,pmic-arb-max-peripherals = <256>;
+		qcom,pmic-arb-max-periph-interrupts = <256>;
+	};
+
+	wlan_vreg: wlan_vreg {
+		regulator-name = "wlan_vreg";
+		status = "disabled";
+	};
+
+	bt_vreg: bt_vreg {
+		regulator-name = "bt_vreg";
+		status = "disabled";
+	};
+
+	qcom,msm-thermal {
+		compatible = "qcom,msm-thermal";
+		qcom,core-control-mask = <0x36>;
+		qcom,hotplug-temp = <105>;
+		qcom,hotplug-temp-hysteresis = <40>;
+		qcom,big-hotplug-temp = <105>;
+		qcom,big-hotplug-temp-hysteresis = <40>;
+		qcom,freq-mitigation-value = <960000>;
+	};
+
+	qcom,bcl {
+		/delete-property/ qcom,bcl-hotplug-list;
+		/delete-property/ qcom,bcl-soc-hotplug-list;
+		qcom,ibat-monitor {
+			qcom,high-threshold-uamp = <3800000>;
+			qcom,vph-high-threshold-uv = <3500000>;
+			qcom,vph-low-threshold-uv = <3300000>;
+			qcom,soc-low-threshold = <10>;
+		};
+	};
+
+	lge,monitor-thermal {
+		compatible = "lge,monitor-thermal";
+		lge,hot-poll-time = <10000>;
+		lge,hot-crit-temp = <48>;
+		lge,poll-time = <60000>;
+		qcom,monitor-thermal-vadc = <&pm8994_vadc>;
+	};
+
+	sound {
+		qcom,cdc-micbias3-cfilt-sel = <0x0>;
+		qcom,cdc-micbias4-cfilt-sel = <0x0>;
+	};
+
+	charger_controller: charger_controller {
+		status = "disabled";
+		compatible = "lge,charger-controller";
+		lge,chargercontroller-current-ibat-max = <1600>;
+		lge,chargercontroller-current-limit = <450>;
+		lge,chargercontroller-current-wlc-limit = <500>;
+		lge,chargercontroller-current-ibat-max-wireless = <1200>;
+		lge,chargercontroller-current-iusb-factory = <1500>;
+		lge,chargercontroller-current-ibat-factory = <500>;
+		lge,fuelgauge-psy-name = "fuelgauge";
+		lge,chargercontroller-iusb-qc20 = <1200 1000>;
+		lge,chargercontroller-ibat-qc20 = <1910 1600>;
+
+		lge,no-init-cable = <0 0 0>;
+		lge,cable-mhl-1k = <5000 500 500>;
+		lge,cable-u-28p7k = <5500 1800 500>;
+		lge,cable-28p7k = <6000 1800 500>;
+		lge,cable-56k = <200000 1800 1800>;
+		lge,cable-100k = <239000 1800 500>;
+		lge,cable-130k = <340000 1800 1800>;
+		lge,cable-180k = <400000 1800 500>;
+		lge,cable-200k = <410000 1800 500>;
+		lge,cable-220k = <485000 1800 500>;
+		lge,cable-270k = <560000 1800 500>;
+		lge,cable-330k = <735000 1800 500>;
+		lge,cable-620k = <955000 1800 500>;
+		lge,cable-910k = <1140000 1800 1800>;
+		lge,cable-none = <1900000 1800  500>;
+
+		qcom,chg-vadc = <&pmi8994_vadc>;
+	};
+
+	lge,unified_wlc{
+		status = "disabled";
+		compatible = "lge,unified_wlc";
+		lge,wlc_full_chg = <&pmi8994_gpios 3 0>;
+		lge,wlc_rx_off = <&pmi8994_gpios 6 0>;
+	};
+};
+
+&rpm_bus {
+	rpm-regulator-ldoa19 {
+		status = "disabled";
+		pm8994_l19: regulator-l19 {
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			qcom,init-voltage = <3000000>;
+			status = "disabled";
+		};
+	};
+};
+
+&pmi8994_charger {
+	qcom,charge-unknown-battery;
+	qcom,iterm-ma = <100>;
+	qcom,fastchg-current-ma = <1600>;
+	qcom,float-voltage-mv = <4400>;
+	qcom,resume-delta-mv = <200>;
+	qcom,charging-timeout-mins = <768>;
+	qcom,bmd-pin-src="bpd_thm";
+	qcom,dc-psy-type = "Wireless";
+	qcom,dc-psy-ma = <900>;
+	qcom,usbin-vadc = <&pmi8994_vadc>;
+	/delete-property/ qcom,chg-inhibit-fg;
+	qcom,jeita-temp-hard-limit = <0>;
+	vddcx-supply = <&pm8994_s1_corner>; /* HVDCP_VDD_CX_VOTE */
+};
