@@ -905,19 +905,42 @@ static int cl_voltage_open_show(struct seq_file *buf, void *d)
 #endif
 
 #ifdef CONFIG_EXYNOS_CL_DVFS_CPU
-static int cpu_margin_get(void *data, u64 *val)
+static int atl_margin_get(void *data, u64 *val)
 {
 	pr_info("ATLAS  Limit margin : %d uV \n", cl_init.atlas_margin * PMIC_STEP);
-	pr_info("APOLLO Limit margin : %d uV \n", cl_init.apollo_margin * PMIC_STEP);
+	
+	*val = (u64)cl_init.atlas_margin;
 
 	return 0;
 }
 
-static int cpu_margin_set(void *data, u64 val)
+static int atl_margin_set(void *data, u64 val)
 {
 	int ret;
 
 	cl_init.atlas_margin = val;
+
+	ret = exynos7420_cl_dvfs_setup(cl_init.atlas_margin, cl_init.apollo_margin,
+					cl_init.g3d_margin, cl_init.mif_margin, cl_init.period);
+	if (ret)
+		pr_warn("mailbox : Do not set margin and period information\n");
+
+	return 0;
+}
+
+static int apl_margin_get(void *data, u64 *val)
+{
+	pr_info("APOLLO Limit margin : %d uV \n", cl_init.apollo_margin * PMIC_STEP);
+	
+	*val = (u64)cl_init.apollo_margin;
+
+	return 0;
+}
+
+static int apl_margin_set(void *data, u64 val)
+{
+	int ret;
+
 	cl_init.apollo_margin = val;
 
 	ret = exynos7420_cl_dvfs_setup(cl_init.atlas_margin, cl_init.apollo_margin,
@@ -933,6 +956,8 @@ static int cpu_margin_set(void *data, u64 val)
 static int g3d_margin_get(void *data, u64 *val)
 {
 	pr_info("G3D    Limit margin : %d uV \n", cl_init.g3d_margin * PMIC_STEP);
+	
+	*val = (u64)cl_init.g3d_margin;
 
 	return 0;
 }
@@ -956,6 +981,8 @@ static int g3d_margin_set(void *data, u64 val)
 static int mif_margin_get(void *data, u64 *val)
 {
 	pr_info("MIF    Limit margin : %d uV \n", cl_init.mif_margin * PMIC_STEP);
+	
+	*val = (u64)cl_init.mif_margin;
 
 	return 0;
 }
@@ -1105,13 +1132,14 @@ static const struct file_operations cl_voltage_fops = {
 #endif
 
 #ifdef CONFIG_EXYNOS_CL_DVFS_CPU
-DEFINE_SIMPLE_ATTRIBUTE(cpu_margin_fops, cpu_margin_get, cpu_margin_set, "%llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(atl_margin_fops, atl_margin_get, atl_margin_set, "%llu\n");
+DEFINE_SIMPLE_ATTRIBUTE(apl_margin_fops, apl_margin_get, apl_margin_set, "%llu\n");
 #endif
 #ifdef CONFIG_EXYNOS_CL_DVFS_G3D
-DEFINE_SIMPLE_ATTRIBUTE(g3d_margin_fops, g3d_margin_get, g3d_margin_set, "%llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(g3d_margin_fops, g3d_margin_get, g3d_margin_set, "%llu\n");
 #endif
 #ifdef CONFIG_EXYNOS_CL_DVFS_MIF
-DEFINE_SIMPLE_ATTRIBUTE(mif_margin_fops, mif_margin_get, mif_margin_set, "%llx\n");
+DEFINE_SIMPLE_ATTRIBUTE(mif_margin_fops, mif_margin_get, mif_margin_set, "%llu\n");
 #endif
 #if (defined(CONFIG_EXYNOS_CL_DVFS_CPU) || defined(CONFIG_EXYNOS_CL_DVFS_G3D) || defined(CONFIG_EXYNOS_CL_DVFS_MIF))
 DEFINE_SIMPLE_ATTRIBUTE(cl_enable_fops, cl_enable_get, cl_enable_set, "%llx\n");
@@ -1131,7 +1159,8 @@ void mailbox_debugfs(void)
 	debugfs_create_file("cl_voltage", 0644, den, NULL, &cl_voltage_fops);
 #endif
 #ifdef CONFIG_EXYNOS_CL_DVFS_CPU
-	debugfs_create_file("cpu_cl_margin", 0644, den, NULL, &cpu_margin_fops);
+	debugfs_create_file("atl_cl_margin", 0644, den, NULL, &atl_margin_fops);
+	debugfs_create_file("apl_cl_margin", 0644, den, NULL, &apl_margin_fops);
 #endif
 #ifdef CONFIG_EXYNOS_CL_DVFS_G3D
 	debugfs_create_file("g3d_cl_margin", 0644, den, NULL, &g3d_margin_fops);
