@@ -251,10 +251,10 @@ static void nvavp_ref_del(struct nvavp_info* nvavp)
 
 static void nvavp_ref_dump(struct nvavp_info *nvavp)
 {
-    struct nvavp_ref *ref;
+    struct nvavp_ref *ref, *tmp;
 
     pr_info("nvavp: Dumping reference list:\n");
-    list_for_each_entry(ref, &nvavp->ref_list, list)
+    list_for_each_entry_safe(ref, tmp, &nvavp->ref_list, list)
     {
         if (pid_task(ref->pid, PIDTYPE_PGID))
         {
