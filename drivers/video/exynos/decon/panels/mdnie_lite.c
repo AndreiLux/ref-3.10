@@ -60,10 +60,32 @@ static struct class *mdnie_class;
 /* Do not call mdnie write directly */
 static int mdnie_write(struct mdnie_info *mdnie, struct mdnie_table *table)
 {
-	int ret = 0;
+	int i, j, ret = 0;
 
-	if (mdnie->enable)
-		ret = mdnie->ops.write(mdnie->data, table->tune, MDNIE_CMD_MAX);
+	if (mdnie->enable) {
+		for (j = 0; j < MDNIE_CMD_MAX; j++) {
+			for(i = 0; i < table->tune[j].size; i++) {
+				if (j == MDNIE_CMD1)
+					cmds[j].sequence[i] = mdnie_reg_hook(i, table->tune[j].sequence[i]);
+				else
+					cmds[j].sequence[i] = table->tune[j].sequence[i];
+			}
+			cmds[j].size = table->tune[j].size;
+			cmds[j].sleep = table->tune[j].sleep;
+		}
+		
+#if 0
+		for (j = 0; j < MDNIE_CMD_MAX; j++) {
+			for(i = 0; i < cmds[j].size; i++) {
+				printk("mdnie: value on CMD%d: 0x%2X ( %3d ) val: 0x%2X ( %3d )\t -> val: 0x%2X ( %3d )\n",
+					j, i, i, 
+					table->tune[j].sequence[i], table->tune[j].sequence[i],
+					cmds[j].sequence[i], cmds[j].sequence[i]);
+			}
+		}
+#endif
+		ret = mdnie->ops.write(mdnie->data, cmds, MDNIE_CMD_MAX);
+	}
 
 	return ret;
 }
@@ -143,7 +165,7 @@ static void mdnie_update_sequence(struct mdnie_info *mdnie, struct mdnie_table *
 	return;
 }
 
-static void mdnie_update(struct mdnie_info *mdnie)
+void mdnie_update(struct mdnie_info *mdnie)
 {
 	struct mdnie_table *table = NULL;
 
@@ -758,6 +780,8 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 	mdnie_register_fb(mdnie);
 
 	mdnie->enable = 1;
+	
+	init_mdnie_control(mdnie);
 	mdnie_update(mdnie);
 
 	dev_info(mdnie->dev, "registered successfully\n");

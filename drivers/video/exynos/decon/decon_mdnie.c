@@ -47,6 +47,7 @@
 
 static int mdnie_write_table(struct mdnie_info *mdnie, struct mdnie_table *table)
 {
+	int i = 0;
 
 	if (IS_ERR_OR_NULL(table->tune[0].sequence)) {
 		dev_err(mdnie->dev, "mdnie sequence %s is null, %lx\n",
@@ -55,7 +56,13 @@ static int mdnie_write_table(struct mdnie_info *mdnie, struct mdnie_table *table
 	}
 
 	mutex_lock(&mdnie->dev_lock);
-	mdnie->lpd_store_data = table->tune[0].sequence;
+	mdnie->lpd_store_data = mdnie_sequence_hook(table->tune[0].sequence);
+	
+	while (mdnie->lpd_store_data[i] != END_SEQ) {
+		mdnie->lpd_store_data[i+1] = mdnie_reg_hook(mdnie->lpd_store_data[i],mdnie->lpd_store_data[i+1]);
+		i += 2;
+	}
+	
 	mdnie->need_update = 1;
 	mutex_unlock(&mdnie->dev_lock);
 	return 0;
@@ -115,7 +122,7 @@ static void mdnie_update_sequence(struct mdnie_info *mdnie, struct mdnie_table *
 	return;
 }
 
-static void mdnie_update(struct mdnie_info *mdnie)
+void mdnie_update(struct mdnie_info *mdnie)
 {
 	struct mdnie_table *table = NULL;
 
@@ -774,6 +781,7 @@ struct mdnie_info* decon_mdnie_register(void)
 	mdnie_register_fb(mdnie);
 
 	mdnie->enable = 0;
+	init_mdnie_control(mdnie);
 	mdnie_update(mdnie);
 
 	dev_info(mdnie->dev, "registered successfully\n");
