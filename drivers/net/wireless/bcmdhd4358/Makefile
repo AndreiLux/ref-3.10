@@ -135,7 +135,8 @@ ifeq ($(CONFIG_BROADCOM_WIFI_RESERVED_MEM),y)
   DHDCFLAGS += -DENHANCED_STATIC_BUF
   DHDCFLAGS += -DSTATIC_WL_PRIV_STRUCT
 ifeq ($(BUS_IFACE_PCIE),y)
-  DHDCFLAGS += -DDHD_USE_STATIC_IOCTLBUF
+  # Use preallocated IOCTL and EVENT buffer
+  DHDCFLAGS += -DDHD_USE_STATIC_CTRLBUF
 endif
 ifeq ($(CONFIG_BCMDHD_DEBUG_PAGEALLOC),y)
 # Preallocation for memory dump
@@ -166,6 +167,12 @@ DHDCFLAGS += -DUSE_INITIAL_SHORT_DWELL_TIME
 
 # Japan ccode revision will be fixed by nvram's value
 DHDCFLAGS += -DKEEP_JP_REGREV
+
+# NAN feature
+ifeq ($(CONFIG_WL_NAN),y)
+DHDCFLAGS += -DWL_NAN
+endif
+
 
 ##############################
 # Android Platform Definition
@@ -592,7 +599,7 @@ DHDOFILES := dhd_pno.o dhd_common.o dhd_ip.o dhd_custom_gpio.o dhd_custom_sec.o 
 	bcmutils.o bcmwifi_channels.o hndpmu.o linux_osl.o sbutils.o siutils.o \
 	wl_android.o wl_cfg80211.o wl_cfgp2p.o wl_cfg_btcoex.o wldev_common.o \
 	wl_linux_mon.o wl_roam.o dhd_linux_platdev.o dhd_linux_wq.o wl_cfg_btcoex.o \
-	hnd_pktq.o hnd_pktpool.o wl_cfgnan.o bcmxtlv.o
+	hnd_pktq.o hnd_pktpool.o
 
 
 ifeq ($(BUS_IFACE_SDIO),y)
@@ -612,6 +619,11 @@ ifeq ($(CONFIG_SPI_SC8810),y)
 DHDOFILES += bcmsdspi_linux.o bcmspibrcm.o
 DHDOFILES :=$(filter-out bcmsdh_sdmmc.o,$(DHDOFILES))
 DHDOFILES :=$(filter-out bcmsdh_sdmmc_linux.o,$(DHDOFILES))
+endif
+
+# NAN feature
+ifeq ($(CONFIG_WL_NAN),y)
+DHDOFILES += wl_cfgnan.o bcmxtlv.o
 endif
 
 dhd-y := $(DHDOFILES)

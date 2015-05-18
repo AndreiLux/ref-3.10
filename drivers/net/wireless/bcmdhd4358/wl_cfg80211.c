@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfg80211.c 530648 2015-01-30 12:57:32Z $
+ * $Id: wl_cfg80211.c 541592 2015-03-17 06:43:29Z $
  */
 /* */
 #include <typedefs.h>
@@ -409,6 +409,15 @@ static void wl_cfg80211_scan_abort(struct bcm_cfg80211 *cfg);
 static s32 wl_notify_escan_complete(struct bcm_cfg80211 *cfg,
 	struct net_device *ndev, bool aborted, bool fw_abort);
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 2, 0)) || defined(WL_COMPAT_WIRELESS)
+#if defined(CONFIG_ARCH_MSM) && defined(TDLS_MGMT_VERSION2)
+static s32 wl_cfg80211_tdls_mgmt(struct wiphy *wiphy, struct net_device *dev,
+	u8 *peer, u8 action_code, u8 dialog_token, u16 status_code,
+	u32 peer_capability, const u8 *buf, size_t len);
+#else /* CONFIG_ARCH_MSM && TDLS_MGMT_VERSION2 */
+static s32 wl_cfg80211_tdls_mgmt(struct wiphy *wiphy, struct net_device *dev,
+	u8 *peer, u8 action_code, u8 dialog_token, u16 status_code,
+	const u8 *buf, size_t len);
+#endif /* CONFIG_ARCH_MSM && TDLS_MGMT_VERSION2 */
 static s32 wl_cfg80211_tdls_oper(struct wiphy *wiphy, struct net_device *dev,
 	u8 *peer, enum nl80211_tdls_operation oper);
 #endif /* LINUX_VERSION > KERNEL_VERSION(3,2,0) || WL_COMPAT_WIRELESS */
@@ -2033,7 +2042,10 @@ static s32 wl_cfg80211_handle_ifdel(struct bcm_cfg80211 *cfg, wl_if_event_info *
 #endif /* PROP_TXSTATUS_VSDB */
 	}
 
+	dhd_net_if_lock(ndev);
 	wl_cfg80211_remove_if(cfg, if_event_info->ifidx, ndev);
+	dhd_net_if_unlock(ndev);
+
 	return BCME_OK;
 }
 
@@ -5153,7 +5165,8 @@ wl_cfg80211_get_station(struct wiphy *wiphy, struct net_device *dev,
 			if (err) {
 				WL_ERR(("Failed to get current BSSID\n"));
 			} else {
-				if (memcmp(mac, &bssid.octet, ETHER_ADDR_LEN) != 0) {
+				if (!ETHER_ISNULLADDR(&bssid.octet) &&
+						memcmp(mac, &bssid.octet, ETHER_ADDR_LEN) != 0) {
 					/* roaming is detected */
 					err = wl_cfg80211_delayed_roam(cfg, dev, &bssid);
 					if (err)
@@ -8379,6 +8392,7 @@ static struct cfg80211_ops wl_cfg80211_ops = {
 	.mgmt_tx_cancel_wait = wl_cfg80211_mgmt_tx_cancel_wait,
 #endif /* WL_SUPPORT_BACKPORTED_KPATCHES || KERNEL_VERSION >= (3,2,0) */
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 2, 0)) || defined(WL_COMPAT_WIRELESS)
+	.tdls_mgmt = wl_cfg80211_tdls_mgmt,
 	.tdls_oper = wl_cfg80211_tdls_oper,
 #endif /* LINUX_VERSION > VERSION(3, 2, 0) || WL_COMPAT_WIRELESS */
 #ifdef WL_SUPPORT_ACS
@@ -9110,6 +9124,8 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				scb_val_t scbval;
 				u8 *curbssid = wl_read_prof(cfg, ndev, WL_PROF_BSSID);
 				s32 reason = 0;
+				struct ether_addr bssid;
+
 				if (event == WLC_E_DEAUTH_IND || event == WLC_E_DISASSOC_IND)
 					reason = ntoh32(e->reason);
 				/* WLAN_REASON_UNSPECIFIED is used for hang up event in Android */
@@ -9119,8 +9135,16 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 					"event : %d, reason=%d from " MACDBG "\n",
 					ndev->name, event, ntoh32(e->reason),
 					MAC2STRDBG((u8*)(&e->addr)));
-				if (!cfg->roam_offload &&
-					memcmp(curbssid, &e->addr, ETHER_ADDR_LEN) != 0) {
+
+				/* roam offload does not synch BSSID always, get it from dongle */
+				if (cfg->roam_offload) {
+					if (wldev_ioctl(ndev, WLC_GET_BSSID, &bssid, sizeof(bssid),
+						false) == BCME_OK) {
+						curbssid = (u8 *)&bssid;
+					}
+				}
+
+				if (memcmp(curbssid, &e->addr, ETHER_ADDR_LEN) != 0) {
 					WL_ERR(("BSSID of event is not the connected BSSID"
 						"(ignore it) cur: " MACDBG " event: " MACDBG"\n",
 						MAC2STRDBG(curbssid), MAC2STRDBG((u8*)(&e->addr))));
@@ -9269,13 +9293,13 @@ wl_notify_roaming_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				return err;
 			}
 			wl_bss_roaming_done(cfg, ndev, e, data);
+			memcpy(&cfg->last_roamed_addr, (void *)&e->addr, ETHER_ADDR_LEN);
 		} else {
 			wl_bss_connect_done(cfg, ndev, e, data, true);
 		}
 		act = true;
 		wl_update_prof(cfg, ndev, e, &act, WL_PROF_ACT);
 		wl_update_prof(cfg, ndev, NULL, (void *)&e->addr, WL_PROF_BSSID);
-		memcpy(&cfg->last_roamed_addr, (void *)&e->addr, ETHER_ADDR_LEN);
 	}
 	return err;
 }
@@ -10247,6 +10271,21 @@ wl_notify_rx_mgmt_frame(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 				}
 			}
 			(void) sd_act_frm;
+#ifdef WLTDLS
+		} else if (mgmt_frame[DOT11_MGMT_HDR_LEN] == TDLS_AF_CATEGORY) {
+			WL_ERR((" TDLS Action Frame Received type = %d \n",
+				mgmt_frame[DOT11_MGMT_HDR_LEN + 1]));
+
+			if (mgmt_frame[DOT11_MGMT_HDR_LEN + 1] == TDLS_ACTION_SETUP_RESP) {
+				cfg->tdls_mgmt_frame = mgmt_frame;
+				cfg->tdls_mgmt_frame_len = mgmt_frame_len;
+				cfg->tdls_mgmt_freq = freq;
+				return 0;
+			}
+
+		} else if (mgmt_frame[DOT11_MGMT_HDR_LEN] == TDLS_VENDOR_SPECIFIC) {
+			WL_ERR((" TDLS Vendor Specific Received type \n"));
+#endif
 		}
 #ifdef QOS_MAP_SET
 		else if (mgmt_frame[DOT11_MGMT_HDR_LEN] == DOT11_ACTION_CAT_QOS) {
@@ -10772,6 +10811,12 @@ static void wl_deinit_priv_mem(struct bcm_cfg80211 *cfg)
 		kfree(cfg->ap_info);
 		cfg->ap_info = NULL;
 	}
+#ifdef WLTDLS
+	if (cfg->tdls_mgmt_frame) {
+		kfree(cfg->tdls_mgmt_frame);
+		cfg->tdls_mgmt_frame = NULL;
+	}
+#endif /* WLTDLS */
 }
 
 static s32 wl_create_event_handler(struct bcm_cfg80211 *cfg)
@@ -11987,8 +12032,10 @@ static s32 wl_event_handler(void *data)
 
 	while (down_interruptible (&tsk->sema) == 0) {
 		SMP_RD_BARRIER_DEPENDS();
-		if (tsk->terminated)
+		if (tsk->terminated) {
+			DHD_OS_WAKE_UNLOCK(cfg->pub);
 			break;
+		}
 		while ((e = wl_deq_event(cfg))) {
 			WL_DBG(("event type (%d), if idx: %d\n", e->etype, e->emsg.ifidx));
 			/* All P2P device address related events comes on primary interface since
@@ -13212,12 +13259,28 @@ wl_tdls_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #ifdef PCIE_FULL_DONGLE
 		dhd_tdls_update_peer_info(ndev, TRUE, (uint8 *)&e->addr.octet[0]);
 #endif /* PCIE_FULL_DONGLE */
+		if (cfg->tdls_mgmt_frame) {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)) || defined(WL_COMPAT_WIRELESS)
+			cfg80211_rx_mgmt(cfgdev, cfg->tdls_mgmt_freq, 0,
+					cfg->tdls_mgmt_frame, cfg->tdls_mgmt_frame_len,
+					GFP_ATOMIC);
+#else
+			cfg80211_rx_mgmt(cfgdev, cfg->tdls_mgmt_freq,
+					cfg->tdls_mgmt_frame, cfg->tdls_mgmt_frame_len,
+					GFP_ATOMIC);
+#endif /* LINUX_VERSION >= VERSION(3,4,0) || WL_COMPAT_WIRELESS */
+		}
 		msg = " TDLS PEER CONNECTED ";
 		break;
 	case WLC_E_TDLS_PEER_DISCONNECTED :
 #ifdef PCIE_FULL_DONGLE
 		dhd_tdls_update_peer_info(ndev, FALSE, (uint8 *)&e->addr.octet[0]);
 #endif /* PCIE_FULL_DONGLE */
+		if (cfg->tdls_mgmt_frame) {
+			kfree(cfg->tdls_mgmt_frame);
+			cfg->tdls_mgmt_frame = NULL;
+			cfg->tdls_mgmt_freq = 0;
+		}
 		msg = "TDLS PEER DISCONNECTED ";
 		break;
 	}
@@ -13231,6 +13294,70 @@ wl_tdls_event_handler(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #endif  /* WLTDLS */
 
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(3, 2, 0)) || defined(WL_COMPAT_WIRELESS)
+#if defined(CONFIG_ARCH_MSM) && defined(TDLS_MGMT_VERSION2)
+static s32 wl_cfg80211_tdls_mgmt(struct wiphy *wiphy, struct net_device *dev,
+	u8 *peer, u8 action_code, u8 dialog_token, u16 status_code,
+	u32 peer_capability, const u8 *buf, size_t len)
+#else /* CONFIG_ARCH_MSM && TDLS_MGMT_VERSION2 */
+static s32 wl_cfg80211_tdls_mgmt(struct wiphy *wiphy, struct net_device *dev,
+	u8 *peer, u8 action_code, u8 dialog_token, u16 status_code,
+	const u8 *buf, size_t len)
+#endif /* CONFIG_ARCH_MSM && TDLS_MGMT_VERSION2 */
+{
+	s32 ret = 0;
+#ifdef WLTDLS
+	struct bcm_cfg80211 *cfg;
+	tdls_wfd_ie_iovar_t info;
+	memset(&info, 0, sizeof(tdls_wfd_ie_iovar_t));
+	cfg = g_bcm_cfg;
+
+#if defined(CONFIG_ARCH_MSM) && defined(TDLS_MGMT_VERSION2)
+	/* Some customer platform back ported this feature from kernel 3.15 to kernel 3.10
+	* and that cuases build error
+	*/
+	BCM_REFERENCE(peer_capability);
+#endif  /* CONFIG_ARCH_MSM && TDLS_MGMT_VERSION2 */
+
+	switch (action_code) {
+	/* We need to set TDLS Wifi Display IE to firmware
+	 * using tdls_wfd_ie iovar
+	 */
+	case WLAN_TDLS_SET_PROBE_WFD_IE:
+		WL_ERR(("%s WLAN_TDLS_SET_PROBE_WFD_IE\n", __FUNCTION__));
+		info.mode = TDLS_WFD_PROBE_IE_TX;
+		memcpy(&info.data, buf, len);
+		info.length = len;
+		break;
+	case WLAN_TDLS_SET_SETUP_WFD_IE:
+		WL_ERR(("%s WLAN_TDLS_SET_SETUP_WFD_IE\n", __FUNCTION__));
+		info.mode = TDLS_WFD_IE_TX;
+		memcpy(&info.data, buf, len);
+		info.length = len;
+		break;
+	case WLAN_TDLS_SET_WFD_ENABLED:
+		WL_ERR(("%s WLAN_TDLS_SET_MODE_WFD_ENABLED\n", __FUNCTION__));
+		dhd_tdls_set_mode((dhd_pub_t *)(cfg->pub), true);
+		goto out;
+	case WLAN_TDLS_SET_WFD_DISABLED:
+		WL_ERR(("%s WLAN_TDLS_SET_MODE_WFD_DISABLED\n", __FUNCTION__));
+		dhd_tdls_set_mode((dhd_pub_t *)(cfg->pub), false);
+		goto out;
+	default:
+		WL_ERR(("Unsupported action code : %d\n", action_code));
+		goto out;
+	}
+	ret = wldev_iovar_setbuf(dev, "tdls_wfd_ie", &info, sizeof(info),
+		cfg->ioctl_buf, WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);
+
+	if (ret) {
+		WL_ERR(("tdls_wfd_ie error %d\n", ret));
+	}
+
+out:
+#endif /* WLTDLS */
+	return ret;
+}
+
 static s32
 wl_cfg80211_tdls_oper(struct wiphy *wiphy, struct net_device *dev,
 	u8 *peer, enum nl80211_tdls_operation oper)
@@ -13239,35 +13366,51 @@ wl_cfg80211_tdls_oper(struct wiphy *wiphy, struct net_device *dev,
 #ifdef WLTDLS
 	struct bcm_cfg80211 *cfg;
 	tdls_iovar_t info;
+	dhd_pub_t *dhdp;
+	bool tdls_auto_mode = false;
 	cfg = g_bcm_cfg;
+	dhdp = (dhd_pub_t *)(cfg->pub);
 	memset(&info, 0, sizeof(tdls_iovar_t));
 	if (peer)
 		memcpy(&info.ea, peer, ETHER_ADDR_LEN);
 	switch (oper) {
 	case NL80211_TDLS_DISCOVERY_REQ:
-		/* turn on TDLS */
-		ret = dhd_tdls_enable(dev, true, false, NULL);
-		if (ret < 0)
-			return ret;
-		info.mode = TDLS_MANUAL_EP_DISCOVERY;
+		/* If the discovery request is broadcast then we need to set
+		 * info.mode to Tunneled Probe Request
+		 */
+		if (memcmp(peer, (const uint8 *)BSSID_BROADCAST, ETHER_ADDR_LEN) == 0) {
+			info.mode = TDLS_MANUAL_EP_WFD_TPQ;
+			WL_ERR(("%s TDLS TUNNELED PRBOBE REQUEST\n", __FUNCTION__));
+		} else {
+			info.mode = TDLS_MANUAL_EP_DISCOVERY;
+		}
 		break;
 	case NL80211_TDLS_SETUP:
-		/* auto mode on */
-		ret = dhd_tdls_enable(dev, true, true, (struct ether_addr *)peer);
-		if (ret < 0)
-			return ret;
+		if (dhdp->tdls_mode == true) {
+			info.mode = TDLS_MANUAL_EP_CREATE;
+			tdls_auto_mode = false;
+			ret = dhd_tdls_enable(dev, false, tdls_auto_mode, NULL);
+			if (ret < 0) {
+				return ret;
+			}
+		} else {
+			tdls_auto_mode = true;
+		}
 		break;
 	case NL80211_TDLS_TEARDOWN:
 		info.mode = TDLS_MANUAL_EP_DELETE;
-		/* auto mode off */
-		ret = dhd_tdls_enable(dev, true, false, (struct ether_addr *)peer);
-		if (ret < 0)
-			return ret;
 		break;
 	default:
 		WL_ERR(("Unsupported operation : %d\n", oper));
 		goto out;
 	}
+
+	/* turn on TDLS */
+	ret = dhd_tdls_enable(dev, true, tdls_auto_mode, NULL);
+	if (ret < 0) {
+		return ret;
+	}
+
 	if (info.mode) {
 		ret = wldev_iovar_setbuf(dev, "tdls_endpoint", &info, sizeof(info),
 			cfg->ioctl_buf, WLC_IOCTL_MAXLEN, &cfg->ioctl_buf_sync);

@@ -356,3 +356,10 @@ config DISABLE_SAVE_CAPACITY_MAX
 	  capacity_max is saved in /efs/FactoryApp/batt_capacity_max
 	  capacity_max is restored after boot up
 	  You can find the code in healthd
+
+config FIX_CHG_FQ_4MHZ
+	bool "fix charging frequency 4MHz"
+	default n
+	depends on CHARGER_MAX77843
+	help
+	  Say Y to fix charging frequency 4MHz

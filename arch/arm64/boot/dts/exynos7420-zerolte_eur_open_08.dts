@@ -11,22 +11,19 @@
 
 /dts-v1/;
 #include "exynos7420-zero_common.dtsi"
-#include "exynos7420-zeroflte_eur_battery_08.dtsi"
-#include "exynos7420-zeroflte_gpio_06.dtsi"
-#include "exynos7420-zerolte_modem-shannon_ds.dtsi"
+#include "exynos7420-zerolte_battery_06.dtsi"
+#include "exynos7420-zerolte_gpio_08.dtsi"
+#include "exynos7420-zerolte_modem-shannon.dtsi"
 #include "exynos7420-zerolte_fingerprint-sensor_00.dtsi"
-#include "exynos7420-zeroflte_motor.dtsi"
-#include "exynos7420-zeroflte_svcled.dtsi"
 #include "exynos7420-zerolte_mst.dtsi"
-
 / {
-	model = "Samsung ZERO-F LTE EUR rev06 board based on Exynos7420(EVT1), mPOP";
+	model = "Samsung ZERO LTE EUR rev07 board based on Exynos7420(EVT1), mPOP";
 	model_info-chip = <7420>;
 	model_info-platform = "android";
 	model_info-subtype = "samsung";
-	model_info-hw_rev = <10>;
-	model_info-hw_rev_end = <11>;
-	compatible = "samsung,ZERO-F LTE EUR EVT1 mPOP,r06", "samsung,exynos7420";
+	model_info-hw_rev = <11>;
+	model_info-hw_rev_end = <255>;
+	compatible = "samsung,ZERO LTE EUR EVT1 mPOP,r07", "samsung,exynos7420";
 
 	spi_0: spi@14d20000 {
 		/delete-property/ dma-mode;
@@ -285,14 +282,15 @@
 			ssp-mcu-req = <&gpf4 5 0x01>;
 			ssp-mcu-resp = <&gpf4 4 0x00>;
 			ssp-acc-position = <0>;
-			ssp-mag-position = <0>;
+			ssp-mag-position = <6>;
 			ssp-sns-combination = <0>;
+			ssp-acc-type = <1>;
 			ssp,prox-hi_thresh = <2000>;
 			ssp,prox-low_thresh = <1400>;
 			ssp-ap-rev = <1>;
-			ssp-mag-array = <10213 (-360) 154 (-206) 8673 (-59) (-66) (-59) 10479>; /* Only for YAS532 */
+			ssp-mag-array = <9930 866 (-228) 263 9197 121 (-135) 387 10378>;
 			ssp-hw-rev = <3>;
-			ssp-glass-type = <0>;
+			ssp-glass-type = <1>;
 
 			controller-data {
 				cs-gpio = <&gpd6 3 0>;
@@ -350,11 +348,11 @@
 
 	audio_pdata {
 		compatible = "samsung,audio-pdata";
-
+		
 		seamless_voicewakeup;
 		status = "okay";
 	};
-
+	
 	antenna_switch {
 		status = "okay";
 		compatible = "antenna_switch";
@@ -362,7 +360,7 @@
 		pinctrl-0 = <&antenna_switch_en>;
 		antenna_switch,gpio_antenna_switch = <&gpr3 6 0>;
 	};
-
+	
 	pinctrl@10580000 {
 		codec_irq: codec-irq {
 			samsung,pins = "gpa2-5";
@@ -403,13 +401,13 @@
 			samsung,pin-function = <0>;
 			samsung,pin-pud = <0>;
 			samsung,pin-drv = <0>;
-		};		
+		};
 		antenna_switch_en: antenna-switch-en {
                         samsung,pins = "gpr3-6";
                         samsung,pin-function = <1>;
                         samsung,pin-pud = <0>;
                         samsung,pin-val = <0>;
-                };		
+                };
 	};
 
 	hsi2c@13640000 {
@@ -570,10 +568,9 @@
 				};
 
 				ldo21_reg: LDO21 {
-					regulator-name = "vtouch_3.3v";
+					regulator-name = "key_led";
 					regulator-min-microvolt = <3300000>;
 					regulator-max-microvolt = <3300000>;
-					regulator-boot-on;
 				};
 
 				ldo22_reg: LDO22 {
@@ -775,74 +772,44 @@
 		};
 	};
 
-	pinctrl@13470000 {
-		/* touchkey i2c*/
-		cfg_i2c: cfg-i2c {
-			samsung,pins = "gpd1-3", "gpd1-2";
-			samsung,pin-function = <3>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <0>;
-		};
-		cfg_gpio: cfg_gpio {
-			samsung,pins = "gpd1-3", "gpd1-2";
-			samsung,pin-function = <0>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <0>;
-		};
-	};
-
-	pinctrl@10580000 {
-		/* touchkey interrupt*/
-		cfg_irq: cfg-irq {
-			samsung,pins = "gpa0-0";
-			samsung,pin-function = <0xf>;
-			samsung,pin-pud = <3>;
-			samsung,pin-drv = <0>;
-		};
-		cfg_input: cfg-input {
-			samsung,pins = "gpa0-0";
-			samsung,pin-function = <0>;
-			samsung,pin-pud = <1>;
-			samsung,pin-drv = <0>;
-		};
-		sub_det: sub-det {
-			samsung,pins = "gpa3-0";
-			samsung,pin-function = <0>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <0>;
-		};
-	};
-
-	hsi2c@14E70000 {
+	sec_thermistor@0 {
 		status = "okay";
-		pinctrl-names = "default","on_i2c","off_i2c";
-		pinctrl-0 = <&hs_i2c3_bus>;
-		pinctrl-1 = <&cfg_i2c>;
-		pinctrl-2 = <&cfg_gpio>;
-		touchkey@20 {
-			pinctrl-names = "on_irq","off_irq","sub_det";
-			pinctrl-0 = <&cfg_irq>;
-			pinctrl-1 = <&cfg_input>;
-			pinctrl-2 = <&sub_det>;
-			compatible = "cypress,cypress_touchkey";
-			reg = <0x20>;
-			interrupts = <0 0 0>;
-			interrupt-parent = <&gpa0>;
-			cypress,sda-gpio = <&gpd1 2 0>;
-			cypress,scl-gpio = <&gpd1 3 0>;
-			cypress,irq-gpio = <&gpa0 0 1>;
-			cypress,sub-det = <&gpa3 0 0>;
-			cypress,ap-io-power = "true";
-			cypress,ic-stabilizing-time = <150>;
-			cypress,boot-on-ldo = "true";
-			cypress,fw_path = "cypress/cypress_zerof.fw";
-		};
+
+		adc_array = <205 216 227 238 249 260 271 282 293 303
+			314 324 335 346 356 366 377 388 398 408
+			418 436 454 472 489 506 520 534 548 561
+			575 588 602 619 636 655 674 697 720 737
+			754 775 796 819 842 857 872 904 936 953
+			974 993 1012 1031 1050 1070 1087 1104 1121 1138
+			1155 1175 1205 1232 1259 1286 1306 1326 1345 1365
+			1385 1403 1421 1439 1457 1475 1492 1509 1526 1543
+			1560 1579 1598 1616 1635 1654 1669 1684 1699 1713
+			1728 1740 1753 1766 1778 1790 1798 1806 1814 1822
+			1830 1839 1848 1856 1864 1872 1880 1888 1896 1904
+			1912>;
+	};
+
+	sec_thermistor@1 {
+		status = "okay";
+
+		adc_array = <205 216 227 238 249 260 271 282 293 303
+			314 324 335 346 356 366 377 388 398 408
+			418 436 454 472 489 506 520 534 548 561
+			575 588 602 619 636 655 674 697 720 737
+			754 775 796 819 842 857 872 904 936 953
+			974 993 1012 1031 1050 1070 1087 1104 1121 1138
+			1155 1175 1205 1232 1259 1286 1306 1326 1345 1365
+			1385 1403 1421 1439 1457 1475 1492 1509 1526 1543
+			1560 1579 1598 1616 1635 1654 1669 1684 1699 1713
+			1728 1740 1753 1766 1778 1790 1798 1806 1814 1822
+			1830 1839 1848 1856 1864 1872 1880 1888 1896 1904
+			1912>;
 	};
 
 	hsi2c@14E10000 {
 		touchscreen@20 {
-			stm,firmware_name = "tsp_stm/stm_z1.fw";
-			stm,project_name = "ZEROF", "G920";
+			stm,num_touchkey = <2>;
+			stm,regulator_tk_led = "key_led";
 		};
 	};
 
@@ -855,19 +822,15 @@
 		vqmmc-supply = <&ldo2_reg>;
 	};
 
-	decon_0: decon_fb {
-		gpio_pcd = <&gpa1 2 0>;
-	};
-
 	dsim_0: dsim@0x13900000 {
 		gpios = <&gpr3 0 0x1>;
 		regulator_30V = "VCC_3.0V_LCD";
 		regulator_18V = "VCC_DISPLAY_1.8V";
 		regulator_16V = "VDD_1P6_DDR";
-		lcd_info = <&s6e3ha2_wqhd>;
+		lcd_info = <&s6e3hf2_wqhd>;
 	};
 
-	s6e3ha2_wqhd: s6e3ha2_wqhd_panel {
+	s6e3hf2_wqhd: s6e3hf2_wqhd_panel {
 		mode = <2>;
 		resolution = <1440 2560>;
 		size = <63 112>;
@@ -879,9 +842,5 @@
 		mic = <1>;
 		mic_ver = <2>;
 		type_of_ddi = <0>;
-	};
-
-	simslot_count {
-		status = "okay";
 	};
 };

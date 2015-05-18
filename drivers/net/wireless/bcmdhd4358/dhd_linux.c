@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_linux.c 532160 2015-02-05 06:12:24Z $
+ * $Id: dhd_linux.c 541327 2015-03-16 11:08:22Z $
  */
 
 #include <typedefs.h>
@@ -1491,6 +1491,12 @@ static int dhd_set_suspend(int value, dhd_pub_t *dhd)
 				 * each third DTIM for better power savings.  Note that
 				 * one side effect is a chance to miss BC/MC packet.
 				 */
+#ifdef WLTDLS
+				/* Do not set bcn_li_ditm on WFD mode */
+				if (dhd->tdls_mode) {
+					bcn_li_dtim = 0;
+				} else
+#endif /* WLTDLS */
 				bcn_li_dtim = dhd_get_suspend_bcn_li_dtim(dhd);
 				bcm_mkiovar("bcn_li_dtim", (char *)&bcn_li_dtim,
 					4, iovbuf, sizeof(iovbuf));
@@ -2080,7 +2086,7 @@ dhd_ifadd_event_handler(void *handle, void *event_info, u8 event)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0))
 	vwdev = kzalloc(sizeof(*vwdev), GFP_KERNEL);
 	if (unlikely(!vwdev)) {
-		WL_ERR(("Could not allocate wireless device\n"));
+		DHD_ERROR(("%s: Could not allocate wireless device\n", __FUNCTION__));
 		goto done;
 	}
 	primary_ndev = dhd->pub.info->iflist[0]->net;
@@ -3004,7 +3010,12 @@ dhd_rx_frame(dhd_pub_t *dhdp, int ifidx, void *pktbuf, int numpkt, uint8 chan)
 #endif /* PNO_SUPPORT */
 
 #ifdef DHD_DONOT_FORWARD_BCMEVENT_AS_NETWORK_PKT
+#if defined(BCMPCIE) && defined(CONFIG_DHD_USE_STATIC_BUF) && \
+	defined(DHD_USE_STATIC_CTRLBUF)
+			PKTFREE_STATIC(dhdp->osh, pktbuf, FALSE);
+#else
 			PKTFREE(dhdp->osh, pktbuf, FALSE);
+#endif /* BCMPCIE && CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 			continue;
 #endif /* DHD_DONOT_FORWARD_BCMEVENT_AS_NETWORK_PKT */
 		} else {
@@ -5577,6 +5588,49 @@ int dhd_tdls_enable(struct net_device *dev, bool tdls_on, bool auto_on, struct e
 		ret = BCME_ERROR;
 	return ret;
 }
+
+int
+dhd_tdls_set_mode(dhd_pub_t *dhd, bool wfd_mode)
+{
+	char iovbuf[WLC_IOCTL_SMLEN];
+	int ret = 0;
+	bool auto_on = false;
+	uint32 mode =  wfd_mode;
+
+#ifdef CUSTOMER_HW4
+	if (wfd_mode) {
+		auto_on = false;
+	} else {
+		auto_on = true;
+	}
+#else
+	auto_on = false;
+#endif
+	ret = _dhd_tdls_enable(dhd, false, auto_on, NULL);
+	if (ret < 0) {
+		DHD_ERROR(("%s: Disable tdls_auto_op failed. %d\n", __FUNCTION__, ret));
+		return ret;
+	}
+
+
+	bcm_mkiovar("tdls_wfd_mode", (char *)&mode, sizeof(mode),
+			iovbuf, sizeof(iovbuf));
+	if (((ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, iovbuf,
+			sizeof(iovbuf), TRUE, 0)) < 0) &&
+			(ret != BCME_UNSUPPORTED)) {
+		DHD_ERROR(("%s: tdls_wfd_mode faile_wfd_mode %d\n", __FUNCTION__, ret));
+		return ret;
+	}
+
+	ret = _dhd_tdls_enable(dhd, true, auto_on, NULL);
+	if (ret < 0) {
+		DHD_ERROR(("%s: enable tdls_auto_op failed. %d\n", __FUNCTION__, ret));
+		return ret;
+	}
+
+	dhd->tdls_mode = mode;
+	return ret;
+}
 #ifdef PCIE_FULL_DONGLE
 void dhd_tdls_update_peer_info(struct net_device *dev, bool connect, uint8 *da)
 {
@@ -5854,11 +5908,11 @@ dhd_preinit_ioctls(dhd_pub_t *dhd)
 #endif /* PKT_FILTER_SUPPORT */
 #ifdef WLTDLS
 	dhd->tdls_enable = FALSE;
+	dhd_tdls_set_mode(dhd, false);
 #endif /* WLTDLS */
 	dhd->suspend_bcn_li_dtim = CUSTOM_SUSPEND_BCN_LI_DTIM;
 	DHD_TRACE(("Enter %s\n", __FUNCTION__));
 	dhd->op_mode = 0;
-	dhd->memdump_enabled = DUMP_DISABLED;
 #ifdef CUSTOMER_HW4
 	if (!dhd_validate_chipid(dhd)) {
 		DHD_ERROR(("%s: CONFIG_BCMXXX and CHIP ID(%x) is mismatched\n",
@@ -9209,6 +9263,9 @@ int dhd_os_check_wakelock_all(dhd_pub_t *pub)
 	if (dhd && (wake_lock_active(&dhd->wl_wifi) ||
 		wake_lock_active(&dhd->wl_wdwake) ||
 		wake_lock_active(&dhd->wl_rxwake) ||
+#ifdef BCMPCIE_OOB_HOST_WAKE
+		wake_lock_active(&dhd->wl_intrwake) ||
+#endif /* BCMPCIE_OOB_HOST_WAKE */
 		wake_lock_active(&dhd->wl_ctrlwake))) {
 		DHD_ERROR(("%s wakelock_counter %d\n", __FUNCTION__, dhd->wakelock_counter));
 		return 1;

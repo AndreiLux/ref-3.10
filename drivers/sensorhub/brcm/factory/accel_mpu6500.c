@@ -18,8 +18,13 @@
 /* factory Sysfs                                                         */
 /*************************************************************************/
 
+#define INV_ID		0
 #define VENDOR		"INVENSENSE"
 #define CHIP_ID		"MPU6500"
+
+#define STM_ID		1
+#define VENDOR_STM	"STM"
+#define CHIP_ID_STM	"K6DS3TR"
 
 #define CALIBRATION_FILE_PATH	"/efs/FactoryApp/calibration_data"
 #define CALIBRATION_DATA_AMOUNT	20
@@ -32,13 +37,23 @@
 static ssize_t accel_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", VENDOR);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (data->acc_type == STM_ID)
+		return sprintf(buf, "%s\n", VENDOR_STM);
+	else
+		return sprintf(buf, "%s\n", VENDOR);
 }
 
 static ssize_t accel_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (data->acc_type == STM_ID)
+		return sprintf(buf, "%s\n", CHIP_ID_STM);
+	else
+		return sprintf(buf, "%s\n", CHIP_ID);
 }
 
 int accel_open_calibration(struct ssp_data *data)

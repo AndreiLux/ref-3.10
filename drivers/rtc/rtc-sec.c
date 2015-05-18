@@ -122,7 +122,7 @@ static int s2m_tm_to_data(struct rtc_time *tm, u8 *data)
 static int s2m_rtc_update(struct s2m_rtc_info *info,
 				 enum S2M_RTC_OP op)
 {
-	u8 data, rtc_update_reg;
+	u8 data;
 	int ret;
 
 	if (!info || !info->iodev) {
@@ -160,14 +160,6 @@ static int s2m_rtc_update(struct s2m_rtc_info *info,
 				__func__, ret, data);
 	else
 		usleep_range(1000, 1000);
-
-	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &rtc_update_reg);
-
-	if (ret < 0) {
-		dev_err(info->dev, "%s: fail to read update reg(%d)\n", __func__, ret);
-	}
-
-	pr_info("%s: RTC_UPDATE_REGISTER check : 0x%02x\n", __func__, rtc_update_reg);
 
 	return ret;
 }
@@ -548,6 +540,7 @@ static int s2m_rtc_set_alarm_boot(struct device *dev,
 {
 	struct s2m_rtc_info *info = dev_get_drvdata(dev);
 	u8 data[7];
+	u8 rtcwake;
 	int ret;
 
 	mutex_lock(&info->lock);
@@ -564,7 +557,7 @@ static int s2m_rtc_set_alarm_boot(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &info->update_reg);
+	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &rtcwake);
 	if (ret < 0)
 	{
 		printk(KERN_INFO "%s: read fail \n", __func__);
@@ -572,11 +565,11 @@ static int s2m_rtc_set_alarm_boot(struct device *dev,
 	}
 
 	if (alrm->enabled)
-		info->update_reg |= RTC_WAKE_MASK;
+		rtcwake |= RTC_WAKE_MASK;
 	else
-		info->update_reg &= ~RTC_WAKE_MASK;
+		rtcwake &= ~RTC_WAKE_MASK;
 
-	ret = sec_rtc_write(info->iodev, S2M_RTC_UPDATE, (char)info->update_reg);
+	ret = sec_rtc_write(info->iodev, S2M_RTC_UPDATE, (char)rtcwake);
 
 	if (ret < 0) {
 		dev_err(info->dev, "%s: fail to write update reg(%d)\n",

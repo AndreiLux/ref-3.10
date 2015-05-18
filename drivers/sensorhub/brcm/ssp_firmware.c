@@ -15,9 +15,12 @@
 #include "ssp.h"
 
 #ifdef CONFIG_SENSORS_SSP_K6DS3TR
-#define SSP_FIRMWARE_REVISION_BCM	15040900
-#else
-#define SSP_FIRMWARE_REVISION_BCM	15042101
+#define SSP_FIRMWARE_REVISION_BCM	15042700
+#elif defined (CONFIG_SENSORS_SSP_VLTE)
+#undef SSP_FIRMWARE_REVISION_BCM
+#define SSP_FIRMWARE_REVISION_BCM	15042000
+#else // ZERO
+#define SSP_FIRMWARE_REVISION_BCM	15042900
 #endif
 unsigned int get_module_rev(struct ssp_data *data)
 {

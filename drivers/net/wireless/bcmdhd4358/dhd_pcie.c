@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_pcie.c 533992 2015-02-12 06:55:52Z $
+ * $Id: dhd_pcie.c 539248 2015-03-06 04:50:53Z $
  */
 
 
@@ -155,7 +155,8 @@ enum {
 	IOV_DB1_FOR_MB,
 	IOV_FLOW_PRIO_MAP,
 	IOV_RXBOUND,
-	IOV_TXBOUND
+	IOV_TXBOUND,
+	IOV_HANGREPORT
 };
 
 
@@ -191,6 +192,7 @@ const bcm_iovar_t dhdpcie_iovars[] = {
 	{"flow_prio_map", IOV_FLOW_PRIO_MAP,	0,	IOVT_UINT32,	0 },
 	{"rxbound",     IOV_RXBOUND,    0,      IOVT_UINT32,    0 },
 	{"txbound",     IOV_TXBOUND,    0,      IOVT_UINT32,    0 },
+	{"fw_hang_report", IOV_HANGREPORT,	0,	IOVT_BOOL,	0 },
 	{NULL, 0, 0, 0, 0 }
 };
 
@@ -3317,6 +3319,17 @@ dhdpcie_bus_doiovar(dhd_bus_t *bus, const bcm_iovar_t *vi, uint32 actionid, cons
 
 	case IOV_SVAL(IOV_RXBOUND):
 		dhd_rxbound = (uint)int_val;
+		break;
+
+	case IOV_SVAL(IOV_HANGREPORT):
+		bus->dhd->hang_report = bool_val;
+		DHD_ERROR(("%s: Set hang_report as %d\n",
+			__FUNCTION__, bus->dhd->hang_report));
+		break;
+
+	case IOV_GVAL(IOV_HANGREPORT):
+		int_val = (int32)bus->dhd->hang_report;
+		bcopy(&int_val, arg, val_size);
 		break;
 
 	default:
