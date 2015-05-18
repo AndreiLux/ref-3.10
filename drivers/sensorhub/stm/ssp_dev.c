@@ -243,12 +243,6 @@ static int ssp_parse_dt(struct device *dev,
 		    data->glass_type = 0;
 #endif
 
-	/* acc type */
-    	if (of_property_read_u32(np, "ssp-acc-type", &data->acc_type))
-		    data->acc_type = 0;
-
-	ssp_info("acc-type = %d", data->acc_type);
-
 	/* mag matrix */
 	if (of_property_read_u8_array(np, "ssp,mag-array",
 		data->pdc_matrix, sizeof(data->pdc_matrix))) {
@@ -304,7 +298,7 @@ static int ssp_suspend(struct device *dev)
 		ssp_errf("MSG2SSP_AP_STATUS_SUSPEND failed");
 
 	data->bTimeSyncing = false;
-	disable_irq_nosync(data->iIrq);
+	disable_irq(data->iIrq);
 	return 0;
 }
 

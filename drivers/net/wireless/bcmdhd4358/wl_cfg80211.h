@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfg80211.h 530648 2015-01-30 12:57:32Z $
+ * $Id: wl_cfg80211.h 539956 2015-03-10 12:20:45Z $
  */
 
 /**
@@ -659,6 +659,11 @@ struct bcm_cfg80211 {
 	uint8	 *up_table;	/* user priority table, size is UP_TABLE_MAX */
 #endif /* QOS_MAP_SET */
 	struct ether_addr last_roamed_addr;
+#ifdef WLTDLS
+	u8 *tdls_mgmt_frame;
+	u32 tdls_mgmt_frame_len;
+	s32 tdls_mgmt_freq;
+#endif /* WLTDLS */
 };
 
 

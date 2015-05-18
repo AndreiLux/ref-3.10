@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd.h 531053 2015-02-02 07:23:56Z $
+ * $Id: dhd.h 539956 2015-03-10 12:20:45Z $
  */
 
 /****************
@@ -465,6 +465,9 @@ typedef struct dhd_pub {
 	char vars_ccode[WLC_CNTRY_BUF_SZ];
 	uint vars_regrev;
 #endif /* KEEP_JP_REGREV */
+#ifdef WLTDLS
+	uint32 tdls_mode;
+#endif
 } dhd_pub_t;
 #if defined(CUSTOMER_HW4)
 #define MAX_RESCHED_CNT 600
@@ -1114,6 +1117,7 @@ void dhd_arp_offload_add_ip(dhd_pub_t *dhd, uint32 ipaddr, int idx);
 #endif /* ARP_OFFLOAD_SUPPORT */
 #ifdef WLTDLS
 int dhd_tdls_enable(struct net_device *dev, bool tdls_on, bool auto_on, struct ether_addr *mac);
+int dhd_tdls_set_mode(dhd_pub_t *dhd, bool wfd_mode);
 #ifdef PCIE_FULL_DONGLE
 void dhd_tdls_update_peer_info(struct net_device *dev, bool connect_disconnect, uint8 *addr);
 #endif /* PCIE_FULL_DONGLE */

@@ -51,5 +51,5 @@ int exynos_pcie_restore_config(struct pci_dev *dev);
 int exynos_pcie_pm_suspend(int ch_num);
 int exynos_pcie_pm_resume(int ch_num);
 int exynos_pcie_disable_irq(int ch_num);
-void exynos_pcie_rxelecidle_toggle(int ch_num);
+
 #endif

@@ -109,6 +109,13 @@ config WLAIBSS
 	---help---
 	  This is a configuration for Oxygen Network.
 
+config WL_NAN
+	bool "NAN Feature"
+	depends on (BCM4354 || BCM4358)
+	default n
+	---help---
+	  This is a configuration for NAN Feature.
+
 config BCMDHD_PCIE
 	bool "Enable PCIe I/F Support"
 	depends on (BCM4354 || BCM4358)

@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_msgbuf.c 531053 2015-02-02 07:23:56Z $
+ * $Id: dhd_msgbuf.c 539963 2015-03-10 12:42:38Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -935,26 +935,28 @@ dhd_pktid_map_fini(dhd_pktid_map_handle_t *handle)
 					/* This could be a callback registered with dhd_pktid_map */
 					DMA_UNMAP(osh, locker->physaddr, locker->len,
 						locker->dma, 0, 0);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-					if (locker->buf_type == BUFF_TYPE_IOCTL_RX) {
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+					if (locker->buf_type == BUFF_TYPE_IOCTL_RX ||
+						locker->buf_type == BUFF_TYPE_EVENT_RX) {
 						PKTFREE_STATIC(osh, (ulong*)locker->pkt, FALSE);
 					} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 						PKTFREE(osh, (ulong*)locker->pkt, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 					}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 				} else {
 					DHD_ERROR(("%s: Invalid phyaddr 0\n", __FUNCTION__));
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-					if (locker->buf_type == BUFF_TYPE_IOCTL_RX) {
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+					if (locker->buf_type == BUFF_TYPE_IOCTL_RX ||
+						locker->buf_type == BUFF_TYPE_EVENT_RX) {
 						PKTINVALIDATE_STATIC(osh, (ulong*)locker->pkt);
 					} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 						PKTFREE(osh, (ulong*)locker->pkt, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 					}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 				}
 			}
 		}
@@ -1033,26 +1035,28 @@ dhd_pktid_map_clear(dhd_pktid_map_handle_t *handle)
 			if (!PHYSADDRISZERO(locker->physaddr)) {
 				DMA_UNMAP(osh, locker->physaddr, locker->len,
 					locker->dma, 0, 0);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-				if (locker->buf_type == BUFF_TYPE_IOCTL_RX) {
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+				if (locker->buf_type == BUFF_TYPE_IOCTL_RX ||
+					locker->buf_type == BUFF_TYPE_EVENT_RX) {
 					PKTFREE_STATIC(osh, (ulong*)locker->pkt, FALSE);
 				} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 					PKTFREE(osh, (ulong*)locker->pkt, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 				}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 			} else {
 				DHD_ERROR(("%s: Invalid phyaddr 0\n", __FUNCTION__));
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-				if (locker->buf_type == BUFF_TYPE_IOCTL_RX) {
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+				if (locker->buf_type == BUFF_TYPE_IOCTL_RX ||
+					locker->buf_type == BUFF_TYPE_EVENT_RX) {
 					PKTINVALIDATE_STATIC(osh, (ulong*)locker->pkt);
 				} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 					PKTFREE(osh, (ulong*)locker->pkt, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 				}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 			}
 		}
 #if defined(DHD_PKTID_AUDIT_ENABLED)
@@ -1877,26 +1881,28 @@ dhd_prot_packet_free(dhd_pub_t *dhd, uint32 pktid, uint8 buf_type)
 			} else {
 				DMA_UNMAP(dhd->osh, pa, (uint) pa_len, DMA_RX, 0, 0);
 			}
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-			if (buf_type == BUFF_TYPE_IOCTL_RX) {
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+			if (buf_type == BUFF_TYPE_IOCTL_RX ||
+				buf_type == BUFF_TYPE_EVENT_RX) {
 				PKTFREE_STATIC(dhd->osh, PKTBUF, FALSE);
 			} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 				PKTFREE(dhd->osh, PKTBUF, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 			}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 		} else {
 			DHD_ERROR(("%s: Invalid phyaddr 0\n", __FUNCTION__));
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-			if (buf_type == BUFF_TYPE_IOCTL_RX) {
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+			if (buf_type == BUFF_TYPE_IOCTL_RX ||
+				buf_type == BUFF_TYPE_EVENT_RX) {
 				PKTINVALIDATE_STATIC(dhd->osh, PKTBUF);
 			} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 				PKTFREE(dhd->osh, PKTBUF, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 			}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 		}
 	}
 	return;
@@ -1910,7 +1916,21 @@ dhd_prot_packet_get(dhd_pub_t *dhd, uint32 pktid, uint8 buf_type)
 	uint32 pa_len;
 	PKTBUF = PKTID_TO_NATIVE(dhd->prot->pktid_map_handle, pktid, pa, pa_len, buf_type);
 	if (PKTBUF) {
-		DMA_UNMAP(dhd->osh, pa, (uint) pa_len, DMA_RX, 0, 0);
+		if (!PHYSADDRISZERO(pa)) {
+			if (buf_type == BUFF_TYPE_DATA_TX) {
+				DMA_UNMAP(dhd->osh, pa, (uint) pa_len, DMA_TX, 0, 0);
+			} else {
+				DMA_UNMAP(dhd->osh, pa, (uint) pa_len, DMA_RX, 0, 0);
+			}
+		} else {
+			DHD_ERROR(("%s: Invalid phyaddr 0\n", __FUNCTION__));
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+			if (buf_type == BUFF_TYPE_IOCTL_RX ||
+				buf_type == BUFF_TYPE_EVENT_RX) {
+				PKTINVALIDATE_STATIC(dhd->osh, PKTBUF);
+			}
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
+		}
 	}
 
 	return PKTBUF;
@@ -2099,15 +2119,11 @@ dhd_prot_rxbufpost_ctrl(dhd_pub_t *dhd, bool event_buf)
 		pktsz = DHD_FLOWRING_IOCTL_BUFPOST_PKTSZ;
 	}
 
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-	if (!event_buf) {
-		p = PKTGET_STATIC(dhd->osh, pktsz, FALSE);
-	} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
-		p = PKTGET(dhd->osh, pktsz, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-	}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+	p = PKTGET_STATIC(dhd->osh, pktsz, FALSE);
+#else
+	p = PKTGET(dhd->osh, pktsz, FALSE);
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 
 	if (p == NULL) {
 		DHD_ERROR(("%s:%d: PKTGET for %s rxbuf failed\n",
@@ -2122,12 +2138,10 @@ dhd_prot_rxbufpost_ctrl(dhd_pub_t *dhd, bool event_buf)
 
 		DHD_ERROR(("Invalid phyaddr 0\n"));
 		ASSERT(0);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-		if (!event_buf) {
-			PKTINVALIDATE_STATIC(dhd->osh, p);
-			return -1;
-		}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+		PKTINVALIDATE_STATIC(dhd->osh, p);
+		return -1;
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 		goto free_pkt_return;
 	}
 
@@ -2188,15 +2202,11 @@ dhd_prot_rxbufpost_ctrl(dhd_pub_t *dhd, bool event_buf)
 	return 1;
 
 free_pkt_return:
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-	if (!event_buf) {
-		PKTFREE_STATIC(dhd->osh, p, FALSE);
-	} else {
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
-		PKTFREE(dhd->osh, p, FALSE);
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
-	}
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
+	PKTFREE_STATIC(dhd->osh, p, FALSE);
+#else
+	PKTFREE(dhd->osh, p, FALSE);
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 
 	return -1;
 }
@@ -3482,11 +3492,11 @@ dhdmsgbuf_cmplt(dhd_pub_t *dhd, uint32 id, uint32 len, void* buf, void* retbuf)
 			bcopy(PKTDATA(dhd->osh, pkt), buf, len);
 		}
 		if (pkt) {
-#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_IOCTLBUF)
+#if defined(CONFIG_DHD_USE_STATIC_BUF) && defined(DHD_USE_STATIC_CTRLBUF)
 			PKTFREE_STATIC(dhd->osh, pkt, FALSE);
 #else
 			PKTFREE(dhd->osh, pkt, FALSE);
-#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTLBUF */
+#endif /* CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_CTRLBUF */
 		}
 	} else {
 		DHD_GENERAL_LOCK(dhd, flags);

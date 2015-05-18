@@ -1,7 +1,22 @@
-BCM4358 DHD 1.47.20 for Android Lollipop Zero Project
+BCM4358 DHD 1.47.23 for Android Lollipop Zero Project
 Notes: 
 - Must sync up DHD and FW for additional message to eliminate spurious D0 interrupt.
 . additional message to eliminate spurious D0 interrupt is enabled from DHD 1.47.20 and FW 7.112.20.5/7.112.20.2(IBSS) 
+
+2015.3.19 - DHD 1.47.23
+Kernel Panic
+   - CSP:858385 Fixed synchronization problem when called the wl_cfg80211_remove_if() function 
+   - CSP:882298 Enabled preallocated event buffer for NOC error issue
+
+Others
+   - CSP:825124 Added WFD over TDLS feature
+   - CSP:882004 Avoid roaming event blocking case when Roaming Offload is enabled
+   - CSP:886586 Block roam event for NULL BSSID when Roaming Offload is enabled
+   - CSP:895974 Fixed Send Hang event for Livelock error on SLSI platform
+   - CSP:900148 Fixed wake lock unreleased issue
+   - Fixed Dongle memory dump Initial value
+   - Fixed EAP-FAST re-association failure with Cisco AP
+   - Moved NAN feature selection to Kconfig
 
 
 2015.2.16 - DHD 1.47.20

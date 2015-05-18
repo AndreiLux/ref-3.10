@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: linux_osl.h 530472 2015-01-30 04:21:42Z $
+ * $Id: linux_osl.h 539666 2015-03-09 07:22:56Z $
  */
 
 #ifndef _linux_osl_h_
@@ -334,7 +334,7 @@ extern int osl_error(int bcmerror);
 #define	PKTFREE_STATIC	PKTFREE
 #endif /* CONFIG_DHD_USE_STATIC_BUF */
 #if defined(BCMPCIE) && defined(CONFIG_DHD_USE_STATIC_BUF) && \
-	defined(DHD_USE_STATIC_IOCTLBUF)
+	defined(DHD_USE_STATIC_CTRLBUF)
 #define PKTINVALIDATE_STATIC(osh, skb)		osl_pktinvalidate_static((osh), (skb))
 #endif /* BCMPCIE && CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTL_BUF */
 #define	PKTDATA(osh, skb)		({BCM_REFERENCE(osh); (((struct sk_buff*)(skb))->data);})
@@ -536,7 +536,7 @@ extern void *osl_pktget_static(osl_t *osh, uint len);
 extern void osl_pktfree_static(osl_t *osh, void *skb, bool send);
 extern void osl_pktclone(osl_t *osh, void **pkt);
 #if defined(BCMPCIE) && defined(CONFIG_DHD_USE_STATIC_BUF) && \
-	defined(DHD_USE_STATIC_IOCTLBUF)
+	defined(DHD_USE_STATIC_CTRLBUF)
 extern void osl_pktinvalidate_static(osl_t *osh, void *p);
 #endif /* BCMPCIE && CONFIG_DHD_USE_STATIC_BUF && DHD_USE_STATIC_IOCTL_BUF */
 

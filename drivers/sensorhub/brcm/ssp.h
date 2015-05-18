@@ -657,6 +657,7 @@ struct ssp_data {
 #ifdef CONFIG_SENSORS_MULTIPLE_GLASS_TYPE
 	u32 glass_type;
 #endif
+	int acc_type;
 };
 
 struct ssp_big {

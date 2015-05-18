@@ -22,7 +22,6 @@ extern int exynos_pcie_pm_resume(int ch_num);
 extern int exynos_pcie_save_config(struct pci_dev *dev);
 extern int exynos_pcie_restore_config(struct pci_dev *dev);
 
-extern void exynos_pcie_rxelecidle_toggle(int ch_num);
 /* Write only sysfs attributes */
 static DEVICE_ATTR(MHI_M3, S_IWUSR, NULL, sysfs_init_M3);
 static DEVICE_ATTR(MHI_M0, S_IWUSR, NULL, sysfs_init_M0);
@@ -211,7 +210,7 @@ MHI_STATUS mhi_turn_off_pcie_link(mhi_device_ctxt *mhi_dev_ctxt)
 		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
 				"Failed to save pcie config space: %x\n", r);
 	}
-	exynos_pcie_rxelecidle_toggle(0);
+
 	r = pci_set_power_state(mhi_dev_ctxt->dev_info->pcie_device, PCI_D3hot);
 	if (r) {
 		mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
