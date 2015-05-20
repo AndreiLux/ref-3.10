@@ -42,7 +42,10 @@
 
 #define PROC_DIR	"bluetooth/sleep"
 
-#define TX_TIMER_INTERVAL	1
+/* 5 seconds of Min CPU configurations during resume */
+#define DEFAULT_RESUME_CPU_TIMEOUT	5000000
+
+#define TX_TIMER_INTERVAL 5
 
 /* Macro to enable or disable debug logging */
 /* #define BLUEDROID_PM_DBG */
