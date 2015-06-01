@@ -1869,6 +1869,7 @@ void tcp_clear_retrans(struct tcp_sock *tp)
 void tcp_enter_loss(struct sock *sk, int how)
 {
 	const struct inet_connection_sock *icsk = inet_csk(sk);
+	struct inet_connection_sock *icsk1 = inet_csk(sk);
 	struct tcp_sock *tp = tcp_sk(sk);
 	struct sk_buff *skb;
 	bool new_recovery = false;
@@ -1882,7 +1883,40 @@ void tcp_enter_loss(struct sock *sk, int how)
 		tp->snd_ssthresh = icsk->icsk_ca_ops->ssthresh(sk);
 		tcp_ca_event(sk, CA_EVENT_LOSS);
 	}
+	if (icsk->icsk_MMSRB == 1)
+	{
+		#ifdef CONFIG_MTK_NET_LOGGING 
+	    printk("[mtk_net][mmspb] tcp_enter_loss snd_cwnd=%u, snd_cwnd_cnt=%u\n", tp->snd_cwnd, tp->snd_cwnd_cnt);
+        #endif
+            if (tp->mss_cache != 0)
+                tp->snd_cwnd = (tp->rcv_wnd / tp->mss_cache);
+            else
+            {
+                tp->snd_cwnd = (tp->rcv_wnd / tp->advmss);
+            }
+		
+            if (tp->snd_ssthresh > 16)
+            {
+                tp->snd_cwnd = tp->snd_ssthresh / 2;//set snd_cwnd is half of default snd_ssthresh
+            }
+            else
+            {
+                tp->snd_cwnd = tp->snd_ssthresh / 2 + 4;
+            }
+            #ifdef CONFIG_MTK_NET_LOGGING 
+            printk("[mtk_net][mmspb] tcp_enter_loss update snd_cwnd=%u\n", tp->snd_cwnd);
+            #endif
+            icsk1->icsk_MMSRB = 0;
+            #ifdef CONFIG_MTK_NET_LOGGING 
+            printk("[mtk_net][mmspb] tcp_enter_loss set icsk_MMSRB=0\n");
+            #endif
+	}
+        else
+        {
 	tp->snd_cwnd	   = 1;
+        }	
+  
+	//tp->snd_cwnd	   = 1;
 	tp->snd_cwnd_cnt   = 0;
 	tp->snd_cwnd_stamp = tcp_time_stamp;
 
@@ -1945,7 +1979,7 @@ static bool tcp_check_sack_reneging(struct sock *sk, int flag)
 		icsk->icsk_retransmits++;
 		tcp_retransmit_skb(sk, tcp_write_queue_head(sk));
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-					  icsk->icsk_rto, TCP_RTO_MAX);
+					  icsk->icsk_rto, sysctl_tcp_rto_max);
 		return true;
 	}
 	return false;
@@ -1994,7 +2028,7 @@ static bool tcp_pause_early_retransmit(struct sock *sk, int flag)
 		return false;
 
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_EARLY_RETRANS, delay,
-				  TCP_RTO_MAX);
+				  sysctl_tcp_rto_max);
 	return true;
 }
 
@@ -2982,7 +3016,7 @@ void tcp_rearm_rto(struct sock *sk)
 				rto = delta;
 		}
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS, rto,
-					  TCP_RTO_MAX);
+					  sysctl_tcp_rto_max);
 	}
 }
 
@@ -3211,8 +3245,8 @@ static void tcp_ack_probe(struct sock *sk)
 		 */
 	} else {
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_PROBE0,
-					  min(icsk->icsk_rto << icsk->icsk_backoff, TCP_RTO_MAX),
-					  TCP_RTO_MAX);
+					  min_t(unsigned int, icsk->icsk_rto << icsk->icsk_backoff, sysctl_tcp_rto_max),
+					  sysctl_tcp_rto_max);
 	}
 }
 
@@ -5530,7 +5564,7 @@ static int tcp_rcv_synsent_state_process(struct sock *sk, struct sk_buff *skb,
 			icsk->icsk_ack.lrcvtime = tcp_time_stamp;
 			tcp_enter_quickack_mode(sk);
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
-						  TCP_DELACK_MAX, TCP_RTO_MAX);
+						  TCP_DELACK_MAX, sysctl_tcp_rto_max);
 
 discard:
 			__kfree_skb(skb);

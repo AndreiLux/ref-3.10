@@ -7,6 +7,7 @@
 */
 
 #include "fuse_i.h"
+#include "fuse.h"
 
 #include <linux/init.h>
 #include <linux/module.h>
@@ -488,6 +489,14 @@ __acquires(fc->lock)
 	}
 }
 
+#define CREATE_TRACE_POINTS
+#include <linux/met_ftrace_fuse.h>
+
+void met_fuse(int t_pid, char *t_name, unsigned int op, unsigned int size, struct timespec s_time, struct timespec e_time)
+{
+	MET_FTRACE_PRINTK(met_fuse, t_pid, t_name, op, size, s_time, e_time);
+}
+
 static void __fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 {
 	BUG_ON(req->background);
@@ -508,10 +517,32 @@ static void __fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 	spin_unlock(&fc->lock);
 }
 
+void fuse_request_send_ex(struct fuse_conn *fc, struct fuse_req *req,
+    __u32 size)
+{
+#ifdef MET_FUSEIO_TRACE
+	char name[TASK_COMM_LEN];
+#endif
+
+	MET_FUSE_IOLOG_INIT();
+	FUSE_IOLOG_INIT();
+	req->isreply = 1;
+	FUSE_IOLOG_START();
+	MET_FUSE_IOLOG_START();
+	__fuse_request_send(fc, req);
+	MET_FUSE_IOLOG_END();
+	FUSE_IOLOG_END();
+	FUSE_IOLOG_PRINT(size, req->in.h.opcode);
+
+#ifdef MET_FUSEIO_TRACE
+	met_fuse(task_pid_nr(current), get_task_comm(name, current), req->in.h.opcode, size, met_fuse_start_time, met_fuse_end_time);
+#endif
+}
+EXPORT_SYMBOL_GPL(fuse_request_send_ex);
+
 void fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 {
-	req->isreply = 1;
-	__fuse_request_send(fc, req);
+	fuse_request_send_ex(fc, req, 0);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send);
 
@@ -543,10 +574,21 @@ static void fuse_request_send_nowait(struct fuse_conn *fc, struct fuse_req *req)
 	}
 }
 
-void fuse_request_send_background(struct fuse_conn *fc, struct fuse_req *req)
+void fuse_request_send_background_ex(struct fuse_conn *fc, struct fuse_req *req,
+    __u32 size)
 {
+	FUSE_IOLOG_INIT();
+	FUSE_IOLOG_START();
 	req->isreply = 1;
 	fuse_request_send_nowait(fc, req);
+	FUSE_IOLOG_END();
+	FUSE_IOLOG_PRINT(size, req->in.h.opcode);
+}
+EXPORT_SYMBOL_GPL(fuse_request_send_background_ex);
+
+void fuse_request_send_background(struct fuse_conn *fc, struct fuse_req *req)
+{
+    fuse_request_send_background_ex(fc, req, 0);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send_background);
 

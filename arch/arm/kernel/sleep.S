@@ -81,7 +81,7 @@ ENDPROC(cpu_resume_after_mmu)
 	.data
 	.align
 ENTRY(cpu_resume)
-ARM_BE8(setend be)			@ ensure we are in BE mode
+        bl      v7_invalidate_l1
 #ifdef CONFIG_SMP
 	mov	r1, #0			@ fall-back logical index for UP
 	ALT_SMP(mrc p15, 0, r0, c0, c0, 5)

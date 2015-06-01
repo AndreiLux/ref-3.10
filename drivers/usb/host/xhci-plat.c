@@ -17,6 +17,10 @@
 
 #include "xhci.h"
 
+#ifdef CONFIG_MTK_XHCI
+#include <linux/xhci/xhci-mtk.h>
+#endif
+
 static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 {
 	/*
@@ -25,6 +29,10 @@ static void xhci_plat_quirks(struct device *dev, struct xhci_hcd *xhci)
 	 * dev struct in order to setup MSI
 	 */
 	xhci->quirks |= XHCI_PLAT;
+	//CC: MTK host controller gives a spurious successful event after a
+	//    short transfer. Ignore it.
+	xhci->quirks |= XHCI_SPURIOUS_SUCCESS;
+	xhci->quirks |= XHCI_LPM_SUPPORT;
 }
 
 /* called during probe() after chip reset completes */
@@ -125,7 +133,12 @@ static int xhci_plat_probe(struct platform_device *pdev)
 		goto release_mem_region;
 	}
 
+	#ifdef CONFIG_MTK_XHCI
+	ret = usb_add_hcd(hcd, irq, IRQF_SHARED | IRQF_TRIGGER_LOW);
+	#else
 	ret = usb_add_hcd(hcd, irq, IRQF_SHARED);
+	#endif
+
 	if (ret)
 		goto unmap_registers;
 
@@ -145,7 +158,11 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	 */
 	*((struct xhci_hcd **) xhci->shared_hcd->hcd_priv) = xhci;
 
+	#ifdef CONFIG_MTK_XHCI
+    ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED | IRQF_TRIGGER_LOW);
+    #else
 	ret = usb_add_hcd(xhci->shared_hcd, irq, IRQF_SHARED);
+    #endif
 	if (ret)
 		goto put_usb3_hcd;
 

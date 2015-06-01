@@ -87,6 +87,7 @@ static void timer_trig_activate(struct led_classdev *led_cdev)
 	led_blink_set(led_cdev, &led_cdev->blink_delay_on,
 		      &led_cdev->blink_delay_off);
 	led_cdev->activated = true;
+	kobject_uevent(&led_cdev->dev->kobj,KOBJ_ADD);
 
 	return;
 

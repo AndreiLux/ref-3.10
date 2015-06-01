@@ -41,6 +41,16 @@ static inline void arch_local_irq_disable(void)
 
 #define local_fiq_enable()  __asm__("cpsie f	@ __stf" : : : "memory", "cc")
 #define local_fiq_disable() __asm__("cpsid f	@ __clf" : : : "memory", "cc")
+
+static inline int local_fiq_disabled_flags(void)
+{
+	unsigned long flags;
+
+	asm volatile(
+		"	mrs	%0, cpsr\n"
+		: "=r" (flags) : : "memory", "cc");
+	return flags & PSR_F_BIT;
+}
 #else
 
 /*

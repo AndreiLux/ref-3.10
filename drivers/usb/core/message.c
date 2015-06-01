@@ -19,6 +19,149 @@
 
 #include "usb.h"
 
+
+#ifdef MTK_ICUSB_SUPPORT
+
+struct usb_interface *stor_intf = NULL;
+
+struct my_attr power_resume_time_neogo_attr = {
+	.attr.name = "power_resume_time_neogo",
+	.attr.mode = 0644,
+#ifdef MTK_ICUSB_POWER_AND_RESUME_TIME_NEOGO_SUPPORT
+	.value = 1
+#else
+	.value = 0
+#endif
+};
+
+
+enum PHY_VOLTAGE_TYPE get_usb11_phy_voltage(void);
+void dump_data(char *buf, int len);
+void set_usb11_phy_power_negotiation_fail(void);
+void set_usb11_phy_power_negotiation_ok(void);
+void set_usb11_data_of_interface_power_request(short data);
+
+void ic_usb_resume_time_negotiation(struct usb_device *dev)
+{
+	int ret;
+	int retries = IC_USB_RETRIES_RESUME_TIME_NEGOTIATION;
+	char resume_time_negotiation_data[IC_USB_LEN_RESUME_TIME_NEGOTIATION];
+	while(retries-- > 0)
+	{
+		MYDBG("");
+		ret = usb_control_msg(dev, usb_rcvctrlpipe(dev, 0),
+				IC_USB_REQ_GET_INTERFACE_RESUME_TIME,
+				IC_USB_REQ_TYPE_GET_INTERFACE_RESUME_TIME,
+				IC_USB_WVALUE_RESUME_TIME_NEGOTIATION,
+				IC_USB_WINDEX_RESUME_TIME_NEGOTIATION,
+				resume_time_negotiation_data,
+				IC_USB_LEN_RESUME_TIME_NEGOTIATION,
+				USB_CTRL_GET_TIMEOUT);
+		if (ret < 0) {
+			MYDBG("ret : %d\n", ret);
+			continue;
+		}
+		else
+		{
+			MYDBG("");
+			dump_data(resume_time_negotiation_data, IC_USB_LEN_RESUME_TIME_NEGOTIATION);
+			break;
+		}
+
+	}
+}
+void ic_usb_power_negotiation(struct usb_device *dev)
+{
+	int ret;
+	int retries = IC_USB_RETRIES_POWER_NEGOTIATION;
+	char get_power_negotiation_data[IC_USB_LEN_POWER_NEGOTIATION];
+	char set_power_negotiation_data[IC_USB_LEN_POWER_NEGOTIATION];
+	int power_negotiation_done = 0 ;
+
+	while(retries-- > 0)
+	{
+		MYDBG("");
+		power_negotiation_done = 0 ;
+		ret = usb_control_msg(dev, usb_rcvctrlpipe(dev, 0),
+				IC_USB_REQ_GET_INTERFACE_POWER,
+				IC_USB_REQ_TYPE_GET_INTERFACE_POWER,
+				IC_USB_WVALUE_POWER_NEGOTIATION,
+				IC_USB_WINDEX_POWER_NEGOTIATION,
+				get_power_negotiation_data,
+				IC_USB_LEN_POWER_NEGOTIATION,
+				USB_CTRL_GET_TIMEOUT);
+		if (ret < 0) {
+			MYDBG("ret : %d\n", ret);
+			continue;
+		}
+		else
+		{
+			enum PHY_VOLTAGE_TYPE phy_volt = get_usb11_phy_voltage();
+			MYDBG("");
+			dump_data(get_power_negotiation_data, IC_USB_LEN_POWER_NEGOTIATION);
+
+			/* copy the prefer bit from get interface power */
+			set_power_negotiation_data[0] = (get_power_negotiation_data[0] & IC_USB_PREFER_CLASSB_ENABLE_BIT);
+
+			/* set our current voltage */
+			if(phy_volt == VOL_33)
+			{
+				set_power_negotiation_data[0] |= (char)IC_USB_CLASSB;
+			}
+			else if(phy_volt == VOL_18)
+			{
+				set_power_negotiation_data[0] |= (char)IC_USB_CLASSC;
+			}
+			else
+			{
+				MYDBG("");
+			}
+
+			/* set current */
+			if(set_power_negotiation_data[1] > IC_USB_CURRENT)
+			{
+				MYDBG("");
+				set_power_negotiation_data[1] = IC_USB_CURRENT;
+			}else{
+				MYDBG("");
+				set_power_negotiation_data[1] = get_power_negotiation_data[1];
+			}
+			MYDBG("power_negotiation_data[0] : 0x%x , power_negotiation_data[1] : 0x%x, IC_USB_CURRENT :%d",set_power_negotiation_data[0], set_power_negotiation_data[1], IC_USB_CURRENT);
+
+			ret = usb_control_msg(dev, usb_sndctrlpipe(dev, 0),
+					IC_USB_REQ_SET_INTERFACE_POWER,
+					IC_USB_REQ_TYPE_SET_INTERFACE_POWER,
+					IC_USB_WVALUE_POWER_NEGOTIATION,
+					IC_USB_WINDEX_POWER_NEGOTIATION,
+					set_power_negotiation_data,
+					IC_USB_LEN_POWER_NEGOTIATION,
+					USB_CTRL_SET_TIMEOUT);
+
+			if (ret < 0) {
+				MYDBG("ret : %d\n", ret);
+			}
+			else
+			{
+				MYDBG("");
+				power_negotiation_done = 1 ;
+				break;
+			}
+		//	break;
+		}
+	}
+
+	MYDBG("retries : %d\n", retries);
+	if(!power_negotiation_done){
+		set_usb11_phy_power_negotiation_fail();
+	}else{
+		set_usb11_data_of_interface_power_request(*((short *)get_power_negotiation_data));
+		set_usb11_phy_power_negotiation_ok();
+	}
+}
+
+#endif
+
+
 static void cancel_async_set_config(struct usb_device *udev);
 
 struct api_context {
@@ -385,7 +528,14 @@ int usb_sg_init(struct usb_sg_request *io, struct usb_device *dev,
 
 	urb_flags = URB_NO_INTERRUPT;
 	if (usb_pipein(pipe))
+	//Added for Rx DMA mode1, ReqMode1 enable
+	{
+	//Added for Rx DMA mode1, ReqMode1 enable
 		urb_flags |= URB_SHORT_NOT_OK;
+	//Added for Rx DMA mode1, ReqMode1 enable
+		urb_flags |= URB_RX_REQ_MODE0_ENABLE;
+	}
+	//Added for Rx DMA mode1, ReqMode1 enable
 
 	for_each_sg(sg, sg, io->entries, i) {
 		struct urb *urb;
@@ -1797,6 +1947,17 @@ free_interfaces:
 		usb_autosuspend_device(dev);
 		goto free_interfaces;
 	}
+#ifdef MTK_ICUSB_SUPPORT
+	if(power_resume_time_neogo_attr.value)
+	{
+		ic_usb_power_negotiation(dev);
+		ic_usb_resume_time_negotiation(dev);
+	}
+	else
+	{
+		set_usb11_phy_power_negotiation_ok() ;
+	}
+#endif
 
 	/*
 	 * Initialize the new interface structures and the
@@ -1903,6 +2064,12 @@ free_interfaces:
 		}
 		create_intf_ep_devs(intf);
 	}
+#ifdef CONFIG_MTK_DT_USB_SUPPORT
+#ifdef	CONFIG_PM_RUNTIME
+	usb_enable_autosuspend(dev); // disable by usb_new_device
+	pm_runtime_set_autosuspend_delay(&dev->dev, (USB_WAKE_TIME - 1) * 1000); //milliseconds, leave some extra time for finishing runtime sleep before system sleep
+#endif
+#endif
 
 	usb_autosuspend_device(dev);
 	return 0;

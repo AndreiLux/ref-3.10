@@ -90,6 +90,9 @@ static inline void sg_set_page(struct scatterlist *sg, struct page *page,
 	sg_assign_page(sg, page);
 	sg->offset = offset;
 	sg->length = len;
+#ifdef CONFIG_NEED_SG_DMA_LENGTH
+	sg->dma_length = len;
+#endif
 }
 
 static inline struct page *sg_page(struct scatterlist *sg)

@@ -18,7 +18,6 @@
 
 #include <linux/err.h>
 
-extern const void *sys_call_table[];
 
 static inline int syscall_get_nr(struct task_struct *task,
 				 struct pt_regs *regs)

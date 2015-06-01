@@ -543,7 +543,7 @@ static void rb_wake_up_waiters(struct irq_work *work)
  * as data is added to any of the @buffer's cpu buffers. Otherwise
  * it will wait for data to be added to a specific cpu buffer.
  */
-int ring_buffer_wait(struct ring_buffer *buffer, int cpu)
+void ring_buffer_wait(struct ring_buffer *buffer, int cpu)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
 	DEFINE_WAIT(wait);
@@ -557,8 +557,6 @@ int ring_buffer_wait(struct ring_buffer *buffer, int cpu)
 	if (cpu == RING_BUFFER_ALL_CPUS)
 		work = &buffer->irq_work;
 	else {
-		if (!cpumask_test_cpu(cpu, buffer->cpumask))
-			return -ENODEV;
 		cpu_buffer = buffer->buffers[cpu];
 		work = &cpu_buffer->irq_work;
 	}
@@ -593,7 +591,6 @@ int ring_buffer_wait(struct ring_buffer *buffer, int cpu)
 		schedule();
 
 	finish_wait(&work->waiters, &wait);
-	return 0;
 }
 
 /**
@@ -1115,6 +1112,8 @@ static int __rb_allocate_pages(int nr_pages, struct list_head *pages, int cpu)
 	int i;
 	struct buffer_page *bpage, *tmp;
 
+    pr_err("[ftrace]allocating %d pages for cpu%d\n", nr_pages, cpu);
+
 	for (i = 0; i < nr_pages; i++) {
 		struct page *page;
 		/*
@@ -1138,6 +1137,8 @@ static int __rb_allocate_pages(int nr_pages, struct list_head *pages, int cpu)
 		rb_init_page(bpage->page);
 	}
 
+    pr_err("[ftrace]page allocation completed\n");
+
 	return 0;
 
 free_pages:
@@ -1145,6 +1146,8 @@ free_pages:
 		list_del_init(&bpage->list);
 		free_buffer_page(bpage);
 	}
+
+    pr_err("[ftrace]fail to allocate %d pages for cpu%d\n", nr_pages, cpu);
 
 	return -ENOMEM;
 }

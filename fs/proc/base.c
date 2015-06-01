@@ -920,8 +920,8 @@ static ssize_t oom_adj_read(struct file *file, char __user *buf, size_t count,
 		if (task->signal->oom_score_adj == OOM_SCORE_ADJ_MAX)
 			oom_adj = OOM_ADJUST_MAX;
 		else
-			oom_adj = (task->signal->oom_score_adj * -OOM_DISABLE) /
-				  OOM_SCORE_ADJ_MAX;
+			oom_adj = ((task->signal->oom_score_adj * -OOM_DISABLE * 10)/OOM_SCORE_ADJ_MAX+5)
+			             /10; //modify for oom_score_adj->oom_adj round
 		unlock_task_sighand(task, &flags);
 	}
 	put_task_struct(task);
@@ -979,7 +979,7 @@ static ssize_t oom_adj_write(struct file *file, const char __user *buf,
 	if (oom_adj == OOM_ADJUST_MAX)
 		oom_adj = OOM_SCORE_ADJ_MAX;
 	else
-		oom_adj = (oom_adj * OOM_SCORE_ADJ_MAX) / -OOM_DISABLE;
+		oom_adj = ((oom_adj * OOM_SCORE_ADJ_MAX * 10) / -OOM_DISABLE + 5)/10;  //modify for oom_adj->oom_score_adj round
 
 	if (oom_adj < task->signal->oom_score_adj &&
 	    !capable(CAP_SYS_RESOURCE)) {

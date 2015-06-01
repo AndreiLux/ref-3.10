@@ -20,11 +20,32 @@
 static inline void __led_set_brightness(struct led_classdev *led_cdev,
 					enum led_brightness value)
 {
-	if (value > led_cdev->max_brightness)
-		value = led_cdev->max_brightness;
-	led_cdev->brightness = value;
-	if (!(led_cdev->flags & LED_SUSPENDED))
-		led_cdev->brightness_set(led_cdev, value);
+#ifdef LED_INCREASE_LED_LEVEL_MTKPATCH
+	/*
+	 * MTK patch
+	 */
+		if(0 == (value >> LED_RESERVEBIT_SHIFT))
+		{
+			if (value > led_cdev->max_brightness)
+				value = led_cdev->max_brightness;
+	
+				led_cdev->brightness = value;
+		}
+	
+		if (!(led_cdev->flags & LED_SUSPENDED))
+			led_cdev->brightness_set(led_cdev, value);	
+#else
+	/*
+	 * Native linux kernel code
+	 */
+		if (value > led_cdev->max_brightness)
+			value = led_cdev->max_brightness;
+	
+		led_cdev->brightness = value;
+		if (!(led_cdev->flags & LED_SUSPENDED))
+			led_cdev->brightness_set(led_cdev, value);
+	
+#endif	
 }
 
 static inline int led_get_brightness(struct led_classdev *led_cdev)

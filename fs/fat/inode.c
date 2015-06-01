@@ -157,11 +157,36 @@ static int fat_write_begin(struct file *file, struct address_space *mapping,
 			struct page **pagep, void **fsdata)
 {
 	int err;
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+	extern unsigned char *page_logger;
+	struct page_pid_logger *tmp_logger;
+	unsigned long page_index;
+	extern spinlock_t g_locker;
+	unsigned long g_flags;
+#endif
 
 	*pagep = NULL;
 	err = cont_write_begin(file, mapping, pos, len, flags,
 				pagep, fsdata, fat_get_block,
 				&MSDOS_I(mapping->host)->mmu_private);
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+	if( page_logger && (*pagep)) {
+		//printk(KERN_INFO"fat write_begin hank logger count:%d init %x currentpid:%d page:%x mem_map:%x pfn:%d page->index:%d\n", num_physpages, page_logger, current->pid, *pagep, mem_map, (unsigned)((*pagep) - mem_map), (*pagep)->index);
+		//printk(KERN_INFO"page_logger_lock:%x %d", page_logger_lock, ((num_physpages+(1<<PAGE_LOCKER_SHIFT)-1)>>PAGE_LOCKER_SHIFT));
+		
+		page_index = (unsigned long)((*pagep) - mem_map) ;
+		tmp_logger =((struct page_pid_logger *)page_logger) + page_index;
+		spin_lock_irqsave(&g_locker, g_flags);
+		if( page_index < num_physpages) {
+			if( tmp_logger->pid1 == 0XFFFF)
+				tmp_logger->pid1 = current->pid;
+			else if( tmp_logger->pid1 != current->pid)
+				tmp_logger->pid2 = current->pid;
+		}
+		spin_unlock_irqrestore(&g_locker, g_flags);
+		//printk(KERN_INFO"tmp logger pid1:%u pid2:%u pfn:%d page:%x pos:%x host:%x max_mapnr:%x\n", tmp_logger->pid1, tmp_logger->pid2, (unsigned long)((*pagep) - mem_map),(*pagep), pos, mapping->host, max_mapnr );
+	}
+#endif
 	if (err < 0)
 		fat_write_failed(mapping, pos + len);
 	return err;
@@ -721,7 +746,15 @@ retry:
 	mark_buffer_dirty(bh);
 	err = 0;
 	if (wait)
+	{
 		err = sync_dirty_buffer(bh);
+	}else
+	{
+#ifdef FEATURE_STORAGE_META_LOG
+		if( bh && bh->b_bdev && bh->b_bdev->bd_disk)
+			set_metadata_rw_status(bh->b_bdev->bd_disk->first_minor, NOWAIT_WRITE_CNT);
+#endif
+	}
 	brelse(bh);
 	return err;
 }

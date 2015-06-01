@@ -233,7 +233,7 @@ int tcp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	/* OK, now commit destination to socket.  */
 	sk->sk_gso_type = SKB_GSO_TCPV4;
 	sk_setup_caps(sk, &rt->dst);
-
+        printk(KERN_INFO "[socket_conn]IPV4 socket[%lu] sport:%u \n", SOCK_INODE(sk->sk_socket)->i_ino, ntohs(inet->inet_sport));
 	if (!tp->write_seq && likely(!tp->repair))
 		tp->write_seq = secure_tcp_sequence_number(inet->inet_saddr,
 							   inet->inet_daddr,
@@ -445,7 +445,7 @@ void tcp_v4_err(struct sk_buff *icmp_skb, u32 info)
 
 		if (remaining) {
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-						  remaining, TCP_RTO_MAX);
+						  remaining, sysctl_tcp_rto_max);
 		} else {
 			/* RTO revert clocked out retransmission.
 			 * Will retransmit now */
@@ -1423,7 +1423,7 @@ static int tcp_v4_conn_req_fastopen(struct sock *sk,
 	 * because it's been added to the accept queue directly.
 	 */
 	inet_csk_reset_xmit_timer(child, ICSK_TIME_RETRANS,
-	    TCP_TIMEOUT_INIT, TCP_RTO_MAX);
+	    TCP_TIMEOUT_INIT, sysctl_tcp_rto_max);
 
 	/* Add the child socket directly into the accept queue */
 	inet_csk_reqsk_queue_add(sk, req, child);
@@ -1949,7 +1949,7 @@ bool tcp_prequeue(struct sock *sk, struct sk_buff *skb)
 		if (!inet_csk_ack_scheduled(sk))
 			inet_csk_reset_xmit_timer(sk, ICSK_TIME_DACK,
 						  (3 * tcp_rto_min(sk)) / 4,
-						  TCP_RTO_MAX);
+						  sysctl_tcp_rto_max);
 	}
 	return true;
 }
@@ -2162,6 +2162,7 @@ static int tcp_v4_init_sock(struct sock *sk)
 	struct inet_connection_sock *icsk = inet_csk(sk);
 
 	tcp_init_sock(sk);
+        icsk->icsk_MMSRB = 0;
 
 	icsk->icsk_af_ops = &ipv4_specific;
 
@@ -2216,6 +2217,115 @@ void tcp_v4_destroy_sock(struct sock *sk)
 	sock_release_memcg(sk);
 }
 EXPORT_SYMBOL(tcp_v4_destroy_sock);
+
+void tcp_v4_handle_retrans_time_by_uid(struct uid_err uid_e)
+{
+    unsigned int bucket;
+    uid_t skuid = (uid_t)(uid_e.appuid);
+	struct inet_connection_sock *icsk = NULL;//inet_csk(sk);
+
+
+    for (bucket = 0; bucket < tcp_hashinfo.ehash_mask; bucket++) {
+        struct hlist_nulls_node *node;
+        struct sock *sk;
+        spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
+    
+        spin_lock_bh(lock);
+        sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
+    
+            if (sysctl_ip_dynaddr && sk->sk_state == TCP_SYN_SENT)
+                continue;
+            if (sock_flag(sk, SOCK_DEAD))
+                continue;
+    
+            if(sk->sk_socket){
+                if(SOCK_INODE(sk->sk_socket)->i_uid != skuid)
+                    continue;
+                else
+                    printk("[mmspb] tcp_v4_handle_retrans_time_by_uid socket uid(%d) match!",
+                        SOCK_INODE(sk->sk_socket)->i_uid);
+            } else{
+                continue;
+	    }
+
+                sock_hold(sk);
+                spin_unlock_bh(lock);
+    
+                local_bh_disable();
+                bh_lock_sock(sk);
+
+                // update sk time out value
+		icsk = inet_csk(sk);
+		printk("[mmspb] tcp_v4_handle_retrans_time_by_uid update timer\n");
+					
+		sk_reset_timer(sk, &icsk->icsk_retransmit_timer, jiffies + 2);
+		icsk->icsk_rto = sysctl_tcp_rto_min * 30;	
+		icsk->icsk_MMSRB = 1;
+				
+                bh_unlock_sock(sk);
+                local_bh_enable();
+		spin_lock_bh(lock);
+                sock_put(sk);
+
+            }
+            spin_unlock_bh(lock);
+        }
+
+}
+
+
+/*
+ * tcp_v4_nuke_addr_by_uid - destroy all sockets of spcial uid
+ */
+void tcp_v4_reset_connections_by_uid(struct uid_err uid_e)
+{
+    unsigned int bucket;
+    uid_t skuid = (uid_t)(uid_e.appuid);
+
+    for (bucket = 0; bucket < tcp_hashinfo.ehash_mask; bucket++) {
+        struct hlist_nulls_node *node;
+        struct sock *sk;
+        spinlock_t *lock = inet_ehash_lockp(&tcp_hashinfo, bucket);
+    
+restart:
+        spin_lock_bh(lock);
+        sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
+    
+            if (sysctl_ip_dynaddr && sk->sk_state == TCP_SYN_SENT)
+                continue;
+            if (sock_flag(sk, SOCK_DEAD))
+                continue;
+    
+            if(sk->sk_socket){
+                if(SOCK_INODE(sk->sk_socket)->i_uid != skuid)
+                    continue;
+                else
+                    printk(KERN_INFO "SIOCKILLSOCK socket uid(%d) match!",
+                        SOCK_INODE(sk->sk_socket)->i_uid);
+            } else{
+                continue;
+	    }
+
+                sock_hold(sk);
+                spin_unlock_bh(lock);
+    
+                local_bh_disable();
+                bh_lock_sock(sk);
+                sk->sk_err = uid_e.errNum;
+                printk(KERN_INFO "SIOCKILLSOCK set sk err == %d!! \n", sk->sk_err);
+                sk->sk_error_report(sk);
+    
+                tcp_done(sk);
+                bh_unlock_sock(sk);
+                local_bh_enable();
+                sock_put(sk);
+
+                goto restart;
+            }
+            spin_unlock_bh(lock);
+        }
+}
+
 
 #ifdef CONFIG_PROC_FS
 /* Proc filesystem TCP sock list dumping. */

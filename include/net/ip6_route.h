@@ -136,7 +136,7 @@ extern int			rt6_route_rcv(struct net_device *dev,
 					      const struct in6_addr *gwaddr);
 
 extern void ip6_update_pmtu(struct sk_buff *skb, struct net *net, __be32 mtu,
-			    int oif, u32 mark);
+			    int oif, u32 mark, kuid_t uid);
 extern void ip6_sk_update_pmtu(struct sk_buff *skb, struct sock *sk,
 			       __be32 mtu);
 extern void ip6_redirect(struct sk_buff *skb, struct net *net, int oif, u32 mark);
@@ -177,9 +177,9 @@ static inline void __ip6_dst_store(struct sock *sk, struct dst_entry *dst,
 static inline void ip6_dst_store(struct sock *sk, struct dst_entry *dst,
 				 struct in6_addr *daddr, struct in6_addr *saddr)
 {
-	spin_lock(&sk->sk_dst_lock);
+	spin_lock_bh(&sk->sk_dst_lock);
 	__ip6_dst_store(sk, dst, daddr, saddr);
-	spin_unlock(&sk->sk_dst_lock);
+	spin_unlock_bh(&sk->sk_dst_lock);
 }
 
 static inline bool ipv6_unicast_destination(const struct sk_buff *skb)

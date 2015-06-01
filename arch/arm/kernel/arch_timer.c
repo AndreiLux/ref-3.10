@@ -50,7 +50,7 @@ int __init arch_timer_arch_init(void)
 
 	/* Cache the sched_clock multiplier to save a divide in the hot path. */
 	sched_clock_mult = NSEC_PER_SEC / arch_timer_rate;
-	sched_clock_func = arch_timer_sched_clock;
+	//sched_clock_func = arch_timer_sched_clock;
 	pr_info("sched_clock: ARM arch timer >56 bits at %ukHz, resolution %uns\n",
 		arch_timer_rate / 1000, sched_clock_mult);
 

@@ -61,8 +61,8 @@ extern void tcp_time_wait(struct sock *sk, int state, int timeo);
  */
 #define MAX_TCP_WINDOW		32767U
 
-/* Offer an initial receive window of 10 mss. */
-#define TCP_DEFAULT_INIT_RCVWND	10
+/* Offer an initial receive window of 20 mss. */
+#define TCP_DEFAULT_INIT_RCVWND	20
 
 /* Minimal accepted MSS. It is (60+60+8) - (20+20). */
 #define TCP_MIN_MSS		88U
@@ -91,14 +91,14 @@ extern void tcp_time_wait(struct sock *sk, int state, int timeo);
 				 * to ~3sec-8min depending on RTO.
 				 */
 
-#define TCP_RETR2	15	/*
+#define TCP_RETR2	10	/*
 				 * This should take at least
 				 * 90 minutes to time out.
 				 * RFC1122 says that the limit is 100 sec.
 				 * 15 is ~13-30min depending on RTO.
 				 */
 
-#define TCP_SYN_RETRIES	 6	/* This is how many retries are done
+#define TCP_SYN_RETRIES	 9	/* This is how many retries are done
 				 * when active opening a connection.
 				 * RFC1122 says the minimum retry MUST
 				 * be at least 180secs.  Nevertheless
@@ -131,7 +131,7 @@ extern void tcp_time_wait(struct sock *sk, int state, int timeo);
 #define TCP_DELACK_MIN	4U
 #define TCP_ATO_MIN	4U
 #endif
-#define TCP_RTO_MAX	((unsigned)(120*HZ))
+#define TCP_RTO_MAX	((unsigned)(60*HZ))
 #define TCP_RTO_MIN	((unsigned)(HZ/5))
 #define TCP_TIMEOUT_INIT ((unsigned)(1*HZ))	/* RFC6298 2.1 initial RTO value	*/
 #define TCP_TIMEOUT_FALLBACK ((unsigned)(3*HZ))	/* RFC 1122 initial RTO value, now
@@ -287,9 +287,11 @@ extern int sysctl_tcp_thin_dupack;
 extern int sysctl_tcp_early_retrans;
 extern int sysctl_tcp_limit_output_bytes;
 extern int sysctl_tcp_challenge_ack_limit;
+extern int sysctl_tcp_default_init_rwnd;
 extern int sysctl_tcp_min_tso_segs;
 extern int sysctl_tcp_default_init_rwnd;
-
+extern int sysctl_tcp_rto_min;
+extern int sysctl_tcp_rto_max;
 extern atomic_long_t tcp_memory_allocated;
 extern struct percpu_counter tcp_sockets_allocated;
 extern int tcp_memory_pressure;
@@ -601,8 +603,8 @@ extern void tcp_init_buffer_space(struct sock *sk);
 
 static inline void tcp_bound_rto(const struct sock *sk)
 {
-	if (inet_csk(sk)->icsk_rto > TCP_RTO_MAX)
-		inet_csk(sk)->icsk_rto = TCP_RTO_MAX;
+	if (inet_csk(sk)->icsk_rto > sysctl_tcp_rto_max)
+		inet_csk(sk)->icsk_rto = sysctl_tcp_rto_max;
 }
 
 static inline u32 __tcp_set_rto(const struct tcp_sock *tp)
@@ -639,7 +641,7 @@ static inline void tcp_fast_path_check(struct sock *sk)
 static inline u32 tcp_rto_min(struct sock *sk)
 {
 	const struct dst_entry *dst = __sk_dst_get(sk);
-	u32 rto_min = TCP_RTO_MIN;
+	u32 rto_min = sysctl_tcp_rto_min;
 
 	if (dst && dst_metric_locked(dst, RTAX_RTO_MIN))
 		rto_min = dst_metric_rtt(dst, RTAX_RTO_MIN);
@@ -979,7 +981,7 @@ static inline void tcp_check_probe_timer(struct sock *sk)
 
 	if (!tp->packets_out && !icsk->icsk_pending)
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_PROBE0,
-					  icsk->icsk_rto, TCP_RTO_MAX);
+					  icsk->icsk_rto, sysctl_tcp_rto_max);
 }
 
 static inline void tcp_init_wl(struct tcp_sock *tp, u32 seq)
@@ -1186,8 +1188,8 @@ static inline void tcp_mib_init(struct net *net)
 {
 	/* See RFC 2012 */
 	TCP_ADD_STATS_USER(net, TCP_MIB_RTOALGORITHM, 1);
-	TCP_ADD_STATS_USER(net, TCP_MIB_RTOMIN, TCP_RTO_MIN*1000/HZ);
-	TCP_ADD_STATS_USER(net, TCP_MIB_RTOMAX, TCP_RTO_MAX*1000/HZ);
+	TCP_ADD_STATS_USER(net, TCP_MIB_RTOMIN, sysctl_tcp_rto_min*1000/HZ);
+	TCP_ADD_STATS_USER(net, TCP_MIB_RTOMAX, sysctl_tcp_rto_max*1000/HZ);
 	TCP_ADD_STATS_USER(net, TCP_MIB_MAXCONN, -1);
 }
 
@@ -1535,6 +1537,15 @@ struct tcp_iter_state {
 	loff_t			last_pos;
 };
 
+/* MTK_NET_CHANGES */
+/*
+ * reset tcp connection by uid
+ */
+struct uid_err {
+	int appuid;
+	int errNum;
+};
+
 extern int tcp_proc_register(struct net *net, struct tcp_seq_afinfo *afinfo);
 extern void tcp_proc_unregister(struct net *net, struct tcp_seq_afinfo *afinfo);
 
@@ -1554,6 +1565,9 @@ extern int tcp_gro_complete(struct sk_buff *skb);
 extern int tcp4_gro_complete(struct sk_buff *skb);
 
 extern int tcp_nuke_addr(struct net *net, struct sockaddr *addr);
+/* MTK_NET_CHANGES */
+extern void tcp_v4_reset_connections_by_uid(struct uid_err uid_e);
+extern void tcp_v4_handle_retrans_time_by_uid(struct uid_err uid_e);
 
 #ifdef CONFIG_PROC_FS
 extern int tcp4_proc_init(void);

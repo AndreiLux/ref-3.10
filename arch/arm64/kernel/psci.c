@@ -15,37 +15,14 @@
 
 #define pr_fmt(fmt) "psci: " fmt
 
-#include <linux/cpuidle.h>
 #include <linux/init.h>
 #include <linux/of.h>
-#include <linux/smp.h>
-#include <linux/slab.h>
 
 #include <asm/compiler.h>
-#include <asm/cpu_ops.h>
 #include <asm/errno.h>
 #include <asm/psci.h>
-#include <asm/smp_plat.h>
-#include <asm/suspend.h>
 
-#define PSCI_POWER_STATE_TYPE_STANDBY		0
-#define PSCI_POWER_STATE_TYPE_POWER_DOWN	1
-
-struct psci_power_state {
-	u16	id;
-	u8	type;
-	u8	affinity_level;
-};
-
-struct psci_operations {
-	int (*cpu_suspend)(struct psci_power_state state,
-			   unsigned long entry_point);
-	int (*cpu_off)(struct psci_power_state state);
-	int (*cpu_on)(unsigned long cpuid, unsigned long entry_point);
-	int (*migrate)(unsigned long cpuid);
-};
-
-static struct psci_operations psci_ops;
+struct psci_operations psci_ops;
 
 static int (*invoke_psci_fn)(u64, u64, u64, u64);
 
@@ -56,8 +33,6 @@ enum psci_function {
 	PSCI_FN_MIGRATE,
 	PSCI_FN_MAX,
 };
-
-static DEFINE_PER_CPU_READ_MOSTLY(struct psci_power_state *, psci_power_state);
 
 static u32 psci_function_id[PSCI_FN_MAX];
 
@@ -97,17 +72,6 @@ static u32 psci_power_state_pack(struct psci_power_state state)
 			<< PSCI_POWER_STATE_TYPE_SHIFT)	|
 		((state.affinity_level & PSCI_POWER_STATE_AFFL_MASK)
 			<< PSCI_POWER_STATE_AFFL_SHIFT);
-}
-
-static void psci_power_state_unpack(u32 power_state,
-				    struct psci_power_state *state)
-{
-	state->id = (power_state >> PSCI_POWER_STATE_ID_SHIFT)
-			& PSCI_POWER_STATE_ID_MASK;
-	state->type = (power_state >> PSCI_POWER_STATE_TYPE_SHIFT)
-			& PSCI_POWER_STATE_TYPE_MASK;
-	state->affinity_level = (power_state >> PSCI_POWER_STATE_AFFL_SHIFT)
-			& PSCI_POWER_STATE_AFFL_MASK;
 }
 
 /*
@@ -192,91 +156,22 @@ static const struct of_device_id psci_of_match[] __initconst = {
 	{},
 };
 
-int __init psci_dt_register_idle_states(struct cpuidle_driver *drv,
-					struct device_node *state_nodes[])
-{
-	int cpu, i;
-	struct psci_power_state *psci_states;
-	const struct cpu_operations *cpu_ops_ptr;
-
-	if (!state_nodes)
-		return -EINVAL;
-	/*
-	 * This is belt-and-braces: make sure that if the idle
-	 * specified protocol is psci, the cpu_ops have been
-	 * initialized to psci operations. Anything else is
-	 * a recipe for mayhem.
-	 */
-	for_each_cpu(cpu, drv->cpumask) {
-		cpu_ops_ptr = cpu_ops[cpu];
-		if (WARN_ON(!cpu_ops_ptr || strcmp(cpu_ops_ptr->name, "psci")))
-			return -EOPNOTSUPP;
-	}
-
-	psci_states = kcalloc(drv->state_count, sizeof(*psci_states),
-			      GFP_KERNEL);
-
-	if (!psci_states) {
-		pr_warn("psci idle state allocation failed\n");
-		return -ENOMEM;
-	}
-
-	for_each_cpu(cpu, drv->cpumask) {
-		if (per_cpu(psci_power_state, cpu)) {
-			pr_warn("idle states already initialized on cpu %u\n",
-				cpu);
-			continue;
-		}
-		per_cpu(psci_power_state, cpu) = psci_states;
-	}
-
-
-	for (i = 0; i < drv->state_count; i++) {
-		u32 psci_power_state;
-
-		if (!state_nodes[i]) {
-			/*
-			 * An index with a missing node pointer falls back to
-			 * simple STANDBYWFI
-			 */
-			psci_states[i].type = PSCI_POWER_STATE_TYPE_STANDBY;
-			continue;
-		}
-
-		if (of_property_read_u32(state_nodes[i], "entry-method-param",
-					 &psci_power_state)) {
-			pr_warn(" * %s missing entry-method-param property\n",
-				state_nodes[i]->full_name);
-			/*
-			 * If entry-method-param property is missing, fall
-			 * back to STANDBYWFI state
-			 */
-			psci_states[i].type = PSCI_POWER_STATE_TYPE_STANDBY;
-			continue;
-		}
-
-		pr_debug("psci-power-state %#x index %u\n",
-			 psci_power_state, i);
-		psci_power_state_unpack(psci_power_state, &psci_states[i]);
-	}
-
-	return 0;
-}
-
-void __init psci_init(void)
+int __init psci_init(void)
 {
 	struct device_node *np;
 	const char *method;
 	u32 id;
+	int err = 0;
 
 	np = of_find_matching_node(NULL, psci_of_match);
 	if (!np)
-		return;
+		return -ENODEV;
 
 	pr_info("probing function IDs from device-tree\n");
 
 	if (of_property_read_string(np, "method", &method)) {
 		pr_warning("missing \"method\" property\n");
+		err = -ENXIO;
 		goto out_put_node;
 	}
 
@@ -286,6 +181,7 @@ void __init psci_init(void)
 		invoke_psci_fn = __invoke_psci_fn_smc;
 	} else {
 		pr_warning("invalid \"method\" property: %s\n", method);
+		err = -EINVAL;
 		goto out_put_node;
 	}
 
@@ -311,85 +207,5 @@ void __init psci_init(void)
 
 out_put_node:
 	of_node_put(np);
-	return;
-}
-
-#ifdef CONFIG_SMP
-
-static int __init cpu_psci_cpu_init(struct device_node *dn, unsigned int cpu)
-{
-	return 0;
-}
-
-static int __init cpu_psci_cpu_prepare(unsigned int cpu)
-{
-	if (!psci_ops.cpu_on) {
-		pr_err("no cpu_on method, not booting CPU%d\n", cpu);
-		return -ENODEV;
-	}
-
-	return 0;
-}
-
-static int cpu_psci_cpu_boot(unsigned int cpu)
-{
-	int err = psci_ops.cpu_on(cpu_logical_map(cpu), __pa(secondary_entry));
-	if (err)
-		pr_err("failed to boot CPU%d (%d)\n", cpu, err);
-
 	return err;
 }
-
-#ifdef CONFIG_HOTPLUG_CPU
-static int cpu_psci_cpu_disable(unsigned int cpu)
-{
-	/* Fail early if we don't have CPU_OFF support */
-	if (!psci_ops.cpu_off)
-		return -EOPNOTSUPP;
-	return 0;
-}
-
-static void cpu_psci_cpu_die(unsigned int cpu)
-{
-	int ret;
-	/*
-	 * There are no known implementations of PSCI actually using the
-	 * power state field, pass a sensible default for now.
-	 */
-	struct psci_power_state state = {
-		.type = PSCI_POWER_STATE_TYPE_POWER_DOWN,
-	};
-
-	ret = psci_ops.cpu_off(state);
-
-	pr_crit("unable to power off CPU%u (%d)\n", cpu, ret);
-}
-#endif
-
-#ifdef CONFIG_ARM64_CPU_SUSPEND
-static int cpu_psci_cpu_suspend(unsigned long index)
-{
-	struct psci_power_state *state = __get_cpu_var(psci_power_state);
-
-	if (!state)
-		return -EOPNOTSUPP;
-
-	return psci_ops.cpu_suspend(state[index], virt_to_phys(cpu_resume));
-}
-#endif
-
-const struct cpu_operations cpu_psci_ops = {
-	.name		= "psci",
-	.cpu_init	= cpu_psci_cpu_init,
-	.cpu_prepare	= cpu_psci_cpu_prepare,
-	.cpu_boot	= cpu_psci_cpu_boot,
-#ifdef CONFIG_HOTPLUG_CPU
-	.cpu_disable	= cpu_psci_cpu_disable,
-	.cpu_die	= cpu_psci_cpu_die,
-#endif
-#ifdef CONFIG_ARM64_CPU_SUSPEND
-	.cpu_suspend	= cpu_psci_cpu_suspend,
-#endif
-};
-
-#endif

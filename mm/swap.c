@@ -926,6 +926,12 @@ void __init swap_setup(void)
 		page_cluster = 2;
 	else
 		page_cluster = 3;
+
+#ifdef CONFIG_ZRAM
+	/* Disable swap in read-ahead for ZRAM swap */
+	page_cluster = 0;
+#endif
+
 	/*
 	 * Right now other parts of the system means that we
 	 * _really_ don't want to cluster much more

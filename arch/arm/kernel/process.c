@@ -33,6 +33,7 @@
 #include <linux/cpuidle.h>
 #include <linux/leds.h>
 #include <linux/console.h>
+#include <linux/mtk_ram_console.h>
 
 #include <asm/cacheflush.h>
 #include <asm/idmap.h>
@@ -40,6 +41,7 @@
 #include <asm/thread_notify.h>
 #include <asm/stacktrace.h>
 #include <asm/mach/time.h>
+#include <mach/system.h>
 
 #ifdef CONFIG_CC_STACKPROTECTOR
 #include <linux/stackprotector.h>
@@ -107,6 +109,53 @@ void arm_machine_flush_console(void)
  */
 static u64 soft_restart_stack[16];
 
+void arm_machine_restart(char mode, const char *cmd)
+{
+        /* Flush the console to make sure all the relevant messages make it
+         * out to the console drivers */
+        arm_machine_flush_console();
+
+        /* Disable interrupts first */
+        local_irq_disable();
+        local_fiq_disable();
+
+        /*
+         * Tell the mm system that we are going to reboot -
+         * we may need it to insert some 1:1 mappings so that
+         * soft boot works.
+         */
+        setup_mm_for_reboot();
+
+        /* When l1 is disabled and l2 is enabled, the spinlock cannot get the lock,
+         * so we need to disable the l2 as well. by Chia-Hao Hsu
+         */
+        outer_flush_all();
+        outer_disable();
+        outer_flush_all();
+
+        /* Clean and invalidate caches */
+        flush_cache_all();
+#ifdef CONFIG_RESTART_DISABLE_CACHE
+        /* Turn off caching */
+ //       cpu_proc_fin();		// Don't turn off cach during reboot phase. CA15 have risk if turn off cach.
+#endif
+        /* Push out any further dirty data, and ensure cache is empty */
+        flush_cache_all();
+
+        /*
+         * Now call the architecture specific reboot code.
+         */
+        arch_reset(mode, cmd);
+
+        /*
+         * Whoops - the architecture was unable to reboot.
+         * Tell the user!
+         */
+        mdelay(1000);
+        printk("Reboot failed -- System halted\n");
+        while (1);
+}
+
 static void __soft_restart(void *addr)
 {
 	phys_reset_t phys_reset;
@@ -140,8 +189,10 @@ void soft_restart(unsigned long addr)
 	local_fiq_disable();
 
 	/* Disable the L2 if we're the last man standing. */
-	if (num_online_cpus() == 1)
+	if (num_online_cpus() == 1) {
+		outer_flush_all();
 		outer_disable();
+	}
 
 	/* Change to the new stack and continue with the reset. */
 	call_with_stack(__soft_restart, (void *)addr, (void *)stack);
@@ -243,9 +294,12 @@ void machine_shutdown(void)
 	 * thread that might wind up blocking on
 	 * one of the stopped CPUs.
 	 */
+    printk("machine_shutdown: start, Proess(%s:%d)\n", current->comm, current->pid);
+    dump_stack();
 	preempt_disable();
 #endif
 	disable_nonboot_cpus();
+    printk("machine_shutdown: done\n");
 }
 
 /*
@@ -255,11 +309,14 @@ void machine_shutdown(void)
  */
 void machine_halt(void)
 {
+	local_irq_disable();
 	smp_send_stop();
 
 	local_irq_disable();
 	while (1);
 }
+
+extern int reboot_pid;
 
 /*
  * Power-off simply requires that the secondary CPUs stop performing any
@@ -269,7 +326,44 @@ void machine_halt(void)
  */
 void machine_power_off(void)
 {
-	smp_send_stop();
+	struct task_struct *tsk;
+
+	local_irq_disable();
+	smp_send_stop();	
+	if(reboot_pid > 1)
+	{
+		tsk = find_task_by_vpid(reboot_pid);
+		if(tsk == NULL)
+			tsk = current;		
+		dump_stack();
+	}
+	else
+	{
+		tsk = current;
+	}
+
+	if(tsk->real_parent)
+	{
+	 if(tsk->real_parent->real_parent)
+	 {
+	   printk("machine_shutdown: start, Proess(%s:%d). father %s:%d. grandfather %s:%d.\n",
+		tsk->comm, tsk->pid,tsk->real_parent->comm,tsk->real_parent->pid,
+		tsk->real_parent->real_parent->comm,tsk->real_parent->real_parent->pid);
+	 }
+	 else
+	 {
+	   printk("machine_shutdown: start, Proess(%s:%d). father %s:%d.\n", 
+		tsk->comm, tsk->pid,tsk->real_parent->comm,tsk->real_parent->pid);
+	 }
+	}
+	else
+	{
+	  printk("machine_shutdown: start, Proess(%s:%d)\n", tsk->comm, tsk->pid);	  
+	}
+
+#ifdef MTK_EMMC_SUPPORT 
+	last_kmsg_store_to_emmc();
+#endif
 
 	if (pm_power_off)
 		pm_power_off();
@@ -288,7 +382,41 @@ void machine_power_off(void)
  */
 void machine_restart(char *cmd)
 {
+	struct task_struct *tsk;
+	
+	local_irq_disable();
 	smp_send_stop();
+
+	if(reboot_pid > 1)
+	{
+		tsk = find_task_by_vpid(reboot_pid);
+		if(tsk == NULL)
+			tsk = current;		
+		dump_stack();
+	}
+	else
+	{
+		tsk = current;
+	}
+
+	if(tsk->real_parent)
+	{
+	 if(tsk->real_parent->real_parent)
+	 {
+	   printk("machine_shutdown: start, Proess(%s:%d). father %s:%d. grandfather %s:%d.\n",
+		tsk->comm, tsk->pid,tsk->real_parent->comm,tsk->real_parent->pid,
+		tsk->real_parent->real_parent->comm,tsk->real_parent->real_parent->pid);
+	 }
+	 else
+	 {
+	   printk("machine_shutdown: start, Proess(%s:%d). father %s:%d.\n", 
+		tsk->comm, tsk->pid,tsk->real_parent->comm,tsk->real_parent->pid);
+	 }
+	}
+	else
+	{
+	  printk("machine_shutdown: start, Proess(%s:%d)\n", tsk->comm, tsk->pid);	  
+	}
 
 	/* Flush the console to make sure all the relevant messages make it
 	 * out to the console drivers */

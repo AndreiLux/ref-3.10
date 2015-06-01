@@ -62,6 +62,11 @@
 
 #include "internal.h"
 
+#define MUTEX_RETRY_COUNT (65536)
+#define MUTEX_RETRY_RESCHED (1024)
+
+
+
 static struct kmem_cache *anon_vma_cachep;
 static struct kmem_cache *anon_vma_chain_cachep;
 
@@ -814,7 +819,9 @@ static int page_referenced_file(struct page *page,
 	 */
 	BUG_ON(!PageLocked(page));
 
-	mutex_lock(&mapping->i_mmap_mutex);
+	//To avoid deadlock
+	if (!mutex_trylock(&mapping->i_mmap_mutex))
+		return 1; //put in active list
 
 	/*
 	 * i_mmap_mutex does not stabilize mapcount at all, but mapcount
@@ -1528,11 +1535,23 @@ static int try_to_unmap_file(struct page *page, enum ttu_flags flags)
 	unsigned long max_nl_cursor = 0;
 	unsigned long max_nl_size = 0;
 	unsigned int mapcount;
+	int retry = 0;
+
 
 	if (PageHuge(page))
 		pgoff = page->index << compound_order(page);
 
-	mutex_lock(&mapping->i_mmap_mutex);
+	while (!mutex_trylock(&mapping->i_mmap_mutex)) {
+                retry++;
+                if (!(retry % MUTEX_RETRY_RESCHED))
+                        cond_resched();
+                if (retry > MUTEX_RETRY_COUNT) {
+                        printk(KERN_ERR ">> failed to lock i_mmap_mutex in try_to_unmap_file <<\n");
+                        return SWAP_FAIL;
+                }
+        }
+
+
 	vma_interval_tree_foreach(vma, &mapping->i_mmap, pgoff, pgoff) {
 		unsigned long address = vma_address(page, vma);
 		ret = try_to_unmap_one(page, vma, address, flags);

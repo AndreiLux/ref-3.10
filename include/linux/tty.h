@@ -29,7 +29,7 @@
 #define __DISABLED_CHAR '\0'
 
 struct tty_buffer {
-	struct tty_buffer *next;
+		struct tty_buffer *next;
 	char *char_buf_ptr;
 	unsigned char *flag_buf_ptr;
 	int used;
@@ -255,7 +255,8 @@ struct tty_struct {
 	int count;
 	struct winsize winsize;		/* termios mutex */
 	unsigned char stopped:1, hw_stopped:1, flow_stopped:1, packet:1;
-	unsigned char ctrl_status;	/* ctrl_lock */
+	unsigned char low_latency:1, warned:1, peer_stops:1;
+    unsigned char ctrl_status;	/* ctrl_lock */
 	unsigned int receive_room;	/* Bytes free for queue */
 	int flow_change;
 

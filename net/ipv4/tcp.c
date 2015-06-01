@@ -580,6 +580,26 @@ int tcp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 		else
 			answ = tp->write_seq - tp->snd_nxt;
 		break;
+		/* MTK_NET_CHANGES */
+        case SIOCKILLSOCK:
+         {
+             struct uid_err uid_e;
+             if (copy_from_user(&uid_e, (char __user *)arg, sizeof(uid_e)))
+                 return -EFAULT;
+             printk(KERN_WARNING "SIOCKILLSOCK uid = %d , err = %d",
+			 	         uid_e.appuid, uid_e.errNum);
+             if (uid_e.errNum == 0)
+             {
+                 // handle BR release problem
+                 tcp_v4_handle_retrans_time_by_uid(uid_e);
+             }
+             else
+             {
+             tcp_v4_reset_connections_by_uid(uid_e);
+             }			 	         
+
+	         return 0;
+         }
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -2599,7 +2619,7 @@ static int do_tcp_setsockopt(struct sock *sk, int level,
 		/* Translate value in seconds to number of retransmits */
 		icsk->icsk_accept_queue.rskq_defer_accept =
 			secs_to_retrans(val, TCP_TIMEOUT_INIT / HZ,
-					TCP_RTO_MAX / HZ);
+					sysctl_tcp_rto_max / HZ);
 		break;
 
 	case TCP_WINDOW_CLAMP:
@@ -2808,7 +2828,7 @@ static int do_tcp_getsockopt(struct sock *sk, int level,
 		break;
 	case TCP_DEFER_ACCEPT:
 		val = retrans_to_secs(icsk->icsk_accept_queue.rskq_defer_accept,
-				      TCP_TIMEOUT_INIT / HZ, TCP_RTO_MAX / HZ);
+				      TCP_TIMEOUT_INIT / HZ, sysctl_tcp_rto_max / HZ);
 		break;
 	case TCP_WINDOW_CLAMP:
 		val = tp->window_clamp;
@@ -3490,7 +3510,7 @@ static int tcp_is_local(struct net *net, __be32 addr) {
 	return rt->dst.dev && (rt->dst.dev->flags & IFF_LOOPBACK);
 }
 
-#if defined(CONFIG_IPV6)
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 static int tcp_is_local6(struct net *net, struct in6_addr *addr) {
 	struct rt6_info *rt6 = rt6_lookup(net, addr, addr, 0, 0);
 	return rt6 && rt6->dst.dev && (rt6->dst.dev->flags & IFF_LOOPBACK);
@@ -3507,9 +3527,9 @@ int tcp_nuke_addr(struct net *net, struct sockaddr *addr)
 	int family = addr->sa_family;
 	unsigned int bucket;
 
-	struct in_addr *in;
+	struct in_addr *in = NULL;
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-	struct in6_addr *in6;
+	struct in6_addr *in6 = NULL ;
 #endif
 	if (family == AF_INET) {
 		in = &((struct sockaddr_in *)addr)->sin_addr;
@@ -3547,7 +3567,7 @@ restart:
 					continue;
 			}
 
-#if defined(CONFIG_IPV6)
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 			if (family == AF_INET6) {
 				struct in6_addr *s6;
 				if (!inet->pinet6)

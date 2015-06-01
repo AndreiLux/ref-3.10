@@ -435,8 +435,13 @@ int usb_submit_urb(struct urb *urb, gfp_t mem_flags)
 			usb_pipetype(urb->pipe), pipetypes[xfertype]);
 
 	/* Check against a simple/standard policy */
+	//Added for Rx DMA Mode1 ReqMode0/1 flag allow
+	/*
 	allowed = (URB_NO_TRANSFER_DMA_MAP | URB_NO_INTERRUPT | URB_DIR_MASK |
-			URB_FREE_BUFFER);
+			   URB_FREE_BUFFER);*/
+	allowed = (URB_NO_TRANSFER_DMA_MAP | URB_NO_INTERRUPT | URB_DIR_MASK |
+			   URB_FREE_BUFFER | URB_RX_REQ_MODE0_ENABLE | URB_RX_REQ_MODE1_ENABLE);
+	//Added for Rx DMA Mode1 ReqMode0/1 flag allow
 	switch (xfertype) {
 	case USB_ENDPOINT_XFER_BULK:
 		if (is_out)

@@ -511,9 +511,10 @@ xfsaild(
 	struct xfs_ail	*ailp = data;
 	long		tout = 0;	/* milliseconds */
 
+	set_freezable();
 	current->flags |= PF_MEMALLOC;
 
-	while (!kthread_should_stop()) {
+	while (!kthread_freezable_should_stop(NULL)) {
 		if (tout && tout <= 20)
 			__set_current_state(TASK_KILLABLE);
 		else
@@ -535,6 +536,7 @@ xfsaild(
 		    ailp->xa_target == ailp->xa_target_prev) {
 			spin_unlock(&ailp->xa_lock);
 			schedule();
+			try_to_freeze();
 			tout = 0;
 			continue;
 		}

@@ -38,6 +38,8 @@
 
 
 LIST_HEAD(super_blocks);
+EXPORT_SYMBOL_GPL(super_blocks);
+
 DEFINE_SPINLOCK(sb_lock);
 
 static char *sb_writers_name[SB_FREEZE_LEVELS] = {
@@ -1151,11 +1153,12 @@ void __sb_end_write(struct super_block *sb, int level)
 	smp_mb();
 	if (waitqueue_active(&sb->s_writers.wait))
 		wake_up(&sb->s_writers.wait);
-	rwsem_release(&sb->s_writers.lock_map[level-1], 1, _RET_IP_);
+//  TBD: false alarm fix
+//	rwsem_release(&sb->s_writers.lock_map[level-1], 1, _RET_IP_);
 }
 EXPORT_SYMBOL(__sb_end_write);
 
-#ifdef CONFIG_LOCKDEP
+#if 0
 /*
  * We want lockdep to tell us about possible deadlocks with freezing but
  * it's it bit tricky to properly instrument it. Getting a freeze protection
@@ -1196,7 +1199,8 @@ retry:
 	}
 
 #ifdef CONFIG_LOCKDEP
-	acquire_freeze_lock(sb, level, !wait, _RET_IP_);
+//  TBD: false alarm fix
+//	acquire_freeze_lock(sb, level, !wait, _RET_IP_);
 #endif
 	percpu_counter_inc(&sb->s_writers.counter[level-1]);
 	/*

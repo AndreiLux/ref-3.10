@@ -12,6 +12,7 @@
  */
 #include <linux/sched.h>
 #include <linux/mm.h>
+#include <linux/suspend.h>
 #include <linux/dma-mapping.h>
 #ifdef CONFIG_KVM_ARM_HOST
 #include <linux/kvm_host.h>
@@ -193,5 +194,8 @@ int main(void)
 #endif
   DEFINE(KVM_VTTBR,		offsetof(struct kvm, arch.vttbr));
 #endif
+  DEFINE(PBE_ADDRESS,     offsetof(struct pbe, address));
+  DEFINE(PBE_ORIG_ADDRESS,    offsetof(struct pbe, orig_address));
+  DEFINE(PBE_NEXT,        offsetof(struct pbe, next));
   return 0; 
 }

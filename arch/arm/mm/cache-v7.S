@@ -146,18 +146,18 @@ flush_levels:
 	ldr	r7, =0x7fff
 	ands	r7, r7, r1, lsr #13		@ extract max number of the index size
 loop1:
-	mov	r9, r7				@ create working copy of max index
+	mov	r9, r4				@ create working copy of max way size
 loop2:
- ARM(	orr	r11, r10, r4, lsl r5	)	@ factor way and cache number into r11
- THUMB(	lsl	r6, r4, r5		)
+ ARM(	orr	r11, r10, r9, lsl r5	)	@ factor way and cache number into r11
+ THUMB(	lsl	r6, r9, r5		)
  THUMB(	orr	r11, r10, r6		)	@ factor way and cache number into r11
- ARM(	orr	r11, r11, r9, lsl r2	)	@ factor index number into r11
- THUMB(	lsl	r6, r9, r2		)
+ ARM(	orr	r11, r11, r7, lsl r2	)	@ factor index number into r11
+ THUMB(	lsl	r6, r7, r2		)
  THUMB(	orr	r11, r11, r6		)	@ factor index number into r11
 	mcr	p15, 0, r11, c7, c14, 2		@ clean & invalidate by set/way
-	subs	r9, r9, #1			@ decrement the index
+	subs	r9, r9, #1			@ decrement the way
 	bge	loop2
-	subs	r4, r4, #1			@ decrement the way
+	subs	r7, r7, #1			@ decrement the index
 	bge	loop1
 skip:
 	add	r10, r10, #2			@ increment cache number
@@ -278,7 +278,11 @@ ENTRY(v7_coherent_user_range)
 	ALT_UP(W(nop))
 #endif
 1:
+#ifdef CONFIG_ARM_ERRATA_824069
+ USER(	mcr	p15, 0, r12, c7, c14, 1	)	@ clean & invalidate D line to the point of coherence
+#else
  USER(	mcr	p15, 0, r12, c7, c11, 1	)	@ clean D line to the point of unification
+#endif
 	add	r12, r12, r2
 	cmp	r12, r1
 	blo	1b
@@ -287,10 +291,14 @@ ENTRY(v7_coherent_user_range)
 	sub	r3, r2, #1
 	bic	r12, r0, r3
 2:
+#ifdef CONFIG_ARM_ERRATA_828419
+ USER(	mcr	p15, 0, r12, c7, c1, 0	)	@ invalidate I ALL
+#else
  USER(	mcr	p15, 0, r12, c7, c5, 1	)	@ invalidate I line
 	add	r12, r12, r2
 	cmp	r12, r1
 	blo	2b
+#endif 
 	mov	r0, #0
 	ALT_SMP(mcr	p15, 0, r0, c7, c1, 6)	@ invalidate BTB Inner Shareable
 	ALT_UP(mcr	p15, 0, r0, c7, c5, 6)	@ invalidate BTB
@@ -377,6 +385,7 @@ ENDPROC(v7_dma_inv_range)
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region
  */
+ENTRY(v7_dma_clean_range)
 v7_dma_clean_range:
 	dcache_line_size r2, r3
 	sub	r3, r2, #1
@@ -386,7 +395,11 @@ v7_dma_clean_range:
 	ALT_UP(W(nop))
 #endif
 1:
+#ifdef CONFIG_ARM_ERRATA_824069
+	mcr	p15, 0, r0, c7, c14, 1		@ clean & invalidate D / U line
+#else
 	mcr	p15, 0, r0, c7, c10, 1		@ clean D / U line
+#endif
 	add	r0, r0, r2
 	cmp	r0, r1
 	blo	1b

@@ -10,6 +10,24 @@
 extern int __cpu_suspend(unsigned long, int (*)(unsigned long));
 extern void cpu_resume_mmu(void);
 
+#define CA15L_TYPEID 0x410FC0D0
+#define CA7_TYPEID 0x410FC070
+#define CPU_TYPEID_MASK 0xfffffff0
+
+//inline int is_cpu_type(int type) 
+#define read_midr()							\
+	({								\
+		register unsigned int ret;				\
+		__asm__ __volatile__ ("mrc   p15, 0, %0, c0, c0, 0 \n\t" \
+				      :"=r"(ret));			\
+		ret;							\
+	})
+
+#define is_cpu_type(type)						\
+	({								\
+		((read_midr() & CPU_TYPEID_MASK) == type) ? 1 : 0;	\
+	})
+
 /*
  * This is called by __cpu_suspend() to save the state, and do whatever
  * flushing is required to ensure that when the CPU goes to sleep we have
@@ -28,7 +46,18 @@ void __cpu_suspend_save(u32 *ptr, u32 ptrsz, u32 sp, u32 *save_ptr)
 
 	cpu_do_suspend(ptr);
 
-	flush_cache_louis();
+        /** optimization with CA17 CCIALL.  **/
+	if (is_cpu_type(CA15L_TYPEID)) {
+                __asm__ __volatile__ (
+                        "mov  r0, #0 \n\t"
+                        "MCR p15, 1, r0, c15, c14, 0    @; DCCIALL L1 \n\t"
+                        "dsb \n\t"
+                        "isb \n\t"
+                        :::"r0");
+        }
+        else {
+                flush_cache_louis();
+        }
 
 	/*
 	 * flush_cache_louis does not guarantee that

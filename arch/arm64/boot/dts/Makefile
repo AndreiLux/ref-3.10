@@ -1,7 +1,8 @@
-dtb-$(CONFIG_ARCH_VEXPRESS) += rtsm_ve-aemv8a.dtb foundation-v8.dtb \
-				fvp-base-gicv2-psci.dtb
-dtb-$(CONFIG_ARCH_VEXPRESS) += juno.dtb
-dtb-$(CONFIG_ARCH_XGENE) += apm-mustang.dtb
+include $(srctree)/mediatek/Makefile
+
+dtb-$(CONFIG_ARCH_VEXPRESS) += rtsm_ve-aemv8a.dtb foundation-v8.dtb
+
+dtb-$(CONFIG_ARCH_MT6752) += mt6752_fpga_64.dtb
 
 targets += dtbs
 

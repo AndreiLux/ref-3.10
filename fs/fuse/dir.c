@@ -7,6 +7,7 @@
 */
 
 #include "fuse_i.h"
+#include "fuse.h"
 
 #include <linux/pagemap.h>
 #include <linux/file.h>
@@ -546,6 +547,25 @@ no_open:
 	return finish_no_open(file, res);
 }
 
+static int fuse_users(struct inode *dir, struct dentry *entry)
+{
+    int err;
+    struct fuse_conn *fc = get_fuse_conn(dir);
+    struct fuse_req *req = fuse_get_req_nopages(fc);
+    if (IS_ERR(req))
+        return PTR_ERR(req);
+
+    req->in.h.opcode = FUSE_USERS;
+    req->in.h.nodeid = get_node_id(dir);
+    req->in.numargs = 1;
+    req->in.args[0].size = entry->d_name.len + 1;
+    req->in.args[0].value = entry->d_name.name;
+    fuse_request_send(fc, req);
+    err = req->out.h.error;
+    fuse_put_request(fc, req);
+    return err;
+}
+
 /*
  * Code shared between mknod, mkdir, symlink and link
  */
@@ -602,6 +622,9 @@ static int create_new_entry(struct fuse_conn *fc, struct fuse_req *req,
 			mutex_unlock(&fc->inst_mutex);
 			dput(alias);
 			iput(inode);
+            
+            printk(KERN_ERR "fuse:%s: EBUSY caused from that the directory,'%s', has alias. Use FUSE_USERS to find the reason. \n", __FUNCTION__, entry->d_name.name);
+            fuse_users(dir, entry);           
 			return -EBUSY;
 		}
 		d_instantiate(entry, inode);
@@ -704,7 +727,7 @@ static int fuse_unlink(struct inode *dir, struct dentry *entry)
 	req->in.numargs = 1;
 	req->in.args[0].size = entry->d_name.len + 1;
 	req->in.args[0].value = entry->d_name.name;
-	fuse_request_send(fc, req);
+	fuse_request_send_ex(fc, req, i_size_read(entry->d_inode));
 	err = req->out.h.error;
 	fuse_put_request(fc, req);
 	if (!err) {
@@ -743,7 +766,7 @@ static int fuse_rmdir(struct inode *dir, struct dentry *entry)
 	req->in.numargs = 1;
 	req->in.args[0].size = entry->d_name.len + 1;
 	req->in.args[0].value = entry->d_name.name;
-	fuse_request_send(fc, req);
+	fuse_request_send_ex(fc, req, i_size_read(entry->d_inode));
 	err = req->out.h.error;
 	fuse_put_request(fc, req);
 	if (!err) {

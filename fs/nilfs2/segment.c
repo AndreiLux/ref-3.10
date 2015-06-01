@@ -2449,6 +2449,8 @@ static int nilfs_segctor_thread(void *arg)
 	struct the_nilfs *nilfs = sci->sc_super->s_fs_info;
 	int timeout = 0;
 
+	set_freezable();
+
 	sci->sc_timer.data = (unsigned long)current;
 	sci->sc_timer.function = nilfs_construction_timeout;
 

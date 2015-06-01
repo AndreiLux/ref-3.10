@@ -89,6 +89,32 @@ static void __pass_event(struct evdev_client *client,
 	}
 }
 
+/** M: MET driver milestone. @{ */
+#define MET_TOUCH
+#ifdef MET_TOUCH
+#define CREATE_TRACE_POINTS
+#include <linux/met_ftrace_touch.h>
+
+noinline void MET_touch(struct input_event* event)
+{
+	switch (event->type) {
+		case EV_ABS:
+			if (ABS_MT_POSITION_X == event->code) {
+				trace_MET_touch("EV_ABS", event->time.tv_sec, event->time.tv_usec,"X", event->value);
+			} else if (ABS_MT_POSITION_Y == event->code) {
+				trace_MET_touch("EV_ABS", event->time.tv_sec, event->time.tv_usec,"Y", event->value);
+			}
+			break;
+		case EV_KEY:
+			if (BTN_TOUCH == event->code) {
+				trace_MET_touch("EV_KEY", event->time.tv_sec, event->time.tv_usec,"BTN_TOUCH", event->value);
+			}
+			break;
+	}
+}
+#endif
+/** @} */ 
+
 static void evdev_pass_values(struct evdev_client *client,
 			const struct input_value *vals, unsigned int count,
 			ktime_t mono, ktime_t real)
@@ -109,6 +135,11 @@ static void evdev_pass_values(struct evdev_client *client,
 		event.code = v->code;
 		event.value = v->value;
 		__pass_event(client, &event);
+/** M: MET driver milestone. @{ */
+#ifdef MET_TOUCH
+		MET_touch(&event);
+#endif
+/** @} */ 
 		if (v->type == EV_SYN && v->code == SYN_REPORT)
 			wakeup = true;
 	}

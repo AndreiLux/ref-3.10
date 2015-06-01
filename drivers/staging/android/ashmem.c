@@ -220,7 +220,7 @@ static ssize_t ashmem_read(struct file *file, char __user *buf,
 	struct ashmem_area *asma = file->private_data;
 	int ret = 0;
 
-	mutex_lock(&ashmem_mutex);
+        mutex_lock(&ashmem_mutex);
 
 	/* If size is not set, or set to 0, always return EOF. */
 	if (asma->size == 0)
@@ -316,7 +316,7 @@ static int ashmem_mmap(struct file *file, struct vm_area_struct *vma)
 			name = asma->name;
 
 		/* ... and allocate the backing shmem file */
-		vmfile = shmem_file_setup(name, asma->size, vma->vm_flags);
+		vmfile = shmem_file_setup(name, asma->size, vma->vm_flags, 0);
 		if (unlikely(IS_ERR(vmfile))) {
 			ret = PTR_ERR(vmfile);
 			goto out;
@@ -363,7 +363,10 @@ static int ashmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	if (!sc->nr_to_scan)
 		return lru_count;
 
-	mutex_lock(&ashmem_mutex);
+	//To avoid deadlock when memory is shortage
+	if (!mutex_trylock(&ashmem_mutex))
+		return -1;		
+
 	list_for_each_entry_safe(range, next, &ashmem_lru_list, lru) {
 		loff_t start = range->pgstart * PAGE_SIZE;
 		loff_t end = (range->pgend + 1) * PAGE_SIZE;

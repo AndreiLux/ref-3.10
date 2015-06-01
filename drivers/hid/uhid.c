@@ -405,8 +405,8 @@ static int uhid_dev_create(struct uhid_device *uhid,
 	hid->hid_get_raw_report = uhid_hid_get_raw;
 	hid->hid_output_raw_report = uhid_hid_output_raw;
 	hid->bus = ev->u.create.bus;
-	hid->vendor = ev->u.create.vendor;
-	hid->product = ev->u.create.product;
+    hid->vendor = ev->u.create.vendor;
+    hid->product = ev->u.create.product;
 	hid->version = ev->u.create.version;
 	hid->country = ev->u.create.country;
 	hid->driver_data = uhid;

@@ -661,7 +661,7 @@ static void process_echoes(struct tty_struct *tty)
 			}
 			cp += 1;
 			nr -= 1;
-		}
+	}
 
 		/* When end of circular buffer reached, wrap around */
 		if (cp >= buf_end)
@@ -679,7 +679,7 @@ static void process_echoes(struct tty_struct *tty)
 		ldata->echo_cnt = nr;
 		if (num_processed > 0)
 			ldata->echo_overrun = 0;
-	}
+}
 
 	mutex_unlock(&ldata->echo_lock);
 	mutex_unlock(&ldata->output_lock);
@@ -1165,9 +1165,9 @@ static inline void n_tty_receive_char(struct tty_struct *tty, unsigned char c)
 	}
 
 	if (tty->closing) {
-		if (I_IXON(tty)) {
-			if (c == START_CHAR(tty)) {
-				start_tty(tty);
+	if (I_IXON(tty)) {
+		if (c == START_CHAR(tty)) {
+			start_tty(tty);
 				process_echoes(tty);
 			} else if (c == STOP_CHAR(tty))
 				stop_tty(tty);
@@ -1230,13 +1230,13 @@ send_signal:
 			if (!L_NOFLSH(tty)) {
 				n_tty_flush_buffer(tty);
 				tty_driver_flush_buffer(tty);
-			}
+		}
 			if (I_IXON(tty))
-				start_tty(tty);
+		start_tty(tty);
 			if (L_ECHO(tty)) {
 				echo_char(c, tty);
-				process_echoes(tty);
-			}
+		process_echoes(tty);
+	}
 			isig(signal, tty);
 			return;
 		}
@@ -1399,7 +1399,7 @@ static void n_tty_write_wakeup(struct tty_struct *tty)
  */
 
 static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
-			      char *fp, int count)
+			   char *fp, int count)
 {
 	struct n_tty_data *ldata = tty->disc_data;
 	const unsigned char *p;
@@ -1448,8 +1448,8 @@ static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 				printk(KERN_ERR "%s: unknown flag %d\n",
 				       tty_name(tty, buf), flags);
 				break;
-			}
-		}
+	}
+}
 		if (tty->ops->flush_chars)
 			tty->ops->flush_chars(tty);
 	}
@@ -1474,7 +1474,7 @@ static void n_tty_receive_buf(struct tty_struct *tty, const unsigned char *cp,
 			break;
 		if (!tty_throttle_safe(tty))
 			break;
-	}
+		}
 	__tty_set_flow_change(tty, 0);
 }
 
@@ -1866,26 +1866,26 @@ do_it_again:
 
 		if (!input_available_p(tty, 0)) {
 			if (test_bit(TTY_OTHER_CLOSED, &tty->flags)) {
-				retval = -EIO;
-				break;
-			}
-			if (tty_hung_up_p(file))
-				break;
-			if (!timeout)
-				break;
-			if (file->f_flags & O_NONBLOCK) {
-				retval = -EAGAIN;
-				break;
-			}
-			if (signal_pending(current)) {
-				retval = -ERESTARTSYS;
-				break;
-			}
+					retval = -EIO;
+					break;
+				}
+				if (tty_hung_up_p(file))
+					break;
+				if (!timeout)
+					break;
+				if (file->f_flags & O_NONBLOCK) {
+					retval = -EAGAIN;
+					break;
+				}
+				if (signal_pending(current)) {
+					retval = -ERESTARTSYS;
+					break;
+				}
 			/* FIXME: does n_tty_set_room need locking ? */
-			n_tty_set_room(tty);
-			timeout = schedule_timeout(timeout);
-			continue;
-		}
+				n_tty_set_room(tty);
+				timeout = schedule_timeout(timeout);
+				continue;
+			}
 		__set_current_state(TASK_RUNNING);
 
 		/* Deal with packet mode. */

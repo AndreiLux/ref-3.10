@@ -75,12 +75,14 @@
 #include <linux/blkdev.h>
 #include <linux/elevator.h>
 #include <linux/random.h>
+#include <linux/time_log.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
 #include <asm/setup.h>
 #include <asm/sections.h>
 #include <asm/cacheflush.h>
+#include <linux/bootprof.h>
 
 #ifdef CONFIG_X86_LOCAL_APIC
 #include <asm/smp.h>
@@ -128,6 +130,7 @@ extern void softirq_init(void);
 char __initdata boot_command_line[COMMAND_LINE_SIZE];
 /* Untouched saved command line (eg. for /proc) */
 char *saved_command_line;
+EXPORT_SYMBOL_GPL(saved_command_line);
 /* Command line for parameter parsing */
 static char *static_command_line;
 
@@ -680,7 +683,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
 {
 	int count = preempt_count();
 	int ret;
-
+	TIME_LOG_START();
 	if (initcall_debug)
 		ret = do_one_initcall_debug(fn);
 	else
@@ -698,6 +701,7 @@ int __init_or_module do_one_initcall(initcall_t fn)
 	}
 	WARN(msgbuf[0], "initcall %pF returned with %s\n", fn, msgbuf);
 
+	TIME_LOG_END("[init] f(%08x)\n", (unsigned int)(*fn));
 	return ret;
 }
 
@@ -822,6 +826,8 @@ static int __ref kernel_init(void *unused)
 
 	flush_delayed_fput();
 
+	log_boot("Kernel_init_done");
+	
 	if (ramdisk_execute_command) {
 		if (!run_init_process(ramdisk_execute_command))
 			return 0;
@@ -850,6 +856,11 @@ static int __ref kernel_init(void *unused)
 	      "See Linux Documentation/init.txt for guidance.");
 }
 
+
+#ifdef CONFIG_MTK_HIBERNATION
+// IPO-H, move here for console ok after hibernaton
+extern int software_resume(void);
+#endif
 static noinline void __init kernel_init_freeable(void)
 {
 	/*
@@ -887,6 +898,11 @@ static noinline void __init kernel_init_freeable(void)
 
 	(void) sys_dup(0);
 	(void) sys_dup(0);
+
+#ifdef CONFIG_MTK_HIBERNATION
+// IPO-H, move here for console ok after hibernaton resume
+    software_resume();
+#endif
 	/*
 	 * check if there is an early userspace init.  If yes, let it do all
 	 * the work

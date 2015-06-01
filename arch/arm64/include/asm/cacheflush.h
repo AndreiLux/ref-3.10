@@ -123,13 +123,16 @@ extern void flush_dcache_page(struct page *);
 static inline void __flush_icache_all(void)
 {
 	asm("ic	ialluis");
-	dsb(ish);
+	dsb();
 }
 
 #define flush_dcache_mmap_lock(mapping) \
 	spin_lock_irq(&(mapping)->tree_lock)
 #define flush_dcache_mmap_unlock(mapping) \
 	spin_unlock_irq(&(mapping)->tree_lock)
+
+#define flush_icache_user_range(vma,page,addr,len) \
+	flush_dcache_page(page)
 
 /*
  * We don't appear to need to do anything here.  In fact, if we did, we'd
@@ -138,10 +141,19 @@ static inline void __flush_icache_all(void)
 #define flush_icache_page(vma,page)	do { } while (0)
 
 /*
- * Not required on AArch64 (PIPT or VIPT non-aliasing D-cache).
+ * flush_cache_vmap() is used when creating mappings (eg, via vmap,
+ * vmalloc, ioremap etc) in kernel space for pages.  On non-VIPT
+ * caches, since the direct-mappings of these pages may contain cached
+ * data, we need to do a full cache flush to ensure that writebacks
+ * don't corrupt data placed into these pages via the new mappings.
  */
 static inline void flush_cache_vmap(unsigned long start, unsigned long end)
 {
+	/*
+	 * set_pte_at() called from vmap_pte_range() does not
+	 * have a DSB after cleaning the cache line.
+	 */
+	dsb();
 }
 
 static inline void flush_cache_vunmap(unsigned long start, unsigned long end)

@@ -1085,4 +1085,6 @@ static struct usb_driver usb_storage_driver = {
 	.soft_unbind =	1,
 };
 
+bool usb_storage_debug = false;
+module_param(usb_storage_debug, bool, 0644);
 module_usb_driver(usb_storage_driver);

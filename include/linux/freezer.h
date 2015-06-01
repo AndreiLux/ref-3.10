@@ -61,8 +61,8 @@ static inline bool try_to_freeze_unsafe(void)
 
 static inline bool try_to_freeze(void)
 {
-	if (!(current->flags & PF_NOFREEZE))
-		debug_check_no_locks_held();
+//	if (!(current->flags & PF_NOFREEZE))
+//		debug_check_no_locks_held();
 	return try_to_freeze_unsafe();
 }
 

@@ -14,10 +14,25 @@
 #ifndef __ASM_PSCI_H
 #define __ASM_PSCI_H
 
-struct cpuidle_driver;
-void psci_init(void);
+#define PSCI_POWER_STATE_TYPE_STANDBY		0
+#define PSCI_POWER_STATE_TYPE_POWER_DOWN	1
 
-int __init psci_dt_register_idle_states(struct cpuidle_driver *,
-					struct device_node *[]);
+struct psci_power_state {
+	u16	id;
+	u8	type;
+	u8	affinity_level;
+};
+
+struct psci_operations {
+	int (*cpu_suspend)(struct psci_power_state state,
+			   unsigned long entry_point);
+	int (*cpu_off)(struct psci_power_state state);
+	int (*cpu_on)(unsigned long cpuid, unsigned long entry_point);
+	int (*migrate)(unsigned long cpuid);
+};
+
+extern struct psci_operations psci_ops;
+
+int psci_init(void);
 
 #endif /* __ASM_PSCI_H */

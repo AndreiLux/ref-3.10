@@ -22,7 +22,6 @@
 #include <linux/sched.h>
 #include <linux/scatterlist.h>
 #include <linux/vmalloc.h>
-#include "ion.h"
 #include "ion_priv.h"
 
 void *ion_heap_map_kernel(struct ion_heap *heap,
@@ -51,7 +50,7 @@ void *ion_heap_map_kernel(struct ion_heap *heap,
 		BUG_ON(i >= npages);
 		for (j = 0; j < npages_this_entry; j++)
 			*(tmp++) = page++;
-	}
+		}
 	vaddr = vmap(pages, npages, VM_MAP, pgprot);
 	vfree(pages);
 
@@ -158,11 +157,18 @@ int ion_heap_pages_zero(struct page *page, size_t size, pgprot_t pgprot)
 	return ion_heap_sglist_zero(&sg, 1, pgprot);
 }
 
-void ion_heap_freelist_add(struct ion_heap *heap, struct ion_buffer *buffer)
+void ion_heap_freelist_add(struct ion_heap *heap, struct ion_buffer * buffer)
 {
+	//add by k, for mm heap to free mva
+	if(heap->ops->add_freelist)
+		heap->ops->add_freelist(buffer);
 	spin_lock(&heap->free_lock);
 	list_add(&buffer->list, &heap->free_list);
 	heap->free_list_size += buffer->size;
+
+	if(heap->free_list_size > 200*1024*1024)
+		printk("[ion_dbg] warning: free_list_size=0x%x\n", heap->free_list_size);
+
 	spin_unlock(&heap->free_lock);
 	wake_up(&heap->waitqueue);
 }
@@ -320,6 +326,9 @@ struct ion_heap *ion_heap_create(struct ion_platform_heap *heap_data)
 	case ION_HEAP_TYPE_CHUNK:
 		heap = ion_chunk_heap_create(heap_data);
 		break;
+	case ION_HEAP_TYPE_MULTIMEDIA:
+ 		heap = ion_mm_heap_create(heap_data);
+		break;
 	case ION_HEAP_TYPE_DMA:
 		heap = ion_cma_heap_create(heap_data);
 		break;
@@ -358,6 +367,9 @@ void ion_heap_destroy(struct ion_heap *heap)
 		break;
 	case ION_HEAP_TYPE_CHUNK:
 		ion_chunk_heap_destroy(heap);
+		break;
+	case ION_HEAP_TYPE_MULTIMEDIA:
+		ion_mm_heap_destroy(heap);
 		break;
 	case ION_HEAP_TYPE_DMA:
 		ion_cma_heap_destroy(heap);

@@ -1442,12 +1442,9 @@ int jbd2_journal_stop(handle_t *handle)
 	 * to perform a synchronous write.  We do this to detect the
 	 * case where a single process is doing a stream of sync
 	 * writes.  No point in waiting for joiners in that case.
-	 *
-	 * Setting max_batch_time to 0 disables this completely.
 	 */
 	pid = current->pid;
-	if (handle->h_sync && journal->j_last_sync_writer != pid &&
-	    journal->j_max_batch_time) {
+	if (handle->h_sync && journal->j_last_sync_writer != pid) {
 		u64 commit_time, trans_time;
 
 		journal->j_last_sync_writer = pid;

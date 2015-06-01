@@ -150,7 +150,7 @@ void ping_hash(struct sock *sk)
 void ping_unhash(struct sock *sk)
 {
 	struct inet_sock *isk = inet_sk(sk);
-	pr_debug("ping_unhash(isk=%p,isk->num=%u)\n", isk, isk->inet_num);
+	pr_info("ping_unhash(isk=%p,isk->num=%u)\n", isk, isk->inet_num);
 	if (sk_hashed(sk)) {
 		write_lock_bh(&ping_table.lock);
 		hlist_nulls_del(&sk->sk_nulls_node);
@@ -159,6 +159,7 @@ void ping_unhash(struct sock *sk)
 		isk->inet_sport = 0;
 		sock_prot_inuse_add(sock_net(sk), sk->sk_prot, -1);
 		write_unlock_bh(&ping_table.lock);
+		pr_info("ping_unhash(isk=%p,sk=%p)\n", isk, sk);
 	}
 }
 EXPORT_SYMBOL_GPL(ping_unhash);
@@ -253,7 +254,7 @@ int ping_init_sock(struct sock *sk)
 	int i, j, count;
 	kgid_t low, high;
 	int ret = 0;
-
+	
 	inet_get_ping_group_range_net(net, &low, &high);
 	if (gid_lte(low, group) && gid_lte(group, high))
 		return 0;
@@ -286,6 +287,7 @@ void ping_close(struct sock *sk, long timeout)
 	pr_debug("isk->refcnt = %d\n", sk->sk_refcnt.counter);
 
 	sk_common_release(sk);
+	pr_info("ping_close done\n");
 }
 EXPORT_SYMBOL_GPL(ping_close);
 
@@ -768,7 +770,8 @@ int ping_v4_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	flowi4_init_output(&fl4, ipc.oif, sk->sk_mark, tos,
 			   RT_SCOPE_UNIVERSE, sk->sk_protocol,
-			   inet_sk_flowi_flags(sk), faddr, saddr, 0, 0);
+			   inet_sk_flowi_flags(sk), faddr, saddr, 0, 0,
+			   sock_i_uid(sk));
 
 	security_sk_classify_flow(sk, flowi4_to_flowi(&fl4));
 	rt = ip_route_output_flow(net, &fl4, sk);
@@ -776,7 +779,7 @@ int ping_v4_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		err = PTR_ERR(rt);
 		rt = NULL;
 		if (err == -ENETUNREACH)
-			IP_INC_STATS(net, IPSTATS_MIB_OUTNOROUTES);
+			IP_INC_STATS_BH(net, IPSTATS_MIB_OUTNOROUTES);
 		goto out;
 	}
 
@@ -834,8 +837,8 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 {
 	struct inet_sock *isk = inet_sk(sk);
 	int family = sk->sk_family;
-        struct sockaddr_in *sin;
-        struct sockaddr_in6 *sin6;
+	struct sockaddr_in *sin;
+	struct sockaddr_in6 *sin6;
 	struct sk_buff *skb;
 	int copied, err;
 
@@ -845,19 +848,19 @@ int ping_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	if (flags & MSG_OOB)
 		goto out;
 
-        if (addr_len) {
-                if (family == AF_INET)
-                        *addr_len = sizeof(*sin);
-                else if (family == AF_INET6 && addr_len)
-                        *addr_len = sizeof(*sin6);
-        }
+	if (addr_len) {
+		if (family == AF_INET)
+			*addr_len = sizeof(*sin);
+		else if (family == AF_INET6 && addr_len)
+			*addr_len = sizeof(*sin6);
+	}
 
 	if (flags & MSG_ERRQUEUE) {
 		if (family == AF_INET) {
 			return ip_recv_error(sk, msg, len, addr_len);
 #if IS_ENABLED(CONFIG_IPV6)
 		} else if (family == AF_INET6) {
-			return pingv6_ops.ipv6_recv_error(sk, msg, len);
+			return pingv6_ops.ipv6_recv_error(sk, msg, len, addr_len);
 #endif
 		}
 	}
@@ -961,12 +964,15 @@ void ping_rcv(struct sk_buff *skb)
 
 	sk = ping_lookup(net, skb, ntohs(icmph->un.echo.id));
 	if (sk != NULL) {
-		pr_debug("rcv on socket %p\n", sk);
+#ifdef CONFIG_MTK_NET_LOGGING  
+		printk(KERN_INFO "[mtk_net][ping_debug]rcv on sk %p\n", sk);
+#endif
 		ping_queue_rcv_skb(sk, skb_get(skb));
-		sock_put(sk);
+		/*mtk_net: don't put sock here, do sock_put after free skb*/
+		/* sock_put(sk); */
 		return;
 	}
-	pr_debug("no socket, dropping\n");
+	pr_info("[mtk_net][ping_debug]no socket, dropping\n");
 
 	/* We're called from icmp_rcv(). kfree_skb() is done there. */
 }
@@ -1012,7 +1018,8 @@ static struct sock *ping_get_first(struct seq_file *seq, int start)
 			continue;
 
 		sk_nulls_for_each(sk, node, hslot) {
-			if (net_eq(sock_net(sk), net))
+			if (net_eq(sock_net(sk), net) &&
+			    sk->sk_family == state->family)
 				goto found;
 		}
 	}
@@ -1045,17 +1052,24 @@ static struct sock *ping_get_idx(struct seq_file *seq, loff_t pos)
 	return pos ? NULL : sk;
 }
 
-static void *ping_seq_start(struct seq_file *seq, loff_t *pos)
+void *ping_seq_start(struct seq_file *seq, loff_t *pos, sa_family_t family)
 {
 	struct ping_iter_state *state = seq->private;
 	state->bucket = 0;
+	state->family = family;
 
 	read_lock_bh(&ping_table.lock);
 
 	return *pos ? ping_get_idx(seq, *pos-1) : SEQ_START_TOKEN;
 }
+EXPORT_SYMBOL_GPL(ping_seq_start);
 
-static void *ping_seq_next(struct seq_file *seq, void *v, loff_t *pos)
+static void *ping_v4_seq_start(struct seq_file *seq, loff_t *pos)
+{
+	return ping_seq_start(seq, pos, AF_INET);
+}
+
+void *ping_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 {
 	struct sock *sk;
 
@@ -1067,13 +1081,15 @@ static void *ping_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 	++*pos;
 	return sk;
 }
+EXPORT_SYMBOL_GPL(ping_seq_next);
 
-static void ping_seq_stop(struct seq_file *seq, void *v)
+void ping_seq_stop(struct seq_file *seq, void *v)
 {
 	read_unlock_bh(&ping_table.lock);
 }
+EXPORT_SYMBOL_GPL(ping_seq_stop);
 
-static void ping_format_sock(struct sock *sp, struct seq_file *f,
+static void ping_v4_format_sock(struct sock *sp, struct seq_file *f,
 		int bucket, int *len)
 {
 	struct inet_sock *inet = inet_sk(sp);
@@ -1094,7 +1110,7 @@ static void ping_format_sock(struct sock *sp, struct seq_file *f,
 		atomic_read(&sp->sk_drops), len);
 }
 
-static int ping_seq_show(struct seq_file *seq, void *v)
+static int ping_v4_seq_show(struct seq_file *seq, void *v)
 {
 	if (v == SEQ_START_TOKEN)
 		seq_printf(seq, "%-127s\n",
@@ -1105,72 +1121,86 @@ static int ping_seq_show(struct seq_file *seq, void *v)
 		struct ping_iter_state *state = seq->private;
 		int len;
 
-		ping_format_sock(v, seq, state->bucket, &len);
+		ping_v4_format_sock(v, seq, state->bucket, &len);
 		seq_printf(seq, "%*s\n", 127 - len, "");
 	}
 	return 0;
 }
 
-static const struct seq_operations ping_seq_ops = {
-	.show		= ping_seq_show,
-	.start		= ping_seq_start,
+static const struct seq_operations ping_v4_seq_ops = {
+	.show		= ping_v4_seq_show,
+	.start		= ping_v4_seq_start,
 	.next		= ping_seq_next,
 	.stop		= ping_seq_stop,
 };
 
 static int ping_seq_open(struct inode *inode, struct file *file)
 {
-	return seq_open_net(inode, file, &ping_seq_ops,
+	struct ping_seq_afinfo *afinfo = PDE_DATA(inode);
+	return seq_open_net(inode, file, &afinfo->seq_ops,
 			   sizeof(struct ping_iter_state));
 }
 
-static const struct file_operations ping_seq_fops = {
+const struct file_operations ping_seq_fops = {
 	.open		= ping_seq_open,
 	.read		= seq_read,
 	.llseek		= seq_lseek,
 	.release	= seq_release_net,
 };
+EXPORT_SYMBOL_GPL(ping_seq_fops);
 
-static int ping_proc_register(struct net *net)
+static struct ping_seq_afinfo ping_v4_seq_afinfo = {
+	.name		= "icmp",
+	.family		= AF_INET,
+	.seq_fops	= &ping_seq_fops,
+	.seq_ops	= {
+		.start		= ping_v4_seq_start,
+		.show		= ping_v4_seq_show,
+		.next		= ping_seq_next,
+		.stop		= ping_seq_stop,
+	},
+};
+
+int ping_proc_register(struct net *net, struct ping_seq_afinfo *afinfo)
 {
 	struct proc_dir_entry *p;
-	int rc = 0;
-
-	p = proc_create("icmp", S_IRUGO, net->proc_net, &ping_seq_fops);
+	p = proc_create_data(afinfo->name, S_IRUGO, net->proc_net,
+			     afinfo->seq_fops, afinfo);
 	if (!p)
-		rc = -ENOMEM;
-	return rc;
+		return -ENOMEM;
+	return 0;
 }
+EXPORT_SYMBOL_GPL(ping_proc_register);
 
-static void ping_proc_unregister(struct net *net)
+void ping_proc_unregister(struct net *net, struct ping_seq_afinfo *afinfo)
 {
-	remove_proc_entry("icmp", net->proc_net);
+	remove_proc_entry(afinfo->name, net->proc_net);
 }
+EXPORT_SYMBOL_GPL(ping_proc_unregister);
 
-
-static int __net_init ping_proc_init_net(struct net *net)
+static int __net_init ping_v4_proc_init_net(struct net *net)
 {
-	return ping_proc_register(net);
+	return ping_proc_register(net, &ping_v4_seq_afinfo);
 }
 
-static void __net_exit ping_proc_exit_net(struct net *net)
+static void __net_exit ping_v4_proc_exit_net(struct net *net)
 {
-	ping_proc_unregister(net);
+	ping_proc_unregister(net, &ping_v4_seq_afinfo);
 }
 
-static struct pernet_operations ping_net_ops = {
-	.init = ping_proc_init_net,
-	.exit = ping_proc_exit_net,
+static struct pernet_operations ping_v4_net_ops = {
+	.init = ping_v4_proc_init_net,
+	.exit = ping_v4_proc_exit_net,
 };
 
 int __init ping_proc_init(void)
 {
-	return register_pernet_subsys(&ping_net_ops);
+	return register_pernet_subsys(&ping_v4_net_ops);
 }
 
 void ping_proc_exit(void)
 {
-	unregister_pernet_subsys(&ping_net_ops);
+	unregister_pernet_subsys(&ping_v4_net_ops);
 }
 
 #endif

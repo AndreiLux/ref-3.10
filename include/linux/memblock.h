@@ -149,6 +149,7 @@ phys_addr_t memblock_alloc(phys_addr_t size, phys_addr_t align);
 /* Flags for memblock_alloc_base() amd __memblock_alloc_base() */
 #define MEMBLOCK_ALLOC_ANYWHERE	(~(phys_addr_t)0)
 #define MEMBLOCK_ALLOC_ACCESSIBLE	0
+#define MEMBLOCK_ALLOC_NOPASR	((ARCH_PFN_OFFSET << PAGE_SHIFT) + 0x30000000)
 
 phys_addr_t memblock_alloc_base(phys_addr_t size, phys_addr_t align,
 				phys_addr_t max_addr);

@@ -23,9 +23,6 @@
 #include <linux/sort.h>
 #include <linux/err.h>
 #include <asm/cputime.h>
-#ifdef CONFIG_BL_SWITCHER
-#include <asm/bL_switcher.h>
-#endif
 
 static spinlock_t cpufreq_stats_lock;
 
@@ -331,7 +328,6 @@ static int cpufreq_stats_create_table(struct cpufreq_policy *policy,
 		goto error_out;
 
 	stat->cpu = cpu;
-	per_cpu(cpufreq_stats_table, cpu) = stat;
 
 	for (i = 0; table[i].frequency != CPUFREQ_TABLE_END; i++) {
 		unsigned int freq = table[i].frequency;
@@ -369,6 +365,10 @@ static int cpufreq_stats_create_table(struct cpufreq_policy *policy,
 	stat->last_time = get_jiffies_64();
 	stat->last_index = freq_table_get_index(stat, policy->cur);
 	spin_unlock(&cpufreq_stats_lock);
+
+    // Assign stat after stat's frequency table is initialized.
+    per_cpu(cpufreq_stats_table, cpu) = stat;
+
 	cpufreq_cpu_put(data);
 	return 0;
 error_out:
@@ -427,7 +427,7 @@ static void add_all_freq_table(unsigned int freq)
 	unsigned int size;
 	size = sizeof(unsigned int) * (all_freq_table->table_size + 1);
 	all_freq_table->freq_table = krealloc(all_freq_table->freq_table,
-			size, GFP_KERNEL);
+			size, GFP_ATOMIC);
 	if (IS_ERR(all_freq_table->freq_table)) {
 		pr_warn("Could not reallocate memory for freq_table\n");
 		all_freq_table->freq_table = NULL;
@@ -621,7 +621,7 @@ static struct notifier_block notifier_trans_block = {
 	.notifier_call = cpufreq_stat_notifier_trans
 };
 
-static int cpufreq_stats_setup(void)
+static int __init cpufreq_stats_init(void)
 {
 	int ret;
 	unsigned int cpu;
@@ -655,8 +655,7 @@ static int cpufreq_stats_setup(void)
 
 	return 0;
 }
-
-static void cpufreq_stats_cleanup(void)
+static void __exit cpufreq_stats_exit(void)
 {
 	unsigned int cpu;
 
@@ -670,54 +669,6 @@ static void cpufreq_stats_cleanup(void)
 		cpufreq_stats_free_sysfs(cpu);
 	}
 	cpufreq_allstats_free();
-}
-
-#ifdef CONFIG_BL_SWITCHER
-static int cpufreq_stats_switcher_notifier(struct notifier_block *nfb,
-					unsigned long action, void *_arg)
-{
-	switch (action) {
-	case BL_NOTIFY_PRE_ENABLE:
-	case BL_NOTIFY_PRE_DISABLE:
-		cpufreq_stats_cleanup();
-		break;
-
-	case BL_NOTIFY_POST_ENABLE:
-	case BL_NOTIFY_POST_DISABLE:
-		cpufreq_stats_setup();
-		break;
-
-	default:
-		return NOTIFY_DONE;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block switcher_notifier = {
-	.notifier_call = cpufreq_stats_switcher_notifier,
-};
-#endif
-
-static int __init cpufreq_stats_init(void)
-{
-	int ret;
-	spin_lock_init(&cpufreq_stats_lock);
-
-	ret = cpufreq_stats_setup();
-#ifdef CONFIG_BL_SWITCHER
-	if (!ret)
-		bL_switcher_register_notifier(&switcher_notifier);
-#endif
-	return ret;
-}
-
-static void __exit cpufreq_stats_exit(void)
-{
-#ifdef CONFIG_BL_SWITCHER
-	bL_switcher_unregister_notifier(&switcher_notifier);
-#endif
-	cpufreq_stats_cleanup();
 }
 
 MODULE_AUTHOR("Zou Nan hai <nanhai.zou@intel.com>");

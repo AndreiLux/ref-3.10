@@ -1,0 +1,105 @@
+
+/dts-v1/;
+
+/include/ "mt6752.dtsi"
+
+/ {
+	memory@00000000 {
+		device_type = "memory";
+		reg = <0 0x40000000 0 0x80000000>;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		cpu0: cpu@0 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x000>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x40000200>;
+			clock-frequency = <1300000000>;
+		};
+
+		cpu1: cpu@1 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x001>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x40000200>;
+			clock-frequency = <1300000000>;
+		};
+
+		cpu2: cpu@2 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x002>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x0>;
+			clock-frequency = <1300000000>;
+		};
+
+		cpu3: cpu@3 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x003>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x0>;
+			clock-frequency = <1300000000>;
+		};
+
+		/* reserve cpu4~7 since we cannot reduce cpu core numbers */
+		cpu4: cpu@4 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x100>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x40000200>;
+			clock-frequency = <1300000000>;
+		};
+
+		cpu5: cpu@5 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x101>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x0>;
+			clock-frequency = <1300000000>;
+		};
+
+		cpu6: cpu@6 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x102>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x0>;
+			clock-frequency = <1300000000>;
+		};
+
+		cpu7: cpu@7 {
+			device_type = "cpu";
+			compatible = "arm,cortex-a53";
+			reg = <0x103>;
+			enable-method = "spin-table";
+			cpu-release-addr = <0x0 0x0>;
+			clock-frequency = <1300000000>;
+		};
+	};
+
+	bus {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0 0 0 0xffffffff>;
+
+		MALI@0x13040000 {
+			compatible = "arm,malit760", "arm,mali-t76x", "arm,malit7xx", "arm,mali-midgard";
+			reg = <0x13040000 0x4000>;
+			interrupts = <0 227 0x8>, <0 226 0x8>, <0 225 0x8>;
+			interrupt-names = "JOB", "MMU", "GPU";
+			clock-frequency = <500000000>;
+		};
+  };
+
+};

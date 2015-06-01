@@ -19,6 +19,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/memblock.h>
+#include <mach/mtk_memcfg.h>
 
 static struct memblock_region memblock_memory_init_regions[INIT_MEMBLOCK_REGIONS] __initdata_memblock;
 static struct memblock_region memblock_reserved_init_regions[INIT_MEMBLOCK_REGIONS] __initdata_memblock;
@@ -560,6 +561,17 @@ int __init_memblock memblock_reserve(phys_addr_t base, phys_addr_t size)
 		     (unsigned long long)base + size,
 		     (void *)_RET_IP_);
 
+	if (memblock_is_region_reserved(base, size)) {
+		/* trap memory reserve conflict */
+		mtk_memcfg_late_warning(WARN_MEMBLOCK_CONFLICT);
+		MTK_MEMCFG_LOG_AND_PRINTK("[rsv conflict]%pS: "
+			"0x%08llx - 0x%08llx (0x%08llx)\n",
+			__builtin_return_address(0),
+			(unsigned long long)base,
+			(unsigned long long)base + size,
+			(unsigned long long)size);
+	} 
+
 	return memblock_add_region(_rgn, base, size, MAX_NUMNODES);
 }
 
@@ -776,7 +788,8 @@ static phys_addr_t __init memblock_alloc_base_nid(phys_addr_t size,
 		align = __alignof__(long long);
 
 	/* align @size to avoid excessive fragmentation on reserved array */
-	size = round_up(size, align);
+	/* do not align size, we need every available memory */
+	//size = round_up(size, align);
 
 	found = memblock_find_in_range_node(0, max_addr, size, align, nid);
 	if (found && !memblock_reserve(found, size))

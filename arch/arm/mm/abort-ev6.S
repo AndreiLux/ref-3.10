@@ -38,8 +38,9 @@ ENTRY(v6_early_abort)
 	bne	do_DataAbort
 	bic	r1, r1, #1 << 11		@ clear bit 11 of FSR
 	ldr	r3, [r4]			@ read aborted ARM instruction
- ARM_BE8(rev	r3, r3)
-
+#ifdef CONFIG_CPU_ENDIAN_BE8
+	rev	r3, r3
+#endif
 	do_ldrd_abort tmp=ip, insn=r3
 	tst	r3, #1 << 20			@ L = 0 -> write
 	orreq	r1, r1, #1 << 11		@ yes.

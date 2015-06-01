@@ -1,0 +1,27 @@
+
+/dts-v1/;
+
+/include/ "mt6752.dtsi"
+
+/ {
+	memory@00000000 {
+		device_type = "memory";
+		reg = <0 0x40000000 0 0x80000000>;
+	};
+
+	bus {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0 0 0 0xffffffff>;
+
+		MALI@0x13040000 {
+			compatible = "arm,malit760", "arm,mali-t76x", "arm,malit7xx", "arm,mali-midgard";
+			reg = <0x13040000 0x4000>;
+			interrupts = <0 227 0x8>, <0 226 0x8>, <0 225 0x8>;
+			interrupt-names = "JOB", "MMU", "GPU";
+			clock-frequency = <600000000>;
+		};
+  };
+
+};

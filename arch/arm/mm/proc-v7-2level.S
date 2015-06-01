@@ -104,7 +104,11 @@ ENTRY(cpu_v7_set_pte_ext)
  THUMB(	add	r0, r0, #2048 )
  THUMB(	str	r3, [r0] )
 	ALT_SMP(W(nop))
+#ifdef CONFIG_ARM_ERRATA_824069
+	ALT_UP (mcr	p15, 0, r0, c7, c14, 1)		@ flush_pte
+#else
 	ALT_UP (mcr	p15, 0, r0, c7, c10, 1)		@ flush_pte
+#endif
 #endif
 	mov	pc, lr
 ENDPROC(cpu_v7_set_pte_ext)

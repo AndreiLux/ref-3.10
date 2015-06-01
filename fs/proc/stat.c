@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/time.h>
 #include <linux/irqnr.h>
+#include <linux/vmalloc.h>
 #include <asm/cputime.h>
 #include <linux/tick.h>
 
@@ -193,9 +194,10 @@ static int stat_open(struct inode *inode, struct file *file)
 	size += 2 * nr_irqs;
 
 	/* don't ask for more than the kmalloc() max size */
-	if (size > KMALLOC_MAX_SIZE)
-		size = KMALLOC_MAX_SIZE;
-	buf = kmalloc(size, GFP_KERNEL);
+	//if (size > KMALLOC_MAX_SIZE)
+	//	size = KMALLOC_MAX_SIZE;
+	//buf = kmalloc(size, GFP_KERNEL);
+	buf = vmalloc(size);
 	if (!buf)
 		return -ENOMEM;
 
@@ -203,9 +205,11 @@ static int stat_open(struct inode *inode, struct file *file)
 	if (!res) {
 		m = file->private_data;
 		m->buf = buf;
-		m->size = ksize(buf);
+        //m->size = ksize(buf);
+		m->size = size;
 	} else
-		kfree(buf);
+		//kfree(buf);
+		vfree(buf);
 	return res;
 }
 

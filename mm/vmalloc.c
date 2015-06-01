@@ -423,11 +423,18 @@ nocache:
 		if (addr + size < addr)
 			goto overflow;
 
+		/*
 		if (list_is_last(&first->list, &vmap_area_list))
 			goto found;
 
 		first = list_entry(first->list.next,
 				struct vmap_area, list);
+		*/
+		n = rb_next(&first->rb_node);
+		if (n)
+			first = rb_entry(n, struct vmap_area, rb_node);
+		else
+			goto found;
 	}
 
 found:
@@ -931,8 +938,13 @@ again:
 		int i;
 
 		spin_lock(&vb->lock);
-		if (vb->free < 1UL << order)
+		if (vb->free < 1UL << order) {
+            if (vb->free + vb->dirty == VMAP_BBMAP_BITS && vb->dirty != VMAP_BBMAP_BITS) {
+				/* free left too small, handle as fragmented scenario */
+				purge = 1;
+			}
 			goto next;
+        }
 
 		i = bitmap_find_free_region(vb->alloc_map,
 						VMAP_BBMAP_BITS, order);

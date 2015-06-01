@@ -17,7 +17,7 @@
 
 #include <linux/init.h>
 #include <linux/of.h>
-#include <linux/string.h>
+#include <uapi/linux/psci.h>
 
 #include <asm/compiler.h>
 #include <asm/errno.h>
@@ -27,28 +27,20 @@
 
 struct psci_operations psci_ops;
 
-/* Type of psci support. Currently can only be enabled or disabled */
-#define PSCI_SUP_DISABLED		0
-#define PSCI_SUP_ENABLED		1
-
-static unsigned int psci;
 static int (*invoke_psci_fn)(u32, u32, u32, u32);
+typedef int (*psci_initcall_t)(const struct device_node *);
 
 enum psci_function {
 	PSCI_FN_CPU_SUSPEND,
 	PSCI_FN_CPU_ON,
 	PSCI_FN_CPU_OFF,
 	PSCI_FN_MIGRATE,
+	PSCI_FN_AFFINITY_INFO,
+	PSCI_FN_MIGRATE_INFO_TYPE,
 	PSCI_FN_MAX,
 };
 
 static u32 psci_function_id[PSCI_FN_MAX];
-
-#define PSCI_RET_SUCCESS		0
-#define PSCI_RET_EOPNOTSUPP		-1
-#define PSCI_RET_EINVAL			-2
-#define PSCI_RET_EPERM			-3
-#define PSCI_RET_EALREADYON		-4
 
 static int psci_to_linux_errno(int errno)
 {
@@ -61,8 +53,6 @@ static int psci_to_linux_errno(int errno)
 		return -EINVAL;
 	case PSCI_RET_EPERM:
 		return -EPERM;
-	case PSCI_RET_EALREADYON:
-		return -EAGAIN;
 	};
 
 	return -EINVAL;
@@ -119,6 +109,21 @@ static noinline int __invoke_psci_fn_smc(u32 function_id, u32 arg0, u32 arg1,
 	return function_id;
 }
 
+#define PSCI_VER_MAJOR_MASK		0xffff0000
+#define PSCI_VER_MINOR_MASK		0x0000ffff
+#define PSCI_VER_MAJOR_SHIFT	16
+#define PSCI_VER_MAJOR(ver)		\
+	((ver & PSCI_VER_MAJOR_MASK) >> PSCI_VER_MAJOR_SHIFT)
+#define PSCI_VER_MINOR(ver)		(ver & PSCI_VER_MINOR_MASK)
+
+static int psci_get_version(void)
+{
+	int err;
+
+	err = invoke_psci_fn(PSCI_ID_VERSION, 0, 0, 0);
+	return err;
+}
+
 static int psci_cpu_suspend(struct psci_power_state state,
 			    unsigned long entry_point)
 {
@@ -162,29 +167,36 @@ static int psci_migrate(unsigned long cpuid)
 	return psci_to_linux_errno(err);
 }
 
-static const struct of_device_id psci_of_match[] __initconst = {
-	{ .compatible = "arm,psci",	},
-	{},
-};
-
-void __init psci_init(void)
+static int psci_affinity_info(unsigned long target_affinity,
+		unsigned long lowest_affinity_level)
 {
-	struct device_node *np;
+	int err;
+	u32 fn;
+
+	fn = psci_function_id[PSCI_FN_AFFINITY_INFO];
+	err = invoke_psci_fn(fn, target_affinity, lowest_affinity_level, 0);
+	return err;
+}
+
+static int psci_migrate_info_type(void)
+{
+	int err;
+	u32 fn;
+
+	fn = psci_function_id[PSCI_FN_MIGRATE_INFO_TYPE];
+	err = invoke_psci_fn(fn, 0, 0, 0);
+	return err;
+}
+
+static int get_set_conduit_method(struct device_node *np)
+{
 	const char *method;
-	u32 id;
 
-	if (psci == PSCI_SUP_DISABLED)
-		return;
-
-	np = of_find_matching_node(NULL, psci_of_match);
-	if (!np)
-		return;
-
-	pr_info("probing function IDs from device-tree\n");
+	pr_info("probing for conduit method from DT.\n");
 
 	if (of_property_read_string(np, "method", &method)) {
-		pr_warning("missing \"method\" property\n");
-		goto out_put_node;
+		pr_warn("missing \"method\" property\n");
+		return -ENXIO;
 	}
 
 	if (!strcmp("hvc", method)) {
@@ -192,9 +204,74 @@ void __init psci_init(void)
 	} else if (!strcmp("smc", method)) {
 		invoke_psci_fn = __invoke_psci_fn_smc;
 	} else {
-		pr_warning("invalid \"method\" property: %s\n", method);
+		pr_warn("invalid \"method\" property: %s\n", method);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/*
+ * PSCI Function IDs for v0.2+ are well defined so use
+ * standard values.
+ */
+static int psci_0_2_init(struct device_node *np)
+{
+	int err, ver;
+
+	err = get_set_conduit_method(np);
+
+	if (err)
+		goto out_put_node;
+
+	ver = psci_get_version();
+
+	pr_emerg("PSCIv%d.%d detected in firmware.\n", PSCI_VER_MAJOR(ver),
+			PSCI_VER_MINOR(ver));
+
+	if (PSCI_VER_MAJOR(ver) == 0 && PSCI_VER_MINOR(ver) < 2) {
+		err = -EINVAL;
+		pr_err("Conflicting PSCI version detected.\n");
 		goto out_put_node;
 	}
+
+	pr_emerg("Using standard PSCI v0.2 function IDs\n");
+	psci_function_id[PSCI_FN_CPU_SUSPEND] = PSCI_ID_CPU_SUSPEND_32;
+	psci_ops.cpu_suspend = psci_cpu_suspend;
+
+	psci_function_id[PSCI_FN_CPU_OFF] = PSCI_ID_CPU_OFF;
+	psci_ops.cpu_off = psci_cpu_off;
+
+	psci_function_id[PSCI_FN_CPU_ON] = PSCI_ID_CPU_ON_32;
+	psci_ops.cpu_on = psci_cpu_on;
+
+	psci_function_id[PSCI_FN_MIGRATE] = PSCI_ID_CPU_MIGRATE_32;
+	psci_ops.migrate = psci_migrate;
+
+	psci_function_id[PSCI_FN_AFFINITY_INFO] = PSCI_ID_AFFINITY_INFO_32;
+	psci_ops.affinity_info = psci_affinity_info;
+
+	psci_function_id[PSCI_FN_MIGRATE_INFO_TYPE] = PSCI_ID_MIGRATE_INFO_TYPE;
+	psci_ops.migrate_info_type = psci_migrate_info_type;
+
+out_put_node:
+	of_node_put(np);
+	return err;
+}
+
+/*
+ * PSCI < v0.2 get PSCI Function IDs via DT.
+ */
+static int psci_0_1_init(struct device_node *np)
+{
+	u32 id;
+	int err;
+
+	err = get_set_conduit_method(np);
+
+	if (err)
+		goto out_put_node;
+
+	pr_info("Using PSCI v0.1 Function IDs from DT\n");
 
 	if (!of_property_read_u32(np, "cpu_suspend", &id)) {
 		psci_function_id[PSCI_FN_CPU_SUSPEND] = id;
@@ -218,35 +295,25 @@ void __init psci_init(void)
 
 out_put_node:
 	of_node_put(np);
-	return;
+	return err;
 }
 
-int __init psci_probe(void)
+static const struct of_device_id psci_of_match[] __initconst = {
+	{ .compatible = "arm,psci", .data = psci_0_1_init},
+	{ .compatible = "arm,psci-0.2", .data = psci_0_2_init},
+	{},
+};
+
+int __init psci_init(void)
 {
 	struct device_node *np;
-	int ret = -ENODEV;
+	const struct of_device_id *matched_np;
+	psci_initcall_t init_fn;
 
-	if (psci == PSCI_SUP_ENABLED) {
-		np = of_find_matching_node(NULL, psci_of_match);
-		if (np)
-			ret = 0;
-	}
+	np = of_find_matching_node_and_match(NULL, psci_of_match, &matched_np);
+	if (!np)
+		return -ENODEV;
 
-	of_node_put(np);
-	return ret;
+	init_fn = (psci_initcall_t)matched_np->data;
+	return init_fn(np);
 }
-
-static int __init early_psci(char *val)
-{
-	int ret = 0;
-
-	if (strcmp(val, "enable") == 0)
-		psci = PSCI_SUP_ENABLED;
-	else if (strcmp(val, "disable") == 0)
-		psci = PSCI_SUP_DISABLED;
-	else
-		ret = -EINVAL;
-
-	return ret;
-}
-early_param("psci", early_psci);

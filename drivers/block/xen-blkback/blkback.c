@@ -399,6 +399,7 @@ int xen_blkif_schedule(void *arg)
 	struct xen_vbd *vbd = &blkif->vbd;
 
 	xen_blkif_get(blkif);
+	set_freezable();
 
 	while (!kthread_should_stop()) {
 		if (try_to_freeze())

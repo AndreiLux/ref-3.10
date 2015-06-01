@@ -45,6 +45,9 @@ static int nf_ct_tcp_loose __read_mostly = 1;
    will be started. */
 static int nf_ct_tcp_max_retrans __read_mostly = 3;
 
+/*if it is set to one,we disable check tcp ack or sequence number is in window*/
+static int nf_ct_tcp_no_window_check __read_mostly = 0;	
+
   /* FIXME: Examine ipfilter's timeouts and conntrack transitions more
      closely.  They're more complex. --RR */
 
@@ -528,6 +531,10 @@ static bool tcp_in_window(const struct nf_conn *ct,
 	s16 receiver_offset;
 	bool res;
 
+    if( nf_ct_tcp_no_window_check )
+    {
+        return true;
+    }
 	/*
 	 * Get the required data from the packet.
 	 */
@@ -1440,6 +1447,12 @@ static struct ctl_table tcp_sysctl_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+	{
+		.procname	= "nf_conntrack_tcp_no_window_check",
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
 	{ }
 };
 
@@ -1523,6 +1536,12 @@ static struct ctl_table tcp_compat_sysctl_table[] = {
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
 	},
+	{
+		.procname	= "ip_conntrack_tcp_no_window_check",
+		.maxlen		= sizeof(unsigned int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
 	{ }
 };
 #endif /* CONFIG_NF_CONNTRACK_PROC_COMPAT */
@@ -1554,6 +1573,7 @@ static int tcp_kmemdup_sysctl_table(struct nf_proto_net *pn,
 	pn->ctl_table[10].data = &tn->tcp_loose;
 	pn->ctl_table[11].data = &tn->tcp_be_liberal;
 	pn->ctl_table[12].data = &tn->tcp_max_retrans;
+	pn->ctl_table[13].data = &nf_ct_tcp_no_window_check;
 #endif
 	return 0;
 }
@@ -1582,6 +1602,7 @@ static int tcp_kmemdup_compat_sysctl_table(struct nf_proto_net *pn,
 	pn->ctl_compat_table[10].data = &tn->tcp_loose;
 	pn->ctl_compat_table[11].data = &tn->tcp_be_liberal;
 	pn->ctl_compat_table[12].data = &tn->tcp_max_retrans;
+	pn->ctl_compat_table[13].data = &nf_ct_tcp_no_window_check;
 #endif
 #endif
 	return 0;

@@ -18,6 +18,7 @@
 #define _LINUX_ION_H
 
 #include <linux/types.h>
+struct ion_handle_debug;
 
 #include "../uapi/ion.h"
 

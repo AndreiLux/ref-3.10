@@ -1,0 +1,17 @@
+config ARCH_MT6752
+        bool "MediaTek MT6752"
+        select GENERIC_TIME
+        select GENERIC_CLOCKEVENTS
+        select ARCH_HAS_CPUFREQ
+        select ARM_AMBA
+        select CPU_V7
+        select HAVE_SMP
+        select NEED_MACH_MEMORY_H
+        select IRQ_DOMAIN
+        select IRQ_DOMAIN_DEBUG
+        select HAVE_TRUSTONIC_TEE_SUPPORT
+        select ARM_ERRATA_824069
+        select ARM_ERRATA_826319
+	select VFP_OPT
+        help
+          This enable support for MediaTek MT6752.

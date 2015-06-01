@@ -113,41 +113,31 @@ static void dw8250_serial_out32(struct uart_port *p, int offset, int value)
 {
 	struct dw8250_data *d = p->private_data;
 
-	if (offset == UART_MCR)
-		d->last_mcr = value;
+	if (offset == UART_LCR)
+		d->last_lcr = value;
 
-	writel(value, p->membase + (offset << p->regshift));
-
-	/* Make sure LCR write wasn't ignored */
-	if (offset == UART_LCR) {
-		int tries = 1000;
-		while (tries--) {
-			unsigned int lcr = p->serial_in(p, UART_LCR);
-			if ((value & ~UART_LCR_SPAR) == (lcr & ~UART_LCR_SPAR))
-				return;
-			dw8250_force_idle(p);
-			writel(value, p->membase + (UART_LCR << p->regshift));
-		}
-		dev_err(p->dev, "Couldn't set LCR to %d\n", value);
-	}
+	offset <<= p->regshift;
+	writel(value, p->membase + offset);
 }
 
 static unsigned int dw8250_serial_in32(struct uart_port *p, int offset)
 {
-	unsigned int value = readl(p->membase + (offset << p->regshift));
+	offset <<= p->regshift;
 
-	return dw8250_modify_msr(p, offset, value);
+	return readl(p->membase + offset);
 }
 
 static int dw8250_handle_irq(struct uart_port *p)
 {
+	struct dw8250_data *d = p->private_data;
 	unsigned int iir = p->serial_in(p, UART_IIR);
 
 	if (serial8250_handle_irq(p, iir)) {
 		return 1;
 	} else if ((iir & UART_IIR_BUSY) == UART_IIR_BUSY) {
-		/* Clear the USR */
+		/* Clear the USR and write the LCR again. */
 		(void)p->serial_in(p, DW_UART_USR);
+		p->serial_out(p, UART_LCR, d->last_lcr);
 
 		return 1;
 	}

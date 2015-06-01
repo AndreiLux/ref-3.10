@@ -1400,7 +1400,9 @@ int gfs2_quotad(void *data)
 	DEFINE_WAIT(wait);
 	int empty;
 
-	while (!kthread_should_stop()) {
+	set_freezable();
+
+	while (!kthread_freezable_should_stop(NULL)) {
 
 		/* Update the master statfs file */
 		if (sdp->sd_statfs_force_sync) {

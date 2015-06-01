@@ -49,7 +49,9 @@ void end_swap_bio_write(struct bio *bio, int err)
 	struct page *page = bio->bi_io_vec[0].bv_page;
 
 	if (!uptodate) {
-		SetPageError(page);
+		if (!task_in_mtkpasr(current)) {
+			SetPageError(page);
+		}
 		/*
 		 * We failed to write the page out to swap-space.
 		 * Re-dirty the page in order to avoid it being reclaimed.
@@ -59,10 +61,12 @@ void end_swap_bio_write(struct bio *bio, int err)
 		 * Also clear PG_reclaim to avoid rotate_reclaimable_page()
 		 */
 		set_page_dirty(page);
-		printk(KERN_ALERT "Write-error on swap-device (%u:%u:%Lu)\n",
-				imajor(bio->bi_bdev->bd_inode),
-				iminor(bio->bi_bdev->bd_inode),
-				(unsigned long long)bio->bi_sector);
+		if (!task_in_mtkpasr(current)) {
+			printk(KERN_ALERT "Write-error on swap-device (%u:%u:%Lu)\n",
+					imajor(bio->bi_bdev->bd_inode),
+					iminor(bio->bi_bdev->bd_inode),
+					(unsigned long long)bio->bi_sector);
+		}
 		ClearPageReclaim(page);
 	}
 	end_page_writeback(page);
@@ -307,6 +311,10 @@ int __swap_writepage(struct page *page, struct writeback_control *wbc,
 	}
 	if (wbc->sync_mode == WB_SYNC_ALL)
 		rw |= REQ_SYNC;
+
+#ifdef CONFIG_ZRAM
+    current->swap_out++;
+#endif
 	count_vm_event(PSWPOUT);
 	set_page_writeback(page);
 	unlock_page(page);
@@ -334,8 +342,12 @@ int swap_readpage(struct page *page)
 		struct address_space *mapping = swap_file->f_mapping;
 
 		ret = mapping->a_ops->readpage(swap_file, page);
-		if (!ret)
+		if (!ret) {
+#ifdef CONFIG_ZRAM
+			current->swap_in++;
+#endif
 			count_vm_event(PSWPIN);
+		}
 		return ret;
 	}
 
@@ -345,6 +357,10 @@ int swap_readpage(struct page *page)
 		ret = -ENOMEM;
 		goto out;
 	}
+
+#ifdef CONFIG_ZRAM
+	current->swap_in++;
+#endif
 	count_vm_event(PSWPIN);
 	submit_bio(READ, bio);
 out:

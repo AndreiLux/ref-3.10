@@ -139,7 +139,8 @@ int drm_gem_object_init(struct drm_device *dev,
 	BUG_ON((size & (PAGE_SIZE - 1)) != 0);
 
 	obj->dev = dev;
-	obj->filp = shmem_file_setup("drm mm object", size, VM_NORESERVE);
+	obj->filp = shmem_file_setup("drm mm object", size,
+			VM_NORESERVE, 1);
 	if (IS_ERR(obj->filp))
 		return PTR_ERR(obj->filp);
 

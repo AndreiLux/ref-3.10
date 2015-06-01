@@ -12,6 +12,9 @@
 #include <linux/hw_breakpoint.h>
 #include <linux/trace_seq.h>
 #include <linux/ftrace_event.h>
+#ifdef CONFIG_MT65XX_TRACER
+#include <mach/mt_mon.h>
+#endif
 
 #ifdef CONFIG_FTRACE_SYSCALLS
 #include <asm/unistd.h>		/* For NR_SYSCALLS	     */
@@ -35,6 +38,7 @@ enum trace_type {
 	TRACE_USER_STACK,
 	TRACE_BLK,
 	TRACE_BPUTS,
+    TRACE_MT65XX_MON_TYPE,
 
 	__TRACE_LAST_TYPE,
 };
@@ -288,6 +292,8 @@ extern void __ftrace_bad_type(void);
 			  TRACE_GRAPH_ENT);		\
 		IF_ASSIGN(var, ent, struct ftrace_graph_ret_entry,	\
 			  TRACE_GRAPH_RET);		\
+        IF_ASSIGN(var, ent, struct mt65xx_mon_entry, \
+                TRACE_MT65XX_MON_TYPE); \
 		__ftrace_bad_type();					\
 	} while (0)
 
@@ -342,7 +348,7 @@ struct tracer {
 	void			(*stop)(struct trace_array *tr);
 	void			(*open)(struct trace_iterator *iter);
 	void			(*pipe_open)(struct trace_iterator *iter);
-	int			(*wait_pipe)(struct trace_iterator *iter);
+	void			(*wait_pipe)(struct trace_iterator *iter);
 	void			(*close)(struct trace_iterator *iter);
 	void			(*pipe_close)(struct trace_iterator *iter);
 	ssize_t			(*read)(struct trace_iterator *iter,
@@ -557,7 +563,7 @@ void trace_init_global_iter(struct trace_iterator *iter);
 
 void tracing_iter_reset(struct trace_iterator *iter, int cpu);
 
-int poll_wait_pipe(struct trace_iterator *iter);
+void poll_wait_pipe(struct trace_iterator *iter);
 
 void ftrace(struct trace_array *tr,
 			    struct trace_array_cpu *data,

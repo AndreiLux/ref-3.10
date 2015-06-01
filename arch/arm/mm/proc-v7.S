@@ -16,6 +16,7 @@
 #include <asm/hwcap.h>
 #include <asm/pgtable-hwdef.h>
 #include <asm/pgtable.h>
+#include <asm/vfpmacros.h>
 
 #include "proc-macros.S"
 
@@ -79,7 +80,11 @@ ENTRY(cpu_v7_dcache_clean_area)
 	ALT_UP_B(1f)
 	mov	pc, lr
 1:	dcache_line_size r2, r3
+#ifdef CONFIG_ARM_ERRATA_824069
+2:	mcr	p15, 0, r0, c7, c14, 1		@ clean D entry
+#else
 2:	mcr	p15, 0, r0, c7, c10, 1		@ clean D entry
+#endif
 	add	r0, r0, r2
 	subs	r1, r1, r2
 	bhi	2b
@@ -90,47 +95,125 @@ ENDPROC(cpu_v7_dcache_clean_area)
 	string	cpu_v7_name, "ARMv7 Processor"
 	.align
 
+//#define FIQ_EARLY_RESUME
+#define A53_IMPLEMENTATION_DEFINED
+        
+#if !defined (FIQ_EARLY_RESUME)        
+#define FIQ_CONTEXT_SIZE (0)
+#else //#if !defined (FIQ_EARLY_RESUME)
+#define FIQ_CONTEXT_SIZE (9)
+#endif //#if !defined (FIQ_EARLY_RESUME)
+
+#if !defined (A53_IMPLEMENTATION_DEFINED)        
+#define A53_IMPL_SIZE (0)
+#else //#if !defined (A53_IMPLEMENTATION_DEFINED)
+#define A53_IMPL_SIZE (4)
+#endif //#if !defined (A53_IMPLEMENTATION_DEFINED)
+        
 /* Suspend/resume support: derived from arch/arm/mach-s5pv210/sleep.S */
 .globl	cpu_v7_suspend_size
-.equ	cpu_v7_suspend_size, 4 * 8
+.equ	cpu_v7_suspend_size, 4 * (11 + A53_IMPL_SIZE + FIQ_CONTEXT_SIZE)
+        
 #ifdef CONFIG_ARM_CPU_SUSPEND
 ENTRY(cpu_v7_do_suspend)
-	stmfd	sp!, {r4 - r10, lr}
-	mrc	p15, 0, r4, c13, c0, 0	@ FCSE/PID
-	mrc	p15, 0, r5, c13, c0, 3	@ User r/o thread ID
-	stmia	r0!, {r4 - r5}
+	stmfd	sp!, {r4 - r11, lr}
+	mrc	p15, 0, r5, c13, c0, 2	@ TPIDRURW
+	mrc	p15, 0, r6, c13, c0, 3	@ TPIDRURO
+	mrc	p15, 0, r7, c13, c0, 4	@ TPIDRPRW
+	stmia	r0!, {r4 - r7}
 	mrc	p15, 0, r6, c3, c0, 0	@ Domain ID
+#ifdef CONFIG_ARM_LPAE
+        mrrc    p15, 1, r5, r7, c2      @ TTB 1
+#else
 	mrc	p15, 0, r7, c2, c0, 1	@ TTB 1
+#endif        
 	mrc	p15, 0, r11, c2, c0, 2	@ TTB control register
 	mrc	p15, 0, r8, c1, c0, 0	@ Control register
 	mrc	p15, 0, r9, c1, c0, 1	@ Auxiliary control register
 	mrc	p15, 0, r10, c1, c0, 2	@ Co-processor access control
-	stmia	r0, {r6 - r11}
-	ldmfd	sp!, {r4 - r10, pc}
+	stmia	r0!, {r5 - r11}
+
+#if defined (FIQ_EARLY_RESUME)        
+        mrs    r4, CPSR             @ save current mode
+        cps    #MODE_FIQ            @ switch to FIQ mode
+        str    SP,[r0], #4          @ save the current SP
+        mrs    r5,SPSR
+        stm    r0!,{r5,r8-r12,lr}   @ save the current SPSR,r8-r12,LR
+        msr    CPSR_cxsf, r4        @ switch back to original mode
+
+        MRS     r5, SPSR
+        STM     r0!, {r4, r5}       @ CPSR, SPSR
+        dsb
+#endif //#if defined (FIQ_EARLY_RESUME)        
+        
+#if defined (A53_IMPLEMENTATION_DEFINED)
+        @@ extention for a53's implementation defined register
+        MRC     p15, 0, r9, c0, c0, 0   @ MIDR
+        movw    r10, #0xfff0
+        movt    r10, #0xff0f
+        and     r9, r10
+        movw    r10, #0xD030
+        movt    r10, #0x410F
+        teq     r9, r10
+        bne     1f
+        MRRC    p15, 0, r4, r5, c15     @ Read CPU Auxiliary Control Register        
+        MRRC    p15, 1, r6, r7, c15     @ Read CPU Extended Control Register
+	stmia	r0!, {r4 - r7}
+#endif //#if defined (A53_IMPLEMENTATION_DEFINED)        
+
+1:      ldmfd	sp!, {r4 - r11, pc}
 ENDPROC(cpu_v7_do_suspend)
 
+        /*** R1 is argument and reserved as TTBR1 **/
 ENTRY(cpu_v7_do_resume)
 	mov	ip, #0
-	mcr	p15, 0, ip, c8, c7, 0	@ invalidate TLBs
 	mcr	p15, 0, ip, c7, c5, 0	@ invalidate I cache
-	mcr	p15, 0, ip, c13, c0, 1	@ set reserved context ID
-	ldmia	r0!, {r4 - r5}
-	mcr	p15, 0, r4, c13, c0, 0	@ FCSE/PID
-	mcr	p15, 0, r5, c13, c0, 3	@ User r/o thread ID
-	ldmia	r0, {r6 - r11}
+	mcr	p15, 0, ip, c13, c0, 1	@ set reserved context ID 
+	ldmia	r0!, {r4 - r7}
+	mcr	p15, 0, r5, c13, c0, 2	@ TPIDRURW
+	mcr	p15, 0, r6, c13, c0, 3	@ TPIDRURO
+	mcr	p15, 0, r7, c13, c0, 4	@ TPIDRPRW
+	ldmia	r0!, {r5 - r11}
+	mcr	p15, 0, ip, c8, c7, 0	@ invalidate TLBs
 	mcr	p15, 0, r6, c3, c0, 0	@ Domain ID
-#ifndef CONFIG_ARM_LPAE
+#ifdef CONFIG_ARM_LPAE
+        mcrr    p15, 0, r1, ip, c2      @ TTB 0
+        mcrr    p15, 1, r5, r7, c2      @ TTB 1
+#else
 	ALT_SMP(orr	r1, r1, #TTB_FLAGS_SMP)
 	ALT_UP(orr	r1, r1, #TTB_FLAGS_UP)
-#endif
 	mcr	p15, 0, r1, c2, c0, 0	@ TTB 0
 	mcr	p15, 0, r7, c2, c0, 1	@ TTB 1
+#endif
 	mcr	p15, 0, r11, c2, c0, 2	@ TTB control register
 	mrc	p15, 0, r4, c1, c0, 1	@ Read Auxiliary control register
 	teq	r4, r9			@ Is it already set?
 	mcrne	p15, 0, r9, c1, c0, 1	@ No, so write it
 	mcr	p15, 0, r10, c1, c0, 2	@ Co-processor access control
-	ldr	r4, =PRRR		@ PRRR
+        /**!! R8 is reserved and keeping CTLR !!  **/
+        /**!! R8 is reserved and keeping CTLR !!  **/
+        
+#if defined (FIQ_EARLY_RESUME)        
+        
+#endif //#if defined (FIQ_EARLY_RESUME)        
+
+#if defined (A53_IMPLEMENTATION_DEFINED)
+        @@ extention for a53's implementation defined register
+        MRC     p15, 0, r9, c0, c0, 0   @ MIDR
+        movw    r10, #0xfff0
+        movt    r10, #0xff0f
+        and     r9, r10
+        movw    r10, #0xD030
+        movt    r10, #0x410F
+        teq     r9, r10
+        bne     1f
+	ldmia	r0!, {r4 - r7}
+/*        MCRR  p15, 0, r4, r5, c15     @ Write CPU Auxiliary Control Register   */
+        MCRR  p15, 1, r6, r7, c15     @ write CPU Extended Control Register
+1:      dsb
+#endif //#if defined (A53_IMPLEMENTATION_DEFINED)
+        
+        ldr	r4, =PRRR		@ PRRR
 	ldr	r5, =NMRR		@ NMRR
 	mcr	p15, 0, r4, c10, c2, 0	@ write PRRR
 	mcr	p15, 0, r5, c10, c2, 1	@ write NMRR
@@ -177,14 +260,28 @@ ENDPROC(cpu_pj4b_do_idle)
  *	It is assumed that:
  *	- cache type register is implemented
  */
+
 __v7_ca5mp_setup:
 __v7_ca9mp_setup:
 	mov	r10, #(1 << 0)			@ TLB ops broadcasting
 	b	1f
 __v7_ca7mp_setup:
+__v7_ca12mp_setup:
 __v7_ca15mp_setup:
+__v7_ca17mp_setup:
 	mov	r10, #0
 1:
+#ifdef CONFIG_VFP_OPT
+	@ enable CP10 / CP11 access right
+	ldr	r0, =(0xF << 20)
+	mcr	p15, 0, r0, c1, c0, 2
+	orr	r0, r0, #FPEXC_EN		@ user FPEXC has the enable bit set
+	bic	r0, r0, #FPEXC_EX		@ make sure exceptions are disabled
+	VFPFMXR FPEXC, r0			@ enable VFP, disable any pending
+						@ exceptions, so we can get at the
+						@ rest of it
+#endif
+
 #ifdef CONFIG_SMP
 	ALT_SMP(mrc	p15, 0, r0, c1, c0, 1)
 	ALT_UP(mov	r0, #(1 << 6))		@ fake it for UP
@@ -192,6 +289,18 @@ __v7_ca15mp_setup:
 	orreq	r0, r0, #(1 << 6)		@ Enable SMP/nAMP mode
 	orreq	r0, r0, r10			@ Enable CPU-specific SMP bits
 	mcreq	p15, 0, r0, c1, c0, 1
+#endif
+	b	__v7_setup
+
+__v7_ca53mp_setup:
+        mov     r10, #0
+#ifdef CONFIG_SMP
+        ALT_SMP(mrrc     p15, 1, r0, r1, c15)
+        ALT_UP(mov      r0, #(1 << 6))          @ fake it for UP
+        tst     r0, #(1 << 6)                   @ SMP/nAMP mode enabled?
+        orreq   r0, r0, #(1 << 6)               @ Enable SMP/nAMP mode
+        orreq   r0, r0, r10                     @ Enable CPU-specific SMP bits
+        mcrreq   p15, 1, r0, r1, c15
 #endif
 	b	__v7_setup
 
@@ -352,7 +461,9 @@ __v7_setup:
 #endif
 	adr	r5, v7_crval
 	ldmia	r5, {r5, r6}
- ARM_BE8(orr	r6, r6, #1 << 25)		@ big-endian page tables
+#ifdef CONFIG_CPU_ENDIAN_BE8
+	orr	r6, r6, #1 << 25		@ big-endian page tables
+#endif
 #ifdef CONFIG_SWP_EMULATE
 	orr     r5, r5, #(1 << 10)              @ set SW bit in "clear"
 	bic     r6, r6, #(1 << 10)              @ clear it in "mmuset"
@@ -452,6 +563,17 @@ __v7_ca7mp_proc_info:
 	.size	__v7_ca7mp_proc_info, . - __v7_ca7mp_proc_info
 
 	/*
+	 * ARM Ltd. Cortex A12 processor.
+	 */
+	.type	__v7_ca12mp_proc_info, #object
+__v7_ca12mp_proc_info:
+	.long	0x410fc0d0
+	.long	0xff0ffff0
+	__v7_proc __v7_ca12mp_setup
+	.size	__v7_ca12mp_proc_info, . - __v7_ca12mp_proc_info
+
+		
+	/*
 	 * ARM Ltd. Cortex A15 processor.
 	 */
 	.type	__v7_ca15mp_proc_info, #object
@@ -460,6 +582,23 @@ __v7_ca15mp_proc_info:
 	.long	0xff0ffff0
 	__v7_proc __v7_ca15mp_setup
 	.size	__v7_ca15mp_proc_info, . - __v7_ca15mp_proc_info
+
+	.type	__v7_ca53mp_proc_info, #object
+__v7_ca53mp_proc_info:
+	.long	0x410FD030
+	.long	0xff0ffff0
+	__v7_proc __v7_ca53mp_setup
+	.size	__v7_ca53mp_proc_info, . - __v7_ca53mp_proc_info
+
+	/*
+	 * ARM Ltd. Cortex A17 processor.
+	 */
+	.type	__v7_ca17mp_proc_info, #object
+__v7_ca17mp_proc_info:
+	.long	0x410fc0e0
+	.long	0xff0ffff0
+	__v7_proc __v7_ca17mp_setup
+	.size	__v7_ca17mp_proc_info, . - __v7_ca17mp_proc_info
 
 	/*
 	 * Qualcomm Inc. Krait processors.

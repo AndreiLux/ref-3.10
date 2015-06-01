@@ -2678,6 +2678,7 @@ static inline int __dev_xmit_skb(struct sk_buff *skb, struct Qdisc *q,
 
 	spin_lock(root_lock);
 	if (unlikely(test_bit(__QDISC_STATE_DEACTIVATED, &q->state))) {
+		printk(KERN_WARNING "[mtk_net]__dev_xmit_skb drop skb_len = %d \n", skb->len);
 		kfree_skb(skb);
 		rc = NET_XMIT_DROP;
 	} else if ((q->flags & TCQ_F_CAN_BYPASS) && !qdisc_qlen(q) &&

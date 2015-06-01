@@ -19,8 +19,11 @@ struct vm_area_struct;
 struct fb_info;
 struct device;
 struct file;
+struct dma_buf;
 struct videomode;
 struct device_node;
+
+#define CONFIG_DMA_SHARED_BUFFER
 
 /* Definitions below are used in the parsed monitor specs */
 #define FB_DPMS_ACTIVE_OFF	1
@@ -304,6 +307,11 @@ struct fb_ops {
 	/* called at KDB enter and leave time to prepare the console */
 	int (*fb_debug_enter)(struct fb_info *info);
 	int (*fb_debug_leave)(struct fb_info *info);
+
+#ifdef CONFIG_DMA_SHARED_BUFFER                                                      
+       /* Export the frame buffer as a dmabuf object */                              
+       struct dma_buf *(*fb_dmabuf_export)(struct fb_info *info);                    
+#endif         	
 };
 
 #ifdef CONFIG_FB_TILEBLITTING

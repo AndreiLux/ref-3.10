@@ -513,6 +513,8 @@ int kthread_worker_fn(void *worker_ptr)
 
 	WARN_ON(worker->task);
 	worker->task = current;
+	set_freezable();
+
 repeat:
 	set_current_state(TASK_INTERRUPTIBLE);	/* mb paired w/ kthread_stop */
 

@@ -31,6 +31,10 @@ int sysctl_tcp_retries1 __read_mostly = TCP_RETR1;
 int sysctl_tcp_retries2 __read_mostly = TCP_RETR2;
 int sysctl_tcp_orphan_retries __read_mostly;
 int sysctl_tcp_thin_linear_timeouts __read_mostly;
+int sysctl_tcp_rto_min __read_mostly = TCP_RTO_MIN;
+EXPORT_SYMBOL(sysctl_tcp_rto_min);
+int sysctl_tcp_rto_max __read_mostly = TCP_RTO_MAX;
+EXPORT_SYMBOL(sysctl_tcp_rto_max);
 
 static void tcp_write_err(struct sock *sk)
 {
@@ -59,7 +63,7 @@ static int tcp_out_of_resources(struct sock *sk, int do_reset)
 
 	/* If peer does not open window for long time, or did not transmit
 	 * anything for long time, penalize it. */
-	if ((s32)(tcp_time_stamp - tp->lsndtime) > 2*TCP_RTO_MAX || !do_reset)
+	if ((s32)(tcp_time_stamp - tp->lsndtime) > 2*sysctl_tcp_rto_max || !do_reset)
 		shift++;
 
 	/* If some dubious ICMP arrived, penalize even more. */
@@ -130,7 +134,7 @@ static bool retransmits_timed_out(struct sock *sk,
 				  bool syn_set)
 {
 	unsigned int linear_backoff_thresh, start_ts;
-	unsigned int rto_base = syn_set ? TCP_TIMEOUT_INIT : TCP_RTO_MIN;
+	unsigned int rto_base = syn_set ? TCP_TIMEOUT_INIT : sysctl_tcp_rto_min;
 
 	if (!inet_csk(sk)->icsk_retransmits)
 		return false;
@@ -141,13 +145,13 @@ static bool retransmits_timed_out(struct sock *sk,
 		start_ts = tcp_sk(sk)->retrans_stamp;
 
 	if (likely(timeout == 0)) {
-		linear_backoff_thresh = ilog2(TCP_RTO_MAX/rto_base);
+		linear_backoff_thresh = ilog2(sysctl_tcp_rto_max/rto_base);
 
 		if (boundary <= linear_backoff_thresh)
 			timeout = ((2 << boundary) - 1) * rto_base;
 		else
 			timeout = ((2 << linear_backoff_thresh) - 1) * rto_base +
-				(boundary - linear_backoff_thresh) * TCP_RTO_MAX;
+				(boundary - linear_backoff_thresh) * sysctl_tcp_rto_max;
 	}
 	return (tcp_time_stamp - start_ts) >= timeout;
 }
@@ -174,7 +178,7 @@ static int tcp_write_timeout(struct sock *sk)
 
 		retry_until = sysctl_tcp_retries2;
 		if (sock_flag(sk, SOCK_DEAD)) {
-			const int alive = (icsk->icsk_rto < TCP_RTO_MAX);
+			const int alive = (icsk->icsk_rto < sysctl_tcp_rto_max);
 
 			retry_until = tcp_orphan_retries(sk, alive);
 			do_reset = alive ||
@@ -288,7 +292,7 @@ static void tcp_probe_timer(struct sock *sk)
 	max_probes = sysctl_tcp_retries2;
 
 	if (sock_flag(sk, SOCK_DEAD)) {
-		const int alive = ((icsk->icsk_rto << icsk->icsk_backoff) < TCP_RTO_MAX);
+		const int alive = ((icsk->icsk_rto << icsk->icsk_backoff) < sysctl_tcp_rto_max);
 
 		max_probes = tcp_orphan_retries(sk, alive);
 
@@ -330,7 +334,7 @@ static void tcp_fastopen_synack_timer(struct sock *sk)
 	inet_rtx_syn_ack(sk, req);
 	req->num_timeout++;
 	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
-			  TCP_TIMEOUT_INIT << req->num_timeout, TCP_RTO_MAX);
+			  TCP_TIMEOUT_INIT << req->num_timeout, sysctl_tcp_rto_max);
 }
 
 /*
@@ -381,7 +385,7 @@ void tcp_retransmit_timer(struct sock *sk)
 				       tp->snd_una, tp->snd_nxt);
 		}
 #endif
-		if (tcp_time_stamp - tp->rcv_tstamp > TCP_RTO_MAX) {
+		if (tcp_time_stamp - tp->rcv_tstamp > sysctl_tcp_rto_max) {
 			tcp_write_err(sk);
 			goto out;
 		}
@@ -416,6 +420,12 @@ void tcp_retransmit_timer(struct sock *sk)
 		NET_INC_STATS_BH(sock_net(sk), mib_idx);
 	}
 
+	if (icsk->icsk_MMSRB == 1)
+	{
+	    	#ifdef CONFIG_MTK_NET_LOGGING  
+	        printk(KERN_DEBUG "[mtk_net][mmspb] tcp_retransmit_timer enter loss\n");
+	        #endif
+	}
 	tcp_enter_loss(sk, 0);
 
 	if (tcp_retransmit_skb(sk, tcp_write_queue_head(sk)) > 0) {
@@ -426,7 +436,7 @@ void tcp_retransmit_timer(struct sock *sk)
 			icsk->icsk_retransmits = 1;
 		inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS,
 					  min(icsk->icsk_rto, TCP_RESOURCE_PROBE_INTERVAL),
-					  TCP_RTO_MAX);
+					  sysctl_tcp_rto_max);
 		goto out;
 	}
 
@@ -463,12 +473,12 @@ out_reset_timer:
 	    tcp_stream_is_thin(tp) &&
 	    icsk->icsk_retransmits <= TCP_THIN_LINEAR_RETRIES) {
 		icsk->icsk_backoff = 0;
-		icsk->icsk_rto = min(__tcp_set_rto(tp), TCP_RTO_MAX);
+		icsk->icsk_rto = min_t(unsigned int, __tcp_set_rto(tp), sysctl_tcp_rto_max);
 	} else {
 		/* Use normal (exponential) backoff */
-		icsk->icsk_rto = min(icsk->icsk_rto << 1, TCP_RTO_MAX);
+		icsk->icsk_rto = min_t(unsigned int, icsk->icsk_rto << 1, sysctl_tcp_rto_max);
 	}
-	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS, icsk->icsk_rto, TCP_RTO_MAX);
+	inet_csk_reset_xmit_timer(sk, ICSK_TIME_RETRANS, icsk->icsk_rto, sysctl_tcp_rto_max);
 	if (retransmits_timed_out(sk, sysctl_tcp_retries1 + 1, 0, 0))
 		__sk_dst_reset(sk);
 
@@ -482,12 +492,13 @@ void tcp_write_timer_handler(struct sock *sk)
 
 	if (sk->sk_state == TCP_CLOSE || !icsk->icsk_pending)
 		goto out;
-
+  if (icsk->icsk_MMSRB != 1)
+  {
 	if (time_after(icsk->icsk_timeout, jiffies)) {
 		sk_reset_timer(sk, &icsk->icsk_retransmit_timer, icsk->icsk_timeout);
 		goto out;
 	}
-
+  }
 	event = icsk->icsk_pending;
 
 	switch (event) {
@@ -519,6 +530,10 @@ static void tcp_write_timer(unsigned long data)
 	if (!sock_owned_by_user(sk)) {
 		tcp_write_timer_handler(sk);
 	} else {
+
+		//if (icsk->icsk_MMSRB == 1)
+		//printk("[mmspb] tcp_write_timer user owner sock\n");
+
 		/* deleguate our work to tcp_release_cb() */
 		if (!test_and_set_bit(TCP_WRITE_TIMER_DEFERRED, &tcp_sk(sk)->tsq_flags))
 			sock_hold(sk);
@@ -534,7 +549,7 @@ static void tcp_write_timer(unsigned long data)
 static void tcp_synack_timer(struct sock *sk)
 {
 	inet_csk_reqsk_queue_prune(sk, TCP_SYNQ_INTERVAL,
-				   TCP_TIMEOUT_INIT, TCP_RTO_MAX);
+				   TCP_TIMEOUT_INIT, sysctl_tcp_rto_max);
 }
 
 void tcp_syn_ack_timeout(struct sock *sk, struct request_sock *req)

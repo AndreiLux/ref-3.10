@@ -957,8 +957,27 @@ asmlinkage int syscall_trace_enter(struct pt_regs *regs, int scno)
 	return scno;
 }
 
+#ifdef CONFIG_MT_FIQ_CHECK
+void syscall_check_fiq(unsigned long scno){
+        /*
+         * Test if FIQ disable
+         */
+	if(local_fiq_disabled_flags()){
+                printk(KERN_WARNING "FIQ disabled after handled [%d] %s: arm syscall %lu\n", 
+		task_pid_nr(current), current->comm, scno);
+	}
+}
+#endif
+
 asmlinkage void syscall_trace_exit(struct pt_regs *regs)
 {
+	/* 
+	 * Test if syscall 
+	 */ 
+#ifdef CONFIG_MT_FIQ_CHECK
+	syscall_check_fiq(regs->uregs[7]);
+#endif
+
 	/*
 	 * Audit the syscall before anything else, as a debugger may
 	 * come in and change the current registers.

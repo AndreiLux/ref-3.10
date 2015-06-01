@@ -1216,6 +1216,12 @@ page_ok:
 		goto out;
 
 page_not_up_to_date:
+#ifdef CONFIG_MT_ENG_BUILD
+		/* A notification for 1658455 - suspect it's a bfp issue and add it for future observation */
+		if (PageLocked(page) && PageWriteback(page)) {
+			printk(KERN_INFO "Page is locked and in writeback!\n");
+		}
+#endif
 		/* Get exclusive access to the page ... */
 		error = lock_page_killable(page);
 		if (unlikely(error))
@@ -1616,10 +1622,20 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	struct page *page;
 	pgoff_t size;
 	int ret = 0;
+	const char *name = 0;
 
 	size = (i_size_read(inode) + PAGE_CACHE_SIZE - 1) >> PAGE_CACHE_SHIFT;
-	if (offset >= size)
+	if (offset >= size) {
+		if ((file) && (file->f_path.dentry) && 
+				(file->f_path.dentry->d_name.name)) {
+			name = file->f_path.dentry->d_name.name;
+		}
+		pr_alert("SIGBUS debug: %s, %d, offset: %lu, "
+				"size: %lu, name: %s\n", 
+				__func__, __LINE__, (unsigned long)offset, 
+				(unsigned long)size, (name? name: "N/A"));
 		return VM_FAULT_SIGBUS;
+	}
 
 	/*
 	 * Do we have something in the page cache already?
@@ -1634,6 +1650,10 @@ int filemap_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 	} else if (!page) {
 		/* No page in the page cache at all */
 		do_sync_mmap_readahead(vma, ra, file, offset);
+#ifdef CONFIG_ZRAM
+        current->fm_flt++;
+#endif
+		count_vm_event(PGFMFAULT);
 		count_vm_event(PGMAJFAULT);
 		mem_cgroup_count_vm_event(vma->vm_mm, PGMAJFAULT);
 		ret = VM_FAULT_MAJOR;
@@ -1671,6 +1691,7 @@ retry_find:
 	if (unlikely(offset >= size)) {
 		unlock_page(page);
 		page_cache_release(page);
+		pr_alert("SIGBUS debug: %s, %d\n", __func__, __LINE__);
 		return VM_FAULT_SIGBUS;
 	}
 
@@ -1699,6 +1720,7 @@ no_cached_page:
 	 */
 	if (error == -ENOMEM)
 		return VM_FAULT_OOM;
+	pr_alert("SIGBUS debug: %s, %d\n", __func__, __LINE__);
 	return VM_FAULT_SIGBUS;
 
 page_not_uptodate:
@@ -1722,6 +1744,7 @@ page_not_uptodate:
 
 	/* Things didn't work out. Return zero to tell the mm layer so. */
 	shrink_readahead_size_eio(file, ra);
+	pr_alert("SIGBUS debug: %s, %d\n", __func__, __LINE__);
 	return VM_FAULT_SIGBUS;
 }
 EXPORT_SYMBOL(filemap_fault);

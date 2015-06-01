@@ -41,3 +41,5 @@ obj-$(CONFIG_FB_STI)              += sticore.o font.o
 ifeq ($(CONFIG_USB_SISUSBVGA_CON),y)
 obj-$(CONFIG_USB_SISUSBVGA)           += font.o
 endif
+
+obj-$(CONFIG_MTK_FB)		  += font.o

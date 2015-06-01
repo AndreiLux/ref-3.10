@@ -252,6 +252,7 @@ static int tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 	fl6.flowi6_mark = sk->sk_mark;
 	fl6.fl6_dport = usin->sin6_port;
 	fl6.fl6_sport = inet->inet_sport;
+	fl6.flowi6_uid = sock_i_uid(sk);
 
 	final_p = fl6_update_dst(&fl6, np->opt, &final);
 
@@ -295,6 +296,7 @@ static int tcp_v6_connect(struct sock *sk, struct sockaddr *uaddr,
 	if (err)
 		goto late_failure;
 
+        printk(KERN_INFO  "net_sock, IPV6 socket[%lu] sport:%u \n", SOCK_INODE(sk->sk_socket)->i_ino, ntohs(inet->inet_sport));
 	if (!tp->write_seq && likely(!tp->repair))
 		tp->write_seq = secure_tcpv6_sequence_number(np->saddr.s6_addr32,
 							     np->daddr.s6_addr32,

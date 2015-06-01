@@ -59,12 +59,26 @@ static ssize_t disksize_store(struct device *dev,
 	struct zram_meta *meta;
 	struct zram *zram = dev_to_zram(dev);
 
-	disksize = memparse(buf, NULL);
-	if (!disksize)
-		return -EINVAL;
+	/* Fix disksize */
+	disksize = default_disksize_perc_ram * ((totalram_pages << PAGE_SHIFT) / 100);
+	/* Expand its disksize if we have little system ram! */
+	if (totalram_pages < SUPPOSED_TOTALRAM) {
+		disksize += (disksize >> 1) ;
+	}
+	/* Align it! */
+	disksize = round_up(disksize, DISKSIZE_ALIGNMENT);
+
+	/* Give it a max size */
+	if (disksize > MAX_DISKSIZE)
+		disksize = MAX_DISKSIZE;
 
 	disksize = PAGE_ALIGN(disksize);
 	meta = zram_meta_alloc(disksize);
+	/* Check whether meta is null */
+	if (!meta) {
+		printk(KERN_ALERT"Failed to allocate memory for meta!\n");
+		return len;
+	}
 	down_write(&zram->init_lock);
 	if (zram->init_done) {
 		up_write(&zram->init_lock);
@@ -163,6 +177,22 @@ static ssize_t zero_pages_show(struct device *dev,
 	return sprintf(buf, "%u\n", zram->stats.pages_zero);
 }
 
+static ssize_t good_compr_pages_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct zram *zram = dev_to_zram(dev);
+
+	return sprintf(buf, "%u\n", zram->stats.good_compress);
+}
+
+static ssize_t bad_compr_pages_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct zram *zram = dev_to_zram(dev);
+
+	return sprintf(buf, "%u\n", zram->stats.bad_compress);
+}
+
 static ssize_t orig_data_size_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -205,6 +235,8 @@ static DEVICE_ATTR(num_writes, S_IRUGO, num_writes_show, NULL);
 static DEVICE_ATTR(invalid_io, S_IRUGO, invalid_io_show, NULL);
 static DEVICE_ATTR(notify_free, S_IRUGO, notify_free_show, NULL);
 static DEVICE_ATTR(zero_pages, S_IRUGO, zero_pages_show, NULL);
+static DEVICE_ATTR(good_compr_pages, S_IRUGO, good_compr_pages_show, NULL);
+static DEVICE_ATTR(bad_compr_pages, S_IRUGO, bad_compr_pages_show, NULL);
 static DEVICE_ATTR(orig_data_size, S_IRUGO, orig_data_size_show, NULL);
 static DEVICE_ATTR(compr_data_size, S_IRUGO, compr_data_size_show, NULL);
 static DEVICE_ATTR(mem_used_total, S_IRUGO, mem_used_total_show, NULL);
@@ -218,6 +250,8 @@ static struct attribute *zram_disk_attrs[] = {
 	&dev_attr_invalid_io.attr,
 	&dev_attr_notify_free.attr,
 	&dev_attr_zero_pages.attr,
+	&dev_attr_good_compr_pages.attr,
+	&dev_attr_bad_compr_pages.attr,
 	&dev_attr_orig_data_size.attr,
 	&dev_attr_compr_data_size.attr,
 	&dev_attr_mem_used_total.attr,

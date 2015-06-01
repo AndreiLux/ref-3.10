@@ -2342,6 +2342,8 @@ int jfsIOWait(void *arg)
 {
 	struct lbuf *bp;
 
+	set_freezable();
+
 	do {
 		spin_lock_irq(&log_redrive_lock);
 		while ((bp = log_redrive_list)) {
@@ -2361,7 +2363,7 @@ int jfsIOWait(void *arg)
 			schedule();
 			__set_current_state(TASK_RUNNING);
 		}
-	} while (!kthread_should_stop());
+	} while (!kthread_freezable_should_stop(NULL));
 
 	jfs_info("jfsIOWait being killed!");
 	return 0;

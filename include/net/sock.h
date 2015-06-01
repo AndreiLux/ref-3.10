@@ -780,7 +780,12 @@ static inline __must_check int sk_add_backlog(struct sock *sk, struct sk_buff *s
 					      unsigned int limit)
 {
 	if (sk_rcvqueues_full(sk, skb, limit))
+	{
+		#ifdef CONFIG_MTK_NET_LOGGING 
+		printk(KERN_ERR "[mtk_net][sock]sk_add_backlog->sk_rcvqueues_full sk->sk_rcvbuf:%d,sk->sk_sndbuf:%d ",sk->sk_rcvbuf,sk->sk_sndbuf);
+		#endif
 		return -ENOBUFS;
+	}
 
 	__sk_add_backlog(sk, skb);
 	sk->sk_backlog.len += skb->truesize;
@@ -1767,9 +1772,9 @@ __sk_dst_set(struct sock *sk, struct dst_entry *dst)
 static inline void
 sk_dst_set(struct sock *sk, struct dst_entry *dst)
 {
-	spin_lock(&sk->sk_dst_lock);
+	spin_lock_bh(&sk->sk_dst_lock);
 	__sk_dst_set(sk, dst);
-	spin_unlock(&sk->sk_dst_lock);
+	spin_unlock_bh(&sk->sk_dst_lock);
 }
 
 static inline void
@@ -1781,9 +1786,9 @@ __sk_dst_reset(struct sock *sk)
 static inline void
 sk_dst_reset(struct sock *sk)
 {
-	spin_lock(&sk->sk_dst_lock);
+	spin_lock_bh(&sk->sk_dst_lock);
 	__sk_dst_reset(sk);
-	spin_unlock(&sk->sk_dst_lock);
+	spin_unlock_bh(&sk->sk_dst_lock);
 }
 
 extern struct dst_entry *__sk_dst_check(struct sock *sk, u32 cookie);

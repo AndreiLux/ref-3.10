@@ -17,7 +17,6 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/compat.h>
 #include <linux/errno.h>
 #include <linux/signal.h>
 #include <linux/personality.h>
@@ -26,6 +25,7 @@
 #include <linux/tracehook.h>
 #include <linux/ratelimit.h>
 
+#include <asm/compat.h>
 #include <asm/debug-monitors.h>
 #include <asm/elf.h>
 #include <asm/cacheflush.h>
@@ -100,7 +100,8 @@ static int restore_sigframe(struct pt_regs *regs,
 {
 	sigset_t set;
 	int i, err;
-	void *aux = sf->uc.uc_mcontext.__reserved;
+	struct aux_context __user *aux =
+		(struct aux_context __user *)sf->uc.uc_mcontext.__reserved;
 
 	err = __copy_from_user(&set, &sf->uc.uc_sigmask, sizeof(set));
 	if (err == 0)
@@ -120,11 +121,8 @@ static int restore_sigframe(struct pt_regs *regs,
 
 	err |= !valid_user_regs(&regs->user_regs);
 
-	if (err == 0) {
-		struct fpsimd_context *fpsimd_ctx =
-			container_of(aux, struct fpsimd_context, head);
-		err |= restore_fpsimd_context(fpsimd_ctx);
-	}
+	if (err == 0)
+		err |= restore_fpsimd_context(&aux->fpsimd);
 
 	return err;
 }
@@ -169,8 +167,8 @@ static int setup_sigframe(struct rt_sigframe __user *sf,
 			  struct pt_regs *regs, sigset_t *set)
 {
 	int i, err = 0;
-	void *aux = sf->uc.uc_mcontext.__reserved;
-	struct _aarch64_ctx *end;
+	struct aux_context __user *aux =
+		(struct aux_context __user *)sf->uc.uc_mcontext.__reserved;
 
 	/* set up the stack frame for unwinding */
 	__put_user_error(regs->regs[29], &sf->fp, err);
@@ -187,17 +185,12 @@ static int setup_sigframe(struct rt_sigframe __user *sf,
 
 	err |= __copy_to_user(&sf->uc.uc_sigmask, set, sizeof(*set));
 
-	if (err == 0) {
-		struct fpsimd_context *fpsimd_ctx =
-			container_of(aux, struct fpsimd_context, head);
-		err |= preserve_fpsimd_context(fpsimd_ctx);
-		aux += sizeof(*fpsimd_ctx);
-	}
+	if (err == 0)
+		err |= preserve_fpsimd_context(&aux->fpsimd);
 
 	/* set the "end" magic */
-	end = aux;
-	__put_user_error(0, &end->magic, err);
-	__put_user_error(0, &end->size, err);
+	__put_user_error(0, &aux->end.magic, err);
+	__put_user_error(0, &aux->end.size, err);
 
 	return err;
 }

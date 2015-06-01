@@ -33,6 +33,7 @@
 
 #include <asm/mach/arch.h>
 #include <asm/mach/map.h>
+#include <mach/mtk_memcfg.h>
 
 #include "mm.h"
 
@@ -76,7 +77,7 @@ static int __init parse_tag_initrd2(const struct tag *tag)
 __tagtable(ATAG_INITRD2, parse_tag_initrd2);
 
 #ifdef CONFIG_OF_FLATTREE
-void __init early_init_dt_setup_initrd_arch(u64 start, u64 end)
+void __init early_init_dt_setup_initrd_arch(unsigned long start, unsigned long end)
 {
 	phys_initrd_start = start;
 	phys_initrd_size = end - start;
@@ -327,12 +328,21 @@ phys_addr_t __init arm_memblock_steal(phys_addr_t size, phys_addr_t align)
 
 	BUG_ON(!arm_memblock_steal_permitted);
 
-	phys = memblock_alloc_base(size, align, MEMBLOCK_ALLOC_ANYWHERE);
+	phys = memblock_alloc_base(size, align, MEMBLOCK_ALLOC_NOPASR);
 	memblock_free(phys, size);
 	memblock_remove(phys, size);
+	if (phys) {
+		MTK_MEMCFG_LOG_AND_PRINTK(KERN_ALERT"[PHY layout]%ps   :   0x%08llx - 0x%08llx (0x%08llx)\n",
+			__builtin_return_address(0), (unsigned long long)phys, 
+		(unsigned long long)phys + size - 1,
+		(unsigned long long)size);
+	}
 
 	return phys;
 }
+
+__attribute__((weak)) extern struct ion_platform_data ion_drv_platform_data;
+__attribute__((weak)) extern void __init ion_reserve(struct ion_platform_data *data);
 
 void __init arm_memblock_init(struct meminfo *mi, struct machine_desc *mdesc)
 {
@@ -376,6 +386,9 @@ void __init arm_memblock_init(struct meminfo *mi, struct machine_desc *mdesc)
 	if (mdesc->reserve)
 		mdesc->reserve();
 
+    //reserve for ion_carveout_heap
+    if(ion_reserve && (&ion_drv_platform_data))
+        ion_reserve(&ion_drv_platform_data);
 	/*
 	 * reserve memory for DMA contigouos allocations,
 	 * must come from DMA area inside low memory
@@ -651,7 +664,7 @@ void __init mem_init(void)
 #define MLM(b, t) b, t, ((t) - (b)) >> 20
 #define MLK_ROUNDUP(b, t) b, t, DIV_ROUND_UP(((t) - (b)), SZ_1K)
 
-	printk(KERN_NOTICE "Virtual kernel memory layout:\n"
+	MTK_MEMCFG_LOG_AND_PRINTK(KERN_NOTICE "Virtual kernel memory layout:\n"
 			"    vector  : 0x%08lx - 0x%08lx   (%4ld kB)\n"
 #ifdef CONFIG_HAVE_TCM
 			"    DTCM    : 0x%08lx - 0x%08lx   (%4ld kB)\n"

@@ -24,6 +24,55 @@
 #ifndef LINUX_MMC_MMC_H
 #define LINUX_MMC_MMC_H
 
+//#define EMMC_BLOCK_FLOW_TRACE
+
+#ifdef EMMC_BLOCK_FLOW_TRACE
+#define BLK_TRACE_PRINT(fmt, ...) printk(KERN_ERR "[5J] %s -> %d\t" fmt "\n", __func__, __LINE__, ##__VA_ARGS__)
+extern void block_trace_logger(const char *func, unsigned int line, const char *fmt, ...);
+extern void block_trace_logger_irq(const char *func, unsigned int line, const char *fmt, ...);
+extern bool is_block_trace_ena(void);
+#define MSDC_TRACE_LOG(fmt...) \
+    do { \
+        if (unlikely(is_block_trace_ena())) { \
+            block_trace_logger_irq(__func__, __LINE__, fmt); \
+        } \
+    } while(0)
+#define MSDC_TRACE_LOG_NOIRQ(fmt...) \
+    do { \
+        if (unlikely(is_block_trace_ena())) { \
+            block_trace_logger(__func__, __LINE__, fmt); \
+        } \
+    } while(0)
+
+#include <linux/mount.h>
+#include <linux/netdevice.h>
+#define EMMC_TRACE_GET_FULLPATH(f) \
+    do { \
+        char *buf = NULL, *name = NULL; \
+        buf = kzalloc(PATH_MAX, GFP_KERNEL); \
+        if (!buf) { \
+            printk(KERN_ERR "[5J] allocate failed!!!\n"); \
+            break; \
+        } \
+        name = d_path(&f->f_path, buf, PATH_MAX); \
+        MSDC_TRACE_LOG("[5J] file path: %s\n", name); \
+        kzfree(buf); \
+    } while(0)
+
+#define EMMC_TRACE_FOR_LMDD(f, fmt...) \
+    do { \
+        if (strncmp(current->comm, "lmdd", 4) == 0) { \
+            MSDC_TRACE_LOG("%s(%d)\t", current->comm, task_pid_nr(current)); \
+            MSDC_TRACE_LOG(fmt); \
+            MSDC_TRACE_LOG("=======> current time: %lld\n", sched_clock()); \
+        } \
+    } while(0)
+#else
+#define MSDC_TRACE_LOG(fmt...)
+#define EMMC_TRACE_GET_FULLPATH(f)
+#define EMMC_TRACE_FOR_LMDD(f, fmt...)
+#endif
+
 /* Standard MMC commands (4.1)           type  argument     response */
    /* class 1 */
 #define MMC_GO_IDLE_STATE         0   /* bc                          */
@@ -332,6 +381,9 @@ struct _mmc_csd {
 #define EXT_CSD_BKOPS_SUPPORT		502	/* RO */
 #define EXT_CSD_HPI_FEATURES		503	/* RO */
 
+
+/* bit0 for diacard support with emmc4.41 plus */
+#define EXT_CSD_SAMSUNG_FEATURE         64      /* RO */
 /*
  * EXT_CSD field definitions
  */
@@ -356,16 +408,22 @@ struct _mmc_csd {
 
 #define EXT_CSD_CARD_TYPE_26	(1<<0)	/* Card can run at 26MHz */
 #define EXT_CSD_CARD_TYPE_52	(1<<1)	/* Card can run at 52MHz */
+#ifdef CONFIG_EMMC_50_FEATURE
+#define EXT_CSD_CARD_TYPE_MASK	0xFF	/* Mask out reserved bits */
+#else
 #define EXT_CSD_CARD_TYPE_MASK	0x3F	/* Mask out reserved bits */
+#endif
 #define EXT_CSD_CARD_TYPE_DDR_1_8V  (1<<2)   /* Card can run at 52MHz */
 					     /* DDR mode @1.8V or 3V I/O */
 #define EXT_CSD_CARD_TYPE_DDR_1_2V  (1<<3)   /* Card can run at 52MHz */
 					     /* DDR mode @1.2V I/O */
 #define EXT_CSD_CARD_TYPE_DDR_52       (EXT_CSD_CARD_TYPE_DDR_1_8V  \
 					| EXT_CSD_CARD_TYPE_DDR_1_2V)
-#define EXT_CSD_CARD_TYPE_SDR_1_8V	(1<<4)	/* Card can run at 200MHz */
-#define EXT_CSD_CARD_TYPE_SDR_1_2V	(1<<5)	/* Card can run at 200MHz */
+#define EXT_CSD_CARD_TYPE_HS200_1_8V	(1<<4)	/* Card can run at 200MHz */
+#define EXT_CSD_CARD_TYPE_HS200_1_2V	(1<<5)	/* Card can run at 200MHz */
 						/* SDR mode @1.2V I/O */
+#define EXT_CSD_CARD_TYPE_HS400_1_8V	(1<<6)	/* Card can run at 200MHz */
+#define EXT_CSD_CARD_TYPE_HS400_1_2V	(1<<7)	/* Card can run at 200MHz */
 
 #define EXT_CSD_BUS_WIDTH_1	0	/* Card is in 1 bit mode */
 #define EXT_CSD_BUS_WIDTH_4	1	/* Card is in 4 bit mode */

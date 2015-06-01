@@ -304,13 +304,9 @@ static void process_chn_event(u32 relid)
 		 */
 
 		do {
-			if (read_state)
-				hv_begin_read(&channel->inbound);
+			hv_begin_read(&channel->inbound);
 			channel->onchannel_callback(arg);
-			if (read_state)
-				bytes_to_read = hv_end_read(&channel->inbound);
-			else
-				bytes_to_read = 0;
+			bytes_to_read = hv_end_read(&channel->inbound);
 		} while (read_state && (bytes_to_read != 0));
 	} else {
 		pr_err("no channel callback for relid - %u\n", relid);

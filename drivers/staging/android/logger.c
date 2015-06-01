@@ -33,6 +33,9 @@
 
 #include <asm/ioctls.h>
 
+static int s_fake_read;
+module_param_named(fake_read, s_fake_read, int, 0660);
+
 /**
  * struct logger_log - represents a specific log, such as 'main' or 'radio'
  * @buffer:	The actual ring buffer
@@ -71,6 +74,7 @@ static LIST_HEAD(log_list);
  * @r_off:	The current read head offset.
  * @r_all:	Reader can read all entries
  * @r_ver:	Reader ABI version
+ * @missing_bytes: android log missing warning
  *
  * This object lives from open to release, so we don't need additional
  * reference counting. The structure is protected by log->mutex.
@@ -81,6 +85,9 @@ struct logger_reader {
 	size_t			r_off;
 	bool			r_all;
 	int			r_ver;
+    size_t      missing_bytes;
+    size_t      wake_up_interval;          /* how many bytes does writer wake up reader.  0-android original, others-mtk used*/
+    long long   wake_up_timer;      /* the timer to wake up reader unit:ns*/
 };
 
 /* logger_offset - returns index 'n' into the log via (optimized) modulus */
@@ -238,6 +245,60 @@ static ssize_t do_read_log_to_user(struct logger_log *log,
 }
 
 /*
+ * do_read_log_to_user - reads exactly 'count' bytes from 'log' into the
+ * user-space buffer 'buf'. Returns 'count' on success.
+ *
+ * Caller must hold log->mutex.
+ */
+#define READ_ONE_BY_ONE 0
+static ssize_t do_read_log_to_user_interval(struct logger_log *log,
+				   struct logger_reader *reader,
+				   char __user *buf,
+				   size_t count)
+{
+    size_t sum = 0;
+    size_t entry_len = 0;
+    size_t offset = reader->r_off;
+    long long t1, t2;
+    t1 = sched_clock();
+    //printk("do_read_log_to_user_interval: %d\n", count);
+#if READ_ONE_BY_ONE
+    size_t do_read_ret = 0;
+    entry_len = get_user_hdr_len(reader->r_ver) + get_entry_msg_len(log, reader->r_off);
+    while(sum + entry_len < count) {
+        do_read_ret = do_read_log_to_user(log, reader, buf, entry_len);
+        sum += do_read_ret;
+        buf += do_read_ret;
+        entry_len = get_user_hdr_len(reader->r_ver) + get_entry_msg_len(log, reader->r_off);
+        //printk("sum is %d, next entry is %d\n", sum, entry_len);
+    }
+#else   //read the log by block
+    while (1) {
+        entry_len = sizeof(struct logger_entry) + get_entry_msg_len(log, offset);
+        if (sum + entry_len > count)
+            break;
+        sum += entry_len;
+	    offset = logger_offset(log, offset + entry_len);
+        if (offset == log->w_off)
+            break;
+    }
+    if (offset > reader->r_off) {
+		if (copy_to_user(buf, log->buffer + reader->r_off, sum))
+			return -EFAULT;
+    } else {
+        size_t right = log->size - reader->r_off;
+		if (copy_to_user(buf, log->buffer + reader->r_off, right))
+			return -EFAULT;
+		if (copy_to_user(buf + right, log->buffer, sum - right))
+			return -EFAULT;
+    }
+    reader->r_off = offset;
+#endif
+    t2 = sched_clock();
+    //printk("do_read_log_to_user_interval execute %llu ns\n", t2 - t1);
+    return sum;
+}
+/*
  * get_next_entry_by_uid - Starting at 'off', returns an offset into
  * 'log->buffer' which contains the first entry readable by 'euid'
  */
@@ -261,6 +322,58 @@ static size_t get_next_entry_by_uid(struct logger_log *log,
 	return off;
 }
 
+static ssize_t logger_fake_message(struct logger_log *log, struct logger_reader *reader, char __user *buf, const char *fmt, ...) 
+{
+	int len, header_size, entry_len;
+        char message[256], *tag;
+	va_list ap;
+	struct logger_entry *current_entry, scratch;
+	
+	header_size = get_user_hdr_len(reader->r_ver);
+
+	current_entry = get_entry_header(log, reader->r_off, &scratch);
+
+	memset(message, 0, header_size);
+	va_start(ap, fmt);
+        len = vsnprintf(message + header_size + 5, sizeof(message) - (header_size + 5), fmt, ap);
+	va_end(ap);
+
+	entry_len = 5 + len + 1/* message size */;
+	tag = message + header_size;
+	tag[0] = 0x5;
+	tag[1] = 'A';
+	tag[2] = 'E';
+	tag[3] = 'E';
+	tag[4] = 0;
+
+	switch (reader->r_ver) {
+	case 1: {
+		struct user_logger_entry_compat *entryp = (struct user_logger_entry_compat *)message;
+		entryp->sec = current_entry->sec;
+		entryp->nsec = current_entry->nsec;
+		entryp->len = entry_len;
+		break;
+	}
+	case 2: {
+		struct logger_entry *entryp = (struct logger_entry *)message;
+		entryp->sec = current_entry->sec;
+		entryp->nsec = current_entry->nsec;
+		entryp->len = entry_len;
+		entryp->hdr_size = header_size;
+		break;
+	}
+	default:
+		/* FIXME: ? */
+		return 0;
+		break;
+	}
+
+        if (copy_to_user(buf, message, entry_len + header_size))
+		return -EFAULT;
+
+	return entry_len + header_size;
+}
+
 /*
  * logger_read - our log's read() method
  *
@@ -279,6 +392,7 @@ static ssize_t logger_read(struct file *file, char __user *buf,
 	struct logger_reader *reader = file->private_data;
 	struct logger_log *log = reader->log;
 	ssize_t ret;
+    ssize_t missing_log = 0;
 	DEFINE_WAIT(wait);
 
 start:
@@ -321,6 +435,22 @@ start:
 		goto start;
 	}
 
+	if (unlikely(s_fake_read)) {
+		ret = logger_fake_message(log, reader, buf, "Fake read return string.");
+		goto out;
+	}
+	/* for android log missing warning { */
+	if (reader->missing_bytes > 0) {
+		ret = logger_fake_message(log, reader, buf, "some logs have been lost (%u bytes estimated)", reader->missing_bytes);
+		reader->missing_bytes = 0;
+        if (!reader->wake_up_interval)
+		    goto out;
+        else {
+            missing_log = ret;
+            buf += missing_log;
+        }
+	}
+
 	/* get the size of the next entry */
 	ret = get_user_hdr_len(reader->r_ver) +
 		get_entry_msg_len(log, reader->r_off);
@@ -330,7 +460,15 @@ start:
 	}
 
 	/* get exactly one entry from the log */
-	ret = do_read_log_to_user(log, reader, buf, ret);
+    if (!reader->wake_up_interval) {
+        ret = do_read_log_to_user(log, reader, buf, ret);
+    } else {
+        //printk("do_read_log_to_user_interval\n");
+        ret = do_read_log_to_user_interval(log, reader, buf, reader->wake_up_interval - missing_log);
+        ret += missing_log;
+        missing_log = 0;
+        //printk("do_read_log_to_user_interval ret: %d\n", ret);
+    }
 
 out:
 	mutex_unlock(&log->mutex);
@@ -405,8 +543,16 @@ static void fix_up_readers(struct logger_log *log, size_t len)
 		log->head = get_next_entry(log, log->head, len);
 
 	list_for_each_entry(reader, &log->readers, list)
-		if (is_between(old, new, reader->r_off))
+		if (is_between(old, new, reader->r_off)) {
+			size_t old_r_off = reader->r_off;
 			reader->r_off = get_next_entry(log, reader->r_off, len);
+			if (reader->r_off >= old_r_off) {
+				reader->missing_bytes += (reader->r_off - old_r_off);
+			}
+			else {
+				reader->missing_bytes += (reader->r_off + (log->size - old_r_off));
+			}
+		}
 }
 
 /*
@@ -474,15 +620,18 @@ static ssize_t logger_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	struct timespec now;
 	ssize_t ret = 0;
 
-	now = current_kernel_time();
 
-	header.pid = current->tgid;
-	header.tid = current->pid;
-	header.sec = now.tv_sec;
-	header.nsec = now.tv_nsec;
-	header.euid = current_euid();
-	header.len = min_t(size_t, iocb->ki_left, LOGGER_ENTRY_MAX_PAYLOAD);
-	header.hdr_size = sizeof(struct logger_entry);
+		// android default timestamp
+		//now = current_kernel_time();
+		getnstimeofday(&now);
+		header.pid = current->tgid;
+		header.tid = current->pid;
+		header.sec = now.tv_sec;
+		header.nsec = now.tv_nsec;
+		header.euid = current_euid();
+		header.len = min_t(size_t, iocb->ki_left, LOGGER_ENTRY_MAX_PAYLOAD);
+		header.hdr_size = sizeof(struct logger_entry);
+        header.tz = sys_tz.tz_minuteswest * 60;
 
 	/* null writes succeed, return zero */
 	if (unlikely(!header.len))
@@ -568,11 +717,14 @@ static int logger_open(struct inode *inode, struct file *file)
 		reader->r_ver = 1;
 		reader->r_all = in_egroup_p(inode->i_gid) ||
 			capable(CAP_SYSLOG);
+		reader->missing_bytes = 0;
 
 		INIT_LIST_HEAD(&reader->list);
 
 		mutex_lock(&log->mutex);
 		reader->r_off = log->head;
+        reader->wake_up_interval = 0; 
+        reader->wake_up_timer = 0;
 		list_add_tail(&reader->list, &log->readers);
 		mutex_unlock(&log->mutex);
 
@@ -618,6 +770,8 @@ static unsigned int logger_poll(struct file *file, poll_table *wait)
 	struct logger_reader *reader;
 	struct logger_log *log;
 	unsigned int ret = POLLOUT | POLLWRNORM;
+    static long long last_time = 0;
+    long long curr_time = sched_clock();
 
 	if (!(file->f_mode & FMODE_READ))
 		return ret;
@@ -632,8 +786,14 @@ static unsigned int logger_poll(struct file *file, poll_table *wait)
 		reader->r_off = get_next_entry_by_uid(log,
 			reader->r_off, current_euid());
 
-	if (log->w_off != reader->r_off)
-		ret |= POLLIN | POLLRDNORM;
+	//if (log->w_off != reader->r_off)
+	//	ret |= POLLIN | POLLRDNORM;
+    if (((log->w_off + log->size - reader->r_off) % log->size > reader->wake_up_interval) || 
+            ((curr_time - last_time > reader->wake_up_timer) && (log->w_off != reader->r_off))) {
+        ret |= POLLIN | POLLRDNORM;
+    }
+    if (reader->wake_up_timer && (curr_time - last_time > reader->wake_up_timer)) 
+        last_time = sched_clock();
 	mutex_unlock(&log->mutex);
 
 	return ret;
@@ -650,6 +810,25 @@ static long logger_set_version(struct logger_reader *reader, void __user *arg)
 
 	reader->r_ver = version;
 	return 0;
+}
+
+static long logger_set_timer(struct logger_reader *reader, void __user *arg)
+{
+    long long timer;
+    if (copy_from_user(&timer, arg, sizeof(long long)))
+        return -EFAULT;
+    reader->wake_up_timer = timer;
+    return 0;
+}
+
+static long logger_set_interval(struct logger_reader *reader, void __user *arg)
+{
+    size_t interval;
+    if (copy_from_user(&interval, arg, sizeof(size_t)))
+        return -EFAULT;
+    reader->wake_up_interval = interval;
+    printk("set interval %d\n", reader->wake_up_interval);
+    return 0;
 }
 
 static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
@@ -724,8 +903,24 @@ static long logger_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		reader = file->private_data;
 		ret = logger_set_version(reader, argp);
 		break;
+    case LOGGER_SET_INTERVAL:
+        if (!(file->f_mode & FMODE_READ)) {
+            ret = -EBADF;
+            break;
+        }
+        reader = file->private_data;
+        ret = logger_set_interval(reader, argp);
+        reader->r_ver = 2;
+        break;
+    case LOGGER_SET_TIMER:
+        if (!(file->f_mode & FMODE_READ)) {
+            ret = -EBADF;
+            break;
+        }
+        reader = file->private_data;
+        ret = logger_set_timer(reader, argp);
+        break;
 	}
-
 	mutex_unlock(&log->mutex);
 
 	return ret;
@@ -808,19 +1003,19 @@ static int __init logger_init(void)
 {
 	int ret;
 
-	ret = create_log(LOGGER_LOG_MAIN, 256*1024);
+	ret = create_log(LOGGER_LOG_MAIN, __MAIN_BUF_SIZE);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_EVENTS, 256*1024);
+	ret = create_log(LOGGER_LOG_EVENTS, __EVENTS_BUF_SIZE);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_RADIO, 256*1024);
+	ret = create_log(LOGGER_LOG_RADIO, __RADIO_BUF_SIZE);
 	if (unlikely(ret))
 		goto out;
 
-	ret = create_log(LOGGER_LOG_SYSTEM, 256*1024);
+	ret = create_log(LOGGER_LOG_SYSTEM, __SYSTEM_BUF_SIZE);
 	if (unlikely(ret))
 		goto out;
 
@@ -842,6 +1037,205 @@ static void __exit logger_exit(void)
 	}
 }
 
+int panic_dump_main(char *buf, size_t size) {
+		static size_t offset = 0; //offset of log buffer
+		static int isFirst = 0;
+		size_t len = 0;
+		size_t distance = 0;
+		size_t realsize = 0;
+    struct logger_log *log;
+    struct logger_log log_main;
+    log_main.buffer = NULL;
+    log_main.size = 0;
+    log_main.head = 0;
+    log_main.w_off = 0;
+	list_for_each_entry(log, &log_list, logs)
+		if (strncmp(log->misc.name, LOGGER_LOG_MAIN, strlen(LOGGER_LOG_MAIN)) == 0) 
+            log_main = *log;
+	
+	if (isFirst == 0){
+		offset = log_main.head;
+		isFirst++;
+	}
+	distance = (log_main.w_off + log_main.size - offset) & (log_main.size -1);
+	//printk("offset = %d, w_off = %d, head = %d distance = %d\n", offset, log_main.w_off, log_main.head, distance);
+	if(distance > size)
+		realsize = size;
+	else
+		realsize = distance;
+	len = min(realsize, log_main.size - offset);
+	memcpy(buf, log_main.buffer + offset, len);
+	if (realsize != len)
+		memcpy(buf + len, log_main.buffer, realsize - len);
+	offset += realsize;
+	offset &= (log_main.size - 1);
+	return realsize;
+}
+
+int panic_dump_events(char *buf, size_t size) {
+		static size_t offset = 0; //offset of log buffer
+		static int isFirst = 0;
+		size_t len = 0;
+		size_t distance = 0;
+		size_t realsize = 0;
+    struct logger_log *log;
+    struct logger_log log_events;
+    log_events.buffer = NULL;
+    log_events.size = 0;
+    log_events.head = 0;
+    log_events.w_off = 0;
+	list_for_each_entry(log, &log_list, logs)
+		if (strncmp(log->misc.name, LOGGER_LOG_EVENTS, strlen(LOGGER_LOG_EVENTS)) == 0) 
+            log_events = *log;
+
+	if (isFirst == 0){
+		offset = log_events.head;
+		isFirst++;
+	}
+	distance = (log_events.w_off + log_events.size - offset) & (log_events.size -1);
+	//printk("offset = %d, w_off = %d, head = %d distance = %d\n", offset, log_events.w_off, log_events.head, distance);
+	if(distance > size)
+		realsize = size;
+	else
+		realsize = distance;	
+	len = min(realsize, log_events.size - offset);
+	memcpy(buf, log_events.buffer + offset, len);
+	if (realsize != len)
+		memcpy(buf + len, log_events.buffer, realsize - len);
+	offset += realsize;
+	offset &= (log_events.size - 1);
+	return realsize;
+}
+
+int panic_dump_radio(char *buf, size_t size) {
+		static size_t offset = 0; //offset of log buffer
+		static int isFirst = 0;
+		size_t len = 0;
+		size_t distance = 0;
+		size_t realsize = 0;
+    struct logger_log *log;
+    struct logger_log log_radio;
+    log_radio.buffer = NULL;
+    log_radio.size = 0;
+    log_radio.head = 0;
+    log_radio.w_off = 0;
+	list_for_each_entry(log, &log_list, logs)
+		if (strncmp(log->misc.name, LOGGER_LOG_RADIO, strlen(LOGGER_LOG_RADIO)) == 0) 
+            log_radio = *log;
+
+	if (isFirst == 0){
+		offset = log_radio.head;
+		isFirst++;
+	}
+	distance = (log_radio.w_off + log_radio.size - offset) & (log_radio.size -1);
+	//printk("offset = %d, w_off = %d, head = %d distance = %d\n", offset, log_radio.w_off, log_radio.head, distance);
+	if(distance > size)
+		realsize = size;
+	else
+		realsize = distance;
+	len = min(realsize, log_radio.size - offset);
+	memcpy(buf, log_radio.buffer + offset, len);
+	if (realsize != len)
+		memcpy(buf + len, log_radio.buffer, realsize - len);
+	offset += realsize;
+	offset &= (log_radio.size - 1);
+	return realsize;
+}
+
+int panic_dump_system(char *buf, size_t size) {
+		static size_t offset = 0; //offset of log buffer
+		static int isFirst = 0;
+		size_t len = 0;
+		size_t distance = 0;
+		size_t realsize = 0;
+    struct logger_log *log;
+    struct logger_log log_system;
+    log_system.buffer = NULL;
+    log_system.size = 0;
+    log_system.head = 0;
+    log_system.w_off = 0;
+	list_for_each_entry(log, &log_list, logs)
+		if (strncmp(log->misc.name, LOGGER_LOG_SYSTEM, strlen(LOGGER_LOG_SYSTEM)) == 0) 
+            log_system = *log;
+	
+	if (isFirst == 0){
+		offset = log_system.head;
+		isFirst++;
+	}
+	distance = (log_system.w_off + log_system.size - offset) & (log_system.size -1);
+	//printk("offset = %d, w_off = %d, head = %d distance = %d\n", offset, log_system.w_off, log_system.head, distance);
+	if(distance > size)
+		realsize = size;
+	else
+		realsize = distance;
+	len = min(realsize, log_system.size - offset);
+	memcpy(buf, log_system.buffer + offset, len);
+	if (realsize != len)
+		memcpy(buf + len, log_system.buffer, realsize - len);
+	offset += realsize;
+	offset &= (log_system.size - 1);
+	return realsize;
+}
+
+
+int panic_dump_android_log(char *buf, size_t size, int type)
+{
+	size_t ret = 0 ;
+	//printk ("type %d, buf %x, size %d\n", type, buf, size) ;
+	memset (buf, 0, size);
+	switch (type)
+	{
+        case 1:
+		ret = panic_dump_main(buf, size);
+		break;
+        case 2:
+		ret = panic_dump_events(buf, size);
+		break;
+        case 3:
+		ret = panic_dump_radio(buf, size);
+		break;
+        case 4:
+		ret = panic_dump_system(buf, size);
+		break;
+        default:
+		ret = 0;
+		break;
+    }
+    if (ret!=0)
+	    ret = size;
+	
+    return ret;
+}
+
+void get_android_log_buffer(unsigned long *addr, unsigned long *size, unsigned long *start, int type)
+{
+	struct logger_log *log;
+	char *name = NULL;
+	switch (type) {
+	case 1:
+		name = LOGGER_LOG_MAIN;
+		break;
+	case 2:
+		name = LOGGER_LOG_EVENTS;
+		break;
+	case 3:
+		name = LOGGER_LOG_RADIO;
+		break;
+	case 4:
+		name = LOGGER_LOG_SYSTEM;
+		break;
+	default:
+		return;
+	}
+	
+	list_for_each_entry(log, &log_list, logs)
+		if (strncmp(log->misc.name, name, strlen(name)) == 0) {
+			*addr = (unsigned long)log->buffer;
+			*size = log->size;
+			*start = (unsigned long)&log->w_off;
+			break;
+		}
+}
 
 device_initcall(logger_init);
 module_exit(logger_exit);

@@ -97,9 +97,10 @@ void panic(const char *fmt, ...)
 	 * stop themself or will wait until they are stopped by the 1st CPU
 	 * with smp_send_stop().
 	 */
+	spin_lock(&panic_lock);
+	/* Todo: only for temp workaround
 	if (!spin_trylock(&panic_lock))
-		panic_smp_self_stop();
-
+	panic_smp_self_stop(); */
 	console_verbose();
 	bust_spinlocks(1);
 	va_start(args, fmt);
@@ -464,7 +465,12 @@ EXPORT_SYMBOL(warn_slowpath_null);
  */
 void __stack_chk_fail(void)
 {
+/*
 	panic("stack-protector: Kernel stack is corrupted in: %p\n",
+		__builtin_return_address(0));
+*/
+    BUG();
+    printk(KERN_ERR "stack-protector: Kernel stack is corrupted in: %p\n",
 		__builtin_return_address(0));
 }
 EXPORT_SYMBOL(__stack_chk_fail);

@@ -18,6 +18,13 @@
 #include <linux/compiler.h>
 #include <linux/cpumask.h>
 
+/*******************************************************************************
+* 20131225 marc.huang                                                          *
+* CPU Hotplug and idle integration                                             *
+*******************************************************************************/
+extern atomic_t is_in_hotplug;
+/******************************************************************************/
+
 struct device;
 
 struct cpu {
@@ -29,7 +36,6 @@ struct cpu {
 extern int register_cpu(struct cpu *cpu, int num);
 extern struct device *get_cpu_device(unsigned cpu);
 extern bool cpu_is_hotpluggable(unsigned cpu);
-extern bool arch_match_cpu_phys_id(int cpu, u64 phys_id);
 
 extern int cpu_add_dev_attr(struct device_attribute *attr);
 extern void cpu_remove_dev_attr(struct device_attribute *attr);

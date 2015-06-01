@@ -53,6 +53,9 @@
 
 #include <trace/events/timer.h>
 
+#include <linux/mt_sched_mon.h>
+
+//#define MTK_HRTIME_DEBUG     /*MTK debug func*/
 /*
  * The timer bases:
  *
@@ -1253,6 +1256,31 @@ int hrtimer_get_res(const clockid_t which_clock, struct timespec *tp)
 }
 EXPORT_SYMBOL_GPL(hrtimer_get_res);
 
+#ifdef MTK_HRTIME_DEBUG
+static void dump_hrtimer_callinfo(struct hrtimer *timer)
+{
+
+  char symname[KSYM_NAME_LEN];
+  if (lookup_symbol_name((unsigned long)(timer->function), symname) < 0) {
+  pr_err("timer info1: state/%lx, func/%pK\n",
+  timer->state, timer->function);
+  } else {
+  pr_err("timer info2: state/%lx, func/%s\n",
+  timer->state, symname);
+  }
+ 
+  #ifdef CONFIG_TIMER_STATS
+  if (lookup_symbol_name((unsigned long)(timer->start_site),
+  symname) < 0) {
+  pr_err("timer stats1: pid/%d(%s), site/%pK\n",
+  timer->start_pid, timer->start_comm, timer->start_site);
+  } else {
+  pr_err("timer stats2: pid/%d(%s), site/%s\n",
+  timer->start_pid, timer->start_comm, symname);
+  }
+  #endif
+}
+#endif
 static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 {
 	struct hrtimer_clock_base *base = timer->base;
@@ -1274,7 +1302,9 @@ static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 	 */
 	raw_spin_unlock(&cpu_base->lock);
 	trace_hrtimer_expire_entry(timer, now);
+    mt_trace_hrt_start(fn);
 	restart = fn(timer);
+    mt_trace_hrt_end(fn);
 	trace_hrtimer_expire_exit(timer);
 	raw_spin_lock(&cpu_base->lock);
 

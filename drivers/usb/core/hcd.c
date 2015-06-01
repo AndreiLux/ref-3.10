@@ -699,18 +699,30 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 	unsigned long	flags;
 	char		buffer[6];	/* Any root hubs with > 31 ports? */
 
-	if (unlikely(!hcd->rh_pollable))
-		return;
-	if (!hcd->uses_new_polling && !hcd->status_urb)
-		return;
+	MYDBG("");
 
+	if (unlikely(!hcd->rh_pollable))
+	{
+		MYDBG("");
+		return;
+	}
+	if (!hcd->uses_new_polling && !hcd->status_urb)
+	{
+		MYDBG("");
+		return;
+	}
+
+	MYDBG("");
 	length = hcd->driver->hub_status_data(hcd, buffer);
+	MYDBG("");
 	if (length > 0) {
+		MYDBG("");
 
 		/* try to complete the status urb */
 		spin_lock_irqsave(&hcd_root_hub_lock, flags);
 		urb = hcd->status_urb;
 		if (urb) {
+			MYDBG("");
 			clear_bit(HCD_FLAG_POLL_PENDING, &hcd->flags);
 			hcd->status_urb = NULL;
 			urb->actual_length = length;
@@ -721,11 +733,13 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 			usb_hcd_giveback_urb(hcd, urb, 0);
 			spin_lock(&hcd_root_hub_lock);
 		} else {
+			MYDBG("");
 			length = 0;
 			set_bit(HCD_FLAG_POLL_PENDING, &hcd->flags);
 		}
 		spin_unlock_irqrestore(&hcd_root_hub_lock, flags);
 	}
+	MYDBG("");
 
 	/* The USB 2.0 spec says 256 ms.  This is close enough and won't
 	 * exceed that limit if HZ is 100. The math is more clunky than
@@ -733,7 +747,10 @@ void usb_hcd_poll_rh_status(struct usb_hcd *hcd)
 	 * fire at the same time to give the CPU a break in between */
 	if (hcd->uses_new_polling ? HCD_POLL_RH(hcd) :
 			(length == 0 && hcd->status_urb != NULL))
+	{
+		MYDBG("");
 		mod_timer (&hcd->rh_timer, (jiffies/(HZ/4) + 1) * (HZ/4));
+	}
 }
 EXPORT_SYMBOL_GPL(usb_hcd_poll_rh_status);
 

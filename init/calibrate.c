@@ -296,6 +296,9 @@ void __cpuinit calibrate_delay(void)
 			lpj/(500000/HZ),
 			(lpj/(5000/HZ)) % 100, lpj);
 
-	loops_per_jiffy = lpj;
+	//20140325 marc.huang
+	//reconfig loops_per_jiffy only on CPU 0 to fix udelay is not accurate when CPU Hotplug
+	if (this_cpu == 0)
+		loops_per_jiffy = lpj;
 	printed = true;
 }

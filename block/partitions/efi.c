@@ -662,6 +662,7 @@ int efi_partition(struct parsed_partitions *state)
 		label_max = min(sizeof(info->volname) - 1,
 				sizeof(ptes[i].partition_name));
 		info->volname[label_max] = 0;
+#if 0
 		while (label_count < label_max) {
 			u8 c = ptes[i].partition_name[label_count] & 0xff;
 			if (c && !isprint(c))
@@ -669,6 +670,20 @@ int efi_partition(struct parsed_partitions *state)
 			info->volname[label_count] = c;
 			label_count++;
 		}
+#else
+		if ((ptes[i].partition_name[0] & 0xff00) == 0) {
+		    while (label_count < label_max) {
+			    u8 c = ptes[i].partition_name[label_count] & 0xff;
+			    if (c && !isprint(c))
+				    c = '!';
+			    info->volname[label_count] = c;
+			    label_count++;
+		    }
+        } else {
+            snprintf(info->volname, 64, "%s", (u8 *)ptes[i].partition_name);
+            printk("PART: name=%s\n", info->volname);
+        }
+#endif
 		state->parts[i + 1].has_info = true;
 	}
 	kfree(ptes);

@@ -6,6 +6,7 @@ config ARM
 	select ARCH_HAVE_CUSTOM_GPIO_H
 	select ARCH_HAS_TICK_BROADCAST if GENERIC_CLOCKEVENTS_BROADCAST
 	select ARCH_WANT_IPC_PARSE_VERSION
+	select ARM_HAS_SG_CHAIN if (ARCH_MT6589 || ARCH_MT6582 || ARCH_MT6572 || ARCH_MT8135 || ARCH_MT6595)
 	select BUILDTIME_EXTABLE_SORT if MMU
 	select CPU_PM if (SUSPEND || CPU_IDLE)
 	select DCACHE_WORD_ACCESS if (CPU_V6 || CPU_V6K || CPU_V7) && !CPU_BIG_ENDIAN && MMU
@@ -282,6 +283,7 @@ config MMU
 # The "ARM system type" choice list is ordered alphabetically by option
 # text.  Please add new entries in the option alphabetic order.
 #
+if !MEDIATEK_SOLUTION
 choice
 	prompt "ARM system type"
 	default ARCH_VERSATILE if !MMU
@@ -474,7 +476,6 @@ config ARCH_IXP4XX
 	bool "IXP4xx-based"
 	depends on MMU
 	select ARCH_HAS_DMA_SET_COHERENT_MASK
-	select ARCH_SUPPORTS_BIG_ENDIAN
 	select ARCH_REQUIRE_GPIOLIB
 	select CLKSRC_MMIO
 	select CPU_XSCALE
@@ -866,6 +867,7 @@ config ARCH_OMAP1
 	  Support for older TI OMAP1 (omap7xx, omap15xx or omap16xx)
 
 endchoice
+endif
 
 menu "Multiple platform selection"
 	depends on ARCH_MULTIPLATFORM
@@ -1325,6 +1327,29 @@ config ARM_ERRATA_764369
 	  relevant cache maintenance functions and sets a specific bit
 	  in the diagnostic control register of the SCU.
 
+config ARM_ERRATA_824069
+	def_bool n
+	depends on SMP
+	help
+	  This option enables the workaround for erratum 824069 
+	  affecting Cortex-A53 MPCore with two or more processors (r0p0..r0p2). 
+	  If a Cortex-A53 processor is executing a store or PLDW instruction at the same time
+	  as a processor in another cluster is executing a cache maintenance operation
+	  to the same address, then this erratum might cause a clean cache line to be
+	  incorrectly marked as dirty. This workaround replaces all cache clean opeartion
+	  to clean & invalidate.
+      
+config ARM_ERRATA_826319
+	def_bool n
+	depends on SMP
+	help
+	  This option enables the workaround for erratum 826319
+	  affecting Cortex-A53 MPCore with two or more processors (r0p0..r0p2).
+	  This erratum only affects configurations of the Cortex-A53 processor with an ABMA 4 ACE or AXI master interface and an L2 cache.
+	  To be affected by this erratum, the system that Cortex-A53 is connected to must also contain a peripheral or
+	  other component that contains a dependency between the read and write channels. The dependency must
+	  prevent the peripheral from accepting or responding to a write until it finishes processing a read.
+
 config PL310_ERRATA_769419
 	bool "PL310 errata: no automatic Store Buffer drain"
 	depends on CACHE_L2X0
@@ -1356,7 +1381,21 @@ config ARM_ERRATA_798181
 	  option enables the Linux kernel workaround for this erratum
 	  which sends an IPI to the CPUs that are running the same ASID
 	  as the one being invalidated.
+	  
+config ARM_ERRATA_828419
+	def_bool n
+	depends on CPU_V7 && SMP	
+	help
+	  ARM errata: A Instruction Cache Maintenance Operation by MVA with an incorrect NS descriptor
+	  This workaround is to replace ICIMVAU operations by ICIALLUIS operations
 
+config ARM_ERRATA_828420
+	def_bool n
+	depends on CPU_V7 && SMP
+	help
+	  ARM errata: Cache Clean by MVA to PoC might not be correctly executed
+	  The software workaround is to treat every Data Clean by MVA to PoC 
+	  as Data Clean Invalidate by MVA to PoC.
 endmenu
 
 source "arch/arm/common/Kconfig"
@@ -1511,17 +1550,6 @@ config SCHED_HMP
 	  There is currently no support for migration of task groups, hence
 	  !SCHED_AUTOGROUP. Furthermore, normal load-balancing must be disabled
 	  between cpus of different type (DISABLE_CPU_SCHED_DOMAIN_BALANCE).
-	  When turned on, this option adds sys/kernel/hmp directory which
-	  contains the following files:
-	  up_threshold - the load average threshold used for up migration
-	                 (0 - 1023)
-	  down_threshold - the load average threshold used for down migration
-	                 (0 - 1023)
-	  hmp_domains - a list of cpumasks for the present HMP domains,
-	                starting with the 'biggest' and ending with the
-	                'smallest'.
-	  Note that both the threshold files can be written at runtime to
-	  control scheduler behaviour.
 
 config SCHED_HMP_PRIO_FILTER
 	bool "(EXPERIMENTAL) Filter HMP migrations by task priority"
@@ -1556,24 +1584,36 @@ config HMP_VARIABLE_SCALE
 	bool "Allows changing the load tracking scale through sysfs"
 	depends on SCHED_HMP
 	help
-	  When turned on, this option exports the load average period value
-	  for the load tracking patches through sysfs.
+	  When turned on, this option exports the thresholds and load average
+	  period value for the load tracking patches through sysfs.
 	  The values can be modified to change the rate of load accumulation
-	  used for HMP migration. 'load_avg_period_ms' is the time in ms to
-	  reach a load average of 0.5 for an idle task of 0 load average
-	  ratio which becomes 100% busy.
-	  For example, with load_avg_period_ms = 128 and up_threshold = 512,
+	  and the thresholds used for HMP migration.
+	  The load_avg_period_ms is the time in ms to reach a load average of
+	  0.5 for an idle task of 0 load average ratio that start a busy loop.
+	  The up_threshold and down_threshold is the value to go to a faster
+	  CPU or to go back to a slower cpu.
+	  The {up,down}_threshold are devided by 1024 before being compared
+	  to the load average.
+	  For examples, with load_avg_period_ms = 128 and up_threshold = 512,
 	  a running task with a load of 0 will be migrated to a bigger CPU after
 	  128ms, because after 128ms its load_avg_ratio is 0.5 and the real
 	  up_threshold is 0.5.
 	  This patch has the same behavior as changing the Y of the load
 	  average computation to
 	        (1002/1024)^(LOAD_AVG_PERIOD/load_avg_period_ms)
-	  but removes intermediate overflows in computation.
+	  but it remove intermadiate overflows in computation.
+
+config MET_SCHED_HMP
+	bool "(EXPERIMENTAL) MET SCHED HMP Info"
+	depends on SCHED_HMP_ENHANCEMENT
+	depends on HMP_TRACER
+	help
+	  MET SCHED HMP Info
 
 config HMP_FREQUENCY_INVARIANT_SCALE
 	bool "(EXPERIMENTAL) Frequency-Invariant Tracked Load for HMP"
-	depends on SCHED_HMP && CPU_FREQ
+	depends on HMP_VARIABLE_SCALE && CPU_FREQ
+	depends on !ARCH_SCALE_INVARIANT_CPU_CAPACITY
 	help
 	  Scales the current load contribution in line with the frequency
 	  of the CPU that the task was executed on.
@@ -1586,17 +1626,85 @@ config HMP_FREQUENCY_INVARIANT_SCALE
 	  migration strategy to interact more predictably with CPUFreq's
 	  asynchronous compute capacity changes.
 
-config SCHED_HMP_LITTLE_PACKING
-	bool "Small task packing for HMP"
+config SCHED_HMP_ENHANCEMENT
+	bool "(EXPERIMENTAL) HMP Ennhancement"
 	depends on SCHED_HMP
-	default n
 	help
-	  Allows the HMP Scheduler to pack small tasks into CPUs in the
-	  smallest HMP domain.
-	  Controlled by two sysfs files in sys/kernel/hmp.
-	  packing_enable: 1 to enable, 0 to disable packing. Default 1.
-	  packing_limit: runqueue load ratio where a RQ is considered
-	    to be full. Default is NICE_0_LOAD * 9/8.
+	  HMP Ennhancement
+
+config HMP_TRACER
+	bool "(EXPERIMENTAL) Profile HMP scheduler"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Profile HMP scheduler
+
+config HMP_DYNAMIC_THRESHOLD
+	bool "(EXPERIMENTAL) Dynamically adjust task migration threshold"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Dynamically adjust task migration threshold according to current system load
+
+config HMP_GLOBAL_BALANCE
+	bool "(EXPERIMENTAL) Enhance HMP global load balance"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Enhance HMP global load balance
+
+config HMP_TASK_ASSIGNMENT
+	bool "(EXPERIMENTAL) Enhance HMP task assignment"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+	  Enhance HMP task assignment
+
+config HMP_DISCARD_CFS_SELECTION_RESULT
+	bool "(EXPERIMENTAL) Discard CFS runqueue selection result"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_TASK_ASSIGNMENT
+	help
+	  Discard CFS runqueue selection result even if only one cluster exists
+
+config HMP_PACK_SMALL_TASK
+	bool "(EXPERIMENTAL) Packing Small Tasks"
+	depends on SCHED_HMP_ENHANCEMENT
+	help
+		This option enables Packing Small Tasks
+
+config HMP_PACK_BUDDY_INFO
+	bool "(EXPERIMENTAL) Packing Small Tasks Buddy Information Log"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_PACK_SMALL_TASK
+	help
+		This option enables Packing Small Tasks Buddy Information Log
+    
+config HMP_LAZY_BALANCE
+	bool "(EXPERIMENTAL) Lazy Balance"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_PACK_SMALL_TASK
+	help
+		This option enables Lazy Balance
+    
+config HMP_POWER_AWARE_CONTROLLER
+	bool "(EXPERIMENTAL) Power-aware Scheduler for b.L MP Controller"
+	depends on SCHED_HMP_ENHANCEMENT && HMP_PACK_SMALL_TASK && HMP_LAZY_BALANCE
+	help
+		Power-aware scheduler for b.L MP controller and status interface
+
+config HEVTASK_INTERFACE
+	bool "task status interface"
+	help
+	  The option provide an interface to show task status
+	  
+config ARCH_SCALE_INVARIANT_CPU_CAPACITY
+       bool "(EXPERIMENTAL) Scale-Invariant CPU Compute Capacity Recording"
+       depends on CPU_FREQ
+       help
+         Provides a new measure of maximum and instantaneous CPU compute
+         capacity, derived from a table of relative compute performance
+         for each core type present in the system. The table is an
+         estimate and specific core performance may be different for
+         any particular workload. The measure includes the relative
+         performance and a linear scale of current to maximum frequency
+         such that at maximum frequency (as expressed in the DTB) the
+         reported compute capacity will be equal to the estimated
+         performance from the table. Values range between 0 and 1023 where
+         1023 is the highest capacity available in the system.
 
 config HAVE_ARM_SCU
 	bool
@@ -1624,31 +1732,6 @@ config MCPM
 	  This option provides the common power management infrastructure
 	  for (multi-)cluster based systems, such as big.LITTLE based
 	  systems.
-
-config BIG_LITTLE
-	bool "big.LITTLE support (Experimental)"
-	depends on CPU_V7 && SMP
-	select MCPM
-	help
-	  This option enables support for the big.LITTLE architecture.
-
-config BL_SWITCHER
-	bool "big.LITTLE switcher support"
-	depends on BIG_LITTLE && MCPM && HOTPLUG_CPU
-	select CPU_PM
-	select ARM_CPU_SUSPEND
-	help
-	  The big.LITTLE "switcher" provides the core functionality to
-	  transparently handle transition between a cluster of A15's
-	  and a cluster of A7's in a big.LITTLE system.
-
-config BL_SWITCHER_DUMMY_IF
-	tristate "Simple big.LITTLE switcher user interface"
-	depends on BL_SWITCHER && DEBUG_KERNEL
-	help
-	  This is a simple and dummy char dev interface to control
-	  the big.LITTLE switcher core code.  It is meant for
-	  debugging purposes only.
 
 choice
 	prompt "Memory split"
@@ -1700,6 +1783,7 @@ config LOCAL_TIMERS
 	bool "Use local timer interrupts"
 	depends on SMP
 	default y
+	select HAVE_ARM_TWD if (!ARCH_MSM_SCORPIONMP && !EXYNOS4_MCT && !ARCH_MT6589 && !ARCH_MT6582 && !ARCH_MT8135 && !ARCH_MT6592 && !ARCH_MT6595 && !ARCH_MT6752)
 	help
 	  Enable support for local timers on SMP platforms, rather then the
 	  legacy IPI broadcast method.  Local timers allows the system
@@ -1990,16 +2074,16 @@ config BUILD_ARM_APPENDED_DTB_IMAGE
 	bool "Build a concatenated zImage/dtb by default"
 	depends on OF
 	help
-	  Enabling this option will cause a concatenated zImage and DTB to
-	  be built by default (instead of a standalone zImage.)  The image
-	  will built in arch/arm/boot/zImage-dtb.<dtb name>
+	  Enabling this option will cause a concatenated zImage and list of
+	  DTBs to be built by default (instead of a standalone zImage.)
+	  The image will built in arch/arm/boot/zImage-dtb
 
-config BUILD_ARM_APPENDED_DTB_IMAGE_NAME
-	string "Default dtb name"
+config BUILD_ARM_APPENDED_DTB_IMAGE_NAMES
+	string "Default dtb names"
 	depends on BUILD_ARM_APPENDED_DTB_IMAGE
 	help
-	  name of the dtb to append when building a concatenated
-	  zImage/dtb.
+	  Space separated list of names of dtbs to append when
+	  building a concatenated zImage-dtb.
 
 # Compressed boot loader in ROM.  Yes, we really want to ask about
 # TEXT and BSS so we preserve their values in the config files.
@@ -2033,6 +2117,14 @@ config ZBOOT_ROM
 	help
 	  Say Y here if you intend to execute your compressed kernel image
 	  (zImage) directly from ROM or flash.  If unsure, say N.
+
+config COMPAT_CPUINFO
+	bool "Show /proc/cpuinfo in old form"
+	default n
+	help
+	  Show old style /proc/cpuinfo. Do not show cpu features with each
+	  cpu cores.
+	  If unsure, say N
 
 choice
 	prompt "Include SD/MMC loader in zImage (EXPERIMENTAL)"
@@ -2214,6 +2306,14 @@ config CRASH_DUMP
 	  memory address not used by the main kernel
 
 	  For more details see Documentation/kdump/kdump.txt
+
+config RESTART_DISABLE_CACHE
+        bool "Disable cache in arm_machine_restart"
+	default y
+        help
+          Whther to disable DCache in arm_machine_restart().
+          This is a temporary solution before MTK change to use new kernel
+          restart flow.
 
 config AUTO_ZRELADDR
 	bool "Auto calculation of the decompressed kernel image address"
@@ -2398,3 +2498,5 @@ source "crypto/Kconfig"
 source "lib/Kconfig"
 
 source "arch/arm/kvm/Kconfig"
+
+source "../mediatek/kernel/Kconfig"

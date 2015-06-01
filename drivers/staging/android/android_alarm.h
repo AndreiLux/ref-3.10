@@ -21,6 +21,9 @@
 
 #include "uapi/android_alarm.h"
 
+extern void alarm_set_power_on(struct timespec new_pwron_time, bool logo);
+extern void alarm_get_power_on(struct rtc_wkalrm *alm);
+
 #ifdef CONFIG_COMPAT
 #define ANDROID_ALARM_SET_COMPAT(type)		ALARM_IOW(2, type, \
 							struct compat_timespec)

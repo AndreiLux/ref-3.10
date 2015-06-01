@@ -65,6 +65,10 @@
 #include <asm/io.h>
 #include <asm/unistd.h>
 
+#ifdef CONFIG_MT_PRIO_TRACER
+# include <linux/prio_tracer.h>
+#endif
+
 #ifndef SET_UNALIGN_CTL
 # define SET_UNALIGN_CTL(a,b)	(-EINVAL)
 #endif
@@ -173,7 +177,11 @@ static int set_one_prio(struct task_struct *p, int niceval, int error)
 	}
 	if (error == -ESRCH)
 		error = 0;
+#ifdef CONFIG_MT_PRIO_TRACER
+	set_user_nice_syscall(p, niceval);
+#else
 	set_user_nice(p, niceval);
+#endif
 out:
 	return error;
 }
@@ -1038,7 +1046,7 @@ change_okay:
 }
 
 /*
- * Samma på svenska..
+ * Samma pa svenska..
  */
 SYSCALL_DEFINE1(setfsgid, gid_t, gid)
 {
@@ -2211,6 +2219,11 @@ static int prctl_set_vma(unsigned long opt, unsigned long start,
 	int error;
 	unsigned long len;
 	unsigned long end;
+
+#ifndef CONFIG_MT_ENG_BUILD
+	/* Do not do prctl_set_vma in !eng load */
+	return 0;
+#endif
 
 	if (start & ~PAGE_MASK)
 		return -EINVAL;

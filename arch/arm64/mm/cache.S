@@ -30,7 +30,7 @@
  *
  *	Corrupted registers: x0-x7, x9-x11
  */
-__flush_dcache_all:
+ENTRY(__flush_dcache_all)
 	dsb	sy				// ensure ordering with previous memory accesses
 	mrs	x0, clidr_el1			// read clidr
 	and	x3, x0, #0x7000000		// extract loc from clidr
@@ -124,7 +124,11 @@ ENTRY(__flush_cache_user_range)
 	sub	x3, x2, #1
 	bic	x4, x0, x3
 1:
+#ifdef CONFIG_ARM_ERRATA_824069
+USER(9f, dc	civac, x4	)		// clean & invalidate D line / unified line
+#else
 USER(9f, dc	cvau, x4	)		// clean D line to PoU
+#endif
 	add	x4, x4, x2
 	cmp	x4, x1
 	b.lo	1b
@@ -146,7 +150,7 @@ ENDPROC(flush_icache_range)
 ENDPROC(__flush_cache_user_range)
 
 /*
- *	__flush_dcache_area(kaddr, size)
+ *	__flush_kern_dcache_page(kaddr)
  *
  *	Ensure that the data held in the page kaddr is written back to the
  *	page in question.
@@ -168,14 +172,6 @@ ENTRY(__flush_dcache_area)
 ENDPROC(__flush_dcache_area)
 
 /*
- *	__inval_cache_range(start, end)
- *	- start   - start address of region
- *	- end     - end address of region
- */
-ENTRY(__inval_cache_range)
-	/* FALLTHROUGH */
-
-/*
  *	__dma_inv_range(start, end)
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region
@@ -183,22 +179,14 @@ ENTRY(__inval_cache_range)
 __dma_inv_range:
 	dcache_line_size x2, x3
 	sub	x3, x2, #1
-	tst	x1, x3				// end cache line aligned?
-	bic	x1, x1, x3
-	b.eq	1f
-	dc	civac, x1			// clean & invalidate D / U line
-1:	tst	x0, x3				// start cache line aligned?
 	bic	x0, x0, x3
-	b.eq	2f
-	dc	civac, x0			// clean & invalidate D / U line
-	b	3f
-2:	dc	ivac, x0			// invalidate D / U line
-3:	add	x0, x0, x2
+	bic	x1, x1, x3
+1:	dc	ivac, x0			// invalidate D / U line
+	add	x0, x0, x2
 	cmp	x0, x1
-	b.lo	2b
+	b.lo	1b
 	dsb	sy
 	ret
-ENDPROC(__inval_cache_range)
 ENDPROC(__dma_inv_range)
 
 /*
@@ -206,11 +194,16 @@ ENDPROC(__dma_inv_range)
  *	- start   - virtual start address of region
  *	- end     - virtual end address of region
  */
+ENTRY(__dma_clean_range)
 __dma_clean_range:
 	dcache_line_size x2, x3
 	sub	x3, x2, #1
 	bic	x0, x0, x3
+#ifdef CONFIG_ARM_ERRATA_824069
+1:	dc	civac, x0			// clean & invalidate D / U line
+#else
 1:	dc	cvac, x0			// clean D / U line
+#endif
 	add	x0, x0, x2
 	cmp	x0, x1
 	b.lo	1b

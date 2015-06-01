@@ -4,6 +4,12 @@
 
 menu "Misc devices"
 
+
+config ANDROID_PMEM
+        bool "Android pmem allocator"
+        default y
+
+
 config SENSORS_LIS3LV02D
 	tristate
 	depends on INPUT

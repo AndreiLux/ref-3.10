@@ -11,8 +11,7 @@
 #include <linux/gfp.h>
 #include <linux/smp.h>
 #include <linux/suspend.h>
-
-#include <asm/init.h>
+#include <linux/export.h>
 #include <asm/proto.h>
 #include <asm/page.h>
 #include <asm/pgtable.h>
@@ -41,21 +40,41 @@ pgd_t *temp_level4_pgt;
 
 void *relocated_restore_code;
 
-static void *alloc_pgt_page(void *context)
+static int res_phys_pud_init(pud_t *pud, unsigned long address, unsigned long end)
 {
-	return (void *)get_safe_page(GFP_ATOMIC);
+	long i, j;
+
+	i = pud_index(address);
+	pud = pud + i;
+	for (; i < PTRS_PER_PUD; pud++, i++) {
+		unsigned long paddr;
+		pmd_t *pmd;
+
+		paddr = address + i*PUD_SIZE;
+		if (paddr >= end)
+			break;
+
+		pmd = (pmd_t *)get_safe_page(GFP_ATOMIC);
+		if (!pmd)
+			return -ENOMEM;
+		set_pud(pud, __pud(__pa(pmd) | _KERNPG_TABLE));
+		for (j = 0; j < PTRS_PER_PMD; pmd++, j++, paddr += PMD_SIZE) {
+			unsigned long pe;
+
+			if (paddr >= end)
+				break;
+			pe = __PAGE_KERNEL_LARGE_EXEC | paddr;
+			pe &= __supported_pte_mask;
+			set_pmd(pmd, __pmd(pe));
+		}
+	}
+	return 0;
 }
 
 static int set_up_temporary_mappings(void)
 {
-	struct x86_mapping_info info = {
-		.alloc_pgt_page	= alloc_pgt_page,
-		.pmd_flag	= __PAGE_KERNEL_LARGE_EXEC,
-		.kernel_mapping = true,
-	};
-	unsigned long mstart, mend;
-	int result;
-	int i;
+	unsigned long start, end, next;
+	int error;
 
 	temp_level4_pgt = (pgd_t *)get_safe_page(GFP_ATOMIC);
 	if (!temp_level4_pgt)
@@ -66,17 +85,21 @@ static int set_up_temporary_mappings(void)
 		init_level4_pgt[pgd_index(__START_KERNEL_map)]);
 
 	/* Set up the direct mapping from scratch */
-	for (i = 0; i < nr_pfn_mapped; i++) {
-		mstart = pfn_mapped[i].start << PAGE_SHIFT;
-		mend   = pfn_mapped[i].end << PAGE_SHIFT;
+	start = (unsigned long)pfn_to_kaddr(0);
+	end = (unsigned long)pfn_to_kaddr(max_pfn);
 
-		result = kernel_ident_mapping_init(&info, temp_level4_pgt,
-						   mstart, mend);
-
-		if (result)
-			return result;
+	for (; start < end; start = next) {
+		pud_t *pud = (pud_t *)get_safe_page(GFP_ATOMIC);
+		if (!pud)
+			return -ENOMEM;
+		next = start + PGDIR_SIZE;
+		if (next > end)
+			next = end;
+		if ((error = res_phys_pud_init(pud, __pa(start), __pa(next))))
+			return error;
+		set_pgd(temp_level4_pgt + pgd_index(start),
+			mk_kernel_pgd(__pa(pud)));
 	}
-
 	return 0;
 }
 
@@ -97,6 +120,7 @@ int swsusp_arch_resume(void)
 	restore_image();
 	return 0;
 }
+EXPORT_SYMBOL_GPL(swsusp_arch_resume);
 
 /*
  *	pfn_is_nosave - check if given pfn is in the 'nosave' section
@@ -147,3 +171,4 @@ int arch_hibernation_header_restore(void *addr)
 	restore_cr3 = rdr->cr3;
 	return (rdr->magic == RESTORE_MAGIC) ? 0 : -EINVAL;
 }
+EXPORT_SYMBOL_GPL(arch_hibernation_header_restore);

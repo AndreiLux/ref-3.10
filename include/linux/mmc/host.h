@@ -60,6 +60,9 @@ struct mmc_ios {
 #define MMC_TIMING_UHS_SDR104	6
 #define MMC_TIMING_UHS_DDR50	7
 #define MMC_TIMING_MMC_HS200	8
+#ifdef CONFIG_EMMC_50_FEATURE
+#define MMC_TIMING_MMC_HS400	9
+#endif
 
 #define MMC_SDR_MODE		0
 #define MMC_1_2V_DDR_MODE	1
@@ -101,6 +104,20 @@ struct mmc_host_ops {
 	void	(*pre_req)(struct mmc_host *host, struct mmc_request *req,
 			   bool is_first_req);
 	void	(*request)(struct mmc_host *host, struct mmc_request *req);
+/*++add tuning for Mediatek MSDC host++*/
+	void	(*tuning)(struct mmc_host *host, struct mmc_request *req);
+/*--add tuning for Mediatek MSDC host--*/
+/*++add send stop for Mediatek MSDC host++*/
+	void	(*send_stop)(struct mmc_host *host, struct mmc_request *req);
+/*--add send stop for Mediatek MSDC host--*/
+/*++add dma error reset for Mediatek MSDC host++*/
+	void	(*dma_error_reset)(struct mmc_host *host);
+/*--add dma error reset for Mediatek MSDC host--*/
+/*++add written data check for Mediatek MSDC host++*/
+	bool	(*check_written_data)(struct mmc_host *host, struct mmc_request *req);
+/*--add written data check for Mediatek MSDC host--*/
+
+
 	/*
 	 * Avoid calling these three functions too often or in a "fast path",
 	 * since underlaying controller might implement them in an expensive
@@ -173,6 +190,24 @@ struct mmc_slot {
 	void *handler_priv;
 };
 
+#ifdef CONFIG_MTK_EMMC_CACHE
+/**
+ * struct mmc_flush_ops_info - cache data
+ * @wq:			workqueue
+ * @idle_time_dw:	Idle time flush_ops delayed work
+ * @time_to_start_flush_ops_ms:	The time to start the BKOPs
+ *		  delayed work once MMC thread is idle
+ * @cancel_delayed_work: A flag to indicate if the delayed work
+ *	       should be cancelled
+ */
+struct mmc_flush_info {
+	struct workqueue_struct *wq;
+	struct delayed_work	idle_time_dw;
+	unsigned int		time_to_start_flush_ms;
+	bool			cancel_delayed_work;
+	bool			work_start;
+};
+#endif
 /**
  * mmc_context_info - synchronization details for mmc context
  * @is_done_rcv		wake up reason was done request
@@ -277,6 +312,12 @@ struct mmc_host {
 #define MMC_CAP2_HC_ERASE_SZ	(1 << 9)	/* High-capacity erase size */
 #define MMC_CAP2_CD_ACTIVE_HIGH	(1 << 10)	/* Card-detect signal active high */
 #define MMC_CAP2_RO_ACTIVE_HIGH	(1 << 11)	/* Write-protect signal active high */
+#ifdef CONFIG_EMMC_50_FEATURE
+#define MMC_CAP2_HS400_1_8V_DDR	(1 << 12)        /* can support */
+#define MMC_CAP2_HS400_1_2V_DDR	(1 << 13)        /* can support */
+#define MMC_CAP2_HS400		(MMC_CAP2_HS400_1_8V_DDR | \
+				 MMC_CAP2_HS400_1_2V_DDR)
+#endif
 #define MMC_CAP2_PACKED_RD	(1 << 12)	/* Allow packed read */
 #define MMC_CAP2_PACKED_WR	(1 << 13)	/* Allow packed write */
 #define MMC_CAP2_PACKED_CMD	(MMC_CAP2_PACKED_RD | \
@@ -376,7 +417,12 @@ struct mmc_host {
 		int				num_funcs;
 	} embedded_sdio_data;
 #endif
-
+	struct completion           card_init_done;
+	void (*card_init_complete)(struct mmc_host*);
+	void (*card_init_wait)(struct mmc_host*);
+#ifdef CONFIG_MTK_EMMC_CACHE
+	struct mmc_flush_info	flush_info;
+#endif
 	unsigned long		private[0] ____cacheline_aligned;
 };
 

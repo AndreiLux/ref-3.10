@@ -416,8 +416,9 @@ __und_usr:
 	bne	__und_usr_thumb
 	sub	r4, r2, #4			@ ARM instr at LR - 4
 1:	ldrt	r0, [r4]
- ARM_BE8(rev	r0, r0)				@ little endian instruction
-
+#ifdef CONFIG_CPU_ENDIAN_BE8
+	rev	r0, r0				@ little endian instruction
+#endif
 	@ r0 = 32-bit ARM instruction which caused the exception
 	@ r2 = PC value for the following instruction (:= regs->ARM_pc)
 	@ r4 = PC value for the faulting instruction
@@ -684,6 +685,28 @@ ENDPROC(ret_from_exception)
 ENTRY(__switch_to)
  UNWIND(.fnstart	)
  UNWIND(.cantunwind	)
+#ifdef CONFIG_VFP_OPT
+	add	ip, r1, #TI_CPU_SAVE
+	stmfa	ip!, {r0, r1, r2, r5, r6, r8, lr}
+
+	@1. save vfp state for previous thread_info
+	mov	r0, r1
+	add	r0, r0, #TI_VFPSTATE	@ r0 = workspace
+	VFPFMRX	r1, FPEXC
+	mov	r5, ip			@ save ip to r5, because vfp_save_state may change ip
+	mov	r6, r2			@ save r2 to r6, because vfp_save_state may change r2
+	bl	vfp_save_state
+	mov	ip, r5
+	mov	r2, r6
+
+	@ 2. restore vfp state from next thread_info
+	add	r2, r2, #TI_VFPSTATE	@ r2 = workspace
+	VFPFLDMIA	r2, r0		@ reload the working registers while
+					@ FPEXC is in a safe state
+	ldmia	r2, {r1, r5, r6, r8}	@ load FPEXC, FPSCR, FPINST, FPINST2
+	VFPFMXR	FPSCR, r5		@ restore status
+	ldmfa	ip!, {r0, r1, r2, r5, r6, r8, lr}
+#endif
 	add	ip, r1, #TI_CPU_SAVE
 	ldr	r3, [r2, #TI_TP_VALUE]
  ARM(	stmia	ip!, {r4 - sl, fp, sp, lr} )	@ Store most regs on stack

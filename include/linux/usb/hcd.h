@@ -23,7 +23,11 @@
 
 #include <linux/rwsem.h>
 
+#ifdef CONFIG_USBIF_COMPLIANCE
+#define MAX_TOPO_LEVEL		2
+#else
 #define MAX_TOPO_LEVEL		6
+#endif
 
 /* This file contains declarations of usbcore internals that are mostly
  * used or exposed by Host Controller Drivers.

@@ -184,9 +184,10 @@ int mmc_send_app_op_cond(struct mmc_host *host, u32 ocr, u32 *rocr)
 		mmc_delay(10);
 	}
 
-	if (rocr && !mmc_host_is_spi(host))
+	if (rocr && !mmc_host_is_spi(host)) {
 		*rocr = cmd.resp[0];
-
+		printk(KERN_ERR "sd card rocr <0x%x>\n",*rocr);
+	}
 	return err;
 }
 

@@ -271,6 +271,7 @@ static int uwbd(void *param)
 	struct uwb_event *evt;
 	int should_stop = 0;
 
+	set_freezable();
 	while (1) {
 		wait_event_interruptible_timeout(
 			rc->uwbd.wq,

@@ -1,6 +1,6 @@
 VERSION = 3
 PATCHLEVEL = 10
-SUBLEVEL = 49
+SUBLEVEL = 48
 EXTRAVERSION =
 NAME = TOSSUG Baby Fish
 
@@ -192,8 +192,13 @@ SUBARCH := $(shell uname -m | sed -e s/i.86/x86/ -e s/x86_64/x86/ \
 # "make" in the configured kernel build directory always uses that.
 # Default value for CROSS_COMPILE is not to prefix executables
 # Note: Some architectures assign CROSS_COMPILE in their arch/*/Makefile
-ARCH		?= $(SUBARCH)
-CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
+#ARCH		?= $(SUBARCH)
+CROSS_COMPILE   ?= arm-linux-androideabi-
+ARCH		?= arm
+ifeq ($(MTK_K64_SUPPORT),yes)
+	ARCH := arm64
+	CROSS_COMPILE	?= $(CONFIG_CROSS_COMPILE:"%"=%)
+endif
 
 # Architecture as present in compile.h
 UTS_MACHINE 	:= $(ARCH)
@@ -380,6 +385,13 @@ KBUILD_AFLAGS   := -D__ASSEMBLY__
 KBUILD_AFLAGS_MODULE  := -DMODULE
 KBUILD_CFLAGS_MODULE  := -DMODULE
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
+
+-include $(srctree)/$(MTK_PROJECT)_mtk_cust.mak
+#MTK_INC += -I$(MTK_ROOT_CUSTOM)/$(MTK_PROJECT)/common
+LINUXINCLUDE    += $(MTK_INC)
+KBUILD_CFLAGS   += $(MTK_CFLAGS) $(MTK_CDEFS) -fno-pic
+KBUILD_CPPFLAGS += $(MTK_CPPFLAGS) $(MTK_CPPDEFS)
+KBUILD_AFLAGS   += $(MTK_AFLAGS) $(MTK_ADEFS)
 
 # Read KERNELRELEASE from include/config/kernel.release (if it exists)
 KERNELRELEASE = $(shell cat include/config/kernel.release 2> /dev/null)
@@ -589,6 +601,7 @@ KBUILD_CFLAGS += $(call cc-option,-fno-reorder-blocks,) \
 endif
 
 ifneq ($(CONFIG_FRAME_WARN),0)
+KBUILD_CFLAGS += $(call cc-option,-Werror=frame-larger-than=1)
 KBUILD_CFLAGS += $(call cc-option,-Wframe-larger-than=${CONFIG_FRAME_WARN})
 endif
 
@@ -615,7 +628,7 @@ endif
 endif
 
 ifdef CONFIG_DEBUG_INFO
-KBUILD_CFLAGS	+= -g
+KBUILD_CFLAGS	+= -gdwarf-2
 KBUILD_AFLAGS	+= -gdwarf-2
 endif
 
@@ -849,7 +862,9 @@ define filechk_utsrelease.h
 	  echo '"$(KERNELRELEASE)" exceeds $(uts_len) characters' >&2;    \
 	  exit 1;                                                         \
 	fi;                                                               \
-	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";)
+	(echo \#define UTS_RELEASE \"$(KERNELRELEASE)\";                  \
+	echo \#define BUILD_INFO \"$(MTK_BUILD_VERNO)\";                  \
+	echo \#define BUILD_FINGERPRINT \"$(TARGET_PRODUCT)\";)
 endef
 
 define filechk_version.h
@@ -984,6 +999,29 @@ PHONY += _modinst_post
 _modinst_post: _modinst_
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=firmware __fw_modinst
 	$(call cmd,depmod)
+
+# MTK {
+# Target to install android modules
+
+AMODLIB = $(INSTALL_MOD_PATH)/lib/modules
+export AMODLIB
+AMODSYMLIB = $(INSTALL_MOD_PATH)/../symbols/system/lib/modules
+export AMODSYMLIB
+
+PHONY += android_modules_install
+android_modules_install: _android_modinst_
+
+PHONY += _android_modinst_
+_android_modinst_:
+	@if [ ! -d $(AMODLIB) ]; then \
+		mkdir -p $(AMODLIB); \
+	fi
+	@if [ ! -d $(AMODSYMLIB) ]; then \
+		mkdir -p $(AMODSYMLIB); \
+	fi
+	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.android.modinst
+# MTK }
+
 
 ifeq ($(CONFIG_MODULE_SIG), y)
 PHONY += modules_sign

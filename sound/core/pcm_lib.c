@@ -365,13 +365,17 @@ static int snd_pcm_update_hw_ptr0(struct snd_pcm_substream *substream,
 		if (delta > new_hw_ptr) {
 			/* check for double acknowledged interrupts */
 			hdelta = curr_jiffies - runtime->hw_ptr_jiffies;
-			if (hdelta > runtime->hw_ptr_buffer_jiffies/2) {
+			//MTK modify+++
+			//if (hdelta > runtime->hw_ptr_buffer_jiffies/2) {  //Alsa origin
+			if (hdelta > runtime->hw_ptr_buffer_jiffies*3/4) {  //MTK modified
+			//MTK modify---
 				hw_base += runtime->buffer_size;
 				if (hw_base >= runtime->boundary) {
 					hw_base = 0;
 					crossed_boundary++;
 				}
 				new_hw_ptr = hw_base + pos;
+				printk("%s, overflow? new_hw_ptr=%ld, hw_base=%ld\n",__FUNCTION__,new_hw_ptr,hw_base);
 				goto __delta;
 			}
 		}
@@ -1885,7 +1889,7 @@ static int wait_for_avail(struct snd_pcm_substream *substream,
 	if (runtime->no_period_wakeup)
 		wait_time = MAX_SCHEDULE_TIMEOUT;
 	else {
-		wait_time = 10;
+		wait_time = 3/*10*/;//Modified by MTK
 		if (runtime->rate) {
 			long t = runtime->period_size * 2 / runtime->rate;
 			wait_time = max(t, wait_time);

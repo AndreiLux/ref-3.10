@@ -17,5 +17,6 @@
 #define __ASM_MEMBLOCK_H
 
 extern void arm64_memblock_init(void);
+phys_addr_t arm64_memblock_steal(phys_addr_t size, phys_addr_t align);
 
 #endif

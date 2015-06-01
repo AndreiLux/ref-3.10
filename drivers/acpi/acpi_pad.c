@@ -154,6 +154,7 @@ static int power_saving_thread(void *data)
 	u64 last_jiffies = 0;
 
 	sched_setscheduler(current, SCHED_RR, &param);
+	set_freezable();
 
 	while (!kthread_should_stop()) {
 		int cpu;

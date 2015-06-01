@@ -343,7 +343,7 @@ __internal_add_timer(struct tvec_base *base, struct timer_list *timer)
 	unsigned long expires = timer->expires;
 	unsigned long idx = expires - base->timer_jiffies;
 	struct list_head *vec;
-
+	
 	if (idx < TVR_SIZE) {
 		int i = expires & TVR_MASK;
 		vec = base->tv1.vec + i;
@@ -656,7 +656,7 @@ EXPORT_SYMBOL(init_timer_key);
 static inline void detach_timer(struct timer_list *timer, bool clear_pending)
 {
 	struct list_head *entry = &timer->entry;
-
+	
 	debug_deactivate(timer);
 
 	__list_del(entry->prev, entry->next);

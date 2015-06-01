@@ -182,14 +182,17 @@ void usb_stor_show_sense(const struct us_data *us,
 int usb_stor_dbg(const struct us_data *us, const char *fmt, ...)
 {
 	va_list args;
-	int r;
+	int r = 0;
 
-	va_start(args, fmt);
+	if(usb_storage_debug){
 
-	r = dev_vprintk_emit(7, &us->pusb_dev->dev, fmt, args);
+        va_start(args, fmt);
 
-	va_end(args);
+        r = dev_vprintk_emit(7, &us->pusb_dev->dev, fmt, args);
 
-	return r;
+        va_end(args);
+    }
+
+    return r;
 }
 EXPORT_SYMBOL_GPL(usb_stor_dbg);

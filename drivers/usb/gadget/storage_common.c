@@ -141,6 +141,9 @@ struct fsg_lun {
 	unsigned int	blkbits;	/* Bits of logical block size of bound block device */
 	unsigned int	blksize;	/* logical block size of bound block device */
 	struct device	dev;
+#ifdef MTK_ICUSB_SUPPORT
+	char isICUSB;
+#endif
 };
 
 static inline bool fsg_lun_is_open(struct fsg_lun *curlun)
@@ -255,6 +258,17 @@ enum {
 };
 
 
+#ifdef CONFIG_USBIF_COMPLIANCE
+static struct usb_otg_descriptor
+fsg_otg_desc = {
+	.bLength =		sizeof fsg_otg_desc,
+	.bDescriptorType =	USB_DT_OTG,
+/* OTG 2.0: */
+	.bmAttributes =		USB_OTG_SRP | USB_OTG_HNP,
+	.bcdOTG = cpu_to_le16(0x200),
+};
+#endif
+
 /* There is only one interface. */
 
 static struct usb_interface_descriptor
@@ -295,6 +309,9 @@ fsg_fs_bulk_out_desc = {
 };
 
 static struct usb_descriptor_header *fsg_fs_function[] = {
+#ifdef CONFIG_USBIF_COMPLIANCE
+	(struct usb_descriptor_header *) &fsg_otg_desc,
+#endif
 	(struct usb_descriptor_header *) &fsg_intf_desc,
 	(struct usb_descriptor_header *) &fsg_fs_bulk_in_desc,
 	(struct usb_descriptor_header *) &fsg_fs_bulk_out_desc,
@@ -333,6 +350,9 @@ fsg_hs_bulk_out_desc = {
 
 
 static struct usb_descriptor_header *fsg_hs_function[] = {
+#ifdef CONFIG_USBIF_COMPLIANCE
+	(struct usb_descriptor_header *) &fsg_otg_desc,
+#endif
 	(struct usb_descriptor_header *) &fsg_intf_desc,
 	(struct usb_descriptor_header *) &fsg_hs_bulk_in_desc,
 	(struct usb_descriptor_header *) &fsg_hs_bulk_out_desc,
@@ -374,6 +394,9 @@ static struct usb_ss_ep_comp_descriptor fsg_ss_bulk_out_comp_desc = {
 };
 
 static struct usb_descriptor_header *fsg_ss_function[] = {
+#ifdef CONFIG_USBIF_COMPLIANCE
+	(struct usb_descriptor_header *) &fsg_otg_desc,
+#endif
 	(struct usb_descriptor_header *) &fsg_intf_desc,
 	(struct usb_descriptor_header *) &fsg_ss_bulk_in_desc,
 	(struct usb_descriptor_header *) &fsg_ss_bulk_in_comp_desc,
@@ -422,6 +445,20 @@ static int fsg_lun_open(struct fsg_lun *curlun, const char *filename)
 	loff_t				min_sectors;
 	unsigned int			blkbits;
 	unsigned int			blksize;
+
+#ifdef MTK_ICUSB_SUPPORT
+#define ICUSB_STORAGE_LABEL	"/dev/block/vold/8:"
+	if(strstr(filename, ICUSB_STORAGE_LABEL))
+	{
+		printk(KERN_WARNING "filename : %s, set isICUSB to 0\n", filename);
+		curlun->isICUSB = 1;
+	}
+	else
+	{
+		printk(KERN_WARNING "filename : %s, set isICUSB to 1\n", filename);
+		curlun->isICUSB = 0;
+	}
+#endif
 
 	/* R/W if we can, R/O if we must */
 	ro = curlun->initially_ro;
@@ -543,6 +580,72 @@ static void store_cdrom_address(u8 *dest, int msf, u32 addr)
 	}
 }
 
+/**
+ * fsg_get_toc() - Builds a TOC with required format @format.
+ * @curlun: The LUN for which the TOC has to be built
+ * @msf: Min Sec Frame format or LBA format for address
+ * @format: TOC format code
+ * @buf: The buffer into which the TOC is built
+ *
+ * Builds a Table of Content which can be used as data for READ_TOC command.
+ * The TOC simulates a single session, single track CD-ROM mode 1 disc.
+ *
+ * Returns number of bytes written to @buf, -EINVAL if format not supported.
+ */
+static int fsg_get_toc(struct fsg_lun *curlun, int msf, int format, u8 *buf)
+{
+	int i, len;
+	switch (format) {
+
+	case 0:
+		/* Formatted TOC */
+		len = 4 + 2*8;                /* 4 byte header + 2 descriptors */
+		memset(buf, 0, len);
+		buf[1] = len - 2;        /* TOC Length excludes length field */
+
+		buf[2] = 1;                /* First track number */
+		buf[3] = 1;                /* Last track number */
+		buf[5] = 0x16;                /* Data track, copying allowed */
+		buf[6] = 0x01;                /* Only track is number 1 */
+		store_cdrom_address(&buf[8], msf, 0);
+
+		buf[13] = 0x16;                /* Lead-out track is data */
+		buf[14] = 0xAA;                /* Lead-out track number */
+		store_cdrom_address(&buf[16], msf, curlun->num_sectors);
+		break;
+
+	case 2:
+		/* Raw TOC */
+		len = 4 + 3*11;                /* 4 byte header + 3 descriptors */
+		memset(buf, 0, len);        /* Header + A0, A1 & A2 descriptors */
+		buf[1] = len - 2;        /* TOC Length excludes length field */
+		buf[2] = 1;                /* First complete session */
+		buf[3] = 1;                /* Last complete session */
+
+		buf += 4;
+		/* fill in A0, A1 and A2 points */
+		for (i = 0; i < 3; i++) {
+			buf[0] = 1;        /* Session number */
+			buf[1] = 0x16;        /* Data track, copying allowed */
+			/* 2 - Track number 0 ->  TOC */
+			buf[3] = 0xA0 + i; /* A0, A1, A2 point */
+			/* 4, 5, 6 - Min, sec, frame is zero */
+			buf[8] = 1;        /* Pmin: last track number */
+			buf += 11;        /* go to next track descriptor */
+		}
+		buf -= 11;                /* go back to A2 descriptor */
+
+		/* For A2, 7, 8, 9, 10 - zero, Pmin, Psec, Pframe of Lead out */
+		store_cdrom_address(&buf[7], msf, curlun->num_sectors);
+		break;
+
+	default:
+		/* Multi-session, PMA, ATIP, CD-TEXT not supported/required */
+		len = -EINVAL;
+		break;
+	}
+	return len;
+}
 
 /*-------------------------------------------------------------------------*/
 
@@ -651,10 +754,25 @@ static ssize_t fsg_store_file(struct device *dev, struct device_attribute *attr,
 	struct rw_semaphore	*filesem = dev_get_drvdata(dev);
 	int		rc = 0;
 
+
+#if !defined(CONFIG_USB_G_ANDROID)
+	/* disabled in android because we need to allow closing the backing file
+	 * if the media was removed
+	 */
 	if (curlun->prevent_medium_removal && fsg_lun_is_open(curlun)) {
 		LDBG(curlun, "eject attempt prevented\n");
 		return -EBUSY;				/* "Door is locked" */
 	}
+#endif
+
+	printk("fsg_store_file file=%s, count=%d, curlun->cdrom=%d\n", buf, count, curlun->cdrom);
+
+	/*
+	 * WORKAROUND:VOLD would clean the file path after switching to bicr.
+	 * So when the lun is being a CD-ROM a.k.a. BICR. Dont clean the file path to empty.
+	 */
+	if (curlun->cdrom == 1 && count == 1)
+		return count;
 
 	/* Remove a trailing newline */
 	if (count > 0 && buf[count-1] == '\n')

@@ -5152,14 +5152,6 @@ S:	Maintained
 F:	drivers/net/macvlan.c
 F:	include/linux/if_macvlan.h
 
-MAILBOX API
-M:	Jassi Brar <jassisinghbrar@gmail.com>
-L:	linux-kernel@vger.kernel.org
-S:	Maintained
-F:	drivers/mailbox/
-F:	include/linux/mailbox_client.h
-F:	include/linux/mailbox_controller.h
-
 MAN-PAGES: MANUAL PAGES FOR LINUX -- Sections 2, 3, 4, 5, and 7
 M:	Michael Kerrisk <mtk.manpages@gmail.com>
 W:	http://www.kernel.org/doc/man-pages
@@ -8081,7 +8073,6 @@ S:      Supported
 F:      drivers/thermal/
 F:      include/linux/thermal.h
 F:      include/linux/cpu_cooling.h
-F:      Documentation/devicetree/bindings/thermal/
 
 THINGM BLINK(1) USB RGB LED DRIVER
 M:	Vivien Didelot <vivien.didelot@savoirfairelinux.com>
@@ -8322,6 +8313,13 @@ M:	"Maciej W. Rozycki" <macro@linux-mips.org>
 S:	Maintained
 F:	drivers/tc/
 F:	include/linux/tc.h
+
+TUXONICE (ENHANCED HIBERNATION)
+P:	Nigel Cunningham
+M:	nigel@tuxonice.net
+L:	tuxonice-devel@tuxonice.net
+W:	http://tuxonice.net
+S:	Maintained
 
 U14-34F SCSI DRIVER
 M:	Dario Ballabio <ballabio_dario@emc.com>

@@ -26,6 +26,7 @@
 #include <linux/smpboot.h>
 #include <linux/tick.h>
 
+#include <linux/mt_sched_mon.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/irq.h>
 
@@ -250,7 +251,15 @@ restart:
 			kstat_incr_softirqs_this_cpu(vec_nr);
 
 			trace_softirq_entry(vec_nr);
+			mt_trace_SoftIRQ_start(vec_nr);
 			h->action(h);
+			mt_trace_SoftIRQ_end(vec_nr);
+			/*
+			 * Test if FIQ disabled
+			*/
+			if(local_fiq_disabled_flags()) {
+				printk(KERN_WARNING "FIQ disabled after hanled softirq: %u %s %p", vec_nr, softirq_to_name[vec_nr], h->action);
+			}
 			trace_softirq_exit(vec_nr);
 			if (unlikely(prev_count != preempt_count())) {
 				printk(KERN_ERR "huh, entered softirq %u %s %p"
@@ -260,6 +269,7 @@ restart:
 				       prev_count, preempt_count());
 				preempt_count() = prev_count;
 			}
+
 
 			rcu_bh_qs(cpu);
 		}
@@ -489,7 +499,9 @@ static void tasklet_action(struct softirq_action *a)
 			if (!atomic_read(&t->count)) {
 				if (!test_and_clear_bit(TASKLET_STATE_SCHED, &t->state))
 					BUG();
+                mt_trace_tasklet_start(t->func);
 				t->func(t->data);
+                mt_trace_tasklet_end(t->func);
 				tasklet_unlock(t);
 				continue;
 			}

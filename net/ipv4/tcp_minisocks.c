@@ -556,8 +556,8 @@ struct sock *tcp_check_req(struct sock *sk, struct sk_buff *skb,
 		 * the idea of fast retransmit in recovery.
 		 */
 		if (!inet_rtx_syn_ack(sk, req))
-			req->expires = min(TCP_TIMEOUT_INIT << req->num_timeout,
-					   TCP_RTO_MAX) + jiffies;
+			req->expires = min_t(unsigned int, TCP_TIMEOUT_INIT << req->num_timeout,
+					   sysctl_tcp_rto_max) + jiffies;
 		return NULL;
 	}
 

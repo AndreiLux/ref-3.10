@@ -270,11 +270,13 @@ static void usb_dev_complete(struct device *dev)
 
 static int usb_dev_suspend(struct device *dev)
 {
+	MYDBG("");	
 	return usb_suspend(dev, PMSG_SUSPEND);
 }
 
 static int usb_dev_resume(struct device *dev)
 {
+	MYDBG("");	
 	return usb_resume(dev, PMSG_RESUME);
 }
 

@@ -19,7 +19,7 @@
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
 #include "queue.h"
-
+#include <linux/mmc/mmc.h>
 #define MMC_QUEUE_BOUNCESZ	65536
 
 /*
@@ -49,7 +49,11 @@ static int mmc_queue_thread(void *d)
 {
 	struct mmc_queue *mq = d;
 	struct request_queue *q = mq->queue;
-
+#ifdef MMC_ENABLED_EMPTY_QUEUE_FLUSH
+#define UN_FLUSHED 0 
+#define FLUSHING 1
+	int stop_status = UN_FLUSHED;
+#endif
 	current->flags |= PF_MEMALLOC;
 
 	down(&mq->thread_sem);
@@ -65,6 +69,14 @@ static int mmc_queue_thread(void *d)
 		spin_unlock_irq(q->queue_lock);
 
 		if (req || mq->mqrq_prev->req) {
+#ifdef MMC_ENABLED_EMPTY_QUEUE_FLUSH
+			if (!mq->mqrq_prev->req && mq->card && mmc_card_mmc(mq->card) && mq->card->ext_csd.cache_ctrl) { 
+				if(stop_status == FLUSHING){
+					mmc_stop_flush(mq->card);
+					stop_status = UN_FLUSHED;
+				}
+			}
+#endif
 			set_current_state(TASK_RUNNING);
 			cmd_flags = req ? req->cmd_flags : 0;
 			mq->issue_fn(mq, req);
@@ -89,6 +101,12 @@ static int mmc_queue_thread(void *d)
 			mq->mqrq_prev = mq->mqrq_cur;
 			mq->mqrq_cur = tmp;
 		} else {
+#ifdef MMC_ENABLED_EMPTY_QUEUE_FLUSH
+			if ((stop_status == UN_FLUSHED) && mq->card && mmc_card_mmc(mq->card) && mq->card->ext_csd.cache_ctrl) {
+			    mmc_start_delayed_flush(mq->card);  
+			    stop_status = FLUSHING;
+			}
+#endif
 			if (kthread_should_stop()) {
 				set_current_state(TASK_RUNNING);
 				break;
@@ -190,7 +208,7 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 		   spinlock_t *lock, const char *subname)
 {
 	struct mmc_host *host = card->host;
-	u64 limit = BLK_BOUNCE_HIGH;
+	u64 limit = BLK_BOUNCE_ANY;
 	int ret;
 	struct mmc_queue_req *mqrq_cur = &mq->mqrq[0];
 	struct mmc_queue_req *mqrq_prev = &mq->mqrq[1];
@@ -203,6 +221,12 @@ int mmc_init_queue(struct mmc_queue *mq, struct mmc_card *card,
 	if (!mq->queue)
 		return -ENOMEM;
 
+#ifdef CONFIG_ZRAM    
+    if (mmc_card_mmc(card) &&
+        (totalram_pages << (PAGE_SHIFT - 10)) <= (256 * 1024))
+        mq->queue->backing_dev_info.ra_pages =
+    		(VM_MIN_READAHEAD * 1024) / PAGE_CACHE_SIZE;
+#endif // CONFIG_ZRAM
 	mq->mqrq_cur = mqrq_cur;
 	mq->mqrq_prev = mqrq_prev;
 	mq->queue->queuedata = mq;

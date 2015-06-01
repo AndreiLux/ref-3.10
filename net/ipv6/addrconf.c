@@ -173,7 +173,7 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
 	.forwarding		= 0,
 	.hop_limit		= IPV6_DEFAULT_HOPLIMIT,
 	.mtu6			= IPV6_MIN_MTU,
-	.accept_ra		= 1,
+	.accept_ra		= 2,	/* MTK_NET_CHANGES */
 	.accept_redirects	= 1,
 	.autoconf		= 1,
 	.force_mld_version	= 0,
@@ -182,7 +182,7 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
 	.rtr_solicit_interval	= RTR_SOLICITATION_INTERVAL,
 	.rtr_solicit_delay	= MAX_RTR_SOLICITATION_DELAY,
 #ifdef CONFIG_IPV6_PRIVACY
-	.use_tempaddr 		= 0,
+	.use_tempaddr 		= 2,						/*MTK_NET*/
 	.temp_valid_lft		= TEMP_VALID_LIFETIME,
 	.temp_prefered_lft	= TEMP_PREFERRED_LIFETIME,
 	.regen_max_retry	= REGEN_MAX_RETRY,
@@ -191,6 +191,9 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
 	.max_addresses		= IPV6_MAX_ADDRESSES,
 	.accept_ra_defrtr	= 1,
 	.accept_ra_pinfo	= 1,
+#ifdef MTK_DHCPV6C_WIFI	
+	.ra_info_flag		= 0,
+#endif		
 #ifdef CONFIG_IPV6_ROUTER_PREF
 	.accept_ra_rtr_pref	= 1,
 	.rtr_probe_interval	= 60 * HZ,
@@ -209,7 +212,7 @@ static struct ipv6_devconf ipv6_devconf_dflt __read_mostly = {
 	.forwarding		= 0,
 	.hop_limit		= IPV6_DEFAULT_HOPLIMIT,
 	.mtu6			= IPV6_MIN_MTU,
-	.accept_ra		= 1,
+	.accept_ra		= 2,	/* MTK_NET_CHANGES */
 	.accept_redirects	= 1,
 	.autoconf		= 1,
 	.dad_transmits		= 1,
@@ -217,7 +220,7 @@ static struct ipv6_devconf ipv6_devconf_dflt __read_mostly = {
 	.rtr_solicit_interval	= RTR_SOLICITATION_INTERVAL,
 	.rtr_solicit_delay	= MAX_RTR_SOLICITATION_DELAY,
 #ifdef CONFIG_IPV6_PRIVACY
-	.use_tempaddr		= 0,
+	.use_tempaddr		= 2,								/*MTK_NET*/
 	.temp_valid_lft		= TEMP_VALID_LIFETIME,
 	.temp_prefered_lft	= TEMP_PREFERRED_LIFETIME,
 	.regen_max_retry	= REGEN_MAX_RETRY,
@@ -226,6 +229,9 @@ static struct ipv6_devconf ipv6_devconf_dflt __read_mostly = {
 	.max_addresses		= IPV6_MAX_ADDRESSES,
 	.accept_ra_defrtr	= 1,
 	.accept_ra_pinfo	= 1,
+#ifdef MTK_DHCPV6C_WIFI	
+	.ra_info_flag		= 0,
+#endif	
 #ifdef CONFIG_IPV6_ROUTER_PREF
 	.accept_ra_rtr_pref	= 1,
 	.rtr_probe_interval	= 60 * HZ,
@@ -760,9 +766,13 @@ static int addrconf_fixup_forwarding(struct ctl_table *table, int *p, int newf)
 	} else if ((!newf) ^ (!old))
 		dev_forward_change((struct inet6_dev *)table->extra1);
 	rtnl_unlock();
-
+	
+#ifdef MTK_TETHERINGIPV6_SUPPORT
+    printk(KERN_INFO "skip purge default route for tethering over IPv6\n");
+#else
 	if (newf)
 		rt6_purge_dflt_routers(net);
+#endif
 	return 1;
 }
 #endif
@@ -1841,6 +1851,10 @@ static int addrconf_ifid_gre(u8 *eui, struct net_device *dev)
 
 static int ipv6_generate_eui64(u8 *eui, struct net_device *dev)
 {
+    /* MTK_NET_CHANGES */
+    if (strncmp(dev->name, "ccmni", 2) == 0)
+        return -1;
+ 		
 	switch (dev->type) {
 	case ARPHRD_ETHER:
 	case ARPHRD_FDDI:
@@ -4236,6 +4250,9 @@ static inline void ipv6_store_devconf(struct ipv6_devconf *cnf,
 	array[DEVCONF_ACCEPT_DAD] = cnf->accept_dad;
 	array[DEVCONF_FORCE_TLLAO] = cnf->force_tllao;
 	array[DEVCONF_NDISC_NOTIFY] = cnf->ndisc_notify;
+#ifdef MTK_DHCPV6C_WIFI	
+	array[DEVCONF_RA_INFO_FLAG] = cnf->ra_info_flag;
+#endif	
 }
 
 static inline size_t inet6_ifla6_size(void)
@@ -5000,6 +5017,15 @@ static struct addrconf_sysctl_table
 			.mode           = 0644,
 			.proc_handler   = proc_dointvec
 		},
+#ifdef	MTK_DHCPV6C_WIFI	
+		{
+			.procname		= "ra_info_flag",
+			.data			= &ipv6_devconf.ra_info_flag,
+			.maxlen 		= sizeof(int),
+			.mode			= 0644,
+			.proc_handler	= proc_dointvec
+		},
+#endif
 		{
 			/* sentinel */
 		}

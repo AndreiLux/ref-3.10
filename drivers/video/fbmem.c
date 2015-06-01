@@ -12,7 +12,7 @@
  */
 
 #include <linux/module.h>
-
+#include <linux/dma-buf.h>
 #include <linux/compat.h>
 #include <linux/types.h>
 #include <linux/errno.h>
@@ -873,6 +873,23 @@ fb_write(struct file *file, const char __user *buf, size_t count, loff_t *ppos)
 	return (cnt) ? cnt : err;
 }
 
+#ifdef CONFIG_DMA_SHARED_BUFFER                                                      
+int                                                                                  
+fb_get_dmabuf(struct fb_info *info, int flags)                                       
+{                                                                                    
+       struct dma_buf *dmabuf;                                                       
+                                                                                     
+       if (info->fbops->fb_dmabuf_export == NULL)                                    
+               return -ENOTTY;                                                       
+                                                                                     
+       dmabuf = info->fbops->fb_dmabuf_export(info);                                 
+       if (IS_ERR(dmabuf))                                                           
+               return PTR_ERR(dmabuf);                                               
+                                                                                     
+       return dma_buf_fd(dmabuf, flags);                                             
+}                                                                                    
+#endif        
+
 int
 fb_pan_display(struct fb_info *info, struct fb_var_screeninfo *var)
 {
@@ -1083,6 +1100,9 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 	struct fb_con2fbmap con2fb;
 	struct fb_cmap cmap_from;
 	struct fb_cmap_user cmap;
+#ifdef CONFIG_DMA_SHARED_BUFFER     	
+	struct fb_dmabuf_export dmaexp;
+#endif	
 	struct fb_event event;
 	void __user *argp = (void __user *)arg;
 	long ret = 0;
@@ -1132,6 +1152,23 @@ static long do_fb_ioctl(struct fb_info *info, unsigned int cmd,
 		unlock_fb_info(info);
 		ret = fb_cmap_to_user(&cmap_from, &cmap);
 		break;
+#ifdef CONFIG_DMA_SHARED_BUFFER                                                      
+       case FBIOGET_DMABUF:                                                          
+               if (copy_from_user(&dmaexp, argp, sizeof(dmaexp)))                    
+                       return -EFAULT;                                               
+                                                                                     
+               if (!lock_fb_info(info))                                              
+                       return -ENODEV;                                               
+               dmaexp.fd = fb_get_dmabuf(info, dmaexp.flags);                        
+               unlock_fb_info(info);                                                 
+                                                                                     
+               if (dmaexp.fd < 0)                                                    
+                       return dmaexp.fd;                                             
+                                                                                     
+               ret = copy_to_user(argp, &dmaexp, sizeof(dmaexp))                     
+                   ? -EFAULT : 0;                                                    
+               break;                                                                
+#endif       		
 	case FBIOPAN_DISPLAY:
 		if (copy_from_user(&var, argp, sizeof(var)))
 			return -EFAULT;

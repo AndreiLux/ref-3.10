@@ -39,6 +39,9 @@ enum {
 	MIGRATE_UNMOVABLE,
 	MIGRATE_RECLAIMABLE,
 	MIGRATE_MOVABLE,
+#ifdef CONFIG_MTKPASR
+	MIGRATE_MTKPASR,
+#endif
 	MIGRATE_PCPTYPES,	/* the number of types on the pcp lists */
 	MIGRATE_RESERVE = MIGRATE_PCPTYPES,
 #ifdef CONFIG_CMA
@@ -67,6 +70,12 @@ enum {
 #  define is_migrate_cma(migratetype) unlikely((migratetype) == MIGRATE_CMA)
 #else
 #  define is_migrate_cma(migratetype) false
+#endif
+
+#ifdef CONFIG_MTKPASR
+#define is_migrate_mtkpasr(mt)	unlikely((mt) == MIGRATE_MTKPASR)
+#else
+#define	is_migrate_mtkpasr(mt)	false
 #endif
 
 #define for_each_migratetype_order(order, type) \
@@ -919,6 +928,14 @@ extern struct pglist_data contig_page_data;
 #include <asm/mmzone.h>
 
 #endif /* !CONFIG_NEED_MULTIPLE_NODES */
+
+#ifdef CONFIG_MTKPASR
+#ifdef CONFIG_HIGHMEM
+#define MTKPASR_ZONE		(NODE_DATA(0)->node_zones + ZONE_HIGHMEM)
+#else
+#define MTKPASR_ZONE		(NODE_DATA(0)->node_zones)
+#endif
+#endif
 
 extern struct pglist_data *first_online_pgdat(void);
 extern struct pglist_data *next_online_pgdat(struct pglist_data *pgdat);

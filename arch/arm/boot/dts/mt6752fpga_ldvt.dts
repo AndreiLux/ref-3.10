@@ -1,0 +1,28 @@
+/dts-v1/;
+
+/include/ "mt6752.dtsi"
+
+/ {
+  /* chosen */
+	chosen {
+		bootargs = "console=tty0 console=ttyMT0,921600n1 root=/dev/ram initrd=0x44000000,0x4B434E loglevel=8";
+	};
+	
+  memory@00000000 {
+		device_type = "memory";
+		reg = <0 0x40000000 0 0xE200000>;
+	};
+	
+	bus {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges = <0 0 0 0xffffffff>;
+		
+		MTKFB@4e200000 {
+			compatible = "mediatek,MTKFB";
+			reg = <0x4e200000 0x1e00000>;
+		};
+		
+  };
+};

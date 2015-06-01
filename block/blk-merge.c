@@ -164,6 +164,9 @@ int blk_rq_map_sg(struct request_queue *q, struct request *rq,
 	struct req_iterator iter;
 	struct scatterlist *sg;
 	int nsegs, cluster;
+#if defined(FEATURE_STORAGE_PID_LOGGER)
+        struct page_pid_logger *prev_logger = 0;
+#endif
 
 	nsegs = 0;
 	cluster = blk_queue_cluster(q);
@@ -175,7 +178,99 @@ int blk_rq_map_sg(struct request_queue *q, struct request *rq,
 	sg = NULL;
 	rq_for_each_segment(bvec, rq, iter) {
 		__blk_segment_map_sg(q, bvec, sglist, &bvprv, &sg,
-				     &nsegs, &cluster);
+                        &nsegs, &cluster);
+//#undef FEATURE_STORAGE_PID_LOGGER
+#if defined(FEATURE_STORAGE_PID_LOGGER)              
+			do {
+				extern spinlock_t g_locker;
+				extern unsigned char *page_logger;
+				
+				extern struct struct_pid_logger g_pid_logger[PID_ID_CNT];
+				unsigned long flags;
+				if(page_logger) { 
+					struct page_pid_logger *tmp_logger;
+					int page_offset;
+					int index, mmcqd_index;
+					pid_t current_pid=0;
+					
+					page_offset = (unsigned long)((bvec->bv_page) - mem_map);
+					tmp_logger =((struct page_pid_logger *)page_logger) + page_offset;
+					//tmp_locker =((struct page_pid_locker *)page_logger_lock) + page_offset;
+					//printk(KERN_INFO"hank merge pid1:%u pid2:%u bv_page:%x mem_map:%x pfn:%d %s \n", tmp_logger->pid1, tmp_logger->pid2, bvec->bv_page, mem_map, (unsigned long)((bvec->bv_page) - mem_map), q->backing_dev_info.name);
+					current_pid = current->pid;
+
+					//find the exactly pid record array
+					for( mmcqd_index=0; mmcqd_index<PID_ID_CNT; mmcqd_index++) {
+						//printk(KERN_INFO"hank merge mmcqd_index:%d qcurrent_pid:%d current_pid:%d", mmcqd_index, g_pid_logger[mmcqd_index].current_pid, current_pid);
+						if( g_pid_logger[mmcqd_index].current_pid==0 || g_pid_logger[mmcqd_index].current_pid == current_pid ) {
+							g_pid_logger[mmcqd_index].current_pid = current_pid;
+							break;
+						}		
+					}
+					//no match array
+					if( mmcqd_index == PID_ID_CNT )
+						break;
+					/*
+					if( tmp_logger->pid1 == 0XFFFF && tmp_logger->pid2 == 0XFFFF)
+                                        {
+                                           printk(KERN_INFO"hank merge fail offset:%d of:%d bytes:%d rw:%d", page_offset, bvec->bv_offset, nbytes, (rq->cmd_flags & REQ_WRITE));
+                                        }else
+                                        {
+                                           printk(KERN_INFO"hank merge success offset:%d of:%d bytes:%d rw:%d", page_offset, bvec->bv_offset, nbytes, (rq->cmd_flags & REQ_WRITE));
+                                        }
+					*/
+					if( tmp_logger->pid1 != 0xFFFF) {
+						spin_lock_irqsave(&g_locker, flags);
+						for( index=0; index<PID_LOGGER_COUNT; index++) {
+							if( tmp_logger->pid1 == 0xFFFF)
+								break;
+							if( (g_pid_logger[mmcqd_index].pid_logger[index] == 0 || g_pid_logger[mmcqd_index].pid_logger[index] == tmp_logger->pid1)) {
+								g_pid_logger[mmcqd_index].pid_logger[index] = tmp_logger->pid1;
+								if (rq->cmd_flags & REQ_WRITE) {
+									g_pid_logger[mmcqd_index].pid_logger_counter[index]++;
+									g_pid_logger[mmcqd_index].pid_logger_length[index]+=bvec->bv_len;
+								}else {
+									g_pid_logger[mmcqd_index].pid_logger_r_counter[index]++;
+									g_pid_logger[mmcqd_index].pid_logger_r_length[index]+=bvec->bv_len;
+								}
+								if( prev_logger && prev_logger != tmp_logger)
+								   prev_logger->pid1 = 0XFFFF;
+								//tmp_logger->pid1 = 0XFFFF;
+								break;
+							}
+							
+						}
+						spin_unlock_irqrestore(&g_locker, flags);
+					}
+					if( tmp_logger->pid2 != 0xFFFF) {
+						spin_lock_irqsave(&g_locker, flags);
+						for( index=0; index<PID_LOGGER_COUNT; index++) {
+							if( tmp_logger->pid2 == 0xFFFF)
+								break;
+							if( (g_pid_logger[mmcqd_index].pid_logger[index] == 0 || g_pid_logger[mmcqd_index].pid_logger[index] == tmp_logger->pid2)) {
+								g_pid_logger[mmcqd_index].pid_logger[index] = tmp_logger->pid2;
+								if (rq->cmd_flags & REQ_WRITE) {
+									g_pid_logger[mmcqd_index].pid_logger_counter[index]++;
+									g_pid_logger[mmcqd_index].pid_logger_length[index]+=bvec->bv_len;
+								}else {
+									g_pid_logger[mmcqd_index].pid_logger_r_counter[index]++;
+									g_pid_logger[mmcqd_index].pid_logger_r_length[index]+=bvec->bv_len;
+								}
+								if( prev_logger && prev_logger != tmp_logger)
+								   prev_logger->pid2 = 0XFFFF;
+								//tmp_logger->pid2 = 0XFFFF;
+								break;
+							}
+							
+						}
+						spin_unlock_irqrestore(&g_locker, flags);
+					}
+					prev_logger = tmp_logger;
+					
+				}
+			} while (0);
+						
+#endif
 	} /* segments in rq */
 
 

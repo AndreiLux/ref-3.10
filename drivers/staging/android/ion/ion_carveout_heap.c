@@ -22,7 +22,7 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
-#include "ion.h"
+#include <linux/seq_file.h>
 #include "ion_priv.h"
 
 struct ion_carveout_heap {
@@ -40,7 +40,11 @@ ion_phys_addr_t ion_carveout_allocate(struct ion_heap *heap,
 	unsigned long offset = gen_pool_alloc(carveout_heap->pool, size);
 
 	if (!offset)
+	{
+		IONMSG("ion_carveout alloc fail! size=0x%x, free=0x%x\n", size, 
+			gen_pool_avail(carveout_heap->pool));
 		return ION_CARVEOUT_ALLOCATE_FAIL;
+	}
 
 	return offset;
 }
@@ -125,7 +129,7 @@ static void ion_carveout_heap_free(struct ion_buffer *buffer)
 }
 
 static struct sg_table *ion_carveout_heap_map_dma(struct ion_heap *heap,
-						  struct ion_buffer *buffer)
+				    struct ion_buffer *buffer)
 {
 	return buffer->priv_virt;
 }
@@ -146,6 +150,47 @@ static struct ion_heap_ops carveout_heap_ops = {
 	.map_kernel = ion_heap_map_kernel,
 	.unmap_kernel = ion_heap_unmap_kernel,
 };
+
+static void ion_carveout_chunk_show(struct gen_pool *pool, 
+                struct gen_pool_chunk *chunk, 
+                void *data)
+{
+    int order, nlongs, nbits,i;
+    struct seq_file *s = (struct seq_file *)data;
+
+
+	order = pool->min_alloc_order;
+    nbits = (chunk->end_addr - chunk->start_addr) >> order;
+	nlongs = BITS_TO_LONGS(nbits);
+
+    seq_printf(s, "phys_addr=0x%x bits=", (unsigned int)chunk->phys_addr);
+
+    for(i=0; i<nlongs; i++)
+    {
+        seq_printf(s, "0x%x ", (unsigned int)chunk->bits[i]);
+    }
+        
+    seq_printf(s, "\n");
+    
+}
+
+static int ion_carveout_heap_debug_show(struct ion_heap *heap, struct seq_file *s,
+                                      void *unused)
+{
+    struct ion_carveout_heap *carveout_heap = 
+        container_of(heap, struct ion_carveout_heap, heap);
+    size_t size_avail, total_size;
+
+    total_size = gen_pool_size(carveout_heap->pool);
+    size_avail = gen_pool_avail(carveout_heap->pool);
+
+    seq_printf(s, "total_size=0x%x, free=0x%x, base=0x%x\n", 
+        total_size, size_avail, (unsigned int)carveout_heap->base);
+
+    gen_pool_for_each_chunk(carveout_heap->pool, ion_carveout_chunk_show, s);
+
+    return 0;
+}
 
 struct ion_heap *ion_carveout_heap_create(struct ion_platform_heap *heap_data)
 {
@@ -179,7 +224,7 @@ struct ion_heap *ion_carveout_heap_create(struct ion_platform_heap *heap_data)
 	carveout_heap->heap.ops = &carveout_heap_ops;
 	carveout_heap->heap.type = ION_HEAP_TYPE_CARVEOUT;
 	carveout_heap->heap.flags = ION_HEAP_FLAG_DEFER_FREE;
-
+	carveout_heap->heap.debug_show = ion_carveout_heap_debug_show;
 	return &carveout_heap->heap;
 }
 

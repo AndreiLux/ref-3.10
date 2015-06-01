@@ -25,6 +25,7 @@
 #define SLAB_CACHE_DMA		0x00004000UL	/* Use GFP_DMA memory */
 #define SLAB_STORE_USER		0x00010000UL	/* DEBUG: Store the last owner for bug hunting */
 #define SLAB_PANIC		0x00040000UL	/* Panic if kmem_cache_create() fails */
+#define SLAB_NO_DEBUG		0x10000000UL    /* Disable slub debug for special cache */
 /*
  * SLAB_DESTROY_BY_RCU - **WARNING** READ THIS!
  *

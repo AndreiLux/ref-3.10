@@ -287,8 +287,6 @@ el1_dbg:
 	/*
 	 * Debug exception handling
 	 */
-	cmp	x24, #ESR_EL1_EC_BRK64		// if BRK64
-	cinc	x24, x24, eq			// set bit '0'
 	tbz	x24, #0, el1_inv		// EL1 only
 	mrs	x0, far_el1
 	mov	x2, sp				// struct pt_regs
@@ -312,14 +310,14 @@ el1_irq:
 #endif
 #ifdef CONFIG_PREEMPT
 	get_thread_info tsk
-	ldr	w24, [tsk, #TI_PREEMPT]		// get preempt count
-	add	w0, w24, #1			// increment it
-	str	w0, [tsk, #TI_PREEMPT]
+	ldr	x24, [tsk, #TI_PREEMPT]		// get preempt count
+	add	x0, x24, #1			// increment it
+	str	x0, [tsk, #TI_PREEMPT]
 #endif
 	irq_handler
 #ifdef CONFIG_PREEMPT
-	str	w24, [tsk, #TI_PREEMPT]		// restore preempt count
-	cbnz	w24, 1f				// preempt count != 0
+	str	x24, [tsk, #TI_PREEMPT]		// restore preempt count
+	cbnz	x24, 1f				// preempt count != 0
 	ldr	x0, [tsk, #TI_FLAGS]		// get flags
 	tbz	x0, #TIF_NEED_RESCHED, 1f	// needs rescheduling?
 	bl	el1_preempt
@@ -478,8 +476,6 @@ el0_undef:
 	 * Undefined instruction
 	 */
 	mov	x0, sp
-	// enable interrupts before calling the main handler
-	enable_irq
 	b	do_undefinstr
 el0_dbg:
 	/*
@@ -510,15 +506,15 @@ el0_irq_naked:
 #endif
 	get_thread_info tsk
 #ifdef CONFIG_PREEMPT
-	ldr	w24, [tsk, #TI_PREEMPT]		// get preempt count
-	add	w23, w24, #1			// increment it
-	str	w23, [tsk, #TI_PREEMPT]
+	ldr	x24, [tsk, #TI_PREEMPT]		// get preempt count
+	add	x23, x24, #1			// increment it
+	str	x23, [tsk, #TI_PREEMPT]
 #endif
 	irq_handler
 #ifdef CONFIG_PREEMPT
-	ldr	w0, [tsk, #TI_PREEMPT]
-	str	w24, [tsk, #TI_PREEMPT]
-	cmp	w0, w23
+	ldr	x0, [tsk, #TI_PREEMPT]
+	str	x24, [tsk, #TI_PREEMPT]
+	cmp	x0, x23
 	b.eq	1f
 	mov	x1, #0
 	str	x1, [x1]			// BUG
@@ -645,9 +641,8 @@ el0_svc_naked:					// compat entry point
 	enable_irq
 
 	get_thread_info tsk
-	ldr	x16, [tsk, #TI_FLAGS]		// check for syscall hooks
-	tst	x16, #_TIF_SYSCALL_WORK
-	b.ne	__sys_trace
+	ldr	x16, [tsk, #TI_FLAGS]		// check for syscall tracing
+	tbnz	x16, #TIF_SYSCALL_TRACE, __sys_trace // are we tracing syscalls?
 	adr	lr, ret_fast_syscall		// return address
 	cmp     scno, sc_nr                     // check upper syscall limit
 	b.hs	ni_sys
@@ -663,8 +658,9 @@ ENDPROC(el0_svc)
 	 * switches, and waiting for our parent to respond.
 	 */
 __sys_trace:
-	mov	x0, sp
-	bl	syscall_trace_enter
+	mov	x1, sp
+	mov	w0, #0				// trace entry
+	bl	syscall_trace
 	adr	lr, __sys_trace_return		// return address
 	uxtw	scno, w0			// syscall number (possibly new)
 	mov	x1, sp				// pointer to regs
@@ -679,8 +675,9 @@ __sys_trace:
 
 __sys_trace_return:
 	str	x0, [sp]			// save returned x0
-	mov	x0, sp
-	bl	syscall_trace_exit
+	mov	x1, sp
+	mov	w0, #1				// trace exit
+	bl	syscall_trace
 	b	ret_to_user
 
 /*

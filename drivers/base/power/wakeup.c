@@ -6,6 +6,8 @@
  * This file is released under the GPLv2.
  */
 
+#define DEBUG
+
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
@@ -18,11 +20,17 @@
 
 #include "power.h"
 
+int wakeup_debug = 0;
+#define _TAG_WAKEUP "WAKEUP"
+#define wakeup_log(fmt, ...)    do { if (0) pr_debug("[%s][%s]" fmt, _TAG_WAKEUP, __func__, ##__VA_ARGS__); } while (0)
+#define wakeup_warn(fmt, ...)   do { if (wakeup_debug) pr_debug("[%s][%s]" fmt, _TAG_WAKEUP, __func__, ##__VA_ARGS__); } while (0)
+
 /*
  * If set, the suspend/hibernate code will abort transitions to a sleep state
  * if wakeup events are registered during or immediately before the transition.
  */
 bool events_check_enabled __read_mostly;
+EXPORT_SYMBOL_GPL(events_check_enabled);
 
 /*
  * Combined counters of registered wakeup events and wakeup events in progress.
@@ -392,7 +400,11 @@ static void wakeup_source_activate(struct wakeup_source *ws)
 	ws->active_count++;
 	ws->last_time = ktime_get();
 	if (ws->autosleep_enabled)
+	{
+		//<20130327> <marc.huang> add wakeup source dubug log
+		wakeup_warn("ws->name: %s\n", ws->name);
 		ws->start_prevent_time = ws->last_time;
+	}
 
 	/* Increment the counter of events in progress. */
 	cec = atomic_inc_return(&combined_event_count);
@@ -427,6 +439,9 @@ void __pm_stay_awake(struct wakeup_source *ws)
 
 	if (!ws)
 		return;
+
+	//<20130327> <marc.huang> add wakeup source dubug log
+	wakeup_log("ws->name: %s\n", ws->name);
 
 	spin_lock_irqsave(&ws->lock, flags);
 
@@ -515,12 +530,18 @@ static void wakeup_source_deactivate(struct wakeup_source *ws)
 	ws->timer_expires = 0;
 
 	if (ws->autosleep_enabled)
+	{
+		//<20130327> <marc.huang> add wakeup source dubug log
+		wakeup_warn("ws->name: %s\n", ws->name);
 		update_prevent_sleep_time(ws, now);
+	}
 
 	/*
 	 * Increment the counter of registered wakeup events and decrement the
 	 * couter of wakeup events in progress simultaneously.
 	 */
+    // FIXME: CHECK BUG here ??? if combined_event_count = 0x????0000, then atomic_add_return(...) --> 0x????ffff
+    //        , which is not the expected result !!!
 	cec = atomic_add_return(MAX_IN_PROGRESS, &combined_event_count);
 	trace_wakeup_source_deactivate(ws->name, cec);
 
@@ -544,6 +565,9 @@ void __pm_relax(struct wakeup_source *ws)
 
 	if (!ws)
 		return;
+
+	//<20130327> <marc.huang> add wakeup source dubug log
+	wakeup_log("ws->name: %s\n", ws->name);
 
 	spin_lock_irqsave(&ws->lock, flags);
 	if (ws->active)
@@ -614,6 +638,9 @@ void __pm_wakeup_event(struct wakeup_source *ws, unsigned int msec)
 
 	if (!ws)
 		return;
+
+	//<20130327> <marc.huang> add wakeup source dubug log
+	wakeup_log("ws->name: %s\n", ws->name);
 
 	spin_lock_irqsave(&ws->lock, flags);
 
@@ -704,6 +731,10 @@ bool pm_wakeup_pending(void)
 		split_counters(&cnt, &inpr);
 		ret = (cnt != saved_count || inpr > 0);
 		events_check_enabled = !ret;
+
+		//<20130327> <marc.huang> add wakeup source dubug log
+		if (ret)
+			wakeup_warn("cnt: %d, saved_count: %d, inpr: %d\n", cnt, saved_count, inpr);
 	}
 	spin_unlock_irqrestore(&events_lock, flags);
 
@@ -712,6 +743,7 @@ bool pm_wakeup_pending(void)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(pm_wakeup_pending);
 
 /**
  * pm_get_wakeup_count - Read the number of registered wakeup events.
@@ -739,6 +771,8 @@ bool pm_get_wakeup_count(unsigned int *count, bool block)
 			if (inpr == 0 || signal_pending(current))
 				break;
 
+			//<20130327> <marc.huang> add wakeup source dubug log
+			print_active_wakeup_sources();
 			schedule();
 		}
 		finish_wait(&wakeup_count_wait_queue, &wait);

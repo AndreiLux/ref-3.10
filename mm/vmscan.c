@@ -1234,7 +1234,7 @@ static int too_many_isolated(struct zone *zone, int file,
 {
 	unsigned long inactive, isolated;
 
-	if (current_is_kswapd())
+	if (current_is_kswapd() || sc->hibernation_mode)
 		return 0;
 
 	if (!global_reclaim(sc))
@@ -1684,6 +1684,11 @@ enum scan_balance {
 	SCAN_FILE,
 };
 
+#if defined(CONFIG_ZRAM) && defined(MTK_LCA_RAM_OPTIMIZE)
+static int vmscan_swap_file_ratio = 1;
+module_param_named(swap_file_ratio, vmscan_swap_file_ratio, int, S_IRUGO | S_IWUSR);
+#endif
+
 /*
  * Determine how aggressively the anon and file LRU lists should be
  * scanned.  The relative value of each set of LRU lists is determined
@@ -1786,6 +1791,12 @@ static void get_scan_count(struct lruvec *lruvec, struct scan_control *sc,
 	 */
 	anon_prio = vmscan_swappiness(sc);
 	file_prio = 200 - anon_prio;
+#if defined(CONFIG_ZRAM) && defined(MTK_LCA_RAM_OPTIMIZE)
+	if (vmscan_swap_file_ratio) {
+		anon_prio = anon_prio * anon / (anon + file + 1);
+		file_prio = file_prio * file / (anon + file + 1);
+	}
+#endif
 
 	/*
 	 * OK, so we have swap space and a fair amount of page cache
@@ -2124,7 +2135,7 @@ static bool shrink_zones(struct zonelist *zonelist, struct scan_control *sc)
 			if (zone->all_unreclaimable &&
 					sc->priority != DEF_PRIORITY)
 				continue;	/* Let kswapd poll it */
-			if (IS_ENABLED(CONFIG_COMPACTION)) {
+			if (IS_ENABLED(CONFIG_COMPACTION) && !sc->hibernation_mode) {
 				/*
 				 * If we already have plenty of memory free for
 				 * compaction in this zone, don't free any more.
@@ -2225,6 +2236,11 @@ static unsigned long do_try_to_free_pages(struct zonelist *zonelist,
 	struct zone *zone;
 	unsigned long writeback_threshold;
 	bool aborted_reclaim;
+
+#ifdef CONFIG_FREEZER
+	if (unlikely(pm_freezing && !sc->hibernation_mode))
+		return 0;
+#endif
 
 	delayacct_freepages_start();
 
@@ -3150,6 +3166,11 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
 	if (!populated_zone(zone))
 		return;
 
+#ifdef CONFIG_FREEZER
+	if (pm_freezing)
+		return;
+#endif
+
 	if (!cpuset_zone_allowed_hardwall(zone, GFP_KERNEL))
 		return;
 	pgdat = zone->zone_pgdat;
@@ -3175,11 +3196,11 @@ void wakeup_kswapd(struct zone *zone, int order, enum zone_type classzone_idx)
  * LRU order by reclaiming preferentially
  * inactive > active > active referenced > active mapped
  */
-unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
+unsigned long shrink_memory_mask(unsigned long nr_to_reclaim, gfp_t mask)
 {
 	struct reclaim_state reclaim_state;
 	struct scan_control sc = {
-		.gfp_mask = GFP_HIGHUSER_MOVABLE,
+		.gfp_mask = mask,
 		.may_swap = 1,
 		.may_unmap = 1,
 		.may_writepage = 1,
@@ -3208,6 +3229,19 @@ unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
 
 	return nr_reclaimed;
 }
+EXPORT_SYMBOL_GPL(shrink_memory_mask);
+
+#ifdef CONFIG_MTKPASR
+extern void shrink_mtkpasr_all(void);
+#else
+#define shrink_mtkpasr_all() 	do {} while (0)
+#endif
+unsigned long shrink_all_memory(unsigned long nr_to_reclaim)
+{
+	shrink_mtkpasr_all();
+	return shrink_memory_mask(nr_to_reclaim, GFP_HIGHUSER_MOVABLE);
+}
+EXPORT_SYMBOL_GPL(shrink_all_memory);
 #endif /* CONFIG_HIBERNATION */
 
 /* It's optimal to keep kswapds on the same CPUs as their memory, but
@@ -3626,5 +3660,285 @@ int scan_unevictable_register_node(struct node *node)
 void scan_unevictable_unregister_node(struct node *node)
 {
 	device_remove_file(&node->dev, &dev_attr_scan_unevictable_pages);
+}
+#endif
+
+#ifdef CONFIG_MTKPASR
+void try_to_shrink_slab(void)
+{
+	struct shrinker *shrinker;
+	struct shrink_control shrink = {
+		.gfp_mask = GFP_KERNEL|__GFP_HIGHMEM,
+	};
+
+	if (!down_read_trylock(&shrinker_rwsem)) {
+		return;
+	}
+	
+	list_for_each_entry(shrinker, &shrinker_list, list) {
+		int num_objs;
+		int shrink_ret = 0;
+		int retry = 2;
+		
+		num_objs = do_shrinker_shrink(shrinker, &shrink, 0);
+		if (num_objs <= 0)
+			continue;
+
+		do {
+			/* To shrink */
+			shrink_ret = do_shrinker_shrink(shrinker, &shrink, num_objs);
+			if (shrink_ret == -1)
+				break;
+			/* Check empty */	
+			num_objs = do_shrinker_shrink(shrinker, &shrink, 0);
+			if (num_objs <= 0)
+				break;
+		} while (--retry);
+	}
+	
+	up_read(&shrinker_rwsem);
+}
+
+extern void free_hot_cold_page(struct page *page, int cold);
+/* Isolate pages for PASR */
+#ifdef CONFIG_MTKPASR_ALLEXTCOMP
+int mtkpasr_isolate_page(struct page *page, int check_swap)
+#else
+int mtkpasr_isolate_page(struct page *page)
+#endif
+{
+	struct zone *zone = page_zone(page);
+	struct lruvec *lruvec;
+	unsigned long flags;
+	isolate_mode_t mode = ISOLATE_ASYNC_MIGRATE;
+
+	/* Lock this zone - USE trylock version! */
+	if (!spin_trylock_irqsave(&zone->lru_lock, flags)) {
+		printk(KERN_ALERT"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+		printk(KERN_ALERT"[%s][%d] Failed to lock this zone!\n",__FUNCTION__,__LINE__);
+		printk(KERN_ALERT"\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n");
+		return -EAGAIN;
+	}
+
+#ifdef CONFIG_MTKPASR_ALLEXTCOMP
+	/* Check whether we should handle SwapBacked, SwapCache pages */
+	if (check_swap) {
+		if (PageSwapBacked(page) || PageSwapCache(page)) {
+			spin_unlock_irqrestore(&zone->lru_lock, flags);
+			return -EACCES;
+		}
+	}
+#endif
+
+	/* Try to isolate this page */
+	if (__isolate_lru_page(page, mode) != 0) {
+		spin_unlock_irqrestore(&zone->lru_lock, flags);
+		return -EACCES;
+	}
+	
+	/* Successfully isolated */
+	lruvec = mem_cgroup_page_lruvec(page, zone);
+	del_page_from_lru_list(page, lruvec, page_lru(page));
+	
+	/* Unlock this zone */
+	spin_unlock_irqrestore(&zone->lru_lock, flags);
+
+	return 0;
+}
+
+/* Drop page (in File/Anon LRUs) (Imitate the behavior of shrink_page_list) */
+/* If returns error, caller needs to putback page by itself. */
+int mtkpasr_drop_page(struct page *page)
+{
+	int ret;
+	unsigned long vm_flags = 0x0;
+	bool active = false;
+	struct address_space *mapping;
+	enum ttu_flags unmap_flags = TTU_UNMAP;
+
+	/* Suitable scan control */
+	struct scan_control sc = {
+		.gfp_mask = GFP_KERNEL,
+		.order = PAGE_ALLOC_COSTLY_ORDER + 1, 
+		//.reclaim_mode = RECLAIM_MODE_SINGLE|RECLAIM_MODE_SYNC,	// We only handle "SwapBacked" pages in this reclaim_mode!
+	};
+
+	/* Try to isolate this page */
+#ifdef CONFIG_MTKPASR_ALLEXTCOMP
+	ret = mtkpasr_isolate_page(page, 0x1);
+#else
+	ret = mtkpasr_isolate_page(page);
+#endif
+	if (ret) {
+		return ret;
+	}
+	
+	/* Check whether it is evictable! */
+	if (unlikely(!page_evictable(page))) {
+		putback_lru_page(page);
+		return -EACCES;
+	}
+
+	/* If it is Active, reference and deactivate it */
+	if (PageActive(page)) {
+		active = TestClearPageActive(page);
+	}
+
+	/* If we fail to lock this page, ignore it */	
+	if (!trylock_page(page)) {
+		goto putback;
+	}
+	
+	/* If page is in writeback, we don't handle it here! */
+	if (PageWriteback(page)) {
+		goto unlock;
+	}
+	
+	/*
+	 * Anonymous process memory has backing store?
+	 * Try to allocate it some swap space here.
+	 */
+	if (PageAnon(page) && !PageSwapCache(page)) {
+		/* Check whether we have enough free memory */
+		if (vm_swap_full()) {
+			goto unlock;
+		}
+
+		/* Ok! It is safe to add this page to swap. */
+		if (!add_to_swap(page, NULL)){
+			goto unlock;
+		}
+	}
+	
+	/* We don't handle dirty file cache here (Related devices may be suspended) */
+	if (page_is_file_cache(page)) {
+		/* How do we handle pages in VM_EXEC vmas? */
+		if ((vm_flags & VM_EXEC)) {
+			goto unlock;
+		}
+		/* We don't handle dirty file pages! */
+		if (PageDirty(page)) {
+#ifdef CONFIG_MTKPASR_DEBUG 
+			printk(KERN_ALERT "\n\n\n\n\n\n [%s][%d]\n\n\n\n\n\n",__FUNCTION__,__LINE__);
+#endif
+			goto unlock;
+		}
+	}
+		
+	/*
+	 * The page is mapped into the page tables of one or more
+	 * processes. Try to unmap it here.
+	 */
+	mapping = page_mapping(page);
+	if (page_mapped(page) && mapping) {
+#if 0
+		/* Indicate unmap action for SwapBacked pages */
+		if (PageSwapBacked(page)) {
+			unmap_flags |= TTU_IGNORE_ACCESS; 
+		}
+#endif
+		/* To unmap */
+		switch (try_to_unmap(page, unmap_flags)) {
+		case SWAP_SUCCESS:
+			/* try to free the page below */
+			break;
+		case SWAP_FAIL:
+			goto restore_swap;
+		case SWAP_AGAIN:
+			goto restore_swap;
+		case SWAP_MLOCK:
+			goto restore_swap;
+
+		}
+	}
+	
+	/* Check whether it is dirtied. 
+	 * We have filtered out dirty file pages above. (IMPORTANT!)
+	 * "VM_BUG_ON(!PageSwapBacked(page))"
+	 * */
+	if (PageDirty(page)) {
+		/* Page is dirty, try to write it out here */
+		/* It's ok for zram swap! */
+		/* Should we need to apply GFP_IOFS? */
+		switch (pageout(page, mapping, &sc)) {
+		case PAGE_SUCCESS:
+			if (PageWriteback(page)) {
+				goto putback;
+			}
+			if (PageDirty(page)) {
+				goto putback;
+			}
+
+			/*
+			 * A synchronous write - probably a ramdisk.  Go
+			 * ahead and try to reclaim the page.
+			 */
+			if (!trylock_page(page)) {
+				goto putback;
+			}
+			if (PageDirty(page) || PageWriteback(page)) {
+				goto unlock;
+			}
+			mapping = page_mapping(page);
+		case PAGE_CLEAN:
+			/* try to free the page below */
+			break;
+		default:
+#ifdef CONFIG_MTKPASR_DEBUG 
+			/*printk(KERN_ALERT "\n\n\n\n\n\n [%s][%d]\n\n\n\n\n\n",__FUNCTION__,__LINE__);*/
+#endif
+			goto restore_unmap;
+		}
+	}
+
+	/* Release buffer */
+	if (page_has_private(page)) {
+		if (!try_to_release_page(page, sc.gfp_mask)) {
+			goto unlock;
+		}
+		if (!mapping && page_count(page) == 1) {
+			unlock_page(page);
+			if (put_page_testzero(page)) {
+				goto freeit;
+			} else {
+				/* Race! TOCHECK */
+				printk(KERN_ALERT "\n\n\n\n\n\n [%s][%d] RACE!!\n\n\n\n\n\n",__FUNCTION__,__LINE__);
+				goto notask;
+			}
+		}
+	}
+	if (!mapping || !__remove_mapping(mapping, page)) {
+		goto unlock;
+	}
+		
+	__clear_page_locked(page);
+
+freeit:
+	free_hot_cold_page(page, 0);
+	return 0;	
+
+restore_unmap:
+	/* Do something */
+
+restore_swap:
+	if (PageSwapCache(page))
+		try_to_free_swap(page);
+
+unlock:
+	unlock_page(page);
+
+putback:	
+	/* Activate it again if needed! */
+	if (active)
+		SetPageActive(page);
+	
+	/* We don't putback them to corresponding LRUs, because we want to do more tasks outside this function!
+	putback_lru_page(page); */
+
+	/* Failedly dropped pages. Do migration! */
+	return -EBUSY;
+
+notask:
+	return 0;
 }
 #endif

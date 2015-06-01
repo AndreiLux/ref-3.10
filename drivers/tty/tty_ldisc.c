@@ -199,6 +199,7 @@ static inline void tty_ldisc_put(struct tty_ldisc *ld)
 	ld->ops->refcount--;
 	module_put(ld->ops->owner);
 	kfree(ld);
+	ld = NULL;
 	raw_spin_unlock_irqrestore(&tty_ldisc_lock, flags);
 }
 
@@ -346,8 +347,13 @@ void tty_ldisc_deref(struct tty_ldisc *ld)
 	WARN_ON(atomic_dec_and_test(&ld->users));
 	raw_spin_unlock_irqrestore(&tty_ldisc_lock, flags);
 
-	if (waitqueue_active(&ld->wq_idle))
-		wake_up(&ld->wq_idle);
+	if (waitqueue_active(&ld->wq_idle)){
+		raw_spin_lock_irqsave(&tty_ldisc_lock, flags);
+        if(ld != NULL){
+		    wake_up(&ld->wq_idle);
+        }
+    raw_spin_unlock_irqrestore(&tty_ldisc_lock, flags);
+	}
 }
 EXPORT_SYMBOL_GPL(tty_ldisc_deref);
 

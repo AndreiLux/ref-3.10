@@ -344,6 +344,8 @@ enum fuse_opcode {
 	FUSE_FALLOCATE     = 43,
 	FUSE_READDIRPLUS   = 44,
 
+	FUSE_USERS         = 100,
+
 	/* CUSE specific operations */
 	CUSE_INIT          = 4096,
 };

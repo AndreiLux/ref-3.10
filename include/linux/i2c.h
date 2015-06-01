@@ -26,6 +26,7 @@
 #ifndef _LINUX_I2C_H
 #define _LINUX_I2C_H
 
+#include <linux/module.h>
 #include <linux/mod_devicetable.h>
 #include <linux/device.h>	/* for struct device */
 #include <linux/sched.h>	/* for completion */
@@ -36,7 +37,22 @@
 
 extern struct bus_type i2c_bus_type;
 extern struct device_type i2c_adapter_type;
+#define I2C_A_FILTER_MSG	0x8000	/* filer out error messages	*/
+#define I2C_A_CHANGE_TIMING	0x4000	/* change timing paramters	*/
+#define I2C_MASK_FLAG	(0x00ff)
+#define I2C_DMA_FLAG	(0x2000)
+#define I2C_WR_FLAG		(0x1000)
+#define I2C_RS_FLAG		(0x0800)
+#define I2C_HS_FLAG   (0x0400)
+#define I2C_ENEXT_FLAG (0x0200)
+#define I2C_DISEXT_FLAG (0x0000)
+#define I2C_POLL_FLAG (0x4000)
+#define I2C_CH2_FLAG	(0x8000)
 
+#define I2C_POLLING_FLAG (0x00000001)
+#define I2C_PUSHPULL_FLAG (0x00000002)
+#define I2C_3DCAMERA_FLAG (0x00000004)
+#define I2C_DIRECTION_FLAG (0x00000008)
 /* --- General options ------------------------------------------------	*/
 
 struct i2c_msg;
@@ -62,6 +78,11 @@ extern int i2c_master_send(const struct i2c_client *client, const char *buf,
 extern int i2c_master_recv(const struct i2c_client *client, char *buf,
 			   int count);
 
+extern int mt_i2c_master_send(const struct i2c_client *client, const char *buf,
+			   int count, u32 ext_flag);
+
+extern int mt_i2c_master_recv(const struct i2c_client *client, char *buf,
+			   int count, u32 ext_flag);
 /* Transfer num messages.
  */
 extern int i2c_transfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
@@ -225,7 +246,9 @@ struct i2c_client {
 	struct i2c_driver *driver;	/* and our access routines	*/
 	struct device dev;		/* the device structure		*/
 	int irq;			/* irq issued by device		*/
+	__u32 timing;			/* paramters of timings		*/
 	struct list_head detected;
+	__u32 ext_flag;
 };
 #define to_i2c_client(d) container_of(d, struct i2c_client, dev)
 

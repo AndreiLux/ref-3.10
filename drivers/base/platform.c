@@ -22,6 +22,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/idr.h>
 #include <linux/acpi.h>
+#include <linux/time_log.h>
 
 #include "base.h"
 #include "power/power.h"
@@ -395,9 +396,13 @@ EXPORT_SYMBOL_GPL(platform_device_del);
  */
 int platform_device_register(struct platform_device *pdev)
 {
+	    int ret;
+	    TIME_LOG_START();
 	device_initialize(&pdev->dev);
 	arch_setup_pdev_archdata(pdev);
-	return platform_device_add(pdev);
+	ret = platform_device_add(pdev);
+    TIME_LOG_END("[pdev] %s\n", pdev->name);
+    return ret;
 }
 EXPORT_SYMBOL_GPL(platform_device_register);
 

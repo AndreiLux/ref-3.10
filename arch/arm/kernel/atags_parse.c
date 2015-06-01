@@ -30,7 +30,7 @@
 
 #include "atags.h"
 
-static char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
+char default_command_line[COMMAND_LINE_SIZE] __initdata = CONFIG_CMDLINE;
 
 #ifndef MEM_SIZE
 #define MEM_SIZE	(16*1024*1024)
@@ -68,6 +68,13 @@ static int __init parse_tag_mem32(const struct tag *tag)
 }
 
 __tagtable(ATAG_MEM, parse_tag_mem32);
+
+static int __init parse_tag_mem64(const struct tag *tag)
+{
+	return arm_add_memory(tag->u.mem64.start, tag->u.mem64.size);
+}
+
+__tagtable(ATAG_MEM64, parse_tag_mem64);
 
 #if defined(CONFIG_VGA_CONSOLE) || defined(CONFIG_DUMMY_CONSOLE)
 static int __init parse_tag_videotext(const struct tag *tag)

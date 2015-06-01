@@ -840,6 +840,10 @@ static int usbdev_open(struct inode *inode, struct file *file)
 	usb_unlock_device(dev);
 	snoop(&dev->dev, "opened by process %d: %s\n", task_pid_nr(current),
 			current->comm);
+
+	MYDBG("opened by process %d: %s\n", task_pid_nr(current),
+			current->comm);	
+
 	return ret;
 
  out_unlock_device:

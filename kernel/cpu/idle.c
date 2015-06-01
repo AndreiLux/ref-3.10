@@ -5,6 +5,9 @@
 #include <linux/cpu.h>
 #include <linux/tick.h>
 #include <linux/mm.h>
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER
+#include <mtlbprof/mtlbprof.h>
+#endif
 #include <linux/stackprotector.h>
 
 #include <asm/tlb.h>
@@ -67,6 +70,10 @@ void __weak arch_cpu_idle(void)
  */
 static void cpu_idle_loop(void)
 {
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER
+	mt_lbprof_update_state(smp_processor_id(), MT_LBPROF_NO_TASK_STATE);
+#endif
+
 	while (1) {
 		tick_nohz_idle_enter();
 
@@ -76,6 +83,10 @@ static void cpu_idle_loop(void)
 
 			if (cpu_is_offline(smp_processor_id()))
 				arch_cpu_idle_dead();
+
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER
+			mt_lbprof_update_state(smp_processor_id(), MT_LBPROF_IDLE_STATE);
+#endif
 
 			local_irq_disable();
 			arch_cpu_idle_enter();
@@ -99,6 +110,9 @@ static void cpu_idle_loop(void)
 					WARN_ON_ONCE(irqs_disabled());
 					rcu_idle_exit();
 					start_critical_timings();
+#ifdef CONFIG_MT_LOAD_BALANCE_PROFILER				
+					mt_lbprof_update_state(smp_processor_id(), MT_LBPROF_NO_TASK_STATE);
+#endif				
 				} else {
 					local_irq_enable();
 				}
