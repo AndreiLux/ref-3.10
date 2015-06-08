@@ -2633,6 +2633,7 @@ static int __init ksm_init(void)
 		goto out_random;
 
 	ksm_thread = kthread_run(ksm_scan_thread, NULL, "pksmd");
+	kthread_bind(ksm_thread, 0);
 	
 	if (IS_ERR(ksm_thread)) {
 		printk(KERN_ERR "pksm: creating kthread failed\n");
