@@ -177,10 +177,54 @@ int tegra_pcm_hw_free(struct snd_pcm_substream *substream)
 	return 0;
 }
 
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_DENVER_CPU)
+/*
+ * If needed, set affinity for APB DMA interrupts to given CPU.
+ */
+#define SND_DMA_IRQ_CPU_AFFINITY 1
+
+static void snd_dma_irq_affinity_read(struct snd_info_entry *entry,
+		struct snd_info_buffer *buffer)
+{
+	snd_iprintf(buffer, "%d\n", SND_DMA_IRQ_CPU_AFFINITY);
+}
+
+static struct snd_info_entry *snd_dma_irq_affinity_entry;
+atomic_t snd_dma_proc_refcnt;
+static int snd_dma_proc_init(void)
+{
+	struct snd_info_entry *entry;
+
+	if (atomic_add_return(1, &snd_dma_proc_refcnt) == 1) {
+		entry = snd_info_create_module_entry(THIS_MODULE,
+				"irq_affinity", NULL);
+		if (entry) {
+			entry->c.text.read = snd_dma_irq_affinity_read;
+			if (snd_info_register(entry) < 0)
+				snd_info_free_entry(entry);
+		}
+		snd_dma_irq_affinity_entry = entry;
+	}
+	return 0;
+}
+
+static int snd_dma_proc_done(void)
+{
+	if (atomic_dec_and_test(&snd_dma_proc_refcnt))
+		snd_info_free_entry(snd_dma_irq_affinity_entry);
+	return 0;
+}
+#endif
+
 int tegra_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 {
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct tegra_runtime_data *prtd;
+	int ret;
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_DENVER_CPU)
+	int err;
+	struct dma_chan *chan;
+#endif
 
 	if (rtd->dai_link->no_pcm)
 		return 0;
@@ -199,16 +243,44 @@ int tegra_pcm_trigger(struct snd_pcm_substream *substream, int cmd)
 		} else {
 			substream->runtime->no_period_wakeup = 0;
 		}
+
 		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
 			rtd->dai_link->ops->trigger(substream, cmd);
-		return snd_dmaengine_pcm_trigger(substream,
-				SNDRV_PCM_TRIGGER_START);
+
+		ret = snd_dmaengine_pcm_trigger(substream,
+					SNDRV_PCM_TRIGGER_START);
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_DENVER_CPU)
+		if (ret == 0) {
+			chan = snd_dmaengine_pcm_get_chan(substream);
+			if (chan) {
+				err = irq_set_affinity(
+					INT_APB_DMA_CH0 + chan->chan_id,
+					cpumask_of(SND_DMA_IRQ_CPU_AFFINITY));
+				if (err < 0)
+					pr_warn("%s:Failed to set irq affinity for irq:%u to cpu:%u, error:%d\n",
+					__func__,
+					INT_APB_DMA_CH0 + chan->chan_id,
+					SND_DMA_IRQ_CPU_AFFINITY, err);
+			}
+		}
+#endif
+		return ret;
 
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		prtd->running = 0;
 
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_DENVER_CPU)
+		chan = snd_dmaengine_pcm_get_chan(substream);
+		if (chan) {
+			err = irq_set_affinity(INT_APB_DMA_CH0 + chan->chan_id,
+				irq_default_affinity);
+			if (err < 0)
+				pr_warn("%s:Failed to set default irq affinity for irq:%u, error:%d\n",
+				__func__, INT_APB_DMA_CH0 + chan->chan_id, err);
+		}
+#endif
 		snd_dmaengine_pcm_trigger(substream,
 					SNDRV_PCM_TRIGGER_STOP);
 		if (rtd->dai_link->ops && rtd->dai_link->ops->trigger)
@@ -354,6 +426,9 @@ err:
 
 int tegra_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_DENVER_CPU)
+	snd_dma_proc_init();
+#endif
 	return tegra_pcm_dma_allocate(rtd ,
 					tegra_pcm_hardware.buffer_bytes_max);
 }
@@ -362,6 +437,9 @@ void tegra_pcm_free(struct snd_pcm *pcm)
 {
 	tegra_pcm_deallocate_dma_buffer(pcm, SNDRV_PCM_STREAM_CAPTURE);
 	tegra_pcm_deallocate_dma_buffer(pcm, SNDRV_PCM_STREAM_PLAYBACK);
+#if defined(CONFIG_PROC_FS) && defined(CONFIG_DENVER_CPU)
+	snd_dma_proc_done();
+#endif
 }
 
 static struct snd_soc_dai_driver tegra_fast_dai[] = {
