@@ -26,7 +26,6 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-#include <linux/async.h>
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/bitops.h>
@@ -1483,12 +1482,11 @@ static void dapm_widget_update(struct snd_soc_dapm_context *dapm)
 	}
 }
 
-/* Async callback run prior to DAPM sequences - brings to _PREPARE if
+/* Function run prior to DAPM sequences - brings to _PREPARE if
  * they're changing state.
  */
-static void dapm_pre_sequence_async(void *data, async_cookie_t cookie)
+static void dapm_pre_sequence(struct snd_soc_dapm_context *d)
 {
-	struct snd_soc_dapm_context *d = data;
 	int ret;
 
 	if ((d->bias_level == SND_SOC_BIAS_OFF &&
@@ -1517,12 +1515,11 @@ static void dapm_pre_sequence_async(void *data, async_cookie_t cookie)
 	}
 }
 
-/* Async callback run prior to DAPM sequences - brings to their final
+/* Function run after DAPM sequences - brings to their final
  * state.
  */
-static void dapm_post_sequence_async(void *data, async_cookie_t cookie)
+static void dapm_post_sequence(struct snd_soc_dapm_context *d)
 {
-	struct snd_soc_dapm_context *d = data;
 	int ret;
 
 	/* If we just powered the last thing off drop to standby bias */
@@ -1654,7 +1651,6 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 	struct snd_soc_dapm_context *d;
 	LIST_HEAD(up_list);
 	LIST_HEAD(down_list);
-	ASYNC_DOMAIN_EXCLUSIVE(async_domain);
 	enum snd_soc_bias_level bias;
 
 	trace_snd_soc_dapm_start(card);
@@ -1730,11 +1726,9 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 
 	trace_snd_soc_dapm_walk_done(card);
 
-	/* Run all the bias changes in parallel */
+	/* Run all the bias changes */
 	list_for_each_entry(d, &dapm->card->dapm_list, list)
-		async_schedule_domain(dapm_pre_sequence_async, d,
-					&async_domain);
-	async_synchronize_full_domain(&async_domain);
+		dapm_pre_sequence(d);
 
 	/* Power down widgets first; try to avoid amplifying pops. */
 	dapm_seq_run(dapm, &down_list, event, false);
@@ -1744,11 +1738,9 @@ static int dapm_power_widgets(struct snd_soc_dapm_context *dapm, int event)
 	/* Now power up. */
 	dapm_seq_run(dapm, &up_list, event, true);
 
-	/* Run all the bias changes in parallel */
+	/* Run all the bias changes */
 	list_for_each_entry(d, &dapm->card->dapm_list, list)
-		async_schedule_domain(dapm_post_sequence_async, d,
-					&async_domain);
-	async_synchronize_full_domain(&async_domain);
+		dapm_post_sequence(d);
 
 	/* do we need to notify any clients that DAPM event is complete */
 	list_for_each_entry(d, &card->dapm_list, list) {
