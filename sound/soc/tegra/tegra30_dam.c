@@ -388,7 +388,7 @@ static const struct regmap_config tegra30_dam_regmap_config = {
 #endif
 	.writeable_reg = tegra30_dam_wr_rd_reg,
 	.readable_reg = tegra30_dam_wr_rd_reg,
-	.cache_type = REGCACHE_RBTREE,
+	.cache_type = REGCACHE_FLAT,
 };
 
 static int tegra30_dam_runtime_suspend(struct device *dev)
