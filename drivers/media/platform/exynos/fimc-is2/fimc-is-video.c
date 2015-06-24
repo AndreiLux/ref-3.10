@@ -1382,9 +1382,8 @@ int fimc_is_video_s_ctrl(struct file *file,
 
 			size = sizeof(struct v4l2_plane) * buf->length;
 			planes = kmalloc(size, GFP_KERNEL);
-			if (IS_ERR_OR_NULL(planes)) {
-				if (planes)
-					mverr("kmalloc is fail(%p)", device, video, planes);
+			if (!planes) {
+				mverr("kmalloc is fail(%p)", device, video, planes);
 				kfree(buf);
 				ret = -EINVAL;
 				goto p_err;

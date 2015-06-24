@@ -593,7 +593,7 @@ config HID_SAITEK
 
 config HID_SAMSUNG
 	tristate "Samsung InfraRed remote control or keyboards"
-	depends on (USB_HID || BT_HIDP)
+	depends on (USB_HID || HID)
 	---help---
 	Support for Samsung InfraRed remote control or keyboards.
 
@@ -737,7 +737,7 @@ config HID_WIIMOTE_EXT
 
 config HID_ZAGG
 	tristate "ZAGG InfraRed remote control or keyboards"
-	depends on (USB_HID || BT_HIDP)
+	depends on (USB_HID || HID)
 	---help---
 	Support for ZAGG InfraRed remote control or keyboards.
 

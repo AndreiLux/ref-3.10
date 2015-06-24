@@ -33,7 +33,6 @@
 #include <linux/regulator/machine.h>
 
 #include <linux/muic/muic.h>
-#include <linux/muic/max77833-muic-hv-typedef.h>
 #include <linux/muic/max77833-muic.h>
 
 #if defined (CONFIG_OF)
@@ -69,11 +68,20 @@ static struct mfd_cell max77833_devs[] = {
 #endif
 };
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+extern int p9220_otp_update;
+#endif
 int max77833_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 {
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&max77833->i2c_lock);
@@ -93,6 +101,12 @@ int max77833_bulk_read(struct i2c_client *i2c, u8 reg, int count, u8 *buf)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_i2c_block_data(i2c, reg, count, buf);
 	mutex_unlock(&max77833->i2c_lock);
@@ -108,6 +122,12 @@ int max77833_read_word(struct i2c_client *i2c, u8 reg)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_word_data(i2c, reg);
 	mutex_unlock(&max77833->i2c_lock);
@@ -123,6 +143,12 @@ int max77833_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&max77833->i2c_lock);
@@ -139,6 +165,12 @@ int max77833_bulk_write(struct i2c_client *i2c, u8 reg, int count, u8 *buf)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_write_i2c_block_data(i2c, reg, count, buf);
 	mutex_unlock(&max77833->i2c_lock);
@@ -154,6 +186,12 @@ int max77833_write_word(struct i2c_client *i2c, u8 reg, u16 value)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_write_word_data(i2c, reg, value);
 	mutex_unlock(&max77833->i2c_lock);
@@ -168,6 +206,12 @@ int max77833_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	if (ret >= 0) {
@@ -225,6 +269,12 @@ int max77833_write_fg(struct i2c_client *i2c, u16 reg, u16 val)
 		return -ENODEV;
 	}
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	if(p9220_otp_update) {
+		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
+		return -1;
+	}
+#endif
 	msg->addr = i2c->addr;
 	msg->flags = 0;
 	msg->len = 4;
@@ -457,7 +507,6 @@ u8 max77833_dumpaddr_pmic[] = {
 	MAX77833_PMIC_REG_MAINCTRL1,
 	MAX77833_PMIC_REG_MCONFIG,
 };
-*/
 
 u8 max77833_dumpaddr_muic[] = {
 	MAX77833_MUIC_REG_INTMASK1,
@@ -470,7 +519,6 @@ u8 max77833_dumpaddr_muic[] = {
 	MAX77833_MUIC_REG_CTRL3,
 };
 
-/*
 u8 max77833_dumpaddr_haptic[] = {
 	MAX77833_HAPTIC_REG_CONFIG1,
 	MAX77833_HAPTIC_REG_CONFIG2,
@@ -509,11 +557,11 @@ static int max77833_freeze(struct device *dev)
 	for (i = 0; i < ARRAY_SIZE(max77833_dumpaddr_pmic); i++)
 		max77833_read_reg(i2c, max77833_dumpaddr_pmic[i],
 				&max77833->reg_pmic_dump[i]);
-
+#if 0
 	for (i = 0; i < ARRAY_SIZE(max77833_dumpaddr_muic); i++)
 		max77833_read_reg(i2c, max77833_dumpaddr_muic[i],
 				&max77833->reg_muic_dump[i]);
-
+#endif
 	for (i = 0; i < ARRAY_SIZE(max77833_dumpaddr_led); i++)
 		max77833_read_reg(i2c, max77833_dumpaddr_led[i],
 				&max77833->reg_led_dump[i]);
@@ -534,11 +582,11 @@ static int max77833_restore(struct device *dev)
 	for (i = 0; i < ARRAY_SIZE(max77833_dumpaddr_pmic); i++)
 		max77833_write_reg(i2c, max77833_dumpaddr_pmic[i],
 				max77833->reg_pmic_dump[i]);
-
+#if 0
 	for (i = 0; i < ARRAY_SIZE(max77833_dumpaddr_muic); i++)
 		max77833_write_reg(i2c, max77833_dumpaddr_muic[i],
 				max77833->reg_muic_dump[i]);
-
+#endif
 	for (i = 0; i < ARRAY_SIZE(max77833_dumpaddr_led); i++)
 		max77833_write_reg(i2c, max77833_dumpaddr_led[i],
 				max77833->reg_led_dump[i]);

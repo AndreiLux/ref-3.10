@@ -699,7 +699,7 @@ s32 fc8180_init(HANDLE handle)
 							(BBM_I2C_SPI_POL));
 #endif
 
-	bbm_write(handle, BBM_INT_AUTO_CLEAR, 0x01);
+	bbm_write(handle, BBM_INT_AUTO_CLEAR, 0x00);
 	bbm_write(handle, BBM_BUF_ENABLE, 0x01);
 	bbm_write(handle, BBM_BUF_INT, 0x01);
 	bbm_write(handle, BBM_INT_MASK, 0x07);

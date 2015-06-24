@@ -419,7 +419,7 @@ static void i2s_txctrl(struct i2s_dai *i2s, int on)
 		con |=  CON_TXCH_PAUSE;
 
 		if (any_rx_active(i2s))
-			mod |= MOD_TXR_TXRX << i2s->txr_sht;
+			mod |= MOD_TXR_RXONLY << i2s->txr_sht;
 		else
 			con &= ~CON_ACTIVE;
 	}

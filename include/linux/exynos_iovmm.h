@@ -25,6 +25,7 @@ typedef u32 exynos_iova_t;
 
 int iovmm_activate(struct device *dev);
 void iovmm_deactivate(struct device *dev);
+struct iommu_domain *get_domain_from_dev(struct device *dev);
 
 /* iovmm_map() - Maps a list of physical memory chunks
  * @dev: the owner of the IO address space where the mapping is created

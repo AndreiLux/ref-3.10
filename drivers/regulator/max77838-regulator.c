@@ -185,6 +185,32 @@ static int max77838_reg_set_active_discharge(struct max77838_reg *max77838_reg,
 	return rc;
 }
 
+struct max77838_reg *max77838_reg_global;
+
+int max77838_reg_set_diode_mode(bool on)
+{
+	int rc, reg, val;
+
+	if (on)
+		val = 0x01<<6;
+	else
+		val = 0;
+
+	if (max77838_reg_global) {
+		/* decide diode mode */
+		reg = REG_GPIO_PD_CTRL;
+		rc = regmap_write(max77838_reg_global->regmap, reg, val);
+		pr_info ("MAX77838: set addr(0x%x) to 0x%x\n", reg, val);
+	} else {
+		pr_info ("MAX77838: device is not ready\n");
+		return -1;
+	}
+
+	return rc;
+}
+
+EXPORT_SYMBOL(max77838_reg_set_diode_mode);
+
 static int max77838_reg_hw_init(struct max77838_reg *max77838_reg,
 			struct max77838_regulator_platform_data *pdata)
 {
@@ -202,6 +228,11 @@ static int max77838_reg_hw_init(struct max77838_reg *max77838_reg,
 	/* uvlo falling threshold */
 	reg = REG_UVLO_CFG1;
 	val = pdata->uvlo_fall_threshold<<M2SH(BIT_UVLO_F);
+	rc = regmap_write(max77838_reg->regmap, reg, val);
+
+	/* set diode mode */
+	val = 0x01<<6;
+	reg = REG_GPIO_PD_CTRL;
 	rc = regmap_write(max77838_reg->regmap, reg, val);
 
 	return rc;
@@ -353,6 +384,8 @@ static int max77838_regulator_probe(struct i2c_client *client,
 		pr_err("<%s> fail to initialize platform data\n", client->name);
 		goto abort;
 	}
+
+	max77838_reg_global = max77838_reg;
 
 	pr_info("<%s> probe end\n", client->name);
 

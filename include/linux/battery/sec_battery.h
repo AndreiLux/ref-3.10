@@ -138,10 +138,12 @@ struct sec_battery_info {
 	int temper_amb;		/* target temperature */
 	int chg_temp;
 	int pre_chg_temp;
+	int wpc_temp;
 
 	int temp_adc;
 	int temp_ambient_adc;
 	int chg_temp_adc;
+	int wpc_temp_adc;
 
 	int temp_highlimit_threshold;
 	int temp_highlimit_recovery;
@@ -170,6 +172,9 @@ struct sec_battery_info {
 	struct wake_lock vbus_wake_lock;
 	struct delayed_work siop_work;
 	struct wake_lock siop_wake_lock;
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	struct delayed_work update_work;
+#endif
 
 	unsigned int full_check_cnt;
 	unsigned int recharge_check_cnt;
@@ -194,8 +199,8 @@ struct sec_battery_info {
 	/* MTBF test for CMCC */
 	bool is_hc_usb;
 
-
-
+	bool ignore_siop;
+	int r_siop_level;
 	int siop_level;
 	int stability_test;
 	int eng_not_full_status;
@@ -342,6 +347,17 @@ enum {
 #endif
 	HMT_TA_CONNECTED,
 	HMT_TA_CHARGE,
+#if defined(CONFIG_BATTERY_AGE_FORECAST)
+	FG_CYCLE,
+	FG_FULL_VOLTAGE,
+#endif
+#if defined(CONFIG_WIRELESS_CHARGER_THM)
+	BATT_WPC_TEMP,
+	BATT_WPC_TEMP_ADC,
+#endif
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
+	BATT_WIRELESS_FIRMWARE_UPDATE,
+#endif
 };
 
 #ifdef CONFIG_OF

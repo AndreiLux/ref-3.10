@@ -401,7 +401,8 @@ static inline void eax_dma_xfer(struct runtime_data *prtd,
 			prtd->dma_pos = dma_pos;
 		}
 
-		if (prtd->running && (prtd->dma_pos % prtd->dma_period) == 0)
+		if (prtd->running &&
+			((prtd->dma_pos - prtd->dma_start) % prtd->dma_period == 0))
 			snd_pcm_period_elapsed(prtd->substream);
 	} else {
 		if (!prtd->normal_dma_mono || !npcm_l || !npcm_r) {
@@ -420,10 +421,12 @@ static inline void eax_dma_xfer(struct runtime_data *prtd,
 		}
 
 		if (prtd->dma_period > NMIXBUF_BYTE * 2) {
-			if (prtd->running && (prtd->dma_pos % NMIXBUF_BYTE) == 0)
+			if (prtd->running &&
+				((prtd->dma_pos - prtd->dma_start) % prtd->dma_period == 0))
 				snd_pcm_period_elapsed(prtd->substream);
 		} else {
-			if (prtd->running && (prtd->dma_pos % prtd->dma_period) == 0)
+			if (prtd->running &&
+				((prtd->dma_pos - prtd->dma_start) % prtd->dma_period == 0))
 				snd_pcm_period_elapsed(prtd->substream);
 		}
 	}
@@ -757,9 +760,11 @@ static inline bool eax_mixer_any_buf_running(void)
 static void eax_mixer_prepare(void)
 {
 	struct buf_info *bi;
-	short nmix_l, nmix_r, npcm_l, npcm_r;
+	short npcm_l, npcm_r;
+	int nmix_l, nmix_r;
 	short *nmix_buf;
-	int umix_l, umix_r, upcm_l, upcm_r;
+	int upcm_l, upcm_r;
+	long umix_l, umix_r;
 	int *umix_buf;
 	int n;
 
@@ -786,9 +791,18 @@ static void eax_mixer_prepare(void)
 					umix_r += upcm_r;
 				}
 			}
+			if (umix_l > 0x7fffffff)
+				umix_l = 0x7fffffff;
+			else if (umix_l < -0x7fffffff)
+				umix_l = -0x7fffffff;
 
-			*umix_buf++ = umix_l;
-			*umix_buf++ = umix_r;
+			if (umix_r > 0x7fffffff)
+				umix_r = 0x7fffffff;
+			else if (umix_r < -0x7fffffff)
+				umix_r = -0x7fffffff;
+
+			*umix_buf++ = (int)umix_l;
+			*umix_buf++ = (int)umix_r;
 		}
 	} else {
 		nmix_buf = mi.nmix_buf;
@@ -808,9 +822,18 @@ static void eax_mixer_prepare(void)
 					nmix_r += npcm_r;
 				}
 			}
+			if (nmix_l > 0x7fff)
+				nmix_l = 0x7fff;
+			else if (nmix_l < -0x7fff)
+				nmix_l = -0x7fff;
 
-			*nmix_buf++ = nmix_l;
-			*nmix_buf++ = nmix_r;
+			if (nmix_r > 0x7fff)
+				nmix_r = 0x7fff;
+			else if (nmix_r < -0x7fff)
+				nmix_r = -0x7fff;
+
+			*nmix_buf++ = (short)nmix_l;
+			*nmix_buf++ = (short)nmix_r;
 		}
 	}
 
@@ -829,8 +852,13 @@ static void eax_mixer_write(void)
 	}
 	spin_unlock(&mi.lock);
 
-	if (!di.running && di.buf_fill[DMA_START_THRESHOLD])
+	if (!di.running && di.buf_fill[DMA_START_THRESHOLD]) {
+		if (!di.prepare_done) {
+			eax_adma_hw_params(mi.mixbuf_byte);
+			eax_adma_prepare(mi.mixbuf_byte);
+		}
 		eax_adma_trigger(true);
+	}
 
 	if (di.buf_fill[di.buf_wr_idx]) {
 		if (!di.running)

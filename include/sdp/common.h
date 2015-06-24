@@ -8,9 +8,7 @@
 
 #define BASE_ID KNOX_PERSONA_BASE_ID
 #define GET_ARR_IDX(__userid) (__userid - BASE_ID)
-#define KEK_MAX_LEN KEK_MAXLEN
-#define SDP_MAX_USERS 5
 
-#define PERSONA_KEY_ARR_IDX(personaId) (personaId-DEK_USER_ID_OFFSET)
+#define SDP_CACHE_CLEANUP_DEBUG   0
 
 #endif

@@ -24,6 +24,8 @@
 mali_error exynos_gpu_hwcnt_update(struct kbase_device *kbdev)
 {
 	mali_error err = MALI_ERROR_FUNCTION_FAILED;
+	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
+	static int polling_period = 0;
 
 	KBASE_DEBUG_ASSERT(kbdev);
 
@@ -37,8 +39,15 @@ mali_error exynos_gpu_hwcnt_update(struct kbase_device *kbdev)
 		goto out;
 	}
 
+	polling_period -= platform->polling_speed;
+	if (polling_period > 0) {
+		err = MALI_ERROR_NONE;
+		goto out;
+	}
+
 #ifdef MALI_SEC_HWCNT_DUMP_DVFS_THREAD
 	if (kbdev->hwcnt.is_powered && kbdev->hwcnt.kctx) {
+		polling_period = platform->hwcnt_polling_speed;
 		err = hwcnt_dump(kbdev->hwcnt.kctx);
 		if (err != MALI_ERROR_NONE) {
 			GPU_LOG(DVFS_INFO, DUMMY, 0u, 0u, "hwcnt dump error in %s %d \n", __FUNCTION__, err);
@@ -101,14 +110,14 @@ void hwcnt_utilization_equation(struct kbase_device *kbdev)
 			platform->cur_clock >= platform->gpu_max_clock_limit) {
 		kbdev->hwcnt.cnt_for_bt_start++;
 		kbdev->hwcnt.cnt_for_bt_stop = 0;
-		if (kbdev->hwcnt.cnt_for_bt_start > 10) {
+		if (kbdev->hwcnt.cnt_for_bt_start > platform->hwcnt_up_step) {
 			platform->hwcnt_bt_clk = TRUE;
 			kbdev->hwcnt.cnt_for_bt_start = 0;
 		}
 	} else {
 		kbdev->hwcnt.cnt_for_bt_stop++;
 		kbdev->hwcnt.cnt_for_bt_start = 0;
-		if (kbdev->hwcnt.cnt_for_bt_stop > 5) {
+		if (kbdev->hwcnt.cnt_for_bt_stop > platform->hwcnt_down_step) {
 			platform->hwcnt_bt_clk = FALSE;
 			kbdev->hwcnt.cnt_for_bt_stop = 0;
 		}
@@ -226,14 +235,13 @@ void hwcnt_accumulate_resource(struct kbase_device *kbdev)
 	addr = (unsigned int *)kbdev->hwcnt.kspace_addr;
 	acc_addr = (unsigned int*)kbdev->hwcnt.acc_buffer;
 
+	__flush_dcache_area((void *)addr, HWC_ACC_BUFFER_SIZE);
+
 	/* following copy code will be optimized soon */
 	for (i=0; i < HWC_ACC_BUFFER_SIZE / 4; i++)
 	{
 		*(acc_addr + i) += *(addr + i);
 	}
-
-	/* wondering why following buffer clear code is required */
-	memset(kbdev->hwcnt.kspace_addr, 0, HWC_ACC_BUFFER_SIZE);
 }
 
 mali_error hwcnt_dump(struct kbase_context *kctx)

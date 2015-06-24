@@ -84,7 +84,7 @@ void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 	if (rkp_do) rkp_call(RKP_PGD_FREE, (unsigned long)pgd, 0, 0, 0, 0);
 	/* if pgd memory come from read only buffer, the put it back */
 	/*TODO: use a macro*/
-	if( rkp_do &&	(unsigned long)pgd >= (unsigned long)RKP_RBUF_VA && (unsigned long)pgd < ((unsigned long)RKP_RBUF_VA +  (1UL << 23)) /*8MB */)
+	if( rkp_do &&	(unsigned long)pgd >= (unsigned long)RKP_RBUF_VA && (unsigned long)pgd < ((unsigned long)RKP_RBUF_VA +  TIMA_ROBUF_SIZE))
 		rkp_ro_free((void*)pgd);
 	else
 	{

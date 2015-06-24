@@ -85,22 +85,15 @@ static inline int _scfs_readpage(struct file *file, struct page *page, int pref_
 
 #if MAX_BUFFER_CACHE
 	/* search buffer_cache first in case the cluster is left cached */
-	if (pref_index >= 0 &&
-		sbi->buffer_cache[pref_index].ino == sii->vfs_inode.i_ino &&
-		sbi->buffer_cache[pref_index].clust_num ==
-			PAGE_TO_CLUSTER_INDEX(page, sii) &&
-		atomic_read(&sbi->buffer_cache[pref_index].is_used) != 1) {
+	if (pref_index >= 0 && BUFFERCACHE_HIT(sbi->buffer_cache[pref_index], page, sii)) {
 		spin_lock(&sbi->buffer_cache_lock);
 		/* this pref_index is used for another page */
-		if (sbi->buffer_cache[pref_index].ino != sii->vfs_inode.i_ino ||
-				sbi->buffer_cache[pref_index].clust_num !=
-				PAGE_TO_CLUSTER_INDEX(page, sii) ||
-				atomic_read(&sbi->buffer_cache[pref_index].is_used) == 1) {
+		if (!BUFFERCACHE_HIT(sbi->buffer_cache[pref_index], page, sii)) {
 			spin_unlock(&sbi->buffer_cache_lock);
 			sbi->buffer_cache_reclaimed_before_used_count++;
 			goto pick_slot;
 		}
-		atomic_set(&sbi->buffer_cache[pref_index].is_used, 1);
+		atomic_inc(&sbi->buffer_cache[pref_index].is_using);
 		spin_unlock(&sbi->buffer_cache_lock);
 		virt = kmap_atomic(page);
 
@@ -111,7 +104,7 @@ static inline int _scfs_readpage(struct file *file, struct page *page, int pref_
 			memcpy(virt, page_address(sbi->buffer_cache[pref_index].c_page) +
 				PGOFF_IN_CLUSTER(page, sii) * PAGE_SIZE, PAGE_SIZE);
 
-		atomic_set(&sbi->buffer_cache[pref_index].is_used, 0);
+		atomic_dec(&sbi->buffer_cache[pref_index].is_using);
 		kunmap_atomic(virt);
 		SetPageUptodate(page);
 		unlock_page(page);
@@ -125,19 +118,13 @@ static inline int _scfs_readpage(struct file *file, struct page *page, int pref_
 
 	/* search buffer_cache first in case the cluster is left cached */
 	for (i = 0; i < MAX_BUFFER_CACHE; i++) {
-		if (sbi->buffer_cache[i].ino == sii->vfs_inode.i_ino &&
-			sbi->buffer_cache[i].clust_num ==
-				PAGE_TO_CLUSTER_INDEX(page, sii) &&
-			atomic_read(&sbi->buffer_cache[i].is_used) != 1) {
+		if (BUFFERCACHE_HIT(sbi->buffer_cache[i], page, sii)) {
 			spin_lock(&sbi->buffer_cache_lock);
-			if (sbi->buffer_cache[i].ino != sii->vfs_inode.i_ino ||
-					sbi->buffer_cache[i].clust_num !=
-					PAGE_TO_CLUSTER_INDEX(page, sii) ||
-					atomic_read(&sbi->buffer_cache[i].is_used) == 1) {
+			if (!BUFFERCACHE_HIT(sbi->buffer_cache[i], page, sii)) {
 				spin_unlock(&sbi->buffer_cache_lock);
 				goto pick_slot;
 			}
-			atomic_set(&sbi->buffer_cache[i].is_used, 1);
+			atomic_inc(&sbi->buffer_cache[i].is_using);
 			spin_unlock(&sbi->buffer_cache_lock);
 			virt = kmap_atomic(page);
 
@@ -148,7 +135,7 @@ static inline int _scfs_readpage(struct file *file, struct page *page, int pref_
 				memcpy(virt, page_address(sbi->buffer_cache[i].c_page) +
 					PGOFF_IN_CLUSTER(page, sii) * PAGE_SIZE, PAGE_SIZE);
 
-			atomic_set(&sbi->buffer_cache[i].is_used, 0);
+			atomic_dec(&sbi->buffer_cache[i].is_using);
 			kunmap_atomic(virt);
 			SetPageUptodate(page);
 			unlock_page(page);
@@ -161,14 +148,14 @@ static inline int _scfs_readpage(struct file *file, struct page *page, int pref_
 
 pick_slot:
 	/* pick a slot in buffer_cache to use */
-	if (atomic_read(&sbi->buffer_cache[sbi->read_buffer_index].is_used) != 1) {
+	if (!atomic_read(&sbi->buffer_cache[sbi->read_buffer_index].is_using)) {
 		spin_lock(&sbi->buffer_cache_lock);
 		/* this index is used for another page */
-		if (atomic_read(&sbi->buffer_cache[sbi->read_buffer_index].is_used) == 1) {
+		if (atomic_read(&sbi->buffer_cache[sbi->read_buffer_index].is_using)) {
 			spin_unlock(&sbi->buffer_cache_lock);
 			goto pick_slot_full;
 		}
-		atomic_set(&sbi->buffer_cache[sbi->read_buffer_index].is_used, 1);
+		atomic_set(&sbi->buffer_cache[sbi->read_buffer_index].is_using, BC_REPLACING);
 		allocated_index = sbi->read_buffer_index++;
 		
 		if (sbi->read_buffer_index >= MAX_BUFFER_CACHE)
@@ -187,15 +174,15 @@ pick_slot:
 
 pick_slot_full:
 	for (i = 0; i < MAX_BUFFER_CACHE; i++) {
-		if (atomic_read(&sbi->buffer_cache[i].is_used) != 1) {
+		if (!atomic_read(&sbi->buffer_cache[i].is_using)) {
 			spin_lock(&sbi->buffer_cache_lock);
 			/* this index is used for another page */
-			if (atomic_read(&sbi->buffer_cache[i].is_used) == 1) {
+			if (atomic_read(&sbi->buffer_cache[i].is_using)) {
 				spin_unlock(&sbi->buffer_cache_lock);
 				continue;
 			}
 
-			atomic_set(&sbi->buffer_cache[i].is_used, 1);
+			atomic_set(&sbi->buffer_cache[i].is_using, BC_REPLACING);
 			sbi->read_buffer_index = i + 1;
 
 			if (sbi->read_buffer_index >= MAX_BUFFER_CACHE)
@@ -272,7 +259,7 @@ real_io:
 	}
 
 #if MAX_BUFFER_CACHE
-	/* don't need to spinlock, we have is_used=1 for this buffer */
+	/* don't need to spinlock, we have positive is_using for this buffer */
 	if (alloc_membuffer != 1)
 		sbi->buffer_cache[allocated_index].is_compressed = compressed;
 #endif
@@ -301,17 +288,17 @@ real_io:
 #if MAX_BUFFER_CACHE
 #ifndef SCFS_REMOVE_NO_COMPRESSED_UPPER_MEMCPY
 	if (alloc_membuffer != 1) {
-		atomic_set(&sbi->buffer_cache[allocated_index].is_used, 0);
+		atomic_set(&sbi->buffer_cache[allocated_index].is_using, 0);
 	}
 #else
 	if (alloc_membuffer != 1 && compressed) {
-		atomic_set(&sbi->buffer_cache[allocated_index].is_used, 0);
+		atomic_set(&sbi->buffer_cache[allocated_index].is_using, 0);
 	} else if (alloc_membuffer != 1) {
 		spin_lock(&sbi->buffer_cache_lock);
 		sbi->buffer_cache[allocated_index].ino = -1;
 		sbi->buffer_cache[allocated_index].clust_num = -1;
 		sbi->buffer_cache[allocated_index].is_compressed = -1;
-		atomic_set(&sbi->buffer_cache[allocated_index].is_used, -1);
+		atomic_set(&sbi->buffer_cache[allocated_index].is_using, 0);
 		spin_unlock(&sbi->buffer_cache_lock);
 	}
 #endif
@@ -340,6 +327,22 @@ out:
 		return 0;
 }
 
+int scfs_clear_cluster(struct inode *inode)
+{
+	struct scfs_sb_info *sbi = SCFS_S(inode->i_sb);
+	int i;
+
+	for (i = 0; i < MAX_BUFFER_CACHE; i++) {
+		if (sbi->buffer_cache[i].ino == inode->i_ino) {
+			spin_lock(&sbi->buffer_cache_lock);
+			if (sbi->buffer_cache[i].ino == inode->i_ino)
+				sbi->buffer_cache[i].ino = -1;
+			spin_unlock(&sbi->buffer_cache_lock);
+		}
+	}
+	return 0;
+}
+
 static int scfs_readpage(struct file *file, struct page *page)
 {
 	int ret;
@@ -360,7 +363,7 @@ int smb_init(struct scfs_sb_info *sbi)
 {
 	int i, j;
 
-	for (i = 0; i < NR_CPUS; i++) {
+	for (i = 0; i < SCFS_CPUS; i++) {
 		sbi->smb_task[i] = kthread_run(smb_thread, sbi, "scfs_mb%d", i);
 
 		if (IS_ERR(sbi->smb_task[i])) {
@@ -373,7 +376,7 @@ int smb_init(struct scfs_sb_info *sbi)
 
 #ifdef SCFS_SMB_THREAD_CPU_AFFINITY
 		{
-			struct cpumask cpus[NR_CPUS];
+			struct cpumask cpus[SCFS_CPUS];
 			cpumask_clear(&cpus[i]);
 			cpumask_set_cpu(i, &cpus[i]);
 
@@ -391,7 +394,7 @@ void smb_destroy(struct scfs_sb_info *sbi)
 {
 	int i;
 
-	for(i = 0 ; i < NR_CPUS ; i++) {
+	for(i = 0 ; i < SCFS_CPUS ; i++) {
 		if(sbi->smb_task[i])
 			kthread_stop(sbi->smb_task[i]);
 		sbi->smb_task[i] = NULL;
@@ -420,13 +423,13 @@ void wakeup_smb_thread(struct scfs_sb_info *sbi)
 
 	if (length > 0 && sbi->smb_task[0] && !sbi->smb_task_status[0])
 		wake_up_process(sbi->smb_task[0]);
-#if (NR_CPUS > 1)
+#if (SCFS_CPUS > 1)
 	if (length >= SMB_THREAD_THRESHOLD_2 &&sbi->smb_task[1] && !sbi->smb_task_status[1])
 		wake_up_process(sbi->smb_task[1]);
-#if (NR_CPUS > 2)
+#if (SCFS_CPUS > 2)
 	if (length >= SMB_THREAD_THRESHOLD_3 && sbi->smb_task[2] && !sbi->smb_task_status[2])
 		wake_up_process(sbi->smb_task[2]);
-#if (NR_CPUS > 3)
+#if (SCFS_CPUS > 3)
 	if (length >= SMB_THREAD_THRESHOLD_4 && sbi->smb_task[3] && !sbi->smb_task_status[3])
 		wake_up_process(sbi->smb_task[3]);
 #endif
@@ -1167,7 +1170,7 @@ int smtc_init(struct scfs_sb_info *sbi)
 {
 	int i, j;
 
-	for (i = 0; i < NR_CPUS; i++) {
+	for (i = 0; i < SCFS_CPUS; i++) {
 		sbi->smtc_task[i] = kthread_run(smtc_thread, sbi, "scfs_mtc%d", i);
 
 		if (IS_ERR(sbi->smtc_task[i])) {
@@ -1192,7 +1195,7 @@ void smtc_destroy(struct scfs_sb_info *sbi)
 {
 	int i;
 
-	for (i = 0 ; i < NR_CPUS ; i++) {
+	for (i = 0 ; i < SCFS_CPUS ; i++) {
 		if (sbi->smtc_task[i])
 			kthread_stop(sbi->smtc_task[i]);
 		sbi->smtc_task[i] = NULL;
@@ -1214,13 +1217,13 @@ void wakeup_smtc_thread(struct scfs_sb_info *sbi)
 
 	if (length > 0 && sbi->smtc_task[0])
 		wake_up_process(sbi->smtc_task[0]);
-#if (NR_CPUS > 1)
+#if (SCFS_CPUS > 1)
 	if (length >= SMTC_THREAD_THRESHOLD_2 && sbi->smtc_task[1])
 		wake_up_process(sbi->smtc_task[1]);
-#if (NR_CPUS > 2)
+#if (SCFS_CPUS > 2)
 	if (length >= SMTC_THREAD_THRESHOLD_3 && sbi->smtc_task[2])
 		wake_up_process(sbi->smtc_task[2]);
-#if (NR_CPUS > 3)
+#if (SCFS_CPUS > 3)
 	if (length >= SMTC_THREAD_THRESHOLD_4 && sbi->smtc_task[3])
 		wake_up_process(sbi->smtc_task[3]);
 #endif

@@ -186,6 +186,7 @@ struct max77843_charger_data {
 	struct max77843_platform_data *max77843_pdata;
 
 	struct power_supply	psy_chg;
+	struct power_supply	psy_otg;
 
 	struct workqueue_struct *wqueue;
 	struct work_struct	chgin_work;

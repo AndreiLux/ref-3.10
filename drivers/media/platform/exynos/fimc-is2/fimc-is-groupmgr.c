@@ -565,6 +565,9 @@ extern int lm3560_reg_update_export(u8 reg, u8 mask, u8 data);
 #ifdef CONFIG_LEDS_SKY81296
 extern int sky81296_torch_ctrl(int state);
 #endif
+#if defined(CONFIG_TORCH_CURRENT_CHANGE_SUPPORT) && defined(CONFIG_LEDS_S2MPB02)
+extern int s2mpb02_set_torch_current(bool movie);
+#endif
 
 static void fimc_is_group_set_torch(struct fimc_is_group *group,
 	struct fimc_is_frame *ldr_frame)
@@ -582,12 +585,18 @@ static void fimc_is_group_set_torch(struct fimc_is_group *group,
 #elif defined(CONFIG_LEDS_SKY81296)
 			sky81296_torch_ctrl(1);
 #endif
+#if defined(CONFIG_TORCH_CURRENT_CHANGE_SUPPORT) && defined(CONFIG_LEDS_S2MPB02)
+			s2mpb02_set_torch_current(true);
+#endif
 			break;
 		case AA_FLASHMODE_START: /*Pre flash mode*/
 #ifdef CONFIG_LEDS_LM3560
 			lm3560_reg_update_export(0xE0, 0xFF, 0xEF);
 #elif defined(CONFIG_LEDS_SKY81296)
 			sky81296_torch_ctrl(1);
+#endif
+#if defined(CONFIG_TORCH_CURRENT_CHANGE_SUPPORT) && defined(CONFIG_LEDS_S2MPB02)
+			s2mpb02_set_torch_current(false);
 #endif
 			break;
 		case AA_FLASHMODE_CAPTURE: /*Main flash mode*/

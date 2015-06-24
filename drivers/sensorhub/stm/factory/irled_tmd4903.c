@@ -27,7 +27,7 @@ static ssize_t irled_send_store(struct device *dev,
 	unsigned int buf_len = 0;
 	unsigned int iRet;
 
-	buf_len = strlen(buf)+1;
+	buf_len = (unsigned int)strlen(buf)+1;
 	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
 		pr_err("[SSP]: %s - failed to allocate memory\n", __func__);

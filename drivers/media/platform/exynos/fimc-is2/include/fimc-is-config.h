@@ -12,6 +12,11 @@
 #ifndef FIMC_IS_CONFIG_H
 #define FIMC_IS_CONFIG_H
 
+#if defined(CONFIG_CAMERA_ZERO) || defined(CONFIG_CAMERA_MARINE) || defined(CONFIG_CAMERA_VLTE) \
+ || defined(CONFIG_CAMERA_NOBLE) || defined(CONFIG_CAMERA_ZENLTE)
+#include "../vendor/fimc-is-vendor-config_zero.h"
+#endif
+
 /*
  * =================================================================================================
  * CONFIG - GLOBAL OPTIONS
@@ -91,7 +96,7 @@
  * =================================================================================================
  */
 
-/* #define FW_SUSPEND_RESUME */
+#define FW_SUSPEND_RESUME
 #define ENABLE_CLOCK_GATE
 #define HAS_FW_CLOCK_GATE
 /* #define ENABLE_CACHE */

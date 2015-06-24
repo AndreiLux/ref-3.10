@@ -11,9 +11,12 @@
  */
 
 struct fimc_is_af_gpio {
+	bool use_i2c_pinctrl;
 	char *sda;
 	char *scl;
 	char *pinname;
+	int pinfunc_on;
+	int pinfunc_off;
 };
 
 struct fimc_is_device_af {

@@ -64,6 +64,10 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define s5p_mfc_get_disp_frame_type()	(readl(ctx->dev->regs_base + \
 						S5P_FIMV_D_DISPLAY_FRAME_TYPE) \
 						& S5P_FIMV_DISPLAY_FRAME_MASK)
+#define s5p_mfc_get_interlace_type()	((readl(dev->regs_base + 			\
+						S5P_FIMV_D_DISPLAY_FRAME_TYPE)		\
+						>> S5P_FIMV_DISPLAY_TEMP_INFO_SHIFT)	\
+						& S5P_FIMV_DISPLAY_TEMP_INFO_MASK)
 #define s5p_mfc_get_consumed_stream()	readl(dev->regs_base + \
 						S5P_FIMV_D_DECODED_NAL_SIZE)
 #define s5p_mfc_get_int_reason()	(readl(dev->regs_base + \
@@ -90,6 +94,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 						S5P_FIMV_RET_INSTANCE_ID)
 #define s5p_mfc_get_enc_dpb_count()	readl(dev->regs_base + \
 						S5P_FIMV_E_NUM_DPB)
+#define s5p_mfc_get_enc_scratch_size()	0
 #define s5p_mfc_get_enc_strm_size()	readl(dev->regs_base + \
 						S5P_FIMV_E_STREAM_SIZE)
 #define s5p_mfc_get_enc_slice_type()	readl(dev->regs_base + \
@@ -107,9 +112,9 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 						S5P_FIMV_D_USED_DPB_FLAG_LOWER)
 
 #define s5p_mfc_is_interlace_picture()	((readl(dev->regs_base + \
-					S5P_FIMV_D_DECODED_STATUS) & \
-					S5P_FIMV_DEC_STATUS_INTERLACE_MASK) == \
-					S5P_FIMV_DEC_STATUS_INTERLACE)
+					S5P_FIMV_D_DISPLAY_STATUS) & \
+					S5P_FIMV_DEC_STATUS_INTERLACE_MASK)) >> \
+					S5P_FIMV_DEC_STATUS_INTERLACE_SHIFT
 
 #define s5p_mfc_get_dec_status()	(readl(dev->regs_base + \
 						S5P_FIMV_D_DECODED_STATUS) \

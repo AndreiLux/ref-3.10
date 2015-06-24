@@ -25,6 +25,9 @@
 #include <linux/time.h>
 #include <linux/timer.h>
 
+#include <linux/pinctrl/consumer.h>
+#include "../../pinctrl/core.h"
+
 #define MAX86902_DEBUG
 
 #define MAX86900_SLAVE_ADDR			0x51
@@ -197,7 +200,8 @@ typedef enum _PART_TYPE
 	PART_TYPE_MAX86900A,
 	PART_TYPE_MAX86900B,
 	PART_TYPE_MAX86900C,
-	PART_TYPE_MAX86902A,
+	PART_TYPE_MAX86906,
+	PART_TYPE_MAX86902A = 10,
 	PART_TYPE_MAX86902B,
 } PART_TYPE;
 
@@ -218,6 +222,9 @@ struct max86900_device_data
 	struct mutex activelock;
 	struct delayed_work uv_sr_work_queue;
 	struct delayed_work reenable_work_queue;
+	struct pinctrl *p;
+	struct pinctrl_state *pins_sleep;
+	struct pinctrl_state *pins_idle;
 	const char *led_3p3;
 	const char *vdd_1p8;
 	bool *bio_status;

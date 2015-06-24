@@ -402,8 +402,10 @@ static ssize_t wakeup_enable(struct device *dev,
 		struct gpio_button_data *bdata = &ddata->data[i];
 		if (test_bit(bdata->button->code, bits))
 			bdata->button->wakeup = 1;
-		else
-			bdata->button->wakeup = 0;
+		else {
+			if (!bdata->button->always_wakeup)
+				bdata->button->wakeup = 0;
+		}
 	}
 
 out:
@@ -454,6 +456,8 @@ static void gpio_keys_gpio_report_event(struct gpio_button_data *bdata)
 #ifdef CONFIG_INPUT_BOOSTER
 	if (button->code == KEY_HOMEPAGE)
 		input_booster_send_event(BOOSTER_DEVICE_KEY, !!state);
+	if ((button->code == KEY_RECENT) || (button->code == KEY_BACK))
+		input_booster_send_event(BOOSTER_DEVICE_TOUCHKEY, !!state);
 #endif
 }
 
@@ -700,6 +704,9 @@ static void gpio_keys_close(struct input_dev *input)
 		if (bdata->button->code == KEY_HOMEPAGE) {
 			input_booster_send_event(BOOSTER_DEVICE_KEY, BOOSTER_MODE_FORCE_OFF);
 		}
+		if ((bdata->button->code == KEY_RECENT) ||(bdata->button->code == KEY_BACK)) {
+			input_booster_send_event(BOOSTER_DEVICE_TOUCHKEY, BOOSTER_MODE_FORCE_OFF);
+		}
 	}
 #endif
 }
@@ -784,7 +791,8 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 		if (of_property_read_u32(pp, "linux,input-type", &button->type))
 			button->type = EV_KEY;
 
-		button->wakeup = !!of_get_property(pp, "gpio-key,wakeup", NULL);
+		button->always_wakeup = !!of_get_property(pp, "gpio-key,wakeup", NULL);
+		button->wakeup = button->always_wakeup;
 
 		if (of_property_read_u32(pp, "debounce-interval",
 					 &button->debounce_interval))

@@ -65,6 +65,12 @@
 #define ECRYPTFS_MAX_NUM_USERS 32768
 #define ECRYPTFS_XATTR_NAME "user.ecryptfs"
 
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+#define RA_CLEAR	0
+#define RA_RESTORE	1
+#define FMPINFO_CLEAR	0
+#define FMPINFO_SET	1
+#endif
 #ifdef CONFIG_SDP
 #define PKG_NAME_SIZE 16
 #endif
@@ -418,6 +424,8 @@ struct ecryptfs_mount_crypt_stat {
 	int userid;
 	struct list_head chamber_dir_list;
 	spinlock_t chamber_dir_list_lock;
+
+	int partition_id;
 #endif
 
 };
@@ -778,21 +786,12 @@ int ecryptfs_write_lower_page_segment(struct inode *ecryptfs_inode,
 				      struct page *page_for_lower,
 				      size_t offset_in_page, size_t size);
 int ecryptfs_write(struct inode *inode, char *data, loff_t offset, size_t size);
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-int ecryptfs_read_lower(char *data, loff_t offset, size_t size,
-			struct inode *ecryptfs_inode, unsigned int crypt);
-int ecryptfs_read_lower_page_segment(struct page *page_for_ecryptfs,
-				     pgoff_t page_index,
-				     size_t offset_in_page, size_t size,
-				     struct inode *ecryptfs_inode, unsigned int crypt);
-#else
 int ecryptfs_read_lower(char *data, loff_t offset, size_t size,
 			struct inode *ecryptfs_inode);
 int ecryptfs_read_lower_page_segment(struct page *page_for_ecryptfs,
 				     pgoff_t page_index,
 				     size_t offset_in_page, size_t size,
 				     struct inode *ecryptfs_inode);
-#endif
 struct page *ecryptfs_get_locked_page(struct inode *inode, loff_t index);
 int ecryptfs_parse_packet_length(unsigned char *data, size_t *size,
 				 size_t *length_size);
@@ -832,6 +831,10 @@ int ecryptfs_set_f_namelen(long *namelen, long lower_namelen,
 			   struct ecryptfs_mount_crypt_stat *mount_crypt_stat);
 int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		       loff_t offset);
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+void ecryptfs_propagate_rapages(struct file *file, unsigned int crypt);
+void ecryptfs_propagate_fmpinfo(struct inode *inode, unsigned int flag);
+#endif
 
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER
 extern int is_file_name_match(struct ecryptfs_mount_crypt_stat *mcs,

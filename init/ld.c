@@ -82,7 +82,7 @@ int ld_binary_to_Elf_Ehdr(void *binary, _Elf_Ehdr **ehdr) {
 int ld_get_entry(void *binary, void **entry) {
 
 	_Elf_Ehdr *ehdr;
-	void *base;
+	void *base = NULL;
 
 	ld_log("%s\n", __FUNCTION__);
 
@@ -136,7 +136,7 @@ int ld_get_version(void *binary, char **version) {
 	char *name;
 	char **string;
 	_Elf_Sym *sym;
-	void *base;
+	void *base = NULL;
 	unsigned int i;
 
 	ld_log("%s\n", __FUNCTION__);
@@ -513,7 +513,7 @@ int ld_fixup_dynamic_relatab(void *binary, ld_resolve_t resolve, ld_translate_t 
 	size_t symtabsz;
 	_Elf_Sym *sym;
 	unsigned int i;
-	void *base;
+	void *base = NULL;
 	void *runtime;
 	_Elf_Sxword *pointer;
 	_Elf_Sxword value;
@@ -571,7 +571,7 @@ int ld_fixup_dynamic_reltab(void *binary, ld_resolve_t resolve, ld_translate_t t
 	size_t symtabsz;
 	_Elf_Sym *sym;
 	unsigned int i;
-	void *base;
+	void *base = NULL;
 	void *runtime;
 	_Elf_Sword *pointer;
 	_Elf_Sword value;
@@ -649,7 +649,7 @@ int ld_fixup_dynamic_plttab(void *binary, ld_resolve_t resolve, ld_translate_t t
 	size_t plttabsz;
 	size_t symtabsz;
 	unsigned int i;
-	void *base;
+	void *base = NULL;
 	void *runtime;
 
 #ifdef __TARGET_64__

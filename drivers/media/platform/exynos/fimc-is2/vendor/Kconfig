@@ -58,4 +58,33 @@ config AF_HOST_CONTROL
         default n
         help
           Enable host af control.
-
+config CAMERA_ZERO
+        bool "This camera is zero project"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          This camera is zero project.
+config CAMERA_MARINE
+        bool "This camera is marine project"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          This camera is marine project.
+config CAMERA_VLTE
+        bool "This camera is vlte project"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          This camera is vlte project.
+config CAMERA_NOBLE
+        bool "This camera is noble project"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          This camera is noble project.
+ config CAMERA_ZENLTE
+        bool "This camera is zenlte project"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          This camera is zenlte project.

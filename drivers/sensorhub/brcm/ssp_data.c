@@ -36,8 +36,12 @@ static void generate_data(struct ssp_data *data,
 	u64 move_timestamp = data->lastTimestamp[iSensorData];
 	if ((iSensorData != PROXIMITY_SENSOR) && (iSensorData != GESTURE_SENSOR)
 		&& (iSensorData != STEP_DETECTOR) && (iSensorData != SIG_MOTION_SENSOR)
-		&& (iSensorData != STEP_COUNTER) && (iSensorData != GRIP_SENSOR)) {
-		while ((move_timestamp * 10 + data->adDelayBuf[iSensorData] * 15) < (timestamp * 10)) {
+		&& (iSensorData != STEP_COUNTER)
+#ifdef CONFIG_SENSORS_SSP_SX9306
+		&& (iSensorData != GRIP_SENSOR)
+#endif
+		) {
+		while ((move_timestamp * 10 + data->adDelayBuf[iSensorData] * 13) < (timestamp * 10)) {
 			move_timestamp += data->adDelayBuf[iSensorData];
 			sensorsdata->timestamp = move_timestamp;
 			data->report_sensor_data[iSensorData](data, sensorsdata);
@@ -63,7 +67,7 @@ static void get_timestamp(struct ssp_data *data, char *pchRcvDataFrame,
 				sensorsdata->timestamp = data->timestamp;
 		}
 	} else {
-		if (((sensortime->irq_diff * 10) > (data->adDelayBuf[iSensorData] * 18))
+		if (((sensortime->irq_diff * 10) > (data->adDelayBuf[iSensorData] * 13))
 			&& ((sensortime->irq_diff * 10) < (data->adDelayBuf[iSensorData] * 100))) {
 			generate_data(data, sensorsdata, iSensorData, data->timestamp);
 		}
@@ -181,12 +185,14 @@ static void get_proximity_rawdata(char *pchRcvDataFrame, int *iDataIdx,
 #endif
 }
 
+#ifdef CONFIG_SENSORS_SSP_SX9306
 static void get_grip_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
 {
 	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 9);
 		*iDataIdx += 9;
 }
+#endif
 
 static void get_temp_humidity_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	struct sensor_value *sensorsdata)
@@ -275,12 +281,12 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 					else if (length > 2)
 						time = data->adDelayBuf[iSensorData] * 50;
 					else
-						time = data->adDelayBuf[iSensorData] * 100;
+						time = data->adDelayBuf[iSensorData] * 120;
 					if ((sensortime.time_diff * 10) > time) {
 						data->lastTimestamp[iSensorData] = data->timestamp - (data->adDelayBuf[iSensorData] * length);
 						sensortime.time_diff = data->adDelayBuf[iSensorData];
 					} else {
-						time = data->adDelayBuf[iSensorData] * 18;
+						time = data->adDelayBuf[iSensorData] * 11;
 						if ((sensortime.time_diff * 10) > time)
 							sensortime.time_diff = data->adDelayBuf[iSensorData];
 					}
@@ -299,7 +305,7 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 			do {
 				data->get_sensor_data[iSensorData](pchRcvDataFrame, &iDataIdx, &sensorsdata);
 				get_timestamp(data, pchRcvDataFrame, &iDataIdx, &sensorsdata, &sensortime, iSensorData);
-				if (sensortime.irq_diff > 1000000)
+				if (sensortime.irq_diff > 2500000)
 					data->report_sensor_data[iSensorData](data, &sensorsdata);
 				else if ((iSensorData == PROXIMITY_SENSOR) || (iSensorData == PROXIMITY_RAW)
 						|| (iSensorData == GESTURE_SENSOR) || (iSensorData == SIG_MOTION_SENSOR))
@@ -344,7 +350,9 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 		case MSG2AP_INST_GYRO_CAL:
 			pr_err("Gyro caldata received from MCU\n");
 			memcpy(caldata, pchRcvDataFrame + iDataIdx, sizeof(caldata));
+			wake_lock(&data->ssp_wake_lock);
 			save_gyro_caldata(data, caldata);
+			wake_unlock(&data->ssp_wake_lock);
 			iDataIdx += sizeof(caldata);
 			break;
 		}
@@ -366,7 +374,9 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->get_sensor_data[GESTURE_SENSOR] = get_gesture_sensordata;
 	data->get_sensor_data[PROXIMITY_SENSOR] = get_proximity_sensordata;
 	data->get_sensor_data[PROXIMITY_RAW] = get_proximity_rawdata;
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	data->get_sensor_data[GRIP_SENSOR] = get_grip_sensordata;
+#endif
 	data->get_sensor_data[LIGHT_SENSOR] = get_light_sensordata;
 #ifdef CONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA
 	data->get_sensor_data[LIGHT_IR_SENSOR] = get_light_ir_sensordata;
@@ -395,7 +405,9 @@ void initialize_function_pointer(struct ssp_data *data)
 	data->report_sensor_data[GESTURE_SENSOR] = report_gesture_data;
 	data->report_sensor_data[PROXIMITY_SENSOR] = report_prox_data;
 	data->report_sensor_data[PROXIMITY_RAW] = report_prox_raw_data;
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	data->report_sensor_data[GRIP_SENSOR] = report_grip_data;
+#endif
 	data->report_sensor_data[LIGHT_SENSOR] = report_light_data;
 #ifdef CONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA
 	data->report_sensor_data[LIGHT_IR_SENSOR] = report_light_ir_data;

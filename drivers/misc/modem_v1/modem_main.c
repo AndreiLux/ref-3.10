@@ -506,6 +506,9 @@ static struct modem_data *modem_if_parse_dt_pdata(struct device *dev)
 		goto error;
 	}
 
+	board_gpio_export(dev, pdata->gpio_cp_status,
+			false, "cp_status");
+
 	iodevs = of_get_child_by_name(dev->of_node, "iodevs");
 	if (!iodevs) {
 		mif_err("DT error: failed to get child node\n");
@@ -586,9 +589,11 @@ static int modem_probe(struct platform_device *pdev)
 		/* find matching link type */
 		if (pdata->link_types & LINKTYPE(i)) {
 			ld = call_link_init_func(pdev, i);
-			if (!ld)
-				goto free_mc;
-
+			if (!ld) {
+				mif_err("%s: link creation failed: continue\n",
+					pdata->name);
+				continue;
+			}
 			mif_err("%s: %s link created\n", pdata->name, ld->name);
 
 			spin_lock_init(&ld->lock);
@@ -599,6 +604,11 @@ static int modem_probe(struct platform_device *pdev)
 
 			list_add(&ld->list, &msd->link_dev_list);
 		}
+	}
+
+	if (list_empty(&msd->link_dev_list)) {
+		mif_err("Link dev list is empty!!\n");
+		goto free_mc;
 	}
 
 	/* create io deivces and connect to modemctl device */
@@ -616,6 +626,8 @@ static int modem_probe(struct platform_device *pdev)
 	}
 
 	platform_set_drvdata(pdev, modemctl);
+
+	create_baseband_info(modemctl);
 
 	kfree(iod);
 

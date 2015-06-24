@@ -227,6 +227,8 @@ static inline void disp_ss_event_log_vpp
 		log->data.vpp.id = vpp->id;
 		log->data.vpp.start_cnt = vpp->start_count;
 		log->data.vpp.done_cnt = vpp->done_count;
+		log->data.vpp.cur_int = vpp->cur_int;
+		log->data.vpp.cur_bw = vpp->cur_bw;
 		break;
 	default:
 		log->data.vpp.id = vpp->id;
@@ -322,7 +324,7 @@ void DISP_SS_EVENT_LOG(disp_ss_event_t type, struct v4l2_subdev *sd, ktime_t tim
 	case DISP_EVT_WIN_CONFIG:
 		disp_ss_event_log_decon(type, sd, time);
 		break;
-	
+
 	case DISP_EVT_DSIM_SUSPEND:
 	case DISP_EVT_DSIM_RESUME:
 		disp_ss_event_log_dsim(type, sd, time);
@@ -614,11 +616,14 @@ void DISP_SS_EVENT_SHOW(struct seq_file *s, struct decon_device *decon)
 void DISP_SS_EVENT_SIZE_ERR_LOG(struct v4l2_subdev *sd, struct disp_ss_size_info *info)
 {
 	struct decon_device *decon = container_of(sd, struct decon_device, sd);
-	int idx = (decon->disp_ss_size_log_idx++) % DISP_EVENT_SIZE_ERR_MAX;
-	struct disp_ss_size_err_info *log = &decon->disp_ss_size_log[idx];
+	int idx;
+	struct disp_ss_size_err_info *log;
 
 	if (!decon)
 		return;
+
+	idx = (decon->disp_ss_size_log_idx++) % DISP_EVENT_SIZE_ERR_MAX;
+	log = &decon->disp_ss_size_log[idx];
 
 	log->time = ktime_get();
 	memcpy(&log->info, info, sizeof(struct disp_ss_size_info));

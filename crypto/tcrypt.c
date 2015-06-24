@@ -1954,7 +1954,11 @@ static int __init tcrypt_mod_init(void)
 	}
     #else
 	} else {
-		do_integrity_check();
+		if (do_integrity_check() != 0)
+		{
+		    printk(KERN_ERR "tcrypt: CRYPTO API FIPS Integrity Check failed!!!\n");
+		    set_in_fips_err();
+		}
 		if(in_fips_err()) {
 			printk(KERN_ERR "tcrypt: CRYPTO API in FIPS Error!!!\n");
 		} else {

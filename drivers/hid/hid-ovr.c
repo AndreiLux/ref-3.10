@@ -23,6 +23,10 @@
 #include <linux/hidraw.h>
 #include "hid-ids.h"
 
+#ifdef CONFIG_ARCH_EXYNOS7
+#define WLAN0_RPS_CONTROL // 7420
+#endif
+
 #define USB_TRACKER_INTERFACE_PROTOCOL	0
 
 /* number of reports to buffer */
@@ -490,6 +494,29 @@ int ovr_report_event(struct hid_device *hid, u8 *data, int len)
 	return ret;
 }
 
+#ifdef WLAN0_RPS_CONTROL
+#include <linux/kernel.h>
+#include <linux/init.h>
+#include <linux/syscalls.h>
+#include <linux/file.h>
+#include <linux/fs.h>
+#include <linux/fcntl.h>
+#include <asm/uaccess.h>
+static void write_file(char *filename, char *data)
+{
+	struct file *fp;
+	loff_t pos = 0;
+	mm_segment_t old_fs = get_fs();
+	set_fs(KERNEL_DS);
+	fp = filp_open(filename, O_WRONLY, (int)0644);
+	if (fp) {
+		fp->f_op->write(fp, data, strlen(data), &pos);
+		filp_close(fp, current->files);
+	}
+	set_fs(old_fs);
+}
+#endif
+
 int ovr_connect(struct hid_device *hid)
 {
 	int minor, result;
@@ -542,6 +569,10 @@ int ovr_connect(struct hid_device *hid)
 	dev->exist = 1;
 	hid->hidovr = dev;
 
+#ifdef WLAN0_RPS_CONTROL
+	write_file("/sys/class/net/wlan0/queues/rx-0/rps_cpus","f0");
+#endif
+
 out:
 	return result;
 }
@@ -567,6 +598,10 @@ void ovr_disconnect(struct hid_device *hid)
 	}
 
 	mutex_unlock(&minors_lock);
+
+#ifdef WLAN0_RPS_CONTROL
+	write_file("/sys/class/net/wlan0/queues/rx-0/rps_cpus","0");
+#endif
 }
 
 static long ovr_hidraw_ioctl(struct file *file, unsigned int cmd, unsigned long arg)

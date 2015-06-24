@@ -605,6 +605,38 @@ struct sk_buff *sbd_pio_rx(struct sbd_ring_buffer *rb)
 	return skb;
 }
 
+int tx_frames_to_rb(struct sbd_ring_buffer *rb)
+{
+	struct sk_buff_head *skb_txq = &rb->skb_q;
+	int tx_bytes = 0;
+	int ret = 0;
+
+	while (1) {
+		struct sk_buff *skb;
+
+		skb = skb_dequeue(skb_txq);
+		if (unlikely(!skb))
+			break;
+
+		ret = sbd_pio_tx(rb, skb);
+		if (unlikely(ret < 0)) {
+			/* Take the skb back to the skb_txq */
+			skb_queue_head(skb_txq, skb);
+			break;
+		}
+
+		tx_bytes += ret;
+
+		log_ipc_pkt(LNK_TX, rb->ch, skb);
+
+		trace_mif_event(skb, skb->len, FUNC);
+
+		dev_kfree_skb_any(skb);
+	}
+
+	return (ret < 0) ? ret : tx_bytes;
+}
+
 /**
 @}
 */

@@ -160,8 +160,8 @@ static int max77833_get_enable_register(struct regulator_dev *rdev,
 	switch (rid) {
 	case MAX77833_SAFEOUT1...MAX77833_SAFEOUT2:
 		*reg = MAX77833_PMIC_REG_SAFEOUT_CTRL;
-		*mask = 0x40 << (rid - MAX77833_SAFEOUT1);
-		*pattern = 0x40 << (rid - MAX77833_SAFEOUT1);
+		*mask = 0x80 << (rid - MAX77833_SAFEOUT1);
+		*pattern = 0x80 << (rid - MAX77833_SAFEOUT1);
 		break;
 	default:
 		/* Not controllable or not exists */
@@ -180,7 +180,7 @@ static int max77833_get_disable_register(struct regulator_dev *rdev,
 	switch (rid) {
 	case MAX77833_SAFEOUT1...MAX77833_SAFEOUT2:
 		*reg = MAX77833_PMIC_REG_SAFEOUT_CTRL;
-		*mask = 0x40 << (rid - MAX77833_SAFEOUT1);
+		*mask = 0x80 << (rid - MAX77833_SAFEOUT1);
 		*pattern = 0x00;
 		break;
 	default:

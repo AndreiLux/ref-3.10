@@ -199,6 +199,16 @@ static void cal_print_asv_info(void)
 }
 
 #ifdef CONFIG_SEC_FACTORY
+u32 set_table_ver2, table_ver2_1st, table_ver2_2nd;
+static int __init asv_table_ver2_setup(char *str)
+{
+	set_table_ver2 = (u32)simple_strtoul(str,NULL,0);
+	table_ver2_1st = set_table_ver2 & 0x000000FF;
+	table_ver2_2nd = (set_table_ver2 & 0x0000FF00) >> 8;
+	return 1;
+}
+__setup("asv_table_version2=", asv_table_ver2_setup);
+
 static ssize_t exynos7420_show_asv_info(struct device *dev,
 					struct device_attribute *attr,
 					char *buf)
@@ -207,7 +217,10 @@ static ssize_t exynos7420_show_asv_info(struct device *dev,
 
 	/* Set asv group info to buf */
 	count += sprintf(&buf[count], "%u ", gasv_table_info.dvfs_asv_table_version);
-	count += sprintf(&buf[count], "%02x ", gasv_table_info.bigcpu_asv_group);
+	count += sprintf(&buf[count], "%03x ", gasv_table_info.bigcpu_asv_group);
+	count += sprintf(&buf[count], "%03x ", gasv_table_info.g3d_asv_group);
+	count += sprintf(&buf[count], "%u ", table_ver2_1st);
+	count += sprintf(&buf[count], "%u ", table_ver2_2nd);
 	count += sprintf(&buf[count], "\n");
 
 	return count;
@@ -268,12 +281,12 @@ u32 cal_get_table_ver(void)
 
 u32 cal_get_ids(void)
 {
-	return __raw_readl(CHIPID_ASV_INFO + 0x01C0) & 0xff;;
+	return 0;
 }
 
 u32 cal_get_hpm(void)
 {
-	return (__raw_readl(CHIPID_ASV_INFO + 0x01C4) >> 24) & 0xff;
+	return 0;
 }
 
 void cal_init(void)

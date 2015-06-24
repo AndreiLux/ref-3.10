@@ -350,9 +350,8 @@
 	audio_pdata {
 		compatible = "samsung,audio-pdata";
 
-		aif_format = <0x00 0x13 0x00>;
-		/* I2S: 0x00, TDM: 0x10 */
-		/* I2S: 0x0, Right-J: 0x1 Left-J: 0x2, DSP A: 0x3, DSP B: 0x4, */
+		aif_format = <0x1001 0x1004 0x1001>;
+		aif_format_tdm = <0x0 0x1047 0x0>;
 
 		imp_table = <
 			/* min      max gain */

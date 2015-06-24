@@ -392,4 +392,16 @@ static const unsigned char SEQ_GLOBAL_PARAM_21[] = {
 };
 #endif
 
+
+enum {
+	HBM_INTER_OFF = 0,
+	HBM_COLORBLIND_ON,
+	HBM_GALLERY_ON,
+};
+
+// 384 ~ 550
+static const char HBM_INTER_22TH_OFFSET[] = {
+	0x02, 0x04, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06
+};
+
 #endif /* __S6E3HF2_PARAM_H__ */

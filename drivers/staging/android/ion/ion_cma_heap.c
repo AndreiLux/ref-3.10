@@ -111,13 +111,21 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 	buffer->priv_virt = info;
 
 #ifdef CONFIG_ARM64
-	if (!ion_buffer_cached(buffer) && !(buffer->flags & ION_FLAG_PROTECTED))
-		__flush_dcache_area(page_address(sg_page(info->table->sgl)),
+	if (!ion_buffer_cached(buffer) && !(buffer->flags & ION_FLAG_PROTECTED)) {
+		if (ion_buffer_need_flush_all(buffer))
+			flush_all_cpu_caches();
+		else
+			__flush_dcache_area(page_address(sg_page(info->table->sgl)),
 									len);
+	}
 #else
-	if (!ion_buffer_cached(buffer) && !(buffer->flags & ION_FLAG_PROTECTED))
-		dmac_flush_range(page_address(sg_page(info->table->sgl), len,
-							DMA_BIDIRECTIONAL);
+	if (!ion_buffer_cached(buffer) && !(buffer->flags & ION_FLAG_PROTECTED)) {
+		if (ion_buffer_need_flush_all(buffer))
+			flush_all_cpu_caches();
+		else
+			dmac_flush_range(page_address(sg_page(info->table->sgl),
+							len, DMA_BIDIRECTIONAL));
+	}
 #endif
 	if (buffer->flags & ION_FLAG_PROTECTED)
 		ion_secure_protect(heap);

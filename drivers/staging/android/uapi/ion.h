@@ -72,6 +72,7 @@ enum ion_heap_type {
 					   world. if this is set, all cpu accesses
 					   are prohibited.
 					 */
+#define ION_FLAG_SYNC_FORCE 32		/* cache sync forcely at allocation */
 /**
  * DOC: Ion Userspace API
  *
@@ -112,6 +113,13 @@ struct ion_allocation_data {
 struct ion_fd_data {
 	ion_user_handle_t handle;
 	int fd;
+};
+
+struct ion_fd_partial_data {
+	ion_user_handle_t handle;
+	int fd;
+	off_t offset;
+	size_t len;
 };
 
 /**
@@ -213,6 +221,7 @@ struct ion_preload_data {
  * this will make the buffer in memory coherent.
  */
 #define ION_IOC_SYNC		_IOWR(ION_IOC_MAGIC, 7, struct ion_fd_data)
+#define ION_IOC_SYNC_PARTIAL	_IOWR(ION_IOC_MAGIC, 9, struct ion_fd_partial_data)
 
 /**
  * DOC: ION_IOC_PRELOAD_ALLOC - prefetches pages to page pool

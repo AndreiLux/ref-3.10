@@ -17,6 +17,7 @@
 #include <linux/buffer_head.h>
 #include <linux/mtd/mtd.h>
 #include <linux/kdev_t.h>
+#include <fmpdev_int.h>
 
 #include <scsi/scsi_device.h>
 #include <scsi/scsi_host.h>
@@ -24,14 +25,12 @@
 #include "ufshcd.h"
 #include "../scsi_priv.h"
 
-#include "fips-fmp.h"
-
 #define byte2word(b0, b1, b2, b3) 	\
 		((unsigned int)(b0) << 24) | ((unsigned int)(b1) << 16) | ((unsigned int)(b2) << 8) | (b3)
 #define get_word(x, c)	byte2word(((unsigned char *)(x) + 4 * (c))[0], ((unsigned char *)(x) + 4 * (c))[1], \
 			((unsigned char *)(x) + 4 * (c))[2], ((unsigned char *)(x) + 4 * (c))[3])
 
-#define SF_OFFSET	(20 * 1024)
+#define SF_BLK_OFFSET	(5)
 #define MAX_SCAN_PART	(50)
 
 struct ufs_fmp_work {
@@ -45,14 +44,13 @@ struct ufs_fmp_work {
 struct ufshcd_sg_entry *prd_table;
 struct ufshcd_sg_entry *ucd_prdt_ptr_st;
 
-static int ufs_fmp_init(struct platform_device *pdev, uint32_t mode)
+static int ufs_fmp_init(struct device *dev, uint32_t mode)
 {
-	struct device *dev = &pdev->dev;
 	struct ufs_hba *hba;
 	struct ufs_fmp_work *work;
 	struct Scsi_Host *host;
 
-	work = platform_get_drvdata(pdev);
+	work = dev_get_drvdata(dev);
 	if (!work) {
 		dev_err(dev, "Fail to get work from platform device\n");
 		return -ENODEV;
@@ -70,15 +68,14 @@ static int ufs_fmp_init(struct platform_device *pdev, uint32_t mode)
 	return 0;
 }
 
-static int ufs_fmp_set_key(struct platform_device *pdev, uint32_t mode, uint8_t *key, uint32_t key_len)
+static int ufs_fmp_set_key(struct device *dev, uint32_t mode, uint8_t *key, uint32_t key_len)
 {
-	struct device *dev = &pdev->dev;
 	struct ufs_hba *hba;
 	struct ufs_fmp_work *work;
 	struct Scsi_Host *host;
 	struct ufshcd_sg_entry *prd_table;
 
-	work = platform_get_drvdata(pdev);
+	work = dev_get_drvdata(dev);
 	if (!work) {
 		dev_err(dev, "Fail to get work from platform device\n");
 		return -ENODEV;
@@ -204,18 +201,18 @@ static int ufs_fmp_set_key(struct platform_device *pdev, uint32_t mode, uint8_t 
 		return -EINVAL;
 	}
 
+	dev_info(dev, "%s: ufs fmp key set is done.\n", __func__);
 	return 0;
 }
 
-static int ufs_fmp_set_iv(struct platform_device *pdev, uint32_t mode, uint8_t *iv, uint32_t iv_len)
+static int ufs_fmp_set_iv(struct device *dev, uint32_t mode, uint8_t *iv, uint32_t iv_len)
 {
-	struct device *dev = &pdev->dev;
 	struct ufs_hba *hba;
 	struct ufs_fmp_work *work;
 	struct Scsi_Host *host;
 	struct ufshcd_sg_entry *prd_table;
 
-	work = platform_get_drvdata(pdev);
+	work = dev_get_drvdata(dev);
 	if (!work) {
 		dev_err(dev, "Fail to get work from platform device\n");
 		return -ENODEV;
@@ -288,49 +285,39 @@ err:
 	return (dev_t)0;
 }
 
-static int ufs_fmp_run(struct platform_device *pdev, uint32_t mode, uint8_t *data, uint32_t len)
+static int ufs_fmp_run(struct device *dev, uint32_t mode, uint8_t *data,
+			uint32_t len, uint32_t write)
 {
-	int write;
 	struct ufs_hba *hba;
 	struct ufs_fmp_work *work;
 	struct Scsi_Host *host;
-	struct device *dev = &pdev->dev;
 	static struct buffer_head *bh;
 
-	work = platform_get_drvdata(pdev);
+	work = dev_get_drvdata(dev);
 	if (!work) {
 		dev_err(dev, "Fail to get work from platform device\n");
 		return -ENODEV;
 	}
 	host = work->host;
 	hba = shost_priv(host);
+	hba->self_test_mode = mode;
 
-	if ((mode == XTS_MODE) || (mode == CBC_MODE))
-		write = 1;
-	else if (mode == BYPASS_MODE)
-		write = 0;
-	else {
-		dev_err(dev, "Fail to run FMP due to abnormal mode = %d\n", mode);
-		return -EINVAL;
-	}
-	hba->self_test = mode;
-
-	bh = __getblk(work->bdev, work->sector, UFS_BLOCK_SIZE);
+	bh = __getblk(work->bdev, work->sector, FMP_BLK_SIZE);
 	if (!bh) {
 		dev_err(dev, "Fail to get block from bdev\n");
-		hba->self_test = 0;
 		return -ENODEV;
 	}
+	hba->self_test_bh = bh;
 
 	get_bh(bh);
-	if (write) {
+	if (write == WRITE_MODE) {
 		memcpy(bh->b_data, data, len);
 		bh->b_state &= ~(1 << BH_Uptodate);
 		bh->b_state &= ~(1 << BH_Lock);
 		ll_rw_block(WRITE_FLUSH_FUA, 1, &bh);
 		wait_on_buffer(bh);
 
-		memset(bh->b_data, 0, UFS_BLOCK_SIZE);
+		memset(bh->b_data, 0, FMP_BLK_SIZE);
 	} else {
 		bh->b_state &= ~(1 << BH_Uptodate);
 		bh->b_state &= ~(1 << BH_Lock);
@@ -339,8 +326,10 @@ static int ufs_fmp_run(struct platform_device *pdev, uint32_t mode, uint8_t *dat
 
 		memcpy(data, bh->b_data, len);
 	}
-	hba->self_test = 0;
 	put_bh(bh);
+
+	hba->self_test_mode = 0;
+	hba->self_test_bh = NULL;
 
 	return 0;
 }
@@ -353,7 +342,7 @@ static int ufs_fmp_exit(void)
 	return 0;
 }
 
-struct fips_fmp_ops fips_fmp_ufs_ops = {
+struct fips_fmp_ops fips_fmp_fops = {
 	.init = ufs_fmp_init,
 	.set_key = ufs_fmp_set_key,
 	.set_iv = ufs_fmp_set_iv,
@@ -361,15 +350,21 @@ struct fips_fmp_ops fips_fmp_ufs_ops = {
 	.exit = ufs_fmp_exit,
 };
 
-int fips_fmp_init(struct platform_device *pdev)
+int fips_fmp_init(struct device *dev)
 {
-	struct device *dev = &pdev->dev;
 	struct ufs_fmp_work *work;
 	struct device_node *dev_node;
 	struct platform_device *pdev_ufs;
+	struct device *dev_ufs;
 	struct ufs_hba *hba;
 	struct Scsi_Host *host;
+	struct inode *inode;
 	struct scsi_device *sdev;
+	struct super_block *sb;
+	unsigned long blocksize;
+	unsigned char blocksize_bits;
+
+	sector_t self_test_block;
 	fmode_t fmode = FMODE_WRITE | FMODE_READ;
 
 	work = kmalloc(sizeof(*work), GFP_KERNEL);
@@ -390,14 +385,15 @@ int fips_fmp_init(struct platform_device *pdev)
 		goto out;
 	}
 
-	hba = platform_get_drvdata(pdev_ufs);
+	dev_ufs = &pdev_ufs->dev;
+	hba = dev_get_drvdata(dev_ufs);
 	if (!hba) {
-		dev_err(dev, "Fail to find hba from pdev,\n");
+		dev_err(dev, "Fail to find hba from dev\n");
 		goto out;
 	}
 
 	host = hba->host;
-	sdev = to_scsi_device(&pdev_ufs->dev);
+	sdev = to_scsi_device(dev_ufs);
 	work->host = host;
 	work->sdev = sdev;
 
@@ -412,9 +408,14 @@ int fips_fmp_init(struct platform_device *pdev)
 		dev_err(dev, "Fail to open block device\n");
 		return -ENODEV;
 	}
-	work->sector = (sector_t)((i_size_read(work->bdev->bd_inode) - SF_OFFSET) / UFS_BLOCK_SIZE);
+	inode = work->bdev->bd_inode;
+	sb = inode->i_sb;
+	blocksize = sb->s_blocksize;
+	blocksize_bits = sb->s_blocksize_bits;
+	self_test_block = (i_size_read(inode) - (blocksize * SF_BLK_OFFSET)) >> blocksize_bits;
+	work->sector = self_test_block;
 
-	platform_set_drvdata(pdev, work);
+	dev_set_drvdata(dev, work);
 
 	return 0;
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2013 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2014 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -15,7 +15,9 @@
 #ifndef TLCTUI_H_
 #define TLCTUI_H_
 
-int mainThread(void *);
-bool tlcNotifyEvent(uint32_t eventType);
+void reset_global_command_id(void);
+int tlc_wait_cmd(uint32_t *cmd_id);
+int tlc_ack_cmd(struct tlc_tui_response_t *rsp_id);
+bool tlc_notify_event(uint32_t event_type);
 
 #endif /* TLCTUI_H_ */

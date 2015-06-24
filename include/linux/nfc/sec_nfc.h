@@ -29,6 +29,7 @@
 #define SEC_NFC_SET_MODE		_IOW(SEC_NFC_MAGIC, 1, unsigned int)
 #define SEC_NFC_GET_PUSH		_IOW(SEC_NFC_MAGIC, 2, unsigned int)
 #define SEC_NFC_SET_UART_STATE	_IOW(SEC_NFC_MAGIC, 3, unsigned int)
+#define SEC_NFC_EDC_SWEEP	_IOW(SEC_NFC_MAGIC, 4, unsigned int)
 
 // Security
 #define SEC_NFC_FUSE_ID             0x00

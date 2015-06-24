@@ -40,6 +40,7 @@
 #include "ecryptfs_kernel.h"
 
 #ifdef CONFIG_SDP
+#include "mm.h"
 #include "ecryptfs_sdp_chamber.h"
 #endif
 
@@ -167,12 +168,29 @@ int ecryptfs_get_lower_file(struct dentry *dentry, struct inode *inode)
 void ecryptfs_put_lower_file(struct inode *inode)
 {
 	struct ecryptfs_inode_info *inode_info;
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+		&ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+#endif
 
 	inode_info = ecryptfs_inode_to_private(inode);
 	if (atomic_dec_and_mutex_lock(&inode_info->lower_file_count,
 				      &inode_info->lower_file_mutex)) {
-		inode_info->lower_file->f_mapping->use_fmp = 0;
 		filemap_write_and_wait(inode->i_mapping);
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+		if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+			int rc = 0;
+
+			rc = vfs_fsync(inode_info->lower_file, 0);
+			if (rc)
+				printk(KERN_ERR "%s: vfs_sync returned err rc: %d\n", __func__, rc);
+		}
+#endif
+#ifdef CONFIG_SDP
+		if (inode_info->crypt_stat.flags & ECRYPTFS_DEK_IS_SENSITIVE) {
+			ecryptfs_mm_do_sdp_cleanup(inode);
+		}
+#endif
 		fput(inode_info->lower_file);
 		inode_info->lower_file = NULL;
 		mutex_unlock(&inode_info->lower_file_mutex);
@@ -197,7 +215,7 @@ enum { ecryptfs_opt_sig, ecryptfs_opt_ecryptfs_sig,
        ecryptfs_opt_enable_cc,
 #endif
 #ifdef CONFIG_SDP
-	ecryptfs_opt_userid, ecryptfs_opt_sdp, ecryptfs_opt_chamber_dirs,
+	ecryptfs_opt_userid, ecryptfs_opt_sdp, ecryptfs_opt_chamber_dirs, ecryptfs_opt_partition_id,
 #endif
        ecryptfs_opt_err };
 
@@ -228,7 +246,8 @@ static const match_table_t tokens = {
 #ifdef CONFIG_SDP
 	{ecryptfs_opt_chamber_dirs, "chamber=%s"},
 	{ecryptfs_opt_userid, "userid=%s"},
-	{ecryptfs_opt_sdp, "sdp_enabled"},
+    {ecryptfs_opt_sdp, "sdp_enabled"},
+    {ecryptfs_opt_partition_id, "partition_id=%u"},
 #endif
 	{ecryptfs_opt_err, NULL}
 };
@@ -273,6 +292,8 @@ static void ecryptfs_init_mount_crypt_stat(
 #ifdef CONFIG_SDP
 	spin_lock_init(&mount_crypt_stat->chamber_dir_list_lock);
 	INIT_LIST_HEAD(&mount_crypt_stat->chamber_dir_list);
+
+	mount_crypt_stat->partition_id = -1;
 #endif
 }
 
@@ -533,6 +554,14 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			while ((token = strsep(&chamber_dirs, "|")) != NULL)
 				if(!is_chamber_directory(mount_crypt_stat, token))
 					add_chamber_directory(mount_crypt_stat, token);
+		}
+		break;
+		case ecryptfs_opt_partition_id: {
+            char *partition_id_str = args[0].from;
+            mount_crypt_stat->partition_id =
+                (int)simple_strtol(partition_id_str,
+                           &partition_id_str, 0);
+            printk("%s : partition_id : %d", __func__, mount_crypt_stat->partition_id);
 		}
 		break;
 #endif

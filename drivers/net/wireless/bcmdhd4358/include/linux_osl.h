@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: linux_osl.h 539666 2015-03-09 07:22:56Z $
+ * $Id: linux_osl.h 547511 2015-04-08 21:22:26Z $
  */
 
 #ifndef _linux_osl_h_
@@ -385,8 +385,9 @@ extern int osl_error(int bcmerror);
 #define PKTID(skb)              ({BCM_REFERENCE(skb); 0;})
 #define PKTSETID(skb, id)       ({BCM_REFERENCE(skb); BCM_REFERENCE(id);})
 #define PKTSHRINK(osh, m)		({BCM_REFERENCE(osh); m;})
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)
-#define PKTORPHAN(skb)          ({BCM_REFERENCE(skb); 0;})
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) && defined(TSQ_MULTIPLIER)
+#define PKTORPHAN(skb)          osl_pkt_orphan_partial(skb)
+extern void osl_pkt_orphan_partial(struct sk_buff *skb);
 #else
 #define PKTORPHAN(skb)          ({BCM_REFERENCE(skb); 0;})
 #endif /* LINUX VERSION >= 3.6 */

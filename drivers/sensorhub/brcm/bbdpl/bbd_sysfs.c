@@ -277,18 +277,18 @@ static ssize_t show_sysfs_bbd_ssi_trace(struct device *dev,
                   p[10],p[11],p[12],  p[13]);
 }
 
-static DEVICE_ATTR(BBD,     0222, NULL,                store_sysfs_BBD_control);
-static DEVICE_ATTR(ESW,     0222, NULL,                store_sysfs_ESW_control);
-static DEVICE_ATTR(DEV,     0222, NULL,                store_sysfs_DEV_control);
-static DEVICE_ATTR(debug,   0666, show_sysfs_bbd_debug,store_sysfs_bbd_debug);
-static DEVICE_ATTR(baud,    0666, show_sysfs_bbd_baud, store_sysfs_bbd_baud);
-static DEVICE_ATTR(shmd,    0444, show_sysfs_bbd_shmd,     NULL);
-static DEVICE_ATTR(pl,      0444, show_sysfs_bbd_pl,       NULL);
-static DEVICE_ATTR(buf,     0444, show_sysfs_bbd_buf,      NULL);
-static DEVICE_ATTR(passthru,0444, show_sysfs_bbd_passthru, NULL);
-static DEVICE_ATTR(ssi_xfer,    0444, show_sysfs_bbd_ssi_xfer,  NULL);
-static DEVICE_ATTR(ssi_count,   0444, show_sysfs_bbd_ssi_count, NULL);
-static DEVICE_ATTR(ssi_trace,   0444, show_sysfs_bbd_ssi_trace, NULL);
+static DEVICE_ATTR(BBD,     0220, NULL,                store_sysfs_BBD_control);
+static DEVICE_ATTR(ESW,     0220, NULL,                store_sysfs_ESW_control);
+static DEVICE_ATTR(DEV,     0220, NULL,                store_sysfs_DEV_control);
+static DEVICE_ATTR(debug,   0660, show_sysfs_bbd_debug,store_sysfs_bbd_debug);
+static DEVICE_ATTR(baud,    0660, show_sysfs_bbd_baud, store_sysfs_bbd_baud);
+static DEVICE_ATTR(shmd,    0440, show_sysfs_bbd_shmd,     NULL);
+static DEVICE_ATTR(pl,      0440, show_sysfs_bbd_pl,       NULL);
+static DEVICE_ATTR(buf,     0440, show_sysfs_bbd_buf,      NULL);
+static DEVICE_ATTR(passthru,0440, show_sysfs_bbd_passthru, NULL);
+static DEVICE_ATTR(ssi_xfer,    0440, show_sysfs_bbd_ssi_xfer,  NULL);
+static DEVICE_ATTR(ssi_count,   0440, show_sysfs_bbd_ssi_count, NULL);
+static DEVICE_ATTR(ssi_trace,   0440, show_sysfs_bbd_ssi_trace, NULL);
 
 static struct attribute *bbd_esw_attributes[] = {
 	&dev_attr_BBD.attr,

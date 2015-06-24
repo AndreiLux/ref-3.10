@@ -35,10 +35,6 @@
 #include <linux/slab.h>
 #include <asm/unaligned.h>
 #include "ecryptfs_kernel.h"
-#ifdef CONFIG_SDP
-#include <linux/buffer_head.h>
-#include "ecryptfs_dek.h"
-#endif
 
 /**
  * ecryptfs_get_locked_page
@@ -109,10 +105,6 @@ static int ecryptfs_writepage(struct page *page, struct writeback_control *wbc)
 	}
 	SetPageUptodate(page);
 
-#ifdef CONFIG_SDP
-	if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
-		SetPageSensitive(page);
-#endif
 out:
 	unlock_page(page);
 	return rc;
@@ -203,17 +195,10 @@ ecryptfs_copy_up_encrypted_with_header(struct page *page,
 				((view_extent_num * crypt_stat->extent_size)
 				 - crypt_stat->metadata_size);
 
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-			rc = ecryptfs_read_lower_page_segment(
-				page, (lower_offset >> PAGE_CACHE_SHIFT),
-				(lower_offset & ~PAGE_CACHE_MASK),
-				crypt_stat->extent_size, page->mapping->host, 0);
-#else
 			rc = ecryptfs_read_lower_page_segment(
 				page, (lower_offset >> PAGE_CACHE_SHIFT),
 				(lower_offset & ~PAGE_CACHE_MASK),
 				crypt_stat->extent_size, page->mapping->host);
-#endif
 			if (rc) {
 				printk(KERN_ERR "%s: Error attempting to read "
 				       "extent at offset [%lld] in the lower "
@@ -244,15 +229,9 @@ static int ecryptfs_readpage(struct file *file, struct page *page)
 	int rc = 0;
 
 	if (!crypt_stat || !(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-		rc = ecryptfs_read_lower_page_segment(page, page->index, 0,
-						      PAGE_CACHE_SIZE,
-						      page->mapping->host, 0);
-#else
 		rc = ecryptfs_read_lower_page_segment(page, page->index, 0,
 						      PAGE_CACHE_SIZE,
 						      page->mapping->host);
-#endif
 	} else if (crypt_stat->flags & ECRYPTFS_VIEW_AS_ENCRYPTED) {
 		if (crypt_stat->flags & ECRYPTFS_METADATA_IN_XATTR) {
 			rc = ecryptfs_copy_up_encrypted_with_header(page,
@@ -267,15 +246,9 @@ static int ecryptfs_readpage(struct file *file, struct page *page)
 			}
 
 		} else {
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-			rc = ecryptfs_read_lower_page_segment(
-				page, page->index, 0, PAGE_CACHE_SIZE,
-				page->mapping->host, 0);
-#else
 			rc = ecryptfs_read_lower_page_segment(
 				page, page->index, 0, PAGE_CACHE_SIZE,
 				page->mapping->host);
-#endif
 			if (rc) {
 				printk(KERN_ERR "Error reading page; rc = "
 				       "[%d]\n", rc);
@@ -295,10 +268,6 @@ out:
 		ClearPageUptodate(page);
 	else {
 		SetPageUptodate(page);
-#ifdef CONFIG_SDP
-	if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
-		SetPageSensitive(page);
-#endif
 	}
 	ecryptfs_printk(KERN_DEBUG, "Unlocking page with index = [0x%.16lx]\n",
 			page->index);
@@ -359,14 +328,8 @@ static int ecryptfs_write_begin(struct file *file,
 			&ecryptfs_inode_to_private(mapping->host)->crypt_stat;
 
 		if (!(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-			rc = ecryptfs_read_lower_page_segment(
-				page, index, 0, PAGE_CACHE_SIZE, mapping->host, 0);
-#else
 			rc = ecryptfs_read_lower_page_segment(
 				page, index, 0, PAGE_CACHE_SIZE, mapping->host);
-#endif
-
 			if (rc) {
 				printk(KERN_ERR "%s: Error attemping to read "
 				       "lower page segment; rc = [%d]\n",
@@ -391,16 +354,9 @@ static int ecryptfs_write_begin(struct file *file,
 				}
 				SetPageUptodate(page);
 			} else {
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-				rc = ecryptfs_read_lower_page_segment(
-					page, index, 0, PAGE_CACHE_SIZE,
-					mapping->host, 0);
-#else
 				rc = ecryptfs_read_lower_page_segment(
 					page, index, 0, PAGE_CACHE_SIZE,
 					mapping->host);
-#endif
-
 				if (rc) {
 					printk(KERN_ERR "%s: Error reading "
 					       "page; rc = [%d]\n",
@@ -592,11 +548,6 @@ static int ecryptfs_write_end(struct file *file,
 		goto out;
 	}
 
-#ifdef CONFIG_SDP
-	if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
-		SetPageSensitive(page);
-#endif
-
 	rc = ecryptfs_encrypt_page(page);
 	if (rc) {
 		ecryptfs_printk(KERN_WARNING, "Error encrypting page (upper "
@@ -621,52 +572,6 @@ out:
 	return rc;
 }
 
-#ifdef CONFIG_SDP
-#if ECRYPTFS_DEK_DEBUG
-static void sdp_dump(unsigned char *buf, int len, const char* str)
-{
-    unsigned int     i;
-    char	s[512];
-
-    s[0] = 0;
-    for(i=0;i<len && i<16;++i) {
-        char tmp[8];
-        sprintf(tmp, " %02x", buf[i]);
-        strcat(s, tmp);
-    }
-
-    if (len > 16) {
-        char tmp[8];
-        sprintf(tmp, " ...");
-        strcat(s, tmp);
-    }
-
-    printk("%s [%s len=%d]\n", s, str, len);
-}
-#else
-static void sdp_dump(unsigned char *buf, int len, const char* str)
-{
-	// do nothing
-}
-#endif
-
-static void ecryptfs_freepage (struct page *p) {
-	void *d;
-	if (PageSensitive(p)) {
-#if ECRYPTFS_DEK_DEBUG
-		printk("%s : page [flag:0x%ld] freed\n", __func__, p->flags);
-#endif
-		d = kmap_atomic(p);
-		if(d) {
-			sdp_dump((unsigned char *)d, PAGE_SIZE, "freeing");
-			clear_page(d);
-			sdp_dump((unsigned char *)d, PAGE_SIZE, "freed");
-			kunmap_atomic(d);
-		}
-	}
-}
-#endif
-
 static sector_t ecryptfs_bmap(struct address_space *mapping, sector_t block)
 {
 	int rc = 0;
@@ -686,8 +591,5 @@ const struct address_space_operations ecryptfs_aops = {
 	.readpage = ecryptfs_readpage,
 	.write_begin = ecryptfs_write_begin,
 	.write_end = ecryptfs_write_end,
-#ifdef CONFIG_SDP
-	.freepage = ecryptfs_freepage,
-#endif
 	.bmap = ecryptfs_bmap,
 };

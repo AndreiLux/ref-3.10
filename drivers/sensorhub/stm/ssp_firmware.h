@@ -18,8 +18,14 @@
 
 #include "ssp.h"
 
-
-#define SSP_FIRMWARE_REVISION_STM	15042900
+#if defined (CONFIG_SENSORS_SSP_NOBLELTE) \
+	|| defined (CONFIG_SENSORS_SSP_ZENLTE) /* Noble or Zen */
+#define SSP_FIRMWARE_REVISION_STM	15051500
+#elif defined (CONFIG_SENSORS_SSP_VLTE) /* V */
+#define SSP_FIRMWARE_REVISION_STM	15051900
+#else /* Zero */
+#define SSP_FIRMWARE_REVISION_STM	15050700
+#endif
 
 #define SSP_INVALID_REVISION            99999
 #define SSP_INVALID_REVISION2           0xFFFFFF
@@ -28,7 +34,15 @@
 #define NORM_SPI_HZ			4800000
 
 /* Bootload mode cmd */
+#if defined (CONFIG_SENSORS_SSP_NOBLELTE) \
+	|| defined (CONFIG_SENSORS_SSP_ZENLTE) /* Noble or Zen */
+#define BL_FW_NAME			"ssp_stm_noble.fw"
+#elif defined (CONFIG_SENSORS_SSP_VLTE) /* V */
+#define BL_FW_NAME			"ssp_stm_v.fw"
+#else /* Zero */
 #define BL_FW_NAME			"ssp_stm.fw"
+#endif
+
 #define BL_UMS_FW_NAME			"ssp_stm.bin"
 #define BL_CRASHED_FW_NAME		"ssp_crashed.fw"
 

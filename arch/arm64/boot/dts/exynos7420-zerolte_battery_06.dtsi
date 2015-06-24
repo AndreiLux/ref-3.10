@@ -73,6 +73,7 @@
 		battery,temp_adc_type = <1>; /* SEC_BATTERY_ADC_TYPE_AP */
 
 		battery,chg_temp_check = <1>;
+		battery,wpc_temp_check = <1>;
 
 		battery,polling_time = <10 30 30 30 3600>;
 
@@ -154,6 +155,10 @@
 		battery,chg_skip_check_capacity = <10>;
 		battery,chg_skip_check_time = <600>;
 
+		battery,wpc_high_temp = <410>;
+		battery,wpc_high_temp_recovery = <400>;
+		battery,wpc_charging_limit_current = <450>;
+
 		/* SEC_BATTERY_FULL_CONDITION_SOC |
 		   SEC_BATTERY_FULL_CONDITION_NOTIMEFULL |
 		   SEC_BATTERY_FULL_CONDITION_VCELL */
@@ -164,7 +169,7 @@
 		battery,recharge_check_count = <2>;
 		battery,recharge_condition_type = <4>; /* SEC_BATTERY_RECHARGE_CONDITION_VCELL */
 		battery,recharge_condition_soc = <98>;
-		battery,recharge_condition_vcell = <4350>;
+		battery,recharge_condition_vcell = <4325>;
 
 		battery,charging_total_time = <21600>;
 		battery,recharging_total_time = <5400>;
@@ -194,6 +199,36 @@
 		io-channel-names = "adc-temp", "chg-adc-temp", "in-bat-adc", "discharging-check-adc", "ntc-check-adc";
 		#io-channel-cells = <5>;
 		io-channel-ranges;
+
+		/***********************************************************/
+		/* VE_SW for Battery Self Discharging(to prevent swelling) */
+		/* Enable TYPE : sdchg_ic, sdchg_ap, sdchg_cs, sdchg_ldo, ... */
+		/* The following line, "sdchg_type", is annotaed to support the dualization for Zero project.
+		     In case of other projects, "sdchg_type" should be designated to decide the way of self-discharging.
+		     In general cases, the default type is "sdchg_ic",which means self-discharging IC on PCB,
+		     unless "sdchg_type" is not designated.*/
+		/*
+		sdchg_type = "sdchg_ic";
+		*/
+		sdchg_ap {
+			compatible = "samsung,sdchg_ap";
+			sdchg,temperature_start = <600>;
+			sdchg,temperature_end = <550>;
+			sdchg,soc_start = <96>;
+			sdchg,soc_end = <92>;
+			sdchg,voltage_start = <4250>;
+			/* sdchg,voltage_end = <4200>;	-> from  battery,swelling_drop_float_voltage */
+		};
+		sdchg_cs {
+			compatible = "samsung,sdchg_cs";
+			sdchg,temperature_start = <600>;
+			sdchg,temperature_end = <550>;
+			sdchg,soc_start = <96>;
+			sdchg,soc_end = <92>;
+			sdchg,voltage_start = <4250>;
+			/* sdchg,voltage_end = <4200>;	-> from battery,swelling_drop_float_voltage */
+		};
+		/***********************************************************/
 	};
 
 	max77833-fuelgauge {

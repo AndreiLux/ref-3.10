@@ -227,6 +227,10 @@ config SEC_GPIO_DVS
 config MST_SECURE_GPIO
 	bool "setting MST gpio as secure pin"
 
+config SENSORS_FP_SPI_GPIO
+	depends on SENSORS_FINGERPRINT
+	string "Fingerprint spi gpio name"
+
 source "drivers/pinctrl/mvebu/Kconfig"
 source "drivers/pinctrl/sh-pfc/Kconfig"
 source "drivers/pinctrl/spear/Kconfig"

@@ -1569,7 +1569,7 @@ static unsigned char AUTO_DMB_1[] = {
 };
 
 #elif defined(CONFIG_DECON_LCD_S6E3HA2)	|| defined(CONFIG_DECON_LCD_S6E3HF2)\
-	|| defined(CONFIG_EXYNOS_DECON_LCD_S6E3HF2_WQHD) || defined(CONFIG_PANEL_S6E3HA2_DYNAMIC)\
+	|| defined(CONFIG_EXYNOS_DECON_LCD_S6E3HF2_WQHD) || defined(CONFIG_PANEL_S6E3HA2_DYNAMIC) || defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)\
 	|| defined(CONFIG_PANEL_S6E3HF2_DYNAMIC) /* Bypass */
 
 static unsigned char STANDARD_DMB_2[] = {

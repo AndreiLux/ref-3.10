@@ -56,7 +56,7 @@ int pressure_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0666);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		iErr = PTR_ERR(cal_filp);
 		if (iErr != -ENOENT)

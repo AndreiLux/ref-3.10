@@ -35,8 +35,13 @@
 #define MAX77833_REG_MAINCTRL1_MREN		(1 << 3)
 #define MAX77833_REG_MAINCTRL1_BIASEN		(1 << 7)
 
+#ifdef CONFIG_MOTOR_DRV_MAX77843
 extern void (*vibtonz_en)(bool);
 extern void (*vibtonz_pwm)(int);
+#else
+void (*vibtonz_en)(bool);
+void (*vibtonz_pwm)(int);
+#endif
 
 static struct device *motor_dev;
 
@@ -491,6 +496,71 @@ static int max77833_haptic_probe(struct platform_device *pdev)
 	vibtonz_en = max77833_vibtonz_en;
 	vibtonz_pwm = max77833_vibtonz_pwm;
 
+	/* autoresonance range setting */
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_AUTORES_CONFIG, 0x00);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_AUTORES_CONFIG, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_AUTORES_MIN_FREQ_LOW, 0xA9);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_AUTORES_MIN_FREQ_LOW, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_AUTORES_MAX_FREQ_LOW, 0x7C);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_AUTORES_MAX_FREQ_LOW, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_AUTORES_INIT_GUESS_LOW, 0x92);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_AUTORES_MAX_FREQ_LOW, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_NOMINAL_STRENGTH, 0x5A);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_NOMINAL_STRENGTH, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_RES_MIN_FREQ_HIGH, 0x03);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_RES_MIN_FREQ_HIGH, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_RES_MAX_FREQ_HIGH, 0x03);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_RES_MAX_FREQ_HIGH, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_AUTORES_INIT_GUESS_HIGH, 0x03);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_AUTORES_INIT_GUESS_HIGH, error);
+	}
+
+	error = max77833_write_reg(hap_data->i2c,
+		MAX77833_AUTORES_LOCK_WINDOW, 0x22);
+	if (error < 0) {
+		pr_err("[VIB] %s Failed to write REG(0x%02x) [%d]\n",
+				__func__, MAX77833_AUTORES_LOCK_WINDOW, error);
+	}
+
+
 	pr_info("[VIB] -- %s\n", __func__);
 
 	return error;
@@ -574,3 +644,4 @@ module_exit(max77833_haptic_exit);
 MODULE_AUTHOR("ByungChang Cha <bc.cha@samsung.com>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("max77833 haptic driver");
+

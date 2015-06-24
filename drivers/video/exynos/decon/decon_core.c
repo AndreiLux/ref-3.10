@@ -1177,17 +1177,23 @@ static void decon_free_dma_buf(struct decon_device *decon,
 	ion_free(decon->ion_client, dma->ion_handle);
 	memset(dma, 0, sizeof(struct decon_dma_buf_data));
 }
+#if defined(CONFIG_PANEL_S6E3HF3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
+	unsigned char esd_support;
+#endif
+
 static void decon_esd_enable_interrupt(struct decon_device *decon)
 {
 	struct esd_protect *esd = &decon->esd;
 
 	if (esd) {
 		if (esd->pcd_irq){
-			//disable_irq_nosync(esd->pcd_irq);
 			enable_irq(esd->pcd_irq);
 		}
 		if (esd->err_irq) {
-			//disable_irq_nosync(esd->err_irq);
+#if defined(CONFIG_PANEL_S6E3HF3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
+			if(esd_support == 0)		// because pre panel don't support esd recovery
+				return;
+#endif
 			enable_irq(esd->err_irq);
 		}
 	}
@@ -1215,11 +1221,11 @@ int decon_enable(struct decon_device *decon)
 	struct decon_init_param p;
 	int state = decon->state;
 	int ret = 0;
+	unsigned int te_pending = 0;
 #ifdef CONFIG_LCD_ALPM
 	int alpm = 0;
 	struct dsim_device *dsim = NULL;
 #endif
-	unsigned int te_pending = 0;
 
 	decon_dbg("enable decon-%s\n", decon->id ? "ext" : "int");
 	exynos_ss_printk("%s:state %d: active %d:+\n", __func__,
@@ -1232,7 +1238,6 @@ int decon_enable(struct decon_device *decon)
 		decon_info("decon-%s: alpm(%d)\n", decon->id ? "ext" : "int", alpm);
 	}
 #endif
-
 	if (decon->state != DECON_STATE_LPD_EXIT_REQ)
 		mutex_lock(&decon->output_lock);
 
@@ -1466,10 +1471,13 @@ int decon_disable(struct decon_device *decon)
 	decon_reg_stop(decon->id, decon->pdata->dsi_mode, &psr);
 	decon_reg_clear_int(decon->id);
 
-	/* DMA protection disable must be happen on vpp domain is alive */
-	decon_set_protected_content(decon, NULL);
-	decon->vpp_usage_bitmask = 0;
-	decon_vpp_stop(decon, true);
+	if (decon->out_type != DECON_OUT_WB) {
+		/* DMA protection disable must be happen on vpp domain is alive */
+		decon_set_protected_content(decon, NULL);
+		decon->vpp_usage_bitmask = 0;
+		decon_vpp_stop(decon, true);
+	}
+
 	iovmm_deactivate(decon->dev);
 
 	/* Synchronize the decon->state with irq_handler */
@@ -1811,16 +1819,20 @@ static int decon_get_plane_cnt(enum decon_pixel_format format)
 
 }
 
-inline static u32 get_vpp_src_format_opaque(u32 format)
+static inline u32 get_vpp_src_format_opaque(int id, u32 format)
 {
 	switch (format) {
 	case DECON_PIXEL_FORMAT_BGRA_8888:
+		decon_info("vpp(%d), format(0x%x)\n", id, format);
 		return DECON_PIXEL_FORMAT_BGRX_8888;
 	case DECON_PIXEL_FORMAT_RGBA_8888:
+		decon_info("vpp(%d), format(0x%x)\n", id, format);
 		return DECON_PIXEL_FORMAT_RGBX_8888;
 	case DECON_PIXEL_FORMAT_ABGR_8888:
+		decon_info("vpp(%d), format(0x%x)\n", id, format);
 		return DECON_PIXEL_FORMAT_XBGR_8888;
 	case DECON_PIXEL_FORMAT_ARGB_8888:
+		decon_info("vpp(%d), format(0x%x)\n", id, format);
 		return DECON_PIXEL_FORMAT_XRGB_8888;
 	default:
 		return format;
@@ -1832,7 +1844,7 @@ static u32 get_vpp_src_format(u32 format, int id)
 	switch (id) {
         case IDMA_VG0:
         case IDMA_VG1:
-                format = get_vpp_src_format_opaque(format);
+                format = get_vpp_src_format_opaque(id, format);
 		break;
         default:
                 break;
@@ -3085,6 +3097,8 @@ static void decon_update_regs(struct decon_device *decon, struct decon_reg_data 
 		} else {
 			decon->frame_done_cnt_cur++;
 			atomic_set(&decon->wb_done, STATE_IDLE);
+			decon->vpp_usage_bitmask = 0;
+			decon_set_protected_content(decon, NULL);
 		}
 	} else {
 	        decon_wait_for_vsync(decon, VSYNC_TIMEOUT_MSEC);
@@ -4172,10 +4186,15 @@ static void decon_parse_pdata(struct decon_device *decon, struct device *dev)
 
 static int decon_esd_panel_reset(struct decon_device *decon)
 {
-	int ret;
+	int ret = 0;
 	struct esd_protect *esd = &decon->esd;
 
 	decon_info("++ %s\n", __func__);
+
+	if (decon->state == DECON_STATE_OFF) {
+		decon_warn("decon%d status is inactive\n", decon->id);
+		return ret;
+	}
 
 	flush_workqueue(decon->lpd_wq);
 
@@ -4216,7 +4235,7 @@ static int decon_esd_panel_reset(struct decon_device *decon)
 	decon->update_win.w = decon->lcd_info->xres;
 	decon->update_win.h = decon->lcd_info->yres;
 	decon->force_fullupdate = 1;
-
+#if 0
 	if (decon->pdata->trig_mode == DECON_HW_TRIG)
 		decon_reg_set_trigger(decon->id, decon->pdata->dsi_mode,
 			decon->pdata->trig_mode, DECON_TRIG_ENABLE);
@@ -4230,8 +4249,8 @@ static int decon_esd_panel_reset(struct decon_device *decon)
 	if (decon->pdata->trig_mode == DECON_HW_TRIG)
 		decon_reg_set_trigger(decon->id, decon->pdata->dsi_mode,
 			decon->pdata->trig_mode, DECON_TRIG_DISABLE);
-
 reset_exit:
+#endif
 	mutex_unlock(&decon->output_lock);
 
 	decon_lpd_unblock(decon);

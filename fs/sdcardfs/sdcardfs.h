@@ -125,6 +125,16 @@ typedef enum {
 	PERM_ANDROID_MEDIA,
 	/* This node is "/Android/user" */
 	PERM_ANDROID_USER,
+	/* knox folder */
+    PERM_ANDROID_KNOX,
+    /* knox user folder*/
+    PERM_ANDROID_KNOX_USER,
+    /* knox Android folder*/
+    PERM_ANDROID_KNOX_ANDROID,
+    /* knox shared folder */
+    PERM_ANDROID_KNOX_SHARED,
+    /* knox data folder */
+    PERM_ANDROID_KNOX_DATA
 } perm_t;
 
 /* Permissions structure to derive */

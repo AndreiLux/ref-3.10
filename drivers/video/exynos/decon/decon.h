@@ -394,6 +394,8 @@ struct decon_win_config {
 			struct vpp_params		vpp_parm;
 			/* no read area of IDMA */
 			struct decon_win_rect		block_area;
+			struct decon_win_rect           transparent_area;
+			struct decon_win_rect           opaque_area;			
 			/* source framebuffer coordinates */
 			struct decon_frame		src;
 		};
@@ -569,6 +571,8 @@ struct disp_log_vpp {
 	u32 id;
 	u32 start_cnt;
 	u32 done_cnt;
+	u32 cur_int;
+	u32 cur_bw;
 };
 
 /* Related with frame count */

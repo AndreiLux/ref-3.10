@@ -40,7 +40,7 @@ static int maxdsm_cal_read_file(char *filename, char *data, size_t size)
 	int ret;
 
 	set_fs(KERNEL_DS);
-	cal_filp = filp_open(filename, O_RDONLY, 0666);
+	cal_filp = filp_open(filename, O_RDONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		pr_err("%s: there is no dsm_cal file\n", __func__);
 		set_fs(old_fs);
@@ -67,7 +67,7 @@ static int maxdsm_cal_write_file(char *filename, char *data, size_t size)
 
 	set_fs(KERNEL_DS);
 	cal_filp = filp_open(filename,
-			O_CREAT | O_TRUNC | O_WRONLY, 0666);
+			O_CREAT | O_TRUNC | O_WRONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		pr_err("%s: Can't open calibration file\n", __func__);
 		set_fs(old_fs);

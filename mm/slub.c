@@ -1498,7 +1498,10 @@ static struct page *new_slab(struct kmem_cache *s, gfp_t flags, int node)
 	}
 	setup_object(s, page, last);
 	set_freepointer(s, last, NULL);
-
+#ifdef CONFIG_DMAP_PROT
+	if(rkp_cred_enable)
+		rkp_call(RKP_CMDID(0x4a),page_to_phys(page),compound_order(page),1,0,0);
+#endif
 	page->freelist = start;
 	page->inuse = page->objects;
 	page->frozen = 1;
@@ -1511,14 +1514,15 @@ void free_ro_pages(struct page *page, int order)
 {
 	unsigned long flags;
 	unsigned long long sc,va_page;
-	
+
 	sc = 0;
 	va_page = (unsigned long long)__va(page_to_phys(page));
 	if(is_rkp_ro_page(va_page)){
+		rkp_call(RKP_CMDID(0x48),va_page,0,0,0,0);
 		rkp_ro_free((void *)va_page);
 		return;
 	}
-	
+
 	spin_lock_irqsave(&ro_pages_lock,flags);
 	for(; sc < (1 << order); sc++) {
 		rkp_call(RKP_CMDID(0x48),va_page,0,0,0,0);
@@ -1532,6 +1536,11 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 {
 	int order = compound_order(page);
 	int pages = 1 << order;
+
+#ifdef CONFIG_DMAP_PROT
+	if(rkp_cred_enable)
+		rkp_call(RKP_CMDID(0x4a),page_to_phys(page),compound_order(page),0,0,0);
+#endif
 
 	if (kmem_cache_debug(s)) {
 		void *p;

@@ -152,7 +152,7 @@ static void __init *early_alloc(unsigned long sz)
 /* Extra memory needed by VMM */
 void* vmm_extra_mem = 0;
 spinlock_t ro_rkp_pages_lock = __SPIN_LOCK_UNLOCKED();
-char ro_pages_stat[1 << RO_PAGES_ORDER] = {0};
+char ro_pages_stat[RO_PAGES] = {0};
 unsigned ro_alloc_last = 0; 
 int rkp_ro_mapped = 0; 
 
@@ -165,8 +165,8 @@ void *rkp_ro_alloc(void)
 	
 	spin_lock_irqsave(&ro_rkp_pages_lock,flags);
 	
-	for (i = 0, j = ro_alloc_last; i < (1 << RO_PAGES_ORDER) ; i++) {
-		j =  (j+i) %( 1UL << RO_PAGES_ORDER); 
+	for (i = 0, j = ro_alloc_last; i < (RO_PAGES) ; i++) {
+		j =  (j+i) %(RO_PAGES); 
 		if (!ro_pages_stat[j]) {
 			ro_pages_stat[j] = 1;
 			ro_alloc_last = j+1;
@@ -193,8 +193,8 @@ void rkp_ro_free(void *free_addr)
 
 unsigned int is_rkp_ro_page(u64 addr)
 {
-	if( (addr >= (u64)RKP_RBUF_VA) 
-		&& (addr <= (u64)(RKP_RBUF_VA+(1 << RO_PAGES_ORDER))))
+	if( (addr >= (u64)RKP_RBUF_VA)
+		&& (addr < (u64)(RKP_RBUF_VA+ TIMA_ROBUF_SIZE)))
 		return 1;
 	else return 0;
 }
@@ -402,7 +402,7 @@ static void __init map_mem(void)
 #endif
 	if( rkp_do ){
 		create_mapping(start, __phys_to_virt(start), mid - start);
-		memset((void*)RKP_RBUF_VA, 0, 0x800000);
+		memset((void*)RKP_RBUF_VA, 0, TIMA_ROBUF_SIZE);
 		create_mapping(mid, __phys_to_virt(mid), end - mid);
 	}else{
 		create_mapping(start, __phys_to_virt(start), end - start);

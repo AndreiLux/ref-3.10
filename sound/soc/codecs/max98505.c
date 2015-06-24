@@ -116,6 +116,10 @@ static bool max98505_volatile_register(struct device *dev, unsigned int reg)
 
 static bool max98505_readable_register(struct device *dev, unsigned int reg)
 {
+	if (MAX98505_R03A_BOOST_LIMITER < reg &&
+			MAX98505_R0FF_VERSION > reg)
+		return false;
+
 	switch (reg) {
 	case MAX98505_R00E_IRQ_CLEAR0:
 	case MAX98505_R00F_IRQ_CLEAR1:
@@ -323,6 +327,48 @@ static const struct soc_enum max98505_boost_voltage_enum =
 SOC_ENUM_SINGLE(MAX98505_R037_CONFIGURATION, MAX98505_BST_VOUT_SHIFT, 15,
 		max98505_boost_voltage_text);
 
+static const char * const spk_state_text[] = {"Disable", "Enable"};
+
+static const struct soc_enum spk_state_enum[] = {
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_state_text), spk_state_text),
+};
+
+static int max98505_set_speaker(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol) {
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+
+	if (ucontrol->value.integer.value[0])
+		regmap_write(max98505->regmap,
+				MAX98505_R038_GLOBAL_ENABLE,
+				MAX98505_EN_MASK);
+	else
+		regmap_update_bits(max98505->regmap,
+				MAX98505_R038_GLOBAL_ENABLE,
+				MAX98505_EN_MASK, 0x0);
+
+	msg_maxim("Speaker was set by '%s'",
+			spk_state_text[ucontrol->value.integer.value[0]]);
+
+	return 0;
+}
+
+static int max98505_get_speaker(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol) {
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	unsigned int val;
+
+	regmap_read(max98505->regmap,
+			MAX98505_R038_GLOBAL_ENABLE, &val);
+	ucontrol->value.integer.value[0] = !!(val & MAX98505_EN_MASK);
+
+	msg_maxim("The status of speaker is '%s'",
+			spk_state_text[ucontrol->value.integer.value[0]]);
+
+	return 0;
+}
+
 static const struct snd_kcontrol_new max98505_snd_controls[] = {
 
 	SOC_SINGLE_EXT_TLV("Speaker Volume", MAX98505_R02D_GAIN,
@@ -346,6 +392,9 @@ static const struct snd_kcontrol_new max98505_snd_controls[] = {
 			max98505_alc_threshold_get, max98505_alc_threshold_put),
 
 	SOC_ENUM("Boost Output Voltage", max98505_boost_voltage_enum),
+
+	SOC_ENUM_EXT("SPK out", spk_state_enum[0],
+		max98505_get_speaker, max98505_set_speaker),
 #ifdef USE_DSM_LOG
 	SOC_SINGLE_EXT("DSM LOG", SND_SOC_NOPM, 0, 3, 0,
 		max98505_get_dump_status, max98505_set_dump_status),
@@ -845,56 +894,56 @@ static irqreturn_t max98505_interrupt(int irq, void *data)
 		return IRQ_NONE;
 
 	/* Send work to be scheduled */
-	if (flag0 & M98505_THERMWARN_END_STATE_MASK)
-		msg_maxim("M98505_THERMWARN_STATUS_MASK active!");
+	if (flag0 & MAX98505_THERMWARN_END_STATE_MASK)
+		msg_maxim("MAX98505_THERMWARN_STATE_MASK active!");
 
-	if (flag0 & M98505_THERMWARN_BGN_STATE_MASK)
-		msg_maxim("M98505_THERMWARN_BGN_STATE_MASK active!");
+	if (flag0 & MAX98505_THERMWARN_BGN_STATE_MASK)
+		msg_maxim("MAX98505_THERMWARN_BGN_STATE_MASK active!");
 
-	if (flag0 & M98505_THERMSHDN_END_STATE_MASK)
-		msg_maxim("M98505_THERMSHDN_END_STATE_MASK active!");
+	if (flag0 & MAX98505_THERMSHDN_END_STATE_MASK)
+		msg_maxim("MAX98505_THERMSHDN_END_STATE_MASK active!");
 
-	if (flag0 & M98505_THERMSHDN_BGN_STATE_MASK)
-		msg_maxim("M98505_THERMSHDN_BGN_STATE_MASK active!");
+	if (flag0 & MAX98505_THERMSHDN_BGN_STATE_MASK)
+		msg_maxim("MAX98505_THERMSHDN_BGN_STATE_MASK active!");
 
-	if (flag1 & M98505_SPRCURNT_STATE_MASK)
-		msg_maxim("M98505_SPRCURNT_STATE_MASK active!");
+	if (flag1 & MAX98505_SPRCURNT_STATE_MASK)
+		msg_maxim("MAX98505_SPRCURNT_STATE_MASK active!");
 
-	if (flag1 & M98505_WATCHFAIL_STATE_MASK)
-		msg_maxim("M98505_WATCHFAIL_STATE_MASK active!");
+	if (flag1 & MAX98505_WATCHFAIL_STATE_MASK)
+		msg_maxim("MAX98505_WATCHFAIL_STATE_MASK active!");
 
-	if (flag1 & M98505_ALCINFH_STATE_MASK)
-		msg_maxim("M98505_ALCINFH_STATE_MASK active!");
+	if (flag1 & MAX98505_ALCINFH_STATE_MASK)
+		msg_maxim("MAX98505_ALCINFH_STATE_MASK active!");
 
-	if (flag1 & M98505_ALCACT_STATE_MASK)
-		msg_maxim("M98505_ALCACT_STATE_MASK active!");
+	if (flag1 & MAX98505_ALCACT_STATE_MASK)
+		msg_maxim("MAX98505_ALCACT_STATE_MASK active!");
 
-	if (flag1 & M98505_ALCMUT_STATE_MASK)
-		msg_maxim("M98505_ALCMUT_STATE_MASK active!");
+	if (flag1 & MAX98505_ALCMUT_STATE_MASK)
+		msg_maxim("MAX98505_ALCMUT_STATE_MASK active!");
 
-	if (flag1 & M98505_ALCP_STATE_MASK)
-		msg_maxim("M98505_ALCP_STATE_MASK active!");
+	if (flag1 & MAX98505_ALCP_STATE_MASK)
+		msg_maxim("MAX98505_ALCP_STATE_MASK active!");
 
-	if (flag2 & M98505_SLOTOVRN_STATE_MASK)
-		msg_maxim("M98505_SLOTOVRN_STATE_MASK active!");
+	if (flag2 & MAX98505_SLOTOVRN_STATE_MASK)
+		msg_maxim("MAX98505_SLOTOVRN_STATE_MASK active!");
 
-	if (flag2 & M98505_INVALSLOT_STATE_MASK)
-		msg_maxim("M98505_INVALSLOT_STATE_MASK active!");
+	if (flag2 & MAX98505_INVALSLOT_STATE_MASK)
+		msg_maxim("MAX98505_INVALSLOT_STATE_MASK active!");
 
-	if (flag2 & M98505_SLOTCNFLT_STATE_MASK)
-		msg_maxim("M98505_SLOTCNFLT_STATE_MASK active!");
+	if (flag2 & MAX98505_SLOTCNFLT_STATE_MASK)
+		msg_maxim("MAX98505_SLOTCNFLT_STATE_MASK active!");
 
-	if (flag2 & M98505_VBSTOVFL_STATE_MASK)
-		msg_maxim("M98505_VBSTOVFL_STATE_MASK active!");
+	if (flag2 & MAX98505_VBSTOVFL_STATE_MASK)
+		msg_maxim("MAX98505_VBSTOVFL_STATE_MASK active!");
 
-	if (flag2 & M98505_VBATOVFL_STATE_MASK)
-		msg_maxim("M98505_VBATOVFL_STATE_MASK active!");
+	if (flag2 & MAX98505_VBATOVFL_STATE_MASK)
+		msg_maxim("MAX98505_VBATOVFL_STATE_MASK active!");
 
-	if (flag2 & M98505_IMONOVFL_STATE_MASK)
-		msg_maxim("M98505_IMONOVFL_STATE_MASK active!");
+	if (flag2 & MAX98505_IMONOVFL_STATE_MASK)
+		msg_maxim("MAX98505_IMONOVFL_STATE_MASK active!");
 
-	if (flag2 & M98505_VMONOVFL_STATE_MASK)
-		msg_maxim("M98505_VMONOVFL_STATE_MASK active!");
+	if (flag2 & MAX98505_VMONOVFL_STATE_MASK)
+		msg_maxim("MAX98505_VMONOVFL_STATE_MASK active!");
 
 	regmap_write(max98505->regmap, MAX98505_R00E_IRQ_CLEAR0,
 			flag0&0xff);
@@ -1030,7 +1079,7 @@ static int max98505_probe(struct snd_soc_codec *codec)
 	regmap_write(max98505->regmap, MAX98505_R029_DOUT_HIZ_CFG3, 0xFF);
 	regmap_write(max98505->regmap, MAX98505_R02A_DOUT_HIZ_CFG4, 0xF0);
 
-	regmap_write(max98505->regmap, MAX98505_R02C_FILTERS, 0xD8);
+	regmap_write(max98505->regmap, MAX98505_R02C_FILTERS, 0xD9);
 	regmap_write(max98505->regmap, MAX98505_R034_ALC_CONFIGURATION, 0x12);
 
 	/*****************************************************************/

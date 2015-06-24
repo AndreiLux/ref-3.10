@@ -72,6 +72,7 @@
 		battery,temp_adc_type = <1>; /* SEC_BATTERY_ADC_TYPE_AP */
 
 		battery,chg_temp_check = <1>;
+		battery,wpc_temp_check = <1>;
 
 		battery,polling_time = <10 30 30 30 3600>;
 
@@ -89,7 +90,7 @@
 					       400 350 300 250 200 150 100
 					       50 0 (-50) (-100) (-150) (-200)>;
 
-		battery,input_current_limit = <1800 0 0 1800 460 900 1000 460 1000 0 820 1900 1800 0 0 400 700 1300 300 1000 1500 0 1667 1000 1667 80 1800 1667 1400 1500 1500>;
+		battery,input_current_limit = <1800 0 0 1800 460 900 1000 460 1000 0 820 1900 1800 0 0 400 700 1300 300 1000 1500 0 1667 1000 1667 80 1800 1667 1400 1000 1000>;
 		battery,fast_charging_current = <2100 0 0 2100 460 1200 1000 460 1200 0 1200 1600 2100 0 0 400 700 1300 300 1000 1500 0 2550 1000 2550 80 1800 1000 1400 0 1000>;
 		battery,full_check_current_1st = <275 0 0 275 275 275 275 275 275 0 275 275 275 0 0 275 275 275 275 275 275 0 275 275 275 0 275 275 275 0 275>;
 		battery,full_check_current_2nd = <125 0 0 125 125 125 125 125 125 0 125 125 125 0 0 125 125 125 125 125 125 0 125 125 125 0 125 125 125 0 125>;
@@ -97,10 +98,10 @@
 		battery,wireless_cc_cv = <90>;
 		battery,inbat_voltage = <1>;
 
-		battery,inbat_voltage_table_adc = <2905 2873 2848 2819 2787 2762 2731 2677 2655 2619
-						2591 2565 2534 2504 2475 2445 2420 2401 2364 2343>;
-		battery,inbat_voltage_table_data = <438 435 430 425 420 415 410 400 395 390
-						 385 380 375 370 365 360 355 350 345 340>;
+		battery,inbat_voltage_table_adc = <3137 3113 3077 3045 3010 2976 2942 2904 2874 2832
+						2794 2763 2723 2693 2660 2623 2589 2552 2517 2481 2464>;
+		battery,inbat_voltage_table_data = <438 435 430 425 420 415 410 405 400 395
+						390 385 380 375 370 365 360 355 350 345 340>;
 
 		battery,adc_check_count = <5>;
 
@@ -153,6 +154,10 @@
 		battery,chg_skip_check_capacity = <10>;
 		battery,chg_skip_check_time = <600>;
 
+		battery,wpc_high_temp = <400>;
+		battery,wpc_high_temp_recovery = <390>;
+		battery,wpc_charging_limit_current = <450>;
+
 		/* SEC_BATTERY_FULL_CONDITION_SOC |
 		   SEC_BATTERY_FULL_CONDITION_NOTIMEFULL |
 		   SEC_BATTERY_FULL_CONDITION_VCELL */
@@ -163,7 +168,7 @@
 		battery,recharge_check_count = <2>;
 		battery,recharge_condition_type = <4>; /* SEC_BATTERY_RECHARGE_CONDITION_VCELL */
 		battery,recharge_condition_soc = <98>;
-		battery,recharge_condition_vcell = <4350>;
+		battery,recharge_condition_vcell = <4325>;
 
 		battery,charging_total_time = <21600>;
 		battery,recharging_total_time = <5400>;

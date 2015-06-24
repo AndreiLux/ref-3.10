@@ -49,6 +49,8 @@ struct synaptics_rmi_callbacks {
 struct synaptics_rmi4_platform_data {
 	bool x_flip;
 	bool y_flip;
+	bool x_y_chnage;
+	int x_offset;
 	unsigned int sensor_max_x;
 	unsigned int sensor_max_y;
 	unsigned int num_of_rx;

@@ -87,7 +87,7 @@ config SCSI_UFS_EXYNOS
 
 config FIPS_FMP_UFS
 	tristate "EXYNOS FMP UFS Test for FIPS"
-	depends on SCSI_UFSHCD && SCSI_UFSHCD_PLATFORM && FMP
+	depends on SCSI_UFSHCD && SCSI_UFSHCD_PLATFORM && FIPS_FMP
 	---help---
 	  This selects EXYNOS FMP UFS Self-Test driver for FIPS.
 
@@ -109,21 +109,3 @@ config UFS_BKOPS_NODE_GID
 	  Owner group ID of BKOPS sysfs node.
 	  Default is 0. Do not touch the value if unsure.
 
-choice
-	prompt "Option for self-test failure"
-	depends on FIPS_FMP_UFS
-	default NODE_FOR_SELFTEST_FAIL
-
-config NODE_FOR_SELFTEST_FAIL
-	bool "Set fips fmp node when self-test fails"
-	depends on FIPS_FMP_UFS
-	help
-	   This select that fips fmp node was set to zero when FMP self-test fails.
-
-config PANIC_FOR_SELFTEST_FAIL
-	bool "Panic when self-test fails"
-	depends on FIPS_FMP_UFS
-	help
-	   This select that kernel panic occurs when FMP self-test fails.
-
-endchoice

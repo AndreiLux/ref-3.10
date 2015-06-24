@@ -1761,6 +1761,12 @@ static int alg_test_drbg(const struct alg_test_desc *desc, const char *driver,
 static int alg_test_null(const struct alg_test_desc *desc,
 			     const char *driver, u32 type, u32 mask)
 {
+#ifdef CONFIG_CRYPTO_FIPS
+        if (desc && desc->fips_allowed) {
+                if (unlikely(in_fips_err()))
+                        return -1;
+        }
+#endif
 	return 0;
 }
 

@@ -90,11 +90,17 @@ static void vpp_dump_cfw_register(void)
 
 static void vpp_dump_registers(struct vpp_dev *vpp)
 {
-	vpp_dump_cfw_register();
+	unsigned long flags;
 	dev_info(DEV, "=== VPP%d SFR DUMP ===\n", vpp->id);
 	dev_info(DEV, "start count : %d, done count : %d\n",
 			vpp->start_count, vpp->done_count);
 
+	if (!test_bit(VPP_RUNNING, &vpp->state)) {
+		dev_err(DEV, "vpp clocks are disabled\n");
+		return;
+	}
+
+	spin_lock_irqsave(&vpp->slock, flags);
 	print_hex_dump(KERN_INFO, "", DUMP_PREFIX_ADDRESS, 32, 4,
 			vpp->regs, 0xB0, false);
 	print_hex_dump(KERN_INFO, "", DUMP_PREFIX_ADDRESS, 32, 4,
@@ -103,6 +109,9 @@ static void vpp_dump_registers(struct vpp_dev *vpp)
 			vpp->regs + 0xA48, 0x10, false);
 	print_hex_dump(KERN_INFO, "", DUMP_PREFIX_ADDRESS, 32, 4,
 			vpp->regs + 0xB00, 0xB0, false);
+
+	vpp_dump_cfw_register();
+	spin_unlock_irqrestore(&vpp->slock, flags);
 }
 
 void vpp_op_timer_handler(unsigned long arg)
@@ -133,7 +142,6 @@ static int vpp_wait_for_update(struct vpp_dev *vpp)
 	}
 	return 0;
 }
-
 
 static void vpp_get_align_variant(struct decon_win_config *config,
 	u32 *offs, u32 *src_f, u32 *src_cr, u32 *dst_cr)

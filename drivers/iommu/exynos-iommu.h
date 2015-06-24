@@ -68,7 +68,7 @@
 #define SECT_PER_DSECT		(DSECT_SIZE / SECT_SIZE)
 #define SPAGES_PER_LPAGE	(LPAGE_SIZE / SPAGE_SIZE)
 
-#define PGBASE_TO_PHYS(pgent)	(phys_addr_t)((pgent) << PG_ENT_SHIFT)
+#define PGBASE_TO_PHYS(pgent)	((phys_addr_t)(pgent) << PG_ENT_SHIFT)
 
 #define MAX_NUM_PBUF	6
 #define MAX_NUM_PLANE	6
@@ -83,13 +83,14 @@ typedef u32 sysmmu_pte_t;
 
 #define LV2TABLE_SIZE (NUM_LV2ENTRIES * sizeof(sysmmu_pte_t))
 
-#define spsection_phys(sent) PGBASE_TO_PHYS(*(sent) & SPSECT_ENT_MASK)
+#define ENT_TO_PHYS(ent) (phys_addr_t)(*(ent))
+#define spsection_phys(sent) PGBASE_TO_PHYS(ENT_TO_PHYS(sent) & SPSECT_ENT_MASK)
 #define spsection_offs(iova) ((iova) & (SPSECT_SIZE - 1))
-#define section_phys(sent) PGBASE_TO_PHYS(*(sent) & SECT_ENT_MASK)
+#define section_phys(sent) PGBASE_TO_PHYS(ENT_TO_PHYS(sent) & SECT_ENT_MASK)
 #define section_offs(iova) ((iova) & (SECT_SIZE - 1))
-#define lpage_phys(pent) PGBASE_TO_PHYS(*(pent) & LPAGE_ENT_MASK)
+#define lpage_phys(pent) PGBASE_TO_PHYS(ENT_TO_PHYS(pent) & LPAGE_ENT_MASK)
 #define lpage_offs(iova) ((iova) & (LPAGE_SIZE - 1))
-#define spage_phys(pent) PGBASE_TO_PHYS(*(pent) & SPAGE_ENT_MASK)
+#define spage_phys(pent) PGBASE_TO_PHYS(ENT_TO_PHYS(pent) & SPAGE_ENT_MASK)
 #define spage_offs(iova) ((iova) & (SPAGE_SIZE - 1))
 
 #define lv2table_base(sent) ((phys_addr_t)(*(sent) & ~0x3F) << PG_ENT_SHIFT)

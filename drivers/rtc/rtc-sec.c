@@ -38,6 +38,11 @@
 #ifdef CONFIG_EXYNOS_MBOX
 #include <mach/apm-exynos.h>
 #endif
+
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#include <linux/sec_batt_selfdchg_common.h>
+#endif
+
 struct s2m_rtc_info {
 	struct device		*dev;
 	struct sec_pmic_dev	*iodev;
@@ -50,6 +55,9 @@ struct s2m_rtc_info {
 	bool lpm_mode;
 	bool alarm_irq_flag;
 	struct wake_lock alarm_wake_lock;
+#endif
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+	bool dchg_check_rtc_set;
 #endif
 	int			smpl_irq;
 	bool			use_irq;
@@ -82,6 +90,12 @@ enum S2M_RTC_OP {
 	S2M_RTC_WRITE_TIME,
 	S2M_RTC_WRITE_ALARM,
 };
+
+#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#define RTC_BWAKEUP_AMIN 2
+#define RTC_BWAKEUP_ALOOP_MIN 60
+static u8 rtc_balarm_min_for_dischg = 0;
+#endif
 
 static void s2m_data_to_tm(u8 *data, struct rtc_time *tm)
 {
@@ -122,7 +136,7 @@ static int s2m_tm_to_data(struct rtc_time *tm, u8 *data)
 static int s2m_rtc_update(struct s2m_rtc_info *info,
 				 enum S2M_RTC_OP op)
 {
-	u8 data;
+	u8 data, rtc_update_reg;
 	int ret;
 
 	if (!info || !info->iodev) {
@@ -160,6 +174,14 @@ static int s2m_rtc_update(struct s2m_rtc_info *info,
 				__func__, ret, data);
 	else
 		usleep_range(1000, 1000);
+
+	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &rtc_update_reg);
+
+	if (ret < 0) {
+		dev_err(info->dev, "%s: fail to read update reg(%d)\n", __func__, ret);
+	}
+
+	pr_info("%s: RTC_UPDATE_REGISTER check : 0x%02x\n", __func__, rtc_update_reg);
 
 	return ret;
 }
@@ -379,6 +401,13 @@ static int s2m_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	int ret, i;
 
 	mutex_lock(&info->lock);
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+	if (info->dchg_check_rtc_set) {
+		pr_err("[SDCHG][%s] already set discharging rtc for bootloader\n", __func__);
+		ret = -EPERM;
+		goto out;
+	}
+#endif
 	ret = s2m_tm_to_data(&alrm->time, data);
 	if (ret < 0)
 		goto out;
@@ -540,7 +569,6 @@ static int s2m_rtc_set_alarm_boot(struct device *dev,
 {
 	struct s2m_rtc_info *info = dev_get_drvdata(dev);
 	u8 data[7];
-	u8 rtcwake;
 	int ret;
 
 	mutex_lock(&info->lock);
@@ -557,7 +585,7 @@ static int s2m_rtc_set_alarm_boot(struct device *dev,
 	if (ret < 0)
 		return ret;
 
-	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &rtcwake);
+	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &info->update_reg);
 	if (ret < 0)
 	{
 		printk(KERN_INFO "%s: read fail \n", __func__);
@@ -565,11 +593,11 @@ static int s2m_rtc_set_alarm_boot(struct device *dev,
 	}
 
 	if (alrm->enabled)
-		rtcwake |= RTC_WAKE_MASK;
+		info->update_reg |= RTC_WAKE_MASK;
 	else
-		rtcwake &= ~RTC_WAKE_MASK;
+		info->update_reg &= ~RTC_WAKE_MASK;
 
-	ret = sec_rtc_write(info->iodev, S2M_RTC_UPDATE, (char)rtcwake);
+	ret = sec_rtc_write(info->iodev, S2M_RTC_UPDATE, (char)info->update_reg);
 
 	if (ret < 0) {
 		dev_err(info->dev, "%s: fail to write update reg(%d)\n",
@@ -607,6 +635,244 @@ static int s2m_rtc_get_alarm_boot(struct device *dev,
 	printk("s2m_rtc_get_alarm_boot : %d, %d\n",
 						info->lpm_mode, alrm->enabled);
 	return info->lpm_mode;
+}
+#endif
+
+#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+static inline int s2m_rtc_update_reg_dischg(struct s2m_rtc_info *info,
+                      enum S2M_RTC_OP op)
+{
+	int ret;
+	unsigned int data;
+
+	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &data);
+	if (ret < 0)
+		return ret;
+
+	switch (op) {
+	case S2M_RTC_READ:
+		data |= RTC_RUDR_MASK;
+		break;
+	case S2M_RTC_WRITE_TIME:
+		data |= info->wudr_mask;
+		break;
+	case S2M_RTC_WRITE_ALARM:
+		data |= info->audr_mask;
+		break;
+	default:
+		dev_err(info->dev, "%s: invalid op(%d)\n", __func__, op);
+		return -EINVAL;
+	}
+
+	ret = sec_rtc_write(info->iodev, S2M_RTC_UPDATE, (char)data);
+
+	if (ret < 0) {
+		dev_err(info->dev, "%s: fail to write update reg(%d)\n",
+				__func__, ret);
+	} else {
+		usleep_range(1000, 1000);
+	}
+
+	return ret;
+}
+
+static int s2m_rtc_stop_balarm_dischg(struct s2m_rtc_info *info)
+{
+	u8 data[7];
+	int ret,i;
+	struct rtc_time tm;
+
+	ret = sec_rtc_bulk_read(info->iodev, S2M_ALARM0_SEC, 7, data);
+	if (ret < 0)
+		return ret;
+
+	s2m_data_to_tm(data, &tm);
+
+	printk(KERN_INFO "%s: %d/%d/%d %d:%d:%d(%d)\n", __func__,
+		1900 + tm.tm_year, 1 + tm.tm_mon, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday);
+
+	for (i = 0; i < 7; i++)
+		data[i] &= ~ALARM_ENABLE_MASK;
+
+	ret = sec_rtc_bulk_write(info->iodev, S2M_ALARM0_SEC, 7, data);
+	if (ret < 0)
+		return ret;
+
+	ret = s2m_rtc_update_reg_dischg(info, S2M_RTC_WRITE_ALARM);
+
+	return ret;
+}
+
+static int s2m_rtc_start_balarm_dischg(struct s2m_rtc_info *info)
+{
+	int ret;
+	u8 data[7];
+	struct rtc_time tm;
+
+	ret = sec_rtc_bulk_read(info->iodev, S2M_ALARM0_SEC, 7, data);
+	if (ret < 0)
+		return ret;
+
+	s2m_data_to_tm(data, &tm);
+
+	printk(KERN_INFO "%s: %d/%d/%d %d:%d:%d(%d)\n", __func__,
+		1900 + tm.tm_year, 1 + tm.tm_mon, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday);
+
+	//DISCHG Algorithm must run all the time
+	data[RTC_MIN] |= ALARM_ENABLE_MASK;
+	printk(KERN_INFO "%s data[RTC_MIN] = 0x%02x\n",__func__, data[RTC_MIN]);
+
+	ret = sec_rtc_bulk_write(info->iodev, S2M_ALARM0_MIN, 1, &data[RTC_MIN]);
+	if (ret < 0)
+		return ret;
+
+	ret = s2m_rtc_update_reg_dischg(info, S2M_RTC_WRITE_ALARM);
+
+	ret = sec_rtc_bulk_read(info->iodev, S2M_ALARM0_SEC, 7, data);
+	if (ret < 0)
+		return ret;
+	
+	s2m_data_to_tm(data, &tm);
+
+	printk(KERN_INFO "%s: %d/%d/%d %d:%d:%d(%d)\n", __func__,
+		1900 + tm.tm_year, 1 + tm.tm_mon, tm.tm_mday,
+		tm.tm_hour, tm.tm_min, tm.tm_sec, tm.tm_wday);
+	printk(KERN_INFO "%s data[RTC_MIN] = 0x%02x\n",__func__,	data[RTC_MIN]);
+
+	return ret;
+}
+
+static int s2m_rtc_set_balarm_dischg_only(struct s2m_rtc_info *info)
+{
+	int ret;
+	u8 rtc_balarm_min;	
+	u8 rtcwake;
+	u8 data[NR_RTC_CNT_REGS];
+
+#if defined(CONFIG_RTC_ALARM_BOOT)
+	unsigned long alarm_time;
+	unsigned long rtc_time;
+	struct rtc_time temp_rtc_time;
+	u8 alarm1_time[NR_RTC_CNT_REGS];	
+#endif
+	mutex_lock(&info->lock);
+	
+	ret = s2m_rtc_update(info, S2M_RTC_READ);
+	if (ret < 0)
+		dev_err(info->dev, "%s: fail to update RTC(%d)\n", __func__,ret);
+
+	ret = sec_rtc_bulk_read(info->iodev, S2M_RTC_SEC, NR_RTC_CNT_REGS, data);
+	if (ret < 0) 
+		dev_err(info->dev, "%s: fail to read time reg(%d)\n", __func__,ret);
+	
+
+	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(0x%02x)%s\n",
+			__func__, data[RTC_YEAR] + 2000, data[RTC_MONTH],
+			data[RTC_DATE], data[RTC_HOUR] & 0x1f, data[RTC_MIN],
+			data[RTC_SEC], data[RTC_WEEKDAY],
+			data[RTC_HOUR] & HOUR_PM_MASK ? "PM" : "AM");
+
+
+#if defined(CONFIG_RTC_ALARM_BOOT)
+
+	ret = sec_rtc_bulk_read(info->iodev, S2M_ALARM1_SEC, 7, alarm1_time);
+	if (ret < 0)
+		dev_err(info->dev, "%s: fail to read time reg(%d)\n", __func__,ret);
+	
+	s2m_data_to_tm(alarm1_time, &temp_rtc_time);
+
+	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(%d)\n", __func__,
+		temp_rtc_time.tm_year + 1900, temp_rtc_time.tm_mon + 1,
+		temp_rtc_time.tm_mday, temp_rtc_time.tm_hour,
+		temp_rtc_time.tm_min, temp_rtc_time.tm_sec,
+		temp_rtc_time.tm_wday);
+
+	rtc_tm_to_time(&temp_rtc_time, &alarm_time);
+
+	s2m_data_to_tm(data, &temp_rtc_time);
+
+	dev_info(info->dev, "%s: %d-%02d-%02d %02d:%02d:%02d(%d)\n", __func__,
+			temp_rtc_time.tm_year + 1900, temp_rtc_time.tm_mon + 1,
+			temp_rtc_time.tm_mday, temp_rtc_time.tm_hour,
+			temp_rtc_time.tm_min, temp_rtc_time.tm_sec,
+			temp_rtc_time.tm_wday);
+
+	rtc_tm_to_time(&temp_rtc_time, &rtc_time);
+
+	alarm_time = alarm_time / 60;
+	rtc_time = rtc_time / 60;
+
+	
+	if (alarm_time > rtc_time && alarm_time < rtc_time +5) {	//if alarm_boot time is within 5min of current RTC
+		pr_info("[SDCHG][%s]alarm within 5min\n", __func__);
+		mutex_unlock(&info->lock);
+		return 0;					//then do anything. System will boot by alarm_boot
+	}
+
+#endif
+
+	rtc_balarm_min_for_dischg = data[RTC_MIN];
+	rtc_balarm_min = rtc_balarm_min_for_dischg + RTC_BWAKEUP_AMIN;
+
+	if(rtc_balarm_min >= RTC_BWAKEUP_ALOOP_MIN)
+		rtc_balarm_min = rtc_balarm_min -RTC_BWAKEUP_ALOOP_MIN;
+
+	s2m_rtc_stop_balarm_dischg(info);
+	
+	ret = sec_rtc_read(info->iodev, S2M_RTC_UPDATE, &rtcwake);
+
+	if (ret < 0)
+	{
+		printk(KERN_ERR "%s: read fail \n", __func__);
+		mutex_unlock(&info->lock);
+		return ret;
+	}
+	
+	printk(KERN_INFO "%s: rtcwake(before) = %d\n",__func__,rtcwake);
+
+	rtcwake |= RTC_WAKE_MASK;
+	
+	printk(KERN_INFO "%s: rtcwake(after) = %d\n",__func__,rtcwake);	
+	
+	ret = sec_rtc_write(info->iodev, S2M_RTC_UPDATE, (char)rtcwake);
+
+	if (ret < 0) {
+		dev_err(info->dev, "%s: fail to write update reg(%d)\n",
+				__func__, ret);
+	} else {
+		usleep_range(1000, 1000);
+	}
+
+	ret = sec_rtc_bulk_write(info->iodev, S2M_ALARM0_MIN, 1, &rtc_balarm_min);
+	if (ret < 0){
+		dev_err(info->dev, "%s: fail to write update reg(%d)\n",
+				__func__, ret);
+	}
+	
+	ret = s2m_rtc_update_reg_dischg(info, S2M_RTC_WRITE_ALARM);
+	if (ret < 0)
+		printk(KERN_ERR "%s: s2m_rtc_update_reg_dischg FAIL!!\n",__func__);
+	else
+		printk(KERN_INFO "%s: s2m_rtc_update_reg_dischg SUCCESS!!\n",__func__);
+
+	ret = s2m_rtc_start_balarm_dischg(info);	
+	if (ret < 0)
+		printk(KERN_ERR "%s: s2m_rtc_start_balarm_dischg FAIL!!\n",__func__);
+	else
+		printk(KERN_INFO "%s: s2m_rtc_start_balarm_dischg SUCCESS!!\n",__func__);
+
+	ret = sec_rtc_bulk_read(info->iodev, S2M_ALARM0_SEC, NR_RTC_CNT_REGS, data);
+	if(ret < 0)
+		printk(KERN_ERR "%s: RTC_MIN read fail\n",__func__);
+	else
+		printk(KERN_INFO "%s: RTC_MIN = %d\n",__func__,data[RTC_MIN]);
+
+	info->dchg_check_rtc_set = true;
+	mutex_unlock(&info->lock);
+	
+	return ret;
 }
 #endif
 
@@ -1250,6 +1516,9 @@ static int s2m_rtc_probe(struct platform_device *pdev)
 	info->use_alarm_workaround = false;
 	info->wudr_mask = RTC_WUDR_MASK;
 	info->audr_mask = RTC_AUDR_MASK;
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+	info->dchg_check_rtc_set = false;
+#endif
 
 	switch (iodev->device_type) {
 	case S2MPU03X:
@@ -1431,6 +1700,12 @@ static void s2m_rtc_shutdown(struct platform_device *pdev)
 {
 	struct s2m_rtc_info *info = platform_get_drvdata(pdev);
 	struct sec_platform_data *pdata = dev_get_platdata(info->iodev->dev);
+
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+	if(sdchg_nochip_support && (s2m_rtc_set_balarm_dischg_only(info) < 0))
+		printk(KERN_ERR "%s: Failed to set alarm reg. for boot self-dischg\n \n",
+				 __func__);
+#endif
 
 	if (info->wtsr_en || info->smpl_en)
 		s2m_rtc_disable_wtsr_smpl(info, pdata);

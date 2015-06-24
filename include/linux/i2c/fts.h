@@ -8,7 +8,7 @@
 #define FTS_SUPPORT_WATER_MODE
 /*#define FTS_SUPPORT_2NDSCREEN*/
 /*#define FTS_SUPPORT_SIDE_SCROLL*/
-/*#define FTS_SUPPORT_STRINGLIB */
+#define FTS_SUPPORT_STRINGLIB
 
 extern struct fts_callbacks *fts_charger_callbacks;
 struct fts_callbacks {

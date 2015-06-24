@@ -32,32 +32,40 @@
 #include <linux/slab.h>
 #include <linux/device.h>
 
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#include <linux/sec_batt_selfdchg_common.h>
+#endif
+
 /* definitions */
 #define	SEC_SIZEOF_POWER_SUPPLY_TYPE	POWER_SUPPLY_TYPE_MAX
 
 enum sec_battery_voltage_mode {
 	/* average voltage */
-	SEC_BATTEY_VOLTAGE_AVERAGE = 0,
+	SEC_BATTERY_VOLTAGE_AVERAGE = 0,
 	/* open circuit voltage */
-	SEC_BATTEY_VOLTAGE_OCV,
+	SEC_BATTERY_VOLTAGE_OCV,
 };
 
 enum sec_battery_current_mode {
 	/* uA */
-	SEC_BATTEY_CURRENT_UA = 0,
+	SEC_BATTERY_CURRENT_UA = 0,
 	/* mA */
-	SEC_BATTEY_CURRENT_MA,
+	SEC_BATTERY_CURRENT_MA,
 };
 
 enum sec_battery_capacity_mode {
 	/* designed capacity */
-	SEC_BATTEY_CAPACITY_DESIGNED = 0,
+	SEC_BATTERY_CAPACITY_DESIGNED = 0,
 	/* absolute capacity by fuel gauge */
-	SEC_BATTEY_CAPACITY_ABSOLUTE,
+	SEC_BATTERY_CAPACITY_ABSOLUTE,
 	/* temperary capacity in the time */
-	SEC_BATTEY_CAPACITY_TEMPERARY,
+	SEC_BATTERY_CAPACITY_TEMPERARY,
 	/* current capacity now */
-	SEC_BATTEY_CAPACITY_CURRENT,
+	SEC_BATTERY_CAPACITY_CURRENT,
+	/* cell aging information */
+	SEC_BATTERY_CAPACITY_AGEDCELL,
+	/* charge count */
+	SEC_BATTERY_CAPACITY_CYCLE,
 };
 
 /* ADC type */
@@ -78,12 +86,16 @@ enum sec_battery_adc_channel {
 	SEC_BAT_ADC_CHANNEL_TEMP_AMBIENT,
 	SEC_BAT_ADC_CHANNEL_FULL_CHECK,
 	SEC_BAT_ADC_CHANNEL_VOLTAGE_NOW,
-	SEC_BAT_ADC_CHANNEL_NUM,
 	SEC_BAT_ADC_CHANNEL_CHG_TEMP,
 	SEC_BAT_ADC_CHANNEL_INBAT_VOLTAGE,
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 	SEC_BAT_ADC_CHANNEL_DISCHARGING_CHECK,
 	SEC_BAT_ADC_CHANNEL_DISCHARGING_NTC,
+#endif
+	SEC_BAT_ADC_CHANNEL_WPC_TEMP,
+	SEC_BAT_ADC_CHANNEL_NUM,
 };
+
 
 /* charging mode */
 enum sec_battery_charging_mode {
@@ -469,15 +481,11 @@ struct sec_battery_platform_data {
 	unsigned int swelling_low_rechg_voltage;
 	unsigned int swelling_block_time;
 
+#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 	/* self discharging */
-	bool self_discharging_en;
-	unsigned int discharging_adc_max;
-	unsigned int discharging_adc_min;
-	unsigned int self_discharging_voltage_limit;
-	unsigned int discharging_ntc_limit;
-	int force_discharging_limit;
-	int force_discharging_recov;
-	int factory_discharging;
+	char *sdchg_type;
+	struct sdchg_info_t *sdchg_info;
+#endif
 
 	/* Monitor setting */
 	sec_battery_monitor_polling_t polling_type;
@@ -509,6 +517,7 @@ struct sec_battery_platform_data {
 	sec_bat_adc_table_data_t *temp_adc_table;
 	sec_bat_adc_table_data_t *temp_amb_adc_table;
 	sec_bat_adc_table_data_t *chg_temp_adc_table;
+	sec_bat_adc_table_data_t *wpc_temp_adc_table;
 	sec_bat_adc_table_data_t *inbat_adc_table;
 #else
 	const sec_bat_adc_table_data_t *temp_adc_table;
@@ -517,6 +526,7 @@ struct sec_battery_platform_data {
 	unsigned int temp_adc_table_size;
 	unsigned int temp_amb_adc_table_size;
 	unsigned int chg_temp_adc_table_size;
+	unsigned int wpc_temp_adc_table_size;
 	unsigned int inbat_adc_table_size;
 
 	sec_battery_temp_check_t temp_check_type;
@@ -655,8 +665,13 @@ struct sec_charger_platform_data {
 	/* float voltage (mV) */
 	int chg_float_voltage;
 
+	int irq_gpio;
 	int chg_irq;
+	int wpc_det;
 	unsigned long chg_irq_attr;
+
+	/* otg_en setting */
+	int otg_en;
 
 	/* OVP/UVLO check */
 	sec_battery_ovp_uvlo_t ovp_uvlo_check_type;

@@ -33,6 +33,10 @@
 #include "mdnie_lite_table_zero.h"
 #elif defined(CONFIG_PANEL_S6E3HA2_DYNAMIC)
 #include "mdnie_lite_table_zerof.h"
+#elif defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
+#include "mdnie_lite_table_noble.h"
+#elif defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+#include "mdnie_lite_table_zen.h"
 #endif
 #if defined(CONFIG_TDMB)
 #include "mdnie_lite_table_dmb.h"
@@ -373,15 +377,16 @@ static ssize_t accessibility_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
-	unsigned int value, s[9], i = 0;
+	int value;
+	unsigned int s[12] = {0, }, i = 0;
 	int ret;
 	mdnie_t *wbuf;
 
-	ret = sscanf(buf, "%d %x %x %x %x %x %x %x %x %x",
+	ret = sscanf(buf, "%d %x %x %x %x %x %x %x %x %x %x %x %x",
 		&value, &s[0], &s[1], &s[2], &s[3],
-		&s[4], &s[5], &s[6], &s[7], &s[8]);
+		&s[4], &s[5], &s[6], &s[7], &s[8], &s[9], &s[10], &s[11]);
 
-	dev_info(dev, "%s: value=%d\n", __func__, value);
+	dev_info(dev, "%s: value=%d param cnt : %d\n", __func__, value, ret);
 
 	if (ret < 0)
 		return ret;
@@ -392,17 +397,28 @@ static ssize_t accessibility_store(struct device *dev,
 		mutex_lock(&mdnie->lock);
 		mdnie->accessibility = value;
 		if (value == COLOR_BLIND) {
-			if (ret != 10) {
+			if (ret != MDNIE_COLOR_BLIND_TUNE_CNT + 1) {
 				mutex_unlock(&mdnie->lock);
 				return -EINVAL;
 			}
 			wbuf = &accessibility_table[COLOR_BLIND].tune[MDNIE_CMD1].sequence[MDNIE_COLOR_BLIND_OFFSET];
-			while (i < ARRAY_SIZE(s)) {
+			while (i < MDNIE_COLOR_BLIND_TUNE_CNT) {
 				wbuf[i * 2 + 0] = GET_LSB_8BIT(s[i]);
 				wbuf[i * 2 + 1] = GET_MSB_8BIT(s[i]);
 				i++;
 			}
-
+			dev_info(dev, "%s: %s\n", __func__, buf);
+		} else if (value == COLOR_BLIND_HBM) {
+			if (ret != MDNIE_COLOR_BLIND_HBM_TUNE_CNT + 1) {
+				mutex_unlock(&mdnie->lock);
+				return -EINVAL;
+			}
+			wbuf = &accessibility_table[COLOR_BLIND_HBM].tune[MDNIE_CMD1].sequence[MDNIE_COLOR_BLIND_OFFSET];
+			while (i < MDNIE_COLOR_BLIND_HBM_TUNE_CNT) {
+				wbuf[i * 2 + 0] = GET_LSB_8BIT(s[i]);
+				wbuf[i * 2 + 1] = GET_MSB_8BIT(s[i]);
+				i++;
+			}
 			dev_info(dev, "%s: %s\n", __func__, buf);
 		}
 		mutex_unlock(&mdnie->lock);

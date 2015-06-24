@@ -419,6 +419,21 @@ DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t, debugfs_atomic_t_get,
 DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_ro, debugfs_atomic_t_get, NULL, "%lld\n");
 DEFINE_SIMPLE_ATTRIBUTE(fops_atomic_t_wo, NULL, debugfs_atomic_t_set, "%lld\n");
 
+static int debugfs_atomic64_t_set(void *data, u64 val)
+{
+	atomic64_set((atomic64_t *)data, val);
+	return 0;
+}
+static int debugfs_atomic64_t_get(void *data, u64 *val)
+{
+	*val = atomic64_read((atomic64_t *)data);
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic64_t, debugfs_atomic64_t_get,
+			debugfs_atomic64_t_set, "%lld\n");
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic64_t_ro, debugfs_atomic64_t_get, NULL, "%lld\n");
+DEFINE_SIMPLE_ATTRIBUTE(fops_atomic64_t_wo, NULL, debugfs_atomic64_t_set, "%lld\n");
+
 /**
  * debugfs_create_atomic_t - create a debugfs file that is used to read and
  * write an atomic_t value
@@ -445,6 +460,21 @@ struct dentry *debugfs_create_atomic_t(const char *name, umode_t mode,
 	return debugfs_create_file(name, mode, parent, value, &fops_atomic_t);
 }
 EXPORT_SYMBOL_GPL(debugfs_create_atomic_t);
+
+struct dentry *debugfs_create_atomic64_t(const char *name, umode_t mode,
+				 struct dentry *parent, atomic64_t *value)
+{
+	if (!(mode & S_IWUGO))
+		return debugfs_create_file(name, mode, parent, value,
+					&fops_atomic64_t_ro);
+	/* if there are no read bits set, make write only */
+	if (!(mode & S_IRUGO))
+		return debugfs_create_file(name, mode, parent, value,
+					&fops_atomic64_t_wo);
+
+	return debugfs_create_file(name, mode, parent, value, &fops_atomic64_t);
+}
+EXPORT_SYMBOL_GPL(debugfs_create_atomic64_t);
 
 static ssize_t read_file_bool(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos)

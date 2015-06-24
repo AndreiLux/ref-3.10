@@ -22,7 +22,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: siutils.c 517572 2014-11-26 01:56:32Z $
+ * $Id: siutils.c 548451 2015-04-13 08:20:45Z $
  */
 
 #include <bcm_cfg.h>
@@ -440,6 +440,7 @@ si_chipid_fixup(si_t *sih)
 
 	ASSERT(sii->chipnew == 0);
 	switch (sih->chip) {
+		case BCM43562_CHIP_ID:
 		case BCM43570_CHIP_ID:
 		case BCM4358_CHIP_ID:
 			sii->chipnew = sih->chip; /* save it */
@@ -565,7 +566,7 @@ si_doattach(si_info_t *sii, uint devid, osl_t *osh, void *regs,
 
 	if ((sih->chip == BCM4358_CHIP_ID) ||
 		(sih->chip == BCM43570_CHIP_ID) ||
-		(sih->chip == BCM4358_CHIP_ID)) {
+		(sih->chip == BCM43562_CHIP_ID)) {
 		si_chipid_fixup(sih);
 	}
 

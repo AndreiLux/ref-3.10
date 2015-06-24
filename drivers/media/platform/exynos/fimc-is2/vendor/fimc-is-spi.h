@@ -34,5 +34,4 @@ int fimc_is_spi_s_pin(struct fimc_is_spi_gpio *spi_gpio, int pincfg_type, int va
 void fimc_is_spi_s_port(struct fimc_is_spi_gpio *spi_gpio, int func, bool ssn);
 int fimc_is_spi_reset(struct fimc_is_spi *spi);
 int fimc_is_spi_read(struct fimc_is_spi *spi, void *buf, u32 addr, size_t size);
-int fimc_is_spi_read_module_id(struct fimc_is_spi *spi, void *buf, u16 addr, size_t size);
 #endif

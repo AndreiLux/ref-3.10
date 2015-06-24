@@ -21,6 +21,11 @@
 #define WMFW_MAX_COEFF_NAME       256
 #define WMFW_MAX_COEFF_DESCR_NAME 256
 
+#define WMFW_CTL_FLAG_SYS         0x8000
+#define WMFW_CTL_FLAG_VOLATILE    0x0004
+#define WMFW_CTL_FLAG_WRITEABLE   0x0002
+#define WMFW_CTL_FLAG_READABLE    0x0001
+
 struct wmfw_header {
 	char magic[4];
 	__le32 len;
@@ -67,7 +72,7 @@ struct wmfw_adsp1_id_hdr {
 	struct wmfw_id_hdr fw;
 	__be32 zm;
 	__be32 dm;
-	__be32 algs;
+	__be32 n_algs;
 } __packed;
 
 struct wmfw_adsp2_id_hdr {
@@ -75,7 +80,7 @@ struct wmfw_adsp2_id_hdr {
 	__be32 zm;
 	__be32 xm;
 	__be32 ym;
-	__be32 algs;
+	__be32 n_algs;
 } __packed;
 
 struct wmfw_alg_hdr {
@@ -96,7 +101,7 @@ struct wmfw_adsp2_alg_hdr {
 	__be32 ym;
 } __packed;
 
-struct wmfw_adsp2_alg_data {
+struct wmfw_adsp_alg_data {
 	__le32 id;
 	u8 name[WMFW_MAX_ALG_NAME];
 	u8 descr[WMFW_MAX_ALG_DESCR_NAME];
@@ -104,18 +109,16 @@ struct wmfw_adsp2_alg_data {
 	u8 data[];
 } __packed;
 
-struct wmfw_adsp2_coeff_data_hdr {
-	union {
-		__le32 type;
-		__le32 offset;
-	};
-	__le32 size;
-} __packed;
-
-struct wmfw_adsp2_coeff_data {
+struct wmfw_adsp_coeff_data {
+	struct {
+		__le16 offset;
+		__le16 type;
+		__le32 size;
+	} hdr;
 	u8 name[WMFW_MAX_COEFF_NAME];
 	u8 descr[WMFW_MAX_COEFF_DESCR_NAME];
-	__le32 type;
+	__le16 ctl_type;
+	__le16 flags;
 	__le32 len;
 	u8 data[];
 } __packed;

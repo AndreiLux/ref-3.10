@@ -1139,11 +1139,11 @@ config MFD_FLORIDA
 	  Support for Wolfson Microelectronics Florida class low power audio SoC
 	  such as the WM8280
 
-config MFD_WM8998
-	bool "Support Wolfson Microelectronics WM8998"
+config MFD_VEGAS
+	bool "Support Wolfson Microelectronics Vegas"
 	depends on MFD_ARIZONA
 	help
-	  Support for Wolfson Microelectronics WM8998 low power audio SoC
+	  Support for Wolfson Microelectronics Vegas low power audio SoC
 
 config MFD_WM8997
 	bool "Wolfson Microelectronics WM8997"
@@ -1158,11 +1158,17 @@ config MFD_CLEARWATER
 	  Support for Wolfson Microelectronics ClearWater class low power audio SoC
 	  such as the WM8285
 
-config MFD_CS47L24
-	bool "Cirrus Logic CS47L24"
+config MFD_LARGO
+	bool "Cirrus Logic Largo"
 	depends on MFD_ARIZONA
 	help
-	  Support for Cirrus Logic CS47L24 low power audio SoC
+	  Support for Cirrus Logic Largo low power audio SoC
+
+config MFD_MARLEY
+	bool "Cirrus Logic Marley"
+	depends on MFD_ARIZONA
+	help
+	  Support for Cirrus Logic Marley low power audio SoC
 
 config MFD_WM8400
 	bool "Wolfson Microelectronics WM8400"

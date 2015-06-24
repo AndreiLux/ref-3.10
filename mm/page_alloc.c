@@ -6267,15 +6267,9 @@ static const struct trace_print_flags pageflag_names[] = {
 #ifdef CONFIG_TRANSPARENT_HUGEPAGE
 	{1UL << PG_compound_lock,	"compound_lock"	},
 #endif
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_DM_CRYPT)
-	{1UL << PG_sensitive_data,	"sensitive_data"},
-#endif
 #ifdef CONFIG_SCFS_LOWER_PAGECACHE_INVALIDATION
 	{1UL << PG_scfslower, "scfslower"},
 	{1UL << PG_nocache,"nocache"},
-#endif
-#ifdef CONFIG_SDP
-	{1UL << PG_sensitive,	"sensitive"	},
 #endif
 };
 

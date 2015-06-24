@@ -48,7 +48,7 @@ static ssize_t dek_set_asym_alg(struct device *dev,
 	return -1;
 }
 
-static DEVICE_ATTR(asym_alg, S_IRUGO | S_IWUGO, dek_show_asym_alg, dek_set_asym_alg);
+static DEVICE_ATTR(asym_alg, S_IRUSR | S_IWUSR, dek_show_asym_alg, dek_set_asym_alg);
 
 int dek_create_sysfs_asym_alg(struct device *d) {
 	int error;

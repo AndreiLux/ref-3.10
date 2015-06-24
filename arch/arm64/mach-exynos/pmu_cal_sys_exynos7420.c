@@ -416,10 +416,13 @@ static void init_pmu_cpu_option(void)
 #define USE_STANDBYWFI		(0x1 << 16)
 #define USE_SC_FEEDBACK		(0x1 << 1)
 #define USE_SC_COUNTER		(0x1 << 0)
+#define USE_MEMPWRDOWN		(0x1 << 2)
 	/* use both sc_counter and sc_feedback */
 	/* enable to wait for low SMP-bit at sys power down */
 	for (cpu = 0; cpu < 8; cpu++) {
 		tmp = __raw_readl(CPU_OPTION(cpu));
+		if (cpu < 4)
+			tmp |= USE_MEMPWRDOWN;
 		tmp |= (USE_SC_FEEDBACK | USE_SC_COUNTER);
 		tmp |= USE_SMPEN;
 		tmp |= USE_STANDBYWFI;

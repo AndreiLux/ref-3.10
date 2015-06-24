@@ -14,6 +14,7 @@
 #define __ARCH_CPUFREQ_H __FILE__
 
 #include <linux/notifier.h>
+#include <linux/cpufreq.h>
 
 /*
  * Common definitions and structures
@@ -67,6 +68,7 @@ struct exynos_dvfs_info {
 	unsigned int	boot_cpu_max_qos_timeout;
 #ifdef CONFIG_SEC_PM
 	unsigned int	jig_boot_cpu_max_qos;
+	unsigned int	low_boot_cpu_max_qos;	/* low freq */
 #endif
 	unsigned int    resume_freq;
 	int		boot_freq_idx;
@@ -78,6 +80,10 @@ struct exynos_dvfs_info {
 	const unsigned int	*max_op_freqs;
 	struct cpufreq_frequency_table	*freq_table;
 	struct regulator *regulator;
+#ifdef CONFIG_PMU_COREMEM_RATIO
+	int		(*region_bus_table)[6];
+	int		region;
+#endif
 	void (*set_freq)(unsigned int, unsigned int);
 	void (*set_ema)(unsigned int);
 	bool (*need_apll_change)(unsigned int, unsigned int);
@@ -213,5 +219,14 @@ static inline bool is_cluster1_hotplugged(void) {return 0;}
 #else
 	#warning "Should define CONFIG_ARM_EXYNOS_(MP_)CPUFREQ\n"
 #endif
+#if defined(CONFIG_PMU_COREMEM_RATIO)
+void coremem_region_bus_lock(int region, struct cpufreq_policy *policy);
+#else
+static inline
+void coremem_region_bus_lock(int region, struct cpufreq_policy *policy)
+{
+	return;
+}
+#endif	/* CONFIG_PMU_COREMEM_RATIO */
 #endif
 #endif /* __ARCH_CPUFREQ_H */

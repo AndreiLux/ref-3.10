@@ -659,7 +659,7 @@ void fimc_is_ischain_version(enum fimc_is_bin_type type, const char *load_bin, u
 			FIMC_IS_VERSION_SIZE);
 		version_str[FIMC_IS_VERSION_SIZE] = '\0';
 
-		info("FW version : %s\n", version_str);
+		info("Phone FW version : %s\n", version_str);
 	} else {
 		memcpy(version_str, &load_bin[size - FIMC_IS_SETFILE_VER_OFFSET],
 			FIMC_IS_SETFILE_VER_SIZE);
@@ -695,7 +695,9 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *device)
 
 #ifdef CONFIG_USE_VENDER_FEATURE
 	struct fimc_is_from_info *sysfs_finfo;
+	struct fimc_is_from_info *sysfs_pinfo;
 	fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+	fimc_is_sec_get_sysfs_pinfo(&sysfs_pinfo);
 #endif
 
 	mdbgd_ischain("%s\n", device, __func__);
@@ -740,6 +742,10 @@ static int fimc_is_ischain_loadfirm(struct fimc_is_device_ischain *device)
 		goto out;
 	}
 
+#ifdef CONFIG_USE_VENDER_FEATURE
+	strncpy(sysfs_pinfo->header_ver, buf + nread - 11, FIMC_IS_HEADER_VER_SIZE);
+	fimc_is_sec_set_loaded_fw(sysfs_pinfo->header_ver);
+#endif
 	memcpy((void *)device->imemory.kvaddr, (void *)buf, fsize);
 	fimc_is_ischain_cache_flush(device, 0, fsize + 1);
 	fimc_is_ischain_version(FIMC_IS_BIN_FW, buf, fsize);
@@ -965,8 +971,10 @@ struct fimc_is_module_enum *active_sensor, int position)
 	u32 start_addr = 0;
 	int cal_size = 0;
 	struct fimc_is_from_info *finfo;
+	struct fimc_is_from_info *pinfo;
 	struct exynos_platform_fimc_is *core_pdata = NULL;
 	struct fimc_is_core *core = (struct fimc_is_core *)platform_get_drvdata(device->pdev);
+	char *loaded_fw_ver;
 
 	core_pdata = dev_get_platdata(fimc_is_dev);
 	if (!core_pdata) {
@@ -996,12 +1004,18 @@ struct fimc_is_module_enum *active_sensor, int position)
 		fimc_is_sec_get_cal_buf(&cal_buf);
 	}
 
+	fimc_is_sec_get_sysfs_pinfo(&pinfo);
+	fimc_is_sec_get_loaded_fw(&loaded_fw_ver);
+
 	cal_ptr = (char *)(device->imemory.kvaddr + start_addr);
 
 	info("CAL DATA : MAP ver : %c%c%c%c\n", cal_buf[0x40], cal_buf[0x41],
 		cal_buf[0x42], cal_buf[0x43]);
 
 	info("Camera : Front Sensor Version : 0x%x\n", cal_buf[0x5C]);
+
+	info("eeprom_fw_version = %s, phone_fw_version = %s, loaded_fw_version = %s\n",
+		finfo->header_ver, pinfo->header_ver, loaded_fw_ver);
 
 	/* CRC check */
 	if (position == SENSOR_POSITION_FRONT) {
@@ -1052,7 +1066,11 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *device,
 	int ret = 0;
 #ifdef CONFIG_USE_VENDER_FEATURE
 	char *cal_ptr;
+	u32 start_addr = 0;
+	int cal_size = 0;
 	struct fimc_is_from_info *sysfs_finfo;
+	struct fimc_is_from_info *sysfs_pinfo;
+	char *loaded_fw_ver;
 	char *cal_buf;
 
 	struct fimc_is_core *core = (struct fimc_is_core *)platform_get_drvdata(device->pdev);
@@ -1070,43 +1088,80 @@ static int fimc_is_ischain_loadcalb(struct fimc_is_device_ischain *device,
 		return 0;
 	}
 
-	cal_ptr = (char *)(device->imemory.kvaddr + FIMC_IS_CAL_START_ADDR);
+	if (position == SENSOR_POSITION_FRONT) {
+		start_addr = FIMC_IS_CAL_START_ADDR_FRONT;
+		cal_size = FIMC_IS_MAX_CAL_SIZE_FRONT;
+		fimc_is_sec_get_sysfs_finfo_front(&sysfs_finfo);
+		fimc_is_sec_get_front_cal_buf(&cal_buf);
+	} else {
+		start_addr = FIMC_IS_CAL_START_ADDR;
+		cal_size = FIMC_IS_MAX_CAL_SIZE;
+		fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+		fimc_is_sec_get_cal_buf(&cal_buf);
+	}
 
-	fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
-	fimc_is_sec_get_cal_buf(&cal_buf);
+	fimc_is_sec_get_sysfs_pinfo(&sysfs_pinfo);
+	fimc_is_sec_get_loaded_fw(&loaded_fw_ver);
+
+	cal_ptr = (char *)(device->imemory.kvaddr + start_addr);
 
 	info("CAL DATA : MAP ver : %c%c%c%c\n", cal_buf[0x60], cal_buf[0x61],
 		cal_buf[0x62], cal_buf[0x63]);
 
-	if ((sysfs_finfo->header_ver[0] == 'A') && (sysfs_finfo->header_ver[1] == '2') && (sysfs_finfo->header_ver[2] == '0'))
-		info("Camera : Rear Sensor Version : 0x%x\n", cal_buf[0xC0]);
+	info("from_fw_version = %s, phone_fw_version = %s, loaded_fw_version = %s\n",
+		sysfs_finfo->header_ver, sysfs_pinfo->header_ver, loaded_fw_ver);
 
 	/* CRC check */
-	if (crc32_check == true) {
+	if (position == SENSOR_POSITION_FRONT) {
+		if (crc32_check_front  == true) {
 #ifdef CONFIG_COMPANION_USE
-		if (fimc_is_sec_check_from_ver(core, position)) {
-			memcpy((void *)(cal_ptr) ,(void *)cal_buf, FIMC_IS_MAX_CAL_SIZE);
-			info("Camera : the dumped Cal. data was applied successfully.\n");
-		} else {
-			info("Camera : Did not load dumped Cal. Sensor version is lower than V004.\n");
-		}
+			if (fimc_is_sec_check_from_ver(core, position)) {
+				memcpy((void *)(cal_ptr) ,(void *)cal_buf, cal_size);
+				info("Camera : the dumped Cal. data was applied successfully.\n");
+			} else {
+				info("Camera : Did not load dumped Cal. Sensor version is lower than V004.\n");
+			}
 #else
-		memcpy((void *)(cal_ptr) ,(void *)cal_buf, FIMC_IS_MAX_CAL_SIZE);
-		info("Camera : the dumped Cal. data was applied successfully.\n");
+			memcpy((void *)(cal_ptr) ,(void *)cal_buf, cal_size);
+			info("Camera : the dumped Cal. data was applied successfully.\n");
 #endif
-	} else {
-		if (crc32_header_check == true) {
-			err("Camera : CRC32 error but only header section is no problem.");
-			memset((void *)(cal_ptr + 0x1000), 0xFF, FIMC_IS_MAX_CAL_SIZE - 0x1000);
 		} else {
-			err("Camera : CRC32 error for all section.");
-			memset((void *)(cal_ptr), 0xFF, FIMC_IS_MAX_CAL_SIZE);
-			ret = -EIO;
+			if (crc32_header_check_front  == true) {
+				err("Camera : CRC32 error but only header section is no problem.");
+				memset((void *)(cal_ptr + 0x1000), 0xFF, cal_size - 0x1000);
+			} else {
+				err("Camera : CRC32 error for all section.");
+				memset((void *)(cal_ptr), 0xFF, cal_size);
+				ret = -EIO;
+			}
+		}
+	} else {
+		if (crc32_check == true) {
+#ifdef CONFIG_COMPANION_USE
+			if (fimc_is_sec_check_from_ver(core, position)) {
+				memcpy((void *)(cal_ptr) ,(void *)cal_buf, cal_size);
+				info("Camera : the dumped Cal. data was applied successfully.\n");
+			} else {
+				info("Camera : Did not load dumped Cal. Sensor version is lower than V004.\n");
+			}
+#else
+			memcpy((void *)(cal_ptr) ,(void *)cal_buf, cal_size);
+			info("Camera : the dumped Cal. data was applied successfully.\n");
+#endif
+		} else {
+			if (crc32_header_check == true) {
+				err("Camera : CRC32 error but only header section is no problem.");
+				memset((void *)(cal_ptr + 0x1000), 0xFF, cal_size - 0x1000);
+			} else {
+				err("Camera : CRC32 error for all section.");
+				memset((void *)(cal_ptr), 0xFF, cal_size);
+				ret = -EIO;
+			}
 		}
 	}
 
-	fimc_is_ischain_cache_flush(device, FIMC_IS_CAL_START_ADDR,
-		FIMC_IS_MAX_CAL_SIZE);
+	fimc_is_ischain_cache_flush(device, start_addr, cal_size);
+
 	if (ret)
 		mwarn("calibration loading is fail", device);
 	else

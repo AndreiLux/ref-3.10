@@ -20,6 +20,7 @@
 #include "../ion_priv.h"
 
 struct ion_device *ion_exynos;
+static DEFINE_SPINLOCK(smc_lock);
 
 /* starting from index=1 regarding default index=0 for system heap */
 static int nr_heaps = 1;
@@ -67,6 +68,8 @@ static void __ion_secure_protect(struct exynos_ion_platform_heap *pdata)
 
 	pdata->protected = true;
 
+	spin_lock(&smc_lock);
+
 	/* passing region info */
 	BUG_ON(exynos_smc(SMC_DRM_SECMEM_REGION_INFO, pdata->id - 1,
 			pdata->rmem->base, pdata->rmem->size) != 0);
@@ -74,6 +77,8 @@ static void __ion_secure_protect(struct exynos_ion_platform_heap *pdata)
 	/* protection */
 	BUG_ON(exynos_smc(SMC_DRM_SECMEM_REGION_PROT, pdata->id - 1,
 				SMC_PROTECTION_ENABLE, 0) != 0);
+
+	spin_unlock(&smc_lock);
 
 	pr_info("%s: protection enabled for heap %s\n", __func__,
 						pdata->heap->name);
@@ -114,10 +119,13 @@ static void __ion_secure_unprotect(struct kref *kref)
 
 	pr_info("%s: enter\n", __func__);
 
+	spin_lock(&smc_lock);
+
 	/* unprotection */
 	BUG_ON(exynos_smc(SMC_DRM_SECMEM_REGION_PROT,
 			pdata->id - 1, SMC_PROTECTION_DISABLE, 0) != 0);
 
+	spin_unlock(&smc_lock);
 	pdata->protected = false;
 
 	pr_info("%s: protection disabled for heap %s\n", __func__,
@@ -640,14 +648,56 @@ subsys_initcall(exynos_ion_init);
 #ifdef CONFIG_HIGHMEM
 #define exynos_sync_single_for_device(addr, size, dir)	dmac_map_area(addr, size, dir)
 #define exynos_sync_single_for_cpu(addr, size, dir)	dmac_unmap_area(addr, size, dir)
-#define exynos_sync_sg_for_device(dev, sg, nents, dir)	ion_device_sync(ion_exynos, sgl, nents, dir, dmac_map_area, false)
-#define exynos_sync_sg_for_cpu(dev, sg, nents, dir)	ion_device_sync(ion_exynos, sgl, nents, dir, dmac_unmap_area, false)
+#define exynos_sync_sg_for_device(dev, size, sg, nents, dir)	\
+	ion_device_sync(ion_exynos, sgl, nents, dir, dmac_map_area, false)
+#define exynos_sync_sg_for_cpu(dev, size, sg, nents, dir)	\
+	ion_device_sync(ion_exynos, sgl, nents, dir, dmac_unmap_area, false)
 #define exynos_sync_all					flush_all_cpu_caches
 #else
+static void __exynos_sync_sg_for_device(struct device *dev, size_t size,
+					 struct scatterlist *sgl, int nelems,
+					 enum dma_data_direction dir)
+{
+	struct scatterlist *sg;
+	int i;
+
+	for_each_sg(sgl, sg, nelems, i) {
+		size_t sg_len = min(size, (size_t)sg->length);
+
+		__dma_map_area(phys_to_virt(dma_to_phys(dev, sg->dma_address)),
+			       sg_len, dir);
+		if (size > sg->length)
+			size -= sg->length;
+		else
+			break;
+	}
+}
+
+static void __exynos_sync_sg_for_cpu(struct device *dev, size_t size,
+				      struct scatterlist *sgl, int nelems,
+				      enum dma_data_direction dir)
+{
+	struct scatterlist *sg;
+	int i;
+
+	for_each_sg(sgl, sg, nelems, i) {
+		size_t sg_len = min(size, (size_t)sg->length);
+
+		__dma_unmap_area(phys_to_virt(dma_to_phys(dev, sg->dma_address)),
+				 sg_len, dir);
+		if (size > sg->length)
+			size -= sg->length;
+		else
+			break;
+	}
+}
+
 #define exynos_sync_single_for_device(addr, size, dir)	__dma_map_area(addr, size, dir)
 #define exynos_sync_single_for_cpu(addr, size, dir)	__dma_unmap_area(addr, size, dir)
-#define exynos_sync_sg_for_device(dev, sg, nents, dir)	dma_sync_sg_for_device(dev, sg, nents, dir)
-#define exynos_sync_sg_for_cpu(dev, sg, nents, dir)	dma_sync_sg_for_cpu(dev, sg, nents, dir)
+#define exynos_sync_sg_for_device(dev, size, sg, nents, dir)	\
+	__exynos_sync_sg_for_device(dev, size, sg, nents, dir)
+#define exynos_sync_sg_for_cpu(dev, size, sg, nents, dir)	\
+	__exynos_sync_sg_for_cpu(dev, size, sg, nents, dir)
 #define exynos_sync_all					flush_all_cpu_caches
 #endif
 
@@ -673,13 +723,12 @@ void exynos_ion_sync_dmabuf_for_device(struct device *dev,
 	trace_ion_sync_start(_RET_IP_, dev, dir, size,
 			buffer->vaddr, 0, size >= ION_FLUSH_ALL_HIGHLIMIT);
 
-	if (ion_buffer_need_flush_all(buffer))
+	if (size >= ION_FLUSH_ALL_HIGHLIMIT)
 		exynos_sync_all();
 	else if (!IS_ERR_OR_NULL(buffer->vaddr))
-		exynos_sync_single_for_device(buffer->vaddr,
-						buffer->size, dir);
+		exynos_sync_single_for_device(buffer->vaddr, size, dir);
 	else
-		exynos_sync_sg_for_device(dev, buffer->sg_table->sgl,
+		exynos_sync_sg_for_device(dev, size, buffer->sg_table->sgl,
 						buffer->sg_table->nents, dir);
 
 	trace_ion_sync_end(_RET_IP_, dev, dir, size,
@@ -724,7 +773,7 @@ void exynos_ion_sync_sg_for_device(struct device *dev, size_t size,
 	if (size >= ION_FLUSH_ALL_HIGHLIMIT)
 		exynos_sync_all();
 	else
-		exynos_sync_sg_for_device(dev, sgt->sgl, sgt->nents, dir);
+		exynos_sync_sg_for_device(dev, size, sgt->sgl, sgt->nents, dir);
 
 	trace_ion_sync_end(_RET_IP_, dev, dir, size,
 				0, 0, size >= ION_FLUSH_ALL_HIGHLIMIT);
@@ -756,12 +805,12 @@ void exynos_ion_sync_dmabuf_for_cpu(struct device *dev,
 	trace_ion_sync_start(_RET_IP_, dev, dir, size,
 			buffer->vaddr, 0, size >= ION_FLUSH_ALL_HIGHLIMIT);
 
-	if (ion_buffer_need_flush_all(buffer))
+	if (size >= ION_FLUSH_ALL_HIGHLIMIT)
 		exynos_sync_all();
 	else if (!IS_ERR_OR_NULL(buffer->vaddr))
 		exynos_sync_single_for_cpu(buffer->vaddr, size, dir);
 	else
-		exynos_sync_sg_for_cpu(dev, buffer->sg_table->sgl,
+		exynos_sync_sg_for_cpu(dev, size, buffer->sg_table->sgl,
 						buffer->sg_table->nents, dir);
 
 	trace_ion_sync_end(_RET_IP_, dev, dir, size,
@@ -812,7 +861,7 @@ void exynos_ion_sync_sg_for_cpu(struct device *dev, size_t size,
 	if (size >= ION_FLUSH_ALL_HIGHLIMIT)
 		exynos_sync_all();
 	else
-		exynos_sync_sg_for_cpu(dev, sgt->sgl, sgt->nents, dir);
+		exynos_sync_sg_for_cpu(dev, size, sgt->sgl, sgt->nents, dir);
 
 	trace_ion_sync_end(_RET_IP_, dev, dir, size,
 				0, 0, size >= ION_FLUSH_ALL_HIGHLIMIT);

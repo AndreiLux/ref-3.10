@@ -107,6 +107,17 @@ static int arizona_ldo1_hc_get_voltage_sel(struct regulator_dev *rdev)
 	return (val & ARIZONA_LDO1_VSEL_MASK) >> ARIZONA_LDO1_VSEL_SHIFT;
 }
 
+static int arizona_ldo1_hc_set_voltage_time_sel(struct regulator_dev *rdev,
+						unsigned int old_selector,
+						unsigned int new_selector)
+{
+	/* if moving to 1.8v allow time for it to reach voltage */
+	if (new_selector == rdev->desc->n_voltages - 1)
+		return 25;
+	else
+		return 0;
+}
+
 static struct regulator_ops arizona_ldo1_hc_ops = {
 	.list_voltage = arizona_ldo1_hc_list_voltage,
 	.map_voltage = arizona_ldo1_hc_map_voltage,
@@ -114,6 +125,7 @@ static struct regulator_ops arizona_ldo1_hc_ops = {
 	.set_voltage_sel = arizona_ldo1_hc_set_voltage_sel,
 	.get_bypass = regulator_get_bypass_regmap,
 	.set_bypass = regulator_set_bypass_regmap,
+	.set_voltage_time_sel = arizona_ldo1_hc_set_voltage_time_sel,
 };
 
 static const struct regulator_desc arizona_ldo1_hc = {
@@ -281,14 +293,15 @@ static int arizona_ldo1_probe(struct platform_device *pdev)
 		arizona->external_dcvdd = true;
 
 	ldo1->regulator = regulator_register(desc, &config);
+
+	of_node_put(config.of_node);
+
 	if (IS_ERR(ldo1->regulator)) {
 		ret = PTR_ERR(ldo1->regulator);
 		dev_err(arizona->dev, "Failed to register LDO1 supply: %d\n",
 			ret);
 		return ret;
 	}
-
-	of_node_put(config.of_node);
 
 	platform_set_drvdata(pdev, ldo1);
 

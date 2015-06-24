@@ -68,6 +68,10 @@ SECTIONS
 		rkp_pgt_bitmap = .;
 		. = rkp_pgt_bitmap + 0x18000;
 	}
+	.rkp.dblmap : {
+		rkp_map_bitmap = .;
+		. = rkp_map_bitmap + 0x18000;
+	}
 #ifdef CONFIG_RKP_KDP
 	 /* Creating a new section to store task credentials */
 	. = ALIGN(PAGE_SIZE);

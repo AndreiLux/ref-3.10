@@ -24,6 +24,7 @@
 #include "fimc-is-dt.h"
 #include "fimc-is-core.h"
 #include "fimc-is-dvfs.h"
+#include "fimc-is-sysfs.h"
 
 #ifdef CONFIG_OF
 static int get_pin_lookup_state(struct pinctrl *pinctrl,
@@ -284,6 +285,25 @@ static int parse_dvfs_data(struct exynos_platform_fimc_is *pdata, struct device_
 	return 0;
 }
 
+#ifdef CAMERA_SYSFS_V2
+static int parse_sysfs_caminfo(struct exynos_platform_fimc_is *pdata, struct device_node *np,
+	struct fimc_is_cam_info *cam_infos, int camera_num)
+{
+	u32 temp;
+	char *pprop;
+
+	DT_READ_U32(np, "isp", cam_infos[camera_num].isp);
+	DT_READ_U32(np, "cal_memory", cam_infos[camera_num].cal_memory);
+	DT_READ_U32(np, "read_version", cam_infos[camera_num].read_version);
+	DT_READ_U32(np, "core_voltage", cam_infos[camera_num].core_voltage);
+	DT_READ_U32(np, "upgrade", cam_infos[camera_num].upgrade);
+	DT_READ_U32(np, "companion", cam_infos[camera_num].companion);
+	DT_READ_U32(np, "ois", cam_infos[camera_num].ois);
+
+	return 0;
+}
+#endif
+
 int fimc_is_parse_dt(struct platform_device *pdev)
 {
 	int ret = 0;
@@ -293,6 +313,13 @@ int fimc_is_parse_dt(struct platform_device *pdev)
 	struct device_node *dvfs_table_np = NULL;
 	struct device_node *np;
 	const char *dvfs_table_desc;
+#ifdef CAMERA_SYSFS_V2
+	struct device_node *camInfo_np;
+	struct fimc_is_cam_info *camera_infos;
+	char camInfo_string[15];
+	int camera_num;
+	int total_camera_num;
+#endif
 	u32 table_index = 0;
 
 	BUG_ON(!pdev);
@@ -386,6 +413,27 @@ int fimc_is_parse_dt(struct platform_device *pdev)
 		if (ret)
 			err("parse_dvfs_data is fail(%d)", ret);
 	}
+
+#ifdef CAMERA_SYSFS_V2
+	ret = of_property_read_u32(np, "total_camera_num", &total_camera_num);
+	if (ret) {
+		err("total_camera_num read is fail(%d)", ret);
+		total_camera_num = 0;
+	}
+	fimc_is_get_cam_info(&camera_infos);
+
+	for (camera_num = 0; camera_num < total_camera_num; camera_num++) {
+		sprintf(camInfo_string, "%s%d", "camera_info", camera_num);
+
+		camInfo_np = of_find_node_by_name(np, camInfo_string);
+		if (!camInfo_np) {
+			printk(KERN_ERR "%s: can't find camInfo_string node\n", __func__);
+			ret = -ENOENT;
+			goto p_err;
+		}
+		parse_sysfs_caminfo(pdata, camInfo_np, camera_infos, camera_num);
+	}
+#endif
 
 	dev->platform_data = pdata;
 

@@ -39,12 +39,37 @@
 
 /*** TODO: We need to export this so it is hard coded 
      at one place*/
-#define RKP_ROBUF_START  UL(0x52400000)
-#define RKP_RBUF_VA      (phys_to_virt(RKP_ROBUF_START))
-#define RO_PAGES_ORDER 11  // (8MB/4KB)
 
 #define RKP_PGT_BITMAP_LEN 0x18000
+
+#ifdef CONFIG_SOC_EXYNOS7420
+
+#define   TIMA_VMM_START        0x4dd00000
+#define   TIMA_VMM_SIZE         1<<20
+
+#define   TIMA_DEBUG_LOG_START  0x52300000
+#define   TIMA_DEBUG_LOG_SIZE   1<<18
+
+#define   TIMA_SEC_LOG          0x529f8000
+#define   TIMA_SEC_LOG_SIZE     0x7000 
+
+#define   TIMA_PHYS_MAP         0x4da00000
+#define   TIMA_PHYS_MAP_SIZE    3<<20 
+
+
+#define   TIMA_DASHBOARD_START  0x529ff000
+#define   TIMA_DASHBOARD_SIZE    0x1000
+
+#define   TIMA_ROBUF_START      0x52400000
+#define   TIMA_ROBUF_SIZE       0x5f8000 /* 6MB - RKP_SEC_LOG_SIZE - RKP_DASHBOARD_SIZE)*/
+
+#define RKP_RBUF_VA      (phys_to_virt(TIMA_ROBUF_START))
+#define RO_PAGES  0x5f8 // (TIMA_ROBUF_SIZE/PAGE_SIZE)
+
+#endif /* CONFIG_SOC_EXYNOS7420 */
+
 extern u8 rkp_pgt_bitmap[];
+extern u8 rkp_map_bitmap[];
 
 typedef struct rkp_init rkp_init_t;
 extern u8 rkp_started;
@@ -62,6 +87,7 @@ struct rkp_init {
 	u64 id_map_pgd;
 	u64 zero_pg_addr;
 	u64 rkp_pgt_bitmap;
+	u64 rkp_map_bitmap;
 	u32 rkp_pgt_bitmap_size;
 	u64 _text;
 	u64 _etext;
@@ -100,6 +126,21 @@ static inline u8 rkp_is_pg_protected(u64 va)
 	u64 paddr = __pa(va) - PHYS_OFFSET;
 	u64 index = (paddr>>PAGE_SHIFT);
 	u64 *p = (u64 *)rkp_pgt_bitmap;
+	u64 tmp = (index>>6);
+	u64 rindex;
+	u8 val;
+	
+	p += (tmp);
+	rindex = index % 64;
+	val = (((*p) & (1ULL<<rindex))?1:0);
+	return val;
+}
+
+static inline u8 rkp_is_pg_dbl_mapped(u64 va)
+{
+	u64 paddr = __pa(va) - PHYS_OFFSET;
+	u64 index = (paddr>>PAGE_SHIFT);
+	u64 *p = (u64 *)rkp_map_bitmap;
 	u64 tmp = (index>>6);
 	u64 rindex;
 	u8 val;

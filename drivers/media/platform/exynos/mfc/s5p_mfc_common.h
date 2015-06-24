@@ -237,6 +237,7 @@ struct s5p_mfc_buf {
 	int used;
 	int already;
 	int consumed;
+	unsigned char *vir_addr;
 };
 
 #define vb_to_mfc_buf(x)	\
@@ -1088,6 +1089,7 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 #endif
 #define FW_HAS_GOP2(dev)		(IS_MFCv9X(dev) &&			\
 					(dev->fw.date >= 0x150316))
+#define FW_HAS_E_MIN_SCRATCH_BUF(dev)	IS_MFCv9X(dev)
 
 #define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
 
@@ -1096,11 +1098,15 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 #define is_mpeg4vc1(ctx)	((ctx->codec_mode == S5P_FIMV_CODEC_VC1RCV_DEC) ||\
 				(ctx->codec_mode == S5P_FIMV_CODEC_VC1_DEC) ||\
 				(ctx->codec_mode == S5P_FIMV_CODEC_MPEG4_DEC))
+#define is_mpeg2(ctx)		(ctx->codec_mode == S5P_FIMV_CODEC_MPEG2_DEC)
 #define MFC_UHD_RES		(3840*2160)
 #define MFC_HD_RES		(1280*720)
 #define is_UHD(ctx)		(((ctx)->img_width * (ctx)->img_height) == MFC_UHD_RES)
 #define under_HD(ctx)		(((ctx)->img_width * (ctx)->img_height) <= MFC_HD_RES)
 #define not_coded_cond(ctx)	is_mpeg4vc1(ctx)
+#define interlaced_cond(ctx)	is_mpeg4vc1(ctx) || is_mpeg2(ctx) || is_h264(ctx)
+#define on_res_change(ctx)	((ctx)->state >= MFCINST_RES_CHANGE_INIT &&	\
+				 (ctx)->state <= MFCINST_RES_CHANGE_END)
 
 /* Extra information for Decoder */
 #define	DEC_SET_DUAL_DPB		(1 << 0)

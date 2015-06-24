@@ -2759,9 +2759,11 @@ static int s5p_mfc_stop_streaming(struct vb2_queue *q)
 		ctx->state = MFCINST_ABORT;
 		if (s5p_mfc_wait_for_done_ctx(ctx,
 				S5P_FIMV_R2H_CMD_FRAME_DONE_RET))
- 			s5p_mfc_cleanup_timeout(ctx);
-
-		aborted = 1;
+			s5p_mfc_cleanup_timeout(ctx);
+		if (on_res_change(ctx))
+			mfc_debug(2, "stop on res change(state:%d)\n", ctx->state);
+		else
+			aborted = 1;
 	}
 
 	spin_lock_irqsave(&dev->irqlock, flags);
@@ -2866,6 +2868,7 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 	int remove_flag = 0;
 	int index;
 	int skip_add = 0;
+	unsigned char *stream_vir = NULL;
 
 	mfc_debug_enter();
 	if (!ctx) {
@@ -2890,9 +2893,14 @@ static void s5p_mfc_buf_queue(struct vb2_buffer *vb)
 		mfc_debug(2, "Adding to src: %p (0x%08lx, 0x%08lx)\n", vb,
 			(unsigned long)s5p_mfc_mem_plane_addr(ctx, vb, 0),
 			(unsigned long)buf->planes.stream);
+		if (ctx->state < MFCINST_HEAD_PARSED && !ctx->is_drm) {
+			stream_vir = vb2_plane_vaddr(vb, 0);
+			s5p_mfc_mem_inv_vb(vb, 1);
+		}
 		spin_lock_irqsave(&dev->irqlock, flags);
 		list_add_tail(&buf->list, &ctx->src_queue);
 		ctx->src_queue_cnt++;
+		buf->vir_addr = stream_vir;
 		spin_unlock_irqrestore(&dev->irqlock, flags);
 	} else if (vq->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		buf->used = 0;

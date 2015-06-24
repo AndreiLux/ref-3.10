@@ -58,6 +58,26 @@ static const unsigned int br_tbl [256] = {
 };
 
 
+static const unsigned gallery_br_tbl[256] = {
+	 2,  2,  2,  3,  5,  6,  8,  10,  11,  13,  15,  16,  18,  20,  21,  23,
+	 25,  26,  28,  29,  32,  33,  34,  36,  38,  39,  41,  43,  44,  46,  48,  50,
+	 51,  53,  55,  56,  57,  60,  61,  62,  64,  66,  68,  69,  71,  73,  74,  76,
+	 78,  79,  81,  83,  84,  86,  88,  89,  91,  92,  94,  96,  97,  99,  101, 102,
+	 104, 106, 107, 109, 111, 112, 114, 116, 117, 119, 120, 123, 124, 125, 127, 129,
+	 130, 132, 134, 135, 137, 139, 141, 142, 144, 146, 147, 148, 151, 152, 153, 155,
+	 157, 159, 160, 162, 164, 165, 167, 169, 170, 172, 174, 175, 177, 179, 180, 182,
+	 183, 185, 187, 188, 190, 192, 193, 195, 197, 198, 200, 202, 203, 205, 207, 208,
+	 210, 211, 214, 215, 216, 218, 220, 221, 223, 225, 226, 228, 230, 232, 233, 235,
+	 237, 238, 239, 242, 243, 244, 246, 248, 250, 251, 253, 255, 256, 258, 260, 261,
+	 263, 265, 266, 268, 270, 271, 273, 274, 276, 278, 279, 281, 283, 284, 286, 288,
+	 289, 291, 293, 294, 296, 298, 299, 301, 302, 305, 306, 307, 309, 311, 312, 314,
+	 316, 317, 319, 321, 323, 324, 326, 328, 329, 330, 333, 334, 335, 337, 339, 341,
+	 342, 344, 346, 347, 349, 351, 352, 354, 356, 357, 359, 361, 362, 364, 365, 367,
+	 369, 370, 372, 374, 375, 377, 379, 380, 382, 384, 385, 387, 389, 390, 392, 393,
+	 396, 397, 398, 400, 402, 403, 405, 407, 408, 410, 412, 414, 415, 417, 419, 430,
+};
+
+
 
 static const unsigned int hbm_interpolation_br_tbl[256] = {
 	2,		2,		2,		4,		7,		9,		11,		14,		16,		19,		21,		23,		26,		28,		30,		33,
@@ -240,12 +260,12 @@ struct SmtDimInfo daisy_dimming_info_RC[MAX_BR_INFO] = {				// add hbm array
 	{.br = 382, .refBr = 382, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
 	{.br = 407, .refBr = 407, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
 	{.br = 433, .refBr = 433, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
+	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps13, .elv = delv13, .way = W3},  // hbm is acl on
+	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps14, .elv = delv14, .way = W3},  // hbm is acl on
+	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps15, .elv = delv15, .way = W3},  // hbm is acl on
+	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps16, .elv = delv16, .way = W3},  // hbm is acl on
 /* hbm */
-	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W4},
+	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RCdrtbl360nit, .cTbl = RCdctbl360nit, .aid = aid1005, .elvCaps = delvCaps17, .elv = delv17, .way = W4},
 };
 
 
@@ -304,7 +324,7 @@ struct SmtDimInfo daisy_dimming_info_RD[MAX_BR_INFO] = {				// add hbm array
 	{.br = 152, .refBr = 217, .cGma = gma2p15, .rTbl = RDdrtbl152nit, .cTbl = RDdctbl152nit, .aid = aid3637, .elvCaps = delvCaps6, .elv = delv6, .way = W1},
 	{.br = 162, .refBr = 228, .cGma = gma2p15, .rTbl = RDdrtbl162nit, .cTbl = RDdctbl162nit, .aid = aid3637, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
 	{.br = 172, .refBr = 243, .cGma = gma2p15, .rTbl = RDdrtbl172nit, .cTbl = RDdctbl172nit, .aid = aid3637, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
-	{.br = 183, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl183nit, .cTbl = RDdctbl183nit, .aid = aid3637, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
+	{.br = 183, .refBr = 257, .cGma = gma2p15, .rTbl = RCdrtbl183nit, .cTbl = RCdctbl183nit, .aid = aid3680, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
 	{.br = 195, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl195nit, .cTbl = RDdctbl195nit, .aid = aid3168, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
 	{.br = 207, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl207nit, .cTbl = RDdctbl207nit, .aid = aid2659, .elvCaps = delvCaps7, .elv = delv7, .way = W1},
 	{.br = 220, .refBr = 257, .cGma = gma2p15, .rTbl = RDdrtbl220nit, .cTbl = RDdctbl220nit, .aid = aid2186, .elvCaps = delvCaps8, .elv = delv8, .way = W1},
@@ -320,12 +340,12 @@ struct SmtDimInfo daisy_dimming_info_RD[MAX_BR_INFO] = {				// add hbm array
 	{.br = 382, .refBr = 382, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
 	{.br = 407, .refBr = 407, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
 	{.br = 433, .refBr = 433, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
+	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps13, .elv = delv13, .way = W3},  // hbm is acl on
+	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps14, .elv = delv14, .way = W3},  // hbm is acl on
+	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps15, .elv = delv15, .way = W3},  // hbm is acl on
+	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps16, .elv = delv16, .way = W3},  // hbm is acl on
 /* hbm */
-	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps12, .elv = delv12, .way = W4},
+	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005, .elvCaps = delvCaps17, .elv = delv17, .way = W4},
 };
 
 struct SmtDimInfo a3_daisy_dimming_info_RD[MAX_BR_INFO + 1] = {				// add hbm array
@@ -398,13 +418,14 @@ struct SmtDimInfo a3_daisy_dimming_info_RD[MAX_BR_INFO + 1] = {				// add hbm ar
 	{.br = 382, .refBr = 382, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_7, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
 	{.br = 407, .refBr = 407, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_8, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
 	{.br = 433, .refBr = 433, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_9, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_10, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_11, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_12, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
-	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_13, .elvCaps = delvCaps12, .elv = delv12, .way = W3},  // hbm is acl on
+	{.br = 461, .refBr = 461, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_10, .elvCaps = delvCaps13, .elv = delv13, .way = W3},  // hbm is acl on
+	{.br = 491, .refBr = 491, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_11, .elvCaps = delvCaps14, .elv = delv14, .way = W3},  // hbm is acl on
+	{.br = 517, .refBr = 517, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_12, .elvCaps = delvCaps15, .elv = delv15, .way = W3},  // hbm is acl on
+	{.br = 545, .refBr = 545, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_13, .elvCaps = delvCaps16, .elv = delv16, .way = W3},  // hbm is acl on
 /* hbm */
-	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_14, .elvCaps = delvCaps12, .elv = delv12, .way = W4},
+	{.br = 600, .refBr = 600, .cGma = gma2p20, .rTbl = RDdrtbl360nit, .cTbl = RDdctbl360nit, .aid = aid1005_14, .elvCaps = delvCaps17, .elv = delv17, .way = W4},
 };
+
 static int set_gamma_to_center(struct SmtDimInfo *brInfo)
 {
 	int i, j;
@@ -430,18 +451,102 @@ static int set_gamma_to_center(struct SmtDimInfo *brInfo)
 	return ret;
 }
 
+static int gammaToVolt255(int gamma)
+{
+	int ret;
 
-static int set_gamma_to_hbm(struct SmtDimInfo *brInfo, u8 *hbm)
+	if (gamma > vreg_element_max[V255]) {
+		dsim_err("%s : gamma overflow : %d\n", __FUNCTION__, gamma);
+		gamma = vreg_element_max[V255];
+	}
+	if (gamma < 0) {
+		dsim_err("%s : gamma undeflow : %d\n", __FUNCTION__, gamma);
+		gamma = 0;
+	}
+
+	ret = (int)v255_trans_volt[gamma];
+
+	return ret;
+}
+
+static int voltToGamma(int hbm_volt_table[][3], int* vt, int tp, int color)
+{
+	int ret;
+	int t1, t2;
+	unsigned long temp;
+
+	if(tp == V3)
+	{
+		t1 = DOUBLE_MULTIPLE_VREGOUT - hbm_volt_table[V3][color];
+		t2 = DOUBLE_MULTIPLE_VREGOUT - hbm_volt_table[V11][color];
+	}
+	else
+	{
+		t1 = vt[color] - hbm_volt_table[tp][color];
+		t2 = vt[color] - hbm_volt_table[tp + 1][color];
+	}
+
+	temp = ((unsigned long)t1 * (unsigned long)fix_const[tp].de) / (unsigned long)t2;
+	ret = temp - fix_const[tp].nu;
+
+	return ret;
+
+}
+
+static int set_gamma_to_hbm(struct SmtDimInfo *brInfo, struct dim_data *dimData, u8 *hbm)
 {
 	int ret = 0;
 	unsigned int index = 0;
 	unsigned char *result = brInfo->gamma;
+	int i, j, idx;
+	int temp = 0;
+	int voltTableHbm[NUM_VREF][CI_MAX];
 
 	memset(result, 0, OLED_CMD_GAMMA_CNT);
 
 	result[index++] = OLED_CMD_GAMMA;
 
 	memcpy(result+1, hbm, S6E3HF2_HBMGAMMA_LEN);
+
+
+	memcpy(voltTableHbm[V0], dimData->volt[0], sizeof(voltTableHbm[V0]));
+	memcpy(voltTableHbm[V3], dimData->volt[1], sizeof(voltTableHbm[V3]));
+	memcpy(voltTableHbm[V11], dimData->volt[10], sizeof(voltTableHbm[V11]));
+	memcpy(voltTableHbm[V23], dimData->volt[26], sizeof(voltTableHbm[V23]));
+	memcpy(voltTableHbm[V35], dimData->volt[40], sizeof(voltTableHbm[V35]));
+	memcpy(voltTableHbm[V51], dimData->volt[60], sizeof(voltTableHbm[V51]));
+	memcpy(voltTableHbm[V87], dimData->volt[105], sizeof(voltTableHbm[V87]));
+	memcpy(voltTableHbm[V151], dimData->volt[182], sizeof(voltTableHbm[V151]));
+	memcpy(voltTableHbm[V203], dimData->volt[238], sizeof(voltTableHbm[V203]));
+
+
+	idx = 0;
+	for(i = CI_RED; i < CI_MAX; i++, idx += 2) {
+		temp = (hbm[idx] << 8) | (hbm[idx + 1]);
+		voltTableHbm[V255][i] = gammaToVolt255(temp + dimData->mtp[V255][i]);
+	}
+
+	idx = 1;
+	for (i = V255; i >= V0; i--) {
+		for (j = 0; j < CI_MAX; j++) {
+			if (i == V255) {
+				idx += 2;
+			} else if(i == V0) {
+				idx++;
+			} else {
+				temp = voltToGamma(voltTableHbm, dimData->volt_vt, i, j) - dimData->mtp[i][j];
+				if(temp <= 0)
+					temp = 0;
+				result[idx] = temp;
+				idx ++;
+			}
+		}
+	}
+
+	dsim_info("============ TUNE HBM GAMMA ========== : \n");
+	for (i= 0; i < S6E3HF2_HBMGAMMA_LEN; i ++) {
+		dsim_info("HBM GAMMA[%d] : %x\n", i, result[i]);
+	}
 
 	return ret;
 }
@@ -450,7 +555,6 @@ static int set_gamma_to_hbm(struct SmtDimInfo *brInfo, u8 *hbm)
 const unsigned int tbl_hbm_inter[7] = {
 	94, 201, 311, 431, 559, 670, 789
 };
-
 
 
 static int interpolation_gamma_to_hbm(struct SmtDimInfo *dimInfo, int br_idx)
@@ -1321,14 +1425,15 @@ static int init_dimming(struct dsim_device *dsim, u8 *mtp, u8 *hbm)
 	} else {
 		if (paneltype == 1) {
 			switch(panelrev) {
-			case 3: 			// rev.D
-			case 4: 			// rev.E
-				dsim_info("%s init dimming info for A2 Line Daisy rev.D, E panel\n", __func__);
-				diminfo = (void *)daisy_dimming_info_RD;
-				break;
-			default:			// init ~ rev.C
+			case 0: 			// rev.A
+			case 1: 			// rev.B
+			case 2: 			// rev.C
 				dsim_info("%s init dimming info for A2 Line Daisy rev.A,B,C panel\n", __func__);
 				diminfo = (void *)daisy_dimming_info_RC;
+				break;
+			default:			// rev.D ~
+				dsim_info("%s init dimming info for A2 Line Daisy rev.D, E panel\n", __func__);
+				diminfo = (void *)daisy_dimming_info_RD;
 				break;
 			}
 		} else {
@@ -1343,6 +1448,7 @@ static int init_dimming(struct dsim_device *dsim, u8 *mtp, u8 *hbm)
 
 	panel->br_tbl = (unsigned int *)br_tbl;
 	panel->hbm_inter_br_tbl = (unsigned int *)hbm_interpolation_br_tbl;
+	panel->gallery_br_tbl = (unsigned int *)gallery_br_tbl;
 	panel->hbm_tbl = (unsigned char **)HBM_TABLE;
 	panel->acl_cutoff_tbl = (unsigned char **)ACL_CUTOFF_TABLE;
 	panel->acl_opr_tbl = (unsigned char **)ACL_OPR_TABLE;
@@ -1406,7 +1512,7 @@ static int init_dimming(struct dsim_device *dsim, u8 *mtp, u8 *hbm)
 			}
 		}
 		else if (method == DIMMING_METHOD_FILL_HBM) {
-			ret = set_gamma_to_hbm(&diminfo[i], hbm);
+			ret = set_gamma_to_hbm(&diminfo[i], dimming, hbm);
 			if (ret) {
 				dsim_err("%s : failed to get hbm gamma\n", __func__);
 				goto error;
@@ -1997,7 +2103,9 @@ static int s6e3hf2_wqhd_init(struct dsim_device *dsim)
 		dsim_err("%s : fail to write CMD : SEQ_SINGLE_DSI_2\n", __func__);
 		goto init_exit;
 	}
+#ifdef CONFIG_LCD_HMT
 	if(dsim->priv.hmt_on != HMT_ON)
+#endif
 		msleep(120);
 
 	/* Common Setting */
@@ -2040,6 +2148,7 @@ static int s6e3hf2_wqhd_init(struct dsim_device *dsim)
 		dsim_err("%s : fail to write CMD : SEQ_POC_SETTING3\n", __func__);
 		goto init_exit;
 	}
+
 	ret = dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
 	if (ret < 0) {
 		dsim_err("%s : fail to write CMD : SEQ_TEST_KEY_OFF_FC\n", __func__);
@@ -2104,7 +2213,7 @@ static int s6e3hf2_wqhd_init(struct dsim_device *dsim)
 		dsim_err(":%s fail to write CMD : SEQ_ACL_OFF\n", __func__);
 		goto init_exit;
 	}
-	ret = dsim_write_hl_data(dsim, SEQ_ACL_OFF_OPR, ARRAY_SIZE(SEQ_ACL_OFF_OPR));
+	ret = dsim_write_hl_data(dsim, SEQ_ACL_OFF_OPR_AVR, ARRAY_SIZE(SEQ_ACL_OFF_OPR_AVR));
 	if (ret < 0) {
 		dsim_err(":%s fail to write CMD : SEQ_ACL_OFF_OPR\n", __func__);
 		goto init_exit;

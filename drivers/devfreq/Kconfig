@@ -128,6 +128,21 @@ config ARM_EXYNOS7420_BUS_DEVFREQ
 	help
 	  This adds the DEVFREQ driver for Exynos5 series memory and int.
 
+config ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
+	bool "Apply Dynamically DRAM Thermal offset -10"
+	default y
+	depends on ARM_EXYNOS7420_BUS_DEVFREQ
+
+config ARM_EXYNOS7420_BUS_DEVFREQ_ODT_OFF
+	bool "Apply DRAM DQ ODT OFF(below 632MHz)"
+	default n
+	depends on ARM_EXYNOS7420_BUS_DEVFREQ
+
+config ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING
+	bool "Apply advanced mif thermal polling period"
+	default n
+	depends on ARM_EXYNOS7420_BUS_DEVFREQ
+
 config ARM_EXYNOS7580_BUS_DEVFREQ
 	bool "ARM Exynos7580 Memory Bus DEVFREQ Driver"
 	default y

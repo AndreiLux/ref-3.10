@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: wl_cfg80211.h 539956 2015-03-10 12:20:45Z $
+ * $Id: wl_cfg80211.h 556026 2015-05-12 06:55:40Z $
  */
 
 /**
@@ -182,6 +182,9 @@ do {									\
 #define WL_CHANNEL_SYNC_RETRY 	5
 #define WL_INVALID 		-1
 
+#ifdef DHD_LOSSLESS_ROAMING
+#define WL_ROAM_TIMEOUT_MS	1000 /* Roam timeout */
+#endif
 /* Bring down SCB Timeout to 20secs from 60secs default */
 #ifndef WL_SCB_TIMEOUT
 #define WL_SCB_TIMEOUT 20
@@ -198,6 +201,7 @@ do {									\
 #define AIBSS_INITIAL_MIN_BCN_DUR	500
 #define AIBSS_MIN_BCN_DUR		5000
 #define AIBSS_BCN_FLOOD_DUR		5000
+#define AIBSS_PEER_FREE			3
 #endif /* WLAIBSS */
 
 /* driver status */
@@ -613,8 +617,6 @@ struct bcm_cfg80211 {
 	wlc_ssid_t hostapd_ssid;
 #ifdef WL11U
 	bool wl11u;
-	u8 iw_ie[IW_IES_MAX_BUF_LEN];
-	u32 iw_ie_len;
 #endif /* WL11U */
 	bool sched_scan_running;	/* scheduled scan req status */
 #ifdef WL_SCHED_SCAN
@@ -664,6 +666,9 @@ struct bcm_cfg80211 {
 	u32 tdls_mgmt_frame_len;
 	s32 tdls_mgmt_freq;
 #endif /* WLTDLS */
+#ifdef DHD_LOSSLESS_ROAMING
+	struct timer_list roam_timeout;   /* Timer for catch roam timeout */
+#endif
 };
 
 
@@ -934,6 +939,28 @@ wl_get_netinfo_by_netdev(struct bcm_cfg80211 *cfg, struct net_device *ndev)
 	((wl_cfgp2p_find_wpsie((u8 *)_sme->ie, _sme->ie_len) != NULL) && \
 	 (!_sme->crypto.n_ciphers_pairwise) && \
 	 (!_sme->crypto.cipher_group))
+
+#ifdef WLFBT
+#if defined(WLAN_AKM_SUITE_FT_8021X) && defined(WLAN_AKM_SUITE_FT_PSK)
+#define IS_AKM_SUITE_FT(sec) (sec->wpa_auth == WLAN_AKM_SUITE_FT_8021X || \
+	sec->wpa_auth == WLAN_AKM_SUITE_FT_PSK)
+#elif defined(WLAN_AKM_SUITE_FT_8021X)
+#define IS_AKM_SUITE_FT(sec) (sec->wpa_auth == WLAN_AKM_SUITE_FT_8021X)
+#elif defined(WLAN_AKM_SUITE_FT_PSK)
+#define IS_AKM_SUITE_FT(sec) (sec->wpa_auth == WLAN_AKM_SUITE_FT_PSK)
+#else
+#define IS_AKM_SUITE_FT(sec) false
+#endif /* WLAN_AKM_SUITE_FT_8021X && WLAN_AKM_SUITE_FT_PSK */
+#else
+#define IS_AKM_SUITE_FT(sec) false
+#endif /* WLFBT */
+
+#ifdef BCMCCX
+#define IS_AKM_SUITE_CCKM(sec) (sec->wpa_auth == WLAN_AKM_SUITE_CCKM)
+#else
+#define IS_AKM_SUITE_CCKM(sec) false
+#endif /* BCMCCX */
+
 extern s32 wl_cfg80211_attach(struct net_device *ndev, void *context);
 extern s32 wl_cfg80211_attach_post(struct net_device *ndev);
 extern void wl_cfg80211_detach(void *para);
@@ -1006,6 +1033,7 @@ extern s32 wl_cfg80211_apply_eventbuffer(struct net_device *ndev,
 	struct bcm_cfg80211 *cfg, wl_eventmsg_buf_t *ev);
 extern void get_primary_mac(struct bcm_cfg80211 *cfg, struct ether_addr *mac);
 extern void wl_cfg80211_update_power_mode(struct net_device *dev);
+extern void wl_terminate_event_handler(void);
 #define SCAN_BUF_CNT	2
 #define SCAN_BUF_NEXT	1
 #define WL_SCANTYPE_LEGACY	0x1

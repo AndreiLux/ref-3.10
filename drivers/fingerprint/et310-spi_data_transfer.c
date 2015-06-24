@@ -25,6 +25,9 @@
 
 int etspi_mass_read(struct etspi_data *etspi, u8 addr, u8 *buf, int read_len)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -65,6 +68,7 @@ int etspi_mass_read(struct etspi_data *etspi, u8 addr, u8 *buf, int read_len)
 	spi_message_init(&m);
 	spi_message_add_tail(&t_read_data, &m);
 	status = spi_sync(spi, &m);
+
 	kfree(write_addr);
 
 	if (status == 0)
@@ -75,11 +79,15 @@ int etspi_mass_read(struct etspi_data *etspi, u8 addr, u8 *buf, int read_len)
 	kfree(read_data);
 
 	return status;
+#endif
 }
 
 /* Read io register */
 int etspi_io_read_register(struct etspi_data *etspi, u8 *addr, u8 *buf)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status = 0;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -138,11 +146,15 @@ int etspi_io_read_register(struct etspi_data *etspi, u8 *addr, u8 *buf)
 	}
 
 	return status;
+#endif
 }
 
 /* Write data to register */
 int etspi_io_write_register(struct etspi_data *etspi, u8 *buf)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status = 0;
 	struct spi_device *spi;
 	int write_len = 2;
@@ -192,10 +204,14 @@ int etspi_io_write_register(struct etspi_data *etspi, u8 *buf)
 	}
 
 	return status;
+#endif
 }
 
 int etspi_read_register(struct etspi_data *etspi, u8 addr, u8 *buf)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -231,10 +247,14 @@ int etspi_read_register(struct etspi_data *etspi, u8 addr, u8 *buf)
 				, __func__, status);
 
 	return status;
+#endif
 }
 
 int etspi_io_get_one_image(struct etspi_data *etspi, u8 *buf, u8 *image_buf)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	uint8_t read_val,
 		*tx_buf = (uint8_t *)buf,
 		*work_buf = NULL,
@@ -293,11 +313,15 @@ end:
 	kfree(val);
 	kfree(work_buf);
 	return status;
+#endif
 }
 /*----------------------- EEPROM ------------------------*/
 
 int etspi_eeprom_wren(struct etspi_data *etspi)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status = 0;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -322,10 +346,14 @@ int etspi_eeprom_wren(struct etspi_data *etspi)
 	}
 
 	return status;
+#endif
 }
 
 int etspi_eeprom_wrdi(struct etspi_data *etspi)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status = 0;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -350,10 +378,14 @@ int etspi_eeprom_wrdi(struct etspi_data *etspi)
 	}
 
 	return status;
+#endif
 }
 
 int etspi_eeprom_rdsr(struct etspi_data *etspi, u8 *buf)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -389,10 +421,14 @@ int etspi_eeprom_rdsr(struct etspi_data *etspi, u8 *buf)
 	}
 
 	return status;
+#endif
 }
 
 int etspi_eeprom_wrsr(struct etspi_data *etspi, u8 *buf)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -428,10 +464,14 @@ int etspi_eeprom_wrsr(struct etspi_data *etspi, u8 *buf)
 	}
 
 	return status;
+#endif
 }
 
 int etspi_eeprom_read(struct etspi_data *etspi, u8 *addr, u8 *buf, int read_len)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status = 0;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -483,6 +523,7 @@ exit:
 	kfree(read_value);
 
 	return status;
+#endif
 }
 
 /*
@@ -491,6 +532,9 @@ exit:
  */
 int etspi_eeprom_write(struct etspi_data *etspi, u8 *buf, int write_len)
 {
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	return 0;
+#else
 	int status = 0;
 	struct spi_device *spi;
 	struct spi_message m;
@@ -534,4 +578,5 @@ exit:
 	kfree(write_value);
 
 	return status;
+#endif
 }

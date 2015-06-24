@@ -587,6 +587,7 @@ static int fimc_is_comp_load_binary(struct fimc_is_core *core, char *name, int b
 	u16 addr1, addr2;
 	char companion_rev[12] = {0, };
 	struct fimc_is_from_info *sysfs_finfo;
+	struct fimc_is_from_info *sysfs_pinfo;
 	struct fimc_is_companion_retention *ret_data;
 #ifdef USE_ION_ALLOC
 	struct ion_handle *handle = NULL;
@@ -602,6 +603,7 @@ static int fimc_is_comp_load_binary(struct fimc_is_core *core, char *name, int b
 #endif
 	ret_data = &core->companion.retention_data;
 	fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+	fimc_is_sec_get_sysfs_pinfo(&sysfs_pinfo);
 
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
@@ -667,6 +669,8 @@ static int fimc_is_comp_load_binary(struct fimc_is_core *core, char *name, int b
 		goto p_err;
 	}
 	if (bin_type == COMPANION_FW) {
+		strncpy(sysfs_pinfo->concord_header_ver, buf + nread - 16, FIMC_IS_HEADER_VER_SIZE);
+		fimc_is_sec_set_loaded_c1_fw(sysfs_pinfo->concord_header_ver);
 		strncpy(companion_rev, buf + nread - 16, 11);
 		ret_data->firmware_size = (int)size;
 		memset(ret_data->firmware_crc32, 0, sizeof(ret_data->firmware_crc32));
@@ -1275,7 +1279,7 @@ int fimc_is_comp_is_valid(void *core_data)
 
 	/* check validation(Read data must be 0x73C2) */
 	fimc_is_comp_i2c_read(core->client0, 0x0, &companion_id);
-	info("Companion vaildation: 0x%04x\n", companion_id);
+	info("Companion validation: 0x%04x\n", companion_id);
 
 exit:
 	return ret;

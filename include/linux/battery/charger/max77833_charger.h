@@ -25,7 +25,7 @@
 #include <linux/regulator/machine.h>
 
 enum {
-	MAX77833_CHIP_ID = 0,
+	CHIP_ID = 0,
 };
 
 ssize_t max77833_chg_show_attrs(struct device *dev,
@@ -134,12 +134,17 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 /* MAX77833_CHG_REG_CHG_CNFG_17 */
 #define MAX77833_CHG_WCIN_LIM                   0x7F
 
+#define REDUCE_CURRENT_STEP						100
+#define MINIMUM_INPUT_CURRENT					300
 #define SIOP_INPUT_LIMIT_CURRENT                1200
 #define SIOP_CHARGING_LIMIT_CURRENT             1000
-#define SIOP_WIRELESS_INPUT_LIMIT_CURRENT       660
+#define SIOP_WIRELESS_INPUT_LIMIT_CURRENT       530
 #define SIOP_WIRELESS_CHARGING_LIMIT_CURRENT    780
+#define SIOP_HV_INPUT_LIMIT_CURRENT                700
+#define SIOP_HV_CHARGING_LIMIT_CURRENT             1000
 #define SLOW_CHARGING_CURRENT_STANDARD          400
 
+#define INPUT_CURRENT_TA		                1000
 struct max77833_charger_data {
 	struct device           *dev;
 	struct i2c_client       *i2c;
@@ -156,7 +161,8 @@ struct max77833_charger_data {
 	struct delayed_work	recovery_work;	/*  softreg recovery work */
 	struct delayed_work	wpc_work;	/*  wpc detect work */
 	struct delayed_work	chgin_init_work;	/*  chgin init work */
-	struct delayed_work     afc_work;
+	struct delayed_work afc_work;
+	struct delayed_work	aicl_work;
 
 /* mutex */
 	struct mutex irq_lock;
@@ -165,7 +171,9 @@ struct max77833_charger_data {
 	/* wakelock */
 	struct wake_lock recovery_wake_lock;
 	struct wake_lock wpc_wake_lock;
+	struct wake_lock afc_wake_lock;
 	struct wake_lock chgin_wake_lock;
+	struct wake_lock aicl_wake_lock;
 
 	unsigned int	is_charging;
 	unsigned int	charging_type;
@@ -184,6 +192,7 @@ struct max77833_charger_data {
 
 	int		irq_bypass;
 	int		irq_batp;
+	int		irq_aicl;
 
 	int		irq_battery;
 	int		irq_chg;

@@ -255,4 +255,11 @@ config BT_BCM4358
 	help
 	  Adds BCM4358 RFKILL driver for Broadcom BCM4358 chipset for exynos54xx.
 	  default is n.
+
+config BT_BCM4359
+	bool "Enable BCM4359 driver"
+	default n
+	help
+	  Adds BCM4359 RFKILL driver for Broadcom BCM4359 chipset for exynos54xx.
+	  default is n.
 endmenu

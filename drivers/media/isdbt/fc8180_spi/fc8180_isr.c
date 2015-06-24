@@ -25,6 +25,7 @@
 #include "fci_types.h"
 #include "fc8180_regs.h"
 #include "fci_hal.h"
+#include "fci_oal.h"
 
 s32 (*fc8180_ac_callback)(ulong userdata, u8 *data, s32 length) = NULL;
 s32 (*fc8180_ts_callback)(ulong userdata, u8 *data, s32 length) = NULL;
@@ -44,6 +45,10 @@ static void fc8180_data(HANDLE handle, u8 buf_int_status)
 		bbm_word_read(handle, BBM_BUF_TS_THR, &size);
 		size += 1;
 
+		if (size > (TS_BUF_SIZE / 2))
+			print_log(0, "[FC8180] Data Size error [%d]\n", size);
+
+		size = (TS_BUF_SIZE / 2);
 		bbm_data(handle, BBM_TS_DATA, &ts_buf[0], size);
 
 		if (fc8180_ts_callback)
@@ -96,6 +101,7 @@ void fc8180_isr(HANDLE handle)
 
 #ifndef BBM_I2C_TSIF
 	u8 buf_int_status = 0;
+	u8 int_status = 0;
 	bbm_read(handle, BBM_BUF_STATUS, &buf_int_status);
 	if (buf_int_status) {
 		bbm_write(handle, BBM_BUF_STATUS, buf_int_status);
@@ -109,6 +115,10 @@ void fc8180_isr(HANDLE handle)
 		bbm_write(handle, BBM_BUF_STATUS, buf_int_status);
 		fc8180_data(handle, buf_int_status);
 	}
+
+	bbm_read(handle, BBM_INT_STATUS, &int_status);
+	if (int_status)
+		bbm_write(handle, BBM_INT_STATUS, int_status);
 #endif
 
 #ifdef BBM_AUX_INT

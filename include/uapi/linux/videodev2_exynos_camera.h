@@ -178,6 +178,11 @@ enum is_set_stream {
 #define V4L2_CID_IS_MAP_BUFFER			(V4L2_CID_FIMC_IS_BASE + 59)
 #define V4L2_CID_IS_INTENT			(V4L2_CID_FIMC_IS_BASE + 60)
 #define V4L2_CID_IS_CAMERA_TYPE			(V4L2_CID_FIMC_IS_BASE + 61)
+enum is_fw_boot_mode {
+	IS_COLD_BOOT = 0,  /* FrontCamera, 3rd-Party Camera */
+	IS_WARM_BOOT,      /* SamsungCamera & RearCamera */
+};
+
 #define V4L2_CID_IS_DEBUG_DUMP			(V4L2_CID_FIMC_IS_BASE + 900)
 #define V4L2_CID_IS_DEBUG_SYNC_LOG		(V4L2_CID_FIMC_IS_BASE + 901)
 #define V4L2_CID_IS_HAL_VERSION			(V4L2_CID_FIMC_IS_BASE + 902)

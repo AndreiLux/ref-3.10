@@ -342,7 +342,7 @@ DEPMOD		= /sbin/depmod
 PERL		= perl
 CHECK		= sparse
 
-ifeq ($(CONFIG_FIPS_FMP_UFS),)
+ifeq ($(CONFIG_FIPS_FMP),)
     READELF        = $(CROSS_COMPILE)readelf
     export READELF
 endif
@@ -694,6 +694,14 @@ endif
 KBUILD_CPPFLAGS += $(KCPPFLAGS)
 KBUILD_AFLAGS += $(KAFLAGS)
 KBUILD_CFLAGS += $(KCFLAGS)
+
+ifeq ($(CONFIG_SENSORS_FINGERPRINT), y)
+ifneq ($(CONFIG_SEC_FACTORY), true)
+ifneq ($(SEC_BUILD_CONF_USE_FINGERPRINT_TZ), false)
+    export KBUILD_FP_SENSOR_CFLAGS := -DENABLE_SENSORS_FPRINT_SECURE
+endif
+endif
+endif
 
 # Use --build-id when available.
 LDFLAGS_BUILD_ID = $(patsubst -Wl$(comma)%,%,\

@@ -258,7 +258,7 @@ static int scfs_fasync(int fd, struct file *file, int flag)
 static const struct vm_operations_struct scfs_file_vm_ops = {
 	.fault		= filemap_fault,
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(3,10,0)
-	.remap_pages = generic_file_remap_pages,
+	.remap_pages 	= generic_file_remap_pages,
 #endif
 };
 

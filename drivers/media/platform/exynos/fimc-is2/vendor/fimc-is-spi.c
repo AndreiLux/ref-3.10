@@ -149,44 +149,6 @@ p_err:
 	return ret;
 }
 
-int fimc_is_spi_read_module_id(struct fimc_is_spi *spi, void *buf, u16 addr, size_t size)
-{
-	unsigned char req_data[4] = { 0x90,  };
-	int ret;
-
-	struct spi_transfer t_c;
-	struct spi_transfer t_r;
-
-	struct spi_message m;
-
-	memset(&t_c, 0x00, sizeof(t_c));
-	memset(&t_r, 0x00, sizeof(t_r));
-
-	req_data[1] = (addr & 0xFF00) >> 8;
-	req_data[2] = (addr & 0xFF);
-
-	t_c.tx_buf = req_data;
-	t_c.len = 4;
-	t_c.cs_change = 1;
-	t_c.bits_per_word = 32;
-
-	t_r.rx_buf = buf;
-	t_r.len = (u32)size;
-
-	spi_message_init(&m);
-	spi_message_add_tail(&t_c, &m);
-	spi_message_add_tail(&t_r, &m);
-
-	spi->device->max_speed_hz = 48000000;
-	ret = spi_sync(spi->device, &m);
-	if (ret) {
-		err("spi sync error - can't read data");
-		return -EIO;
-	} else {
-		return 0;
-	}
-}
-
 static int fimc_is_spi_probe(struct spi_device *device)
 {
 	int ret = 0;

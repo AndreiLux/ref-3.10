@@ -53,10 +53,10 @@ static int arizona_i2c_probe(struct i2c_client *i2c,
 		regmap_config = &wm8997_i2c_regmap;
 		break;
 #endif
-#ifdef CONFIG_MFD_WM8998
+#ifdef CONFIG_MFD_VEGAS
 	case WM8998:
 	case WM1814:
-		regmap_config = &wm8998_i2c_regmap;
+		regmap_config = &vegas_i2c_regmap;
 		break;
 #endif
 #ifdef CONFIG_MFD_CLEARWATER
@@ -64,6 +64,12 @@ static int arizona_i2c_probe(struct i2c_client *i2c,
 	case WM1840:
 		regmap_config = &clearwater_16bit_i2c_regmap;
 		regmap_32bit_config = &clearwater_32bit_i2c_regmap;
+		break;
+#endif
+#ifdef CONFIG_MFD_MARLEY
+	case CS47L35:
+		regmap_config = &marley_16bit_i2c_regmap;
+		regmap_32bit_config = &marley_32bit_i2c_regmap;
 		break;
 #endif
 	default:
@@ -120,6 +126,7 @@ static const struct i2c_device_id arizona_i2c_id[] = {
 	{ "wm1814", WM1814 },
 	{ "wm8285", WM8285 },
 	{ "wm1840", WM1840 },
+	{ "cs47l35", CS47L35 },
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, arizona_i2c_id);

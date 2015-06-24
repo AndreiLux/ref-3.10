@@ -252,17 +252,33 @@ static void arizona_extcon_set_mode(struct arizona_extcon_info *info, int mode)
 
 static const char *arizona_extcon_get_micbias(struct arizona_extcon_info *info)
 {
-	switch (info->micd_modes[0].bias) {
-	case 1:
-		return "MICBIAS1";
-	case 2:
-		return "MICBIAS2";
-	case 3:
-		return "MICBIAS3";
-	case 4:
-		return "MICBIAS4";
+	struct arizona *arizona = info->arizona;
+
+	switch (arizona->type) {
+	case CS47L35:
+		switch (info->micd_modes[0].bias) {
+		case 1:
+			return "MICBIAS1A";
+		case 2:
+			return "MICBIAS1B";
+		case 3:
+			return "MICBIAS2A";
+		default:
+			return "MICVDD";
+		}
 	default:
-		return "MICVDD";
+		switch (info->micd_modes[0].bias) {
+		case 1:
+			return "MICBIAS1";
+		case 2:
+			return "MICBIAS2";
+		case 3:
+			return "MICBIAS3";
+		case 4:
+			return "MICBIAS4";
+		default:
+			return "MICVDD";
+		}
 	}
 }
 
@@ -1267,23 +1283,23 @@ static int arizona_extcon_of_get_pdata(struct arizona *arizona)
 {
 	struct arizona_pdata *pdata = &arizona->pdata;
 
-	arizona_of_read_u32(arizona, "wlf,micd-detect-debounce", false,
+	arizona_of_read_s32(arizona, "wlf,micd-detect-debounce", false,
 			    &pdata->micd_detect_debounce);
 
 	pdata->micd_pol_gpio = arizona_of_get_named_gpio(arizona,
 							 "wlf,micd-pol-gpio",
 							 false);
 
-	arizona_of_read_u32(arizona, "wlf,micd-bias-start-time", false,
+	arizona_of_read_s32(arizona, "wlf,micd-bias-start-time", false,
 			    &pdata->micd_bias_start_time);
 
-	arizona_of_read_u32(arizona, "wlf,micd-rate", false,
+	arizona_of_read_s32(arizona, "wlf,micd-rate", false,
 			    &pdata->micd_rate);
 
-	arizona_of_read_u32(arizona, "wlf,micd-dbtime", false,
+	arizona_of_read_s32(arizona, "wlf,micd-dbtime", false,
 			    &pdata->micd_dbtime);
 
-	arizona_of_read_u32(arizona, "wlf,micd-timeout", false,
+	arizona_of_read_s32(arizona, "wlf,micd-timeout", false,
 			    &pdata->micd_timeout);
 
 	pdata->micd_force_micbias =
@@ -1309,7 +1325,7 @@ static int arizona_extcon_of_get_pdata(struct arizona *arizona)
 
 	arizona_of_read_u32(arizona, "wlf,gpsw", false, &pdata->gpsw);
 
-	arizona_of_read_u32(arizona, "wlf,init-mic-delay", false,
+	arizona_of_read_s32(arizona, "wlf,init-mic-delay", false,
 			    &pdata->init_mic_delay);
 
 	arizona_of_read_u32(arizona, "wlf,micd-clamp-mode", false,
@@ -1502,6 +1518,9 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 			break;
 		}
 		break;
+	case CS47L35:
+		arizona->pdata.micd_force_micbias = true;
+		/* fall through to default case to set common properties */
 	default:
 		info->micd_clamp = true;
 		info->hpdet_ip = 2;

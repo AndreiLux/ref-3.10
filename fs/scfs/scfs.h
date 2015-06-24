@@ -148,6 +148,11 @@ extern struct kmem_cache *scfs_sb_info_cache;
 #define SMTC_PENDING_THRESHOLD		8000
 #endif
  
+#if (NR_CPUS > 4)
+#define SCFS_CPUS 4
+#else
+#define SCFS_CPUS NR_CPUS
+#endif
 
 /*******************************/
 /* compression & cluster stuff */
@@ -203,7 +208,7 @@ struct read_buffer_cache {
 	int ino;
 	int clust_num;
 	int is_compressed;
-	atomic_t is_used;
+	atomic_t is_using;
 };
 
 struct scfs_mount_options
@@ -262,22 +267,23 @@ struct scfs_sb_info
 	spinlock_t spinlock_smb;
 
 	/* helper threads to process multiple read I/Os simultaneously */
-	struct task_struct *smb_task[NR_CPUS];
-	int smb_task_status[NR_CPUS];
+	struct task_struct *smb_task[SCFS_CPUS];
+	int smb_task_status[SCFS_CPUS];
 
 	/* memory and file buffer for scfs_readpages, for queueing read requests */
 	struct page *page_buffer_smb[MAX_PAGE_BUFFER_SIZE_SMB];
 	struct file *file_buffer_smb[MAX_PAGE_BUFFER_SIZE_SMB];
 #endif
+	atomic64_t scfs_decomped_byte;
 
 #ifdef SCFS_MULTI_THREAD_COMPRESSION
 	struct list_head sii_list;
 	spinlock_t sii_list_lock;
 	int cbm_list_total_count;
 	/* helper threads to process multiple write I/Os simultaneously */
-	struct task_struct *smtc_task[NR_CPUS];
+	struct task_struct *smtc_task[SCFS_CPUS];
 	struct kmem_cache *scfs_cbm_cache;
-	void *smtc_workdata[NR_CPUS];
+	void *smtc_workdata[SCFS_CPUS];
 	atomic_t smtc_idx;
 	/* helper threads to write compressed cluster buffer */
 	struct task_struct *smtc_writer_task;
@@ -389,6 +395,13 @@ struct scfs_dentry_info
 
 #define PAGE_TO_CLUSTER_INDEX(page, sii) \
 	((page->index) / (sii->cluster_size / PAGE_SIZE))
+
+#if MAX_BUFFER_CACHE
+#define BC_REPLACING		-1
+#define BUFFERCACHE_HIT(bc, p, sii) 	(bc.clust_num == PAGE_TO_CLUSTER_INDEX(p, sii) && \
+						bc.ino == sii->vfs_inode.i_ino && \
+						atomic_read(&bc.is_using) != BC_REPLACING)
+#endif
 
 #define ASSERT(x) { \
 	if (!(x)) { \
@@ -691,7 +704,9 @@ extern int scfs_write_one_compress_cluster(struct scfs_inode_info *sii,
 extern int smtc_writer_thread(void *info);
 extern void wakeup_smtc_writer_thread(struct scfs_sb_info *sb_info);
 #endif
+int scfs_clear_cluster(struct inode *inode);
 
+#ifdef CONFIG_SCFS_USE_CRYPTO
 /* compressor.c */
 int scfs_compressors_init(void);
 void scfs_compressors_exit(void);
@@ -699,6 +714,7 @@ int scfs_compress_crypto(const void *in_buf, size_t in_len, void *out_buf, size_
 		    int compr_type);
 int scfs_decompress_crypto(const void *buf, size_t len, void *out, size_t *out_len,
 		     int compr_type);
+#endif
 
  
 #endif //SCFS_HEADER_H

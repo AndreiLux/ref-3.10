@@ -625,7 +625,7 @@ static int clearwater_adsp_power_ev(struct snd_soc_dapm_widget *w,
 static DECLARE_TLV_DB_SCALE(ana_tlv, 0, 100, 0);
 static DECLARE_TLV_DB_SCALE(eq_tlv, -1200, 100, 0);
 static DECLARE_TLV_DB_SCALE(digital_tlv, -6400, 50, 0);
-static DECLARE_TLV_DB_SCALE(noise_tlv, 0, 600, 0);
+static DECLARE_TLV_DB_SCALE(noise_tlv, -11400, 600, 0);
 static DECLARE_TLV_DB_SCALE(ng_tlv, -10200, 600, 0);
 
 #define CLEARWATER_NG_SRC(name, base) \
@@ -674,7 +674,7 @@ static DECLARE_TLV_DB_SCALE(ng_tlv, -10200, 600, 0);
 	{ name " ANC Source", "RXANCL", "RXANCL" }, \
 	{ name " ANC Source", "RXANCR", "RXANCR" }
 
-int clearwater_cp_mode_get(struct snd_kcontrol *kcontrol,
+static int clearwater_cp_mode_get(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
@@ -691,7 +691,7 @@ int clearwater_cp_mode_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-int clearwater_cp_mode_put(struct snd_kcontrol *kcontrol,
+static int clearwater_cp_mode_put(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
@@ -718,11 +718,11 @@ int clearwater_cp_mode_put(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-const char *clearwater_cp_mode_text[2] = {
+static const char * const clearwater_cp_mode_text[2] = {
 	"Default", "Inverting",
 };
 
-const struct soc_enum clearwater_cp_mode[] = {
+static const struct soc_enum clearwater_cp_mode[] = {
 	SOC_ENUM_SINGLE(0, 0, ARRAY_SIZE(clearwater_cp_mode_text),
 		clearwater_cp_mode_text),
 };
@@ -964,8 +964,8 @@ ARIZONA_MIXER_CONTROLS("DSP6R", CLEARWATER_DSP6RMIX_INPUT_1_SOURCE),
 ARIZONA_MIXER_CONTROLS("DSP7L", CLEARWATER_DSP7LMIX_INPUT_1_SOURCE),
 ARIZONA_MIXER_CONTROLS("DSP7R", CLEARWATER_DSP7RMIX_INPUT_1_SOURCE),
 
-SOC_SINGLE_TLV("Noise Generator Volume", ARIZONA_COMFORT_NOISE_GENERATOR,
-	       ARIZONA_NOISE_GEN_GAIN_SHIFT, 0x16, 0, noise_tlv),
+SOC_SINGLE_TLV("Noise Generator Volume", CLEARWATER_COMFORT_NOISE_GENERATOR,
+	       CLEARWATER_NOISE_GEN_GAIN_SHIFT, 0x12, 0, noise_tlv),
 
 ARIZONA_MIXER_CONTROLS("HPOUT1L", ARIZONA_OUT1LMIX_INPUT_1_SOURCE),
 ARIZONA_MIXER_CONTROLS("HPOUT1R", ARIZONA_OUT1RMIX_INPUT_1_SOURCE),
@@ -1035,13 +1035,13 @@ SOC_DOUBLE("SPKDAT2 Switch", ARIZONA_PDM_SPK2_CTRL_1, ARIZONA_SPK2L_MUTE_SHIFT,
 	   ARIZONA_SPK2R_MUTE_SHIFT, 1, 1),
 
 SOC_DOUBLE_EXT("HPOUT1 DRE Switch", ARIZONA_DRE_ENABLE,
-	   ARIZONA_DRE1L_ENA_SHIFT, ARIZONA_DRE1R_ENA_SHIFT, 1, 0,
+	   VEGAS_DRE1L_ENA_SHIFT, VEGAS_DRE1R_ENA_SHIFT, 1, 0,
 	   snd_soc_get_volsw, clearwater_put_dre),
 SOC_DOUBLE_EXT("HPOUT2 DRE Switch", ARIZONA_DRE_ENABLE,
-	   ARIZONA_DRE2L_ENA_SHIFT, ARIZONA_DRE2R_ENA_SHIFT, 1, 0,
+	   VEGAS_DRE2L_ENA_SHIFT, VEGAS_DRE2R_ENA_SHIFT, 1, 0,
 	   snd_soc_get_volsw, clearwater_put_dre),
 SOC_DOUBLE_EXT("HPOUT3 DRE Switch", ARIZONA_DRE_ENABLE,
-	   ARIZONA_DRE3L_ENA_SHIFT, ARIZONA_DRE3R_ENA_SHIFT, 1, 0,
+	   VEGAS_DRE3L_ENA_SHIFT, VEGAS_DRE3R_ENA_SHIFT, 1, 0,
 	   snd_soc_get_volsw, clearwater_put_dre),
 
 SOC_DOUBLE("HPOUT1 EDRE Switch", CLEARWATER_EDRE_ENABLE,
@@ -1443,8 +1443,8 @@ SND_SOC_DAPM_SUPPLY("MICBIAS3", ARIZONA_MIC_BIAS_CTRL_3,
 SND_SOC_DAPM_SUPPLY("MICBIAS4", ARIZONA_MIC_BIAS_CTRL_4,
 		    ARIZONA_MICB1_ENA_SHIFT, 0, NULL, 0),
 
-SND_SOC_DAPM_PGA("Noise Generator", ARIZONA_COMFORT_NOISE_GENERATOR,
-		 ARIZONA_NOISE_GEN_ENA_SHIFT, 0, NULL, 0),
+SND_SOC_DAPM_PGA("Noise Generator", CLEARWATER_COMFORT_NOISE_GENERATOR,
+		 CLEARWATER_NOISE_GEN_ENA_SHIFT, 0, NULL, 0),
 
 SND_SOC_DAPM_PGA("Tone Generator 1", ARIZONA_TONE_GENERATOR_1,
 		 ARIZONA_TONE1_ENA_SHIFT, 0, NULL, 0),

@@ -551,6 +551,7 @@ void report_prox_raw_data(struct ssp_data *data,
 	data->buf[PROXIMITY_RAW].prox[0] = proxrawdata->prox[0];
 }
 
+#ifdef CONFIG_SENSORS_SSP_SX9306
 void report_grip_data(struct ssp_data *data, struct sensor_value *gripdata)
 {
 	pr_err("[SSP] grip = %d %d %d 0x%02x\n",
@@ -580,6 +581,7 @@ void report_grip_data(struct ssp_data *data, struct sensor_value *gripdata)
 
 	wake_lock_timeout(&data->ssp_wake_lock, 3 * HZ);
 }
+#endif
 
 void report_step_det_data(struct ssp_data *data,
 		struct sensor_value *stepdet_data)
@@ -650,10 +652,11 @@ int initialize_event_symlink(struct ssp_data *data)
 	if (iRet < 0)
 		goto iRet_prox_sysfs_create_link;
 
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	iRet = sensors_create_symlink(data->grip_input_dev);
 	if (iRet < 0)
 		goto iRet_grip_sysfs_create_link;
-
+#endif
 	iRet = sensors_create_symlink(data->temp_humi_input_dev);
 	if (iRet < 0)
 		goto iRet_temp_humi_sysfs_create_link;
@@ -687,8 +690,10 @@ iRet_step_cnt_sysfs_create_link:
 iRet_sig_motion_sysfs_create_link:
 	sensors_remove_symlink(data->temp_humi_input_dev);
 iRet_temp_humi_sysfs_create_link:
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	sensors_remove_symlink(data->grip_input_dev);
 iRet_grip_sysfs_create_link:
+#endif
 	sensors_remove_symlink(data->prox_input_dev);
 iRet_prox_sysfs_create_link:
 #ifdef CONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA
@@ -712,7 +717,9 @@ void remove_event_symlink(struct ssp_data *data)
 	sensors_remove_symlink(data->light_ir_input_dev);
 #endif
 	sensors_remove_symlink(data->prox_input_dev);
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	sensors_remove_symlink(data->grip_input_dev);
+#endif
 	sensors_remove_symlink(data->temp_humi_input_dev);
 	sensors_remove_symlink(data->sig_motion_input_dev);
 	sensors_remove_symlink(data->step_cnt_input_dev);
@@ -1138,6 +1145,7 @@ int initialize_input_dev(struct ssp_data *data)
 	}
 	input_set_drvdata(data->prox_input_dev, data);
 
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	data->grip_input_dev = input_allocate_device();
 	if (data->grip_input_dev == NULL)
 		goto err_initialize_grip_input_dev;
@@ -1150,6 +1158,7 @@ int initialize_input_dev(struct ssp_data *data)
 		goto err_initialize_grip_input_dev;
 	}
 	input_set_drvdata(data->grip_input_dev, data);
+#endif
 
 	data->temp_humi_input_dev = input_allocate_device();
 	if (data->temp_humi_input_dev == NULL)
@@ -1296,9 +1305,11 @@ err_initialize_gesture_input_dev:
 	input_unregister_device(data->temp_humi_input_dev);
 err_initialize_temp_humi_input_dev:
 	pr_err("[SSP]: %s - could not allocate temp_humi input device\n", __func__);
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	input_unregister_device(data->grip_input_dev);
 err_initialize_grip_input_dev:
 	pr_err("[SSP]: %s - could not allocate grip input device\n", __func__);
+#endif
 	input_unregister_device(data->prox_input_dev);
 err_initialize_proximity_input_dev:
 	pr_err("[SSP]: %s - could not allocate proximity input device\n", __func__);

@@ -14,8 +14,13 @@
  */
 #include "../ssp.h"
 
+#define BOSCH_ID	0
 #define	VENDOR		"BOSCH"
 #define	CHIP_ID		"BMP280"
+
+#define STM_ID		1
+#define VENDOR_STM	"STM"
+#define CHIP_ID_STM	"LPS25H"
 
 #define CALIBRATION_FILE_PATH		"/efs/FactoryApp/baro_delta"
 
@@ -53,7 +58,7 @@ int pressure_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0666);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		iErr = PTR_ERR(cal_filp);
 		if (iErr != -ENOENT)
@@ -149,13 +154,23 @@ static ssize_t eeprom_check_show(struct device *dev,
 static ssize_t pressure_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", VENDOR);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (data->acc_type == STM_ID)
+		return sprintf(buf, "%s\n", VENDOR_STM);
+	else
+		return sprintf(buf, "%s\n", VENDOR);
 }
 
 static ssize_t pressure_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (data->acc_type == STM_ID)
+		return sprintf(buf, "%s\n", CHIP_ID_STM);
+	else
+		return sprintf(buf, "%s\n", CHIP_ID);
 }
 
 static DEVICE_ATTR(vendor,  S_IRUGO, pressure_vendor_show, NULL);

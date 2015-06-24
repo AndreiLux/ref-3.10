@@ -3039,7 +3039,11 @@ int fimc_is_hw_enum(struct fimc_is_interface *this)
 	msg.param3 = 0;
 	msg.param4 = 0;
 
-	waiting_is_ready(this);
+	ret = waiting_is_ready(this);
+	if (ret) {
+		err("waiting for ready is fail");
+	}
+
 	com_regs = this->com_regs;
 	writel(msg.command, &com_regs->hicmd);
 	writel(msg.instance, &com_regs->hic_stream);

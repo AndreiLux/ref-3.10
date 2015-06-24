@@ -39,6 +39,10 @@
 #define DEF_SQRT_SCALE_FOR_RMS (100)
 #define GYRO_LIB_DL_FAIL	9990
 
+#ifndef ABS
+#define ABS(a) ((a) > 0 ? (a) : -(a))
+#endif
+
 static ssize_t gyro_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -60,7 +64,7 @@ int gyro_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0666);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY | O_NOFOLLOW, 0660);
 	if (IS_ERR(cal_filp)) {
 		set_fs(old_fs);
 		iRet = PTR_ERR(cal_filp);
@@ -102,7 +106,7 @@ int save_gyro_caldata(struct ssp_data *data, s16 *iCalData)
 	set_fs(KERNEL_DS);
 
 	cal_filp = filp_open(CALIBRATION_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY, 0666);
+			O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW, 0660);
 	if (IS_ERR(cal_filp)) {
 		pr_err("[SSP]: %s - Can't open calibration file\n", __func__);
 		set_fs(old_fs);
@@ -299,7 +303,7 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 	int i = 0, j = 0, total_count = 0, ret_val = 0, gyro_lib_dl_fail = 0;
 	long avg[3] = {0,}, rms[3] = {0,};
 	int gyro_bias[3] = {0,}, gyro_rms[3] = {0,};
-	s16 shift_ratio[3] = {0,};
+	s16 shift_ratio[3] = {0,}; //self_diff value
 	s16 iCalData[3] = {0,};
 	char a_name[3][2] = { "X", "Y", "Z" };
 	int iRet = 0;
@@ -309,7 +313,11 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 	int fifo_ret = 0;
 	int cal_ret = 0;
 	struct ssp_data *data = dev_get_drvdata(dev);
-
+	s16 st_zro[3] = {0, };
+	s16 st_bias[3] = {0, };
+	int gyro_fifo_avg[3] = {0,}, gyro_self_zro[3] = {0,};
+	int gyro_self_bias[3] = {0,}, gyro_self_diff[3] = {0,};
+	
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
 	if (msg == NULL) {
 		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n", __func__);
@@ -372,17 +380,51 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 				(chTempBuf[34] << 16) +
 				(chTempBuf[33] << 8) +
 				chTempBuf[32]);
+
+	st_zro[0] = (s16)((chTempBuf[25] << 8) +
+				chTempBuf[24]);
+	st_zro[1] = (s16)((chTempBuf[27] << 8) +
+				chTempBuf[26]);
+	st_zro[2] = (s16)((chTempBuf[29] << 8) +
+				chTempBuf[28]);
+
+	st_bias[0] = (s16)((chTempBuf[31] << 8) +
+				chTempBuf[30]);
+	st_bias[1] = (s16)((chTempBuf[33] << 8) +
+				chTempBuf[32]);
+	st_bias[2] = (s16)((chTempBuf[35] << 8) +
+				chTempBuf[34]);
+	
 	pr_info("[SSP] init: %d, total cnt: %d\n", initialized, total_count);
 	pr_info("[SSP] hw_result: %d, %d, %d, %d\n", hw_result,
 		shift_ratio[0], shift_ratio[1],	shift_ratio[2]);
 	pr_info("[SSP] avg %+8ld %+8ld %+8ld (LSB)\n", avg[0], avg[1], avg[2]);
 	pr_info("[SSP] rms %+8ld %+8ld %+8ld (LSB)\n", rms[0], rms[1], rms[2]);
 
-	if (total_count == 0) {
-		pr_err("[SSP] %s, total_count is 0. goto exit\n", __func__);
+	//FIFO ZRO check pass / fail
+	gyro_fifo_avg[0] = avg[0] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_fifo_avg[1] = avg[1] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_fifo_avg[2] = avg[2] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	// ZRO self test
+	gyro_self_zro[0] = st_zro[0] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_self_zro[1] = st_zro[1] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_self_zro[2] = st_zro[2] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	//bias
+	gyro_self_bias[0] = st_bias[0] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_self_bias[1] = st_bias[1] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_self_bias[2] = st_bias[2] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	//diff = bias - ZRO
+	gyro_self_diff[0] = shift_ratio[0] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_self_diff[1] = shift_ratio[1] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+	gyro_self_diff[2] = shift_ratio[2] * DEF_GYRO_SENS / DEF_SCALE_FOR_FLOAT;
+
+	if (total_count != 128) {
+		pr_err("[SSP] %s, total_count is not 128. goto exit\n", __func__);
 		ret_val = 2;
 		goto exit;
 	}
+	else
+		cal_ret = fifo_ret = 1;	
 
 	if (hw_result < 0) {
 		pr_err("[SSP] %s - hw selftest fail(%d), sw selftest skip\n",
@@ -393,6 +435,7 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 			pr_err("[SSP] %s - gyro lib download fail\n", __func__);
 			gyro_lib_dl_fail = 1;
 		} else {
+/*
 			ssp_dbg("[SSP]: %s - %d,%d,%d fail.\n",
 				__func__,
 				shift_ratio[0] / 10, 
@@ -402,11 +445,18 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 				shift_ratio[0] / 10, 
 				shift_ratio[1] / 10, 
 				shift_ratio[2] / 10);
+*/
+			ssp_dbg("[SSP]: %s - %d,%d,%d fail.\n",	__func__, gyro_self_diff[0], gyro_self_diff[1], gyro_self_diff[2]);
+			return sprintf(buf, "%d,%d,%d\n", gyro_self_diff[0], gyro_self_diff[1], gyro_self_diff[2]);
 		}
 	}
-	//gyro_bias[0] = (avg[0] * DEF_SCALE_FOR_FLOAT) / DEF_GYRO_SENS;
-	//gyro_bias[1] = (avg[1] * DEF_SCALE_FOR_FLOAT) / DEF_GYRO_SENS;
-	//gyro_bias[2] = (avg[2] * DEF_SCALE_FOR_FLOAT) / DEF_GYRO_SENS;
+
+	// AVG value range test +/- 40
+	if( (ABS(gyro_fifo_avg[0]) > 40) || (ABS(gyro_fifo_avg[1]) > 40) || (ABS(gyro_fifo_avg[2]) > 40) )
+	{
+		ssp_dbg("[SSP]: %s - %d,%d,%d fail.\n",	__func__, gyro_fifo_avg[0], gyro_fifo_avg[1], gyro_fifo_avg[2]);
+		return sprintf(buf, "%d,%d,%d\n", gyro_fifo_avg[0], gyro_fifo_avg[1], gyro_fifo_avg[2]);
+	}
 
 	// STMICRO
 	gyro_bias[0] = avg[0] * DEF_GYRO_SENS;
@@ -447,16 +497,7 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 			(long)rms[0] / total_count,
 			(long)rms[1] / total_count, (long)rms[2] / total_count);
 	}
-/*
-	for (j = 0; j < 3; j++) {
-		if (unlikely(rms[j] / total_count > DEF_RMS_THRESH)) {
-			pr_err("[SSP] %s-Gyro rms (%ld) exceeded threshold "
-				"(threshold = %d LSB)\n", a_name[j],
-				rms[j] / total_count, DEF_RMS_THRESH);
-			ret_val |= 1 << (7 + j);
-		}
-	}
-*/
+
 	for (i = 0; i < 3; i++) {
 		if (rms[i] > 10000) {
 			temp =
@@ -498,10 +539,6 @@ static ssize_t k6ds3tr_gyro_selftest(struct device *dev,
 		data->gyrocal.y = 0;
 		data->gyrocal.z = 0;
 	}
-
-	if(total_count == 128)
-		cal_ret = fifo_ret = 1;
-	
 exit:
 	ssp_dbg("[SSP]: %s - "
 		"%d,%d,%d,"
@@ -509,44 +546,26 @@ exit:
 		"%d,%d,%d,"
 		"%d,%d,%d,%d,%d\n",
 		__func__, 
-		gyro_bias[0]/1000,
-		gyro_bias[1]/1000,
-		gyro_bias[2]/1000,
-		gyro_rms[0]/1000,
-		gyro_rms[1]/1000,
-		gyro_rms[2]/1000,
-		shift_ratio[0] / 10,
-		shift_ratio[1] / 10,
-		shift_ratio[2] / 10,
-		total_count,
-		total_count,
-		total_count,
+		gyro_fifo_avg[0], gyro_fifo_avg[1], gyro_fifo_avg[2],
+		gyro_self_zro[0], gyro_self_zro[1], gyro_self_zro[2],
+		gyro_self_bias[0], gyro_self_bias[1], gyro_self_bias[2],
+		gyro_self_diff[0], gyro_self_diff[1], gyro_self_diff[2],
 		fifo_ret,
 		cal_ret);
-	
+
+	// Gyro Calibration pass / fail, buffer 1~6 values.
 	if( (fifo_ret == 0) || (cal_ret == 0) )
-		return sprintf(buf, "%d,%d,%d\n",
-				shift_ratio[0] / 10, 
-				shift_ratio[1] / 10, 
-				shift_ratio[2] / 10);
-	
+		return sprintf(buf, "%d,%d,%d\n", gyro_self_diff[0], gyro_self_diff[1], gyro_self_diff[2]);	
+
 	return sprintf(buf,
 		"%d,%d,%d,"
 		"%d,%d,%d,"
 		"%d,%d,%d,"
 		"%d,%d,%d,%d,%d\n",
-		gyro_bias[0]/1000,
-		gyro_bias[1]/1000,
-		gyro_bias[2]/1000,
-		gyro_rms[0]/1000,
-		gyro_rms[1]/1000,
-		gyro_rms[2]/1000,
-		shift_ratio[0] / 10,
-		shift_ratio[1] / 10,
-		shift_ratio[2] / 10,
-		total_count,
-		total_count,
-		total_count,
+		gyro_fifo_avg[0], gyro_fifo_avg[1], gyro_fifo_avg[2],
+		gyro_self_zro[0], gyro_self_zro[1], gyro_self_zro[2],
+		gyro_self_bias[0], gyro_self_bias[1], gyro_self_bias[2],
+		gyro_self_diff[0], gyro_self_diff[1], gyro_self_diff[2],
 		fifo_ret,
 		cal_ret);
 }

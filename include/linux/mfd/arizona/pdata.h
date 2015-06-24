@@ -13,31 +13,26 @@
 #ifndef _ARIZONA_PDATA_H
 #define _ARIZONA_PDATA_H
 
-#define ARIZONA_GPN_DIR                          0x8000  /* GPN_DIR */
+#include <dt-bindings/mfd/arizona.h>
+
 #define ARIZONA_GPN_DIR_MASK                     0x8000  /* GPN_DIR */
 #define ARIZONA_GPN_DIR_SHIFT                        15  /* GPN_DIR */
 #define ARIZONA_GPN_DIR_WIDTH                         1  /* GPN_DIR */
-#define ARIZONA_GPN_PU                           0x4000  /* GPN_PU */
 #define ARIZONA_GPN_PU_MASK                      0x4000  /* GPN_PU */
 #define ARIZONA_GPN_PU_SHIFT                         14  /* GPN_PU */
 #define ARIZONA_GPN_PU_WIDTH                          1  /* GPN_PU */
-#define ARIZONA_GPN_PD                           0x2000  /* GPN_PD */
 #define ARIZONA_GPN_PD_MASK                      0x2000  /* GPN_PD */
 #define ARIZONA_GPN_PD_SHIFT                         13  /* GPN_PD */
 #define ARIZONA_GPN_PD_WIDTH                          1  /* GPN_PD */
-#define ARIZONA_GPN_LVL                          0x0800  /* GPN_LVL */
 #define ARIZONA_GPN_LVL_MASK                     0x0800  /* GPN_LVL */
 #define ARIZONA_GPN_LVL_SHIFT                        11  /* GPN_LVL */
 #define ARIZONA_GPN_LVL_WIDTH                         1  /* GPN_LVL */
-#define ARIZONA_GPN_POL                          0x0400  /* GPN_POL */
 #define ARIZONA_GPN_POL_MASK                     0x0400  /* GPN_POL */
 #define ARIZONA_GPN_POL_SHIFT                        10  /* GPN_POL */
 #define ARIZONA_GPN_POL_WIDTH                         1  /* GPN_POL */
-#define ARIZONA_GPN_OP_CFG                       0x0200  /* GPN_OP_CFG */
 #define ARIZONA_GPN_OP_CFG_MASK                  0x0200  /* GPN_OP_CFG */
 #define ARIZONA_GPN_OP_CFG_SHIFT                      9  /* GPN_OP_CFG */
 #define ARIZONA_GPN_OP_CFG_WIDTH                      1  /* GPN_OP_CFG */
-#define ARIZONA_GPN_DB                           0x0100  /* GPN_DB */
 #define ARIZONA_GPN_DB_MASK                      0x0100  /* GPN_DB */
 #define ARIZONA_GPN_DB_SHIFT                          8  /* GPN_DB */
 #define ARIZONA_GPN_DB_WIDTH                          1  /* GPN_DB */
@@ -53,22 +48,9 @@
 #define ARIZONA_MAX_GPIO_REGS 5
 #define CLEARWATER_MAX_GPIO_REGS 80
 
-#define ARIZONA_32KZ_MCLK1 1
-#define ARIZONA_32KZ_MCLK2 2
-#define ARIZONA_32KZ_NONE  3
-
 #define ARIZONA_MAX_INPUT 12
 
-#define ARIZONA_DMIC_MICVDD   0
-#define ARIZONA_DMIC_MICBIAS1 1
-#define ARIZONA_DMIC_MICBIAS2 2
-#define ARIZONA_DMIC_MICBIAS3 3
-
 #define ARIZONA_MAX_MICBIAS 4
-
-#define ARIZONA_INMODE_DIFF 0
-#define ARIZONA_INMODE_SE   1
-#define ARIZONA_INMODE_DMIC 2
 
 #define ARIZONA_MAX_OUTPUT 6
 
@@ -126,7 +108,13 @@ struct arizona_pdata {
 	/* Base GPIO */
 	int gpio_base;
 
-	/** Pin state for GPIO pins */
+	/** Pin state for GPIO pins
+	 * Defines default pin function and state for each GPIO
+	 *
+	 * 0 = leave at chip default
+	 * values 0x1..0xffff = set to this value
+	 * >0xffff = set to 0
+	 */
 	unsigned int gpio_defaults[CLEARWATER_MAX_GPIO_REGS];
 
 	/**
@@ -178,10 +166,16 @@ struct arizona_pdata {
 	 */
 	int hpdet_short_circuit_imp;
 
-	/** Use HPDETL to check for moisture, this value specifies the
-	 * threshold impedance in ohms above which it will be considered
-	 * a false detection
+	/**
+	 * Channel to use for moisture detection, valid values are 0 for
+	 * left and 1 for right
 	 */
+	unsigned int moisture_det_channel;
+
+	/**
+	* This value specifies the  threshold impedance in ohms above
+	* which it will be considered a false detection
+	*/
 	int hpdet_moisture_imp;
 
 	/** Software debounces for moisture detect */
@@ -244,7 +238,7 @@ struct arizona_pdata {
 	int num_micd_ranges;
 
 	/** Mic detect clamp function */
-	int micd_clamp_mode;
+	unsigned int micd_clamp_mode;
 
 	/** Headset polarity configurations */
 	struct arizona_micd_config *micd_configs;
@@ -278,7 +272,7 @@ struct arizona_pdata {
 	int irq_gpio;
 
 	/** General purpose switch control */
-	int gpsw;
+	unsigned int gpsw;
 
 	/** Callback which is called when the trigger phrase is detected */
 	void (*ez2ctrl_trigger)(void);

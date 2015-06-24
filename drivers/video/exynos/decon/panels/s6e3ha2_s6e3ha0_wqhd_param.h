@@ -437,7 +437,6 @@ enum {
 	ACL_OPR_MAX
 };
 
-
 #ifdef CONFIG_LCD_HMT
 #define DEFAULT_HMT_BRIGHTNESS			162
 #define	HMT_OFF							0
@@ -501,5 +500,17 @@ static const unsigned char SEQ_HMT_AID_REVERSE2[] = {	/* G.Param */
 
 
 #endif
+
+enum {
+	HBM_INTER_OFF = 0,
+	HBM_COLORBLIND_ON,
+	HBM_GALLERY_ON,
+};
+
+// 384 ~ 550
+static const char HBM_INTER_22TH_OFFSET[] = {
+	0x02, 0x04, 0x06, 0x06, 0x06, 0x06, 0x06, 0x06
+};
+
 
 #endif /* __S6E3HA0_PARAM_H__ */

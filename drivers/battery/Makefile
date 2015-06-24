@@ -22,3 +22,12 @@ obj-$(CONFIG_CHARGER_MAX77888)	+= max77888_charger.o
 obj-$(CONFIG_CHARGER_MAX77833)	+= max77833_charger.o
 obj-$(CONFIG_CHARGER_S2MU003)   += s2mu003_charger.o
 obj-$(CONFIG_WIRELESS_CHARGER_BQ51221)	+= bq51221_charger.o
+obj-$(CONFIG_WIRELESS_CHARGER_P9220)	+= p9220_charger.o
+obj-$(CONFIG_WIRELESS_CHARGER_MAX77900)	+= max77900_charger.o
+ifeq ($(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING),y)
+obj-y	+= sec_batt_selfdchg_common.o sec_batt_selfdchg_ic_use.o
+ifeq ($(CONFIG_MACH_UNIVERSAL7420),y)
+obj-y	+= sec_batt_selfdchg_exynos7420_ap_use.o
+#obj-y	+= sec_batt_selfdchg_exynos7420_cs_use.o
+endif
+endif

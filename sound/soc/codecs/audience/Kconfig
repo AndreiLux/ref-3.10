@@ -126,4 +126,10 @@ config SND_SOC_ESXXX_VEQ_EXTENDEDVOLUME
 	---help---
 	Change Max Volume Index to Eight
 	Otherwise default is Six Step
+
+config SND_SOC_ESXXX_UPDATE_VEQ_TABLE
+	tristate "Update VEQ Table"
+	default n
+	---help---
+	support to update the veq table during the boot
 endmenu

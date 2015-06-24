@@ -24,6 +24,7 @@
 #endif
 #include <mach/regs-pmu.h>
 #include <mach/regs-clock.h>
+#include <linux/of.h>
 
 #define CPU_RESET_UP_CONFIG	0x7
 static void exynos_cpu_up(unsigned int cpu_id)
@@ -249,6 +250,8 @@ static void exynos7580_pmu_init(void)
 int __init exynos_pmu_init(void)
 {
 	unsigned int tmp;
+	struct device_node *np;
+	int drv_val;
 
 	exynos_enable_hw_trip();
 
@@ -267,6 +270,19 @@ int __init exynos_pmu_init(void)
 	tmp |= CLKOUT_SEL_XXTI;
 #else
 	tmp |= CLKOUT_SEL_TCXO;
+#endif
+
+#if defined(CONFIG_SOC_EXYNOS7420)
+	/* To set drive strength for Audio */
+	np = of_find_node_with_property(NULL, "drv_strength");
+
+	if(np) {
+		of_property_read_u32(np, "drv_strength", &drv_val);
+		pr_err("The value of drv_strength : %d\n", drv_val);
+
+		if(drv_val <= 7 && drv_val >=0)
+			tmp |= (drv_val << 4);
+	}
 #endif
 	__raw_writel(tmp, EXYNOS_PMU_PMU_DEBUG);
 

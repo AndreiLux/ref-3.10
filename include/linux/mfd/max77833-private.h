@@ -32,13 +32,15 @@
 
 #define MAX77833_IRQSRC_CHG		(1 << 0)
 #define MAX77833_IRQSRC_TOP		(1 << 1)
+#define MAX77833_IRQSRC_HAPTIC		(1 << 2)
 #define MAX77833_IRQSRC_MUIC		(1 << 3)
 #define MAX77833_IRQSRC_FG              (1 << 4)
+#define MAX77833_IRQSRC_GPIO		(1 << 5)
 
 enum max77833_reg {
 	/* Slave addr = 0xCC */
 	/* PMIC Top-Level Registers */
-	MAX77833_PMIC_REG_PMICID			= 0x20,	//CIS
+	MAX77833_PMIC_REG_PMICID			= 0x20,
 	MAX77833_PMIC_REG_PMICREV			= 0x21,
 	MAX77833_PMIC_REG_INTSRC			= 0x22,
 	MAX77833_PMIC_REG_INTSRC_MASK			= 0x23,
@@ -50,28 +52,25 @@ enum max77833_reg {
 	MAX77833_FG_REG_INT_MASK                        = 0x28,
 	MAX77833_FG_REG_INT_STAT                        = 0x29,
 
-	MAX77833_PMIC_REG_MAINCTRL1                     = 0x2b,
-
-	/// MAX77843 ///
-	MAX77833_PMIC_REG_RESERVED_25			= 0x25,
-	MAX77833_PMIC_REG_RESERVED_27			= 0x27,
-	MAX77833_PMIC_REG_RESERVED_29			= 0x29,
-
-	MAX77833_PMIC_REG_SAFEOUT_CTRL			= 0xC6,
-
-
-
-//	MAX77833_PMIC_REG_LSCNFG			= 0x2B,
-//	MAX77833_PMIC_REG_RESERVED_2C			= 0x2C,
-//	MAX77833_PMIC_REG_RESERVED_2D			= 0x2D,
+	MAX77833_PMIC_REG_MAINCTRL1                     = 0x2B,
+	MAX77833_PMIC_REG_SAFEOUT_CTRL			= 0x9B,
 
 	/* Haptic motor driver Registers */
-	MAX77833_MOTOR_OVERDRIVE_CYCLES		= 0x0061,
-	MAX77833_MOTOR_OVERDRIVE_STRENGTH	= 0x0062,
-	MAX77833_MOTOR_BRAKING_CYCLES		= 0X0063,
-	MAX77833_LRA_ENABLE_1			= 0x006D,
-	MAX77833_LRA_ENABLE_2			= 0x006E,
-	MAX77833_LRA_ENABLE_3			= 0x006F,
+	MAX77833_MOTOR_OVERDRIVE_CYCLES			= 0x0061,
+	MAX77833_MOTOR_OVERDRIVE_STRENGTH		= 0x0062,
+	MAX77833_MOTOR_BRAKING_CYCLES			= 0X0063,
+	MAX77833_LRA_ENABLE_1				= 0x006D,
+	MAX77833_LRA_ENABLE_2				= 0x006E,
+	MAX77833_LRA_ENABLE_3				= 0x006F,
+	MAX77833_AUTORES_CONFIG				= 0x0059,
+	MAX77833_AUTORES_MIN_FREQ_LOW			= 0x005B,
+	MAX77833_AUTORES_MAX_FREQ_LOW			= 0x005D,
+	MAX77833_NOMINAL_STRENGTH			= 0x0066,
+	MAX77833_RES_MIN_FREQ_HIGH			= 0x005A,
+	MAX77833_RES_MAX_FREQ_HIGH			= 0x005C,
+	MAX77833_AUTORES_INIT_GUESS_LOW			= 0x005F,
+	MAX77833_AUTORES_INIT_GUESS_HIGH		= 0x005E,
+	MAX77833_AUTORES_LOCK_WINDOW			= 0X0060,
 
 	/* Old Haptic motor driver Register */
 	MAX77833_PMIC_REG_MCONFIG			= 0x10,
@@ -123,8 +122,8 @@ enum max77833_fuelgauge_reg {
 	AVG_CURRENT_REG                              = 0x0016,
 	SOCMIX_REG                                   = 0x001A,
 	SOCAV_REG                                    = 0x001C,
-	REMCAP_MIX_REG                               = 0x000A,
-	FULLCAP_REG                                  = 0x006A,
+	REMCAP_MIX_REG                               = 0x001E,
+	FULLCAP_REG                                  = 0x0020,
 	AVR_TEMPERATURE_REG                          = 0x002C,
 	CYCLES_REG                                   = 0x002E,
 	DESIGNCAP_REG                                = 0x0030,
@@ -136,25 +135,30 @@ enum max77833_fuelgauge_reg {
 	FULLCAP_NOM_REG                              = 0x0046,
 	MISCCFG_REG                                  = 0x0056,
 	QRTABLE20_REG                                = 0x0064,
+	FULLCAPREP_REG                               = 0x006A,
 	RCOMP_REG                                    = 0x0070,
+	VEMPTY_REG                                   = 0x0074,
 	FSTAT_REG                                    = 0x007A,
 	QRTABLE30_REG                                = 0x0084,
-	DQACC_REG                                    = 0x008C,
-	DPACC_REG                                    = 0x008A,
+	DQACC_REG                                    = 0x008A,
+	DPACC_REG                                    = 0x008C,
 	CONFIG2_REG                                  = 0x0176,
-	OCV_REG                                      = 0x0012,
-	VFOCV_REG                                    = 0x0012,
+	VFOCV_REG                                    = 0x07F6,
 	VFSOC_REG                                    = 0x07FE,
+	FILTERCFG2_REG                               = 0x0168,
+	ISYS_REG                                     = 0x0086,
+	AVGISYS_REG                                  = 0x0096,
+	ISYSTH_REG                                   = 0x01EA,
 
 	MAX77833_FG_END,
 };
 
-#define MAX77833_REG_MAINCTRL1_MRDBTMER_MASK	(0x7)
-//#define MAX77833_REG_MAINCTRL1_MREN		(1 << 3)
-#define MAX77833_REG_MAINCTRL1_THRMFORCEEN	(1 << 4)
+#define MAX77833_REG_MAINCTRL1_MRSTB_TIMER_MASK	(0x7)
+#define MAX77833_REG_MAINCTRL1_MREN		(1 << 3)
+//#define MAX77833_REG_MAINCTRL1_THRM_FORCE_EN	(1 << 4)
 
 /* Slave addr = 0x4A: MUIC */
-enum max77833_muic_reg {	//CIS
+enum max77833_muic_reg {
 	MAX77833_MUIC_REG_HW_REV	= 0x00,
 	MAX77833_MUIC_REG_FW_REV1	= 0x01,
 	MAX77833_MUIC_REG_FW_REV0       = 0x02,
@@ -164,9 +168,6 @@ enum max77833_muic_reg {	//CIS
 	MAX77833_MUIC_REG_STATUS1	= 0x06,
 	MAX77833_MUIC_REG_STATUS2	= 0x07,
 	MAX77833_MUIC_REG_STATUS3	= 0x08,
-	MAX77833_MUIC_REG_STATUS4       = 0x09,
-	MAX77833_MUIC_REG_STATUS5       = 0x0A,
-	MAX77833_MUIC_REG_STATUS6       = 0x0B,
 	MAX77833_MUIC_REG_INTMASK1	= 0x0C,
 	MAX77833_MUIC_REG_INTMASK2	= 0x0D,
 	MAX77833_MUIC_REG_INTMASK3	= 0x0E,
@@ -187,20 +188,12 @@ enum max77833_muic_reg {	//CIS
 	MAX77833_MUIC_REG_DAT_OUT5      = 0x1D,
 	MAX77833_MUIC_REG_DAT_OUT6      = 0x1E,
 
-	/// MAX77843 ///
-        MAX77833_MUIC_REG_ID            = 0x00,
-        MAX77833_MUIC_REG_CDETCTRL1     = 0x0A,
-        MAX77833_MUIC_REG_CDETCTRL2     = 0x0B,
-        MAX77833_MUIC_REG_CTRL1         = 0x0C,
-        MAX77833_MUIC_REG_CTRL2         = 0x0D,
-        MAX77833_MUIC_REG_CTRL3         = 0x0E,
-        MAX77833_MUIC_REG_CTRL4         = 0x16,
-        MAX77833_MUIC_REG_HVCONTROL1    = 0x17,
-        MAX77833_MUIC_REG_HVCONTROL2    = 0x18,
-        MAX77833_MUIC_REG_HVTXBYTE      = 0x19,
-        MAX77833_MUIC_REG_HVRXBYTE1     = 0x1A,
-
 	MAX77833_MUIC_REG_END,
+#if 0	/* Not USE */
+	MAX77833_MUIC_REG_STATUS4	= 0x09,
+	MAX77833_MUIC_REG_STATUS5	= 0x0A,
+	MAX77833_MUIC_REG_STATUS6	= 0x0B,
+#endif
 };
 
 /* Slave addr = 0x94: RGB LED */
@@ -216,25 +209,29 @@ enum max77833_led_reg {
 	MAX77833_LED_REG_END,
 };
 
-enum max77833_irq_source {	//CIS
-	CHG_INT = 0,
-	TOP_INT,
-//	HAPTIC_INT,
+enum max77833_irq_source {
+	TOP_INT = 0,
+	CHG_INT,
+	FUEL_INT,
 	MUIC_INT1,
 	MUIC_INT2,
 	MUIC_INT3,
-//	FUEL_INT,
-//	GPIO_INT,
 
 	MAX77833_IRQ_GROUP_NR,
 };
 
+#define MUIC_MAX_INT			MUIC_INT3
+#define MAX77833_NUM_IRQ_MUIC_REGS	(MUIC_MAX_INT - MUIC_INT1 + 1)
+
 enum max77833_irq {
 	/* PMIC; TOPSYS */
+	MAX77833_SYSTEM_IRQ_T100C_INT,
+	MAX77833_SYSTEM_IRQ_T120C_INT,
+	MAX77833_SYSTEM_IRQ_T140C_INT,
+	MAX77833_SYSTEM_IRQ_I2C_WD_INT,
 	MAX77833_SYSTEM_IRQ_SYSUVLO_INT,
-	MAX77833_SYSTEM_IRQ_SYSOVLO_INT,
-	MAX77833_SYSTEM_IRQ_TSHDN_INT,
-	MAX77833_SYSTEM_IRQ_TM_INT,
+	MAX77833_SYSTEM_IRQ_MRSTB_INT,
+	MAX77833_SYSTEM_IRQ_TS_INT,
 
 	/* PMIC; Charger */
 	MAX77833_CHG_IRQ_BYP_I,
@@ -243,29 +240,24 @@ enum max77833_irq {
 	MAX77833_CHG_IRQ_CHG_I,
 	MAX77833_CHG_IRQ_WCIN_I,
 	MAX77833_CHG_IRQ_CHGIN_I,
+	MAX77833_CHG_IRQ_AICL_I,
 
 	/* Fuelgauge */
 	MAX77833_FG_IRQ_ALERT,
 
 	/* MUIC INT1 */
 	MAX77833_MUIC_IRQ_INT1_RESERVED,
-
 	/* MUIC INT2 */
 	MAX77833_MUIC_IRQ_INT2_RESERVED,
-
 	/* MUIC INT3 */
-	MAX77833_MUIC_IRQ_INT3_IDRESINT,
-	MAX77833_MUIC_IRQ_INT3_CHGTYPINT,
-	MAX77833_MUIC_IRQ_INT3_CHGTYPRUNINT,
-	MAX77833_MUIC_IRQ_INT3_UICSYSMSGINT,
-	MAX77833_MUIC_IRQ_INT3_APCMDRESPINT,
+	MAX77833_MUIC_IRQ_INT3_IDRES_INT,
+	MAX77833_MUIC_IRQ_INT3_CHGTYP_INT,
+	MAX77833_MUIC_IRQ_INT3_CHGTYP_RUN_INT,
+	MAX77833_MUIC_IRQ_INT3_SYSMSG_INT,
+	MAX77833_MUIC_IRQ_INT3_APCMD_RESP_INT,
 
 	MAX77833_IRQ_NR,
 };
-
-#define MUIC_MAX_INT                   MUIC_INT3
-#define MAX77833_NUM_IRQ_MUIC_REGS     (MUIC_MAX_INT - MUIC_INT1 + 1)
-
 
 struct max77833_dev {
 	struct device *dev;

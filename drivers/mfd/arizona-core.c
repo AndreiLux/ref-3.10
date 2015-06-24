@@ -840,6 +840,12 @@ err:
 	arizona_restore_dvfs(arizona);
 	return ret;
 }
+#else
+static inline int arizona_dcvdd_notify(struct notifier_block *nb,
+				       unsigned long action, void *data)
+{
+	return 0;
+}
 #endif
 
 #ifdef CONFIG_PM_SLEEP
@@ -1270,6 +1276,7 @@ const struct of_device_id arizona_of_match[] = {
 	{ .compatible = "wlf,wm1840", .data = (void *)WM1840 },
 	{ .compatible = "wlf,wm1831", .data = (void *)WM1831 },
 	{ .compatible = "cirrus,cs47l24", .data = (void *)CS47L24 },
+	{ .compatible = "cirrus,cs47l35", .data = (void *)CS47L35 },
 	{},
 };
 EXPORT_SYMBOL_GPL(arizona_of_match);
@@ -1302,11 +1309,11 @@ static struct mfd_cell florida_devs[] = {
 	{ .name = "florida-codec" },
 };
 
-static struct mfd_cell cs47l24_devs[] = {
+static struct mfd_cell largo_devs[] = {
 	{ .name = "arizona-gpio" },
 	{ .name = "arizona-haptics" },
 	{ .name = "arizona-pwm" },
-	{ .name = "cs47l24-codec" },
+	{ .name = "largo-codec" },
 };
 
 static struct mfd_cell wm8997_devs[] = {
@@ -1318,13 +1325,13 @@ static struct mfd_cell wm8997_devs[] = {
 	{ .name = "wm8997-codec" },
 };
 
-static struct mfd_cell wm8998_devs[] = {
+static struct mfd_cell vegas_devs[] = {
 	{ .name = "arizona-micsupp" },
 	{ .name = "arizona-extcon" },
 	{ .name = "arizona-gpio" },
 	{ .name = "arizona-haptics" },
 	{ .name = "arizona-pwm" },
-	{ .name = "wm8998-codec" },
+	{ .name = "vegas-codec" },
 };
 
 static struct mfd_cell clearwater_devs[] = {
@@ -1334,6 +1341,15 @@ static struct mfd_cell clearwater_devs[] = {
 	{ .name = "arizona-haptics" },
 	{ .name = "arizona-pwm" },
 	{ .name = "clearwater-codec" },
+};
+
+static struct mfd_cell marley_devs[] = {
+	{ .name = "arizona-micsupp" },
+	{ .name = "arizona-extcon" },
+	{ .name = "arizona-gpio" },
+	{ .name = "arizona-haptics" },
+	{ .name = "arizona-pwm" },
+	{ .name = "marley-codec" },
 };
 
 static const struct {
@@ -1501,6 +1517,7 @@ int arizona_dev_init(struct arizona *arizona)
 	case WM1840:
 	case WM1831:
 	case CS47L24:
+	case CS47L35:
 		for (i = 0; i < ARRAY_SIZE(wm5102_core_supplies); i++)
 			arizona->core_supplies[i].supply
 				= wm5102_core_supplies[i];
@@ -1523,6 +1540,7 @@ int arizona_dev_init(struct arizona *arizona)
 	switch (arizona->type) {
 	case WM1831:
 	case CS47L24:
+	case CS47L35:
 		break;
 	default:
 		ret = mfd_add_devices(arizona->dev, -1, early_devs,
@@ -1621,6 +1639,7 @@ int arizona_dev_init(struct arizona *arizona)
 	case 0x6363:
 	case 0x8997:
 	case 0x6338:
+	case 0x6360:
 		break;
 	default:
 		dev_err(arizona->dev, "Unknown device ID: %x\n", reg);
@@ -1722,7 +1741,7 @@ int arizona_dev_init(struct arizona *arizona)
 		apply_patch = florida_patch;
 		break;
 #endif
-#ifdef CONFIG_MFD_CS47L24
+#ifdef CONFIG_MFD_LARGO
 	case 0x6363:
 		switch (arizona->type) {
 		case CS47L24:
@@ -1736,14 +1755,14 @@ int arizona_dev_init(struct arizona *arizona)
 			break;
 
 		default:
-			dev_err(arizona->dev, "CS47L24 codec registered as %d\n",
+			dev_err(arizona->dev, "Largo codec registered as %d\n",
 				arizona->type);
 			arizona->type = CS47L24;
-			type_name = "CS47L24";
+			type_name = "Largo";
 			revision_char = arizona->rev + 'A';
 			break;
 		}
-		apply_patch = cs47l24_patch;
+		apply_patch = largo_patch;
 		break;
 #endif
 #ifdef CONFIG_MFD_WM8997
@@ -1758,7 +1777,7 @@ int arizona_dev_init(struct arizona *arizona)
 		apply_patch = wm8997_patch;
 		break;
 #endif
-#ifdef CONFIG_MFD_WM8998
+#ifdef CONFIG_MFD_VEGAS
 	case 0x6349:
 		switch (arizona->type) {
 		case WM8998:
@@ -1775,7 +1794,7 @@ int arizona_dev_init(struct arizona *arizona)
 			arizona->type = WM8998;
 		}
 
-		apply_patch = wm8998_patch;
+		apply_patch = vegas_patch;
 		revision_char = arizona->rev + 'A';
 		break;
 #endif
@@ -1800,7 +1819,24 @@ int arizona_dev_init(struct arizona *arizona)
 		apply_patch = clearwater_patch;
 		break;
 #endif
-	default:
+#ifdef CONFIG_MFD_MARLEY
+	case 0x6360:
+		switch (arizona->type) {
+		case CS47L35:
+			type_name = "CS47L35";
+			break;
+
+		default:
+			dev_err(arizona->dev,
+			   "Unknown Marley codec registered as CS47L35\n");
+			arizona->type = CS47L35;
+		}
+
+		revision_char = arizona->rev + 'A';
+		apply_patch = marley_patch;
+		break;
+#endif
+default:
 		dev_err(arizona->dev, "Unknown device ID %x\n", reg);
 		goto err_reset;
 	}
@@ -2071,8 +2107,8 @@ int arizona_dev_init(struct arizona *arizona)
 		break;
 	case WM1831:
 	case CS47L24:
-		ret = mfd_add_devices(arizona->dev, -1, cs47l24_devs,
-				      ARRAY_SIZE(cs47l24_devs), NULL, 0, NULL);
+		ret = mfd_add_devices(arizona->dev, -1, largo_devs,
+				      ARRAY_SIZE(largo_devs), NULL, 0, NULL);
 		break;
 	case WM8997:
 		ret = mfd_add_devices(arizona->dev, -1, wm8997_devs,
@@ -2080,13 +2116,17 @@ int arizona_dev_init(struct arizona *arizona)
 		break;
 	case WM8998:
 	case WM1814:
-		ret = mfd_add_devices(arizona->dev, -1, wm8998_devs,
-				      ARRAY_SIZE(wm8998_devs), NULL, 0, NULL);
+		ret = mfd_add_devices(arizona->dev, -1, vegas_devs,
+				      ARRAY_SIZE(vegas_devs), NULL, 0, NULL);
 		break;
 	case WM8285:
 	case WM1840:
 		ret = mfd_add_devices(arizona->dev, -1, clearwater_devs,
 				      ARRAY_SIZE(clearwater_devs), NULL, 0, NULL);
+		break;
+	case CS47L35:
+		ret = mfd_add_devices(arizona->dev, -1, marley_devs,
+				      ARRAY_SIZE(marley_devs), NULL, 0, NULL);
 		break;
 	}
 

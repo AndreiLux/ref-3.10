@@ -13,7 +13,7 @@
  * published by the Free Software Foundation.
  */
 
-/memreserve/ 0xFF980000 0x680000;	/* EL3 monitor, secure intepreter */
+/memreserve/ 0xFE800000 0x1800000;	/* EL3 monitor, secure intepreter */
 #include <dt-bindings/clock/exynos7420.h>
 #include <dt-bindings/sysmmu/sysmmu.h>
 /include/ "exynos7420-pinctrl.dtsi"
@@ -1092,8 +1092,8 @@
         compatible = "arm,mali";
         reg = <0x14AC0000 0x5000>;
         interrupts = <0 241 0>, <0 242 0>, <0 240 0>;
-        clocks = <&clock 1>, <&clock 10>, <&clock 160>, <&clock 161>, <&clock 162>, <&clock 163>;
-        clock-names = "fin_pll", "fout_g3d_pll", "aclk_g3d", "dout_aclk_g3d", "mout_g3d", "sclk_hpm_g3d";
+        clocks = <&clock 1>, <&clock 10>, <&clock 160>, <&clock 161>, <&clock 162>, <&clock 163>, <&clock 300>, <&clock 301>;
+        clock-names = "fin_pll", "fout_g3d_pll", "aclk_g3d", "dout_aclk_g3d", "mout_g3d", "sclk_hpm_g3d", "aclk_lh_g3d0", "aclk_lh_g3d1";
         samsung,power-domain = <&pd_g3d>;
     };
 
@@ -3382,5 +3382,11 @@
 
 	fips_fmp {
 		compatible = "samsung,exynos-fips-fmp";
+	};
+
+	pmu_coremem_ratio {
+		compatible = "samsung,exynos-pmu_coremem";
+		/* core:mem <100:0, 80:20, 60:40, 40:60, 20:80, 0:100> */
+		const_lpki = <0 20948 41896 62844 83792 104740>;
 	};
 };

@@ -208,7 +208,7 @@ static int __kprobes do_page_fault(unsigned long addr, unsigned int esr,
 	if (!virt_addr_valid(current_thread_info()) || !virt_addr_valid(current)) {
 		sec_debug_disable_printk_process();
 		pr_emerg("sec_debug: safe panic handler due to invalid 'current' \n");
-		sec_debug_panic_handler(NULL, false);
+		sec_debug_panic_handler("sec_debug: safe panic handler", false);
 	}
 #endif
 

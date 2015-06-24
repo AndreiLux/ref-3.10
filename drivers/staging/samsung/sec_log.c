@@ -475,64 +475,6 @@ late_initcall(sec_last_kmsg_late_init);
 
 #ifdef CONFIG_SEC_DEBUG_TIMA_LOG
 #ifdef   CONFIG_TIMA_RKP
-#ifdef CONFIG_SOC_EXYNOS5430
-#define   TIMA_DEBUG_LOG_START  0x30300000
-#define   TIMA_DEBUG_LOG_SIZE   1<<20
-
-#define   TIMA_SEC_LOG          0x2d800000
-#define   TIMA_SEC_LOG_SIZE     1<<18 
-
-#define   TIMA_PHYS_MAP         0x2d900000
-#define   TIMA_PHYS_MAP_SIZE    6<<20 
-
-#define   TIMA_SEC_TO_PGT       0x2e000000
-#define   TIMA_SEC_TO_PGT_SIZE  1<<20 
-
-#define   TIMA_DASHBOARD_START  0x2d700000
-#define   TIMA_DASHBOARD_SIZE    0x1000
-#endif
-
-#ifdef CONFIG_SOC_EXYNOS7420
-
-#define   TIMA_VMM_START        0x52C00000
-#define   TIMA_VMM_SIZE         2<<20
-
-#define   TIMA_DEBUG_LOG_START  0x52300000
-#define   TIMA_DEBUG_LOG_SIZE   1<<20
-
-#define   TIMA_SEC_LOG          0x4d800000
-#define   TIMA_SEC_LOG_SIZE     1<<18 
-
-#define   TIMA_PHYS_MAP         0x4da00000
-#define   TIMA_PHYS_MAP_SIZE    4<<20 
-
-
-#define   TIMA_DASHBOARD_START  0x4d700000
-#define   TIMA_DASHBOARD_SIZE    0x1000
-
-#define   TIMA_ROBUF_START      0x52400000
-#define   TIMA_ROBUF_SIZE       1<<23
-
-
-#endif /* CONFIG_SOC_EXYNOS7420 */
-
-#ifdef CONFIG_SOC_EXYNOS5422
-#define   TIMA_DEBUG_LOG_START  0x50300000
-#define   TIMA_DEBUG_LOG_SIZE   1<<20
-
-#define   TIMA_SEC_LOG          0x4d800000
-#define   TIMA_SEC_LOG_SIZE     1<<18 
-
-#define   TIMA_PHYS_MAP         0x4d900000
-#define   TIMA_PHYS_MAP_SIZE    6<<20 
-
-#define   TIMA_SEC_TO_PGT       0x4e000000
-#define   TIMA_SEC_TO_PGT_SIZE  1<<20 
-
-
-#define   TIMA_DASHBOARD_START  0x4d700000
-#define   TIMA_DASHBOARD_SIZE    0x1000
-#endif
 
 static int  tima_setup_rkp_mem(void){
 #ifdef CONFIG_NO_BOOTMEM

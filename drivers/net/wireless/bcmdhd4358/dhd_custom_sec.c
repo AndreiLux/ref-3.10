@@ -39,6 +39,10 @@
 #include <linux/fcntl.h>
 #include <linux/fs.h>
 
+#if defined(OTP_WRITE_ON)
+#include <dhd_custom_sec_otpbinary.h>
+#endif /* OTP_WRITE_ON */
+
 struct dhd_info;
 extern int _dhd_set_mac_address(struct dhd_info *dhd,
 	int ifidx, struct ether_addr *addr);
@@ -298,7 +302,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"KR", "KR", 48},
 #endif
 	{"RU", "RU", 13},
-	{"UA", "UM", 3},
+	{"UA", "UA", 8},
 	{"GT", "GT", 1},
 	{"MN", "MN", 1},
 	{"NI", "NI", 2},
@@ -312,6 +316,7 @@ const struct cntry_locales_custom translate_custom_table[] = {
 	{"LY", "LI", 4},
 	{"BO", "NG", 0},
 	{"UM", "PR", 38},
+	{"CU", "US", 0},
 #endif /* default ccode/regrev */
 };
 
@@ -1358,4 +1363,137 @@ int dhd_check_module_b85a(dhd_pub_t *dhd)
 	return ret;
 }
 #endif /* defined(SUPPORT_MULTIPLE_MODULE_CIS) && defined(USE_CID_CHECK) */
+
+#ifdef OTP_WRITE_ON
+#define htod32(i) (i)
+
+int dhd_write_otp(dhd_pub_t *dhd)
+{
+	int ret;
+	char buf[CIS_BUF_SIZE] = {0};
+	char *bufp;
+	const char *otp_vars;
+	int otp_header_size;
+	int otp_vars_size;
+	uint32 len = 0;
+	uint chipid;
+	cis_rw_t cish;
+	char *cisp, *cisdata;
+	int max = 0;
+	bool sta_mode = FALSE;
+	cis_rw_t *cish_r = (cis_rw_t *)&buf[8];
+	struct file *fp;
+	mm_segment_t old_fs;
+	loff_t pos = 0;
+
+	chipid = dhd_bus_chip_id(dhd);
+
+	if (chipid == BCM43569_CHIP_ID) {
+		otp_vars = BCM4358A3_otp_vars;
+		otp_vars_size = sizeof(BCM4358A3_otp_vars);
+		otp_header_size = BCM4358A3_OTP_HEADER_SIZE;
+	} else {
+		DHD_ERROR(("%s: can't find OTP header for chip\n", __FUNCTION__));
+		return BCME_ERROR;
+	}
+
+	cish_r->source = 0;
+	cish_r->byteoff = 0;
+	cish_r->nbytes = sizeof(buf);
+
+	strcpy(buf, "cisdump");
+	ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, buf, sizeof(buf), 0, 0);
+	if (ret < 0) {
+		DHD_ERROR(("[WIFI_SEC] %s: CIS reading failed, ret=%d\n",
+			__FUNCTION__, ret));
+		sta_mode = TRUE;
+		goto exit;
+	}
+
+	max = otp_header_size;
+	if (memcmp(&buf[12], otp_vars, otp_header_size) == 0) {
+		DHD_ERROR(("%s:OTP already was written\n", __FUNCTION__));
+	} else {
+		DHD_ERROR(("%s: OTP length: %d bytes \n", __FUNCTION__, otp_vars_size));
+
+		max = sizeof(buf);
+		bufp = buf;
+		memset(buf, 0, sizeof(buf));
+		strcpy(bufp, "ciswrite");
+		bufp += strlen("ciswrite") + 1;
+		cisp = bufp;
+		cisdata = cisp + sizeof(cish);
+
+		cish.source = htod32(0);
+
+		memcpy(cisdata, (char *)otp_vars, otp_vars_size);
+		len = otp_vars_size;
+
+		cish.byteoff = htod32(0);
+		cish.nbytes = htod32(len);
+		memcpy(cisp, (char*)&cish, sizeof(cish));
+
+		ret = dhd_wl_ioctl_cmd(dhd, WLC_SET_VAR, buf,
+			(cisp - buf) + sizeof(cish) + len, TRUE, 0);
+		if (ret) {
+			DHD_ERROR(("%s: Fail to write otp, ret = %d \n", __FUNCTION__, ret));
+		} else {
+			DHD_ERROR(("Success to write otp \n"));
+		}
+	}
+	/* check or create .otp.info */
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	fp = filp_open("/data/.otp.info", O_RDONLY, 0);
+	if (IS_ERR(fp)) {
+
+		/* prepare .otp.info data through reading OTP from chip  */
+		memset(buf, 0, sizeof(buf));
+		strcpy(buf, "cisdump");
+		ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, buf, sizeof(buf), 0, 0);
+		if (ret < 0) {
+			DHD_ERROR(("[WIFI_SEC] %s: CIS reading failed After writing ret=%d\n",
+				__FUNCTION__, ret));
+			goto exit;
+		}
+
+		/* create .otp.info */
+		fp = filp_open("/data/.otp.info", O_RDWR|O_CREAT, 0666);
+		if (!fp) {
+			DHD_ERROR(("%s:(MFG mode) file create error\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
+
+		/* Write buf to file */
+		fp->f_op->write(fp, buf, CIS_BUF_SIZE, &pos);
+	}
+
+	if (fp) {
+		filp_close(fp, current->files);
+	}
+	DHD_ERROR(("%s: .otp.info is created or existing already\n", __FUNCTION__));
+	/* restore previous address limit */
+	set_fs(old_fs);
+
+exit:
+	if (sta_mode == TRUE) {
+		fp = filp_open("/data/.otp.info", O_RDONLY, 0);
+		if (IS_ERR(fp)) {
+			DHD_ERROR(("%s: file open error.\n", __FUNCTION__));
+			return BCME_ERROR;
+		}
+
+		ret = kernel_read(fp, 0, buf, CIS_BUF_SIZE);
+
+		if (memcmp(&buf[12], otp_vars, otp_header_size) == 0) {
+			DHD_ERROR(("%s: OTP checking -> OK\n", __FUNCTION__));
+		} else {
+			DHD_ERROR(("%s: OTP checking -> OTP has ERROR.\n", __FUNCTION__));
+		}
+		filp_close(fp, current->files);
+	}
+	return ret;
+}
+#endif /* OTP_WRITE_ON */
 #endif /* CUSTOMER_HW4 */

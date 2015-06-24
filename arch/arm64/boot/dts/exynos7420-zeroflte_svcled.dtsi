@@ -44,8 +44,8 @@
 
 		normal_powermode_current_rd = <10>;
 		low_powermode_current_rd = <2>;
-		br_ratio_r_bl = <450>;
-		br_ratio_g_bl = <230>;
-		br_ratio_b_bl = <830>;
+		br_ratio_r_rd = <450>;
+		br_ratio_g_rd = <230>;
+		br_ratio_b_rd = <830>;
 	};
 };

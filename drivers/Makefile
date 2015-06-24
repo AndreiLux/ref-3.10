@@ -178,6 +178,9 @@ obj-$(CONFIG_SENSORS_FINGERPRINT)	+= fingerprint/
 obj-$(CONFIG_MHI)		+= mhi/
 obj-$(CONFIG_ESOC)		+= esoc/
 
+#LED MATRIX FGPA Driver
+obj-$(CONFIG_ICE5_FPGA_LED_MATRIX)	+= ledmatrix/
+
 # SecFilter Driver
 obj-$(CONFIG_SEC_NET_FILTER)	+= secfilter/
 

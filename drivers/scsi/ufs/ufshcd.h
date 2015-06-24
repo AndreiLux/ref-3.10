@@ -514,7 +514,8 @@ struct ufs_hba {
 	struct device_attribute bkops_en_attr;
 	struct device_attribute capabilities_attr;
 
-	u32 self_test;
+	struct buffer_head *self_test_bh;
+	uint32_t self_test_mode;
 	struct ufshcd_sg_entry *ucd_prdt_ptr_st;
 
 	/* UFSHCI doesn't support DWORD size in UTRD */

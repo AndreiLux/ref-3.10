@@ -134,6 +134,7 @@ enum sec_debug_upload_cause_t {
 	UPLOAD_CAUSE_CP_ERROR_FATAL	= 0x000000CC,
 	UPLOAD_CAUSE_USER_FAULT		= 0x0000002F,
 	UPLOAD_CAUSE_HSIC_DISCONNECTED	= 0x000000DD,
+	UPLOAD_CAUSE_POWERKEY_LONG_PRESS = 0x00000085,
 };
 
 static void sec_debug_set_upload_magic(unsigned magic, char *str)
@@ -548,8 +549,14 @@ void sec_debug_check_crash_key(unsigned int code, int value)
 	if (!sec_debug_level.en.kernel_fault)
 		return;
 
-	if (code == KEY_POWER)
+	if (code == KEY_POWER) {
 		pr_info("sec_debug: POWER-KEY(%d)\n", value);
+		if (value) {
+			sec_debug_set_upload_cause(UPLOAD_CAUSE_POWERKEY_LONG_PRESS);
+		} else {
+			sec_debug_set_upload_cause(UPLOAD_CAUSE_INIT);
+		}
+	}
 
 	/* Enter Forced Upload
 	 *  Hold volume down key first

@@ -24,7 +24,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd.h 539956 2015-03-10 12:20:45Z $
+ * $Id: dhd.h 547738 2015-04-09 09:22:30Z $
  */
 
 /****************
@@ -467,6 +467,9 @@ typedef struct dhd_pub {
 #endif /* KEEP_JP_REGREV */
 #ifdef WLTDLS
 	uint32 tdls_mode;
+#endif
+#ifdef DHD_LOSSLESS_ROAMING
+	uint8 dequeue_prec_map;
 #endif
 } dhd_pub_t;
 #if defined(CUSTOMER_HW4)

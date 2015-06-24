@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: linux_osl.c 541343 2015-03-16 12:51:01Z $
+ * $Id: linux_osl.c 551293 2015-04-22 22:58:36Z $
  */
 
 #define LINUX_PORT
@@ -1624,3 +1624,38 @@ osl_is_flag_set(osl_t *osh, uint32 mask)
 {
 	return (osh->flags & mask);
 }
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0) && defined(TSQ_MULTIPLIER)
+#include <linux/kallsyms.h>
+#include <net/sock.h>
+void
+osl_pkt_orphan_partial(struct sk_buff *skb)
+{
+	uint32 fraction;
+	static void *p_tcp_wfree = NULL;
+
+	if (!skb->destructor || skb->destructor == sock_wfree)
+		return;
+
+	if (unlikely(!p_tcp_wfree)) {
+		char sym[KSYM_SYMBOL_LEN];
+		sprint_symbol(sym, (unsigned long)skb->destructor);
+		sym[9] = 0;
+		if (!strcmp(sym, "tcp_wfree"))
+			p_tcp_wfree = skb->destructor;
+		else
+			return;
+	}
+
+	if (unlikely(skb->destructor != p_tcp_wfree || !skb->sk))
+		return;
+
+		/* abstract a certain portion of skb truesize from the socket
+		 * sk_wmem_alloc to allow more skb can be allocated for this
+		 * socket for better cusion meeting WiFi device requirement
+		 */
+		fraction = skb->truesize * (TSQ_MULTIPLIER - 1) / TSQ_MULTIPLIER;
+		skb->truesize -= fraction;
+		atomic_sub(fraction, &skb->sk->sk_wmem_alloc);
+	}
+#endif /* LINUX_VERSION >= 3.6.0 && TSQ_MULTIPLIER */

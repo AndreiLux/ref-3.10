@@ -15,6 +15,10 @@
 
 #if defined(CONFIG_PANEL_S6E3HA2_DYNAMIC)
 #include "s6e3ha2_wqhd_dimming.h"
+#elif defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
+#include "s6e3ha3_wqhd_dimming.h"
+#elif defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+#include "s6e3ha3_wqhd_dimming.h"
 #elif defined(CONFIG_PANEL_S6E3HF2_DYNAMIC)
 #include "s6e3hf2_wqhd_dimming.h"
 #else
@@ -51,11 +55,11 @@ struct SmtDimInfo {
 	unsigned int br;
 	unsigned int refBr;
 	const unsigned int *cGma;
-	const signed char *rTbl;
-	const signed char *cTbl;
-	const unsigned char *aid;
-	const unsigned char *elvCaps;
-	const unsigned char *elv;
+	signed char *rTbl;
+	signed char *cTbl;
+	unsigned char *aid;
+	unsigned char *elvCaps;
+	unsigned char *elv;
 	unsigned char gamma[OLED_CMD_GAMMA_CNT];
 	unsigned int way;
 };

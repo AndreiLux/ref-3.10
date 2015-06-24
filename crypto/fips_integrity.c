@@ -27,11 +27,9 @@ static const char *
 symtab[][3] = {{".text",      "first_crypto_text",   "last_crypto_text"  },
 	      {".rodata",    "first_crypto_rodata", "last_crypto_rodata"},
 	      {".init.text", "first_crypto_init",   "last_crypto_init"  },
-	      {".exit.text", "first_crypto_exit",   "last_crypto_exit"  },
 	      {"asm.text",      "first_crypto_asm_text",   "last_crypto_asm_text"  },
 	      {"asm.rodata",    "first_crypto_asm_rodata", "last_crypto_asm_rodata"},
-	      {"asm.init.text", "first_crypto_asm_init",   "last_crypto_asm_init"  },
-	      {"asm.exit.text", "first_crypto_asm_exit",   "last_crypto_asm_exit"  }};
+	      {"asm.init.text", "first_crypto_asm_init",   "last_crypto_asm_init"  }};
 
 extern const char * get_builtime_crypto_hmac(void);
 

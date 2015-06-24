@@ -40,6 +40,7 @@ struct ion_iovm_map {
 	struct list_head list;
 	unsigned int map_cnt;
 	struct device *dev;
+	struct iommu_domain *domain;
 	dma_addr_t iova;
 	int region_id;
 };
@@ -155,7 +156,7 @@ struct ion_heap_ops {
 };
 
 /* [INTERNAL USE ONLY] threshold value for whole cache flush */
-#define ION_FLUSH_ALL_HIGHLIMIT SZ_2G
+#define ION_FLUSH_ALL_HIGHLIMIT SZ_8M
 
 /**
  * heap flags - flags between the heaps and core ion code
@@ -226,6 +227,17 @@ struct ion_heap {
 
 	int (*debug_show)(struct ion_heap *heap, struct seq_file *, void *);
 };
+
+/**
+ * ion_buffer_sync_force - check if ION_FLAG_SYNC_FORCE is set
+ * @buffer:		buffer
+ *
+ * indicates whether this ion buffer should be cache clean after allocation
+ */
+static inline bool ion_buffer_sync_force(struct ion_buffer *buffer)
+{
+	return !!(buffer->flags & ION_FLAG_SYNC_FORCE);
+}
 
 /**
  * ion_buffer_cached - this ion buffer is cached

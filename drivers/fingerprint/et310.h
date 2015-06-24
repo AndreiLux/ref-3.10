@@ -19,8 +19,36 @@
 #ifndef _ET310_LINUX_DIRVER_H_
 #define _ET310_LINUX_DIRVER_H_
 
+#ifdef CONFIG_SEC_FACTORY
+#undef ENABLE_SENSORS_FPRINT_SECURE
+#else
+#undef ENABLE_SENSORS_FPRINT_SECURE
+#undef FEATURE_SPI_WAKELOCK
+#endif /* CONFIG_SEC_FACTORY */
+
 #include <linux/module.h>
 #include <linux/spi/spi.h>
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+#include <linux/wakelock.h>
+#include <linux/clk.h>
+#include <linux/platform_data/spi-s3c64xx.h>
+#include <linux/pm_runtime.h>
+#include <linux/spi/spidev.h>
+#include <linux/of.h>
+#include <linux/of_device.h>
+#include <linux/of_dma.h>
+#include <linux/amba/bus.h>
+#include <linux/amba/pl330.h>
+#include <mach/bts.h>
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+#include <mach/secos_booster.h>
+#endif
+
+struct sec_spi_info {
+	int		port;
+	unsigned long	speed;
+};
+#endif
 
 /*#define ET310_SPI_DEBUG*/
 
@@ -65,6 +93,11 @@
 #define FP_POWER_CONTROL				0x05
 #define FP_SET_SPI_CLOCK				0x06
 #define FP_RESET_SET					0x07
+
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+#define FP_DIABLE_SPI_CLOCK				0x10
+#define FP_CPU_SPEEDUP					0x11
+#endif
 
 #define FP_EEPROM_WREN					0x90
 #define FP_EEPROM_WRDI					0x91
@@ -141,6 +174,12 @@ struct etspi_data {
 	unsigned int sensortype;
 #ifdef CONFIG_SENSORS_FINGERPRINT_SYSFS
 	struct device *fp_device;
+#endif
+#ifdef ENABLE_SENSORS_FPRINT_SECURE
+	bool enabled_clk;
+#ifdef FEATURE_SPI_WAKELOCK
+	struct wake_lock fp_spi_lock;
+#endif
 #endif
 	bool tz_mode;
 	int detect_period;

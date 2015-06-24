@@ -723,7 +723,8 @@ enum aa_scene_mode {
     AA_SCENE_MODE_DUAL_VIDEO,
     AA_SCENE_MODE_120_PREVIEW,
     AA_SCENE_MODE_LIGHT_TRACE,
-    AA_SCENE_MODE_FOOD
+    AA_SCENE_MODE_FOOD,
+    AA_SCENE_MODE_AQUA
 };
 
 enum aa_effect_mode {
@@ -1554,7 +1555,8 @@ struct camera2_uctl {
     /** ispfw specific control(user-defined) of drc. */
     struct camera2_drc_uctl         drcUd;
     enum camera_vt_mode             vtMode;
-    uint32_t                        reserved[10];
+    float zoomRatio;
+    uint32_t                        reserved[9];
 };
 
 struct camera2_udm {

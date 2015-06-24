@@ -28,10 +28,17 @@ static unsigned char bbd_patch[] =
 };
 
 #ifdef SUPPORT_MCU_HOST_WAKE
+#ifdef CONFIG_SENSORS_SSP_VLTE
+static unsigned char bbd_new_patch[] =
+{
+#include "bbd_new_patch_file_V.h"
+};
+#else
 static unsigned char bbd_new_patch[] =
 {
 #include "bbd_new_patch_file.h"
 };
+#endif
 #endif
 
 void bbd_patch_init_vars(struct bbd_device *dev, int* result)

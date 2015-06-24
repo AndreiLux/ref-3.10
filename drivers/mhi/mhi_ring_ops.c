@@ -91,8 +91,8 @@ MHI_STATUS delete_element(mhi_ring *ring, void * volatile *rp,
 		return MHI_STATUS_ERROR;
 	}
 	if (d_wp == d_rp) {
-		mhi_log(MHI_MSG_VERBOSE, "Ring 0x%lX is empty\n",
-				(uintptr_t)ring->base);
+		mhi_log(MHI_MSG_VERBOSE, "Ring 0x%lX is empty, rp:0x%lX, wp:0x%lX\n",
+				(uintptr_t)ring->base, (long)*rp ,(long)*wp);
 		if (NULL != assigned_addr)
 			*assigned_addr = NULL;
 		return MHI_STATUS_RING_EMPTY;

@@ -37,6 +37,10 @@
 #include "ecryptfs_dek.h"
 #endif
 
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+#include "sdcardfs.h"
+#endif
+
 struct kmem_cache *ecryptfs_inode_info_cache;
 
 /**
@@ -140,7 +144,53 @@ static int ecryptfs_statfs(struct dentry *dentry, struct kstatfs *buf)
  */
 static void ecryptfs_evict_inode(struct inode *inode)
 {
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	struct inode *lower_inode;
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+		&ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+#endif
 	truncate_inode_pages(&inode->i_data, 0);
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+		lower_inode = ecryptfs_inode_to_lower(inode);
+		for(;;) {
+			if (!lower_inode)
+				break;
+
+			if (!strcmp("sdcardfs", lower_inode->i_sb->s_type->name)) {
+				truncate_inode_pages(&lower_inode->i_data, 0);
+				lower_inode->i_mapping->iv = NULL;
+				lower_inode->i_mapping->key = NULL;
+				lower_inode->i_mapping->key_length = 0;
+				lower_inode->i_mapping->sensitive_data_index = 0;
+				lower_inode->i_mapping->alg = NULL;
+				lower_inode->i_mapping-> hash_tfm = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+				lower_inode->i_mapping->cc_enable = 0;
+#endif
+				lower_inode = sdcardfs_lower_inode(lower_inode);
+				continue;
+			} else if (!strcmp("ext4", lower_inode->i_sb->s_type->name)) {
+				truncate_inode_pages(&inode->i_data, 0);
+				lower_inode->i_mapping->iv = NULL;
+				lower_inode->i_mapping->key = NULL;
+				lower_inode->i_mapping->key_length = 0;
+				lower_inode->i_mapping->sensitive_data_index = 0;
+				lower_inode->i_mapping->alg = NULL;
+				lower_inode->i_mapping-> hash_tfm = NULL;
+#ifdef CONFIG_CRYPTO_FIPS
+				lower_inode->i_mapping->cc_enable = 0;
+#endif
+				break;
+			} else {
+				printk("%s: lower inode err: %s\n", __func__, lower_inode->i_sb->s_type->name);
+				break;
+			}
+		}
+	}
+#else
+	truncate_inode_pages(&inode->i_data, 0);
+#endif
 	clear_inode(inode);
 	iput(ecryptfs_inode_to_lower(inode));
 }
@@ -173,6 +223,10 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 	}
 	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_SDP_ENABLED){
 		seq_printf(m, ",sdp_enabled");
+	}
+
+	if (mount_crypt_stat->partition_id >= 0){
+	    seq_printf(m, ",partition_id=%d", mount_crypt_stat->partition_id);
 	}
 #endif
 	mutex_unlock(&mount_crypt_stat->global_auth_tok_list_mutex);

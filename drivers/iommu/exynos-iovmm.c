@@ -279,6 +279,18 @@ void iovmm_deactivate(struct device *dev)
 	iommu_detach_device(vmm->domain, dev);
 }
 
+struct iommu_domain *get_domain_from_dev(struct device *dev)
+{
+	struct exynos_iovmm *vmm = exynos_get_iovmm(dev);
+
+	if (!vmm) {
+		dev_err(dev, "%s: IOVMM not found\n", __func__);
+		return NULL;
+	}
+
+	return vmm->domain;
+}
+
 /* iovmm_map - allocate and map IO virtual memory for the given device
  * dev: device that has IO virtual address space managed by IOVMM
  * sg: list of physically contiguous memory chunks. The preceding chunk needs to

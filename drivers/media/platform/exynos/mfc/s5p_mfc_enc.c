@@ -2539,6 +2539,8 @@ static int enc_post_seq_start(struct s5p_mfc_ctx *ctx)
 	}
 	if (IS_MFCV6(dev))
 		ctx->dpb_count = s5p_mfc_get_enc_dpb_count();
+	if (FW_HAS_E_MIN_SCRATCH_BUF(dev))
+		ctx->scratch_buf_size = s5p_mfc_get_enc_scratch_size();
 
 	return 0;
 }

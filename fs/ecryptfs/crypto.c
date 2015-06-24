@@ -48,6 +48,10 @@
 #include "ecryptfs_dek.h"
 #endif
 
+#if defined(CONFIG_FIPS_FMP)
+extern bool in_fmp_fips_err(void);
+#endif
+
 static int
 ecryptfs_decrypt_page_offset(struct ecryptfs_crypt_stat *crypt_stat,
 			     struct page *dst_page, int dst_offset,
@@ -690,18 +694,25 @@ int ecryptfs_encrypt_page(struct page *page)
 			}
 		}
 	}
-#endif
-
 #if ECRYPTFS_DEK_DEBUG
 	ecryptfs_printk(KERN_ERR, "\tKEY [%zd]:\n", crypt_stat->key_size);
 	ecryptfs_dump_hex(crypt_stat->key, crypt_stat->key_size);
-	ecryptfs_printk(KERN_ERR, "\tIV [%zd]:\n", ECRYPTFS_MAX_IV_BYTES);
+	ecryptfs_printk(KERN_ERR, "\tIV [%d]:\n", ECRYPTFS_MAX_IV_BYTES);
 	ecryptfs_dump_hex(crypt_stat->root_iv, ECRYPTFS_MAX_IV_BYTES);
+#endif
 #endif
 
 	
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+#if defined(CONFIG_FIPS_FMP)
+		if (unlikely(in_fmp_fips_err())) {
+			rc = -EPERM;
+			ecryptfs_printk(KERN_ERR, "Error encrypting fmp "
+					"due to fips in error\n");
+			goto out;
+		}
+#endif
 		enc_extent_virt = kmap(page);
 		if (!enc_extent_virt) {
 			rc = -ENOMEM;
@@ -895,17 +906,24 @@ int ecryptfs_decrypt_page(struct page *page)
 			}
 		}
 	}
-#endif
-
 #if ECRYPTFS_DEK_DEBUG
 	ecryptfs_printk(KERN_ERR, "\tKEY [%zd]:\n", crypt_stat->key_size);
 	ecryptfs_dump_hex(crypt_stat->key, crypt_stat->key_size);
-	ecryptfs_printk(KERN_ERR, "\tIV [%zd]:\n", ECRYPTFS_MAX_IV_BYTES);
+	ecryptfs_printk(KERN_ERR, "\tIV [%d]:\n", ECRYPTFS_MAX_IV_BYTES);
 	ecryptfs_dump_hex(crypt_stat->root_iv, ECRYPTFS_MAX_IV_BYTES);
+#endif
 #endif
 	
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+#if defined(CONFIG_FIPS_FMP)
+		if (unlikely(in_fmp_fips_err())) {
+			rc = -EPERM;
+			ecryptfs_printk(KERN_ERR, "Error encrypting fmp "
+					"due to fips in error\n");
+			goto out;
+		}
+#endif
 		enc_extent_virt = kmap(page);
 		if (!enc_extent_virt) {
 			rc = -ENOMEM;
@@ -955,15 +973,9 @@ int ecryptfs_decrypt_page(struct page *page)
 			&offset, ((page->index * (PAGE_CACHE_SIZE
 						  / crypt_stat->extent_size))
 				  + extent_offset), crypt_stat);
-#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-		rc = ecryptfs_read_lower(enc_extent_virt, offset,
-					 crypt_stat->extent_size,
-					 ecryptfs_inode, 2);
-#else
 		rc = ecryptfs_read_lower(enc_extent_virt, offset,
 					 crypt_stat->extent_size,
 					 ecryptfs_inode);
-#endif
 		if (rc < 0) {
 			ecryptfs_printk(KERN_ERR, "Error attempting "
 					"to read lower page; rc = [%d]"
@@ -1428,23 +1440,11 @@ int ecryptfs_new_file_context(struct inode *ecryptfs_inode)
 	crypt_stat->key_size =
 		mount_crypt_stat->global_default_cipher_key_size;
 	ecryptfs_generate_new_key(crypt_stat);
-#if defined(CONFIG_DW_MMC_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-	if (!(mount_crypt_stat->flags & ECRYPTFS_USE_FMP)) {
-		rc = ecryptfs_init_crypt_ctx(crypt_stat);
-		if (rc)
-			ecryptfs_printk(KERN_ERR, "Error initializing cryptographic "
-					"context for cipher [%s]: rc = [%d]\n",
-					crypt_stat->cipher, rc);
-	} else {
-		rc = 0;
-	}
-#else
 	rc = ecryptfs_init_crypt_ctx(crypt_stat);
 	if (rc)
 		ecryptfs_printk(KERN_ERR, "Error initializing cryptographic "
 				"context for cipher [%s]: rc = [%d]\n",
 				crypt_stat->cipher, rc);
-#endif
 out:
 	return rc;
 }
@@ -1650,13 +1650,19 @@ int ecryptfs_read_and_validate_header_region(struct inode *inode)
 	u8 file_size[ECRYPTFS_SIZE_AND_MARKER_BYTES];
 	u8 *marker = file_size + ECRYPTFS_FILE_SIZE_BYTES;
 	int rc;
-
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-	rc = ecryptfs_read_lower(file_size, 0, ECRYPTFS_SIZE_AND_MARKER_BYTES,
-				 inode, 0);
-#else
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
+		&ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+	struct file *lower_file = ecryptfs_inode_to_private(inode)->lower_file;
+
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_CLEAR);
+#endif
 	rc = ecryptfs_read_lower(file_size, 0, ECRYPTFS_SIZE_AND_MARKER_BYTES,
 				 inode);
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_RESTORE);
 #endif
 	if (rc < ECRYPTFS_SIZE_AND_MARKER_BYTES)
 		return rc >= 0 ? -EINVAL : rc;
@@ -2059,6 +2065,9 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat =
 		&ecryptfs_superblock_to_private(
 			ecryptfs_dentry->d_sb)->mount_crypt_stat;
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	struct file *lower_file = ecryptfs_inode_to_private(ecryptfs_inode)->lower_file;
+#endif
 
 	ecryptfs_copy_mount_wide_flags_to_inode_flags(crypt_stat,
 						      mount_crypt_stat);
@@ -2072,13 +2081,15 @@ int ecryptfs_read_metadata(struct dentry *ecryptfs_dentry)
 	}
 
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
-	rc = ecryptfs_read_lower(page_virt, 0, crypt_stat->extent_size,
-				 ecryptfs_inode, 0);
-#else
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_CLEAR);
+#endif
 	rc = ecryptfs_read_lower(page_virt, 0, crypt_stat->extent_size,
 				 ecryptfs_inode);
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP)
+		ecryptfs_propagate_rapages(lower_file, RA_RESTORE);
 #endif
-
 	if (rc >= 0)
 		rc = ecryptfs_read_headers_virt(page_virt, crypt_stat,
 						ecryptfs_dentry,
@@ -2654,7 +2665,6 @@ ecryptfs_decode_from_filename(unsigned char *dst, size_t *dst_size,
 			break;
 		case 2:
 			dst[dst_byte_offset++] |= (src_byte);
-			dst[dst_byte_offset] = 0;
 			current_bit_offset = 0;
 			break;
 		}

@@ -288,8 +288,8 @@ static int ssp_parse_dt(struct device *dev,struct  ssp_data *data)
 #endif
 	return errorno;
 
-dt_exit:
 #if defined(CONFIG_SENSORS_SSP_YAS532) || defined(CONFIG_SENSORS_SSP_YAS537)
+dt_exit:
 	if(data->static_matrix != NULL)
     	kfree(data->static_matrix); 
 #endif

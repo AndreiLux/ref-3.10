@@ -80,6 +80,7 @@ static unsigned int cluster1_min_freq;
 static unsigned int cluster0_max_freq;
 #endif
 int disable_dm_hotplug_before_suspend = 0;
+int nr_sleep_prepare_cpus = CONFIG_EXYNOS5_DYNAMIC_CPU_HOTPLUG_SLEEP_PREPARE;
 
 enum hotplug_cmd {
 	CMD_NORMAL,
@@ -89,6 +90,7 @@ enum hotplug_cmd {
 	CMD_CLUST0_IN,
 	CMD_CLUST0_ONE_IN,
 	CMD_CLUST0_ONE_OUT,
+	CMD_SLEEP_PREPARE,
 };
 
 static int on_run(void *data);
@@ -496,7 +498,23 @@ static int __ref __cpu_hotplug(bool out_flag, enum hotplug_cmd cmd)
 		if (do_disable_hotplug)
 			goto blk_out;
 
-		if (cmd == CMD_CLUST1_OUT && !in_low_power_mode) {
+		if (cmd == CMD_SLEEP_PREPARE) {
+			for (i = setup_max_cpus - 1; i >= NR_CLUST0_CPUS; i--) {
+                                if (cpu_online(i)) {
+                                        ret = cpu_down(i);
+                                        if (ret)
+                                                goto blk_out;
+                                }
+			}
+			for (i = 1; i < nr_sleep_prepare_cpus; i++) {
+				if (!cpu_online(i)) {
+					ret = cpu_up(i);
+					if (ret)
+						goto blk_out;
+				}
+			}
+		}
+		else if (cmd == CMD_CLUST1_OUT && !in_low_power_mode) {
 			for (i = setup_max_cpus - 1; i >= NR_CLUST0_CPUS; i--) {
 				if (cpu_online(i)) {
 					ret = cpu_down(i);
@@ -644,6 +662,7 @@ static int dynamic_hotplug(enum hotplug_cmd cmd)
 		break;
 	case CMD_CLUST0_ONE_OUT:
 	case CMD_CLUST1_OUT:
+	case CMD_SLEEP_PREPARE:
 		ret = __cpu_hotplug(true, cmd);
 		break;
 	case CMD_CLUST0_ONE_IN:
@@ -794,8 +813,15 @@ static int exynos_dm_hotplug_notifier(struct notifier_block *notifier,
 	case PM_SUSPEND_PREPARE:
 		mutex_lock(&thread_lock);
 		in_suspend_prepared = true;
-		if (!dynamic_hotplug(CMD_LOW_POWER))
-			prev_cmd = CMD_LOW_POWER;
+		if(nr_sleep_prepare_cpus > 1) {
+			pr_info("%s, %d : dynamic_hotplug CMD_SLEEP_PREPARE\n", __func__, __LINE__);
+			if (!dynamic_hotplug(CMD_SLEEP_PREPARE))
+				prev_cmd = CMD_LOW_POWER;
+		}
+		else {
+			if (!dynamic_hotplug(CMD_LOW_POWER))
+				prev_cmd = CMD_LOW_POWER;
+		}
 		exynos_dm_hotplug_disable();
 		if (dm_hotplug_task) {
 			kthread_stop(dm_hotplug_task);

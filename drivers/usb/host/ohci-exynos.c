@@ -368,6 +368,10 @@ fail_add_hcd:
 	if (exynos_ohci->phy)
 		pm_runtime_put_sync(exynos_ohci->phy->dev);
 	exynos_ohci_phy_disable(exynos_ohci);
+
+	/* clear Host */
+	if (exynos_ohci->otg)
+		exynos_ohci->otg->host = NULL;
 fail_io:
 	clk_disable_unprepare(exynos_ohci->clk);
 fail_clk:
@@ -393,6 +397,10 @@ static int exynos_ohci_remove(struct platform_device *pdev)
 					&exynos_ohci->hcd->self);
 
 	exynos_ohci_phy_disable(exynos_ohci);
+
+	/* clear Host */
+	if (exynos_ohci->otg)
+		exynos_ohci->otg->host = NULL;
 
 	clk_disable_unprepare(exynos_ohci->clk);
 
