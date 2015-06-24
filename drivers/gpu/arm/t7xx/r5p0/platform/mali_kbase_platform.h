@@ -139,6 +139,9 @@ typedef enum {
 #ifdef MALI_SEC_HWCNT
 	GPU_HWCNT_GATHERING,
 	GPU_HWCNT_GPR,
+	GPU_HWCNT_POLLING_TIME,
+	GPU_HWCNT_UP_STEP,
+	GPU_HWCNT_DOWN_STEP,
 	GPU_HWCNT_DUMP_PERIOD,
 	GPU_HWCNT_CHOOSE_JM,
 	GPU_HWCNT_CHOOSE_SHADER,
@@ -280,6 +283,9 @@ struct exynos_context {
 #ifdef MALI_SEC_HWCNT
 	bool hwcnt_gathering_status;
 	bool hwcnt_gpr_status;
+	int hwcnt_polling_speed;
+	int hwcnt_up_step;
+	int hwcnt_down_step;
 	int hwcnt_dump_period;
 	int hwcnt_choose_jm;
 	int hwcnt_choose_shader;

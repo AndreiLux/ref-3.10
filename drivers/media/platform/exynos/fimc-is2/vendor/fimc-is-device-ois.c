@@ -73,25 +73,31 @@ static bool not_crc_bin;
 static struct task_struct *ois_ts;
 #endif
 
-static void fimc_is_ois_i2c_config(struct i2c_client *client, bool onoff)
+static int fimc_is_ois_i2c_config(struct i2c_client *client, bool onoff)
 {
 	struct pinctrl *pinctrl_i2c = NULL;
 	struct device *i2c_dev = client->dev.parent->parent;
-	struct fimc_is_device_ois *ois_device = i2c_get_clientdata(client);
+	struct fimc_is_device_ois *ois_device;
 	struct fimc_is_ois_gpio *gpio;
 
+	if (!client) {
+		pr_info("%s: client is null\n", __func__);
+		return -ENODEV;
+	}
+
+	ois_device = i2c_get_clientdata(client);
 	gpio = &ois_device->gpio;
 
 	if (ois_device->ois_hsi2c_status != onoff) {
-		info("%s : ois_hsi2c_stauts(%d),onoff(%d)\n",__func__,
-			ois_device->ois_hsi2c_status, onoff);
-
+		info("%s : ois_hsi2c_stauts(%d),onoff(%d), use_i2c_pinctrl(%d)\n",
+			__func__, ois_device->ois_hsi2c_status, onoff, gpio->use_i2c_pinctrl);
 		if (onoff) {
-			pin_config_set(gpio->pinname, gpio->sda,
-				PINCFG_PACK(PINCFG_TYPE_FUNC, 0));
-			pin_config_set(gpio->pinname, gpio->scl,
-				PINCFG_PACK(PINCFG_TYPE_FUNC, 0));
-
+			if(gpio->use_i2c_pinctrl) {
+				pin_config_set(gpio->pinname, gpio->sda,
+					PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_on));
+				pin_config_set(gpio->pinname, gpio->scl,
+					PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_on));
+			}
 			pinctrl_i2c = devm_pinctrl_get_select(i2c_dev, "on_i2c");
 			if (IS_ERR_OR_NULL(pinctrl_i2c)) {
 				printk(KERN_ERR "%s: Failed to configure i2c pin\n", __func__);
@@ -105,15 +111,17 @@ static void fimc_is_ois_i2c_config(struct i2c_client *client, bool onoff)
 			} else {
 				devm_pinctrl_put(pinctrl_i2c);
 			}
-
-			pin_config_set(gpio->pinname, gpio->sda,
-				PINCFG_PACK(PINCFG_TYPE_FUNC, 2));
-			pin_config_set(gpio->pinname, gpio->scl,
-				PINCFG_PACK(PINCFG_TYPE_FUNC, 2));
+			if(gpio->use_i2c_pinctrl) {
+				pin_config_set(gpio->pinname, gpio->sda,
+					PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_off));
+				pin_config_set(gpio->pinname, gpio->scl,
+					PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_off));
+			}
 		}
 		ois_device->ois_hsi2c_status = onoff;
 	}
 
+	return 0;
 }
 
 int fimc_is_ois_i2c_read(struct i2c_client *client, u16 addr, u8 *data)
@@ -1030,6 +1038,8 @@ bool fimc_is_ois_fw_version(struct fimc_is_core *core)
 	memcpy(ois_minfo.header_ver, version, 6);
 	core->ois_ver_read = true;
 
+	fimc_is_ois_fw_status(core);
+
 	return true;
 
 exit:
@@ -1393,10 +1403,10 @@ u8 fimc_is_ois_read_cal_checksum(struct fimc_is_core *core)
 	return status;
 }
 
-void fimc_is_ois_fw_status(struct fimc_is_core *core, u8 *checksum, u8 *caldata)
+void fimc_is_ois_fw_status(struct fimc_is_core *core)
 {
-	*checksum = fimc_is_ois_read_status(core);
-	*caldata = fimc_is_ois_read_cal_checksum(core);
+	ois_minfo.checksum = fimc_is_ois_read_status(core);
+	ois_minfo.caldata = fimc_is_ois_read_cal_checksum(core);
 
 	return;
 }
@@ -1735,29 +1745,47 @@ int fimc_is_ois_parse_dt(struct i2c_client *client)
 	struct device_node *np = client->dev.of_node;
 
 	gpio = &device->gpio;
+	gpio->use_i2c_pinctrl = of_property_read_bool(np, "use_i2c_pinctrl");
 
-	ret = of_property_read_string(np, "fimc_is_ois_sda", (const char **) &gpio->sda);
-	if (ret) {
-		err("ois gpio: fail to read, ois_parse_dt\n");
-		ret = -ENODEV;
-		goto p_err;
+	if(gpio->use_i2c_pinctrl) {
+		ret = of_property_read_string(np, "fimc_is_ois_sda", (const char **) &gpio->sda);
+		if (ret) {
+			err("ois gpio: fail to read, ois_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_string(np, "fimc_is_ois_scl",(const char **) &gpio->scl);
+		if (ret) {
+			err("ois gpio: fail to read, ois_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_string(np, "fimc_is_ois_pinname",(const char **) &gpio->pinname);
+		if (ret) {
+			err("ois gpio: fail to read, ois_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_u32(np, "pinfunc_on", &gpio->pinfunc_on);
+		if (ret) {
+			err("af gpio: fail to read, ois_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_u32(np, "pinfunc_off", &gpio->pinfunc_off);
+		if (ret) {
+			err("af gpio: fail to read, ois_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		info("[OIS] sda = %s, scl = %s, pinname = %s, pinfunc_on = %d, pinfunc_off = %d\n",
+				gpio->sda, gpio->scl, gpio->pinname, gpio->pinfunc_on, gpio->pinfunc_off);
 	}
-
-	ret = of_property_read_string(np, "fimc_is_ois_scl",(const char **) &gpio->scl);
-	if (ret) {
-		err("ois gpio: fail to read, ois_parse_dt\n");
-		ret = -ENODEV;
-		goto p_err;
-	}
-
-	ret = of_property_read_string(np, "fimc_is_ois_pinname",(const char **) &gpio->pinname);
-	if (ret) {
-		err("ois gpio: fail to read, ois_parse_dt\n");
-		ret = -ENODEV;
-		goto p_err;
-	}
-
-	info("[OIS] sda = %s, scl = %s, pinname = %s\n", gpio->sda, gpio->scl, gpio->pinname);
 
 p_err:
 	return ret;
@@ -1819,14 +1847,17 @@ static int fimc_is_ois_probe(struct i2c_client *client,
 	}
 
 	gpio = &device->gpio;
-	pin_config_set(gpio->pinname, gpio->sda,
-		PINCFG_PACK(PINCFG_TYPE_FUNC, 0));
-	pin_config_set(gpio->pinname, gpio->scl,
-		PINCFG_PACK(PINCFG_TYPE_FUNC, 0));
-	pin_config_set(gpio->pinname, gpio->sda,
-		PINCFG_PACK(PINCFG_TYPE_PUD, 0));
-	pin_config_set(gpio->pinname, gpio->scl,
-		PINCFG_PACK(PINCFG_TYPE_PUD, 0));
+
+	if(gpio->use_i2c_pinctrl) {
+		pin_config_set(gpio->pinname, gpio->sda,
+			PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_on));
+		pin_config_set(gpio->pinname, gpio->scl,
+			PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_on));
+		pin_config_set(gpio->pinname, gpio->sda,
+			PINCFG_PACK(PINCFG_TYPE_PUD, 0));
+		pin_config_set(gpio->pinname, gpio->scl,
+			PINCFG_PACK(PINCFG_TYPE_PUD, 0));
+	}
 
 	return 0;
 }

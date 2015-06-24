@@ -62,6 +62,7 @@ extern struct pm_qos_request exynos_isp_qos_int;
 extern struct pm_qos_request exynos_isp_qos_mem;
 extern struct pm_qos_request exynos_isp_qos_cam;
 extern struct pm_qos_request exynos_isp_qos_disp;
+extern bool force_caldata_dump;
 
 int fimc_is_companion_g_module(struct fimc_is_device_companion *device,
 	struct fimc_is_module_enum **module)
@@ -945,18 +946,22 @@ int fimc_is_companion_s_input(struct fimc_is_device_companion *device,
 	}
 
 	if (fimc_is_comp_is_valid(core) == 0) {
-#ifdef CONFIG_COMPANION_STANDBY_USE
-		if (GET_SENSOR_STATE(pdata->standby_state, SENSOR_STATE_COMPANION) == SENSOR_STATE_OFF) {
-			ret = fimc_is_comp_loadfirm(core);
-		} else {
-			ret = fimc_is_comp_retention(core);
-			if (ret == -EINVAL) {
-				info("companion restart..\n");
+#if defined(CONFIG_COMPANION_STANDBY_USE)
+		if (force_caldata_dump == false) {
+			if (GET_SENSOR_STATE(pdata->standby_state, SENSOR_STATE_COMPANION) == SENSOR_STATE_OFF) {
 				ret = fimc_is_comp_loadfirm(core);
+			} else {
+				ret = fimc_is_comp_retention(core);
+				if (ret == -EINVAL) {
+					info("companion restart..\n");
+					ret = fimc_is_comp_loadfirm(core);
+				}
 			}
+			SET_SENSOR_STATE(pdata->standby_state, SENSOR_STATE_COMPANION, SENSOR_STATE_ON);
+			info("%s: COMPANION STATE %u\n", __func__, GET_SENSOR_STATE(pdata->standby_state, SENSOR_STATE_COMPANION));
+		} else {
+			ret = fimc_is_comp_loadfirm(core);
 		}
-		SET_SENSOR_STATE(pdata->standby_state, SENSOR_STATE_COMPANION, SENSOR_STATE_ON);
-		info("%s: COMPANION STATE %u\n", __func__, GET_SENSOR_STATE(pdata->standby_state, SENSOR_STATE_COMPANION));
 #else
 		ret = fimc_is_comp_loadfirm(core);
 #endif

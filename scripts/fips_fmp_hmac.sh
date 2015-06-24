@@ -52,7 +52,6 @@ declare -A array
 array[0]=".text first_fmp_text last_fmp_text \$5 \$6"
 array[1]=".rodata first_fmp_rodata last_fmp_rodata \$5 \$6"
 array[2]=".init.text first_fmp_init last_fmp_init \$4 \$5"
-array[3]=".exit.text first_fmp_exit last_fmp_exit \$4 \$5"
 
 rm -f offsets_sizes.txt
 

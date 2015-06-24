@@ -21,7 +21,7 @@
  * software in any way with any other Broadcom software provided under a license
  * other than the GPL, without Broadcom's express prior written consent.
  *
- * $Id: dhd_pcie.c 539248 2015-03-06 04:50:53Z $
+ * $Id: dhd_pcie.c 553525 2015-04-30 03:25:33Z $
  */
 
 
@@ -61,6 +61,7 @@
 
 #define MEMBLOCK	2048		/* Block size used for downloading of dongle image */
 #define MAX_NVRAMBUF_SIZE	6144	/* max nvram buf size */
+#define MAX_WKLK_IDLE_CHECK	3	/* times wake_lock checked before deciding not to suspend */
 
 #define ARMCR4REG_BANKIDX	(0x40/sizeof(uint32))
 #define ARMCR4REG_BANKPDA	(0x4C/sizeof(uint32))
@@ -119,6 +120,10 @@ static int dhdpcie_download_code_array(dhd_bus_t *bus);
 #endif /* BCMEMBEDIMAGE */
 
 
+
+#if defined(CUSTOMER_HW4) && defined(CONFIG_MACH_UNIVERSAL7420)
+extern void exynos_pcie_register_dump(int ch_num);
+#endif /* CUSTOMER_HW4 && CONFIG_MACH_UNIVERSAL7420 */
 
 #define     PCI_VENDOR_ID_BROADCOM          0x14e4
 
@@ -1743,6 +1748,10 @@ dhdpcie_mem_dump(dhd_bus_t *bus)
 	int read_size = 0; /* Read size of each iteration */
 	uint8 *buf = NULL, *databuf = NULL;
 
+#if defined(CUSTOMER_HW4) && defined(CONFIG_MACH_UNIVERSAL7420)
+	exynos_pcie_register_dump(1);
+#endif /* CUSTOMER_HW4 && CONFIG_MACH_UNIVERSAL7420 */
+
 	/* Get full mem size */
 	size = bus->ramsize;
 #ifdef USE_STATIC_MEMDUMP
@@ -1866,7 +1875,9 @@ dhd_bus_schedule_queue(struct dhd_bus  *bus, uint16 flow_id, bool txs)
 {
 	flow_ring_node_t *flow_ring_node;
 	int ret = BCME_OK;
-
+#ifdef DHD_LOSSLESS_ROAMING
+	dhd_pub_t *dhdp = bus->dhd;
+#endif
 	DHD_INFO(("%s: flow_id is %d\n", __FUNCTION__, flow_id));
 	/* ASSERT on flow_id */
 	if (flow_id >= bus->max_sub_queues) {
@@ -1886,6 +1897,14 @@ dhd_bus_schedule_queue(struct dhd_bus  *bus, uint16 flow_id, bool txs)
 	}
 
 	flow_ring_node = DHD_FLOW_RING(bus->dhd, flow_id);
+
+#ifdef DHD_LOSSLESS_ROAMING
+	if ((dhdp->dequeue_prec_map & (1 << flow_ring_node->flow_info.tid)) == 0) {
+		DHD_INFO(("%s: tid %d is not in precedence map. block scheduling\n",
+			__FUNCTION__, flow_ring_node->flow_info.tid));
+		return BCME_OK;
+	}
+#endif /* DHD_LOSSLESS_ROAMING */
 
 	{
 		unsigned long flags;
@@ -3401,6 +3420,9 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		return BCME_OK;
 
 	if (state) {
+		int	idle_retry = 0;
+		int	active;
+
 		bus->wait_for_d3_ack = 0;
 		bus->suspended = TRUE;
 		DHD_GENERAL_LOCK(bus->dhd, flags);
@@ -3419,9 +3441,18 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 		timeleft = dhd_os_d3ack_wait(bus->dhd, &bus->wait_for_d3_ack, &pending);
 		dhd_os_set_ioctl_resp_timeout(IOCTL_RESP_TIMEOUT);
 		DHD_OS_WAKE_LOCK_RESTORE(bus->dhd);
+
+		/* To allow threads that got pre-empted to complete.
+		*/
+		while ((active = dhd_os_check_wakelock_all(bus->dhd)) &&
+			(idle_retry < MAX_WKLK_IDLE_CHECK)) {
+			msleep(1);
+			idle_retry++;
+		}
+
 		if (bus->wait_for_d3_ack) {
 			/* Got D3 Ack. Suspend the bus */
-			if (!bus->force_suspend && dhd_os_check_wakelock_all(bus->dhd)) {
+			if (!bus->force_suspend && active) {
 				DHD_ERROR(("Suspend failed because of wakelock\n"));
 #ifdef DHD_USE_IDLECOUNT
 				if (bus->host_suspend == TRUE) {
@@ -3446,6 +3477,9 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 #endif /* DHD_USE_IDLECOUNT */
 			}
 			bus->dhd->d3ackcnt_timeout = 0;
+#if defined(BCMPCIE_OOB_HOST_WAKE)
+			dhdpcie_oob_intr_set(bus, TRUE);
+#endif /* BCMPCIE_OOB_HOST_WAKE */
 		} else if (timeleft == 0) {
 			bus->dhd->d3ackcnt_timeout++;
 			DHD_ERROR(("%s: resumed on timeout for D3 ACK d3_inform_cnt %d \n",

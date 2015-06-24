@@ -240,6 +240,12 @@ void fts_fw_init(struct fts_ts_info *info)
 
 	info->fts_command(info, SENSEON);
 
+#ifdef FTS_SUPPORT_WATER_MODE
+	fts_fw_wait_for_event(info, STATUS_EVENT_WATER_SELF_DONE);
+#else
+	fts_fw_wait_for_event (info, STATUS_EVENT_FORCE_CAL_DONE);
+#endif
+
 #ifdef FTS_SUPPORT_TOUCH_KEY
 	if (info->board->support_mskey)
 		info->fts_command(info, FTS_CMD_KEY_SENSE_ON);

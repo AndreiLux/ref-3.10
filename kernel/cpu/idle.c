@@ -13,6 +13,11 @@
 
 static int __read_mostly cpu_idle_force_poll;
 
+#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING) \
+		&& defined(CONFIG_MACH_UNIVERSAL7420)
+bool bsdchg_cl0_idle_policy_set;
+#endif
+
 void cpu_idle_poll_ctrl(bool enable)
 {
 	if (enable) {
@@ -67,6 +72,10 @@ void __weak arch_cpu_idle(void)
  */
 static void cpu_idle_loop(void)
 {
+#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING) \
+		&& defined(CONFIG_MACH_UNIVERSAL7420)
+	bool bsdchg_cpu_idle_force_poll = false;
+#endif
 	while (1) {
 		tick_nohz_idle_enter();
 
@@ -80,6 +89,13 @@ static void cpu_idle_loop(void)
 			local_irq_disable();
 			arch_cpu_idle_enter();
 
+#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING) \
+		&& defined(CONFIG_MACH_UNIVERSAL7420)
+			if (bsdchg_cl0_idle_policy_set && raw_smp_processor_id() < 4)	// NR_CLUST0_CPUS
+				bsdchg_cpu_idle_force_poll = true;
+			else
+				bsdchg_cpu_idle_force_poll = false;
+#endif
 			/*
 			 * In poll mode we reenable interrupts and spin.
 			 *
@@ -89,7 +105,13 @@ static void cpu_idle_loop(void)
 			 * know that the IPI is going to arrive right
 			 * away
 			 */
+#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING) \
+		&& defined(CONFIG_MACH_UNIVERSAL7420)
+			if (cpu_idle_force_poll || tick_check_broadcast_expired()
+					||bsdchg_cpu_idle_force_poll) {
+#else
 			if (cpu_idle_force_poll || tick_check_broadcast_expired()) {
+#endif
 				cpu_idle_poll();
 			} else {
 				if (!current_clr_polling_and_test()) {

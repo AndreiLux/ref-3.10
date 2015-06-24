@@ -1043,7 +1043,7 @@ static int streaming_producer(void *ptr)
 	int rlen_last = 0;	/* bytes read on last read call */
 	int length;
 	int chead, ctail;
-	int data_ready = 0;
+	int data_ready = 1;
 	unsigned long bytes_read = 0;
 	int nbytes_to_read = 0;
 	bool no_more_bit = 0;
@@ -1103,7 +1103,8 @@ static int streaming_producer(void *ptr)
 			rlen = 0;
 		}
 
-		data_ready = es705->streamdev.wait(es705);
+		if (es705->streamdev.wait)
+			data_ready = es705->streamdev.wait(es705);
 		if (data_ready > 0) {
 
 			if (!no_more_bit)

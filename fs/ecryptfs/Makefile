@@ -5,6 +5,10 @@ ifeq ($(CONFIG_ECRYPT_FS_VIRTUAL_FAT_XATTR),y)
 EXTRA_CFLAGS += -DECRYPT_FS_VIRTUAL_FAT_XATTR
 endif
 
+ifneq "$(strip $(CONFIG_MMC_DW_FMP_ECRYPT_FS) $(CONFIG_UFS_FMP_ECRYPT_FS))" ""
+ccflags-y += -Ifs/sdcardfs
+endif
+
 obj-$(CONFIG_ECRYPT_FS) += ecryptfs.o
 obj-$(CONFIG_SDP) += ecryptfs_dek.o mm.o ecryptfs_sdp_chamber.o
 

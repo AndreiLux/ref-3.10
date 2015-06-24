@@ -118,6 +118,29 @@ static const unsigned int asv_voltage_7420_CA53[CPUFREQ_LEVEL_END_CA53] = {
 };
 
 /* Minimum memory throughput in megabytes per second */
+#if defined(CONFIG_PMU_COREMEM_RATIO)
+static int exynos7420_region_bus_table_CA53[CPUFREQ_LEVEL_END_CA53][6] = {
+	{ 0,  828000,  828000,  828000, 1264000, 1264000 },		/* 2.0 GHz */
+	{ 0,  828000,  828000,  828000, 1264000, 1264000 },		/* 1.9 GHz */
+	{ 0,  828000,  828000,  828000, 1264000, 1264000 },		/* 1.8 GHz */
+	{ 0,  828000,  828000,  828000, 1264000, 1264000 },		/* 1.7 GHz */
+	{ 0,  828000,  828000,  828000, 1264000, 1264000 },		/* 1.6 GHz */
+	{ 0,  828000,  828000,  828000, 1264000, 1264000 },		/* 1.5 GHz */
+	{ 0,  632000,  632000,  828000, 1264000, 1264000 },		/* 1.4 GHz */
+	{ 0,  543000,  632000,  828000, 1026000, 1264000 },		/* 1.3 GHz */
+	{ 0,  543000,  632000,  828000, 1026000, 1264000 },		/* 1.2 GHz */
+	{ 0,  543000,  632000,  828000,  828000, 1026000 },		/* 1.1 GHz */
+	{ 0,  416000,  632000,  828000,  828000, 1026000 },		/* 1.0 GHz */
+	{ 0,  348000,  543000,  632000,  828000, 1026000 },		/* 900 MHz */
+	{ 0,  348000,  543000,  632000,  828000, 1026000 },		/* 800 MHz */
+	{ 0,  276000,  416000,  632000,  828000, 1026000 },		/* 700 MHz */
+	{ 0,  167000,  348000,  543000,  632000,  828000 },		/* 600 MHz */
+	{ 0,  133000,  276000,  543000,  543000,  828000 },		/* 500 MHz */
+	{ 0,  133000,  167000,  348000,  543000,  632000 },		/* 400 MHz */
+	{ 0,  100000,  167000,  348000,  543000,  543000 },		/* 300 MHz */
+	{ 0,  100000,  133000,  276000,  416000,  543000 },		/* 200 MHz */
+};
+#else
 static int exynos7420_bus_table_CA53[CPUFREQ_LEVEL_END_CA53] = {
 	1026000,		/* 2.0 GHz */
 	1026000,		/* 1.9 GHz */
@@ -139,6 +162,7 @@ static int exynos7420_bus_table_CA53[CPUFREQ_LEVEL_END_CA53] = {
 	      0,		/* 300 MHz */
 	      0,		/* 200 MHz */
 };
+#endif
 
 static void exynos7420_set_clkdiv_CA53(unsigned int div_index)
 {
@@ -346,7 +370,11 @@ int __init exynos_cpufreq_cluster0_init(struct exynos_dvfs_info *info)
 	/* booting frequency is 1.4GHz */
 	info->boot_cpu_min_qos = exynos7420_freq_table_CA53[L6].frequency;
 	info->boot_cpu_max_qos = exynos7420_freq_table_CA53[L6].frequency;
-	info->bus_table = exynos7420_bus_table_CA53;
+#if defined(CONFIG_PMU_COREMEM_RATIO)
+	info->region_bus_table = exynos7420_region_bus_table_CA53;
+#else
+ 	info->bus_table = exynos7420_bus_table_CA53;
+#endif
 	info->cpu_clk = mout_apollo_pll;
 
 	info->volt_table = exynos7420_volt_table_CA53;

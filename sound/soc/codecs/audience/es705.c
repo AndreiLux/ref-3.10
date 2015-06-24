@@ -1768,6 +1768,56 @@ static ssize_t es705_extra_volume_set(struct device *dev,
 
 static DEVICE_ATTR(extra_volume, 0664, NULL, es705_extra_volume_set);
 
+static ssize_t es705_veq_table_print(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+
+{
+	struct es705_priv *es705 = &es705_priv;
+	int value = 0;
+	int ret;
+	int i=0, j=0;
+
+	ret = sscanf(buf, "%d", &value);
+
+	for (i=0; i < MAX_VEQ_USE_CASE; i++) {
+		for(j = 0; j < MAX_VOLUME_INDEX; j++) {
+			switch (value) {
+			case 1:
+				dev_info(es705->dev, "0x%08x", veq_max_gains_nb[i][j]);
+				break;
+			case 2:
+				dev_info(es705->dev, "0x%08x", veq_noise_estimate_adjs_nb[i][j]);
+				break;
+			case 3:
+				dev_info(es705->dev, "0x%08x", veq_max_gains_extra[i][j]);
+				break;
+			case 4:
+				dev_info(es705->dev, "0x%08x", veq_noise_estimate_adjs_extra[i][j]);
+				break;
+			case 5:
+				dev_info(es705->dev, "0x%08x", veq_max_gains_wb[i][j]);
+				break;
+			case 6:
+				dev_info(es705->dev, "0x%08x", veq_noise_estimate_adjs_wb[i][j]);
+				break;
+			case 7:
+				dev_info(es705->dev, "0x%08x", veq_max_gains_extra_wb[i][j]);
+				break;
+			case 8:
+				dev_info(es705->dev, "0x%08x", veq_noise_estimate_adjs_extra_wb[i][j]);
+				break;
+			default:
+				dev_info(es705->dev, "wrong value = %d", value);
+				return count;
+			}
+		}
+	}
+	return count;
+}
+
+static DEVICE_ATTR(veq_table_print, 0664, NULL, es705_veq_table_print);
+
 static struct attribute *earsmart_sysfs_attrs[] = {
 	&dev_attr_route_status.attr,
 	&dev_attr_route.attr,
@@ -1789,6 +1839,7 @@ static struct attribute *earsmart_sysfs_attrs[] = {
 	&dev_attr_veq_control_set.attr,
 	&dev_attr_route_value.attr,
 	&dev_attr_extra_volume.attr,
+	&dev_attr_veq_table_print.attr,
 	NULL
 };
 
@@ -2090,6 +2141,38 @@ request_firmware_error:
 					ES705_POWER_STATE);
 	}
 }
+#if defined(CONFIG_SND_SOC_ESXXX_UPDATE_VEQ_TABLE)
+static void es705_veq_table_update(const struct firmware *fw, void *context)
+{
+	struct es705_priv *es705 = (struct es705_priv *)context;
+	const u8 *pTable = NULL;
+	int tableOffset = 0;
+	int tableSize = MAX_VOLUME_INDEX*MAX_VEQ_USE_CASE*4;
+
+	dev_info(es705->dev, "%s:\n", __func__);
+	if (fw) {
+		pTable = fw->data;
+		memcpy(veq_max_gains_nb, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_noise_estimate_adjs_nb, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_max_gains_extra, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_noise_estimate_adjs_extra, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_max_gains_wb, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_noise_estimate_adjs_wb, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_max_gains_extra_wb, pTable + tableOffset, tableSize);
+		tableOffset += tableSize;
+		memcpy(veq_noise_estimate_adjs_extra_wb, pTable + tableOffset, tableSize);
+		release_firmware(fw);
+	} else
+		dev_info(es705->dev, "%s: use the default values\n", __func__);
+	
+}
+#endif
 #endif
 
 /* Hold the pm_mutex before calling this function */
@@ -5680,6 +5763,11 @@ int es705_core_init(struct device *dev)
 	request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 				es705_priv.pdata->fw_filename, es705_priv.dev, GFP_KERNEL,
 				&es705_priv, es705_std_fw_loaded);
+#if defined(CONFIG_SND_SOC_ESXXX_UPDATE_VEQ_TABLE)
+	request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+				"audience-es804-data.bin", es705_priv.dev, GFP_KERNEL,
+				&es705_priv, es705_veq_table_update);
+#endif
 #endif
 	if (!es705_get_stimulate_status()) {
 		if (pdata->esxxx_clk_cb) {

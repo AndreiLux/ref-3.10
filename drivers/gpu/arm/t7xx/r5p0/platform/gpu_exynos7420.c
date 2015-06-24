@@ -115,6 +115,9 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_PERF_GATHERING, 0},
 #ifdef MALI_SEC_HWCNT
 	{GPU_HWCNT_GATHERING, 1},
+	{GPU_HWCNT_POLLING_TIME, 90},
+	{GPU_HWCNT_UP_STEP, 3},
+	{GPU_HWCNT_DOWN_STEP, 2},
 	{GPU_HWCNT_GPR, 1},
 	{GPU_HWCNT_DUMP_PERIOD, 50}, /* ms */
 	{GPU_HWCNT_CHOOSE_JM , 0},
@@ -128,7 +131,7 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_PMQOS_INT_DISABLE, 1},
 	{GPU_PMQOS_MIF_MAX_CLOCK, 1456000},
 	{GPU_PMQOS_MIF_MAX_CLOCK_BASE, 700},
-	{GPU_CL_DVFS_START_BASE, 700},
+	{GPU_CL_DVFS_START_BASE, 266},
 	{GPU_DEBUG_LEVEL, DVFS_WARNING},
 	{GPU_TRACE_LEVEL, TRACE_ALL},
 };
@@ -161,6 +164,8 @@ struct clk *fout_g3d_pll;
 struct clk *aclk_g3d;
 struct clk *mout_g3d;
 struct clk *sclk_hpm_g3d;
+struct clk *aclk_lh_g3d0;
+struct clk *aclk_lh_g3d1;
 #ifdef CONFIG_REGULATOR
 struct regulator *g3d_regulator;
 #endif /* CONFIG_REGULATOR */
@@ -344,6 +349,26 @@ err:
 	return ret;
 }
 
+static int gpu_enable_clock(struct exynos_context *platform)
+{
+	int ret = 0;
+	ret = clk_prepare_enable(aclk_lh_g3d0);
+	if (ret)
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: g3d aclk lh g3d0 enable fail.\n", __func__);
+
+	ret = clk_prepare_enable(aclk_lh_g3d1);
+	if (ret)
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: g3d aclk lh g3d1 enable fail.\n", __func__);
+
+	return 0;
+}
+static int gpu_disable_clock(struct exynos_context *platform)
+{
+	clk_disable_unprepare(aclk_lh_g3d0);
+	clk_disable_unprepare(aclk_lh_g3d1);
+
+	return 0;
+}
 static int gpu_get_clock(struct kbase_device *kbdev)
 {
 	struct exynos_context *platform = (struct exynos_context *) kbdev->platform_context;
@@ -382,7 +407,21 @@ static int gpu_get_clock(struct kbase_device *kbdev)
 		return -1;
 	}
 
+	aclk_lh_g3d0 = clk_get(kbdev->dev, "aclk_lh_g3d0");
+	if (IS_ERR(aclk_lh_g3d0)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: failed to clk_get [aclk_lh_g3d0]\n", __func__);
+		return -1;
+	}
+
+	aclk_lh_g3d1 = clk_get(kbdev->dev, "aclk_lh_g3d1");
+	if (IS_ERR(aclk_lh_g3d1)) {
+		GPU_LOG(DVFS_ERROR, DUMMY, 0u, 0u, "%s: failed to clk_get [aclk_lh_g3d1]\n", __func__);
+		return -1;
+	}
+
 	__raw_writel(0x1, EXYNOS7420_MUX_SEL_G3D);
+
+	gpu_enable_clock(platform);
 
 	return 0;
 }
@@ -485,8 +524,8 @@ static struct gpu_control_ops ctr_ops = {
 	.set_clock = gpu_set_clock,
 	.set_clock_pre = NULL,
 	.set_clock_post = NULL,
-	.enable_clock = NULL,
-	.disable_clock = NULL,
+	.enable_clock = gpu_enable_clock,
+	.disable_clock = gpu_disable_clock,
 };
 
 struct gpu_control_ops *gpu_get_control_ops(void)

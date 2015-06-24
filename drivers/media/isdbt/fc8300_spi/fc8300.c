@@ -1217,7 +1217,7 @@ static struct isdbt_platform_data *isdbt_populate_dt_pdata(struct device *dev)
 		pr_err("%s : isdbt-detect-gpio gpio_int =%d\n", __func__, pdata->gpio_int);
 	}
 #endif
-
+#if defined(BBM_I2C_SPI) || defined(BBM_I2C_TSIF)
 	pdata->gpio_i2c_sda = of_get_named_gpio(dev->of_node, "isdbt,isdb-gpio-i2c_sda", 0);
 	if (pdata->gpio_i2c_sda < 0)
 		of_property_read_u32(dev->of_node, "isdbt,isdb-gpio-i2c_sda", &pdata->gpio_i2c_sda);
@@ -1237,7 +1237,7 @@ static struct isdbt_platform_data *isdbt_populate_dt_pdata(struct device *dev)
 	} else {
 		pr_err("%s : isdbt-detect-gpio gpio_i2c_scl=%d\n", __func__, pdata->gpio_i2c_scl);
 	}
-
+#endif
 	pdata->gpio_spi_do = of_get_named_gpio(dev->of_node, "isdbt,isdb-gpio-spi_do", 0);
 	if (pdata->gpio_spi_do < 0) {
 		pr_err("%s : can not find the isdbt-detect-gpio in the gpio_spi_do dt\n", __func__);

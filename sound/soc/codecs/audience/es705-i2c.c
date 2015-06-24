@@ -324,8 +324,28 @@ static int es705_i2c_remove(struct i2c_client *i2c)
 	return 0;
 }
 
+/* streamdev read function should return length.
+ * In case of I2C as streaming device,I2C read returns
+ * 0 in case of success  otherwise error.
+ * So implement this wrapper function to support
+ * streaming over I2C.
+ * This function return length on success and 0 in case of failure
+ * so that streaming thread exit gracefully.
+ */
+static int es705_i2c_stream_read(struct es705_priv *es705, void *buf,
+		int len)
+{
+	int rc = es705_i2c_read(es705, buf, len);
+
+	if (rc != 0) {
+		pr_err("%s: i2c stream read fail\n", __func__);
+		return 0;
+	}
+	return len;
+}
+
 struct es_stream_device i2c_streamdev = {
-	.read = es705_i2c_read,
+	.read = es705_i2c_stream_read,
 	.intf = ES705_I2C_INTF,
 };
 

@@ -154,6 +154,34 @@ static const unsigned int asv_voltage_7420_CA57[CPUFREQ_LEVEL_END_CA57] = {
 };
 
 /* minimum memory throughput in megabytes per second */
+#if defined(CONFIG_PMU_COREMEM_RATIO)
+static int exynos7420_region_bus_table_CA57[CPUFREQ_LEVEL_END_CA57][6] = {
+	{ 0, 1264000, 1264000, 1456000, 1456000, 1552000 },		/* 2.5 GHz */
+	{ 0, 1264000, 1264000, 1456000, 1456000, 1552000 },		/* 2.4 GHz */
+	{ 0, 1264000, 1264000, 1456000, 1456000, 1552000 },		/* 2.3 GHz */
+	{ 0, 1264000, 1264000, 1456000, 1456000, 1552000 },		/* 2.2 GHz */
+	{ 0, 1264000, 1264000, 1456000, 1456000, 1552000 },		/* 2.1 GHz */
+	{ 0, 1026000, 1026000, 1456000, 1456000, 1552000 },		/* 2.0 GHz */
+	{ 0, 1026000, 1026000, 1456000, 1456000, 1552000 },		/* 1.9 GHz */
+	{ 0, 1026000, 1026000, 1264000, 1456000, 1552000 },		/* 1.8 GHz */
+	{ 0,  828000, 1026000, 1264000, 1456000, 1552000 },		/* 1.7 MHz */
+	{ 0,  632000,  828000, 1264000, 1456000, 1552000 },		/* 1.6 GHz */
+	{ 0,  632000,  828000, 1264000, 1456000, 1552000 },		/* 1.5 GHz */
+	{ 0,  632000,  828000, 1264000, 1456000, 1552000 },		/* 1.4 GHz */
+	{ 0,  543000,  828000, 1264000, 1456000, 1552000 },		/* 1.3 GHz */
+	{ 0,  543000,  828000, 1026000, 1264000, 1456000 },		/* 1.2 GHz */
+	{ 0,  416000,  828000, 1026000, 1264000, 1456000 },		/* 1.1 GHz */
+	{ 0,  416000,  632000, 1026000, 1264000, 1456000 },		/* 1.0 GHz */
+	{ 0,  416000,  632000,  828000, 1026000, 1456000 },		/* 900 MHz */
+	{ 0,  416000,  632000,  828000, 1026000, 1264000 },		/* 800 MHz */
+	{ 0,  416000,  632000,  828000, 1026000, 1026000 },		/* 700 MHz */
+	{ 0,  348000,  632000,  632000,  828000, 1026000 },		/* 600 MHz */
+	{ 0,  276000,  543000,  632000,  828000,  828000 },		/* 500 MHz */
+	{ 0,  276000,  416000,  543000,  632000,  632000 },		/* 400 MHz */
+	{ 0,       0,       0,       0,       0,       0 },		/* 300 MHz */
+	{ 0,       0,       0,       0,       0,       0 },		/* 200 MHz */
+};
+#else
 static int exynos7420_bus_table_CA57[CPUFREQ_LEVEL_END_CA57] = {
 	1552000,		/* 2.5 GHz */
 	1552000,		/* 2.4 GHz */
@@ -180,6 +208,7 @@ static int exynos7420_bus_table_CA57[CPUFREQ_LEVEL_END_CA57] = {
 	      0,		/* 300 MHz */
 	      0,		/* 200 MHz */
 };
+#endif
 
 static int exynos7420_cpufreq_smpl_warn_notifier_call(
 					struct notifier_block *notifer,
@@ -371,11 +400,11 @@ static bool exynos7420_is_alive_CA57(void)
 {
 	unsigned int tmp;
 
-	tmp = __raw_readl(EXYNOS7420_ATLAS_PLL_CON1);
-	tmp &= EXYNOS7420_PLL_BYPASS_MASK;
-	tmp >>= EXYNOS7420_PLL_BYPASS_SHIFT;
+	tmp = __raw_readl(EXYNOS_PMU_ATLAS_L2_STATUS) &
+	      __raw_readl(EXYNOS_PMU_ATLAS_NONCPU_STATUS) &
+	      POWER_ON_STATUS;
 
-	return !tmp ? true : false;
+	return tmp ? true : false;
 }
 
 static void exynos7420_set_ema_CA57(unsigned int volt)
@@ -433,8 +462,15 @@ int __init exynos_cpufreq_cluster1_init(struct exynos_dvfs_info *info)
 #ifdef CONFIG_SEC_PM
 	/* booting max frequency is 1.5GHz when JIG cable is attached */
 	info->jig_boot_cpu_max_qos = exynos7420_freq_table_CA57[L10].frequency;
+
+	/* This low freq used for FOTA(dex2oat) update */
+	info->low_boot_cpu_max_qos = exynos7420_freq_table_CA57[L12].frequency;
 #endif
-	info->bus_table = exynos7420_bus_table_CA57;
+#if defined(CONFIG_PMU_COREMEM_RATIO)
+	info->region_bus_table = exynos7420_region_bus_table_CA57;
+#else
+ 	info->bus_table = exynos7420_bus_table_CA57;
+#endif
 	info->cpu_clk = mout_atlas_pll;
 
 	/* reboot limit frequency is 800MHz */

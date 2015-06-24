@@ -48,6 +48,8 @@
 #include <sound/maxim_dsm_cal.h>
 #endif
 
+#include <sound/samsung_audio_debugfs.h>
+
 /* PACIFIC use CLKOUT from AP */
 #define PACIFIC_MCLK_FREQ	24000000
 #define PACIFIC_AUD_PLL_FREQ	393216018
@@ -99,6 +101,7 @@ enum {
 
 struct arizona_machine_priv {
 	int mic_bias_gpio;
+	int clk_sel_gpio;
 	struct snd_soc_codec *codec;
 	struct snd_soc_dai *aif[PACIFIC_AIF_MAX];
 	int voice_uevent;
@@ -112,7 +115,6 @@ struct arizona_machine_priv {
 
 	unsigned int hp_impedance_step;
 	bool ear_mic;
-	bool use_asyncclk_aif3;
 
 	int sysclk_rate;
 	int dspclk_rate;
@@ -128,6 +130,8 @@ struct arizona_machine_priv {
 	struct regmap *regmap_dsp;
 
 	u32 aif_format[3];
+	u32 aif_format_tdm[3];
+
 	int (*external_amp)(int onoff);
 
 #if defined(CONFIG_SND_SOC_MAXIM_DSM_CAL)
@@ -139,7 +143,7 @@ struct arizona_machine_priv {
 
 static struct class *svoice_class;
 static struct device *keyword_dev;
-unsigned int keyword_type;
+static unsigned int keyword_type;
 
 static struct arizona_machine_priv pacific_wm5110_priv = {
 	.sysclk_rate = 147456000,
@@ -160,7 +164,6 @@ static struct arizona_machine_priv pacific_wm1840_priv = {
 	.sv_score_addr = DSP6_XM_BASE + (SENSORY_PID_SVSCORE * 2),
 	.final_score_addr = DSP6_XM_BASE + (SENSORY_PID_FINALSCORE * 2),
 	.noise_floor_addr = DSP6_XM_BASE + (PID_NOISEFLOOR * 2),
-	.use_asyncclk_aif3 = false,
 	.energy_l_addr = CLEARWATER_DSP3_SCRATCH_0,
 	.energy_r_addr = CLEARWATER_DSP3_SCRATCH_2,
 };
@@ -174,7 +177,7 @@ const char *aif2_mode_text[] = {
 	"Slave", "Master", "CLKOnly"
 };
 
-const char *voicecontrol_mode_text[] = {
+static const char *voicecontrol_mode_text[] = {
 	"Normal", "LPSD"
 };
 
@@ -847,12 +850,8 @@ int pacific_set_media_clocking(struct arizona_machine_priv *priv)
 	if (ret < 0)
 		dev_err(card->dev, "Can't set AIF2 to ASYNCCLK: %d\n", ret);
 
-	if (priv->use_asyncclk_aif3)
-		ret = snd_soc_dai_set_sysclk(priv->aif[2],
-				ARIZONA_CLK_ASYNCCLK_2, 0, 0);
-	else
-		ret = snd_soc_dai_set_sysclk(priv->aif[2],
-				ARIZONA_CLK_SYSCLK_2, 0, 0);
+	ret = snd_soc_dai_set_sysclk(priv->aif[2],
+			ARIZONA_CLK_SYSCLK_2, 0, 0);
 
 	if (ret < 0)
 		dev_err(card->dev,
@@ -944,21 +943,30 @@ static int pacific_aif1_hw_params(struct snd_pcm_substream *substream,
 	pacific_set_media_clocking(priv);
 
 	/* Set Codec DAI configuration */
-	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S
-					 | SND_SOC_DAIFMT_NB_NF
-					 | SND_SOC_DAIFMT_CBM_CFM);
+	ret = snd_soc_dai_set_fmt(codec_dai, priv->aif_format[0]);
 	if (ret < 0) {
 		dev_err(card->dev, "Failed to set aif1 codec fmt: %d\n", ret);
 		return ret;
 	}
 
 	/* Set CPU DAI configuration */
-	ret = snd_soc_dai_set_fmt(cpu_dai, SND_SOC_DAIFMT_I2S
-					 | SND_SOC_DAIFMT_NB_NF
-					 | SND_SOC_DAIFMT_CBM_CFM);
+	ret = snd_soc_dai_set_fmt(cpu_dai, priv->aif_format[0]);
 	if (ret < 0) {
 		dev_err(card->dev, "Failed to set aif1 cpu fmt: %d\n", ret);
 		return ret;
+	}
+
+	if (priv->aif_format_tdm[0]) {
+		ret = snd_soc_dai_set_tdm_slot(codec_dai,
+				priv->aif_format_tdm[0] & 0x000F,
+				priv->aif_format_tdm[0] & 0x000F,
+				(priv->aif_format_tdm[0] & 0x00F0) >> 4,
+				(priv->aif_format_tdm[0] & 0xFF00) >> 8);
+		if (ret < 0) {
+			dev_err(card->dev,
+				"Failed to set aif1 tdm slot: %d\n", ret);
+			return ret;
+		}
 	}
 
 	ret = snd_soc_dai_set_sysclk(cpu_dai, SAMSUNG_I2S_CDCLK,
@@ -1027,7 +1035,6 @@ static int pacific_aif2_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_card *card = rtd->card;
 	struct snd_soc_dai *codec_dai = rtd->codec_dai;
 	struct arizona_machine_priv *priv = rtd->card->drvdata;
-	unsigned int fmt;
 	int ret;
 	int prate, bclk;
 
@@ -1050,25 +1057,33 @@ static int pacific_aif2_hw_params(struct snd_pcm_substream *substream,
 		bclk = 256000;
 	}
 
-	if (priv->aif_format[1] & 0x10) {
-		/* tdm mode */
-		snd_soc_dai_set_tdm_slot(codec_dai, 0x07, 0x07, 4, 16);
+	/* Set the codec DAI configuration, aif2_mode:0 is slave */
+	if (priv->aif2mode == 0) {
+		priv->aif_format[1] &= ~SND_SOC_DAIFMT_MASTER_MASK;
+		priv->aif_format[1] |= SND_SOC_DAIFMT_CBS_CFS;
+	} else {
+		priv->aif_format[1] &= ~SND_SOC_DAIFMT_MASTER_MASK;
+		priv->aif_format[1] |= SND_SOC_DAIFMT_CBM_CFM;
 	}
 
-	fmt = ((priv->aif_format[1] & 0x0F) + 1) | SND_SOC_DAIFMT_NB_NF;
-
-	/* Set the codec DAI configuration, aif2_mode:0 is slave */
-	if (priv->aif2mode == 0)
-		ret = snd_soc_dai_set_fmt(codec_dai,
-				fmt | SND_SOC_DAIFMT_CBS_CFS);
-	else
-		ret = snd_soc_dai_set_fmt(codec_dai,
-				fmt | SND_SOC_DAIFMT_CBM_CFM);
-
+	/* Set Codec DAI configuration */
+	ret = snd_soc_dai_set_fmt(codec_dai, priv->aif_format[1]);
 	if (ret < 0) {
-		dev_err(card->dev,
-			"Failed to set audio format in codec: %d\n", ret);
+		dev_err(card->dev, "Failed to set aif2 codec fmt: %d\n", ret);
 		return ret;
+	}
+
+	if (priv->aif_format_tdm[1]) {
+		ret = snd_soc_dai_set_tdm_slot(codec_dai,
+				priv->aif_format_tdm[1] & 0x000F,
+				priv->aif_format_tdm[1] & 0x000F,
+				(priv->aif_format_tdm[1] & 0x00F0) >> 4,
+				(priv->aif_format_tdm[1] & 0xFF00) >> 8);
+		if (ret < 0) {
+			dev_err(card->dev,
+				"Failed to set aif2 tdm slot: %d\n", ret);
+			return ret;
+		}
 	}
 
 	if (priv->aif2mode  == 0) {
@@ -1136,34 +1151,22 @@ static int pacific_aif3_hw_params(struct snd_pcm_substream *substream,
 			rtd->dai_link->name, substream->stream,
 			params_channels(params), params_rate(params));
 
-	ret = snd_soc_dai_set_fmt(codec_dai, SND_SOC_DAIFMT_I2S
-				| SND_SOC_DAIFMT_NB_NF
-				| SND_SOC_DAIFMT_CBM_CFM);
+	/* Set Codec DAI configuration */
+	ret = snd_soc_dai_set_fmt(codec_dai, priv->aif_format[2]);
 	if (ret < 0) {
-		dev_err(codec_dai->dev, "Failed to set BT mode: %d\n", ret);
+		dev_err(card->dev, "Failed to set aif3 codec fmt: %d\n", ret);
 		return ret;
 	}
 
-	if (priv->use_asyncclk_aif3 && priv->aif2mode == 2) {
-		ret = snd_soc_dai_set_pll(codec_dai, PACIFIC_FLL2, 0, 0, 0);
-		if (ret != 0)
+	if (priv->aif_format_tdm[2]) {
+		ret = snd_soc_dai_set_tdm_slot(codec_dai,
+				priv->aif_format_tdm[2] & 0x000F,
+				priv->aif_format_tdm[2] & 0x000F,
+				(priv->aif_format_tdm[2] & 0x00F0) >> 4,
+				(priv->aif_format_tdm[2] & 0xFF00) >> 8);
+		if (ret < 0) {
 			dev_err(card->dev,
-					"Failed to stop FLL2: %d\n", ret);
-
-		ret = snd_soc_dai_set_pll(codec_dai, PACIFIC_FLL2_REFCLK,
-					  ARIZONA_FLL_SRC_NONE, 0, 0);
-		if (ret != 0) {
-			dev_err(card->dev,
-				 "Failed to start FLL2 REF: %d\n", ret);
-			return ret;
-		}
-		ret = snd_soc_dai_set_pll(codec_dai, PACIFIC_FLL2,
-					  ARIZONA_CLK_SRC_MCLK1,
-					  PACIFIC_DEFAULT_MCLK1,
-					  priv->asyncclk_rate);
-		if (ret != 0) {
-			dev_err(card->dev,
-					"Failed to start FLL2: %d\n", ret);
+				"Failed to set aif3 tdm slot: %d\n", ret);
 			return ret;
 		}
 	}
@@ -1521,13 +1524,34 @@ static int pacific_of_get_pdata(struct snd_soc_card *card)
 		gpio_direction_output(priv->mic_bias_gpio, 0);
 	}
 
+	priv->clk_sel_gpio = of_get_named_gpio(pdata_np, "clk_sel_gpio", 0);
+	if (gpio_is_valid(priv->clk_sel_gpio)) {
+		ret = gpio_request(priv->clk_sel_gpio, "SEL_44.1K");
+		if (ret)
+			dev_err(card->dev, "Failed to request clk_sel_gpio: %d\n", ret);
+	}
+
 	pacific_update_impedance_table(pdata_np);
 
 	priv->seamless_voicewakeup =
 		of_property_read_bool(pdata_np, "seamless_voicewakeup");
 
-	of_property_read_u32_array(pdata_np, "aif_format",
+	ret = of_property_read_u32_array(pdata_np, "aif_format",
 			priv->aif_format, ARRAY_SIZE(priv->aif_format));
+	if (ret == -EINVAL) {
+		priv->aif_format[0] =  SND_SOC_DAIFMT_I2S
+					| SND_SOC_DAIFMT_NB_NF
+					| SND_SOC_DAIFMT_CBM_CFM;
+		priv->aif_format[1] =  SND_SOC_DAIFMT_I2S
+					| SND_SOC_DAIFMT_NB_NF
+					| SND_SOC_DAIFMT_CBS_CFS;
+		priv->aif_format[2] =  SND_SOC_DAIFMT_I2S
+					| SND_SOC_DAIFMT_NB_NF
+					| SND_SOC_DAIFMT_CBM_CFM;
+	}
+
+	of_property_read_u32_array(pdata_np, "aif_format_tdm",
+			priv->aif_format_tdm, ARRAY_SIZE(priv->aif_format_tdm));
 
 	return 0;
 }
@@ -1658,6 +1682,9 @@ static int pacific_late_probe(struct snd_soc_card *card)
 
 	priv->codec = codec;
 	the_codec = codec;
+#ifdef CONFIG_SND_SAMSUNG_DEBUGFS
+	dump_codec = codec;
+#endif
 
 	pacific_of_get_pdata(card);
 
@@ -2068,7 +2095,7 @@ static struct snd_soc_card pacific_cards[] = {
 	},
 };
 
-const char *card_ids[] = {
+static const char *card_ids[] = {
 	"wm5102", "wm5110", "wm1840"
 };
 
@@ -2080,6 +2107,7 @@ static int pacific_audio_probe(struct platform_device *pdev)
 	struct snd_soc_card *card;
 	struct snd_soc_dai_link *dai_link;
 	struct arizona_machine_priv *priv;
+	int of_route;
 
 	for (n = 0; n < ARRAY_SIZE(card_ids); n++) {
 		if (NULL != of_find_node_by_name(NULL, card_ids[n])) {
@@ -2109,7 +2137,8 @@ static int pacific_audio_probe(struct platform_device *pdev)
 	if (ret != 0)
 		dev_err(&pdev->dev, "Failed to register component: %d\n", ret);
 
-	if (!card->dapm_routes || !card->num_dapm_routes) {
+	of_route = of_property_read_bool(card->dev->of_node, "samsung,audio-routing");
+	if (!card->dapm_routes || !card->num_dapm_routes || of_route) {
 		ret = snd_soc_of_parse_audio_routing(card,
 				"samsung,audio-routing");
 		if (ret != 0) {

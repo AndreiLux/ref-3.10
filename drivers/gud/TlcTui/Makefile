@@ -24,6 +24,7 @@ ccflags-y += -Idrivers/gud/gud-$(PLATFORM)/MobiCoreKernelApi/include
 ccflags-y += -Idrivers/video/exynos/decon_display
 ccflags-y += -Idrivers/gud/TlcTui/
 ccflags-y += -Idrivers/gud/TlcTui/inc
+ccflags-y += -Idrivers/gud/TlcTui/public
 
 ifdef MOBICORE_CFLAGS
     ccflags-y += $(MOBICORE_CFLAGS)

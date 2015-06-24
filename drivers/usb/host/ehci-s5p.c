@@ -583,6 +583,10 @@ fail_add_hcd:
 	} else if (s5p_ehci->pdata->phy_exit) {
 		s5p_ehci->pdata->phy_exit(pdev, USB_PHY_TYPE_HOST);
 	}
+
+	/* clear Host */
+	if (s5p_ehci->otg)
+		s5p_ehci->otg->host = NULL;
 fail_io:
 	s5p_ehci_clk_disable_unprepare(s5p_ehci);
 fail_clk:

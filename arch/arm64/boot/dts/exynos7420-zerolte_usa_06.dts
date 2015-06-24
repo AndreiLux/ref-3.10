@@ -348,9 +348,8 @@
 	audio_pdata {
 		compatible = "samsung,audio-pdata";
 
-		aif_format = <0x00 0x13 0x00>;
-		/* I2S: 0x00, TDM: 0x10 */
-		/* I2S: 0x0, Right-J: 0x1 Left-J: 0x2, DSP A: 0x3, DSP B: 0x4, */
+		aif_format = <0x1001 0x1004 0x1001>;
+		aif_format_tdm = <0x0 0x1047 0x0>;
 
 		imp_table = <
 			/* min      max gain */
@@ -847,7 +846,7 @@
 			1912>;
 	};
 
-	sec_thermistor@1 {
+	sec_thermistor@2 {
 		status = "okay";
 
 		adc_array = <202 212 223 234 244 255 265 276 287 297

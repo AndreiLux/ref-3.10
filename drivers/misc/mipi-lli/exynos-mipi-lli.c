@@ -498,10 +498,12 @@ static int exynos_lli_intr_enable(struct mipi_lli *lli)
 	if (mipi_lli_suspended())
 		return -1;
 
-	lli_intr = readl(lli->regs + EXYNOS_DME_LLI_INTR_ENABLE);
+	if((atomic_read(&lli->state) != LLI_UNMOUNTED) && lli->is_clk_enabled) {
+		lli_intr = readl(lli->regs + EXYNOS_DME_LLI_INTR_ENABLE);
 
-	if (lli_intr != 0x3FFFF)
-		writel(0x3FFFF, lli->regs + EXYNOS_DME_LLI_INTR_ENABLE);
+		if (lli_intr != 0x3FFFF)
+			writel(0x3FFFF, lli->regs + EXYNOS_DME_LLI_INTR_ENABLE);
+	}
 
 	return 0;
 }

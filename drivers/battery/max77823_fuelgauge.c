@@ -714,10 +714,10 @@ static int fg_read_current(struct max77823_fuelgauge_data *fuelgauge, int unit)
 
 	/* 1.5625uV/0.01Ohm(Rsense) = 156.25uA */
 	switch (unit) {
-	case SEC_BATTEY_CURRENT_UA:
+	case SEC_BATTERY_CURRENT_UA:
 		i_current = temp * 15625 / 100;
 		break;
-	case SEC_BATTEY_CURRENT_MA:
+	case SEC_BATTERY_CURRENT_MA:
 	default:
 		i_current = temp * 15625 / 100000;
 	}
@@ -771,10 +771,10 @@ static int fg_read_avg_current(struct max77823_fuelgauge_data *fuelgauge, int un
 
 	/* 1.5625uV/0.01Ohm(Rsense) = 156.25uA */
 	switch (unit) {
-	case SEC_BATTEY_CURRENT_UA:
+	case SEC_BATTERY_CURRENT_UA:
 		avg_current = temp * 15625 / 100;
 		break;
-	case SEC_BATTEY_CURRENT_MA:
+	case SEC_BATTERY_CURRENT_MA:
 	default:
 		avg_current = temp * 15625 / 100000;
 	}
@@ -797,8 +797,8 @@ int fg_reset_soc(struct max77823_fuelgauge_data *fuelgauge)
 		__func__, fg_read_vcell(fuelgauge), fg_read_vfocv(fuelgauge),
 		fg_read_vfsoc(fuelgauge), fg_read_soc(fuelgauge));
 	pr_info("%s: Before quick-start - current(%d), avg current(%d)\n",
-		__func__, fg_read_current(fuelgauge, SEC_BATTEY_CURRENT_MA),
-		fg_read_avg_current(fuelgauge, SEC_BATTEY_CURRENT_MA));
+		__func__, fg_read_current(fuelgauge, SEC_BATTERY_CURRENT_MA),
+		fg_read_avg_current(fuelgauge, SEC_BATTERY_CURRENT_MA));
 
 	if (fuelgauge->pdata->check_jig_status ||
 	    !fuelgauge->pdata->check_jig_status()) {
@@ -830,8 +830,8 @@ int fg_reset_soc(struct max77823_fuelgauge_data *fuelgauge)
 		__func__, fg_read_vcell(fuelgauge), fg_read_vfocv(fuelgauge),
 		fg_read_vfsoc(fuelgauge), fg_read_soc(fuelgauge));
 	pr_info("%s: After quick-start - current(%d), avg current(%d)\n",
-		__func__, fg_read_current(fuelgauge, SEC_BATTEY_CURRENT_MA),
-		fg_read_avg_current(fuelgauge, SEC_BATTEY_CURRENT_MA));
+		__func__, fg_read_current(fuelgauge, SEC_BATTERY_CURRENT_MA),
+		fg_read_avg_current(fuelgauge, SEC_BATTERY_CURRENT_MA));
 
 	max77823_write_word(fuelgauge->i2c, CYCLES_REG, 0x00a0);
 
@@ -950,11 +950,11 @@ int get_fuelgauge_value(struct max77823_fuelgauge_data *fuelgauge, int data)
 		break;
 
 	case FG_CURRENT:
-		ret = fg_read_current(fuelgauge, SEC_BATTEY_CURRENT_MA);
+		ret = fg_read_current(fuelgauge, SEC_BATTERY_CURRENT_MA);
 		break;
 
 	case FG_CURRENT_AVG:
-		ret = fg_read_avg_current(fuelgauge, SEC_BATTEY_CURRENT_MA);
+		ret = fg_read_avg_current(fuelgauge, SEC_BATTERY_CURRENT_MA);
 		break;
 
 	case FG_CHECK_STATUS:
@@ -1400,7 +1400,7 @@ int low_batt_compensation(struct max77823_fuelgauge_data *fuelgauge,
 	/* Not charging, Under low battery comp voltage */
 	if (fg_vcell <= fuelgauge->battery_data->low_battery_comp_voltage) {
 		fg_avg_current = fg_read_avg_current(fuelgauge,
-			SEC_BATTEY_CURRENT_MA);
+			SEC_BATTERY_CURRENT_MA);
 		fg_min_current = min(fg_avg_current, fg_current);
 
 		table_size =
@@ -1899,10 +1899,10 @@ static int max77823_fg_get_property(strcut power_supply *psy,
 		/* Additional Voltage Information (mV) */
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		switch (val->intval) {
-		case SEC_BATTEY_VOLTAGE_AVERAGE:
+		case SEC_BATTERY_VOLTAGE_AVERAGE:
 			val->intval = max77823_get_avgvcell(fuelgauge);
 			break;
-		case SEC_BATTEY_VOLTAGE_OCV:
+		case SEC_BATTERY_VOLTAGE_OCV:
 			val->intval = max77823_get_vfocv(fuelgauge);
 			break;
 		}
@@ -2043,10 +2043,10 @@ static int max77823_fg_get_property(struct power_supply *psy,
 		/* Additional Voltage Information (mV) */
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		switch (val->intval) {
-		case SEC_BATTEY_VOLTAGE_OCV:
+		case SEC_BATTERY_VOLTAGE_OCV:
 			val->intval = fg_read_vfocv(fuelgauge);
 			break;
-		case SEC_BATTEY_VOLTAGE_AVERAGE:
+		case SEC_BATTERY_VOLTAGE_AVERAGE:
 		default:
 			val->intval = fg_read_avg_vcell(fuelgauge);
 			break;
@@ -2055,12 +2055,12 @@ static int max77823_fg_get_property(struct power_supply *psy,
 		/* Current */
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		switch (val->intval) {
-		case SEC_BATTEY_CURRENT_UA:
+		case SEC_BATTERY_CURRENT_UA:
 			val->intval =
 				fg_read_current(fuelgauge,
-						SEC_BATTEY_CURRENT_UA);
+						SEC_BATTERY_CURRENT_UA);
 			break;
-		case SEC_BATTEY_CURRENT_MA:
+		case SEC_BATTERY_CURRENT_MA:
 		default:
 			val->intval = get_fuelgauge_value(fuelgauge,
 							  FG_CURRENT);
@@ -2070,12 +2070,12 @@ static int max77823_fg_get_property(struct power_supply *psy,
 		/* Average Current */
 	case POWER_SUPPLY_PROP_CURRENT_AVG:
 		switch (val->intval) {
-		case SEC_BATTEY_CURRENT_UA:
+		case SEC_BATTERY_CURRENT_UA:
 			val->intval =
 				fg_read_avg_current(fuelgauge,
-						    SEC_BATTEY_CURRENT_UA);
+						    SEC_BATTERY_CURRENT_UA);
 			break;
-		case SEC_BATTEY_CURRENT_MA:
+		case SEC_BATTERY_CURRENT_MA:
 		default:
 			val->intval =
 				get_fuelgauge_value(fuelgauge,
@@ -2086,19 +2086,19 @@ static int max77823_fg_get_property(struct power_supply *psy,
 		/* Full Capacity */
 	case POWER_SUPPLY_PROP_ENERGY_NOW:
 		switch (val->intval) {
-		case SEC_BATTEY_CAPACITY_DESIGNED:
+		case SEC_BATTERY_CAPACITY_DESIGNED:
 			val->intval = get_fuelgauge_value(fuelgauge,
 							  FG_FULLCAP);
 			break;
-		case SEC_BATTEY_CAPACITY_ABSOLUTE:
+		case SEC_BATTERY_CAPACITY_ABSOLUTE:
 			val->intval = get_fuelgauge_value(fuelgauge,
 							  FG_MIXCAP);
 			break;
-		case SEC_BATTEY_CAPACITY_TEMPERARY:
+		case SEC_BATTERY_CAPACITY_TEMPERARY:
 			val->intval = get_fuelgauge_value(fuelgauge,
 							  FG_AVCAP);
 			break;
-		case SEC_BATTEY_CAPACITY_CURRENT:
+		case SEC_BATTERY_CAPACITY_CURRENT:
 			val->intval = get_fuelgauge_value(fuelgauge,
 							  FG_REPCAP);
 			break;

@@ -73,7 +73,7 @@
 		battery,temp_adc_type = <1>; /* SEC_BATTERY_ADC_TYPE_AP */
 
 		battery,chg_temp_check = <1>;
-		/*battery,wpc_temp_check = <1>;*/
+		battery,wpc_temp_check = <1>;
 
 		battery,polling_time = <10 30 30 30 3600>;
 
@@ -95,10 +95,10 @@
 		battery,wireless_cc_cv = <86>;
 		battery,inbat_voltage = <1>;
 
-		battery,inbat_voltage_table_adc = <2905 2873 2848 2819 2787 2762 2731 2677 2655 2619
-						2591 2565 2534 2504 2475 2445 2420 2401 2364 2343>;
-		battery,inbat_voltage_table_data = <438 435 430 425 420 415 410 400 395 390
-						 385 380 375 370 365 360 355 350 345 340>;
+		battery,inbat_voltage_table_adc = <3120 3101 3061 3038 3001 2956 2920 2887 2856 2814
+						2793 2754 2720 2677 2641 2613 2572 2531 2502 2467 2436>;
+		battery,inbat_voltage_table_data = <438 435 430 425 420 415 410 405 400 395
+						390 385 380 375 370 365 360 355 350 345 340>;
 
 		battery,adc_check_count = <5>;
 
@@ -151,9 +151,9 @@
 		battery,chg_skip_check_capacity = <10>;
 		battery,chg_skip_check_time = <600>;
 
-		battery,wpc_high_temp = <390>;
-		battery,wpc_high_temp_recovery = <200>;
-		battery,wpc_charging_limit_current = <700>;
+		battery,wpc_high_temp = <420>;
+		battery,wpc_high_temp_recovery = <410>;
+		battery,wpc_charging_limit_current = <450>;
 
 		/* SEC_BATTERY_FULL_CONDITION_SOC |
 		   SEC_BATTERY_FULL_CONDITION_NOTIMEFULL |
@@ -165,13 +165,13 @@
 		battery,recharge_check_count = <2>;
 		battery,recharge_condition_type = <4>; /* SEC_BATTERY_RECHARGE_CONDITION_VCELL */
 		battery,recharge_condition_soc = <98>;
-		battery,recharge_condition_vcell = <4350>;
+		battery,recharge_condition_vcell = <4325>;
 
 		battery,charging_total_time = <21600>;
 		battery,recharging_total_time = <5400>;
 		battery,charging_reset_time = <0>;
 
-		battery,chg_float_voltage = <4375>;
+		battery,chg_float_voltage = <4350>;
 
 		battery,self_discharging_en;
 		battery,force_discharging_limit = <650>;
@@ -345,7 +345,7 @@
 		battery,chg_polarity_en = <0>;
 		battery,chg_gpio_status = <0>;
 		battery,chg_polarity_status = <0>;
-		battery,chg_float_voltage = <4375>;
+		battery,chg_float_voltage = <4350>;
 	};
 
 };

@@ -127,19 +127,12 @@ config HV_MUIC_MAX77833_AFC
         help
           If you say yes here you will get support for the MAX77833 AFC MUIC.
 
-config MUIC_MAX77833_IGNORE_ADCERR_WA
-        bool "Using MAX77833 MUIC ignore ADCERR WA"
+config MUIC_MAX77833_SHAKEID_WA
+        bool "Using MAX77833 MUIC SHAKE ID WA"
         depends on MUIC_MAX77833
         default n
         help
-          If you say yes here you will get support for the MAX77833 MUIC RESET WA. 
-
-config MUIC_MAX77833_RESET_WA
-        bool "Using MAX77833 MUIC RESET WA"
-        depends on MUIC_MAX77833
-        default n
-        help
-          If you say yes here you will get support for the MAX77833 MUIC RESET WA.
+          If you say yes here you will get support for the MAX77833 MUIC SHAKE ID WA.
 
 config MUIC_MAX77888
 	bool "Using MAX77888 MUIC"

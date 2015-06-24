@@ -243,6 +243,15 @@ static int gpu_validate_attrib_data(struct exynos_context *platform)
 	data = gpu_get_attrib_data(attrib, GPU_HWCNT_GPR);
 	platform->hwcnt_gpr_status = data == 0 ? 0 : data;
 
+	data = gpu_get_attrib_data(attrib, GPU_HWCNT_POLLING_TIME);
+	platform->hwcnt_polling_speed = data == 0 ? 0 : (u32) data;
+
+	data = gpu_get_attrib_data(attrib, GPU_HWCNT_UP_STEP);
+	platform->hwcnt_up_step = data == 0 ? 0 : (u32) data;
+
+	data = gpu_get_attrib_data(attrib, GPU_HWCNT_DOWN_STEP);
+	platform->hwcnt_down_step = data == 0 ? 0 : (u32) data;
+
 	data = gpu_get_attrib_data(attrib, GPU_HWCNT_DUMP_PERIOD);
 	platform->hwcnt_dump_period = data == 0 ? 0 : (u32) data;
 

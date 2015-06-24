@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 TRUSTONIC LIMITED
+ * Copyright (c) 2013 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -120,5 +120,5 @@ int trustedui_clear_mask(int mask)
 }
 EXPORT_SYMBOL(trustedui_clear_mask);
 
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Trustonic Limited");
+MODULE_LICENSE("GPL v2");
+MODULE_DESCRIPTION("<t-base TUI");

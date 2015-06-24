@@ -49,7 +49,7 @@ static void get_timestamp(struct ssp_data *data, char *dataframe,
 				sensorsdata->timestamp = data->timestamp;
 		}
 	} else {
-		if (((sensortime->irq_diff * 10) > (data->adDelayBuf[sensor] * 18))
+		if (((sensortime->irq_diff * 10) > (data->adDelayBuf[sensor] * 15))
 			&& ((sensortime->irq_diff * 10) < (data->adDelayBuf[sensor] * 100))) {
 			generate_data(data, sensorsdata, sensor, data->timestamp);
 		}
@@ -165,7 +165,7 @@ int parse_dataframe(struct ssp_data *data, char *dataframe, int frame_len)
 						data->lastTimestamp[sensor] = data->timestamp - (data->adDelayBuf[sensor] * length);
 						sensortime.time_diff = data->adDelayBuf[sensor];
 					} else {
-						time = data->adDelayBuf[sensor] * 18;
+						time = data->adDelayBuf[sensor] * 11;
 						if ((sensortime.time_diff * 10) > time)
 							sensortime.time_diff = data->adDelayBuf[sensor];
 					}

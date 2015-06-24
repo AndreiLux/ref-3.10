@@ -122,6 +122,9 @@ static int sensor_2t2_power_setpin(struct platform_device *pdev,
 	if (!gpio_is_valid(gpio_comp_rst)) {
 		dev_err(dev, "%s: failed to get main comp reset gpio\n", __func__);
 		return -EINVAL;
+	} else {
+		gpio_request_one(gpio_comp_rst, GPIOF_OUT_INIT_LOW, "CAM_GPIO_OUTPUT_LOW");
+		gpio_free(gpio_comp_rst);
 	}
 
 	gpio_reset = of_get_named_gpio(dnode, "gpio_reset", 0);

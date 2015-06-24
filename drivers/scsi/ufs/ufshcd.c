@@ -43,6 +43,9 @@
 #if defined(CONFIG_UFS_FMP_DM_CRYPT)
 #include <linux/smc.h>
 #endif
+#if defined(CONFIG_FIPS_FMP_UFS)
+#include <fmpdev_info.h>
+#endif
 #include <scsi/ufs/ioctl.h>
 
 #include "ufshcd.h"
@@ -50,12 +53,8 @@
 #include "ufs-exynos.h"
 #include "ufs_quirks.h"
 
-#if defined(CONFIG_FIPS_FMP_UFS)
-#include "fips-fmp-info.h"
-#endif
-
 #if defined(CONFIG_UFS_FMP_ECRYPT_FS)
-#include "fmp_derive_iv.h"
+#include <fmp_derive_iv.h>
 #endif
 
 #define UFSHCD_ENABLE_INTRS	(UTP_TRANSFER_REQ_COMPL |\
@@ -1186,10 +1185,18 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 			hba->transferred_sector += prd_table[i].size;
 #if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 #if defined(CONFIG_UFS_FMP_ECRYPT_FS)
-			if(test_bit(PG_sensitive_data, &sg_page(sg)->flags)) {
-				sector_key |= UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
-			} else
+			if (!((unsigned long)(sg_page(sg)->mapping) & 0x1)) {
+				if (sg_page(sg)->mapping && sg_page(sg)->mapping->key) {
+					if ((unsigned int)(sg_page(sg)->index) >= 2)
+						sector_key |= UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
+					else
+						sector_key &= ~UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
+				} else {
+					sector_key &= ~UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
+				}
+			} else {
 				sector_key &= ~UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
+			}
 #endif
 			if (sector_key == UFS_BYPASS_SECTOR_BEGIN) {
 				SET_DAS(&prd_table[i], CLEAR);
@@ -1315,8 +1322,7 @@ static int ufshcd_map_sg_st(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 
 	cmd = lrbp->cmd;
 	if (cmd->request->bio) {
-		sector_key = (hba->self_test != BYPASS_MODE)? UFS_ENCRYPTION_SECTOR_BEGIN : UFS_BYPASS_SECTOR_BEGIN;
-		cmd->request->bio->bi_sensitive_data = 0;
+		sector_key = (hba->self_test_mode != BYPASS_MODE)? UFS_ENCRYPTION_SECTOR_BEGIN : UFS_BYPASS_SECTOR_BEGIN;
 		sector = cmd->request->bio->bi_sector;
 	}
 
@@ -1349,9 +1355,9 @@ static int ufshcd_map_sg_st(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 			} else {
 				if (sector_key & UFS_ENCRYPTION_SECTOR_BEGIN) { /* disk encryption */
 					/* AES algorithm selector  */
-					if (hba->self_test == XTS_MODE)
+					if (hba->self_test_mode == XTS_MODE)
 						SET_FAS(&prd_table[i], AES_XTS);
-					else if (hba->self_test == CBC_MODE)
+					else if (hba->self_test_mode == CBC_MODE)
 						SET_FAS(&prd_table[i], AES_CBC);
 
 					if (prd_table_st->size == 32)
@@ -1672,6 +1678,9 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	unsigned long flags;
 	int tag;
 	int err = 0;
+#if defined(CONFIG_FIPS_FMP_UFS)
+	uint64_t self_test_bh;
+#endif
 
 	hba = shost_priv(host);
 
@@ -1731,10 +1740,15 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	/* form UPIU before issuing the command */
 	ufshcd_compose_upiu(hba, lrbp);
 #if defined(CONFIG_FIPS_FMP_UFS)
-	if (hba->self_test)
-		err = ufshcd_map_sg_st(hba, lrbp);
-	else
+	if (cmd->request->bio) {
+		self_test_bh = (uint64_t)cmd->request->bio->bi_private;
+		if ((uint64_t)hba->self_test_bh && (self_test_bh == (uint64_t)hba->self_test_bh))
+			err = ufshcd_map_sg_st(hba, lrbp);
+		else
+			err = ufshcd_map_sg(hba, lrbp);
+	} else {
 		err = ufshcd_map_sg(hba, lrbp);
+	}
 #else
 	err = ufshcd_map_sg(hba, lrbp);
 #endif

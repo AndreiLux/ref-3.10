@@ -323,8 +323,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 			ctx->scratch_buf_size =
 				ENC_V80_H264_SCRATCH_SIZE(mb_width, mb_height);
 		else if (IS_MFCv9X(dev))
-			ctx->scratch_buf_size =
-				ENC_V90_H264_SCRATCH_SIZE(mb_width, mb_height);
+			mfc_debug(2, "Use min scratch buffer size \n");
 		else
 			ctx->scratch_buf_size =
 				ENC_V65_H264_SCRATCH_SIZE(mb_width, mb_height);
@@ -340,6 +339,8 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		if (mfc_version(dev) == 0x61)
 			ctx->scratch_buf_size =
 				ENC_V61_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
+		else if (IS_MFCv9X(dev))
+			mfc_debug(2, "Use min scratch buffer size \n");
 		else
 			ctx->scratch_buf_size =
 				ENC_V65_MPEG4_SCRATCH_SIZE(mb_width, mb_height);
@@ -355,8 +356,7 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 			ctx->scratch_buf_size =
 				ENC_V80_VP8_SCRATCH_SIZE(mb_width, mb_height);
 		else if (IS_MFCv9X(dev))
-			ctx->scratch_buf_size =
-				ENC_V90_VP8_SCRATCH_SIZE(mb_width, mb_height);
+			mfc_debug(2, "Use min scratch buffer size \n");
 		else
 			ctx->scratch_buf_size =
 				ENC_V70_VP8_SCRATCH_SIZE(mb_width, mb_height);
@@ -369,8 +369,11 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 		ctx->port_b_size = 0;
 		break;
 	case S5P_FIMV_CODEC_HEVC_ENC:
-		ctx->scratch_buf_size =
-			ENC_V90_HEVC_SCRATCH_SIZE(mb_width, lcu_width);
+		if (IS_MFCv9X(dev))
+			mfc_debug(2, "Use min scratch buffer size \n");
+		else
+			mfc_err_ctx("MFC 0x%x is not supported codec type(%d)\n",
+						mfc_version(dev), ctx->codec_mode);
 		ctx->scratch_buf_size = ALIGN(ctx->scratch_buf_size, 256);
 		ctx->port_a_size =
 			ctx->scratch_buf_size + enc->tmv_buffer_size +
@@ -1609,6 +1612,10 @@ static int s5p_mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 	WRITEL(reg, S5P_FIMV_E_MV_HOR_RANGE);
 	WRITEL(reg, S5P_FIMV_E_MV_VER_RANGE);
 
+	/* Disable all macroblock adaptive scaling features */
+	reg = 0xF;
+	WRITEL(reg, S5P_FIMV_E_MB_RC_CONFIG);
+
 	WRITEL(0x0, S5P_FIMV_E_VBV_INIT_DELAY); /* SEQ_start Only */
 
 	/* initialize for '0' only setting */
@@ -1776,7 +1783,6 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	WRITEL(reg, S5P_FIMV_E_RC_QP_BOUND);
 
 	/* macroblock adaptive scaling features */
-	WRITEL(0x0, S5P_FIMV_E_MB_RC_CONFIG);
 	if (p->rc_mb) {
 		reg = 0;
 		/** dark region */
@@ -1916,7 +1922,8 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 			for (i = 0; i < (p_264->hier_qp_layer & 0x7); i++)
 			WRITEL(p_264->hier_qp_layer_qp[i],
 					S5P_FIMV_E_H264_HIERARCHICAL_QP_LAYER0 + i * 4);
-		} else {
+		}
+		if (p->rc_frame) {
 			for (i = 0; i < (p_264->hier_qp_layer & 0x7); i++)
 			WRITEL(p_264->hier_qp_layer_bit[i],
 					S5P_FIMV_E_H264_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
@@ -2184,7 +2191,8 @@ static int s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 			for (i = 0; i < (p_vp8->num_temporal_layer & 0x3); i++)
 			WRITEL(p_vp8->hier_qp_layer_qp[i],
 					S5P_FIMV_E_VP8_HIERARCHICAL_QP_LAYER0 + i * 4);
-		} else {
+		}
+		if (p->rc_frame) {
 			for (i = 0; i < (p_vp8->num_temporal_layer & 0x3); i++)
 			WRITEL(p_vp8->hier_qp_layer_bit[i],
 					S5P_FIMV_E_H264_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
@@ -2241,10 +2249,6 @@ static int s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 	reg &= ~(0x3F);
 	reg |= p_vp8->rc_min_qp;
 	WRITEL(reg, S5P_FIMV_E_RC_QP_BOUND);
-
-	/* Disable all macroblock adaptive scaling features */
-	reg = 0xF;
-	WRITEL(reg, S5P_FIMV_E_MB_RC_CONFIG);
 
 	mfc_debug_leave();
 
@@ -2336,17 +2340,21 @@ static int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 		WRITEL(reg, S5P_FIMV_E_HEVC_NAL_CONTROL);
 	}
 	/* hier qp enable */
-	if (p_hevc->hier_qp && p_hevc->hier_qp_layer) {
+	if (p_hevc->hier_qp_layer) {
 		reg |= (p_hevc->hier_qp_type & 0x1) << 0x3;
 		reg |= p_hevc->hier_qp_layer & 0x7;
-	/* number of coding layer should be zero when hierarchical is disable */
 		WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
 		/* QP value for each layer */
-		for (i = 0; i < (p_hevc->hier_qp_layer & 0x7); i++)
-			WRITEL(p_hevc->hier_qp_layer_qp,
-				S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
-			WRITEL(p_hevc->hier_qp_layer_bit,
-				S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+		if (p_hevc->hier_qp) {
+			for (i = 0; i < (p_hevc->hier_qp_layer & 0x7); i++)
+				WRITEL(p_hevc->hier_qp_layer_qp,
+					S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
+		}
+		if (p->rc_frame) {
+			for (i = 0; i < (p_hevc->hier_qp_layer & 0x7); i++)
+				WRITEL(p_hevc->hier_qp_layer_bit,
+					S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+		}
 	}
 	/* rate control config. */
 	reg = READL(S5P_FIMV_E_RC_CONFIG);
@@ -2382,7 +2390,6 @@ static int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	WRITEL(reg, S5P_FIMV_E_RC_QP_BOUND);
 
 	/* macroblock adaptive scaling features */
-	WRITEL(0x0, S5P_FIMV_E_MB_RC_CONFIG);
 	if (p->rc_mb) {
 		reg = 0;
 		/** dark region */
@@ -2569,6 +2576,8 @@ int s5p_mfc_decode_one_frame(struct s5p_mfc_ctx *ctx, int last_frame)
 	WRITEL(dec->dpb_status, S5P_FIMV_D_AVAILABLE_DPB_FLAG_LOWER);
 	WRITEL(0x0, S5P_FIMV_D_AVAILABLE_DPB_FLAG_UPPER);
 	WRITEL(dec->slice_enable, S5P_FIMV_D_SLICE_IF_ENABLE);
+	if (IS_MFCv9X(dev))
+		WRITEL(MFC_TIMEOUT_VALUE, S5P_FIMV_DEC_TIMEOUT_VALUE);
 
 	WRITEL(ctx->inst_no, S5P_FIMV_INSTANCE_ID);
 	/* Issue different commands to instance basing on whether it
@@ -3283,6 +3292,9 @@ static inline int s5p_mfc_abort_inst(struct s5p_mfc_ctx *ctx)
 static inline int s5p_mfc_dec_dpb_flush(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
+
+	if (on_res_change(ctx))
+		mfc_err("dpb flush on res change(state:%d)\n", ctx->state);
 
 	dev->curr_ctx = ctx->num;
 	s5p_mfc_clean_ctx_int_flags(ctx);

@@ -2081,10 +2081,12 @@ static int exynos7_devfreq_int_init_clock(void)
 	}
 
 	for (i = 0; i < ARRAY_SIZE(devfreq_clk_int_info_list); ++i) {
-		if (strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_mfc_532") &&
-				strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_mscl_532") &&
-				strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_vpp0_400") &&
-				strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_vpp1_400"))
+		if (!strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_bus0_532") ||
+				!strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_bus1_532") ||
+				!strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_bus1_200") ||
+				!strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_pclk_bus01_133") ||
+				!strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_imem_266") ||
+				!strcmp(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk_name, "dout_aclk_imem_200"))
 			clk_prepare_enable(devfreq_int_clk[devfreq_clk_int_info_idx[i]].clk);
 	}
 
@@ -3655,7 +3657,55 @@ struct dmc_vtmon_dfs_mif_table
 #define PHY_DVFS_CON5_SET1_MASK	(0x0)|(1<<31)|(0xF<<20)|(0xF<<12)|(0xF<<4)
 #define PHY_DVFS_CON5_SET0_MASK	(0x0)|(1<<30)|(0xF<<16)|(0xF<<8)|(0xF<<0)
 
+#ifdef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ODT_OFF
+#define MR11_DRAM_DQ_ODT		0x00		/* DQ_ODT Disable */
+#else
+#define MR11_DRAM_DQ_ODT		0x04		/* DQ_ODT RZQ/4 */
+#endif
+
 #if defined(DMC_DQS_MODE2)
+/* for SEC 12Gb die DRAM */
+static struct dmc_drex_dfs_mif_table dfs_drex_mif_table_12Gb[] =
+{
+	DREX_TIMING_PARA(0x00003737, 0x6D588652, 0x4732BBE0, 0x40710336, 0x00004E02, 0x00000000, 0x319BA14A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x2D<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00003333, 0x66588611, 0x4732BBE0, 0x3C6A0336, 0x00004902, 0x00000000, 0x319BA14A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x2D<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00002D2D, 0x5947754F, 0x4632B3DC, 0x345C0335, 0x00004002, 0x00000000, 0x319BA13A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x24<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00002626, 0x4B46648C, 0x3532B39C, 0x2C4E0335, 0x00003602, 0x00000000, 0x319BA13A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x24<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001D1D, 0x3A35538A, 0x3422AAD6, 0x243D0234, 0x00002A02, 0x00000000, 0x219BA12A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x1B<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001717, 0x2D2442C8, 0x2322A310, 0x1C2F0233, 0x00002003, 0x00000000, 0x019BA10B, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+#ifdef L6_RL_WL_DECREASE
+	DREX_TIMING_PARA(0x00001414, 0x27233247, 0x23229ACC, 0x18290233, 0x00001C02, 0x00000000, 0x019BA10A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+#else
+	DREX_TIMING_PARA(0x00001414, 0x27233247, 0x2322A2D0, 0x18290233, 0x00001C02, 0x00000000, 0x019BA10A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+#endif
+	DREX_TIMING_PARA(0x00000F0F, 0x1e2331C5, 0x22229ACC, 0x141F0233, 0x00001502, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000D0D, 0x19232185, 0x22229ACC, 0x101F0233, 0x00001202, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+#ifdef L9_RL_WL_DECREASE
+	DREX_TIMING_PARA(0x00000A0A, 0x19232144, 0x22229286, 0x0C1F0233, 0x00000E02, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+#else
+	DREX_TIMING_PARA(0x00000A0A, 0x19232144, 0x22229A8C, 0x0C1F0233, 0x00000E02, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+#endif
+	DREX_TIMING_PARA(0x00000606, 0x192320C3, 0x22229286, 0x081F0233, 0x00000902, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000505, 0x192320C2, 0x22229286, 0x081F0233, 0x00000702, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000404, 0x192320C2, 0x22229286, 0x081F0233, 0x00000502, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+};
+
+/* for SEC 6Gb die DRAM */
 static struct dmc_drex_dfs_mif_table dfs_drex_mif_table[] =
 {
 	DREX_TIMING_PARA(0x00002323, 0x46588652, 0x4732BBE0, 0x404A0336, 0x00004E02, 0x00000000, 0x319BA14A, 0x00005DC0, 0x01010101, 0x00000003,
@@ -3669,13 +3719,13 @@ static struct dmc_drex_dfs_mif_table dfs_drex_mif_table[] =
 	DREX_TIMING_PARA(0x00001313, 0x2635538A, 0x3422AAD6, 0x24280234, 0x00002A02, 0x00000000, 0x219BA12A, 0x00FFFFFF, 0x00000000, 0x00000000,
 			0x00211400, 0x00200800|(0x1B<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
 	DREX_TIMING_PARA(0x00000F0F, 0x1D2442C8, 0x2322A310, 0x1C1F0233, 0x00002003, 0x00000000, 0x019BA10B, 0x00FFFFFF, 0x00000000, 0x00000000,
-			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
 #ifdef L6_RL_WL_DECREASE
 	DREX_TIMING_PARA(0x00000D0D, 0x19233247, 0x23229ACC, 0x181F0233, 0x00001C02, 0x00000000, 0x019BA10A, 0x00FFFFFF, 0x00000000, 0x00000000,
-			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
 #else
 	DREX_TIMING_PARA(0x00000D0D, 0x19233247, 0x2322A2D0, 0x181F0233, 0x00001C02, 0x00000000, 0x019BA10A, 0x00FFFFFF, 0x00000000, 0x00000000,
-			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
 #endif
 	DREX_TIMING_PARA(0x00000A0A, 0x192331C5, 0x22229ACC, 0x141F0233, 0x00001502, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
 			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
@@ -3696,6 +3746,69 @@ static struct dmc_drex_dfs_mif_table dfs_drex_mif_table[] =
 			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
 };
 
+/* for Non-SEC 12Gb die DRAM */
+static struct dmc_drex_dfs_mif_table dfs_drex_mif_table_nonsec_12Gb[] =
+{
+	DREX_TIMING_PARA(0x00003737, 0x6D588652, 0x4732BBE0, 0x40710336, 0x00004E02, 0x00000000, 0x319BA14A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x2D<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00003333, 0x66588611, 0x4732BBE0, 0x3C6A0336, 0x00004902, 0x00000000, 0x319BA14A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x2D<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00002D2D, 0x5947754F, 0x4632B3DC, 0x345C0335, 0x00004002, 0x00000000, 0x319BA13A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x24<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00002626, 0x4B46648C, 0x3532B39C, 0x2C4E0335, 0x00003602, 0x00000000, 0x319BA13A, 0x00005DC0, 0x00000101, 0x00000003,
+			0x00211400, 0x00200800|(0x24<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001D1D, 0x3A35538A, 0x3422AAD6, 0x243D0234, 0x00002A02, 0x00000000, 0x219BA12A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x1B<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001717, 0x2D2442C8, 0x2322A310, 0x1C2F0233, 0x00002003, 0x00000000, 0x019BA10B, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001414, 0x27233247, 0x2322A2D0, 0x18290233, 0x00001C02, 0x00000000, 0x019BA10A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000F0F, 0x1e2331C5, 0x22229ACC, 0x141F0233, 0x00001502, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000D0D, 0x19232185, 0x22229ACC, 0x101F0233, 0x00001202, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000A0A, 0x19232144, 0x22229A8C, 0x0C1F0233, 0x00000E02, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000606, 0x192320C3, 0x22229286, 0x081F0233, 0x00000902, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000505, 0x192320C2, 0x22229286, 0x081F0233, 0x00000702, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000404, 0x192320C2, 0x22229286, 0x081F0233, 0x00000502, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+};
+
+/* for Non-SEC 6Gb die DRAM */
+static struct dmc_drex_dfs_mif_table dfs_drex_mif_table_nonsec[] =
+{
+	DREX_TIMING_PARA(0x00002323, 0x46588652, 0x4732BBE0, 0x404A0336, 0x00004E02, 0x00000000, 0x319BA14A, 0x00005DC0, 0x01010101, 0x00000003,
+			0x00211400, 0x00200800|(0x2D<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00002121, 0x42588611, 0x4732BBE0, 0x3C460336, 0x00004902, 0x00000000, 0x319BA14A, 0x00005DC0, 0x01010101, 0x00000003,
+			0x00211400, 0x00200800|(0x2D<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001D1D, 0x3947754F, 0x4632B3DC, 0x343D0335, 0x00004002, 0x00000000, 0x319BA13A, 0x00005DC0, 0x01010101, 0x00000003,
+			0x00211400, 0x00200800|(0x24<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001919, 0x3146648C, 0x3532B39C, 0x2C340335, 0x00003602, 0x00000000, 0x319BA13A, 0x00005DC0, 0x01010101, 0x00000003,
+			0x00211400, 0x00200800|(0x24<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00001313, 0x2635538A, 0x3422AAD6, 0x24280234, 0x00002A02, 0x00000000, 0x219BA12A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x1B<<2), 0x00221800 | (0x26<<2), 0x00210c00|(0x04<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000F0F, 0x1D2442C8, 0x2322A310, 0x1C1F0233, 0x00002003, 0x00000000, 0x019BA10B, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000D0D, 0x19233247, 0x2322A2D0, 0x181F0233, 0x00001C02, 0x00000000, 0x019BA10A, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x12<<2), 0x00221800 | (0x26<<2), 0x00210c00|(MR11_DRAM_DQ_ODT<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000A0A, 0x192331C5, 0x22229ACC, 0x141F0233, 0x00001502, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000808, 0x19232185, 0x22229ACC, 0x101F0233, 0x00001202, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000707, 0x19232144, 0x22229A8C, 0x0C1F0233, 0x00000E02, 0x00000000, 0x019BA0FA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x09<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000404, 0x192320C3, 0x22229286, 0x081F0233, 0x00000902, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000303, 0x192320C2, 0x22229286, 0x081F0233, 0x00000702, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+	DREX_TIMING_PARA(0x00000303, 0x192320C2, 0x22229286, 0x081F0233, 0x00000502, 0x00000000, 0x019BA0EA, 0x00FFFFFF, 0x00000000, 0x00000000,
+			0x00211400, 0x00200800|(0x00<<2), 0x00221800 | (0x24<<2), 0x00210c00|(0x00<<2), 0x00211800|(0x0F<<2), 0x00000000),
+};
+
+/* for SEC memory */
 static struct dmc_phy_dfs_mif_table dfs_phy_mif_table[] =
 {
 	PHY_DVFS_CON(0x80200000|(dvfs_dqs_osc_en<<17), 0x40100000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
@@ -3776,6 +3889,89 @@ static struct dmc_phy_dfs_mif_table dfs_phy_mif_table[] =
 			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
 			0x005010F0, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
 #endif
+	PHY_DVFS_CON(0x82803000|(dvfs_dqs_osc_en<<17), 0x41400030|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x86004000, 0x40060040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x000A7000, 0x000000A7, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x005010F0, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82803000|(dvfs_dqs_osc_en<<17), 0x41400030|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x86004000, 0x40060040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x00085000, 0x00000085, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x005010F0, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82803000|(dvfs_dqs_osc_en<<17), 0x41400030|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x86004000, 0x40060040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x00064000, 0x00000064, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x005010F0, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+};
+
+/* for Non-SEC memory */
+static struct dmc_phy_dfs_mif_table dfs_phy_mif_table_nonsec[] =
+{
+	PHY_DVFS_CON(0x80200000|(dvfs_dqs_osc_en<<17), 0x40100000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x2000B000, 0x002000B0, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x0860E000, 0x0400060E, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x80700000, 0x40070000, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_dqs_osc_en<<17), 0x41100000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x2000B000, 0x002000B0, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x085B0000, 0x040005B0, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x80700000, 0x40070000, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_dqs_osc_en<<17), 0x41100000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x1C00B000, 0x001C00B0, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x084F0000, 0x040004F0, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x80700000, 0x40070000, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_dqs_osc_en<<17), 0x41100000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x1C00B000, 0x001C00B0, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x0842C000, 0x0400042C, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x80700000, 0x40070000, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_dqs_osc_en<<17), 0x41100000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x16004000, 0x00160040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x0033C000, 0x0000033C, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x00501000, 0x00050100, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_offset<<8)|(dvfs_dqs_osc_en<<17),	0x41100000|(dvfs_offset<<0)|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x10004000, 0x00100040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x00278000, 0x00000278, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x00501000, 0x00050100, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_offset<<8)|(dvfs_dqs_osc_en<<17),	0x41100000|(dvfs_offset<<0)|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x10004000, 0x00100040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x0021F000, 0x0000021F, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x00501000, 0x00050100, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82200000|(dvfs_offset<<8)|(dvfs_dqs_osc_en<<17), 0x41500000|(dvfs_offset<<0)|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x0C004000, 0x400C0040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x001A0000, 0x000001A0, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x00501000, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82A80000|(dvfs_dqs_osc_en<<17), 0x41540000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x8C004000, 0x400C0040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x0015C000, 0x0000015C, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x005010F0, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
+	PHY_DVFS_CON(0x82A80000|(dvfs_dqs_osc_en<<17), 0x41540000|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
+			0x8C004000, 0x400C0040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
+			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
+			0x00114000, 0x00000114, PHY_DVFS_CON3_SET1_MASK, PHY_DVFS_CON3_SET0_MASK,
+			0x00000000, 0x00000000, PHY_DVFS_CON4_SET1_MASK, PHY_DVFS_CON4_SET0_MASK,
+			0x005010F0, 0x0005010F, PHY_DVFS_CON5_SET1_MASK, PHY_DVFS_CON5_SET0_MASK),
 	PHY_DVFS_CON(0x82803000|(dvfs_dqs_osc_en<<17), 0x41400030|(dvfs_dqs_osc_en<<16), PHY_DVFS_CON0_SET1_MASK, PHY_DVFS_CON0_SET0_MASK,
 			0x86004000, 0x40060040, PHY_DVFS_CON1_SET1_MASK, PHY_DVFS_CON1_SET0_MASK,
 			0x20000000, 0x00400000, PHY_DVFS_CON2_SET1_MASK, PHY_DVFS_CON2_SET0_MASK,
@@ -4216,16 +4412,28 @@ static int exynos7_devfreq_mif_preset(struct devfreq_data_mif *data,
 	struct dmc_vtmon_dfs_mif_table *cur_vtmon_param;
 	uint32_t tmp;
 	int i;
-        uint32_t soc_vref[MIF_BLK_NUM][NUM_OF_SLICE];
+	uint32_t soc_vref[MIF_BLK_NUM][NUM_OF_SLICE];
 
-	cur_drex_param = &dfs_drex_mif_table[target_idx];
-	cur_phy_param = &dfs_phy_mif_table[target_idx];
+	if (data_mif->mid == LP4_SEC) {
+		if (data_mif->mem_density == LP4_12Gb_Die)
+			cur_drex_param = &dfs_drex_mif_table_12Gb[target_idx];
+		else
+			cur_drex_param = &dfs_drex_mif_table[target_idx];
+		cur_phy_param = &dfs_phy_mif_table[target_idx];
+	} else {
+		if (data_mif->mem_density == LP4_12Gb_Die)
+			cur_drex_param = &dfs_drex_mif_table_nonsec_12Gb[target_idx];
+		else
+			cur_drex_param = &dfs_drex_mif_table_nonsec[target_idx];
+		cur_phy_param = &dfs_phy_mif_table_nonsec[target_idx];
+	}
+
 	cur_vtmon_param = &dfs_vtmon_mif_table[target_idx];
 
-        for (i = 0; i< MIF_BLK_NUM; i++) {
-            soc_vref[i][1] = (__raw_readl(data->base_lp4_phy[i] + PHY_ZQ_CON9) & 0x3f00) >> 8;
-            soc_vref[i][0] = (__raw_readl(data->base_lp4_phy[i] + PHY_ZQ_CON9) & 0x003f) >> 0;
-        }
+	for (i = 0; i< MIF_BLK_NUM; i++) {
+		soc_vref[i][1] = (__raw_readl(data->base_lp4_phy[i] + PHY_ZQ_CON9) & 0x3f00) >> 8;
+		soc_vref[i][0] = (__raw_readl(data->base_lp4_phy[i] + PHY_ZQ_CON9) & 0x003f) >> 0;
+	}
 
 	pr_debug(" ===> pre-setting mif_timing_set_#%d\n", timing_set_num);
 
@@ -4276,7 +4484,7 @@ static int exynos7_devfreq_mif_preset(struct devfreq_data_mif *data,
 			__raw_writel(cur_vtmon_param->vtmon_Cnt_Limit_set1, data->base_vt_mon_mif[i] + VTMON_CNT_LIMIT_SET1_SW1);
 
 			/* DIRECTCMD */
-			__raw_writel((0x40<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_drex[i] + DREX_DIRECTCMD);
+			__raw_writel((0x50<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_drex[i] + DREX_DIRECTCMD);
 			__raw_writel(cur_drex_param->drex_DirectCmd_mr2, data->base_drex[i] + DREX_DIRECTCMD);
 			__raw_writel(cur_drex_param->drex_DirectCmd_mr22, data->base_drex[i] + DREX_DIRECTCMD);
 			__raw_writel(cur_drex_param->drex_DirectCmd_mr11, data->base_drex[i] + DREX_DIRECTCMD);
@@ -4284,7 +4492,7 @@ static int exynos7_devfreq_mif_preset(struct devfreq_data_mif *data,
 
 			/* VTMON */
 			__raw_writel((0x1<<0)| cur_drex_param->vtmon_Drex_Timing_Set_Sw, data->base_vt_mon_mif[i] + VTMON_DREX_TIMING_SW_SET);
-			__raw_writel((0xC0<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_vt_mon_mif[i] + VTMON_MIF_DREX_WDATA0);
+			__raw_writel((0xD0<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_vt_mon_mif[i] + VTMON_MIF_DREX_WDATA0);
 		}
 	} else {
 		for (i = 0; i< MIF_BLK_NUM; i++) {
@@ -4333,7 +4541,7 @@ static int exynos7_devfreq_mif_preset(struct devfreq_data_mif *data,
 			__raw_writel(cur_vtmon_param->vtmon_Cnt_Limit_set1, data->base_vt_mon_mif[i] + VTMON_CNT_LIMIT_SET1_SW0);
 
 			/* DIRECTCMD */
-			__raw_writel((0x80<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_drex[i] + DREX_DIRECTCMD);
+			__raw_writel((0x90<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_drex[i] + DREX_DIRECTCMD);
 			__raw_writel(cur_drex_param->drex_DirectCmd_mr2, data->base_drex[i] + DREX_DIRECTCMD);
 			__raw_writel(cur_drex_param->drex_DirectCmd_mr22, data->base_drex[i] + DREX_DIRECTCMD);
 			__raw_writel(cur_drex_param->drex_DirectCmd_mr11, data->base_drex[i] + DREX_DIRECTCMD);
@@ -4341,7 +4549,7 @@ static int exynos7_devfreq_mif_preset(struct devfreq_data_mif *data,
 
 			/* VTMON */
 			__raw_writel((0x0<<0)|cur_drex_param->vtmon_Drex_Timing_Set_Sw, data->base_vt_mon_mif[i] + VTMON_DREX_TIMING_SW_SET);
-			__raw_writel((0x0<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_vt_mon_mif[i] + VTMON_MIF_DREX_WDATA0);
+			__raw_writel((0x10<<2)|cur_drex_param->drex_DirectCmd_mr13, data->base_vt_mon_mif[i] + VTMON_MIF_DREX_WDATA0);
 		}
 	}
 	return 0;
@@ -4658,7 +4866,8 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 	exynos7_devfreq_check_mif_mux_ctrl_by_cmuc(data);
 
 #ifdef DRAM_POWER_DYNAMIC_SAVE
-	exynos7_devfreq_mif_set_refresh_method_pre_dvfs(data, target_idx, old_idx);
+	if (!((data->mem_density == LP4_12Gb_Die) && (data->tREFI == RATE_QUARTER)))
+		exynos7_devfreq_mif_set_refresh_method_pre_dvfs(data, target_idx, old_idx);
 #endif
 	if ((old_idx <= MIF_LV4) && (target_idx <= MIF_LV4)) {
 		clk_set_rate(devfreq_mif_clk[DOUT_SCLK_BUS0_PLL_MIF].clk, 1600000000);
@@ -4820,7 +5029,8 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 	}
 
 #ifdef DRAM_POWER_DYNAMIC_SAVE
-	exynos7_devfreq_mif_set_refresh_method_post_dvfs(data, target_idx, old_idx);
+	if (!((data->mem_density == LP4_12Gb_Die) && (data->tREFI == RATE_QUARTER)))
+		exynos7_devfreq_mif_set_refresh_method_post_dvfs(data, target_idx, old_idx);
 	exynos7_devfreq_mif_set_dynamic_sref_cycle(data, target_idx);
 #endif
 
@@ -4839,11 +5049,14 @@ int exynos7_devfreq_mif_tmu_notifier(struct notifier_block *nb, unsigned long ev
 							tmu_notifier);
 	unsigned int prev_volt, set_volt;
 	unsigned int *on = v, cl_idx;
-	int i;
 	struct opp *target_opp;
 	unsigned long freq = 0;
+#ifdef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
+	int i;
+#endif
 
 	if (event == MIF_TH_LV2) {
+#ifdef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
 		/* it means that tmu_temp is Greater than or equal to 65 degrees */
 		mutex_lock(&data->lock);
 
@@ -4858,8 +5071,10 @@ int exynos7_devfreq_mif_tmu_notifier(struct notifier_block *nb, unsigned long ev
 
 		mutex_unlock(&data->lock);
 		pr_info("MIF_TH_LV2 from TMU, %d\n", data->tmu_temp);
+#endif
 		return NOTIFY_OK;
 	} else if (event == MIF_TH_LV1) {
+#ifdef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
 		/* it means that tmu_temp is under 65 degrees */
 		mutex_lock(&data->lock);
 
@@ -4867,6 +5082,7 @@ int exynos7_devfreq_mif_tmu_notifier(struct notifier_block *nb, unsigned long ev
 
 		mutex_unlock(&data->lock);
 		pr_info("MIF_TH_LV1 from TMU, %d\n", data->tmu_temp);
+#endif
 		return NOTIFY_OK;
 	} else if (event == TMU_COLD) {
 		if (*on) {
@@ -4955,6 +5171,104 @@ static void exynos7_devfreq_thermal_event(struct devfreq_thermal_work *work)
 			msecs_to_jiffies(work->polling_period));
 #endif
 }
+
+#if defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
+#define MIF_THERMAL_MR4_OFFSET 2
+#define MIF_THERMAL_MR4_MAX_IDX 2
+#define MIF_THERMAL_MR4_MAX_PERIOD 5000
+
+static int mif_thermal_polling_period[][4] = {
+	/* Freq		2		3		4	*/
+	{400000,	5000,	1000,	100},
+	{1000000,	500,	100,	100},
+	{2100000,	100,	100,	100},
+};
+
+struct mif_thermal_data {
+	uint32_t max_thermal_level;
+	uint32_t prev_period;
+	uint32_t target_freq;
+	uint32_t cl;
+	bool big_alive;
+};
+
+static struct mif_thermal_data thermal_data = {
+	.max_thermal_level = 0,
+	.prev_period = 0,
+	.target_freq = 1000000,
+	.cl = 0,
+	.big_alive = 1,
+};
+
+static int mif_thermal_set_polling_period(void)
+{
+	unsigned int i;
+	int clk_idx = 0;
+	int mr4_idx = 0;
+	unsigned int polling_period = 0;
+
+	if (!data_mif || !data_mif->use_dvfs)
+		return -1;
+
+	mutex_lock(&data_mif->lock);
+
+	mr4_idx = thermal_data.max_thermal_level - MIF_THERMAL_MR4_OFFSET;
+	if (mr4_idx >= MIF_THERMAL_MR4_MAX_IDX)
+		mr4_idx = MIF_THERMAL_MR4_MAX_IDX;
+	else if (mr4_idx < 0)
+		mr4_idx = 0;
+
+	for (i = 0; i < ARRAY_SIZE(mif_thermal_polling_period); i++) {
+		if (thermal_data.target_freq <= mif_thermal_polling_period[i][0]) {
+			clk_idx = i;
+			break;
+		}
+	}
+
+	if (thermal_data.big_alive && clk_idx == 0)
+		clk_idx++;
+
+	polling_period = mif_thermal_polling_period[clk_idx][mr4_idx + 1];
+
+	if (thermal_data.prev_period == polling_period) {
+		mutex_unlock(&data_mif->lock);
+		return -1;
+	}
+
+	thermal_data.prev_period = devfreq_mif_thermal_work.polling_period = polling_period;
+
+	pr_debug("%s: %d, %d, %d, %d, %d, %d, %d\n",
+		__func__, devfreq_mif_thermal_work.polling_period, clk_idx, mr4_idx,
+		thermal_data.target_freq, thermal_data.max_thermal_level,
+		thermal_data.cl, thermal_data.big_alive);
+
+	mutex_unlock(&data_mif->lock);
+
+	return 0;
+}
+
+void exynos7_devfreq_mif_thermal_set_polling_period(uint32_t target_freq, uint32_t cl, bool big_alive)
+{
+	if (!data_mif || !data_mif->use_dvfs)
+		return;
+
+	mutex_lock(&data_mif->lock);
+	thermal_data.target_freq = target_freq;
+	thermal_data.cl = cl;
+	thermal_data.big_alive = big_alive;
+	mutex_unlock(&data_mif->lock);
+
+	if (mif_thermal_set_polling_period())
+		return;
+
+	if (devfreq_mif_thermal_work.polling_period >= MIF_THERMAL_MR4_MAX_PERIOD) {
+		flush_delayed_work(&devfreq_mif_thermal_work.devfreq_mif_thermal_work);
+	}
+
+	exynos7_devfreq_thermal_event(&devfreq_mif_thermal_work);
+}
+EXPORT_SYMBOL(exynos7_devfreq_mif_thermal_set_polling_period);
+#endif /*CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING */
 
 static ssize_t mif_show_templvl_ch0_0(struct device *dev, struct device_attribute *attr, char *buf)
 {
@@ -5063,6 +5377,7 @@ enum devfreq_mif_thermal_autorate exynos7_devfreq_get_autorate(unsigned int ther
 	return timingaref_value;
 }
 
+#ifdef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
 static void exynos7_devfreq_mr4_set(void __iomem *base_drex, uint32_t cs_num, uint32_t prev_mr4, uint32_t next_mr4, uint32_t tmu_temp)
 {
 	uint32_t cmd_chip;
@@ -5078,6 +5393,12 @@ static void exynos7_devfreq_mr4_set(void __iomem *base_drex, uint32_t cs_num, ui
 		}
 	}
 }
+#else
+static void exynos7_devfreq_mr4_set(void __iomem *base_drex, uint32_t cs_num, uint32_t prev_mr4, uint32_t next_mr4, uint32_t tmu_temp)
+{
+	return;
+}
+#endif
 
 static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 {
@@ -5127,12 +5448,14 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 		max_thermal_level = ch0_cs0_thermal_level;
 	thermal_work->thermal_level_ch0_cs0 = ch0_cs0_thermal_level;
 
-	__raw_writel(0x09101000, base_drex0 + DREX_DIRECTCMD);
-	mrstatus0 = __raw_readl(base_drex0 + MRSTATUS);
-	ch0_cs1_thermal_level = (mrstatus0 & MRSTATUS_THERMAL_LV_MASK);
-	exynos7_devfreq_mr4_set(base_drex0, 1, thermal_work->thermal_level_ch0_cs1, ch0_cs1_thermal_level, data_mif->tmu_temp);
-	if (ch0_cs1_thermal_level > max_thermal_level)
-		max_thermal_level = ch0_cs1_thermal_level;
+	if (data_mif->mem_density != LP4_12Gb_Die) {
+		__raw_writel(0x09101000, base_drex0 + DREX_DIRECTCMD);
+		mrstatus0 = __raw_readl(base_drex0 + MRSTATUS);
+		ch0_cs1_thermal_level = (mrstatus0 & MRSTATUS_THERMAL_LV_MASK);
+		exynos7_devfreq_mr4_set(base_drex0, 1, thermal_work->thermal_level_ch0_cs1, ch0_cs1_thermal_level, data_mif->tmu_temp);
+		if (ch0_cs1_thermal_level > max_thermal_level)
+			max_thermal_level = ch0_cs1_thermal_level;
+	}
 	thermal_work->thermal_level_ch0_cs1 = ch0_cs1_thermal_level;
 
 	ch0_max_thermal_level = max(ch0_cs0_thermal_level, ch0_cs1_thermal_level);
@@ -5145,12 +5468,14 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 		max_thermal_level = ch1_cs0_thermal_level;
 	thermal_work->thermal_level_ch1_cs0 = ch1_cs0_thermal_level;
 
-	__raw_writel(0x09101000, base_drex1 + DREX_DIRECTCMD);
-	mrstatus1 = __raw_readl(base_drex1 + MRSTATUS);
-	ch1_cs1_thermal_level = (mrstatus1 & MRSTATUS_THERMAL_LV_MASK);
-	exynos7_devfreq_mr4_set(base_drex1, 1, thermal_work->thermal_level_ch1_cs1, ch1_cs1_thermal_level, data_mif->tmu_temp);
-	if (ch1_cs1_thermal_level > max_thermal_level)
-		max_thermal_level = ch1_cs1_thermal_level;
+	if (data_mif->mem_density != LP4_12Gb_Die) {
+		__raw_writel(0x09101000, base_drex1 + DREX_DIRECTCMD);
+		mrstatus1 = __raw_readl(base_drex1 + MRSTATUS);
+		ch1_cs1_thermal_level = (mrstatus1 & MRSTATUS_THERMAL_LV_MASK);
+		exynos7_devfreq_mr4_set(base_drex1, 1, thermal_work->thermal_level_ch1_cs1, ch1_cs1_thermal_level, data_mif->tmu_temp);
+		if (ch1_cs1_thermal_level > max_thermal_level)
+			max_thermal_level = ch1_cs1_thermal_level;
+	}
 	thermal_work->thermal_level_ch1_cs1 = ch1_cs1_thermal_level;
 
 	ch1_max_thermal_level = max(ch1_cs0_thermal_level, ch1_cs1_thermal_level);
@@ -5163,12 +5488,14 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 		max_thermal_level = ch2_cs0_thermal_level;
 	thermal_work->thermal_level_ch2_cs0 = ch2_cs0_thermal_level;
 
-	__raw_writel(0x09101000, base_drex2 + DREX_DIRECTCMD);
-	mrstatus2 = __raw_readl(base_drex2 + MRSTATUS);
-	ch2_cs1_thermal_level = (mrstatus2 & MRSTATUS_THERMAL_LV_MASK);
-	exynos7_devfreq_mr4_set(base_drex2, 1, thermal_work->thermal_level_ch2_cs1, ch2_cs1_thermal_level, data_mif->tmu_temp);
-	if (ch2_cs1_thermal_level > max_thermal_level)
-		max_thermal_level = ch2_cs1_thermal_level;
+	if (data_mif->mem_density != LP4_12Gb_Die) {
+		__raw_writel(0x09101000, base_drex2 + DREX_DIRECTCMD);
+		mrstatus2 = __raw_readl(base_drex2 + MRSTATUS);
+		ch2_cs1_thermal_level = (mrstatus2 & MRSTATUS_THERMAL_LV_MASK);
+		exynos7_devfreq_mr4_set(base_drex2, 1, thermal_work->thermal_level_ch2_cs1, ch2_cs1_thermal_level, data_mif->tmu_temp);
+		if (ch2_cs1_thermal_level > max_thermal_level)
+			max_thermal_level = ch2_cs1_thermal_level;
+	}
 	thermal_work->thermal_level_ch2_cs1 = ch2_cs1_thermal_level;
 
 	ch2_max_thermal_level = max(ch2_cs0_thermal_level, ch2_cs1_thermal_level);
@@ -5181,15 +5508,21 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 		max_thermal_level = ch3_cs0_thermal_level;
 	thermal_work->thermal_level_ch3_cs0 = ch3_cs0_thermal_level;
 
-	__raw_writel(0x09101000, base_drex3 + DREX_DIRECTCMD);
-	mrstatus3 = __raw_readl(base_drex3 + MRSTATUS);
-	ch3_cs1_thermal_level = (mrstatus3 & MRSTATUS_THERMAL_LV_MASK);
-	exynos7_devfreq_mr4_set(base_drex3, 1, thermal_work->thermal_level_ch3_cs1, ch3_cs1_thermal_level, data_mif->tmu_temp);
-	if (ch3_cs1_thermal_level > max_thermal_level)
-		max_thermal_level = ch3_cs1_thermal_level;
+	if (data_mif->mem_density != LP4_12Gb_Die) {
+		__raw_writel(0x09101000, base_drex3 + DREX_DIRECTCMD);
+		mrstatus3 = __raw_readl(base_drex3 + MRSTATUS);
+		ch3_cs1_thermal_level = (mrstatus3 & MRSTATUS_THERMAL_LV_MASK);
+		exynos7_devfreq_mr4_set(base_drex3, 1, thermal_work->thermal_level_ch3_cs1, ch3_cs1_thermal_level, data_mif->tmu_temp);
+		if (ch3_cs1_thermal_level > max_thermal_level)
+			max_thermal_level = ch3_cs1_thermal_level;
+	}
 	thermal_work->thermal_level_ch3_cs1 = ch3_cs1_thermal_level;
 
 	ch3_max_thermal_level = max(ch3_cs0_thermal_level, ch3_cs1_thermal_level);
+
+#if defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
+	thermal_data.max_thermal_level = max_thermal_level;
+#endif
 
 	mutex_unlock(&data_mif->lock);
 
@@ -5198,20 +5531,28 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 	case 1:
 	case 2:
 	case 3:
+#if !defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
 		thermal_work->polling_period = 500;
+#endif
 		break;
 	case 4:
 		throttling = true;
+#if !defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
 		thermal_work->polling_period = 300;
+#endif
 		break;
 	case 5:
 	case 6:
 		throttling = true;
+#if !defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
 		thermal_work->polling_period = 100;
+#endif
 		break;
 	case 7:
 		throttling = true;
+#if !defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
 		thermal_work->polling_period = 100;
+#endif
 		exynos7_devfreq_swtrip();
 		break;
 	default:
@@ -5236,17 +5577,35 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 	/* set timming auto refresh rate */
 	mutex_lock(&data_mif->lock);
 	ch0_timingaref_value = exynos7_devfreq_get_autorate(ch0_max_thermal_level);
-	if (ch0_timingaref_value > 0)
+	if (ch0_timingaref_value > 0) {
+		/* If memory is 12Gb die  and it is under hot-temp, it use ABR */
+		if ((ch0_timingaref_value == RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
+			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
 		__raw_writel(ch0_timingaref_value, base_drex0 + TIMINGAREF);
+		/* data_mif->tREFI is the worst tREFI of 4 channels */
+		data_mif->tREFI = ch0_timingaref_value;
+	}
 	ch1_timingaref_value = exynos7_devfreq_get_autorate(ch1_max_thermal_level);
-	if (ch1_timingaref_value > 0)
+	if (ch1_timingaref_value > 0) {
+		if ((ch1_timingaref_value == RATE_QUARTER) && (data_mif->tREFI != RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
+			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
 		__raw_writel(ch1_timingaref_value, base_drex1 + TIMINGAREF);
+		data_mif->tREFI = min(data_mif->tREFI, ch1_timingaref_value);
+	}
 	ch2_timingaref_value = exynos7_devfreq_get_autorate(ch2_max_thermal_level);
-	if (ch2_timingaref_value > 0)
+	if (ch2_timingaref_value > 0) {
+		if ((ch2_timingaref_value == RATE_QUARTER) && (data_mif->tREFI != RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
+			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
 		__raw_writel(ch2_timingaref_value, base_drex2 + TIMINGAREF);
+		data_mif->tREFI = min(data_mif->tREFI, ch2_timingaref_value);
+	}
 	ch3_timingaref_value = exynos7_devfreq_get_autorate(ch3_max_thermal_level);
-	if (ch3_timingaref_value > 0)
+	if (ch3_timingaref_value > 0) {
+		if ((ch3_timingaref_value == RATE_QUARTER) && (data_mif->tREFI != RATE_QUARTER) && (data_mif->mem_density == LP4_12Gb_Die))
+			exynos7_devfreq_mif_set_PBR_en(data_mif, 0);
 		__raw_writel(ch3_timingaref_value, base_drex3 + TIMINGAREF);
+		data_mif->tREFI = min(data_mif->tREFI, ch3_timingaref_value);
+	}
 	mutex_unlock(&data_mif->lock);
 
 	exynos_ss_printk("[MIF]%d,%d(tREFI:0x%08x);%d,%d(0x%08x);%d,%d(0x%08x);%d,%d(0x%08x)",
@@ -5254,6 +5613,11 @@ static void exynos7_devfreq_thermal_monitor(struct work_struct *work)
 			ch1_cs0_thermal_level, ch1_cs1_thermal_level, ch1_timingaref_value,
 			ch2_cs0_thermal_level, ch2_cs1_thermal_level, ch2_timingaref_value,
 			ch3_cs0_thermal_level, ch3_cs1_thermal_level, ch3_timingaref_value);
+
+#if defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
+	mif_thermal_set_polling_period();
+	pr_debug("%s: polling_period = %d\n", __func__, thermal_work->polling_period);
+#endif
 	exynos7_devfreq_thermal_event(thermal_work);
 }
 
@@ -5300,6 +5664,59 @@ int exynos7_devfreq_mif_init_clock(void)
 	return 0;
 }
 
+static lp4_density_t exynos7_devfreq_lp4_size(struct devfreq_data_mif *data, char *name)
+{
+	unsigned int mem_type, mem_density, mem_width;
+	unsigned int mrstatus;
+	int loop=20, delay;
+	int ch = 0;
+
+	do {
+		__raw_writel(0x09010000, data->base_drex[ch] + DREX_DIRECTCMD);
+		mrstatus = __raw_readl(data->base_drex[ch] + MRSTATUS);
+
+		mem_type = mrstatus & 0x3;
+		mem_density = (mrstatus >> 2) & 0xF;
+		mem_width = (mrstatus >> 6) & 0x3;
+
+		loop--;
+
+		if (loop < 1) {
+			ch++;
+
+			if(ch > 3) {
+				for (delay = 0 ; delay < 0xFF000000 ; delay++) ;	/* delay */
+				mem_density = 7;
+				break;
+			}
+			loop=20;
+		}
+	} while ((mem_type != 0x0) || (mem_width != 0x0) || (mem_density < 1) || (mem_density > 3));
+
+	pr_info("DEVFREQ(MIF): mem_density : %d\n", mem_density);
+
+	switch(mem_density)
+	{
+		case 1:
+			mem_density = LP4_6Gb_Die;
+			strncpy(name, "LP4_6Gb_Die", strlen("LP4_6Gb_Die") + 1);
+			break;
+		case 2:
+			mem_density = LP4_8Gb_Die;
+			strncpy(name, "LP4_8Gb_Die", strlen("LP4_8Gb_Die") + 1);
+			break;
+		case 3:
+			mem_density = LP4_12Gb_Die;
+			strncpy(name, "LP4_12Gb_Die", strlen("LP4_12Gb_Die") + 1);
+			break;
+		default:
+			mem_density = LP4_Invalid_Die;
+			strncpy(name, "LP4_Invalid_Die", strlen("LP4_Invalid_Die") + 1);
+			break;
+	}
+	return mem_density;
+}
+
 #define DREX0_BASE      0x10800000
 #define DREX1_BASE      0x10900000
 #define DREX2_BASE      0x10a00000
@@ -5320,8 +5737,11 @@ int exynos7_devfreq_mif_init_clock(void)
 
 int exynos7_devfreq_mif_init_parameter(struct devfreq_data_mif *data)
 {
+	char mem_density_name[32];
+#ifndef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
 	int i;
-	uint32_t temp;
+#endif
+
 	data->base_drex[0] = devm_ioremap(data->dev, DREX0_BASE, SZ_64K);
 	data->base_drex[1] = devm_ioremap(data->dev, DREX1_BASE, SZ_64K);
 	data->base_drex[2] = devm_ioremap(data->dev, DREX2_BASE, SZ_64K);
@@ -5344,20 +5764,26 @@ int exynos7_devfreq_mif_init_parameter(struct devfreq_data_mif *data)
 	data->base_vt_mon_mif[2] = devm_ioremap(data->dev, EXYNOS7420_VT_MON_2, SZ_64K);
 	data->base_vt_mon_mif[3] = devm_ioremap(data->dev, EXYNOS7420_VT_MON_3, SZ_64K);
 
-	/* it shoul be clear ctrl_dqs_osc_en, per_mrs_en in bl 2*/
-	for (i = 0; i< MIF_BLK_NUM; i++) {
-		temp = __raw_readl(data->base_vt_mon_mif[i] + VT_MON_CON_OFFSET);
-		pr_info("VT_MON%d: PER_MRS_EN: 0x%08x\n", i, (uint32_t)(temp & PER_MRS_EN));
-		//temp &= ~(PER_MRS_EN);
-		//__raw_writel(temp, data->base_vt_mon_mif[i] + VT_MON_CON_OFFSET);
-	}
+	/* MR5 (Manufacturer ID) read */
+	__raw_writel(0x09001400, data->base_drex[0] + DREX_DIRECTCMD);
+	data->mid  = (__raw_readl(data->base_drex[0] + MRSTATUS) & 0xf);
 
+	if (data-> mid == LP4_SEC)
+		pr_info("DEVFREQ(MIF): LP4_SEC momory\n");
+	else
+		pr_info("DEVFREQ(MIF): LP4_Non_SEC moemry\n");
+
+	data->mem_density = exynos7_devfreq_lp4_size(data, mem_density_name);
+	pr_info("DEVFREQ(MIF): mem_density: %s\n", mem_density_name);
+
+#ifndef CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_THERMAL_OFFSET
+	/* DRAM Thermal offset 0 */
 	for (i = 0; i< MIF_BLK_NUM; i++) {
-		temp = __raw_readl(data->base_lp4_phy[i] + CAL_CON0);
-		pr_info("LP4_PHY%d: CTRL_DQS_OSC_EN: 0x%08x\n", i, (uint32_t)(temp & CTRL_DQS_OSC_EN));
-		//temp &= ~(CTRL_DQS_OSC_EN);
-		//__raw_writel(temp, data->base_lp4_phy[i] + CAL_CON0);
+		__raw_writel((0x00001000 | (0 << 20) | 0x0 << 2), data->base_drex[i] + DREX_DIRECTCMD);
+		__raw_writel((0x00001000 | (1 << 20) | 0x0 << 2), data->base_drex[i] + DREX_DIRECTCMD);
 	}
+#endif
+
 	return 0;
 }
 

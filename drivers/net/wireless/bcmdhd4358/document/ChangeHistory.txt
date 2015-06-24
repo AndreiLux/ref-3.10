@@ -1,7 +1,45 @@
-BCM4358 DHD 1.47.23 for Android Lollipop Zero Project
+BCM4358 DHD 1.47.30 for Android Lollipop Zero Project
 Notes: 
 - Must sync up DHD and FW for additional message to eliminate spurious D0 interrupt.
 . additional message to eliminate spurious D0 interrupt is enabled from DHD 1.47.20 and FW 7.112.20.5/7.112.20.2(IBSS) 
+
+2015.5.13 - DHD 1.47.30
+Others
+   - CSP:906264 Added Private command for Preferred Band selection 
+   - CSP:906786 OTP value updated for BCM4356G
+   - CSP:912978 Fixed P2P NOA wpa_cli private command
+   - CSP:916567 Fixed prevent null check issue
+   - CSP:916865 Added PCIe register dump code for further debugging
+   - CSP:917184 Added WAR for avoid P2P GO beacon delay issue
+   - Fixed Flow ring remained issue for IBSS mode
+     (This patch should be sync up with IBSS FW 7.112.17.7 or higher version)
+
+
+2015.4.28 - DHD 1.47.29
+Others
+   - CSP:906786 Added Runtime OTP header writing and checking code for PCIE COB type module
+   - CSP:914492 Fixed Ch 12/13 AP connection failed issue with UA country code
+     (This patch should be sync up same FW patch - CSP:914492)
+   - CSP:914563 Fixed FT & CCKM roaming issues when Lossless Roaming in enabled
+   - Added Exceptional Kconfig for Galaxy Tab2 platform
+
+
+2015.4.21 - DHD 1.47.27
+Kernel Panic
+   - CSP:805589 Prevent running wl_event_handler while HANG is occurred
+
+Others
+   - CSP:799948 Added Lossless Roaming feature
+   - CSP:888565, 897513 Added OOB intr wakelock handling on system suspend for DPM device timeout issue
+   - CSP:910874 Added Additional wl_event_handler terminate code
+   - CSP:911242 Fixed Prevent null check issue
+   - CSP:911733 Filter out Action Frame Rx Packet for IBSS mode
+   - Added BCM4356G Chip ID support code
+   - Enabled Power save for IBSS mode
+   - Fixed adding interworking IE to dongle on driver
+   - Fixed Coverity issue - Uninitialized scalar variable
+   - Fixed suspend failure issue due to wake lock
+
 
 2015.3.19 - DHD 1.47.23
 Kernel Panic

@@ -20,6 +20,13 @@ config ENABLE_HAL3_2_META_INTERFACE
 	help
           Use the unified meta in 3.2 and 1.0 HAL.
 
+config TORCH_CURRENT_CHANGE_SUPPORT
+	bool "Change torch current in recording mode"
+        depends on USE_VENDER_FEATURE
+	default n
+	help
+          Change torch current in recording mode.
+
 source "drivers/media/platform/exynos/fimc-is2/sensor/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/ischain/Kconfig"
 source "drivers/media/platform/exynos/fimc-is2/vendor/Kconfig"

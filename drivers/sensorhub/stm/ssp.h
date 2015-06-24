@@ -446,6 +446,8 @@ struct ssp_data {
 #ifdef CONFIG_SENSORS_SSP_IRDATA_FOR_CAMERA
 	int light_ir_log_cnt;
 #endif
+	int acc_type;
+	int pressure_type;
 };
 
 struct ssp_big {

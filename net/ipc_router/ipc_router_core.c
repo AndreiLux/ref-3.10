@@ -2438,8 +2438,8 @@ static void do_read_data(struct work_struct *work)
 		if (ret < 0)
 			goto read_next_pkt1;
 		hdr = &(pkt->hdr);
-		RAW("ver=%d type=%d src=%d:%08x crx=%d siz=%d dst=%d:%08x\n",
-		     hdr->version, hdr->type, hdr->src_node_id,
+		pr_info("%s: ver=%d type=%d src=%d:%08x crx=%d siz=%d dst=%d:%08x\n",
+		     __func__, hdr->version, hdr->type, hdr->src_node_id,
 		     hdr->src_port_id, hdr->control_flag, hdr->size,
 		     hdr->dst_node_id, hdr->dst_port_id);
 
@@ -2645,8 +2645,10 @@ static int ipc_router_tx_wait(struct msm_ipc_port *src,
 	struct msm_ipc_resume_tx_port *resume_tx_port;
 	int ret;
 
-	if (unlikely(!src || !rport_ptr))
+	if (unlikely(!src || !rport_ptr)) {
+		IPC_RTR_ERR("%s: src or rport_ptr is null\n", __func__);
 		return -EINVAL;
+	}
 
 	for (;;) {
 		mutex_lock(&rport_ptr->rport_lock_lhb2);
@@ -2681,14 +2683,17 @@ static int ipc_router_tx_wait(struct msm_ipc_port *src,
 check_timeo:
 		mutex_unlock(&rport_ptr->rport_lock_lhb2);
 		if (!timeout) {
+			IPC_RTR_ERR("%s: timeout value is empty\n", __func__);
 			return -EAGAIN;
 		} else if (timeout < 0) {
 			ret = wait_event_interruptible(src->port_tx_wait_q,
 					(rport_ptr->tx_quota_cnt !=
 					 IPC_ROUTER_DEFAULT_RX_QUOTA ||
 					 rport_ptr->status == RESET));
-			if (ret)
+			if (ret) {
+				IPC_RTR_ERR("%s: no interrupt?, %d\n", __func__, ret);
 				return ret;
+			}
 		} else {
 			ret = wait_event_interruptible_timeout(
 					src->port_tx_wait_q,
@@ -2697,6 +2702,7 @@ check_timeo:
 					 rport_ptr->status == RESET),
 					msecs_to_jiffies(timeout));
 			if (ret < 0) {
+				IPC_RTR_ERR("%s: other error happened, %d\n", __func__, ret);
 				return ret;
 			} else if (ret == 0) {
 				IPC_RTR_ERR("%s: Resume_tx Timeout %08x:%08x\n",
@@ -2743,13 +2749,16 @@ static int msm_ipc_router_write_pkt(struct msm_ipc_port *src,
 	hdr->dst_port_id = rport_ptr->port_id;
 
 	ret = ipc_router_tx_wait(src, rport_ptr, &set_confirm_rx, timeout);
-	if (ret < 0)
+	if (ret < 0) {
+		IPC_RTR_ERR("%s: ipc_router_tx_wait failed, %d\n", __func__, ret);
 		return ret;
+	}
 	if (set_confirm_rx)
 		hdr->control_flag |= CONTROL_FLAG_CONFIRM_RX;
 
 	if (hdr->dst_node_id == IPC_ROUTER_NID_LOCAL) {
 		ret = loopback_data(src, hdr->dst_port_id, pkt);
+		IPC_RTR_ERR("%s: loopback_data, %d\n", __func__, ret);
 		return ret;
 	}
 
@@ -2769,8 +2778,10 @@ static int msm_ipc_router_write_pkt(struct msm_ipc_port *src,
 	xprt_option = xprt_info->xprt->get_option(xprt_info->xprt);
 	if (!(xprt_option & FRAG_PKT_WRITE_ENABLE)) {
 		ret = defragment_pkt(pkt);
-		if (ret < 0)
+		if (ret < 0) {
+			IPC_RTR_ERR("%s: Prepend Header failed, %d\n", __func__, ret);
 			goto out_write_pkt;
+		}
 	}
 
 	temp_skb = skb_peek_tail(pkt->pkt_fragment_q);
@@ -3715,8 +3726,10 @@ void msm_ipc_router_xprt_notify(struct msm_ipc_router_xprt *xprt,
 		break;
 	}
 
-	if (!data)
+	if (!data) {
+		IPC_RTR_ERR("%s: data is null", __func__);
 		return;
+	}
 
 	while (!xprt_info) {
 		msleep(100);
@@ -3724,8 +3737,10 @@ void msm_ipc_router_xprt_notify(struct msm_ipc_router_xprt *xprt,
 	}
 
 	pkt = clone_pkt((struct rr_packet *)data);
-	if (!pkt)
+	if (!pkt) {
+		IPC_RTR_ERR("%s: pkt is null", __func__);
 		return;
+	}
 
 	mutex_lock(&xprt_info->rx_lock_lhb2);
 	list_add_tail(&pkt->list, &xprt_info->pkt_list);

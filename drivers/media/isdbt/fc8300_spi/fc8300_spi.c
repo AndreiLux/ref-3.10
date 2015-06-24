@@ -38,10 +38,11 @@
 #define SPI_AINC            0x80
 
 #define DRIVER_NAME "fc8300_spi"
+#define TX_DATA_SIZE 36	/* header(4)+PID1(2)+PID2(2)+...+PID16(2) */
 
 struct spi_device *fc8300_spi;
 
-static u8 tx_data[10];
+static u8 tx_data[TX_DATA_SIZE];
 
 static u8 wdata_buf[32] __cacheline_aligned;
 static u8 rdata_buf[65536] __cacheline_aligned;
@@ -168,7 +169,7 @@ static s32 spi_bulkwrite(HANDLE handle, u8 devid,
 	tx_data[3] = length & 0xff;
 
 	for (i = 0; i < length; i++) {
-		if ((4+i) < 10)
+		if ((4+i) < TX_DATA_SIZE)
 			tx_data[4+i] = data[i];
 		else
 			ISDB_PR_ERR("Error spi_bulkwrite  tx_data length= %d\n", length);

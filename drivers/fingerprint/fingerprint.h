@@ -26,13 +26,16 @@
 
 /* For Sensor Type Check */
 enum {
-	SENSOR_FAILED = 0,
+	SENSOR_UNKNOWN = -1,
+	SENSOR_FAILED,
 	SENSOR_VIPER,
 	SENSOR_RAPTOR,
 	SENSOR_EGIS,
 };
 
-static char sensor_status[4][7] ={"failed", "viper", "raptor", "egis"};
+#define SENSOR_STATUS_SIZE 5
+static char sensor_status[SENSOR_STATUS_SIZE][8] ={"unknown", "failed",
+	"viper", "raptor", "egis"};
 
 /* Fingerprint vendor check */
 #undef ENABLE_VENDOR_CHECK
@@ -41,4 +44,8 @@ static char sensor_status[4][7] ={"failed", "viper", "raptor", "egis"};
 extern int FP_CHECK; /* extern variable */
 #endif
 
+#define MC_FC_FP_PM_SUSPEND ((uint32_t)(0x83000021))
+#define MC_FC_FP_PM_RESUME ((uint32_t)(0x83000022))
+#define MC_FC_FP_BTP_OCP_HIGH ((uint32_t)(0x83000023))
+#define MC_FC_FP_BTP_OCP_LOW ((uint32_t)(0x83000024))
 #endif

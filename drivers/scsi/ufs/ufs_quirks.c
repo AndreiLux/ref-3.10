@@ -22,6 +22,10 @@
 #define UFS_VENDOR_ID_TOSHIBA	 0x198
 #endif
 
+#ifndef UFS_VENDOR_ID_HYNIX
+#define UFS_VENDOR_ID_HYNIX	 0x1ad
+#endif
+
 static struct ufs_card_fix ufs_fixups[] = {
 	/* UFS cards deviations table */
 	UFS_FIX(UFS_VENDOR_ID_SAMSUNG, UFS_ANY_MODEL, UFS_DEVICE_QUIRK_BROKEN_LINEREST),
@@ -82,7 +86,9 @@ int ufs_get_device_info(struct ufs_hba *hba, struct ufs_card_info *card_data)
 	memset(str_desc_buf, 0, QUERY_DESC_STRING_MAX_SIZE);
 
 	/*Samsung device use UTF16*/
-	if ((hba->manufacturer_id == UFS_VENDOR_ID_SAMSUNG)  || (hba->manufacturer_id == UFS_VENDOR_ID_TOSHIBA))
+	if ((hba->manufacturer_id == UFS_VENDOR_ID_SAMSUNG) ||
+			(hba->manufacturer_id == UFS_VENDOR_ID_TOSHIBA) ||
+			(hba->manufacturer_id == UFS_VENDOR_ID_HYNIX))
 		ascii_type = UTF16_STD;
 	else
 		ascii_type = ASCII_STD;

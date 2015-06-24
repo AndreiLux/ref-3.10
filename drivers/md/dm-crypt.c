@@ -33,6 +33,10 @@
 #define DM_MSG_PREFIX "crypt"
 #define FMP_KEY_STORAGE_OFFSET 0x0FC0
 
+#if defined(CONFIG_FIPS_FMP)
+extern bool in_fmp_fips_err(void);
+#endif
+
 /*
  * context holding the current state of a multi-part conversion
  */
@@ -1514,6 +1518,13 @@ static int crypt_ctr_cipher(struct dm_target *ti,
 		ti->error = "Error decoding xts-aes-fmp";
 		ret = -EINVAL;
 		goto bad;
+#endif
+#if defined(CONFIG_FIPS_FMP)
+		if (unlikely(in_fmp_fips_err())) {
+			ti->error = "Error to work fmp due to fips in error";
+			ret = -EPERM;
+			goto bad;
+		}
 #endif
 		cc->hw_fmp = 1;
 

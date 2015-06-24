@@ -147,7 +147,7 @@ int proximity_open_lcd_ldi(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cancel_filp = filp_open(LCD_LDI_FILE_PATH, O_RDONLY, 0666);
+	cancel_filp = filp_open(LCD_LDI_FILE_PATH, O_RDONLY, 0660);
 	if (IS_ERR(cancel_filp)) {
 		iRet = PTR_ERR(cancel_filp);
 		if (iRet != -ENOENT)
@@ -186,7 +186,7 @@ int proximity_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cancel_filp = filp_open(CANCELATION_FILE_PATH, O_RDONLY, 0666);
+	cancel_filp = filp_open(CANCELATION_FILE_PATH, O_RDONLY, 0660);
 	if (IS_ERR(cancel_filp)) {
 		iRet = PTR_ERR(cancel_filp);
 		if (iRet != -ENOENT)
@@ -240,7 +240,7 @@ static int proximity_store_cancelation(struct ssp_data *data, int iCalCMD)
 	set_fs(KERNEL_DS);
 
 	cancel_filp = filp_open(CANCELATION_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY, 0666);
+			O_CREAT | O_TRUNC | O_WRONLY, 0660);
 	if (IS_ERR(cancel_filp)) {
 		pr_err("%s: Can't open cancelation file\n", __func__);
 		set_fs(old_fs);

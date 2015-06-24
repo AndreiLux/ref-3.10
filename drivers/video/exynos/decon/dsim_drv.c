@@ -405,10 +405,10 @@ static int dsim_partial_area_command(struct dsim_device *dsim, void *arg)
 
 	/* w is right & h is bottom */
 	data_2a[0] = MIPI_DCS_SET_COLUMN_ADDRESS;
-	data_2a[1] = (win_rect->x >> 8) & 0xff;
-	data_2a[2] = win_rect->x & 0xff;
-	data_2a[3] = (win_rect->w >> 8) & 0xff;
-	data_2a[4] = win_rect->w & 0xff;
+	data_2a[1] = ((win_rect->x +dsim->glide_display_size) >> 8) & 0xff;
+	data_2a[2] = (win_rect->x +dsim->glide_display_size) & 0xff;
+	data_2a[3] = ((win_rect->w +dsim->glide_display_size) >> 8) & 0xff;
+	data_2a[4] = (win_rect->w +dsim->glide_display_size) & 0xff;
 
 	data_2b[0] = MIPI_DCS_SET_PAGE_ADDRESS;
 	data_2b[1] = (win_rect->y >> 8) & 0xff;

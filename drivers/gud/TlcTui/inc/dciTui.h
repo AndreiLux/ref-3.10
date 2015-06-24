@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2014 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -15,18 +15,12 @@
 #ifndef __DCITUI_H__
 #define __DCITUI_H__
 
-typedef volatile uint32_t dciCommandId_t;
-typedef volatile uint32_t dciResponseId_t;
-typedef volatile uint32_t dciNotificationId_t;
-typedef uint32_t dciReturnCode_t;
-
-
 /**< Responses have bit 31 set */
 #define RSP_ID_MASK (1U << 31)
-#define RSP_ID(cmdId) (((uint32_t)(cmdId)) | RSP_ID_MASK)
-#define IS_CMD(cmdId) ((((uint32_t)(cmdId)) & RSP_ID_MASK) == 0)
-#define IS_RSP(cmdId) ((((uint32_t)(cmdId)) & RSP_ID_MASK) == RSP_ID_MASK)
-#define CMD_ID_FROM_RSP(rspId) (rspId & (~RSP_ID_MASK))
+#define RSP_ID(cmd_id) (((uint32_t)(cmd_id)) | RSP_ID_MASK)
+#define IS_CMD(cmd_id) ((((uint32_t)(cmd_id)) & RSP_ID_MASK) == 0)
+#define IS_RSP(cmd_id) ((((uint32_t)(cmd_id)) & RSP_ID_MASK) == RSP_ID_MASK)
+#define CMD_ID_FROM_RSP(rsp_id) (rsp_id & (~RSP_ID_MASK))
 
 /**
  * Return codes of driver commands.
@@ -46,65 +40,69 @@ typedef uint32_t dciReturnCode_t;
  * Notification ID's for communication Trustlet Connector -> Driver.
  */
 #define NOT_TUI_NONE                0
-#define NOT_TUI_CANCEL_EVENT        1 /* NWd system event that closes the current TUI session*/
+/* NWd system event that closes the current TUI session*/
+#define NOT_TUI_CANCEL_EVENT        1
 
 
 /**
  * Command ID's for communication Driver -> Trustlet Connector.
  */
 #define CMD_TUI_SW_NONE             0
-#define CMD_TUI_SW_OPEN_SESSION     1 /* SWd request to NWd to start the TUI session */
-#define CMD_TUI_SW_CLOSE_SESSION    2 /* SWd request to NWd to close the TUI session */
-#define CMD_TUI_SW_STOP_DISPLAY     3 /* SWd request to NWd stop accessing display controler */
+/* SWd request to NWd to start the TUI session */
+#define CMD_TUI_SW_OPEN_SESSION     1
+/* SWd request to NWd to close the TUI session */
+#define CMD_TUI_SW_CLOSE_SESSION    2
+/* SWd request to NWd stop accessing display controller */
+#define CMD_TUI_SW_STOP_DISPLAY     3
 
 
 /**
  * Maximum data length.
  */
-#define MAX_DCI_DATA_LEN 1024*100
+#define MAX_DCI_DATA_LEN (1024*100)
 
-// Command payload
-typedef struct {
-    uint32_t    allocSize;
-    uint32_t    numOfBuff;
-} tuiAllocData_t, *tuiAllocData_ptr;
+/* Command payload */
+struct tui_alloc_data_t {
+	uint32_t alloc_size;
+	uint32_t num_of_buff;
+};
 
-typedef union {
-    tuiAllocData_t allocData;
-} dciCmdPayload_t, *dciCmdPayload_ptr;
+union dci_cmd_payload_t {
+	struct tui_alloc_data_t alloc_data;
+};
 
-// Command
-typedef struct{
-    dciCommandId_t  id;
-    dciCmdPayload_t payload;
-} dciCommand_t, *dciCommand_ptr;
+/* Command */
+struct dci_command_t {
+	volatile uint32_t id;
+	union dci_cmd_payload_t payload;
+};
 
-// TUI frame buffer (output from NWd)
+/* TUI frame buffer (output from NWd) */
 typedef struct {
     uint64_t    pa;
-} tuiAllocBuffer_t, *tuiAllocBuffer_ptr;
+} tuiAllocBuffer_t;
 
 #define MAX_DCI_BUFFER_NUMBER 4
 
-// Response
-typedef struct{
-    dciResponseId_t    id; /* must be command ID | RSP_ID_MASK */
-    dciReturnCode_t    returnCode;
+/* Response */
+struct dci_response_t {
+	volatile uint32_t	id; /* must be command ID | RSP_ID_MASK */
+	uint32_t		return_code;
     union {
-        tuiAllocBuffer_t allocBuffer[MAX_DCI_BUFFER_NUMBER];
+		tuiAllocBuffer_t alloc_buffer[MAX_DCI_BUFFER_NUMBER];
+	};
     };
-} dciResponse_t, *dciResponse_ptr;
 
-// DCI buffer
-typedef struct {
-    dciNotificationId_t     nwdNotif;   /* Notification from TlcTui to DrTui */
-    dciCommand_t            cmdNwd;   /* Command from DrTui to TlcTui */
-    dciResponse_t           nwdRsp;    /* Response from TlcTui to DrTui */
-} tuiDciMsg_t, *tuiDciMsg_ptr;
+/* DCI buffer */
+struct tui_dci_msg_t {
+	volatile uint32_t     nwd_notif; /* Notification from TlcTui to DrTui */
+	struct dci_command_t  cmd_nwd;   /* Command from DrTui to TlcTui */
+	struct dci_response_t nwd_rsp;   /* Response from TlcTui to DrTui */
+};
 
-extern tuiDciMsg_ptr pDci;
 /**
  * Driver UUID. Update accordingly after reserving UUID
  */
 #define DR_TUI_UUID { { 0xff, 0xff, 0xff, 0xff, 0xd0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x14 } }
-#endif // __DCITUI_H__
+
+#endif /* __DCITUI_H__ */

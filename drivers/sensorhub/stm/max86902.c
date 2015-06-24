@@ -39,10 +39,12 @@
 #define MAX86902_PART_ID2			0x15
 #define MAX86902_REV_ID1			0xFE
 #define MAX86902_REV_ID2			0x03
+#define MAX86906_OTP_ID				0x15
 
 #define MAX86900_DEFAULT_CURRENT	0x55
 #define MAX86900A_DEFAULT_CURRENT	0xFF
 #define MAX86900C_DEFAULT_CURRENT	0x0F
+#define MAX86906_DEFAULT_CURRENT	0x0F
 
 #define MAX86902_DEFAULT_CURRENT1	0x00 //RED
 #define MAX86902_DEFAULT_CURRENT2	0x60 //IR
@@ -332,6 +334,31 @@ static int max86902_init_device(struct max86900_device_data *data)
 	pr_info("%s done, part_type = %u\n", __func__, data->part_type);
 
 	return 0;
+}
+
+void max86900_pin_control(struct max86900_device_data *data, bool pin_set)
+{
+	int status = 0;
+	data->p->state = NULL;
+	if (pin_set) {
+		if (!IS_ERR(data->pins_idle)) {
+			status = pinctrl_select_state(data->p,
+				data->pins_idle);
+			if (status)
+				pr_err("%s: can't set pin default state\n",
+					__func__);
+			pr_debug("%s idle\n", __func__);
+		}
+	} else {
+		if (!IS_ERR(data->pins_sleep)) {
+			status = pinctrl_select_state(data->p,
+				data->pins_sleep);
+			if (status)
+				pr_err("%s: can't set pin sleep state\n",
+					__func__);
+			pr_debug("%s sleep\n", __func__);
+		}
+	}
 }
 
 static void irq_set_state(struct max86900_device_data *data, int irq_enable)
@@ -1417,25 +1444,29 @@ static int max86900_eol_test_control(struct max86900_device_data *data)
 	if (data->sample_cnt < data->hr_range2)	{
 		data->hr_range = 1;
 	} else if (data->sample_cnt < (data->hr_range2 + 297)) {
-		/* Fake pulse */
-		if (data->sample_cnt % 8 < 4) {
-			data->test_current_ir++;
-			data->test_current_red++;
-		} else {
-			data->test_current_ir--;
-			data->test_current_red--;
-		}
+		if ( data->eol_test_is_enable == 1 ) {
+			/* Fake pulse */
+			if (data->sample_cnt % 8 < 4) {
+				data->test_current_ir++;
+				data->test_current_red++;
+			} else {
+				data->test_current_ir--;
+				data->test_current_red--;
+			}
 
-		led_current = (data->test_current_red << 4)
-			| data->test_current_ir;
-		err = max86900_write_reg(data, MAX86900_LED_CONFIGURATION,
-				led_current);
-		if (err != 0) {
-			pr_err("%s - error initializing MAX86900_LED_CONFIGURATION!\n",
-				__func__);
-			return -EIO;
+			led_current = (data->test_current_red << 4)
+				| data->test_current_ir;
+			err = max86900_write_reg(data, MAX86900_LED_CONFIGURATION,
+					led_current);
+			if (err != 0) {
+				pr_err("%s - error initializing MAX86900_LED_CONFIGURATION!\n",
+					__func__);
+				return -EIO;
+			}
+			data->hr_range = 2;
+		} else if (data->eol_test_is_enable == 2 ) {
+			data->sample_cnt = data->hr_range2 + 297 - 1;
 		}
-		data->hr_range = 2;
 	} else if (data->sample_cnt == (data->hr_range2 + 297)) {
 		/* Measure */
 		err = max86900_write_reg(data, MAX86900_LED_CONFIGURATION,
@@ -2899,7 +2930,7 @@ static void max86900_eol_test_onoff(struct max86900_device_data *data, int onoff
 
 	if (onoff) {
 		err = max86900_hrm_eol_test_enable(data);
-		data->eol_test_is_enable = 1;
+		data->eol_test_is_enable = onoff;
 		if (err != 0)
 			pr_err("max86900_hrm_eol_test_enable err : %d\n", err);
 	} else {
@@ -3227,6 +3258,42 @@ static int max86902_get_device_id(struct max86900_device_data *data, unsigned lo
 	return 0;
 }
 
+static int max86900_otp_id(struct max86900_device_data *data)
+{
+	u8 recvData;
+	int err;
+
+	err = max86900_write_reg(data, 0xFF, 0x54);
+	if (err != 0) {
+		pr_err("%s - error initializing MAX86900_MODE_TEST0!\n",
+			__func__);
+		return -EIO;
+	}
+
+	err = max86900_write_reg(data, 0xFF, 0x4d);
+	if (err != 0) {
+		pr_err("%s - error initializing MAX86900_MODE_TEST1!\n",
+			__func__);
+		return -EIO;
+	}
+
+	recvData = 0x8B;
+	if ((err = max86900_read_reg(data, &recvData, 1)) != 0) {
+		pr_err("%s - max86900_read_reg err:%d, address:0x%02x\n",
+			__func__, err, recvData);
+		return -EIO;
+	}
+
+	err = max86900_write_reg(data, 0xFF, 0x00);
+	if (err != 0) {
+		pr_err("%s - error initializing MAX86900_MODE_TEST0!\n",
+			__func__);
+		return -EIO;
+	}
+
+	return recvData;
+
+}
 static ssize_t max86900_hrm_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -3515,6 +3582,8 @@ static ssize_t eol_test_store(struct device *dev,
 
 	if (sysfs_streq(buf, "1")) /* eol_test start */
 		test_onoff = 1;
+	else if (sysfs_streq(buf, "2")) /* eol_test for grip sensor */
+		test_onoff = 2;
 	else if (sysfs_streq(buf, "0")) /* eol_test stop */
 		test_onoff = 0;
 	else {
@@ -4606,6 +4675,28 @@ static int max86900_parse_dt(struct max86900_device_data *data,
 	if (of_property_read_u32(dNode, "max86900,dual-hrm", &data->dual_hrm))
 		data->dual_hrm = 0;
 
+	data->p = pinctrl_get_select_default(dev);
+	if (IS_ERR(data->p)) {
+		pr_err("%s: failed pinctrl_get\n", __func__);
+		return -EINVAL;
+	}
+
+	data->pins_sleep = pinctrl_lookup_state(data->p, PINCTRL_STATE_SLEEP);
+	if(IS_ERR(data->pins_sleep)) {
+		pr_err("%s : could not get pins sleep_state (%li)\n",
+			__func__, PTR_ERR(data->pins_sleep));
+		pinctrl_put(data->p);
+		return -EINVAL;
+	}
+
+	data->pins_idle = pinctrl_lookup_state(data->p, PINCTRL_STATE_IDLE);
+	if(IS_ERR(data->pins_idle)) {
+		pr_err("%s : could not get pins idle_state (%li)\n",
+			__func__, PTR_ERR(data->pins_idle));
+		pinctrl_put(data->p);
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
@@ -4649,6 +4740,7 @@ static int max86900_setup_irq(struct max86900_device_data *data)
 	}
 
 	disable_irq(data->irq);
+
 	return errorno;
 }
 
@@ -4749,8 +4841,13 @@ int max86900_probe(struct i2c_client *client, const struct i2c_device_id *id)
 				data->default_current = MAX86900A_DEFAULT_CURRENT;
 				break;
 			case MAX86900C_REV_ID:
-				data->part_type = PART_TYPE_MAX86900C;
-				data->default_current = MAX86900C_DEFAULT_CURRENT;
+				if ( max86900_otp_id(data) == MAX86906_OTP_ID ) {
+					data->part_type = PART_TYPE_MAX86906;
+					data->default_current = MAX86906_DEFAULT_CURRENT;
+				} else {
+					data->part_type = PART_TYPE_MAX86900C;
+					data->default_current = MAX86900C_DEFAULT_CURRENT;
+				}
 				break;
 			default:
 				pr_err("%s WHOAMI read error : REV ID : 0x%02x\n",
@@ -5011,6 +5108,8 @@ static void max86900_shutdown(struct i2c_client *client)
 static int max86900_pm_suspend(struct device *dev)
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
+
+	max86900_pin_control(data, false);
 	if (data->part_type < PART_TYPE_MAX86902A) {
 		if (atomic_read(&data->hrm_is_enable)) {
 			max86900_hrm_mode_enable(data, HRM_LDO_OFF);
@@ -5035,6 +5134,8 @@ static int max86900_pm_suspend(struct device *dev)
 static int max86900_pm_resume(struct device *dev)
 {
 	struct max86900_device_data *data = dev_get_drvdata(dev);
+
+	max86900_pin_control(data, true);
 	if (data->part_type < PART_TYPE_MAX86902A) {
 		if (atomic_read(&data->is_suspend) == 1) {
 			max86900_hrm_mode_enable(data, HRM_LDO_ON);

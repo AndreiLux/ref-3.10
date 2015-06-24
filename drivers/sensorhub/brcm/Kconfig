@@ -308,11 +308,89 @@ config SENSORS_SSP_SX9306
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
+config SENSORS_SSP_SX9306
+	tristate "SX9306 Grip sensor"
+	default n
+	depends on SPI
+	help
+	  sx9306 file for factory test in ssp driver.
+          If you say yes here you get sx9306 support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
+config SENSORS_SX9310
+	depends on I2C
+	tristate "SX9310 driver"
+	default n
+	help
+	  Say Y here if you use sx9310.
+	  This option enables grip sensors using
+	  SemTech sx9310 device driver.
+	  Say N here if you do not use sx9310.
+
+config SENSORS_SX9310_INIT_TOUCH_THRESHOLD
+	int "SX9310 Grip sensor threshold for init touch"
+	depends on SENSORS_SX9310
+	default "3000"
+	help
+	  This value is the standard of init touch using
+	  SemTech sx9310 device driver.
+
+config SENSORS_SX9310_NORMAL_TOUCH_THRESHOLD
+	int "SX9310 Grip sensor threshold for normal touch"
+	depends on SENSORS_SX9310
+	default "17"
+	help
+	  This value is the standard of normal touch using
+	  SemTech sx9310 device driver.
+
+config SENSORS_SX9310_CP_LDO_CONTROL
+	depends on SENSORS_SX9310
+	tristate "SX9310 driver"
+	default n
+	help
+	  Say Y here if you control grip power in cp.
+	  Say N here if you do not use grip power in cp.
+
 config SENSORS_SSP_INTERRUPT_GYRO_SENSOR
          tristate "Sensors ssp interrpt gyro"
          default n
          depends on SPI
          help
          	If you want to use interrupt gyro data, it should be set.
-         	
+
+config SENSORS_SSP_VLTE
+	tristate "V Proejct"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get V project support for
+       	  factory test.
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ssp.
+
+config SENSORS_SSP_NOBLELTE
+	tristate "NOBLE Proejct"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get NOBLE project support for
+       	  factory test.
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ssp.
+ 	  
+config SENSORS_SSP_ZENLTE
+	tristate "ZEN Proejct"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get ZEN project support for
+       	  factory test.
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ssp.
+
 source "drivers/sensorhub/brcm/max_notchfilter/Kconfig"

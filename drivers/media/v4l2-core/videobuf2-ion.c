@@ -894,6 +894,7 @@ static struct vm_area_struct *vb2_ion_get_vma(struct device *dev,
 				vb2ion_err(dev,
 					"[%#lx, %#lx) crosses disparate vmas\n",
 					vaddr, size);
+				vb2_put_vma(cur_vma);
 				break;
 			}
 			new_vma->vm_next = cur_vma;
@@ -932,13 +933,17 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	void *p_ret;
 
 	vma = vb2_ion_get_vma(ctx->dev, vaddr, size);
-	if (!vma)
+	if (!vma) {
+		dev_err(ctx->dev,
+			"%s: Failed to holding user buffer @ %#lx/%#lx\n",
+			__func__, vaddr, size);
 		return ERR_PTR(-EINVAL);
+	}
 
 	buf = kzalloc(sizeof(*buf), GFP_KERNEL);
 	if (!buf) {
 		dev_err(ctx->dev, "%s: Not enough memory\n", __func__);
-		return ERR_PTR(-ENOMEM);
+		goto err_alloc_buf;
 	}
 
 	if (vma->vm_file)
@@ -962,6 +967,7 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 	buf->ctx = ctx;
 	buf->direction = write ? DMA_FROM_DEVICE : DMA_TO_DEVICE;
 	buf->size = size;
+	buf->vma = vma;
 
 	buf->attachment = dma_buf_attach(buf->dma_buf, ctx->dev);
 	if (IS_ERR(buf->attachment)) {
@@ -969,15 +975,6 @@ static void *vb2_ion_get_userptr(void *alloc_ctx, unsigned long vaddr,
 				__func__, vaddr, size);
 		p_ret = buf->attachment;
 		goto err_attach;
-	}
-
-	buf->vma = vma;
-	if (IS_ERR(buf->vma)) {
-		dev_err(ctx->dev,
-			"%s: Failed to holding user buffer @ %#lx/%#lx\n",
-			__func__, vaddr, size);
-		p_ret = buf->vma;
-		goto err_get_vma;
 	}
 
 	buf->cookie.sgt = dma_buf_map_attachment(buf->attachment,
@@ -1017,13 +1014,13 @@ err_iovmm:
 	dma_buf_unmap_attachment(buf->attachment, buf->cookie.sgt,
 				buf->direction);
 err_map_attachment:
-	vb2_ion_put_vma(buf->vma);
-err_get_vma:
 	dma_buf_detach(buf->dma_buf, buf->attachment);
 err_attach:
 	dma_buf_put(buf->dma_buf);
 err_get_user_pages:
 	kfree(buf);
+err_alloc_buf:
+	vb2_ion_put_vma(vma);
 
 	return p_ret;
 }

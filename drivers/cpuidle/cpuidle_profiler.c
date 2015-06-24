@@ -436,11 +436,121 @@ static ssize_t store_cpuidle_profile(struct kobject *kobj,
 	return count;
 }
 
+static ssize_t show_cpuidle_result(struct kobject *kobj,
+				     struct kobj_attribute *attr,
+				     char *buf)
+{
+	int ret = 0;
+	int i, cpu;
+	struct cpuidle_profile_info *info;
+
+	if (profile_ongoing) {
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+				"CPUIDLE profile is ongoing\n");
+		return ret;
+	}
+
+	if (profile_time == 0) {
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+				"CPUIDLE profiler has not started yet\n");
+		return ret;
+	}
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"#######################################################################\n");
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"Profiling Time : %lluus\n", profile_time);
+
+	for (i = 0; i < state_count; i++) {
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+						"[state%d]\n", i);
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+						"#cpu   #entry   #early      #time    #ratio\n");
+		for_each_possible_cpu(cpu) {
+			info = &per_cpu(profile_info, cpu);
+			ret += snprintf(buf + ret, PAGE_SIZE - ret,
+							"cpu%d   %5u   %5u   %10lluus   %3u%%\n", cpu,
+				info->usage[i].entry_count,
+				info->usage[i].early_wakeup_count,
+				info->usage[i].time,
+				calculate_percent(info->usage[i].time));
+		}
+
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+						"\n");
+	}
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"[CPD] - Cluster Power Down\n");
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"#cluster    #entry   #early      #time     #ratio\n");
+	for (i = 0; i < NUM_CLUSTER; i++) {
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+						"cluster%d    %5u    %5u  %10lluus    %3u%%\n", i,
+			cpd_info[i].usage->entry_count,
+			cpd_info[i].usage->early_wakeup_count,
+			cpd_info[i].usage->time,
+			calculate_percent(cpd_info[i].usage->time));
+	}
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"\n");
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"[LPC] - Low Power mode with Clock down\n");
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"            #entry   #early      #time     #ratio\n");
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"system      %5u    %5u  %10lluus    %3u%%\n",
+		lpc_info.usage->entry_count,
+		lpc_info.usage->early_wakeup_count,
+		lpc_info.usage->time,
+		calculate_percent(lpc_info.usage->time));
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"\n");
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"[LPM] - Low Power Mode\n");
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"#mode       #entry   #early      #time     #ratio\n");
+	for (i = 0; i < NUM_SYS_POWERDOWN; i++) {
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+						"%-9s   %5u    %5u  %10lluus    %3u%%\n",
+			get_sys_powerdown_str(i),
+			lpm_info.usage[i].entry_count,
+			lpm_info.usage[i].early_wakeup_count,
+			lpm_info.usage[i].time,
+			calculate_percent(lpm_info.usage[i].time));
+	}
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"\n");
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"[LPA blockers]\n");
+	for (i = 0; i < MAX_NUM_BLOCKER; i++)
+		ret += snprintf(buf + ret, PAGE_SIZE - ret,
+						"%-9s: %d\n", get_lpa_blocker_str(i), lpa_blocker[i]);
+
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"\n");
+	ret += snprintf(buf + ret, PAGE_SIZE - ret,
+					"#######################################################################\n");
+
+	return ret;
+}
+
 static struct kobj_attribute cpuidle_profile_attr =
 	__ATTR(profile, 0644, show_cpuidle_profile, store_cpuidle_profile);
 
+static struct kobj_attribute cpuidle_result_attr =
+	__ATTR(result, 0444, show_cpuidle_result, NULL);
+
+
 static struct attribute *cpuidle_profile_attrs[] = {
 	&cpuidle_profile_attr.attr,
+	&cpuidle_result_attr.attr,
 	NULL,
 };
 

@@ -123,6 +123,7 @@ static int dsim_panel_probe(struct dsim_device *dsim)
 	panel->current_vint = 0;
 
 	panel->weakness_hbm_comp = 0;
+	dsim->glide_display_size = 0;
 
 	mutex_init(&panel->lock);
 #ifdef CONFIG_EXYNOS_DECON_LCD_MCD

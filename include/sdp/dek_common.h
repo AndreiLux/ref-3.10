@@ -76,7 +76,7 @@ typedef struct _key{
 typedef struct _kek{
 	unsigned int type;
 	unsigned int len;
-	unsigned char buf[KEK_MAX_LEN];
+	unsigned char buf[KEK_MAXLEN];
 }kek_t;
 
 typedef struct _payload{
@@ -96,7 +96,7 @@ typedef struct _payload{
 #endif /* DEK_DEBUG */
 #define DEK_LOGE(...) printk("dek: "__VA_ARGS__)
 
-void dek_dump(unsigned char *buf, int len);
+void key_dump(unsigned char *buf, int len);
 
 int is_kek_available(int userid, int kek_type);
 

@@ -839,6 +839,7 @@ static void exynos_tmu_get_efuse(struct platform_device *pdev, int id)
 	struct exynos_tmu_data *data = platform_get_drvdata(pdev);
 	struct exynos_tmu_platform_data *pdata = data->pdata;
 	unsigned int trim_info, temp;
+	int retry_cnt = 0;
 
 	mutex_lock(&data->lock);
 
@@ -847,6 +848,21 @@ static void exynos_tmu_get_efuse(struct platform_device *pdev, int id)
 
 	/* Save trimming info in order to perform calibration */
 	trim_info = readl(data->base[id] + EXYNOS_TMU_REG_TRIMINFO);
+
+	/* retry read TRIMINFO when 0, it could be happend cur_probe_sensor is changed after check */
+	while (trim_info == 0) {
+		mdelay(1);
+		while (get_cur_probe_sensor(data, id) != SENSOR_P0)
+			usleep_range(1, 2);
+
+		trim_info = readl(data->base[id] + EXYNOS_TMU_REG_TRIMINFO);
+
+		retry_cnt++;
+
+		if (retry_cnt == 10 && trim_info == 0) {
+			panic("TMU[%d] TRIMINFO READ FAIL\n", id);
+		}
+	}
 
 	if (trim_info & CALIB_SEL_MASK)
 		pdata->cal_type = TYPE_TWO_POINT_TRIMMING;

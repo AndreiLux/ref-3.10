@@ -1031,14 +1031,46 @@ out:
 	return count;
 }
 
+static ssize_t input_booster_set_dvfs_control(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct booster_dvfs *dvfs = dev_get_drvdata(dev);
+	struct input_booster *data = dev_get_drvdata(dvfs->parent_dev);
+	int value;
+	unsigned int type;
+
+	if (sscanf(buf, "%u%d",
+		&type, &value) != 2) {
+		dev_err(data->dev, "### Keep this format : [type value] (Ex: 2 1 ###\n");
+		goto out;
+	}
+
+	if (type >= BOOSTER_DEVICE_MAX) {
+		dev_err(data->dev, "%s : Entered type is not permitted\n", __func__);
+		goto out;
+	}
+
+	if (value > BOOSTER_MODE_FORCE_OFF) {
+		dev_err(data->dev, "%s : Entered value is not permitted\n", __func__);
+		goto out;
+	}
+
+	input_booster_send_event(type, value);
+
+out:
+	return count;
+}
+
 static DEVICE_ATTR(level, S_IRUGO | S_IWUSR, input_booster_get_dvfs_level, input_booster_set_dvfs_level);
 static DEVICE_ATTR(freq, S_IRUGO | S_IWUSR, input_booster_get_dvfs_freq, input_booster_set_dvfs_freq);
 static DEVICE_ATTR(time, S_IRUGO | S_IWUSR, input_booster_get_dvfs_time, input_booster_set_dvfs_time);
+static DEVICE_ATTR(control, S_IRUGO | S_IWUSR, NULL, input_booster_set_dvfs_control);
 
 static struct attribute *dvfs_attributes[] = {
 	&dev_attr_level.attr,
 	&dev_attr_freq.attr,
 	&dev_attr_time.attr,
+	&dev_attr_control.attr,
 	NULL,
 };
 

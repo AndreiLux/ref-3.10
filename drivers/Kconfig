@@ -199,6 +199,8 @@ source "drivers/trace/Kconfig"
 
 source "drivers/bts/Kconfig"
 
+source "drivers/ledmatrix/Kconfig"
+
 source "drivers/secfilter/Kconfig"
 
 source "drivers/soc/Kconfig"

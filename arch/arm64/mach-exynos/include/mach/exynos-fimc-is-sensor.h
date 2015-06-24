@@ -75,6 +75,7 @@ enum exynos_sensor_id {
 	SENSOR_NAME_IMX134		 = 102,
 	SENSOR_NAME_IMX175		 = 103,
 	SENSOR_NAME_IMX240		 = 104,
+	SENSOR_NAME_IMX228		 = 106,
 	SENSOR_NAME_IMX219		 = 107,
 
 	SENSOR_NAME_SR261		 = 201, /* 201 ~ 300 Other vendor sensors */

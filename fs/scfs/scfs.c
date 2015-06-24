@@ -537,6 +537,7 @@ int scfs_read_cluster(struct file *file, struct page *page,
 			unlock_page(page);
 			return ret;
 		}
+		atomic64_add(actual, &SCFS_S(sii->vfs_inode.i_sb)->scfs_decomped_byte);
 	}
 
 	return ret;
@@ -585,13 +586,9 @@ int scfs_decompress(enum comp_type algo, char *buf_c, char *buf_u, size_t len,
 		}
 		break;
 	default:
-		ret = scfs_decompress_crypto((void *)buf_c, len, (void *)buf_u, actual, (int)algo);
-		if (ret) {
-			SCFS_PRINT("%s decompress error! "
-					"ret %d len %d tmp_len %d\n", scfs_compressors[algo]->name,
-					ret, len, *actual);
-			ret = -EIO;
-		}
+		SCFS_PRINT_ERROR("SCFS does not support this algorithm type!"
+				"algorithm_type : %d\n", algo);
+		ret = -EINVAL;
 		break;
 	}
 #endif
@@ -652,13 +649,9 @@ int scfs_compress(enum comp_type algo, char *buf_c, char *buf_u, size_t len,
 		}
 		break;
 	default:
-		ret = scfs_compress_crypto((void *)buf_u, len, (void *)buf_c, actual, (int)algo);
-		if (ret) {
-			SCFS_PRINT("%s compress error! "
-					"ret %d len %d tmp_len %d\n", scfs_compressors[algo]->name,
-					ret, len, *actual);
-			*actual = len; // We use raw data if compression was failed.
-		}
+		SCFS_PRINT_ERROR("SCFS does not support this algorithm type!"
+				"algorithm_type : %d\n", algo);
+		ret = -EINVAL;
 		break;
 	}
 #endif
@@ -1116,6 +1109,8 @@ int scfs_truncate(struct dentry *dentry, loff_t size)
 
 	SCFS_PRINT("Truncate %s size to %lld\n", dentry->d_name.name, size);
 	truncate_setsize(inode, ia.ia_size);
+	/* clear buffer_cache */
+	scfs_clear_cluster(inode);
 	mutex_lock(&sii->cinfo_mutex);
 
 	list_for_each_safe(cluster_info, tmp, &sii->cinfo_list) {

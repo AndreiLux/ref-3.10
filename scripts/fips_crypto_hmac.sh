@@ -52,13 +52,11 @@ declare -A array
 array[0]=".text first_crypto_text last_crypto_text \$5 \$6"
 array[1]=".rodata first_crypto_rodata last_crypto_rodata \$5 \$6"
 array[2]=".init.text first_crypto_init last_crypto_init \$4 \$5"
-array[3]=".exit.text first_crypto_exit last_crypto_exit \$4 \$5"
 
 # # FOR ASM CRYPTO FILES
-array[4]=".text first_crypto_asm_text last_crypto_asm_text \$5 \$6"
-array[5]=".rodata first_crypto_asm_rodata last_crypto_asm_rodata \$5 \$6"
-array[6]=".init.text first_crypto_asm_init last_crypto_asm_init \$4 \$5"
-array[7]=".exit.text first_crypto_asm_exit last_crypto_asm_exit \$4 \$5"
+array[3]=".text first_crypto_asm_text last_crypto_asm_text \$5 \$6"
+array[4]=".rodata first_crypto_asm_rodata last_crypto_asm_rodata \$5 \$6"
+array[5]=".init.text first_crypto_asm_init last_crypto_asm_init \$4 \$5"
 
 
 rm -f offsets_sizes.txt

@@ -2,7 +2,8 @@ obj-$(CONFIG_USE_VENDER_FEATURE) := fimc-is-spi.o \
 				fimc-is-i2c.o \
 				fimc-is-sec-define.o \
 				crc32.o \
-				fimc-is-sysfs.o
+				fimc-is-sysfs.o \
+				fimc-is-device-from.o
 
 obj-$(CONFIG_COMPANION_USE) += fimc-is-companion-dt.o
 

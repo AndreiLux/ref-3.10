@@ -807,7 +807,8 @@ void revert_creds(const struct cred *old)
 			struct cred *rocred = (struct cred *) override;
 			rkp_use_cnt = rocred_uc_read(rocred);
 
-			if( (rocred->type) && (rkp_use_cnt == 2)){
+			if( (rocred->type & 0x1) 
+				&& (rkp_use_cnt == 2)){
 				rocred_uc_set((rocred), 0);
 				if(rocred->use_cnt)
 					kfree(rocred->use_cnt);

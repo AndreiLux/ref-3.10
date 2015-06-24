@@ -80,4 +80,7 @@ struct max77838_regulator_platform_data {
 	int	uvlo_fall_threshold;
 };
 
+
+extern int max77838_reg_set_diode_mode(bool on);
+
 #endif

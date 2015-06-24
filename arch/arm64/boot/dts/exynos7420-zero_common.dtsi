@@ -403,9 +403,9 @@
 
 		normal_powermode_current_rd = <10>;
 		low_powermode_current_rd = <2>;
-		br_ratio_r_rd = <90>;
+		br_ratio_r_rd = <180>;
 		br_ratio_g_rd = <30>;
-		br_ratio_b_rd = <50>;
+		br_ratio_b_rd = <30>;
 	};
 
 	hsi2c@13660000 {
@@ -508,6 +508,10 @@
 			reg = <0x51>;
 			interrupt-parent = <&gpa1>;
 			interrupts = <5 0 0>;
+			pinctrl-names = "default", "sleep", "idle";
+			pinctrl-0 = <&hrm_irq>;
+			pinctrl-1 = <&hrm_irqsleep>;
+			pinctrl-2 = <&hrm_irqidle>;
 			max86900,hrm_int-gpio = <&gpa1 5 0>;
 			max86900,vdd_1p8 = "HRM_VDD_1.8V";
 			max86900,led_3p3 = "V_HRM_3.3V";
@@ -849,7 +853,7 @@
 	ipa_pdata {
 		compatible = "samsung,exynos-ipa";
 
-		control_temp = <90>;
+		control_temp = <45>;
 		temp_threshold = <10>;
 		enabled = <1>;
 		tdp = <3500>;
@@ -1206,25 +1210,34 @@
 		ois@24{
 			compatible = "rumba,ois";
 			reg = <0x24>;
+			use_i2c_pinctrl;
 			fimc_is_ois_pinname = "13470000.pinctrl";
 			fimc_is_ois_sda = "gpc2-4";
 			fimc_is_ois_scl = "gpc2-5";
+			pinfunc_on = <0>;
+			pinfunc_off = <2>;
 		};
 
 		af@0c{
 			compatible = "samsung,af";
 			reg = <0x0c>;
+			use_i2c_pinctrl;
 			fimc_is_af_pinname = "13470000.pinctrl";
 			fimc_is_af_sda = "gpc2-4";
 			fimc_is_af_scl = "gpc2-5";
+			pinfunc_on = <0>;
+			pinfunc_off = <2>;
 		};
 
 		front_eeprom@51 {
 			compatible = "samsung,front-eeprom-i2c";
 			reg = <0x51>;
+			use_i2c_pinctrl;
 			fimc_is_front_eeprom_pinname = "13470000.pinctrl";
 			fimc_is_front_eeprom_sda = "gpb2-4";
 			fimc_is_front_eeprom_scl = "gpb2-5";
+			pinfunc_on = <0>;
+			pinfunc_off = <2>;
 		};
 	};
 
@@ -1323,6 +1336,26 @@
 		pinctrl-names = "default", "release";
 		pinctrl-0 = <&fimc_is_flash_is &fimc_is_mclk0_out &fimc_is_mclk1_out &fimc_is_mclk2_out>;
 		pinctrl-1 = <>;
+
+		total_camera_num = <2>;
+		camera_info0 {				// 0 : rear
+			isp = <0>;			/* 0 : INT , 1 : EXT , 2 : SOC */
+			cal_memory = <1>;		/* 0 : N , 1 : FROM , 2 : EEPROM , 3 : OTP  */
+			read_version = <0>;		/* 0 : SYSFS , 1 : CAMON */
+			core_voltage = <1>;		/* 0 : N , 1 : Y  */
+			upgrade = <1>;			/* 0 : N , 1 : SYSFS , 2 : CAMON */
+			companion = <1>;		/* 0 : N , 1 : Y  */
+			ois = <1>;			/* 0 : N , 1 : Y  */
+		};
+		camera_info1 {				// 1 : front
+			isp = <0>;			/* 0 : INT , 1 : EXT , 2 : SOC */
+			cal_memory = <2>;		/* 0 : N , 1 : FROM , 2 : EEPROM , 3 : OTP  */
+			read_version = <0>;		/* 0 : SYSFS , 1 : CAMON */
+			core_voltage = <0>;		/* 0 : N , 1 : Y  */
+			upgrade = <0>;			/* 0 : N , 1 : SYSFS , 2 : CAMON */
+			companion = <1>;		/* 0 : N , 1 : Y  */
+			ois = <0>;			/* 0 : N , 1 : Y  */
+		};
 
 		#define DVFS_INT_L0 560000
 		#define DVFS_INT_L1 550000
@@ -1993,10 +2026,9 @@
 		boot_device@3 {
 			net_boost,label="P2P";
 			net_boost,node="p2p-wlan0-0";
-			net_boost,table_size = <3>;
+			net_boost,table_size = <2>;
 			net_boost,table= <
-				30 1000000 0 800000 0 0 200000 0 0 0
-				50 1200000 0 1000000 0 0 200000 0 0 0
+				30 1200000 0 1200000 0 0 200000 0 0 0
 				90 1700000 0 1200000 0 543000 267000 0 0 1
 				>;
 		};
@@ -2005,8 +2037,8 @@
 			net_boost,node="wlan0";
 			net_boost,table_size = <3>;
 			net_boost,table= <
-				60 1000000 0 800000 0 0 200000 0 0 0
-				100 1200000 0 1000000 0 0 200000 0 0 0
+				20 1000000 0 800000 0 0 200000 0 0 0
+				60 1500000 0 1200000 0 0 200000 0 0 0
 				180 1896000 0 1500000 0 543000 267000 1 1 1
 				>;
 		};

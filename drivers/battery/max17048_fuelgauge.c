@@ -524,10 +524,10 @@ bool sec_hal_fg_get_property(struct i2c_client *client,
 		/* Additional Voltage Information (mV) */
 	case POWER_SUPPLY_PROP_VOLTAGE_AVG:
 		switch (val->intval) {
-		case SEC_BATTEY_VOLTAGE_AVERAGE:
+		case SEC_BATTERY_VOLTAGE_AVERAGE:
 			val->intval = max17048_get_avg_vcell(client);
 			break;
-		case SEC_BATTEY_VOLTAGE_OCV:
+		case SEC_BATTERY_VOLTAGE_OCV:
 			val->intval = max17048_get_ocv(client);
 			break;
 		}

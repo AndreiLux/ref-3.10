@@ -149,11 +149,20 @@ static void ion_carveout_heap_free(struct ion_buffer *buffer)
 	ion_phys_addr_t paddr = PFN_PHYS(page_to_pfn(page));
 
 #ifdef CONFIG_ARM64
-	if (ion_buffer_cached(buffer))
-		__flush_dcache_area(page_address(page), buffer->size);
+	if (ion_buffer_cached(buffer)) {
+		if (ion_buffer_need_flush_all(buffer))
+			flush_all_cpu_caches();
+		else
+			__flush_dcache_area(page_address(page), buffer->size);
+	}
 #else
-	if (ion_buffer_cached(buffer))
-		dmac_flush_range(page_address(page), buffer->size, DMA_BIDIRECTIONAL);
+	if (ion_buffer_cached(buffer)) {
+		if (ion_buffer_need_flush_all(buffer))
+			flush_all_cpu_caches();
+		else
+			dmac_flush_range(page_address(page), buffer->size,
+							DMA_BIDIRECTIONAL);
+	}
 #endif
 	ion_carveout_free(heap, paddr, buffer->size);
 	sg_free_table(table);
@@ -230,9 +239,15 @@ struct ion_heap *ion_carveout_heap_create(struct ion_platform_heap *heap_data)
 	carveout_heap->heap.debug_show = carveout_heap_debug_show;
 
 #ifdef CONFIG_ARM64
-	__flush_dcache_area(page_address(page), size);
+	if (size >= ION_FLUSH_ALL_HIGHLIMIT)
+		flush_all_cpu_caches();
+	else
+		__flush_dcache_area(page_address(page), size);
 #else
-	dmac_flush_range(page_address(page), size, DMA_BIDIRECTIONAL);
+	if (size >= ION_FLUSH_ALL_HIGHLIMIT)
+		flush_all_cpu_caches();
+	else
+		dmac_flush_range(page_address(page), size, DMA_BIDIRECTIONAL);
 #endif
 	return &carveout_heap->heap;
 }

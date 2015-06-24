@@ -218,6 +218,8 @@ typedef struct {
 	};
 } tciMessage_t;
 
+#define MC_MAPPING_MAX_SIZE 0x100000
+
 #endif
 
 #endif /* End TIMA_LKM_AUTH_ENABLED */
@@ -2756,8 +2758,13 @@ static int lkmauth(Elf_Ehdr * hdr, int len)
 	struct mc_bulk_map map_info;
 	void *buf;
 	int buf_len;
+	int nb_of_1mb_section;	
+	int idx_mapping_section;
+	int mapping_len;
+	uint8_t *hdr_local = (uint8_t *)hdr;
 
 	mutex_lock(&lkmauth_mutex);
+	nb_of_1mb_section = ( len + MC_MAPPING_MAX_SIZE - 1 )/MC_MAPPING_MAX_SIZE;
 	pr_warn
 	    ("TIMA: lkmauth--launch the tl to check kernel module; module len is %d\n",
 	     len);
@@ -2908,61 +2915,75 @@ static int lkmauth(Elf_Ehdr * hdr, int len)
 	}
 
 	/* map ko buf to tl virtual space */
-	mc_ret = mc_map(&mchandle, (void *)hdr, len, &map_info);
-	if (mc_ret != MC_DRV_OK) {
-		pr_err
-		    ("TIMA: lkmauth--cannot map ko buf to tl virtual space\n");
-		ret = RET_LKMAUTH_FAIL;
-		goto lkmauth_ret;
+	for ( idx_mapping_section = 0; idx_mapping_section < nb_of_1mb_section; idx_mapping_section++ ){
+		if ( idx_mapping_section == nb_of_1mb_section -1 ){
+			mapping_len =  len - idx_mapping_section * MC_MAPPING_MAX_SIZE;
+		}
+		else
+		{
+			mapping_len = MC_MAPPING_MAX_SIZE;
+		}
+		mc_ret = mc_map(&mchandle, (void *)hdr_local, mapping_len, &map_info);
+		
+		if (mc_ret != MC_DRV_OK) {
+			pr_err
+				("TIMA: lkmauth--cannot map ko buf to tl virtual space %d\n", mc_ret);
+			ret = RET_LKMAUTH_FAIL;
+			goto lkmauth_ret;
+		}
+
+		/* Generate the request cmd to verify hash of ko.
+		*/
+		kreq = (struct lkmauth_req_s *)tci;
+		kreq->cmd_id = CMD_TIMA_LKMAUTH_VERIFY_MODULE;
+		/* pr_warn("TIMA: lkmauth -- virtual address of ko buffer in tl is : %x\n", (uint32_t)map_info.secure_virt_addr);
+		*/
+		kreq->module_addr_start = (uint32_t) map_info.secure_virt_addr;
+		kreq->module_len = mapping_len;
+
+		/* prepare the response buffer */
+		krsp = (struct lkmauth_rsp_s *)tci;
+
+		/* Send the command to the tl.
+		*/
+		mc_ret = mc_notify(&mchandle);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err("TIMA: lkmauth--mc_notify failed.\n");
+			ret = RET_LKMAUTH_FAIL;
+			mc_unmap(&mchandle, (void *)hdr_local, &map_info);
+			goto lkmauth_ret;
+		}
+
+		mc_ret = mc_wait_notification(&mchandle, -1);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err("TIMA: lkmauth--wait_notify failed.\n");
+			ret = RET_LKMAUTH_FAIL;
+			mc_unmap(&mchandle, (void *)hdr_local, &map_info);
+			goto lkmauth_ret;
+		}
+		pr_warn("TIMA: lkmauth--wait_notify completed.\n");
+
+		mc_ret = mc_unmap(&mchandle, (void *)hdr_local, &map_info);
+		if (mc_ret != MC_DRV_OK) {
+			pr_err("TIMA: lkmauth--cannot unmap ko memory\n");
+		}
+
+		/* Parse the tl response.
+		*/
+		if (krsp->ret == 0) {
+			pr_warn("TIMA: lkmauth--section verification succeeded idx : %d\n", idx_mapping_section);
+			hdr_local = hdr_local + MC_MAPPING_MAX_SIZE;
+			continue;
+			} else {
+
+			pr_err("TIMA: lkmauth--verification failed %d\n", krsp->ret);
+			ret = RET_LKMAUTH_FAIL;
+			send_notification(krsp, ret);
+			goto lkmauth_ret;
+		}
 	}
-
-	/* Generate the request cmd to verify hash of ko.
-	 */
-	kreq = (struct lkmauth_req_s *)tci;
-	kreq->cmd_id = CMD_TIMA_LKMAUTH_VERIFY_MODULE;
-	/* pr_warn("TIMA: lkmauth -- virtual address of ko buffer in tl is : %x\n", (uint32_t)map_info.secure_virt_addr);
-	 */
-	kreq->module_addr_start = (uint32_t) map_info.secure_virt_addr;
-	kreq->module_len = len;
-
-	/* prepare the response buffer */
-	krsp = (struct lkmauth_rsp_s *)tci;
-
-	/* Send the command to the tl.
-	 */
-	mc_ret = mc_notify(&mchandle);
-	if (mc_ret != MC_DRV_OK) {
-		pr_err("TIMA: lkmauth--mc_notify failed.\n");
-		ret = RET_LKMAUTH_FAIL;
-		mc_unmap(&mchandle, (void *)hdr, &map_info);
-		goto lkmauth_ret;
-	}
-
-	mc_ret = mc_wait_notification(&mchandle, -1);
-	if (mc_ret != MC_DRV_OK) {
-		pr_err("TIMA: lkmauth--wait_notify failed.\n");
-		ret = RET_LKMAUTH_FAIL;
-		mc_unmap(&mchandle, (void *)hdr, &map_info);
-		goto lkmauth_ret;
-	}
-	pr_warn("TIMA: lkmauth--wait_notify completed.\n");
-
-	mc_ret = mc_unmap(&mchandle, (void *)hdr, &map_info);
-	if (mc_ret != MC_DRV_OK) {
-		pr_err("TIMA: lkmauth--cannot unmap ko memory\n");
-	}
-
-	/* Parse the tl response.
-	 */
-	if (krsp->ret == 0) {
 		pr_warn("TIMA: lkmauth--verification succeeded.\n");
 		ret = RET_LKMAUTH_SUCCESS;	/* ret should already be 0 before the assignment. */
-	} else {
-
-		pr_err("TIMA: lkmauth--verification failed %d\n", krsp->ret);
-		ret = RET_LKMAUTH_FAIL;
-		send_notification(krsp, ret);
-	}
 	goto lkmauth_ret;
 #if 0 // TIMA driver is loaded at mcDriverDaemon
 lkmauth_close_drv_session:

@@ -26,7 +26,6 @@
 extern struct class *camera_class; /*sys/class/camera*/
 struct device *s2mpb02_led_dev;
 struct s2mpb02_led_data *global_led_datas[S2MPB02_LED_MAX];
-bool torch_step_adjust = false;
 
 struct s2mpb02_led_data {
 	struct led_classdev led;
@@ -88,6 +87,7 @@ static int s2mpb02_led_get_en_value(struct s2mpb02_led_data *led_data, int on)
 static void s2mpb02_led_set(struct led_classdev *led_cdev,
 						enum led_brightness value)
 {
+#if 0 /* disable LED control by other sysfs */
 	unsigned long flags;
 	struct s2mpb02_led_data *led_data
 		= container_of(led_cdev, struct s2mpb02_led_data, led);
@@ -99,6 +99,7 @@ static void s2mpb02_led_set(struct led_classdev *led_cdev,
 	spin_unlock_irqrestore(&led_data->value_lock, flags);
 
 	schedule_work(&led_data->work);
+#endif
 }
 
 static void led_set(struct s2mpb02_led_data *led_data)
@@ -121,19 +122,18 @@ static void led_set(struct s2mpb02_led_data *led_data)
 		if (unlikely(ret))
 			goto error_set_bits;
 	} else {
+		/* set current */
+		ret = s2mpb02_set_bits(led_data->i2c, S2MPB02_REG_FLED_CUR1,
+					  leds_mask[id], data->brightness << leds_shift[id]);
+		if (unlikely(ret))
+			goto error_set_bits;
 
-	/* set current */
-	ret = s2mpb02_set_bits(led_data->i2c, S2MPB02_REG_FLED_CUR1,
-				  leds_mask[id], data->brightness << leds_shift[id]);
-	if (unlikely(ret))
-		goto error_set_bits;
-
-	/* Turn on LED by I2C */
-	value = s2mpb02_led_get_en_value(led_data, 1);
-	ret = s2mpb02_set_bits(led_data->i2c,
-				S2MPB02_REG_FLED_CTRL1, S2MPB02_FLED_ENABLE_MODE_MASK, value);
-	if (unlikely(ret))
-		goto error_set_bits;
+		/* Turn on LED by I2C */
+		value = s2mpb02_led_get_en_value(led_data, 1);
+		ret = s2mpb02_set_bits(led_data->i2c,
+					S2MPB02_REG_FLED_CTRL1, S2MPB02_FLED_ENABLE_MODE_MASK, value);
+		if (unlikely(ret))
+			goto error_set_bits;
 	}
 
 	return;
@@ -202,6 +202,30 @@ void s2mpb02_led_get_status(struct led_classdev *led_cdev, bool status, bool ono
 		__func__, status, onoff, value[0], value[1], value[2], value[3], value[4], value[5]);
 }
 
+#ifdef CONFIG_TORCH_CURRENT_CHANGE_SUPPORT
+int s2mpb02_set_torch_current(bool torch_mode)
+{
+	struct s2mpb02_led_data *led_data = global_led_datas[S2MPB02_TORCH_LED_1];
+	struct s2mpb02_led *data = led_data->data;
+	int ret = 0;
+
+	pr_info("%s: torch_mode %d\n", __func__, torch_mode);
+	mutex_lock(&led_data->lock);
+
+	data->brightness = torch_mode ? S2MPB02_TORCH_OUT_I_60MA : original_brightness;
+
+	/* set current */
+	ret = s2mpb02_set_bits(led_data->i2c, S2MPB02_REG_FLED_CUR1,
+			  leds_mask[data->id], data->brightness << leds_shift[data->id]);
+	if (unlikely(ret)) {
+		pr_err("%s: failed to set FLED_CUR1, %d\n", __func__, ret);
+	}
+
+	mutex_unlock(&led_data->lock);
+	return ret;
+}
+#endif
+
 ssize_t s2mpb02_store(struct device *dev,
 			struct device_attribute *attr, const char *buf,
 			size_t count)
@@ -218,39 +242,26 @@ ssize_t s2mpb02_store(struct device *dev,
 	}
 
 	pr_info("[LED]%s , value:%d\n", __func__, value);
+	mutex_lock(&global_led_datas[S2MPB02_TORCH_LED_1]->lock);
 
-	if(torch_step_adjust) {
-		if (value == 0) {
-			/* Turn off Torch */
-			global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = LED_OFF;
-			led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-		} else if (1 <= value && value <= 10) {
-			/* Turn on Torch Step 20mA ~ 200mA */
-			global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = value;
-			led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-		} else if (value == 100) {
-			/* Factory mode Turn on Torch */
-			global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = S2MPB02_TORCH_OUT_I_240MA;
-			led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-		} else {
-			pr_info("[LED]%s , Invalid value:%d\n", __func__, value);
-		}
+	if (value == 0) {
+		/* Turn off Torch */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = LED_OFF;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else if (value == 1) {
+		/* Turn on Torch */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = S2MPB02_TORCH_OUT_I_60MA;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else if (value == 100) {
+		/* Factory mode Turn on Torch */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = S2MPB02_TORCH_OUT_I_240MA;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+	} else if (1001 <= value && value <= 1010) {
+		/* Turn on Torch Step 20mA ~ 200mA */
+		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = value - 1000;
+		led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
 	} else {
-		if (value == 0) {
-			/* Turn off Torch */
-			global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = LED_OFF;
-			led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-		} else if (value == 1) {
-			/* Turn on Torch */
-			global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = S2MPB02_TORCH_OUT_I_60MA;
-			led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-		} else if (value == 100) {
-			/* Factory mode Turn on Torch */
-			global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = S2MPB02_TORCH_OUT_I_240MA;
-			led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
-		} else {
-			pr_info("[LED]%s , Invalid value:%d\n", __func__, value);
-		}
+		pr_info("[LED]%s , Invalid value:%d\n", __func__, value);
 	}
 
 	if (value <= 0) {
@@ -260,6 +271,7 @@ ssize_t s2mpb02_store(struct device *dev,
 		global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = original_brightness;
 	}
 
+	mutex_unlock(&global_led_datas[S2MPB02_TORCH_LED_1]->lock);
 	return count;
 }
 
@@ -302,7 +314,6 @@ static int of_s2mpb02_torch_dt(struct s2mpb02_dev *iodev,
 	}
 
 	pdata->num_leds = of_get_child_count(np);
-	torch_step_adjust = of_property_read_bool(np, "torch_step_adjust");
 
 	for_each_child_of_node(np, c_np) {
 		ret = of_property_read_u32(c_np, "id", &temp);
@@ -503,12 +514,19 @@ static int s2mpb02_led_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static void s2mpb02_led_shutdown(struct device *dev)
+{
+	global_led_datas[S2MPB02_TORCH_LED_1]->data->brightness = LED_OFF;
+	led_set(global_led_datas[S2MPB02_TORCH_LED_1]);
+}
+
 static struct platform_driver s2mpb02_led_driver = {
 	.probe		= s2mpb02_led_probe,
 	.remove		= s2mpb02_led_remove,
 	.driver		= {
 		.name	= "s2mpb02-led",
 		.owner	= THIS_MODULE,
+		.shutdown   = s2mpb02_led_shutdown,
 	},
 };
 

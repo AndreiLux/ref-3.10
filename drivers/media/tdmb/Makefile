@@ -11,6 +11,10 @@ obj-$(CONFIG_TDMB) += tdmb.o tdmb_data.o
 ccflags-$(CONFIG_TDMB_FC8080) += -Idrivers/media/tdmb/fc8080
 obj-$(CONFIG_TDMB_FC8080) += tdmb_port_fc8080.o
 obj-$(CONFIG_TDMB_FC8080) += fc8080/
+# MTV319
+ccflags-$(CONFIG_TDMB_MTV319) += -Idrivers/media/tdmb/mtv319
+obj-$(CONFIG_TDMB_MTV319) += tdmb_port_mtv319.o
+obj-$(CONFIG_TDMB_MTV319) += mtv319/
 # i/f
 obj-$(CONFIG_TDMB_SPI) += tdmb_spi.o
 obj-$(CONFIG_TDMB_EBI) += tdmb_ebi.o

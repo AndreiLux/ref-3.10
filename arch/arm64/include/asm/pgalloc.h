@@ -68,7 +68,7 @@ static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
 	if (boot_mode_security)
 #endif	//CONFIG_KNOX_KAP
 		rkp_do = 1;
-	if( rkp_do && (unsigned long)pmd >= (unsigned long)RKP_RBUF_VA && (unsigned long)pmd < ((unsigned long)RKP_RBUF_VA + (1UL << 23)) /*8MB */)
+	if( rkp_do && (unsigned long)pmd >= (unsigned long)RKP_RBUF_VA && (unsigned long)pmd < ((unsigned long)RKP_RBUF_VA + TIMA_ROBUF_SIZE))
 		rkp_ro_free((void*)pmd);
 	else
 		free_page((unsigned long)pmd);

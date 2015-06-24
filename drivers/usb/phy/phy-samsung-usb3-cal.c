@@ -19,6 +19,7 @@
 
 #include "phy-samsung-usb-cal.h"
 #include "phy-samsung-usb3-cal.h"
+#include <linux/of.h>		/* for struct device_node */
 
 void samsung_exynos5_cal_usb3phy_enable(void __iomem *regs_base,
 					u32 refclkfreq)
@@ -227,6 +228,7 @@ void samsung_exynos5_cal_usb3phy_tune_dev(void __iomem *regs_base)
 	u32 phyparam1;
 	u32 phyparam2;
 	u32 phypcsval;
+	struct device_node *np_usb3phy;
 
 	/* Set the LINK Version Control and Frame Adjust Value */
 	linksystem = readl(regs_base + EXYNOS5_DRD_LINKSYSTEM);
@@ -240,13 +242,22 @@ void samsung_exynos5_cal_usb3phy_tune_dev(void __iomem *regs_base)
 	phypipe |= PHY_CLOCK_SEL;
 	writel(phypipe, regs_base + EXYNOS5_DRD_PHYPIPE);
 
-	/* Tuning the USB3 HS Pre-empasis and TXVREFTUNE */
 	phyparam0 = readl(regs_base + EXYNOS5_DRD_PHYPARAM0);
-	phyparam0 &= ~PHYPARAM0_TXPREEMPAMPTUNE_MASK;
-	phyparam0 |= PHYPARAM0_TXPREEMPAMPTUNE(0x3);
-	phyparam0 &= ~PHYPARAM0_TXVREFTUNE_MASK;
-	phyparam0 |= PHYPARAM0_TXVREFTUNE(0xe);
-	writel(phyparam0, regs_base + EXYNOS5_DRD_PHYPARAM0);
+
+	/* Tuning the USB3 HS Pre-empasis and TXVREFTUNE */
+	np_usb3phy = of_find_node_by_name(NULL, "dwc3_phy");
+	if(!np_usb3phy){
+		phyparam0 = readl(regs_base + EXYNOS5_DRD_PHYPARAM0);
+		phyparam0 &= ~PHYPARAM0_TXPREEMPAMPTUNE_MASK;
+		phyparam0 |= PHYPARAM0_TXPREEMPAMPTUNE(0x3);
+		phyparam0 &= ~PHYPARAM0_TXVREFTUNE_MASK;
+		phyparam0 |= PHYPARAM0_TXVREFTUNE(0xe);
+		writel(phyparam0, regs_base + EXYNOS5_DRD_PHYPARAM0);
+	} else {
+		if(!of_property_read_u32(np_usb3phy, "dwc3,usb3phy-tune", &phyparam0)){
+			writel(phyparam0, regs_base + EXYNOS5_DRD_PHYPARAM0);
+		}
+	}
 
 	/* Set the PHY Signal Quality Tuning Value */
 	phyparam1 = readl(regs_base + EXYNOS5_DRD_PHYPARAM1);

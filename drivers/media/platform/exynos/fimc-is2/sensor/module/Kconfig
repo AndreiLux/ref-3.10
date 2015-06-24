@@ -118,6 +118,12 @@ config CAMERA_SENSOR_IMX219_OBJ
         default n
         help
           Use to build IMX219 camera sensor.
+config CAMERA_SENSOR_IMX228_OBJ
+        bool "Use IMX228 camera sensor"
+        depends on VIDEO_EXYNOS_FIMC_IS
+        default n
+        help
+          Use to build IMX228 camera sensor.
 config CAMERA_SENSOR_IMX240_OBJ
         bool "Use IMX240 camera sensor"
         depends on VIDEO_EXYNOS_FIMC_IS

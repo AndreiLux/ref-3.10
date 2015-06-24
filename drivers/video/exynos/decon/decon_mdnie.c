@@ -20,7 +20,7 @@
 #include "./panels/mdnie.h"
 #include "mdnie_reg.h"
 
-#if defined(CONFIG_PANEL_S6E3HA2_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF2_DYNAMIC)
+#if defined(CONFIG_PANEL_S6E3HA2_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF2_DYNAMIC) || defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
 #include "decon-mdnie_table_zero.h"
 #endif
 #if defined(CONFIG_TDMB)

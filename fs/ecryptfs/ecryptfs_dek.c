@@ -1,5 +1,8 @@
+#include <linux/pagemap.h>
 #include <linux/crypto.h>
 #include <asm/unaligned.h>
+
+#include <sdp/fs_handler.h>
 #include "ecryptfs_dek.h"
 #include "mm.h"
 
@@ -7,13 +10,21 @@ extern int dek_encrypt_dek_efs(int userid, dek_t *plainDek, dek_t *encDek);
 extern int dek_decrypt_dek_efs(int userid, dek_t *encDek, dek_t *plainDek);
 extern int dek_is_persona_locked(int userid);
 
-static int ecryptfs_update_crypt_flag(struct dentry *dentry, int is_sensitive);
+static int ecryptfs_update_crypt_flag(struct dentry *dentry, enum sdp_op operation);
+
+static const char* get_op_name(enum sdp_op operation) {
+   switch (operation)
+   {
+      case TO_SENSITIVE: return "TO_SENSITIVE";
+      case TO_PROTECTED: return "TO_PROTECTED";
+      default: return "OP_UNKNOWN";
+   }
+}
 
 static int ecryptfs_set_key(struct ecryptfs_crypt_stat *crypt_stat) {
 	int rc = 0;
 
-    mutex_lock(&crypt_stat->cs_tfm_mutex);
-
+	mutex_lock(&crypt_stat->cs_tfm_mutex);
 	if (!(crypt_stat->flags & ECRYPTFS_KEY_SET)) {
 		rc = crypto_ablkcipher_setkey(crypt_stat->tfm, crypt_stat->key,
 				crypt_stat->key_size);
@@ -27,9 +38,8 @@ static int ecryptfs_set_key(struct ecryptfs_crypt_stat *crypt_stat) {
 		crypt_stat->flags |= ECRYPTFS_KEY_SET;
 		crypt_stat->flags |= ECRYPTFS_KEY_VALID;
 	}
-
 out:
-    mutex_unlock(&crypt_stat->cs_tfm_mutex);
+	mutex_unlock(&crypt_stat->cs_tfm_mutex);
 	return rc;
 }
 
@@ -233,11 +243,62 @@ out:
     return rc;
 }
 
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+static void ecryptfs_propagate_flag(struct file *file, int userid, enum sdp_op operation) {
+    struct file *f = file;
+    do {
+		if(!f)
+			return ;
+
+		DEK_LOGD("%s file: %p [%s]\n",__func__, f, f->f_inode->i_sb->s_type->name);
+        if (operation == TO_SENSITIVE) {
+			mapping_set_sensitive(f->f_mapping);
+		} else {
+			mapping_clear_sensitive(f->f_mapping);
+		}
+		f->f_mapping->userid = userid;
+    } while (f->f_op->get_lower_file && (f = f->f_op->get_lower_file(f)));
+}
+#endif
+
+void ecryptfs_set_mapping_sensitive(struct inode *ecryptfs_inode, int userid, enum sdp_op operation) {
+#if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
+	struct ecryptfs_mount_crypt_stat *mount_crypt_stat = NULL;
+	struct ecryptfs_inode_info *inode_info;
+	
+	inode_info = ecryptfs_inode_to_private(ecryptfs_inode);
+	DEK_LOGD("%s inode: %p lower_file_count: %d\n",__func__, ecryptfs_inode,atomic_read(&inode_info->lower_file_count));
+	mount_crypt_stat = &ecryptfs_superblock_to_private(ecryptfs_inode->i_sb)->mount_crypt_stat;
+	
+	if (operation == TO_SENSITIVE) {
+		mapping_set_sensitive(ecryptfs_inode->i_mapping);
+	} else {
+		mapping_clear_sensitive(ecryptfs_inode->i_mapping);
+	}
+	ecryptfs_inode->i_mapping->userid = userid;
+	/*
+	 * If FMP is in use, need to set flag to lower filesystems too recursively
+	 */
+	if (mount_crypt_stat->flags & ECRYPTFS_USE_FMP) {
+		if(inode_info->lower_file) {
+			ecryptfs_propagate_flag(inode_info->lower_file, userid, operation);
+		}
+	}
+#else
+	if (operation == TO_SENSITIVE) {
+		mapping_set_sensitive(ecryptfs_inode->i_mapping);
+	} else {
+		mapping_clear_sensitive(ecryptfs_inode->i_mapping);
+	}
+	ecryptfs_inode->i_mapping->userid = userid;
+#endif
+}
+
 /*
  * set sensitive flag, update metadata
  * Set cached inode pages to sensitive
  */
-static int ecryptfs_update_crypt_flag(struct dentry *dentry, int is_sensitive)
+static int ecryptfs_update_crypt_flag(struct dentry *dentry, enum sdp_op operation)
 {
 	int rc = 0;
 	struct inode *inode;
@@ -246,7 +307,7 @@ static int ecryptfs_update_crypt_flag(struct dentry *dentry, int is_sensitive)
 	struct ecryptfs_mount_crypt_stat *mount_crypt_stat;
 	u32 tmp_flags;
 
-	printk("%s(is_sensitive:%d) entered\n", __func__, is_sensitive);
+	DEK_LOGE("%s(operation:%s) entered\n", __func__, get_op_name(operation));
 
 	crypt_stat = &ecryptfs_inode_to_private(dentry->d_inode)->crypt_stat;
 	mount_crypt_stat = &ecryptfs_superblock_to_private(dentry->d_sb)->mount_crypt_stat;
@@ -271,39 +332,44 @@ static int ecryptfs_update_crypt_flag(struct dentry *dentry, int is_sensitive)
 	}
 
 	tmp_flags = crypt_stat->flags;
-	if (is_sensitive) {
+	if (operation == TO_SENSITIVE) {
 		crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
 		/*
-		* Set sensitive for all the pages in the inode
+		* Set sensitive to inode mapping
 		*/
-		set_sensitive_mapping_pages(inode->i_mapping, 0, -1);
-	}
-	else{
+		ecryptfs_set_mapping_sensitive(inode, mount_crypt_stat->userid, TO_SENSITIVE);
+	} else {
 		crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
+		/*
+		* Set protected to inode mapping
+		*/
+		ecryptfs_set_mapping_sensitive(inode, mount_crypt_stat->userid, TO_PROTECTED);
 	}
 
 	rc = ecryptfs_write_metadata(dentry, inode);
 	if (rc) {
 		crypt_stat->flags = tmp_flags;
-		mutex_unlock(&crypt_stat->cs_mutex);
 		DEK_LOGE("ecryptfs_write_metadata rc=%d\n", rc);
 		goto out;
 	}
 
 	rc = ecryptfs_write_inode_size_to_metadata(inode);
 	if (rc) {
-		mutex_unlock(&crypt_stat->cs_mutex);
 		DEK_LOGE("Problem with "
 				"ecryptfs_write_inode_size_to_metadata; "
 				"rc = [%d]\n", rc);
 		goto out;
 	}
 
-	mutex_unlock(&crypt_stat->cs_mutex);
 out:
+	mutex_unlock(&crypt_stat->cs_mutex);
 	ecryptfs_put_lower_file(inode);
 	fsstack_copy_attr_all(inode, lower_inode);
 	return rc;
+}
+
+void ecryptfs_fs_request_callback(int opcode, int ret, unsigned long ino) {
+    DEK_LOGD("%s opcode<%d> ret<%d> ino<%ld>\n", __func__, opcode, ret, ino);
 }
 
 int ecryptfs_sdp_set_sensitive(struct dentry *dentry) {
@@ -315,45 +381,52 @@ int ecryptfs_sdp_set_sensitive(struct dentry *dentry) {
 
 	DEK_LOGD("%s(%s)\n", __func__, dentry->d_name.name);
 
-	if (crypt_stat->key_size > DEK_MAXLEN ||
-			crypt_stat->key_size > UINT_MAX){
-		DEK_LOGE("%s Too large key_size\n", __func__);
-		rc = -EFAULT;
-		goto out;
-	}
-	memcpy(DEK.buf, crypt_stat->key, crypt_stat->key_size);
-	DEK.len = (unsigned int)crypt_stat->key_size;
-	DEK.type = DEK_TYPE_PLAIN;
+	if(S_ISDIR(inode->i_mode)) {
+        crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
+        rc = 0;
+	} else if(S_ISREG(inode->i_mode)) {
+    	if (crypt_stat->key_size > ECRYPTFS_MAX_KEY_BYTES ||
+	    		crypt_stat->key_size > DEK_MAXLEN ||
+	    		crypt_stat->key_size > UINT_MAX){
+	    	DEK_LOGE("%s Too large key_size\n", __func__);
+	    	rc = -EFAULT;
+    		goto out;
+	    }
+	    memcpy(DEK.buf, crypt_stat->key, crypt_stat->key_size);
+	    DEK.len = (unsigned int)crypt_stat->key_size;
+	    DEK.type = DEK_TYPE_PLAIN;
 
-	rc = dek_encrypt_dek_efs(crypt_stat->userid, &DEK,  &crypt_stat->sdp_dek);
-	if (rc < 0) {
-		DEK_LOGE("Error encrypting dek; rc = [%d]\n", rc);
-		memset(&crypt_stat->sdp_dek, 0, sizeof(dek_t));
-		goto out;
-	}
+	    rc = dek_encrypt_dek_efs(crypt_stat->userid, &DEK,  &crypt_stat->sdp_dek);
+	    if (rc < 0) {
+	        DEK_LOGE("Error encrypting dek; rc = [%d]\n", rc);
+	        memset(&crypt_stat->sdp_dek, 0, sizeof(dek_t));
+	        goto out;
+	    }
 #if 0
-	/*
-	 * We don't have to clear FEK after set-sensitive.
-	 * FEK will be closed when the file is closed
-	 */
-	memset(crypt_stat->key, 0, crypt_stat->key_size);
-	crypt_stat->flags &= ~(ECRYPTFS_KEY_SET);
+	    /*
+	     * We don't have to clear FEK after set-sensitive.
+	     * FEK will be closed when the file is closed
+	     */
+	    memset(crypt_stat->key, 0, crypt_stat->key_size);
+	    crypt_stat->flags &= ~(ECRYPTFS_KEY_SET);
 #else
-	/*
-	 * set-key after set sensitive file.
-	 * Well when the file is just created and we do set_sensitive, the key is not set in the
-	 * tfm. later SDP code, set-key is done while encryption, trying to decrypt EFEK.
-	 *
-	 * Here is the case in locked state user process want to create/write a file.
-	 * the process open the file, automatically becomes sensitive by vault logic,
-	 * and do the encryption, then boom. failed to decrypt EFEK even if FEK is
-	 * available
-	 */
-	rc = ecryptfs_set_key(crypt_stat);
-	if(rc) goto out;
+	    /*
+	     * set-key after set sensitive file.
+	     * Well when the file is just created and we do set_sensitive, the key is not set in the
+	     * tfm. later SDP code, set-key is done while encryption, trying to decrypt EFEK.
+	     *
+	     * Here is the case in locked state user process want to create/write a file.
+	     * the process open the file, automatically becomes sensitive by vault logic,
+	     * and do the encryption, then boom. failed to decrypt EFEK even if FEK is
+	     * available
+	     */
+	    rc = ecryptfs_set_key(crypt_stat);
+	    if(rc) goto out;
 #endif
 
-	ecryptfs_update_crypt_flag(dentry, 1);
+	    ecryptfs_update_crypt_flag(dentry, TO_SENSITIVE);
+	}
+
 out:
 	memset(&DEK, 0, sizeof(dek_t));
 	return rc;
@@ -367,25 +440,30 @@ int ecryptfs_sdp_set_protected(struct dentry *dentry) {
 
     DEK_LOGD("%s(%s)\n", __func__, dentry->d_name.name);
 
-    rc = ecryptfs_get_sdp_dek(crypt_stat);
-    if (rc) {
-        ecryptfs_printk(KERN_ERR, "%s Get SDP key failed\n", __func__);
-        goto out;
-    }
-    /*
-     * TODO : double check if need to compute iv here
-     */
-    rc = ecryptfs_compute_root_iv(crypt_stat);
-    if (rc) {
-        ecryptfs_printk(KERN_ERR, "Error computing "
-                "the root IV\n");
-        goto out;
-    }
+    if(S_ISDIR(inode->i_mode)) {
+        crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
+        rc = 0;
+    } else {
+        rc = ecryptfs_get_sdp_dek(crypt_stat);
+        if (rc) {
+            ecryptfs_printk(KERN_ERR, "%s Get SDP key failed\n", __func__);
+            goto out;
+        }
+        /*
+         * TODO : double check if need to compute iv here
+         */
+        rc = ecryptfs_compute_root_iv(crypt_stat);
+        if (rc) {
+            ecryptfs_printk(KERN_ERR, "Error computing "
+                    "the root IV\n");
+            goto out;
+        }
 
-    rc = ecryptfs_set_key(crypt_stat);
-    if(rc) goto out;
+        rc = ecryptfs_set_key(crypt_stat);
+        if(rc) goto out;
 
-    ecryptfs_update_crypt_flag(dentry, 0);
+        ecryptfs_update_crypt_flag(dentry, TO_PROTECTED);
+    }
 out:
     return rc;
 }
@@ -409,7 +487,7 @@ int ecryptfs_sdp_convert_dek(struct dentry *dentry) {
 		goto out;
 	}
 
-	rc = ecryptfs_update_crypt_flag(dentry, 1);
+	rc = ecryptfs_update_crypt_flag(dentry, TO_SENSITIVE);
 	if (rc < 0) {
 		DEK_LOGE("Error converting dek [FLAG]; rc = [%d]\n", rc);
 		goto out;
@@ -502,6 +580,37 @@ long ecryptfs_do_sdp_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 		memset(&req, 0, sizeof(dek_arg_set_sensitive));
 		break;
 	}
+
+    case ECRYPTFS_IOCTL_SET_PROTECTED: {
+        dek_arg_set_protected req;
+
+        ecryptfs_printk(KERN_DEBUG, "ECRYPTFS_IOCTL_SET_PROTECTED\n");
+        if (!(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
+            DEK_LOGE("already protected file\n");
+            return 0;
+        }
+
+        if (S_ISDIR(ecryptfs_dentry->d_inode->i_mode)) {
+            DEK_LOGE("Set protected directory\n");
+            crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
+            break;
+        }
+
+        memset(&req, 0, sizeof(dek_arg_set_protected));
+        if(copy_from_user(&req, ubuf, sizeof(req))) {
+            DEK_LOGE("can't copy from user\n");
+            memset(&req, 0, sizeof(dek_arg_set_protected));
+            return -EFAULT;
+        } else {
+            if (ecryptfs_sdp_set_protected(ecryptfs_dentry)) {
+                DEK_LOGE("failed to set protected\n");
+                memset(&req, 0, sizeof(dek_arg_set_protected));
+                return -EFAULT;
+            }
+        }
+        memset(&req, 0, sizeof(dek_arg_set_protected));
+        break;
+    }
 
 	default: {
 		return -EINVAL;

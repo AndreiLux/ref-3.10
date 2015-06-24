@@ -44,23 +44,30 @@ static struct remove_af_noise af_sensor_interface = {
 	.af_func = NULL,
 };
 
-static void fimc_is_af_i2c_config(struct i2c_client *client, bool onoff)
+static int fimc_is_af_i2c_config(struct i2c_client *client, bool onoff)
 {
 	struct device *i2c_dev = client->dev.parent->parent;
 	struct pinctrl *pinctrl_i2c = NULL;
-	struct fimc_is_device_af *device =  i2c_get_clientdata(client);
+	struct fimc_is_device_af *device;
 	struct fimc_is_af_gpio *gpio;
 
+	if (!client) {
+		pr_info("%s: client is null\n", __func__);
+		return -ENODEV;
+	}
+
+	device = i2c_get_clientdata(client);
 	gpio = &device->gpio;
 
-	info("(%s):onoff(%d)\n", __func__, onoff);
+	info("(%s):onoff(%d) use_i2c_pinctrl(%d)\n", __func__, onoff, gpio->use_i2c_pinctrl);
 	if (onoff) {
 		/* ON */
-		pin_config_set(gpio->pinname, gpio->sda,
-			PINCFG_PACK(PINCFG_TYPE_FUNC, 0));
-		pin_config_set(gpio->pinname, gpio->scl,
-			PINCFG_PACK(PINCFG_TYPE_FUNC, 0));
-
+		if(gpio->use_i2c_pinctrl) {
+			pin_config_set(gpio->pinname, gpio->sda,
+				PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_on));
+			pin_config_set(gpio->pinname, gpio->scl,
+				PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_on));
+		}
 		pinctrl_i2c = devm_pinctrl_get_select(i2c_dev, "on_i2c");
 		if (IS_ERR_OR_NULL(pinctrl_i2c)) {
 			printk(KERN_ERR "%s: Failed to configure i2c pin\n", __func__);
@@ -75,13 +82,15 @@ static void fimc_is_af_i2c_config(struct i2c_client *client, bool onoff)
 		} else {
 			devm_pinctrl_put(pinctrl_i2c);
 		}
+		if(gpio->use_i2c_pinctrl) {
+			pin_config_set(gpio->pinname, gpio->sda,
+				PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_off));
+			pin_config_set(gpio->pinname, gpio->scl,
+				PINCFG_PACK(PINCFG_TYPE_FUNC, gpio->pinfunc_off));
+		}
+	}
 
-		pin_config_set(gpio->pinname, gpio->sda,
-			PINCFG_PACK(PINCFG_TYPE_FUNC, 2));
-		pin_config_set(gpio->pinname, gpio->scl,
-			PINCFG_PACK(PINCFG_TYPE_FUNC, 2));
-    }
-
+	return 0;
 }
 
 int fimc_is_af_i2c_read(struct i2c_client *client, u16 addr, u16 *data)
@@ -393,29 +402,47 @@ int fimc_is_af_parse_dt(struct i2c_client *client)
 	struct device_node *np = client->dev.of_node;
 
 	gpio = &device->gpio;
+	gpio->use_i2c_pinctrl = of_property_read_bool(np, "use_i2c_pinctrl");
 
-	ret = of_property_read_string(np, "fimc_is_af_sda", (const char **) &gpio->sda);
-	if (ret) {
-		err("af gpio: fail to read, af_parse_dt\n");
-		ret = -ENODEV;
-		goto p_err;
+	if(gpio->use_i2c_pinctrl) {
+		ret = of_property_read_string(np, "fimc_is_af_sda", (const char **) &gpio->sda);
+		if (ret) {
+			err("af gpio: fail to read, af_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_string(np, "fimc_is_af_scl", (const char **) &gpio->scl);
+		if (ret) {
+			err("af gpio: fail to read, af_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_string(np, "fimc_is_af_pinname", (const char **) &gpio->pinname);
+		if (ret) {
+			err("af gpio: fail to read, af_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_u32(np, "pinfunc_on", &gpio->pinfunc_on);
+		if (ret) {
+			err("af gpio: fail to read, af_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		ret = of_property_read_u32(np, "pinfunc_off", &gpio->pinfunc_off);
+		if (ret) {
+			err("af gpio: fail to read, af_parse_dt\n");
+			ret = -ENODEV;
+			goto p_err;
+		}
+
+		info("[AF] sda = %s, scl = %s, pinname = %s, pinfunc_on = %d, pinfunc_off = %d\n",
+				gpio->sda, gpio->scl, gpio->pinname, gpio->pinfunc_on, gpio->pinfunc_off);
 	}
-
-	ret = of_property_read_string(np, "fimc_is_af_scl",(const char **) &gpio->scl);
-	if (ret) {
-		err("af gpio: fail to read, af_parse_dt\n");
-		ret = -ENODEV;
-		goto p_err;
-	}
-
-	ret = of_property_read_string(np, "fimc_is_af_pinname",(const char **) &gpio->pinname);
-	if (ret) {
-		err("af gpio: fail to read, af_parse_dt\n");
-		ret = -ENODEV;
-		goto p_err;
-	}
-
-	info("[AF] sda = %s, scl = %s, pinname = %s\n", gpio->sda, gpio->scl, gpio->pinname);
 
 p_err:
 	return ret;

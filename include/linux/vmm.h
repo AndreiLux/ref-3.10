@@ -20,8 +20,8 @@
 #ifndef __VMM_H__
 #define __VMM_H__
 
-#define VMM_RUNTIME_BASE 0x52C00000
-#define VMM_RUNTIME_SIZE 0x200000
+#define VMM_RUNTIME_BASE 0x4dd00000
+#define VMM_RUNTIME_SIZE 0x100000
 
 #ifndef __ASSEMBLY__
 

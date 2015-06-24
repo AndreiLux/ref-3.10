@@ -720,15 +720,27 @@ static inline enum s5p_mfc_node_type s5p_mfc_get_node_type(struct file *file)
 static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dec *dec;
+	struct s5p_mfc_dev *dev;
 	struct s5p_mfc_buf *dst_buf;
 	int index, is_first = 1;
+	unsigned int interlace_type = 0, is_interlace = 0;
 
 	if (!ctx) {
 		mfc_err("no mfc context to run\n");
 		return;
 	}
 
+	dev = ctx->dev;
+	if (!dev) {
+		mfc_err("no mfc device to run\n");
+		return;
+	}
+
 	dec = ctx->dec_priv;
+	if (!dec) {
+		mfc_err("no mfc decoder to run\n");
+		return;
+	}
 
 	mfc_debug(2, "Decided to finish\n");
 	ctx->sequence++;
@@ -737,18 +749,22 @@ static void s5p_mfc_handle_frame_all_extracted(struct s5p_mfc_ctx *ctx)
 				     struct s5p_mfc_buf, list);
 		mfc_debug(2, "Cleaning up buffer: %d\n",
 					  dst_buf->vb.v4l2_buf.index);
+		if (interlaced_cond(ctx))
+			is_interlace = s5p_mfc_is_interlace_picture();
 		vb2_set_plane_payload(&dst_buf->vb, 0, 0);
 		vb2_set_plane_payload(&dst_buf->vb, 1, 0);
 		list_del(&dst_buf->list);
 		ctx->dst_queue_cnt--;
 		dst_buf->vb.v4l2_buf.sequence = (ctx->sequence++);
-
-		if (s5p_mfc_read_info(ctx, PIC_TIME_TOP) ==
-			s5p_mfc_read_info(ctx, PIC_TIME_BOT))
-			dst_buf->vb.v4l2_buf.field = V4L2_FIELD_NONE;
+		if (is_interlace) {
+			interlace_type = s5p_mfc_get_interlace_type();
+			if (interlace_type)
+				dst_buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED_TB;
+			else
+				dst_buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED_BT;
+		}
 		else
-			dst_buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED;
-
+			dst_buf->vb.v4l2_buf.field = V4L2_FIELD_NONE;
 		clear_bit(dst_buf->vb.v4l2_buf.index, &dec->dpb_status);
 
 		index = dst_buf->vb.v4l2_buf.index;
@@ -879,8 +895,6 @@ static void s5p_mfc_handle_frame_copy_timestamp(struct s5p_mfc_ctx *ctx)
 	}
 }
 
-#define on_res_change(ctx)	((ctx)->state >= MFCINST_RES_CHANGE_INIT &&	\
-				 (ctx)->state <= MFCINST_RES_CHANGE_END)
 static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 {
 	struct s5p_mfc_dec *dec;
@@ -890,6 +904,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	dma_addr_t dspl_y_addr;
 	unsigned int index;
 	unsigned int frame_type;
+	unsigned int interlace_type = 0, is_interlace = 0;
 	int mvc_view_id;
 	unsigned int dst_frame_status, last_frame_status;
 	struct list_head *dst_queue_addr;
@@ -950,7 +965,8 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 		if (!(not_coded_cond(ctx) && FW_HAS_NOT_CODED(dev)))
 			return;
 	}
-
+	if (interlaced_cond(ctx))
+		is_interlace = s5p_mfc_is_interlace_picture();
 	if (dec->is_dynamic_dpb) {
 		prev_flag = dec->dynamic_used;
 		dec->dynamic_used = mfc_get_dec_used_flag();
@@ -985,11 +1001,17 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 
 			dst_buf->vb.v4l2_buf.sequence = ctx->sequence;
 
-			if (s5p_mfc_read_info(ctx, PIC_TIME_TOP) ==
-				s5p_mfc_read_info(ctx, PIC_TIME_BOT))
-				dst_buf->vb.v4l2_buf.field = V4L2_FIELD_NONE;
+			if (is_interlace) {
+				interlace_type = s5p_mfc_get_interlace_type();
+				if (interlace_type)
+					dst_buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED_TB;
+				else
+					dst_buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED_BT;
+			}
 			else
-				dst_buf->vb.v4l2_buf.field = V4L2_FIELD_INTERLACED;
+				dst_buf->vb.v4l2_buf.field = V4L2_FIELD_NONE;
+			mfc_debug(2, "is_interlace : %d interlace_type : %d\n",
+				is_interlace, interlace_type);
 
 			for (i = 0; i < raw->num_planes; i++)
 				vb2_set_plane_payload(&dst_buf->vb, i,
@@ -1000,7 +1022,8 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 			dst_buf->vb.v4l2_buf.flags &=
 					~(V4L2_BUF_FLAG_KEYFRAME |
 					V4L2_BUF_FLAG_PFRAME |
-					V4L2_BUF_FLAG_BFRAME);
+					V4L2_BUF_FLAG_BFRAME |
+					V4L2_BUF_FLAG_ERROR);
 
 			switch (frame_type) {
 			case S5P_FIMV_DISPLAY_FRAME_I:
@@ -1019,9 +1042,12 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 				break;
 			}
 
-			if (s5p_mfc_err_dspl(err))
+			if (s5p_mfc_err_dspl(err)) {
 				mfc_err_ctx("Warning for displayed frame: %d\n",
 							s5p_mfc_err_dspl(err));
+				dst_buf->vb.v4l2_buf.flags |=
+					V4L2_BUF_FLAG_ERROR;
+			}
 
 			if (call_cop(ctx, get_buf_ctrls_val, ctx, &ctx->dst_ctrls[index]) < 0)
 				mfc_err_ctx("failed in get_buf_ctrls_val\n");
@@ -1535,12 +1561,29 @@ static inline void s5p_mfc_handle_error(struct s5p_mfc_ctx *ctx,
 		if (err == S5P_FIMV_VPS_ONLY_ERROR) {
 			ctx->state = MFCINST_VPS_PARSED_ONLY;
 			if (!list_empty(&ctx->src_queue)) {
-				src_buf = list_entry(ctx->src_queue.next, struct s5p_mfc_buf,
-						list);
+				src_buf = list_entry(ctx->src_queue.next,
+						struct s5p_mfc_buf, list);
 				list_del(&src_buf->list);
 				ctx->src_queue_cnt--;
 				vb2_buffer_done(&src_buf->vb, VB2_BUF_STATE_DONE);
 			}
+		} else if (err == S5P_FIMV_ERR_HEADER_NOT_FOUND && !ctx->is_drm) {
+			unsigned char *stream_vir = NULL;
+			unsigned int strm_size = 0;
+			spin_lock_irqsave(&dev->irqlock, flags);
+			if (!list_empty(&ctx->src_queue)) {
+				src_buf = list_entry(ctx->src_queue.next,
+						struct s5p_mfc_buf, list);
+				stream_vir = src_buf->vir_addr;
+				strm_size = src_buf->vb.v4l2_planes[0].bytesused;
+				if (strm_size > 32)
+					strm_size = 32;
+			}
+			spin_unlock_irqrestore(&dev->irqlock, flags);
+			if (stream_vir && strm_size)
+				print_hex_dump(KERN_ERR, "No header: ",
+						DUMP_PREFIX_ADDRESS, strm_size, 4,
+						stream_vir, strm_size, false);
 		}
 	case MFCINST_RES_CHANGE_END:
 		/* This error had to happen while parsing the header */
@@ -1729,7 +1772,8 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 					s5p_mfc_is_interlace_picture();
 
 			if ((ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC ||
-				ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC) &&
+				ctx->codec_mode == S5P_FIMV_CODEC_H264_MVC_DEC ||
+				ctx->codec_mode == S5P_FIMV_CODEC_HEVC_DEC) &&
 					!list_empty(&ctx->src_queue)) {
 				struct s5p_mfc_buf *src_buf;
 				src_buf = list_entry(ctx->src_queue.next,

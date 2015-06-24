@@ -54,54 +54,92 @@ int fimc_is_eeprom_parse_dt(struct i2c_client *client)
 	gpio = &device->gpio;
 
 	if (device->driver_data == REAR_DATA) {
-		ret = of_property_read_string(np, "fimc_is_rear_eeprom_sda", (const char **) &gpio->sda);
-		if (ret) {
-			err("rear eeprom gpio: fail to read, fimc_is_rear_eeprom_sda\n");
-			ret = -ENODEV;
-			goto p_err;
-		}
+		gpio->use_i2c_pinctrl = of_property_read_bool(np, "use_i2c_pinctrl");
+		if(gpio->use_i2c_pinctrl) {
+			ret = of_property_read_string(np, "fimc_is_rear_eeprom_sda", (const char **) &gpio->sda);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, fimc_is_rear_eeprom_sda\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
 
-		ret = of_property_read_string(np, "fimc_is_rear_eeprom_scl",(const char **) &gpio->scl);
-		if (ret) {
-			err("rear eeprom gpio: fail to read, fimc_is_rear_eeprom_scl\n");
-			ret = -ENODEV;
-			goto p_err;
-		}
+			ret = of_property_read_string(np, "fimc_is_rear_eeprom_scl",(const char **) &gpio->scl);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, fimc_is_rear_eeprom_scl\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
 
-		ret = of_property_read_string(np, "fimc_is_rear_eeprom_pinname",(const char **) &gpio->pinname);
-		if (ret) {
-			err("rear eeprom gpio: fail to read, fimc_is_rear_eeprom_pinname\n");
-			ret = -ENODEV;
-			goto p_err;
+			ret = of_property_read_string(np, "fimc_is_rear_eeprom_pinname",(const char **) &gpio->pinname);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, fimc_is_rear_eeprom_pinname\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
+
+			ret = of_property_read_u32(np, "pinfunc_on", &gpio->pinfunc_on);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, pinfunc_on\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
+
+			ret = of_property_read_u32(np, "pinfunc_off", &gpio->pinfunc_off);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, pinfunc_off\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
+
+			info("[%s eeprom] sda = %s, scl = %s, pinname = %s, pinfunc_on = %d, pinfunc_off = %d\n",
+				"rear", gpio->sda, gpio->scl, gpio->pinname, gpio->pinfunc_on, gpio->pinfunc_off);
 		}
 	} else if (device->driver_data == FRONT_DATA) {
-		ret = of_property_read_string(np, "fimc_is_front_eeprom_sda", (const char **) &gpio->sda);
-		if (ret) {
-			err("front eeprom gpio: fail to read, fimc_is_front_eeprom_sda\n");
-			ret = -ENODEV;
-			goto p_err;
-		}
+		gpio->use_i2c_pinctrl = of_property_read_bool(np, "use_i2c_pinctrl");
+		if(gpio->use_i2c_pinctrl) {
+			ret = of_property_read_string(np, "fimc_is_front_eeprom_sda", (const char **) &gpio->sda);
+			if (ret) {
+				err("front eeprom gpio: fail to read, fimc_is_front_eeprom_sda\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
 
-		ret = of_property_read_string(np, "fimc_is_front_eeprom_scl",(const char **) &gpio->scl);
-		if (ret) {
-			err("front eeprom gpio: fail to read, fimc_is_front_eeprom_scl\n");
-			ret = -ENODEV;
-			goto p_err;
-		}
+		    ret = of_property_read_string(np, "fimc_is_front_eeprom_scl",(const char **) &gpio->scl);
+		    if (ret) {
+				err("front eeprom gpio: fail to read, fimc_is_front_eeprom_scl\n");
+				ret = -ENODEV;
+			    goto p_err;
+		    }
 
-		ret = of_property_read_string(np, "fimc_is_front_eeprom_pinname",(const char **) &gpio->pinname);
-		if (ret) {
-			err("front eeprom gpio: fail to read, fimc_is_front_eeprom_pinname\n");
-			ret = -ENODEV;
-			goto p_err;
+			ret = of_property_read_string(np, "fimc_is_front_eeprom_pinname",(const char **) &gpio->pinname);
+			if (ret) {
+				err("front eeprom gpio: fail to read, fimc_is_front_eeprom_pinname\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
+
+			ret = of_property_read_u32(np, "pinfunc_on", &gpio->pinfunc_on);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, pinfunc_on\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
+
+			ret = of_property_read_u32(np, "pinfunc_off", &gpio->pinfunc_off);
+			if (ret) {
+				err("rear eeprom gpio: fail to read, pinfunc_off\n");
+				ret = -ENODEV;
+				goto p_err;
+			}
+
+			info("[%s eeprom] sda = %s, scl = %s, pinname = %s, pinfunc_on = %d, pinfunc_off = %d\n", "front",
+				gpio->sda, gpio->scl, gpio->pinname, gpio->pinfunc_on, gpio->pinfunc_off);
 		}
 	} else {
 		err("no eeprom driver");
 		ret = -ENODEV;
 		goto p_err;
 	}
-
-	info("[%s eeprom] sda = %s, scl = %s, pinname = %s\n", device->driver_data == REAR_DATA?"rear":"front", gpio->sda, gpio->scl, gpio->pinname);
 
 p_err:
 	return ret;

@@ -133,6 +133,9 @@ static struct page *alloc_largest_available(struct ion_system_heap *heap,
 	return NULL;
 }
 
+#define should_flush_cache(page, buffer) (!ion_get_page_clean(page) &&	\
+		(!ion_buffer_cached(buffer) || ion_buffer_sync_force(buffer)))
+
 static int ion_system_heap_allocate(struct ion_heap *heap,
 				     struct ion_buffer *buffer,
 				     unsigned long size, unsigned long align,
@@ -180,11 +183,12 @@ static int ion_system_heap_allocate(struct ion_heap *heap,
 		unsigned int len = PAGE_SIZE << compound_order(page);
 		sg_set_page(sg, page, len, 0);
 		sg = sg_next(sg);
-		if (!ion_buffer_cached(buffer) && !ion_get_page_clean(page)) {
+		if (should_flush_cache(page, buffer)) {
 			all_pages_from_pool = false;
 			if (!IS_ENABLED(CONFIG_HIGHMEM)) {
 				__flush_dcache_area(page_address(page), len);
-				ion_set_page_clean(page);
+				if (!ion_buffer_cached(buffer))
+					ion_set_page_clean(page);
 			}
 		}
 		list_del(&page->lru);

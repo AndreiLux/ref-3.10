@@ -167,7 +167,7 @@ static int stm32fwu_spi_write(struct spi_device *spi,
 	struct spi_transfer	t = {
 		.tx_buf		= buffer,
 		.rx_buf		= rx_buf,
-		.len		= len,
+		.len		= (unsigned int)len,
 		.bits_per_word = 8,
 	};
 #endif
@@ -323,28 +323,28 @@ static int load_ums_fw_bootmode(struct spi_device *spi, const char *pFn)
 	uFSize = (unsigned int)fp->f_path.dentry->d_inode->i_size;
 	ssp_info("ssp_load_ums firmware size: %u", uFSize);
 
-	buff = kzalloc((size_t)uFSize, GFP_KERNEL);
+	buff = kzalloc((size_t)STM_MAX_XFER_SIZE, GFP_KERNEL);
 	if (!buff) {
 		iRet = ERROR;
 		ssp_err("fail to alloc buffer for fw");
 		goto err_alloc;
 	}
 
-	uNRead = (unsigned int)vfs_read(fp, (char __user *)buff,
-			(unsigned int)uFSize, &fp->f_pos);
-	if (uNRead != uFSize) {
-		iRet = ERROR;
-		ssp_err("fail to read file %s (nread = %u)", fw_path, uNRead);
-		goto err_fw_size;
-	}
 	remaining = uFSize;
 
 	while (remaining > 0) {
 		if (block > remaining)
 			block = remaining;
 
+		uNRead = (unsigned int)vfs_read(fp, (char __user *)buff,
+				(unsigned int)block, &fp->f_pos);
+		if (uNRead != block) {
+			iRet = ERROR;
+			ssp_err("fail to read file %s (nread = %u)", fw_path, uNRead);
+			goto err_fw_size;
+		}
 		while (retry_count < 3) {
-			iRet = fw_write_stm(spi, fw_addr, block, buff + uPos);
+			iRet = fw_write_stm(spi, fw_addr, block, buff);
 			if (iRet < block) {
 				ssp_err("Err writing to addr 0x%08X", fw_addr);
 				if (iRet < 0) {
@@ -495,10 +495,12 @@ static int change_to_bootmode(struct ssp_data *data)
 	int iCnt;
 	int ret;
 	char syncb = BL_SPI_SOF;
+	int ncount = 5;
 	struct stm32fwu_spi_cmd dummy_cmd;
 	ssp_dbgf();
 
-	dummy_cmd.timeout = DEF_ACKCMD_NUMBER;
+	/* dummy_cmd.timeout = DEF_ACKCMD_NUMBER; */
+	dummy_cmd.timeout = ncount;
 
 	gpio_set_value_cansleep(data->rst, 0);
 	usleep_range(4000, 4400);
@@ -517,15 +519,20 @@ static int change_to_bootmode(struct ssp_data *data)
 		ssp_err("failed to setup spi mode for boot");
 	usleep_range(1000, 1100);
 
-	ret = stm32fwu_spi_write(data->spi, &syncb, 1);
-#if SSP_STM_DEBUG
-	ssp_info("stm32fwu_spi_write(sync byte) returned %d", ret);
-#endif
+	msleep(30);
 
-	ret = stm32fwu_spi_wait_for_ack(data->spi, &dummy_cmd, BL_DUMMY);
+	while (ncount-- >= 0) {
+		ret = stm32fwu_spi_write(data->spi, &syncb, 1);
 #if SSP_STM_DEBUG
-	ssp_info("stm32fwu_spi_wait_for_ack returned %d (0x%x)", ret, ret);
+		ssp_info("stm32fwu_spi_write(sync byte) returned %d", ret);
 #endif
+		ret = stm32fwu_spi_wait_for_ack(data->spi, &dummy_cmd, BL_DUMMY);
+#if SSP_STM_DEBUG
+		ssp_info("stm32fwu_spi_wait_for_ack returned %d (0x%x)", ret, ret);
+#endif
+		if (ret == BL_ACK)
+			break;
+	}
 
 	return ret;
 }

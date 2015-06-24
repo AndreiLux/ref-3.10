@@ -1,11 +1,3 @@
-/**
-@file		link_device_lli.c
-@brief		functions for a pseudo shared-memory based on a chip-to-chip
-		(C2C) interface
-@date		2014/02/05
-@author		Hankook Jang (hankook.jang@samsung.com)
-*/
-
 /*
  * Copyright (C) 2010 Samsung Electronics.
  *
@@ -560,15 +552,10 @@ static int init_pm(struct mem_link_device *mld)
 #endif
 #endif
 
-static void lli_link_ready(struct link_device *ld)
-{
-	mif_err("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
-	stop_pm(ld_to_mem_link_device(ld));
-}
-
 static void lli_link_reset(struct link_device *ld)
 {
 	mif_err("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
+	mipi_lli_intr_enable();
 	mipi_lli_reset();
 }
 
@@ -792,7 +779,6 @@ struct link_device *lli_create_link_device(struct platform_device *pdev)
 
 	ld = &mld->link_dev;
 
-	ld->ready = lli_link_ready;
 	ld->reset = lli_link_reset;
 	ld->reload = lli_link_reload;
 	ld->off = lli_link_off;

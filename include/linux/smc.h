@@ -90,6 +90,10 @@
 #define FMP_KEY_STORE		0x0
 #define FMP_KEY_SET		0x1
 #define FMP_KEY_RESUME		0x2
+#define FMP_FW_INTEGRITY	0x3
+#define FMP_FW_SELFTEST		0x4
+#define FMP_FW_SHA2_TEST	0x5
+#define FMP_FW_HMAC_SHA2_TEST	0x6
 #else
 #define FMP_MMC_KEY_SET		0x0
 #define FMP_MMC_SUSPEND		0x1

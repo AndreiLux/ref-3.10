@@ -38,11 +38,15 @@
 
 #define MID_CPUFREQ	1700000
 
+#define BOOST_POLICY_OFFSET	0
+#define BOOST_TIME_OFFSET	16
+
 int mc_switch_core(uint32_t core_num);
 void mc_set_schedule_policy(int core);
 uint32_t mc_active_core(void);
 
 unsigned int current_core;
+
 struct timer_work {
 	struct kthread_work work;
 };
@@ -130,21 +134,26 @@ int secos_booster_start(enum secos_boost_policy policy)
 {
 	int ret = 0;
 	int freq;
+	uint32_t boost_time;	/* mili second */
+	enum secos_boost_policy boost_policy;
 
 	current_core = mc_active_core();
 
+	boost_time = (((uint32_t)policy) >> BOOST_TIME_OFFSET) & 0xFFFF;
+	boost_policy = (((uint32_t)policy) >> BOOST_POLICY_OFFSET) & 0xFFFF;
+
 	/* migrate to big Core */
-	if ((policy != MAX_PERFORMANCE) && (policy != MID_PERFORMANCE)
-					&& (policy != MIN_PERFORMANCE)) {
-		pr_err("%s: wrong secos boost policy:%d\n", __func__, policy);
+	if ((boost_policy != MAX_PERFORMANCE) && (boost_policy != MID_PERFORMANCE)
+					&& (boost_policy != MIN_PERFORMANCE)) {
+		pr_err("%s: wrong secos boost policy:%d\n", __func__, boost_policy);
 		ret = -EINVAL;
 		goto error;
 	}
 
 	/* cpufreq configuration */
-	if (policy == MAX_PERFORMANCE)
+	if (boost_policy == MAX_PERFORMANCE)
 		freq = max_cpu_freq;
-	else if (policy == MID_PERFORMANCE)
+	else if (boost_policy == MID_PERFORMANCE)
 		freq = MID_CPUFREQ;
 	else
 		freq = 0;
@@ -172,8 +181,13 @@ int secos_booster_start(enum secos_boost_policy policy)
 	mc_set_schedule_policy(DEFAULT_BIG_CORE);
 
 	/* Restore origin performance policy after default boost time */
+	if (boost_time == 0)
+		boost_time = DEFAULT_SECOS_BOOST_TIME;
+	else if (boost_time > MAX_SECOS_BOOST_TIME)
+		boost_time = MAX_SECOS_BOOST_TIME;
+
 	hrtimer_cancel(&timer);
-	hrtimer_start(&timer, ns_to_ktime((u64)DEFAULT_SECOS_BOOST_TIME * NSEC_PER_MSEC),
+	hrtimer_start(&timer, ns_to_ktime((u64)boost_time * NSEC_PER_MSEC),
 			HRTIMER_MODE_REL);
 
 error:

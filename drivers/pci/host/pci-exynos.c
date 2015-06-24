@@ -64,6 +64,7 @@ extern int sec_argos_register_notifier(struct notifier_block *n, char *label);
 extern int sec_argos_unregister_notifier(struct notifier_block *n, char *label);
 #ifdef CONFIG_ESOC
 extern int mdm_get_fatal_status(void);
+extern void set_ap2mdm_errfatal(void);
 #endif
 static void exynos_pcie_notify_callback(struct pcie_port *pp, int event);
 #if defined(CONFIG_PCI_MSI)
@@ -263,10 +264,6 @@ retry:
 		if(mdm_get_fatal_status())
 			return -EPIPE;
 #endif
-		/* set #PERST Low */
-		gpio_set_value(exynos_pcie->perst_gpio, 0);
-		msleep(15);
-
 		/* set RxElecIdle = 0 to access DBI area */
 		tmp0 = readl(phy_base + 0x4A*4);
 		tmp1 = readl(phy_base + 0x5C*4);
@@ -376,6 +373,9 @@ retry:
 			writel(PCIE_ELBI_LTSSM_DISABLE,
 					exynos_pcie->elbi_base + PCIE_APP_LTSSM_ENABLE);
 
+			if (soc_is_exynos7420() && exynos_pcie->ch_num == 0)
+				msleep(15);
+
 			goto retry;
 		} else {
 #ifdef CONFIG_ESOC
@@ -480,6 +480,15 @@ void exynos_pcie_work(struct work_struct *work)
 		if (exynos_pcie->ch_num == 0) {
 			exynos_pcie_register_dump(0);
 			exynos_pcie_notify_callback(pp, EXYNOS_PCIE_EVENT_LINKDOWN);
+#ifdef CONFIG_ESOC
+			if(mdm_get_fatal_status()) {
+				dev_info(pp->dev, "PCIe: mdm has fatal status\n");
+			} else {
+				dev_info(pp->dev, "PCIe: link is downed, force cp crash\n");
+				set_ap2mdm_errfatal();
+			}
+#endif
+
 		} else if (exynos_pcie->ch_num == 1) {
 #ifdef CONFIG_PCI_EXYNOS_TEST
 			exynos_pcie_poweroff(exynos_pcie->ch_num);
@@ -707,6 +716,8 @@ static void exynos_pcie_clear_irq_pulse(struct pcie_port *pp)
 	val = readl(elbi_base + PCIE_IRQ_SPECIAL);
 	if (soc_is_exynos7420() && (val & (0x1 << 2))) {
 		dev_info(pp->dev, "!!!PCIE LINK DOWN!!!\n");
+		if (exynos_pcie->ch_num == 0)
+			exynos_pcie->state = STATE_LINK_DOWN_TRY;
 		queue_work(exynos_pcie->pcie_wq, &exynos_pcie->work.work);
 	}
 
@@ -1108,22 +1119,6 @@ static int __init exynos_pcie_probe(struct platform_device *pdev)
 	if (ret)
 		goto probe_fail;
 
-#ifdef CONFIG_CPU_IDLE
-	exynos_pcie->lpa_nb.notifier_call = exynos_pci_lpa_event;
-	exynos_pcie->lpa_nb.next = NULL;
-	exynos_pcie->lpa_nb.priority = 0;
-
-	if (soc_is_exynos5433())
-		ret = raw_notifier_chain_register(&pci_lpa_nh, &exynos_pcie->lpa_nb);
-	else if (soc_is_exynos7420())
-		ret = exynos_pm_register_notifier(&exynos_pcie->lpa_nb);
-
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to register lpa notifier\n");
-		goto probe_fail;
-	}
-#endif
-
 	platform_set_drvdata(pdev, exynos_pcie);
 
 	if (exynos_pcie->ch_num == 1) {
@@ -1319,14 +1314,22 @@ err:
 }
 EXPORT_SYMBOL(exynos_pcie_enable_async_suspend);
 
-void exynos_pcie_poweron(int ch_num)
+int exynos_pcie_poweron(int ch_num)
 {
 	struct pcie_port *pp = &g_pcie[ch_num].pp;
 	struct exynos_pcie *exynos_pcie = to_exynos_pcie(pp);
 	u32 val, vendor_id, device_id;
+	int ret;
 
 	dev_info(pp->dev, "%s, start of poweron, pcie state: %d\n", __func__, exynos_pcie->state);
-	if (exynos_pcie->state == STATE_LINK_DOWN) {
+	if (exynos_pcie->state == STATE_LINK_DOWN || ((exynos_pcie->ch_num == 0) && (exynos_pcie->state == STATE_LINK_DOWN_TRY))) {
+
+		if (soc_is_exynos7420() && exynos_pcie->ch_num == 0) {
+			/* set #PERST Low */
+			gpio_set_value(exynos_pcie->perst_gpio, 0);
+			msleep(15);
+		}
+
 		exynos_pcie_clock_enable(pp, 1);
 #ifndef CONFIG_SOC_EXYNOS5433
 		exynos_pcie_ref_clock_enable(pp, 1);
@@ -1349,16 +1352,34 @@ void exynos_pcie_poweron(int ch_num)
 
 		exynos_pcie->state = STATE_LINK_UP_TRY;
 		if (!exynos_pcie->probe_ok) {
+#ifdef CONFIG_CPU_IDLE
+			exynos_pcie->lpa_nb.notifier_call = exynos_pci_lpa_event;
+			exynos_pcie->lpa_nb.next = NULL;
+			exynos_pcie->lpa_nb.priority = 0;
+
+			if (soc_is_exynos5433())
+				ret = raw_notifier_chain_register(&pci_lpa_nh, &exynos_pcie->lpa_nb);
+			else if (soc_is_exynos7420())
+				ret = exynos_pm_register_notifier(&exynos_pcie->lpa_nb);
+
+			if (ret) {
+				dev_err(pp->dev, "Failed to register lpa notifier\n");
+				goto poweron_fail;
+			}
+#endif
 			mutex_init(&exynos_pcie->lock);
 			exynos_pcie->pcie_wq = create_freezable_workqueue("pcie_wq");
 			if (IS_ERR(exynos_pcie->pcie_wq)) {
 				dev_err(pp->dev, "couldn't create workqueue\n");
-				return;
+				goto mtx_fail;
 			}
 
 			INIT_DELAYED_WORK(&exynos_pcie->work, exynos_pcie_work);
 
-			exynos_pcie_establish_link(pp);
+			if (exynos_pcie_establish_link(pp)) {
+				dev_err(pp->dev, "pcie link up fail\n");
+				goto wq_fail;
+			}
 			exynos_pcie->state = STATE_LINK_UP;
 			dw_pcie_scan(pp);
 
@@ -1369,7 +1390,7 @@ void exynos_pcie_poweron(int ch_num)
 			exynos_pcie->pci_dev = pci_get_device(vendor_id, device_id, NULL);
 			if (!exynos_pcie->pci_dev) {
 				dev_err(pp->dev, "Failed to get pci device\n");
-				return;
+				goto wq_fail;
 			}
 
 #ifdef CONFIG_PCI_MSI
@@ -1380,13 +1401,9 @@ void exynos_pcie_poweron(int ch_num)
 			exynos_pcie->pci_saved_configs = pci_store_saved_state(exynos_pcie->pci_dev);
 			exynos_pcie->probe_ok = 1;
 		} else if (exynos_pcie->probe_ok) {
-			if (soc_is_exynos7420() && exynos_pcie->ch_num == 0) {
-				if (exynos_pcie_reset(pp)) {
-					dev_err(pp->dev, "Failed exynos_pcie_reset\n");
-					return;
-				}
-			} else {
-				exynos_pcie_reset(pp);
+			if (exynos_pcie_reset(pp)) {
+				dev_err(pp->dev, "pcie link up fail\n");
+				goto poweron_fail;
 			}
 			exynos_pcie->state = STATE_LINK_UP;
 
@@ -1399,6 +1416,26 @@ void exynos_pcie_poweron(int ch_num)
 		}
 	}
 	dev_info(pp->dev, "%s, end of poweron, pcie state: %d\n", __func__, exynos_pcie->state);
+
+	return 0;
+
+wq_fail:
+	destroy_workqueue(exynos_pcie->pcie_wq);
+mtx_fail:
+	mutex_destroy(&exynos_pcie->lock);
+
+#ifdef CONFIG_CPU_IDLE
+	if (soc_is_exynos5433())
+		raw_notifier_chain_unregister(&pci_lpa_nh, &exynos_pcie->lpa_nb);
+	else if (soc_is_exynos7420())
+		exynos_pm_unregister_notifier(&exynos_pcie->lpa_nb);
+#endif
+
+poweron_fail:
+	exynos_pcie->state = STATE_LINK_UP;
+	exynos_pcie_poweroff(exynos_pcie->ch_num);
+
+	return -EPIPE;
 }
 EXPORT_SYMBOL(exynos_pcie_poweron);
 
@@ -1409,7 +1446,7 @@ void exynos_pcie_poweroff(int ch_num)
 	unsigned long flags;
 
 	dev_info(pp->dev, "%s, start of poweroff, pcie state: %d\n", __func__, exynos_pcie->state);
-	if (exynos_pcie->state == STATE_LINK_UP) {
+	if (exynos_pcie->state == STATE_LINK_UP || ((exynos_pcie->ch_num == 0) && (exynos_pcie->state == STATE_LINK_DOWN_TRY))) {
 		exynos_pcie->state = STATE_LINK_DOWN_TRY;
 		while (exynos_pcie->lpc_checking)
 			usleep_range(1000, 1100);
@@ -1532,11 +1569,17 @@ int exynos_pcie_pm_suspend(int ch_num)
 {
 	struct pcie_port *pp = &g_pcie[ch_num].pp;
 	struct exynos_pcie *exynos_pcie = to_exynos_pcie(pp);
+	unsigned long flags;
 
 	if (exynos_pcie->state == STATE_LINK_DOWN) {
 		dev_info(pp->dev, "RC%d already off\n", exynos_pcie->ch_num);
 		return 0;
 	}
+
+	spin_lock_irqsave(&pp->conf_lock, flags);
+	exynos_pcie->state = STATE_LINK_DOWN_TRY;
+	spin_unlock_irqrestore(&pp->conf_lock, flags);
+
 	exynos_pcie_send_pme_turn_off(exynos_pcie);
 	exynos_pcie_poweroff(ch_num);
 
@@ -1546,9 +1589,7 @@ EXPORT_SYMBOL(exynos_pcie_pm_suspend);
 
 int exynos_pcie_pm_resume(int ch_num)
 {
-	exynos_pcie_poweron(ch_num);
-
-	return 0;
+	return exynos_pcie_poweron(ch_num);
 }
 EXPORT_SYMBOL(exynos_pcie_pm_resume);
 
@@ -1987,6 +2028,25 @@ int exynos_pcie_dump_link_down_status(int ch_num)
 	return 0;
 }
 EXPORT_SYMBOL(exynos_pcie_dump_link_down_status);
+
+void exynos_pcie_rxelecidle_toggle(int ch_num)
+{
+       struct pcie_port *pp = &g_pcie[ch_num].pp;
+       struct exynos_pcie *exynos_pcie = to_exynos_pcie(pp);
+       void __iomem *phy_base = exynos_pcie->phy_base;
+       u32 tmp0, tmp1;
+
+       tmp0 = readl(phy_base + 0x4A*4);
+       tmp1 = readl(phy_base + 0x5C*4);
+       writel(0xDF, phy_base + 0x4A*4);
+       writel(0x54, phy_base + 0x5C*4);
+
+       udelay(10);
+
+       writel(tmp1, phy_base + 0x5C*4);
+       writel(tmp0, phy_base + 0x4A*4);
+}
+EXPORT_SYMBOL(exynos_pcie_rxelecidle_toggle);
 
 MODULE_AUTHOR("Jingoo Han <jg1.han@samsung.com>");
 MODULE_DESCRIPTION("Samsung PCIe host controller driver");

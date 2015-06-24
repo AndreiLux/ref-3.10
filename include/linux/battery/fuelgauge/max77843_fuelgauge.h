@@ -86,6 +86,7 @@ enum {
 	FG_MIXCAP,
 	FG_AVCAP,
 	FG_REPCAP,
+	FG_CYCLE,
 };
 
 enum {

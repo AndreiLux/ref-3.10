@@ -588,6 +588,8 @@ static int m2m1shot_process(struct m2m1shot_context *ctx,
 
 	kref_get(&ctx->kref);
 
+	mutex_lock(&ctx->mutex);
+
 	ret = m2m1shot_prepare_task(m21dev, ctx, task);
 	if (ret)
 		goto err;
@@ -627,6 +629,9 @@ static int m2m1shot_process(struct m2m1shot_context *ctx,
 
 	m2m1shot_finish_task(m21dev, ctx, task);
 err:
+
+	mutex_unlock(&ctx->mutex);
+
 	kref_put(&ctx->kref, m2m1shot_destroy_context);
 
 	if (ret)

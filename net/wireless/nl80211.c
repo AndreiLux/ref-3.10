@@ -7243,9 +7243,7 @@ static int nl80211_tx_mgmt(struct sk_buff *skb, struct genl_info *info)
 		 * of time (10ms) but no longer than the driver supports.
 		 */
 		if (wait < NL80211_MIN_REMAIN_ON_CHANNEL_TIME ||
-#if defined(CONFIG_BCM4354) || defined(CONFIG_BCM4354_MODULE) || \
-	defined(CONFIG_BCM4356) || defined(CONFIG_BCM4356_MODULE) || \
-	defined(CONFIG_BCM4358) || defined(CONFIG_BCM4358_MODULE)
+#if defined(CONFIG_BROADCOM_WIFI)
 			/* To reduce GAS initial request / response time, 
 			 * we modified the Broadcom official driver structure 
 			 * ex) wait[31:25] -> retry counts until receiving ACK 

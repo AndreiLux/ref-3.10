@@ -503,6 +503,7 @@ static void rkp_init(void)
 	init.init_mm_pgd = (u64)__pa(swapper_pg_dir);
 	init.id_map_pgd = (u64)__pa(idmap_pg_dir);
 	init.rkp_pgt_bitmap = (u64)__pa(rkp_pgt_bitmap);
+	init.rkp_map_bitmap = (u64)__pa(rkp_map_bitmap);
 	init.rkp_pgt_bitmap_size = RKP_PGT_BITMAP_LEN;
 	init.zero_pg_addr = page_to_phys(empty_zero_page);
 	init._text = (u64) _text;
@@ -589,6 +590,7 @@ asmlinkage void __init start_kernel(void)
 	build_all_zonelists(NULL, NULL);
 	page_alloc_init();
 
+	printk(KERN_INFO "MDM_LOG - Start Kernel\n");
 	pr_notice("Kernel command line: %s\n", boot_command_line);
 	parse_early_param();
 	parse_args("Booting kernel", static_command_line, __start___param,

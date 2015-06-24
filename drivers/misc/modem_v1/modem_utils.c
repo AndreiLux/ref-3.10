@@ -40,6 +40,7 @@
 #include <linux/delay.h>
 #include <linux/wakelock.h>
 #include <trace/events/modem_if.h>
+#include <linux/module.h>
 
 #include "modem_prj.h"
 #include "modem_utils.h"
@@ -266,11 +267,9 @@ static inline void dump2hex(char *buff, size_t buff_size,
 
 static inline bool log_enabled(u8 ch, enum ipc_layer layer)
 {
-#ifdef CONFIG_SEC_MODEM_DEBUGFS
 	if (unlikely(layer == IOD_RX || layer == IOD_TX))
 		if (unlikely(!test_bit(DEBUG_FLAG_IOD, &dflags)))
 			return false;
-#endif
 
 	if (sipc5_fmt_ch(ch))
 		return test_bit(DEBUG_FLAG_FMT, &dflags);
@@ -329,10 +328,11 @@ inline void log_ipc_pkt(enum ipc_layer layer, u8 ch, struct sk_buff *skb)
 
 	buflen = dump_skb(str, SZ_16, skb);
 #ifdef CONFIG_SEC_MODEM_DEBUGFS
-	trace_mif_log(layer_str(layer), buflen, str);
+	if (!sipc5_udl_ch(ch))
+		trace_mif_log(layer_str(layer), buflen, str);
 #endif
 
-	pr_info("%s: %s(%d): %s\n", MIF_TAG, layer_str(layer), buflen, str);	
+	pr_info("%s: %s(%d): %s\n", MIF_TAG, layer_str(layer), buflen, str);
 }
 
 /* print buffer as hex string */
@@ -1214,3 +1214,97 @@ void __ref modemctl_notify_event(enum modemctl_event evt)
 	raw_notifier_call_chain(&cp_crash_notifier, evt, NULL);
 }
 
+/* Create Baseband info proc */
+static struct mif_baseband_info {
+	atomic_t num;
+	struct list_head modems;
+	spinlock_t lock;
+} bb_info = {
+	.num = {.counter = 0},
+	.modems = LIST_HEAD_INIT(bb_info.modems),
+	.lock = __SPIN_LOCK_UNLOCKED(bb_info.lock),
+};
+
+static int mif_bbinfo_show(struct seq_file *f, void *offset)
+{
+	int num = atomic_read(&bb_info.num);
+	struct modem_ctl *mc;
+
+	seq_printf(f, "Baseband:%d\n", num);
+	spin_lock_bh(&bb_info.lock);
+	list_for_each_entry(mc, &bb_info.modems, bbinfo) {
+		seq_printf(f, "Modem:%s\n"
+		"Link:%s\n"
+		"LinkBoot:%s\n"
+		"LinkMain:%s\n"
+		"spi_lnk:%s\n"
+		"Boot:%s\n"
+		"Binary:%s\n\n",
+		mc->name,
+		dev_name(mc->dev),
+		get_current_link(mc->bootd)->name,
+		get_current_link(mc->iod)->name,
+#ifdef CONFIG_LINK_DEVICE_SPI
+		"LNK",
+#else
+		"BOOT",
+#endif
+		mc->bootd->name,
+		"TBD");
+	}
+	spin_unlock_bh(&bb_info.lock);
+	return 0;
+}
+
+static int bbinfo_proc_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, mif_bbinfo_show, inode->i_private);
+}
+
+static const struct file_operations baseband_file_ops = {
+	.owner = THIS_MODULE,
+	.open		= bbinfo_proc_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+int create_baseband_info(struct modem_ctl *mc)
+{
+	int num = atomic_inc_return(&bb_info.num);
+
+	mif_err("&&** new base band info created\n" );
+	spin_lock_bh(&bb_info.lock);
+	list_add(&mc->bbinfo, &bb_info.modems);
+	spin_unlock_bh(&bb_info.lock);
+
+	if (num == 1) {
+		struct proc_dir_entry *entry;
+		entry = proc_create_data("baseband", S_IFREG | S_IRUGO, NULL, &baseband_file_ops, mc);
+		if (!entry) {
+			mif_err("failed to create proc/baseband entry\n" );
+			return 0;
+		}
+	}
+	mif_info("Baseband:%d\n"
+		 "Modem:%s\n"
+		 "Link:%s\n"
+		 "LinkBoot:%s\n"
+		 "LinkMain:%s\n"
+		 "spi_lnk:%s\n"
+		 "Boot:%s\n"
+		 "Binary:%s\n\n",
+		 num,
+		 mc->name,
+		 dev_name(mc->dev),
+		 get_current_link(mc->bootd)->name,
+		 get_current_link(mc->iod)->name,
+#ifdef CONFIG_LINK_DEVICE_SPI
+		"LNK",
+#else
+		"BOOT",
+#endif
+		 mc->bootd->name,
+		 "TBD");
+
+	return 0;
+}

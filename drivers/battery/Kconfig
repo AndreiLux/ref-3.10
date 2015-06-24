@@ -23,6 +23,16 @@ config BATTERY_SWELLING_SELF_DISCHARGING
 	bool "prevent battery swelling with self discharging"
 	help
 	  Say Y to include support for prevent battery swelling with self discharging
+	  If you want to get debugging code for no chip, ask to VE GROUP.
+
+config BATTERY_SWELLING_SELF_DISCHARGING_ZERO_ONLY
+	bool "prevent battery swelling with self discharging only in zero"
+	default n
+	depends on BATTERY_SWELLING_SELF_DISCHARGING
+	help
+	  Say Y to include supporting feature regarding preventing battery swelling. 
+	  It's only eligible for Zero projects, and it autonomously chooses the way of discharging
+	  between AP policy method and discharging IC one.
 
 config INBATTERY
        bool "prevent inbattery"
@@ -35,6 +45,13 @@ config CALC_TIME_TO_FULL
 	tristate "calculate time to full"
 	default n
 	depends on BATTERY_SAMSUNG
+	help
+	Say Y to use calc time to full function.
+
+config BATTERY_AGE_FORECAST
+	tristate "battery age forecast"
+	default n
+	depends on BATTERY_SWELLING
 	help
 	Say Y to use calc time to full function.
 
@@ -318,6 +335,20 @@ config WIRELESS_CHARGER_INBATTERY_CS100
           Say Y here to enable support for the wireless charger charger
           driver.
 
+config WIRELESS_CHARGER_INBATTERY_5V_FIX
+        tristate "wireless charger in battery had 5.0V voreg"
+        depends on BATTERY_SAMSUNG && I2C
+        help
+          Say Y here to enable support for the wireless charger charger
+          driver.
+
+config WIRELESS_CHARGER_HIGH_VOLTAGE
+        tristate "high voltage wireless charger"
+        depends on BATTERY_SAMSUNG && I2C
+        help
+          Say Y here to enable support for the wireless charger charger
+          driver.
+
 config WIRELESS_CHARGER_BQ51221
         tristate "bq51221 battery charger support"
         depends on BATTERY_SAMSUNG && I2C
@@ -325,10 +356,38 @@ config WIRELESS_CHARGER_BQ51221
           Say Y here to enable support for the bq51221 charger
           bq51221 wireless charger driver.
 
+config WIRELESS_CHARGER_P9027S
+        tristate "p9027s battery charger support"
+        depends on BATTERY_SAMSUNG && I2C
+        help
+          Say Y here to enable support for the p9027s charger
+          p9027s wireless charger driver.
+
+config WIRELESS_CHARGER_P9220
+        tristate "p9220 battery charger support"
+        depends on BATTERY_SAMSUNG && I2C
+        help
+          Say Y here to enable support for the p9220 charger
+          p9220 wireless charger driver.
+
+config WIRELESS_FIRMWARE_UPDATE
+        tristate "p9220 battery charger support"
+        depends on WIRELESS_CHARGER_P9220
+        help
+          Say Y here to enable support for the p9220 charger firmware update
+          p9220 wireless charger IC firmware update.
+
+config WIRELESS_CHARGER_MAX77900
+        tristate "max77900 battery charger support"
+        depends on BATTERY_SAMSUNG && I2C
+        help
+          Say Y here to enable support for the max77900 charger
+          max77900 wireless charger driver.
+
 config AFC_CHARGER_MODE
 	bool "afc charging support in sec battery driver"
 	default n
-	depends on CHARGER_MAX77843
+	depends on BATTERY_SAMSUNG
 	help
 	  Say Y to include support for sec afc charging support
 
@@ -340,6 +399,12 @@ config SAMSUNG_LPM_MODE
 	  This value defined at bootloader.
 	  Before enable this feature,
 	  implemet power off charging in the bootloader.
+
+config WIRELESS_CHARGER_THM
+	bool "Support wpc thermistor in sec battery driver"
+	default n
+	help
+	  Say Y to include support for wpc thermistor
 
 config EN_OOPS
 	bool "enable oops filter"

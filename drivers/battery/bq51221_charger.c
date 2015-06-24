@@ -191,6 +191,10 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 	union power_supply_propval value;
 	struct bq51221_charger_data *charger = i2c_get_clientdata(client);
 
+#if defined(CONFIG_WIRELESS_CHARGER_INBATTERY_5V_FIX)
+	return 0;
+#endif
+
 	if (charger->pdata->pad_mode == BQ51221_PAD_MODE_PMA) {
 		pr_info("%s PMA MODE, do not set Voreg \n", __func__);
 		return 0;
@@ -241,51 +245,84 @@ int bq51221_set_voreg(struct i2c_client *client, int default_value)
 	return ret;
 }
 
-int bq51221_set_over_temperuture_info(struct i2c_client *client)
+int bq51221_set_end_power_transfer(struct i2c_client *client, int ept_mode)
 {
+
 	int pad_mode = 0;
 	int data = 0;
 	int ret = 0;
 
 	pr_info("%s\n", __func__);
 
-	/* read pad mode PMA = 1, WPC = 0 (Status bit)*/
-	pad_mode = bq51221_reg_read(client, BQ51221_REG_INDICATOR);
+	switch(ept_mode)
+	{
+		case END_POWER_TRANSFER_CODE_OVER_TEMPERATURE:
+			/* read pad mode PMA = 1, WPC = 0 (Status bit)*/
+			pad_mode = bq51221_reg_read(client, BQ51221_REG_INDICATOR);
+			pr_info("%s pad_mode = %d \n", __func__,pad_mode);
 
-	pr_info("%s pad_mode = %d \n", __func__,pad_mode);
+			if(pad_mode > 0)
+				pad_mode &= BQ51221_POWER_MODE_MASK;
 
-	if(pad_mode > 0)
-		pad_mode &= BQ51221_POWER_MODE_MASK;
+			if(pad_mode) {
+				pr_info("%s PMA MODE, send EOC \n", __func__);
 
-	if(pad_mode) {
-		pr_info("%s PMA MODE, send EOC \n", __func__);
+				data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
+				data |= BQ51221_SEND_EOC_MASK;
+				ret = bq51221_reg_write(client, BQ51221_REG_MAILBOX, data);
+			} else {
+				pr_info("%s WPC MODE, send EPT-OT \n", __func__);
 
-		data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
-		data |= BQ51221_SEND_EOC_MASK;
-		ret = bq51221_reg_write(client, BQ51221_REG_MAILBOX, data);
-	} else {
-		pr_info("%s WPC MODE, send EPT-OT \n", __func__);
+				ret = bq51221_reg_write(client, BQ51221_REG_USER_HEADER, BQ51221_EPT_HEADER_EPT);
+				ret = bq51221_reg_write(client, BQ51221_REG_PROP_PACKET_PAYLOAD, BQ51221_EPT_CODE_OVER_TEMPERATURE);
 
-		ret = bq51221_reg_write(client, BQ51221_REG_USER_HEADER, BQ51221_EPT_HEADER_EPT);
-		ret = bq51221_reg_write(client, BQ51221_REG_PROP_PACKET_PAYLOAD, BQ51221_EPT_CODE_OVER_TEMPERATURE);
+				/* send end packet */
+				data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
+				data &= !BQ51221_SEND_USER_PKT_DONE_MASK;
+				ret = bq51221_reg_write(client, BQ51221_REG_MAILBOX, data);
 
-		/* send end packet */
-		data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
-		data &= !BQ51221_SEND_USER_PKT_DONE_MASK;
-		ret = bq51221_reg_write(client, BQ51221_REG_MAILBOX, data);
+				/* check packet error */
+				data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
+				data &= BQ51221_SEND_USER_PKT_ERR_MASK;
+				data = data >> 5;
 
-		/* check packet error */
-		data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
-		data &= BQ51221_SEND_USER_PKT_ERR_MASK;
-		data = data >> 5;
+				pr_info("%s error pkt = 0x%x \n",__func__, data);
 
-		pr_info("%s error pkt = 0x%x \n",__func__, data);
+				if(data != BQ51221_PTK_ERR_NO_ERR) {
+					pr_err("%s can not send ept! err pkt = 0x%x\n",__func__, data);
+					ret = -1;
+				}
+			}
+			break;
+		case END_POWER_TRANSFER_CODE_RECONFIGURE:
+			pr_info("%s send EPT-Reconfigure \n", __func__);
 
-		if(data != BQ51221_PTK_ERR_NO_ERR) {
-			pr_err("%s can not send CS100! err pkt = 0x%x\n",__func__, data);
+			ret = bq51221_reg_write(client, BQ51221_REG_USER_HEADER, BQ51221_EPT_HEADER_EPT);
+			ret = bq51221_reg_write(client, BQ51221_REG_PROP_PACKET_PAYLOAD, BQ51221_EPT_CODE_RECONFIGURE);
+
+			/* send end packet */
+			data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
+			data &= !BQ51221_SEND_USER_PKT_DONE_MASK;
+			ret = bq51221_reg_write(client, BQ51221_REG_MAILBOX, data);
+
+			/* check packet error */
+			data = bq51221_reg_read(client, BQ51221_REG_MAILBOX);
+			data &= BQ51221_SEND_USER_PKT_ERR_MASK;
+			data = data >> 5;
+
+			pr_info("%s error pkt = 0x%x \n",__func__, data);
+
+			if(data != BQ51221_PTK_ERR_NO_ERR) {
+				pr_err("%s can not send ept! err pkt = 0x%x\n",__func__, data);
+				ret = -1;
+			}
+			break;
+		default:
+			pr_info("%s this ept mode is not reserved \n",__func__);
 			ret = -1;
-		}
+			break;
 	}
+
 	return ret;
 }
 
@@ -386,10 +423,13 @@ static int bq51221_chg_set_property(struct power_supply *psy,
 				bq51221_set_voreg(charger->client, val->intval);
 			break;
 		case POWER_SUPPLY_PROP_HEALTH:
-			if(val->intval == POWER_SUPPLY_HEALTH_OVERHEAT || POWER_SUPPLY_HEALTH_OVERHEATLIMIT) {
-				bq51221_set_over_temperuture_info(charger->client);
-			}
-		break;
+			if(val->intval == POWER_SUPPLY_HEALTH_OVERHEAT ||
+				val->intval == POWER_SUPPLY_HEALTH_OVERHEATLIMIT ||
+				val->intval == POWER_SUPPLY_HEALTH_COLD)
+				bq51221_set_end_power_transfer(charger->client, END_POWER_TRANSFER_CODE_OVER_TEMPERATURE);
+			else if(val->intval == POWER_SUPPLY_HEALTH_UNDERVOLTAGE)
+				bq51221_set_end_power_transfer(charger->client, END_POWER_TRANSFER_CODE_RECONFIGURE);
+			break;
 		case POWER_SUPPLY_PROP_ONLINE:
 			if(val->intval == POWER_SUPPLY_TYPE_WIRELESS) {
 				charger->pdata->pad_mode = BQ51221_PAD_MODE_WPC;

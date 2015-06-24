@@ -54,6 +54,13 @@ config BCM4358
 	  This module adds support for wireless adapters based on
 	  Broadcom 4358 chipset.
 
+config BCM4358_A3
+	tristate "Broadcom 4358 wireless cards support"
+	depends on BROADCOM_WIFI
+	---help---
+	  This module adds support for wireless adapters based on
+	  Broadcom 4358 chipset.
+
 config BCM43241
 	tristate "Broadcom 43241 wireless cards support"
 	depends on BROADCOM_WIFI

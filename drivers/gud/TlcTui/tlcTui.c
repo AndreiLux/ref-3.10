@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 TRUSTONIC LIMITED
+ * Copyright (c) 2013-2014 TRUSTONIC LIMITED
  * All Rights Reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -17,98 +17,63 @@
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/kernel.h>
-#include <linux/interrupt.h>
-#include <linux/exynos_ion.h>
-#include <linux/switch.h>
+#include <linux/kthread.h>
 
 #include "mobicore_driver_api.h"
+#include "public/tui_ioctl.h"
+//#include "tui_ioctl.h"
 #include "tlcTui.h"
 #include "dciTui.h"
-#include "tui_ioctl.h"
 #include "tui-hal.h"
-#include "trustedui.h"
 
-#define TUI_ALIGN_16MB_SZ	0x1000000	/* 16MB */
-#define TUI_ALIGN_32MB_SZ	0x2000000	/* 32MB */
-#define TUI_TOTAL_ALLOC_SZ	0x2000000	/* 32MB */
-#define TUI_BUFFER_NUM		2		/* Framebuffer and Working buffer */
-
-/* ------------------------------------------------------------- */
-/* Externs */
-extern struct completion ioComp;
-#ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
-extern void tui_i2c_reset(void);
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+#include <mach/secos_booster.h>
 #endif
-extern struct switch_dev tui_switch;
 
 /* ------------------------------------------------------------- */
 /* Globals */
-const struct mc_uuid_t drUuid = DR_TUI_UUID;
-struct mc_session_handle drSessionHandle = {0, 0};
-tuiDciMsg_ptr pDci;
-DECLARE_COMPLETION(dciComp);
-uint32_t gCmdId = TLC_TUI_CMD_NONE;
-tlcTuiResponse_t gUserRsp = {TLC_TUI_CMD_NONE, TLC_TUI_ERR_UNKNOWN_CMD};
+struct tui_dci_msg_t *dci;
+DECLARE_COMPLETION(dci_comp);
+DECLARE_COMPLETION(io_comp);
 
 /* ------------------------------------------------------------- */
 /* Static */
 static const uint32_t DEVICE_ID = MC_DEVICE_ID_DEFAULT;
-
-#ifdef CONFIG_SOC_EXYNOS5433
-struct sec_tui_mempool {
-	void * va;
-	unsigned long pa;
-	size_t size;
-};
-
-static struct sec_tui_mempool g_sec_tuiMemPool;
-#else
-struct tui_mempool {
-	void * va;
-	unsigned long pa;
-	size_t size;
-};
-
-struct tui_mempool g_tuiMemPool;
-#endif
+static struct task_struct *thread_id;
+static uint32_t g_cmd_id = TLC_TUI_CMD_NONE;
+static struct mc_session_handle dr_session_handle = {0, 0};
+static struct tlc_tui_response_t g_user_rsp = {
+	TLC_TUI_CMD_NONE, TLC_TUI_ERR_UNKNOWN_CMD};
 /* Functions */
-#ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
-static int tsp_irq_num = 11; // default value
-
-void trustedui_set_tsp_irq(int irq_num){
-	tsp_irq_num = irq_num;
-	pr_info("%s called![%d]\n",__func__, irq_num);
-}
-#endif
 
 /* ------------------------------------------------------------- */
-static bool tlcOpenDriver(void)
+static bool tlc_open_driver(void)
 {
 	bool ret = false;
-	enum mc_result mcRet;
+	enum mc_result mc_ret;
+	struct mc_uuid_t dr_uuid = DR_TUI_UUID;
 
 	/* Allocate WSM buffer for the DCI */
-	mcRet = mc_malloc_wsm(DEVICE_ID, 0, sizeof(tuiDciMsg_t),
-			(uint8_t **)&pDci, 0);
-	if (MC_DRV_OK != mcRet) {
-		pr_debug("ERROR tlcOpenDriver: Allocation of DCI WSM failed: %d\n",
-				mcRet);
+	mc_ret = mc_malloc_wsm(DEVICE_ID, 0, sizeof(struct tui_dci_msg_t),
+			(uint8_t **)&dci, 0);
+	if (MC_DRV_OK != mc_ret) {
+		pr_debug("ERROR %s: Allocation of DCI WSM failed: %d\n",
+			 __func__, mc_ret);
 		return false;
 	}
 
 	/* Clear the session handle */
-	memset(&drSessionHandle, 0, sizeof(drSessionHandle));
+	memset(&dr_session_handle, 0, sizeof(dr_session_handle));
 	/* The device ID (default device is used */
-	drSessionHandle.device_id = DEVICE_ID;
+	dr_session_handle.device_id = DEVICE_ID;
 	/* Open session with the Driver */
-	mcRet = mc_open_session(&drSessionHandle, &drUuid, (uint8_t *)pDci,
-			(uint32_t)sizeof(tuiDciMsg_t));
-	if (MC_DRV_OK != mcRet) {
-		printk(KERN_ERR "ERROR tlcOpenDriver: Open driver session failed: %d\n",
-				mcRet);
+	mc_ret = mc_open_session(&dr_session_handle, &dr_uuid, (uint8_t *)dci,
+			(uint32_t)sizeof(struct tui_dci_msg_t));
+	if (MC_DRV_OK != mc_ret) {
+		pr_debug("ERROR %s: Open driver session failed: %d\n",
+			 __func__, mc_ret);
 		ret = false;
 	} else {
-		printk(KERN_ERR "Success tlcOpenDriver: open driver session success!\n");
 		ret = true;
 	}
 
@@ -117,77 +82,79 @@ static bool tlcOpenDriver(void)
 
 
 /* ------------------------------------------------------------- */
-static bool tlcOpen(void)
+static bool tlc_open(void)
 {
 	bool ret = false;
-	enum mc_result mcRet;
+	enum mc_result mc_ret;
 
 	/* Open the tbase device */
-	pr_debug("tlcOpen: Opening tbase device\n");
-	mcRet = mc_open_device(DEVICE_ID);
+	pr_debug("%s: Opening tbase device\n", __func__);
+	mc_ret = mc_open_device(DEVICE_ID);
 
 	/* In case the device is already open, mc_open_device will return an
 	 * error (MC_DRV_ERR_INVALID_OPERATION).  But in this case, we can
 	 * continue, even though mc_open_device returned an error.  Stop in all
 	 * other case of error
 	 */
-	if (MC_DRV_OK != mcRet && MC_DRV_ERR_INVALID_OPERATION != mcRet) {
-		pr_debug("ERROR tlcOpen: Error %d opening device\n", mcRet);
+	if (MC_DRV_OK != mc_ret && MC_DRV_ERR_INVALID_OPERATION != mc_ret) {
+		pr_debug("ERROR %s: Error %d opening device\n", __func__,
+			 mc_ret);
 		return false;
 	}
 
-	pr_debug("tlcOpen: Opening driver session\n");
-	ret = tlcOpenDriver();
+	pr_debug("%s: Opening driver session\n", __func__);
+	ret = tlc_open_driver();
 
 	return ret;
 }
 
 
 /* ------------------------------------------------------------- */
-static void tlcWaitCmdFromDriver(void)
+static void tlc_wait_cmd_from_driver(void)
 {
 	uint32_t ret = TUI_DCI_ERR_INTERNAL_ERROR;
 
 	/* Wait for a command from secure driver */
-	ret = mc_wait_notification(&drSessionHandle, -1);
+	ret = mc_wait_notification(&dr_session_handle, -1);
 	if (MC_DRV_OK == ret)
-		pr_debug("tlcWaitCmdFromDriver: Got a command\n");
+		pr_debug("tlc_wait_cmd_from_driver: Got a command\n");
 	else
-		pr_debug("ERROR tlcWaitCmdFromDriver: mc_wait_notification() failed: %d\n",
-			ret);
+		pr_debug("ERROR %s: mc_wait_notification() failed: %d\n",
+			 __func__, ret);
 }
 
 
-static uint32_t sendCmdToUser(uint32_t commandId)
+static uint32_t send_cmd_to_user(uint32_t command_id)
 {
-	dciReturnCode_t ret = TUI_DCI_ERR_NO_RESPONSE;
+	uint32_t ret = TUI_DCI_ERR_NO_RESPONSE;
 
 	/* Init shared variables */
-	gCmdId = commandId;
-	gUserRsp.id = TLC_TUI_CMD_NONE;
-	gUserRsp.returnCode = TLC_TUI_ERR_UNKNOWN_CMD;
+	g_cmd_id = command_id;
+	g_user_rsp.id = TLC_TUI_CMD_NONE;
+	g_user_rsp.return_code = TLC_TUI_ERR_UNKNOWN_CMD;
+
 
 	/* S.LSI : Clean up previous response. */
-	complete_all(&ioComp);
-	INIT_COMPLETION(ioComp);
+	complete_all(&io_comp);
+	INIT_COMPLETION(io_comp);
 
 	/* Give way to ioctl thread */
-	complete(&dciComp);
-	pr_debug("sendCmdToUser: give way to ioctl thread\n");
+	complete(&dci_comp);
+	pr_debug("send_cmd_to_user: give way to ioctl thread\n");
 
 	/* Wait for ioctl thread to complete */
-	wait_for_completion_interruptible(&ioComp);
-	pr_debug("sendCmdToUser: Got an answer from ioctl thread.\n");
-	INIT_COMPLETION(ioComp);
+	wait_for_completion_interruptible(&io_comp);
+	pr_debug("send_cmd_to_user: Got an answer from ioctl thread.\n");
+	INIT_COMPLETION(io_comp);
 
-	/* Check id of the cmd processed by ioctl thread (paranoïa) */
-	if (gUserRsp.id != commandId) {
-		pr_debug("sendCmdToUser ERROR: Wrong response id 0x%08x iso 0x%08x\n",
-				pDci->nwdRsp.id, RSP_ID(commandId));
+	/* Check id of the cmd processed by ioctl thread (paranoia) */
+	if (g_user_rsp.id != command_id) {
+		pr_debug("ERROR %s: Wrong response id 0x%08x iso 0x%08x\n",
+			 __func__, dci->nwd_rsp.id, RSP_ID(command_id));
 		ret = TUI_DCI_ERR_INTERNAL_ERROR;
 	} else {
 		/* retrieve return code */
-		switch (gUserRsp.returnCode) {
+		switch (g_user_rsp.return_code) {
 		case TLC_TUI_OK:
 			ret = TUI_DCI_OK;
 			break;
@@ -203,226 +170,182 @@ static uint32_t sendCmdToUser(uint32_t commandId)
 	return ret;
 }
 
-phys_addr_t hal_tui_video_space_alloc(void)
-{
-	phys_addr_t base;
-	size_t size;
-
-	ion_exynos_contig_heap_info(ION_EXYNOS_ID_VIDEO, &base, &size);
-
-	if (size > TUI_TOTAL_ALLOC_SZ)
-#ifdef CONFIG_SOC_EXYNOS5433
-		g_sec_tuiMemPool.size = TUI_TOTAL_ALLOC_SZ;
-#else
-		g_tuiMemPool.size = TUI_TOTAL_ALLOC_SZ;
-#endif
-	else
-#ifdef CONFIG_SOC_EXYNOS5433
-		g_sec_tuiMemPool.size = size;
-#else
-		g_tuiMemPool.size = size;
-#endif
-
-	/* Align base address by 16MB */
-
-	base = ((base + (TUI_ALIGN_16MB_SZ-1))/TUI_ALIGN_16MB_SZ * TUI_ALIGN_16MB_SZ);
-#ifdef CONFIG_SOC_EXYNOS5433
-	g_sec_tuiMemPool.pa = base;
-#else
-	g_tuiMemPool.pa = base;
-#endif
-
-	return base;
-}
-
-#define FRAMEBUFFER_SIZE 0x1000000
-#define FRAMEBUFFER_COUNT 2
-
 /* ------------------------------------------------------------- */
-static void tlcProcessCmd(void)
+static void tlc_process_cmd(void)
 {
 	uint32_t ret = TUI_DCI_ERR_INTERNAL_ERROR;
-	uint32_t commandId = CMD_TUI_SW_NONE;
+	uint32_t command_id = CMD_TUI_SW_NONE;
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+	int ret_val = 0;
+	u8 retry_cnt = 0;
+#endif
 
-	pDci->cmdNwd.payload.allocData.numOfBuff = TUI_BUFFER_NUM;
-
-	if (NULL == pDci) {
-		pr_debug("ERROR tlcProcessCmd: DCI has not been set up properly - exiting\n");
+	if (NULL == dci) {
+		pr_debug("ERROR %s: DCI has not been set up properly - exiting"\
+			 "\n", __func__);
 		return;
 	} else {
-		commandId = pDci->cmdNwd.id;
+		command_id = dci->cmd_nwd.id;
 	}
 
 	/* Warn if previous response was not acknowledged */
-	if (CMD_TUI_SW_NONE == commandId) {
-		pr_debug("ERROR tlcProcessCmd: Notified without command\n");
+	if (CMD_TUI_SW_NONE == command_id) {
+		pr_debug("ERROR %s: Notified without command\n", __func__);
 		return;
 	} else {
-		if (pDci->nwdRsp.id != CMD_TUI_SW_NONE)
-			pr_debug("tlcProcessCmd: Warning, previous response not ack\n");
+		if (dci->nwd_rsp.id != CMD_TUI_SW_NONE)
+			pr_debug("%s: Warning, previous response not ack\n",
+				 __func__);
 	}
 
 	/* Handle command */
-	switch (commandId) {
+	switch (command_id) {
 	case CMD_TUI_SW_OPEN_SESSION:
-		printk(KERN_ERR "tlcProcessCmd: CMD_TUI_SW_OPEN_SESSION.\n");
+		pr_debug("%s: CMD_TUI_SW_OPEN_SESSION.\n", __func__);
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+		pr_info("%s TUI_CPU_SPEEDUP ON retry: %d\n",
+			__func__, retry_cnt);
+		do {
+			ret_val = secos_booster_start(MAX_PERFORMANCE);
+			retry_cnt++;
+			if (ret_val) {
+				pr_err("%s: booster start failed. (%d) retry: %d\n"
+					, __func__, ret_val, retry_cnt);
+				if (retry_cnt < 7)
+					usleep_range(500, 510);
+				}
+			} while (ret_val && retry_cnt < 7);
+#endif
 
 		/* Start android TUI activity */
-		ret = sendCmdToUser(TLC_TUI_CMD_START_ACTIVITY);
-        	if (TUI_DCI_OK != ret) {
-			printk(KERN_ERR "tlcProcessCmd: TLC_TUI_CMD_START_ACTIVITY error : %d\n",ret);
+		ret = send_cmd_to_user(TLC_TUI_CMD_START_ACTIVITY);
+		if (TUI_DCI_OK != ret)
 			break;
-		}
 
-#ifdef CONFIG_SOC_EXYNOS5433
 			/* allocate TUI frame buffer */
-			ret = hal_tui_alloc(&pDci->nwdRsp.allocBuffer[MAX_DCI_BUFFER_NUMBER],
-					pDci->cmdNwd.payload.allocData.allocSize,
-					pDci->cmdNwd.payload.allocData.numOfBuff);
-#else
-			/* allocate TUI frame buffer */
-			ret = hal_tui_alloc(pDci->nwdRsp.allocBuffer,
-					FRAMEBUFFER_SIZE,
-					FRAMEBUFFER_COUNT);
-#endif
+		ret = hal_tui_alloc(dci->nwd_rsp.alloc_buffer,
+				dci->cmd_nwd.payload.alloc_data.alloc_size,
+				dci->cmd_nwd.payload.alloc_data.num_of_buff);
+
 		if (TUI_DCI_OK != ret) {
-			printk(KERN_ERR "tlcProcessCmd: hal_tui_alloc error : %d\n",ret);
+			pr_err("%s: hal_tui_alloc error : %d\n", __func__ ,ret);
 			/* no need to call tui_i2c_reset, because there will be no TUI
 			 * session */
 			//tui_i2c_reset();
-			sendCmdToUser(TLC_TUI_CMD_STOP_ACTIVITY);
+			send_cmd_to_user(TLC_TUI_CMD_STOP_ACTIVITY);
 			break;
 		}
-
-#ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
-			printk(KERN_ERR "tlcProcessCmd: CMD_TUI_SW_OPEN_SESSION & disable_irq(%d);.\n",tsp_irq_num);
-			disable_irq(tsp_irq_num);
-#endif
-			msleep(100); // temp code
-#ifdef CONFIG_SOC_EXYNOS5433
-
-		pDci->nwdRsp.allocBuffer[0].pa = g_sec_tuiMemPool.pa;
-		pDci->nwdRsp.allocBuffer[1].pa = (g_sec_tuiMemPool.pa + g_sec_tuiMemPool.size/2);
-
-		pDci->cmdNwd.payload.allocData.allocSize = g_sec_tuiMemPool.size;
-#else
-		pDci->cmdNwd.payload.allocData.allocSize = (uint32_t)g_tuiMemPool.size;
-#endif
-		switch_set_state(&tui_switch, TRUSTEDUI_MODE_VIDEO_SECURED);
 
 		/* Deactivate linux UI drivers */
 		ret = hal_tui_deactivate();
 
 		if (TUI_DCI_OK != ret) {
-			printk(KERN_ERR "tlcProcessCmd: hal_tui_deactivate error : %d\n",ret);
-			/* no need to call tui_i2c_reset, because there will be no TUI
-			 * session. Touch screen clock PMU are off */
-			//tui_i2c_reset();
-			enable_irq(tsp_irq_num);
+			pr_err("%s: hal_tui_deactivate error : %d\n", __func__ ,ret);
 			hal_tui_free();
-			sendCmdToUser(TLC_TUI_CMD_STOP_ACTIVITY);
+			send_cmd_to_user(TLC_TUI_CMD_STOP_ACTIVITY);
 			break;
 		}
 		break;
 
 	case CMD_TUI_SW_CLOSE_SESSION:
-#ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
-		printk(KERN_ERR "tlcProcessCmd: CMD_TUI_SW_CLOSE_SESSION & enable_irq(%d).\n", tsp_irq_num);
-#endif
+		pr_debug("%s: CMD_TUI_SW_CLOSE_SESSION.\n", __func__);
 
 		/* Activate linux UI drivers */
 		ret = hal_tui_activate();
-#ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
-//		tui_i2c_reset();
-		enable_irq(tsp_irq_num);
-#endif
-		hal_tui_free();
-		switch_set_state(&tui_switch, TRUSTEDUI_MODE_OFF);
 
+		hal_tui_free();
+
+#if defined(CONFIG_SECURE_OS_BOOSTER_API)
+		ret_val = secos_booster_stop();
+		if (ret_val)
+			pr_err("%s: booster stop failed. (%d)\n"
+				, __func__, ret_val);
+#endif
 		/* Stop android TUI activity */
-		ret = sendCmdToUser(TLC_TUI_CMD_STOP_ACTIVITY);
+		ret = send_cmd_to_user(TLC_TUI_CMD_STOP_ACTIVITY);
 		break;
 
 	default:
-		pr_debug("ERROR tlcProcessCmd: Unknown command %d\n",
-				commandId);
+		pr_debug("ERROR %s: Unknown command %d\n",
+			 __func__, command_id);
 		break;
 	}
 
 	/* Fill in response to SWd, fill ID LAST */
-	pr_debug("tlcProcessCmd: return 0x%08x to cmd 0x%08x\n",
-			ret, commandId);
-	pDci->nwdRsp.returnCode = ret;
-	pDci->nwdRsp.id = RSP_ID(commandId);
+	pr_debug("%s: return 0x%08x to cmd 0x%08x\n",
+		 __func__, ret, command_id);
+	dci->nwd_rsp.return_code = ret;
+	dci->nwd_rsp.id = RSP_ID(command_id);
 
 	/* Acknowledge command */
-	pDci->cmdNwd.id = CMD_TUI_SW_NONE;
+	dci->cmd_nwd.id = CMD_TUI_SW_NONE;
 
 	/* Notify SWd */
 	pr_debug("DCI RSP NOTIFY CORE\n");
-	ret = mc_notify(&drSessionHandle);
+	ret = mc_notify(&dr_session_handle);
 	if (MC_DRV_OK != ret)
-		pr_debug("ERROR tlcProcessCmd: Notify failed: %d\n", ret);
+		pr_debug("ERROR %s: Notify failed: %d\n", __func__, ret);
 }
 
 
 /* ------------------------------------------------------------- */
-static void tlcCloseDriver(void)
+static void tlc_close_driver(void)
 {
 	enum mc_result ret;
 
 	/* Close session with the Driver */
-	ret = mc_close_session(&drSessionHandle);
+	ret = mc_close_session(&dr_session_handle);
 	if (MC_DRV_OK != ret) {
-		pr_debug("ERROR tlcCloseDriver: Closing driver session failed: %d\n",
-				ret);
+		pr_debug("ERROR %s: Closing driver session failed: %d\n",
+			 __func__, ret);
 	}
 }
 
 
 /* ------------------------------------------------------------- */
-static void tlcClose(void)
+static void tlc_close(void)
 {
 	enum mc_result ret;
 
-	pr_debug("tlcClose: Closing driver session\n");
-	tlcCloseDriver();
+	pr_debug("%s: Closing driver session\n", __func__);
+	tlc_close_driver();
 
-	pr_debug("tlcClose: Closing tbase\n");
+	pr_debug("%s: Closing tbase\n", __func__);
 	/* Close the tbase device */
 	ret = mc_close_device(DEVICE_ID);
 	if (MC_DRV_OK != ret) {
-		pr_debug("ERROR tlcClose: Closing tbase device failed: %d\n",
-			ret);
+		pr_debug("ERROR %s: Closing tbase device failed: %d\n",
+			 __func__, ret);
 	}
+	}
+
+void reset_global_command_id(void)
+{
+	g_cmd_id = TLC_TUI_CMD_NONE;
 }
 
 /* ------------------------------------------------------------- */
-bool tlcNotifyEvent(uint32_t eventType)
+bool tlc_notify_event(uint32_t event_type)
 {
 	bool ret = false;
 	enum mc_result result;
 
-	if (NULL == pDci) {
-		pr_debug("ERROR tlcNotifyEvent: DCI has not been set up properly - exiting\n");
+	if (NULL == dci) {
+		pr_debug("ERROR tlc_notify_event: DCI has not been set up "\
+			 "properly - exiting\n");
 		return false;
 	}
 
-	/* Wait for previous notification to be acknowledged */
-	while (pDci->nwdNotif != NOT_TUI_NONE) {
-		pr_debug("TLC waiting for previous notification ack\n");
-		usleep_range(10000, 10000);
-	};
-
 	/* Prepare notification message in DCI */
-	pr_debug("tlcNotifyEvent: eventType = %d\n", eventType);
-	pDci->nwdNotif = eventType;
+	pr_debug("tlc_notify_event: event_type = %d\n", event_type);
+	dci->nwd_notif = event_type;
 
 	/* Signal the Driver */
 	pr_debug("DCI EVENT NOTIFY CORE\n");
-	result = mc_notify(&drSessionHandle);
+	result = mc_notify(&dr_session_handle);
 	if (MC_DRV_OK != result) {
-		pr_debug("ERROR tlcNotifyEvent: mcNotify failed: %d\n", result);
+		pr_debug("ERROR tlc_notify_event: mc_notify failed: %d\n",
+			 result);
 		ret = false;
 	} else {
 		ret = true;
@@ -434,28 +357,58 @@ bool tlcNotifyEvent(uint32_t eventType)
 /* ------------------------------------------------------------- */
 /**
  */
-int mainThread(void *uarg)
+int main_thread(void *uarg)
 {
-
-	pr_debug("mainThread: TlcTui start!\n");
+	pr_debug("main_thread: TlcTui start!\n");
 
 	/* Open session on the driver */
-	if (!tlcOpen()) {
-		pr_debug("ERROR mainThread: open driver failed!\n");
+	if (!tlc_open()) {
+		pr_debug("ERROR main_thread: open driver failed!\n");
 		return 1;
 	}
 
 	/* TlcTui main thread loop */
 	for (;;) {
 		/* Wait for a command from the DrTui on DCI*/
-		tlcWaitCmdFromDriver();
+		tlc_wait_cmd_from_driver();
 		/* Something has been received, process it. */
-		tlcProcessCmd();
+		tlc_process_cmd();
 	}
 
 	/* Close tlc. Note that this frees the DCI pointer.
-	 * Do not use this pointer after tlcClose().*/
-	tlcClose();
+	 * Do not use this pointer after tlc_close().*/
+	tlc_close();
+
+	return 0;
+}
+
+int tlc_wait_cmd(uint32_t *cmd_id)
+{
+	/* Create the TlcTui Main thread and start secure driver (only
+	   1st time) */
+	if (dr_session_handle.session_id == 0) {
+		thread_id = kthread_run(main_thread, NULL, "dci_thread");
+		if (!thread_id) {
+			pr_debug(KERN_ERR "Unable to start Trusted UI main thread\n");
+			return -EFAULT;
+		}
+	}
+
+	/* Wait for signal from DCI handler */
+	/* In case of an interrupted sys call, return with -EINTR */
+	wait_for_completion_interruptible(&dci_comp);
+	INIT_COMPLETION(dci_comp);
+
+	*cmd_id = g_cmd_id;
+	return 0;
+}
+
+int tlc_ack_cmd(struct tlc_tui_response_t *rsp_id)
+{
+	g_user_rsp = *rsp_id;
+
+	/* Send signal to DCI */
+	complete(&io_comp);
 
 	return 0;
 }

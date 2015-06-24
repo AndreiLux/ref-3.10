@@ -15,6 +15,10 @@
 #define S5P_FIMV_REG_SIZE	(S5P_FIMV_END_ADDR - S5P_FIMV_START_ADDR)
 #define S5P_FIMV_REG_COUNT	((S5P_FIMV_END_ADDR - S5p_FIMV_START_ADDR) / 4)
 
+/* This value guarantees 375msec ~ 2sec according to MFC clock (533MHz ~ 100MHz)
+ * releated with S5P_FIMV_DEC_TIMEOUT_VALUE */
+#define MFC_TIMEOUT_VALUE	200000000
+
 /* Number of bits that the buffer address should be shifted for particular
  * MFC  buffers.  */
 #define S5P_FIMV_MEM_OFFSET		0
@@ -146,6 +150,7 @@ static inline unsigned int r2h_bits(int cmd)
 #define S5P_FIMV_RET_INSTANCE_ID		0xF070
 #define S5P_FIMV_ERROR_CODE			0xF074
 
+#define S5P_FIMV_ERR_HEADER_NOT_FOUND		102
 #define S5P_FIMV_ERR_WARNINGS_START		160
 #define S5P_FIMV_ERR_WARNINGS_END		222
 #define S5P_FIMV_ERR_DEC_MASK			0xFFFF
@@ -304,6 +309,7 @@ static inline unsigned int r2h_bits(int cmd)
 #define S5P_FIMV_DEC_STATUS_PROGRESSIVE			(0<<3)
 #define S5P_FIMV_DEC_STATUS_INTERLACE			(1<<3)
 #define S5P_FIMV_DEC_STATUS_INTERLACE_MASK		(1<<3)
+#define S5P_FIMV_DEC_STATUS_INTERLACE_SHIFT		3
 #define S5P_FIMV_DEC_STATUS_RESOLUTION_MASK		(3<<4)
 #define S5P_FIMV_DEC_STATUS_RESOLUTION_INC		(1<<4)
 #define S5P_FIMV_DEC_STATUS_RESOLUTION_DEC		(2<<4)
@@ -316,6 +322,8 @@ static inline unsigned int r2h_bits(int cmd)
 #define S5P_FIMV_D_DISPLAY_CHROMA_ADDR		0xF610
 
 #define S5P_FIMV_DISPLAY_FRAME_MASK		7
+#define S5P_FIMV_DISPLAY_TEMP_INFO_MASK		0x1
+#define S5P_FIMV_DISPLAY_TEMP_INFO_SHIFT	7
 #define S5P_FIMV_DISPLAY_FRAME_NOT_CODED	0
 #define S5P_FIMV_DISPLAY_FRAME_I		1
 #define S5P_FIMV_DISPLAY_FRAME_P		2

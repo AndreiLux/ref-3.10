@@ -385,6 +385,10 @@ static void fts_set_cover_type(struct fts_ts_info *info, bool enable)
 	case FTS_CLEAR_FLIP_COVER :
 		fts_enable_feature(info, FTS_FEATURE_COVER_CLEAR_FLIP, enable);
 		break;
+	case FTS_QWERTY_KEYBOARD_EUR :
+	case FTS_QWERTY_KEYBOARD_KOR :
+		fts_enable_feature(info, 0x0D, enable);
+		break;
 	case FTS_CHARGER_COVER:
 	case FTS_COVER_NOTHING1:
 	case FTS_COVER_NOTHING2:
@@ -2581,6 +2585,11 @@ static int fts_stop_device(struct fts_ts_info *info)
 #endif
 #ifdef FTS_SUPPORT_NOISE_PARAM
 		fts_get_noise_param(info);
+#endif
+
+#ifdef FTS_SUPPORT_STRINGLIB
+		if (info->fts_mode)
+			fts_enable_feature(info, 0x0B, true);
 #endif
 	} else {
 		fts_interrupt_set(info, INT_DISABLE);

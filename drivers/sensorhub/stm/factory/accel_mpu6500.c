@@ -18,8 +18,13 @@
 /* factory Sysfs                                                         */
 /*************************************************************************/
 
+#define INV_ID		0
 #define VENDOR		"INVENSENSE"
 #define CHIP_ID		"MPU6500"
+
+#define STM_ID		1
+#define VENDOR_STM	"STM"
+#define CHIP_ID_STM	"K6DS3TR"
 
 #define CALIBRATION_FILE_PATH	"/efs/FactoryApp/calibration_data"
 #define CALIBRATION_DATA_AMOUNT	20
@@ -32,13 +37,23 @@
 static ssize_t accel_vendor_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", VENDOR);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (data->acc_type == STM_ID)
+		return sprintf(buf, "%s\n", VENDOR_STM);
+	else
+		return sprintf(buf, "%s\n", VENDOR);
 }
 
 static ssize_t accel_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+
+	if (data->acc_type == STM_ID)
+		return sprintf(buf, "%s\n", CHIP_ID_STM);
+	else
+		return sprintf(buf, "%s\n", CHIP_ID);
 }
 
 int accel_open_calibration(struct ssp_data *data)
@@ -50,7 +65,7 @@ int accel_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0666);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		set_fs(old_fs);
 		iRet = PTR_ERR(cal_filp);
@@ -197,7 +212,7 @@ static int accel_do_calibrate(struct ssp_data *data, int iEnable)
 	set_fs(KERNEL_DS);
 
 	cal_filp = filp_open(CALIBRATION_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY, 0666);
+			O_CREAT | O_TRUNC | O_WRONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		pr_err("[SSP]: %s - Can't open calibration file\n", __func__);
 		set_fs(old_fs);

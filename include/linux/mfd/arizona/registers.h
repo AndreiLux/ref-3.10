@@ -63,6 +63,7 @@
 #define ARIZONA_HAPTICS_PHASE_3_INTENSITY        0x96
 #define ARIZONA_HAPTICS_PHASE_3_DURATION         0x97
 #define ARIZONA_HAPTICS_STATUS                   0x98
+#define CLEARWATER_COMFORT_NOISE_GENERATOR       0xA0
 #define ARIZONA_CLOCK_32K_1                      0x100
 #define ARIZONA_SYSTEM_CLOCK_1                   0x101
 #define ARIZONA_SAMPLE_RATE_1                    0x102
@@ -104,6 +105,15 @@
 #define ARIZONA_FLL1_SYNCHRONISER_7              0x187
 #define ARIZONA_FLL1_SPREAD_SPECTRUM             0x189
 #define ARIZONA_FLL1_GPIO_CLOCK                  0x18A
+#define MARLEY_FLL1_SYNCHRONISER_1               0x17F
+#define MARLEY_FLL1_SYNCHRONISER_2               0x180
+#define MARLEY_FLL1_SYNCHRONISER_3               0x181
+#define MARLEY_FLL1_SYNCHRONISER_4               0x182
+#define MARLEY_FLL1_SYNCHRONISER_5               0x183
+#define MARLEY_FLL1_SYNCHRONISER_6               0x184
+#define MARLEY_FLL1_SYNCHRONISER_7               0x185
+#define MARLEY_FLL1_SPREAD_SPECTRUM              0x187
+#define MARLEY_FLL1_GPIO_CLOCK                   0x188
 #define ARIZONA_FLL2_CONTROL_1                   0x191
 #define ARIZONA_FLL2_CONTROL_2                   0x192
 #define ARIZONA_FLL2_CONTROL_3                   0x193
@@ -149,6 +159,8 @@
 #define ARIZONA_MIC_BIAS_CTRL_2                  0x219
 #define ARIZONA_MIC_BIAS_CTRL_3                  0x21A
 #define ARIZONA_MIC_BIAS_CTRL_4                  0x21B
+#define ARIZONA_MIC_BIAS_CTRL_5                  0x21C
+#define ARIZONA_MIC_BIAS_CTRL_6                  0x21E
 #define ARIZONA_HP_CTRL_1L                       0x225
 #define ARIZONA_HP_CTRL_1R                       0x226
 #define ARIZONA_HP_CTRL_2L                       0x227
@@ -1420,6 +1432,18 @@
 #define CLEARWATER_FRF_COEFFICIENT_6R_2              0x1431
 #define CLEARWATER_FRF_COEFFICIENT_6R_3              0x1432
 #define CLEARWATER_FRF_COEFFICIENT_6R_4              0x1433
+#define MARLEY_FRF_COEFFICIENT_4L_1              0x13A0
+#define MARLEY_FRF_COEFFICIENT_4L_2              0x13A1
+#define MARLEY_FRF_COEFFICIENT_4L_3              0x13A2
+#define MARLEY_FRF_COEFFICIENT_4L_4              0x13A3
+#define MARLEY_FRF_COEFFICIENT_5L_1              0x13B0
+#define MARLEY_FRF_COEFFICIENT_5L_2              0x13B1
+#define MARLEY_FRF_COEFFICIENT_5L_3              0x13B2
+#define MARLEY_FRF_COEFFICIENT_5L_4              0x13B3
+#define MARLEY_FRF_COEFFICIENT_5R_1              0x13C0
+#define MARLEY_FRF_COEFFICIENT_5R_2              0x13C1
+#define MARLEY_FRF_COEFFICIENT_5R_3              0x13C2
+#define MARLEY_FRF_COEFFICIENT_5R_4              0x13C3
 #define ARIZONA_DSP4_CONTROL_1                   0x1400
 #define ARIZONA_DSP4_CLOCKING_1                  0x1401
 #define ARIZONA_DSP4_STATUS_1                    0x1404
@@ -2198,6 +2222,10 @@
 #define ARIZONA_WSEQ_SEQUENCE_506                 0x33F2
 #define ARIZONA_WSEQ_SEQUENCE_507                 0x33F4
 #define ARIZONA_WSEQ_SEQUENCE_508                 0x33F6
+#define MARLEY_OTP_HPDET_CALIB_1                  0x31F8
+#define MARLEY_OTP_HPDET_CALIB_2                  0x31FA
+#define CLEARWATER_OTP_HPDET_CALIB_1              0x33F8
+#define CLEARWATER_OTP_HPDET_CALIB_2              0x33FA
 #define CLEARWATER_DSP1_CONFIG                       0x0FFE00
 #define CLEARWATER_DSP1_STATUS_1                     0x0FFE04
 #define CLEARWATER_DSP1_STATUS_2                     0x0FFE05
@@ -2687,6 +2715,17 @@
 #define ARIZONA_ONESHOT_STS_MASK                 0x0001  /* ONESHOT_STS */
 #define ARIZONA_ONESHOT_STS_SHIFT                     0  /* ONESHOT_STS */
 #define ARIZONA_ONESHOT_STS_WIDTH                     1  /* ONESHOT_STS */
+
+/*
+ * R160 (0xA0) - Clearwater Comfort Noise Generator
+ */
+#define CLEARWATER_NOISE_GEN_ENA                 0x0020  /* NOISE_GEN_ENA */
+#define CLEARWATER_NOISE_GEN_ENA_MASK            0x0020  /* NOISE_GEN_ENA */
+#define CLEARWATER_NOISE_GEN_ENA_SHIFT                5  /* NOISE_GEN_ENA */
+#define CLEARWATER_NOISE_GEN_ENA_WIDTH                1  /* NOISE_GEN_ENA */
+#define CLEARWATER_NOISE_GEN_GAIN_MASK           0x001F  /* NOISE_GEN_GAIN - [4:0] */
+#define CLEARWATER_NOISE_GEN_GAIN_SHIFT               0  /* NOISE_GEN_GAIN - [4:0] */
+#define CLEARWATER_NOISE_GEN_GAIN_WIDTH               5  /* NOISE_GEN_GAIN - [4:0] */
 
 /*
  * R256 (0x100) - Clock 32k 1
@@ -3564,6 +3603,46 @@
 #define ARIZONA_MICB4_ENA_WIDTH                       1  /* MICB4_ENA */
 
 /*
+ * R540 (0x21C) - Mic Bias Ctrl 5
+ */
+#define ARIZONA_MICB1B_DISCH                     0x0020  /* MICB1B_DISCH */
+#define ARIZONA_MICB1B_DISCH_MASK                0x0020  /* MICB1B_DISCH */
+#define ARIZONA_MICB1B_DISCH_SHIFT                    5  /* MICB1B_DISCH */
+#define ARIZONA_MICB1B_DISCH_WIDTH                    1  /* MICB1B_DISCH */
+#define ARIZONA_MICB1B_ENA                       0x0010  /* MICB1B_ENA */
+#define ARIZONA_MICB1B_ENA_MASK                  0x0010  /* MICB1B_ENA */
+#define ARIZONA_MICB1B_ENA_SHIFT                      4  /* MICB1B_ENA */
+#define ARIZONA_MICB1B_ENA_WIDTH                      1  /* MICB1B_ENA */
+#define ARIZONA_MICB1A_DISCH                     0x0002  /* MICB1A_DISCH */
+#define ARIZONA_MICB1A_DISCH_MASK                0x0002  /* MICB1A_DISCH */
+#define ARIZONA_MICB1A_DISCH_SHIFT                    1  /* MICB1A_DISCH */
+#define ARIZONA_MICB1A_DISCH_WIDTH                    1  /* MICB1A_DISCH */
+#define ARIZONA_MICB1A_ENA                       0x0001  /* MICB1A_ENA */
+#define ARIZONA_MICB1A_ENA_MASK                  0x0001  /* MICB1A_ENA */
+#define ARIZONA_MICB1A_ENA_SHIFT                      0  /* MICB1A_ENA */
+#define ARIZONA_MICB1A_ENA_WIDTH                      1  /* MICB1A_ENA */
+
+/*
+ * R542 (0x21E) - Mic Bias Ctrl 6
+ */
+#define ARIZONA_MICB2B_DISCH                     0x0020  /* MICB2B_DISCH */
+#define ARIZONA_MICB2B_DISCH_MASK                0x0020  /* MICB2B_DISCH */
+#define ARIZONA_MICB2B_DISCH_SHIFT                    5  /* MICB2B_DISCH */
+#define ARIZONA_MICB2B_DISCH_WIDTH                    1  /* MICB2B_DISCH */
+#define ARIZONA_MICB2B_ENA                       0x0010  /* MICB2B_ENA */
+#define ARIZONA_MICB2B_ENA_MASK                  0x0010  /* MICB2B_ENA */
+#define ARIZONA_MICB2B_ENA_SHIFT                      4  /* MICB2B_ENA */
+#define ARIZONA_MICB2B_ENA_WIDTH                      1  /* MICB2B_ENA */
+#define ARIZONA_MICB2A_DISCH                     0x0002  /* MICB2A_DISCH */
+#define ARIZONA_MICB2A_DISCH_MASK                0x0002  /* MICB2A_DISCH */
+#define ARIZONA_MICB2A_DISCH_SHIFT                    1  /* MICB2A_DISCH */
+#define ARIZONA_MICB2A_DISCH_WIDTH                    1  /* MICB2A_DISCH */
+#define ARIZONA_MICB2A_ENA                       0x0001  /* MICB2A_ENA */
+#define ARIZONA_MICB2A_ENA_MASK                  0x0001  /* MICB2A_ENA */
+#define ARIZONA_MICB2A_ENA_SHIFT                      0  /* MICB2A_ENA */
+#define ARIZONA_MICB2A_ENA_WIDTH                      1  /* MICB2A_ENA */
+
+/*
  * R549 (0x225) - HP Ctrl 1L
  */
 #define ARIZONA_RMV_SHRT_HP1L                    0x4000  /* RMV_SHRT_HP1L */
@@ -3626,6 +3705,10 @@
 #define ARIZONA_ACCDET_SRC_MASK                  0x2000  /* ACCDET_SRC */
 #define ARIZONA_ACCDET_SRC_SHIFT                     13  /* ACCDET_SRC */
 #define ARIZONA_ACCDET_SRC_WIDTH                      1  /* ACCDET_SRC */
+#define ARIZONA_ACCDET_POLARITY_INV_ENA          0x0080  /* ACCDET_POLARITY_INV_ENA */
+#define ARIZONA_ACCDET_POLARITY_INV_ENA_MASK     0x0080  /* ACCDET_POLARITY_INV_ENA */
+#define ARIZONA_ACCDET_POLARITY_INV_ENA_SHIFT         7  /* ACCDET_POLARITY_INV_ENA */
+#define ARIZONA_ACCDET_POLARITY_INV_ENA_WIDTH         1  /* ACCDET_POLARITY_INV_ENA */
 #define ARIZONA_ACCDET_MODE_MASK                 0x0007  /* ACCDET_MODE - [2:0] */
 #define ARIZONA_ACCDET_MODE_SHIFT                     0  /* ACCDET_MODE - [2:0] */
 #define ARIZONA_ACCDET_MODE_WIDTH                     3  /* ACCDET_MODE - [2:0] */
@@ -3633,6 +3716,14 @@
 /*
  * R667 (0x29B) - Headphone Detect 1
  */
+#define VEGAS_HP_FAST_MODE                       0x8000  /* HP_FAST_MODE [15] */
+#define VEGAS_HP_FAST_MODE_MASK                  0x8000  /* HP_FAST_MODE [15] */
+#define VEGAS_HP_FAST_MODE_SHIFT                     15  /* HP_FAST_MODE [15] */
+#define VEGAS_HP_FAST_MODE_WIDTH                      1  /* HP_FAST_MODE [15] */
+#define ARIZONA_HP_FAST_MODE                     0x0800  /* HP_FAST_MODE [11] */
+#define ARIZONA_HP_FAST_MODE_MASK                0x0800  /* HP_FAST_MODE [11] */
+#define ARIZONA_HP_FAST_MODE_SHIFT                   11  /* HP_FAST_MODE [11] */
+#define ARIZONA_HP_FAST_MODE_WIDTH                    1  /* HP_FAST_MODE [11] */
 #define ARIZONA_HP_IMPEDANCE_RANGE_MASK          0x0600  /* HP_IMPEDANCE_RANGE - [10:9] */
 #define ARIZONA_HP_IMPEDANCE_RANGE_SHIFT              9  /* HP_IMPEDANCE_RANGE - [10:9] */
 #define ARIZONA_HP_IMPEDANCE_RANGE_WIDTH              2  /* HP_IMPEDANCE_RANGE - [10:9] */
@@ -3653,6 +3744,9 @@
 #define CLEARWATER_HP_RATE_MASK                      0x0006  /* HP_RATE - [2:1] */
 #define CLEARWATER_HP_RATE_SHIFT                          1  /* HP_RATE - [2:1] */
 #define CLEARWATER_HP_RATE_WIDTH                          2  /* HP_RATE - [2:1] */
+#define VEGAS_HP_RATE_MASK                       0x0006  /* HP_RATE - [2:1] */
+#define VEGAS_HP_RATE_SHIFT                           1  /* HP_RATE - [2:1] */
+#define VEGAS_HP_RATE_WIDTH                           2  /* HP_RATE - [2:1] */
 #define ARIZONA_HP_RATE                          0x0002  /* HP_RATE */
 #define ARIZONA_HP_RATE_MASK                     0x0002  /* HP_RATE */
 #define ARIZONA_HP_RATE_SHIFT                         1  /* HP_RATE */
@@ -3687,6 +3781,13 @@
 #define ARIZONA_HP_DACVAL_MASK                   0x03FF  /* HP_DACVAL [9:0] */
 #define ARIZONA_HP_DACVAL_SHIFT                       0  /* HP_DACVAL [9:0] */
 #define ARIZONA_HP_DACVAL_WIDTH                      10  /* HP_DACVAL [9:0] */
+
+/*
+ * R669 (0x29F) - Headphone Detect 5
+ */
+#define ARIZONA_HP_DACVAL_DOWN_MASK              0x03FF  /* HP_DACVAL_DOWN [9:0] */
+#define ARIZONA_HP_DACVAL_DOWN_SHIFT                  0  /* HP_DACVAL_DOWN [9:0] */
+#define ARIZONA_HP_DACVAL_DOWN_WIDTH                 10  /* HP_DACVAL_DOWN [9:0] */
 
 /*
  * R674 (0x2A2) - MICD clamp control
@@ -4991,6 +5092,34 @@
 #define ARIZONA_DRE1L_ENA_MASK                   0x0001  /* DRE1L_ENA */
 #define ARIZONA_DRE1L_ENA_SHIFT                       0  /* DRE1L_ENA */
 #define ARIZONA_DRE1L_ENA_WIDTH                       1  /* DRE1L_ENA */
+
+/*
+ * R1088 (0x440) - DRE Enable (Vegas)
+ */
+#define VEGAS_DRE3L_ENA                          0x0020  /* DRE3L_ENA */
+#define VEGAS_DRE3L_ENA_MASK                     0x0020  /* DRE3L_ENA */
+#define VEGAS_DRE3L_ENA_SHIFT                         5  /* DRE3L_ENA */
+#define VEGAS_DRE3L_ENA_WIDTH                         1  /* DRE3L_ENA */
+#define VEGAS_DRE3R_ENA                          0x0010  /* DRE3R_ENA */
+#define VEGAS_DRE3R_ENA_MASK                     0x0010  /* DRE3R_ENA */
+#define VEGAS_DRE3R_ENA_SHIFT                         4  /* DRE3R_ENA */
+#define VEGAS_DRE3R_ENA_WIDTH                         1  /* DRE3R_ENA */
+#define VEGAS_DRE2L_ENA                          0x0008  /* DRE2L_ENA */
+#define VEGAS_DRE2L_ENA_MASK                     0x0008  /* DRE2L_ENA */
+#define VEGAS_DRE2L_ENA_SHIFT                         3  /* DRE2L_ENA */
+#define VEGAS_DRE2L_ENA_WIDTH                         1  /* DRE2L_ENA */
+#define VEGAS_DRE2R_ENA                          0x0004  /* DRE2R_ENA */
+#define VEGAS_DRE2R_ENA_MASK                     0x0004  /* DRE2R_ENA */
+#define VEGAS_DRE2R_ENA_SHIFT                         2  /* DRE2R_ENA */
+#define VEGAS_DRE2R_ENA_WIDTH                         1  /* DRE2R_ENA */
+#define VEGAS_DRE1L_ENA                          0x0002  /* DRE1L_ENA */
+#define VEGAS_DRE1L_ENA_MASK                     0x0002  /* DRE1L_ENA */
+#define VEGAS_DRE1L_ENA_SHIFT                         1  /* DRE1L_ENA */
+#define VEGAS_DRE1L_ENA_WIDTH                         1  /* DRE1L_ENA */
+#define VEGAS_DRE1R_ENA                          0x0001  /* DRE1R_ENA */
+#define VEGAS_DRE1R_ENA_MASK                     0x0001  /* DRE1R_ENA */
+#define VEGAS_DRE1R_ENA_SHIFT                         0  /* DRE1R_ENA */
+#define VEGAS_DRE1R_ENA_WIDTH                         1  /* DRE1R_ENA */
 
 /*
  * R1089 (0x441) - DRE Control 1
@@ -12221,5 +12350,37 @@
 #define CLEARWATER_GP_DBTIME_MASK                      0x000F  /* GP_DBTIME - [3:0] */
 #define CLEARWATER_GP_DBTIME_SHIFT                          0  /* GP_DBTIME - [3:0] */
 #define CLEARWATER_GP_DBTIME_WIDTH                          4  /* GP_DBTIME - [3:0] */
+
+/*
+ * R13304 (0x33F8) - OTP HPDET Calibration 1
+ */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_11           0xFF000000  /* HP_OFFSET_11 - [31:24] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_11_MASK      0xFF000000  /* HP_OFFSET_11 - [31:24] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_11_SHIFT             24  /* HP_OFFSET_11 - [31:24] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_11_WIDTH              8  /* HP_OFFSET_11 - [31:24] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_10           0x00FF0000  /* HP_OFFSET_10 - [23:16] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_10_MASK      0x00FF0000  /* HP_OFFSET_10 - [23:16] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_10_SHIFT             16  /* HP_OFFSET_10 - [23:16] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_10_WIDTH              8  /* HP_OFFSET_10 - [23:16] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_01           0x0000FF00  /* HP_OFFSET_01 - [15:8] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_01_MASK      0x0000FF00  /* HP_OFFSET_01 - [15:8] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_01_SHIFT              8  /* HP_OFFSET_01 - [15:8] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_01_WIDTH              8  /* HP_OFFSET_01 - [15:8] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_00           0x000000FF  /* HP_OFFSET_10 - [7:0] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_00_MASK      0x000000FF  /* HP_OFFSET_10 - [7:0] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_00_SHIFT              0  /* HP_OFFSET_10 - [7:0] */
+#define CLEARWATER_OTP_HPDET_CALIB_OFFSET_00_WIDTH              8  /* HP_OFFSET_10 - [7:0] */
+
+/*
+ * R13306 (0x33FA) - OTP HPDET Calibration 2
+ */
+#define CLEARWATER_OTP_HPDET_GRADIENT_1X           0xFF00  /* HP_GRADIENT_1X - [15:8] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_1X_MASK      0xFF00  /* HP_GRADIENT_1X - [15:8] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_1X_SHIFT         16  /* HP_GRADIENT_1X - [15:8] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_1X_WIDTH          8  /* HP_GRADIENT_1X - [15:8] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_0X           0x00FF  /* HP_GRADIENT_0X - [7:0] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_0X_MASK      0x00FF  /* HP_GRADIENT_0X - [7:0] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_0X_SHIFT          0  /* HP_GRADIENT_0X - [7:0] */
+#define CLEARWATER_OTP_HPDET_GRADIENT_0X_WIDTH          8  /* HP_GRADIENT_0X - [7:0] */
 
 #endif

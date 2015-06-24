@@ -532,6 +532,8 @@ int board_gpio_export(struct device *dev,
 
 void make_gpio_floating(unsigned int gpio, bool floating);
 
+int create_baseband_info(struct modem_ctl *mc);
+
 #ifdef CONFIG_ARGOS
 /* kernel team needs to provide argos header file. !!!
  * As of now, there's nothing to use. */

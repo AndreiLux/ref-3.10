@@ -200,16 +200,16 @@ static int is_lpc_available(unsigned int target_residency)
 	if (check_reg_status(check_reg_lpc, ARRAY_SIZE(check_reg_lpc)))
 		return false;
 
-	if (exynos_lpc_prepare())
+	if (exynos_check_aud_pwr() > AUD_PWR_LPA)
 		return false;
 
 	if (is_dll_on())
 		return false;
 
-	if (exynos_check_aud_pwr() > AUD_PWR_LPA)
+	if (pwm_check_enable_cnt())
 		return false;
 
-	if (pwm_check_enable_cnt())
+	if (exynos_lpc_prepare())
 		return false;
 
 	return true;

@@ -512,11 +512,11 @@ static int fimc_is_3aa_video_s_ctrl(struct file *file, void *priv,
 		break;
 	case V4L2_CID_IS_CAMERA_TYPE:
 		switch (ctrl->value) {
-			case 0:
+			case IS_COLD_BOOT:
 				/* change value to X when !TWIZ | front */
 				fimc_is_itf_set_fwboot(device, COLD_BOOT);
 				break;
-			case 1:
+			case IS_WARM_BOOT:
 				/* change value to X when TWIZ & back | frist time back camera */
 				if(!device->interface->first_launch) {
 					fimc_is_itf_set_fwboot(device, FIRST_LAUNCHING);

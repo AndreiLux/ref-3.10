@@ -122,10 +122,10 @@ typedef void (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
 #define FMODE_PATH		((__force fmode_t)0x4000)
 
 /* File hasn't page cache and can't be mmaped, for stackable filesystem */
-#define FMODE_NOMAPPABLE        ((__force fmode_t)0x8000)
-
+#define FMODE_NONMAPPABLE        ((__force fmode_t)0x400000)
+   
 /* File page don't need to be cached, for stackable filesystem's lower file */
-#define FMODE_NOCACHEABLE		((__force fmode_t)0x10000)
+#define FMODE_NONCACHEABLE     ((__force fmode_t)0x800000)
 
 /* File was opened by fanotify and shouldn't generate fanotify events */
 #define FMODE_NONOTIFY		((__force fmode_t)0x1000000)
@@ -436,7 +436,9 @@ struct address_space {
 #ifdef CONFIG_CRYPTO_FIPS
 	bool			cc_enable;	/* cc flag */
 #endif
-	bool			use_fmp;	/* use fmp flag  */
+#endif
+#ifdef CONFIG_SDP
+	int userid;
 #endif
 } __attribute__((aligned(sizeof(long))));
 	/*

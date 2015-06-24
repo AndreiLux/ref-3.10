@@ -99,7 +99,8 @@ struct panel_private {
 	unsigned char id[3];
 	unsigned char code[5];
 	unsigned char elvss_set[22];
-	unsigned char tset[8];
+	unsigned char tset[30];	// HA3 is 30
+	unsigned char aid[16];
 	int	temperature;
 	unsigned int coordinate[2];
 	unsigned char date[4];
@@ -118,6 +119,7 @@ struct panel_private {
 	void *dim_info;
 	unsigned int *br_tbl;
 	unsigned int *hbm_inter_br_tbl;
+	unsigned int *gallery_br_tbl;
 	unsigned char **hbm_tbl;
 	unsigned char **acl_cutoff_tbl;
 	unsigned char **acl_opr_tbl;
@@ -196,7 +198,8 @@ struct dsim_device {
 	unsigned int enabled;
 	struct decon_lcd lcd_info;
 	struct dphy_timing_value	timing;
-	int				pktgo;
+	int	pktgo;
+	int	glide_display_size;
 
 	int id;
 	u32 data_lane_cnt;

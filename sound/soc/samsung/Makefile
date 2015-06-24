@@ -122,3 +122,5 @@ obj-$(CONFIG_SND_SOC_SAMSUNG_ZERO_CLEARWATER) += snd-soc-pacific-arizona.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_ZERO_HDMI) += snd-soc-pacific-hdmi.o
 
 obj-$(CONFIG_SND_SAMSUNG_SEIREN) += seiren/
+
+obj-$(CONFIG_SND_SAMSUNG_DEBUGFS) += samsung_audio_debugfs.o

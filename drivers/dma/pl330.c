@@ -2312,7 +2312,7 @@ static int dmac_alloc_resources(struct pl330_dmac *pl330)
 	 */
 	pl330->mcode_cpu = dma_alloc_coherent(pi->dev,
 				chans * pi->mcbufsz,
-				&pl330->mcode_bus, GFP_KERNEL);
+				&pl330->mcode_bus, GFP_KERNEL | GFP_DMA);
 
 	if (!pl330->mcode_cpu) {
 		dev_err(pi->dev, "%s:%d Can't allocate memory!\n",
@@ -2623,7 +2623,10 @@ static void dma_pl330_rqcb(void *token, enum pl330_op_err err)
 
 	spin_unlock_irqrestore(&pdmac->pool_lock, flags);
 
-	tasklet_schedule(&pch->task);
+	if (desc->req.infiniteloop)
+		pl330_tasklet((unsigned long)pch);
+	else
+		tasklet_schedule(&pch->task);
 }
 
 static bool pl330_dt_filter(struct dma_chan *chan, void *param)

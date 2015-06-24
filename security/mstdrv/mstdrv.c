@@ -23,6 +23,7 @@ static bool mst_power_on = 0;
 static struct class *mst_drv_class;
 struct device *mst_drv_dev;
 static int escape_loop = 1;
+static int rt;
 static struct wake_lock   mst_wakelock;
 EXPORT_SYMBOL_GPL(mst_drv_dev);
 
@@ -32,7 +33,7 @@ static void of_mst_hw_onoff(bool on){
 
 	regulator3_0 = regulator_get(NULL, MST_LDO3_0);
 	if (IS_ERR(regulator3_0)) {
-		printk("%s : regulator 3.0 is not available", __func__);
+		printk("%s : regulator 3.0 is not available\n", __func__);
 		return;
 	}
 
@@ -54,7 +55,7 @@ static void of_mst_hw_onoff(bool on){
 	if(on) {
 		ret = regulator_enable(regulator3_0);
 		if (ret < 0) {
-			printk("%s : regulator 3.0 is not enable", __func__);
+			printk("%s : regulator 3.0 is not enable\n", __func__);
 		}
 	}else{
 		regulator_disable(regulator3_0);
@@ -95,24 +96,24 @@ static ssize_t store_mst_drv(struct device *dev,
 		case '2':
 			of_mst_hw_onoff(1);
 			printk(KERN_INFO "%s\n", __func__);
-			printk(KERN_INFO "MST_LDO_DRV]]] Track1 data transmit");
+			printk(KERN_INFO "MST_LDO_DRV]]] Track1 data transmit\n");
 			//Will Add here
 			r0 = (0x8300000f);
 			r1 = 1;
 			result = exynos_smc(r0, r1, r2, r3);
-			printk(KERN_INFO "MST_LDO_DRV]]] suspend after smc : %d", result);
+			printk(KERN_INFO "MST_LDO_DRV]]] Track1 data sent : %d\n", result);
 			of_mst_hw_onoff(0);
 			break;
 			
 		case '3':
 			of_mst_hw_onoff(1);
 			printk(KERN_INFO "%s\n", __func__);
-			printk(KERN_INFO "MST_LDO_DRV]]] Track2 data transmit");
+			printk(KERN_INFO "MST_LDO_DRV]]] Track2 data transmit\n");
 			//Will Add here
 			r0 = (0x8300000f);
 			r1 = 2;
 			result = exynos_smc(r0, r1, r2, r3);
-			printk(KERN_INFO "MST_LDO_DRV]]] suspend after smc : %d", result);
+			printk(KERN_INFO "MST_LDO_DRV]]] Track2 data sent : %d\n", result);
 			of_mst_hw_onoff(0);
 			break;
 
@@ -127,11 +128,11 @@ static ssize_t store_mst_drv(struct device *dev,
 					break;
 				of_mst_hw_onoff(1);
 				mdelay(10);
-				printk("MST_LDO_DRV]]] Track2 data transmit to infinity until stop button pushed");
+				printk("MST_LDO_DRV]]] Track2 data transmit to infinity until stop button pushed\n");
 				r0 = (0x8300000f);
 				r1 = 2;
 				result = exynos_smc(r0, r1, r2, r3);
-				printk(KERN_INFO "MST_LDO_DRV]]] Track2 data transmit to infinity after smc : %d", result);
+				printk(KERN_INFO "MST_LDO_DRV]]] Track2 data transmit to infinity after smc : %d\n", result);
 				of_mst_hw_onoff(0);
 				mdelay(1000);
 			}
@@ -198,21 +199,22 @@ static int sec_mst_notifier(struct notifier_block *self,
 
 	switch (cmd) {
 	case LPA_ENTER:
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa enter");
+		printk(KERN_INFO "MST_LDO_DRV]]] lpa enter\n");
 
 		/* save gpios & set previous state */
 		r0 = (0x83000011);
 		result = exynos_smc(r0, r1, r2, r3);
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa enter after prev mode smc : %d", result);
+		printk(KERN_INFO "MST_LDO_DRV]]] lpa enter after prev mode smc : %x\n", result);
 
 		break;
 	case LPA_EXIT:
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit");
+		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit\n");
 
 		/* restore gpios */
 		r0 = (0x8300000d);
 		result = exynos_smc(r0, r1, r2, r3);
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit after restore smc : %d", result);
+		rt = result;
+		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit after restore smc : %x\n", result);
 
 		break;
 	}
@@ -238,7 +240,7 @@ static int mst_ldo_device_suspend(struct platform_device *dev, pm_message_t stat
 	r0 = (0x8300000c);
 	result = exynos_smc(r0, r1, r2, r3);
 
-	printk(KERN_INFO "MST_LDO_DRV]]] suspend after smc : %d", result);
+	printk(KERN_INFO "MST_LDO_DRV]]] suspend after smc : %x\n", result);
 	return 0;
 }
 static int mst_ldo_device_resume(struct platform_device *dev)
@@ -252,7 +254,8 @@ static int mst_ldo_device_resume(struct platform_device *dev)
 	r0 = (0x8300000d);
 	result = exynos_smc(r0, r1, r2, r3);
 
-	printk(KERN_INFO "MST_LDO_DRV]]] resume after smc : %d",result);
+	printk(KERN_INFO "MST_LDO_DRV]]] resume after smc : %x\n",result);
+	rt = result;
 	return 0;
 }
 

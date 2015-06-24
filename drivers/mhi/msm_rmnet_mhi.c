@@ -35,6 +35,10 @@
 
 #include "mhi.h"
 
+#ifdef CONFIG_DEBUG_PKTLOG
+#include "modem_pktlog.h"
+#endif
+
 #define RMNET_MHI_DRIVER_NAME "rmnet_mhi"
 #define RMNET_MHI_DEV_NAME    "rmnet_mhi%d"
 #define MHI_DEFAULT_MTU        (4096 - 512)
@@ -79,6 +83,10 @@ static void *mhi_rmnet_ipc_log;
 			ipc_log_string(mhi_rmnet_ipc_log,			\
 			       "[%s] " _msg, __func__, ##__VA_ARGS__);	\
 } while (0)
+
+#ifdef CONFIG_DEBUG_PKTLOG
+struct pktlog_data *pktlog;
+#endif
 
 #ifdef CONFIG_MHI_RMNET_DUMP
 void mhi_rmnet_dump_log(int log_lvl, const char *prefix_str,
@@ -410,6 +418,11 @@ static int rmnet_mhi_poll(struct napi_struct *napi, int budget)
 #ifdef CONFIG_MHI_RMNET_DUMP
 		mhi_rmnet_dump_log(RMNET_DBG_VERBOSE, "mhi_rmnet poll[RX]: ", (skb->len > 16 ? 16 : skb->len), skb->data);
 #endif
+
+#ifdef CONFIG_DEBUG_PKTLOG
+		pktlog_rx_bottom_skb(pktlog, skb);
+#endif
+
 		netif_receive_skb(skb);
 
 		/* Statistics */
@@ -918,6 +931,11 @@ static int rmnet_mhi_xmit(struct sk_buff *skb, struct net_device *dev)
 #ifdef CONFIG_MHI_RMNET_DUMP
 	mhi_rmnet_dump_log(RMNET_DBG_VERBOSE, "mhi_rmnet xmit[TX]: ", (skb->len > 16 ? 16 : skb->len), skb->data);
 #endif
+
+#ifdef CONFIG_DEBUG_PKTLOG
+	pktlog_tx_bottom_skb(pktlog, skb);
+#endif
+
 	/* Lets map it first! */
 	dma_addr = dma_map_single(&(dev->dev), skb->data, skb->len,
 				  DMA_TO_DEVICE);
@@ -1162,6 +1180,14 @@ int rmnet_mhi_probe(struct platform_device *dev)
 		mhi_rmnet_log(RMNET_DBG_ERROR,
 				"Failed to create IPC logging context\n");
 	}
+
+#ifdef CONFIG_DEBUG_PKTLOG
+	pktlog = create_pktlog("mhi");
+	if (!pktlog) {
+		mhi_rmnet_log(RMNET_DBG_ERROR,
+				"Failed to create pktlog\n");
+	}
+#endif
 
 	for (index = 0; index < MHI_RMNET_DEVICE_COUNT; index++) {
 		mhi_rmnet_devices[index] =

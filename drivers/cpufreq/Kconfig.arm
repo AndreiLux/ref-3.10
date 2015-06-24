@@ -201,3 +201,9 @@ config ARM_SPEAR_CPUFREQ
 	default y
 	help
 	  This adds the CPUFreq driver support for SPEAr SOCs.
+
+config PMU_COREMEM_RATIO
+	bool "support coremem ratio by pmu count"
+	depends on ARCH_EXYNOS
+	help
+	  This supports coremem ratio region by pmu count

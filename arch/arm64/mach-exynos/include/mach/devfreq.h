@@ -67,6 +67,11 @@ void exynos7_int_notify_power_status(const char* pd_name, unsigned int turn_on);
 void exynos7_isp_notify_power_status(const char* pd_name, unsigned int turn_on);
 void exynos7_disp_notify_power_status(const char* pd_name, unsigned int turn_on);
 unsigned long vpp_get_int_freq(unsigned long freq);
+#if defined(CONFIG_ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING)
+extern void exynos7_devfreq_mif_thermal_set_polling_period(uint32_t target_freq, uint32_t cl, bool big_alive);
+#else
+static inline void exynos7_devfreq_mif_thermal_set_polling_period(uint32_t target_freq, uint32_t cl, bool big_alive) { return; }
+#endif
 #elif defined(CONFIG_ARM_EXYNOS7580_BUS_DEVFREQ)
 void exynos7_int_notify_power_status(const char* pd_name, unsigned int turn_on);
 void exynos7_isp_notify_power_status(const char* pd_name, unsigned int turn_on);

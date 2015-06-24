@@ -29,10 +29,11 @@ obj-$(CONFIG_SENSORS_SSP_MOBEAM)	 += factory/barcode_emul_tmg3992.o
 obj-$(CONFIG_SENSORS_SSP_SX9306)	 += factory/grip_sx9306.o
 
 obj-$(CONFIG_SENSORS_SSP_SENSORHUB)	+= ssp_sensorhub.o ssp_misc.o
-obj-$(CONFIG_SENSORS_MAX86900) += max86900.o
-obj-$(CONFIG_SENSORS_MAX86902) += max86902.o
-obj-$(CONFIG_SENSORS_MAX_NOTCHFILTER) += max_notchfilter/
-obj-$(CONFIG_SENSORS_ADPD142)  += adpd142.o
+obj-$(CONFIG_SENSORS_MAX86900)		+= max86900.o
+obj-$(CONFIG_SENSORS_MAX86902)		+= max86902.o
+obj-$(CONFIG_SENSORS_MAX_NOTCHFILTER)	+= max_notchfilter/
+obj-$(CONFIG_SENSORS_ADPD142)		+= adpd142.o
+obj-$(CONFIG_SENSORS_SX9310)		+= sx9310.o
 
 obj-$(CONFIG_SENSORS_SSP_BBD)           += ssp_bbd.o factory/mcu_bcm4773.o
 obj-$(CONFIG_SENSORS_SSP_BBD)           += bbdpl/

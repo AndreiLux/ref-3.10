@@ -234,6 +234,8 @@ struct devfreq_data_mif {
 	void __iomem *base_vt_mon_mif[MIF_BLK_NUM];
 	void __iomem *base_nsp;
 
+	uint32_t mid; 									/* Manufacturer ID */
+
 	int default_qos;
 	int initial_freq;
 	int cal_qos_max;
@@ -242,6 +244,9 @@ struct devfreq_data_mif {
 	unsigned long cur_freq;
 
 	uint32_t tmu_temp;
+
+	uint32_t mem_density;
+	uint32_t tREFI;
 
 	uint32_t per_mrs_en;
 	uint32_t pll_safe_idx;
@@ -335,6 +340,22 @@ struct devfreq_thermal_work {
 	unsigned int polling_period;
 	unsigned long max_freq;
 };
+
+typedef enum {
+	 LP4_Non_SEC=0,
+	 LP4_SEC=1,
+} lp4_mid_t;
+
+typedef enum {
+	LP4_4Gb_Die=0,
+	LP4_6Gb_Die=1,
+	LP4_8Gb_Die=2,
+	LP4_12Gb_Die=3,
+	LP4_16Gb_Die=4,
+	LP4_24Gb_Die=5,
+	LP4_32Gb_Die=6,
+	LP4_Invalid_Die=7,
+} lp4_density_t;
 
 #define CTRL_LOCK_VALUE_SHIFT	(0x8)
 #define CTRL_LOCK_VALUE_MASK	(0x1FF)

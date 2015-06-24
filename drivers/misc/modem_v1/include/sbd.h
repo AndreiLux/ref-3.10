@@ -438,6 +438,7 @@ int init_sbd_link(struct sbd_link_device *sl);
 
 int sbd_pio_tx(struct sbd_ring_buffer *rb, struct sk_buff *skb);
 struct sk_buff *sbd_pio_rx(struct sbd_ring_buffer *rb);
+int tx_frames_to_rb(struct sbd_ring_buffer *rb);
 
 #define SBD_UL_LIMIT		16	/* Uplink burst limit */
 

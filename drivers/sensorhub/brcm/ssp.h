@@ -199,6 +199,7 @@ enum {
 #define MSG2SSP_AP_MOBEAM_COUNT_SET		0x33
 #define MSG2SSP_AP_MOBEAM_START			0x34
 #define MSG2SSP_AP_MOBEAM_STOP			0x35
+#define MSG2SSP_AP_GEOMAG_LOGGING		0x36
 #define MSG2SSP_AP_SENSOR_LPF			0x37
 
 #define MSG2SSP_AP_IRDATA_SEND		0x38
@@ -239,8 +240,8 @@ enum {
 #if defined(CONFIG_SENSORS_SSP_TMG399x)
 #define DEFUALT_HIGH_THRESHOLD			130
 #define DEFUALT_LOW_THRESHOLD			90
-#define DEFUALT_CAL_HIGH_THRESHOLD		120
-#define DEFUALT_CAL_LOW_THRESHOLD		55
+#define DEFUALT_CAL_HIGH_THRESHOLD		130
+#define DEFUALT_CAL_LOW_THRESHOLD		54
 #else
 #define DEFUALT_HIGH_THRESHOLD			2000
 #define DEFUALT_LOW_THRESHOLD			1400
@@ -256,6 +257,9 @@ enum {
 #define MIN_GYRO		-32768
 
 #define MAX_COMP_BUFF 60
+
+/* ak0911 magnetic pdc matrix size */
+#define PDC_SIZE                       27
 
 /* temphumidity sensor*/
 struct shtc1_buffer {
@@ -291,8 +295,12 @@ enum {
 	TEMPERATURE_HUMIDITY_SENSOR,
 	LIGHT_SENSOR,
 	PROXIMITY_RAW,
+#ifdef CONFIG_SENSORS_SSP_SX9306
 	GRIP_SENSOR,
 	ORIENTATION_SENSOR,
+#else
+	ORIENTATION_SENSOR = 12,
+#endif
 	STEP_DETECTOR = 13,
 	SIG_MOTION_SENSOR,
 	GYRO_UNCALIB_SENSOR,
@@ -307,7 +315,7 @@ enum {
 	LIGHT_IR_SENSOR = 24,
 #endif
 #ifdef CONFIG_SENSORS_SSP_INTERRUPT_GYRO_SENSOR
-	INTERRUPT_GYRO_SENSOR,
+	INTERRUPT_GYRO_SENSOR = 25,
 #endif
 	SENSOR_MAX,
 };
@@ -624,6 +632,7 @@ struct ssp_data {
 	int mag_position;
 	u8 mag_matrix_size;
 	u8 *mag_matrix;
+	unsigned char pdc_matrix[PDC_SIZE];
 #ifdef CONFIG_SENSORS_SSP_SHTC1
 	struct miscdevice shtc1_device;
 	char *comp_engine_ver;

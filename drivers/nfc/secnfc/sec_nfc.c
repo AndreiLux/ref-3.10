@@ -30,7 +30,7 @@
 
 #include <linux/wait.h>
 #include <linux/delay.h>
-
+#include <linux/workqueue.h>
 #ifdef CONFIG_SEC_NFC_I2C
 #include <linux/interrupt.h>
 #include <linux/poll.h>
@@ -94,13 +94,13 @@ extern int poweroff_charging;
 static unsigned int tvdd_gpio = -1;
 
 #undef FEATURE_SET_DEFAULT_ANT_VAL
-#define FEATURE_FELICA_IMPROVE_ANT_ON_CASE
 
-#ifdef FEATURE_FELICA_IMPROVE_ANT_ON_CASE
+#ifdef CONFIG_NFC_EDC_TUNING
 static unsigned char user_ant = 10;
 #endif
 static int felica_epc_ant_read(unsigned char *read_buff);
 static int felica_epc_ant_write(char ant);
+int felica_epc_reset(void);
 
 /*
  *	I2C device_id table
@@ -168,7 +168,12 @@ static int bu80003gul_i2c_probe(struct i2c_client *client,
 		return -EFAULT;
 	}
 #endif
-#ifdef FEATURE_FELICA_IMPROVE_ANT_ON_CASE
+#ifdef CONFIG_NFC_EDC_TUNING
+        ret = felica_epc_reset();
+        if (ret < 0) {
+                EPC_ERR("[MFDD] %s felica_epc_reset fail, ret=[%d]",
+                                __func__, ret);
+        }
 	ret = felica_epc_ant_read(&user_ant);
 	if (ret < 0) {
 		EPC_ERR("[MFDD] %s felica_epc_ant_read fail, ret=[%d]",
@@ -458,7 +463,7 @@ static ssize_t felica_epc_write(struct file *file, const char __user *data,
 		return -EFAULT;
 	}
 
-#ifdef FEATURE_FELICA_IMPROVE_ANT_ON_CASE
+#ifdef CONFIG_NFC_EDC_TUNING
 	user_ant = ant & 0x7F;
 #endif
 	EPC_DEBUG("[MFDD] %s END\n", __func__);
@@ -467,29 +472,33 @@ static ssize_t felica_epc_write(struct file *file, const char __user *data,
 }
 #endif /* BU80003GUL */
 
-#ifdef FEATURE_FELICA_IMPROVE_ANT_ON_CASE
-int felica_ant_tuning(int parameter)
-{
-	char ant;
-	int ret;
 #ifdef CONFIG_NFC_EDC_TUNING
-	if (parameter == 1)
-		ant = (user_ant > 10) ? (user_ant-10) : 1;
-        else
-	        ant = user_ant;
-#else
-	if (parameter == 1)
-		ant = 1;
-        else
-	        ant = user_ant;
-#endif
-	pr_info("%s : felica_ant : %d, event: %d\n", __func__, (int)ant, parameter);
+static int ant_tune_req = 0;
+static void felica_ant_tuning_work(struct work_struct *work)
+{
+	int i, ret;
+	char ant;
 
-	ret = felica_epc_ant_write(ant);
-	if (ret < 0) {
-		EPC_ERR("[MFDD] %s ERROR(i2c_transfer), ret=[%d]",
-				__func__, ret);
-		return -EIO;
+	ant = user_ant;
+	for (i = 0; i < 10; i++) {
+		if (ant_tune_req != 1)
+			break;
+		ant = ant > 2 ? ant - 2 : 1;
+		ret = felica_epc_ant_write(ant);
+		pr_info("%s : felica_tune_work ant: %d\n", __func__, ant);
+		msleep(1000);
+	}
+	ret = felica_epc_ant_write(user_ant);
+	ant_tune_req = 0;
+}
+static DECLARE_DELAYED_WORK(felica_ant_work, felica_ant_tuning_work);
+int felica_ant_tuning(int evt)
+{
+	pr_info("%s : felica_tune_req : %d, event: %d\n", __func__, ant_tune_req, evt);
+
+	ant_tune_req = evt;
+	if (evt == 1) {
+		schedule_delayed_work(&felica_ant_work, 0);
 	}
 
 	return 1;
@@ -841,6 +850,9 @@ static long sec_nfc_ioctl(struct file *file, unsigned int cmd,
 		pr_info("%s: [NFC] Mode = %d, Firm pin = %d\n",
 				__func__, mode, firm);
 
+		break;
+	case SEC_NFC_EDC_SWEEP:
+		felica_ant_tuning(1);
 		break;
 
 	default:
@@ -1288,7 +1300,6 @@ static int sec_nfc_probe(struct platform_device *pdev)
 	}
 */
 #endif /* BU80003GUL */
-
 	pr_info("%s: exit - sec-nfc probe finish\n", __func__);
 
 	return 0;
@@ -1333,14 +1344,12 @@ static void sec_nfc_lpm_set(struct device *dev)
 
 static void sec_nfc_shutdown(struct platform_device *pdev)
 {
-	int ret;
 	struct device *dev = &pdev->dev;
 
-        ret = felica_epc_reset();
-        if (ret < 0) {
-                EPC_ERR("[MFDD] %s ERROR(i2c_transfer), ret=[%d]",
-                                __func__, ret);
-        }
+#ifdef CONFIG_NFC_EDC_TUNING
+	ant_tune_req = 0;
+	flush_delayed_work(&felica_ant_work);
+#endif
 	sec_nfc_lpm_set(dev);
 	gpio_set_value(tvdd_gpio, 0);
 }

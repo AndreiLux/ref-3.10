@@ -22,6 +22,7 @@ pr_info("[MAXIM_DSM] %s: " format "\n", __func__, ## args)
 
 static struct maxim_dsm maxdsm = {
 	.regmap = NULL,
+	.param_size = PARAM_DSM_3_5_MAX,
 	.platform_type = 0,
 	.port_id = DSM_RX_PORT_ID,
 	.rx_mod_id = AFE_PARAM_ID_ENABLE_DSM_RX,
@@ -282,65 +283,72 @@ static struct param_lsi_info g_pbi[PARAM_LSI_DSM_3_5_MAX] = {
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_SPT_THRESHOLD,
+		.id = PARAM_LSI_SPT_THRESHOLD_HI,
 		.addr = 0x2A019C,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_T_HORIZON,
+		.id = PARAM_LSI_SPT_THRESHOLD_LO,
 		.addr = 0x2A019E,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_A1,
+		.id = PARAM_LSI_T_HORIZON,
 		.addr = 0x2A01A0,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_A2,
+		.id = PARAM_LSI_LFX_ADMITTANCE_A1,
 		.addr = 0x2A01A2,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_B0,
+		.id = PARAM_LSI_LFX_ADMITTANCE_A2,
 		.addr = 0x2A01A4,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_B1,
+		.id = PARAM_LSI_LFX_ADMITTANCE_B0,
 		.addr = 0x2A01A6,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_B2,
+		.id = PARAM_LSI_LFX_ADMITTANCE_B1,
 		.addr = 0x2A01A8,
 		.size = 2,
 		.type = sizeof(uint32_t),
 	},
 	{
-		.id = PARAM_LSI_RESERVE0,
+		.id = PARAM_LSI_LFX_ADMITTANCE_B2,
 		.addr = 0x2A01AA,
 		.size = 2,
+		.type = sizeof(uint32_t),
+	},
+	{
+		.id = PARAM_LSI_ALGORITHM_X_MAX,
+		.addr = 0x2A01AC,
+		.size = 2,
+		.type = sizeof(uint32_t),
 	},
 	{
 		.id = PARAM_LSI_RESERVE1,
-		.addr = 0x2A01AC,
-		.size = 2,
-	},
-	{
-		.id = PARAM_LSI_RESERVE2,
 		.addr = 0x2A01AE,
 		.size = 2,
 	},
 	{
-		.id = PARAM_LSI_RESERVE3,
+		.id = PARAM_LSI_RESERVE2,
 		.addr = 0x2A01B0,
+		.size = 2,
+	},
+	{
+		.id = PARAM_LSI_RESERVE3,
+		.addr = 0x2A01B2,
 		.size = 2,
 	},
 	{
@@ -742,13 +750,13 @@ ssize_t maxdsm_log_prepare(char *buf)
 	uint32_t *excur_after_rdc_log_array;
 	uint32_t *excur_after_freq_log_array;
 
-	int param_excur_limit;
-	int param_thermal_limit;
-	int param_voice_coil;
-	int param_release_time;
-	int param_static_gain;
-	int param_lfx_gain;
-	int param_pilot_gain;
+	int param_excur_limit = PARAM_LSI_EXCUR_LIMIT;
+	int param_thermal_limit = PARAM_LSI_THERMAL_LIMIT;
+	int param_voice_coil = PARAM_LSI_VOICE_COIL;
+	int param_release_time = PARAM_LSI_RELEASE_TIME;
+	int param_static_gain = PARAM_LSI_STATIC_GAIN;
+	int param_lfx_gain = PARAM_LSI_LFX_GAIN;
+	int param_pilot_gain = PARAM_LSI_PILOT_GAIN;
 
 	rc = maxdsm_log_duplicate((void **)&byte_log_array,
 			(void **)&int_log_array, (void **)&afterbyte_log_array,
@@ -756,14 +764,7 @@ ssize_t maxdsm_log_prepare(char *buf)
 
 	switch (maxdsm.platform_type) {
 	case 0: /* LSI */
-	default:
-		param_excur_limit = PARAM_LSI_EXCUR_LIMIT;
-		param_thermal_limit = PARAM_LSI_THERMAL_LIMIT;
-		param_voice_coil = PARAM_LSI_VOICE_COIL;
-		param_release_time = PARAM_LSI_RELEASE_TIME;
-		param_static_gain = PARAM_LSI_STATIC_GAIN;
-		param_lfx_gain = PARAM_LSI_LFX_GAIN;
-		param_pilot_gain = PARAM_LSI_PILOT_GAIN;
+		/* Already initialized */
 		break;
 	case 1: /* QCOM */
 		param_excur_limit = PARAM_EXCUR_LIMIT;
@@ -1225,6 +1226,17 @@ int maxdsm_get_tx_mod_id(void)
 }
 EXPORT_SYMBOL_GPL(maxdsm_get_tx_mod_id);
 
+static int maxdsm_check_param_size(ssize_t count)
+{
+	int param_size;
+
+	param_size = maxdsm.platform_type ?
+		sizeof(uint32_t) * maxdsm.param_size :
+		sizeof(int) * maxdsm.param_size;
+
+	return count > param_size ? -EOVERFLOW : 0;
+}
+
 static int maxdsm_open(struct inode *inode, struct file *filep)
 {
 	return 0;
@@ -1250,11 +1262,8 @@ static ssize_t maxdsm_read(struct file *filep, char __user *buf,
 
 	/* copy params to user */
 	rc = copy_to_user(buf, maxdsm.param, count);
-	if (rc != 0) {
+	if (rc != 0)
 		pr_err("%s: copy_to_user failed - %d\n", __func__, rc);
-		mutex_unlock(&dsm_lock);
-		return 0;
-	}
 
 	mutex_unlock(&dsm_lock);
 
@@ -1266,13 +1275,15 @@ static ssize_t maxdsm_write(struct file *filep, const char __user *buf,
 {
 	int x, rc;
 
+	if (maxdsm_check_param_size(count))
+		return count;
+
 	mutex_lock(&dsm_lock);
 
 	rc = copy_from_user(maxdsm.param, buf, count);
 	if (rc != 0) {
 		pr_err("%s: copy_from_user failed - %d\n", __func__, rc);
-		mutex_unlock(&dsm_lock);
-		return rc;
+		goto error;
 	}
 
 	switch (maxdsm.platform_type) {
@@ -1309,6 +1320,7 @@ static ssize_t maxdsm_write(struct file *filep, const char __user *buf,
 		break;
 	}
 
+error:
 	mutex_unlock(&dsm_lock);
 
 	return rc;
