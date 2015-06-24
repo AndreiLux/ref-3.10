@@ -284,7 +284,7 @@ static int __init flounder_mac_addr_setup(char *str)
 	return 1;
 }
 
-__setup("androidboot.wifimacaddr=", flounder_mac_addr_setup);
+__setup("flounder.wifimacaddr=", flounder_mac_addr_setup);
 
 static int flounder_wifi_get_mac_addr(unsigned char *buf)
 {
