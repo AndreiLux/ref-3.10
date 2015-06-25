@@ -24,6 +24,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/wakelock.h>
 #include <sound/pcm.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -96,6 +97,8 @@ static const struct snd_pcm_hardware tegra_offload_pcm_hw_cap = {
 	.fifo_size              = 4,
 };
 
+static struct wake_lock tegra_offload_wake_lock;
+
 int tegra_register_offload_ops(struct tegra_offload_ops *ops)
 {
 	mutex_lock(&tegra_offload_lock);
@@ -109,6 +112,7 @@ int tegra_register_offload_ops(struct tegra_offload_ops *ops)
 		return -EBUSY;
 	}
 	memcpy(&offload_ops, ops, sizeof(offload_ops));
+        wake_lock_init(&tegra_offload_wake_lock, WAKE_LOCK_SUSPEND, "audio_offload");
 	tegra_offload_init_done = 1;
 	mutex_unlock(&tegra_offload_lock);
 
@@ -342,6 +346,10 @@ static int tegra_offload_compr_trigger(struct snd_compr_stream *stream, int cmd)
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (!wake_lock_active(&tegra_offload_wake_lock)){
+			wake_lock(&tegra_offload_wake_lock);
+                }
+
 		if (rtd->dai_link->compr_ops &&
 				rtd->dai_link->compr_ops->trigger) {
 			rtd->dai_link->compr_ops->trigger(stream, cmd);
@@ -357,6 +365,11 @@ static int tegra_offload_compr_trigger(struct snd_compr_stream *stream, int cmd)
 				rtd->dai_link->compr_ops->trigger) {
 			rtd->dai_link->compr_ops->trigger(stream, cmd);
 		}
+
+                if (wake_lock_active(&tegra_offload_wake_lock)){
+                        wake_unlock(&tegra_offload_wake_lock);
+                }
+
 		break;
 
 	default:
