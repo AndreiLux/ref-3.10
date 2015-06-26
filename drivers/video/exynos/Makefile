@@ -10,5 +10,4 @@ obj-$(CONFIG_EXYNOS_DECON_DISPLAY)	+= decon_display/
 obj-$(CONFIG_EXYNOS_DECON_TV_DISPLAY)	+= decon_tv_display/
 obj-y					+= panels/
 obj-$(CONFIG_EXYNOS_DECON)		+= decon/
-obj-$(CONFIG_EXYNOS_DUAL_DECON)		+= dual_decon/
 obj-$(CONFIG_EXYNOS_DECON_EXYNOS7580)	+= decon_7580/

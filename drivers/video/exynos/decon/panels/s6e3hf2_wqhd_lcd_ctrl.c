@@ -2143,11 +2143,6 @@ static int s6e3hf2_wqhd_init(struct dsim_device *dsim)
 		dsim_err("%s : fail to write CMD : SEQ_POC_SETTING2\n", __func__);
 		goto init_exit;
 	}
-	ret = dsim_write_hl_data(dsim, SEQ_POC_SETTING3, ARRAY_SIZE(SEQ_POC_SETTING3));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : SEQ_POC_SETTING3\n", __func__);
-		goto init_exit;
-	}
 
 	ret = dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_FC, ARRAY_SIZE(SEQ_TEST_KEY_OFF_FC));
 	if (ret < 0) {

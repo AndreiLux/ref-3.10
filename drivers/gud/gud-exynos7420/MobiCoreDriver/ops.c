@@ -40,6 +40,8 @@
 #include "pm.h"
 #include "debug.h"
 
+uint8_t core_status = 0xff;
+
 /* MobiCore context data */
 static struct mc_context *ctx;
 static int disable_local_timer;
@@ -394,7 +396,7 @@ uint32_t mc_active_core(void)
 	return active_cpu;
 }
 
-int mc_switch_core(uint32_t core_num)
+int __mc_switch_core(uint32_t core_num)
 {
 	int32_t ret = 0;
 	union mc_fc_swich_core fc_switch_core;
@@ -428,8 +430,24 @@ int mc_switch_core(uint32_t core_num)
 	return ret;
 }
 
+int mc_switch_core(uint32_t core_num)
+{
+	int ret;
+	mutex_lock(&ctx->core_switch_lock);
+	if (!(core_status & (0x1<<core_num))){
+		MCDRV_DBG(mcd, "Core status... core #%d is off line\n",core_num);
+		mutex_unlock(&ctx->core_switch_lock);
+		return 1;
+	}
+	ret = __mc_switch_core(core_num);
+	mutex_unlock(&ctx->core_switch_lock);
+	return ret;
+}
+
 void mc_cpu_offfline(int cpu)
 {
+	mutex_lock(&ctx->core_switch_lock);
+	core_status &= ~(0x1<<cpu);
 	if (active_cpu == cpu) {
 		int i;
 		/* Chose the first online CPU and switch! */
@@ -440,12 +458,21 @@ void mc_cpu_offfline(int cpu)
 			}
 			MCDRV_DBG(mcd, "CPU %d is dying, switching to %d\n",
 				  cpu, i);
-			mc_switch_core(i);
+			__mc_switch_core(i);
 			break;
 		}
 	} else {
 		MCDRV_DBG(mcd, "not active CPU, no action taken\n");
 	}
+
+	mutex_unlock(&ctx->core_switch_lock);
+}
+
+void mc_cpu_online(int cpu)
+{
+	mutex_lock(&ctx->core_switch_lock);
+	core_status |= (0x1<<cpu);
+	mutex_unlock(&ctx->core_switch_lock);
 }
 
 static int mobicore_cpu_callback(struct notifier_block *nfb,
@@ -454,6 +481,9 @@ static int mobicore_cpu_callback(struct notifier_block *nfb,
 	unsigned int cpu = (unsigned long)hcpu;
 
 	switch (action) {
+	case CPU_ONLINE:
+		mc_cpu_online(cpu);
+		break;
 	case CPU_DOWN_PREPARE:
 	case CPU_DOWN_PREPARE_FROZEN:
 		mc_cpu_offfline(cpu);
