@@ -20,7 +20,7 @@
 		mif,modem_type = <15>;
 		mif,use_handover = <0>;
 		mif,ipc_version = <50>;
-		mif,link_types = <0x400>;	/* LINKDEV_LLI */
+		mif,link_types = <0x408>;	/* LINKDEV_LLI | LINKDEV_SPI */
 		mif,link_name = "lli";
 		mif,link_attrs = <0x3C9>;	/* DUMP_ALIGNED (0x200) | BOOT_ALIGNED (0x100) | MEM_DUMP (0x80) | MEM_BOOT (0x40) | DPRAM_MAGIC (0x08) | SBD_IPC (0x01) */
 
@@ -235,7 +235,8 @@
 				iod,id = <215>;
 				iod,format = <4>;
 				iod,io_type = <0>;
-				iod,links = <0x400>;
+				iod,links = <0x408>;
+				iod,tx_link = <10>;  /* LINKDEV_LLI */
 				iod,attrs = <0x02>;	/* ATTR_SIPC5 */
 				iod,app = "CBD";
 			};

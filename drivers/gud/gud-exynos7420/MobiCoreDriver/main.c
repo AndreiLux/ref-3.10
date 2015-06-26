@@ -1589,6 +1589,9 @@ static int __init mobicore_init(void)
 	/* init lock for the buffers list */
 	mutex_init(&ctx.bufs_lock);
 
+	/* init lock for core switch processing */
+	mutex_init(&ctx.core_switch_lock);
+
 	memset(&ctx.mci_base, 0, sizeof(ctx.mci_base));
 	MCDRV_DBG(mcd, "initialized");
 	return 0;

@@ -81,6 +81,8 @@ struct mc_context {
 	struct list_head	cont_bufs;
 	/* Lock for the list of contiguous buffers */
 	struct mutex		bufs_lock;
+	/* Lock for core switch processing */
+	struct mutex		core_switch_lock;
 };
 
 struct mc_sleep_mode {
