@@ -149,12 +149,17 @@ static LIST_HEAD(drvdata_list);
 
 #define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
+#define SENSOR_HUB_PORT			(1)
+#define CLK_ENABLE_PCLK_PERIC1		(0x14C80900)
+
 #define RXBUSY    (1<<2)
 #define TXBUSY    (1<<3)
 
 /* For Oberthur ese, but can be used even OT macro is disabled */
 struct pinctrl_state *spi_pin_state[ESE_MAX_GPIO_STATE];
 struct pinctrl *spi_pinctrl;
+
+u32 __iomem *clk_test;
 
 /**
  * struct s3c64xx_spi_info - SPI Controller hardware info
@@ -1017,6 +1022,15 @@ static int s3c64xx_spi_transfer_one_message(struct spi_master *master,
 		goto out;
 	}
 
+	if (sdd->port_id == SENSOR_HUB_PORT) {
+		if (!(readl(clk_test) & (1 << 13))) {
+			dev_err(&spi->dev, "PCLK_SPI1 was disabled: 0x%08x!!!!\n",
+						readl(clk_test));
+			status = -EIO;
+			goto out;
+		}
+	}
+
 	/* Configure feedback delay */
 	writel(cs->fb_delay & 0x3, sdd->regs + S3C64XX_SPI_FB_CLK);
 
@@ -1657,6 +1671,13 @@ static int s3c64xx_spi_probe(struct platform_device *pdev)
 		sdd->port_id = pdev->id;
 	}
 
+	if (sdd->port_id == SENSOR_HUB_PORT) {
+		clk_test = ioremap(CLK_ENABLE_PCLK_PERIC1, SZ_4);
+		if (!clk_test) {
+			dev_err(&pdev->dev, "failed to ioremap PCLK_SPI1 address!!!!\n");
+			return -ENXIO;
+		}
+	}
 
 	sdd->cur_bpw = 8;
 
@@ -1870,6 +1891,9 @@ static int s3c64xx_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = spi_master_get(platform_get_drvdata(pdev));
 	struct s3c64xx_spi_driver_data *sdd = spi_master_get_devdata(master);
+
+	if (sdd->port_id == SENSOR_HUB_PORT)
+		iounmap(clk_test);
 
 	pm_runtime_disable(&pdev->dev);
 

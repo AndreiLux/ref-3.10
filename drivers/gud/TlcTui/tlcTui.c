@@ -177,6 +177,7 @@ static void tlc_process_cmd(void)
 #if defined(CONFIG_SECURE_OS_BOOSTER_API)
 	int ret_val = 0;
 	u8 retry_cnt = 0;
+	uint32_t TUI_BOOSTER = 0xFFFF0000; /* boosting Frequency = MAX(2.1GHz), Boosting time =  0xFFFF (65536 msec)*/
 #endif
 
 	if (NULL == dci) {
@@ -205,7 +206,7 @@ static void tlc_process_cmd(void)
 		pr_info("%s TUI_CPU_SPEEDUP ON retry: %d\n",
 			__func__, retry_cnt);
 		do {
-			ret_val = secos_booster_start(MAX_PERFORMANCE);
+			ret_val = secos_booster_start(TUI_BOOSTER);
 			retry_cnt++;
 			if (ret_val) {
 				pr_err("%s: booster start failed. (%d) retry: %d\n"

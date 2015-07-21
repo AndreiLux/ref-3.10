@@ -96,7 +96,8 @@
 				(time < 500) ? time/100-1 :		\
 				(time < 3250) ? (time-500)/250+4 : 15)
 
-#define LEDBLNK_OFF(time)	((time < 500) ? 0x00 :			\
+#define LEDBLNK_OFF(time)	((time < 1) ? 0x00 :			\
+				(time < 500) ? 0x01 :			\
 				(time < 5000) ? time/500 :		\
 				(time < 8000) ? (time-5000)/1000+10 :	 \
 				(time < 12000) ? (time-8000)/2000+13 : 15)

@@ -1124,12 +1124,16 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 {
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
+		mutex_lock(&tmudata->lock);
 		is_suspending = true;
 		exynos_tmu_call_notifier(TMU_COLD, 0);
 		exynos_gpu_call_notifier(TMU_COLD);
+		mutex_unlock(&tmudata->lock);
 		break;
 	case PM_POST_SUSPEND:
+		mutex_lock(&tmudata->lock);
 		is_suspending = false;
+		mutex_unlock(&tmudata->lock);
 		break;
 	}
 

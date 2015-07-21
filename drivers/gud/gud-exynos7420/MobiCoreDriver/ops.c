@@ -210,7 +210,7 @@ static void fastcall_work_func(struct work_struct *work)
 		fc_generic->as_in.param[0] = cpu_id[fc_generic->as_in.param[0]];
 	}
 
-	if (disable_local_timer) {
+	if (active_cpu == DEFAULT_BIG_CORE && disable_local_timer) {
 		irq_check_cnt++;
 		disable_irq(MC_INTR_LOCAL_TIMER);
 #ifdef CONFIG_SECURE_OS_BOOSTER_API
@@ -458,6 +458,7 @@ void mc_cpu_offfline(int cpu)
 			}
 			MCDRV_DBG(mcd, "CPU %d is dying, switching to %d\n",
 				  cpu, i);
+			mc_set_schedule_policy(DEFAULT_LITTLE_CORE);
 			__mc_switch_core(i);
 			break;
 		}

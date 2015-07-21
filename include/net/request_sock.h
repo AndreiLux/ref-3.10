@@ -48,6 +48,7 @@ extern int inet_rtx_syn_ack(struct sock *parent, struct request_sock *req);
 /* struct request_sock - mini sock to represent a connection request
  */
 struct request_sock {
+	struct sock_common		__req_common;
 	struct request_sock		*dl_next;
 	u16				mss;
 	u8				num_retrans; /* number of retransmits */
@@ -163,7 +164,7 @@ struct request_sock_queue {
 };
 
 extern int reqsk_queue_alloc(struct request_sock_queue *queue,
-			     unsigned int nr_table_entries);
+			     unsigned int nr_table_entries, gfp_t flags);
 
 extern void __reqsk_queue_destroy(struct request_sock_queue *queue);
 extern void reqsk_queue_destroy(struct request_sock_queue *queue);
