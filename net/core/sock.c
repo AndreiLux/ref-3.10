@@ -142,55 +142,6 @@
 static DEFINE_MUTEX(proto_list_mutex);
 static LIST_HEAD(proto_list);
 
-/**
- * sk_ns_capable - General socket capability test
- * @sk: Socket to use a capability on or through
- * @user_ns: The user namespace of the capability to use
- * @cap: The capability to use
- *
- * Test to see if the opener of the socket had when the socket was
- * created and the current process has the capability @cap in the user
- * namespace @user_ns.
- */
-bool sk_ns_capable(const struct sock *sk,
-		   struct user_namespace *user_ns, int cap)
-{
-	return file_ns_capable(sk->sk_socket->file, user_ns, cap) &&
-		ns_capable(user_ns, cap);
-}
-EXPORT_SYMBOL(sk_ns_capable);
-
-/**
- * sk_capable - Socket global capability test
- * @sk: Socket to use a capability on or through
- * @cap: The global capbility to use
- *
- * Test to see if the opener of the socket had when the socket was
- * created and the current process has the capability @cap in all user
- * namespaces.
- */
-bool sk_capable(const struct sock *sk, int cap)
-{
-	return sk_ns_capable(sk, &init_user_ns, cap);
-}
-EXPORT_SYMBOL(sk_capable);
-
-/**
- * sk_net_capable - Network namespace socket capability test
- * @sk: Socket to use a capability on or through
- * @cap: The capability to use
- *
- * Test to see if the opener of the socket had when the socke was created
- * and the current process has the capability @cap over the network namespace
- * the socket is a member of.
- */
-bool sk_net_capable(const struct sock *sk, int cap)
-{
-	return sk_ns_capable(sk, sock_net(sk)->user_ns, cap);
-}
-EXPORT_SYMBOL(sk_net_capable);
-
-
 #ifdef CONFIG_MEMCG_KMEM
 int mem_cgroup_sockets_init(struct mem_cgroup *memcg, struct cgroup_subsys *ss)
 {
@@ -277,7 +228,7 @@ static const char *const af_family_slock_key_strings[AF_MAX+1] = {
   "slock-AF_IEEE802154", "slock-AF_CAIF" , "slock-AF_ALG"      ,
   "slock-AF_NFC"   , "slock-AF_VSOCK"    ,"slock-AF_MAX"
 };
-static const char *const af_family_clock_key_strings[AF_MAX+1] = {
+char *const af_family_clock_key_strings[AF_MAX+1] = {
   "clock-AF_UNSPEC", "clock-AF_UNIX"     , "clock-AF_INET"     ,
   "clock-AF_AX25"  , "clock-AF_IPX"      , "clock-AF_APPLETALK",
   "clock-AF_NETROM", "clock-AF_BRIDGE"   , "clock-AF_ATMPVC"   ,
@@ -298,7 +249,7 @@ static const char *const af_family_clock_key_strings[AF_MAX+1] = {
  * sk_callback_lock locking rules are per-address-family,
  * so split the lock classes by using a per-AF key:
  */
-static struct lock_class_key af_callback_keys[AF_MAX];
+struct lock_class_key af_callback_keys[AF_MAX];
 
 /* Take into consideration the size of the struct sk_buff overhead in the
  * determination of these values, since that is non-constant across
@@ -418,8 +369,6 @@ static void sock_warn_obsolete_bsdism(const char *name)
 		warned++;
 	}
 }
-
-#define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
 
 static void sock_disable_timestamp(struct sock *sk, unsigned long flags)
 {
@@ -934,7 +883,7 @@ set_rcvbuf:
 
 	case SO_PEEK_OFF:
 		if (sock->ops->set_peek_off)
-			ret = sock->ops->set_peek_off(sk, val);
+			sock->ops->set_peek_off(sk, val);
 		else
 			ret = -EOPNOTSUPP;
 		break;
@@ -1223,7 +1172,7 @@ lenout:
  *
  * (We also register the sk_lock with the lock validator.)
  */
-static inline void sock_lock_init(struct sock *sk)
+void sock_lock_init(struct sock *sk)
 {
 	sock_lock_init_class_and_name(sk,
 			af_family_slock_key_strings[sk->sk_family],
@@ -1271,7 +1220,7 @@ void sk_prot_clear_portaddr_nulls(struct sock *sk, int size)
 }
 EXPORT_SYMBOL(sk_prot_clear_portaddr_nulls);
 
-static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
+struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
 		int family)
 {
 	struct sock *sk;
@@ -1510,6 +1459,7 @@ struct sock *sk_clone_lock(const struct sock *sk, const gfp_t priority)
 		newsk->sk_userlocks	= sk->sk_userlocks & ~SOCK_BINDPORT_LOCK;
 
 		sock_reset_flag(newsk, SOCK_DONE);
+		sock_reset_flag(newsk, SOCK_MPTCP);
 		skb_queue_head_init(&newsk->sk_error_queue);
 
 		filter = rcu_dereference_protected(newsk->sk_filter, 1);
@@ -1873,7 +1823,7 @@ bool sk_page_frag_refill(struct sock *sk, struct page_frag *pfrag)
 		gfp_t gfp = sk->sk_allocation;
 
 		if (order)
-			gfp |= __GFP_COMP | __GFP_NOWARN | __GFP_NORETRY;
+			gfp |= __GFP_COMP | __GFP_NOWARN;
 		pfrag->page = alloc_pages(gfp, order);
 		if (likely(pfrag->page)) {
 			pfrag->offset = 0;
@@ -2330,7 +2280,6 @@ void sock_init_data(struct socket *sock, struct sock *sk)
 
 	sk->sk_stamp = ktime_set(-1L, 0);
 
-	sk->sk_pacing_rate = ~0U;
 	/*
 	 * Before updating sk_refcnt, we must commit prior changes to memory
 	 * (Documentation/RCU/rculist_nulls.txt for details)
@@ -2368,13 +2317,10 @@ void release_sock(struct sock *sk)
 	if (sk->sk_backlog.tail)
 		__release_sock(sk);
 
-	/* Warning : release_cb() might need to release sk ownership,
-	 * ie call sock_release_ownership(sk) before us.
-	 */
 	if (sk->sk_prot->release_cb)
 		sk->sk_prot->release_cb(sk);
 
-	sock_release_ownership(sk);
+	sk->sk_lock.owned = 0;
 	if (waitqueue_active(&sk->sk_lock.wq))
 		wake_up(&sk->sk_lock.wq);
 	spin_unlock_bh(&sk->sk_lock.slock);

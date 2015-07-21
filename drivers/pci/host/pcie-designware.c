@@ -411,11 +411,40 @@ void dw_pcie_set_tpoweron(struct pcie_port *pp, int max)
 	void __iomem *ep_dbi_base = pp->va_cfg0_base;
 	struct exynos_pcie *exynos_pcie = to_exynos_pcie(pp);
 	unsigned long flags;
+	u32 val;
 
 	if (exynos_pcie->state != STATE_LINK_UP)
 		return;
 
 	spin_lock_irqsave(&pp->conf_lock, flags);
+
+        /* Disable ASPM */
+	val = readl(ep_dbi_base + 0xbc);
+	val &= ~0x3;
+	writel(val, ep_dbi_base + 0xBC);
+
+	val = readl(ep_dbi_base + 0x248);
+	val &= ~0xF;
+	writel(val, ep_dbi_base + 0x248);
+
+        /* Disable L1ss */
+	dw_pcie_rd_own_conf(pp, PCIE_LINK_CTRSTS, 4, &val);
+	val &= ~0x3 << 0;
+	dw_pcie_wr_own_conf(pp, PCIE_LINK_CTRSTS, 4, val);
+
+	dw_pcie_rd_own_conf(pp, PCIE_LINK_L1SS_CONTROL, 4, &val);
+	val &= ~PORT_LINK_L1SS_ENABLE;
+	dw_pcie_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL, 4, val);
+
+        /* Disable LTR */
+	val = readl(ep_dbi_base + 0xD4);
+	val &= ~PCIE_CAP_LTR_ENABLE;
+	writel(val, ep_dbi_base + 0xD4);
+
+	dw_pcie_rd_own_conf(pp, PCIE_DEVICE_CTR2STS2, 4, &val);
+	val &= ~PCIE_CAP_LTR_ENABLE;
+	dw_pcie_wr_own_conf(pp, PCIE_DEVICE_CTR2STS2, 4, val);
+
 	if (max) {
 		writel(PORT_LINK_TPOWERON_3100US, ep_dbi_base + 0x24C);
 		dw_pcie_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL2, 4, PORT_LINK_TPOWERON_3100US);
@@ -423,6 +452,34 @@ void dw_pcie_set_tpoweron(struct pcie_port *pp, int max)
 		writel(PORT_LINK_TPOWERON_130US, ep_dbi_base + 0x24C);
 		dw_pcie_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL2, 4, PORT_LINK_TPOWERON_130US);
 	}
+
+        /* Enable L1ss */
+	val = readl(ep_dbi_base + 0xBC);
+	val |= 0x2;
+	writel(val, ep_dbi_base + 0xBC);
+
+	val = readl(ep_dbi_base + 0x248);
+	val |= PORT_LINK_L1SS_ENABLE;
+	writel(val, ep_dbi_base + 0x248);
+
+        /* Enable ASPM */
+	dw_pcie_rd_own_conf(pp, PCIE_LINK_CTRSTS, 4, &val);
+	val |= 0x2;
+	dw_pcie_wr_own_conf(pp, PCIE_LINK_CTRSTS, 4, val);
+
+	dw_pcie_rd_own_conf(pp, PCIE_LINK_L1SS_CONTROL, 4, &val);
+	val |= PORT_LINK_L1SS_ENABLE;
+	dw_pcie_wr_own_conf(pp, PCIE_LINK_L1SS_CONTROL, 4, val);
+
+        /* Enable LTR */
+	val = readl(ep_dbi_base + 0xD4);
+	val |= PCIE_CAP_LTR_ENABLE;
+	writel(val, ep_dbi_base + 0xD4);
+
+	dw_pcie_rd_own_conf(pp, PCIE_DEVICE_CTR2STS2, 4, &val);
+	val |= PCIE_CAP_LTR_ENABLE;
+	dw_pcie_wr_own_conf(pp, PCIE_DEVICE_CTR2STS2, 4, val);
+
 	spin_unlock_irqrestore(&pp->conf_lock, flags);
 }
 
@@ -485,7 +542,7 @@ void dw_pcie_config_l1ss(struct pcie_port *pp)
 
 		dw_pcie_rd_own_conf(pp, PCIE_LINK_CTRSTS, 4, &val);
 		val &= ~0x3 << 0;
-		val |= 0x2 << 0;
+		val |= 0x42 << 0;
 		dw_pcie_wr_own_conf(pp, PCIE_LINK_CTRSTS, 4, val);
 		dw_pcie_wr_own_conf(pp, PCIE_DEVICE_CTR2STS2, 4, PCIE_CAP_LTR_ENABLE);
 	}

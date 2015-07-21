@@ -191,6 +191,12 @@ struct sock_common {
 #ifdef CONFIG_NET_NS
 	struct net	 	*skc_net;
 #endif
+
+#if IS_ENABLED(CONFIG_IPV6)
+	struct in6_addr		skc_v6_daddr;
+	struct in6_addr		skc_v6_rcv_saddr;
+#endif
+
 	/*
 	 * fields between dontcopy_begin/dontcopy_end
 	 * are not copied in sock_copy()
@@ -230,7 +236,6 @@ struct cg_proto;
   *	@sk_wmem_queued: persistent queue size
   *	@sk_forward_alloc: space allocated forward
   *	@sk_allocation: allocation mode
-  *	@sk_pacing_rate: Pacing rate (if supported by transport/packet scheduler)
   *	@sk_sndbuf: size of send buffer in bytes
   *	@sk_flags: %SO_LINGER (l_onoff), %SO_BROADCAST, %SO_KEEPALIVE,
   *		   %SO_OOBINLINE settings, %SO_TIMESTAMPING settings
@@ -305,6 +310,9 @@ struct sock {
 #define sk_bind_node		__sk_common.skc_bind_node
 #define sk_prot			__sk_common.skc_prot
 #define sk_net			__sk_common.skc_net
+#define sk_v6_daddr		__sk_common.skc_v6_daddr
+#define sk_v6_rcv_saddr	__sk_common.skc_v6_rcv_saddr
+
 	socket_lock_t		sk_lock;
 	struct sk_buff_head	sk_receive_queue;
 	/*
@@ -356,7 +364,6 @@ struct sock {
 	kmemcheck_bitfield_end(flags);
 	int			sk_wmem_queued;
 	gfp_t			sk_allocation;
-	u32			sk_pacing_rate; /* bytes per second */
 	netdev_features_t	sk_route_caps;
 	netdev_features_t	sk_route_nocaps;
 	int			sk_gso_type;
@@ -672,6 +679,7 @@ enum sock_flags {
 		     */
 	SOCK_FILTER_LOCKED, /* Filter cannot be changed anymore */
 	SOCK_SELECT_ERR_QUEUE, /* Wake select on error queue */
+	SOCK_MPTCP, /* MPTCP set on this socket */
 };
 
 static inline void sock_copy_flags(struct sock *nsk, struct sock *osk)
@@ -864,6 +872,16 @@ extern void sk_clear_memalloc(struct sock *sk);
 
 extern int sk_wait_data(struct sock *sk, long *timeo);
 
+/* START - needed for MPTCP */
+struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority, int family);
+void sock_lock_init(struct sock *sk);
+
+extern struct lock_class_key af_callback_keys[AF_MAX];
+extern char *const af_family_clock_key_strings[AF_MAX+1];
+
+#define SK_FLAGS_TIMESTAMP ((1UL << SOCK_TIMESTAMP) | (1UL << SOCK_TIMESTAMPING_RX_SOFTWARE))
+/* END - needed for MPTCP */
+
 struct request_sock_ops;
 struct timewait_sock_ops;
 struct inet_hashinfo;
@@ -934,6 +952,7 @@ struct proto {
 						struct sk_buff *skb);
 
 	void		(*release_cb)(struct sock *sk);
+	void		(*mtu_reduced)(struct sock *sk);
 
 	/* Keeping track of sk's, looking them up, and port selection methods. */
 	void			(*hash)(struct sock *sk);
@@ -1438,11 +1457,6 @@ static inline void sk_wmem_free_skb(struct sock *sk, struct sk_buff *skb)
  */
 #define sock_owned_by_user(sk)	((sk)->sk_lock.owned)
 
-static inline void sock_release_ownership(struct sock *sk)
-{
-	sk->sk_lock.owned = 0;
-}
-
 /*
  * Macro so as to not evaluate some arguments when
  * lockdep is not enabled.
@@ -1728,8 +1742,8 @@ sk_dst_get(struct sock *sk)
 
 	rcu_read_lock();
 	dst = rcu_dereference(sk->sk_dst_cache);
-	if (dst && !atomic_inc_not_zero(&dst->__refcnt))
-		dst = NULL;
+	if (dst)
+		dst_hold(dst);
 	rcu_read_unlock();
 	return dst;
 }
@@ -1768,11 +1782,9 @@ __sk_dst_set(struct sock *sk, struct dst_entry *dst)
 static inline void
 sk_dst_set(struct sock *sk, struct dst_entry *dst)
 {
-	struct dst_entry *old_dst;
-
-	sk_tx_queue_clear(sk);
-	old_dst = xchg((__force struct dst_entry **)&sk->sk_dst_cache, dst);
-	dst_release(old_dst);
+	spin_lock(&sk->sk_dst_lock);
+	__sk_dst_set(sk, dst);
+	spin_unlock(&sk->sk_dst_lock);
 }
 
 static inline void
@@ -1784,7 +1796,9 @@ __sk_dst_reset(struct sock *sk)
 static inline void
 sk_dst_reset(struct sock *sk)
 {
-	sk_dst_set(sk, NULL);
+	spin_lock(&sk->sk_dst_lock);
+	__sk_dst_reset(sk);
+	spin_unlock(&sk->sk_dst_lock);
 }
 
 extern struct dst_entry *__sk_dst_check(struct sock *sk, u32 cookie);
@@ -2248,11 +2262,6 @@ static inline struct sock *skb_steal_sock(struct sk_buff *skb)
 extern void sock_enable_timestamp(struct sock *sk, int flag);
 extern int sock_get_timestamp(struct sock *, struct timeval __user *);
 extern int sock_get_timestampns(struct sock *, struct timespec __user *);
-
-bool sk_ns_capable(const struct sock *sk,
-		   struct user_namespace *user_ns, int cap);
-bool sk_capable(const struct sock *sk, int cap);
-bool sk_net_capable(const struct sock *sk, int cap);
 
 /*
  *	Enable debug/info messages

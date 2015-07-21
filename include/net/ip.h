@@ -183,6 +183,7 @@ extern struct ipv4_config ipv4_config;
 #define NET_INC_STATS(net, field)	SNMP_INC_STATS((net)->mib.net_statistics, field)
 #define NET_INC_STATS_BH(net, field)	SNMP_INC_STATS_BH((net)->mib.net_statistics, field)
 #define NET_INC_STATS_USER(net, field) 	SNMP_INC_STATS_USER((net)->mib.net_statistics, field)
+#define NET_ADD_STATS(net, field, adnd)	SNMP_ADD_STATS((net)->mib.net_statistics, field, adnd)
 #define NET_ADD_STATS_BH(net, field, adnd) SNMP_ADD_STATS_BH((net)->mib.net_statistics, field, adnd)
 #define NET_ADD_STATS_USER(net, field, adnd) SNMP_ADD_STATS_USER((net)->mib.net_statistics, field, adnd)
 
@@ -284,6 +285,12 @@ static inline void ip_select_ident_segs(struct sk_buff *skb, struct sock *sk, in
 static inline void ip_select_ident(struct sk_buff *skb, struct sock *sk)
 {
 	ip_select_ident_segs(skb, sk, 1);
+}
+
+static inline __wsum inet_compute_pseudo(struct sk_buff *skb, int proto)
+{
+	return csum_tcpudp_nofold(ip_hdr(skb)->saddr, ip_hdr(skb)->daddr,
+				  skb->len, proto, 0);
 }
 
 /*

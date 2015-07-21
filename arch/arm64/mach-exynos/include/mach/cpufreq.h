@@ -74,6 +74,7 @@ struct exynos_dvfs_info {
 	int		boot_freq_idx;
 	int		*bus_table;
 	bool		blocked;
+	unsigned int	cur_volt;
 	struct clk	*cpu_clk;
 	unsigned int	*volt_table;
 	unsigned int	*abb_table;

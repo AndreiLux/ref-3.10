@@ -18,6 +18,7 @@
 #include "mstdrv.h"
 
 #define MST_LDO3_0 "MST_LEVEL_3.0V"
+#define MST_NOT_SUPPORT		(0x1 << 3)
 
 static bool mst_power_on = 0;
 static struct class *mst_drv_class;
@@ -145,11 +146,23 @@ static ssize_t store_mst_drv(struct device *dev,
 			printk("MST escape_loop value = 1\n");
 			break;
 
+		case '6':
+			of_mst_hw_onoff(1);
+			printk(KERN_INFO "%s\n", __func__);
+			printk(KERN_INFO "MST_LDO_DRV]]] Track3 data transmit\n");
+			//Will Add here
+			r0 = (0x8300000f);
+			r1 = 3;
+			result = exynos_smc(r0, r1, r2, r3);
+			printk(KERN_INFO "MST_LDO_DRV]]] Track3 data sent : %d\n", result);
+			of_mst_hw_onoff(0);
+			break;
+
 		default:
 			printk(KERN_ERR "MST invalid value : %s\n", test_result);
 			break;
 	}
-	
+
 	return count;
 }
 
@@ -204,8 +217,13 @@ static int sec_mst_notifier(struct notifier_block *self,
 		/* save gpios & set previous state */
 		r0 = (0x83000011);
 		result = exynos_smc(r0, r1, r2, r3);
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa enter after prev mode smc : %x\n", result);
 
+		if(result == MST_NOT_SUPPORT){
+			printk(KERN_INFO "MST_LDO_DRV]]] lpa enter do nothing after prev mode smc : %x\n", result); 
+		}else{
+			printk(KERN_INFO "MST_LDO_DRV]]] lpa enter success after prev mode smc : %x\n", result);
+		}
+		
 		break;
 	case LPA_EXIT:
 		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit\n");
@@ -214,7 +232,12 @@ static int sec_mst_notifier(struct notifier_block *self,
 		r0 = (0x8300000d);
 		result = exynos_smc(r0, r1, r2, r3);
 		rt = result;
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit after restore smc : %x\n", result);
+		
+		if(result == MST_NOT_SUPPORT){
+			printk(KERN_INFO "MST_LDO_DRV]]] lpa exit do nothing after restore smc : %x\n", result); 
+		}else{
+			printk(KERN_INFO "MST_LDO_DRV]]] lpa exit success after restore smc : %x\n", result);
+		}
 
 		break;
 	}
@@ -240,7 +263,12 @@ static int mst_ldo_device_suspend(struct platform_device *dev, pm_message_t stat
 	r0 = (0x8300000c);
 	result = exynos_smc(r0, r1, r2, r3);
 
-	printk(KERN_INFO "MST_LDO_DRV]]] suspend after smc : %x\n", result);
+	if(result == MST_NOT_SUPPORT){
+		printk(KERN_INFO "MST_LDO_DRV]]] suspend do nothing after smc : %x\n", result);	
+	}else{
+		printk(KERN_INFO "MST_LDO_DRV]]] suspend success after smc : %x\n", result);
+	}
+	
 	return 0;
 }
 static int mst_ldo_device_resume(struct platform_device *dev)
@@ -254,7 +282,12 @@ static int mst_ldo_device_resume(struct platform_device *dev)
 	r0 = (0x8300000d);
 	result = exynos_smc(r0, r1, r2, r3);
 
-	printk(KERN_INFO "MST_LDO_DRV]]] resume after smc : %x\n",result);
+	if(result == MST_NOT_SUPPORT){
+		printk(KERN_INFO "MST_LDO_DRV]]] resume do nothing after smc : %x\n", result);	
+	}else{
+		printk(KERN_INFO "MST_LDO_DRV]]] resume success after smc : %x\n", result);
+	}
+	
 	rt = result;
 	return 0;
 }

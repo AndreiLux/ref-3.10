@@ -76,6 +76,36 @@
 struct kmem_cache *skbuff_head_cache __read_mostly;
 static struct kmem_cache *skbuff_fclone_cache __read_mostly;
 
+static void sock_pipe_buf_release(struct pipe_inode_info *pipe,
+				  struct pipe_buffer *buf)
+{
+	put_page(buf->page);
+}
+
+static void sock_pipe_buf_get(struct pipe_inode_info *pipe,
+				struct pipe_buffer *buf)
+{
+	get_page(buf->page);
+}
+
+static int sock_pipe_buf_steal(struct pipe_inode_info *pipe,
+			       struct pipe_buffer *buf)
+{
+	return 1;
+}
+
+
+/* Pipe buffer operations for a socket. */
+static const struct pipe_buf_operations sock_pipe_buf_ops = {
+	.can_merge = 0,
+	.map = generic_pipe_buf_map,
+	.unmap = generic_pipe_buf_unmap,
+	.confirm = generic_pipe_buf_confirm,
+	.release = sock_pipe_buf_release,
+	.steal = sock_pipe_buf_steal,
+	.get = sock_pipe_buf_get,
+};
+
 /**
  *	skb_panic - private function for out-of-line support
  *	@skb:	buffer
@@ -212,8 +242,12 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 
 	/* Get the HEAD */
 	skb = kmem_cache_alloc_node(cache, gfp_mask & ~__GFP_DMA, node);
-	if (!skb)
+	if (!skb) {
+#ifdef CONFIG_SEC_DEBUG_MIF_OOM
+		pr_err("kmem_cache_alloc_node failed(%d, %d)\n", cache->object_size, cache->size);
+#endif
 		goto out;
+	}
 	prefetchw(skb);
 
 	/* We do our best to align skb_shared_info on a separate cache
@@ -224,8 +258,12 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	size = SKB_DATA_ALIGN(size);
 	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	data = kmalloc_reserve(size, gfp_mask, node, &pfmemalloc);
-	if (!data)
+	if (!data) {
+#ifdef CONFIG_SEC_DEBUG_MIF_OOM
+		pr_err("kmalloc_reserve failed(%d, %x)\n", size, gfp_mask);
+#endif
 		goto nodata;
+	}
 	/* kmalloc(size) might give us more room than requested.
 	 * Put skb_shared_info exactly at the end of allocated zone,
 	 * to allow max possible filling before reallocation.
@@ -464,7 +502,7 @@ static inline void skb_drop_fraglist(struct sk_buff *skb)
 	skb_drop_list(&skb_shinfo(skb)->frag_list);
 }
 
-static void skb_clone_fraglist(struct sk_buff *skb)
+void skb_clone_fraglist(struct sk_buff *skb)
 {
 	struct sk_buff *list;
 
@@ -556,6 +594,9 @@ static void skb_release_head_state(struct sk_buff *skb)
 	}
 #if IS_ENABLED(CONFIG_NF_CONNTRACK)
 	nf_conntrack_put(skb->nfct);
+#endif
+#ifdef NET_SKBUFF_NF_DEFRAG_NEEDED
+	nf_conntrack_put_reasm(skb->nfct_reasm);
 #endif
 #ifdef CONFIG_BRIDGE_NETFILTER
 	nf_bridge_put(skb->nf_bridge);
@@ -882,7 +923,7 @@ static void skb_headers_offset_update(struct sk_buff *skb, int off)
 	skb->inner_mac_header += off;
 }
 
-static void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
+void copy_skb_header(struct sk_buff *new, const struct sk_buff *old)
 {
 #ifndef NET_SKBUFF_DATA_USES_OFFSET
 	/*
@@ -949,10 +990,13 @@ struct sk_buff *skb_copy(const struct sk_buff *skb, gfp_t gfp_mask)
 EXPORT_SYMBOL(skb_copy);
 
 /**
- *	__pskb_copy	-	create copy of an sk_buff with private head.
+ *	__pskb_copy_fclone	-  create copy of an sk_buff with private head.
  *	@skb: buffer to copy
  *	@headroom: headroom of new skb
  *	@gfp_mask: allocation priority
+ *	@fclone: if true allocate the copy of the skb from the fclone
+ *	cache instead of the head cache; it is recommended to set this
+ *	to true for the cases where the copy will likely be cloned
  *
  *	Make a copy of both an &sk_buff and part of its data, located
  *	in header. Fragmented data remain shared. This is used when
@@ -962,11 +1006,12 @@ EXPORT_SYMBOL(skb_copy);
  *	The returned buffer has a reference count of 1.
  */
 
-struct sk_buff *__pskb_copy(struct sk_buff *skb, int headroom, gfp_t gfp_mask)
+struct sk_buff *__pskb_copy_fclone(struct sk_buff *skb, int headroom,
+				   gfp_t gfp_mask, bool fclone)
 {
 	unsigned int size = skb_headlen(skb) + headroom;
-	struct sk_buff *n = __alloc_skb(size, gfp_mask,
-					skb_alloc_rx_flag(skb), NUMA_NO_NODE);
+	int flags = skb_alloc_rx_flag(skb) | (fclone ? SKB_ALLOC_FCLONE : 0);
+	struct sk_buff *n = __alloc_skb(size, gfp_mask, flags, NUMA_NO_NODE);
 
 	if (!n)
 		goto out;
@@ -1006,7 +1051,8 @@ struct sk_buff *__pskb_copy(struct sk_buff *skb, int headroom, gfp_t gfp_mask)
 out:
 	return n;
 }
-EXPORT_SYMBOL(__pskb_copy);
+EXPORT_SYMBOL(__pskb_copy_fclone);
+
 
 /**
  *	pskb_expand_head - reallocate header of &sk_buff
@@ -1783,7 +1829,7 @@ int skb_splice_bits(struct sk_buff *skb, unsigned int offset,
 		.partial = partial,
 		.nr_pages_max = MAX_SKB_FRAGS,
 		.flags = flags,
-		.ops = &nosteal_pipe_buf_ops,
+		.ops = &sock_pipe_buf_ops,
 		.spd_release = sock_spd_release,
 	};
 	struct sk_buff *frag_iter;
@@ -2810,6 +2856,7 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 		tail = nskb;
 
 		__copy_skb_header(nskb, skb);
+		nskb->mac_len = skb->mac_len;
 
 		/* nskb and skb might have different headroom */
 		if (nskb->ip_summed == CHECKSUM_PARTIAL)
@@ -2819,14 +2866,13 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 		skb_set_network_header(nskb, skb->mac_len);
 		nskb->transport_header = (nskb->network_header +
 					  skb_network_header_len(skb));
-		skb_reset_mac_len(nskb);
 
 		skb_copy_from_linear_data_offset(skb, -tnl_hlen,
 						 nskb->data - tnl_hlen,
 						 doffset + tnl_hlen);
 
 		if (fskb != skb_shinfo(skb)->frag_list)
-			goto perform_csum_check;
+			continue;
 
 		if (!sg) {
 			nskb->ip_summed = CHECKSUM_NONE;
@@ -2844,8 +2890,6 @@ struct sk_buff *skb_segment(struct sk_buff *skb, netdev_features_t features)
 		skb_shinfo(nskb)->tx_flags = skb_shinfo(skb)->tx_flags & SKBTX_SHARED_FRAG;
 
 		while (pos < offset + len && i < nfrags) {
-			if (unlikely(skb_orphan_frags(skb, GFP_ATOMIC)))
-				goto err;
 			*frag = skb_shinfo(skb)->frags[i];
 			__skb_frag_ref(frag);
 			size = skb_frag_size(frag);
@@ -2892,7 +2936,6 @@ skip_fraglist:
 		nskb->len += nskb->data_len;
 		nskb->truesize += nskb->data_len;
 
-perform_csum_check:
 		if (!csum) {
 			nskb->csum = skb_checksum(nskb, doffset,
 						  nskb->len - doffset, 0);

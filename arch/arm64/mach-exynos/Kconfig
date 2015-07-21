@@ -236,6 +236,7 @@ config MACH_UNIVERSAL7420
 	help
 	  Machine support for Samsung EXYNOS7420 machine with device tree enabled.
 	  Select this if a fdt blob is available for the EXYNOS7420 SoC based board.
+
 endmenu
 
 # Reset IPs during LPA/DSTOP

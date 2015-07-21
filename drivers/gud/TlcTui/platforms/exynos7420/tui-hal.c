@@ -325,7 +325,7 @@ uint32_t hal_tui_alloc(tuiAllocBuffer_t allocbuffer[MAX_DCI_BUFFER_NUMBER],
 	dma_addr_t buf_addr;
 	ion_phys_addr_t phys_addr;
 	unsigned long offset = 0;
-	unsigned int size;
+	size_t size;
 
 	size=allocsize*(count+1);
 

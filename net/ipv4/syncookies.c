@@ -293,7 +293,7 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb,
 
 	/* check for timestamp cookie support */
 	memset(&tcp_opt, 0, sizeof(tcp_opt));
-	tcp_parse_options(skb, &tcp_opt, 0, NULL);
+	tcp_parse_options(skb, &tcp_opt, NULL, 0, NULL);
 
 	if (!cookie_check_timestamp(&tcp_opt, sock_net(sk), &ecn_ok))
 		goto out;
@@ -365,10 +365,10 @@ struct sock *cookie_v4_check(struct sock *sk, struct sk_buff *skb,
 	/* Try to redo what tcp_v4_send_synack did. */
 	req->window_clamp = tp->window_clamp ? :dst_metric(&rt->dst, RTAX_WINDOW);
 
-	tcp_select_initial_window(tcp_full_space(sk), req->mss,
+	tp->select_initial_window(tcp_full_space(sk), req->mss,
 				  &req->rcv_wnd, &req->window_clamp,
 				  ireq->wscale_ok, &rcv_wscale,
-				  dst_metric(&rt->dst, RTAX_INITRWND));
+				  dst_metric(&rt->dst, RTAX_INITRWND), sk);
 
 	ireq->rcv_wscale  = rcv_wscale;
 

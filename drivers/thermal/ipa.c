@@ -359,12 +359,20 @@ static int get_cpu_freq_limit(cluster_type cl, int power_out, int util)
 static void release_power_caps(void)
 {
 	int cl_idx;
+	struct ipa_config *config = &arbiter_data.config;
 
 	/* TODO get rid of PUNCONSTRAINED and replace with config->aX_power_max*/
 	for (cl_idx = 0; cl_idx < NUM_CLUSTERS; cl_idx++) {
 		int freq = get_cpu_freq_limit(cl_idx, PUNCONSTRAINED, 1);
 
 		arbiter_set_cpu_freq_limit(freq, cl_idx);
+	}
+
+	if (config->cores_out) {
+		if (ipa_hotplug(false))
+			pr_err("%s: failed ipa hotplug in\n", __func__);
+		else
+			config->cores_out = 0;
 	}
 
 	arbiter_data.gpu_freq_limit = 0;
