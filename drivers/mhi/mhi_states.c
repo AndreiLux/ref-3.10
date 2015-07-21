@@ -515,6 +515,17 @@ MHI_STATUS process_READY_transition(mhi_device_ctxt *mhi_dev_ctxt,
 			"Failure during MMIO initialization\n");
 		return MHI_STATUS_ERROR;
 	}
+
+	if(mhi_dev_ctxt->dev_info->link_down_cntr == 0) {
+		mhi_log(MHI_MSG_INFO, "Save pcie config space\n");
+		/* Save pcie config space */
+		ret_val = exynos_pcie_save_config(mhi_dev_ctxt->dev_info->pcie_device);
+		if (ret_val) {
+			mhi_log(MHI_MSG_CRITICAL | MHI_DBG_POWER,
+					"Failed to save pcie config space: %x\n", ret_val);
+		}
+	}
+
 	ret_val = mhi_add_elements_to_event_rings(mhi_dev_ctxt,
 				cur_work_item);
 	if (MHI_STATUS_SUCCESS != ret_val) {

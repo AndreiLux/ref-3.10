@@ -729,6 +729,9 @@ struct check_reg check_reg_lpm[LIST_MAX_LENGTH];
  */
 int determine_lpm(void)
 {
+	if (!((exynos_check_aud_pwr() == AUD_PWR_LPA) || (exynos_check_aud_pwr() == AUD_PWR_ALPA)))
+		return SYS_AFTR;
+
 	if (exynos_lpa_prepare()) {
 		lpa_blocking_counter(0);
 		return SYS_AFTR;

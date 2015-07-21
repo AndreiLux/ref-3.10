@@ -247,8 +247,10 @@ bool mc_check_owner_fd(struct mc_instance *instance, int32_t fd)
 		MCDRV_DBG(mcd, "Owner not found!");
 	}
 out:
-	if (peer)
+	if (peer) {
 		task_unlock(peer);
+		put_task_struct(peer);
+	}
 	rcu_read_unlock();
 	if (!ret)
 		MCDRV_DBG(mcd, "Owner not found!");

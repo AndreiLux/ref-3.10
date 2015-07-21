@@ -296,11 +296,7 @@ retry:
 	if (soc_is_exynos7420() && exynos_pcie->ch_num == 0)
 		msleep(15);
 	else
-#ifdef CONFIG_PCI_EXYNOS_REDUCE_RESET_WAIT
 		usleep_range(18000, 20000);
-#else
-		msleep(80);
-#endif
 
 	exynos_pcie_assert_phy_reset(pp);
 
@@ -360,7 +356,7 @@ retry:
 
 	/* wait to check whether link down again(D0 UNINIT) or not for retry */
 	if (exynos_pcie->ch_num == 1)
-		msleep(1);
+		usleep_range(1000, 1100);
 
 	val = readl(exynos_pcie->elbi_base + PCIE_PM_DSTATE) & 0x7;
 	if (count >= MAX_TIMEOUT || val == PCIE_D0_UNINIT_STATE) {
@@ -629,11 +625,7 @@ static int exynos_pcie_establish_link(struct pcie_port *pp)
 	u32 val;
 
 	gpio_set_value(exynos_pcie->perst_gpio, 1);
-#ifdef CONFIG_PCI_EXYNOS_REDUCE_RESET_WAIT
 	usleep_range(18000, 20000);
-#else
-	mdelay(80);
-#endif
 
 	val = readl(exynos_pcie->elbi_base + PCIE_ELBI_RDLH_LINKUP);
 	dev_info(dev, "LINK STATUS: %x\n", val);
@@ -714,7 +706,7 @@ static void exynos_pcie_clear_irq_pulse(struct pcie_port *pp)
 	writel(val, elbi_base + PCIE_IRQ_LEVEL);
 
 	val = readl(elbi_base + PCIE_IRQ_SPECIAL);
-	if (soc_is_exynos7420() && (val & (0x1 << 2))) {
+	if (soc_is_exynos7420() && ((exynos_pcie->state == STATE_LINK_UP) && (val & (0x1 << 2)))) {
 		dev_info(pp->dev, "!!!PCIE LINK DOWN!!!\n");
 		if (exynos_pcie->ch_num == 0)
 			exynos_pcie->state = STATE_LINK_DOWN_TRY;
@@ -1446,7 +1438,7 @@ void exynos_pcie_poweroff(int ch_num)
 	unsigned long flags;
 
 	dev_info(pp->dev, "%s, start of poweroff, pcie state: %d\n", __func__, exynos_pcie->state);
-	if (exynos_pcie->state == STATE_LINK_UP || ((exynos_pcie->ch_num == 0) && (exynos_pcie->state == STATE_LINK_DOWN_TRY))) {
+	if (exynos_pcie->state == STATE_LINK_UP || exynos_pcie->state == STATE_LINK_DOWN_TRY) {
 		exynos_pcie->state = STATE_LINK_DOWN_TRY;
 		while (exynos_pcie->lpc_checking)
 			usleep_range(1000, 1100);
@@ -2047,6 +2039,23 @@ void exynos_pcie_rxelecidle_toggle(int ch_num)
        writel(tmp0, phy_base + 0x4A*4);
 }
 EXPORT_SYMBOL(exynos_pcie_rxelecidle_toggle);
+
+void exynos_pcie_disable_l1ss(int ch_num)
+{
+	struct pcie_port *pp = &g_pcie[ch_num].pp;
+	void __iomem *ep_dbi_base = pp->va_cfg0_base;
+	u32 val;
+
+	val = readl(ep_dbi_base + 0x158);
+	val &= ~0xf;
+	writel(val, ep_dbi_base + 0x158);
+
+	val = readl(ep_dbi_base + 0x80);
+	val &= ~0x3;
+	writel(val, ep_dbi_base + 0x80);
+}
+EXPORT_SYMBOL(exynos_pcie_disable_l1ss);
+
 
 MODULE_AUTHOR("Jingoo Han <jg1.han@samsung.com>");
 MODULE_DESCRIPTION("Samsung PCIe host controller driver");

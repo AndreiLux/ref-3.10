@@ -4555,14 +4555,18 @@ static int exynos7_devfreq_mif_preset(struct devfreq_data_mif *data,
 	return 0;
 }
 
-static int exynos7_devfreq_mif_set_volt(struct devfreq_data_mif *data,
+void DisablePhyCgEn(struct devfreq_data_mif *data);
+void RestorePhyCgEn(struct devfreq_data_mif *data);
+int exynos7_devfreq_mif_set_volt(struct devfreq_data_mif *data,
 		unsigned long volt,
 		unsigned long volt_range)
 {
 	if (data->old_volt == volt)
 		goto out;
 
+	DisablePhyCgEn(data);
 	regulator_set_voltage(data->vdd_mif, volt, volt_range);
+	RestorePhyCgEn(data);
 	pr_debug("MIF: set_volt(%lu), get_volt(%d)\n", volt, regulator_get_voltage(data->vdd_mif));
 	data->old_volt = volt;
 out:
@@ -4904,9 +4908,7 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 #ifdef CONFIG_EXYNOS_THERMAL
 		voltage = get_limit_voltage(voltage, data->volt_offset, data->volt_of_avail_max_freq);
 #endif
-		DisablePhyCgEn(data);
 		exynos7_devfreq_mif_set_volt(data, voltage, voltage + VOLT_STEP);
-		RestorePhyCgEn(data);
 	} else {
 		pr_debug("1st: skip voltage setting from %lu to %lu\n",
 				devfreq_mif_opp_list[old_idx].freq, devfreq_mif_opp_list[data->pll_safe_idx].freq);
@@ -4961,9 +4963,7 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 #ifdef CONFIG_EXYNOS_THERMAL
 		voltage = get_limit_voltage(voltage, data->volt_offset, data->volt_of_avail_max_freq);
 #endif
-		DisablePhyCgEn(data);
 		exynos7_devfreq_mif_set_volt(data, voltage, voltage + VOLT_STEP);
-		RestorePhyCgEn(data);
 	}
 #endif
 
@@ -5020,9 +5020,7 @@ static int exynos7_devfreq_mif_set_freq(struct devfreq_data_mif *data,
 #ifdef CONFIG_EXYNOS_THERMAL
 		voltage = get_limit_voltage(voltage, data->volt_offset, data->volt_of_avail_max_freq);
 #endif
-		DisablePhyCgEn(data);
 		exynos7_devfreq_mif_set_volt(data, voltage, voltage + VOLT_STEP);
-		RestorePhyCgEn(data);
 	} else {
 		pr_debug("2nd: skip voltage setting from %lu to %lu\n",
 				devfreq_mif_opp_list[data->pll_safe_idx].freq, devfreq_mif_opp_list[target_idx].freq);

@@ -278,21 +278,47 @@ static int dhdpcie_resume_dev(struct pci_dev *dev)
 	return err;
 }
 
+#ifdef CONFIG_MACH_UNIVERSAL7420
+#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+extern int exynos_pcie_pm_suspend(int ch_num);
+extern int exynos_pcie_pm_resume(int ch_num);
+#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
+#endif /* CONFIG_MACH_UNIVERSAL7420 */
+
 int dhdpcie_pci_suspend_resume(dhd_bus_t *bus, bool state)
 {
 	int rc;
+
 	struct pci_dev *dev = bus->dev;
+#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+	struct pci_dev *rc_pci_dev;
+#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
 
 	if (state) {
 #ifndef BCMPCIE_OOB_HOST_WAKE
 		dhdpcie_pme_active(bus->osh, state);
-#endif /* BCMPCIE_OOB_HOST_WAKE */
+#endif /* !BCMPCIE_OOB_HOST_WAKE */
 		rc = dhdpcie_suspend_dev(dev);
+#ifdef CONFIG_MACH_UNIVERSAL7420
+#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+		if (!rc) {
+			rc_pci_dev = pci_get_device(0x144d, 0xa575, NULL);
+			pci_save_state(rc_pci_dev);
+			exynos_pcie_pm_suspend(1);
+		}
+#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
+#endif /* CONFIG_MACH_UNIVERSAL7420 */
 	} else {
+#ifdef CONFIG_MACH_UNIVERSAL7420
+#ifdef USE_EXYNOS_PCIE_RC_PMPATCH
+		exynos_pcie_pm_resume(1);
+#endif /* USE_EXYNOS_PCIE_RC_PMPATCH */
+#endif /* CONFIG_MACH_UNIVERSAL7420 */
+
 		rc = dhdpcie_resume_dev(dev);
 #ifndef BCMPCIE_OOB_HOST_WAKE
 		dhdpcie_pme_active(bus->osh, state);
-#endif /* BCMPCIE_OOB_HOST_WAKE */
+#endif /* !BCMPCIE_OOB_HOST_WAKE */
 	}
 	return rc;
 }

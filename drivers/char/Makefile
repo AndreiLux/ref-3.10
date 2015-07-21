@@ -66,3 +66,4 @@ obj-$(CONFIG_TILE_SROM)		+= tile-srom.o
 
 obj-$(CONFIG_DIAG_CHAR)		+= diag/
 obj-$(CONFIG_KNOX_KAP)		+= knox_kap.o
+obj-y		+= mst_ctrl.o

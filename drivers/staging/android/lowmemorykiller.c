@@ -40,6 +40,7 @@
 #include <linux/swap.h>
 #include <linux/rcupdate.h>
 #include <linux/notifier.h>
+#include <linux/delay.h>
 
 #ifdef CONFIG_SEC_OOM_KILLER
 #define MULTIPLE_OOM_KILLER
@@ -101,6 +102,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int other_free = global_page_state(NR_FREE_PAGES);
 	int other_file = global_page_state(NR_FILE_PAGES) -
 						global_page_state(NR_SHMEM);
+	struct reclaim_state *reclaim_state = current->reclaim_state;
 
 #ifdef CONFIG_ZSWAP
 	/* to prevent other_file underflow and then be negative */
@@ -152,6 +154,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		    time_before_eq(jiffies, lowmem_deathpending_timeout)) {
 			task_unlock(p);
 			rcu_read_unlock();
+			/* give the system time to free up the memory */
+			msleep_interruptible(20);
 			return 0;
 		}
 		oom_score_adj = p->signal->oom_score_adj;
@@ -202,11 +206,18 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		send_sig(SIGKILL, selected, 0);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		rem -= selected_tasksize;
+		rcu_read_unlock();
 		lowmem_lmkcount++;
+		/* give the system time to free up the memory */
+		msleep_interruptible(20);
+
+		if(reclaim_state)
+			reclaim_state->reclaimed_slab += selected_tasksize;
+	} else {
+		rcu_read_unlock();
 	}
 	lowmem_print(4, "lowmem_shrink %lu, %x, return %d\n",
 		     sc->nr_to_scan, sc->gfp_mask, rem);
-	rcu_read_unlock();
 	return rem;
 }
 
