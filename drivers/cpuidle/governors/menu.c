@@ -120,8 +120,8 @@ enum {MENU_HRTIMER_STOP, MENU_HRTIMER_REPEAT, MENU_HRTIMER_GENERAL};
  * The C-state residency is so long that is is worthwhile to exit
  * from the shallow C-state and re-enter into a deeper C-state.
  */
-static unsigned int perfect_cstate_ms __read_mostly = 30;
-module_param(perfect_cstate_ms, uint, 0000);
+static unsigned int perfect_cstate_ms __read_mostly = 10;
+module_param(perfect_cstate_ms, uint, 0644);
 
 struct menu_device {
 	int		last_state_idx;
