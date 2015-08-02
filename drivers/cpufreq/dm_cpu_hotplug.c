@@ -67,7 +67,7 @@ static bool do_disable_hotplug = false;
 static bool do_hotplug_out = false;
 static int cluster1_hotplugged = 0;
 static int cluster0_hotplug_in = 0;
-#define DEFAULT_NR_RUN_THRESHD	5
+#define DEFAULT_NR_RUN_THRESHD	200
 #define DEFAULT_NR_RUN_RANGE	2
 static unsigned int nr_running_threshold = DEFAULT_NR_RUN_THRESHD;
 static unsigned int nr_running_range = DEFAULT_NR_RUN_RANGE;
@@ -884,7 +884,7 @@ static struct notifier_block exynos_dm_hotplug_reboot_nb = {
 static void update_nr_running_count(void)
 {
 	int ret = 0;
-	cur_nr_running = nr_running();
+	cur_nr_running = (avg_nr_running() * 100) >> FSHIFT;
 
 	if (cur_nr_running >= nr_running_threshold) {
 		if (nr_running_count < nr_running_range)
