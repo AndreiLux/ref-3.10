@@ -118,7 +118,6 @@ static unsigned int __hp_volume(struct arizona_control *ctl)
 }
 
 static unsigned int hp_callback(struct arizona_control *ctl);
-static unsigned int hp_power(struct arizona_control *ctl);
 static unsigned int eq_gain(struct arizona_control *ctl);
 static unsigned int eq_gains_all(struct arizona_control *ctl);
 
@@ -179,7 +178,7 @@ static struct arizona_control ctls[] = {
 	/* Path domain */
 
 	_ctl("out1l_enable", CTL_MONITOR, ARIZONA_OUTPUT_ENABLES_1,
-		ARIZONA_OUT1L_ENA_MASK, ARIZONA_OUT1L_ENA_SHIFT, hp_power),
+		ARIZONA_OUT1L_ENA_MASK, ARIZONA_OUT1L_ENA_SHIFT, hp_callback),
 
 	/* Mixers */
 
@@ -279,63 +278,54 @@ static unsigned int eq_gains_all(struct arizona_control *ctl)
 	return ctl->ctlval; 
 }
 
-static unsigned int hp_power(struct arizona_control *ctl)
-{
-	_ctl_set(&ctls[EQ1ENA], ctl->ctlval && ctls[EQ_HP].value);
-	_ctl_set(&ctls[EQ2ENA], ctl->ctlval && (ctls[EQ_HP].value && !ctls[HP_MONO].value));
-	_ctl_set(&ctls[EQ3ENA], ctl->ctlval && ctls[EQ_HP].value);
-	_ctl_set(&ctls[EQ4ENA], ctl->ctlval && (ctls[EQ_HP].value && !ctls[HP_MONO].value));
-	
-	hp_callback(0);
-
-	return ctl->ctlval;
-}
-
 static unsigned int hp_callback(struct arizona_control *ctl)
 {
 	bool eq = ctls[EQ_HP].value;
 	bool mono = ctls[HP_MONO].value;
+	bool power = ctls[POUT1L].value;
 
-	if (eq) {
-		if (mono) {
-			_ctl_set(&ctls[EQ1MIX1], 32);
-			_ctl_set(&ctls[EQ1MIX2], 33);
+	if (power) {
+		if (eq) {
+			if (mono) {
+				_ctl_set(&ctls[EQ1MIX1], 32);
+				_ctl_set(&ctls[EQ1MIX2], 33);
+				
+				_ctl_set(&ctls[EQ3MIX1], 80);
+				
+				_ctl_set(&ctls[HPOUT1L1], 82);
+				_ctl_set(&ctls[HPOUT1R1], 82);
+			} else {
+				_ctl_set(&ctls[EQ1MIX1], 32);
+				_ctl_set(&ctls[EQ1MIX2], 0);
+				
+				_ctl_set(&ctls[EQ2MIX1], 33);
+				_ctl_set(&ctls[EQ3MIX1], 80);
+				_ctl_set(&ctls[EQ4MIX1], 81);
+				
+				_ctl_set(&ctls[HPOUT1L1], 82);
+				_ctl_set(&ctls[HPOUT1R1], 83);
+			}
 			
-			_ctl_set(&ctls[EQ3MIX1], 80);
-			
-			_ctl_set(&ctls[HPOUT1L1], 82);
-			_ctl_set(&ctls[HPOUT1R1], 82);
+			_set_gain(0);
+			_ctl_set(&ctls[EQ1B5G], 12);
+			_ctl_set(&ctls[EQ3B1G], 12);
+			_ctl_set(&ctls[EQ2B5G], 12);
+			_ctl_set(&ctls[EQ4B1G], 12);
 		} else {
-			_ctl_set(&ctls[EQ1MIX1], 32);
-			_ctl_set(&ctls[EQ1MIX2], 0);
+			_ctl_set(&ctls[HPOUT1L1], 32);
+			_ctl_set(&ctls[HPOUT1R1], 33);
 			
-			_ctl_set(&ctls[EQ2MIX1], 33);
-			_ctl_set(&ctls[EQ3MIX1], 80);
-			_ctl_set(&ctls[EQ4MIX1], 81);
-			
-			_ctl_set(&ctls[HPOUT1L1], 82);
-			_ctl_set(&ctls[HPOUT1R1], 83);
+			_ctl_set(&ctls[HPOUT1L2], mono ? 33 : 0);
+			_ctl_set(&ctls[HPOUT1R2], mono ? 32 : 0);
 		}
-		
-		_set_gain(0);
-		_ctl_set(&ctls[EQ1B5G], 12);
-		_ctl_set(&ctls[EQ3B1G], 12);
-		_ctl_set(&ctls[EQ2B5G], 12);
-		_ctl_set(&ctls[EQ4B1G], 12);
-	} else {
-		_ctl_set(&ctls[HPOUT1L1], 32);
-		_ctl_set(&ctls[HPOUT1R1], 33);
-		
-		_ctl_set(&ctls[HPOUT1L2], mono ? 33 : 0);
-		_ctl_set(&ctls[HPOUT1R2], mono ? 32 : 0);
 	}
 	
-	_ctl_set(&ctls[EQ1ENA], eq);
-	_ctl_set(&ctls[EQ2ENA], eq && !mono);
-	_ctl_set(&ctls[EQ3ENA], eq);
-	_ctl_set(&ctls[EQ4ENA], eq && !mono);
+	_ctl_set(&ctls[EQ1ENA], power && eq);
+	_ctl_set(&ctls[EQ2ENA], power && eq && !mono);
+	_ctl_set(&ctls[EQ3ENA], power && eq);
+	_ctl_set(&ctls[EQ4ENA], power && eq && !mono);
 
-	return 0;
+	return ctl->ctlval;
 }
 
 /* Interface */
