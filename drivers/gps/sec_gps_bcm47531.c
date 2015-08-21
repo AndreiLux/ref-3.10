@@ -20,15 +20,18 @@
 
 #include <plat/gpio-cfg.h>
 
-#ifdef CONFIG_SENSORS_SSP_BBD
+#if 0 // def CONFIG_SENSORS_SSP_BBD
 #include <linux/suspend.h>
 #include <linux/notifier.h>
 #endif
 
 static struct device *gps_dev;
+static unsigned int gps_pwr_on = 0;
+
+#ifdef CONFIG_GPS_HOST_WAKE_UP
 static wait_queue_head_t *p_geofence_wait;
 static unsigned int gps_host_wake_up = 0;
-static unsigned int gps_pwr_on = 0;
+#endif
 
 #if 0 //def CONFIG_SENSORS_SSP_BBD
 static struct pinctrl *host_wake_pinctrl;
@@ -42,6 +45,7 @@ static struct pinctrl_state *host_wake_irq;
  * gpsd will select on this device to be notified of fence crossing event
  */
 
+#ifdef CONFIG_GPS_HOST_WAKE_UP
 struct gps_geofence_wake {
 	wait_queue_head_t wait;
 	int irq;
@@ -150,9 +154,7 @@ static int gps_geofence_wake_init(int irq, int host_req_pin)
 
 /* --------------- */
 
-
 /*EXPORT_SYMBOL(p_geofence_wait);*/ /*- BRCM -*/
-
 static irqreturn_t gps_host_wake_isr(int irq, void *dev)
 {
 
@@ -171,6 +173,7 @@ static irqreturn_t gps_host_wake_isr(int irq, void *dev)
 
 	return IRQ_HANDLED;
 }
+#endif
 
 int check_gps_op(void)
 {
@@ -221,7 +224,10 @@ static struct notifier_block bcm477x_notifier_block = {
 
 static int __init gps_bcm47531_init(void)
 {
-	int irq = 0, ret = 0;
+#ifdef CONFIG_GPS_HOST_WAKE_UP
+	int irq = 0;
+#endif
+	int ret = 0;
 	const char *gps_node = "samsung,exynos54xx-bcm4753";
 
 	struct device_node *root_node = NULL;
@@ -253,6 +259,7 @@ static int __init gps_bcm47531_init(void)
 	gpio_export(gps_pwr_on, 1);
 	gpio_export_link(gps_dev, "GPS_PWR_EN", gps_pwr_on);
 
+#ifdef CONFIG_GPS_HOST_WAKE_UP
 	//========== GPS_HOST_WAKE ============//
 	gps_host_wake_up = of_get_gpio(root_node, 1);
 	if (!gpio_is_valid(gps_host_wake_up)) {
@@ -269,6 +276,7 @@ static int __init gps_bcm47531_init(void)
 	gpio_direction_input(gps_host_wake_up);
 	gpio_export(gps_host_wake_up, 1);
 	gpio_export_link(gps_dev, "GPS_HOST_WAKE", gps_host_wake_up);
+#endif
 
 #if 0 // def CONFIG_SENSORS_SSP_BBD
 	gps_dev->of_node = root_node;
@@ -291,6 +299,7 @@ static int __init gps_bcm47531_init(void)
 	}
 #endif
 
+#ifdef CONFIG_GPS_HOST_WAKE_UP
 	irq = gpio_to_irq(gps_host_wake_up);
 	ret = gps_geofence_wake_init(irq, gps_host_wake_up);
 	if (ret) {
@@ -313,6 +322,7 @@ static int __init gps_bcm47531_init(void)
 		ret = -ENODEV;
 		goto err_free_irq;
 	}
+#endif
 
 #if 0 // def CONFIG_SENSORS_SSP_BBD
     ret = register_pm_notifier(&bcm477x_notifier_block);
@@ -325,11 +335,15 @@ static int __init gps_bcm47531_init(void)
 
 	return 0;
 
+#ifdef CONFIG_GPS_HOST_WAKE_UP
 err_free_irq:
 	free_irq(irq, NULL);
+#endif
+
 err_sec_device_create:
 	sec_device_destroy(gps_dev->devt);
 	return ret;
+
 }
 
 device_initcall(gps_bcm47531_init);

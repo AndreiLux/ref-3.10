@@ -38,6 +38,7 @@ struct touchkey_platform_data {
 	bool ap_io_power;
 	bool boot_on_ldo;
 	bool led_by_ldo;
+	bool one_keypad;
 	bool glove_mode_keep_status;
 	char *fw_path;
 	void (*init_platform_hw)(void);

@@ -166,7 +166,7 @@ static ssize_t store_mst_drv(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(transmit, 0777, show_mst_drv, store_mst_drv);
+static DEVICE_ATTR(transmit, 0770, show_mst_drv, store_mst_drv);
 
 static int mst_ldo_device_probe(struct platform_device *pdev)
 {
@@ -212,33 +212,15 @@ static int sec_mst_notifier(struct notifier_block *self,
 
 	switch (cmd) {
 	case LPA_ENTER:
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa enter\n");
-
 		/* save gpios & set previous state */
 		r0 = (0x83000011);
 		result = exynos_smc(r0, r1, r2, r3);
-
-		if(result == MST_NOT_SUPPORT){
-			printk(KERN_INFO "MST_LDO_DRV]]] lpa enter do nothing after prev mode smc : %x\n", result); 
-		}else{
-			printk(KERN_INFO "MST_LDO_DRV]]] lpa enter success after prev mode smc : %x\n", result);
-		}
-		
 		break;
 	case LPA_EXIT:
-		printk(KERN_INFO "MST_LDO_DRV]]] lpa exit\n");
-
 		/* restore gpios */
 		r0 = (0x8300000d);
 		result = exynos_smc(r0, r1, r2, r3);
 		rt = result;
-		
-		if(result == MST_NOT_SUPPORT){
-			printk(KERN_INFO "MST_LDO_DRV]]] lpa exit do nothing after restore smc : %x\n", result); 
-		}else{
-			printk(KERN_INFO "MST_LDO_DRV]]] lpa exit success after restore smc : %x\n", result);
-		}
-
 		break;
 	}
 

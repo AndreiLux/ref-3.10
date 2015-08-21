@@ -57,8 +57,10 @@ extern void lpass_put_cpu_hotplug(void);
 
 #ifdef CONFIG_SND_SAMSUNG_AUDSS
 extern int exynos_check_aud_pwr(void);
+void exynos_aud_alpa_notifier(bool on);
 #else
 static inline int exynos_check_aud_pwr(void) { return -1; }
+static void exynos_aud_alpa_notifier(bool on) { return; }
 #endif
 
 
@@ -69,8 +71,9 @@ extern void lpass_get_sync(struct device *ip_dev);
 extern void lpass_put_sync(struct device *ip_dev);
 extern struct iommu_domain *lpass_get_iommu_domain(void);
 
-extern void lpass_add_stream(void);
+extern void lpass_add_stream(void); /*flag: true means compress stream else pcm */
 extern void lpass_remove_stream(void);
+extern void lpass_dma_enable(bool on);
 
 extern void lpass_reset(int ip, int op);
 extern void lpass_reset_toggle(int ip);

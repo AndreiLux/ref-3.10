@@ -287,7 +287,7 @@ static int es705_i2c_probe(struct i2c_client *i2c,
 	es705_priv.cmd = es705_i2c_cmd;
 	es705_priv.dev = &i2c->dev;
 
-	es705_priv.streamdev = uart_streamdev;
+	es705_priv.streamdev = i2c_streamdev;
 
 	rc = es705_stimulate_start(&i2c->dev);
 	if (rc) {
@@ -347,6 +347,17 @@ static int es705_i2c_stream_read(struct es705_priv *es705, void *buf,
 struct es_stream_device i2c_streamdev = {
 	.read = es705_i2c_stream_read,
 	.intf = ES705_I2C_INTF,
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+	.fs_open = stream_fs_open,
+	.fs_write = stream_fs_write,
+	.fs_close = stream_fs_close,
+	.fp = NULL,
+	.dev_fp = NULL,
+	.cnt = 0,
+	.always_on = 0,
+	.route_status = 0,
+	.streaming = 0,
+#endif
 };
 
 int es705_i2c_init(struct es705_priv *es705)

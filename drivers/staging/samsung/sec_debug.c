@@ -22,7 +22,9 @@
 #include <linux/module.h>
 #include <linux/memblock.h>
 #include <linux/sec_debug.h>
-
+#include <linux/file.h>
+#include <linux/fdtable.h>
+#include <linux/mount.h>
 #include <mach/regs-pmu.h>
 
 #ifdef CONFIG_SEC_DEBUG
@@ -658,6 +660,74 @@ static int __init sec_debug_reset_reason_init(void)
 }
 
 device_initcall(sec_debug_reset_reason_init);
+#endif
+
+#ifdef CONFIG_SEC_FILE_LEAK_DEBUG
+
+void sec_debug_print_file_list(void)
+{
+	int i=0;
+	unsigned int nCnt=0;
+	struct file *file=NULL;
+	struct files_struct *files = current->files;
+	const char *pRootName=NULL;
+	const char *pFileName=NULL;
+
+	nCnt=files->fdt->max_fds;
+
+	printk(KERN_ERR " [Opened file list of process %s(PID:%d, TGID:%d) :: %d]\n",
+		current->group_leader->comm, current->pid, current->tgid,nCnt);
+
+	for (i=0; i<nCnt; i++) {
+
+		rcu_read_lock();
+		file = fcheck_files(files, i);
+
+		pRootName=NULL;
+		pFileName=NULL;
+
+		if (file) {
+			if (file->f_path.mnt
+				&& file->f_path.mnt->mnt_root
+				&& file->f_path.mnt->mnt_root->d_name.name)
+				pRootName=file->f_path.mnt->mnt_root->d_name.name;
+
+			if (file->f_path.dentry && file->f_path.dentry->d_name.name)
+				pFileName=file->f_path.dentry->d_name.name;
+
+			printk(KERN_ERR "[%04d]%s%s\n",i,pRootName==NULL?"null":pRootName,
+							pFileName==NULL?"null":pFileName);
+		}
+		rcu_read_unlock();
+	}
+}
+
+void sec_debug_EMFILE_error_proc(unsigned long files_addr)
+{
+	if (files_addr!=(unsigned long)(current->files)) {
+		printk(KERN_ERR "Too many open files Error at %pS\n"
+						"%s(%d) thread of %s process tried fd allocation by proxy.\n"
+						"files_addr = 0x%lx, current->files=0x%p\n",
+					__builtin_return_address(0),
+					current->comm,current->tgid,current->group_leader->comm,
+					files_addr, current->files);
+		return;
+	}
+
+	printk(KERN_ERR "Too many open files(%d:%s) at %pS\n",
+		current->tgid, current->group_leader->comm,__builtin_return_address(0));
+
+	if (!sec_debug_level.en.kernel_fault)
+		return;
+
+	/* We check EMFILE error in only "system_server","mediaserver" and "surfaceflinger" process.*/
+	if (!strcmp(current->group_leader->comm, "system_server")
+		||!strcmp(current->group_leader->comm, "mediaserver")
+		||!strcmp(current->group_leader->comm, "surfaceflinger")){
+		sec_debug_print_file_list();
+		panic("Too many open files");
+	}
+}
 #endif
 
 

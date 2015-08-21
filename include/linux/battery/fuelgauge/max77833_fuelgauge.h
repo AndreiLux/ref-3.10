@@ -41,6 +41,14 @@
 
 #define ALERT_EN 0x04
 
+#define MAX77833_FG_VMN_IM		(1 << 0)
+#define MAX77833_FG_VMX_IM		(1 << 1)
+#define MAX77833_FG_TMN_IM		(1 << 2)
+#define MAX77833_FG_TMX_IM		(1 << 3)
+#define MAX77833_FG_SMN_IM		(1 << 4)
+#define MAX77833_FG_SMX_IM		(1 << 5)
+#define MAX77833_FG_IMX_IM		(1 << 6)
+#define MAX77833_FG_IWMX_IM		(1 << 7)
 
 struct sec_fuelgauge_reg_data {
 	u8 reg_addr;
@@ -95,6 +103,8 @@ enum {
 	MAX77833_FG_AVCAP,
 	MAX77833_FG_REPCAP,
 	MAX77833_FG_CYCLE,
+	MAX77833_FG_ISYS,
+	MAX77833_FG_AVGISYS,
 };
 
 enum {
@@ -155,6 +165,12 @@ struct cv_slope{
 	int soc;
 	int time;
 };
+
+struct age_info {
+	int fullcapnom;
+	int float_voltage;
+};
+
 struct max77833_fuelgauge_data {
 	struct device           *dev;
 	struct i2c_client       *i2c;
@@ -163,7 +179,8 @@ struct max77833_fuelgauge_data {
 	struct max77833_platform_data *max77833_pdata;
 	sec_fuelgauge_platform_data_t *pdata;
 	struct power_supply		psy_fg;
-	struct delayed_work isr_work;
+	struct delayed_work salrt_irq_work;
+	struct delayed_work valrt_irq_work;
 
 	int cable_type;
 	bool is_charging;
@@ -176,7 +193,8 @@ struct max77833_fuelgauge_data {
 	struct battery_data_t        *battery_data;
 
 	bool is_fuel_alerted;
-	struct wake_lock fuel_alert_wake_lock;
+	struct wake_lock fuel_salrt_wake_lock;
+	struct wake_lock fuel_valrt_wake_lock;
 
 	unsigned int capacity_old;	/* only for atomic calculation */
 	unsigned int capacity_max;	/* only for dynamic calculation */
@@ -190,13 +208,18 @@ struct max77833_fuelgauge_data {
 	u8 reg_data[2];
 
 	unsigned int pre_soc;
-	int fg_irq;
+	int fg_vmn_irq;
+	int fg_smn_irq;
 
 	int raw_capacity;
 	int current_now;
 	int current_avg;
+	int isys_current_now;
+	int isys_current_avg;
 	struct cv_slope *cv_data;
 	int cv_data_lenth;
+	struct age_info *age_data;
+	int age_data_length;
 
 	bool using_temp_compensation;
 	bool low_temp_compensation_en;

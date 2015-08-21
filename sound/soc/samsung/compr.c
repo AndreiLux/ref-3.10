@@ -91,17 +91,12 @@ struct runtime_data {
 #endif
 	atomic_t start;
 	atomic_t eos;
-	atomic_t drain;
 	atomic_t created;
 
-	wait_queue_head_t eos_wait;
-	wait_queue_head_t drain_wait;
 	wait_queue_head_t flush_wait;
 	wait_queue_head_t exit_wait;
 
-	uint32_t eos_ack;
 	uint32_t stop_ack;
-	uint32_t drain_ready;
 	uint32_t exit_ack;
 
 	struct audio_processor* ap;
@@ -153,13 +148,6 @@ static int compr_event_handler(uint32_t cmd, uint32_t size, void* priv)
 		if (bytes_available < runtime->fragment_size) {
 			pr_debug("%s: WRITE_DONE Insufficient data to send.(avail:%llu)\n",
 				__func__, bytes_available);
-
-			if (atomic_read(&prtd->drain)) {
-				pr_debug("%s: wake up on drain\n", __func__);
-				prtd->drain_ready = 1;
-				wake_up(&prtd->drain_wait);
-				atomic_set(&prtd->drain, 0);
-			}
 		}
 		spin_unlock(&prtd->lock);
 		break;
@@ -177,10 +165,10 @@ static int compr_event_handler(uint32_t cmd, uint32_t size, void* priv)
 			if (prtd->copied_total != prtd->received_total)
 				pr_err("%s: EOS is not sync!(%llu/%llu)\n", __func__,
 					prtd->copied_total, prtd->received_total);
-			pr_debug("%s: DATA_CMD_EOS wake up\n", __func__);
-			prtd->eos_ack = 1;
-			wake_up(&prtd->eos_wait);
+			/* ALSA Framework callback to notify drain complete */
+			snd_compr_drain_notify(prtd->cstream);
 			atomic_set(&prtd->eos, 0);
+			pr_info("%s: DATA_CMD_EOS wake up\n", __func__);
 		}
 		break;
 	case INTR_DESTROY:
@@ -365,9 +353,11 @@ prepare_err:
 	return ret;
 }
 
-static void compr_config_hw_params(struct snd_pcm_hw_params *params)
+static void compr_config_hw_params(struct snd_pcm_hw_params *params,
+			struct snd_compr_params *compr_params)
 {
 	u64 fmt;
+	int acodec_rate = 48000;
 
 	pr_debug("%s\n", __func__);
 
@@ -377,7 +367,16 @@ static void compr_config_hw_params(struct snd_pcm_hw_params *params)
 	hw_param_interval(params, SNDRV_PCM_HW_PARAM_SAMPLE_BITS)->min = 16;
 	hw_param_interval(params, SNDRV_PCM_HW_PARAM_FRAME_BITS)->min = 32;
 	hw_param_interval(params, SNDRV_PCM_HW_PARAM_CHANNELS)->min = 2;
-	hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->min = 48000;
+
+#ifdef CONFIG_SND_ESA_SA_EFFECT
+	acodec_rate = esa_compr_get_sample_rate();
+	if (!acodec_rate)
+		acodec_rate = 48000;
+#endif
+
+	pr_info("%s input_SR %d PCM_HW_PARAM_RATE %d \n", __func__,
+			compr_params->codec.sample_rate, acodec_rate);
+	hw_param_interval(params, SNDRV_PCM_HW_PARAM_RATE)->min = acodec_rate;
 }
 
 static int compr_open(struct snd_compr_stream *cstream)
@@ -396,6 +395,7 @@ static int compr_open(struct snd_compr_stream *cstream)
 
 	spin_lock_init(&prtd->lock);
 
+	esa_compr_set_state(true);
 	prtd->ap = compr_audio_processor_alloc((seiren_ops)compr_event_handler,
 		prtd);
 	if(!prtd->ap) {
@@ -418,17 +418,6 @@ static int compr_open(struct snd_compr_stream *cstream)
 		pr_err("%s: could not config substream(%d)\n", __func__, ret);
 		goto compr_audio_processor_alloc_err;
 	}
-	compr_config_hw_params(&prtd->hw_params);
-
-	pr_debug("%s, cpu_dai name = %s\n",
-			__func__, rtd->cpu_dai->name);
-
-	/* startup -> hw_params */
-	ret = compr_dai_setup(prtd, rtd);
-	if (ret) {
-		pr_err("%s: could not setup compr_dai(%d)\n", __func__, ret);
-		goto compr_dai_setup_err;
-	}
 
 	/* init runtime data */
 	prtd->cstream = cstream;
@@ -442,11 +431,8 @@ static int compr_open(struct snd_compr_stream *cstream)
 
 	atomic_set(&prtd->eos, 0);
 	atomic_set(&prtd->start, 0);
-	atomic_set(&prtd->drain, 0);
 	atomic_set(&prtd->created, 0);
 
-	init_waitqueue_head(&prtd->eos_wait);
-	init_waitqueue_head(&prtd->drain_wait);
 	init_waitqueue_head(&prtd->flush_wait);
 	init_waitqueue_head(&prtd->exit_wait);
 #ifdef AUDIO_PERF
@@ -454,10 +440,10 @@ static int compr_open(struct snd_compr_stream *cstream)
 #endif
 	esa_compr_open();
 	return 0;
-compr_dai_setup_err:
-	kfree(prtd->ap);
+
 compr_audio_processor_alloc_err:
 	kfree(prtd);
+	esa_compr_set_state(false);
 	return ret;
 }
 
@@ -465,11 +451,11 @@ static int compr_free(struct snd_compr_stream *cstream)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct runtime_data *prtd = runtime->private_data;
-	struct snd_pcm_substream *substream = &prtd->substream;
-	struct snd_soc_dai *cpu_dai = prtd->cpu_dai;
-	struct snd_soc_dai *codec_dai = prtd->codec_dai;
-	const struct snd_soc_dai_ops *cpu_dai_ops = cpu_dai->driver->ops;
-	const struct snd_soc_dai_ops *codec_dai_ops = codec_dai->driver->ops;
+	struct snd_pcm_substream *substream;
+	struct snd_soc_dai *cpu_dai;
+	struct snd_soc_dai *codec_dai;
+	const struct snd_soc_dai_ops *cpu_dai_ops;
+	const struct snd_soc_dai_ops *codec_dai_ops;
 	unsigned long flags;
 	int ret;
 #ifdef AUDIO_PERF
@@ -478,12 +464,22 @@ static int compr_free(struct snd_compr_stream *cstream)
 #endif
 	pr_debug("%s\n", __func__);
 
+	if (!prtd) {
+		pr_info("compress dai has already freed.\n");
+		return 0;
+	}
+
+	substream = &prtd->substream;
+	cpu_dai = prtd->cpu_dai;
+	codec_dai = prtd->codec_dai;
+	cpu_dai_ops = cpu_dai->driver->ops;
+	codec_dai_ops = codec_dai->driver->ops;
+
 	if (atomic_read(&prtd->eos)) {
-		ret = wait_event_interruptible_timeout(prtd->eos_wait,
-					prtd->eos_ack, 1 * HZ);
-		if (!ret)
-			pr_err("%s: CMD_EOS timed out!!!\n", __func__);
+		/* ALSA Framework callback to notify drain complete */
+		snd_compr_drain_notify(cstream);
 		atomic_set(&prtd->eos, 0);
+		pr_debug("%s Call Drain notify to wakeup\n", __func__);
 	}
 
 	if (atomic_read(&prtd->created)) {
@@ -503,16 +499,11 @@ static int compr_free(struct snd_compr_stream *cstream)
 				pr_err("%s: CMD_DESTROY timed out!!!\n", __func__);
 		}
 	}
-	/* wake up the sleeping process. such as 'drain', 'eos'. */
-	if (prtd->eos_ack || waitqueue_active(&prtd->eos_wait))
-		wake_up_interruptible(&prtd->eos_wait);
-
-	if (prtd->drain_ready || waitqueue_active(&prtd->drain_wait))
-		wake_up_interruptible(&prtd->drain_wait);
 
 #ifdef CONFIG_SND_ESA_SA_EFFECT
 	aud_vol.ap[COMPR_DAI_MULTIMEDIA_1] = NULL;
 #endif
+	esa_compr_set_state(false);
 	/* codec hw_free -> cpu hw_free ->
 	   cpu shutdown -> codec shutdown */
 	if (codec_dai_ops->hw_free)
@@ -552,11 +543,24 @@ static int compr_set_params(struct snd_compr_stream *cstream,
 			    struct snd_compr_params *params)
 {
 	struct snd_compr_runtime *runtime = cstream->runtime;
+	struct snd_soc_pcm_runtime *rtd = cstream->private_data;
 	struct runtime_data *prtd = runtime->private_data;
 	unsigned long flags;
 	int ret;
 
 	pr_debug("%s\n", __func__);
+
+	compr_config_hw_params(&prtd->hw_params, params);
+
+	pr_debug("%s, cpu_dai name = %s\n",
+			__func__, rtd->cpu_dai->name);
+
+	/* startup -> hw_params */
+	ret = compr_dai_setup(prtd, rtd);
+	if (ret) {
+		pr_err("%s: could not setup compr_dai(%d)\n", __func__, ret);
+		return -ENXIO;
+	}
 
 	ret = compr_dai_prepare(prtd);
 	if (ret) {
@@ -631,7 +635,6 @@ static int compr_trigger(struct snd_compr_stream *cstream, int cmd)
 	struct snd_compr_runtime *runtime = cstream->runtime;
 	struct runtime_data *prtd = runtime->private_data;
 	unsigned long flags;
-	unsigned int bytes_to_write;
 	int ret;
 
 	pr_debug("%s: trigger cmd(%d)\n", __func__, cmd);
@@ -663,12 +666,10 @@ static int compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		spin_lock_irqsave(&prtd->lock, flags);
 
 		if (atomic_read(&prtd->eos)) {
-			pr_debug("%s: interrupt drain and eos wait queues", __func__);
-			prtd->eos_ack = 1;
-			prtd->drain_ready = 1;
-			wake_up(&prtd->drain_wait);
-			wake_up(&prtd->eos_wait);
+			/* ALSA Framework callback to notify drain complete */
+			snd_compr_drain_notify(cstream);
 			atomic_set(&prtd->eos, 0);
+			pr_debug("%s: interrupt drain and eos wait queues", __func__);
 		}
 
 		pr_debug("CMD_STOP\n");
@@ -748,36 +749,7 @@ static int compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		}
 
 		atomic_set(&prtd->eos, 1);
-		if ((prtd->received_total - prtd->copied_total) > runtime->fragment_size) {
-			atomic_set(&prtd->drain, 1);
-			prtd->drain_ready = 0;
-			spin_unlock_irqrestore(&prtd->lock, flags);
-			pr_debug("%s: wait till all the data is sent to f/w\n",
-				__func__);
-
-			ret = wait_event_interruptible(prtd->drain_wait,
-				prtd->drain_ready | prtd->stop_ack);
-			if (ret < 0)
-				pr_err("%s: DRAIN wait failed(%d)\n", __func__, ret);
-			prtd->drain_ready = 0;
-			spin_lock_irqsave(&prtd->lock, flags);
-
-			bytes_to_write = prtd->received_total - prtd->copied_total;
-			WARN(bytes_to_write > runtime->fragment_size,
-				     "last write %d cannot be > than fragment_size\n",
-				     bytes_to_write);
-		}
-
-		if (!atomic_read(&prtd->start)) {
-			pr_err("%s: stream is not started (interrupted by stop?)\n",
-				__func__);
-			ret = -EINTR;
-			spin_unlock_irqrestore(&prtd->lock, flags);
-			break;
-		}
-
 		pr_debug("%s: CMD_EOS\n", __func__);
-		prtd->eos_ack = 0;
 		ret = esa_compr_send_cmd(CMD_COMPR_EOS, prtd->ap);
 		if (ret) {
 			pr_err("%s: can't send eos (%d)\n", __func__, ret);
@@ -785,24 +757,13 @@ static int compr_trigger(struct snd_compr_stream *cstream, int cmd)
 			return ret;
 		}
 		spin_unlock_irqrestore(&prtd->lock, flags);
-
-		if (cmd == SND_COMPR_TRIGGER_PARTIAL_DRAIN) {
-			/* Wait indefinitely for EOS. STOP can also signal this*/
-			ret = wait_event_interruptible(prtd->eos_wait,
-						      prtd->eos_ack);
-			if (ret) {
-				pr_err("%s: eos wait failed(%d)\n", __func__, ret);
-				return ret;
-			}
-			prtd->eos_ack = 0;
-			atomic_set(&prtd->eos, 0);
-		}
 #ifdef AUDIO_PERF
 		prtd->end_time[DRAIN_T] = sched_clock();
 		prtd->total_time[DRAIN_T] +=
 	        prtd->end_time[DRAIN_T] - prtd->start_time[DRAIN_T];
 #endif
-		pr_debug("%s: out of drain", __func__);
+		pr_info("%s: Out of %s Drain", __func__,
+			(cmd == SND_COMPR_TRIGGER_DRAIN ? "Full" : "Partial"));
 		break;
 	default:
 		break;

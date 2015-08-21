@@ -59,7 +59,14 @@ static void run_ix_data_read(void *device_data);
 static void run_ix_data_read_all(void *device_data);
 static void run_self_raw_read(void *device_data);
 static void run_self_raw_read_all(void *device_data);
+static void run_wtr_cx_data_read(void *device_data);
+static void run_wtr_cx_data_read_all(void *device_data);
 static void run_trx_short_test(void *device_data);
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+static void set_status_pureautotune(void *device_data);
+static void get_status_pureautotune(void *device_data);
+static void get_status_afe(void *device_data);
+#endif
 static void get_cx_data(void *device_data);
 static void run_cx_data_read(void *device_data);
 static void get_cx_all_data(void *device_data);
@@ -91,6 +98,7 @@ static void set_longpress_enable(void *device_data);
 static void set_sidescreen_x_length(void *device_data);
 static void set_dead_zone(void *device_data);
 static void dead_zone_enable(void *device_data);
+static void select_wakeful_edge(void *device_data);
 
 #ifdef SMARTCOVER_COVER
 static void smartcover_cmd(void *device_data);
@@ -167,7 +175,14 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("run_ix_data_read_all", run_ix_data_read_all),},
 	{FT_CMD("run_self_raw_read", run_self_raw_read),},
 	{FT_CMD("run_self_raw_read_all", run_self_raw_read_all),},
+	{FT_CMD("run_wtr_cx_data_read", run_wtr_cx_data_read),},
+	{FT_CMD("run_wtr_cx_data_read_all", run_wtr_cx_data_read_all),},
 	{FT_CMD("run_trx_short_test", run_trx_short_test),},
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+	{FT_CMD("set_status_pureautotune", set_status_pureautotune),},
+	{FT_CMD("get_status_pureautotune", get_status_pureautotune),},
+	{FT_CMD("get_status_afe", get_status_afe),},
+#endif
 	{FT_CMD("get_cx_data", get_cx_data),},
 	{FT_CMD("run_cx_data_read", run_cx_data_read),},
 	{FT_CMD("get_cx_all_data", get_cx_all_data),},
@@ -198,6 +213,7 @@ struct ft_cmd ft_commands[] = {
 	{FT_CMD("set_sidescreen_x_length", set_sidescreen_x_length),},
 	{FT_CMD("set_dead_zone", set_dead_zone),},
 	{FT_CMD("dead_zone_enable", dead_zone_enable),},
+	{FT_CMD("select_wakeful_edge", select_wakeful_edge),},
 #ifdef FTS_SUPPORT_STRINGLIB
 	{FT_CMD("quick_shot_enable", quick_shot_enable),},
 	{FT_CMD("scrub_enable", scrub_enable),},
@@ -1020,8 +1036,8 @@ static void get_fw_ver_bin(void *device_data)
 	char buff[16] = { 0 };
 	set_default_result(info);
 
-	if (strncmp(info->board->model_name, "G925", 4) == 0) {
-		info->tspid_val= gpio_get_value(info->board->tspid);
+	if (strncmp(info->board->model_name, "G928", 4) == 0) {
+		info->tspid_val= 0;
 		info->tspid2_val= gpio_get_value(info->board->tspid2);
 
 		sprintf(buff, "ST%01X%01X%04X",
@@ -1044,8 +1060,8 @@ static void get_fw_ver_ic(void *device_data)
 	char buff[16] = { 0 };
 	set_default_result(info);
 
-	if (strncmp(info->board->model_name, "G925", 4) == 0) {
-		info->tspid_val= gpio_get_value(info->board->tspid);
+	if (strncmp(info->board->model_name, "G928", 4) == 0) {
+		info->tspid_val= 0;
 		info->tspid2_val= gpio_get_value(info->board->tspid2);
 
 		sprintf(buff, "ST%01X%01X%04X",
@@ -1188,11 +1204,7 @@ static void get_chip_name(void *device_data)
 	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
 	char buff[16] = { 0 };
 
-	if (info->ic_product_id)
-		strncpy(buff, "FTS4BD056", sizeof(buff));
-	else
-		strncpy(buff, "FTS4BD062", sizeof(buff));
-
+	strncpy(buff, "FTS5AD56", sizeof(buff));
 	set_default_result(info);
 	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
 	info->cmd_state = CMD_STATUS_OK;
@@ -1309,8 +1321,10 @@ static void run_rawcap_read(void *device_data)
 	char buff[CMD_STR_LEN] = { 0 };
 	short min = 0x7FFF;
 	short max = 0x8000;
-	unsigned char regAdd[4] = {0xB0, 0x04, 0x49, 0x00};
-
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+	//unsigned char regAdd[4] = {0xB0, 0x04, 0x49, 0x00}; // it's for Zero Prj
+	unsigned char regAdd[4] = {0xB0, 0x04, 0x48, 0x00}; // it's for Noble & Zero2 Prj
+#endif
 	set_default_result(info);
 
 	if (info->touch_stopped) {
@@ -1377,12 +1391,16 @@ static void run_rawcap_read(void *device_data)
 		fts_release_all_key(info);
 #endif
 
-		fts_execute_autotune(info);
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+		info->o_afe_ver = info->afe_ver;
+#endif
 
+		fts_execute_autotune(info);
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
 		//STMicro Auto-tune protection disable
 		fts_write_reg(info, regAdd, 4);
 		fts_delay(1);
-
+#endif
 		fts_command(info, SLEEPOUT);
 		fts_delay(1);
 		fts_command(info, SENSEON);
@@ -1687,7 +1705,7 @@ static void fts_read_ix_data(struct fts_ts_info *info, bool allnode)
 	unsigned short ix2_rx_addr = FTS_S_WIX2_ADDR;
 
 	unsigned char regAdd[FTS_EVENT_SIZE];
-	unsigned char tx_ix1 = 0, rx_ix1 = 0;
+	unsigned short tx_ix1 = 0, rx_ix1 = 0;
 	unsigned char buf[FTS_EVENT_SIZE] = {0};
 	unsigned char r_addr = READ_ONE_EVENT;
 
@@ -1713,9 +1731,15 @@ static void fts_read_ix_data(struct fts_ts_info *info, bool allnode)
 //	fts_command(info, SLEEPIN); // Sleep In for INT disable
 
 	disable_irq(info->irq);
-
 	fts_interrupt_set(info, INT_DISABLE);
-	fts_command(info, SENSEOFF);
+
+	//fts_command(info, SENSEOFF);
+
+	fts_systemreset(info);
+	fts_delay(50);
+	fts_wait_for_ready(info);
+
+	fts_command(info, SLEEPOUT);
 
 	fts_delay(50);
 
@@ -1749,8 +1773,11 @@ static void fts_read_ix_data(struct fts_ts_info *info, bool allnode)
 	} while (buf[1] != regAdd[1] || buf[2] != regAdd[2]);
 
 	//read fifo
-	tx_ix1 = buf[3] * 2;
-	rx_ix1 = buf[4] * 2;
+	tx_ix1 = (short)buf[3] * 4;
+	rx_ix1 = (short)buf[4] * 4;
+
+	tsp_debug_info(true, &info->client->dev, "%s: tx_ix1 : %d, rx_ix1 : %d (%d, %d)\n",
+				__func__, tx_ix1, rx_ix1, buf[3], buf[4]);
 
 	regAdd[0] = 0xB2;
 	regAdd[1] = (ix2_tx_addr >>8)&0xff;
@@ -2139,6 +2166,125 @@ static void run_trx_short_test(void *device_data)
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+static void set_status_pureautotune(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	int rc;
+	unsigned char regAdd[2] = {0xC2, 0x0E};
+
+	set_default_result(info);
+	if (info->touch_stopped) {
+		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
+			__func__);
+		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
+		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
+		return;
+	}
+
+	if (info->cmd_param[0]==0) regAdd[0] = 0xC2;
+	else regAdd[0] = 0xC1;
+	tsp_debug_info(true, &info->client->dev, "%s: CMD[%2X]\n",__func__,regAdd[0]);
+
+	rc = fts_write_reg(info, regAdd, 2);
+
+	info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
+	msleep(230);
+    fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE);
+
+	info->fts_systemreset(info);
+	fts_wait_for_ready(info);
+	info->fts_command(info, SLEEPOUT);
+	msleep(50);
+	info->fts_command(info, SENSEON);
+
+	if (!rc)
+		snprintf(buff, sizeof(buff), "%s", "FAIL");
+	else
+		snprintf(buff, sizeof(buff), "%s", "OK");
+
+	info->cmd_state = CMD_STATUS_OK;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void get_status_pureautotune(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	int rc;
+	unsigned char regAdd[3];
+	unsigned char buf[5];
+	int retVal = 0;
+
+	set_default_result(info);
+	if (info->touch_stopped) {
+		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
+			__func__);
+		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
+		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
+		return;
+	}
+
+	regAdd[0] = 0xd0;
+	regAdd[1] = 0x00;
+	regAdd[2] = 0x58;
+	rc = info->fts_read_reg(info, regAdd, 3, buf, 4);
+	if (!rc)
+	{
+		tsp_debug_info(true, info->dev, "%s: PureAutotune Information Read Fail!! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
+	}
+	else
+	{
+	if((buf[1] == 0xA5) && (buf[2] == 0x96)) retVal = 1;
+	tsp_debug_info(true, info->dev, "%s: PureAutotune Information !! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
+	}
+	snprintf(buff, sizeof(buff), "%d", retVal);
+	info->cmd_state = CMD_STATUS_OK;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
+static void get_status_afe(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	int rc = 0;
+	unsigned char regAdd[3];
+	unsigned char buf[5];
+	int retVal = 0;
+
+	set_default_result(info);
+	if (info->touch_stopped) {
+		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
+			__func__);
+		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
+		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
+		return;
+	}
+
+	regAdd[0] = 0xd0;
+	regAdd[1] = 0x00;
+	regAdd[2] = 0x5A;
+	rc = info->fts_read_reg(info, regAdd, 3, buf, 4);
+	if (!rc)
+	{
+		tsp_debug_info(true, info->dev, "%s: Final AFE [Data : %2X] Read Fail AFE Ver [Data : %2X]\n", __func__, buf[1], buf[2]);
+	}
+	if( buf[1] ) retVal = 1;
+	tsp_debug_info(true, info->dev, "%s: Final AFE [Data : %2X] AFE Ver [Data : %2X]\n", __func__, buf[1], buf[2]);
+
+	snprintf(buff, sizeof(buff), "%d", retVal);
+	info->cmd_state = CMD_STATUS_OK;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+#endif
+
 #define FTS_MAX_TX_LENGTH		44
 #define FTS_MAX_RX_LENGTH		64
 
@@ -2146,6 +2292,9 @@ static void run_trx_short_test(void *device_data)
 #define FTS_CX2_ADDR_OFFSET		3
 #define FTS_CX2_TX_START		0
 #define FTS_CX2_BASE_ADDR		0x1000
+
+#define FTS_WTR_TX_CX2_BASE_ADDR		0x1969
+#define FTS_WTR_RX_CX2_BASE_ADDR		0x198A
 
 static void get_cx_data(void *device_data)
 {
@@ -2208,15 +2357,23 @@ static void run_cx_data_read(void *device_data)
 
 	tsp_debug_info(true, &info->client->dev, "%s: start \n", __func__);
 
-	fts_command(info, SENSEOFF);
+	// fts_command(info, SENSEOFF);
+
+	disable_irq(info->irq);
+	fts_interrupt_set(info, INT_DISABLE);
+
+	fts_systemreset(info);
 	fts_delay(50);
-	
+	fts_wait_for_ready(info);
+
+	fts_command(info, SLEEPOUT);
+	fts_delay(50);
+
 #ifdef FTS_SUPPORT_TOUCH_KEY
 	if (info->board->support_mskey) {
 		fts_command(info, FTS_CMD_KEY_SENSE_OFF); // Key Sensor OFF
 	}
 #endif
-	disable_irq(info->irq);
 	fts_command(info, FLUSHBUFFER);
 	fts_delay(50);
 
@@ -2290,6 +2447,7 @@ static void run_cx_data_read(void *device_data)
 
 	snprintf(buff, sizeof(buff), "%s", "OK");
 	enable_irq(info->irq);
+	fts_interrupt_set(info, INT_ENABLE);
 	fts_command(info, SENSEON);
 #ifdef FTS_SUPPORT_TOUCH_KEY
 	if (info->board->support_mskey) {
@@ -2405,6 +2563,198 @@ static void get_cx_all_data(void *device_data)
 	info->cmd_state = CMD_STATUS_OK;
 	set_cmd_result(info, all_strbuff, strnlen(all_strbuff, sizeof(all_strbuff)));
 	tsp_debug_info(true, &info->client->dev, "%ld (%ld)\n", strnlen(all_strbuff, sizeof(all_strbuff)),sizeof(all_strbuff));
+}
+
+static void fts_read_wtr_cx_data(struct fts_ts_info *info, bool allnode)
+{
+	char buff[512] = { 0 };
+	unsigned char regAdd[8];
+	unsigned char *result_tx, *result_rx;
+	char buf[8];
+	char temp[8];
+	unsigned char r_addr = READ_ONE_EVENT;
+	unsigned int addr;
+	int ii, kk = 0, retry;
+	int tx_num, rx_num;
+
+	if (info->touch_stopped) {
+		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n",
+			__func__);
+		snprintf(buff, sizeof(buff), "%s", "TSP turned off");
+		set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+		info->cmd_state = CMD_STATUS_NOT_APPLICABLE;
+		return;
+	}
+
+	tsp_debug_info(true, &info->client->dev, "%s: ++\n", __func__);
+
+	disable_irq(info->irq);
+	fts_interrupt_set(info, INT_DISABLE);
+
+	fts_systemreset(info);
+	fts_delay(50);
+	fts_wait_for_ready(info);
+
+	fts_command(info, SLEEPOUT);
+	fts_delay(50);
+
+#ifdef FTS_SUPPORT_TOUCH_KEY
+	if (info->board->support_mskey) {
+		fts_command(info, FTS_CMD_KEY_SENSE_OFF);
+	}
+#endif
+	fts_command(info, FLUSHBUFFER);
+	fts_delay(50);
+
+	result_tx = kzalloc(info->ForceChannelLength + 10, GFP_KERNEL);
+	result_rx = kzalloc(info->SenseChannelLength + 10, GFP_KERNEL);
+	if (!result_tx && !result_rx) {
+		tsp_debug_err(true, &info->client->dev, "%s: failed to alloc mem\n",
+				__func__);
+
+		snprintf(buff, sizeof(buff), "%s", "FAIL");
+		goto err_alloc_mem;
+	}
+
+	if (info->ForceChannelLength % FTS_CX2_READ_LENGTH)
+		tx_num = (info->ForceChannelLength / FTS_CX2_READ_LENGTH + 1);
+	else
+		tx_num = info->ForceChannelLength / FTS_CX2_READ_LENGTH;
+
+	if (info->SenseChannelLength % FTS_CX2_READ_LENGTH)
+		rx_num = (info->SenseChannelLength / FTS_CX2_READ_LENGTH + 1);
+	else
+		rx_num = info->SenseChannelLength / FTS_CX2_READ_LENGTH;
+
+	for (ii = 0; ii < tx_num + rx_num; ii++) {
+
+		if (ii < tx_num)
+			addr = FTS_WTR_TX_CX2_BASE_ADDR + (ii * 3);
+		else
+			addr = FTS_WTR_RX_CX2_BASE_ADDR + ((ii - tx_num) * 3);
+
+		if (ii == tx_num)
+			kk = 0;
+
+		regAdd[0] = 0xB2;
+		regAdd[1] = (addr >> 8) & 0xFF;
+		regAdd[2] = addr & 0xFF;
+		regAdd[3] = 0x04;
+
+		fts_write_reg(info, &regAdd[0], 4);
+
+		retry = FTS_RETRY_COUNT * 3;
+		do {
+			if (retry < 0) {
+				tsp_debug_err(true, &info->client->dev,
+						"%s: failed to compare buf, break!\n", __func__);
+				break;
+			}
+
+			memset(buf, 0x0, 8);
+
+			fts_read_reg(info, &r_addr, 1, &buf[0], FTS_EVENT_SIZE);
+			retry--;
+
+		} while (buf[1] != regAdd[1] || buf[2] != regAdd[2]);
+
+		tsp_debug_info(true, &info->client->dev,
+				"%s: %d: [%04X] (%02X, %02X,) %02X, %02X, %02X, %02X, %02X, %02X\n",
+				__func__, ii, addr, buf[0], buf[1], buf[2], buf[3],
+				buf[4], buf[5], buf[6], buf[7]);
+
+		if (ii < tx_num) {
+			result_tx[kk++] = buf[3] & 0x3F;
+			result_tx[kk++] = (buf[3] & 0xC0) >> 6 | (buf[4] & 0x0F) << 2;
+			result_tx[kk++] = ((buf[4] & 0xF0)>> 4) | ((buf[5] & 0x03) << 4);
+			result_tx[kk++] = buf[5] >> 2;
+		} else {
+			result_rx[kk++] = buf[3] & 0x3F;
+			result_rx[kk++] = (buf[3] & 0xC0) >> 6 | (buf[4] & 0x0F) << 2;
+			result_rx[kk++] = ((buf[4] & 0xF0)>> 4) | ((buf[5] & 0x03) << 4);
+			result_rx[kk++] = buf[5] >> 2;
+		}
+
+	}
+
+	if (allnode) {
+		char *data = 0;
+
+		data = result_tx;
+		for (ii = 0; ii < info->ForceChannelLength; ii++) {
+			tsp_debug_info(true, &info->client->dev,
+					"%s: Tx[%d] = %d\n", __func__, ii, *data);
+			sprintf(temp, "%d,", *data);
+			strncat(buff, temp, 9);
+			data++;
+		}
+
+		data = result_rx;
+		for (ii = 0; ii < info->SenseChannelLength; ii++) {
+			tsp_debug_info(true, &info->client->dev,
+					"%s: Rx[%d] = %d\n", __func__, ii, *data);
+			sprintf(temp, "%d,", *data);
+			strncat(buff, temp, 9);
+			data++;
+		}
+	} else {
+		unsigned char min_tx = 255, max_tx = 0, min_rx = 255, max_rx = 0;
+
+		for (ii = 0; ii < info->ForceChannelLength; ii++) {
+			tsp_debug_info(true, &info->client->dev,
+					"%s: Tx[%d] = %d\n", __func__, ii, result_tx[ii]);
+
+			min_tx = min(min_tx, result_tx[ii]);
+			max_tx = max(max_tx, result_tx[ii]);
+		}
+
+		for (ii = 0; ii < info->SenseChannelLength; ii++) {
+			tsp_debug_info(true, &info->client->dev,
+					"%s: Rx[%d] = %d\n", __func__, ii, result_rx[ii]);
+			min_rx = min(min_rx, result_rx[ii]);
+			max_rx = max(max_rx, result_rx[ii]);
+		}
+
+		sprintf(buff, "%d,%d,%d,%d", min_tx, max_tx, min_rx, max_rx);
+
+	}
+
+	kfree(result_tx);
+	kfree(result_rx);
+
+err_alloc_mem:
+
+	enable_irq(info->irq);
+	fts_interrupt_set(info, INT_ENABLE);
+	fts_command(info, SENSEON);
+#ifdef FTS_SUPPORT_TOUCH_KEY
+	if (info->board->support_mskey) {
+		fts_command(info, FTS_CMD_KEY_SENSE_ON);
+	}
+#endif
+	info->cmd_state = CMD_STATUS_OK;
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+
+}
+
+static void run_wtr_cx_data_read(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+
+	set_default_result(info);
+
+	fts_read_wtr_cx_data(info, false);
+
+}
+
+static void run_wtr_cx_data_read_all(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+
+	set_default_result(info);
+
+	fts_read_wtr_cx_data(info, true);
 }
 
 #ifdef FTS_SUPPORT_TOUCH_KEY
@@ -3237,6 +3587,48 @@ static void dead_zone_enable(void *device_data)
 	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
 }
 
+static void select_wakeful_edge(void *device_data)
+{
+	struct fts_ts_info *info = (struct fts_ts_info *)device_data;
+	char buff[CMD_STR_LEN] = { 0 };
+	unsigned char regAdd[2] = {0xC2, 0x0F};
+	int ret;
+
+	set_default_result(info);
+
+	if (info->cmd_param[0] < 0 || info->cmd_param[0] > 1) {
+		snprintf(buff, sizeof(buff), "%s", "NG");
+		info->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		if (info->cmd_param[0]==0) {
+			regAdd[0] = FTS_CMS_DISABLE_FEATURE;	/* right - C2, 0F */
+			info->wakeful_edge_side = EDGEWAKE_RIGHT;
+		} else {
+			regAdd[0] = FTS_CMS_ENABLE_FEATURE;		/* left - C1, 0F */
+			info->wakeful_edge_side = EDGEWAKE_LEFT;
+		}
+		ret = fts_write_reg(info, regAdd, 2);
+
+		if (ret < 0)
+			tsp_debug_err(true, &info->client->dev, "%s failed. ret: %d\n", __func__, ret);
+		else
+			tsp_debug_info(true, &info->client->dev, "%s: reg:%d, ret: %d\n", __func__, info->cmd_param[0], ret);
+
+		fts_delay(1);
+
+		snprintf(buff, sizeof(buff), "%s", "OK");
+		info->cmd_state = CMD_STATUS_OK;
+	}
+	set_cmd_result(info, buff, strnlen(buff, sizeof(buff)));
+
+	mutex_lock(&info->cmd_lock);
+	info->cmd_is_running = false;
+	mutex_unlock(&info->cmd_lock);
+	info->cmd_state = CMD_STATUS_WAITING;
+
+	tsp_debug_info(true, &info->client->dev, "%s: %s\n", __func__, buff);
+}
+
 static void set_mainscreen_disable_cmd(struct fts_ts_info *info, bool on)
 {
 	int ret;
@@ -3787,6 +4179,7 @@ static void spay_enable(void *device_data)
 	unsigned short addr = FTS_CMD_STRING_ACCESS;
 	int ret;
 	char buff[CMD_STR_LEN] = { 0 };
+	unsigned char string_pi[16];
 
 	if (info->touch_stopped) {
 		tsp_debug_info(true, &info->client->dev, "%s: [ERROR] Touch is stopped\n", __func__);
@@ -3808,6 +4201,15 @@ static void spay_enable(void *device_data)
 		info->lowpower_flag = info->lowpower_flag & ~(FTS_LOWP_FLAG_SPAY);
 	}
 
+	ret = info->fts_read_from_string( info, &addr, string_pi, sizeof( string_pi ) );
+	if (ret < 0) {
+		tsp_debug_info(true, &info->client->dev, "%s: failed. ret: %d\n", __func__, ret);
+		snprintf(buff, sizeof(buff), "%s", "NG");
+		info->cmd_state = CMD_STATUS_FAIL;
+
+		goto out;
+	}
+	addr = FTS_CMD_STRING_ACCESS + *(unsigned short*)&string_pi[8];
 	ret = info->fts_write_to_string(info, &addr, &info->fts_mode, sizeof(info->fts_mode));
 	if (ret < 0) {
 		tsp_debug_info(true, &info->client->dev, "%s: failed. ret: %d\n", __func__, ret);
@@ -4015,6 +4417,12 @@ static void run_autotune(void *device_data)
 		fts_release_all_finger(info);
 #ifdef FTS_SUPPORT_TOUCH_KEY
 		fts_release_all_key(info);
+#endif
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+		fts_command(info,FTS_CMD_FORCE_AUTOTUNE);
+#endif
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+		info->o_afe_ver = info->afe_ver;
 #endif
 
 		fts_execute_autotune(info);

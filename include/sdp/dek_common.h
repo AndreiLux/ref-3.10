@@ -105,4 +105,9 @@ int dek_create_sysfs_key_dump(struct device *d);
 int get_sdp_sysfs_asym_alg(void);
 int get_sdp_sysfs_key_dump(void);
 
+int is_root(void);
+int is_current_epmd(void);
+int is_current_adbd(void);
+int is_system_server(void);
+
 #endif

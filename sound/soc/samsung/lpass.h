@@ -65,5 +65,8 @@ extern void lpass_retention_pad_reg(void);
 extern void lpass_release_pad_reg(void);
 extern void lpass_reset_clk_default(void);
 extern void lpass_init_clk_gate(void);
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+extern void lpass_set_cpu_lock(int level);
+#endif
 
 #endif /* __SND_SOC_SAMSUNG_LPASS_H */

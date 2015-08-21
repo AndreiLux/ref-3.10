@@ -462,6 +462,7 @@ struct ufs_hba {
 	struct ufs_init_prefetch init_prefetch_data;
 
 	/* Work Queues */
+	struct workqueue_struct *ufshcd_workq;
 	struct work_struct eh_work;
 	struct work_struct eeh_work;
 

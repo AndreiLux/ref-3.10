@@ -132,4 +132,10 @@ config SND_SOC_ESXXX_UPDATE_VEQ_TABLE
 	default n
 	---help---
 	support to update the veq table during the boot
+
+config SND_SOC_ES_STREAM_FS_STORER
+	tristate "Store Steaming data into file"
+	default n
+	---help---
+	Enable support of storing streaming data into file
 endmenu

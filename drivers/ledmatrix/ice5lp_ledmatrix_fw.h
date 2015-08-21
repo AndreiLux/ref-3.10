@@ -26,7 +26,7 @@
 #define GPIO_LEVEL_HIGH         1
 #define GPIO_LEVEL_NONE         2
 
-static int ice5lp_check_fwdone(void);
+static int ice5lp_check_fwdone(struct i2c_client *client);
 
 #define IR_IOCTL_BASE		'I'
 #define IR_IOCTL_SET_FREQ	_IOW(IR_IOCTL_BASE, 1, int)

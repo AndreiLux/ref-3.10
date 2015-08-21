@@ -1144,10 +1144,10 @@ static int __device_suspend(struct device *dev, pm_message_t state, bool async)
 	 * this code is temporary code. and it should be removed next version. */
 	if (!atomic_read(&ehci_area) && async_error) {
 		if (dev->parent)
-			dev_info(dev, "async_error!!, area : %d, parent = %s\n",
+			dev_info(dev, "wakeup_pending, area : %d, parent = %s\n",
 					atomic_read(&ehci_area), dev_name(dev->parent));
 		else
-			dev_info(dev, "async_error!!, area : %d\n",
+			dev_info(dev, "wakeup_pending, area : %d\n",
 					atomic_read(&ehci_area));
 #else
 	if (async_error) {

@@ -85,6 +85,11 @@ static unsigned int io_tlb_index;
  */
 static phys_addr_t *io_tlb_orig_addr;
 
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+static phys_addr_t *io_tlb_debug;
+#endif
+
+
 /*
  * Protect the above data structures in the map and unmap calls
  */
@@ -183,9 +188,12 @@ int __init swiotlb_init_with_tbl(char *tlb, unsigned long nslabs, int verbose)
 	 */
 	io_tlb_list = alloc_bootmem_pages(PAGE_ALIGN(io_tlb_nslabs * sizeof(int)));
 	for (i = 0; i < io_tlb_nslabs; i++)
- 		io_tlb_list[i] = IO_TLB_SEGSIZE - OFFSET(i, IO_TLB_SEGSIZE);
+		io_tlb_list[i] = IO_TLB_SEGSIZE - OFFSET(i, IO_TLB_SEGSIZE);
 	io_tlb_index = 0;
 	io_tlb_orig_addr = alloc_bootmem_pages(PAGE_ALIGN(io_tlb_nslabs * sizeof(phys_addr_t)));
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+	io_tlb_debug = alloc_bootmem_pages(PAGE_ALIGN(io_tlb_nslabs * sizeof(phys_addr_t)));
+#endif
 
 	if (verbose)
 		swiotlb_print_info();
@@ -318,6 +326,18 @@ swiotlb_late_init_with_tbl(char *tlb, unsigned long nslabs)
 
 	memset(io_tlb_orig_addr, 0, io_tlb_nslabs * sizeof(phys_addr_t));
 
+
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+		io_tlb_debug = (phys_addr_t *)
+			__get_free_pages(GFP_KERNEL,
+					 get_order(io_tlb_nslabs *
+						   sizeof(phys_addr_t)));
+		if (!io_tlb_debug)
+			goto cleanup4;
+
+		memset(io_tlb_debug, 0, io_tlb_nslabs * sizeof(phys_addr_t));
+#endif
+
 	swiotlb_print_info();
 
 	late_alloc = 1;
@@ -347,6 +367,10 @@ void __init swiotlb_free(void)
 	if (late_alloc) {
 		free_pages((unsigned long)phys_to_virt(io_tlb_overflow_buffer),
 			   get_order(io_tlb_overflow));
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+		free_pages((unsigned long)io_tlb_debug,
+			   get_order(io_tlb_nslabs * sizeof(phys_addr_t)));
+#endif
 		free_pages((unsigned long)io_tlb_orig_addr,
 			   get_order(io_tlb_nslabs * sizeof(phys_addr_t)));
 		free_pages((unsigned long)io_tlb_list, get_order(io_tlb_nslabs *
@@ -356,6 +380,10 @@ void __init swiotlb_free(void)
 	} else {
 		free_bootmem_late(io_tlb_overflow_buffer,
 				  PAGE_ALIGN(io_tlb_overflow));
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+		free_bootmem_late(__pa(io_tlb_debug),
+				  PAGE_ALIGN(io_tlb_nslabs * sizeof(phys_addr_t)));
+#endif
 		free_bootmem_late(__pa(io_tlb_orig_addr),
 				  PAGE_ALIGN(io_tlb_nslabs * sizeof(phys_addr_t)));
 		free_bootmem_late(__pa(io_tlb_list),
@@ -479,9 +507,15 @@ phys_addr_t swiotlb_tbl_map_single(struct device *hwdev,
 		 */
 		if (io_tlb_list[index] >= nslots) {
 			int count = 0;
-
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+			for (i = index; i < (int) (index + nslots); i++) {
+				io_tlb_list[i] = 0;
+				io_tlb_debug[i] = (phys_addr_t)hwdev;
+			}
+#else
 			for (i = index; i < (int) (index + nslots); i++)
 				io_tlb_list[i] = 0;
+#endif
 			for (i = index - 1; (OFFSET(i, IO_TLB_SEGSIZE) != IO_TLB_SEGSIZE - 1) && io_tlb_list[i]; i--)
 				io_tlb_list[i] = ++count;
 			tlb_addr = io_tlb_start + (index << IO_TLB_SHIFT);
@@ -563,8 +597,15 @@ void swiotlb_tbl_unmap_single(struct device *hwdev, phys_addr_t tlb_addr,
 		 * Step 1: return the slots to the free list, merging the
 		 * slots with superceeding slots
 		 */
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+		for (i = index + nslots - 1; i >= index; i--) {
+			io_tlb_list[i] = ++count;
+			io_tlb_debug[i] = 0;
+		}
+#else
 		for (i = index + nslots - 1; i >= index; i--)
 			io_tlb_list[i] = ++count;
+#endif
 		/*
 		 * Step 2: merge the returned slots with the preceding slots,
 		 * if available (non zero)
@@ -868,6 +909,11 @@ swiotlb_map_sg_attrs(struct device *hwdev, struct scatterlist *sgl, int nelems,
 				/* Don't panic here, we expect map_sg users
 				   to do proper error handling. */
 				swiotlb_full(hwdev, sg->length, dir, 0);
+#ifdef CONFIG_SEC_DEBUG_MDM_SWIOTLB
+				pr_err("%s: dev=%s, addr=%pa, size=%u, dir=%d\n",
+						__func__, hwdev ? dev_name(hwdev) : "?",
+						&dev_addr, sg->length, dir);
+#endif
 				swiotlb_unmap_sg_attrs(hwdev, sgl, i, dir,
 						       attrs);
 				sgl[0].dma_length = 0;
@@ -972,3 +1018,97 @@ swiotlb_dma_supported(struct device *hwdev, u64 mask)
 	return phys_to_dma(hwdev, io_tlb_end - 1) <= mask;
 }
 EXPORT_SYMBOL(swiotlb_dma_supported);
+
+
+
+#if defined(CONFIG_DEBUG_FS) && defined(CONFIG_SEC_DEBUG_MDM_SWIOTLB)
+#include <linux/debugfs.h>
+
+#define KERNEL_ADDR 0xFFFFFFC000000000
+#define NUM_DEVICE 50
+#define INDEX_DEV_ADDR 0
+#define INDEX_CNT 1
+
+
+static int tlbdump_show(struct seq_file *m, void *arg)
+{
+	int i,j;
+	int mmu_find = 0;
+	int mmu_index = -1;
+	struct device * hwdev;
+	unsigned long tlbmap[NUM_DEVICE][2];
+
+	seq_printf(m, "swiommu tlb alloc cnt \n");
+
+
+	for (i = 0; i < io_tlb_nslabs; i++) {
+
+		if (io_tlb_debug[i] != 0) {
+			mmu_find = 0;
+			for (j = 0; j <= mmu_index; j++) {
+				if (tlbmap[j][INDEX_DEV_ADDR] == io_tlb_debug[i]) {
+					tlbmap[j][INDEX_CNT]++;
+					mmu_find = 1;
+					break;
+				}
+			}
+			if (mmu_find == 0) {
+				mmu_index++;
+				tlbmap[mmu_index][INDEX_DEV_ADDR] = (unsigned long)io_tlb_debug[i];
+				tlbmap[mmu_index][INDEX_CNT] = 1;
+				if (mmu_index >= (NUM_DEVICE-1)) {
+					seq_printf(m,"num of debugging device is overflow \n");
+					break;
+				}
+			}
+		}
+	}
+
+	if (mmu_index == -1) {
+		seq_printf(m,"swiommu tlb is empty \n");
+		return 0;
+	}
+
+	for (i = 0; i <= mmu_index; i++) {
+		if (tlbmap[i][INDEX_DEV_ADDR] > KERNEL_ADDR) {
+			hwdev =  (struct device *)tlbmap[i][0];
+			seq_printf(m,"%s\t\t%lu  \n", hwdev->kobj.name,tlbmap[i][INDEX_CNT]);
+		} else {
+			seq_printf(m,"addr error 0x%lx  \n",tlbmap[i][INDEX_DEV_ADDR]);
+		}
+	}
+
+	return 0;
+}
+
+
+static int tlbdump_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, tlbdump_show,  inode->i_private);
+}
+
+static const struct file_operations swio_file_ops = {
+	.open		= tlbdump_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= single_release,
+};
+
+static int __init swiommu_debug_init(void)
+{
+	struct dentry *swio_debug_root;
+
+	swio_debug_root = debugfs_create_dir("swiotlb", NULL);
+	if (!debugfs_create_file("tlb_dump", 0444,
+			swio_debug_root, NULL, &swio_file_ops))
+		goto fail;
+
+	return 0;
+fail:
+	debugfs_remove_recursive(swio_debug_root);
+	return -ENOMEM;
+}
+
+module_init(swiommu_debug_init);
+#endif
+

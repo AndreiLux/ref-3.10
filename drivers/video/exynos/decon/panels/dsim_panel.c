@@ -124,6 +124,14 @@ static int dsim_panel_probe(struct dsim_device *dsim)
 
 	panel->weakness_hbm_comp = 0;
 	dsim->glide_display_size = 0;
+	panel->auto_brightness_level = 6;
+
+
+#ifdef AID_INTERPOLATION
+	panel->brightness_step = 256;
+#else
+	panel->brightness_step = 65;				// 360
+#endif
 
 	mutex_init(&panel->lock);
 #ifdef CONFIG_EXYNOS_DECON_LCD_MCD

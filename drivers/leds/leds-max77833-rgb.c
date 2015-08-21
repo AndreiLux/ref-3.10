@@ -77,7 +77,8 @@
 				(time < 500) ? time/100-1 :		\
 				(time < 3250) ? (time-500)/250+4 : 15)
 
-#define LEDBLNK_OFF(time)	((time < 500) ? 0x00 :			\
+#define LEDBLNK_OFF(time)	((time < 1) ? 0x00 :			\
+				(time < 500) ? 0x01 :			\
 				(time < 5000) ? time/500 :		\
 				(time < 8000) ? (time-5000)/1000+10 :	 \
 				(time < 12000) ? (time-8000)/2000+13 : 15)
@@ -177,13 +178,6 @@ static void max77833_rgb_set(struct led_classdev *led_cdev,
 				MAX77833_RGBLED_REG_LED0BRT + n, brightness);
 		if (IS_ERR_VALUE(ret)) {
 			dev_err(dev, "can't write LEDxBRT : %d\n", ret);
-			return;
-		}
-		/* Flash ON */
-		ret = max77833_update_reg(max77833_rgb->i2c,
-				MAX77833_RGBLED_REG_LEDEN, 0x55, 3 << (2*n));
-		if (IS_ERR_VALUE(ret)) {
-			dev_err(dev, "can't write FLASH_EN : %d\n", ret);
 			return;
 		}
 	}
@@ -418,7 +412,7 @@ static struct max77833_rgb_platform_data
 			break;
 		}
 	}
-	/* ZEROF */
+	/* NOBLE, ZEN */
 	else if(device_type == 1) {
 		pr_info("here1\n");
 
@@ -433,10 +427,7 @@ static struct max77833_rgb_platform_data
 			strcpy(octa, "_gd");
 			break;
 		case 3:
-			strcpy(octa, "_bl");
-			break;
-		case 4:
-			strcpy(octa, "_rd");
+			strcpy(octa, "_sv");
 			break;
 		default:
 			break;
@@ -719,6 +710,10 @@ static ssize_t store_max77833_rgb_blink(struct device *dev,
 			}
 		}
 	}
+
+	/*Set LED blink mode*/
+	max77833_rgb_blink(dev, delay_on_time, delay_off_time);
+
 	if (led_r_brightness) {
 		max77833_rgb_set_state(&max77833_rgb->led[RED], led_r_brightness, LED_BLINK);
 	}
@@ -728,8 +723,6 @@ static ssize_t store_max77833_rgb_blink(struct device *dev,
 	if (led_b_brightness) {
 		max77833_rgb_set_state(&max77833_rgb->led[BLUE], led_b_brightness, LED_BLINK);
 	}
-	/*Set LED blink mode*/
-	max77833_rgb_blink(dev, delay_on_time, delay_off_time);
 
 	pr_info("leds-max77833-rgb: %s, delay_on_time= %x, delay_off_time= %x\n", __func__, delay_on_time, delay_off_time);
 	dev_dbg(dev, "led_blink is called, Color:0x%X Brightness:%i\n",

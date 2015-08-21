@@ -1891,6 +1891,8 @@ static int dec_ext_info(struct s5p_mfc_ctx *ctx)
 		val |= DEC_SET_DYNAMIC_DPB;
 	if (FW_HAS_LAST_DISP_INFO(dev))
 		val |= DEC_SET_LAST_FRAME_INFO;
+	if (FW_SUPPORT_SKYPE(dev))
+		val |= DEC_SET_SKYPE_FLAG;
 
 	return val;
 }
@@ -2000,6 +2002,9 @@ static int get_ctrl_val(struct s5p_mfc_ctx *ctx, struct v4l2_control *ctrl)
 		break;
 	case V4L2_CID_MPEG_MFC_GET_EXT_INFO:
 		ctrl->value = dec_ext_info(ctx);
+		break;
+	case V4L2_CID_MPEG_MFC_GET_DRIVER_INFO:
+		ctrl->value = MFC_DRIVER_INFO;
 		break;
 	default:
 		list_for_each_entry(ctx_ctrl, &ctx->ctrls, list) {

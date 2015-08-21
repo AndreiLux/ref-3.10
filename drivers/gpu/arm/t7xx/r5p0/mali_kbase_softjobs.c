@@ -209,18 +209,6 @@ static void kbase_fence_wait_worker(struct work_struct *data)
 	katom = container_of(data, struct kbase_jd_atom, work);
 	kctx = katom->kctx;
 
-#ifdef MALI_SEC_FENCE_INTEGRATION
-#ifdef KBASE_FENCE_TIMEOUT_FAKE_SIGNAL
-	if (katom->fence && katom->fence->status == 0) {
-		/* means that it comes via kbase_fence_timeout*/
-		pr_info("kbase_fence_wait_worker cancel async fence[%p]\n", katom->fence);
-		if (sync_fence_cancel_async(katom->fence, &katom->sync_waiter) != 0) {
-			mutex_unlock(&katom->fence_mt);
-			return;
-		}
-	}
-#endif
-#endif
 	complete_soft_job(katom);
 }
 
@@ -607,8 +595,17 @@ static void kbase_fence_timeout(unsigned long data)
 	kbase_fence_dump(katom->fence);
 #endif
 #ifdef KBASE_FENCE_TIMEOUT_FAKE_SIGNAL
-	if (katom->fence)
-		kbase_fence_wait_callback(katom->fence, &katom->sync_waiter);
+	{
+		struct sync_pt *pt;
+		struct sync_timeline *timeline;
+		pt = list_first_entry(&katom->fence->pt_list_head, struct sync_pt, pt_list);
+		if (pt == NULL)
+			return;
+
+		timeline = pt->parent;
+
+		sync_timeline_signal(timeline);
+	}
 #endif
 	return;
 }

@@ -333,6 +333,9 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 			(ctx->dpb_count * (enc->luma_dpb_size +
 			enc->chroma_dpb_size + enc->me_buffer_size));
 		ctx->port_b_size = 0;
+
+		ctx->scratch_buf_size = max(ctx->scratch_buf_size, ctx->min_scratch_buf_size);
+		ctx->min_scratch_buf_size = 0;
 		break;
 	case S5P_FIMV_CODEC_MPEG4_ENC:
 	case S5P_FIMV_CODEC_H263_ENC:
@@ -399,6 +402,15 @@ int s5p_mfc_alloc_codec_buffers(struct s5p_mfc_ctx *ctx)
 			return -ENOMEM;
 		}
 		ctx->port_a_phys = s5p_mfc_mem_daddr_priv(ctx->port_a_buf);
+		ctx->port_a_virt = s5p_mfc_mem_vaddr_priv(ctx->port_a_buf);
+		if (!ctx->port_a_virt) {
+			s5p_mfc_mem_free_priv(ctx->port_a_buf);
+			ctx->port_a_buf = NULL;
+			ctx->port_a_phys = 0;
+
+			mfc_err_ctx("Get vaddr for codec buffer failed.\n");
+			return -ENOMEM;
+		}
 	}
 
 	mfc_debug_leave();
@@ -721,21 +733,16 @@ static void set_linear_stride_size(struct s5p_mfc_ctx *ctx,
 	switch (fmt->fourcc) {
 	case V4L2_PIX_FMT_YUV420M:
 	case V4L2_PIX_FMT_YVU420M:
-		raw->stride[0] = (ctx->buf_stride > ctx->img_width) ?
-			ALIGN(ctx->img_width, 16) : ctx->img_width;
-		raw->stride[1] = (ctx->buf_stride > ctx->img_width) ?
-			ALIGN(ctx->img_width, 16) >> 1 : ctx->img_width >> 1;
-		raw->stride[2] = (ctx->buf_stride > ctx->img_width) ?
-			ALIGN(ctx->img_width, 16) >> 1 : ctx->img_width >> 1;
+		raw->stride[0] = ALIGN(ctx->img_width, 16);
+		raw->stride[1] = ALIGN(raw->stride[0] >> 1, 16);
+		raw->stride[2] = ALIGN(raw->stride[0] >> 1, 16);
 		break;
 	case V4L2_PIX_FMT_NV12MT_16X16:
 	case V4L2_PIX_FMT_NV12MT:
 	case V4L2_PIX_FMT_NV12M:
 	case V4L2_PIX_FMT_NV21M:
-		raw->stride[0] = (ctx->buf_stride > ctx->img_width) ?
-				ALIGN(ctx->img_width, 16) : ctx->img_width;
-		raw->stride[1] = (ctx->buf_stride > ctx->img_width) ?
-				ALIGN(ctx->img_width, 16) : ctx->img_width;
+		raw->stride[0] = ALIGN(ctx->img_width, 16);
+		raw->stride[1] = ALIGN(ctx->img_width, 16);
 		raw->stride[2] = 0;
 		break;
 	case V4L2_PIX_FMT_RGB24:
@@ -1288,6 +1295,8 @@ int s5p_mfc_set_enc_stream_buffer(struct s5p_mfc_ctx *ctx,
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
 
+	size = ALIGN(size, 512);
+
 	WRITEL(addr, S5P_FIMV_E_STREAM_BUFFER_ADDR); /* 16B align */
 	WRITEL(size, S5P_FIMV_E_STREAM_BUFFER_SIZE);
 
@@ -1395,16 +1404,18 @@ static int s5p_mfc_set_slice_mode(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 
 	/* multi-slice control */
-	if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES)
+	if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES)
 		WRITEL((enc->slice_mode + 0x4), S5P_FIMV_E_MSLICE_MODE);
+	else if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB_ROW)
+		WRITEL((enc->slice_mode - 0x2), S5P_FIMV_E_MSLICE_MODE);
 	else
 		WRITEL(enc->slice_mode, S5P_FIMV_E_MSLICE_MODE);
 
 	/* multi-slice MB number or bit size */
-	if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB) {
+	if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB || \
+			enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB_ROW) {
 		WRITEL(enc->slice_size.mb, S5P_FIMV_E_MSLICE_SIZE_MB);
-	} else if (enc->slice_mode == \
-			V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES) {
+	} else if (enc->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES) {
 		WRITEL(enc->slice_size.bits, S5P_FIMV_E_MSLICE_SIZE_BITS);
 	} else {
 		WRITEL(0x0, S5P_FIMV_E_MSLICE_SIZE_MB);
@@ -1453,10 +1464,12 @@ static int s5p_mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 
 	WRITEL(0, S5P_FIMV_E_ENC_OPTIONS);
 
-	if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB) {
+	if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB) {
 		enc->slice_size.mb = p->slice_mb;
-	} else if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES) {
+	} else if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES) {
 		enc->slice_size.bits = p->slice_bit;
+	} else if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB_ROW) {
+		enc->slice_size.mb = p->slice_mb_row * ((ctx->img_width + 15) / 16);
 	} else {
 		enc->slice_size.mb = 0;
 		enc->slice_size.bits = 0;
@@ -1643,7 +1656,7 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	struct s5p_mfc_enc *enc = ctx->enc_priv;
 	struct s5p_mfc_enc_params *p = &enc->params;
 	struct s5p_mfc_h264_enc_params *p_264 = &p->codec.h264;
-	unsigned int reg = 0;
+	unsigned int reg = 0, reg2 = 0;
 	int i;
 
 	mfc_debug_enter();
@@ -1759,6 +1772,11 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	reg &= ~(0x3F);
 	reg |= p_264->rc_frame_qp;
 	WRITEL(reg, S5P_FIMV_E_RC_CONFIG);
+
+	if (p->rc_frame == 0 && p->rc_mb == 0) {
+		reg |= (0x1 << 11);
+		WRITEL(reg, S5P_FIMV_E_RC_CONFIG);
+	}
 
 	/* frame rate */
 	/* Fix value for H.264, H.263 in the driver */
@@ -1888,16 +1906,22 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	/* VUI parameter disable */
 	if (FW_HAS_VUI_PARAMS(dev)) {
 		reg = READL(S5P_FIMV_E_H264_OPTIONS);
-		reg &= ~(0x1 << 30);
+		if (p_264->vui_enable)
+			reg |= (0x1 << 30);
+		else
+			reg &= ~(0x1 << 30);
 		WRITEL(reg, S5P_FIMV_E_H264_OPTIONS);
 	}
 
 	/* pic_order_cnt_type = 0 for backward compatibilities */
 	if (FW_HAS_POC_TYPE_CTRL(dev)) {
 		reg = READL(S5P_FIMV_E_H264_OPTIONS_2);
+		reg &= ~(0x1 << 2);
+		reg |= (p_264->enable_ltr << 2); /* Enable LTR */
 		reg &= ~(0x3 << 0);
 		reg |= (0x0 << 0); /* TODO: add new CID for this */
 		WRITEL(reg, S5P_FIMV_E_H264_OPTIONS_2);
+		mfc_debug(2, "enable_ltr : %d\n", p_264->enable_ltr);
 	}
 
 #if defined(CONFIG_SOC_EXYNOS5422) || defined(CONFIG_SOC_EXYNOS5433)
@@ -1909,28 +1933,50 @@ static int s5p_mfc_set_enc_params_h264(struct s5p_mfc_ctx *ctx)
 	/* hier qp enable */
 	reg = READL(S5P_FIMV_E_H264_OPTIONS);
 	reg &= ~(0x1 << 8);
-	reg |= ((p_264->hier_qp & 0x1) << 8);
+	reg |= ((p_264->hier_qp_enable & 0x1) << 8);
 	WRITEL(reg, S5P_FIMV_E_H264_OPTIONS);
+	mfc_debug(2, "hier_qp_enable : %d, num_hier_layer : %d\n", p_264->hier_qp_enable, p_264->num_hier_layer);
 	reg = 0;
-	if (p_264->hier_qp_layer) {
-		reg |= 0x7 << 0x4;
+	/* number of coding layer should be zero when hierarchical is disable */
+	WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
+
+	if (p_264->num_hier_layer) {
 		reg |= (p_264->hier_qp_type & 0x1) << 0x3;
-		reg |= p_264->hier_qp_layer & 0x7;
-		WRITEL(reg, S5P_FIMV_E_H264_NUM_T_LAYER);
+		reg |= p_264->num_hier_layer & 0x7;
+		if (p_264->hier_ref_type) {
+			reg |= 0x1 << 7;
+			reg |= (p_264->num_hier_layer & 0x7) << 4;
+		} else {
+			reg |= 0x7 << 4;
+		}
+		WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
+		mfc_debug(2, "set NUM_T_LAYER : enable_ltr %d, num_hier_layer: %d, hier_ref_type : %d, NUM_T_LAYER: 0x%x\n",
+				p_264->enable_ltr, p_264->num_hier_layer, p_264->hier_ref_type, reg);
 		/* QP value for each layer */
-		if (p_264->hier_qp) {
-			for (i = 0; i < (p_264->hier_qp_layer & 0x7); i++)
-			WRITEL(p_264->hier_qp_layer_qp[i],
-					S5P_FIMV_E_H264_HIERARCHICAL_QP_LAYER0 + i * 4);
+		if (p_264->hier_qp_enable) {
+			for (i = 0; i < (p_264->num_hier_layer & 0x7); i++)
+			WRITEL(p_264->hier_qp_layer[i],
+					S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
 		}
 		if (p->rc_frame) {
-			for (i = 0; i < (p_264->hier_qp_layer & 0x7); i++)
-			WRITEL(p_264->hier_qp_layer_bit[i],
-					S5P_FIMV_E_H264_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+			for (i = 0; i < (p_264->num_hier_layer & 0x7); i++)
+			WRITEL(p_264->hier_bit_layer[i],
+					S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+		}
+		if (p_264->set_priority)
+		{
+			reg = 0;
+			reg2 = 0;
+			for (i = 0; i < (p_264->num_hier_layer & 0x7); i++) {
+				if (i <= 4)
+					reg |= ((p_264->base_priority & 0x3F) + i) << (6 * i);
+				else
+					reg2 |= ((p_264->base_priority & 0x3F) + i) << (6 * (i - 5));
+			}
+			WRITEL(reg, S5P_FIMV_E_H264_HD_SVC_EXTENSION_0);
+			WRITEL(reg2, S5P_FIMV_E_H264_HD_SVC_EXTENSION_1);
 		}
 	}
-	/* number of coding layer should be zero when hierarchical is disable */
-	WRITEL(reg, S5P_FIMV_E_H264_NUM_T_LAYER);
 
 	/* set frame pack sei generation */
 	if (p_264->sei_gen_enable) {
@@ -2180,27 +2226,27 @@ static int s5p_mfc_set_enc_params_vp8(struct s5p_mfc_ctx *ctx)
 	/* hier qp enable */
 	reg = READL(S5P_FIMV_E_VP8_OPTION);
 	reg &= ~(0x1 << 11);
-	reg |= ((p_vp8->hierarchy_qp_enable & 0x1) << 11);
+	reg |= ((p_vp8->hier_qp_enable & 0x1) << 11);
 	WRITEL(reg, S5P_FIMV_E_VP8_OPTION);
 	reg = 0;
-	if (p_vp8->num_temporal_layer) {
-		reg |= p_vp8->num_temporal_layer & 0x3;
-		WRITEL(reg, S5P_FIMV_E_VP8_NUM_T_LAYER);
+	if (p_vp8->num_hier_layer) {
+		reg |= p_vp8->num_hier_layer & 0x3;
+		WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
 		/* QP value for each layer */
-		if (p_vp8->hierarchy_qp_enable) {
-			for (i = 0; i < (p_vp8->num_temporal_layer & 0x3); i++)
-			WRITEL(p_vp8->hier_qp_layer_qp[i],
-					S5P_FIMV_E_VP8_HIERARCHICAL_QP_LAYER0 + i * 4);
+		if (p_vp8->hier_qp_enable) {
+			for (i = 0; i < (p_vp8->num_hier_layer & 0x3); i++)
+			WRITEL(p_vp8->hier_qp_layer[i],
+					S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
 		}
 		if (p->rc_frame) {
-			for (i = 0; i < (p_vp8->num_temporal_layer & 0x3); i++)
-			WRITEL(p_vp8->hier_qp_layer_bit[i],
-					S5P_FIMV_E_H264_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
+			for (i = 0; i < (p_vp8->num_hier_layer & 0x3); i++)
+			WRITEL(p_vp8->hier_bit_layer[i],
+					S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
 		}
 	}
 	/* number of coding layer should be zero when hierarchical is disable */
-	reg |= p_vp8->num_temporal_layer;
-	WRITEL(reg, S5P_FIMV_E_VP8_NUM_T_LAYER);
+	reg |= p_vp8->num_hier_layer;
+	WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
 
 	reg = 0;
 	reg |= (p_vp8->vp8_filtersharpness & 0x7);
@@ -2300,8 +2346,8 @@ static int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 	reg |= (p_hevc->lossless_cu_enable & 0x1) << 6;
 	reg |= (p_hevc->wavefront_enable & 0x1) << 7;
 	reg |= (p_hevc->loopfilter_disable & 0x1) << 8;
-	reg |= (p_hevc->longterm_ref_enable & 0x1) << 10;
-	reg |= (p_hevc->hier_qp & 0x1) << 11;
+	reg |= (p_hevc->enable_ltr & 0x1) << 10;
+	reg |= (p_hevc->hier_qp_enable & 0x1) << 11;
 	reg |= (p_hevc->sign_data_hiding & 0x1) << 12;
 	reg |= (p_hevc->general_pb_enable & 0x1) << 13;
 	reg |= (p_hevc->temporal_id_enable & 0x1) << 14;
@@ -2332,7 +2378,7 @@ static int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 		reg |= (p_hevc->loopfilter_across & 0x1) << 9;
 	}
 	/* long term reference */
-	if (p_hevc->longterm_ref_enable) {
+	if (p_hevc->enable_ltr) {
 		reg = 0;
 		reg |= (p_hevc->store_ref & 0x3);
 		reg &= ~(0x3 << 2);
@@ -2340,19 +2386,19 @@ static int s5p_mfc_set_enc_params_hevc(struct s5p_mfc_ctx *ctx)
 		WRITEL(reg, S5P_FIMV_E_HEVC_NAL_CONTROL);
 	}
 	/* hier qp enable */
-	if (p_hevc->hier_qp_layer) {
+	if (p_hevc->num_hier_layer) {
 		reg |= (p_hevc->hier_qp_type & 0x1) << 0x3;
-		reg |= p_hevc->hier_qp_layer & 0x7;
+		reg |= p_hevc->num_hier_layer & 0x7;
 		WRITEL(reg, S5P_FIMV_E_NUM_T_LAYER);
 		/* QP value for each layer */
-		if (p_hevc->hier_qp) {
-			for (i = 0; i < (p_hevc->hier_qp_layer & 0x7); i++)
-				WRITEL(p_hevc->hier_qp_layer_qp,
+		if (p_hevc->hier_qp_enable) {
+			for (i = 0; i < (p_hevc->num_hier_layer & 0x7); i++)
+				WRITEL(p_hevc->hier_qp_layer[i],
 					S5P_FIMV_E_HIERARCHICAL_QP_LAYER0 + i * 4);
 		}
 		if (p->rc_frame) {
-			for (i = 0; i < (p_hevc->hier_qp_layer & 0x7); i++)
-				WRITEL(p_hevc->hier_qp_layer_bit,
+			for (i = 0; i < (p_hevc->num_hier_layer & 0x7); i++)
+				WRITEL(p_hevc->hier_bit_layer[i],
 					S5P_FIMV_E_HIERARCHICAL_BIT_RATE_LAYER0 + i * 4);
 		}
 	}
@@ -2641,6 +2687,109 @@ static int s5p_mfc_h264_set_aso_slice_order(struct s5p_mfc_ctx *ctx)
 	return 0;
 }
 
+static inline void s5p_mfc_set_stride_enc(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	int i;
+
+	if (IS_MFCv7X(dev) || IS_MFCV8(dev)) {
+		for (i = 0; i < ctx->raw_buf.num_planes; i++) {
+			WRITEL(ctx->raw_buf.stride[i],
+				S5P_FIMV_E_SOURCE_FIRST_STRIDE + (i * 4));
+			mfc_debug(2, "enc src[%d] stride: 0x%08lx",
+				i, (unsigned long)ctx->raw_buf.stride[i]);
+		}
+	}
+}
+
+/*
+	When the resolution is changed,
+	s5p_mfc_start_change_resol_enc() should be called right before NAL_START.
+	return value
+	0: no resolution change
+	1: resolution swap
+	2: resolution change
+*/
+int s5p_mfc_start_change_resol_enc(struct s5p_mfc_ctx *ctx)
+{
+	struct s5p_mfc_dev *dev = ctx->dev;
+	struct s5p_mfc_enc *enc = ctx->enc_priv;
+	struct s5p_mfc_enc_params *p = &enc->params;
+	unsigned int reg = 0;
+	int old_img_width;
+	int old_img_height;
+	int new_img_width;
+	int new_img_height;
+	int ret = 0;
+
+	if ((ctx->img_width == 0) || (ctx->img_height == 0)) {
+		mfc_err("new_img_width = %d, new_img_height = %d\n",
+			ctx->img_width, ctx->img_height);
+		return 0;
+	}
+
+	old_img_width = ctx->old_img_width;
+	old_img_height = ctx->old_img_height;
+
+	new_img_width = ctx->img_width;
+	new_img_height = ctx->img_height;
+
+	if ((old_img_width == new_img_width) && (old_img_height == new_img_height)) {
+		mfc_err("Resolution is not changed. new_img_width = %d, new_img_height = %d\n",
+			new_img_width, new_img_height);
+		return 0;
+	}
+
+	mfc_info_ctx("Resolution Change : (%d x %d) -> (%d x %d)\n",
+		old_img_width, old_img_height, new_img_width, new_img_height);
+
+	if (ctx->img_width) {
+		ctx->buf_width = ALIGN(ctx->img_width, S5P_FIMV_NV12M_HALIGN);
+	}
+
+	if ((old_img_width == new_img_height) && (old_img_height == new_img_width)) {
+		reg = READL(S5P_FIMV_E_PARAM_CHANGE);
+		reg &= ~(0x1 << 6);
+		reg |= (0x1 << 6); /* resolution swap */
+		WRITEL(reg, S5P_FIMV_E_PARAM_CHANGE);
+		ret = 1;
+	} else {
+		reg = READL(S5P_FIMV_E_PARAM_CHANGE);
+		reg &= ~(0x3 << 7);
+		/* For now, FW does not care S5P_FIMV_E_PARAM_CHANGE is 1 or 2.
+		 * It cares S5P_FIMV_E_PARAM_CHANGE is NOT zero.
+		 */
+		if ((old_img_width*old_img_height) < (new_img_width*new_img_height)) {
+			reg |= (0x1 << 7); /* resolution increased */
+			mfc_info_ctx("Resolution Increased\n");
+		} else {
+			reg |= (0x2 << 7); /* resolution decreased */
+			mfc_info_ctx("Resolution Decreased\n");
+		}
+		WRITEL(reg, S5P_FIMV_E_PARAM_CHANGE);
+
+		/** set cropped width */
+		WRITEL(ctx->img_width, S5P_FIMV_E_CROPPED_FRAME_WIDTH);
+		/** set cropped height */
+		WRITEL(ctx->img_height, S5P_FIMV_E_CROPPED_FRAME_HEIGHT);
+
+		/* bit rate */
+		if (p->rc_frame)
+			WRITEL(p->rc_bitrate, S5P_FIMV_E_RC_BIT_RATE);
+		else
+			WRITEL(1, S5P_FIMV_E_RC_BIT_RATE);
+		ret = 2;
+	}
+
+	/** set new stride */
+	s5p_mfc_set_stride_enc(ctx);
+
+	/** set cropped offset */
+	WRITEL(0x0, S5P_FIMV_E_FRAME_CROP_OFFSET);
+
+	return ret;
+}
+
 /* Encode a single frame */
 int s5p_mfc_encode_one_frame(struct s5p_mfc_ctx *ctx, int last_frame)
 {
@@ -2652,6 +2801,11 @@ int s5p_mfc_encode_one_frame(struct s5p_mfc_ctx *ctx, int last_frame)
 		s5p_mfc_h264_set_aso_slice_order(ctx);
 
 	s5p_mfc_set_slice_mode(ctx);
+
+	if (ctx->enc_drc_flag) {
+		ctx->enc_res_change = s5p_mfc_start_change_resol_enc(ctx);
+		ctx->enc_drc_flag = 0;
+	}
 
 	WRITEL(ctx->inst_no, S5P_FIMV_INSTANCE_ID);
 	/* Issue different commands to instance basing on whether it
@@ -3139,21 +3293,6 @@ static inline int s5p_mfc_run_init_dec(struct s5p_mfc_ctx *ctx)
 	return 0;
 }
 
-static inline void s5p_mfc_set_stride_enc(struct s5p_mfc_ctx *ctx)
-{
-	struct s5p_mfc_dev *dev = ctx->dev;
-	int i;
-
-	if (IS_MFCv7X(dev) || IS_MFCV8(dev)) {
-		for (i = 0; i < ctx->raw_buf.num_planes; i++) {
-			WRITEL(ctx->raw_buf.stride[i],
-				S5P_FIMV_E_SOURCE_FIRST_STRIDE + (i * 4));
-			mfc_debug(2, "enc src[%d] stride: 0x%08lx",
-				i, (unsigned long)ctx->raw_buf.stride[i]);
-		}
-	}
-}
-
 static inline int s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 {
 	struct s5p_mfc_dev *dev = ctx->dev;
@@ -3164,6 +3303,12 @@ static inline int s5p_mfc_run_init_enc(struct s5p_mfc_ctx *ctx)
 	int ret;
 
 	spin_lock_irqsave(&dev->irqlock, flags);
+
+	if (list_empty(&ctx->dst_queue)) {
+		mfc_debug(2, "no dst buffers.\n");
+		spin_unlock_irqrestore(&dev->irqlock, flags);
+		return -EAGAIN;
+	}
 
 	dst_mb = list_entry(ctx->dst_queue.next, struct s5p_mfc_buf, list);
 	dst_addr = s5p_mfc_mem_plane_addr(ctx, &dst_mb->vb, 0);

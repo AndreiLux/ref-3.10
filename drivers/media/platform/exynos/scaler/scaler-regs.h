@@ -306,8 +306,8 @@ static inline void sc_hwset_src_init_phase(struct sc_dev *sc, struct sc_init_pha
 }
 
 void sc_hwset_polyphase_hcoef(struct sc_dev *sc,
-				unsigned int yratio, unsigned int cratio);
+		unsigned int yratio, unsigned int cratio, unsigned int filter);
 void sc_hwset_polyphase_vcoef(struct sc_dev *sc,
-				unsigned int yratio, unsigned int cratio);
+		unsigned int yratio, unsigned int cratio, unsigned int filter);
 
 #endif /*__SCALER_REGS_H__*/

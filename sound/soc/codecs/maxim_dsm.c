@@ -8,6 +8,9 @@
 #include <sound/soc.h>
 #include <sound/tlv.h>
 #include <sound/maxim_dsm.h>
+#ifdef CONFIG_COMPAT
+#include <linux/compat.h>
+#endif /* CONFIG_COMPAT */
 #if defined(CONFIG_SND_SOC_QDSP6V2) || defined(CONFIG_SND_SOC_QDSP6)
 #include <sound/q6afe-v2.h>
 #endif /* CONFIG_SND_SOC_QDSP6V2 || CONFIG_SND_SOC_QDSP6 */
@@ -18,19 +21,25 @@
 pr_info("[MAXIM_DSM] %s: " format "\n", __func__, ## args)
 #else
 #define dbg_maxdsm(format, args...)
-#endif /* DEBUG_MAX98505 */
+#endif /* DEBUG_MAXIM_DSM */
 
 static struct maxim_dsm maxdsm = {
 	.regmap = NULL,
 	.param_size = PARAM_DSM_3_5_MAX,
-	.platform_type = 0,
+	.platform_type = PLATFORM_TYPE_A,
 	.port_id = DSM_RX_PORT_ID,
 	.rx_mod_id = AFE_PARAM_ID_ENABLE_DSM_RX,
 	.tx_mod_id = AFE_PARAM_ID_ENABLE_DSM_TX,
 	.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS,
-	.version = VERSION_3_5,
+	.version = VERSION_3_5_A,
 	.registered = 0,
+	.update_cal = 0,
+	.ignore_mask =
+		MAXDSM_IGNORE_MASK_VOICE_COIL |
+		MAXDSM_IGNORE_MASK_AMBIENT_TEMP,
 };
+module_param_named(ignore_mask, maxdsm.ignore_mask, uint,
+		S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 
 static struct param_set_data maxdsm_saved_params[] = {
 	{
@@ -39,324 +48,522 @@ static struct param_set_data maxdsm_saved_params[] = {
 	},
 };
 
-static DEFINE_MUTEX(dsm_lock);
-
-static struct param_lsi_info g_pbi[PARAM_LSI_DSM_3_5_MAX] = {
+static struct param_info g_pbi[(PARAM_A_DSM_4_0_MAX >> 1)] = {
 	{
-		.id = PARAM_LSI_VOICE_COIL_TEMP,
+		.id = PARAM_A_VOICE_COIL_TEMP,
 		.addr = 0x2A004C,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_EXCURSION,
+		.id = PARAM_A_EXCURSION,
 		.addr = 0x2A004E,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RDC,
+		.id = PARAM_A_RDC,
 		.addr = 0x2A0050,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_Q_LO,
+		.id = PARAM_A_Q_LO,
 		.addr = 0x2A0052,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_Q_HI,
+		.id = PARAM_A_Q_HI,
 		.addr = 0x2A0054,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_FRES_LO,
+		.id = PARAM_A_FRES_LO,
 		.addr = 0x2A0056,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_FRES_HI,
+		.id = PARAM_A_FRES_HI,
 		.addr = 0x2A0058,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_EXCUR_LIMIT,
+		.id = PARAM_A_EXCUR_LIMIT,
 		.addr = 0x2A005A,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_VOICE_COIL,
+		.id = PARAM_A_VOICE_COIL,
 		.addr = 0x2A005C,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_THERMAL_LIMIT,
+		.id = PARAM_A_THERMAL_LIMIT,
 		.addr = 0x2A005E,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RELEASE_TIME,
+		.id = PARAM_A_RELEASE_TIME,
 		.addr = 0x2A0060,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ONOFF,
+		.id = PARAM_A_ONOFF,
 		.addr = 0x2A0062,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_STATIC_GAIN,
+		.id = PARAM_A_STATIC_GAIN,
 		.addr = 0x2A0064,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LFX_GAIN,
+		.id = PARAM_A_LFX_GAIN,
 		.addr = 0x2A0066,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_PILOT_GAIN,
+		.id = PARAM_A_PILOT_GAIN,
 		.addr = 0x2A0068,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_FEATURE_SET,
+		.id = PARAM_A_FEATURE_SET,
 		.addr = 0x2A006A,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_SMOOTH_VOLT,
+		.id = PARAM_A_SMOOTH_VOLT,
 		.addr = 0x2A006C,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_HPF_CUTOFF,
+		.id = PARAM_A_HPF_CUTOFF,
 		.addr = 0x2A006E,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LEAD_R,
+		.id = PARAM_A_LEAD_R,
 		.addr = 0x2A0070,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RMS_SMOO_FAC,
+		.id = PARAM_A_RMS_SMOO_FAC,
 		.addr = 0x2A0072,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_CLIP_LIMIT,
+		.id = PARAM_A_CLIP_LIMIT,
 		.addr = 0x2A0074,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_THERMAL_COEF,
+		.id = PARAM_A_THERMAL_COEF,
 		.addr = 0x2A0076,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_QSPK,
+		.id = PARAM_A_QSPK,
 		.addr = 0x2A0078,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_EXCUR_LOG_THRESH,
+		.id = PARAM_A_EXCUR_LOG_THRESH,
 		.addr = 0x2A007A,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_TEMP_LOG_THRESH,
+		.id = PARAM_A_TEMP_LOG_THRESH,
 		.addr = 0x2A007C,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RES_FREQ,
+		.id = PARAM_A_RES_FREQ,
 		.addr = 0x2A007E,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RES_FREQ_GUARD_BAND,
+		.id = PARAM_A_RES_FREQ_GUARD_BAND,
 		.addr = 0x2A0080,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_AMBIENT_TEMP,
+		.id = PARAM_A_AMBIENT_TEMP,
 		.addr = 0x2A0182,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ADMITTANCE_A1,
+		.id = PARAM_A_ADMITTANCE_A1,
 		.addr = 0x2A0184,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ADMITTANCE_A2,
+		.id = PARAM_A_ADMITTANCE_A2,
 		.addr = 0x2A0186,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ADMITTANCE_B0,
+		.id = PARAM_A_ADMITTANCE_B0,
 		.addr = 0x2A0188,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ADMITTANCE_B1,
+		.id = PARAM_A_ADMITTANCE_B1,
 		.addr = 0x2A018A,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ADMITTANCE_B2,
+		.id = PARAM_A_ADMITTANCE_B2,
 		.addr = 0x2A018C,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RTH1_HI,
+		.id = PARAM_A_RTH1_HI,
 		.addr = 0x2A018E,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RTH2_HI,
+		.id = PARAM_A_RTH1_LO,
 		.addr = 0x2A0190,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RTH1_LO,
+		.id = PARAM_A_RTH2_HI,
 		.addr = 0x2A0192,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RTH2_LO,
+		.id = PARAM_A_RTH2_LO,
 		.addr = 0x2A0194,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_STL_ATENGAIN_HI,
+		.id = PARAM_A_STL_ATENGAIN_HI,
 		.addr = 0x2A0196,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_STL_ATENGAIN_LO,
+		.id = PARAM_A_STL_ATENGAIN_LO,
 		.addr = 0x2A0198,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_SPT_RAMP_DOWN_FRAMES,
+		.id = PARAM_A_SPT_RAMP_DOWN_FRAMES,
 		.addr = 0x2A019A,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_SPT_THRESHOLD_HI,
+		.id = PARAM_A_SPT_THRESHOLD_HI,
 		.addr = 0x2A019C,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_SPT_THRESHOLD_LO,
+		.id = PARAM_A_SPT_THRESHOLD_LO,
 		.addr = 0x2A019E,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_T_HORIZON,
+		.id = PARAM_A_T_HORIZON,
 		.addr = 0x2A01A0,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_A1,
+		.id = PARAM_A_LFX_ADMITTANCE_A1,
 		.addr = 0x2A01A2,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_A2,
+		.id = PARAM_A_LFX_ADMITTANCE_A2,
 		.addr = 0x2A01A4,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_B0,
+		.id = PARAM_A_LFX_ADMITTANCE_B0,
 		.addr = 0x2A01A6,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_B1,
+		.id = PARAM_A_LFX_ADMITTANCE_B1,
 		.addr = 0x2A01A8,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_LFX_ADMITTANCE_B2,
+		.id = PARAM_A_LFX_ADMITTANCE_B2,
 		.addr = 0x2A01AA,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_ALGORITHM_X_MAX,
+		.id = PARAM_A_ALGORITHM_X_MAX,
 		.addr = 0x2A01AC,
 		.size = 2,
 		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RESERVE1,
+		.id = PARAM_A_STL_TCTH1_HI,
 		.addr = 0x2A01AE,
 		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RESERVE2,
+		.id = PARAM_A_STL_TCTH1_LO,
 		.addr = 0x2A01B0,
 		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RESERVE3,
+		.id = PARAM_A_STL_TCTH2_HI,
 		.addr = 0x2A01B2,
 		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 	{
-		.id = PARAM_LSI_RESERVE4,
-		.addr = 0x2A01B2,
+		.id = PARAM_A_STL_TCTH2_LO,
+		.addr = 0x2A01B4,
 		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STL_ATTACK_HI,
+		.addr = 0x2A01B6,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STL_ATTACK_LO,
+		.addr = 0x2A01B8,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STL_RELEASE_HI,
+		.addr = 0x2A01BA,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STL_RELEASE_LO,
+		.addr = 0x2A01BC,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STL_SPK_FS,
+		.addr = 0x2A01BE,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_Q_GUARD_BAND_HI,
+		.addr = 0x2A01C0,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_Q_GUARD_BAND_LO,
+		.addr = 0x2A01C2,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_A1_HI,
+		.addr = 0x2A01C4,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_A1_LO,
+		.addr = 0x2A01C6,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_A2_HI,
+		.addr = 0x2A01C8,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_A2_LO,
+		.addr = 0x2A01CA,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_B0_HI,
+		.addr = 0x2A01CC,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_B0_LO,
+		.addr = 0x2A01CE,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_B1_HI,
+		.addr = 0x2A01D0,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_B1_LO,
+		.addr = 0x2A01D2,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_B2_HI,
+		.addr = 0x2A01D4,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_COEFFS_B2_LO,
+		.addr = 0x2A01D6,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_STIMPEDMODEL_FLAG,
+		.addr = 0x2A01D8,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_Q_NOTCH_HI,
+		.addr = 0x2A01DA,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
+	},
+	{
+		.id = PARAM_A_Q_NOTCH_LO,
+		.addr = 0x2A01DC,
+		.size = 2,
+		.type = sizeof(uint32_t),
+		.val = 0,
 	},
 };
+
+static DEFINE_MUTEX(dsm_fs_lock);
+static DEFINE_MUTEX(dsm_dsp_lock);
 
 #ifdef USE_DSM_LOG
 static DEFINE_MUTEX(maxdsm_log_lock);
@@ -372,7 +579,7 @@ static uint32_t maxdsm_int_log_array[BEFORE_BUFSIZE];
 static uint8_t maxdsm_after_prob_byte_log_array[AFTER_BUFSIZE];
 static uint32_t maxdsm_after_prob_int_log_array[AFTER_BUFSIZE];
 
-static struct param_lsi_info g_lbi[MAX_LOG_BUFFER_POS] = {
+static struct param_info g_lbi[MAX_LOG_BUFFER_POS] = {
 	{
 		.id = WRITE_PROTECT,
 		.addr = 0x2A0082,
@@ -499,6 +706,21 @@ static inline int32_t dsm_open(void *data)
 }
 #endif /* !CONFIG_SND_SOC_QDSP6V2 && !CONFIG_SND_SOC_QDSP6 */
 
+static inline int32_t maxdsm_dsm_open(void *data)
+{
+	int32_t ret;
+
+	if (maxdsm.ignore_mask == MAXDSM_IGNORE_MASK_ALL &&
+			maxdsm.filter_set == DSM_ID_FILTER_SET_AFE_CNTRLS)
+		return -EPERM;
+
+	mutex_lock(&dsm_dsp_lock);
+	ret = dsm_open(data);
+	mutex_unlock(&dsm_dsp_lock);
+
+	return ret;
+}
+
 void maxdsm_set_regmap(struct regmap *regmap)
 {
 	maxdsm.regmap = regmap;
@@ -506,6 +728,22 @@ void maxdsm_set_regmap(struct regmap *regmap)
 			maxdsm.regmap);
 }
 EXPORT_SYMBOL_GPL(maxdsm_set_regmap);
+
+static int maxdsm_check_ignore_mask(uint32_t reg, uint32_t mask)
+{
+	int ret = 0;
+
+	if ((mask & MAXDSM_IGNORE_MASK_VOICE_COIL) &&
+			(reg == g_pbi[PARAM_A_VOICE_COIL >> 1].addr))
+		ret = -EPERM;
+	else if ((mask & MAXDSM_IGNORE_MASK_AMBIENT_TEMP) &&
+			(reg == g_pbi[PARAM_A_AMBIENT_TEMP >> 1].addr))
+		ret = -EPERM;
+	else if (mask & MAXDSM_IGNORE_MASK_ALL)
+		ret = -EPERM;
+
+	return ret;
+}
 
 static int maxdsm_regmap_read(unsigned int reg,
 		unsigned int *val)
@@ -517,25 +755,113 @@ static int maxdsm_regmap_read(unsigned int reg,
 static int maxdsm_regmap_write(unsigned int reg,
 		unsigned int val)
 {
+	if (maxdsm_check_ignore_mask(reg, maxdsm.ignore_mask)) {
+		dbg_maxdsm("Ignored 0x%x register", reg);
+		return 0;
+	}
+
 	return maxdsm.regmap ?
 		regmap_write(maxdsm.regmap, reg, val) : -ENXIO;
 }
 
-static void maxdsm_read_all_reg(void)
+static void maxdsm_read_all(void)
 {
-	int idx = 0;
-	uint32_t data;
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		{
+		int param_idx, pbi_idx = 0;
+		uint32_t data;
 
-	memset(maxdsm.param, 0x00,
-			sizeof(int) * maxdsm.param_size);
-	while (idx++ < PARAM_LSI_DSM_3_5_MAX) {
-		if (!g_pbi[idx-1].type)
-			continue;
-		maxdsm_regmap_read(g_pbi[idx-1].addr, &data);
-		maxdsm.param[idx-1] = data;
-		dbg_maxdsm("maxdsm.param[%d]=0x%x", idx - 1,
-				maxdsm.param[idx - 1]);
+		while (pbi_idx++ < (maxdsm.param_size >> 1)) {
+			param_idx = (pbi_idx - 1) << 1;
+			data = 0;
+			maxdsm_regmap_read(g_pbi[pbi_idx - 1].addr, &data);
+			maxdsm.param[param_idx] = data;
+			maxdsm.param[param_idx + 1] =
+				(1 << maxdsm.binfo[pbi_idx - 1]);
+			dbg_maxdsm("[%d,%d]: 0x%08x / 0x%08x (addr:0x%08x",
+					param_idx, param_idx + 1,
+					maxdsm.param[param_idx],
+					maxdsm.param[param_idx + 1],
+					g_pbi[pbi_idx - 1].addr);
+		}
+		break;
+		}
+	case PLATFORM_TYPE_B:
+		maxdsm.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS;
+		maxdsm_dsm_open(&maxdsm);
+		break;
 	}
+}
+
+static void maxdsm_write_all(void)
+{
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		{
+		int param_idx, pbi_idx = 0;
+
+		while (pbi_idx++ < (maxdsm.param_size >> 1)) {
+			param_idx = (pbi_idx - 1) << 1;
+			maxdsm_regmap_write(
+					g_pbi[pbi_idx - 1].addr,
+					maxdsm.param[param_idx]);
+			dbg_maxdsm("[%d,%d]: 0x%08x / 0x%08x (0x%08x)",
+					param_idx, param_idx + 1,
+					maxdsm.param[param_idx],
+					maxdsm.param[param_idx + 1],
+					g_pbi[pbi_idx - 1].addr);
+		}
+		break;
+		}
+	case PLATFORM_TYPE_B:
+		maxdsm.filter_set = DSM_ID_FILTER_SET_AFE_CNTRLS;
+		maxdsm_dsm_open(&maxdsm);
+		break;
+	}
+}
+
+static int maxdsm_read_wrapper(unsigned int reg,
+		unsigned int *val)
+{
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		maxdsm_regmap_read(reg, val);
+		break;
+	case PLATFORM_TYPE_B:
+		maxdsm_read_all();
+		*val = maxdsm.param[reg];
+		break;
+	}
+
+	return *val;
+}
+
+static int maxdsm_write_wrapper(unsigned int reg,
+		unsigned int val, unsigned int flag)
+{
+	int ret = -ENODATA;
+
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		maxdsm_regmap_write(reg, val);
+		maxdsm_regmap_read(reg, &ret);
+		break;
+	case PLATFORM_TYPE_B:
+		if (reg > maxdsm.param_size)
+			pr_err("%s: Unknown parameter index. %d\n",
+					__func__, reg);
+		else {
+			maxdsm.param[PARAM_WRITE_FLAG] = flag;
+			maxdsm.param[reg] = val;
+			maxdsm_write_all();
+			maxdsm_read_all();
+			ret = maxdsm.param[reg];
+		}
+		break;
+	}
+
+	return ret;
 }
 
 #ifdef USE_DSM_LOG
@@ -545,6 +871,7 @@ void maxdsm_log_update(const void *byte_log_array,
 		const void *after_prob_int_log_array)
 {
 	struct timeval tv;
+
 	mutex_lock(&maxdsm_log_lock);
 
 	memcpy(maxdsm_byte_log_array,
@@ -566,8 +893,9 @@ void maxdsm_log_update(const void *byte_log_array,
 
 	mutex_unlock(&maxdsm_log_lock);
 }
+EXPORT_SYMBOL_GPL(maxdsm_log_update);
 
-static void maxdsm_read_logbuf_reg(void)
+void maxdsm_read_logbuf_reg(void)
 {
 	int idx;
 	int b_idx, i_idx;
@@ -576,8 +904,10 @@ static void maxdsm_read_logbuf_reg(void)
 	uint32_t data;
 	struct timeval tv;
 
-	if (maxdsm.platform_type)
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_B:
 		return;
+	}
 
 	mutex_lock(&maxdsm_log_lock);
 
@@ -624,33 +954,35 @@ int maxdsm_get_dump_status(void)
 {
 	int ret = 0;
 
-	if (!maxdsm.platform_type)
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
 		ret = maxdsm_regmap_read(g_lbi[LOG_AVAILABLE].addr,
 				&new_log_avail);
+		break;
+	}
 
 	return !ret ? (new_log_avail & 0x03) : ret;
 }
+EXPORT_SYMBOL_GPL(maxdsm_get_dump_status);
 
 void maxdsm_update_param(void)
 {
-	if (!maxdsm.platform_type) {
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
 		maxdsm_regmap_write(g_lbi[WRITE_PROTECT].addr, 1);
-		maxdsm_read_all_reg();
 		maxdsm_read_logbuf_reg();
 		maxdsm_regmap_write(g_lbi[WRITE_PROTECT].addr, 0);
-	} else {
-		mutex_lock(&dsm_lock);
-
-		/* get params from the algorithm */
+		break;
+	case PLATFORM_TYPE_B:
 		maxdsm.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS;
-		dsm_open(&maxdsm);
+		maxdsm_dsm_open(&maxdsm);
 		if (maxdsm.param[PARAM_EXCUR_LIMIT] != 0
 				&& maxdsm.param[PARAM_THERMAL_LIMIT] != 0)
 			new_log_avail |= 0x1;
-
-		mutex_unlock(&dsm_lock);
+		break;
 	}
 }
+EXPORT_SYMBOL_GPL(maxdsm_update_param);
 
 static void maxdsm_log_free(void **byte_log_array, void **int_log_array,
 		void **afterbyte_log_array, void **after_int_log_array)
@@ -750,23 +1082,23 @@ ssize_t maxdsm_log_prepare(char *buf)
 	uint32_t *excur_after_rdc_log_array;
 	uint32_t *excur_after_freq_log_array;
 
-	int param_excur_limit = PARAM_LSI_EXCUR_LIMIT;
-	int param_thermal_limit = PARAM_LSI_THERMAL_LIMIT;
-	int param_voice_coil = PARAM_LSI_VOICE_COIL;
-	int param_release_time = PARAM_LSI_RELEASE_TIME;
-	int param_static_gain = PARAM_LSI_STATIC_GAIN;
-	int param_lfx_gain = PARAM_LSI_LFX_GAIN;
-	int param_pilot_gain = PARAM_LSI_PILOT_GAIN;
+	int param_excur_limit = PARAM_A_EXCUR_LIMIT;
+	int param_thermal_limit = PARAM_A_THERMAL_LIMIT;
+	int param_voice_coil = PARAM_A_VOICE_COIL;
+	int param_release_time = PARAM_A_RELEASE_TIME;
+	int param_static_gain = PARAM_A_STATIC_GAIN;
+	int param_lfx_gain = PARAM_A_LFX_GAIN;
+	int param_pilot_gain = PARAM_A_PILOT_GAIN;
 
 	rc = maxdsm_log_duplicate((void **)&byte_log_array,
 			(void **)&int_log_array, (void **)&afterbyte_log_array,
 			(void **)&after_int_log_array);
 
 	switch (maxdsm.platform_type) {
-	case 0: /* LSI */
+	case PLATFORM_TYPE_A:
 		/* Already initialized */
 		break;
-	case 1: /* QCOM */
+	case PLATFORM_TYPE_B:
 		param_excur_limit = PARAM_EXCUR_LIMIT;
 		param_thermal_limit = PARAM_THERMAL_LIMIT;
 		param_voice_coil = PARAM_VOICE_COIL;
@@ -782,17 +1114,20 @@ ssize_t maxdsm_log_prepare(char *buf)
 		if (maxdsm.param[param_excur_limit] != 0 &&
 				maxdsm.param[param_thermal_limit] != 0) {
 			rc += snprintf(buf+rc, PAGE_SIZE,
-					"[Parameter Set] excursionlimit:0x%x, "
-					"rdcroomtemp:0x%x, coilthermallimit:0x%x, "
-					"releasetime:0x%x\n"
-					, maxdsm.param[param_excur_limit],
+					"[Parameter Set] excursionlimit:0x%x, ",
+					maxdsm.param[param_excur_limit]);
+			rc += snprintf(buf+rc, PAGE_SIZE,
+					"rdcroomtemp:0x%x, coilthermallimit:0x%x, ",
 					maxdsm.param[param_voice_coil],
-					maxdsm.param[param_thermal_limit],
+					maxdsm.param[param_thermal_limit]);
+			rc += snprintf(buf+rc, PAGE_SIZE,
+					"releasetime:0x%x\n",
 					maxdsm.param[param_release_time]);
 			rc += snprintf(buf+rc, PAGE_SIZE,
-					"[Parameter Set] staticgain:0x%x, lfxgain:0x%x, "
-					"pilotgain:0x%x\n",
-					maxdsm.param[param_static_gain],
+					"[Parameter Set] staticgain:0x%x, ",
+					maxdsm.param[param_static_gain]);
+			rc += snprintf(buf+rc, PAGE_SIZE,
+					"lfxgain:0x%x, pilotgain:0x%0x\n",
 					maxdsm.param[param_lfx_gain],
 					maxdsm.param[param_pilot_gain]);
 		}
@@ -859,8 +1194,7 @@ ssize_t maxdsm_log_prepare(char *buf)
 				excur_after_coil_temp_log_array[8],
 				excur_after_coil_temp_log_array[9]);
 		rc += snprintf(buf+rc, PAGE_SIZE,
-				"Excursion="
-				"{ %d, %d, %d, %d, %d, %d, %d, %d, %d, %d }\n",
+				"Excursion={ %d, %d, %d, %d, %d, %d, %d, %d, %d, %d }\n",
 				excur_after_excur_log_array[0],
 				excur_after_excur_log_array[1],
 				excur_after_excur_log_array[2],
@@ -1004,16 +1338,20 @@ ssize_t maxdsm_log_prepare(char *buf)
 	if (maxdsm.param[param_excur_limit] != 0 &&
 			maxdsm.param[param_thermal_limit] != 0) {
 		rc += snprintf(buf+rc, PAGE_SIZE,
-				"[Parameter Set] excursionlimit:0x%x, "
-				"rdcroomtemp:0x%x, coilthermallimit:0x%x, "
-				"releasetime:0x%x\n",
-				maxdsm.param[param_excur_limit],
+				"[Parameter Set] excursionlimit:0x%x, ",
+				maxdsm.param[param_excur_limit]);
+		rc += snprintf(buf+rc, PAGE_SIZE,
+				"rdcroomtemp:0x%x, coilthermallimit:0x%x, ",
 				maxdsm.param[param_voice_coil],
-				maxdsm.param[param_thermal_limit],
+				maxdsm.param[param_thermal_limit]);
+		rc += snprintf(buf+rc, PAGE_SIZE,
+				"releasetime:0x%x\n",
 				maxdsm.param[param_release_time]);
 		rc += snprintf(buf+rc, PAGE_SIZE,
-				"[Parameter Set] staticgain:0x%x, lfxgain:0x%x, pilotgain:0x%x\n",
-				maxdsm.param[param_static_gain],
+				"[Parameter Set] staticgain:0x%x, ",
+				maxdsm.param[param_static_gain]);
+		rc += snprintf(buf+rc, PAGE_SIZE,
+				"lfxgain:0x%x, pilotgain:0x%x\n",
 				maxdsm.param[param_lfx_gain],
 				maxdsm.param[param_pilot_gain]);
 	}
@@ -1022,28 +1360,57 @@ out:
 
 	return (ssize_t)rc;
 }
+EXPORT_SYMBOL_GPL(maxdsm_log_prepare);
 #endif /* USE_DSM_LOG */
 
-static int maxdsm_set_param(
-		uint32_t wflag, struct param_set_data *data, int size)
+#ifdef USE_DSM_UPDATE_CAL
+ssize_t maxdsm_cal_prepare(char *buf)
+{
+	int rc = 0;
+	int x;
+
+	if (maxdsm.update_cal)	{
+		for (x = 0; x < (maxdsm.param_size >> 1); x++)	{
+			rc += snprintf(buf+rc, PAGE_SIZE,
+					"[%2d] 0x%08x, ",
+					x,
+					(int)(g_pbi[x].val));
+			if ((x%5) == 4)
+				rc += snprintf(buf+rc, PAGE_SIZE,
+						"\n");
+		}
+		rc += snprintf(buf+rc, PAGE_SIZE,
+				"Use Updated Parameters.\n");
+	}	else
+		rc += snprintf(buf+rc, PAGE_SIZE,
+			"Use Default Parameters.\n");
+
+	return (ssize_t)rc;
+}
+EXPORT_SYMBOL_GPL(maxdsm_cal_prepare);
+#endif /* USE_DSM_UPDATE_CAL */
+
+static int maxdsm_set_param(struct param_set_data *data, int size)
 {
 	int loop, ret = 0;
 
-	if (!maxdsm.platform_type) {
-		pr_err("%s: Can't set. platform_type=%d\n",
-				__func__, maxdsm.platform_type);
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		for (loop = 0; loop < size; loop++)
+			maxdsm_regmap_write(data[loop].addr, data[loop].value);
+		break;
+	case PLATFORM_TYPE_B:
+		maxdsm.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS;
+		ret = maxdsm_dsm_open(&maxdsm);
+		maxdsm.param[PARAM_WRITE_FLAG] = data[0].wflag;
+		for (loop = 0; loop < size; loop++)
+			maxdsm.param[data[loop].name] = data[loop].value;
+		maxdsm.filter_set = DSM_ID_FILTER_SET_AFE_CNTRLS;
+		ret = maxdsm_dsm_open(&maxdsm);
+		break;
+	default:
 		return -ENODATA;
 	}
-
-	mutex_lock(&dsm_lock);
-
-	maxdsm.param[PARAM_WRITE_FLAG] = wflag;
-	for (loop = 0; loop < size; loop++)
-		maxdsm.param[data[loop].name] = data[loop].value;
-	maxdsm.filter_set = DSM_ID_FILTER_SET_AFE_CNTRLS;
-	ret = dsm_open(&maxdsm);
-
-	mutex_unlock(&dsm_lock);
 
 	return ret < 0 ? ret : 0;
 }
@@ -1062,9 +1429,46 @@ static int maxdsm_find_index_of_saved_params(
 
 uint32_t maxdsm_get_platform_type(void)
 {
+	dbg_maxdsm("platform_type=%d", maxdsm.platform_type);
 	return maxdsm.platform_type;
 }
 EXPORT_SYMBOL_GPL(maxdsm_get_platform_type);
+
+int maxdsm_update_feature_en_adc(int apply)
+{
+	unsigned int val = 0;
+	unsigned int reg;
+	struct param_set_data data = {
+		.name = PARAM_FEATURE_SET,
+		.addr = 0x2A006A,
+		.value = 0x200,
+		.wflag = FLAG_WRITE_FEATURE_ONLY,
+	};
+
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		reg = data.addr;
+		break;
+	case PLATFORM_TYPE_B:
+		reg = data.name;
+		data.value <<= 1;
+		break;
+	default:
+		return -ENODATA;
+	}
+
+	maxdsm_read_wrapper(reg, &val);
+
+	if (apply)
+		data.value = val | data.value;
+	else
+		data.value = val & ~data.value;
+	dbg_maxdsm("apply=%d data.value=0x%x val=0x%x reg=%x",
+			apply, data.value, val, reg);
+
+	return maxdsm_set_param(&data, 1);
+}
+EXPORT_SYMBOL_GPL(maxdsm_update_feature_en_adc);
 
 int maxdsm_set_feature_en(int on)
 {
@@ -1072,6 +1476,7 @@ int maxdsm_set_feature_en(int on)
 	struct param_set_data data = {
 		.name = PARAM_FEATURE_SET,
 		.value = 0,
+		.wflag = FLAG_WRITE_FEATURE_ONLY,
 	};
 
 	index = maxdsm_find_index_of_saved_params(
@@ -1089,29 +1494,24 @@ int maxdsm_set_feature_en(int on)
 			return -EALREADY;
 		}
 		maxdsm.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS;
-		dsm_open(&maxdsm);
+		maxdsm_dsm_open(&maxdsm);
+
 		maxdsm_saved_params[index].value
 			= maxdsm.param[PARAM_FEATURE_SET];
 		data.value =
 			maxdsm_saved_params[index].value | 0x40;
-		dbg_maxdsm(
-				"data.value=0x%08x maxdsm_saved_params[%d]"
-				".value=0x%08x",
-				data.value,
+		dbg_maxdsm("data.value=0x%08x", data.value);
+		dbg_maxdsm("maxdsm_saved_params[%d].value=0x%08x",
 				index, maxdsm_saved_params[index].value);
 	} else {
 		data.value =
 			maxdsm_saved_params[index].value & ~0x40;
-		dbg_maxdsm(
-				"data.value=0x%08x maxdsm_saved_params[%d]"
-				".value=0x%08x",
-				data.value,
+		dbg_maxdsm("data.value=0x%08x", data.value);
+		dbg_maxdsm("maxdsm_saved_params[%d].value=0x%08x",
 				index, maxdsm_saved_params[index].value);
 	}
 
-	return maxdsm_set_param(
-			FLAG_WRITE_FEATURE_ONLY,
-			&data, 1);
+	return maxdsm_set_param(&data, 1);
 }
 EXPORT_SYMBOL_GPL(maxdsm_set_feature_en);
 
@@ -1121,10 +1521,12 @@ int maxdsm_set_rdc_temp(uint32_t rdc, uint32_t temp)
 		{
 			.name = PARAM_VOICE_COIL,
 			.value = rdc << 19,
+			.wflag = FLAG_WRITE_RDC_CAL_ONLY,
 		},
 		{
 			.name = PARAM_AMBIENT_TEMP,
 			.value = temp << 19,
+			.wflag = FLAG_WRITE_RDC_CAL_ONLY,
 		},
 	};
 
@@ -1132,33 +1534,31 @@ int maxdsm_set_rdc_temp(uint32_t rdc, uint32_t temp)
 			rdc, data[0].value, temp, data[1].value);
 
 	return maxdsm_set_param(
-			FLAG_WRITE_RDC_CAL_ONLY,
 			data,
 			sizeof(data) / sizeof(struct param_set_data));
 }
 EXPORT_SYMBOL_GPL(maxdsm_set_rdc_temp);
 
-#ifdef USE_DSM_CTRL
-void maxdsm_set_dsm_onoff_status(int on)
+int maxdsm_set_dsm_onoff_status(int on)
 {
 	struct param_set_data data[] = {
 		{
 			.name = PARAM_ONOFF,
 			.value = on,
+			.wflag = FLAG_WRITE_ONOFF_ONLY,
 		},
 	};
 
 	return maxdsm_set_param(
-			FLAG_WRITE_ONOFF_ONLY,
 			data,
 			sizeof(data) / sizeof(struct param_set_data));
 }
-#endif /* USE_DSM_CTRL */
+EXPORT_SYMBOL_GPL(maxdsm_set_dsm_onoff_status);
 
 uint32_t maxdsm_get_dcresistance(void)
 {
 	maxdsm.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS;
-	dsm_open(&maxdsm);
+	maxdsm_dsm_open(&maxdsm);
 
 	return maxdsm.param[PARAM_RDC]
 				<< maxdsm.param[PARAM_RDC_SZ];
@@ -1170,14 +1570,191 @@ uint32_t maxdsm_get_dsm_onoff_status(void)
 	return maxdsm.param[PARAM_ONOFF];
 }
 
-void maxdsm_update_info(uint32_t *pinfo, uint32_t *binfo)
+#define V30_SIZE	(PARAM_DSM_3_0_MAX >> 1)
+#define V35_SIZE	((PARAM_DSM_3_5_MAX - PARAM_DSM_3_0_MAX) >> 1)
+#define V40_SIZE	((PARAM_DSM_4_0_MAX - PARAM_DSM_3_5_MAX) >> 1)
+#define A_V35_SIZE	(PARAM_A_DSM_3_5_MAX >> 1)
+#define A_V40_SIZE	((PARAM_A_DSM_4_0_MAX - PARAM_A_DSM_3_5_MAX) >> 1)
+int maxdsm_update_param_info(struct maxim_dsm *maxdsm)
 {
+	uint32_t binfo_v30[V30_SIZE] = {
+		/* dcResistance, coilTemp, qualityFactor */
+		27, 19, 29,
+		/* resonanceFreq, excursionMeasure, rdcroomtemp */
+		9, 0, 27,
+		/* releasetime, coilthermallimit, excursionlimit */
+		30, 19, 27,
+		/* dsmenable */
+		0,
+		/* staticgain, lfxgain, pilotgain */
+		29, 30, 31,
+		/* flagToWrite, featureSetEnable */
+		0, 0,
+		/* smooFacVoltClip, highPassCutOffFactor, leadResistance */
+		30, 30, 27,
+		/* rmsSmooFac, clipLimit, thermalCoeff */
+		31, 27, 20,
+		/* qSpk, excurLoggingThresh, coilTempLoggingThresh */
+		29, 0, 0,
+		/* resFreq, resFreqGuardBand */
+		9, 9
+	}; /* 26 */
+
+	uint32_t binfo_v35[V35_SIZE] = {
+		/* Ambient_Temp, STL_attack_tiem, STL_release_time */
+		19, 19, 19,
+		/* STL_Admittance_a1, STL_Admittance_a2 */
+		30, 30,
+		/* STL_Admittance_b1, STL_Admittance_b1, STL_Admittance_b2 */
+		30, 30, 30,
+		/* Tch1, Rth1, Tch2, Rth2 */
+		24, 24, 24, 24,
+		/* STL_Attenuation_Gain */
+		30,
+		/* SPT_rampDownFrames, SPT_Threshold */
+		0, 19,
+		/* T_horizon */
+		0,
+		/* LFX_Admittance_a1, LFX_Admittance_a2 */
+		28, 28,
+		/* LFX_Admittance_b0, LFX_Admittance_b1, LFX_Admittance_b2 */
+		28, 28, 28,
+	}; /* 21 */
+
+	uint32_t binfo_v40[V40_SIZE] = {
+		/* X_MAX, SPK_FS, Q_GUARD_BAND */
+		0, 0, 0,
+		/* STIMPEDMODEL_CEFS_A1, A2, B0, B1, B2 */
+		0, 0, 0, 0, 0,
+		/* STIMPEDEMODEL_FLAG, Q_NOTCH */
+		0, 0,
+	};
+
+	uint32_t binfo_a_v35[A_V35_SIZE] = {
+		/* temp, excur, rdc, qc_low, qc_hi, fc_low, fc_high */
+		0, 0, 0, 0, 0, 0, 0,
+		/* excur limit, rdc roomt temp, temp limit */
+		1, 1, 1,
+		/* rel time, dsm on/off */
+		2, 2,
+		/* makeup gain, lfx gain, pilot gain */
+		3, 3, 3,
+		/* feature, smoofact, hpfcutoff, lead, rms_smoofact */
+		4, 4, 4, 4, 4,
+		/* volt, thermal coeff, qspk, excursion log, temp log */
+		5, 5, 5, 5, 5,
+		/* res freq, res freq guardband */
+		6, 6,
+		/* ambient temp, stl a1, stl a2, stl b0, stl b1, stl b2 */
+		10, 10, 10, 10, 10, 10,
+		/* rth1 hi, rth2 hi, rth1 lo, rth2 lo */
+		11, 12, 13, 14,
+		/* stl atengain hi, stl atengain lo */
+		15, 16,
+		/* ramp down, spt threshold hi, spt threshold lo */
+		17, 18, 19,
+		/* t horizon, lfx a1, lfx a2 */
+		20, 21, 22,
+		/* lfx b0, lfx b1, lfx b2, algorithm x */
+		23, 24, 25, 26,
+	};
+
+	uint32_t binfo_a_v40[A_V40_SIZE] = {
+		/* TCTH1 hi, TCTH1 lo, TCTH2 hi, TCTH2 lo */
+		1, 2, 3, 4,
+		/* ATTACK hi, ATTACK lo, RELEASE hi, RELEASE lo */
+		5, 6, 7, 8,
+		/* STL_SPK_FS, Q_GUARD_BAND hi, Q_GUARD_BAND lo */
+		9, 10, 11,
+		/* STIMPEDMODEL_CEFS_A1 hi, lo */
+		12, 13,
+		/* STIMPEDMODEL_CEFS_A2 hi, lo */
+		14, 15,
+		/* STIMPEDMODEL_CEFS_B0 hi, lo */
+		16, 17,
+		/* STIMPEDMODEL_CEFS_B1 hi, lo */
+		18, 19,
+		/* STIMPEDMODEL_CEFS_B2 hi, lo */
+		20, 21,
+		/* STIMPEDMODEL_FLAG, Q_NOTCH hi/lo */
+		22, 23, 24,
+	};
+
+	/* Try to get parameter size. */
+	switch (maxdsm->version) {
+	case VERSION_4_0_A:
+		maxdsm->param_size = PARAM_A_DSM_4_0_MAX;
+		break;
+	case VERSION_4_0_B:
+		maxdsm->param_size = PARAM_DSM_4_0_MAX;
+		break;
+	case VERSION_3_5_A:
+		maxdsm->param_size = PARAM_A_DSM_3_5_MAX;
+		break;
+	case VERSION_3_5_B:
+		maxdsm->param_size = PARAM_DSM_3_5_MAX;
+		break;
+	case VERSION_3_0:
+		maxdsm->param_size = PARAM_DSM_3_0_MAX;
+		break;
+	default:
+		pr_err("%s: Unknown version. %d\n", __func__,
+				maxdsm->version);
+		return -EINVAL;
+	}
+
+	kfree(maxdsm->binfo);
+	maxdsm->binfo = kzalloc(
+			sizeof(uint32_t) * maxdsm->param_size, GFP_KERNEL);
+	if (!maxdsm->binfo)
+		return -ENOMEM;
+
+	/* Try to copy parameter size. */
+	switch (maxdsm->version) {
+	case VERSION_4_0_A:
+		memcpy(&maxdsm->binfo[ARRAY_SIZE(binfo_a_v35)],
+				binfo_a_v40, sizeof(binfo_a_v40));
+	case VERSION_3_5_A:
+		memcpy(maxdsm->binfo,
+				binfo_a_v35, sizeof(binfo_a_v35));
+		break;
+	case VERSION_4_0_B:
+		memcpy(&maxdsm->binfo[
+				ARRAY_SIZE(binfo_v30) + ARRAY_SIZE(binfo_v35)],
+				binfo_v40, sizeof(binfo_v40));
+	case VERSION_3_5_B:
+		memcpy(&maxdsm->binfo[ARRAY_SIZE(binfo_v30)],
+				binfo_v35, sizeof(binfo_v35));
+	case VERSION_3_0:
+		memcpy(maxdsm->binfo,
+				binfo_v30, sizeof(binfo_v30));
+		break;
+	}
+
+	kfree(maxdsm->param);
+	maxdsm->param = kzalloc(
+			sizeof(uint32_t) * maxdsm->param_size, GFP_KERNEL);
+	if (!maxdsm->param) {
+		kfree(maxdsm->binfo);
+		return -ENOMEM;
+	}
+
+	dbg_maxdsm("version=%d, platform_type=%d",
+			maxdsm->version, maxdsm->platform_type);
+
+	return 0;
+}
+
+int maxdsm_update_info(uint32_t *pinfo)
+{
+	int ret = 0;
 	int32_t *data = pinfo;
 
-	if (pinfo == NULL || binfo == NULL) {
-		pr_debug("%s: pinfo or binfo was not set.\n",
+	if (pinfo == NULL) {
+		pr_debug("%s: pinfo was not set.\n",
 				__func__);
-		return;
+		ret = -EINVAL;
+		return ret;
 	}
 
 	maxdsm.platform_type = data[PARAM_OFFSET_PLATFORM];
@@ -1186,28 +1763,13 @@ void maxdsm_update_info(uint32_t *pinfo, uint32_t *binfo)
 	maxdsm.tx_mod_id = data[PARAM_OFFSET_TX_MOD_ID];
 	maxdsm.filter_set = data[PARAM_OFFSET_FILTER_SET];
 	maxdsm.version = data[PARAM_OFFSET_VERSION];
-	memcpy(maxdsm.binfo, binfo, sizeof(maxdsm.binfo));
 
-	switch (maxdsm.version) {
-	case VERSION_3_5:
-		maxdsm.param_size = PARAM_DSM_3_5_MAX;
-		break;
-	case VERSION_3_0:
-	default:
-		maxdsm.param_size = PARAM_DSM_3_0_MAX;
-		break;
-	}
+	ret = maxdsm_update_param_info(&maxdsm);
 
-	kfree(maxdsm.param);
-	maxdsm.param = kzalloc(sizeof(int) * maxdsm.param_size, GFP_KERNEL);
-	if (!maxdsm.param) {
-		pr_err("%s: Failed to allocate memory for maxdsm.param\n",
-				__func__);
-	}
-
-	dbg_maxdsm("maxdsm.param_size=%d maxdsm.version=%d",
-			maxdsm.param_size, maxdsm.version);
+	return ret;
 }
+EXPORT_SYMBOL_GPL(maxdsm_update_info);
+
 int maxdsm_get_port_id(void)
 {
 	return maxdsm.port_id;
@@ -1226,116 +1788,284 @@ int maxdsm_get_tx_mod_id(void)
 }
 EXPORT_SYMBOL_GPL(maxdsm_get_tx_mod_id);
 
-static int maxdsm_check_param_size(ssize_t count)
+static int maxdsm_validation_check(uint32_t flag)
 {
-	int param_size;
+	int ret = 0;
 
-	param_size = maxdsm.platform_type ?
-		sizeof(uint32_t) * maxdsm.param_size :
-		sizeof(int) * maxdsm.param_size;
+	/* Validation check */
+	switch (flag) {
+	case FLAG_WRITE_ALL:
+	case FLAG_WRITE_ONOFF_ONLY:
+	case FLAG_WRITE_RDC_CAL_ONLY:
+	case FLAG_WRITE_FEATURE_ONLY:
+		break;
+	default:
+		pr_err("%s: Wrong information was received.\n", __func__);
+		ret = -EINVAL;
+	}
 
-	return count > param_size ? -EOVERFLOW : 0;
+	return ret;
 }
+
+#ifdef USE_DSM_UPDATE_CAL
+int maxdsm_update_caldata(int on)
+{
+	int x;
+	uint32_t val;
+	int ret = 0;
+
+	if (!maxdsm.update_cal || on == 0)	{
+		dbg_maxdsm("Calibration data is not available. Cmd:%d", on);
+		return ret;
+	}
+
+	switch (maxdsm.platform_type) {
+	case PLATFORM_TYPE_A:
+		for (x = 0; x < (maxdsm.param_size >> 1); x++)	{
+			ret = maxdsm_regmap_read(g_pbi[x].addr, &val);
+			if (val != g_pbi[x].val) {
+				maxdsm_regmap_write(g_pbi[x].addr,
+					g_pbi[x].val);
+				dbg_maxdsm("[%d]: 0x%08x / 0x%08x",
+						x, g_pbi[x].addr, g_pbi[x].val);
+			}
+		}
+		break;
+	case PLATFORM_TYPE_B:
+		for (x = 0; x < maxdsm.param_size; x += 2)	{
+			maxdsm.param[x] = g_pbi[x>>1].val;
+			maxdsm.param[x+1] = 1 << maxdsm.binfo[x>>1];
+			dbg_maxdsm("[%d]: 0x%08x / 0x%08x",
+					x, maxdsm.param[x], maxdsm.param[x+1]);
+		}
+		maxdsm.param[PARAM_WRITE_FLAG] = FLAG_WRITE_ALL;
+		maxdsm.filter_set = DSM_ID_FILTER_SET_AFE_CNTRLS;
+		maxdsm_dsm_open(&maxdsm);
+		break;
+	}
+
+	return ret;
+}
+
+int maxdsm_cal_avail(void)
+{
+	return maxdsm.update_cal;
+}
+
+static void maxdsm_store_caldata(void)
+{
+	int x;
+
+	for (x = 0; x < (maxdsm.param_size >> 1); x++) {
+		g_pbi[x].val = maxdsm.param[x<<1];
+		dbg_maxdsm("[%d]: 0x%08x",
+				x, g_pbi[x].val);
+	}
+
+	maxdsm.update_cal = 1;
+}
+#endif /* USE_DSM_UPDATE_CAL */
 
 static int maxdsm_open(struct inode *inode, struct file *filep)
 {
 	return 0;
 }
 
-static ssize_t maxdsm_read(struct file *filep, char __user *buf,
-		size_t count, loff_t *ppos)
+static long maxdsm_ioctl_handler(struct file *file,
+		unsigned int cmd, unsigned int arg,
+		void __user *argp)
 {
-	int rc;
+	unsigned int reg, val;
+	long ret = -EINVAL;
 
-	mutex_lock(&dsm_lock);
+	mutex_lock(&dsm_fs_lock);
 
-	switch (maxdsm.platform_type) {
-	case 0: /* LSI */
-		maxdsm_read_all_reg();
+	switch (cmd) {
+	case MAXDSM_IOCTL_GET_VERSION:
+		ret = maxdsm.version;
+		if (copy_to_user(argp,
+				&maxdsm.version,
+				sizeof(maxdsm.version)))
+			goto error;
 		break;
-	case 1: /* QCOM */
-		/* get params from the algorithm */
-		maxdsm.filter_set = DSM_ID_FILTER_GET_AFE_PARAMS;
-		dsm_open(&maxdsm);
+	case MAXDSM_IOCTL_SET_VERSION:
+		if (arg < VERSION_3_0 ||
+				arg > VERSION_4_0_B)
+			goto error;
+		maxdsm.version = arg;
+		ret = maxdsm_update_param_info(&maxdsm);
+		if (!ret)
+			goto error;
+		ret = maxdsm.version;
+		break;
+	case MAXDSM_IOCTL_GET_ALL_PARAMS:
+		maxdsm_read_all();
+		if (copy_to_user(argp, maxdsm.param,
+				sizeof(int) * maxdsm.param_size))
+			goto error;
+		break;
+	case MAXDSM_IOCTL_SET_ALL_PARAMS:
+		if (copy_from_user(maxdsm.param, argp,
+				sizeof(int) * maxdsm.param_size))
+			goto error;
+		maxdsm_write_all();
+		break;
+	case MAXDSM_IOCTL_GET_PARAM:
+		reg = (unsigned int)(arg & 0xFFFFFFFF);
+		val = 0;
+		/*
+		 * protocol rule.
+		 * PLATFORM_TYPE_A:
+		 *	reg : register
+		 *	val : value
+		 * PLATFORM_TYPE_B:
+		 *	reg : parameter index
+		 *	val : value
+		 */
+		maxdsm_read_wrapper(reg, &val);
+		ret = val;
+		if (copy_to_user(argp, &val, sizeof(val)))
+			goto error;
+		break;
+	case MAXDSM_IOCTL_SET_PARAM:
+		if (copy_from_user(maxdsm.param, argp,
+				sizeof(int) * 3/* reg, val, flag */))
+			goto error;
+		ret = maxdsm_write_wrapper(maxdsm.param[0],
+				maxdsm.param[1], maxdsm.param[2]);
+		break;
+#ifdef USE_DSM_UPDATE_CAL
+	case MAXDSM_IOCTL_GET_CAL_DATA:
+		/* todo */
+		break;
+	case MAXDSM_IOCTL_SET_CAL_DATA:
+		if (copy_from_user(maxdsm.param, argp,
+				sizeof(int) * maxdsm.param_size))
+			goto error;
+		maxdsm_store_caldata();
+		break;
+#endif /* USE_DSM_UPDATE_CAL */
+	case MAXDSM_IOCTL_GET_PLATFORM_TYPE:
+		ret = maxdsm.platform_type;
+		if (copy_to_user(argp,
+				&maxdsm.platform_type,
+				sizeof(maxdsm.platform_type)))
+			goto error;
+		break;
+	case MAXDSM_IOCTL_SET_PLATFORM_TYPE:
+		if (arg < PLATFORM_TYPE_A ||
+				arg > PLATFORM_TYPE_B)
+			goto error;
+		maxdsm.platform_type = arg;
+		ret = maxdsm.platform_type;
+		break;
+	default:
 		break;
 	}
 
+error:
+	mutex_unlock(&dsm_fs_lock);
+
+	return ret;
+}
+
+static long maxdsm_ioctl(struct file *file,
+		unsigned int cmd, unsigned long arg)
+{
+	return maxdsm_ioctl_handler(file, cmd, arg,
+			(void __user *)arg);
+}
+
+#ifdef CONFIG_COMPAT
+static long maxdsm_compat_ioctl(struct file *file,
+		unsigned int cmd, unsigned long arg)
+{
+	return maxdsm_ioctl_handler(file, cmd, arg,
+			(void __user *)(unsigned long)arg);
+}
+#endif /* CONFIG_COMPAT */
+
+static ssize_t maxdsm_read(struct file *filep, char __user *buf,
+		size_t count, loff_t *ppos)
+{
+	int ret;
+
+	mutex_lock(&dsm_fs_lock);
+
+	maxdsm_read_all();
+
 	/* copy params to user */
-	rc = copy_to_user(buf, maxdsm.param, count);
-	if (rc != 0)
-		pr_err("%s: copy_to_user failed - %d\n", __func__, rc);
+	ret = copy_to_user(buf, maxdsm.param, count);
+	if (ret)
+		pr_err("%s: copy_to_user failed - %d\n", __func__, ret);
 
-	mutex_unlock(&dsm_lock);
+	mutex_unlock(&dsm_fs_lock);
 
-	return rc;
+	return ret;
 }
 
 static ssize_t maxdsm_write(struct file *filep, const char __user *buf,
 		size_t count, loff_t *ppos)
 {
-	int x, rc;
+	int ret = 0;
 
-	if (maxdsm_check_param_size(count))
-		return count;
+	mutex_lock(&dsm_fs_lock);
 
-	mutex_lock(&dsm_lock);
-
-	rc = copy_from_user(maxdsm.param, buf, count);
-	if (rc != 0) {
-		pr_err("%s: copy_from_user failed - %d\n", __func__, rc);
+	if (copy_from_user(maxdsm.param, buf,
+			sizeof(uint32_t) * maxdsm.param_size)) {
+		pr_err("%s: Failed to copy user data.\n", __func__);
 		goto error;
 	}
 
 	switch (maxdsm.platform_type) {
-	case 0: /* LSI */
-		/* We will write only 1 param. */
-		dbg_maxdsm("reg=0x%x val=0x%x regmap=%p",
+	case PLATFORM_TYPE_A:
+		/* We will check validation for parameter.
+		 * If received parameter from user is good,
+		 * it will be applied. */
+		dbg_maxdsm("reg=0x%x val=0x%x flag=%x regmap=%p",
 				maxdsm.param[0],
 				maxdsm.param[1],
+				maxdsm.param[2],
 				maxdsm.regmap);
-		maxdsm_regmap_write(maxdsm.param[0], maxdsm.param[1]);
+		ret = maxdsm_validation_check(maxdsm.param[2]);
+		if (!ret)
+			maxdsm_regmap_write(maxdsm.param[0], maxdsm.param[1]);
 		break;
-	case 1: /* QCOM */
-		if (maxdsm.param[PARAM_WRITE_FLAG] == 0) {
-			/* validation check */
-			for (x = PARAM_THERMAL_LIMIT;
-					x < maxdsm.param_size; x += 2) {
-				if ((x != PARAM_ONOFF)
-						&& (maxdsm.param[x] != 0)) {
-					maxdsm.param[PARAM_WRITE_FLAG] =
-						FLAG_WRITE_ALL;
-					break;
-				}
-			}
-		}
-
-		if (maxdsm.param[PARAM_WRITE_FLAG]
-					== FLAG_WRITE_ONOFF_ONLY
-				|| maxdsm.param[PARAM_WRITE_FLAG]
-					== FLAG_WRITE_ALL) {
+	case PLATFORM_TYPE_B:
+		ret = maxdsm_validation_check(maxdsm.param[PARAM_WRITE_FLAG]);
+		if (!ret) {
 			/* set params from the algorithm to application */
 			maxdsm.filter_set = DSM_ID_FILTER_SET_AFE_CNTRLS;
-			dsm_open(&maxdsm);
+			maxdsm_dsm_open(&maxdsm);
 		}
+		break;
+	default:
+		dbg_maxdsm("Unknown platform type %d",
+				maxdsm.platform_type);
+		ret = -ENODATA;
 		break;
 	}
 
 error:
-	mutex_unlock(&dsm_lock);
+	mutex_unlock(&dsm_fs_lock);
 
-	return rc;
+	return ret;
 }
 
 static const struct file_operations dsm_ctrl_fops = {
-	.owner		= THIS_MODULE,
-	.open		= maxdsm_open,
-	.release	= NULL,
-	.read		= maxdsm_read,
-	.write		= maxdsm_write,
-	.mmap		= NULL,
-	.poll		= NULL,
-	.fasync		= NULL,
-	.llseek		= NULL,
+	.owner			= THIS_MODULE,
+	.open			= maxdsm_open,
+	.release		= NULL,
+	.unlocked_ioctl = maxdsm_ioctl,
+#ifdef CONFIG_COMPAT
+	.compat_ioctl	= maxdsm_compat_ioctl,
+#endif /* CONFIG_COMPAT */
+	.read			= maxdsm_read,
+	.write			= maxdsm_write,
+	.mmap			= NULL,
+	.poll			= NULL,
+	.fasync			= NULL,
+	.llseek			= NULL,
 };
 
 static struct miscdevice dsm_ctrl_miscdev = {
@@ -1346,16 +2076,19 @@ static struct miscdevice dsm_ctrl_miscdev = {
 
 int maxdsm_deinit(void)
 {
+	kfree(maxdsm.binfo);
 	kfree(maxdsm.param);
+
 	return misc_deregister(&dsm_ctrl_miscdev);
 }
+EXPORT_SYMBOL_GPL(maxdsm_deinit);
 
 int maxdsm_init(void)
 {
 	int ret;
 
 	if (maxdsm.registered) {
-		pr_debug("%s: Already registered.\n", __func__);
+		dbg_maxdsm("%s: Already registered.\n", __func__);
 		return -EALREADY;
 	}
 
@@ -1365,12 +2098,12 @@ int maxdsm_init(void)
 		maxdsm.param = kzalloc(
 			sizeof(uint32_t) * PARAM_DSM_3_5_MAX, GFP_KERNEL);
 		if (!maxdsm.param)
-			pr_err("%s: Failed to allocate memory for maxdsm.param\n",
-					__func__);
+			ret = -ENOMEM;
 	}
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(maxdsm_init);
 
 MODULE_DESCRIPTION("Module for test Maxim DSM");
 MODULE_LICENSE("GPL");

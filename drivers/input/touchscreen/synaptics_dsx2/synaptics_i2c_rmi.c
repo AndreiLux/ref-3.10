@@ -169,9 +169,9 @@ static ssize_t synaptics_rmi4_full_pm_cycle_store(struct device *dev,
 #ifdef PRINT_DEBUG_INFO
 static void print_debug_log(struct synaptics_rmi4_data *rmi4_data)
 {
-	unsigned short delta_min;
-	unsigned short delta_max;
-	unsigned short delta_avg;
+	short delta_min;
+	short delta_max;
+	short delta_avg;
 	unsigned short cid_im;
 	unsigned short freq_im;
 	unsigned char fast_relax;
@@ -625,6 +625,64 @@ out:
 	return retval;
 }
 
+void synaptics_rmi4_f12_abs_report_print_log(struct synaptics_rmi4_data *rmi4_data)
+{
+	int ii;
+
+	for (ii = 0; ii < MAX_NUMBER_OF_FINGERS ; ii++) {
+		switch (rmi4_data->finger[ii].print_type) {
+		case TOUCH_PRESS:
+		case TOUCH_CHANGE:
+
+			tsp_debug_info(true, &rmi4_data->i2c_client->dev, "[%d][%s][%d] 0x%02x T[%d/%u] M[%d]"
+#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+#ifdef REPORT_2D_Z
+			", x = %d, y = %d, wx = %d, wy = %d, z = %d\n", ii, rmi4_data->finger[ii].print_type == TOUCH_PRESS ? "P" : "C",
+			rmi4_data->board->device_num, rmi4_data->finger[ii].finger_status, rmi4_data->finger[ii].tool_type,
+			rmi4_data->use_stylus, rmi4_data->finger[ii].mcount, rmi4_data->finger[ii].x, rmi4_data->finger[ii].y,
+			rmi4_data->finger[ii].wx, rmi4_data->finger[ii].wy, rmi4_data->finger[ii].z);
+#else
+			", x = %d, y = %d, wx = %d, wy = %d\n", ii, rmi4_data->finger[ii].print_type == TOUCH_PRESS ? "P" : "C",
+			rmi4_data->board->device_num, rmi4_data->finger[ii].finger_status, rmi4_data->finger[ii].tool_type,
+			rmi4_data->use_stylus, rmi4_data->finger[ii].mcount, rmi4_data->finger[ii].x, rmi4_data->finger[ii].y,
+			rmi4_data->finger[ii].wx, rmi4_data->finger[ii].wy);
+#endif
+#else
+			"\n", ii, rmi4_data->finger[ii].print_type == TOUCH_PRESS ? "P" : "C", rmi4_data->board->device_num,
+			rmi4_data->finger[ii].finger_status, rmi4_data->finger[ii].tool_type, rmi4_data->use_stylus,
+			rmi4_data->finger[ii].mcount);
+#endif
+			break;
+		case TOUCH_RELEASE:
+		case TOUCH_RELEASE_FORCED:
+
+			tsp_debug_info(true, &rmi4_data->i2c_client->dev,
+				"[%d][%s][%d] 0x%02x M[%d], Ver[%02X%02X, 0x%02X, 0x%02X/0x%02X/0x%02X]\n",
+				ii, rmi4_data->finger[ii].print_type == TOUCH_RELEASE ? "R" : "RA", rmi4_data->board->device_num,
+				rmi4_data->finger[ii].finger_status, rmi4_data->finger[ii].mcount, rmi4_data->ic_revision_of_ic,
+				rmi4_data->fw_version_of_ic, rmi4_data->f12.feature_enable,
+#ifdef PROXIMITY_MODE
+				rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->proximity_enables,
+				rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->general_control,
+				rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->general_control_2);
+#else
+				0, 0, 0);
+#endif
+			rmi4_data->finger[ii].mcount = 0;
+			rmi4_data->finger[ii].state = 0;
+
+			break;
+		case TOUCH_NONE:
+			break;
+		default:
+			tsp_debug_info(true, &rmi4_data->i2c_client->dev,"%s : Unkonwn Type!", __func__);
+			break;
+		}
+
+		rmi4_data->finger[ii].print_type = TOUCH_NONE;
+	}
+}
+
 static void synaptics_rmi4_release_all_finger(struct synaptics_rmi4_data *rmi4_data)
 {
 	unsigned char ii;
@@ -638,42 +696,42 @@ static void synaptics_rmi4_release_all_finger(struct synaptics_rmi4_data *rmi4_d
 	for (ii = 0; ii < rmi4_data->num_of_fingers; ii++) {
 		input_mt_slot(rmi4_data->input_dev, ii);
 		if (rmi4_data->finger[ii].state) {
-			tsp_debug_info(true, &rmi4_data->i2c_client->dev, "[%d][RA] 0x%02x M[%d], Ver[%02X%02X, 0x%02X, 0x%02X/0x%02X/0x%02X]\n",
-				ii, rmi4_data->finger[ii].state, rmi4_data->finger[ii].mcount,
-				rmi4_data->ic_revision_of_ic, rmi4_data->fw_version_of_ic, rmi4_data->f12.feature_enable,
-#ifdef PROXIMITY_MODE
-				rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->proximity_enables,
-				rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->general_control,
-				rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->general_control_2);
-#else
-				0, 0, 0);
-#endif
+			rmi4_data->finger[ii].print_type = TOUCH_RELEASE_FORCED;
 #ifdef EDGE_SWIPE
-			input_report_abs(rmi4_data->input_dev,
-						ABS_MT_PALM, 0);
+			input_report_abs(rmi4_data->input_dev, ABS_MT_PALM, 0);
 #endif
 		}
 		input_mt_report_slot_state(rmi4_data->input_dev, MT_TOOL_FINGER, 0);
 
-		rmi4_data->finger[ii].state = 0;
-		rmi4_data->finger[ii].mcount = 0;
 #ifdef USE_STYLUS
 		rmi4_data->finger[ii].stylus = false;
 #endif
 	}
 
-	input_report_key(rmi4_data->input_dev,
-			BTN_TOUCH, 0);
-	input_report_key(rmi4_data->input_dev,
-			BTN_TOOL_FINGER, 0);
+	input_report_key(rmi4_data->input_dev, BTN_TOUCH, 0);
+	input_report_key(rmi4_data->input_dev, BTN_TOOL_FINGER, 0);
 #ifdef GLOVE_MODE
-	input_report_switch(rmi4_data->input_dev,
-			SW_GLOVE, false);
+	input_report_switch(rmi4_data->input_dev, SW_GLOVE, false);
 	rmi4_data->touchkey_glove_mode_status = false;
 #endif
+	input_sync(rmi4_data->input_dev);
+
+	synaptics_rmi4_f12_abs_report_print_log(rmi4_data);
 #ifdef TSP_BOOSTER
 	input_booster_send_event(BOOSTER_DEVICE_TOUCH, BOOSTER_MODE_FORCE_OFF);
 #endif
+
+#ifdef USE_LPGW_MODE
+	input_report_key(rmi4_data->input_dev, KEY_BLACK_UI_GESTURE, 0);
+#endif
+#ifdef GESTURE_3FIN
+	rmi4_data->gesture_3fin_code = 0;
+	input_report_key(rmi4_data->input_dev, GESTURE_RIGHT, 0);
+	input_report_key(rmi4_data->input_dev, GESTURE_LEFT, 0);
+	input_report_key(rmi4_data->input_dev, GESTURE_UP, 0);
+	input_report_key(rmi4_data->input_dev, GESTURE_DOWN, 0);
+#endif
+
 	input_sync(rmi4_data->input_dev);
 
 	rmi4_data->fingers_on_2d = false;
@@ -849,6 +907,7 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #ifdef REPORT_2D_Z
 	int z = 0;
 #endif
+	unsigned short object_attention = 0;
 	struct synaptics_rmi4_f12_extra_data *extra_data;
 	struct synaptics_rmi4_f12_finger_data *data;
 	struct synaptics_rmi4_f12_finger_data *finger_data;
@@ -860,16 +919,49 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #ifdef PRINT_DEBUG_INFO
 	bool print_debug_info = false;
 #endif
+#ifdef USE_LPGW_MODE
+	unsigned char gesture_type[1];
+#endif
+#ifdef GESTURE_3FIN
+	int i;
+	int finger_count;
+#endif
 
 	fingers_to_process = fhandler->num_of_data_points;
 	data_addr = fhandler->full_addr.data_base;
 	extra_data = (struct synaptics_rmi4_f12_extra_data *)fhandler->extra;
 	size_of_2d_data = sizeof(struct synaptics_rmi4_f12_finger_data);
 
+#ifdef USE_LPGW_MODE
+	if (rmi4_data->use_lpwg_sleep) {
+		retval = synaptics_rmi4_i2c_read(rmi4_data,
+				0x09,
+				gesture_type,
+				sizeof(gesture_type));
+		if (retval < 0) {
+			tsp_debug_err(true, &rmi4_data->i2c_client->dev,
+							"%s, %4d: USE_LPGW_MODE : Failed to read. error = %d\n",
+							__func__, __LINE__, retval);
+			return 0;
+		}
+
+		/* Swipe gesture : 0x07 */
+		if (gesture_type[0] == GESTURE_SWIPE) {
+			tsp_debug_info(true, &rmi4_data->i2c_client->dev,
+							"%s : Detect Swipe gesture![0x%X]\n",
+							__func__, gesture_type[0]);
+
+			input_report_key(rmi4_data->input_dev, KEY_BLACK_UI_GESTURE, 1);
+			rmi4_data->scrub_id = GESTURE_SWIPE;
+			input_report_key(rmi4_data->input_dev, KEY_BLACK_UI_GESTURE, 0);
+			input_sync(rmi4_data->input_dev);
+		}
+		return 0;
+	}
+#endif
+
 	/* Determine the total number of fingers to process */
 	if (extra_data->data15_size) {
-		unsigned short object_attention = 0;
-
 		retval = synaptics_rmi4_i2c_read(rmi4_data,
 				data_addr + extra_data->data15_offset,
 				extra_data->data15_data,
@@ -897,6 +989,24 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 	}
 
 	fingers_to_process = max(fingers_to_process, rmi4_data->fingers_already_present);
+
+#ifdef GESTURE_3FIN
+	if (rmi4_data->gesture_3fin_code){
+		for (i = 0 ; i < 10 ; i++){
+			if (object_attention & (1<<i))
+				finger_count++;
+		}
+		if (finger_count != 3) {
+			input_report_key(rmi4_data->input_dev, rmi4_data->gesture_3fin_code, 0);
+			input_sync(rmi4_data->input_dev);
+
+			tsp_debug_info(true, &rmi4_data->i2c_client->dev,
+				"%s: R (%x) 3-FIN Gesture\n",
+				__func__, rmi4_data->gesture_3fin_code);
+			rmi4_data->gesture_3fin_code = 0;
+		}
+	}
+#endif
 
 	if (!fingers_to_process) {
 		synaptics_rmi4_release_all_finger(rmi4_data);
@@ -938,6 +1048,11 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 			rmi4_data->finger[finger].stylus = true;
 		}
 #endif
+
+		if (finger_status)
+			input_report_key(rmi4_data->input_dev,
+								BTN_TOUCH, finger_status == OBJECT_HOVER ? 0 : 1);
+
 		input_mt_slot(rmi4_data->input_dev, finger);
 		input_mt_report_slot_state(rmi4_data->input_dev, tool_type, finger_status ? true : false);
 
@@ -991,8 +1106,13 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 				x = x - rmi4_data->board->x_offset;
 			}
 
-			input_report_key(rmi4_data->input_dev,
-					BTN_TOUCH, finger_status == OBJECT_HOVER ? 0 : 1);
+			rmi4_data->finger[finger].x = x;
+			rmi4_data->finger[finger].y = y;
+			rmi4_data->finger[finger].wx = wx;
+			rmi4_data->finger[finger].wy = wy;
+#ifdef REPORT_2D_Z
+			rmi4_data->finger[finger].z = z;
+#endif
 			input_report_key(rmi4_data->input_dev,
 					BTN_TOOL_FINGER, 1);
 			input_report_abs(rmi4_data->input_dev,
@@ -1016,34 +1136,12 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 #endif
 			if (rmi4_data->finger[finger].state) {
 				rmi4_data->finger[finger].mcount++;
-				if (rmi4_data->finger[finger].state != finger_status)
-					tsp_debug_info(true, &rmi4_data->i2c_client->dev, "[%d][C][%d] 0x%02x T[%d/%u] M[%d]"
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-#ifdef REPORT_2D_Z
-					", x = %d, y = %d, wx = %d, wy = %d, z = %d\n",	finger, rmi4_data->board->device_num, finger_status, tool_type,
-					rmi4_data->use_stylus, rmi4_data->finger[finger].mcount, x, y, wx, wy, z);
-#else
-					", x = %d, y = %d, wx = %d, wy = %d\n", finger, rmi4_data->board->device_num, finger_status, tool_type,
-					rmi4_data->use_stylus, rmi4_data->finger[finger].mcount, x, y, wx, wy);
-#endif
-#else
-					"\n", finger, rmi4_data->board->device_num, finger_status, tool_type, rmi4_data->use_stylus,
-					rmi4_data->finger[finger].mcount);
-#endif
+				if (rmi4_data->finger[finger].state != finger_status){
+					rmi4_data->finger[finger].print_type = TOUCH_CHANGE;
+				}
 			} else {
 				new_finger_pressed = true;
-				tsp_debug_info(true, &rmi4_data->i2c_client->dev, "[%d][P][%d] 0x%02x T[%d/%u]"
-#if !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
-#ifdef REPORT_2D_Z
-					", x = %d, y = %d, wx = %d, wy = %d, z = %d\n",	finger, rmi4_data->board->device_num, finger_status, tool_type,
-					rmi4_data->use_stylus, x, y, wx, wy, z);
-#else
-					", x = %d, y = %d, wx = %d, wy = %d\n", finger, rmi4_data->board->device_num, finger_status, tool_type,
-					rmi4_data->use_stylus, x, y, wx, wy);
-#endif
-#else
-					"\n", finger, rmi4_data->board->device_num, finger_status, tool_type, rmi4_data->use_stylus);
-#endif
+				rmi4_data->finger[finger].print_type = TOUCH_PRESS;
 #ifdef PRINT_DEBUG_INFO
 				print_debug_info = true;
 #endif
@@ -1052,25 +1150,12 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 
 		} else {
 			if (rmi4_data->finger[finger].state) {
-				tsp_debug_info(true, &rmi4_data->i2c_client->dev,
-					"[%d][R][%d] 0x%02x M[%d], Ver[%02X%02X, 0x%02X, 0x%02X/0x%02X/0x%02X]\n",
-					finger, rmi4_data->board->device_num, finger_status, rmi4_data->finger[finger].mcount,
-					rmi4_data->ic_revision_of_ic, rmi4_data->fw_version_of_ic, rmi4_data->f12.feature_enable,
-#ifdef PROXIMITY_MODE
-					rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->proximity_enables,
-					rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->general_control,
-					rmi4_data->f51 == NULL ? 0 : rmi4_data->f51->general_control_2);
-#else
-					0, 0, 0);
-#endif
-
-				rmi4_data->finger[finger].mcount = 0;
+				rmi4_data->finger[finger].print_type = TOUCH_RELEASE;
 #ifdef PRINT_DEBUG_INFO
 				print_debug_info = true;
 #endif
 			}
 		}
-
 		rmi4_data->finger[finger].state = finger_status;
 	}
 
@@ -1079,8 +1164,9 @@ static int synaptics_rmi4_f12_abs_report(struct synaptics_rmi4_data *rmi4_data,
 		input_report_key(rmi4_data->input_dev, BTN_TOUCH, 0);
 		rmi4_data->fingers_already_present = 0;
 	}
-
 	input_sync(rmi4_data->input_dev);
+
+	synaptics_rmi4_f12_abs_report_print_log(rmi4_data);
 
 #ifdef PRINT_DEBUG_INFO
 	if(print_debug_info)
@@ -1263,12 +1349,73 @@ out:
 #endif
 	return retval;
 }
+#ifdef GESTURE_3FIN
+static int synaptics_rmi4_f51_gesture_3finger(struct synaptics_rmi4_data *rmi4_data,
+		struct synaptics_rmi4_fn *fhandler)
+{
+	int retval = 0;
+	struct synaptics_rmi4_f51_data *data;
+	struct synaptics_rmi4_f51_handle *f51 = rmi4_data->f51;
+	unsigned char read_data[2];
+	int report_code;
+
+	data = (struct synaptics_rmi4_f51_data *)fhandler->data;
+
+	retval = synaptics_rmi4_i2c_read(rmi4_data,
+			f51->gesture_3finger_data_addr,
+			read_data,
+			sizeof(read_data));
+
+	if (retval < 0) {
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s, %4d: Failed to read. error = %d\n",
+			__func__, __LINE__, retval);
+		return -1;
+	}
+
+	if (read_data[0]) {
+		tsp_debug_dbg(true, &rmi4_data->i2c_client->dev, "%s: Detect 3 finger gesture[0x%X][%d][%d]\n",
+			__func__, f51->gesture_3finger_data_addr, read_data[0], read_data[1]);
+
+		if (read_data[1] == GESTURE_LEFT){
+			report_code = BTN_3FIN_LEFT;
+		} else if (read_data[1] == GESTURE_RIGHT){
+			report_code = BTN_3FIN_RIGHT;
+		} else if (read_data[1] == GESTURE_DOWN){
+			report_code = BTN_3FIN_DOWN;
+		} else if (read_data[1] == GESTURE_UP){
+			report_code = BTN_3FIN_UP;
+		} else {
+			tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s, %4d: Undefined read data[%d][%d].\n",
+				__func__, __LINE__, read_data[0], read_data[1]);
+			return -1;
+		}
+		input_report_key(rmi4_data->input_dev, report_code, 1);
+		input_sync(rmi4_data->input_dev);
+		rmi4_data->gesture_3fin_code = report_code;
+
+		tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s: P (%x) 3-FIN Gesture\n",
+							__func__, rmi4_data->gesture_3fin_code);
+	}
+
+	return 0;
+
+}
+#endif
 
 static void synaptics_rmi4_f51_report(struct synaptics_rmi4_data *rmi4_data,
 		struct synaptics_rmi4_fn *fhandler)
 {
 	int retval;
 	struct synaptics_rmi4_f51_handle *f51 = rmi4_data->f51;
+
+#ifdef GESTURE_3FIN
+	retval = synaptics_rmi4_f51_gesture_3finger(rmi4_data, fhandler);
+	if (retval < 0) {
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev, "%s: Failed to treat proximity data\n",
+				__func__);
+		return;
+	}
+#endif
 
 	if (f51->proximity_controls & HAS_EDGE_SWIPE) {
 		retval = synaptics_rmi4_f51_lookup_detection_flag_2(rmi4_data, fhandler);
@@ -1803,8 +1950,10 @@ static int synaptics_rmi4_f12_init(struct synaptics_rmi4_data *rmi4_data,
 	unsigned char ctrl_9_offset;
 	unsigned char ctrl_11_offset;
 	unsigned char ctrl_15_offset;
+	unsigned char ctrl_20_offset;
 	unsigned char ctrl_23_offset;
 	unsigned char ctrl_26_offset;
+	unsigned char ctrl_27_offset;
 	unsigned char ctrl_28_offset;
 	struct synaptics_rmi4_f12_extra_data *extra_data;
 	struct synaptics_rmi4_f12_query_5 query_5;
@@ -1852,12 +2001,14 @@ static int synaptics_rmi4_f12_init(struct synaptics_rmi4_data *rmi4_data,
 		query_5.ctrl13_is_present +
 		query_5.ctrl14_is_present;
 
-	ctrl_23_offset = ctrl_15_offset +
+	ctrl_20_offset = ctrl_15_offset +
 		query_5.ctrl15_is_present +
 		query_5.ctrl16_is_present +
 		query_5.ctrl17_is_present +
 		query_5.ctrl18_is_present +
-		query_5.ctrl19_is_present +
+		query_5.ctrl19_is_present;
+
+	ctrl_23_offset = ctrl_20_offset +
 		query_5.ctrl20_is_present +
 		query_5.ctrl21_is_present +
 		query_5.ctrl22_is_present;
@@ -1867,8 +2018,10 @@ static int synaptics_rmi4_f12_init(struct synaptics_rmi4_data *rmi4_data,
 		query_5.ctrl24_is_present +
 		query_5.ctrl25_is_present;
 
-	ctrl_28_offset = ctrl_26_offset +
-		query_5.ctrl26_is_present +
+	ctrl_27_offset = ctrl_26_offset +
+		query_5.ctrl26_is_present;
+
+	ctrl_28_offset = ctrl_27_offset +
 		query_5.ctrl27_is_present;
 
 	retval = synaptics_rmi4_i2c_read(rmi4_data,
@@ -1949,8 +2102,10 @@ static int synaptics_rmi4_f12_init(struct synaptics_rmi4_data *rmi4_data,
  */
 	rmi4_data->f12.ctrl11_addr = fhandler->full_addr.ctrl_base + ctrl_11_offset;
 	rmi4_data->f12.ctrl15_addr = fhandler->full_addr.ctrl_base + ctrl_15_offset;
+	rmi4_data->f12.ctrl20_addr = fhandler->full_addr.ctrl_base + ctrl_20_offset;
 	rmi4_data->f12.ctrl23_addr = fhandler->full_addr.ctrl_base + ctrl_23_offset;
 	rmi4_data->f12.ctrl26_addr = fhandler->full_addr.ctrl_base + ctrl_26_offset;
+	rmi4_data->f12.ctrl27_addr = fhandler->full_addr.ctrl_base + ctrl_27_offset;
 	rmi4_data->f12.ctrl28_addr = fhandler->full_addr.ctrl_base + ctrl_28_offset;
 #ifdef GLOVE_MODE
 	rmi4_data->f12.glove_mode_feature = query_10.glove_mode_feature;
@@ -2520,6 +2675,9 @@ static int synaptics_rmi4_f51_init(struct synaptics_rmi4_data *rmi4_data,
 	f51->proximity_controls_2 = query.proximity_controls_2;
 
 	f51->edge_swipe_data_addr = fhandler->full_addr.data_base + data_addr_offset;
+#ifdef GESTURE_3FIN
+	f51->gesture_3finger_data_addr = fhandler->full_addr.data_base + F51_EDGE_SWIPE_DATA_SIZE;
+#endif
 
 	retval = synaptics_rmi4_f51_set_init(rmi4_data);
 	if (retval < 0) {
@@ -3124,6 +3282,16 @@ static int synaptics_rmi4_set_input_device(struct synaptics_rmi4_data *rmi4_data
 	set_bit(EV_ABS, rmi4_data->input_dev->evbit);
 	set_bit(BTN_TOUCH, rmi4_data->input_dev->keybit);
 	set_bit(BTN_TOOL_FINGER, rmi4_data->input_dev->keybit);
+
+#ifdef GESTURE_3FIN
+	set_bit(BTN_3FIN_UP, rmi4_data->input_dev->keybit);
+	set_bit(BTN_3FIN_DOWN, rmi4_data->input_dev->keybit);
+	set_bit(BTN_3FIN_LEFT, rmi4_data->input_dev->keybit);
+	set_bit(BTN_3FIN_RIGHT, rmi4_data->input_dev->keybit);
+#endif
+#ifdef USE_LPGW_MODE
+	set_bit(KEY_BLACK_UI_GESTURE, rmi4_data->input_dev->keybit);
+#endif
 
 	input_set_abs_params(rmi4_data->input_dev,
 			ABS_MT_POSITION_X, 0,
@@ -3804,6 +3972,9 @@ static int synaptics_rmi4_setup_drv_data(struct i2c_client *client)
 	mutex_init(&(rmi4_data->rmi4_reset_mutex));
 	mutex_init(&(rmi4_data->rmi4_reflash_mutex));
 	mutex_init(&(rmi4_data->rmi4_device_mutex));
+#ifdef USE_LPGW_MODE
+	mutex_init(&(rmi4_data->rmi4_lpgw_mutex));
+#endif
 	init_completion(&rmi4_data->init_done);
 
 	i2c_set_clientdata(client, rmi4_data);
@@ -4221,6 +4392,21 @@ static int synaptics_rmi4_start_device(struct synaptics_rmi4_data *rmi4_data)
 				"%s: Failed to reinit device\n",
 				__func__);
 	}
+#ifdef USE_ACTIVE_REPORT_RATE
+	if (rmi4_data->tsp_change_report_rate != SYNAPTICS_RPT_RATE_90HZ){
+		tsp_debug_err(true, &rmi4_data->i2c_client->dev,
+		"%s: change_report_rate[%d]\n", __func__, rmi4_data->tsp_change_report_rate);
+		change_report_rate(rmi4_data, rmi4_data->tsp_change_report_rate);
+	}
+#endif
+
+#if defined(USE_LPGW_MODE)
+	if (rmi4_data->use_lpwg_sleep) {
+		mutex_lock(&rmi4_data->rmi4_lpgw_mutex);
+		set_lpgw_mode(rmi4_data, true);
+		mutex_unlock(&rmi4_data->rmi4_lpgw_mutex);
+	}
+#endif
 	enable_irq(rmi4_data->i2c_client->irq);
 
 	tsp_debug_dbg(true, &rmi4_data->i2c_client->dev, "%s\n", __func__);
@@ -4251,7 +4437,11 @@ static int synaptics_rmi4_input_open(struct input_dev *dev)
 		goto err_open;
 	}
 
+#if defined(USE_LPGW_MODE)
+	tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s[%d]\n", __func__, rmi4_data->use_lpwg_sleep);
+#else
 	tsp_debug_dbg(false, &rmi4_data->i2c_client->dev, "%s\n", __func__);
+#endif
 
 #ifdef USE_SENSOR_SLEEP
 	if (rmi4_data->use_deepsleep) {
@@ -4275,7 +4465,11 @@ static void synaptics_rmi4_input_close(struct input_dev *dev)
 {
 	struct synaptics_rmi4_data *rmi4_data = input_get_drvdata(dev);
 
+#if defined(USE_LPGW_MODE)
+	tsp_debug_info(true, &rmi4_data->i2c_client->dev, "%s[%d]\n", __func__, rmi4_data->use_lpwg_sleep);
+#else
 	tsp_debug_dbg(false, &rmi4_data->i2c_client->dev, "%s\n", __func__);
+#endif
 
 #ifdef USE_SENSOR_SLEEP
 	if (rmi4_data->use_deepsleep)

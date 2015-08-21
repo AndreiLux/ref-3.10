@@ -29,7 +29,7 @@ static ssize_t irled_send_store(struct device *dev,
 
 	if (!(data->uSensorState & (1 << PROXIMITY_SENSOR))) {
 		pr_info("[SSP]: %s - Skip this function!!!"\
-			", irled_remote is not connected(0x%x)\n",
+			", irled_remote is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return FAIL;
 	}

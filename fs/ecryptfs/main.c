@@ -550,10 +550,18 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 			char *chamber_dirs = args[0].from;
 			char *token = NULL;
 
+			/**
+			 * chamber directories by mount-option.
+			 * The userid in the mount option is used as engine_id
+			 *
+			 * TODO : This won't work when chamber_dirs mount option comes before
+			 * user_id option.
+			 */
 			printk("%s : chamber dirs : %s\n", __func__, chamber_dirs);
 			while ((token = strsep(&chamber_dirs, "|")) != NULL)
-				if(!is_chamber_directory(mount_crypt_stat, token))
-					add_chamber_directory(mount_crypt_stat, token);
+				if(!is_chamber_directory(mount_crypt_stat, (const unsigned char *)token, NULL))
+					add_chamber_directory(mount_crypt_stat,
+					        mount_crypt_stat->userid, (const unsigned char *)token);
 		}
 		break;
 		case ecryptfs_opt_partition_id: {

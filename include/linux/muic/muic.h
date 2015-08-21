@@ -166,6 +166,8 @@ typedef enum {
 	ATTACHED_DEV_UNSUPPORTED_ID_MUIC,
 	ATTACHED_DEV_UNSUPPORTED_ID_VB_MUIC,
 	ATTACHED_DEV_TIMEOUT_OPEN_MUIC,
+	ATTACHED_DEV_WIRELESS_PAD_MUIC,
+	ATTACHED_DEV_POWERPACK_MUIC,
 	ATTACHED_DEV_UNKNOWN_MUIC,
 	ATTACHED_DEV_NUM,
 } muic_attached_dev_t;
@@ -197,6 +199,7 @@ struct muic_platform_data {
 
 	bool rustproof_on;
 	bool afc_disable;
+	bool wireless;
 
 #ifdef CONFIG_MUIC_HV_FORCE_LIMIT
 	int hv_sel;

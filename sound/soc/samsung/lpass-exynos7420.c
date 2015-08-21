@@ -46,6 +46,9 @@
 #define INIT_SCLK_GATE_MASK	(1 << 31 | 1 << 30 | 1 << 29 | \
 				 1 << 28 | 1 << 27 | 1 << 26)
 
+#define ACLK_CA5_CLK_RATE 351000000
+#define ACLK_AUD_CLK_RATE 117000000
+
 static struct lpass_cmu_info {
 	struct clk		*clk_fin_pll;
 	struct clk		*clk_fout_aud_pll;
@@ -150,19 +153,19 @@ int lpass_set_clk_heirachy(struct device *dev)
 		goto err9;
 	}
 
-	clk_set_rate(lpass.clk_fout_aud_pll, 196608050);
+	clk_set_rate(lpass.clk_fout_aud_pll, ACLK_CA5_CLK_RATE);
 	clk_set_parent(lpass.clk_mout_aud_pll_user, lpass.clk_fout_aud_pll);
 
-	clk_set_rate(lpass.clk_dout_aud_cdclk, 196608050);
+	clk_set_rate(lpass.clk_dout_aud_cdclk, ACLK_CA5_CLK_RATE);
 	clk_set_parent(lpass.clk_mout_sclk_i2s, lpass.clk_dout_aud_cdclk);
-	clk_set_rate(lpass.clk_dout_sclk_i2s, 49152010);
+	clk_set_rate(lpass.clk_dout_sclk_i2s, ACLK_AUD_CLK_RATE);
 
-	clk_set_rate(lpass.clk_dout_sclk_aud_pll, 196608050);
+	clk_set_rate(lpass.clk_dout_sclk_aud_pll, ACLK_CA5_CLK_RATE);
 	clk_set_parent(lpass.clk_mout_sclk_i2s1, lpass.clk_mout_aud_pll_top0);
-	clk_set_rate(lpass.clk_dout_sclk_i2s1, 49152010);
+	clk_set_rate(lpass.clk_dout_sclk_i2s1, ACLK_AUD_CLK_RATE);
 
-	clk_set_rate(lpass.clk_dout_aclk_ca5, 196608050);
-	clk_set_rate(lpass.clk_dout_aclk_aud, 98304050);
+	clk_set_rate(lpass.clk_dout_aclk_ca5, ACLK_CA5_CLK_RATE);
+	clk_set_rate(lpass.clk_dout_aclk_aud, ACLK_AUD_CLK_RATE);
 
 #ifdef CONFIG_MACH_ESPRESSO7420
 	pinctrl_dbg = devm_pinctrl_get_select(dev, "default");

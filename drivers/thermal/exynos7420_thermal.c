@@ -71,6 +71,7 @@ static enum mif_noti_state_t mif_old_state = MIF_TH_LV1;
 static enum isp_noti_state_t isp_old_state = ISP_NORMAL;
 static bool is_suspending;
 static bool is_cpu_hotplugged_out;
+static int last_temperature;
 
 static BLOCKING_NOTIFIER_HEAD(exynos_tmu_notifier);
 static BLOCKING_NOTIFIER_HEAD(exynos_gpu_notifier);
@@ -952,8 +953,10 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 	}
 #endif
 
-	exynos_check_tmu_noti_state(max);
-	exynos_check_mif_noti_state(max);
+	if (max != INT_MIN || last_temperature < COLD_TEMP_LOW_POWER_THRESHOLD) {
+		exynos_check_tmu_noti_state(max);
+		exynos_check_mif_noti_state(max);
+	}
 
 	if (gpu_temp != -1)
 		exynos_check_gpu_noti_state(gpu_temp);
@@ -967,6 +970,9 @@ static int exynos_tmu_read(struct exynos_tmu_data *data)
 #endif
 	pr_debug("[TMU] TMU0 = %d, TMU1 = %d, TMU2 = %d, TMU3 = %d    MAX = %d, GPU = %d\n",
 			alltemp[0], alltemp[1], alltemp[2], alltemp[3], max, gpu_temp);
+
+	if (max != INT_MIN)
+		last_temperature = max;
 
 	return max;
 }
@@ -1122,10 +1128,18 @@ static struct ipa_sensor_conf ipa_sensor_conf = {
 static int exynos_pm_notifier(struct notifier_block *notifier,
 		unsigned long pm_event, void *v)
 {
+	int i;
+	struct exynos_tmu_data *data;
+	data = platform_get_drvdata(exynos_tmu_pdev);
+
 	switch (pm_event) {
 	case PM_SUSPEND_PREPARE:
 		mutex_lock(&tmudata->lock);
 		is_suspending = true;
+
+		for (i = 0; i < EXYNOS_TMU_COUNT; i++)
+			cal_tmu_interrupt(data->cal_data, i, false);
+
 		exynos_tmu_call_notifier(TMU_COLD, 0);
 		exynos_gpu_call_notifier(TMU_COLD);
 		mutex_unlock(&tmudata->lock);
@@ -1133,6 +1147,9 @@ static int exynos_pm_notifier(struct notifier_block *notifier,
 	case PM_POST_SUSPEND:
 		mutex_lock(&tmudata->lock);
 		is_suspending = false;
+
+		for (i = 0; i < EXYNOS_TMU_COUNT; i++)
+			cal_tmu_interrupt(data->cal_data, i, true);
 		mutex_unlock(&tmudata->lock);
 		break;
 	}

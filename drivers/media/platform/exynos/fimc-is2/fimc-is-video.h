@@ -120,6 +120,8 @@ struct fimc_is_queue_ops {
 		struct fimc_is_queue *queue);
 	int (*s_format)(void *qdevice,
 		struct fimc_is_queue *queue);
+	int (*request_bufs)(void *qdevice,
+		u32 count);
 };
 
 struct fimc_is_queue {

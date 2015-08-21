@@ -558,6 +558,294 @@ struct f54_query_21 {
 	};
 };
 
+struct f54_query_22 {
+	union {
+		struct {
+			unsigned char has_packedimage:1;
+			unsigned char has_ctrl101:1;
+			unsigned char has_dynamic_sense_displayrate:1;
+			unsigned char has_query23:1;
+			unsigned char has_ctrl103_query26:1;
+			unsigned char has_ctrl104:1;
+			unsigned char has_ctrl105:1;
+			unsigned char has_query28:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_25 {
+	union {
+		struct {
+			unsigned char has_ctrl106:1;
+			unsigned char has_ctrl102_sub12:1;
+			unsigned char has_ctrl107:1;
+			unsigned char has_ctrl108:1;
+			unsigned char has_ctrl109:1;
+			unsigned char has_data20:1;
+			unsigned char has_tagsformoisture:1;
+			unsigned char has_query27:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_27 {
+	union {
+		struct {
+			unsigned char has_ctrl110:1;
+			unsigned char has_data21:1;
+			unsigned char has_ctrl111:1;
+			unsigned char has_ctrl112:1;
+			unsigned char has_ctrl113:1;
+			unsigned char has_data22:1;
+			unsigned char has_ctrl114:1;
+			unsigned char has_query29:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_29 {
+	union {
+		struct {
+			unsigned char has_ctrl115:1;
+			unsigned char has_hasgroundringoptions:1;
+			unsigned char has_lostburststuning:1;
+			unsigned char has_auxexvcom2select:1;
+			unsigned char has_ctrl116:1;
+			unsigned char has_data23:1;
+			unsigned char has_ctrl117:1;
+			unsigned char has_query30:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_30 {
+	union {
+		struct {
+			unsigned char has_ctrl118:1;
+			unsigned char has_ctrl119:1;
+			unsigned char has_ctrl120:1;
+			unsigned char has_ctrl121:1;
+			unsigned char has_ctrl122_query31:1;
+			unsigned char has_ctrl123:1;
+			unsigned char reserved2:1;
+			unsigned char has_query32:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_32 {
+	union {
+		struct {
+			unsigned char has_ctrl125:1;
+			unsigned char has_ctrl126:1;
+			unsigned char has_ctrl127:1;
+			unsigned char has_hasabschangepumpdisable:1;
+			unsigned char has_query33:1;
+			unsigned char has_data24:1;
+			unsigned char has_query34:1;
+			unsigned char has_query35:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_33 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char has_ctrl132:1;
+			unsigned char has_ctrl133:1;
+			unsigned char has_ctrl134:1;
+			unsigned char has_query36:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_36 {
+	union {
+		struct {
+			unsigned char reserved:1;
+			unsigned char has_ctrl142:1;
+			unsigned char has_query37:1;
+			unsigned char has_ctrl143:1;
+			unsigned char has_ctrl144:1;
+			unsigned char has_ctrl145:1;
+			unsigned char has_ctrl146:1;
+			unsigned char has_query38:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_38 {
+	union {
+		struct {
+			unsigned char has_ctrl147:1;
+			unsigned char has_ctrl148:1;
+			unsigned char has_ctrl149:1;
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char has_query39:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_39 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char has_ctrl157_ctrl158:1;
+			unsigned char reserved6:1;
+			unsigned char reserved7:1;
+			unsigned char has_query40:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_40 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char has_ctrl163_query41:1;
+			unsigned char reserved2:1;
+			unsigned char has_ctrl165_query42:1;
+			unsigned char reserved3:1;
+			unsigned char has_ctrl167:1;
+			unsigned char reserved4:1;
+			unsigned char has_query43:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_43 {
+	union {
+		struct {
+			unsigned char has_simultaneousabsacq:1;
+			unsigned char reserved1:1;
+			unsigned char has_ctrl171:1;
+			unsigned char reserved2:1;
+			unsigned char has_ctrl173:1;
+			unsigned char has_ctrl174:1;
+			unsigned char has_ctrl175:1;
+			unsigned char has_query46:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_46 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char has_ctrl177_ctrl178:1;
+			unsigned char has_ctrl179:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char reserved5:1;
+			unsigned char has_query47:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_47 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char reserved5:1;
+			unsigned char reserved6:1;
+			unsigned char reserved7:1;
+			unsigned char has_query49:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_49 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char reserved5:1;
+			unsigned char reserved6:1;
+			unsigned char reserved7:1;
+			unsigned char has_query50:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_50 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char reserved5:1;
+			unsigned char reserved6:1;
+			unsigned char reserved7:1;
+			unsigned char has_query51:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_51 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char reserved5:1;
+			unsigned char reserved6:1;
+			unsigned char reserved7:1;
+			unsigned char has_query55:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
+struct f54_query_55 {
+	union {
+		struct {
+			unsigned char reserved1:1;
+			unsigned char reserved2:1;
+			unsigned char has_alternatereportrate:1;
+			unsigned char has_ctrl200:1;
+			unsigned char reserved3:1;
+			unsigned char reserved4:1;
+			unsigned char reserved5:1;
+			unsigned char reserved6:1;
+		} __packed;
+		unsigned char data[1];
+	};
+};
+
 struct f54_control_0 {
 	union {
 		struct {
@@ -1027,6 +1315,23 @@ struct f54_control_94 {
 	};
 };
 
+#if defined(HAS_ALTERNATER_R_R)
+struct f54_control_168 {
+	union {
+		struct {
+			unsigned char reserved1:3;
+			unsigned char switchedanm:1;
+			unsigned char alternatereportrate:1;
+			unsigned char reserved2:3;
+		} __packed;
+		struct {
+			unsigned char data[1];
+			unsigned short address;
+		} __packed;
+	};
+};
+#endif
+
 struct f54_control {
 	struct f54_control_0 *reg_0;
 	struct f54_control_1 *reg_1;
@@ -1062,4 +1367,7 @@ struct f54_control {
 	struct f54_control_57 *reg_57;
 	struct f54_control_88 *reg_88;
 	struct f54_control_94 *reg_94;
+#if defined(HAS_ALTERNATER_R_R)
+	struct f54_control_168 *reg_168;
+#endif
 };

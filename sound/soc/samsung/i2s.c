@@ -48,6 +48,7 @@
 enum samsung_dai_type {
 	TYPE_PRI,
 	TYPE_SEC,
+	TYPE_COMPR,
 };
 
 struct samsung_i2s_dai_data {
@@ -82,6 +83,12 @@ struct i2s_dai {
 	struct i2s_dai *pri_dai;
 	/* Pointer to the Secondary_Fifo if it has one, NULL otherwise */
 	struct i2s_dai *sec_dai;
+	/* Pointer to the Compress_dai if it has one, NULL otherwise */
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	struct i2s_dai *compr_dai;
+	bool is_compress;
+	bool running;
+#endif
 #define DAI_OPENED	(1 << 0) /* Dai is opened */
 #define DAI_MANAGER	(1 << 1) /* Dai is the manager */
 	unsigned mode;
@@ -140,6 +147,20 @@ static inline bool is_slave(struct i2s_dai *i2s)
 {
 	return (readl(i2s->addr + I2SMOD) & i2s->slave_b) ? true : false;
 }
+
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+static DEFINE_SPINLOCK(sec_hw_lock);
+
+static void i2s_print_dai_name(struct i2s_dai *i2s, char *dai_name)
+{
+	if (i2s->is_compress)
+		snprintf(dai_name, 10, "compr");
+	else if (is_secondary(i2s))
+		snprintf(dai_name, 10, "sec");
+	else
+		snprintf(dai_name, 10, "pri");
+}
+#endif
 
 /* If this interface of the controller is transmitting data */
 static inline bool tx_active(struct i2s_dai *i2s)
@@ -812,8 +833,14 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	struct platform_device *pdev = NULL;
 	unsigned long flags;
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	char dai_name[10];
 
-	pr_info("%s : %s ++\n", __func__, is_secondary(i2s)? "sec" : "pri");
+	i2s_print_dai_name(i2s, dai_name);
+	pr_info("%s : %s --\n", __func__, dai_name);
+#else
+	pr_info("%s : %s --\n", __func__, is_secondary(i2s)? "sec" : "pri");
+#endif
 
 #ifdef USE_EXYNOS_AUD_SCHED
 	lpass_set_sched(pid_nr(substream->pid), AUD_MODE_DEFAULT);
@@ -853,7 +880,11 @@ static int i2s_startup(struct snd_pcm_substream *substream,
 
 	spin_unlock_irqrestore(&lock, flags);
 
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	pr_info("%s : %s --\n", __func__, dai_name);
+#else
 	pr_info("%s : %s --\n", __func__, is_secondary(i2s)? "sec" : "pri");
+#endif
 	return 0;
 }
 
@@ -864,8 +895,14 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
 	struct platform_device *pdev = NULL;
 	unsigned long flags;
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	char dai_name[10];
 
+	i2s_print_dai_name(i2s, dai_name);
+	pr_info("%s : %s --\n", __func__, dai_name);
+#else
 	pr_info("%s : %s ++\n", __func__, is_secondary(i2s)? "sec" : "pri");
+#endif
 	spin_lock_irqsave(&lock, flags);
 
 	i2s->mode &= ~DAI_OPENED;
@@ -892,7 +929,11 @@ static void i2s_shutdown(struct snd_pcm_substream *substream,
 	if (!is_secondary(i2s))
 		lpass_put_cpu_hotplug();
 #endif
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	pr_info("%s : %s --\n", __func__, dai_name);
+#else
 	pr_info("%s : %s --\n", __func__, is_secondary(i2s)? "sec" : "pri");
+#endif
 }
 
 static int config_setup(struct i2s_dai *i2s)
@@ -975,10 +1016,27 @@ static int i2s_trigger(struct snd_pcm_substream *substream,
 			return -EINVAL;
 		}
 
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		if (!capture && is_secondary(i2s)) {
+			spin_lock(&sec_hw_lock);
+			i2s->running = true;
+			if ((i2s->is_compress && i2s->sec_dai->running) ||
+			   (!i2s->is_compress && i2s->compr_dai->running)) {
+				spin_unlock(&sec_hw_lock);
+				break;
+			}
+		}
+#endif
+
 		if (capture)
 			i2s_rxctrl(i2s, 1);
 		else
 			i2s_txctrl(i2s, 1);
+
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		if (!capture && is_secondary(i2s))
+			spin_unlock(&sec_hw_lock);
+#endif
 
 		local_irq_restore(flags);
 		break;
@@ -986,6 +1044,18 @@ static int i2s_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		local_irq_save(flags);
+
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		if (!capture && is_secondary(i2s)) {
+			spin_lock(&sec_hw_lock);
+			i2s->running = false;
+			if ((i2s->is_compress && i2s->sec_dai->running) ||
+			   (!i2s->is_compress && i2s->compr_dai->running)) {
+				spin_unlock(&sec_hw_lock);
+				break;
+			}
+		}
+#endif
 
 		if (capture) {
 			i2s_rxctrl(i2s, 0);
@@ -995,6 +1065,11 @@ static int i2s_trigger(struct snd_pcm_substream *substream,
 			if (!(i2s->quirks & QUIRK_SEC_DAI))
 				i2s_fifo(i2s, FIC_TXFLUSH);
 		}
+
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		if (!capture && is_secondary(i2s))
+			spin_unlock(&sec_hw_lock);
+#endif
 
 		local_irq_restore(flags);
 		break;
@@ -1234,8 +1309,13 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 {
 	struct i2s_dai *i2s = to_info(dai);
 	struct i2s_dai *other = i2s->pri_dai ? : i2s->sec_dai;
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	struct i2s_dai *compr = i2s->compr_dai;
 
+	if ((other && other->clk) || i2s->is_compress) /* If this is probe on secondary */
+#else
 	if (other && other->clk) /* If this is probe on secondary */
+#endif
 		goto probe_exit;
 
 	i2s->addr = ioremap(i2s->base, 0x100);
@@ -1273,6 +1353,14 @@ static int samsung_i2s_dai_probe(struct snd_soc_dai *dai)
 		other->clk = i2s->clk;
 		other->opclk0 = i2s->opclk0;
 		other->opclk1 = i2s->opclk1;
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		if (compr) {
+			compr->addr = i2s->addr;
+			compr->clk = i2s->clk;
+			compr->opclk0 = i2s->opclk0;
+			compr->opclk1 = i2s->opclk1;
+		}
+#endif
 	}
 
 #ifdef CONFIG_SND_SAMSUNG_IDMA
@@ -1363,7 +1451,7 @@ static const struct snd_soc_component_driver samsung_i2s_component = {
 					SNDRV_PCM_FMTBIT_S24_LE)
 
 static struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev,
-				     bool sec, u32 quirks)
+				     enum samsung_dai_type type, u32 quirks)
 {
 	struct i2s_dai *i2s;
 	int ret;
@@ -1387,13 +1475,14 @@ static struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev,
 	i2s->i2s_dai_drv.playback.rates = SAMSUNG_I2S_RATES;
 	i2s->i2s_dai_drv.playback.formats = SAMSUNG_I2S_FMTS;
 
-	if (!sec) {
+	if (type == TYPE_PRI) {
 		i2s->i2s_dai_drv.capture.channels_min = 1;
 		i2s->i2s_dai_drv.capture.channels_max = 2;
 		i2s->i2s_dai_drv.capture.rates = SAMSUNG_I2S_RATES;
 		i2s->i2s_dai_drv.capture.formats = SAMSUNG_I2S_FMTS;
 		dev_set_drvdata(&i2s->pdev->dev, i2s);
-	} else {	/* Create a new platform_device for Secondary */
+	} else if (type == TYPE_SEC) {
+		/* Create a new platform_device for Secondary */
 		i2s->pdev = platform_device_alloc("samsung-i2s-sec", -1);
 		if (IS_ERR(i2s->pdev))
 			return NULL;
@@ -1402,7 +1491,18 @@ static struct i2s_dai *i2s_alloc_dai(struct platform_device *pdev,
 		ret = platform_device_add(i2s->pdev);
 		if (ret < 0)
 			return NULL;
+	} else if (type == TYPE_COMPR) {
+		/* Create a new platform_device for Secondary */
+		i2s->pdev = platform_device_alloc("samsung-i2s-compr", -1);
+		if (IS_ERR(i2s->pdev))
+			return NULL;
+
+		platform_set_drvdata(i2s->pdev, i2s);
+		ret = platform_device_add(i2s->pdev);
+		if (ret < 0)
+			return NULL;
 	}
+
 
 	return i2s;
 }
@@ -1504,6 +1604,9 @@ static int i2s_enable(struct device *dev)
 static int samsung_i2s_probe(struct platform_device *pdev)
 {
 	struct i2s_dai *pri_dai, *sec_dai = NULL;
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+	struct i2s_dai *compr_dai = NULL;
+#endif
 	struct s3c_audio_pdata *i2s_pdata = pdev->dev.platform_data;
 	struct samsung_i2s *i2s_cfg = NULL;
 	struct resource *res;
@@ -1520,35 +1623,36 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 	/* Call during Seconday interface registration */
 	samsung_dai_type = samsung_i2s_get_driver_data(pdev);
 
-	if (samsung_dai_type == TYPE_SEC) {
-		sec_dai = dev_get_drvdata(&pdev->dev);
-		if (!sec_dai) {
+	if (samsung_dai_type != TYPE_PRI) {
+		struct i2s_dai *cpu_dai = NULL;
+		cpu_dai = dev_get_drvdata(&pdev->dev);
+		if (!cpu_dai) {
 			dev_err(&pdev->dev, "Unable to get drvdata\n");
 			return -EFAULT;
 		}
-#ifdef CONFIG_SND_SAMSUNG_COMPR
-		if (sec_dai->quirks & QUIRK_SEC_DAI_COMPR) {
-			sec_dai->i2s_dai_drv.compress_dai = 1;
-			snd_soc_register_component(&sec_dai->pdev->dev,
-						   &samsung_i2s_component,
-						   &sec_dai->i2s_dai_drv, 1);
-			asoc_compr_platform_register(&pdev->dev);
 
-			return 0;
-		}
-#endif
-		snd_soc_register_component(&sec_dai->pdev->dev,
-					   &samsung_i2s_component,
-					   &sec_dai->i2s_dai_drv, 1);
+		if (samsung_dai_type == TYPE_SEC) {
+			snd_soc_register_component(&cpu_dai->pdev->dev,
+					&samsung_i2s_component,
+					&cpu_dai->i2s_dai_drv, 1);
 #ifdef CONFIG_SND_SAMSUNG_FAKEDMA
-		asoc_fdma_platform_register(&pdev->dev, &cpu_ops);
+			asoc_fdma_platform_register(&pdev->dev, &cpu_ops);
 #else
-		asoc_dma_platform_register(&pdev->dev);
+			asoc_dma_platform_register(&pdev->dev);
 #endif
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		} else if (samsung_dai_type == TYPE_COMPR) {
+			cpu_dai->i2s_dai_drv.compress_dai = 1;
+			snd_soc_register_component(&cpu_dai->pdev->dev,
+					&samsung_i2s_component,
+					&cpu_dai->i2s_dai_drv, 1);
+			asoc_compr_platform_register(&pdev->dev);
+#endif
+		}
 		return 0;
 	}
 
-	pri_dai = i2s_alloc_dai(pdev, false, quirks);
+	pri_dai = i2s_alloc_dai(pdev, TYPE_PRI, quirks);
 	if (!pri_dai) {
 		dev_err(&pdev->dev, "Unable to alloc I2S_pri\n");
 		return -ENOMEM;
@@ -1670,7 +1774,7 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 	}
 
 	if (quirks & QUIRK_SEC_DAI) {
-		sec_dai = i2s_alloc_dai(pdev, true, quirks);
+		sec_dai = i2s_alloc_dai(pdev, TYPE_SEC, quirks);
 		if (!sec_dai) {
 			dev_err(&pdev->dev, "Unable to alloc I2S_sec\n");
 			ret = -ENOMEM;
@@ -1701,6 +1805,36 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 
 		if (np)
 			sec_dai->pdev->dev.of_node = of_get_child_by_name(np, "i2s-sec");
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+		/* Register Compress CPU DAI */
+		compr_dai = i2s_alloc_dai(pdev, TYPE_COMPR, quirks);
+		if (!compr_dai) {
+			dev_err(&pdev->dev, "Unable to alloc I2S_compr\n");
+			ret = -ENOMEM;
+			goto err;
+		}
+		compr_dai->dma_playback.dma_addr = regs_base + I2STXDS;
+		compr_dai->dma_playback.client =
+			(struct s3c2410_dma_client *)&compr_dai->dma_playback;
+		compr_dai->dma_playback.ch_name = "tx-sec";
+		compr_dai->dma_playback.dma_size = 4;
+		compr_dai->base = regs_base;
+		compr_dai->quirks = quirks;
+		compr_dai->dma_playback.esa_dma = true;
+		compr_dai->dma_playback.compr_dma = true;
+		compr_dai->dma_playback.sec_dma_dev = &sec_dai->pdev->dev;
+		pr_info("Compress dai : sec_dai = %s\n",
+				dev_name(&sec_dai->pdev->dev));
+
+		compr_dai->pri_dai = pri_dai;
+		compr_dai->sec_dai = sec_dai;
+		compr_dai->is_compress = true;
+		pri_dai->compr_dai = compr_dai;
+		sec_dai->compr_dai = compr_dai;
+
+		if (np)
+			compr_dai->pdev->dev.of_node = of_get_child_by_name(np, "i2s-compr");
+#endif
 	}
 
 	if (!np) {
@@ -1716,8 +1850,12 @@ static int samsung_i2s_probe(struct platform_device *pdev)
 				PTR_ERR(pinctrl));
 		} else {
 			pri_dai->pinctrl = pinctrl;
-			if (quirks & QUIRK_SEC_DAI)
+			if (quirks & QUIRK_SEC_DAI) {
 				sec_dai->pinctrl = pinctrl;
+#ifdef CONFIG_SND_SAMSUNG_COMPR
+				compr_dai->pinctrl = pinctrl;
+#endif
+			}
 		}
 	}
 	i2s_cfg_gpio(pri_dai, "idle");
@@ -1785,6 +1923,9 @@ static struct platform_device_id samsung_i2s_driver_ids[] = {
 	}, {
 		.name           = "samsung-i2s-sec",
 		.driver_data	= TYPE_SEC,
+	}, {
+		.name           = "samsung-i2s-compr",
+		.driver_data	= TYPE_COMPR,
 	},
 	{},
 };
@@ -1794,6 +1935,7 @@ MODULE_DEVICE_TABLE(platform, samsung_i2s_driver_ids);
 static struct samsung_i2s_dai_data samsung_i2s_dai_data_array[] = {
 	[TYPE_PRI] = { TYPE_PRI },
 	[TYPE_SEC] = { TYPE_SEC },
+	[TYPE_COMPR] = { TYPE_COMPR },
 };
 
 static const struct of_device_id exynos_i2s_match[] = {

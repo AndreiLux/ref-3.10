@@ -82,6 +82,9 @@ static int rtc6213n_set_chan(struct rtc6213n_device *radio, unsigned short chan)
 	int retval;
 	unsigned long timeout;
 	bool timed_out = 0;
+	unsigned short current_chan =
+		radio->registers[CHANNEL] & CHANNEL_CSR0_CH;
+
 
 	dev_info(&radio->videodev->dev, "======== rtc6213n_set_chan ========\n");
 	dev_info(&radio->videodev->dev, "RTC6213n tuning process is starting\n");
@@ -93,8 +96,10 @@ static int rtc6213n_set_chan(struct rtc6213n_device *radio, unsigned short chan)
 	radio->registers[CHANNEL] &= ~CHANNEL_CSR0_CH;
 	radio->registers[CHANNEL] |= CHANNEL_CSR0_TUNE | chan;
 	retval = rtc6213n_set_register(radio, CHANNEL);
-	if (retval < 0)
+	if (retval < 0)	{
+		radio->registers[CHANNEL] = current_chan;
 		goto done;
+	}
 
     /* currently I2C driver only uses interrupt way to tune */
 	if (radio->stci_enabled) {
@@ -137,14 +142,18 @@ static int rtc6213n_set_chan(struct rtc6213n_device *radio, unsigned short chan)
 
 stop:
 	/* stop tuning */
+	current_chan = radio->registers[CHANNEL] & CHANNEL_CSR0_CH;
+
 	radio->registers[CHANNEL] &= ~CHANNEL_CSR0_TUNE;
 	retval = rtc6213n_set_register(radio, CHANNEL);
-	if (retval < 0)
-		goto stop;
+	if (retval < 0)	{
+		radio->registers[CHANNEL] = current_chan;
+		goto done;
+	}
 
 	retval = rtc6213n_get_register(radio, STATUS);
 	if (retval < 0)
-		goto stop;
+		goto done;
 
 done:
 	dev_info(&radio->videodev->dev, "rtc6213n_set_chans is done\n");
@@ -248,6 +257,9 @@ int rtc6213n_set_freq(struct rtc6213n_device *radio, unsigned int freq)
 	case 2:
 		band_bottom = 76   * FREQ_MUL; break;
 	};
+
+	if (freq < band_bottom)
+		freq = band_bottom;
 
 	/* Chan = [ Freq (Mhz) - Bottom of Band (MHz) ] / Spacing (kHz) */
 	chan = (freq - band_bottom) / spacing;

@@ -404,6 +404,8 @@ typedef struct mhi_counters {
 	atomic_t outbound_acks;
 	u32 failed_recycle[MHI_RING_TYPE_MAX];
 	atomic_t skb_alloc_fail_cntr;
+	u32 mhi_xfer_db_interval;
+	u32 tput;
 } mhi_counters;
 
 typedef struct mhi_flags {
@@ -423,6 +425,7 @@ typedef struct mhi_flags {
 	atomic_t cp_m1_state;
 	volatile int stop_threads;
 	u32 ssr;
+	u32 hotspot_onoff;
 } mhi_flags;
 
 struct mhi_device_ctxt {

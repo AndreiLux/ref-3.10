@@ -23,11 +23,12 @@ static inline sdp_fs_request_t *sdp_fs_request_alloc(int opcode,
     sdp_fs_request_t *req;
 
     req = kmalloc(sizeof(sdp_fs_request_t), gfp);
-    req->opcode = opcode;
-    req->userid = userid;
-    req->partid = partid;
-    req->ino = ino;
-
+    if (req) {
+    	req->opcode = opcode;
+    	req->userid = userid;
+    	req->partid = partid;
+    	req->ino = ino;
+	}
     return req;
 }
 

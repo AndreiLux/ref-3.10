@@ -51,7 +51,7 @@ void ssp_dump_task(struct work_struct *work) {
 
 		sprintf(strFilePath, "%s%d.txt", DUMP_FILE_PATH, iTimeTemp);
 
-		dump_file = filp_open(strFilePath, O_RDWR | O_CREAT | O_APPEND, 0666);
+		dump_file = filp_open(strFilePath, O_RDWR | O_CREAT | O_APPEND, 0660);
 		if (IS_ERR(dump_file)) {
 			pr_err("[SSP]: %s - Can't open dump file\n", __func__);
 			set_fs(fs);

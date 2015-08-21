@@ -184,8 +184,6 @@ int fimc_is_ischain_3aa_s_input(struct fimc_is_device_ischain *device,
 	u32 video_id,
 	u32 otf_input,
 	u32 stream_leader);
-int fimc_is_ischain_3aa_reqbufs(struct fimc_is_device_ischain *device,
-	u32 count);
 int fimc_is_ischain_3aa_buffer_queue(struct fimc_is_device_ischain *device,
 	struct fimc_is_queue *queue,
 	u32 index);
@@ -203,8 +201,6 @@ int fimc_is_ischain_isp_s_input(struct fimc_is_device_ischain *device,
 	u32 video_id,
 	u32 otf_input,
 	u32 stream_leader);
-int fimc_is_ischain_isp_reqbufs(struct fimc_is_device_ischain *device,
-	u32 count);
 int fimc_is_ischain_isp_buffer_queue(struct fimc_is_device_ischain *device,
 	struct fimc_is_queue *queue,
 	u32 index);

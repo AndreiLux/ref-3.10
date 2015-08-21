@@ -323,7 +323,7 @@ retry:
 
 	dev_info(dev, "D state: %x, %x\n",
 			readl(exynos_pcie->elbi_base + PCIE_PM_DSTATE) & 0x7,
-			readl(exynos_pcie->elbi_base + PCIE_ELBI_RDLH_LINKUP) & 0x1f);
+			readl(exynos_pcie->elbi_base + PCIE_ELBI_RDLH_LINKUP));
 
 	/* assert LTSSM enable */
 	writel(PCIE_ELBI_LTSSM_ENABLE, exynos_pcie->elbi_base + PCIE_APP_LTSSM_ENABLE);
@@ -362,7 +362,7 @@ retry:
 	if (count >= MAX_TIMEOUT || val == PCIE_D0_UNINIT_STATE) {
 		try_cnt++;
 		dev_err(dev, "%s: Link is not up, try count: %d, %x\n", __func__, try_cnt,
-				readl(exynos_pcie->elbi_base + PCIE_ELBI_RDLH_LINKUP) & 0x1f);
+				readl(exynos_pcie->elbi_base + PCIE_ELBI_RDLH_LINKUP));
 		if (try_cnt < 10) {
 			gpio_set_value(exynos_pcie->perst_gpio, 0);
 			/* LTSSM disable */
@@ -383,6 +383,9 @@ retry:
 				}
 			}
 #endif
+			if (soc_is_exynos7420() && exynos_pcie->ch_num == 1)
+				return -EPIPE;
+
 			BUG_ON(1);
 			return -EPIPE;
 		}
@@ -710,6 +713,8 @@ static void exynos_pcie_clear_irq_pulse(struct pcie_port *pp)
 		dev_info(pp->dev, "!!!PCIE LINK DOWN!!!\n");
 		if (exynos_pcie->ch_num == 0)
 			exynos_pcie->state = STATE_LINK_DOWN_TRY;
+		else if (exynos_pcie->ch_num == 1)
+			exynos_pcie_register_dump(exynos_pcie->ch_num);
 		queue_work(exynos_pcie->pcie_wq, &exynos_pcie->work.work);
 	}
 
@@ -1311,7 +1316,7 @@ int exynos_pcie_poweron(int ch_num)
 	struct pcie_port *pp = &g_pcie[ch_num].pp;
 	struct exynos_pcie *exynos_pcie = to_exynos_pcie(pp);
 	u32 val, vendor_id, device_id;
-	int ret;
+	int ret = 0;
 
 	dev_info(pp->dev, "%s, start of poweron, pcie state: %d\n", __func__, exynos_pcie->state);
 	if (exynos_pcie->state == STATE_LINK_DOWN || ((exynos_pcie->ch_num == 0) && (exynos_pcie->state == STATE_LINK_DOWN_TRY))) {

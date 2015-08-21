@@ -1871,7 +1871,7 @@ static struct notifier_block bts_lpa_nb = {
 
 static int __init exynos7_bts_init(void)
 {
-	unsigned long i;
+	long i;
 	int ret;
 	enum bts_index btstable_index = BTS_MAX - 1;
 

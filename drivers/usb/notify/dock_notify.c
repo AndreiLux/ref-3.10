@@ -16,9 +16,7 @@
 #include <linux/notifier.h>
 #include <linux/version.h>
 #include <linux/usb_notify.h>
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
 #include "../core/hub.h"
-#endif
 
 #define SMARTDOCK_INDEX	1
 #define MMDOCK_INDEX	2
@@ -51,6 +49,19 @@ static struct dev_table essential_device_table[] = {
 	{ .dev = { USB_DEVICE(0x0424, 0xec00), },
 	   .index = MMDOCK_INDEX,
 	}, /* SMSC LAN Driver */
+	{}
+};
+
+static struct dev_table update_autotimer_device_table[] = {
+	{ .dev = { USB_DEVICE(0x04e8, 0xa500), },
+	   .index = 5, /* 5 sec timer */
+	}, /* GearVR1 */
+	{ .dev = { USB_DEVICE(0x04e8, 0xa501), },
+	   .index = 5,
+	}, /* GearVR2 */
+	{ .dev = { USB_DEVICE(0x04e8, 0xa502), },
+	   .index = 5,
+	}, /* GearVR3 */
 	{}
 };
 
@@ -97,13 +108,29 @@ skip:
 	return ret;
 }
 
+static int get_autosuspend_time(struct usb_device *dev)
+{
+	struct dev_table *id;
+	int ret = 0;
+
+	/* check VID, PID */
+	for (id = update_autotimer_device_table; id->dev.match_flags; id++) {
+		if ((id->dev.match_flags & USB_DEVICE_ID_MATCH_VENDOR) &&
+		(id->dev.match_flags & USB_DEVICE_ID_MATCH_PRODUCT) &&
+		id->dev.idVendor == le16_to_cpu(dev->descriptor.idVendor) &&
+		id->dev.idProduct == le16_to_cpu(dev->descriptor.idProduct)) {
+			ret = id->index;
+			break;
+		}
+	}
+	return ret;
+}
+
 static int call_battery_notify(struct usb_device *dev, bool on)
 {
 	struct usb_device *hdev;
 	struct usb_device *udev;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
 	struct usb_hub *hub;
-#endif
 	struct otg_notify *o_notify = get_otg_notify();
 	int index = 0;
 	int count = 0;
@@ -116,18 +143,12 @@ static int call_battery_notify(struct usb_device *dev, bool on)
 		goto skip;
 
 	hdev = dev->parent;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
 	hub = usb_hub_to_struct_hub(hdev);
 	if (!hub)
 		goto skip;
-#endif
 
 	for (port = 1; port <= hdev->maxchild; port++) {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 10, 0))
 		udev = hub->ports[port-1]->child;
-#else
-		udev = hdev->children[port-1];
-#endif
 		if (udev) {
 			if (!check_essential_device(udev, index)) {
 				if (!on && (udev == dev))
@@ -164,12 +185,37 @@ skip:
 	return 0;
 }
 
+static int update_hub_autosuspend_timer(struct usb_device *dev)
+{
+	struct usb_device *hdev;
+	int time = 0;
+
+	if (!dev)
+		goto skip;
+
+	hdev = dev->parent;
+
+	if (hdev == NULL || dev->bus->root_hub != hdev)
+		goto skip;
+
+	/* hdev is root hub */
+	time = get_autosuspend_time(dev);
+	if (time == hdev->dev.power.autosuspend_delay)
+		goto skip;
+
+	pm_runtime_set_autosuspend_delay(&hdev->dev, time*1000);
+	pr_info("set autosuspend delay time=%d sec\n", time);
+skip:
+	return 0;
+}
+
 static int dev_notify(struct notifier_block *self,
 			       unsigned long action, void *dev)
 {
 	switch (action) {
 	case USB_DEVICE_ADD:
 		call_battery_notify(dev, 1);
+		update_hub_autosuspend_timer(dev);
 		break;
 	case USB_DEVICE_REMOVE:
 		call_battery_notify(dev, 0);

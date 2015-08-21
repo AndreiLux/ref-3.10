@@ -22,6 +22,7 @@
 #include <linux/sched.h>
 #include <linux/scatterlist.h>
 #include <linux/vmalloc.h>
+#include <linux/highmem.h>
 #include "ion.h"
 #include "ion_priv.h"
 
@@ -132,8 +133,23 @@ static int ion_heap_sglist_zero(struct scatterlist *sgl, unsigned int nents,
 			p = 0;
 		}
 	}
-	if (p)
-		ret = ion_heap_clear_pages(pages, p, pgprot);
+
+	while (p-- > 0) {
+		void *va = kmap(pages[p]);
+
+		/* skip clear if kmap failed because this is not a core job */
+		if (!va)
+			break;
+		clear_page(va);
+#ifdef CONFIG_ARM64
+		if (pgprot == pgprot_writecombine(PAGE_KERNEL))
+			__flush_dcache_area(va, PAGE_SIZE);
+#else
+		if (pgprot == pgprot_writecombine(PAGE_KERNEL))
+			dmac_flush_range(va, va + PAGE_SIZE);
+#endif
+		kunmap(pages[p]);
+	}
 
 	return ret;
 }

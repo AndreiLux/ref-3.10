@@ -74,6 +74,9 @@ endif
 # SS/DS
 obj-$(CONFIG_CHECK_SIMSLOT_COUNT) += sim_slot.o
 
+# GPIO_DETECT
+obj-$(CONFIG_CHECK_GPIO_DETECT) += gpio_detect.o
+
 # for DMVerity
 obj-$(CONFIG_DM_VERITY)		+= dmverity_query.o
 

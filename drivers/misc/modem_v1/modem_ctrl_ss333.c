@@ -313,12 +313,7 @@ static void handle_no_response_cp_crash(unsigned long arg)
 	mif_err("%s: ERR! No response from CP\n", mc->name);
 
 	spin_lock_irqsave(&mc->lock, flags);
-
-#ifdef CONFIG_SEC_MODEM_DEBUG
 	modem_state_change(mc, STATE_CRASH_EXIT);
-#else
-	modem_state_change(mc, STATE_CRASH_RESET);
-#endif
 	spin_unlock_irqrestore(&mc->lock, flags);
 }
 

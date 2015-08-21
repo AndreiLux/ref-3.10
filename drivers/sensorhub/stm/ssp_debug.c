@@ -21,7 +21,7 @@ int debug_crash_dump(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 {
 	struct timeval cur_time;
 	char strFilePath[100];
-	int iRetWrite = 0, iRet = 0;
+	int iRetWrite = 0;
 	unsigned char datacount = pchRcvDataFrame[1];
 	unsigned int databodysize = iLength - 2;
 	char *databody = &pchRcvDataFrame[2];
@@ -36,6 +36,11 @@ int debug_crash_dump(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 */
 	ssp_errf("length(%d)", databodysize);
 
+	if (data->bSspShutdown) {
+		ssp_infof("ssp shutdown, stop dumping");
+		return FAIL;
+	}
+
 	if (data->bMcuDumpMode == true)	{
 		wake_lock(&data->ssp_wake_lock);
 
@@ -48,16 +53,13 @@ int debug_crash_dump(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 			snprintf(strFilePath, sizeof(strFilePath), "%s%d.dump",
 				DEBUG_DUMP_FILE_PATH, (int)cur_time.tv_sec);
 			data->realtime_dump_file = filp_open(strFilePath,
-					O_RDWR | O_CREAT | O_APPEND, 0666);
+					O_RDWR | O_CREAT | O_APPEND, 0660);
 
 			ssp_err("save_crash_dump : open file(%s)", strFilePath);
 
 			if (IS_ERR(data->realtime_dump_file)) {
 				ssp_errf("Can't open dump file");
 				set_fs(backup_fs);
-				iRet = PTR_ERR(data->realtime_dump_file);
-				filp_close(data->realtime_dump_file,
-					current->files);
 				data->realtime_dump_file = NULL;
 				wake_unlock(&data->ssp_wake_lock);
 				return FAIL;
@@ -125,12 +127,12 @@ void ssp_dump_task(struct work_struct *work)
 		snprintf(strFilePath, sizeof(strFilePath), "%s%d.dump",
 			DUMP_FILE_PATH,	(int)cur_time.tv_sec);
 		dump_file = filp_open(strFilePath,
-				O_RDWR | O_CREAT | O_APPEND, 0666);
+				O_RDWR | O_CREAT | O_APPEND, 0660);
 #else
 		snprintf(strFilePath, sizeof(strFilePath), "%s.dump",
 			DUMP_FILE_PATH);
 		dump_file = filp_open(strFilePath,
-				O_RDWR | O_CREAT | O_TRUNC, 0666);
+				O_RDWR | O_CREAT | O_TRUNC, 0660);
 #endif
 
 		if (IS_ERR(dump_file)) {
@@ -254,7 +256,7 @@ void sync_sensor_state(struct ssp_data *data)
 	udelay(10);
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++) {
-		if (atomic_read(&data->aSensorEnable) & (1 << uSensorCnt)) {
+		if (atomic64_read(&data->aSensorEnable) & (1 << uSensorCnt)) {
 			s32 dMsDelay
 				= get_msdelay(data->adDelayBuf[uSensorCnt]);
 			memcpy(&uBuf[0], &dMsDelay, 4);
@@ -275,12 +277,26 @@ void sync_sensor_state(struct ssp_data *data)
 	data->buf[PROXIMITY_SENSOR].prox = 0;
 	report_sensordata(data, PROXIMITY_SENSOR, &data->buf[PROXIMITY_SENSOR]);
 
-#if CONFIG_SEC_DEBUG
+#if 1
+    if(sec_debug_get_debug_level() > 0)
+    {
+        data->bMcuDumpMode = true;
+        ssp_info("Mcu Dump Enabled");
+    }
+
+    iRet = ssp_send_cmd(data, MSG2SSP_AP_MCU_SET_DUMPMODE,
+            data->bMcuDumpMode);
+    if (iRet < 0)
+        ssp_errf("MSG2SSP_AP_MCU_SET_DUMPMODE failed");
+
+#else
+#if CONFIG_SEC_DEBUG   
 	data->bMcuDumpMode = sec_debug_is_enabled();
 	iRet = ssp_send_cmd(data, MSG2SSP_AP_MCU_SET_DUMPMODE,
 			data->bMcuDumpMode);
 	if (iRet < 0)
 		ssp_errf("MSG2SSP_AP_MCU_SET_DUMPMODE failed");
+#endif
 #endif
 }
 
@@ -406,7 +422,7 @@ static void debug_work_func(struct work_struct *work)
 	unsigned int uSensorCnt;
 	struct ssp_data *data = container_of(work, struct ssp_data, work_debug);
 
-	ssp_infof("(%u) - Sensor state: 0x%x, RC: %u, CC: %u DC: %u"
+	ssp_infof("(%u) - Sensor state: 0x%llx, RC: %u, CC: %u DC: %u"
 		" TC: %u", data->uIrqCnt, data->uSensorState,
 		data->uResetCnt, data->uComFailCnt, data->uDumpCnt,
 		data->uTimeOutCnt);
@@ -421,11 +437,11 @@ static void debug_work_func(struct work_struct *work)
 	}
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++)
-		if ((atomic_read(&data->aSensorEnable) & (1 << uSensorCnt))
+		if ((atomic64_read(&data->aSensorEnable) & (1 << uSensorCnt))
 			|| data->batchLatencyBuf[uSensorCnt])
 			print_sensordata(data, uSensorCnt);
 
-	if (((atomic_read(&data->aSensorEnable) & (1 << ACCELEROMETER_SENSOR))
+	if (((atomic64_read(&data->aSensorEnable) & (1 << ACCELEROMETER_SENSOR))
 		&& (data->batchLatencyBuf[ACCELEROMETER_SENSOR] == 0)
 		&& (data->uIrqCnt == 0) && (data->uTimeOutCnt > 0))
 		|| (data->uTimeOutCnt > LIMIT_TIMEOUT_CNT))
@@ -465,4 +481,23 @@ int initialize_debug_timer(struct ssp_data *data)
 
 	INIT_WORK(&data->work_debug, debug_work_func);
 	return SUCCESS;
+}
+
+void print_dataframe(struct ssp_data *data, char *dataframe, int frame_len)
+{
+	char *raw_data;
+	int size = 0;
+	int i = 0;
+
+	raw_data = kzalloc(frame_len*4, GFP_KERNEL);
+	if (raw_data == NULL)
+		return;
+
+	for (i = 0; i < frame_len; i++) {
+		size += snprintf(raw_data+size, PAGE_SIZE, "%d ",
+			*(dataframe + i));
+	}
+
+	ssp_info("%s", raw_data);
+	kfree(raw_data);
 }

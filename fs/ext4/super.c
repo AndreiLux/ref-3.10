@@ -390,6 +390,8 @@ static void ext4_journal_commit_callback(journal_t *journal, transaction_t *txn)
 
 static void ext4_handle_error(struct super_block *sb, char* buf)
 {
+	print_debug_bdinfo(sb);
+
 	if (sb->s_flags & MS_RDONLY)
 		return;
 
@@ -1180,6 +1182,7 @@ enum {
 	Opt_dioread_nolock, Opt_dioread_lock,
 	Opt_discard, Opt_nodiscard, Opt_init_itable, Opt_noinit_itable,
 	Opt_max_dir_size_kb,
+	Opt_debug_bdinfo,
 };
 
 static const match_table_t tokens = {
@@ -1259,6 +1262,7 @@ static const match_table_t tokens = {
 	{Opt_removed, "reservation"},	/* mount option from ext2/3 */
 	{Opt_removed, "noreservation"}, /* mount option from ext2/3 */
 	{Opt_removed, "journal=%u"},	/* mount option from ext2/3 */
+	{Opt_debug_bdinfo, "debug_bdinfo"},
 	{Opt_err, NULL},
 };
 
@@ -1450,6 +1454,7 @@ static const struct mount_opts {
 	{Opt_jqfmt_vfsv0, QFMT_VFS_V0, MOPT_QFMT},
 	{Opt_jqfmt_vfsv1, QFMT_VFS_V1, MOPT_QFMT},
 	{Opt_max_dir_size_kb, 0, MOPT_GTE0},
+	{Opt_debug_bdinfo, EXT4_MOUNT_DEBUG_BDINFO, MOPT_SET},
 	{Opt_err, 0, 0}
 };
 
@@ -3322,6 +3327,64 @@ static int ext4_reserve_clusters(struct ext4_sb_info *sbi, ext4_fsblk_t count)
 	return 0;
 }
 
+void print_debug_bdinfo(struct super_block *sb)
+{
+	if (test_opt(sb, DEBUG_BDINFO)) {
+		struct ext4_super_block *es = EXT4_SB(sb)->s_es;
+		struct tm tm;
+		char now[16] = {0, };
+
+		time_to_tm(get_seconds(), 0, &tm);
+		sprintf(now, "%04ld%02d%02d%02d%02d%02d",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+		ext4_msg(sb, KERN_INFO, "bd reset count=%d, time=%s, now=%s",
+				es->s_bd_reset_cnt, es->s_bd_reset_time,
+				now);
+	}
+}
+
+void ext4_bd_reset_callback_fn(struct block_device *bdev)
+{
+	struct block_device *whole = bdev->bd_contains;
+	struct block_device *tmp;
+	struct disk_part_iter piter;
+	struct hd_struct *part;
+	struct ext4_sb_info *sbi;
+	struct ext4_super_block *es;
+	struct super_block *sb;
+	struct tm tm;
+
+	disk_part_iter_init(&piter, whole->bd_disk, DISK_PITER_REVERSE);
+	while ((part = disk_part_iter_next(&piter))) {
+		tmp = bdget_disk(whole->bd_disk, part->partno);
+		if (tmp && tmp->bd_private ==
+				(unsigned long) whole->bd_fscallback_func)
+			break;
+	}
+
+	if (!part || !tmp->bd_super)
+		return;
+
+	sbi = EXT4_SB(tmp->bd_super);
+	es = sbi->s_es;
+	sb = sbi->s_sb;
+
+	if (EXT4_HAS_RO_COMPAT_FEATURE(sb,
+				EXT4_FEATURE_RO_COMPAT_METADATA_CSUM))
+		return;
+
+	es->s_bd_reset_cnt++;
+	time_to_tm(get_seconds(), 0, &tm);
+	sprintf(es->s_bd_reset_time, "%04ld%02d%02d%02d%02d%02d",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec);
+
+	ext4_warning(sb, "bd reset arisen count=%d time=%s",
+			sbi->s_es->s_bd_reset_cnt, sbi->s_es->s_bd_reset_time);
+}
+
 static int ext4_fill_super(struct super_block *sb, void *data, int silent)
 {
 	char *orig_data = kstrdup(data, GFP_KERNEL);
@@ -4119,6 +4182,16 @@ no_journal:
 			ext4_msg(sb, KERN_WARNING,
 				 "mounting with \"discard\" option, but "
 				 "the device does not support discard");
+	}
+
+	if (test_opt(sb, DEBUG_BDINFO)) {
+		struct block_device *whole = sb->s_bdev->bd_contains;
+
+		whole->bd_fscallback_func = ext4_bd_reset_callback_fn;
+		sb->s_bdev->bd_private = 
+			(unsigned long) whole->bd_fscallback_func;
+
+		print_debug_bdinfo(sb);
 	}
 
 	ext4_msg(sb, KERN_INFO, "mounted filesystem with%s. "

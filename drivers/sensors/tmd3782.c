@@ -691,7 +691,7 @@ static int proximity_open_window_type(struct taos_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	wintype_filp = filp_open(WINDOW_TYPE_FILE_PATH, O_RDONLY, 0666);
+	wintype_filp = filp_open(WINDOW_TYPE_FILE_PATH, O_RDONLY, 0);
 	if(IS_ERR(wintype_filp)) {
 		pr_err("%s: no window_type file\n", __func__);
 		err = PTR_ERR(wintype_filp);
@@ -730,7 +730,7 @@ static int proximity_open_offset(struct taos_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	offset_filp = filp_open(OFFSET_FILE_PATH, O_RDONLY, 0666);
+	offset_filp = filp_open(OFFSET_FILE_PATH, O_RDONLY, 0);
 	if (IS_ERR(offset_filp)) {
 		pr_err("%s: no offset file\n", __func__);
 		err = PTR_ERR(offset_filp);
@@ -844,7 +844,7 @@ static int proximity_store_offset(struct device *dev, bool do_calib)
 	set_fs(KERNEL_DS);
 
 	offset_filp = filp_open(OFFSET_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY, 0666);
+			O_CREAT | O_TRUNC | O_WRONLY, 0660);
 	if (IS_ERR(offset_filp)) {
 		pr_err("%s: Can't open prox_offset file\n", __func__);
 		set_fs(old_fs);

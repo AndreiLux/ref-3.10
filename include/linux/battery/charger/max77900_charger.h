@@ -159,8 +159,8 @@ typedef u8 (*PVRECT_T)[3];
 #define RECT_ADDR(_offset)  (RECT_ADDR_BASE + (_offset))
 
 #define RECT_CNFG	RECT_ADDR(0)
-#define TX_FREQ	RECT_ADDR(1)//Peer-to-peer inverter¡¯s output frequency setting 
-#define TX_DUTY	RECT_ADDR(2)//Peer-to-peer inverter¡¯s output duty cycle
+#define TX_FREQ	RECT_ADDR(1)//Peer-to-peer inverters output frequency setting 
+#define TX_DUTY	RECT_ADDR(2)//Peer-to-peer inverters output duty cycle
 #define TX_CNFG	RECT_ADDR(3)//Peer-to-peer configuration register
 
 /* RECT_CNFG Bits */
@@ -211,9 +211,9 @@ LDO_VOUTSET Setup LDO output voltage from 3.65V to 10.0V,  50 mV/LSB, default 0x
 
 	0x00 = 3.65V
 	0x01 = 3.70V
-	¡¦
+	
 	0x1b = 5.00V
-	¡¦
+	
 	0x7f = 10.0V
 
 
@@ -436,7 +436,7 @@ enum {
 	BATTERY_FAILURE,
 	RECONFIGURE,
 	NO_RESPONSE,
-	RESERVED  //0X09¡¦0XFF
+	RESERVED  //0X090XFF
 };
 
 /* Chip Interrupts */
@@ -466,6 +466,10 @@ struct max77900_charger_platform_data {
 	int siop_level;
 	bool default_voreg;
 	char *wireless_charger_name;
+	int wpc_int;
+	int wpc_det;
+	int irq_wpc_int;
+	int irq_wpc_det;
 };
 
 #define max77900_charger_platform_data_t \
@@ -484,11 +488,7 @@ struct max77900_charger_data {
 	struct delayed_work	wpc_work;
 	struct delayed_work	isr_work;
 
-	int wpc_irq;
-	int irq_base;
-	int irq_gpio;
-
-	int wpc_state;
+	int wc_w_state;
 };
 
 enum {

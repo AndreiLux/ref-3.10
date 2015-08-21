@@ -3254,7 +3254,9 @@ static void sd_shutdown(struct device *dev)
 exit:
 	if (sdp->host->by_ufs) {
 		spin_lock_irqsave(q->queue_lock, flags);
-		blk_stop_queue(q);
+		queue_flag_set(QUEUE_FLAG_DYING, q);
+		__blk_drain_queue(q, true);
+		queue_flag_set(QUEUE_FLAG_DEAD, q);
 		spin_unlock_irqrestore(q->queue_lock, flags);
 	}
 

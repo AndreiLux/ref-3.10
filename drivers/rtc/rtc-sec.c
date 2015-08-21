@@ -39,7 +39,7 @@
 #include <mach/apm-exynos.h>
 #endif
 
-#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#if 0 //#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 #include <linux/sec_batt_selfdchg_common.h>
 #endif
 
@@ -56,7 +56,7 @@ struct s2m_rtc_info {
 	bool alarm_irq_flag;
 	struct wake_lock alarm_wake_lock;
 #endif
-#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#if 0 //#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 	bool dchg_check_rtc_set;
 #endif
 	int			smpl_irq;
@@ -91,8 +91,8 @@ enum S2M_RTC_OP {
 	S2M_RTC_WRITE_ALARM,
 };
 
-#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
-#define RTC_BWAKEUP_AMIN 2
+#if 0 //#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#define RTC_BWAKEUP_AMIN 5
 #define RTC_BWAKEUP_ALOOP_MIN 60
 static u8 rtc_balarm_min_for_dischg = 0;
 #endif
@@ -401,7 +401,7 @@ static int s2m_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alrm)
 	int ret, i;
 
 	mutex_lock(&info->lock);
-#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#if 0 //#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 	if (info->dchg_check_rtc_set) {
 		pr_err("[SDCHG][%s] already set discharging rtc for bootloader\n", __func__);
 		ret = -EPERM;
@@ -638,7 +638,7 @@ static int s2m_rtc_get_alarm_boot(struct device *dev,
 }
 #endif
 
-#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if 0 //#if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
 static inline int s2m_rtc_update_reg_dischg(struct s2m_rtc_info *info,
                       enum S2M_RTC_OP op)
 {
@@ -1516,7 +1516,7 @@ static int s2m_rtc_probe(struct platform_device *pdev)
 	info->use_alarm_workaround = false;
 	info->wudr_mask = RTC_WUDR_MASK;
 	info->audr_mask = RTC_AUDR_MASK;
-#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#if 0 //#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 	info->dchg_check_rtc_set = false;
 #endif
 
@@ -1701,7 +1701,7 @@ static void s2m_rtc_shutdown(struct platform_device *pdev)
 	struct s2m_rtc_info *info = platform_get_drvdata(pdev);
 	struct sec_platform_data *pdata = dev_get_platdata(info->iodev->dev);
 
-#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
+#if 0 //#ifdef CONFIG_BATTERY_SWELLING_SELF_DISCHARGING
 	if(sdchg_nochip_support && (s2m_rtc_set_balarm_dischg_only(info) < 0))
 		printk(KERN_ERR "%s: Failed to set alarm reg. for boot self-dischg\n \n",
 				 __func__);

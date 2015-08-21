@@ -133,7 +133,7 @@ struct cipher_data {
 /* Hash */
 struct sha256_fmpfw_info {
 	uint32_t input;
-	uint32_t input_len;
+	size_t input_len;
 	uint32_t output;
 	uint32_t step;
 };
@@ -141,7 +141,7 @@ struct sha256_fmpfw_info {
 struct hmac_sha256_fmpfw_info {
 	struct sha256_fmpfw_info s;
 	uint32_t key;
-	uint32_t key_len;
+	size_t key_len;
 	uint32_t hmac_mode;
 	uint32_t dummy;
 };

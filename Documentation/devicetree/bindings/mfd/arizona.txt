@@ -17,6 +17,7 @@ Required properties:
         "wlf,wm1840"
         "wlf,wm1831"
         "cirrus,cs47l24"
+        "cirrus,cs47l85"
 
   - reg : I2C slave address when connected using I2C, chip select number when
     using SPI.
@@ -45,6 +46,8 @@ Optional properties:
 
   - wlf,reset : GPIO specifier for the GPIO controlling /RESET
   - wlf,ldoena : GPIO specifier for the GPIO controlling LDOENA
+  - wlf,clk32k-src : set input source for codec 32kHz clock.
+      0 = default, 1 = MCLK1, 2 = MCLK2, 3 = None
 
   - wlf,micd-software-compare : Use a software comparison to determine mic
     presence
@@ -97,10 +100,11 @@ Optional properties:
   - wlf,micbias3 : See wlf,micbias1
   - wlf,micbias4 : See wlf,micbias1
 
-  - wlf,gpio-defaults : A list of GPIO configuration register values. If
-    absent, no configuration of these registers is performed. If any
-    entry has a value that is out of range for a 16 bit register then
-    the chip default will be used.
+  - wlf,gpio-defaults : A list of GPIO configuration register values. Defines
+    for the appropriate values can found in <dt-bindings/mfd/arizona.txt>. If
+    absent, no configuration of these registers is performed. If any entry has
+    a value that is out of range for a 16 bit register then the chip default
+    will be used.
 
   - wlf,max-channels-clocked : The maximum number of channels to be clocked on
     each AIF, useful for I2S systems with multiple data lines being mastered.
@@ -114,6 +118,9 @@ Optional properties:
   - wlf,inmode : Input mode for each input, must contain four cells if
     specified. 0 indicates Differential, 1 indicates Single Ended and 2
     indicates a digital microphone.
+    For most codecs the entries map to <IN1, IN2, IN3, IN4>
+    wm8998: entries are for <IN1A, IN2A, IN1B, IN2B>
+    cs47l85, wm8285: entries are for <IN1L, IN1R, IN2L, IN2R, IN3L, IN3R>
 
   - wlf,out-mono : Mono bit for each output, must contain six cells if
     specified. A non-zero value indicates the corresponding output is mono.
@@ -186,11 +193,11 @@ codec: wm5102@1a {
 	wlf,gpsw = <0x3>;
 
 	wlf,gpio-defaults = <
-		0x00000000 /* AIF1TXLRCLK */
-		0xffffffff
-		0xffffffff
-		0xffffffff
-		0xffffffff
+		ARIZONA_GP_FN_TXLRCLK
+		ARIZONA_GP_DEFAULT
+		ARIZONA_GP_DEFAULT
+		ARIZONA_GP_DEFAULT
+		ARIZONA_GP_DEFAULT
 	>;
 
 	wlf,max-channels-clocked = <2 0 0>;

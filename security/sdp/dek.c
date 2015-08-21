@@ -28,7 +28,7 @@
 
 #define DEK_LOG_COUNT		100
 
-extern void ecryptfs_mm_drop_cache(int userid);
+extern void ecryptfs_mm_drop_cache(int userid, int engineid);
 
 /* Log buffer */
 struct log_struct
@@ -52,7 +52,7 @@ int dek_is_sdp_uid(uid_t uid) {
 }
 EXPORT_SYMBOL(dek_is_sdp_uid);
 
-static int is_system_server(void) {
+int is_system_server(void) {
 	uid_t uid = current_uid();
 
 	switch(uid) {
@@ -69,20 +69,7 @@ static int is_system_server(void) {
 	return 0;
 }
 
-// is_conatiner_app(current.uid);
-static int is_container_app(void) {
-	uid_t uid = current_uid();
-
-	int userid = uid / PER_USER_RANGE;
-
-	if(userid >= 100)
-		return 1;
-
-
-	return 0;
-}
-
-static int is_root(void) {
+int is_root(void) {
 	uid_t uid = current_uid();
 
 	switch(uid) {
@@ -94,6 +81,38 @@ static int is_root(void) {
 	}
 
 	return 0;
+}
+
+int is_current_adbd() {
+    DEK_LOGD("current->comm : %s\n", current->comm);
+#if 1
+    if(is_root()) {
+        // epmd/vold are 4 length string
+        if(strlen(current->comm) == 4)
+            if(strcmp(current->comm, "adbd"))
+                return 1;
+    }
+
+    return 0;
+#else
+    return 1;
+#endif
+}
+
+int is_current_epmd() {
+    DEK_LOGD("current->comm : %s\n", current->comm);
+#if 1
+    if(is_root()) {
+        // epmd/vold are 4 length string
+        if(strlen(current->comm) == 4)
+            if(strcmp(current->comm, "vold") ||  strcmp(current->comm, "epmd"))
+                return 1;
+    }
+
+    return 0;
+#else
+    return 1;
+#endif
 }
 
 static int zero_out(char *buf, unsigned int len) {
@@ -121,7 +140,7 @@ static int zero_out(char *buf, unsigned int len) {
 }
 
 /* Log */
-static void dek_add_to_log(int userid, char * buffer);
+static void dek_add_to_log(int engine_id, char * buffer);
 
 
 static int dek_open_evt(struct inode *inode, struct file *file)
@@ -144,16 +163,6 @@ static int dek_release_req(struct inode *ignored, struct file *file)
 	return 0;
 }
 
-static int dek_open_kek(struct inode *inode, struct file *file)
-{
-	return 0;
-}
-
-static int dek_release_kek(struct inode *ignored, struct file *file)
-{
-	return 0;
-}
-
 #ifdef CONFIG_SDP_KEY_DUMP
 void key_dump(unsigned char *buf, int len) {
 	int i;
@@ -167,10 +176,11 @@ void key_dump(unsigned char *buf, int len) {
 	printk("\n");
 }
 
-static void kek_dump(int userid, int kek_type, const char *kek_name) {
+static void kek_dump(int engine_id, int kek_type, const char *kek_name) {
 	kek_t *kek;
+	int ret;
 
-	kek = get_kek(userid, kek_type);
+	kek = get_kek(engine_id, kek_type, &ret);
 	if(kek) {
 		printk("dek: %s: ", kek_name);
 		key_dump(kek->buf, kek->len);
@@ -180,33 +190,25 @@ static void kek_dump(int userid, int kek_type, const char *kek_name) {
 	}
 }
 
-void dump_all_keys(int userid) {
-	kek_dump(userid, KEK_TYPE_SYM, "KEK_TYPE_SYM");
-	kek_dump(userid, KEK_TYPE_RSA_PUB, "KEK_TYPE_RSA_PUB");
-	kek_dump(userid, KEK_TYPE_RSA_PRIV, "KEK_TYPE_RSA_PRIV");
-	kek_dump(userid, KEK_TYPE_DH_PUB, "KEK_TYPE_DH_PUB");
-	kek_dump(userid, KEK_TYPE_DH_PRIV, "KEK_TYPE_DH_PRIV");
-	kek_dump(userid, KEK_TYPE_ECDH256_PUB, "KEK_TYPE_ECDH256_PUB");
-	kek_dump(userid, KEK_TYPE_ECDH256_PRIV, "KEK_TYPE_ECDH256_PRIV");
-}
-#else
-void key_dump(unsigned char *buf, int len) {
-
-}
-
-void dump_all_keys(int userid) {
-
+static void dump_all_keys(int engine_id) {
+	kek_dump(engine_id, KEK_TYPE_SYM, "KEK_TYPE_SYM");
+	kek_dump(engine_id, KEK_TYPE_RSA_PUB, "KEK_TYPE_RSA_PUB");
+	kek_dump(engine_id, KEK_TYPE_RSA_PRIV, "KEK_TYPE_RSA_PRIV");
+	kek_dump(engine_id, KEK_TYPE_DH_PUB, "KEK_TYPE_DH_PUB");
+	kek_dump(engine_id, KEK_TYPE_DH_PRIV, "KEK_TYPE_DH_PRIV");
+	kek_dump(engine_id, KEK_TYPE_ECDH256_PUB, "KEK_TYPE_ECDH256_PUB");
+	kek_dump(engine_id, KEK_TYPE_ECDH256_PRIV, "KEK_TYPE_ECDH256_PRIV");
 }
 #endif
 
-int dek_is_persona_locked(int userid) {
-	if(is_kek(userid, KEK_TYPE_SYM))
+int dek_is_locked(int engine_id) {
+	if(is_kek(engine_id, KEK_TYPE_SYM))
 	    return 0;
 
 	return 1;
 }
 
-int dek_generate_dek(int userid, dek_t *newDek) {
+int dek_generate_dek(int engine_id, dek_t *newDek) {
 	newDek->len = DEK_LEN;
 	get_random_bytes(newDek->buf, newDek->len);
 
@@ -214,30 +216,34 @@ int dek_generate_dek(int userid, dek_t *newDek) {
 		zero_out((char *)newDek, sizeof(dek_t));
 		return -EFAULT;
 	}
-#if DEK_DEBUG
+#ifdef CONFIG_SDP_KEY_DUMP
 	else {
-		DEK_LOGD("DEK: ");
-		key_dump(newDek->buf, newDek->len);
+	    if(get_sdp_sysfs_key_dump()) {
+	        DEK_LOGD("DEK: ");
+	        key_dump(newDek->buf, newDek->len);
+        }
 	}
 #endif
 
 	return 0;
 }
 
-static int dek_encrypt_dek(int userid, dek_t *plainDek, dek_t *encDek) {
+static int dek_encrypt_dek(int engine_id, dek_t *plainDek, dek_t *encDek) {
 	int ret = 0;
 	kek_t *kek;
 
-#if DEK_DEBUG
-	DEK_LOGD("plainDek from user: ");
-	key_dump(plainDek->buf, plainDek->len);
+#ifdef CONFIG_SDP_KEY_DUMP
+	if(get_sdp_sysfs_key_dump()) {
+	    DEK_LOGD("plainDek from user: ");
+	    key_dump(plainDek->buf, plainDek->len);
+	}
 #endif
 
-	kek = get_kek(userid, KEK_TYPE_SYM);
+	kek = get_kek(engine_id, KEK_TYPE_SYM, &ret);
 	if (kek) {
 		if (dek_aes_encrypt(kek, plainDek->buf, encDek->buf, plainDek->len)) {
 			DEK_LOGE("aes encrypt failed\n");
-			dek_add_to_log(userid, "aes encrypt failed");
+			dek_add_to_log(engine_id, "aes encrypt failed");
 			encDek->len = 0;
 		} else {
 			encDek->len = plainDek->len;
@@ -252,92 +258,102 @@ static int dek_encrypt_dek(int userid, dek_t *plainDek, dek_t *encDek) {
 		 */
 	    switch(get_sdp_sysfs_asym_alg()) {
         case SDPK_ALGOTYPE_ASYMM_ECDH:
-            kek = get_kek(userid, KEK_TYPE_ECDH256_PUB);
+            kek = get_kek(engine_id, KEK_TYPE_ECDH256_PUB, &ret);
             if(kek) {
                 ret = ecdh_encryptDEK(plainDek, encDek, kek);
                 put_kek(kek);
                 break;
             }else{
-                DEK_LOGE("no KEK_TYPE_ECDH256_PUB : %d\n", userid);
-                dek_add_to_log(userid, "encrypt failed, no KEK_TYPE_ECDH256_PUB");
-                return -EIO;
+                if(ret == -EACCES) return ret;
+
+                DEK_LOGE("no KEK_TYPE_ECDH256_PUB : %d\n", engine_id);
+                dek_add_to_log(engine_id, "encrypt failed, no KEK_TYPE_ECDH256_PUB");
             }
 	        // no ECDH, try DH
 	        /* no break */
 	    case SDPK_ALGOTYPE_ASYMM_DH:
-	    	kek = get_kek(userid, KEK_TYPE_DH_PUB);
+	    	kek = get_kek(engine_id, KEK_TYPE_DH_PUB, &ret);
 	        if(kek) {
 	            ret = dh_encryptDEK(plainDek, encDek, kek);
 	            put_kek(kek);
                 break;
 	        }else{
-	    		DEK_LOGE("no KEK_TYPE_DH_PUB : %d\n", userid);
-	            dek_add_to_log(userid, "encrypt failed, no KEK_TYPE_DH_PUB");
-	            return -EIO;
+                if(ret == -EACCES) return ret;
+
+	    		DEK_LOGE("no KEK_TYPE_DH_PUB : %d\n", engine_id);
+	            dek_add_to_log(engine_id, "encrypt failed, no KEK_TYPE_DH_PUB");
 	        }
             // no DH, try RSA
 	        /* no break */
 	    case SDPK_ALGOTYPE_ASYMM_RSA:
-	        kek = get_kek(userid, KEK_TYPE_RSA_PUB);
+	        kek = get_kek(engine_id, KEK_TYPE_RSA_PUB, &ret);
 	        if(kek) {
 	            ret = rsa_encryptByPub(plainDek, encDek, kek);
 	            put_kek(kek);
 	            break;
 	        }else{
-	            DEK_LOGE("no KEK_TYPE_RSA_PUB : %d\n", userid);
-	            dek_add_to_log(userid, "encrypt failed, no KEK_TYPE_RSA_PUB");
-	            return -EIO;
+                if(ret == -EACCES) return ret;
+
+	            DEK_LOGE("no KEK_TYPE_RSA_PUB : %d\n", engine_id);
+	            dek_add_to_log(engine_id, "encrypt failed, no KEK_TYPE_RSA_PUB");
 	        }
 	        // no RSA, return error;
 	        /* no break */
 	    default:
-            DEK_LOGE("no ASYMM algo registered : %d\n", userid);
-	        dek_add_to_log(userid, "no ASYMM algo supported");
+            DEK_LOGE("no ASYMM algo registered : %d\n", engine_id);
+            printk(KERN_INFO "MDM_LOG - encrypt failed, no ASYMM algo supported for id: %d\n", engine_id);
+	        dek_add_to_log(engine_id, "no ASYMM algo supported");
 	        return -EOPNOTSUPP;
 	    }
 #else
-		DEK_LOGE("pub crypto not supported : %d\n", userid);
-		dek_add_to_log(userid, "encrypt failed, no key");
+		DEK_LOGE("pub crypto not supported : %d\n", engine_id);
+		dek_add_to_log(engine_id, "encrypt failed, no key");
 		return -EOPNOTSUPP;
 #endif
 	}
+
+	if(ret) return ret;
 
 	if (encDek->len <= 0 || encDek->len > DEK_MAXLEN) {
 		DEK_LOGE("dek_encrypt_dek, incorrect len=%d\n", encDek->len);
 		zero_out((char *)encDek, sizeof(dek_t));
 		return -EFAULT;
 	}
-#if DEK_DEBUG
+#ifdef CONFIG_SDP_KEY_DUMP
 	else {
-		DEK_LOGD("encDek to user: ");
-		key_dump(encDek->buf, encDek->len);
+	    if(get_sdp_sysfs_key_dump()) {
+	        DEK_LOGD("encDek to user: ");
+	        key_dump(encDek->buf, encDek->len);
+	    }
 	}
 #endif
 
 	return 0;
 }
 
-int dek_encrypt_dek_efs(int userid, dek_t *plainDek, dek_t *encDek) {
-	return dek_encrypt_dek(userid, plainDek, encDek);
+int dek_encrypt_dek_efs(int engine_id, dek_t *plainDek, dek_t *encDek) {
+	return dek_encrypt_dek(engine_id, plainDek, encDek);
 }
 
-static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
+static int dek_decrypt_dek(int engine_id, dek_t *encDek, dek_t *plainDek) {
 	int dek_type = encDek->type;
 	kek_t *kek = NULL;
 	int ret = 0;
 
-#if DEK_DEBUG
-	DEK_LOGD("encDek from user: ");
-	key_dump(encDek->buf, encDek->len);
+#ifdef CONFIG_SDP_KEY_DUMP
+	if(get_sdp_sysfs_key_dump()) {
+	    DEK_LOGD("encDek from user: ");
+	    key_dump(encDek->buf, encDek->len);
+	}
 #endif
 	switch(dek_type) {
 	case DEK_TYPE_AES_ENC:
 	{
-		kek = get_kek(userid, KEK_TYPE_SYM);
+		kek = get_kek(engine_id, KEK_TYPE_SYM, &ret);
         if (kek) {
             if (dek_aes_decrypt(kek, encDek->buf, plainDek->buf, encDek->len)) {
                 DEK_LOGE("aes decrypt failed\n");
-                dek_add_to_log(userid, "aes decrypt failed");
+                dek_add_to_log(engine_id, "aes decrypt failed");
                 plainDek->len = 0;
             } else {
                 plainDek->len = encDek->len;
@@ -345,8 +361,9 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
             }
             put_kek(kek);
         } else {
-            DEK_LOGE("no KEK_TYPE_SYM for id: %d\n", userid);
-            dek_add_to_log(userid, "decrypt failed, no KEK_TYPE_SYM");
+            DEK_LOGE("no KEK_TYPE_SYM for id: %d\n", engine_id);
+            printk(KERN_INFO "MDM_LOG - decrypt failed, no KEK_TYPE_SYM for id: %d\n", engine_id);
+            dek_add_to_log(engine_id, "decrypt failed, no KEK_TYPE_SYM");
             return -EIO;
         }
         return 0;
@@ -354,18 +371,19 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
 	case DEK_TYPE_RSA_ENC:
 	{
 #ifdef CONFIG_PUB_CRYPTO
-		kek = get_kek(userid, KEK_TYPE_RSA_PRIV);
+		kek = get_kek(engine_id, KEK_TYPE_RSA_PRIV, &ret);
         if(kek) {
             ret = rsa_decryptByPair(encDek, plainDek, kek);
             put_kek(kek);
         }else{
-            DEK_LOGE("no KEK_TYPE_RSA_PRIV for id: %d\n", userid);
-            dek_add_to_log(userid, "encrypt failed, no KEK_TYPE_RSA_PRIV");
+            DEK_LOGE("no KEK_TYPE_RSA_PRIV for id: %d\n", engine_id);
+            printk(KERN_INFO "MDM_LOG - decrypt failed, no KEK_TYPE_RSA_PRIV for id: %d\n", engine_id);
+            dek_add_to_log(engine_id, "decrypt failed, no KEK_TYPE_RSA_PRIV");
             return -EIO;
         }
 #else
         DEK_LOGE("Not supported key type: %d\n", encDek->type);
-        dek_add_to_log(userid, "decrypt failed, DH type not supported");
+        dek_add_to_log(engine_id, "decrypt failed, DH type not supported");
         return -EOPNOTSUPP;
 #endif
         return ret;
@@ -373,18 +391,19 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
 	case DEK_TYPE_DH_ENC:
 	{
 #ifdef CONFIG_PUB_CRYPTO
-		kek = get_kek(userid, KEK_TYPE_DH_PRIV);
+		kek = get_kek(engine_id, KEK_TYPE_DH_PRIV, &ret);
         if(kek) {
             ret = dh_decryptEDEK(encDek, plainDek, kek);
             put_kek(kek);
         }else{
-            DEK_LOGE("no KEK_TYPE_DH_PRIV for id: %d\n", userid);
-            dek_add_to_log(userid, "encrypt failed, no KEK_TYPE_DH_PRIV");
+            DEK_LOGE("no KEK_TYPE_DH_PRIV for id: %d\n", engine_id);
+            printk(KERN_INFO "MDM_LOG - decrypt failed, no KEK_TYPE_DH_PRIV for id: %d\n", engine_id);
+            dek_add_to_log(engine_id, "decrypt failed, no KEK_TYPE_DH_PRIV");
             return -EIO;
         }
 #else
         DEK_LOGE("Not supported key type: %d\n", encDek->type);
-        dek_add_to_log(userid, "decrypt failed, DH type not supported");
+        dek_add_to_log(engine_id, "decrypt failed, DH type not supported");
         return -EOPNOTSUPP;
 #endif
         return ret;
@@ -392,18 +411,19 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
 	case DEK_TYPE_ECDH256_ENC:
 	{
 #ifdef CONFIG_PUB_CRYPTO
-		kek = get_kek(userid, KEK_TYPE_ECDH256_PRIV);
+		kek = get_kek(engine_id, KEK_TYPE_ECDH256_PRIV, &ret);
         if(kek) {
             ret = ecdh_decryptEDEK(encDek, plainDek, kek);
             put_kek(kek);
         }else{
-            DEK_LOGE("no KEK_TYPE_ECDH256_PRIV for id: %d\n", userid);
-            dek_add_to_log(userid, "encrypt failed, no KEK_TYPE_ECDH256_PRIV");
+            DEK_LOGE("no KEK_TYPE_ECDH256_PRIV for id: %d\n", engine_id);
+            printk(KERN_INFO "MDM_LOG - decrypt failed, no KEK_TYPE_ECDH256_PRIV for id: %d\n", engine_id);
+            dek_add_to_log(engine_id, "decrypt failed, no KEK_TYPE_ECDH256_PRIV");
             return -EIO;
         }
 #else
         DEK_LOGE("Not supported key type: %d\n", encDek->type);
-        dek_add_to_log(userid, "decrypt failed, ECDH type not supported");
+        dek_add_to_log(engine_id, "decrypt failed, ECDH type not supported");
         return -EOPNOTSUPP;
 #endif
         return ret;
@@ -411,19 +431,21 @@ static int dek_decrypt_dek(int userid, dek_t *encDek, dek_t *plainDek) {
 	default:
 	{
         DEK_LOGE("Unsupported edek type: %d\n", encDek->type);
-        dek_add_to_log(userid, "decrypt failed, unsupported key type");
+        printk(KERN_INFO "MDM_LOG - decrypt failed, unsupported key type for id: %d\n", engine_id);
+        dek_add_to_log(engine_id, "decrypt failed, unsupported key type");
         return -EFAULT;
 	}
 	}
 }
 
-int dek_decrypt_dek_efs(int userid, dek_t *encDek, dek_t *plainDek) {
-	return dek_decrypt_dek(userid, encDek, plainDek);
+int dek_decrypt_dek_efs(int engine_id, dek_t *encDek, dek_t *plainDek) {
+	return dek_decrypt_dek(engine_id, encDek, plainDek);
 }
 
 static int dek_on_boot(dek_arg_on_boot *evt) {
 	int ret = 0;
-	int userid = evt->userid;
+	int engine_id = evt->engine_id;
+    int user_id = evt->user_id;
 
 	if((evt->SDPK_Rpub.len > KEK_MAXLEN) ||
 	        (evt->SDPK_Dpub.len > KEK_MAXLEN) ||
@@ -435,21 +457,21 @@ static int dek_on_boot(dek_arg_on_boot *evt) {
 	    return -EINVAL;
 	}
 
-	if(!is_kek_pack(userid)) {
-		ret = add_kek_pack(userid);
+	if(!is_kek_pack(engine_id)) {
+		ret = add_kek_pack(engine_id, user_id);
 		if(ret && ret != -EEXIST) {
 			DEK_LOGE("add_kek_pack failed\n");
 			return ret;
 		}
 
 		ret = 0;
-		add_kek(userid, &evt->SDPK_Rpub);
-		add_kek(userid, &evt->SDPK_Dpub);
-		add_kek(userid, &evt->SDPK_EDpub);
+		add_kek(engine_id, &evt->SDPK_Rpub);
+		add_kek(engine_id, &evt->SDPK_Dpub);
+		add_kek(engine_id, &evt->SDPK_EDpub);
 
 #ifdef CONFIG_SDP_KEY_DUMP
 		if(get_sdp_sysfs_key_dump()) {
-		    dump_all_keys(userid);
+		    dump_all_keys(engine_id);
 		}
 #endif
 	}
@@ -458,18 +480,19 @@ static int dek_on_boot(dek_arg_on_boot *evt) {
 }
 
 static int dek_on_device_locked(dek_arg_on_device_locked *evt) {
-	int userid = evt->userid;
+    int user_id = evt->user_id;
+	int engine_id = evt->engine_id;
 
-	del_kek(userid, KEK_TYPE_SYM);
-	del_kek(userid, KEK_TYPE_RSA_PRIV);
-	del_kek(userid, KEK_TYPE_DH_PRIV);
-	del_kek(userid, KEK_TYPE_ECDH256_PRIV);
+	del_kek(engine_id, KEK_TYPE_SYM);
+	del_kek(engine_id, KEK_TYPE_RSA_PRIV);
+	del_kek(engine_id, KEK_TYPE_DH_PRIV);
+	del_kek(engine_id, KEK_TYPE_ECDH256_PRIV);
 
-	ecryptfs_mm_drop_cache(userid);
+	ecryptfs_mm_drop_cache(user_id, engine_id);
 
 #ifdef CONFIG_SDP_KEY_DUMP
     if(get_sdp_sysfs_key_dump()) {
-        dump_all_keys(userid);
+        dump_all_keys(engine_id);
     }
 #endif
 
@@ -477,7 +500,7 @@ static int dek_on_device_locked(dek_arg_on_device_locked *evt) {
 }
 
 static int dek_on_device_unlocked(dek_arg_on_device_unlocked *evt) {
-	int userid = evt->userid;
+	int engine_id = evt->engine_id;
 
 	if((evt->SDPK_sym.len > KEK_MAXLEN) ||
             (evt->SDPK_Rpri.len > KEK_MAXLEN) ||
@@ -491,14 +514,14 @@ static int dek_on_device_unlocked(dek_arg_on_device_unlocked *evt) {
 		return -EINVAL;
 	}
 
-	add_kek(userid, &evt->SDPK_sym);
-	add_kek(userid, &evt->SDPK_Rpri);
-	add_kek(userid, &evt->SDPK_Dpri);
-	add_kek(userid, &evt->SDPK_EDpri);
+	add_kek(engine_id, &evt->SDPK_sym);
+	add_kek(engine_id, &evt->SDPK_Rpri);
+	add_kek(engine_id, &evt->SDPK_Dpri);
+	add_kek(engine_id, &evt->SDPK_EDpri);
 
 #ifdef CONFIG_SDP_KEY_DUMP
 	if(get_sdp_sysfs_key_dump()) {
-	    dump_all_keys(userid);
+	    dump_all_keys(engine_id);
 	}
 #endif
 
@@ -507,7 +530,8 @@ static int dek_on_device_unlocked(dek_arg_on_device_unlocked *evt) {
 
 static int dek_on_user_added(dek_arg_on_user_added *evt) {
 	int ret;
-	int userid = evt->userid;
+	int engine_id = evt->engine_id;
+	int user_id = evt->user_id;
 
 	if((evt->SDPK_Rpub.len > KEK_MAXLEN) ||
 	        (evt->SDPK_Dpub.len > KEK_MAXLEN) ||
@@ -519,20 +543,20 @@ static int dek_on_user_added(dek_arg_on_user_added *evt) {
 		return -EINVAL;
 	}
 
-	ret = add_kek_pack(userid);
+	ret = add_kek_pack(engine_id, user_id);
 	if(ret && ret != -EEXIST) {
 	    DEK_LOGE("add_kek_pack failed\n");
 	    return ret;
 	}
 
 	ret = 0;
-	add_kek(userid, &evt->SDPK_Rpub);
-	add_kek(userid, &evt->SDPK_Dpub);
-	add_kek(userid, &evt->SDPK_EDpub);
+	add_kek(engine_id, &evt->SDPK_Rpub);
+	add_kek(engine_id, &evt->SDPK_Dpub);
+	add_kek(engine_id, &evt->SDPK_EDpub);
 
 #ifdef CONFIG_SDP_KEY_DUMP
     if(get_sdp_sysfs_key_dump()) {
-		dump_all_keys(userid);
+		dump_all_keys(engine_id);
 	}
 #endif
 
@@ -540,7 +564,7 @@ static int dek_on_user_added(dek_arg_on_user_added *evt) {
 }
 
 static int dek_on_user_removed(dek_arg_on_user_removed *evt) {
-	del_kek_pack(evt->userid);
+	del_kek_pack(evt->engine_id);
 
 	return 0;
 }
@@ -552,7 +576,7 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 	long ret = 0;
 	void __user *ubuf = (void __user *)arg;
 	void *cleanup = NULL;
-	unsigned int size;
+	unsigned int size = 0;
 
 	switch (cmd) {
 	/*
@@ -580,10 +604,10 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 		}
 		ret = dek_on_boot(evt);
 		if (ret < 0) {
-			dek_add_to_log(evt->userid, "Boot failed");
+			dek_add_to_log(evt->engine_id, "Boot failed");
 			goto err;
 		}
-		dek_add_to_log(evt->userid, "Booted");
+		dek_add_to_log(evt->engine_id, "Booted");
 		break;
 	}
 	/*
@@ -609,10 +633,10 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 		}
 		ret = dek_on_device_locked(evt);
 		if (ret < 0) {
-			dek_add_to_log(evt->userid, "Lock failed");
+			dek_add_to_log(evt->engine_id, "Lock failed");
 			goto err;
 		}
-		dek_add_to_log(evt->userid, "Locked");
+		dek_add_to_log(evt->engine_id, "Locked");
 		break;
 	}
 	/*
@@ -638,10 +662,10 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 		}
 		ret = dek_on_device_unlocked(evt);
 		if (ret < 0) {
-			dek_add_to_log(evt->userid, "Unlock failed");
+			dek_add_to_log(evt->engine_id, "Unlock failed");
 			goto err;
 		}
-		dek_add_to_log(evt->userid, "Unlocked");
+		dek_add_to_log(evt->engine_id, "Unlocked");
 		break;
 	}
 	/*
@@ -669,10 +693,10 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 		}
 		ret = dek_on_user_added(evt);
 		if (ret < 0) {
-			dek_add_to_log(evt->userid, "Add user failed");
+			dek_add_to_log(evt->engine_id, "Add user failed");
 			goto err;
 		}
-		dek_add_to_log(evt->userid, "Added user");
+		dek_add_to_log(evt->engine_id, "Added user");
 		break;
 	}
 	/*
@@ -698,10 +722,10 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 		}
 		ret = dek_on_user_removed(evt);
 		if (ret < 0) {
-			dek_add_to_log(evt->userid, "Remove user failed");
+			dek_add_to_log(evt->engine_id, "Remove user failed");
 			goto err;
 		}
-		dek_add_to_log(evt->userid, "Removed user");
+		dek_add_to_log(evt->engine_id, "Removed user");
 		break;
 	}
 	/*
@@ -725,7 +749,7 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 			goto err;
 		}
 		cleanup = evt;
-		size = sizeof(dek_arg_on_user_removed);
+		size = sizeof(dek_arg_disk_cache_cleanup);
 
 		if(copy_from_user(evt, ubuf, size)) {
 			DEK_LOGE("can't copy from user evt\n");
@@ -733,9 +757,9 @@ static long dek_do_ioctl_evt(unsigned int minor, unsigned int cmd,
 			goto err;
 		}
 
-		ecryptfs_mm_drop_cache(evt->userid);
+		ecryptfs_mm_drop_cache(evt->user_id, evt->engine_id);
 		ret = 0;
-		dek_add_to_log(evt->userid, "Disk cache clean up");
+		dek_add_to_log(evt->engine_id, "Disk cache clean up");
 		break;
 	}
 	default:
@@ -770,10 +794,10 @@ static long dek_do_ioctl_req(unsigned int minor, unsigned int cmd,
             goto err;
         }
 
-        req.ret = is_kek_available(req.userid, req.kek_type);
+        req.ret = is_kek_available(req.engine_id, req.kek_type);
         if(req.ret < 0) {
             DEK_LOGE("is_kek_available(id:%d, kek:%d) error\n",
-                    req.userid, req.kek_type);
+                    req.engine_id, req.kek_type);
             ret = -ENOENT;
             goto err;
         }
@@ -803,7 +827,7 @@ static long dek_do_ioctl_req(unsigned int minor, unsigned int cmd,
 			ret = -EFAULT;
 			goto err;
 		}
-		dek_generate_dek(req.userid, &req.dek);
+		dek_generate_dek(req.engine_id, &req.dek);
 		if(copy_to_user(ubuf, &req, sizeof(req))) {
 			DEK_LOGE("can't copy to user req\n");
 			zero_out((char *)&req, sizeof(dek_arg_generate_dek));
@@ -830,7 +854,7 @@ static long dek_do_ioctl_req(unsigned int minor, unsigned int cmd,
 			ret = -EFAULT;
 			goto err;
 		}
-		ret = dek_encrypt_dek(req.userid,
+		ret = dek_encrypt_dek(req.engine_id,
 				&req.plain_dek, &req.enc_dek);
 		if (ret < 0) {
 			zero_out((char *)&req, sizeof(dek_arg_encrypt_dek));
@@ -864,7 +888,7 @@ static long dek_do_ioctl_req(unsigned int minor, unsigned int cmd,
 			ret = -EFAULT;
 			goto err;
 		}
-		ret = dek_decrypt_dek(req.userid,
+		ret = dek_decrypt_dek(req.engine_id,
 				&req.enc_dek, &req.plain_dek);
 		if (ret < 0) {
 			zero_out((char *)&req, sizeof(dek_arg_decrypt_dek));
@@ -891,158 +915,8 @@ err:
 	return ret;
 }
 
-int is_kek_available(int userid, int kek_type) {
-    return is_kek(userid, kek_type);
-}
-
-static long dek_do_ioctl_kek(unsigned int minor, unsigned int cmd,
-		unsigned long arg) {
-#if 0
-	long ret = 0;
-	void __user *ubuf = (void __user *)arg;
-
-	switch (cmd) {
-	case DEK_GET_KEK: {
-		dek_arg_get_kek req;
-		int requested_type = 0;
-		int userid;
-		int key_arr_idx;
-
-		DEK_LOGD("DEK_GET_KEK\n");
-
-		memset(&req, 0, sizeof(dek_arg_get_kek));
-		if(copy_from_user(&req, ubuf, sizeof(req))) {
-			DEK_LOGE("can't copy from user kek\n");
-			ret = -EFAULT;
-			goto err;
-		}
-
-		userid = req.userid;
-		key_arr_idx = PERSONA_KEY_ARR_IDX(userid);
-
-		requested_type = req.kek_type;
-		req.key.len = 0;
-		req.key.type = -1;
-
-		switch(requested_type) {
-		case KEK_TYPE_SYM:
-			if (SDPK_sym[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_sym[key_arr_idx], KEK_TYPE_SYM);
-				DEK_LOGD("SDPK_sym len : %d\n", req.key.len);
-			}else{
-				DEK_LOGE("SDPK_sym not-available\n");
-				ret = -EIO;
-				goto err;
-			}
-			break;
-		case KEK_TYPE_RSA_PUB:
-			if (SDPK_Rpub[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_Rpub[key_arr_idx], KEK_TYPE_RSA_PUB);
-				DEK_LOGD("SDPK_Rpub len : %d\n", req.key.len);
-			} else {
-				DEK_LOGE("SDPK_Rpub not-available\n");
-				ret = -EIO;
-				goto err;
-			}
-			break;
-		case KEK_TYPE_RSA_PRIV:
-#ifdef CONFIG_SDP_IOCTL_PRIV
-			if (SDPK_Rpri[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_Rpri[key_arr_idx], KEK_TYPE_RSA_PRIV);
-				DEK_LOGD("SDPK_Rpri len : %d\n", req.key.len);
-			} else {
-				DEK_LOGE("SDPK_Rpri not-available\n");
-				ret = -EIO;
-				goto err;
-			}
-#else
-			DEK_LOGE("SDPK_Rpri not exposed\n");
-			ret = -EOPNOTSUPP;
-			goto err;
-#endif
-			break;
-		case KEK_TYPE_DH_PUB:
-			if (SDPK_Dpub[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_Dpub[key_arr_idx], KEK_TYPE_DH_PUB);
-				DEK_LOGD("SDPK_Dpub len : %d\n", req.key.len);
-			} else {
-				DEK_LOGE("SDPK_Dpub not-available\n");
-				ret = -EIO;
-				goto err;
-			}
-
-			break;
-		case KEK_TYPE_DH_PRIV:
-#ifdef CONFIG_SDP_IOCTL_PRIV
-			if (SDPK_Dpri[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_Dpri[key_arr_idx], KEK_TYPE_DH_PRIV);
-				DEK_LOGD("SDPK_Dpri len : %d\n", req.key.len);
-			} else {
-				DEK_LOGE("SDPK_Dpri not-available\n");
-				ret = -EIO;
-				goto err;
-			}
-#else
-			DEK_LOGE("SDPK_Dpri not exposed\n");
-			ret = -EOPNOTSUPP;
-			goto err;
-#endif
-			break;
-        case KEK_TYPE_ECDH256_PUB:
-            if (SDPK_EDpub[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_EDpub[key_arr_idx], KEK_TYPE_ECDH256_PUB);
-                DEK_LOGD("SDPK_EDpub len : %d\n", req.key.len);
-            } else {
-                DEK_LOGE("SDPK_EDpub not-available\n");
-                ret = -EIO;
-                goto err;
-            }
-
-            break;
-        case KEK_TYPE_ECDH256_PRIV:
-#ifdef CONFIG_SDP_IOCTL_PRIV
-            if (SDPK_EDpri[key_arr_idx].len > 0) {
-                copy_kek(&req.key, &SDPK_EDpub[key_arr_idx], KEK_TYPE_ECDH256_PRIV);
-                DEK_LOGD("SDPK_EDpri len : %d\n", req.key.len);
-            } else {
-                DEK_LOGE("SDPK_EDpri not-available\n");
-                ret = -EIO;
-                goto err;
-            }
-#else
-            DEK_LOGE("SDPK_EDpri not exposed\n");
-            ret = -EOPNOTSUPP;
-            goto err;
-#endif
-            break;
-		default:
-			DEK_LOGE("invalid key type\n");
-			ret = -EINVAL;
-			goto err;
-			break;
-		}
-
-		if(copy_to_user(ubuf, &req, sizeof(req))) {
-			DEK_LOGE("can't copy to user kek\n");
-			zero_out((char *)&req, sizeof(dek_arg_get_kek));
-			ret = -EFAULT;
-			goto err;
-		}
-		zero_out((char *)&req, sizeof(dek_arg_get_kek));
-		break;
-	}
-	default:
-		DEK_LOGE("%s case default\n", __func__);
-		ret = -EINVAL;
-		break;
-	}
-
-	return ret;
-err:
-	return ret;
-#else
-	return -EOPNOTSUPP;
-#endif
+int is_kek_available(int engine_id, int kek_type) {
+    return is_kek(engine_id, kek_type);
 }
 
 static long dek_ioctl_evt(struct file *file,
@@ -1085,26 +959,6 @@ static long dek_ioctl_req(struct file *file,
 
 	minor = iminor(file->f_path.dentry->d_inode);
 	return dek_do_ioctl_req(minor, cmd, arg);
-}
-
-static long dek_ioctl_kek(struct file *file,
-		unsigned int cmd, unsigned long arg)
-{
-	unsigned int minor;
-	if(!is_container_app() && !is_root()) {
-		DEK_LOGE("Current process can't access kek device\n");
-		DEK_LOGE("Current process info :: "
-				"uid=%u gid=%u euid=%u egid=%u suid=%u sgid=%u "
-				"fsuid=%u fsgid=%u\n",
-				current_uid(), current_gid(), current_euid(),
-				current_egid(), current_suid(), current_sgid(),
-				current_fsuid(), current_fsgid());
-		dek_add_to_log(000, "Access denied to kek device");
-		return -EACCES;
-	}
-
-	minor = iminor(file->f_path.dentry->d_inode);
-	return dek_do_ioctl_kek(minor, cmd, arg);
 }
 
 /*
@@ -1166,7 +1020,7 @@ static ssize_t dek_read_log(struct file *file, char __user *buffer, size_t len, 
 	return len;
 }
 
-static void dek_add_to_log(int userid, char * buffer) {
+static void dek_add_to_log(int engine_id, char * buffer) {
 	struct timespec ts;
 	struct log_struct *tmp = (struct log_struct*)kmalloc(sizeof(struct log_struct), GFP_KERNEL);
 
@@ -1179,7 +1033,7 @@ static void dek_add_to_log(int userid, char * buffer) {
 				(long)ts.tv_nsec / 1000000,
 				current->pid,
 				current->comm,
-				userid,
+				engine_id,
 				buffer);
 
 		spin_lock(&log_buffer.list_lock);
@@ -1244,21 +1098,6 @@ static struct miscdevice dek_misc_log = {
 		.fops = &dek_fops_log,
 };
 
-
-const struct file_operations dek_fops_kek = {
-		.owner = THIS_MODULE,
-		.open = dek_open_kek,
-		.release = dek_release_kek,
-		.unlocked_ioctl = dek_ioctl_kek,
-		.compat_ioctl = dek_ioctl_kek,
-};
-
-static struct miscdevice dek_misc_kek = {
-		.minor = MISC_DYNAMIC_MINOR,
-		.name = "dek_kek",
-		.fops = &dek_fops_kek,
-};
-
 static int __init dek_init(void) {
 	int ret;
 
@@ -1288,12 +1127,6 @@ static int __init dek_init(void) {
 	ret = dek_create_sysfs_key_dump(dek_misc_log.this_device);
 	if (unlikely(ret)) {
 		DEK_LOGE("failed to create sysfs_key_dump device!\n");
-		return ret;
-	}
-
-	ret = misc_register(&dek_misc_kek);
-	if (unlikely(ret)) {
-		DEK_LOGE("failed to register misc_kek device!\n");
 		return ret;
 	}
 

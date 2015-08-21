@@ -12,9 +12,10 @@
 #ifndef FIMC_IS_CONFIG_H
 #define FIMC_IS_CONFIG_H
 
-#if defined(CONFIG_CAMERA_ZERO) || defined(CONFIG_CAMERA_MARINE) || defined(CONFIG_CAMERA_VLTE) \
- || defined(CONFIG_CAMERA_NOBLE) || defined(CONFIG_CAMERA_ZENLTE)
+#if defined(CONFIG_CAMERA_ZERO) || defined(CONFIG_CAMERA_MARINE)
 #include "../vendor/fimc-is-vendor-config_zero.h"
+#elif defined(CONFIG_CAMERA_NOBLE) || defined(CONFIG_CAMERA_ZENLTE) || defined(CONFIG_CAMERA_VLTE)
+#include "../vendor/fimc-is-vendor-config_noble.h"
 #endif
 
 /*
@@ -82,7 +83,9 @@
 /* Post Processing Configruation */
 /* #define ENABLE_DRC */
 /* #define ENABLE_DIS */
+#if defined(CONFIG_ENABLE_TDNR)
 #define ENABLE_DNR
+#endif
 #define ENABLE_VRA
 
 #else

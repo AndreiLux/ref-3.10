@@ -16,7 +16,8 @@
 #include <sdp/dek_common.h>
 
 typedef struct __kek_pack {
-	int userid;
+    int engine_id;
+    int user_id;
 
 	struct list_head list;
 
@@ -48,7 +49,7 @@ void init_kek_pack(void) {
 	INIT_LIST_HEAD(&kek_pack_list_head);
 }
 
-static kek_pack_t *find_kek_pack(int userid) {
+static kek_pack_t *find_kek_pack(int engine_id) {
 	struct list_head *entry;
 
 	spin_lock(&kek_pack_list_lock);
@@ -56,15 +57,15 @@ static kek_pack_t *find_kek_pack(int userid) {
 	list_for_each(entry, &kek_pack_list_head) {
 		kek_pack_t *pack = list_entry(entry, kek_pack_t, list);
 
-		if(pack->userid == userid) {
-			KEK_PACK_LOGE("Found kek-pack : %d\n", userid);
+		if(pack->engine_id == engine_id) {
+			KEK_PACK_LOGE("Found kek-pack : %d\n", engine_id);
 			spin_unlock(&kek_pack_list_lock);
 			return pack;
 		}
 	}
 	spin_unlock(&kek_pack_list_lock);
 
-	KEK_PACK_LOGE("Can't find kek-pack : %d\n", userid);
+	KEK_PACK_LOGE("Can't find kek-pack : %d\n", engine_id);
 
 	return NULL;
 }
@@ -109,7 +110,7 @@ static kek_item_t *find_kek_item(kek_pack_t *pack, int kek_type) {
 	}
 	spin_unlock(&pack->kek_list_lock);
 
-	KEK_PACK_LOGE("Can't find kek %d : %d\n", kek_type, pack->userid);
+	KEK_PACK_LOGE("Can't find kek %d : %d\n", kek_type, pack->engine_id);
 
 	return NULL;
 }
@@ -125,13 +126,13 @@ static void del_kek_item(kek_item_t *item) {
     }
 }
 
-int add_kek_pack(int userid) {
+int add_kek_pack(int engine_id, int user_id) {
 	kek_pack_t *new_kek_pack;
 
 	KEK_PACK_LOGD("entered\n");
 
-	if(find_kek_pack(userid)) {
-		KEK_PACK_LOGE("kek-pack for %d already exists\n", userid);
+	if(find_kek_pack(engine_id)) {
+		KEK_PACK_LOGE("kek-pack for %d already exists\n", engine_id);
 		return -EEXIST;
 	}
 
@@ -141,7 +142,8 @@ int add_kek_pack(int userid) {
 		return -EINVAL;
 	}
 
-	new_kek_pack->userid = userid;
+    new_kek_pack->engine_id = engine_id;
+    new_kek_pack->user_id = user_id;
 	spin_lock_init(&new_kek_pack->kek_list_lock);
 	INIT_LIST_HEAD(&new_kek_pack->kek_list_head);
 
@@ -152,12 +154,12 @@ int add_kek_pack(int userid) {
 	return 0;
 }
 
-void del_kek_pack(int userid) {
+void del_kek_pack(int engine_id) {
 	struct list_head *entry, *q;
 	kek_pack_t *pack;
 
 	KEK_PACK_LOGD("entered\n");
-	pack = find_kek_pack(userid);
+	pack = find_kek_pack(engine_id);
 	if(pack == NULL) return;
 
 	spin_lock(&pack->kek_list_lock);
@@ -172,12 +174,12 @@ void del_kek_pack(int userid) {
 	kzfree(pack);
 }
 
-int add_kek(int userid, kek_t *kek) {
+int add_kek(int engine_id, kek_t *kek) {
 	int rc;
 	kek_pack_t *pack;
 
 	KEK_PACK_LOGD("entered\n");
-	pack = find_kek_pack(userid);
+	pack = find_kek_pack(engine_id);
 	if(pack == NULL) return -ENOENT;
 
 	if(find_kek_item(pack, kek->type)) return -EEXIST;
@@ -188,13 +190,13 @@ int add_kek(int userid, kek_t *kek) {
 	return rc;
 }
 
-int del_kek(int userid, int kek_type) {
+int del_kek(int engine_id, int kek_type) {
 	kek_pack_t *pack;
 	kek_item_t *item;
 
 	KEK_PACK_LOGD("entered\n");
 
-	pack = find_kek_pack(userid);
+	pack = find_kek_pack(engine_id);
 	if(pack == NULL) return -ENOENT;
 
 	item = find_kek_item(pack, kek_type);
@@ -214,51 +216,71 @@ int del_kek(int userid, int kek_type) {
  *
  * So allocate new memory and let the user call put accordingly
  */
-kek_t *get_kek(int userid, int kek_type) {
+kek_t *get_kek(int engine_id, int kek_type, int *rc) {
 	kek_pack_t *pack;
 	kek_item_t *item;
+    int userid = current_uid() / PER_USER_RANGE;;
 
-	KEK_PACK_LOGD("entered\n");
+	KEK_PACK_LOGD("entered [%d]\n", current_uid());
 
-	pack = find_kek_pack(userid);
-	if(pack == NULL) return NULL;
+	pack = find_kek_pack(engine_id);
+	if(pack == NULL) {
+	    *rc = -ENOENT;
+	    return NULL;
+	}
+
+	// across user engine access denied.
+	if(!is_root() &&
+	        (pack->user_id != userid)) {
+	    KEK_PACK_LOGE("Permission denied to get kek\n");
+	    KEK_PACK_LOGE("pack->user_id[%d] != userid[%d]\n",
+	            pack->user_id, userid);
+
+	    *rc = -EACCES;
+	    return NULL;
+	}
 
 	item = find_kek_item(pack, kek_type);
 	if(item) {
 		kek_t *kek = kmalloc(sizeof(kek_t), GFP_KERNEL);
-		if(kek == NULL) return NULL;
+		if(kek == NULL){
+		    *rc = -ENOMEM;
+		    return NULL;
+		}
 
+		*rc = 0;
 		memcpy(kek, &item->kek, sizeof(kek_t));
 		return kek;
 	}
 
+    *rc = -ENOENT;
 	return NULL;
 }
 
 void put_kek(kek_t *kek) {
 	KEK_PACK_LOGD("entered\n");
 
-	kzfree(kek);
+	if(kek) kzfree(kek);
 }
 
-int is_kek_pack(int userid) {
+int is_kek_pack(int engine_id) {
 	kek_pack_t *pack;
 
 	KEK_PACK_LOGD("entered\n");
 
-	pack = find_kek_pack(userid);
+	pack = find_kek_pack(engine_id);
 	if(pack) return 1;
 
 	return 0;
 }
 
-int is_kek(int userid, int kek_type) {
+int is_kek(int engine_id, int kek_type) {
 	kek_pack_t *pack;
 	kek_item_t *item;
 
 	KEK_PACK_LOGD("entered\n");
 
-	pack = find_kek_pack(userid);
+	pack = find_kek_pack(engine_id);
 	if(pack == NULL) return 0;
 
 	item = find_kek_item(pack, kek_type);

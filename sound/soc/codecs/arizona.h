@@ -93,6 +93,11 @@ struct arizona_priv {
 
 	int num_inputs;
 	unsigned int in_pending;
+
+	unsigned int out_up_pending;
+	unsigned int out_up_delay;
+	unsigned int out_down_pending;
+	unsigned int out_down_delay;
 };
 
 #define ARIZONA_NUM_MIXER_INPUTS 134
@@ -311,6 +316,12 @@ extern int arizona_out_ev(struct snd_soc_dapm_widget *w,
 extern int arizona_hp_ev(struct snd_soc_dapm_widget *w,
 			 struct snd_kcontrol *kcontrol,
 			 int event);
+extern int florida_hp_ev(struct snd_soc_dapm_widget *w,
+			 struct snd_kcontrol *kcontrol,
+			 int event);
+extern int clearwater_hp_ev(struct snd_soc_dapm_widget *w,
+			    struct snd_kcontrol *kcontrol,
+			    int event);
 extern int arizona_anc_ev(struct snd_soc_dapm_widget *w,
 			  struct snd_kcontrol *kcontrol,
 			  int event);
@@ -331,12 +342,12 @@ extern int arizona_set_sysclk(struct snd_soc_codec *codec, int clk_id,
 
 extern int arizona_cache_and_clear_sources(struct arizona *arizona,
 					   const int *sources,
-					   int *cache,
+					   unsigned int *cache,
 					   int lim);
 
 extern int arizona_restore_sources(struct arizona *arizona,
 				   const int *sources,
-				   int *cache,
+				   unsigned int *cache,
 				   int lim);
 
 extern void clearwater_spin_sysclk(struct arizona *arizona);

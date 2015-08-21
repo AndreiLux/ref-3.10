@@ -94,7 +94,7 @@
 #define AUD_INT_FREQ_UHQA	(0)
 #define AUD_CPU_FREQ_HIGH	(0)
 #define AUD_KFC_FREQ_HIGH	(0)
-#define AUD_MIF_FREQ_HIGH	(416000)
+#define AUD_MIF_FREQ_HIGH	(0)
 #define AUD_INT_FREQ_HIGH	(0)
 #define AUD_CPU_FREQ_NORM	(0)
 #define AUD_KFC_FREQ_NORM	(0)
@@ -121,6 +121,7 @@
 #define INTR_CPU_MASK_VAL	(LPASS_INTR_DMA | LPASS_INTR_I2S | \
 				 LPASS_INTR_PCM | LPASS_INTR_SB | \
 				 LPASS_INTR_UART | LPASS_INTR_SFR)
+#define INTR_CPU_DMA_VAL	(LPASS_INTR_DMA)
 
 /* Audio subsystem version */
 enum {
@@ -152,6 +153,7 @@ static struct lpass_info {
 	struct clk		*clk_sramc;
 	struct clk		*clk_intr;
 	struct clk		*clk_timer;
+	atomic_t		dma_use_cnt;
 	atomic_t		use_cnt;
 	atomic_t		stream_cnt;
 	bool			display_on;
@@ -182,6 +184,20 @@ struct subip_info {
 	struct list_head	node;
 };
 
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+DEFINE_MUTEX(lpass_mutex);
+
+unsigned int cpu_lock[14] =
+		{0, 200000, 300000, 400000, 500000, 600000, 700000, 800000, 900000, 1000000, 1104000, 1200000, 1296000, 1400000};
+
+void lpass_set_cpu_lock(int level)
+{
+	mutex_lock(&lpass_mutex);
+	pm_qos_update_request(&lpass.aud_cluster0_qos, cpu_lock[level]);
+	mutex_unlock(&lpass_mutex);
+}
+#endif
+
 static LIST_HEAD(reg_list);
 static LIST_HEAD(subip_list);
 
@@ -189,6 +205,10 @@ extern int check_adma_status(void);
 extern int check_fdma_status(void);
 extern int check_esa_status(void);
 extern int check_eax_dma_status(void);
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+extern void esa_compr_alpa_notifier(bool on);
+extern int check_esa_compr_state(void);
+#endif
 
 static void lpass_update_qos(void);
 
@@ -228,6 +248,14 @@ static inline bool is_running_only(const char *name)
 	return false;
 }
 
+void exynos_aud_alpa_notifier(bool on)
+{
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+	esa_compr_alpa_notifier(on);
+#endif
+	return;
+}
+
 int exynos_check_aud_pwr(void)
 {
 	int dram_used = check_adma_status();
@@ -235,7 +263,7 @@ int exynos_check_aud_pwr(void)
 #ifdef CONFIG_SND_SAMSUNG_FAKEDMA
 	dram_used |= check_fdma_status();
 #endif
-#ifdef CONFIG_SND_SAMSUNG_SEIREN
+#if defined(CONFIG_SND_SAMSUNG_SEIREN) || defined(CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD)
 	dram_used |= check_esa_status();
 #endif
 	dram_used |= check_eax_dma_status();
@@ -271,6 +299,32 @@ void __iomem *lpass_get_mem(void)
 struct iommu_domain *lpass_get_iommu_domain(void)
 {
 	return lpass.domain;
+}
+
+void lpass_set_dma_intr(bool on)
+{
+	u32 cfg = readl(lpass.regs + LPASS_INTR_CPU_MASK);
+	if (on)
+		cfg |= INTR_CPU_DMA_VAL;
+	else
+		cfg &= ~(INTR_CPU_DMA_VAL);
+
+	writel(cfg, lpass.regs + LPASS_INTR_CPU_MASK);
+}
+
+void lpass_dma_enable(bool on)
+{
+	spin_lock(&lpass.lock);
+	if (on) {
+		atomic_inc(&lpass.dma_use_cnt);
+		if (atomic_read(&lpass.dma_use_cnt) == 1)
+			lpass_set_dma_intr(true);
+	} else {
+		atomic_dec(&lpass.dma_use_cnt);
+		if (atomic_read(&lpass.dma_use_cnt) == 0)
+			lpass_set_dma_intr(false);
+	}
+	spin_unlock(&lpass.lock);
 }
 
 void ass_reset(int ip, int op)
@@ -1048,6 +1102,7 @@ static int lpass_probe(struct platform_device *pdev)
 		pr_info("Failed to register /proc/driver/lpadd\n");
 
 	spin_lock_init(&lpass.lock);
+	atomic_set(&lpass.dma_use_cnt, 0);
 	atomic_set(&lpass.use_cnt, 0);
 	atomic_set(&lpass.stream_cnt, 0);
 	lpass_init_reg_list();

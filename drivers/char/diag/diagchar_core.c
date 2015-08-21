@@ -633,6 +633,7 @@ static int diag_copy_dci(char __user *buf, size_t count,
 
 	ret += 4;
 
+	mutex_lock(&driver->dci_buffer_mutex);
 	mutex_lock(&entry->write_buf_mutex);
 	list_for_each_entry_safe(buf_entry, temp, &entry->list_write_buf,
 								buf_track) {
@@ -668,10 +669,14 @@ drop:
 				mutex_unlock(&buf_entry->data_mutex);
 				continue;
 			} else if (buf_entry->buf_type == DCI_BUF_SECONDARY) {
+				struct diag_dci_buf_peripheral_t *proc_buf = &entry->buffers[0];
 				diagmem_free(driver, buf_entry->data,
 					     POOL_TYPE_DCI);
 				buf_entry->data = NULL;
 				mutex_unlock(&buf_entry->data_mutex);
+				if(buf_entry == proc_buf->buf_curr) {
+					proc_buf->buf_curr = NULL;
+       				}
 				kfree(buf_entry);
 				continue;
 			}
@@ -693,6 +698,7 @@ drop:
 	exit_stat = 0;
 exit:
 	mutex_unlock(&entry->write_buf_mutex);
+	mutex_unlock(&driver->dci_buffer_mutex);
 	*pret = ret;
 	return exit_stat;
 }

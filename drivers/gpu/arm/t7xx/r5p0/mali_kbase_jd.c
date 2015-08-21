@@ -886,6 +886,25 @@ mali_bool jd_submit_atom(struct kbase_context *kctx,
 	katom->retry_count = 0;
 	katom->secure_mode = MALI_FALSE;
 
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+
+    /** Initialisation & copying user-side gles context handle
+        - Initialise dependency information
+        - Copy user gles context handle to kernel side
+    */
+    katom->kbase_atom_dep_systrace[0].dep_atom_id =0;
+    katom->kbase_atom_dep_systrace[0].dep_atom_dependency_type =BASE_JD_DEP_TYPE_INVALID; // 0
+
+    katom->kbase_atom_dep_systrace[1].dep_atom_id = 0;
+    katom->kbase_atom_dep_systrace[1].dep_atom_dependency_type= BASE_JD_DEP_TYPE_INVALID; //0
+
+    katom->gles_ctx_handle = user_atom->gles_ctx_handle; //SRUK gles context passing
+    //printk("[dongsung_trace] %s katom->gles_ctx_handle %x user_atom->gles_ctx_handle %x\n ",__func__,katom->gles_ctx_handle,user_atom->gles_ctx_handle);
+
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 #ifdef CONFIG_KDS
 	/* Start by assuming that the KDS dependencies are satisfied,
 	 * kbase_jd_pre_external_resources will correct this if there are dependencies */
@@ -919,6 +938,20 @@ mali_bool jd_submit_atom(struct kbase_context *kctx,
 		base_jd_dep_type dep_atom_type = user_atom->pre_dep[i].dependency_type;
 
 		kbase_jd_katom_dep_clear(&katom->dep[i]);
+
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+
+        if(katom->kbase_atom_dep_systrace[i].dep_atom_id != 0 && katom->kbase_atom_dep_systrace[i].dep_atom_dependency_type !=0)
+        {
+            printk("%s Atom dependency Overwritten!!!! dep_atom_id %d dep_atom_dependency_type %d \n",__func__, katom->kbase_atom_dep_systrace[i].dep_atom_id, katom->kbase_atom_dep_systrace[i].dep_atom_dependency_type);
+        }
+
+        // save dependency of atom
+        katom->kbase_atom_dep_systrace[i].dep_atom_id = dep_atom_number;
+        katom->kbase_atom_dep_systrace[i].dep_atom_dependency_type = dep_atom_type;
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
 
 		if (dep_atom_number) {
 			struct kbase_jd_atom *dep_atom = &jctx->atoms[dep_atom_number];
@@ -1668,8 +1701,9 @@ void kbase_jd_zap_context(struct kbase_context *kctx)
 
 	/* Wait for all jobs to finish, and for the context to be not-scheduled
 	 * (due to kbase_job_zap_context(), we also guarentee it's not in the JS
-	 * policy queue either */
-	wait_event(kctx->jctx.zero_jobs_wait, kctx->jctx.job_nr == 0);
+	 * policy queue either */	
+	/* MALI_SEC_INTEGRATION */
+	wait_event_timeout(kctx->jctx.zero_jobs_wait, kctx->jctx.job_nr == 0, (unsigned int) msecs_to_jiffies(300));
 	wait_event(kctx->jctx.sched_info.ctx.is_scheduled_wait, kctx->jctx.sched_info.ctx.is_scheduled == MALI_FALSE);
 
 	spin_lock_irqsave(&reset_data.lock, flags);

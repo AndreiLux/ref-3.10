@@ -113,6 +113,15 @@ struct kbase_uk_job_submit {
 	union kbase_pointer addr;
 	u32 nr_atoms;
 	u32 stride;		/* bytes between atoms, i.e. sizeof(base_jd_atom_v2) */
+
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+
+    u32 gles_ctx_handle; /* user DDK gles context handle (unique) to kernel DDK side */
+
+#endif /* CONFIG_MALI_SYSTRACE_SUPPORT*/
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 	/* OUT */
 };
 

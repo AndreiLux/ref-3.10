@@ -2061,6 +2061,12 @@ void kbasep_js_job_done_slot_irq(struct kbase_jd_atom *katom, int slot_nr,
 	u64 microseconds_spent = 0u;
 	struct kbase_context *parent_ctx;
 
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+    int i=0;
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 	KBASE_DEBUG_ASSERT(katom);
 	parent_ctx = katom->kctx;
 	KBASE_DEBUG_ASSERT(parent_ctx);
@@ -2079,6 +2085,30 @@ void kbasep_js_job_done_slot_irq(struct kbase_jd_atom *katom, int slot_nr,
 #ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_STOP, slot_nr), NULL, 0);
 #endif				/* CONFIG_MALI_GATOR_SUPPORT */
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+    kbase_systrace_mali_job_slots_event(SYSTRACE_EVENT_TYPE_STOP, slot_nr, parent_ctx, kbase_jd_atom_id(parent_ctx, katom),
+                                        ktime_to_ns(katom->start_timestamp),
+                                        katom->kbase_atom_dep_systrace[0].dep_atom_id,
+                                        katom->kbase_atom_dep_systrace[0].dep_atom_dependency_type,
+                                        katom->kbase_atom_dep_systrace[1].dep_atom_id,
+                                        katom->kbase_atom_dep_systrace[1].dep_atom_dependency_type,
+                                        katom->gles_ctx_handle);
+
+    // clear dependency information for systrace
+    for(i=0; i<2; i++)
+    {
+        katom->gles_ctx_handle = 0;
+
+        if(katom->kbase_atom_dep_systrace[i].dep_atom_id ==0  && katom->kbase_atom_dep_systrace[0].dep_atom_dependency_type == BASE_JD_DEP_TYPE_INVALID ){
+            continue;
+        }
+
+        katom->kbase_atom_dep_systrace[i].dep_atom_id =0;
+        katom->kbase_atom_dep_systrace[i].dep_atom_dependency_type = BASE_JD_DEP_TYPE_INVALID;
+    }
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
 
 	/* Check if submitted jobs no longer require the cycle counter to be enabled */
 	kbasep_js_deref_permon_check_and_disable_cycle_counter(kbdev, katom);

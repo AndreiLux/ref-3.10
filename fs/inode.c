@@ -178,6 +178,7 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 #ifdef CONFIG_CRYPTO_FIPS
 	mapping->cc_enable = 0;
 #endif
+	mapping->plain_text = 0;
 #endif
 #ifdef CONFIG_SDP
 	mapping->userid = 0;

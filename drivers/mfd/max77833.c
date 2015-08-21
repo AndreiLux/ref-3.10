@@ -68,20 +68,11 @@ static struct mfd_cell max77833_devs[] = {
 #endif
 };
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-extern int p9220_otp_update;
-#endif
 int max77833_read_reg(struct i2c_client *i2c, u8 reg, u8 *dest)
 {
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	mutex_unlock(&max77833->i2c_lock);
@@ -101,12 +92,6 @@ int max77833_bulk_read(struct i2c_client *i2c, u8 reg, int count, u8 *buf)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_i2c_block_data(i2c, reg, count, buf);
 	mutex_unlock(&max77833->i2c_lock);
@@ -122,12 +107,6 @@ int max77833_read_word(struct i2c_client *i2c, u8 reg)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_word_data(i2c, reg);
 	mutex_unlock(&max77833->i2c_lock);
@@ -143,12 +122,6 @@ int max77833_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_write_byte_data(i2c, reg, value);
 	mutex_unlock(&max77833->i2c_lock);
@@ -165,12 +138,6 @@ int max77833_bulk_write(struct i2c_client *i2c, u8 reg, int count, u8 *buf)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_write_i2c_block_data(i2c, reg, count, buf);
 	mutex_unlock(&max77833->i2c_lock);
@@ -186,12 +153,6 @@ int max77833_write_word(struct i2c_client *i2c, u8 reg, u16 value)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_write_word_data(i2c, reg, value);
 	mutex_unlock(&max77833->i2c_lock);
@@ -206,12 +167,6 @@ int max77833_update_reg(struct i2c_client *i2c, u8 reg, u8 val, u8 mask)
 	struct max77833_dev *max77833 = i2c_get_clientdata(i2c);
 	int ret;
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	mutex_lock(&max77833->i2c_lock);
 	ret = i2c_smbus_read_byte_data(i2c, reg);
 	if (ret >= 0) {
@@ -269,12 +224,6 @@ int max77833_write_fg(struct i2c_client *i2c, u16 reg, u16 val)
 		return -ENODEV;
 	}
 
-#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE)
-	if(p9220_otp_update) {
-		pr_info("%s:%s i2c fail dueto opt update\n", MFD_DEV_NAME, __func__);
-		return -1;
-	}
-#endif
 	msg->addr = i2c->addr;
 	msg->flags = 0;
 	msg->len = 4;
@@ -321,6 +270,7 @@ static int max77833_i2c_probe(struct i2c_client *i2c,
 	struct max77833_platform_data *pdata = i2c->dev.platform_data;
 
 	u8 reg_data;
+	u16 reg16_data;
 	int ret = 0;
 
 	pr_info("%s:%s\n", MFD_DEV_NAME, __func__);
@@ -391,12 +341,24 @@ static int max77833_i2c_probe(struct i2c_client *i2c,
 
 	/* No active discharge on safeout ldo 1,2 */
 	max77833_update_reg(i2c, MAX77833_PMIC_REG_SAFEOUT_CTRL, 0x00, 0x30);
+	max77833_update_reg(i2c, MAX77833_PMIC_REG_SAFEOUT_CTRL, 0x0, 0x40);
+	max77833_read_reg(i2c, MAX77833_PMIC_REG_SAFEOUT_CTRL, &reg_data);
+	pr_info("%s:%s reg[0x%02x]: 0x%02x\n", MFD_DEV_NAME, __func__,
+			MAX77833_PMIC_REG_SAFEOUT_CTRL, reg_data);
 
 	max77833->muic = i2c_new_dummy(i2c->adapter, I2C_ADDR_MUIC);
 	i2c_set_clientdata(max77833->muic, max77833);
 
 	max77833->fuelgauge = i2c_new_dummy(i2c->adapter, I2C_ADDR_FG);
 	i2c_set_clientdata(max77833->fuelgauge, max77833);
+
+	/* checking pass5 in OTP */
+	max77833_write_fg(max77833->fuelgauge, 0x00D6, 0x00E5);
+	max77833_write_fg(max77833->fuelgauge, 0x00D8, 0x00D2);
+	max77833_read_fg(max77833->fuelgauge, 0x04DC, &reg16_data);
+	max77833->pmic_rev_pass5 = ((reg16_data & 0xFF) == 0x52) ? true : false;
+	pr_info("%s:%s [0x04DC : 0x%04x]\n", __func__,
+		(max77833->pmic_rev_pass5) ? "PASS5" : "not PASS5", reg16_data);
 
 	ret = max77833_irq_init(max77833);
 

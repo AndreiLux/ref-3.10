@@ -86,7 +86,7 @@ static ssize_t adc_data_read(struct device *dev,
 	data->buf[GEOMAGNETIC_SENSOR].y = 0;
 	data->buf[GEOMAGNETIC_SENSOR].z = 0;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
 		send_instruction(data, ADD_SENSOR, GEOMAGNETIC_SENSOR,
 			chTempbuf, 2);
 
@@ -103,7 +103,7 @@ static ssize_t adc_data_read(struct device *dev,
 	iSensorBuf[1] = data->buf[GEOMAGNETIC_SENSOR].y;
 	iSensorBuf[2] = data->buf[GEOMAGNETIC_SENSOR].z;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
 		send_instruction(data, REMOVE_SENSOR, GEOMAGNETIC_SENSOR,
 			chTempbuf, 2);
 

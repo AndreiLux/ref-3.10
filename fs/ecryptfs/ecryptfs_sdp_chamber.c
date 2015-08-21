@@ -12,7 +12,8 @@
 
 #define CHAMBER_PATH_MAX 512
 typedef struct __chamber_info {
-	int userid;
+	int partition_id;
+    int engine_id;
 
 	struct list_head list;
 	char path[CHAMBER_PATH_MAX];
@@ -30,7 +31,7 @@ typedef struct __chamber_info {
 #define CHAMBER_LOGE(FMT, ...) printk("SDP_CHAMBER[%d] %s :: " FMT , current->pid, __func__, ##__VA_ARGS__)
 
 
-chamber_info_t *alloc_chamber_info(int userid, char *path) {
+chamber_info_t *alloc_chamber_info(int partition_id, int engine_id, const unsigned char *path) {
 	chamber_info_t *new_chamber = kmalloc(sizeof(chamber_info_t), GFP_KERNEL);
 
 	if(new_chamber == NULL) {
@@ -38,14 +39,15 @@ chamber_info_t *alloc_chamber_info(int userid, char *path) {
 		return NULL;
 	}
 
-	new_chamber->userid = userid;
+    new_chamber->partition_id = partition_id;
+    new_chamber->engine_id = engine_id;
 	snprintf(new_chamber->path, CHAMBER_PATH_MAX, "%s", path);
 
 	return new_chamber;
 }
 
 int add_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
-		char *path) {
+		int engine_id, const unsigned char *path) {
 	chamber_info_t *new_chamber = NULL;
 
 #if NO_DIRECTORY_SEPARATOR_IN_CHAMBER_PATH
@@ -55,7 +57,7 @@ int add_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 	}
 #endif
 
-	new_chamber = alloc_chamber_info(mount_crypt_stat->userid, path);
+	new_chamber = alloc_chamber_info(mount_crypt_stat->partition_id, engine_id, path);
 
 	if(new_chamber == NULL) {
 		return -ENOMEM;
@@ -70,7 +72,7 @@ int add_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 }
 
 chamber_info_t *find_chamber_info(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
-		char *path) {
+		const unsigned char *path) {
 	struct list_head *entry;
 
 	spin_lock(&(mount_crypt_stat->chamber_dir_list_lock));
@@ -97,7 +99,7 @@ chamber_info_t *find_chamber_info(struct ecryptfs_mount_crypt_stat *mount_crypt_
 }
 
 void del_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
-		char *path) {
+        const unsigned char *path) {
 	chamber_info_t *info = find_chamber_info(mount_crypt_stat, path);
 	if(info == NULL) {
 		CHAMBER_LOGD("nothing to remove\n");
@@ -113,7 +115,8 @@ void del_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 }
 
 int is_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
-		char *path) {
+		const unsigned char *path, int *engineid) {
+    chamber_info_t *info;
 #if NO_DIRECTORY_SEPARATOR_IN_CHAMBER_PATH
 	if(strchr(path, '/') != NULL) {
 		CHAMBER_LOGD("%s containes '/'\n", path);
@@ -121,13 +124,16 @@ int is_chamber_directory(struct ecryptfs_mount_crypt_stat *mount_crypt_stat,
 	}
 #endif
 
-	if(find_chamber_info(mount_crypt_stat, path) != NULL)
-		return 1;
+	info = find_chamber_info(mount_crypt_stat, path);
+	if(info == NULL)
+		return 0;
 
-	return 0;
+	if(engineid) *engineid = info->engine_id;
+
+	return 1;
 }
 
-void set_chamber_flag(struct inode *inode) {
+void set_chamber_flag(int engineid, struct inode *inode) {
 	struct ecryptfs_crypt_stat *crypt_stat;
 
 	if(inode == NULL) {
@@ -137,6 +143,22 @@ void set_chamber_flag(struct inode *inode) {
 
 	crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
 
-	crypt_stat->flags |= ECRYPTFS_SDP_IS_CHAMBER_DIR;
+    crypt_stat->engine_id = engineid;
+    crypt_stat->flags |= ECRYPTFS_SDP_IS_CHAMBER_DIR;
 	crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
+}
+
+void clr_chamber_flag(struct inode *inode) {
+    struct ecryptfs_crypt_stat *crypt_stat;
+
+    if(inode == NULL) {
+        CHAMBER_LOGE("invalid inode\n");
+        return;
+    }
+
+    crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
+
+    crypt_stat->engine_id = -1;
+    crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
+    crypt_stat->flags &= ~ECRYPTFS_SDP_IS_CHAMBER_DIR;
 }

@@ -109,7 +109,7 @@ int ufs_get_device_info(struct ufs_hba *hba, struct ufs_card_info *card_data)
 	/* Null terminate the unique number string */
 	hba->unique_number[UFS_UNIQUE_NUMBER_LEN - 1] = '\0';
 
-	printk("%s: UNIQUE NUMBER = %s , Lifetime: 0x%02x \n", __FUNCTION__, hba->unique_number, health_buf[3]<<4|health_buf[4]);
+	printk("%s: UNIQUE NUMBER = %s , LT: 0x%02x \n", __FUNCTION__, hba->unique_number, health_buf[3]<<4|health_buf[4]);
 
 out:
 	return err;

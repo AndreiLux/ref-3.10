@@ -115,13 +115,6 @@
 			samsung,pin-function = <0>;
 			samsung,pin-pud = <0>;
 		};
-
-		grip_irq: grip-irq {
-			samsung,pins = "gpa3-4";
-			samsung,pin-function = <0xf>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <3>;
-		};
 	};
 
 	pinctrl@114B0000 {
@@ -172,7 +165,7 @@
 		};
 
 		uart_aud_bus_idle: uart-aud-bus-idle {
-			samsung,pins = "gpz1-3";
+			samsung,pins = "gpz1-3", "gpz1-0";
 			samsung,pin-function = <1>;
 			samsung,pin-val = <1>;
 			samsung,pin-pud = <0>;
@@ -181,7 +174,7 @@
 		};
 
 		uart_aud_bus_lpm: uart-aud-bus-lpm {
-			samsung,pins = "gpz1-3";
+			samsung,pins = "gpz1-3", "gpz1-0";
 			samsung,pin-function = <1>;
 			samsung,pin-val = <1>;
 			samsung,pin-pud = <0>;
@@ -1222,13 +1215,6 @@
 		grip_i2c: grip-i2c {
 			samsung,pins = "gpr1-3", "gpr1-4";
 			samsung,pin-function = <0x0>;
-			samsung,pin-pud = <0>;
-			samsung,pin-drv = <3>;
-		};
-
-		grip_ldo: grip-ldo {
-			samsung,pins = "gpr1-5";
-			samsung,pin-function = <0xf>;
 			samsung,pin-pud = <0>;
 			samsung,pin-drv = <3>;
 		};

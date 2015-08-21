@@ -64,6 +64,13 @@ static void initialize_variable(struct ssp_data *data)
 {
 	int iSensorIndex;
 
+	int data_len[SENSOR_MAX] = SENSOR_DATA_LEN;
+	int report_mode[SENSOR_MAX] = SENSOR_REPORT_MODE;
+	memcpy(&data->data_len, data_len, sizeof(data->data_len));
+	memcpy(&data->report_mode, report_mode, sizeof(data->report_mode));
+
+	data->cameraGyroSyncMode = false;
+
 	for (iSensorIndex = 0; iSensorIndex < SENSOR_MAX; iSensorIndex++) {
 		data->adDelayBuf[iSensorIndex] = DEFUALT_POLLING_DELAY;
 		data->batchLatencyBuf[iSensorIndex] = 0;
@@ -73,7 +80,7 @@ static void initialize_variable(struct ssp_data *data)
 		data->reportedData[iSensorIndex] = false;
 	}
 
-	atomic_set(&data->aSensorEnable, 0);
+	atomic64_set(&data->aSensorEnable, 0);
 	data->iLibraryLength = 0;
 	data->uSensorState = NORMAL_SENSOR_STATE_K;
 	data->uFactoryProxAvg[0] = 0;
@@ -563,7 +570,7 @@ static void ssp_early_suspend(struct early_suspend *handler)
 	ssp_sleep_mode(data);
 	data->uLastAPState = MSG2SSP_AP_STATUS_SLEEP;
 #else
-	if (atomic_read(&data->aSensorEnable) > 0)
+	if (atomic64_read(&data->aSensorEnable) > 0)
 		ssp_sleep_mode(data);
 #endif
 }
@@ -582,7 +589,7 @@ static void ssp_late_resume(struct early_suspend *handler)
 	ssp_resume_mode(data);
 	data->uLastAPState = MSG2SSP_AP_STATUS_WAKEUP;
 #else
-	if (atomic_read(&data->aSensorEnable) > 0)
+	if (atomic64_read(&data->aSensorEnable) > 0)
 		ssp_resume_mode(data);
 #endif
 }

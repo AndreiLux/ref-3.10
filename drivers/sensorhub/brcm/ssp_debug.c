@@ -21,7 +21,7 @@
 #define SSP_DEBUG_TIMER_SEC		(10 * HZ)
 
 #define LIMIT_RESET_CNT			40
-#define LIMIT_TIMEOUT_CNT		3
+#define LIMIT_TIMEOUT_CNT		1
 
 #define DUMP_FILE_PATH "/data/log/MCU_DUMP"
 
@@ -55,7 +55,7 @@ void ssp_dump_task(struct work_struct *work) {
 
 		sprintf(strFilePath, "%s%d.txt", DUMP_FILE_PATH, iTimeTemp);
 
-		dump_file = filp_open(strFilePath, O_RDWR | O_CREAT | O_APPEND, 0666);
+		dump_file = filp_open(strFilePath, O_RDWR | O_CREAT | O_APPEND, 0660);
 		if (IS_ERR(dump_file)) {
 			pr_err("[SSP]: %s - Can't open dump file\n", __func__);
 			set_fs(fs);
@@ -240,7 +240,7 @@ void sync_sensor_state(struct ssp_data *data)
 		pr_err("[SSP]: %s - set_accel_cal failed\n", __func__);
 
 #ifdef CONFIG_SENSORS_SSP_SX9306
-	if (atomic_read(&data->aSensorEnable) & (1 << GRIP_SENSOR)) {
+	if (atomic64_read(&data->aSensorEnable) & (1 << GRIP_SENSOR)) {
 		open_grip_caldata(data);
 		set_grip_calibration(data, true);
 	}
@@ -250,7 +250,7 @@ void sync_sensor_state(struct ssp_data *data)
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++) {
 		mutex_lock(&data->enable_mutex);
-		if (atomic_read(&data->aSensorEnable) & (1 << uSensorCnt)) {
+		if (atomic64_read(&data->aSensorEnable) & (1 << uSensorCnt)) {
 			s32 dMsDelay =
 				get_msdelay(data->adDelayBuf[uSensorCnt]);
 			memcpy(&uBuf[0], &dMsDelay, 4);
@@ -380,16 +380,16 @@ static void debug_work_func(struct work_struct *work)
 	unsigned int uSensorCnt;
 	struct ssp_data *data = container_of(work, struct ssp_data, work_debug);
 
-	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%x, RC: %u, CC: %u, TC: %u\n", 
+	ssp_dbg("[SSP]: %s(%u) - Sensor state: 0x%llx, RC: %u, CC: %u, TC: %u\n", 
 		__func__, data->uIrqCnt, data->uSensorState, data->uResetCnt,
 		data->uComFailCnt, data->uTimeOutCnt);
 
 	for (uSensorCnt = 0; uSensorCnt < SENSOR_MAX; uSensorCnt++)
-		if ((atomic_read(&data->aSensorEnable) & (1 << uSensorCnt))
+		if ((atomic64_read(&data->aSensorEnable) & (1 << uSensorCnt))
 			|| data->batchLatencyBuf[uSensorCnt])
 			print_sensordata(data, uSensorCnt);
 
-	if (((atomic_read(&data->aSensorEnable) & (1 << ACCELEROMETER_SENSOR))
+	if (((atomic64_read(&data->aSensorEnable) & (1 << ACCELEROMETER_SENSOR))
 		&& (data->batchLatencyBuf[ACCELEROMETER_SENSOR] == 0)
 		&& (data->uIrqCnt == 0) && (data->uTimeOutCnt > 0))
 		|| (data->uTimeOutCnt > LIMIT_TIMEOUT_CNT)) {

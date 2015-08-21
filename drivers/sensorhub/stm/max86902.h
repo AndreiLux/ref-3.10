@@ -222,6 +222,7 @@ struct max86900_device_data
 	struct mutex activelock;
 	struct delayed_work uv_sr_work_queue;
 	struct delayed_work reenable_work_queue;
+	struct delayed_work ps_mode_queue;
 	struct pinctrl *p;
 	struct pinctrl_state *pins_sleep;
 	struct pinctrl_state *pins_idle;
@@ -283,6 +284,7 @@ struct max86900_device_data
 	u8 reenable_set;
 	u8 reenable_cnt;
 	u8 irq_state;
+	u8 is_alc_off;
 };
 
 extern int sensors_create_symlink(struct input_dev *inputdev);
