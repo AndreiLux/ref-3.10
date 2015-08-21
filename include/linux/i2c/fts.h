@@ -81,7 +81,7 @@ struct fts_i2c_platform_data {
 	int (*led_power) (void *, bool);
 #endif
 #ifdef FTS_SUPPORT_SIDE_GESTURE
-	bool support_sidegesture;
+	int support_sidegesture;
 #endif
 #ifdef FTS_SUPPORT_2NDSCREEN
 	bool support_2ndscreen;
@@ -104,4 +104,7 @@ extern struct class *sec_class;
 extern unsigned int lcdtype;
 
 void fts_charger_infom(bool en);
+#ifdef CONFIG_TRUSTONIC_TRUSTED_UI
+extern void trustedui_mode_on(void);
+#endif
 #endif

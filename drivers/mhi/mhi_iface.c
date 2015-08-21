@@ -23,6 +23,35 @@ MHI_STATE *mhi_state = NULL;
 void *mhi_ipc_log;
 
 extern unsigned int lpcharge;
+extern int sec_argos_register_notifier(struct notifier_block *n, char *label);
+extern int sec_argos_unregister_notifier(struct notifier_block *n, char *label);
+
+static int sec_argos_tp_notifier(struct notifier_block *notifier,
+		unsigned long speed, void *v)
+{
+	mhi_pcie_dev_info *mhi_pcie_dev = NULL;
+	mhi_device_ctxt *mhi_dev_ctxt;
+	mhi_pcie_dev = &mhi_devices.device_list[0];
+	mhi_dev_ctxt = mhi_pcie_dev->mhi_ctxt;
+
+	mhi_dev_ctxt->counters.tput = speed;
+
+	if(speed >=  REDUCE_INTERVAL_TPUT) {
+		mhi_dev_ctxt->counters.mhi_xfer_db_interval = INIT_DB_INTERVAL;
+	} else if(speed < REDUCE_INTERVAL_TPUT && mhi_dev_ctxt->flags.hotspot_onoff) {
+		mhi_dev_ctxt->counters.mhi_xfer_db_interval = REDUCE_DB_INTERVAL;
+		mhi_log(MHI_MSG_INFO,"Reduce DB Interval %d \n",REDUCE_DB_INTERVAL);
+	}
+
+	mhi_log(MHI_MSG_INFO,"%s - speed : %ld set db interval %d\n", __func__, speed,
+				mhi_dev_ctxt->counters.mhi_xfer_db_interval);
+	return NOTIFY_OK;
+}
+
+static struct notifier_block argos_tp_nb = {
+	.notifier_call = sec_argos_tp_notifier,
+};
+
 
 static const struct pci_device_id mhi_pcie_device_id[] = {
 	{ MHI_PCIE_VENDOR_ID, MHI_PCIE_DEVICE_ID,
@@ -92,10 +121,27 @@ int mhi_probe(struct pci_dev *pcie_device,
 		mhi_log(MHI_MSG_ERROR,
 				"Failed to register for link notifications %d.\n",
 				ret_val);
+
+	ret_val = sec_argos_register_notifier(&argos_tp_nb, "QIPC");
+	if (ret_val < 0) {
+		mhi_log(MHI_MSG_ERROR,
+				"Failed to register QIPC notifier %d.\n",
+				ret_val);
+	}
+
 	return ret_val;
 }
 void mhi_remove(struct pci_dev *mhi_device)
 {
+	int ret_val;
+	ret_val = sec_argos_unregister_notifier(&argos_tp_nb, "QIPC");
+	if (ret_val < 0) {
+		mhi_log(MHI_MSG_ERROR,
+				"Failed to unregister QIPC notifier %d.\n",
+				ret_val);
+	}
+
+
 	return;
 }
 

@@ -44,6 +44,7 @@
 #define VIDOUTCON0_WB_F				(0x1 << 16)
 
 #define VCLKCON0				0x0010
+#define VCLKCON0_ECLK_IDLE_GATE_EN		(1 << 12)
 #define VCLKCON0_CLKVALUP			(1 << 8)
 #define VCLKCON0_VLCKFREE			(1 << 0)
 

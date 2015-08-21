@@ -462,8 +462,10 @@ static void samsung_pinmux_setup(struct pinctrl_dev *pctldev, unsigned selector,
 #ifdef CONFIG_MST_SECURE_GPIO
 	if (!strncmp(bank->name, "gpj0", 4))
 		return;
+#if !defined(CONFIG_MST_NOBLE_TARGET) && !defined(CONFIG_MST_ZEN_TARGET)
 	if (!strncmp(bank->name, "gpj1", 4))
 		return;
+#endif
 #endif
 	spin_lock_irqsave(&bank->slock, flags);
 
@@ -552,8 +554,10 @@ static int samsung_pinmux_gpio_set_direction(struct pinctrl_dev *pctldev,
 #ifdef CONFIG_MST_SECURE_GPIO
 	if (!strncmp(bank->name, "gpj0", 4))
 		return 0;
+#if !defined(CONFIG_MST_NOBLE_TARGET) && !defined(CONFIG_MST_ZEN_TARGET)
 	if (!strncmp(bank->name, "gpj1", 4))
 		return 0;
+#endif
 #endif
 	spin_lock_irqsave(&bank->slock, flags);
 
@@ -620,8 +624,10 @@ static int samsung_pinconf_rw(struct pinctrl_dev *pctldev, unsigned int pin,
 #ifdef CONFIG_MST_SECURE_GPIO
 	if (!strncmp(bank->name, "gpj0", 4))
 		return 0;
+#if !defined(CONFIG_MST_NOBLE_TARGET) && !defined(CONFIG_MST_ZEN_TARGET)
 	if (!strncmp(bank->name, "gpj1", 4))
 		return 0; 
+#endif
 #endif
 	width = type->fld_width[cfg_type];
 	cfg_reg = type->reg_offset[cfg_type];
@@ -804,8 +810,10 @@ static void samsung_gpio_set(struct gpio_chip *gc, unsigned offset, int value)
 #ifdef CONFIG_MST_SECURE_GPIO
 	if (!strncmp(bank->name, "gpj0", 4))
 		return;
+#if !defined(CONFIG_MST_NOBLE_TARGET) && !defined(CONFIG_MST_ZEN_TARGET)
 	if (!strncmp(bank->name, "gpj1", 4))
 		return;
+#endif
 #endif
 	spin_lock_irqsave(&bank->slock, flags);
 
@@ -1787,8 +1795,16 @@ static void gpiodvs_check_init_gpio(struct samsung_pinctrl_drv_data *drvdata,
 		init_gpio_idx++;
 		goto out;
 	}
-#ifdef CONFIG_MST_SECURE_GPIO
+	/* both gpj0/1 are skiped for dvs test in zero project */
+#if defined(CONFIG_MST_SECURE_GPIO) && !defined(CONFIG_MST_NOBLE_TARGET) && !defined(CONFIG_MST_ZEN_TARGET)
 	if (!strncmp(bank->name, "gpj", 3)) {
+		printk("[yurak] init zero bank->name : %s", bank->name);
+		init_gpio_idx++;
+		goto out;
+	}
+#else /* only gpj0 is skiped for dvs test in noble/zen project */
+	if (!strncmp(bank->name, "gpj0", 4)) {
+		printk("[yurak] init noble&zen bank->name : %s", bank->name);
 		init_gpio_idx++;
 		goto out;
 	}
@@ -1844,8 +1860,16 @@ static void gpiodvs_check_sleep_gpio(struct samsung_pinctrl_drv_data *drvdata,
 		sleep_gpio_idx++;
 		goto out;
 	}
-#ifdef CONFIG_MST_SECURE_GPIO
+	/* both gpj0/1 are skiped for dvs test in zero project */
+#if defined(CONFIG_MST_SECURE_GPIO) && !defined(CONFIG_MST_NOBLE_TARGET) && !defined(CONFIG_MST_ZEN_TARGET)
 	if (!strncmp(bank->name, "gpj", 3)) {
+		printk("[yurak] sleep zero bank->name : %s", bank->name);
+		sleep_gpio_idx++;
+		goto out;
+	}
+#else /* only gpj0 is skiped for dvs test in noble/zen project */
+	if (!strncmp(bank->name, "gpj0", 4)) {
+		printk("[yurak] sleep noble&zen bank->name : %s", bank->name);
 		sleep_gpio_idx++;
 		goto out;
 	}

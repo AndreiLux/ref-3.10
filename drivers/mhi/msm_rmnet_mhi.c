@@ -433,7 +433,7 @@ static int rmnet_mhi_poll(struct napi_struct *napi, int budget)
 		/* Need to allocate a new buffer instead of this one
 		   (TODO: Maybe we can do it @ the end?)
 		 */
-		if(rmnet_mhi_ptr->rx_buffers.qlen < 20){
+		if(rmnet_mhi_ptr->rx_buffers.qlen < 50){
 			mhi_rmnet_log(RMNET_DBG_ERROR,"%s do alloc work qlen : %d\n",
 					__func__,rmnet_mhi_ptr->rx_buffers.qlen);
 			do_alloc_work = true ;

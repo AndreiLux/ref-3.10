@@ -22,6 +22,7 @@
 
 #ifndef FIMC_IS_METADATA_H_
 #define FIMC_IS_METADATA_H_
+#include "fimc-is-config.h"
 
 #ifndef _LINUX_TYPES_H
 typedef unsigned char uint8_t;
@@ -126,6 +127,7 @@ enum optical_stabilization_mode {
     OPTICAL_STABILIZATION_MODE_SINE_X,  // factory mode x
     OPTICAL_STABILIZATION_MODE_SINE_Y,  // factory mode y
     OPTICAL_STABILIZATION_MODE_CENTERING, // Centering mode
+    OPTICAL_STABILIZATION_MODE_VDIS, // VDIS mode
 };
 
 enum lens_state {
@@ -599,7 +601,23 @@ enum stats_lowlightmode {
     STATE_LLS_LEVEL_HIGH = 2,
     STATE_LLS_LEVEL_SIS = 3,
     STATE_LLS_LEVEL_ZSL_LIKE = 4,
+    STATE_LLS_LEVEL_ZSL_LIKE1 = 7,
+    STATE_LLS_LEVEL_SHARPEN_SINGLE = 8,
+    STATE_LLS_LEVEL_MANUAL_ISO = 9,
     STATE_LLS_LEVEL_FLASH = 16,
+    STATE_LLS_LEVEL_MULTI_MERGE_2 = 18,
+    STATE_LLS_LEVEL_MULTI_MERGE_3 = 19,
+    STATE_LLS_LEVEL_MULTI_MERGE_4 = 20,
+    STATE_LLS_LEVEL_MULTI_PICK_2 = 34,
+    STATE_LLS_LEVEL_MULTI_PICK_3 = 35,
+    STATE_LLS_LEVEL_MULTI_PICK_4 = 36,
+    STATE_LLS_LEVEL_MULTI_MERGE_INDICATOR_2 = 50,
+    STATE_LLS_LEVEL_MULTI_MERGE_INDICATOR_3 = 51,
+    STATE_LLS_LEVEL_MULTI_MERGE_INDICATOR_4 = 52,
+    STATE_LLS_LEVEL_FLASH_2 = 66,
+    STATE_LLS_LEVEL_FLASH_3 = 67,
+    STATE_LLS_LEVEL_FLASH_4 = 68,
+    STATE_LLS_LEVEL_DUMMY = 150,
 };
 
 enum stats_wdrAutoState {
@@ -675,6 +693,8 @@ enum aa_capture_intent {
     AA_CAPTURE_INTENT_STILL_CAPTURE_OIS_MULTI,
     AA_CAPTURE_INTENT_STILL_CAPTURE_OIS_BEST,
     AA_CAPTRUE_INTENT_STILL_CAPTURE_COMP_BYPASS,
+    AA_CAPTRUE_INTENT_STILL_CAPTURE_OIS_DEBLUR,
+    AA_CAPTRUE_INTENT_STILL_CAPTURE_DYNAMIC_SHOT,
 };
 
 enum aa_mode {
@@ -823,7 +843,8 @@ enum aa_awbmode {
     AA_AWBMODE_WB_DAYLIGHT,
     AA_AWBMODE_WB_CLOUDY_DAYLIGHT,
     AA_AWBMODE_WB_TWILIGHT,
-    AA_AWBMODE_WB_SHADE
+    AA_AWBMODE_WB_SHADE,
+    AA_AWBMODE_WB_CUSTOM_K
 };
 
 enum aa_ae_precapture_trigger {
@@ -951,7 +972,12 @@ struct camera2_aa_ctl {
     enum aa_videomode       vendor_videoMode;
     enum aa_ae_facemode     vendor_aeFaceMode;
     enum aa_afstate         vendor_afState;
-    uint32_t                vendor_reserved[9];
+    int32_t                 vendor_exposureValue;
+    uint32_t                vendor_touchAeDone;
+    uint32_t                vendor_touchBvChange;
+    uint32_t                vendor_captureCount;
+    uint32_t                vendor_captureExposuretime;
+    uint32_t                vendor_reserved[4];
 };
 
 struct camera2_aa_dm {
@@ -989,7 +1015,12 @@ struct camera2_aa_dm {
     enum aa_videomode       vendor_videoMode;
     enum aa_ae_facemode     vendor_aeFaceMode;
     enum aa_afstate         vendor_afState;
-    uint32_t                vendor_reserved[9];
+    int32_t                 vendor_exposureValue;
+    uint32_t                vendor_touchAeDone;
+    uint32_t                vendor_touchBvChange;
+    uint32_t                vendor_captureCount;
+    uint32_t                vendor_captureExposuretime;
+    uint32_t                vendor_reserved[4];
 };
 
 struct camera2_aa_sm {
@@ -1240,6 +1271,9 @@ struct camera2_lens_uctl {
     uint32_t        direction;
     /** Some actuator support slew rate control. */
     uint32_t        slewRate;
+#if (HOST_FW_INTERFACE_VER >= 2)
+    uint32_t        oisCoefVal;
+#endif
 };
 
 /** \brief
@@ -1254,6 +1288,9 @@ struct camera2_lens_udm {
     uint32_t        direction;
     /** Some actuator support slew rate control. */
     uint32_t        slewRate;
+#if (HOST_FW_INTERFACE_VER >= 2)
+    uint32_t        oisCoefVal;
+#endif
 };
 
 /** \brief
@@ -1378,6 +1415,10 @@ struct camera2_scaler_uctl {
       [0] invalid address, stop
       [others] valid address
      */
+#if (HOST_FW_INTERFACE_VER >= 2)
+    /* Input image address */
+    uint32_t sourceAddress[4];
+#endif
     uint32_t txcTargetAddress[4]; /* 3AA capture DMA */
     uint32_t txpTargetAddress[4]; /* 3AA preview DMA */
     uint32_t ixcTargetAddress[4]; /* 3AA preview DMA */
@@ -1506,6 +1547,13 @@ struct camera2_fd_udm
 */
 };
 
+#if (HOST_FW_INTERFACE_VER >= 2)
+struct camera2_me_udm
+{
+    uint32_t vendorSpecific[200];
+};
+#endif
+
 enum camera2_drc_mode {
     DRC_OFF = 1,
     DRC_ON,
@@ -1572,6 +1620,9 @@ struct camera2_udm {
     struct camera2_internal_udm     internal;
     struct camera2_companion_udm    companion;
     struct camera2_fd_udm           fd;
+#if (HOST_FW_INTERFACE_VER >= 2)
+    struct camera2_me_udm           me;
+#endif
     enum camera_vt_mode             vtMode;
     uint32_t reserved[10];
 };

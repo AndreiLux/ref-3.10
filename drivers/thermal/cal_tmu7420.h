@@ -179,5 +179,6 @@ void cal_tmu_control(struct cal_tmu_data *data, int id, bool on);
 int cal_tmu_code_to_temp(struct cal_tmu_data *data, u16 temp_code, int id);
 int cal_tmu_temp_to_code(struct cal_tmu_data *data, u16 temp, int id);
 int cal_tmu_read(struct cal_tmu_data *data, int id);
+void cal_tmu_interrupt(struct cal_tmu_data *data, int id, bool en);
 
 #endif /* __CAL_TMU7420_H */

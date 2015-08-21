@@ -875,6 +875,8 @@ static int ksb_usb_suspend(struct usb_interface *ifc, pm_message_t message)
 		spin_unlock_irqrestore(&ksb->lock, flags);
 		dbg_log_event(ksb, "SUSPEND ABORT", 0, 0);
 		pr_info("ksb: SUSPEND ABORT");
+		if (!test_bit(USB_DEV_CONNECTED, &ksb->flags))
+			panic("ksb: suspend abort");
 		/*
 		 * Now wakeup the reader process and queue
 		 * Rx URBs for more data.

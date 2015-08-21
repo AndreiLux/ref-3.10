@@ -48,6 +48,10 @@
 #define MC_FC_SET_CFW_PROT	0xC20018A0
 #define MC_FC_DRM_SET_CFW_PROT	0x10000000
 
+/* SiP & OEM fastcall ID base */
+#define SMC_SIP_BASE		0x81000000
+#define SMC_OEM_BASE		0x83000000
+
 /* Parameter for smc */
 #define SMC_PROTECTION_ENABLE	1
 #define SMC_PROTECTION_DISABLE	0
@@ -117,6 +121,7 @@
 #define CFW_VPP1	6
 
 #ifndef __ASSEMBLY__
+extern int _exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
 extern int exynos_smc(unsigned long cmd, unsigned long arg1, unsigned long arg2, unsigned long arg3);
 extern int exynos_smc_readsfr(unsigned long addr, unsigned long* val);
 #endif

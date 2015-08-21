@@ -54,6 +54,7 @@ bool companion_front_lsc_isvalid = false;
 //static bool is_caldata_read = false;
 //static bool is_c1_caldata_read = false;
 bool force_caldata_dump = false;
+bool supend_resume_disable = false;
 
 static int cam_id = CAMERA_SINGLE_REAR;
 bool is_dumped_fw_loading_needed = false;
@@ -324,7 +325,7 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 	crc32_temp = true;
 #ifdef CONFIG_COMPANION_USE
 	if (id == SENSOR_POSITION_REAR)
-		crc32_c1_check = false;
+		crc32_c1_check = true;
 #endif
 
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
@@ -520,15 +521,15 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 		if (check_base > address_boundary || checksum_base > address_boundary || check_length <= 0) {
 			err("Camera: concord cal address has error: start(0x%08X), end(0x%08X)",
 				finfo->concord_cal_start_addr, finfo->concord_cal_end_addr);
+			crc32_c1_check = false;
 			goto out;
 		}
 
 		checksum = (u32)getCRC((u16 *)&buf32[check_base], check_length, NULL, NULL);
 		if (checksum != buf32[checksum_base]) {
 			err("Camera: CRC32 error at the concord cal (0x%08X != 0x%08X)", checksum, buf32[checksum_base]);
+			crc32_c1_check = false;
 			goto out;
-		} else {
-			crc32_c1_check = true;
 		}
 	}
 #endif
@@ -557,13 +558,19 @@ bool fimc_is_sec_check_fw_crc32(char *buf)
 	u32 *buf32 = NULL;
 	u32 checksum;
 	u32 checksum_base;
+	u32 checksum_seed;
 
 	buf32 = (u32 *)buf;
+
+	if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B))
+		checksum_seed = CHECKSUM_SEED_ISP_FW_2P2_PLUS;
+	else
+		checksum_seed = CHECKSUM_SEED_ISP_FW_IMX240;
 
 	info("Camera: Start checking CRC32 FW\n");
 
 	checksum = (u32)getCRC((u16 *)&buf32[0], sysfs_finfo.fw_size, NULL, NULL);
-	checksum_base = (0x2A8FFC & 0xffffffff) / 4;
+	checksum_base = (checksum_seed & 0xffffffff) / 4;
 	if (checksum != buf32[checksum_base]) {
 		err("Camera: CRC32 error at the binary section (0x%08X != 0x%08X)",
 					checksum, buf32[checksum_base]);
@@ -612,13 +619,19 @@ bool fimc_is_sec_check_setfile_crc32(char *buf)
 	u32 *buf32 = NULL;
 	u32 checksum;
 	u32 checksum_base;
+	u32 checksum_seed;
 
 	buf32 = (u32 *)buf;
+
+	if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B))
+		checksum_seed = CHECKSUM_SEED_SETF_2P2_PLUS;
+	else
+		checksum_seed = CHECKSUM_SEED_SETF_IMX240;
 
 	info("Camera: Start checking CRC32 Setfile\n");
 
 	checksum = (u32)getCRC((u16 *)&buf32[0], sysfs_finfo.setfile_size, NULL, NULL);
-	checksum_base = (0x1167FC & 0xffffffff) / 4;
+	checksum_base = (checksum_seed & 0xffffffff) / 4;
 	if (checksum != buf32[checksum_base]) {
 		err("Camera: CRC32 error at the binary section (0x%08X != 0x%08X)",
 					checksum, buf32[checksum_base]);
@@ -638,13 +651,19 @@ bool fimc_is_sec_check_companion_fw_crc32(char *buf)
 	u32 *buf32 = NULL;
 	u32 checksum;
 	u32 checksum_base;
+	u32 checksum_seed;
 
 	buf32 = (u32 *)buf;
+
+	if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B))
+		checksum_seed = CHECKSUM_SEED_COMP_FW_2P2_PLUS;
+	else
+		checksum_seed = CHECKSUM_SEED_COMP_FW_IMX240;
 
 	info("Camera: Start checking CRC32 Companion FW\n");
 
 	checksum = (u32)getCRC((u16 *)&buf32[0], sysfs_finfo.comp_fw_size, NULL, NULL);
-	checksum_base = ((0x307FC & 0xffffffff)) / 4;
+	checksum_base = ((checksum_seed & 0xffffffff)) / 4;
 	if (checksum != buf32[checksum_base]) {
 		err("Camera: CRC32 error at the binary section (0x%08X != 0x%08X)",
 					checksum, buf32[checksum_base]);
@@ -1980,7 +1999,7 @@ int fimc_is_sec_write_fw_to_from(struct fimc_is_core *core, char *name, bool fir
 	if (!strcmp(name, FIMC_IS_FW_FROM_SDCARD)) {
 		ret = fimc_is_sec_read_fw_from_sdcard(FIMC_IS_FW_FROM_SDCARD, &size);
 		start_addr = sysfs_finfo.bin_start_addr;
-		end_addr = size + start_addr - 1;
+		end_addr = (u32)size + start_addr - 1;
 		sysfs_finfo.bin_end_addr = end_addr;
 		checksum_addr = 0x3FFFFF;
 		sysfs_finfo.fw_size = size;
@@ -1988,17 +2007,23 @@ int fimc_is_sec_write_fw_to_from(struct fimc_is_core *core, char *name, bool fir
 	} else if (!strcmp(name, FIMC_IS_SETFILE_FROM_SDCARD)) {
 		ret = fimc_is_sec_read_fw_from_sdcard(FIMC_IS_SETFILE_FROM_SDCARD, &size);
 		start_addr = sysfs_finfo.setfile_start_addr;
-		end_addr = size + start_addr - 1;
+		end_addr = (u32)size + start_addr - 1;
 		sysfs_finfo.setfile_end_addr = end_addr;
-		checksum_addr = 0x156FFF;
+		if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B))
+			checksum_addr = FROM_WRITE_CHECKSUM_SETF_2P2_PLUS;
+		else
+			checksum_addr = FROM_WRITE_CHECKSUM_SETF_IMX240;
 		sysfs_finfo.setfile_size = size;
 		strncpy(sysfs_finfo.setfile_ver, &fw_buf[size - 64], 6);
 	} else if (!strcmp(name, FIMC_IS_COMPANION_FROM_SDCARD)) {
 		ret = fimc_is_sec_read_fw_from_sdcard(FIMC_IS_COMPANION_FROM_SDCARD, &size);
 		start_addr = sysfs_finfo.concord_bin_start_addr;
-		end_addr = size + start_addr - 1;
+		end_addr = (u32)size + start_addr - 1;
 		sysfs_finfo.concord_bin_end_addr = end_addr;
-		checksum_addr = 0x407FF;
+		if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B))
+			checksum_addr = FROM_WRITE_CHECKSUM_COMP_2P2_PLUS;
+		else
+			checksum_addr = FROM_WRITE_CHECKSUM_COMP_IMX240;
 		erase_end_addr = 0x3FFFFF;
 		sysfs_finfo.comp_fw_size = size;
 		strncpy(sysfs_finfo.concord_header_ver, &fw_buf[size - 16], FIMC_IS_HEADER_VER_SIZE);
@@ -2280,6 +2305,7 @@ key_err:
 int fimc_is_sec_check_reload(void)
 {
 	struct file *reload_key_fp = NULL;
+	struct file *supend_resume_key_fp = NULL;
 	mm_segment_t old_fs;
 
 	old_fs = get_fs();
@@ -2287,7 +2313,6 @@ int fimc_is_sec_check_reload(void)
 
 	reload_key_fp = filp_open("/data/media/0/reload/r1e2l3o4a5d.key", O_RDONLY, 0);
 	if (IS_ERR(reload_key_fp)) {
-		info("Reload KEY does not exist.\n");
 		reload_key_fp = NULL;
 	} else {
 		info("Reload KEY exist, reload cal data.\n");
@@ -2296,6 +2321,18 @@ int fimc_is_sec_check_reload(void)
 
 	if (reload_key_fp)
 		filp_close(reload_key_fp, current->files);
+
+	supend_resume_key_fp = filp_open("/data/media/0/i1s2p3s4r.key", O_RDONLY, 0);
+	if (IS_ERR(supend_resume_key_fp)) {
+		supend_resume_key_fp = NULL;
+	} else {
+		info("Supend_resume KEY exist, disable runtime supend/resume. \n");
+		supend_resume_disable = true;
+	}
+
+	if (supend_resume_key_fp)
+		filp_close(supend_resume_key_fp, current->files);
+
 	set_fs(old_fs);
 
 	return 0;
@@ -2641,7 +2678,11 @@ crc_retry:
 	}
 
 	if (core_pdata->use_module_check) {
-		if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M) {
+		if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M
+#if defined(CAMERA_MODULE_CORE_CS_VERSION)
+		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+#endif
+		) {
 			is_final_cam_module = true;
 		} else {
 			is_final_cam_module = false;
@@ -2740,7 +2781,12 @@ setfile_crc_retry:
 	/* read setfile data */
 	info("Camera: Start SPI read setfile data\n");
 	memset(fw_buf, 0x0, FIMC_IS_MAX_FW_SIZE);
-	ret = fimc_is_spi_read(&core->spi0, fw_buf, sysfs_finfo.setfile_start_addr, FIMC_IS_MAX_SETFILE_SIZE);
+	if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B))
+		ret = fimc_is_spi_read(&core->spi0, fw_buf, sysfs_finfo.setfile_start_addr,
+			FIMC_IS_MAX_SETFILE_SIZE_2P2_PLUS);
+	else
+		ret = fimc_is_spi_read(&core->spi0, fw_buf, sysfs_finfo.setfile_start_addr,
+			FIMC_IS_MAX_SETFILE_SIZE_IMX240);
 	if (ret) {
 		err("failed to fimc_is_spi_read (%d)\n", ret);
 		ret = -EINVAL;
@@ -3037,8 +3083,9 @@ int fimc_is_sec_fw_find(struct fimc_is_core *core)
 	}
 
 	if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_F) ||
-		fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_I) ||
-		fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_A)) {
+	    fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_I) ||
+	    fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_A) ||
+	    fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2P2_B)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_2P2), "%s", FIMC_IS_FW_2P2);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_2P2_SETF), "%s", FIMC_IS_2P2_SETF);
 		core_pdata->rear_sensor_id = SENSOR_NAME_S5K2P2;
@@ -3054,7 +3101,8 @@ int fimc_is_sec_fw_find(struct fimc_is_core *core)
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_4H5), "%s", FIMC_IS_FW_4H5);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_4H5_SETF), "%s", FIMC_IS_4H5_SETF);
 		core_pdata->rear_sensor_id = SENSOR_NAME_S5K4H5;
-	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX240)) {
+	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX240_A) ||
+	           fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX240_B)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_IMX240), "%s", FIMC_IS_FW_IMX240);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_IMX240_SETF), "%s", FIMC_IS_IMX240_SETF);
 		core_pdata->rear_sensor_id = SENSOR_NAME_IMX240;
@@ -3609,105 +3657,112 @@ read_phone_fw_exit:
 			goto exit;
 
 #ifdef CAMERA_MODULE_DUALIZE
-		from_fw_revision = fimc_is_sec_fw_revision(sysfs_finfo.header_ver);
-		phone_fw_revision = fimc_is_sec_fw_revision(phone_fw_version);
-		if (is_dump_existed) {
-			dump_fw_revision = fimc_is_sec_fw_revision(dump_fw_version);
-		}
-
-		info("from_fw_revision = %d, phone_fw_revision = %d, dump_fw_revision = %d\n",
-			from_fw_revision, phone_fw_revision, dump_fw_revision);
-
-		if ((!fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, phone_fw_version)) ||
-			(from_fw_revision > phone_fw_revision)) {
-			is_dumped_fw_loading_needed = true;
+#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
+		if (CAMERA_MODULE_SKIP_DUMP_VERSION != sysfs_finfo.header_ver[0]) {
+#endif
+			from_fw_revision = fimc_is_sec_fw_revision(sysfs_finfo.header_ver);
+			phone_fw_revision = fimc_is_sec_fw_revision(phone_fw_version);
 			if (is_dump_existed) {
-				if (!fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver,
-							dump_fw_version)) {
-					is_dump_needed = true;
-				} else if (from_fw_revision > dump_fw_revision) {
-					is_dump_needed = true;
+				dump_fw_revision = fimc_is_sec_fw_revision(dump_fw_version);
+			}
+
+			info("from_fw_revision = %d, phone_fw_revision = %d, dump_fw_revision = %d\n",
+				from_fw_revision, phone_fw_revision, dump_fw_revision);
+
+			if (fimc_is_sec_compare_ver(SENSOR_POSITION_REAR) /* Check if a module is connected or not */
+				&& (!fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, phone_fw_version) ||
+				   (from_fw_revision > phone_fw_revision))) {
+				is_dumped_fw_loading_needed = true;
+				if (is_dump_existed) {
+					if (!fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver,
+								dump_fw_version)) {
+						is_dump_needed = true;
+					} else if (from_fw_revision > dump_fw_revision) {
+						is_dump_needed = true;
+					} else {
+						is_dump_needed = false;
+					}
 				} else {
-					is_dump_needed = false;
+					is_dump_needed = true;
 				}
 			} else {
-				is_dump_needed = true;
-			}
-		} else {
-			is_dump_needed = false;
-			if (is_dump_existed) {
-				if (!fimc_is_sec_fw_module_compare(phone_fw_version,
-					dump_fw_version)) {
-					is_dumped_fw_loading_needed = false;
-				} else if (phone_fw_revision > dump_fw_revision) {
-					is_dumped_fw_loading_needed = false;
+				is_dump_needed = false;
+				if (is_dump_existed) {
+					if (!fimc_is_sec_fw_module_compare(phone_fw_version,
+						dump_fw_version)) {
+						is_dumped_fw_loading_needed = false;
+					} else if (phone_fw_revision > dump_fw_revision) {
+						is_dumped_fw_loading_needed = false;
+					} else {
+						is_dumped_fw_loading_needed = true;
+					}
 				} else {
-					is_dumped_fw_loading_needed = true;
-				}
-			} else {
-				is_dumped_fw_loading_needed = false;
-			}
-		}
-
-		if (force_caldata_dump) {
-			if ((!fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, phone_fw_version))
-				|| (from_fw_revision > phone_fw_revision))
-				dump_flag = true;
-		} else {
-			if (is_dump_needed) {
-				dump_flag = true;
-				crc32_fw_check = false;
-				crc32_setfile_check = false;
-			}
-		}
-
-		if (dump_flag) {
-			info("Dump ISP Firmware.\n");
-#ifdef CONFIG_COMPANION_USE
-			fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
-#endif
-			ret = fimc_is_sec_readfw(core);
-			msleep(20);
-			ret |= fimc_is_sec_read_setfile(core);
-#ifdef CONFIG_COMPANION_USE
-			fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
-#endif
-			if (ret < 0) {
-				if (!crc32_fw_check || !crc32_setfile_check) {
 					is_dumped_fw_loading_needed = false;
-					err("Firmware CRC is not valid. Does not use dumped firmware.\n");
 				}
 			}
-		}
 
-		if (phone_fw_version[0] == 0) {
-			strcpy(sysfs_pinfo.header_ver, "NULL");
-		}
+			if (force_caldata_dump) {
+				if ((!fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, phone_fw_version))
+					|| (from_fw_revision > phone_fw_revision))
+					dump_flag = true;
+			} else {
+				if (is_dump_needed) {
+					dump_flag = true;
+					crc32_fw_check = false;
+					crc32_setfile_check = false;
+				}
+			}
 
-		if (is_dumped_fw_loading_needed) {
-			old_fs = get_fs();
-			set_fs(KERNEL_DS);
-			snprintf(setfile_path, sizeof(setfile_path), "%s%s",
-				FIMC_IS_FW_DUMP_PATH, sysfs_finfo.load_setfile_name);
-			setfile_fp = filp_open(setfile_path, O_RDONLY, 0);
-			if (IS_ERR_OR_NULL(setfile_fp)) {
-				set_fs(old_fs);
-				crc32_setfile_check = false;
-				info("setfile does not exist. Retry setfile dump.\n");
+			if (dump_flag) {
+				info("Dump ISP Firmware.\n");
 #ifdef CONFIG_COMPANION_USE
 				fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
 #endif
-				fimc_is_sec_read_setfile(core);
+				ret = fimc_is_sec_readfw(core);
+				msleep(20);
+				ret |= fimc_is_sec_read_setfile(core);
 #ifdef CONFIG_COMPANION_USE
 				fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
 #endif
-				setfile_fp = NULL;
-			} else {
-				if (setfile_fp)
-					filp_close(setfile_fp, current->files);
-				set_fs(old_fs);
+				if (ret < 0) {
+					if (!crc32_fw_check || !crc32_setfile_check) {
+						is_dumped_fw_loading_needed = false;
+						err("Firmware CRC is not valid. Does not use dumped firmware.\n");
+					}
+				}
 			}
+
+			if (phone_fw_version[0] == 0) {
+				strcpy(sysfs_pinfo.header_ver, "NULL");
+			}
+
+			if (is_dumped_fw_loading_needed) {
+				old_fs = get_fs();
+				set_fs(KERNEL_DS);
+				snprintf(setfile_path, sizeof(setfile_path), "%s%s",
+					FIMC_IS_FW_DUMP_PATH, sysfs_finfo.load_setfile_name);
+				setfile_fp = filp_open(setfile_path, O_RDONLY, 0);
+				if (IS_ERR_OR_NULL(setfile_fp)) {
+					set_fs(old_fs);
+					crc32_setfile_check = false;
+					info("setfile does not exist. Retry setfile dump.\n");
+#ifdef CONFIG_COMPANION_USE
+					fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
+#endif
+					fimc_is_sec_read_setfile(core);
+#ifdef CONFIG_COMPANION_USE
+					fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
+#endif
+					setfile_fp = NULL;
+				} else {
+					if (setfile_fp)
+						filp_close(setfile_fp, current->files);
+					set_fs(old_fs);
+				}
+			}
+#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
 		}
+#endif
 #endif
 
 		if (is_dump_needed && is_dumped_fw_loading_needed) {
@@ -3781,8 +3836,9 @@ int fimc_is_sec_concord_fw_sel(struct fimc_is_core *core, struct device *dev)
 		sysfs_finfo.is_c1_caldata_read = true;
 
 		if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_F) ||
-			fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_I) ||
-			fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_A)) {
+		    fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_I) ||
+		    fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_A) ||
+		    fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_B)) {
 			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
 				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_2P2_EVT1);
 			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_2P2_EVT1), "%s", FIMC_IS_FW_COMPANION_2P2_EVT1);
@@ -3796,7 +3852,8 @@ int fimc_is_sec_concord_fw_sel(struct fimc_is_core *core, struct device *dev)
 			sysfs_finfo.sensor_id = COMPANION_SENSOR_IMX240;
 			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_IMX228_MASTER_SETF), "%s", FIMC_IS_COMPANION_IMX228_MASTER_SETF);
 			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_IMX228_MODE_SETF), "%s", FIMC_IS_COMPANION_IMX228_MODE_SETF);
-		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX240)) {
+		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX240_A) ||
+		           fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX240_B)) {
 			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
 				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_IMX240_EVT1);
 			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_IMX240_EVT1), "%s", FIMC_IS_FW_COMPANION_IMX240_EVT1);
@@ -3986,63 +4043,69 @@ read_phone_fw_exit:
 			goto exit;
 
 #ifdef CAMERA_MODULE_DUALIZE
-		from_c1_fw_revision = fimc_is_sec_fw_revision(sysfs_finfo.concord_header_ver);
-		phone_c1_fw_revision = fimc_is_sec_fw_revision(phone_c1_fw_version);
-		if (is_dump_existed) {
-			dump_c1_fw_revision = fimc_is_sec_fw_revision(dump_c1_fw_version);
-		}
-
-		info("from_c1_fw_revision = %d, phone_c1_fw_revision = %d, dump_c1_fw_revision = %d\n",
-			from_c1_fw_revision, phone_c1_fw_revision, dump_c1_fw_revision);
-
-		if ((!fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, phone_c1_fw_version)) ||
-				(from_c1_fw_revision > phone_c1_fw_revision)) {
-			is_dumped_c1_fw_loading_needed = true;
+#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
+		if (CAMERA_MODULE_SKIP_DUMP_VERSION != sysfs_finfo.concord_header_ver[0]) {
+#endif
+			from_c1_fw_revision = fimc_is_sec_fw_revision(sysfs_finfo.concord_header_ver);
+			phone_c1_fw_revision = fimc_is_sec_fw_revision(phone_c1_fw_version);
 			if (is_dump_existed) {
-				if (!fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver,
-							dump_c1_fw_version)) {
-					is_dump_needed = true;
-				} else if (from_c1_fw_revision > dump_c1_fw_revision) {
-					is_dump_needed = true;
+				dump_c1_fw_revision = fimc_is_sec_fw_revision(dump_c1_fw_version);
+			}
+
+			info("from_c1_fw_revision = %d, phone_c1_fw_revision = %d, dump_c1_fw_revision = %d\n",
+				from_c1_fw_revision, phone_c1_fw_revision, dump_c1_fw_revision);
+
+			if ((!fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, phone_c1_fw_version)) ||
+					(from_c1_fw_revision > phone_c1_fw_revision)) {
+				is_dumped_c1_fw_loading_needed = true;
+				if (is_dump_existed) {
+					if (!fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver,
+								dump_c1_fw_version)) {
+						is_dump_needed = true;
+					} else if (from_c1_fw_revision > dump_c1_fw_revision) {
+						is_dump_needed = true;
+					} else {
+						is_dump_needed = false;
+					}
 				} else {
-					is_dump_needed = false;
+					is_dump_needed = true;
 				}
 			} else {
-				is_dump_needed = true;
-			}
-		} else {
-			is_dump_needed = false;
-			if (is_dump_existed) {
-				if (!fimc_is_sec_fw_module_compare(phone_c1_fw_version,
-							dump_c1_fw_version)) {
-					is_dumped_c1_fw_loading_needed = false;
-				} else if (phone_c1_fw_revision > dump_c1_fw_revision) {
-					is_dumped_c1_fw_loading_needed = false;
+				is_dump_needed = false;
+				if (is_dump_existed) {
+					if (!fimc_is_sec_fw_module_compare(phone_c1_fw_version,
+								dump_c1_fw_version)) {
+						is_dumped_c1_fw_loading_needed = false;
+					} else if (phone_c1_fw_revision > dump_c1_fw_revision) {
+						is_dumped_c1_fw_loading_needed = false;
+					} else {
+						is_dumped_c1_fw_loading_needed = true;
+					}
 				} else {
-					is_dumped_c1_fw_loading_needed = true;
-				}
-			} else {
-				is_dumped_c1_fw_loading_needed = false;
-			}
-		}
-
-		if (is_dump_needed) {
-			info("Dump companion Firmware.\n");
-			crc32_c1_fw_check = false;
-			fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
-			ret = fimc_is_sec_read_companion_fw(core);
-			fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
-			if (ret < 0) {
-				if (!crc32_c1_fw_check) {
 					is_dumped_c1_fw_loading_needed = false;
-					err("Companion Firmware CRC is not valid. Does not use dumped firmware.\n");
 				}
 			}
-		}
 
-		if (phone_c1_fw_version[0] == 0) {
-			strcpy(sysfs_pinfo.concord_header_ver, "NULL");
+			if (is_dump_needed) {
+				info("Dump companion Firmware.\n");
+				crc32_c1_fw_check = false;
+				fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_FUNC, false);
+				ret = fimc_is_sec_read_companion_fw(core);
+				fimc_is_spi_s_port(spi_gpio, FIMC_IS_SPI_OUTPUT, true);
+				if (ret < 0) {
+					if (!crc32_c1_fw_check) {
+						is_dumped_c1_fw_loading_needed = false;
+						err("Companion Firmware CRC is not valid. Does not use dumped firmware.\n");
+					}
+				}
+			}
+
+			if (phone_c1_fw_version[0] == 0) {
+				strcpy(sysfs_pinfo.concord_header_ver, "NULL");
+			}
+#if defined(CAMERA_MODULE_SKIP_DUMP_VERSION)
 		}
+#endif
 #endif
 
 		if (is_dump_needed && is_dumped_c1_fw_loading_needed) {

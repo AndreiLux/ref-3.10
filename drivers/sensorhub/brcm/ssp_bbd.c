@@ -280,12 +280,11 @@ void bbd_on_packet_work_func(struct work_struct *work)
 	unsigned short chLength = 0, msg_options = 0;
 	unsigned char msg_type = 0;
 	int iRet = 0;
-	u64 timestamp;
 	unsigned char *pData = NULL, *p, *q;
 	int nDataLen = 0;
+
+	u64 timestamp;
 	struct timespec ts;
-	ts = ktime_to_timespec(ktime_get_boottime());
-	data->timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 
 	iRet = bbd_pull_packet(rBuff, sizeof(rBuff), BBD_PULL_TIMEOUT);
 	if (iRet <= 0) {
@@ -415,10 +414,9 @@ exit:
 			pr_err("[SSP] %s bbd_pull_packet fail.(iRet=%d)\n", __func__,iRet);
 		else {
 			ts = ktime_to_timespec(ktime_get_boottime());
-			timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;			
+			timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
 			data->timestamp = timestamp;
-//			printk("[SSP] bbd_on_packet_work_func timestamp : %lld\n", data->timestamp);
-			
+
 			parse_dataframe(data, buffer, chLength);
 		}
 		//iRet = spi_read(data->spi, buffer, chLength);

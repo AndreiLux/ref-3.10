@@ -108,7 +108,8 @@ static int exynos_fimc_is_module_pin_control(struct platform_device *pdev,
 			regulator = regulator_get(&pdev->dev, name);
 			if (IS_ERR_OR_NULL(regulator)) {
 				pr_err("%s : regulator_get(%s) fail\n", __func__, name);
-				return PTR_ERR(regulator);
+				regulator_put(regulator);
+				return -EINVAL;
 			}
 
 			if (value) {
@@ -252,7 +253,7 @@ static int exynos_fimc_is_module_pin_debug(struct platform_device *pdev,
 			if (IS_ERR_OR_NULL(regulator)) {
 				pr_err("%s : regulator_get(%s) fail\n", __func__, name);
 				regulator_put(regulator);
-				return PTR_ERR(regulator);
+				return -EINVAL;
 			}
 
 			if (regulator_is_enabled(regulator))

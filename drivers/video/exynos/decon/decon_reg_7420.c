@@ -174,6 +174,12 @@ void decon_reg_set_linecnt_op_threshold(u32 id, int dsi_idx, u32 th)
 	decon_write(id, LINECNT_OP_THRESHOLD(dsi_idx), th);
 }
 
+void decon_reg_set_eclk_auto_gate(u32 id, u32 en)
+{
+	u32 val = en ? ~0 : 0;
+	decon_write_mask(id, VCLKCON0, val, VCLKCON0_ECLK_IDLE_GATE_EN);
+}
+
 void decon_reg_set_clkval(u32 id, u32 clkdiv)
 {
 	decon_write_mask(id, VCLKCON0, ~0, VCLKCON0_CLKVALUP);
@@ -238,8 +244,8 @@ void decon_reg_configure_lcd(u32 id, enum decon_dsi_mode dsi_mode,
 			decon_reg_set_linecnt_op_threshold(id, 1, lcd_info->yres - 1);
 	}
 
+	decon_reg_set_eclk_auto_gate(id, true);
 	decon_reg_set_clkval(id, 0);
-
 	decon_reg_set_freerun_mode(id, 1);
 	decon_reg_direct_on_off(id, 0);
 }
@@ -533,8 +539,8 @@ void decon_reg_init_probe(u32 id, enum decon_dsi_mode dsi_mode, struct decon_ini
 			decon_reg_set_linecnt_op_threshold(id, 1, lcd_info->yres - 1);
 	}
 
+	decon_reg_set_eclk_auto_gate(id, true);
 	decon_reg_set_clkval(id, 0);
-
 	decon_reg_set_freerun_mode(id, 0);
 	decon_reg_update_standalone(id);
 
@@ -599,6 +605,10 @@ void decon_reg_set_regs_data(u32 id, int win_idx, struct decon_regs_data *regs)
 	regs->wincon |= WINCON_BUF_MODE_TRIPLE;
 	decon_write(id, WINCON(win_idx), regs->wincon);
 	decon_write(id, WIN_MAP(win_idx), regs->winmap);
+	if (regs->winmap & WIN_MAP_MAP) {
+		decon_write_mask(id, WINCHMAP0, WINCHMAP_DMA(0x7, win_idx),
+				WINCHMAP_MASK(win_idx));
+	}
 
 	decon_write(id, VIDOSD_A(win_idx), regs->vidosd_a);
 	decon_write(id, VIDOSD_B(win_idx), regs->vidosd_b);

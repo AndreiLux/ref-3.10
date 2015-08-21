@@ -362,6 +362,10 @@ void set_shutdown(void)
 	struct mdm_hsic_pm_data *pm_data =
 		get_pm_data_by_dev_name("15510000.mdmpm_pdata");
 
+	if(!pm_data) {
+		pr_err("%s : pm_data is NULL\n", __func__);
+		return;
+	}
 	pm_data->shutdown = true;
 }
 

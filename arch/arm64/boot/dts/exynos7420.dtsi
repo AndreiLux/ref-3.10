@@ -116,7 +116,7 @@
 					desc = "System power down";
 					entry-method-param = <0x1000000>;
 					exit-latency-us = <300>;
-					min-residency-us = <5000>;
+					min-residency-us = <3000>;
 					status = "enabled";
 					cluster = <0>;
 				};
@@ -125,7 +125,7 @@
 					desc = "System power down";
 					entry-method-param = <0x1000000>;
 					exit-latency-us = <300>;
-					min-residency-us = <5000>;
+					min-residency-us = <3000>;
 					status = "enabled";
 					cluster = <1>;
 				};
@@ -3129,9 +3129,16 @@
 				 <&clock 451>,		/* dout_aclk_aud */
 				 <&clock 457>;		/* dout_sclk_i2s */
 			clock-names = "iis", "i2s_opclk0", "i2s_opclk1";
-			samsung,tx-buf = <0x0303B000>;
+			samsung,tx-iommu;
+			samsung,tx-buf = <0x43000000>;
 			samsung,tx-size = <0xA000>;
-			samsung,tx-uhqa-buf = <0x43000000 0x40000>;
+			samsung,tx-uhqa-buf = <0x44000000 0x40000>;
+		};
+		i2s-compr {
+			clocks = <&clock 414>,		/* pclk_i2s */
+				 <&clock 451>,		/* dout_aclk_aud */
+				 <&clock 457>;		/* dout_sclk_i2s */
+			clock-names = "iis", "i2s_opclk0", "i2s_opclk1";
 		};
 	};
 

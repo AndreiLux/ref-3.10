@@ -579,7 +579,9 @@ MHI_STATUS mhi_init_contexts(mhi_device_ctxt *mhi_device)
 		}
 	}
 	mhi_device->mhi_state = MHI_STATE_RESET;
-
+	mhi_device->counters.mhi_xfer_db_interval = INIT_DB_INTERVAL;
+	mhi_device->counters.tput = 0;
+	mhi_device->flags.hotspot_onoff = 0;
 	return MHI_STATUS_SUCCESS;
 }
 

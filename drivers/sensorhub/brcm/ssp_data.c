@@ -26,53 +26,97 @@
 #define MSG2AP_INST_RESET			0x07
 #define MSG2AP_INST_GYRO_CAL			0x08
 
+#define U64_MS2NS 1000000ULL
+#define U64_US2NS 1000ULL
+#define U64_MS2US 1000ULL
+#define MS_IDENTIFIER 1000000000U
+
 /*************************************************************************/
 /* SSP parsing the dataframe                                             */
 /*************************************************************************/
-
-static void generate_data(struct ssp_data *data,
-	struct sensor_value *sensorsdata, int iSensorData, u64 timestamp)
-{
-	u64 move_timestamp = data->lastTimestamp[iSensorData];
-	if ((iSensorData != PROXIMITY_SENSOR) && (iSensorData != GESTURE_SENSOR)
-		&& (iSensorData != STEP_DETECTOR) && (iSensorData != SIG_MOTION_SENSOR)
-		&& (iSensorData != STEP_COUNTER)
-#ifdef CONFIG_SENSORS_SSP_SX9306
-		&& (iSensorData != GRIP_SENSOR)
-#endif
-		) {
-		while ((move_timestamp * 10 + data->adDelayBuf[iSensorData] * 13) < (timestamp * 10)) {
-			move_timestamp += data->adDelayBuf[iSensorData];
-			sensorsdata->timestamp = move_timestamp;
-			data->report_sensor_data[iSensorData](data, sensorsdata);
-		}
-	}
-}
-
 static void get_timestamp(struct ssp_data *data, char *pchRcvDataFrame,
 		int *iDataIdx, struct sensor_value *sensorsdata,
 		struct ssp_time_diff *sensortime, int iSensorData)
 {
-	if (sensortime->batch_mode == BATCH_MODE_RUN) {
-		if (sensortime->batch_count == sensortime->batch_count_fixed) {
-			if (sensortime->time_diff == data->adDelayBuf[iSensorData]) {
-				generate_data(data, sensorsdata, iSensorData,
-						(data->timestamp - data->adDelayBuf[iSensorData] * (sensortime->batch_count_fixed - 1)));
-			}
-			sensorsdata->timestamp = data->timestamp - ((sensortime->batch_count - 1) * sensortime->time_diff);
-		} else {
-			if (sensortime->batch_count > 1)
-				sensorsdata->timestamp = data->timestamp - ((sensortime->batch_count - 1) * sensortime->time_diff);
-			else
-				sensorsdata->timestamp = data->timestamp;
-		}
+	unsigned int deltaTimeUs = 0;
+	u64 deltaTimeNs = 0;
+
+	memset(&deltaTimeUs, 0, 4);
+	memcpy(&deltaTimeUs, pchRcvDataFrame + *iDataIdx, 4);
+
+	if (deltaTimeUs > MS_IDENTIFIER) {
+		//We condsider, unit is ms (MS->NS)
+		deltaTimeNs = ((u64) (deltaTimeUs % MS_IDENTIFIER)) * U64_MS2NS;
 	} else {
-		if (((sensortime->irq_diff * 10) > (data->adDelayBuf[iSensorData] * 13))
-			&& ((sensortime->irq_diff * 10) < (data->adDelayBuf[iSensorData] * 100))) {
-			generate_data(data, sensorsdata, iSensorData, data->timestamp);
-		}
-		sensorsdata->timestamp = data->timestamp;
+		deltaTimeNs = (((u64) deltaTimeUs) * U64_US2NS);//US->NS
 	}
+
+	if (sensortime->batch_mode == BATCH_MODE_RUN) {
+		// BATCHING MODE
+		data->lastTimestamp[iSensorData] += deltaTimeNs;
+	} else {
+		// NORMAL MODE
+
+		// CAMERA SYNC MODE
+		if (data->cameraGyroSyncMode && iSensorData == GYROSCOPE_SENSOR) {
+			if (deltaTimeNs == 1000ULL || data->lastTimestamp[iSensorData] == 0ULL) {
+				//eltaTimeNs = 0ULL;
+				data->lastTimestamp[iSensorData] = data->timestamp;
+				deltaTimeNs = 0ULL;
+			} else {
+				if (data->timestamp < data->lastTimestamp[iSensorData]) {
+					deltaTimeNs = 0ULL;
+				} else {
+					deltaTimeNs = data->timestamp - data->lastTimestamp[iSensorData];
+				}
+			}
+
+			if (deltaTimeNs == 0ULL) {
+				// Don't report when time is 0.
+				data->skipEventReport = true;
+			} else if (deltaTimeNs > (data->adDelayBuf[iSensorData] * 18ULL / 10ULL)) {
+				int cnt = 0;
+				int i = 0;
+				cnt = deltaTimeNs / (data->adDelayBuf[iSensorData]);
+
+				for (i = 0; i < cnt; i++) {
+					data->lastTimestamp[iSensorData] += data->adDelayBuf[iSensorData];
+					sensorsdata->timestamp = data->lastTimestamp[iSensorData];
+					data->report_sensor_data[iSensorData](data, sensorsdata);
+					deltaTimeNs -= data->adDelayBuf[iSensorData];
+				}
+
+				// mod is calculated automatically.
+				if (deltaTimeNs > (data->adDelayBuf[iSensorData] / 2ULL)) {
+					data->lastTimestamp[iSensorData] += deltaTimeNs;
+					sensorsdata->timestamp = data->lastTimestamp[iSensorData];
+					data->report_sensor_data[iSensorData](data, sensorsdata);
+
+					data->skipEventReport = true;
+				}
+				deltaTimeNs = 0ULL;
+			}
+			else if (deltaTimeNs < (data->adDelayBuf[iSensorData] / 2ULL)) {
+				data->skipEventReport = true;
+				deltaTimeNs = 0ULL;
+			}
+			data->lastTimestamp[iSensorData] += deltaTimeNs;
+
+		} else {
+			// 80ms is magic number. reset time base.
+			if (deltaTimeNs == 0ULL || deltaTimeNs == 1000ULL || deltaTimeNs == 80000ULL) {
+				data->lastTimestamp[iSensorData] = data->timestamp - 15000000ULL;
+				deltaTimeNs = 0ULL;
+			}
+
+			if (data->report_mode[iSensorData] == REPORT_MODE_ON_CHANGE) {
+				data->lastTimestamp[iSensorData] = data->timestamp;
+			} else {
+				data->lastTimestamp[iSensorData] += deltaTimeNs;
+			}
+		}
+	}
+	sensorsdata->timestamp = data->lastTimestamp[iSensorData];
 	*iDataIdx += 4;
 }
 
@@ -223,6 +267,20 @@ static void get_shake_cam_sensordata(char *pchRcvDataFrame, int *iDataIdx,
 	*iDataIdx += 1;
 }
 
+static void get_tilt_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 1);
+	*iDataIdx += 1;
+}
+
+static void get_pickup_sensordata(char *pchRcvDataFrame, int *iDataIdx,
+	struct sensor_value *sensorsdata)
+{
+	memcpy(sensorsdata, pchRcvDataFrame + *iDataIdx, 1);
+	*iDataIdx += 1;
+}
+
 int handle_big_data(struct ssp_data *data, char *pchRcvDataFrame, int *pDataIdx) {
 	u8 bigType = 0;
 	struct ssp_big *big = kzalloc(sizeof(*big), GFP_KERNEL);
@@ -268,57 +326,22 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 			iDataIdx += 2;
 			sensortime.batch_count = sensortime.batch_count_fixed = length;
 			sensortime.batch_mode = length > 1 ? BATCH_MODE_RUN : BATCH_MODE_NONE;
-			sensortime.irq_diff = data->timestamp - data->lastTimestamp[iSensorData];
-
-			if (sensortime.batch_mode == BATCH_MODE_RUN) {
-				if (data->reportedData[iSensorData] == true) {
-					u64 time;
-					sensortime.time_diff = div64_long((s64)(data->timestamp - data->lastTimestamp[iSensorData]), (s64)length);
-					if (length > 8)
-						time = data->adDelayBuf[iSensorData] * 18;
-					else if (length > 4)
-						time = data->adDelayBuf[iSensorData] * 25;
-					else if (length > 2)
-						time = data->adDelayBuf[iSensorData] * 50;
-					else
-						time = data->adDelayBuf[iSensorData] * 120;
-					if ((sensortime.time_diff * 10) > time) {
-						data->lastTimestamp[iSensorData] = data->timestamp - (data->adDelayBuf[iSensorData] * length);
-						sensortime.time_diff = data->adDelayBuf[iSensorData];
-					} else {
-						time = data->adDelayBuf[iSensorData] * 11;
-						if ((sensortime.time_diff * 10) > time)
-							sensortime.time_diff = data->adDelayBuf[iSensorData];
-					}
-				} else {
-					if (data->lastTimestamp[iSensorData] < (data->timestamp - (data->adDelayBuf[iSensorData] * length))) {
-						data->lastTimestamp[iSensorData] = data->timestamp - (data->adDelayBuf[iSensorData] * length);
-						sensortime.time_diff = data->adDelayBuf[iSensorData];
-					} else
-						sensortime.time_diff = div64_long((s64)(data->timestamp - data->lastTimestamp[iSensorData]), (s64)length);
-				}
-			} else {
-				if (data->reportedData[iSensorData] == false)
-					sensortime.irq_diff = data->adDelayBuf[iSensorData];
-			}
 
 			do {
 				data->get_sensor_data[iSensorData](pchRcvDataFrame, &iDataIdx, &sensorsdata);
+				data->skipEventReport = false;
 				get_timestamp(data, pchRcvDataFrame, &iDataIdx, &sensorsdata, &sensortime, iSensorData);
-				if (sensortime.irq_diff > 2500000)
+				if (data->skipEventReport == false) {
 					data->report_sensor_data[iSensorData](data, &sensorsdata);
-				else if ((iSensorData == PROXIMITY_SENSOR) || (iSensorData == PROXIMITY_RAW)
-						|| (iSensorData == GESTURE_SENSOR) || (iSensorData == SIG_MOTION_SENSOR))
-					data->report_sensor_data[iSensorData](data, &sensorsdata);
-				else
-					pr_err("[SSP]: %s irq_diff is under 1msec (%d)\n", __func__, iSensorData);
+				}
+
 				sensortime.batch_count--;
 			} while ((sensortime.batch_count > 0) && (iDataIdx < iLength));
 
 			if (sensortime.batch_count > 0)
 				pr_err("[SSP]: %s batch count error (%d)\n", __func__, sensortime.batch_count);
 
-			data->lastTimestamp[iSensorData] = data->timestamp;
+			//data->lastTimestamp[iSensorData] = data->timestamp;
 			data->reportedData[iSensorData] = true;
 			break;
 		case MSG2AP_INST_DEBUG_DATA:
@@ -348,7 +371,7 @@ int parse_dataframe(struct ssp_data *data, char *pchRcvDataFrame, int iLength)
 			data->bTimeSyncing = true;
 			break;
 		case MSG2AP_INST_GYRO_CAL:
-			pr_err("Gyro caldata received from MCU\n");
+			pr_info("[SSP]: %s - Gyro caldata received from MCU\n",  __func__);
 			memcpy(caldata, pchRcvDataFrame + iDataIdx, sizeof(caldata));
 			wake_lock(&data->ssp_wake_lock);
 			save_gyro_caldata(data, caldata);
@@ -393,6 +416,9 @@ void initialize_function_pointer(struct ssp_data *data)
 #ifdef CONFIG_SENSORS_SSP_INTERRUPT_GYRO_SENSOR
 	data->get_sensor_data[INTERRUPT_GYRO_SENSOR] = get_3axis_sensordata;
 #endif
+	data->get_sensor_data[TILT_DETECTOR] = get_tilt_sensordata;
+	data->get_sensor_data[PICKUP_GESTURE] = get_pickup_sensordata;
+	data->get_sensor_data[MOTOR_TEST] = get_3axis_sensordata;
 
 	data->report_sensor_data[ACCELEROMETER_SENSOR] = report_acc_data;
 	data->report_sensor_data[GYROSCOPE_SENSOR] = report_gyro_data;
@@ -424,6 +450,9 @@ void initialize_function_pointer(struct ssp_data *data)
 #ifdef CONFIG_SENSORS_SSP_INTERRUPT_GYRO_SENSOR
 	data->report_sensor_data[INTERRUPT_GYRO_SENSOR] = report_interrupt_gyro_data;
 #endif
+	data->report_sensor_data[TILT_DETECTOR] = report_tilt_data;
+	data->report_sensor_data[PICKUP_GESTURE] = report_pickup_data;
+	data->report_sensor_data[MOTOR_TEST] = report_motor_test_data;
 
 	data->ssp_big_task[BIG_TYPE_DUMP] = ssp_dump_task;
 	data->ssp_big_task[BIG_TYPE_READ_LIB] = ssp_read_big_library_task;

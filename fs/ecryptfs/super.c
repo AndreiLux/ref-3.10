@@ -69,8 +69,7 @@ static struct inode *ecryptfs_alloc_inode(struct super_block *sb)
 	inode_info->lower_file = NULL;
 #ifdef CONFIG_SDP
 	// get userid from super block
-	inode_info->userid = ecryptfs_super_block_get_userid(sb);
-	inode_info->crypt_stat.userid = inode_info->userid;
+	inode_info->crypt_stat.engine_id = -1;
 #endif
 	inode = &inode_info->vfs_inode;
 out:
@@ -218,9 +217,8 @@ static int ecryptfs_show_options(struct seq_file *m, struct dentry *root)
 			seq_printf(m, ",ecryptfs_sig=%s", walker->sig);
 	}
 #ifdef CONFIG_SDP
-	if(ecryptfs_is_valid_userid(mount_crypt_stat->userid)){
-		seq_printf(m, ",userid=%d", mount_crypt_stat->userid);
-	}
+	seq_printf(m, ",userid=%d", mount_crypt_stat->userid);
+
 	if (mount_crypt_stat->flags & ECRYPTFS_MOUNT_SDP_ENABLED){
 		seq_printf(m, ",sdp_enabled");
 	}

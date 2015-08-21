@@ -42,5 +42,6 @@ void enable_debug_timer(struct ssp_data *data);
 void disable_debug_timer(struct ssp_data *data);
 int initialize_debug_timer(struct ssp_data *data);
 int debug_crash_dump(struct ssp_data *data, char *pchRcvDataFrame, int iLength);
+void print_dataframe(struct ssp_data *data, char *dataframe, int frame_len);
 
 #endif

@@ -37,6 +37,8 @@
 #include <linux/pm_qos.h>
 #endif
 
+#define MFC_DRIVER_INFO		150604
+
 #define MFC_MAX_BUFFERS		32
 #define MFC_MAX_REF_BUFS	2
 #define MFC_FRAME_PLANES	2
@@ -125,7 +127,7 @@ enum s5p_mfc_inst_state {
 	MFCINST_INIT = 100,
 	MFCINST_GOT_INST,
 	MFCINST_HEAD_PARSED,
-	MFCINST_BUFS_SET,
+	MFCINST_RUNNING_BUF_FULL,
 	MFCINST_RUNNING,
 	MFCINST_FINISHING,
 	MFCINST_FINISHED,
@@ -447,11 +449,12 @@ struct s5p_mfc_h264_enc_params {
 	u16 ext_sar_height;
 	u8 open_gop;
 	u16 open_gop_size;
-	u8 hier_qp;
+	u8 hier_qp_enable;
 	enum v4l2_mpeg_video_h264_hierarchical_coding_type hier_qp_type;
-	u8 hier_qp_layer;
-	u8 hier_qp_layer_qp[7];
-	u32 hier_qp_layer_bit[7];
+	u8 num_hier_layer;
+	u8 hier_ref_type;
+	u8 hier_qp_layer[7];
+	u32 hier_bit_layer[7];
 	u8 sei_gen_enable;
 	u8 sei_fp_curr_frame_0;
 	enum v4l2_mpeg_video_h264_sei_fp_arrangement_type sei_fp_arrangement_type;
@@ -465,6 +468,10 @@ struct s5p_mfc_h264_enc_params {
 	u32 aso_slice_order[8];
 
 	u32 prepend_sps_pps_to_idr;
+	u32 enable_ltr;
+	u32 set_priority;
+	u32 base_priority;
+	u32 vui_enable;
 };
 
 /**
@@ -502,12 +509,12 @@ struct s5p_mfc_vp8_enc_params {
 	u8 vp8_filtersharpness;
 	u8 vp8_goldenframesel;
 	u8 vp8_gfrefreshperiod;
-	u8 hierarchy_qp_enable;
-	u8 hier_qp_layer_qp[3];
-	u32 hier_qp_layer_bit[3];
+	u8 hier_qp_enable;
+	u8 hier_qp_layer[3];
+	u32 hier_bit_layer[3];
 	u8 num_refs_for_p;
 	u8 intra_4x4mode_disable;
-	u8 num_temporal_layer;
+	u8 num_hier_layer;
 };
 
 /**
@@ -543,12 +550,12 @@ struct s5p_mfc_hevc_enc_params {
 	u8 const_intra_period_enable;
 	u8 lossless_cu_enable;
 	u8 wavefront_enable;
-	u8 longterm_ref_enable;
-	u8 hier_qp;
+	u8 enable_ltr;
+	u8 hier_qp_enable;
 	u8 hier_qp_type;
-	u8 hier_qp_layer;
-	u8 hier_qp_layer_qp;
-	u8 hier_qp_layer_bit;
+	u8 num_hier_layer;
+	u8 hier_qp_layer[5];
+	u8 hier_bit_layer[5];
 	u8 sign_data_hiding;
 	u8 general_pb_enable;
 	u8 temporal_id_enable;
@@ -572,8 +579,9 @@ struct s5p_mfc_enc_params {
 
 	u32 gop_size;
 	enum v4l2_mpeg_video_multi_slice_mode slice_mode;
-	u16 slice_mb;
+	u32 slice_mb;
 	u32 slice_bit;
+	u16 slice_mb_row;
 	u16 intra_refresh_mb;
 	u8 pad;
 	u8 pad_luma;
@@ -653,6 +661,7 @@ struct s5p_mfc_buf_ctrl {
 	int has_new;
 	int val;
 	unsigned int old_val;		/* only for MFC_CTRL_TYPE_SET */
+	unsigned int old_val2;		/* only for MFC_CTRL_TYPE_SET */
 	unsigned int is_volatile;	/* only for MFC_CTRL_TYPE_SET */
 	unsigned int updated;
 	unsigned int mode;
@@ -832,8 +841,10 @@ struct s5p_mfc_enc {
 		unsigned int bits;
 	} slice_size;
 	unsigned int in_slice;
+	unsigned int buf_full;
 
 	int stored_tag;
+	int config_qp;
 	struct mfc_user_shared_handle sh_handle;
 };
 
@@ -873,6 +884,15 @@ struct s5p_mfc_ctx {
 	int dpb_count;
 	int buf_stride;
 
+	int old_img_width;
+	int old_img_height;
+
+	unsigned int enc_drc_flag;
+	int enc_res_change;
+	int enc_res_change_state;
+	int enc_res_change_re_input;
+	size_t min_scratch_buf_size;
+
 	struct s5p_mfc_raw_info raw_buf;
 	int mv_size;
 
@@ -880,10 +900,12 @@ struct s5p_mfc_ctx {
 	void *port_a_buf;
 	size_t port_a_phys;
 	size_t port_a_size;
+	void *port_a_virt;
 
 	void *port_b_buf;
 	size_t port_b_phys;
 	size_t port_b_size;
+	void *port_b_virt;
 
 	enum s5p_mfc_queue_state capture_state;
 	enum s5p_mfc_queue_state output_state;
@@ -1091,6 +1113,9 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 					(dev->fw.date >= 0x150316))
 #define FW_HAS_E_MIN_SCRATCH_BUF(dev)	IS_MFCv9X(dev)
 
+#define FW_SUPPORT_SKYPE(dev)		IS_MFCv9X(dev) &&		\
+					(dev->fw.date >= 0x150603)
+
 #define HW_LOCK_CLEAR_MASK		(0xFFFFFFFF)
 
 #define is_h264(ctx)		((ctx->codec_mode == S5P_FIMV_CODEC_H264_DEC) ||\
@@ -1107,15 +1132,24 @@ static inline unsigned int mfc_version(struct s5p_mfc_dev *dev)
 #define interlaced_cond(ctx)	is_mpeg4vc1(ctx) || is_mpeg2(ctx) || is_h264(ctx)
 #define on_res_change(ctx)	((ctx)->state >= MFCINST_RES_CHANGE_INIT &&	\
 				 (ctx)->state <= MFCINST_RES_CHANGE_END)
+#define need_to_wait_frame_start(ctx)		\
+	(((ctx->state == MFCINST_FINISHING) ||	\
+	  (ctx->state == MFCINST_RUNNING)) &&	\
+	 test_bit(ctx->num, &ctx->dev->hw_lock))
+#define need_to_wait_nal_abort(ctx)		 \
+	(((ctx->state == MFCINST_ABORT_INST)) && \
+	 test_bit(ctx->num, &ctx->dev->hw_lock))
 
 /* Extra information for Decoder */
 #define	DEC_SET_DUAL_DPB		(1 << 0)
 #define	DEC_SET_DYNAMIC_DPB		(1 << 1)
 #define	DEC_SET_LAST_FRAME_INFO		(1 << 2)
+#define	DEC_SET_SKYPE_FLAG		(1 << 3)
 /* Extra information for Encoder */
 #define	ENC_SET_RGB_INPUT		(1 << 0)
 #define	ENC_SET_SPARE_SIZE		(1 << 1)
 #define	ENC_SET_TEMP_SVC_CH		(1 << 2)
+#define	ENC_SET_SKYPE_FLAG		(1 << 3)
 
 #define MFC_QOS_FLAG_NODATA		0xFFFFFFFF
 

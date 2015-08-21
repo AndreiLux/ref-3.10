@@ -32,10 +32,10 @@
 #include "governor.h"
 #include <mach/bts.h>
 
-#define DEVFREQ_MIF_REBOOT_FREQ	(1656000/2)
+#define DEVFREQ_MIF_REBOOT_FREQ	(1672000/2)
 #define DEVFREQ_INITIAL_FREQ	(3104000/2)
 #define DEVFREQ_POLLING_PERIOD	(0)
-#define DLL_ON_FREQ		(1656000/2)
+#define DLL_ON_FREQ		(1672000/2)
 
 extern struct devfreq_opp_table devfreq_mif_opp_list[];
 
@@ -50,7 +50,7 @@ static struct devfreq_simple_exynos_data exynos7_devfreq_mif_governor_data = {
 };
 
 static struct exynos_devfreq_platdata exynos7420_qos_mif = {
-	.default_qos		= 552000/2,
+	.default_qos		= 518000/2,
 };
 
 static struct ppmu_info ppmu_mif[] = {
@@ -276,6 +276,7 @@ static int exynos7_init_mif_table(struct device *dev,
 			opp_disable(dev, devfreq_mif_opp_list[3].freq);
 			break;
 		case 4 :
+		case 12 :
 			opp_disable(dev, devfreq_mif_opp_list[0].freq);
 			opp_disable(dev, devfreq_mif_opp_list[1].freq);
 			break;
@@ -294,6 +295,7 @@ static int exynos7_init_mif_table(struct device *dev,
 			break;
 		}
 	}
+	opp_disable(dev, devfreq_mif_opp_list[8].freq);
 
 	data->volt_of_avail_max_freq = get_volt_of_avail_max_freq(dev);
 	pr_info("DEVFREQ(MIF) : voltage of available max freq : %7uuV\n",

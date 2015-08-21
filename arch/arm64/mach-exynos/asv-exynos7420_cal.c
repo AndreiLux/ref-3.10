@@ -249,7 +249,7 @@ static void asv_table_init(void)
 		gasv_table_info.dvfs_asv_table_version = MAX_ASV_TABLE;
 	}
 
-	if (gasv_table_info.dvfs_asv_table_version > 11 && gasv_table_info.dvfs_asv_table_version < 15) {
+	if (gasv_table_info.dvfs_asv_table_version == 13 || gasv_table_info.dvfs_asv_table_version == 14) {
 		pr_info("(ASV_TBL_VERSION %d ---> %d\n", gasv_table_info.dvfs_asv_table_version, 15);
 		gasv_table_info.dvfs_asv_table_version = 15;
 	}
@@ -696,6 +696,14 @@ u32 cal_get_volt(u32 id, s32 level)
 				(id == SYSC_DVFS_INT) ? volt_table_int_asv_v11[idx] :
 				(id == SYSC_DVFS_CAM) ? volt_table_cam_asv_v11[idx] :
 				NULL);
+	} else if(table_ver == 12) {
+		p_table = ((id == SYSC_DVFS_BIG) ? volt_table_big_asv_v12[idx] :
+				(id == SYSC_DVFS_LIT) ? volt_table_lit_asv_v12[idx] :
+				(id == SYSC_DVFS_G3D) ? volt_table_g3d_asv_v12[idx] :
+				(id == SYSC_DVFS_MIF) ? volt_table_mif_asv_v12[idx] :
+				(id == SYSC_DVFS_INT) ? volt_table_int_asv_v12[idx] :
+				(id == SYSC_DVFS_CAM) ? volt_table_cam_asv_v12[idx] :
+				NULL);
 	} else if(table_ver == 15) {
 		p_table = ((id == SYSC_DVFS_BIG) ? volt_table_big_asv_v15[idx] :
 				(id == SYSC_DVFS_LIT) ? volt_table_lit_asv_v15[idx] :
@@ -881,6 +889,12 @@ u32 cal_get_rcc(u32 id, s32 level)
 				(id == SYSC_DVFS_LIT) ? rcc_table_lit_asv_v11[idx] :
 				(id == SYSC_DVFS_G3D) ? rcc_table_g3d_asv_v11[idx] :
 				(id == SYSC_DVFS_MIF) ? rcc_table_mif_asv_v11[idx] :
+				NULL);
+	} else if (table_ver == 12) {
+		p_table = ((id == SYSC_DVFS_BIG) ? rcc_table_big_asv_v12[idx] :
+				(id == SYSC_DVFS_LIT) ? rcc_table_lit_asv_v12[idx] :
+				(id == SYSC_DVFS_G3D) ? rcc_table_g3d_asv_v12[idx] :
+				(id == SYSC_DVFS_MIF) ? rcc_table_mif_asv_v12[idx] :
 				NULL);
 	} else if (table_ver == 15) {
 		p_table = ((id == SYSC_DVFS_BIG) ? rcc_table_big_asv_v15[idx] :

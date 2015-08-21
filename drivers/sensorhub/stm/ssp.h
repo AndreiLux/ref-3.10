@@ -121,6 +121,11 @@
 #define FAIL					0
 #define ERROR					-1
 
+/* Key value for Camera - Gyroscope sync */
+#define CAMERA_GYROSCOPE_SYNC 7700000ULL //7.7ms
+#define CAMERA_GYROSCOPE_SYNC_DELAY 10000000ULL
+
+
 #define ssp_dbg(format, ...) do { \
 	pr_debug("[SSP] " format "\n", ##__VA_ARGS__); \
 	} while (0)
@@ -213,6 +218,9 @@ enum {
 	LIGHT_IR_SENSOR = 24,
 #endif
 	INTERRUPT_GYRO_SENSOR,
+	TILT_DETECTOR,
+	PICKUP_GESTURE,
+	MOTOR_TEST,
 	META_SENSOR,
 	SENSOR_MAX,
 };
@@ -304,6 +312,12 @@ struct sensor_value {
 		struct { /* significant motion */
 			u8 sig_motion;
 		};
+		struct { /* tilt detector */
+			u8 tilt_detector;
+		};
+		struct { /* pickup gesture */
+			u8 pickup_gesture;
+		};
 		struct meta_data_event { /* meta data */
 			s32 what;
 			s32 sensor;
@@ -351,6 +365,7 @@ struct ssp_data {
 	bool enable[SENSOR_MAX];
 	int data_len[SENSOR_MAX];
 	int report_len[SENSOR_MAX];
+	int report_mode[SENSOR_MAX];
 	struct sensor_value buf[SENSOR_MAX];
 	struct iio_dev *indio_devs[SENSOR_MAX];
 	struct iio_chan_spec indio_channels[SENSOR_MAX];
@@ -408,18 +423,22 @@ struct ssp_data {
 	unsigned int uIrqCnt;
 	unsigned int uDumpCnt;
 
-	unsigned int uSensorState;
+	uint64_t uSensorState;
 	unsigned int uCurFirmRev;
 	unsigned int uFactoryProxAvg[4];
 	char uLastResumeState;
 	char uLastAPState;
 
-	atomic_t aSensorEnable;
+	atomic64_t aSensorEnable;
 	int64_t adDelayBuf[SENSOR_MAX];
 	s32 batchLatencyBuf[SENSOR_MAX];
 	s8 batchOptBuf[SENSOR_MAX];
 	u64 lastTimestamp[SENSOR_MAX];
 	bool reportedData[SENSOR_MAX];
+	u64 lastModTimestamp[SENSOR_MAX];
+
+	bool skipEventReport;
+	bool cameraGyroSyncMode;
 
 	struct ssp_sensorhub_data *hub_data;
 	int accel_position;
@@ -448,6 +467,9 @@ struct ssp_data {
 #endif
 	int acc_type;
 	int pressure_type;
+
+	bool debug_enable;
+	atomic_t int_gyro_enable;
 };
 
 struct ssp_big {

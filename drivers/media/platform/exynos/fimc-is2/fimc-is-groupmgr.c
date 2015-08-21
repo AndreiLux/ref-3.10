@@ -438,43 +438,124 @@ int fimc_is_gframe_flush(struct fimc_is_groupmgr *groupmgr,
 	return ret;
 }
 
-static void fimc_is_group_subdev_cancel(struct fimc_is_group *group,
-	struct fimc_is_frame *ldr_frame)
+static void fimc_is_group_lock(struct fimc_is_group *group)
 {
 	u32 entry;
 	unsigned long flags;
-	struct fimc_is_video_ctx *sub_vctx;
-	struct fimc_is_framemgr *sub_framemgr;
-	struct fimc_is_frame *sub_frame;
 	struct fimc_is_subdev *subdev;
+	struct fimc_is_framemgr *ldr_framemgr, *sub_framemgr;
+
+	BUG_ON(!group);
+
+	ldr_framemgr = GET_SUBDEV_FRAMEMGR(&group->leader);
+	if (!ldr_framemgr) {
+		mgerr("ldr_framemgr is NULL", group, group);
+		BUG();
+	}
+
+	framemgr_e_barrier_irqs(ldr_framemgr, FMGR_IDX_20, flags);
 
 	while (group) {
 		for (entry = ENTRY_3AA; entry < ENTRY_END; ++entry) {
 			subdev = group->subdev[entry];
-			if (subdev && subdev->vctx && test_bit(FIMC_IS_SUBDEV_START, &subdev->state)) {
-				sub_vctx = subdev->vctx;
-				sub_framemgr = GET_FRAMEMGR(sub_vctx);
-				if (!sub_framemgr) {
-					mserr("sub_framemgr is NULL", group, subdev);
-					BUG();
-				}
 
-				framemgr_e_barrier_irqs(sub_framemgr, FMGR_IDX_19, flags);
+			if (!subdev)
+				continue;
 
-				fimc_is_frame_request_head(sub_framemgr, &sub_frame);
-				if (sub_frame) {
-					clear_bit(subdev->id, &ldr_frame->out_flag);
+			sub_framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+			if (!sub_framemgr)
+				continue;
 
-					sub_frame->stream->fvalid = 0;
-					sub_frame->stream->fcount = ldr_frame->fcount;
-					sub_frame->stream->rcount = ldr_frame->rcount;
-					clear_bit(REQ_FRAME, &sub_frame->req_flag);
-					fimc_is_frame_trans_req_to_com(sub_framemgr, sub_frame);
-					msrinfo("[ERR] CANCEL(%d)\n", group, subdev, sub_frame, sub_frame->index);
-					buffer_done(sub_vctx, sub_frame->index, VB2_BUF_STATE_ERROR);
-				}
+			if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state))
+				continue;
 
-				framemgr_x_barrier_irqr(sub_framemgr, FMGR_IDX_19, flags);
+			framemgr_e_barrier_irqs(sub_framemgr, FMGR_IDX_19, flags);
+		}
+
+		group = group->child;
+	}
+}
+
+static void fimc_is_group_unlock(struct fimc_is_group *group)
+{
+	u32 entry;
+	unsigned long flags;
+	struct fimc_is_subdev *subdev;
+	struct fimc_is_framemgr *ldr_framemgr, *sub_framemgr;
+
+	BUG_ON(!group);
+
+	ldr_framemgr = GET_SUBDEV_FRAMEMGR(&group->leader);
+	if (!ldr_framemgr) {
+		mgerr("ldr_framemgr is NULL", group, group);
+		BUG();
+	}
+
+	while (group) {
+		for (entry = ENTRY_3AA; entry < ENTRY_END; ++entry) {
+			subdev = group->subdev[entry];
+
+			if (!subdev)
+				continue;
+
+			sub_framemgr = GET_SUBDEV_FRAMEMGR(subdev);
+			if (!sub_framemgr)
+				continue;
+
+			if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state))
+				continue;
+
+			framemgr_x_barrier_irqr(sub_framemgr, FMGR_IDX_19, flags);
+		}
+
+		group = group->child;
+	}
+
+	framemgr_x_barrier_irqr(ldr_framemgr, FMGR_IDX_20, flags);
+}
+
+static void fimc_is_group_subdev_cancel(struct fimc_is_group *group,
+	struct fimc_is_frame *ldr_frame)
+{
+	u32 entry;
+	struct fimc_is_subdev *subdev;
+	struct fimc_is_video_ctx *sub_vctx;
+	struct fimc_is_framemgr *sub_framemgr;
+	struct fimc_is_frame *sub_frame;
+
+	while (group) {
+		for (entry = ENTRY_3AA; entry < ENTRY_END; ++entry) {
+			subdev = group->subdev[entry];
+
+			if (!subdev)
+				continue;
+
+			sub_vctx = subdev->vctx;
+			if (!sub_vctx)
+				continue;
+
+			sub_framemgr = GET_FRAMEMGR(sub_vctx);
+			if (!sub_framemgr)
+				continue;
+
+			if (!test_bit(FIMC_IS_SUBDEV_START, &subdev->state))
+				continue;
+
+			if (subdev->cid >= CAPTURE_NODE_MAX)
+				continue;
+
+			if (ldr_frame->shot_ext->node_group.capture[subdev->cid].request == 0)
+				continue;
+
+			fimc_is_frame_request_head(sub_framemgr, &sub_frame);
+			if (sub_frame) {
+				sub_frame->stream->fvalid = 0;
+				sub_frame->stream->fcount = ldr_frame->fcount;
+				sub_frame->stream->rcount = ldr_frame->rcount;
+				clear_bit(subdev->id, &ldr_frame->out_flag);
+				fimc_is_frame_trans_req_to_com(sub_framemgr, sub_frame);
+				msrinfo("[ERR] CANCEL(%d)\n", group, subdev, sub_frame, sub_frame->index);
+				buffer_done(sub_vctx, sub_frame->index, VB2_BUF_STATE_ERROR);
 			}
 		}
 
@@ -485,9 +566,10 @@ static void fimc_is_group_subdev_cancel(struct fimc_is_group *group,
 static void fimc_is_group_cancel(struct fimc_is_group *group,
 	struct fimc_is_frame *ldr_frame)
 {
-	unsigned long flags;
+	u32 wait_count = 300;
 	struct fimc_is_video_ctx *ldr_vctx;
 	struct fimc_is_framemgr *ldr_framemgr;
+	struct fimc_is_frame *prev_frame, *next_frame;
 
 	BUG_ON(!group);
 	BUG_ON(!ldr_frame);
@@ -499,15 +581,47 @@ static void fimc_is_group_cancel(struct fimc_is_group *group,
 		BUG();
 	}
 
-	framemgr_e_barrier_irqs(ldr_framemgr, FMGR_IDX_20, flags);
+p_retry:
+	fimc_is_group_lock(group);
+
+	fimc_is_frame_free_tail(ldr_framemgr, &next_frame );
+	if (wait_count && next_frame && next_frame->out_flag) {
+		mginfo("next frame(F%d) is on process1(%lX %lX), waiting...\n", group, group,
+			next_frame->fcount, next_frame->bak_flag, next_frame->out_flag);
+		fimc_is_group_unlock(group);
+		usleep_range(1000, 1000);
+		wait_count--;
+		goto p_retry;
+	}
+
+	fimc_is_frame_complete_tail(ldr_framemgr, &next_frame );
+	if (wait_count && next_frame && next_frame->out_flag) {
+		mginfo("next frame(F%d) is on process2(%lX %lX), waiting...\n", group, group,
+			next_frame->fcount, next_frame->bak_flag, next_frame->out_flag);
+		fimc_is_group_unlock(group);
+		usleep_range(1000, 1000);
+		wait_count--;
+		goto p_retry;
+	}
+
+	fimc_is_frame_process_head(ldr_framemgr, &prev_frame );
+	if (wait_count && prev_frame && prev_frame->bak_flag != prev_frame->out_flag) {
+		mginfo("prev frame(F%d) is on process(%lX %lX), waiting...\n", group, group,
+			prev_frame->fcount, prev_frame->bak_flag, prev_frame->out_flag);
+		fimc_is_group_unlock(group);
+		usleep_range(1000, 1000);
+		wait_count--;
+		goto p_retry;
+	}
 
 	fimc_is_group_subdev_cancel(group, ldr_frame);
 
+	clear_bit(group->leader.id, &ldr_frame->out_flag);
 	fimc_is_frame_trans_req_to_com(ldr_framemgr, ldr_frame);
 	mgrinfo("[ERR] CANCEL(%d)\n", group, group, ldr_frame, ldr_frame->index);
 	buffer_done(ldr_vctx, ldr_frame->index, VB2_BUF_STATE_ERROR);
 
-	framemgr_x_barrier_irqr(ldr_framemgr, FMGR_IDX_20, flags);
+	fimc_is_group_unlock(group);
 }
 
 static void fimc_is_group_s_leader(struct fimc_is_group *group,
@@ -721,18 +835,21 @@ int fimc_is_groupmgr_init(struct fimc_is_groupmgr *groupmgr,
 	struct fimc_is_group *leader_group;
 	struct fimc_is_video_ctx *vctx;
 	struct fimc_is_video *video;
+	struct fimc_is_resourcemgr *resourcemgr;
 	u32 slot, source_vid;
 	u32 instance;
 	u32 entry;
 
 	BUG_ON(!groupmgr);
 	BUG_ON(!device);
+	BUG_ON(!device->resourcemgr);
 
 	group = NULL;
 	prev = NULL;
 	next = NULL;
 	instance = device->instance;
 	path = &device->path;
+	resourcemgr = device->resourcemgr;
 
 	path->group[GROUP_SLOT_3AA] = GROUP_ID_INVALID;
 	path->group[GROUP_SLOT_ISP] = GROUP_ID_INVALID;
@@ -924,6 +1041,12 @@ int fimc_is_groupmgr_init(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_dmsg_concate("\n");
 
 p_err:
+#ifdef CONFIG_SUPPORT_GROUP_MIGRATION_FOR_TDNR
+	if (resourcemgr->hal_version == IS_HAL_VER_1_0) {
+		if (path->group[GROUP_SLOT_ISP] == GROUP_ID_ISP0)
+			path->group[GROUP_SLOT_DIS] = GROUP_ID_DIS0;
+	}
+#endif
 	minfo(" =STM CFG===============\n", device);
 	minfo(" %s", device, fimc_is_dmsg_print());
 	minfo(" DEVICE GRAPH : %X %X %X\n", device, path->group[0], path->group[1], path->group[2]);

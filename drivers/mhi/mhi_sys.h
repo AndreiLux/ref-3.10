@@ -131,6 +131,10 @@ ssize_t sysfs_init_M0(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count);
 ssize_t sysfs_init_M1(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count);
+ssize_t sysfs_mobile_hotspot_show(struct device *dev, struct device_attribute *attr,
+			char *buf);
+ssize_t sysfs_mobile_hotspot(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count);
 ssize_t sysfs_get_mhi_state(struct device *dev, struct device_attribute *attr,
 			char *buf);
 

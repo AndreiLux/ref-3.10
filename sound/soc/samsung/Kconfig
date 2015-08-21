@@ -404,6 +404,17 @@ config SND_SOC_SAMSUNG_ZERO_CLEARWATER
     help
         Say Y if you want to add support for SoC audio on the Pacific.
 
+config SND_SOC_SAMSUNG_NOBLE_CLEARWATER
+    tristate "SoC I2S Audio support for Clearwater on Noble"
+    depends on SND_SOC_SAMSUNG
+    select SND_SOC_CLEARWATER
+    select MFD_CLEARWATER
+    select MFD_ARIZONA_DEFERRED_RESUME
+    select SND_SOC_SAMSUNG_ARIZONA
+    select SND_SAMSUNG_SEIREN_OFFLOAD
+    help
+        Say Y if you want to add support for SoC audio on the Noble.
+
 config SND_SOC_SAMSUNG_ARIZONA
 	tristate "Audio support for arizona platform on the Exynos7420"
 	depends on SND_SOC_SAMSUNG

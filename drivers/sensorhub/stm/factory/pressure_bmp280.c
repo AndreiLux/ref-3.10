@@ -156,7 +156,7 @@ static ssize_t pressure_vendor_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (data->acc_type == STM_ID)
+	if (data->pressure_type == STM_ID)
 		return sprintf(buf, "%s\n", VENDOR_STM);
 	else
 		return sprintf(buf, "%s\n", VENDOR);
@@ -167,7 +167,7 @@ static ssize_t pressure_name_show(struct device *dev,
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
 
-	if (data->acc_type == STM_ID)
+	if (data->pressure_type == STM_ID)
 		return sprintf(buf, "%s\n", CHIP_ID_STM);
 	else
 		return sprintf(buf, "%s\n", CHIP_ID);

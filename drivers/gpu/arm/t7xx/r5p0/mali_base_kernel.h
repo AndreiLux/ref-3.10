@@ -125,6 +125,8 @@ enum {
 						    side */
 
 	BASE_MEM_SECURE = (1U << 5),
+	BASE_MEM_CRC_PARTIAL_UPDATE  = (1U << 6),	/**< CRC Buffer is allocated by gralloc */
+	
 	/* Note that the HINT flags are obsolete now. If you want the memory
 	 * to be cached on the CPU please use the BASE_MEM_CACHED_CPU flag
 	 */
@@ -624,6 +626,11 @@ typedef struct base_jd_atom_v2 {
 	base_jd_prio prio;                  /**< Atom priority. Refer to @ref base_jd_prio for more details */
 	u8 device_nr;			    /**< coregroup when BASE_JD_REQ_SPECIFIC_COHERENT_GROUP specified */
 	u8 padding[5];
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+    u32 gles_ctx_handle;  /** gles context unique handle : reduced to 32bit */
+#endif /* CONFIG_MALI_SYSTRACE_SUPPORT*/
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
 } base_jd_atom_v2;
 
 #ifdef BASE_LEGACY_UK6_SUPPORT

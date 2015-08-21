@@ -91,7 +91,7 @@ static void cpu_idle_loop(void)
 
 #if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING) \
 		&& defined(CONFIG_MACH_UNIVERSAL7420)
-			if (bsdchg_cl0_idle_policy_set && raw_smp_processor_id() < 4)	// NR_CLUST0_CPUS
+			if (bsdchg_cl0_idle_policy_set && raw_smp_processor_id() < 1)
 				bsdchg_cpu_idle_force_poll = true;
 			else
 				bsdchg_cpu_idle_force_poll = false;

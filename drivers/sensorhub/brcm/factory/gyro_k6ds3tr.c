@@ -64,7 +64,7 @@ int gyro_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY | O_NOFOLLOW, 0660);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY | O_NOFOLLOW | O_NONBLOCK, 0660);
 	if (IS_ERR(cal_filp)) {
 		set_fs(old_fs);
 		iRet = PTR_ERR(cal_filp);
@@ -106,7 +106,7 @@ int save_gyro_caldata(struct ssp_data *data, s16 *iCalData)
 	set_fs(KERNEL_DS);
 
 	cal_filp = filp_open(CALIBRATION_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW, 0660);
+			O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_NONBLOCK, 0660);
 	if (IS_ERR(cal_filp)) {
 		pr_err("[SSP]: %s - Can't open calibration file\n", __func__);
 		set_fs(old_fs);
@@ -134,7 +134,7 @@ int set_gyro_cal(struct ssp_data *data)
 	s16 gyro_cal[3];
 	if (!(data->uSensorState & (1 << GYROSCOPE_SENSOR))) {
 		pr_info("[SSP]: %s - Skip this function!!!"\
-			", gyro sensor is not connected(0x%x)\n",
+			", gyro sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return iRet;
 	}

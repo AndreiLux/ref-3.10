@@ -45,11 +45,12 @@ struct abov_touchkey_platform_data {
 	struct regulator *avdd_vreg;
 	struct regulator *dvdd_vreg;
 	void (*input_event) (void *data);
-	int (*power) (struct abov_touchkey_platform_data *pdata, bool on);
+	int (*power) (void *, bool on);
 	int (*keyled) (bool on);
 	char *fw_path;
 	u8 fw_checksum_h;
 	u8 fw_checksum_l;
+	bool boot_on_ldo;
 };
 
 #endif /* LINUX_ABOV_TOUCHKEY_H */

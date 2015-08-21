@@ -528,11 +528,6 @@ int fimc_is_subdev_buffer_queue(struct fimc_is_subdev *subdev,
 	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_17, flags);
 
 	if (frame->state == FIMC_IS_FRAME_STATE_FREE) {
-		if (frame->req_flag) {
-			mswarn("frame %d done is not generated\n", subdev, subdev, frame->index);
-			frame->req_flag = 0;
-		}
-
 		fimc_is_frame_trans_fre_to_req(framemgr, frame);
 	} else {
 		mserr("frame %d is invalid state(%d)\n", subdev, subdev, index, frame->state);

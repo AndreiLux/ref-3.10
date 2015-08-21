@@ -184,3 +184,38 @@ int cal_tmu_read(struct cal_tmu_data *data, int id)
 
 	return temp;
 }
+
+void cal_tmu_interrupt(struct cal_tmu_data *data, int id, bool en)
+{
+	int i = 0;
+	int interrupt_en = 0;
+
+	if (en) {
+		interrupt_en =
+			data->trigger_level_en[7] << FALL_LEVEL7_SHIFT |
+			data->trigger_level_en[6] << FALL_LEVEL6_SHIFT |
+			data->trigger_level_en[5] << FALL_LEVEL5_SHIFT |
+			data->trigger_level_en[4] << FALL_LEVEL4_SHIFT |
+			data->trigger_level_en[3] << FALL_LEVEL3_SHIFT |
+			data->trigger_level_en[2] << FALL_LEVEL2_SHIFT |
+			data->trigger_level_en[1] << FALL_LEVEL1_SHIFT |
+			data->trigger_level_en[0] << FALL_LEVEL0_SHIFT |
+			data->trigger_level_en[7] << RISE_LEVEL7_SHIFT |
+			data->trigger_level_en[6] << RISE_LEVEL6_SHIFT |
+			data->trigger_level_en[5] << RISE_LEVEL5_SHIFT |
+			data->trigger_level_en[4] << RISE_LEVEL4_SHIFT |
+			data->trigger_level_en[3] << RISE_LEVEL3_SHIFT |
+			data->trigger_level_en[2] << RISE_LEVEL2_SHIFT |
+			data->trigger_level_en[1] << RISE_LEVEL1_SHIFT |
+			data->trigger_level_en[0];
+	} else {
+		interrupt_en = 0; /* Disable all interrupts */
+	}
+
+	writel(EXYNOS_TMU_CLEAR_RISE_INT | EXYNOS_TMU_CLEAR_FALL_INT,
+			data->base[id] + EXYNOS_TMU_REG_INTCLEAR);
+
+	for (i = 0; i < 5; i++)
+		Outp32(data->base[id] + EXYNOS_TMU_REG_INTEN + (i * 0x10), interrupt_en);
+
+}

@@ -970,6 +970,7 @@ struct ext4_inode_info {
 #define EXT4_MOUNT_POSIX_ACL		0x08000	/* POSIX Access Control Lists */
 #define EXT4_MOUNT_NO_AUTO_DA_ALLOC	0x10000	/* No auto delalloc mapping */
 #define EXT4_MOUNT_BARRIER		0x20000 /* Use block barriers */
+#define EXT4_MOUNT_DEBUG_BDINFO		0x40000 /* Debug backing device info. */
 #define EXT4_MOUNT_QUOTA		0x80000 /* Some quota option set */
 #define EXT4_MOUNT_USRQUOTA		0x100000 /* "old" user quota */
 #define EXT4_MOUNT_GRPQUOTA		0x200000 /* "old" group quota */
@@ -1148,7 +1149,9 @@ struct ext4_super_block {
 	__le32	s_usr_quota_inum;	/* inode for tracking user quota */
 	__le32	s_grp_quota_inum;	/* inode for tracking group quota */
 	__le32	s_overhead_clusters;	/* overhead blocks/clusters in fs */
-	__le32	s_reserved[108];	/* Padding to the end of the block */
+	__le32	s_reserved[103];	/* Padding to the end of the block */
+	__le32	s_bd_reset_cnt;
+	__u8	s_bd_reset_time[16];
 	__le32	s_checksum;		/* crc32c(superblock) */
 };
 
@@ -2271,6 +2274,7 @@ extern void print_bh(struct super_block *sb,
                   struct buffer_head *bh, int start, int len);
 extern void print_block_data(struct super_block *sb, sector_t blocknr,
                   unsigned char *data_to_dump, int start, int len);
+extern void print_debug_bdinfo(struct super_block *sb);
 /* for debugging */
 
 static inline int ext4_has_group_desc_csum(struct super_block *sb)

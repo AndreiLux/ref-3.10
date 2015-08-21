@@ -203,8 +203,6 @@ static int fimc_is_get_sensor_data(struct device *dev, char *maker, char *name, 
 		fimc_is_search_sensor_module(&core->sensor[i], sensor_id, &module);
 		if (module)
 			break;
-		else
-			dev_err(dev, "%s: Could not find sensor id.", __func__);
 	}
 
 	if(module) {
@@ -311,7 +309,11 @@ static ssize_t camera_front_checkfw_factory_show(struct device *dev,
 
 	if (!fimc_is_sec_check_from_ver(sysfs_core, SENSOR_POSITION_FRONT)) {
 		err(" NG, invalid FROM version");
+#ifdef CAMERA_SYSFS_V2
+		return sprintf(buf, "%s\n", "NG_VER");
+#else
 		return sprintf(buf, "%s\n", "NG");
+#endif
 	}
 
 	if (crc32_check_factory_front) {
@@ -445,7 +447,7 @@ static ssize_t camera_front_info_show(struct device *dev,
 
 	return sprintf(buf, "%s\n", camera_info);
 #endif
-	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;FW_CC=NULL;OIS=NULL");
+	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;CC=NULL;OIS=NULL");
 
 	return sprintf(buf, "%s\n", camera_info);
 }
@@ -677,7 +679,11 @@ static ssize_t camera_rear_checkfw_factory_show(struct device *dev,
 
 	if (!fimc_is_sec_check_from_ver(sysfs_core, SENSOR_POSITION_REAR)) {
 		err(" NG, invalid FROM version");
+#ifdef CAMERA_SYSFS_V2
+		return sprintf(buf, "%s\n", "NG_VER");
+#else
 		return sprintf(buf, "%s\n", "NG");
+#endif
 	}
 
 	if(fw_version_crc_check) {
@@ -837,7 +843,7 @@ static ssize_t camera_rear_info_show(struct device *dev,
 
 	return sprintf(buf, "%s\n", camera_info);
 #endif
-	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;FW_CC=NULL;OIS=NULL");
+	strcpy(camera_info, "ISP=NULL;CALMEM=NULL;READVER=NULL;COREVOLT=NULL;UPGRADE=NULL;CC=NULL;OIS=NULL");
 
 	return sprintf(buf, "%s\n", camera_info);
 }

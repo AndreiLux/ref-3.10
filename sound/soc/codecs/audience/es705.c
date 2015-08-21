@@ -35,6 +35,9 @@
 #include <linux/spi/spi.h>
 #include <linux/esxxx.h>
 #include <linux/wait.h>
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+#include <linux/syscalls.h>
+#endif
 
 #include <sound/core.h>
 #include <sound/pcm_params.h>
@@ -270,6 +273,7 @@ static void chk_route_st_and_recfg(struct work_struct *w)
 	struct es705_priv *es705 = &es705_priv;
 	int rc = 0;
 	unsigned int value = 0;
+	long route_num = ROUTE_MAX;
 
 	if (es705->pm_state != ES705_POWER_AWAKE) {
 		dev_info(es705->dev, "%s(): don't route when pm_state is %d\n",
@@ -296,11 +300,11 @@ static void chk_route_st_and_recfg(struct work_struct *w)
 					__func__, es705->internal_route_num);
 
 		/* Re-route */
-		value = es705->internal_route_num;
-		rc = es705_write_block(es705, &es705_route_configs[value][0]);
+		route_num = es705->internal_route_num;
+		rc = es705_write_block(es705, &es705_route_configs[route_num][0]);
 		if (rc)
-			dev_err(es705->dev, "%s(): routing fail (%d)\n",
-					__func__, value);
+			dev_err(es705->dev, "%s(): routing fail (%ld)\n",
+					__func__, route_num);
 
 		usleep_range(10000, 11000);
 
@@ -591,8 +595,15 @@ static int es705_enable_dhwpt(int onoff)
 			es705_sleep(es705);
 		} else {
 			if (es705->es705_power_state
-					== ES705_SET_POWER_STATE_SLEEP)
-				es705_wakeup(es705);
+					== ES705_SET_POWER_STATE_SLEEP) {
+				rc = es705_wakeup(es705);
+				if (rc) {
+					dev_err(es705->dev,
+						"%s(): es705_wakeup failed\n",
+						__func__);
+					return rc;
+				}
+			}
 
 			rc = es705_cmd(es705, RESET_DHWPT);
 			if (rc < 0) {
@@ -648,6 +659,10 @@ static void es705_switch_route(long route_index)
 			__func__, route_index);
 		if (route_index == ROUTE_MAX)
 			es705->internal_route_num = route_index;
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+		if (es705->streamdev.streaming == 1)
+			es705_stream_fs_storer_stop(es705);
+#endif
 		return;
 	}
 	dev_info(es705->dev,
@@ -659,7 +674,10 @@ static void es705_switch_route(long route_index)
 			__func__);
 		return;
 	}
-
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+	if (es705->streamdev.streaming == 1)
+		es705_stream_fs_storer_stop(es705);
+#endif
 	/* Check DHWPT interface */
 	if (es705_chk_route_id_for_dhwpt(route_index)) {
 		es705->internal_route_num = route_index;
@@ -796,14 +814,21 @@ static void es705_switch_to_normal_mode(struct es705_priv *es705)
 	u32 sync_cmd = (ES705_SYNC_CMD << 16) | ES705_SYNC_POLLING;
 	u32 sync_rspn = sync_cmd;
 
-	es705_cmd(es705, cmd);
-	msleep(20);
-	es705->pm_state = ES705_POWER_AWAKE;
+	rc = es705_cmd(es705, cmd);
 
-	rc = es705_write_then_read(es705, &sync_cmd,
-				   sizeof(sync_cmd), &sync_rspn, match);
-	if (rc)
-		dev_err(es705->dev, "%s(): es705 Sync FAIL\n", __func__);
+	if (rc < 0)
+		dev_err(es705->dev,
+			"%s(): fail to set normal power state",
+			__func__);
+	else {
+		msleep(20);
+		es705->pm_state = ES705_POWER_AWAKE;
+
+		rc = es705_write_then_read(es705, &sync_cmd,
+					   sizeof(sync_cmd), &sync_rspn, match);
+		if (rc)
+			dev_err(es705->dev, "%s(): es705 Sync FAIL\n", __func__);
+	}
 }
 
 #if defined(CONFIG_SND_SOC_ESXXX_SEAMLESS_VOICE_WAKEUP)
@@ -1669,6 +1694,107 @@ static ssize_t es705_veq_control_set(struct device *dev,
 
 static DEVICE_ATTR(veq_control_set, 0664, NULL, es705_veq_control_set);
 
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+void es705_stream_fs_storer_run(struct es705_priv *es705)
+{
+	if (delayed_work_pending(&es705->stream_fs_start)) {
+		dev_dbg(es705->dev, "%s(): cancle stream_fs_start_work\n",
+			__func__);
+		cancel_delayed_work_sync(&es705->stream_fs_start);
+	}
+
+	if (es705->internal_route_num == ROUTE_FT_NB_NS_ON ||
+		es705->internal_route_num == ROUTE_CT_NB_NS_ON ||
+		es705->internal_route_num == ROUTE_FT_WB_NS_ON ||
+		es705->internal_route_num == ROUTE_CT_WB_NS_ON ) {
+		schedule_delayed_work(&es705->stream_fs_start,
+			msecs_to_jiffies(600));
+		dev_dbg(es705->dev, "%s(): stream_fs_start_work\n", __func__);
+	}
+}
+
+void es705_stream_fs_storer_stop(struct es705_priv *es705)
+{
+	if (delayed_work_pending(&es705->stream_fs_start)) {
+		dev_dbg(es705->dev, "%s(): cancle stream_fs_start_work\n",
+			__func__);
+		cancel_delayed_work_sync(&es705->stream_fs_start);
+	}
+
+	if (es705->stream_thread) {
+		kthread_stop(es705->stream_thread);
+		es705->stream_thread = 0;
+	}
+
+	schedule_work(&es705->stream_fs_stop);
+	flush_work(&es705->stream_fs_stop);
+	dev_dbg(es705->dev, "%s(): stream_fs_stop_work\n", __func__);
+	/* take some break to make sure */
+	msleep(50);
+}
+
+static void stream_fs_start_work(struct work_struct *work)
+{
+	struct es705_priv *es705 = &es705_priv;
+	struct file *fp = 0;
+	mm_segment_t oldfs;
+	u32 streaming_endpoints[] = {
+		0x90288131, 0x90288138, 0x90288139, 0xffffffff
+	};
+
+	if (es705->pm_state != ES705_POWER_AWAKE) {
+		dev_info(es705->dev, "%s(): can't check the status, pm_state = %d\n",
+					__func__, es705->pm_state);
+		goto OUT;
+	}
+
+	es705->streamdev.route_status =
+		es705_read(NULL, ES705_CHANGE_STATUS);
+	dev_info(es705->dev, "%s: current_route_status is %d\n",
+		__func__, es705->streamdev.route_status);
+
+	if (es705->streamdev.route_status == 0) {
+		/*
+		* Send cmd for stream route value
+		*/
+		es705_write_block(es705, streaming_endpoints);
+
+		/*
+		* Open /dev/andc2 to activate a stream thread
+		*/
+		oldfs = get_fs();
+		set_fs(KERNEL_DS);
+
+		fp = filp_open("/dev/adnc2", O_RDONLY, 0);
+		if (IS_ERR(fp)) {
+			dev_err(es705->dev,
+				"%s() ERROR Open file(%s) with err = %ld\n",
+				__func__, "/dev/adnc2", -PTR_ERR(fp));
+		} else {
+			es705->streamdev.dev_fp = fp;
+			es705->streamdev.streaming = 1;
+			dev_info(es705->dev,
+				"%s() Open file(%s) successfully\n",
+					__func__, "dev/adnc2");
+		}
+
+		set_fs(oldfs);
+	}
+OUT:
+	dev_info(es705->dev, "%s(): EXIT\n", __func__);
+}
+
+static void stream_fs_stop_work(struct work_struct *work)
+{
+	struct es705_priv *es705 = &es705_priv;
+
+	if (es705->streamdev.dev_fp != NULL) {
+		es705->streamdev.streaming = 0;
+		filp_close(es705->streamdev.dev_fp, 0);
+	}
+}
+#endif
+
 static ssize_t es705_route_value_set(struct device *dev,
 					 struct device_attribute *attr,
 					 const char *buf, size_t count)
@@ -1690,6 +1816,10 @@ static ssize_t es705_route_value_set(struct device *dev,
 				__func__);
 			cancel_delayed_work_sync(&chk_route_st_and_recfg_work);
 		}
+#endif
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+		if (es705->streamdev.streaming == 1)
+			es705_stream_fs_storer_stop(es705);
 #endif
 		/* Check DHWPT interface */
 		if (es705->pdata->use_dhwpt && dhwpt_is_enabled)
@@ -1818,6 +1948,82 @@ static ssize_t es705_veq_table_print(struct device *dev,
 
 static DEVICE_ATTR(veq_table_print, 0664, NULL, es705_veq_table_print);
 
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+static ssize_t es705_enable_i2c_stream_fs(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct es705_priv *es705 = &es705_priv;
+	int value = 0;
+	int ret;
+
+	ret = sscanf(buf, "%d", &value);
+
+	dev_info(es705->dev, "%s(): Input value=(%d)\n",
+		__func__, value);
+
+	if (value == 1) {
+		dev_info(es705->dev, "%s(): i2c_stream_fs enabled\n"
+			, __func__);
+		es705->streamdev = i2c_streamdev;
+	} else if (value == 0) {
+		dev_info(es705->dev, "%s(): uart_stream_fs enabled\n"
+			, __func__);
+		es705->streamdev = uart_streamdev;
+	} else {
+		dev_info(es705->dev, "%s(): Invalid value\n"
+			, __func__);
+	}
+ 
+	return count;
+}
+static DEVICE_ATTR(i2c_streaming_on, 0664, NULL, es705_enable_i2c_stream_fs);
+
+static ssize_t es705_get_stream_fs_always(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	struct es705_priv *es705 = &es705_priv;
+
+	dev_dbg(es705->dev, "%s(): streaming enable is=%d\n",
+		__func__, es705->streamdev.always_on);
+	return snprintf(buf, PAGE_SIZE, "%d", es705->streamdev.always_on);
+}
+
+static ssize_t es705_set_stream_fs_always(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct es705_priv *es705 = &es705_priv;
+	int value = 0;
+	int ret;
+
+	ret = sscanf(buf, "%d", &value);
+
+	dev_info(es705->dev, "%s(): Input value=(%d)\n",
+		__func__, value);
+
+	if (value == 0) {
+		dev_info(es705->dev, "%s(): stream_fs_always off\n"
+			, __func__);
+		es705->streamdev.always_on = 0;
+		if (es705->streamdev.streaming == 1)
+			es705_stream_fs_storer_stop(es705);
+	} else if (value == 1) {
+		dev_info(es705->dev, "%s(): stream_fs_always on\n"
+			, __func__);
+		es705->streamdev.always_on = 1;
+		es705_stream_fs_storer_run(es705);
+	} else {
+		dev_info(es705->dev, "%s(): Invalid value\n"
+			, __func__);
+	}
+
+	return count;
+}
+static DEVICE_ATTR(always_stream_fs_on, 0664, es705_get_stream_fs_always,
+			es705_set_stream_fs_always);
+#endif
+
 static struct attribute *earsmart_sysfs_attrs[] = {
 	&dev_attr_route_status.attr,
 	&dev_attr_route.attr,
@@ -1840,6 +2046,10 @@ static struct attribute *earsmart_sysfs_attrs[] = {
 	&dev_attr_route_value.attr,
 	&dev_attr_extra_volume.attr,
 	&dev_attr_veq_table_print.attr,
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+	&dev_attr_i2c_streaming_on.attr,
+	&dev_attr_always_stream_fs_on.attr,
+#endif
 	NULL
 };
 
@@ -3835,6 +4045,12 @@ int es705_put_veq_block(int volume)
 		"%s(): volume=%d internal_route_num=%ld extra_volume=%d\n",
 		__func__, volume, es705->internal_route_num, extra_volume);
 
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+	if (es705->streamdev.streaming == 1) {
+		dev_info(es705->dev, "%s(): Streaming\n", __func__);
+		return 0;
+	}
+#endif
 	mutex_lock(&es705->api_mutex);
 
 	es705->current_veq = volume;
@@ -4143,23 +4359,13 @@ static int es705_put_internal_rate(struct snd_kcontrol *kcontrol,
 				   struct snd_ctl_elem_value *ucontrol)
 {
 	struct es705_priv *es705 = &es705_priv;
-	const u32 *rate_macro = NULL;
-	int rc = 0;
 
 	dev_dbg(es705->dev, "%s():es705->internal_rate = %d ucontrol = %d\n",
 		__func__, (int)es705->internal_rate,
 		(int)ucontrol->value.enumerated.item[0]);
 
-	if (!rate_macro) {
-		dev_err(es705->dev, "%s(): internal rate, %d, out of range\n",
-			__func__, ucontrol->value.enumerated.item[0]);
-		return -EINVAL;
-	}
-
 	es705->internal_rate = ucontrol->value.enumerated.item[0];
-	rc = es705_write_block(es705, rate_macro);
-
-	return rc;
+	return 0;
 }
 
 static int es705_get_internal_rate(struct snd_kcontrol *kcontrol,
@@ -5707,6 +5913,12 @@ int es705_core_init(struct device *dev)
 #if defined(CHECK_ROUTE_STATUS_AND_RECONFIG)
 	INIT_DELAYED_WORK(&chk_route_st_and_recfg_work, chk_route_st_and_recfg);
 #endif
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+	INIT_DELAYED_WORK(&es705_priv.stream_fs_start,
+		stream_fs_start_work);
+	INIT_WORK(&es705_priv.stream_fs_stop,
+		stream_fs_stop_work);
+#endif
 
 #if defined(SAMSUNG_ES705_FEATURE)
 	rc = es705_init_input_device(&es705_priv);
@@ -5798,6 +6010,90 @@ pdata_error:
 }
 EXPORT_SYMBOL_GPL(es705_core_init);
 
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+int stream_fs_open(struct es705_priv *es705)
+{
+	struct file *fp = 0;
+	mm_segment_t old_fs;
+	char filename[100];
+
+	snprintf(filename, sizeof(filename),
+		"sdcard/download/stream_fs_storer_%d.bin",
+			es705->streamdev.cnt);
+
+	old_fs = get_fs();
+	set_fs(KERNEL_DS);
+
+	fp = filp_open(filename, O_CREAT | O_RDWR, 0);
+
+	if (IS_ERR_OR_NULL(fp)) {
+		pr_err("%s(): ERROR open file(%s) errno = %ld!\n", __func__,
+			filename, PTR_ERR(fp));
+		return -ENODEV;
+	}
+
+	es705->streamdev.fp = fp;
+	es705->streamdev.cnt++;
+
+	if (es705->streamdev.cnt >= 100) {
+		snprintf(filename, sizeof(filename),
+			"sdcard/download/stream_fs_storer_%d.bin",
+				es705->streamdev.cnt - 100);
+		sys_unlink(filename);
+	}
+
+	set_fs(old_fs);
+
+	return 0;
+}
+
+void stream_fs_close(struct es705_priv *es705)
+{
+	if (es705->streamdev.fp != NULL) {
+		filp_close(es705->streamdev.fp, 0);
+	}
+}
+
+int stream_fs_write(struct es705_priv *es705, const void *buf, int len)
+{
+
+	int rc = 0;
+	int count_remain = len;
+	int bytes_wr = 0;
+	mm_segment_t oldfs;
+
+	/*
+	 * we may call from user context via char dev, so allow
+	 * read buffer in kernel address space
+	 */
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+
+	while (count_remain > 0) {
+
+		rc = vfs_write(es705->streamdev.fp, buf + bytes_wr,
+			count_remain, &es705->streamdev.fp->f_pos);
+
+		if (rc < 0)
+			goto err_out;
+
+		bytes_wr += rc;
+		count_remain -= rc;
+	}
+
+err_out:
+	/* restore old fs context */
+	set_fs(oldfs);
+
+	if (count_remain)
+		rc = -EIO;
+	else
+		rc = 0;
+
+	return rc;
+}
+#endif
+
 static __init int es705_init(void)
 {
 	int rc = 0;
@@ -5806,6 +6102,11 @@ static __init int es705_init(void)
 	mutex_init(&es705_priv.pm_mutex);
 	mutex_init(&es705_priv.cvq_mutex);
 	mutex_init(&es705_priv.streaming_mutex);
+	mutex_init(&es705_priv.datablock_read_mutex);
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+	mutex_init(&es705_priv.stream_fs_mutex);
+	mutex_init(&es705_priv.stream_work_mutex);
+#endif
 
 	init_waitqueue_head(&es705_priv.stream_in_q);
 

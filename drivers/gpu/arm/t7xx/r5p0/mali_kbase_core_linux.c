@@ -3621,6 +3621,58 @@ void kbase_trace_mali_total_alloc_pages_change(long long int event)
 	trace_mali_total_alloc_pages_change(event);
 }
 #endif /* CONFIG_MALI_GATOR_SUPPORT */
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+// Create the trace points (otherwise we just get code to call a tracepoint)
+#define CREATE_TRACE_POINTS
+#include "mali_linux_systrace.h"
+/**
+ * Called on job events to trigger ftrace logging
+ * Pass the even type, job slot, context, atom_id (job identifier in a context?), job start timestamp (this is unique and used to track the job)
+ */
+void kbase_systrace_mali_job_slots_event(u8 job_event, u8 job_slot, const struct kbase_context *kctx, u8 atom_id, u64 start_timestamp, u8 dep_0_id, u8 dep_0_type, u8 dep_1_id, u8 dep_1_type, u32 gles_ctx_handle)
+{
+    {
+            unsigned int unit;
+            char job_name[32];
+
+            switch (job_slot) {
+            case 0:
+                    unit = GPU_UNIT_FP;
+                    strcpy(job_name, "fragment-job");
+                    break;
+            case 1:
+                    unit = GPU_UNIT_VP;
+                    strcpy(job_name, "vertex-job");
+                    break;
+            case 2:
+                    unit = GPU_UNIT_CL;
+                    strcpy(job_name, "compute-job");
+                    break;
+            default:
+                    unit = GPU_UNIT_NONE;
+            }
+
+            if (unit != GPU_UNIT_NONE) {
+                    switch (job_event) {
+                    case SYSTRACE_EVENT_TYPE_START:
+                            trace_mali_job_systrace_event_start(job_name, (kctx != NULL ? kctx->tgid : 0), (kctx != NULL ? kctx->pid : 0),
+                                                                atom_id, (kctx != NULL ? kctx->id : 0), (kctx != NULL ? kctx->cookies : 0),
+                                                                start_timestamp, dep_0_id, dep_0_type, dep_1_id, dep_1_type, gles_ctx_handle);
+                            break;
+                    case SYSTRACE_EVENT_TYPE_STOP:
+                    default: // Some jobs can be soft-stopped, so ensure that this terminates the activity trace.
+                            trace_mali_job_systrace_event_stop(job_name, (kctx != NULL ? kctx->tgid : 0), (kctx != NULL ? kctx->id : 0),
+                                                               atom_id, (kctx != NULL ? kctx->id : 0), (kctx != NULL ? kctx->cookies : 0),
+                                                               start_timestamp, dep_0_id, dep_0_type, dep_1_id, dep_1_type, gles_ctx_handle);
+                            break;
+                    }
+            }
+    }
+
+}
+#endif /* CONFIG_MALI_SYSTRACE_SUPPORT */
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
 #ifdef CONFIG_MALI_SYSTEM_TRACE
 #include "mali_linux_kbase_trace.h"
 #endif

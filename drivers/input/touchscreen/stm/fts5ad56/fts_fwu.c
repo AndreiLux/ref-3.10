@@ -60,16 +60,90 @@ static int fts_fw_wait_for_flash_ready(struct fts_ts_info *info)
 	return 0;
 }
 
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+static bool get_PureAutotune_status(struct fts_ts_info *info)
+{
+	int rc;
+	unsigned char regAdd[3];
+	unsigned char buf[5];
+	bool retVal = false;
+
+	regAdd[0] = 0xd0;
+	regAdd[1] = 0x00;
+	regAdd[2] = 0x58;
+	/*
+	regAdd[0] = 0xb3;
+	regAdd[1] = 0x00;
+	regAdd[2] = 0x01;
+	info->fts_write_reg(info, regAdd, 3);
+	fts_delay(1);
+
+	regAdd[0] = 0xb1;
+	regAdd[1] = 0xFF;
+	regAdd[2] = 0xE0;
+	*/
+
+	rc = info->fts_read_reg(info, regAdd, 3, buf, 4);
+	if (!rc)
+	{
+		tsp_debug_info(true, info->dev, "%s: PureAutotune Information Read Fail!! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
+		return rc;
+	}
+
+	if((buf[1] == 0xA5) && (buf[2] == 0x96))
+		retVal = true;
+	tsp_debug_info(true, info->dev, "%s: PureAutotune Information !! [Data : %2X%2X]\n", __func__, buf[1], buf[2]);
+	return retVal;
+}
+
+static bool get_AFE_status(struct fts_ts_info *info)
+{
+	int rc;
+	unsigned char regAdd[3];
+	unsigned char buf[5];
+	bool retVal = false;
+
+	regAdd[0] = 0xd0;
+	regAdd[1] = 0x00;
+	regAdd[2] = 0x5A;
+
+	rc = info->fts_read_reg(info, regAdd, 3, buf, 4);
+	if (!rc)
+	{
+		tsp_debug_info(true, info->dev, "%s: Read Fail - Final AFE [Data : %2X] AFE Ver [Data : %2X] \n", __func__, buf[1], buf[2]);
+		return rc;
+	}
+
+	if( buf[1] )
+		retVal = true;
+	tsp_debug_info(true, info->dev, "%s: Final AFE [Data : %2X] AFE Ver [Data : %2X] \n", __func__, buf[1], buf[2]);
+	return retVal;
+}
+#endif 
+
 #define	FW_IMAGE_SIZE_D1	64 * 1024
 #define	FW_IMAGE_SIZE_D2	128 * 1024
 #define	SIGNEDKEY_SIZE	256
-
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+#define FW_CX_AREA_SIZE		4 * 1024
+#endif
 static int fts_fw_burn(struct fts_ts_info *info, unsigned char *fw_data)
 {
 	unsigned char regAdd[WRITE_CHUNK_SIZE + 3];
 	int section;
 	int fsize = FW_IMAGE_SIZE_D1;
 
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+	bool needPartialDownload = false;
+	needPartialDownload = get_PureAutotune_status(info);
+
+    if (needPartialDownload){
+		/* Reset FTS */
+		info->fts_systemreset(info);
+	    /* wait for ready event */
+	    info->fts_wait_for_ready(info);
+    }
+#endif
 	/* Check busy Flash */
 	if (fts_fw_wait_for_flash_ready(info)<0)
 		return -1;
@@ -84,7 +158,13 @@ static int fts_fw_burn(struct fts_ts_info *info, unsigned char *fw_data)
 
 	/* Copy to PRAM */
 	if (info->digital_rev == FTS_DIGITAL_REV_2)
+	{
 		fsize = FW_IMAGE_SIZE_D2 + sizeof(struct fts64_header);
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+		if (needPartialDownload)
+			fsize = fsize - FW_CX_AREA_SIZE;
+#endif
+	}	
 
 	tsp_debug_info(true, info->dev, "%s: Copy to PRAM [Size : %d]\n", __func__, fsize);
 
@@ -185,15 +265,19 @@ int fts_fw_wait_for_event(struct fts_ts_info *info, unsigned char eid)
 	rc = -1;
 	while (info->fts_read_reg
 	       (info, &regAdd, 1, (unsigned char *)data, FTS_EVENT_SIZE)) {
-		if ((data[0] == EVENTID_STATUS_EVENT) &&
-			(data[1] == eid)) {
+		if (data[0] == EVENTID_STATUS_EVENT || data[0] == EVENTID_ERROR) {
+			if ((data[0] == EVENTID_STATUS_EVENT) && (data[1] == eid)) {
 			rc = 0;
 			break;
 		}
-
+			else
+			{
+				tsp_debug_info(true, info->dev, "%s: %2X,%2X,%2X,%2X \n", __func__, data[0],data[1],data[2],data[3]);
+			}
+		}
 		if (retry++ > FTS_RETRY_COUNT * 15) {
 			rc = -1;
-			tsp_debug_info(true, info->dev, "%s: Time Over\n", __func__);
+			tsp_debug_info(true, info->dev, "%s: Time Over ( %2X,%2X,%2X,%2X )\n", __func__, data[0],data[1],data[2],data[3]);
 			break;
 		}
 		msleep(20);
@@ -204,37 +288,109 @@ int fts_fw_wait_for_event(struct fts_ts_info *info, unsigned char eid)
 
 void fts_execute_autotune(struct fts_ts_info *info)
 {
-	info->fts_command(info, CX_TUNNING);
-	msleep(300);
-	fts_fw_wait_for_event(info, STATUS_EVENT_MUTUAL_AUTOTUNE_DONE);
+
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+	int ret = 0;
+	bool bFinalAFE = false;
+	bool NoNeedAutoTune = false; // default for factory
+	unsigned char regData[2]; // {0xC1, 0x0E};
+	bFinalAFE = get_AFE_status(info);
+
+#if !defined (CONFIG_SEC_FACTORY)
+	 NoNeedAutoTune = get_PureAutotune_status(info);  // Check flag and decide cx_tune
+#endif
+
+	tsp_debug_info(true, info->dev, "%s: AFE(%d), NoNeedAutoTune(%d)\n", __func__,bFinalAFE, NoNeedAutoTune);
+
+    if ((!NoNeedAutoTune) || (info->o_afe_ver!=info->afe_ver)){
+#endif
+		info->fts_command(info, CX_TUNNING);
+		msleep(300);
+		fts_fw_wait_for_event(info, STATUS_EVENT_MUTUAL_AUTOTUNE_DONE);
 
 #ifdef FTS_SUPPORT_WATER_MODE
-	fts_fw_wait_for_event (info, STATUS_EVENT_WATER_SELF_AUTOTUNE_DONE);
-	fts_fw_wait_for_event(info, STATUS_EVENT_SELF_AUTOTUNE_DONE);
+		fts_fw_wait_for_event (info, STATUS_EVENT_WATER_SELF_AUTOTUNE_DONE);
+		fts_fw_wait_for_event(info, STATUS_EVENT_SELF_AUTOTUNE_DONE);
 #endif
 #ifdef FTS_SUPPORT_SELF_MODE
-	info->fts_command(info, SELF_AUTO_TUNE);
-	msleep(300);
-	fts_fw_wait_for_event(info, STATUS_EVENT_SELF_AUTOTUNE_DONE);
+		info->fts_command(info, SELF_AUTO_TUNE);
+		msleep(300);
+		fts_fw_wait_for_event(info, STATUS_EVENT_SELF_AUTOTUNE_DONE);
+#endif
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+    }
+
+	if (bFinalAFE) {
+#ifdef CONFIG_SEC_FACTORY
+		tsp_debug_info(true, info->dev, "%s: AFE_status(%d) write ( C1 0E )\n", __func__,bFinalAFE);
+		regData[0] = 0xC1;
+		regData[1] = 0x0E;
+		ret = info->fts_write_reg(info, regData, 2);//write C1 0E
+		if (ret < 0)
+			tsp_debug_info(true, info->dev, "%s: Flash Back up PureAutotune Fail(Set)\n", __func__);
+
+		msleep(20);
+		fts_fw_wait_for_event(info, STATUS_EVENT_PURE_AUTOTUNE_FLAG_WRITE_FINISH);
+#else
+		if (NoNeedAutoTune && (info->o_afe_ver!=info->afe_ver))
+		{
+			tsp_debug_info(true, info->dev, "%s: AFE_status(%d) write ( C2 0E )\n", __func__,bFinalAFE);
+			regData[0] = 0xC2;
+			regData[1] = 0x0E;
+			ret = info->fts_write_reg(info, regData, 2);//Write C2 0E
+			if (ret < 0)
+				tsp_debug_info(true, info->dev, "%s: Flash Back up PureAutotune Fail(Clear)\n", __func__);
+
+			msleep(20);
+			fts_fw_wait_for_event(info, STATUS_EVENT_PURE_AUTOTUNE_FLAG_ERASE_FINISH);
+		}
+#endif
+	} else {
+		tsp_debug_info(true, info->dev, "%s: AFE_status(%d) write ( C2 0E )\n", __func__,bFinalAFE);
+	    regData[0] = 0xC2;
+		regData[1] = 0x0E;
+		ret = info->fts_write_reg(info, regData, 2);//Write C2 0E
+		if (ret < 0)
+			tsp_debug_info(true, info->dev, "%s: Flash Back up PureAutotune Fail(Clear)\n", __func__);
+
+		msleep(20);
+		fts_fw_wait_for_event(info, STATUS_EVENT_PURE_AUTOTUNE_FLAG_ERASE_FINISH);
+	}
 #endif
 
 	info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
 	msleep(230);
 	fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE);
+
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+	/* Reset FTS */
+	info->fts_systemreset(info);
+	msleep(20);
+	/* wait for ready event */
+	info->fts_wait_for_ready(info);
+#endif
 }
 
 void fts_fw_init(struct fts_ts_info *info)
 {
+	tsp_debug_info(true, info->dev, "%s \n", __func__);
+
 	info->fts_command(info, SLEEPOUT);
 	msleep(50);
 
 	if (info->digital_rev == FTS_DIGITAL_REV_2) {
 		info->fts_command(info, FTS_CMD_TRIM_LOW_POWER_OSCILLATOR);
 		msleep(300);
+
+		info->fts_command(info, FTS_CMD_SAVE_CX_TUNING);
+		msleep(230);
+		fts_fw_wait_for_event(info, STATUS_EVENT_FLASH_WRITE_CXTUNE_VALUE);
 	}
 
+	/* skip autotune by partial download */
+//#ifndef FTS_SUPPORT_PARTIAL_DOWNLOAD
 	fts_execute_autotune(info);
-
+//#endif
 	info->fts_command(info, SLEEPOUT);
 	msleep(50);
 
@@ -275,6 +431,9 @@ const int fts_fw_updater(struct fts_ts_info *info, unsigned char *fw_data)
 
 	retry = 0;
 	while (1) {
+#ifdef FTS_SUPPORT_PARTIAL_DOWNLOAD
+		info->o_afe_ver = info->afe_ver;
+#endif
 		retval = fts_fw_burn(info, fw_data);
 		if (retval >= 0) {
 			info->fts_wait_for_ready(info);

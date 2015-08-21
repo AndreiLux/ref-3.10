@@ -14,6 +14,12 @@ config CHARGING_VZWCONCEPT
 	help
 	 Say Y to include support for the VZW concepts.
 
+config DISABLE_WIRELESS_CHARGING
+	tristate "disable wireless charging"
+	default n
+	help
+	 Say Y to include support for the VZW concepts.
+
 config BATTERY_SWELLING
 	bool "prevent battery swelling"
 	help

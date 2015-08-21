@@ -29,7 +29,11 @@ pr_info("[MAX98505_DEBUG] %s: " format "\n", __func__, ## args)
 #define msg_maxim(format, args...)
 #endif /* DEBUG_MAX98505 */
 
+#ifdef CONFIG_SND_SOC_MAXIM_DSM_CAL
+extern struct class *g_class;
+#else
 struct class *g_class;
+#endif /* CONFIG_SND_SOC_MAXIM_DSM_CAL */
 
 static struct reg_default max98505_reg[] = {
 	{ 0x00, 0x00 }, /* Battery Voltage Data */
@@ -136,6 +140,7 @@ static void reg_dump(struct max98505_priv *max98505)
 {
 	int val_l;
 	int i, j;
+	int addr;
 
 	static const struct {
 		int start;
@@ -150,7 +155,7 @@ static void reg_dump(struct max98505_priv *max98505)
 	i = 0;
 	while (reg_table[i].count != 0) {
 		for (j = 0; j < reg_table[i].count; j++) {
-			int addr = j + reg_table[i].start;
+			addr = j + reg_table[i].start;
 			regmap_read(max98505->regmap, addr, &val_l);
 			msg_maxim("reg 0x%02X, val_l 0x%02X",
 					addr, val_l);
@@ -160,9 +165,8 @@ static void reg_dump(struct max98505_priv *max98505)
 }
 #endif /* USE_REG_DUMP */
 
+#ifdef CONFIG_SND_SOC_MAXIM_DSM
 #ifdef USE_DSM_LOG
-#define DEFAULT_LOG_CLASS_NAME "dsm"
-static const char *class_name_log = DEFAULT_LOG_CLASS_NAME;
 static int max98505_get_dump_status(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol)
 {
@@ -193,15 +197,49 @@ static ssize_t max98505_log_show(struct device *dev,
 }
 
 static DEVICE_ATTR(dsm_log, S_IRUGO, max98505_log_show, NULL);
+#endif /* USE_DSM_LOG */
+
+#ifdef USE_DSM_UPDATE_CAL
+static int max98505_get_dsm_param(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	ucontrol->value.integer.value[0] = maxdsm_cal_avail();
+	return 0;
+}
+
+static int max98505_set_dsm_param(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol)
+{
+	maxdsm_update_caldata(ucontrol->value.integer.value[0]);
+	return 0;
+}
+static ssize_t max98505_cal_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	return maxdsm_cal_prepare(buf);
+}
+static DEVICE_ATTR(dsm_cal, S_IRUGO, max98505_cal_show, NULL);
+#endif /* USE_DSM_UPDATE_CAL */
+
+#if defined(USE_DSM_LOG) || defined(USE_DSM_UPDATE_CAL)
+#define DEFAULT_LOG_CLASS_NAME "dsm"
+static const char *class_name_log = DEFAULT_LOG_CLASS_NAME;
+
 static struct attribute *max98505_attributes[] = {
+#ifdef USE_DSM_LOG
 	&dev_attr_dsm_log.attr,
+#endif /* USE_DSM_LOG */
+#ifdef USE_DSM_UPDATE_CAL
+	&dev_attr_dsm_cal.attr,
+#endif /* USE_DSM_UPDATE_CAL */
 	NULL
 };
 
 static struct attribute_group max98505_attribute_group = {
 	.attrs = max98505_attributes
 };
-#endif /* USE_DSM_LOG */
+#endif /* USE_DSM_LOG || USE_DSM_UPDATE_CAL */
+#endif /* CONFIG_SND_SOC_MAXIM_DSM */
 
 static const unsigned int max98505_spk_tlv[] = {
 	TLV_DB_RANGE_HEAD(1),
@@ -324,7 +362,7 @@ static const char * const max98505_boost_voltage_text[] = {"8.5V", "8.25V",
 	"6.5V", "6.5V", "6.5V", "6.5V", "6.5V", "6.5V", "6.5V", "6.5V"};
 
 static const struct soc_enum max98505_boost_voltage_enum =
-SOC_ENUM_SINGLE(MAX98505_R037_CONFIGURATION, MAX98505_BST_VOUT_SHIFT, 15,
+SOC_ENUM_SINGLE(MAX98505_R037_CONFIGURATION, MAX98505_BST_VOUT_SHIFT, 16,
 		max98505_boost_voltage_text);
 
 static const char * const spk_state_text[] = {"Disable", "Enable"};
@@ -333,7 +371,23 @@ static const struct soc_enum spk_state_enum[] = {
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(spk_state_text), spk_state_text),
 };
 
-static int max98505_set_speaker(struct snd_kcontrol *kcontrol,
+static int max98505_spk_out_get(struct snd_kcontrol *kcontrol,
+				struct snd_ctl_elem_value *ucontrol) {
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	unsigned int val;
+
+	regmap_read(max98505->regmap,
+			MAX98505_R038_GLOBAL_ENABLE, &val);
+	ucontrol->value.integer.value[0] = !!(val & MAX98505_EN_MASK);
+
+	msg_maxim("The status of speaker is '%s'",
+			spk_state_text[ucontrol->value.integer.value[0]]);
+
+	return 0;
+}
+
+static int max98505_spk_out_put(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_value *ucontrol) {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
@@ -348,23 +402,151 @@ static int max98505_set_speaker(struct snd_kcontrol *kcontrol,
 				MAX98505_EN_MASK, 0x0);
 
 	msg_maxim("Speaker was set by '%s'",
-			spk_state_text[ucontrol->value.integer.value[0]]);
+			spk_state_text[!!(ucontrol->value.integer.value[0])]);
 
 	return 0;
 }
 
-static int max98505_get_speaker(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol) {
+static int max98505_adc_en_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
 	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
-	unsigned int val;
+	int data;
 
-	regmap_read(max98505->regmap,
-			MAX98505_R038_GLOBAL_ENABLE, &val);
-	ucontrol->value.integer.value[0] = !!(val & MAX98505_EN_MASK);
+	regmap_read(max98505->regmap, MAX98505_R036_BLOCK_ENABLE, &data);
 
-	msg_maxim("The status of speaker is '%s'",
-			spk_state_text[ucontrol->value.integer.value[0]]);
+	if (data & MAX98505_ADC_VIMON_EN_MASK)
+		ucontrol->value.integer.value[0] = 1;
+	else
+		ucontrol->value.integer.value[0] = 0;
+
+	return 0;
+}
+
+static int max98505_adc_en_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	struct max98505_pdata *pdata = max98505->pdata;
+	int sel = (int)ucontrol->value.integer.value[0];
+
+	if (sel)
+		regmap_update_bits(max98505->regmap, MAX98505_R036_BLOCK_ENABLE,
+		MAX98505_ADC_VIMON_EN_MASK,
+		MAX98505_ADC_VIMON_EN_MASK);
+	else
+		regmap_update_bits(max98505->regmap, MAX98505_R036_BLOCK_ENABLE,
+		MAX98505_ADC_VIMON_EN_MASK, 0);
+
+	pdata->vstep.adc_status = !!sel;
+
+#ifdef CONFIG_SND_SOC_MAXIM_DSM
+	maxdsm_update_feature_en_adc(!!sel);
+#endif /* CONFIG_SND_SOC_MAXIM_DSM */
+
+	return 0;
+}
+
+static int max98505_adc_thres_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	struct max98505_pdata *pdata = max98505->pdata;
+
+	ucontrol->value.integer.value[0] = pdata->vstep.adc_thres;
+
+	return 0;
+}
+
+static int max98505_adc_thres_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	struct max98505_pdata *pdata = max98505->pdata;
+	int ret = 0;
+
+	if (ucontrol->value.integer.value[0] >= MAX98505_VSTEP_0 &&
+			ucontrol->value.integer.value[0] <= MAX98505_VSTEP_15)
+		pdata->vstep.adc_thres = (int)ucontrol->value.integer.value[0];
+	else
+		ret = -EINVAL;
+
+	return ret;
+}
+
+static int max98505_volume_step_get(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	struct max98505_pdata *pdata = max98505->pdata;
+
+	ucontrol->value.integer.value[0] = pdata->vstep.vol_step;
+
+	return 0;
+}
+
+static int max98505_volume_step_put(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
+	struct max98505_priv *max98505 = snd_soc_codec_get_drvdata(codec);
+	struct max98505_pdata *pdata = max98505->pdata;
+
+	int sel = (int)ucontrol->value.integer.value[0];
+	unsigned int mask = 0;
+	bool adc_status = pdata->vstep.adc_status;
+
+	/*
+	 * ADC status will be updated according to the volume.
+	 * Under step 7 : Disable
+	 * Over step 7  : Enable
+	 */
+	if (sel <= pdata->vstep.adc_thres
+			&& pdata->vstep.adc_status) {
+		regmap_update_bits(max98505->regmap,
+				MAX98505_R036_BLOCK_ENABLE,
+				MAX98505_ADC_VIMON_EN_MASK,
+				0);
+		adc_status = !pdata->vstep.adc_status;
+	} else if (sel > pdata->vstep.adc_thres
+			&& !pdata->vstep.adc_status) {
+		regmap_update_bits(max98505->regmap,
+				MAX98505_R036_BLOCK_ENABLE,
+				MAX98505_ADC_VIMON_EN_MASK,
+				MAX98505_ADC_VIMON_EN_MASK);
+		adc_status = !pdata->vstep.adc_status;
+	} else if (sel > MAX98505_VSTEP_MAX) {
+		msg_maxim("Unknown value %d", sel);
+		return -EINVAL;
+	}
+
+	if (adc_status != pdata->vstep.adc_status) {
+		pdata->vstep.adc_status = adc_status;
+#ifdef CONFIG_SND_SOC_MAXIM_DSM
+		maxdsm_update_feature_en_adc((int)adc_status);
+#endif /* CONFIG_SND_SOC_MAXIM_DSM */
+	}
+
+	/*
+	 * Boost voltage will be updated according to the volume.
+	 * Step 0 ~ Step 13 : 6.5V
+	 * Step 14			: 8.0V
+	 * Over step 15		: 8.5V
+	 */
+	mask |= pdata->vstep.boost_step[sel];
+	mask <<= MAX98505_BST_VOUT_SHIFT;
+	regmap_update_bits(max98505->regmap,
+			MAX98505_R037_CONFIGURATION,
+			MAX98505_BST_VOUT_MASK,
+			mask);
+
+	/* Set volume step to ... */
+	pdata->vstep.vol_step = sel;
 
 	return 0;
 }
@@ -394,11 +576,25 @@ static const struct snd_kcontrol_new max98505_snd_controls[] = {
 	SOC_ENUM("Boost Output Voltage", max98505_boost_voltage_enum),
 
 	SOC_ENUM_EXT("SPK out", spk_state_enum[0],
-		max98505_get_speaker, max98505_set_speaker),
+		max98505_spk_out_get, max98505_spk_out_put),
+
+	SOC_SINGLE_EXT("ADC Enable", 0, 0, 1, 0,
+			max98505_adc_en_get, max98505_adc_en_put),
+
+	SOC_SINGLE_EXT("ADC Threshold", SND_SOC_NOPM, 0, 15, 0,
+			max98505_adc_thres_get, max98505_adc_thres_put),
+
+	SOC_SINGLE_EXT("Volume Step", SND_SOC_NOPM, 0, 15, 0,
+			max98505_volume_step_get, max98505_volume_step_put),
+
 #ifdef USE_DSM_LOG
 	SOC_SINGLE_EXT("DSM LOG", SND_SOC_NOPM, 0, 3, 0,
 		max98505_get_dump_status, max98505_set_dump_status),
 #endif /* USE_DSM_LOG */
+#ifdef USE_DSM_UPDATE_CAL
+	SOC_SINGLE_EXT("DSM SetParam", SND_SOC_NOPM, 0, 1, 0,
+		max98505_get_dsm_param, max98505_set_dsm_param),
+#endif /* USE_DSM_UPDATE_CAL */
 };
 
 static int max98505_add_widgets(struct snd_soc_codec *codec)
@@ -417,15 +613,15 @@ static const struct {
 	u8  sr;
 	u32 divisors[3][2];
 } rate_table[] = {
-	{ 8000, 0, {{  1,   375} , {5, 1764} , {  1,   384} } },
-	{11025,	1, {{147, 40000} , {1,  256} , {147, 40960} } },
-	{12000, 2, {{  1,   250} , {5, 1176} , {  1,   256} } },
-	{16000, 3, {{  2,   375} , {5,  882} , {  1,   192} } },
-	{22050, 4, {{147, 20000} , {1,  128} , {147, 20480} } },
-	{24000, 5, {{  1,   125} , {5,  588} , {  1,   128} } },
-	{32000, 6, {{  4,   375} , {5,  441} , {  1,    96} } },
-	{44100, 7, {{147, 10000} , {1,   64} , {147, 10240} } },
-	{48000, 8, {{  2,   125} , {5,  294} , {  1,    64} } },
+	{ 8000, 0, {{  1,   375}, {5, 1764}, {  1,   384} } },
+	{11025,	1, {{147, 40000}, {1,  256}, {147, 40960} } },
+	{12000, 2, {{  1,   250}, {5, 1176}, {  1,   256} } },
+	{16000, 3, {{  2,   375}, {5,  882}, {  1,   192} } },
+	{22050, 4, {{147, 20000}, {1,  128}, {147, 20480} } },
+	{24000, 5, {{  1,   125}, {5,  588}, {  1,   128} } },
+	{32000, 6, {{  4,   375}, {5,  441}, {  1,    96} } },
+	{44100, 7, {{147, 10000}, {1,   64}, {147, 10240} } },
+	{48000, 8, {{  2,   125}, {5,  294}, {  1,    64} } },
 };
 
 static inline int max98505_rate_value(int rate,
@@ -757,13 +953,9 @@ static void __max98505_dai_digital_mute(struct snd_soc_dai *codec_dai, int mute)
 		regmap_update_bits(max98505->regmap,
 				MAX98505_R036_BLOCK_ENABLE,
 				MAX98505_BST_EN_MASK |
-				MAX98505_SPK_EN_MASK |
-				MAX98505_ADC_IMON_EN_MASK |
-				MAX98505_ADC_VMON_EN_MASK,
+				MAX98505_SPK_EN_MASK,
 				MAX98505_BST_EN_MASK |
-				MAX98505_SPK_EN_MASK |
-				MAX98505_ADC_IMON_EN_MASK |
-				MAX98505_ADC_VMON_EN_MASK);
+				MAX98505_SPK_EN_MASK);
 		regmap_write(max98505->regmap,
 				MAX98505_R038_GLOBAL_ENABLE,
 				MAX98505_EN_MASK);
@@ -962,14 +1154,13 @@ static int reg_set_optimum_mode_check(struct regulator *reg, int load_ua)
 		regulator_set_optimum_mode(reg, load_ua) : 0;
 }
 
+#define VCC_I2C_MIN_UV	1800000
+#define VCC_I2C_MAX_UV	1800000
+#define I2C_LOAD_UA	300000
 static int max98505_regulator_config(struct device *dev)
 {
 	struct regulator *max98505_vcc_i2c;
 	int ret;
-
-#define VCC_I2C_MIN_UV	1800000
-#define VCC_I2C_MAX_UV	1800000
-#define I2C_LOAD_UA	300000
 
 	max98505_vcc_i2c = regulator_get(dev, "vcc_i2c");
 	if (IS_ERR(max98505_vcc_i2c)) {
@@ -1031,9 +1222,6 @@ static int max98505_probe(struct snd_soc_codec *codec)
 	int ret = 0;
 	int reg = 0;
 
-	dev_info(codec->dev, "MONO - built on %s at %s\n",
-			__DATE__,
-			__TIME__);
 	dev_info(codec->dev, "build number %s\n", MAX98505_REVISION);
 
 	max98505->codec = codec;
@@ -1082,10 +1270,8 @@ static int max98505_probe(struct snd_soc_codec *codec)
 	regmap_write(max98505->regmap, MAX98505_R02C_FILTERS, 0xD9);
 	regmap_write(max98505->regmap, MAX98505_R034_ALC_CONFIGURATION, 0x12);
 
-	/*****************************************************************/
-	/* Set boost output to maximum.									 */
+	/* Set boost output to maximum */
 	regmap_write(max98505->regmap, MAX98505_R037_CONFIGURATION, 0x00);
-	/*****************************************************************/
 
 	/* Disable ALC muting */
 	regmap_write(max98505->regmap, MAX98505_R03A_BOOST_LIMITER, 0xF8);
@@ -1094,11 +1280,18 @@ static int max98505_probe(struct snd_soc_codec *codec)
 			MAX98505_R02D_GAIN, MAX98505_DAC_IN_SEL_MASK,
 			MAX98505_DAC_IN_SEL_DIV2_SUMMED_DAI);
 
+	/* Enable ADC */
+	regmap_update_bits(max98505->regmap,
+			MAX98505_R036_BLOCK_ENABLE,
+			MAX98505_ADC_VIMON_EN_MASK,
+			MAX98505_ADC_VIMON_EN_MASK);
+	pdata->vstep.adc_status = 1;
+
 	max98505_set_slave(max98505);
 	max98505_handle_pdata(codec);
 	max98505_add_widgets(codec);
 
-#ifdef USE_DSM_LOG
+#if defined(USE_DSM_LOG) || defined(USE_DSM_UPDATE_CAL)
 	if (!g_class)
 		g_class = class_create(THIS_MODULE, class_name_log);
 	max98505->dev_log_class = g_class;
@@ -1121,7 +1314,7 @@ static int max98505_probe(struct snd_soc_codec *codec)
 		}
 	}
 	msg_maxim("g_class=%p %p", g_class, max98505->dev_log_class);
-#endif /* USE_DSM_LOG */
+#endif /* USE_DSM_LOG || USE_DSM_UPDATE_CAL */
 
 err_version:
 	msg_maxim("exit %d", ret);
@@ -1168,7 +1361,6 @@ static int max98505_i2c_probe(struct i2c_client *i2c,
 	max98505 = devm_kzalloc(&i2c->dev,
 			sizeof(struct max98505_priv), GFP_KERNEL);
 	if (!max98505) {
-		dev_err(&i2c->dev, "Failed to allocate memory for max98505");
 		ret = -ENOMEM;
 		goto err_allocate_priv;
 	}
@@ -1176,8 +1368,6 @@ static int max98505_i2c_probe(struct i2c_client *i2c,
 	max98505->pdata = devm_kzalloc(&i2c->dev,
 			sizeof(struct max98505_pdata), GFP_KERNEL);
 	if (!max98505->pdata) {
-		dev_err(&i2c->dev,
-			"Failed to allocate memory for platform data\n");
 		ret = -ENOMEM;
 		goto err_allocate_pdata;
 	}
@@ -1230,10 +1420,23 @@ static int max98505_i2c_probe(struct i2c_client *i2c,
 			pinfo_status = 1;
 
 		ret = of_property_read_u32_array(i2c->dev.of_node,
-			"maxim,binfo", (u32 *) &pdata->binfo,
-			sizeof(pdata->binfo)/sizeof(uint32_t));
-		if (ret)
-			dev_err(&i2c->dev, "There is no param bit info. property.\n");
+			"maxim,boost_step",
+			(uint32_t *) &pdata->vstep.boost_step,
+			sizeof(pdata->vstep.boost_step)/sizeof(uint32_t));
+		if (ret) {
+			dev_err(&i2c->dev, "There is no boost_step property.\n");
+			for (ret = 0; ret < MAX98505_VSTEP_14; ret++)
+				pdata->vstep.boost_step[ret] = 0x0F;
+			pdata->vstep.boost_step[MAX98505_VSTEP_14] = 0x02;
+			pdata->vstep.boost_step[MAX98505_VSTEP_15] = 0x00;
+		}
+
+		ret = of_property_read_u32(i2c->dev.of_node,
+				"maxim,adc_threshold", &pdata->vstep.adc_thres);
+		if (ret) {
+			dev_err(&i2c->dev, "There is no adc_threshold property.");
+			pdata->vstep.adc_thres = MAX98505_VSTEP_7;
+		}
 
 #ifdef USE_DSM_LOG
 		ret = of_property_read_string(i2c->dev.of_node,
@@ -1287,7 +1490,7 @@ go_ahead_next_step:
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
 	maxdsm_init();
 	if (pinfo_status)
-		maxdsm_update_info(pdata->pinfo, pdata->binfo);
+		maxdsm_update_info(pdata->pinfo);
 #endif /* CONFIG_SND_SOC_MAXIM_DSM */
 
 	ret = snd_soc_register_codec(&i2c->dev, &soc_codec_dev_max98505,
@@ -1317,13 +1520,12 @@ err_register_codec:
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
 	maxdsm_deinit();
 #endif /* CONFIG_SND_SOC_MAXIM_DSM */
+	devm_kfree(&i2c->dev, max98505->pdata);
 
 err_allocate_pdata:
-	kfree(max98505->pdata);
+	devm_kfree(&i2c->dev, max98505);
 
 err_allocate_priv:
-	kfree(max98505);
-
 	msg_maxim("exit with errors. ret=%d", ret);
 
 	return ret;
@@ -1331,12 +1533,13 @@ err_allocate_priv:
 
 static int max98505_i2c_remove(struct i2c_client *client)
 {
-	struct max98505_priv *max98505 = dev_get_drvdata(&client->dev);
+	struct max98505_priv *max98505 = i2c_get_clientdata(client);
 
 	snd_soc_unregister_codec(&client->dev);
 	if (max98505->regmap)
 		regmap_exit(max98505->regmap);
-	kfree(i2c_get_clientdata(client));
+	devm_kfree(&client->dev, max98505->pdata);
+	devm_kfree(&client->dev, max98505);
 
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
 	maxdsm_deinit();
@@ -1353,7 +1556,7 @@ static const struct of_device_id max98505_dt_ids[] = {
 	{ }
 };
 #else
-#define max98505_dt_ids NULL;
+#define max98505_dt_ids NULL
 #endif /* CONFIG_OF */
 
 static const struct i2c_device_id max98505_i2c_id[] = {

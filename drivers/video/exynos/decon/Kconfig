@@ -96,6 +96,15 @@ config DECON_EVENT_LOG
         depends on DEBUG_INFO && EXYNOS_DECON
         default y
 
+config DSIM_ESD_RECOVERY_NOPOWER
+	bool "Not control power/reset in esd recovery"
+        default n
+
+config ALWAYS_RELOAD_MTP_FACTORY_BUILD
+	bool "reaload MTP/MDNIE every LCD-on times"
+	depends on SEC_FACTORY
+	default n
+
 source "drivers/video/exynos/decon/vpp/Kconfig"
 
 endif

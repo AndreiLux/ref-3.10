@@ -32,7 +32,7 @@ int mag_open_hwoffset(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(MAG_HW_OFFSET_FILE_PATH, O_RDONLY, 0660);
+	cal_filp = filp_open(MAG_HW_OFFSET_FILE_PATH, O_RDONLY, 0);
 	if (IS_ERR(cal_filp)) {
 		pr_err("[SSP] %s: filp_open failed\n", __func__);
 		set_fs(old_fs);
@@ -110,7 +110,7 @@ int set_hw_offset(struct ssp_data *data)
 
 	if (!(data->uSensorState & 0x04)) {
 		pr_info("[SSP]: %s - Skip this function!!!"\
-			", magnetic sensor is not connected(0x%x)\n",
+			", magnetic sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return iRet;
 	}
@@ -150,7 +150,7 @@ int set_static_matrix(struct ssp_data *data)
 
 	if (!(data->uSensorState & 0x04)) {
 		pr_info("[SSP]: %s - Skip this function!!!"\
-			", magnetic sensor is not connected(0x%x)\n",
+			", magnetic sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return iRet;
 	}
@@ -354,7 +354,7 @@ static ssize_t adc_data_read(struct device *dev,
 	data->buf[GEOMAGNETIC_SENSOR].y = 0;
 	data->buf[GEOMAGNETIC_SENSOR].z = 0;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
 		send_instruction(data, ADD_SENSOR, GEOMAGNETIC_SENSOR,
 			chTempbuf, 4);
 
@@ -371,7 +371,7 @@ static ssize_t adc_data_read(struct device *dev,
 	iSensorBuf[1] = data->buf[GEOMAGNETIC_SENSOR].y;
 	iSensorBuf[2] = data->buf[GEOMAGNETIC_SENSOR].z;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
 		send_instruction(data, REMOVE_SENSOR, GEOMAGNETIC_SENSOR,
 			chTempbuf, 4);
 

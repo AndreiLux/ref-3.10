@@ -87,8 +87,8 @@ enum s2m_rtc_reg {
 #define RTCA0E				(1<<2)
 #define RTCA1E				(1<<1)
 
-#if defined(CONFIG_RTC_ALARM_BOOT) ||\
-     defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
+#if defined(CONFIG_RTC_ALARM_BOOT)
+	/* || defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING) */ 
 #define RTC_WAKE_SHIFT			3
 #define RTC_WAKE_MASK			(1 << RTC_WAKE_SHIFT)
 #endif

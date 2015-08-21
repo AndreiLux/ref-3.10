@@ -241,7 +241,7 @@ static int command_open(struct inode *inode, struct file *filp)
 
 	major = imajor(inode);
 	minor = iminor(inode);
-	if (major != cdev_major || minor < 0 || minor >= CDEV_COUNT) {
+	if (major != cdev_major || minor >= CDEV_COUNT) {
 		pr_warn("%s(): no such device major=%u minor=%u\n",
 			__func__, major, minor);
 		err = -ENODEV;
@@ -578,7 +578,7 @@ static int stream_datalog_open(struct es705_priv *es705, struct inode *inode,
 
 	major = imajor(inode);
 	minor = iminor(inode);
-	if (major != cdev_major || minor < 0 || minor >= CDEV_COUNT) {
+	if (major != cdev_major || minor >= CDEV_COUNT) {
 		dev_warn(es705->dev, "%s(): no such device major=%u minor=%u\n",
 			 __func__, major, minor);
 		err = -ENODEV;
@@ -671,7 +671,10 @@ OPEN_ERR_UNLOCK_API_MUTEX:
 	mutex_unlock(&es705->api_mutex);
 OPEN_ERR_STOP_KTHREAD:
 	dev_dbg(es705->dev, "%s(): stopping stream kthread\n", __func__);
-	kthread_stop(es705->stream_thread);
+	if (es705->stream_thread) {
+		kthread_stop(es705->stream_thread);
+		es705->stream_thread = 0;
+	}
 OPEN_ERR_CLOSE_STREAMDEV:
 	if (es705->streamdev.close)
 		es705->streamdev.close(es705);
@@ -737,7 +740,10 @@ static int stream_datalog_release(struct es705_priv *es705, struct inode *inode)
 
 	/* ignore threadfn return value */
 	dev_dbg(es705->dev, "%s(): stopping stream kthread\n", __func__);
-	kthread_stop(es705->stream_thread);
+	if (es705->stream_thread) {
+		kthread_stop(es705->stream_thread);
+		es705->stream_thread = 0;
+	}
 
 	/* free any pages on the circular buffer */
 	while ((page = streaming_consume_page(&length)))
@@ -1047,6 +1053,9 @@ static int streaming_producer(void *ptr)
 	unsigned long bytes_read = 0;
 	int nbytes_to_read = 0;
 	bool no_more_bit = 0;
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+	int err = 0;
+#endif
 	struct sched_param param = { .sched_priority = MAX_RT_PRIO-1 };
 	sched_setscheduler_nocheck(current, SCHED_FIFO, &param);
 
@@ -1060,6 +1069,22 @@ static int streaming_producer(void *ptr)
 	dev_dbg(es705->dev, "%s(): start capture streaming data\n", __func__);
 	dev_dbg(es705->dev, "%s(): Page size = %ld\n", __func__, PAGE_SIZE);
 
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+	/*
+	* Try to open fs to store stream data
+	* Don't need to return err when fails
+	*/
+	if (es705->streamdev.fs_open) {
+		err = es705->streamdev.fs_open(es705);
+		if (err) {
+			dev_err(es705->dev,
+				"%s(): can't open streaming debug fs = %d\n",
+				__func__, err);
+		}
+		dev_dbg(es705->dev, "%s: fs_open successfully\n", __func__);
+	}
+#endif
+
 	/*
 	 * loop while the thread isn't kthread_stop'd AND
 	 * keep looping after the kthread_stop to throw away any data
@@ -1072,7 +1097,7 @@ static int streaming_producer(void *ptr)
 
 			if (CIRC_SPACE(chead, ctail, CB_SIZE) < 1) {
 				/* consume oldest slot */
-				dev_err(es705->dev,
+				dev_dbg(es705->dev,
 					"%s(): lost page of stream buffer\n",
 					__func__);
 				consume_page = streaming_consume_page(&length);
@@ -1089,7 +1114,14 @@ static int streaming_producer(void *ptr)
 			pr_debug("%s() length = %d\n", __func__, rlen);
 			smp_wmb();	/* commit data */
 			stream_circ.head = (chead + 1) & (CB_SIZE - 1);
-
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+			/* write stream data */
+			if (es705->streamdev.fs_write) {
+				es705->streamdev.fs_write(es705, buf, rlen);
+				dev_dbg(es705->dev, "%s(): fs_write done, size:%d\n",
+					__func__, rlen);
+			}
+#endif
 			/* awake any reader blocked in select, poll, epoll */
 			wake_up_interruptible(&es705->stream_in_q);
 
@@ -1142,7 +1174,12 @@ static int streaming_producer(void *ptr)
 	dev_dbg(es705->dev, "%s() bytes_read = %ld\n", __func__, bytes_read);
 
 	streaming_page_free(buf);
-
+#ifdef CONFIG_SND_SOC_ES_STREAM_FS_STORER
+	if (es705->streamdev.fs_close) {
+		es705->streamdev.fs_close(es705);
+		dev_info(es705->dev, "%s: fs_close done\n", __func__);
+	}
+#endif
 	return 0;
 }
 
@@ -1246,10 +1283,11 @@ read_err:
 static int datablock_write_dispatch(struct es705_priv *const es705,
 				    u32 cmd, size_t count)
 {
-	char *data = data_buf += sizeof(cmd);
+	char *data = data_buf + sizeof(cmd);
 	int remains = (int)count - sizeof(cmd);
 	int err = 0;
 	u32 cmd_id = cmd >> 16;
+
 	if (cmd_id == ES705_WDB_CMD) {
 		err = es705->datablockdev.wdb(es705, data, remains);
 		/* If WDB is sucessful, it will return count = remains.
@@ -1291,6 +1329,12 @@ static ssize_t datablock_write(struct file *filp, const char __user *buf,
 	BUG_ON(!es705);
 	dev_dbg(es705->dev, "%s() entry: count: %zd\n", __func__, count);
 
+	if (count > sizeof(parse_buffer)) {
+		dev_err(es705->dev, "%s() invalid argument\n", __func__);
+		err = -EINVAL;
+		goto OUT;
+	}
+
 	err = copy_from_user(data_buf, buf, count);
 	if (err) {
 		dev_err(es705->dev, "%s(): copy_from_user err: %d\n",
@@ -1323,7 +1367,7 @@ static int datablock_open(struct inode *inode, struct file *filp)
 		goto OPEN_ERR;
 	}
 
-	if (major != cdev_major || minor < 0 || minor >= CDEV_COUNT) {
+	if (major != cdev_major || minor >= CDEV_COUNT) {
 		dev_warn(es705->dev, "%s(): no such device major=%u minor=%u\n",
 			 __func__, major, minor);
 		err = -ENODEV;

@@ -440,6 +440,9 @@ struct slowpath_args {
 static void warn_slowpath_common(const char *file, int line, void *caller,
 				 unsigned taint, struct slowpath_args *args)
 {
+#if defined(CONFIG_SEC_BAT_AUT) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	printk(BAT_AUTOMAION_TEST_PREFIX_WARN "KERNEL WARN START\n");
+#endif
 	printk(KERN_WARNING "------------[ cut here ]------------\n");
 	printk(KERN_WARNING "WARNING: at %s:%d %pS()\n", file, line, caller);
 
@@ -451,6 +454,9 @@ static void warn_slowpath_common(const char *file, int line, void *caller,
 	print_oops_end_marker();
 	/* Just a warning, don't kill lockdep. */
 	add_taint(taint, LOCKDEP_STILL_OK);
+#if defined(CONFIG_SEC_BAT_AUT) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+	printk(BAT_AUTOMAION_TEST_PREFIX_WARN "KERNEL WARN END\n");
+#endif
 }
 
 void warn_slowpath_fmt(const char *file, int line, const char *fmt, ...)

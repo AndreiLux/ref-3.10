@@ -76,7 +76,7 @@ static int sec_bat_adc_ap_read(int channel)
 		if (ret < 0)
 			pr_info("read channel error[%d]\n", ret);
 		else
-			pr_info("WPC TEMP(%d)\n", data);
+			pr_debug("WPC TEMP(%d)\n", data);
 		break;
 	default:
 		break;

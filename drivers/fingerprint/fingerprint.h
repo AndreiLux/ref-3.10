@@ -48,4 +48,5 @@ extern int FP_CHECK; /* extern variable */
 #define MC_FC_FP_PM_RESUME ((uint32_t)(0x83000022))
 #define MC_FC_FP_BTP_OCP_HIGH ((uint32_t)(0x83000023))
 #define MC_FC_FP_BTP_OCP_LOW ((uint32_t)(0x83000024))
+#define MC_FC_FP_BTP_OCP_NONE ((uint32_t)(0x83000025))
 #endif

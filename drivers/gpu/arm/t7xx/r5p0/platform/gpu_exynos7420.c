@@ -24,9 +24,7 @@
 
 #include <mach/apm-exynos.h>
 #include <mach/asv-exynos.h>
-#ifdef MALI64_PORTING
-#include <mach/asv-exynos7_cal.h>
-#endif
+#include <mach/asv-exynos_cal.h>
 #include <mach/pm_domains.h>
 #include <mach/regs-pmu.h>
 
@@ -129,7 +127,7 @@ static gpu_attribute gpu_config_attributes[] = {
 	{GPU_RUNTIME_PM_DELAY_TIME, 50},
 	{GPU_DVFS_POLLING_TIME, 30},
 	{GPU_PMQOS_INT_DISABLE, 1},
-	{GPU_PMQOS_MIF_MAX_CLOCK, 1456000},
+	{GPU_PMQOS_MIF_MAX_CLOCK, 1464000},
 	{GPU_PMQOS_MIF_MAX_CLOCK_BASE, 700},
 	{GPU_CL_DVFS_START_BASE, 266},
 	{GPU_DEBUG_LEVEL, DVFS_WARNING},
@@ -140,6 +138,8 @@ int gpu_dvfs_decide_max_clock(struct exynos_context *platform)
 {
 	if (!platform)
 		return -1;
+    if (cal_get_table_ver() == 12)
+		platform->gpu_max_clock = platform->table[GPU_L2].clock;
 
 	return 0;
 }

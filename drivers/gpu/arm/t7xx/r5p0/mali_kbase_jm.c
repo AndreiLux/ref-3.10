@@ -142,6 +142,19 @@ static void kbase_job_hw_submit(struct kbase_device *kbdev, struct kbase_jd_atom
 #ifdef CONFIG_MALI_GATOR_SUPPORT
 	kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_START, js), kctx, kbase_jd_atom_id(kctx, katom)); 
 #endif				/* CONFIG_MALI_GATOR_SUPPORT */
+
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+    /** printing out dependency information between jobs */
+    kbase_systrace_mali_job_slots_event(SYSTRACE_EVENT_TYPE_START, js, kctx, kbase_jd_atom_id(kctx, katom), ktime_to_ns(katom->start_timestamp),
+                                        katom->kbase_atom_dep_systrace[0].dep_atom_id,
+                                        katom->kbase_atom_dep_systrace[0].dep_atom_dependency_type,
+                                        katom->kbase_atom_dep_systrace[1].dep_atom_id,
+                                        katom->kbase_atom_dep_systrace[1].dep_atom_dependency_type,
+                                        katom->gles_ctx_handle);
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 #ifdef CONFIG_GPU_TRACEPOINTS
 	if (kbasep_jm_nr_jobs_submitted(&kbdev->jm_slots[js]) == 1)
 	{
@@ -371,6 +384,14 @@ void kbase_job_done(struct kbase_device *kbdev, u32 done)
 #ifdef CONFIG_MALI_GATOR_SUPPORT
 					kbase_trace_mali_job_slots_event(GATOR_MAKE_EVENT(GATOR_JOB_SLOT_SOFT_STOPPED, i), NULL, 0);
 #endif				/* CONFIG_MALI_GATOR_SUPPORT */
+
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+                    kbase_systrace_mali_job_slots_event(SYSTRACE_EVENT_TYPE_STOP, i, NULL, 0, 0, 0, 0, 0, 0, 0);
+
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 					/* Soft-stopped job - read the value of JS<n>_TAIL so that the job chain can be resumed */
 					job_tail = (u64) kbase_reg_read(kbdev, JOB_SLOT_REG(i, JS_TAIL_LO), NULL) | ((u64) kbase_reg_read(kbdev, JOB_SLOT_REG(i, JS_TAIL_HI), NULL) << 32);
 					break;

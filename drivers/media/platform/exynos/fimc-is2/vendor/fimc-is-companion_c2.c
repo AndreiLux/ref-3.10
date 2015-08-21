@@ -54,6 +54,20 @@
 #define FIMC_IS_COMPANION_API_SFLASH_SRAM_ADD_EVT1	(0x001C)
 #define FIMC_IS_COMPANION_API_SFLASH_SIZE_EVT1		(0x0020)
 #define FIMC_IS_COMPANION_API_SFLASH_CRC32_EVT1		(0x002C)
+
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+#define FIMC_IS_COMPANION_FIRMWARE_CRC32_ADDR		(0x00)
+#define FIMC_IS_COMPANION_PDAF_BPC_CRC32_ADDR		(0x04)
+#define FIMC_IS_COMPANION_PDAF_SHAD_CRC32_ADDR		(0x08)
+#define FIMC_IS_COMPANION_XTALK_CRC32_ADDR		(0x0C)
+#define FIMC_IS_COMPANION_LSC_MAIN_GRID_CRC32_ADDR	(0X10)
+#define FIMC_IS_COMPANION_LSC_FRONT_GRID_CRC32_ADDR	(0x14)
+#define FIMC_IS_COMPANION_SIGNATURE_ADDR		(0x0002)
+#define FIMC_IS_COMPANION_SIGNATURE_1ST_VALUE		(0x00B0)
+#define FIMC_IS_COMPANION_SIGNATURE_2ND_VALUE		(0x10B0)
+#define FIMC_IS_COMPANION_VALID_CRC			(0x0001)
+#endif
+
 #define FIMC_IS_COMPANION_HOST_INTRP_FLASH_CMD		(0x6806)
 #define FIMC_IS_COMPANION_LSC_ADDR			(0x000C6810)
 #define FIMC_IS_COMPANION_LSC_SIZE			5880
@@ -486,6 +500,52 @@ int fimc_is_comp_get_crc(struct fimc_is_core *core, u32 addr, int size, char* cr
 	return ret;
 }
 
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+static int fimc_is_comp_compare_crc_value(char* v1, char* v2)
+{
+	int ret = 0;
+
+	if (memcmp((const void *)v1, (const void *)v2, FIMC_IS_COMPANION_CRC_SIZE)) {
+		info("value is not same!\n");
+		info("Value 1 = 0x%02x%02x%02x%02x\n",
+				v1[0], v1[1], v1[2], v1[3]);
+		info("Value 2 = 0x%02x%02x%02x%02x\n",
+				v2[0], v2[1], v2[2], v2[3]);
+		ret = -EINVAL;
+		goto p_err;
+	}
+
+p_err:
+	return ret;
+}
+
+static int fimc_is_comp_check_signature(struct fimc_is_core *core, u16 addr, char* value)
+{
+	int ret = 0;
+	u16 data;
+
+	ret = fimc_is_comp_single_read(core, addr, &data);
+	if (ret) {
+		err("Check Signature read fail");
+		return -EINVAL;
+	}
+
+	if (memcmp((const void *)value, (const void *)&data, 2)) {
+		err("0x%04x signature is not same!\n", addr);
+		info("0x%04x signature = 0x%02x%02x\n",
+				addr, value[0], value[1]);
+		info("companion signature = 0x%04x\n", data);
+		ret = -EINVAL;
+		goto p_err;
+	} else {
+		info("0x%04x signature is same!\n", addr);
+	}
+
+p_err:
+	return ret;
+}
+#endif
+
 static int fimc_is_comp_check_crc32(struct fimc_is_core *core, u32 addr, int size, char* crc32)
 {
 	int ret = 0;
@@ -493,16 +553,16 @@ static int fimc_is_comp_check_crc32(struct fimc_is_core *core, u32 addr, int siz
 
 	ret = fimc_is_comp_get_crc(core, addr, size, calc_crc);
 	if (ret) {
-		err("fimc_is_comp_get_crc(%x) fail", addr);
+		err("fimc_is_comp_get_crc(0x%08x) fail", addr);
 		ret = -EINVAL;
 		goto p_err;
 	}
 
 	if (memcmp((const void *)crc32, (const void *)calc_crc, FIMC_IS_COMPANION_CRC_SIZE)) {
-		err("%x crc32 is not same!\n", addr);
-		info("%x crc32 = %x%x%x%x\n",
+		err("0x%08x crc32 is not same!\n", addr);
+		info("0x%08x crc32 = 0x%02x%02x%02x%02x\n",
 				addr, crc32[0], crc32[1], crc32[2], crc32[3]);
-		info("companion crc32 = %x%x%x%x\n",
+		info("companion crc32 = 0x%02x%02x%02x%02x\n",
 				calc_crc[0],
 				calc_crc[1],
 				calc_crc[2],
@@ -510,12 +570,146 @@ static int fimc_is_comp_check_crc32(struct fimc_is_core *core, u32 addr, int siz
 		ret = -EINVAL;
 		goto p_err;
 	} else {
-		info("%x crc32 is same!\n", addr);
+		info("0x%08x crc32 is same!\n", addr);
 	}
 
 p_err:
 	return ret;
 }
+
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+int fimc_is_comp_check_crc_with_signature(struct fimc_is_core *core)
+{
+	int ret = 0;
+	struct fimc_is_from_info *sysfs_finfo;
+	struct fimc_is_companion_retention *ret_data;
+	char *cal_buf;
+	char *pcalc_crc;
+	char calc_crc[FIMC_IS_COMPANION_CRC_SIZE * FIMC_IS_COMPANION_CRC_OBJECT];
+	char firmware_crc[FIMC_IS_COMPANION_CRC_SIZE];
+	char pdaf_crc[FIMC_IS_COMPANION_CRC_SIZE];
+	char pdaf_shad_crc[FIMC_IS_COMPANION_CRC_SIZE];
+	char xtalk_crc[FIMC_IS_COMPANION_CRC_SIZE];
+	char lsc_main_grid_crc[FIMC_IS_COMPANION_CRC_SIZE];
+	char lsc_front_grid_crc[FIMC_IS_COMPANION_CRC_SIZE];
+	u16 data[2];
+	int i;
+
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+	char isValid[2];
+#endif
+
+	pcalc_crc = calc_crc;
+
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN)
+	fimc_is_comp_single_write(core, 0x642C, 0x2000);
+	fimc_is_comp_single_write(core, 0x642E, 0xB72C);
+#elif defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+	fimc_is_comp_single_write(core, 0x642C, 0x000B);
+	fimc_is_comp_single_write(core, 0x642E, 0xF500);
+	fimc_is_comp_single_read(core, 0x6F12, &data[0]);
+	fimc_is_comp_single_read(core, 0x6F12, &data[1]);
+	memcpy(pcalc_crc, &data[0], 2);
+	isValid[0] = (FIMC_IS_COMPANION_VALID_CRC & 0x00ff);
+	isValid[1] = (FIMC_IS_COMPANION_VALID_CRC & 0xff00) >> 8;
+	if (memcmp((const void *)pcalc_crc, (const void *)isValid, 2)) {
+		info("crc is not valid! do not check crc.\n");
+		info("Companion Valid = 0x%02x\n", pcalc_crc[0]);
+		return 0;
+	}
+#endif
+	for (i = 0; i < FIMC_IS_COMPANION_CRC_OBJECT; i++) {
+		fimc_is_comp_single_read(core, 0x6F12, &data[0]);
+		fimc_is_comp_single_read(core, 0x6F12, &data[1]);
+		memcpy(pcalc_crc, &data[1], 2);
+		memcpy(pcalc_crc + 2, &data[0], 2);
+		pcalc_crc += 4;
+	}
+
+	memcpy(firmware_crc,
+		calc_crc + FIMC_IS_COMPANION_FIRMWARE_CRC32_ADDR,
+		FIMC_IS_COMPANION_CRC_SIZE);
+	memcpy(pdaf_crc,
+		calc_crc + FIMC_IS_COMPANION_PDAF_BPC_CRC32_ADDR,
+		FIMC_IS_COMPANION_CRC_SIZE);
+	memcpy(pdaf_shad_crc,
+		calc_crc + FIMC_IS_COMPANION_PDAF_SHAD_CRC32_ADDR,
+		FIMC_IS_COMPANION_CRC_SIZE);
+	memcpy(xtalk_crc,
+		calc_crc + FIMC_IS_COMPANION_XTALK_CRC32_ADDR,
+		FIMC_IS_COMPANION_CRC_SIZE);
+	memcpy(lsc_main_grid_crc,
+		calc_crc + FIMC_IS_COMPANION_LSC_MAIN_GRID_CRC32_ADDR,
+		FIMC_IS_COMPANION_CRC_SIZE);
+	memcpy(lsc_front_grid_crc,
+		calc_crc + FIMC_IS_COMPANION_LSC_FRONT_GRID_CRC32_ADDR,
+		FIMC_IS_COMPANION_CRC_SIZE);
+
+	ret_data = &core->companion.retention_data;
+
+	ret = fimc_is_comp_compare_crc_value(firmware_crc, ret_data->firmware_crc32);
+	if (ret < 0) {
+		info("firmware crc is not same!\n");
+		return ret;
+	}
+
+	if (core->current_position == SENSOR_POSITION_REAR) {
+		fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+		fimc_is_sec_get_cal_buf(&cal_buf);
+	} else {
+		fimc_is_sec_get_sysfs_finfo_front(&sysfs_finfo);
+		fimc_is_sec_get_front_cal_buf(&cal_buf);
+	}
+
+	if (fimc_is_sec_check_from_ver(core, core->current_position)) {
+		if(core->current_position == SENSOR_POSITION_REAR) {
+			if (companion_lsc_isvalid) {
+				ret = fimc_is_comp_compare_crc_value(lsc_main_grid_crc,
+					&cal_buf[sysfs_finfo->lsc_gain_crc_addr]);
+				if (ret < 0) {
+					info("LSC MAIN GRID crc is not same!\n");
+					return ret;
+				}
+			}
+			if (pdaf_valid) {
+				ret = fimc_is_comp_compare_crc_value(pdaf_crc,
+					&cal_buf[sysfs_finfo->pdaf_crc_addr]);
+				if (ret < 0) {
+					info("PDAF crc is not same!\n");
+					return ret;
+				}
+			}
+			if (pdaf_shad_valid) {
+				ret = fimc_is_comp_compare_crc_value(pdaf_shad_crc,
+					&cal_buf[sysfs_finfo->pdaf_shad_crc_addr]);
+				if (ret < 0) {
+					info("PDAF SHAD crc is not same!\n");
+					return ret;
+				}
+			}
+			if (companion_coef_isvalid) {
+				ret = fimc_is_comp_compare_crc_value(xtalk_crc,
+					&cal_buf[sysfs_finfo->xtalk_coef_crc_addr]);
+				if (ret < 0) {
+					info("XTALK crc is not same!\n");
+					return ret;
+				}
+			}
+		} else {
+			if (companion_front_lsc_isvalid ) {
+				ret = fimc_is_comp_compare_crc_value(lsc_front_grid_crc,
+					&cal_buf[sysfs_finfo->lsc_gain_crc_addr]);
+			}
+			if (ret < 0) {
+				info("LSC FRONT GRID crc is not same!\n");
+				return ret;
+			}
+		}
+	}
+
+	return ret;
+}
+#endif
 
 int fimc_is_comp_check_cal_crc(struct fimc_is_core *core)
 {
@@ -675,7 +869,7 @@ static int fimc_is_comp_load_binary(struct fimc_is_core *core, char *name, int b
 		ret_data->firmware_size = (int)size;
 		memset(ret_data->firmware_crc32, 0, sizeof(ret_data->firmware_crc32));
 		memcpy(ret_data->firmware_crc32, (const void *) (buf + nread - FIMC_IS_COMPANION_CRC_SIZE), FIMC_IS_COMPANION_CRC_SIZE);
-		info("Companion firmware size = %d firmware crc32 = %x%x%x%x\n",
+		info("Companion firmware size = %d firmware crc32 = 0x%02x%02x%02x%02x\n",
 				ret_data->firmware_size,
 				ret_data->firmware_crc32[0],
 				ret_data->firmware_crc32[1],
@@ -741,7 +935,7 @@ request_fw:
 			memcpy((void *)companion_rev, fw_blob->data + size - 16, 11);
 			ret_data->firmware_size = (int)size;
 			memcpy(ret_data->firmware_crc32, (const void *) (fw_blob->data + size - FIMC_IS_COMPANION_CRC_SIZE), FIMC_IS_COMPANION_CRC_SIZE);
-			info("Companion firmware size = %d firmware crc32 = %x%x%x%x\n",
+			info("Companion firmware size = %d firmware crc32 = 0x%02x%02x%02x%02x\n",
 					ret_data->firmware_size,
 					ret_data->firmware_crc32[0],
 					ret_data->firmware_crc32[1],
@@ -1531,6 +1725,9 @@ int fimc_is_comp_retention(void *core_data)
 	struct fimc_is_companion_retention *ret_data;
 	static char fw_name[100];
 	struct file *fp = NULL;
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+	char signature[2];
+#endif
 	mm_segment_t old_fs;
 
 	info("%s: start\n", __func__);
@@ -1559,15 +1756,38 @@ int fimc_is_comp_retention(void *core_data)
 	set_fs(old_fs);
 
 	ret_data = &core->companion.retention_data;
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+	signature[0] = (FIMC_IS_COMPANION_SIGNATURE_1ST_VALUE & 0x00ff);
+	signature[1] = (FIMC_IS_COMPANION_SIGNATURE_1ST_VALUE & 0xff00) >> 8;
+	ret = fimc_is_comp_check_signature(core,
+			FIMC_IS_COMPANION_SIGNATURE_ADDR,
+			signature);
+	if (ret) {
+		err("check signature fail. (%d)", FIMC_IS_COMPANION_SIGNATURE_1ST_VALUE);
+	}
+#else
 	fimc_is_comp_is_valid(core);
 	usleep_range(1000, 1200);
+#endif
 
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+	ret = fimc_is_comp_check_crc_with_signature(core);
+	if (ret) {
+		err("fimc_is_comp_check_crc_with_signature fail");
+		ret = -EINVAL;
+		goto p_err;
+	}
+	info("signature crc check success!\n");
+#endif
+
+#ifdef CONFIG_COMPANION_STANDBY_CRC
 	ret = fimc_is_comp_single_write(core, 0x0008, 0x0001);
 	if (ret) {
 		err("initialization for CRC Checking write fail");
 	}
 	usleep_range(1000, 1000);
 
+#if !defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) && !defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
 	ret = fimc_is_comp_check_crc32(core,
 			FIMC_IS_COMPANION_FW_START_ADDR,
 			ret_data->firmware_size - FIMC_IS_COMPANION_CRC_SIZE,
@@ -1587,6 +1807,8 @@ int fimc_is_comp_retention(void *core_data)
 			goto p_err;
 		}
 	}
+#endif
+#endif
 
 	/* ARM Reset & Memory Remap */
 	ret = fimc_is_comp_single_write(core, 0x6048, 0x0001);
@@ -1594,11 +1816,13 @@ int fimc_is_comp_retention(void *core_data)
 		err("ARM Reset & Memory Remap write fail");
 	}
 
+#if !defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) && !defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
 	/* Clear Signature */
 	ret = fimc_is_comp_single_write(core, 0x0000, 0xBEEF);
 	if (ret) {
 		err("Clear Signature write fail");
 	}
+#endif
 
 	/* ARM Go */
 	ret = fimc_is_comp_single_write(core, 0x6014, 0x0001);
@@ -1606,12 +1830,38 @@ int fimc_is_comp_retention(void *core_data)
 		err("ARM Go write fail");
 	}
 
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN) || defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN)
+	usleep_range(10000, 10000);
+#elif defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_CLOSE)
+	usleep_range(1000, 1000);
+#endif
+	signature[0] = (FIMC_IS_COMPANION_SIGNATURE_2ND_VALUE & 0x00ff);
+	signature[1] = (FIMC_IS_COMPANION_SIGNATURE_2ND_VALUE & 0xff00) >> 8;
+	ret = fimc_is_comp_check_signature(core,
+			FIMC_IS_COMPANION_SIGNATURE_ADDR,
+			signature);
+	if (ret) {
+		err("check signature fail. (%d)", FIMC_IS_COMPANION_SIGNATURE_2ND_VALUE);
+	}
+
+#if defined(CONFIG_COMPANION_AUTOMATIC_CRC_ON_OPEN)
+	ret = fimc_is_comp_check_crc_with_signature(core);
+	if (ret) {
+		err("fimc_is_comp_check_crc_with_signature fail");
+		ret = -EINVAL;
+		goto p_err;
+	}
+	info("signature crc check success!\n");
+#endif
+#else
 	usleep_range(1000, 1000);
 
 	ret = fimc_is_comp_read_ver(core);
 	if (ret) {
 		err("fimc_is_comp_read_ver fail");
 	}
+#endif
 
 	/* Use M2M Cal Data */
 	if(fimc_is_sec_check_from_ver(core, core->current_position)) {

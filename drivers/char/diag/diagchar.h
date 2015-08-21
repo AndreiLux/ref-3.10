@@ -512,6 +512,9 @@ struct diagchar_dev {
 	int smux_connected;
 	struct diag_request *write_ptr_mdm;
 #endif
+
+	struct mutex dci_buffer_mutex;
+	struct mutex track_mutex;
 };
 
 extern struct diag_bridge_dev *diag_bridge;

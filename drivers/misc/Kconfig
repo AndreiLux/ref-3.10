@@ -540,6 +540,9 @@ config SRAM
 config CHECK_SIMSLOT_COUNT
 	bool "Dual/Single sim support"
 
+config CHECK_GPIO_DETECT
+	tristate "Sub FPBC type, CA type"
+
 config TIMA_LOG
 	tristate "Support for dumping TIMA log"
 	depends on TIMA

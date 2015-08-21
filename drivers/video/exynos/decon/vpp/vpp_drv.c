@@ -377,7 +377,6 @@ static int vpp_clk_enable(struct vpp_dev *vpp)
 	}
 
 	if (is_vpp0_series(vpp)) {
-		printk("is_vpp0_series \n");
 		ret = clk_enable(vpp->res.aclk_vpp_sfw0);
 		if(ret) {
 			dev_err(DEV, "Failed res.aclk_vpp_sfw0 clk enable\n");
@@ -389,7 +388,6 @@ static int vpp_clk_enable(struct vpp_dev *vpp)
 			goto err_3;
 		}
 	} else {
-		printk("is_vpp1_series \n");
 		ret = clk_enable(vpp->res.aclk_vpp_sfw1);
 		if(ret) {
 			dev_err(DEV, "Failed res.aclk_vpp_sfw1 clk enable\n");

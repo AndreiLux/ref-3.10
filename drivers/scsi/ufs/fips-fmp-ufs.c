@@ -312,11 +312,12 @@ static int ufs_fmp_run(struct device *dev, uint32_t mode, uint8_t *data,
 	get_bh(bh);
 	if (write == WRITE_MODE) {
 		memcpy(bh->b_data, data, len);
-		bh->b_state &= ~(1 << BH_Uptodate);
-		bh->b_state &= ~(1 << BH_Lock);
-		ll_rw_block(WRITE_FLUSH_FUA, 1, &bh);
-		wait_on_buffer(bh);
-
+                set_buffer_dirty(bh);
+                sync_dirty_buffer(bh);
+                if (buffer_req(bh) && !buffer_uptodate(bh)) {
+                        dev_err(dev, "IO error syncing for FMP fips write\n");
+			return -ENODEV;
+                } 
 		memset(bh->b_data, 0, FMP_BLK_SIZE);
 	} else {
 		bh->b_state &= ~(1 << BH_Uptodate);

@@ -41,7 +41,7 @@ int ssp_spi_async(struct ssp_data *data, struct ssp_msg *msg)
 	int status = 0;
 
 	if (msg->length)
-		return ssp_spi_sync(data, msg, 1000);
+		return ssp_spi_sync(data, msg, 2000);
 
 	status = do_transfer(data, msg, NULL, 0);
 
@@ -213,6 +213,9 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 	int iRet = 0;
 	struct ssp_msg *msg;
 
+	u64 timestamp;
+	struct timespec ts;
+
 	if ((!(data->uSensorState & (1 << uSensorType)))
 		&& (uInst <= CHANGE_DELAY)) {
 		pr_err("[SSP]: %s - Bypass Inst Skip! - %u\n",
@@ -226,6 +229,14 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		break;
 	case ADD_SENSOR:
 		command = MSG2SSP_INST_BYPASS_SENSOR_ADD;
+		ts = ktime_to_timespec(ktime_get_boottime());
+		timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+
+		if (data->cameraGyroSyncMode && uSensorType == GYROSCOPE_SENSOR) {
+			data->lastTimestamp[uSensorType] = 0ULL;
+		} else {
+			data->lastTimestamp[uSensorType] = timestamp + 5000000ULL;
+		}
 		break;
 	case CHANGE_DELAY:
 		command = MSG2SSP_INST_CHANGE_DELAY;
@@ -281,6 +292,9 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 	char buffer[10] = { 0, };
 	struct ssp_msg *msg;
 
+	u64 timestamp;
+	struct timespec ts;
+
 	if ((!(data->uSensorState & (1 << uSensorType)))
 		&& (uInst <= CHANGE_DELAY)) {
 		pr_err("[SSP]: %s - Bypass Inst Skip! - %u\n",
@@ -294,6 +308,14 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 		break;
 	case ADD_SENSOR:
 		command = MSG2SSP_INST_BYPASS_SENSOR_ADD;
+		ts = ktime_to_timespec(ktime_get_boottime());
+		timestamp = ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+
+		if (data->cameraGyroSyncMode && uSensorType == GYROSCOPE_SENSOR) {
+			data->lastTimestamp[uSensorType] = 0ULL;
+		} else {
+			data->lastTimestamp[uSensorType] = timestamp + 5000000ULL;
+		}
 		break;
 	case CHANGE_DELAY:
 		command = MSG2SSP_INST_CHANGE_DELAY;
@@ -533,7 +555,7 @@ void set_proximity_threshold(struct ssp_data *data,
 
 	if (!(data->uSensorState & (1 << PROXIMITY_SENSOR))) {
 		pr_info("[SSP]: %s - Skip this function!!!"\
-			", proximity sensor is not connected(0x%x)\n",
+			", proximity sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return;
 	}
@@ -629,9 +651,9 @@ void set_gesture_current(struct ssp_data *data, unsigned char uData1)
 	pr_info("[SSP]: Gesture Current Setting - %u\n", uData1);
 }
 
-unsigned int get_sensor_scanning_info(struct ssp_data *data) {
+u64 get_sensor_scanning_info(struct ssp_data *data) {
 	int iRet = 0, z = 0;
-	u32 result = 0;
+	u64 result = 0;
 	char bin[SENSOR_MAX + 1];
 
 	struct ssp_msg *msg = kzalloc(sizeof(*msg), GFP_KERNEL);
@@ -640,7 +662,7 @@ unsigned int get_sensor_scanning_info(struct ssp_data *data) {
 		return -ENOMEM;
 	}
 	msg->cmd = MSG2SSP_AP_SENSOR_SCANNING;
-	msg->length = 4;
+	msg->length = 8;
 	msg->options = AP2HUB_READ;
 	msg->buffer = (char*) &result;
 	msg->free_buffer = 0;

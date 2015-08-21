@@ -38,6 +38,9 @@
 int sc_log_level;
 module_param_named(sc_log_level, sc_log_level, uint, 0644);
 
+int sc_set_blur;
+module_param_named(sc_set_blur, sc_set_blur, uint, 0644);
+
 /*
  * If true, writes the latency of H/W operation to v4l2_buffer.reserved2
  * in the unit of nano seconds.  It must not be enabled with real use-case
@@ -330,7 +333,7 @@ static const struct sc_variant sc_variant[] = {
 		.sc_down_swmin		= SCALE_RATIO_CONST(16, 1),
 	}, {
 		.limit_input = {
-		.min_w			= 16,
+			.min_w		= 16,
 			.min_h		= 16,
 			.max_w		= 8192,
 			.max_h		= 8192,
@@ -1226,6 +1229,138 @@ static int sc_prepare_2nd_scaling(struct sc_ctx *ctx,
 	return 0;
 }
 
+static struct sc_dnoise_filter sc_filter_tab[4] = {
+	{SC_FT_240,   426,  240},
+	{SC_FT_480,   854,  480},
+	{SC_FT_720,  1280,  720},
+	{SC_FT_1080, 1920, 1080},
+};
+
+static int sc_find_filter_size(struct sc_ctx *ctx)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(sc_filter_tab); i++) {
+		if (sc_filter_tab[i].strength == ctx->dnoise_ft.strength) {
+			if (ctx->s_frame.width >= ctx->s_frame.height) {
+				ctx->dnoise_ft.w = sc_filter_tab[i].w;
+				ctx->dnoise_ft.h = sc_filter_tab[i].h;
+			} else {
+				ctx->dnoise_ft.w = sc_filter_tab[i].h;
+				ctx->dnoise_ft.h = sc_filter_tab[i].w;
+			}
+			break;
+		}
+	}
+
+	if (i == ARRAY_SIZE(sc_filter_tab)) {
+		dev_err(ctx->sc_dev->dev,
+			"%s: can't find filter size\n", __func__);
+		return -EINVAL;
+	}
+
+	if (ctx->s_frame.crop.width < ctx->dnoise_ft.w ||
+			ctx->s_frame.crop.height < ctx->dnoise_ft.h) {
+		dev_err(ctx->sc_dev->dev,
+			"%s: filter is over source size.(%dx%d -> %dx%d)\n",
+			__func__, ctx->s_frame.crop.width,
+			ctx->s_frame.crop.height, ctx->dnoise_ft.w,
+			ctx->dnoise_ft.h);
+		return -EINVAL;
+	}
+	return 0;
+}
+
+static int sc_prepare_denoise_filter(struct sc_ctx *ctx)
+{
+	unsigned int sc_down_min = ctx->sc_dev->variant->sc_down_min;
+
+	if (ctx->dnoise_ft.strength <= SC_FT_BLUR)
+		return 0;
+
+	if (sc_find_filter_size(ctx))
+		return -EINVAL;
+
+	if (!allocate_intermediate_frame(ctx))
+		return -ENOMEM;
+
+	memcpy(&ctx->i_frame->frame, &ctx->d_frame, sizeof(ctx->d_frame));
+	ctx->i_frame->frame.crop.width = ctx->dnoise_ft.w;
+	ctx->i_frame->frame.crop.height = ctx->dnoise_ft.h;
+
+	free_intermediate_frame(ctx);
+	if (!initialize_initermediate_frame(ctx)) {
+		free_intermediate_frame(ctx);
+		dev_err(ctx->sc_dev->dev,
+			"%s: failed to initialize int_frame\n", __func__);
+		return -ENOMEM;
+	}
+
+	ctx->h_ratio = SCALE_RATIO(ctx->s_frame.crop.width, ctx->dnoise_ft.w);
+	ctx->v_ratio = SCALE_RATIO(ctx->s_frame.crop.height, ctx->dnoise_ft.h);
+
+	if ((ctx->h_ratio > sc_down_min) ||
+			(ctx->h_ratio < ctx->sc_dev->variant->sc_up_max)) {
+		dev_err(ctx->sc_dev->dev,
+			"filter can't support width scaling(%d -> %d)\n",
+			ctx->s_frame.crop.width, ctx->dnoise_ft.w);
+		goto err_ft;
+	}
+
+	if ((ctx->v_ratio > sc_down_min) ||
+			(ctx->v_ratio < ctx->sc_dev->variant->sc_up_max)) {
+		dev_err(ctx->sc_dev->dev,
+			"filter can't support height scaling(%d -> %d)\n",
+			ctx->s_frame.crop.height, ctx->dnoise_ft.h);
+		goto err_ft;
+	}
+
+	if (ctx->sc_dev->version >= SCALER_VERSION(3, 0, 0)) {
+		BUG_ON(sc_down_min != SCALE_RATIO_CONST(16, 1));
+
+		if (ctx->h_ratio > SCALE_RATIO_CONST(8, 1))
+			ctx->pre_h_ratio = 2;
+		else if (ctx->h_ratio > SCALE_RATIO_CONST(4, 1))
+			ctx->pre_h_ratio = 1;
+		else
+			ctx->pre_h_ratio = 0;
+
+		if (ctx->v_ratio > SCALE_RATIO_CONST(8, 1))
+			ctx->pre_v_ratio = 2;
+		else if (ctx->v_ratio > SCALE_RATIO_CONST(4, 1))
+			ctx->pre_v_ratio = 1;
+		else
+			ctx->pre_v_ratio = 0;
+
+		if (ctx->pre_h_ratio || ctx->pre_v_ratio) {
+			if (!IS_ALIGNED(ctx->s_frame.crop.width,
+					1 << (ctx->pre_h_ratio +
+					ctx->s_frame.sc_fmt->h_shift))) {
+				dev_err(ctx->sc_dev->dev,
+			"filter can't support not-aligned source(%d -> %d)\n",
+			ctx->s_frame.crop.width, ctx->dnoise_ft.w);
+				goto err_ft;
+			} else if (!IS_ALIGNED(ctx->s_frame.crop.height,
+					1 << (ctx->pre_v_ratio +
+					ctx->s_frame.sc_fmt->v_shift))) {
+				dev_err(ctx->sc_dev->dev,
+			"filter can't support not-aligned source(%d -> %d)\n",
+			ctx->s_frame.crop.height, ctx->dnoise_ft.h);
+				goto err_ft;
+			} else {
+				ctx->h_ratio >>= ctx->pre_h_ratio;
+				ctx->v_ratio >>= ctx->pre_v_ratio;
+			}
+		}
+	}
+
+	return 0;
+
+err_ft:
+	free_intermediate_frame(ctx);
+	return -EINVAL;
+}
+
 static int sc_find_scaling_ratio(struct sc_ctx *ctx)
 {
 	__s32 src_width, src_height;
@@ -1389,6 +1524,10 @@ static int sc_vb2_queue_setup(struct vb2_queue *vq,
 	}
 
 	ret = sc_find_scaling_ratio(ctx);
+	if (ret)
+		return ret;
+
+	ret = sc_prepare_denoise_filter(ctx);
 	if (ret)
 		return ret;
 
@@ -1608,6 +1747,9 @@ static int sc_s_ctrl(struct v4l2_ctrl *ctrl)
 	case V4L2_CID_CONTENT_PROTECTION:
 		ctx->cp_enabled = !!ctrl->val;
 		break;
+	case SC_CID_DNOISE_FT:
+		ctx->dnoise_ft.strength = ctrl->val;
+		break;
 	}
 
 	return ret;
@@ -1687,6 +1829,15 @@ static const struct v4l2_ctrl_config sc_custom_ctrl[] = {
 		.step = 1,
 		.min = 0,
 		.max = 1,
+		.def = 0,
+	}, {
+		.ops = &sc_ctrl_ops,
+		.id = SC_CID_DNOISE_FT,
+		.name = "Enable denoising filter",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.step = 1,
+		.min = 0,
+		.max = SC_FT_MAX,
 		.def = 0,
 	}
 };
@@ -2051,8 +2202,8 @@ static bool sc_process_2nd_stage(struct sc_dev *sc, struct sc_ctx *ctx)
 	sc_hwset_hratio(sc, h_ratio, pre_h_ratio);
 	sc_hwset_vratio(sc, v_ratio, pre_v_ratio);
 
-	sc_hwset_polyphase_hcoef(sc, h_ratio, h_ratio);
-	sc_hwset_polyphase_vcoef(sc, v_ratio, v_ratio);
+	sc_hwset_polyphase_hcoef(sc, h_ratio, h_ratio, 0);
+	sc_hwset_polyphase_vcoef(sc, v_ratio, v_ratio, 0);
 
 	sc_hwset_src_pos(sc, s_frame->crop.left, s_frame->crop.top,
 			s_frame->sc_fmt->h_shift, s_frame->sc_fmt->v_shift);
@@ -2243,8 +2394,10 @@ static int sc_run_next_job(struct sc_dev *sc)
 	sc_hwset_hratio(sc, h_ratio, pre_h_ratio);
 	sc_hwset_vratio(sc, v_ratio, pre_v_ratio);
 
-	sc_hwset_polyphase_hcoef(sc, h_ratio, ch_ratio);
-	sc_hwset_polyphase_vcoef(sc, v_ratio, cv_ratio);
+	sc_hwset_polyphase_hcoef(sc, h_ratio, ch_ratio,
+			ctx->dnoise_ft.strength);
+	sc_hwset_polyphase_vcoef(sc, v_ratio, cv_ratio,
+			ctx->dnoise_ft.strength);
 
 	sc_hwset_src_pos(sc, s_frame->crop.left, s_frame->crop.top,
 			s_frame->sc_fmt->h_shift, s_frame->sc_fmt->v_shift);
@@ -2780,6 +2933,7 @@ static int sc_m2m1shot_prepare_operation(struct m2m1shot_context *m21ctx,
 {
 	struct sc_ctx *ctx = m21ctx->priv;
 	struct m2m1shot *shot = &task->task;
+	int ret;
 
 	if (!sc_configure_rotation_degree(ctx, shot->op.rotate))
 		return -EINVAL;
@@ -2798,7 +2952,14 @@ static int sc_m2m1shot_prepare_operation(struct m2m1shot_context *m21ctx,
 						SC_CSC_NARROW : SC_CSC_WIDE;
 	ctx->pre_multi = !!(shot->op.op & M2M1SHOT_OP_PREMULTIPLIED_ALPHA);
 
-	return sc_find_scaling_ratio(m21ctx->priv);
+	ctx->dnoise_ft.strength = (shot->op.op & SC_M2M1SHOT_OP_FILTER_MASK) >>
+					SC_M2M1SHOT_OP_FILTER_SHIFT;
+
+	ret = sc_find_scaling_ratio(m21ctx->priv);
+	if (ret)
+		return ret;
+
+	return sc_prepare_denoise_filter(m21ctx->priv);
 }
 
 static int sc_m2m1shot_prepare_buffer(struct m2m1shot_context *m21ctx,

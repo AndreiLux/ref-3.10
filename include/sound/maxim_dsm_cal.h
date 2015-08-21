@@ -26,34 +26,6 @@
 #define ADDR_RDC			0x2A0050
 #define ADDR_FEATURE_ENABLE 0x2A006A
 
-#define maxdsm_cal_make_get(__name, __own, __value) \
-int maxdsm_cal_get_##__own(uint32_t *__value) \
-{ \
-	char data[12]; \
-	int ret; \
-	memset(data, 0x00, sizeof(data)); \
-	ret = maxdsm_cal_read_file(__name, data, sizeof(data)); \
-	if (ret < 0) \
-		g_mdc->values.__own = ret; \
-	else \
-		sscanf(data, "%x", __value); \
-	return ret; \
-} \
-EXPORT_SYMBOL_GPL(maxdsm_cal_get_##__own);
-
-#define maxdsm_cal_make_set(__name, __own, __value) \
-int maxdsm_cal_set_##__own(uint32_t __value) \
-{ \
-	char data[12]; \
-	int ret; \
-	memset(data, 0x00, sizeof(data)); \
-	sprintf(data, "%x", __value); \
-	ret = maxdsm_cal_write_file(__name, data, sizeof(data)); \
-	g_mdc->values.__own = ret < 0 ? ret : __value; \
-	return ret; \
-} \
-EXPORT_SYMBOL_GPL(maxdsm_cal_set_##__own);
-
 struct maxim_dsm_cal_info {
 	uint32_t min;
 	uint32_t max;
@@ -84,12 +56,6 @@ struct maxim_dsm_cal {
 	struct regmap *regmap;
 	uint32_t platform_type;
 };
-
-#if defined(CONFIG_SND_SOC_MAX98505) || defined(CONFIG_SND_SOC_MAX98505A)
-extern struct class *g_class;
-#else
-struct class *g_class;
-#endif /* CONFIG_SND_SOC_MAX98505 || CONFIG_SND_SOC_MAX98505A */
 
 extern struct regmap *maxdsm_cal_set_regmap(
 		struct regmap *regmap);

@@ -106,7 +106,7 @@ struct arizona_extcon_info {
 	bool detecting;
 	int jack_flips;
 
-	int hpdet_ip;
+	int hpdet_ip_version;
 
 	struct extcon_dev edev;
 };
@@ -161,7 +161,12 @@ static void arizona_extcon_hp_clamp(struct arizona_extcon_info *info,
 {
 	struct arizona *arizona = info->arizona;
 	unsigned int mask, val = 0;
+	unsigned int ep_sel = 0;
 	int ret;
+
+	mutex_lock_nested(&arizona->dapm->card->dapm_mutex,
+			  SND_SOC_DAPM_CLASS_RUNTIME);
+
 
 	switch (arizona->type) {
 	case WM5102:
@@ -179,17 +184,21 @@ static void arizona_extcon_hp_clamp(struct arizona_extcon_info *info,
 		else
 			val = ARIZONA_HP1L_FLWR | ARIZONA_HP1L_SHRTI;
 		break;
+	case CS47L35:
+		/* check whether audio is routed to EPOUT, do not disable OUT1
+		 * in that case */
+		regmap_read(arizona->regmap, ARIZONA_OUTPUT_ENABLES_1, &ep_sel);
+		ep_sel &= ARIZONA_EP_SEL_MASK;
+		/* fall through to next step to set common variables */
 	default:
 		mask = 0;
 		break;
 	};
 
-	mutex_lock(&arizona->dapm->card->dapm_mutex);
-
 	arizona->hpdet_clamp = clamp;
 
 	/* Keep the HP output stages disabled while doing the clamp */
-	if (clamp) {
+	if (clamp && !ep_sel) {
 		ret = regmap_update_bits(arizona->regmap,
 					 ARIZONA_OUTPUT_ENABLES_1,
 					 ARIZONA_OUT1L_ENA |
@@ -215,7 +224,7 @@ static void arizona_extcon_hp_clamp(struct arizona_extcon_info *info,
 	}
 
 	/* Restore the desired state while not doing the clamp */
-	if (!clamp) {
+	if (!clamp && !ep_sel) {
 		ret = regmap_update_bits(arizona->regmap,
 					 ARIZONA_OUTPUT_ENABLES_1,
 					 ARIZONA_OUT1L_ENA |
@@ -443,7 +452,7 @@ static int arizona_hpdet_read(struct arizona_extcon_info *info)
 		return ret;
 	}
 
-	switch (info->hpdet_ip) {
+	switch (info->hpdet_ip_version) {
 	case 0:
 		if (!(val & ARIZONA_HP_DONE)) {
 			dev_err(arizona->dev, "HPDET did not complete: %x\n",
@@ -504,7 +513,7 @@ static int arizona_hpdet_read(struct arizona_extcon_info *info)
 
 	default:
 		dev_warn(arizona->dev, "Unknown HPDET IP revision %d\n",
-			 info->hpdet_ip);
+			 info->hpdet_ip_version);
 	case 2:
 		if (!(val & ARIZONA_HP_DONE_B)) {
 			dev_err(arizona->dev, "HPDET did not complete: %x\n",
@@ -1503,7 +1512,7 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 			break;
 		default:
 			info->micd_clamp = true;
-			info->hpdet_ip = 1;
+			info->hpdet_ip_version = 1;
 			break;
 		}
 		break;
@@ -1514,7 +1523,7 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 			break;
 		default:
 			info->micd_clamp = true;
-			info->hpdet_ip = 2;
+			info->hpdet_ip_version = 2;
 			break;
 		}
 		break;
@@ -1523,7 +1532,7 @@ static int arizona_extcon_probe(struct platform_device *pdev)
 		/* fall through to default case to set common properties */
 	default:
 		info->micd_clamp = true;
-		info->hpdet_ip = 2;
+		info->hpdet_ip_version = 2;
 		break;
 	}
 

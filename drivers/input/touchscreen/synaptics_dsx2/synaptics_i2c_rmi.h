@@ -65,6 +65,14 @@
 /* #define SKIP_UPDATE_FW_ON_PROBE */
 /* #define REPORT_ORIENTATION */
 /* #define USE_SENSOR_SLEEP */
+
+/* "HAS_ALTERNATER_R_R" feature have to check logic for using it. */
+/* #define HAS_ALTERNATER_R_R */
+
+/* only for V model feature*/
+#define GESTURE_3FIN
+#define USE_LPGW_MODE
+
 /**************************************/
 /**************************************/
 
@@ -308,6 +316,18 @@
 #define EDGE_SWIPE_WITDH_X_OFFSET	5
 #define EDGE_SWIPE_AREA_OFFSET	7
 #endif
+#define F51_EDGE_SWIPE_DATA_SIZE 10
+
+#ifdef GESTURE_3FIN
+#define	GESTURE_RIGHT	1
+#define	GESTURE_LEFT	2
+#define	GESTURE_UP		3
+#define	GESTURE_DOWN	4
+#endif
+
+#ifdef USE_LPGW_MODE
+#define	GESTURE_SWIPE			0x07
+#endif
 
 #ifdef SIDE_TOUCH
 #define MAX_SIDE_BUTTONS	8
@@ -460,6 +480,9 @@ struct synaptics_rmi4_f51_handle {
 /* DATA */
 	unsigned short detection_flag_2_addr;	/* F51_CUSTOM_DATA06 */
 	unsigned short edge_swipe_data_addr;	/* F51_CUSTOM_DATA07 */
+#ifdef GESTURE_3FIN
+	unsigned short gesture_3finger_data_addr;	/* F51_CUSTOM_DATA49~50 */
+#endif
 #ifdef EDGE_SWIPE
 	struct synaptics_rmi4_edge_swipe edge_swipe_data;
 #endif
@@ -575,6 +598,26 @@ struct synaptics_finger {
 #ifdef USE_STYLUS
 	bool stylus;
 #endif
+
+	int x;
+	int y;
+	int wx;
+	int wy;
+#ifdef REPORT_2D_Z
+	int z;
+#endif
+	unsigned char tool_type;
+	unsigned char finger_status;
+	int print_type;
+
+};
+
+enum {
+	TOUCH_NONE = 0,
+	TOUCH_RELEASE,
+	TOUCH_RELEASE_FORCED,
+	TOUCH_PRESS,
+	TOUCH_CHANGE,
 };
 
 struct synaptics_rmi4_f12_handle {
@@ -583,12 +626,21 @@ struct synaptics_rmi4_f12_handle {
 	unsigned short ctrl15_addr;		/* F12_2D_CTRL15 : for finger amplitude threshold */
 	unsigned short ctrl23_addr;		/* F12_2D_CTRL23 : object report enable */
 	unsigned char obj_report_enable;	/* F12_2D_CTRL23 */
+	unsigned short ctrl20_addr;		/* F12_2D_CTRL20 : for lpwg mode */
 	unsigned short ctrl26_addr;		/* F12_2D_CTRL26 : for glove mode */
 	unsigned char feature_enable;	/* F12_2D_CTRL26 */
+	unsigned short ctrl27_addr;		/* F12_2D_CTRL26 : for lpwg mode - report rate */
 	unsigned short ctrl28_addr;		/* F12_2D_CTRL28 : for report data */
 	unsigned char report_enable;	/* F12_2D_CTRL28 */
 /* QUERY */
 	unsigned char glove_mode_feature;	/* F12_2D_QUERY_10 */
+};
+
+enum {
+	BUILT_IN = 0,
+	UMS,
+	BUILT_IN_FAC,
+	FFU,
 };
 
 enum bl_version {
@@ -1235,6 +1287,24 @@ struct synaptics_rmi4_f54_handle {
 	struct f54_query_15 query_15;
 	struct f54_query_16 query_16;
 	struct f54_query_21 query_21;
+	struct f54_query_22 query_22;
+	struct f54_query_25 query_25;
+	struct f54_query_27 query_27;
+	struct f54_query_29 query_29;
+	struct f54_query_30 query_30;
+	struct f54_query_32 query_32;
+	struct f54_query_33 query_33;
+	struct f54_query_36 query_36;
+	struct f54_query_38 query_38;
+	struct f54_query_39 query_39;
+	struct f54_query_40 query_40;
+	struct f54_query_43 query_43;
+	struct f54_query_46 query_46;
+	struct f54_query_47 query_47;
+	struct f54_query_49 query_49;
+	struct f54_query_50 query_50;
+	struct f54_query_51 query_51;
+	struct f54_query_55 query_55;
 	struct f54_control control;
 #ifdef FACTORY_MODE
 	struct factory_data *factory_data;
@@ -1378,6 +1448,9 @@ struct synaptics_rmi4_data {
 	bool tsp_probe;
 	bool tsp_pwr_enabled;
 	unsigned char fingers_already_present;
+#ifdef USE_ACTIVE_REPORT_RATE
+	int tsp_change_report_rate;
+#endif
 
 	enum synaptics_product_ids product_id;			/* product id of ic */
 	unsigned char product_id_string_of_bin[SYNAPTICS_RMI4_PRODUCT_ID_SIZE + 1];
@@ -1421,6 +1494,14 @@ struct synaptics_rmi4_data {
 	struct synaptics_rmi_callbacks callbacks;
 #endif
 	bool use_deepsleep;
+#ifdef USE_LPGW_MODE
+	bool use_lpwg_sleep;
+	struct mutex rmi4_lpgw_mutex;
+	unsigned char scrub_id;
+#endif
+#ifdef GESTURE_3FIN
+	int gesture_3fin_code;
+#endif
 	struct pinctrl *pinctrl;
 
 	int (*i2c_read)(struct synaptics_rmi4_data *pdata, unsigned short addr,
@@ -1498,7 +1579,12 @@ int synaptics_rmi4_glove_mode_enables(struct synaptics_rmi4_data *rmi4_data);
 #ifdef SYNAPTICS_RMI_INFORM_CHARGER
 extern void synaptics_tsp_register_callback(struct synaptics_rmi_callbacks *cb);
 #endif
-
+#ifdef USE_LPGW_MODE
+int set_lpgw_mode(struct synaptics_rmi4_data *rmi4_data, int on);
+#endif
+#ifdef USE_ACTIVE_REPORT_RATE
+int change_report_rate(struct synaptics_rmi4_data *rmi4_data, int mode);
+#endif
 static inline struct device *rmi_attr_kobj_to_dev(struct kobject *kobj)
 {
 	return container_of(kobj->parent, struct device, kobj);

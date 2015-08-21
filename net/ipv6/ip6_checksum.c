@@ -82,7 +82,16 @@ int udp6_csum_init(struct sk_buff *skb, struct udphdr *uh, int proto)
 		LIMIT_NETDEBUG(KERN_INFO "IPv6: udp checksum is 0\n");
 		return 1;
 	}
+	if (skb->ip_summed == CHECKSUM_COMPLETE &&
+	    !csum_ipv6_magic(&ipv6_hdr(skb)->saddr, &ipv6_hdr(skb)->daddr,
+			     skb->len, proto, skb->csum))
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
-	return skb_checksum_init(skb, IPPROTO_UDP, ip6_compute_pseudo);
+	if (!skb_csum_unnecessary(skb))
+		skb->csum = ~csum_unfold(csum_ipv6_magic(&ipv6_hdr(skb)->saddr,
+							 &ipv6_hdr(skb)->daddr,
+							 skb->len, proto, 0));
+
+	return 0;
 }
 EXPORT_SYMBOL(udp6_csum_init);

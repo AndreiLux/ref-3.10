@@ -57,7 +57,7 @@
 #define MAIN_SENSOR              1
 #define REF_SENSOR               2
 
-#define CSX_STATUS_REG           SX9310_TCHCMPSTAT_TCHSTAT1_FLAG
+#define CSX_STATUS_REG           SX9310_TCHCMPSTAT_TCHSTAT0_FLAG
 
 #define DEFAULT_THRESHOLD        0x8E
 
@@ -210,15 +210,19 @@ static void sx9310_initialize_register(struct sx9310_p *data)
 {
 	u8 val = 0;
 	int idx;
+	int setup_array_size = sizeof(setup_reg) >> 1;
 
-	for (idx = 0; idx < (sizeof(setup_reg) >> 1); idx++) {
-		sx9310_i2c_write(data, setup_reg[idx].reg, setup_reg[idx].val);
-		pr_info("[SX9310]: %s - Write Reg: 0x%x Value: 0x%x\n",
-			__func__, setup_reg[idx].reg, setup_reg[idx].val);
+	pr_info("[SX9310]: %s - size:%d\n", __func__, setup_array_size);
+	if (setup_array_size > MIN_SETUP_REG) {
+		for (idx = 0; idx < setup_array_size; idx++) {
+			sx9310_i2c_write(data, setup_reg[idx].reg, setup_reg[idx].val);
+			pr_info("[SX9310]: %s - Write Reg: 0x%x Value: 0x%x\n",
+				__func__, setup_reg[idx].reg, setup_reg[idx].val);
 
-		sx9310_i2c_read(data, setup_reg[idx].reg, &val);
-		pr_info("[SX9310]: %s - Read Reg: 0x%x Value: 0x%x\n\n",
-			__func__, setup_reg[idx].reg, val);
+			sx9310_i2c_read(data, setup_reg[idx].reg, &val);
+			pr_info("[SX9310]: %s - Read Reg: 0x%x Value: 0x%x\n\n",
+				__func__, setup_reg[idx].reg, val);
+		}
 	}
 }
 
@@ -1105,7 +1109,6 @@ static void sx9310_touch_process(struct sx9310_p *data, u8 flag)
 {
 	u8 status = 0;
 	s32 threshold;
-	int cnt;
 
 	threshold = sx9310_get_init_threshold(data);
 	sx9310_get_data(data);
@@ -1136,7 +1139,7 @@ static void sx9310_touch_process(struct sx9310_p *data, u8 flag)
 		return;
 	}
 	if (data->state == IDLE) {
-		if (status & (CSX_STATUS_REG << cnt)) {
+		if (status & (CSX_STATUS_REG << MAIN_SENSOR)) {
 #ifdef DEFENCE_CODE_FOR_DEVICE_DAMAGE
 			if ((data->cal_data[0] - 5000) > data->capmain) {
 				sx9310_set_offset_calibration(data);
@@ -1149,11 +1152,11 @@ static void sx9310_touch_process(struct sx9310_p *data, u8 flag)
 #endif
 			send_event(data, ACTIVE);
 		} else{
-			pr_info("[SX9310]: %s - %d already released.\n",
-				__func__, cnt);
+			pr_info("[SX9310]: %s - already released.\n",
+				__func__);
 		}
 	} else { /* User released button */
-		if (!(status & (CSX_STATUS_REG << cnt))) {
+		if (!(status & (CSX_STATUS_REG << MAIN_SENSOR))) {
 			if ((data->touch_mode == INIT_TOUCH_MODE)
 				&& (data->capmain >= threshold))
 				pr_info("[SX9310]: %s - IDLE SKIP\n",
@@ -1162,8 +1165,8 @@ static void sx9310_touch_process(struct sx9310_p *data, u8 flag)
 				send_event(data , IDLE);
 
 		} else {
-			pr_info("[SX9310]: %s - %d still touched\n",
-				__func__, cnt);
+			pr_info("[SX9310]: %s - still touched\n",
+				__func__);
 		}
 	}
 }
@@ -1456,12 +1459,6 @@ static int sx9310_probe(struct i2c_client *client,
 		goto exit_of_node;
 	}
 
-	ret = sx9310_setup_pin(data);
-	if (ret) {
-		pr_err("[SX9310]: %s - could not setup pin\n", __func__);
-		goto exit_setup_pin;
-	}
-
 	i2c_set_clientdata(client, data);
 	data->client = client;
 	data->factory_device = &client->dev;
@@ -1495,15 +1492,19 @@ static int sx9310_probe(struct i2c_client *client,
 	mutex_init(&data->mode_mutex);
 	mutex_init(&data->read_mutex);
 
+	ret = sx9310_setup_pin(data);
+	if (ret) {
+		pr_err("[SX9310]: %s - could not setup pin\n", __func__);
+		goto exit_setup_pin;
+	}
+
 	pr_info("[SX9310]: %s - Probe done!\n", __func__);
 
 	return 0;
+exit_setup_pin:
 grip_sensor_register_failed:
 	input_unregister_device(data->input);
 exit_input_init:
-	free_irq(data->irq, data);
-	gpio_free(data->gpio_nirq);
-exit_setup_pin:
 exit_of_node:
 	kfree(data);
 exit_kzalloc:

@@ -10,7 +10,7 @@ snd-soc-samsung-spdif-objs := spdif.o
 snd-soc-pcm-objs := pcm.o
 snd-soc-i2s-objs := i2s.o
 snd-soc-lpass-objs := lpass.o
-snd-soc-compr-objs := compr.o
+snd-soc-compr-objs := compr.o visualizercap-dummydai.o
 snd-soc-eax-dai-objs := eax-dai.o
 snd-soc-eax-dma-objs := eax-dma.o
 snd-soc-esa-sa-effect-objs := esa_sa_effect.o
@@ -78,6 +78,7 @@ snd-soc-universal5422-florida-objs := universal5422_wm5110.o
 snd-soc-xyref5422-es515-objs := xyref5422_es515.o
 snd-soc-pacific-arizona-objs := pacific_arizona.o
 snd-soc-pacific-hdmi-objs := pacific_hdmi.o
+snd-soc-noble-arizona-objs := noble_arizona.o
 
 obj-$(CONFIG_SND_SOC_SAMSUNG_JIVE_WM8750) += snd-soc-jive-wm8750.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_NEO1973_WM8753) += snd-soc-neo1973-wm8753.o
@@ -120,6 +121,7 @@ obj-$(CONFIG_SND_SOC_SAMSUNG_XYREF5422_ES515) += snd-soc-xyref5422-es515.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_ZERO_FLORIDA) += snd-soc-pacific-arizona.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_ZERO_CLEARWATER) += snd-soc-pacific-arizona.o
 obj-$(CONFIG_SND_SOC_SAMSUNG_ZERO_HDMI) += snd-soc-pacific-hdmi.o
+obj-$(CONFIG_SND_SOC_SAMSUNG_NOBLE_CLEARWATER) += snd-soc-noble-arizona.o
 
 obj-$(CONFIG_SND_SAMSUNG_SEIREN) += seiren/
 

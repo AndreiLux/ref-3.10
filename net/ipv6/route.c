@@ -357,6 +357,12 @@ static bool rt6_check_expired(const struct rt6_info *rt)
 	return false;
 }
 
+static bool rt6_need_strict(const struct in6_addr *daddr)
+{
+	return ipv6_addr_type(daddr) &
+		(IPV6_ADDR_MULTICAST | IPV6_ADDR_LINKLOCAL | IPV6_ADDR_LOOPBACK);
+}
+
 /* Multipath route selection:
  *   Hash based function using packet header and flowlabel.
  * Adapted from fib_info_hashfn()
@@ -2112,7 +2118,6 @@ int ip6_route_get_saddr(struct net *net,
 {
 	struct inet6_dev *idev = ip6_dst_idev((struct dst_entry*)rt);
 	int err = 0;
-	
 	if (rt->rt6i_prefsrc.plen)
 		*saddr = rt->rt6i_prefsrc.addr;
 	else

@@ -43,6 +43,7 @@ u32 __iomem *last_fcount1;
 #define exit_process_barrier(itf) spin_unlock_irq(&itf->process_barrier);
 
 extern struct fimc_is_sysfs_debug sysfs_debug;
+extern bool force_caldata_dump;
 
 /* func to register error report callback */
 int fimc_is_set_err_report_vendor(struct fimc_is_interface *itf,
@@ -162,33 +163,35 @@ int fimc_is_set_fwboot(struct fimc_is_interface *this, int val) {
 	BUG_ON(!this);
 
 #ifdef FW_SUSPEND_RESUME
-	switch (val) {
-	case FIRST_LAUNCHING:
-		/* first launching */
-		set &= ~(1 << RESUME_BIT);
-		set |= (1 << SUSPEND_BIT);
-		clear_bit(IS_IF_RESUME, &this->fw_boot);
-		set_bit(IS_IF_SUSPEND, &this->fw_boot);
-		break;
-	case WARM_BOOT:
-		/* TWIZ & main camera*/
-		set |= (1 << RESUME_BIT) | (1 << SUSPEND_BIT);
-		set_bit(IS_IF_RESUME, &this->fw_boot);
-		set_bit(IS_IF_SUSPEND, &this->fw_boot);
-		break;
-	case COLD_BOOT:
-		/* front camera | !TWIZ camera | dual camera */
-		set = 0;
-		clear_bit(IS_IF_RESUME, &this->fw_boot);
-		clear_bit(IS_IF_SUSPEND, &this->fw_boot);
-		break;
-	default:
-		err("unsupported val(0x%X)", val);
-		set = 0;
-		clear_bit(IS_IF_RESUME, &this->fw_boot);
-		clear_bit(IS_IF_SUSPEND, &this->fw_boot);
-		ret = -EINVAL;
-		break;
+	if (!force_caldata_dump) {
+		switch (val) {
+		case FIRST_LAUNCHING:
+			/* first launching */
+			set &= ~(1 << RESUME_BIT);
+			set |= (1 << SUSPEND_BIT);
+			clear_bit(IS_IF_RESUME, &this->fw_boot);
+			set_bit(IS_IF_SUSPEND, &this->fw_boot);
+			break;
+		case WARM_BOOT:
+			/* TWIZ & main camera*/
+			set |= (1 << RESUME_BIT) | (1 << SUSPEND_BIT);
+			set_bit(IS_IF_RESUME, &this->fw_boot);
+			set_bit(IS_IF_SUSPEND, &this->fw_boot);
+			break;
+		case COLD_BOOT:
+			/* front camera | !TWIZ camera | dual camera */
+			set = 0;
+			clear_bit(IS_IF_RESUME, &this->fw_boot);
+			clear_bit(IS_IF_SUSPEND, &this->fw_boot);
+			break;
+		default:
+			err("unsupported val(0x%X)", val);
+			set = 0;
+			clear_bit(IS_IF_RESUME, &this->fw_boot);
+			clear_bit(IS_IF_SUSPEND, &this->fw_boot);
+			ret = -EINVAL;
+			break;
+		}
 	}
 #endif
 
@@ -717,6 +720,7 @@ static int fimc_is_set_cmd(struct fimc_is_interface *itf,
 			break;
 		}
 	} else {
+		itf->first_launch = false;
 		err("ISR_NDONE is occured");
 		ret = -EINVAL;
 	}
@@ -977,8 +981,8 @@ static void wq_func_general(struct work_struct *data)
 				ISDRV_VERSION, msg->param1,
 				get_drv_clock_gate() |
 				get_drv_dvfs());
-			set_bit(IS_IF_STATE_START, &itf->state);
 			itf->pdown_ready = IS_IF_POWER_DOWN_NREADY;
+			set_bit(IS_IF_STATE_START, &itf->state);
 			wake_up(&itf->init_wait_queue);
 			break;
 		case ISR_DONE:
@@ -1261,7 +1265,6 @@ static void wq_func_subdev(struct fimc_is_subdev *leader,
 	clear_bit(subdev->id, &ldr_frame->out_flag);
 
 complete:
-	clear_bit(REQ_FRAME, &sub_frame->req_flag);
 	sub_frame->stream->fcount = fcount;
 	sub_frame->stream->rcount = rcount;
 
@@ -1289,7 +1292,7 @@ static void wq_func_frame(struct fimc_is_subdev *leader,
 	framemgr_e_barrier_irqs(framemgr, FMGR_IDX_4, flags);
 
 	fimc_is_frame_process_head(framemgr, &frame);
-	if (frame && test_bit(REQ_FRAME, &frame->req_flag)) {
+	if (frame) {
 		if (!frame->stream) {
 			mserr("stream is NULL", subdev, subdev);
 			BUG();
@@ -1902,6 +1905,7 @@ static void wq_func_group_30s(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(frame);
 
 	frame->result = status;
+	clear_bit(group->leader.id, &frame->out_flag);
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
 	fimc_is_group_done(groupmgr, group, frame, done_state);
 	buffer_done(vctx, frame->index, done_state);
@@ -1939,6 +1943,7 @@ static void wq_func_group_31s(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(frame);
 
 	frame->result = status;
+	clear_bit(group->leader.id, &frame->out_flag);
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
 	fimc_is_group_done(groupmgr, group, frame, done_state);
 	buffer_done(vctx, frame->index, done_state);
@@ -1975,6 +1980,7 @@ static void wq_func_group_i0s(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(frame);
 
 	frame->result = status;
+	clear_bit(group->leader.id, &frame->out_flag);
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
 	fimc_is_group_done(groupmgr, group, frame, done_state);
 	buffer_done(vctx, frame->index, done_state);
@@ -2011,6 +2017,7 @@ static void wq_func_group_i1s(struct fimc_is_groupmgr *groupmgr,
 	fimc_is_ischain_meta_invalid(frame);
 
 	frame->result = status;
+	clear_bit(group->leader.id, &frame->out_flag);
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
 	fimc_is_group_done(groupmgr, group, frame, done_state);
 	buffer_done(vctx, frame->index, done_state);
@@ -2046,6 +2053,8 @@ static void wq_func_group_dis(struct fimc_is_groupmgr *groupmgr,
 	/* Cache Invalidation */
 	fimc_is_ischain_meta_invalid(frame);
 
+	frame->result = status;
+	clear_bit(group->leader.id, &frame->out_flag);
 	fimc_is_frame_trans_pro_to_com(framemgr, frame);
 	fimc_is_group_done(groupmgr, group, frame, done_state);
 	buffer_done(vctx, frame->index, done_state);
@@ -2150,7 +2159,6 @@ static void wq_func_shot(struct work_struct *data)
 	struct fimc_is_work *work;
 	struct fimc_is_video_ctx *vctx;
 	unsigned long flags;
-	u32 req_flag;
 	u32 fcount, status;
 	int instance;
 	int group_id;
@@ -2179,16 +2187,13 @@ static void wq_func_shot(struct work_struct *data)
 		switch (group_id) {
 		case GROUP_ID(GROUP_ID_3AA0):
 		case GROUP_ID(GROUP_ID_3AA1):
-			req_flag = REQ_3AA_SHOT;
 			group = &device->group_3aa;
 			break;
 		case GROUP_ID(GROUP_ID_ISP0):
 		case GROUP_ID(GROUP_ID_ISP1):
-			req_flag = REQ_ISP_SHOT;
 			group = &device->group_isp;
 			break;
 		case GROUP_ID(GROUP_ID_DIS0):
-			req_flag = REQ_DIS_SHOT;
 			group = &device->group_dis;
 			break;
 		default:
@@ -2227,11 +2232,6 @@ static void wq_func_shot(struct work_struct *data)
 			do_gettimeofday(&frame->tzone[TM_SHOT_D]);
 #endif
 #endif
-
-			clear_bit(req_flag, &frame->req_flag);
-			if (frame->req_flag)
-				merr("group(%d) req flag is not clear all(%X)",
-					device, group->id, (u32)frame->req_flag);
 
 #ifdef ENABLE_CLOCK_GATE
 			/* dynamic clock off */
@@ -2433,7 +2433,7 @@ static void interface_timer(unsigned long data)
 				print_framemgr_spinlock_usage(core);
 #ifdef FW_PANIC_ENABLE
 				mdelay(2000);
-				panic("[@] camera firmware panic!!!");
+				panic("[@] camera panic!!!");
 #endif
 				return;
 			}
@@ -2728,6 +2728,9 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 
 	this->itf_kvaddr = minfo->kvaddr;
 	this->first_launch = false;
+#ifdef CONFIG_USE_VENDER_FEATURE
+	this->need_cold_reset = false;
+#endif
 	ret = request_irq(irq, interface_isr, 0, "mcuctl", this);
 	if (ret)
 		probe_err("request_irq failed\n");
@@ -3504,7 +3507,12 @@ int fimc_is_hw_sensor_mode(struct fimc_is_interface *this,
 #endif
 
 int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
-	u32 instance, u32 group, u32 bayer, u32 shot, u32 fcount, u32 rcount)
+#if (HOST_FW_INTERFACE_VER >= 2)
+	u32 instance, u32 group, u32 shot, u32 fcount, u32 rcount
+#else
+        u32 instance, u32 group, u32 bayer, u32 shot, u32 fcount, u32 rcount
+#endif
+	)
 {
 	int ret = 0;
 	struct fimc_is_msg msg;
@@ -3515,10 +3523,16 @@ int fimc_is_hw_shot_nblk(struct fimc_is_interface *this,
 	msg.command = HIC_SHOT;
 	msg.instance = instance;
 	msg.group = group;
+#if (HOST_FW_INTERFACE_VER >= 2)
+	msg.param1 = shot;
+	msg.param2 = fcount;
+	msg.param3 = rcount;
+#else
 	msg.param1 = bayer;
 	msg.param2 = shot;
 	msg.param3 = fcount;
 	msg.param4 = rcount;
+#endif
 
 	ret = fimc_is_set_cmd_shot(this, &msg);
 

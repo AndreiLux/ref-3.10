@@ -1,3 +1,5 @@
+
+
 /*
  * sec_charging_common.h
  * Samsung Mobile Charging Common Header
@@ -68,6 +70,64 @@ enum sec_battery_capacity_mode {
 	SEC_BATTERY_CAPACITY_CYCLE,
 };
 
+#if defined(CONFIG_WIRELESS_FIRMWARE_UPDATE) || defined(CONFIG_WIRELESS_CHARGER_HIGH_VOLTAGE)
+enum sec_wireless_info_mode {
+	SEC_WIRELESS_OTP_FIRM_RESULT = 0,
+	SEC_WIRELESS_IC_GRADE,
+	SEC_WIRELESS_IC_REVISION,
+	SEC_WIRELESS_OTP_FIRM_VER_BIN,
+	SEC_WIRELESS_OTP_FIRM_VER,
+	SEC_WIRELESS_TX_FIRM_RESULT,
+	SEC_WIRELESS_TX_FIRM_VER,
+	SEC_TX_FIRMWARE,
+};
+
+enum sec_wireless_firm_update_mode {
+	SEC_WIRELESS_RX_SDCARD_MODE = 0,
+	SEC_WIRELESS_RX_BUILT_IN_MODE,
+	SEC_WIRELESS_TX_ON_MODE,
+	SEC_WIRELESS_TX_OFF_MODE,
+};
+
+enum sec_tx_firmware_mode {
+	SEC_TX_OFF = 0,
+	SEC_TX_STANDBY,
+	SEC_TX_POWER_TRANSFER,
+	SEC_TX_ERROR,
+};
+
+enum sec_wireless_control_mode {
+	WIRELESS_VOUT_OFF = 0,
+	WIRELESS_VOUT_NORMAL_VOLTAGE,	/* 5V , reserved by factory */
+	WIRELESS_VOUT_RESERVED,			/* 6V */
+	WIRELESS_VOUT_HIGH_VOLTAGE,		/* 9V , reserved by factory */
+	WIRELESS_VOUT_CV_CALL,
+	WIRELESS_VOUT_CC_CALL,
+	WIRELESS_VOUT_5V,
+	WIRELESS_VOUT_9V,
+	WIRELESS_PAD_FAN_OFF,
+	WIRELESS_PAD_FAN_ON,
+	WIRELESS_PAD_LED_OFF,
+	WIRELESS_PAD_LED_ON,
+	WIRELESS_VRECT_ADJ_ON,
+	WIRELESS_VRECT_ADJ_OFF,
+};
+#endif
+
+enum sec_siop_event_mode {
+	SIOP_EVENT_IDLE = 0,
+	SIOP_EVENT_WPC_CALL_START,		/* 5V wireless charging + Call */
+	SIOP_EVENT_WPC_CALL_END,		/* 5V wireless charging + Call */
+	SIOP_EVENT_MAX,					/* end */
+};
+
+enum sec_wireless_pad_mode {
+	SEC_WIRELESS_PAD_NONE = 0,
+	SEC_WIRELESS_PAD_WPC,
+	SEC_WIRELESS_PAD_WPC_HV,
+	SEC_WIRELESS_PAD_PMA,
+};
+
 /* ADC type */
 enum sec_battery_adc_type {
 	/* NOT using this ADC channel */
@@ -114,6 +174,12 @@ enum sec_battery_chg_temp_state {
 	SEC_BATTERY_CHG_TEMP_NONE = 0,
 	SEC_BATTERY_CHG_TEMP_HIGH_1ST,
 	SEC_BATTERY_CHG_TEMP_HIGH_2ND,
+};
+
+/* pad_limit state */
+enum sec_battery_wpc_pad_state {
+	SEC_BATTERY_WPC_TEMP_NONE = 0,
+	SEC_BATTERY_WPC_TEMP_HIGH,
 };
 
 struct sec_bat_adc_api {
@@ -567,7 +633,12 @@ struct sec_battery_platform_data {
 	unsigned int chg_skip_check_capacity;
 	int wpc_high_temp;
 	int wpc_high_temp_recovery;
+	int wpc_lcd_on_high_temp;
+	int wpc_lcd_on_high_temp_rec;
 	unsigned int wpc_charging_limit_current;
+	unsigned int sleep_mode_limit_current;
+	unsigned int wpc_skip_check_time;
+	unsigned int wpc_skip_check_capacity;
 
 	/* If these is NOT full check type or NONE full check type,
 	 * it is skipped
@@ -641,10 +712,21 @@ struct sec_battery_platform_data {
 #else
 	int chg_float_voltage;
 #endif
+#if defined(CONFIG_BATTERY_AGE_FORECAST)
+	int last_age_cycle;
+	int age_float_voltage;
+#endif
 	sec_charger_functions_t chg_functions_setting;
 
 	bool fake_capacity;
 	bool wchg_ctl_en;
+
+#ifdef CONFIG_SEC_FACTORY
+	/* Sub PBA Detection for SMD*/
+	int sub_det;
+	bool sub_pba_detection;
+	bool sub_pba_available;
+#endif
 
 	/* ADC setting */
 	unsigned int adc_check_count;
@@ -658,20 +740,41 @@ struct sec_charger_platform_data {
 	/* charging current for type (0: not use) */
 	sec_charging_current_t *charging_current;
 
+	/* wirelss charger */
+	char *wireless_charger_name;
+
 	int vbus_ctrl_gpio;
 	int chg_gpio_en;
 	/* 1 : active high, 0 : active low */
 	int chg_polarity_en;
 	/* float voltage (mV) */
 	int chg_float_voltage;
+	int siop_call_cc_current;
+	int siop_call_cv_current;
 
 	int irq_gpio;
 	int chg_irq;
 	int wpc_det;
 	unsigned long chg_irq_attr;
+	int wireless_cc_cv;
+
+#if defined(CONFIG_WIRELESS_CHARGER_HIGH_VOLTAGE)
+	int wpc_charging_limit_current;
+	int sleep_mode_limit_current;
+#endif
 
 	/* otg_en setting */
 	int otg_en;
+	int ovp_enb;
+
+	int siop_input_limit_current;
+	int siop_charging_limit_current;
+	int siop_hv_input_limit_current;
+	int siop_hv_charging_limit_current;
+	int siop_wireless_input_limit_current;
+	int siop_wireless_charging_limit_current;
+	int siop_hv_wireless_input_limit_current;
+	int siop_hv_wireless_charging_limit_current;
 
 	/* OVP/UVLO check */
 	sec_battery_ovp_uvlo_t ovp_uvlo_check_type;
@@ -701,6 +804,7 @@ struct sec_fuelgauge_platform_data {
 	unsigned long fg_irq_attr;
 	/* fuel alert SOC (-1: not use) */
 	int fuel_alert_soc;
+	int fuel_alert_vol;
 	/* fuel alert can be repeated */
 	bool repeated_fuelalert;
 	sec_fuelgauge_capacity_type_t capacity_calculation_type;

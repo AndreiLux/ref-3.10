@@ -61,7 +61,7 @@ static void spi_boot_terminate(struct link_device *ld, struct io_device *iod)
 }
 
 static int spi_transmit_data(struct spi_device *spi,
-		unsigned char *buf, size_t len)
+		unsigned char *buf, unsigned int len)
 {
 	int ret;
 
@@ -90,7 +90,7 @@ static int spi_boot_tx_skb(struct link_device *ld, struct io_device *iod,
 	struct spi_boot_link_device *sbld = to_spi_boot_link_dev(ld);
 
 	unsigned char *buf = skb->data + SIPC5_MIN_HEADER_SIZE;
-	int len = skb->len - SIPC5_MIN_HEADER_SIZE;
+	unsigned int len = skb->len - SIPC5_MIN_HEADER_SIZE;
 
 	skb_queue_tail(&sbld->tx_q, skb);
 

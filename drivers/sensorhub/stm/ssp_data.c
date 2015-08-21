@@ -15,46 +15,92 @@
 
 #include "ssp_data.h"
 
-
-static void generate_data(struct ssp_data *data, struct sensor_value *sensorsdata,
-						int sensor, u64 timestamp)
-{
-	u64 move_timestamp = data->lastTimestamp[sensor];
-	if ((sensor != PROXIMITY_SENSOR) && (sensor != GESTURE_SENSOR)
-		&& (sensor != STEP_DETECTOR) && (sensor != SIG_MOTION_SENSOR)
-		&& (sensor != STEP_COUNTER)) {
-		while ((move_timestamp * 10 + data->adDelayBuf[sensor] * 15) < (timestamp * 10)) {
-			move_timestamp += data->adDelayBuf[sensor];
-			sensorsdata->timestamp = move_timestamp;
-			report_sensordata(data, sensor, sensorsdata);
-		}
-	}
-}
+#define U64_MS2NS 1000000ULL
+#define U64_US2NS 1000ULL
+#define U64_MS2US 1000ULL
+#define MS_IDENTIFIER 1000000000U
 
 static void get_timestamp(struct ssp_data *data, char *dataframe,
 		int *index, struct sensor_value *sensorsdata,
 		struct ssp_time_diff *sensortime, int sensor)
 {
-	if (sensortime->batch_mode == BATCH_MODE_RUN) {
-		if (sensortime->batch_count == sensortime->batch_count_fixed) {
-			if (sensortime->time_diff == data->adDelayBuf[sensor]) {
-				generate_data(data, sensorsdata, sensor,
-						(data->timestamp - data->adDelayBuf[sensor] * (sensortime->batch_count_fixed - 1)));
-			}
-			sensorsdata->timestamp = data->timestamp - ((sensortime->batch_count - 1) * sensortime->time_diff);
-		} else {
-			if (sensortime->batch_count > 1)
-				sensorsdata->timestamp = data->timestamp - ((sensortime->batch_count - 1) * sensortime->time_diff);
-			else
-				sensorsdata->timestamp = data->timestamp;
-		}
+	unsigned int deltaTimeUs = 0;
+	u64 deltaTimeNs = 0;
+
+	memset(&deltaTimeUs, 0, 4);
+	memcpy(&deltaTimeUs, dataframe + *index, 4);
+
+	if (deltaTimeUs > MS_IDENTIFIER) {
+		//We condsider, unit is ms (MS->NS)
+		deltaTimeNs = ((u64) (deltaTimeUs % MS_IDENTIFIER)) * U64_MS2NS;
 	} else {
-		if (((sensortime->irq_diff * 10) > (data->adDelayBuf[sensor] * 15))
-			&& ((sensortime->irq_diff * 10) < (data->adDelayBuf[sensor] * 100))) {
-			generate_data(data, sensorsdata, sensor, data->timestamp);
-		}
-		sensorsdata->timestamp = data->timestamp;
+		deltaTimeNs = (((u64) deltaTimeUs) * U64_US2NS);//US->NS
 	}
+
+	if (sensortime->batch_mode == BATCH_MODE_RUN) {
+		// BATCHING MODE
+		data->lastTimestamp[sensor] += deltaTimeNs;
+	} else {
+		// NORMAL MODE
+
+		// CAMERA SYNC MODE
+		if (data->cameraGyroSyncMode && sensor == GYROSCOPE_SENSOR) {
+			if (deltaTimeNs == 1000ULL || data->lastTimestamp[sensor] == 0ULL) {
+				data->lastTimestamp[sensor] = data->timestamp;
+				deltaTimeNs = 0ULL;
+			} else {
+				if (data->timestamp < data->lastTimestamp[sensor]) {
+					deltaTimeNs = 0ULL;
+				} else {
+					deltaTimeNs = data->timestamp - data->lastTimestamp[sensor];
+				}
+			}
+
+			if (deltaTimeNs == 0ULL) {
+				// Don't report when time is 0.
+				data->skipEventReport = true;
+			} else if (deltaTimeNs > (data->adDelayBuf[sensor] * 18ULL / 10ULL)) {
+				int cnt = 0;
+				int i = 0;
+				cnt = deltaTimeNs / (data->adDelayBuf[sensor]);
+
+				for (i = 0; i < cnt; i++) {
+					data->lastTimestamp[sensor] += data->adDelayBuf[sensor];
+					sensorsdata->timestamp = data->lastTimestamp[sensor];
+					report_sensordata(data, sensor, sensorsdata);
+					deltaTimeNs -= data->adDelayBuf[sensor];
+				}
+
+				// mod is calculated automatically.
+				if (deltaTimeNs > (data->adDelayBuf[sensor] / 2ULL)) {
+					data->lastTimestamp[sensor] += deltaTimeNs;
+					sensorsdata->timestamp = data->lastTimestamp[sensor];
+					report_sensordata(data, sensor, sensorsdata);
+					data->skipEventReport = true;
+				}
+				deltaTimeNs = 0ULL;
+			}
+			else if (deltaTimeNs < (data->adDelayBuf[sensor] / 2ULL)) {
+				data->skipEventReport = true;
+				deltaTimeNs = 0ULL;
+			}
+			data->lastTimestamp[sensor] += deltaTimeNs;
+
+		} else {
+			// 80ms is magic number. reset time base.
+			if (deltaTimeNs == 1ULL || deltaTimeNs == 80000ULL) {
+				data->lastTimestamp[sensor] = data->timestamp - 15000000ULL;
+				deltaTimeNs = 1000ULL;
+			}
+
+			if (data->report_mode[sensor] == REPORT_MODE_ON_CHANGE) {
+				data->lastTimestamp[sensor] = data->timestamp;
+			} else {
+				data->lastTimestamp[sensor] += deltaTimeNs;
+			}
+		}
+	}
+	sensorsdata->timestamp = data->lastTimestamp[sensor];
 	*index += 4;
 }
 
@@ -130,7 +176,16 @@ int parse_dataframe(struct ssp_data *data, char *dataframe, int frame_len)
 	struct ssp_time_diff sensortime;
 	int sensor, index;
 	u16 length = 0;
-	s16 caldata[3] = { 0, };
+	s16 caldata[3] = {0, };
+	u64 time_threshold = 0;
+
+	if (data->bSspShutdown) {
+		ssp_infof("ssp shutdown, do not parse");
+		return SUCCESS;
+	}
+
+	if (data->debug_enable)
+		print_dataframe(data, dataframe, frame_len);
 
 	memset(&sensorsdata, 0, sizeof(sensorsdata));
 
@@ -147,59 +202,46 @@ int parse_dataframe(struct ssp_data *data, char *dataframe, int frame_len)
 			index += 2;
 			sensortime.batch_count = sensortime.batch_count_fixed = length;
 			sensortime.batch_mode = length > 1 ? BATCH_MODE_RUN : BATCH_MODE_NONE;
-			sensortime.irq_diff = data->timestamp - data->lastTimestamp[sensor];
-
-			if (sensortime.batch_mode == BATCH_MODE_RUN) {
-				if (data->reportedData[sensor] == true) {
-					u64 time;
-					sensortime.time_diff = div64_long((s64)(data->timestamp - data->lastTimestamp[sensor]), (s64)length);
-					if (length > 8)
-						time = data->adDelayBuf[sensor] * 18;
-					else if (length > 4)
-						time = data->adDelayBuf[sensor] * 25;
-					else if (length > 2)
-						time = data->adDelayBuf[sensor] * 50;
-					else
-						time = data->adDelayBuf[sensor] * 100;
-					if ((sensortime.time_diff * 10) > time) {
-						data->lastTimestamp[sensor] = data->timestamp - (data->adDelayBuf[sensor] * length);
-						sensortime.time_diff = data->adDelayBuf[sensor];
-					} else {
-						time = data->adDelayBuf[sensor] * 11;
-						if ((sensortime.time_diff * 10) > time)
-							sensortime.time_diff = data->adDelayBuf[sensor];
-					}
-				} else {
-					if (data->lastTimestamp[sensor] < (data->timestamp - (data->adDelayBuf[sensor] * length))) {
-						data->lastTimestamp[sensor] = data->timestamp - (data->adDelayBuf[sensor] * length);
-						sensortime.time_diff = data->adDelayBuf[sensor];
-					} else
-						sensortime.time_diff = div64_long((s64)(data->timestamp - data->lastTimestamp[sensor]), (s64)length);
-				}
-			} else {
-				if (data->reportedData[sensor] == false)
-					sensortime.irq_diff = data->adDelayBuf[sensor];
-			}
 
 			do {
 				get_sensordata(data, dataframe, &index,
 					sensor, &sensorsdata);
 
-				get_timestamp(data, dataframe, &index, &sensorsdata, &sensortime, sensor);
-				if (sensortime.irq_diff > 1000000)
+				if (data->cameraGyroSyncMode) {
+					data->skipEventReport = false;
+					get_timestamp(data, dataframe, &index, &sensorsdata, &sensortime, sensor);
+
+					if (data->skipEventReport == false) {
+						report_sensordata(data, sensor, &sensorsdata);
+					}
+				} else {
+					get_timestamp(data, dataframe, &index, &sensorsdata, &sensortime, sensor);
+
+					if (sensortime.batch_mode == BATCH_MODE_NONE) {
+						if (data->adDelayBuf[sensor] < 30000000ULL) {
+							time_threshold = 30000000ULL;
+						} else if (data->adDelayBuf[sensor] < 180000000ULL) {
+							time_threshold = 100000000ULL;
+						} else {
+							time_threshold = 180000000ULL;
+						}
+
+						if (data->timestamp > time_threshold + data->lastTimestamp[sensor]) {
+							report_sensordata(data, sensor, &sensorsdata);
+							index -= 4;
+							get_timestamp(data, dataframe, &index, &sensorsdata, &sensortime, sensor);
+						}
+					}
 					report_sensordata(data, sensor, &sensorsdata);
-				else if ((sensor == PROXIMITY_SENSOR) || (sensor == PROXIMITY_RAW)
-						|| (sensor == GESTURE_SENSOR) || (sensor == SIG_MOTION_SENSOR))
-					report_sensordata(data, sensor, &sensorsdata);
-				else
-					ssp_errf("irq_diff is under 1msec (%d)", sensor);
+				}
+				
 				sensortime.batch_count--;
 			} while ((sensortime.batch_count > 0) && (index < frame_len));
 
 			if (sensortime.batch_count > 0)
 				ssp_errf("batch count error (%d)", sensortime.batch_count);
 
-			data->lastTimestamp[sensor] = data->timestamp;
+			//data->lastTimestamp[sensor] = data->timestamp;
 			data->reportedData[sensor] = true;
 			break;
 		case MSG2AP_INST_DEBUG_DATA:

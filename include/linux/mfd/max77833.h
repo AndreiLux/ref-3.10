@@ -47,6 +47,23 @@ struct max77833_haptic_platform_data {
 	char *regulator_name;
 	unsigned int pwm_id;
 
+	u8 auto_res_min_low;
+	u8 auto_res_max_low;
+	u8 auto_res_init_low;
+	u8 auto_res_init_low_high_temp;
+	u8 auto_res_init_low_low_temp;
+	u8 auto_res_min_low_high_temp;
+	u8 auto_res_min_low_low_temp;
+	u8 auto_res_max_low_high_temp;
+	u8 auto_res_max_low_low_temp;
+	u8 auto_res_min_high;
+	u8 auto_res_max_high;
+	u8 auto_res_init_high;
+	u8 auto_res_lock_window;
+	u8 auto_res_update_freq;
+	u8 auto_res_enable;
+	u8 nominal_strength;
+
 	void (*init_hw) (void);
 	void (*motor_en) (bool);
 };

@@ -118,9 +118,6 @@
 /* Flip cover*/
 #define TKEY_FLIP_MODE
 
-/* 1MM stylus */
-#define TKEY_1MM_MODE
-
 #define TK_SUPPORT_MT
 
 /* Boot-up Firmware Update */
@@ -147,6 +144,8 @@
 #ifdef CONFIG_GLOVE_TOUCH
 #define	TK_GLOVE_DWORK_TIME	300
 #endif
+
+#define TK_ADDR_SET 0x20
 
 #if defined(TK_INFORM_CHARGER)
 struct touchkey_callbacks {
@@ -237,9 +236,7 @@ struct touchkey_i2c {
 	struct touchkey_callbacks callbacks;
 	bool charging_mode;
 #endif
-#ifdef TKEY_1MM_MODE
 	bool enabled_1mm;
-#endif
 	bool status_update;
 	struct work_struct update_work;
 	struct workqueue_struct *fw_wq;

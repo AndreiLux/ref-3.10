@@ -27,7 +27,9 @@
 #endif /* CONFIG_PPC */
 
 #include <asm/page.h>
-
+#ifdef CONFIG_TIMA_RKP
+extern int rkp_support_large_memory;
+#endif
 char *of_fdt_get_string(struct boot_param_header *blob, u32 offset)
 {
 	return ((char *)blob) +
@@ -850,7 +852,12 @@ int __init early_init_dt_scan_memory(unsigned long node, const char *uname,
 			continue;
 		pr_debug(" - %llx ,  %llx\n", (unsigned long long)base,
 		    (unsigned long long)size);
-
+#ifdef CONFIG_TIMA_RKP
+		if (size > 0xC0000000) {
+			rkp_support_large_memory = 1;
+			pr_debug(" - rkp_support_large_memory %d \n", rkp_support_large_memory);
+		}
+#endif
 		early_init_dt_add_memory_arch(base, size);
 	}
 

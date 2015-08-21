@@ -100,6 +100,16 @@ void fimc_is_frame_free_head(struct fimc_is_framemgr *this,
 		*item = NULL;
 }
 
+void fimc_is_frame_free_tail(struct fimc_is_framemgr *this,
+	struct fimc_is_frame **item)
+{
+	if (this->frame_fre_cnt)
+		*item = container_of(this->frame_free_head.prev,
+			struct fimc_is_frame, list);
+	else
+		*item = NULL;
+}
+
 void fimc_is_frame_print_free_list(struct fimc_is_framemgr *this)
 {
 	struct fimc_is_frame *frame, *temp;
@@ -197,6 +207,7 @@ int fimc_is_frame_s_process_shot(struct fimc_is_framemgr *this,
 		list_add_tail(&item->list, &this->frame_process_head);
 		this->frame_pro_cnt++;
 
+		item->bak_flag = item->out_flag;
 		item->state = FIMC_IS_FRAME_STATE_PROCESS;
 
 #ifdef TRACE_FRAME
@@ -312,6 +323,16 @@ void fimc_is_frame_complete_head(struct fimc_is_framemgr *this,
 {
 	if (this->frame_com_cnt)
 		*item = container_of(this->frame_complete_head.next,
+			struct fimc_is_frame, list);
+	else
+		*item = NULL;
+}
+
+void fimc_is_frame_complete_tail(struct fimc_is_framemgr *this,
+	struct fimc_is_frame **item)
+{
+	if (this->frame_com_cnt)
+		*item = container_of(this->frame_complete_head.prev,
 			struct fimc_is_frame, list);
 	else
 		*item = NULL;
@@ -562,8 +583,8 @@ int fimc_is_frame_open(struct fimc_is_framemgr *this, u32 buffers)
 		this->frame[i].fcount = 0;
 		this->frame[i].rcount = 0;
 		this->frame[i].result = 0;
-		this->frame[i].req_flag = 0;
 		this->frame[i].out_flag = 0;
+		this->frame[i].bak_flag = 0;
 
 		this->frame[i].shot = NULL;
 		this->frame[i].shot_ext = NULL;
@@ -610,7 +631,6 @@ int fimc_is_frame_close(struct fimc_is_framemgr *this)
 		this->frame[i].fcount = 0;
 		this->frame[i].rcount = 0;
 		this->frame[i].result = 0;
-		this->frame[i].req_flag = 0;
 
 		this->frame[i].shot = NULL;
 		this->frame[i].shot_ext = NULL;

@@ -143,6 +143,11 @@ config ARM_EXYNOS7420_BUS_DEVFREQ_ADV_MIF_THERMAL_POLLING
 	default n
 	depends on ARM_EXYNOS7420_BUS_DEVFREQ
 
+config ARM_EXYNOS7420_BUS_DEVFREQ_TDNR
+	bool "Updated INT clocks for TDNR(Three Dimension Noise Reduction)"
+	default n
+	depends on ARM_EXYNOS7420_BUS_DEVFREQ
+
 config ARM_EXYNOS7580_BUS_DEVFREQ
 	bool "ARM Exynos7580 Memory Bus DEVFREQ Driver"
 	default y

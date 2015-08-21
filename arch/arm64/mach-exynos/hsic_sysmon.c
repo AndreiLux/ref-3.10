@@ -380,7 +380,9 @@ hsic_sysmon_probe(struct usb_interface *ifc, const struct usb_device_id *id)
 	hs->pdev.name = "sys_mon";
 	hs->pdev.id = SYSMON_SS_EXT_MODEM + hs->id;
 	hs->pdev.dev.release = hsic_sysmon_pdev_release;
-	platform_device_register(&hs->pdev);
+	ret = platform_device_register(&hs->pdev);
+	if(ret < 0)
+		pr_err("%s platform devices register error",__func__);
 
 	pr_debug("complete");
 
