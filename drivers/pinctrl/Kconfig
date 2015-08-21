@@ -231,6 +231,14 @@ config SENSORS_FP_SPI_GPIO
 	depends on SENSORS_FINGERPRINT
 	string "Fingerprint spi gpio name"
 
+config MST_NOBLE_TARGET
+	def_bool n
+	bool "mst solution for noble target"
+
+config MST_ZEN_TARGET
+	def_bool n
+	bool "mst solution for zero2 target"
+
 source "drivers/pinctrl/mvebu/Kconfig"
 source "drivers/pinctrl/sh-pfc/Kconfig"
 source "drivers/pinctrl/spear/Kconfig"

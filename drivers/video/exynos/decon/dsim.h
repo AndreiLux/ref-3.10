@@ -39,6 +39,8 @@
 #define DSIM_RX_FIFO_READ_DONE	(0x30800002)
 #define DSIM_MAX_RX_FIFO	(64)
 
+#define AID_INTERPOLATION
+
 #define dsim_err(fmt, ...)					\
 	do {							\
 		pr_err(pr_fmt(fmt), ##__VA_ARGS__);		\
@@ -103,10 +105,12 @@ struct panel_private {
 	unsigned char aid[16];
 	int	temperature;
 	unsigned int coordinate[2];
-	unsigned char date[4];
+	unsigned char date[7];
 	unsigned int lcdConnected;
 	unsigned int state;
 	unsigned int auto_brightness;
+	unsigned int auto_brightness_level;
+	unsigned int brightness_step;
 	unsigned int br_index;
 	unsigned int acl_enable;
 	unsigned int caps_enable;
@@ -117,7 +121,8 @@ struct panel_private {
 
 	void *dim_data;
 	void *dim_info;
-	unsigned int *br_tbl;
+    unsigned int *br_tbl;
+    unsigned char *inter_aor_tbl;
 	unsigned int *hbm_inter_br_tbl;
 	unsigned int *gallery_br_tbl;
 	unsigned char **hbm_tbl;
@@ -149,6 +154,7 @@ struct panel_private {
 	struct mutex	alpm_lock;
 	unsigned char mtpForALPM[36];
 	unsigned char prev_VT[2];
+	unsigned char alpm_support;			// because zero2 use 2panel(ha2, hf3)
 #endif
 	unsigned int interpolation;
 	char hbm_elvss_comp;
@@ -167,7 +173,9 @@ struct panel_private {
 	char a3_elvss_temp_20[5];
 	unsigned char a3_vint[10];
 	unsigned int a3_vint_updated;
+	char* strDatFile;
 
+	int esd_disable;
 };
 
 struct dsim_panel_ops {

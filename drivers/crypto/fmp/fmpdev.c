@@ -970,11 +970,19 @@ int fips_fmp_cipher_init(struct device *dev, uint8_t *enckey, uint8_t *twkey, ui
 
 	if (twkey) {
 		key = (uint8_t *)kmalloc(key_len * 2, GFP_KERNEL);
+		if (!key) {
+			dev_err(dev, "Fail to alloc buffer for key with twkey.\n");
+			goto err_set_key;
+		}
 		memcpy(key, enckey, key_len);
 		memcpy(key + key_len, twkey, key_len);
 		key_len *= 2;
 	} else {
 		key = (uint8_t *)kmalloc(key_len, GFP_KERNEL);
+		if (!key) {
+			dev_err(dev, "Fail to alloc buffer for key.\n");
+			goto err_set_key;
+		}
 		memcpy(key, enckey, key_len);
 	}
 
@@ -2174,6 +2182,7 @@ static long fmpdev_compat_ioctl(struct file *file, unsigned int cmd,
 			fmp_finish_session(info, fcr, sop.ses);
 			return -EFAULT;
 		}
+		return ret;
 	case COMPAT_FMPCRYPT:
 		if (unlikely(ret = compat_kcop_from_user(info, &kcop, fcr, arg)))
 			return ret;
@@ -2216,7 +2225,7 @@ static long fmpdev_compat_ioctl(struct file *file, unsigned int cmd,
 static int fmpdev_release(struct inode *inode, struct file *file)
 {
 	struct fmp_info *info = file->private_data;
-	struct device *dev = info->dev;
+	struct device *dev = NULL;
 	struct todo_list_item *item, *item_safe;
 	int items_freed = 0;
 
@@ -2225,6 +2234,7 @@ static int fmpdev_release(struct inode *inode, struct file *file)
 		return -ENOMEM;
 	}
 
+	dev = info->dev;
 	cancel_work_sync(&info->fmptask);
 
 	mutex_destroy(&info->todo.lock);

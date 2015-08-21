@@ -95,6 +95,12 @@ config SEC_DEBUG_MDM_SEPERATE_CRASH
 	help
 	  This option enables modem crash other debug level.
 
+config SEC_FILE_LEAK_DEBUG
+	bool "Panic when file leak detected"
+	default n
+	help
+	  Panic when file leak detected.
+
 comment "Samsung TN Power Management Options"
 menuconfig SEC_PM
 	bool "Samsung TN Power Management"

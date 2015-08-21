@@ -177,6 +177,59 @@ static int mdnie_request_firmware(char *path, char *name, mdnie_t **buf)
 	return i;
 }
 
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+
+struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s)
+{
+	char string[50];
+	unsigned int i, j, size;
+	mdnie_t *buf = NULL;
+	struct mdnie_table *t;
+	int ret = 0;
+
+	ret = mdnie_check_firmware(path, s->name);
+	if (ret < 0)
+		return NULL;
+
+	t = kzalloc(sizeof(struct mdnie_table), GFP_KERNEL);
+	t->name = kzalloc(strlen(s->name) + 1, GFP_KERNEL);
+	strcpy(t->name, s->name);
+	memcpy(t, s, sizeof(struct mdnie_table));
+
+	if (ret > 0) {
+		for (j = 1, i = MDNIE_CMD1; i <= MDNIE_CMD3; i++, j++) {
+			memset(string, 0, sizeof(string));
+			sprintf(string, "%s_%d", t->name, j);
+			size = mdnie_request_firmware(path, string, &buf);
+			t->tune[i].sequence = buf;
+			t->tune[i].size = size;
+			pr_info("%s: size is %d\n", string, t->tune[i].size);
+		}
+		pr_info("%s ret : %d 1\n", __func__, ret);
+	} else if (ret == 0) {
+		size = mdnie_request_firmware(path, NULL, &buf);
+#if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
+		for (i = 0; i < size; i++) {
+			if (buf[i] == 0xDE)
+				break;
+		}
+		t->tune[MDNIE_CMD1].sequence = &buf[0];
+		t->tune[MDNIE_CMD1].size = i;
+		while(i < size) {
+			if(buf[i] == 0xDD)
+				break;
+			i++;
+		}
+		t->tune[MDNIE_CMD2].sequence = &buf[t->tune[MDNIE_CMD1].size];
+		t->tune[MDNIE_CMD2].size = i - t->tune[MDNIE_CMD1].size;
+#endif
+		t->tune[MDNIE_CMD3].sequence = &buf[i];
+		t->tune[MDNIE_CMD3].size = size - i + 1;
+	}
+
+	return t;
+}
+#else
 struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s)
 {
 	char string[50];
@@ -217,11 +270,7 @@ struct mdnie_table *mdnie_request_table(char *path, struct mdnie_table *s)
 		t->tune[MDNIE_CMD2].size = size - i + 1;
 	}
 
-	/* for (i = 0; i < MDNIE_CMD_MAX; i++) {
-		pr_info("%d: size is %d\n", i, t->tune[i].size);
-		for (j = 0; j < t->tune[i].size; j++)
-			pr_info("%d: %03d: %02x\n", i, j, t->tune[i].sequence[j]);
-	} */
-
 	return t;
 }
+
+#endif

@@ -460,7 +460,7 @@ MHI_STATUS mhi_notify_device(mhi_device_ctxt *mhi_dev_ctxt, u32 chan)
 				(uintptr_t)mhi_dev_ctxt->mhi_local_chan_ctxt[chan].wp);
 		if (IS_HARDWARE_CHANNEL(chan) && (chan % 2)) {
 			if ((mhi_dev_ctxt->mhi_chan_cntr[chan].pkts_xferd %
-						MHI_XFER_DB_INTERVAL) == 0) {
+					mhi_dev_ctxt->counters.mhi_xfer_db_interval) == 0) {
 				MHI_WRITE_DB(mhi_dev_ctxt,
 						mhi_dev_ctxt->channel_db_addr,
 						chan, db_value);

@@ -99,18 +99,19 @@ static int max77900_reg_write(struct i2c_client *client, u8 reg, u8 data)
  ******************************************************************************/
 
 /*
-  * Setup the LDO¡¯s output voltage
-  * the LDO output voltage by writing the LDO_VOUT register and setting the VOUTSET_OVERRIDE bit to ¡®1¡¯
+  * Setup the LDOs output voltage
+  * the LDO output voltage by writing the LDO_VOUT register and setting the VOUTSET_OVERRIDE bit to 1
   *
   * In TX mode, to convert the MAX77900 to peer-to-peer wireless power transmitter mode,
   * the first operation is to apply a voltage (3.3V to 5V) at the output of the LDO (OUT).
-  * The LDO¡¯s output voltage can be targeted to any value between 3.65V and 10V with 50mV/LSB.
+  * The LDOs output voltage can be targeted to any value between 3.65V and 10V with 50mV/LSB.
   * 
   * Default Reset value 0x00 means 3.65V
   *
 *During power-up, the LDO is held off until the VRECT-TARGET threshold 1 converges.
 *The voltage control loop ensures that the output voltage is maintained at VOUT-REG to power the system.
 */
+#if 0
 static void max77900_set_ldo_vout(struct max77900_charger_data *charger, u32 input_value)
 {
 	u8 read_value=0;
@@ -295,17 +296,7 @@ void max77900_wireless_chg_init(struct max77900_charger_data *charger)
 
 	pr_info("%s -------------------------------------------------- \n", __func__);
 }
-
-static void max77900_detect_work(
-		struct work_struct *work)
-{
-	struct max77900_charger_data *charger =
-		container_of(work, struct max77900_charger_data, wpc_work.work);
-
-	pr_info("%s\n", __func__);
-
-	max77900_wireless_chg_init(charger);
-}
+#endif
 
 static int max77900_chg_get_property(struct power_supply *psy,
 		enum power_supply_property psp,
@@ -341,9 +332,6 @@ static int max77900_chg_set_property(struct power_supply *psy,
 			max77900_reg_write(charger->client, 0x18, 0x02); // ldo out enable
 			break;
 		case POWER_SUPPLY_PROP_ONLINE:
-			if(val->intval == POWER_SUPPLY_TYPE_WIRELESS) {
-				max77900_wireless_chg_init(charger);
-			}
 			break;	
 		default:
 			return -EINVAL;
@@ -352,7 +340,6 @@ static int max77900_chg_set_property(struct power_supply *psy,
 	return 0;
 }
 
-#if 0
 static void max77900_wpc_isr_work(struct work_struct *work)
 {
 	//struct bq51221_charger_data *charger =
@@ -361,23 +348,85 @@ static void max77900_wpc_isr_work(struct work_struct *work)
 	pr_info("%s \n",__func__);
 }
 
+static void max77900_detect_work(
+		struct work_struct *work)
+{
+	struct max77900_charger_data *charger =
+		container_of(work, struct max77900_charger_data, wpc_work.work);
+	int wc_w_state;
+	int wc_w_state_irq;
+	union power_supply_propval value;
+
+	pr_info("%s\n",__func__);
+
+	wc_w_state = gpio_get_value(charger->pdata->wpc_det);
+	wc_w_state_irq = gpio_get_value(charger->pdata->wpc_int);
+	pr_info("%s wc_w_state = %d , wc_w_state_irq = %d\n", __func__, wc_w_state, wc_w_state_irq);
+
+	if ((charger->wc_w_state == 0) && (wc_w_state == 1)) {
+		value.intval = false;
+		psy_do_property("max77833-charger", set,
+				POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL, value);
+
+		value.intval = SEC_WIRELESS_PAD_WPC;
+		psy_do_property("wireless", set,
+				POWER_SUPPLY_PROP_ONLINE, value);
+
+		pr_info("%s: wpc activated, set V_INT as PN\n",__func__);
+
+	} else if ((charger->wc_w_state == 1) && (wc_w_state == 0)) {
+		value.intval = SEC_WIRELESS_PAD_NONE;
+		psy_do_property("wireless", set,
+				POWER_SUPPLY_PROP_ONLINE, value);
+		pr_info("%s: wpc deactivated, set V_INT as PD\n",__func__);
+	}
+
+	pr_info("%s: w(%d to %d)\n", __func__,
+		charger->wc_w_state, wc_w_state);
+
+	charger->wc_w_state = wc_w_state;
+
+	wc_w_state = gpio_get_value(charger->pdata->wpc_det);
+	wc_w_state_irq = gpio_get_value(charger->pdata->wpc_int);
+
+	pr_info("%s wc_w_state = %d , wc_w_state_irq = %d\n", __func__, wc_w_state, wc_w_state_irq);
+	wake_unlock(&charger->wpc_wake_lock);
+}
+
+
 static irqreturn_t max77900_wpc_irq_thread(int irq, void *irq_data)
 {
 	struct max77900_charger_data *charger = irq_data;
 
 	pr_info("%s \n",__func__);
-		schedule_delayed_work(&charger->isr_work, 0);
+	max77900_reg_write(charger->client, 0x18, 0x02); // ldo out enable
 
 	return IRQ_HANDLED;
 }
-#endif
+
+static irqreturn_t max77900_wpc_det_thread(int irq, void *irq_data)
+{
+	struct max77900_charger_data *charger = irq_data;
+	unsigned long delay;
+
+	pr_info("%s \n",__func__);
+	wake_lock(&charger->wpc_wake_lock);
+	if (charger->wc_w_state)
+		delay = msecs_to_jiffies(500);
+	else
+		delay = msecs_to_jiffies(0);
+	queue_delayed_work(charger->wqueue, &charger->wpc_work,
+			delay);
+
+	return IRQ_HANDLED;
+}
 
 static int max77900_chg_parse_dt(struct device *dev,
 		max77900_charger_platform_data_t *pdata)
 {
 	int ret = 0;
 	struct device_node *np = dev->of_node;
-//	enum of_gpio_flags irq_gpio_flags;
+	enum of_gpio_flags irq_gpio_flags;
 
 	if (!np) {
 		pr_info("%s: np NULL\n", __func__);
@@ -395,17 +444,24 @@ static int max77900_chg_parse_dt(struct device *dev,
 			pr_info("%s: Vendor is Empty\n", __func__);
 	}
 
-#if 0
-	ret = pdata->irq_gpio = of_get_named_gpio_flags(np, "max77900-charger,irq-gpio",
+	/* wpc_det */
+	ret = pdata->wpc_det = of_get_named_gpio_flags(np, "battery,wpc_det",
 			0, &irq_gpio_flags);
 	if (ret < 0) {
-		dev_err(dev, "%s : can't get irq-gpio\r\n", __FUNCTION__);
-		return ret;
+		dev_err(dev, "%s : can't get wpc_det\r\n", __FUNCTION__);
+	} else {
+		pdata->irq_wpc_det = gpio_to_irq(pdata->wpc_det);
+		pr_info("%s wpc_det = 0x%x, irq_wpc_det = 0x%x \n",__func__, pdata->wpc_det, pdata->irq_wpc_det);
 	}
-	pr_info("%s irq_gpio = %d \n",__func__, pdata->irq_gpio);
-	pdata->irq_base = gpio_to_irq(pdata->irq_gpio);
-
-#endif
+	/* wpc_int */
+	ret = pdata->wpc_int = of_get_named_gpio_flags(np, "battery,wpc_int",
+			0, &irq_gpio_flags);
+	if (ret < 0) {
+		dev_err(dev, "%s : can't wpc_int\r\n", __FUNCTION__);
+	} else {
+		pdata->irq_wpc_int = gpio_to_irq(pdata->wpc_int);
+		pr_info("%s wpc_int = 0x%x, irq_wpc_int = 0x%x \n",__func__, pdata->wpc_int, pdata->irq_wpc_int);
+	}
 
 	return ret;
 }
@@ -455,31 +511,7 @@ static int max77900_charger_probe(
 	charger->client = client;
 	charger->pdata = pdata;
 
-    pr_info("%s: %s\n", __func__, charger->pdata->wireless_charger_name );
-
-#if 0
-	/* if board-init had already assigned irq_base (>=0) ,
-	no need to allocate it;
-	assign -1 to let this driver allocate resource by itself*/
-
-    if (pdata->irq_base < 0)
-        pdata->irq_base = irq_alloc_descs(-1, 0, MAX77900_EVENT_IRQ, 0);
-	if (pdata->irq_base < 0) {
-		pr_err("%s: irq_alloc_descs Fail! ret(%d)\n",
-				__func__, pdata->irq_base);
-		ret = -EINVAL;
-		goto irq_base_err;
-	} else {
-		charger->irq_base = pdata->irq_base;
-		pr_info("%s: irq_base = %d\n",
-			 __func__, charger->irq_base);
-
-#if (LINUX_VERSION_CODE>=KERNEL_VERSION(3,4,0))
-		irq_domain_add_legacy(of_node, MAX77900_EVENT_IRQ, charger->irq_base, 0,
-				      &irq_domain_simple_ops, NULL);
-#endif /*(LINUX_VERSION_CODE>=KERNEL_VERSION(3,4,0))*/
-	}
-#endif
+	pr_info("%s: %s\n", __func__, charger->pdata->wireless_charger_name );
 
 	i2c_set_clientdata(client, charger);
 
@@ -492,29 +524,6 @@ static int max77900_charger_probe(
 
 	mutex_init(&charger->io_lock);
 
-#if 0
-	if (charger->wpc_irq) {
-		INIT_DELAYED_WORK(
-			&charger->isr_work, max77900_wpc_isr_work);
-
-		ret = request_threaded_irq(charger->wpc_irq,
-				NULL, max77900_wpc_irq_thread,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-				"charger-irq", charger);
-		if (ret) {
-			dev_err(&client->dev,
-				"%s: Failed to Reqeust IRQ\n", __func__);
-			goto err_supply_unreg;
-		}
-
-		ret = enable_irq_wake(charger->wpc_irq);
-		if (ret < 0)
-			dev_err(&client->dev,
-				"%s: Failed to Enable Wakeup Source(%d)\n",
-				__func__, ret);
-	}
-#endif
-
 	ret = power_supply_register(&client->dev, &charger->psy_chg);
 	if (ret) {
 		dev_err(&client->dev,
@@ -522,15 +531,58 @@ static int max77900_charger_probe(
 		goto err_supply_unreg;
 	}
 
-	charger->wqueue = create_workqueue("max77900_workqueue");
+	charger->wqueue = create_singlethread_workqueue("max77900_workqueue");
 	if (!charger->wqueue) {
 		pr_err("%s: Fail to Create Workqueue\n", __func__);
 		goto err_pdata_free;
 	}
 
-	wake_lock_init(&(charger->wpc_wake_lock), WAKE_LOCK_SUSPEND,
-			"wpc_wakelock");
+	wake_lock_init(&charger->wpc_wake_lock, WAKE_LOCK_SUSPEND,
+			"max77900_wakelock");
 	INIT_DELAYED_WORK(&charger->wpc_work, max77900_detect_work);
+
+	/* wpc_det */
+	if (charger->pdata->irq_wpc_det) {
+		ret = request_threaded_irq(charger->pdata->irq_wpc_det,
+				NULL, max77900_wpc_det_thread,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+				| IRQF_ONESHOT,
+				"max77900-det", charger);
+		if (ret) {
+			dev_err(&client->dev,
+				"%s: Failed to Reqeust IRQ\n", __func__);
+			goto err_pdata_free;
+		}
+
+		ret = enable_irq_wake(charger->pdata->irq_wpc_det);
+		if (ret < 0)
+			dev_err(&client->dev,
+				"%s: Failed to Enable Wakeup Source(%d)\n",
+				__func__, ret);
+	}
+
+	/* wpc_irq */
+	if (charger->pdata->irq_wpc_int) {
+		INIT_DELAYED_WORK(
+			&charger->isr_work, max77900_wpc_isr_work);
+
+		ret = request_threaded_irq(charger->pdata->irq_wpc_int,
+				NULL, max77900_wpc_irq_thread,
+				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING
+				| IRQF_ONESHOT,
+				"max77900-irq", charger);
+		if (ret) {
+			dev_err(&client->dev,
+				"%s: Failed to Reqeust IRQ\n", __func__);
+			goto err_pdata_free;
+		}
+
+		ret = enable_irq_wake(charger->pdata->irq_wpc_int);
+		if (ret < 0)
+			dev_err(&client->dev,
+				"%s: Failed to Enable Wakeup Source(%d)\n",
+				__func__, ret);
+	}
 
 	dev_info(&client->dev,
 		"%s: max77900 Charger Driver Loaded\n", __func__);
@@ -546,7 +598,7 @@ err_i2cfunc_not_support:
 	kfree(charger);
 err_wpc_nomem:
 err_parse_dt:
-	kfree(pdata);
+	devm_kfree(&client->dev,pdata);
 	return ret;
 }
 

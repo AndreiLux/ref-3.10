@@ -45,7 +45,7 @@ int gyro_open_calibration(struct ssp_data *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY | O_NOFOLLOW, 0660);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY | O_NOFOLLOW | O_NONBLOCK, 0660);
 	if (IS_ERR(cal_filp)) {
 		set_fs(old_fs);
 		iRet = PTR_ERR(cal_filp);
@@ -87,7 +87,7 @@ static int save_gyro_caldata(struct ssp_data *data, s16 *iCalData)
 	set_fs(KERNEL_DS);
 
 	cal_filp = filp_open(CALIBRATION_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW, 0660);
+			O_CREAT | O_TRUNC | O_WRONLY | O_NOFOLLOW | O_NONBLOCK, 0660);
 	if (IS_ERR(cal_filp)) {
 		pr_err("[SSP]: %s - Can't open calibration file\n", __func__);
 		set_fs(old_fs);

@@ -2320,6 +2320,9 @@ static int dmac_alloc_resources(struct pl330_dmac *pl330)
 		return -ENOMEM;
 	}
 
+	dev_info(pi->dev, "%s, MicroCode PA base address:0x%lx\n",
+			__func__, (unsigned long)pl330->mcode_bus);
+
 	ret = dmac_alloc_threads(pl330);
 	if (ret) {
 		dev_err(pi->dev, "%s:%d Can't to create channels for DMAC!\n",

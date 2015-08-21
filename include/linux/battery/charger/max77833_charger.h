@@ -45,6 +45,9 @@ ssize_t max77833_chg_store_attrs(struct device *dev,
 extern sec_battery_platform_data_t sec_battery_pdata;
 
 #define MAX77833_CHG_SAFEOUT2                0x80
+#define MAX77833_CNFG_GPIO_0                 0x30
+#define MAX77833_CNFG_GPIO_0_RESET_VAL       0x02
+#define MAX77833_CNFG_GPIO_0_HIGH_VAL        0x09
 
 /* MAX77833_CHG_REG_CHG_INT */
 #define MAX77833_BYP_I                  (1 << 0)
@@ -77,7 +80,7 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 #define MAX77833_WCIN_OK_SHIFT		5
 #define MAX77833_CHGIN_OK               0x40
 #define MAX77833_CHGIN_OK_SHIFT         6
-#define MAX77833_AICL_OK                0x04
+#define MAX77833_AICL_OK                0x80
 #define MAX77833_AICL_OK_SHIFT          7
 
 /* MAX77833_CHG_REG_CHG_DTLS_00 */
@@ -134,19 +137,38 @@ extern sec_battery_platform_data_t sec_battery_pdata;
 /* MAX77833_CHG_REG_CHG_CNFG_17 */
 #define MAX77833_CHG_WCIN_LIM                   0x7F
 
-#define REDUCE_CURRENT_STEP						100
+/* MAX77833_CHG_REG_CNFG_20 */
+#define CHG_CNFG_20_ADC_CHG_SEL_IIN		0x00
+#define CHG_CNFG_20_ADC_CHG_SEL_V_WCIN	0x01
+#define CHG_CNFG_20_ADC_CHG_SEL_V_CHGIN	0x02
+#define CHG_CNFG_20_ADC_CHG_SEL_V_BYP		0x03
+
+#define REDUCE_CURRENT_STEP						50
 #define MINIMUM_INPUT_CURRENT					300
 #define SIOP_INPUT_LIMIT_CURRENT                1200
 #define SIOP_CHARGING_LIMIT_CURRENT             1000
-#define SIOP_WIRELESS_INPUT_LIMIT_CURRENT       530
-#define SIOP_WIRELESS_CHARGING_LIMIT_CURRENT    780
-#define SIOP_HV_INPUT_LIMIT_CURRENT                700
-#define SIOP_HV_CHARGING_LIMIT_CURRENT             1000
+#define SIOP_HV_INPUT_LIMIT_CURRENT             1200
+#define SIOP_HV_CHARGING_LIMIT_CURRENT          1000
+#define SIOP_WIRELESS_INPUT_LIMIT_CURRENT       700
+#define SIOP_WIRELESS_CHARGING_LIMIT_CURRENT    600
+#define SIOP_HV_WIRELESS_INPUT_LIMIT_CURRENT	500
+#define SIOP_HV_WIRELESS_CHARGING_LIMIT_CURRENT	1000
 #define SLOW_CHARGING_CURRENT_STANDARD          400
 
-#define INPUT_CURRENT_TA		                1000
+enum chg_adc_value {
+	CHG_ADC_I_IN = CHG_CNFG_20_ADC_CHG_SEL_IIN,
+	CHG_ADC_V_WCIN = CHG_CNFG_20_ADC_CHG_SEL_V_WCIN,
+	CHG_ADC_V_CHGIN = CHG_CNFG_20_ADC_CHG_SEL_V_CHGIN,
+	CHG_ADC_V_BYP = CHG_CNFG_20_ADC_CHG_SEL_V_BYP,
+	CHG_INIT_DETECTED_I_IN,
+};
+
+#define INPUT_CURRENT_TA		                1500
+#define INPUT_CURRENT_WPC		                500
+
 struct max77833_charger_data {
 	struct device           *dev;
+	struct max77833_dev *max77833;
 	struct i2c_client       *i2c;
 	struct i2c_client       *pmic_i2c;
 	struct mutex            charger_mutex;
@@ -154,6 +176,7 @@ struct max77833_charger_data {
 	struct max77833_platform_data *max77833_pdata;
 
 	struct power_supply	psy_chg;
+	struct power_supply	psy_otg;
 
 	struct workqueue_struct *wqueue;
 	struct work_struct	chgin_work;
@@ -161,7 +184,9 @@ struct max77833_charger_data {
 	struct delayed_work	recovery_work;	/*  softreg recovery work */
 	struct delayed_work	wpc_work;	/*  wpc detect work */
 	struct delayed_work	chgin_init_work;	/*  chgin init work */
-	struct delayed_work afc_work;
+	struct delayed_work	afc_work;
+	struct delayed_work	wc_afc_work;
+	struct delayed_work	check_slow_work;
 	struct delayed_work	aicl_work;
 
 /* mutex */
@@ -173,6 +198,7 @@ struct max77833_charger_data {
 	struct wake_lock wpc_wake_lock;
 	struct wake_lock afc_wake_lock;
 	struct wake_lock chgin_wake_lock;
+	struct wake_lock check_slow_wake_lock;
 	struct wake_lock aicl_wake_lock;
 
 	unsigned int	is_charging;
@@ -187,6 +213,7 @@ struct max77833_charger_data {
 	int		aicl_on;
 	int		status;
 	int		siop_level;
+	int		siop_event;
 	int uvlo_attach_flag;
 	int uvlo_attach_cable_type;
 
@@ -217,12 +244,17 @@ struct max77833_charger_data {
 	int		soft_reg_recovery_cnt;
 
 	bool afc_detect;
+	bool wc_afc_detect;
 	bool is_mdock;
+
+	bool iin_current_detecting;
+	int detected_iin_current;
 
 	int pmic_ver;
 	int input_curr_limit_step;
 	int wpc_input_curr_limit_step;
 	int charging_curr_step;
+	u8	aicl_threshold;
 
 	sec_charger_platform_data_t	*pdata;
 };

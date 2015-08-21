@@ -12,11 +12,19 @@
 #
 #
 
+# { SRUK-MALI_SYSTRACE_SUPPORT
+config MALI_SYSTRACE_SUPPORT
+       bool "systrace Debug support"
+       depends on MALI_T7XX
+       default y
+       help
+          Enable systrace marker in kernel
+# SRUK-MALI_SYSTRACE_SUPPORT }
 
 config MALI_GATOR_SUPPORT
 	bool "Streamline Debug support"
 	depends on MALI_T7XX
-	default n
+        default y
 	help
 	  Adds diagnostic support for use with the ARM Streamline Performance Analyzer.
 	  You will need the Gator device driver already loaded before loading this driver when enabling

@@ -160,8 +160,14 @@ static int s2mpb02_led_setup(struct s2mpb02_led_data *led_data)
 {
 	int ret = 0;
 	struct s2mpb02_led *data = led_data->data;
-	int id = data->id;
-	int value;
+	int id, value;
+
+	if (data == NULL) {
+		pr_err("%s : data is null\n",__func__);
+		return -1;
+	}
+
+	id = data->id;
 
 	/* set Low Voltage operating mode disable */
 	ret |= s2mpb02_update_reg(led_data->i2c, S2MPB02_REG_FLED_CTRL1,
@@ -176,6 +182,10 @@ static int s2mpb02_led_setup(struct s2mpb02_led_data *led_data)
 	value = s2mpb02_led_get_en_value(led_data, 0);
 	ret = s2mpb02_update_reg(led_data->i2c,
 				S2MPB02_REG_FLED_CTRL1, value, S2MPB02_FLED_ENABLE_MODE_MASK);
+
+	if (data->irda_off)
+		ret = s2mpb02_update_reg(led_data->i2c,
+				S2MPB02_REG_FLED_CTRL2, 0x04, S2MPB02_TORCH_MASK);
 
 	return ret;
 }
@@ -297,6 +307,7 @@ static int of_s2mpb02_torch_dt(struct s2mpb02_dev *iodev,
 	struct device_node *led_np, *np, *c_np;
 	int ret;
 	u32 temp;
+	u32 irda_off=0;
 	const char *temp_str;
 	int index;
 
@@ -345,6 +356,14 @@ static int of_s2mpb02_torch_dt(struct s2mpb02_dev *iodev,
 			pr_info("%s out of range : timeout\n", __func__);
 		}
 		pdata->leds[index].timeout = temp;
+
+		if(index == 1) {
+			ret = of_property_read_u32(c_np, "irda_off", &irda_off);
+			if (ret) {
+				pr_info("%s failed to get a irda_off\n", __func__);
+			}
+			pdata->leds[index].irda_off = irda_off;
+		}
 	}
 	of_node_put(led_np);
 

@@ -97,6 +97,11 @@ extern int sc_log_level;
 
 #define SCALER_VERSION(x, y, z) (((x) << 16) | ((y) << 8) | (z))
 
+/* for denoising filter */
+#define SC_CID_DNOISE_FT		(V4L2_CID_EXYNOS_BASE + 150)
+#define SC_M2M1SHOT_OP_FILTER_SHIFT	(28)
+#define SC_M2M1SHOT_OP_FILTER_MASK	(0xf << 28)
+
 #ifdef CONFIG_VIDEOBUF2_ION
 #define sc_buf_sync_prepare vb2_ion_buf_prepare
 #define sc_buf_sync_finish vb2_ion_buf_finish
@@ -320,6 +325,22 @@ struct sc_init_phase {
 	u32			h;
 };
 
+enum sc_ft {
+	SC_FT_NONE = 0,
+	SC_FT_BLUR,
+	SC_FT_240,
+	SC_FT_480,
+	SC_FT_720,
+	SC_FT_1080,
+	SC_FT_MAX,
+};
+
+struct sc_dnoise_filter {
+	u32			strength;
+	u32			w;
+	u32			h;
+};
+
 struct sc_ctx;
 
 /*
@@ -425,6 +446,7 @@ struct sc_ctx {
 	bool				cp_enabled;
 	struct sc_csc			csc;
 	struct sc_init_phase		init_phase;
+	struct sc_dnoise_filter		dnoise_ft;
 };
 
 static inline struct sc_frame *ctx_get_frame(struct sc_ctx *ctx,

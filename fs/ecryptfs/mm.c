@@ -25,6 +25,7 @@ DEFINE_MUTEX(ecryptfs_mm_mutex);
 
 struct ecryptfs_mm_drop_cache_param {
 	int user_id;
+    int engine_id;
 };
 
 #define INVALIDATE_MAPPING_RETRY_CNT 3
@@ -112,8 +113,9 @@ void ecryptfs_mm_do_sdp_cleanup(struct inode *inode) {
 		if(rc)
 			DEK_LOGE("%s: vfs_sync returned error rc: %d\n", __func__, rc);
 
-		if(ecryptfs_is_persona_locked(crypt_stat->userid)) {
-			DEK_LOGD("%s: persona locked inode: %lu useid: %d\n",__func__, inode->i_ino, crypt_stat->userid);
+		if(ecryptfs_is_sdp_locked(crypt_stat->engine_id)) {
+			DEK_LOGD("%s: persona locked inode: %lu useid: %d\n",
+			        __func__, inode->i_ino, crypt_stat->engine_id);
 			invalidate_mapping_pages_retry(inode->i_mapping, 0, -1, 3);
 		}
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
@@ -122,7 +124,7 @@ void ecryptfs_mm_do_sdp_cleanup(struct inode *inode) {
 			invalidate_lower_mapping_pages_retry(inode_info->lower_file, 3);
 		}
 #endif
-		if(ecryptfs_is_persona_locked(crypt_stat->userid)) {
+		if(ecryptfs_is_sdp_locked(crypt_stat->engine_id)) {
 			ecryptfs_clean_sdp_dek(crypt_stat);
 		}
 		DEK_LOGD("%s: inode: %p clean up stop\n",__func__, inode);
@@ -191,18 +193,28 @@ static void ecryptfs_mm_drop_pagecache(struct super_block *sb, void *arg)
 	spin_lock(&inode_sb_list_lock);
 	list_for_each_entry(inode, &sb->s_inodes, i_sb_list)
 	{	
+        struct ecryptfs_crypt_stat *crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
+
+        if(crypt_stat == NULL)
+            continue;
+
+        if(crypt_stat->engine_id != param->engine_id) {
+			continue;
+		}
+
+		if (!inode->i_mapping) {
+			continue;
+		}
+		
 		spin_lock(&inode->i_lock);
-		if (inode->i_mapping && (inode->i_mapping->nrpages == 0)) {
-			struct ecryptfs_crypt_stat *crypt_stat;
+		if (inode->i_mapping->nrpages == 0) {
 			spin_unlock(&inode->i_lock);
 			
 			if(ecryptfs_mm_debug)
 				printk("%s() ecryptfs inode [ino:%lu]\n",__func__, inode->i_ino);
 				
-			crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
-				
-			if(crypt_stat && (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) 
-					&& !atomic_read(&ecryptfs_inode_to_private(inode)->lower_file_count))
+			if((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) &&
+					!atomic_read(&ecryptfs_inode_to_private(inode)->lower_file_count))
 				ecryptfs_clean_sdp_dek(crypt_stat);
 
 			continue;
@@ -215,17 +227,15 @@ static void ecryptfs_mm_drop_pagecache(struct super_block *sb, void *arg)
 			printk(KERN_ERR "inode number: %lu i_mapping: %p [%s] userid:%d\n",inode->i_ino,
 					inode->i_mapping,inode->i_sb->s_type->name,inode->i_mapping->userid);
 
-		if(inode->i_mapping && mapping_sensitive(inode->i_mapping) 
-				&& !atomic_read(&ecryptfs_inode_to_private(inode)->lower_file_count)) {
-			struct ecryptfs_crypt_stat *crypt_stat;
+		if(mapping_sensitive(inode->i_mapping) &&
+				!atomic_read(&ecryptfs_inode_to_private(inode)->lower_file_count)) {
 			drop_inode_pagecache(inode);
 				
 			if(ecryptfs_mm_debug)
 					printk(KERN_ERR "lower inode: %p lower inode: %p nrpages: %lu\n",ecryptfs_inode_to_lower(inode),
 							ecryptfs_inode_to_private(inode), ecryptfs_inode_to_lower(inode)->i_mapping->nrpages);
 			
-			crypt_stat = &ecryptfs_inode_to_private(inode)->crypt_stat;
-			if(crypt_stat && (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE))
+			if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)
 				ecryptfs_clean_sdp_dek(crypt_stat);	
 		}
 		spin_lock(&inode_sb_list_lock);
@@ -255,7 +265,7 @@ static int ecryptfs_mm_task(void *arg)
 	return 0;
 }
 
-void ecryptfs_mm_drop_cache(int userid) {
+void ecryptfs_mm_drop_cache(int userid, int engineid) {
 #if 1
 	struct task_struct *task;
 	struct ecryptfs_mm_drop_cache_param *param =
@@ -265,7 +275,8 @@ void ecryptfs_mm_drop_cache(int userid) {
 		printk("%s :: skip. no memory to alloc param\n", __func__);
 		return;
 	}
-	param->user_id = userid;
+    param->user_id = userid;
+    param->engine_id = engineid;
 
 	printk("running cache cleanup thread - sdp-id : %d\n", userid);
 	task = kthread_run(ecryptfs_mm_task, param, "sdp_cached");

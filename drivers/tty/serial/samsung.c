@@ -92,6 +92,7 @@
 #endif
 
 #define BT_UART_TRACE 1
+#define LPASS_INTR_CPU_MASK_UART	(0x11400058)
 
 #ifdef BT_UART_TRACE
 #define BT_LOG_BUFFER_SIZE (0x19000) /* Allocate 100KB of buffer */
@@ -110,6 +111,8 @@
 static LIST_HEAD(drvdata_list);
 s3c_wake_peer_t s3c2410_serial_wake_peer[CONFIG_SERIAL_SAMSUNG_UARTS];
 EXPORT_SYMBOL_GPL(s3c2410_serial_wake_peer);
+
+u32 __iomem *mask_aud_uart_int_addr;
 
 #ifdef BT_UART_TRACE
 struct proc_dir_entry *bluetooth_dir, *bt_log_dir;
@@ -1944,12 +1947,46 @@ void s3c24xx_serial_fifo_wait(void)
 }
 EXPORT_SYMBOL_GPL(s3c24xx_serial_fifo_wait);
 
+#ifdef CONFIG_SND_SAMSUNG_AUDSS
+static void mask_aud_uart_int(int enter)
+{
+	struct s3c24xx_uart_port *ourport;
+	unsigned long mask_val;
+
+	list_for_each_entry(ourport, &drvdata_list, node) {
+		if (ourport->domain != DOMAIN_AUD)
+			continue;
+
+		if (enter == 1) {
+			/* mask interrupt source of UART */
+			mask_val = __raw_readl(mask_aud_uart_int_addr);
+			mask_val &= ~(0x1 << 1);
+			__raw_writel(mask_val, mask_aud_uart_int_addr);
+		} else {
+			/* unmask interrupt source of UART */
+			mask_val = __raw_readl(mask_aud_uart_int_addr);
+			mask_val |= (0x1 << 1);
+			__raw_writel(mask_val, mask_aud_uart_int_addr);
+		}
+	}
+}
+#endif
+
 static int s3c24xx_serial_notifier(struct notifier_block *self,
 				unsigned long cmd, void *v)
 {
 	switch (cmd) {
 	case LPA_ENTER:
 		s3c24xx_serial_fifo_wait();
+#ifdef CONFIG_SND_SAMSUNG_AUDSS
+		mask_aud_uart_int(1);
+#endif
+		break;
+
+	case LPA_EXIT:
+#ifdef CONFIG_SND_SAMSUNG_AUDSS
+		mask_aud_uart_int(0);
+#endif
 		break;
 	}
 
@@ -1965,6 +2002,7 @@ static void s3c24xx_print_reg_status(struct s3c24xx_uart_port *ourport)
 		unsigned int ulcon = rd_regl(port, S3C2410_ULCON);
 		unsigned int ucon = rd_regl(port, S3C2410_UCON);
 		unsigned int ufcon = rd_regl(port, S3C2410_UFCON);
+		unsigned int umcon = rd_regl(port, S3C2410_UMCON);
 		unsigned int utrstat = rd_regl(port, S3C2410_UTRSTAT);
 		unsigned int ufstat = rd_regl(port, S3C2410_UFSTAT);
 		unsigned int umstat = rd_regl(port, S3C2410_UMSTAT);
@@ -1975,7 +2013,7 @@ static void s3c24xx_print_reg_status(struct s3c24xx_uart_port *ourport)
 		int rx_fifo_full = ufstat & S5PV210_UFSTAT_RXFULL;
 		int rx_fifo_count = s3c24xx_serial_rx_fifocnt(ourport, ufstat);
 
-		pr_err("[BT]: ulcon = 0x%08x, ucon = 0x%08x, ufcon = 0x%08x\n", ulcon, ucon, ufcon);
+		pr_err("[BT]: ulcon = 0x%08x, ucon = 0x%08x, ufcon = 0x%08x\n, umcon = 0x%08x\n", ulcon, ucon, ufcon, umcon);
 		pr_err("[BT]: utrstat = 0x%08x, ufstat = 0x%08x, umstat = 0x%08x\n", utrstat, ufstat, umstat);
 		pr_err("[BT]: tx_fifo_full = %d, tx_fifo_count = %d\n", tx_fifo_full, tx_fifo_count);
 		pr_err("[BT]: rx_fifo_full = %d, rx_fifo_count = %d\n", rx_fifo_full, rx_fifo_count);
@@ -2208,6 +2246,7 @@ static int s3c24xx_serial_probe(struct platform_device *pdev)
 #ifdef CONFIG_SND_SOC_SAMSUNG
 		/* Audio uart always on */
 		lpass_get_sync(&pdev->dev);
+		mask_aud_uart_int_addr = ioremap(LPASS_INTR_CPU_MASK_UART, SZ_4);
 #endif
 	}
 
@@ -2241,6 +2280,11 @@ static int s3c24xx_serial_remove(struct platform_device *dev)
 
 	if (ourport->cpu_qos_val && ourport->qos_timeout)
 		pm_qos_remove_request(&ourport->s3c24xx_uart_cpu_qos);
+#endif
+
+#ifdef CONFIG_SND_SAMSUNG_AUDSS
+	if (ourport->domain == DOMAIN_AUD)
+		iounmap(mask_aud_uart_int_addr);
 #endif
 
 	if (port) {

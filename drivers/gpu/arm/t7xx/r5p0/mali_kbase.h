@@ -61,6 +61,34 @@
 #ifdef CONFIG_GPU_TRACEPOINTS
 #include <trace/events/gpu.h>
 #endif
+
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+/**
+ * @SRUK-android-graphics
+ * Events definition for MALI kernel level systrace stupport
+ * Current implementation only tracks job start/stop events
+ */
+
+#define SYSTRACE_EVENT_TYPE_SINGLE  0
+#define SYSTRACE_EVENT_TYPE_START   1
+#define SYSTRACE_EVENT_TYPE_STOP    2
+#define SYSTRACE_EVENT_TYPE_SUSPEND 3
+#define SYSTRACE_EVENT_TYPE_RESUME  4
+
+enum {
+        GPU_UNIT_NONE = 0,
+        GPU_UNIT_VP,
+        GPU_UNIT_FP,
+        GPU_UNIT_CL,
+        NUMBER_OF_GPU_UNITS
+};
+
+void kbase_systrace_mali_job_slots_event(u8 job_event, u8 job_slot, const struct kbase_context *kctx, u8 atom_id, u64 start_timestamp, u8 dep_0_id, u8 dep_0_type, u8 dep_1_id, u8 dep_1_type, u32 gles_ctx_handle);
+
+#endif //CONFIG_MALI_SYSTRACE_SUPPORT
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 /**
  * @page page_base_kernel_main Kernel-side Base (KBase) APIs
  *

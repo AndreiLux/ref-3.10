@@ -12,30 +12,24 @@
 #define __DEKIOC		        0x77
 
 typedef struct _dek_arg_generate_dek {
-	int userid;
+	int engine_id;
 	dek_t dek;
 }dek_arg_generate_dek;
 
 typedef struct _dek_arg_encrypt_dek {
-	int userid;
+	int engine_id;
 	dek_t plain_dek;
 	dek_t enc_dek;
 }dek_arg_encrypt_dek;
 
 typedef struct _dek_arg_decrypt_dek {
-	int userid;
+	int engine_id;
 	dek_t plain_dek;
 	dek_t enc_dek;
 }dek_arg_decrypt_dek;
 
-typedef struct _dek_arg_get_kek {
-	int userid;
-	int kek_type;
-	kek_t key;
-}dek_arg_get_kek;
-
 typedef struct _dek_arg_is_kek_avail {
-    int userid;
+    int engine_id;
     int kek_type;
     int ret;
 }dek_arg_is_kek_avail;
@@ -46,18 +40,20 @@ typedef struct _dek_arg_is_kek_avail {
  * The driver will load public key and encrypted private key.
  */
 typedef struct _dek_arg_on_boot {
-	int userid;
+	int engine_id;
+    int user_id;
 	kek_t SDPK_Rpub;
     kek_t SDPK_Dpub;
     kek_t SDPK_EDpub;
 }dek_arg_on_boot;
 
 typedef struct _dek_arg_on_device_locked {
-	int userid;
+	int engine_id;
+    int user_id;
 }dek_arg_on_device_locked;
 
 typedef struct _dek_arg_on_device_unlocked {
-	int userid;
+	int engine_id;
 	kek_t SDPK_Rpri;
     kek_t SDPK_Dpri;
     kek_t SDPK_EDpri;
@@ -65,14 +61,16 @@ typedef struct _dek_arg_on_device_unlocked {
 }dek_arg_on_device_unlocked;
 
 typedef struct _dek_arg_on_user_added {
-	int userid;
+    int engine_id;
+    int user_id;
 	kek_t SDPK_Rpub;
     kek_t SDPK_Dpub;
     kek_t SDPK_EDpub;
 }dek_arg_on_user_added;
 
 typedef struct _dek_arg_on_user_removed {
-	int userid;
+	int engine_id;
+	int user_id;
 }dek_arg_on_user_removed, dek_arg_disk_cache_cleanup;
 
 // SDP driver events

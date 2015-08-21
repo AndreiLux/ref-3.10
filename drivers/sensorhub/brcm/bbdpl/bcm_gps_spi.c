@@ -1198,10 +1198,9 @@ static void bcm4773_rxtx_work( struct work_struct *work )
 			loop_count++;
 
 			if (loop_count >= 100) {
-				if ((loop_count % 300) == 0) {
+				if ((loop_count % 100) == 0) {
 					printk("[SSPBBD]: Warning! looping more than %d in a run. status = %d, pending = %d. Enforcing SSI dump \n", loop_count, status, pending);
 					ssi_dbg = true;
-					break;
 				}
 				else 
 					ssi_dbg = false;
@@ -1830,7 +1829,7 @@ static void bcm4773_spi_shutdown(struct spi_device *spi)
 	printk("[SSPBBD]: %s ** \n", __func__);
 
 	flush_workqueue(bport->serial_wq );
-	destroy_workqueue( bport->serial_wq );
+	// destroy_workqueue( bport->serial_wq );
 
 	printk("[SSPBBD]: %s -- \n", __func__);
 }

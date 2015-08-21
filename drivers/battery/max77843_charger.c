@@ -1308,7 +1308,9 @@ static int max77843_otg_set_property(struct power_supply *psy,
 {
 	struct max77843_charger_data *charger =
 		container_of(psy, struct max77843_charger_data, psy_otg);
+#if defined(CONFIG_WIRELESS_CHARGER_INBATTERY)
 	union power_supply_propval value;
+#endif
 	static u8 chg_int_state;
 	u8 chg_cnfg_00;
 

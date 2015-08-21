@@ -229,13 +229,7 @@ static int dma_hw_params(struct snd_pcm_substream *substream,
 			prtd->params->client, prtd->params->channel);
 
 		if (prtd->params->esa_dma) {
-#ifdef CONFIG_SND_SAMSUNG_SEIREN_DMA
-			pr_info("SEIREN esa dma %s\n", __func__);
-			prtd->params->ops = samsung_esa_dma_get_ops();
-#else
-			pr_info("esa dma %s\n", __func__);
 			prtd->params->ops = samsung_dma_get_ops();
-#endif
 			req.cap = DMA_CYCLIC;
 		} else {
 			pr_info("No esa_dma %s\n", __func__);
@@ -250,10 +244,19 @@ static int dma_hw_params(struct snd_pcm_substream *substream,
 		config.width = prtd->params->dma_size;
 		/* config.maxburst = 1; */
 		config.fifo = prtd->params->dma_addr;
-		prtd->params->ch = prtd->params->ops->request(
+		if (prtd->params->compr_dma) {
+			pr_info("%s: %d\n", __func__, __LINE__);
+			prtd->params->ch = prtd->params->ops->request(
+				prtd->params->channel, &req,
+				prtd->params->sec_dma_dev,
+				prtd->params->ch_name);
+		} else {
+			pr_info("%s: %d\n", __func__, __LINE__);
+			prtd->params->ch = prtd->params->ops->request(
 				prtd->params->channel, &req, rtd->cpu_dai->dev,
 				prtd->params->ch_name);
-		pr_debug("dma_request: ch %d, req %p, dev %p, ch_name [%s]\n",
+		}
+		pr_info("dma_request: ch %d, req %p, dev %p, ch_name [%s]\n",
 			prtd->params->channel, &req, rtd->cpu_dai->dev,
 			prtd->params->ch_name);
 		prtd->params->ops->config(prtd->params->ch, &config);
@@ -345,6 +348,7 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 		prtd->state |= ST_RUNNING;
+		lpass_dma_enable(true);
 		prtd->params->ops->trigger(prtd->params->ch);
 		if (prtd->dram_used)
 			atomic_inc(&dram_usage_cnt);
@@ -353,6 +357,7 @@ static int dma_trigger(struct snd_pcm_substream *substream, int cmd)
 	case SNDRV_PCM_TRIGGER_STOP:
 		prtd->state &= ~ST_RUNNING;
 		prtd->params->ops->stop(prtd->params->ch);
+		lpass_dma_enable(false);
 		if (prtd->dram_used)
 			atomic_dec(&dram_usage_cnt);
 		break;

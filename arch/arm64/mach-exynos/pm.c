@@ -257,6 +257,7 @@ static struct sfr_save save_rcg[] = {
 	SFR_SAVE(EXYNOS7420_VA_CMU_TOP1 + 0x0D04),
 };
 #endif
+
 static int check_powerstate_nonbootcpus(void)
 {
 	extern struct exynos_cpu_power_ops exynos_cpu;

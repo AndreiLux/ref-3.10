@@ -181,6 +181,7 @@ enum is_set_stream {
 enum is_fw_boot_mode {
 	IS_COLD_BOOT = 0,  /* FrontCamera, 3rd-Party Camera */
 	IS_WARM_BOOT,      /* SamsungCamera & RearCamera */
+	IS_COLD_RESET,      /* Reset for camera using warm boot mode */
 };
 
 #define V4L2_CID_IS_DEBUG_DUMP			(V4L2_CID_FIMC_IS_BASE + 900)

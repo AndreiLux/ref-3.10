@@ -948,6 +948,16 @@ static int dsim_reset_panel(struct dsim_device *dsim)
 		return 0;
 #endif
 
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+	if( decon_int_drvdata->esd.queuework_pending ) {
+		dsim_info( "%s : esd type is %d.\n", __func__, decon_int_drvdata->esd.irq_type );
+		if( decon_int_drvdata->esd.irq_type==irq_err_fg ) {
+			dsim_info( "%s : return by esd_recovery.\n", __func__ );
+			return 0;
+		}
+	}
+#endif 
+
 	dsim_dbg("%s +\n", __func__);
 
 	ret = gpio_request_one(res->lcd_reset, GPIOF_OUT_INIT_HIGH, "lcd_reset");
@@ -978,6 +988,13 @@ static int dsim_set_panel_power(struct dsim_device *dsim, bool on)
 	if (dsim->alpm)
 		return 0;
 #endif
+
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+	if( decon_int_drvdata->esd.queuework_pending && decon_int_drvdata->esd.irq_type==irq_err_fg ) {
+		dsim_info( "%s : return by esd_recovery.\n", __func__ );
+		return 0;
+	}
+#endif 
 
 	dsim_dbg("%s(%d) +\n", __func__, on);
 

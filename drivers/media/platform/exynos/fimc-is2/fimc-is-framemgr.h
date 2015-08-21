@@ -93,18 +93,6 @@ enum fimc_is_frame_shot_state {
 	FIMC_IS_FRAME_STATE_INVALID
 };
 
-enum fimc_is_frame_reqeust {
-	/* SCC, SCP frame done,
-	   ISP meta done */
-	REQ_FRAME,
-	/* 3AA shot done */
-	REQ_3AA_SHOT,
-	/* ISP shot done */
-	REQ_ISP_SHOT,
-	/* DIS shot done */
-	REQ_DIS_SHOT
-};
-
 enum fimc_is_frame_mem {
 	/* initialized memory */
 	FRAME_INI_MEM,
@@ -140,8 +128,8 @@ struct fimc_is_frame {
 	u32			rcount;
 	u32			index;
 	u32			result;
-	unsigned long		req_flag;
 	unsigned long		out_flag;
+	unsigned long		bak_flag;
 
 #ifdef MEASURE_TIME
 	/* time measure externally */
@@ -182,6 +170,8 @@ int fimc_is_frame_g_free_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame **frame);
 void fimc_is_frame_free_head(struct fimc_is_framemgr *this,
 	struct fimc_is_frame **frame);
+void fimc_is_frame_free_tail(struct fimc_is_framemgr *this,
+	struct fimc_is_frame **item);
 void fimc_is_frame_print_free_list(struct fimc_is_framemgr *this);
 
 int fimc_is_frame_s_request_shot(struct fimc_is_framemgr *this,
@@ -205,6 +195,8 @@ int fimc_is_frame_s_complete_shot(struct fimc_is_framemgr *this,
 int fimc_is_frame_g_complete_shot(struct fimc_is_framemgr *this,
 	struct fimc_is_frame **frame);
 void fimc_is_frame_complete_head(struct fimc_is_framemgr *this,
+	struct fimc_is_frame **frame);
+void fimc_is_frame_complete_tail(struct fimc_is_framemgr *this,
 	struct fimc_is_frame **frame);
 void fimc_is_frame_print_complete_list(struct fimc_is_framemgr *this);
 

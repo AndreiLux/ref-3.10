@@ -13,6 +13,17 @@ config SENSORS_SSP_ATUC128L5HAR
 	  To compile this driver as a module, choose M here: the
 	  module will be called ssp.
 
+config SENSORS_SSP_6AXIS
+	tristate "Sensors ssp 6axis sensor"
+	default n
+	depends on SPI
+	help
+	  6axis sensor file for factory test in ssp driver.
+          If you say yes here you get 6axis sensor support for
+	  factory test.
+	  To compile this driver as a module, choose M here: the
+	  module will be called ssp.
+
 config SENSORS_SSP_MPU6500
 	tristate "Sensors ssp mpu6500"
 	default n

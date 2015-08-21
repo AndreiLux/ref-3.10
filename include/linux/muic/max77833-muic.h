@@ -168,6 +168,7 @@ struct max77833_muic_data {
 	bool				is_muic_reset;
 
 	u8				adcmode;
+	u8				switch_val;
 
 //	bool				ignore_adcerr;	// CHECK ME!!!
 
@@ -181,6 +182,10 @@ struct max77833_muic_data {
 
 	u8				is_boot_dpdnvden;
 
+	/* For wireless acokb */
+	int				irq_acokb;
+	int				gpio_acokb;
+	bool				wakeup;
 	/* muic status value */
 	u8				status1;
 	u8				status2;
@@ -195,6 +200,9 @@ struct max77833_muic_data {
 
 #define REG_NONE			0xff
 #define REG_FULL_MASKING		0xff
+
+#define INTMASK3_RESET			0x40
+#define INTMASK3_INIT			0xc3
 
 /* MAX77833 REGISTER ENABLE or DISABLE bit */
 enum max77833_reg_bit_control {

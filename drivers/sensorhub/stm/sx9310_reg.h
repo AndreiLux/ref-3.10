@@ -94,6 +94,7 @@ struct smtc_reg_data {
 	unsigned char val;
 };
 
+#define MIN_SETUP_REG	4
 static const struct smtc_reg_data setup_reg[] = {
 	{
 		.reg = SX9310_IRQ_ENABLE_REG,
@@ -105,7 +106,7 @@ static const struct smtc_reg_data setup_reg[] = {
 	},
 	{
 		.reg = SX9310_CPS_CTRL0_REG,
-		.val = 0x10,
+		.val = 0x20,
 	},
 	{
 		.reg = SX9310_CPS_CTRL1_REG,
@@ -137,7 +138,7 @@ static const struct smtc_reg_data setup_reg[] = {
 	},
 	{
 		.reg = SX9310_CPS_CTRL5_REG,
-		.val = 0xC3,
+		.val = 0xC1,
 	},
 	{
 		.reg = SX9310_CPS_CTRL6_REG,

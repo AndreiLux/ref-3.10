@@ -195,7 +195,7 @@ unsigned long StreamDecoder_GetU32(struct sStreamCodec* p)
         ulValue  = p->m_pBuf[p->m_uiOffset++];
         ulValue |= p->m_pBuf[p->m_uiOffset++]<<8;
         ulValue |= p->m_pBuf[p->m_uiOffset++]<<16;
-        ulValue |= p->m_pBuf[p->m_uiOffset++]<<24;
+		ulValue |= (p->m_pBuf[p->m_uiOffset++] << 24 & 0xFFFFFFFF);
 
         return ulValue;
     }

@@ -30,6 +30,9 @@
 #include "dciTui.h"
 #include "tlcTui.h"
 #include "tui-hal.h"
+#if defined(CONFIG_TOUCHSCREEN_FTS) || defined(CONFIG_TOUCHSCREEN_FTS5AD56)
+#include <linux/i2c/fts.h>
+#endif
 
 /* I2C register for reset */
 #define HSI2C7_PA_BASE_ADDRESS	0x14E10000
@@ -60,6 +63,14 @@ extern struct ion_device *ion_exynos;
 
 #ifdef CONFIG_TRUSTED_UI_TOUCH_ENABLE
 static int tsp_irq_num = 11; // default value
+
+static void tui_delay(unsigned int ms)
+{
+	if (ms < 20)
+		usleep_range(ms * 1000, ms * 1000);
+	else
+		msleep(ms);
+}
 
 void trustedui_set_tsp_irq(int irq_num)
 {
@@ -119,6 +130,35 @@ static void freeTuiMemoryPool(struct tui_mempool *pool)
 	}
 }
 
+void hold_i2c_clock(void)
+{
+	struct clk *touch_i2c_pclk;
+	touch_i2c_pclk = clk_get(NULL, "pclk-hsi2c7");
+	if (IS_ERR(touch_i2c_pclk)) {
+		pr_err("Can't get [pclk-hsi2c7]\n");
+	}
+
+	clk_prepare_enable(touch_i2c_pclk);
+
+	pr_info("[pclk-hsi2c7] will be enabled\n");
+	clk_put(touch_i2c_pclk);
+}
+
+void release_i2c_clock(void)
+{
+	struct clk *touch_i2c_pclk;
+	touch_i2c_pclk = clk_get(NULL, "pclk-hsi2c7");
+	if (IS_ERR(touch_i2c_pclk)) {
+		pr_err("Can't get [pclk-hsi2c7]\n");
+	}
+
+	clk_disable_unprepare(touch_i2c_pclk);
+
+	pr_info("[pclk-hsi2c7] will be disabled\n");
+
+	clk_put(touch_i2c_pclk);
+}
+
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI_FB_BLANK
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(3,9,0)
 static int is_device_ok(struct device *fbdev, void *p)
@@ -167,23 +207,24 @@ static struct fb_info *get_fb_info(struct device *fbdev)
 #endif
 
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI_FB_BLANK
-static void fb_tui_protection(void)
+static int fb_tui_protection(void)
 {
 	struct device *fbdev = NULL;
 	struct fb_info *fb_info;
 	struct decon_win *win;
 	struct decon_device *decon;
+	int ret = -ENODEV;
 
 	fbdev = get_fb_dev();
 	if (!fbdev) {
 		pr_debug("get_fb_dev failed\n");
-		return;
+		return ret;
 	}
 
 	fb_info = get_fb_info(fbdev);
 	if (!fb_info) {
 		pr_debug("get_fb_info failed\n");
-		return;
+		return ret;
 	}
 
 	win = fb_info->par;
@@ -193,13 +234,18 @@ static void fb_tui_protection(void)
 	pm_runtime_get_sync(decon->dev);
 #endif
 
+	lock_fb_info(fb_info);	
+	ret = decon_tui_protection(decon, true);
+	unlock_fb_info(fb_info);
+	return ret;
+
 #if 0 // time check
 	ktime_t start, end;
 	long long ns;
 
 	start = ktime_get();            /* get time stamp before execution */
 #endif
-	decon_tui_protection(decon, true);
+//	decon_tui_protection(decon, true);
 #if 0 // time check
 	end = ktime_get();              /* get time stamp after execution */
 
@@ -215,37 +261,37 @@ static void set_va_to_decon(u32 va)
 #endif
 
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI_FB_BLANK
-static void fb_tui_unprotection(void)
+static int fb_tui_unprotection(void)
 {
 	struct device *fbdev = NULL;
 	struct fb_info *fb_info;
 	struct decon_win *win;
 	struct decon_device *decon;
+	int ret = -ENODEV;
 
 	fbdev = get_fb_dev();
 	if (!fbdev) {
 		pr_debug("get_fb_dev failed\n");
-		return;
+		return ret;
 	}
 
 	fb_info = get_fb_info(fbdev);
 	if (!fb_info) {
 		printk("get_fb_info failed\n");
-		return;
+		return ret;
 	}
 
 	win = fb_info->par;
 	decon = win->decon;
 
-	if (decon->pdata->trig_mode == DECON_HW_TRIG)
-		decon_reg_set_trigger(decon->id, decon->pdata->dsi_mode,
-					decon->pdata->trig_mode, DECON_TRIG_ENABLE);
-
 #ifdef CONFIG_PM_RUNTIME
 	pm_runtime_put_sync(decon->dev);
 #endif
-
-	decon_tui_protection(decon, false);
+	lock_fb_info(fb_info);
+	ret = decon_tui_protection(decon, false);
+	unlock_fb_info(fb_info);
+	return ret; 
+//	decon_tui_protection(decon, false);
 }
 #endif
 
@@ -434,38 +480,61 @@ void hal_tui_free(void)
 
 uint32_t hal_tui_deactivate(void)
 {
+	int ret;
 	switch_set_state(&tui_switch, TRUSTEDUI_MODE_VIDEO_SECURED);
 	pr_info(KERN_ERR "Disable touch!\n");
 	disable_irq(tsp_irq_num);
-	msleep(100);
+#if defined(CONFIG_TOUCHSCREEN_FTS) || defined(CONFIG_TOUCHSCREEN_FTS5AD56)
+	tui_delay(5);
+	trustedui_mode_on();
+	tui_delay(95);
+#else
+	tui_delay(100);
+#endif
 	/* Set linux TUI flag */
 	trustedui_set_mask(TRUSTEDUI_MODE_TUI_SESSION);
 	trustedui_blank_set_counter(0);
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI_FB_BLANK
 	pr_info(KERN_ERR "blanking!\n");
 
-	fb_tui_protection();
+	hold_i2c_clock();
+
+	ret = fb_tui_protection();
+	if(ret < 0){
+		pr_info(KERN_ERR "Decon state disable!, ret = %d\n", ret);
+		goto err;
+	}
 	set_va_to_decon(va);
 #endif
 	trustedui_set_mask(TRUSTEDUI_MODE_VIDEO_SECURED|TRUSTEDUI_MODE_INPUT_SECURED);
 	pr_info(KERN_ERR "blanking!\n");
 
 	return TUI_DCI_OK;
+
+err:	
+	/* Clear linux TUI flag */
+//	trustedui_blank_get_counter();
+	trustedui_clear_mask(TRUSTEDUI_MODE_OFF);
+	enable_irq(tsp_irq_num);
+	switch_set_state(&tui_switch, TRUSTEDUI_MODE_OFF);
+	return TUI_DCI_ERR_INTERNAL_ERROR;
 }
 
 uint32_t hal_tui_activate(void)
 {
+	int ret;
 	// Protect NWd
 	trustedui_clear_mask(TRUSTEDUI_MODE_VIDEO_SECURED|TRUSTEDUI_MODE_INPUT_SECURED);
 
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI_FB_BLANK
 	pr_info("Unblanking\n");
 
-	fb_tui_unprotection();
+	ret = fb_tui_unprotection();
+	if(ret < 0){
+		pr_info(KERN_ERR "Decon state disable!, ret = %d\n", ret);
+		goto err;
+	}
 #endif
-
-	/* Clear linux TUI flag */
-	trustedui_set_mode(TRUSTEDUI_MODE_OFF);
 
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI_FB_BLANK
 	pr_info("Unsetting TUI flag (blank counter=%d)", trustedui_blank_get_counter());
@@ -476,6 +545,18 @@ uint32_t hal_tui_activate(void)
 	switch_set_state(&tui_switch, TRUSTEDUI_MODE_OFF);
 	tui_i2c_reset();
 	enable_irq(tsp_irq_num);
+	release_i2c_clock();
+
+	/* Clear linux TUI flag */
+	trustedui_set_mode(TRUSTEDUI_MODE_OFF);
+	pr_info("Enable touch! & Clear TUI MASK\n");
 
 	return TUI_DCI_OK;
+
+err:
+	/* Clear linux TUI flag */
+	trustedui_set_mode(TRUSTEDUI_MODE_OFF);
+	switch_set_state(&tui_switch, TRUSTEDUI_MODE_OFF);
+	enable_irq(tsp_irq_num);
+	return TUI_DCI_ERR_INTERNAL_ERROR;
 }

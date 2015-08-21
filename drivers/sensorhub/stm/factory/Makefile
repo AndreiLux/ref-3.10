@@ -3,8 +3,9 @@
 #
 
 # Each configuration option enables a list of files.
-obj-$(CONFIG_SENSORS_SSP_MPU6500)	+= accel_mpu6500.o gyro_mpu6500.o
-obj-$(CONFIG_SENSORS_SSP_BMI168)	+= accel_bmi168.o gyro_bmi168.o
+obj-$(CONFIG_SENSORS_SSP_6AXIS)		+= accel_general.o gyro_general.o
+obj-$(CONFIG_SENSORS_SSP_MPU6500)	+= accel_general.o gyro_general.o
+obj-$(CONFIG_SENSORS_SSP_BMI168)	+= accel_general.o gyro_general.o
 obj-$(CONFIG_SENSORS_SSP_TMD4903)       += light_tmg399x.o prox_tmg399x.o gesture_tmg399x.o irled_tmd4903.o
 obj-$(CONFIG_SENSORS_SSP_TMG399X)	+= light_tmg399x.o prox_tmg399x.o gesture_tmg399x.o
 obj-$(CONFIG_SENSORS_SSP_AK09911)	+= magnetic_ak09911.o

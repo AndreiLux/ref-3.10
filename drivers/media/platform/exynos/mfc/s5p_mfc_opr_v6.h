@@ -152,6 +152,7 @@ void s5p_mfc_enc_calc_src_size(struct s5p_mfc_ctx *ctx);
 #define ENC_MULTI_SLICE_MB_MAX		((1 << 30) - 1)
 #define ENC_MULTI_SLICE_BIT_MIN		2800
 #define ENC_MULTI_SLICE_BYTE_MIN	350
+#define ENC_MULTI_SLICE_MB_ROW_MAX	255
 #define ENC_INTRA_REFRESH_MB_MAX	((1 << 18) - 1)
 #define ENC_VBV_BUF_SIZE_MAX		((1 << 30) - 1)
 #define ENC_H264_LOOP_FILTER_AB_MIN	-12

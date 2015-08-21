@@ -279,7 +279,6 @@ int fimc_is_search_sensor_module(struct fimc_is_device_sensor *device,
 	}
 
 	if (mindex >= mmax) {
-		merr("module(%d) is not found", device, sensor_id);
 		ret = -EINVAL;
 	}
 
@@ -1541,6 +1540,12 @@ p_err:
 	return ret;
 }
 
+static int fimc_is_sensor_reqbufs(void *qdevice,
+	u32 count)
+{
+	return 0;
+}
+
 static int fimc_is_sensor_s_format(void *qdevice,
 	struct fimc_is_queue *queue)
 {
@@ -2257,7 +2262,8 @@ p_err:
 const struct fimc_is_queue_ops fimc_is_sensor_ops = {
 	.start_streaming	= fimc_is_sensor_back_start,
 	.stop_streaming		= fimc_is_sensor_back_stop,
-	.s_format		= fimc_is_sensor_s_format
+	.s_format		= fimc_is_sensor_s_format,
+	.request_bufs		= fimc_is_sensor_reqbufs
 };
 
 static int fimc_is_sensor_suspend(struct device *dev)

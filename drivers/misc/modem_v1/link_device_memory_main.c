@@ -740,6 +740,7 @@ static int mem_send(struct link_device *ld, struct io_device *iod,
 		} else {
 			return xmit_udl(mld, iod, ch, skb);
 		}
+		break;
 
 	case IPC_BOOT:
 	case IPC_DUMP:

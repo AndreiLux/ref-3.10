@@ -38,14 +38,25 @@
 #include <linux/proc_fs.h>
 #include <linux/seq_file.h>
 #include <linux/firmware.h>
+#include <linux/kthread.h>
+
+#include <asm/cacheflush.h>
+#include <asm/cachetype.h>
+#include <asm/tlbflush.h>
 
 #include <sound/exynos.h>
 #include <sound/soc.h>
+
+#include <plat/map-base.h>
+#include <plat/map-s5p.h>
 
 #include "../lpass.h"
 #include "seiren.h"
 #include "seiren_ioctl.h"
 #include "seiren_error.h"
+#ifdef CONFIG_SND_SAMSUNG_ELPE
+#include "lpeffwork.h"
+#endif
 
 #ifdef CONFIG_SND_ESA_SA_EFFECT
 #include "../esa_sa_effect.h"
@@ -65,21 +76,38 @@
 
 #define msecs_to_loops(t) (loops_per_jiffy / 1000 * HZ * t)
 
-static DEFINE_MUTEX(esa_mutex);
+DEFINE_MUTEX(esa_mutex);
+DEFINE_MUTEX(esa_visualizer_mutex);
 static DECLARE_WAIT_QUEUE_HEAD(esa_wq);
 static DECLARE_WAIT_QUEUE_HEAD(esa_fx_wq);
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+static DECLARE_WAIT_QUEUE_HEAD(esa_cpu_lock_wq);
+#endif
 
 static struct seiren_info si;
 
 static int esa_send_cmd_(u32 cmd_code, bool sram_only);
 static irqreturn_t esa_isr(int irqno, void *id);
 
+static DEFINE_RAW_SPINLOCK(esa_logbuf_lock);
+int header_printed;
+int start, end;
+int end_index;
+
 #define esa_send_cmd_sram(cmd)	esa_send_cmd_(cmd, true)
 #define esa_send_cmd(cmd)	esa_send_cmd_(cmd, false)
 
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+int esa_compr_running(void);
+#endif
+
 int check_esa_status(void)
 {
+#ifndef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
 	return si.fw_use_dram ? 1 : 0;
+#else
+	return esa_compr_running();
+#endif
 }
 
 #ifdef CONFIG_SND_SAMSUNG_SEIREN_DMA
@@ -119,6 +147,19 @@ void esa_dma_close(int ch)
 	pm_runtime_mark_last_busy(&si.pdev->dev);
 	pm_runtime_put_sync_autosuspend(&si.pdev->dev);
 }
+
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+static int esa_set_cpu_lock_kthread(void *arg)
+{
+	while (!kthread_should_stop()) {
+		wait_event_interruptible(esa_cpu_lock_wq, si.set_cpu_lock);
+		si.set_cpu_lock = false;
+		lpass_set_cpu_lock(si.cpu_lock_level);
+	}
+
+	return 0;
+}
+#endif
 
 static void esa_dump_fw_log(void);
 int esa_dma_send_cmd(u32 cmd, int ch, void __iomem *reg_ack)
@@ -186,6 +227,11 @@ int esa_compr_send_cmd(int32_t cmd, struct audio_processor* ap)
 		break;
 	case CMD_COMPR_SET_PARAM:
 		esa_info("%s: CMD_COMPR_SET_PARAM %d\n", __func__, cmd);
+#ifdef CONFIG_SND_ESA_SA_EFFECT
+		spin_lock(&si.cmd_lock);
+		writel(si.out_sample_rate, si.mailbox + COMPR_PARAM_RATE);
+		spin_unlock(&si.cmd_lock);
+#endif
 		break;
 	case CMD_COMPR_WRITE:
 		esa_debug("%s: CMD_COMPR_WRITE %d\n", __func__, cmd);
@@ -210,6 +256,12 @@ int esa_compr_send_cmd(int32_t cmd, struct audio_processor* ap)
 		break;
 	case CMD_COMPR_SET_VOLUME:
 		esa_debug("%s: CMD_COMPR_SET_VOLUME %d\n", __func__, cmd);
+		break;
+	case CMD_COMPR_CA5_WAKEUP:
+		esa_debug("%s: CMD_COMPR_CA5_WAKEUP %d\n", __func__, cmd);
+		break;
+	case CMD_COMPR_HPDET_NOTIFY:
+		esa_debug("%s: CMD_COMPR_HPDET_NOTIFY %d\n", __func__, cmd);
 		break;
 	default:
 		esa_err("%s: unknown cmd %d\n", __func__, cmd);
@@ -338,6 +390,78 @@ int esa_compr_set_param(struct audio_processor* ap, uint8_t **buffer)
 	return 0;
 }
 
+int esa_compr_running(void)
+{
+	return (si.isr_compr_created ? true : false);
+}
+
+void esa_compr_set_state(bool flag)
+{
+	si.is_compr_open = flag;
+	esa_debug("%s Compress-State %s\n", __func__,
+			(si.is_compr_open ? "OPENED" : "CLOSED"));
+	return;
+}
+
+int check_esa_compr_state(void)
+{
+	return (si.is_compr_open ? true : false);
+}
+
+/* Notify firmware when alpa is enter and exit
+ * through mailbox interface */
+void esa_compr_alpa_notifier(bool on)
+{
+	writel(on ? 1 : 0, si.mailbox + COMPR_ALPA_NOTI);
+	esa_debug("%s ALPA %s\n", __func__, (on ? "Enter" : "Exit"));
+	if (!on) {
+		/* Send software interrupt to CA5 to wakeup */
+		if (ptr_ap) {
+			if (esa_compr_send_cmd(CMD_COMPR_CA5_WAKEUP, ptr_ap))
+				esa_err("%s Unable to Send CA5 Wakeup command\n",
+					       __func__);
+		}
+	}
+
+	return;
+}
+
+/* HP Detect notification command to FW */
+void esa_compr_hpdet_notifier(bool on)
+{
+	esa_info("%s %s\n", __func__, (on ? "Jack Detected" : "Jack Removed"));
+	if (on) {
+		/* Send HP detect notification command */
+		if (ptr_ap) {
+			if (esa_compr_send_cmd(CMD_COMPR_HPDET_NOTIFY, ptr_ap))
+				esa_err("%s Unable to Send HPDET_NOTIFY command\n",
+					       __func__);
+		}
+	}
+
+	return;
+}
+
+void esa_compr_ctrl_fxintr(bool fxon)
+{
+	writel(fxon ? 1 : 0, si.mailbox + EFFECT_EXT_ON);
+	return;
+}
+
+#ifdef CONFIG_SND_ESA_SA_EFFECT
+void esa_compr_set_sample_rate(u32 rate)
+{
+	esa_debug("%s output sample_rate %d \n", __func__, rate);
+	si.out_sample_rate = rate;
+	return;
+}
+
+u32 esa_compr_get_sample_rate(void)
+{
+	return si.out_sample_rate;
+}
+#endif
+
 void esa_compr_open(void)
 {
 	pm_runtime_get_sync(&si.pdev->dev);
@@ -345,9 +469,15 @@ void esa_compr_open(void)
 
 void esa_compr_close(void)
 {
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+	lpass_set_cpu_lock(0);
+#endif
 	pm_runtime_mark_last_busy(&si.pdev->dev);
 	pm_runtime_put_sync_autosuspend(&si.pdev->dev);
 	ptr_ap = NULL;
+#ifdef CONFIG_SND_ESA_SA_EFFECT
+	si.out_sample_rate = 0;
+#endif
 }
 #endif
 
@@ -355,10 +485,14 @@ static void esa_dump_fw_log(void)
 {
 	char log[256];
 	char *addr = si.fw_log_buf;
-	int n;
+	int n, fwver;
 
 	esa_info("fw log:\n");
 	esa_info("running cnt:%d\n", readl(si.mailbox + COMPR_CHECK_RUNNING));
+	fwver = readl(si.mailbox + VIRSION_ID);
+	esa_info("Firmware Version: %c%c%c-%c\n",
+		(fwver >> 24), ((fwver >> 16) & 0xFF),
+		((fwver >> 8) & 0xFF), fwver & 0xFF);
 	esa_info("ack status: lpcm(%d) compr(%d:%x)\n",
 			readl(si.mailbox + COMPR_INTR_DMA_ACK),
 			readl(si.mailbox + COMPR_INTR_ACK),
@@ -569,7 +703,7 @@ static void esa_fw_shutdown(void)
 	si.fw_use_dram = false;
 }
 
-#ifdef CONFIG_PM_DEVFREQ
+#if !defined(CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD) && defined(CONFIG_PM_DEVFREQ)
 static bool esa_check_ip_exist(unsigned int ip_type)
 {
 	int idx;
@@ -587,7 +721,7 @@ static bool esa_check_ip_exist(unsigned int ip_type)
 
 static void esa_update_qos(void)
 {
-#ifdef CONFIG_PM_DEVFREQ
+#if !defined(CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD) && defined(CONFIG_PM_DEVFREQ)
 	int mif_qos_new;
 #ifdef CONFIG_SND_ESA_SA_EFFECT
 	int int_qos_new = 0;
@@ -617,6 +751,7 @@ static void esa_update_qos(void)
 		pr_debug("%s: mif_qos = %d\n", __func__, si.mif_qos);
 	}
 #endif
+	return;
 }
 
 #ifdef CONFIG_SND_ESA_SA_EFFECT
@@ -628,8 +763,6 @@ int esa_effect_write(int type, int *value, int count)
 	int ret = 0;
 
 	pm_runtime_get_sync(&si.pdev->dev);
-
-	effect_value = (int *)kzalloc(effect_count * sizeof(int), GFP_KERNEL);
 	effect_value = value;
 
 	switch (type) {
@@ -645,17 +778,22 @@ int esa_effect_write(int type, int *value, int count)
 	case SOUNDBALANCE:
 		effect_addr = si.effect_ram + LRSM_BASE;
 		break;
+	case MYSPACE:
+		effect_addr = si.effect_ram + MYSPACE_BASE;
+		break;
+	case BASSBOOST:
+		effect_addr = si.effect_ram + BB_BASE;
+		pr_err("*************effect type : %d {BassBoost}\n", type);
+		break;
+	case EQUALIZER:
+		effect_addr = si.effect_ram + EQ_BASE;
+		pr_err("*************effect type : %d {Equalizer}\n", type);
+		break;
 	default	:
 		pr_err("Not support effect type : %d\n", type);
 		ret = -EINVAL;
 		goto out;
 	}
-
-	if ((effect_value[1] == 0) && (effect_value[15] == 2) &&
-		(effect_value[16] == 2))
-		si.effect_on = 0;
-	else
-		si.effect_on = 1;
 
 	for (i = 0; i < effect_count; i++) {
 		pr_debug("effect_value[%d] = %d\n", i, effect_value[i]);
@@ -1233,7 +1371,7 @@ static irqreturn_t esa_isr(int irqno, void *id)
 #endif
 #ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
 	case INTR_CREATED:
-		esa_debug("INTR_CREATED\n");
+		esa_info("INTR_CREATED\n");
 		si.isr_compr_created = 1;
 		wakeup = true;
 		writel(0, si.mailbox + COMPR_INTR_ACK);
@@ -1250,10 +1388,11 @@ static irqreturn_t esa_isr(int irqno, void *id)
 		/* update copied total bytes */
 		size = readl(si.mailbox + COMPR_SIZE_OUT_DATA);
 		esa_debug("INTR_DECODED(%d)\n", size);
-		ret = ptr_ap->ops(fw_stat, size, ptr_ap->priv);
-		if (ret)
-			esa_err("INTR_DECODED handler err(%d)\n", ret);
-
+		if (ptr_ap) {
+			ret = ptr_ap->ops(fw_stat, size, ptr_ap->priv);
+			if (ret)
+				esa_err("INTR_DECODED handler err(%d)\n", ret);
+		}
 		writel(0, si.mailbox + COMPR_INTR_ACK);
 		break;
 	case INTR_FLUSH:
@@ -1266,9 +1405,11 @@ static irqreturn_t esa_isr(int irqno, void *id)
 			break;
 		}
 		/* flush done */
-		ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
-		if (ret)
-			esa_err("INTR_FLUSH handler err(%d)\n", ret);
+		if (ptr_ap) {
+			ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
+			if (ret)
+				esa_err("INTR_FLUSH handler err(%d)\n", ret);
+		}
 		writel(0, si.mailbox + COMPR_INTR_ACK);
 		break;
 	case INTR_PAUSED:
@@ -1281,15 +1422,19 @@ static irqreturn_t esa_isr(int irqno, void *id)
 			break;
 		}
 		/* paused */
-		ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
-		if (ret)
-			esa_err("INTR_PAUSED handler err(%d)\n", ret);
+		if (ptr_ap) {
+			ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
+			if (ret)
+				esa_err("INTR_PAUSED handler err(%d)\n", ret);
+		}
 		writel(0, si.mailbox + COMPR_INTR_ACK);
 		break;
 	case INTR_EOS:
-		ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
-		if (ret)
-			esa_err("INTR_EOS handler err(%d)\n", ret);
+		if (ptr_ap) {
+			ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
+			if (ret)
+				esa_err("INTR_EOS handler err(%d)\n", ret);
+		}
 		writel(0, si.mailbox + COMPR_INTR_ACK);
 		break;
 	case INTR_DESTROY:
@@ -1302,13 +1447,16 @@ static irqreturn_t esa_isr(int irqno, void *id)
 			break;
 		}
 		/* destroied */
-		ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
-		if (ret)
-			esa_err("INTR_DESTROY handler err(%d)\n",  ret);
+		if (ptr_ap) {
+			ret = ptr_ap->ops(fw_stat, 0, ptr_ap->priv);
+			if (ret)
+				esa_err("INTR_DESTROY handler err(%d)\n",  ret);
+		}
 		writel(0, si.mailbox + COMPR_INTR_ACK);
+		si.isr_compr_created = 0;
 		break;
 	case INTR_FX_EXT:
-		esa_info("INTR_FX_EXT: fw_stat(%08x), val(%08x)\n",
+		esa_debug("INTR_FX_EXT: fw_stat(%08x), val(%08x)\n",
 				fw_stat, val);
 		si.fx_next_idx = val & 0xF;
 		si.fx_irq_done = true;
@@ -1316,6 +1464,12 @@ static irqreturn_t esa_isr(int irqno, void *id)
 			wake_up_interruptible(&esa_fx_wq);
 		writel(0, si.mailbox + COMPR_INTR_ACK);
 		break;
+#ifdef CONFIG_SND_SAMSUNG_ELPE
+	case INTR_EFF_REQUEST:
+		queue_lpeff_cmd(LPEFF_EFFECT_CMD);
+		writel(0, si.mailbox + COMPR_INTR_ACK);
+		break;
+#endif
 #endif
 	case INTR_FW_LOG:	/* print debug message from firmware */
 		log_size = readl(si.mailbox + RETURN_CMD) & 0x00FF;
@@ -1332,9 +1486,19 @@ static irqreturn_t esa_isr(int irqno, void *id)
 		}
 		writel(0, si.mailbox + RETURN_CMD);
 		break;
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+	case INTR_SET_CPU_LOCK:	/* Set CPU LOCK for OFFLOAD EFFECT */
+		si.cpu_lock_level = readl(si.mailbox + COMPR_CPU_LOCK_LV);
+		si.set_cpu_lock = true;
+		if (waitqueue_active(&esa_cpu_lock_wq))
+			wake_up_interruptible(&esa_cpu_lock_wq);
+		writel(0, si.mailbox + COMPR_INTR_ACK);
+		break;
+#endif
 	default:
 		esa_err("%s: unknown intr_stat = 0x%08X\n",
 						__func__, fw_stat);
+		writel(0, si.mailbox + COMPR_INTR_ACK);
 		break;
 	}
 
@@ -1490,6 +1654,49 @@ static int esa_release(struct inode *inode, struct file *file)
 	return 0;
 }
 
+ssize_t esa_copy(unsigned long hwbuf, ssize_t size)
+{
+	int i, cnt, ret;
+
+	mutex_lock(&esa_visualizer_mutex);
+	pm_runtime_get_sync(&si.pdev->dev);
+
+	cnt = size / FX_BUF_SIZE;
+	if (cnt && (size - (FX_BUF_SIZE * cnt))) {
+		cnt++;
+	} else {
+		cnt = 1;
+	}
+
+	for (i = 0; i < cnt; i++) {
+		size_t copy_size;
+		ret = wait_event_interruptible_timeout(esa_fx_wq,
+				si.fx_irq_done, HZ);
+		if (!ret) {
+			esa_err("%s: fx irq timeout\n", __func__);
+			ret = -EBUSY;
+			goto out;
+		}
+
+		si.fx_irq_done = false;
+		si.fx_work_buf = (unsigned char *)(si.sram + FX_BUF_OFFSET);
+		si.fx_work_buf += si.fx_next_idx * FX_BUF_SIZE;
+		esa_debug("%s: buf_idx = %d\n", __func__, si.fx_next_idx);
+
+		copy_size = (size > FX_BUF_SIZE) ? FX_BUF_SIZE : size;
+		memcpy((char *)hwbuf, si.fx_work_buf, copy_size);
+		hwbuf += (unsigned long)copy_size;
+		size -= copy_size;
+	}
+out:
+	pm_runtime_mark_last_busy(&si.pdev->dev);
+	pm_runtime_put_sync_autosuspend(&si.pdev->dev);
+	mutex_unlock(&esa_visualizer_mutex);
+
+	return ret;
+}
+
+
 static ssize_t esa_read(struct file *file, char *buffer,
 				size_t size, loff_t *pos)
 {
@@ -1577,6 +1784,12 @@ static long esa_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		si.fx_ext_on = arg ? true : false;
 		writel(si.fx_ext_on ? 1 : 0, si.mailbox + EFFECT_EXT_ON);
 		break;
+#ifdef CONFIG_SND_SAMSUNG_ELPE
+	case SEIREN_IOCTL_ELPE_DONE:
+		writel(arg, si.effect_ram + ELPE_BASE + ELPE_RET);
+		writel(0, si.effect_ram + ELPE_BASE + ELPE_DONE);
+		break;
+#endif
 	default:
 		esa_err("%s: unknown cmd:%08X, arg:%08X\n",
 			__func__, cmd, (unsigned int)arg);
@@ -1591,11 +1804,30 @@ static long esa_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 #endif
 
-static int esa_mmap(struct file *filep, struct vm_area_struct *vma)
+static int esa_mmap(struct file *filep, struct vm_area_struct *vmarea)
 {
-	esa_debug("%s: called\n", __func__);
+	unsigned int pfn;
+	unsigned long len = vmarea->vm_end - vmarea->vm_start;
+	int ret = 0;
 
-	return 0;
+	esa_err("%s: start=0x%p, size=%ld, offset=%ld, phys=0x%llX",
+			__func__,
+			(void *)vmarea->vm_start, len, vmarea->vm_pgoff,
+			(u64)si.fwarea_pa[1]);
+
+	if (len > FWAREA_SIZE) {
+		esa_err("%s: failed to mmap\n", __func__);
+		return -EINVAL;
+	}
+
+	vmarea->vm_flags |= VM_IO;
+
+	pfn = (unsigned int)(si.fwarea_pa[1] >> PAGE_SHIFT);
+	ret = (int)remap_pfn_range(vmarea, vmarea->vm_start,
+			pfn, len, pgprot_noncached(vmarea->vm_page_prot));
+
+	esa_err("%s: ret = 0x%x\n", __func__, ret);
+	return ret;
 }
 
 static const struct file_operations esa_fops = {
@@ -1617,43 +1849,165 @@ static struct miscdevice esa_miscdev = {
 
 static int esa_proc_show(struct seq_file *m, void *v)
 {
-	char log[256];
-	char *addr = si.fw_log_buf;
-	int n;
-
-	seq_printf(m, "fw is %s\n", si.fw_ready ? "ready" : "off");
-	seq_printf(m, "rtd cnt: %d\n", si.rtd_cnt);
-#ifdef CONFIG_PM_DEVFREQ
-	seq_printf(m, "mif: %d\n", si.mif_qos / 1000);
-#endif
-	if (si.fw_ready) {
-		seq_printf(m, "fw_log:\n");
-		seq_printf(m, "running cnt:%d\n", readl(si.mailbox + COMPR_CHECK_RUNNING));
-		seq_printf(m, "ack status: lpcm(%d) compr(%d:%x)\n",
-				readl(si.mailbox + COMPR_INTR_DMA_ACK),
-				readl(si.mailbox + COMPR_INTR_ACK),
-				readl(si.mailbox + COMPR_CHECK_CMD));
-
-		for (n = 0; n < FW_LOG_LINE; n++, addr += 128) {
-			memcpy(log, addr, 128);
-			seq_printf(m, "%s", log);
-		}
-	}
-
 	return 0;
 }
 
 static int esa_proc_open(struct inode *inode, struct  file *file)
 {
+	header_printed = 0;
+	end_index = 0;
+
 	return single_open(file, esa_proc_show, NULL);
+}
+
+static ssize_t esa_proc_read(struct file *file, char __user *user_buf,
+				   size_t count, loff_t *ppos)
+{
+	ssize_t len, ret = 0;
+	char *buf;
+	int fwver;
+	int n;
+	char log[256];
+	char *addr = si.fw_log_buf;
+	int next;
+	int i;
+	int index, prev_index, start_index;
+	int is_skip = 0;
+
+	if (*ppos < 0 || !count)
+		return -EINVAL;
+
+	buf = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (header_printed == 0) {
+		len = snprintf(buf + ret, PAGE_SIZE - ret,
+				"fw is %s\n", si.fw_ready ? "ready" : "off");
+		if (len > 0) ret += len;
+		len = snprintf(buf + ret, PAGE_SIZE - ret,
+				"rtd cnt: %d\n", si.rtd_cnt);
+		if (len > 0) ret += len;
+#ifdef CONFIG_PM_DEVFREQ
+		len = snprintf(buf + ret, PAGE_SIZE - ret,
+				"mif: %d\n", si.mif_qos / 1000);
+		if (len > 0) ret += len;
+#endif
+		if (si.fw_ready) {
+			fwver = readl(si.mailbox + VIRSION_ID);
+			len = snprintf(buf + ret, PAGE_SIZE - ret,
+					"Firmware Version: %c%c%c-%c\n",
+					(fwver >> 24), ((fwver >> 16) & 0xFF),
+					((fwver >> 8) & 0xFF), fwver & 0xFF);
+			if (len > 0) ret += len;
+			len = snprintf(buf + ret, PAGE_SIZE - ret,
+					"fw_log:\n");
+			if (len > 0) ret += len;
+			len = snprintf(buf + ret, PAGE_SIZE - ret,
+					"running cnt:%d\n",
+					readl(si.mailbox + COMPR_CHECK_RUNNING));
+			if (len > 0) ret += len;
+			len = snprintf(buf + ret, PAGE_SIZE - ret,
+					"ack status: lpcm(%d) compr(%d:%x)\n",
+					readl(si.mailbox + COMPR_INTR_DMA_ACK),
+					readl(si.mailbox + COMPR_INTR_ACK),
+					readl(si.mailbox + COMPR_CHECK_CMD));
+			if (len > 0) ret += len;
+		}
+
+		if (si.fw_ready) {
+			/* sorting */
+			prev_index = 0;
+			start = 0;
+			for (n = 0; n < FW_LOG_LINE; n++, addr += 128) {
+				memcpy(log, addr, 128);
+				index = 0;
+				for (i = 0; i < 8; i++)
+					index += (hex_to_bin(log[i]) << ((7-i)*4));
+				if (index < 0)
+					is_skip = 1;
+				else if (prev_index <= index) {
+					prev_index = index;
+					end_index = index;
+					end = n;
+				} else {
+					start_index = index;
+					start = n;
+					break;
+				}
+			}
+
+			/* log print */
+			if (!is_skip) {
+				addr = si.fw_log_buf + start * 128;
+				for (n = start; n < FW_LOG_LINE; n++, addr += 128) {
+					memcpy(log, addr, 128);
+					len = snprintf(buf + ret, PAGE_SIZE - ret,
+							"%s", log);
+					if (len > 0) ret += len;
+				}
+			}
+			addr = si.fw_log_buf;
+			for (n = 0; n <= end; n++, addr += 128) {
+				memcpy(log, addr, 128);
+				len = snprintf(buf + ret, PAGE_SIZE - ret,
+						"%s", log);
+				if (len > 0) ret += len;
+			}
+		}
+
+		if (ret > PAGE_SIZE) ret = PAGE_SIZE;
+
+		if (copy_to_user(user_buf, buf, ret)) {
+			ret = -EFAULT;
+		}
+		header_printed = 1;
+	} else {
+		ret = 0;
+		while (si.fw_ready) {
+			udelay(500);
+			raw_spin_lock_irq(&esa_logbuf_lock);
+			/* Check prev printed index */
+			addr = si.fw_log_buf;
+			next = (end+1)%FW_LOG_LINE;
+			memcpy(log, addr+(next*128), 128);
+			index = 0;
+			for (i = 0; i < 8; i++)
+				index += (hex_to_bin(log[i]) << ((7-i)*4));
+			if (index > end_index) {
+				end_index = index;
+				end = next;
+				len = snprintf(buf + ret, PAGE_SIZE - ret,
+						"%s", log);
+				if (len > 0) {
+					ret += len;
+					if (ret > PAGE_SIZE) {
+						raw_spin_unlock_irq(&esa_logbuf_lock);
+						break;
+					}
+					if (copy_to_user(user_buf, buf, ret)) {
+						printk("copy_to_user error \n");
+						ret = -EFAULT;
+					}
+				}
+			} else {
+				if (ret != 0) {
+					raw_spin_unlock_irq(&esa_logbuf_lock);
+					break;
+				}
+			}
+			raw_spin_unlock_irq(&esa_logbuf_lock);
+		}
+	}
+
+	kfree(buf);
+	return ret;
 }
 
 static const struct file_operations esa_proc_fops = {
 	.owner = THIS_MODULE,
 	.open = esa_proc_open,
-	.read = seq_read,
-	.llseek = seq_lseek,
-	.release = single_release,
+	.read = esa_proc_read,
 };
 
 static int esa_do_suspend(struct device *dev)
@@ -1748,7 +2102,7 @@ static int esa_prepare_buffer(struct device *dev)
 	/* Firmware backup for SRAM */
 	si.fwmem_sram_bak = devm_kzalloc(dev, SRAM_FW_MAX, GFP_KERNEL);
 	if (!si.fwmem_sram_bak) {
-		esa_err("Failed to alloc fwmem\n");
+		esa_err("Failed to alloc fwmem_sram_bak\n");
 		goto err;
 	}
 
@@ -1756,6 +2110,8 @@ static int esa_prepare_buffer(struct device *dev)
 	for (n = 0; n < FWAREA_NUM; n++) {
 		si.fwarea[n] = dma_alloc_coherent(dev, FWAREA_SIZE,
 					&si.fwarea_pa[n], GFP_KERNEL);
+		esa_info("si.fwarea[%d] v_address : 0x%p p_address : 0x%x\n",
+				n, si.fwarea[n], (int)si.fwarea_pa[n]);
 		if (!si.fwarea[n]) {
 			esa_err("Failed to alloc fwarea\n");
 			goto err0;
@@ -1830,6 +2186,10 @@ static int esa_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct device_node *np = pdev->dev.of_node;
 	struct resource *res;
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+	struct sched_param param = { .sched_priority = 0 };
+#endif
+
 	int ret = 0;
 
 	printk(banner);
@@ -1839,6 +2199,7 @@ static int esa_probe(struct platform_device *pdev)
 	defined(CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD)
 	spin_lock_init(&si.cmd_lock);
 	spin_lock_init(&si.compr_lock);
+	si.is_compr_open = false;
 #endif
 	si.pdev = pdev;
 
@@ -1866,6 +2227,7 @@ static int esa_probe(struct platform_device *pdev)
 
 #ifdef CONFIG_SND_ESA_SA_EFFECT
 	si.effect_ram = si.sram + EFFECT_OFFSET;
+	si.out_sample_rate = 0;
 #endif
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
@@ -1966,6 +2328,16 @@ static int esa_probe(struct platform_device *pdev)
 	pm_runtime_put_sync(dev);
 #else
 	esa_do_resume(dev);
+#endif
+#ifdef CONFIG_SND_SAMSUNG_ELPE
+	lpeff_init(si);
+	exynos_init_lpeffworker();
+#endif
+#ifdef CONFIG_SND_SAMSUNG_SEIREN_OFFLOAD
+	si.aud_cpu_lock_thrd = (struct task_struct *)
+			kthread_run(esa_set_cpu_lock_kthread, NULL,
+					"esa-set-cpu-lock");
+	sched_setscheduler_nocheck(si.aud_cpu_lock_thrd, SCHED_NORMAL, &param);
 #endif
 #ifdef CONFIG_PM_DEVFREQ
 	si.mif_qos = 0;

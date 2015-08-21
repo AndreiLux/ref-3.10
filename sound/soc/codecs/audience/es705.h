@@ -504,6 +504,17 @@ struct es_stream_device {
 	int (*wait) (struct es705_priv *es705);
 	int (*config)(struct es705_priv *es705);
 	int intf;
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+	int (*fs_open)(struct es705_priv *es705);
+	int (*fs_write)(struct es705_priv *es705, const void *buf, int len);
+	void (*fs_close)(struct es705_priv *es705);
+	struct file *fp;
+	struct file *dev_fp;
+	int cnt;
+	int always_on;
+	int route_status;
+	int streaming;
+#endif
 };
 
 struct es_datablock_device {
@@ -564,6 +575,12 @@ struct es705_priv {
 	struct mutex cvq_mutex;
 	struct mutex datablock_read_mutex;
 	struct mutex streaming_mutex;
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+	struct mutex stream_fs_mutex;
+	struct mutex stream_work_mutex;
+	struct delayed_work stream_fs_start;
+	struct work_struct stream_fs_stop;
+#endif
 
 	struct delayed_work sleep_work;
 	struct es705_slim_dai_data dai[NUM_CODEC_SLIM_DAIS];
@@ -659,6 +676,13 @@ extern int fw_download(void *arg);
 
 extern u32 es705_streaming_cmds[];
 
+#if defined(CONFIG_SND_SOC_ES_STREAM_FS_STORER)
+extern void es705_stream_fs_storer_run(struct es705_priv *es705);
+extern void es705_stream_fs_storer_stop(struct es705_priv *es705);
+extern int stream_fs_open(struct es705_priv *es705);
+extern void stream_fs_close(struct es705_priv *es705);
+extern int stream_fs_write(struct es705_priv *es705, const void *buf, int len);
+#endif
 #define ES705_STREAM_DISABLE	0
 #define ES705_STREAM_ENABLE	1
 #define ES705_DATALOGGING_CMD_ENABLE	0x803f0001

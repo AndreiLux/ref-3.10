@@ -171,7 +171,7 @@ int wacom_power(bool on)
 	regulator_vdd = regulator_get(NULL, "wacom_3.3v");
 	if (IS_ERR_OR_NULL(regulator_vdd)) {
 		printk(KERN_ERR"epen: %s reg get err\n", __func__);
-		regulator_vdd = NULL;
+		regulator_put(regulator_vdd);
 		return -EINVAL;
 	}
 
@@ -248,7 +248,7 @@ static void wacom_compulsory_flash_mode(bool en)
 		reg_fwe = regulator_get(NULL, "wacom_fwe_1.8v");
 		if (IS_ERR_OR_NULL(reg_fwe)) {
 			printk(KERN_ERR"epen: %s reg get err\n", __func__);
-			reg_fwe = NULL;
+			regulator_put(reg_fwe);
 			return ;
 		}
 
@@ -620,6 +620,9 @@ static void wacom_i2c_resume_work(struct work_struct *work)
 	u8 irq_state = 0;
 	int ret = 0;
 
+	if (wac_i2c->wcharging_mode)
+		wacom_i2c_set_sense_mode(wac_i2c);
+
 	irq_state = wac_i2c->pdata->get_irq_state();
 	wacom_enable_irq(wac_i2c, true);
 
@@ -776,7 +779,7 @@ int load_fw_sdcard(struct wacom_i2c *wac_i2c)
 	long fsize, nread;
 	int ret = 0;
 	unsigned int nSize;
-	unsigned int nSize2;
+	unsigned long nSize2;
 	u8 *ums_data;
 
 	nSize = WACOM_FW_SIZE;
@@ -1437,6 +1440,46 @@ static ssize_t epen_saving_mode_store(struct device *dev,
 	return count;
 }
 
+static ssize_t epen_wcharging_mode_show(struct device *dev,
+		struct device_attribute *attr,
+		char *buf)
+{
+	struct wacom_i2c *wac_i2c = dev_get_drvdata(dev);
+
+	dev_info(&wac_i2c->client->dev, "%s: %s\n",
+			__func__, !wac_i2c->wcharging_mode ? "NORMAL" : "LOWSENSE");
+
+	return sprintf(buf, "%s\n", !wac_i2c->wcharging_mode ? "NORMAL" : "LOWSENSE");
+}
+
+static ssize_t epen_wcharging_mode_store(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t count)
+{
+	struct wacom_i2c *wac_i2c = dev_get_drvdata(dev);
+	int retval = 0;
+
+	if (sscanf(buf, "%u", &retval) == 1)
+		wac_i2c->wcharging_mode = retval;
+
+	printk(KERN_DEBUG"epen:%s, val %d\n",
+		__func__, wac_i2c->wcharging_mode);
+
+
+	if (!wac_i2c->power_enable) {
+		dev_err(&wac_i2c->client->dev, "%s: power off, save & return\n", __func__);
+		return count;
+	}
+
+	retval = wacom_i2c_set_sense_mode(wac_i2c);
+	if (retval < 0)
+		dev_err(&wac_i2c->client->dev, "%s: do not set sensitivity mode, %d\n",
+				__func__, retval);
+
+	return count;
+
+}
+
 #if defined(CONFIG_INPUT_BOOSTER)
 static ssize_t epen_boost_level(struct device *dev,
 	struct device_attribute *attr, const char *buf,
@@ -1462,10 +1505,10 @@ static ssize_t epen_boost_level(struct device *dev,
 
 /* firmware update */
 static DEVICE_ATTR(epen_firm_update,
-		   S_IWUSR | S_IWGRP, NULL, epen_firmware_update_store);
+			S_IWUSR | S_IWGRP, NULL, epen_firmware_update_store);
 /* return firmware update status */
 static DEVICE_ATTR(epen_firm_update_status,
-		   S_IRUGO, epen_firm_update_status_show, NULL);
+			S_IRUGO, epen_firm_update_status_show, NULL);
 /* return firmware version */
 static DEVICE_ATTR(epen_firm_version, S_IRUGO, epen_firm_version_show, NULL);
 #if defined(WACOM_IMPORT_FW_ALGO)
@@ -1483,12 +1526,12 @@ static DEVICE_ATTR(epen_hand, S_IWUSR | S_IWGRP, NULL, epen_hand_store);
 /* For SMD Test */
 static DEVICE_ATTR(epen_reset, S_IWUSR | S_IWGRP, NULL, epen_reset_store);
 static DEVICE_ATTR(epen_reset_result,
-		   S_IRUSR | S_IRGRP, epen_reset_result_show, NULL);
+			S_IRUSR | S_IRGRP, epen_reset_result_show, NULL);
 
 /* For SMD Test. Check checksum */
 static DEVICE_ATTR(epen_checksum, S_IWUSR | S_IWGRP, NULL, epen_checksum_store);
 static DEVICE_ATTR(epen_checksum_result, S_IRUSR | S_IRGRP,
-		   epen_checksum_result_show, NULL);
+			epen_checksum_result_show, NULL);
 #ifdef CONFIG_INPUT_BOOSTER
 static DEVICE_ATTR(boost_level, S_IWUSR | S_IWGRP, NULL, epen_boost_level);
 #endif
@@ -1500,10 +1543,13 @@ static DEVICE_ATTR(epen_ave_result, S_IRUSR | S_IRGRP,
 #endif
 
 static DEVICE_ATTR(epen_connection,
-		   S_IRUGO, epen_connection_show, NULL);
+			S_IRUGO, epen_connection_show, NULL);
 
 static DEVICE_ATTR(epen_saving_mode,
-		   S_IWUSR | S_IWGRP, NULL, epen_saving_mode_store);
+			S_IWUSR | S_IWGRP, NULL, epen_saving_mode_store);
+
+static DEVICE_ATTR(epen_wcharging_mode,
+			S_IRUGO | S_IWUSR | S_IWGRP, epen_wcharging_mode_show, epen_wcharging_mode_store);
 
 static struct attribute *epen_attributes[] = {
 	&dev_attr_epen_firm_update.attr,
@@ -1526,6 +1572,7 @@ static struct attribute *epen_attributes[] = {
 #endif
 	&dev_attr_epen_connection.attr,
 	&dev_attr_epen_saving_mode.attr,
+	&dev_attr_epen_wcharging_mode.attr,
 #ifdef CONFIG_INPUT_BOOSTER
 	&dev_attr_boost_level.attr,
 #endif
@@ -2038,7 +2085,13 @@ static struct i2c_driver wacom_i2c_driver = {
 static int __init wacom_i2c_init(void)
 {
 	int ret = 0;
-
+#ifdef CONFIG_BATTERY_SAMSUNG
+	if (lpcharge == 1) {
+			pr_notice("%s : Do not load driver due to : lpm %d\n",
+			 __func__, lpcharge);
+		return 0;
+	}
+#endif
 	ret = i2c_add_driver(&wacom_i2c_driver);
 	if (ret)
 		printk(KERN_ERR "epen:fail to i2c_add_driver\n");
@@ -2105,7 +2158,13 @@ static struct i2c_driver wacom_flash_driver = {
 static int __init wacom_flash_init(void)
 {
 	int ret = 0;
-
+#ifdef CONFIG_BATTERY_SAMSUNG
+	if (lpcharge == 1) {
+			pr_notice("%s : Do not load driver due to : lpm %d\n",
+			 __func__, lpcharge);
+		return 0;
+	}
+#endif
 	ret = i2c_add_driver(&wacom_flash_driver);
 	if (ret)
 		printk(KERN_ERR "epen:fail to i2c_add_driver\n");

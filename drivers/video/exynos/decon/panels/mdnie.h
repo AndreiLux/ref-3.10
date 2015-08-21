@@ -59,10 +59,21 @@ enum ACCESSIBILITY {
 
 enum HBM {
 	HBM_OFF,
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	HBM_AOLCE_1,
+	HBM_AOLCE_2,
+	HBM_AOLCE_3,
+#else
 	HBM_ON,
 	HBM_ON_TEXT,
+#endif
 	HBM_MAX,
 };
+
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+#define HBM_ON HBM_AOLCE_1
+#endif
+
 #ifdef CONFIG_LCD_HMT
 enum hmt_mode {
 	HMT_MDNIE_OFF,
@@ -80,6 +91,9 @@ enum MDNIE_CMD {
 	LEVEL1_KEY_UNLOCK,
 	MDNIE_CMD1,
 	MDNIE_CMD2,
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	MDNIE_CMD3,
+#endif
 	LEVEL1_KEY_LOCK,
 	MDNIE_CMD_MAX,
 #else
@@ -101,6 +115,19 @@ struct mdnie_table {
 };
 
 #if defined(CONFIG_EXYNOS_DECON_MDNIE_LITE)
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+#define MDNIE_SET(id)	\
+{							\
+	.name		= #id,				\
+	.tune		= {				\
+		{	.sequence = LEVEL1_UNLOCK, .size = ARRAY_SIZE(LEVEL1_UNLOCK),	.sleep = 0,},	\
+		{	.sequence = id##_1, .size = ARRAY_SIZE(id##_1),			.sleep = 0,},	\
+		{	.sequence = id##_2, .size = ARRAY_SIZE(id##_2),			.sleep = 0,},	\
+		{	.sequence = id##_3, .size = ARRAY_SIZE(id##_3),			.sleep = 0,},	\
+		{	.sequence = LEVEL1_LOCK, .size = ARRAY_SIZE(LEVEL1_LOCK),	.sleep = 0,},	\
+	}	\
+}
+#else
 #define MDNIE_SET(id)	\
 {							\
 	.name		= #id,				\
@@ -111,6 +138,7 @@ struct mdnie_table {
 		{	.sequence = LEVEL1_LOCK, .size = ARRAY_SIZE(LEVEL1_LOCK),	.sleep = 0,},	\
 	}	\
 }
+#endif
 
 struct mdnie_ops {
 	int (*write)(void *data, struct mdnie_command *seq, u32 len);
@@ -170,6 +198,9 @@ struct mdnie_info {
 	unsigned int white_r;
 	unsigned int white_g;
 	unsigned int white_b;
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	unsigned int		disable_trans_dimming;
+#endif
 	struct mdnie_table table_buffer;
 	mdnie_t sequence_buffer[256];
 	u16 coordinate[2];

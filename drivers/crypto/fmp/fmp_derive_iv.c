@@ -18,7 +18,7 @@
 #define FMP_MAX_IV_BYTES		16
 #define FMP_MAX_OFFSET_BYTES		16
 #define DEFAULT_HASH			"md5"
-#define SHA256_HASH			"sha256"
+#define SHA256_HASH			"sha256-fmp"
 
 static DEFINE_SPINLOCK(fmp_tfm_lock);
 

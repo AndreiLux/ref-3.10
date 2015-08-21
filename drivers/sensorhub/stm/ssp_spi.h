@@ -49,7 +49,7 @@ int set_glass_type(struct ssp_data *);
 #endif
 void set_proximity_barcode_enable(struct ssp_data *data, bool bEnable);
 void set_gesture_current(struct ssp_data *data, unsigned char uData1);
-unsigned int get_sensor_scanning_info(struct ssp_data *data);
+uint64_t get_sensor_scanning_info(struct ssp_data *data);
 unsigned int get_firmware_rev(struct ssp_data *data);
 int set_big_data_start(struct ssp_data *data, u8 type, u32 length);
 int set_time(struct ssp_data *data);

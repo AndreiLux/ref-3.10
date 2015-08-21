@@ -156,7 +156,7 @@ static ssize_t adc_data_read(struct device *dev,
 	data->buf[GEOMAGNETIC_SENSOR].y = 0;
 	data->buf[GEOMAGNETIC_SENSOR].z = 0;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
 		send_instruction(data, ADD_SENSOR, GEOMAGNETIC_SENSOR,
 			chTempbuf, 4);
 
@@ -173,7 +173,7 @@ static ssize_t adc_data_read(struct device *dev,
 	iSensorBuf[1] = data->buf[GEOMAGNETIC_SENSOR].y;
 	iSensorBuf[2] = data->buf[GEOMAGNETIC_SENSOR].z;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_SENSOR)))
 		send_instruction(data, REMOVE_SENSOR, GEOMAGNETIC_SENSOR,
 			chTempbuf, 4);
 
@@ -359,7 +359,7 @@ Retry_selftest:
 	data->buf[GEOMAGNETIC_RAW].y = 0;
 	data->buf[GEOMAGNETIC_RAW].z = 0;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_RAW)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_RAW)))
 		send_instruction(data, ADD_SENSOR, GEOMAGNETIC_RAW,
 			bufAdc, 4);
 
@@ -376,7 +376,7 @@ Retry_selftest:
 	iADC_Y = data->buf[GEOMAGNETIC_RAW].y;
 	iADC_Z = data->buf[GEOMAGNETIC_RAW].z;
 
-	if (!(atomic_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_RAW)))
+	if (!(atomic64_read(&data->aSensorEnable) & (1 << GEOMAGNETIC_RAW)))
 		send_instruction(data, REMOVE_SENSOR, GEOMAGNETIC_RAW,
 			bufAdc, 4);
 
@@ -399,7 +399,7 @@ static int set_pdc_matrix(struct ssp_data *data)
 
 	if (!(data->uSensorState & 0x04)) {
 		pr_info("[SSP] %s - Skip this function!!!"\
-			", magnetic sensor is not connected(0x%x)\n",
+			", magnetic sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return ret;
 	}

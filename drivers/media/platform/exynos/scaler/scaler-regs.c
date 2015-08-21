@@ -13,9 +13,10 @@
 #include "scaler-regs.h"
 
 #define COEF(val_l, val_h) ((((val_h) & 0x1FF) << 16) | ((val_l) & 0x1FF))
+extern int sc_set_blur;
 
 /* Scaling coefficient value */
-static const __u32 sc_coef_8t[7][16][4] = {
+static const __u32 sc_coef_8t_org[7][16][4] = {
 	{ /* 8:8  or zoom-in */
 		{COEF( 0,   0), COEF(  0,   0), COEF(128,   0), COEF(  0,  0)},
 		{COEF( 0,   1), COEF( -2,   7), COEF(127,  -6), COEF(  2, -1)},
@@ -138,7 +139,7 @@ static const __u32 sc_coef_8t[7][16][4] = {
 	}
 };
 
-static const __u32 sc_coef_4t[7][16][2] = {
+static const __u32 sc_coef_4t_org[7][16][2] = {
 	{ /* 8:8  or zoom-in */
 		{COEF( 0,   0), COEF(128,  0)},
 		{COEF( 0,   5), COEF(127, -4)},
@@ -258,6 +259,252 @@ static const __u32 sc_coef_4t[7][16][2] = {
 		{COEF(22,  62), COEF( 40,  4)},
 		{COEF(25,  62), COEF( 37,  4)},
 		{COEF(28,  63), COEF( 34,  3)}
+	},
+};
+
+static const __u32 sc_coef_8t_blur1[7][16][4] = {
+	{ /* 8:8  or zoom-in */
+		{COEF( 0,  -3), COEF(  0,  35), COEF( 64,  35), COEF(  0, -3)},
+		{COEF( 0,  -3), COEF(  1,  38), COEF( 64,  31), COEF( -1, -2)},
+		{COEF( 0,  -3), COEF(  2,  41), COEF( 63,  29), COEF( -2, -2)},
+		{COEF( 0,  -4), COEF(  4,  44), COEF( 62,  26), COEF( -2, -2)},
+		{COEF( 0,  -4), COEF(  6,  46), COEF( 62,  23), COEF( -3, -2)},
+		{COEF( 0,  -4), COEF(  7,  49), COEF( 60,  20), COEF( -3, -1)},
+		{COEF(-1,  -4), COEF(  9,  52), COEF( 59,  18), COEF( -4, -1)},
+		{COEF(-1,  -4), COEF( 12,  53), COEF( 57,  16), COEF( -4, -1)},
+		{COEF(-1,  -4), COEF( 14,  56), COEF( 55,  13), COEF( -4, -1)},
+		{COEF(-1,  -4), COEF( 12,  53), COEF( 57,  16), COEF( -4, -1)},
+		{COEF(-1,  -4), COEF(  9,  52), COEF( 59,  18), COEF( -4, -1)},
+		{COEF( 0,  -4), COEF(  7,  49), COEF( 60,  20), COEF( -3, -1)},
+		{COEF( 0,  -4), COEF(  6,  46), COEF( 62,  23), COEF( -3, -2)},
+		{COEF( 0,  -4), COEF(  4,  44), COEF( 62,  26), COEF( -2, -2)},
+		{COEF( 0,  -3), COEF(  2,  41), COEF( 63,  29), COEF( -2, -2)},
+		{COEF( 0,  -3), COEF(  1,  38), COEF( 64,  31), COEF( -1, -2)}
+	}, { /* 8:7 Zoom-out */
+		{COEF(-1,  -2), COEF(  4,  35), COEF( 56,  34), COEF(  4, -2)},
+		{COEF(-1,  -3), COEF(  6,  37), COEF( 56,  32), COEF(  3, -2)},
+		{COEF(-1,  -3), COEF(  7,  39), COEF( 56,  30), COEF(  2, -2)},
+		{COEF(-1,  -3), COEF(  8,  42), COEF( 55,  28), COEF(  1, -2)},
+		{COEF(-1,  -3), COEF( 10,  44), COEF( 54,  26), COEF(  0, -2)},
+		{COEF(-1,  -2), COEF( 12,  45), COEF( 53,  23), COEF(  0, -2)},
+		{COEF(-1,  -2), COEF( 14,  47), COEF( 52,  21), COEF( -1, -2)},
+		{COEF(-1,  -2), COEF( 15,  48), COEF( 51,  19), COEF( -1, -1)},
+		{COEF(-1,  -2), COEF( 17,  50), COEF( 50,  17), COEF( -2, -1)},
+		{COEF(-1,  -2), COEF( 15,  48), COEF( 51,  19), COEF( -1, -1)},
+		{COEF(-1,  -2), COEF( 14,  47), COEF( 52,  21), COEF( -1, -2)},
+		{COEF(-1,  -2), COEF( 12,  45), COEF( 53,  23), COEF(  0, -2)},
+		{COEF(-1,  -3), COEF( 10,  44), COEF( 54,  26), COEF(  0, -2)},
+		{COEF(-1,  -3), COEF(  8,  42), COEF( 55,  28), COEF(  1, -2)},
+		{COEF(-1,  -3), COEF(  7,  39), COEF( 56,  30), COEF(  2, -2)},
+		{COEF(-1,  -3), COEF(  6,  37), COEF( 56,  32), COEF(  3, -2)}
+	}, { /* 8:6 Zoom-out */
+		{COEF( 0,  -1), COEF(  8,  33), COEF( 49,  32), COEF(  8, -1)},
+		{COEF(-1,  -1), COEF(  9,  35), COEF( 49,  31), COEF(  7, -1)},
+		{COEF(-1,  -1), COEF( 11,  36), COEF( 49,  29), COEF(  6, -1)},
+		{COEF(-1,  -1), COEF( 12,  38), COEF( 48,  28), COEF(  5, -1)},
+		{COEF(-1,   0), COEF( 12,  40), COEF( 48,  26), COEF(  4, -1)},
+		{COEF(-1,   0), COEF( 15,  41), COEF( 47,  24), COEF(  3, -1)},
+		{COEF(-1,   0), COEF( 17,  42), COEF( 46,  22), COEF(  3, -1)},
+		{COEF(-1,   1), COEF( 18,  43), COEF( 45,  21), COEF(  2, -1)},
+		{COEF(-1,   1), COEF( 20,  45), COEF( 44,  19), COEF(  1, -1)},
+		{COEF(-1,   1), COEF( 18,  43), COEF( 45,  21), COEF(  2, -1)},
+		{COEF(-1,   0), COEF( 17,  42), COEF( 46,  22), COEF(  3, -1)},
+		{COEF(-1,   0), COEF( 15,  41), COEF( 47,  24), COEF(  3, -1)},
+		{COEF(-1,   0), COEF( 12,  40), COEF( 48,  26), COEF(  4, -1)},
+		{COEF(-1,  -1), COEF( 12,  38), COEF( 48,  28), COEF(  5, -1)},
+		{COEF(-1,  -1), COEF( 11,  36), COEF( 49,  29), COEF(  6, -1)},
+		{COEF(-1,  -1), COEF(  9,  35), COEF( 49,  31), COEF(  7, -1)}
+	}, { /* 8:5 Zoom-out */
+		{COEF( 0,   1), COEF( 11,  32), COEF( 42,  30), COEF( 11,  1)},
+		{COEF(-1,   1), COEF( 12,  33), COEF( 43,  30), COEF( 10,  0)},
+		{COEF(-1,   1), COEF( 13,  34), COEF( 43,  29), COEF(  9,  0)},
+		{COEF(-1,   2), COEF( 14,  35), COEF( 43,  27), COEF(  8,  0)},
+		{COEF(-1,   2), COEF( 16,  36), COEF( 42,  26), COEF(  7,  0)},
+		{COEF(-1,   2), COEF( 17,  37), COEF( 42,  25), COEF(  6,  0)},
+		{COEF( 0,   3), COEF( 18,  38), COEF( 41,  23), COEF(  5,  0)},
+		{COEF( 0,   3), COEF( 20,  39), COEF( 40,  22), COEF(  4,  0)},
+		{COEF( 0,   4), COEF( 21,  39), COEF( 40,  20), COEF(  4,  0)},
+		{COEF( 0,   3), COEF( 20,  39), COEF( 40,  22), COEF(  4,  0)},
+		{COEF( 0,   3), COEF( 18,  38), COEF( 41,  23), COEF(  5,  0)},
+		{COEF(-1,   2), COEF( 17,  37), COEF( 42,  25), COEF(  6,  0)},
+		{COEF(-1,   2), COEF( 16,  36), COEF( 42,  26), COEF(  7,  0)},
+		{COEF(-1,   2), COEF( 14,  35), COEF( 43,  27), COEF(  8,  0)},
+		{COEF(-1,   1), COEF( 13,  34), COEF( 43,  29), COEF(  9,  0)},
+		{COEF(-1,   1), COEF( 12,  33), COEF( 43,  30), COEF( 10,  0)}
+	}, { /* 8:4 Zoom-out */
+		{COEF( 0,   2), COEF( 13,  30), COEF( 39,  29), COEF( 13,  2)},
+		{COEF( 0,   3), COEF( 14,  31), COEF( 38,  28), COEF( 12,  2)},
+		{COEF( 0,   3), COEF( 15,  32), COEF( 38,  27), COEF( 11,  2)},
+		{COEF( 0,   4), COEF( 16,  33), COEF( 38,  26), COEF( 10,  1)},
+		{COEF( 0,   4), COEF( 17,  34), COEF( 37,  26), COEF(  9,  1)},
+		{COEF( 0,   6), COEF( 18,  34), COEF( 37,  24), COEF(  8,  1)},
+		{COEF( 0,   5), COEF( 19,  35), COEF( 37,  23), COEF(  8,  1)},
+		{COEF( 0,   6), COEF( 21,  35), COEF( 36,  22), COEF(  7,  1)},
+		{COEF( 1,   6), COEF( 22,  36), COEF( 35,  21), COEF(  6,  1)},
+		{COEF( 0,   6), COEF( 21,  35), COEF( 36,  22), COEF(  7,  1)},
+		{COEF( 0,   5), COEF( 19,  35), COEF( 37,  23), COEF(  8,  1)},
+		{COEF( 0,   6), COEF( 18,  34), COEF( 37,  24), COEF(  8,  1)},
+		{COEF( 0,   4), COEF( 17,  34), COEF( 37,  26), COEF(  9,  1)},
+		{COEF( 0,   4), COEF( 16,  33), COEF( 38,  26), COEF( 10,  1)},
+		{COEF( 0,   3), COEF( 15,  32), COEF( 38,  27), COEF( 11,  2)},
+		{COEF( 0,   3), COEF( 14,  31), COEF( 38,  28), COEF( 12,  2)}
+	}, { /* 8:3 Zoom-out */
+		{COEF( 0,   4), COEF( 15,  28), COEF( 35,  28), COEF( 14,  4)},
+		{COEF( 1,   5), COEF( 16,  29), COEF( 34,  27), COEF( 13,  3)},
+		{COEF( 1,   6), COEF( 16,  30), COEF( 34,  26), COEF( 12,  3)},
+		{COEF( 1,   6), COEF( 17,  30), COEF( 34,  25), COEF( 12,  3)},
+		{COEF( 1,   6), COEF( 18,  31), COEF( 34,  25), COEF( 11,  2)},
+		{COEF( 1,   7), COEF( 19,  31), COEF( 34,  24), COEF( 10,  2)},
+		{COEF( 2,   7), COEF( 20,  32), COEF( 33,  23), COEF(  9,  2)},
+		{COEF( 2,   8), COEF( 21,  32), COEF( 33,  22), COEF(  8,  2)},
+		{COEF( 2,   8), COEF( 22,  32), COEF( 33,  22), COEF(  8,  2)},
+		{COEF( 2,   8), COEF( 21,  32), COEF( 33,  23), COEF(  8,  2)},
+		{COEF( 2,   7), COEF( 20,  32), COEF( 33,  24), COEF(  9,  2)},
+		{COEF( 1,   7), COEF( 19,  31), COEF( 34,  18), COEF( 10,  2)},
+		{COEF( 1,   6), COEF( 18,  31), COEF( 34,  25), COEF( 11,  2)},
+		{COEF( 1,   6), COEF( 17,  30), COEF( 34,  25), COEF( 12,  3)},
+		{COEF( 1,   6), COEF( 16,  30), COEF( 34,  26), COEF( 12,  3)},
+		{COEF( 1,   5), COEF( 16,  29), COEF( 34,  27), COEF( 13,  3)}
+	}, { /* 8:2 Zoom-out */
+		{COEF( 0,   5), COEF( 16,  27), COEF( 33,  27), COEF( 15,  5)},
+		{COEF( 2,   6), COEF( 16,  27), COEF( 32,  26), COEF( 14,  5)},
+		{COEF( 2,   6), COEF( 17,  28), COEF( 32,  25), COEF( 13,  5)},
+		{COEF( 2,   6), COEF( 18,  29), COEF( 32,  25), COEF( 12,  4)},
+		{COEF( 2,   7), COEF( 19,  29), COEF( 31,  24), COEF( 12,  4)},
+		{COEF( 2,   8), COEF( 20,  30), COEF( 31,  23), COEF( 11,  3)},
+		{COEF( 2,   8), COEF( 20,  30), COEF( 31,  23), COEF( 11,  3)},
+		{COEF( 2,   9), COEF( 21,  30), COEF( 31,  22), COEF( 10,  3)},
+		{COEF( 3,  10), COEF( 22,  31), COEF( 30,  21), COEF(  9,  2)},
+		{COEF( 2,   9), COEF( 21,  30), COEF( 31,  22), COEF( 10,  3)},
+		{COEF( 2,   8), COEF( 20,  30), COEF( 31,  23), COEF( 11,  3)},
+		{COEF( 2,   8), COEF( 20,  30), COEF( 31,  23), COEF( 11,  3)},
+		{COEF( 2,   7), COEF( 19,  29), COEF( 31,  24), COEF( 12,  4)},
+		{COEF( 2,   6), COEF( 18,  29), COEF( 32,  25), COEF( 12,  4)},
+		{COEF( 2,   6), COEF( 17,  28), COEF( 32,  25), COEF( 13,  5)},
+		{COEF( 2,   6), COEF( 16,  27), COEF( 32,  26), COEF( 14,  5)}
+	}
+};
+
+static const __u32 sc_coef_4t_blur1[7][16][2] = {
+	{ /* 8:8  or zoom-in */
+		{COEF( 0,  27), COEF( 76, 25)},
+		{COEF( 0,  31), COEF( 76, 21)},
+		{COEF( 0,  35), COEF( 75, 18)},
+		{COEF( 1,  39), COEF( 73, 15)},
+		{COEF( 1,  44), COEF( 71, 12)},
+		{COEF( 2,  48), COEF( 69,  9)},
+		{COEF( 3,  53), COEF( 65,  7)},
+		{COEF( 4,  57), COEF( 61,  6)},
+		{COEF( 5,  61), COEF( 58,  4)},
+		{COEF( 6,  61), COEF( 57,  4)},
+		{COEF( 7,  65), COEF( 53,  3)},
+		{COEF( 9,  69), COEF( 48,  2)},
+		{COEF(12,  71), COEF( 44,  1)},
+		{COEF(15,  73), COEF( 39,  1)},
+		{COEF(18,  75), COEF( 35,  0)},
+		{COEF(21,  76), COEF( 31,  0)}
+	}, { /* 8:7 Zoom-out  */
+		{COEF( 0,  29), COEF( 73, 26)},
+		{COEF( 1,  32), COEF( 72, 23)},
+		{COEF( 1,  36), COEF( 72, 19)},
+		{COEF( 2,  40), COEF( 70, 16)},
+		{COEF( 2,  44), COEF( 68, 14)},
+		{COEF( 3,  48), COEF( 66, 11)},
+		{COEF( 4,  52), COEF( 63,  9)},
+		{COEF( 5,  56), COEF( 60,  7)},
+		{COEF( 7,  58), COEF( 57,  6)},
+		{COEF( 7,  60), COEF( 56,  5)},
+		{COEF( 9,  63), COEF( 52,  4)},
+		{COEF(11,  66), COEF( 48,  3)},
+		{COEF(14,  68), COEF( 44,  2)},
+		{COEF(16,  70), COEF( 40,  2)},
+		{COEF(19,  72), COEF( 36,  1)},
+		{COEF(23,  72), COEF( 32,  1)}
+	}, { /* 8:6 Zoom-out  */
+		{COEF( 0,  30), COEF( 69, 29)},
+		{COEF( 2,  33), COEF( 69, 24)},
+		{COEF( 2,  37), COEF( 68, 21)},
+		{COEF( 3,  41), COEF( 66, 18)},
+		{COEF( 3,  44), COEF( 65, 16)},
+		{COEF( 4,  48), COEF( 63, 13)},
+		{COEF( 5,  51), COEF( 61, 11)},
+		{COEF( 7,  54), COEF( 58,  9)},
+		{COEF( 8,  58), COEF( 55,  7)},
+		{COEF( 9,  58), COEF( 54,  7)},
+		{COEF(11,  61), COEF( 51,  5)},
+		{COEF(13,  63), COEF( 48,  4)},
+		{COEF(16,  65), COEF( 44,  3)},
+		{COEF(18,  66), COEF( 41,  3)},
+		{COEF(21,  68), COEF( 37,  2)},
+		{COEF(24,  69), COEF( 33,  2)}
+	}, { /* 8:5 Zoom-out  */
+		{COEF( 0,  32), COEF( 66, 30)},
+		{COEF( 3,  34), COEF( 66, 25)},
+		{COEF( 3,  38), COEF( 65, 22)},
+		{COEF( 4,  41), COEF( 64, 19)},
+		{COEF( 4,  44), COEF( 63, 17)},
+		{COEF( 5,  48), COEF( 61, 14)},
+		{COEF( 7,  50), COEF( 59, 12)},
+		{COEF( 8,  54), COEF( 56, 10)},
+		{COEF(10,  56), COEF( 54,  8)},
+		{COEF(10,  56), COEF( 54,  8)},
+		{COEF(12,  59), COEF( 50,  7)},
+		{COEF(14,  61), COEF( 48,  5)},
+		{COEF(17,  63), COEF( 44,  4)},
+		{COEF(19,  64), COEF( 41,  4)},
+		{COEF(22,  65), COEF( 38,  3)},
+		{COEF(25,  66), COEF( 34,  3)}
+	}, { /* 8:4 Zoom-out  */
+		{COEF( 0,  34), COEF( 64, 30)},
+		{COEF( 3,  35), COEF( 64, 26)},
+		{COEF( 4,  38), COEF( 63, 23)},
+		{COEF( 4,  41), COEF( 62, 21)},
+		{COEF( 5,  44), COEF( 61, 18)},
+		{COEF( 6,  47), COEF( 60, 15)},
+		{COEF( 8,  50), COEF( 57, 13)},
+		{COEF( 9,  53), COEF( 55, 11)},
+		{COEF(11,  55), COEF( 53,  9)},
+		{COEF(13,  50), COEF( 57,  8)},
+		{COEF(13,  57), COEF( 50,  8)},
+		{COEF(15,  60), COEF( 47,  6)},
+		{COEF(18,  61), COEF( 44,  5)},
+		{COEF(21,  62), COEF( 41,  4)},
+		{COEF(23,  63), COEF( 38,  4)},
+		{COEF(26,  64), COEF( 35,  3)}
+	}, { /* 8:3 Zoom-out */
+		{COEF( 0,  32), COEF( 62, 32)},
+		{COEF( 4,  35), COEF( 62, 27)},
+		{COEF( 4,  38), COEF( 61, 25)},
+		{COEF( 5,  41), COEF( 60, 22)},
+		{COEF( 6,  44), COEF( 59, 19)},
+		{COEF( 7,  47), COEF( 58, 16)},
+		{COEF( 9,  49), COEF( 56, 14)},
+		{COEF(10,  52), COEF( 54, 12)},
+		{COEF(12,  54), COEF( 52, 10)},
+		{COEF(12,  54), COEF( 52, 10)},
+		{COEF(14,  56), COEF( 49,  9)},
+		{COEF(16,  58), COEF( 47,  7)},
+		{COEF(19,  59), COEF( 44,  6)},
+		{COEF(22,  60), COEF( 41,  5)},
+		{COEF(25,  61), COEF( 38,  4)},
+		{COEF(27,  62), COEF( 35,  4)}
+	}, { /* 8:2 Zoom-out  */
+		{COEF( 2,  33), COEF( 61, 32)},
+		{COEF( 5,  36), COEF( 61, 26)},
+		{COEF( 5,  38), COEF( 60, 25)},
+		{COEF( 6,  41), COEF( 59, 22)},
+		{COEF( 7,  44), COEF( 58, 19)},
+		{COEF( 8,  46), COEF( 57, 17)},
+		{COEF( 9,  49), COEF( 55, 15)},
+		{COEF(11,  51), COEF( 53, 13)},
+		{COEF(13,  53), COEF( 51, 11)},
+		{COEF(13,  53), COEF( 51, 11)},
+		{COEF(15,  55), COEF( 49,  9)},
+		{COEF(17,  57), COEF( 46,  8)},
+		{COEF(19,  58), COEF( 44,  7)},
+		{COEF(22,  59), COEF( 41,  6)},
+		{COEF(25,  60), COEF( 38,  5)},
+		{COEF(26,  61), COEF( 36,  5)}
 	},
 };
 
@@ -497,9 +744,9 @@ void sc_hwset_csc_coef(struct sc_dev *sc, enum sc_csc_idx idx,
 			cfg |= SCALER_CFG_CSC_Y_OFFSET_SRC;
 	} else if (idx == CSC_R2Y) {
 		if (csc->csc_range == SC_CSC_WIDE)
-			cfg |= SCALER_CFG_CSC_Y_OFFSET_DST;
-		else
 			cfg &= ~SCALER_CFG_CSC_Y_OFFSET_DST;
+		else
+			cfg |= SCALER_CFG_CSC_Y_OFFSET_DST;
 	}
 	writel(cfg, sc->regs + SCALER_CFG);
 }
@@ -526,76 +773,77 @@ static unsigned int sc_get_scale_filter(unsigned int ratio)
 }
 
 void sc_hwset_polyphase_hcoef(struct sc_dev *sc,
-				unsigned int yratio, unsigned int cratio)
+				unsigned int yratio, unsigned int cratio,
+				unsigned int filter)
 {
 	unsigned int phase;
 	unsigned int yfilter = sc_get_scale_filter(yratio);
 	unsigned int cfilter = sc_get_scale_filter(cratio);
+	const __u32 (*sc_coef_8t)[16][4] = sc_coef_8t_org;
 
-	BUG_ON(yfilter >= ARRAY_SIZE(sc_coef_8t));
-	BUG_ON(cfilter >= ARRAY_SIZE(sc_coef_8t));
+	if (sc_set_blur || filter == SC_FT_BLUR)
+		sc_coef_8t = sc_coef_8t_blur1;
 
-	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_8t[yfilter]) < 9);
-	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_8t[cfilter]) < 9);
+	BUG_ON(yfilter >= ARRAY_SIZE(sc_coef_8t_org));
+	BUG_ON(cfilter >= ARRAY_SIZE(sc_coef_8t_org));
 
-	/* reset value of the coefficient registers are the 8:8 table */
-	if (IS_ENABLED(CONFIG_SCALER_NO_SOFTRST) || (yfilter != 0)) {
-		for (phase = 0; phase < 9; phase++) {
-			writel(sc_coef_8t[yfilter][phase][3],
+	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_8t_org[yfilter]) < 9);
+	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_8t_org[cfilter]) < 9);
+
+	for (phase = 0; phase < 9; phase++) {
+		__raw_writel(sc_coef_8t[yfilter][phase][3],
 				sc->regs + SCALER_YHCOEF + phase * 16);
-			writel(sc_coef_8t[yfilter][phase][2],
+		__raw_writel(sc_coef_8t[yfilter][phase][2],
 				sc->regs + SCALER_YHCOEF + phase * 16 + 4);
-			writel(sc_coef_8t[yfilter][phase][1],
+		__raw_writel(sc_coef_8t[yfilter][phase][1],
 				sc->regs + SCALER_YHCOEF + phase * 16 + 8);
-			writel(sc_coef_8t[yfilter][phase][0],
+		__raw_writel(sc_coef_8t[yfilter][phase][0],
 				sc->regs + SCALER_YHCOEF + phase * 16 + 12);
-		}
 	}
 
-	if (IS_ENABLED(CONFIG_SCALER_NO_SOFTRST) || (cfilter != 0)) {
-		for (phase = 0; phase < 9; phase++) {
-			writel(sc_coef_8t[cfilter][phase][3],
+	for (phase = 0; phase < 9; phase++) {
+		__raw_writel(sc_coef_8t[cfilter][phase][3],
 				sc->regs + SCALER_CHCOEF + phase * 16);
-			writel(sc_coef_8t[cfilter][phase][2],
+		__raw_writel(sc_coef_8t[cfilter][phase][2],
 				sc->regs + SCALER_CHCOEF + phase * 16 + 4);
-			writel(sc_coef_8t[cfilter][phase][1],
+		__raw_writel(sc_coef_8t[cfilter][phase][1],
 				sc->regs + SCALER_CHCOEF + phase * 16 + 8);
-			writel(sc_coef_8t[cfilter][phase][0],
+		__raw_writel(sc_coef_8t[cfilter][phase][0],
 				sc->regs + SCALER_CHCOEF + phase * 16 + 12);
-		}
 	}
 }
 
 void sc_hwset_polyphase_vcoef(struct sc_dev *sc,
-				unsigned int yratio, unsigned int cratio)
+				unsigned int yratio, unsigned int cratio,
+				unsigned int filter)
 {
 	unsigned int phase;
 	unsigned int yfilter = sc_get_scale_filter(yratio);
 	unsigned int cfilter = sc_get_scale_filter(cratio);
+	const __u32 (*sc_coef_4t)[16][2] = sc_coef_4t_org;
 
-	BUG_ON(yfilter >= ARRAY_SIZE(sc_coef_4t));
-	BUG_ON(cfilter >= ARRAY_SIZE(sc_coef_4t));
+	if (sc_set_blur || filter == SC_FT_BLUR)
+		sc_coef_4t = sc_coef_4t_blur1;
 
-	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_4t[yfilter]) < 9);
-	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_4t[cfilter]) < 9);
+	BUG_ON(yfilter >= ARRAY_SIZE(sc_coef_4t_org));
+	BUG_ON(cfilter >= ARRAY_SIZE(sc_coef_4t_org));
+
+	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_4t_org[yfilter]) < 9);
+	BUILD_BUG_ON(ARRAY_SIZE(sc_coef_4t_org[cfilter]) < 9);
 
 	/* reset value of the coefficient registers are the 8:8 table */
-	if (IS_ENABLED(CONFIG_SCALER_NO_SOFTRST) || (yfilter != 0)) {
-		for (phase = 0; phase < 9; phase++) {
-			writel(sc_coef_4t[yfilter][phase][1],
+	for (phase = 0; phase < 9; phase++) {
+		__raw_writel(sc_coef_4t[yfilter][phase][1],
 				sc->regs + SCALER_YVCOEF + phase * 8);
-			writel(sc_coef_4t[yfilter][phase][0],
+		__raw_writel(sc_coef_4t[yfilter][phase][0],
 				sc->regs + SCALER_YVCOEF + phase * 8 + 4);
-		}
 	}
 
-	if (IS_ENABLED(CONFIG_SCALER_NO_SOFTRST) || (cfilter != 0)) {
-		for (phase = 0; phase < 9; phase++) {
-			writel(sc_coef_4t[cfilter][phase][1],
+	for (phase = 0; phase < 9; phase++) {
+		__raw_writel(sc_coef_4t[cfilter][phase][1],
 				sc->regs + SCALER_CVCOEF + phase * 8);
-			writel(sc_coef_4t[cfilter][phase][0],
+		__raw_writel(sc_coef_4t[cfilter][phase][0],
 				sc->regs + SCALER_CVCOEF + phase * 8 + 4);
-		}
 	}
 }
 

@@ -24,7 +24,7 @@ int fimc_is_spi_write(struct fimc_is_spi *spi, u32 addr, u8 *data, size_t size)
 {
 	int ret = 0;
 	u8 tx_buf[512];
-	int i = 0;
+	size_t i = 0;
 
 	tx_buf[0] = 0x02; /* write cmd */
 	tx_buf[1] = (addr & 0xFF0000) >> 16; /* address */

@@ -2059,7 +2059,11 @@ EXPORT_SYMBOL(func);
 define_dev_printk_level(dev_emerg, KERN_EMERG);
 define_dev_printk_level(dev_alert, KERN_ALERT);
 define_dev_printk_level(dev_crit, KERN_CRIT);
+#if defined(CONFIG_SEC_BAT_AUT) && !defined(CONFIG_SAMSUNG_PRODUCT_SHIP)
+define_dev_printk_level(dev_err, BAT_AUTOMAION_TEST_PREFIX_ERR);
+#else
 define_dev_printk_level(dev_err, KERN_ERR);
+#endif
 define_dev_printk_level(dev_warn, KERN_WARNING);
 define_dev_printk_level(dev_notice, KERN_NOTICE);
 define_dev_printk_level(_dev_info, KERN_INFO);

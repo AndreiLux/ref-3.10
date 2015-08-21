@@ -20,14 +20,13 @@
 #include <linux/kthread.h>
 #include <linux/pm_runtime.h>
 #include <linux/iommu.h>
+#include <linux/dma/dma-pl330.h>
 
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
 #include <sound/exynos.h>
 
 #include <asm/dma.h>
-#include <mach/hardware.h>
-#include <mach/dma.h>
 #include <mach/map.h>
 
 #include "seiren.h"
@@ -78,7 +77,7 @@ static int of_dma_match_channel(struct device_node *np, const char *name,
 	return 0;
 }
 
-static unsigned esa_dma_request(enum dma_ch dma_ch,
+static unsigned long esa_dma_request(enum dma_ch dma_ch,
 				struct samsung_dma_req *param,
 				struct device *dev, char *ch_name)
 {
@@ -130,7 +129,7 @@ static unsigned esa_dma_request(enum dma_ch dma_ch,
 					__func__, rtd->ch, rtd->peri);
 			writel(rtd->peri, rtd->regs + DMA_PERI);
 
-			return (unsigned)ch;
+			return (unsigned long)ch;
 		}
 	}
 	esa_err("%s: dmas property of %s missing\n", __func__, ch_name);
@@ -144,7 +143,7 @@ err:
 	return -EIO;
 }
 
-static int esa_dma_release(unsigned ch, void *param)
+static int esa_dma_release(unsigned  long ch, void *param)
 {
 	struct runtime *rtd = sdi.rtd[ch];
 
@@ -156,7 +155,7 @@ static int esa_dma_release(unsigned ch, void *param)
 	return 0;
 }
 
-static int esa_dma_config(unsigned ch, struct samsung_dma_config *param)
+static int esa_dma_config(unsigned long ch, struct samsung_dma_config *param)
 {
 	struct runtime *rtd = sdi.rtd[ch];
 	void __iomem *regs = rtd->regs;
@@ -179,7 +178,7 @@ static int esa_dma_config(unsigned ch, struct samsung_dma_config *param)
 	return 0;
 }
 
-static int esa_dma_prepare(unsigned ch, struct samsung_dma_prep *param)
+static int esa_dma_prepare(unsigned long ch, struct samsung_dma_prep *param)
 {
 	struct runtime *rtd = sdi.rtd[ch];
 	void __iomem *regs = rtd->regs;
@@ -202,7 +201,7 @@ static int esa_dma_prepare(unsigned ch, struct samsung_dma_prep *param)
 	return 0;
 }
 
-static int esa_dma_trigger(unsigned ch)
+static int esa_dma_trigger(unsigned long ch)
 {
 	struct runtime *rtd = sdi.rtd[ch];
 
@@ -211,7 +210,7 @@ static int esa_dma_trigger(unsigned ch)
 	return 0;
 }
 
-static int esa_dma_getposition(unsigned ch, dma_addr_t *src, dma_addr_t *dst)
+static int esa_dma_getposition(unsigned long ch, dma_addr_t *src, dma_addr_t *dst)
 {
 	struct runtime *rtd = sdi.rtd[ch];
 
@@ -221,7 +220,7 @@ static int esa_dma_getposition(unsigned ch, dma_addr_t *src, dma_addr_t *dst)
 	return 0;
 }
 
-static int esa_dma_flush(unsigned ch)
+static int esa_dma_flush(unsigned long ch)
 {
 	struct runtime *rtd = sdi.rtd[ch];
 

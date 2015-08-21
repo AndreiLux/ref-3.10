@@ -44,7 +44,7 @@ static ssize_t audio_regdump_read_file(struct file *file, char __user *user_buf,
 	ssize_t ret, size;
 	int i, num_msg;
 	char *buf;
-	u32 len = 0;
+	unsigned long len = 0;
 	struct audio_regdump_data *dump_data = file->private_data;
 
 	if (*ppos < 0 || !count)
@@ -148,7 +148,7 @@ static ssize_t audio_stackdump_read_file(struct file *file,
 	ssize_t ret, size;
 	int i, num_msg;
 	char *buf;
-	u32 len = 0;
+	unsigned long len = 0;
 	struct audio_stackdump_data *dump_data = file->private_data;
 
 	if (*ppos < 0 || !count)
@@ -245,7 +245,7 @@ static ssize_t audio_log_read_file(struct file *file, char __user *user_buf,
 	ssize_t ret, size;
 	int i, num_msg;
 	char *buf;
-	u32 len = 0;
+	unsigned long len = 0;
 	struct audio_log_data *log_data = &debug_log_data;
 
 	if (*ppos < 0 || !count)

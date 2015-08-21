@@ -40,9 +40,17 @@
 
 #define ENABLE 1
 #define DISABLE 0
+#define CMD_CNT 3
+
+#define P9220S_FW_SDCARD_BIN_PATH	"sdcard/p9220_otp.bin"
+#define P9220S_OTP_FW_HEX_PATH		"idt/p9220_otp.bin"
+#define P9220S_SRAM_FW_HEX_PATH		"idt/p9220_sram.bin"
+
+extern bool sleep_mode;
 
 static enum power_supply_property sec_charger_props[] = {
 	POWER_SUPPLY_PROP_STATUS,
+	POWER_SUPPLY_PROP_MANUFACTURER,
 	POWER_SUPPLY_PROP_CHARGE_TYPE,
 	POWER_SUPPLY_PROP_HEALTH,
 	POWER_SUPPLY_PROP_ONLINE,
@@ -50,50 +58,19 @@ static enum power_supply_property sec_charger_props[] = {
 	POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN,
 	POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL,
 	POWER_SUPPLY_PROP_CHARGE_POWERED_OTG_CONTROL,
+	POWER_SUPPLY_PROP_ENERGY_NOW,
+	POWER_SUPPLY_PROP_ENERGY_AVG,
+	POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION,
 };
 
-static struct i2c_client *p9220_i2c;
-static const u8 OTPBootloader[] = {
-0x00, 0x04, 0x00, 0x20, 0x57, 0x01, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00,
-0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x41, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-0xFE, 0xE7, 0x00, 0x00, 0x80, 0x00, 0x00, 0xE0, 0x00, 0xBF, 0x40, 0x1E, 0xFC, 0xD2, 0x70, 0x47,
-0x00, 0xB5, 0x6F, 0x4A, 0x6F, 0x4B, 0x01, 0x70, 0x01, 0x20, 0xFF, 0xF7, 0xF3, 0xFF, 0x52, 0x1E,
-0x02, 0xD0, 0x18, 0x8B, 0x00, 0x06, 0xF7, 0xD4, 0x00, 0xBD, 0xF7, 0xB5, 0x05, 0x46, 0x6A, 0x48,
-0x81, 0xB0, 0x00, 0x21, 0x94, 0x46, 0x81, 0x81, 0x66, 0x48, 0x31, 0x21, 0x01, 0x80, 0x04, 0x21,
-0x81, 0x80, 0x06, 0x21, 0x01, 0x82, 0x28, 0x20, 0xFF, 0xF7, 0xDC, 0xFF, 0x00, 0x24, 0x15, 0xE0,
-0x02, 0x99, 0x28, 0x5D, 0x09, 0x5D, 0x02, 0x46, 0x8A, 0x43, 0x01, 0xD0, 0x10, 0x20, 0x50, 0xE0,
-0x81, 0x43, 0x0A, 0xD0, 0x5D, 0x4E, 0xB0, 0x89, 0x08, 0x27, 0x38, 0x43, 0xB0, 0x81, 0x28, 0x19,
-0xFF, 0xF7, 0xCE, 0xFF, 0xB0, 0x89, 0xB8, 0x43, 0xB0, 0x81, 0x64, 0x1C, 0x64, 0x45, 0xE7, 0xD3,
-0x54, 0x48, 0x36, 0x21, 0x01, 0x82, 0x00, 0x24, 0x38, 0xE0, 0x02, 0x98, 0x00, 0x27, 0x06, 0x5D,
-0x52, 0x48, 0x82, 0x89, 0x08, 0x21, 0x0A, 0x43, 0x82, 0x81, 0x28, 0x19, 0x00, 0x90, 0x4D, 0x4A,
-0x08, 0x20, 0x90, 0x80, 0x02, 0x20, 0xFF, 0xF7, 0xAD, 0xFF, 0x28, 0x5D, 0x33, 0x46, 0x83, 0x43,
-0x15, 0xD0, 0x48, 0x49, 0x04, 0x20, 0x88, 0x80, 0x02, 0x20, 0xFF, 0xF7, 0xA3, 0xFF, 0x19, 0x46,
-0x00, 0x98, 0xFF, 0xF7, 0xA5, 0xFF, 0x43, 0x49, 0x0F, 0x20, 0x88, 0x80, 0x02, 0x20, 0xFF, 0xF7,
-0x99, 0xFF, 0x28, 0x5D, 0xB0, 0x42, 0x02, 0xD0, 0x7F, 0x1C, 0x0A, 0x2F, 0xDF, 0xD3, 0x3F, 0x48,
-0x82, 0x89, 0x08, 0x21, 0x8A, 0x43, 0x82, 0x81, 0x0A, 0x2F, 0x06, 0xD3, 0x3C, 0x48, 0x29, 0x19,
-0x41, 0x80, 0x29, 0x5D, 0xC1, 0x80, 0x04, 0x20, 0x03, 0xE0, 0x64, 0x1C, 0x64, 0x45, 0xC4, 0xD3,
-0x02, 0x20, 0x34, 0x49, 0x11, 0x22, 0x0A, 0x80, 0x04, 0x22, 0x8A, 0x80, 0x32, 0x49, 0xFF, 0x22,
-0x8A, 0x81, 0x04, 0xB0, 0xF0, 0xBD, 0x34, 0x49, 0x32, 0x48, 0x08, 0x60, 0x2F, 0x4D, 0x00, 0x22,
-0xAA, 0x81, 0x2E, 0x4E, 0x20, 0x3E, 0xB2, 0x83, 0x2A, 0x80, 0x2B, 0x48, 0x5A, 0x21, 0x40, 0x38,
-0x01, 0x80, 0x81, 0x15, 0x81, 0x80, 0x0B, 0x21, 0x01, 0x81, 0x2C, 0x49, 0x81, 0x81, 0x14, 0x20,
-0xFF, 0xF7, 0x60, 0xFF, 0x2A, 0x4B, 0x01, 0x20, 0x18, 0x80, 0x02, 0x20, 0xFF, 0xF7, 0x5A, 0xFF,
-0x8D, 0x20, 0x18, 0x80, 0x9A, 0x80, 0xFF, 0x20, 0x98, 0x82, 0x03, 0x20, 0x00, 0x02, 0x18, 0x82,
-0xFC, 0x20, 0x98, 0x83, 0x22, 0x49, 0x95, 0x20, 0x20, 0x31, 0x08, 0x80, 0x1C, 0x4C, 0x0C, 0x20,
-0x22, 0x80, 0xA8, 0x81, 0x20, 0x20, 0xB0, 0x83, 0x28, 0x80, 0xAA, 0x81, 0x04, 0x26, 0xA8, 0x89,
-0x30, 0x43, 0xA8, 0x81, 0x20, 0x88, 0x01, 0x28, 0x1B, 0xD1, 0x61, 0x88, 0x80, 0x03, 0xA2, 0x88,
-0x08, 0x18, 0x51, 0x18, 0x8B, 0xB2, 0x00, 0x21, 0x04, 0xE0, 0x0F, 0x19, 0x3F, 0x7A, 0xFB, 0x18,
-0x9B, 0xB2, 0x49, 0x1C, 0x8A, 0x42, 0xF8, 0xD8, 0xE1, 0x88, 0x27, 0x46, 0x99, 0x42, 0x01, 0xD0,
-0x08, 0x20, 0x0B, 0xE0, 0x00, 0x2A, 0x08, 0xD0, 0x09, 0x49, 0x08, 0x31, 0xFF, 0xF7, 0x35, 0xFF,
-0x38, 0x80, 0xA8, 0x89, 0xB0, 0x43, 0xA8, 0x81, 0xD9, 0xE7, 0x02, 0x20, 0x20, 0x80, 0xD6, 0xE7,
-0x10, 0x27, 0x00, 0x00, 0x00, 0x5C, 0x00, 0x40, 0x40, 0x30, 0x00, 0x40, 0x20, 0x6C, 0x00, 0x40,
-0x00, 0x04, 0x00, 0x20, 0xFF, 0x0F, 0x00, 0x00, 0x80, 0xE1, 0x00, 0xE0, 0x04, 0x1D, 0x00, 0x00,
-0x00, 0x64, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-};
+int p9220_otp_update = 0;
+
+extern int charger_muic_disable(int val);
+extern unsigned int lpcharge;
 
 static int p9220_reg_read(struct i2c_client *client, u16 reg, u8 *val)
 {
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 	int ret;
 	struct i2c_msg msg[2];
 	u8 wbuf[2];
@@ -112,22 +89,31 @@ static int p9220_reg_read(struct i2c_client *client, u16 reg, u8 *val)
 	msg[1].len = 1;
 	msg[1].buf = rbuf;
 
+	mutex_lock(&charger->io_lock);
 	ret = i2c_transfer(client->adapter, msg, 2);
+	mutex_unlock(&charger->io_lock);	
 	if (ret < 0)
-		pr_err("%s: i2c transfer fail", __func__);
-	pr_err("%s: reg = 0x%x, val = 0x%x\n", __func__, reg, rbuf[0]);
+	{
+		dev_err(&client->dev, "%s: i2c read error, reg: 0x%x, ret: %d\n",
+			__func__, reg, ret);
+		return -1;
+	}
 	*val = rbuf[0];
+
+	if(!p9220_otp_update)
+		pr_info("%s reg = 0x%x, data = 0x%x \n", __func__, reg, *val);
 
 	return ret;
 }
 
 static int p9220_reg_multi_read(struct i2c_client *client, u16 reg, u8 *val, int size)
 {
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 	int ret;
 	struct i2c_msg msg[2];
 	u8 wbuf[2];
 
-	pr_err("%s: reg = 0x%x, size = 0x%x\n", __func__, reg, size);
+//	pr_debug("%s: reg = 0x%x, size = 0x%x\n", __func__, reg, size);
 	msg[0].addr = client->addr;
 	msg[0].flags = client->flags & I2C_M_TEN;
 	msg[0].len = 2;
@@ -141,19 +127,27 @@ static int p9220_reg_multi_read(struct i2c_client *client, u16 reg, u8 *val, int
 	msg[1].len = size;
 	msg[1].buf = val;
 
+	mutex_lock(&charger->io_lock);
 	ret = i2c_transfer(client->adapter, msg, 2);
+	mutex_unlock(&charger->io_lock);
 	if (ret < 0)
+	{
 		pr_err("%s: i2c transfer fail", __func__);
+		return -1;
+	}
 
 	return ret;
 }
 
 static int p9220_reg_write(struct i2c_client *client, u16 reg, u8 val)
 {
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 	int ret;
 	unsigned char data[3] = { reg >> 8, reg & 0xff, val };
 
+	mutex_lock(&charger->io_lock);
 	ret = i2c_master_send(client, data, 3);
+	mutex_unlock(&charger->io_lock);
 	if (ret < 3) {
 		dev_err(&client->dev, "%s: i2c write error, reg: 0x%x, ret: %d\n",
 				__func__, reg, ret);
@@ -162,34 +156,40 @@ static int p9220_reg_write(struct i2c_client *client, u16 reg, u8 val)
 
 	return 0;
 }
-#if 0
-static int p9220_reg_multi_read(struct i2c_client *client, u16 reg, u8 *val, int size)
+
+static int p9220_reg_update(struct i2c_client *client, u16 reg, u8 val, u8 mask)
 {
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
+	unsigned char data[3] = { reg >> 8, reg & 0xff, val };
+	u8 data2;
 	int ret;
-	/* We have 16-bit i2c addresses - care for endianess */
-	unsigned char data[2] = { reg >> 8, reg & 0xff };
 
-	ret = i2c_master_send(client, data, 2);
-	if (ret < 2) {
-		dev_err(&client->dev, "%s: i2c read error, reg: %x\n",
-				__func__, reg);
-		return ret < 0 ? ret : -EIO;
-	}
+	ret = p9220_reg_read(client, reg, &data2);
+	if (ret >= 0) {
+		u8 old_val = data2 & 0xff;
+		u8 new_val = (val & mask) | (old_val & (~mask));
+		data[2] = new_val;
 
-	ret = i2c_master_recv(client, val, size);
-	if (ret < size) {
-		dev_err(&client->dev, "%s: i2c read error, reg: %x\n",
-				__func__, reg);
-		return ret < 0 ? ret : -EIO;
+		mutex_lock(&charger->io_lock);
+		ret = i2c_master_send(client, data, 3);
+		mutex_unlock(&charger->io_lock);		
+		if (ret < 3) {
+			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x, ret: %d\n",
+				__func__, reg, ret);
+			return ret < 0 ? ret : -EIO;
+		}
 	}
-	return 0;
+	p9220_reg_read(client, reg, &data2);
+
+	return ret;
 }
-#endif
+
 static int p9220_reg_multi_write(struct i2c_client *client, u16 reg, const u8 * val, int size)
 {
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 	int ret;
 	const int sendsz = 16;
-	unsigned char data[sendsz];
+	unsigned char data[sendsz+2];
 	int cnt = 0;
 
 	dev_err(&client->dev, "%s: size: 0x%x\n",
@@ -198,8 +198,9 @@ static int p9220_reg_multi_write(struct i2c_client *client, u16 reg, const u8 * 
 		data[0] = (reg+cnt) >>8;
 		data[1] = (reg+cnt) & 0xff;
 		memcpy(data+2, val+cnt, sendsz);
-		dev_err(&client->dev, "%s: addr: 0x%x, cnt: 0x%x\n", __func__, reg+cnt, cnt);
+		mutex_lock(&charger->io_lock);
 		ret = i2c_master_send(client, data, sendsz+2);
+		mutex_unlock(&charger->io_lock);
 		if (ret < sendsz+2) {
 			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n",
 					__func__, reg);
@@ -212,7 +213,45 @@ static int p9220_reg_multi_write(struct i2c_client *client, u16 reg, const u8 * 
 		data[0] = (reg+cnt) >>8;
 		data[1] = (reg+cnt) & 0xff;
 		memcpy(data+2, val+cnt, size);
-		dev_err(&client->dev, "%s: addr: 0x%x, cnt: 0x%x, size: 0x%x\n", __func__, reg+cnt, cnt, size);
+		mutex_lock(&charger->io_lock);
+		ret = i2c_master_send(client, data, size+2);
+		mutex_unlock(&charger->io_lock);
+		if (ret < size+2) {
+			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n",
+					__func__, reg);
+			return ret < 0 ? ret : -EIO;
+		}
+	}
+
+	return ret;
+}
+
+static int p9220_clear_sram(struct i2c_client *client, u16 reg, const u8 * val, int size)
+{
+	int ret;
+	const int sendsz = 64;
+	unsigned char data[sendsz+2];
+	int cnt = 0;
+
+	while(size > sendsz) {
+		data[0] = (reg+cnt) >>8;
+		data[1] = (reg+cnt) & 0xff;
+		memcpy(data+2, val, sendsz);
+//		dev_dbg(&client->dev, "%s: addr: 0x%x, cnt: 0x%x\n", __func__, reg+cnt, cnt);
+		ret = i2c_master_send(client, data, sendsz+2);
+		if (ret < sendsz+2) {
+			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n",
+					__func__, reg);
+			return ret < 0 ? ret : -EIO;
+		}
+		cnt = cnt + sendsz;
+		size = size - sendsz;
+	}
+	if (size > 0) {
+		data[0] = (reg+cnt) >>8;
+		data[1] = (reg+cnt) & 0xff;
+		memcpy(data+2, val, size);
+//		dev_dbg(&client->dev, "%s: addr: 0x%x, cnt: 0x%x, size: 0x%x\n", __func__, reg+cnt, cnt, size);
 		ret = i2c_master_send(client, data, size+2);
 		if (ret < size+2) {
 			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n",
@@ -221,35 +260,497 @@ static int p9220_reg_multi_write(struct i2c_client *client, u16 reg, const u8 * 
 		}
 	}
 
-	return 0;
+	return ret;
 }
-/*
-static int p9220_reg_multi_write(struct i2c_client *client, u16 reg, const u8 * val, int size)
+
+int p9220_get_adc(struct p9220_charger_data *charger, int adc_type)
+{
+	int ret = 0;
+	u8 data[2] = {0,};
+
+	switch (adc_type) {
+		case P9220_ADC_VOUT:
+			ret = p9220_reg_read(charger->client, P9220_ADC_VOUT_L_REG, &data[0]);
+			ret = p9220_reg_read(charger->client, P9220_ADC_VOUT_H_REG, &data[1]);
+			if(ret >= 0 ) {
+				data[1] &= 0x0f;
+				ret = (data[0] | (data[1] << 8))*12600/4095;
+			} else
+				ret = 0;
+			break;
+		case P9220_ADC_VRECT:
+			ret = p9220_reg_read(charger->client, P9220_ADC_VRECT_L_REG, &data[0]);
+			ret = p9220_reg_read(charger->client, P9220_ADC_VRECT_H_REG, &data[1]);
+			if(ret >= 0 ) {
+				data[1] &= 0x0f;
+				ret = (data[0] | (data[1] << 8))*21000/4095;
+			} else
+				ret = 0;
+			break;
+		case P9220_ADC_TX_ISENSE:
+			ret = p9220_reg_read(charger->client, P9220_ADC_TX_ISENSE_L_REG, &data[0]);
+			ret = p9220_reg_read(charger->client, P9220_ADC_TX_ISENSE_H_REG, &data[1]);
+			if(ret >= 0 ) {
+				data[1] &= 0x0f;
+				ret = (data[0] | (data[1] << 8)); // need to check
+			} else
+				ret = 0;
+			break;
+		case P9220_ADC_RX_IOUT:
+			ret = p9220_reg_read(charger->client, P9220_ADC_RX_IOUT_L_REG, &data[0]);
+			ret = p9220_reg_read(charger->client, P9220_ADC_RX_IOUT_H_REG, &data[1]);
+			if(ret >= 0 ) {
+				data[1] &= 0x0f;
+				ret = (data[0] | (data[1] << 8)); // need to check
+			} else
+				ret = 0;
+			break;
+		case P9220_ADC_DIE_TEMP:
+			ret = p9220_reg_read(charger->client, P9220_ADC_DIE_TEMP_L_REG, &data[0]);
+			ret = p9220_reg_read(charger->client, P9220_ADC_DIE_TEMP_H_REG, &data[1]);
+			if(ret >= 0 ) {
+				data[1] &= 0x0f;
+				ret = (data[0] | (data[1] << 8)); // need to check
+			} else
+				ret = 0;
+			break;
+
+		case P9220_ADC_ALLIGN_X:
+			ret = p9220_reg_read(charger->client, P9220_ADC_ALLIGN_X_REG, &data[0]);
+			if(ret >= 0 ) {
+				ret = data[0]; // need to check
+			} else
+				ret = 0;
+			break;
+
+		case P9220_ADC_ALLIGN_Y:
+			ret = p9220_reg_read(charger->client, P9220_ADC_ALLIGN_Y_REG, &data[0]);
+			if(ret >= 0 ) {
+				ret = data[0]; // need to check
+			} else
+				ret = 0;
+			break;
+		case P9220_ADC_OP_FRQ:
+			ret = p9220_reg_read(charger->client, P9220_OP_FREQ_L_REG, &data[0]);
+			if(ret < 0 ) {
+				ret = 0;
+				return ret;
+			}
+			ret = p9220_reg_read(charger->client, P9220_OP_FREQ_H_REG, &data[1]);
+			if(ret >= 0 )
+				ret = (data[0] | (data[1] << 8));
+			else
+				ret = 0;
+			break;
+		default:
+			break;
+	}
+
+	return ret;
+}
+
+void p9220_set_vout(struct p9220_charger_data *charger, int vout)
+{
+	switch (vout) {
+		case P9220_VOUT_5V:
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_5V_VAL);
+			msleep(100);
+			pr_info("%s vout read = %d mV \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			break;
+		case P9220_VOUT_6V:
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_6V_VAL);
+			msleep(100);
+			pr_info("%s vout read = %d mV \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			break;
+		case P9220_VOUT_9V:
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_9V_VAL);
+			msleep(100);
+			pr_info("%s vout read = %d mV \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			break;
+		case P9220_VOUT_CV_CALL:
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG,
+							(charger->pdata->wpc_cv_call_vout - 3500) / 100);
+			msleep(100);
+			pr_info("%s vout read = %d mV \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			break;
+		case P9220_VOUT_CC_CALL:
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG,
+							(charger->pdata->wpc_cc_call_vout - 3500) / 100);
+			msleep(100);
+			pr_info("%s vout read = %d mV \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			break;
+		case P9220_VOUT_9V_STEP:
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_6V_VAL);
+			msleep(1000);
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_7V_VAL);
+			msleep(1000);
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_8V_VAL);
+			msleep(1000);
+			p9220_reg_write(charger->client, P9220_VOUT_SET_REG, P9220_VOUT_9V_VAL);
+			msleep(1000);		
+			pr_info("%s vout read = %d mV \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			break;
+		default:
+			break;
+	}
+	charger->pdata->vout_status = vout;
+}
+
+void p9220_fod_set(struct p9220_charger_data *charger)
+{
+	int i = 0;
+
+	pr_info("%s \n", __func__);
+	if(charger->pdata->fod_data_check) {
+		for(i=0; i< P9220_NUM_FOD_REG; i++)
+			p9220_reg_write(charger->client, P9220_WPC_FOD_0A_REG+i, charger->pdata->fod_data[i]);
+	}
+}
+
+void p9220_set_cmd_reg(struct p9220_charger_data *charger, u8 val, u8 mask)
+{
+	u8 temp = 0;
+	int ret = 0, i = 0;
+
+	do {
+		pr_info("%s \n", __func__);
+		ret = p9220_reg_update(charger->client, P9220_COMMAND_REG, val, mask); // command
+		if(ret >= 0) {
+			msleep(250);
+			ret = p9220_reg_read(charger->client, P9220_COMMAND_REG, &temp); // check out set bit exists
+			if(ret < 0 || i > 3 )
+				break;
+		}
+		i++;
+	}while(temp != 0);
+}
+
+void p9220_send_eop(struct p9220_charger_data *charger, int healt_mode)
+{
+	int i = 0;
+	int ret = 0;
+
+	switch(healt_mode) {
+		case POWER_SUPPLY_HEALTH_OVERHEAT:
+		case POWER_SUPPLY_HEALTH_OVERHEATLIMIT:
+		case POWER_SUPPLY_HEALTH_COLD:
+		if(charger->pdata->cable_type == SEC_WIRELESS_PAD_PMA) {
+			pr_info("%s pma mode \n", __func__);
+			for(i = 0; i < CMD_CNT; i++) {
+				ret = p9220_reg_write(charger->client, P9220_END_POWER_TRANSFER_REG, P9220_EPT_END_OF_CHG);
+				if(ret >= 0) {
+					p9220_set_cmd_reg(charger, P9220_CMD_SEND_EOP_MASK, P9220_CMD_SEND_EOP_MASK);
+					msleep(250);
+				} else
+					break;
+			}
+		} else {
+			pr_info("%s wpc mode \n", __func__);
+			for(i = 0; i < CMD_CNT; i++) {
+				ret = p9220_reg_write(charger->client, P9220_END_POWER_TRANSFER_REG, P9220_EPT_OVER_TEMP);
+				if(ret >= 0) {
+					p9220_set_cmd_reg(charger, P9220_CMD_SEND_EOP_MASK, P9220_CMD_SEND_EOP_MASK);
+					msleep(250);
+				} else
+					break;
+			}
+		}
+		break;
+		case POWER_SUPPLY_HEALTH_UNDERVOLTAGE:
+			pr_info("%s ept-reconfigure \n", __func__);
+			ret = p9220_reg_write(charger->client, P9220_END_POWER_TRANSFER_REG, P9220_EPT_RECONFIG);
+			if(ret >= 0) {
+				p9220_set_cmd_reg(charger, P9220_CMD_SEND_EOP_MASK, P9220_CMD_SEND_EOP_MASK);
+				msleep(250);
+			}
+		break;
+		default:
+		break;
+	}
+}
+
+int p9220_send_cs100(struct p9220_charger_data *charger)
+{
+	int i = 0;
+	int ret = 0;
+
+	for(i = 0; i < CMD_CNT; i++) {
+		ret = p9220_reg_write(charger->client, P9220_CHG_STATUS_REG, 100);
+		if(ret >= 0) {
+			p9220_set_cmd_reg(charger, P9220_CMD_SEND_CHG_STS_MASK, P9220_CMD_SEND_CHG_STS_MASK);
+			msleep(250);
+			ret = 1;
+		} else {
+			ret = -1;
+			break;
+		}
+	}
+	return ret;
+}
+
+void p9220_send_packet(struct p9220_charger_data *charger, u8 header, u8 rx_data_com, u8 *data_val, int data_size)
 {
 	int ret;
-	unsigned char * data = kmalloc(size, GFP_KERNEL);
+	int i;
+	ret = p9220_reg_write(charger->client, P9220_PACKET_HEADER, header);
+	ret = p9220_reg_write(charger->client, P9220_RX_DATA_COMMAND, rx_data_com);
 
-	if (data == NULL) {
-		dev_err(&client->dev, "%s: kmalloc fail\n",
-				__func__);
-		return -1;
+	for(i = 0; i< data_size; i++) {
+		ret = p9220_reg_write(charger->client, P9220_RX_DATA_VALUE0 + i, data_val[i]);
 	}
-	dev_err(&client->dev, "%s: size: 0x%x\n",
-				__func__, size);
-	data[0] = reg >>8;
-	data[1] = reg & 0xff;
-	memcpy(data+2, val, size);
-	ret = i2c_master_send(client, data, size+2);
-	kfree(data);
-	if (ret < size+2) {
-		dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n",
-				__func__, reg);
-		return ret < 0 ? ret : -EIO;
-	}
-
-	return 0;
+	p9220_set_cmd_reg(charger, P9220_CMD_SEND_RX_DATA_MASK, P9220_CMD_SEND_RX_DATA_MASK);
 }
-*/
+
+void p9220_send_command(struct p9220_charger_data *charger, int cmd_mode)
+{
+	u8 data_val[4];
+	union power_supply_propval value;
+	//int vrect = 0, i = 0;
+
+	switch (cmd_mode) {
+		case P9220_AFC_CONF_5V:
+			pr_info("%s set 5V \n", __func__);
+			if(!lpcharge) {
+				value.intval = ENABLE;
+				psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+			}
+			data_val[0] = 0x05;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_AFC_SET, data_val, 1);
+			msleep(120);
+
+			p9220_set_vout(charger, P9220_VOUT_5V);
+			pr_info("%s vout read = %d \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			pr_info("%s --- debug -- \n", __func__);
+			p9220_reg_read(charger->client, P9220_RX_DATA_COMMAND, &data_val[0]);
+			p9220_reg_read(charger->client, P9220_RX_DATA_VALUE0, &data_val[0]);
+			p9220_reg_read(charger->client, P9220_COMMAND_REG, &data_val[0]);
+			if(!lpcharge) {
+				value.intval = DISABLE;
+				psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+			}
+			break;
+		case P9220_AFC_CONF_9V:
+			pr_info("%s set 9V \n", __func__);
+			psy_do_property("battery", get, POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW, value);
+			if (value.intval == POWER_SUPPLY_TYPE_USB){
+				pr_info("%s wire_status = %d. do not set 9V \n", __func__,  value.intval);
+				break;
+			}
+
+			data_val[0] = 0x2c;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_AFC_SET, data_val, 1);
+			msleep(120);
+
+			p9220_set_vout(charger, P9220_VOUT_9V);
+			pr_info("%s vout read = %d \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+
+#if 0
+			do {
+				vrect = p9220_get_adc(charger, P9220_ADC_VRECT);
+				pr_info("%s vrect = %d mV \n", __func__, vrect);
+				msleep(5);
+				i++;
+				if (i > 3)
+					break;
+			} while(vrect > 7000);
+
+			if(vrect > 7000) {
+				p9220_set_vout(charger, P9220_VOUT_9V);
+				pr_info("%s vout read = %d \n", __func__,  p9220_get_adc(charger, P9220_ADC_VOUT));
+			}
+#endif			
+			pr_info("%s --- debug -- \n", __func__);
+			p9220_reg_read(charger->client, P9220_RX_DATA_COMMAND, &data_val[0]);
+			p9220_reg_read(charger->client, P9220_RX_DATA_VALUE0, &data_val[0]);
+			p9220_reg_read(charger->client, P9220_COMMAND_REG, &data_val[0]);
+			break;
+		case P9220_LED_CONTROL_ON:
+			pr_info("%s led on \n", __func__);
+			data_val[0] = 0x0;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_LED_CTRL, data_val, 1);
+			break;
+		case P9220_LED_CONTROL_OFF:
+			pr_info("%s led off \n", __func__);
+			data_val[0] = 0xff;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_LED_CTRL, data_val, 1);
+			break;
+		case P9220_FAN_CONTROL_ON:
+			pr_info("%s fan on \n", __func__);
+			data_val[0] = 0x0;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_FAN_CTRL, data_val, 1);
+			break;
+		case P9220_FAN_CONTROL_OFF:
+			pr_info("%s fan off \n", __func__);
+			data_val[0] = 0xff;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_FAN_CTRL, data_val, 1);
+			break;
+		case P9220_REQUEST_AFC_TX:
+			pr_info("%s request afc tx \n", __func__);
+			data_val[0] = 0x0;
+			p9220_send_packet(charger, P9220_HEADER_AFC_CONF, P9220_RX_DATA_COM_REQ_AFC, data_val, 1);
+			break;
+		default:
+			break;
+	}
+}
+
+void p9220_led_control(struct p9220_charger_data *charger, bool on)
+{
+	int i = 0;
+
+	if(on) {
+		for(i=0; i< CMD_CNT; i++)
+			p9220_send_command(charger, P9220_LED_CONTROL_ON);
+	} else {
+		for(i=0; i< CMD_CNT; i++)
+			p9220_send_command(charger, P9220_LED_CONTROL_OFF);
+	}
+}
+
+void p9220_fan_control(struct p9220_charger_data *charger, bool on)
+{
+	int i = 0;
+
+	if(on) {
+		for(i=0; i< CMD_CNT -1; i++)
+			p9220_send_command(charger, P9220_FAN_CONTROL_ON);
+	} else {
+		for(i=0; i< CMD_CNT -1; i++)
+			p9220_send_command(charger, P9220_FAN_CONTROL_OFF);
+	}
+}
+
+void p9220_set_vrect_adjust(struct p9220_charger_data *charger, int set)
+{
+	pr_info("%s %d\n", __func__, set);
+
+	switch (set) {
+		case P9220_HEADROOM_0:
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x0);
+			msleep(10);
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x0);
+			msleep(10);
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x0);
+			break;
+		case P9220_HEADROOM_1:
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x36);
+			msleep(10);
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x36);
+			msleep(10);
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x36);
+			break;
+		case P9220_HEADROOM_2:
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x7f);
+			msleep(10);
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x7f);
+			msleep(10);
+			p9220_reg_write(charger->client, P9220_VRECT_SET_REG, 0x7f);
+			break;
+		default:
+			pr_info("%s no headroom mode\n", __func__);
+			break;
+	}
+}
+
+void p9220_mis_align(struct p9220_charger_data *charger)
+{
+	pr_info("%s: Reset M0\n",__func__);
+	p9220_reg_write(charger->client, 0x3040, 0x80); /*restart M0 */
+}
+
+int p9220_get_firmware_version(struct p9220_charger_data *charger, int firm_mode)
+{
+	int version = -1;
+	int ret;
+	u8 otp_fw_major[2] = {0,};
+	u8 otp_fw_minor[2] = {0,};
+	u8 tx_fw_major[2] = {0,};
+	u8 tx_fw_minor[2] = {0,};
+
+	switch (firm_mode) {
+		case P9220_RX_FIRMWARE:
+			ret = p9220_reg_read(charger->client, P9220_OTP_FW_MAJOR_REV_L_REG, &otp_fw_major[0]);
+			ret = p9220_reg_read(charger->client, P9220_OTP_FW_MAJOR_REV_H_REG, &otp_fw_major[1]);
+			if (ret >= 0) {
+				version =  otp_fw_major[0] | (otp_fw_major[1] << 8);
+			}
+			pr_info("%s rx major firmware version 0x%x \n", __func__, version);
+
+			ret = p9220_reg_read(charger->client, P9220_OTP_FW_MINOR_REV_L_REG, &otp_fw_minor[0]);
+			ret = p9220_reg_read(charger->client, P9220_OTP_FW_MINOR_REV_H_REG, &otp_fw_minor[1]);
+			if (ret >= 0) {
+				version =  otp_fw_minor[0] | (otp_fw_minor[1] << 8);
+			}
+			pr_info("%s rx minor firmware version 0x%x \n", __func__, version);
+			break;
+		case P9220_TX_FIRMWARE:
+			ret = p9220_reg_read(charger->client, P9220_SRAM_FW_MAJOR_REV_L_REG, &tx_fw_major[0]);
+			ret = p9220_reg_read(charger->client, P9220_SRAM_FW_MAJOR_REV_H_REG, &tx_fw_major[1]);
+			if (ret >= 0) {
+				version =  tx_fw_major[0] | (tx_fw_major[1] << 8);
+			}
+			pr_info("%s tx major firmware version 0x%x \n", __func__, version);
+
+			ret = p9220_reg_read(charger->client, P9220_SRAM_FW_MINOR_REV_L_REG, &tx_fw_minor[0]);
+			ret = p9220_reg_read(charger->client, P9220_SRAM_FW_MINOR_REV_H_REG, &tx_fw_minor[1]);
+			if (ret >= 0) {
+				version =  tx_fw_minor[0] | (tx_fw_minor[1] << 8);
+			}
+			pr_info("%s tx minor firmware version 0x%x \n", __func__, version);
+			break;
+		default:
+			pr_err("%s Wrong firmware mode \n", __func__);
+			version = -1;
+			break;
+	}
+
+	return version;
+}
+
+int p9220_get_ic_grade(struct p9220_charger_data *charger, int read_mode)
+{
+	u8 grade;
+	int ret;
+
+	switch (read_mode) {
+		case P9220_IC_GRADE:
+			ret = p9220_reg_read(charger->client, P9220_CHIP_REVISION_REG, &grade);
+
+			if(ret >= 0) {
+				grade &= P9220_CHIP_GRADE_MASK;
+				pr_info("%s ic grade = %d \n", __func__, grade);
+				ret =  grade;
+			}
+			else
+				ret = -1;
+			break;
+		case P9220_IC_VERSION:
+			ret = p9220_reg_read(charger->client, P9220_CHIP_REVISION_REG, &grade);
+
+			if(ret >= 0) {
+				grade &= P9220_CHIP_REVISION_MASK;
+				pr_info("%s ic version = %d \n", __func__, grade);
+				ret =  grade;
+			}
+			else
+				ret = -1;
+			break;
+		case P9220_IC_VENDOR:
+			ret = -1;
+			break;
+		default :
+			ret = -1;
+			break;
+	}
+	return ret;
+}
+
+void p9220_wireless_chg_init(struct p9220_charger_data *charger)
+{
+	pr_info("%s \n", __func__);
+
+	p9220_set_vout(charger, P9220_VOUT_5V);
+}
 
 static int datacmp(const char *cs, const char *ct, int count)
 {
@@ -259,95 +760,202 @@ static int datacmp(const char *cs, const char *ct, int count)
 		c1 = *cs++;
 		c2 = *ct++;
 		if (c1 != c2) {
-			pr_err("%s, cnt %d", __func__, count);
+			pr_err("%s, cnt %d\n", __func__, count);
 			return c1 < c2 ? -1 : 1;
 		}
 		count--;
 	}
 	return 0;
 }
-static int LoadOTPLoaderInRAM(u16 addr)
+static int LoadOTPLoaderInRAM(struct p9220_charger_data *charger, u16 addr)
 {
 	int i, size;
 	u8 data[1024];
-	if (p9220_reg_multi_write(p9220_i2c, addr, OTPBootloader, sizeof(OTPBootloader)) < 0) {
+	if (p9220_reg_multi_write(charger->client, addr, OTPBootloader, sizeof(OTPBootloader)) < 0) {
 		pr_err("%s,fail", __func__);
 	}
 	size = sizeof(OTPBootloader);
 	i = 0;
 	while(size > 0) {
-		pr_err("%s, 0x%x: , 0x%x", __func__, addr+i, size);
-		if (p9220_reg_multi_read(p9220_i2c, addr+i, data+i, 16) < 0) {
+		if (p9220_reg_multi_read(charger->client, addr+i, data+i, 16) < 0) {
 			pr_err("%s, read failed(%d)", __func__, addr+i);
 			return 0;
 		}
 		i += 16;
 		size -= 16;
 	}
+	size = sizeof(OTPBootloader);
+	/*
 	i = 0;
-	for (i = 0 ; i < sizeof(OTPBootloader); i++) {
+	for (i = 0 ; i < size; i++) {
 		if (i%16 == 0)
-			pr_err("addr = 0x%x : ", addr+i);
-		pr_err(" 0x%x,", data[i]);
-		if (i%16 == 15)
-			pr_err("\n");
+			pr_err("addr = 0x%x : \n", addr+i);
+		pr_err(" 0x%x\n", data[i]);
 	}
-
-	if (datacmp(data, OTPBootloader, sizeof(OTPBootloader))) {
-		pr_err("%s, data is not matched", __func__);
+*/
+	if (datacmp(data, OTPBootloader, size)) {
+		pr_err("%s, data is not matched\n", __func__);
 		return 0;
 	}
 	return 1;
 }
-static int PgmOTPwRAM(unsigned short OtpAddr, const u8 * srcData, int srcOffs, int size)
+
+static int p9220_reg_multi_write_verify(struct i2c_client *client, u16 reg, const u8 * val, int size)
 {
-	//DateTime pgmSt = DateTime.Now;
+	int ret = 0;
+	const int sendsz = 64;
+	int cnt = 0;
+	int retry_cnt = 0;
+	unsigned char data[sendsz+2];
+	u8 rdata[sendsz+2];
+
+//	dev_dbg(&client->dev, "%s: size: 0x%x\n", __func__, size);
+	while(size > sendsz) {
+		data[0] = (reg+cnt) >>8;
+		data[1] = (reg+cnt) & 0xff;
+		memcpy(data+2, val+cnt, sendsz);
+//		dev_dbg(&client->dev, "%s: addr: 0x%x, cnt: 0x%x\n", __func__, reg+cnt, cnt);
+		ret = i2c_master_send(client, data, sendsz+2);
+		if (ret < sendsz+2) {
+			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n", __func__, reg);
+			return ret < 0 ? ret : -EIO;
+		}
+		if (p9220_reg_multi_read(client, reg+cnt, rdata, sendsz) < 0) {
+			pr_err("%s, read failed(%d)\n", __func__, reg+cnt);
+			return -1;
+		}
+		if (datacmp(val+cnt, rdata, sendsz)) {
+			pr_err("%s, data is not matched. retry(%d)\n", __func__, retry_cnt);
+			retry_cnt++;
+			if(retry_cnt > 5) {
+				pr_err("%s, data is not matched. write failed\n", __func__);
+				retry_cnt = 0;
+				return -1;
+			}
+			continue;
+		}
+//		pr_debug("%s, data is matched!\n", __func__);
+		cnt += sendsz;
+		size -= sendsz;
+		retry_cnt = 0;
+	}
+	while (size > 0) {
+		data[0] = (reg+cnt) >>8;
+		data[1] = (reg+cnt) & 0xff;
+		memcpy(data+2, val+cnt, size);
+//		dev_dbg(&client->dev, "%s: addr: 0x%x, cnt: 0x%x, size: 0x%x\n", __func__, reg+cnt, cnt, size);
+		ret = i2c_master_send(client, data, size+2);
+		if (ret < size+2) {
+			dev_err(&client->dev, "%s: i2c write error, reg: 0x%x\n", __func__, reg);
+			return ret < 0 ? ret : -EIO;
+		}
+		if (p9220_reg_multi_read(client, reg+cnt, rdata, size) < 0) {
+			pr_err("%s, read failed(%d)\n", __func__, reg+cnt);
+			return -1;
+		}
+		if (datacmp(val+cnt, rdata, size)) {
+			pr_err("%s, data is not matched. retry(%d)\n", __func__, retry_cnt);
+			retry_cnt++;
+			if(retry_cnt > 5) {
+				pr_err("%s, data is not matched. write failed\n", __func__);
+				retry_cnt = 0;
+				return -1;
+			}
+			continue;
+		}
+		size = 0;
+		pr_err("%s, data is matched!\n", __func__);
+	}
+	return ret;
+}
+
+static int p9220_TxFW_SRAM(struct p9220_charger_data *charger, const u8 * srcData, int fw_size)
+{
+	const u8 clear_data[] = {
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+};
+
+	u16 addr;
+	u8 temp;
+	int ret;
+
+	pr_info("%s TX FW update Start \n",__func__);
+
+	if (p9220_reg_write(charger->client, 0x3000, 0x5a) < 0) {
+		pr_err("%s: write key error\n", __func__);
+		return false;
+	}
+	if (p9220_reg_write(charger->client, 0x3040, 0x10) < 0) {
+		pr_err("%s: halt M0 error\n", __func__);
+		return false;
+	}
+
+	/* clear 0x0000 to 0x1FFF */
+	if (p9220_clear_sram(charger->client, 0x0000, clear_data, 0x2000) < 0) {
+		pr_err("%s: clear memory error\n", __func__);
+		return false;
+	}
+	addr = 0x0800;
+	if (p9220_reg_multi_write_verify(charger->client, addr, srcData, fw_size) < 0) {
+		pr_err("%s: write fail", __func__);
+		return false;
+	}
+
+	if (p9220_reg_write(charger->client, 0x3000, 0x5a) < 0) {
+		pr_err("%s: write key error..\n", __func__);
+		return false;
+	}
+
+	if (p9220_reg_write(charger->client, 0x3048, 0xD0) < 0) {
+		pr_err("%s: remapping error..\n", __func__);
+		return false;
+	}
+
+	p9220_reg_write(charger->client, 0x3040, 0x80);
+
+	//p9220_reg_write(charger->client, 0x684, 0x21);
+	//p9220_reg_write(charger->client, 0x685, 0x2);
+
+	pr_err("TX firmware update finished.\n");
+	ret = p9220_reg_read(charger->client, P9220_SYS_OP_MODE_REG, &temp);
+	pr_info("%s: SYS_OP_MODE 0x%x, ret: %d\n", __func__, temp, ret);
+	return true;
+}
+
+static int PgmOTPwRAM(struct p9220_charger_data *charger, unsigned short OtpAddr,
+					  const u8 * srcData, int srcOffs, int size)
+{
 	int i, j, cnt;
 
-	pr_info("%s Start ---------------------------------------- \n",__func__);
-	if (!p9220_i2c) {
-		pr_err("%s: i2c is not probed\n", __func__);
-		return false;		// write key
-	}
-	/*
-	   if (!ConvertStr2Num(comboBoxDeviceI2cAddr.Text, out i2cDeviceAddr))
-	   {
-	   addText("ERROR: I2C Device Address Invalid");
-	   return false;
-	   }
-	   addText("");
-	 */
-	//ignoreNAK = false;		// restore to default in case previous call did not finish
-	// configure the system
-	if (p9220_reg_write(p9220_i2c, 0x3000, 0x5a) < 0) {
+	u8 fw_major[2] = {0,};
+	u8 fw_minor[2] = {0,};
+
+	p9220_reg_read(charger->client, P9220_OTP_FW_MAJOR_REV_L_REG, &fw_major[0]);
+	p9220_reg_read(charger->client, P9220_OTP_FW_MAJOR_REV_H_REG, &fw_major[1]);
+	p9220_reg_read(charger->client, P9220_OTP_FW_MINOR_REV_L_REG, &fw_minor[0]);
+	p9220_reg_read(charger->client, P9220_OTP_FW_MINOR_REV_H_REG, &fw_minor[1]);
+
+	if (p9220_reg_write(charger->client, 0x3000, 0x5a) < 0) {
 		pr_err("%s: write key error\n", __func__);
 		return false;		// write key
 	}
-	if (p9220_reg_write(p9220_i2c, 0x3040, 0x10) < 0) {
+	if (p9220_reg_write(charger->client, 0x3040, 0x10) < 0) {
 		pr_err("%s: halt M0 error\n", __func__);
 		return false;		// halt M0
 	}
-	if (!LoadOTPLoaderInRAM(0x1c00)){
+	if (!LoadOTPLoaderInRAM(charger, 0x1c00)){
 		pr_err("%s: LoadOTPLoaderInRAM error\n", __func__);
 		return false;		// make sure load address and 1KB size are OK
 	}
 
-	if (p9220_reg_write(p9220_i2c, 0x3048, 0x80) < 0) {
+	if (p9220_reg_write(charger->client, 0x3048, 0x80) < 0) {
 		pr_err("%s: map RAM to OTP error\n", __func__);
 		return false;		// map RAM to OTP
 	}
-	//if (!Write9220Byte(0x3008, 0x20)) {return false;		// ahb lower
-	//ignoreNAK = true;
-	//if (!Write9220Byte(0x3040, 0x80)) return false;		// run M0
-	p9220_reg_write(p9220_i2c, 0x3040, 0x80);
-	/*
-	if (p9220_reg_write(p9220_i2c, 0x3040, 0x80) < 0) {
-		pr_err("%s: run M0 error\n", __func__);
-		return false;		// halt M0
-	}
-	*/
-	//ignoreNAK = false;
-
+	p9220_reg_write(charger->client, 0x3040, 0x80);
 	msleep(100);
 
 	for (i = 0; i < size; i += 128)		// program pages of 128 bytes
@@ -356,7 +964,6 @@ static int PgmOTPwRAM(unsigned short OtpAddr, const u8 * srcData, int srcOffs, i
 		u16 StartAddr = (u16)i;
 		u16 CheckSum = StartAddr;
 		u16 CodeLength = 128;
-		//Array.Copy(srcData, i + srcOffs, sBuf, 8, 128); //(src, srcoffset, dst, dstoffset, size)
 		memcpy(sBuf + 8, srcData + i + srcOffs, 128);
 
 		for (j = 127; j >= 0; j--)
@@ -372,56 +979,31 @@ static int PgmOTPwRAM(unsigned short OtpAddr, const u8 * srcData, int srcOffs, i
 			CheckSum += sBuf[j + 8];	// add the non zero values
 		CheckSum += CodeLength;			// finish calculation of the check sum
 
-		//Array.Copy(BitConverter.GetBytes(StartAddr), 0, sBuf, 2, 2);
 		memcpy(sBuf+2, &StartAddr,2);
-		//Array.Copy(BitConverter.GetBytes(CodeLength), 0, sBuf, 4, 2);
 		memcpy(sBuf+4, &CodeLength,2);
-		//Array.Copy(BitConverter.GetBytes(CheckSum), 0, sBuf, 6, 2);
 		memcpy(sBuf+6, &CheckSum,2);
 
-		//typedef struct {	// write to structure at address 0x400
-		//		u16 Status;
-		//		u16 StartAddr;
-		//		u16 CodeLength;
-		//		u16 DataChksum;
-		//		u8  DataBuf[128];
-		//}  P9220PgmStrType;
-
-		// read status is guaranteed to be != 1 at this point
-
-		//if (!Xfer9220i2c(p9220_i2c, 0x400, 0x100, sBuf, 0, CodeLength + 8,ReadWrite.WRITE))
-		if (p9220_reg_multi_write(p9220_i2c, 0x400, sBuf, CodeLength + 8) < 0)
+		if (p9220_reg_multi_write(charger->client, 0x400, sBuf, CodeLength + 8) < 0)
 		{
 			pr_err("ERROR: on writing to OTP buffer");
 			return false;
 		}
 		sBuf[0] = 1;
-		//if (!Xfer9220i2c(i2cDeviceAddr, 0x400, 0x100, sBuf, 0, 1, ReadWrite.WRITE))
-		if (p9220_reg_write(p9220_i2c, 0x400, sBuf[0]) < 0)
+		if (p9220_reg_write(charger->client, 0x400, sBuf[0]) < 0)
 		{
 			pr_err("ERROR: on OTP buffer validation");
 			return false;
 		}
 
-		//DateTime startT = DateTime.Now;
 		cnt = 0;
 		do
 		{
 			msleep(20);
-			//if (!Xfer9220i2c(i2cDeviceAddr, 0x400, 0x100, sBuf, 0, 1, ReadWrite.READ))
-			if (p9220_reg_read(p9220_i2c, 0x400, sBuf) < 0)
+			if (p9220_reg_read(charger->client, 0x400, sBuf) < 0)
 			{
 				pr_err("ERROR: on readign OTP buffer status(%d)", cnt);
 				return false;
 			}
-			/*
-			   TimeSpan pas = DateTime.Now - startT;
-			   if (pas.TotalMilliseconds > 5000)
-			   {
-			   pr_err("ERROR: time out on buffer program to OTP");
-			   return false;
-			   }
-			 */
 			 if (cnt > 1000) {
 				 pr_err("ERROR: time out on buffer program to OTP");
 				 break;
@@ -429,7 +1011,6 @@ static int PgmOTPwRAM(unsigned short OtpAddr, const u8 * srcData, int srcOffs, i
 			 cnt++;
 		} while (sBuf[0] == 1);
 
-		// check status
 		if (sBuf[0] != 2)		// not OK
 		{
 			pr_err("ERROR: buffer write to OTP returned status %d ",sBuf[0]);
@@ -437,29 +1018,19 @@ static int PgmOTPwRAM(unsigned short OtpAddr, const u8 * srcData, int srcOffs, i
 		}
 	}
 
-	// restore system
-	if (p9220_reg_write(p9220_i2c, 0x3000, 0x5a) < 0) {
+	if (p9220_reg_write(charger->client, 0x3000, 0x5a) < 0) {
 		pr_err("%s: write key error..\n", __func__);
 		return false;		// write key
 	}
-	if (p9220_reg_write(p9220_i2c, 0x3048, 0x00) < 0) {
+	if (p9220_reg_write(charger->client, 0x3048, 0x00) < 0) {
 		pr_err("%s: remove code remapping error..\n", __func__);
 		return false;		// remove code remapping
 	}
-	//if (!Write9220Byte(0x3040, 0x80)) return false;		// reset M0
 
-	//	TimeSpan pgmSp = DateTime.Now - pgmSt;
 	pr_err("OTP Programming finished in");
 	pr_info("%s------------------------------------------------- \n", __func__);
 	return true;
 }
-
-#define P9220S_FW_SDCARD_BIN_PATH "sdcard/p9220_otp.bin"
-#define P9220S_FW_HEX_PATH "idt/p9220_otp.fw"
-#define SDCARD					0
-#define BUILT_IN				1
-
-int p9220_otp_update = 0;
 
 int p9220_firmware_update(struct p9220_charger_data *charger, int cmd)
 {
@@ -472,7 +1043,10 @@ int p9220_firmware_update(struct p9220_charger_data *charger, int cmd)
 	pr_info("%s firmware update mode is = %d \n", __func__, cmd);
 
 	switch(cmd) {
-		case SDCARD:
+		case SEC_WIRELESS_RX_SDCARD_MODE:
+		charger_muic_disable(ENABLE);
+		disable_irq(charger->pdata->irq_wpc_int);
+		disable_irq(charger->pdata->irq_wpc_det);
 		old_fs = get_fs();
 		set_fs(KERNEL_DS);
 
@@ -509,24 +1083,81 @@ int p9220_firmware_update(struct p9220_charger_data *charger, int cmd)
 		filp_close(fp, current->files);
 		set_fs(old_fs);
 		p9220_otp_update = 1;
-		PgmOTPwRAM(0 ,fw_img, 0, fsize);
+		PgmOTPwRAM(charger, 0 ,fw_img, 0, fsize);
 		p9220_otp_update = 0;
 
 		kfree(fw_img);
+		enable_irq(charger->pdata->irq_wpc_int);
+		enable_irq(charger->pdata->irq_wpc_det);
+		charger_muic_disable(DISABLE);
 		break;
-	case BUILT_IN:
-		dev_err(&p9220_i2c->dev, "%s, request_firmware\n", __func__);
-		ret = request_firmware(&charger->firm_data_bin, P9220S_FW_HEX_PATH,
-			&p9220_i2c->dev);
+	case SEC_WIRELESS_RX_BUILT_IN_MODE:
+		charger_muic_disable(ENABLE);
+		disable_irq(charger->pdata->irq_wpc_int);
+		disable_irq(charger->pdata->irq_wpc_det);
+		dev_err(&charger->client->dev, "%s, request_firmware\n", __func__);
+		ret = request_firmware(&charger->firm_data_bin, P9220S_OTP_FW_HEX_PATH,
+			&charger->client->dev);
 		if ( ret < 0) {
-			dev_err(&p9220_i2c->dev, "%s: failed to request firmware %s (%d) \n", __func__, P9220S_FW_HEX_PATH, ret);
+			dev_err(&charger->client->dev, "%s: failed to request firmware %s (%d) \n", __func__, P9220S_OTP_FW_HEX_PATH, ret);
+			charger->pdata->otp_firmware_result = P9220_FW_RESULT_FAIL;
 			return -EINVAL;
 		}
+		wake_lock(&charger->wpc_update_lock);
 		pr_info("%s data size = %ld \n", __func__, charger->firm_data_bin->size);
 		p9220_otp_update = 1;
-		PgmOTPwRAM(0 ,charger->firm_data_bin->data, 0, charger->firm_data_bin->size);
+		ret = PgmOTPwRAM(charger, 0 ,charger->firm_data_bin->data, 0, charger->firm_data_bin->size);
 		p9220_otp_update = 0;
 		release_firmware(charger->firm_data_bin);
+
+		charger->pdata->otp_firmware_ver = p9220_get_firmware_version(charger, P9220_RX_FIRMWARE);
+		charger->pdata->wc_ic_grade = p9220_get_ic_grade(charger, P9220_IC_GRADE);
+		charger->pdata->wc_ic_rev = p9220_get_ic_grade(charger, P9220_IC_VERSION);
+
+		if(ret)
+			charger->pdata->otp_firmware_result = P9220_FW_RESULT_PASS;
+		else
+			charger->pdata->otp_firmware_result = P9220_FW_RESULT_FAIL;
+		enable_irq(charger->pdata->irq_wpc_int);
+		enable_irq(charger->pdata->irq_wpc_det);
+		charger_muic_disable(DISABLE);
+		wake_unlock(&charger->wpc_update_lock);
+		break;
+	case SEC_WIRELESS_TX_ON_MODE:
+		charger_muic_disable(ENABLE);
+		dev_err(&charger->client->dev, "%s, built in sram mode on \n", __func__);
+		ret = request_firmware(&charger->firm_data_bin, P9220S_SRAM_FW_HEX_PATH, &charger->client->dev);
+
+		if ( ret < 0) {
+			dev_err(&charger->client->dev, "%s: failed to request firmware %s (%d) \n", __func__,
+								P9220S_SRAM_FW_HEX_PATH, ret);
+			charger->pdata->tx_firmware_result = P9220_FW_RESULT_FAIL;
+			return -EINVAL;
+		}
+
+		wake_lock(&charger->wpc_update_lock);
+		pr_info("%s data size = %ld \n", __func__, charger->firm_data_bin->size);
+		ret = p9220_TxFW_SRAM(charger, charger->firm_data_bin->data, charger->firm_data_bin->size);
+		release_firmware(charger->firm_data_bin);
+
+		charger->pdata->tx_firmware_ver = p9220_get_firmware_version(charger, P9220_TX_FIRMWARE);
+
+		if(ret) {
+			charger->pdata->tx_firmware_result = P9220_FW_RESULT_PASS;
+			charger->pdata->tx_status = SEC_TX_STANDBY;
+		} else {
+			charger->pdata->tx_firmware_result = P9220_FW_RESULT_FAIL;
+			charger->pdata->tx_status = SEC_TX_ERROR;
+		}
+		charger_muic_disable(DISABLE);
+
+		charger->pdata->cable_type = P9220_PAD_MODE_TX;
+		wake_unlock(&charger->wpc_update_lock);
+		break;
+	case SEC_WIRELESS_TX_OFF_MODE:
+		charger->pdata->cable_type = P9220_PAD_MODE_NONE;
+		dev_err(&charger->client->dev, "%s, built in sram mode off \n", __func__);
+		charger->pdata->tx_status = SEC_TX_OFF;
 		break;
 	default:
 		return -1;
@@ -542,15 +1173,40 @@ read_err:
 malloc_error:
 	filp_close(fp, current->files);
 	set_fs(old_fs);
+	charger_muic_disable(DISABLE);
 	return ret;
 }
 
+
+
+/*
 void p9220_wireless_chg_init(struct p9220_charger_data *charger)
 {
-	pr_info("%s ------------wireless chg init------------- \n", __func__);
+		union power_supply_propval value;
+		u8 fw_major[2] = {0,};
+		u8 fw_minor[2] = {0,};
+	
+		pr_info("%s \n", __func__);
+	
+		value.intval = true;
+		psy_do_property("max77833-charger", set,
+					POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL, value);
+	
+		p9220_reg_read(charger->client, P9220_OTP_FW_MAJOR_REV_L_REG, &fw_major[0]); 
+		p9220_reg_read(charger->client, P9220_OTP_FW_MAJOR_REV_H_REG, &fw_major[1]); 
+		p9220_reg_read(charger->client, P9220_OTP_FW_MINOR_REV_L_REG, &fw_minor[0]); 
+		p9220_reg_read(charger->client, P9220_OTP_FW_MINOR_REV_H_REG, &fw_minor[1]); 
+	
+		pr_info("%s firm major ver = 0x%x, firm minor ver = 0x%x\n", __func__,	fw_major[0] | (fw_major[1] << 8), fw_minor[0] | (fw_minor[1] << 8));
 
+		p9220_set_vout(charger, P9220_VOUT_5V);
+	
+		value.intval = false;
+		psy_do_property("max77833-charger", set,
+			POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL, value);
 }
-
+*/
+/*
 static void p9220_detect_work(
 		struct work_struct *work)
 {
@@ -561,24 +1217,75 @@ static void p9220_detect_work(
 
 	p9220_wireless_chg_init(charger);
 }
+*/
 
 static int p9220_chg_get_property(struct power_supply *psy,
 		enum power_supply_property psp,
 		union power_supply_propval *val)
 {
-	//struct p9220_charger_data *charger =
-	//	container_of(psy, struct p9220_charger_data, psy_chg);
+	struct p9220_charger_data *charger =
+		container_of(psy, struct p9220_charger_data, psy_chg);
 
 	switch (psp) {
 		case POWER_SUPPLY_PROP_STATUS:
+			pr_info("%s charger->pdata->cs100_status %d \n",__func__,charger->pdata->cs100_status);
+			val->intval = charger->pdata->cs100_status;
+			break;
 		case POWER_SUPPLY_PROP_CHARGE_TYPE:
 		case POWER_SUPPLY_PROP_HEALTH:
-		case POWER_SUPPLY_PROP_ONLINE:
 		case POWER_SUPPLY_PROP_CURRENT_NOW:
 		case POWER_SUPPLY_PROP_CHARGE_FULL_DESIGN:
 		case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
 		case POWER_SUPPLY_PROP_CHARGE_POWERED_OTG_CONTROL:
 			return -ENODATA;
+		case POWER_SUPPLY_PROP_ONLINE:
+			pr_info("%s cable_type =%d \n ", __func__, charger->pdata->cable_type);
+			val->intval = charger->pdata->cable_type;
+			break;
+		case POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION:
+			val->intval = charger->pdata->vout_status;
+			break;
+		case POWER_SUPPLY_PROP_MANUFACTURER:
+			if (val->intval == SEC_WIRELESS_OTP_FIRM_RESULT) {
+				val->intval = charger->pdata->otp_firmware_result;
+			} else if(val->intval == SEC_WIRELESS_IC_GRADE) {
+				val->intval = charger->pdata->wc_ic_grade;
+			} else if(val->intval == SEC_WIRELESS_IC_REVISION) {
+				val->intval = charger->pdata->wc_ic_rev;
+			} else if(val->intval == SEC_WIRELESS_OTP_FIRM_VER_BIN) {
+				val->intval = P9220_OTP_FIRM_VERSION;
+			} else if(val->intval == SEC_WIRELESS_OTP_FIRM_VER) {
+				if (charger->pdata->ic_on_mode || charger->pdata->cable_type != SEC_WIRELESS_PAD_NONE)
+					val->intval = p9220_get_firmware_version(charger, P9220_RX_FIRMWARE);
+				else
+					val->intval = -1;
+			} else if(val->intval == SEC_WIRELESS_TX_FIRM_RESULT) {
+				val->intval = charger->pdata->tx_firmware_result;
+			} else if (val->intval == SEC_WIRELESS_TX_FIRM_VER) {
+				//if(charger->pdata->ic_on_mode)
+					val->intval = charger->pdata->tx_firmware_ver;
+				//else
+				//	val->intval = -1;
+			} else if(val->intval == SEC_TX_FIRMWARE) {
+				val->intval = charger->pdata->tx_status;
+			} else{
+				val->intval = -1;
+				pr_err("%s wrong mode \n", __func__);
+			}
+			break;
+		case POWER_SUPPLY_PROP_ENERGY_NOW: /* vout */
+			if(charger->pdata->ic_on_mode || charger->pdata->is_charging) {
+				val->intval = p9220_get_adc(charger, P9220_ADC_VOUT);
+			} else
+				val->intval = 0;
+			break;
+
+		case POWER_SUPPLY_PROP_ENERGY_AVG: /* vrect */
+			if(charger->pdata->ic_on_mode || charger->pdata->is_charging) {
+				val->intval = p9220_get_adc(charger, P9220_ADC_VRECT);
+			} else
+				val->intval = 0;
+			break;
 		default:
 			return -EINVAL;
 	}
@@ -591,17 +1298,133 @@ static int p9220_chg_set_property(struct power_supply *psy,
 {
 	struct p9220_charger_data *charger =
 		container_of(psy, struct p9220_charger_data, psy_chg);
+	int i = 0;
 
 	switch (psp) {
 		case POWER_SUPPLY_PROP_STATUS:
+			if(val->intval == POWER_SUPPLY_STATUS_FULL) {
+				pr_info("%s set cs100 \n", __func__);
+				charger->pdata->cs100_status = p9220_send_cs100(charger);
+			} else if(val->intval == POWER_SUPPLY_STATUS_NOT_CHARGING) {
+				p9220_mis_align(charger);
+			}
+			break;
+		case POWER_SUPPLY_PROP_CHARGE_TYPE:
+			if(gpio_get_value(charger->pdata->wpc_det)) {
+				pr_info("%s: Charger interrupt occured during lpm \n", __func__);
+				queue_delayed_work(charger->wqueue, &charger->wpc_det_work, 0);
+
+				p9220_send_command(charger, P9220_REQUEST_AFC_TX);
+				msleep(250);
+				p9220_send_command(charger, P9220_REQUEST_AFC_TX);
+			}
+			queue_delayed_work(charger->wqueue, &charger->wpc_lpm_work, 0);
+			break;
+		case POWER_SUPPLY_PROP_HEALTH:
+			if(val->intval == POWER_SUPPLY_HEALTH_OVERHEAT ||
+				val->intval == POWER_SUPPLY_HEALTH_OVERHEATLIMIT ||
+				val->intval == POWER_SUPPLY_HEALTH_COLD) {
+				pr_info("%s ept-ot \n", __func__);
+				p9220_send_eop(charger, val->intval);
+			}
+			else if(val->intval == POWER_SUPPLY_HEALTH_UNDERVOLTAGE) {
+				pr_info("%s ept-reconfigure \n", __func__);
+				p9220_send_eop(charger, val->intval);
+			}
 			break;
 		case POWER_SUPPLY_PROP_ONLINE:
-			if(val->intval == POWER_SUPPLY_TYPE_WIRELESS) {
-				p9220_wireless_chg_init(charger);
+			if(val->intval == POWER_SUPPLY_TYPE_WIRELESS ||
+				val->intval == POWER_SUPPLY_TYPE_HV_WIRELESS ||
+				val->intval == POWER_SUPPLY_TYPE_PMA_WIRELESS ) {
+				charger->pdata->ic_on_mode = true;
+			} else {
+				charger->pdata->ic_on_mode = false;
+			}
+			break;
+		case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
+			if(val->intval) {
+				charger->pdata->ic_on_mode = true;
+			} else {
+				charger->pdata->ic_on_mode = false;
 			}
 			break;
 		case POWER_SUPPLY_PROP_CHARGE_POWERED_OTG_CONTROL:
+			msleep(200);
 			p9220_firmware_update(charger, val->intval);
+			pr_info("%s rx result = %d, tx result = %d \n",__func__,
+					charger->pdata->otp_firmware_result,charger->pdata->tx_firmware_result);
+			break;
+		case POWER_SUPPLY_PROP_INPUT_VOLTAGE_REGULATION:
+			if (val->intval == WIRELESS_VOUT_NORMAL_VOLTAGE) {
+				pr_info("%s: Wireless Vout forced set to 5V. + PAD CMD\n",__func__);
+				for(i = 0; i < CMD_CNT; i++) {
+					p9220_send_command(charger, P9220_AFC_CONF_5V);
+					msleep(250);
+				}
+			} else if (val->intval == WIRELESS_VOUT_HIGH_VOLTAGE) {
+				pr_info("%s: Wireless Vout forced set to 9V. + PAD CMD\n",__func__);
+				for(i = 0; i < CMD_CNT; i++) {
+					p9220_send_command(charger, P9220_AFC_CONF_9V);
+					msleep(250);
+				}
+			} else if (val->intval == WIRELESS_VOUT_CV_CALL) {
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_2);
+				msleep(500);
+				p9220_set_vout(charger, P9220_VOUT_CV_CALL);
+				msleep(500);
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_0);
+				pr_info("%s: Wireless Vout forced set to %dmV\n",
+								__func__, charger->pdata->wpc_cv_call_vout);
+			} else if (val->intval == WIRELESS_VOUT_CC_CALL) {
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_2);
+				msleep(500);
+				p9220_set_vout(charger, P9220_VOUT_CC_CALL);
+				msleep(500);
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_0);
+				pr_info("%s: Wireless Vout forced set to %dmV\n",
+								__func__, charger->pdata->wpc_cc_call_vout);
+			} else if (val->intval == WIRELESS_VOUT_5V) {
+				p9220_set_vout(charger, P9220_VOUT_5V);
+				pr_info("%s: Wireless Vout forced set to 5V\n", __func__);
+			} else if (val->intval == WIRELESS_VOUT_9V) {
+				int prev_current;
+				union power_supply_propval value;
+				psy_do_property("max77833-charger", get,
+						POWER_SUPPLY_PROP_CURRENT_AVG, value);
+				prev_current = value.intval;
+				value.intval = 200;
+				psy_do_property("max77833-charger", set,
+						POWER_SUPPLY_PROP_CURRENT_MAX, value);
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_1);
+				msleep(1000);
+				p9220_set_vout(charger, P9220_VOUT_9V);
+				msleep(1000);
+				value.intval = prev_current;
+				psy_do_property("max77833-charger", set,
+						POWER_SUPPLY_PROP_CURRENT_MAX, value);
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_0);
+				pr_info("%s: Wireless Vout forced set to 9V\n", __func__);
+			} else if (val->intval == WIRELESS_PAD_FAN_OFF) {
+				pr_info("%s: fan off \n",__func__);
+				p9220_fan_control(charger, 0);
+			} else if (val->intval == WIRELESS_PAD_FAN_ON) {
+				pr_info("%s: fan on \n",__func__);
+				p9220_fan_control(charger, 1);
+			} else if (val->intval == WIRELESS_PAD_LED_OFF) {
+				pr_info("%s: led off \n",__func__);
+				p9220_led_control(charger, 0);
+			} else if (val->intval == WIRELESS_PAD_LED_ON) {
+				pr_info("%s: led on \n",__func__);
+				p9220_led_control(charger, 1);
+			} else if(val->intval == WIRELESS_VRECT_ADJ_ON) {
+				pr_info("%s: vrect adjust to have big headroom(defualt value) \n",__func__);
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_1);
+			} else if(val->intval == WIRELESS_VRECT_ADJ_OFF) {
+				pr_info("%s: vrect adjust to have small headroom \n",__func__);
+				p9220_set_vrect_adjust(charger, P9220_HEADROOM_0);
+			} else {
+				pr_info("%s: Unknown Command(%d)\n",__func__, val->intval);
+			}
 			break;
 		default:
 			return -EINVAL;
@@ -610,63 +1433,522 @@ static int p9220_chg_set_property(struct power_supply *psy,
 	return 0;
 }
 
-#if 0
+#define FREQ_OFFSET	384000 /* 64*6000 */
+static void p9220_wpc_opfq_work(struct work_struct *work)
+{
+	struct p9220_charger_data *charger =
+		container_of(work, struct p9220_charger_data, wpc_opfq_work.work);
+
+	u16 op_fq;
+	u8 pad_mode;
+	union power_supply_propval value;
+
+	p9220_reg_read(charger->client, P9220_SYS_OP_MODE_REG, &pad_mode);
+	if (pad_mode == P9220_PAD_MODE_WPC) {
+			op_fq = FREQ_OFFSET / p9220_get_adc(charger, P9220_ADC_OP_FRQ);
+			pr_info("%s: Operating FQ %dkHz(0x%x)\n", __func__, op_fq, op_fq);
+			if (op_fq > 230) { /* wpc threshold 230kHz */
+				pr_info("%s: Reset M0\n",__func__);
+				p9220_reg_write(charger->client, 0x3040, 0x80); /*restart M0 */
+
+				charger->pdata->opfq_cnt++;
+				if (charger->pdata->opfq_cnt <= CMD_CNT) {
+					queue_delayed_work(charger->wqueue, &charger->wpc_opfq_work, msecs_to_jiffies(10000));
+					return;
+				}
+			}
+	} else if (pad_mode == P9220_PAD_MODE_PMA) {
+			charger->pdata->cable_type = P9220_PAD_MODE_PMA;
+			value.intval = SEC_WIRELESS_PAD_PMA;
+			psy_do_property("wireless", set, POWER_SUPPLY_PROP_ONLINE, value);
+	}
+	charger->pdata->opfq_cnt = 0;
+	wake_unlock(&charger->wpc_opfq_lock);
+
+}
+
+static void p9220_wpc_det_work(struct work_struct *work)
+{
+	struct p9220_charger_data *charger =
+		container_of(work, struct p9220_charger_data, wpc_det_work.work);
+	int wc_w_state;
+	union power_supply_propval value;
+	u8 pad_mode;
+	u8 vrect;
+
+	wake_lock(&charger->wpc_wake_lock);
+	pr_info("%s\n",__func__);
+	wc_w_state = gpio_get_value(charger->pdata->wpc_det);
+
+	if ((charger->wc_w_state == 0) && (wc_w_state == 1)) {
+		charger->pdata->vout_status = P9220_VOUT_5V;
+
+		/* set fod value */
+		if(charger->pdata->fod_data_check)
+			p9220_fod_set(charger);
+
+		/* enable Mode Change INT */
+		p9220_reg_update(charger->client, P9220_INT_ENABLE_L_REG,
+						P9220_STAT_MODE_CHANGE_MASK, P9220_STAT_MODE_CHANGE_MASK);
+
+		if(!lpcharge) {
+			value.intval = DISABLE;
+			psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+		}
+		value.intval = false;
+		psy_do_property("max77833-charger", set,
+				POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL, value);
+
+		value.intval = 1;
+		psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW, value);
+
+		/* read vrect adjust */
+		p9220_reg_read(charger->client, P9220_VRECT_SET_REG, &vrect);
+
+		/* read firmware version */
+		p9220_get_firmware_version(charger, P9220_RX_FIRMWARE);
+		pr_info("%s: wpc activated, set V_INT as PN\n",__func__);
+
+		/* read pad mode */
+		p9220_reg_read(charger->client, P9220_SYS_OP_MODE_REG, &pad_mode);
+		if(pad_mode == P9220_SYS_MODE_PMA) {
+			charger->pdata->cable_type = P9220_PAD_MODE_PMA;
+			value.intval = SEC_WIRELESS_PAD_PMA;
+			psy_do_property("wireless", set,
+					POWER_SUPPLY_PROP_ONLINE, value);
+		} else {
+			charger->pdata->cable_type = P9220_PAD_MODE_WPC;
+			value.intval = SEC_WIRELESS_PAD_WPC;
+			psy_do_property("wireless", set,
+					POWER_SUPPLY_PROP_ONLINE, value);
+			wake_lock(&charger->wpc_opfq_lock);
+			queue_delayed_work(charger->wqueue, &charger->wpc_opfq_work, msecs_to_jiffies(10000));
+		}
+
+		/* set request afc_tx */
+		p9220_send_command(charger, P9220_REQUEST_AFC_TX);
+
+		charger->pdata->is_charging = 1;
+	} else if ((charger->wc_w_state == 1) && (wc_w_state == 0)) {
+
+		charger->pdata->cable_type = P9220_PAD_MODE_NONE;
+		charger->pdata->is_charging = 0;
+		charger->pdata->vout_status = P9220_VOUT_0V;
+		charger->pdata->opfq_cnt = 0;
+
+		value.intval = SEC_WIRELESS_PAD_NONE;
+		psy_do_property("wireless", set,
+				POWER_SUPPLY_PROP_ONLINE, value);
+		pr_info("%s: wpc deactivated, set V_INT as PD\n",__func__);
+
+		if (p9220_get_adc(charger, P9220_ADC_VOUT) < 3000) /* Vout < 3000mV, run ept-reconfigure */
+				p9220_send_eop(charger, POWER_SUPPLY_HEALTH_UNDERVOLTAGE);
+
+		if(!lpcharge) {
+			value.intval = ENABLE;
+			psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+		}
+		msleep(1000);
+		value.intval = 0;
+		psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW, value);
+		cancel_delayed_work(&charger->wpc_isr_work);
+		cancel_delayed_work(&charger->wpc_opfq_work);
+	}
+
+	pr_info("%s: w(%d to %d)\n", __func__,
+		charger->wc_w_state, wc_w_state);
+
+	charger->wc_w_state = wc_w_state;
+	wake_unlock(&charger->wpc_wake_lock);
+}
+
 static void p9220_wpc_isr_work(struct work_struct *work)
 {
-	//struct bq51221_charger_data *charger =
-	//	container_of(work, struct bq51221_charger_data, isr_work.work);
+	struct p9220_charger_data *charger =
+		container_of(work, struct p9220_charger_data, wpc_isr_work.work);
 
-	pr_info("%s \n",__func__);
+	u8 data;
+	int ret;
+	int i;
+	union power_supply_propval value;
+
+	wake_lock(&charger->wpc_wake_lock);
+	pr_info("%s\n",__func__);
+
+	ret = p9220_reg_read(charger->client, P9220_TX_DATA_COMMAND, &data);
+	if(ret >= 0) {
+		if(data == 0x02) {
+			ret = p9220_reg_read(charger->client, P9220_TX_DATA_VALUE0, &data);
+			if(ret > 0) {
+				psy_do_property("battery", get, POWER_SUPPLY_PROP_CHARGE_COUNTER_SHADOW, value);
+				if(data == 0x01 && value.intval != POWER_SUPPLY_TYPE_USB) {
+					pr_info("%s data = 0x%x, might be 9V irq \n", __func__, data);
+
+					for(i = 0; i < CMD_CNT; i++) {
+						p9220_send_command(charger, P9220_AFC_CONF_9V);
+						msleep(250);
+					}
+
+					if(sleep_mode) {
+						pr_info("%s sleep mode, turn on fan \n", __func__);
+						p9220_fan_control(charger, true);
+						msleep(250);
+
+						pr_info("%s sleep mode, turn off fan \n", __func__);
+						p9220_fan_control(charger, false);
+						msleep(250);
+					}
+
+					msleep(250);
+					if(charger->pdata->fod_data_check) {
+						p9220_fod_set(charger);
+					}
+
+					charger->pdata->cable_type = P9220_PAD_MODE_WPC_AFC;
+					value.intval = P9220_PAD_MODE_WPC_AFC;
+					psy_do_property("wireless", set,
+						POWER_SUPPLY_PROP_ONLINE, value);
+
+					charger->pdata->is_charging = 1; // it might already set in wpc_det isr
+
+					if(!lpcharge) {
+						value.intval = DISABLE;
+						psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+					}
+				}
+#if 0
+				else {
+					pr_info("%s data = 0x%x, might be 5V irq \n", __func__, data);
+					if(charger->pdata->is_charging) {
+						for(i = 0; i < CMD_CNT; i++) {
+							p9220_send_command(charger, P9220_AFC_CONF_5V);
+							msleep(250);
+						}
+
+						if(charger->pdata->fod_data_check) {
+							msleep(300);
+							p9220_fod_set(charger);
+						}
+					}
+				}
+#endif
+			}
+		}
+	}
+	wake_unlock(&charger->wpc_wake_lock);
+}
+
+static irqreturn_t p9220_wpc_det_irq_thread(int irq, void *irq_data)
+{
+	struct p9220_charger_data *charger = irq_data;
+
+	pr_info("%s !\n",__func__);
+
+	queue_delayed_work(charger->wqueue, &charger->wpc_det_work, 0);
+
+	return IRQ_HANDLED;
 }
 
 static irqreturn_t p9220_wpc_irq_thread(int irq, void *irq_data)
 {
 	struct p9220_charger_data *charger = irq_data;
+	int wc_w_state_irq;
+	int ret;
+	u8 irq_src[2];
+	u8 reg_data;
+	union power_supply_propval value;
 
-	pr_info("%s \n",__func__);
-		schedule_delayed_work(&charger->isr_work, 0);
+	pr_info("%s !\n",__func__);
+	wake_lock(&charger->wpc_wake_lock);
+
+	ret = p9220_reg_read(charger->client, P9220_INT_L_REG, &irq_src[0]);
+	ret = p9220_reg_read(charger->client, P9220_INT_H_REG, &irq_src[1]);
+
+	wc_w_state_irq = gpio_get_value(charger->pdata->wpc_int);
+	pr_info("%s wc_w_state_irq = %d\n", __func__, wc_w_state_irq);
+
+	if (ret < 0) {
+		pr_err("%s: Failed to read interrupt source: %d\n",
+			__func__, ret);
+		wake_unlock(&charger->wpc_wake_lock);
+		return IRQ_NONE;
+	}
+
+	pr_info("%s: interrupt source(0x%x)\n", __func__, irq_src[1] << 8 | irq_src[0]);
+	p9220_get_firmware_version(charger, P9220_RX_FIRMWARE);
+
+	if(irq_src[0] & P9220_STAT_MODE_CHANGE_MASK) {
+		pr_info("%s MODE CHANGE IRQ ! \n", __func__);
+		ret = p9220_reg_read(charger->client, P9220_SYS_OP_MODE_REG, &reg_data);
+
+		if(lpcharge) {
+			value.intval = DISABLE;
+			psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+			msleep(10);
+			value.intval = ENABLE;
+			psy_do_property("max77833-charger", set, POWER_SUPPLY_PROP_CHARGE_AICL_CONTROL, value);
+		}
+	}
+
+	if(irq_src[0] & P9220_STAT_TX_DATA_RECEIVED_MASK) {
+		pr_info("%s TX RECIVED IRQ ! \n", __func__);
+		if(!delayed_work_pending(&charger->wpc_isr_work) &&
+			charger->pdata->cable_type != P9220_PAD_MODE_WPC_AFC )
+			queue_delayed_work(charger->wqueue, &charger->wpc_isr_work, msecs_to_jiffies(1000));
+	}
+
+	if(irq_src[1] & P9220_STAT_OVER_CURR_MASK) {
+		pr_info("%s OVER CURRENT IRQ ! \n", __func__);
+	}
+
+	if(irq_src[1] & P9220_STAT_OVER_TEMP_MASK) {
+		pr_info("%s OVER TEMP IRQ ! \n", __func__);
+	}
+
+	if(irq_src[1] & P9220_STAT_TX_CONNECT_MASK) {
+		pr_info("%s TX CONNECT IRQ ! \n", __func__);
+		charger->pdata->tx_status = SEC_TX_POWER_TRANSFER;
+	}
+
+	msleep(5);
+
+	/* clear intterupt */
+	p9220_reg_write(charger->client, P9220_INT_CLEAR_L_REG, irq_src[0]); // clear int
+	p9220_reg_write(charger->client, P9220_INT_CLEAR_H_REG, irq_src[1]); // clear int
+	p9220_set_cmd_reg(charger, 0x20, P9220_CMD_CLEAR_INT_MASK); // command
+
+	/* debug */
+	ret = p9220_reg_read(charger->client, P9220_INT_L_REG, &irq_src[0]);
+	ret = p9220_reg_read(charger->client, P9220_INT_H_REG, &irq_src[1]);
+	wc_w_state_irq = gpio_get_value(charger->pdata->wpc_int);
+	pr_info("%s wc_w_state_irq = %d\n", __func__, wc_w_state_irq);
+	wake_unlock(&charger->wpc_wake_lock);
 
 	return IRQ_HANDLED;
 }
-#endif
+
+static void p9220_wpc_lpm_work(struct work_struct *work)
+{
+	struct p9220_charger_data *charger =
+		container_of(work, struct p9220_charger_data, wpc_lpm_work.work);
+	int ret = 0;
+
+	wake_lock(&charger->wpc_wake_lock);
+	pr_info("%s\n",__func__);
+
+	/* wpc_det */
+	if (charger->pdata->irq_wpc_det) {
+		ret = request_threaded_irq(charger->pdata->irq_wpc_det,
+					NULL, p9220_wpc_det_irq_thread,
+					IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING |
+					IRQF_ONESHOT,
+					"wpd-det-irq", charger);
+			if (ret)
+				pr_err("%s: Failed to Reqeust IRQ\n", __func__);
+	}
+
+	/* wpc_irq */
+	if (charger->pdata->irq_wpc_int) {
+		msleep(100);
+		ret = request_threaded_irq(charger->pdata->irq_wpc_int,
+				NULL, p9220_wpc_irq_thread,
+				IRQF_TRIGGER_LOW |
+				IRQF_ONESHOT,
+				"wpc-irq", charger);
+		if (ret)
+			pr_err("%s: Failed to Reqeust IRQ\n", __func__);
+	}
+	wake_unlock(&charger->wpc_wake_lock);
+
+	pr_info("%s wc_w_state_irq = %d\n", __func__, gpio_get_value(charger->pdata->wpc_int));
+}
 
 static int p9220_chg_parse_dt(struct device *dev,
 		p9220_charger_platform_data_t *pdata)
 {
 	int ret = 0;
-	struct device_node *np = dev->of_node;
-//	enum of_gpio_flags irq_gpio_flags;
+	struct device_node *np  = of_find_node_by_name(NULL, "battery");
+	enum of_gpio_flags irq_gpio_flags;
+	int len,i;
+	const u32 *p;
 
-	if (!np) {
-		pr_info("%s: np NULL\n", __func__);
-		return 1;
-	}
-
-	np = of_find_node_by_name(NULL, "battery");
 	if (!np) {
 		pr_err("%s np NULL\n", __func__);
+		return 1;
 	} else {
+		p = of_get_property(np, "battery,fod_data", &len);
+		if (p) {
+			len = len / sizeof(u32);
+			pdata->fod_data = kzalloc(sizeof(*pdata->fod_data) * len, GFP_KERNEL);
+			ret = of_property_read_u32_array(np, "battery,fod_data",
+							 pdata->fod_data, len);
+			pdata->fod_data_check = 1;
+
+			for(i = 0; i <len; i++)
+				pr_info("%s fod data = %d ",__func__,pdata->fod_data[i]);
+		} else {
+			pdata->fod_data_check = 0;
+			pr_err("%s there is not fod_data\n", __func__);
+		}
 
 		ret = of_property_read_string(np,
 			"battery,wirelss_charger_name", (char const **)&pdata->wireless_charger_name);
 		if (ret)
 			pr_info("%s: Vendor is Empty\n", __func__);
-	}
 
-#if 0
-	ret = pdata->irq_gpio = of_get_named_gpio_flags(np, "p9220-charger,irq-gpio",
-			0, &irq_gpio_flags);
-	if (ret < 0) {
-		dev_err(dev, "%s : can't get irq-gpio\r\n", __FUNCTION__);
+		ret = of_property_read_u32(np, "battery,hw_rev_changed",
+			(unsigned int *)&pdata->hw_rev_changed);
+		if (ret)
+			pr_info("%s: this is under rev09 \n", __func__);
+
+		ret = of_property_read_u32(np, "battery,wpc_cv_call_vout",
+						&pdata->wpc_cv_call_vout);
+		if (ret)
+			pr_info("%s: wpc_cv_call_vout is Empty \n", __func__);
+
+		ret = of_property_read_u32(np, "battery,wpc_cc_call_vout",
+						&pdata->wpc_cc_call_vout);
+		if (ret)
+			pr_info("%s: wpc_cc_call_vout is Empty \n", __func__);
+
+		/* wpc_det */
+		ret = pdata->wpc_det = of_get_named_gpio_flags(np, "battery,wpc_det",
+				0, &irq_gpio_flags);
+		if (ret < 0) {
+			dev_err(dev, "%s : can't get wpc_det\r\n", __FUNCTION__);
+		} else {
+			pdata->irq_wpc_det = gpio_to_irq(pdata->wpc_det);
+			pr_info("%s wpc_det = 0x%x, irq_wpc_det = 0x%x \n",__func__, pdata->wpc_det, pdata->irq_wpc_det);
+		}
+		/* wpc_int */
+		ret = pdata->wpc_int = of_get_named_gpio_flags(np, "battery,wpc_int",
+				0, &irq_gpio_flags);
+		if (ret < 0) {
+			dev_err(dev, "%s : can't wpc_int\r\n", __FUNCTION__);
+		} else {
+			pdata->irq_wpc_int = gpio_to_irq(pdata->wpc_int);
+			pr_info("%s wpc_int = 0x%x, irq_wpc_int = 0x%x \n",__func__, pdata->wpc_int, pdata->irq_wpc_int);
+		}
 		return ret;
 	}
-	pr_info("%s irq_gpio = %d \n",__func__, pdata->irq_gpio);
-	pdata->irq_base = gpio_to_irq(pdata->irq_gpio);
-
-#endif
-
-	return ret;
 }
+
+static ssize_t p9220_store_addr(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct p9220_charger_data *charger = container_of(psy, struct p9220_charger_data, psy_chg);
+	int x;
+	if (sscanf(buf, "0x%x\n", &x) == 1) {
+		charger->addr = x;
+	}
+	return count;
+}
+
+static ssize_t p9220_show_addr(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct p9220_charger_data *charger = container_of(psy, struct p9220_charger_data, psy_chg);
+	return sprintf(buf, "0x%x\n", charger->addr);
+}
+
+static ssize_t p9220_store_size(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct p9220_charger_data *charger = container_of(psy, struct p9220_charger_data, psy_chg);
+	int x;
+	if (sscanf(buf, "%d\n", &x) == 1) {
+		charger->size = x;
+	}
+	return count;
+}
+
+static ssize_t p9220_show_size(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct p9220_charger_data *charger = container_of(psy, struct p9220_charger_data, psy_chg);
+	return sprintf(buf, "0x%x\n", charger->size);
+}
+static ssize_t p9220_store_data(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct p9220_charger_data *charger = container_of(psy, struct p9220_charger_data, psy_chg);
+	int x;
+
+	if (sscanf(buf, "0x%x", &x) == 1) {
+		u8 data = x;
+		if (p9220_reg_write(charger->client, charger->addr, data) < 0)
+		{
+			dev_info(charger->dev,
+					"%s: addr: 0x%x write fail\n", __func__, charger->addr);
+		}
+	}
+	return count;
+}
+
+static ssize_t p9220_show_data(struct device *dev,
+				   struct device_attribute *attr,
+				   char *buf)
+{
+	struct power_supply *psy = dev_get_drvdata(dev);
+	struct p9220_charger_data *charger = container_of(psy, struct p9220_charger_data, psy_chg);
+	u8 data;
+	int i, count = 0;;
+	if (charger->size == 0)
+		charger->size = 1;
+
+	for (i = 0; i < charger->size; i++) {
+		if (p9220_reg_read(charger->client, charger->addr+i, &data) < 0) {
+			dev_info(charger->dev,
+					"%s: read fail\n", __func__);
+			count += sprintf(buf+count, "addr: 0x%x read fail\n", charger->addr+i);
+			continue;
+		}
+		count += sprintf(buf+count, "addr: 0x%x, data: 0x%x\n", charger->addr+i,data);
+	}
+	return count;
+}
+static ssize_t p9220_store_otg_en(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct power_supply *charger_psy = power_supply_get_by_name("max77833-charger");
+	union power_supply_propval val;
+	int x;
+	if (sscanf(buf, "%d\n", &x) == 1) {
+		val.intval = x;
+		if (charger_psy) {
+			charger_psy->set_property(charger_psy, POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL, &val);
+		}
+	}
+	return count;
+}
+static DEVICE_ATTR(addr, 0644, p9220_show_addr, p9220_store_addr);
+static DEVICE_ATTR(size, 0644, p9220_show_size, p9220_store_size);
+static DEVICE_ATTR(data, 0644, p9220_show_data, p9220_store_data);
+static DEVICE_ATTR(otg_en, 0644, NULL, p9220_store_otg_en);
+
+static struct attribute *p9220_attributes[] = {
+	&dev_attr_addr.attr,
+	&dev_attr_size.attr,
+	&dev_attr_data.attr,
+	&dev_attr_otg_en.attr,
+	NULL
+};
+
+static const struct attribute_group p9220_attr_group = {
+	.attrs = p9220_attributes,
+};
+
 
 static int p9220_charger_probe(
 						struct i2c_client *client,
@@ -711,7 +1993,6 @@ static int p9220_charger_probe(
 	}
 
 	charger->client = client;
-	p9220_i2c = client;
 	charger->pdata = pdata;
 
     pr_info("%s: %s\n", __func__, charger->pdata->wireless_charger_name );
@@ -722,25 +2003,36 @@ static int p9220_charger_probe(
 	assign -1 to let this driver allocate resource by itself*/
 
     if (pdata->irq_base < 0)
-        pdata->irq_base = irq_alloc_descs(-1, 0, p9220_EVENT_IRQ, 0);
+        pdata->irq_base = irq_alloc_descs(-1, 0, P9220_EVENT_IRQ, 0);
 	if (pdata->irq_base < 0) {
 		pr_err("%s: irq_alloc_descs Fail! ret(%d)\n",
 				__func__, pdata->irq_base);
 		ret = -EINVAL;
 		goto irq_base_err;
 	} else {
-		charger->irq_base = pdata->irq_base;
-		pr_info("%s: irq_base = %d\n",
-			 __func__, charger->irq_base);
+		charger->pdata->irq_base = pdata->irq_base;
+		pr_info("%s: irq_base = %d, wpc_ir = %d \n",
+			 __func__, charger->pdata->irq_base, charger->pdata->wpc_irq);
 
 #if (LINUX_VERSION_CODE>=KERNEL_VERSION(3,4,0))
-		irq_domain_add_legacy(of_node, p9220_EVENT_IRQ, charger->irq_base, 0,
+		irq_domain_add_legacy(of_node, P9220_EVENT_IRQ, charger->pdata->irq_base, 0,
 				      &irq_domain_simple_ops, NULL);
 #endif /*(LINUX_VERSION_CODE>=KERNEL_VERSION(3,4,0))*/
 	}
 #endif
 
 	i2c_set_clientdata(client, charger);
+
+	charger->pdata->ic_on_mode = false;
+	charger->pdata->cable_type = P9220_PAD_MODE_NONE;
+	charger->pdata->is_charging = 0;
+
+	charger->pdata->otp_firmware_result = P9220_FW_RESULT_DOWNLOADING;
+	charger->pdata->tx_firmware_result = P9220_FW_RESULT_DOWNLOADING;
+	charger->pdata->tx_status = 0;
+	charger->pdata->cs100_status = 0;
+	charger->pdata->vout_status = P9220_VOUT_0V;
+	charger->pdata->opfq_cnt = 0;
 
 	charger->psy_chg.name		= pdata->wireless_charger_name;
 	charger->psy_chg.type		= POWER_SUPPLY_TYPE_UNKNOWN;
@@ -751,28 +2043,53 @@ static int p9220_charger_probe(
 
 	mutex_init(&charger->io_lock);
 
-#if 0
-	if (charger->wpc_irq) {
-		INIT_DELAYED_WORK(
-			&charger->isr_work, p9220_wpc_isr_work);
-
-		ret = request_threaded_irq(charger->wpc_irq,
-				NULL, p9220_wpc_irq_thread,
-				IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING,
-				"charger-irq", charger);
+	/* wpc_det */
+	if (charger->pdata->irq_wpc_det) {
+		INIT_DELAYED_WORK(&charger->wpc_det_work, p9220_wpc_det_work);
+	INIT_DELAYED_WORK(&charger->wpc_opfq_work, p9220_wpc_opfq_work);
+#if  0
+		ret = request_threaded_irq(charger->pdata->irq_wpc_det,
+				NULL, p9220_wpc_det_irq_thread,
+				IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING |
+				IRQF_ONESHOT,
+				"wpd-det-irq", charger);
 		if (ret) {
 			dev_err(&client->dev,
 				"%s: Failed to Reqeust IRQ\n", __func__);
 			goto err_supply_unreg;
 		}
 
-		ret = enable_irq_wake(charger->wpc_irq);
+		ret = enable_irq_wake(charger->pdata->irq_wpc_det);
 		if (ret < 0)
 			dev_err(&client->dev,
 				"%s: Failed to Enable Wakeup Source(%d)\n",
 				__func__, ret);
-	}
 #endif
+	}
+
+	/* wpc_irq */
+	if (charger->pdata->irq_wpc_int) {
+		INIT_DELAYED_WORK(&charger->wpc_isr_work, p9220_wpc_isr_work);
+		INIT_DELAYED_WORK(&charger->wpc_lpm_work, p9220_wpc_lpm_work);	
+#if 0
+		ret = request_threaded_irq(charger->pdata->irq_wpc_int,
+				NULL, p9220_wpc_irq_thread,
+				IRQF_TRIGGER_LOW |
+				IRQF_ONESHOT,
+				"wpc-irq", charger);
+		if (ret) {
+			dev_err(&client->dev,
+				"%s: Failed to Reqeust IRQ\n", __func__);
+			goto err_supply_unreg;
+		}
+
+		ret = enable_irq_wake(charger->pdata->irq_wpc_int);
+		if (ret < 0)
+			dev_err(&client->dev,
+				"%s: Failed to Enable Wakeup Source(%d)\n",
+				__func__, ret);
+#endif
+	}
 
 	ret = power_supply_register(&client->dev, &charger->psy_chg);
 	if (ret) {
@@ -781,19 +2098,28 @@ static int p9220_charger_probe(
 		goto err_supply_unreg;
 	}
 
-	charger->wqueue = create_workqueue("p9220_workqueue");
+	charger->wqueue = create_singlethread_workqueue("p9220_workqueue");
 	if (!charger->wqueue) {
 		pr_err("%s: Fail to Create Workqueue\n", __func__);
 		goto err_pdata_free;
 	}
 
-	wake_lock_init(&(charger->wpc_wake_lock), WAKE_LOCK_SUSPEND,
+	wake_lock_init(&charger->wpc_wake_lock, WAKE_LOCK_SUSPEND,
 			"wpc_wakelock");
-	INIT_DELAYED_WORK(&charger->wpc_work, p9220_detect_work);
+	wake_lock_init(&charger->wpc_update_lock, WAKE_LOCK_SUSPEND,
+			"wpc_update_lock");
+	wake_lock_init(&charger->wpc_opfq_lock, WAKE_LOCK_SUSPEND,
+			"wpc_opfq_lock");
 
+	ret = sysfs_create_group(&charger->psy_chg.dev->kobj, &p9220_attr_group);
+	if (ret) {
+		dev_info(&client->dev,
+			"%s: sysfs_create_group failed\n", __func__);
+	}
 	dev_info(&client->dev,
 		"%s: p9220 Charger Driver Loaded\n", __func__);
 
+	device_init_wakeup(charger->dev, 1);
 	return 0;
 
 err_pdata_free:
@@ -805,7 +2131,7 @@ err_i2cfunc_not_support:
 	kfree(charger);
 err_wpc_nomem:
 err_parse_dt:
-	kfree(pdata);
+	devm_kfree(&client->dev, pdata);
 	return ret;
 }
 
@@ -818,15 +2144,48 @@ static int p9220_charger_remove(struct i2c_client *client)
 static int p9220_charger_suspend(struct i2c_client *client,
 				pm_message_t state)
 {
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 
-
+	if(!charger->pdata->hw_rev_changed) { /* this code is only temporary with non int_ext wpc_det */ 
+		if (device_may_wakeup(charger->dev)){
+			enable_irq_wake(charger->pdata->irq_wpc_int);
+		}
+		disable_irq(charger->pdata->irq_wpc_int);
+	} else { /* this is for proper board */
+		if (device_may_wakeup(charger->dev)){
+			enable_irq_wake(charger->pdata->irq_wpc_int);
+			enable_irq_wake(charger->pdata->irq_wpc_det);
+		}
+		disable_irq(charger->pdata->irq_wpc_int);
+		disable_irq(charger->pdata->irq_wpc_det);
+	}
 	return 0;
 }
 
 static int p9220_charger_resume(struct i2c_client *client)
 {
+	int wc_w_state;
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 
+	pr_info("%s \n", __func__);
 
+	if(!charger->pdata->hw_rev_changed) { /* this code is only temporary with non int_ext wpc_det */ 
+		wc_w_state = gpio_get_value(charger->pdata->wpc_det);
+
+		if(charger->wc_w_state != wc_w_state)
+			queue_delayed_work(charger->wqueue, &charger->wpc_det_work, 0);
+		if (device_may_wakeup(charger->dev)) {
+			disable_irq_wake(charger->pdata->irq_wpc_int);
+		}
+		enable_irq(charger->pdata->irq_wpc_int);
+	} else { /* this is for proper board */
+		if (device_may_wakeup(charger->dev)) {
+			disable_irq_wake(charger->pdata->irq_wpc_int);
+			disable_irq_wake(charger->pdata->irq_wpc_det);
+		}
+		enable_irq(charger->pdata->irq_wpc_int);
+		enable_irq(charger->pdata->irq_wpc_det);
+	}
 	return 0;
 }
 #else
@@ -836,15 +2195,14 @@ static int p9220_charger_resume(struct i2c_client *client)
 
 static void p9220_charger_shutdown(struct i2c_client *client)
 {
-	int dummy;
-	u8 dummmmy;
+	struct p9220_charger_data *charger = i2c_get_clientdata(client);
 
-	dummy = 0;
-	if (dummy) {
-			dummy = p9220_reg_write(client, 0x05, 0x05);
-			dummy = p9220_reg_read(client, 0x05, &dummmmy);
+	pr_info("%s \n", __func__);
+	if(charger->pdata->is_charging) {
+		//p9220_set_vout(charger, P9220_VOUT_5V);
+		//pr_info("%s: Wireless Vout forced set to 5V\n", __func__);
+		p9220_set_vrect_adjust(charger, P9220_HEADROOM_1);
 	}
-
 }
 
 static const struct i2c_device_id p9220_charger_id_table[] = {

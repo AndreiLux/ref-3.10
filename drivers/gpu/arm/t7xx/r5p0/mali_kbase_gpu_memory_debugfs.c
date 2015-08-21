@@ -62,8 +62,8 @@ static int kbasep_gpu_memory_seq_show(struct seq_file *sfile, void *data)
 				atomic_read(&(kbdev->memdev.used_pages)), \
 				free_size);
 		ret = seq_printf(sfile, "===========================================================\n\n");
-		ret = seq_printf(sfile, "%28s     %10s  %12s  %10s  %10s  %10s  %10s\n", \
-				"context name", \
+		ret = seq_printf(sfile, "%15s     %10s      %14s  %10s  %10s  %10s  %10s\n", \
+				"pid     ", \
 				"context addr", \
 				"used pages", \
 				"shrink pages", \
@@ -77,8 +77,8 @@ static int kbasep_gpu_memory_seq_show(struct seq_file *sfile, void *data)
 			/* output the memory usage and cap for each kctx
 			* opened on this device */
 
-			ret = seq_printf(sfile, "  (%24s), %s-0x%p    %12u  %10u  %10u  %10u  %10u\n", \
-				element->kctx->name, \
+			ret = seq_printf(sfile, "  (%10u), %s-0x%p    %12u  %10u  %10u  %10u  %10u\n", \
+				element->kctx->tgid, \
 				"kctx", \
 				element->kctx, \
 				atomic_read(&(element->kctx->used_pages)),

@@ -46,12 +46,16 @@
 #include <asm/io.h>
 #include <linux/clk.h>
 
-#define IRDA_TEST_CODE_SIZE	(52+48)
-#define IRDA_TEST_CODE_ADDR	0x00
+//#define LEDMATRIX_TEST_CODE_SIZE	(52+48+4)
+#define LEDMATRIX_TEST_CODE_SIZE	(56*10+8)
+#define LEDMATRIX_TEST_CODE_ADDR	0x00
+#define LEDMATRIX_VER_ADDR		0x07
+#define LEDMATRIX_VER_ID		0xA1
+#define LEDMATRIX_VER_RETRY	3
 #define READ_LENGTH		8
 
-#define US_TO_PATTERN		1000000
-#define MIN_FREQ		20000
+//#define US_TO_PATTERN		1000000
+//#define MIN_FREQ		20000
 
 /* K 3G FW has a limitation of data register : 1000 */
 enum {
@@ -90,7 +94,7 @@ static bool send_success = false;
 static int power_type = PWR_LDO;
 
 /*
- * Send barcode emulator firmware data through spi communication
+ * Send ledmatrix firmware data through spi communication
  * Firmware Update Code
  */
 
@@ -120,8 +124,10 @@ static int ice5lp_fw_data_send(const u8 *data, int length)
 		}
 		i = i+1;
 		k=k+1;
+#if 0 // for debug on download		
 		if((k%4)==0 && k<=120) 
 			pr_info("ice5: %02X%02X%02X%02X\n", data[k-4], data[k-3], data[k-2], data[k-1]);
+#endif		
 	}
 
 	i = 0;
@@ -138,10 +144,9 @@ static int ice5lp_fw_data_send(const u8 *data, int length)
  
 static int ice5lp_fw_update_start(const u8 *data, int length, int creset)
 {
-	int retry_count = 0;
 
 	pr_info("ice5: %s\n", __func__);
-#if 1
+
 	gpio_set_value(creset, GPIO_LEVEL_LOW);
 	pr_info("ice5: %s : creset LOW : %d\n", __func__, gpio_get_value(creset));
 
@@ -151,28 +156,10 @@ static int ice5lp_fw_update_start(const u8 *data, int length, int creset)
 	pr_info("ice5: %s : creset HIGH : %d\n", __func__, gpio_get_value(creset));
 	usleep_range(1000, 1100);
 
-//	while(!ice5lp_check_fwdone()) {
-		usleep_range(10, 20);
-		ice5lp_fw_data_send(data, length);
-		usleep_range(50, 60);
+	usleep_range(10, 20);
+	ice5lp_fw_data_send(data, length);
+	usleep_range(50, 60);
 
-//		if (retry_count > 9) {
-//			pr_info("ice5lp_ledmatrix firmware update is NOT loaded\n");
-//			break;
-//		} else {
-			retry_count++;
-//		}
-//	}
-	if (ice5lp_check_fwdone()) {
-//		gpio_set_value(g_pdata->spi_en_rstn, GPIO_LEVEL_HIGH);
-		pr_info("ice5lp_ledmatrix firmware update success\n");
-		fw_loaded = 1;
-	} else {
-		pr_info("Finally, fail to update ice5lp_ledmatrix firmware!\n");
-	}
-#else
-		ice5lp_fw_data_send(data, length);
-#endif
 	return 0;
 }
 
@@ -182,14 +169,18 @@ void ice5lp_fw_update(struct work_struct *work)
 		container_of(work, struct ice5_fpga_data, fw_dl.work);
 	struct i2c_client *client = data->client;
 	int ret;
-
+	int retry_count = 0;
+	
 	pr_info("ice5: %s\n", __func__);
+	
 	gpio_free(g_pdata->spi_clk_scl);
 	gpio_free(g_pdata->spi_si_sda);
 
 	gpio_request_one(g_pdata->creset_0, GPIOF_OUT_INIT_LOW, "creset_0");
 	gpio_request_one(g_pdata->creset_1, GPIOF_OUT_INIT_LOW, "creset_1");
 	gpio_request_one(g_pdata->fpga_reset, GPIOF_OUT_INIT_LOW, "fpga_reset");
+	
+retry_fw_dn:
 
 	ret = gpio_request_one(g_pdata->spi_si_sda, GPIOF_OUT_INIT_HIGH, "spi_si_sda");
 	if(ret){
@@ -202,18 +193,18 @@ void ice5lp_fw_update(struct work_struct *work)
 	}
 
 
+	if (request_firmware(&data->fw1, "ice50/EINK1.fw", &client->dev))
+		pr_err("%s: Fail to open firmware 1 file\n", __func__);
+	else
+		ice5lp_fw_update_start(data->fw1->data, data->fw1->size, g_pdata->creset_1);
+
+
+	usleep_range(1000, 1100);
 
 	if (request_firmware(&data->fw0, "ice50/EINK0.fw", &client->dev))
 		pr_err("%s: Fail to open firmware 0 file\n", __func__);
 	else
 		ice5lp_fw_update_start(data->fw0->data, data->fw0->size, g_pdata->creset_0);
-
-	usleep_range(1000, 1100);
-
-	if (request_firmware(&data->fw1, "ice50/EINK1.fw", &client->dev))
-		pr_err("%s: Fail to open firmware 1 file\n", __func__);
-	else
-		ice5lp_fw_update_start(data->fw1->data, data->fw1->size, g_pdata->creset_1);
 
 	gpio_set_value(g_pdata->spi_clk_scl, GPIO_LEVEL_LOW);
 	gpio_set_value(g_pdata->spi_si_sda,GPIO_LEVEL_LOW);
@@ -222,11 +213,38 @@ void ice5lp_fw_update(struct work_struct *work)
 	gpio_set_value(g_pdata->spi_si_sda,GPIO_LEVEL_HIGH);
 	usleep_range(30, 40);
 	
+	gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_HIGH);
+	usleep_range(30, 40);
+	gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_LOW);
+	usleep_range(30, 40);
+	gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_HIGH);
+	
 	gpio_free(g_pdata->spi_clk_scl);
 	gpio_free(g_pdata->spi_si_sda);
 
 	gpio_request(g_pdata->spi_si_sda, "sda");
 	gpio_request(g_pdata->spi_clk_scl, "scl");
+
+	if (ice5lp_check_fwdone(client)) {
+		pr_info("ice5lp_ledmatrix firmware update success\n");
+		fw_loaded = 1;
+	} else {
+		retry_count++;
+		if(retry_count > LEDMATRIX_VER_RETRY){
+			pr_info("Finally, fail to update ice5lp_ledmatrix firmware!\n");
+			return;
+		}
+		pr_info("fail to update ice5lp_ledmatrix firmware! retry %d\n",retry_count);
+		gpio_free(g_pdata->spi_clk_scl);
+		gpio_free(g_pdata->spi_si_sda);
+		
+		gpio_set_value(g_pdata->creset_0, GPIO_LEVEL_LOW);
+		gpio_set_value(g_pdata->creset_1, GPIO_LEVEL_LOW);
+		gpio_set_value(g_pdata->fpga_reset, GPIO_LEVEL_LOW);
+		usleep_range(2000, 2100);
+		goto retry_fw_dn;
+		
+	}
 	
 }
 
@@ -255,42 +273,22 @@ static int ice5lp_ledmatrix_read(struct i2c_client *client, u16 addr, u8 length,
 	}
 }
 
-#if 0
-/* When IR test does not work, we need to check some gpios' status */
-static void ice5lp_ledmatrix_print_gpio_status(void)
+static int ice5lp_check_fwdone(struct i2c_client *client)
 {
-/* to guess the status of CDONE during probe time */
-	if (!fw_loaded)
-		pr_info("%s : firmware is not loaded\n", __func__);
+	u8 fw_ver;
+	int ret = 0;
+	
+	ice5lp_ledmatrix_read(client, LEDMATRIX_VER_ADDR, 1, &fw_ver);
+	pr_info("%s: fw 0x%x\n", __func__, fw_ver);
+	if(fw_ver == LEDMATRIX_VER_ID)
+		ret = 1;
 	else
-		pr_info("%s : firmware is loaded\n", __func__);
+		ret = 0;
 
-	pr_info("%s : fpga_reset    : %d\n", __func__, gpio_get_value(g_pdata->fpga_reset));
-	pr_info("%s : CRESET_0 : %d\n", __func__, gpio_get_value(g_pdata->creset_0));
-	pr_info("%s : CRESET_1 : %d\n", __func__, gpio_get_value(g_pdata->creset_1));	
+	return ret;
 }
-#endif
 
-static int ice5lp_check_fwdone(void)
-{
 #if 0
-
-	if (!g_pdata->cdone) {
-		pr_info("%s : no cdone pin data\n", __func__);
-		return 0;
-	}
-
-	/* Device in Operation when CDONE='1'; Device Failed when CDONE='0'. */
-	if (gpio_get_value(g_pdata->cdone) != 1) {
-		pr_info("%s : CDONE_FAIL %d\n", __func__,
-				gpio_get_value(g_pdata->cdone));
-		return 0;
-	}
-#endif
-	return 1;
-}
-
-
 static int ice5lp_send_data_to_device(struct ice5_fpga_data *ir_data)
 {
 	struct ice5_fpga_data *data = ir_data;
@@ -331,7 +329,7 @@ static int ice5lp_send_data_to_device(struct ice5_fpga_data *ir_data)
 
 #if defined(DEBUG)
 	/* Registers can be read with special firmware */
-//	ice5lp_ledmatrix_read(client, IRDA_TEST_CODE_ADDR, buf_size, temp);
+//	ice5lp_ledmatrix_read(client, LEDMATRIX_TEST_CODE_ADDR, buf_size, temp);
 
 	for (i = 0 ; i < buf_size; i++)
 		pr_info("[%s] %4d data %5x\n", __func__, i, data->i2c_block_transfer.data[i]);
@@ -433,11 +431,13 @@ static void ledmatrix_led_power_control(bool led, struct ice5_fpga_data *data)
 			gpio_set_value(g_pdata->ledmatrix_en, GPIO_LEVEL_LOW);
 	}
 }
+#endif
 
 /* start of sysfs code */
 static ssize_t ledmatrix_send_store(struct device *dev, struct device_attribute *attr,
 		const char *buf, size_t size)
 {
+#if 0
 	struct ice5_fpga_data *data = dev_get_drvdata(dev);
 	int tdata, i, count = 0;
 
@@ -521,13 +521,14 @@ err_overflow:
 
 /* mclk off */
 //	clk_disable_unprepare(data->clock);
-
+#endif
 	return size;
 }
 
 static ssize_t ledmatrix_send_show(struct device *dev, struct device_attribute *attr,
 		char *buf)
 {
+#if 0
 	struct ice5_fpga_data *data = dev_get_drvdata(dev);
 	int i;
 	char *bufp = buf;
@@ -540,10 +541,11 @@ static ssize_t ledmatrix_send_show(struct device *dev, struct device_attribute *
 			bufp += sprintf(bufp, "%u,",
 					data->i2c_block_transfer.data[i]);
 	}
+#endif	
 	return strlen(buf);
 }
 
-static DEVICE_ATTR(ledmatrix_send, 0664, ledmatrix_send_show, ledmatrix_send_store);
+static DEVICE_ATTR(ledmatrix_send, 0660, ledmatrix_send_show, ledmatrix_send_store);
 
 /* sysfs node ir_send_result */
 static ssize_t ledmatrix_send_result_show(struct device *dev, struct device_attribute *attr,
@@ -560,28 +562,33 @@ static ssize_t ledmatrix_send_result_store(struct device *dev,
 {
 	return size;
 }
-static DEVICE_ATTR(ledmatrix_send_result, 0664, ledmatrix_send_result_show, ledmatrix_send_result_store);
+static DEVICE_ATTR(ledmatrix_send_result, 0660, ledmatrix_send_result_show, ledmatrix_send_result_store);
 
-/* sysfs node irda_test */
+/* sysfs node ledmatrix_test */
 static ssize_t ledmatrix_test_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	int ret;
-	static int toggle = 0;
+	int len;
 	struct ice5_fpga_data *data = dev_get_drvdata(dev);
 	struct i2c_client *client = data->client;
 	struct {
 			unsigned char addr;
-			unsigned char data[IRDA_TEST_CODE_SIZE];
+			unsigned char data[LEDMATRIX_TEST_CODE_SIZE];
 	} i2c_block_transfer;
 
 
 	int i;
-	unsigned char BSR_data[IRDA_TEST_CODE_SIZE] = {
+#if 0	
+	unsigned char BSR_data[LEDMATRIX_TEST_CODE_SIZE] = {
 		0x01, // reg 0x00
 		0x00, // reg 0x01
 		0x00, // reg 0x02
 		0x00, // reg 0x03
+		0x00, // reg 0x04
+		0x00, // reg 0x05
+		0x00, // reg 0x06
+		0x00, // reg 0x07
 		0x01, 0x00, 
 		0x03, 0x00, 
 		0x06, 0x3F, 
@@ -631,59 +638,131 @@ static ssize_t ledmatrix_test_store(struct device *dev,
 		0x00,0x00,
 		0x00,0x00,		
 	};
+#endif
+	unsigned char BSR_data[LEDMATRIX_TEST_CODE_SIZE] = {
+		0x01, // reg 0x00
+		0x00, // reg 0x01
+		0x00, // reg 0x02
+		0x00, // reg 0x03
+		0x00, // reg 0x04
+		0x00, // reg 0x05
+		0x00, // reg 0x06
+		0x00, // reg 0x07
+	0x00, 0x01, 	0x00, 0x01, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x01, 	0x00, 0x01, 
+	0x00, 0x02, 	0x00, 0x02, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x02, 	0x00, 0x02, 
+	0x00, 0x04, 	0x00, 0x04, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x04, 	0x00, 0x04, 
+	0x00, 0x08, 	0x00, 0x08, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x08, 	0x00, 0x08, 
+	0x00, 0x10, 	0x00, 0x10, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x10, 	0x00, 0x10, 
+	0x00, 0x20, 	0x00, 0x20, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x20, 	0x00, 0x20, 
+	0x00, 0x40, 	0x00, 0x40, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x40, 	0x00, 0x40, 
+	0x00, 0x80, 	0x00, 0x80, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x80, 	0x00, 0x80, 
+	0x01, 0x00, 	0x01, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x01, 0x00, 	0x01, 0x00, 
+	0x02, 0x00, 	0x02, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x00, 0x00, 	0x02, 0x00, 	0x02, 0x00, 
+};
+	
+	int value;
+	int rc;
+
+	rc = kstrtoul(buf, (unsigned int)0, (unsigned long *)&value);
+	if (rc < 0)
+		return rc;
 
 #if defined(DEBUG)
 	u8 *temp;
 
-	temp = kzalloc(sizeof(u8)*(IRDA_TEST_CODE_SIZE+20), GFP_KERNEL);
+	temp = kzalloc(sizeof(u8)*(LEDMATRIX_TEST_CODE_SIZE+20), GFP_KERNEL);
 	if (NULL == temp)
-		pr_err("Failed to data allocate %s\n", __func__);
+		pr_err("ice5 : Failed to data allocate %s\n", __func__);
 #endif
 
 
-//	if (gpio_get_value(g_pdata->cdone) != 1) {
-//		pr_err("%s: cdone fail !!\n", __func__);
-//		return 1;
-//	}
-	pr_info("%s : IRDA test code start\n",__func__);
+	pr_info("ice5 : %s :  test code start\n",__func__);
 	if (!fw_loaded) {
-		pr_info("%s : firmware is not loaded\n", __func__);
+		pr_info("ice5: %s : firmware is not loaded\n", __func__);
 		return 1;
 	}
 
 //	ir_led_power_control(true, data);
 
 	/* make data for sending */
-	for (i = 0; i < IRDA_TEST_CODE_SIZE; i++)
-		i2c_block_transfer.data[i] = BSR_data[i];
-	
-	switch(toggle)
+	/*  0 : solid normal
+	 *   1 : off
+	 *   2 : pattern normal
+	 *   3 : pattern scroll
+	 *   4 : normal-> blinking -> scroll
+	 */ 
+	switch(value)
 	{
-		case 0 :		i2c_block_transfer.data[0] = 0x01;	break;
-		case 1 :		i2c_block_transfer.data[0] = 0x33;	break;
-		case 2 :		i2c_block_transfer.data[0] = 0x00;	break;
-		default : 	i2c_block_transfer.data[0] = 0x01;	break;
+		case 0 :
+			len = LEDMATRIX_TEST_CODE_SIZE;
+			i2c_block_transfer.data[0] = 0x01;
+			i2c_block_transfer.data[1] = 0x00;
+			i2c_block_transfer.data[2] = 0x00;
+			i2c_block_transfer.data[3] = 0x00;
+			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
+				i2c_block_transfer.data[i] = 0xff;
+			break;
+		case 1 :
+			len = 4;
+			i2c_block_transfer.data[0] = 0x00;
+			i2c_block_transfer.data[1] = 0x00;
+			i2c_block_transfer.data[2] = 0x00;
+			i2c_block_transfer.data[3] = 0x00;
+			break;
+		case 2 :
+			len = LEDMATRIX_TEST_CODE_SIZE;
+			i2c_block_transfer.data[0] = 0x01;
+			i2c_block_transfer.data[1] = 0x00;
+			i2c_block_transfer.data[2] = 0x00;
+			i2c_block_transfer.data[3] = 0x00;
+			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
+				i2c_block_transfer.data[i] = BSR_data[i];
+			break;
+		case 3 :
+			len = LEDMATRIX_TEST_CODE_SIZE;
+			i2c_block_transfer.data[0] = 0x15;
+			i2c_block_transfer.data[1] = 0x11;
+			i2c_block_transfer.data[2] = 0x07;
+			i2c_block_transfer.data[3] = 0x0A;
+			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
+				i2c_block_transfer.data[i] = BSR_data[i];
+			break;
+		case 4 :
+			len = LEDMATRIX_TEST_CODE_SIZE;
+			i2c_block_transfer.data[0] = 0x15;
+			i2c_block_transfer.data[1] = 0x15;
+			i2c_block_transfer.data[2] = 0x31;
+			i2c_block_transfer.data[3] = 0x00;
+			for (i = 8; i < LEDMATRIX_TEST_CODE_SIZE; i++)
+				i2c_block_transfer.data[i] = BSR_data[i];
+			break;
+		default :
+			len = 4;
+			i2c_block_transfer.data[0] = 0x00;
+			i2c_block_transfer.data[1] = 0x00;
+			i2c_block_transfer.data[2] = 0x00;
+			i2c_block_transfer.data[3] = 0x00;
+			break;
 	}
-	toggle = (toggle+1)%3;
-
+	
 
 	/* sending data by I2C */
-	i2c_block_transfer.addr = IRDA_TEST_CODE_ADDR;
+	i2c_block_transfer.addr = LEDMATRIX_TEST_CODE_ADDR;
 	ret = i2c_master_send(client, (unsigned char *) &i2c_block_transfer,
-			IRDA_TEST_CODE_SIZE+1);
-	pr_err("%s: ret %d\n", __func__, ret);
+			len+1);
+	pr_info("ice5 : %s: ret %d\n", __func__, ret);
 	if (ret < 0) {
-		pr_err("%s: err1 %d\n", __func__, ret);
-		ret = i2c_master_send(client,
-		(unsigned char *) &i2c_block_transfer, IRDA_TEST_CODE_SIZE);
+		pr_err("ice5 : %s: err1 %d\n", __func__, ret);
+		ret = i2c_master_send(client,(unsigned char *) &i2c_block_transfer,
+			len+1);
 		if (ret < 0)
-			pr_err("%s: err2 %d\n", __func__, ret);
+			pr_err("ice5 : %s: err2 %d\n", __func__, ret);
 	}
 
 #if defined(DEBUG)
-	ice5lp_ledmatrix_read(client, IRDA_TEST_CODE_ADDR, IRDA_TEST_CODE_SIZE, temp);
+	ice5lp_ledmatrix_read(client, LEDMATRIX_TEST_CODE_ADDR, LEDMATRIX_TEST_CODE_SIZE, temp);
 
-	for (i = 0 ; i < IRDA_TEST_CODE_SIZE; i++)
+	for (i = 0 ; i < LEDMATRIX_TEST_CODE_SIZE; i++)
 		pr_info("[%s] %4d rd %5x, td %5x\n", __func__, i, i2c_block_transfer.data[i], temp[i]);
 
 	ice5lp_ledmatrix_print_gpio_status();
@@ -700,21 +779,22 @@ static ssize_t ledmatrix_test_show(struct device *dev, struct device_attribute *
 	return strlen(buf);
 }
 
-static DEVICE_ATTR(ledmatrix_test, 0664, ledmatrix_test_show, ledmatrix_test_store);
+static DEVICE_ATTR(ledmatrix_test, 0660, ledmatrix_test_show, ledmatrix_test_store);
 
-/* sysfs irda_version */
+/* sysfs ledmatrix_version */
 static ssize_t ledmatrix_ver_check_show(struct device *dev, struct device_attribute *attr, char *buf)
 {
 	struct ice5_fpga_data *data = dev_get_drvdata(dev);
 
 	u8 fw_ver;
-	ice5lp_ledmatrix_read(data->client, 0x02, 1, &fw_ver);
-	fw_ver = (fw_ver >> 2) & 0x3;
+	ice5lp_ledmatrix_read(data->client, LEDMATRIX_VER_ADDR, 1, &fw_ver);
 
-	return sprintf(buf, "%d\n", fw_ver);
+	pr_info("ice5 : %s: fw 0x%x\n", __func__, fw_ver);
+
+	return sprintf(buf, "%x\n", fw_ver);
 }
 
-static DEVICE_ATTR(ledmatrix_ver_check, 0664, ledmatrix_ver_check_show, NULL);
+static DEVICE_ATTR(ledmatrix_ver_check, 0660, ledmatrix_ver_check_show, NULL);
 
 static struct attribute *sec_ledmatrix_attributes[] = {
 	&dev_attr_ledmatrix_send.attr,
@@ -734,8 +814,6 @@ static int of_ice5lp_ledmatrix_dt(struct device *dev, struct ice5lp_ledmatrix_pl
 			struct ice5_fpga_data *data)
 {
 	struct device_node *np_ice5lp_ledmatrix = dev->of_node;
-//	const char *temp_str;
-//	int ret;
 
 	if(!np_ice5lp_ledmatrix)
 		return -EINVAL;
@@ -748,49 +826,6 @@ static int of_ice5lp_ledmatrix_dt(struct device *dev, struct ice5lp_ledmatrix_pl
 	
 	pdata->ledmatrix_en = of_get_named_gpio(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,ledmatrix_en", 0);	
 	
-#if 0
-	ret = of_property_read_string(np_ice5lp_ledmatrix, "clock-names", &temp_str);
-	if (ret) {
-		pr_err("%s: cannot get clock name(%d)", __func__, ret);
-		return ret;
-	}
-	pr_info("%s: %s\n", __func__, temp_str);
-
-	data->clock = devm_clk_get(dev, temp_str);
-	if (IS_ERR(data->clock)) {
-		pr_err("%s: cannot get clock(%d)", __func__, ret);
-		return ret;
-	}
-
-	ret = of_property_read_string(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,power", &temp_str);
-	if (ret) {
-		pr_err("%s: cannot get power type(%d)", __func__, ret);
-		return ret;
-	}
-
-	if (!strncasecmp(temp_str, "LDO", 3)) {
-		pr_info("%s: ice5lp_ledmatrix will use %s\n", __func__, temp_str);
-		power_type = PWR_LDO;
-		pdata->ir_en = of_get_named_gpio(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,ir_en", 0);
-	} else if (!strncasecmp(temp_str, "REG", 3)) {
-		pr_info("%s: ice5lp_ledmatrix will use regulator\n", __func__);
-		power_type = PWR_REG;
-		ret = of_property_read_string(np_ice5lp_ledmatrix, "ice5lp_ledmatrix,regulator_name",
-								&temp_str);
-		if (ret) {
-			pr_err("%s: cannot get regulator_name!(%d)\n",
-				__func__, ret);
-			return ret;
-		}
-		data->regulator_name = (char *)temp_str;
-	} else if (!strncasecmp(temp_str, "ALW", 3)) {
-		pr_info("%s: ice5lp_ledmatrix power control(%s)\n", __func__, temp_str);
-		power_type = PWR_ALW;
-	} else {
-		pr_err("%s: unused power type(%s)\n", __func__, temp_str);
-		return -EINVAL;
-	}
-#endif
 	return 0;
 }
 #else
@@ -799,28 +834,7 @@ static int of_ice5lp_ledmatrix_dt(struct device *dev, struct ice5lp_ledmatrix_pl
 	return -ENODEV;
 }
 #endif /* CONFIG_OF */
-#if 0
-static int ice5lp_ledmatrix_gpio_setting(void)
-{
-	int ret = 0;
 
-	ret = gpio_request_one(g_pdata->creset_b, GPIOF_OUT_INIT_HIGH, "FPGA_CRESET_B");
-	ret += gpio_request_one(g_pdata->cdone, GPIOF_IN, "FPGA_CDONE");
-	ret += gpio_request_one(g_pdata->irda_irq, GPIOF_IN, "FPGA_IRDA_IRQ");
-	ret += gpio_request_one(g_pdata->spi_en_rstn, GPIOF_OUT_INIT_LOW, "FPGA_SPI_EN");
-
-	if (power_type == PWR_LDO)
-		ret += gpio_request_one(g_pdata->ir_en, GPIOF_OUT_INIT_LOW, "FPGA_IR_EN");
-
-/* i2c-gpio drv already request below pins */
-	gpio_free(g_pdata->spi_si_sda);
-	gpio_free(g_pdata->spi_clk_scl);
-	ret += gpio_request_one(g_pdata->spi_si_sda, GPIOF_OUT_INIT_LOW, "FPGA_SPI_SI_SDA");
-	ret += gpio_request_one(g_pdata->spi_clk_scl, GPIOF_OUT_INIT_LOW, "FPGA_SPI_CLK_SCL");
-
-	return ret;
-}
-#endif
 static int __devinit ice5lp_ledmatrix_probe(struct i2c_client *client,
 		const struct i2c_device_id *id)
 {

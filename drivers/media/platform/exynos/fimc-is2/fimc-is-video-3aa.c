@@ -324,32 +324,15 @@ static int fimc_is_3aa_video_reqbufs(struct file *file, void *priv,
 {
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
-	struct fimc_is_device_ischain *device;
 
 	BUG_ON(!vctx);
 
 	mdbgv_3aa("%s(buffers : %d)\n", vctx, __func__, buf->count);
 
-	device = vctx->device;
-	if (!device) {
-		merr("device is NULL", vctx);
-		ret = -EINVAL;
-		goto p_err;
-	}
-
-	if (V4L2_TYPE_IS_OUTPUT(buf->type)) {
-		ret = fimc_is_ischain_3aa_reqbufs(device, buf->count);
-		if (ret) {
-			merr("3a0_reqbufs is fail(%d)", vctx, ret);
-			goto p_err;
-		}
-	}
-
 	ret = fimc_is_video_reqbufs(file, vctx, buf);
 	if (ret)
 		merr("fimc_is_video_reqbufs is fail(%d)", vctx, ret);
 
-p_err:
 	return ret;
 }
 
@@ -492,6 +475,9 @@ static int fimc_is_3aa_video_s_ctrl(struct file *file, void *priv,
 	int ret = 0;
 	struct fimc_is_video_ctx *vctx = file->private_data;
 	struct fimc_is_device_ischain *device;
+	unsigned int value = 0;
+	unsigned int captureIntent = 0;
+	unsigned int captureCount = 0;
 
 	BUG_ON(!vctx);
 	BUG_ON(!GET_DEVICE(vctx));
@@ -503,9 +489,17 @@ static int fimc_is_3aa_video_s_ctrl(struct file *file, void *priv,
 
 	switch (ctrl->id) {
 	case V4L2_CID_IS_INTENT:
-		device->group_3aa.intent_ctl.captureIntent = ctrl->value;
-		minfo("[3AA:V] s_ctrl intent(%d)\n", vctx, ctrl->value);
-		printk("[3AA:V] s_ctrl intent(%d)\n\n\n",ctrl->value);
+		value = (unsigned int)ctrl->value;
+		captureIntent = (value >> 16) & 0x0000FFFF;
+		if (captureIntent == AA_CAPTRUE_INTENT_STILL_CAPTURE_DYNAMIC_SHOT) {
+			captureCount = value & 0x0000FFFF;
+		} else {
+			captureIntent = ctrl->value;
+			captureCount = 0;
+		}
+		device->group_3aa.intent_ctl.captureIntent = captureIntent;
+		device->group_3aa.intent_ctl.vendor_captureCount = captureCount;
+		minfo("[3AA:V] s_ctrl intent(%d) count(%d)\n", vctx, captureIntent, captureCount);
 		break;
 	case V4L2_CID_IS_FORCE_DONE:
 		set_bit(FIMC_IS_GROUP_REQUEST_FSTOP, &device->group_3aa.state);
@@ -517,14 +511,29 @@ static int fimc_is_3aa_video_s_ctrl(struct file *file, void *priv,
 				fimc_is_itf_set_fwboot(device, COLD_BOOT);
 				break;
 			case IS_WARM_BOOT:
-				/* change value to X when TWIZ & back | frist time back camera */
-				if(!device->interface->first_launch) {
-					fimc_is_itf_set_fwboot(device, FIRST_LAUNCHING);
-					device->interface->first_launch = true;
-				} else {
-					fimc_is_itf_set_fwboot(device, WARM_BOOT);
+#ifdef CONFIG_USE_VENDER_FEATURE
+				if (device->interface->need_cold_reset) {
+					minfo("[3AA:V] FW cold boot mode for reset\n", vctx);
+					fimc_is_itf_set_fwboot(device, COLD_BOOT);
+					device->interface->first_launch = false;
+				} else
+#endif
+				{
+					/* change value to X when TWIZ & back | frist time back camera */
+					if(!device->interface->first_launch) {
+						fimc_is_itf_set_fwboot(device, FIRST_LAUNCHING);
+						device->interface->first_launch = true;
+					} else {
+						fimc_is_itf_set_fwboot(device, WARM_BOOT);
+					}
 				}
 				break;
+#ifdef CONFIG_USE_VENDER_FEATURE
+			case IS_COLD_RESET:
+				device->interface->need_cold_reset = true;
+				minfo("[3AA:V] need cold reset!!!\n", vctx);
+				break;
+#endif
 			default:
 				err("unsupported ioctl(0x%X)", ctrl->id);
 				ret = -EINVAL;

@@ -20,7 +20,9 @@
 #ifdef CONFIG_KNOX_KAP
 extern int boot_mode_security;
 #endif
-
+#ifdef CONFIG_TIMA_RKP
+extern int rkp_support_large_memory;
+#endif
 /*
  * Example usage: sec_log=256K@0x45000000
  * In above case, log_buf size is 256KB and its base address is
@@ -306,10 +308,10 @@ void sec_debug_tsp_log(char *fmt, ...)
 	/* Overflow buffer size */
 	if (idx + size > sec_tsp_log_size - 1) {
 		len = scnprintf(&sec_tsp_log_buf[0],
-						size + 1, "%s", buf);
+						size + 1, "%s\n", buf);
 		*sec_tsp_log_ptr = len;
 	} else {
-		len = scnprintf(&sec_tsp_log_buf[idx], size + 1, "%s", buf);
+		len = scnprintf(&sec_tsp_log_buf[idx], size + 1, "%s\n", buf);
 		*sec_tsp_log_ptr += len;
 	}
 }
@@ -477,6 +479,9 @@ late_initcall(sec_last_kmsg_late_init);
 #ifdef   CONFIG_TIMA_RKP
 
 static int  tima_setup_rkp_mem(void){
+	unsigned long phys_map_addr;
+	unsigned long phys_map_size;
+
 #ifdef CONFIG_NO_BOOTMEM
 	if (memblock_is_region_reserved(TIMA_DEBUG_LOG_START, TIMA_DEBUG_LOG_SIZE) ||
 			memblock_reserve(TIMA_DEBUG_LOG_START, TIMA_DEBUG_LOG_SIZE)) {
@@ -515,17 +520,26 @@ static int  tima_setup_rkp_mem(void){
 	}
 	pr_info("RKP :%s, base:%x, size:%x \n", __func__,TIMA_SEC_LOG, TIMA_SEC_LOG_SIZE);
 
+	if (rkp_support_large_memory) {
+		pr_info("RKP large memory\n");
+		phys_map_addr = (TIMA_PHYS_MAP - TIMA_PHYS_MAP_OFFSET);
+		phys_map_size = (TIMA_PHYS_MAP_SIZE + TIMA_PHYS_MAP_OFFSET);
+	}
+	else {
+		phys_map_addr = TIMA_PHYS_MAP;
+		phys_map_size = TIMA_PHYS_MAP_SIZE;
+	}
 #ifdef CONFIG_NO_BOOTMEM
-	if (memblock_is_region_reserved(TIMA_PHYS_MAP, TIMA_PHYS_MAP_SIZE) ||
-			memblock_reserve(TIMA_PHYS_MAP, TIMA_PHYS_MAP_SIZE)) {
+	if (memblock_is_region_reserved(phys_map_addr, phys_map_size) ||
+			memblock_reserve(phys_map_addr, phys_map_size)) {
 #else
-	if(reserve_bootmem(TIMA_PHYS_MAP,  TIMA_PHYS_MAP_SIZE, BOOTMEM_EXCLUSIVE)){
+	if(reserve_bootmem(phys_map_addr,  phys_map_size, BOOTMEM_EXCLUSIVE)){
 #endif
-		pr_err("%s: RKP failed reserving size %d "					\
-			   "at base 0x%x\n", __func__, TIMA_PHYS_MAP_SIZE, TIMA_PHYS_MAP);
+		pr_err("%s: RKP failed reserving size %lx "					\
+			   "at base 0x%lx\n", __func__, phys_map_size, phys_map_addr);
 		goto out;
 	}
-	pr_info("RKP :%s, base:%x, size:%x \n", __func__,TIMA_PHYS_MAP, TIMA_PHYS_MAP_SIZE);
+	pr_info("RKP :%s, base:%lx, size:%lx \n", __func__,phys_map_addr, phys_map_size);
 
 #ifdef CONFIG_NO_BOOTMEM
 	if (memblock_is_region_reserved(TIMA_DASHBOARD_START, TIMA_DASHBOARD_SIZE) ||

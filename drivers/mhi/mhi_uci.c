@@ -330,6 +330,7 @@ static ssize_t mhi_uci_client_read(struct file *file, char __user *buf,
 					atomic_read(&uci_handle->avail_pkts),
 					phy_buf,
 					chan);
+			mutex_unlock(mutex);
 			return -EIO;
 		}
 	} while (!phy_buf);

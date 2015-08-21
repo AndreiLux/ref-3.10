@@ -351,7 +351,7 @@ int set_grip_calibration(struct ssp_data *data, bool set)
 
 	if (!(data->uSensorState & (1 << GRIP_SENSOR))) {
 		pr_info("[SSP]: %s - Skip this function!!!\n"
-			"[SSP]: grip sensor is not connected(0x%x)\n",
+			"[SSP]: grip sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return -EIO;
 	}
@@ -398,7 +398,7 @@ static int get_grip_calibration(struct ssp_data *data)
 
 	if (!(data->uSensorState & (1 << GRIP_SENSOR))) {
 		pr_info("[SSP]: %s - Skip this function!!!\n"
-			"[SSP]: grip sensor is not connected(0x%x)\n",
+			"[SSP]: grip sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return -EIO;
 	}

@@ -48,9 +48,9 @@ enum max77833_reg {
 	MAX77833_PMIC_REG_SYSTEM_INT_MASK               = 0x25,
 	MAX77833_PMIC_REG_TOPSYS_STAT                   = 0x26,
 
-	MAX77833_FG_REG_INT                             = 0x27,
-	MAX77833_FG_REG_INT_MASK                        = 0x28,
-	MAX77833_FG_REG_INT_STAT                        = 0x29,
+	MAX77833_PMIC_REG_FG_INT                             = 0x27,
+	MAX77833_PMIC_REG_FG_INT_MASK                        = 0x28,
+	MAX77833_PMIC_REG_FG_INT_STAT                        = 0x29,
 
 	MAX77833_PMIC_REG_MAINCTRL1                     = 0x2B,
 	MAX77833_PMIC_REG_SAFEOUT_CTRL			= 0x9B,
@@ -71,6 +71,8 @@ enum max77833_reg {
 	MAX77833_AUTORES_INIT_GUESS_LOW			= 0x005F,
 	MAX77833_AUTORES_INIT_GUESS_HIGH		= 0x005E,
 	MAX77833_AUTORES_LOCK_WINDOW			= 0X0060,
+	MAX77833_OPTION_REG1				= 0X0070,
+	MAX77833_AUTORES_UPDATE_FREQ			= 0X0075,
 
 	/* Old Haptic motor driver Register */
 	MAX77833_PMIC_REG_MCONFIG			= 0x10,
@@ -100,6 +102,8 @@ enum max77833_reg {
 	MAX77833_CHG_REG_CNFG_16			= 0x98,
 	MAX77833_CHG_REG_CNFG_17			= 0x99,
 	MAX77833_CHG_REG_CNFG_18			= 0x9A,
+	MAX77833_CHG_REG_CNFG_19			= 0xA4,
+	MAX77833_CHG_REG_CNFG_20			= 0xA5,
 	MAX77833_CHG_REG_PROTECT                        = 0x9C,
 	MAX77833_CHG_REG_SEMAPHORE                      = 0x9D,
 
@@ -243,7 +247,8 @@ enum max77833_irq {
 	MAX77833_CHG_IRQ_AICL_I,
 
 	/* Fuelgauge */
-	MAX77833_FG_IRQ_ALERT,
+	MAX77833_FG_IRQ_VMN_I,
+	MAX77833_FG_IRQ_SMN_I,
 
 	/* MUIC INT1 */
 	MAX77833_MUIC_IRQ_INT1_RESERVED,
@@ -287,6 +292,7 @@ struct max77833_dev {
 	/* pmic VER/REV register */
 	u8 pmic_rev;	/* pmic Rev */
 	u8 pmic_ver;	/* pmic version */
+	bool pmic_rev_pass5;	/* pass5 check */
 
 	struct max77833_platform_data *pdata;
 };

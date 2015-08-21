@@ -1576,6 +1576,7 @@ static void scsi_request_fn(struct request_queue *q)
 			blk_start_request(req);
 		sdev->device_busy++;
 
+		preempt_disable();
 		spin_unlock(q->queue_lock);
 		cmd = req->special;
 		if (unlikely(cmd == NULL)) {
@@ -1600,14 +1601,19 @@ static void scsi_request_fn(struct request_queue *q)
 			if (list_empty(&sdev->starved_entry))
 				list_add_tail(&sdev->starved_entry,
 					      &shost->starved_list);
+			preempt_enable_no_resched();
 			goto not_ready;
 		}
 
-		if (!scsi_target_queue_ready(shost, sdev))
+		if (!scsi_target_queue_ready(shost, sdev)) {
+			preempt_enable_no_resched();
 			goto not_ready;
+		}
 
-		if (!scsi_host_queue_ready(q, shost, sdev))
+		if (!scsi_host_queue_ready(q, shost, sdev)) {
+			preempt_enable_no_resched();
 			goto not_ready;
+		}
 
 		scsi_target(sdev)->target_busy++;
 		shost->host_busy++;
@@ -1628,6 +1634,7 @@ static void scsi_request_fn(struct request_queue *q)
 		 * Dispatch the command to the low-level driver.
 		 */
 		rtn = scsi_dispatch_cmd(cmd);
+		preempt_enable_no_resched();
 		spin_lock_irq(q->queue_lock);
 		if (rtn)
 			goto out_delay;

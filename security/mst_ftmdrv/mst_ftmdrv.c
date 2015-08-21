@@ -400,32 +400,14 @@ static int sec_mst_notifier(struct notifier_block *self,
 
 	switch (cmd) {
 	case LPA_ENTER:
-		printk(KERN_INFO "MST_FTM_DRV]]] lpa enter");
-
 		/* save gpios & set previous state */
 		r0 = (0x83000011);
 		result = exynos_smc(r0, r1, r2, r3);
-
-		if(result == MST_NOT_SUPPORT){
-			printk(KERN_INFO "MST_FTM_DRV]]] lpa enter do nothing after prev mode smc : %x\n", result);
-		}else{
-			printk(KERN_INFO "MST_FTM_DRV]]] lpa enter success after prev mode smc : %x\n", result);
-		}
-
 		break;
 	case LPA_EXIT:
-		printk(KERN_INFO "MST_FTM_DRV]]] lpa exit");
-
 		/* restore gpios */
 		r0 = (0x8300000d);
 		result = exynos_smc(r0, r1, r2, r3);
-
-		if(result == MST_NOT_SUPPORT){
-			printk(KERN_INFO "MST_FTM_DRV]]] lpa exit do nothing after restore smc : %x\n", result);
-		}else{
-			printk(KERN_INFO "MST_FTM_DRV]]] lpa exit success after restore smc : %x\n", result);
-		}
-
 		break;
 	}
 

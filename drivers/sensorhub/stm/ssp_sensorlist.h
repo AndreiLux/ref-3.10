@@ -44,6 +44,9 @@
 	"",				\
 	"light_ir_sensor",		\
 	"interrupt_gyro_sensor",	\
+	"tilt_detector",		\
+	"pickup_gesture",		\
+	"motor_test",			\
 	"meta_event", }
 
 /* 0: disable sensor, 1: enable as iio device */
@@ -74,32 +77,76 @@
 	0, /* ? */		\
 	1, /* light ir */	\
 	1, /* interrupt gyro */	\
+	1, /* tilt detector */	\
+	1, /* pickup gesture */	\
+	1, /* motor test */	\
 	1, /* meta sensor */ }
+
+/* Sensors's reporting mode */
+#define REPORT_MODE_CONTINUOUS	0
+#define REPORT_MODE_ON_CHANGE	1
+#define REPORT_MODE_SPECIAL	2
+#define REPORT_MODE_UNKNOWN	3
+
+/* Sync time margin of Gyroscope and uncalibrated gyroscope */
+#define SYNC_MARGIN_GYRO_UNCALGYRO	5000000ULL
+
+#define SENSOR_REPORT_MODE { \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_SPECIAL, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_UNKNOWN, \
+	REPORT_MODE_UNKNOWN, \
+	REPORT_MODE_UNKNOWN, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_ON_CHANGE, \
+	REPORT_MODE_CONTINUOUS, \
+	REPORT_MODE_UNKNOWN, }
 
 #if defined(CONFIG_SENSORS_SSP_TMG399X)
 /* byte unit - not including timestamp */
 #define SENSOR_DATA_LEN	{ \
 	6, 6, 12, 6, 7, 6, 20, 2, 5, 10, \
 	1, 0, 1, 1, 12, 17, 17, 4, 0, 0, \
-	0, 0, 1, 0, 12, 6, 8, }
+	0, 0, 1, 0, 12, 6, 1, 1, 6, 8, }
 
 /* byte unit - not including timestamp */
 #define SENSOR_REPORT_LEN { \
 	6, 10, 12, 6, 7, 14, 20, 2, 5, 10, \
 	0, 0, 1, 1, 12, 17, 17, 12, 0, 0, \
-	0, 0, 1, 0, 12, 10, 8, }
+	0, 0, 1, 0, 12, 10, 1, 1, 6, 8, }
 #else
 /* byte unit - not including timestamp */
 #define SENSOR_DATA_LEN	{ \
 	6, 6, 12, 6, 7, 6, 20, 3, 5, 10, \
 	2, 0, 1, 1, 12, 17, 17, 4, 0, 0, \
-	0, 0, 1, 0, 12, 6, 8, }
+	0, 0, 1, 0, 12, 6, 1, 1, 6, 8, }
 
 /* byte unit - not including timestamp */
 #define SENSOR_REPORT_LEN { \
 	6, 10, 12, 6, 7, 14, 20, 3, 5, 10, \
 	0, 0, 1, 1, 12, 17, 17, 12, 0, 0, \
-	0, 0, 1, 0, 12, 10, 8, }
+	0, 0, 1, 0, 12, 10, 1, 1, 6, 8, }
 #endif
 
 #endif

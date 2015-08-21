@@ -237,12 +237,13 @@ int wacom_i2c_query(struct wacom_i2c *wac_i2c)
 	return ret;
 }
 
-
 int wacom_i2c_modecheck(struct wacom_i2c *wac_i2c)
 {
 	u8 buf = COM_QUERY;
 	int ret;
 	int mode = WACOM_I2C_MODE_NORMAL;
+	u8 data[COM_QUERY_BUFFER] = {0, };
+	int read_size = COM_QUERY_NUM;
 
 	ret = wacom_i2c_send(wac_i2c, &buf, 1, false);
 	if (ret < 0) {
@@ -251,10 +252,78 @@ int wacom_i2c_modecheck(struct wacom_i2c *wac_i2c)
 	else{
 		mode = WACOM_I2C_MODE_NORMAL;
 	}
-	printk(KERN_DEBUG "epen:I2C send at usermode(%d)\n", ret);
+
+	ret = wacom_i2c_recv(wac_i2c, data, read_size, false);
+	ret = wacom_i2c_recv(wac_i2c, data, read_size, false);
+	printk(KERN_DEBUG "epen:I2C send at usermode(%d) querys(%d)\n",mode, ret);
+
 	return mode;
 }
 
+int wacom_i2c_set_sense_mode(struct wacom_i2c *wac_i2c)
+{
+	int retval;
+	char data[4] = {0, 0, 0, 0};
+
+	if (wac_i2c->wcharging_mode == 0)
+		data[0] = COM_NORMAL_SENSE_MODE;
+	else
+		data[0] = COM_LOW_SENSE_MODE;
+
+	retval = wacom_i2c_send(wac_i2c, &data[0], 1, WACOM_NORMAL_MODE);
+	if (retval != 1) {
+		dev_err(&wac_i2c->client->dev, "%s: failed to send wacom i2c mode, %d\n", __func__, retval);
+		return retval;
+	}
+
+	msleep(60);
+
+	data[0] = COM_SAMPLERATE_STOP;
+	retval = wacom_i2c_send(wac_i2c, &data[0], 1, WACOM_NORMAL_MODE);
+	if (retval != 1) {
+		dev_err(&wac_i2c->client->dev, "%s: failed to read wacom i2c send1, %d\n", __func__, retval);
+		return retval;
+	}
+
+	msleep(60);
+
+	data[1] = COM_REQUEST_SENSE_MODE;
+	retval = wacom_i2c_send(wac_i2c, &data[1], 1, WACOM_NORMAL_MODE);
+	if (retval != 1) {
+		dev_err(&wac_i2c->client->dev, "%s: failed to read wacom i2c send2, %d\n", __func__, retval);
+		return retval;
+	}
+
+	msleep(60);
+
+	retval = wacom_i2c_recv(wac_i2c, &data[2], 2, WACOM_NORMAL_MODE);
+	if (retval != 2) {
+		dev_err(&wac_i2c->client->dev, "%s: failed to read wacom i2c recv, %d\n", __func__, retval);
+		return retval;
+	}
+
+	dev_info(&wac_i2c->client->dev, "%s: mode:%X, %X\n", __func__, data[2], data[3]);
+
+	data[0] = COM_SAMPLERATE_STOP;
+	retval = wacom_i2c_send(wac_i2c, &data[0], 1, WACOM_NORMAL_MODE);
+	if (retval != 1) {
+		dev_err(&wac_i2c->client->dev, "%s: failed to read wacom i2c send3, %d\n", __func__, retval);
+		return retval;
+	}
+
+	msleep(60);
+
+	data[0] = COM_SAMPLERATE_START;
+	retval = wacom_i2c_send(wac_i2c, &data[0], 1, WACOM_NORMAL_MODE);
+	if (retval != 1) {
+		dev_err(&wac_i2c->client->dev, "%s: failed to read wacom i2c send4, %d\n", __func__, retval);
+		return retval;
+	}
+
+	msleep(60);
+
+	return data[3];
+}
 
 #ifdef WACOM_IMPORT_FW_ALGO
 #ifdef WACOM_USE_OFFSET_TABLE

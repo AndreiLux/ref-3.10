@@ -1110,6 +1110,9 @@ static void decon_int_lpd_handler(struct work_struct *work)
 	struct decon_device *decon =
 			container_of(work, struct decon_device, lpd_work);
 
+	if (decon->lpd_disable)
+		return;
+
 	if (decon_lpd_enter_cond(decon)) {
 		decon_enter_lpd(decon);
 	}

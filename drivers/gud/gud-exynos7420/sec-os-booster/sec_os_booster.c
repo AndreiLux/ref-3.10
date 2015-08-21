@@ -200,9 +200,10 @@ int secos_booster_stop(void)
 
   hrtimer_cancel(&timer);
 	pr_debug("%s: mc switch to little core \n", __func__);
-	mc_set_schedule_policy(current_core);
 
 	mc_set_schedule_policy(DEFAULT_LITTLE_CORE);
+	
+	ret = mc_switch_core(current_core);
 	if (ret)
 		pr_err("%s: mc switch core failed. err:%d\n", __func__, ret);
 

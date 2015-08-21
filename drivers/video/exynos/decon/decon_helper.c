@@ -466,12 +466,14 @@ void DISP_SS_EVENT_SHOW(struct seq_file *s, struct decon_device *decon)
 	struct timeval tv;
 
 	/* TITLE */
-	seq_printf(s, "-------------------DECON%d EVENT LOGGER ----------------------\n",
-			decon->id);
-	seq_printf(s, "-- STATUS: LPD(%s) ", IS_ENABLED(CONFIG_DECON_LPD_DISPLAY)? "on":"off");
+	seq_printf(s, "-------------------DECON EVENT LOGGER ----------------------\n");
+	seq_printf(s, "-- STATUS: LPD(%s) ",
+			IS_ENABLED(CONFIG_DECON_LPD_DISPLAY) && (!decon->lpd_disable) ? "on":"off");
 	seq_printf(s, "PKTGO(%s) ", IS_ENABLED(CONFIG_DECON_MIPI_DSI_PKTGO)? "on":"off");
-	seq_printf(s, "BlockMode(%s) ", IS_ENABLED(CONFIG_DECON_BLOCKING_MODE)? "on":"off");
-	seq_printf(s, "Window_Update(%s)\n", IS_ENABLED(CONFIG_FB_WINDOW_UPDATE)? "on":"off");
+	seq_printf(s, "BlockMode(%s) ",
+			IS_ENABLED(CONFIG_DECON_BLOCKING_MODE) && (!decon->dma_block_disable) ? "on":"off");
+	seq_printf(s, "Window_Update(%s)\n",
+			IS_ENABLED(CONFIG_FB_WINDOW_UPDATE) && (!decon->win_update_disable) ? "on":"off");
 	seq_printf(s, "-------------------------------------------------------------\n");
 	seq_printf(s, "%14s  %20s  %20s\n",
 		"Time", "Event ID", "Remarks");

@@ -18,7 +18,9 @@
 #include <linux/input.h>
 #include <linux/delay.h>
 #include <linux/wakelock.h>
-#if defined(CONFIG_SWITCH_ANTENNA_EARJACK) || defined(CONFIG_SWITCH_ANTENNA_EARJACK_IF)
+#if (defined CONFIG_SWITCH_ANTENNA_EARJACK \
+	 || defined CONFIG_SWITCH_ANTENNA_EARJACK_IF) \
+	 && (!defined CONFIG_SEC_FACTORY)
 #include <linux/antenna_switch.h>
 #endif
 #include <linux/mfd/arizona/registers.h>
@@ -101,7 +103,6 @@ enum {
 
 struct arizona_machine_priv {
 	int mic_bias_gpio;
-	int clk_sel_gpio;
 	struct snd_soc_codec *codec;
 	struct snd_soc_dai *aif[PACIFIC_AIF_MAX];
 	int voice_uevent;
@@ -164,8 +165,8 @@ static struct arizona_machine_priv pacific_wm1840_priv = {
 	.sv_score_addr = DSP6_XM_BASE + (SENSORY_PID_SVSCORE * 2),
 	.final_score_addr = DSP6_XM_BASE + (SENSORY_PID_FINALSCORE * 2),
 	.noise_floor_addr = DSP6_XM_BASE + (PID_NOISEFLOOR * 2),
-	.energy_l_addr = CLEARWATER_DSP3_SCRATCH_0,
-	.energy_r_addr = CLEARWATER_DSP3_SCRATCH_2,
+	.energy_l_addr = CLEARWATER_DSP3_SCRATCH_0_1,
+	.energy_r_addr = CLEARWATER_DSP3_SCRATCH_2_3,
 };
 
 static struct arizona_machine_priv pacific_wm5102_priv = {
@@ -177,7 +178,7 @@ const char *aif2_mode_text[] = {
 	"Slave", "Master", "CLKOnly"
 };
 
-static const char *voicecontrol_mode_text[] = {
+static const char * const voicecontrol_mode_text[] = {
 	"Normal", "LPSD"
 };
 
@@ -233,7 +234,7 @@ void pacific_arizona_hpdet_cb(unsigned int meas)
 {
 	struct arizona_machine_priv *priv;
 	int jack_det;
-	int i;
+	int i, num_hp_gain_table;
 
 	WARN_ON(!the_codec);
 	if (!the_codec)
@@ -248,12 +249,15 @@ void pacific_arizona_hpdet_cb(unsigned int meas)
 
 	dev_info(the_codec->dev, "%s(%d) meas(%d)\n", __func__, jack_det, meas);
 
-#if defined(CONFIG_SWITCH_ANTENNA_EARJACK) || defined(CONFIG_SWITCH_ANTENNA_EARJACK_IF)
+#if (defined CONFIG_SWITCH_ANTENNA_EARJACK \
+	 || defined CONFIG_SWITCH_ANTENNA_EARJACK_IF) \
+	 && (!defined CONFIG_SEC_FACTORY)
 	/* Notify jack condition to other devices */
 	antenna_switch_work_earjack(jack_det);
 #endif
 
-	for (i = 0; i < ARRAY_SIZE(hp_gain_table); i++) {
+	num_hp_gain_table = (int) ARRAY_SIZE(hp_gain_table);
+	for (i = 0; i < num_hp_gain_table; i++) {
 		if (meas < hp_gain_table[i].min || meas > hp_gain_table[i].max)
 			continue;
 
@@ -543,7 +547,7 @@ static void create_dsm_log_dump(struct snd_soc_codec *codec)
 	dev_info(codec->dev, "%s: --\n", __func__);
 }
 
-static int max98504_get_dump_status(struct snd_kcontrol *kcontrol,
+static int max9850x_get_dump_status(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
@@ -561,7 +565,7 @@ static int max98504_get_dump_status(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int max98504_set_dump_status(struct snd_kcontrol *kcontrol,
+static int max9850x_set_dump_status(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
@@ -598,13 +602,13 @@ static void create_dsm_param_dump(struct snd_soc_codec *codec)
 	dev_info(codec->dev, "%s: --\n", __func__);
 }
 
-static int max98504_get_param_dump_status(struct snd_kcontrol *kcontrol,
+static int max9850x_get_param_dump_status(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	return 0;
 }
 
-static int max98504_set_param_dump_status(struct snd_kcontrol *kcontrol,
+static int max9850x_set_param_dump_status(struct snd_kcontrol *kcontrol,
 	struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_codec *codec = snd_kcontrol_chip(kcontrol);
@@ -747,11 +751,11 @@ static const struct snd_kcontrol_new pacific_codec_controls[] = {
 	SOC_SINGLE_EXT("DSM LOG",
 		SND_SOC_NOPM,
 		0, 0xff, 0,
-		max98504_get_dump_status, max98504_set_dump_status),
+		max9850x_get_dump_status, max9850x_set_dump_status),
 	SOC_SINGLE_EXT("DSM PARAM",
 		SND_SOC_NOPM,
 		0, 0xff, 0,
-		max98504_get_param_dump_status, max98504_set_param_dump_status),
+		max9850x_get_param_dump_status, max9850x_set_param_dump_status),
 #endif
 };
 
@@ -1207,8 +1211,9 @@ static struct snd_soc_dai_driver pacific_ext_dai[] = {
 			.channels_min = 1,
 			.channels_max = 4,
 			.rate_min = 8000,
-			.rate_max = 16000,
-			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000),
+			.rate_max = 48000,
+			.rates = (SNDRV_PCM_RATE_8000 | SNDRV_PCM_RATE_16000 |
+					SNDRV_PCM_RATE_48000),
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		},
 		.capture = {
@@ -1524,13 +1529,6 @@ static int pacific_of_get_pdata(struct snd_soc_card *card)
 		gpio_direction_output(priv->mic_bias_gpio, 0);
 	}
 
-	priv->clk_sel_gpio = of_get_named_gpio(pdata_np, "clk_sel_gpio", 0);
-	if (gpio_is_valid(priv->clk_sel_gpio)) {
-		ret = gpio_request(priv->clk_sel_gpio, "SEL_44.1K");
-		if (ret)
-			dev_err(card->dev, "Failed to request clk_sel_gpio: %d\n", ret);
-	}
-
 	pacific_update_impedance_table(pdata_np);
 
 	priv->seamless_voicewakeup =
@@ -1809,7 +1807,11 @@ static int pacific_start_sysclk(struct snd_soc_card *card)
 	int ret;
 
 	if (priv->mclk) {
-		clk_enable(priv->mclk);
+		ret = clk_enable(priv->mclk);
+		if (ret < 0) {
+			dev_err(card->dev, "clk_enable failed = %d\n", ret);
+			return ret;
+		}
 		dev_info(card->dev, "mclk enabled\n");
 	} else
 		exynos5_audio_set_mclk(true, 0);
@@ -1842,7 +1844,12 @@ static int pacific_change_sysclk(struct snd_soc_card *card, int source)
 	if (source) {
 		/* uses MCLK1 when the source is 1 */
 		if (priv->mclk) {
-			clk_enable(priv->mclk);
+			ret = clk_enable(priv->mclk);
+			if (ret < 0) {
+				dev_err(card->dev,
+					"clk_enable failed = %d\n", ret);
+				return ret;
+			}
 			dev_info(card->dev, "mclk enabled\n");
 		} else
 			exynos5_audio_set_mclk(true, 0);
@@ -2095,7 +2102,7 @@ static struct snd_soc_card pacific_cards[] = {
 	},
 };
 
-static const char *card_ids[] = {
+static const char * const card_ids[] = {
 	"wm5102", "wm5110", "wm1840"
 };
 
@@ -2107,9 +2114,10 @@ static int pacific_audio_probe(struct platform_device *pdev)
 	struct snd_soc_card *card;
 	struct snd_soc_dai_link *dai_link;
 	struct arizona_machine_priv *priv;
-	int of_route;
+	int of_route, num_cards;
 
-	for (n = 0; n < ARRAY_SIZE(card_ids); n++) {
+	num_cards = (int) ARRAY_SIZE(card_ids);
+	for (n = 0; n < num_cards; n++) {
 		if (NULL != of_find_node_by_name(NULL, card_ids[n])) {
 			card = &pacific_cards[n];
 			dai_link = card->dai_link;
@@ -2117,7 +2125,7 @@ static int pacific_audio_probe(struct platform_device *pdev)
 		}
 	}
 
-	if (n == ARRAY_SIZE(card_ids)) {
+	if (n == num_cards) {
 		dev_err(&pdev->dev, "couldn't find card\n");
 		return -EINVAL;
 	}
@@ -2137,7 +2145,8 @@ static int pacific_audio_probe(struct platform_device *pdev)
 	if (ret != 0)
 		dev_err(&pdev->dev, "Failed to register component: %d\n", ret);
 
-	of_route = of_property_read_bool(card->dev->of_node, "samsung,audio-routing");
+	of_route = of_property_read_bool(card->dev->of_node,
+						"samsung,audio-routing");
 	if (!card->dapm_routes || !card->num_dapm_routes || of_route) {
 		ret = snd_soc_of_parse_audio_routing(card,
 				"samsung,audio-routing");

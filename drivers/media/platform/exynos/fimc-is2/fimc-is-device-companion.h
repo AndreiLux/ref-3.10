@@ -20,8 +20,9 @@
 
 struct fimc_is_video_ctx;
 
-#define FIMC_IS_COMPANION_DEV_NAME "exynos-fimc-is-companion"
-#define FIMC_IS_COMPANION_CRC_SIZE 4
+#define FIMC_IS_COMPANION_DEV_NAME		"exynos-fimc-is-companion"
+#define FIMC_IS_COMPANION_CRC_SIZE		4
+#define FIMC_IS_COMPANION_CRC_OBJECT	6
 
 enum fimc_is_companion_state {
 	FIMC_IS_COMPANION_OPEN,

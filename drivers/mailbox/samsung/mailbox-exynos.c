@@ -700,6 +700,7 @@ static int samsung_mbox_probe(struct platform_device *pdev)
 		case 9 :
 		case 10 :
 		case 11 :
+		case 12 :
 		case 15 :
 			ret = of_property_read_u32_index(node, "asv_v3_atlas_margin", 0, &cl_init.atlas_margin);
 			if (ret) {

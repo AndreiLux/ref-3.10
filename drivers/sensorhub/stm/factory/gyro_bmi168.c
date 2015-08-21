@@ -121,7 +121,7 @@ int set_gyro_cal(struct ssp_data *data)
 	s16 gyro_cal[3];
 	if (!(data->uSensorState & (1 << GYROSCOPE_SENSOR))) {
 		pr_info("[SSP]: %s - Skip this function!!!"\
-			", gyro sensor is not connected(0x%x)\n",
+			", gyro sensor is not connected(0x%llx)\n",
 			__func__, data->uSensorState);
 		return iRet;
 	}

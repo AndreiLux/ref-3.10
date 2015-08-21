@@ -1002,7 +1002,7 @@ static size_t print_prefix(const struct log *msg, bool syslog, char *buf)
 
 	if (syslog) {
 		if (buf) {
-			len += sprintf(buf, "<%2u>", prefix);
+			len += sprintf(buf, "<%u>", prefix);
 		} else {
 			len += 3;
 			if (prefix > 999)
@@ -1199,7 +1199,6 @@ static int syslog_print_all(char __user *buf, int size, bool clear)
 		next_seq = log_next_seq;
 
 		len = 0;
-		prev = 0;
 		while (len >= 0 && seq < next_seq) {
 			struct log *msg = log_from_idx(idx);
 			int textlen;
@@ -2960,7 +2959,6 @@ bool kmsg_dump_get_buffer(struct kmsg_dumper *dumper, bool syslog,
 	next_idx = idx;
 
 	l = 0;
-	prev = 0;
 	while (seq < dumper->next_seq) {
 		struct log *msg = log_from_idx(idx);
 

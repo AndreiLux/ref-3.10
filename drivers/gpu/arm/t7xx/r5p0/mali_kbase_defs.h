@@ -288,6 +288,16 @@ struct kbase_ext_res
 	struct kbase_mem_phy_alloc * alloc;
 };
 
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+struct kbase_atom_dependency_systrace
+{
+    unsigned int dep_atom_id;
+    unsigned int dep_atom_dependency_type;
+};
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
+
 struct kbase_jd_atom {
 	struct work_struct work;
 	ktime_t start_timestamp;
@@ -352,6 +362,15 @@ struct kbase_jd_atom {
 	 * MALI_TRUE when GPU is put into secure mode
 	 */
 	mali_bool secure_mode;
+
+/*{ SRUK-MALI_SYSTRACE_SUPPORT*/
+#ifdef CONFIG_MALI_SYSTRACE_SUPPORT
+
+    struct kbase_atom_dependency_systrace kbase_atom_dep_systrace[2];
+    u32 gles_ctx_handle;
+
+#endif
+/* SRUK-MALI_SYSTRACE_SUPPORT }*/
 };
 
 /*

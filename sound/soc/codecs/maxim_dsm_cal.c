@@ -30,7 +30,9 @@
 pr_info("[MAXIM_DSM_CAL] %s: " format "\n", __func__, ## args)
 #else
 #define dbg_maxdsm(format, args...)
-#endif /* DEBUG_MAX98505 */
+#endif /* DEBUG_MAXIM_DSM_CAL */
+
+struct class *g_class;
 
 struct maxim_dsm_cal *g_mdc;
 static int maxdsm_cal_read_file(char *filename, char *data, size_t size)
@@ -97,10 +99,69 @@ struct regmap *maxdsm_cal_set_regmap(
 }
 EXPORT_SYMBOL_GPL(maxdsm_cal_set_regmap);
 
-maxdsm_cal_make_set(FILEPATH_TEMP_CAL, temp, value);
-maxdsm_cal_make_get(FILEPATH_TEMP_CAL, temp, value);
-maxdsm_cal_make_set(FILEPATH_RDC_CAL, rdc, value);
-maxdsm_cal_make_get(FILEPATH_RDC_CAL, rdc, value);
+int maxdsm_cal_set_temp(uint32_t value)
+{
+	char data[12];
+	int ret;
+
+	memset(data, 0x00, sizeof(data));
+	sprintf(data, "%x", value);
+	ret = maxdsm_cal_write_file(FILEPATH_TEMP_CAL,
+			data, sizeof(data));
+	g_mdc->values.temp = ret < 0 ? ret : value;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxdsm_cal_set_temp);
+
+int maxdsm_cal_get_temp(uint32_t *value)
+{
+	char data[12];
+	int ret;
+
+	memset(data, 0x00, sizeof(data));
+	ret = maxdsm_cal_read_file(FILEPATH_TEMP_CAL,
+			data, sizeof(data));
+	if (ret < 0)
+		g_mdc->values.temp = ret;
+	else
+		ret = kstrtos32(data, 16, value);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxdsm_cal_get_temp);
+
+int maxdsm_cal_set_rdc(uint32_t value)
+{
+	char data[12];
+	int ret;
+
+	memset(data, 0x00, sizeof(data));
+	sprintf(data, "%x", value);
+	ret = maxdsm_cal_write_file(FILEPATH_RDC_CAL,
+			data, sizeof(data));
+	g_mdc->values.rdc = ret < 0 ? ret : value;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxdsm_cal_set_rdc);
+
+int maxdsm_cal_get_rdc(uint32_t *value)
+{
+	char data[12];
+	int ret;
+
+	memset(data, 0x00, sizeof(data));
+	ret = maxdsm_cal_read_file(FILEPATH_RDC_CAL,
+			data, sizeof(data));
+	if (ret < 0)
+		g_mdc->values.rdc = ret;
+	else
+		ret = kstrtos32(data, 16, value);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(maxdsm_cal_get_rdc);
 
 static int maxdsm_cal_regmap_write(struct regmap *regmap,
 		unsigned int reg,
@@ -122,16 +183,14 @@ static void maxdsm_cal_start_calibration(
 		struct maxim_dsm_cal *mdc)
 {
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
-	if (mdc->platform_type == 0xFFFFFFFF)
-		mdc->platform_type =
-			maxdsm_get_platform_type();
+	mdc->platform_type = maxdsm_get_platform_type();
 #else
 	mdc->platform_type = 0;
 #endif /* CONFIG_SND_SOC_MAXIM_DSM */
 	dbg_maxdsm("platform_type=%d", mdc->platform_type);
 
 	switch (mdc->platform_type) {
-	case 0: /* LSI */
+	case PLATFORM_TYPE_A:
 		maxdsm_cal_regmap_read(mdc->regmap,
 				ADDR_FEATURE_ENABLE,
 				&mdc->info.feature_en);
@@ -139,7 +198,7 @@ static void maxdsm_cal_start_calibration(
 				ADDR_FEATURE_ENABLE,
 				0x3F);
 		break;
-	case 1: /* QCOM */
+	case PLATFORM_TYPE_B:
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
 		maxdsm_set_feature_en(1);
 #endif /* CONFIG_SND_SOC_MAXIM_DSM */
@@ -157,12 +216,12 @@ static uint32_t maxdsm_cal_read_dcresistance(
 	uint32_t dcresistance = 0;
 
 	switch (mdc->platform_type) {
-	case 0: /* LSI */
+	case PLATFORM_TYPE_A:
 		maxdsm_cal_regmap_read(mdc->regmap,
 				ADDR_RDC,
 				&dcresistance);
 		break;
-	case 1: /* QCOM */
+	case PLATFORM_TYPE_B:
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
 		dcresistance = maxdsm_get_dcresistance();
 #endif /* CONFIG_SND_SOC_MAXIM_DSM */
@@ -178,12 +237,12 @@ static void maxdsm_cal_end_calibration(
 		struct maxim_dsm_cal *mdc)
 {
 	switch (mdc->platform_type) {
-	case 0: /* LSI */
+	case PLATFORM_TYPE_A:
 		maxdsm_cal_regmap_write(mdc->regmap,
 				ADDR_FEATURE_ENABLE,
 				mdc->info.feature_en);
 		break;
-	case 1: /* QCOM */
+	case PLATFORM_TYPE_B:
 #ifdef CONFIG_SND_SOC_MAXIM_DSM
 		maxdsm_set_rdc_temp(mdc->values.rdc,
 				(uint32_t)mdc->values.temp / 10);
@@ -367,7 +426,7 @@ static ssize_t maxdsm_cal_rdc_show(struct device *dev,
 		if (ret < 0)
 			g_mdc->values.rdc = ret;
 		else
-			sscanf(rdc, "%x", &g_mdc->values.rdc);
+			ret = kstrtos32(rdc, 16, &g_mdc->values.rdc);
 	}
 
 	return sprintf(buf, "%x", g_mdc->values.rdc);
@@ -407,7 +466,7 @@ static ssize_t maxdsm_cal_temp_show(struct device *dev,
 		if (ret < 0)
 			g_mdc->values.temp = ret;
 		else
-			sscanf(temp, "%x", &g_mdc->values.temp);
+			ret = kstrtos32(temp, 16, &g_mdc->values.temp);
 	}
 
 	return sprintf(buf, "%x", g_mdc->values.temp);

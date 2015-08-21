@@ -23,13 +23,39 @@ struct max98505_dsp_cfg {
 	u8 rx_flt_mode;
 };
 
+/* MAX98505 volume step */
+#define MAX98505_VSTEP_0		0
+#define MAX98505_VSTEP_1		1
+#define MAX98505_VSTEP_2		2
+#define MAX98505_VSTEP_3		3
+#define MAX98505_VSTEP_4		4
+#define MAX98505_VSTEP_5		5
+#define MAX98505_VSTEP_6		6
+#define MAX98505_VSTEP_7		7
+#define MAX98505_VSTEP_8		8
+#define MAX98505_VSTEP_9		9
+#define MAX98505_VSTEP_10		10
+#define MAX98505_VSTEP_11		11
+#define MAX98505_VSTEP_12		12
+#define MAX98505_VSTEP_13		13
+#define MAX98505_VSTEP_14		14
+#define MAX98505_VSTEP_15		15
+#define MAX98505_VSTEP_MAX		MAX98505_VSTEP_15
+
+struct max98505_volume_step_info {
+	int length;
+	int vol_step;
+	int adc_thres;
+	int boost_step[MAX98505_VSTEP_MAX + 1];
+	bool adc_status;
+};
+
 /*
  * codec platform data.
  * This definition should be changed,
  * if platform_info of device tree is changed.
  */
 #define MAX98505_PINFO_SZ	6
-#define MAX98505_BINFO_SZ   26
 
 struct max98505_pdata {
 	int sysclk;
@@ -42,6 +68,6 @@ struct max98505_pdata {
 	int irq;
 #endif
 	uint32_t pinfo[MAX98505_PINFO_SZ];
-	uint32_t binfo[MAX98505_BINFO_SZ];
+	struct max98505_volume_step_info vstep;
 };
 #endif

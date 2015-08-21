@@ -589,7 +589,7 @@ static int bmg160_open_calibration(struct bmg160_p *data)
 	old_fs = get_fs();
 	set_fs(KERNEL_DS);
 
-	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0666);
+	cal_filp = filp_open(CALIBRATION_FILE_PATH, O_RDONLY, 0);
 	if (IS_ERR(cal_filp)) {
 		set_fs(old_fs);
 		ret = PTR_ERR(cal_filp);
@@ -633,7 +633,7 @@ static int bmg160_save_calibration(struct bmg160_p *data)
 	set_fs(KERNEL_DS);
 
 	cal_filp = filp_open(CALIBRATION_FILE_PATH,
-			O_CREAT | O_TRUNC | O_WRONLY, 0666);
+			O_CREAT | O_TRUNC | O_WRONLY, 0660);
 	if (IS_ERR(cal_filp)) {
 		set_fs(old_fs);
 		ret = PTR_ERR(cal_filp);

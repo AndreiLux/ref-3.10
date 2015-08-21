@@ -48,7 +48,11 @@
 #define IS_DMB(idx)			(idx == DMB_NORMAL_MODE)
 #define IS_SCENARIO(idx)		((idx < SCENARIO_MAX) && !((idx > VIDEO_NORMAL_MODE) && (idx < CAMERA_MODE)))
 #define IS_ACCESSIBILITY(idx)		(idx && (idx < ACCESSIBILITY_MAX))
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+#define IS_HBM(idx)			(idx >= AOLCE_MIN_BRIGHTNESS)
+#else
 #define IS_HBM(idx)			(idx >= 6)
+#endif
 #if defined(CONFIG_LCD_HMT)
 #define IS_HMT(idx)			(idx >= HMT_MDNIE_ON && idx < HMT_MDNIE_MAX)
 #endif
@@ -111,10 +115,19 @@ static struct mdnie_table *mdnie_find_table(struct mdnie_info *mdnie)
 		goto exit;
 #endif
 	} else if (IS_HBM(mdnie->auto_brightness)) {
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+		if(mdnie->auto_brightness == AOLCE_MIN_BRIGHTNESS)
+			table = &hbm_table[HBM_AOLCE_1];
+		else if(mdnie->auto_brightness >= AOLCE_MAX_BRIGHTNESS)
+			table = &hbm_table[HBM_AOLCE_3];
+		else
+			table = &hbm_table[HBM_AOLCE_2];
+#else
 		if((mdnie->scenario == BROWSER_MODE) || (mdnie->scenario == EBOOK_MODE))
 			table = &hbm_table[HBM_ON_TEXT];
 		else
 			table = &hbm_table[HBM_ON];
+#endif
 		goto exit;
 #if defined(CONFIG_TDMB)
 	} else if (IS_DMB(mdnie->scenario)) {
@@ -127,6 +140,20 @@ static struct mdnie_table *mdnie_find_table(struct mdnie_info *mdnie)
 	}
 
 exit:
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	if(mdnie->disable_trans_dimming) {
+		dev_info(mdnie->dev, "%s: disable_trans_dimming=%d\n", __func__, mdnie->disable_trans_dimming);
+		memcpy(&(mdnie->table_buffer), table, sizeof(struct mdnie_table));
+		memcpy(mdnie->sequence_buffer, table->tune[MDNIE_CMD1].sequence,
+				table->tune[MDNIE_CMD1].size);
+		mdnie->table_buffer.tune[MDNIE_CMD1].sequence = mdnie->sequence_buffer;
+		mdnie->table_buffer.tune[MDNIE_CMD1].sequence
+					[MDNIE_TRANS_DIMMING_OFFSET] = 0x0;
+
+		mutex_unlock(&mdnie->lock);
+		return &(mdnie->table_buffer);
+	}
+#endif
 	mutex_unlock(&mdnie->lock);
 
 	return table;
@@ -324,6 +351,13 @@ static ssize_t tuning_show(struct device *dev,
 			for (i = 0; i < table->tune[MDNIE_CMD2].size; i++)
 				pos += sprintf(pos, "0x%02x ", table->tune[MDNIE_CMD2].sequence[i]);
 		}
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+		pos += sprintf(pos, "\n");
+		if(table->tune[MDNIE_CMD3].sequence != NULL) {
+			for (i = 0; i < table->tune[MDNIE_CMD3].size; i++)
+				pos += sprintf(pos, "0x%02x ", table->tune[MDNIE_CMD3].sequence[i]);
+		}
+#endif
 	}
 
 exit:
@@ -493,9 +527,13 @@ static ssize_t bypass_store(struct device *dev,
 static ssize_t auto_brightness_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	return sprintf(buf, "%d\n", AOLCE_MAX_BRIGHTNESS);
+#else
 	struct mdnie_info *mdnie = dev_get_drvdata(dev);
 
 	return sprintf(buf, "%d, hbm: %d\n", mdnie->auto_brightness, mdnie->hbm);
+#endif
 }
 
 static ssize_t auto_brightness_store(struct device *dev,
@@ -513,7 +551,17 @@ static ssize_t auto_brightness_store(struct device *dev,
 	dev_info(dev, "%s: value=%d\n", __func__, value);
 
 	mutex_lock(&mdnie->lock);
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	update = 0;
+	if(IS_HBM(mdnie->auto_brightness) == IS_HBM(value)){
+		if(IS_HBM(mdnie->auto_brightness)&&(mdnie->auto_brightness != value))
+			update = 1;
+	}
+	else
+		update = 1;
+#else
 	update = (IS_HBM(mdnie->auto_brightness) != IS_HBM(value)) ? 1 : 0;
+#endif
 	mdnie->hbm = IS_HBM(value) ? HBM_ON : HBM_OFF;
 	mdnie->auto_brightness = value;
 	mutex_unlock(&mdnie->lock);
@@ -708,9 +756,15 @@ static int fb_notifier_callback(struct notifier_block *self,
 		mutex_unlock(&mdnie->lock);
 
 		mdnie_update(mdnie);
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+		mdnie->disable_trans_dimming = 0;
+#endif
 	} else if (fb_blank == FB_BLANK_POWERDOWN) {
 		mutex_lock(&mdnie->lock);
 		mdnie->enable = 0;
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+		mdnie->disable_trans_dimming = 1;
+#endif
 		mutex_unlock(&mdnie->lock);
 	}
 
@@ -723,6 +777,32 @@ static int mdnie_register_fb(struct mdnie_info *mdnie)
 	mdnie->fb_notif.notifier_call = fb_notifier_callback;
 	return fb_register_client(&mdnie->fb_notif);
 }
+
+#ifdef CONFIG_ALWAYS_RELOAD_MTP_FACTORY_BUILD
+static struct mdnie_info *g_mdnie = NULL;
+void update_mdnie_coordinate( u16 coordinate0, u16 coordinate1 )
+{
+	struct mdnie_info *mdnie = g_mdnie;
+	int ret;
+	int result[5] = {0,};
+
+	if( mdnie == NULL ) {
+		pr_err( "%s : mdnie has not initialized\n", __func__ );
+		return;
+	}
+
+	pr_info( "%s : reload MDNIE-MTP\n", __func__ );
+
+	mdnie->coordinate[0] = coordinate0;
+	mdnie->coordinate[1] = coordinate1;
+
+	ret = get_panel_coordinate(mdnie, result);
+	if (ret > 0)
+		update_color_position(mdnie, ret);
+
+	return;
+}
+#endif	// CONFIG_ALWAYS_RELOAD_MTP_FACTORY_BUILD
 
 int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coordinate)
 {
@@ -745,6 +825,10 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 		goto error1;
 	}
 
+#ifdef CONFIG_ALWAYS_RELOAD_MTP_FACTORY_BUILD
+	g_mdnie = mdnie;
+#endif
+
 	mdnie->dev = device_create(mdnie_class, p, 0, &mdnie, "mdnie");
 	if (IS_ERR_OR_NULL(mdnie->dev)) {
 		pr_err("failed to create mdnie device\n");
@@ -758,6 +842,10 @@ int mdnie_register(struct device *p, void *data, mdnie_w w, mdnie_r r, u16 *coor
 	mdnie->tuning = 0;
 	mdnie->accessibility = ACCESSIBILITY_OFF;
 	mdnie->bypass = BYPASS_OFF;
+
+#if defined(CONFIG_PANEL_S6E3HA3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HF3_DYNAMIC)
+	mdnie->disable_trans_dimming = 0;
+#endif
 
 	mdnie->data = data;
 	mdnie->ops.write = w;

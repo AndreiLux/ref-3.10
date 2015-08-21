@@ -4,11 +4,12 @@
 
 #include <sdp/fs_handler.h>
 #include "ecryptfs_dek.h"
+#include "ecryptfs_sdp_chamber.h"
 #include "mm.h"
 
-extern int dek_encrypt_dek_efs(int userid, dek_t *plainDek, dek_t *encDek);
-extern int dek_decrypt_dek_efs(int userid, dek_t *encDek, dek_t *plainDek);
-extern int dek_is_persona_locked(int userid);
+extern int dek_encrypt_dek_efs(int engine_id, dek_t *plainDek, dek_t *encDek);
+extern int dek_decrypt_dek_efs(int engine_id, dek_t *encDek, dek_t *plainDek);
+extern int dek_is_locked(int engine_id);
 
 static int ecryptfs_update_crypt_flag(struct dentry *dentry, enum sdp_op operation);
 
@@ -43,26 +44,14 @@ out:
 	return rc;
 }
 
-int ecryptfs_super_block_get_userid(struct super_block *sb)
+int ecryptfs_is_sdp_locked(int engine_id)
 {
-	int userid = ecryptfs_superblock_to_private(sb)->userid;
-#if ECRYPTFS_DEK_DEBUG
-	DEK_LOGD("sdp id is %d\n", userid);
-#endif
-	return userid;
-}
+    if(engine_id < 0) {
+        DEK_LOGE("invalid engine_id[%d]\n", engine_id);
+        return 0;
+    }
 
-int ecryptfs_is_valid_userid(int userid)
-{
-	if(userid >= 100) { //persona id starts from 100
-		return 1;
-	}
-	return 0;
-}
-
-int ecryptfs_is_persona_locked(int userid)
-{
-	return dek_is_persona_locked(userid);
+	return dek_is_locked(engine_id);
 }
 
 extern int32_t sdp_mm_set_process_sensitive(unsigned int proc_id);
@@ -109,13 +98,18 @@ int ecryptfs_get_sdp_dek(struct ecryptfs_crypt_stat *crypt_stat)
 	}
 
 	if(crypt_stat->flags & ECRYPTFS_DEK_SDP_ENABLED) {
-		if((crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
+		if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
 			dek_t DEK;
 
+			if(crypt_stat->engine_id < 0) {
+		        DEK_LOGE("get_sdp_dek: invalid engine-id"
+		                "(ECRYPTFS_DEK_IS_SENSITIVE:ON, engine_id:%d)\n", crypt_stat->engine_id);
+		        goto out;
+			}
 			memset(crypt_stat->key, 0, ECRYPTFS_MAX_KEY_BYTES);
 
 			if (crypt_stat->sdp_dek.type != DEK_TYPE_PLAIN) {
-				rc = dek_decrypt_dek_efs(crypt_stat->userid, &crypt_stat->sdp_dek, &DEK);
+				rc = dek_decrypt_dek_efs(crypt_stat->engine_id, &crypt_stat->sdp_dek, &DEK);
 			} else {
 				DEK_LOGE("DEK already plaintext, skip decryption");
 				rc = 0;
@@ -166,7 +160,13 @@ int write_dek_packet(char *dest,
 	(*written) += 4;
 
 	memset(dest + *written, 0, DEK_MAXLEN);
+
 	if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
+        if(crypt_stat->flags & ECRYPTFS_DEK_MULTI_ENGINE) {
+            put_unaligned_be32(crypt_stat->engine_id, dest + *written);
+            (*written) += 4;
+        }
+
 		put_unaligned_be32(crypt_stat->sdp_dek.type, dest + *written);
 		(*written) += 4;
 		put_unaligned_be32(crypt_stat->sdp_dek.len, dest + *written);
@@ -200,6 +200,18 @@ int parse_dek_packet(char *data,
 	(*packet_size) += 4;
 
 	if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
+	    if(crypt_stat->flags & ECRYPTFS_DEK_MULTI_ENGINE) {
+	        crypt_stat->engine_id = get_unaligned_be32(data + *packet_size);
+	        (*packet_size) += 4;
+	    } else {
+	        /**
+	         * If eCryptfs header doesn't have engine-id,
+	         * we assign it from mount_crypt_stat->userid
+	         * (Fils created in old version)
+	         */
+	        crypt_stat->engine_id = crypt_stat->mount_crypt_stat->userid;
+	    }
+
 		crypt_stat->sdp_dek.type = get_unaligned_be32(data + *packet_size);
 		(*packet_size) += 4;
 		crypt_stat->sdp_dek.len = get_unaligned_be32(data + *packet_size);
@@ -334,12 +346,15 @@ static int ecryptfs_update_crypt_flag(struct dentry *dentry, enum sdp_op operati
 	tmp_flags = crypt_stat->flags;
 	if (operation == TO_SENSITIVE) {
 		crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
+		crypt_stat->flags |= ECRYPTFS_DEK_MULTI_ENGINE;
 		/*
 		* Set sensitive to inode mapping
 		*/
 		ecryptfs_set_mapping_sensitive(inode, mount_crypt_stat->userid, TO_SENSITIVE);
 	} else {
 		crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
+        crypt_stat->flags &= ~ECRYPTFS_DEK_MULTI_ENGINE;
+
 		/*
 		* Set protected to inode mapping
 		*/
@@ -372,19 +387,24 @@ void ecryptfs_fs_request_callback(int opcode, int ret, unsigned long ino) {
     DEK_LOGD("%s opcode<%d> ret<%d> ino<%ld>\n", __func__, opcode, ret, ino);
 }
 
-int ecryptfs_sdp_set_sensitive(struct dentry *dentry) {
+int ecryptfs_sdp_set_sensitive(int engine_id, struct dentry *dentry) {
 	int rc = 0;
 	struct inode *inode = dentry->d_inode;
 	struct ecryptfs_crypt_stat *crypt_stat =
 			&ecryptfs_inode_to_private(inode)->crypt_stat;
 	dek_t DEK;
+    int id_bak = crypt_stat->engine_id;
 
 	DEK_LOGD("%s(%s)\n", __func__, dentry->d_name.name);
 
 	if(S_ISDIR(inode->i_mode)) {
+        crypt_stat->engine_id = engine_id;
         crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
+
         rc = 0;
 	} else if(S_ISREG(inode->i_mode)) {
+	    crypt_stat->engine_id = engine_id;
+
     	if (crypt_stat->key_size > ECRYPTFS_MAX_KEY_BYTES ||
 	    		crypt_stat->key_size > DEK_MAXLEN ||
 	    		crypt_stat->key_size > UINT_MAX){
@@ -396,7 +416,7 @@ int ecryptfs_sdp_set_sensitive(struct dentry *dentry) {
 	    DEK.len = (unsigned int)crypt_stat->key_size;
 	    DEK.type = DEK_TYPE_PLAIN;
 
-	    rc = dek_encrypt_dek_efs(crypt_stat->userid, &DEK,  &crypt_stat->sdp_dek);
+	    rc = dek_encrypt_dek_efs(crypt_stat->engine_id, &DEK,  &crypt_stat->sdp_dek);
 	    if (rc < 0) {
 	        DEK_LOGE("Error encrypting dek; rc = [%d]\n", rc);
 	        memset(&crypt_stat->sdp_dek, 0, sizeof(dek_t));
@@ -428,6 +448,7 @@ int ecryptfs_sdp_set_sensitive(struct dentry *dentry) {
 	}
 
 out:
+    if(rc) crypt_stat->engine_id = id_bak;
 	memset(&DEK, 0, sizeof(dek_t));
 	return rc;
 }
@@ -440,29 +461,50 @@ int ecryptfs_sdp_set_protected(struct dentry *dentry) {
 
     DEK_LOGD("%s(%s)\n", __func__, dentry->d_name.name);
 
-    if(S_ISDIR(inode->i_mode)) {
-        crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
-        rc = 0;
-    } else {
-        rc = ecryptfs_get_sdp_dek(crypt_stat);
-        if (rc) {
-            ecryptfs_printk(KERN_ERR, "%s Get SDP key failed\n", __func__);
-            goto out;
-        }
-        /*
-         * TODO : double check if need to compute iv here
-         */
-        rc = ecryptfs_compute_root_iv(crypt_stat);
-        if (rc) {
-            ecryptfs_printk(KERN_ERR, "Error computing "
-                    "the root IV\n");
-            goto out;
+    if(IS_CHAMBER_DENTRY(dentry)) {
+        DEK_LOGE("can't set-protected to chamber directory");
+        return -EIO;
+    }
+
+    if(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
+        if(crypt_stat->engine_id < 0) {
+            DEK_LOGE("%s: invalid engine-id (ECRYPTFS_DEK_IS_SENSITIVE:ON, engine_id:%d)\n",
+                    __func__, crypt_stat->engine_id);
+            return -EIO;
         }
 
-        rc = ecryptfs_set_key(crypt_stat);
-        if(rc) goto out;
+        if(ecryptfs_is_sdp_locked(crypt_stat->engine_id)) {
+            DEK_LOGE("%s: Failed. (engine_id:%d locked)\n",
+                    __func__, crypt_stat->engine_id);
+            return -EIO;
+        }
+
+        if(S_ISDIR(inode->i_mode)) {
+            crypt_stat->flags &= ~ECRYPTFS_DEK_IS_SENSITIVE;
+            rc = 0;
+        } else {
+            rc = ecryptfs_get_sdp_dek(crypt_stat);
+            if (rc) {
+                ecryptfs_printk(KERN_ERR, "%s Get SDP key failed\n", __func__);
+                goto out;
+            }
+            /*
+             * TODO : double check if need to compute iv here
+             */
+            rc = ecryptfs_compute_root_iv(crypt_stat);
+            if (rc) {
+                ecryptfs_printk(KERN_ERR, "Error computing "
+                        "the root IV\n");
+                goto out;
+            }
+
+            rc = ecryptfs_set_key(crypt_stat);
+            if(rc) goto out;
 
         ecryptfs_update_crypt_flag(dentry, TO_PROTECTED);
+        }
+    } else {
+        rc = 0; //already protected
     }
 out:
     return rc;
@@ -475,13 +517,13 @@ int ecryptfs_sdp_convert_dek(struct dentry *dentry) {
 			&ecryptfs_inode_to_private(inode)->crypt_stat;
 	dek_t DEK;
 
-	rc = dek_decrypt_dek_efs(crypt_stat->userid, &crypt_stat->sdp_dek, &DEK);
+	rc = dek_decrypt_dek_efs(crypt_stat->engine_id, &crypt_stat->sdp_dek, &DEK);
 	if (rc < 0) {
 		DEK_LOGE("Error converting dek [DEC]; rc = [%d]\n", rc);
 		goto out;
 	}
 
-	rc = dek_encrypt_dek_efs(crypt_stat->userid, &DEK,  &crypt_stat->sdp_dek);
+	rc = dek_encrypt_dek_efs(crypt_stat->engine_id, &DEK,  &crypt_stat->sdp_dek);
 	if (rc < 0) {
 		DEK_LOGE("Error converting dek [ENC]; rc = [%d]\n", rc);
 		goto out;
@@ -506,6 +548,10 @@ long ecryptfs_do_sdp_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 			&ecryptfs_inode_to_private(inode)->crypt_stat;
 	struct dentry *fp_dentry =
 			ecryptfs_inode_to_private(inode)->lower_file->f_dentry;
+    struct ecryptfs_mount_crypt_stat *mount_crypt_stat  =
+            &ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
+    int rc;
+
 	if (fp_dentry->d_name.len <= NAME_MAX)
 			memcpy(filename, fp_dentry->d_name.name,
 					fp_dentry->d_name.len + 1);
@@ -529,6 +575,9 @@ long ecryptfs_do_sdp_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 			return -EFAULT;
 		} else {
 			mutex_lock(&crypt_stat->cs_mutex);
+
+			req.engine_id = crypt_stat->engine_id;
+
 			if (crypt_stat->flags & ECRYPTFS_DEK_SDP_ENABLED) {
 				req.sdp_enabled = 1;
 			} else {
@@ -539,6 +588,11 @@ long ecryptfs_do_sdp_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 			} else {
 				req.is_sensitive = 0;
 			}
+            if (crypt_stat->flags & ECRYPTFS_SDP_IS_CHAMBER_DIR) {
+                req.is_chamber = 1;
+            } else {
+                req.is_chamber = 0;
+            }
 			req.type = crypt_stat->sdp_dek.type;
 			mutex_unlock(&crypt_stat->cs_mutex);
 		}
@@ -549,42 +603,16 @@ long ecryptfs_do_sdp_ioctl(struct file *file, unsigned int cmd, unsigned long ar
 
 		break;
 		}
-	case ECRYPTFS_IOCTL_SET_SENSITIVE: {
-		dek_arg_set_sensitive req;
-
-		ecryptfs_printk(KERN_DEBUG, "ECRYPTFS_IOCTL_SET_SENSITIVE\n");
-		if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
-			DEK_LOGE("already sensitive file\n");
-			return 0;
-		}
-
-
-		if (S_ISDIR(ecryptfs_dentry->d_inode->i_mode)) {
-			DEK_LOGE("Set sensitive(chamber) directory\n");
-			crypt_stat->flags |= ECRYPTFS_DEK_IS_SENSITIVE;
-			break;
-		}
-
-		memset(&req, 0, sizeof(dek_arg_set_sensitive));
-		if(copy_from_user(&req, ubuf, sizeof(req))) {
-			DEK_LOGE("can't copy from user\n");
-			memset(&req, 0, sizeof(dek_arg_set_sensitive));
-			return -EFAULT;
-		} else {
-			if (ecryptfs_sdp_set_sensitive(ecryptfs_dentry)) {
-				DEK_LOGE("failed to set sensitive\n");
-				memset(&req, 0, sizeof(dek_arg_set_sensitive));
-				return -EFAULT;
-			}
-		}
-		memset(&req, 0, sizeof(dek_arg_set_sensitive));
-		break;
-	}
 
     case ECRYPTFS_IOCTL_SET_PROTECTED: {
-        dek_arg_set_protected req;
-
         ecryptfs_printk(KERN_DEBUG, "ECRYPTFS_IOCTL_SET_PROTECTED\n");
+
+        if(!is_current_epmd()) {
+            DEK_LOGE("only epmd can call this\n");
+            DEK_LOGE("Permission denied\n");
+            return -EACCES;
+        }
+
         if (!(crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE)) {
             DEK_LOGE("already protected file\n");
             return 0;
@@ -596,24 +624,122 @@ long ecryptfs_do_sdp_ioctl(struct file *file, unsigned int cmd, unsigned long ar
             break;
         }
 
-        memset(&req, 0, sizeof(dek_arg_set_protected));
-        if(copy_from_user(&req, ubuf, sizeof(req))) {
-            DEK_LOGE("can't copy from user\n");
-            memset(&req, 0, sizeof(dek_arg_set_protected));
-            return -EFAULT;
-        } else {
-            if (ecryptfs_sdp_set_protected(ecryptfs_dentry)) {
-                DEK_LOGE("failed to set protected\n");
-                memset(&req, 0, sizeof(dek_arg_set_protected));
-                return -EFAULT;
-            }
+        rc = ecryptfs_sdp_set_protected(ecryptfs_dentry);
+        if (rc) {
+            DEK_LOGE("Failed to set protected rc(%d)\n", rc);
+            return rc;
         }
-        memset(&req, 0, sizeof(dek_arg_set_protected));
         break;
     }
 
+	case ECRYPTFS_IOCTL_SET_SENSITIVE: {
+		dek_arg_set_sensitive req;
+
+		ecryptfs_printk(KERN_DEBUG, "ECRYPTFS_IOCTL_SET_SENSITIVE\n");
+		if (crypt_stat->flags & ECRYPTFS_DEK_IS_SENSITIVE) {
+			DEK_LOGE("already sensitive file\n");
+			return 0;
+		}
+
+		memset(&req, 0, sizeof(dek_arg_set_sensitive));
+		if(copy_from_user(&req, ubuf, sizeof(req))) {
+			DEK_LOGE("can't copy from user\n");
+			memset(&req, 0, sizeof(dek_arg_set_sensitive));
+			return -EFAULT;
+		} else {
+		    rc = ecryptfs_sdp_set_sensitive(req.engine_id, ecryptfs_dentry);
+			if (rc) {
+				DEK_LOGE("failed to set sensitive rc(%d)\n", rc);
+				memset(&req, 0, sizeof(dek_arg_set_sensitive));
+				return rc;
+			}
+		}
+		memset(&req, 0, sizeof(dek_arg_set_sensitive));
+		break;
+	}
+
+	case ECRYPTFS_IOCTL_ADD_CHAMBER: {
+	    dek_arg_add_chamber req;
+	    int engineid;
+
+        if (!S_ISDIR(ecryptfs_dentry->d_inode->i_mode)) {
+            DEK_LOGE("Not a directory\n");
+            return -ENOTDIR;
+        }
+
+	    if(!is_current_epmd()) {
+            DEK_LOGE("only epmd can call this\n");
+            DEK_LOGE("Permission denied\n");
+	        return -EACCES;
+	    }
+
+        memset(&req, 0, sizeof(req));
+        if(copy_from_user(&req, ubuf, sizeof(req))) {
+            DEK_LOGE("can't copy from user\n");
+            memset(&req, 0, sizeof(req));
+            return -EFAULT;
+        }
+
+	    if(!IS_UNDER_ROOT(ecryptfs_dentry)) {
+            DEK_LOGE("Chamber has to be under root directory");
+            return -EFAULT;
+	    }
+
+	    if(is_chamber_directory(mount_crypt_stat, ecryptfs_dentry->d_name.name, &engineid)) {
+	        DEK_LOGE("Already chamber directory [%s] engine:%d\n",
+	                ecryptfs_dentry->d_name.name, engineid);
+	        if(engineid != req.engine_id) {
+	            DEK_LOGE("Attemping to change engine-id[%d] -> [%d] : Failed\n",
+	                    engineid, req.engine_id);
+	            return -EACCES;
+	        }
+
+            set_chamber_flag(engineid, inode);
+            break;
+	    }
+
+	    rc = add_chamber_directory(mount_crypt_stat, req.engine_id,
+	            ecryptfs_dentry->d_name.name);
+	    if(rc) {
+	        DEK_LOGE("add_chamber_directory failed. %d\n", rc);
+	        return rc;
+	    }
+
+        set_chamber_flag(req.engine_id, inode);
+	    break;
+	}
+
+	case ECRYPTFS_IOCTL_REMOVE_CHAMBER: {
+        if (!S_ISDIR(ecryptfs_dentry->d_inode->i_mode)) {
+            DEK_LOGE("Not a directory\n");
+            return -ENOTDIR;
+        }
+
+        if(!is_current_epmd()) {
+            //DEK_LOGE("only epmd can call this");
+            DEK_LOGE("Permission denied");
+            return -EACCES;
+        }
+
+        if(!IS_UNDER_ROOT(ecryptfs_dentry)) {
+            DEK_LOGE("Chamber has to be under root directory");
+            return -EFAULT;
+        }
+
+        if(!is_chamber_directory(mount_crypt_stat, ecryptfs_dentry->d_name.name, NULL)) {
+            DEK_LOGE("Not a chamber directory [%s]\n", ecryptfs_dentry->d_name.name);
+
+            clr_chamber_flag(inode);
+            return 0;
+        }
+
+        del_chamber_directory(mount_crypt_stat, ecryptfs_dentry->d_name.name);
+        clr_chamber_flag(inode);
+	    break;
+	}
+
 	default: {
-		return -EINVAL;
+		return -EOPNOTSUPP;
 		break;
 		}
 

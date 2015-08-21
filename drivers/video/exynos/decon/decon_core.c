@@ -263,6 +263,29 @@ static inline u32 blendeq(enum decon_blending blending, u8 transp_length,
 			BLENDE_Q_FUNC(BLENDE_COEF_ZERO);
 }
 
+static inline bool is_decon_rgb32(int format)
+{
+	switch (format) {
+	case DECON_PIXEL_FORMAT_ARGB_8888:
+	case DECON_PIXEL_FORMAT_ABGR_8888:
+	case DECON_PIXEL_FORMAT_RGBA_8888:
+	case DECON_PIXEL_FORMAT_BGRA_8888:
+	case DECON_PIXEL_FORMAT_XRGB_8888:
+	case DECON_PIXEL_FORMAT_XBGR_8888:
+	case DECON_PIXEL_FORMAT_RGBX_8888:
+	case DECON_PIXEL_FORMAT_BGRX_8888:
+		return true;
+	default:
+		return false;
+	}
+}
+
+static inline bool is_decon_rgb(int format)
+{
+	return is_decon_rgb32(format) ||
+		(format == DECON_PIXEL_FORMAT_RGB_565);
+}
+
 static u32 decon_red_length(int format)
 {
 	switch (format) {
@@ -615,43 +638,87 @@ static inline bool does_layer_need_scale(struct decon_win_config *config)
 }
 #endif
 
+static inline bool is_decon_opaque_format(int format)
+{
+	switch (format) {
+	case DECON_PIXEL_FORMAT_RGBA_8888:
+	case DECON_PIXEL_FORMAT_BGRA_8888:
+	case DECON_PIXEL_FORMAT_RGBA_5551:
+		return false;
+
+	default:
+		return true;
+	}
+}
+
 static int decon_set_win_blocking_mode(struct decon_device *decon, struct decon_win *win,
 		struct decon_win_config *win_config, struct decon_reg_data *regs)
 {
 	struct decon_rect r1, r2, overlap_rect, block_rect;
 	unsigned int overlap_size, blocking_size = 0;
+	struct decon_win_config *config = &win_config[win->index];
 	int j;
 	bool enabled = false;
+
+	if (config->opaque_area.w || config->transparent_area.w)
+		decon_dbg("win-%d:transparent[%d %d %d %d] opaque[%d %d %d %d] src [%d %d %d %d],"
+				"dst[%d %d %d %d]\n", win->index,
+			config->transparent_area.x, config->transparent_area.y,
+			config->transparent_area.w, config->transparent_area.h,
+			config->opaque_area.x, config->opaque_area.y,
+			config->opaque_area.w, config->opaque_area.h,
+			config->src.x, config->src.y, config->src.w, config->src.h,
+			 config->dst.x, config->dst.y, config->dst.w, config->dst.h);
+
+	if (decon->sblock_disable)
+		memset(&config->opaque_area, 0, sizeof(struct decon_win_rect));
+
+	if (config->state != DECON_WIN_STATE_BUFFER)
+		return 0;
+
+	/* Blocking mode is supported for only RGB32 color formats */
+	if (!is_decon_rgb32(config->format))
+		return 0;
+
+	/* Blocking Mode is not supported if there is a rotation and scaling */
+	if (is_vpp_type(config->idma_type) && (is_rotation(config)||
+		does_layer_need_scale(config)))
+		return 0;
+
+	if (decon->dma_block_disable)
+		return 0;
 
 	r1.left = win_config[win->index].dst.x;
 	r1.top = win_config[win->index].dst.y;
 	r1.right = r1.left + win_config[win->index].dst.w - 1;
 	r1.bottom = r1.top + win_config[win->index].dst.h - 1;
 
+	/* Calculate the window Blocking region from the top windows opaque rect */
 	memset(&block_rect, 0, sizeof(struct decon_rect));
 	for (j = win->index + 1; j < decon->pdata->max_win; j++) {
-		struct decon_win_config *config = &win_config[j];
+		config = &win_config[j];
 		if (config->state != DECON_WIN_STATE_BUFFER)
 			continue;
 
-		/* Support only XRGB */
-		if ((config->format == DECON_PIXEL_FORMAT_ARGB_8888) ||
-				(config->format == DECON_PIXEL_FORMAT_ABGR_8888) ||
-				(config->format == DECON_PIXEL_FORMAT_RGBA_8888) ||
-				(config->format == DECON_PIXEL_FORMAT_BGRA_8888) ||
-				(config->format == DECON_PIXEL_FORMAT_RGBA_5551) ||
-				((config->plane_alpha < 255) && (config->plane_alpha > 0)))
+		/* If top window needs plane alpha, bottom window can't use blocking mode */
+		if ((config->plane_alpha < 255) && (config->plane_alpha > 0))
 			continue;
 
-		if (is_vpp_type(config->idma_type) && (is_rotation(config) ||
-			(config->src.w != config->dst.w) ||
-			(config->src.h != config->dst.h)))
+		if (is_decon_opaque_format(config->format)) {
+			/* it is just a safety code */
+			config->opaque_area.x = config->dst.x;
+			config->opaque_area.y = config->dst.y;
+			config->opaque_area.w = config->dst.w;
+			config->opaque_area.h = config->dst.h;
+		}
+
+		if (!(config->opaque_area.w && config->opaque_area.h))
 			continue;
 
-		r2.left = config->dst.x;
-		r2.top = config->dst.y;
-		r2.right = r2.left + config->dst.w - 1;
-		r2.bottom = r2.top + config->dst.h - 1;
+		r2.left = config->opaque_area.x;
+		r2.top = config->opaque_area.y;
+		r2.right = r2.left + config->opaque_area.w - 1;
+		r2.bottom = r2.top + config->opaque_area.h - 1;
 		/* overlaps or not */
 		if (decon_intersect(&r1, &r2)) {
 			decon_intersection(&r1, &r2, &overlap_rect);
@@ -680,12 +747,42 @@ static int decon_set_win_blocking_mode(struct decon_device *decon, struct decon_
 		}
 	}
 
+	config = &win_config[win->index];
+	/* Transparent area means alpha = 0. The region can be used as blocking area. */
+	if ((config->transparent_area.w && config->transparent_area.h) &&
+		(!decon->sblock_disable)) {
+		r2.left = config->transparent_area.x;
+		r2.top = config->transparent_area.y;
+		r2.right = r2.left + config->transparent_area.w - 1;
+		r2.bottom = r2.top + config->transparent_area.h - 1;
+		if (decon_intersect(&r1, &r2)) {
+			decon_intersection(&r1, &r2, &overlap_rect);
+			/* choose the bigger region between the two possible blocking areas */
+			if ((rect_width(&block_rect) * rect_height(&block_rect)) <
+					(rect_width(&overlap_rect) * rect_height(&overlap_rect))) {
+				if (rect_width(&overlap_rect) < MIN_BLK_MODE_WIDTH - 1 ||
+						rect_height(&overlap_rect) < MIN_BLK_MODE_HEIGHT - 1)
+					return 0;
+				memcpy(&block_rect, &overlap_rect, sizeof(struct decon_rect));
+				if (!is_decon_rect_differ(&r1, &block_rect)) {
+					/* window rect and blocking rect is same. */
+					win_config[win->index].state = DECON_WIN_STATE_DISABLED;
+					return 1;
+				}
+				enabled = true;
+			}
+		}
+	}
+
 	if (enabled) {
 		regs->block_rect[win->index].w = block_rect.right - block_rect.left + 1;
 		regs->block_rect[win->index].h = block_rect.bottom - block_rect.top + 1;
-		regs->block_rect[win->index].x = block_rect.left - win_config[win->index].dst.x;
-		regs->block_rect[win->index].y = block_rect.top -  win_config[win->index].dst.y;
-		memcpy(&win_config->block_area, &regs->block_rect[win->index],
+		regs->block_rect[win->index].x = block_rect.left - config->dst.x;
+		regs->block_rect[win->index].y = block_rect.top -  config->dst.y;
+		decon_dbg("win-%d: block_rect[%d %d %d %d]\n", win->index, regs->block_rect[win->index].x,
+			regs->block_rect[win->index].y, regs->block_rect[win->index].w,
+			regs->block_rect[win->index].h);
+		memcpy(&config->block_area, &regs->block_rect[win->index],
 				sizeof(struct decon_win_rect));
 	}
 	return 0;
@@ -694,17 +791,18 @@ static int decon_set_win_blocking_mode(struct decon_device *decon, struct decon_
 static void decon_enable_blocking_mode(struct decon_device *decon,
 		struct decon_reg_data *regs, u32 win_idx)
 {
-	struct decon_win_rect rect = regs->block_rect[win_idx];
+	struct decon_win_rect *rect = &regs->block_rect[win_idx];
 	bool enable = false;
 
 	/* TODO: Check a DECON H/W limitation */
-	enable = (rect.w * rect.h) ? true : false;
+	enable = (rect->w * rect->h) ? true : false;
 
 	if (enable) {
-		decon_reg_set_block_mode(decon->id, win_idx, rect.x, rect.y,
-						rect.w, rect.h, true);
+		decon->num_idma_blk_region++;
+		decon_reg_set_block_mode(decon->id, win_idx, rect->x, rect->y,
+						rect->w, rect->h, true);
 		decon_dbg("win[%d] blocking_mode:(%d,%d,%d,%d)\n", win_idx,
-				rect.x, rect.y, rect.w, rect.h);
+				rect->x, rect->y, rect->w, rect->h);
 	} else {
 		decon_reg_set_block_mode(decon->id, win_idx, 0, 0, 0, 0, false);
 	}
@@ -1106,6 +1204,17 @@ int decon_tui_protection(struct decon_device *decon, bool tui_en)
 	int i;
 	struct decon_psr_info psr;
 
+	mutex_lock(&decon->output_lock);
+	if (decon->state == DECON_STATE_OFF) {
+		decon_warn("%s: decon is already disabled(tui=%d)\n", __func__, tui_en);
+		decon->out_type = DECON_OUT_DSI;
+		/* UnBlocking LPD */
+		decon_lpd_unblock(decon);
+		mutex_unlock(&decon->output_lock);
+		return -EBUSY;
+		}
+	mutex_unlock(&decon->output_lock);
+
 	if (tui_en) {
 		/* Blocking LPD */
 		decon_lpd_block_exit(decon);
@@ -1128,7 +1237,6 @@ int decon_tui_protection(struct decon_device *decon, bool tui_en)
 		}
 #endif
 		decon_to_psr_info(decon, &psr);
-		decon_reg_start(decon->id, decon->pdata->dsi_mode, &psr);
 		decon_wait_for_vsync(decon, VSYNC_TIMEOUT_MSEC);
 		if (!decon->id && decon->pdata->trig_mode == DECON_HW_TRIG)
 			decon_reg_set_trigger(decon->id, decon->pdata->dsi_mode,
@@ -1177,23 +1285,32 @@ static void decon_free_dma_buf(struct decon_device *decon,
 	ion_free(decon->ion_client, dma->ion_handle);
 	memset(dma, 0, sizeof(struct decon_dma_buf_data));
 }
-#if defined(CONFIG_PANEL_S6E3HF3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
-	unsigned char esd_support;
-#endif
 
 static void decon_esd_enable_interrupt(struct decon_device *decon)
 {
 	struct esd_protect *esd = &decon->esd;
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+	struct dsim_device *dsim = NULL;
+#endif	// CONFIG_DSIM_ESD_RECOVERY_NOPOWER
 
 	if (esd) {
+		esd->irq_type = irq_no_esd;
+		esd->when_irq_enable = ktime_get();
 		if (esd->pcd_irq){
 			enable_irq(esd->pcd_irq);
 		}
+
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+		dsim = container_of(decon->output_sd, struct dsim_device, sd);
+		dsim_info( "%s : esd_disable = %d\n", __func__, dsim->priv.esd_disable );
+		if(dsim->priv.esd_disable) return;
+
+		if (esd->disp_det_irq) {
+			enable_irq(esd->disp_det_irq);
+		}
+#endif	// CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+
 		if (esd->err_irq) {
-#if defined(CONFIG_PANEL_S6E3HF3_DYNAMIC) || defined(CONFIG_PANEL_S6E3HA3_DYNAMIC)
-			if(esd_support == 0)		// because pre panel don't support esd recovery
-				return;
-#endif
 			enable_irq(esd->err_irq);
 		}
 	}
@@ -1210,6 +1327,11 @@ static void decon_esd_disable_interrupt(struct decon_device *decon)
 			disable_irq(esd->pcd_irq);
 		if (esd->err_irq)
 			disable_irq(esd->err_irq);
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+		if (esd->disp_det_irq) {
+			disable_irq(esd->disp_det_irq);
+		}
+#endif
 	}
 	return;
 }
@@ -1410,6 +1532,9 @@ int decon_disable(struct decon_device *decon)
 		}
 	}
 
+	if (decon->out_type == DECON_OUT_TUI)
+			decon_tui_protection(decon, false);
+
 	if (decon->state != DECON_STATE_LPD_ENT_REQ)
 		mutex_lock(&decon->output_lock);
 
@@ -1520,9 +1645,8 @@ int decon_disable(struct decon_device *decon)
 					__func__, decon->output_sd->name);
 			goto err;
 		}
-/* in case of output type is dsim, clear partial update info*/
-		if (decon->out_type == DECON_OUT_DSI) {
-			decon->need_update = true;
+		/* in case of output type is dsim, clear partial update info*/
+		if ((decon->out_type == DECON_OUT_DSI) && decon->need_update) {
 			decon->update_win.x = 0;
 			decon->update_win.y = 0;
 			decon->update_win.w = 0;
@@ -1994,19 +2118,57 @@ static void decon_set_protected_content(struct decon_device *decon,
 	decon->prev_protection_bitmask = cur_protect_bits;
 }
 
+static inline int decon_set_alpha_blending(struct decon_win_config *win_config,
+		struct decon_reg_data *regs, int win_no, int transp_length)
+{
+	u8 alpha0, alpha1;
+
+	if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
+		alpha0 = win_config->plane_alpha;
+		alpha1 = 0;
+	} else if (transp_length == 1 &&
+			win_config->blending == DECON_BLENDING_NONE) {
+		alpha0 = 0xff;
+		alpha1 = 0xff;
+	} else {
+		alpha0 = 0;
+		alpha1 = 0xff;
+	}
+	regs->vidosd_c[win_no] = vidosd_c(alpha0, alpha0, alpha0);
+	regs->vidosd_d[win_no] = vidosd_d(alpha1, alpha1, alpha1);
+
+	if (win_no) {
+		if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
+			if (transp_length) {
+				if (win_config->blending != DECON_BLENDING_NONE)
+					regs->wincon[win_no] |= WINCON_ALPHA_MUL;
+			} else {
+				regs->wincon[win_no] &= (~WINCON_ALPHA_SEL);
+				if (win_config->blending == DECON_BLENDING_PREMULT)
+					win_config->blending = DECON_BLENDING_COVERAGE;
+			}
+		}
+		regs->blendeq[win_no - 1] = blendeq(win_config->blending,
+					transp_length, win_config->plane_alpha);
+	}
+
+	return 0;
+}
+
 static int decon_set_win_buffer(struct decon_device *decon, struct decon_win *win,
 		struct decon_win_config *win_config, struct decon_reg_data *regs)
 {
-	struct ion_handle *handle;
+	struct ion_handle *handle = NULL;
 	struct fb_var_screeninfo prev_var = win->fbinfo->var;
-	struct dma_buf *buf[MAX_BUF_PLANE_CNT];
+	struct dma_buf *buf[MAX_BUF_PLANE_CNT] = {NULL, };
 	struct decon_dma_buf_data dma_buf_data[MAX_BUF_PLANE_CNT];
 	unsigned short win_no = win->index;
 	int ret, i;
 	size_t buf_size = 0, window_size;
-	u8 alpha0, alpha1;
 	int plane_cnt;
 	u32 format;
+
+	memset(dma_buf_data, 0, sizeof(dma_buf_data));
 
 	if (win_config->format >= DECON_PIXEL_FORMAT_MAX) {
 		decon_err("unknown pixel format %u\n", win_config->format);
@@ -2079,6 +2241,9 @@ static int decon_set_win_buffer(struct decon_device *decon, struct decon_win *wi
 
 	plane_cnt = decon_get_plane_cnt(win_config->format);
 	for (i = 0; i < plane_cnt; ++i) {
+		if (win_config->fd_idma[i] <= 0)
+			continue;
+
 		handle = ion_import_dma_buf(decon->ion_client, win_config->fd_idma[i]);
 		if (IS_ERR(handle)) {
 			decon_err("failed to import fd\n");
@@ -2112,6 +2277,15 @@ static int decon_set_win_buffer(struct decon_device *decon, struct decon_win *wi
 		handle = NULL;
 		buf[i] = NULL;
 	}
+
+	if (!decon->sblock_disable && is_decon_rgb(win_config->format) && (win_config->fd_idma[1] > 0)) {
+		handle = ion_import_dma_buf(decon->ion_client, win_config->fd_idma[1]);
+		if (!IS_ERR(handle))
+			regs->handle_crc[win_no] = handle;
+		else
+			decon_err("failed to import CRC-BUF fd\n");
+	}
+
 	if (win_config->fence_fd >= 0) {
 		dma_buf_data[0].fence = sync_fence_fdget(win_config->fence_fd);
 		if (!dma_buf_data[0].fence) {
@@ -2170,40 +2344,12 @@ static int decon_set_win_buffer(struct decon_device *decon, struct decon_win *wi
 		regs->offset_y[win_no] = win_config->dst.y;
 	}
 
-	if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
-		alpha0 = win_config->plane_alpha;
-		alpha1 = 0;
-	} else if (win->fbinfo->var.transp.length == 1 &&
-			win_config->blending == DECON_BLENDING_NONE) {
-		alpha0 = 0xff;
-		alpha1 = 0xff;
-	} else {
-		alpha0 = 0;
-		alpha1 = 0xff;
-	}
-	regs->vidosd_c[win_no] = vidosd_c(alpha0, alpha0, alpha0);
-	regs->vidosd_d[win_no] = vidosd_d(alpha1, alpha1, alpha1);
-
 	regs->wincon[win_no] = wincon(win->fbinfo->var.bits_per_pixel,
 			win->fbinfo->var.transp.length);
 	regs->wincon[win_no] |= decon_rgborder(format);
 	regs->protection[win_no] = win_config->protection;
-
-	if (win_no) {
-		if ((win_config->plane_alpha > 0) && (win_config->plane_alpha < 0xFF)) {
-			if (win->fbinfo->var.transp.length) {
-				if (win_config->blending != DECON_BLENDING_NONE)
-					regs->wincon[win_no] |= WINCON_ALPHA_MUL;
-			} else {
-				regs->wincon[win_no] &= (~WINCON_ALPHA_SEL);
-				if (win_config->blending == DECON_BLENDING_PREMULT)
-					win_config->blending = DECON_BLENDING_COVERAGE;
-			}
-		}
-		regs->blendeq[win_no - 1] = blendeq(win_config->blending,
-				win->fbinfo->var.transp.length, win_config->plane_alpha);
-	}
-
+	decon_set_alpha_blending(win_config, regs, win_no,
+				win->fbinfo->var.transp.length);
 	decon_dbg("win[%d] SRC:(%d,%d) %dx%d  DST:(%d,%d) %dx%d\n", win_no,
 			win_config->src.x, win_config->src.y,
 			win_config->src.f_w, win_config->src.f_h,
@@ -2416,6 +2562,11 @@ static void decon_calibrate_win_update_size(struct decon_device *decon,
 	if (update_config->state != DECON_WIN_STATE_UPDATE)
 		return;
 
+	if (decon->win_update_disable) {
+		update_config->state = DECON_WIN_STATE_UPDATE;
+		return;
+	}
+
 	r1.left = update_config->dst.x;
 	r1.top = update_config->dst.y;
 	r1.right = r1.left + update_config->dst.w - 1;
@@ -2557,7 +2708,7 @@ static void decon_set_win_update_config(struct decon_device *decon,
 		decon_intersection(&r1, &r2, &r2);
 		if (((r2.right - r2.left) != 0) ||
 			((r2.bottom - r2.top) != 0)) {
-			if (decon_get_plane_cnt(config->format) == 1) {
+			if (is_decon_rgb32(config->format)) {
 			/*
 			 * Platform requested for win_update mode. But, the win_update is
 			 * smaller than the VPP min size. So, change the mode to normal mode
@@ -2639,7 +2790,8 @@ void decon_reg_chmap_validate(struct decon_device *decon, struct decon_reg_data 
 	unsigned short i, bitmap = 0;
 
 	for (i = 0; i < decon->pdata->max_win; i++) {
-		if (regs->wincon[i] & WINCON_ENWIN) {
+		if ((regs->wincon[i] & WINCON_ENWIN) &&
+			!(regs->winmap[i] & WIN_MAP_MAP)) {
 			if (bitmap & (1 << regs->vpp_config[i].idma_type)) {
 				decon_warn("Channel-%d is mapped to multiple windows\n",
 					regs->vpp_config[i].idma_type);
@@ -2694,9 +2846,10 @@ static void decon_check_vpp_used(struct decon_device *decon,
 		struct decon_win *win = decon->windows[i];
 		if (is_vpp_type(regs->vpp_config[i].idma_type)) {
 			win->vpp_id = regs->vpp_config[i].idma_type - 2;
-			if (regs->wincon[i] & WINCON_ENWIN) {
+			if ((regs->wincon[i] & WINCON_ENWIN) &&
+					!(regs->winmap[i] & WIN_MAP_MAP)) {
 				decon_wait_until_vpp_stop_from_deconx(decon,
-								win->vpp_id);
+						win->vpp_id);
 				decon_set_sysreg_dsd_cfg(decon,
 						regs->vpp_config[i].idma_type);
 				decon->vpp_usage_bitmask |= (1 << win->vpp_id);
@@ -2875,6 +3028,342 @@ static void decon_set_qos(struct decon_device *decon,
 }
 #endif
 
+static void decon_compute_crc_blk_region(long long unsigned int *buf,
+	int w, int h, int f_w, int f_h, struct decon_rect *rect)
+{
+	int i, j, k, idx, sq_i;
+	int left, top, right, bot;
+	long long unsigned int *buf1, *buf2, *buf3, *buf4;
+	long long unsigned int crc;
+	long long unsigned int crc_key = (long long unsigned int)DECON_CRC_KEY;
+
+	memset(rect, 0, sizeof(struct decon_rect));
+
+	crc = buf[0];
+	decon_dbg("%s:crc: %lld\n", __func__, crc);
+	if (crc != DECON_CRC_KEY)
+		return;
+
+	for (i = 1; (i < (h >> 1)) && (i < (w >> 1)); i++) {
+		/* j => 0 to 2 * i + 1 */
+		buf1 = buf - f_w * i - i; /* TOP_LINE */
+		buf2 = buf + f_w * i - i; /* BOTTOM_LINE */
+		buf3 = buf1 + f_w;	/* LEFT_LINE */
+		buf4 = buf3 + (i << 1);  /* RIGHT_LINE */
+		for (j = 0; j <= (i << 1); j++) {
+			/* Horizontal */
+			if ((buf1[j] != crc_key) ||
+				(buf2[j] != crc_key)) {
+				decon_dbg("%s:LINE:%d: buf1:%lld, buf2:%lld\n",
+					__func__, __LINE__, buf1[j], buf2[j]);
+				goto blk_region_1;
+			}
+		}
+		/* separated for cache performance */
+		for (j = 0; j <= ((i << 1) - 2); j++) {
+			/* Verticalal */
+			idx = j * f_w;
+			if ((buf3[idx] != crc_key) ||
+				(buf4[idx] != crc_key)) {
+				decon_dbg("%s:LINE:%d: buf1:%lld, buf2:%lld\n",
+					__func__, __LINE__, buf3[j], buf4[j]);
+				goto blk_region_1;
+			}
+		}
+	}
+
+blk_region_1:
+	sq_i = i;
+	/* From Center Point */
+	left = (w >> 1) - (i - 1);
+	top = (h >> 1) - (i - 1);
+	right = (w >> 1) + (i - 1);
+	bot = (h >> 1) + (i - 1);
+
+	k = ((i - 1) << 1) + 1;
+	/* Extend the top region if it is possible */
+	for (; i <= (h >> 1); i++) {
+		buf1 = buf - f_w * i - (sq_i - 1); /* TOP_LINE */
+		for (j = 0; j < k; j++) {
+			/* Horizontal */
+			if (buf1[j] != crc_key)
+				goto blk_region_top;
+		}
+	}
+blk_region_top:
+	top = (h >> 1) - (i - 1);
+
+	i = sq_i;
+	/* Extend the bottom region if it is possible */
+	for (; i < (h >> 1); i++) {
+		buf2 = buf + f_w * i - (sq_i - 1); /* BOTTOM_LINE */
+		for (j = 0; j < k; j++) {
+			/* Horizontal */
+			if (buf2[j] != crc_key)
+				goto blk_region_bot;
+		}
+	}
+blk_region_bot:
+	bot = (h >> 1) + (i - 1);
+
+	i = sq_i;
+	k = (bot - top) + 1;
+	/* Extend the left region if it is possible */
+	for (; i <= (w >> 1); i++) {
+		buf3 = buf - f_w * ((h >> 1) - top) - i; /* LEFT_LINE */
+		for (j = 0; j < k; j++) {
+			/* Vertical */
+			idx = j * f_w;
+			if (buf3[idx] != crc_key)
+				goto blk_region_left;
+		}
+	}
+blk_region_left:
+	left = (w >> 1) - (i - 1);
+
+	i = sq_i;
+	/* Extend the right region if it is possible */
+	for (; i < (w >> 1); i++) {
+		buf4 = buf - f_w * ((h >> 1) - top) + i; /* RIGHT_LINE */
+		for (j = 0; j < k; j++) {
+			/* Vertical */
+			idx = j * f_w;
+			if (buf4[idx] != crc_key)
+				goto blk_region_right;
+		}
+	}
+blk_region_right:
+	right = (w >> 1) + (i - 1);
+
+	left = left << 4;
+	top = top << 4;
+	right = (right << 4) + 15;
+	bot = (bot << 4) + 15;
+
+	if (((right - left + 1) >= MIN_BLK_MODE_WIDTH) &&
+		((bot - top + 1) >= MIN_BLK_MODE_HEIGHT)) {
+		rect->left = left;
+		rect->right = right;
+		rect->top = top;
+		rect->bottom = bot;
+		decon_dbg("%s:LINE= %d, [%d %d %d %d]\n",
+			__func__, __LINE__, left, top, right, bot);
+	}
+
+	return;
+}
+
+static inline bool decon_is_win_geometry_same(struct decon_frame *prev_src,
+				struct decon_frame *cur_src)
+{
+	if ((prev_src->x != cur_src->x) || (prev_src->y != cur_src->y) ||
+		(prev_src->w != cur_src->w) || (prev_src->h != cur_src->h) ||
+		(prev_src->f_w != cur_src->f_w) || (prev_src->f_h != cur_src->f_h))
+		return false;
+
+	return true;
+}
+
+static bool decon_is_static_win(struct decon_device *decon,
+		struct decon_win_config *config,
+		int win_id)
+{
+	struct decon_frame *prev_src;
+	if (decon->prev_buf_fd[win_id] != config->fd_idma[0])
+		return false;
+
+	prev_src = &decon->prev_src_frm[win_id];
+	return decon_is_win_geometry_same(prev_src, &config->src);
+}
+
+static void decon_set_smart_dma_blocking(struct decon_device *decon,
+		struct decon_reg_data *regs, int win_id)
+{
+	struct decon_win_rect *block_rect;
+	struct decon_rect rect;
+	struct decon_win_config *config;
+	long long unsigned int *crc_buf, *buf;
+	unsigned int *metadata_buf;
+	struct ion_handle *handle = regs->handle_crc[win_id];
+	struct decon_lcd *lcd_info = decon->lcd_info;
+	int x, y, w, h, f_w, f_h, buf_offset, i;
+	int align_h, align_x;
+	int lcd_size = lcd_info->xres * lcd_info->yres * 4;
+	static int blk_region_cnt = 1;
+
+	if (decon->id)
+		return;
+
+	if (decon->sblock_disable)
+		return;
+
+#ifdef DECON_SWBM_DEBUG
+	if (!(blk_region_cnt & 0x3f)) {
+		decon_info("%s: block_stat[%d %d %d]\n", __func__,
+				decon->num_blk_region_calc, decon->num_blk_region,
+				decon->num_idma_blk_region);
+		blk_region_cnt = 1;
+	}
+#endif
+
+	config = &regs->vpp_config[win_id];
+	if (!is_decon_rgb32(config->format))
+		return;
+
+	/* Skip single window cases + bottom Window */
+	if ((regs->num_of_window <= 1) || !win_id)
+		goto skip_crc_check;
+
+	/* If window update is enabled, skip blocking mode */
+	if ((decon->need_update || regs->need_update) &&
+		((regs->update_win.w != lcd_info->xres) ||
+			(regs->update_win.h != lcd_info->yres)))
+		goto skip_crc_check;
+
+	if (!(regs->wincon[win_id] & WINCON_ENWIN))
+		goto skip_crc_check;
+
+	/* If total size is smaller than 1.25 times of lcd, skip it. */
+	if ((regs->bandwidth << 2) <  lcd_size * lcd_info->fps * 5)
+		goto skip_crc_check;
+
+	block_rect = &regs->block_rect[win_id];
+
+	/* If Blocking Mode is already enabled, just exit from here */
+	if (block_rect->w * block_rect->h)
+		goto skip_crc_check;
+
+	/* Blocking Mode is not supported if there is a rotation and scaling */
+	if (is_vpp_type(config->idma_type) && (is_rotation(config)||
+		does_layer_need_scale(config)))
+		goto skip_crc_check;
+
+	/* if window size is smaller than 25% of LCD size, exit from here */
+	if ((config->dst.w * config->dst.h << 2) < lcd_info->xres * lcd_info->yres)
+		goto skip_crc_check;
+
+	/* CRC buffer fd is fd_idma[1] */
+	if (config->fd_idma[1] <= 0)
+		goto skip_crc_check;
+
+	/* Skip if it is not a static data win */
+	if (!decon_is_static_win(decon, config, win_id)) {
+		decon_dbg("%s: win-%d is not a static window\n", __func__, win_id);
+		goto skip_crc_check;
+	} else if (decon->prev_block_rect[win_id].w * decon->prev_block_rect[win_id].h) {
+		regs->blk_mode[win_id] = 1;
+		decon->num_blk_region++;
+		blk_region_cnt++;
+		/* use the previous frame block rect info */
+		memcpy(&regs->block_rect[win_id],
+			&decon->prev_block_rect[win_id], sizeof(struct decon_win_rect));
+		memcpy(&config->block_area, &regs->block_rect[win_id],
+						sizeof(struct decon_win_rect));
+		decon_dbg("%s: BLK_REUSED: win-%d: block_rect[%d %d %d %d]\n\n\n", __func__, win_id,
+			regs->block_rect[win_id].x, regs->block_rect[win_id].y,
+			regs->block_rect[win_id].w, regs->block_rect[win_id].h);
+		goto skip_crc_check;
+	}
+
+	crc_buf = (long long unsigned int *)ion_map_kernel(decon->ion_client, handle);
+	if (IS_ERR_OR_NULL(crc_buf)) {
+		decon_err("%s: failed to map_kernel = %p\n", __func__, crc_buf);
+		goto crc_buf_map_err;
+	}
+
+	memset(&rect, 0, sizeof(struct decon_rect));
+	if (config->src.y & 0xf)
+		goto crc_blk_rect;
+
+	regs->blk_mode[win_id] = 1;
+
+	/* TODO: CRC buf validity Check */
+	/* Compute the Block Region Info from the CRC data */
+	f_w = (config->src.f_w + 15) >> 4;
+	f_h = (config->src.f_h + 15) >> 4;
+	x = (config->src.x) >> 4;
+	y = (config->src.y) >> 4;
+	w = (config->src.w + 15) >> 4;
+	h = (config->src.h + 15) >> 4;
+	align_h = h << 4;
+	align_x = config->src.x & 0xF;
+
+	metadata_buf = (unsigned int *) (crc_buf + f_w * f_h);
+	if (*metadata_buf != DECON_CRC_BUF_KEY) {
+		decon_dbg("%s: win-%d: CRC BUF is not valid:%x\n", __func__, win_id, *metadata_buf);
+		goto crc_blk_rect;
+	}
+	/* *metadata_buf = 0; */
+
+	decon->num_blk_region_calc++;
+	/* CRC buffer is top 2 bottom upside down. */
+	buf_offset = x + (f_h - h - y) * f_w;
+	crc_buf = crc_buf + buf_offset;
+
+	decon_dbg("%s:LINE_NUM=%d, win_id %d:[%d %d %d %d]\n",
+			__func__, __LINE__, win_id, x, y, w, h);
+	/* STEP-1: Center */
+	buf = crc_buf + ((h >> 1) * f_w + (w >> 1));
+	decon_compute_crc_blk_region(buf, w, h, f_w, f_h, &rect);
+	if ((rect.right - rect.left) * (rect.bottom - rect.top))
+		goto crc_blk_rect;
+
+#ifdef SWBM_USE_FOUR_RECT
+	/* TOP_LEFT, TOP_RIGHT, BOT_LEFT, BOT_RIGHT */
+	w = w >> 1;
+	h = h >> 1;
+	for (i = 0; i < 4; i++) {
+		buf = crc_buf + ((h >> 1) * f_w + (w >> 1));
+		buf += ((i & 0x1) * w) + (h * f_w * (i >> 1));
+		decon_compute_crc_blk_region(buf, w, h, f_w, f_h, &rect);
+		if ((rect.right - rect.left) * (rect.bottom - rect.top)) {
+			rect.left = rect.left + (w << 4) * (i & 0x1);
+			rect.right = rect.right + (w << 4) * (i & 0x1);
+			rect.top = rect.top + ((i >> 1) * (h << 4));
+			rect.bottom = rect.bottom + ((i >> 1) * (h << 4));
+			goto crc_blk_rect;
+		}
+	}
+#else /* TWO_RECT */
+	/* TOP_HALF, BOT_HALF */
+	h = h >> 1;
+	for (i = 0; i < 2; i++) {
+		buf = crc_buf + ((h >> 1) * f_w + (w >> 1));
+		buf += ((i & 0x1) * (h * f_w ));
+		decon_compute_crc_blk_region(buf, w, h, f_w, f_h, &rect);
+		if ((rect.right - rect.left) * (rect.bottom - rect.top)) {
+			rect.top = rect.top + ((i & 0x1) * (h << 4));
+			rect.bottom = rect.bottom + ((i & 0x1) * (h << 4));
+			goto crc_blk_rect;
+		}
+	}
+#endif
+crc_blk_rect:
+	if ((rect.right - rect.left) * (rect.bottom - rect.top)) {
+		/* CRC buffer is top 2 bottom upside down. */
+		regs->block_rect[win_id].w = min(rect.right - rect.left + 1 - align_x, (int)config->src.w);
+		regs->block_rect[win_id].h = min(rect.bottom - rect.top + 1, (int)config->src.h);
+		regs->block_rect[win_id].x = max(rect.left - align_x, 0);
+		regs->block_rect[win_id].y = max((int)(config->src.h - rect.bottom - 1), 0);
+		decon->num_blk_region++;
+		decon_info("%s: win-%d: block_rect[%d %d %d %d] blk_stat[%d %d %d]\n",
+			__func__, win_id,
+			regs->block_rect[win_id].x, regs->block_rect[win_id].y,
+			regs->block_rect[win_id].w, regs->block_rect[win_id].h,
+			decon->num_blk_region_calc, decon->num_blk_region,
+			decon->num_idma_blk_region);
+		blk_region_cnt = 1;
+		memcpy(&config->block_area, &regs->block_rect[win_id],
+				sizeof(struct decon_win_rect));
+	}
+
+	ion_unmap_kernel(decon->ion_client, handle);
+crc_buf_map_err:
+skip_crc_check:
+
+	return;
+}
+
 static void __decon_update_regs(struct decon_device *decon, struct decon_reg_data *regs)
 {
 	unsigned short i, j;
@@ -2923,7 +3412,7 @@ static void __decon_update_regs(struct decon_device *decon, struct decon_reg_dat
 		plane_cnt = decon_get_plane_cnt(regs->vpp_config[i].format);
 		for (j = 0; j < plane_cnt; ++j)
 			decon->windows[i]->dma_buf_data[j] = regs->dma_buf_data[i][j];
-
+		decon->windows[i]->handle_crc = regs->handle_crc[i];
 		decon->windows[i]->plane_cnt = plane_cnt;
 		if (is_vpp_type(regs->vpp_config[i].idma_type)) {
 			if (decon->vpp_usage_bitmask & (1 << win->vpp_id)) {
@@ -2939,6 +3428,7 @@ static void __decon_update_regs(struct decon_device *decon, struct decon_reg_dat
 				}
 			}
 		}
+
 		if (!is_vpp_type(regs->vpp_config[i].idma_type)) {
 			if (IS_ENABLED(CONFIG_DECON_BLOCKING_MODE))
 				decon_enable_blocking_mode(decon, regs, i);
@@ -3025,9 +3515,27 @@ wait_done:
 	return 0;
 }
 
+static inline void decon_curbuf_to_prev(struct decon_device *decon, struct decon_reg_data *regs)
+{
+	int i;
+	/* first plane is enough */
+
+	for (i = 0; i < decon->pdata->max_win; i++) {
+		decon->prev_buf_fd[i] = regs->vpp_config[i].fd_idma[0];
+		memcpy(&decon->prev_src_frm[i], &regs->vpp_config[i].src, sizeof(struct decon_frame));
+		if (regs->blk_mode[i]) {
+			memcpy(&decon->prev_block_rect[i], &regs->block_rect[i],
+					sizeof(struct decon_win_rect));
+		} else {
+			memset(&decon->prev_block_rect[i], 0, sizeof(struct decon_win_rect));
+		}
+	}
+}
+
 static void decon_update_regs(struct decon_device *decon, struct decon_reg_data *regs)
 {
 	struct decon_dma_buf_data old_dma_bufs[decon->pdata->max_win][MAX_BUF_PLANE_CNT];
+	struct ion_handle	*old_handle_crc[decon->pdata->max_win];
 	int old_plane_cnt[MAX_DECON_WIN];
 	int i, j;
 #ifdef CONFIG_USE_VSYNC_SKIP
@@ -3049,16 +3557,19 @@ static void decon_update_regs(struct decon_device *decon, struct decon_reg_data 
 		for (j = 0; j < MAX_BUF_PLANE_CNT; ++j)
 			memset(&old_dma_bufs[i][j], 0, sizeof(struct decon_dma_buf_data));
 		old_plane_cnt[i] = 0;
+		old_handle_crc[i] = NULL;
 	}
 
-	for (i = 0; i < decon->pdata->max_win; i++) {
+	for (i = decon->pdata->max_win - 1; i >= 0; i--) {
 		old_plane_cnt[i] = decon->windows[i]->plane_cnt;
-		for (j = 0; j < old_plane_cnt[i]; ++j) {
+		old_handle_crc[i] = decon->windows[i]->handle_crc;
+		for (j = 0; j < old_plane_cnt[i]; ++j)
 			old_dma_bufs[i][j] = decon->windows[i]->dma_buf_data[j];
-		}
-		if (regs->dma_buf_data[i][0].fence) {
+
+		if (regs->dma_buf_data[i][0].fence)
 			decon_fence_wait(regs->dma_buf_data[i][0].fence);
-		}
+
+		decon_set_smart_dma_blocking(decon, regs, i);
 	}
 
 	decon_set_qos(decon, regs, 0);
@@ -3136,6 +3647,8 @@ static void decon_update_regs(struct decon_device *decon, struct decon_reg_data 
 	for (i = 0; i < decon->pdata->max_win; i++) {
 		for (j = 0; j < old_plane_cnt[i]; ++j)
 			decon_free_dma_buf(decon, &old_dma_bufs[i][j]);
+		if (old_handle_crc[i])
+			ion_free(decon->ion_client, old_handle_crc[i]);
 	}
 	if (decon->out_type == DECON_OUT_WB) {
 		decon_free_dma_buf(decon, &regs->wb_dma_buf_data);
@@ -3146,8 +3659,8 @@ static void decon_update_regs(struct decon_device *decon, struct decon_reg_data 
 	}
 	decon_set_vpp_min_lock_lately(decon, regs);
 	decon_vpp_stop(decon, false);
-
 	decon_set_qos(decon, regs, 1);
+	decon_curbuf_to_prev(decon, regs);
 }
 
 static void decon_update_regs_handler(struct kthread_work *work)
@@ -3171,6 +3684,81 @@ static void decon_update_regs_handler(struct kthread_work *work)
 		list_del(&data->list);
 		kfree(data);
 	}
+}
+
+static void decon_set_smart_dma_mapping(struct decon_device *decon,
+			struct decon_win_config *win_config)
+{
+	int i;
+	struct decon_win_config *config;
+	struct decon_rect dma0_r1, dma1_r1, dma1_r2;
+	int idma0_idx = -1, idma1_idx = -1, idma2_idx = -1;
+
+	if (decon->sdma_map_disable)
+		return;
+
+	if (decon->id)
+		return;
+
+	/* Find if there is any overlap b/w IDMA_G1 & IDMA_G2 */
+	for (i = 0; i < decon->pdata->max_win; i++) {
+		config = &win_config[i];
+		if (config->state != DECON_WIN_STATE_BUFFER)
+			continue;
+
+		switch (config->idma_type) {
+		case IDMA_G1:
+			idma1_idx = i;
+			dma1_r1.left = config->dst.x;
+			dma1_r1.top = config->dst.y;
+			dma1_r1.right =
+				dma1_r1.left + config->dst.w - 1;
+			dma1_r1.bottom =
+				dma1_r1.top + config->dst.h - 1;
+			break;
+		case IDMA_G2:
+			idma2_idx = i;
+			dma1_r2.left = config->dst.x;
+			dma1_r2.top = config->dst.y;
+			dma1_r2.right =
+				dma1_r2.left + config->dst.w - 1;
+			dma1_r2.bottom =
+				dma1_r2.top + config->dst.h - 1;
+			break;
+		case IDMA_G0:
+			idma0_idx = i;
+			dma0_r1.left = config->dst.x;
+			dma0_r1.top = config->dst.y;
+			dma0_r1.right =
+				dma0_r1.left + config->dst.w - 1;
+			dma0_r1.bottom =
+				dma0_r1.top + config->dst.h - 1;
+			break;
+		default:
+			break;
+		}
+	}
+
+	if ((idma1_idx == -1) || (idma2_idx == -1))
+		return;
+
+	if (!decon_intersect(&dma1_r1, &dma1_r2))
+		return;
+
+	if ((idma0_idx == -1) && (idma1_idx >= 0)) {
+		win_config[idma1_idx].idma_type = IDMA_G0;
+		decon_dbg("%s:[idma0_win %d idma1_win %d] G1 to G0 Change\n",
+				__func__, idma0_idx, idma1_idx);
+	} else if ((idma0_idx >= 0) && (idma1_idx >= 0)) {
+		if (!decon_intersect(&dma0_r1, &dma1_r2)) {
+			win_config[idma1_idx].idma_type = IDMA_G0;
+			win_config[idma0_idx].idma_type = IDMA_G1;
+			decon_dbg("%s:[idma0_win %d idma1_win %d] G1 to G0 SWAP \n",
+				__func__, idma0_idx, idma1_idx);
+		}
+	}
+
+	return;
 }
 
 static int decon_set_win_config(struct decon_device *decon,
@@ -3199,7 +3787,7 @@ static int decon_set_win_config(struct decon_device *decon,
 
 	mutex_lock(&decon->output_lock);
 
-	if ((decon->state == DECON_STATE_OFF) ||
+	if ((decon->state == DECON_STATE_OFF) || (decon->ignore_vsync == true) ||
 		(decon->out_type == DECON_OUT_TUI)) {
 		decon->timeline_max++;
 		pt = sw_sync_pt_create(decon->timeline, decon->timeline_max);
@@ -3251,6 +3839,7 @@ static int decon_set_win_config(struct decon_device *decon,
 			decon->windows[i]->fbinfo->var;
 	}
 
+	decon_set_smart_dma_mapping(decon, win_config);
 #ifdef CONFIG_FB_WINDOW_UPDATE
 	if (decon->out_type == DECON_OUT_DSI)
 		decon_set_win_update_config(decon, win_config, regs);
@@ -3274,9 +3863,10 @@ static int decon_set_win_config(struct decon_device *decon,
 		case DECON_WIN_STATE_COLOR:
 			enabled = 1;
 			color_map |= WIN_MAP_MAP_COLOUR(config->color);
-			regs->vidosd_a[i] = vidosd_a(config->dst.x, config->dst.y);
-			regs->vidosd_b[i] = vidosd_b(config->dst.x, config->dst.y,
+			regs->vidosd_a[win->index] = vidosd_a(config->dst.x, config->dst.y);
+			regs->vidosd_b[win->index] = vidosd_b(config->dst.x, config->dst.y,
 					config->dst.w, config->dst.h);
+			decon_set_alpha_blending(config, regs, win->index, 0);
 			break;
 		case DECON_WIN_STATE_BUFFER:
 			if (decon->id && i == DECON_BACKGROUND) {
@@ -3957,6 +4547,7 @@ static int decon_fb_alloc_memory(struct decon_device *decon, struct decon_win *w
 
 	win->dma_buf_data[1].fence = NULL;
 	win->dma_buf_data[2].fence = NULL;
+	win->plane_cnt = 1;
 	ret = decon_map_ion_handle(decon, decon->dev, &win->dma_buf_data[0],
 			handle, buf, win->index);
 	if (!ret)
@@ -4332,6 +4923,7 @@ irqreturn_t decon_esd_err_handler(int irq, void *dev_id)
 
 	if ((esd->esd_wq) && (esd->queuework_pending == 0)) {
 		esd->queuework_pending = 1;
+		esd->irq_type = irq_err_fg;
 		queue_work(esd->esd_wq, &esd->esd_work);
 	}
 handler_exit:
@@ -4343,6 +4935,9 @@ irqreturn_t decon_disp_det_handler(int irq, void *dev_id)
 {
 	struct esd_protect *esd;
 	struct decon_device *decon = (struct decon_device *)dev_id;
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+	int timediff;
+#endif	// CONFIG_DSIM_ESD_RECOVERY_NOPOWER
 
 	if (decon == NULL)
 		goto handler_exit;
@@ -4351,11 +4946,17 @@ irqreturn_t decon_disp_det_handler(int irq, void *dev_id)
 		goto handler_exit;
 
 	esd = &decon->esd;
+#ifdef CONFIG_DSIM_ESD_RECOVERY_NOPOWER
+	timediff = (int) ktime_to_ms(ktime_sub(ktime_get(),esd->when_irq_enable));
+	decon_info( "esd : disp_det : diff=%d\n", timediff);
+	if( timediff < 6 ) return IRQ_HANDLED;
+#endif	// CONFIG_DSIM_ESD_RECOVERY_NOPOWER
 
-	decon_info("esd : decon_irq : display det\n");
+	decon_info("esd : decon_irq : display_det\n");
 
 	if ((esd->esd_wq)  && (esd->queuework_pending == 0)) {
 		esd->queuework_pending = 1;
+		esd->irq_type = irq_disp_det;
 		queue_work(esd->esd_wq, &esd->esd_work);
 	}
 handler_exit:
@@ -4432,7 +5033,7 @@ static int decon_register_esd_funcion(struct decon_device *decon)
 	if (esd->disp_det_irq) {
 		if (devm_request_irq(dev, esd->disp_det_irq, decon_disp_det_handler,
 				IRQF_TRIGGER_FALLING, "display-det", decon)) {
-			dsim_err("%s : faied to request irq for display det\n", __func__);
+			dsim_err("%s : faied to request irq for display_det\n", __func__);
 			esd->disp_det_irq = 0;
 			ret --;
 		}
@@ -4468,6 +5069,72 @@ static struct file_operations decon_event_fops = {
 	.release = seq_release,
 };
 #endif
+
+static ssize_t decon_ops_ctrl_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct decon_device *decon = dev_get_drvdata(dev);
+
+	if (!decon)
+		return 0;
+
+	return snprintf(buf, PAGE_SIZE, "%s%d\n %s%d\n %s%d\n %s%d\n %s%d\n,"
+			"%s\n %s\n %s\n %s\n %s\n %s\n %s\n %s\n"
+			"%s\n %s\n %s\n",
+			"win-update =", !decon->win_update_disable,
+			"dma-block-mode =", !decon->dma_block_disable,
+			"lpd-mode =", !decon->lpd_disable,
+			"sblock-mode=", !decon->sblock_disable,
+			"sdma-map-mode=", !decon->sdma_map_disable,
+			"Use the following strings to control decon_ops",
+			"win-update-off : disable window update",
+			"win-update-on : enable window update",
+			"dma-block-off : disable dma blocking mode",
+			"dma-block-on : enable dma blocking mode",
+			"lpd-off : disable lpd mode",
+			"lpd-on : enable lpd mode",
+			"sblock-off : Disable Smart Blocking mode",
+			"sblock-on : Enable Smart Blocking mode",
+			"sdma-map-off : Disable Smart DMA Mapping",
+			"sdma-map-on : Enable Smart DMA Mapping");
+}
+
+static ssize_t decon_ops_ctrl_store(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t count)
+{
+	int ret = count;
+	struct decon_device *decon = dev_get_drvdata(dev);
+
+	if (!decon)
+		return ret;
+
+	if (!strcmp(buf, "win-update-off\n")) {
+		decon->win_update_disable = true;
+	} else if (!strcmp(buf, "win-update-on\n")) {
+		decon->win_update_disable = false;
+	} else if (!strcmp(buf, "dma-block-off\n")) {
+		decon->dma_block_disable = true;
+	} else if (!strcmp(buf, "dma-block-on\n")) {
+		decon->dma_block_disable = false;
+	} else if (!strcmp(buf, "lpd-off\n")) {
+		decon->lpd_disable = true;
+	} else if (!strcmp(buf, "lpd-on\n")) {
+		decon->lpd_disable = false;
+	} else if (!strcmp(buf, "sblock-off\n")) {
+		decon->sblock_disable = true;
+	} else if (!strcmp(buf, "sblock-on\n")) {
+		decon->sblock_disable = false;
+	} else if (!strcmp(buf, "sdma-map-off\n")) {
+		decon->sdma_map_disable = true;
+	} else if (!strcmp(buf, "sdma-map-on\n")) {
+		decon->sdma_map_disable = false;
+	} else {
+		decon_info("decon-%d: unsupported ops_ctrl: %s\n", decon->id, buf);
+	}
+
+	return ret;
+}
+static DEVICE_ATTR(ops_ctrl, 0644, decon_ops_ctrl_show, decon_ops_ctrl_store);
 
 /* --------- DRIVER INITIALIZATION ---------- */
 static int decon_probe(struct platform_device *pdev)
@@ -4536,6 +5203,7 @@ static int decon_probe(struct platform_device *pdev)
 	snprintf(device_name, MAX_NAME_SIZE, "decon%d", decon->id);
 	decon->timeline = sw_sync_timeline_create(device_name);
 	decon->timeline_max = 1;
+	decon->sblock_disable = 1;
 
 	/* Get IRQ resource and register IRQ, create thread */
 	if (!decon->id) {
@@ -4561,8 +5229,6 @@ static int decon_probe(struct platform_device *pdev)
 			decon_err("failed to create debugfs root directory.\n");
 			goto fail_psr_thread;
 		}
-		ret = decon_register_esd_funcion(decon);
-		decon_info("esd : %d entity was registered\n", ret);
 	} else {
 		decon->debug_root = get_decon_drvdata(0)->debug_root;
 		ret = decon_ext_register_irq(pdev, decon);
@@ -4584,7 +5250,11 @@ static int decon_probe(struct platform_device *pdev)
 						decon, &decon_event_fops);
 #endif
 
-	/* exynos_create_iovmm(dev, decon->n_sink_pad, 0); */ /* It doesn't need any more */
+	ret = device_create_file(decon->dev, &dev_attr_ops_ctrl);
+	if (ret) {
+		decon_err("failed to create ops_ctrl sysfs\n");
+	}
+
 	ret = iovmm_activate(decon->dev);
 	if (ret < 0) {
 		decon_err("failed to reactivate vmm\n");
@@ -4654,7 +5324,6 @@ static int decon_probe(struct platform_device *pdev)
 	snprintf(device_name, MAX_NAME_SIZE, "decon%d-wb", decon->id);
 	decon->wb_timeline = sw_sync_timeline_create(device_name);
 	decon->wb_timeline_max = 0;
-
 	if (!decon->id || decon->pdata->dsi_mode == DSI_MODE_DUAL_DISPLAY) {
 		ret = decon_int_set_lcd_config(decon);
 		if (ret) {
@@ -4755,12 +5424,15 @@ decon_init_done:
 						if (disply_det_val == 0) {
 							decon_err("decon does not detect display detect pin vysnc ignore\n");
 							decon->ignore_vsync = true;
-							gpio_free(decon->esd.disp_det_gpio);
 						}
+						gpio_free(decon->esd.disp_det_gpio);
 					}
 				}
 			}
 		}
+
+		ret = decon_register_esd_funcion(decon);
+		decon_info("esd : %d entity was registered\n", ret);
 
 decon_rest_init:
 #ifdef CONFIG_DECON_MIPI_DSI_PKTGO

@@ -293,6 +293,10 @@ static int esoc_dev_open(struct inode *inode, struct file *file)
 	unsigned int minor = iminor(inode);
 
 	esoc_udev = esoc_udev_get_by_minor(minor);
+	if(!esoc_udev) {
+		pr_err("%s : esoc dev find error\n",__func__);
+		return -ENODEV;
+	}
 	esoc_clink = get_esoc_clink(esoc_udev->clink->id);
 
 	uhandle = kzalloc(sizeof(*uhandle), GFP_KERNEL);
@@ -326,11 +330,35 @@ static int esoc_dev_release(struct inode *inode, struct file *file)
 	kfree(uhandle);
 	return 0;
 }
+
+static ssize_t esoc_dev_write(struct file *file,
+				     const char __user *user_buf,
+				     size_t count, loff_t *ppos)
+{
+	struct esoc_uhandle *uhandle = file->private_data;
+	struct esoc_clink *esoc_clink = uhandle->esoc_clink;
+	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	char buf[16];
+	size_t buf_size;
+
+	buf_size = min(count, (sizeof(buf)-1));
+	if (copy_from_user(buf, user_buf, buf_size)) {
+		pr_info("[MIF] %s: copy_from_user failed\n", __func__);
+		return -EFAULT;
+	}
+	pr_info("[MIF] %s: %s\n", __func__, buf);
+	if (!strncmp(buf, "CP CRASH", sizeof("CP CRASH")))
+		clink_ops->notify(ESOC_FORCE_CPCRASH, esoc_clink);
+
+	return count;
+}
+
 static const struct file_operations esoc_dev_fops = {
 	.owner		= THIS_MODULE,
 	.open		= esoc_dev_open,
 	.unlocked_ioctl = esoc_dev_ioctl,
 	.release	= esoc_dev_release,
+	.write		= esoc_dev_write,
 };
 
 int esoc_clink_add_device(struct device *dev, void *dummy)

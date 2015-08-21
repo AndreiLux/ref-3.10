@@ -55,6 +55,9 @@
 
 #if defined(CONFIG_UFS_FMP_ECRYPT_FS)
 #include <fmp_derive_iv.h>
+#if defined(CONFIG_SDP)
+#include <linux/pagemap.h>
+#endif
 #endif
 
 #define UFSHCD_ENABLE_INTRS	(UTP_TRANSFER_REQ_COMPL |\
@@ -231,6 +234,10 @@ static int ufshcd_uic_hibern8_enter(struct ufs_hba *hba);
 static int ufshcd_link_hibern8_ctrl(struct ufs_hba *hba, bool en);
 static int ufshcd_host_reset_and_restore(struct ufs_hba *hba);
 static irqreturn_t ufshcd_intr(int irq, void *__hba);
+
+#if defined(CONFIG_FIPS_FMP)
+extern bool in_fmp_fips_err(void);
+#endif
 
 static inline int ufshcd_enable_irq(struct ufs_hba *hba)
 {
@@ -671,7 +678,7 @@ start:
 	case CLKS_OFF:
 		scsi_block_requests(hba->host);
 		hba->clk_gating.state = REQ_CLKS_ON;
-		schedule_work(&hba->clk_gating.ungate_work);
+		queue_work(hba->ufshcd_workq, &hba->clk_gating.ungate_work);
 		/*
 		 * fall through to check if we should wait for this
 		 * work to be done or not.
@@ -788,7 +795,7 @@ static void __ufshcd_release(struct ufs_hba *hba)
 		return;
 
 	hba->clk_gating.state = REQ_CLKS_OFF;
-	schedule_delayed_work(&hba->clk_gating.gate_work,
+	queue_delayed_work(hba->ufshcd_workq, &hba->clk_gating.gate_work,
 			msecs_to_jiffies(hba->clk_gating.delay_ms));
 }
 
@@ -863,10 +870,18 @@ static ssize_t ufshcd_clkgate_delay_store(struct device *dev,
 	return count;
 }
 
-static void ufshcd_init_clk_gating(struct ufs_hba *hba)
+static int ufshcd_init_clk_gating(struct ufs_hba *hba)
 {
+	int ret = 0;
 	if (!ufshcd_is_clkgating_allowed(hba))
-		return;
+		goto out;
+
+	hba->ufshcd_workq = alloc_workqueue("ufshcd_wq",
+				WQ_NON_REENTRANT | WQ_HIGHPRI, 0);
+	if (!hba->ufshcd_workq) {
+		ret = -ENOMEM;
+		goto out;
+	}
 
 	hba->clk_gating.delay_ms = LINK_H8_DELAY;
 	INIT_DELAYED_WORK(&hba->clk_gating.gate_work, ufshcd_gate_work);
@@ -879,12 +894,16 @@ static void ufshcd_init_clk_gating(struct ufs_hba *hba)
 	hba->clk_gating.delay_attr.attr.mode = S_IRUGO | S_IWUSR;
 	if (device_create_file(hba->dev, &hba->clk_gating.delay_attr))
 		dev_err(hba->dev, "Failed to create sysfs for clkgate_delay\n");
+
+out:
+	return ret;
 }
 
 static void ufshcd_exit_clk_gating(struct ufs_hba *hba)
 {
 	if (!ufshcd_is_clkgating_allowed(hba))
 		return;
+	destroy_workqueue(hba->ufshcd_workq);
 	device_remove_file(hba->dev, &hba->clk_gating.delay_attr);
 }
 
@@ -1186,7 +1205,7 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 #if defined(CONFIG_UFS_FMP_DM_CRYPT) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 #if defined(CONFIG_UFS_FMP_ECRYPT_FS)
 			if (!((unsigned long)(sg_page(sg)->mapping) & 0x1)) {
-				if (sg_page(sg)->mapping && sg_page(sg)->mapping->key) {
+				if (sg_page(sg)->mapping && sg_page(sg)->mapping->key && !sg_page(sg)->mapping->plain_text) {
 					if ((unsigned int)(sg_page(sg)->index) >= 2)
 						sector_key |= UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
 					else
@@ -1202,6 +1221,12 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 				SET_DAS(&prd_table[i], CLEAR);
 				SET_FAS(&prd_table[i], CLEAR);
 			} else {
+#if defined(CONFIG_FIPS_FMP)
+				if (unlikely(in_fmp_fips_err())) {
+					dev_err(hba->dev, "Fail to work fmp due to fips in error\n");
+					return -EPERM;
+				}
+#endif
 				if (sector_key & UFS_ENCRYPTION_SECTOR_BEGIN) { /* disk encryption */
 					/* disk algorithm selector  */
 					SET_DAS(&prd_table[i], AES_XTS);
@@ -1238,6 +1263,7 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 					unsigned int aes_alg, j;
 					int ret;
 					loff_t index;
+					unsigned long flags;
 #ifdef CONFIG_CRYPTO_FIPS
 					char extent_iv[SHA256_HASH_SIZE];
 #else
@@ -1250,8 +1276,12 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 					else if (!strncmp(sg_page(sg)->mapping->alg, "aesxts", sizeof("aesxts")))
 						aes_alg = AES_XTS;
 					else {
-						dev_err(hba->dev, "Invalid file algorithm\n");
-						return -EINVAL;
+						dev_err(hba->dev, "%s: Invalild file encryption algorithm %s \n", __func__, sg_page(sg)->mapping->alg);
+						spin_lock_irqsave(hba->host->host_lock, flags);
+						hba->ufshcd_state = UFSHCD_STATE_ERROR;
+						spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+						return SCSI_MLQUEUE_EH_RETRY;
 					}
 					SET_FAS(&prd_table[i], aes_alg);
 
@@ -1265,16 +1295,24 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 						prd_table[i].size |= FKL;
 						break;
 					default:
-						dev_err(hba->dev, "Invalid file key length\n");
-						return -EINVAL;
+						dev_err(hba->dev, "%s: Invalid file key length %x\n", __func__, (unsigned int)sg_page(sg)->mapping->key_length);
+						spin_lock_irqsave(hba->host->host_lock, flags);
+						hba->ufshcd_state = UFSHCD_STATE_ERROR;
+						spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+						return SCSI_MLQUEUE_EH_RETRY;
 					}
 
 					index = sg_page(sg)->index;
 					index = index - sg_page(sg)->mapping->sensitive_data_index;
 					ret = file_enc_derive_iv(sg_page(sg)->mapping, index, extent_iv);
 					if (ret) {
-						dev_err(hba->dev, "Error attemping to derive IV\n");
-						return -EINVAL;
+						dev_err(hba->dev, "%s: Error attemping to derive IV\n", __func__);
+						spin_lock_irqsave(hba->host->host_lock, flags);
+						hba->ufshcd_state = UFSHCD_STATE_ERROR;
+						spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+						return SCSI_MLQUEUE_EH_RETRY;
 					}
 
 					/* File IV */
@@ -1566,6 +1604,9 @@ static void ufshcd_prepare_utp_query_req_upiu(struct ufs_hba *hba,
 			lrbp->lun, lrbp->task_tag);
 	ucd_req_ptr->header.dword_1 = UPIU_HEADER_DWORD(
 			0, query->request.query_func, 0, 0);
+
+	if (query->request.upiu_req.opcode == UPIU_QUERY_OPCODE_READ_DESC)
+		len = 0;
 
 	/* Data segment length */
 	ucd_req_ptr->header.dword_2 = UPIU_HEADER_DWORD(
@@ -1950,8 +1991,11 @@ static int ufshcd_exec_dev_cmd(struct ufs_hba *hba,
 	struct completion wait;
 	unsigned long flags;
 
-	if (!ufshcd_is_link_active(hba))
-		return -EPERM;
+	if (!ufshcd_is_link_active(hba)) {
+		flush_work(&hba->clk_gating.ungate_work);
+		if (!ufshcd_is_link_active(hba))
+			return -EPERM;
+	}
 
 	/*
 	 * Get free slot, sleep if slots are unavailable.
@@ -3743,6 +3787,21 @@ static void __ufshcd_transfer_req_compl(struct ufs_hba *hba, int reason)
 		//START MARK
 
 		if (cmd) {
+#if defined(CONFIG_SDP) && defined(CONFIG_UFS_FMP_ECRYPT_FS)
+			struct scatterlist *sg;
+			int sg_segments;
+			struct ufshcd_sg_entry *prd_table;
+			int i;
+
+			sg_segments = scsi_sg_count(cmd);
+			if (sg_segments) {
+				prd_table = (struct ufshcd_sg_entry *)lrbp->ucd_prdt_ptr;
+				scsi_for_each_sg(cmd, sg, sg_segments, i) {
+					if(sg_page(sg)->mapping && sg_page(sg)->mapping->key && mapping_sensitive(sg_page(sg)->mapping))
+						memset(&prd_table[i].file_iv0, 0x0, sizeof(__le32)* 20);
+				}
+			}
+#endif
 			result = ufshcd_transfer_rsp_status(hba, lrbp);
 			scsi_dma_unmap(cmd);
 			cmd->result = result;
@@ -4101,11 +4160,6 @@ static void ufshcd_err_handler(struct work_struct *work)
 			dev_err(hba->dev, "%s: reset and restore failed\n",
 					__func__);
 		}
-		/*
-		 * Inform scsi mid-layer that we did reset and allow to handle
-		 * Unit Attention properly.
-		 */
-		scsi_report_bus_reset(hba->host, 0);
 		hba->saved_err = 0;
 		hba->saved_uic_err = 0;
 	}
@@ -4452,14 +4506,18 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	ufshcd_hold(hba, false);
 
 	/* If command is already aborted/completed, return SUCCESS */
-	if (!(test_bit(tag, &hba->outstanding_reqs)))
+	if (!(test_bit(tag, &hba->outstanding_reqs))) {
+		dev_err(hba->dev,
+			"%s: cmd was already completed\n", __func__);
 		goto out;
+	}
 
 	reg = ufshcd_readl(hba, REG_UTP_TRANSFER_REQ_DOOR_BELL);
 	if (!(reg & (1 << tag))) {
 		dev_err(hba->dev,
 		"%s: cmd was completed, but without a notifying intr, tag = %d",
 		__func__, tag);
+		goto clean;
 	}
 
 	lrbp = &hba->lrb[tag];
@@ -4481,16 +4539,25 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 				continue;
 			}
 			/* command completed already */
+			dev_err(hba->dev,
+				"%s: cmd was completed during err handling\n",
+				__func__);
 			goto out;
 		} else {
 			if (!err)
 				err = resp; /* service response error */
+			dev_err(hba->dev,
+				"%s: query task failed with err %d\n",
+				__func__, err);
 			goto out;
 		}
 	}
 
 	if (!poll_cnt) {
 		err = -EBUSY;
+		dev_err(hba->dev,
+			"%s: cmd might be missed, not pending in device\n",
+			__func__);
 		goto out;
 	}
 
@@ -4499,6 +4566,9 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
 		if (!err)
 			err = resp; /* service response error */
+		dev_err(hba->dev,
+			"%s: abort task failed with err %d\n",
+			__func__, err);
 		goto out;
 	}
 
@@ -4506,6 +4576,7 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	if (err)
 		goto out;
 
+clean:
 	scsi_dma_unmap(cmd);
 
 	spin_lock_irqsave(host->host_lock, flags);
@@ -4517,12 +4588,10 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	wake_up(&hba->dev_cmd.tag_wq);
 
 out:
-	if (!err) {
+	if (!err)
 		err = SUCCESS;
-	} else {
-		dev_err(hba->dev, "%s: failed with err %d\n", __func__, err);
+	else
 		err = FAILED;
-	}
 
 	/*
 	 * This ufshcd_release() corresponds to the original scsi cmd that got
@@ -4559,6 +4628,14 @@ static int ufshcd_host_reset_and_restore(struct ufs_hba *hba)
 	if (!err && (hba->ufshcd_state != UFSHCD_STATE_OPERATIONAL)) {
 		dev_err(hba->dev, "%s: failed\n", __func__);
 		err = -EIO;
+	} else {
+		/*
+		* Inform scsi mid-layer that we did reset and allow to handle
+		* Unit Attention properly.
+		*/
+		spin_lock_irqsave(hba->host->host_lock, flags);
+		scsi_report_bus_reset(hba->host, 0);
+		spin_unlock_irqrestore(hba->host->host_lock, flags);
 	}
 
 	spin_lock_irqsave(hba->host->host_lock, flags);
@@ -4590,6 +4667,9 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 	spin_lock_irqsave(hba->host->host_lock, flags);
 	__ufshcd_transfer_req_compl(hba, DID_RESET);
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
+
+	/* guarantee device internal cache flush time */
+	ssleep(1);
 
 	do {
 		err = ufshcd_host_reset_and_restore(hba);
@@ -6441,11 +6521,11 @@ static void ufshcd_add_bkops_en_sysfs_nodes(struct ufs_hba *hba)
 }
 
 UFS_DEV_ATTR(capabilities,  "%08x", hba->capabilities);
-UFS_DEV_ATTR(lifetime,  "%01x", hba->lifetime);
+UFS_DEV_ATTR(lt,  "%01x", hba->lifetime);
 
 static struct attribute *ufs_attributes[] = {
 	&dev_attr_capabilities.attr,
-	&dev_attr_lifetime.attr,
+	&dev_attr_lt.attr,
 	NULL
 };
 
@@ -6694,7 +6774,12 @@ int ufshcd_init(struct ufs_hba *hba, void __iomem *mmio_base, unsigned int irq)
 	/* Initialize device management tag acquire wait queue */
 	init_waitqueue_head(&hba->dev_cmd.tag_wq);
 
-	ufshcd_init_clk_gating(hba);
+	err = ufshcd_init_clk_gating(hba);
+	if (err) {
+		dev_err(hba->dev, "init clk_gating failed\n");
+		goto out_disable;
+	}
+
 #ifdef CONFIG_ARGOS
 	/* Argos notifier register */
 	hba->argos_nb.notifier_call = ufshcd_argos_notifier;

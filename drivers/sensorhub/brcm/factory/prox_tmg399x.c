@@ -491,7 +491,7 @@ static ssize_t proximity_probe_show(struct device *dev,
         probe_pass_fail = FAIL;
 	}
 
-	pr_info("[SSP]: %s - All sensor 0x%x, prox_sensor %d \n",
+	pr_info("[SSP]: %s - All sensor 0x%llx, prox_sensor %d \n",
 		__func__, data->uSensorState, probe_pass_fail);
 	
 	return snprintf(buf, PAGE_SIZE, "%d\n", probe_pass_fail);

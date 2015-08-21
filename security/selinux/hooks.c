@@ -228,7 +228,16 @@ static inline u32 task_sid(const struct task_struct *task)
 	u32 sid;
 
 	rcu_read_lock();
+#ifdef CONFIG_RKP_KDP
+	if(rkp_cred_enable) {
+		while((u64)(__task_cred(task)->security) == (u64)0x07);
+		sid = cred_sid(__task_cred(task));
+	}
+	else
+		sid = cred_sid(__task_cred(task));
+#else
 	sid = cred_sid(__task_cred(task));
+#endif
 	rcu_read_unlock();
 	return sid;
 }

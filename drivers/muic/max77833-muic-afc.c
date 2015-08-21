@@ -172,6 +172,8 @@ void max77833_muic_hv_fchv_set(struct max77833_muic_data *muic_data, u8 val, u8 
 
 	init_muic_cmd_data(&cmd_data);
 	cmd_data.response = opcode;
+	// For vi_val - Use AFC SET command
+	cmd_data.val = val;
 
 	enqueue_muic_cmd(cmd_queue, cmd_data);
 

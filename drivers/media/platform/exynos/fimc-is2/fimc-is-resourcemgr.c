@@ -150,6 +150,10 @@ static int fimc_is_resourcemgr_initmem(struct fimc_is_resourcemgr *resourcemgr)
 	resourcemgr->minfo.kvaddr_region = resourcemgr->minfo.kvaddr + offset;
 
 	offset = FIMC_IS_A5_MEM_SIZE;
+#ifdef FW_SUSPEND_RESUME
+	offset += FIMC_IS_BACKUP_SIZE;
+#endif
+
 #ifdef ENABLE_ODC
 	resourcemgr->minfo.dvaddr_odc = resourcemgr->minfo.dvaddr + offset;
 	resourcemgr->minfo.kvaddr_odc = resourcemgr->minfo.kvaddr + offset;

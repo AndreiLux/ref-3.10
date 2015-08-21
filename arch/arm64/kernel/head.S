@@ -495,7 +495,15 @@ __switch_data:
 __mmap_switched:
 	adr	x3, __switch_data + 8
 
-	ldp	x6, x7, [x3], #16
+#ifdef CONFIG_TIMA_RKP
+	ldr	x6, =rkp_map_bitmap
+	add	x7, x6, 0x20000
+3:	cmp	x6, x7
+	b.hs	4f
+	str	xzr, [x6], #8			// Clear BSS
+	b	3b
+#endif
+4:	ldp	x6, x7, [x3], #16
 1:	cmp	x6, x7
 	b.hs	2f
 	str	xzr, [x6], #8			// Clear BSS

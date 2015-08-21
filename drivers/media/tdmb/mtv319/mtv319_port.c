@@ -94,14 +94,14 @@ void mtv319_spi_read_burst(unsigned char page, unsigned char reg,
 	struct spi_message msg;
 	struct spi_transfer xfer0 = {
 		.tx_buf = out_buf,
-		.rx_buf = buf,
+		.rx_buf = 0,
 		.len = MTV319_SPI_CMD_SIZE,
 		.cs_change = 0,
 		.delay_usecs = 0
 	};
 
 	struct spi_transfer xfer1 = {
-		.tx_buf = buf,
+		.tx_buf = 0,
 		.rx_buf = buf,
 		.len = size,
 		.cs_change = 0,

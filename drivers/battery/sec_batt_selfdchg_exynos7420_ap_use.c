@@ -3,7 +3,7 @@
  *
  * drivers/battery/sec_batt_selfdchg_exynos7420_ap_use.c
  *
- * Drivers for samsung batter self discharging by S/W Policy, with no IC.
+ * Drivers for samsung battery self discharging by S/W Policy, with no IC.
  * For only Exynos 7420
  *
  * Copyright (C) 2015, Samsung Electronics.
@@ -121,10 +121,9 @@ static unsigned int policy_state[SDCHG_STATE_MAX] = {
 	0,
 	/*************************************/
 	/* SDCHG_STATE_SET_DISPLAY_ON */
-	SDCHG_POLICY_CL0_FREQ_MIN_LIMIT |
-	//SDCHG_POLICY_CPU_IDLE_POLL_CTRL |
+	//SDCHG_POLICY_CL0_FREQ_MIN_LIMIT |
 #ifndef SDCHG_SUB_POLICY_SET
-	SDCHG_POLICY_PM_QOS_BUS_CTRL | SDCHG_POLICY_PM_QOS_DEVICE_CTRL |
+	//SDCHG_POLICY_PM_QOS_BUS_CTRL | SDCHG_POLICY_PM_QOS_DEVICE_CTRL |
 #endif
 	0,
 	/*************************************/
@@ -144,9 +143,9 @@ static unsigned int policy_state[SDCHG_STATE_MAX] = {
 #endif
 };
 
-#define SDCHG_MIN_FREQ	900000
-#define SDCHG_MIF_THROUGHPUT 825000		// ex. 1264000(max)
-#define SDCHG_INT_THROUGHPUT 400000		// ex. 543000(max?)
+#define SDCHG_MIN_FREQ	1000000
+#define SDCHG_MIF_THROUGHPUT 1026000
+#define SDCHG_INT_THROUGHPUT 400000
 
 static void sdchg_policy_set(struct sdchg_info_nochip_t *info)
 {
@@ -247,17 +246,42 @@ static void sdchg_exynos7420_ap_use_monitor(void *arg,
 
 	if (skip_monitor) {
 #ifdef SDCHG_CHECK_TYPE_SOC
-		value.intval = SEC_BATTERY_CURRENT_MA;
-		psy_do_property(battery->pdata->fuelgauge_name, get,
-			POWER_SUPPLY_PROP_CURRENT_NOW, value);
-		battcond = value.intval;
+#if 0
+		/**************************************/
+		/* Example Code ( If you need, 
+		     Define this code in accordance 
+		     with the specification of each BB platform */
+		{
+			union power_supply_propval value;
+
+			/* To get SOC value (NOT raw SOC), need to reset value */
+			value.intval = 0;
+			psy_do_property(battery->pdata->fuelgauge_name, get,
+					POWER_SUPPLY_PROP_CAPACITY, value);
+
+			battcond = value.intval;
+		}
+		/**************************************/
+#else
+#error "SDCHG : Implement SOC Read Code!!"
+#endif
 #else
 		battcond = battery->voltage_now;
 #endif
 	}
 	else {
 #ifdef SDCHG_CHECK_TYPE_SOC
-		battcond = battery->current_now;
+#if 0
+		/**************************************/
+		/* Example Code ( If you need, 
+			 Define this code in accordance 
+			 with the specification of each BB platform */
+
+		battcond = battery->capacity;
+		/**************************************/
+#else
+#error "SDCHG : Implement SOC Read Code!!"
+#endif
 #else
 		battcond = battery->voltage_avg;
 #endif
@@ -289,7 +313,7 @@ static void sdchg_exynos7420_ap_use_monitor(void *arg,
 		}
 	}
 	/******************************************/
-	else if (temperature <= (int)sdchg_info->temp_end 
+	else if (temperature <= (int)sdchg_info->temp_end
 			|| battcond <= SDCHG_BATTCOND_END)
 	{
 		info->need_state = SDCHG_STATE_NONE;
@@ -489,7 +513,7 @@ static void sdchg_exynos7420_ap_use_monitor(void *arg,
 	if (info->set_state == SDCHG_STATE_NONE)
 	{
 		if (info->wake_lock_set) {
-			wake_lock_timeout(&info->end_wake_lock, HZ * 10);
+			wake_lock_timeout(&info->end_wake_lock, HZ * 5);
 			wake_unlock(&info->wake_lock);
 			info->wake_lock_set = false;
 		}
@@ -549,10 +573,9 @@ static void init_info_data(struct sdchg_info_nochip_t *info)
 
 	wake_lock_init(&info->wake_lock, WAKE_LOCK_SUSPEND,
 		   "sdchg");
-	info->wake_lock_set =false;
-
 	wake_lock_init(&info->end_wake_lock, WAKE_LOCK_SUSPEND,
 		   "sdchg_end");
+	info->wake_lock_set =false;
 
 	info->state_machine_run = false;
 
@@ -745,14 +768,13 @@ static int sdchg_exynos7420_ap_use_remove(void)
 
 		sdchg_policy_set(info);
 		info->state_machine_run = false;
-	
+
 		/**************************************/
 		if (info->wake_lock_set) {
-			/* if you active this code, use additional lock for wake_lock_set */
 			wake_unlock(&info->wake_lock);
 			info->wake_lock_set = false;
 		}
-		/**************************************/		
+		/**************************************/
 	}
 
 	/* need to run after sdchg_policy_set */

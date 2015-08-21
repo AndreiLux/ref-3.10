@@ -266,6 +266,7 @@ struct ecryptfs_crypt_stat {
 #ifdef CONFIG_SDP
 #define ECRYPTFS_DEK_SDP_ENABLED      0x00100000
 #define ECRYPTFS_DEK_IS_SENSITIVE     0x00200000
+#define ECRYPTFS_DEK_MULTI_ENGINE     0x00400000 // eCryptfs header contains engine id.
 #define ECRYPTFS_SDP_IS_CHAMBER_DIR   0x02000000
 #endif
 
@@ -290,7 +291,7 @@ struct ecryptfs_crypt_stat {
 	struct mutex cs_hash_tfm_mutex;
 	struct mutex cs_mutex;
 #ifdef CONFIG_SDP
-	int userid;
+	int engine_id;
 	dek_t sdp_dek;
 #endif
 };
@@ -303,9 +304,6 @@ struct ecryptfs_inode_info {
 	atomic_t lower_file_count;
 	struct file *lower_file;
 	struct ecryptfs_crypt_stat crypt_stat;
-#ifdef CONFIG_SDP
-	int userid;
-#endif
 };
 
 /* dentry private data. Each dentry must keep track of a lower
@@ -833,7 +831,7 @@ int ecryptfs_derive_iv(char *iv, struct ecryptfs_crypt_stat *crypt_stat,
 		       loff_t offset);
 #if defined(CONFIG_MMC_DW_FMP_ECRYPT_FS) || defined(CONFIG_UFS_FMP_ECRYPT_FS)
 void ecryptfs_propagate_rapages(struct file *file, unsigned int crypt);
-void ecryptfs_propagate_fmpinfo(struct inode *inode, unsigned int flag);
+int ecryptfs_propagate_fmpinfo(struct inode *inode, unsigned int flag);
 #endif
 
 #ifdef CONFIG_WTL_ENCRYPTION_FILTER

@@ -180,6 +180,20 @@ int mc_fastcall_init(struct mc_context *context)
 void mc_fastcall_destroy(void) {};
 #endif
 
+#define TBASE_SMC_HISTORY 1
+#if TBASE_SMC_HISTORY
+struct smc_log_entry {
+	u64 cpu_clk;
+	u32 extra1;
+	u32 extra2;
+};
+
+static DEFINE_SPINLOCK(smc_log_lock);
+#define SMC_LOG_SIZE 256
+struct smc_log_entry smc_history[SMC_LOG_SIZE];
+static uint32_t smc_log_idx;
+#endif
+
 #ifdef MC_FASTCALL_WORKER_THREAD
 static void fastcall_work_func(struct kthread_work *work)
 #else
@@ -218,6 +232,21 @@ static void fastcall_work_func(struct work_struct *work)
 #endif
 	}
 #endif
+
+#if TBASE_SMC_HISTORY
+	do {
+		unsigned long flags;
+		spin_lock_irqsave(&smc_log_lock, flags);
+		if (smc_log_idx >= SMC_LOG_SIZE)
+			smc_log_idx = 0;
+		smc_history[smc_log_idx].cpu_clk = local_clock();
+		smc_history[smc_log_idx].extra1 = fc_generic->as_in.cmd;
+		smc_history[smc_log_idx].extra2 = fc_generic->as_in.param[0];
+		smc_log_idx++;
+		spin_unlock_irqrestore(&smc_log_lock, flags);
+	} while (0);
+#endif
+
 	smc(fc_work->data);
 #ifdef TBASE_CORE_SWITCHER
 	if (irq_check_cnt) {
@@ -229,7 +258,7 @@ static void fastcall_work_func(struct work_struct *work)
 		if (fc_generic->as_out.ret == 0) {
 			cpumask_t cpu;
 			active_cpu = new_cpu;
-			MCDRV_DBG(mcd, "CoreSwap ok %d -> %d\n",
+			dev_info(mcd, "CoreSwap ok %d -> %d\n",
 				  raw_smp_processor_id(), active_cpu);
 			cpumask_clear(&cpu);
 			cpumask_set_cpu(active_cpu, &cpu);
@@ -237,7 +266,7 @@ static void fastcall_work_func(struct work_struct *work)
 			set_cpus_allowed(fastcall_thread, cpu);
 #endif
 		} else {
-			MCDRV_DBG(mcd, "CoreSwap failed %d -> %d\n",
+			dev_info(mcd, "CoreSwap failed %d -> %d\n",
 				  raw_smp_processor_id(),
 				  fc_generic->as_in.param[0]);
 		}
@@ -269,6 +298,7 @@ static void mc_dump_halt_status(uint32_t *flag, uint32_t *halt_code,
 		uint32_t *fault_thread, uint8_t *uuid)
 {
 	uint32_t ext_info;
+	uint32_t ext_info1;
 	uint8_t ext_info_uuid[UUID_LENGTH] = {0, };
 
 	dev_info(mcd, "Dump <t-base internal status:\n");
@@ -331,6 +361,34 @@ static void mc_dump_halt_status(uint32_t *flag, uint32_t *halt_code,
 
 	mc_info_ext(MC_EXT_INFO_ID_MC_EXC_IPCDATA, &ext_info);
 	dev_info(mcd, "ExcH data = 0x%08x\n", ext_info);
+	
+      mc_info_ext(27, &ext_info);
+      dev_info(mcd, "LastSyscall = 0x%08x\n", ext_info);
+      mc_info_ext(28, &ext_info);
+      dev_info(mcd, "LastSyscall.threadId = 0x%08x\n", ext_info);
+      mc_info_ext(29, &ext_info);
+      dev_info(mcd, "Lastipc.param0 = 0x%08x\n", ext_info);
+      mc_info_ext(30, &ext_info);
+      dev_info(mcd, "Lastipc.param1 = 0x%08x\n", ext_info);
+      mc_info_ext(31, &ext_info);
+      dev_info(mcd, "Lastipc.param2 = 0x%08x\n", ext_info);
+      mc_info_ext(32, &ext_info);
+      dev_info(mcd, "Lastipc.param3 = 0x%08x\n", ext_info);
+      mc_info_ext(33, &ext_info);
+      dev_info(mcd, "Lastipc.param4 = 0x%08x\n", ext_info);
+      mc_info_ext(34, &ext_info);
+      dev_info(mcd, "Lastipc-1.param0 = 0x%08x\n", ext_info);
+      mc_info_ext(35, &ext_info);
+      dev_info(mcd, "Lastipc-1.param1 = 0x%08x\n", ext_info);
+      mc_info_ext(36, &ext_info);
+      dev_info(mcd, "Lastipc-1.param2 = 0x%08x\n", ext_info);
+      mc_info_ext(37, &ext_info);
+     dev_info(mcd, "Lastipc-1.param3 = 0x%08x\n", ext_info);
+     mc_info_ext(38, &ext_info);
+     dev_info(mcd, "Lastipc-1.param4 = 0x%08x\n", ext_info);
+      mc_info_ext(39, &ext_info);
+     mc_info_ext(40, &ext_info1);
+      dev_info(mcd, "Last ctx switch = 0x%08x -> 0x%08x\n", ext_info, ext_info1);
 }
 #endif
 
@@ -418,7 +476,7 @@ int __mc_switch_core(uint32_t core_num)
 		  "<- cmd=0x%08x, core_id=0x%08x\n",
 		 fc_switch_core.as_in.cmd,
 		 fc_switch_core.as_in.core_id);
-	MCDRV_DBG(mcd,
+	dev_info(mcd,
 		  "<- core_num=0x%08x, active_cpu=0x%08x\n",
 		 core_num, active_cpu);
 	mc_fastcall(&(fc_switch_core.as_generic));

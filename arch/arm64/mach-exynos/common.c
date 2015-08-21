@@ -790,6 +790,7 @@ void exynos_restart(char mode, const char *cmd)
 
 	restart_inform = INFORM_NONE;
 
+	pr_emerg("%s cmd:(%s)\n", __func__, cmd ? cmd : "(null)");
 	if (cmd) {
 		if (!strcmp((char *)cmd, "recovery"))
 			restart_inform = INFORM_RECOVERY;

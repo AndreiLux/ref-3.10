@@ -289,7 +289,7 @@
 			ssp,prox-hi_thresh = <130>;
 			ssp,prox-low_thresh = <90>;
 			ssp-ap-rev = <1>;
-			ssp-mag-array = <9893 237 109 557 9965 50 225 (-162) 10664>; /* Only for YAS532 */
+			ssp-mag-array = <9533 393 34 521 9673 (-6) 198 (-118) 10720>; /* Only for YAS532 */
 			#ssp-hw-rev = <3>;
 			ssp-glass-type = <0>;
 
@@ -345,12 +345,27 @@
 	audio_pdata {
 		compatible = "samsung,audio-pdata";
 
-		aif_format = <0x00 0x00 0x00>;
-		/* I2S: 0x00, TDM: 0x10 */
-		/* I2S: 0x0, Right-J: 0x1 Left-J: 0x2, DSP A: 0x3, DSP B: 0x4, */
+		imp_table = <
+			/* min      max gain */
+			   0         13    0
+			  14         42    3
+			  43        100    5
+			 101        200    7
+			 201        450    9
+			 451       1000   10
+			1001 0x7fffffff    0
+		>;
 
 		seamless_voicewakeup;
 		status = "okay";
+	};
+
+	antenna_switch {
+		status = "okay";
+		compatible = "antenna_switch";
+		pinctrl-names = "default";
+		pinctrl-0 = <&antenna_switch_en>;
+		antenna_switch,gpio_antenna_switch = <&gpr3 6 0>;
 	};
 
 	pinctrl@10580000 {
@@ -429,6 +444,12 @@
 			samsung,pin-function = <0>;
 			samsung,pin-pud = <0>;
 			samsung,pin-drv = <0>;
+		};
+		antenna_switch_en: antenna-switch-en {
+			samsung,pins = "gpr3-6";
+			samsung,pin-function = <1>;
+			samsung,pin-pud = <0>;
+			samsung,pin-val = <0>;
 		};
 	};
 
@@ -705,7 +726,7 @@
 				_ldo3_reg: s2mpb02-ldo3 {
 					regulator-name = "VDDD_1.2V_CAM";
 					regulator-min-microvolt = <1000000>;
-					regulator-max-microvolt = <1050000>;
+					regulator-max-microvolt = <1200000>;
 				};
 
 				_ldo4_reg: s2mpb02-ldo4 {
@@ -753,7 +774,7 @@
 				_ldo11_reg: s2mpb02-ldo11 {
 					regulator-name = "VDDA_2.9V_CAM";
 					regulator-min-microvolt = <2800000>;
-					regulator-max-microvolt = <2900000>;
+					regulator-max-microvolt = <2950000>;
 				};
 
 				_ldo12_reg: s2mpb02-ldo12 {
@@ -795,7 +816,6 @@
 
 			torch {
 				status = "okay";
-				torch_step_adjust;
 				leds1 {
 					ledname = "leds-sec1";
 					/* S2MPB02_FLASH_LED_1 */
@@ -842,6 +862,7 @@
 			interrupt-parent = <&gpa0>;
 			linux,code = <252>;
 			gpios = <&gpa0 4 0xf>;
+			gpio-key,wakeup = <1>;
 		};
 	};
 
@@ -851,8 +872,8 @@
 
 	hsi2c@14E10000 {
 		touchscreen@20 {
-			stm,firmware_name = "tsp_stm/stm_z1.fw";
-			stm,project_name = "ZEROF", "G920";
+			stm,firmware_name = "tsp_stm/stm_za.fw";
+			stm,project_name = "ZEROA", "G890";
 		};
 	};
 
@@ -889,5 +910,9 @@
 		mic = <1>;
 		mic_ver = <2>;
 		type_of_ddi = <0>;
+	};
+
+	dwc3_phy {
+		dwc3,usb3phy-tune = <0x2795E764>;
 	};
 };

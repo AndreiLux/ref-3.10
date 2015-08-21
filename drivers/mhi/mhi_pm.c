@@ -27,6 +27,7 @@ extern void exynos_pcie_disable_l1ss(int ch_num);
 static DEVICE_ATTR(MHI_M3, S_IWUSR, NULL, sysfs_init_M3);
 static DEVICE_ATTR(MHI_M0, S_IWUSR, NULL, sysfs_init_M0);
 static DEVICE_ATTR(MHI_M1, S_IWUSR, NULL, sysfs_init_M1);
+static DEVICE_ATTR(MHI_MOBILE_HOTSPOT,S_IRUSR|S_IWUSR, sysfs_mobile_hotspot_show, sysfs_mobile_hotspot);
 
 /* Read only sysfs attributes */
 static DEVICE_ATTR(MHI_STATE, S_IRUSR, sysfs_get_mhi_state, NULL);
@@ -35,6 +36,7 @@ static struct attribute *mhi_attributes[] = {
 	&dev_attr_MHI_M3.attr,
 	&dev_attr_MHI_M0.attr,
 	&dev_attr_MHI_M1.attr,
+	&dev_attr_MHI_MOBILE_HOTSPOT.attr,
 	&dev_attr_MHI_STATE.attr,
 	NULL,
 };
@@ -189,6 +191,41 @@ ssize_t sysfs_init_M1(struct device *dev, struct device_attribute *attr,
 	panic("MHI PANIC");
 	return count;
 }
+
+ssize_t sysfs_mobile_hotspot_show(struct device *dev, struct device_attribute *attr,
+		char *buf)
+{
+	mhi_device_ctxt *mhi_dev_ctxt = mhi_devices.device_list[0].mhi_ctxt;
+	if(mhi_dev_ctxt->flags.hotspot_onoff == 1) {
+		return sprintf(buf,"enabled\n");
+	} else {
+		return sprintf(buf,"disabled\n");
+	}
+
+}
+ssize_t sysfs_mobile_hotspot(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	mhi_device_ctxt *mhi_dev_ctxt = mhi_devices.device_list[0].mhi_ctxt;
+	if(buf[0] == '1' || buf[0] == 1) {
+		mhi_log(MHI_MSG_INFO,"enable\n");
+		mhi_dev_ctxt->flags.hotspot_onoff = 1;
+		if(mhi_dev_ctxt->counters.tput < REDUCE_INTERVAL_TPUT) {
+			mhi_dev_ctxt->counters.mhi_xfer_db_interval = REDUCE_DB_INTERVAL;
+			mhi_log(MHI_MSG_INFO,"Reduce DB Interval %d \n",REDUCE_DB_INTERVAL);
+		}
+	} else if(buf[0] == '0' || buf[0] == 0 ) {
+		mhi_log(MHI_MSG_INFO,"disable\n");
+		mhi_dev_ctxt->flags.hotspot_onoff = 0;
+		mhi_dev_ctxt->counters.mhi_xfer_db_interval = INIT_DB_INTERVAL;
+		mhi_log(MHI_MSG_INFO,"Init DB Interval %d \n",INIT_DB_INTERVAL);
+	} else {
+		mhi_log(MHI_MSG_INFO,"error input %x\n",buf[0]);
+	}
+
+	return count;
+}
+
 MHI_STATUS mhi_turn_off_pcie_link(mhi_device_ctxt *mhi_dev_ctxt)
 {
 	int r;

@@ -23,8 +23,10 @@ struct s3c_dma_params {
 	unsigned ch;
 #endif
 	struct samsung_dma_ops *ops;
+	struct device *sec_dma_dev;	/* stream identifier */
 	char *ch_name;
 	bool esa_dma;
+	bool compr_dma;
 };
 
 int asoc_dma_platform_register(struct device *dev);

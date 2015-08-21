@@ -47,6 +47,7 @@
 #define FIMC_IS_OIS_SDCARD_PATH		"/data/media/0/"
 #define FIMC_IS_OIS_DEV_NAME		"exynos-fimc-is-ois"
 #define FIMC_OIS_FW_NAME_SEC		"ois_fw_sec.bin"
+#define FIMC_OIS_FW_NAME_SEC_2		"ois_fw_sec_2.bin"
 #define FIMC_OIS_FW_NAME_DOM		"ois_fw_dom.bin"
 #define OIS_BOOT_FW_SIZE	(1024 * 4)
 #define OIS_PROG_FW_SIZE	(1024 * 24)
@@ -60,6 +61,8 @@
 #define OIS_BIN_LEN		28672
 #define OIS_BIN_HEADER		28658
 #define OIS_FW_HEADER_SIZE		6
+#define OIS_GYRO_SCALE_FACTOR_IDG	175
+#define OIS_GYRO_SCALE_FACTOR_K2G	131
 static u8 bootCode[OIS_BOOT_FW_SIZE] = {0,};
 static u8 progCode[OIS_PROG_FW_SIZE] = {0,};
 
@@ -76,7 +79,7 @@ static struct task_struct *ois_ts;
 static int fimc_is_ois_i2c_config(struct i2c_client *client, bool onoff)
 {
 	struct pinctrl *pinctrl_i2c = NULL;
-	struct device *i2c_dev = client->dev.parent->parent;
+	struct device *i2c_dev = NULL;
 	struct fimc_is_device_ois *ois_device;
 	struct fimc_is_ois_gpio *gpio;
 
@@ -85,6 +88,7 @@ static int fimc_is_ois_i2c_config(struct i2c_client *client, bool onoff)
 		return -ENODEV;
 	}
 
+	i2c_dev = client->dev.parent->parent;
 	ois_device = i2c_get_clientdata(client);
 	gpio = &ois_device->gpio;
 
@@ -521,6 +525,7 @@ void fimc_is_ois_offset_test(struct fimc_is_core *core, long *raw_data_x, long *
 	u8 val = 0, x = 0, y = 0;
 	int x_sum = 0, y_sum = 0, sum = 0;
 	int retries = 0, avg_count = 20;
+	int scale_factor = 0;
 	struct exynos_platform_fimc_is *core_pdata = NULL;
 
 	core_pdata = dev_get_platdata(fimc_is_dev);
@@ -530,6 +535,13 @@ void fimc_is_ois_offset_test(struct fimc_is_core *core, long *raw_data_x, long *
 	}
 
 	info("%s : E\n", __FUNCTION__);
+
+	if (ois_minfo.header_ver[0] == '6') {
+		scale_factor = OIS_GYRO_SCALE_FACTOR_IDG;
+	} else {
+		scale_factor = OIS_GYRO_SCALE_FACTOR_K2G;
+	}
+
 	if (core_pdata->use_ois_hsi2c) {
 	    fimc_is_ois_i2c_config(core->client1, true);
 	}
@@ -565,7 +577,7 @@ void fimc_is_ois_offset_test(struct fimc_is_core *core, long *raw_data_x, long *
 		sum += x_sum;
 	}
 	sum = sum * 10 / avg_count;
-	*raw_data_x = sum * 1000 / 175 / 10;
+	*raw_data_x = sum * 1000 / scale_factor / 10;
 
 	retries = avg_count;
 	for (i = 0; i < retries; retries--) {
@@ -579,7 +591,7 @@ void fimc_is_ois_offset_test(struct fimc_is_core *core, long *raw_data_x, long *
 		sum += y_sum;
 	}
 	sum = sum * 10 / avg_count;
-	*raw_data_y = sum * 1000 / 175 / 10;
+	*raw_data_y = sum * 1000 / scale_factor / 10;
 
 	if (core_pdata->use_ois_hsi2c) {
 	    fimc_is_ois_i2c_config(core->client1, false);
@@ -596,6 +608,7 @@ void fimc_is_ois_get_offset_data(struct fimc_is_core *core, long *raw_data_x, lo
 	u8 val = 0, x = 0, y = 0;
 	int x_sum = 0, y_sum = 0, sum = 0;
 	int retries = 0, avg_count = 20;
+	int scale_factor = 0;
 	struct exynos_platform_fimc_is *core_pdata = NULL;
 
 	core_pdata = dev_get_platdata(fimc_is_dev);
@@ -605,6 +618,13 @@ void fimc_is_ois_get_offset_data(struct fimc_is_core *core, long *raw_data_x, lo
 	}
 
 	info("%s : E\n", __FUNCTION__);
+
+	if (ois_minfo.header_ver[0] == '6') {
+		scale_factor = OIS_GYRO_SCALE_FACTOR_IDG;
+	} else {
+		scale_factor = OIS_GYRO_SCALE_FACTOR_K2G;
+	}
+
 	if (core_pdata->use_ois_hsi2c) {
 	    fimc_is_ois_i2c_config(core->client1, true);
 	}
@@ -621,7 +641,7 @@ void fimc_is_ois_get_offset_data(struct fimc_is_core *core, long *raw_data_x, lo
 		sum += x_sum;
 	}
 	sum = sum * 10 / avg_count;
-	*raw_data_x = sum * 1000 / 175 / 10;
+	*raw_data_x = sum * 1000 / scale_factor / 10;
 
 	sum = 0;
 	retries = avg_count;
@@ -636,7 +656,7 @@ void fimc_is_ois_get_offset_data(struct fimc_is_core *core, long *raw_data_x, lo
 		sum += y_sum;
 	}
 	sum = sum * 10 / avg_count;
-	*raw_data_y = sum * 1000 / 175 / 10;
+	*raw_data_y = sum * 1000 / scale_factor / 10;
 
 	if (core_pdata->use_ois_hsi2c) {
 	    fimc_is_ois_i2c_config(core->client1, false);
@@ -1327,10 +1347,18 @@ bool fimc_is_ois_check_fw(struct fimc_is_core *core)
 	}
 	fimc_is_ois_read_userdata(core);
 
-	if (ois_minfo.header_ver[2] == 'C' || ois_minfo.header_ver[2] == 'E') {
-		ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_DOM, &buf);
-	} else if (ois_minfo.header_ver[2] == 'D' || ois_minfo.header_ver[2] == 'F') {
-		ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_SEC, &buf);
+	if (ois_minfo.header_ver[0] == '6') {
+		if (ois_minfo.header_ver[2] == 'C' || ois_minfo.header_ver[2] == 'E'
+			|| ois_minfo.header_ver[2] == 'G' || ois_minfo.header_ver[2] == 'I') {
+			ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_DOM, &buf);
+		} else if (ois_minfo.header_ver[2] == 'D' || ois_minfo.header_ver[2] == 'F'
+			|| ois_minfo.header_ver[2] == 'H' || ois_minfo.header_ver[2] == 'J') {
+			ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_SEC, &buf);
+		}
+	} else if (ois_minfo.header_ver[0] == '8') {
+		if (ois_minfo.header_ver[2] == 'H' || ois_minfo.header_ver[2] == 'J') {
+			ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_SEC_2, &buf);
+		}
 	} else {
 		info("Module FW version does not matched with phone FW version.\n");
 		strcpy(ois_pinfo.header_ver, "NULL");
@@ -1476,10 +1504,18 @@ void fimc_is_ois_fw_update(struct fimc_is_core *core)
 	}
 	fimc_is_ois_read_userdata(core);
 
-	if (ois_minfo.header_ver[2] == 'C' || ois_minfo.header_ver[2] == 'E') {
-		ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_DOM, &buf);
-	} else if (ois_minfo.header_ver[2] == 'D' || ois_minfo.header_ver[2] == 'F') {
-		ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_SEC, &buf);
+	if (ois_minfo.header_ver[0] == '6') {
+		if (ois_minfo.header_ver[2] == 'C' || ois_minfo.header_ver[2] == 'E'
+			|| ois_minfo.header_ver[2] == 'G' || ois_minfo.header_ver[2] == 'I') {
+			ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_DOM, &buf);
+		} else if (ois_minfo.header_ver[2] == 'D' || ois_minfo.header_ver[2] == 'F'
+			|| ois_minfo.header_ver[2] == 'H' || ois_minfo.header_ver[2] == 'J') {
+			ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_SEC, &buf);
+		}
+	} else if (ois_minfo.header_ver[0] == '8') {
+		if (ois_minfo.header_ver[2] == 'H' || ois_minfo.header_ver[2] == 'J') {
+			ret = fimc_is_ois_open_fw(core, FIMC_OIS_FW_NAME_SEC_2, &buf);
+		}
 	} else {
 		info("Module FW version does not matched with phone FW version.\n");
 		strcpy(ois_pinfo.header_ver, "NULL");
@@ -1490,7 +1526,8 @@ void fimc_is_ois_fw_update(struct fimc_is_core *core)
 		goto p_err;
 	}
 
-	if (ois_minfo.header_ver[2] < 'E') {
+	if (ois_minfo.header_ver[2] != CAMERA_OIS_DOM_UPDATE_VERSION
+		&& ois_minfo.header_ver[2] != CAMERA_OIS_SEC_UPDATE_VERSION) {
 		info("Do not update ois Firmware. FW version is low.\n");
 		goto p_err;
 	}

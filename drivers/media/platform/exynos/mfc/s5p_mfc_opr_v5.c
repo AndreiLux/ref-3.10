@@ -881,10 +881,10 @@ static int s5p_mfc_set_enc_params(struct s5p_mfc_ctx *ctx)
 
 	/* multi-slice control */
 	/* multi-slice MB number or bit size */
-	if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_MB) {
+	if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_MB) {
 		WRITEL(((0x0 << 1) | 0x1), S5P_FIMV_ENC_MSLICE_CTRL);
 		WRITEL(p->slice_mb, S5P_FIMV_ENC_MSLICE_MB);
-	} else if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SICE_MODE_MAX_BYTES) {
+	} else if (p->slice_mode == V4L2_MPEG_VIDEO_MULTI_SLICE_MODE_MAX_BYTES) {
 		WRITEL(((0x1 << 1) | 0x1), S5P_FIMV_ENC_MSLICE_CTRL);
 		WRITEL(p->slice_bit, S5P_FIMV_ENC_MSLICE_BIT);
 	} else {

@@ -46,7 +46,7 @@ static struct remove_af_noise af_sensor_interface = {
 
 static int fimc_is_af_i2c_config(struct i2c_client *client, bool onoff)
 {
-	struct device *i2c_dev = client->dev.parent->parent;
+	struct device *i2c_dev = NULL;
 	struct pinctrl *pinctrl_i2c = NULL;
 	struct fimc_is_device_af *device;
 	struct fimc_is_af_gpio *gpio;
@@ -56,6 +56,7 @@ static int fimc_is_af_i2c_config(struct i2c_client *client, bool onoff)
 		return -ENODEV;
 	}
 
+	i2c_dev = client->dev.parent->parent;
 	device = i2c_get_clientdata(client);
 	gpio = &device->gpio;
 

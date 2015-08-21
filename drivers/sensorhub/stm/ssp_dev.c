@@ -66,6 +66,13 @@ static void initialize_variable(struct ssp_data *data)
 {
 	int iSensorIndex;
 
+	int data_len[SENSOR_MAX] = SENSOR_DATA_LEN;
+	int report_mode[SENSOR_MAX] = SENSOR_REPORT_MODE;
+	memcpy(&data->data_len, data_len, sizeof(data->data_len));
+	memcpy(&data->report_mode, report_mode, sizeof(data->report_mode));
+
+	data->cameraGyroSyncMode = false;
+
 	for (iSensorIndex = 0; iSensorIndex < SENSOR_MAX; iSensorIndex++) {
 		data->adDelayBuf[iSensorIndex] = DEFUALT_POLLING_DELAY;
 		data->aiCheckStatus[iSensorIndex] = INITIALIZATION_STATE;
@@ -80,8 +87,17 @@ static void initialize_variable(struct ssp_data *data)
 	data->buf[GYROSCOPE_SENSOR].gyro_dps = GYROSCOPE_DPS2000;
 	data->uIr_Current = DEFUALT_IR_CURRENT;
 
+#if 1
+    if(sec_debug_get_debug_level() > 0)
+    {
+        data->bMcuDumpMode = true;
+        ssp_info("Mcu Dump Enabled");
+    }
+
+#else
 #if CONFIG_SEC_DEBUG
 	data->bMcuDumpMode = sec_debug_is_enabled();
+#endif
 #endif
 	INIT_LIST_HEAD(&data->pending_list);
 
@@ -496,7 +512,10 @@ static void ssp_shutdown(struct spi_device *spi_dev)
 	if (SUCCESS != ssp_send_cmd(data, MSG2SSP_AP_STATUS_SHUTDOWN, 0))
 		ssp_errf("MSG2SSP_AP_STATUS_SHUTDOWN failed");
 
-	ssp_enable(data, false);
+	data->bSspShutdown = true;
+	disable_irq_nosync(data->iIrq);
+	disable_irq_wake(data->iIrq);
+
 	clean_pending_list(data);
 
 	free_irq(data->iIrq, data);
