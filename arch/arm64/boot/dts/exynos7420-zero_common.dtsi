@@ -1388,89 +1388,89 @@
 				default_mif = <DVFS_MIF_L1>;
 				default_i2c = <0>;
 
-				front_preview_int = <DVFS_INT_L0>;
-				front_preview_cam = <DVFS_CAM_L0>;
-				front_preview_mif = <DVFS_MIF_L1>;
+				front_preview_int = <DVFS_INT_L3>;
+				front_preview_cam = <DVFS_CAM_L4>;
+				front_preview_mif = <DVFS_MIF_L4>;
 				front_preview_i2c = <0>;
 
-				front_capture_int = <DVFS_INT_L0>;
-				front_capture_cam = <DVFS_CAM_L0>;
-				front_capture_mif = <DVFS_MIF_L1>;
+				front_capture_int = <DVFS_INT_L3>;
+				front_capture_cam = <DVFS_CAM_L4>;
+				front_capture_mif = <DVFS_MIF_L4>;
 				front_capture_i2c = <0>;
 
-				front_video_int = <DVFS_INT_L0>;
-				front_video_cam = <DVFS_CAM_L0>;
-				front_video_mif = <DVFS_MIF_L1>;
+				front_video_int = <DVFS_INT_L3>;
+				front_video_cam = <DVFS_CAM_L4>;
+				front_video_mif = <DVFS_MIF_L4>;
 				front_video_i2c = <0>;
 
-				front_video_whd_int = <DVFS_INT_L0>;
-				front_video_whd_cam = <DVFS_CAM_L0>;
-				front_video_whd_mif = <DVFS_MIF_L1>;
+				front_video_whd_int = <DVFS_INT_L3>;
+				front_video_whd_cam = <DVFS_CAM_L4>;
+				front_video_whd_mif = <DVFS_MIF_L4>;
 				front_video_whd_i2c = <0>;
 
-				front_video_capture_int = <DVFS_INT_L0>;
-				front_video_capture_cam = <DVFS_CAM_L0>;
-				front_video_capture_mif = <DVFS_MIF_L1>;
+				front_video_capture_int = <DVFS_INT_L3>;
+				front_video_capture_cam = <DVFS_CAM_L4>;
+				front_video_capture_mif = <DVFS_MIF_L4>;
 				front_video_capture_i2c = <0>;
 
-				front_video_whd_capture_int = <DVFS_INT_L0>;
-				front_video_whd_capture_cam = <DVFS_CAM_L0>;
-				front_video_whd_capture_mif = <DVFS_MIF_L1>;
+				front_video_whd_capture_int = <DVFS_INT_L3>;
+				front_video_whd_capture_cam = <DVFS_CAM_L4>;
+				front_video_whd_capture_mif = <DVFS_MIF_L4>;
 				front_video_whd_capture_i2c = <0>;
 
-				front_vt1_int = <DVFS_INT_L0>;
-				front_vt1_cam = <DVFS_CAM_L0>;
-				front_vt1_mif = <DVFS_MIF_L1>;
+				front_vt1_int = <DVFS_INT_L6>;
+				front_vt1_cam = <DVFS_CAM_L4>;
+				front_vt1_mif = <DVFS_MIF_L4>;
 				front_vt1_i2c = <0>;
 
-				front_vt2_int = <DVFS_INT_L0>;
-				front_vt2_cam = <DVFS_CAM_L0>;
-				front_vt2_mif = <DVFS_MIF_L1>;
+				front_vt2_int = <DVFS_INT_L6>;
+				front_vt2_cam = <DVFS_CAM_L4>;
+				front_vt2_mif = <DVFS_MIF_L4>;
 				front_vt2_i2c = <0>;
 
-				front_companion_preview_int = <DVFS_INT_L0>;
-				front_companion_preview_cam = <DVFS_CAM_L0>;
-				front_companion_preview_mif = <DVFS_MIF_L1>;
+				front_companion_preview_int = <DVFS_INT_L3>;
+				front_companion_preview_cam = <DVFS_CAM_L4>;
+				front_companion_preview_mif = <DVFS_MIF_L4>;
 				front_companion_preview_i2c = <0>;
 
-				front_companion_capture_int = <DVFS_INT_L0>;
-				front_companion_capture_cam = <DVFS_CAM_L0>;
-				front_companion_capture_mif = <DVFS_MIF_L1>;
+				front_companion_capture_int = <DVFS_INT_L3>;
+				front_companion_capture_cam = <DVFS_CAM_L4>;
+				front_companion_capture_mif = <DVFS_MIF_L4>;
 				front_companion_capture_i2c = <0>;
 
-				front_companion_video_int = <DVFS_INT_L0>;
-				front_companion_video_cam = <DVFS_CAM_L0>;
-				front_companion_video_mif = <DVFS_MIF_L1>;
+				front_companion_video_int = <DVFS_INT_L3>;
+				front_companion_video_cam = <DVFS_CAM_L4>;
+				front_companion_video_mif = <DVFS_MIF_L4>;
 				front_companion_video_i2c = <0>;
 
-				front_companion_video_whd_int = <DVFS_INT_L0>;
-				front_companion_video_whd_cam = <DVFS_CAM_L0>;
-				front_companion_video_whd_mif = <DVFS_MIF_L1>;
+				front_companion_video_whd_int = <DVFS_INT_L3>;
+				front_companion_video_whd_cam = <DVFS_CAM_L4>;
+				front_companion_video_whd_mif = <DVFS_MIF_L4>;
 				front_companion_video_whd_i2c = <0>;
 
-				front_companion_video_capture_int = <DVFS_INT_L0>;
-				front_companion_video_capture_cam = <DVFS_CAM_L0>;
-				front_companion_video_capture_mif = <DVFS_MIF_L1>;
+				front_companion_video_capture_int = <DVFS_INT_L3>;
+				front_companion_video_capture_cam = <DVFS_CAM_L4>;
+				front_companion_video_capture_mif = <DVFS_MIF_L4>;
 				front_companion_video_capture_i2c = <0>;
 
-				front_companion_video_whd_capture_int = <DVFS_INT_L0>;
-				front_companion_video_whd_capture_cam = <DVFS_CAM_L0>;
-				front_companion_video_whd_capture_mif = <DVFS_MIF_L1>;
+				front_companion_video_whd_capture_int = <DVFS_INT_L3>;
+				front_companion_video_whd_capture_cam = <DVFS_CAM_L4>;
+				front_companion_video_whd_capture_mif = <DVFS_MIF_L4>;
 				front_companion_video_whd_capture_i2c = <0>;
 
-				rear_preview_fhd_int = <DVFS_INT_L0>;
+				rear_preview_fhd_int = <DVFS_INT_L1>;
 				rear_preview_fhd_cam = <DVFS_CAM_L0>;
-				rear_preview_fhd_mif = <DVFS_MIF_L1>;
+				rear_preview_fhd_mif = <DVFS_MIF_L4>;
 				rear_preview_fhd_i2c = <0>;
 
-				rear_preview_whd_int = <DVFS_INT_L0>;
+				rear_preview_whd_int = <DVFS_INT_L1>;
 				rear_preview_whd_cam = <DVFS_CAM_L0>;
-				rear_preview_whd_mif = <DVFS_MIF_L1>;
+				rear_preview_whd_mif = <DVFS_MIF_L4>;
 				rear_preview_whd_i2c = <0>;
 
 				rear_preview_uhd_int = <DVFS_INT_L0>;
 				rear_preview_uhd_cam = <DVFS_CAM_L0>;
-				rear_preview_uhd_mif = <DVFS_MIF_L1>;
+				rear_preview_uhd_mif = <DVFS_MIF_L4>;
 				rear_preview_uhd_i2c = <0>;
 
 				rear_capture_int = <DVFS_INT_L0>;
@@ -1478,19 +1478,19 @@
 				rear_capture_mif = <DVFS_MIF_L1>;
 				rear_capture_i2c = <0>;
 
-				rear_video_fhd_int = <DVFS_INT_L0>;
+				rear_video_fhd_int = <DVFS_INT_L2>;
 				rear_video_fhd_cam = <DVFS_CAM_L0>;
-				rear_video_fhd_mif = <DVFS_MIF_L1>;
+				rear_video_fhd_mif = <DVFS_MIF_L4>;
 				rear_video_fhd_i2c = <0>;
 
-				rear_video_whd_int = <DVFS_INT_L0>;
+				rear_video_whd_int = <DVFS_INT_L2>;
 				rear_video_whd_cam = <DVFS_CAM_L0>;
-				rear_video_whd_mif = <DVFS_MIF_L1>;
+				rear_video_whd_mif = <DVFS_MIF_L4>;
 				rear_video_whd_i2c = <0>;
 
 				rear_video_uhd_int = <DVFS_INT_L0>;
 				rear_video_uhd_cam = <DVFS_CAM_L0>;
-				rear_video_uhd_mif = <DVFS_MIF_L1>;
+				rear_video_uhd_mif = <DVFS_MIF_L4>;
 				rear_video_uhd_i2c = <0>;
 
 				rear_video_fhd_capture_int = <DVFS_INT_L0>;
@@ -1528,12 +1528,12 @@
 				dual_video_capture_mif = <DVFS_MIF_L1>;
 				dual_video_capture_i2c = <0>;
 
-				preview_high_speed_fps_int = <DVFS_INT_L0>;
+				preview_high_speed_fps_int = <DVFS_INT_L1>;
 				preview_high_speed_fps_cam = <DVFS_CAM_L0>;
 				preview_high_speed_fps_mif = <DVFS_MIF_L1>;
 				preview_high_speed_fps_i2c = <0>;
 
-				video_high_speed_60fps_int = <DVFS_INT_L2>;
+				video_high_speed_60fps_int = <DVFS_INT_L1>;
 				video_high_speed_60fps_cam = <DVFS_CAM_L3>;
 				video_high_speed_60fps_mif = <DVFS_MIF_L4>;
 				video_high_speed_60fps_i2c = <0>;
@@ -2026,9 +2026,10 @@
 		boot_device@3 {
 			net_boost,label="P2P";
 			net_boost,node="p2p-wlan0-0";
-			net_boost,table_size = <2>;
+			net_boost,table_size = <3>;
 			net_boost,table= <
 				30 1200000 0 1200000 0 0 200000 0 0 0
+				50 1500000 0 1200000 0 0 200000 0 0 0
 				90 1700000 0 1200000 0 543000 267000 0 0 1
 				>;
 		};
@@ -2056,9 +2057,10 @@
 		boot_device@6 {
 			net_boost,label="QIPC";
 			net_boost,node="rmnet_data0 rmnet_data1 rmnet_data2 rmnet_data3 rmnet_data4 rmnet_data5 rmnet_data6 rmnet_data7";
-			net_boost,table_size = <2>;
+			net_boost,table_size = <3>;
 			net_boost,table= <
 				10 0 0 1104000 0 825000 100000 0 1 0 /* 10Mbps little core 1.1G */
+				50 0 0 1104000 0 825000 100000 0 1 0 /* 50Mbps little core 1.1G */
 				100 0 0 1500000 0 825000 100000 0 1 0 /* 100Mbps little core 1.5G */
 				>;
 		};
@@ -2118,7 +2120,7 @@
 			/* for level	:	1_Head, 2_Head, 2_Tail */
 			input_booster,cpu_freqs = <1200000 1200000 0>;
 			input_booster,hmp_boost = <1 1 0>;
-			input_booster,kfc_freqs = <800000 800000 1000000>;
+			input_booster,kfc_freqs = <800000 800000 1296000>;
 			input_booster,mif_freqs = <0 0 0>;
 			input_booster,int_freqs = <0 0 0>;
 
@@ -2127,6 +2129,120 @@
 			input_booster,tail_times = <500 500 0>;
 			input_booster,phase_times = <0 0 0>;
 		};
+		booster_key@4 { // Input Booster +
+			input_booster,label = "MULTITOUCH";
+			input_booster,type = <3>;	/* BOOSTER_DEVICE_MULTITOUCH */
+
+			input_booster,levels = <1 2>;
+
+			/* Frequency table */
+			/* for level	:	1_Head 2_Tail*/
+			input_booster,cpu_freqs = <1300000 0>;
+			input_booster,hmp_boost = <1 1>;
+			input_booster,kfc_freqs = <1200000 800000>;
+			input_booster,mif_freqs = <0 0>;
+			input_booster,int_freqs = <0 0>;
+
+			/* Time table */
+			input_booster,head_times = <1000 1000>;
+			input_booster,tail_times = <500 500>;
+			input_booster,phase_times = <0 0>;
+		};
+		booster_key@5 {
+			input_booster,label = "KEYBOARD";
+			input_booster,type = <4>;	/* BOOSTER_DEVICE_KEYBOARD */
+
+			input_booster,levels = <1 2>;
+
+			/* Frequency table */
+			/* for level	:	1_Head 2_Tail*/
+			input_booster,cpu_freqs = <1200000 1200000>;
+			input_booster,hmp_boost = <1 1>;
+			input_booster,kfc_freqs = <800000 800000>;
+			input_booster,mif_freqs = <0 0>;
+			input_booster,int_freqs = <0 0>;
+
+			/* Time table */
+			input_booster,head_times = <130 130>;
+			input_booster,tail_times = <0 0>;
+			input_booster,phase_times = <0 0>;
+		};
+		booster_key@6 {
+			input_booster,label = "MOUSE";
+			input_booster,type = <5>;	/* BOOSTER_DEVICE_MOUSE */
+
+			input_booster,levels = <1 2>;
+
+			/* Frequency table */
+			/* for level	:	1_Head 2_Tail*/
+			input_booster,cpu_freqs = <1200000 0>;
+			input_booster,hmp_boost = <1 0>;
+			input_booster,kfc_freqs = <800000 1200000>;
+			input_booster,mif_freqs = <0 0>;
+			input_booster,int_freqs = <0 0>;
+
+			/* Time table */
+			input_booster,head_times = <130 130>;
+			input_booster,tail_times = <500 500>;
+			input_booster,phase_times = <0 0>;
+		};
+		booster_key@7 {
+			input_booster,label = "MOUSE WHEEL";
+			input_booster,type = <6>;	/* BOOSTER_DEVICE_MOUSE */
+
+			input_booster,levels = <1 2>;
+
+			/* Frequency table */
+			/* for level	:	1_Head 2_Tail*/
+			input_booster,cpu_freqs = <1200000 0>;
+			input_booster,hmp_boost = <1 0>;
+			input_booster,kfc_freqs = <800000 0>;
+			input_booster,mif_freqs = <0 0>;
+			input_booster,int_freqs = <0 0>;
+
+			/* Time table */
+			input_booster,head_times = <130 0>;
+			input_booster,tail_times = <0 0>;
+			input_booster,phase_times = <0 0>;
+		};
+		booster_key@8 {
+			input_booster,label = "PEN & HOVER";
+			input_booster,type = <7>;	/* BOOSTER_DEVICE_PEN & HOVER */
+
+			input_booster,levels = <1 2>;
+
+			/* Frequency table */
+			/* for level	:	1_Head 2_Tail*/
+			input_booster,cpu_freqs = <1200000 0>;
+			input_booster,hmp_boost = <1 0>;
+			input_booster,kfc_freqs = <800000 1296000>;
+			input_booster,mif_freqs = <0 0>;
+			input_booster,int_freqs = <0 0>;
+
+			/* Time table */
+			input_booster,head_times = <130 130>;
+			input_booster,tail_times = <500 500>;
+			input_booster,phase_times = <0 0>;
+		};
+		booster_key@9 {
+			input_booster,label = "GAMEPAD";
+			input_booster,type = <8>;	/* BOOSTER_DEVICE_GAMEPAD */
+
+			input_booster,levels = <1 2>;
+
+			/* Frequency table */
+			/* for level	:	1_Head 2_Tail*/
+			input_booster,cpu_freqs = <1300000 0>;
+			input_booster,hmp_boost = <1 0>;
+			input_booster,kfc_freqs = <1200000 1296000>;
+			input_booster,mif_freqs = <0 0>;
+			input_booster,int_freqs = <0 0>;
+
+			/* Time table */
+			input_booster,head_times = <130 130>;
+			input_booster,tail_times = <500 500>;
+			input_booster,phase_times = <0 0>;
+		}; // Input Booster -
 		/* If you need to add new key type, add it this position */
 	};
 
