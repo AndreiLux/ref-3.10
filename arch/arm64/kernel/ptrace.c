@@ -1118,7 +1118,7 @@ asmlinkage int syscall_trace_enter(struct pt_regs *regs)
 	if (secure_computing(regs->syscallno) == -1)
 		return RET_SKIP_SYSCALL_TRACE;
 
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
+	if (test_thread_flag_relaxed(TIF_SYSCALL_TRACE))
 		tracehook_report_syscall(regs, PTRACE_SYSCALL_ENTER);
 
 	if (IS_SKIP_SYSCALL(regs->syscallno)) {
@@ -1134,7 +1134,7 @@ asmlinkage int syscall_trace_enter(struct pt_regs *regs)
 		 * a value set to x0 here is not used in this case, we may
 		 * neglect the case.
 		 */
-		if (!test_thread_flag(TIF_SYSCALL_TRACE) ||
+		if (!test_thread_flag_relaxed(TIF_SYSCALL_TRACE) ||
 				(IS_SKIP_SYSCALL(saved_syscallno)))
 			regs->regs[0] = -ENOSYS;
 	}
@@ -1149,6 +1149,6 @@ asmlinkage void syscall_trace_exit(struct pt_regs *regs)
 {
 	audit_syscall_exit(regs);
 
-	if (test_thread_flag(TIF_SYSCALL_TRACE))
+	if (test_thread_flag_relaxed(TIF_SYSCALL_TRACE))
 		tracehook_report_syscall(regs, PTRACE_SYSCALL_EXIT);
 }
