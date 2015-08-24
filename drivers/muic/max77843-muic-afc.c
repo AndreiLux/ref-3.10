@@ -530,7 +530,7 @@ bool muic_check_is_hv_dev(struct max77843_muic_data *muic_data)
 	}
 
 	if (debug_en_checklist)
-		pr_info("%s:%s attached_dev(%d)[%c]\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s attached_dev(%d)[%c]\n", MUIC_HV_DEV_NAME,
 			__func__, muic_data->attached_dev, (ret ? 'T' : 'F'));
 
 	return ret;
@@ -546,20 +546,20 @@ muic_attached_dev_t hv_muic_check_id_err
 
 	switch(new_dev) {
 	case ATTACHED_DEV_TA_MUIC:
-		pr_info("%s:%s cannot change HV(%d)->TA(%d)!\n", MUIC_DEV_NAME,
+		pr_debug("%s:%s cannot change HV(%d)->TA(%d)!\n", MUIC_DEV_NAME,
 			__func__, muic_data->attached_dev, new_dev);
 		after_new_dev = muic_data->attached_dev;
 		break;
 	case ATTACHED_DEV_UNDEFINED_CHARGING_MUIC:
-		pr_info("%s:%s HV ID Err - Undefined\n", MUIC_DEV_NAME, __func__);
+		pr_debug("%s:%s HV ID Err - Undefined\n", MUIC_DEV_NAME, __func__);
 		after_new_dev = ATTACHED_DEV_HV_ID_ERR_UNDEFINED_MUIC;
 		break;
 	case ATTACHED_DEV_UNSUPPORTED_ID_VB_MUIC:
-		pr_info("%s:%s HV ID Err - Unsupported\n", MUIC_DEV_NAME, __func__);
+		pr_debug("%s:%s HV ID Err - Unsupported\n", MUIC_DEV_NAME, __func__);
 		after_new_dev = ATTACHED_DEV_HV_ID_ERR_UNSUPPORTED_MUIC;
 		break;
 	default:
-		pr_info("%s:%s HV ID Err - Supported\n", MUIC_DEV_NAME, __func__);
+		pr_debug("%s:%s HV ID Err - Supported\n", MUIC_DEV_NAME, __func__);
 		after_new_dev = ATTACHED_DEV_HV_ID_ERR_SUPPORTED_MUIC;
 		break;
 	}
@@ -587,7 +587,7 @@ static int max77843_hv_muic_write_reg(struct i2c_client *i2c, u8 reg, u8 value)
 	ret = max77843_write_reg(i2c, reg, value);
 	max77843_read_reg(i2c, reg, &after_val);
 
-	pr_info("%s:%s reg[0x%02x] = [0x%02x] + [0x%02x] -> [0x%02x]\n",
+	pr_debug("%s:%s reg[0x%02x] = [0x%02x] + [0x%02x] -> [0x%02x]\n",
 		MUIC_HV_DEV_NAME, __func__, reg, before_val, value, after_val);
 	return ret;
 }
@@ -611,7 +611,7 @@ int max77843_muic_hv_update_reg(struct i2c_client *i2c,
 			pr_err("%s:%s err write REG(0x%02x) [%d]\n",
 					MUIC_DEV_NAME, __func__, reg, ret);
 	} else if (debug_en) {
-		pr_info("%s:%s REG(0x%02x): already [0x%02x], don't write reg\n",
+		pr_debug("%s:%s REG(0x%02x): already [0x%02x], don't write reg\n",
 				MUIC_DEV_NAME, __func__, reg, before_val);
 		goto out;
 	}
@@ -622,7 +622,7 @@ int max77843_muic_hv_update_reg(struct i2c_client *i2c,
 			pr_err("%s:%s err read REG(0x%02x) [%d]\n",
 					MUIC_DEV_NAME, __func__, reg, ret);
 
-		pr_info("%s:%s REG(0x%02x): [0x%02x]+[0x%02x:0x%02x]=[0x%02x]\n",
+		pr_debug("%s:%s REG(0x%02x): [0x%02x]+[0x%02x:0x%02x]=[0x%02x]\n",
 				MUIC_DEV_NAME, __func__, reg, before_val,
 				val, mask, after_val);
 	}
@@ -647,17 +647,17 @@ void max77843_muic_set_afc_ready(struct max77843_muic_data *muic_data, bool valu
 	muic_data->is_afc_muic_ready = value;
 	after = muic_data->is_afc_muic_ready;
 
-	pr_info("%s:%s afc_muic_ready[%d->%d]\n", MUIC_DEV_NAME, __func__, before, after);
+	pr_debug("%s:%s afc_muic_ready[%d->%d]\n", MUIC_DEV_NAME, __func__, before, after);
 }
 
 static int max77843_hv_muic_state_maintain(struct max77843_muic_data *muic_data)
 {
 	int ret = 0;
 
-	pr_info("%s:%s \n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s \n", MUIC_HV_DEV_NAME, __func__);
 
 	if (muic_data->attached_dev == ATTACHED_DEV_NONE_MUIC) {
-		pr_info("%s:%s Detached(%d), need to check after\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s Detached(%d), need to check after\n", MUIC_HV_DEV_NAME,
 				__func__, muic_data->attached_dev);
 		return ret;
 	}
@@ -671,7 +671,7 @@ static void max77843_hv_muic_set_afc_after_prepare
 	struct i2c_client *i2c = muic_data->i2c;
 	u8 value;
 
-	pr_info("%s:%s HV charger is detected\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s HV charger is detected\n", MUIC_HV_DEV_NAME, __func__);
 
 	/* Set HVCONTROL2 = 0x02 */
 	max77843_hv_muic_write_reg(i2c, MAX77843_MUIC_REG_HVCONTROL2,
@@ -699,7 +699,7 @@ static void max77843_hv_muic_set_afc_charger_handshaking
 	u8 selecthvtxbyte=0;
 	int i, ret;
 
-	pr_info("%s:%s \n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s \n", MUIC_HV_DEV_NAME, __func__);
 
 	ret = max77843_hv_muic_write_reg(i2c, MAX77843_MUIC_REG_HVCONTROL2, 0x13);
 	if (IS_ERR_VALUE(ret))
@@ -730,7 +730,7 @@ static void max77843_hv_muic_afc_control_ping
 {
 	int ret;
 
-	pr_info("%s:%s control ping[%d, %c]\n", MUIC_HV_DEV_NAME, __func__,
+	pr_debug("%s:%s control ping[%d, %c]\n", MUIC_HV_DEV_NAME, __func__,
 				muic_data->afc_count, ping_continue ? 'T' : 'F');
 
 	if (ping_continue)
@@ -765,7 +765,7 @@ static void max77843_hv_muic_qc_charger(struct max77843_muic_data *muic_data)
 		}
 #endif
 
-	pr_info("%s:%s STATUS3:0x%02x qc_hv:%x\n", MUIC_HV_DEV_NAME, __func__,
+	pr_debug("%s:%s STATUS3:0x%02x qc_hv:%x\n", MUIC_HV_DEV_NAME, __func__,
 						status3, muic_data->qc_hv);
 
 	switch (muic_data->qc_hv) {
@@ -794,7 +794,7 @@ static void max77843_hv_muic_qc_charger(struct max77843_muic_data *muic_data)
 
 static void max77843_hv_muic_after_qc_prepare(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	muic_data->is_qc_vb_settle = false;
 
 	schedule_delayed_work(&muic_data->hv_muic_qc_vb_work, msecs_to_jiffies(300));
@@ -806,7 +806,7 @@ static void max77843_hv_muic_adcmode_switch
 	struct i2c_client	*i2c = muic_data->i2c;
 	int ret;
 
-	pr_info("%s:%s always_on:%c\n", MUIC_HV_DEV_NAME, __func__, (always_on ? 'T' : 'F'));
+	pr_debug("%s:%s always_on:%c\n", MUIC_HV_DEV_NAME, __func__, (always_on ? 'T' : 'F'));
 
 	if (always_on) {
 #if !defined(CONFIG_SEC_FACTORY)
@@ -831,13 +831,13 @@ static void max77843_hv_muic_adcmode_switch
 
 static void max77843_hv_muic_adcmode_always_on(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	max77843_hv_muic_adcmode_switch(muic_data, true);
 }
 
 void max77843_hv_muic_adcmode_oneshot(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	max77843_hv_muic_adcmode_switch(muic_data, false);
 }
 
@@ -848,19 +848,19 @@ static int max77843_hv_muic_handle_attach
 	bool noti = true;
 	muic_attached_dev_t	new_dev	= new_afc_data->new_dev;
 
-	pr_info("%s:%s \n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s \n", MUIC_HV_DEV_NAME, __func__);
 
 	if (muic_data->is_charger_ready == false) {
 		if (new_afc_data->new_dev == ATTACHED_DEV_AFC_CHARGER_PREPARE_MUIC) {
 			muic_data->is_afc_muic_prepare = true;
-			pr_info("%s:%s is_charger_ready[%c], is_afc_muic_prepare[%c]\n",
+			pr_debug("%s:%s is_charger_ready[%c], is_afc_muic_prepare[%c]\n",
 				MUIC_HV_DEV_NAME, __func__,
 				(muic_data->is_charger_ready ? 'T' : 'F'),
 				(muic_data->is_afc_muic_prepare ? 'T' : 'F'));
 
 			return ret;
 		}
-		pr_info("%s:%s is_charger_ready[%c], just return\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s is_charger_ready[%c], just return\n", MUIC_HV_DEV_NAME,
 			__func__, (muic_data->is_charger_ready ? 'T' : 'F'));
 		return ret;
 	}
@@ -879,7 +879,7 @@ static int max77843_hv_muic_handle_attach
 	case FUNC_PREPARE_TO_PREPARE_DUPLI:
 		/* attached_dev is changed. MPING Missing did not happened
 		 * Cancel delayed work */
-		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+		pr_debug("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
 			MUIC_HV_DEV_NAME, __func__, new_dev);
 		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		muic_data->afc_count++;
@@ -907,7 +907,7 @@ static int max77843_hv_muic_handle_attach
 	case FUNC_PREPARE_TO_QC_PREPARE:
 		/* attached_dev is changed. MPING Missing did not happened
 		 * Cancel delayed work */
-		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+		pr_debug("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
 			MUIC_HV_DEV_NAME, __func__, new_dev);
 		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		/* ping STOP */
@@ -974,7 +974,7 @@ static int max77843_hv_muic_handle_attach
 	case FUNC_AFC_5V_TO_AFC_5V_DUPLI:
 		/* attached_dev is changed. MPING Missing did not happened
 		 * Cancel delayed work */
-		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+		pr_debug("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
 			MUIC_HV_DEV_NAME, __func__, new_dev);
 		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		muic_data->afc_count++;
@@ -989,7 +989,7 @@ static int max77843_hv_muic_handle_attach
 	case FUNC_AFC_5V_TO_AFC_ERR_V:
 		/* attached_dev is changed. MPING Missing did not happened
 		 * Cancel delayed work */
-		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+		pr_debug("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
 			MUIC_HV_DEV_NAME, __func__, new_dev);
 		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		if (muic_data->afc_count > AFC_CHARGER_WA_PING) {
@@ -1002,7 +1002,7 @@ static int max77843_hv_muic_handle_attach
 	case FUNC_AFC_5V_TO_AFC_9V:
 		/* attached_dev is changed. MPING Missing did not happened
 		 * Cancel delayed work */
-		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+		pr_debug("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
 			MUIC_HV_DEV_NAME, __func__, new_dev);
 		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		max77843_hv_muic_afc_control_ping(muic_data, false);
@@ -1011,7 +1011,7 @@ static int max77843_hv_muic_handle_attach
 	case FUNC_AFC_5V_TO_QC_PREPARE:
 		/* attached_dev is changed. MPING Missing did not happened
 		 * Cancel delayed work */
-		pr_info("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
+		pr_debug("%s:%s cancel_delayed_work(dev %d), Mping missing wa\n",
 			MUIC_HV_DEV_NAME, __func__, new_dev);
 		cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
 		max77843_hv_muic_qc_charger(muic_data);
@@ -1097,7 +1097,7 @@ static int max77843_hv_muic_handle_attach
 			max77843_hv_muic_afc_control_ping(muic_data, false);
 			max77843_hv_muic_adcmode_oneshot(muic_data);
 		} else {
-			pr_info("dummy int called [%d]\n", muic_data->afc_count);
+			pr_debug("dummy int called [%d]\n", muic_data->afc_count);
 		}
 #else
 		max77843_hv_muic_afc_control_ping(muic_data, false);
@@ -1197,7 +1197,7 @@ static bool muic_check_hv_irq
 
 out:
 	if (debug_en_checklist) {
-		pr_info("%s:%s check_data dev(%d) irq(%d:%d) ret(%c)\n",
+		pr_debug("%s:%s check_data dev(%d) irq(%d:%d) ret(%c)\n",
 				MUIC_HV_DEV_NAME, __func__, tmp_afc_data->new_dev,
 				tmp_afc_data->afc_irq, afc_irq, ret ? 'T' : 'F');
 	}
@@ -1222,7 +1222,7 @@ static bool muic_check_hvcontrol1_dpdnvden
 
 out:
 	if (debug_en_checklist) {
-		pr_info("%s:%s check_data dev(%d) dpdnvden(0x%x:0x%x) ret(%c)\n",
+		pr_debug("%s:%s check_data dev(%d) dpdnvden(0x%x:0x%x) ret(%c)\n",
 				MUIC_HV_DEV_NAME, __func__, tmp_afc_data->new_dev,
 				tmp_afc_data->hvcontrol1_dpdnvden, dpdnvden,
 				ret ? 'T' : 'F');
@@ -1358,7 +1358,7 @@ static bool muic_check_status3_vbadc
 
 out:
 	if (debug_en_checklist) {
-		pr_info("%s:%s check_data dev(%d) vbadc(0x%x:0x%x) ret(%c)\n",
+		pr_debug("%s:%s check_data dev(%d) vbadc(0x%x:0x%x) ret(%c)\n",
 				MUIC_HV_DEV_NAME, __func__, tmp_afc_data->new_dev,
 				tmp_afc_data->status3_vbadc, vbadc, ret ? 'T' : 'F');
 	}
@@ -1383,7 +1383,7 @@ static bool muic_check_status3_vdnmon
 
 out:
 	if (debug_en_checklist) {
-		pr_info("%s:%s check_data dev(%d) vdnmon(0x%x:0x%x) ret(%c)\n",
+		pr_debug("%s:%s check_data dev(%d) vdnmon(0x%x:0x%x) ret(%c)\n",
 				MUIC_HV_DEV_NAME, __func__, tmp_afc_data->new_dev,
 				tmp_afc_data->status3_vdnmon, vdnmon, ret ? 'T' : 'F');
 	}
@@ -1432,10 +1432,10 @@ static void max77843_hv_muic_detect_dev(struct max77843_muic_data *muic_data, in
 	bool flag_next = true;
 	bool muic_dev_ta = false;
 
-	pr_info("%s:%s irq(%d)\n", MUIC_HV_DEV_NAME, __func__, irq);
+	pr_debug("%s:%s irq(%d)\n", MUIC_HV_DEV_NAME, __func__, irq);
 
 	if (tmp_afc_data == NULL) {
-		pr_info("%s:%s non AFC Charger, just return!\n", MUIC_HV_DEV_NAME, __func__);
+		pr_debug("%s:%s non AFC Charger, just return!\n", MUIC_HV_DEV_NAME, __func__);
 		return;
 	}
 
@@ -1445,7 +1445,7 @@ static void max77843_hv_muic_detect_dev(struct max77843_muic_data *muic_data, in
 		return;
 	}
 
-	pr_info("%s:%s STATUS1:0x%02x, 2:0x%02x, 3:0x%02x\n", MUIC_DEV_NAME, __func__,
+	pr_debug("%s:%s STATUS1:0x%02x, 2:0x%02x, 3:0x%02x\n", MUIC_DEV_NAME, __func__,
 					status[0], status[1], status[2]);
 
 	/* attached status */
@@ -1472,7 +1472,7 @@ static void max77843_hv_muic_detect_dev(struct max77843_muic_data *muic_data, in
 		return;
 	}
 
-	pr_info("%s:%s HVCONTROL1:0x%02x, 2:0x%02x\n", MUIC_HV_DEV_NAME, __func__,
+	pr_debug("%s:%s HVCONTROL1:0x%02x, 2:0x%02x\n", MUIC_HV_DEV_NAME, __func__,
 			hvcontrol[0], hvcontrol[1]);
 
 	/* attached - control */
@@ -1481,13 +1481,13 @@ static void max77843_hv_muic_detect_dev(struct max77843_muic_data *muic_data, in
 
 	dpdnvden = hvcontrol[0] & HVCONTROL1_DPDNVDEN_MASK;
 
-	pr_info("%s:%s vdnmon:0x%x mpnack:0x%x vbadc:0x%x dpdnvden:0x%x\n",
+	pr_debug("%s:%s vdnmon:0x%x mpnack:0x%x vbadc:0x%x dpdnvden:0x%x\n",
 		MUIC_HV_DEV_NAME, __func__, vdnmon, mpnack, vbadc, dpdnvden);
 
 	for (i = 0; i < ATTACHED_DEV_NUM; i++, tmp_afc_data = tmp_afc_data->next) {
 
 		if (!flag_next) {
-			pr_info("%s:%s not found new_dev in afc_condition_checklist\n",
+			pr_debug("%s:%s not found new_dev in afc_condition_checklist\n",
 				MUIC_HV_DEV_NAME, __func__);
 			break;
 		}
@@ -1507,7 +1507,7 @@ static void max77843_hv_muic_detect_dev(struct max77843_muic_data *muic_data, in
 		if(!(muic_check_status3_vdnmon(tmp_afc_data, vdnmon)))
 			continue;
 
-		pr_info("%s:%s checklist match found at i(%d), %s(%d)\n",
+		pr_debug("%s:%s checklist match found at i(%d), %s(%d)\n",
 			MUIC_HV_DEV_NAME, __func__, i, tmp_afc_data->afc_name,
 			tmp_afc_data->new_dev);
 
@@ -1517,15 +1517,15 @@ static void max77843_hv_muic_detect_dev(struct max77843_muic_data *muic_data, in
 	}
 
 	if (intr == MUIC_INTR_ATTACH) {
-		pr_info("%s:%s AFC ATTACHED\n", MUIC_HV_DEV_NAME, __func__);
-		pr_info("%s:%s %d->%d\n", MUIC_HV_DEV_NAME, __func__,
+		pr_debug("%s:%s AFC ATTACHED\n", MUIC_HV_DEV_NAME, __func__);
+		pr_debug("%s:%s %d->%d\n", MUIC_HV_DEV_NAME, __func__,
 				muic_data->attached_dev, tmp_afc_data->new_dev);
 		ret = max77843_hv_muic_handle_attach(muic_data, tmp_afc_data);
 		if (ret)
 			pr_err("%s:%s cannot handle attach(%d)\n", MUIC_HV_DEV_NAME,
 				__func__, ret);
 	} else {
-		pr_info("%s:%s AFC MAINTAIN (%d)\n", MUIC_HV_DEV_NAME, __func__,
+		pr_debug("%s:%s AFC MAINTAIN (%d)\n", MUIC_HV_DEV_NAME, __func__,
 				muic_data->attached_dev);
 		ret = max77843_hv_muic_state_maintain(muic_data);
 		if (ret)
@@ -1544,7 +1544,7 @@ void max77843_muic_prepare_afc_charger(struct max77843_muic_data *muic_data)
 	struct i2c_client *i2c = muic_data->i2c;
 	int ret;
 
-	pr_info("%s:%s \n", MUIC_DEV_NAME, __func__);
+	pr_debug("%s:%s \n", MUIC_DEV_NAME, __func__);
 
 	max77843_hv_muic_adcmode_oneshot(muic_data);
 
@@ -1604,7 +1604,7 @@ static void max77843_hv_muic_detect_after_charger_init(struct work_struct *work)
 	int ret;
 	u8 status3;
 
-	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_DEV_NAME, __func__);
 
 	mutex_lock(&muic_data->muic_mutex);
 
@@ -1615,7 +1615,7 @@ static void max77843_hv_muic_detect_after_charger_init(struct work_struct *work)
 				__func__, ret);
 		return;
 	}
-	pr_info("%s:%s STATUS3:0x%02x\n", MUIC_HV_DEV_NAME, __func__, status3);
+	pr_debug("%s:%s STATUS3:0x%02x\n", MUIC_HV_DEV_NAME, __func__, status3);
 
 	if (muic_data->is_afc_muic_ready) {
 		if (muic_data->is_afc_muic_prepare)
@@ -1629,7 +1629,7 @@ static void max77843_hv_muic_detect_after_charger_init(struct work_struct *work)
 
 void max77843_hv_muic_charger_init(void)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 
 	if(afc_init_data.muic_data) {
 		afc_init_data.muic_data->is_charger_ready = true;
@@ -1651,11 +1651,11 @@ static void max77843_hv_muic_check_qc_vb(struct work_struct *work)
 	mutex_lock(&muic_data->muic_mutex);
 
 	if (muic_data->is_qc_vb_settle == true) {
-		pr_info("%s:%s already qc vb settled\n", MUIC_HV_DEV_NAME, __func__);
+		pr_debug("%s:%s already qc vb settled\n", MUIC_HV_DEV_NAME, __func__);
 		goto out;
 	}
 
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 
 	max77843_hv_muic_read_reg(muic_data->i2c, MAX77843_MUIC_REG_STATUS3, &status3);
 	vbadc = status3 & STATUS3_VBADC_MASK;
@@ -1685,13 +1685,13 @@ static void max77843_hv_muic_check_mping_miss(struct work_struct *work)
 	/* Check the current device */
 	if (muic_data->attached_dev != ATTACHED_DEV_AFC_CHARGER_PREPARE_MUIC &&
 		muic_data->attached_dev != ATTACHED_DEV_AFC_CHARGER_5V_MUIC) {
-		pr_info("%s:%s MPing Missing did not happened "
+		pr_debug("%s:%s MPing Missing did not happened "
 			"but AFC protocol did not success\n",
 			MUIC_HV_DEV_NAME, __func__);
 		goto out;
 	}
 
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 
 	/* We make MPING NACK interrupt virtually */
 	max77843_hv_muic_detect_dev(muic_data, muic_data->irq_mpnack);
@@ -1706,15 +1706,15 @@ void max77843_hv_muic_init_detect(struct max77843_muic_data *muic_data)
 	int ret;
 	u8 status3, vdnmon;
 
-	pr_info("%s:%s\n", MUIC_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_DEV_NAME, __func__);
 
 	mutex_lock(&muic_data->muic_mutex);
 
 	if (muic_data->is_boot_dpdnvden == DPDNVDEN_ENABLE)
-		pr_info("%s:%s dpdnvden already ENABLE\n", MUIC_HV_DEV_NAME, __func__);
+		pr_debug("%s:%s dpdnvden already ENABLE\n", MUIC_HV_DEV_NAME, __func__);
 	else if (muic_data->is_boot_dpdnvden == DPDNVDEN_DISABLE) {
 		mdelay(30);
-		pr_info("%s:%s dpdnvden == DISABLE, 30ms delay\n", MUIC_HV_DEV_NAME, __func__);
+		pr_debug("%s:%s dpdnvden == DISABLE, 30ms delay\n", MUIC_HV_DEV_NAME, __func__);
 	} else {
 		pr_err("%s:%s dpdnvden is not correct(0x%x)!\n", MUIC_HV_DEV_NAME,
 			__func__, muic_data->is_boot_dpdnvden);
@@ -1731,7 +1731,7 @@ void max77843_hv_muic_init_detect(struct max77843_muic_data *muic_data)
 	if (vdnmon == VDNMON_LOW)
 		max77843_hv_muic_detect_dev(muic_data, muic_data->irq_vdnmon);
 	else
-		pr_info("%s:%s vdnmon != LOW(0x%x)\n", MUIC_HV_DEV_NAME, __func__, vdnmon);
+		pr_debug("%s:%s vdnmon != LOW(0x%x)\n", MUIC_HV_DEV_NAME, __func__, vdnmon);
 
 out:
 	mutex_unlock(&muic_data->muic_mutex);
@@ -1757,20 +1757,20 @@ void max77843_hv_muic_init_check_dpdnvden(struct max77843_muic_data *muic_data)
 static irqreturn_t max77843_muic_hv_irq(int irq, void *data)
 {
 	struct max77843_muic_data *muic_data = data;
-	pr_info("%s:%s irq:%d\n", MUIC_HV_DEV_NAME, __func__, irq);
+	pr_debug("%s:%s irq:%d\n", MUIC_HV_DEV_NAME, __func__, irq);
 
 	mutex_lock(&muic_data->muic_mutex);
 	if (muic_data->is_muic_ready == false)
-		pr_info("%s:%s MUIC is not ready, just return\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s MUIC is not ready, just return\n", MUIC_HV_DEV_NAME,
 			__func__);
 	else if (muic_data->is_afc_muic_ready == false)
-		pr_info("%s:%s not ready yet(afc_muic_ready[%c])\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s not ready yet(afc_muic_ready[%c])\n", MUIC_HV_DEV_NAME,
 			 __func__, (muic_data->is_afc_muic_ready ? 'T' : 'F'));
 	else if (muic_data->is_charger_ready == false && irq != muic_data->irq_vdnmon)
-		pr_info("%s:%s not ready yet(charger_ready[%c])\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s not ready yet(charger_ready[%c])\n", MUIC_HV_DEV_NAME,
 			__func__, (muic_data->is_charger_ready ? 'T' : 'F'));
 	else if (muic_data->pdata->afc_disable)
-		pr_info("%s:%s AFC disable by USER (afc_disable[%c]\n", MUIC_HV_DEV_NAME,
+		pr_debug("%s:%s AFC disable by USER (afc_disable[%c]\n", MUIC_HV_DEV_NAME,
 			__func__, (muic_data->pdata->afc_disable ? 'T' : 'F'));
 	else
 		max77843_hv_muic_detect_dev(muic_data, irq);
@@ -1795,7 +1795,7 @@ int max77843_afc_muic_irq_init(struct max77843_muic_data *muic_data)
 {
 	int ret = 0;
 
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 
 	if (muic_data->mfd_pdata && (muic_data->mfd_pdata->irq_base > 0)) {
 		int irq_base = muic_data->mfd_pdata->irq_base;
@@ -1810,7 +1810,7 @@ int max77843_afc_muic_irq_init(struct max77843_muic_data *muic_data)
 		muic_data->irq_vbadc = irq_base + MAX77843_MUIC_IRQ_INT3_VBADC;
 		REQUEST_HV_IRQ(muic_data->irq_vbadc, muic_data, "muic-vbadc");
 
-		pr_info("%s:%s vdnmon(%d), mrxrdy(%d), mpnack(%d), vbadc(%d)\n",
+		pr_debug("%s:%s vdnmon(%d), mrxrdy(%d), mpnack(%d), vbadc(%d)\n",
 				MUIC_HV_DEV_NAME, __func__,
 				muic_data->irq_vdnmon, muic_data->irq_mrxrdy,
 				muic_data->irq_mpnack, muic_data->irq_vbadc);
@@ -1823,14 +1823,14 @@ int max77843_afc_muic_irq_init(struct max77843_muic_data *muic_data)
 do {									\
 	if (_irq) {							\
 		free_irq(_irq, _dev_id);				\
-		pr_info("%s:%s IRQ(%d):%s free done\n", MUIC_HV_DEV_NAME,	\
+		pr_debug("%s:%s IRQ(%d):%s free done\n", MUIC_HV_DEV_NAME,	\
 				__func__, _irq, _name);			\
 	}								\
 } while (0)
 
 void max77843_hv_muic_free_irqs(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 
 	/* free MUIC IRQ */
 	FREE_HV_IRQ(muic_data->irq_vdnmon, muic_data, "muic-vdnmon");
@@ -1856,7 +1856,7 @@ int of_max77843_hv_muic_dt(struct max77843_muic_data *muic_data)
 		goto err;
 	}
 
-	pr_info("%s:%s muic_data->qc-hv:0x%02x\n", MUIC_DEV_NAME, __func__,
+	pr_debug("%s:%s muic_data->qc-hv:0x%02x\n", MUIC_DEV_NAME, __func__,
 				muic_data->qc_hv);
 
 err:
@@ -1868,7 +1868,7 @@ err:
 
 void max77843_hv_muic_initialize(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 
 	muic_data->is_afc_handshaking = false;
 	muic_data->is_afc_muic_prepare = false;
@@ -1884,7 +1884,7 @@ void max77843_hv_muic_initialize(struct max77843_muic_data *muic_data)
 
 void max77843_hv_muic_remove(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	cancel_work_sync(&afc_init_data.muic_afc_init_work);
 	cancel_delayed_work_sync(&muic_data->hv_muic_qc_vb_work);
 	cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);
@@ -1894,7 +1894,7 @@ void max77843_hv_muic_remove(struct max77843_muic_data *muic_data)
 
 void max77843_hv_muic_remove_wo_free_irq(struct max77843_muic_data *muic_data)
 {
-	pr_info("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
+	pr_debug("%s:%s\n", MUIC_HV_DEV_NAME, __func__);
 	cancel_work_sync(&afc_init_data.muic_afc_init_work);
 	cancel_delayed_work_sync(&muic_data->hv_muic_qc_vb_work);
 	cancel_delayed_work(&muic_data->hv_muic_mping_miss_wa);

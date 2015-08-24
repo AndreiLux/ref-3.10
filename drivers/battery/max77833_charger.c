@@ -9,7 +9,7 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#define DEBUG
+//#define DEBUG
 
 #include <linux/mfd/max77833-private.h>
 #include <linux/debugfs.h>
