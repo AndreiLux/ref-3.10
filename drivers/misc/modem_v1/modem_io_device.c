@@ -1414,7 +1414,9 @@ static ssize_t misc_write(struct file *filp, const char __user *data,
 	 * Send the skb with a link device
 	 */
 
+#ifdef DEBUG_MODEM_IF
 	trace_mif_event(skb, tx_bytes, FUNC);
+#endif
 
 	ret = ld->send(ld, iod, skb);
 	if (ret < 0) {

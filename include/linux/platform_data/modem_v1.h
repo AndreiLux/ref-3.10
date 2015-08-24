@@ -531,11 +531,11 @@ struct modem_boot_spi {
 #define mif_err_limited(fmt, ...) \
 	printk_ratelimited(KERN_ERR LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_err(fmt, ...) \
-	pr_err(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
+	pr_debug(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_debug(fmt, ...) \
 	pr_debug(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_info(fmt, ...) \
-	pr_info(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
+	pr_debug(LOG_TAG "%s: " pr_fmt(fmt), __func__, ##__VA_ARGS__)
 #define mif_trace(fmt, ...) \
 	printk(KERN_DEBUG "mif: %s: %d: called(%pF): " fmt, \
 		__func__, __LINE__, __builtin_return_address(0), ##__VA_ARGS__)

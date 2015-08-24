@@ -628,8 +628,9 @@ int tx_frames_to_rb(struct sbd_ring_buffer *rb)
 		tx_bytes += ret;
 
 		log_ipc_pkt(LNK_TX, rb->ch, skb);
-
+#ifdef DEBUG_MODEM_IF
 		trace_mif_event(skb, skb->len, FUNC);
+#endif
 
 		dev_kfree_skb_any(skb);
 	}

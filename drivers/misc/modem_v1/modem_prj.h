@@ -39,10 +39,10 @@
 #include "include/sipc5.h"
 #include "modem_pm.h"
 
-/*#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP*/
+#ifndef CONFIG_SAMSUNG_PRODUCT_SHIP
 #define DEBUG_MODEM_IF
 #include <trace/events/modem_if.h>
-/*#endif*/
+#endif
 
 #ifdef DEBUG_MODEM_IF
 #define DEBUG_MODEM_IF_LINK_TX

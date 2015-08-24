@@ -34,7 +34,7 @@ static inline int check_udl_space(struct mem_link_device *mld,
 
 	space = circ_get_space(qsize, in, out);
 	if (unlikely(space < count)) {
-		mif_err("%s: NOSPC in %s_TXQ{qsize:%d in:%d "
+		mif_debug("%s: NOSPC in %s_TXQ{qsize:%d in:%d "
 			"out:%d space:%d count:%d}\n", ld->name,
 			dev->name, qsize, in, out, space, count);
 		return -ENOSPC;
@@ -165,7 +165,7 @@ int mem_xmit_boot(struct link_device *ld, struct io_device *iod,
 		mif_err("%s: ERR! Invalid BOOT size %d\n", ld->name, mf.size);
 		return -EINVAL;
 	}
-	mif_err("%s: BOOT size = %d bytes\n", ld->name, mf.size);
+	mif_debug("%s: BOOT size = %d bytes\n", ld->name, mf.size);
 
 	/**
 	 * Copy the boot image to the BOOT region
@@ -215,7 +215,7 @@ int mem_start_download(struct link_device *ld, struct io_device *iod)
 				ld->name, magic, MEM_BOOT_MAGIC);
 			return -EFAULT;
 		}
-		mif_err("%s: magic == 0x%08X\n", ld->name, magic);
+		mif_debug("%s: magic == 0x%08X\n", ld->name, magic);
 	}
 
 	return 0;
@@ -278,7 +278,7 @@ int mem_start_upload(struct link_device *ld, struct io_device *iod)
 				ld->name, magic, MEM_DUMP_MAGIC);
 			return -EFAULT;
 		}
-		mif_err("%s: magic == 0x%08X\n", ld->name, magic);
+		mif_debug("%s: magic == 0x%08X\n", ld->name, magic);
 	}
 
 	return 0;

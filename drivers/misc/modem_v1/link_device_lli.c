@@ -501,17 +501,17 @@ static int init_pm(struct mem_link_device *mld)
 	*/
 	gpio = mld->gpio_ap_wakeup;
 	irq_ap_wakeup = gpio_to_irq(gpio);
-	mif_err("CP2AP_WAKEUP GPIO:%d IRQ:%d\n", gpio, irq_ap_wakeup);
+	mif_debug("CP2AP_WAKEUP GPIO:%d IRQ:%d\n", gpio, irq_ap_wakeup);
 
 	gpio = mld->gpio_cp_wakeup;
-	mif_err("AP2CP_WAKEUP GPIO:%d\n", gpio);
+	mif_debug("AP2CP_WAKEUP GPIO:%d\n", gpio);
 
 	gpio = mld->gpio_cp_status;
 	irq_cp_status = gpio_to_irq(gpio);
-	mif_err("CP2AP_STATUS GPIO:%d IRQ:%d\n", gpio, irq_cp_status);
+	mif_debug("CP2AP_STATUS GPIO:%d IRQ:%d\n", gpio, irq_cp_status);
 
 	gpio = mld->gpio_ap_status;
-	mif_err("AP2CP_STATUS GPIO:%d\n", gpio);
+	mif_debug("AP2CP_STATUS GPIO:%d\n", gpio);
 
 	/*
 	Initialize locks, completions, bottom halves, etc.
@@ -554,20 +554,20 @@ static int init_pm(struct mem_link_device *mld)
 
 static void lli_link_reset(struct link_device *ld)
 {
-	mif_err("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
+	mif_debug("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
 	mipi_lli_intr_enable();
 	mipi_lli_reset();
 }
 
 static void lli_link_reload(struct link_device *ld)
 {
-	mif_err("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
+	mif_debug("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
 	mipi_lli_reload();
 }
 
 static void lli_link_off(struct link_device *ld)
 {
-	mif_err("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
+	mif_debug("%s: PM %s <%pf>\n", ld->name, FUNC, CALLER);
 	mipi_lli_intr_disable();
 	stop_pm(ld_to_mem_link_device(ld));
 }
@@ -764,7 +764,7 @@ struct link_device *lli_create_link_device(struct platform_device *pdev)
 		return NULL;
 	}
 
-	mif_err("MODEM:%s LINK:%s\n", modem->name, modem->link_name);
+	mif_debug("MODEM:%s LINK:%s\n", modem->name, modem->link_name);
 
 	/**
 	 * Create a MEMORY link device instance

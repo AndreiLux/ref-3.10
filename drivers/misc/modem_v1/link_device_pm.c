@@ -47,7 +47,7 @@ static inline void print_pm_event(struct modem_link_pm *pm, enum pm_event event)
 	PM {cp2ap_wakeup:ap2cp_wakeup:cp2ap_status:ap2cp_status}{event:state}
 	   <CALLER>
 	*/
-	pr_info("%s: PM {%d:%d:%d:%d}{%s:%s}\n", pm->link_name,
+	pr_debug("%s: PM {%d:%d:%d:%d}{%s:%s}\n", pm->link_name,
 		cp2ap_wakeup, ap2cp_wakeup, cp2ap_status, ap2cp_status,
 		pm_event2str(event), pm_state2str(pm->fsm.state));
 }
@@ -69,7 +69,7 @@ static inline void print_pm_fsm(struct modem_link_pm *pm)
 	PM {cp2ap_wakeup:ap2cp_wakeup:cp2ap_status:ap2cp_status}\
 	   {event:current_state->next_state} <CALLER>
 	*/
-	pr_info("%s: PM {%d:%d:%d:%d}{%s:%s->%s}\n", pm->link_name,
+	pr_debug("%s: PM {%d:%d:%d:%d}{%s:%s->%s}\n", pm->link_name,
 		cp2ap_wakeup, ap2cp_wakeup, cp2ap_status, ap2cp_status,
 		pm_event2str(pm->fsm.event), pm_state2str(pm->fsm.prev_state),
 		pm_state2str(pm->fsm.state));

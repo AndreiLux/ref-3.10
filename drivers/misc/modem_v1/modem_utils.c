@@ -66,12 +66,12 @@ enum bit_debug_flags {
 	DEBUG_FLAG_UNKNOWN
 };
 
-static unsigned long dflags = (1 << DEBUG_FLAG_FMT);
+static unsigned long dflags = 0;
 module_param(dflags, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(dflags, "modem_v1 debug flags");
 
 /* ipc_log_level: 0 is the highest level */
-static unsigned long ipc_log_level;
+static unsigned long ipc_log_level = 5;
 module_param(ipc_log_level, ulong, S_IRUGO | S_IWUSR | S_IWGRP);
 MODULE_PARM_DESC(ipc_log_level, "modem_v1 log level for IPC message");
 
@@ -332,7 +332,7 @@ inline void log_ipc_pkt(enum ipc_layer layer, u8 ch, struct sk_buff *skb)
 		trace_mif_log(layer_str(layer), buflen, str);
 #endif
 
-	pr_info("%s: %s(%d): %s\n", MIF_TAG, layer_str(layer), buflen, str);
+	pr_debug("%s: %s(%d): %s\n", MIF_TAG, layer_str(layer), buflen, str);
 }
 
 /* print buffer as hex string */
@@ -344,7 +344,7 @@ int pr_buffer(const char *tag, const char *data, size_t data_len,
 	dump2hex(str, (len ? len * 3 : 1), data, len);
 
 	/* don't change this printk to mif_debug for print this as level7 */
-	return pr_info("%s: %s(%ld): %s%s\n", MIF_TAG, tag, (long)data_len,
+	return pr_debug("%s: %s(%ld): %s%s\n", MIF_TAG, tag, (long)data_len,
 			str, (len == data_len) ? "" : " ...");
 }
 
@@ -774,7 +774,7 @@ void mif_print_dump(const u8 *data, int len, int width)
 	else
 		mif_dump2format4(data, len, buff, LOG_TAG);
 
-	pr_info("%s", buff);
+	pr_debug("%s", buff);
 
 	kfree(buff);
 }
