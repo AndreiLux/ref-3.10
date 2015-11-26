@@ -368,8 +368,7 @@ static void row_add_request(struct request_queue *q,
 			return;
 		}
 
-		if ((bv_page_flags & (1L << PG_readahead)) ||
-		    (diff_ms < rd->rd_idle_data.freq_ms)) {
+		if (diff_ms < rd->rd_idle_data.freq_ms) {
 			rqueue->idle_data.begin_idling = true;
 			row_log_rowq(rd, rqueue->prio, "Enable idling");
 		} else {
@@ -788,16 +787,24 @@ done:
  * this dispatch queue
  *
  */
-static void *row_init_queue(struct request_queue *q)
+static int row_init_queue(struct request_queue *q, struct elevator_type *e)
 {
 
 	struct row_data *rdata;
+	struct elevator_queue *eq;
 	int i;
+
+	eq = elevator_alloc(q, e);
+	if (!eq)
+		return -ENOMEM;
 
 	rdata = kmalloc_node(sizeof(*rdata),
 			     GFP_KERNEL | __GFP_ZERO, q->node);
-	if (!rdata)
-		return NULL;
+	if (!rdata) {
+		kobject_put(&eq->kobj);
+		return -ENOMEM;
+	}
+	eq->elevator_data = rdata;
 
 	memset(rdata, 0, sizeof(*rdata));
 	for (i = 0; i < ROWQ_MAX_PRIO; i++) {
@@ -830,7 +837,11 @@ static void *row_init_queue(struct request_queue *q)
 	rdata->rd_idle_data.idling_queue_idx = ROWQ_MAX_PRIO;
 	rdata->dispatch_queue = q;
 
-	return rdata;
+	spin_lock_irq(q->queue_lock);
+	q->elevator = eq;
+	spin_unlock_irq(q->queue_lock);
+
+	return 0;
 }
 
 /*
@@ -936,7 +947,8 @@ static enum row_queue_prio row_get_queue_prio(struct request *rq,
  *
  */
 static int
-row_set_request(struct request_queue *q, struct request *rq, gfp_t gfp_mask)
+row_set_request(struct request_queue *q, struct request *rq, struct bio *bio,
+		gfp_t gfp_mask)
 {
 	struct row_data *rd = (struct row_data *)q->elevator->elevator_data;
 	unsigned long flags;
@@ -1024,9 +1036,6 @@ STORE_FUNCTION(row_lp_read_quantum_store,
 			&rowd->row_queues[ROWQ_PRIO_LOW_READ].disp_quantum,
 			1, INT_MAX);
 STORE_FUNCTION(row_lp_swrite_quantum_store,
-		&rowd->row_queues[ROWQ_PRIO_LOW_SWRITE].disp_quantum, 0,
-		INT_MAX, 1);
-STORE_FUNCTION(row_read_idle_store, &rowd->read_idle.idle_time, 1, INT_MAX, 1);
 			&rowd->row_queues[ROWQ_PRIO_LOW_SWRITE].disp_quantum,
 			1, INT_MAX);
 STORE_FUNCTION(row_rd_idle_data_store, &rowd->rd_idle_data.idle_time_ms,
